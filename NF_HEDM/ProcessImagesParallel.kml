@@ -1,0 +1,113 @@
+// CACHE ID 1f2450de-eb0b-4f84-a444-5efb3f24ebcb-no-provenance
+import(sys)
+import(scheduler)
+import(rlog)
+import(swift)
+
+types(
+	xs:schema(
+    			xs:simpleType("file", xs:restriction("string"))
+    )
+)
+swift#string#17003 := swift:new("string", value="3")
+swift#string#17005 := swift:new("string", value="180")
+swift#string#17007 := swift:new("string", value="1")
+swift#string#17004 := swift:new("string", value="NrFilesPerLayer")
+swift#string#17001 := swift:new("string", value="/data/tomo1/NFTest/ParametersGoldApril14.txt")
+swift#string#17000 := swift:new("string", value="paramfile")
+swift#string#17006 := swift:new("string", value="NrPixels")
+swift#string#17002 := swift:new("string", value="NrLayers")
+swift#int#0 := swift:new("int", value=0)
+swift#int#1 := swift:new("int", value=1)
+paramfile := 
+			swift:new("string", dbgname="paramfile", waitCount=1, _defline=11)
+ 
+NrLayers := 
+			swift:new("int", dbgname="NrLayers", waitCount=1, _defline=12)
+ 
+NrFilesPerLayer := 
+			swift:new("int", dbgname="NrFilesPerLayer", waitCount=1, _defline=13)
+ 
+NrPixels := 
+			swift:new("int", dbgname="NrPixels", waitCount=1, _defline=14)
+ 
+
+Images := function(paramf, layern, filenr) {
+	swift:unitStart("PROCEDURE", name="Images", line=3, outputs="")
+	swift:execute(
+		swift:tr("runimageprocessingparallel")
+		swift:stageIn(paramf)
+		swift:stageIn(layern)
+		swift:stageIn(filenr)
+
+		swift:arguments(
+			paramf, layern, filenr
+		)
+
+
+	)
+	swift:unitEnd("PROCEDURE", name="Images", line=3)}
+
+restartLog(name = k:concat(contextAttribute("SWIFT:SCRIPT_NAME"), "-", contextAttribute("SWIFT:RUN_ID"))) {
+	swift:mains(
+		swift:startProgressTicker()
+		swift:mainp(
+			uparallel(
+				sequential(swift:setFieldValue(_traceline=12
+					paramfile
+					swiftscript:arg(
+						swift#string#17000, swift#string#17001
+					)
+				)
+				swift:partialCloseDataset(paramfile))
+				sequential(swift:setFieldValue(_traceline=13
+					NrLayers
+					swiftscript:toInt(
+						swiftscript:arg(
+							swift#string#17002, swift#string#17003
+						)
+					)
+				)
+				swift:partialCloseDataset(NrLayers))
+				sequential(swift:setFieldValue(_traceline=14
+					NrFilesPerLayer
+					swiftscript:toInt(
+						swiftscript:arg(
+							swift#string#17004, swift#string#17005
+						)
+					)
+				)
+				swift:partialCloseDataset(NrFilesPerLayer))
+				sequential(swift:setFieldValue(_traceline=18
+					NrPixels
+					swiftscript:toInt(
+						swiftscript:arg(
+							swift#string#17006, swift#string#17007
+						)
+					)
+				)
+				swift:partialCloseDataset(NrPixels))
+				swift:tParallelFor($, _traceline=18, _vvar="layer",
+					getArrayIterator(swift:range(swift#int#1, NrLayers))) {
+					($$, layer) := each($)
+					swift:unitStart("FOREACH_IT", line=18) 
+					swift:tParallelFor($, _traceline=19, _vvar="FileNr",
+						getArrayIterator(swift:range(swift#int#0, swiftop:subtraction(NrFilesPerLayer, swift#int#1)))) {
+						($$, FileNr) := each($)
+						swift:unitStart("FOREACH_IT", line=19) 
+						Images(
+							paramfile, layer, FileNr
+						)
+
+
+						swift:unitEnd("FOREACH_IT", line=19)
+					}
+
+					swift:unitEnd("FOREACH_IT", line=18)
+				}
+			)
+		)
+		swift:stopProgressTicker()
+	)
+}
+swift:cleanDataset(shutdown=true)

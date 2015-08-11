@@ -1,0 +1,11 @@
+wrapperlog.always.transfer=false
+use.provider.staging=false
+provider.staging.pin.swiftfiles=false
+use.wrapper.staging=false
+status.mode=provider
+execution.retries=2
+lazy.errors=true
+sitedir.keep=false
+file.gc.enabled=false
+wrapper.parameter.mode=args
+foreach.max.threads=384

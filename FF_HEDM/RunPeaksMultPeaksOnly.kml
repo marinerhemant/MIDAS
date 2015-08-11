@@ -1,0 +1,183 @@
+// CACHE ID c9ebfc39-ad69-436e-8c46-06a6f9fc354d-no-provenance
+import(sys)
+import(scheduler)
+import(rlog)
+import(swift)
+
+types(
+	xs:schema(
+    			xs:simpleType("file", xs:restriction("string"))
+    )
+)
+swift#string#17003 := swift:new("string", value="600")
+swift#string#17009 := swift:new("string", value="PS.txt")
+swift#string#17001 := swift:new("string", value="1")
+swift#string#17011 := swift:new("string", value="%s\n")
+swift#string#17010 := swift:new("string", value="_")
+swift#string#17008 := swift:new("string", value="fstm")
+swift#string#17007 := swift:new("string", value="RingInfo.txt")
+swift#string#17002 := swift:new("string", value="endnr")
+swift#string#17004 := swift:new("string", value="paramsfile")
+swift#string#17000 := swift:new("string", value="startnr")
+swift#string#17006 := swift:new("string", value="ringfile")
+swift#string#17005 := swift:new("string", value="/clhome/TOMO1/PeaksAnalysisHemant/PeaksFittingCode/90_33ParamsFile1.txt")
+startnr := 
+			swift:new("int", dbgname="startnr", waitCount=1, _defline=10)
+ 
+endnr := 
+			swift:new("int", dbgname="endnr", waitCount=1, _defline=11)
+ 
+parameterfilestem := 
+			swift:new("string", dbgname="parameterfilestem", waitCount=1, _defline=12)
+ 
+ringfile := 
+			swift:new("string", dbgname="ringfile", waitCount=1, _defline=13)
+ 
+fstm := 
+			swift:new("string", dbgname="fstm", waitCount=1, _defline=14)
+ 
+hkl := 
+			swift:new("file", dbgname="hkl", _defline=18, input=true
+				swift:mapping("single_file_mapper", swift:parameter("file", "hkls.csv") )
+			)
+ 
+rings := 
+			swift:new("int[]", dbgname="rings", waitCount=1, _defline=20)
+ 
+
+runPeaks := function(paramsfn, fnr, ringnr) {
+	swift:unitStart("PROCEDURE", name="runPeaks", line=3, outputs="")
+	swift:execute(
+		swift:tr("peaks")
+		swift:stageIn(paramsfn)
+		swift:stageIn(fnr)
+		swift:stageIn(ringnr)
+
+		swift:arguments(
+			paramsfn, fnr, ringnr
+		)
+
+
+	)
+	swift:unitEnd("PROCEDURE", name="runPeaks", line=3)}
+
+restartLog(name = k:concat(contextAttribute("SWIFT:SCRIPT_NAME"), "-", contextAttribute("SWIFT:RUN_ID"))) {
+	swift:mains(
+		swift:startProgressTicker()
+		swift:mainp(
+			uparallel(
+				sequential(swift:setFieldValue(_traceline=11
+					startnr
+					swiftscript:toInt(
+						swiftscript:arg(
+							swift#string#17000, swift#string#17001
+						)
+					)
+				)
+				swift:partialCloseDataset(startnr))
+				sequential(swift:setFieldValue(_traceline=12
+					endnr
+					swiftscript:toInt(
+						swiftscript:arg(
+							swift#string#17002, swift#string#17003
+						)
+					)
+				)
+				swift:partialCloseDataset(endnr))
+				sequential(swift:setFieldValue(_traceline=13
+					parameterfilestem
+					swiftscript:arg(
+						swift#string#17004, swift#string#17005
+					)
+				)
+				swift:partialCloseDataset(parameterfilestem))
+				sequential(swift:setFieldValue(_traceline=14
+					ringfile
+					swiftscript:arg(
+						swift#string#17006, swift#string#17007
+					)
+				)
+				swift:partialCloseDataset(ringfile))
+				sequential(swift:setFieldValue(_traceline=18
+					fstm
+					swiftscript:arg(
+						swift#string#17008, swift#string#17009
+					)
+				)
+				swift:partialCloseDataset(fstm))
+				sequential(swift:setFieldValue(_traceline=22
+					rings
+					sequential(
+						swift#callintermediate := swift:new("int[int]", dbgname="swift#callintermediate",
+							swift:mapping("concurrent_mapper",
+								swift:parameter("prefix", "_callintermediate-")
+							)
+						)
+						sequential(
+							swift:unitStart("INTERNALPROC", name="readData", outputs="")
+							readData(
+						    	swift#callintermediate
+						    	ringfile
+							)
+							swift:unitEnd("INTERNALPROC", name="readData")
+						)
+						swift#callintermediate
+					)
+				)
+				swift:partialCloseDataset(rings))
+				swift:tParallelFor($, _traceline=22, _vvar="Ring",
+					getArrayIterator(rings)) {
+					($$, Ring) := each($)
+					swift:unitStart("FOREACH_IT", line=22) 
+					PFst1 := 
+								swift:new("string", dbgname="PFst1", waitCount=1, _defline=23)
+					 
+					parameterfilename := 
+								swift:new("string", dbgname="parameterfilename", waitCount=1, _defline=24)
+					 
+					uparallel(
+						sequential(swift:setFieldValue(_traceline=24
+							PFst1
+							swiftscript:strcat(
+								parameterfilestem, Ring
+							)
+						)
+						swift:partialCloseDataset(PFst1))
+						sequential(swift:setFieldValue(_traceline=25
+							parameterfilename
+							swiftscript:strcat(
+								PFst1, swift#string#17010, fstm
+							)
+						)
+						swift:partialCloseDataset(parameterfilename))
+						sequential(
+							swift:unitStart("INTERNALPROC", name="tracef", outputs="")
+							tracef(
+						    	swift#string#17011
+						    	parameterfilename
+							)
+							swift:unitEnd("INTERNALPROC", name="tracef")
+						)
+						swift:tParallelFor($, _traceline=26, _vvar="i",
+							getArrayIterator(swift:range(startnr, endnr))) {
+							($$, i) := each($)
+							swift:unitStart("FOREACH_IT", line=26) 
+							runPeaks(
+								parameterfilename, i, Ring
+							)
+
+
+							swift:unitEnd("FOREACH_IT", line=26)
+						}
+					)
+
+					swift:unitEnd("FOREACH_IT", line=22)
+				}
+			)
+		)
+		swift:stopProgressTicker()
+	)
+}
+swift:cleanDataset(rings)
+swift:cleanDataset(hkl)
+swift:cleanDataset(shutdown=true)

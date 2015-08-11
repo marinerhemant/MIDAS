@@ -1,0 +1,152 @@
+<program xmlns="http://ci.uchicago.edu/swift/2009/02/swiftscript"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <types>
+     	<type>
+     		<typename>file</typename>
+     		<typealias>string</typealias>
+     		<typestructure></typestructure>
+     	</type>
+  </types>
+  <procedure name="Medians" src="line 3">
+
+    <output name="o" type="file"  xsi:nil="true"/>
+
+    <output name="e" type="file"  xsi:nil="true"/>
+
+    <input name="pf" type="string"  xsi:nil="true"/>
+
+    <input name="layernr" type="int"  xsi:nil="true"/>
+    <binding>
+      <application src="line 3">
+        <executable>runmedian</executable>
+        <stdout><call proc="filename" src="line 5">
+          <input><variableReference>o</variableReference></input>
+        </call></stdout><stderr><call proc="filename" src="line 5">
+          <input><variableReference>e</variableReference></input>
+        </call></stderr><variableReference>pf</variableReference><variableReference>layernr</variableReference>  </application>
+    </binding>
+  </procedure>
+  <procedure name="Images" src="line 8">
+
+    <output name="oI" type="file"  xsi:nil="true"/>
+
+    <output name="eI" type="file"  xsi:nil="true"/>
+
+    <input name="paramf" type="string"  xsi:nil="true"/>
+
+    <input name="layern" type="int"  xsi:nil="true"/>
+
+    <input name="filenr" type="int"  xsi:nil="true"/>
+
+    <input name="sr" type="file"  xsi:nil="true"/>
+    <binding>
+      <application src="line 8">
+        <executable>runimageprocessing</executable>
+        <stdout><call proc="filename" src="line 10">
+          <input><variableReference>oI</variableReference></input>
+        </call></stdout><stderr><call proc="filename" src="line 10">
+          <input><variableReference>eI</variableReference></input>
+        </call></stderr><variableReference>paramf</variableReference><variableReference>layern</variableReference><variableReference>filenr</variableReference>  </application>
+    </binding>
+  </procedure>
+  <variable name="paramfile" type="string" isGlobal="false" xsi:nil="true" src="line 16"/>
+  <assign src="line 17">
+   <variableReference>paramfile</variableReference>
+   <call proc="arg" src="line 16">
+     <input><stringConstant>paramfile</stringConstant></input>
+     <input><stringConstant>/data/tomo1/NFTest/ParametersGoldApril14.txt</stringConstant></input>
+   </call>
+  </assign>
+  <variable name="NrLayers" type="int" isGlobal="false" xsi:nil="true" src="line 17"/>
+  <assign src="line 18">
+   <variableReference>NrLayers</variableReference>
+   <call proc="toInt" src="line 17">
+     <input><call proc="arg" src="line 17">
+       <input><stringConstant>NrLayers</stringConstant></input>
+       <input><stringConstant>3</stringConstant></input>
+     </call></input>
+   </call>
+  </assign>
+  <variable name="NrFilesPerLayer" type="int" isGlobal="false" xsi:nil="true" src="line 18"/>
+  <assign src="line 22">
+   <variableReference>NrFilesPerLayer</variableReference>
+   <call proc="toInt" src="line 18">
+     <input><call proc="arg" src="line 18">
+       <input><stringConstant>NrFilesPerLayer</stringConstant></input>
+       <input><stringConstant>180</stringConstant></input>
+     </call></input>
+   </call>
+  </assign>
+  <foreach var="layer"  src="line 22">
+  <in>
+    <range>
+      <integerConstant>1</integerConstant>
+      <variableReference>NrLayers</variableReference>
+    </range>
+  </in>
+  <body><variable name="MedianOut" type="file" isGlobal="false" src="line 23">
+      <mapping descriptor="single_file_mapper">
+        <param name="file"><call proc="strcat" src="line 23">
+          <input><stringConstant>logs/Median_</stringConstant></input>
+          <input><variableReference>layer</variableReference></input>
+          <input><stringConstant>.out</stringConstant></input>
+        </call></param>
+      </mapping>
+    </variable>
+    <variable name="MedianErr" type="file" isGlobal="false" src="line 24">
+      <mapping descriptor="single_file_mapper">
+        <param name="file"><call proc="strcat" src="line 24">
+          <input><stringConstant>logs/Median_</stringConstant></input>
+          <input><variableReference>layer</variableReference></input>
+          <input><stringConstant>.err</stringConstant></input>
+        </call></param>
+      </mapping>
+    </variable>
+    <call proc="Medians" src="line 25">
+      <output><variableReference>MedianOut</variableReference></output>
+      <output><variableReference>MedianErr</variableReference></output>
+      <input><variableReference>paramfile</variableReference></input>
+      <input><variableReference>layer</variableReference></input>
+    </call>
+    <foreach var="FileNr"  src="line 26">
+    <in>
+      <range>
+        <integerConstant>0</integerConstant>
+        <arith op="-">
+          <variableReference>NrFilesPerLayer</variableReference>
+          <integerConstant>1</integerConstant>
+        </arith>
+      </range>
+    </in>
+    <body><variable name="ImageOut" type="file" isGlobal="false" src="line 27">
+        <mapping descriptor="single_file_mapper">
+          <param name="file"><call proc="strcat" src="line 27">
+            <input><stringConstant>logs/Images_</stringConstant></input>
+            <input><variableReference>layer</variableReference></input>
+            <input><variableReference>FileNr</variableReference></input>
+            <input><stringConstant>.out</stringConstant></input>
+          </call></param>
+        </mapping>
+      </variable>
+      <variable name="ImageErr" type="file" isGlobal="false" src="line 28">
+        <mapping descriptor="single_file_mapper">
+          <param name="file"><call proc="strcat" src="line 28">
+            <input><stringConstant>logs/Images_</stringConstant></input>
+            <input><variableReference>layer</variableReference></input>
+            <input><variableReference>FileNr</variableReference></input>
+            <input><stringConstant>.err</stringConstant></input>
+          </call></param>
+        </mapping>
+      </variable>
+      <call proc="Images" src="line 29">
+        <output><variableReference>ImageOut</variableReference></output>
+        <output><variableReference>ImageErr</variableReference></output>
+        <input><variableReference>paramfile</variableReference></input>
+        <input><variableReference>layer</variableReference></input>
+        <input><variableReference>FileNr</variableReference></input>
+        <input><variableReference>MedianOut</variableReference></input>
+      </call></body>
+    </foreach></body>
+  </foreach>
+</program>

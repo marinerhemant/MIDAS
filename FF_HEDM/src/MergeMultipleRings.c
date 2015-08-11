@@ -1,0 +1,238 @@
+//
+//
+// MergeMultipleRings.c
+//
+// Created by Hemant Sharma on 2014/07/28
+//
+//
+
+#include <stdio.h>
+#include <string.h>
+#include <math.h>
+#include <malloc.h>
+#include <time.h>
+#include <stdlib.h> 
+#include <limits.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <ctype.h>
+#include <sys/types.h>
+
+#define MAX_SPOTS_FILE 500000
+#define MAX_SPOTS_TOTAL 5000000
+
+static inline
+double**
+allocMatrix(int nrows, int ncols)
+{
+    double** arr;
+    int i;
+    arr = malloc(nrows * sizeof(*arr));
+    if (arr == NULL ) {
+        return NULL;
+    }
+    for ( i = 0 ; i < nrows ; i++) {
+        arr[i] = malloc(ncols * sizeof(*arr[i]));
+        if (arr[i] == NULL ) {
+            return NULL;
+        }
+    }
+    return arr;
+}
+
+static inline
+void
+FreeMemMatrix(double **mat,int nrows)
+{
+    int r;
+    for ( r = 0 ; r < nrows ; r++) {
+        free(mat[r]);
+    }
+    free(mat);
+}
+
+static inline
+int**
+allocMatrixInt(int nrows, int ncols)
+{
+    int** arr;
+    int i;
+    arr = malloc(nrows * sizeof(*arr));
+    if (arr == NULL ) {
+        return NULL;
+    }
+    for ( i = 0 ; i < nrows ; i++) {
+        arr[i] = malloc(ncols * sizeof(*arr[i]));
+        if (arr[i] == NULL ) {
+            return NULL;
+        }
+    }
+    return arr;
+}
+
+static inline
+void
+FreeMemMatrixInt(int **mat,int nrows)
+{
+    int r;
+    for ( r = 0 ; r < nrows ; r++) {
+        free(mat[r]);
+    }
+    free(mat);
+}
+
+int main (int argc, char *argv[])
+{
+	clock_t start, end, start0, end0;
+    start0 = clock();
+    double diftotal;
+    // Read params file.
+    char *ParamFN;
+    FILE *fileParam;
+    ParamFN = argv[1];
+    char aline[2000];
+    fileParam = fopen(ParamFN,"r");
+    char *str, dummy[1000],folder[1024],Folder[1024],FileStem[1024],fs[1024];
+    int LayerNr;
+    int LowNr;
+    int RingNumbers[50], nRings=0, RingToIndex;
+	while (fgets(aline,2000,fileParam)!=NULL){
+		str = "LayerNr ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &LayerNr);
+            continue;
+        }
+		str = "Folder ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %s", dummy, Folder);
+            continue;
+        }
+		str = "FileStem ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %s", dummy, fs);
+            continue;
+        }
+		str = "RingNumbers ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &RingNumbers[nRings]);
+            nRings++;
+            continue;
+        }
+		str = "RingToIndex ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &RingToIndex);
+            continue;
+        }
+	}
+    int i,j,k;
+    char fnInputAll[1024], fnExtraAll[1024],fnSpIDs[1024];
+    FILE *inp, *ext;
+    FILE *sp;
+    double **Input, **Extra;
+    int *SpIDs,**SpotsTemp;
+    Input = allocMatrix(MAX_SPOTS_TOTAL,8);
+    Extra = allocMatrix(MAX_SPOTS_TOTAL,14);
+    SpotsTemp = allocMatrixInt(MAX_SPOTS_FILE,2);
+    SpIDs = malloc(MAX_SPOTS_FILE*sizeof(*SpIDs));
+    sprintf(FileStem,"%s_%d",fs,LayerNr);
+    int counterTotal=0;
+    double dumf;
+    int startcntr=0;
+    int cntr;
+    int counterIDs=0,IDTemp;
+    for (i=0;i<nRings;i++){
+	    sprintf(fnInputAll,"%s/Ring%d/PeakSearch/%s/InputAll.csv",Folder,RingNumbers[i],FileStem);
+	    sprintf(fnExtraAll,"%s/Ring%d/PeakSearch/%s/InputAllExtraInfoFittingAll.csv",Folder,RingNumbers[i],FileStem);
+	    inp = fopen(fnInputAll,"r");
+	    ext = fopen(fnExtraAll,"r");
+	    cntr = 0;
+	    if (inp == NULL){
+	        printf("Input file %s did not exist.\n",fnInputAll);
+	        continue;
+	    }
+		fgets(aline,2000,inp);
+		counterTotal = startcntr;
+	    while (fgets(aline,2000,inp)!=NULL){
+			sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf",&Input[counterTotal][0],&Input[counterTotal][1]
+				,&Input[counterTotal][2],&Input[counterTotal][3],&dumf
+				,&Input[counterTotal][5],&Input[counterTotal][6],&Input[counterTotal][7]);
+				SpotsTemp[cntr][1] = counterTotal+1;
+				SpotsTemp[cntr][0] = (int)dumf;
+				Input[counterTotal][4] = counterTotal+1;
+				counterTotal++;
+				cntr++;
+		}
+		counterTotal = startcntr;
+		fgets(aline,2000,ext);
+		while(fgets(aline,2000,ext)!=NULL){
+			sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&Extra[counterTotal][0],
+				&Extra[counterTotal][1],&Extra[counterTotal][2],&Extra[counterTotal][3],&dumf,
+				&Extra[counterTotal][5],&Extra[counterTotal][6],&Extra[counterTotal][7],&Extra[counterTotal][8],
+				&Extra[counterTotal][9],&Extra[counterTotal][10],&Extra[counterTotal][11],&Extra[counterTotal][12],
+				&Extra[counterTotal][13]);
+			Extra[counterTotal][4] = counterTotal+1;
+			counterTotal++;
+		}
+		startcntr = counterTotal;
+		fclose(inp);
+		fclose(ext);
+	    if (RingNumbers[i] == RingToIndex){
+		    sprintf(fnSpIDs,"%s/Ring%d/PeakSearch/%s/SpotsToIndex.bin",Folder,RingNumbers[i],FileStem);
+		    sp = fopen(fnSpIDs,"rb");
+		    int *SpTemp;
+		    SpTemp = malloc(cntr*sizeof(int));
+		    fread(SpTemp,cntr*sizeof(int),1,sp);
+		    for (k=0;k<cntr;k++){
+				if (SpTemp[k] == 0) continue;
+				for (j=0;j<cntr;j++){
+					if (SpotsTemp[j][0] == SpTemp[k]){
+						SpIDs[counterIDs] = SpotsTemp[j][1];
+						counterIDs++;
+						break;
+					}
+				}
+			}
+		}
+	}
+	//Write files
+	FILE *inpout, *extout, *idout;
+	char fninpout[1024], fnextout[1024], fnidout[1024];
+	sprintf(fninpout,"%s/InputAll.csv",Folder);
+    sprintf(fnextout,"%s/InputAllExtraInfoFittingAll.csv",Folder);
+    sprintf(fnidout,"%s/SpotsToIndex.csv",Folder);
+    inpout = fopen(fninpout,"w");
+    extout = fopen(fnextout,"w");
+    if (extout == NULL){
+        printf("Could not open file for writing.\n");
+        return 1;
+    }
+    idout = fopen(fnidout,"w");
+    fprintf(extout,"YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)\n");
+    fprintf(inpout,"YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta\n");
+    for (i=0;i<counterIDs;i++){
+		fprintf(idout,"%d\n",SpIDs[i]);
+	}
+	for (i=0;i<counterTotal;i++){
+		for (j=0;j<8;j++){
+			fprintf(inpout,"%12.5f ",Input[i][j]);
+		}
+		for (j=0;j<14;j++){
+			fprintf(extout,"%12.5f ",Extra[i][j]);
+		}
+		fprintf(inpout,"\n");
+		fprintf(extout,"\n");
+	}
+    FreeMemMatrixInt(SpotsTemp,MAX_SPOTS_FILE);
+    FreeMemMatrix(Input,MAX_SPOTS_TOTAL);
+    FreeMemMatrix(Extra,MAX_SPOTS_TOTAL);
+    free(SpIDs);
+	end0 = clock();
+	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
+	printf("Total time elapsed:\t%f s.\n",diftotal);
+	return 0;
+}

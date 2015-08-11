@@ -1,0 +1,4 @@
+localhost fitorientation  /clhome/TOMO1/PeaksAnalysisHemant/HEDM_V2/NF_HEDM/FitOrientation.sh
+cluster runmedian  /clhome/TOMO1/PeaksAnalysisHemant/HEDM_V2/NF_HEDM/MedianImage.sh
+cluster runimageprocessing  /clhome/TOMO1/PeaksAnalysisHemant/HEDM_V2/NF_HEDM/ImageProcessing.sh
+cluster runconvertfiles /clhome/TOMO1/PeaksAnalysisHemant/HEDM_V2/NF_HEDM/ConvertFiles.sh
