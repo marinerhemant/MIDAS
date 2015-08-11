@@ -910,7 +910,7 @@ int main(int argc, char *argv[])
 		Ys[i]=SpotsInfo[i][2];
 		Zs[i]=SpotsInfo[i][3];
 		omegaCorrTemp = SpotsInfo[i][1];
-		SpotsInfo[i][1] = omegaCorrTemp - (t_gap/(t_gap+t_int))*OmegaStep*(1 - fabs(Zs[i] - ( (double)NrPixels) / ( (double) NrPixels) ) );
+		SpotsInfo[i][1] = omegaCorrTemp - (t_gap/(t_gap+t_int))*OmegaStep*(1.0 - fabs(Zs[i] - (double)NrPixels) /(double) NrPixels);
 		for (j=0;j<n_hkls;j++){
 			if (PlaneNumbers[j] == (int)SpotsInfo[i][4]){
 				IdealTtheta[i] = IdealTthetas[j];
