@@ -21,7 +21,10 @@
  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. 
  */
 
-const double alpha = 1, beta = 0.5, gamm = 2, delta = 0.5;
+#define alpha 1.0
+#define beta 0.5
+#define gamm 2.0
+#define delta 0.5
 
 typedef double (*nlopt_func)(unsigned n, const double *x,
 			     double *gradient, /* NULL if not needed */
