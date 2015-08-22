@@ -21,51 +21,7 @@
  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. 
  */
 
-#define alpha 1.0
-#define beta 0.5
-#define gamm 2.0
-#define delta 0.5
-
-typedef double (*nlopt_func)(unsigned n, const double *x,
-			     double *gradient, /* NULL if not needed */
-			     void *func_data);
-
-typedef double *rb_key;
-
-typedef enum { RED, BLACK } rb_color;
-
-typedef struct rb_node_s {
-     struct rb_node_s *p, *r, *l; /* parent, right, left */
-     rb_key k; /* key (and data) */
-     rb_color c;
-} rb_node;
-
-typedef int (*rb_compare)(rb_key k1, rb_key k2);
-
-typedef struct {
-     rb_compare compare;
-     rb_node *root;
-     int N; /* number of nodes */
-} rb_tree;
-
-__device__ void rb_tree_init(rb_tree *t, rb_compare compare);
-__device__ void rb_tree_destroy(rb_tree *t);
-__device__ void rb_tree_destroy_with_keys(rb_tree *t);
-__device__ rb_node *rb_tree_insert(rb_tree *t, rb_key k);
-__device__ rb_node *rb_tree_find(rb_tree *t, rb_key k);
-__device__ rb_node *rb_tree_find_le(rb_tree *t, rb_key k);
-__device__ rb_node *rb_tree_find_lt(rb_tree *t, rb_key k);
-__device__ rb_node *rb_tree_find_gt(rb_tree *t, rb_key k);
-__device__ rb_node *rb_tree_resort(rb_tree *t, rb_node *n);
-__device__ rb_node *rb_tree_min(rb_tree *t);
-__device__ rb_node *rb_tree_max(rb_tree *t);
-__device__ rb_node *rb_tree_succ(rb_node *n);
-__device__ rb_node *rb_tree_pred(rb_node *n);
-__device__ void rb_tree_shift_keys(rb_tree *t, ptrdiff_t kshift);
-__device__ rb_node *rb_tree_remove(rb_tree *t, rb_node *n);
-
-//__shared__ rb_node nil = {&nil, &nil, &nil, 0, BLACK};
-//#define NULL (&nil)
+#include "nldrmd.cuh"
 
 __device__ void rb_tree_init(rb_tree *t, rb_compare compare) {
      t->compare = compare;
@@ -73,22 +29,19 @@ __device__ void rb_tree_init(rb_tree *t, rb_compare compare) {
      t->N = 0;
 }
 
-__device__ void destroy(rb_node *n)
-{
+__device__ void destroy(rb_node *n){
      if (n != NULL) {
 	  destroy(n->l); destroy(n->r);
 	  free(n);
      }
 }
 
-__device__ void rb_tree_destroy(rb_tree *t)
-{
+__device__ void rb_tree_destroy(rb_tree *t){
      destroy(t->root);
      t->root = NULL;
 }
 
-__device__ void rb_tree_destroy_with_keys(rb_tree *t)
-{
+__device__ void rb_tree_destroy_with_keys(rb_tree *t){
      rb_node *n = rb_tree_min(t);
      while (n) {
 	  free(n->k); n->k = NULL;
@@ -97,8 +50,7 @@ __device__ void rb_tree_destroy_with_keys(rb_tree *t)
      rb_tree_destroy(t);
 }
 
-__device__ void rotate_left(rb_node *p, rb_tree *t)
-{
+__device__ void rotate_left(rb_node *p, rb_tree *t){
      rb_node *n = p->r; /* must be non-NULL */
      p->r = n->l;
      n->l = p;
@@ -113,8 +65,7 @@ __device__ void rotate_left(rb_node *p, rb_tree *t)
      if (p->r != NULL) p->r->p = p;
 }
 
-__device__ void rotate_right(rb_node *p, rb_tree *t)
-{
+__device__ void rotate_right(rb_node *p, rb_tree *t){
      rb_node *n = p->l; /* must be non-NULL */
      p->l = n->r;
      n->r = p;
@@ -129,8 +80,7 @@ __device__ void rotate_right(rb_node *p, rb_tree *t)
      if (p->l != NULL) p->l->p = p;
 }
 
-__device__ void insert_node(rb_tree *t, rb_node *n)
-{
+__device__ void insert_node(rb_tree *t, rb_node *n){
      rb_compare compare = t->compare;
      rb_key k = n->k;
      rb_node *p = t->root;
@@ -194,8 +144,7 @@ __device__ void insert_node(rb_tree *t, rb_node *n)
      }
 }
 
-__device__ rb_node *rb_tree_insert(rb_tree *t, rb_key k)
-{
+__device__ rb_node *rb_tree_insert(rb_tree *t, rb_key k){
      rb_node *n = (rb_node *) malloc(sizeof(rb_node));
      if (!n) return NULL;
      n->k = k;
@@ -203,8 +152,7 @@ __device__ rb_node *rb_tree_insert(rb_tree *t, rb_key k)
      return n;
 }
 
-__device__ int check_node(rb_node *n, int *nblack, rb_tree *t)
-{
+__device__ int check_node(rb_node *n, int *nblack, rb_tree *t){
      int nbl, nbr;
      rb_compare compare = t->compare;
      if (n == NULL) { *nblack = 0; return 1; }
@@ -225,8 +173,7 @@ __device__ int check_node(rb_node *n, int *nblack, rb_tree *t)
      return 1;
 }
 
-__device__ rb_node *rb_tree_find(rb_tree *t, rb_key k)
-{
+__device__ rb_node *rb_tree_find(rb_tree *t, rb_key k){
      rb_compare compare = t->compare;
      rb_node *p = t->root;
      while (p != NULL) {
@@ -237,9 +184,7 @@ __device__ rb_node *rb_tree_find(rb_tree *t, rb_key k)
      return NULL;
 }
 
-/* find greatest point in subtree p that is <= k */
-__device__ rb_node *find_le(rb_node *p, rb_key k, rb_tree *t)
-{
+__device__ rb_node *find_le(rb_node *p, rb_key k, rb_tree *t){
      rb_compare compare = t->compare;
      while (p != NULL) {
 	  if (compare(p->k, k) <= 0) { /* p->k <= k */
@@ -253,15 +198,11 @@ __device__ rb_node *find_le(rb_node *p, rb_key k, rb_tree *t)
      return NULL; /* k < everything in subtree */
 }
 
-/* find greatest point in t <= k */
-__device__ rb_node *rb_tree_find_le(rb_tree *t, rb_key k)
-{
+__device__ rb_node *rb_tree_find_le(rb_tree *t, rb_key k){
      return find_le(t->root, k, t);
 }
 
-/* find greatest point in subtree p that is < k */
-__device__ rb_node *find_lt(rb_node *p, rb_key k, rb_tree *t)
-{
+__device__ rb_node *find_lt(rb_node *p, rb_key k, rb_tree *t){
      rb_compare compare = t->compare;
      while (p != NULL) {
 	  if (compare(p->k, k) < 0) { /* p->k < k */
@@ -275,15 +216,11 @@ __device__ rb_node *find_lt(rb_node *p, rb_key k, rb_tree *t)
      return NULL; /* k <= everything in subtree */
 }
 
-/* find greatest point in t < k */
-__device__ rb_node *rb_tree_find_lt(rb_tree *t, rb_key k)
-{
+__device__ rb_node *rb_tree_find_lt(rb_tree *t, rb_key k){
      return find_lt(t->root, k, t);
 }
 
-/* find least point in subtree p that is > k */
-__device__ rb_node *find_gt(rb_node *p, rb_key k, rb_tree *t)
-{
+__device__ rb_node *find_gt(rb_node *p, rb_key k, rb_tree *t){
      rb_compare compare = t->compare;
      while (p != NULL) {
 	  if (compare(p->k, k) > 0) { /* p->k > k */
@@ -297,30 +234,25 @@ __device__ rb_node *find_gt(rb_node *p, rb_key k, rb_tree *t)
      return NULL; /* k >= everything in subtree */
 }
 
-/* find least point in t > k */
-__device__ rb_node *rb_tree_find_gt(rb_tree *t, rb_key k)
-{
+__device__ rb_node *rb_tree_find_gt(rb_tree *t, rb_key k){
      return find_gt(t->root, k, t);
 }
 
-__device__ rb_node *rb_tree_min(rb_tree *t)
-{
+__device__ rb_node *rb_tree_min(rb_tree *t){
      rb_node *n = t->root;
      while (n != NULL && n->l != NULL)
 	  n = n->l;
      return(n == NULL ? NULL : n);
 }
 
-__device__ rb_node *rb_tree_max(rb_tree *t)
-{
+__device__ rb_node *rb_tree_max(rb_tree *t){
      rb_node *n = t->root;
      while (n != NULL && n->r != NULL)
 	  n = n->r;
      return(n == NULL ? NULL : n);
 }
 
-__device__ rb_node *rb_tree_succ(rb_node *n)
-{
+__device__ rb_node *rb_tree_succ(rb_node *n){
      if (!n) return NULL;
      if (n->r == NULL) {
 	  rb_node *prev;
@@ -338,8 +270,7 @@ __device__ rb_node *rb_tree_succ(rb_node *n)
      }
 }
 
-__device__ rb_node *rb_tree_pred(rb_node *n)
-{
+__device__ rb_node *rb_tree_pred(rb_node *n){
      if (!n) return NULL;
      if (n->l == NULL) {
 	  rb_node *prev;
@@ -357,8 +288,7 @@ __device__ rb_node *rb_tree_pred(rb_node *n)
      }
 }
 
-__device__ rb_node *rb_tree_remove(rb_tree *t, rb_node *n)
-{
+__device__ rb_node *rb_tree_remove(rb_tree *t, rb_node *n){
      rb_key k = n->k;
      rb_node *m, *mp;
      if (n->l != NULL && n->r != NULL) {
@@ -435,22 +365,19 @@ __device__ rb_node *rb_tree_remove(rb_tree *t, rb_node *n)
      return n; /* the node that was deleted may be different from initial n */
 }
 
-__device__ rb_node *rb_tree_resort(rb_tree *t, rb_node *n)
-{
+__device__ rb_node *rb_tree_resort(rb_tree *t, rb_node *n){
      n = rb_tree_remove(t, n);
      insert_node(t, n);
      return n;
 }
 
-__device__  void shift_keys(rb_node *n, ptrdiff_t kshift) /* assumes n != NULL */
-{
+__device__  void shift_keys(rb_node *n, ptrdiff_t kshift){
      n->k += kshift;
      if (n->l != NULL) shift_keys(n->l, kshift);
      if (n->r != NULL) shift_keys(n->r, kshift);
 }
 
-__device__ void rb_tree_shift_keys(rb_tree *t, ptrdiff_t kshift)
-{
+__device__ void rb_tree_shift_keys(rb_tree *t, ptrdiff_t kshift){
      if (t->root != NULL) shift_keys(t->root, kshift);
 }
 
@@ -467,8 +394,7 @@ __device__ int close(double a, double b){
 
 __device__ int reflectpt(int n, double *xnew, 
 		     const double *c, double scale, const double *xold,
-		     const double *lb, const double *ub)
-{
+		     const double *lb, const double *ub){
 	int equalc = 1, equalold = 1, i;
 	for (i = 0; i < n; ++i) {
 		double newx = c[i] + scale * (c[i] - xold[i]);
@@ -480,34 +406,6 @@ __device__ int reflectpt(int n, double *xnew,
 	}
 	return !(equalc || equalold);
 }
-
-typedef enum {
-     NLOPT_FAILURE = -1, /* generic failure code */
-     NLOPT_INVALID_ARGS = -2,
-     NLOPT_OUT_OF_MEMORY = -3,
-     NLOPT_ROUNDOFF_LIMITED = -4,
-     NLOPT_FORCED_STOP = -5,
-     NLOPT_SUCCESS = 1, /* generic success code */
-     NLOPT_STOPVAL_REACHED = 2,
-     NLOPT_FTOL_REACHED = 3,
-     NLOPT_XTOL_REACHED = 4,
-     NLOPT_MAXEVAL_REACHED = 5,
-     NLOPT_MAXTIME_REACHED = 6
-} nlopt_result;
-
-#define NLOPT_MINF_MAX_REACHED NLOPT_STOPVAL_REACHED
-
-typedef struct {
-     unsigned n;
-     double minf_max;
-     double ftol_rel;
-     double ftol_abs;
-     double xtol_rel;
-     const double *xtol_abs;
-     int nevals, maxeval;
-     double maxtime, start;
-     int *force_stop;
-} nlopt_stopping;
 
 __device__ int nlopt_stop_evals (nlopt_stopping *stop){
 	if (stop->nevals >= stop->maxeval) return 1;
@@ -529,14 +427,6 @@ __device__ int nlopt_stop_x(nlopt_stopping *stop, double *cen, double *xpos){
 	return 1;
 }
 
-#define CHECK_EVAL(xc,fc) 						  \
-	stop->nevals++;							  \
-	if ((fc) <= *minf) {							  \
-		*minf = (fc); memcpy(x, (xc), n * sizeof(double));			  \
-		if (*minf < stop->minf_max) { ret=NLOPT_MINF_MAX_REACHED; goto done; } \
-	}									  \
-	if (nlopt_stop_evals(stop)) { ret=NLOPT_MAXEVAL_REACHED; goto done; }	 // \
-
 __device__ nlopt_result nldrmd_minimize_(int n, nlopt_func f, void *f_data,
 			     const double *lb, const double *ub, /* bounds */
 			     double *x, /* in: initial guess, out: minimizer */
@@ -544,8 +434,7 @@ __device__ nlopt_result nldrmd_minimize_(int n, nlopt_func f, void *f_data,
 			     const double *xstep, /* initial step sizes */
 			     nlopt_stopping *stop,
 			     double psi, double *scratch,
-			     double *fdiff)
-{
+			     double *fdiff){
      double *pts; /* (n+1) x (n+1) array of n+1 points plus function val [0] */
      double *c; /* centroid * n */
      double *xcur; /* current point */
@@ -716,8 +605,7 @@ done:
 __device__ nlopt_result nldrmd_minimize(int n, nlopt_func f, void *f_data,
 			     const double *lb, const double *ub, /* bounds */
 			     double *x, /* in: initial guess, out: minimizer */
-			     double *minf, nlopt_stopping *stop)
-{
+			     double *minf, nlopt_stopping *stop){
      nlopt_result ret;
      double *scratch, fdiff;
      double *xstep; /* initial step sizes */
