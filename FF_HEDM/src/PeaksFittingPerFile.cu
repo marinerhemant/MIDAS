@@ -23,6 +23,7 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <fcntl.h>
+#include "nldrmd.cuh"
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
