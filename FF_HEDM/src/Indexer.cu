@@ -532,9 +532,9 @@ __global__ void CompareDiffractionSpots(RealType *AllTheorSpots, RealType *RTPar
 	nMatchedArr[overallPos] = 0;
 	int n = n_min + nPos;
 	RealType *TheorSpots;
-	TheorSpots = AllTheorSpots + n_arr[1]*4*N_COL_THEORSPOTS*orientPos;
+	TheorSpots = AllTheorSpots + n_arr[1]*2*N_COL_THEORSPOTS*orientPos;
 	int *GrainSpots;
-	GrainSpots = AllGrainSpots + overallPos * n_arr[1] * 4;
+	GrainSpots = AllGrainSpots + overallPos * n_arr[1] * 2;
 	
 	RealType y0, z0, xi, yi, zi, ys, zs,omega,RefRad;
 	y0 = ResultArr[PosResultArr * N_COLS_FRIEDEL_RESULTS + 7];
@@ -651,7 +651,7 @@ __global__ void ReturnDiffractionSpots(RealType *RTParamArr, RealType *OmeBoxArr
 	RealType *ResultArr, int norients, int *nSpotsArr, RealType *Orientations){
 	int orient = blockIdx.x * blockDim.x + threadIdx.x;
 	if (orient > norients) return;
-	RealType *TheorSpots = AllTheorSpots + n_arr[1]*4*N_COL_THEORSPOTS*orient;
+	RealType *TheorSpots = AllTheorSpots + n_arr[1]*2*N_COL_THEORSPOTS*orient;
 	RealType hkl[3], hklnormal[3];
 	hkl[0] = ResultArr[PosResultArr * N_COLS_FRIEDEL_RESULTS + 0];
 	hkl[1] = ResultArr[PosResultArr * N_COLS_FRIEDEL_RESULTS + 1];
@@ -1154,8 +1154,8 @@ int main(int argc, char *argv[]){
 
 	RealType *AllTheorSpots, *IAs, *IAs_h, *GS, *Orientations, *GS_h, *Orientations_h, *AllInfo;
 	int *AllGrainSpots,*nSpotsArr,*nMatchedArr,*nMatchedArr_h,*nSpotsArr_h, *SpotsInfoTotal;
-	cudaMalloc((RealType **)&AllTheorSpots,maxJobsOrient*n_hkls_h*N_COL_THEORSPOTS*4*sizeof(RealType));
-	cudaMalloc((int **)&AllGrainSpots,maxJobs*n_hkls_h*4*sizeof(int));
+	cudaMalloc((RealType **)&AllTheorSpots,maxJobsOrient*n_hkls_h*N_COL_THEORSPOTS*2*sizeof(RealType));
+	cudaMalloc((int **)&AllGrainSpots,maxJobs*n_hkls_h*2*sizeof(int));
 	cudaMalloc((int **)&nSpotsArr,maxJobsOrient*sizeof(int));
 	cudaMalloc((RealType **)&IAs,maxJobs*sizeof(RealType));
 	cudaMalloc((int **)&nMatchedArr,maxJobs*sizeof(int));
@@ -1175,8 +1175,8 @@ int main(int argc, char *argv[]){
 	Orientations_h = (RealType *) malloc(9*maxJobsOrient*sizeof(RealType));
 	AllInfo = (RealType *) malloc(N_COL_GRAINMATCHES*sumTotal*sizeof(RealType));
 	memset(AllInfo,0,N_COL_GRAINMATCHES*sumTotal*sizeof(RealType));
-	SpotsInfoTotal = (int *) malloc(sumTotal*n_hkls_h*4*sizeof(int));
-	memset(SpotsInfoTotal,0,sumTotal*n_hkls_h*4*sizeof(int));
+	SpotsInfoTotal = (int *) malloc(sumTotal*n_hkls_h*2*sizeof(int));
+	memset(SpotsInfoTotal,0,sumTotal*n_hkls_h*2*sizeof(int));
 	for (int jobNr=0;jobNr<sumTotal;jobNr++){//sumTotal
 		posResultArr = jobNr;
 		nJobsOrient = ResultMakeOrientations_h[jobNr*N_COLS_ORIENTATION_NUMBERS + 0];
@@ -1216,7 +1216,7 @@ int main(int argc, char *argv[]){
 			}
 		}
 		if (bestFraction >= Parameters.MinMatchesToAcceptFrac){
-			cudaMemcpy(SpotsInfoTotal+jobNr*n_hkls_h*4, AllGrainSpots+BestPosition*n_hkls_h*4,nMatchedArr_h[BestPosition]*sizeof(int),cudaMemcpyDeviceToHost);
+			cudaMemcpy(SpotsInfoTotal+jobNr*n_hkls_h*2, AllGrainSpots+BestPosition*n_hkls_h*2,nMatchedArr_h[BestPosition]*sizeof(int),cudaMemcpyDeviceToHost);
 			AllInfo[jobNr*N_COL_GRAINMATCHES + 0] = bestIA;
 			AllInfo[jobNr*N_COL_GRAINMATCHES + 1] = Orientations_h[BestPosition%(-2*n_min+1)*9 + 0];
 			AllInfo[jobNr*N_COL_GRAINMATCHES + 2] = Orientations_h[BestPosition%(-2*n_min+1)*9 + 1];
@@ -1240,9 +1240,9 @@ int main(int argc, char *argv[]){
 	RealType *SaveAllInfo;
 	int *SaveSpotsInfoAll;
 	SaveAllInfo = (RealType *) malloc(nspids*(N_COL_GRAINMATCHES+1)*sizeof(RealType));
-	SaveSpotsInfoAll = (int *) malloc(nspids*n_hkls_h*4*sizeof(int));
+	SaveSpotsInfoAll = (int *) malloc(nspids*n_hkls_h*2*sizeof(int));
 	memset(SaveAllInfo,0,nspids*(N_COL_GRAINMATCHES+1)*sizeof(RealType));
-	memset(SaveSpotsInfoAll,0,nspids*n_hkls_h*4*sizeof(int));
+	memset(SaveSpotsInfoAll,0,nspids*n_hkls_h*2*sizeof(int));
 	int StartingPosition, EndPosition, bestPos;
 	for (int i=0;i<nspids;i++){
 		StartingPosition = startingIDs[i];
@@ -1265,7 +1265,7 @@ int main(int argc, char *argv[]){
 		if (bestPos >-1){
 			SaveAllInfo[i*(N_COL_GRAINMATCHES+1) + 0] = (RealType)SpotIDs_h[i];
 			memcpy(SaveAllInfo+i*(N_COL_GRAINMATCHES+1) + 1,AllInfo + bestPos*N_COL_GRAINMATCHES, N_COL_GRAINMATCHES);
-			memcpy(SaveSpotsInfoAll+i*n_hkls_h*4, SpotsInfoTotal + bestPos*n_hkls_h*4, n_hkls_h*4);
+			memcpy(SaveSpotsInfoAll+i*n_hkls_h*2, SpotsInfoTotal + bestPos*n_hkls_h*2, n_hkls_h*2);
 		}
 	}
 
@@ -1274,7 +1274,7 @@ int main(int argc, char *argv[]){
 	sprintf(outfnspots, "%s/SpotsInfo.bin",Parameters.OutputFolder);
 	FILE *fAllInfo = fopen(outfnall,"w"), *fSpotsInfo = fopen(outfnspots,"w");
 	fwrite(SaveAllInfo,nspids*(N_COL_GRAINMATCHES+1)*sizeof(RealType),1,fAllInfo);
-	fwrite(SaveSpotsInfoAll,nspids*n_hkls_h*4*sizeof(int),1,fSpotsInfo);
+	fwrite(SaveSpotsInfoAll,nspids*n_hkls_h*2*sizeof(int),1,fSpotsInfo);
 	fclose(fAllInfo);
 	fclose(fSpotsInfo);
 
