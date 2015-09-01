@@ -145,47 +145,6 @@ static inline double asind(double x){return rad2deg*(asin(x));}
 static inline double acosd(double x){return rad2deg*(acos(x));}
 static inline double atand(double x){return rad2deg*(atan(x));}
 
-static inline int CalcNPlanes(int nrings, int RingNumbers, int CellStruct)
-{
-	int nplanes=0,i,RingNumber;
-	if (CellStruct==2){
-		for (i=0;i<nrings;i++){
-			RingNumber = RingNumbers;
-			if (RingNumber == 1)nplanes+=8;
-			if (RingNumber == 2)nplanes+=6;
-			if (RingNumber == 3)nplanes+=12;
-			if (RingNumber == 4)nplanes+=24;
-			if (RingNumber == 5)nplanes+=8;
-			if (RingNumber == 6)nplanes+=6;
-			if (RingNumber == 7)nplanes+=24;
-			if (RingNumber == 8)nplanes+=24;
-			if (RingNumber == 9)nplanes+=24;
-			if (RingNumber == 10)nplanes+=8;
-		}
-	} else if (CellStruct==1){
-		for (i=0;i<nrings;i++){
-			RingNumber = RingNumbers;
-			if (RingNumber == 1)nplanes+=12;
-			if (RingNumber == 2)nplanes+=6;
-			if (RingNumber == 3)nplanes+=24;
-			if (RingNumber == 4)nplanes+=12;
-			if (RingNumber == 5)nplanes+=24;
-		}
-	} else if (CellStruct==3){
-		for (i=0;i<nrings;i++){
-			RingNumber = RingNumbers;
-			if (RingNumber == 1)nplanes+=6;
-			if (RingNumber == 2)nplanes+=12;
-			if (RingNumber == 3)nplanes+=8;
-			if (RingNumber == 4)nplanes+=6;
-			if (RingNumber == 5)nplanes+=24;
-			if (RingNumber == 6)nplanes+=24;
-			if (RingNumber == 7)nplanes+=12;
-		}
-	}
-	return nplanes;
-}
-
 static inline void Transposer (double *x, int n, double *y)
 {
 	int i,j;
@@ -907,23 +866,6 @@ int main(int argc, char *argv[]){
 	}
 	NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
 	FreeMemMatrixInt(BoolImage,NrPixels);
-	/*FILE *connectedcomps;
-	char conncomp[1024];
-	pixelvalue *CCP;
-	CCP = malloc(NrPixels*NrPixels*sizeof(*CCP));
-	memset(CCP,0,NrPixels*NrPixels*sizeof(*CCP));
-	for (i=0;i<NrPixels;i++){
-		for (j=0;j<NrPixels;j++){
-			if (ConnectedComponents[i][j] != 0){
-				CCP[(i*NrPixels)+j] = ConnectedComponents[i][j];
-			}
-		}
-	}
-	sprintf(conncomp,"%sccp",FN);
-	connectedcomps = fopen(conncomp,"w");
-	fwrite(CCP,NrPixels*NrPixels*sizeof(pixelvalue),1,connectedcomps);
-	fclose(connectedcomps);
-	free(CCP);*/
 	FreeMemMatrixInt(ConnectedComponents,NrPixels);
 	int RegNr,NrPixelsThisRegion;
 	int **MaximaPositions;
