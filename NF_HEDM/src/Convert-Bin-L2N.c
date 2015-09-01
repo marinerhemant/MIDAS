@@ -12,9 +12,6 @@
 #include <arpa/inet.h>
 #include <string.h>
 
-//#include "checks.h"
-//#include "SharedFuncsFit.h"
-
 #define float32_t float
 
 #define CHECK(condition, msg) \

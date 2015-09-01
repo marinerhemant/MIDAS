@@ -38,6 +38,7 @@ static inline double acosd(double x){return rad2deg*(acos(x));}
 static inline double atand(double x){return rad2deg*(atan(x));}
 static inline double sin_cos_to_angle (double s, double c){return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);}
 
+int Flag = 0;
 
 double**
 allocMatrixF(int nrows, int ncols)
@@ -471,6 +472,12 @@ main(int argc, char *argv[])
             countr++;
             continue;
         }
+        str = "Ice9Input ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            Flag = 1;
+            continue;
+        }  
     }
     fclose(fileParam);
     MaxTtheta = rad2deg*atan(MaxRingRad/Lsd[0]);

@@ -21,6 +21,8 @@
 #define MAX_N_OMEGA_RANGES 20
 #define MAX_POINTS_GRID_GOOD 300000
 
+int Flag = 0;
+
 double**
 allocMatrixF(int nrows, int ncols)
 {
@@ -497,6 +499,12 @@ main(int argc, char *argv[])
             countr++;
             continue;
         }
+        str = "Ice9Input ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            Flag = 1;
+            continue;
+        }  
     }
     fclose(fileParam);
     MaxTtheta = rad2deg*atan(MaxRingRad/Lsd[0]);
