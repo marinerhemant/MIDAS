@@ -388,10 +388,11 @@ int main(int argc, char *argv[])
 				if (ID_IA_MAT[(j*4)+2] < minIA){
 					minIA = ID_IA_MAT[(j*4)+2];
 					BestGrainPos = (int)ID_IA_MAT[(j*4)+1];
-				}
-				if (ID_IA_MAT[(j*4)+3] > maxRadThis){
 					maxRadThis = ID_IA_MAT[(j*4)+3];
 				}
+				/*if (ID_IA_MAT[(j*4)+3] > maxRadThis){ // If you want only the maximum volume, not the volume associated with the best IA grain
+					maxRadThis = ID_IA_MAT[(j*4)+3];
+				}*/
 			}
 			GrainPositions[nGrainPositions] = BestGrainPos;
 			Radiuses[BestGrainPos] = maxRadThis;
