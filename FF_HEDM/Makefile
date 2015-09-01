@@ -3,7 +3,9 @@
 # eg. on orthros: NLOPT="/clhome/TOMO1/PeaksAnalysisHemant/NF_HEDM/NLOPT/"
 
 CC=gcc
-CFLAGS=-fPIC -ldl -lm -finline-functions -O3
+NCC=nvcc
+NCFLAGS=-w -arch sm_52
+CFLAGS=-fPIC -ldl -lm -finline-functions -O3 -w
 NLOPT=""
 ifneq ($(NLOPT),"")
 	CFLAGSNLOPT=-I$(NLOPT)/include -L$(NLOPT)/lib -lnlopt
@@ -13,33 +15,53 @@ endif
 SRCDIR=src/
 BINDIR=bin/
 
-all: calibrant fittiltbclsdsample
+all: calibrant fittiltbclsdsample fitposorstrains peaksfitting mergeoverlaps calcradius findsaturatedpx mergerings fittiltx fitwedge hkls indexer bindata processgrains indexercuda
 
 calibrant: $(SRCDIR)Calibrant.c
-	$(CC) $(CFLAGS) $(SRCDIR)Calibrant.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)Calibrant
+	$(CC) $(SRCDIR)Calibrant.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)Calibrant $(CFLAGS) $(CFLAGSNLOPT) 
 
 fittiltbclsdsample: $(SRCDIR)FitTiltBCLsdSampleOmegaCorrection.c
-	$(CC) $(CFLAGS) $(CFLAGSNLOPT) $(SRCDIR)FitTiltBCLsdSampleOmegaCorrection.c -o $(BINDIR)FitTiltBCLsdSampleOmegaCorrection
+	$(CC) $(SRCDIR)FitTiltBCLsdSampleOmegaCorrection.c -o $(BINDIR)FitTiltBCLsdSample $(CFLAGS) $(CFLAGSNLOPT) 
 
 fitposorstrains: $(SRCDIR)FitPosOrStrains.c
-	$(CC) $(CFLAGS) $(CFLAGSNLOPT) $(SRCDIR)FitPosOrStrains.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitPosOrStrains
+	$(CC) $(SRCDIR)FitPosOrStrains.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitPosOrStrains $(CFLAGS) $(CFLAGSNLOPT) 
 
 peaksfitting: $(SRCDIR)PeaksFittingPerFile.c
-	$(CC) $(CFLAGS) $(CFLAGSNLOPT) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile
+	$(CC) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile $(CFLAGS) $(CFLAGSNLOPT) 
 
+mergeoverlaps: $(SRCDIR)MergeOverlappingPeaks.c
+	$(CC) $(SRCDIR)MergeOverlappingPeaks.c -o $(BINDIR)MergeOverlappingPeaks $(CFLAGS)
 
-gcc -g -o Calibrant Calibrant.c CalcPeakProfile.c -finline-functions -fPIC -ldl -lm -lnlopt
-gcc -g -o FitTiltBCLsdSample FitTiltBCLsdSample.c -finline-functions -fPIC -ldl -lm -lnlopt
-gcc -g -o FitPosOrStrains FitPosOrStrains.c CalcDiffractionSpots.c -finline-functions -fPIC -ldl -lm -lnlopt
-gcc -g -o FitTiltBCLsdSampleOmegaCorrection FitTiltBCLsdSampleOmegaCorrection.c -finline-functions -fPIC -ldl -lm -lnlopt
-gcc -g -o PeaksFittingPerFile PeaksFittingPerFile.c -finline-functions -fPIC -ldl -lm -lnlopt
-gcc -g -o MergeOverlappingPeaks MergeOverlappingPeaks.c -fPIC -ldl -lm
-gcc -g -o CalcRadius CalcRadius.c -fPIC -ldl -lm
-gcc -g -o FindSaturatedPixels FindSaturatedPixels.c -fPIC -ldl -lm
-gcc -g -o MergeMultipleRings MergeMultipleRings.c -finline-functions -fPIC -ldl -lm
-gcc -g -o FitTiltX FitTiltX.c -finline-functions -fPIC -ldl -lm -lnlopt
-gcc -g -o FitWedge FitWedge.c -finline-functions -fPIC -ldl -lm -lnlopt
-gcc -g -o GetHKLList GetHKLList.c sgclib.c sgfind.c sghkl.c sgsi.c sgio.c -ldl -lm -O3
-gcc -g -o IndexerLinuxArgsShm IndexerLinuxArgsOptimizedShm.c -finline-functions -fPIC -ldl -lm
-gcc -g -o SaveBinData SaveBinData.c -ldl -lm -O3 -fPIC
-gcc -g -o ProcessGrains ProcessGrains.c GetMisorientation.c CalcStrains.c -finline-functions -fPIC -ldl -lm -lnlopt
+calcradius: $(SRCDIR)CalcRadius.c
+	$(CC) $(SRCDIR)CalcRadius.c -o $(BINDIR)CalcRadius $(CFLAGS)
+
+findsaturatedpx: $(SRCDIR)FindSaturatedPixels.c
+	$(CC) $(SRCDIR)FindSaturatedPixels.c -o $(BINDIR)FindSaturatedPixels $(CFLAGS)
+
+mergerings: $(SRCDIR)MergeMultipleRings.c
+	$(CC) $(SRCDIR)MergeMultipleRings.c -o $(BINDIR)MergeMultipleRings $(CFLAGS)
+
+fittiltx: $(SRCDIR)FitTiltX.c
+	$(CC) $(SRCDIR)FitTiltX.c -o $(BINDIR)FitTiltX  $(CFLAGS) $(CFLAGSNLOPT) 
+
+fitwedge: $(SRCDIR)FitWedge.c
+	$(CC) $(SRCDIR)FitWedge.c -o $(BINDIR)FitWedge  $(CFLAGS) $(CFLAGSNLOPT) 
+
+hkls: $(SRCDIR)GetHKLList.c
+	$(CC) $(SRCDIR)GetHKLList.c $(SRCDIR)sgclib.c $(SRCDIR)sgfind.c $(SRCDIR)sghkl.c $(SRCDIR)sgsi.c $(SRCDIR)sgio.c -o $(BINDIR)GetHKLList $(CFLAGS)
+
+indexer: $(SRCDIR)IndexerLinuxArgsOptimizedShm.c
+	$(CC) $(SRCDIR)IndexerLinuxArgsOptimizedShm.c -o $(BINDIR)IndexerLinuxArgsShm $(CFLAGS)
+
+bindata: $(SRCDIR)SaveBinData.c
+	$(CC) $(SRCDIR)SaveBinData.c -o $(BINDIR)SaveBinData $(CFLAGS)
+
+processgrains: $(SRCDIR)ProcessGrains.c
+	$(CC) $(SRCDIR)ProcessGrains.c $(SRCDIR)GetMisorientation.c $(SRCDIR)CalcStrains.c -o $(BINDIR)ProcessGrains $(CFLAGS) $(CFLAGSNLOPT) 
+
+indexercuda: $(SRCDIR)Indexer.cu
+	$(NCC) $(SRCDIR)Indexer.cu -o $(BINDIR)Indexer $(NCFLAGS)
+
+clean:
+	rm -r $(BINDIR)
+	mkdir $(BINDIR)
