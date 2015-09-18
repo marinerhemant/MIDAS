@@ -1177,6 +1177,7 @@ int main(int argc, char *argv[]){
 	memset(AllInfo,0,N_COL_GRAINMATCHES*sumTotal*sizeof(RealType));
 	SpotsInfoTotal = (int *) malloc(sumTotal*n_hkls_h*2*sizeof(int));
 	memset(SpotsInfoTotal,0,sumTotal*n_hkls_h*2*sizeof(int));
+	printf("Time elapsed: %fs\n",cpuSecond()-iStart);
 	for (int jobNr=0;jobNr<sumTotal;jobNr++){//sumTotal
 		posResultArr = jobNr;
 		nJobsOrient = ResultMakeOrientations_h[jobNr*N_COLS_ORIENTATION_NUMBERS + 0];
@@ -1235,7 +1236,8 @@ int main(int argc, char *argv[]){
 			AllInfo[jobNr*N_COL_GRAINMATCHES + 15] = bestFraction;
 		}
 	}
-	
+	printf("Time elapsed: %fs\n",cpuSecond()-iStart);
+
 	// Now sort all the results.
 	RealType *SaveAllInfo;
 	int *SaveSpotsInfoAll;
@@ -1268,6 +1270,8 @@ int main(int argc, char *argv[]){
 			memcpy(SaveSpotsInfoAll+i*n_hkls_h*2, SpotsInfoTotal + bestPos*n_hkls_h*2, n_hkls_h*2);
 		}
 	}
+
+	printf("Time elapsed: %fs\n",cpuSecond()-iStart);
 
 	char outfnall[MAX_LINE_LENGTH], outfnspots[MAX_LINE_LENGTH];
 	sprintf(outfnall, "%s/AllInfo.bin",Parameters.OutputFolder);
