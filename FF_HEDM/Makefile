@@ -1,6 +1,6 @@
 CC=gcc
 NCC=nvcc
-NCFLAGS=-w -arch sm_52
+NCFLAGS=-w -arch sm_52 -lm
 CFLAGS=-fPIC -ldl -lm -finline-functions -O3 -w
 NLOPT=""
 ifneq ($(NLOPT),"")
@@ -12,7 +12,7 @@ SRCDIR=src/
 BINDIR=bin/
 
 all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting \
-	mergeoverlaps calcradius findsaturatedpx \
+	mergeoverlaps calcradius findsaturatedpx peaksfittingcuda\
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains indexercuda
 
 bindircheck:
@@ -42,6 +42,9 @@ fitposorstrains: $(SRCDIR)FitPosOrStrains.c
 
 peaksfitting: $(SRCDIR)PeaksFittingPerFile.c
 	$(CC) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile $(CFLAGS) $(CFLAGSNLOPT) 
+
+peaksfittingcuda: $(SRCDIR)PeaksFittingPerFile.cu
+	$(NCC) $(SRCDIR)PeaksFittingPerFile.cu -o $(BINDIR)PeaksCuda $(NCFLAGS) $(CFLAGSNLOPT)
 
 mergeoverlaps: $(SRCDIR)MergeOverlappingPeaks.c
 	$(CC) $(SRCDIR)MergeOverlappingPeaks.c -o $(BINDIR)MergeOverlappingPeaks $(CFLAGS)
