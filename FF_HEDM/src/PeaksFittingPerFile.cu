@@ -23,7 +23,7 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <fcntl.h>
-#include "nldrmd.cuh"
+//#include "nldrmd.cuh"
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -38,12 +38,12 @@ allocMatrixPX(int nrows, int ncols)
 {
     pixelvalue** arr;
     int i;
-    arr = malloc(nrows * sizeof(*arr));
+    arr = (pixelvalue **) malloc(nrows * sizeof(*arr));
     if (arr == NULL ) {
         return NULL;
     }
     for ( i = 0 ; i < nrows ; i++) {
-        arr[i] = malloc(ncols * sizeof(*arr[i]));
+        arr[i] = (pixelvalue*) malloc(ncols * sizeof(*arr[i]));
         if (arr[i] == NULL ) {
             return NULL;
         }
@@ -64,9 +64,11 @@ FreeMemMatrixPx(pixelvalue **mat,int nrows)
 
 static inline 
 double CalcEtaAngle(double y, double z){
-	double alpha = rad2deg*acos(z/sqrt(y*y+z*z));
-	if (y>0) alpha = -alpha;
-	return alpha;
+	double alph = rad2deg*acos(z/sqrt(y*y+z*z));
+	if (y>0){
+		alph = -alph;
+	}
+	return alph;
 }
 
 static inline
@@ -84,12 +86,12 @@ allocMatrixInt(int nrows, int ncols)
 {
     int** arr;
     int i;
-    arr = malloc(nrows * sizeof(*arr));
+    arr = (int **) malloc(nrows * sizeof(*arr));
     if (arr == NULL ) {
         return NULL;
     }
     for ( i = 0 ; i < nrows ; i++) {
-        arr[i] = malloc(ncols * sizeof(*arr[i]));
+        arr[i] = (int *) malloc(ncols * sizeof(*arr[i]));
         if (arr[i] == NULL ) {
             return NULL;
         }
@@ -114,12 +116,12 @@ allocMatrix(int nrows, int ncols)
 {
     double** arr;
     int i;
-    arr = malloc(nrows * sizeof(*arr));
+    arr = (double **) malloc(nrows * sizeof(*arr));
     if (arr == NULL ) {
         return NULL;
     }
     for ( i = 0 ; i < nrows ; i++) {
-        arr[i] = malloc(ncols * sizeof(*arr[i]));
+        arr[i] = (double *) malloc(ncols * sizeof(*arr[i]));
         if (arr[i] == NULL ) {
             return NULL;
         }
@@ -330,8 +332,8 @@ void Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **Useful
 	xu[0] = Thresh;
 	int i;
 	double *Rs, *Etas;
-	Rs = malloc(NrPixelsThisRegion*2*sizeof(*Rs));
-	Etas = malloc(NrPixelsThisRegion*2*sizeof(*Etas));
+	Rs = (double *) malloc(NrPixelsThisRegion*2*sizeof(*Rs));
+	Etas = (double *) malloc(NrPixelsThisRegion*2*sizeof(*Etas));
 	for (i=0;i<NrPixelsThisRegion;i++){
 		Rs[i] = CalcNorm2(UsefulPixels[i][0]-Ycen,UsefulPixels[i][1]-Zcen);
 		Etas[i] = CalcEtaAngle(UsefulPixels[i][0]-Ycen,UsefulPixels[i][1]-Zcen);
@@ -703,16 +705,16 @@ int main(int argc, char *argv[]){
     }
 	double *dark,*flood, *darkTemp;;
 	//printf("%f %f\n",Rmin,Rmax);
-	dark = malloc(NrPixels*NrPixels*sizeof(*dark));
-	darkTemp = malloc(NrPixels*NrPixels*sizeof(*darkTemp));
-	flood = malloc(NrPixels*NrPixels*sizeof(*flood));
+	dark = (double *) malloc(NrPixels*NrPixels*sizeof(*dark));
+	darkTemp = (double *) malloc(NrPixels*NrPixels*sizeof(*darkTemp));
+	flood = (double *) malloc(NrPixels*NrPixels*sizeof(*flood));
 	FILE *darkfile=fopen(darkcurrentfilename,"rb");
 	int sz, nFrames;
 	int SizeFile = sizeof(pixelvalue) * NrPixels * NrPixels;
 	long int Skip;
 	for (i=0;i<(NrPixels*NrPixels);i++){dark[i]=0;darkTemp[i]=0;}
 	pixelvalue *darkcontents;
-	darkcontents = malloc(NrPixels*NrPixels*sizeof(*darkcontents));
+	darkcontents = (pixelvalue *) malloc(NrPixels*NrPixels*sizeof(*darkcontents));
 	if (darkfile==NULL){printf("Could not read the dark file. Using no dark subtraction.");}
 	else{
 		fseek(darkfile,0L,SEEK_END);
@@ -749,7 +751,7 @@ int main(int argc, char *argv[]){
 	}
 	double Rt;
 	int *GoodCoords;
-	GoodCoords = malloc(NrPixels*NrPixels*sizeof(*GoodCoords));
+	GoodCoords = (int *) malloc(NrPixels*NrPixels*sizeof(*GoodCoords));
 	memset(GoodCoords,0,NrPixels*NrPixels*sizeof(*GoodCoords));
 	for (i=1;i<NrPixels;i++){
 		for (j=1;j<NrPixels;j++){
@@ -804,7 +806,7 @@ int main(int argc, char *argv[]){
 		return 1;
 	}
 	pixelvalue *Image;
-	Image = malloc(NrPixels*NrPixels*sizeof(*Image));
+	Image = (pixelvalue *) malloc(NrPixels*NrPixels*sizeof(*Image));
 	fseek(ImageFile,0L,SEEK_END);
 	sz = ftell(ImageFile);
 	rewind(ImageFile);
@@ -817,8 +819,8 @@ int main(int argc, char *argv[]){
 	DoImageTransformations(NrTransOpt,TransOpt,Image,NrPixels);
 	printf("Beam current this file: %f, Beam current scaling value: %f\n",beamcurr,bc);
 	double *ImgCorrBCTemp, *ImgCorrBC;
-	ImgCorrBC = malloc(NrPixels*NrPixels*sizeof(*ImgCorrBC));
-	ImgCorrBCTemp = malloc(NrPixels*NrPixels*sizeof(*ImgCorrBCTemp));
+	ImgCorrBC = (double *) malloc(NrPixels*NrPixels*sizeof(*ImgCorrBC));
+	ImgCorrBCTemp = (double *) malloc(NrPixels*NrPixels*sizeof(*ImgCorrBCTemp));
 	for (i=0;i<(NrPixels*NrPixels);i++)ImgCorrBCTemp[i]=Image[i];
 	free(Image);
 	Transposer(ImgCorrBCTemp,NrPixels,ImgCorrBC);
@@ -852,7 +854,7 @@ int main(int argc, char *argv[]){
 	int **Positions;
 	Positions = allocMatrixInt(nOverlapsMaxPerImage,NrPixels*4);
 	int *PositionTrackers;
-	PositionTrackers = malloc(nOverlapsMaxPerImage*sizeof(*PositionTrackers));
+	PositionTrackers = (int *) malloc(nOverlapsMaxPerImage*sizeof(*PositionTrackers));
 	for (i=0;i<nOverlapsMaxPerImage;i++)PositionTrackers[i] = 0;
 	int NrOfReg;
 	for (i=0;i<NrPixels;i++){
@@ -873,9 +875,9 @@ int main(int argc, char *argv[]){
 	int **UsefulPixels;
 	double *z;
 	MaximaPositions = allocMatrixInt(NrPixels*10,2);
-	MaximaValues = malloc(NrPixels*10*sizeof(*MaximaValues));
+	MaximaValues = (double *) malloc(NrPixels*10*sizeof(*MaximaValues));
 	UsefulPixels = allocMatrixInt(NrPixels*10,2);
-	z = malloc(NrPixels*10*sizeof(*z));
+	z = (double *) malloc(NrPixels*10*sizeof(*z));
 	int IsSaturated;
 	int SpotIDStart = 1;
 	char OutFile[1024];
@@ -892,6 +894,9 @@ int main(int argc, char *argv[]){
 	fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta\n");
 	int TotNrRegions = NrOfReg;
 	double TotInt;
+	////////////////////////////////////////////////////////////////////
+	// Check for 
+	////////////////////////////////////////////////////////////////////
 	for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 		NrPixelsThisRegion = PositionTrackers[RegNr];
 		if (NrPixelsThisRegion == 1){
@@ -912,16 +917,16 @@ int main(int argc, char *argv[]){
 			continue;
 		}
 		double *IntegratedIntensity, *IMAX, *YCEN, *ZCEN, *Rads, *Etass, *OtherInfo;
-		IntegratedIntensity = malloc(nPeaks*2*sizeof(*IntegratedIntensity));
+		IntegratedIntensity = (double *) malloc(nPeaks*2*sizeof(*IntegratedIntensity));
 		memset(IntegratedIntensity,0,nPeaks*2*sizeof(*IntegratedIntensity));
-		IMAX = malloc(nPeaks*2*sizeof(*IMAX));
-		YCEN = malloc(nPeaks*2*sizeof(*YCEN));
-		ZCEN = malloc(nPeaks*2*sizeof(*ZCEN));
-		Rads = malloc(nPeaks*2*sizeof(*Rads));
-		Etass = malloc(nPeaks*2*sizeof(*Etass));
-		OtherInfo = malloc(nPeaks*10*sizeof(*OtherInfo));
+		IMAX = (double *) malloc(nPeaks*2*sizeof(*IMAX));
+		YCEN = (double *) malloc(nPeaks*2*sizeof(*YCEN));
+		ZCEN = (double *) malloc(nPeaks*2*sizeof(*ZCEN));
+		Rads = (double *) malloc(nPeaks*2*sizeof(*Rads));
+		Etass = (double *) malloc(nPeaks*2*sizeof(*Etass));
+		OtherInfo = (double *) malloc(nPeaks*10*sizeof(*OtherInfo));
 		int *NrPx;
-		NrPx = malloc(nPeaks*2*sizeof(*NrPx));
+		NrPx = (int *) malloc(nPeaks*2*sizeof(*NrPx));
 		printf("%d %d %d %d\n",RegNr,NrOfReg,NrPixelsThisRegion,nPeaks);
 		Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo);
 		for (i=0;i<nPeaks;i++){
