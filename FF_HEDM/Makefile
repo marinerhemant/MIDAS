@@ -13,7 +13,7 @@ BINDIR=bin/
 
 all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting \
 	mergeoverlaps calcradius findsaturatedpx peaksfittingcuda\
-	mergerings fittiltx fitwedge hkls indexer bindata processgrains indexercuda
+	mergerings fittiltx fitwedge hkls indexer bindata processgrains indexercuda peakscuda
 
 bindircheck:
 	mkdir -p $(BINDIR)
@@ -80,6 +80,9 @@ processgrains: $(SRCDIR)ProcessGrains.c
 
 indexercuda: $(SRCDIR)Indexer.cu
 	$(NCC) $(SRCDIR)Indexer.cu -o $(BINDIR)Indexer $(NCFLAGS)
+
+peakscuda: $(SRCDIR)Peaks.cu
+	$(NCC) $(SRCDIR)Peaks.cu $(SRCDIR)nldrmd.cu -o $(BINDIR)Peaks $(NCFLAGS)
 
 clean:
 	rm -r $(BINDIR)
