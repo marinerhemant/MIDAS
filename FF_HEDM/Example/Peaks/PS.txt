@@ -1,0 +1,9 @@
+ParFilePath /home/hemant/Desktop/NewCodes/MIDAS/FF_HEDM/Example/Peaks/PUP_AFRL_Aug15_FF.par
+FileStem Ti7_19_S6_LineScan
+StartFileNr 1208
+NrFilesPerSweep 4
+NumDarkBegin 2
+NumDarkEnd 2
+OmegaOffset 0
+ParFileColBeamCurrent 30
+BeamCurrent 1209

@@ -12,7 +12,7 @@ SRCDIR=src/
 BINDIR=bin/
 
 all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting \
-	mergeoverlaps calcradius findsaturatedpx peaksfittingcuda\
+	mergeoverlaps calcradius findsaturatedpx\
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains indexercuda peakscuda
 
 bindircheck:
@@ -42,9 +42,6 @@ fitposorstrains: $(SRCDIR)FitPosOrStrains.c
 
 peaksfitting: $(SRCDIR)PeaksFittingPerFile.c
 	$(CC) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile $(CFLAGS) $(CFLAGSNLOPT) 
-
-peaksfittingcuda: $(SRCDIR)PeaksFittingPerFile.cu
-	$(NCC) $(SRCDIR)PeaksFittingPerFile.cu -o $(BINDIR)PeaksCuda $(NCFLAGS) $(CFLAGSNLOPT)
 
 mergeoverlaps: $(SRCDIR)MergeOverlappingPeaks.c
 	$(CC) $(SRCDIR)MergeOverlappingPeaks.c -o $(BINDIR)MergeOverlappingPeaks $(CFLAGS)
@@ -85,5 +82,5 @@ peakscuda: $(SRCDIR)Peaks.cu
 	$(NCC) $(SRCDIR)Peaks.cu $(SRCDIR)nldrmd.cu -o $(BINDIR)Peaks $(NCFLAGS)
 
 clean:
-	rm -r $(BINDIR)
+	rm -rf $(BINDIR)
 	mkdir $(BINDIR)
