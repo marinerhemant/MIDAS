@@ -96,5 +96,5 @@ parsemic: $(SRCDIR)ParseMic.c
 	$(CC) $(SRCDIR)ParseMic.c -o $(BINDIR)ParseMic $(CFLAGS)
 
 clean:
-	rm -r $(BINDIR)
+	rm -rf $(BINDIR)
 	mkdir $(BINDIR)
