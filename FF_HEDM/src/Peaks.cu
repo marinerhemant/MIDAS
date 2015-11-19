@@ -16,6 +16,7 @@
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 #define MAX_LINE_LENGTH 10240
+#define MAX_N_RINGS 5000
 #define CalcNorm3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
 #define CalcNorm2(x,y) sqrt((x)*(x) + (y)*(y))
 typedef uint16_t pixelvalue;
@@ -43,14 +44,23 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 		return 1;
 	}
 	char *str;
-	int cmpres, StartFileNr, NrFilesPerSweep, NumDarkBegin=0, NumDarkEnd=0,ColBeamCurrent;
-	double OmegaOffset = 0, bc=0;
+	int cmpres, StartFileNr, NrFilesPerSweep, NumDarkBegin=0, NumDarkEnd=0,
+		ColBeamCurrent, NrOfRings=0, RingNumbers[MAX_N_HKLS];
+	double OmegaOffset = 0, bc=0, RingSizeThreshold[MAX_N_HKLS][4];
 	char dummy[MAX_LINE_LENGTH], ParFilePath[MAX_LINE_LENGTH], FileStem[MAX_LINE_LENGTH];
 	while (fgets(line, MAX_LINE_LENGTH, fileParam) != NULL) {
 		str = "ParFilePath ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
 			sscanf(line, "%s %s", dummy, ParFilePath);
+			continue;
+		}
+		str = "RingThresh ";
+		cmpres = strncmp(line, str, strlen(str));
+		if (cmpres == 0) {
+			sscanf(line, "%s %d %lf", dummy, RingNumbers[NrOfRings], 
+				RingSizeThreshols[NrOfRings][1]);
+			NrOfRings++;
 			continue;
 		}
 		str = "FileStem ";
@@ -108,14 +118,15 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 		printf("ParFile could not be read");
 		return 1;
 	}
-	int i;
+	int i, j;
 	int NrFramesPerFile[NrFilesPerSweep],CurrFileNrOffset;
 	for (i=0;i<NrFilesPerSweep;i++)
 		NrFramesPerFile[i] = -(NumDarkBegin+NumDarkEnd);
 	char *token, *saveptr,aline[MAX_LINE_LENGTH];
 	int OmegaSign, goodLine, omegafound;
-	double Omegas[NrFilesPerSweep][300],BeamCurrents[NrFilesPerSweep][300],maxBC=0;
-	while (fgets(line, MAX_LINE_LENGTH, ParFile) != NULL) { // we need rotation type, omega value, beamcurrentframe, totalframenumber per file
+	double Omegas[NrFilesPerSweep][300],BeamCurrents[NrFilesPerSweep][300],
+			maxBC=0;
+	while (fgets(line, MAX_LINE_LENGTH, ParFile) != NULL) {
 		strncpy(aline,line,strlen(line));
 		goodLine = 0;
 		for (str = aline; ; str=NULL){
@@ -131,7 +142,6 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 				}
 			}
 		}
-		// Now get the rotation type, omega value, beam current etc
 		if (NrFramesPerFile[CurrFileNrOffset] < -NumDarkBegin + 1) continue;
 		if (goodLine){
 			strncpy(aline,line,strlen(line));
@@ -154,11 +164,14 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 					token  = strtok_r(str," ", &saveptr);
 					token  = strtok_r(str," ", &saveptr);
 					i+=3;
-					Omegas[CurrFileNrOffset][NrFramesPerFile[CurrFileNrOffset]+NumDarkBegin-1] = atof(token) * OmegaSign + OmegaOffset;
+					Omegas[CurrFileNrOffset][NrFramesPerFile
+							[CurrFileNrOffset]+NumDarkBegin-1] 
+								= atof(token) * OmegaSign + OmegaOffset;
 					omegafound = 0;
 				}
 				if (i == ColBeamCurrent){
-					BeamCurrents[CurrFileNrOffset][NrFramesPerFile[CurrFileNrOffset]+NumDarkBegin-1] = atof(token);
+					BeamCurrents[CurrFileNrOffset][NrFramesPerFile
+							[CurrFileNrOffset]+NumDarkBegin-1] = atof(token);
 					maxBC = (maxBC > atof(token)) ? maxBC : atof(token);
 				}
 			}
@@ -166,11 +179,28 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 	}
 	for (i=0;i<NrFilesPerSweep;i++){
 		printf("%d \n", NrFramesPerFile[i]);
-		for (int j=0;j<NrFramesPerFile[i];j++){
+		for (j=0;j<NrFramesPerFile[i];j++){
 			printf("%lf %lf\t",Omegas[i][j],BeamCurrents[i][j]);
 		}
 		printf("\n");
 	}
 	bc = (bc > maxBC) ? bc : maxBC;
 	printf("%lf\n",bc);
+	
+	// Read hkls.csv
+   	char *hklfn = "hkls.csv";
+	FILE *hklf = fopen(hklfn,"r");
+	fgets(line,1000,hklf);
+	int Rnr;
+	double RRd;
+	while (fgets(line,1000,hklf)!=NULL){
+		sscanf(aline, "%s %s %s %s %d %s %s %s %s %s %lf", dummy, dummy, 
+			dummy, dummy, &Rnr, dummy, dummmy, dummy, dummy ,dummy, &RRd);
+		for (i=0;i<NrOfRings;i++){
+			if (Rnr == RingNumbers[i]){
+				RingSizeThreshold[i][0] = RRd;
+			}
+		}
+	}
+
 }
