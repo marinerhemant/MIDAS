@@ -880,11 +880,7 @@ int main(int argc, char *argv[]){
 	sprintf(OutFolderName,"%s/%s",Folder,TmpFolder);
 	int e = CheckDirectoryCreation(OutFolderName);
 	if (e == 0){ return 1;}
-	int Displace = 1;
-	int sizeIncr = 1;
-	int RegIncr = 3;
 	int nOverlapsMaxPerImage = 10000;
-	int NumberOfFilesPerSweep = 1;
 	// Do Connected components
 	int **BoolImage, **ConnectedComponents;
 	BoolImage = allocMatrixInt(NrPixels,NrPixels);
@@ -948,19 +944,16 @@ int main(int argc, char *argv[]){
 	outfilewrite = fopen(OutFile,"w");
 	fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta\n");
 	int TotNrRegions = NrOfReg;
-	double TotInt;
 	for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 		NrPixelsThisRegion = PositionTrackers[RegNr];
 		if (NrPixelsThisRegion == 1){
 			TotNrRegions--;
 			continue;
 		}
-		TotInt = 0;
 		for (i=0;i<NrPixelsThisRegion;i++){
 			UsefulPixels[i][0] = (int)(Positions[RegNr][i]/NrPixels);
 			UsefulPixels[i][1] = (int)(Positions[RegNr][i]%NrPixels);
 			z[i] = ImgCorrBC[((UsefulPixels[i][0])*NrPixels) + (UsefulPixels[i][1])];
-			TotInt += z[i];
 		}
 		unsigned nPeaks;
 		nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,MaximaPositions,MaximaValues,&IsSaturated,IntSat);
