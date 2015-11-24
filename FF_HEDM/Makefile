@@ -1,6 +1,6 @@
 CC=gcc
 NCC=nvcc
-NCFLAGS=-w -arch sm_52 -lm -res-usage
+NCFLAGS=-w -arch sm_52 -lm # -res-usage
 CFLAGS=-fPIC -ldl -lm -finline-functions -O3 -w
 NLOPT=""
 ifneq ($(NLOPT),"")
@@ -13,7 +13,11 @@ BINDIR=bin/
 
 all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting \
 	mergeoverlaps calcradius findsaturatedpx\
-	mergerings fittiltx fitwedge hkls indexer bindata processgrains indexercuda peakscuda
+	mergerings fittiltx fitwedge hkls indexer bindata processgrains indexercuda peakscuda \
+	fitposorstrainscuda mergeoverlapsgpu
+
+cuda: help indexercuda peakscuda fitposorstrainscuda mergeoverlapsgpu fittiltbclsdsample \
+	calcradius mergerings processgrains hkls bindata calibrant findsaturatedpx fittiltx fitwedge
 
 bindircheck:
 	mkdir -p $(BINDIR)
@@ -79,7 +83,13 @@ indexercuda: $(SRCDIR)Indexer.cu
 	$(NCC) $(SRCDIR)Indexer.cu -o $(BINDIR)Indexer $(NCFLAGS)
 
 peakscuda: $(SRCDIR)Peaks.cu
-	$(NCC) $(SRCDIR)Peaks.cu $(SRCDIR)nldrmd.cu -o $(BINDIR)Peaks $(NCFLAGS)
+	$(NCC) $(SRCDIR)Peaks.cu -o $(BINDIR)Peaks $(NCFLAGS)
+
+mergeoverlapsgpu: $(SRCDIR)MergeOverlappingPeaksGPU.c
+	$(CC) $(SRCDIR)MergeOverlappingPeaksGPU.c -o $(BINDIR)MergeOverlaps $(CFLAGS)
+
+fitposorstrainscuda: $(SRCDIR)FitPosOrStrains.cu
+	$(NCC) $(SRCDIR)FitPosOrStrains.cu -o $(BINDIR)RefineGrains $(NCFLAGS)
 
 clean:
 	rm -rf $(BINDIR)

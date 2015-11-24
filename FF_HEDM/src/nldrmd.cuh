@@ -88,6 +88,7 @@ typedef struct {
      int N; /* number of nodes */
 } rb_tree;
 
+
 __device__ void rb_tree_init(rb_tree *t, rb_compare compare);
 __device__ void rb_tree_destroy(rb_tree *t);
 __device__ void rb_tree_destroy_with_keys(rb_tree *t);
@@ -105,8 +106,8 @@ __device__ void rb_tree_shift_keys(rb_tree *t, ptrdiff_t kshift);
 __device__ rb_node *rb_tree_remove(rb_tree *t, rb_node *n);
 
 __device__ nlopt_result nldrmd_minimize(int n, nlopt_func f, void *f_data,
-			     const double *lb, const double *ub, /* bounds */
-			     double *x, /* in: initial guess, out: minimizer */
+			     const double *lb, const double *ub,
+			     double *x,
 			     double *minf, nlopt_stopping *stop);
 
 #endif
