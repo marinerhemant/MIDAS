@@ -20,6 +20,8 @@
 #define MaxNSpots 6000000
 #define MaxNSpotsBest 500
 #define MaxNHKLS 5000
+#define MaxLineLength 2048
+#define MaxNRings 100
 #define EPS 1E-12
 #define CalcNorm3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
 #define CalcNorm2(x,y) sqrt((x)*(x) + (y)*(y))
@@ -30,19 +32,16 @@ __device__ void rb_tree_init(rb_tree *t, rb_compare compare) {
      t->root = NULL;
      t->N = 0;
 }
-
 __device__ void destroy(rb_node *n){
      if (n != NULL) {
 	  destroy(n->l); destroy(n->r);
 	  free(n);
      }
 }
-
 __device__ void rb_tree_destroy(rb_tree *t){
      destroy(t->root);
      t->root = NULL;
 }
-
 __device__ void rb_tree_destroy_with_keys(rb_tree *t){
      rb_node *n = rb_tree_min(t);
      while (n) {
@@ -51,7 +50,6 @@ __device__ void rb_tree_destroy_with_keys(rb_tree *t){
      }
      rb_tree_destroy(t);
 }
-
 __device__ void rotate_left(rb_node *p, rb_tree *t){
      rb_node *n = p->r; /* must be non-NULL */
      p->r = n->l;
@@ -66,7 +64,6 @@ __device__ void rotate_left(rb_node *p, rb_tree *t){
      p->p = n;
      if (p->r != NULL) p->r->p = p;
 }
-
 __device__ void rotate_right(rb_node *p, rb_tree *t){
      rb_node *n = p->l; /* must be non-NULL */
      p->l = n->r;
@@ -81,7 +78,6 @@ __device__ void rotate_right(rb_node *p, rb_tree *t){
      p->p = n;
      if (p->l != NULL) p->l->p = p;
 }
-
 __device__ void insert_node(rb_tree *t, rb_node *n){
      rb_compare compare = t->compare;
      rb_key k = n->k;
@@ -145,7 +141,6 @@ __device__ void insert_node(rb_tree *t, rb_node *n){
 	      
      }
 }
-
 __device__ rb_node *rb_tree_insert(rb_tree *t, rb_key k){
      rb_node *n = (rb_node *) malloc(sizeof(rb_node));
      if (!n) return NULL;
@@ -153,7 +148,6 @@ __device__ rb_node *rb_tree_insert(rb_tree *t, rb_key k){
      insert_node(t, n);
      return n;
 }
-
 __device__ int check_node(rb_node *n, int *nblack, rb_tree *t){
      int nbl, nbr;
      rb_compare compare = t->compare;
@@ -174,7 +168,6 @@ __device__ int check_node(rb_node *n, int *nblack, rb_tree *t){
      *nblack = nbl + (n->c == BLACK);
      return 1;
 }
-
 __device__ rb_node *rb_tree_find(rb_tree *t, rb_key k){
      rb_compare compare = t->compare;
      rb_node *p = t->root;
@@ -185,7 +178,6 @@ __device__ rb_node *rb_tree_find(rb_tree *t, rb_key k){
      }
      return NULL;
 }
-
 __device__ rb_node *find_le(rb_node *p, rb_key k, rb_tree *t){
      rb_compare compare = t->compare;
      while (p != NULL) {
@@ -199,11 +191,9 @@ __device__ rb_node *find_le(rb_node *p, rb_key k, rb_tree *t){
      }
      return NULL; /* k < everything in subtree */
 }
-
 __device__ rb_node *rb_tree_find_le(rb_tree *t, rb_key k){
      return find_le(t->root, k, t);
 }
-
 __device__ rb_node *find_lt(rb_node *p, rb_key k, rb_tree *t){
      rb_compare compare = t->compare;
      while (p != NULL) {
@@ -217,11 +207,9 @@ __device__ rb_node *find_lt(rb_node *p, rb_key k, rb_tree *t){
      }
      return NULL; /* k <= everything in subtree */
 }
-
 __device__ rb_node *rb_tree_find_lt(rb_tree *t, rb_key k){
      return find_lt(t->root, k, t);
 }
-
 __device__ rb_node *find_gt(rb_node *p, rb_key k, rb_tree *t){
      rb_compare compare = t->compare;
      while (p != NULL) {
@@ -235,25 +223,21 @@ __device__ rb_node *find_gt(rb_node *p, rb_key k, rb_tree *t){
      }
      return NULL; /* k >= everything in subtree */
 }
-
 __device__ rb_node *rb_tree_find_gt(rb_tree *t, rb_key k){
      return find_gt(t->root, k, t);
 }
-
 __device__ rb_node *rb_tree_min(rb_tree *t){
      rb_node *n = t->root;
      while (n != NULL && n->l != NULL)
 	  n = n->l;
      return(n == NULL ? NULL : n);
 }
-
 __device__ rb_node *rb_tree_max(rb_tree *t){
      rb_node *n = t->root;
      while (n != NULL && n->r != NULL)
 	  n = n->r;
      return(n == NULL ? NULL : n);
 }
-
 __device__ rb_node *rb_tree_succ(rb_node *n){
      if (!n) return NULL;
      if (n->r == NULL) {
@@ -271,7 +255,6 @@ __device__ rb_node *rb_tree_succ(rb_node *n){
 	  return n;
      }
 }
-
 __device__ rb_node *rb_tree_pred(rb_node *n){
      if (!n) return NULL;
      if (n->l == NULL) {
@@ -289,7 +272,6 @@ __device__ rb_node *rb_tree_pred(rb_node *n){
 	  return n;
      }
 }
-
 __device__ rb_node *rb_tree_remove(rb_tree *t, rb_node *n){
      rb_key k = n->k;
      rb_node *m, *mp;
@@ -366,34 +348,27 @@ __device__ rb_node *rb_tree_remove(rb_tree *t, rb_node *n){
      n->k = k; /* n may have changed during remove */
      return n; /* the node that was deleted may be different from initial n */
 }
-
 __device__ rb_node *rb_tree_resort(rb_tree *t, rb_node *n){
      n = rb_tree_remove(t, n);
      insert_node(t, n);
      return n;
 }
-
 __device__  void shift_keys(rb_node *n, ptrdiff_t kshift){
      n->k += kshift;
      if (n->l != NULL) shift_keys(n->l, kshift);
      if (n->r != NULL) shift_keys(n->r, kshift);
 }
-
 __device__ void rb_tree_shift_keys(rb_tree *t, ptrdiff_t kshift){
      if (t->root != NULL) shift_keys(t->root, kshift);
 }
-
-
 __device__ int simplex_compare(double *k1, double *k2){
 	if (*k1 < *k2) return -1;
 	if (*k1 > *k2) return +1;
 	return k1 - k2;
 }
-
 __device__ int close(double a, double b){
 	return (fabs(a - b) <= 1e-13 * (fabs(a) + fabs(b)));
 }
-
 __device__ int reflectpt(int n, double *xnew, 
 		     const double *c, double scale, const double *xold,
 		     const double *lb, const double *ub){
@@ -408,17 +383,14 @@ __device__ int reflectpt(int n, double *xnew,
 	}
 	return !(equalc || equalold);
 }
-
 __device__ int nlopt_stop_evals (nlopt_stopping *stop){
 	if (stop->nevals >= stop->maxeval) return 1;
 	return 0;
 }
-
 __device__ int nlopt_stop_ftol(nlopt_stopping *stop, double fl, double fh){
 	if (fabs((fh-fl)/fl) < stop->ftol_rel) return 1;
 	return 0;
 }
-
 __device__ int nlopt_stop_x(nlopt_stopping *stop, double *cen, double *xpos){
 	int i;
 	for (i=0;i<stop->n;i++){
@@ -428,7 +400,6 @@ __device__ int nlopt_stop_x(nlopt_stopping *stop, double *cen, double *xpos){
 	}
 	return 1;
 }
-
 __device__ nlopt_result nldrmd_minimize_(int n, nlopt_func f, void *f_data,
 			     const double *lb, const double *ub, /* bounds */
 			     double *x, /* in: initial guess, out: minimizer */
@@ -603,7 +574,6 @@ done:
      rb_tree_destroy(&t);
      return ret;
 }
-
 __device__ nlopt_result nldrmd_minimize(int n, nlopt_func f, void *f_data,
 			     const double *lb, const double *ub, /* bounds */
 			     double *x, /* in: initial guess, out: minimizer */
@@ -627,10 +597,21 @@ __device__ nlopt_result nldrmd_minimize(int n, nlopt_func f, void *f_data,
      free(scratch);
      return ret;
 }
-
 // End NLOPT nldrmd functions.
 
 int main(int argc, char *argv[])
 {
-
+	char *ParamFN;
+	FILE *fileParam;
+	ParamFN = argv[1];
+	char aline[MaxLineLength];
+	fileParam = fopen(ParamFN,"r");
+	char *str, dummy[MaxLineLength];
+	int LowNr;
+	double Wavelength, Lsd, LatCin[6], wedge, MinEta, OmegaRanges[20][2],
+		BoxSizes[20][4], MaxRingRad, Rsample, Hbeam, RingRadii[MaxNRings],
+		MargABC=0.3, MargABG=0.3;
+	int RingNumbers[MaxNRings], cs=0, cs2=0, nOmeRanges=0, nBoxSizes=0,
+		DiscModel=0, TopLayer=0, Twins=0, TakeGrainMax=0;
+	char OutputFolder[MaxLineLength], ResultFolder[MaxLineLength];
 }

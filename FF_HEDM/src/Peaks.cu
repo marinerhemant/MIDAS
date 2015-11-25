@@ -878,7 +878,7 @@ __device__ double problem_function(
 			CalcIntensity = BG + IntPeaks;
 			TotalDifferenceIntensity += (CalcIntensity - REtaZ[i*3+2])*(CalcIntensity - REtaZ[i+3+2]);
 		}
-		return TotalDifferenceIntensity;*/
+		return TotalDifferenceIntensity;
 	}
 }
 
@@ -1031,13 +1031,36 @@ int totalPeaks)
 	int dim = TotNrRegions;
 	dim3 block (256);
 	dim3 grid ((dim/block.x)+1);
+    cudaMemGetInfo(&freeMem, &totalMem);
+    fprintf(stderr, "Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	Fit2DPeaks<<<grid,block>>>(PkPxDevice,yzIntDevice, MaximaInfoDevice, 
 		ReturnMatrixDevice, PosMaxInfoRetMatDevice, PosyzIntDevice, 
 		ExtraInfoDevice, ThreshInfoDevice, xDevice, xlDevice, xuDevice, 
 		REtaIntDevice, resultsmat);
 	CHECK(cudaPeekAtLastError());
 	CHECK(cudaDeviceSynchronize());
+    cudaMemGetInfo(&freeMem, &totalMem);
+    fprintf(stderr, "Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMemcpy(ReturnMatrix,ReturnMatrixDevice,totalPeaks*8*sizeof(double),cudaMemcpyDeviceToHost);
+	cudaFree(PkPxDevice);
+	cudaFree(PosMaxInfoRetMatDevice);
+	cudaFree(PosyzIntDevice);
+	cudaFree(yzIntDevice);
+	cudaFree(MaximaInfoDevice);
+	cudaFree(ReturnMatrixDevice);
+	cudaFree(ExtraInfoDevice);
+	cudaFree(ThreshInfoDevice);
+	cudaFree(xDevice);
+	cudaFree(xlDevice);
+	cudaFree(xuDevice);
+	cudaFree(REtaIntDevice);
+	cudaFree(resultsmat);
+}
+
+double cpuSecond(){
+	struct timeval tp;
+	gettimeofday(&tp,NULL);
+	return ((double)tp.tv_sec + (double)tp.tv_usec*1.e-6);
 }
 
 int main(int argc, char *argv[]){ // Arguments: parameter file name
@@ -1056,6 +1079,7 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 		return 1;
 	}
 	char *str;
+	double tstart = cpuSecond();
 	int cmpres, StartFileNr, NrFilesPerSweep, NumDarkBegin=0, NumDarkEnd=0,
 		ColBeamCurrent, NrOfRings=0, RingNumbers[MAX_N_RINGS], TransOpt[10], 
 		NrTransOpt=0, DoFullImage=0, Padding, NrPixels, LayerNr, FrameNumberToDo=-1;
@@ -1624,6 +1648,8 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 			counterMaximaInfoReturnMatrix += nPeaks;
 			counter++;
 		}
+		printf("Total number of peaks in the image: %d\n",counterMaximaInfoReturnMatrix);
+		printf("Total number of useful pixels in the image: %d\n",counteryzInt);
 		if (counter != TotNrRegions){
 			printf("Number of regions calculated and observed do not match. Please check.\n");
 			return (1);
@@ -1641,5 +1667,7 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 		}
 		fclose(outfilewrite);
 		FrameNr++;
+		printf("Time taken till %d frame: %lf\n",FrameNr, cpuSecond()-tstart);
 	}
+	printf("Total time taken: %lf\n",cpuSecond()-tstart);
 }

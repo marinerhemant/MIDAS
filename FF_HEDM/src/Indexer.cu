@@ -1042,7 +1042,7 @@ int main(int argc, char *argv[]){
 	int dim = nspids;
 	dim3 block (256);
 	dim3 grid ((dim/block.x)+1);
-	printf("Time elapsed: %fs\n",cpuSecond()-iStart);
+	printf("Time elapsed before FriedelFinding: %fs\n",cpuSecond()-iStart);
 
 	RealType *ResultArray;
 	int *nNormals;
@@ -1120,7 +1120,7 @@ int main(int argc, char *argv[]){
     cudaMemGetInfo(&freeMem, &totalMem);
     fprintf(stderr, "Memcpy data Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 
-	printf("Time elapsed: %fs\n",cpuSecond()-iStart);
+	printf("Time elapsed before making orientations: %fs\n",cpuSecond()-iStart);
 
 	dim3 blocka (32);
 	dim3 grida ((sumTotal/blocka.x)+1);
@@ -1177,7 +1177,7 @@ int main(int argc, char *argv[]){
 	memset(AllInfo,0,N_COL_GRAINMATCHES*sumTotal*sizeof(RealType));
 	SpotsInfoTotal = (int *) malloc(sumTotal*n_hkls_h*2*sizeof(int));
 	memset(SpotsInfoTotal,0,sumTotal*n_hkls_h*2*sizeof(int));
-	printf("Time elapsed: %fs\n",cpuSecond()-iStart);
+	printf("Time elapsed before calculation of matches: %fs\n",cpuSecond()-iStart);
 	for (int jobNr=0;jobNr<sumTotal;jobNr++){//sumTotal
 		posResultArr = jobNr;
 		nJobsOrient = ResultMakeOrientations_h[jobNr*N_COLS_ORIENTATION_NUMBERS + 0];
@@ -1236,7 +1236,7 @@ int main(int argc, char *argv[]){
 			AllInfo[jobNr*N_COL_GRAINMATCHES + 15] = bestFraction;
 		}
 	}
-	printf("Time elapsed: %fs\n",cpuSecond()-iStart);
+	printf("Time elapsed after calculation of matches: %fs\n",cpuSecond()-iStart);
 
 	// Now sort all the results.
 	RealType *SaveAllInfo;
@@ -1271,7 +1271,7 @@ int main(int argc, char *argv[]){
 		}
 	}
 
-	printf("Time elapsed: %fs\n",cpuSecond()-iStart);
+	printf("Time elapsed after sorting the results: %fs\n",cpuSecond()-iStart);
 
 	char outfnall[MAX_LINE_LENGTH], outfnspots[MAX_LINE_LENGTH];
 	sprintf(outfnall, "%s/AllInfo.bin",Parameters.OutputFolder);
