@@ -1,6 +1,6 @@
 CC=gcc
 NCC=nvcc
-NCFLAGS=-w -arch sm_52 -lm # -res-usage
+NCFLAGS=-w -arch sm_52 -lm -rdc=true # -res-usage
 CFLAGS=-fPIC -ldl -lm -finline-functions -O3 -w
 NLOPT=""
 ifneq ($(NLOPT),"")

@@ -810,6 +810,7 @@ static inline unsigned FindRegionalMaxima(double *z,int **PixelPositions,
 struct func_data{
 	int NrPixels;
 	double *RsEtasZ;
+	double *results;
 };
 
 __device__ void YZ4mREta(int NrElements, double *R, double *Eta, double *Y, double *Z){
@@ -827,6 +828,19 @@ __device__ double CalcEtaAngle(double y, double z){
 	return alph;
 }
 
+__global__ void CalcOnePeak(const double *x, double *REtaZ, int nPeaks, int NrPixels, double *result){
+	int i = blockIdx.x * blockDim.x + threadIdx.x;
+	if (i >= NrPixels) return;
+	double L, G;
+	result[i]=0;
+	int j;
+	for (j=0;j<nPeaks;j++){
+		L = 1/(((((REtaZ[i*3]-x[(8*j)+2])*(REtaZ[i*3]-x[(8*j)+2]))/((x[(8*j)+6])*(x[(8*j)+6])))+1)*((((REtaZ[i*3+1]-x[(8*j)+3])*(REtaZ[i*3+1]-x[(8*j)+3]))/((x[(8*j)+8])*(x[(8*j)+8])))+1));
+		G = exp(-(0.5*(((REtaZ[i*3]-x[(8*j)+2])*(REtaZ[i*3]-x[(8*j)+2]))/(x[(8*j)+5]*x[(8*j)+5])))-(0.5*(((REtaZ[i*3+1]-x[(8*j)+3])*(REtaZ[i*3+1]-x[(8*j)+3]))/(x[(8*j)+7]*x[(8*j)+7]))));
+		result[i] += x[(8*j)+1]*((x[(8*j)+4]*L) + ((1-x[(8*j)+4])*G));
+	}
+}
+
 __device__ double problem_function(
 	unsigned n,
 	const double *x,
@@ -839,24 +853,39 @@ __device__ double problem_function(
 	REtaZ = &(f_data->RsEtasZ[0]);
 	int nPeaks = (n-1)/8;
 	double BG = x[0];
-	double TotalDifferenceIntensity = 0, CalcIntensity, IntPeaks;
-	double L, G;
-	for (int i=0;i<NrPixels;i++){
-		IntPeaks = 0;
-		for (int j=0;j<nPeaks;j++){
-			L = 1/(((((REtaZ[i*3]-x[(8*j)+2])*(REtaZ[i*3]-x[(8*j)+2]))/((x[(8*j)+6])*(x[(8*j)+6])))+1)*((((REtaZ[i*3+1]-x[(8*j)+3])*(REtaZ[i*3+1]-x[(8*j)+3]))/((x[(8*j)+8])*(x[(8*j)+8])))+1));
-			G = exp(-(0.5*(((REtaZ[i*3]-x[(8*j)+2])*(REtaZ[i*3]-x[(8*j)+2]))/(x[(8*j)+5]*x[(8*j)+5])))-(0.5*(((REtaZ[i*3+1]-x[(8*j)+3])*(REtaZ[i*3+1]-x[(8*j)+3]))/(x[(8*j)+7]*x[(8*j)+7]))));
-			IntPeaks += x[(8*j)+1]*((x[(8*j)+4]*L) + ((1-x[(8*j)+4])*G));
+	int nPkPx[2] = {nPeaks, NrPixels};
+	
+	if (nPeaks > 2){
+		double *result;
+		result = &(f_data->results[0]);
+		CalcOnePeak<<<1,nPeaks>>>(x, REtaZ, nPeaks, NrPixels,result);
+		double TotalDifferenceIntensity = 0, CalcIntensity;
+		for (int i=0;i<NrPixels;i++){
+			CalcIntensity = result[i] + BG;
+			TotalDifferenceIntensity += (CalcIntensity - REtaZ[i*3+2])*(CalcIntensity - REtaZ[i+3+2]);
 		}
-		CalcIntensity = BG + IntPeaks;
-		TotalDifferenceIntensity += (CalcIntensity - REtaZ[i*3+2])*(CalcIntensity - REtaZ[i+3+2]);
+		return TotalDifferenceIntensity;
+	}else{
+		double TotalDifferenceIntensity = 0, CalcIntensity, IntPeaks;
+		double L, G;
+		for (int i=0;i<NrPixels;i++){
+			IntPeaks = 0;
+			for (int j=0;j<nPeaks;j++){
+				L = 1/(((((REtaZ[i*3]-x[(8*j)+2])*(REtaZ[i*3]-x[(8*j)+2]))/((x[(8*j)+6])*(x[(8*j)+6])))+1)*((((REtaZ[i*3+1]-x[(8*j)+3])*(REtaZ[i*3+1]-x[(8*j)+3]))/((x[(8*j)+8])*(x[(8*j)+8])))+1));
+				G = exp(-(0.5*(((REtaZ[i*3]-x[(8*j)+2])*(REtaZ[i*3]-x[(8*j)+2]))/(x[(8*j)+5]*x[(8*j)+5])))-(0.5*(((REtaZ[i*3+1]-x[(8*j)+3])*(REtaZ[i*3+1]-x[(8*j)+3]))/(x[(8*j)+7]*x[(8*j)+7]))));
+				IntPeaks += x[(8*j)+1]*((x[(8*j)+4]*L) + ((1-x[(8*j)+4])*G));
+			}
+			CalcIntensity = BG + IntPeaks;
+			TotalDifferenceIntensity += (CalcIntensity - REtaZ[i*3+2])*(CalcIntensity - REtaZ[i+3+2]);
+		}
+		return TotalDifferenceIntensity;*/
 	}
-	return TotalDifferenceIntensity;
 }
 
 __global__ void Fit2DPeaks (int *PkPx, double *yzInt, double *MaximaInfo, 
 	double *ReturnMatrix, int *PosnPeaks, int *PosnPixels, double *ExtraInfo, 
-	double *ThreshInfo, double *xDevice, double *xlDevice, double *xuDevice, double *REtaIntDevice){
+	double *ThreshInfo, double *xDevice, double *xlDevice, double *xuDevice, double *REtaIntDevice,
+	double *resultsmat){
 	int RegNr = blockIdx.x * blockDim.x + threadIdx.x;
 	if (RegNr >= (int)ExtraInfo[0]) return;
 	int nPeaks = PkPx[RegNr*2];
@@ -871,7 +900,8 @@ __global__ void Fit2DPeaks (int *PkPx, double *yzInt, double *MaximaInfo,
 	}
 	double Thresh = ThreshInfo[RegNr];
 	unsigned n = 1 + (8*nPeaks);
-	double *yzIntThis, *MaximaInfoThis, *ReturnMatrixThis ;
+	double *yzIntThis, *MaximaInfoThis, *ReturnMatrixThis, *resultsThis;
+	resultsThis = resultsmat + PosnPixels[RegNr];
 	yzIntThis = &yzInt[PosnPixels[RegNr]*3]; // NrPixels, can be used for REtaDevice
 	MaximaInfoThis = &MaximaInfo[PosnPeaks[RegNr]*3]; // nPeaks this can be used for ReturnMatrix, x, xl, xu
 	ReturnMatrixThis = &ReturnMatrix[PosnPeaks[RegNr]*8];
@@ -928,6 +958,7 @@ __global__ void Fit2DPeaks (int *PkPx, double *yzInt, double *MaximaInfo,
 	struct func_data f_data;
 	f_data.NrPixels = NrPixelsThisRegion;
 	f_data.RsEtasZ = RetaInt;
+	f_data.results = resultsThis;
 	struct func_data *f_datat;
 	f_datat = &f_data;
 	void *trp = (struct func_data *)  f_datat;
@@ -981,7 +1012,8 @@ int totalPeaks)
 	cudaMalloc((int **) &PosyzIntDevice, TotNrRegions*sizeof(int));
 	cudaMemcpy(PosyzIntDevice,PosyzInt,TotNrRegions*sizeof(int),cudaMemcpyHostToDevice);
 	double ExtraInfo[3] = {(double)TotNrRegions,YZCen[0],YZCen[1]};
-	double *yzIntDevice, *MaximaInfoDevice, *ReturnMatrixDevice, *ExtraInfoDevice, *ThreshInfoDevice, *xDevice, *xlDevice, *xuDevice, *REtaIntDevice;
+	double *yzIntDevice, *MaximaInfoDevice, *ReturnMatrixDevice, *ExtraInfoDevice,
+		*ThreshInfoDevice, *xDevice, *xlDevice, *xuDevice, *REtaIntDevice, *resultsmat;
 	cudaMalloc((double **)&yzIntDevice, totalPixels*3*sizeof(double));
 	cudaMemcpy(yzIntDevice,yzInt,totalPixels*3*sizeof(double),cudaMemcpyHostToDevice);
 	cudaMalloc((double **)&MaximaInfoDevice, totalPeaks*3*sizeof(double));
@@ -995,13 +1027,14 @@ int totalPeaks)
 	cudaMalloc((double **)&xlDevice,(totalPeaks*8+TotNrRegions)*sizeof(double));
 	cudaMalloc((double **)&xuDevice,(totalPeaks*8+TotNrRegions)*sizeof(double));
 	cudaMalloc((double **)&REtaIntDevice,totalPixels*3*sizeof(double));
+	cudaMalloc((double **)&resultsmat,totalPixels*sizeof(double));
 	int dim = TotNrRegions;
 	dim3 block (256);
 	dim3 grid ((dim/block.x)+1);
 	Fit2DPeaks<<<grid,block>>>(PkPxDevice,yzIntDevice, MaximaInfoDevice, 
 		ReturnMatrixDevice, PosMaxInfoRetMatDevice, PosyzIntDevice, 
 		ExtraInfoDevice, ThreshInfoDevice, xDevice, xlDevice, xuDevice, 
-		REtaIntDevice);
+		REtaIntDevice, resultsmat);
 	CHECK(cudaPeekAtLastError());
 	CHECK(cudaDeviceSynchronize());
 	cudaMemcpy(ReturnMatrix,ReturnMatrixDevice,totalPeaks*8*sizeof(double),cudaMemcpyDeviceToHost);
