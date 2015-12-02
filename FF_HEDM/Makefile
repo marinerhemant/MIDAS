@@ -1,6 +1,6 @@
 CC=gcc
 NCC=nvcc
-NCFLAGS=-w -arch sm_52 -lm -rdc=true # -res-usage
+NCFLAGS=-G -g -w -arch sm_52 -lm -rdc=true # -res-usage
 CFLAGS=-fPIC -ldl -lm -finline-functions -O3 -w
 NLOPT=""
 ifneq ($(NLOPT),"")
@@ -81,6 +81,9 @@ processgrains: $(SRCDIR)ProcessGrains.c
 
 indexercuda: $(SRCDIR)Indexer.cu
 	$(NCC) $(SRCDIR)Indexer.cu -o $(BINDIR)Indexer $(NCFLAGS)
+
+indexrefinecuda: $(SRCDIR)IndexerRefine.cu
+	$(NCC) $(SRCDIR)IndexerRefine.cu -o $(BINDIR)IndexRefine $(NCFLAGS)
 
 peakscuda: $(SRCDIR)Peaks.cu
 	$(NCC) $(SRCDIR)Peaks.cu -o $(BINDIR)Peaks $(NCFLAGS)
