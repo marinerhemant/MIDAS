@@ -88,6 +88,9 @@ indexrefinecuda: $(SRCDIR)IndexerRefine.cu
 peakscuda: $(SRCDIR)Peaks.cu
 	$(NCC) $(SRCDIR)Peaks.cu -o $(BINDIR)Peaks $(NCFLAGS)
 
+peaksnlmd: $(SRCDIR)PeaksNLMD.cu
+	$(NCC) $(SRCDIR)PeaksNLMD.cu -o $(BINDIR)PeaksNLMD $(NCFLAGS)
+
 mergeoverlapsgpu: $(SRCDIR)MergeOverlappingPeaksGPU.c
 	$(CC) $(SRCDIR)MergeOverlappingPeaksGPU.c -o $(BINDIR)MergeOverlaps $(CFLAGS)
 
