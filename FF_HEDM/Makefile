@@ -16,7 +16,7 @@ all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting 
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains indexercuda peakscuda \
 	fitposorstrainscuda mergeoverlapsgpu
 
-cuda: help indexercuda peakscuda fitposorstrainscuda mergeoverlapsgpu fittiltbclsdsample \
+cuda: help indexercuda peaks mergeoverlapsgpu fittiltbclsdsample \
 	calcradius mergerings processgrains hkls bindata calibrant findsaturatedpx fittiltx fitwedge
 
 bindircheck:
@@ -86,13 +86,10 @@ indexrefinecuda: $(SRCDIR)IndexerRefine.cu
 	$(NCC) $(SRCDIR)IndexerRefine.cu -o $(BINDIR)IndexRefine $(NCFLAGS)
 
 peaks: $(SRCDIR)PeaksNLMD.cu
-	$(NCC) $(SRCDIR)PeaksNLMD.cu -o $(BINDIR)PeaksNLMD $(NCFLAGS)
+	$(NCC) $(SRCDIR)PeaksNLMD.cu -o $(BINDIR)Peaks $(NCFLAGS)
 
 mergeoverlapsgpu: $(SRCDIR)MergeOverlappingPeaksGPU.c
 	$(CC) $(SRCDIR)MergeOverlappingPeaksGPU.c -o $(BINDIR)MergeOverlaps $(CFLAGS)
-
-fitposorstrainscuda: $(SRCDIR)FitPosOrStrains.cu
-	$(NCC) $(SRCDIR)FitPosOrStrains.cu -o $(BINDIR)RefineGrains $(NCFLAGS)
 
 clean:
 	rm -rf $(BINDIR)

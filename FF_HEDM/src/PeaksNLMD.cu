@@ -16,9 +16,9 @@
 #define rad2deg 57.2957795130823
 #define MAX_LINE_LENGTH 10240
 #define MAX_N_RINGS 5000
-#define MAX_N_EVALS 10000
+#define MAX_N_EVALS 15000
 #define MAX_N_OVERLAPS 20
-#define nOverlapsMaxPerImage 10000
+#define nOverlapsMaxPerImage 2000
 #define CalcNorm3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
 #define CalcNorm2(x,y) sqrt((x)*(x) + (y)*(y))
 #define CHECK(call){														\
@@ -39,7 +39,8 @@ static inline double acosd(double x){return rad2deg*(acos(x));}
 static inline double atand(double x){return rad2deg*(atan(x));}
 
 //BEGIN NLDRMD FUNCTION
-__device__ void nelmin ( double fn ( int n_fun, double *x, void *data ), int n, double *start, double *xmin, 
+__device__ void nelmin ( double fn ( int n_fun, double *x, void *data ), 
+  int n, double *start, double *xmin, 
   double *lb, double *ub, double *scratch, double *ynewlo, 
   double reqmin, double *step, int konvge, int kcount, 
   int *icount, int *numres, int *ifault, void *data_t)
@@ -649,34 +650,17 @@ __device__ double problem_function(
 	double *REtaZ;
 	REtaZ = &(f_data->RsEtasZ[0]);
 	int nPeaks = (n-1)/8;
-	double BG = x[0];
-	int nPkPx[2] = {nPeaks, NrPixels};
-	
-	if (nPeaks >= 1){
-		double *result;
-		result = &(f_data->results[0]);
-		CalcOnePeak<<<1,NrPixels>>>(x, REtaZ, nPeaks, NrPixels,result);
-		double TotalDifferenceIntensity = 0, CalcIntensity;
-		for (int i=0;i<NrPixels;i++){
-			CalcIntensity = result[i] + BG;
-			TotalDifferenceIntensity += (CalcIntensity - REtaZ[i*3+2])*(CalcIntensity - REtaZ[i+3+2]);
-		}
-		return TotalDifferenceIntensity;
-	}else{
-		double TotalDifferenceIntensity = 0, CalcIntensity, IntPeaks;
-		double L, G;
-		for (int i=0;i<NrPixels;i++){
-			IntPeaks = 0;
-			for (int j=0;j<nPeaks;j++){
-				L = 1/(((((REtaZ[i*3]-x[(8*j)+2])*(REtaZ[i*3]-x[(8*j)+2]))/((x[(8*j)+6])*(x[(8*j)+6])))+1)*((((REtaZ[i*3+1]-x[(8*j)+3])*(REtaZ[i*3+1]-x[(8*j)+3]))/((x[(8*j)+8])*(x[(8*j)+8])))+1));
-				G = exp(-(0.5*(((REtaZ[i*3]-x[(8*j)+2])*(REtaZ[i*3]-x[(8*j)+2]))/(x[(8*j)+5]*x[(8*j)+5])))-(0.5*(((REtaZ[i*3+1]-x[(8*j)+3])*(REtaZ[i*3+1]-x[(8*j)+3]))/(x[(8*j)+7]*x[(8*j)+7]))));
-				IntPeaks += x[(8*j)+1]*((x[(8*j)+4]*L) + ((1-x[(8*j)+4])*G));
-			}
-			CalcIntensity = BG + IntPeaks;
-			TotalDifferenceIntensity += (CalcIntensity - REtaZ[i*3+2])*(CalcIntensity - REtaZ[i+3+2]);
-		}
-		return TotalDifferenceIntensity;
+	double *result;
+	result = &(f_data->results[0]);
+	//dim3 block (512);
+	//dim3 grid ((NrPixels/block.x)+1);
+	CalcOnePeak<<<1,NrPixels>>>(x, REtaZ, nPeaks, NrPixels,result);
+	long double TotalDifferenceIntensity = 0, CalcIntensity;
+	for (int i=0;i<NrPixels;i++){
+		CalcIntensity = result[i] + x[0];
+		TotalDifferenceIntensity += (CalcIntensity - REtaZ[i*3+2])*(CalcIntensity - REtaZ[i+3+2]);
 	}
+	return TotalDifferenceIntensity;
 }
 
 __global__ void Fit2DPeaks (int *PkPx, double *yzInt, double *MaximaInfo, 
@@ -692,11 +676,9 @@ __global__ void Fit2DPeaks (int *PkPx, double *yzInt, double *MaximaInfo,
 	int n = 1 + (8*nPeaks);
 	double *yzIntThis, *MaximaInfoThis, *ReturnMatrixThis, *resultsThis;
 	resultsThis = resultsmat + PosnPixels[RegNr];
-	yzIntThis = &yzInt[PosnPixels[RegNr]*3]; // NrPixels, can be used for REtaDevice
-	MaximaInfoThis = &MaximaInfo[PosnPeaks[RegNr]*3]; // nPeaks this can be used for ReturnMatrix, x, xl, xu
-	ReturnMatrixThis = &ReturnMatrix[PosnPeaks[RegNr]*8];
-	// Anything dependent on nPeaks is in PosnPeaks[RegNr] & anything dependent on nrPixels is in PosnPixels[RegNr]
-	// ExtraInfo - TotalNrRegions, YCen, ZCen
+	yzIntThis = yzInt+ PosnPixels[RegNr]*3;
+	MaximaInfoThis = MaximaInfo + PosnPeaks[RegNr]*3;
+	ReturnMatrixThis = ReturnMatrix + PosnPeaks[RegNr]*8;
 	double *x,*xl,*xu, *RetaInt, *REtaZ, *xstep, *xout;
 	int Posxlu = PosnPeaks[RegNr] * 8 + RegNr;
 	int Posreta = PosnPixels[RegNr]*3;
@@ -762,9 +744,18 @@ __global__ void Fit2DPeaks (int *PkPx, double *yzInt, double *MaximaInfo,
     int konvge = 10;
     int kcount = MAX_N_EVALS;
     int icount, numres, ifault;
-	nelmin(problem_function, n, x, xout, xl, xu, scratchArr, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp);
-	if (ifault !=0) printf("%d %d %d %d\n",icount,numres,ifault,nPeaks);
 	double IntPeaks, L, G, BGToAdd;
+	for (int j=0;j<nPeaks;j++){
+		ReturnMatrixThis[j*8] = 0;
+		for (i=0;i<NrPixelsThisRegion;i++){
+			L = 1/(((((REtaZ[i*3]-x[(8*j)+2])*(REtaZ[i*3]-x[(8*j)+2]))/((x[(8*j)+6])*(x[(8*j)+6])))+1)*((((REtaZ[i*3+1]-x[(8*j)+3])*(REtaZ[i*3+1]-x[(8*j)+3]))/((x[(8*j)+8])*(x[(8*j)+8])))+1));
+			G = exp(-(0.5*(((REtaZ[i*3]-x[(8*j)+2])*(REtaZ[i*3]-x[(8*j)+2]))/(x[(8*j)+5]*x[(8*j)+5])))-(0.5*(((REtaZ[i*3+1]-x[(8*j)+3])*(REtaZ[i*3+1]-x[(8*j)+3]))/(x[(8*j)+7]*x[(8*j)+7]))));
+			IntPeaks = x[(8*j)+1]*((x[(8*j)+4]*L) + ((1-x[(8*j)+4])*G));
+			BGToAdd = x[0];
+			ReturnMatrixThis[j*8] += (BGToAdd + IntPeaks);
+		}
+	}
+	nelmin(problem_function, n, x, xout, xl, xu, scratchArr, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp);
 	x = xout;
 	for (int j=0;j<nPeaks;j++){
 		ReturnMatrixThis[j*8] = 0;
@@ -772,8 +763,6 @@ __global__ void Fit2DPeaks (int *PkPx, double *yzInt, double *MaximaInfo,
 			L = 1/(((((REtaZ[i*3]-x[(8*j)+2])*(REtaZ[i*3]-x[(8*j)+2]))/((x[(8*j)+6])*(x[(8*j)+6])))+1)*((((REtaZ[i*3+1]-x[(8*j)+3])*(REtaZ[i*3+1]-x[(8*j)+3]))/((x[(8*j)+8])*(x[(8*j)+8])))+1));
 			G = exp(-(0.5*(((REtaZ[i*3]-x[(8*j)+2])*(REtaZ[i*3]-x[(8*j)+2]))/(x[(8*j)+5]*x[(8*j)+5])))-(0.5*(((REtaZ[i*3+1]-x[(8*j)+3])*(REtaZ[i*3+1]-x[(8*j)+3]))/(x[(8*j)+7]*x[(8*j)+7]))));
 			IntPeaks = x[(8*j)+1]*((x[(8*j)+4]*L) + ((1-x[(8*j)+4])*G));
-			//if (IntPeaks > x[0]) BGToAdd = x[0];
-			//else BGToAdd = 0;
 			BGToAdd = x[0];
 			ReturnMatrixThis[j*8] += (BGToAdd + IntPeaks);
 		}
@@ -792,10 +781,6 @@ double *ReturnMatrix, int TotNrRegions, double *YZCen, double *ThreshInfo,
 int *PosMaximaInfoReturnMatrix, int *PosyzInt, int totalPixels, 
 int totalPeaks)
 {
-	cudaDeviceProp deviceProp;
-    cudaGetDeviceProperties(&deviceProp,0);
-    size_t gpuGlobalMem = deviceProp.totalGlobalMem;
-    fprintf(stderr, "GPU global memory = %zu MBytes\n", gpuGlobalMem/(1024*1024));
     size_t freeMem, totalMem;
     cudaMemGetInfo(&freeMem, &totalMem);
     fprintf(stderr, "Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
@@ -840,8 +825,6 @@ int totalPeaks)
 		REtaIntDevice, resultsmat,scratch, xStepArr, xoutDevice);
 	CHECK(cudaPeekAtLastError());
 	CHECK(cudaDeviceSynchronize());
-    cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMemcpy(ReturnMatrix,ReturnMatrixDevice,totalPeaks*8*sizeof(double),cudaMemcpyDeviceToHost);
 	cudaFree(PkPxDevice);
 	cudaFree(PosMaxInfoRetMatDevice);
@@ -860,6 +843,8 @@ int totalPeaks)
 	cudaFree(REtaIntDevice);
 	cudaFree(resultsmat);
 	CHECK(cudaDeviceSynchronize());
+    cudaMemGetInfo(&freeMem, &totalMem);
+    fprintf(stderr, "Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 }
 
 double cpuSecond(){
@@ -1380,9 +1365,7 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 		Transposer(ImgCorrBCTemp,NrPixels,ImgCorrBC);
 		for (i=0;i<NrPixels*NrPixels;i++){
 			ImgCorrBC[i] = (ImgCorrBC[i] - dark[NrPixels*NrPixels*(CurrentFileNr-StartFileNr) + i])/flood[i];
-			//printf("%lf ", ImgCorrBC[i]);
 			ImgCorrBC[i] = ImgCorrBC[i]*bc/beamcurr;
-			//printf("%lf\n", ImgCorrBC[i]);
 			if (GoodCoords[i] == 0){
 				ImgCorrBC[i] = 0;
 				continue;
@@ -1439,13 +1422,9 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 			unsigned nPeaks;
 			nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,
 				MaximaPositions,MaximaValues,&IsSaturated,IntSat);
-			if (IsSaturated == 1){ //Saturated peaks removed
+			if (IsSaturated == 1){
 				TotNrRegions--;
 				continue;
-			}
-			if (nPeaks > MAX_N_OVERLAPS){
-				printf("Please recompile the code by setting MAX_N_OVERLAPS higher. Right now it is %d. Exiting.\n",MAX_N_OVERLAPS);
-				return (1);
 			}
 			nPeaksNrPixels[counter*2] = nPeaks;
 			nPeaksNrPixels[counter*2+1] = NrPixelsThisRegion;
