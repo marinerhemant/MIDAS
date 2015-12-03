@@ -1,0 +1,28 @@
+ParFilePath /home/beams/S1IDUSER/new_data/park_aug15/park_aug15_FF.par
+ParFileColBeamCurrent 29
+RingThresh 3 200
+RingThresh 4 200
+RingThresh 5 200
+RingThresh 6 200
+FileStem OMC_Cu
+StartFileNr 254
+NrFilesPerSweep 6
+NumDarkBegin 0
+NumDarkEnd 0
+OmegaOffset 0
+BeamCurrent 1370
+Width 3000
+px 200
+ImTransOpt 0
+DoFullImage 0
+RawFolder /home/beams/S1IDUSER/mnt/s1c/park_aug15/ge
+Folder /home/beams12/S1IDUSER/opt/MIDAS/FF_HEDM/Example/Peaks/
+Dark /home/beams/S1IDUSER/mnt/s1c/park_aug15/ge/CeO2_00245.ge3
+#Flood
+BC 1025.2285727336 1022.1266864757
+UpperBoundThreshold 12000
+LayerNr 1
+NrPixels 2048
+Padding 5
+#SingleFrameNumber
+Ext .ge3
