@@ -16,7 +16,7 @@
 #define rad2deg 57.2957795130823
 #define MAX_LINE_LENGTH 10240
 #define MAX_N_RINGS 5000
-#define MAX_N_EVALS 55000
+#define MAX_N_EVALS 15000
 #define MAX_N_OVERLAPS 20
 #define nOverlapsMaxPerImage 10000
 #define CalcNorm3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
@@ -791,34 +791,82 @@ int totalPeaks)
     fprintf(stderr, "Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	int *PkPxDevice,*PosMaxInfoRetMatDevice,*PosyzIntDevice;
 	cudaMalloc((int **) &PkPxDevice, TotNrRegions*2*sizeof(int));
+	CHECK(cudaPeekAtLastError());
+    cudaMemGetInfo(&freeMem, &totalMem);
+    fprintf(stderr, "PkPxDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMemcpy(PkPxDevice,nPeaksNrPixels,TotNrRegions*2*sizeof(int),cudaMemcpyHostToDevice);
 	cudaMalloc((int **) &PosMaxInfoRetMatDevice, TotNrRegions*sizeof(int));
+	CHECK(cudaPeekAtLastError());
+    cudaMemGetInfo(&freeMem, &totalMem);
+    fprintf(stderr, "PosMaxInfoRetMatDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMemcpy(PosMaxInfoRetMatDevice,PosMaximaInfoReturnMatrix,TotNrRegions*sizeof(int),cudaMemcpyHostToDevice);
 	cudaMalloc((int **) &PosyzIntDevice, TotNrRegions*sizeof(int));
+	CHECK(cudaPeekAtLastError());
+    cudaMemGetInfo(&freeMem, &totalMem);
+    fprintf(stderr, "PosyzIntDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMemcpy(PosyzIntDevice,PosyzInt,TotNrRegions*sizeof(int),cudaMemcpyHostToDevice);
 	double ExtraInfo[3] = {(double)TotNrRegions,YZCen[0],YZCen[1]};
 	double *yzIntDevice, *MaximaInfoDevice, *ReturnMatrixDevice, *ExtraInfoDevice,
 		*ThreshInfoDevice, *xDevice, *xlDevice, *xuDevice, *REtaIntDevice, *resultsmat,
 		*scratch, *xStepArr, *xoutDevice;
 	cudaMalloc((double **)&yzIntDevice, totalPixels*3*sizeof(double));
+	CHECK(cudaPeekAtLastError());
+    cudaMemGetInfo(&freeMem, &totalMem);
+    fprintf(stderr, "yzIntDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMemcpy(yzIntDevice,yzInt,totalPixels*3*sizeof(double),cudaMemcpyHostToDevice);
 	cudaMalloc((double **)&MaximaInfoDevice, totalPeaks*3*sizeof(double));
+	CHECK(cudaPeekAtLastError());
+    cudaMemGetInfo(&freeMem, &totalMem);
+    fprintf(stderr, "MaximaInfoDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMemcpy(MaximaInfoDevice,MaximaInfo,totalPeaks*3*sizeof(double),cudaMemcpyHostToDevice);
 	cudaMalloc((double **)&ReturnMatrixDevice, totalPeaks*8*sizeof(double));
+	CHECK(cudaPeekAtLastError());
+    cudaMemGetInfo(&freeMem, &totalMem);
+    fprintf(stderr, "ReturnMatrixDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMalloc((double **)&ThreshInfoDevice, TotNrRegions*sizeof(double));
+	CHECK(cudaPeekAtLastError());
+    cudaMemGetInfo(&freeMem, &totalMem);
+    fprintf(stderr, "ThreshInfoDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMemcpy(ThreshInfoDevice,ThreshInfo,TotNrRegions*sizeof(double),cudaMemcpyHostToDevice);
 	cudaMalloc((double **)&ExtraInfoDevice, 3*sizeof(double));
+	CHECK(cudaPeekAtLastError());
+    cudaMemGetInfo(&freeMem, &totalMem);
+    fprintf(stderr, "ExtraInfoDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMemcpy(ExtraInfoDevice,ExtraInfo,3*sizeof(double),cudaMemcpyHostToDevice);
 	cudaMalloc((double **)&xDevice,(totalPeaks*8+TotNrRegions)*sizeof(double));
+	CHECK(cudaPeekAtLastError());
+    cudaMemGetInfo(&freeMem, &totalMem);
+    fprintf(stderr, "xDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMalloc((double **)&xlDevice,(totalPeaks*8+TotNrRegions)*sizeof(double));
+	CHECK(cudaPeekAtLastError());
+    cudaMemGetInfo(&freeMem, &totalMem);
+    fprintf(stderr, "xlDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMalloc((double **)&xuDevice,(totalPeaks*8+TotNrRegions)*sizeof(double));
+	CHECK(cudaPeekAtLastError());
+    cudaMemGetInfo(&freeMem, &totalMem);
+    fprintf(stderr, "xuDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMalloc((double **)&xStepArr,(totalPeaks*8+TotNrRegions)*sizeof(double));
+	CHECK(cudaPeekAtLastError());
+    cudaMemGetInfo(&freeMem, &totalMem);
+    fprintf(stderr, "xStepArr Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMalloc((double **)&xoutDevice,(totalPeaks*8+TotNrRegions)*sizeof(double));
+	CHECK(cudaPeekAtLastError());
+    cudaMemGetInfo(&freeMem, &totalMem);
+    fprintf(stderr, "xoutDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	int totN = totalPeaks*8 + TotNrRegions;
 	int scratchSpace = (totN+TotNrRegions)*(totN+TotNrRegions) + 2*totN;
 	cudaMalloc((double **)&scratch,scratchSpace*sizeof(double));
+	CHECK(cudaPeekAtLastError());
+    cudaMemGetInfo(&freeMem, &totalMem);
+    fprintf(stderr, "scratch Free = %zu MB, Total = %zu MB, Scratch size: %zuMB\n", freeMem/(1024*1024), totalMem/(1024*1024),scratchSpace*sizeof(double)/(1024*1024));
 	cudaMalloc((double **)&REtaIntDevice,(totalPixels+100)*3*sizeof(double));
+	CHECK(cudaPeekAtLastError());
+    cudaMemGetInfo(&freeMem, &totalMem);
+    fprintf(stderr, "REtaIntDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMalloc((double **)&resultsmat,totalPixels*sizeof(double));
+	CHECK(cudaPeekAtLastError());
+    cudaMemGetInfo(&freeMem, &totalMem);
+    fprintf(stderr, "resultsmat Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	int dim = TotNrRegions;
 	dim3 block (256);
 	dim3 grid ((dim/block.x)+1);
@@ -1295,10 +1343,10 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 	PositionTrackers = (int *) malloc(nOverlapsMaxPerImage*sizeof(*PositionTrackers));
 	int RegNr, IsSaturated;
 	char OutFile[MAX_LINE_LENGTH];
-	int TotNrRegions, NrPixelsThisRegion;
+	int TotNrRegions=0, NrPixelsThisRegion;
 	int *nPeaksNrPixels,*PosyzInt,*PosMaximaInfoReturnMatrix, *RingNumberMatrix;
 	nPeaksNrPixels = (int *) malloc(nOverlapsMaxPerImage*2*sizeof(*nPeaksNrPixels));
-	RingNumberMatrix = (int *) malloc(nOverlapsMaxPerImage * 100 * sizeof(*RingNumberMatrix));
+	RingNumberMatrix = (int *) malloc(nOverlapsMaxPerImage * 200 * sizeof(*RingNumberMatrix));
 	double *yzInt, *MaximaInfo, *ReturnMatrix, *ThreshInfo, *YZCen;
 	yzInt = (double *) malloc(nOverlapsMaxPerImage*3*NrPixels*sizeof(*yzInt));
 	MaximaInfo = (double *) malloc(nOverlapsMaxPerImage*3*100*sizeof(*MaximaInfo));
@@ -1316,6 +1364,15 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 	UsefulPixels = allocMatrixInt(NrPixels*10,2);
 	z = (double *) malloc(NrPixels*10*sizeof(*z));
 	int counter, counteryzInt, counterMaximaInfoReturnMatrix;
+	sprintf(OutFile,"%s/%s_%d_PS.csv",outfoldername,FileStem,LayerNr);
+	FILE *outfilewrite;
+	outfilewrite = fopen(OutFile,"w");
+	fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta RingNr\n");
+	int OldCurrentFileNr=StartFileNr-1;
+	FILE *ImageFile;
+	counter = 0;
+	counteryzInt = 0;
+	counterMaximaInfoReturnMatrix = 0;
 	while (FrameNr < TotalNrFrames){
 		if (TotalNrFrames == 1){ // Look at the next part
 			/*FrameNr = FrameNumberToDo;
@@ -1340,27 +1397,30 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 				}
 			}
 		}
-		if (Padding == 2){sprintf(FN,"%s/%s_%02d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
-		else if (Padding == 3){sprintf(FN,"%s/%s_%03d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
-		else if (Padding == 4){sprintf(FN,"%s/%s_%04d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
-		else if (Padding == 5){sprintf(FN,"%s/%s_%05d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
-		else if (Padding == 6){sprintf(FN,"%s/%s_%06d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
-		else if (Padding == 7){sprintf(FN,"%s/%s_%07d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
-		else if (Padding == 8){sprintf(FN,"%s/%s_%08d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
-		else if (Padding == 9){sprintf(FN,"%s/%s_%09d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
-		FILE *ImageFile = fopen(FN,"rb");
-		if (ImageFile == NULL){
-			printf("Could not read the input file. Exiting.\n");
-			return 1;
+		if (OldCurrentFileNr !=CurrentFileNr){
+			if (ImageFile != NULL) fclose(ImageFile);
+			if (Padding == 2){sprintf(FN,"%s/%s_%02d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
+			else if (Padding == 3){sprintf(FN,"%s/%s_%03d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
+			else if (Padding == 4){sprintf(FN,"%s/%s_%04d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
+			else if (Padding == 5){sprintf(FN,"%s/%s_%05d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
+			else if (Padding == 6){sprintf(FN,"%s/%s_%06d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
+			else if (Padding == 7){sprintf(FN,"%s/%s_%07d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
+			else if (Padding == 8){sprintf(FN,"%s/%s_%08d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
+			else if (Padding == 9){sprintf(FN,"%s/%s_%09d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
+			ImageFile = fopen(FN,"rb");
+			printf("Read %s file.\n",FN);
+			if (ImageFile == NULL){
+				printf("Could not read the input file. Exiting.\n");
+				return 1;
+			}
+			fseek(ImageFile,0L,SEEK_END);
+			sz = ftell(ImageFile);
+			rewind(ImageFile);
+			Skip = sz - ((NrFramesPerFile[StartFileNr-CurrentFileNr] - NumDarkEnd - FramesToSkip) * 8*1024*1024);
+			fseek(ImageFile,Skip,SEEK_SET);
 		}
-		fseek(ImageFile,0L,SEEK_END);
-		sz = ftell(ImageFile);
-		rewind(ImageFile);
-		Skip = sz - ((NrFramesPerFile[StartFileNr-CurrentFileNr] - NumDarkEnd - FramesToSkip) * 8*1024*1024);
 		printf("Now processing file: %s, Frame: %d\n",FN, FramesToSkip);
-		fseek(ImageFile,Skip,SEEK_SET);
 		fread(Image,SizeFile,1,ImageFile);
-		fclose(ImageFile);
 		DoImageTransformations(NrTransOpt,TransOpt,Image,NrPixels);
 		beamcurr = BeamCurrents[CurrentFileNr - StartFileNr][FramesToSkip];
 		Omega = Omegas[CurrentFileNr - StartFileNr][FramesToSkip];
@@ -1398,21 +1458,13 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 			}
 		}
 		NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
-		if (Padding == 2) {sprintf(OutFile,"%s/%s_%d_%02d_PS.csv",outfoldername,FileStem,LayerNr,FrameNr);}
-		else if (Padding == 3) {sprintf(OutFile,"%s/%s_%d_%03d_PS.csv",outfoldername,FileStem,LayerNr,FrameNr);}
-		else if (Padding == 4) {sprintf(OutFile,"%s/%s_%d_%04d_PS.csv",outfoldername,FileStem,LayerNr,FrameNr);}
-		else if (Padding == 5) {sprintf(OutFile,"%s/%s_%d_%05d_PS.csv",outfoldername,FileStem,LayerNr,FrameNr);}
-		else if (Padding == 6) {sprintf(OutFile,"%s/%s_%d_%06d_PS.csv",outfoldername,FileStem,LayerNr,FrameNr);}
-		else if (Padding == 7) {sprintf(OutFile,"%s/%s_%d_%07d_PS.csv",outfoldername,FileStem,LayerNr,FrameNr);}
-		else if (Padding == 8) {sprintf(OutFile,"%s/%s_%d_%08d_PS.csv",outfoldername,FileStem,LayerNr,FrameNr);}
-		else if (Padding == 9) {sprintf(OutFile,"%s/%s_%d_%09d_PS.csv",outfoldername,FileStem,LayerNr,FrameNr);}
-		FILE *outfilewrite;
-		outfilewrite = fopen(OutFile,"w");
-		fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta RingNr\n");
-		TotNrRegions = NrOfReg;
-		counter = 0;
-		counteryzInt = 0;
-		counterMaximaInfoReturnMatrix = 0;
+		if (FrameNr % 10 == 9){
+			counter = 0;
+			counteryzInt = 0;
+			counterMaximaInfoReturnMatrix = 0;
+			TotNrRegions = 0;
+		}
+		TotNrRegions += NrOfReg;
 		for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 			NrPixelsThisRegion = PositionTrackers[RegNr];
 			if (NrPixelsThisRegion == 1){
@@ -1444,10 +1496,11 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 				MaximaInfo[(counterMaximaInfoReturnMatrix+i)*3 + 0] = MaximaValues[i];
 				MaximaInfo[(counterMaximaInfoReturnMatrix+i)*3 + 1] = (double)MaximaPositions[i][0];
 				MaximaInfo[(counterMaximaInfoReturnMatrix+i)*3 + 2] = (double)MaximaPositions[i][1];
-				RingNumberMatrix[counterMaximaInfoReturnMatrix+i] = RingInfoImage[MaximaPositions[0][0]*NrPixels+MaximaPositions[0][1]];
+				RingNumberMatrix[(counterMaximaInfoReturnMatrix+i)*2+0] = RingInfoImage[MaximaPositions[0][0]*NrPixels+MaximaPositions[0][1]];
+				RingNumberMatrix[(counterMaximaInfoReturnMatrix+i)*2+1] = FrameNr;
 			}
 			for (i=0;i<NrOfRings;i++){
-				if (RingNumbers[i] == RingNumberMatrix[counterMaximaInfoReturnMatrix+i]){
+				if (RingNumbers[i] == RingNumberMatrix[(counterMaximaInfoReturnMatrix+i)*2+0]){
 					Pos = i;
 				}
 			}
@@ -1456,27 +1509,28 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 			counterMaximaInfoReturnMatrix += nPeaks;
 			counter++;
 		}
-		printf("Total number of peaks in the image: %d\n",counterMaximaInfoReturnMatrix);
-		printf("Total number of useful pixels in the image: %d\n",counteryzInt);
-		if (counter != TotNrRegions){
-			printf("Number of regions calculated and observed do not match. Please check.\n");
-			return (1);
+		printf("Total number of peaks in the images: %d\n",counterMaximaInfoReturnMatrix);
+		printf("Total number of useful pixels in the images: %d\n",counteryzInt);
+		if (FrameNr % 10 == 8){
+			printf("Total number of peaks in the images: %d\n",counterMaximaInfoReturnMatrix);
+			printf("Total number of useful pixels in the images: %d\n",counteryzInt);
+			// Now send all info to the GPU calling code
+			CallFit2DPeaks(nPeaksNrPixels, yzInt, MaximaInfo, ReturnMatrix, 
+				TotNrRegions, YZCen, ThreshInfo, PosMaximaInfoReturnMatrix, 
+				PosyzInt, counteryzInt, counterMaximaInfoReturnMatrix);
+			for (i=0;i<counterMaximaInfoReturnMatrix;i++){
+				fprintf(outfilewrite,"%d %f %f %f %f %f %f %f %f %f %d\n",i+1,
+					ReturnMatrix[i*8+0],Omega,ReturnMatrix[i*8+1]+Ycen,
+					ReturnMatrix[i*8+2]+Zcen,ReturnMatrix[i*8+3],
+					ReturnMatrix[i*8+4], ReturnMatrix[i*8+5],
+					ReturnMatrix[i*8+6],ReturnMatrix[i*8+7], RingNumberMatrix[i]);
+			}
+			return;
 		}
-		// Now send all info to the GPU calling code
-		CallFit2DPeaks(nPeaksNrPixels, yzInt, MaximaInfo, ReturnMatrix, 
-			TotNrRegions, YZCen, ThreshInfo, PosMaximaInfoReturnMatrix, 
-			PosyzInt, counteryzInt, counterMaximaInfoReturnMatrix);
-		for (i=0;i<counterMaximaInfoReturnMatrix;i++){
-			fprintf(outfilewrite,"%d %f %f %f %f %f %f %f %f %f %d\n",i+1,
-				ReturnMatrix[i*8+0],Omega,ReturnMatrix[i*8+1]+Ycen,
-				ReturnMatrix[i*8+2]+Zcen,ReturnMatrix[i*8+3],
-				ReturnMatrix[i*8+4], ReturnMatrix[i*8+5],
-				ReturnMatrix[i*8+6],ReturnMatrix[i*8+7], RingNumberMatrix[i]);
-		}
-		fclose(outfilewrite);
+		//fclose(outfilewrite);
 		FrameNr++;
+		OldCurrentFileNr = CurrentFileNr;
 		printf("Time taken till %d frame: %lf seconds.\n",FrameNr, cpuSecond()-tstart);
-		return;
 	}
 	printf("Total time taken: %lf seconds.\n",cpuSecond()-tstart);
 }
