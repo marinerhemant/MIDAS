@@ -745,16 +745,6 @@ __global__ void Fit2DPeaks (int *PkPx, double *yzInt, double *MaximaInfo,
     int kcount = MAX_N_EVALS;
     int icount, numres, ifault;
 	double IntPeaks, L, G, BGToAdd;
-	for (int j=0;j<nPeaks;j++){
-		ReturnMatrixThis[j*8] = 0;
-		for (i=0;i<NrPixelsThisRegion;i++){
-			L = 1/(((((REtaZ[i*3]-x[(8*j)+2])*(REtaZ[i*3]-x[(8*j)+2]))/((x[(8*j)+6])*(x[(8*j)+6])))+1)*((((REtaZ[i*3+1]-x[(8*j)+3])*(REtaZ[i*3+1]-x[(8*j)+3]))/((x[(8*j)+8])*(x[(8*j)+8])))+1));
-			G = exp(-(0.5*(((REtaZ[i*3]-x[(8*j)+2])*(REtaZ[i*3]-x[(8*j)+2]))/(x[(8*j)+5]*x[(8*j)+5])))-(0.5*(((REtaZ[i*3+1]-x[(8*j)+3])*(REtaZ[i*3+1]-x[(8*j)+3]))/(x[(8*j)+7]*x[(8*j)+7]))));
-			IntPeaks = x[(8*j)+1]*((x[(8*j)+4]*L) + ((1-x[(8*j)+4])*G));
-			BGToAdd = x[0];
-			ReturnMatrixThis[j*8] += (BGToAdd + IntPeaks);
-		}
-	}
 	nelmin(problem_function, n, x, xout, xl, xu, scratchArr, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp);
 	x = xout;
 	for (int j=0;j<nPeaks;j++){
