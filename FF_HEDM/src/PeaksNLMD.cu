@@ -16,9 +16,9 @@
 #define rad2deg 57.2957795130823
 #define MAX_LINE_LENGTH 10240
 #define MAX_N_RINGS 5000
-#define MAX_N_EVALS 15000
+#define MAX_N_EVALS 55000
 #define MAX_N_OVERLAPS 20
-#define nOverlapsMaxPerImage 2000
+#define nOverlapsMaxPerImage 10000
 #define CalcNorm3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
 #define CalcNorm2(x,y) sqrt((x)*(x) + (y)*(y))
 #define CHECK(call){														\
@@ -627,7 +627,7 @@ __device__ double CalcEtaAngle(double y, double z){
 	return alph;
 }
 
-__global__ void CalcOnePeak(const double *x, double *REtaZ, int nPeaks, int NrPixels, double *result){
+__global__ void CalcOnePixel(const double *x, double *REtaZ, int nPeaks, int NrPixels, double *result){
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	if (i >= NrPixels) return;
 	double L, G;
@@ -650,16 +650,30 @@ __device__ double problem_function(
 	double *REtaZ;
 	REtaZ = &(f_data->RsEtasZ[0]);
 	int nPeaks = (n-1)/8;
-	double *result;
+	double TotalDifferenceIntensity=0, CalcIntensity, L, G, IntPeaks, BG = x[0];
+	int NrPixelsThisRegion = NrPixels;
+	for (int j=0;j<nPeaks;j++){
+		IntPeaks = 0;
+		for (int i=0;i<NrPixelsThisRegion;i++){
+			L = 1/(((((REtaZ[i*3]-x[(8*j)+2])*(REtaZ[i*3]-x[(8*j)+2]))/((x[(8*j)+6])*(x[(8*j)+6])))+1)*((((REtaZ[i*3+1]-x[(8*j)+3])*(REtaZ[i*3+1]-x[(8*j)+3]))/((x[(8*j)+8])*(x[(8*j)+8])))+1));
+			G = exp(-(0.5*(((REtaZ[i*3]-x[(8*j)+2])*(REtaZ[i*3]-x[(8*j)+2]))/(x[(8*j)+5]*x[(8*j)+5])))-(0.5*(((REtaZ[i*3+1]-x[(8*j)+3])*(REtaZ[i*3+1]-x[(8*j)+3]))/(x[(8*j)+7]*x[(8*j)+7]))));
+			IntPeaks += x[(8*j)+1]*((x[(8*j)+4]*L) + ((1-x[(8*j)+4])*G));
+		}
+		CalcIntensity = BG + IntPeaks;
+		TotalDifferenceIntensity += (CalcIntensity - REtaZ[j*3+2])*(CalcIntensity - REtaZ[j+3+2]);
+	}
+	
+	/*double *result;
 	result = &(f_data->results[0]);
 	//dim3 block (512);
 	//dim3 grid ((NrPixels/block.x)+1);
-	CalcOnePeak<<<1,NrPixels>>>(x, REtaZ, nPeaks, NrPixels,result);
+	CalcOnePixel<<<1,NrPixels>>>(x, REtaZ, nPeaks, NrPixels,result);
+	cudaDeviceSynchronize();
 	long double TotalDifferenceIntensity = 0, CalcIntensity;
 	for (int i=0;i<NrPixels;i++){
 		CalcIntensity = result[i] + x[0];
 		TotalDifferenceIntensity += (CalcIntensity - REtaZ[i*3+2])*(CalcIntensity - REtaZ[i+3+2]);
-	}
+	}*/
 	return TotalDifferenceIntensity;
 }
 
@@ -740,12 +754,13 @@ __global__ void Fit2DPeaks (int *PkPx, double *yzInt, double *MaximaInfo,
 	f_datat = &f_data;
 	void *trp = (struct func_data *)  f_datat;
 	double minf;
-    double reqmin = 1;
+    double reqmin = 1e-8;
     int konvge = 10;
     int kcount = MAX_N_EVALS;
     int icount, numres, ifault;
 	double IntPeaks, L, G, BGToAdd;
 	nelmin(problem_function, n, x, xout, xl, xu, scratchArr, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp);
+	if (ifault !=0) printf("%d %d %d %d %d %d\n",RegNr,icount,numres,ifault,nPeaks,NrPixelsThisRegion);
 	x = xout;
 	for (int j=0;j<nPeaks;j++){
 		ReturnMatrixThis[j*8] = 0;
@@ -1461,6 +1476,7 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 		fclose(outfilewrite);
 		FrameNr++;
 		printf("Time taken till %d frame: %lf seconds.\n",FrameNr, cpuSecond()-tstart);
+		return;
 	}
 	printf("Total time taken: %lf seconds.\n",cpuSecond()-tstart);
 }
