@@ -662,18 +662,6 @@ __device__ double problem_function(
 		CalcIntensity = BG + IntPeaks;
 		TotalDifferenceIntensity += (CalcIntensity - REtaZ[j*3+2])*(CalcIntensity - REtaZ[j+3+2]);
 	}
-	
-	/*double *result;
-	result = &(f_data->results[0]);
-	//dim3 block (512);
-	//dim3 grid ((NrPixels/block.x)+1);
-	CalcOnePixel<<<1,NrPixels>>>(x, REtaZ, nPeaks, NrPixels,result);
-	cudaDeviceSynchronize();
-	long double TotalDifferenceIntensity = 0, CalcIntensity;
-	for (int i=0;i<NrPixels;i++){
-		CalcIntensity = result[i] + x[0];
-		TotalDifferenceIntensity += (CalcIntensity - REtaZ[i*3+2])*(CalcIntensity - REtaZ[i+3+2]);
-	}*/
 	return TotalDifferenceIntensity;
 }
 
