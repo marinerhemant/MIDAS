@@ -1412,7 +1412,7 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
     cudaGetDeviceProperties(&deviceProp, 0);
     int nCores = getSPcores(deviceProp);
     printf("Cuda Cores: %d\n",nCores);
-    int nJobsLast, nJobsNow=0, resetArrays=1, blocksize = 256, nBad=0;
+    int nJobsLast, nJobsNow=0, resetArrays=1, blocksize = 256, nBad=0, totalPeaks=0;
 	while (FrameNr < TotalNrFrames){
 		if (TotalNrFrames == 1){ // Look at the next part
 			/*FrameNr = FrameNumberToDo;
@@ -1552,15 +1552,16 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 			counterMaximaInfoReturnMatrix += nPeaks;
 			counter++;
 		}
-		nJobsNow = counterMaximaInfoReturnMatrix;
+		nJobsNow = TotNrRegions;
+		totalPeaks += counterMaximaInfoReturnMatrix;
 		nJobsLast = nJobsNow - nJobsLast;
-		printf("Time taken till %d frame: %lf seconds.\n",FrameNr, cpuSecond()-tstart);
-		printf("Total number of peaks in the images since CUDA run: %d\n",counterMaximaInfoReturnMatrix);
-		printf("Total number of useful pixels in the images since CUDA run: %d\n",counteryzInt);
+		//printf("Time taken till %d frame: %lf seconds.\n",FrameNr, cpuSecond()-tstart);
+		//printf("Total number of peaks in the images since CUDA run: %d\n",counterMaximaInfoReturnMatrix);
+		//printf("Total number of useful pixels in the images since CUDA run: %d\n",counteryzInt);
 		fflush(stdout);
 		resetArrays = 0;
 		if (nJobsNow + 2*nJobsLast + blocksize >= nCores || FrameNr == TotalNrFrames-1){
-		    printf("Starting CUDA job with %d jobs at %d frameNr.\n",nJobsNow, FrameNr);
+		    printf("Starting CUDA job with %d jobs at %d frameNr. CUDA Cores: %d\n",nJobsNow, FrameNr, nCores);
 			printf("Total number of peaks for CUDA run: %d\n",counterMaximaInfoReturnMatrix);
 			printf("Total number of useful pixels for CUDA run: %d\n",counteryzInt);
 			// Now send all info to the GPU calling code
@@ -1578,7 +1579,7 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 				    nBad++;
                 }
 			}
-			printf("Time taken till %d frame: %lf seconds, bad peaks= %d out of %d peaks.\n",FrameNr, cpuSecond()-tstart, nBad, counterMaximaInfoReturnMatrix);
+			printf("Time taken till %d frame: %lf seconds, bad peaks= %d out of %d peaks.\n",FrameNr, cpuSecond()-tstart, nBad, totalPeaks);
 			resetArrays = 1;
 		}
 		FrameNr++;
