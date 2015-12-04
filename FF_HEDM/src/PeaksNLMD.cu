@@ -1452,8 +1452,6 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 				printf("Could not read the input file. Exiting.\n");
 				return 1;
 			}
-			printf("Read %s file.\n",FN);
-			fflush(stdout);
 			fseek(ImageFile,0L,SEEK_END);
 			sz = ftell(ImageFile);
 			rewind(ImageFile);
@@ -1555,9 +1553,6 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 		nJobsNow = TotNrRegions;
 		totalPeaks += counterMaximaInfoReturnMatrix;
 		nJobsLast = nJobsNow - nJobsLast;
-		//printf("Time taken till %d frame: %lf seconds.\n",FrameNr, cpuSecond()-tstart);
-		//printf("Total number of peaks in the images since CUDA run: %d\n",counterMaximaInfoReturnMatrix);
-		//printf("Total number of useful pixels in the images since CUDA run: %d\n",counteryzInt);
 		fflush(stdout);
 		resetArrays = 0;
 		if (nJobsNow + 2*nJobsLast + blocksize >= nCores || FrameNr == TotalNrFrames-1){
