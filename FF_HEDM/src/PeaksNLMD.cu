@@ -1330,7 +1330,8 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 	int *nPeaksNrPixels,*PosyzInt,*PosMaximaInfoReturnMatrix, *RingNumberMatrix;
 	nPeaksNrPixels = (int *) malloc(nOverlapsMaxPerImage*2*sizeof(*nPeaksNrPixels));
 	RingNumberMatrix = (int *) malloc(nOverlapsMaxPerImage * 200 * sizeof(*RingNumberMatrix));
-	double *yzInt, *MaximaInfo, *ReturnMatrix, *ThreshInfo, *YZCen;
+	double *yzInt, *MaximaInfo, *ReturnMatrix, *ThreshInfo, *YZCen, *OmegaValues;
+	OmegaValues = (double *) malloc(nOverlapsMaxPerImage*100*sizeof(*OmegaValues));
 	yzInt = (double *) malloc(nOverlapsMaxPerImage*3*NrPixels*sizeof(*yzInt));
 	MaximaInfo = (double *) malloc(nOverlapsMaxPerImage*3*100*sizeof(*MaximaInfo));
 	ReturnMatrix = (double *) malloc(nOverlapsMaxPerImage*9*100*sizeof(*ReturnMatrix));
@@ -1361,20 +1362,21 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 	int cudaDeviceNum = atoi(argv[2]);
 	cudaSetDevice(cudaDeviceNum);
 	cudaDeviceProp deviceProp;
-    cudaGetDeviceProperties(&deviceProp, 0);
-    int nCores = getSPcores(deviceProp);
-    printf("Cuda Cores: %d\n",nCores);
-    int nJobsLast, nJobsNow=0, resetArrays=1, blocksize = 256, nBad=0, totalPeaks=0;
-    int *badNPeaksNrPixels, *badPosNPeaks, *badPosNPixels, *badRingNrMatrix;
-    int badCounterNrPixels = 0, badCounterNPeaks = 0;
-    double *badYZInt, *badMaximaInfo, *badThreshInfo;
-    badNPeaksNrPixels = (int *) malloc(nOverlapsMaxPerImage*10*2*sizeof(int));
-    badPosNPeaks = (int *) malloc(nOverlapsMaxPerImage*10*2*sizeof(int));
-    badPosNPixels = (int *) malloc(nOverlapsMaxPerImage*10*2*sizeof(int));
-    badRingNrMatrix = (int *) malloc(nOverlapsMaxPerImage*10*2*sizeof(int));
-    badYZInt = (double *) malloc(nOverlapsMaxPerImage*100*3*NrPixels*sizeof(double));
-    badMaximaInfo = (double *) malloc(nOverlapsMaxPerImage*10*3*sizeof(double));
-    badThreshInfo = (double *) malloc(nOverlapsMaxPerImage*10*sizeof(int));
+	cudaGetDeviceProperties(&deviceProp, 0);
+	int nCores = getSPcores(deviceProp);
+	printf("Cuda Cores: %d\n",nCores);
+	int nJobsLast, nJobsNow=0, resetArrays=1, blocksize = 256, nBad=0, totalPeaks=0;
+	int *badNPeaksNrPixels, *badPosNPeaks, *badPosNPixels, *badRingNrMatrix;
+	int badCounterNrPixels = 0, badCounterNPeaks = 0;
+	double *badYZInt, *badMaximaInfo, *badThreshInfo, *badOmegaValues;
+	badNPeaksNrPixels = (int *) malloc(nOverlapsMaxPerImage*10*2*sizeof(int));
+	badPosNPeaks = (int *) malloc(nOverlapsMaxPerImage*10*2*sizeof(int));
+	badPosNPixels = (int *) malloc(nOverlapsMaxPerImage*10*2*sizeof(int));
+	badRingNrMatrix = (int *) malloc(nOverlapsMaxPerImage*10*2*sizeof(int));
+	badYZInt = (double *) malloc(nOverlapsMaxPerImage*100*3*NrPixels*sizeof(double));
+	badMaximaInfo = (double *) malloc(nOverlapsMaxPerImage*10*3*sizeof(double));
+	badThreshInfo = (double *) malloc(nOverlapsMaxPerImage*10*sizeof(int));
+	badOmegaValues = (double *) malloc(nOverlapsMaxPerImage*100*sizeof(double));
 	int nPeaks, nEvals=MAX_N_EVALS, nEvals2=MAX_N_EVALS*10;
 	while (FrameNr < TotalNrFrames){
 		if (TotalNrFrames == 1){ // Look at the next part
@@ -1501,6 +1503,7 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 				MaximaInfo[(counterMaximaInfoReturnMatrix+i)*3 + 2] = (double)MaximaPositions[i][1];
 				RingNumberMatrix[(counterMaximaInfoReturnMatrix+i)*2+0] = RingInfoImage[MaximaPositions[0][0]*NrPixels+MaximaPositions[0][1]];
 				RingNumberMatrix[(counterMaximaInfoReturnMatrix+i)*2+1] = FrameNr;
+				OmegaValues[counterMaximaInfoReturnMatrix+i] = Omega;
 			}
 			for (i=0;i<NrOfRings;i++){
 				if (RingNumbers[i] == RingNumberMatrix[(counterMaximaInfoReturnMatrix+i)*2+0]){
@@ -1547,6 +1550,7 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 						badMaximaInfo[(badCounterNPeaks+j)*3+2] = MaximaInfo[(PosMaximaInfoReturnMatrix[i]+j)*3+2];
 						badRingNrMatrix[(badCounterNPeaks+j)*2+0] = RingNumberMatrix[(PosMaximaInfoReturnMatrix[i]+j)*2+0];
 						badRingNrMatrix[(badCounterNPeaks+j)*2+1] = RingNumberMatrix[(PosMaximaInfoReturnMatrix[i]+j)*2+1];
+						badOmegaValues[badcounterNPeaks] = OmegaValues[PosMaximaInfoReturnMatrix[i]];
 					}
 					badCounterNrPixels += NrPixelsThisRegion;
 					badCounterNPeaks += nPeaks;
@@ -1556,7 +1560,7 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 			for (i=0;i<counterMaximaInfoReturnMatrix;i++){
 			    if (ReturnMatrix[i*9+8] == 0){
 				    fprintf(outfilewrite,"%d %f %f %f %f %f %f %f %f %f %d %d\n",i+1,
-				    	ReturnMatrix[i*9+0],Omega,ReturnMatrix[i*9+1]+Ycen,
+				    	ReturnMatrix[i*9+0],OmegaValues[i],ReturnMatrix[i*9+1]+Ycen,
 					    ReturnMatrix[i*9+2]+Zcen,ReturnMatrix[i*9+3],
 					    ReturnMatrix[i*9+4], ReturnMatrix[i*9+5],
 					    ReturnMatrix[i*9+6],ReturnMatrix[i*9+7], 
@@ -1575,7 +1579,7 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 				badCounterNrPixels, badCounterNPeaks, blocksize, cudaDeviceNum, nEvals2);
 			for (i=0;i<badCounterNPeaks;i++){
 				fprintf(outfilewrite,"%d %f %f %f %f %f %f %f %f %f %d %d\n",i+1,
-					ReturnMatrix[i*9+0],Omega,ReturnMatrix[i*9+1]+Ycen,
+					ReturnMatrix[i*9+0],badOmegaValues[i],ReturnMatrix[i*9+1]+Ycen,
 					ReturnMatrix[i*9+2]+Zcen,ReturnMatrix[i*9+3],
 					ReturnMatrix[i*9+4], ReturnMatrix[i*9+5],
 					ReturnMatrix[i*9+6],ReturnMatrix[i*9+7], 
