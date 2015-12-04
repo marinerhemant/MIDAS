@@ -791,8 +791,9 @@ __global__ void Fit2DPeaks (int *PkPx, double *yzInt, double *MaximaInfo,
 void CallFit2DPeaks(int *nPeaksNrPixels, double *yzInt, double *MaximaInfo, 
 double *ReturnMatrix, int TotNrRegions, double *YZCen, double *ThreshInfo, 
 int *PosMaximaInfoReturnMatrix, int *PosyzInt, int totalPixels, 
-int totalPeaks, int blocksize)
+int totalPeaks, int blocksize, int cudaDeviceNum)
 {
+    cudaSetDevice(cudaDeviceNum);
     size_t freeMem, totalMem;
     cudaMemGetInfo(&freeMem, &totalMem);
     fprintf(stderr, "Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
@@ -937,8 +938,8 @@ int getSPcores(cudaDeviceProp devProp)
 }
 
 int main(int argc, char *argv[]){ // Arguments: parameter file name
-	if (argc != 2){
-		printf("Not enough arguments, exiting. Use as:\n\t\t%s Parameters.txt\n",argv[0]);
+	if (argc != 3){
+		printf("Not enough arguments, exiting. Use as:\n\t\t%s Parameters.txt cudaDeviceNumber\n",argv[0]);
 		return 1;
 	}
 	//Read params file
@@ -1405,6 +1406,8 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 	counterMaximaInfoReturnMatrix = 0;
 	printf("Starting peaksearch now.\n");
 	fflush(stdout);
+	int cudaDeviceNum = atoi(argv[2]);
+	cudaSetDevice(cudaDeviceNum);
 	cudaDeviceProp deviceProp;
     cudaGetDeviceProperties(&deviceProp, 0);
     int nCores = getSPcores(deviceProp);
@@ -1563,7 +1566,7 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 			// Now send all info to the GPU calling code
 			CallFit2DPeaks(nPeaksNrPixels, yzInt, MaximaInfo, ReturnMatrix, 
 				TotNrRegions, YZCen, ThreshInfo, PosMaximaInfoReturnMatrix, 
-				PosyzInt, counteryzInt, counterMaximaInfoReturnMatrix, blocksize);
+				PosyzInt, counteryzInt, counterMaximaInfoReturnMatrix, blocksize, cudaDeviceNum);
 			for (i=0;i<counterMaximaInfoReturnMatrix;i++){
 			    if (ReturnMatrix[i*9+8] == 0){
 				    fprintf(outfilewrite,"%d %f %f %f %f %f %f %f %f %f %d %d\n",i+1,
