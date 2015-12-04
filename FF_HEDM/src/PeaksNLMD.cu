@@ -783,23 +783,15 @@ int totalPeaks, int blocksize, int cudaDeviceNum)
 {
     cudaSetDevice(cudaDeviceNum);
     size_t freeMem, totalMem;
-    cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	int *PkPxDevice,*PosMaxInfoRetMatDevice,*PosyzIntDevice;
 	cudaMalloc((int **) &PkPxDevice, TotNrRegions*2*sizeof(int));
 	CHECK(cudaPeekAtLastError());
-    cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "PkPxDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMemcpy(PkPxDevice,nPeaksNrPixels,TotNrRegions*2*sizeof(int),cudaMemcpyHostToDevice);
 	cudaMalloc((int **) &PosMaxInfoRetMatDevice, TotNrRegions*sizeof(int));
 	CHECK(cudaPeekAtLastError());
-    cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "PosMaxInfoRetMatDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMemcpy(PosMaxInfoRetMatDevice,PosMaximaInfoReturnMatrix,TotNrRegions*sizeof(int),cudaMemcpyHostToDevice);
 	cudaMalloc((int **) &PosyzIntDevice, TotNrRegions*sizeof(int));
 	CHECK(cudaPeekAtLastError());
-    cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "PosyzIntDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMemcpy(PosyzIntDevice,PosyzInt,TotNrRegions*sizeof(int),cudaMemcpyHostToDevice);
 	double ExtraInfo[3] = {(double)TotNrRegions,YZCen[0],YZCen[1]};
 	double *yzIntDevice, *MaximaInfoDevice, *ReturnMatrixDevice, *ExtraInfoDevice,
@@ -807,67 +799,41 @@ int totalPeaks, int blocksize, int cudaDeviceNum)
 		*scratch, *xStepArr, *xoutDevice;
 	cudaMalloc((double **)&yzIntDevice, totalPixels*3*sizeof(double));
 	CHECK(cudaPeekAtLastError());
-    cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "yzIntDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMemcpy(yzIntDevice,yzInt,totalPixels*3*sizeof(double),cudaMemcpyHostToDevice);
 	cudaMalloc((double **)&MaximaInfoDevice, totalPeaks*3*sizeof(double));
 	CHECK(cudaPeekAtLastError());
-    cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "MaximaInfoDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMemcpy(MaximaInfoDevice,MaximaInfo,totalPeaks*3*sizeof(double),cudaMemcpyHostToDevice);
 	cudaMalloc((double **)&ReturnMatrixDevice, totalPeaks*9*sizeof(double));
 	CHECK(cudaPeekAtLastError());
-    cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "ReturnMatrixDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMalloc((double **)&ThreshInfoDevice, TotNrRegions*sizeof(double));
 	CHECK(cudaPeekAtLastError());
-    cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "ThreshInfoDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMemcpy(ThreshInfoDevice,ThreshInfo,TotNrRegions*sizeof(double),cudaMemcpyHostToDevice);
 	cudaMalloc((double **)&ExtraInfoDevice, 3*sizeof(double));
 	CHECK(cudaPeekAtLastError());
-    cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "ExtraInfoDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMemcpy(ExtraInfoDevice,ExtraInfo,3*sizeof(double),cudaMemcpyHostToDevice);
 	cudaMalloc((double **)&xDevice,(totalPeaks*8+TotNrRegions)*sizeof(double));
 	CHECK(cudaPeekAtLastError());
-    cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "xDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMalloc((double **)&xlDevice,(totalPeaks*8+TotNrRegions)*sizeof(double));
 	CHECK(cudaPeekAtLastError());
-    cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "xlDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMalloc((double **)&xuDevice,(totalPeaks*8+TotNrRegions)*sizeof(double));
 	CHECK(cudaPeekAtLastError());
-    cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "xuDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMalloc((double **)&xStepArr,(totalPeaks*8+TotNrRegions)*sizeof(double));
 	CHECK(cudaPeekAtLastError());
-    cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "xStepArr Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMalloc((double **)&xoutDevice,(totalPeaks*8+TotNrRegions)*sizeof(double));
 	CHECK(cudaPeekAtLastError());
-    cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "xoutDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	int totN = totalPeaks*8 + TotNrRegions;
 	int scratchSpace = (totN+TotNrRegions)*(totN+TotNrRegions) + 2*totN;
 	cudaMalloc((double **)&scratch,scratchSpace*sizeof(double));
 	CHECK(cudaPeekAtLastError());
-    cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "scratch Free = %zu MB, Total = %zu MB, Scratch size: %zuMB\n", freeMem/(1024*1024), totalMem/(1024*1024),scratchSpace*sizeof(double)/(1024*1024));
 	cudaMalloc((double **)&REtaIntDevice,(totalPixels+100)*3*sizeof(double));
 	CHECK(cudaPeekAtLastError());
-    cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "REtaIntDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMalloc((double **)&resultsmat,totalPixels*sizeof(double));
 	CHECK(cudaPeekAtLastError());
-    cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "resultsmat Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	int dim = TotNrRegions;
 	dim3 block (blocksize);
 	dim3 grid ((dim/block.x)+1);
     cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "block size : %d, grid size: %d Free = %zu MB, Total = %zu MB\n", block.x, grid.x, freeMem/(1024*1024), totalMem/(1024*1024));
+    fprintf(stderr, "Block size : %d, grid size: %d Free = %zu MB, Total = %zu MB\n", block.x, grid.x, freeMem/(1024*1024), totalMem/(1024*1024));
     fflush(stdout);
 	Fit2DPeaks<<<grid,block>>>(PkPxDevice,yzIntDevice, MaximaInfoDevice, 
 		ReturnMatrixDevice, PosMaxInfoRetMatDevice, PosyzIntDevice, 
@@ -893,8 +859,6 @@ int totalPeaks, int blocksize, int cudaDeviceNum)
 	cudaFree(REtaIntDevice);
 	cudaFree(resultsmat);
 	CHECK(cudaDeviceSynchronize());
-    cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 }
 
 double cpuSecond(){
