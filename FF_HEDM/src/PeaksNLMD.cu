@@ -1513,12 +1513,12 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 			counter++;
 		}
 		nJobsNow = TotNrRegions;
-		totalPeaks += counterMaximaInfoReturnMatrix;
 		nJobsLast = nJobsNow - nJobsLast;
 		fflush(stdout);
 		resetArrays = 0;
 		if (nJobsNow + nJobsLast + blocksize >= nCores || FrameNr == TotalNrFrames-1){
-		    printf("Starting CUDA job with %d jobs at %d frameNr. CUDA Cores: %d\n",nJobsNow, FrameNr, nCores);
+			totalPeaks += counterMaximaInfoReturnMatrix;
+			printf("Starting CUDA job with %d jobs at %d frameNr. CUDA Cores: %d\n",nJobsNow, FrameNr, nCores);
 			printf("Total number of peaks for CUDA run: %d\n",counterMaximaInfoReturnMatrix);
 			printf("Total number of useful pixels for CUDA run: %d\n",counteryzInt);
 			// Now send all info to the GPU calling code
