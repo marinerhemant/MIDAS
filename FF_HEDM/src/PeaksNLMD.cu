@@ -1570,7 +1570,7 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 			printf("Time taken till %d frame: %lf seconds, bad peaks= %d out of %d peaks.\n",FrameNr, cpuSecond()-tstart, nBad, totalPeaks);
 			resetArrays = 1;
 		}
-		if (badCounterNPeaks +200 > nCores){
+		if (badCounterNPeaks +200 > nCores || FrameNr == TotalNrFrames-1){
 			printf("Starting CUDA job with %d jobs at the end. CUDA Cores: %d\n",nBad, nCores);
 			printf("Total number of peaks for CUDA run: %d\n",badCounterNPeaks);
 			printf("Total number of useful pixels for CUDA run: %d\n",badCounterNrPixels);
