@@ -1566,22 +1566,27 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 			printf("Time taken till %d frame: %lf seconds, bad peaks= %d out of %d peaks.\n",FrameNr, cpuSecond()-tstart, nBad, totalPeaks);
 			resetArrays = 1;
 		}
+		if (badCounterNPeaks +200 > nCores){
+			printf("Starting CUDA job with %d jobs at the end. CUDA Cores: %d\n",nBad, nCores);
+			printf("Total number of peaks for CUDA run: %d\n",badCounterNPeaks);
+			printf("Total number of useful pixels for CUDA run: %d\n",badCounterNrPixels);
+			CallFit2DPeaks(badNPeaksNrPixels, badYZInt, badMaximaInfo, ReturnMatrix,
+				nBad, YZCen, badThreshInfo, badPosNPeaks, badPosNPixels,
+				badCounterNrPixels, badCounterNPeaks, blocksize, cudaDeviceNum, nEvals2);
+			for (i=0;i<badCounterNPeaks;i++){
+				fprintf(outfilewrite,"%d %f %f %f %f %f %f %f %f %f %d %d\n",i+1,
+					ReturnMatrix[i*9+0],Omega,ReturnMatrix[i*9+1]+Ycen,
+					ReturnMatrix[i*9+2]+Zcen,ReturnMatrix[i*9+3],
+					ReturnMatrix[i*9+4], ReturnMatrix[i*9+5],
+					ReturnMatrix[i*9+6],ReturnMatrix[i*9+7], 
+					badRingNrMatrix[i*2],badRingNrMatrix[i*2+1]);
+			}
+			badCounterNrPixels = 0;
+			badCounterNPeaks = 0;
+			nBad = 0;
+		}
 		FrameNr++;
 		OldCurrentFileNr = CurrentFileNr;
-	}
-	printf("Starting CUDA job with %d jobs at the end. CUDA Cores: %d\n",nBad, nCores);
-	printf("Total number of peaks for CUDA run: %d\n",badCounterNPeaks);
-	printf("Total number of useful pixels for CUDA run: %d\n",badCounterNrPixels);
-	CallFit2DPeaks(badNPeaksNrPixels, badYZInt, badMaximaInfo, ReturnMatrix,
-		nBad, YZCen, badThreshInfo, badPosNPeaks, badPosNPixels,
-		badCounterNrPixels, badCounterNPeaks, blocksize, cudaDeviceNum, nEvals2);
-	for (i=0;i<badCounterNPeaks;i++){
-		fprintf(outfilewrite,"%d %f %f %f %f %f %f %f %f %f %d %d\n",i+1,
-	    	ReturnMatrix[i*9+0],Omega,ReturnMatrix[i*9+1]+Ycen,
-		    ReturnMatrix[i*9+2]+Zcen,ReturnMatrix[i*9+3],
-		    ReturnMatrix[i*9+4], ReturnMatrix[i*9+5],
-		    ReturnMatrix[i*9+6],ReturnMatrix[i*9+7], 
-		    badRingNrMatrix[i*2],badRingNrMatrix[i*2+1]);
 	}
 	fclose(outfilewrite);
 	printf("Total time taken: %lf seconds.\n",cpuSecond()-tstart);
