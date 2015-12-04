@@ -16,7 +16,7 @@
 #define rad2deg 57.2957795130823
 #define MAX_LINE_LENGTH 10240
 #define MAX_N_RINGS 5000
-#define MAX_N_EVALS 15000
+#define MAX_N_EVALS 3000
 #define MAX_N_OVERLAPS 20
 #define nOverlapsMaxPerImage 10000
 #define CalcNorm3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
@@ -692,7 +692,7 @@ __global__ void Fit2DPeaks (int *PkPx, double *yzInt, double *MaximaInfo,
 	resultsThis = resultsmat + PosnPixels[RegNr];
 	yzIntThis = yzInt+ PosnPixels[RegNr]*3;
 	MaximaInfoThis = MaximaInfo + PosnPeaks[RegNr]*3;
-	ReturnMatrixThis = ReturnMatrix + PosnPeaks[RegNr]*8;
+	ReturnMatrixThis = ReturnMatrix + PosnPeaks[RegNr]*9;
 	double *x,*xl,*xu, *RetaInt, *REtaZ, *xstep, *xout;
 	int Posxlu = PosnPeaks[RegNr] * 8 + RegNr;
 	int Posreta = PosnPixels[RegNr]*3;
@@ -760,31 +760,38 @@ __global__ void Fit2DPeaks (int *PkPx, double *yzInt, double *MaximaInfo,
     int icount, numres, ifault;
 	double IntPeaks, L, G, BGToAdd;
 	nelmin(problem_function, n, x, xout, xl, xu, scratchArr, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp);
-	if (ifault !=0) printf("%d %d %d %d %d %d\n",RegNr,icount,numres,ifault,nPeaks,NrPixelsThisRegion);
+	if (ifault !=0) {
+	    //printf("%d %d %d %d %d %d\n",RegNr,icount,numres,ifault,nPeaks,NrPixelsThisRegion);
+        for (int j=0;j<nPeaks;j++){
+            ReturnMatrixThis[j*9+8] = 1;
+        }
+        return;
+	}
 	x = xout;
 	for (int j=0;j<nPeaks;j++){
-		ReturnMatrixThis[j*8] = 0;
+		ReturnMatrixThis[j*9] = 0;
 		for (i=0;i<NrPixelsThisRegion;i++){
 			L = 1/(((((REtaZ[i*3]-x[(8*j)+2])*(REtaZ[i*3]-x[(8*j)+2]))/((x[(8*j)+6])*(x[(8*j)+6])))+1)*((((REtaZ[i*3+1]-x[(8*j)+3])*(REtaZ[i*3+1]-x[(8*j)+3]))/((x[(8*j)+8])*(x[(8*j)+8])))+1));
 			G = exp(-(0.5*(((REtaZ[i*3]-x[(8*j)+2])*(REtaZ[i*3]-x[(8*j)+2]))/(x[(8*j)+5]*x[(8*j)+5])))-(0.5*(((REtaZ[i*3+1]-x[(8*j)+3])*(REtaZ[i*3+1]-x[(8*j)+3]))/(x[(8*j)+7]*x[(8*j)+7]))));
 			IntPeaks = x[(8*j)+1]*((x[(8*j)+4]*L) + ((1-x[(8*j)+4])*G));
 			BGToAdd = x[0];
-			ReturnMatrixThis[j*8] += (BGToAdd + IntPeaks);
+			ReturnMatrixThis[j*9] += (BGToAdd + IntPeaks);
 		}
-		ReturnMatrixThis[j*8+1] = -x[(8*j)+2]*sin(x[(8*j)+3]*deg2rad);
-		ReturnMatrixThis[j*8+2] =  x[(8*j)+2]*cos(x[(8*j)+3]*deg2rad);
-		ReturnMatrixThis[j*8+3] =  x[8*j+1];
-		ReturnMatrixThis[j*8+4] =  x[8*j+2];
-		ReturnMatrixThis[j*8+5] =  x[8*j+3];
-		ReturnMatrixThis[j*8+6] =  (x[8*j+5]+x[8*j+6])/2;
-		ReturnMatrixThis[j*8+7] =  (x[8*j+7]+x[8*j+8])/2;
+		ReturnMatrixThis[j*9+1] = -x[(8*j)+2]*sin(x[(8*j)+3]*deg2rad);
+		ReturnMatrixThis[j*9+2] =  x[(8*j)+2]*cos(x[(8*j)+3]*deg2rad);
+		ReturnMatrixThis[j*9+3] =  x[8*j+1];
+		ReturnMatrixThis[j*9+4] =  x[8*j+2];
+		ReturnMatrixThis[j*9+5] =  x[8*j+3];
+		ReturnMatrixThis[j*9+6] =  (x[8*j+5]+x[8*j+6])/2;
+		ReturnMatrixThis[j*9+7] =  (x[8*j+7]+x[8*j+8])/2;
+		ReturnMatrixThis[j*9+8] =  0;
 	}
 }
 
 void CallFit2DPeaks(int *nPeaksNrPixels, double *yzInt, double *MaximaInfo, 
 double *ReturnMatrix, int TotNrRegions, double *YZCen, double *ThreshInfo, 
 int *PosMaximaInfoReturnMatrix, int *PosyzInt, int totalPixels, 
-int totalPeaks)
+int totalPeaks, int blocksize)
 {
     size_t freeMem, totalMem;
     cudaMemGetInfo(&freeMem, &totalMem);
@@ -819,7 +826,7 @@ int totalPeaks)
     cudaMemGetInfo(&freeMem, &totalMem);
     fprintf(stderr, "MaximaInfoDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	cudaMemcpy(MaximaInfoDevice,MaximaInfo,totalPeaks*3*sizeof(double),cudaMemcpyHostToDevice);
-	cudaMalloc((double **)&ReturnMatrixDevice, totalPeaks*8*sizeof(double));
+	cudaMalloc((double **)&ReturnMatrixDevice, totalPeaks*9*sizeof(double));
 	CHECK(cudaPeekAtLastError());
     cudaMemGetInfo(&freeMem, &totalMem);
     fprintf(stderr, "ReturnMatrixDevice Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
@@ -868,17 +875,18 @@ int totalPeaks)
     cudaMemGetInfo(&freeMem, &totalMem);
     fprintf(stderr, "resultsmat Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 	int dim = TotNrRegions;
-	dim3 block (256);
+	dim3 block (blocksize);
 	dim3 grid ((dim/block.x)+1);
     cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
+    fprintf(stderr, "block size : %d, grid size: %d Free = %zu MB, Total = %zu MB\n", block.x, grid.x, freeMem/(1024*1024), totalMem/(1024*1024));
+    fflush(stdout);
 	Fit2DPeaks<<<grid,block>>>(PkPxDevice,yzIntDevice, MaximaInfoDevice, 
 		ReturnMatrixDevice, PosMaxInfoRetMatDevice, PosyzIntDevice, 
 		ExtraInfoDevice, ThreshInfoDevice, xDevice, xlDevice, xuDevice, 
 		REtaIntDevice, resultsmat,scratch, xStepArr, xoutDevice);
 	CHECK(cudaPeekAtLastError());
 	CHECK(cudaDeviceSynchronize());
-	cudaMemcpy(ReturnMatrix,ReturnMatrixDevice,totalPeaks*8*sizeof(double),cudaMemcpyDeviceToHost);
+	cudaMemcpy(ReturnMatrix,ReturnMatrixDevice,totalPeaks*9*sizeof(double),cudaMemcpyDeviceToHost);
 	cudaFree(PkPxDevice);
 	cudaFree(PosMaxInfoRetMatDevice);
 	cudaFree(PosyzIntDevice);
@@ -904,6 +912,28 @@ double cpuSecond(){
 	struct timeval tp;
 	gettimeofday(&tp,NULL);
 	return ((double)tp.tv_sec + (double)tp.tv_usec*1.e-6);
+}
+
+int getSPcores(cudaDeviceProp devProp)
+{  
+    int cores = 0;
+    int mp = devProp.multiProcessorCount;
+    switch (devProp.major){
+     case 2: // Fermi
+      if (devProp.minor == 1) cores = mp * 48;
+      else cores = mp * 32;
+      break;
+     case 3: // Kepler
+      cores = mp * 192;
+      break;
+     case 5: // Maxwell
+      cores = mp * 128;
+      break;
+     default:
+      printf("Unknown device type\n"); 
+      break;
+      }
+    return cores;
 }
 
 int main(int argc, char *argv[]){ // Arguments: parameter file name
@@ -1350,7 +1380,7 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 	double *yzInt, *MaximaInfo, *ReturnMatrix, *ThreshInfo, *YZCen;
 	yzInt = (double *) malloc(nOverlapsMaxPerImage*3*NrPixels*sizeof(*yzInt));
 	MaximaInfo = (double *) malloc(nOverlapsMaxPerImage*3*100*sizeof(*MaximaInfo));
-	ReturnMatrix = (double *) malloc(nOverlapsMaxPerImage*8*100*sizeof(*ReturnMatrix));
+	ReturnMatrix = (double *) malloc(nOverlapsMaxPerImage*9*100*sizeof(*ReturnMatrix));
 	ThreshInfo = (double *) malloc(nOverlapsMaxPerImage*sizeof(*ThreshInfo));
 	PosyzInt = (int *) malloc(nOverlapsMaxPerImage*sizeof(*PosyzInt));
 	PosMaximaInfoReturnMatrix = (int *) malloc(nOverlapsMaxPerImage*sizeof(*PosMaximaInfoReturnMatrix));
@@ -1367,12 +1397,19 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 	sprintf(OutFile,"%s/%s_%d_PS.csv",outfoldername,FileStem,LayerNr);
 	FILE *outfilewrite;
 	outfilewrite = fopen(OutFile,"w");
-	fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta RingNr\n");
+	fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta RingNr FrameNr\n");
 	int OldCurrentFileNr=StartFileNr-1;
 	FILE *ImageFile;
 	counter = 0;
 	counteryzInt = 0;
 	counterMaximaInfoReturnMatrix = 0;
+	printf("Starting peaksearch now.\n");
+	fflush(stdout);
+	cudaDeviceProp deviceProp;
+    cudaGetDeviceProperties(&deviceProp, 0);
+    int nCores = getSPcores(deviceProp);
+    printf("Cuda Cores: %d\n",nCores);
+    int nJobsLast, nJobsNow=0, resetArrays=1, blocksize = 256, nBad=0;
 	while (FrameNr < TotalNrFrames){
 		if (TotalNrFrames == 1){ // Look at the next part
 			/*FrameNr = FrameNumberToDo;
@@ -1398,7 +1435,7 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 			}
 		}
 		if (OldCurrentFileNr !=CurrentFileNr){
-			if (ImageFile != NULL) fclose(ImageFile);
+		    if (FrameNr > 0) fclose(ImageFile);
 			if (Padding == 2){sprintf(FN,"%s/%s_%02d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
 			else if (Padding == 3){sprintf(FN,"%s/%s_%03d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
 			else if (Padding == 4){sprintf(FN,"%s/%s_%04d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
@@ -1408,11 +1445,12 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 			else if (Padding == 8){sprintf(FN,"%s/%s_%08d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
 			else if (Padding == 9){sprintf(FN,"%s/%s_%09d%s",RawFolder,FileStem,CurrentFileNr,Ext);}
 			ImageFile = fopen(FN,"rb");
-			printf("Read %s file.\n",FN);
 			if (ImageFile == NULL){
 				printf("Could not read the input file. Exiting.\n");
 				return 1;
 			}
+			printf("Read %s file.\n",FN);
+			fflush(stdout);
 			fseek(ImageFile,0L,SEEK_END);
 			sz = ftell(ImageFile);
 			rewind(ImageFile);
@@ -1420,6 +1458,7 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 			fseek(ImageFile,Skip,SEEK_SET);
 		}
 		printf("Now processing file: %s, Frame: %d\n",FN, FramesToSkip);
+		fflush(stdout);
 		fread(Image,SizeFile,1,ImageFile);
 		DoImageTransformations(NrTransOpt,TransOpt,Image,NrPixels);
 		beamcurr = BeamCurrents[CurrentFileNr - StartFileNr][FramesToSkip];
@@ -1458,13 +1497,14 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 			}
 		}
 		NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
-		if (FrameNr % 10 == 9){
+		if (resetArrays == 1){
 			counter = 0;
 			counteryzInt = 0;
 			counterMaximaInfoReturnMatrix = 0;
 			TotNrRegions = 0;
 		}
 		TotNrRegions += NrOfReg;
+		nJobsLast = nJobsNow;
 		for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 			NrPixelsThisRegion = PositionTrackers[RegNr];
 			if (NrPixelsThisRegion == 1){
@@ -1509,28 +1549,38 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 			counterMaximaInfoReturnMatrix += nPeaks;
 			counter++;
 		}
-		printf("Total number of peaks in the images: %d\n",counterMaximaInfoReturnMatrix);
-		printf("Total number of useful pixels in the images: %d\n",counteryzInt);
-		if (FrameNr % 10 == 8){
-			printf("Total number of peaks in the images: %d\n",counterMaximaInfoReturnMatrix);
-			printf("Total number of useful pixels in the images: %d\n",counteryzInt);
+		nJobsNow = counterMaximaInfoReturnMatrix;
+		nJobsLast = nJobsNow - nJobsLast;
+		printf("Time taken till %d frame: %lf seconds.\n",FrameNr, cpuSecond()-tstart);
+		printf("Total number of peaks in the images since CUDA run: %d\n",counterMaximaInfoReturnMatrix);
+		printf("Total number of useful pixels in the images since CUDA run: %d\n",counteryzInt);
+		fflush(stdout);
+		resetArrays = 0;
+		if (nJobsNow + 2*nJobsLast + blocksize >= nCores){
+		    printf("Starting CUDA job with %d jobs at %d frameNr.\n",nJobsNow, FrameNr);
+			printf("Total number of peaks for CUDA run: %d\n",counterMaximaInfoReturnMatrix);
+			printf("Total number of useful pixels for CUDA run: %d\n",counteryzInt);
 			// Now send all info to the GPU calling code
 			CallFit2DPeaks(nPeaksNrPixels, yzInt, MaximaInfo, ReturnMatrix, 
 				TotNrRegions, YZCen, ThreshInfo, PosMaximaInfoReturnMatrix, 
-				PosyzInt, counteryzInt, counterMaximaInfoReturnMatrix);
+				PosyzInt, counteryzInt, counterMaximaInfoReturnMatrix, blocksize);
 			for (i=0;i<counterMaximaInfoReturnMatrix;i++){
-				fprintf(outfilewrite,"%d %f %f %f %f %f %f %f %f %f %d\n",i+1,
-					ReturnMatrix[i*8+0],Omega,ReturnMatrix[i*8+1]+Ycen,
-					ReturnMatrix[i*8+2]+Zcen,ReturnMatrix[i*8+3],
-					ReturnMatrix[i*8+4], ReturnMatrix[i*8+5],
-					ReturnMatrix[i*8+6],ReturnMatrix[i*8+7], RingNumberMatrix[i]);
+			    if (ReturnMatrix[i*9+8] == 0){
+				    fprintf(outfilewrite,"%d %f %f %f %f %f %f %f %f %f %d %d\n",i+1,
+				    	ReturnMatrix[i*9+0],Omega,ReturnMatrix[i*9+1]+Ycen,
+					    ReturnMatrix[i*9+2]+Zcen,ReturnMatrix[i*9+3],
+					    ReturnMatrix[i*9+4], ReturnMatrix[i*9+5],
+					    ReturnMatrix[i*9+6],ReturnMatrix[i*9+7], RingNumberMatrix[i*2],RingNumberMatrix[i*2+1]);
+				}else{
+				    nBad++;
+                }
 			}
-			return;
+			printf("Time taken till %d frame: %lf seconds, bad peaks= %d out of %d peaks.\n",FrameNr, cpuSecond()-tstart, nBad, counterMaximaInfoReturnMatrix);
+			resetArrays = 1;
 		}
-		//fclose(outfilewrite);
 		FrameNr++;
 		OldCurrentFileNr = CurrentFileNr;
-		printf("Time taken till %d frame: %lf seconds.\n",FrameNr, cpuSecond()-tstart);
 	}
+	fclose(outfilewrite);
 	printf("Total time taken: %lf seconds.\n",cpuSecond()-tstart);
 }
