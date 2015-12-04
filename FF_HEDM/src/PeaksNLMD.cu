@@ -18,7 +18,7 @@
 #define MAX_N_RINGS 5000
 #define MAX_N_EVALS 3000
 #define MAX_N_OVERLAPS 20
-#define nOverlapsMaxPerImage 10000
+#define nOverlapsMaxPerImage 20000
 #define CalcNorm3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
 #define CalcNorm2(x,y) sqrt((x)*(x) + (y)*(y))
 #define CHECK(call){														\
@@ -561,11 +561,11 @@ static inline int FindConnectedComponents(int **BoolImage, int NrPixels, int **C
 	return component;
 }
 
-static inline unsigned FindRegionalMaxima(double *z,int **PixelPositions,
+static inline int FindRegionalMaxima(double *z,int **PixelPositions,
 		int NrPixelsThisRegion,int **MaximaPositions,double *MaximaValues,
 		int *IsSaturated, double IntSat)
 {
-	unsigned nPeaks = 0;
+	int nPeaks = 0;
 	int i,j,k,l;
 	double zThis, zMatch;
 	int xThis, yThis;
@@ -685,11 +685,11 @@ __global__ void Fit2DPeaks (int *PkPx, double *yzInt, double *MaximaInfo,
 	int Posxlu = PosnPeaks[RegNr] * 8 + RegNr;
 	int Posreta = PosnPixels[RegNr]*3;
 	scratchArr = scratch + ((Posxlu + RegNr)*(Posxlu+RegNr) + 2*Posxlu);
-	x =  &xDevice[Posxlu];
+	x =  xDevice + Posxlu;
 	xout = xoutDevice + Posxlu;
-	xl = &xlDevice[Posxlu];
-	xu = &xuDevice[Posxlu];
-	RetaInt = &REtaIntDevice[Posreta];
+	xl = xlDevice + Posxlu;
+	xu = xuDevice + Posxlu;
+	RetaInt = REtaIntDevice + Posreta;
 	REtaZ = RetaInt;
 	xstep = xStepArr + Posxlu;
 	x[0] = Thresh/2;
@@ -744,7 +744,7 @@ __global__ void Fit2DPeaks (int *PkPx, double *yzInt, double *MaximaInfo,
 	double minf;
     double reqmin = 1e-8;
     int konvge = 10;
-    int kcount = MAX_N_EVALS;
+    int kcount = (int)ExtraInfo[3];
     int icount, numres, ifault;
 	double IntPeaks, L, G, BGToAdd;
 	nelmin(problem_function, n, x, xout, xl, xu, scratchArr, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp);
@@ -779,7 +779,7 @@ __global__ void Fit2DPeaks (int *PkPx, double *yzInt, double *MaximaInfo,
 void CallFit2DPeaks(int *nPeaksNrPixels, double *yzInt, double *MaximaInfo, 
 double *ReturnMatrix, int TotNrRegions, double *YZCen, double *ThreshInfo, 
 int *PosMaximaInfoReturnMatrix, int *PosyzInt, int totalPixels, 
-int totalPeaks, int blocksize, int cudaDeviceNum)
+int totalPeaks, int blocksize, int cudaDeviceNum, int nEvals)
 {
     cudaSetDevice(cudaDeviceNum);
     size_t freeMem, totalMem;
@@ -793,7 +793,7 @@ int totalPeaks, int blocksize, int cudaDeviceNum)
 	cudaMalloc((int **) &PosyzIntDevice, TotNrRegions*sizeof(int));
 	CHECK(cudaPeekAtLastError());
 	cudaMemcpy(PosyzIntDevice,PosyzInt,TotNrRegions*sizeof(int),cudaMemcpyHostToDevice);
-	double ExtraInfo[3] = {(double)TotNrRegions,YZCen[0],YZCen[1]};
+	double ExtraInfo[4] = {(double)TotNrRegions,YZCen[0],YZCen[1],(double)nEvals};
 	double *yzIntDevice, *MaximaInfoDevice, *ReturnMatrixDevice, *ExtraInfoDevice,
 		*ThreshInfoDevice, *xDevice, *xlDevice, *xuDevice, *REtaIntDevice, *resultsmat,
 		*scratch, *xStepArr, *xoutDevice;
@@ -808,9 +808,9 @@ int totalPeaks, int blocksize, int cudaDeviceNum)
 	cudaMalloc((double **)&ThreshInfoDevice, TotNrRegions*sizeof(double));
 	CHECK(cudaPeekAtLastError());
 	cudaMemcpy(ThreshInfoDevice,ThreshInfo,TotNrRegions*sizeof(double),cudaMemcpyHostToDevice);
-	cudaMalloc((double **)&ExtraInfoDevice, 3*sizeof(double));
+	cudaMalloc((double **)&ExtraInfoDevice, 4*sizeof(double));
 	CHECK(cudaPeekAtLastError());
-	cudaMemcpy(ExtraInfoDevice,ExtraInfo,3*sizeof(double),cudaMemcpyHostToDevice);
+	cudaMemcpy(ExtraInfoDevice,ExtraInfo,4*sizeof(double),cudaMemcpyHostToDevice);
 	cudaMalloc((double **)&xDevice,(totalPeaks*8+TotNrRegions)*sizeof(double));
 	CHECK(cudaPeekAtLastError());
 	cudaMalloc((double **)&xlDevice,(totalPeaks*8+TotNrRegions)*sizeof(double));
@@ -1365,6 +1365,17 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
     int nCores = getSPcores(deviceProp);
     printf("Cuda Cores: %d\n",nCores);
     int nJobsLast, nJobsNow=0, resetArrays=1, blocksize = 256, nBad=0, totalPeaks=0;
+    int *badNPeaksNrPixels, *badPosNPeaks, *badPosNPixels, *badRingNrMatrix;
+    int badCounterNrPixels = 0, badCounterNPeaks = 0;
+    double *badYZInt, *badMaximaInfo, *badThreshInfo;
+    badNPeaksNrPixels = (int *) malloc(nOverlapsMaxPerImage*10*2*sizeof(int));
+    badPosNPeaks = (int *) malloc(nOverlapsMaxPerImage*10*2*sizeof(int));
+    badPosNPixels = (int *) malloc(nOverlapsMaxPerImage*10*2*sizeof(int));
+    badRingNrMatrix = (int *) malloc(nOverlapsMaxPerImage*10*2*sizeof(int));
+    badYZInt = (double *) malloc(nOverlapsMaxPerImage*100*3*NrPixels*sizeof(double));
+    badMaximaInfo = (double *) malloc(nOverlapsMaxPerImage*10*3*sizeof(double));
+    badThreshInfo = (double *) malloc(nOverlapsMaxPerImage*10*sizeof(int));
+	int nPeaks, nEvals=MAX_N_EVALS, nEvals2=MAX_N_EVALS*10;
 	while (FrameNr < TotalNrFrames){
 		if (TotalNrFrames == 1){ // Look at the next part
 			/*FrameNr = FrameNumberToDo;
@@ -1469,7 +1480,6 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 				UsefulPixels[i][1] = (int)(Positions[RegNr][i]%NrPixels);
 				z[i] = ImgCorrBC[((UsefulPixels[i][0])*NrPixels) + (UsefulPixels[i][1])];
 			}
-			unsigned nPeaks;
 			nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,
 				MaximaPositions,MaximaValues,&IsSaturated,IntSat);
 			if (IsSaturated == 1){
@@ -1507,30 +1517,71 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 		nJobsLast = nJobsNow - nJobsLast;
 		fflush(stdout);
 		resetArrays = 0;
-		if (nJobsNow + 2*nJobsLast + blocksize >= nCores || FrameNr == TotalNrFrames-1){
+		if (nJobsNow + nJobsLast + blocksize >= nCores || FrameNr == TotalNrFrames-1){
 		    printf("Starting CUDA job with %d jobs at %d frameNr. CUDA Cores: %d\n",nJobsNow, FrameNr, nCores);
 			printf("Total number of peaks for CUDA run: %d\n",counterMaximaInfoReturnMatrix);
 			printf("Total number of useful pixels for CUDA run: %d\n",counteryzInt);
 			// Now send all info to the GPU calling code
 			CallFit2DPeaks(nPeaksNrPixels, yzInt, MaximaInfo, ReturnMatrix, 
 				TotNrRegions, YZCen, ThreshInfo, PosMaximaInfoReturnMatrix, 
-				PosyzInt, counteryzInt, counterMaximaInfoReturnMatrix, blocksize, cudaDeviceNum);
+				PosyzInt, counteryzInt, counterMaximaInfoReturnMatrix,
+				blocksize, cudaDeviceNum, nEvals);
+			for (i=0;i<TotNrRegions;i++){
+				if (ReturnMatrix[PosMaximaInfoReturnMatrix[i]*9+8] == 1){
+					// Maintain arrays with bad peaks.
+					badNPeaksNrPixels[nBad*2] = nPeaksNrPixels[i*2];
+					badNPeaksNrPixels[nBad*2+1] = nPeaksNrPixels[i*2+1];
+					badPosNPeaks[nBad] = badCounterNPeaks;
+					badPosNPixels[nBad] = badCounterNrPixels;
+					badThreshInfo[nBad] = ThreshInfo[i];
+					nPeaks = nPeaksNrPixels[i*2];
+					NrPixelsThisRegion = nPeaksNrPixels[i*2+1];
+					for (j=0;j<NrPixelsThisRegion;j++){
+						badYZInt[(badCounterNrPixels+j)*3+0] = yzInt[(PosyzInt[i]+j)*3+0];
+						badYZInt[(badCounterNrPixels+j)*3+1] = yzInt[(PosyzInt[i]+j)*3+1];
+						badYZInt[(badCounterNrPixels+j)*3+2] = yzInt[(PosyzInt[i]+j)*3+2];
+					}
+					for (j=0;j<nPeaks;j++){
+						badMaximaInfo[(badCounterNPeaks+j)*3+0] = MaximaInfo[(PosMaximaInfoReturnMatrix[i]+j)*3+0];
+						badMaximaInfo[(badCounterNPeaks+j)*3+1] = MaximaInfo[(PosMaximaInfoReturnMatrix[i]+j)*3+1];
+						badMaximaInfo[(badCounterNPeaks+j)*3+2] = MaximaInfo[(PosMaximaInfoReturnMatrix[i]+j)*3+2];
+						badRingNrMatrix[(badCounterNPeaks+j)*2+0] = RingNumberMatrix[(PosMaximaInfoReturnMatrix[i]+j)*2+0];
+						badRingNrMatrix[(badCounterNPeaks+j)*2+1] = RingNumberMatrix[(PosMaximaInfoReturnMatrix[i]+j)*2+1];
+					}
+					badCounterNrPixels += NrPixelsThisRegion;
+					badCounterNPeaks += nPeaks;
+					nBad++; // Number of regions
+				}
+			}
 			for (i=0;i<counterMaximaInfoReturnMatrix;i++){
 			    if (ReturnMatrix[i*9+8] == 0){
 				    fprintf(outfilewrite,"%d %f %f %f %f %f %f %f %f %f %d %d\n",i+1,
 				    	ReturnMatrix[i*9+0],Omega,ReturnMatrix[i*9+1]+Ycen,
 					    ReturnMatrix[i*9+2]+Zcen,ReturnMatrix[i*9+3],
 					    ReturnMatrix[i*9+4], ReturnMatrix[i*9+5],
-					    ReturnMatrix[i*9+6],ReturnMatrix[i*9+7], RingNumberMatrix[i*2],RingNumberMatrix[i*2+1]);
-				}else{
-				    nBad++;
-                }
+					    ReturnMatrix[i*9+6],ReturnMatrix[i*9+7], 
+					    RingNumberMatrix[i*2],RingNumberMatrix[i*2+1]);
+				}
 			}
 			printf("Time taken till %d frame: %lf seconds, bad peaks= %d out of %d peaks.\n",FrameNr, cpuSecond()-tstart, nBad, totalPeaks);
 			resetArrays = 1;
 		}
 		FrameNr++;
 		OldCurrentFileNr = CurrentFileNr;
+	}
+	printf("Starting CUDA job with %d jobs at the end. CUDA Cores: %d\n",nBad, nCores);
+	printf("Total number of peaks for CUDA run: %d\n",badCounterNPeaks);
+	printf("Total number of useful pixels for CUDA run: %d\n",badCounterNrPixels);
+	CallFit2DPeaks(badNPeaksNrPixels, badYZInt, badMaximaInfo, ReturnMatrix,
+		nBad, YZCen, badThreshInfo, badPosNPeaks, badPosNPixels,
+		badCounterNrPixels, badCounterNPeaks, blocksize, cudaDeviceNum, nEvals2);
+	for (i=0;i<badCounterNPeaks;i++){
+		fprintf(outfilewrite,"%d %f %f %f %f %f %f %f %f %f %d %d\n",i+1,
+	    	ReturnMatrix[i*9+0],Omega,ReturnMatrix[i*9+1]+Ycen,
+		    ReturnMatrix[i*9+2]+Zcen,ReturnMatrix[i*9+3],
+		    ReturnMatrix[i*9+4], ReturnMatrix[i*9+5],
+		    ReturnMatrix[i*9+6],ReturnMatrix[i*9+7], 
+		    badRingNrMatrix[i*2],badRingNrMatrix[i*2+1]);
 	}
 	fclose(outfilewrite);
 	printf("Total time taken: %lf seconds.\n",cpuSecond()-tstart);
