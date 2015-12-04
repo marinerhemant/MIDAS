@@ -1556,7 +1556,7 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 		printf("Total number of useful pixels in the images since CUDA run: %d\n",counteryzInt);
 		fflush(stdout);
 		resetArrays = 0;
-		if (nJobsNow + 2*nJobsLast + blocksize >= nCores){
+		if (nJobsNow + 2*nJobsLast + blocksize >= nCores || FrameNr == TotalNrFrames-1){
 		    printf("Starting CUDA job with %d jobs at %d frameNr.\n",nJobsNow, FrameNr);
 			printf("Total number of peaks for CUDA run: %d\n",counterMaximaInfoReturnMatrix);
 			printf("Total number of useful pixels for CUDA run: %d\n",counteryzInt);
