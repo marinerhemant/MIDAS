@@ -1588,7 +1588,7 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 			badCounterNrPixels = 0;
 			badCounterNPeaks = 0;
 			nBad = 0;
-			printf("Time taken after difficult peaksFitting: %lf seconds.\n",cpuSecond()-tstart,);
+			printf("Time taken after difficult peaksFitting: %lf seconds.\n",cpuSecond()-tstart);
 		}
 		FrameNr++;
 		OldCurrentFileNr = CurrentFileNr;
