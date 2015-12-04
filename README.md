@@ -2,9 +2,9 @@
 
 Code for reduction of Near-Field and Far-Field High Energy Diffraction Microscopy (HEDM) data.
 
-nldrmd.cu and nldrmd.cuh are CUDA-based optimizers based on the NLOPT source.
+Neldermead is taken from http://people.sc.fsu.edu/~jburkardt/cpp_src/asa047/asa047.html and modified to include constraints and use as CUDA kernels.
 SGInfo library used to calculate HKLs.
-Need to install libtiff-dev for compilation of NF-HEDM codes.
+Need to install libtiff-dev and nlopt for compilation of NF-HEDM codes.
 
 
 # Installation
