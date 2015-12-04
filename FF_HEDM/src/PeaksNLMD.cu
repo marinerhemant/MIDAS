@@ -1550,7 +1550,7 @@ int main(int argc, char *argv[]){ // Arguments: parameter file name
 						badMaximaInfo[(badCounterNPeaks+j)*3+2] = MaximaInfo[(PosMaximaInfoReturnMatrix[i]+j)*3+2];
 						badRingNrMatrix[(badCounterNPeaks+j)*2+0] = RingNumberMatrix[(PosMaximaInfoReturnMatrix[i]+j)*2+0];
 						badRingNrMatrix[(badCounterNPeaks+j)*2+1] = RingNumberMatrix[(PosMaximaInfoReturnMatrix[i]+j)*2+1];
-						badOmegaValues[badcounterNPeaks] = OmegaValues[PosMaximaInfoReturnMatrix[i]];
+						badOmegaValues[badCounterNPeaks] = OmegaValues[PosMaximaInfoReturnMatrix[i]];
 					}
 					badCounterNrPixels += NrPixelsThisRegion;
 					badCounterNPeaks += nPeaks;
