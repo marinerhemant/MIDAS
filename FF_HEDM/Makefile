@@ -83,7 +83,7 @@ indexercuda: $(SRCDIR)Indexer.cu
 	$(NCC) $(SRCDIR)Indexer.cu -o $(BINDIR)Indexer $(NCFLAGS)
 
 indexrefinecuda: $(SRCDIR)IndexerRefine.cu
-	$(NCC) $(SRCDIR)IndexerRefine.cu -o $(BINDIR)IndexRefine $(NCFLAGS)
+	$(NCC) $(SRCDIR)IndexerRefine.cu -o $(BINDIR)Indexer $(NCFLAGS)
 
 peaks: $(SRCDIR)PeaksNLMD.cu
 	$(NCC) $(SRCDIR)PeaksNLMD.cu -o $(BINDIR)Peaks $(NCFLAGS)

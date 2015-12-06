@@ -1034,6 +1034,7 @@ int main(int argc, char *argv[])
 	}
 	for (i=0;i<nrUniqueRingNumbers;i++)AverageRingRadius[i]/=NrSpotsPerRing[i];
 	fclose(IndexAll);
+	fclose(IndexAllNoHeader);
 	fclose(ExtraInfo);
 	PF = fopen(parfn,"w");
 	fprintf(PF,"LatticeConstant %f;\n",LatticeConstant[0]);
