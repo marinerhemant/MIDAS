@@ -1572,25 +1572,35 @@ __global__ void CompareDiffractionSpots(RealType *AllTheorSpots, RealType *RTPar
 			ometh = TheorSpots[sp*N_COL_THEORSPOTS+2];
 			RotateAroundZ(gs,omeo,go);
 			RotateAroundZ(gs,ometh,gth);
-			gvo[0] = (-1 + (RTParamArr[0] - go[0])/CalcLength((RTParamArr[0] - go[0]),(ObsSpots[spotRowBest*9+0] - go[1]),
+			gvo[0] = (-1 + (RTParamArr[0] - go[0])/CalcLength((RTParamArr[0] - go[0]),
+				ObsSpots[spotRowBest*9+0] - go[1]),
 				(ObsSpots[spotRowBest*9+1] - go[2]))) * cos(-omeo*deg2rad) - ((ObsSpots[spotRowBest*9+0] - go[1])/
 				CalcLength((RTParamArr[0] - go[0]),(ObsSpots[spotRowBest*9+0] - go[1]),(ObsSpots[spotRowBest*9+1]
 				- go[2]))) * sin(-omeo*deg2rad);
-			gvo[1] = (-1 + (RTParamArr[0] - go[0])/CalcLength((RTParamArr[0] - go[0]),(ObsSpots[spotRowBest*9+0] - go[1]),
+			gvo[1] = (-1 + (RTParamArr[0] - go[0])/CalcLength((RTParamArr[0] - go[0]),
+				(ObsSpots[spotRowBest*9+0] - go[1]),
 				(ObsSpots[spotRowBest*9+1] - go[2]))) * sin(-omeo*deg2rad) + ((ObsSpots[spotRowBest*9+0] - go[1])/
 				CalcLength((RTParamArr[0] - go[0]),(ObsSpots[spotRowBest*9+0] - go[1]),(ObsSpots[spotRowBest*9+1]
 				- go[2]))) * cos(-omeo*deg2rad);
-			gvo[2] = (ObsSpots[spotRowBest*9+1] - go[2])/CalcLength((RTParamArr[0] - go[0]),(ObsSpots[spotRowBest*9+0] - go[1]),
+			gvo[2] = (ObsSpots[spotRowBest*9+1] - go[2])/CalcLength((RTParamArr[0] - go[0]),
+				(ObsSpots[spotRowBest*9+0] - go[1]),
 				(ObsSpots[spotRowBest*9+1] - go[2]));
-			gvth[0] = (-1 + (RTParamArr[0] - gth[0])/CalcLength((RTParamArr[0] - gth[0]),(TheorSpots[sp*N_COL_THEORSPOTS+0]
-				- gth[1]),(TheorSpots[sp*N_COL_THEORSPOTS+1] - gth[2]))) * cos(-ometh*deg2rad) - ((TheorSpots[sp*N_COL_THEORSPOTS+0]
-				- gth[1])/CalcLength((RTParamArr[0] - gth[0]),(TheorSpots[sp*N_COL_THEORSPOTS+0] - gth[1]),(TheorSpots[sp*N_COL_THEORSPOTS+1]
+			gvth[0] = (-1 + (RTParamArr[0] - gth[0])/CalcLength((RTParamArr[0] - gth[0]),
+				(TheorSpots[sp*N_COL_THEORSPOTS+0]
+				- gth[1]),(TheorSpots[sp*N_COL_THEORSPOTS+1] - gth[2]))) * cos(-ometh*deg2rad) - 
+				((TheorSpots[sp*N_COL_THEORSPOTS+0]
+				- gth[1])/CalcLength((RTParamArr[0] - gth[0]),(TheorSpots[sp*N_COL_THEORSPOTS+0] - gth[1]),
+				(TheorSpots[sp*N_COL_THEORSPOTS+1]
 				- gth[2]))) * sin(-ometh*deg2rad);
-			gvth[1] = (-1 + (RTParamArr[0] - gth[0])/CalcLength((RTParamArr[0] - gth[0]),(TheorSpots[sp*N_COL_THEORSPOTS+0]
-				- gth[1]),(TheorSpots[sp*N_COL_THEORSPOTS+1] - gth[2]))) * sin(-ometh*deg2rad) + ((TheorSpots[sp*N_COL_THEORSPOTS+0]
-				- gth[1])/CalcLength((RTParamArr[0] - gth[0]),(TheorSpots[sp*N_COL_THEORSPOTS+0] - gth[1]),(TheorSpots[sp*N_COL_THEORSPOTS+1]
+			gvth[1] = (-1 + (RTParamArr[0] - gth[0])/CalcLength((RTParamArr[0] - gth[0]),
+				(TheorSpots[sp*N_COL_THEORSPOTS+0]
+				- gth[1]),(TheorSpots[sp*N_COL_THEORSPOTS+1] - gth[2]))) * sin(-ometh*deg2rad) + 
+				((TheorSpots[sp*N_COL_THEORSPOTS+0]
+				- gth[1])/CalcLength((RTParamArr[0] - gth[0]),(TheorSpots[sp*N_COL_THEORSPOTS+0] - gth[1]),
+				(TheorSpots[sp*N_COL_THEORSPOTS+1]
 				- gth[2]))) * cos(-ometh*deg2rad);
-			gvth[2] = (TheorSpots[sp*N_COL_THEORSPOTS+1] - gth[2])/CalcLength((RTParamArr[0] - gth[0]),(TheorSpots[sp*N_COL_THEORSPOTS+0]
+			gvth[2] = (TheorSpots[sp*N_COL_THEORSPOTS+1] - gth[2])/CalcLength((RTParamArr[0] - gth[0]),
+				(TheorSpots[sp*N_COL_THEORSPOTS+0]
 				- gth[1]),(TheorSpots[sp*N_COL_THEORSPOTS+1] - gth[2]));
 			lo = CalcLength(gvo[0],gvo[1],gvo[2]);
 			lth = CalcLength(gvth[0],gvth[1],gvth[2]);
