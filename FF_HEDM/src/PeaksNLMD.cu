@@ -38,7 +38,7 @@ static inline double asind(double x){return rad2deg*(asin(x));}
 static inline double acosd(double x){return rad2deg*(acos(x));}
 static inline double atand(double x){return rad2deg*(atan(x));}
 
-//BEGIN NLDRMD FUNCTION
+//BEGIN NLDRMD FUNCTION scratch space: 3n+(n+1)*(n+1)
 __device__ void nelmin ( double fn ( int n_fun, double *x, void *data ), 
   int n, double *start, double *xmin, 
   double *lb, double *ub, double *scratch, double *ynewlo, 
@@ -684,7 +684,7 @@ __global__ void Fit2DPeaks (int *PkPx, double *yzInt, double *MaximaInfo,
 	double *x,*xl,*xu, *RetaInt, *REtaZ, *xstep, *xout;
 	int Posxlu = PosnPeaks[RegNr] * 8 + RegNr;
 	int Posreta = PosnPixels[RegNr]*3;
-	scratchArr = scratch + ((Posxlu + RegNr)*(Posxlu+RegNr) + 2*Posxlu);
+	scratchArr = scratch + ((Posxlu + RegNr)*(Posxlu+RegNr) + 3*Posxlu);
 	x =  xDevice + Posxlu;
 	xout = xoutDevice + Posxlu;
 	xl = xlDevice + Posxlu;
@@ -822,7 +822,7 @@ int totalPeaks, int blocksize, int cudaDeviceNum, int nEvals)
 	cudaMalloc((double **)&xoutDevice,(totalPeaks*8+TotNrRegions)*sizeof(double));
 	CHECK(cudaPeekAtLastError());
 	int totN = totalPeaks*8 + TotNrRegions;
-	int scratchSpace = (totN+TotNrRegions)*(totN+TotNrRegions) + 2*totN;
+	int scratchSpace = (totN+TotNrRegions)*(totN+TotNrRegions) + 3*totN;
 	cudaMalloc((double **)&scratch,scratchSpace*sizeof(double));
 	CHECK(cudaPeekAtLastError());
 	cudaMalloc((double **)&REtaIntDevice,(totalPixels+100)*3*sizeof(double));
