@@ -4,4 +4,4 @@ then
 	tar -xvf bindata.tar.gz
 fi
 
-../../bin/Indexer paramstest.txt
+../../bin/Indexer paramstest.txt 0
