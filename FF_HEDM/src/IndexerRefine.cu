@@ -3039,7 +3039,7 @@ int main(int argc, char *argv[]){
 
 	cudaMemGetInfo(&freeMem, &totalMem);
     fprintf(stderr, "Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
-    long long int MemAvail = (int)(0.5*(double)freeMem);
+    long long int MemAvail = (long long int)(0.5*(double)freeMem);
     long long int MemPerJob = (((nMatchedTillNow/nSpotsIndexed)*(22+9+8+3+7)) + 17 + 3 + 7 + 3 + 12 + (2*MaxNSpotsBest) + (MAX_N_HKLS*17))*sizeof(double);
     long long int maxNJobs = MemAvail/MemPerJob;
     int nJobGroups = (nSpotsIndexed/maxNJobs) + 1;
