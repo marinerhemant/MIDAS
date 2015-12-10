@@ -1,4 +1,4 @@
-// TODO: Work on what happens if no Friedel Pair is found.
+// TODO: Implement FriedelMixed, other 2 are done (Friedel and noFriedel)
 
 
 #include <stdio.h>
@@ -31,17 +31,17 @@
 #define N_COL_GRAINSPOTS 17   // nr of columns for output: y, z, omega, differences for spots of grain matches
 #define N_COL_GRAINMATCHES 16 // nr of columns for output: the Matches (summary)
 #define MAX_LINE_LENGTH 4096
-#define MAX_N_FRIEDEL_PAIRS 500
+#define MAX_N_FRIEDEL_PAIRS 1000
 #define MAX_N_EVALS 10000
 #define N_COLS_FRIEDEL_RESULTS 16
 #define N_COLS_ORIENTATION_NUMBERS 3
 #define MaxNSpotsBest 10
 
 //BEGIN NLDRMD FUNCTION scratch space: 3n+(n+1)*(n+1)
-__device__ void nelmin ( RealType fn ( int n_fun, RealType *x, void *data ), 
-  int n, RealType *start, RealType *xmin, 
-  RealType *lb, RealType *ub, RealType *scratch, RealType *ynewlo, 
-  RealType reqmin, RealType *step, int konvge, int kcount, 
+__device__ void nelmin ( RealType fn ( int n_fun, RealType *x, void *data ),
+  int n, RealType *start, RealType *xmin,
+  RealType *lb, RealType *ub, RealType *scratch, RealType *ynewlo,
+  RealType reqmin, RealType *step, int konvge, int kcount,
   int *icount, int *numres, int *ifault, void *data_t){
   RealType ccoeff = 0.5;
   RealType del;
@@ -98,7 +98,7 @@ __device__ void nelmin ( RealType fn ( int n_fun, RealType *x, void *data ),
   *icount = 0;
   *numres = 0;
 
-  jcount = konvge; 
+  jcount = konvge;
   dn = ( RealType ) ( n );
   nn = n + 1;
   dnn = ( RealType ) ( nn );
@@ -110,7 +110,7 @@ __device__ void nelmin ( RealType fn ( int n_fun, RealType *x, void *data ),
   for ( ; ; )
   {
     for ( i = 0; i < n; i++ )
-    { 
+    {
       p[i+n*n] = start[i];
     }
     y[n] = fn ( n, start, data_t );
@@ -130,12 +130,12 @@ __device__ void nelmin ( RealType fn ( int n_fun, RealType *x, void *data ),
       *icount = *icount + 1;
       start[j] = x;
     }
-/*                 
+/*
   The simplex construction is complete.
-                    
+
   Find highest and lowest Y values.  YNEWLO = Y(IHI) indicates
   the vertex of the simplex to be replaced.
-*/                
+*/
     ylo = y[0];
     ilo = 0;
 
@@ -175,10 +175,10 @@ __device__ void nelmin ( RealType fn ( int n_fun, RealType *x, void *data ),
       {
         z = 0.0;
         for ( j = 0; j < nn; j++ )
-        { 
+        {
           z = z + p[i+j*n];
         }
-        z = z - p[i+ihi*n];  
+        z = z - p[i+ihi*n];
         pbar[i] = z / dn;
       }
 /*
@@ -496,6 +496,7 @@ struct ParametersStruct {
    RealType BoxSizes[MAX_N_OMEGARANGES][4];          // for each omegarange a box (window: left  right  bottom top) that defines the spots to include during indexing [micron]
    RealType OmegaRanges[MAX_N_OMEGARANGES][2];       // Omegaranges: min, max [degrees], multiple possible.
    char OutputFolder[MAX_LINE_LENGTH];        // output folder
+   char ResultFolder[MAX_LINE_LENGTH];        // Results folder
    int NoOfOmegaRanges;            // Automaticly set from Omegaranges (not explicit input by user)
    char SpotsFileName[MAX_LINE_LENGTH];       // filename containing observed spots (see top for definition of columns)
    char IDsFileName [MAX_LINE_LENGTH];        // filename containing the spot-ids that will be used for indexing
@@ -701,6 +702,12 @@ int ReadParams(char FileName[], struct ParametersStruct * Params){
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
 			sscanf(line, "%s %s", dummy, Params->OutputFolder );
+			continue;
+		}
+		str = "ResultFolder ";
+		cmpres = strncmp(line, str, strlen(str));
+		if (cmpres == 0) {
+			sscanf(line, "%s %s", dummy, Params->ResultFolder );
 			continue;
 		}
 		// if string is empty
@@ -911,7 +918,7 @@ __device__ int CalcOmega(RealType x, RealType y, RealType z, RealType theta, Rea
 }
 
 __device__ int CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3],
-	RealType *RingRadii, RealType *OmeBoxArr, int NOmegaRanges, 
+	RealType *RingRadii, RealType *OmeBoxArr, int NOmegaRanges,
 	RealType ExcludePoleAngle, RealType *spots, RealType *hkls, int *n_arr){
 	int OmegaRangeNo;
 	int KeepSpot;
@@ -969,7 +976,7 @@ __device__ int CalcOmegaStrains(
     RealType ome;
     RealType len= sqrt(x*x + y*y + z*z);
     RealType v=sin(theta*deg2rad)*len;
-    
+
     RealType almostzero = 1e-4;
     if ( fabs(y) < almostzero ) {
         if (x != 0) {
@@ -989,16 +996,16 @@ __device__ int CalcOmegaStrains(
         RealType b = (2*v*x) / y2;
         RealType c = ((v*v) / y2) - 1;
         RealType discr = b*b - 4*a*c;
-        
+
         RealType ome1a;
         RealType ome1b;
         RealType ome2a;
         RealType ome2b;
         RealType cosome1;
         RealType cosome2;
-        
+
         RealType eqa, eqb, diffa, diffb;
-        
+
         if (discr >= 0) {
             cosome1 = (-b + sqrt(discr))/(2*a);
             if (fabs(cosome1) <= 1) {
@@ -1017,17 +1024,17 @@ __device__ int CalcOmegaStrains(
                     nsol++;
                 }
             }
-            
+
             cosome2 = (-b - sqrt(discr))/(2*a);
             if (fabs(cosome2) <= 1) {
                 ome2a = acos(cosome2);
                 ome2b = -ome2a;
-                
+
                 eqa = -x*cos(ome2a) + y*sin(ome2a);
                 diffa = fabs(eqa - v);
                 eqb = -x*cos(ome2b) + y*sin(ome2b);
                 diffb = fabs(eqb - v);
-                
+
                 if (diffa < diffb) {
                     omegas[nsol] = ome2a*rad2deg;
                     nsol++;
@@ -1054,7 +1061,7 @@ __device__ int CalcOmegaStrains(
 // Returns more stuff needed for Fitting
 // N_COL_THEORSPOTS is 8, so we can store everything we need.
 __device__ int CalcDiffrSpots(RealType OrientMatrix[3][3],
-	RealType *RingRadii, RealType *OmeBoxArr, int NOmegaRanges, 
+	RealType *RingRadii, RealType *OmeBoxArr, int NOmegaRanges,
 	RealType ExcludePoleAngle, RealType *spots, RealType *hkls, int *n_arr){
 	int OmegaRangeNo;
 	int KeepSpot;
@@ -1120,7 +1127,7 @@ __device__ int CalcDiffrSpots(RealType OrientMatrix[3][3],
 #define acosd(x) rad2deg*acos(x)
 #define atand(x) rad2deg*atan(x)
 
-__global__ void CorrectHKLsLatC(RealType *LatC_d, RealType *hklsIn, 
+__global__ void CorrectHKLsLatC(RealType *LatC_d, RealType *hklsIn,
 	int *n_arr, RealType *RTParamArr, RealType *hkls_d, int *HKLints_d){
 	int Pos, PosLatC, PosHkls;
 	Pos = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1149,7 +1156,7 @@ __global__ void CorrectHKLsLatC(RealType *LatC_d, RealType *hklsIn,
 	APr = b*c*SinA/Vol;
 	BPr = c*a*SinB/Vol;
 	CPr = a*b*SinG/Vol;
-	B[0][0] = APr; 
+	B[0][0] = APr;
 	B[0][1] = (BPr*cosd(GammaPr));
 	B[0][2] = (CPr*cosd(BetaPr));
 	B[1][0] = 0,
@@ -1176,7 +1183,7 @@ __global__ void CorrectHKLsLatC(RealType *LatC_d, RealType *hklsIn,
 	}
 }
 
-__device__ void CorrectHKLsLatCInd(RealType *LatC_d, RealType *hklsIn, 
+__device__ void CorrectHKLsLatCInd(RealType *LatC_d, RealType *hklsIn,
 	int *n_arr, RealType *RTParamArr, RealType *hklscorr, int *HKLints_d){
 	RealType *hkls;
 	hkls = hklscorr;
@@ -1197,7 +1204,7 @@ __device__ void CorrectHKLsLatCInd(RealType *LatC_d, RealType *hklsIn,
 	APr = b*c*SinA/Vol;
 	BPr = c*a*SinB/Vol;
 	CPr = a*b*SinG/Vol;
-	B[0][0] = APr; 
+	B[0][0] = APr;
 	B[0][1] = (BPr*cosd(GammaPr));
 	B[0][2] = (CPr*cosd(BetaPr));
 	B[1][0] = 0,
@@ -1242,8 +1249,27 @@ __device__ void Euler2OrientMat(RealType Euler[3], RealType m_out[3][3]){
     m_out[2][2] = cph;
 }
 
-__device__ void DisplacementInTheSpot(RealType a, RealType b, RealType c, 
-RealType xi, RealType yi, RealType zi, RealType omega, RealType wedge, 
+void Euler2OrientMat_h(RealType Euler[3], RealType m_out[3][3]){
+    RealType psi, phi, theta, cps, cph, cth, sps, sph, sth;
+    psi = Euler[0];
+    phi = Euler[1];
+    theta = Euler[2];
+    cps = cosd(psi) ; cph = cosd(phi); cth = cosd(theta);
+    sps = sind(psi); sph = sind(phi); sth = sind(theta);
+    m_out[0][0] = cth * cps - sth * cph * sps;
+    m_out[0][1] = -cth * cph * sps - sth * cps;
+    m_out[0][2] = sph * sps;
+    m_out[1][0] = cth * sps + sth * cph * cps;
+    m_out[1][1] = cth * cph * cps - sth * sps;
+    m_out[1][2] = -sph * cps;
+    m_out[2][0] = sth * sph;
+    m_out[2][1] = cth * sph;
+    m_out[2][2] = cph;
+}
+
+
+__device__ void DisplacementInTheSpot(RealType a, RealType b, RealType c,
+RealType xi, RealType yi, RealType zi, RealType omega, RealType wedge,
 RealType chi, RealType *Displ_y, RealType *Displ_z){
 	RealType sinOme=sind(omega), cosOme=cosd(omega), AcosOme=a*cosOme, BsinOme=b*sinOme;
 	RealType XNoW=AcosOme-BsinOme, YNoW=(a*sinOme)+(b*cosOme), ZNoW=c;
@@ -1257,7 +1283,7 @@ RealType chi, RealType *Displ_y, RealType *Displ_z){
 }
 
 __device__
-void CorrectForOme(RealType yc, RealType zc, RealType Lsd, RealType OmegaIni, 
+void CorrectForOme(RealType yc, RealType zc, RealType Lsd, RealType OmegaIni,
 	RealType wl, RealType wedge, RealType *ysOut, RealType *zsOut, RealType *OmegaOut)
 {
 	RealType SinTheta = sin(deg2rad*rad2deg*atan(sqrt((yc*yc)+(zc*zc))/Lsd)/2);
@@ -1337,7 +1363,7 @@ void CorrectForOme(RealType yc, RealType zc, RealType Lsd, RealType OmegaIni,
 	*OmegaOut = Omega;
 }
 
-__device__ void SpotToGv(RealType xi, RealType yi, RealType zi, RealType Omega, 
+__device__ void SpotToGv(RealType xi, RealType yi, RealType zi, RealType Omega,
 	RealType theta, RealType *g1, RealType *g2, RealType *g3)
 {
 	RealType CosOme = cosd(Omega), SinOme = sind(Omega), eta = CalcEtaAngle(yi,zi), TanEta = tand(-eta), SinTheta = sind(theta);
@@ -1370,7 +1396,7 @@ struct func_data_pos_ini{
 
 __device__ RealType pf_posIni(int n, double *x, void *f_data_trial){
 	struct func_data_pos_ini *f_data = (struct func_data_pos_ini *) f_data_trial;
-	RealType *TheorSpots, *spotsYZO, *RTParamArr, *OmeBoxArr, *hkls, 
+	RealType *TheorSpots, *spotsYZO, *RTParamArr, *OmeBoxArr, *hkls,
 		*hklscorr, *SpotsCorrected;
 	OmeBoxArr = &(f_data->OmeBoxArr[0]);
 	spotsYZO = &(f_data->spotsYZO[0]);
@@ -1393,16 +1419,6 @@ __device__ RealType pf_posIni(int n, double *x, void *f_data_trial){
 	int nTspots = CalcDiffrSpots(OrientMatrix,RTParamArr+5,OmeBoxArr,IntParamArr[1],
 			RTParamArr[5+MAX_N_RINGS+6],TheorSpots,hklscorr,n_arr);
 	for (int nrSp=0;nrSp<nMatched;nrSp++){
-		if (threadIdx.x == 13) {
-			printf("%lf %lf %lf\n",x[0],x[1],x[2]);
-			printf("%lf %lf %lf\n",spotsYZO[nrSp*9+5],spotsYZO[nrSp*9+6],spotsYZO[nrSp*9+4]);
-			printf("%lf %lf\n",RTParamArr[0],RTParamArr[20+MAX_N_RINGS]);
-			printf("%p %p\n",&DisplY,&DisplZ);
-			printf("%lf %lf %lf %lf %lf %lf %lf 5lf %lf %lf %lf\n",
-			x[0],x[1],x[2],RTParamArr[0],spotsYZO[nrSp*9+5],
-			spotsYZO[nrSp*9+6],spotsYZO[nrSp*9+4],RTParamArr[20+MAX_N_RINGS]
-			,0,&DisplY,&DisplZ);
-		}
 		DisplacementInTheSpot(x[0],x[1],x[2],RTParamArr[0],spotsYZO[nrSp*9+5],
 			spotsYZO[nrSp*9+6],spotsYZO[nrSp*9+4],RTParamArr[20+MAX_N_RINGS]
 			,0,&DisplY,&DisplZ);
@@ -1441,7 +1457,7 @@ struct func_data_orient{
 
 __device__ RealType pf_orient(int n, double *x, void *f_data_trial){
 	struct func_data_orient *f_data = (struct func_data_orient *) f_data_trial;
-	RealType *TheorSpots, *spotsYZO, *RTParamArr, *OmeBoxArr, *hkls, 
+	RealType *TheorSpots, *spotsYZO, *RTParamArr, *OmeBoxArr, *hkls,
 		*hklscorr, *SpotsCorrected;
 	OmeBoxArr = &(f_data->OmeBoxArr[0]);
 	spotsYZO = &(f_data->spotsCorrected[0]);
@@ -1492,7 +1508,7 @@ struct func_data_strains{
 
 __device__ RealType pf_strains(int n, double *x, void *f_data_trial){
 	struct func_data_strains *f_data = (struct func_data_strains *) f_data_trial;
-	RealType *TheorSpots, *spotsYZO, *RTParamArr, *OmeBoxArr, *hkls, 
+	RealType *TheorSpots, *spotsYZO, *RTParamArr, *OmeBoxArr, *hkls,
 		*hklscorr, *SpotsCorrected, *Euler;
 	OmeBoxArr = &(f_data->OmeBoxArr[0]);
 	spotsYZO = &(f_data->spotsCorrected[0]);
@@ -1575,7 +1591,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	int *n_arr, RealType *OmeBoxArr, RealType *hklsIn, int *HKLints,
 	int *nMatchedArr, RealType *spotsYZO_d, RealType *FitParams_d,
 	RealType *TheorSpots_d, RealType *scratch_d, RealType *hklspace_d,
-	RealType *x_d, RealType *xl_d, RealType *xu_d, RealType *xout_d, 
+	RealType *x_d, RealType *xl_d, RealType *xu_d, RealType *xout_d,
 	RealType *xstep_d, RealType *CorrectSpots, RealType *TheorSpotsCorr,
 	RealType *Result_d){
 	int spotNr = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1814,7 +1830,7 @@ __global__ void CalcAngleErrors(RealType *RTParamArr, int *IntParamArr,
 		RandomScratch[5] = sqrt((RTParamArr[0]*RTParamArr[0])+
 			(RandomScratch[2]*RandomScratch[2])+
 			(RandomScratch[3]*RandomScratch[3]));
-		RandomScratch[6] = sqrt((RandomScratch[2]*RandomScratch[2]) + 
+		RandomScratch[6] = sqrt((RandomScratch[2]*RandomScratch[2]) +
 			(RandomScratch[3]*RandomScratch[3]));
 		RandomScratch[7] = 0.5*atand(RandomScratch[6]/RTParamArr[0]);
 		SpotToGv(RTParamArr[0]/RandomScratch[5],
@@ -2029,7 +2045,7 @@ __global__ void ReturnDiffractionSpots(RealType *RTParamArr, RealType *OmeBoxArr
 	RealType RotMat3[3][3];
 	RealType hkllen = sqrt(hkl[0]*hkl[0] + hkl[1]*hkl[1] + hkl[2]*hkl[2]);
 	RealType hklnormallen = sqrt(hklnormal[0]*hklnormal[0] + hklnormal[1]*hklnormal[1] + hklnormal[2]*hklnormal[2]);
-	RealType dotpr = dot(hkl, hklnormal); 
+	RealType dotpr = dot(hkl, hklnormal);
 	RealType angled = rad2deg * acos(dotpr/(hkllen*hklnormallen));
 	AxisAngle2RotMatrix(v, rad2deg * acos(dot(hkl, hklnormal)/
 			(sqrt(hkl[0]*hkl[0] + hkl[1]*hkl[1] + hkl[2]*hkl[2])*sqrt(
@@ -2220,6 +2236,215 @@ __device__ int TryFriedel(RealType ys, RealType zs,
    return NrFriedel;
 }
 
+__device__ int CalcAllPlanes(RealType ys, RealType zs,
+	RealType ttheta, RealType eta, RealType omega, int ringno,
+	RealType Ring_rad, RealType Rsample, RealType Hbeam, RealType *hkls, int *n_arr,
+	RealType *RTParamArr, RealType *ResultArray, int rowID, RealType RefRad){
+	int nPlanes=0;
+	RealType hkl[3];
+	for (int i=0;i<n_arr[1];i++){
+		if ((int) hkls[i*7+3] == ringno){
+			hkl[0] = hkls[i*7+0];
+			hkl[1] = hkls[i*7+1];
+			hkl[2] = hkls[i*7+2];
+			break;
+		}
+	}
+	int quadr_coeff2 = 0;
+	RealType eta_Hbeam, quadr_coeff, coeff_y0 = 0, coeff_z0 = 0, y0_max_z0, y0_min_z0, y0_max = 0, y0_min = 0, z0_min = 0, z0_max = 0;
+	RealType y01, z01, y02, z02, y_diff, z_diff, length;
+	int nsteps;
+	RealType step_size = RTParamArr[3];
+	if (eta > 90)
+		eta_Hbeam = 180 - eta;
+	else if (eta < -90)
+		eta_Hbeam = 180 - fabs(eta);
+	else
+		eta_Hbeam = 90 - fabs(eta);
+	Hbeam = Hbeam + 2*(Rsample*tan(ttheta*deg2rad))*(sin(eta_Hbeam*deg2rad));
+	RealType eta_pole = 1 + rad2deg*acos(1-(Hbeam/Ring_rad));
+	RealType eta_equator = 1 + rad2deg*acos(1-(Rsample/Ring_rad));
+	if ((eta >= eta_pole) && (eta <= (90-eta_equator)) ) { // % 1st quadrant
+		quadr_coeff = 1;
+		coeff_y0 = -1;
+		coeff_z0 = 1;
+	}else if ( (eta >=(90+eta_equator)) && (eta <= (180-eta_pole)) ) {//% 4th quadrant
+		quadr_coeff = 2;
+		coeff_y0 = -1;
+		coeff_z0 = -1;
+	}else if ( (eta >= (-90+eta_equator) ) && (eta <= -eta_pole) )   { // % 2nd quadrant
+		quadr_coeff = 2;
+		coeff_y0 = 1;
+		coeff_z0 = 1;
+	}  else if ( (eta >= (-180+eta_pole) ) && (eta <= (-90-eta_equator)) )  { // % 3rd quadrant
+		quadr_coeff = 1;
+		coeff_y0 = 1;
+		coeff_z0 = -1;
+	}else
+		quadr_coeff = 0;
+	RealType y0_max_Rsample = ys + Rsample;
+	RealType y0_min_Rsample = ys - Rsample;
+	RealType z0_max_Hbeam = zs + 0.5 * Hbeam;
+	RealType z0_min_Hbeam = zs - 0.5 * Hbeam;
+	if (quadr_coeff == 1) {
+		y0_max_z0 = coeff_y0 * sqrt((Ring_rad * Ring_rad)-(z0_max_Hbeam * z0_max_Hbeam));
+		y0_min_z0 = coeff_y0 * sqrt((Ring_rad * Ring_rad)-(z0_min_Hbeam * z0_min_Hbeam));
+	}else if (quadr_coeff == 2) {
+		y0_max_z0 = coeff_y0 * sqrt((Ring_rad * Ring_rad)-(z0_min_Hbeam * z0_min_Hbeam));
+		y0_min_z0 = coeff_y0 * sqrt((Ring_rad * Ring_rad)-(z0_max_Hbeam * z0_max_Hbeam));
+	}
+	if (quadr_coeff > 0)  {
+		y0_max = min(y0_max_Rsample, y0_max_z0);
+		y0_min = max(y0_min_Rsample, y0_min_z0);
+	}else {
+		if ((eta > -eta_pole) && (eta < eta_pole ))  {
+			y0_max = y0_max_Rsample;
+			y0_min = y0_min_Rsample;
+			coeff_z0 = 1;
+		}else if (eta < (-180+eta_pole))  {
+			y0_max = y0_max_Rsample;
+			y0_min = y0_min_Rsample;
+			coeff_z0 = -1;
+		}else if (eta > (180-eta_pole))  {
+			y0_max = y0_max_Rsample;
+			y0_min = y0_min_Rsample;
+			coeff_z0 = -1;
+		}else if (( eta > (90-eta_equator)) && (eta < (90+eta_equator)) ) {
+			quadr_coeff2 = 1;
+			z0_max = z0_max_Hbeam;
+			z0_min = z0_min_Hbeam;
+			coeff_y0 = -1;
+		}else if ((eta > (-90-eta_equator)) && (eta < (-90+eta_equator)) ) {
+			quadr_coeff2 = 1;
+			z0_max = z0_max_Hbeam;
+			z0_min = z0_min_Hbeam;
+			coeff_y0 = 1;
+		}
+	}
+	if (quadr_coeff2 == 0 ) {
+		y01 = y0_min;
+		z01 = coeff_z0 * sqrt((Ring_rad * Ring_rad )-(y01 * y01));
+		y02 = y0_max;
+		z02 = coeff_z0 * sqrt((Ring_rad * Ring_rad )-(y02 * y02));
+		y_diff = y01 - y02;
+		z_diff = z01 - z02;
+		length = sqrt(y_diff * y_diff + z_diff * z_diff);
+		nsteps = ceil(length/step_size);
+	}else {
+		z01 = z0_min;
+		y01 = coeff_y0 * sqrt((Ring_rad * Ring_rad )-((z01 * z01)));
+		z02 = z0_max;
+		y02 = coeff_y0 * sqrt((Ring_rad * Ring_rad )-((z02 * z02)));
+		y_diff = y01 - y02;
+		z_diff = z01 - z02;
+		length = sqrt(y_diff * y_diff + z_diff * z_diff);
+		nsteps = ceil(length/step_size);
+	}
+	if ((nsteps % 2) == 0 ) {
+		nsteps = nsteps +1;
+	}
+	// Now we know nsteps, we know ys, zs, y0_min, z0_min, y0_max, z0_max
+	// Calculate y0_vector and z0_vector are IdealY and IdealZ and these can be used to calc hklnormal
+	RealType y0_vector, z0_vector, xi, yi, zi, hklnormal[3], lenK;
+	if ( nsteps == 1 ) {
+		if (quadr_coeff2 == 0) {
+			y0_vector = (y0_max+y0_min)/2;
+			z0_vector = coeff_z0 * sqrt((Ring_rad * Ring_rad)-(y0_vector * y0_vector));
+		}else {
+			z0_vector = (z0_max+z0_min)/2;
+			y0_vector = coeff_y0 * sqrt((Ring_rad * Ring_rad)-(z0_vector * z0_vector));
+		}
+		lenK = CalcNorm3(RTParamArr[0],y0_vector,z0_vector);
+		xi = RTParamArr[0]/lenK;
+		yi = y0_vector/lenK;
+		zi = z0_vector/lenK;
+		hklnormal[0] = (-1 + xi) * cos(-omega*deg2rad) - yi * sin(-omega*deg2rad);
+		hklnormal[1] = (-1 + xi) * sin(-omega*deg2rad) + yi * cos(-omega*deg2rad);
+		hklnormal[2] = zi;
+		ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 0]  = hkl[0];
+		ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 1]  = hkl[1];
+		ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 2]  = hkl[2];
+		ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 3]  = hklnormal[0];
+		ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 4]  = hklnormal[1];
+		ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 5]  = hklnormal[2];
+		ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 6]  = (RealType) ringno;
+		ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 7]  = y0_vector;
+		ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 8]  = z0_vector;
+		ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 9]  = xi;
+		ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 10] = yi;
+		ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 11] = zi;
+		ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 12] = ys;
+		ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 13] = zs;
+		ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 14] = omega;
+		ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 15] = RefRad;
+		nPlanes++;
+	}else {
+		int i;
+		RealType stepsizeY = (y0_max-y0_min)/(nsteps-1);
+		RealType stepsizeZ = (z0_max-z0_min)/(nsteps-1);
+		if (quadr_coeff2 == 0) {
+			for (i=0 ; i < nsteps ; i++) {
+				y0_vector = y0_min + i*stepsizeY;
+				z0_vector = coeff_z0 * sqrt((Ring_rad * Ring_rad)-(y0_vector * y0_vector));
+				lenK = CalcNorm3(RTParamArr[0],y0_vector,z0_vector);
+				xi = RTParamArr[0]/lenK;
+				yi = y0_vector/lenK;
+				zi = z0_vector/lenK;
+				hklnormal[0] = (-1 + xi) * cos(-omega*deg2rad) - yi * sin(-omega*deg2rad);
+				hklnormal[1] = (-1 + xi) * sin(-omega*deg2rad) + yi * cos(-omega*deg2rad);
+				hklnormal[2] = zi;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 0]  = hkl[0];
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 1]  = hkl[1];
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 2]  = hkl[2];
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 3]  = hklnormal[0];
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 4]  = hklnormal[1];
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 5]  = hklnormal[2];
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 6]  = (RealType) ringno;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 7]  = y0_vector;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 8]  = z0_vector;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 9]  = xi;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 10] = yi;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 11] = zi;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 12] = ys;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 13] = zs;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 14] = omega;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 15] = RefRad;
+				nPlanes++;
+			}
+		}else {
+			for (i=0 ; i < nsteps ; i++) {
+				z0_vector = z0_min + i*stepsizeZ;
+				y0_vector = coeff_y0 * sqrt((Ring_rad * Ring_rad)-(z0_vector * z0_vector));
+				lenK = CalcNorm3(RTParamArr[0],y0_vector,z0_vector);
+				xi = RTParamArr[0]/lenK;
+				yi = y0_vector/lenK;
+				zi = z0_vector/lenK;
+				hklnormal[0] = (-1 + xi) * cos(-omega*deg2rad) - yi * sin(-omega*deg2rad);
+				hklnormal[1] = (-1 + xi) * sin(-omega*deg2rad) + yi * cos(-omega*deg2rad);
+				hklnormal[2] = zi;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 0]  = hkl[0];
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 1]  = hkl[1];
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 2]  = hkl[2];
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 3]  = hklnormal[0];
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 4]  = hklnormal[1];
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 5]  = hklnormal[2];
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 6]  = (RealType) ringno;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 7]  = y0_vector;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 8]  = z0_vector;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 9]  = xi;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 10] = yi;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 11] = zi;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 12] = ys;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 13] = zs;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 14] = omega;
+				ResultArray[rowID * MAX_N_FRIEDEL_PAIRS * N_COLS_FRIEDEL_RESULTS + nPlanes * N_COLS_FRIEDEL_RESULTS + 15] = RefRad;
+				nPlanes++;
+			}
+		}
+	}
+   return nPlanes;
+}
+
 __global__ void FriedelFinding (int *SpotIDs, RealType *ObsSpotsLab,
 	RealType *hkls, int *n_arr, int *IntParamArr, RealType *RTParamArr, RealType *ResultArray, int *nNormals){
 	int rowID = blockIdx.x * blockDim.x + threadIdx.x;
@@ -2238,7 +2463,35 @@ __global__ void FriedelFinding (int *SpotIDs, RealType *ObsSpotsLab,
 			RTParamArr[(int) ObsSpotsLab[SpotRowNo*9+5] + 5], RTParamArr[1], RTParamArr[2], RTParamArr[5 + MAX_N_RINGS + 0],
 			RTParamArr[5 + MAX_N_RINGS + 3],ObsSpotsLab, hkls, n_arr, RTParamArr, ResultArray,rowID,RefRad);
 		nNormals[rowID] = nPlaneNormals;
+		if (nPlaneNormals == 0){
+			//nPlaneNormals = TryFriedelMixed();
+			//nNormals[rowID] = nPlaneNormals;
+			if (nPlaneNormals != 0){
+				return;
+			}else{
+				nPlaneNormals = CalcAllPlanes(ObsSpotsLab[SpotRowNo*9+0],
+					ObsSpotsLab[SpotRowNo*9+1],	ObsSpotsLab[SpotRowNo*9+7],
+					ObsSpotsLab[SpotRowNo*9+6], ObsSpotsLab[SpotRowNo*9+2],
+					(int) ObsSpotsLab[SpotRowNo*9+5],
+					RTParamArr[(int) ObsSpotsLab[SpotRowNo*9+5] + 5],
+					RTParamArr[1], RTParamArr[2], hkls, n_arr, RTParamArr,
+					ResultArray,rowID,RefRad);
+				nNormals[rowID] = nPlaneNormals;
+				return;
+			}
+		}else{
+			return;
+		}
 	}
+	nPlaneNormals = CalcAllPlanes(ObsSpotsLab[SpotRowNo*9+0],
+		ObsSpotsLab[SpotRowNo*9+1],	ObsSpotsLab[SpotRowNo*9+7],
+		ObsSpotsLab[SpotRowNo*9+6], ObsSpotsLab[SpotRowNo*9+2],
+		(int) ObsSpotsLab[SpotRowNo*9+5],
+		RTParamArr[(int) ObsSpotsLab[SpotRowNo*9+5] + 5],
+		RTParamArr[1], RTParamArr[2], hkls, n_arr, RTParamArr,
+		ResultArray,rowID,RefRad);
+	nNormals[rowID] = nPlaneNormals;
+	return;
 }
 
 static inline RealType sin_cos_to_angle (RealType s, RealType c){return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);}
@@ -2265,7 +2518,7 @@ static inline void OrientMat2Euler(RealType m[3][3],RealType Euler[3])
 }
 
 int getSPcores(cudaDeviceProp devProp)
-{  
+{
     int cores = 0;
     int mp = devProp.multiProcessorCount;
     switch (devProp.major){
@@ -2280,7 +2533,7 @@ int getSPcores(cudaDeviceProp devProp)
       cores = mp * 128;
       break;
      default:
-      printf("Unknown device type\n"); 
+      printf("Unknown device type\n");
       break;
       }
     return cores;
@@ -2303,9 +2556,9 @@ int main(int argc, char *argv[]){
     cudaMemGetInfo(&freeMem, &totalMem);
     fprintf(stderr, "Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
 
-	char folder[4096];
+	char folder[MAX_LINE_LENGTH];
 	struct ParametersStruct Parameters;
-	char ParamFN[4096];
+	char ParamFN[MAX_LINE_LENGTH];
 	getcwd(folder,sizeof(folder));
 	sprintf(ParamFN,"%s/%s",folder,argv[1]);
 	printf("Reading parameters from file: %s.\n", ParamFN);
@@ -2313,7 +2566,7 @@ int main(int argc, char *argv[]){
 
 	int *SpotIDs_h;
 	SpotIDs_h = (int *) malloc(sizeof(*SpotIDs_h)* MAX_N_SPOTS);
-	char spotIDsfn[4096];
+	char spotIDsfn[MAX_LINE_LENGTH];
 	sprintf(spotIDsfn,"%s/%s",folder,Parameters.IDsFileName);
 	fflush(stdout);
 	int nSpotIDs=0;
@@ -2331,13 +2584,13 @@ int main(int argc, char *argv[]){
 	int HKLints[MAX_N_HKLS*4];
    	char *hklfn = "hkls.csv";
 	FILE *hklf = fopen(hklfn,"r");
-	char aline[1024],dummy[1024];
-	fgets(aline,1000,hklf);
+	char aline[MAX_LINE_LENGTH],dummy[MAX_LINE_LENGTH];
+	fgets(aline,MAX_LINE_LENGTH,hklf);
 	int Rnr,i;
 	int hi,ki,li;
 	RealType hc,kc,lc,RRd,Ds,tht;
 	int n_hkls_h = 0;
-	while (fgets(aline,1000,hklf)!=NULL){
+	while (fgets(aline,MAX_LINE_LENGTH,hklf)!=NULL){
 		sscanf(aline, "%d %d %d %lf %d %lf %lf %lf %lf %s %lf",&hi,&ki,&li,&Ds,&Rnr,&hc,&kc,&lc,&tht,dummy,&RRd);
 		for (i=0;i<Parameters.NrOfRings;i++){
 			if (Rnr == Parameters.RingNumbers[i]){
@@ -2357,20 +2610,20 @@ int main(int argc, char *argv[]){
 		}
 	}
 
-	char datafn[4096];
+	char datafn[MAX_LINE_LENGTH];
 	sprintf(datafn,"%s/%s",folder,"Data.bin");
-	char ndatafn[4096];
+	char ndatafn[MAX_LINE_LENGTH];
 	sprintf(ndatafn,"%s/%s",folder,"nData.bin");
-	char spotsfn[4096];
+	char spotsfn[MAX_LINE_LENGTH];
 	sprintf(spotsfn,"%s/%s",folder,"Spots.bin");
-	char extrafn[4096];
+	char extrafn[MAX_LINE_LENGTH];
 	sprintf(extrafn,"%s/%s",folder,"ExtraInfo.bin");
 
 	FILE *fData = fopen(datafn,"r");
 	FILE *fnData = fopen(ndatafn,"r");
 	FILE *fSpots = fopen(spotsfn,"r");
 	FILE *fExtraInfo = fopen(extrafn,"r");
-	
+
 	RealType *hkls_d, *etamargins_d;
 	int  *HKLints_d;
 
@@ -2476,7 +2729,7 @@ int main(int argc, char *argv[]){
 	FriedelFinding<<<grid,block>>>(sps, ObsSpotsLab, hkls_d,n_arr,IntParamArr,RTParamArr,ResultArray,nNormals);
 	CHECK(cudaPeekAtLastError());
 	CHECK(cudaDeviceSynchronize());
-	
+
 	int *data, *nData, *data_h, *nData_h;
 
 	fseek(fData,0L,SEEK_END);
@@ -2556,7 +2809,7 @@ int main(int argc, char *argv[]){
 	MakeOrientations<<<grida,blocka>>>(ResultArr, HKLints_d, IntParamArr, RTParamArr, ResultMakeOrientations,sumTotal);
 	CHECK(cudaPeekAtLastError());
 	CHECK(cudaDeviceSynchronize());
-	
+
 	ResultMakeOrientations_h = (int *) malloc(N_COLS_ORIENTATION_NUMBERS*sumTotal*sizeof(int));
 	cudaMemcpy(ResultMakeOrientations_h,ResultMakeOrientations,N_COLS_ORIENTATION_NUMBERS*sumTotal*sizeof(int),cudaMemcpyDeviceToHost);
 
@@ -2567,9 +2820,9 @@ int main(int argc, char *argv[]){
 	int maxJobs=0, maxJobsOrient=0;
 	for (int i=0;i<sumTotal;i++){
 		totalJobs += ResultMakeOrientations_h[i*N_COLS_ORIENTATION_NUMBERS + 2];
-		if (ResultMakeOrientations_h[i*N_COLS_ORIENTATION_NUMBERS + 2] > maxJobs) 
+		if (ResultMakeOrientations_h[i*N_COLS_ORIENTATION_NUMBERS + 2] > maxJobs)
 			maxJobs = ResultMakeOrientations_h[i*N_COLS_ORIENTATION_NUMBERS + 2];
-		if (ResultMakeOrientations_h[i*N_COLS_ORIENTATION_NUMBERS + 0] > maxJobsOrient) 
+		if (ResultMakeOrientations_h[i*N_COLS_ORIENTATION_NUMBERS + 0] > maxJobsOrient)
 			maxJobsOrient = ResultMakeOrientations_h[i*N_COLS_ORIENTATION_NUMBERS + 0];
 	}
 
@@ -2581,7 +2834,7 @@ int main(int argc, char *argv[]){
 	RealType *ExtraInfo_h;
 	ExtraInfo_h = (RealType *)malloc(sizeExtra);
 	fread(ExtraInfo_h,sizeExtra,1,fExtraInfo);
-	
+
 	int sizeAllSpots = (sizeExtra/14)*8;
 	int nExtraSpots = sizeAllSpots/(8*sizeof(RealType));
 	RealType *AllSpotsYZO_h;
@@ -2599,7 +2852,7 @@ int main(int argc, char *argv[]){
 	RealType *AllSpotsYZO_d;
 	cudaMalloc((RealType **)&AllSpotsYZO_d,sizeAllSpots);
 	cudaMemcpy(AllSpotsYZO_d,AllSpotsYZO_h,sizeAllSpots,cudaMemcpyHostToDevice);
-	
+
 	RealType *AllTheorSpots, *IAs, *IAs_h, *GS, *Orientations, *GS_h, *Orientations_h, *AllInfo, *SpotsInfo_d,
 		*SpotsInfo, *OrientationsOut, *OrientationsOut_h;
 	int *AllGrainSpots,*nSpotsArr,*nMatchedArr,*nMatchedArr_h,*nSpotsArr_h, *SpotsInfoTotal;
@@ -2843,9 +3096,9 @@ int main(int argc, char *argv[]){
 			Error_d,RandomScratch);
 		CHECK(cudaPeekAtLastError());
 		CHECK(cudaDeviceSynchronize());
-		cudaMemcpy(SpotsCompReturnArr+22*startRowNMatched,SpCmp_d,22*nrowsNMatched*sizeof(RealType),cudaMemcpyDeviceToHost);
+		//cudaMemcpy(SpotsCompReturnArr+22*startRowNMatched,SpCmp_d,22*nrowsNMatched*sizeof(RealType),cudaMemcpyDeviceToHost);
 		cudaMemcpy(SpListArr+9*startRowNMatched,SpList_d,9*nrowsNMatched*sizeof(RealType),cudaMemcpyDeviceToHost);
-		cudaMemcpy(ErrorArr+3*startRow,Error_d,3*nrows*sizeof(RealType),cudaMemcpyDeviceToHost);
+		//cudaMemcpy(ErrorArr+3*startRow,Error_d,3*nrows*sizeof(RealType),cudaMemcpyDeviceToHost);
 	}
 	cudaFree(SpList_d);
 	cudaFree(SpCmp_d);
@@ -2859,7 +3112,7 @@ int main(int argc, char *argv[]){
 	cudaFree(nMatchedArr_d);
 	cudaFree(FitParams_d);
 	cudaFree(hkls_cd);
-	
+
 	// We have SpListArr, FitParams_h, we just call the function to run things.
 	nJobGroups = nSpotsIndexed/nCores + 1;
 	maxNJobs = 2*nCores;
@@ -2867,23 +3120,34 @@ int main(int argc, char *argv[]){
 	sizeNMatched = maxNJobs*(int)(((double)nMatchedTillNow/(double)nSpotsIndexed)*1.5);
 	RealType *scratchspace, *hklspace, *xspace, *xstepspace, *xlspace, *xuspace, *xoutspace,
 		*TheorSpotsArr, *SpotsMatchedArr_d2, *FitParams_d2, *CorrectSpots, *TheorSpotsCorr,
-		*FitResultArr, *FitResultArr_h;
+		*FitResultArr, *FitResultArr_h, *LatCArr;
 	cudaMalloc((int **)&nMatchedArr_d2,maxNJobs*3*sizeof(RealType));
 	cudaMalloc((RealType **)&scratchspace,(3*maxNJobs+(maxNJobs+1)*(maxNJobs+1))*sizeof(RealType));
 	cudaMalloc((RealType **)&hklspace,maxNJobs*n_hkls_h*7*sizeof(RealType));
-	cudaMalloc((RealType **)&xspace,12*maxJobs*sizeof(RealType));
-	cudaMalloc((RealType **)&xstepspace,12*maxJobs*sizeof(RealType));
-	cudaMalloc((RealType **)&xlspace,12*maxJobs*sizeof(RealType));
-	cudaMalloc((RealType **)&xuspace,12*maxJobs*sizeof(RealType));
-	cudaMalloc((RealType **)&xoutspace,12*maxJobs*sizeof(RealType));
+	cudaMalloc((RealType **)&xspace,12*maxNJobs*sizeof(RealType));
+	cudaMalloc((RealType **)&xstepspace,12*maxNJobs*sizeof(RealType));
+	cudaMalloc((RealType **)&xlspace,12*maxNJobs*sizeof(RealType));
+	cudaMalloc((RealType **)&xuspace,12*maxNJobs*sizeof(RealType));
+	cudaMalloc((RealType **)&xoutspace,12*maxNJobs*sizeof(RealType));
 	cudaMalloc((RealType **)&TheorSpotsArr,n_hkls_h*2*8*maxNJobs*sizeof(RealType));
 	cudaMalloc((RealType **)&TheorSpotsCorr,n_hkls_h*2*8*maxNJobs*sizeof(RealType));
 	cudaMalloc((RealType **)&nMatchedArr_d2,3*maxNJobs*sizeof(int));
 	cudaMalloc((RealType **)&SpotsMatchedArr_d2,sizeNMatched*9*sizeof(RealType));
 	cudaMalloc((RealType **)&CorrectSpots,sizeNMatched*6*sizeof(RealType));
 	cudaMalloc((RealType **)&FitParams_d2,12*maxNJobs*sizeof(RealType));
-	cudaMalloc((RealType **)&FitResultArr,12*maxJobs*sizeof(RealType));
-	FitResultArr_h = (RealType *) malloc(maxJobs*12*sizeof(RealType));
+	cudaMalloc((RealType **)&FitResultArr,12*maxNJobs*sizeof(RealType));
+	FitResultArr_h = (RealType *) malloc(maxNJobs*12*sizeof(RealType));
+	LatCArr = (RealType *) malloc(maxNJobs*6*sizeof(RealType));
+	RealType *hkls_dcorr, *MatchDiff2, *SpotsCorrected2,
+		*Angles2, *SpCmp_d2, *SpList_d2, *Error_d2, *RandomScratch2;
+	cudaMalloc((RealType **)&hkls_dcorr,maxNJobs*n_hkls_h*7*sizeof(RealType));
+	cudaMalloc((RealType **)&SpCmp_d2, sizeNMatched*22*sizeof(RealType));
+	cudaMalloc((RealType **)&SpList_d2, sizeNMatched*9*sizeof(RealType));
+	cudaMalloc((RealType **)&Error_d2, maxNJobs*3*sizeof(RealType));
+	cudaMalloc((RealType **)&MatchDiff2, sizeNMatched*3*sizeof(RealType));
+	cudaMalloc((RealType **)&SpotsCorrected2, sizeNMatched*7*sizeof(RealType));
+	cudaMalloc((RealType **)&Angles2, 2*MaxNSpotsBest*maxNJobs*sizeof(RealType));
+	cudaMalloc((RealType **)&RandomScratch2, 17*maxNJobs*sizeof(RealType));
 	for (int jobNr=0;jobNr<nJobGroups;jobNr++){
 		startRow = jobNr*maxNJobs;
 		endRow = (jobNr + 1 != nJobGroups) ? ((jobNr+1)*maxNJobs)-1 : ((nSpotsIndexed-1)%maxNJobs);
@@ -2912,43 +3176,70 @@ int main(int argc, char *argv[]){
 			xoutspace,xstepspace, CorrectSpots, TheorSpotsCorr, FitResultArr);
 		CHECK(cudaPeekAtLastError());
 		CHECK(cudaDeviceSynchronize());
-		return;
 		cudaMemcpy(FitResultArr_h,FitResultArr,12*maxJobs*sizeof(RealType),cudaMemcpyDeviceToHost);
-		CorrectHKLsLatC<<<gridf,blockf>>>(LatCIn_d, hkls_d, n_arr, RTParamArr, hkls_dc, HKLints_d);
+		for (int i=0;i<nrows;i++){
+			for (int j=0;j<6;j++){
+				LatCArr[i*6+j] = FitResultArr[i*12+6+j];
+			}
+		}
+		cudaMemcpy(LatCIn_d,LatCArr,nrows*6*sizeof(RealType),cudaMemcpyHostToDevice);
+		CorrectHKLsLatC<<<gridf,blockf>>>(LatCIn_d, hkls_d, n_arr, RTParamArr, hkls_dcorr, HKLints_d);
 		CHECK(cudaPeekAtLastError());
 		CHECK(cudaDeviceSynchronize());
 		CalcAngleErrors<<<gridf,blockf>>>(RTParamArr,IntParamArr,n_arr,
-			OmeBoxArr,hkls_dc,nMatchedArr_d,SpotsMatchedArr_d,FitParams_d,
-			MatchDiff,TheorSpots,SpotsCorrected,Angles,SpCmp_d,SpList_d,
-			Error_d,RandomScratch);
+			OmeBoxArr,hkls_dcorr,nMatchedArr_d2,SpotsMatchedArr_d2,FitResultArr,
+			MatchDiff2,TheorSpotsArr,SpotsCorrected2,Angles2,SpCmp_d2,SpList_d2,
+			Error_d2,RandomScratch2);
 		CHECK(cudaPeekAtLastError());
 		CHECK(cudaDeviceSynchronize());
-		cudaMemcpy(SpotsCompReturnArr+22*startRowNMatched,SpCmp_d,22*nrowsNMatched*sizeof(RealType),cudaMemcpyDeviceToHost);
-		cudaMemcpy(SpListArr+9*startRowNMatched,SpList_d,9*nrowsNMatched*sizeof(RealType),cudaMemcpyDeviceToHost);
-		cudaMemcpy(ErrorArr+3*startRow,Error_d,3*nrows*sizeof(RealType),cudaMemcpyDeviceToHost);
+		cudaMemcpy(SpotsCompReturnArr+22*startRowNMatched,SpCmp_d2,22*nrowsNMatched*sizeof(RealType),cudaMemcpyDeviceToHost);
+		cudaMemcpy(SpListArr+9*startRowNMatched,SpList_d2,9*nrowsNMatched*sizeof(RealType),cudaMemcpyDeviceToHost);
+		cudaMemcpy(ErrorArr+3*startRow,Error_d2,3*nrows*sizeof(RealType),cudaMemcpyDeviceToHost);
 	}
-	free(nMatchedArr_h);
-	free(nSpotsArr_h);
-	free(IAs_h);
-	free(nNormals_h);
-	free(ResultArray_h);
-	free(startingIDs);
-	free(ResultArr_h);
-	free(ResultMakeOrientations_h);
-	free(GS_h);
-	free(Orientations_h);
-	free(AllInfo);
-	free(SpotsInfoTotal);
-	cudaFree(hkls_d);
-	cudaFree(n_arr);
-	cudaFree(HKLints_d);
-	cudaFree(IntParamArr);
-	cudaFree(RTParamArr);
-	cudaFree(OmeBoxArr);
+	// We have 	idsIndexed with the successful IDs.
+	//			nMatchedArrIndexing to guide where to look
+	//			SpotsCompReturnArr with the info about each matched spot, 
+	//			SpListArr with the spots matched input, 
+	//			ErrorArr for errors and 
+	//			FitResultArr with all the fit parameters.
 
+	// First move spotIDsfn to a backup so that we don't overwrite this.
+	char cmd[MAX_LINE_LENGTH];
+	sprintf(cmd,"mv %s %s.orig",spotIDsfn,spotIDsfn);
+	system(cmd);
+	char outIDsfn[MAX_LINE_LENGTH];
+	sprintf(outIDsfn,"%s/SpotsToIndex.csv",folder);
+	char fitbestfn[MAX_LINE_LENGTH];
+	char opfitfn[MAX_LINE_LENGTH];
+	sprintf(fitbestfn,"%s/FitBest.bin",Parameters.ResultFolder);
+	FILE *fb;
+	fb = fopen(fitbestfn,"w");
+	fwrite(SpotsCompReturnArr,nMatchedTillNow*22*sizeof(RealType),1,fb);
+	sprintf(opfitfn,"%s/OrientPosFit.bin",Parameters.ResultFolder);
+	FILE *fo;
+	fo = fopen(opfitfn,"w");
+	FILE *outidsfile;
+	outidsfile = fopen(outIDsfn,"w");
+	RealType *OpArr;
+	OpArr  = (RealType *) malloc(nSpotsIndexed*25*sizeof(RealType));
+	RealType OrientMat[3][3];
+	for (int i=0;i<nSpotsIndexed;i++){
+		fprintf(outidsfile,"%d\n",idsIndexed[i]);
+		OpArr[i*25+0] = (RealType) idsIndexed[i];
+		Euler2OrientMat_h(FitResultArr+i*12+3,OrientMat);
+		for (int j=0;j<3;j++){
+			for (int k=0;k<3;k++){
+				OpArr[i*25+1+j*3+k] = OrientMat[j][k];
+			}
+			OpArr[i*25+10+j] = FitResultArr[i+12+j];
+			OpArr[i*25+13+j] = FitResultArr[i+12+6+j];
+			OpArr[i*25+16+j] = FitResultArr[i+12+9+j];
+			OpArr[i*25+19+j] = ErrorArr[i*3+j];
+			OpArr[i*25+22+j] = (RealType)nMatchedArrIndexing[i*3+j];
+		}
+	}
+	fwrite(OpArr,25*nSpotsIndexed*sizeof(RealType),1,fo);
 	cudaDeviceReset();
-
 	printf("Time elapsed: %fs\n",cpuSecond()-iStart);
-
 	return 0;
 }

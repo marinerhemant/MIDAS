@@ -155,14 +155,7 @@ static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], 
 {
 	char aline[1000];
     char InFile[1024];
-	if (Padding == 2) {sprintf(InFile,"%s/%s_%02d_PS.csv",OutFolderName,FileStem,FileNr);}
-	else if (Padding == 3) {sprintf(InFile,"%s/%s_%03d_PS.csv",OutFolderName,FileStem,FileNr);}
-	else if (Padding == 4) {sprintf(InFile,"%s/%s_%04d_PS.csv",OutFolderName,FileStem,FileNr);}
-	else if (Padding == 5) {sprintf(InFile,"%s/%s_%05d_PS.csv",OutFolderName,FileStem,FileNr);}
-	else if (Padding == 6) {sprintf(InFile,"%s/%s_%06d_PS.csv",OutFolderName,FileStem,FileNr);}
-	else if (Padding == 7) {sprintf(InFile,"%s/%s_%07d_PS.csv",OutFolderName,FileStem,FileNr);}
-	else if (Padding == 8) {sprintf(InFile,"%s/%s_%08d_PS.csv",OutFolderName,FileStem,FileNr);}
-	else if (Padding == 9) {sprintf(InFile,"%s/%s_%09d_PS.csv",OutFolderName,FileStem,FileNr);}
+    sprintf(InFile,"%s/%s_PS.csv",OutFolderName,FileStem);
     FILE *infileread;
     infileread = fopen(InFile,"r");
     struct InputData *MyData;
