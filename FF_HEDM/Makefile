@@ -16,7 +16,7 @@ all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting 
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains indexercuda peakscuda \
 	fitposorstrainscuda mergeoverlapsgpu
 
-cuda: help indexercuda peaks mergeoverlapsgpu fittiltbclsdsample \
+cuda: help indexrefinecuda peaks mergeoverlapsgpu fittiltbclsdsample \
 	calcradius mergerings processgrains hkls bindata calibrant findsaturatedpx fittiltx fitwedge
 
 bindircheck:
