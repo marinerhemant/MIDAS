@@ -22,7 +22,7 @@ MarginRadial 1000.000000;
 MinMatchesToAcceptFrac 0.750000;
 SpotsFileName InputAll.csv
 RefinementFileName InputAllExtraInfoFittingAll.csv
-IDsFileName SpotsToIndex.backup
+IDsFileName SpotsToIndex.csv
 LsdFit 796407.091000
 YBCFit 1024.075950
 ZBCFit 1024.887230
