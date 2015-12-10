@@ -6,7 +6,7 @@ Wavelength 0.202153;
 Distance 796407.091000;
 Rsample 1500.000000;
 Hbeam 800.000000;
-StepsizePos 50.000000;
+StepsizePos 200.000000;
 StepsizeOrient 0.200000;
 MarginRadius 1000.000000;
 OmeBinSize 0.100000;
@@ -22,7 +22,7 @@ MarginRadial 1000.000000;
 MinMatchesToAcceptFrac 0.750000;
 SpotsFileName InputAll.csv
 RefinementFileName InputAllExtraInfoFittingAll.csv
-IDsFileName SpotsToIndex.csv
+IDsFileName SpotsToIndex.bk
 LsdFit 796407.091000
 YBCFit 1024.075950
 ZBCFit 1024.887230
