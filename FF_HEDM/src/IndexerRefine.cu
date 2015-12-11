@@ -2827,6 +2827,8 @@ int main(int argc, char *argv[]){
 		*SpotsInfo, *OrientationsOut, *OrientationsOut_h;
 	int *AllGrainSpots,*nSpotsArr,*nMatchedArr,*nMatchedArr_h,*nSpotsArr_h, *SpotsInfoTotal;
 	cudaMalloc((RealType **)&AllTheorSpots,maxJobsOrient*n_hkls_h*N_COL_THEORSPOTS*2*sizeof(RealType));
+	CHECK(cudaPeekAtLastError());
+	CHECK(cudaDeviceSynchronize());
 	cudaMalloc((int **)&AllGrainSpots,maxJobs*n_hkls_h*2*sizeof(int));
 	cudaMalloc((int **)&nSpotsArr,maxJobsOrient*sizeof(int));
 	cudaMalloc((RealType **)&IAs,maxJobs*sizeof(RealType));
@@ -2842,9 +2844,17 @@ int main(int argc, char *argv[]){
 	int nJobsOrient, posResultArr, nJobsTotal, n_min, BestPosition;
 	RealType bestIA, tempIA;
 	cudaMalloc((RealType **)&GS,3*maxJobs*sizeof(RealType));
+	CHECK(cudaPeekAtLastError());
+	CHECK(cudaDeviceSynchronize());
 	cudaMalloc((RealType **)&Orientations,9*maxJobsOrient*sizeof(RealType));
+	CHECK(cudaPeekAtLastError());
+	CHECK(cudaDeviceSynchronize());
 	cudaMalloc((RealType **)&SpotsInfo_d,n_hkls_h*2*9*maxJobs*sizeof(RealType));
+	CHECK(cudaPeekAtLastError());
+	CHECK(cudaDeviceSynchronize());
 	cudaMalloc((RealType **)&OrientationsOut,10*maxJobs*sizeof(RealType));
+	CHECK(cudaPeekAtLastError());
+	CHECK(cudaDeviceSynchronize());
 	SpotsInfo = (RealType *)malloc(n_hkls_h*2*9*sumTotal*sizeof(RealType));
 	OrientationsOut_h = (RealType *) malloc(10*maxJobs*sizeof(RealType));
 	GS_h = (RealType *) malloc(3*maxJobs*sizeof(RealType));
