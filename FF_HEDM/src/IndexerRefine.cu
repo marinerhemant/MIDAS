@@ -3004,10 +3004,7 @@ int main(int argc, char *argv[]){
 		}
 	}
 
-	// Updated n_arr_h and do cudaMemcpy n_arr for new nspids.
 	printf("Out of %d IDs, %d IDs were indexed.\n",nspids,nSpotsIndexed);
-	n_arr_h[2] = nSpotsIndexed;
-	cudaMemcpy(n_arr,n_arr_h,3*sizeof(int),cudaMemcpyHostToDevice);
 	cudaFree(GS);
 	cudaFree(Orientations);
 	cudaFree(AllTheorSpots);
