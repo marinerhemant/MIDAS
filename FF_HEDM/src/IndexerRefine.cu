@@ -1417,7 +1417,6 @@ __device__ RealType pf_posIni(int n, double *x, void *f_data_trial){
 	RealType OrientMatrix[3][3];
 	Euler2OrientMat(x+3,OrientMatrix);
 	RealType DisplY, DisplZ, Y, Z, Ome;
-	RealType Calc;
 	int spnr;
 	RealType Error = 0;
 	int nTspots = CalcDiffrSpots(OrientMatrix,RTParamArr+5,OmeBoxArr,IntParamArr[1],
