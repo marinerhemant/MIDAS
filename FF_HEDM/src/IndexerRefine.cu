@@ -930,12 +930,14 @@ __device__ int CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3],
 	RealType zl;
 	int nspotsPlane;
 	int spotnr = 0;
+	RealType nrhkls;
 	for (int indexhkl=0; indexhkl < n_arr[1] ; indexhkl++)  {
 		Ghkl[0] = hkls[indexhkl*7+0];
 		Ghkl[1] = hkls[indexhkl*7+1];
 		Ghkl[2] = hkls[indexhkl*7+2];
 		MatrixMultF(OrientMatrix,Ghkl, Gc);
 		nspotsPlane = CalcOmega(Gc[0], Gc[1], Gc[2], hkls[indexhkl*7+5], omegas, etas);
+		nrhkls = (RealType)indexhkl*2 + 1;
 		for (int i=0 ; i<nspotsPlane ; i++) {
 			if ((fabs(etas[i]) < ExcludePoleAngle ) || ((180-fabs(etas[i])) < ExcludePoleAngle)) continue;
 			yl = -(sin(deg2rad * etas[i])*RingRadii[(int)(hkls[indexhkl*7+3])]);
@@ -957,6 +959,8 @@ __device__ int CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3],
 				spots[spotnr*N_COL_THEORSPOTS+1] = zl;
 				spots[spotnr*N_COL_THEORSPOTS+2] = omegas[i];
 				spots[spotnr*N_COL_THEORSPOTS+3] = hkls[indexhkl*7+3];
+				spots[spotnr*N_COL_THEORSPOTS+4] = nrhkls;
+				nrhkls++;
 				spotnr++;
 			}
 		}
@@ -1778,7 +1782,7 @@ __global__ void CalcAngleErrors(RealType *RTParamArr, int *IntParamArr,
 	int *n_arr, RealType *OmeBoxArr, RealType *hkls_c, int *nMatchedArr,
 	RealType *spotsYZO_d, RealType *x_d, RealType *MatchDiff_d,
 	RealType *TheorSpots_d, RealType *SpotsCorrected_d, RealType *Angles_d,
-	RealType *SpotsComp_d, RealType *SpList_d, RealType *Error_d,
+	RealType *SpotsComp_d, RealType *Error_d,
 	RealType *RandomScratch_d)
 {
 	int spotNr = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1787,7 +1791,7 @@ __global__ void CalcAngleErrors(RealType *RTParamArr, int *IntParamArr,
 	}
 	RealType *hkls, *spotsYZO, *x, *MatchDiff, *TheorSpots, *SpotsCorrected, *Angles;
 	RealType *RandomScratch;
-	RealType *SpotsComp, *SpList, *Error;
+	RealType *SpotsComp, *Error;
 	int nMatched, nspots, nMatchedTillNowRowNr, i;
 	hkls = hkls_c + spotNr*n_arr[1]*7;
 	nMatched = nMatchedArr[spotNr*3+0];
@@ -1796,7 +1800,6 @@ __global__ void CalcAngleErrors(RealType *RTParamArr, int *IntParamArr,
 	spotsYZO = spotsYZO_d + nMatchedTillNowRowNr*8;
 	x = x_d + spotNr*12;
 	SpotsComp = SpotsComp_d + nMatchedTillNowRowNr*22;
-	SpList = SpList_d + nMatchedTillNowRowNr*9;
 	Error = Error_d + spotNr*3;
 	Error[0] = 0; Error[1] = 0; Error[2] = 0;
 	Error[0] = 0; Error[1] = 0; Error[2] = 0;
@@ -1858,6 +1861,7 @@ __global__ void CalcAngleErrors(RealType *RTParamArr, int *IntParamArr,
 			}
 		}
 		if (nSpotsMatchedWithSpot == 0){
+			printf("Not found\n");
 			continue;
 		}
 		RandomScratch[14] = 100000.0;
@@ -1887,10 +1891,6 @@ __global__ void CalcAngleErrors(RealType *RTParamArr, int *IntParamArr,
 			SpotsComp[nrSp*22+19]=RandomScratch[14];
 			SpotsComp[nrSp*22+20]=RandomScratch[15];
 			SpotsComp[nrSp*22+21]=RandomScratch[16];
-			for (i=0;i<8;i++){
-				SpList[nrSp*9+i]=spotsYZO[nrSp*8+i];
-			}
-			SpList[nrSp*9+8]=TheorSpots[RowBest*8+7];
 			Error[0] += fabs(MatchDiff[nrSp*3+0]/nspots);
 			Error[1] += fabs(MatchDiff[nrSp*3+1]/nspots);
 			Error[2] += fabs(MatchDiff[nrSp*3+2]/nspots);
@@ -1921,7 +1921,7 @@ __global__ void CompareDiffractionSpots(RealType *AllTheorSpots, RealType *RTPar
 	int *GrainSpots;
 	GrainSpots = AllGrainSpots + overallPos * n_arr[1] * 2;
 	RealType *SpotsInfo;
-	SpotsInfo = SpotsInfo_d + overallPos * n_arr[1] * 2 * 8;
+	SpotsInfo = SpotsInfo_d + overallPos * n_arr[1] * 2 * 9;
 	RealType y0, z0, xi, yi, zi, ys, zs,omega,RefRad;
 	y0 = ResultArr[PosResultArr * N_COLS_FRIEDEL_RESULTS + 7];
 	z0 = ResultArr[PosResultArr * N_COLS_FRIEDEL_RESULTS + 8];
@@ -1996,8 +1996,9 @@ __global__ void CompareDiffractionSpots(RealType *AllTheorSpots, RealType *RTPar
 		if (MatchFound == 1) {
 			if ((int)AllSpotsYZO[spotRowBest*8+3] != (int)ObsSpots[spotRowBest*9+4]) return;
 			for (int i=0;i<8;i++){
-				SpotsInfo[nMatched * 8 + i] = AllSpotsYZO[spotRowBest * 8 + i];
+				SpotsInfo[nMatched * 9 + i] = AllSpotsYZO[spotRowBest * 8 + i];
 			}
+			SpotsInfo[nMatched * 9 + 8] = TheorSpots[sp*N_COL_THEORSPOTS+4];
 			GrainSpots[nMatched] = (int) ObsSpots[spotRowBest*9+4];
 			omeo = ObsSpots[spotRowBest*9+2];
 			ometh = TheorSpots[sp*N_COL_THEORSPOTS+2];
@@ -2873,9 +2874,9 @@ int main(int argc, char *argv[]){
 	RealType bestIA, tempIA;
 	cudaMalloc((RealType **)&GS,3*maxJobs*sizeof(RealType));
 	cudaMalloc((RealType **)&Orientations,9*maxJobsOrient*sizeof(RealType));
-	cudaMalloc((RealType **)&SpotsInfo_d,n_hkls_h*2*8*maxJobs*sizeof(RealType));
+	cudaMalloc((RealType **)&SpotsInfo_d,n_hkls_h*2*9*maxJobs*sizeof(RealType));
 	cudaMalloc((RealType **)&OrientationsOut,10*maxJobs*sizeof(RealType));
-	SpotsInfo = (RealType *)malloc(n_hkls_h*2*8*sumTotal*sizeof(RealType));
+	SpotsInfo = (RealType *)malloc(n_hkls_h*2*9*sumTotal*sizeof(RealType));
 	OrientationsOut_h = (RealType *) malloc(10*maxJobs*sizeof(RealType));
 	GS_h = (RealType *) malloc(3*maxJobs*sizeof(RealType));
 	Orientations_h = (RealType *) malloc(9*maxJobsOrient*sizeof(RealType));
@@ -2927,7 +2928,7 @@ int main(int argc, char *argv[]){
 			}
 		}
 		if (bestFraction >= Parameters.MinMatchesToAcceptFrac){
-			cudaMemcpy(SpotsInfo+jobNr*n_hkls_h*2*8, SpotsInfo_d+BestPosition*n_hkls_h*2*8,nMatchedArr_h[BestPosition]*8*sizeof(RealType),cudaMemcpyDeviceToHost);
+			cudaMemcpy(SpotsInfo+jobNr*n_hkls_h*2*9, SpotsInfo_d+BestPosition*n_hkls_h*2*9,nMatchedArr_h[BestPosition]*9*sizeof(RealType),cudaMemcpyDeviceToHost);
 			AllInfo[jobNr*N_COL_GRAINMATCHES + 0] = bestIA;
 			AllInfo[jobNr*N_COL_GRAINMATCHES + 1] = OrientationsOut_h[BestPosition*10+0];
 			AllInfo[jobNr*N_COL_GRAINMATCHES + 2] = OrientationsOut_h[BestPosition*10+1];
@@ -2955,7 +2956,7 @@ int main(int argc, char *argv[]){
 	LatCIn_h = (RealType *) malloc(nspids*6*sizeof(RealType));
 	FitParams_h = (RealType *) malloc(nspids*12*sizeof(RealType));
 	nMatchedArrIndexing = (int *) malloc(nspids*3*sizeof(int));
-	memset(spotsYZO,0,nspids*n_hkls_h*2*8*sizeof(RealType));
+	memset(spotsYZO,0,nspids*n_hkls_h*2*9*sizeof(RealType));
 	memset(LatCIn_h,0,nspids*6*sizeof(RealType));
 	memset(FitParams_h,0,nspids*12*sizeof(RealType));
 	memset(nMatchedArrIndexing,0,nspids*3*sizeof(int));
@@ -2989,7 +2990,7 @@ int main(int argc, char *argv[]){
 			nMatchedArrIndexing[nSpotsIndexed*3+1] = nSpotsSim;
 			nMatchedArrIndexing[nSpotsIndexed*3+2] = nMatchedTillNow;
 			idsIndexed[nSpotsIndexed] = SpotIDs_h[i];
-			memcpy(spotsYZO+nMatchedTillNow*8, SpotsInfo + bestPos*n_hkls_h*2*8, nSpotsMatched*8*sizeof(RealType));
+			memcpy(spotsYZO+nMatchedTillNow*9, SpotsInfo + bestPos*n_hkls_h*2*9, nSpotsMatched*9*sizeof(RealType));
 			memcpy(LatCIn_h+nSpotsIndexed*6, RTParamArr_h+5+MAX_N_RINGS+8, 6*sizeof(RealType));
 			memcpy(FitParams_h+nSpotsIndexed*12, AllInfo + bestPos*N_COL_GRAINMATCHES + 10, 3*sizeof(RealType)); // Pos
 			for (int j=0;j<3;j++){
@@ -3022,102 +3023,19 @@ int main(int argc, char *argv[]){
 	cudaFree(etamargins_d);
 	cudaFree(nNormals);
 	cudaFree(ResultMakeOrientations);
-
-	RealType *LatCIn_d, *hkls_dc, *hkls_hc;
-	cudaMalloc((RealType **)&LatCIn_d,nSpotsIndexed*6*sizeof(RealType));
-	cudaMalloc((RealType **)&hkls_dc,nSpotsIndexed*n_hkls_h*7*sizeof(RealType));
-	cudaMemcpy(LatCIn_d,LatCIn_h,nSpotsIndexed*6*sizeof(RealType),cudaMemcpyHostToDevice);
-	cudaMemset(hkls_dc,0,nSpotsIndexed*n_hkls_h*7*sizeof(RealType));
-	hkls_hc = (RealType *) malloc(nSpotsIndexed*n_hkls_h*7*sizeof(RealType));
-	dim3 blockd (512);
-	dim3 gridd ((nSpotsIndexed/blockd.x)+1);
-	CorrectHKLsLatC<<<gridd,blockd>>>(LatCIn_d, hkls_d, n_arr, RTParamArr, hkls_dc, HKLints_d);
-	CHECK(cudaPeekAtLastError());
-	CHECK(cudaDeviceSynchronize());
-	cudaMemcpy(hkls_hc, hkls_dc, nSpotsIndexed*n_hkls_h*7*sizeof(RealType),cudaMemcpyDeviceToHost);
 	printf("Time elapsed after sorting the results: %lfs\nNow refining results.\n",cpuSecond()-iStart);
-
-	cudaMemGetInfo(&freeMem, &totalMem);
-    fprintf(stderr, "Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
-    long long int MemAvail = (long long int)(0.5*(double)freeMem);
-    long long int MemPerJob = (((nMatchedTillNow/nSpotsIndexed)*(22+9+8+3+7)) + 17 + 3 + 7 + 3 + 12 + (2*MaxNSpotsBest) + (MAX_N_HKLS*17))*sizeof(double);
-    long long int maxNJobs = MemAvail/MemPerJob;
-    int nJobGroups = (nSpotsIndexed/maxNJobs) + 1;
-    int sizeNMatched = maxNJobs*(int)(((double)nMatchedTillNow/(double)nSpotsIndexed)*1.5);
-	RealType *SpCmp_d, *SpList_d, *Error_d, *MatchDiff, *TheorSpots,
-			*SpotsCorrected, *Angles, *RandomScratch,
-			*SpotsMatchedArr_d, *FitParams_d, *hkls_cd;
-	int *nMatchedArr_d, *tempNMatchedArr;
-	cudaMalloc((RealType **)&SpCmp_d, sizeNMatched*22*sizeof(RealType));
-	cudaMalloc((RealType **)&SpList_d, sizeNMatched*9*sizeof(RealType));
-	cudaMalloc((RealType **)&Error_d, maxNJobs*3*sizeof(RealType));
-	cudaMalloc((RealType **)&MatchDiff, sizeNMatched*3*sizeof(RealType));
-	cudaMalloc((RealType **)&TheorSpots, n_hkls_h*2*8*maxNJobs*sizeof(RealType));
-	cudaMalloc((RealType **)&SpotsCorrected, sizeNMatched*7*sizeof(RealType));
-	cudaMalloc((RealType **)&Angles, 2*MaxNSpotsBest*maxNJobs*sizeof(RealType));
-	cudaMalloc((RealType **)&RandomScratch, 17*maxNJobs*sizeof(RealType));
-	cudaMalloc((RealType **)&SpotsMatchedArr_d, sizeNMatched*8*sizeof(RealType));
-	cudaMalloc((RealType **)&FitParams_d, 12*maxNJobs*sizeof(RealType));
-	cudaMalloc((RealType **)&hkls_cd, 7*n_hkls_h*maxNJobs*sizeof(RealType));
-	cudaMemGetInfo(&freeMem, &totalMem);
-    cudaMalloc((int **)&nMatchedArr_d, maxNJobs*3*sizeof(int));
-    tempNMatchedArr = (int *)malloc(maxNJobs*3*sizeof(int));
-	fprintf(stderr, "Free = %zu MB, Total = %zu MB\n", freeMem/(1024*1024), totalMem/(1024*1024));
+	// We have spotsYZO, FitParams_h, we just call the function to run things.
     int startRow, endRow, startRowNMatched, endRowNMatched, nrows, nrowsNMatched;
-    RealType *SpotsCompReturnArr, *SpListArr, *ErrorArr;
-    SpotsCompReturnArr = (RealType *)malloc(nMatchedTillNow*22*sizeof(RealType));
-    SpListArr = (RealType *)malloc(nMatchedTillNow*9*sizeof(RealType));
-    ErrorArr = (RealType *)malloc(nSpotsIndexed*3*sizeof(RealType));
-	for (int jobNr=0;jobNr<nJobGroups;jobNr++){
-		startRow = jobNr*maxNJobs;
-		endRow = (jobNr + 1 != nJobGroups) ? ((jobNr+1)*maxNJobs)-1 : ((nSpotsIndexed-1)%maxNJobs);
-		nrows = endRow - startRow + 1;
-		startRowNMatched = nMatchedArrIndexing[startRow*3+2];
-		endRowNMatched = nMatchedArrIndexing[(endRow)*3+2] + nMatchedArrIndexing[(endRow)*3];
-		nrowsNMatched = endRowNMatched - startRowNMatched;
-		n_arr_h[2] = nrows;
-		cudaMemcpy(n_arr,n_arr_h,3*sizeof(int),cudaMemcpyHostToDevice);
-		nSpotsMatched = 0;
-		for (int i=0;i<nrows;i++){
-			tempNMatchedArr[i*3] = nMatchedArrIndexing[(i+startRow)*3];
-			tempNMatchedArr[i*3+1] = nMatchedArrIndexing[(i+startRow)*3+1];
-			tempNMatchedArr[i*3+2] = nSpotsMatched;
-			nSpotsMatched += nMatchedArrIndexing[(i+startRow)*3];
-		}
-		cudaMemcpy(hkls_cd,hkls_hc+startRow*n_hkls_h*7,n_hkls_h*nrows*7*sizeof(RealType),cudaMemcpyHostToDevice);
-		cudaMemcpy(nMatchedArr_d,tempNMatchedArr,3*nrows*sizeof(int),cudaMemcpyHostToDevice);
-		cudaMemcpy(SpotsMatchedArr_d,spotsYZO+startRowNMatched*8,nrowsNMatched*8*sizeof(RealType),cudaMemcpyHostToDevice);
-		cudaMemcpy(FitParams_d,FitParams_h+12*startRow,12*nrows*sizeof(RealType),cudaMemcpyHostToDevice);
-		dim3 blocke (32);
-		dim3 gride ((maxNJobs/blocke.x)+1);
-		CalcAngleErrors<<<gride,blocke>>>(RTParamArr,IntParamArr,n_arr,
-			OmeBoxArr,hkls_cd,nMatchedArr_d,SpotsMatchedArr_d,FitParams_d,
-			MatchDiff,TheorSpots,SpotsCorrected,Angles,SpCmp_d,SpList_d,
-			Error_d,RandomScratch);
-		CHECK(cudaPeekAtLastError());
-		CHECK(cudaDeviceSynchronize());
-		//cudaMemcpy(SpotsCompReturnArr+22*startRowNMatched,SpCmp_d,22*nrowsNMatched*sizeof(RealType),cudaMemcpyDeviceToHost);
-		cudaMemcpy(SpListArr+9*startRowNMatched,SpList_d,9*nrowsNMatched*sizeof(RealType),cudaMemcpyDeviceToHost);
-		//cudaMemcpy(ErrorArr+3*startRow,Error_d,3*nrows*sizeof(RealType),cudaMemcpyDeviceToHost);
-	}
-	cudaFree(SpList_d);
-	cudaFree(SpCmp_d);
-	cudaFree(Error_d);
-	cudaFree(MatchDiff);
-	cudaFree(TheorSpots);
-	cudaFree(RandomScratch);
-	cudaFree(SpotsCorrected);
-	cudaFree(Angles);
-	cudaFree(SpotsMatchedArr_d);
-	cudaFree(nMatchedArr_d);
-	cudaFree(FitParams_d);
-	cudaFree(hkls_cd);
-
-	// We have SpListArr, FitParams_h, we just call the function to run things.
-	nJobGroups = nSpotsIndexed/nCores + 1;
-	maxNJobs = 2*nCores;
+	RealType *SpotsCompReturnArr, *SpListArr, *ErrorArr;
+	SpotsCompReturnArr = (RealType *)malloc(nMatchedTillNow*22*sizeof(RealType));
+	SpListArr = (RealType *)malloc(nMatchedTillNow*9*sizeof(RealType));
+	ErrorArr = (RealType *)malloc(nSpotsIndexed*3*sizeof(RealType));
+    int nJobGroups = nSpotsIndexed/nCores + 1;
+	int maxNJobs = 2*nCores;
 	int *nMatchedArr_d2;
-	sizeNMatched = maxNJobs*(int)(((double)nMatchedTillNow/(double)nSpotsIndexed)*1.5);
+	int sizeNMatched = maxNJobs*(int)(((double)nMatchedTillNow/(double)nSpotsIndexed)*1.5);
+    int *tempNMatchedArr;
+    tempNMatchedArr = (int *)malloc(maxNJobs*3*sizeof(int));
 	RealType *scratchspace, *hklspace, *xspace, *xstepspace, *xlspace, *xuspace, *xoutspace,
 		*TheorSpotsArr, *SpotsMatchedArr_d2, *FitParams_d2, *CorrectSpots, *TheorSpotsCorr,
 		*FitResultArr, *FitResultArr_h, *LatCArr, *LatCIn_d2;
@@ -3140,10 +3058,9 @@ int main(int argc, char *argv[]){
 	cudaMalloc((RealType **)&LatCIn_d2,maxNJobs*6*sizeof(RealType));
 	LatCArr = (RealType *) malloc(maxNJobs*6*sizeof(RealType));
 	RealType *hkls_dcorr, *MatchDiff2, *SpotsCorrected2,
-		*Angles2, *SpCmp_d2, *SpList_d2, *Error_d2, *RandomScratch2;
+		*Angles2, *SpCmp_d2, *Error_d2, *RandomScratch2;
 	cudaMalloc((RealType **)&hkls_dcorr,maxNJobs*n_hkls_h*7*sizeof(RealType));
 	cudaMalloc((RealType **)&SpCmp_d2, sizeNMatched*22*sizeof(RealType));
-	cudaMalloc((RealType **)&SpList_d2, sizeNMatched*9*sizeof(RealType));
 	cudaMalloc((RealType **)&Error_d2, maxNJobs*3*sizeof(RealType));
 	cudaMalloc((RealType **)&MatchDiff2, sizeNMatched*3*sizeof(RealType));
 	cudaMalloc((RealType **)&SpotsCorrected2, sizeNMatched*7*sizeof(RealType));
@@ -3166,7 +3083,7 @@ int main(int argc, char *argv[]){
 			nSpotsMatched += nMatchedArrIndexing[(i+startRow)*3];
 		}
 		cudaMemcpy(nMatchedArr_d2,tempNMatchedArr,3*nrows*sizeof(int),cudaMemcpyHostToDevice);
-		cudaMemcpy(SpotsMatchedArr_d2,SpListArr+startRowNMatched*9,nrowsNMatched*9*sizeof(RealType),cudaMemcpyHostToDevice);
+		cudaMemcpy(SpotsMatchedArr_d2,spotsYZO+startRowNMatched*9,nrowsNMatched*9*sizeof(RealType),cudaMemcpyHostToDevice);
 		cudaMemcpy(FitParams_d2,FitParams_h+12*startRow,12*nrows*sizeof(RealType),cudaMemcpyHostToDevice);
 		dim3 blockf (32);
 		dim3 gridf ((maxNJobs/blockf.x)+1);
@@ -3189,18 +3106,16 @@ int main(int argc, char *argv[]){
 		CHECK(cudaDeviceSynchronize());
 		CalcAngleErrors<<<gridf,blockf>>>(RTParamArr,IntParamArr,n_arr,
 			OmeBoxArr,hkls_dcorr,nMatchedArr_d2,SpotsMatchedArr_d2,FitResultArr,
-			MatchDiff2,TheorSpotsArr,SpotsCorrected2,Angles2,SpCmp_d2,SpList_d2,
+			MatchDiff2,TheorSpotsArr,SpotsCorrected2,Angles2,SpCmp_d2,
 			Error_d2,RandomScratch2);
 		CHECK(cudaPeekAtLastError());
 		CHECK(cudaDeviceSynchronize());
 		cudaMemcpy(SpotsCompReturnArr+22*startRowNMatched,SpCmp_d2,22*nrowsNMatched*sizeof(RealType),cudaMemcpyDeviceToHost);
-		cudaMemcpy(SpListArr+9*startRowNMatched,SpList_d2,9*nrowsNMatched*sizeof(RealType),cudaMemcpyDeviceToHost);
 		cudaMemcpy(ErrorArr+3*startRow,Error_d2,3*nrows*sizeof(RealType),cudaMemcpyDeviceToHost);
 	}
 	// We have 	idsIndexed with the successful IDs.
 	//			nMatchedArrIndexing to guide where to look
 	//			SpotsCompReturnArr with the info about each matched spot, 
-	//			SpListArr with the spots matched input, 
 	//			ErrorArr for errors and 
 	//			FitResultArr_h with all the fit parameters.
 
