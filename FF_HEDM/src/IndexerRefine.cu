@@ -1780,120 +1780,80 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 
 __global__ void CalcAngleErrors(RealType *RTParamArr, int *IntParamArr,
 	int *n_arr, RealType *OmeBoxArr, RealType *hkls_c, int *nMatchedArr,
-	RealType *spotsYZO_d, RealType *x_d, RealType *MatchDiff_d,
-	RealType *TheorSpots_d, RealType *SpotsCorrected_d, RealType *Angles_d,
-	RealType *SpotsComp_d, RealType *Error_d,
-	RealType *RandomScratch_d)
+	RealType *spotsYZO_d, RealType *x_d, RealType *TheorSpots_d,
+	RealType *SpotsComp_d, RealType *Error_d)
 {
 	int spotNr = blockIdx.x * blockDim.x + threadIdx.x;
 	if (spotNr >= n_arr[2]){
 		return;
 	}
-	RealType *hkls, *spotsYZO, *x, *MatchDiff, *TheorSpots, *SpotsCorrected, *Angles;
-	RealType *RandomScratch;
+	RealType *hkls, *spotsYZO, *x, *TheorSpots;
 	RealType *SpotsComp, *Error;
-	int nMatched, nspots, nMatchedTillNowRowNr, i;
+	int nMatched, nspots, nMatchedTillNowRowNr;
 	hkls = hkls_c + spotNr*n_arr[1]*7;
 	nMatched = nMatchedArr[spotNr*3+0];
-	nspots = nMatched;
 	nMatchedTillNowRowNr = nMatchedArr[spotNr*3+2];
 	spotsYZO = spotsYZO_d + nMatchedTillNowRowNr*8;
 	x = x_d + spotNr*12;
 	SpotsComp = SpotsComp_d + nMatchedTillNowRowNr*22;
 	Error = Error_d + spotNr*3;
 	Error[0] = 0; Error[1] = 0; Error[2] = 0;
-	Error[0] = 0; Error[1] = 0; Error[2] = 0;
-	MatchDiff = MatchDiff_d + nMatchedTillNowRowNr*3;
 	TheorSpots = TheorSpots_d + n_arr[1]*2*spotNr*8;
-	SpotsCorrected = SpotsCorrected_d + nMatchedTillNowRowNr*7;
-	Angles = Angles_d + MaxNSpotsBest*2*spotNr;
-	RandomScratch = RandomScratch_d + spotNr*17;
 	RealType OrientationMatrix[3][3];
 	Euler2OrientMat(x+3,OrientationMatrix);
 	int nTspots = CalcDiffrSpots(OrientationMatrix,RTParamArr+5,OmeBoxArr,IntParamArr[1],
 			RTParamArr[5+MAX_N_RINGS+6],TheorSpots,hkls,n_arr);
-	for (int nrSp=0;nrSp<nspots;nrSp++){
+	RealType DisplY, DisplZ, Y, Z, Ome, Theta, lenK, go[3], *gth, angle, distt, omediff;
+	int spnr;
+	for (int nrSp=0;nrSp<nMatched;nrSp++){
 		DisplacementInTheSpot(x[0],x[1],x[2],RTParamArr[0],spotsYZO[nrSp*8+5],
 			spotsYZO[nrSp*8+6],spotsYZO[nrSp*8+4],RTParamArr[20+MAX_N_RINGS],
-			0,&RandomScratch[0],&RandomScratch[1]);
+			0,&DisplY,&DisplZ);
 		if (fabs(RTParamArr[20+MAX_N_RINGS]) > 0.02){
-			CorrectForOme(spotsYZO[nrSp*8+5]-RandomScratch[0],
-				spotsYZO[nrSp*8+6]-RandomScratch[1],RTParamArr[0],
+			CorrectForOme(spotsYZO[nrSp*8+5]-DisplY,
+				spotsYZO[nrSp*8+6]-DisplZ,RTParamArr[0],
 				spotsYZO[nrSp*8+4],RTParamArr[19+MAX_N_RINGS],
-				RTParamArr[20+MAX_N_RINGS],&RandomScratch[2],
-				&RandomScratch[3],&RandomScratch[4]);
+				RTParamArr[20+MAX_N_RINGS],&Y,
+				&Z,&Ome);
 		}else{
-			RandomScratch[2] = spotsYZO[nrSp*8+5]-RandomScratch[0];
-			RandomScratch[3] = spotsYZO[nrSp*8+6]-RandomScratch[1];
-			RandomScratch[4] = spotsYZO[nrSp*8+4];
+			Y = spotsYZO[nrSp*8+5]-DisplY;
+			Z = spotsYZO[nrSp*8+6]-DisplZ;
+			Ome = spotsYZO[nrSp*8+4];
 		}
-		SpotsCorrected[nrSp*7+0] = RandomScratch[2];
-		SpotsCorrected[nrSp*7+1] = RandomScratch[3];
-		SpotsCorrected[nrSp*7+2] = RandomScratch[4];
-		RandomScratch[5] = sqrt((RTParamArr[0]*RTParamArr[0])+
-			(RandomScratch[2]*RandomScratch[2])+
-			(RandomScratch[3]*RandomScratch[3]));
-		RandomScratch[6] = sqrt((RandomScratch[2]*RandomScratch[2]) +
-			(RandomScratch[3]*RandomScratch[3]));
-		RandomScratch[7] = 0.5*atand(RandomScratch[6]/RTParamArr[0]);
-		SpotToGv(RTParamArr[0]/RandomScratch[5],
-			RandomScratch[2]/RandomScratch[5],
-			RandomScratch[3]/RandomScratch[5],
-			RandomScratch[4],RandomScratch[7],
-			&RandomScratch[8],&RandomScratch[9],
-			&RandomScratch[10]);
-		SpotsCorrected[nrSp*7+3] = RandomScratch[8];
-		SpotsCorrected[nrSp*7+4] = RandomScratch[9];
-		SpotsCorrected[nrSp*7+5] = RandomScratch[10];
-		SpotsCorrected[nrSp*7+6] = spotsYZO[nrSp*8+7];
-	}
-	int nSpotsMatchedWithSpot, RowBest;
-	for (int nrSp=0;nrSp<nspots;nrSp++){
-		nSpotsMatchedWithSpot = 0;
-		RandomScratch[11] = CalcNorm3(SpotsCorrected[nrSp*7+3],SpotsCorrected[nrSp*7+4],SpotsCorrected[nrSp*7+5]);
-		for (i=0;i<nTspots;i++){
-			if ( ((int)TheorSpots[i*8+6] == (int)SpotsCorrected[nrSp*7+6]) && (fabs(SpotsCorrected[nrSp*7+2] - TheorSpots[i*8+2]) < 3.0) ){
-				Angles[nSpotsMatchedWithSpot*2] = (RealType) i;
-				RandomScratch[12] = CalcNorm3(TheorSpots[nrSp*8+3],TheorSpots[nrSp*8+4],TheorSpots[nrSp*8+5]);
-				RandomScratch[13] = (TheorSpots[i*8+3]*SpotsCorrected[nrSp*7+3])+(TheorSpots[i*8+4]*SpotsCorrected[nrSp*7+4])+(TheorSpots[i*8+5]*SpotsCorrected[nrSp*7+5]);
-				Angles[nSpotsMatchedWithSpot*2+1] = fabs(acosd(RandomScratch[13]/(RandomScratch[11]*RandomScratch[12])));
-				nSpotsMatchedWithSpot++;
+		Theta = 0.5*atand(CalcNorm2(Y,Z)/RTParamArr[0]);
+		lenK = CalcNorm3(RTParamArr[0],Y,Z);
+		SpotToGv(RTParamArr[0]/lenK,Y/lenK,Z/lenK,Ome,Theta,&go[0],&go[1],&go[2]);
+		spnr = (int) spotsYZO[nrSp*9+8];
+		for (int i=0;i<nTspots;i++){
+			if ((int)TheorSpots[i*8+7] == spnr){
+				gth = TheorSpots + i*8 + 3;
+				angle = fabs(acosd((dot(go,gth))/(CalcNorm3(go[0],go[1],go[2])*CalcNorm3(gth[0],gth[1],gth[2]))));
+				distt = CalcNorm2(Y-TheorSpots[i*8+0],Z-TheorSpots[i*8+1]);
+				omediff = fabs(Ome - TheorSpots[i*8+2]);
+				Error[0] += fabs(angle/nMatched);
+				Error[1] += fabs(distt/nMatched);
+				Error[2] += fabs(omediff/nMatched);
+				SpotsComp[nrSp*22+0] = spotsYZO[nrSp*9+3];
+				SpotsComp[nrSp*22+1] = Y;
+				SpotsComp[nrSp*22+2] = Z;
+				SpotsComp[nrSp*22+3] = Ome;
+				SpotsComp[nrSp*22+4] = go[0];
+				SpotsComp[nrSp*22+5] = go[1];
+				SpotsComp[nrSp*22+6] = go[2];
+				for (int j=0;j<6;j++){
+					SpotsComp[nrSp*22+j+7] = TheorSpots[i*8+j];
+				}
+				SpotsComp[nrSp*22+13]=spotsYZO[nrSp*9+0];
+				SpotsComp[nrSp*22+14]=spotsYZO[nrSp*9+1];
+				SpotsComp[nrSp*22+15]=spotsYZO[nrSp*9+2];
+				SpotsComp[nrSp*22+16]=spotsYZO[nrSp*9+4];
+				SpotsComp[nrSp*22+17]=spotsYZO[nrSp*9+5];
+				SpotsComp[nrSp*22+18]=spotsYZO[nrSp*9+6];
+				SpotsComp[nrSp*22+19]=angle;
+				SpotsComp[nrSp*22+20]=distt;
+				SpotsComp[nrSp*22+21]=omediff;
+				break;
 			}
-		}
-		if (nSpotsMatchedWithSpot == 0){
-			printf("Not found\n");
-			continue;
-		}
-		RandomScratch[14] = 100000.0;
-		for (i=0;i<nSpotsMatchedWithSpot;i++){
-			if (Angles[i*2+1] < RandomScratch[14]){
-				RandomScratch[14] = Angles[i*2+1];
-				RowBest = (int) Angles[i*2];
-			}
-		}
-		RandomScratch[15] = CalcNorm2((SpotsCorrected[nrSp*7+0]-TheorSpots[RowBest*8+0]),(SpotsCorrected[nrSp*7+1]-TheorSpots[RowBest*8+1]));
-		RandomScratch[16] = fabs(SpotsCorrected[nrSp*7+2] - TheorSpots[RowBest*8+2]);
-		if (RandomScratch[14] < 1.0){
-			MatchDiff[nrSp*3+0] = RandomScratch[14];
-			MatchDiff[nrSp*3+1] = RandomScratch[15];
-			MatchDiff[nrSp*3+2] = RandomScratch[16];
-			SpotsComp[nrSp*22+0] = spotsYZO[nrSp*8+3];
-			for (i=0;i<6;i++){
-				SpotsComp[nrSp*22+i+1] = SpotsCorrected[nrSp*7+i];
-				SpotsComp[nrSp*22+i+7] = TheorSpots[RowBest*8+i];
-			}
-			SpotsComp[nrSp*22+13]=spotsYZO[nrSp*8+0];
-			SpotsComp[nrSp*22+14]=spotsYZO[nrSp*8+1];
-			SpotsComp[nrSp*22+15]=spotsYZO[nrSp*8+2];
-			SpotsComp[nrSp*22+16]=spotsYZO[nrSp*8+4];
-			SpotsComp[nrSp*22+17]=spotsYZO[nrSp*8+5];
-			SpotsComp[nrSp*22+18]=spotsYZO[nrSp*8+6];
-			SpotsComp[nrSp*22+19]=RandomScratch[14];
-			SpotsComp[nrSp*22+20]=RandomScratch[15];
-			SpotsComp[nrSp*22+21]=RandomScratch[16];
-			Error[0] += fabs(MatchDiff[nrSp*3+0]/nspots);
-			Error[1] += fabs(MatchDiff[nrSp*3+1]/nspots);
-			Error[2] += fabs(MatchDiff[nrSp*3+2]/nspots);
 		}
 	}
 }
@@ -3054,15 +3014,10 @@ int main(int argc, char *argv[]){
 	FitResultArr_h = (RealType *) malloc(maxNJobs*12*sizeof(RealType));
 	cudaMalloc((RealType **)&LatCIn_d2,maxNJobs*6*sizeof(RealType));
 	LatCArr = (RealType *) malloc(maxNJobs*6*sizeof(RealType));
-	RealType *hkls_dcorr, *MatchDiff2, *SpotsCorrected2,
-		*Angles2, *SpCmp_d2, *Error_d2, *RandomScratch2;
+	RealType *hkls_dcorr, *SpCmp_d2, *Error_d2;
 	cudaMalloc((RealType **)&hkls_dcorr,maxNJobs*n_hkls_h*7*sizeof(RealType));
 	cudaMalloc((RealType **)&SpCmp_d2, sizeNMatched*22*sizeof(RealType));
 	cudaMalloc((RealType **)&Error_d2, maxNJobs*3*sizeof(RealType));
-	cudaMalloc((RealType **)&MatchDiff2, sizeNMatched*3*sizeof(RealType));
-	cudaMalloc((RealType **)&SpotsCorrected2, sizeNMatched*7*sizeof(RealType));
-	cudaMalloc((RealType **)&Angles2, 2*MaxNSpotsBest*maxNJobs*sizeof(RealType));
-	cudaMalloc((RealType **)&RandomScratch2, 17*maxNJobs*sizeof(RealType));
 	for (int jobNr=0;jobNr<nJobGroups;jobNr++){
 		startRow = jobNr*maxNJobs;
 		endRow = (jobNr + 1 != nJobGroups) ? ((jobNr+1)*maxNJobs)-1 : ((nSpotsIndexed-1)%maxNJobs);
@@ -3103,8 +3058,7 @@ int main(int argc, char *argv[]){
 		CHECK(cudaDeviceSynchronize());
 		CalcAngleErrors<<<gridf,blockf>>>(RTParamArr,IntParamArr,n_arr,
 			OmeBoxArr,hkls_dcorr,nMatchedArr_d2,SpotsMatchedArr_d2,FitResultArr,
-			MatchDiff2,TheorSpotsArr,SpotsCorrected2,Angles2,SpCmp_d2,
-			Error_d2,RandomScratch2);
+			TheorSpotsArr,SpCmp_d2,Error_d2);
 		CHECK(cudaPeekAtLastError());
 		CHECK(cudaDeviceSynchronize());
 		cudaMemcpy(SpotsCompReturnArr+22*startRowNMatched,SpCmp_d2,22*nrowsNMatched*sizeof(RealType),cudaMemcpyDeviceToHost);
