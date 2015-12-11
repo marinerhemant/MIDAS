@@ -1609,7 +1609,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	Result = Result_d + spotNr *12;
 	TheorSpots = TheorSpots_d + n_arr[1]*2*spotNr*8;
 	TheorSpotsCorrected = TheorSpotsCorr + n_arr[1]*2*spotNr*8;
-	scratch = scratch_d + (spotNr+1)*(spotNr+1) + 3*spotNr;
+	scratch = scratch_d + spotNr*((12+1)*(12+1)+3*12);
 	hklspace = hklspace_d + spotNr*n_arr[1]*7;
 	spotsCorrected = CorrectSpots + nMatchedTillNowRowNr*6;
 	x = x_d + 12*spotNr;
@@ -3120,7 +3120,7 @@ int main(int argc, char *argv[]){
 	sizeNMatched = maxNJobs*(int)(((double)nMatchedTillNow/(double)nSpotsIndexed)*1.5);
 	RealType *scratchspace, *hklspace, *xspace, *xstepspace, *xlspace, *xuspace, *xoutspace,
 		*TheorSpotsArr, *SpotsMatchedArr_d2, *FitParams_d2, *CorrectSpots, *TheorSpotsCorr,
-		*FitResultArr, *FitResultArr_h, *LatCArr;
+		*FitResultArr, *FitResultArr_h, *LatCArr, *LatCIn_d2;
 	cudaMalloc((int **)&nMatchedArr_d2,maxNJobs*3*sizeof(RealType));
 	cudaMalloc((RealType **)&scratchspace,(3*maxNJobs+(maxNJobs+1)*(maxNJobs+1))*sizeof(RealType));
 	cudaMalloc((RealType **)&hklspace,maxNJobs*n_hkls_h*7*sizeof(RealType));
@@ -3137,6 +3137,7 @@ int main(int argc, char *argv[]){
 	cudaMalloc((RealType **)&FitParams_d2,12*maxNJobs*sizeof(RealType));
 	cudaMalloc((RealType **)&FitResultArr,12*maxNJobs*sizeof(RealType));
 	FitResultArr_h = (RealType *) malloc(maxNJobs*12*sizeof(RealType));
+	cudaMalloc((RealType **)&LatCIn_d2,maxNJobs*6*sizeof(RealType));
 	LatCArr = (RealType *) malloc(maxNJobs*6*sizeof(RealType));
 	RealType *hkls_dcorr, *MatchDiff2, *SpotsCorrected2,
 		*Angles2, *SpCmp_d2, *SpList_d2, *Error_d2, *RandomScratch2;
@@ -3176,14 +3177,14 @@ int main(int argc, char *argv[]){
 			xoutspace,xstepspace, CorrectSpots, TheorSpotsCorr, FitResultArr);
 		CHECK(cudaPeekAtLastError());
 		CHECK(cudaDeviceSynchronize());
-		cudaMemcpy(FitResultArr_h,FitResultArr,12*maxJobs*sizeof(RealType),cudaMemcpyDeviceToHost);
+		cudaMemcpy(FitResultArr_h,FitResultArr,12*nrows*sizeof(RealType),cudaMemcpyDeviceToHost);
 		for (int i=0;i<nrows;i++){
 			for (int j=0;j<6;j++){
 				LatCArr[i*6+j] = FitResultArr_h[i*12+6+j];
 			}
 		}
-		cudaMemcpy(LatCIn_d,LatCArr,nrows*6*sizeof(RealType),cudaMemcpyHostToDevice);
-		CorrectHKLsLatC<<<gridf,blockf>>>(LatCIn_d, hkls_d, n_arr, RTParamArr, hkls_dcorr, HKLints_d);
+		cudaMemcpy(LatCIn_d2,LatCArr,nrows*6*sizeof(RealType),cudaMemcpyHostToDevice);
+		CorrectHKLsLatC<<<gridf,blockf>>>(LatCIn_d2, hkls_d, n_arr, RTParamArr, hkls_dcorr, HKLints_d);
 		CHECK(cudaPeekAtLastError());
 		CHECK(cudaDeviceSynchronize());
 		CalcAngleErrors<<<gridf,blockf>>>(RTParamArr,IntParamArr,n_arr,
