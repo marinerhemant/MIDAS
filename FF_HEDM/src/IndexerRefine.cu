@@ -32,7 +32,7 @@
 #define N_COL_GRAINMATCHES 16 // nr of columns for output: the Matches (summary)
 #define MAX_LINE_LENGTH 4096
 #define MAX_N_FRIEDEL_PAIRS 1000
-#define MAX_N_EVALS 10000
+#define MAX_N_EVALS 100
 #define N_COLS_FRIEDEL_RESULTS 16
 #define N_COLS_ORIENTATION_NUMBERS 3
 #define MaxNSpotsBest 10
@@ -1480,6 +1480,7 @@ __device__ RealType pf_orient(int n, double *x, void *f_data_trial){
 	RealType *gObs, *gTh;
 	int spnr;
 	RealType Error = 0;
+	RealType tmpL;
 	int nTspots = CalcDiffrSpots(OrientMatrix,RTParamArr+5,OmeBoxArr,IntParamArr[1],
 			RTParamArr[5+MAX_N_RINGS+6],TheorSpots,hklscorr,n_arr);
 	for (int nrSp=0;nrSp<nMatched;nrSp++){
@@ -1488,6 +1489,10 @@ __device__ RealType pf_orient(int n, double *x, void *f_data_trial){
 		for (int j=0;j<nTspots;j++){
 			if ((int)TheorSpots[j*8+7] == spnr){
 				gTh = TheorSpots + j*8 + 3;
+				tmpL = ((dot(gObs,gTh))/(CalcNorm3(gObs[0],gObs[1],gObs[2])*CalcNorm3(gTh[0],gTh[1],gTh[2])));
+				if (tmpL > 1) tmpL = 1;
+				if (tmpL < -1) tmpL = -1;
+				Error += fabs(acosd(tmpL));
 				Error += fabs(acosd((dot(gObs,gTh))/(CalcNorm3(gObs[0],gObs[1],gObs[2])*CalcNorm3(gTh[0],gTh[1],gTh[2]))));
 				break;
 			}
@@ -1781,7 +1786,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 __global__ void CalcAngleErrors(RealType *RTParamArr, int *IntParamArr,
 	int *n_arr, RealType *OmeBoxArr, RealType *hkls_c, int *nMatchedArr,
 	RealType *spotsYZO_d, RealType *x_d, RealType *TheorSpots_d,
-	RealType *SpotsComp_d, RealType *Error_d)
+	RealType *SpotsComp_d, RealType *Error_d, RealType *hklsIn, int *HKLints)
 {
 	int spotNr = blockIdx.x * blockDim.x + threadIdx.x;
 	if (spotNr >= n_arr[2]){
@@ -1791,9 +1796,12 @@ __global__ void CalcAngleErrors(RealType *RTParamArr, int *IntParamArr,
 	RealType *SpotsComp, *Error;
 	int nMatched, nspots, nMatchedTillNowRowNr;
 	hkls = hkls_c + spotNr*n_arr[1]*7;
+	RealType *LatC_d;
+	LatC_d = x_d + spotNr*12 + 6;
+	CorrectHKLsLatCInd(LatC_d, hklsIn, n_arr, RTParamArr, hkls, HKLints);
 	nMatched = nMatchedArr[spotNr*3+0];
 	nMatchedTillNowRowNr = nMatchedArr[spotNr*3+2];
-	spotsYZO = spotsYZO_d + nMatchedTillNowRowNr*8;
+	spotsYZO = spotsYZO_d + nMatchedTillNowRowNr*9;
 	x = x_d + spotNr*12;
 	SpotsComp = SpotsComp_d + nMatchedTillNowRowNr*22;
 	Error = Error_d + spotNr*3;
@@ -1803,22 +1811,22 @@ __global__ void CalcAngleErrors(RealType *RTParamArr, int *IntParamArr,
 	Euler2OrientMat(x+3,OrientationMatrix);
 	int nTspots = CalcDiffrSpots(OrientationMatrix,RTParamArr+5,OmeBoxArr,IntParamArr[1],
 			RTParamArr[5+MAX_N_RINGS+6],TheorSpots,hkls,n_arr);
-	RealType DisplY, DisplZ, Y, Z, Ome, Theta, lenK, go[3], *gth, angle, distt, omediff;
+	RealType DisplY, DisplZ, Y, Z, Ome, Theta, lenK, go[3], *gth, angle, distt, omediff, tmpL;
 	int spnr;
 	for (int nrSp=0;nrSp<nMatched;nrSp++){
-		DisplacementInTheSpot(x[0],x[1],x[2],RTParamArr[0],spotsYZO[nrSp*8+5],
-			spotsYZO[nrSp*8+6],spotsYZO[nrSp*8+4],RTParamArr[20+MAX_N_RINGS],
+		DisplacementInTheSpot(x[0],x[1],x[2],RTParamArr[0],spotsYZO[nrSp*9+5],
+			spotsYZO[nrSp*9+6],spotsYZO[nrSp*9+4],RTParamArr[20+MAX_N_RINGS],
 			0,&DisplY,&DisplZ);
 		if (fabs(RTParamArr[20+MAX_N_RINGS]) > 0.02){
-			CorrectForOme(spotsYZO[nrSp*8+5]-DisplY,
-				spotsYZO[nrSp*8+6]-DisplZ,RTParamArr[0],
-				spotsYZO[nrSp*8+4],RTParamArr[19+MAX_N_RINGS],
+			CorrectForOme(spotsYZO[nrSp*9+5]-DisplY,
+				spotsYZO[nrSp*9+6]-DisplZ,RTParamArr[0],
+				spotsYZO[nrSp*9+4],RTParamArr[19+MAX_N_RINGS],
 				RTParamArr[20+MAX_N_RINGS],&Y,
 				&Z,&Ome);
 		}else{
-			Y = spotsYZO[nrSp*8+5]-DisplY;
-			Z = spotsYZO[nrSp*8+6]-DisplZ;
-			Ome = spotsYZO[nrSp*8+4];
+			Y = spotsYZO[nrSp*9+5]-DisplY;
+			Z = spotsYZO[nrSp*9+6]-DisplZ;
+			Ome = spotsYZO[nrSp*9+4];
 		}
 		Theta = 0.5*atand(CalcNorm2(Y,Z)/RTParamArr[0]);
 		lenK = CalcNorm3(RTParamArr[0],Y,Z);
@@ -1827,7 +1835,10 @@ __global__ void CalcAngleErrors(RealType *RTParamArr, int *IntParamArr,
 		for (int i=0;i<nTspots;i++){
 			if ((int)TheorSpots[i*8+7] == spnr){
 				gth = TheorSpots + i*8 + 3;
-				angle = fabs(acosd((dot(go,gth))/(CalcNorm3(go[0],go[1],go[2])*CalcNorm3(gth[0],gth[1],gth[2]))));
+				tmpL = ((dot(go,gth))/(CalcNorm3(go[0],go[1],go[2])*CalcNorm3(gth[0],gth[1],gth[2])));
+				if (tmpL > 1) tmpL = 1;
+				if (tmpL < -1) tmpL = -1;
+				angle = fabs(acosd(tmpL));
 				distt = CalcNorm2(Y-TheorSpots[i*8+0],Z-TheorSpots[i*8+1]);
 				omediff = fabs(Ome - TheorSpots[i*8+2]);
 				Error[0] += fabs(angle/nMatched);
@@ -3047,18 +3058,9 @@ int main(int argc, char *argv[]){
 		CHECK(cudaPeekAtLastError());
 		CHECK(cudaDeviceSynchronize());
 		cudaMemcpy(FitResultArr_h,FitResultArr,12*nrows*sizeof(RealType),cudaMemcpyDeviceToHost);
-		for (int i=0;i<nrows;i++){
-			for (int j=0;j<6;j++){
-				LatCArr[i*6+j] = FitResultArr_h[i*12+6+j];
-			}
-		}
-		cudaMemcpy(LatCIn_d2,LatCArr,nrows*6*sizeof(RealType),cudaMemcpyHostToDevice);
-		CorrectHKLsLatC<<<gridf,blockf>>>(LatCIn_d2, hkls_d, n_arr, RTParamArr, hkls_dcorr, HKLints_d);
-		CHECK(cudaPeekAtLastError());
-		CHECK(cudaDeviceSynchronize());
 		CalcAngleErrors<<<gridf,blockf>>>(RTParamArr,IntParamArr,n_arr,
 			OmeBoxArr,hkls_dcorr,nMatchedArr_d2,SpotsMatchedArr_d2,FitResultArr,
-			TheorSpotsArr,SpCmp_d2,Error_d2);
+			TheorSpotsArr,SpCmp_d2,Error_d2, hkls_d, HKLints_d);
 		CHECK(cudaPeekAtLastError());
 		CHECK(cudaDeviceSynchronize());
 		cudaMemcpy(SpotsCompReturnArr+22*startRowNMatched,SpCmp_d2,22*nrowsNMatched*sizeof(RealType),cudaMemcpyDeviceToHost);
@@ -3098,12 +3100,13 @@ int main(int argc, char *argv[]){
 			for (int k=0;k<3;k++){
 				OpArr[i*25+1+j*3+k] = OrientMat[j][k];
 			}
-			OpArr[i*25+10+j] = FitResultArr_h[i+12+j];
-			OpArr[i*25+13+j] = FitResultArr_h[i+12+6+j];
-			OpArr[i*25+16+j] = FitResultArr_h[i+12+9+j];
+			OpArr[i*25+10+j] = FitResultArr_h[i*12+j];
+			OpArr[i*25+13+j] = FitResultArr_h[i*12+6+j];
+			OpArr[i*25+16+j] = FitResultArr_h[i*12+9+j];
 			OpArr[i*25+19+j] = ErrorArr[i*3+j];
 			OpArr[i*25+22+j] = (RealType)nMatchedArrIndexing[i*3+j];
 		}
+		printf("%lf %lf %lf\n",ErrorArr[i*3+0],ErrorArr[i*3+1],ErrorArr[i*3+2]);
 	}
 	fwrite(OpArr,25*nSpotsIndexed*sizeof(RealType),1,fo);
 	cudaDeviceReset();
