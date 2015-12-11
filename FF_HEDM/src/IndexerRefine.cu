@@ -1665,7 +1665,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	RealType Pos[3] = {xout[0],xout[1],xout[2]};
 	RealType DisplY, DisplZ, Y, Z, Ome, g[3], Theta, lenK;
 	for (int nrSp=0;nrSp<nMatched;nrSp++){
-		DisplacementInTheSpot(x[0],x[1],x[2],RTParamArr[0],spotsYZO[nrSp*8+5],
+		DisplacementInTheSpot(xout[0],xout[1],xout[2],RTParamArr[0],spotsYZO[nrSp*8+5],
 			spotsYZO[nrSp*8+6],spotsYZO[nrSp*8+4],RTParamArr[20+MAX_N_RINGS],
 			0,&DisplY,&DisplZ);
 		if (fabs(RTParamArr[20+MAX_N_RINGS]) > 0.02){
