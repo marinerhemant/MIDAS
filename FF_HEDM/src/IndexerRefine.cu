@@ -1493,7 +1493,6 @@ __device__ RealType pf_orient(int n, double *x, void *f_data_trial){
 				if (tmpL > 1) tmpL = 1;
 				if (tmpL < -1) tmpL = -1;
 				Error += fabs(acosd(tmpL));
-				Error += fabs(acosd((dot(gObs,gTh))/(CalcNorm3(gObs[0],gObs[1],gObs[2])*CalcNorm3(gTh[0],gTh[1],gTh[2]))));
 				break;
 			}
 		}
