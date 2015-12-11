@@ -3179,7 +3179,7 @@ int main(int argc, char *argv[]){
 		cudaMemcpy(FitResultArr_h,FitResultArr,12*maxJobs*sizeof(RealType),cudaMemcpyDeviceToHost);
 		for (int i=0;i<nrows;i++){
 			for (int j=0;j<6;j++){
-				LatCArr[i*6+j] = FitResultArr[i*12+6+j];
+				LatCArr[i*6+j] = FitResultArr_h[i*12+6+j];
 			}
 		}
 		cudaMemcpy(LatCIn_d,LatCArr,nrows*6*sizeof(RealType),cudaMemcpyHostToDevice);
@@ -3201,7 +3201,7 @@ int main(int argc, char *argv[]){
 	//			SpotsCompReturnArr with the info about each matched spot, 
 	//			SpListArr with the spots matched input, 
 	//			ErrorArr for errors and 
-	//			FitResultArr with all the fit parameters.
+	//			FitResultArr_h with all the fit parameters.
 
 	// First move spotIDsfn to a backup so that we don't overwrite this.
 	char cmd[MAX_LINE_LENGTH];
@@ -3226,14 +3226,14 @@ int main(int argc, char *argv[]){
 	for (int i=0;i<nSpotsIndexed;i++){
 		fprintf(outidsfile,"%d\n",idsIndexed[i]);
 		OpArr[i*25+0] = (RealType) idsIndexed[i];
-		Euler2OrientMat_h(FitResultArr+i*12+3,OrientMat);
+		Euler2OrientMat_h(FitResultArr_h+i*12+3,OrientMat);
 		for (int j=0;j<3;j++){
 			for (int k=0;k<3;k++){
 				OpArr[i*25+1+j*3+k] = OrientMat[j][k];
 			}
-			OpArr[i*25+10+j] = FitResultArr[i+12+j];
-			OpArr[i*25+13+j] = FitResultArr[i+12+6+j];
-			OpArr[i*25+16+j] = FitResultArr[i+12+9+j];
+			OpArr[i*25+10+j] = FitResultArr_h[i+12+j];
+			OpArr[i*25+13+j] = FitResultArr_h[i+12+6+j];
+			OpArr[i*25+16+j] = FitResultArr_h[i+12+9+j];
 			OpArr[i*25+19+j] = ErrorArr[i*3+j];
 			OpArr[i*25+22+j] = (RealType)nMatchedArrIndexing[i*3+j];
 		}
