@@ -1433,6 +1433,7 @@ __device__ RealType pf_posIni(int n, double *x, void *f_data_trial){
 		}else{
 			Y = spotsYZO[nrSp*9+5]-DisplY;
 			Z = spotsYZO[nrSp*9+6]-DisplZ;
+			Ome = spotsYZO[nrSp*9+4];
 		}
 		spnr = (int) spotsYZO[nrSp*9+8];
 		for (int j=0;j<nTspots;j++){
@@ -1656,17 +1657,17 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	f_datat = &f_data;
 	void *trp = (struct func_data_pos_ini *)  f_datat;
 	double minf;
-    double reqmin = 1e-8;
-    int konvge = 10;
-    int kcount = MAX_N_EVALS;
-    int icount, numres, ifault;
-    nelmin(pf_posIni, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp);
-    if (ifault !=0) printf("Not optimized completely.\n");
+	double reqmin = 1e-8;
+	int konvge = 10;
+	int kcount = MAX_N_EVALS;
+	int icount, numres, ifault;
+	nelmin(pf_posIni, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp);
+	if (ifault !=0) printf("Not optimized completely.\n");
 	RealType Pos[3] = {xout[0],xout[1],xout[2]};
 	RealType DisplY, DisplZ, Y, Z, Ome, g[3], Theta, lenK;
 	for (int nrSp=0;nrSp<nMatched;nrSp++){
-		DisplacementInTheSpot(xout[0],xout[1],xout[2],RTParamArr[0],spotsYZO[nrSp*8+5],
-			spotsYZO[nrSp*8+6],spotsYZO[nrSp*8+4],RTParamArr[20+MAX_N_RINGS],
+		DisplacementInTheSpot(xout[0],xout[1],xout[2],RTParamArr[0],spotsYZO[nrSp*9+5],
+			spotsYZO[nrSp*9+6],spotsYZO[nrSp*9+4],RTParamArr[20+MAX_N_RINGS],
 			0,&DisplY,&DisplZ);
 		if (fabs(RTParamArr[20+MAX_N_RINGS]) > 0.02){
 			CorrectForOme(spotsYZO[nrSp*9+5]-DisplY,
@@ -1684,7 +1685,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 			&spotsCorrected[nrSp*6+3],&spotsCorrected[nrSp*6+4]);
 		spotsCorrected[nrSp*6+0] = Y;
 		spotsCorrected[nrSp*6+1] = Z;
-		spotsCorrected[nrSp*6+5] = spotsYZO[nrSp*8+7];
+		spotsCorrected[nrSp*6+5] = spotsYZO[nrSp*9+8];
 	}
 	n = 9;
 	for (i=0;i<9;i++){
