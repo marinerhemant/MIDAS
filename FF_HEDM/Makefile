@@ -79,8 +79,8 @@ processgrains: $(SRCDIR)ProcessGrains.c
 	$(CC) $(SRCDIR)ProcessGrains.c $(SRCDIR)GetMisorientation.c $(SRCDIR)CalcStrains.c -o \
 	$(BINDIR)ProcessGrains $(CFLAGS) $(CFLAGSNLOPT) 
 
-indexercuda: $(SRCDIR)Indexer.cu
-	$(NCC) $(SRCDIR)Indexer.cu -o $(BINDIR)Indexer $(NCFLAGS)
+indexercuda: $(SRCDIR)IndexerRefineNLOPT.cu
+	$(NCC) $(SRCDIR)IndexerRefineNLOPT.cu -o $(BINDIR)IndexerNLOPT $(NCFLAGS)
 
 indexrefinecuda: $(SRCDIR)IndexerRefine.cu
 	$(NCC) $(SRCDIR)IndexerRefine.cu -o $(BINDIR)Indexer $(NCFLAGS)
