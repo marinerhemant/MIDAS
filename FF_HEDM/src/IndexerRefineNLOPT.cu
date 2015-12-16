@@ -2609,7 +2609,7 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	stop.xtol_rel = reqmin;
 	stop.minf_max = reqmin;
 	nlopt_func f = &pf_posIni;
-	nlopt_result res = nldrmd_minimize(n,f,trp,xl,xu,x,&minf,xstep,&stop,scratch);
+	//nlopt_result res = nldrmd_minimize(n,f,trp,xl,xu,x,&minf,xstep,&stop,scratch);
 	for (i=0;i<n;i++) xout[i] = x[i];
 	if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
 	RealType Pos[3] = {xout[0],xout[1],xout[2]};
@@ -2668,7 +2668,7 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	//nelmin(pf_orient, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp2);
     stop.n = n;
 	f = &pf_orient;
-	res = nldrmd_minimize(n,f,trp2,xl,xu,x,&minf,xstep,&stop,scratch);
+	//res = nldrmd_minimize(n,f,trp2,xl,xu,x,&minf,xstep,&stop,scratch);
 	for (i=0;i<n;i++) xout[i] = x[i];
 	if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
     RealType Euler[3] = {xout[0],xout[1],xout[2]};
@@ -2703,7 +2703,7 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	//nelmin(pf_strains, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp3);
     stop.n = n;
 	f = &pf_strains;
-	res = nldrmd_minimize(n,f,trp3,xl,xu,x,&minf,xstep,&stop,scratch);
+	//res = nldrmd_minimize(n,f,trp3,xl,xu,x,&minf,xstep,&stop,scratch);
 	for (i=0;i<n;i++) xout[i] = x[i];
 	if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
     RealType LatCFit[6] = {xout[0],xout[1],xout[2],xout[3],xout[4],xout[5]};
@@ -2731,7 +2731,7 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	//nelmin(pf_posSec, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp4);
     stop.n = n;
 	f = &pf_posSec;
-	res = nldrmd_minimize(n,f,trp4,xl,xu,x,&minf,xstep,&stop,scratch);
+	//res = nldrmd_minimize(n,f,trp4,xl,xu,x,&minf,xstep,&stop,scratch);
 	for (i=0;i<n;i++) xout[i] = x[i];
 	if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
     RealType Pos2[3] = {xout[0],xout[1],xout[2]};
