@@ -80,7 +80,7 @@ processgrains: $(SRCDIR)ProcessGrains.c
 	$(BINDIR)ProcessGrains $(CFLAGS) $(CFLAGSNLOPT) 
 
 indexercuda: $(SRCDIR)IndexerRefineNLOPT.cu
-	$(NCC) $(SRCDIR)IndexerRefineNLOPT.cu -o $(BINDIR)IndexerNLOPT $(NCFLAGS)
+	$(NCC) $(SRCDIR)IndexerRefineNLOPT.cu -o $(BINDIR)Indexer $(NCFLAGS)
 
 indexrefinecuda: $(SRCDIR)IndexerRefine.cu
 	$(NCC) $(SRCDIR)IndexerRefine.cu -o $(BINDIR)Indexer $(NCFLAGS)
