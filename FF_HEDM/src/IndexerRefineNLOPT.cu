@@ -17,7 +17,6 @@
 #define CalcNorm3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
 #define CalcNorm2(x,y) sqrt((x)*(x) + (y)*(y))
 
-
 // max array sizes
 #define MAX_N_SPOTS 6000000   // max nr of observed spots that can be stored
 #define MAX_N_STEPS 1000      // Max nr of pos steps, when stepping along the diffracted ray
@@ -3561,7 +3560,7 @@ int main(int argc, char *argv[]){
 		dim3 blockf (32);
 		dim3 gridf ((maxNJobs/blockf.x)+1);
 		// Call the optimization routines.
-		FitGrain_NLOPT<<<gridf,blockf>>>(RTParamArr,IntParamArr,n_arr,OmeBoxArr,
+		FitGrain<<<gridf,blockf>>>(RTParamArr,IntParamArr,n_arr,OmeBoxArr,
 			hkls_d, HKLints_d,nMatchedArr_d2,SpotsMatchedArr_d2,FitParams_d2,
 			TheorSpotsArr, scratchspace, hklspace, xspace, xlspace, xuspace,
 			xoutspace,xstepspace, CorrectSpots, TheorSpotsCorr, FitResultArr);
