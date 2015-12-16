@@ -2610,7 +2610,7 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	stop.minf_max = reqmin;
 	nlopt_func f = &pf_posIni;
 	nlopt_result res = NLOPT_SUCCESS;
-	res = nldrmd_minimize(n,f,trp,xl,xu,x,&minf,xstep,&stop,scratch);
+	//res = nldrmd_minimize(n,f,trp,xl,xu,x,&minf,xstep,&stop,scratch);
 	for (i=0;i<n;i++) xout[i] = x[i];
 	if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
 	RealType Pos[3] = {xout[0],xout[1],xout[2]};
@@ -2667,12 +2667,12 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	f_datat2 = &f_data2;
 	void *trp2 = (struct func_data_orient *)  f_datat2;
 	//nelmin(pf_orient, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp2);
-    /*stop.n = n;
+    stop.n = n;
 	f = &pf_orient;
-	res = nldrmd_minimize(n,f,trp2,xl,xu,x,&minf,xstep,&stop,scratch);
+	//res = nldrmd_minimize(n,f,trp2,xl,xu,x,&minf,xstep,&stop,scratch);
 	for (i=0;i<n;i++) xout[i] = x[i];
 	if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
-    */RealType Euler[3] = {xout[0],xout[1],xout[2]};
+    RealType Euler[3] = {xout[0],xout[1],xout[2]};
     n = 6;
     for (i=0;i<n;i++){
 		x[i] = FitParams[i+6];
