@@ -149,7 +149,6 @@ __device__ nlopt_result nldrmd_minimize_(int n, nlopt_func f, void *f_data,
      int i, j;
      double ninv = 1.0 / n;
      nlopt_result ret = NLOPT_SUCCESS;
-     return ret;
      double init_diam = 0;
      double *highi;
 
@@ -189,6 +188,7 @@ __device__ nlopt_result nldrmd_minimize_(int n, nlopt_func f, void *f_data,
 	  pt[0] = f(n, pt+1, f_data);
 	  CHECK_EVAL(pt+1, pt[0]);
      }
+     return ret;
 
  restart:
      for (i = 0; i < n + 1; ++i)
