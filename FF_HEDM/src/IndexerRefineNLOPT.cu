@@ -31,7 +31,7 @@
 #define N_COL_GRAINMATCHES 16 // nr of columns for output: the Matches (summary)
 #define MAX_LINE_LENGTH 4096
 #define MAX_N_FRIEDEL_PAIRS 1000
-#define MAX_N_EVALS 5000
+#define MAX_N_EVALS 1000
 #define N_COLS_FRIEDEL_RESULTS 16
 #define N_COLS_ORIENTATION_NUMBERS 3
 #define MaxNSpotsBest 10
@@ -1931,7 +1931,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 		xu[i+9] = x[i+9]*(1 + RTParamArr[22+MAX_N_RINGS]/100);
 	}
 	for (i=0;i<n;i++){
-		xstep[i] = fabs(xu[i]-xl[i])*0.05;
+		xstep[i] = fabs(xu[i]-xl[i])*0.25;
 	}
 	struct func_data_pos_ini f_data;
 	f_data.HKLInts = HKLints;
@@ -1952,7 +1952,8 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	int konvge = 10;
 	int kcount = MAX_N_EVALS;
 	int icount, numres, ifault;
-	nelmin(pf_posIni, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount/4, &icount, &numres, &ifault, trp);
+	nelmin(pf_posIni, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp);
+	if (ifault !=0) printf("Not optimized completely.\n");
 	RealType Pos[3] = {xout[0],xout[1],xout[2]};
 	RealType DisplY, DisplZ, Y, Z, Ome, g[3], Theta, lenK;
 	for (int nrSp=0;nrSp<nMatched;nrSp++){
@@ -1990,7 +1991,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 		xu[i+6] = x[i+6]*(1 + RTParamArr[22+MAX_N_RINGS]/100);
 	}
 	for (i=0;i<n;i++){
-		xstep[i] = fabs(xu[i]-xl[i])*0.05;
+		xstep[i] = fabs(xu[i]-xl[i])*0.25;
 	}
 	struct func_data_orient f_data2;
 	f_data2.HKLInts = HKLints;
@@ -2006,7 +2007,8 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	struct func_data_orient *f_datat2;
 	f_datat2 = &f_data2;
 	void *trp2 = (struct func_data_orient *)  f_datat2;
-	nelmin(pf_orient, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount/3, &icount, &numres, &ifault, trp2);
+	nelmin(pf_orient, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp2);
+    if (ifault !=0) printf("Not optimized completely.\n");
     RealType Euler[3] = {xout[0],xout[1],xout[2]};
     n = 6;
     for (i=0;i<n;i++){
@@ -2019,7 +2021,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 		xu[i+3] = x[i+3]*(1 + RTParamArr[22+MAX_N_RINGS]/100);
 	}
 	for (i=0;i<n;i++){
-		xstep[i] = fabs(xu[i]-xl[i])*0.05;
+		xstep[i] = fabs(xu[i]-xl[i])*0.25;
 	}
 	struct func_data_strains f_data3;
 	f_data3.Euler = Euler;
@@ -2036,7 +2038,8 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	struct func_data_strains *f_datat3;
 	f_datat3 = &f_data3;
 	void *trp3 = (struct func_data_strains *)  f_datat3;
-	nelmin(pf_strains, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount/2, &icount, &numres, &ifault, trp3);
+	nelmin(pf_strains, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp3);
+    if (ifault !=0) printf("Not optimized completely.\n");
     RealType LatCFit[6] = {xout[0],xout[1],xout[2],xout[3],xout[4],xout[5]};
     n = 3;
     RealType OM[3][3];
@@ -2048,7 +2051,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 		x[i] = Pos[i];
 		xl[i] = x[i] - RTParamArr[1];
 		xu[i] = x[i] + RTParamArr[1];
-		xstep[i] = fabs(xu[i]-xl[i])*0.05;
+		xstep[i] = fabs(xu[i]-xl[i])*0.25;
 	}
 	struct func_data_pos_sec f_data4;
 	f_data4.RTParamArr = RTParamArr;
@@ -2060,6 +2063,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	f_datat4 = &f_data4;
 	void *trp4 = (struct func_data_pos_sec *)  f_datat4;
 	nelmin(pf_posSec, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp4);
+    if (ifault !=0) printf("Not optimized completely.\n");
     RealType Pos2[3] = {xout[0],xout[1],xout[2]};
     for (i=0;i<3;i++){
 		Result[i] = Pos2[i];
@@ -3618,10 +3622,6 @@ int main(int argc, char *argv[]){
 			OpArr[i*25+22+j] = (RealType)nMatchedArrIndexing[i*3+j];
 		}
 		printf("%lf %lf %lf\n",ErrorArr[i*3+0],ErrorArr[i*3+1],ErrorArr[i*3+2]);
-		printf("%lf %lf %lf\n",FitResultArr_h[i*12+0],FitResultArr_h[i*12+1],FitResultArr_h[i*12+2]);
-		printf("%lf %lf %lf\n",FitResultArr_h[i*12+3],FitResultArr_h[i*12+4],FitResultArr_h[i*12+5]);
-		printf("%lf %lf %lf  ",FitResultArr_h[i*12+6],FitResultArr_h[i*12+7],FitResultArr_h[i*12+8]);
-		printf("%lf %lf %lf\n",FitResultArr_h[i*12+9],FitResultArr_h[i*12+10],FitResultArr_h[i*12+11]);
 	}
 	fwrite(OpArr,25*nSpotsIndexed*sizeof(RealType),1,fo);
 	cudaDeviceReset();
