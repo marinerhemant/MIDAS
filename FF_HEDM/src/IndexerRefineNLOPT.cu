@@ -4024,11 +4024,11 @@ int main(int argc, char *argv[]){
 		dim3 blockf (32);
 		dim3 gridf ((maxNJobs/blockf.x)+1);
 		// Call the optimization routines.
-		/*FitGrain_NLOPT<<<gridf,blockf>>>(RTParamArr,IntParamArr,n_arr,OmeBoxArr,
+		FitGrain<<<gridf,blockf>>>(RTParamArr,IntParamArr,n_arr,OmeBoxArr,
 			hkls_d, HKLints_d,nMatchedArr_d2,SpotsMatchedArr_d2,FitParams_d2,
 			TheorSpotsArr, scratchspace, hklspace, xspace, xlspace, xuspace,
 			xoutspace,xstepspace, CorrectSpots, TheorSpotsCorr, FitResultArr);
-		*/CHECK(cudaPeekAtLastError());
+		CHECK(cudaPeekAtLastError());
 		CHECK(cudaDeviceSynchronize());
 		cudaMemcpy(FitResultArr_h,FitResultArr,12*nrows*sizeof(RealType),cudaMemcpyDeviceToHost);
 		CalcAngleErrors<<<gridf,blockf>>>(RTParamArr,IntParamArr,n_arr,
