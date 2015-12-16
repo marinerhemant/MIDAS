@@ -2608,9 +2608,9 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	stop.ftol_rel = reqmin;
 	stop.xtol_rel = reqmin;
 	stop.minf_max = reqmin;
-	/*nlopt_func f = &pf_posIni;
+	nlopt_func f = &pf_posIni;
 	nlopt_result res;
-	res = nldrmd_minimize(n,f,trp,xl,xu,x,&minf,xstep,&stop,scratch);
+	/*res = nldrmd_minimize(n,f,trp,xl,xu,x,&minf,xstep,&stop,scratch);
 	for (i=0;i<n;i++) xout[i] = x[i];
 	if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
 	*/RealType Pos[3] = {xout[0],xout[1],xout[2]};
