@@ -4018,6 +4018,8 @@ int main(int argc, char *argv[]){
 		cudaMemcpy(nMatchedArr_d2,tempNMatchedArr,3*nrows*sizeof(int),cudaMemcpyHostToDevice);
 		cudaMemcpy(SpotsMatchedArr_d2,spotsYZO+startRowNMatched*9,nrowsNMatched*9*sizeof(RealType),cudaMemcpyHostToDevice);
 		cudaMemcpy(FitParams_d2,FitParams_h+12*startRow,12*nrows*sizeof(RealType),cudaMemcpyHostToDevice);
+		CHECK(cudaPeekAtLastError());
+		CHECK(cudaDeviceSynchronize());
 		dim3 blockf (32);
 		dim3 gridf ((maxNJobs/blockf.x)+1);
 		// Call the optimization routines.
