@@ -37,8 +37,6 @@
 #define N_COLS_ORIENTATION_NUMBERS 3
 #define MaxNSpotsBest 10
 
-//BEGIN NLOPT NELDERMEAD
-//nlopt.h
 __device__ typedef double (*nlopt_func)(int n, double *x, void *func_data);
 
 typedef enum {
@@ -59,19 +57,15 @@ typedef struct {
      unsigned n;
      double minf_max;
      double ftol_rel;
-//     double ftol_abs;
      double xtol_rel;
-//     const double *xtol_abs;
      int nevals, maxeval;
 } nlopt_stopping;
-
-//stop.c
 
 __device__ int relstop(double vold, double vnew, double reltol)
 {
      if (vold != vold) return 0;
      return(fabs(vnew - vold) < reltol * (fabs(vnew) + fabs(vold)) * 0.5
-	    || (reltol > 0 && vnew == vold)); /* catch vnew == vold == 0 */
+	    || (reltol > 0 && vnew == vold));
 }
 
 __device__ int nlopt_stop_ftol(const nlopt_stopping *s, double f, double oldf)
@@ -155,6 +149,7 @@ __device__ nlopt_result nldrmd_minimize_(int n, nlopt_func f, void *f_data,
      int i, j;
      double ninv = 1.0 / n;
      nlopt_result ret = NLOPT_SUCCESS;
+     return ret;
      double init_diam = 0;
      double *highi;
 
@@ -165,12 +160,14 @@ __device__ nlopt_result nldrmd_minimize_(int n, nlopt_func f, void *f_data,
      *fdiff = HUGE_VAL;
 
      /* initialize the simplex based on the starting xstep */
-     memcpy(pts+1, x, sizeof(double)*n);
+     for (i=0;i<n;i++) pts[1+i] = x[i];
+     //memcpy(pts+1, x, sizeof(double)*n);
      pts[0] = *minf;
      if (*minf < stop->minf_max) { ret=NLOPT_MINF_MAX_REACHED; goto done; }
      for (i = 0; i < n; ++i) {
 	  double *pt = pts + (i+1)*(n+1);
-	  memcpy(pt+1, x, sizeof(double)*n);
+	  for (j=0;j<n;j++) pt[1+j] = x[j];
+	  //memcpy(pt+1, x, sizeof(double)*n);
 	  pt[1+i] += xstep[i];
 	  if (pt[1+i] > ub[i]) {
 	       if (ub[i] - x[i] > fabs(xstep[i]) * 0.1)
@@ -2146,7 +2143,6 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	int konvge = 10;
 	int kcount = MAX_N_EVALS;
 	int icount, numres, ifault;
-	//nelmin(pf_posIni, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp);
 	nlopt_stopping stop;
 	stop.n = n;
 	stop.maxeval = MAX_N_EVALS;
@@ -2213,7 +2209,6 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	struct func_data_orient *f_datat2;
 	f_datat2 = &f_data2;
 	void *trp2 = (struct func_data_orient *)  f_datat2;
-	//nelmin(pf_orient, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp2);
     stop.n = n;
 	f = &pf_orient;
 	//res = nldrmd_minimize(n,f,trp2,xl,xu,x,&minf,xstep,&stop,scratch);
@@ -2248,7 +2243,6 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	struct func_data_strains *f_datat3;
 	f_datat3 = &f_data3;
 	void *trp3 = (struct func_data_strains *)  f_datat3;
-	//nelmin(pf_strains, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp3);
     stop.n = n;
 	f = &pf_strains;
 	//res = nldrmd_minimize(n,f,trp3,xl,xu,x,&minf,xstep,&stop,scratch);
@@ -2276,7 +2270,6 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	struct func_data_pos_sec *f_datat4;
 	f_datat4 = &f_data4;
 	void *trp4 = (struct func_data_pos_sec *)  f_datat4;
-	//nelmin(pf_posSec, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp4);
     stop.n = n;
 	f = &pf_posSec;
 	//res = nldrmd_minimize(n,f,trp4,xl,xu,x,&minf,xstep,&stop,scratch);
