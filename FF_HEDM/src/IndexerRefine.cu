@@ -17,7 +17,6 @@
 #define CalcNorm3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
 #define CalcNorm2(x,y) sqrt((x)*(x) + (y)*(y))
 
-
 // max array sizes
 #define MAX_N_SPOTS 6000000   // max nr of observed spots that can be stored
 #define MAX_N_STEPS 1000      // Max nr of pos steps, when stepping along the diffracted ray
@@ -32,7 +31,7 @@
 #define N_COL_GRAINMATCHES 16 // nr of columns for output: the Matches (summary)
 #define MAX_LINE_LENGTH 4096
 #define MAX_N_FRIEDEL_PAIRS 1000
-#define MAX_N_EVALS 1000
+#define MAX_N_EVALS 5000
 #define N_COLS_FRIEDEL_RESULTS 16
 #define N_COLS_ORIENTATION_NUMBERS 3
 #define MaxNSpotsBest 10
@@ -41,7 +40,7 @@
 __device__ void nelmin ( RealType fn ( int n_fun, RealType *x, void *data ),
   int n, RealType *start, RealType *xmin,
   RealType *lb, RealType *ub, RealType *scratch, RealType *ynewlo,
-  RealType reqmin, RealType *step, int konvge, int kcount,
+  RealType reqmin, RealType *step, int konvge, int kcount, 
   int *icount, int *numres, int *ifault, void *data_t){
   RealType ccoeff = 0.5;
   RealType del;
@@ -1143,15 +1142,15 @@ __global__ void CorrectHKLsLatC(RealType *LatC_d, RealType *hklsIn,
 	RealType *hkls;
 	hkls = hkls_d + PosHkls;
 	RealType a=LatC_d[PosLatC+0],b=LatC_d[PosLatC+1],c=LatC_d[PosLatC+2],
-		alpha=LatC_d[PosLatC+3],beta=LatC_d[PosLatC+4],gamma=LatC_d[PosLatC+5];
+		alph=LatC_d[PosLatC+3],bet=LatC_d[PosLatC+4],gamma=LatC_d[PosLatC+5];
 	int hklnr;
 	RealType ginit[3], SinA, SinB, SinG, CosA, CosB, CosG, GammaPr, BetaPr, SinBetaPr,
 		Vol, APr, BPr, CPr, B[3][3], GCart[3], Ds, Theta, Rad;
-	SinA = sind(alpha);
-	SinB = sind(beta);
+	SinA = sind(alph);
+	SinB = sind(bet);
 	SinG = sind(gamma);
-	CosA = cosd(alpha);
-	CosB = cosd(beta);
+	CosA = cosd(alph);
+	CosB = cosd(bet);
 	CosG = cosd(gamma);
 	GammaPr = acosd((CosA*CosB - CosG)/(SinA*SinB));
 	BetaPr  = acosd((CosG*CosA - CosB)/(SinG*SinA));
@@ -1191,15 +1190,15 @@ __device__ void CorrectHKLsLatCInd(RealType *LatC_d, RealType *hklsIn,
 	int *n_arr, RealType *RTParamArr, RealType *hklscorr, int *HKLints_d){
 	RealType *hkls;
 	hkls = hklscorr;
-	RealType a=LatC_d[0],b=LatC_d[1],c=LatC_d[2],alpha=LatC_d[3],beta=LatC_d[4],gamma=LatC_d[5];
+	RealType a=LatC_d[0],b=LatC_d[1],c=LatC_d[2],alph=LatC_d[3],bet=LatC_d[4],gamma=LatC_d[5];
 	int hklnr;
 	RealType ginit[3], SinA, SinB, SinG, CosA, CosB, CosG, GammaPr, BetaPr, SinBetaPr,
 		Vol, APr, BPr, CPr, B[3][3], GCart[3], Ds, Theta, Rad;
-	SinA = sind(alpha);
-	SinB = sind(beta);
+	SinA = sind(alph);
+	SinB = sind(bet);
 	SinG = sind(gamma);
-	CosA = cosd(alpha);
-	CosB = cosd(beta);
+	CosA = cosd(alph);
+	CosB = cosd(bet);
 	CosG = cosd(gamma);
 	GammaPr = acosd((CosA*CosB - CosG)/(SinA*SinB));
 	BetaPr  = acosd((CosG*CosA - CosB)/(SinG*SinA));
@@ -1640,7 +1639,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 		xu[i+9] = x[i+9]*(1 + RTParamArr[22+MAX_N_RINGS]/100);
 	}
 	for (i=0;i<n;i++){
-		xstep[i] = fabs(xu[i]-xl[i])*0.25;
+		xstep[i] = fabs(xu[i]-xl[i])*0.05;
 	}
 	struct func_data_pos_ini f_data;
 	f_data.HKLInts = HKLints;
@@ -1661,8 +1660,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	int konvge = 10;
 	int kcount = MAX_N_EVALS;
 	int icount, numres, ifault;
-	nelmin(pf_posIni, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp);
-	if (ifault !=0) printf("Not optimized completely.\n");
+	nelmin(pf_posIni, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount/4, &icount, &numres, &ifault, trp);
 	RealType Pos[3] = {xout[0],xout[1],xout[2]};
 	RealType DisplY, DisplZ, Y, Z, Ome, g[3], Theta, lenK;
 	for (int nrSp=0;nrSp<nMatched;nrSp++){
@@ -1700,7 +1698,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 		xu[i+6] = x[i+6]*(1 + RTParamArr[22+MAX_N_RINGS]/100);
 	}
 	for (i=0;i<n;i++){
-		xstep[i] = fabs(xu[i]-xl[i])*0.25;
+		xstep[i] = fabs(xu[i]-xl[i])*0.05;
 	}
 	struct func_data_orient f_data2;
 	f_data2.HKLInts = HKLints;
@@ -1716,8 +1714,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	struct func_data_orient *f_datat2;
 	f_datat2 = &f_data2;
 	void *trp2 = (struct func_data_orient *)  f_datat2;
-	nelmin(pf_orient, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp2);
-    if (ifault !=0) printf("Not optimized completely.\n");
+	nelmin(pf_orient, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount/3, &icount, &numres, &ifault, trp2);
     RealType Euler[3] = {xout[0],xout[1],xout[2]};
     n = 6;
     for (i=0;i<n;i++){
@@ -1730,7 +1727,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 		xu[i+3] = x[i+3]*(1 + RTParamArr[22+MAX_N_RINGS]/100);
 	}
 	for (i=0;i<n;i++){
-		xstep[i] = fabs(xu[i]-xl[i])*0.25;
+		xstep[i] = fabs(xu[i]-xl[i])*0.05;
 	}
 	struct func_data_strains f_data3;
 	f_data3.Euler = Euler;
@@ -1747,8 +1744,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	struct func_data_strains *f_datat3;
 	f_datat3 = &f_data3;
 	void *trp3 = (struct func_data_strains *)  f_datat3;
-	nelmin(pf_strains, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp3);
-    if (ifault !=0) printf("Not optimized completely.\n");
+	nelmin(pf_strains, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount/2, &icount, &numres, &ifault, trp3);
     RealType LatCFit[6] = {xout[0],xout[1],xout[2],xout[3],xout[4],xout[5]};
     n = 3;
     RealType OM[3][3];
@@ -1760,7 +1756,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 		x[i] = Pos[i];
 		xl[i] = x[i] - RTParamArr[1];
 		xu[i] = x[i] + RTParamArr[1];
-		xstep[i] = fabs(xu[i]-xl[i])*0.25;
+		xstep[i] = fabs(xu[i]-xl[i])*0.05;
 	}
 	struct func_data_pos_sec f_data4;
 	f_data4.RTParamArr = RTParamArr;
@@ -1772,7 +1768,6 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	f_datat4 = &f_data4;
 	void *trp4 = (struct func_data_pos_sec *)  f_datat4;
 	nelmin(pf_posSec, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp4);
-    if (ifault !=0) printf("Not optimized completely.\n");
     RealType Pos2[3] = {xout[0],xout[1],xout[2]};
     for (i=0;i<3;i++){
 		Result[i] = Pos2[i];
@@ -3057,6 +3052,8 @@ int main(int argc, char *argv[]){
 		cudaMemcpy(nMatchedArr_d2,tempNMatchedArr,3*nrows*sizeof(int),cudaMemcpyHostToDevice);
 		cudaMemcpy(SpotsMatchedArr_d2,spotsYZO+startRowNMatched*9,nrowsNMatched*9*sizeof(RealType),cudaMemcpyHostToDevice);
 		cudaMemcpy(FitParams_d2,FitParams_h+12*startRow,12*nrows*sizeof(RealType),cudaMemcpyHostToDevice);
+		CHECK(cudaPeekAtLastError());
+		CHECK(cudaDeviceSynchronize());
 		dim3 blockf (32);
 		dim3 gridf ((maxNJobs/blockf.x)+1);
 		// Call the optimization routines.
@@ -3116,6 +3113,10 @@ int main(int argc, char *argv[]){
 			OpArr[i*25+22+j] = (RealType)nMatchedArrIndexing[i*3+j];
 		}
 		printf("%lf %lf %lf\n",ErrorArr[i*3+0],ErrorArr[i*3+1],ErrorArr[i*3+2]);
+		printf("%lf %lf %lf\n",FitResultArr_h[i*12+0],FitResultArr_h[i*12+1],FitResultArr_h[i*12+2]);
+		printf("%lf %lf %lf\n",FitResultArr_h[i*12+3],FitResultArr_h[i*12+4],FitResultArr_h[i*12+5]);
+		printf("%lf %lf %lf  ",FitResultArr_h[i*12+6],FitResultArr_h[i*12+7],FitResultArr_h[i*12+8]);
+		printf("%lf %lf %lf\n",FitResultArr_h[i*12+9],FitResultArr_h[i*12+10],FitResultArr_h[i*12+11]);
 	}
 	fwrite(OpArr,25*nSpotsIndexed*sizeof(RealType),1,fo);
 	cudaDeviceReset();
