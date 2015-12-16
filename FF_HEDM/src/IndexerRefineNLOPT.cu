@@ -102,11 +102,6 @@ __device__ int nlopt_stop_dx(const nlopt_stopping *s, const double *x, const dou
      return 1;
 }
 
-__device__ double sc(double x, double smin, double smax)
-{
-     return smin + x * (smax - smin);
-}
-
 __device__ int nlopt_stop_evals(const nlopt_stopping *s)
 {
      return (s->maxeval > 0 && s->nevals >= s->maxeval);
