@@ -156,7 +156,7 @@ __device__ nlopt_result nldrmd_minimize_(int n, nlopt_func f, void *f_data,
      double ninv = 1.0 / n;
      nlopt_result ret = NLOPT_SUCCESS;
      double init_diam = 0;
-     int highi;
+     double *highi;
 
      pts = scratch;
      c = scratch + (n+1)*(n+1);
@@ -201,6 +201,7 @@ __device__ nlopt_result nldrmd_minimize_(int n, nlopt_func f, void *f_data,
      while (1) {
 	  double fl = pts[0], *xl = pts + 1;
 	  double fh = pts[0], *xh = pts + 1;
+	  highi = pts;
 	  for (i = 1; i < n+1; ++i){
 		  if (fl < pts[i*(n+1)]){
 			  fl = pts[i*(n+1)];
@@ -209,7 +210,7 @@ __device__ nlopt_result nldrmd_minimize_(int n, nlopt_func f, void *f_data,
 		  if (fh > pts[i*(n+1)]){
 			  fh = pts[i*(n+1)];
 			  xh = pts + i*(n+1) + 1;
-			  highi = i;
+			  highi = pts + i*(n+1);
 		  }
 	  }
 	  double fr;
@@ -305,7 +306,7 @@ __device__ nlopt_result nldrmd_minimize_(int n, nlopt_func f, void *f_data,
 		    goto restart;
 	       }
 	  }
-      pts[highi*(n+1)] = fh;
+      pts[highi] = fh;
      }
      
 done:
