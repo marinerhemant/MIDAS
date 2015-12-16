@@ -2602,13 +2602,13 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	int kcount = MAX_N_EVALS;
 	int icount, numres, ifault;
 	//nelmin(pf_posIni, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp);
-	/*nlopt_stopping stop;
+	nlopt_stopping stop;
 	stop.n = n;
 	stop.maxeval = MAX_N_EVALS;
 	stop.ftol_rel = reqmin;
 	stop.xtol_rel = reqmin;
 	stop.minf_max = reqmin;
-	nlopt_func f = &pf_posIni;
+	/*nlopt_func f = &pf_posIni;
 	nlopt_result res;
 	res = nldrmd_minimize(n,f,trp,xl,xu,x,&minf,xstep,&stop,scratch);
 	for (i=0;i<n;i++) xout[i] = x[i];
