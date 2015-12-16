@@ -31,7 +31,7 @@
 #define N_COL_GRAINMATCHES 16 // nr of columns for output: the Matches (summary)
 #define MAX_LINE_LENGTH 4096
 #define MAX_N_FRIEDEL_PAIRS 1000
-#define MAX_N_EVALS 10000
+#define MAX_N_EVALS 1000
 #define N_COLS_FRIEDEL_RESULTS 16
 #define N_COLS_ORIENTATION_NUMBERS 3
 #define MaxNSpotsBest 10
@@ -2151,7 +2151,7 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	res = nldrmd_minimize(n,f,trp,xl,xu,x,&minf,xstep,&stop,scratch);
 	if (spotNr == 0) printf("%lf\n",pf_posIni(n,x,trp));
 	for (i=0;i<n;i++) xout[i] = x[i];
-	if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
+	//if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
 	RealType Pos[3] = {xout[0],xout[1],xout[2]};
 	RealType DisplY, DisplZ, Y, Z, Ome, g[3], Theta, lenK;
 	for (int nrSp=0;nrSp<nMatched;nrSp++){
@@ -2207,9 +2207,11 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	void *trp2 = (struct func_data_orient *)  f_datat2;
     stop.n = n;
 	f = &pf_orient;
+	if (spotNr == 0) printf("%lf\n",pf_orient(n,x,trp2));
 	res = nldrmd_minimize(n,f,trp2,xl,xu,x,&minf,xstep,&stop,scratch);
+	if (spotNr == 0) printf("%lf\n",pf_orient(n,x,trp2));
 	for (i=0;i<n;i++) xout[i] = x[i];
-	if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
+	//if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
     RealType Euler[3] = {xout[0],xout[1],xout[2]};
     n = 6;
     for (i=0;i<n;i++){
@@ -2241,9 +2243,11 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	void *trp3 = (struct func_data_strains *)  f_datat3;
     stop.n = n;
 	f = &pf_strains;
+	if (spotNr == 0) printf("%lf\n",pf_strains(n,x,trp3));
 	res = nldrmd_minimize(n,f,trp3,xl,xu,x,&minf,xstep,&stop,scratch);
+	if (spotNr == 0) printf("%lf\n",pf_strains(n,x,trp3));
 	for (i=0;i<n;i++) xout[i] = x[i];
-	if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
+	//if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
     RealType LatCFit[6] = {xout[0],xout[1],xout[2],xout[3],xout[4],xout[5]};
     n = 3;
     RealType OM[3][3];
@@ -2268,9 +2272,11 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	void *trp4 = (struct func_data_pos_sec *)  f_datat4;
     stop.n = n;
 	f = &pf_posSec;
+	if (spotNr == 0) printf("%lf\n",pf_posSec(n,x,trp4));
 	res = nldrmd_minimize(n,f,trp4,xl,xu,x,&minf,xstep,&stop,scratch);
+	if (spotNr == 0) printf("%lf\n",pf_posSec(n,x,trp4));
 	for (i=0;i<n;i++) xout[i] = x[i];
-	if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
+	//if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
     RealType Pos2[3] = {xout[0],xout[1],xout[2]};
     for (i=0;i<3;i++){
 		Result[i] = Pos2[i];
