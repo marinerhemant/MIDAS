@@ -17,7 +17,6 @@
 #define CalcNorm3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
 #define CalcNorm2(x,y) sqrt((x)*(x) + (y)*(y))
 
-
 // max array sizes
 #define MAX_N_SPOTS 6000000   // max nr of observed spots that can be stored
 #define MAX_N_STEPS 1000      // Max nr of pos steps, when stepping along the diffracted ray
@@ -32,16 +31,308 @@
 #define N_COL_GRAINMATCHES 16 // nr of columns for output: the Matches (summary)
 #define MAX_LINE_LENGTH 4096
 #define MAX_N_FRIEDEL_PAIRS 1000
-#define MAX_N_EVALS 1000
+#define MAX_N_EVALS 5000
 #define N_COLS_FRIEDEL_RESULTS 16
 #define N_COLS_ORIENTATION_NUMBERS 3
 #define MaxNSpotsBest 10
+
+__device__ typedef double (*nlopt_func)(int n, double *x, void *func_data);
+
+typedef enum {
+     NLOPT_FAILURE = -1, /* generic failure code */
+     NLOPT_INVALID_ARGS = -2,
+     NLOPT_OUT_OF_MEMORY = -3,
+     NLOPT_ROUNDOFF_LIMITED = -4,
+     NLOPT_FORCED_STOP = -5,
+     NLOPT_SUCCESS = 1, /* generic success code */
+     NLOPT_STOPVAL_REACHED = 2,
+     NLOPT_FTOL_REACHED = 3,
+     NLOPT_XTOL_REACHED = 4,
+     NLOPT_MAXEVAL_REACHED = 5,
+     NLOPT_MAXTIME_REACHED = 6
+} nlopt_result;
+
+typedef struct {
+     unsigned n;
+     double minf_max;
+     double ftol_rel;
+     double xtol_rel;
+     int nevals, maxeval;
+} nlopt_stopping;
+
+__device__ int relstop(double vold, double vnew, double reltol)
+{
+     if (vold != vold) return 0;
+     return(fabs(vnew - vold) < reltol * (fabs(vnew) + fabs(vold)) * 0.5
+	    || (reltol > 0 && vnew == vold));
+}
+
+__device__ int nlopt_stop_ftol(const nlopt_stopping *s, double f, double oldf)
+{
+     return (relstop(oldf, f, s->ftol_rel));
+}
+
+__device__ int nlopt_stop_f(const nlopt_stopping *s, double f, double oldf)
+{
+     return (f <= s->minf_max || nlopt_stop_ftol(s, f, oldf));
+}
+
+__device__ int nlopt_stop_x(const nlopt_stopping *s, const double *x, const double *oldx)
+{
+     unsigned i;
+     for (i = 0; i < s->n; ++i)
+	  if (!relstop(oldx[i], x[i], s->xtol_rel))
+	       return 0;
+     return 1;
+}
+
+__device__ int nlopt_stop_dx(const nlopt_stopping *s, const double *x, const double *dx)
+{
+     unsigned i;
+     for (i = 0; i < s->n; ++i)
+	  if (!relstop(x[i] - dx[i], x[i], s->xtol_rel))
+	       return 0;
+     return 1;
+}
+
+__device__ int nlopt_stop_evals(const nlopt_stopping *s)
+{
+     return (s->maxeval > 0 && s->nevals >= s->maxeval);
+}
+
+#define NLOPT_MINF_MAX_REACHED NLOPT_STOPVAL_REACHED
+
+/* return 1 if a and b are approximately equal relative to floating-point
+   precision, 0 otherwise */
+__device__ int close(double a, double b)
+{
+     return (fabs(a - b) <= 1e-13 * (fabs(a) + fabs(b)));
+}
+
+__device__ int reflectpt(int n, double *xnew, 
+		     const double *c, double scale, const double *xold,
+		     const double *lb, const double *ub)
+{
+     int equalc = 1, equalold = 1, i;
+     for (i = 0; i < n; ++i) {
+	  double newx = c[i] + scale * (c[i] - xold[i]);
+	  if (newx < lb[i]) newx = lb[i];
+	  if (newx > ub[i]) newx = ub[i];
+	  equalc = equalc && close(newx, c[i]);
+	  equalold = equalold && close(newx, xold[i]);
+	  xnew[i] = newx;
+     }
+     return !(equalc || equalold);
+}
+
+#define CHECK_EVAL(xc,fc) 						  \
+ stop->nevals++;							  \
+ if ((fc) <= *minf) {							  \
+   *minf = (fc); memcpy(x, (xc), n * sizeof(double));			  \
+   if (*minf < stop->minf_max) { ret=NLOPT_MINF_MAX_REACHED; goto done; } \
+ }									  \
+ if (nlopt_stop_evals(stop)) { ret=NLOPT_MAXEVAL_REACHED; goto done; }	  \
+
+__device__ nlopt_result nldrmd_minimize_(int n, nlopt_func f, void *f_data,
+			     const double *lb, const double *ub, /* bounds */
+			     double *x, /* in: initial guess, out: minimizer */
+			     double *minf,
+			     const double *xstep, /* initial step sizes */
+			     nlopt_stopping *stop,
+			     double psi, double *scratch,
+			     double *fdiff)
+{
+     double *pts; /* (n+1) x (n+1) array of n+1 points plus function val [0] */
+     double *c; /* centroid * n */
+     double *xcur; /* current point */
+     int i, j;
+     double ninv = 1.0 / n;
+     nlopt_result ret = NLOPT_SUCCESS;
+     double init_diam = 0;
+     double *highi;
+
+     pts = scratch;
+     c = scratch + (n+1)*(n+1);
+     xcur = c + n;
+
+     *fdiff = HUGE_VAL;
+
+     /* initialize the simplex based on the starting xstep */
+     for (i=0;i<n;i++) pts[1+i] = x[i];
+     //memcpy(pts+1, x, sizeof(double)*n);
+     pts[0] = *minf;
+     if (*minf < stop->minf_max) { ret=NLOPT_MINF_MAX_REACHED; goto done; }
+     for (i = 0; i < n; ++i) {
+	  double *pt = pts + (i+1)*(n+1);
+	  for (j=0;j<n;j++) pt[1+j] = x[j];
+	  //memcpy(pt+1, x, sizeof(double)*n);
+	  pt[1+i] += xstep[i];
+	  if (pt[1+i] > ub[i]) {
+	       if (ub[i] - x[i] > fabs(xstep[i]) * 0.1)
+		    pt[1+i] = ub[i];
+	       else /* ub is too close to pt, go in other direction */
+		    pt[1+i] = x[i] - fabs(xstep[i]);
+	  }
+	  if (pt[1+i] < lb[i]) {
+	       if (x[i] - lb[i] > fabs(xstep[i]) * 0.1)
+		    pt[1+i] = lb[i];
+	       else {/* lb is too close to pt, go in other direction */
+		    pt[1+i] = x[i] + fabs(xstep[i]);
+		    if (pt[1+i] > ub[i]) /* go towards further of lb, ub */
+			 pt[1+i] = 0.5 * ((ub[i] - x[i] > x[i] - lb[i] ?
+					   ub[i] : lb[i]) + x[i]);
+	       }
+	  }
+	  if (close(pt[1+i], x[i])) { ret=NLOPT_FAILURE; goto done; }
+	  pt[0] = f(n, pt+1, f_data);
+	  CHECK_EVAL(pt+1, pt[0]);
+     }
+ restart:
+     for (i = 0; i < n + 1; ++i)
+     // Create list to have f(x) and x values, it doesn't need to be a sorted list.
+     // This could be avoided by using pts to calculate high and low. 
+
+     while (1) {
+	  double fl = pts[0], *xl = pts + 1;
+	  double fh = pts[0], *xh = pts + 1;
+	  highi = pts;
+	  for (i = 1; i < n+1; ++i){
+		  if (fl < pts[i*(n+1)]){
+			  fl = pts[i*(n+1)];
+			  xl = pts + i*(n+1) + 1;
+		  }
+		  if (fh > pts[i*(n+1)]){
+			  fh = pts[i*(n+1)];
+			  xh = pts + i*(n+1) + 1;
+			  highi = pts + i*(n+1);
+		  }
+	  }
+	  double fr;
+
+	  *fdiff = fh - fl;
+
+	  if (init_diam == 0) /* initialize diam. for psi convergence test */
+	       for (i = 0; i < n; ++i) init_diam += fabs(xl[i] - xh[i]);
+
+	  if (psi <= 0 && nlopt_stop_ftol(stop, fl, fh)) {
+	       ret = NLOPT_FTOL_REACHED;
+	       goto done;
+	  }
+
+	  /* compute centroid */
+	  memset(c, 0, sizeof(double)*n);
+	  for (i = 0; i < n + 1; ++i) {
+	       double *xi = pts + i*(n+1) + 1;
+	       if (xi != xh)
+		    for (j = 0; j < n; ++j)
+			 c[j] += xi[j];
+	  }
+	  for (i = 0; i < n; ++i) c[i] *= ninv;
+
+	  /* x convergence check: find xcur = max radius from centroid */
+	  memset(xcur, 0, sizeof(double)*n);
+	  for (i = 0; i < n + 1; ++i) {
+               double *xi = pts + i*(n+1) + 1;
+	       for (j = 0; j < n; ++j) {
+		    double dx = fabs(xi[j] - c[j]);
+		    if (dx > xcur[j]) xcur[j] = dx;
+	       }
+	  }
+	  for (i = 0; i < n; ++i) xcur[i] += c[i];
+	  if (psi > 0) {
+	       double diam = 0;
+	       for (i = 0; i < n; ++i) diam += fabs(xl[i] - xh[i]);
+	       if (diam < psi * init_diam) {
+		    ret = NLOPT_XTOL_REACHED;
+		    goto done;
+	       }
+	  }
+	  else if (nlopt_stop_x(stop, c, xcur)) {
+	       ret = NLOPT_XTOL_REACHED;
+	       goto done;
+	  }
+
+	  /* reflection */
+	  if (!reflectpt(n, xcur, c, 1.0, xh, lb, ub)) { 
+	       ret=NLOPT_XTOL_REACHED; goto done; 
+	  }
+	  fr = f(n, xcur, f_data);
+	  CHECK_EVAL(xcur, fr);
+
+	  if (fr < fl) { /* new best point, expand simplex */
+	       if (!reflectpt(n, xh, c, 2.0, xh, lb, ub)) {
+		    ret=NLOPT_XTOL_REACHED; goto done; 
+	       }
+	       fh = f(n, xh, f_data);
+	       CHECK_EVAL(xh, fh);
+	       if (fh >= fr) { /* expanding didn't improve */
+		    fh = fr;
+		    memcpy(xh, xcur, sizeof(double)*n);
+	       }
+	  }
+	  else if (fr < fh){//rb_tree_pred(high)->k[0]) { /* accept new point */ // how is this done is unclear
+	       memcpy(xh, xcur, sizeof(double)*n);
+	       fh = fr;
+	  }
+	  else { /* new worst point, contract */
+	       double fc;
+	       if (!reflectpt(n,xcur,c, fh <= fr ? -0.5 : 0.5, xh, lb,ub)) {
+		    ret=NLOPT_XTOL_REACHED; goto done; 
+	       }
+	       fc = f(n, xcur, f_data);
+	       CHECK_EVAL(xcur, fc);
+	       if (fc < fr && fc < fh) { /* successful contraction */
+		    memcpy(xh, xcur, sizeof(double)*n);
+		    fh = fc;
+	       }
+	       else { /* failed contraction, shrink simplex */
+		    for (i = 0; i < n+1; ++i) {
+			 double *pt = pts + i * (n+1);
+			 if (pt+1 != xl) {
+			      if (!reflectpt(n,pt+1, xl,-0.5,pt+1, lb,ub)) {
+				   ret = NLOPT_XTOL_REACHED;
+				   goto done;
+			      }
+			      pt[0] = f(n, pt+1, f_data);
+			      CHECK_EVAL(pt+1, pt[0]);
+			 }
+		    }
+		    goto restart;
+	       }
+	  }
+      *highi = fh;
+     }
+     
+done:
+     return ret;
+}
+
+__device__ nlopt_result nldrmd_minimize(int n, nlopt_func f, void *f_data,
+			     const double *lb, const double *ub, /* bounds */
+			     double *x, /* in: initial guess, out: minimizer */
+			     double *minf,
+			     const double *xstep, /* initial step sizes */
+			     nlopt_stopping *stop, double *scratch)
+{
+     nlopt_result ret;
+     double fdiff;
+
+     *minf = f(n, x, f_data);
+     stop->nevals++;
+     if (*minf < stop->minf_max) return NLOPT_MINF_MAX_REACHED;
+     if (nlopt_stop_evals(stop)) return NLOPT_MAXEVAL_REACHED;
+
+     ret = nldrmd_minimize_(n, f, f_data, lb, ub, x, minf, xstep, stop,
+			    0.0, scratch, &fdiff);
+     return ret;
+}
+//END NLOPT NELDERMEAD
 
 //BEGIN NLDRMD FUNCTION scratch space: 3n+(n+1)*(n+1)
 __device__ void nelmin ( RealType fn ( int n_fun, RealType *x, void *data ),
   int n, RealType *start, RealType *xmin,
   RealType *lb, RealType *ub, RealType *scratch, RealType *ynewlo,
-  RealType reqmin, RealType *step, int konvge, int kcount,
+  RealType reqmin, RealType *step, int konvge, int kcount, 
   int *icount, int *numres, int *ifault, void *data_t){
   RealType ccoeff = 0.5;
   RealType del;
@@ -1143,15 +1434,15 @@ __global__ void CorrectHKLsLatC(RealType *LatC_d, RealType *hklsIn,
 	RealType *hkls;
 	hkls = hkls_d + PosHkls;
 	RealType a=LatC_d[PosLatC+0],b=LatC_d[PosLatC+1],c=LatC_d[PosLatC+2],
-		alpha=LatC_d[PosLatC+3],beta=LatC_d[PosLatC+4],gamma=LatC_d[PosLatC+5];
+		alph=LatC_d[PosLatC+3],bet=LatC_d[PosLatC+4],gamma=LatC_d[PosLatC+5];
 	int hklnr;
 	RealType ginit[3], SinA, SinB, SinG, CosA, CosB, CosG, GammaPr, BetaPr, SinBetaPr,
 		Vol, APr, BPr, CPr, B[3][3], GCart[3], Ds, Theta, Rad;
-	SinA = sind(alpha);
-	SinB = sind(beta);
+	SinA = sind(alph);
+	SinB = sind(bet);
 	SinG = sind(gamma);
-	CosA = cosd(alpha);
-	CosB = cosd(beta);
+	CosA = cosd(alph);
+	CosB = cosd(bet);
 	CosG = cosd(gamma);
 	GammaPr = acosd((CosA*CosB - CosG)/(SinA*SinB));
 	BetaPr  = acosd((CosG*CosA - CosB)/(SinG*SinA));
@@ -1191,15 +1482,15 @@ __device__ void CorrectHKLsLatCInd(RealType *LatC_d, RealType *hklsIn,
 	int *n_arr, RealType *RTParamArr, RealType *hklscorr, int *HKLints_d){
 	RealType *hkls;
 	hkls = hklscorr;
-	RealType a=LatC_d[0],b=LatC_d[1],c=LatC_d[2],alpha=LatC_d[3],beta=LatC_d[4],gamma=LatC_d[5];
+	RealType a=LatC_d[0],b=LatC_d[1],c=LatC_d[2],alph=LatC_d[3],bet=LatC_d[4],gamma=LatC_d[5];
 	int hklnr;
 	RealType ginit[3], SinA, SinB, SinG, CosA, CosB, CosG, GammaPr, BetaPr, SinBetaPr,
 		Vol, APr, BPr, CPr, B[3][3], GCart[3], Ds, Theta, Rad;
-	SinA = sind(alpha);
-	SinB = sind(beta);
+	SinA = sind(alph);
+	SinB = sind(bet);
 	SinG = sind(gamma);
-	CosA = cosd(alpha);
-	CosB = cosd(beta);
+	CosA = cosd(alph);
+	CosB = cosd(bet);
 	CosG = cosd(gamma);
 	GammaPr = acosd((CosA*CosB - CosG)/(SinA*SinB));
 	BetaPr  = acosd((CosG*CosA - CosB)/(SinG*SinA));
@@ -1640,6 +1931,189 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 		xu[i+9] = x[i+9]*(1 + RTParamArr[22+MAX_N_RINGS]/100);
 	}
 	for (i=0;i<n;i++){
+		xstep[i] = fabs(xu[i]-xl[i])*0.05;
+	}
+	struct func_data_pos_ini f_data;
+	f_data.HKLInts = HKLints;
+	f_data.IntParamArr = IntParamArr;
+	f_data.OmeBoxArr = OmeBoxArr;
+	f_data.RTParamArr = RTParamArr;
+	f_data.hkls = hklsIn;
+	f_data.nMatched = nMatched;
+	f_data.n_arr = n_arr;
+	f_data.spotsYZO = spotsYZO;
+	f_data.TheorSpots = TheorSpots;
+	f_data.hklspace = hklspace;
+	struct func_data_pos_ini *f_datat;
+	f_datat = &f_data;
+	void *trp = (struct func_data_pos_ini *)  f_datat;
+	double minf;
+	double reqmin = 1e-8;
+	int konvge = 10;
+	int kcount = MAX_N_EVALS;
+	int icount, numres, ifault;
+	nelmin(pf_posIni, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount/4, &icount, &numres, &ifault, trp);
+	RealType Pos[3] = {xout[0],xout[1],xout[2]};
+	RealType DisplY, DisplZ, Y, Z, Ome, g[3], Theta, lenK;
+	for (int nrSp=0;nrSp<nMatched;nrSp++){
+		DisplacementInTheSpot(xout[0],xout[1],xout[2],RTParamArr[0],spotsYZO[nrSp*9+5],
+			spotsYZO[nrSp*9+6],spotsYZO[nrSp*9+4],RTParamArr[20+MAX_N_RINGS],
+			0,&DisplY,&DisplZ);
+		if (fabs(RTParamArr[20+MAX_N_RINGS]) > 0.02){
+			CorrectForOme(spotsYZO[nrSp*9+5]-DisplY,
+				spotsYZO[nrSp*9+6]-DisplZ,RTParamArr[0],
+				spotsYZO[nrSp*9+4],RTParamArr[19+MAX_N_RINGS],
+				RTParamArr[20+MAX_N_RINGS],&Y, &Z, &Ome);
+		}else{
+			Y = spotsYZO[nrSp*9+5]-DisplY;
+			Z = spotsYZO[nrSp*9+6]-DisplZ;
+			Ome = spotsYZO[nrSp*9+4];
+		}
+		Theta = atand(CalcNorm2(Y,Z)/RTParamArr[0])/2;
+		lenK = CalcNorm3(RTParamArr[0],Y,Z);
+		SpotToGv(RTParamArr[0]/lenK,Y/lenK,Z/lenK,Ome,Theta,&spotsCorrected[nrSp*6+2],
+			&spotsCorrected[nrSp*6+3],&spotsCorrected[nrSp*6+4]);
+		spotsCorrected[nrSp*6+0] = Y;
+		spotsCorrected[nrSp*6+1] = Z;
+		spotsCorrected[nrSp*6+5] = spotsYZO[nrSp*9+8];
+	}
+	n = 9;
+	for (i=0;i<9;i++){
+		x[i] = FitParams[i+3];
+	}
+	for (i=0;i<3;i++){
+		xl[i] = x[i] - 2;
+		xl[i+3] = x[i+3]*(1 - RTParamArr[21+MAX_N_RINGS]/100);
+		xl[i+6] = x[i+6]*(1 - RTParamArr[22+MAX_N_RINGS]/100);
+		xu[i] = x[i] + 2;
+		xu[i+3] = x[i+3]*(1 + RTParamArr[21+MAX_N_RINGS]/100);
+		xu[i+6] = x[i+6]*(1 + RTParamArr[22+MAX_N_RINGS]/100);
+	}
+	for (i=0;i<n;i++){
+		xstep[i] = fabs(xu[i]-xl[i])*0.05;
+	}
+	struct func_data_orient f_data2;
+	f_data2.HKLInts = HKLints;
+	f_data2.IntParamArr = IntParamArr;
+	f_data2.OmeBoxArr = OmeBoxArr;
+	f_data2.RTParamArr = RTParamArr;
+	f_data2.hkls = hklsIn;
+	f_data2.nMatched = nMatched;
+	f_data2.n_arr = n_arr;
+	f_data2.spotsCorrected = spotsCorrected;
+	f_data2.TheorSpots = TheorSpots;
+	f_data2.hklspace = hklspace;
+	struct func_data_orient *f_datat2;
+	f_datat2 = &f_data2;
+	void *trp2 = (struct func_data_orient *)  f_datat2;
+	nelmin(pf_orient, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount/3, &icount, &numres, &ifault, trp2);
+    RealType Euler[3] = {xout[0],xout[1],xout[2]};
+    n = 6;
+    for (i=0;i<n;i++){
+		x[i] = FitParams[i+6];
+	}
+	for (i=0;i<3;i++){
+		xl[i] = x[i]*(1 - RTParamArr[21+MAX_N_RINGS]/100);
+		xl[i+3] = x[i+3]*(1 - RTParamArr[22+MAX_N_RINGS]/100);
+		xu[i] = x[i]*(1 + RTParamArr[21+MAX_N_RINGS]/100);
+		xu[i+3] = x[i+3]*(1 + RTParamArr[22+MAX_N_RINGS]/100);
+	}
+	for (i=0;i<n;i++){
+		xstep[i] = fabs(xu[i]-xl[i])*0.05;
+	}
+	struct func_data_strains f_data3;
+	f_data3.Euler = Euler;
+	f_data3.HKLInts = HKLints;
+	f_data3.IntParamArr = IntParamArr;
+	f_data3.OmeBoxArr = OmeBoxArr;
+	f_data3.RTParamArr = RTParamArr;
+	f_data3.hkls = hklsIn;
+	f_data3.nMatched = nMatched;
+	f_data3.n_arr = n_arr;
+	f_data3.spotsCorrected = spotsCorrected;
+	f_data3.TheorSpots = TheorSpots;
+	f_data3.hklspace = hklspace;
+	struct func_data_strains *f_datat3;
+	f_datat3 = &f_data3;
+	void *trp3 = (struct func_data_strains *)  f_datat3;
+	nelmin(pf_strains, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount/2, &icount, &numres, &ifault, trp3);
+    RealType LatCFit[6] = {xout[0],xout[1],xout[2],xout[3],xout[4],xout[5]};
+    n = 3;
+    RealType OM[3][3];
+    Euler2OrientMat(Euler,OM);
+    CorrectHKLsLatCInd(LatCFit,hklsIn,n_arr,RTParamArr,hklspace,HKLints);
+    int nTspots = CalcDiffrSpots(OM,RTParamArr+5,OmeBoxArr,IntParamArr[1],
+		RTParamArr[5+MAX_N_RINGS+6],TheorSpotsCorrected,hklspace,n_arr);
+	for (int i=0;i<3;i++){
+		x[i] = Pos[i];
+		xl[i] = x[i] - RTParamArr[1];
+		xu[i] = x[i] + RTParamArr[1];
+		xstep[i] = fabs(xu[i]-xl[i])*0.05;
+	}
+	struct func_data_pos_sec f_data4;
+	f_data4.RTParamArr = RTParamArr;
+	f_data4.nMatched = nMatched;
+	f_data4.TheorSpots = TheorSpots;
+	f_data4.nTspots = nTspots;
+	f_data4.spotsYZO = spotsYZO;
+	struct func_data_pos_sec *f_datat4;
+	f_datat4 = &f_data4;
+	void *trp4 = (struct func_data_pos_sec *)  f_datat4;
+	nelmin(pf_posSec, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp4);
+    RealType Pos2[3] = {xout[0],xout[1],xout[2]};
+    for (i=0;i<3;i++){
+		Result[i] = Pos2[i];
+		Result[i+3] = Euler[i];
+		Result[i+6] = LatCFit[i];
+		Result[i+9] = LatCFit[i+3];
+	}
+}
+
+__global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
+	int *n_arr, RealType *OmeBoxArr, RealType *hklsIn, int *HKLints,
+	int *nMatchedArr, RealType *spotsYZO_d, RealType *FitParams_d,
+	RealType *TheorSpots_d, RealType *scratch_d, RealType *hklspace_d,
+	RealType *x_d, RealType *xl_d, RealType *xu_d, RealType *xout_d,
+	RealType *xstep_d, RealType *CorrectSpots, RealType *TheorSpotsCorr,
+	RealType *Result_d){
+	int spotNr = blockIdx.x * blockDim.x + threadIdx.x;
+	if (spotNr >= n_arr[2]){
+		return;
+	}
+	RealType *spotsYZO, *FitParams, *TheorSpots, *scratch, *hklspace, *x,
+		*xl, *xu, *xout, *xstep, *spotsCorrected, *TheorSpotsCorrected,
+		*Result;
+	int nMatched, nMatchedTillNowRowNr, i;
+	nMatched = nMatchedArr[spotNr*3+0];
+	nMatchedTillNowRowNr = nMatchedArr[spotNr*3+2];
+	spotsYZO = spotsYZO_d + nMatchedTillNowRowNr * 9;
+	FitParams = FitParams_d + spotNr * 12;
+	Result = Result_d + spotNr *12;
+	TheorSpots = TheorSpots_d + n_arr[1]*2*spotNr*8;
+	TheorSpotsCorrected = TheorSpotsCorr + n_arr[1]*2*spotNr*8;
+	scratch = scratch_d + spotNr*((12+1)*(12+1)+3*12);
+	hklspace = hklspace_d + spotNr*n_arr[1]*7;
+	spotsCorrected = CorrectSpots + nMatchedTillNowRowNr*6;
+	x = x_d + 12*spotNr;
+	xl = xl_d + 12*spotNr;
+	xu = xu_d + 12*spotNr;
+	xout = xout_d + 12*spotNr;
+	xstep = xstep_d + 12*spotNr;
+	int n = 12;
+	for (i=0;i<12;i++){
+		x[i] = FitParams[i];
+	}
+	for (i=0;i<3;i++){
+		xl[i] = x[i] - RTParamArr[1];
+		xl[i+3] = x[i+3] - 0.01;
+		xl[i+6] = x[i+6]*(1 - RTParamArr[21+MAX_N_RINGS]/100);
+		xl[i+9] = x[i+9]*(1 - RTParamArr[22+MAX_N_RINGS]/100);
+		xu[i] = x[i] + RTParamArr[1];
+		xu[i+3] = x[i+3] + 0.01;
+		xu[i+6] = x[i+6]*(1 + RTParamArr[21+MAX_N_RINGS]/100);
+		xu[i+9] = x[i+9]*(1 + RTParamArr[22+MAX_N_RINGS]/100);
+	}
+	for (i=0;i<n;i++){
 		xstep[i] = fabs(xu[i]-xl[i])*0.25;
 	}
 	struct func_data_pos_ini f_data;
@@ -1661,8 +2135,19 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	int konvge = 10;
 	int kcount = MAX_N_EVALS;
 	int icount, numres, ifault;
-	nelmin(pf_posIni, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp);
-	if (ifault !=0) printf("Not optimized completely.\n");
+	nlopt_stopping stop;
+	stop.n = n;
+	stop.maxeval = MAX_N_EVALS;
+	stop.ftol_rel = reqmin;
+	stop.xtol_rel = reqmin;
+	stop.minf_max = reqmin;
+	nlopt_func f = &pf_posIni;
+	nlopt_result res = NLOPT_SUCCESS;
+	if (spotNr == 0) printf("%lf\n",pf_posIni(n,x,trp));
+	res = nldrmd_minimize(n,f,trp,xl,xu,x,&minf,xstep,&stop,scratch);
+	if (spotNr == 0) printf("%lf\n",pf_posIni(n,x,trp));
+	for (i=0;i<n;i++) xout[i] = x[i];
+	if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
 	RealType Pos[3] = {xout[0],xout[1],xout[2]};
 	RealType DisplY, DisplZ, Y, Z, Ome, g[3], Theta, lenK;
 	for (int nrSp=0;nrSp<nMatched;nrSp++){
@@ -1716,8 +2201,13 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	struct func_data_orient *f_datat2;
 	f_datat2 = &f_data2;
 	void *trp2 = (struct func_data_orient *)  f_datat2;
-	nelmin(pf_orient, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp2);
-    if (ifault !=0) printf("Not optimized completely.\n");
+    stop.n = n;
+	f = &pf_orient;
+	//if (spotNr == 0) printf("%lf\n",f(n,x,trp2));
+	res = nldrmd_minimize(n,f,trp2,xl,xu,x,&minf,xstep,&stop,scratch);
+	//if (spotNr == 0) printf("%lf\n",f(n,x,trp2));
+	for (i=0;i<n;i++) xout[i] = x[i];
+	if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
     RealType Euler[3] = {xout[0],xout[1],xout[2]};
     n = 6;
     for (i=0;i<n;i++){
@@ -1747,8 +2237,13 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	struct func_data_strains *f_datat3;
 	f_datat3 = &f_data3;
 	void *trp3 = (struct func_data_strains *)  f_datat3;
-	nelmin(pf_strains, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp3);
-    if (ifault !=0) printf("Not optimized completely.\n");
+    stop.n = n;
+	f = &pf_strains;
+	//if (spotNr == 0) printf("%lf\n",f(n,x,trp3));
+	res = nldrmd_minimize(n,f,trp3,xl,xu,x,&minf,xstep,&stop,scratch);
+	//if (spotNr == 0) printf("%lf\n",f(n,x,trp3));
+	for (i=0;i<n;i++) xout[i] = x[i];
+	if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
     RealType LatCFit[6] = {xout[0],xout[1],xout[2],xout[3],xout[4],xout[5]};
     n = 3;
     RealType OM[3][3];
@@ -1771,8 +2266,13 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	struct func_data_pos_sec *f_datat4;
 	f_datat4 = &f_data4;
 	void *trp4 = (struct func_data_pos_sec *)  f_datat4;
-	nelmin(pf_posSec, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp4);
-    if (ifault !=0) printf("Not optimized completely.\n");
+    stop.n = n;
+	f = &pf_posSec;
+	//if (spotNr == 0) printf("%lf\n",f(n,x,trp4));
+	res = nldrmd_minimize(n,f,trp4,xl,xu,x,&minf,xstep,&stop,scratch);
+	//if (spotNr == 0) printf("%lf\n",f(n,x,trp4));
+	for (i=0;i<n;i++) xout[i] = x[i];
+	if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
     RealType Pos2[3] = {xout[0],xout[1],xout[2]};
     for (i=0;i<3;i++){
 		Result[i] = Pos2[i];
@@ -3057,6 +3557,8 @@ int main(int argc, char *argv[]){
 		cudaMemcpy(nMatchedArr_d2,tempNMatchedArr,3*nrows*sizeof(int),cudaMemcpyHostToDevice);
 		cudaMemcpy(SpotsMatchedArr_d2,spotsYZO+startRowNMatched*9,nrowsNMatched*9*sizeof(RealType),cudaMemcpyHostToDevice);
 		cudaMemcpy(FitParams_d2,FitParams_h+12*startRow,12*nrows*sizeof(RealType),cudaMemcpyHostToDevice);
+		CHECK(cudaPeekAtLastError());
+		CHECK(cudaDeviceSynchronize());
 		dim3 blockf (32);
 		dim3 gridf ((maxNJobs/blockf.x)+1);
 		// Call the optimization routines.
@@ -3116,6 +3618,10 @@ int main(int argc, char *argv[]){
 			OpArr[i*25+22+j] = (RealType)nMatchedArrIndexing[i*3+j];
 		}
 		printf("%lf %lf %lf\n",ErrorArr[i*3+0],ErrorArr[i*3+1],ErrorArr[i*3+2]);
+		printf("%lf %lf %lf\n",FitResultArr_h[i*12+0],FitResultArr_h[i*12+1],FitResultArr_h[i*12+2]);
+		printf("%lf %lf %lf\n",FitResultArr_h[i*12+3],FitResultArr_h[i*12+4],FitResultArr_h[i*12+5]);
+		printf("%lf %lf %lf  ",FitResultArr_h[i*12+6],FitResultArr_h[i*12+7],FitResultArr_h[i*12+8]);
+		printf("%lf %lf %lf\n",FitResultArr_h[i*12+9],FitResultArr_h[i*12+10],FitResultArr_h[i*12+11]);
 	}
 	fwrite(OpArr,25*nSpotsIndexed*sizeof(RealType),1,fo);
 	cudaDeviceReset();
