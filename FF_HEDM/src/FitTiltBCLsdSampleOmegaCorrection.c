@@ -495,7 +495,7 @@ int main(int argc, char *argv[])
 	double t_int=1, t_gap=0;
     int NewType = 0, TopLayer = 0;
     spotsfn = "InputAll.csv";
-    idfn = "SpotsToIndex.bin";
+    idfn = "SpotsToIndex.csv";
     double StepSizePos=5,StepSizeOrient=0.2,MarginRadius=200,MarginRadial=200,OmeBinSize=0.1,EtaBinSize=0.1,MarginEta=200,MarginOme=0.7,OmegaStep;
     while (fgets(aline,1000,fileParam)!=NULL){
         str = "OmegaStep ";
