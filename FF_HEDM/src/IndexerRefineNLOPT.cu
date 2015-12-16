@@ -306,7 +306,7 @@ __device__ nlopt_result nldrmd_minimize_(int n, nlopt_func f, void *f_data,
 		    goto restart;
 	       }
 	  }
-      pts[highi] = fh;
+      *highi = fh;
      }
      
 done:
