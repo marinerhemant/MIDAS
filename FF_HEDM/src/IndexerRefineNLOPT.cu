@@ -188,8 +188,6 @@ __device__ nlopt_result nldrmd_minimize_(int n, nlopt_func f, void *f_data,
 	  pt[0] = f(n, pt+1, f_data);
 	  CHECK_EVAL(pt+1, pt[0]);
      }
-     return ret;
-
  restart:
      for (i = 0; i < n + 1; ++i)
      // Create list to have f(x) and x values, it doesn't need to be a sorted list.
@@ -327,7 +325,6 @@ __device__ nlopt_result nldrmd_minimize(int n, nlopt_func f, void *f_data,
 
      ret = nldrmd_minimize_(n, f, f_data, lb, ub, x, minf, xstep, stop,
 			    0.0, scratch, &fdiff);
-     free(scratch);
      return ret;
 }
 //END NLOPT NELDERMEAD
