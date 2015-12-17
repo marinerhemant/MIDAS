@@ -31,7 +31,7 @@
 #define N_COL_GRAINMATCHES 16 // nr of columns for output: the Matches (summary)
 #define MAX_LINE_LENGTH 4096
 #define MAX_N_FRIEDEL_PAIRS 1000
-#define MAX_N_EVALS 5000
+#define MAX_N_EVALS 1000
 #define N_COLS_FRIEDEL_RESULTS 16
 #define N_COLS_ORIENTATION_NUMBERS 3
 #define MaxNSpotsBest 10
@@ -1415,68 +1415,73 @@ __device__ int CalcDiffrSpots(RealType OrientMatrix[3][3],
 	return spotnr;
 }
 
+__device__ int CalcDiffrSpotsStrained(RealType OrientMatrix[3][3],
+	RealType *OmeBoxArr, int NOmegaRanges, RealType ExcludePoleAngle, 
+	RealType *spots, RealType *hkls, int *n_arr){
+	int OmegaRangeNo;
+	int KeepSpot;
+	RealType Ghkl[3];
+	RealType Gc[3];
+	RealType omegas[4];
+	RealType etas[4];
+	RealType yl;
+	RealType zl;
+	int nspotsPlane;
+	int spotnr = 0;
+	RealType GCr[3], NGc;
+	RealType nrhkls, Ds, RingRad;
+	for (int indexhkl=0; indexhkl < n_arr[1] ; indexhkl++)  {
+		Ghkl[0] = hkls[indexhkl*7+0];
+		Ghkl[1] = hkls[indexhkl*7+1];
+		Ghkl[2] = hkls[indexhkl*7+2];
+		MatrixMultF(OrientMatrix,Ghkl, Gc);
+		nspotsPlane = CalcOmegaStrains(Gc[0], Gc[1], Gc[2], hkls[indexhkl*7+5], omegas, etas);
+		NGc=sqrt((Gc[0]*Gc[0])+(Gc[1]*Gc[1])+(Gc[2]*Gc[2]));
+		Ds=hkls[indexhkl*7+4];
+        GCr[0]=Ds*Gc[0]/NGc;
+        GCr[1]=Ds*Gc[1]/NGc;
+        GCr[2]=Ds*Gc[2]/NGc;
+        nrhkls = (RealType)indexhkl*2 + 1;
+        RingRad = hkls[indexhkl*7+6];
+		for (int i=0 ; i<nspotsPlane ; i++) {
+			if ((fabs(etas[i]) < ExcludePoleAngle ) || ((180-fabs(etas[i])) < ExcludePoleAngle)) continue;
+			yl = -(sin(deg2rad * etas[i])*RingRad);
+			zl =   cos(deg2rad * etas[i])*RingRad;
+			for (OmegaRangeNo = 0 ; OmegaRangeNo < NOmegaRanges ; OmegaRangeNo++ ) {
+				KeepSpot = 0;
+				if ((omegas[i] > OmeBoxArr[OmegaRangeNo*6+4]) &&
+					(omegas[i] < OmeBoxArr[OmegaRangeNo*6+5]) &&
+					(yl > OmeBoxArr[OmegaRangeNo*6+0]) &&
+					(yl < OmeBoxArr[OmegaRangeNo*6+1]) &&
+					(zl > OmeBoxArr[OmegaRangeNo*6+2]) &&
+					(zl < OmeBoxArr[OmegaRangeNo*6+3]) ) {
+					KeepSpot = 1;
+					break;
+				}
+			}
+			if (KeepSpot) {
+				spots[spotnr*8+0] = yl;
+				spots[spotnr*8+1] = zl;
+				spots[spotnr*8+2] = omegas[i];
+				spots[spotnr*8+3] = GCr[0];
+				spots[spotnr*8+4] = GCr[1];
+				spots[spotnr*8+5] = GCr[2];
+				spots[spotnr*8+6] = hkls[indexhkl*7+3];
+				spots[spotnr*8+7] = nrhkls;
+				nrhkls++;
+				spotnr++;
+			}
+		}
+	}
+	return spotnr;
+}
+
 #define sind(x) sin(deg2rad*x)
 #define cosd(x) cos(deg2rad*x)
 #define tand(x) tan(deg2rad*x)
 #define asind(x) rad2deg*asin(x)
 #define acosd(x) rad2deg*acos(x)
 #define atand(x) rad2deg*atan(x)
-
-__global__ void CorrectHKLsLatC(RealType *LatC_d, RealType *hklsIn,
-	int *n_arr, RealType *RTParamArr, RealType *hkls_d, int *HKLints_d){
-	int Pos, PosLatC, PosHkls;
-	Pos = blockIdx.x * blockDim.x + threadIdx.x;
-	if (Pos >= n_arr[2]){
-		return;
-	}
-	PosLatC = Pos*6;
-	PosHkls = Pos*n_arr[1]*7;
-	RealType *hkls;
-	hkls = hkls_d + PosHkls;
-	RealType a=LatC_d[PosLatC+0],b=LatC_d[PosLatC+1],c=LatC_d[PosLatC+2],
-		alph=LatC_d[PosLatC+3],bet=LatC_d[PosLatC+4],gamma=LatC_d[PosLatC+5];
-	int hklnr;
-	RealType ginit[3], SinA, SinB, SinG, CosA, CosB, CosG, GammaPr, BetaPr, SinBetaPr,
-		Vol, APr, BPr, CPr, B[3][3], GCart[3], Ds, Theta, Rad;
-	SinA = sind(alph);
-	SinB = sind(bet);
-	SinG = sind(gamma);
-	CosA = cosd(alph);
-	CosB = cosd(bet);
-	CosG = cosd(gamma);
-	GammaPr = acosd((CosA*CosB - CosG)/(SinA*SinB));
-	BetaPr  = acosd((CosG*CosA - CosB)/(SinG*SinA));
-	SinBetaPr = sind(BetaPr);
-	Vol = (a*(b*(c*(SinA*(SinBetaPr*(SinG))))));
-	APr = b*c*SinA/Vol;
-	BPr = c*a*SinB/Vol;
-	CPr = a*b*SinG/Vol;
-	B[0][0] = APr;
-	B[0][1] = (BPr*cosd(GammaPr));
-	B[0][2] = (CPr*cosd(BetaPr));
-	B[1][0] = 0,
-	B[1][1] = (BPr*sind(GammaPr));
-	B[1][2] = (-CPr*SinBetaPr*CosA);
-	B[2][0] = 0;
-	B[2][1] = 0;
-	B[2][2] = (CPr*SinBetaPr*SinA);
-	for (hklnr=0;hklnr<n_arr[1];hklnr++){
-		ginit[0] = (RealType) HKLints_d[hklnr*4+0];
-		ginit[1] = (RealType) HKLints_d[hklnr*4+1];
-		ginit[2] = (RealType) HKLints_d[hklnr*4+2];
-		MatrixMultF(B,ginit,GCart);
-		Ds = 1/(sqrt((GCart[0]*GCart[0])+(GCart[1]*GCart[1])+(GCart[2]*GCart[2])));
-		hkls[hklnr*7+0] = GCart[0];
-		hkls[hklnr*7+1] = GCart[1];
-		hkls[hklnr*7+2] = GCart[2];
-		hkls[hklnr*7+3] = hklsIn[hklnr*7+3];
-        hkls[hklnr*7+4] = Ds;
-        Theta = (asind((RTParamArr[5+MAX_N_RINGS+8+6])/(2*Ds)));
-        hkls[hklnr*7+5] = Theta;
-        Rad = RTParamArr[0]*(tand(2*Theta));
-        hkls[hklnr*7+6] = Rad;
-	}
-}
 
 __device__ void CorrectHKLsLatCInd(RealType *LatC_d, RealType *hklsIn,
 	int *n_arr, RealType *RTParamArr, RealType *hklscorr, int *HKLints_d){
@@ -1827,7 +1832,7 @@ __device__ RealType pf_strains(int n, double *x, void *f_data_trial){
 	RealType Y,Z;
 	int spnr;
 	RealType Error = 0;
-	int nTspots = CalcDiffrSpots(OrientMatrix,RTParamArr+5,OmeBoxArr,IntParamArr[1],
+	int nTspots = CalcDiffrSpotsStrained(OrientMatrix,OmeBoxArr,IntParamArr[1],
 			RTParamArr[5+MAX_N_RINGS+6],TheorSpots,hklscorr,n_arr);
 	for (int nrSp=0;nrSp<nMatched;nrSp++){
 		Y = spotsYZO[nrSp*6+0];
@@ -2045,7 +2050,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
     RealType OM[3][3];
     Euler2OrientMat(Euler,OM);
     CorrectHKLsLatCInd(LatCFit,hklsIn,n_arr,RTParamArr,hklspace,HKLints);
-    int nTspots = CalcDiffrSpots(OM,RTParamArr+5,OmeBoxArr,IntParamArr[1],
+    int nTspots = CalcDiffrSpotsStrained(OM,OmeBoxArr,IntParamArr[1],
 		RTParamArr[5+MAX_N_RINGS+6],TheorSpotsCorrected,hklspace,n_arr);
 	for (int i=0;i<3;i++){
 		x[i] = Pos[i];
@@ -2306,7 +2311,7 @@ __global__ void CalcAngleErrors(RealType *RTParamArr, int *IntParamArr,
 	TheorSpots = TheorSpots_d + n_arr[1]*2*spotNr*8;
 	RealType OrientationMatrix[3][3];
 	Euler2OrientMat(x+3,OrientationMatrix);
-	int nTspots = CalcDiffrSpots(OrientationMatrix,RTParamArr+5,OmeBoxArr,IntParamArr[1],
+	int nTspots = CalcDiffrSpotsStrained(OrientationMatrix,OmeBoxArr,IntParamArr[1],
 			RTParamArr[5+MAX_N_RINGS+6],TheorSpots,hkls,n_arr);
 	RealType DisplY, DisplZ, Y, Z, Ome, Theta, lenK, go[3], *gth, angle, distt, omediff, tmpL;
 	int spnr;
