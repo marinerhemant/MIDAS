@@ -3566,6 +3566,7 @@ int main(int argc, char *argv[]){
 			tempNMatchedArr[i*3+2] = nSpotsMatched;
 			nSpotsMatched += nMatchedArrIndexing[(i+startRow)*3];
 		}
+		printf("%d %d %d %d %d %d %d %d\n",nrows,nrowsNMatched,startRow,endRow, startRowNMatched, endRowNMatched, nSpotsIndexed, nMatchedTillNow);
 		cudaMemcpy(nMatchedArr_d2,tempNMatchedArr,3*nrows*sizeof(int),cudaMemcpyHostToDevice);
 		CHECK(cudaPeekAtLastError());
 		CHECK(cudaDeviceSynchronize());
