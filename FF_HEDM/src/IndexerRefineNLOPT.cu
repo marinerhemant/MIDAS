@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define RealType float
+#define RealType double
 
 // conversions constants
 #define deg2rad 0.0174532925199433
