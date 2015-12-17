@@ -3518,7 +3518,7 @@ int main(int argc, char *argv[]){
 	SpotsCompReturnArr = (RealType *)malloc(nMatchedTillNow*22*sizeof(RealType));
 	SpListArr = (RealType *)malloc(nMatchedTillNow*9*sizeof(RealType));
 	ErrorArr = (RealType *)malloc(nSpotsIndexed*3*sizeof(RealType));
-    int nJobGroups = nSpotsIndexed/nCores + 1;
+    int nJobGroups = nSpotsIndexed/(2*nCores) + 1;
 	int maxNJobs = 2*nCores;
 	int *nMatchedArr_d2;
 	int sizeNMatched = maxNJobs*(int)(((RealType)nMatchedTillNow/(RealType)nSpotsIndexed)*1.5);
