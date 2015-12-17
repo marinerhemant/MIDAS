@@ -3587,7 +3587,7 @@ int main(int argc, char *argv[]){
 		CHECK(cudaDeviceSynchronize());
 		cudaMemcpy(SpotsCompReturnArr+22*startRowNMatched,SpCmp_d2,22*nrowsNMatched*sizeof(RealType),cudaMemcpyDeviceToHost);
 		cudaMemcpy(ErrorArr+3*startRow,Error_d2,3*nrows*sizeof(RealType),cudaMemcpyDeviceToHost);
-		printf("Finished one set of optimizations in: %lfseconds.\n",cpuSecond()-istart);
+		printf("Finished one set of optimizations in: %lfseconds.\n",cpuSecond()-iStart);
 	}
 	// We have 	idsIndexed with the successful IDs.
 	//			nMatchedArrIndexing to guide where to look
