@@ -1957,8 +1957,10 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	int konvge = 10;
 	int kcount = MAX_N_EVALS;
 	int icount, numres, ifault;
+	if (spotNr == 0) printf("Pos in: %lf %lf %lf %lf\n",pf_posIni(n,x,trp),x[0],x[1],x[2]);
 	nelmin(pf_posIni, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount/4, &icount, &numres, &ifault, trp);
-	if (ifault !=0) printf("Not optimized completely.\n");
+	if (spotNr == 0) printf("Pos out: %lf %lf %lf %lf\n",pf_posIni(n,xout,trp),xout[0],xout[1],xout[2]);
+	//if (ifault !=0) printf("Not optimized completely.\n");
 	RealType Pos[3] = {xout[0],xout[1],xout[2]};
 	RealType DisplY, DisplZ, Y, Z, Ome, g[3], Theta, lenK;
 	for (int nrSp=0;nrSp<nMatched;nrSp++){
@@ -2012,8 +2014,10 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	struct func_data_orient *f_datat2;
 	f_datat2 = &f_data2;
 	void *trp2 = (struct func_data_orient *)  f_datat2;
+	if (spotNr == 0) printf("Orient in: %lf %lf %lf %lf\n",pf_orient(n,x,trp2),x[0],x[1],x[2]);
 	nelmin(pf_orient, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount/3, &icount, &numres, &ifault, trp2);
-    if (ifault !=0) printf("Not optimized completely.\n");
+	if (spotNr == 0) printf("Orient out: %lf %lf %lf %lf\n",pf_orient(n,xout,trp2),xout[0],xout[1],xout[2]);
+    //if (ifault !=0) printf("Not optimized completely.\n");
     RealType Euler[3] = {xout[0],xout[1],xout[2]};
     n = 6;
     for (i=0;i<n;i++){
@@ -2043,8 +2047,10 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	struct func_data_strains *f_datat3;
 	f_datat3 = &f_data3;
 	void *trp3 = (struct func_data_strains *)  f_datat3;
+	if (spotNr == 0) printf("Strains in: %lf %lf %lf %lf %lf %lf %lf\n",pf_strains(n,x,trp3),x[0],x[1],x[2],x[3],x[4],x[5]);
 	nelmin(pf_strains, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount/2, &icount, &numres, &ifault, trp3);
-    if (ifault !=0) printf("Not optimized completely.\n");
+	if (spotNr == 0) printf("Strains out: %lf %lf %lf %lf %lf %lf %lf\n",pf_strains(n,xout,trp3),xout[0],xout[1],xout[2],xout[3],xout[4],xout[5]);
+	//if (ifault !=0) printf("Not optimized completely.\n");
     RealType LatCFit[6] = {xout[0],xout[1],xout[2],xout[3],xout[4],xout[5]};
     n = 3;
     RealType OM[3][3];
@@ -2067,8 +2073,10 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	struct func_data_pos_sec *f_datat4;
 	f_datat4 = &f_data4;
 	void *trp4 = (struct func_data_pos_sec *)  f_datat4;
+	if (spotNr == 0) printf("Pos2 in: %lf %lf %lf %lf\n",pf_posSec(n,x,trp4),x[0],x[1],x[2]);
 	nelmin(pf_posSec, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp4);
-    if (ifault !=0) printf("Not optimized completely.\n");
+	if (spotNr == 0) printf("Pos2 out: %lf %lf %lf %lf\n",pf_posSec(n,xout,trp4),xout[0],xout[1],xout[2]);
+    //if (ifault !=0) printf("Not optimized completely.\n");
     RealType Pos2[3] = {xout[0],xout[1],xout[2]};
     for (i=0;i<3;i++){
 		Result[i] = Pos2[i];
