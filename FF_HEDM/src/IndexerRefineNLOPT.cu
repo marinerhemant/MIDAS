@@ -3918,7 +3918,7 @@ int main(int argc, char *argv[]){
 		//	hkls_d, HKLints_d,nMatchedArr_d2,SpotsMatchedArr_d2,FitParams_d2,
 		//	TheorSpotsArr, scratchspace, hklspace, xspace, xlspace, xuspace,
 		//	xoutspace,xstepspace, CorrectSpots, FitResultArr);
-		FitGrain<<<gridf,blockf,9*sizeof(RealType)*n_hkls_h>>>(RTParamArr,IntParamArr,n_arr,OmeBoxArr,
+		FitGrainSM<<<gridf,blockf,9*sizeof(RealType)*n_hkls_h>>>(RTParamArr,IntParamArr,n_arr,OmeBoxArr,
 			hkls_d, HKLints_d,nMatchedArr_d2,SpotsMatchedArr_d2,FitParams_d2,
 			TheorSpotsArr, scratchspace, hklspace, xspace, xlspace, xuspace,
 			xoutspace,xstepspace, CorrectSpots, FitResultArr);
