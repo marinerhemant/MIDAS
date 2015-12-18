@@ -1895,14 +1895,13 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	int *nMatchedArr, RealType *spotsYZO_d, RealType *FitParams_d,
 	RealType *TheorSpots_d, RealType *scratch_d, RealType *hklspace_d,
 	RealType *x_d, RealType *xl_d, RealType *xu_d, RealType *xout_d,
-	RealType *xstep_d, RealType *CorrectSpots, RealType *TheorSpotsCorr,
-	RealType *Result_d){
+	RealType *xstep_d, RealType *CorrectSpots,RealType *Result_d){
 	int spotNr = blockIdx.x * blockDim.x + threadIdx.x;
 	if (spotNr >= n_arr[2]){
 		return;
 	}
 	RealType *spotsYZO, *FitParams, *TheorSpots, *scratch, *hklspace, *x,
-		*xl, *xu, *xout, *xstep, *spotsCorrected, *TheorSpotsCorrected,
+		*xl, *xu, *xout, *xstep, *spotsCorrected,
 		*Result;
 	int nMatched, nMatchedTillNowRowNr, i;
 	nMatched = nMatchedArr[spotNr*3+0];
@@ -1911,7 +1910,6 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	FitParams = FitParams_d + spotNr * 12;
 	Result = Result_d + spotNr *12;
 	TheorSpots = TheorSpots_d + n_arr[1]*2*spotNr*8;
-	TheorSpotsCorrected = TheorSpotsCorr + n_arr[1]*2*spotNr*8;
 	scratch = scratch_d + spotNr*((12+1)*(12+1)+3*12);
 	hklspace = hklspace_d + spotNr*n_arr[1]*7;
 	spotsCorrected = CorrectSpots + nMatchedTillNowRowNr*6;
@@ -2056,7 +2054,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
     Euler2OrientMat(Euler,OM);
     CorrectHKLsLatCInd(LatCFit,hklsIn,n_arr,RTParamArr,hklspace,HKLints);
     int nTspots = CalcDiffrSpotsStrained(OM,OmeBoxArr,IntParamArr[1],
-		RTParamArr[5+MAX_N_RINGS+6],TheorSpotsCorrected,hklspace,n_arr);
+		RTParamArr[5+MAX_N_RINGS+6],TheorSpots,hklspace,n_arr);
 	for (int i=0;i<3;i++){
 		x[i] = Pos[i];
 		xl[i] = x[i] - RTParamArr[1];
@@ -2066,7 +2064,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	struct func_data_pos_sec f_data4;
 	f_data4.RTParamArr = RTParamArr;
 	f_data4.nMatched = nMatched;
-	f_data4.TheorSpots = TheorSpotsCorrected;
+	f_data4.TheorSpots = TheorSpots;
 	f_data4.nTspots = nTspots;
 	f_data4.spotsYZO = spotsYZO;
 	struct func_data_pos_sec *f_datat4;
@@ -3525,7 +3523,7 @@ int main(int argc, char *argv[]){
     int *tempNMatchedArr;
     tempNMatchedArr = (int *)malloc(maxNJobs*3*sizeof(int));
 	RealType *scratchspace, *hklspace, *xspace, *xstepspace, *xlspace, *xuspace, *xoutspace,
-		*TheorSpotsArr, *SpotsMatchedArr_d2, *FitParams_d2, *CorrectSpots, *TheorSpotsCorr,
+		*TheorSpotsArr, *SpotsMatchedArr_d2, *FitParams_d2, *CorrectSpots,
 		*FitResultArr, *FitResultArr_h, *LatCArr, *LatCIn_d2;
 	cudaMalloc((int **)&nMatchedArr_d2,maxNJobs*3*sizeof(RealType));
 	cudaMalloc((RealType **)&scratchspace,(3*maxNJobs+(maxNJobs+1)*(maxNJobs+1))*sizeof(RealType));
@@ -3536,7 +3534,6 @@ int main(int argc, char *argv[]){
 	cudaMalloc((RealType **)&xuspace,12*maxNJobs*sizeof(RealType));
 	cudaMalloc((RealType **)&xoutspace,12*maxNJobs*sizeof(RealType));
 	cudaMalloc((RealType **)&TheorSpotsArr,n_hkls_h*2*8*maxNJobs*sizeof(RealType));
-	cudaMalloc((RealType **)&TheorSpotsCorr,n_hkls_h*2*8*maxNJobs*sizeof(RealType));
 	cudaMalloc((RealType **)&nMatchedArr_d2,3*maxNJobs*sizeof(int));
 	cudaMalloc((RealType **)&SpotsMatchedArr_d2,sizeNMatched*9*sizeof(RealType));
 	cudaMalloc((RealType **)&CorrectSpots,sizeNMatched*6*sizeof(RealType));
@@ -3582,7 +3579,7 @@ int main(int argc, char *argv[]){
 		FitGrain<<<gridf,blockf>>>(RTParamArr,IntParamArr,n_arr,OmeBoxArr,
 			hkls_d, HKLints_d,nMatchedArr_d2,SpotsMatchedArr_d2,FitParams_d2,
 			TheorSpotsArr, scratchspace, hklspace, xspace, xlspace, xuspace,
-			xoutspace,xstepspace, CorrectSpots, TheorSpotsCorr, FitResultArr);
+			xoutspace,xstepspace, CorrectSpots, FitResultArr);
 		CHECK(cudaPeekAtLastError());
 		CHECK(cudaDeviceSynchronize());
 		cudaMemcpy(FitResultArr_h,FitResultArr,12*nrows*sizeof(RealType),cudaMemcpyDeviceToHost);
