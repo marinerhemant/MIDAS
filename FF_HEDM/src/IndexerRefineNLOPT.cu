@@ -3518,8 +3518,8 @@ int main(int argc, char *argv[]){
 	SpotsCompReturnArr = (RealType *)malloc(nMatchedTillNow*22*sizeof(RealType));
 	SpListArr = (RealType *)malloc(nMatchedTillNow*9*sizeof(RealType));
 	ErrorArr = (RealType *)malloc(nSpotsIndexed*3*sizeof(RealType));
-    int nJobGroups = nSpotsIndexed/(2*nCores) + 1;
 	int maxNJobs = 2*nCores;
+    int nJobGroups = nSpotsIndexed/(maxNJobs) + 1;
 	int *nMatchedArr_d2;
 	int sizeNMatched = maxNJobs*(int)(((RealType)nMatchedTillNow/(RealType)nSpotsIndexed)*1.5);
     int *tempNMatchedArr;
@@ -3606,7 +3606,7 @@ int main(int argc, char *argv[]){
 	sprintf(cmd,"mv %s %s.orig",spotIDsfn,spotIDsfn);
 	system(cmd);
 	char outIDsfn[MAX_LINE_LENGTH];
-	sprintf(outIDsfn,"%s/SpotsToIndex.csv",folder);
+	sprintf(outIDsfn,"%s/%s",spotIDsfn,folder);
 	char fitbestfn[MAX_LINE_LENGTH];
 	char opfitfn[MAX_LINE_LENGTH];
 	sprintf(fitbestfn,"%s/FitBest.bin",Parameters.ResultFolder);
@@ -3635,7 +3635,7 @@ int main(int argc, char *argv[]){
 			OpArr[i*25+19+j] = ErrorArr[i*3+j];
 			OpArr[i*25+22+j] = (RealType)nMatchedArrIndexing[i*3+j];
 		}
-		printf("%lf %lf %lf\n",ErrorArr[i*3+0],ErrorArr[i*3+1],ErrorArr[i*3+2]);
+		printf("%d %lf %lf %lf\n",idsIndexed[i],ErrorArr[i*3+0],ErrorArr[i*3+1],ErrorArr[i*3+2]);
 	}
 	fwrite(OpArr,25*nSpotsIndexed*sizeof(RealType),1,fo);
 	cudaDeviceReset();
