@@ -3575,7 +3575,6 @@ int main(int argc, char *argv[]){
 			AllInfo[jobNr*N_COL_GRAINMATCHES + 15] = bestFraction;
 		}
 	}
-	return;
 	printf("Time elapsed after calculation of matches: %fs\n",cpuSecond()-iStart);
 
 	// Now sort all the results.
@@ -3650,6 +3649,7 @@ int main(int argc, char *argv[]){
 	cudaFree(nNormals);
 	cudaFree(ResultMakeOrientations);
 	printf("Time elapsed after sorting the results: %lfs\nNow refining results.\n",cpuSecond()-iStart);
+	return;
 	// We have spotsYZO, FitParams_h, we just call the function to run things.
     int startRow, endRow, startRowNMatched, endRowNMatched, nrows, nrowsNMatched;
 	RealType *SpotsCompReturnArr, *SpListArr, *ErrorArr;
