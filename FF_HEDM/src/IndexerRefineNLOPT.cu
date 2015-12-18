@@ -423,7 +423,6 @@ __device__ void nelmin ( RealType fn ( int n_fun, RealType *x, void *data ),
     }
 /*
   The simplex construction is complete.
-
   Find highest and lowest Y values.  YNEWLO = Y(IHI) indicates
   the vertex of the simplex to be replaced.
 */
@@ -1896,7 +1895,8 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	int *nMatchedArr, RealType *spotsYZO_d, RealType *FitParams_d,
 	RealType *TheorSpots_d, RealType *scratch_d, RealType *hklspace_d,
 	RealType *x_d, RealType *xl_d, RealType *xu_d, RealType *xout_d,
-	RealType *xstep_d, RealType *CorrectSpots, RealType *Result_d){
+	RealType *xstep_d, RealType *CorrectSpots, RealType *TheorSpotsCorr,
+	RealType *Result_d){
 	int spotNr = blockIdx.x * blockDim.x + threadIdx.x;
 	if (spotNr >= n_arr[2]){
 		return;
@@ -1910,8 +1910,8 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	spotsYZO = spotsYZO_d + nMatchedTillNowRowNr * 9;
 	FitParams = FitParams_d + spotNr * 12;
 	Result = Result_d + spotNr *12;
-	
 	TheorSpots = TheorSpots_d + n_arr[1]*2*spotNr*8;
+	TheorSpotsCorrected = TheorSpotsCorr + n_arr[1]*2*spotNr*8;
 	scratch = scratch_d + spotNr*((12+1)*(12+1)+3*12);
 	hklspace = hklspace_d + spotNr*n_arr[1]*7;
 	spotsCorrected = CorrectSpots + nMatchedTillNowRowNr*6;
@@ -2056,7 +2056,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
     Euler2OrientMat(Euler,OM);
     CorrectHKLsLatCInd(LatCFit,hklsIn,n_arr,RTParamArr,hklspace,HKLints);
     int nTspots = CalcDiffrSpotsStrained(OM,OmeBoxArr,IntParamArr[1],
-		RTParamArr[5+MAX_N_RINGS+6],TheorSpots,hklspace,n_arr);
+		RTParamArr[5+MAX_N_RINGS+6],TheorSpotsCorrected,hklspace,n_arr);
 	for (int i=0;i<3;i++){
 		x[i] = Pos[i];
 		xl[i] = x[i] - RTParamArr[1];
@@ -2066,206 +2066,7 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	struct func_data_pos_sec f_data4;
 	f_data4.RTParamArr = RTParamArr;
 	f_data4.nMatched = nMatched;
-	f_data4.TheorSpots = TheorSpots;
-	f_data4.nTspots = nTspots;
-	f_data4.spotsYZO = spotsYZO;
-	struct func_data_pos_sec *f_datat4;
-	f_datat4 = &f_data4;
-	void *trp4 = (struct func_data_pos_sec *)  f_datat4;
-	//if (spotNr == 0) printf("Pos2 in: %lf %lf %lf %lf\n",pf_posSec(n,x,trp4),x[0],x[1],x[2]);
-	nelmin(pf_posSec, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp4);
-	//if (spotNr == 0) printf("Pos2 out: %lf %lf %lf %lf\n",pf_posSec(n,xout,trp4),xout[0],xout[1],xout[2]);
-    //if (ifault !=0) printf("Not optimized completely.\n");
-    RealType Pos2[3] = {xout[0],xout[1],xout[2]};
-    for (i=0;i<3;i++){
-		Result[i] = Pos2[i];
-		Result[i+3] = Euler[i];
-		Result[i+6] = LatCFit[i];
-		Result[i+9] = LatCFit[i+3];
-	}
-}
-
-__global__ void FitGrainSM(RealType *RTParamArr, int *IntParamArr,
-	int *n_arr, RealType *OmeBoxArr, RealType *hklsIn, int *HKLints,
-	int *nMatchedArr, RealType *spotsYZO_d, RealType *FitParams_d,
-	RealType *TheorSpots_d, RealType *scratch_d, RealType *hklspace_d,
-	RealType *x_d, RealType *xl_d, RealType *xu_d, RealType *xout_d,
-	RealType *xstep_d, RealType *CorrectSpots, RealType *Result_d){
-	int spotNr = blockIdx.x * blockDim.x + threadIdx.x;
-	if (spotNr >= n_arr[2]){
-		return;
-	}
-	RealType *FitParams, *TheorSpots, *scratch, *hklspace, *x,
-		*xl, *xu, *xout, *xstep, *spotsCorrected,
-		*Result;
-	int nMatched, nMatchedTillNowRowNr, i;
-	nMatched = nMatchedArr[spotNr*3+0];
-	nMatchedTillNowRowNr = nMatchedArr[spotNr*3+2];
-	
-	extern __shared__ spotsYZO[];
-	for (i=0;i<nMatched*9;i++){
-		spotsYZO[i] = spotsYZO_d[nMatchedTillNowRowNr * 9+i];
-	}
-	__syncThreads();
-	
-	FitParams = FitParams_d + spotNr * 12;
-	Result = Result_d + spotNr *12;
-	TheorSpots = TheorSpots_d + n_arr[1]*2*spotNr*8;
-	scratch = scratch_d + spotNr*((12+1)*(12+1)+3*12);
-	hklspace = hklspace_d + spotNr*n_arr[1]*7;
-	spotsCorrected = CorrectSpots + nMatchedTillNowRowNr*6;
-	x = x_d + 12*spotNr;
-	xl = xl_d + 12*spotNr;
-	xu = xu_d + 12*spotNr;
-	xout = xout_d + 12*spotNr;
-	xstep = xstep_d + 12*spotNr;
-	int n = 12;
-	for (i=0;i<12;i++){
-		x[i] = FitParams[i];
-	}
-	for (i=0;i<3;i++){
-		xl[i] = x[i] - RTParamArr[1];
-		xl[i+3] = x[i+3] - 0.01;
-		xl[i+6] = x[i+6]*(1 - RTParamArr[21+MAX_N_RINGS]/100);
-		xl[i+9] = x[i+9]*(1 - RTParamArr[22+MAX_N_RINGS]/100);
-		xu[i] = x[i] + RTParamArr[1];
-		xu[i+3] = x[i+3] + 0.01;
-		xu[i+6] = x[i+6]*(1 + RTParamArr[21+MAX_N_RINGS]/100);
-		xu[i+9] = x[i+9]*(1 + RTParamArr[22+MAX_N_RINGS]/100);
-	}
-	for (i=0;i<n;i++){
-		xstep[i] = fabs(xu[i]-xl[i])*0.25;
-	}
-	struct func_data_pos_ini f_data;
-	f_data.HKLInts = HKLints;
-	f_data.IntParamArr = IntParamArr;
-	f_data.OmeBoxArr = OmeBoxArr;
-	f_data.RTParamArr = RTParamArr;
-	f_data.hkls = hklsIn;
-	f_data.nMatched = nMatched;
-	f_data.n_arr = n_arr;
-	f_data.spotsYZO = spotsYZO;
-	f_data.TheorSpots = TheorSpots;
-	f_data.hklspace = hklspace;
-	struct func_data_pos_ini *f_datat;
-	f_datat = &f_data;
-	void *trp = (struct func_data_pos_ini *)  f_datat;
-	RealType minf;
-	RealType reqmin = 1e-8;
-	int konvge = 10;
-	int kcount = MAX_N_EVALS;
-	int icount, numres, ifault;
-	//if (spotNr == 0) printf("Pos in: %lf %lf %lf %lf\n",pf_posIni(n,x,trp),x[0],x[1],x[2]);
-	nelmin(pf_posIni, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount/4, &icount, &numres, &ifault, trp);
-	//if (spotNr == 0) printf("Pos out: %lf %lf %lf %lf\n",pf_posIni(n,xout,trp),xout[0],xout[1],xout[2]);
-	//if (ifault !=0) printf("Not optimized completely.\n");
-	RealType Pos[3] = {xout[0],xout[1],xout[2]};
-	RealType DisplY, DisplZ, Y, Z, Ome, g[3], Theta, lenK;
-	for (int nrSp=0;nrSp<nMatched;nrSp++){
-		DisplacementInTheSpot(xout[0],xout[1],xout[2],RTParamArr[0],spotsYZO[nrSp*9+5],
-			spotsYZO[nrSp*9+6],spotsYZO[nrSp*9+4],RTParamArr[20+MAX_N_RINGS],
-			0,&DisplY,&DisplZ);
-		if (fabs(RTParamArr[20+MAX_N_RINGS]) > 0.02){
-			CorrectForOme(spotsYZO[nrSp*9+5]-DisplY,
-				spotsYZO[nrSp*9+6]-DisplZ,RTParamArr[0],
-				spotsYZO[nrSp*9+4],RTParamArr[19+MAX_N_RINGS],
-				RTParamArr[20+MAX_N_RINGS],&Y, &Z, &Ome);
-		}else{
-			Y = spotsYZO[nrSp*9+5]-DisplY;
-			Z = spotsYZO[nrSp*9+6]-DisplZ;
-			Ome = spotsYZO[nrSp*9+4];
-		}
-		Theta = atand(CalcNorm2(Y,Z)/RTParamArr[0])/2;
-		lenK = CalcNorm3(RTParamArr[0],Y,Z);
-		SpotToGv(RTParamArr[0]/lenK,Y/lenK,Z/lenK,Ome,Theta,&spotsCorrected[nrSp*6+2],
-			&spotsCorrected[nrSp*6+3],&spotsCorrected[nrSp*6+4]);
-		spotsCorrected[nrSp*6+0] = Y;
-		spotsCorrected[nrSp*6+1] = Z;
-		spotsCorrected[nrSp*6+5] = spotsYZO[nrSp*9+8];
-	}
-	n = 9;
-	for (i=0;i<9;i++){
-		x[i] = FitParams[i+3];
-	}
-	for (i=0;i<3;i++){
-		xl[i] = x[i] - 2;
-		xl[i+3] = x[i+3]*(1 - RTParamArr[21+MAX_N_RINGS]/100);
-		xl[i+6] = x[i+6]*(1 - RTParamArr[22+MAX_N_RINGS]/100);
-		xu[i] = x[i] + 2;
-		xu[i+3] = x[i+3]*(1 + RTParamArr[21+MAX_N_RINGS]/100);
-		xu[i+6] = x[i+6]*(1 + RTParamArr[22+MAX_N_RINGS]/100);
-	}
-	for (i=0;i<n;i++){
-		xstep[i] = fabs(xu[i]-xl[i])*0.25;
-	}
-	struct func_data_orient f_data2;
-	f_data2.HKLInts = HKLints;
-	f_data2.IntParamArr = IntParamArr;
-	f_data2.OmeBoxArr = OmeBoxArr;
-	f_data2.RTParamArr = RTParamArr;
-	f_data2.hkls = hklsIn;
-	f_data2.nMatched = nMatched;
-	f_data2.n_arr = n_arr;
-	f_data2.spotsCorrected = spotsCorrected;
-	f_data2.TheorSpots = TheorSpots;
-	f_data2.hklspace = hklspace;
-	struct func_data_orient *f_datat2;
-	f_datat2 = &f_data2;
-	void *trp2 = (struct func_data_orient *)  f_datat2;
-	//if (spotNr == 0) printf("Orient in: %lf %lf %lf %lf\n",pf_orient(n,x,trp2),x[0],x[1],x[2]);
-	nelmin(pf_orient, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount/3, &icount, &numres, &ifault, trp2);
-	//if (spotNr == 0) printf("Orient out: %lf %lf %lf %lf\n",pf_orient(n,xout,trp2),xout[0],xout[1],xout[2]);
-    //if (ifault !=0) printf("Not optimized completely.\n");
-    RealType Euler[3] = {xout[0],xout[1],xout[2]};
-    n = 6;
-    for (i=0;i<n;i++){
-		x[i] = FitParams[i+6];
-	}
-	for (i=0;i<3;i++){
-		xl[i] = x[i]*(1 - RTParamArr[21+MAX_N_RINGS]/100);
-		xl[i+3] = x[i+3]*(1 - RTParamArr[22+MAX_N_RINGS]/100);
-		xu[i] = x[i]*(1 + RTParamArr[21+MAX_N_RINGS]/100);
-		xu[i+3] = x[i+3]*(1 + RTParamArr[22+MAX_N_RINGS]/100);
-	}
-	for (i=0;i<n;i++){
-		xstep[i] = fabs(xu[i]-xl[i])*0.25;
-	}
-	struct func_data_strains f_data3;
-	f_data3.Euler = Euler;
-	f_data3.HKLInts = HKLints;
-	f_data3.IntParamArr = IntParamArr;
-	f_data3.OmeBoxArr = OmeBoxArr;
-	f_data3.RTParamArr = RTParamArr;
-	f_data3.hkls = hklsIn;
-	f_data3.nMatched = nMatched;
-	f_data3.n_arr = n_arr;
-	f_data3.spotsCorrected = spotsCorrected;
-	f_data3.TheorSpots = TheorSpots;
-	f_data3.hklspace = hklspace;
-	struct func_data_strains *f_datat3;
-	f_datat3 = &f_data3;
-	void *trp3 = (struct func_data_strains *)  f_datat3;
-	//if (spotNr == 0) printf("Strains in: %lf %lf %lf %lf %lf %lf %lf\n",pf_strains(n,x,trp3),x[0],x[1],x[2],x[3],x[4],x[5]);
-	nelmin(pf_strains, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount/2, &icount, &numres, &ifault, trp3);
-	//if (spotNr == 0) printf("Strains out: %lf %lf %lf %lf %lf %lf %lf\n",pf_strains(n,xout,trp3),xout[0],xout[1],xout[2],xout[3],xout[4],xout[5]);
-	//if (ifault !=0) printf("Not optimized completely.\n");
-    RealType LatCFit[6] = {xout[0],xout[1],xout[2],xout[3],xout[4],xout[5]};
-    n = 3;
-    RealType OM[3][3];
-    Euler2OrientMat(Euler,OM);
-    CorrectHKLsLatCInd(LatCFit,hklsIn,n_arr,RTParamArr,hklspace,HKLints);
-    int nTspots = CalcDiffrSpotsStrained(OM,OmeBoxArr,IntParamArr[1],
-		RTParamArr[5+MAX_N_RINGS+6],TheorSpots,hklspace,n_arr);
-	for (int i=0;i<3;i++){
-		x[i] = Pos[i];
-		xl[i] = x[i] - RTParamArr[1];
-		xu[i] = x[i] + RTParamArr[1];
-		xstep[i] = fabs(xu[i]-xl[i])*0.25;
-	}
-	struct func_data_pos_sec f_data4;
-	f_data4.RTParamArr = RTParamArr;
-	f_data4.nMatched = nMatched;
-	f_data4.TheorSpots = TheorSpots;
+	f_data4.TheorSpots = TheorSpotsCorrected;
 	f_data4.nTspots = nTspots;
 	f_data4.spotsYZO = spotsYZO;
 	struct func_data_pos_sec *f_datat4;
@@ -2705,137 +2506,6 @@ __global__ void CompareDiffractionSpots(RealType *AllTheorSpots, RealType *RTPar
 	nMatchedArr[overallPos] = nMatched;
 }
 
-__global__ void CompareDiffractionSpotsSM(RealType *AllTheorSpots, RealType *RTParamArr,
-	int maxPos, RealType *ResultArr, int PosResultArr, int *nTspotsArr,
-	int *data, int *ndata, RealType *ObsSpots, RealType *etamargins, int *AllGrainSpots,
-	RealType *IAs, int *n_arr, int *nMatchedArr, int n_min, int nOrients, RealType *GS,
-	RealType *AllSpotsYZO, RealType *SpotsInfo_d, RealType *Orientations, RealType *OrientationsOut){
-	int nPos, orientPos, overallPos; // Position Calculate!!
-	overallPos = blockIdx.x * blockDim.x + threadIdx.x;
-	if (overallPos >= maxPos){
-		return;
-	}
-	nPos = overallPos / nOrients;
-	orientPos = overallPos % nOrients;
-	nMatchedArr[overallPos] = 0;
-	int n = n_min + nPos;
-	extern __shared__ RealType TheorSpots[];
-	for (int i=0;i<nTspotsArr[orientPos]*N_COL_THEORSPOTS;i++){
-		TheorSpots[i] = AllTheorSpots[n_arr[1]*2*N_COL_THEORSPOTS*orientPos + i];
-	}
-	//TheorSpots = AllTheorSpots + n_arr[1]*2*N_COL_THEORSPOTS*orientPos;
-	for (int i=0;i<9;i++){
-		OrientationsOut[10*overallPos + i] = Orientations[9*orientPos + i];
-	}
-	OrientationsOut[10*overallPos + 9] = (RealType) nTspotsArr[orientPos];
-	int *GrainSpots;
-	GrainSpots = AllGrainSpots + overallPos * n_arr[1] * 2;
-	RealType *SpotsInfo;
-	SpotsInfo = SpotsInfo_d + overallPos * n_arr[1] * 2 * 9;
-	RealType y0, z0, xi, yi, zi, ys, zs,omega,RefRad;
-	y0 = ResultArr[PosResultArr * N_COLS_FRIEDEL_RESULTS + 7];
-	z0 = ResultArr[PosResultArr * N_COLS_FRIEDEL_RESULTS + 8];
-	xi = ResultArr[PosResultArr * N_COLS_FRIEDEL_RESULTS + 9];
-	yi = ResultArr[PosResultArr * N_COLS_FRIEDEL_RESULTS + 10];
-	zi = ResultArr[PosResultArr * N_COLS_FRIEDEL_RESULTS + 11];
-	ys = ResultArr[PosResultArr * N_COLS_FRIEDEL_RESULTS + 12];
-	zs = ResultArr[PosResultArr * N_COLS_FRIEDEL_RESULTS + 13];
-	omega = ResultArr[PosResultArr * N_COLS_FRIEDEL_RESULTS + 14];
-	RefRad = ResultArr[PosResultArr * N_COLS_FRIEDEL_RESULTS + 15];
-	RealType Displ_y, Displ_z;
-	int nTspots, nMatched, MatchFound;
-	RealType diffOmeBest, diffOme;
-	long long unsigned Pos, Pos1, Pos2, Pos3;
-	int nspots, DataPos;
-	long long unsigned spotRow,spotRowBest;
-	RealType omeo, ometh, gvo[3], gvth[3], lo, lth, tmp, go[3], gth[3],gs[3];
-	RealType n_eta_bins, n_ome_bins, t;
-	n_eta_bins = ceil(360.0 / RTParamArr[5 + MAX_N_RINGS + 4]);
-	n_ome_bins = ceil(360.0 / RTParamArr[5 + MAX_N_RINGS + 5]);
-	gs[0] = ((RTParamArr[3])*(n/xi)*xi*cos(omega*deg2rad)) +
-		((ys - y0 + (RTParamArr[3])*(n/xi)*yi)*sin(omega*deg2rad));
-	gs[1] = ((ys - y0 + (RTParamArr[3])*(n/xi)*yi)*cos(
-		omega*deg2rad)) - ((RTParamArr[3])*(n/xi)*xi*sin(omega*deg2rad));
-	gs[2] = zs - z0 + (RTParamArr[3])*(n/xi)*zi;
-	GS[overallPos*3 + 0] = gs[0];
-	GS[overallPos*3 + 1] = gs[1];
-	GS[overallPos*3 + 2] = gs[2];
-	nMatched = 0;
-	nTspots = nTspotsArr[orientPos];
-	IAs[overallPos] = 0;
-	if (fabs(zs - z0 + (RTParamArr[3])*(n/xi)*zi) > RTParamArr[2] /2) {
-		nMatchedArr[overallPos] = 0;
-		return;
-	}
-	RealType theta, lenK, yobs, zobs, thy, thz, thEta, thrad;
-	for (int sp = 0 ; sp < nTspots ; sp++) {
-		ometh = TheorSpots[sp*N_COL_THEORSPOTS+2];
-		t = (gs[0]*cos(deg2rad * ometh) - gs[1]*sin(deg2rad * ometh))/xi;
-		Displ_y = ((gs[0]*sin(deg2rad * ometh))+ (gs[1]*cos(deg2rad * ometh))) - t* yi;
-		Displ_z = gs[2] - t*zi;
-		thy = TheorSpots[sp*N_COL_THEORSPOTS+0] +  Displ_y;
-		thz = TheorSpots[sp*N_COL_THEORSPOTS+1] +  Displ_z;
-		thEta = CalcEtaAngle(thy,thz);
-		thrad = CalcNorm2(thy,thz) - RTParamArr[5 + (int)TheorSpots[sp*N_COL_THEORSPOTS+3]];
-		MatchFound = 0;
-		diffOmeBest = 100000;
-		Pos1 = (((int) TheorSpots[sp*N_COL_THEORSPOTS+3])-1)*n_eta_bins*n_ome_bins;
-		Pos2 = ((int)(floor((180+thEta)/RTParamArr[5 + MAX_N_RINGS + 4])))*n_ome_bins;
-		Pos3 = ((int)floor((180+TheorSpots[sp*N_COL_THEORSPOTS+2])/RTParamArr[5 + MAX_N_RINGS + 5]));
-		Pos = Pos1 + Pos2 + Pos3;
-		nspots = *(ndata+ Pos*2);
-		if (nspots == 0){
-			continue;
-		}
-		DataPos = *(ndata + Pos*2+1);
-		for (int iSpot = 0 ; iSpot < nspots; iSpot++ ) {
-			spotRow = *(data+DataPos + iSpot);
-			if ( fabs(thrad - ObsSpots[spotRow*9+8]) < RTParamArr[5 + MAX_N_RINGS + 3] )  {
-				if ( fabs(RefRad - ObsSpots[spotRow*9+3]) < RTParamArr[5 + MAX_N_RINGS + 2] ) {
-					if ( fabs(thEta - ObsSpots[spotRow*9+6]) < etamargins[(int) TheorSpots[sp*N_COL_THEORSPOTS+3]] ) {
-						diffOme = fabs(TheorSpots[sp*N_COL_THEORSPOTS+2] - ObsSpots[spotRow*9+2]);
-						if ( diffOme < diffOmeBest ) {
-							diffOmeBest = diffOme;
-							spotRowBest = spotRow;
-							MatchFound = 1;
-						}
-					}
-				}
-			}
-		}
-		if (MatchFound == 1) {
-			if ((int)AllSpotsYZO[spotRowBest*8+3] != (int)ObsSpots[spotRowBest*9+4]) return;
-			for (int i=0;i<8;i++){
-				SpotsInfo[nMatched * 9 + i] = AllSpotsYZO[spotRowBest * 8 + i];
-			}
-			SpotsInfo[nMatched * 9 + 8] = TheorSpots[sp*N_COL_THEORSPOTS+4];
-			GrainSpots[nMatched] = (int) ObsSpots[spotRowBest*9+4];
-			omeo = ObsSpots[spotRowBest*9+2];
-			ometh = TheorSpots[sp*N_COL_THEORSPOTS+2];
-			theta = atand(CalcNorm2(TheorSpots[sp*N_COL_THEORSPOTS+0],TheorSpots[sp*N_COL_THEORSPOTS+1])/RTParamArr[0])/2;
-			lenK = CalcNorm3(RTParamArr[0],TheorSpots[sp*N_COL_THEORSPOTS+0],TheorSpots[sp*N_COL_THEORSPOTS+1]);
-			SpotToGv(RTParamArr[0]/lenK,TheorSpots[sp*N_COL_THEORSPOTS+0]/lenK,TheorSpots[sp*N_COL_THEORSPOTS+1]/lenK,ometh,theta,&gvth[0],&gvth[1],&gvth[2]);
-			t = (gs[0]*cos(deg2rad * omeo) - gs[1]*sin(deg2rad * omeo))/xi;
-			Displ_y = ((gs[0]*sin(deg2rad * omeo))+ (gs[1]*cos(deg2rad * omeo))) - t* yi;
-			Displ_z = gs[2] - t*zi;
-			yobs = ObsSpots[spotRowBest*9+0]-Displ_y;
-			zobs = ObsSpots[spotRowBest*9+1]-Displ_z;
-			theta = atand(CalcNorm2(yobs,zobs)/RTParamArr[0])/2;
-			lenK = CalcNorm3(RTParamArr[0],yobs,zobs);
-			SpotToGv(RTParamArr[0]/lenK,yobs/lenK,zobs/lenK,omeo,theta,&gvo[0],&gvo[1],&gvo[2]);
-			lo = CalcLength(gvo[0],gvo[1],gvo[2]);
-			lth = CalcLength(gvth[0],gvth[1],gvth[2]);
-			tmp = dot(gvo,gvth)/(lo*lth);
-			if (tmp >1) tmp = 1;
-			else if (tmp < -1) tmp = -1;
-			IAs[overallPos] += rad2deg * acos(tmp);
-			nMatched++;
-		}
-	}
-	IAs[overallPos] /= (RealType)nMatched;
-	nMatchedArr[overallPos] = nMatched;
-}
-
 __global__ void ReturnDiffractionSpots(RealType *RTParamArr, RealType *OmeBoxArr,
 	int *IntParamArr, RealType *AllTheorSpots, RealType *hkls, int *n_arr, int PosResultArr,
 	RealType *ResultArr, int norients, int *nSpotsArr, RealType *Orientations){
@@ -3046,6 +2716,7 @@ __device__ int TryFriedel(RealType ys, RealType zs,
    }
    return NrFriedel;
 }
+
 
 __device__ int CalcAllPlanes(RealType ys, RealType zs,
 	RealType ttheta, RealType eta, RealType omega, int ringno,
@@ -3723,16 +3394,10 @@ int main(int argc, char *argv[]){
 		dim3 gridc ((nJobsTotal/blockc.x)+1);
 		n_min = -ResultMakeOrientations_h[jobNr*N_COLS_ORIENTATION_NUMBERS + 1];
 		memset(OrientationsOut_h,0,10*nJobsTotal*sizeof(RealType));
-		CHECK(cudaPeekAtLastError());
-		CHECK(cudaDeviceSynchronize());
 		CompareDiffractionSpots<<<gridc,blockc>>>(AllTheorSpots,RTParamArr,
 			nJobsTotal, ResultArr, posResultArr, nSpotsArr, data, nData, ObsSpotsLab,
 			etamargins_d, AllGrainSpots, IAs, n_arr, nMatchedArr, n_min, nJobsOrient,GS,
 			AllSpotsYZO_d,SpotsInfo_d,Orientations,OrientationsOut);
-		//CompareDiffractionSpotsSM<<<gridc,blockc,n_hkls_h*2*N_COL_THEORSPOTS*sizeof(RealType)>>>
-		//	(AllTheorSpots,RTParamArr,nJobsTotal, ResultArr, posResultArr, nSpotsArr, data, 
-		//	nData, ObsSpotsLab,etamargins_d, AllGrainSpots, IAs, n_arr, nMatchedArr, n_min, 
-		//	nJobsOrient,GS,AllSpotsYZO_d,SpotsInfo_d,Orientations,OrientationsOut);
 		CHECK(cudaPeekAtLastError());
 		CHECK(cudaDeviceSynchronize());
 		cudaMemcpy(nMatchedArr_h,nMatchedArr,nJobsTotal*sizeof(int),cudaMemcpyDeviceToHost);
@@ -3847,7 +3512,6 @@ int main(int argc, char *argv[]){
 	cudaFree(nNormals);
 	cudaFree(ResultMakeOrientations);
 	printf("Time elapsed after sorting the results: %lfs\nNow refining results.\n",cpuSecond()-iStart);
-	return;
 	// We have spotsYZO, FitParams_h, we just call the function to run things.
     int startRow, endRow, startRowNMatched, endRowNMatched, nrows, nrowsNMatched;
 	RealType *SpotsCompReturnArr, *SpListArr, *ErrorArr;
@@ -3861,7 +3525,7 @@ int main(int argc, char *argv[]){
     int *tempNMatchedArr;
     tempNMatchedArr = (int *)malloc(maxNJobs*3*sizeof(int));
 	RealType *scratchspace, *hklspace, *xspace, *xstepspace, *xlspace, *xuspace, *xoutspace,
-		*TheorSpotsArr, *SpotsMatchedArr_d2, *FitParams_d2, *CorrectSpots,
+		*TheorSpotsArr, *SpotsMatchedArr_d2, *FitParams_d2, *CorrectSpots, *TheorSpotsCorr,
 		*FitResultArr, *FitResultArr_h, *LatCArr, *LatCIn_d2;
 	cudaMalloc((int **)&nMatchedArr_d2,maxNJobs*3*sizeof(RealType));
 	cudaMalloc((RealType **)&scratchspace,(3*maxNJobs+(maxNJobs+1)*(maxNJobs+1))*sizeof(RealType));
@@ -3872,6 +3536,7 @@ int main(int argc, char *argv[]){
 	cudaMalloc((RealType **)&xuspace,12*maxNJobs*sizeof(RealType));
 	cudaMalloc((RealType **)&xoutspace,12*maxNJobs*sizeof(RealType));
 	cudaMalloc((RealType **)&TheorSpotsArr,n_hkls_h*2*8*maxNJobs*sizeof(RealType));
+	cudaMalloc((RealType **)&TheorSpotsCorr,n_hkls_h*2*8*maxNJobs*sizeof(RealType));
 	cudaMalloc((RealType **)&nMatchedArr_d2,3*maxNJobs*sizeof(int));
 	cudaMalloc((RealType **)&SpotsMatchedArr_d2,sizeNMatched*9*sizeof(RealType));
 	cudaMalloc((RealType **)&CorrectSpots,sizeNMatched*6*sizeof(RealType));
@@ -3914,14 +3579,10 @@ int main(int argc, char *argv[]){
 		dim3 blockf (32);
 		dim3 gridf ((maxNJobs/blockf.x)+1);
 		// Call the optimization routines.
-		//FitGrain<<<gridf,blockf>>>(RTParamArr,IntParamArr,n_arr,OmeBoxArr,
-		//	hkls_d, HKLints_d,nMatchedArr_d2,SpotsMatchedArr_d2,FitParams_d2,
-		//	TheorSpotsArr, scratchspace, hklspace, xspace, xlspace, xuspace,
-		//	xoutspace,xstepspace, CorrectSpots, FitResultArr);
-		FitGrainSM<<<gridf,blockf,9*sizeof(RealType)*n_hkls_h>>>(RTParamArr,IntParamArr,n_arr,OmeBoxArr,
+		FitGrain<<<gridf,blockf>>>(RTParamArr,IntParamArr,n_arr,OmeBoxArr,
 			hkls_d, HKLints_d,nMatchedArr_d2,SpotsMatchedArr_d2,FitParams_d2,
 			TheorSpotsArr, scratchspace, hklspace, xspace, xlspace, xuspace,
-			xoutspace,xstepspace, CorrectSpots, FitResultArr);
+			xoutspace,xstepspace, CorrectSpots, TheorSpotsCorr, FitResultArr);
 		CHECK(cudaPeekAtLastError());
 		CHECK(cudaDeviceSynchronize());
 		cudaMemcpy(FitResultArr_h,FitResultArr,12*nrows*sizeof(RealType),cudaMemcpyDeviceToHost);
