@@ -82,6 +82,12 @@ processgrains: $(SRCDIR)ProcessGrains.c
 indexercuda: $(SRCDIR)IndexerRefineNLOPT.cu
 	$(NCC) $(SRCDIR)IndexerRefineNLOPT.cu -o $(BINDIR)Indexer $(NCFLAGS)
 
+indexercudafloat: $(SRCDIR)IndexerRefineNLOPTFloat.cu
+	$(NCC) $(SRCDIR)IndexerRefineNLOPTFloat.cu -o $(BINDIR)IndexerFloat $(NCFLAGS)
+
+bindata: $(SRCDIR)SaveBinDataFloat.c
+	$(CC) $(SRCDIR)SaveBinDataFloat.c -o $(BINDIR)SaveBinDataFloat $(CFLAGS)
+
 indexrefinecuda: $(SRCDIR)IndexerRefine.cu
 	$(NCC) $(SRCDIR)IndexerRefine.cu -o $(BINDIR)Indexer $(NCFLAGS)
 
