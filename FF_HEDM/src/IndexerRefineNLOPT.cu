@@ -3525,8 +3525,6 @@ int main(int argc, char *argv[]){
 		dim3 gridc ((nJobsTotal/blockc.x)+1);
 		n_min = -ResultMakeOrientations_h[jobNr*N_COLS_ORIENTATION_NUMBERS + 1];
 		memset(OrientationsOut_h,0,10*nJobsTotal*sizeof(RealType));
-		CHECK(cudaPeekAtLastError());
-		CHECK(cudaDeviceSynchronize());
 		//~ CompareDiffractionSpots<<<gridc,blockc>>>(AllTheorSpots,RTParamArr,
 			//~ nJobsTotal, ResultArr, posResultArr, nSpotsArr, data, nData, ObsSpotsLab,
 			//~ etamargins_d, AllGrainSpots, IAs, n_arr, nMatchedArr, n_min, nJobsOrient,GS,
