@@ -840,106 +840,106 @@ int ReadParams(char FileName[], struct ParametersStruct * Params){
 		str = "LatticeParameter ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
-			sscanf(line, "%s %f", dummy, &(Params->LatticeConstant) );
-			sscanf(line, "%s %f %f %f %f %f %f", dummy, &(Params->ABCABG[0]), &(Params->ABCABG[1]),
+			sscanf(line, "%s %lf", dummy, &(Params->LatticeConstant) );
+			sscanf(line, "%s %lf %lf %lf %lf %lf %lf", dummy, &(Params->ABCABG[0]), &(Params->ABCABG[1]),
 				&(Params->ABCABG[2]), &(Params->ABCABG[3]), &(Params->ABCABG[4]), &(Params->ABCABG[5]));
 			continue;
 		}
 		str = "Wavelength ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
-			sscanf(line, "%s %f", dummy, &(Params->Wavelength) );
+			sscanf(line, "%s %lf", dummy, &(Params->Wavelength) );
 			continue;
 		}
 		str = "Distance ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
-			sscanf(line, "%s %f", dummy, &(Params->Distance) );
+			sscanf(line, "%s %lf", dummy, &(Params->Distance) );
 			continue;
 		}
 		str = "Rsample ";
 		cmpres = strncmp(line, str, strlen(str));
 		if ( cmpres == 0) {
-			sscanf(line, "%s %f", dummy, &(Params->Rsample) );
+			sscanf(line, "%s %lf", dummy, &(Params->Rsample) );
 			continue;
 		}
 		str = "Hbeam ";
 		cmpres = strncmp(line, str, strlen(str));
 		if ( cmpres == 0) {
-			sscanf(line, "%s %f", dummy, &(Params->Hbeam) );
+			sscanf(line, "%s %lf", dummy, &(Params->Hbeam) );
 			continue;
 		}
 		str = "Wedge ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
-			sscanf(line, "%s %f", dummy, &(Params->wedge) );
+			sscanf(line, "%s %lf", dummy, &(Params->wedge) );
 			continue;
 		}
 		str = "StepsizePos ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
-			sscanf(line, "%s %f", dummy, &(Params->StepsizePos) );
+			sscanf(line, "%s %lf", dummy, &(Params->StepsizePos) );
 			continue;
 		}
 		str = "StepsizeOrient ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
-			sscanf(line, "%s %f", dummy, &(Params->StepsizeOrient) );
+			sscanf(line, "%s %lf", dummy, &(Params->StepsizeOrient) );
 			continue;
 		}
 		str = "MarginOme ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
-			sscanf(line, "%s %f", dummy, &(Params->MarginOme) );
+			sscanf(line, "%s %lf", dummy, &(Params->MarginOme) );
 			continue;
 		}
 		str = "MarginRadius ";
 		cmpres = strncmp(line, str , strlen(str));
 		if (cmpres == 0) {
-			sscanf(line, "%s %f", dummy, &(Params->MarginRad) );
+			sscanf(line, "%s %lf", dummy, &(Params->MarginRad) );
 			continue;
 		}
 		str = "MarginRadial ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
-			sscanf(line, "%s %f", dummy, &(Params->MarginRadial) );
+			sscanf(line, "%s %lf", dummy, &(Params->MarginRadial) );
 			continue;
 		}
 		str = "EtaBinSize ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
-			sscanf(line, "%s %f", dummy, &(Params->EtaBinSize) );
+			sscanf(line, "%s %lf", dummy, &(Params->EtaBinSize) );
 			continue;
 		}
 		str = "OmeBinSize ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
-			sscanf(line, "%s %f", dummy, &(Params->OmeBinSize) );
+			sscanf(line, "%s %lf", dummy, &(Params->OmeBinSize) );
 			continue;
 		}
 		str = "MinMatchesToAcceptFrac ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
-			sscanf(line, "%s %f", dummy, &(Params->MinMatchesToAcceptFrac) );
+			sscanf(line, "%s %lf", dummy, &(Params->MinMatchesToAcceptFrac) );
 			continue;
 		}
 		str = "ExcludePoleAngle ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
-			sscanf(line, "%s %f", dummy, &(Params->ExcludePoleAngle) );
+			sscanf(line, "%s %lf", dummy, &(Params->ExcludePoleAngle) );
 			continue;
 		}
 		str = "RingRadii ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
-			sscanf(line, "%s %f", dummy, &(Params->RingRadiiUser[Params->NrOfRings]));
+			sscanf(line, "%s %lf", dummy, &(Params->RingRadiiUser[Params->NrOfRings]));
 				Params->NrOfRings = Params->NrOfRings + 1;
 			continue;
 		}
 		str = "OmegaRange ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
-			sscanf(line, "%s %f %f", dummy, &(Params->OmegaRanges[Params->NoOfOmegaRanges][0]),
+			sscanf(line, "%s %lf %lf", dummy, &(Params->OmegaRanges[Params->NoOfOmegaRanges][0]),
 											  &(Params->OmegaRanges[Params->NoOfOmegaRanges][1]));
 			(Params->NoOfOmegaRanges)++;
 			continue;
@@ -947,7 +947,7 @@ int ReadParams(char FileName[], struct ParametersStruct * Params){
 		str = "BoxSize ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
-			sscanf(line, "%s %f %f %f %f", dummy, &(Params->BoxSizes[NrOfBoxSizes][0]),
+			sscanf(line, "%s %lf %lf %lf %lf", dummy, &(Params->BoxSizes[NrOfBoxSizes][0]),
 													  &(Params->BoxSizes[NrOfBoxSizes][1]),
 													  &(Params->BoxSizes[NrOfBoxSizes][2]),
 													  &(Params->BoxSizes[NrOfBoxSizes][3]));
@@ -969,19 +969,19 @@ int ReadParams(char FileName[], struct ParametersStruct * Params){
 		str = "MarginEta ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
-			sscanf(line, "%s %f", dummy, &(Params->MarginEta) );
+			sscanf(line, "%s %lf", dummy, &(Params->MarginEta) );
 			continue;
 		}
 		str = "MargABC ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
-			sscanf(line, "%s %f", dummy, &(Params->MargABC) );
+			sscanf(line, "%s %lf", dummy, &(Params->MargABC) );
 			continue;
 		}
 		str = "MargABG ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
-			sscanf(line, "%s %f", dummy, &(Params->MargABG) );
+			sscanf(line, "%s %lf", dummy, &(Params->MargABG) );
 			continue;
 		}
 		str = "UseFriedelPairs ";
@@ -1958,9 +1958,9 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	int konvge = 10;
 	int kcount = MAX_N_EVALS;
 	int icount, numres, ifault;
-	//if (spotNr == 0) printf("Pos in: %f %f %f %f\n",pf_posIni(n,x,trp),x[0],x[1],x[2]);
+	//if (spotNr == 0) printf("Pos in: %lf %lf %lf %lf\n",pf_posIni(n,x,trp),x[0],x[1],x[2]);
 	nelmin(pf_posIni, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount/4, &icount, &numres, &ifault, trp);
-	//if (spotNr == 0) printf("Pos out: %f %f %f %f\n",pf_posIni(n,xout,trp),xout[0],xout[1],xout[2]);
+	//if (spotNr == 0) printf("Pos out: %lf %lf %lf %lf\n",pf_posIni(n,xout,trp),xout[0],xout[1],xout[2]);
 	//if (ifault !=0) printf("Not optimized completely.\n");
 	RealType Pos[3] = {xout[0],xout[1],xout[2]};
 	RealType DisplY, DisplZ, Y, Z, Ome, g[3], Theta, lenK;
@@ -2015,9 +2015,9 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	struct func_data_orient *f_datat2;
 	f_datat2 = &f_data2;
 	void *trp2 = (struct func_data_orient *)  f_datat2;
-	//if (spotNr == 0) printf("Orient in: %f %f %f %f\n",pf_orient(n,x,trp2),x[0],x[1],x[2]);
+	//if (spotNr == 0) printf("Orient in: %lf %lf %lf %lf\n",pf_orient(n,x,trp2),x[0],x[1],x[2]);
 	nelmin(pf_orient, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount/3, &icount, &numres, &ifault, trp2);
-	//if (spotNr == 0) printf("Orient out: %f %f %f %f\n",pf_orient(n,xout,trp2),xout[0],xout[1],xout[2]);
+	//if (spotNr == 0) printf("Orient out: %lf %lf %lf %lf\n",pf_orient(n,xout,trp2),xout[0],xout[1],xout[2]);
     //if (ifault !=0) printf("Not optimized completely.\n");
     RealType Euler[3] = {xout[0],xout[1],xout[2]};
     n = 6;
@@ -2048,9 +2048,9 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	struct func_data_strains *f_datat3;
 	f_datat3 = &f_data3;
 	void *trp3 = (struct func_data_strains *)  f_datat3;
-	//if (spotNr == 0) printf("Strains in: %f %f %f %f %f %f %f\n",pf_strains(n,x,trp3),x[0],x[1],x[2],x[3],x[4],x[5]);
+	//if (spotNr == 0) printf("Strains in: %lf %lf %lf %lf %lf %lf %lf\n",pf_strains(n,x,trp3),x[0],x[1],x[2],x[3],x[4],x[5]);
 	nelmin(pf_strains, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount/2, &icount, &numres, &ifault, trp3);
-	//if (spotNr == 0) printf("Strains out: %f %f %f %f %f %f %f\n",pf_strains(n,xout,trp3),xout[0],xout[1],xout[2],xout[3],xout[4],xout[5]);
+	//if (spotNr == 0) printf("Strains out: %lf %lf %lf %lf %lf %lf %lf\n",pf_strains(n,xout,trp3),xout[0],xout[1],xout[2],xout[3],xout[4],xout[5]);
 	//if (ifault !=0) printf("Not optimized completely.\n");
     RealType LatCFit[6] = {xout[0],xout[1],xout[2],xout[3],xout[4],xout[5]};
     n = 3;
@@ -2074,9 +2074,9 @@ __global__ void FitGrain(RealType *RTParamArr, int *IntParamArr,
 	struct func_data_pos_sec *f_datat4;
 	f_datat4 = &f_data4;
 	void *trp4 = (struct func_data_pos_sec *)  f_datat4;
-	//if (spotNr == 0) printf("Pos2 in: %f %f %f %f\n",pf_posSec(n,x,trp4),x[0],x[1],x[2]);
+	//if (spotNr == 0) printf("Pos2 in: %lf %lf %lf %lf\n",pf_posSec(n,x,trp4),x[0],x[1],x[2]);
 	nelmin(pf_posSec, n, x, xout, xl, xu, scratch, &minf, reqmin, xstep, konvge, kcount, &icount, &numres, &ifault, trp4);
-	//if (spotNr == 0) printf("Pos2 out: %f %f %f %f\n",pf_posSec(n,xout,trp4),xout[0],xout[1],xout[2]);
+	//if (spotNr == 0) printf("Pos2 out: %lf %lf %lf %lf\n",pf_posSec(n,xout,trp4),xout[0],xout[1],xout[2]);
     //if (ifault !=0) printf("Not optimized completely.\n");
     RealType Pos2[3] = {xout[0],xout[1],xout[2]};
     for (i=0;i<3;i++){
@@ -2161,11 +2161,11 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	stop.minf_max = reqmin;
 	nlopt_func f = &pf_posIni;
 	nlopt_result res = NLOPT_SUCCESS;
-	if (spotNr == 0) printf("%f\n",pf_posIni(n,x,trp));
+	if (spotNr == 0) printf("%lf\n",pf_posIni(n,x,trp));
 	res = nldrmd_minimize(n,f,trp,xl,xu,x,&minf,xstep,&stop,scratch);
-	if (spotNr == 0) printf("%f\n",pf_posIni(n,x,trp));
+	if (spotNr == 0) printf("%lf\n",pf_posIni(n,x,trp));
 	for (i=0;i<n;i++) xout[i] = x[i];
-	if (res !=1) printf("Not optimized completely. %d, %f\n",res,minf);
+	if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
 	RealType Pos[3] = {xout[0],xout[1],xout[2]};
 	RealType DisplY, DisplZ, Y, Z, Ome, g[3], Theta, lenK;
 	for (int nrSp=0;nrSp<nMatched;nrSp++){
@@ -2223,7 +2223,7 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	f = &pf_orient;
 	res = nldrmd_minimize(n,f,trp2,xl,xu,x,&minf,xstep,&stop,scratch);
 	for (i=0;i<n;i++) xout[i] = x[i];
-	if (res !=1) printf("Not optimized completely. %d, %f\n",res,minf);
+	if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
     RealType Euler[3] = {xout[0],xout[1],xout[2]};
     n = 6;
     for (i=0;i<n;i++){
@@ -2257,7 +2257,7 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	f = &pf_strains;
 	res = nldrmd_minimize(n,f,trp3,xl,xu,x,&minf,xstep,&stop,scratch);
 	for (i=0;i<n;i++) xout[i] = x[i];
-	if (res !=1) printf("Not optimized completely. %d, %f\n",res,minf);
+	if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
     RealType LatCFit[6] = {xout[0],xout[1],xout[2],xout[3],xout[4],xout[5]};
     n = 3;
     RealType OM[3][3];
@@ -2284,7 +2284,7 @@ __global__ void FitGrain_NLOPT(RealType *RTParamArr, int *IntParamArr,
 	f = &pf_posSec;
 	res = nldrmd_minimize(n,f,trp4,xl,xu,x,&minf,xstep,&stop,scratch);
 	for (i=0;i<n;i++) xout[i] = x[i];
-	if (res !=1) printf("Not optimized completely. %d, %f\n",res,minf);
+	if (res !=1) printf("Not optimized completely. %d, %lf\n",res,minf);
     RealType Pos2[3] = {xout[0],xout[1],xout[2]};
     for (i=0;i<3;i++){
 		Result[i] = Pos2[i];
@@ -3074,7 +3074,7 @@ int main(int argc, char *argv[]){
 	RealType hc,kc,lc,RRd,Ds,tht;
 	int n_hkls_h = 0;
 	while (fgets(aline,MAX_LINE_LENGTH,hklf)!=NULL){
-		sscanf(aline, "%d %d %d %f %d %f %f %f %f %s %f",&hi,&ki,&li,&Ds,&Rnr,&hc,&kc,&lc,&tht,dummy,&RRd);
+		sscanf(aline, "%d %d %d %lf %d %lf %lf %lf %lf %s %lf",&hi,&ki,&li,&Ds,&Rnr,&hc,&kc,&lc,&tht,dummy,&RRd);
 		for (i=0;i<Parameters.NrOfRings;i++){
 			if (Rnr == Parameters.RingNumbers[i]){
 				HKLints[n_hkls_h*4+0] = hi;
@@ -3512,7 +3512,7 @@ int main(int argc, char *argv[]){
 	cudaFree(etamargins_d);
 	cudaFree(nNormals);
 	cudaFree(ResultMakeOrientations);
-	printf("Time elapsed after sorting the results: %fs\nNow refining results.\n",cpuSecond()-iStart);
+	printf("Time elapsed after sorting the results: %lfs\nNow refining results.\n",cpuSecond()-iStart);
 	// We have spotsYZO, FitParams_h, we just call the function to run things.
     int startRow, endRow, startRowNMatched, endRowNMatched, nrows, nrowsNMatched;
 	RealType *SpotsCompReturnArr, *SpListArr, *ErrorArr;
@@ -3594,7 +3594,7 @@ int main(int argc, char *argv[]){
 		CHECK(cudaDeviceSynchronize());
 		cudaMemcpy(SpotsCompReturnArr+22*startRowNMatched,SpCmp_d2,22*nrowsNMatched*sizeof(RealType),cudaMemcpyDeviceToHost);
 		cudaMemcpy(ErrorArr+3*startRow,Error_d2,3*nrows*sizeof(RealType),cudaMemcpyDeviceToHost);
-		printf("Finished one set of optimizations in: %fseconds.\n",cpuSecond()-iStart);
+		printf("Finished one set of optimizations in: %lfseconds.\n",cpuSecond()-iStart);
 	}
 	// We have 	idsIndexed with the successful IDs.
 	//			nMatchedArrIndexing to guide where to look
@@ -3636,7 +3636,7 @@ int main(int argc, char *argv[]){
 			OpArr[i*25+19+j] = ErrorArr[i*3+j];
 			OpArr[i*25+22+j] = (RealType)nMatchedArrIndexing[i*3+j];
 		}
-		printf("%d %f %f %f\n",idsIndexed[i],ErrorArr[i*3+0],ErrorArr[i*3+1],ErrorArr[i*3+2]);
+		printf("%d %lf %lf %lf\n",idsIndexed[i],ErrorArr[i*3+0],ErrorArr[i*3+1],ErrorArr[i*3+2]);
 	}
 	fwrite(OpArr,25*nSpotsIndexed*sizeof(RealType),1,fo);
 	cudaDeviceReset();
