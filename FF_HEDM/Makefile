@@ -85,7 +85,7 @@ indexercuda: $(SRCDIR)IndexerRefineNLOPT.cu
 indexercudafloat: $(SRCDIR)IndexerRefineNLOPTFloat.cu
 	$(NCC) $(SRCDIR)IndexerRefineNLOPTFloat.cu -o $(BINDIR)IndexerFloat $(NCFLAGS)
 
-bindatafloat: $(SRCDIR)SaveBinDataFloat.c
+bindata: $(SRCDIR)SaveBinDataFloat.c
 	$(CC) $(SRCDIR)SaveBinDataFloat.c -o $(BINDIR)SaveBinDataFloat $(CFLAGS)
 
 indexrefinecuda: $(SRCDIR)IndexerRefine.cu
