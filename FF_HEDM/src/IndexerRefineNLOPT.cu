@@ -3531,7 +3531,7 @@ int main(int argc, char *argv[]){
 			//~ nJobsTotal, ResultArr, posResultArr, nSpotsArr, data, nData, ObsSpotsLab,
 			//~ etamargins_d, AllGrainSpots, IAs, n_arr, nMatchedArr, n_min, nJobsOrient,GS,
 			//~ AllSpotsYZO_d,SpotsInfo_d,Orientations,OrientationsOut);
-		CompareDiffractionSpotsSM<<<gridc,blockc,n_hkls_h*2*N_COL_THEORSPOTS*sizeof(RealType)>>>
+		CompareDiffractionSpotsSM<<<gridc,blockc,n_hkls_h*N_COL_THEORSPOTS*sizeof(RealType)>>>
 			(AllTheorSpots,RTParamArr,nJobsTotal, ResultArr, posResultArr, nSpotsArr, data, 
 			nData, ObsSpotsLab,etamargins_d, AllGrainSpots, IAs, n_arr, nMatchedArr, n_min, 
 			nJobsOrient,GS,AllSpotsYZO_d,SpotsInfo_d,Orientations,OrientationsOut);
