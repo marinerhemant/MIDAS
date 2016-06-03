@@ -107,3 +107,4 @@ clean:
 	rm -rf NLOPT/ nlopt-2.4.2* swift-0.95-RC6*
 	sed -i '/^BINFOLDER/d' ${HOME}/.bashrc
 	sed -i '/^PFDIR/d' ${HOME}/.bashrc
+	sed -i '/^alias FFSingleLayer/d' ${HOME}/.bashrc

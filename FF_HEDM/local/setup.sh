@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source ~/.bashrc
+source ${HOME}/.bashrc
 
 LOCAL_DIR=$( pwd )/local
 CHART=/
@@ -12,6 +12,8 @@ which swift
 if [[ $? == 1 ]];
 then
 	echo "SWIFT not found in path"
+	echo "Path is"
+	echo $PATH
 	echo "Exiting."
 	exit
 fi
@@ -29,6 +31,10 @@ then
 	echo "BINFOLDER=${BINFOLDER}" >> ${HOME}/.bashrc;
 	echo "PFDIR=${LOCAL_DIR}" >> ${HOME}/.bashrc;
 	echo "alias FFSingleLayer=${LOCAL_DIR}/RealtimeAnalysisV2MultRingsPS.sh" >> ${HOME}/.bashrc;
+	chmod 700 ${LOCAL_DIR}/RealtimeAnalysisV2MultRingsPS.sh 
 fi
 
 echo "Congratulations, you can now use FFSingleLayer to run analysis"
+echo "First type:"
+echo "source ~/.bashrc"
+echo "Or restart terminal"
