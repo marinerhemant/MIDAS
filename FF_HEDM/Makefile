@@ -108,3 +108,4 @@ clean:
 	sed -i '/^BINFOLDER/d' ${HOME}/.bashrc
 	sed -i '/^PFDIR/d' ${HOME}/.bashrc
 	sed -i '/^alias FFSingleLayer/d' ${HOME}/.bashrc
+	sed -i '/^       export PATH=/d' ${HOME}/.bashrc
