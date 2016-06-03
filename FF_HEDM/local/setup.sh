@@ -1,6 +1,7 @@
 #!/bin/bash
 
 source ${HOME}/.bashrc
+tail ${HOME}/.bashrc
 
 LOCAL_DIR=$( pwd )/local
 CHART=/
