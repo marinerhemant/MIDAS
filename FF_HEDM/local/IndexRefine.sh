@@ -28,6 +28,6 @@ fi
 mkdir -p Output
 mkdir -p Results
 mkdir -p logs
-swift -sites.file ${PFDIR}sites$1.xml -tc.file ${PFDIR}tc.data -config ${PFDIR}cf ${PFDIR}IndexRefine.swift
+swift -sites.file ${PFDIR}sites.xml -tc.file ${PFDIR}tc.data -config ${PFDIR}cf ${PFDIR}IndexRefine.swift
 ${BINFOLDER}/ProcessGrains $2
 ls -lh
