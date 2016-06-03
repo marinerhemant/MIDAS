@@ -1,7 +1,7 @@
 CC=gcc
 NCC=nvcc
 NCFLAGS=-O3 -G -g -w -arch sm_52 -lm -rdc=true # -res-usage
-CFLAGS=-fPIC -ldl -lm -finline-functions -O3 -w
+CFLAGS=-fPIC -ldl -lm -fgnu89-inline -O3 -w
 NLOPT=""
 ifneq ($(NLOPT),"")
 	CFLAGSNLOPT=-I$(NLOPT)/include -L$(NLOPT)/lib -lnlopt
@@ -13,8 +13,9 @@ BINDIR=bin/
 
 all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting \
 	mergeoverlaps calcradius findsaturatedpx\
-	mergerings fittiltx fitwedge hkls indexer bindata processgrains indexercuda peakscuda \
-	fitposorstrainscuda mergeoverlapsgpu
+	mergerings fittiltx fitwedge hkls indexer bindata processgrains
+
+local: packages flags all scripts
 
 cuda: help indexrefinecuda peaks mergeoverlapsgpu fittiltbclsdsample \
 	calcradius mergerings processgrains hkls bindata calibrant findsaturatedpx fittiltx fitwedge
@@ -33,6 +34,15 @@ help:
 	@echo ..............................................................................................
 	@echo
 	@echo $(NLOPT)
+
+scripts: local/setup.sh
+	local/setup.sh
+
+packages: local/GetPackages.sh
+	local/./GetPackages.sh
+
+flags:
+	$(eval CFLAGSNLOPT=-I$(shell pwd)/NLOPT/include -L$(shell pwd)/NLOPT/lib -lnlopt)
 
 calibrant: $(SRCDIR)Calibrant.c
 	$(CC) $(SRCDIR)Calibrant.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)Calibrant $(CFLAGS) $(CFLAGSNLOPT) 
@@ -94,3 +104,6 @@ mergeoverlapsgpu: $(SRCDIR)MergeOverlappingPeaksGPU.c
 clean:
 	rm -rf $(BINDIR)
 	mkdir $(BINDIR)
+	rm -rf NLOPT/ nlopt-2.4.2* swift-0.95-RC6*
+	sed -i '/^BINFOLDER/d' ${HOME}/.bashrc
+	sed -i '/^PFDIR/d' ${HOME}/.bashrc

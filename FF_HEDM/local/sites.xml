@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns="http://www.ci.uchicago.edu/swift/SwiftSites">
+
+ <pool handle="localhost">
+   <execution provider="local"/>
+   <filesystem provider="local"/>
+   <workdirectory>/clhome/TOMO1/swiftwork</workdirectory>
+ </pool>
+</config>

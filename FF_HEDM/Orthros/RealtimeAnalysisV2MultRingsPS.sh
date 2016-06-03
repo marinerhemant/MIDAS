@@ -173,11 +173,3 @@ do
    #    qdel $rc
    #fi
 done
-
-### RUN BY "/clhome/TOMO1/PeaksAnalysisHemant/FF_HEDM/FitDetectorSrc/MergeMultipleRings step2_RunAnalysis_MultiRing.txt
-### then copy paramstest.txt from ${Folder}/Ring${RingToIndex}/... to ${Folder}
-### In the new copied paramstest.txt, now copy RingRadii from paramstest.txt for each ring, and paste them in order. Also, add RingNumbers accordingly
-### In paramstest.txt change the OutputFolder and ResultFolder to ${Folder}/Output & ${Folder}/Results
-### To run: cd ${Folder}
-###         MultiRingIndexer 320
-
