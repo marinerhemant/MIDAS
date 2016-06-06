@@ -79,7 +79,7 @@ MatInv(double A[3][3], double AInv[3][3])
 }
 
 inline void
-CalcStrainTensorFableBeoudoin(double LatCin[6],double LatticeParameterFit[6],
+CalcStrainTensorFableBeaudoin(double LatCin[6],double LatticeParameterFit[6],
 	double Orient[3][3], double StrainTensorSample[3][3])
 {
 	// unstrained parameters
@@ -164,28 +164,49 @@ double problem_function(
 	return TotDiff;
 }
 
-inline void
-StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][7], double Distance, double wavelength, double StrainTensorSample[3][3])
-		//SpotsInfo: 0,1,2 - Gobs, 3,4 - Y,Z spot, 5,6 - Y,Z sim
+inline int
+StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double Distance, double wavelength, double StrainTensorSample[3][3])
+		/*SpotsInfo: 0,1,2 - Gobs, 3,4 - Y,Z spot, 5,6 - Y,Z sim, 7 - ID*/
 {
-	int i;
+	int i,j;
 	struct data_StrainFit mydata;
-	double gobs[3],LGobs,LGsim,lenGobs;
+	double gobs[3];//,lenGobs;
 	mydata.nspots = nspots;
+	int id;
+	double IDHash[NR_MAX_IDS_PER_GRAIN][4];
+	int nRings=0;
+	char aline[2000];
+	char *hashfn = "IDsHash.csv";
+	FILE *hashfile = fopen(hashfn,"r");
+	while (fgets(aline,2000,hashfile)!=NULL){
+		sscanf(aline,"%lf %lf %lf %lf",IDHash[nRings][0],IDHash[nRings][0],IDHash[nRings][0],IDHash[nRings][0]);
+		nRings++;
+	}
+	int ringNr;
+	double ds0, dsObs;
 	for (i=0;i<nspots;i++){
-		lenGobs = CalcNorm3(SpotsInfo[i][0],SpotsInfo[i][1],SpotsInfo[i][2]);
-		gobs[0] = SpotsInfo[i][0]/lenGobs;
-		gobs[1] = SpotsInfo[i][1]/lenGobs;
-		gobs[2] = SpotsInfo[i][2]/lenGobs;
-		LGobs = wavelength/(2*sin(atan((CalcNorm2(SpotsInfo[i][3],SpotsInfo[i][4]))/Distance)/2));
-		LGsim = wavelength/(2*sin(atan((CalcNorm2(SpotsInfo[i][5],SpotsInfo[i][6]))/Distance)/2));
-		mydata.B[i] = (LGsim-LGobs)/LGobs;
+		//lenGobs = CalcNorm3(SpotsInfo[i][0],SpotsInfo[i][1],SpotsInfo[i][2]);
+		dsObs = wavelength/(2*sin(atan((CalcNorm2(SpotsInfo[i][3],SpotsInfo[i][4]))/Distance)/2));
+		gobs[0] = SpotsInfo[i][0];// /lenGobs;
+		gobs[1] = SpotsInfo[i][1];// /lenGobs;
+		gobs[2] = SpotsInfo[i][2];// /lenGobs;
+		id = (int) SpotsInfo[i][7];
+		for (j=0;j<nRings;j++){
+			if (id >= (int)IDHash[j][1] && id < (int)IDHash[j][2]){
+				ds0 = IDHash[j][3];
+			}
+		}
+		if (ds0 == 0){
+			return 0;
+		}
+		mydata.B[i] = (dsObs-ds0)/ds0;
 		mydata.A[i][0] = gobs[0]*gobs[0];
 		mydata.A[i][1] = gobs[1]*gobs[1];
 		mydata.A[i][2] = gobs[2]*gobs[2];
 		mydata.A[i][3] = gobs[0]*gobs[1]*2;
 		mydata.A[i][4] = gobs[0]*gobs[2]*2;
 		mydata.A[i][5] = gobs[1]*gobs[2]*2;
+		ds0 = 0;
 	}
 	int n = 6;
 	double x[n],xl[n],xu[n];
@@ -214,4 +235,5 @@ StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][7], double
 	StrainTensorSample[2][0] = x[4];
 	StrainTensorSample[2][1] = x[5];
 	StrainTensorSample[2][2] = x[2];
+	return 1;
 }

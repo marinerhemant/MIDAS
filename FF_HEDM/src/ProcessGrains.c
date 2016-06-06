@@ -390,9 +390,6 @@ int main(int argc, char *argv[])
 					BestGrainPos = (int)ID_IA_MAT[(j*4)+1];
 					maxRadThis = ID_IA_MAT[(j*4)+3];
 				}
-				/*if (ID_IA_MAT[(j*4)+3] > maxRadThis){ // If you want only the maximum volume, not the volume associated with the best IA grain
-					maxRadThis = ID_IA_MAT[(j*4)+3];
-				}*/
 			}
 			GrainPositions[nGrainPositions] = BestGrainPos;
 			Radiuses[BestGrainPos] = maxRadThis;
@@ -401,23 +398,6 @@ int main(int argc, char *argv[])
 	}
 	
 	//Write out
-	/*int **arr;
-	arr = allocMatrixInt(100000,2);
-	int rowcounter = 0;
-	for (i=1;i<=100000;i++){
-		counten = 0;
-		for (j=0;j<nrIDs;j++){
-			if (nGrainsMatched[j] == i){
-				counten ++;
-			}
-		}
-		if (counten > 0){
-			arr[rowcounter][0] = i;
-			arr[rowcounter][1] = counten;
-			rowcounter++;
-		}
-	}
-	for (i=0;i<rowcounter;i++) printf("%d %d\n",arr[i][0],arr[i][1]);*/
 	char GrainsFileName[1024];
 	sprintf(GrainsFileName,"Grains.csv");
 	FILE *GrainsFile;
@@ -431,7 +411,7 @@ int main(int argc, char *argv[])
 	double StrainTensorSampleFab[3][3];
 	double *dummySampleInfo;
 	dummySampleInfo = malloc(22*NR_MAX_IDS_PER_GRAIN*sizeof(*dummySampleInfo));
-	double LatticeParameterFit[6],Orient[3][3],SpotsInfo[NR_MAX_IDS_PER_GRAIN][7];
+	double LatticeParameterFit[6],Orient[3][3],SpotsInfo[NR_MAX_IDS_PER_GRAIN][8];
 	int nspots, rown;
 	// Calculate Strains Now
 	int fullInfoFile = open("Output/FitBest.bin",O_RDONLY);
@@ -488,6 +468,7 @@ int main(int argc, char *argv[])
 			SpotsInfo[j][4] = dummySampleInfo[j*22+2];
 			SpotsInfo[j][5] = dummySampleInfo[j*22+7];
 			SpotsInfo[j][6] = dummySampleInfo[j*22+8];
+			SpotsInfo[j][7] = dummySampleInfo[j*22+0]; // SpotID
 		}
 		LatticeParameterFit[0] = OPs[rown][12];
 		LatticeParameterFit[1] = OPs[rown][13];
@@ -504,8 +485,12 @@ int main(int argc, char *argv[])
 		Orient[2][0] = OPs[rown][6];
 		Orient[2][1] = OPs[rown][7];
 		Orient[2][2] = OPs[rown][8];
-		StrainTensorKenesei(nspots,SpotsInfo,Distance,wavelength,StrainTensorSampleKen);
-		CalcStrainTensorFableBeoudoin(LatCin,LatticeParameterFit,Orient,StrainTensorSampleFab);
+		int retval = StrainTensorKenesei(nspots,SpotsInfo,Distance,wavelength,StrainTensorSampleKen);
+		if (retval == 0){
+			printf("Did not read correct hash table for IDs. Exiting\n");
+			return;
+		}
+		CalcStrainTensorFableBeaudoin(LatCin,LatticeParameterFit,Orient,StrainTensorSampleFab);
 		FinalMatrix[nGrains][0] = (double)IDs[rown];
 		for (j=0;j<21;j++){
 			FinalMatrix[nGrains][j+1] = OPs[rown][j];

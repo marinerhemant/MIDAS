@@ -5,7 +5,14 @@
 //  Created by Hemant Sharma on 2014/06/20.
 //
 //
-//  
+//  Output Array Contents:
+//  0: ID
+//  y z ome g0 g1 g2
+//  1-6  : Observed spots corrected for grain position etc
+//  7-12 : Simulated spots according to deformed lattice
+//  13-15: Observed spots not corrected for grain position y z ome
+//  16-18: Ome y z corrected without wedge till tilts spacial distortion
+//  19-21: IA, LenDiff, OmeDiff
 
 #include <stdio.h>
 #include <math.h>
