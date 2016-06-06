@@ -85,6 +85,7 @@ int main (int argc, char *argv[])
 {
 	clock_t start, end, start0, end0;
     start0 = clock();
+    int i,j,k;
     double diftotal;
     // Read params file.
     char *ParamFN;
@@ -95,7 +96,14 @@ int main (int argc, char *argv[])
     char *str, dummy[1000],folder[1024],Folder[1024],FileStem[1024],fs[1024];
     int LayerNr;
     int LowNr;
-    int RingNumbers[50], nRings=0, RingToIndex;
+    int RingNumbers[50], nRings=0, RingToIndex, rnr;
+    char *hklfn = "hkls.csv";
+	FILE *hklf = fopen(hklfn,"r");
+	if (hklf == NULL){
+		printf("Could not read the hkl file. Exiting.\n");
+		return 1;
+	}
+	fgets(aline,1000,hklf);
 	while (fgets(aline,2000,fileParam)!=NULL){
 		str = "LayerNr ";
         LowNr = strncmp(aline,str,strlen(str));
@@ -129,7 +137,16 @@ int main (int argc, char *argv[])
             continue;
         }
 	}
-    int i,j,k;
+	double dspacing[nRings], ds;
+	while (fgets(aline,2000,hklf)!=NULL){
+		sscanf(aline,"%s %s %s %lf %d %s %s %s %s %s %s", dummy, dummy, 
+			dummy, ds, rnr, dummy, dummy, dummy, dummy, dummy, dummy);
+		for (i=0;i<nRings;i++){
+			if (RingNumbers[i] == rnr){
+				dspacing[i] = ds;
+			}
+		}
+	}
     char fnInputAll[1024], fnExtraAll[1024],fnSpIDs[1024];
     FILE *inp, *ext;
     FILE *sp;
@@ -145,6 +162,7 @@ int main (int argc, char *argv[])
     int startcntr=0;
     int cntr;
     int counterIDs=0,IDTemp;
+    int startIDNr[nRings], endIDNr[nRings];
     for (i=0;i<nRings;i++){
 	    sprintf(fnInputAll,"%s/Ring%d/PeakSearch/%s/InputAll.csv",Folder,RingNumbers[i],FileStem);
 	    sprintf(fnExtraAll,"%s/Ring%d/PeakSearch/%s/InputAllExtraInfoFittingAll.csv",Folder,RingNumbers[i],FileStem);
@@ -178,6 +196,8 @@ int main (int argc, char *argv[])
 			Extra[counterTotal][4] = counterTotal+1;
 			counterTotal++;
 		}
+		startIDNr[i] = startcntr + 1;
+		endIDNr[i] = counterTotal+ 1;
 		startcntr = counterTotal;
 		fclose(inp);
 		fclose(ext);
@@ -201,10 +221,15 @@ int main (int argc, char *argv[])
 	}
 	//Write files
 	FILE *inpout, *extout, *idout;
-	char fninpout[1024], fnextout[1024], fnidout[1024];
+	char fninpout[1024], fnextout[1024], fnidout[1024], fnidshash[1024];
 	sprintf(fninpout,"%s/InputAll.csv",Folder);
     sprintf(fnextout,"%s/InputAllExtraInfoFittingAll.csv",Folder);
     sprintf(fnidout,"%s/SpotsToIndex.csv",Folder);
+    sprintf(fnidshash,"%s/IDsHash.csv",Folder);
+    FILE *idshashout = fopen(fnidshash,"w");
+    for (i=0;i<nRings;i++){
+		fprintf(idshashout,"%d %d %d %lf\n",RingNumbers[i],startIDNr[i],endIDNr[i],dspacing[i]);
+	}
     inpout = fopen(fninpout,"w");
     extout = fopen(fnextout,"w");
     if (extout == NULL){
