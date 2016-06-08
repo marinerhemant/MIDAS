@@ -242,7 +242,7 @@ int main (int argc, char *argv[])
         return 1;
 	}
     for (i=0;i<nRings;i++){
-		fprintf(idshashout,"%d %d %d %12.6lf\n",RingNumbers[i],startIDNr[i],endIDNr[i],dspacing[i]);
+		fprintf(idshashout,"%d %d %d %2.6lf\n",RingNumbers[i],startIDNr[i],endIDNr[i],dspacing[i]);
 	}
     idout = fopen(fnidout,"w");
     fprintf(extout,"YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)\n");
