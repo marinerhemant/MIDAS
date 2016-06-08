@@ -141,7 +141,9 @@ int main (int argc, char *argv[])
 	while (fgets(aline,2000,hklf)!=NULL){
 		sscanf(aline,"%s %s %s %lf %d %s %s %s %s %s %s", dummy, dummy, 
 			dummy, &ds, &rnr, dummy, dummy, dummy, dummy, dummy, dummy);
+		printf("%d %lf\n",rnr, ds);
 		for (i=0;i<nRings;i++){
+			printf("%d\n",RingNumbers[i]);
 			if (RingNumbers[i] == rnr){
 				dspacing[i] = ds;
 				printf("%d %lf\n",rnr, ds);
