@@ -17,7 +17,9 @@ all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting 
 
 local: packages flags all scripts
 
-orthros: all
+orthros: deps all
+
+deps:
 	Orthros/./GetPackages.sh
 	$(eval CFLAGSNLOPT=-I$(shell pwd)/NLOPT/include -L$(shell pwd)/NLOPT/lib -lnlopt)
 	Orthros/setup.sh
