@@ -99,6 +99,8 @@ int main (int argc, char *argv[])
     int RingNumbers[50], nRings=0, RingToIndex, rnr;
     char *hklfn = "hkls.csv";
 	FILE *hklf = fopen(hklfn,"r");
+    printf("We reached here.\n"); fflush(stdout);
+
 	if (hklf == NULL){
 		printf("Could not read the hkl file. Exiting.\n");
 		return 1;
