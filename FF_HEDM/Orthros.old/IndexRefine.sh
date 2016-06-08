@@ -11,7 +11,7 @@ cp SpotsToIndex.csv SpotsToIndexIn.csv
 cat SpotsToIndex.csv |sort|uniq|less > SpotsToIndexUnq.csv
 mv SpotsToIndexUnq.csv SpotsToIndex.csv
 INDEXERSTRAINS=/clhome/TOMO1/PeaksAnalysisHemant/HEDM_V2/FF_HEDM/
-${INDEXERSTRAINS}/SHMOperators.sh
+${INDEXERSTRAINS}/SHMOperators.sh $1
 # PATH=/clhome/TOMO1/PeaksAnalysisHemant/HEDM_V2/SWIFT/swift-0.95-RC7/bin:$PATH
 PATH=~wilde/swift/rev/swift-0.95-RC6/bin:$PATH
 mkdir -p Output

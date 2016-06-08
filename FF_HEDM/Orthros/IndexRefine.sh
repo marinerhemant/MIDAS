@@ -13,7 +13,7 @@ cp SpotsToIndex.csv SpotsToIndexIn.csv
 cat SpotsToIndex.csv |sort|uniq|less > SpotsToIndexUnq.csv
 mv SpotsToIndexUnq.csv SpotsToIndex.csv
 
-${PFDIR}/SHMOperators.sh
+${PFDIR}/SHMOperators.sh $1
 
 mkdir -p Output
 mkdir -p Results
