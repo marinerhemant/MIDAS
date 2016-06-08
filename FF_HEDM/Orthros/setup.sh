@@ -2,7 +2,7 @@
 
 source ${HOME}/.bashrc
 
-LOCAL_DIR=$( pwd )/local
+LOCAL_DIR=$( pwd )/Orthros
 CHART=/
 FF_MIDAS_DIR=${LOCAL_DIR%$CHART*}
 BINFOLDER=${FF_MIDAS_DIR}/bin
