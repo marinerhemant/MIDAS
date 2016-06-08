@@ -1,3 +1,3 @@
 #!/bin/bash
-source ${HOME}/.bashrc
+source ${HOME}/.MIDAS/paths
 ${BINFOLDER}/PeaksFittingPerFile $1 $2 $3

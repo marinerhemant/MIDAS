@@ -1,6 +1,6 @@
 #!/bin/bash -eu
-
-/clhome/TOMO1/PeaksAnalysisHemant/HEDM_V2/FF_HEDM/SHM.sh
+source ${HOME}/.MIDAS/paths
+${PFDIR}/SHM.sh
 RC=${?}
 if [[ RC != 0 ]]
 then
@@ -76,4 +76,3 @@ scp ExtraInfo.bin pup0102:/dev/shm
 scp ExtraInfo.bin pup0103:/dev/shm
 scp ExtraInfo.bin pup0104:/dev/shm
 scp ExtraInfo.bin pup0105:/dev/shm
-

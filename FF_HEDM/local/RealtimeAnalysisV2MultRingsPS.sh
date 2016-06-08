@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source ~/.bashrc
+source ${HOME}/.MIDAS/paths
 
 echo "FF analysis code for Multiple Layers and Multiple rings:"
 echo "Version: 2, 2014/11/10, in case of problems contact hsharma@anl.gov"

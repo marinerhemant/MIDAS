@@ -1,6 +1,5 @@
 #!/bin/bash -eu
-source ${HOME}/.bashrc
-
+source ${HOME}/.MIDAS/paths
 ${PFDIR}/SHM.sh
 RC=${?}
 if [[ RC != 0 ]]

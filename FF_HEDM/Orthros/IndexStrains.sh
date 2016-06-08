@@ -1,5 +1,5 @@
 #!/bin/bash
-source ${HOME}/.bashrc
+source ${HOME}/.MIDAS/paths
 echo "Spot ID:"
 echo $1
 ${BINFOLDER}/IndexerLinuxArgsShm paramstest.txt $1

@@ -22,7 +22,7 @@ orthros: deps all
 
 deps:
 	Orthros/./GetPackages.sh
-	$(eval CFLAGSNLOPT=-I$(shell pwd)/NLOPT/include -L$(shell pwd)/NLOPT/lib -lnlopt)
+	$(eval CFLAGSNLOPT=-I$$HOME/.MIDAS/NLOPT/include -L$$HOME/.MIDAS/NLOPT/lib -lnlopt)
 
 cuda: help indexrefinecuda peaks mergeoverlapsgpu fittiltbclsdsample \
 	calcradius mergerings processgrains hkls bindata calibrant findsaturatedpx fittiltx fitwedge
@@ -49,7 +49,7 @@ packages: local/GetPackages.sh
 	local/./GetPackages.sh
 
 flags:
-	$(eval CFLAGSNLOPT=-I$(shell pwd)/NLOPT/include -L$(shell pwd)/NLOPT/lib -lnlopt)
+	$(eval CFLAGSNLOPT=-I$$HOME/.MIDAS/NLOPT/include -L$$HOME/.MIDAS/NLOPT/lib -lnlopt)
 
 calibrant: $(SRCDIR)Calibrant.c
 	$(CC) $(SRCDIR)Calibrant.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)Calibrant $(CFLAGS) $(CFLAGSNLOPT) 
@@ -112,6 +112,4 @@ clean:
 	rm -rf $(BINDIR)
 	mkdir $(BINDIR)
 	rm -rf NLOPT/ nlopt-2.4.2* swift-0.95-RC6*
-	sed -i '/^BINFOLDER/d' ${HOME}/.bashrc
-	sed -i '/^PFDIR/d' ${HOME}/.bashrc
-	sed -i '/^alias FFSingleLayer/d' ${HOME}/.bashrc
+	rm -rf $$HOME/.MIDAS

@@ -1,4 +1,3 @@
 #!/bin/bash -eu
-source ${HOME}/.bashrc
-
+source ${HOME}/.MIDAS/paths
 ${BINFOLDER}/SaveBinData
