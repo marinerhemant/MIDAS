@@ -244,7 +244,8 @@ int main (int argc, char *argv[])
     idout = fopen(fnidout,"w");
     fprintf(extout,"YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)\n");
     fprintf(inpout,"YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta\n");
-    for (i=0;i<counterIDs;i++){
+    printf("We reached here"); fflush(stdout);
+	for (i=0;i<counterIDs;i++){
 		fprintf(idout,"%d\n",SpIDs[i]);
 	}
 	for (i=0;i<counterTotal;i++){
