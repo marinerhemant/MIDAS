@@ -1,7 +1,5 @@
 #!/bin/bash
 
-source ~/.bashrc
-
 echo "FF analysis code for Multiple Layers and Multiple rings:"
 echo "Version: 2, 2014/11/10, in case of problems contact hsharma@anl.gov"
 
@@ -18,6 +16,9 @@ STARTLAYERNR=$2
 ENDLAYERNR=$3
 NCPUS=$4
 STARTFNRFIRSTLAYER=$( awk '$1 ~ /^StartFileNrFirstLayer/ { print $2 } ' ${TOP_PARAM_FILE} )
+
+BINFolder=/clhome/TOMO1/PeaksAnalysisHemant/HEDM_V2/FF_HEDM/
+
 RingNrs=$( awk '$1 ~ /^RingThresh/ { print $2 }' ${TOP_PARAM_FILE} )
 SGNum=$( awk '$1 ~ /^SpaceGroup/ { print $2 }' ${TOP_PARAM_FILE} )
 Thresholds=($( awk '$1 ~ /^RingThresh/ { print $3 }' ${TOP_PARAM_FILE} ))

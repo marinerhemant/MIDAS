@@ -1,3 +1,3 @@
 #!/bin/bash
-
-/clhome/TOMO1/PeaksAnalysisHemant/HEDM_V2/FF_HEDM/bin/PeaksFittingPerFile $1 $2 $3
+source ${HOME}/.bashrc
+${BINFOLDER}/PeaksFittingPerFile $1 $2 $3
