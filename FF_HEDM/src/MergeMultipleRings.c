@@ -98,13 +98,11 @@ int main (int argc, char *argv[])
     int LowNr;
     int RingNumbers[50], nRings=0, RingToIndex, rnr;
     char *hklfn = "hkls.csv";
-    printf("We reached here.\n"); fflush(stdout);
 	FILE *hklf = fopen(hklfn,"r");
 	if (hklf == NULL){
 		printf("Could not read the hkl file. Exiting.\n");
 		return 1;
 	}
-    printf("We reached here.\n"); fflush(stdout);
 	fgets(aline,2000,hklf);
 	double dspacing[nRings], ds;
 	while (fgets(aline,2000,hklf)!=NULL){
@@ -116,7 +114,6 @@ int main (int argc, char *argv[])
 			}
 		}
 	}
-    printf("We reached here.\n"); fflush(stdout);
 	while (fgets(aline,2000,fileParam)!=NULL){
 		str = "LayerNr ";
         LowNr = strncmp(aline,str,strlen(str));
@@ -150,7 +147,6 @@ int main (int argc, char *argv[])
             continue;
         }
 	}
-    printf("We reached here.\n"); fflush(stdout);
     char fnInputAll[1024], fnExtraAll[1024],fnSpIDs[1024];
     FILE *inp, *ext;
     FILE *sp;
@@ -161,13 +157,11 @@ int main (int argc, char *argv[])
     SpotsTemp = allocMatrixInt(MAX_SPOTS_FILE,2);
     SpIDs = malloc(MAX_SPOTS_FILE*sizeof(*SpIDs));
     sprintf(FileStem,"%s_%d",fs,LayerNr);
-    printf("We reached here.\n"); fflush(stdout);
     int counterTotal=0;
     double dumf;
     int startcntr=0;
     int cntr;
     int counterIDs=0,IDTemp;
-    printf("We reached here.\n"); fflush(stdout);
     int startIDNr[nRings], endIDNr[nRings];
     for (i=0;i<nRings;i++){
 	    sprintf(fnInputAll,"%s/Ring%d/PeakSearch/%s/InputAll.csv",Folder,RingNumbers[i],FileStem);
@@ -233,15 +227,15 @@ int main (int argc, char *argv[])
     sprintf(fnidout,"%s/SpotsToIndex.csv",Folder);
     sprintf(fnidshash,"%s/IDsHash.csv",Folder);
     FILE *idshashout = fopen(fnidshash,"w");
-    for (i=0;i<nRings;i++){
-		fprintf(idshashout,"%d %d %d %lf\n",RingNumbers[i],startIDNr[i],endIDNr[i],dspacing[i]);
-	}
     inpout = fopen(fninpout,"w");
     extout = fopen(fnextout,"w");
     if (extout == NULL){
         printf("Could not open file for writing.\n");
         return 1;
     }
+    for (i=0;i<nRings;i++){
+		fprintf(idshashout,"%d %d %d %lf\n",RingNumbers[i],startIDNr[i],endIDNr[i],dspacing[i]);
+	}
     idout = fopen(fnidout,"w");
     fprintf(extout,"YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)\n");
     fprintf(inpout,"YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta\n");
