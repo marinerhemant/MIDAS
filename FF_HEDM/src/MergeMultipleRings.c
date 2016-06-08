@@ -107,6 +107,7 @@ int main (int argc, char *argv[])
 	fgets(aline2,2000,hklf);
 	double dspacing[nRings], ds;
 	while (fgets(aline,2000,fileParam)!=NULL){
+		printf("%s\n",aline);
 		str = "LayerNr ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
