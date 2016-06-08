@@ -105,7 +105,6 @@ int main (int argc, char *argv[])
 		return 1;
 	}
 	fgets(aline2,2000,hklf);
-	double dspacing[nRings], ds;
 	while (fgets(aline,2000,fileParam)!=NULL){
 		//printf("%s\n",aline);
 		str = "LayerNr ";
@@ -140,6 +139,7 @@ int main (int argc, char *argv[])
             continue;
         }
 	}
+	double dspacing[nRings], ds;
 	while (fgets(aline2,2000,hklf)!=NULL){
 		sscanf(aline2,"%s %s %s %lf %d %s %s %s %s %s %s", dummy, dummy, 
 			dummy, &ds, &rnr, dummy, dummy, dummy, dummy, dummy, dummy);
@@ -241,15 +241,12 @@ int main (int argc, char *argv[])
 		printf("Could not open hash file for writing.\n");
         return 1;
 	}
-    printf("We reached here\n"); fflush(stdout);
     for (i=0;i<nRings;i++){
 		fprintf(idshashout,"%d %d %d %12.6lf\n",RingNumbers[i],startIDNr[i],endIDNr[i],dspacing[i]);
 	}
-    printf("We reached here\n"); fflush(stdout);
     idout = fopen(fnidout,"w");
     fprintf(extout,"YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)\n");
     fprintf(inpout,"YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta\n");
-    printf("We reached here\n"); fflush(stdout);
 	for (i=0;i<counterIDs;i++){
 		fprintf(idout,"%d\n",SpIDs[i]);
 	}
