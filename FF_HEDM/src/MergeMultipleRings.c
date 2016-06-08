@@ -105,16 +105,6 @@ int main (int argc, char *argv[])
 	}
 	fgets(aline,2000,hklf);
 	double dspacing[nRings], ds;
-	while (fgets(aline,2000,hklf)!=NULL){
-		sscanf(aline,"%s %s %s %lf %d %s %s %s %s %s %s", dummy, dummy, 
-			dummy, &ds, &rnr, dummy, dummy, dummy, dummy, dummy, dummy);
-		printf("%d %lf\n",rnr, ds);
-		for (i=0;i<nRings;i++){
-			if (RingNumbers[i] == rnr){
-				dspacing[i] = ds;
-			}
-		}
-	}
 	while (fgets(aline,2000,fileParam)!=NULL){
 		str = "LayerNr ";
         LowNr = strncmp(aline,str,strlen(str));
@@ -147,6 +137,16 @@ int main (int argc, char *argv[])
             sscanf(aline,"%s %d", dummy, &RingToIndex);
             continue;
         }
+	}
+	while (fgets(aline,2000,hklf)!=NULL){
+		sscanf(aline,"%s %s %s %lf %d %s %s %s %s %s %s", dummy, dummy, 
+			dummy, &ds, &rnr, dummy, dummy, dummy, dummy, dummy, dummy);
+		for (i=0;i<nRings;i++){
+			if (RingNumbers[i] == rnr){
+				dspacing[i] = ds;
+				printf("%d %lf\n",rnr, ds);
+			}
+		}
 	}
     char fnInputAll[1024], fnExtraAll[1024],fnSpIDs[1024];
     FILE *inp, *ext;
