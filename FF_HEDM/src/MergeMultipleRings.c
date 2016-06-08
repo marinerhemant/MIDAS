@@ -148,7 +148,6 @@ int main (int argc, char *argv[])
 			//printf("%d\n",RingNumbers[i]);
 			if (RingNumbers[i] == rnr){
 				dspacing[i] = ds;
-				printf("%d %lf\n",rnr, ds);
 			}
 		}
 	}
@@ -238,6 +237,7 @@ int main (int argc, char *argv[])
         printf("Could not open file for writing.\n");
         return 1;
     }
+    printf("We reached here"); fflush(stdout);
     for (i=0;i<nRings;i++){
 		fprintf(idshashout,"%d %d %d %lf\n",RingNumbers[i],startIDNr[i],endIDNr[i],dspacing[i]);
 	}
