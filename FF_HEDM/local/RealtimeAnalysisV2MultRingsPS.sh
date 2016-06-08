@@ -142,6 +142,7 @@ do
    mv SpotsToIndex* ${OutFldr}
    mv InputAll* ${OutFldr}
    mv ${PFName} ${OutFldr}
+   mv IDsHash.csv ${OutFldr}
    cp hkls.csv ${OutFldr}
    cd ${OutFldr}
    cp paramstest_RingNr${RingX}.txt paramstest.txt
