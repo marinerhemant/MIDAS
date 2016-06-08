@@ -92,6 +92,7 @@ int main (int argc, char *argv[])
     FILE *fileParam;
     ParamFN = argv[1];
     char aline[2000];
+    char aline2[2000];
     fileParam = fopen(ParamFN,"r");
     char *str, dummy[1000],folder[1024],Folder[1024],FileStem[1024],fs[1024];
     int LayerNr;
@@ -103,7 +104,7 @@ int main (int argc, char *argv[])
 		printf("Could not read the hkl file. Exiting.\n");
 		return 1;
 	}
-	fgets(aline,2000,hklf);
+	fgets(aline2,2000,hklf);
 	double dspacing[nRings], ds;
 	while (fgets(aline,2000,fileParam)!=NULL){
 		str = "LayerNr ";
@@ -138,10 +139,10 @@ int main (int argc, char *argv[])
             continue;
         }
 	}
-	while (fgets(aline,2000,hklf)!=NULL){
-		sscanf(aline,"%s %s %s %lf %d %s %s %s %s %s %s", dummy, dummy, 
+	while (fgets(aline2,2000,hklf)!=NULL){
+		sscanf(aline2,"%s %s %s %lf %d %s %s %s %s %s %s", dummy, dummy, 
 			dummy, &ds, &rnr, dummy, dummy, dummy, dummy, dummy, dummy);
-		printf("%d %lf\n",rnr, ds);
+		printf("%d %lf %d\n",rnr, ds,nRings);
 		for (i=0;i<nRings;i++){
 			printf("%d\n",RingNumbers[i]);
 			if (RingNumbers[i] == rnr){
