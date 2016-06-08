@@ -17,10 +17,9 @@ all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting 
 
 local: packages flags all scripts
 
-orthros:
+orthros: all
 	Orthros/./GetPackages.sh
 	$(eval CFLAGSNLOPT=-I$(shell pwd)/NLOPT/include -L$(shell pwd)/NLOPT/lib -lnlopt)
-	all
 	Orthros/setup.sh
 
 cuda: help indexrefinecuda peaks mergeoverlapsgpu fittiltbclsdsample \
