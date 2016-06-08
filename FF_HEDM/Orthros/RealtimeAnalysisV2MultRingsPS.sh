@@ -42,7 +42,7 @@ do
    i=0
    echo "Processing peaks for layer: $LAYERNR"
    StartFileNr=$((${STARTFNRFIRSTLAYER}+$(($NrFilesPerLayer*$((${LAYERNR}-1))))))
-   ${BINFolder}/bin/GetHKLList ${TOP_PARAM_FILE}
+   ${BINFOLDER}/bin/GetHKLList ${TOP_PARAM_FILE}
    echo "StartFileNumber $StartFileNr"
    echo "Creating overall parameter file for this Layer:"
    PFName=${flr}/Layer${LAYERNR}_MultiRing_${fstm}
@@ -84,7 +84,7 @@ do
             echo "StartFileNr $StartFileNr" >> ${ThisParamFileName}
             echo "Output will be saved in $Fldr"
             echo "RingNumbers $RINGNR" >> $PFName
-            ${BINFolder}/bin/FitTiltBCLsdSample ${ThisParamFileName} ${FLTFN}
+            ${BINFOLDER}/bin/FitTiltBCLsdSample ${ThisParamFileName} ${FLTFN}
             cp ${Fldr}/PeakSearch/${FileStem}_${LAYERNR}/paramstest.txt ${OutFldr}/paramstest_RingNr${RINGNR}.txt
             cp ${Fldr}/PeakSearch/${FileStem}_${LAYERNR}/Radius_StartNr_${SNr}_EndNr_${ENr}_RingNr_${RINGNR}.csv ${OutFldr}/.
             RingX=$RINGNR
@@ -92,7 +92,7 @@ do
             i=$((i + 1))
 	    echo $i
         done
-        ${BINFolder}/bin/MergeMultipleRings ${PFName}
+        ${BINFOLDER}/bin/MergeMultipleRings ${PFName}
    else
        for RINGNR in $RingNrs
        do
@@ -115,7 +115,7 @@ do
 	    i=$((i+1))
 	    echo $i
        done
-       ${BINFolder}./RunPeaksMult.sh ${TOP_PARAM_FILE} ${NCPUS} $RINGNRSFILE $ParamFNStem $fstm
+       ${BINFOLDER}./RunPeaksMult.sh ${TOP_PARAM_FILE} ${NCPUS} $RINGNRSFILE $ParamFNStem $fstm
        rc=$(qstat | grep tomo1 | grep " 384" | awk '{ print $1 }')
        echo $rc
        mv $RINGNRSFILE ${OutFldr}
@@ -136,7 +136,7 @@ do
             i=$((i + 1))
 	    echo $i
        done
-       ${BINFolder}/bin/MergeMultipleRings ${PFName}
+       ${BINFOLDER}/bin/MergeMultipleRings ${PFName}
    fi
    cd ${SeedFolder}
    mv SpotsToIndex* ${OutFldr}
@@ -161,7 +161,7 @@ do
         echo "RingRadii $rad" >> paramstest.txt
    done
    echo "SpaceGroup $SGNum" >> paramstest.txt
-   ${BINFolder}/IndexRefine.sh ${NCPUS} ${TOP_PARAM_FILE}
+   ${BINFOLDER}/IndexRefine.sh ${NCPUS} ${TOP_PARAM_FILE}
    rc=$(qstat | grep tomo1 | grep " 384" | awk '{ print $1 }')
    echo $rc
    rm -rf ${SeedFolder}/output
