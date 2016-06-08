@@ -109,7 +109,7 @@ int main (int argc, char *argv[])
 	double dspacing[nRings], ds;
 	while (fgets(aline,2000,hklf)!=NULL){
 		sscanf(aline,"%s %s %s %lf %d %s %s %s %s %s %s", dummy, dummy, 
-			dummy, ds, rnr, dummy, dummy, dummy, dummy, dummy, dummy);
+			dummy, &ds, &rnr, dummy, dummy, dummy, dummy, dummy, dummy);
 		for (i=0;i<nRings;i++){
 			if (RingNumbers[i] == rnr){
 				dspacing[i] = ds;
