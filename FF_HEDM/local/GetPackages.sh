@@ -14,7 +14,7 @@ make install
 echo $PATH | grep -q swift
 if [[ $? == 1 ]];
 then
-	echo "       export PATH=${dirThis}/NLOPT:${dirThis}/swift-0.95-RC6/bin:${PATH}" >> ${HOME}/.bashrc;
+	echo "export PATH=${dirThis}/NLOPT:${dirThis}/swift-0.95-RC6/bin:\$PATH" >> ${HOME}/.bashrc;
 	echo "Placed paths at"
 	echo ${dirThis}/NLOPT:${dirThis}/swift-0.95-RC6/bin:${PATH}
 fi
