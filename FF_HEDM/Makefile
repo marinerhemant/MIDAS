@@ -6,7 +6,7 @@ NLOPT=""
 ifneq ($(NLOPT),"")
 	CFLAGSNLOPT=-I$(NLOPT)/include -L$(NLOPT)/lib -lnlopt
 else
-	CFLAGSNLOPT=-lnlopt
+	CFLAGSNLOPT=-I$${HOME}/.MIDAS/NLOPT/include -L$${HOME}/.MIDAS/NLOPT/lib -lnlopt
 endif
 SRCDIR=src/
 BINDIR=bin/
@@ -22,7 +22,6 @@ orthros: deps all
 
 deps:
 	Orthros/./GetPackages.sh
-	$(eval CFLAGSNLOPT=-I$$HOME/.MIDAS/NLOPT/include -L$$HOME/.MIDAS/NLOPT/lib -lnlopt)
 
 cuda: help indexrefinecuda peaks mergeoverlapsgpu fittiltbclsdsample \
 	calcradius mergerings processgrains hkls bindata calibrant findsaturatedpx fittiltx fitwedge
@@ -49,7 +48,7 @@ packages: local/GetPackages.sh
 	local/./GetPackages.sh
 
 flags:
-	$(eval CFLAGSNLOPT=-I$$HOME/.MIDAS/NLOPT/include -L$$HOME/.MIDAS/NLOPT/lib -lnlopt)
+	@echo $(CFLAGSNLOPT)
 
 calibrant: $(SRCDIR)Calibrant.c
 	$(CC) $(SRCDIR)Calibrant.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)Calibrant $(CFLAGS) $(CFLAGSNLOPT) 
@@ -111,5 +110,4 @@ mergeoverlapsgpu: $(SRCDIR)MergeOverlappingPeaksGPU.c
 clean:
 	rm -rf $(BINDIR)
 	mkdir $(BINDIR)
-	rm -rf NLOPT/ nlopt-2.4.2* swift-0.95-RC6*
 	rm -rf $$HOME/.MIDAS
