@@ -162,6 +162,7 @@ int main (int argc, char *argv[])
     int startcntr=0;
     int cntr;
     int counterIDs=0,IDTemp;
+    printf("We reached here.\n"); fflush(stdout);
     int startIDNr[nRings], endIDNr[nRings];
     for (i=0;i<nRings;i++){
 	    sprintf(fnInputAll,"%s/Ring%d/PeakSearch/%s/InputAll.csv",Folder,RingNumbers[i],FileStem);
