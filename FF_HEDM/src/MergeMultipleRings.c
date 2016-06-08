@@ -237,6 +237,10 @@ int main (int argc, char *argv[])
         printf("Could not open file for writing.\n");
         return 1;
     }
+    if (idshashout == NULL){
+		printf("Could not open hash file for writing.\n");
+        return 1;
+	}
     printf("We reached here\n"); fflush(stdout);
     for (i=0;i<nRings;i++){
 		fprintf(idshashout,"%d %d %d %12.6lf\n",RingNumbers[i],startIDNr[i],endIDNr[i],dspacing[i]);
