@@ -170,7 +170,7 @@ StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double
 {
 	int i,j;
 	struct data_StrainFit mydata;
-	double gobs[3];//,lenGobs;
+	double gobs[3],lenGobs;
 	mydata.nspots = nspots;
 	int id;
 	double IDHash[NR_MAX_IDS_PER_GRAIN][4];
@@ -185,11 +185,11 @@ StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double
 	int ringNr;
 	double ds0, dsObs;
 	for (i=0;i<nspots;i++){
-		//lenGobs = CalcNorm3(SpotsInfo[i][0],SpotsInfo[i][1],SpotsInfo[i][2]);
+		lenGobs = CalcNorm3(SpotsInfo[i][0],SpotsInfo[i][1],SpotsInfo[i][2]);
 		dsObs = wavelength/(2*sin(atan((CalcNorm2(SpotsInfo[i][3],SpotsInfo[i][4]))/Distance)/2));
-		gobs[0] = SpotsInfo[i][0];// /lenGobs;
-		gobs[1] = SpotsInfo[i][1];// /lenGobs;
-		gobs[2] = SpotsInfo[i][2];// /lenGobs;
+		gobs[0] = SpotsInfo[i][0]/lenGobs;
+		gobs[1] = SpotsInfo[i][1]/lenGobs;
+		gobs[2] = SpotsInfo[i][2]/lenGobs;
 		id = (int) SpotsInfo[i][7];
 		for (j=0;j<nRings;j++){
 			if (id >= (int)IDHash[j][1] && id < (int)IDHash[j][2]){
