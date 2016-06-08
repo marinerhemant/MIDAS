@@ -99,8 +99,6 @@ int main (int argc, char *argv[])
     int RingNumbers[50], nRings=0, RingToIndex, rnr;
     char *hklfn = "hkls.csv";
 	FILE *hklf = fopen(hklfn,"r");
-    printf("We reached here.\n"); fflush(stdout);
-
 	if (hklf == NULL){
 		printf("Could not read the hkl file. Exiting.\n");
 		return 1;
@@ -139,6 +137,7 @@ int main (int argc, char *argv[])
             continue;
         }
 	}
+    printf("We reached here.\n"); fflush(stdout);
 	double dspacing[nRings], ds;
 	while (fgets(aline,2000,hklf)!=NULL){
 		sscanf(aline,"%s %s %s %lf %d %s %s %s %s %s %s", dummy, dummy, 
