@@ -98,12 +98,25 @@ int main (int argc, char *argv[])
     int LowNr;
     int RingNumbers[50], nRings=0, RingToIndex, rnr;
     char *hklfn = "hkls.csv";
+    printf("We reached here.\n"); fflush(stdout);
 	FILE *hklf = fopen(hklfn,"r");
 	if (hklf == NULL){
 		printf("Could not read the hkl file. Exiting.\n");
 		return 1;
 	}
-	fgets(aline,1000,hklf);
+    printf("We reached here.\n"); fflush(stdout);
+	fgets(aline,2000,hklf);
+	double dspacing[nRings], ds;
+	while (fgets(aline,2000,hklf)!=NULL){
+		sscanf(aline,"%s %s %s %lf %d %s %s %s %s %s %s", dummy, dummy, 
+			dummy, ds, rnr, dummy, dummy, dummy, dummy, dummy, dummy);
+		for (i=0;i<nRings;i++){
+			if (RingNumbers[i] == rnr){
+				dspacing[i] = ds;
+			}
+		}
+	}
+    printf("We reached here.\n"); fflush(stdout);
 	while (fgets(aline,2000,fileParam)!=NULL){
 		str = "LayerNr ";
         LowNr = strncmp(aline,str,strlen(str));
@@ -138,16 +151,6 @@ int main (int argc, char *argv[])
         }
 	}
     printf("We reached here.\n"); fflush(stdout);
-	double dspacing[nRings], ds;
-	while (fgets(aline,2000,hklf)!=NULL){
-		sscanf(aline,"%s %s %s %lf %d %s %s %s %s %s %s", dummy, dummy, 
-			dummy, ds, rnr, dummy, dummy, dummy, dummy, dummy, dummy);
-		for (i=0;i<nRings;i++){
-			if (RingNumbers[i] == rnr){
-				dspacing[i] = ds;
-			}
-		}
-	}
     char fnInputAll[1024], fnExtraAll[1024],fnSpIDs[1024];
     FILE *inp, *ext;
     FILE *sp;
@@ -158,6 +161,7 @@ int main (int argc, char *argv[])
     SpotsTemp = allocMatrixInt(MAX_SPOTS_FILE,2);
     SpIDs = malloc(MAX_SPOTS_FILE*sizeof(*SpIDs));
     sprintf(FileStem,"%s_%d",fs,LayerNr);
+    printf("We reached here.\n"); fflush(stdout);
     int counterTotal=0;
     double dumf;
     int startcntr=0;
