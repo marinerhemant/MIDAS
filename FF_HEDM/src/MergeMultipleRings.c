@@ -224,27 +224,28 @@ int main (int argc, char *argv[])
 		}
 	}
 	//Write files
-	FILE *inpout, *extout, *idout;
+	FILE *inpout, *extout, *idout, *idshashout;
 	char fninpout[1024], fnextout[1024], fnidout[1024], fnidshash[1024];
 	sprintf(fninpout,"%s/InputAll.csv",Folder);
     sprintf(fnextout,"%s/InputAllExtraInfoFittingAll.csv",Folder);
     sprintf(fnidout,"%s/SpotsToIndex.csv",Folder);
     sprintf(fnidshash,"%s/IDsHash.csv",Folder);
-    FILE *idshashout = fopen(fnidshash,"w");
+    idshashout = fopen(fnidshash,"w");
     inpout = fopen(fninpout,"w");
     extout = fopen(fnextout,"w");
     if (extout == NULL){
         printf("Could not open file for writing.\n");
         return 1;
     }
-    printf("We reached here"); fflush(stdout);
+    printf("We reached here\n"); fflush(stdout);
     for (i=0;i<nRings;i++){
-		fprintf(idshashout,"%d %d %d %lf\n",RingNumbers[i],startIDNr[i],endIDNr[i],dspacing[i]);
+		fprintf(idshashout,"%d %d %d %12.6lf\n",RingNumbers[i],startIDNr[i],endIDNr[i],dspacing[i]);
 	}
+    printf("We reached here\n"); fflush(stdout);
     idout = fopen(fnidout,"w");
     fprintf(extout,"YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)\n");
     fprintf(inpout,"YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta\n");
-    printf("We reached here"); fflush(stdout);
+    printf("We reached here\n"); fflush(stdout);
 	for (i=0;i<counterIDs;i++){
 		fprintf(idout,"%d\n",SpIDs[i]);
 	}
