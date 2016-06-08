@@ -107,7 +107,7 @@ int main (int argc, char *argv[])
 	fgets(aline2,2000,hklf);
 	double dspacing[nRings], ds;
 	while (fgets(aline,2000,fileParam)!=NULL){
-		printf("%s\n",aline);
+		//printf("%s\n",aline);
 		str = "LayerNr ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -143,9 +143,9 @@ int main (int argc, char *argv[])
 	while (fgets(aline2,2000,hklf)!=NULL){
 		sscanf(aline2,"%s %s %s %lf %d %s %s %s %s %s %s", dummy, dummy, 
 			dummy, &ds, &rnr, dummy, dummy, dummy, dummy, dummy, dummy);
-		printf("%d %lf %d\n",rnr, ds,nRings);
+		//printf("%d %lf %d\n",rnr, ds,nRings);
 		for (i=0;i<nRings;i++){
-			printf("%d\n",RingNumbers[i]);
+			//printf("%d\n",RingNumbers[i]);
 			if (RingNumbers[i] == rnr){
 				dspacing[i] = ds;
 				printf("%d %lf\n",rnr, ds);
