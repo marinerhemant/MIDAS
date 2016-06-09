@@ -179,7 +179,7 @@ StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double
 	char *hashfn = "IDsHash.csv";
 	FILE *hashfile = fopen(hashfn,"r");
 	while (fgets(aline,2000,hashfile)!=NULL){
-		sscanf(aline,"%lf %lf %lf %lf",IDHash[nRings][0],IDHash[nRings][0],IDHash[nRings][0],IDHash[nRings][0]);
+		sscanf(aline,"%lf %lf %lf %lf",&IDHash[nRings][0],&IDHash[nRings][0],&IDHash[nRings][0],&IDHash[nRings][0]);
 		printf("%lf %lf %lf %lf\n",IDHash[nRings][0],IDHash[nRings][0],IDHash[nRings][0],IDHash[nRings][0]);
 		nRings++;
 	}
