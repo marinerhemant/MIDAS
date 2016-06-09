@@ -180,6 +180,7 @@ StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double
 	FILE *hashfile = fopen(hashfn,"r");
 	while (fgets(aline,2000,hashfile)!=NULL){
 		sscanf(aline,"%lf %lf %lf %lf",IDHash[nRings][0],IDHash[nRings][0],IDHash[nRings][0],IDHash[nRings][0]);
+		printf("%lf %lf %lf %lf\n",IDHash[nRings][0],IDHash[nRings][0],IDHash[nRings][0],IDHash[nRings][0]);
 		nRings++;
 	}
 	int ringNr;
@@ -191,6 +192,7 @@ StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double
 		gobs[1] = SpotsInfo[i][1]/lenGobs;
 		gobs[2] = SpotsInfo[i][2]/lenGobs;
 		id = (int) SpotsInfo[i][7];
+		printf("%d\n",id);
 		for (j=0;j<nRings;j++){
 			if (id >= (int)IDHash[j][1] && id < (int)IDHash[j][2]){
 				ds0 = IDHash[j][3];

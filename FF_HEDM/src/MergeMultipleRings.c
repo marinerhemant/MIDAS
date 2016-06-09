@@ -201,7 +201,7 @@ int main (int argc, char *argv[])
 			counterTotal++;
 		}
 		startIDNr[i] = startcntr + 1;
-		endIDNr[i] = counterTotal+ 1;
+		endIDNr[i] = counterTotal;
 		startcntr = counterTotal;
 		fclose(inp);
 		fclose(ext);
