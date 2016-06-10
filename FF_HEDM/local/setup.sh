@@ -14,6 +14,13 @@ echo localhost processPeaksFullImg ${LOCAL_DIR}/ProcessPeaksFullImg.sh >> ${LOCA
 ##### Setup sites file
 sitesStr='   <profile namespace="karajan" key="initialScore">10000</profile>'
 nCPUs=$(cat /proc/cpuinfo | grep processor | wc -l)
+isIntel=$(cat /proc/cpuinfo | grep Intel | wc -l)
+if [[ $isIntel -eq 0 ]];
+then
+	(( nCPUs -- ))
+else
+	nCPUs=$(( nCPUs/2 ))
+fi
 (( nCPUs -- ))
 if [[ ${nCPUs} -lt 10 ]];
 then
