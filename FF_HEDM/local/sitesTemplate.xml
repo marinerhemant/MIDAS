@@ -4,6 +4,6 @@
  <pool handle="localhost">
    <execution provider="local"/>
    <filesystem provider="local"/>
-   <workdirectory>${HOME}/swiftwork</workdirectory>
+   <workdirectory>/tmp/swiftwork</workdirectory>
  </pool>
 </config>

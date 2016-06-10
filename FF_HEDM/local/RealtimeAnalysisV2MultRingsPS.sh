@@ -116,8 +116,6 @@ do
 	    echo $i
        done
        ${PFDIR}/RunPeaksMult.sh ${TOP_PARAM_FILE} ${NCPUS} $RINGNRSFILE $ParamFNStem $fstm
-       rc=$(qstat | grep tomo1 | grep " 384" | awk '{ print $1 }')
-       echo $rc
        mv $RINGNRSFILE ${OutFldr}
        #if [ -z "rc" ];
        #then
@@ -163,8 +161,6 @@ do
    done
    echo "SpaceGroup $SGNum" >> paramstest.txt
    ${PFDIR}/IndexRefine.sh ${NCPUS} ${TOP_PARAM_FILE}
-   rc=$(qstat | grep tomo1 | grep " 384" | awk '{ print $1 }')
-   echo $rc
    rm -rf ${SeedFolder}/output
    #if [ -z "rc" ];
    #then
