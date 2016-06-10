@@ -20,6 +20,7 @@ then
 	(( nCPUs -- ))
 else
 	nCPUs=$(( nCPUs/2 ))
+	(( nCPUs -- ))
 fi
 (( nCPUs -- ))
 if [[ ${nCPUs} -lt 10 ]];
