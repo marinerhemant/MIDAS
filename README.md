@@ -13,3 +13,7 @@ For individual help type "make helpnf" or "make helpff" in the terminal.
 To compile individually, need to go to the sub-folder and "make" individually.
 Would need NLOPT and TIFF packages.
 For experimental CUDA codes: go to FF_HEDM folder and "make cuda". This doesn't require any external library.
+
+# Local installation
+To install on a local computer, go to FF_HEDM folder and "make local".
+This will download NLOPT and SWIFT packages and install shortcuts in ${HOME}/.MIDAS directory.
