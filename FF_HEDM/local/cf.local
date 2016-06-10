@@ -8,4 +8,4 @@ lazy.errors=true
 sitedir.keep=false
 file.gc.enabled=false
 wrapper.parameter.mode=args
-foreach.max.threads=32
+foreach.max.threads=64
