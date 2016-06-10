@@ -193,6 +193,7 @@ StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double
 		gobs[1] = SpotsInfo[i][1]/lenGobs;
 		gobs[2] = SpotsInfo[i][2]/lenGobs;
 		id = (int) SpotsInfo[i][7];
+		printf("ID: %d\n",id);
 		for (j=0;j<nRings;j++){
 			if (id >= IDHash[j][1] && id < IDHash[j][2]){
 				ds0 = dspacings[j];
