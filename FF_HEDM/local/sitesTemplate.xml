@@ -4,6 +4,6 @@
  <pool handle="localhost">
    <execution provider="local"/>
    <filesystem provider="local"/>
-   <workdirectory>/clhome/TOMO1/swiftwork</workdirectory>
+   <workdirectory>$PHOME}/swiftwork</workdirectory>
  </pool>
 </config>
