@@ -421,6 +421,35 @@ int main(int argc, char *argv[])
 	double BeamCenter = 0, FullVol = 0,VNorm;
 	FinalMatrix = allocMatrix(nGrainPositions,43);
 	int rown2;
+	int IDHash[NR_MAX_IDS_PER_GRAIN][3];
+	double dspacings[NR_MAX_IDS_PER_GRAIN];
+	int nRings=0;
+	char *hashfn = "IDsHash.csv";
+	FILE *hashfile = fopen(hashfn,"r");
+	while (fgets(aline,2000,hashfile)!=NULL){
+		sscanf(aline,"%d %d %d %lf",&IDHash[nRings][0],&IDHash[nRings][1],&IDHash[nRings][2],&dspacings[nRings]);
+		nRings++;
+	}
+	double **SpotMatrix, **InputMatrix;
+	SpotMatrix = allocMatrix(NR_MAX_IDS_PER_GRAIN*nGrainPositions,5);
+	InputMatrix = allocMatrix(MAX_N_IDS,4);
+	int counterSpotMatrix = 0;
+	char *inputallfn = "InputAllExtraInfoFittingAll.csv";
+	FILE *inpfile = fopen(inputallfn,"r");
+	int counterIF=0;
+	FILE *spotsfile = fopen("SpotMatrix.csv","w");
+	fgets(aline,2000,inpfile);
+	while (fgets(aline,2000,inpfile)!=NULL){
+		sscanf(aline,"%s %s %lf %s %lf %s %s %s %s %s %s %lf %lf %s",dummy, dummy, &InputMatrix[counterIF][0],
+			dummy, &InputMatrix[counterIF][1], dummy, dummy, dummy, dummy, dummy, dummy, &InputMatrix[counterIF][2],
+			&InputMatrix[counterIF][3],dummy);
+		if ((int)InputMatrix[counterIF][1] != counterIF+1){
+			printf("IDs dont match.\nExiting\n"); 
+			return(1);
+		}
+		counterIF++;
+	}
+	int rowSpotID;
 	for (i=0;i<nGrainPositions;i++){
 		rown = GrainPositions[i];
 		DoneAlready = 0;
@@ -469,6 +498,13 @@ int main(int argc, char *argv[])
 			SpotsInfo[j][5] = dummySampleInfo[j*22+7];
 			SpotsInfo[j][6] = dummySampleInfo[j*22+8];
 			SpotsInfo[j][7] = dummySampleInfo[j*22+0]; // SpotID
+			rowSpotID = (int) dummySampleInfo[j*22+0] - 1;
+			SpotMatrix[counterSpotMatrix][0] = (double)IDs[rown];
+			SpotMatrix[counterSpotMatrix][1] = dummySampleInfo[j*22+0];
+			SpotMatrix[counterSpotMatrix][2] = InputMatrix[rowSpotID][0];
+			SpotMatrix[counterSpotMatrix][3] = InputMatrix[rowSpotID][2];
+			SpotMatrix[counterSpotMatrix][4] = InputMatrix[rowSpotID][3];
+			counterSpotMatrix++;
 		}
 		LatticeParameterFit[0] = OPs[rown][12];
 		LatticeParameterFit[1] = OPs[rown][13];
@@ -485,7 +521,7 @@ int main(int argc, char *argv[])
 		Orient[2][0] = OPs[rown][6];
 		Orient[2][1] = OPs[rown][7];
 		Orient[2][2] = OPs[rown][8];
-		int retval = StrainTensorKenesei(nspots,SpotsInfo,Distance,wavelength,StrainTensorSampleKen);
+		int retval = StrainTensorKenesei(nspots,SpotsInfo,Distance,wavelength,StrainTensorSampleKen,IDHash,dspacings,nRings);
 		if (retval == 0){
 			printf("Did not read correct hash table for IDs. Exiting\n");
 			return;
@@ -512,6 +548,14 @@ int main(int argc, char *argv[])
 	printf("Number of grains: %d.\n",nGrains);
 	BeamCenter /= FullVol;
 	// Write file
+	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\n");
+	for (i=0;i<counterSpotMatrix;i++){
+		for (j=0;j<5;j++){
+			fprintf(spotsfile,"%lf\t",SpotMatrix[i][j]);
+		}
+		fprintf(spotsfile,"\n");
+	}
+	fclose(spotsfile);
 	fprintf(GrainsFile,"%%NumGrains %d\n",nGrains);
 	fprintf(GrainsFile, "%%BeamCenter %f\n",BeamCenter);
 	fprintf(GrainsFile, "%%BeamThickness %f\n",BeamThickness);

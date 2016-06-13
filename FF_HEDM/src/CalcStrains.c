@@ -165,7 +165,9 @@ double problem_function(
 }
 
 inline int
-StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double Distance, double wavelength, double StrainTensorSample[3][3])
+StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double Distance, double wavelength,
+		double StrainTensorSample[3][3], int IDHash[NR_MAX_IDS_PER_GRAIN][3],
+		double dspacings[NR_MAX_IDS_PER_GRAIN], int nRings)
 		/*SpotsInfo: 0,1,2 - Gobs, 3,4 - Y,Z spot, 5,6 - Y,Z sim, 7 - ID, G Vec should be normalized or not????*/
 {
 	int i,j;
@@ -173,16 +175,6 @@ StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double
 	double gobs[3],lenGobs;
 	mydata.nspots = nspots;
 	int id;
-	int IDHash[NR_MAX_IDS_PER_GRAIN][3];
-	double dspacings[NR_MAX_IDS_PER_GRAIN];
-	int nRings=0;
-	char aline[2000];
-	char *hashfn = "IDsHash.csv";
-	FILE *hashfile = fopen(hashfn,"r");
-	while (fgets(aline,2000,hashfile)!=NULL){
-		sscanf(aline,"%d %d %d %lf",&IDHash[nRings][0],&IDHash[nRings][1],&IDHash[nRings][2],&dspacings[nRings]);
-		nRings++;
-	}
 	int ringNr;
 	double ds0, dsObs;
 	for (i=0;i<nspots;i++){
