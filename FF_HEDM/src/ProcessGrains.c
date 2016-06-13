@@ -95,7 +95,8 @@ FindInternalAnglesTwins(int nrIDs, int *IDs, int *IDsPerGrain,
 				   double **OPs, double *ID_IA_Mat, int counter, int Pos,
 				   int StartingID, double *Radiuses, int SGNr)
 {
-	int i,j,k,ThisID,ThisID2, AreTwins=0;
+	int i,j,k,ThisID,ThisID2;
+	bool AreTwins=false;
 	ID_IA_Mat[(counter*4)] = (double) StartingID;
 	ID_IA_Mat[(counter*4)+1] = (double) Pos;
 	ID_IA_Mat[(counter*4)+2] = OPs[Pos][IAColNr];
@@ -122,7 +123,7 @@ FindInternalAnglesTwins(int nrIDs, int *IDs, int *IDsPerGrain,
 						 ( fabs(Axis[0]) - fabs(Axis[1]) ) < 0.01 &&
 						 ( fabs(Axis[2]) - fabs(Axis[1]) ) < 0.01;
 				if (AreTwins) {
-					printf("True");
+					printf("True\n");
 					fflush(stdout);
 				}
 				if (fabs(ang) < 0.1 || AreTwins){
