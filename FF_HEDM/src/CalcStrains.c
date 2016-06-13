@@ -118,7 +118,6 @@ CalcStrainTensorFableBeaudoin(double LatCin[6],double LatticeParameterFit[6],
 	double A0Inv[3][3];
 	int i,j;
 	MatInv(A0,A0Inv);
-	//for (i=0;i<3;i++) for (j=0;j<3;j++) printf("%.12f %.12f\n",A[i][j],A0Inv[i][j]);
 	double Prod[3][3];
 	MatMult(A,A0Inv,Prod);
 	double ProdTranspose[3][3];
