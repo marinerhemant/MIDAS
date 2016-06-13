@@ -121,8 +121,8 @@ FindInternalAnglesTwins(int nrIDs, int *IDs, int *IDsPerGrain,
 				//printf("%lf %lf %lf %lf\n",ang,Axis[0],Axis[1],Axis[2]);
 				if (fabs(ang) < 0.1 || 
 					(fabs(ang - 60) < 0.1 && 
-					 fabs(Axis[0])-fabs(Axis[1]) < 0.1 && 
-					 fabs(Axis[2])-fabs(Axis[1]) < 0.1)){
+					 fabs(Axis[0])-fabs(Axis[1]) < 0.01 && 
+					 fabs(Axis[2])-fabs(Axis[1]) < 0.01)){
 					printf("%lf %lf %lf %lf\n",ang,Axis[0],Axis[1],Axis[2]);
 					counter = FindInternalAnglesTwins(nrIDs,IDs,IDsPerGrain,NrIDsPerID,IDsChecked,
 							OPs,ID_IA_Mat,counter,j,ThisID,Radiuses,SGNr);
