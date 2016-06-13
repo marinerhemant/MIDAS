@@ -550,10 +550,8 @@ int main(int argc, char *argv[])
 	// Write file
 	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\n");
 	for (i=0;i<counterSpotMatrix;i++){
-		for (j=0;j<5;j++){
-			fprintf(spotsfile,"%lf\t",SpotMatrix[i][j]);
-		}
-		fprintf(spotsfile,"\n");
+		fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\n",(int)SpotMatrix[i][0],(int)SpotMatrix[i][1],
+			SpotMatrix[i][2],SpotMatrix[i][3],SpotMatrix[i][4]);
 	}
 	fclose(spotsfile);
 	fprintf(GrainsFile,"%%NumGrains %d\n",nGrains);
