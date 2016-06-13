@@ -166,6 +166,7 @@ FindInternalAngles(int nrIDs, int *IDs, int *IDsPerGrain,
 				OrientMat2Quat(OR2,q2);
 				Angle = GetMisOrientation(q1,q2,Axis,&ang,SGNr);
 				if (fabs(ang) < 0.1){
+					printf("%lf %lf %lf %lf\n",ang,Axis[0],Axis[1],Axis[2]);
 					counter = FindInternalAngles(nrIDs,IDs,IDsPerGrain,NrIDsPerID,IDsChecked,
 							OPs,ID_IA_Mat,counter,j,ThisID,Radiuses,SGNr);
 					break;
