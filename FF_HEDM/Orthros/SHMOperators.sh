@@ -9,7 +9,6 @@ fi
 
 if [[ $1 == 128 ]]
 then
-  scp Spots.bin Data.bin nData.bin ExtraInfo.bin puppy20:/dev/shm
   scp Spots.bin Data.bin nData.bin ExtraInfo.bin puppy21:/dev/shm
   scp Spots.bin Data.bin nData.bin ExtraInfo.bin puppy22:/dev/shm
   scp Spots.bin Data.bin nData.bin ExtraInfo.bin puppy37:/dev/shm
