@@ -21,7 +21,7 @@ orthros: deps all
 	Orthros/setup.sh
 
 deps:
-	Orthros/./GetPackages.sh
+	Orthros/GetPackages.sh
 
 cuda: help indexrefinecuda peaks mergeoverlapsgpu fittiltbclsdsample \
 	calcradius mergerings processgrains hkls bindata calibrant findsaturatedpx fittiltx fitwedge
