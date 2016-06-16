@@ -1216,12 +1216,12 @@ CompareSpots(
       etamargin = etamargins[RingNr];
       omemargin = omemargins[(int) floor(fabs(TheorSpots[sp][12]))];  // omemargin depends on eta
   
-      // calc the diff. NOte: smallest in Omega difference is choosen
+      // calc the diff. Note: smallest in Omega difference is choosen
       MatchFound = 0;
       diffOmeBest = 100000;
-      int Pos = iRing*n_eta_bins*n_ome_bins + iEta*n_ome_bins + iOme;
-	  int nspots = ndata[Pos*2];
-      int DataPos = ndata[Pos*2+1];
+      long long int Pos = iRing*n_eta_bins*n_ome_bins + iEta*n_ome_bins + iOme;
+	  long long int nspots = ndata[Pos*2];
+      long long int DataPos = ndata[Pos*2+1];
       for ( iSpot = 0 ; iSpot < nspots; iSpot++ ) {
          spotRow = data[DataPos + iSpot];
          if ( fabs(TheorSpots[sp][13] - ObsSpots[spotRow*9+8]) < MarginRadial )  {
