@@ -36,7 +36,7 @@
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 #define MaxNSpots 6000000
-#define MaxNSpotsBest 500
+#define MaxNSpotsBest 1000
 #define MaxNHKLS 5000
 #define EPS 1E-12
 #define CalcNorm3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
