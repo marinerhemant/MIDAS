@@ -72,6 +72,9 @@ calcradius: $(SRCDIR)CalcRadius.c
 findsaturatedpx: $(SRCDIR)FindSaturatedPixels.c
 	$(CC) $(SRCDIR)FindSaturatedPixels.c -o $(BINDIR)FindSaturatedPixels $(CFLAGS)
 
+graintracking: $(SRCDIR)GrainTracking.c
+	$(CC) $(SRCDIR)GrainTracking.c -o $(BINDIR)GrainTracking $(CFLAGS)
+
 mergerings: $(SRCDIR)MergeMultipleRings.c
 	$(CC) $(SRCDIR)MergeMultipleRings.c -o $(BINDIR)MergeMultipleRings $(CFLAGS)
 
