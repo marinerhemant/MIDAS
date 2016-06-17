@@ -212,6 +212,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	fgets(aline,MAX_LINE_LENGTH,GrainsFile);
 	fgets(aline,MAX_LINE_LENGTH,GrainsFile);
 	int grainNr=0;
+	printf("We reached here\n."); fflush(stdout);
 	char dummy[MAX_LINE_LENGTH];
 	while(fgets(aline,MAX_LINE_LENGTH,GrainsFile)!=NULL){
 		sscanf(aline,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf "
@@ -228,6 +229,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			dummy, dummy,dummy, dummy, dummy, dummy);
 		grainNr++;
 	}
+	printf("We reached here\n."); fflush(stdout);
 	if (grainNr != nGrains){
 		printf("Number of grains from Grains.csv file do not match.\nExiting\n.");
 		return 1;
@@ -235,7 +237,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	// Read bin files
 	int n_spots = ReadSpots();
 	int rc = ReadBins();
-	
+	printf("We reached here\n."); fflush(stdout);
 	// Necessary parameters: EtaBinSize, OmeBinSize
 	FILE *ParamsFile = fopen(ParamsFN,"r");
     int LowNr;
