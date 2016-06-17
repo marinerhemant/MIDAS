@@ -51,6 +51,23 @@
 
 #define CalcNorm3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
 
+static inline void Convert9To3x3(double MatIn[9],double MatOut[3][3]){int i,j,k=0;for (i=0;i<3;i++){for (j=0;j<3;j++){MatOut[i][j] = MatIn[k];k++;}}}
+static inline void Convert3x3To9(double MatIn[3][3],double MatOut[9]){int i,j; for (i=0;i<3;i++) for (j=0;j<3;j++) MatOut[(i*3)+j] = MatIn[i][j];}
+static inline double sind(double x){return sin(deg2rad*x);}
+static inline double cosd(double x){return cos(deg2rad*x);}
+static inline double tand(double x){return tan(deg2rad*x);}
+static inline double asind(double x){return rad2deg*(asin(x));}
+static inline double acosd(double x){return rad2deg*(acos(x));}
+static inline double atand(double x){return rad2deg*(atan(x));}
+static inline double sin_cos_to_angle (double s, double c){return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);}
+
+static inline 
+double CalcEtaAngle(double y, double z){
+	double alpha = rad2deg*acos(z/sqrt(y*y+z*z));
+	if (y>0) alpha = -alpha;
+	return alpha;
+}
+
 //Global variables
 int *data;
 int *ndata;
