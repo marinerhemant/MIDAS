@@ -335,7 +335,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			Pos = iRing*n_eta_bins*n_ome_bins + iEta*n_ome_bins + iOme;
 			nspots = ndata[Pos*2];
 			DataPos = ndata[Pos*2+1];
-			printf("%d %d %d %lld %lld %lld\n",iRing,iOme,iEta,Pos,nspots,DataPos); fflush(stdout);
+			printf("%lf %lf %lf %d\n",g01,g02,g03,iRing);
 			for ( iSpot = 0 ; iSpot < nspots; iSpot++ ) { // For each potential match, calculate angle between gvectors
 				spotRow = data[DataPos + iSpot];
 				y1 = ObsSpotsLab[spotRow*9+0];
