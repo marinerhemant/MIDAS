@@ -230,6 +230,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	fgets(aline,MAX_LINE_LENGTH,GrainsFile);
 	fgets(aline,MAX_LINE_LENGTH,GrainsFile);
 	fgets(aline,MAX_LINE_LENGTH,GrainsFile);
+	printf("%s\n",aline);
 	int grainNr=0;
 	while(fgets(aline,MAX_LINE_LENGTH,GrainsFile)!=NULL){
 		sscanf(aline,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf "
@@ -244,6 +245,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			dummy, dummy, dummy, dummy,&GrainInfo[grainNr][18],dummy, dummy, dummy, 
 			dummy, dummy, dummy, dummy, dummy, dummy, dummy, dummy,dummy, dummy, 
 			dummy, dummy,dummy, dummy, dummy, dummy);
+		printf("%s\n",aline);
 		grainNr++;
 	}
 	if (grainNr != nGrains){
