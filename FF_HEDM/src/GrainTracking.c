@@ -294,7 +294,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	FILE *spotsfile = fopen(spotsfilename,"w");
 	int GrainID;
 	for (i=0;i<nGrains;i++){
-		printf("%d of %d grains tracked.\n",i,nGrains);
+		printf("%d of %d grains tracked.\n",i+1,nGrains);
 		sscanf(aline,"%s %s %lf %s %s %lf %d %lf %lf %lf",dummy, dummy, &Omegas[spotNr], dummy, dummy, &Etas[spotNr],&RingNrs[spotNr],&YLab[spotNr],&ZLab[spotNr],&Thetas[spotNr]);
 		spotNr ++;
 		str2 = fgets(aline,MAX_LINE_LENGTH,SpotMatrixFile);
@@ -309,6 +309,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 		}
 		if (str2 == NULL) break;
 		if (spotNr == 0) continue;
+		printf("Nr of spots for %d grain: %d\n",i+1, spotNr);
 		for (j=0;j<spotNr;j++){
 			lenK = CalcNorm3(Distance,YLab[j],ZLab[j]);
 			SpotToGv(Distance/lenK,YLab[j]/lenK,ZLab[j]/lenK,Omegas[j],Thetas[j],&g01,&g02,&g03);
