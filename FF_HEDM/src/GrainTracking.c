@@ -317,6 +317,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 		while(fgets(aline,MAX_LINE_LENGTH,SpotMatrixFile)!=NULL){ // Check for both EOF and ID matching GrainID
 			sscanf(aline,"%d %s %s %$s %s %s %s",&ID,dummy,dummy,dummy,dummy,dummy,dummy);
 			if (ID != GrainIDsOld[i]){
+				printf("%s\n",aline);
 				spotNr = 0;
 				break;
 			}
@@ -335,6 +336,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			Pos = iRing*n_eta_bins*n_ome_bins + iEta*n_ome_bins + iOme;
 			nspots = ndata[Pos*2];
 			DataPos = ndata[Pos*2+1];
+			minAngle = 100000;
 			for ( iSpot = 0 ; iSpot < nspots; iSpot++ ) { // For each potential match, calculate angle between gvectors
 				spotRow = data[DataPos + iSpot];
 				y1 = ObsSpotsLab[spotRow*9+0];
