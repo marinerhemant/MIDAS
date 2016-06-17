@@ -195,7 +195,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	ParamsFN = argv[2];
 	char GrainsOldFN[MAX_LINE_LENGTH], spotsMatrixOldFN[MAX_LINE_LENGTH];
 	sprintf(GrainsOldFN,"%s/Grains.csv",oldFolder);
-	printf("We reached here\n."); fflush(stdout);
+	printf("Grains file: %s\n.",GrainsOldFN); fflush(stdout);
 	char aline[MAX_LINE_LENGTH];
 	FILE *GrainsFile = fopen(GrainsOldFN,"r");
 	fgets(aline,MAX_LINE_LENGTH,GrainsFile);
