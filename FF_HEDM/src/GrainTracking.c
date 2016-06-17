@@ -215,7 +215,6 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	fgets(aline,MAX_LINE_LENGTH,GrainsFile);
 	fgets(aline,MAX_LINE_LENGTH,GrainsFile);
 	int grainNr=0;
-	char dummy[MAX_LINE_LENGTH];
 	while(fgets(aline,MAX_LINE_LENGTH,GrainsFile)!=NULL){
 		sscanf(aline,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf "
 			"%lf %lf %lf %lf %lf %lf %s %s %s %s %lf %s %s %s %s %s %s %s "
