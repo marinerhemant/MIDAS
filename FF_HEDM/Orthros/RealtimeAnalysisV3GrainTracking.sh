@@ -161,6 +161,7 @@ do
    echo "SpaceGroup $SGNum" >> paramstest.txt
    echo "GrainTracking $GrainTracking" >> paramstest.txt
    echo "OldFolder $OldFolder" >> paramstest.txt
+   sed -i 's/^MinNrSpots.*$/MinNrSpots 1/g' ${TOP_PARAM_FILE}
    ${PFDIR}/RefineTracking.sh ${NCPUS} ${TOP_PARAM_FILE} $OldFolder
    rm -rf ${SeedFolder}/output
 done
