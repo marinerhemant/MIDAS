@@ -190,10 +190,9 @@ void SpotToGv(double xi, double yi, double zi, double Omega, double theta, doubl
 int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersFile
 {
 	int i,j,k;
-	char *oldFolder, *newFolder, *ParamsFN;
+	char *oldFolder, *ParamsFN;
 	oldFolder = argv[1];
-	newFolder = argv[2];
-	ParamsFN = argv[3];
+	ParamsFN = argv[2];
 	char GrainsOldFN[MAX_LINE_LENGTH], spotsMatrixOldFN[MAX_LINE_LENGTH];
 	sprintf(GrainsOldFN,"%s/Grains.csv",oldFolder);
 	char aline[MAX_LINE_LENGTH];
