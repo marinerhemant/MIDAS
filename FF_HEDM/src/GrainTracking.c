@@ -318,7 +318,6 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			sscanf(aline,"%d %s %s %$s %s %s %s",&ID,dummy,dummy,dummy,dummy,dummy,dummy);
 			if (ID != GrainIDsOld[i]){
 				printf("%s\n",aline);
-				spotNr = 0;
 				break;
 			}
 			printf("%s\n",aline);
@@ -379,6 +378,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 		for (j=0;j<spotNr;j++){
 			fprintf(outfile,"%d %lf\n",IDs[j],Rads[j]);
 		}
+		spotNr = 0;
 		fclose(outfile);
 	}
 
