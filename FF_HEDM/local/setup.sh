@@ -7,6 +7,7 @@ BINFOLDER=${FF_MIDAS_DIR}/bin
 
 ##### SETUP tc.data
 echo localhost indexstrains ${LOCAL_DIR}/IndexStrains.sh > ${LOCAL_DIR}/tc.data
+echo localhost strainsrefine ${LOCAL_DIR}/StrainsRefine.sh >> ${LOCAL_DIR}/tc.data
 echo localhost peaks ${LOCAL_DIR}/Peaks.sh >> ${LOCAL_DIR}/tc.data
 echo localhost processPeaks ${LOCAL_DIR}/ProcessPeaks.sh >> ${LOCAL_DIR}/tc.data
 echo localhost processPeaksFullImg ${LOCAL_DIR}/ProcessPeaksFullImg.sh >> ${LOCAL_DIR}/tc.data
