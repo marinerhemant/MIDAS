@@ -276,13 +276,13 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	sprintf(spotsMatrixOldFN,"%s/SpotMatrix.csv",oldFolder);
 	FILE *SpotMatrixFile = fopen(spotsMatrixOldFN,"r");
 	fgets(aline,MAX_LINE_LENGTH,SpotMatrixFile);
-	printf("Spots file old: %s\n",spotsMatrixOldFN);
 	int spotNr = 0;
 	double Omegas[MAX_N_SPOTS],Etas[MAX_N_SPOTS], YLab[MAX_N_SPOTS], ZLab[MAX_N_SPOTS],Thetas[MAX_N_SPOTS];
 	int RingNrs[MAX_N_SPOTS];
 	int ID;
 	int iRing, iOme, iEta, iSpot, bestID;
 	long long int Pos, nspots, DataPos, spotRow;
+	char *str2;
 	double g01,g02,g03;
 	double g11,g12,g13;
 	double y1, z1, ome1, theta1, bestRadius;
@@ -292,12 +292,13 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	char outfilename[MAX_LINE_LENGTH];
 	char *spotsfilename = "SpotsToIndex.csv";
 	FILE *spotsfile = fopen(spotsfilename,"w");
-	int GrainID, eof=1;
+	int GrainID;
 	for (i=0;i<nGrains;i++){
 		printf("%d of %d grains tracked.\n",i+1,nGrains);
 		sscanf(aline,"%s %s %lf %s %s %lf %d %lf %lf %lf",dummy, dummy, &Omegas[spotNr], dummy, dummy, &Etas[spotNr],&RingNrs[spotNr],&YLab[spotNr],&ZLab[spotNr],&Thetas[spotNr]);
 		spotNr ++;
-		while (fgets(aline,MAX_LINE_LENGTH,SpotMatrixFile) != NULL){ // Check for both EOF and ID matching GrainID
+		//str2 = ;
+		while(fgets(aline,MAX_LINE_LENGTH,SpotMatrixFile)!=NULL){ // Check for both EOF and ID matching GrainID
 			sscanf(aline,"%d %s %s %$s %s %s %s",&ID,dummy,dummy,dummy,dummy,dummy,dummy);
 			printf("%s\n",aline);
 			if (ID != GrainIDsOld[i]){
@@ -307,6 +308,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			sscanf(aline,"%s %s %lf %s %s %lf %d %lf %lf %lf",dummy, dummy, &Omegas[spotNr],dummy, dummy, &Etas[spotNr],&RingNrs[spotNr],&YLab[spotNr],&ZLab[spotNr],&Thetas[spotNr]);
 			spotNr ++;
 		}
+		if (str2 == NULL) break;
 		if (spotNr == 0) continue;
 		printf("Nr of spots for %d grain: %d\n",i+1, spotNr);
 		for (j=0;j<spotNr;j++){
