@@ -172,141 +172,6 @@ void Euler2OrientMat(
 }
 
 static inline
-void GenerateHKLs(int nrings, int *RingNumbers, int CellStruct, double *RingSizes, double LatticeConstant[6], double Wavelength, double MaxTtheta, double **hkls)
-{
-	int n_hkls = 0,totnPlanes, i,j,cs=nrings;
-	double ThetasAll[5000];
-	int **PlanesInfo;
-	PlanesInfo = allocMatrixInt(5000,4);
-	for (i=0;i<5000;i++) ThetasAll[i] = 0;
-	int SpaceGroup;
-	if (CellStruct == 2) SpaceGroup = 225;
-	else if (CellStruct == 3) SpaceGroup = 1;
-	n_hkls = GenerateRingInfo(SpaceGroup,LatticeConstant[0],LatticeConstant[1],LatticeConstant[2],LatticeConstant[3],LatticeConstant[4],LatticeConstant[5],
-							  Wavelength,MaxTtheta,ThetasAll,PlanesInfo,&totnPlanes);
-	int PlaneNumbers[cs],nrFilled=0;
-	double Thetas[cs];
-	int HKL2;
-	if (CellStruct == 3){
-		SpaceGroup = 220;
-		int RingNumberThis;
-		for (i=0;i<cs;i++){
-			RingNumberThis = RingNumbers[i];
-			printf("Ring number: %d ",RingNumberThis);
-			int Printed = 0;
-			for (j=0;j<totnPlanes;j++){
-				HKL2 = (PlanesInfo[j][0]*PlanesInfo[j][0])+(PlanesInfo[j][1]*PlanesInfo[j][1])+(PlanesInfo[j][2]*PlanesInfo[j][2]);
-				if (HKL2 == 1 && RingNumberThis == 1){
-					PlaneNumbers[i] = 1;
-					Thetas[i] = ThetasAll[PlanesInfo[j][3]-1];
-					hkls[nrFilled][0] = PlanesInfo[j][0];
-					hkls[nrFilled][1] = PlanesInfo[j][1];
-					hkls[nrFilled][2] = PlanesInfo[j][2];
-					hkls[nrFilled][3] = sqrt(LatticeConstant[0]*LatticeConstant[0]/(double)HKL2);
-					hkls[nrFilled][4] = Thetas[i];
-					hkls[nrFilled][5] = RingSizes[i];
-					hkls[nrFilled][6] = PlaneNumbers[i];
-					nrFilled++;
-					if (Printed == 0){Printed = 1; printf("Theta: %f\n",Thetas[i]);}
-				} else if (HKL2 == 2 && RingNumberThis == 2){
-					PlaneNumbers[i] = 2;
-					Thetas[i] = ThetasAll[PlanesInfo[j][3]-1];
-					hkls[nrFilled][0] = PlanesInfo[j][0];
-					hkls[nrFilled][1] = PlanesInfo[j][1];
-					hkls[nrFilled][2] = PlanesInfo[j][2];
-					hkls[nrFilled][3] = sqrt(LatticeConstant[0]*LatticeConstant[0]/(double)HKL2);
-					hkls[nrFilled][4] = Thetas[i];
-					hkls[nrFilled][5] = RingSizes[i];
-					hkls[nrFilled][6] = PlaneNumbers[i];
-					nrFilled++;
-					if (Printed == 0){Printed = 1; printf("Theta: %f\n",Thetas[i]);}
-				} else if (HKL2 == 3 && RingNumberThis == 3){
-					PlaneNumbers[i] = 3;
-					Thetas[i] = ThetasAll[PlanesInfo[j][3]-1];
-					hkls[nrFilled][0] = PlanesInfo[j][0];
-					hkls[nrFilled][1] = PlanesInfo[j][1];
-					hkls[nrFilled][2] = PlanesInfo[j][2];
-					hkls[nrFilled][3] = sqrt(LatticeConstant[0]*LatticeConstant[0]/(double)HKL2);
-					hkls[nrFilled][4] = Thetas[i];
-					hkls[nrFilled][5] = RingSizes[i];
-					hkls[nrFilled][6] = PlaneNumbers[i];
-					nrFilled++;
-					if (Printed == 0){Printed = 1; printf("Theta: %f\n",Thetas[i]);}
-				} else if (HKL2 == 4 && RingNumberThis == 4){
-					PlaneNumbers[i] = 4;
-					Thetas[i] = ThetasAll[PlanesInfo[j][3]-1];
-					hkls[nrFilled][0] = PlanesInfo[j][0];
-					hkls[nrFilled][1] = PlanesInfo[j][1];
-					hkls[nrFilled][2] = PlanesInfo[j][2];
-					hkls[nrFilled][3] = sqrt(LatticeConstant[0]*LatticeConstant[0]/(double)HKL2);
-					hkls[nrFilled][4] = Thetas[i];
-					hkls[nrFilled][5] = RingSizes[i];
-					hkls[nrFilled][6] = PlaneNumbers[i];
-					nrFilled++;
-					if (Printed == 0){Printed = 1; printf("Theta: %f\n",Thetas[i]);}
-				} else if (HKL2 == 5 && RingNumberThis == 5){
-					PlaneNumbers[i] = 5;
-					Thetas[i] = ThetasAll[PlanesInfo[j][3]-1];
-					hkls[nrFilled][0] = PlanesInfo[j][0];
-					hkls[nrFilled][1] = PlanesInfo[j][1];
-					hkls[nrFilled][2] = PlanesInfo[j][2];
-					hkls[nrFilled][3] = sqrt(LatticeConstant[0]*LatticeConstant[0]/(double)HKL2);
-					hkls[nrFilled][4] = Thetas[i];
-					hkls[nrFilled][5] = RingSizes[i];
-					hkls[nrFilled][6] = PlaneNumbers[i];
-					nrFilled++;
-					if (Printed == 0){Printed = 1; printf("Theta: %f\n",Thetas[i]);}
-				} else if (HKL2 == 6 && RingNumberThis == 6){
-					PlaneNumbers[i] = 6;
-					Thetas[i] = ThetasAll[PlanesInfo[j][3]-1];
-					hkls[nrFilled][0] = PlanesInfo[j][0];
-					hkls[nrFilled][1] = PlanesInfo[j][1];
-					hkls[nrFilled][2] = PlanesInfo[j][2];
-					hkls[nrFilled][3] = sqrt(LatticeConstant[0]*LatticeConstant[0]/(double)HKL2);
-					hkls[nrFilled][4] = Thetas[i];
-					hkls[nrFilled][5] = RingSizes[i];
-					hkls[nrFilled][6] = PlaneNumbers[i];
-					nrFilled++;
-					if (Printed == 0){Printed = 1; printf("Theta: %f\n",Thetas[i]);}
-				} else if (HKL2 == 8 && RingNumberThis == 7){
-					PlaneNumbers[i] = 7;
-					Thetas[i] = ThetasAll[PlanesInfo[j][3]-1];
-					hkls[nrFilled][0] = PlanesInfo[j][0];
-					hkls[nrFilled][1] = PlanesInfo[j][1];
-					hkls[nrFilled][2] = PlanesInfo[j][2];
-					hkls[nrFilled][3] = sqrt(LatticeConstant[0]*LatticeConstant[0]/(double)HKL2);
-					hkls[nrFilled][4] = Thetas[i];
-					hkls[nrFilled][5] = RingSizes[i];
-					hkls[nrFilled][6] = PlaneNumbers[i];
-					nrFilled++;
-					if (Printed == 0){Printed = 1; printf("Theta: %f\n",Thetas[i]);}
-				}
-			}
-		}
-	}else {
-		for (i=0;i<cs;i++){
-			PlaneNumbers[i] = RingNumbers[i];
-			Thetas[i]=ThetasAll[RingNumbers[i]-1];
-			printf("Ring number: %d Theta: %f\n",PlaneNumbers[i],Thetas[i]);
-			for (j=0;j<totnPlanes;j++){
-				HKL2 = (PlanesInfo[j][0]*PlanesInfo[j][0])+(PlanesInfo[j][1]*PlanesInfo[j][1])+(PlanesInfo[j][2]*PlanesInfo[j][2]);
-				if (PlaneNumbers[i] == PlanesInfo[j][3]){
-					hkls[nrFilled][0] = PlanesInfo[j][0];
-					hkls[nrFilled][1] = PlanesInfo[j][1];
-					hkls[nrFilled][2] = PlanesInfo[j][2];
-					hkls[nrFilled][3] = sqrt(LatticeConstant[0]*LatticeConstant[0]/(double)HKL2);
-					hkls[nrFilled][4] = Thetas[i];
-					hkls[nrFilled][5] = RingSizes[i];
-					hkls[nrFilled][6] = PlaneNumbers[i];
-					nrFilled++;
-				}
-			}
-		}
-	}
-	FreeMemMatrixInt(PlanesInfo,5000);
-}
-
-static inline
 void
 MatrixMult(
            double m[3][3],
@@ -579,47 +444,6 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 	FreeMemMatrix(TheorSpotsYZWE,nTspots);
 	FreeMemMatrix(TheorSpotsYZWER,MaxNSpotsBest);
 	free(Angles);
-}
-
-static inline int CalcNPlanes(int nrings, int *RingNumbers, int CellStruct)
-{
-	int nplanes=0,i,RingNumber;
-	if (CellStruct==2){
-		for (i=0;i<nrings;i++){
-			RingNumber = RingNumbers[i];
-			if (RingNumber == 1)nplanes+=8;
-			if (RingNumber == 2)nplanes+=6;
-			if (RingNumber == 3)nplanes+=12;
-			if (RingNumber == 4)nplanes+=24;
-			if (RingNumber == 5)nplanes+=8;
-			if (RingNumber == 6)nplanes+=6;
-			if (RingNumber == 7)nplanes+=24;
-			if (RingNumber == 8)nplanes+=24;
-			if (RingNumber == 9)nplanes+=24;
-			if (RingNumber == 10)nplanes+=8;
-		}
-	} else if (CellStruct==1){
-		for (i=0;i<nrings;i++){
-			RingNumber = RingNumbers[i];
-			if (RingNumber == 1)nplanes+=12;
-			if (RingNumber == 2)nplanes+=6;
-			if (RingNumber == 3)nplanes+=24;
-			if (RingNumber == 4)nplanes+=12;
-			if (RingNumber == 5)nplanes+=24;
-		}
-	} else if (CellStruct==3){
-		for (i=0;i<nrings;i++){
-			RingNumber = RingNumbers[i];
-			if (RingNumber == 1)nplanes+=6;
-			if (RingNumber == 2)nplanes+=12;
-			if (RingNumber == 3)nplanes+=8;
-			if (RingNumber == 4)nplanes+=6;
-			if (RingNumber == 5)nplanes+=24;
-			if (RingNumber == 6)nplanes+=24;
-			if (RingNumber == 7)nplanes+=12;
-		}
-	}
-	return nplanes;
 }
 
 static inline void ConcatPosEulLatc(double *Ini, double Pos0[3], double Euler0[3], double LatCin[6])
@@ -1314,6 +1138,7 @@ int main(int argc, char *argv[])
     double Rsample, Hbeam,RingRadii[20],MargABC=0.3,MargABG=0.3;
   	char OutputFolder[1024],ResultFolder[1024];
   	int DiscModel = 0, TopLayer = 0, TakeGrainMax = 0;
+  	int GrainTracking = 0;
     while (fgets(aline,1000,fileParam)!=NULL){
         str = "LatticeParameter ";
         LowNr = strncmp(aline,str,strlen(str));
@@ -1323,10 +1148,10 @@ int main(int argc, char *argv[])
 					&LatCin[3], &LatCin[4], &LatCin[5]);
             continue;
         }
-        str = "CellStruct ";
+        str = "GrainTracking ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %d", dummy, &CellStruct);
+            sscanf(aline,"%s %d", dummy, &GrainTracking);
             continue;
         }
         str = "Wavelength ";
@@ -1464,7 +1289,6 @@ int main(int argc, char *argv[])
 	double MaxTtheta = rad2deg*atan(MaxRingRad/Lsd);
 	if (nOmeRanges != nBoxSizes){printf("Number of omega ranges and number of box sizes don't match. Exiting!\n");return 1;}
 	double MargOme=0.01,MargPos=Rsample,MargPos2=Rsample/2,MargOme2=2,chi=0;
-	double a=LatCin[0],b=LatCin[1],c=LatCin[2],alph=LatCin[3],bet=LatCin[4],gamm=LatCin[5];
 	int i, j, k, nhkls = 0;
 	double **hkls;
 	hkls = allocMatrix(5000,7);
@@ -1580,27 +1404,36 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 	rewind(BestFile);
-	fgets(line,5000,BestFile);
-	fgets(line,5000,BestFile);
-	fgets(line,5000,BestFile);
 	double Orient0[9], Pos0[3], IA0, Euler0[3], Orient0_3[3][3],NrExpected,NrObserved,meanRadius=0,thisRadius,completeness;
-	sscanf(line,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf",
-			&IA0,&Orient0[0],&Orient0[1],&Orient0[2],&Orient0[3],&Orient0[4],&Orient0[5],
-			&Orient0[6],&Orient0[7],&Orient0[8],&Pos0[0],&Pos0[1],&Pos0[2],&NrExpected,&NrObserved);
-	completeness = NrObserved/NrExpected;
-	for (i=0;i<3;i++) for (j=0;j<3;j++) Orient0_3[i][j] = Orient0[i*3+j];
-	OrientMat2Euler(Orient0_3,Euler0);
-	double dummy1,dummy2,dummy3,dummy4,dummy5,dummy6,dummy7,dummy8,dummy9,dummy10,dummy11,dummy12,dummy13,dummy14,dummy15,TempID;
-	double Ytempr, Ztempr, EtaTempr, MaxRadTot=-100;
-	int nSpotsRad = 0;
-	while (fgets(line,5000,BestFile) != NULL){
-		sscanf(line,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf,",&dummy1,&Ytempr,
-			&dummy3,&dummy4,&Ztempr,&dummy6,&dummy7,&dummy8,&dummy9,&dummy10,&dummy11,&thisRadius,&dummy13,&TempID,
-			&dummy14,&dummy15);
-		if (dummy1 >= 0){
-			if (TopLayer == 1){
-				EtaTempr = CalcEtaAngle(Ytempr,Ztempr);
-				if (EtaTempr > 90){
+	
+	if (GrainTracking == 0){
+		fgets(line,5000,BestFile);
+		fgets(line,5000,BestFile);
+		fgets(line,5000,BestFile);
+		sscanf(line,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf",
+				&IA0,&Orient0[0],&Orient0[1],&Orient0[2],&Orient0[3],&Orient0[4],&Orient0[5],
+				&Orient0[6],&Orient0[7],&Orient0[8],&Pos0[0],&Pos0[1],&Pos0[2],&NrExpected,&NrObserved);
+		completeness = NrObserved/NrExpected;
+		double dummy1,dummy2,dummy3,dummy4,dummy5,dummy6,dummy7,dummy8,dummy9,dummy10,dummy11,dummy12,dummy13,dummy14,dummy15,TempID;
+		double Ytempr, Ztempr, EtaTempr, MaxRadTot=-100;
+		int nSpotsRad = 0;
+		while (fgets(line,5000,BestFile) != NULL){
+			sscanf(line,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf,",&dummy1,&Ytempr,
+				&dummy3,&dummy4,&Ztempr,&dummy6,&dummy7,&dummy8,&dummy9,&dummy10,&dummy11,&thisRadius,&dummy13,&TempID,
+				&dummy14,&dummy15);
+			if (dummy1 >= 0){
+				if (TopLayer == 1){
+					EtaTempr = CalcEtaAngle(Ytempr,Ztempr);
+					if (EtaTempr > 90){
+						meanRadius += thisRadius;
+						nSpotsRad++;
+						if (TakeGrainMax == 1){
+							if (thisRadius > MaxRadTot){
+								MaxRadTot = thisRadius;
+							}
+						}
+					}
+				}else{
 					meanRadius += thisRadius;
 					nSpotsRad++;
 					if (TakeGrainMax == 1){
@@ -1609,24 +1442,38 @@ int main(int argc, char *argv[])
 						}
 					}
 				}
-			}else{
-				meanRadius += thisRadius;
-				nSpotsRad++;
-				if (TakeGrainMax == 1){
-					if (thisRadius > MaxRadTot){
-						MaxRadTot = thisRadius;
-					}
-				}
+				spotIDS[nSpotsBest] = (int)TempID;
+				nSpotsBest++;
 			}
-			spotIDS[nSpotsBest] = (int)TempID;
+		}
+		meanRadius /= nSpotsRad;
+		if (TakeGrainMax == 1){
+			meanRadius = MaxRadTot;
+		}
+	} else if (GrainTracking == 1){
+		fgets(line,5000,BestFile);
+		fgets(line,5000,BestFile);
+		sscanf(line,"%lf, %lf, %lf, %lf, %lf, %lf",&LatCin[0],&LatCin[1],
+			&LatCin[2],&LatCin[3],&LatCin[4],&LatCin[5]);
+		fgets(line,5000,BestFile);
+		sscanf(line,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf",
+				&completeness,&Orient0[0],&Orient0[1],&Orient0[2],&Orient0[3],
+				&Orient0[4],&Orient0[5],&Orient0[6],&Orient0[7],&Orient0[8],
+				&Pos0[0],&Pos0[1],&Pos0[2]);
+		while (fgets(line,5000,BestFile) != NULL){
+			sscanf(line,"%d %lf",&spotIDS[nSpotsBest],&thisRadius);
+			meanRadius += thisRadius;
 			nSpotsBest++;
 		}
+		meanRadius /= nSpotsBest;
 	}
-	meanRadius /= nSpotsRad;
-	if (TakeGrainMax == 1){
-		meanRadius = MaxRadTot;
-	}
+	
+	
 	fclose(BestFile);
+	
+	double a=LatCin[0],b=LatCin[1],c=LatCin[2],alph=LatCin[3],bet=LatCin[4],gamm=LatCin[5];
+	for (i=0;i<3;i++) for (j=0;j<3;j++) Orient0_3[i][j] = Orient0[i*3+j];
+	OrientMat2Euler(Orient0_3,Euler0);
 	char rmCommand[4096];
 	sprintf(rmCommand,"rm -rf %s",FileName);
 	system(rmCommand);
