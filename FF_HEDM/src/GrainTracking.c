@@ -335,7 +335,6 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			Pos = iRing*n_eta_bins*n_ome_bins + iEta*n_ome_bins + iOme;
 			nspots = ndata[Pos*2];
 			DataPos = ndata[Pos*2+1];
-			printf("%d %d %lf %lf %lf\n",nspots,RingNrs[j],YLab[j],ZLab[j],Omegas[j]);
 			for ( iSpot = 0 ; iSpot < nspots; iSpot++ ) { // For each potential match, calculate angle between gvectors
 				spotRow = data[DataPos + iSpot];
 				y1 = ObsSpotsLab[spotRow*9+0];
@@ -347,7 +346,6 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 				NormG1 = CalcNorm3(g11,g12,g13);
 				DotGs = (g01*g11) + (g02*g12) + (g03*g13);
 				Angle = fabs(acosd(DotGs/(NormG0*NormG1)));
-				//printf("%d %lf %lf %lf %lf\n",spotRow,Angle,DotGs,NormG0,NormG1);
 				if (Angle < minAngle){
 					minAngle = Angle;
 					bestID = (int) ObsSpotsLab[spotRow*9 + 4];
@@ -372,7 +370,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 		fprintf(outfile,"%lf, %lf, %lf, %lf, %lf, %lf\n",GrainInfo[i][12],
 			GrainInfo[i][13],GrainInfo[i][14],GrainInfo[i][15],GrainInfo[i][16],
 			GrainInfo[i][17]);
-		fprintf(outfile,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf",
+		fprintf(outfile,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf\n",
 			GrainInfo[i][18],GrainInfo[i][0],GrainInfo[i][1],GrainInfo[i][2],GrainInfo[i][3],
 			GrainInfo[i][4],GrainInfo[i][5],GrainInfo[i][6],GrainInfo[i][7],GrainInfo[i][8],
 			GrainInfo[i][9],GrainInfo[i][10],GrainInfo[i][11]);
