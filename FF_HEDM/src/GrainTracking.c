@@ -300,6 +300,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 		str2 = fgets(aline,MAX_LINE_LENGTH,SpotMatrixFile);
 		while(str2!=NULL){ // Check for both EOF and ID matching GrainID
 			sscanf(aline,"%d %s %s %$s %s %s %s",&ID,dummy,dummy,dummy,dummy,dummy,dummy);
+			printf("%s\n",aline);
 			if (ID != GrainIDsOld[i]){
 				spotNr = 0;
 				break;
