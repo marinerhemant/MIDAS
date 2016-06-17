@@ -195,13 +195,14 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	ParamsFN = argv[2];
 	char GrainsOldFN[MAX_LINE_LENGTH], spotsMatrixOldFN[MAX_LINE_LENGTH];
 	sprintf(GrainsOldFN,"%s/Grains.csv",oldFolder);
-	printf("Grains file: %s\n.",GrainsOldFN); fflush(stdout);
+	printf("Grains file: %s\n",GrainsOldFN); fflush(stdout);
 	char aline[MAX_LINE_LENGTH];
 	FILE *GrainsFile = fopen(GrainsOldFN,"r");
 	fgets(aline,MAX_LINE_LENGTH,GrainsFile);
-	printf("We reached here\n."); fflush(stdout);
+	printf("We reached here.\n"); fflush(stdout);
 	int nGrains;
-	sscanf(aline, "%s %d",&nGrains);
+	char dummy[MAX_LINE_LENGTH];
+	sscanf(aline, "%s %d",dummy, &nGrains);
 	int GrainIDsOld[nGrains];
 	double **GrainInfo;
 	GrainInfo = allocMatrix(nGrains,19);
@@ -214,7 +215,6 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	fgets(aline,MAX_LINE_LENGTH,GrainsFile);
 	fgets(aline,MAX_LINE_LENGTH,GrainsFile);
 	int grainNr=0;
-	printf("We reached here\n."); fflush(stdout);
 	char dummy[MAX_LINE_LENGTH];
 	while(fgets(aline,MAX_LINE_LENGTH,GrainsFile)!=NULL){
 		sscanf(aline,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf "
