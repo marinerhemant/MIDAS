@@ -199,6 +199,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	char aline[MAX_LINE_LENGTH];
 	FILE *GrainsFile = fopen(GrainsOldFN,"r");
 	fgets(aline,MAX_LINE_LENGTH,GrainsFile);
+	printf("We reached here\n."); fflush(stdout);
 	int nGrains;
 	sscanf(aline, "%s %d",&nGrains);
 	int GrainIDsOld[nGrains];
