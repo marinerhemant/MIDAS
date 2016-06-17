@@ -1,5 +1,4 @@
 #!/bin/bash
-
 dirThis=${HOME}/.MIDAS
 rm -rf $dirThis
 mkdir -p $dirThis
