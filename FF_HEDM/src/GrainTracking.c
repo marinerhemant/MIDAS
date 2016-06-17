@@ -297,10 +297,8 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 		printf("%d of %d grains tracked.\n",i+1,nGrains);
 		sscanf(aline,"%s %s %lf %s %s %lf %d %lf %lf %lf",dummy, dummy, &Omegas[spotNr], dummy, dummy, &Etas[spotNr],&RingNrs[spotNr],&YLab[spotNr],&ZLab[spotNr],&Thetas[spotNr]);
 		spotNr ++;
-		//str2 = ;
 		while(fgets(aline,MAX_LINE_LENGTH,SpotMatrixFile)!=NULL){ // Check for both EOF and ID matching GrainID
 			sscanf(aline,"%d %s %s %$s %s %s %s",&ID,dummy,dummy,dummy,dummy,dummy,dummy);
-			printf("%s\n",aline);
 			if (ID != GrainIDsOld[i]){
 				spotNr = 0;
 				break;
