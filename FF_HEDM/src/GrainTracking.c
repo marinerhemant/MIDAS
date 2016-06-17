@@ -309,6 +309,9 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	double Rads[MAX_N_SPOTS];
 	char outfilename[MAX_LINE_LENGTH];
 	char *spotsfilename = "SpotsToIndex.csv";
+	char *GrainMatchesFileName = "GrainMatches.csv";
+	FILE *GrainMatchesFile = fopen(GrainMatchesFileName,"w");
+	fprintf(GrainMatchesFile,"OldID\tNewID\n");
 	FILE *spotsfile = fopen(spotsfilename,"w");
 	int GrainID;
 	for (i=0;i<nGrains;i++){
@@ -375,8 +378,8 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 		for (j=0;j<spotNr;j++){
 			fprintf(outfile,"%d %lf\n",IDs[j],Rads[j]);
 		}
+		fprintf(GrainMatchesFile,"%d\t%d\n",GrainIDsOld[i],GrainID);
 		spotNr = 0;
 		fclose(outfile);
 	}
-
 }
