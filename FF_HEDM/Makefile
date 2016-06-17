@@ -13,7 +13,7 @@ BINDIR=bin/
 
 all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting \
 	mergeoverlaps calcradius findsaturatedpx\
-	mergerings fittiltx fitwedge hkls indexer bindata processgrains
+	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking
 
 local: packages flags all scripts
 

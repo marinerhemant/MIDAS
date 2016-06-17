@@ -43,6 +43,7 @@ echo "BINFOLDER=${BINFOLDER}" > ${configfile}
 echo "PFDIR=${LOCAL_DIR}" >> ${configfile}
 echo "SWIFTDIR=${HOME}/.MIDAS/swift-0.95-RC6/bin" >> ${configfile}
 ln -s ${LOCAL_DIR}/RealtimeAnalysisV2MultRingsPS.sh ${configdir}/MIDAS_V3_FarFieldLayers
+ln -s ${LOCAL_DIR}/RealtimeAnalysisV3GrainTracking.sh ${configdir}/MIDAS_V3_FarFieldGrainTracking
 ln -s ${BINFOLDER}/Calibrant ${configdir}/MIDAS_V3_FarField_Calibration
 ln -s ${BINFOLDER}/FitWedge ${configdir}/MIDAS_V3_FarField_Wedge
 ln -s ${BINFOLDER}/FitTiltX ${configdir}/MIDAS_V3_FarField_TiltX
