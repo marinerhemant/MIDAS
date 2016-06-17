@@ -9,6 +9,7 @@ fi
 
 if [[ $1 == 128 ]]
 then
+  scp Spots.bin Data.bin nData.bin ExtraInfo.bin /dev/shm
   scp Spots.bin Data.bin nData.bin ExtraInfo.bin puppy21:/dev/shm
   scp Spots.bin Data.bin nData.bin ExtraInfo.bin puppy22:/dev/shm
   scp Spots.bin Data.bin nData.bin ExtraInfo.bin puppy37:/dev/shm
@@ -18,9 +19,11 @@ then
   scp Spots.bin Data.bin nData.bin ExtraInfo.bin puppy44:/dev/shm
 elif [[ $1 == 64 ]]
 then
+	scp Spots.bin Data.bin nData.bin ExtraInfo.bin /dev/shm
 	scp Spots.bin Data.bin nData.bin ExtraInfo.bin pup0100:/dev/shm
 elif [[ $1 == 320 ]]
 then
+	scp Spots.bin Data.bin nData.bin ExtraInfo.bin /dev/shm
 	scp Spots.bin Data.bin nData.bin ExtraInfo.bin pup0101:/dev/shm
 	scp Spots.bin Data.bin nData.bin ExtraInfo.bin pup0102:/dev/shm
 	scp Spots.bin Data.bin nData.bin ExtraInfo.bin pup0103:/dev/shm
@@ -28,6 +31,7 @@ then
 	scp Spots.bin Data.bin nData.bin ExtraInfo.bin pup0105:/dev/shm
 elif [[ $1 == 384 ]]
 then
+	scp Spots.bin Data.bin nData.bin ExtraInfo.bin /dev/shm
 	scp Spots.bin Data.bin nData.bin ExtraInfo.bin pup0100:/dev/shm
 	scp Spots.bin Data.bin nData.bin ExtraInfo.bin pup0101:/dev/shm
 	scp Spots.bin Data.bin nData.bin ExtraInfo.bin pup0102:/dev/shm
