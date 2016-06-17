@@ -199,7 +199,6 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	char aline[MAX_LINE_LENGTH];
 	FILE *GrainsFile = fopen(GrainsOldFN,"r");
 	fgets(aline,MAX_LINE_LENGTH,GrainsFile);
-	printf("We reached here.\n"); fflush(stdout);
 	int nGrains;
 	char dummy[MAX_LINE_LENGTH];
 	sscanf(aline, "%s %d",dummy, &nGrains);
@@ -230,7 +229,6 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			dummy, dummy,dummy, dummy, dummy, dummy);
 		grainNr++;
 	}
-	printf("We reached here\n."); fflush(stdout);
 	if (grainNr != nGrains){
 		printf("Number of grains from Grains.csv file do not match.\nExiting\n.");
 		return 1;
@@ -238,7 +236,6 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	// Read bin files
 	int n_spots = ReadSpots();
 	int rc = ReadBins();
-	printf("We reached here\n."); fflush(stdout);
 	// Necessary parameters: EtaBinSize, OmeBinSize
 	FILE *ParamsFile = fopen(ParamsFN,"r");
     int LowNr;
@@ -297,6 +294,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	FILE *spotsfile = fopen(spotsfilename,"w");
 	int GrainID;
 	for (i=0;i<nGrains;i++){
+		printf("%d of %d grains tracked.\n",i,nGrains);
 		sscanf(aline,"%s %s %lf %s %s %lf %d %lf %lf %lf",dummy, dummy, &Omegas[spotNr], dummy, dummy, &Etas[spotNr],&RingNrs[spotNr],&YLab[spotNr],&ZLab[spotNr],&Thetas[spotNr]);
 		spotNr ++;
 		str2 = fgets(aline,MAX_LINE_LENGTH,SpotMatrixFile);
