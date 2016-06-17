@@ -277,7 +277,6 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	FILE *SpotMatrixFile = fopen(spotsMatrixOldFN,"r");
 	fgets(aline,MAX_LINE_LENGTH,SpotMatrixFile);
 	printf("Spots file old: %s\n",spotsMatrixOldFN);
-	return;
 	int spotNr = 0;
 	double Omegas[MAX_N_SPOTS],Etas[MAX_N_SPOTS], YLab[MAX_N_SPOTS], ZLab[MAX_N_SPOTS],Thetas[MAX_N_SPOTS];
 	int RingNrs[MAX_N_SPOTS];
