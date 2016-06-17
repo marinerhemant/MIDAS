@@ -306,7 +306,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			sscanf(aline,"%s %s %lf %s %s %lf %d %lf %lf %lf",dummy, dummy, &Omegas[spotNr],dummy, dummy, &Etas[spotNr],&RingNrs[spotNr],&YLab[spotNr],&ZLab[spotNr],&Thetas[spotNr]);
 			spotNr ++;
 		}
-		if (str2 == NULL) break;
+		//if (str2 == NULL) break;
 		if (spotNr == 0) continue;
 		printf("Nr of spots for %d grain: %d\n",i+1, spotNr);
 		for (j=0;j<spotNr;j++){
