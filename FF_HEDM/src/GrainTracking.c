@@ -347,7 +347,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 				NormG1 = CalcNorm3(g11,g12,g13);
 				DotGs = (g01*g11) + (g02*g12) + (g03*g13);
 				Angle = fabs(acosd(DotGs/(NormG0*NormG1)));
-				printf("%d %lf %lf %lf %lf\n",spotRow,Angle,DotGs,NormG0,NormG1);
+				//printf("%d %lf %lf %lf %lf\n",spotRow,Angle,DotGs,NormG0,NormG1);
 				if (Angle < minAngle){
 					minAngle = Angle;
 					bestID = (int) ObsSpotsLab[spotRow*9 + 4];
