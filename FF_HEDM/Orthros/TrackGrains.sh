@@ -19,7 +19,7 @@ for ((LAYERNR=$STARTLAYERNR; LAYERNR<=$ENDLAYERNR; LAYERNR++))
 do
 	echo ${OldStateFolder}
 	cd ${OldStateFolder}
-	OldFolder=$( find -type d -name "*Layer${LayerNr}_*" )
+	OldFolder=$( find -type d -name "*Layer${LAYERNR}_*" )
 	echo $OldFolder
 	PSThisLayer=${TOP_PARAM_FILE}.Layer${LAYERNR}.txt
 	cp ${TOP_PARAM_FILE} ${PSThisLayer}
