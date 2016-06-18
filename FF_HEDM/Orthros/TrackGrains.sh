@@ -20,8 +20,10 @@ do
 	echo ${OldStateFolder}
 	cd ${OldStateFolder}
 	OldFolder=$( find -type d -name "*Layer${LAYERNR}_*" )
+	OldFolder=${OldFolder:1}
 	OldFolder=${OldStateFolder}/${OldFolder}
-	echo $OldFolder
+	echo ${OldFolder}
+	ll ${OldFolder}
 	PSThisLayer=${TOP_PARAM_FILE}.Layer${LAYERNR}.txt
 	cp ${TOP_PARAM_FILE} ${PSThisLayer}
 	echo ${OldFolder} >> ${PSThisLayer}
