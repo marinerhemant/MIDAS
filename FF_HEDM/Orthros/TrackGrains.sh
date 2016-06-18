@@ -17,10 +17,8 @@ OldStateFolder=$( awk '$1 ~ /^OldStateFolder/ { print $2 }' ${TOP_PARAM_FILE} )
 
 for ((LAYERNR=$STARTLAYERNR; LAYERNR<=$ENDLAYERNR; LAYERNR++))
 do
-	cd ${OldStateFolder}/*Layer${LayerNr}_*
-	OldFolder=$( pwd )
-	cd -
-	pwd
+	OldFolder=$( ${OldStateFolder}/*Layer${LayerNr}_* )
+	echo $OldFolder
 	PSThisLayer=${TOP_PARAM_FILE}.Layer${LAYERNR}.txt
 	echo ${OldFolder} >> ${PSThisLayer}
 	echo ${HOME}/.MIDAS/MIDAS_V3_FarFieldGrainTracking PSThisLayer ${LAYERNR} ${LAYERNR} $4
