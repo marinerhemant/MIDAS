@@ -23,4 +23,5 @@ do
 	PSThisLayer=${TOP_PARAM_FILE}.Layer${LAYERNR}.txt
 	echo ${OldFolder} >> ${PSThisLayer}
 	echo ${HOME}/.MIDAS/MIDAS_V3_FarFieldGrainTracking PSThisLayer ${LAYERNR} ${LAYERNR} $4
+	pwd
 done
