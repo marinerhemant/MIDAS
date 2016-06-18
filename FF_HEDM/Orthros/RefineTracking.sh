@@ -9,7 +9,7 @@ source ${HOME}/.MIDAS/paths
 
 rm SpotsToIndex.csv
 
-${PFDIR}/SHMOperators.sh $1
+${PFDIR}/SHMOperatorsTracking.sh $1
 mkdir -p Output
 mkdir -p Results
 mkdir -p logs
