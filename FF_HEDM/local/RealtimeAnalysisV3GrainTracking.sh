@@ -33,7 +33,6 @@ ENr=$( awk '$1 ~ /^EndNr/ { print $2 }' ${TOP_PARAM_FILE} )
 NewType=$( awk '$1 ~ /^NewType/ { print $2 }' ${TOP_PARAM_FILE} )
 FLTFN=$( awk '$1 ~ /^FltFN/ { print $2 }' ${TOP_PARAM_FILE} )
 MinNrSpots=$( awk '$1 ~ /^MinNrSpots/ { print $2 }' ${TOP_PARAM_FILE} )
-GrainTracking=$( awk '$1 ~ /^GrainTracking/ { print $2 }' ${TOP_PARAM_FILE} )
 OldFolder=$( awk '$1 ~ /^OldFolder/ { print $2 }' ${TOP_PARAM_FILE} )
 echo "Ring to be used for seed points: $FinalRingToIndex"
 CHART=/
@@ -157,7 +156,7 @@ do
         echo "RingRadii $rad" >> paramstest.txt
    done
    echo "SpaceGroup $SGNum" >> paramstest.txt
-   echo "GrainTracking $GrainTracking" >> paramstest.txt
+   echo "GrainTracking 1" >> paramstest.txt
    echo "OldFolder $OldFolder" >> paramstest.txt
    sed -i 's/^MinNrSpots.*$/MinNrSpots 1/g' ${TOP_PARAM_FILE}
    ${PFDIR}/RefineTracking.sh ${TOP_PARAM_FILE} $OldFolder
