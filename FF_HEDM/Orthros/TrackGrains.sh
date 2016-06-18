@@ -21,7 +21,7 @@ do
 	cd ${OldStateFolder}
 	OldFolder=$( find -type d -name "*Layer${LAYERNR}_*" )
 	OldFolder=${OldFolder:1}
-	OldFolder=${OldStateFolder}/${OldFolder}
+	OldFolder=${OldStateFolder}${OldFolder}
 	echo ${OldFolder}
 	ll ${OldFolder}
 	PSThisLayer=${TOP_PARAM_FILE}.Layer${LAYERNR}.txt
