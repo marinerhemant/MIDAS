@@ -427,9 +427,14 @@ int main(int argc, char *argv[])
 	int nRings=0;
 	char *hashfn = "IDsHash.csv";
 	FILE *hashfile = fopen(hashfn,"r");
-	while (fgets(aline,2000,hashfile)!=NULL){
-		sscanf(aline,"%d %d %d %lf",&IDHash[nRings][0],&IDHash[nRings][1],&IDHash[nRings][2],&dspacings[nRings]);
-		nRings++;
+	int MakeHash = 0;
+	if (hashfile != NULL){
+		while (fgets(aline,2000,hashfile)!=NULL){
+			sscanf(aline,"%d %d %d %lf",&IDHash[nRings][0],&IDHash[nRings][1],&IDHash[nRings][2],&dspacings[nRings]);
+			nRings++;
+		}
+	}else{
+		MakeHash = 1;
 	}
 	double **SpotMatrix, **InputMatrix;
 	SpotMatrix = allocMatrix(NR_MAX_IDS_PER_GRAIN*nGrainPositions,10);
@@ -447,6 +452,10 @@ int main(int argc, char *argv[])
 		if ((int)InputMatrix[counterIF][1] != counterIF+1){
 			printf("IDs dont match.\nExiting\n"); 
 			return(1);
+		}
+		// Write Hash Matrix if needed.
+		if (MakeHash == 1){
+			// Write it now
 		}
 		counterIF++;
 	}

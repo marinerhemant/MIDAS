@@ -10,7 +10,8 @@ then
   echo "Provide ParametersFile StartLayerNr EndLayerNr and the number of CPUs to use!"
   echo "EG. $0 Parameters.txt 1 1 320"
   echo "the source parameter file should not have ring numbers and layer numbers in it."
-  echo "For now, please use only 1 layer, since tracking is per layer." 
+  echo "For now, please use only 1 layer, since tracking is per layer."
+  echo "Do not use this code directly if you have multiple layers."
   exit 1
 fi
 
