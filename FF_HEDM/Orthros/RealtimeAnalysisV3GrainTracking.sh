@@ -39,7 +39,6 @@ CHART=/
 flr=${TOP_PARAM_FILE%$CHART*}
 fstm=$( echo ${TOP_PARAM_FILE} | awk -F"/" '{print $NF}' )
 FileStem=$( awk '$1 ~ /^FileStem/ {print $2 }' $TOP_PARAM_FILE)
-GrainTracking=$( awk '$1 ~ /^GrainTracking/ { print $2 }' ${TOP_PARAM_FILE} )
 OldFolder=$( awk '$1 ~ /^OldFolder/ { print $2 }' ${TOP_PARAM_FILE} )
 for ((LAYERNR=$STARTLAYERNR; LAYERNR<=$ENDLAYERNR; LAYERNR++))
 do
@@ -160,7 +159,7 @@ do
         echo "RingRadii $rad" >> paramstest.txt
    done
    echo "SpaceGroup $SGNum" >> paramstest.txt
-   echo "GrainTracking $GrainTracking" >> paramstest.txt
+   echo "GrainTracking 1" >> paramstest.txt
    echo "OldFolder $OldFolder" >> paramstest.txt
    sed -i 's/^MinNrSpots.*$/MinNrSpots 1/g' ${TOP_PARAM_FILE}
    ${PFDIR}/RefineTracking.sh ${NCPUS} ${TOP_PARAM_FILE} $OldFolder
