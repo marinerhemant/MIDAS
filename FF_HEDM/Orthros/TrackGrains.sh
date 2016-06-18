@@ -24,5 +24,5 @@ do
 	PSThisLayer=${TOP_PARAM_FILE}.Layer${LAYERNR}.txt
 	cp ${TOP_PARAM_FILE} ${PSThisLayer}
 	echo OldFolder ${OldFolder} >> ${PSThisLayer}
-	echo ${HOME}/.MIDAS/MIDAS_V3_FarFieldGrainTracking ${PSThisLayer} ${LAYERNR} ${LAYERNR} $4
+	${HOME}/.MIDAS/MIDAS_V3_FarFieldGrainTracking ${PSThisLayer} ${LAYERNR} ${LAYERNR} $4
 done
