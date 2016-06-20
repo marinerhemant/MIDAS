@@ -540,10 +540,10 @@ int main(int argc, char *argv[])
 			SpotsInfo[j][6] = dummySampleInfo[j*22+8];
 			SpotsInfo[j][7] = dummySampleInfo[j*22+0]; // SpotID
 			rowSpotID = (int) dummySampleInfo[j*22+0] - 1;
-			SpotMatrix[counterSpotMatrix][0] = (double)IDs[rown];
-			SpotMatrix[counterSpotMatrix][1] = dummySampleInfo[j*22+0];
-			SpotMatrix[counterSpotMatrix][2] = InputMatrix[rowSpotID][0];
-			SpotMatrix[counterSpotMatrix][3] = InputMatrix[rowSpotID][2];
+			SpotMatrix[counterSpotMatrix][0] = (double)IDs[rown]; // GrainID
+			SpotMatrix[counterSpotMatrix][1] = dummySampleInfo[j*22+0]; //SpotID
+			SpotMatrix[counterSpotMatrix][2] = InputMatrix[rowSpotID][0]; //YRaw
+			SpotMatrix[counterSpotMatrix][3] = InputMatrix[rowSpotID][2]; //ZRaw
 			SpotMatrix[counterSpotMatrix][4] = InputMatrix[rowSpotID][3]; //Omega
 			SpotMatrix[counterSpotMatrix][5] = InputMatrix[rowSpotID][4]; //Eta
 			SpotMatrix[counterSpotMatrix][6] = InputMatrix[rowSpotID][5]; //RingNr
