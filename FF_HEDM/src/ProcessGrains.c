@@ -445,6 +445,7 @@ int main(int argc, char *argv[])
 	int counterIF=0;
 	FILE *spotsfile = fopen("SpotMatrix.csv","w");
 	fgets(aline,2000,inpfile);
+	int currentRing;
 	while (fgets(aline,2000,inpfile)!=NULL){
 		sscanf(aline,"%lf %lf %lf %s %lf %lf %lf %lf %s %s %s %lf %lf %s",&InputMatrix[counterIF][6], &InputMatrix[counterIF][7], &InputMatrix[counterIF][0],
 			dummy, &InputMatrix[counterIF][1], &InputMatrix[counterIF][5], &InputMatrix[counterIF][4], &InputMatrix[counterIF][8], dummy, dummy, dummy, 
@@ -455,10 +456,40 @@ int main(int argc, char *argv[])
 		}
 		// Write Hash Matrix if needed.
 		if (MakeHash == 1){
-			// Write it now
+			if (counterIF == 0){ // First Spot
+				IDHash[nRings][0] = (int) InputMatrix[counterIF][5];
+				IDHash[nRings][1] = counterIF + 1;
+				currentRing = (int) InputMatrix[counterIF][5];
+				nRings++;
+			}else{
+				if ((int) InputMatrix[counterIF][5] != currentRing){ // Each time ring number changes
+					nRings++;
+					IDHash[nRings][0] = (int) InputMatrix[counterIF][5];
+					IDHash[nRings][1] = counterIF + 1;
+					IDHash[nRings-1][2] = counterIF;
+				}
+			}
 		}
 		counterIF++;
 	}
+	IDHash[nRings][2] = counterIF; // Write the max for last ring last ID.
+	if (MakeHash == 1){ // Get dspacings from hkls.csv file
+		FILE *hklf = fopen("hkls.csv","r");
+		char aline2[2048];
+		double ds;
+		int rnr;
+		while (fgets(aline2,2000,hklf)!=NULL){
+			sscanf(aline2,"%s %s %s %lf %d %s %s %s %s %s %s", dummy, dummy, 
+				dummy, &ds, &rnr, dummy, dummy, dummy, dummy, dummy, dummy);
+			for (i=0;i<nRings;i++){
+				if (IDHash[i][0] == rnr){
+					dspacings[i] = ds;
+				}
+			}
+		}
+		
+	}
+	
 	int rowSpotID;
 	for (i=0;i<nGrainPositions;i++){
 		rown = GrainPositions[i];
