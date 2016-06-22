@@ -219,7 +219,7 @@ StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double
 	nlopt_optimize(opt, x, &minf);
 	nlopt_destroy(opt);
 	*RetVal = minf/nspots;
-	*RetVal = sqrt(*Retval);
+	*RetVal = sqrt(*RetVal);
 	StrainTensorSample[0][0] = x[0];
 	StrainTensorSample[0][1] = x[3];
 	StrainTensorSample[0][2] = x[4];
