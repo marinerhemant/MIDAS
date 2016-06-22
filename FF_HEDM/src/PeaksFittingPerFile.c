@@ -7,6 +7,8 @@
 //
 //  
 // Only 8-connected is implemented for now.
+//
+// TODO: Rectangular detector, read netcdf etc.
 
 #include <stdio.h>
 #include <math.h>
@@ -23,6 +25,7 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <fcntl.h>
+#include <netcdf.h>
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -529,7 +532,7 @@ int main(int argc, char *argv[]){
     int TransOpt[10];
     int StartFileNr, NrFilesPerSweep;
     int DoFullImage = 0;
-    int FrameNrOmeChange = 1;
+    int FrameNrOmeChange = 1, NrDarkFramesDataFile = 0;
     double OmegaMissing = 0, MisDir;
     while (fgets(aline,1000,fileParam)!=NULL){
 		printf("%s\n",aline);
@@ -678,6 +681,12 @@ int main(int argc, char *argv[]){
             sscanf(aline,"%s %d", dummy, &StartNr);
             continue;
         }
+        str = "NrDarkFramesDataFile ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &NrDarkFramesDataFile);
+            continue;
+        }
         str = "MaxRingRad ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -741,7 +750,9 @@ int main(int argc, char *argv[]){
         Nadditions = (int) ((FileNr - StartNr + 1) / FrameNrOmeChange)  ;
         Omega = OmegaFirstFile + ((FileNr-StartNr)*OmegaStep) + MisDir*OmegaMissing*Nadditions;
     }
-	double *dark,*flood, *darkTemp;;
+    
+    // Dark file reading from here.
+	double *dark, *flood, *darkTemp;;
 	//printf("%f %f\n",Rmin,Rmax);
 	dark = malloc(NrPixels*NrPixels*sizeof(*dark));
 	darkTemp = malloc(NrPixels*NrPixels*sizeof(*darkTemp));
@@ -776,6 +787,8 @@ int main(int argc, char *argv[]){
 	}
 	Transposer(darkTemp,NrPixels,dark);
 	free(darkcontents);
+	//Finished reading dark file.
+	
 	FILE *floodfile=fopen(floodfilename,"rb");
 	if (floodfile==NULL){
 		printf("Could not read the flood file. Using no flood correction.\n");

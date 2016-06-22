@@ -586,8 +586,8 @@ int main(int argc, char *argv[])
 				FinalMatrix[nGrains][33+3*j+k] = MultR*StrainTensorSampleKen[j][k];
 			}
 		}
-		FinalMatrix[nGrains][42] = (double)PhaseNr;
-		FinalMatrix[nGrains][43] = RetVal;
+		FinalMatrix[nGrains][42] = RetVal;
+		FinalMatrix[nGrains][43] = (double)PhaseNr;
 		VNorm = FinalMatrix[nGrains][22]*FinalMatrix[nGrains][22]*FinalMatrix[nGrains][22];
 		BeamCenter += (FinalMatrix[nGrains][12])*(VNorm);
 		FullVol += VNorm;
@@ -614,7 +614,7 @@ int main(int argc, char *argv[])
 	fprintf(GrainsFile,"%%GrainID\tO11\tO12\tO13\tO21\tO22\tO23\tO31\tO32\tO33\tX\tY\tZ\ta\tb"
 						"\tc\talpha\tbeta\tgamma\tDiffPos\tDiffOme\tDiffAngle\tGrainRadius\tConfidence\t");
 	fprintf(GrainsFile,"eFab11\teFab12\teFab13\teFab21\teFab22\teFab23\teFab31\teFab32\teFab33\t");
-	fprintf(GrainsFile,"eKen11\teKen12\teKen13\teKen21\teKen22\teKen23\teKen31\teKen32\teKen33\tPhaseNr\tRMSErrorStrain\n");
+	fprintf(GrainsFile,"eKen11\teKen12\teKen13\teKen21\teKen22\teKen23\teKen31\teKen32\teKen33\tRMSErrorStrain\tPhaseNr\n");
 	for (i=0;i<nGrains;i++){
 		fprintf(GrainsFile,"%d\t",(int)FinalMatrix[i][0]);
 		for (j=1;j<43;j++){
