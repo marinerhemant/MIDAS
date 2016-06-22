@@ -166,7 +166,7 @@ double problem_function(
 inline int
 StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double Distance, double wavelength,
 		double StrainTensorSample[3][3], int IDHash[NR_MAX_IDS_PER_GRAIN][3],
-		double dspacings[NR_MAX_IDS_PER_GRAIN], int nRings)
+		double dspacings[NR_MAX_IDS_PER_GRAIN], int nRings, int startSpotMatrix, double SpotMatrix[][11], double *RetVal)
 		/*SpotsInfo: 0,1,2 - Gobs, 3,4 - Y,Z spot, 5,6 - Y,Z sim, 7 - ID, G Vec should be normalized or not????*/
 {
 	int i,j;
@@ -218,6 +218,7 @@ StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double
 	double minf=1;
 	nlopt_optimize(opt, x, &minf);
 	nlopt_destroy(opt);
+	*RetVal = minf/nspots;
 	StrainTensorSample[0][0] = x[0];
 	StrainTensorSample[0][1] = x[3];
 	StrainTensorSample[0][2] = x[4];
@@ -227,5 +228,10 @@ StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double
 	StrainTensorSample[2][0] = x[4];
 	StrainTensorSample[2][1] = x[5];
 	StrainTensorSample[2][2] = x[2];
+	for (i=0;i<nspots;i++){
+		SpotMatrix[i+startSpotMatrix][10] = fabs(mydata.B[i] - (mydata.A[i][0]*x[0] + 
+			   mydata.A[i][1]*x[1] + mydata.A[i][2]*x[2] + mydata.A[i][3]*x[3] + 
+			   mydata.A[i][4]*x[4] + mydata.A[i][5]*x[5]));
+	}
 	return 1;
 }

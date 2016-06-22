@@ -2,6 +2,7 @@ CC=gcc
 NCC=nvcc
 NCFLAGS=-O3 -G -g -w -arch sm_52 -lm -rdc=true # -res-usage
 CFLAGS=-fPIC -ldl -lm -fgnu89-inline -O3 -w
+CFLAGSNETCDF=-I$${HOME}/.MIDAS/netcdf/include -L$${HOME}/.MIDAS/netcdf/lib -lnetcdf -I$${HOME}/.MIDAS/hdf5/include -L$${HOME}/.MIDAS/hdf5/lib -lhdf5_hl -lhdf5 -I$${HOME}/.MIDAS/zlib/include -L$${HOME}/.MIDAS/zlib/lib -lz
 NLOPT=""
 ifneq ($(NLOPT),"")
 	CFLAGSNLOPT=-I$(NLOPT)/include -L$(NLOPT)/lib -lnlopt
@@ -15,9 +16,9 @@ all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting 
 	mergeoverlaps calcradius findsaturatedpx\
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking
 
-local: packages flags all scripts
+local: packages netcdf all scripts
 
-orthros: deps all
+orthros: deps netcdf all
 	Orthros/setup.sh
 
 deps:
@@ -47,8 +48,8 @@ scripts: local/setup.sh
 packages: local/GetPackages.sh
 	local/./GetPackages.sh
 
-flags:
-	@echo $(CFLAGSNLOPT)
+netcdf:
+	./GetNetCDF.sh
 
 calibrant: $(SRCDIR)Calibrant.c
 	$(CC) $(SRCDIR)Calibrant.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)Calibrant $(CFLAGS) $(CFLAGSNLOPT) 
@@ -61,7 +62,7 @@ fitposorstrains: $(SRCDIR)FitPosOrStrains.c
 	$(CFLAGSNLOPT) 
 
 peaksfitting: $(SRCDIR)PeaksFittingPerFile.c
-	$(CC) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile $(CFLAGS) $(CFLAGSNLOPT) 
+	$(CC) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile $(CFLAGSNETCDF) $(CFLAGS) $(CFLAGSNLOPT) 
 
 mergeoverlaps: $(SRCDIR)MergeOverlappingPeaks.c
 	$(CC) $(SRCDIR)MergeOverlappingPeaks.c -o $(BINDIR)MergeOverlappingPeaks $(CFLAGS)

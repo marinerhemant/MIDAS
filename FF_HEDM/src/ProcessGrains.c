@@ -420,7 +420,7 @@ int main(int argc, char *argv[])
 	double MultR=1000000;
 	double **FinalMatrix;
 	double BeamCenter = 0, FullVol = 0,VNorm;
-	FinalMatrix = allocMatrix(nGrainPositions,43);
+	FinalMatrix = allocMatrix(nGrainPositions,44);
 	int rown2;
 	int IDHash[NR_MAX_IDS_PER_GRAIN][3];
 	double dspacings[NR_MAX_IDS_PER_GRAIN];
@@ -437,9 +437,9 @@ int main(int argc, char *argv[])
 		MakeHash = 1;
 	}
 	double **SpotMatrix, **InputMatrix;
-	SpotMatrix = allocMatrix(NR_MAX_IDS_PER_GRAIN*nGrainPositions,10);
+	SpotMatrix = allocMatrix(NR_MAX_IDS_PER_GRAIN*nGrainPositions,11);
 	InputMatrix = allocMatrix(MAX_N_IDS,9);
-	int counterSpotMatrix = 0;
+	int counterSpotMatrix = 0, nRowsSpotMatrix = NR_MAX_IDS_PER_GRAIN*nGrainPositions;
 	char *inputallfn = "InputAllExtraInfoFittingAll.csv";
 	FILE *inpfile = fopen(inputallfn,"r");
 	int counterIF=0;
@@ -487,10 +487,9 @@ int main(int argc, char *argv[])
 				}
 			}
 		}
-		
 	}
-	
-	int rowSpotID;
+	int rowSpotID, startSpotMatrix;
+	double RetVal;
 	for (i=0;i<nGrainPositions;i++){
 		rown = GrainPositions[i];
 		DoneAlready = 0;
@@ -516,8 +515,8 @@ int main(int argc, char *argv[])
 			}
 			OrientMat2Quat(OR2,q2);
 			Angle = GetMisOrientation(q1,q2,Axis,&ang,SGNr);
-			DiffPos = sqrt((OPs[rown][9]-OPs[rown2][9])*(OPs[rown][9]-OPs[rown2][9]) 
-						 + (OPs[rown][10]-OPs[rown2][10])*(OPs[rown][10]-OPs[rown2][10]) 
+			DiffPos = sqrt((OPs[rown][9]- OPs[rown2][9])*( OPs[rown][9]- OPs[rown2][9])
+						 + (OPs[rown][10]-OPs[rown2][10])*(OPs[rown][10]-OPs[rown2][10])
 						 + (OPs[rown][11]-OPs[rown2][11])*(OPs[rown][11]-OPs[rown2][11]));
 			if (ang < 0.1 && DiffPos < 5){
 				IDsDone[cres] = IDs[rown2];
@@ -530,6 +529,7 @@ int main(int argc, char *argv[])
 		OffSt = rown*22*NR_MAX_IDS_PER_GRAIN*sizeof(double);
 		ReadSize = 22*nspots*sizeof(double);
 		int rc = pread(fullInfoFile,dummySampleInfo,ReadSize,OffSt);
+		startSpotMatrix = counterSpotMatrix;
 		for (j=0;j<nspots;j++){
 			SpotsInfo[j][0] = dummySampleInfo[j*22+4];
 			SpotsInfo[j][1] = dummySampleInfo[j*22+5];
@@ -567,7 +567,8 @@ int main(int argc, char *argv[])
 		Orient[2][0] = OPs[rown][6];
 		Orient[2][1] = OPs[rown][7];
 		Orient[2][2] = OPs[rown][8];
-		int retval = StrainTensorKenesei(nspots,SpotsInfo,Distance,wavelength,StrainTensorSampleKen,IDHash,dspacings,nRings);
+		int retval = StrainTensorKenesei(nspots,SpotsInfo,Distance,wavelength,
+			StrainTensorSampleKen,IDHash,dspacings,nRings,startSpotMatrix,SpotMatrix,&RetVal);
 		if (retval == 0){
 			printf("Did not read correct hash table for IDs. Exiting\n");
 			return;
@@ -586,6 +587,7 @@ int main(int argc, char *argv[])
 			}
 		}
 		FinalMatrix[nGrains][42] = (double)PhaseNr;
+		FinalMatrix[nGrains][43] = RetVal;
 		VNorm = FinalMatrix[nGrains][22]*FinalMatrix[nGrains][22]*FinalMatrix[nGrains][22];
 		BeamCenter += (FinalMatrix[nGrains][12])*(VNorm);
 		FullVol += VNorm;
@@ -594,11 +596,11 @@ int main(int argc, char *argv[])
 	printf("Number of grains: %d.\n",nGrains);
 	BeamCenter /= FullVol;
 	// Write file
-	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tEta\tRingNr\tYLab\tZLab\tTheta\n");
+	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
 	for (i=0;i<counterSpotMatrix;i++){
 		fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\n",(int)SpotMatrix[i][0],(int)SpotMatrix[i][1],
 			SpotMatrix[i][2],SpotMatrix[i][3],SpotMatrix[i][4],SpotMatrix[i][5],(int)SpotMatrix[i][6],
-			SpotMatrix[i][7],SpotMatrix[i][8],SpotMatrix[i][9]);
+			SpotMatrix[i][7],SpotMatrix[i][8],SpotMatrix[i][9],SpotMatrix[i][10]);
 	}
 	fclose(spotsfile);
 	fprintf(GrainsFile,"%%NumGrains %d\n",nGrains);
@@ -612,7 +614,7 @@ int main(int argc, char *argv[])
 	fprintf(GrainsFile,"%%GrainID\tO11\tO12\tO13\tO21\tO22\tO23\tO31\tO32\tO33\tX\tY\tZ\ta\tb"
 						"\tc\talpha\tbeta\tgamma\tDiffPos\tDiffOme\tDiffAngle\tGrainRadius\tConfidence\t");
 	fprintf(GrainsFile,"eFab11\teFab12\teFab13\teFab21\teFab22\teFab23\teFab31\teFab32\teFab33\t");
-	fprintf(GrainsFile,"eKen11\teKen12\teKen13\teKen21\teKen22\teKen23\teKen31\teKen32\teKen33\tPhaseNr\n");
+	fprintf(GrainsFile,"eKen11\teKen12\teKen13\teKen21\teKen22\teKen23\teKen31\teKen32\teKen33\tPhaseNr\tRMSErrorStrain\n");
 	for (i=0;i<nGrains;i++){
 		fprintf(GrainsFile,"%d\t",(int)FinalMatrix[i][0]);
 		for (j=1;j<43;j++){
