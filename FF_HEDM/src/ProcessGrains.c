@@ -586,7 +586,7 @@ int main(int argc, char *argv[])
 				FinalMatrix[nGrains][33+3*j+k] = MultR*StrainTensorSampleKen[j][k];
 			}
 		}
-		FinalMatrix[nGrains][42] = RetVal;
+		FinalMatrix[nGrains][42] = MultR * RetVal;
 		FinalMatrix[nGrains][43] = (double)PhaseNr;
 		VNorm = FinalMatrix[nGrains][22]*FinalMatrix[nGrains][22]*FinalMatrix[nGrains][22];
 		BeamCenter += (FinalMatrix[nGrains][12])*(VNorm);
