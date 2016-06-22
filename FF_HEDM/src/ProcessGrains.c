@@ -598,7 +598,7 @@ int main(int argc, char *argv[])
 	// Write file
 	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
 	for (i=0;i<counterSpotMatrix;i++){
-		fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\n",(int)SpotMatrix[i][0],(int)SpotMatrix[i][1],
+		fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\n",(int)SpotMatrix[i][0],(int)SpotMatrix[i][1],
 			SpotMatrix[i][2],SpotMatrix[i][3],SpotMatrix[i][4],SpotMatrix[i][5],(int)SpotMatrix[i][6],
 			SpotMatrix[i][7],SpotMatrix[i][8],SpotMatrix[i][9],SpotMatrix[i][10]);
 	}
@@ -617,7 +617,7 @@ int main(int argc, char *argv[])
 	fprintf(GrainsFile,"eKen11\teKen12\teKen13\teKen21\teKen22\teKen23\teKen31\teKen32\teKen33\tRMSErrorStrain\tPhaseNr\n");
 	for (i=0;i<nGrains;i++){
 		fprintf(GrainsFile,"%d\t",(int)FinalMatrix[i][0]);
-		for (j=1;j<43;j++){
+		for (j=1;j<44;j++){
 			fprintf(GrainsFile,"%lf\t",FinalMatrix[i][j]);
 		}
 		fprintf(GrainsFile,"\n");
