@@ -160,7 +160,7 @@ double problem_function(
 		Diff = InterDiff - f_data->B[i];
 		TotDiff += Diff*Diff;
 	}
-	return TotDiff;
+	return 1000*TotDiff;
 }
 
 inline int
