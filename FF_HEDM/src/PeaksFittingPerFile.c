@@ -758,7 +758,8 @@ int main(int argc, char *argv[]){
 	darkTemp = malloc(NrPixels*NrPixels*sizeof(*darkTemp));
 	flood = malloc(NrPixels*NrPixels*sizeof(*flood));
 	FILE *darkfile=fopen(darkcurrentfilename,"rb");
-	int sz, nFrames;
+	size_t sz;
+	int nFrames;
 	int SizeFile = sizeof(pixelvalue) * NrPixels * NrPixels;
 	long int Skip;
 	for (i=0;i<(NrPixels*NrPixels);i++){dark[i]=0;darkTemp[i]=0;}
