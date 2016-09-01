@@ -827,8 +827,6 @@ CalcEtaAngle(
    RealType *alpha) {
   
    // calc angle using dot product.
-   printf("%lf %lf %lf\n",rad2deg,y,z);
-   fflush(stdout);
    *alpha = rad2deg * acos(z/sqrt(y*y+z*z));  // rad -> deg
     
    // alpha is now [0, 180], for positive y it should be between [0, -180]
@@ -3294,6 +3292,8 @@ DoIndexing(
                                                           
                   TheorSpots[sp][10] = TheorSpots[sp][4] +  Displ_y;
                   TheorSpots[sp][11] = TheorSpots[sp][5] +  Displ_z;
+                  printf("%lf %lf \n",TheorSpots[sp][10],TheorSpots[sp][11]);
+                  fflush(stdout);
                   CalcEtaAngle( TheorSpots[sp][10], TheorSpots[sp][11], &TheorSpots[sp][12] ); // correct eta for displaced spot
                   TheorSpots[sp][13] = sqrt(TheorSpots[sp][10] * TheorSpots[sp][10] + TheorSpots[sp][11] * TheorSpots[sp][11]) - 
                                Params.RingRadii[(int)TheorSpots[sp][9]];  // new eta, due to displ spot                                   
@@ -3457,6 +3457,8 @@ int ReadBins(){
     check (status2 < 0, "stat %s failed: %s", file_name2, strerror (errno));
     size_t size2 = s2.st_size;
     ndata = mmap (0, size2, PROT_READ, MAP_SHARED, fd2, 0);
+    printf("%lld %d %lld %\n",(long long int)size2,(int)sizeof(int),(long long int)(size2/sizeof(int)));
+    fflush(stdout);
     check (ndata == MAP_FAILED, "mmap %s failed: %s",file_name, strerror (errno));
 	return 1;
 }
