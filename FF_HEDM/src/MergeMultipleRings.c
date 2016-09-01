@@ -18,7 +18,7 @@
 #include <ctype.h>
 #include <sys/types.h>
 
-#define MAX_SPOTS_FILE 500000
+#define MAX_SPOTS_FILE 2000000
 #define MAX_SPOTS_TOTAL 5000000
 
 static inline
