@@ -3292,8 +3292,6 @@ DoIndexing(
                                                           
                   TheorSpots[sp][10] = TheorSpots[sp][4] +  Displ_y;
                   TheorSpots[sp][11] = TheorSpots[sp][5] +  Displ_z;
-                  printf("%lf %lf \n",TheorSpots[sp][10],TheorSpots[sp][11]);
-                  fflush(stdout);
                   CalcEtaAngle( TheorSpots[sp][10], TheorSpots[sp][11], &TheorSpots[sp][12] ); // correct eta for displaced spot
                   TheorSpots[sp][13] = sqrt(TheorSpots[sp][10] * TheorSpots[sp][10] + TheorSpots[sp][11] * TheorSpots[sp][11]) - 
                                Params.RingRadii[(int)TheorSpots[sp][9]];  // new eta, due to displ spot                                   
