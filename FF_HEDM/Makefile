@@ -62,7 +62,11 @@ fitposorstrains: $(SRCDIR)FitPosOrStrains.c
 	$(CFLAGSNLOPT) 
 
 peaksfitting: $(SRCDIR)PeaksFittingPerFile.c
-	$(CC) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile $(CFLAGSNETCDF) $(CFLAGS) $(CFLAGSNLOPT) 
+	$(CC) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile $(CFLAGS) $(CFLAGSNLOPT) 
+
+peaksfittingcdf: $(SRCDIR)PeaksFittingPerFile.c
+	$(CC) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile -DCDF=netCDF $(CFLAGSNETCDF) $(CFLAGS) $(CFLAGSNLOPT) 
+
 
 mergeoverlaps: $(SRCDIR)MergeOverlappingPeaks.c
 	$(CC) $(SRCDIR)MergeOverlappingPeaks.c -o $(BINDIR)MergeOverlappingPeaks $(CFLAGS)

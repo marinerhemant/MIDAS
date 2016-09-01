@@ -25,7 +25,9 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <fcntl.h>
+#ifdef CDF
 #include <netcdf.h>
+#endif
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -534,6 +536,8 @@ int main(int argc, char *argv[]){
     int DoFullImage = 0;
     int FrameNrOmeChange = 1, NrDarkFramesDataFile = 0;
     double OmegaMissing = 0, MisDir;
+    double FileOmegaOmeStep[360][2];
+    int fnr = 0;
     while (fgets(aline,1000,fileParam)!=NULL){
 		printf("%s\n",aline);
 		fflush(stdout);
@@ -706,6 +710,13 @@ int main(int argc, char *argv[]){
             sscanf(aline,"%s %d %lf %lf", dummy, &FrameNrOmeChange, &OmegaMissing, &MisDir);
             continue;
         }
+        str = "FileOmegaOmeStep ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf %lf", dummy, &FileOmegaOmeStep[fnr][0], &FileOmegaOmeStep[fnr][1]);
+            fnr++;
+            continue;
+        }
 	}
 	printf("%f\n",Thresh);
 	Width = Width/px;
@@ -744,13 +755,14 @@ int main(int argc, char *argv[]){
 	double Rmin=RingRad-Width, Rmax=RingRad+Width;
 	double Omega;
 	int Nadditions;
-	if (FileNr - StartNr + 1 < FrameNrOmeChange){
-    	Omega = OmegaFirstFile + ((FileNr-StartNr)*OmegaStep);
-    } else {
-        Nadditions = (int) ((FileNr - StartNr + 1) / FrameNrOmeChange)  ;
-        Omega = OmegaFirstFile + ((FileNr-StartNr)*OmegaStep) + MisDir*OmegaMissing*Nadditions;
+	if (fnr == 0){
+		if (FileNr - StartNr + 1 < FrameNrOmeChange){
+			Omega = OmegaFirstFile + ((FileNr-StartNr)*OmegaStep);
+		} else {
+			Nadditions = (int) ((FileNr - StartNr + 1) / FrameNrOmeChange)  ;
+			Omega = OmegaFirstFile + ((FileNr-StartNr)*OmegaStep) + MisDir*OmegaMissing*Nadditions;
+		}
     }
-    
     // Dark file reading from here.
 	double *dark, *flood, *darkTemp;;
 	//printf("%f %f\n",Rmin,Rmax);
@@ -841,6 +853,11 @@ int main(int argc, char *argv[]){
 	int ReadFileNr;
 	ReadFileNr = StartFileNr + ((FileNr-1) / nFrames);
 	int FramesToSkip = ((FileNr-1) % nFrames);
+	
+	if (fnr != 0){
+		OmegaStep = FileOmegaOmeStep[ReadFileNr-StartFileNr][1];
+		Omega = FileOmegaOmeStep[ReadFileNr-StartFileNr][0] + FramesToSkip*OmegaStep;
+	}
 	
 	if (Padding == 2){sprintf(FN,"%s/%s_%02d%s",RawFolder,fs,ReadFileNr,Ext);}
 	else if (Padding == 3){sprintf(FN,"%s/%s_%03d%s",RawFolder,fs,ReadFileNr,Ext);}
