@@ -1220,7 +1220,7 @@ CompareSpots(
       MatchFound = 0;
       diffOmeBest = 100000;
       long long int Pos = iRing*n_eta_bins*n_ome_bins + iEta*n_ome_bins + iOme;
-      printf("%lld\n",Pos);
+      printf("%lld %d %d %d %d %d %d\n",Pos,iRing,n_eta_bins,n_ome_bins,iEta,n_ome_bins,iOme);
       fflush(stdout);
 	  long long int nspots = ndata[Pos*2];
       long long int DataPos = ndata[Pos*2+1];
@@ -3457,7 +3457,7 @@ int ReadBins(){
     check (status2 < 0, "stat %s failed: %s", file_name2, strerror (errno));
     size_t size2 = s2.st_size;
     ndata = mmap (0, size2, PROT_READ, MAP_SHARED, fd2, 0);
-    printf("%lld %d %lld %\n",(long long int)size2,(int)sizeof(int),(long long int)(size2/sizeof(int)));
+    printf("%lld %d %lld \n",(long long int)size2,(int)sizeof(int),(long long int)(size2/sizeof(int)));
     fflush(stdout);
     check (ndata == MAP_FAILED, "mmap %s failed: %s",file_name, strerror (errno));
 	return 1;
