@@ -283,8 +283,6 @@ int main(int arc, char* argv[]){
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
     printf("Time elapsed in making DataArray: %f s.\n",diftotal);
 	long long int LengthNDataStore = n_ring_bins*n_eta_bins*n_ome_bins;
-	int LengthNDataStores = n_ring_bins*n_eta_bins*n_ome_bins;
-	printf("%d %d %d %lld\n",LengthNDataStores,n_ring_bins, HighestRingNo,LengthNDataStore);
 	int *nDataStore, *DataStore;
 	nDataStore = malloc(LengthNDataStore*2*sizeof(*nDataStore));
 	DataStore = malloc(TotNumberOfBins*sizeof(*DataStore));

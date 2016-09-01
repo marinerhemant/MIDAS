@@ -25,6 +25,8 @@
 #define CalcNorm3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
 #define CalcNorm2(x,y)   sqrt((x)*(x) + (y)*(y))
 
+#define MAX_N_SPOTS 1000000
+
 static inline
 double**
 allocMatrix(int nrows, int ncols)
@@ -219,7 +221,7 @@ int main(int argc, char *argv[]){
 	fgets(aline,1000,Infile);
 	int counter = 0;
 	double **SpotsMat;
-	SpotsMat = allocMatrix(500000,16);
+	SpotsMat = allocMatrix(MAX_N_SPOTS,16);
 	double PowderInt = 0;
 	char *hklfn = "hkls.csv";
 	FILE *hklf = fopen(hklfn,"r");
@@ -244,7 +246,7 @@ int main(int argc, char *argv[]){
 	fprintf(outfile,"%s",header);
 	double totVol=0;
 	double **Sigmas;
-	Sigmas = allocMatrix(500000,2);
+	Sigmas = allocMatrix(MAX_N_SPOTS,2);
 	double MinOme=100000, MaxOme=-100000;
 	while (fgets(aline,1000,Infile)!=NULL){
 		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&SpotsMat[counter][0],&SpotsMat[counter][1],
@@ -293,7 +295,7 @@ int main(int argc, char *argv[]){
 		fprintf(outfile,"%f %f %f\n",PowderInt,Sigmas[i][0],Sigmas[i][1]);
 	}
 	totVol /= (mhkl*2*omrang/360.0);
-	FreeMemMatrix(SpotsMat,500000);
+	FreeMemMatrix(SpotsMat,MAX_N_SPOTS);
 	end = clock();
     diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
     printf("Time elapsed: %f s.\n",diftotal);

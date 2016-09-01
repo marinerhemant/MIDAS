@@ -1220,8 +1220,6 @@ CompareSpots(
       MatchFound = 0;
       diffOmeBest = 100000;
       long long int Pos = iRing*n_eta_bins*n_ome_bins + iEta*n_ome_bins + iOme;
-      printf("%lld %d %d %d %d %d %d\n",Pos,iRing,n_eta_bins,n_ome_bins,iEta,n_ome_bins,iOme);
-      fflush(stdout);
 	  long long int nspots = ndata[Pos*2];
       long long int DataPos = ndata[Pos*2+1];
       for ( iSpot = 0 ; iSpot < nspots; iSpot++ ) {
