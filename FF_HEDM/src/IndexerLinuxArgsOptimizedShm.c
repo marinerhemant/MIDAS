@@ -827,6 +827,8 @@ CalcEtaAngle(
    RealType *alpha) {
   
    // calc angle using dot product.
+   printf("%lf %lf %lf\n",rad2deg,y,z);
+   fflush(stdout);
    *alpha = rad2deg * acos(z/sqrt(y*y+z*z));  // rad -> deg
     
    // alpha is now [0, 180], for positive y it should be between [0, -180]
