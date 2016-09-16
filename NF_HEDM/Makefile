@@ -1,18 +1,18 @@
 CC=gcc
 NCC=nvcc
-NCFLAGS=-w -arch sm_52
-CFLAGS=-fPIC -ldl -lm -finline-functions -O3 -w
+NCFLAGS=-O3 -G -g -w -arch sm_52 -lm -rdc=true # -res-usage
+CFLAGS=-fPIC -g -ldl -lm -fgnu89-inline -O3 -w
 NLOPT=""
 ifneq ($(NLOPT),"")
 	CFLAGSNLOPT=-I$(NLOPT)/include -L$(NLOPT)/lib -lnlopt
 else
-	CFLAGSNLOPT=-lnlopt
+	CFLAGSNLOPT=-I$${HOME}/.MIDAS/NLOPT/include -L$${HOME}/.MIDAS/NLOPT/lib -lnlopt
 endif
 TIFF=""
 ifneq ($(TIFF),"")
 	CFLAGSTIFF=-I$(TIFF)/include -L$(TIFF)/lib -ltiff
 else
-	CFLAGSTIFF=-ltiff
+	CFLAGSTIFF=-I$${HOME}/.MIDAS/LIBTIFF/include -L$${HOME}/.MIDAS/LIBTIFF/lib -ltiff
 endif
 SRCDIR=src/
 BINDIR=bin/
@@ -21,6 +21,11 @@ all: help bindircheck makediffrspots makediffrspotsff2nf makehexgrid medianimage
 	fitorientation fitorientationff2nf fitorientationparameters fitorientationparametersmultipoint \
 	genseedorientations simulatediffrspots simulatediffrspotslatc convertbinfiles processnfmicremote \
 	mmapimageinfo hkls parsemic
+
+local: packages all
+
+packages:
+	./GetPackages.sh
 
 bindircheck:
 	mkdir -p $(BINDIR)

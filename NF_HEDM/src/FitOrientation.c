@@ -318,11 +318,18 @@ main(int argc, char *argv[])
     double OmegaRanges[MAX_N_OMEGA_RANGES][2], BoxSizes[MAX_N_OMEGA_RANGES][4];
     int cntr=0,countr=0,conter=0,StartNr,EndNr,intdummy,SpaceGroup;
     int NoOfOmegaRanges=0;
+    int nSaves = 1;
     while (fgets(aline,1000,fileParam)!=NULL){
 		str = "ReducedFileName ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %s", dummy, fn2);
+            continue;
+        }
+		str = "SaveNSolutions ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, nSaves);
             continue;
         }
 		str = "DataDirectory ";
@@ -650,6 +657,7 @@ main(int argc, char *argv[])
     }
     printf("Finished checking orientation grid. Now fitting %d orientations.\n",OrientationGoodID);
     double BestFrac, BestEuler[3];
+	double ResultMatr[7+(nSaves*4)];
     if (OrientationGoodID>0){
 		int n_hkls = 0;
 		double hkls[5000][4];
@@ -664,9 +672,21 @@ main(int argc, char *argv[])
 				&hkls[n_hkls][2],&Thetas[n_hkls],dummy,dummy);
 			n_hkls++;
 		}
-        double Fractions, EulerIn[3], OrientIn[3][3], FracOut, EulerOutA, EulerOutB,EulerOutC,OMTemp[9];
-        BestFrac = -1;
-        for (i=0;i<OrientationGoodID;i++){
+		double Fractions, EulerIn[3], OrientIn[3][3], FracOut, EulerOutA, EulerOutB,EulerOutC,OMTemp[9];
+		BestFrac = -1;
+		ResultMatr[0] = (double)atoi(argv[2]);
+		ResultMatr[1] = (double)OrientationGoodID;
+		ResultMatr[2] = diftotal;
+		ResultMatr[3] = xs;
+		ResultMatr[4] = ys;
+		ResultMatr[5] = GridSize;
+		ResultMatr[6] = (double)UD;
+		int nFilled = 0;
+		int t;
+		for (i=0;i<nSaves;i++){
+			ResultMatr[7+i*4] = 0;
+		}
+		for (i=0;i<OrientationGoodID;i++){
             for (j=0;j<9;j++){
                 OMTemp[j] = OrientMatrix[i][j];
             }
@@ -684,8 +704,25 @@ main(int argc, char *argv[])
                 BestEuler[0] = EulerOutA;
                 BestEuler[1] = EulerOutB;
                 BestEuler[2] = EulerOutC;
-                if (1-BestFrac < 0.0001) break;
+                if (1-BestFrac < 0.0001 && nSaves == 1) break;
             }
+            if (nSaves > 1){
+				for (j=0;j<nFilled;j++){ // ResultMatr format: 7 initial common things, then 4 values for each match, Angle, Angle, Angle and Confidence
+					if (Fractions > ResultMatr[7+j*4+3]){ // Put this in??
+						for (m=nFilled-1;m>=j;m--){ // Move everything upto j
+							if (m == nSaves - 1) continue; // Worst match, trash
+							for (t=0;t<4;t++){
+								ResultMatr[7+(m+1)*4+t] = ResultMatr[7+(m)*4+t];
+							}
+						}
+						ResultMatr[7+j*4] = BestEuler[0];
+						ResultMatr[7+j*4+1] = BestEuler[1];
+						ResultMatr[7+j*4+2] = BestEuler[2];
+						ResultMatr[7+j*4+3] = Fractions;
+					}
+				}
+				if (nFilled < nSaves) nFilled++;
+			}
         }
     }else{
 		printf("No good ID found.\n");
@@ -713,6 +750,20 @@ main(int argc, char *argv[])
 			printf("%f ",outresult[i]);
 		}
 		printf("\n");
+	}
+	char outfn2[4096];
+	sprintf(outfn2,"%s.AllMatches",MicFN);
+	int result2 = open(outfn2,O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+	if (result2 <= 0){
+		printf("Could not successfully open output file for all matches.\n");
+		return 1;
+	}
+	int SizeWritten2 = (7+(nSaves*4))*sizeof(double);
+	int OffsetThis = (rown-1)*SizeWritten2;
+	int rc5 = pwrite(result2,ResultMatr,SizeWritten2,OffsetThis);
+	if (rc5 < 0){
+		printf("Could not write all matches\n");
+		return 1;
 	}
     printf("Time elapsed in comparing diffraction spots: %f [s]\n",diftotal);
     return 0;
