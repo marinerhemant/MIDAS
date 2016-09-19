@@ -463,11 +463,11 @@ int main(int argc, char *argv[])
 				nRings++;
 			}else{
 				if ((int) InputMatrix[counterIF][5] != currentRing){ // Each time ring number changes
-					nRings++;
 					IDHash[nRings][0] = (int) InputMatrix[counterIF][5];
 					IDHash[nRings][1] = counterIF + 1;
 					IDHash[nRings-1][2] = counterIF;
 					currentRing = (int) InputMatrix[counterIF][5];
+					nRings++;
 				}
 			}
 		}
