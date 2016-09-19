@@ -474,9 +474,6 @@ int main(int argc, char *argv[])
 		counterIF++;
 	}
 	IDHash[nRings-1][2] = counterIF; // Write the max for last ring last ID.
-	for (i=0;i<nRings;i++){
-		printf("%d %d %d\n",IDHash[i][0],IDHash[i][1],IDHash[i][2]);
-	}
 	if (MakeHash == 1){ // Get dspacings from hkls.csv file
 		FILE *hklf = fopen("hkls.csv","r");
 		char aline2[2048];
