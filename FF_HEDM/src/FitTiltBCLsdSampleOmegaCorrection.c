@@ -944,7 +944,7 @@ int main(int argc, char *argv[])
 		YCorrWedge[i] = YCorrWedgeT;
 		ZCorrWedge[i] = ZCorrWedgeT;
 		OmegaCorrWedge[i] = OmegaCorrWedgeT;
-		//printf("%f %f %f %f %f %f\n",YCorrected[i],YCorrWedgeT,ZCorrected[i],ZCorrWedgeT,SpotsInfo[i][1],OmegaCorrWedgeT);
+		printf("%lf %lf %lf %lf %lf %lf\n",YCorrected[i],YCorrWedgeT,ZCorrected[i],ZCorrWedgeT,SpotsInfo[i][1],OmegaCorrWedgeT);
 		EtaCorrWedge[i] = EtaCorrWedgeT;
 		TthetaCorrWedge[i] = TthetaCorrWedgeT;
 	}
