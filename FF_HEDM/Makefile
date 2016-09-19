@@ -13,7 +13,7 @@ SRCDIR=src/
 BINDIR=bin/
 
 all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting \
-	peaksittingcdf mergeoverlaps calcradius findsaturatedpx\
+	peaksfittingcdf mergeoverlaps calcradius findsaturatedpx\
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking
 
 local: packages netcdf all scripts
