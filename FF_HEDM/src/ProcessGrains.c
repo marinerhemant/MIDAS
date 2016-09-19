@@ -473,7 +473,7 @@ int main(int argc, char *argv[])
 		}
 		counterIF++;
 	}
-	IDHash[nRings][2] = counterIF; // Write the max for last ring last ID.
+	IDHash[nRings-1][2] = counterIF; // Write the max for last ring last ID.
 	for (i=0;i<nRings;i++){
 		printf("%d %d %d\n",IDHash[i][0],IDHash[i][1],IDHash[i][2]);
 	}
