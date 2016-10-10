@@ -63,10 +63,10 @@ then
   NRFILESPERDISTANCE=$( awk '$1 ~ /^NrFilesPerDistance/ { print $2 }' ${TOP_PARAM_FILE} )
   NRPIXELS=$( awk '$1 ~ /^NrPixels/ { print $2 }' ${TOP_PARAM_FILE} )
   echo "Median"
-  ${SWIFTDIR}/swift -sites.file ${PFDIR}sites${NCPUS}.xml -tc.file ${PFDIR}tc.data -config ${PFDIR}cf ${PFDIR}ProcessMedianParallel.swift \
+  ${SWIFTDIR}/swift -sites.file ${PFDIR}/sites${NCPUS}.xml -tc.file ${PFDIR}/tc.data -config ${PFDIR}/cf ${PFDIR}/ProcessMedianParallel.swift \
     -paramfile=${TOP_PARAM_FILE} -NrLayers=${NDISTANCES} -NrFilesPerLayer=${NRFILESPERDISTANCE} -NrPixels=${NRPIXELS}
   echo "Image"
-  ${SWIFTDIR}/swift -sites.file ${PFDIR}sites${NCPUS}.xml -tc.file ${PFDIR}tc.data -config ${PFDIR}cf ${PFDIR}ProcessImagesParallel.swift \
+  ${SWIFTDIR}/swift -sites.file ${PFDIR}/sites${NCPUS}.xml -tc.file ${PFDIR}/tc.data -config ${PFDIR}/cf ${PFDIR}/ProcessImagesParallel.swift \
     -paramfile=${TOP_PARAM_FILE} -NrLayers=${NDISTANCES} -NrFilesPerLayer=${NRFILESPERDISTANCE} -NrPixels=${NRPIXELS}
 fi
 
