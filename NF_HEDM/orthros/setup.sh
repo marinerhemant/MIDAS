@@ -19,8 +19,8 @@ configfile=${configdir}/pathsNF
 echo "BINFOLDER=${BINFOLDER}" > ${configfile}
 echo "PFDIR=${LOCAL_DIR}" >> ${configfile}
 echo "SWIFTDIR=${HOME}/.MIDAS/swift-0.95-RC6/bin" >> ${configfile}
-ln -s ${LOCAL_DIR}/runSingleLayer.sh ${configdir}/NearFieldSingleLayer.sh
-ln -s ${LOCAL_DIR}/runNFParameters.sh ${configdir}/NearFieldParameters.sh
+ln -s ${LOCAL_DIR}/runSingleLayer.sh ${configdir}/MIDAS_V3_NearFieldSingleLayer.sh
+ln -s ${LOCAL_DIR}/runNFParameters.sh ${configdir}/MIDAS_V3_NearFieldParameters.sh
 
 echo "Congratulations, you can now use MIDAS to run NeField analysis"
-echo "Go to ${HOME}/.MIDAS folder, there is NearField.....sh files for running analysis"
+echo "Go to ${HOME}/.MIDAS folder, there is MIDAS_V3_NearField.....sh files for running analysis"
