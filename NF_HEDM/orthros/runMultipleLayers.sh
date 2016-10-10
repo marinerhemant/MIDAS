@@ -1,5 +1,8 @@
 #!/bin/bash -eu
 
+source ${HOME}/.MIDAS/pathsNF
+cmdname=$(basename $0)
+
 if [[ ${#*} != 6 ]];
 then
   echo "Usage: $0 top_parameter_file(full_path) nCPUS FFSeedOrientations ProcessImages startLayerNr endLayerNr"
@@ -55,5 +58,5 @@ do
     else
         echo "SeedOrientations ${DATADIRECTORY}/Orientations.txt" >> ${THISPARAMFILE}
     fi
-    /clhome/TOMO1/PeaksAnalysisHemant/HEDM_V2/NF_HEDM/runSingleLayer.sh ${THISPARAMFILE} ${NCPUS} ${FFSEEDORIENTATIONS} ${PROCESSIMAGES}
+    ${PFDIR}/runSingleLayer.sh ${THISPARAMFILE} ${NCPUS} ${FFSEEDORIENTATIONS} ${PROCESSIMAGES}
 done

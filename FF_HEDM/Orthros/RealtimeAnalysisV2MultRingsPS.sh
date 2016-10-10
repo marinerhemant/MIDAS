@@ -2,13 +2,15 @@
 
 source ${HOME}/.MIDAS/paths
 
+cmdname=$(basename $0)
+
 echo "FF analysis code for Multiple Layers and Multiple rings:"
-echo "Version: 2, 2014/11/10, in case of problems contact hsharma@anl.gov"
+echo "Version: 3, 2016/10/10, in case of problems contact hsharma@anl.gov"
 
 if [[ ${#*} != 4 ]]
 then
   echo "Provide ParametersFile StartLayerNr EndLayerNr and the number of CPUs to use!"
-  echo "EG. FarFieldV2MultiRing parameters.txt 1 1 320"
+  echo "EG. ${cmdname} parameters.txt 1 1 320"
   echo "the source parameter file should not have ring numbers and layer numbers in it."
   exit 1
 fi

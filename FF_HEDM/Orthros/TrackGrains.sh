@@ -1,9 +1,11 @@
 #!/bin/bash
 
+cmdname=$(basename $0)
+
 if [[ ${#*} != 4 ]]
 then
   echo "Provide ParametersFile StartLayerNr EndLayerNr and the number of CPUs to use!"
-  echo "EG. $0 Parameters.txt 1 1 320"
+  echo "EG. ${cmdname} Parameters.txt 1 1 320"
   echo "The parameter file should have a parameter called OldStateFolder which is the seed folder used in the previous state."
   exit 1
 fi
