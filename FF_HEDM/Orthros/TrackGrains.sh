@@ -2,10 +2,10 @@
 
 cmdname=$(basename $0)
 
-if [[ ${#*} != 4 ]]
+if [[ ${#*} != 5 ]]
 then
-  echo "Provide ParametersFile StartLayerNr EndLayerNr and the number of CPUs to use!"
-  echo "EG. ${cmdname} Parameters.txt 1 1 320"
+  echo "Provide ParametersFile StartLayerNr EndLayerNr Number of CPUs to use and EmailAddress!"
+  echo "EG. ${cmdname} Parameters.txt 1 1 320 hsharma@anl.gov"
   echo "The parameter file should have a parameter called OldStateFolder which is the seed folder used in the previous state."
   exit 1
 fi
@@ -28,3 +28,7 @@ do
 	echo OldFolder ${OldFolder} >> ${PSThisLayer}
 	${HOME}/.MIDAS/MIDAS_V3_FarFieldGrainTracking ${PSThisLayer} ${LAYERNR} ${LAYERNR} $4
 done
+
+EmailAdd=$5
+echo "The run started with ${cmdname} $@ has finished, please check." | mail -s "MIDAS run finished" ${EmailAdd}
+exit 0

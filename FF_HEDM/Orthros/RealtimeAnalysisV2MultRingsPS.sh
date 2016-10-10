@@ -7,10 +7,10 @@ cmdname=$(basename $0)
 echo "FF analysis code for Multiple Layers and Multiple rings:"
 echo "Version: 3, 2016/10/10, in case of problems contact hsharma@anl.gov"
 
-if [[ ${#*} != 4 ]]
+if [[ ${#*} != 5 ]]
 then
-  echo "Provide ParametersFile StartLayerNr EndLayerNr and the number of CPUs to use!"
-  echo "EG. ${cmdname} parameters.txt 1 1 320"
+  echo "Provide ParametersFile StartLayerNr EndLayerNr Number of CPUs to use and EmailAddress!"
+  echo "EG. ${cmdname} parameters.txt 1 1 320 hsharma@anl.gov"
   echo "the source parameter file should not have ring numbers and layer numbers in it."
   exit 1
 fi
@@ -175,3 +175,7 @@ do
    #    qdel $rc
    #fi
 done
+
+EmailAdd=$5
+echo "The run started with ${cmdname} $@ has finished, please check." | mail -s "MIDAS run finished" ${EmailAdd}
+exit 0

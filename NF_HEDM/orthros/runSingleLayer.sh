@@ -6,7 +6,7 @@ cmdname=$(basename $0)
 if [[ ${#*} != 5 ]];
 then
   echo "Usage: ${cmdname} top_parameter_file(full_path) nCPUS FFSeedOrientations ProcessImages EmailAddress"
-  echo "Eg. ${cmdname} ParametersFile.txt 384 1(or 0) 1(or 0)"
+  echo "Eg. ${cmdname} ParametersFile.txt 384 1(or 0) 1(or 0) hsharma@anl.gov"
   echo "This will produce the output in the run folder, called Microstructure.mic."
   echo "FFSeedOrientations is when either Orientations exist already (0) or when you provide a FF Orientation file (1)."
   echo "ProcessImages is whether you want to process the diffraction images (1) or if they were processed earlier (0)."
@@ -14,11 +14,6 @@ then
   echo "At least the parameters file should be in the folder from where the command is executed."
   exit 1
 fi
-
-EmailAdd=$5
-echo "The run started with ${cmdname} $@ has finished, please check." | mail -s "MIDAS run finished" ${EmailAdd}
-
-exit 0
 
 if [[ $1 == /* ]]; then TOP_PARAM_FILE=$1; else TOP_PARAM_FILE=$(pwd)/$1; fi
 NCPUS=$2
@@ -138,3 +133,7 @@ if [[ RC != 0 ]]
 then
   echo "RC == 0."
 fi
+
+EmailAdd=$5
+echo "The run started with ${cmdname} $@ has finished, please check." | mail -s "MIDAS run finished" ${EmailAdd}
+exit 0
