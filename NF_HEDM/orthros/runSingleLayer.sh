@@ -127,7 +127,7 @@ ${SWIFTDIR}/swift -sites.file ${PFDIR}/sites${NCPUS}.xml -tc.file ${PFDIR}/tc.da
   -startnr=${STARTNR} -endnr=${ENDNR} -paramfile=${TOP_PARAM_FILE} -micfn=${MICFN}
 
 # Parse Mic file
-${BINFOLDER}/ParseMicHeaders ${TOP_PARAM_FILE}
+${BINFOLDER}/ParseMic ${TOP_PARAM_FILE}
 RC=${?}
 if [[ RC != 0 ]]
 then

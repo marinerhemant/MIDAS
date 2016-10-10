@@ -685,6 +685,9 @@ main(int argc, char *argv[])
 		int t;
 		for (i=0;i<nSaves;i++){
 			ResultMatr[7+i*4] = 0;
+			ResultMatr[7+i*4+1] = 0;
+			ResultMatr[7+i*4+2] = 0;
+			ResultMatr[7+i*4+3] = 0;
 		}
 		for (i=0;i<OrientationGoodID;i++){
             for (j=0;j<9;j++){
@@ -715,9 +718,9 @@ main(int argc, char *argv[])
 								ResultMatr[7+(m+1)*4+t] = ResultMatr[7+(m)*4+t];
 							}
 						}
-						ResultMatr[7+j*4] = BestEuler[0];
-						ResultMatr[7+j*4+1] = BestEuler[1];
-						ResultMatr[7+j*4+2] = BestEuler[2];
+						ResultMatr[7+j*4] = EulerOutA;
+						ResultMatr[7+j*4+1] = EulerOutB;
+						ResultMatr[7+j*4+2] = EulerOutC;
 						ResultMatr[7+j*4+3] = Fractions;
 					}
 				}
