@@ -24,6 +24,9 @@ all: help bindircheck makediffrspots makediffrspotsff2nf makehexgrid medianimage
 
 local: packages all
 
+orthros: packages all
+	orthros/setup.sh
+
 packages:
 	./GetPackages.sh
 

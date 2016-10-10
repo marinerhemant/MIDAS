@@ -1,4 +1,7 @@
 NF_HEDM/bin/*
+NF_HEDM/orthros/tc.data
+NF_HEDM/orthros/*.kml
+NF_HEDM/orthros/*.swiftx
 FF_HEDM/bin/*
 FF_HEDM/Example/Indexer/*.bin
 FF_HEDM/src/*.txt

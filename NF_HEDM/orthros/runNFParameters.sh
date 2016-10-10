@@ -1,5 +1,9 @@
 #!/bin/bash -eu
+
+source ${HOME}/.MIDAS/pathsNF
+
 cmdname=$(basename $0)
+
 if [[ ${#*} != 5 ]];
 then
   echo "Usage: ${cmdname} parameterfile nCPUS processImages FFSeedOrientations MultiGridPoints"
@@ -17,17 +21,15 @@ processImages=$3
 FFSeedOrientations=$4
 MultiGridPoints=$5
 
-BINfolder=/clhome/TOMO1/PeaksAnalysisHemant/HEDM_V2/NF_HEDM/
-
 # Go to the right folder
 DataDirectory=$( awk '$1 ~ /^DataDirectory/ { print $2 }' ${TOP_PARAM_FILE} )
 cd ${DataDirectory}
 
 # Make hkls.csv
-${BINfolder}/bin/GetHKLList ${TOP_PARAM_FILE}
+${BINFOLDER}/GetHKLList ${TOP_PARAM_FILE}
 
 echo "Making hexgrid."
-${BINfolder}/bin/MakeHexGrid $TOP_PARAM_FILE
+${BINFOLDER}/MakeHexGrid $TOP_PARAM_FILE
 if [[ ${MultiGridPoints} == 0 ]];
 then
   echo "Now choose the grid point to process, press enter to continue"
@@ -46,33 +48,32 @@ SeedOrientations=$( awk '$1 ~ /^SeedOrientations/ { print $2 }' ${TOP_PARAM_FILE
 
 if [[ ${FFSeedOrientations} == 1 ]];
 then
-    ${BINfolder}/bin/GenSeedOrientationsFF2NFHEDM $GrainsFile $SeedOrientations
+    ${BINFOLDER}/GenSeedOrientationsFF2NFHEDM $GrainsFile $SeedOrientations
 fi
 
 NrOrientations=$( wc -l ${SeedOrientations} | awk '{print $1}' )
 
 echo "NrOrientations ${NrOrientations}" >> ${TOP_PARAM_FILE}
-${BINfolder}/bin/MakeDiffrSpots $TOP_PARAM_FILE
+${BINFOLDER}/MakeDiffrSpots $TOP_PARAM_FILE
 
 if [[ ${processImages} == 1 ]];
 then
   echo "Reducing images."
-  PATH=/clhome/TOMO1/PeaksAnalysisHemant/HEDM_V2/SWIFT/swift-0.95-RC7/bin:$PATH
   NDISTANCES=$( awk '$1 ~ /^nDistances/ { print $2 }' ${TOP_PARAM_FILE} )
   NRFILESPERDISTANCE=$( awk '$1 ~ /^NrFilesPerDistance/ { print $2 }' ${TOP_PARAM_FILE} )
   NRPIXELS=$( awk '$1 ~ /^NrPixels/ { print $2 }' ${TOP_PARAM_FILE} )
   echo "Median"
-  swift -sites.file ${BINfolder}sites${NCPUS}.xml -tc.file ${BINfolder}tc -config ${BINfolder}cf ${BINfolder}ProcessMedianParallel.swift \
+  ${SWIFTDIR}/swift -sites.file ${PFDIR}sites${NCPUS}.xml -tc.file ${PFDIR}tc.data -config ${PFDIR}cf ${PFDIR}ProcessMedianParallel.swift \
     -paramfile=${TOP_PARAM_FILE} -NrLayers=${NDISTANCES} -NrFilesPerLayer=${NRFILESPERDISTANCE} -NrPixels=${NRPIXELS}
   echo "Image"
-  swift -sites.file ${BINfolder}sites${NCPUS}.xml -tc.file ${BINfolder}tc -config ${BINfolder}cf ${BINfolder}ProcessImagesParallel.swift \
+  ${SWIFTDIR}/swift -sites.file ${PFDIR}sites${NCPUS}.xml -tc.file ${PFDIR}tc.data -config ${PFDIR}cf ${PFDIR}ProcessImagesParallel.swift \
     -paramfile=${TOP_PARAM_FILE} -NrLayers=${NDISTANCES} -NrFilesPerLayer=${NRFILESPERDISTANCE} -NrPixels=${NRPIXELS}
 fi
 
 echo "Finding parameters."
 if [[ ${MultiGridPoints} == 0 ]];
 then
-  ${BINfolder}/bin/FitOrientationParameters $TOP_PARAM_FILE ${GRIDPOINTNR}
+  ${BINFOLDER}/FitOrientationParameters $TOP_PARAM_FILE ${GRIDPOINTNR}
 else
-  ${BINfolder}/bin/FitOrientationParametersMultiPoint $TOP_PARAM_FILE
+  ${BINFOLDER}/FitOrientationParametersMultiPoint $TOP_PARAM_FILE
 fi
