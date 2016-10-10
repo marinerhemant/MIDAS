@@ -16,7 +16,7 @@ then
 fi
 
 EmailAdd=$5
-echo "The run started with \n$@\n has finished, please check." | mail -s "MIDAS run finished" ${EmailAdd}
+echo 'The run started with \n${cmdname} $@\n has finished, please check.' | mail -s "MIDAS run finished" ${EmailAdd}
 
 exit 0
 
