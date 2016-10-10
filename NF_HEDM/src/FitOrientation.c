@@ -329,7 +329,7 @@ main(int argc, char *argv[])
 		str = "SaveNSolutions ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %d", dummy, nSaves);
+            sscanf(aline,"%s %d", dummy, &nSaves);
             continue;
         }
 		str = "DataDirectory ";
