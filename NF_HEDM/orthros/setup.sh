@@ -7,11 +7,11 @@ BINFOLDER=${NF_MIDAS_DIR}/bin
 
 ##### SETUP tc.data
 echo cluster fitorientation  ${LOCAL_DIR}/FitOrientation.sh > ${LOCAL_DIR}/tc.data
-echo cluster runmedian  ${LOCAL_DIR}/MedianImage.sh > ${LOCAL_DIR}/tc.data
-echo cluster runimageprocessing  ${LOCAL_DIR}/ImageProcessing.sh > ${LOCAL_DIR}/tc.data
-echo cluster runconvertfiles ${LOCAL_DIR}/ConvertFiles.sh > ${LOCAL_DIR}/tc.data
-echo cluster runmedianparallel  ${LOCAL_DIR}/MedianImageParallel.sh > ${LOCAL_DIR}/tc.data
-echo cluster runimageprocessingparallel  ${LOCAL_DIR}/ImageProcessingParallel.sh > ${LOCAL_DIR}/tc.data
+echo cluster runmedian  ${LOCAL_DIR}/MedianImage.sh >> ${LOCAL_DIR}/tc.data
+echo cluster runimageprocessing  ${LOCAL_DIR}/ImageProcessing.sh >> ${LOCAL_DIR}/tc.data
+echo cluster runconvertfiles ${LOCAL_DIR}/ConvertFiles.sh >> ${LOCAL_DIR}/tc.data
+echo cluster runmedianparallel  ${LOCAL_DIR}/MedianImageParallel.sh >> ${LOCAL_DIR}/tc.data
+echo cluster runimageprocessingparallel  ${LOCAL_DIR}/ImageProcessingParallel.sh >> ${LOCAL_DIR}/tc.data
 
 ##### Put correct folder paths
 configdir=${HOME}/.MIDAS
