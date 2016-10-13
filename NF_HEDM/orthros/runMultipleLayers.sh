@@ -13,6 +13,14 @@ then
   echo "ProcessImages is whether you want to process the diffraction images (1) or if they were processed earlier (0)."
   echo "NOTE: run from the folder with the Key.txt, DiffractionSpots.txt, OrientMat.txt and ParametersFile.txt"
   echo "At least the parameters file should be in the folder from where the command is executed."
+  echo "The following parameters should NOT be in the ParametersFile.txt file:"
+  echo "RawStartNr, GlobalPosition, MicFileBinary, MicFileText, ReducedFileName, GrainsFile, SeedOrientations"
+  echo "The following parameters must be present:"  
+  echo "OrigFileName, OverallStartNr, GlobalPositionFirstLayer, LayerThickness, WFImages, nDistances, NrFilesPerDistance, DataDirectory"
+  echo "If WF images were taken, it is assumed there were 10 WF images."  
+  echo "If using FF seeding, the grains files should be in the same folder and named: GrainsLayer${LAYERNR}.csv"
+  echo "If no seeding is used, a single Orientations.txt file should be present."
+  echo "At successfull completion, it will send an email to EmailAddress."
   exit 1
 fi
 
@@ -58,7 +66,7 @@ do
     else
         echo "SeedOrientations ${DATADIRECTORY}/Orientations.txt" >> ${THISPARAMFILE}
     fi
-    ${PFDIR}/runSingleLayer.sh ${THISPARAMFILE} ${NCPUS} ${FFSEEDORIENTATIONS} ${PROCESSIMAGES}
+    ${PFDIR}/runSingleLayer.sh ${THISPARAMFILE} ${NCPUS} ${FFSEEDORIENTATIONS} ${PROCESSIMAGES} $7
 done
 
 EmailAdd=$7
