@@ -14,7 +14,7 @@
 #define ClearBit(A,k) (A[(k/32)] &= ~(1 << (k%32)))
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
 #define float32_t float
-#define MAX_N_OVERLAPS 5000
+#define MAX_N_OVERLAPS 55000
 typedef uint16_t pixelvalue;
 
 #define PIX_SORT(a,b) { if ((a)>(b)) PIX_SWAP((a),(b)); }
