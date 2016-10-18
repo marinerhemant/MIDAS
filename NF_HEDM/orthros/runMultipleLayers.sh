@@ -18,7 +18,7 @@ then
   echo "The following parameters must be present:"  
   echo "OrigFileName, OverallStartNr, GlobalPositionFirstLayer, LayerThickness, WFImages, nDistances, NrFilesPerDistance, DataDirectory"
   echo "If WF images were taken, it is assumed there were 10 WF images."  
-  echo "If using FF seeding, the grains files should be in the same folder and named: GrainsLayer${LAYERNR}.csv"
+  echo "If using FF seeding, the grains files should be in the same folder and named: GrainsLayer{LAYERNR}.csv"
   echo "If no seeding is used, a single Orientations.txt file should be present."
   echo "At successfull completion, it will send an email to EmailAddress."
   exit 1
