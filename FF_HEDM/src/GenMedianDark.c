@@ -120,6 +120,8 @@ int main(int argc, char *argv[]){
 	int nFrames = sz/(8*1024*1024);
 	fseek(fileIn,8192,SEEK_SET);
 	fread(image,sz,1,fileIn);
+	print("Read file %s.\n",inFN);
+	fflush(stdout);
 	subArr = malloc(nFrames*sizeof(*subArr));
 	int i,j,k;
 	for (i=0;i<nrPixels*nrPixels;i++){
