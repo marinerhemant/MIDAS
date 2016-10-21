@@ -114,7 +114,7 @@ int main(int argc, char *argv[]){
 	// subArr : nFrames (1d)
 	median = malloc(nrPixels*nrPixels*sizeof(*median));
 	fseek(fileIn,0L,SEEK_END);
-	sz = ftell(inFN) - 8192;
+	sz = ftell(fileIn) - 8192;
 	rewind(fileIn);
 	image = malloc(sz);
 	int nFrames = sz/(8*1024*1024);
