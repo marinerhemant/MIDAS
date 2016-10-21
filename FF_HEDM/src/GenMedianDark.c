@@ -133,8 +133,6 @@ int main(int argc, char *argv[]){
 		}
 		// Calc Median
 		median[i] = quick_select(subArr,nFrames);
-		if (i % 1000 == 0) printf("%d\n",i);
-		fflush(stdout);
 	}
 	fwrite(skipContent,8192,1,fileOut);
 	fwrite(median,nrPixels*nrPixels*sizeof(pixelvalue),1,fileOut);
