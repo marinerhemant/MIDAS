@@ -92,7 +92,7 @@ FreeMemMatrixPx(pixelvalue **mat,int nrows)
 
 int main(int argc, char *argv[]){
 	clock_t start, end;
-	if (argc != 2){
+	if (argc != 3){
 		printf("Not enough arguments, exiting.\n");
 		return 1;
 	}
