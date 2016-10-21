@@ -120,7 +120,7 @@ int main(int argc, char *argv[]){
 	int nFrames = sz/(8*1024*1024);
 	fseek(fileIn,8192,SEEK_SET);
 	fread(image,sz,1,fileIn);
-	print("Read file %s.\n",inFN);
+	printf("Read file %s.\n",inFN);
 	fflush(stdout);
 	subArr = malloc(nFrames*sizeof(*subArr));
 	int i,j,k;
@@ -130,6 +130,8 @@ int main(int argc, char *argv[]){
 		}
 		// Calc Median
 		median[i] = quick_select(subArr,nFrames);
+		printf("%d\n",i);
+		fflush(stdout);
 	}
 	fwrite(skipContent,8192,1,fileOut);
 	fwrite(median,nrPixels*nrPixels*sizeof(pixelvalue),1,fileOut);
