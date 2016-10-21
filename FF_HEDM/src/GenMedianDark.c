@@ -109,24 +109,25 @@ int main(int argc, char *argv[]){
 	int *skipContent;
 	skipContent = malloc(8192);
 	fread(skipContent,8192,1,fileIn);
-	pixelvalue **median, **image, *subArr;
+	pixelvalue *median, *image, *subArr;
 	// Median : nrPixels * nrPixels (1d), Image : nrPixels * nrPixels * nFrames (1d)
 	// subArr : nFrames (1d)
 	median = malloc(nrPixels*nrPixels*sizeof(*median));
 	fseek(fileIn,0L,SEEK_END);
 	sz = ftell(fileIn) - 8192;
+	long long int nElements = sz/sizeof(pixelvalue);
 	rewind(fileIn);
 	image = malloc(sz);
 	int nFrames = sz/(8*1024*1024);
 	fseek(fileIn,8192,SEEK_SET);
-	fread(image,sz,1,fileIn);
+	fread(image,nElements*sizeof(pixelvalue),1,fileIn);
 	printf("Read file %s.\n",inFN);
 	fflush(stdout);
 	subArr = malloc(nFrames*sizeof(*subArr));
 	int i,j,k;
 	for (i=0;i<nrPixels*nrPixels;i++){
 		for (j=0;j<nFrames;j++){ // Fill subarr
-			printf("%d %zu %lld\n",j,sz/sizeof(pixelvalue),j*nrPixels*nrPixels + i);
+			printf("%d %zu %lld\n",j,nElements,j*nrPixels*nrPixels + i);
 			fflush(stdout);
 			subArr[j] = image[j*nrPixels*nrPixels + i];
 		}
