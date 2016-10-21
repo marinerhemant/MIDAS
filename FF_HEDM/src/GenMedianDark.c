@@ -126,7 +126,7 @@ int main(int argc, char *argv[]){
 	int i,j,k;
 	for (i=0;i<nrPixels*nrPixels;i++){
 		for (j=0;j<nFrames;j++){ // Fill subarr
-			printf("%d %z %lld\n",j,sz,j*nrPixels*nrPixels + i);
+			printf("%d %zu %lld\n",j,sz,j*nrPixels*nrPixels + i);
 			fflush(stdout);
 			subArr[j] = image[j*nrPixels*nrPixels + i];
 		}
