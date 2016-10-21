@@ -127,13 +127,13 @@ int main(int argc, char *argv[]){
 	int i,j,k;
 	for (i=0;i<nrPixels*nrPixels;i++){
 		for (j=0;j<nFrames;j++){ // Fill subarr
-			printf("%d %zu %lld\n",j,nElements,j*nrPixels*nrPixels + i);
+			//printf("%d %zu %lld\n",j,nElements,j*nrPixels*nrPixels + i);
 			fflush(stdout);
 			subArr[j] = image[j*nrPixels*nrPixels + i];
 		}
 		// Calc Median
 		median[i] = quick_select(subArr,nFrames);
-		printf("%d\n",i);
+		if (i % 1000 == 0) printf("%d\n",i);
 		fflush(stdout);
 	}
 	fwrite(skipContent,8192,1,fileOut);
