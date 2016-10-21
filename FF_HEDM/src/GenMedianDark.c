@@ -11,7 +11,6 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <ctype.h>
-#include <nlopt.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <sys/types.h>
@@ -102,7 +101,7 @@ int main(int argc, char *argv[]){
 	char *inFN, *outFN;
 	inFN = argv[1];
 	outFN = argv[2];
-	int NrPixels = 2048;
+	int nrPixels = 2048;
 	FILE *fileIn, *fileOut;
 	fileIn = fopen(inFN,"rb");
 	fileOut = fopen(outFN,"wb");
