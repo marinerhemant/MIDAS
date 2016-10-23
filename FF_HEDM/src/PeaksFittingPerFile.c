@@ -488,6 +488,36 @@ static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], pix
 	FreeMemMatrixPx(ImageTemp2,NrPixels);
 }
 
+static inline
+void
+MatrixMult(
+           double m[3][3],
+           double  v[3],
+           double r[3])
+{
+    int i;
+    for (i=0; i<3; i++) {
+        r[i] = m[i][0]*v[0] +
+        m[i][1]*v[1] +
+        m[i][2]*v[2];
+    }
+}
+
+static inline
+void
+MatrixMultF33(
+    double m[3][3],
+    double n[3][3],
+    double res[3][3])
+{
+    int r;
+    for (r=0; r<3; r++) {
+        res[r][0] = m[r][0]*n[0][0] + m[r][1]*n[1][0] + m[r][2]*n[2][0];
+        res[r][1] = m[r][0]*n[0][1] + m[r][1]*n[1][1] + m[r][2]*n[2][1];
+        res[r][2] = m[r][0]*n[0][2] + m[r][1]*n[1][2] + m[r][2]*n[2][2];
+    }
+}
+
 static void
 check (int test, const char * message, ...)
 {
@@ -538,9 +568,46 @@ int main(int argc, char *argv[]){
     double OmegaMissing = 0, MisDir;
     double FileOmegaOmeStep[360][2];
     int fnr = 0;
+    double RhoD, tx, ty, tz, p0, p1, p2;
     while (fgets(aline,1000,fileParam)!=NULL){
 		printf("%s\n",aline);
 		fflush(stdout);
+		str = "tx ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &tx);
+            continue;
+        }
+		str = "ty ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &ty);
+            continue;
+        }
+        str = "tz ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &tz);
+            continue;
+        }
+        str = "p0 ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &p0);
+            continue;
+        }
+        str = "p1 ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &p1);
+            continue;
+        }
+        str = "p2 ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &p2);
+            continue;
+        }
         str = "StartFileNr ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -697,6 +764,12 @@ int main(int argc, char *argv[]){
             sscanf(aline,"%s %lf", dummy, &MaxRingRad);
             continue;
         }
+        str = "RhoD ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &RhoD);
+            continue;
+        }
         str = "ImTransOpt ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -817,9 +890,38 @@ int main(int argc, char *argv[]){
 	int *GoodCoords;
 	GoodCoords = malloc(NrPixels*NrPixels*sizeof(*GoodCoords));
 	memset(GoodCoords,0,NrPixels*NrPixels*sizeof(*GoodCoords));
+	double txr, tyr, tzr;
+	txr = deg2rad*tx;
+	tyr = deg2rad*ty;
+	tzr = deg2rad*tz;
+	double Rx[3][3] = {{1,0,0},{0,cos(txr),-sin(txr)},{0,sin(txr),cos(txr)}};
+	double Ry[3][3] = {{cos(tyr),0,sin(tyr)},{0,1,0},{-sin(tyr),0,cos(tyr)}};
+	double Rz[3][3] = {{cos(tzr),-sin(tzr),0},{sin(tzr),cos(tzr),0},{0,0,1}};
+	double TRint[3][3], TRs[3][3];
+	MatrixMultF33(Ry,Rz,TRint);
+	MatrixMultF33(Rx,TRint,TRs);
+	double Yc, Zc, n0=2, n1=4, n2=2;
+	double ABC[3], ABCPr[3], XYZ[3];
+	double Rad, Eta, RNorm, DistortFunc, EtaT;
 	for (i=1;i<NrPixels;i++){
 		for (j=1;j<NrPixels;j++){
-			Rt = sqrt((i-Ycen)*(i-Ycen)+(j-Zcen)*(j-Zcen));
+			//Rt = sqrt((i-Ycen)*(i-Ycen)+(j-Zcen)*(j-Zcen)); 
+			// Correct for tilts and Distortion here
+			Yc = (-i + Ycen)*px;
+			Zc =  (j - Zcen)*px;
+			ABC[0] = 0;
+			ABC[1] = Yc;
+			ABC[2] = Zc;
+			MatrixMult(TRs,ABC,ABCPr);
+			XYZ[0] = Lsd+ABCPr[0];
+			XYZ[1] = ABCPr[1];
+			XYZ[2] = ABCPr[2];
+			Rad = (Lsd/(XYZ[0]))*(sqrt(XYZ[1]*XYZ[1] + XYZ[2]*XYZ[2]));
+			Eta = CalcEtaAngle(XYZ[1],XYZ[2]);
+			RNorm = Rad/RhoD;
+			EtaT = 90 - Eta;
+			DistortFunc = (p0*(pow(RNorm,n0))*(cos(deg2rad*(2*EtaT)))) + (p1*(pow(RNorm,n1))*(cos(deg2rad*(4*EtaT)))) + (p2*(pow(RNorm,n2))) + 1;
+			Rt = Rad * DistortFunc / px;
 			if (Rt > Rmin && Rt < Rmax){GoodCoords[((i-1)*NrPixels)+(j-1)] = 1;}
 			else {GoodCoords[((i-1)*NrPixels)+(j-1)] = 0;}
 		}
