@@ -437,8 +437,8 @@ int main(int argc, char *argv[])
 		MakeHash = 1;
 	}
 	double **SpotMatrix, **InputMatrix;
-	SpotMatrix = allocMatrix(NR_MAX_IDS_PER_GRAIN*nGrainPositions,11);
-	InputMatrix = allocMatrix(MAX_N_IDS,9);
+	SpotMatrix = allocMatrix(NR_MAX_IDS_PER_GRAIN*nGrainPositions,12);
+	InputMatrix = allocMatrix(MAX_N_IDS,10);
 	int counterSpotMatrix = 0, nRowsSpotMatrix = NR_MAX_IDS_PER_GRAIN*nGrainPositions;
 	char *inputallfn = "InputAllExtraInfoFittingAll.csv";
 	FILE *inpfile = fopen(inputallfn,"r");
@@ -447,9 +447,9 @@ int main(int argc, char *argv[])
 	fgets(aline,2000,inpfile);
 	int currentRing;
 	while (fgets(aline,2000,inpfile)!=NULL){
-		sscanf(aline,"%lf %lf %lf %s %lf %lf %lf %lf %s %s %s %lf %lf %s",&InputMatrix[counterIF][6], &InputMatrix[counterIF][7], &InputMatrix[counterIF][0],
+		sscanf(aline,"%lf %lf %lf %s %lf %lf %lf %lf %s %s %s %lf %lf %lf",&InputMatrix[counterIF][6], &InputMatrix[counterIF][7], &InputMatrix[counterIF][0],
 			dummy, &InputMatrix[counterIF][1], &InputMatrix[counterIF][5], &InputMatrix[counterIF][4], &InputMatrix[counterIF][8], dummy, dummy, dummy, 
-			&InputMatrix[counterIF][2], &InputMatrix[counterIF][3],dummy);
+			&InputMatrix[counterIF][2], &InputMatrix[counterIF][3],&InputMatrix[counterIF][9]);
 		if ((int)InputMatrix[counterIF][1] != counterIF+1){
 			printf("IDs dont match.\nExiting\n"); 
 			return(1);
@@ -543,14 +543,15 @@ int main(int argc, char *argv[])
 			rowSpotID = (int) dummySampleInfo[j*22+0] - 1;
 			SpotMatrix[counterSpotMatrix][0] = (double)IDs[rown]; // GrainID
 			SpotMatrix[counterSpotMatrix][1] = dummySampleInfo[j*22+0]; //SpotID
-			SpotMatrix[counterSpotMatrix][2] = InputMatrix[rowSpotID][0]; //YRaw
-			SpotMatrix[counterSpotMatrix][3] = InputMatrix[rowSpotID][2]; //ZRaw
-			SpotMatrix[counterSpotMatrix][4] = InputMatrix[rowSpotID][3]; //Omega
-			SpotMatrix[counterSpotMatrix][5] = InputMatrix[rowSpotID][4]; //Eta
-			SpotMatrix[counterSpotMatrix][6] = InputMatrix[rowSpotID][5]; //RingNr
-			SpotMatrix[counterSpotMatrix][7] = InputMatrix[rowSpotID][6]; //YLab
-			SpotMatrix[counterSpotMatrix][8] = InputMatrix[rowSpotID][7]; //ZLab
-			SpotMatrix[counterSpotMatrix][9] = InputMatrix[rowSpotID][8]/2.0; //Theta
+			SpotMatrix[counterSpotMatrix][2] = InputMatrix[rowSpotID][0]; //Omega
+			SpotMatrix[counterSpotMatrix][3] = InputMatrix[rowSpotID][2]; //YRaw
+			SpotMatrix[counterSpotMatrix][4] = InputMatrix[rowSpotID][3]; //ZRaw
+			SpotMatrix[counterSpotMatrix][5] = InputMatrix[rowSpotID][9]; //OmeRaw
+			SpotMatrix[counterSpotMatrix][6] = InputMatrix[rowSpotID][4]; //Eta
+			SpotMatrix[counterSpotMatrix][7] = InputMatrix[rowSpotID][5]; //RingNr
+			SpotMatrix[counterSpotMatrix][8] = InputMatrix[rowSpotID][6]; //YLab
+			SpotMatrix[counterSpotMatrix][9] = InputMatrix[rowSpotID][7]; //ZLab
+			SpotMatrix[counterSpotMatrix][10] = InputMatrix[rowSpotID][8]/2.0; //Theta
 			counterSpotMatrix++;
 		}
 		LatticeParameterFit[0] = OPs[rown][12];
@@ -597,11 +598,11 @@ int main(int argc, char *argv[])
 	printf("Number of grains: %d.\n",nGrains);
 	BeamCenter /= FullVol;
 	// Write file
-	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
+	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
 	for (i=0;i<counterSpotMatrix;i++){
-		fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\n",(int)SpotMatrix[i][0],(int)SpotMatrix[i][1],
-			SpotMatrix[i][2],SpotMatrix[i][3],SpotMatrix[i][4],SpotMatrix[i][5],(int)SpotMatrix[i][6],
-			SpotMatrix[i][7],SpotMatrix[i][8],SpotMatrix[i][9],MultR*SpotMatrix[i][10]);
+		fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\n",(int)SpotMatrix[i][0],(int)SpotMatrix[i][1],
+			SpotMatrix[i][2],SpotMatrix[i][3],SpotMatrix[i][4],SpotMatrix[i][5],SpotMatrix[i][6],
+			(int)SpotMatrix[i][7],SpotMatrix[i][8],SpotMatrix[i][9],SpotMatrix[i][10],MultR*SpotMatrix[i][11]);
 	}
 	fclose(spotsfile);
 	fprintf(GrainsFile,"%%NumGrains %d\n",nGrains);

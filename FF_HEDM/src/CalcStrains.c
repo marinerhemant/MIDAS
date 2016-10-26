@@ -230,7 +230,7 @@ StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double
 	StrainTensorSample[2][1] = x[5];
 	StrainTensorSample[2][2] = x[2];
 	for (i=0;i<nspots;i++){
-		SpotMatrix[i+startSpotMatrix][10] = fabs(mydata.B[i] - (mydata.A[i][0]*x[0] + 
+		SpotMatrix[i+startSpotMatrix][11] = fabs(mydata.B[i] - (mydata.A[i][0]*x[0] + 
 			   mydata.A[i][1]*x[1] + mydata.A[i][2]*x[2] + mydata.A[i][3]*x[3] + 
 			   mydata.A[i][4]*x[4] + mydata.A[i][5]*x[5]));
 	}
