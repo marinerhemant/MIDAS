@@ -13,7 +13,7 @@ SRCDIR=src/
 BINDIR=bin/
 
 all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting \
-	mergeoverlaps calcradius findsaturatedpx genmediandark\
+	mergeoverlaps calcradius findsaturatedpx genmediandark fitgrain\
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking
 
 local: packages netcdf all scripts
@@ -85,6 +85,9 @@ mergerings: $(SRCDIR)MergeMultipleRings.c
 
 genmediandark: $(SRCDIR)GenMedianDark.c
 	$(CC) $(SRCDIR)GenMedianDark.c -o $(BINDIR)GenMedianDark $(CFLAGS)
+
+fitgrain: $(SRCDIR)FitGrain.c
+	$(CC) $(SRCDIR)FitGrain.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitGrain $(CFLAGS) $(CFLAGSNLOPT)
 
 fittiltx: $(SRCDIR)FitTiltX.c
 	$(CC) $(SRCDIR)FitTiltX.c -o $(BINDIR)FitTiltX  $(CFLAGS) $(CFLAGSNLOPT) 

@@ -1135,7 +1135,7 @@ int main(int argc, char *argv[])
 	double LatCin[6];
     double wedge,MinEta,OmegaRanges[20][2],BoxSizes[20][4], MaxRingRad;
     int RingNumbers[200],cs=0,cs2=0,nOmeRanges=0,nBoxSizes=0,CellStruct;
-    double Rsample, Hbeam,RingRadii[20],MargABC=0.3,MargABG=0.3;
+    double Rsample, Hbeam,RingRadii[200],MargABC=0.3,MargABG=0.3;
   	char OutputFolder[1024],ResultFolder[1024];
   	int DiscModel = 0, TopLayer = 0, TakeGrainMax = 0;
   	int GrainTracking = 0;
