@@ -167,7 +167,7 @@ MatrixMult(
     }
 }
 
-static inline void CorrectHKLsLatC(double LatC[6], double **hklsIn,int nhkls,double Lsd,double Wavelength,double **hkls)
+static inline void CorrectHKLsLatC(double LatC[6], double **hklsIn, int nhkls,double Lsd,double Wavelength,double **hkls)
 {
 	double a=LatC[0],b=LatC[1],c=LatC[2],alpha=LatC[3],beta=LatC[4],gamma=LatC[5];
 	int hklnr;
@@ -187,7 +187,7 @@ static inline void CorrectHKLsLatC(double LatC[6], double **hklsIn,int nhkls,dou
         hkls[hklnr][4] = Theta;
         double Rad = Lsd*(tand(2*Theta));
         hkls[hklnr][5] = Rad;
-        hkls[hklnr][6] = hklsIn[hklnr][6];
+        hkls[hklnr][6] = hklsIn[hklnr][3];
 	}
 }
 
@@ -428,6 +428,113 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 	free(Angles);
 }
 
+static inline
+void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double *YMean, double *ZMean,
+		double px, double Lsd, double ybc, double zbc, double tx, double ty, double tz, double p0, double p1,
+		double p2, double *YCorrected, double *ZCorrected)
+{
+	double txr,tyr,tzr;
+	txr = deg2rad*tx;
+	tyr = deg2rad*ty;
+	tzr = deg2rad*tz;
+	double Rx[3][3] = {{1,0,0},{0,cos(txr),-sin(txr)},{0,sin(txr),cos(txr)}};
+	double Ry[3][3] = {{cos(tyr),0,sin(tyr)},{0,1,0},{-sin(tyr),0,cos(tyr)}};
+	double Rz[3][3] = {{cos(tzr),-sin(tzr),0},{sin(tzr),cos(tzr),0},{0,0,1}};
+	double TRint[3][3], TRs[3][3];
+	MatrixMultF33(Ry,Rz,TRint);
+	MatrixMultF33(Rx,TRint,TRs);
+	int i,j,k;
+	double n0=2,n1=4,n2=2,Yc,Zc;
+	double Rad, Eta, RNorm, DistortFunc, Rcorr, EtaT;
+	for (i=0;i<nIndices;i++){
+		Yc = -(YMean[i]-ybc)*px;
+		Zc =  (ZMean[i]-zbc)*px;
+		double ABC[3] = {0,Yc,Zc};
+		double ABCPr[3];
+		MatrixMult(TRs,ABC,ABCPr);
+		double XYZ[3] = {Lsd+ABCPr[0],ABCPr[1],ABCPr[2]};
+		Rad = (Lsd/(XYZ[0]))*(sqrt(XYZ[1]*XYZ[1] + XYZ[2]*XYZ[2]));
+		Eta = CalcEtaAngle(XYZ[1],XYZ[2]);
+		RNorm = Rad/MaxRad;
+		EtaT = 90 - Eta;
+		DistortFunc = (p0*(pow(RNorm,n0))*(cos(deg2rad*(2*EtaT)))) + (p1*(pow(RNorm,n1))*(cos(deg2rad*(4*EtaT)))) + (p2*(pow(RNorm,n2))) + 1;
+		Rcorr = Rad * DistortFunc;
+		YCorrected[i] = -Rcorr*sin(deg2rad*Eta);
+		ZCorrected[i] =  Rcorr*cos(deg2rad*Eta);
+	}
+}
+
+struct data{
+	int NrPixels;
+	int nOmeRanges;
+	int nRings;
+	int nSpots;
+	int nhkls;
+	double p0;
+	double p1;
+	double p2;
+	double RhoD;
+	double Lsd;
+	double px;
+	double Wavelength;
+	double MinEta;
+	double OmegaRanges[20][2];
+	double BoxSizes[20][2];
+	double **SpotInfoAll;
+	double **hkls;
+};
+
+static
+double problem_function(unsigned n, const double *x, double *grad, void* f_data_trial)
+{
+	
+}
+
+void FitGrain(double Ini[12], double OptP[6], double NonOptP[12], int NonOptPInt[5],
+			  double **SpotInfoAll, double OmegaRanges[20][2],
+			  double BoxSizes[20][4], double **hklsIn, double *Out){
+	unsigned n = 18;
+	double x[n], xl[n], xu[n];
+	int i, j;
+	struct data f_data;
+	f_data.NrPixels = NonOptPInt[0];
+	f_data.nOmeRanges = NonOptPInt[1];
+	f_data.nRings = NonOptPInt[2];
+	f_data.nSpots = NonOptPInt[3];
+	f_data.nhkls = NonOptPInt[4];
+	f_data.p0 = NonOptP[0];
+	f_data.p1 = NonOptP[1];
+	f_data.p2 = NonOptP[2];
+	f_data.RhoD = NonOptP[3];
+	f_data.Lsd = NonOptP[4];
+	f_data.px = NonOptP[5];
+	f_data.Wavelength = NonOptP[6];
+	f_data.MinEta = NonOptP[9];
+	int nOmeRanges = NonOptPInt[1];
+	for (i=0;i<nOmeRanges;i++){
+		for (j=0;j<2;j++) f_data.OmegaRanges[i][j] = OmegaRanges[i][j];
+		for (j=0;j<4;j++) f_data.BoxSizes[i][j] = BoxSizes[i][j];
+	}
+	f_data.hkls = hklsIn;
+	f_data.SpotInfoAll = SpotInfoAll;
+	struct data *f_datat;
+	f_datat = &f_data;
+	void* trp = (struct data *) f_datat;
+	
+	// Set x, xl, xu
+	
+	
+	nlopt_opt opt;
+	opt = nlopt_create(NLOPT_LN_NELDERMEAD,n);
+	nlopt_set_lower_bounds(opt,xl);
+	nlopt_set_upper_bounds(opt,xu);
+	nlopt_set_min_objective(opt,problem_function,trp);
+	double minf;
+	nlopt_optimize(opt,x,&minf);
+	nlopt_destroy(opt);
+	
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc != 4){
@@ -447,7 +554,8 @@ int main(int argc, char *argv[])
     char *str, dummy[MAX_LINE_LENGTH];
     double tx, ty, tz, Lsd, p0, p1, p2, RhoD, yBC, zBC, wedge, px, a, 
 		b, c, alpha, beta, gamma, OmegaRanges[20][2], BoxSizes[20][4],
-		RingRadii[200], MaxRingRad, MaxTtheta, Wavelength, MinEta;
+		MaxRingRad, MaxTtheta, Wavelength, MinEta,
+		Hbeam, Rsample;
     int NrPixels, nOmeRanges=0, nBoxSizes=0, cs=0, RingNumbers[200], cs2=0;
     while (fgets(aline,MAX_LINE_LENGTH,fileParam)!=NULL){
 		str = "tx ";
@@ -528,6 +636,18 @@ int main(int argc, char *argv[])
 			sscanf(aline,"%s %lf",dummy, &MinEta);
 			continue;
 		}
+		str = "Hbeam ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr == 0){
+			sscanf(aline,"%s %lf",dummy, &Hbeam);
+			continue;
+		}
+		str = "Rsample ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr == 0){
+			sscanf(aline,"%s %lf",dummy, &Rsample);
+			continue;
+		}
 		str = "NrPixels ";
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr == 0){
@@ -549,18 +669,11 @@ int main(int argc, char *argv[])
 			nBoxSizes++;
 			continue;
 		}
-        str = "RingNumbers ";
+        str = "RingThresh ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %d", dummy, &RingNumbers[cs]);
             cs++;
-            continue;
-        }
-        str = "RingRadii ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %lf", dummy, &RingRadii[cs2]);
-            cs2++;
             continue;
         }
         str = "MaxRingRad ";
@@ -570,34 +683,109 @@ int main(int argc, char *argv[])
             continue;
         }
 	}
+	int nRings = cs;
 	int i,j,k;
-	MaxTtheta = rad2deg*atan(MaxRingRad/Lsd);
+	// Read Grains.csv file, get Orientation, Position, Lattice Parameter
+	FILE *GrainsF;
+	char fnGrains[MAX_LINE_LENGTH];
+	char *folder;
+	folder = argv[1];
+	sprintf(fnGrains,"%s/Grains.csv",folder);
+	GrainsF = fopen(fnGrains,"r");
+	double Orient[9], Pos[3], LatC[6], Euler[3];
+	double OrientTemp[9], PosTemp[3], LatCTemp[6];
+	int ID;
+	while (fgets(aline,MAX_LINE_LENGTH,GrainsF)!=NULL){
+		sscanf(aline, "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+			&ID, &OrientTemp[0],&OrientTemp[1],&OrientTemp[2],&OrientTemp[3],&OrientTemp[4],
+			&OrientTemp[5],&OrientTemp[6],&OrientTemp[7],&OrientTemp[8],
+			&PosTemp[0],&PosTemp[1],&PosTemp[2],&LatCTemp[0],&LatCTemp[1],&LatCTemp[2],
+			&LatCTemp[3],&LatCTemp[4],&LatCTemp[5]);
+		if (ID == GrainID){
+			for (i=0;i<9;i++) Orient[i] = OrientTemp[i];
+			for (i=0;i<3;i++) Pos[i] = PosTemp[i];
+			for (i=0;i<6;i++) LatC[i] = LatCTemp[i];
+			break;
+		}
+	}
+	double Orient33[3][3];
+	for (i=0;i<3;i++) 
+		for (j=0;j<3;j++) 
+			Orient33[i][j] = Orient[i*3+j];
+	OrientMat2Euler(Orient33,Euler);
+	double Ini[12];
+	for (i=0;i<3;i++) Ini[i] = Pos[i];
+	for (i=0;i<3;i++) Ini[i+3] = Euler[i];
+	for (i=0;i<6;i++) Ini[i+6] = LatC[i];
+	
+	// Read SpotMatrix.csv to get raw positions of the diffraction spots.
+	// We need, GrainID(0), SpotID(1), Y(3), Z(4), Ome(5), RingNr(7)
+	double **SpotInfoAll;
+	SpotInfoAll = allocMatrix(MaxNSpotsBest,5);
+	FILE *SpotMF;
+	char fnSpotMatrix[MAX_LINE_LENGTH];
+	sprintf(fnSpotMatrix,"%s/SpotMatrix.csv",folder);
+	SpotMF = fopen(fnSpotMatrix,"r");
+	double YZOme[3];
+	int Rnr, nSpots = 0, SpID;
+	while (fgets(aline,MAX_LINE_LENGTH,SpotMF)!=NULL){
+		sscanf(aline,"%d %s %s %lf %lf %lf %s %d",&ID, &SpID, dummy, &YZOme[0],
+			&YZOme[1], &YZOme[2], dummy, &Rnr);
+		if (ID == GrainID){
+			SpotInfoAll[nSpots][0] = (double)SpID;
+			SpotInfoAll[nSpots][1] = (double)Rnr;
+			SpotInfoAll[nSpots][2] = YZOme[0];
+			SpotInfoAll[nSpots][3] = YZOme[1];
+			SpotInfoAll[nSpots][4] = YZOme[2];
+			nSpots++;
+		}
+	}
+	
+	// Read hkls
+	int nhkls = 0;
+	double **hkls;
+	hkls = allocMatrix(MaxNSpotsBest,4); // We need h,k,l and RingNr
 	char *hklfn = "hkls.csv";
 	FILE *hklf = fopen(hklfn,"r");
+	if (hklf == NULL){
+		printf("Could not read the hkl file. Exiting.\n");
+		return 1;
+	}
 	fgets(aline,MAX_LINE_LENGTH,hklf);
-	int Rnr;
-	double tht;
-	int n_hkls = cs,nhkls = 0;
-	int h, kt, l;
-	double ds;
-	double **hkls;
-	hkls = allocMatrix(5000,7);
+	int h,kt,l,RNr;
 	while (fgets(aline,MAX_LINE_LENGTH,hklf)!=NULL){
-		sscanf(aline, "%d %d %d %lf %d %s %s %s %lf %s %s",&h,&kt,&l,&ds,&Rnr,dummy,dummy,dummy,&tht,dummy,dummy);
-		if (tht > MaxTtheta/2) break;
-		for (i=0;i<cs;i++){
-			if(Rnr == RingNumbers[i]){
+		sscanf(aline, "%d %d %d %s %d %s %s %s %s %s %s",&h,&kt,&l,dummy,&RNr,dummy,dummy,dummy,dummy,dummy,dummy);
+		for (i=0;i<nRings;i++){
+			if(RNr == RingNumbers[i]){
 				hkls[nhkls][0] = h;
 				hkls[nhkls][1] = kt;
 				hkls[nhkls][2] = l;
-				hkls[nhkls][3] = ds;
-				hkls[nhkls][4] = tht;
-				hkls[nhkls][5] = RingRadii[i];
-				hkls[nhkls][6] = RingNumbers[i];
+				hkls[nhkls][3] = RingNumbers[i];
 				nhkls++;
 			}
 		}
 	}
-	CalcAngleErrors(nSpotsYZO,nhkls,nOmeRanges,Ini,spotsYZO,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,
-					MinEta,wedge,chi,SpotsComp,Splist,ErrorIni,&nSpotsComp);
+	
+	
+	// Group Setup parameters
+	// Non Optimized: NonOptP: double 10 + Int 5
+	// Optimized OptP[6]
+	double NonOptP[10] = {p0,p1,p2,RhoD,Lsd,px,Wavelength,Hbeam,Rsample,MinEta};
+	int NonOptPInt[5] = {NrPixels,nOmeRanges,nRings,nSpots,nhkls};
+	double OptP[6] = {tx,ty,tz,yBC,zBC,wedge};
+	
+	// Now call a function with all the info which will optimize parameters
+	// Arguments: Ini(12), OptP(6), NonOptP, RingNumbers,  SpotInfoAll, OmegaRanges,
+	//			  BoxSizes, hkls
+	// CalcAngleErrors would need Y,Z,Ome before wedge correction.
+	// Everythin till CorrectTiltSpatialDistortion function in FitTiltBCLsd
+	double *Out;
+	Out = malloc(18*sizeof(*Out));
+	FitGrain(Ini, OptP, NonOptP, NonOptPInt, SpotInfoAll, OmegaRanges,
+			 BoxSizes, hkls, Out);
+	printf("\nInput:\n");
+	for (i=0;i<12;i++) printf("%f ",Ini[i]);
+	for (i=0;i<6;i++) printf("%f ",OptP[i]);
+	printf("\nOutput:\n");
+	for (i=0;i<18;i++) printf("%f ",Out[i]);
 }

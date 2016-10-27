@@ -341,7 +341,7 @@ int main (int argc, char *argv[]){
 	char *fn = "hkls.csv";
 	FILE *fp;
 	fp = fopen(fn,"w");
-	fprintf(fp,"h k l D-spacing RingNr\n");
+	fprintf(fp,"h k l D-spacing RingNr g1 g2 g3 Theta 2Theta Radius\n");
 	for (i=0;i<nrPlanes;i++){
 		fprintf(fp,"%.0f %.0f %.0f %f %.0f %f %f %f %f %f %f\n",hkls[i][0],
 			hkls[i][1],hkls[i][2],hkls[i][3],hkls[i][4],
