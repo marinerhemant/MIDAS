@@ -411,9 +411,9 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], do
 	}
 	Error[0]=0;Error[1]=0;Error[2]=0;
 	for (i=0;i<nMatched;i++){
-		Error[0] += fabs(MatchDiff[i][1]/nMatched);
-		Error[1] += fabs(MatchDiff[i][2]/nMatched);
-		Error[2] += fabs(MatchDiff[i][0]/nMatched);
+		Error[0] += fabs(MatchDiff[i][1]/nMatched); // Len
+		Error[1] += fabs(MatchDiff[i][2]/nMatched); // Ome
+		Error[2] += fabs(MatchDiff[i][0]/nMatched); // Angle
 	}
 	FreeMemMatrix(MatchDiff,nrMatchedIndexer);
 	FreeMemMatrix(hkls,nhkls);
@@ -422,7 +422,7 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], do
 	FreeMemMatrix(TheorSpotsYZWE,nTspots);
 	FreeMemMatrix(TheorSpotsYZWER,MaxNSpotsBest);
 	free(Angles);
-	return Error[0];
+	return Error[2];
 }
 
 static inline
