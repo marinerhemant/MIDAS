@@ -3,10 +3,9 @@
 //
 //
 // Created by Hemant sharma on 2016/10/24
-//
-// Will NOT optimize: p0, p1, p2, RhoD, Lsd
-// Will optimize: tx,ty,tz,yBC,zBC,wedge, x,y,z, orient, a,b,c,alpha,beta,gamma
-// Optimize wedge separate of everything else
+// This code is to be used in cases where BC(y) has moved.
+// Will NOT optimize: p0, p1, p2, RhoD, Lsd, tx,ty,tz,zBC,wedge
+// Will optimize: yBC, x,y,z, orient, a,b,c,alpha,beta,gamma
 // Things to read in: SpotMatrix.csv, Grains.csv, Params.txt
 // Things to read from Params.txt: tx, ty, tz, Lsd, p0, p1, p2,
 //				RhoD, BC, Wedge, NrPixels, px,
@@ -167,6 +166,21 @@ MatrixMult(
     }
 }
 
+static inline
+void
+MatrixMultF33(
+    double m[3][3],
+    double n[3][3],
+    double res[3][3])
+{
+    int r;
+    for (r=0; r<3; r++) {
+        res[r][0] = m[r][0]*n[0][0] + m[r][1]*n[1][0] + m[r][2]*n[2][0];
+        res[r][1] = m[r][0]*n[0][1] + m[r][1]*n[1][1] + m[r][2]*n[2][1];
+        res[r][2] = m[r][0]*n[0][2] + m[r][1]*n[1][2] + m[r][2]*n[2][2];
+    }
+}
+
 static inline void CorrectHKLsLatC(double LatC[6], double **hklsIn, int nhkls,double Lsd,double Wavelength,double **hkls)
 {
 	double a=LatC[0],b=LatC[1],c=LatC[2],alpha=LatC[3],beta=LatC[4],gamma=LatC[5];
@@ -321,9 +335,8 @@ void SpotToGv(double xi, double yi, double zi, double Omega, double theta, doubl
 }
 
 static inline
-void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], double **spotsYZO, double **hklsIn, double Lsd, 
-	double Wavelength, double OmegaRange[20][2], double BoxSize[20][4], double MinEta, double wedge, double chi,
-	double **SpotsComp, double **SpList, double *Error, int *nSpotsComp)
+double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], double **spotsYZO, double **hklsIn, double Lsd, 
+	double Wavelength, double OmegaRange[20][2], double BoxSize[20][4], double MinEta, double wedge, double chi, double *Error)
 {
 	int i,j;
 	int nrMatchedIndexer = nspots;
@@ -340,8 +353,8 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 	double **SpotsYZOGCorr;SpotsYZOGCorr=allocMatrix(nrMatchedIndexer,7);
 	double DisplY,DisplZ,ys,zs,Omega,Radius,Theta,lenK;
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
-		DisplacementInTheSpot(x[0],x[1],x[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
-		CorrectForOme(spotsYZO[nrSp][5]-DisplY,spotsYZO[nrSp][6]-DisplZ,Lsd,spotsYZO[nrSp][4],Wavelength,wedge,&ys,&zs,&Omega);
+		DisplacementInTheSpot(x[0],x[1],x[2],Lsd,spotsYZO[nrSp][2],spotsYZO[nrSp][3],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
+		CorrectForOme(spotsYZO[nrSp][2]-DisplY,spotsYZO[nrSp][3]-DisplZ,Lsd,spotsYZO[nrSp][4],Wavelength,wedge,&ys,&zs,&Omega);
 		SpotsYZOGCorr[nrSp][0] = ys;
 		SpotsYZOGCorr[nrSp][1] = zs;
 		SpotsYZOGCorr[nrSp][2] = Omega;
@@ -353,7 +366,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 		SpotsYZOGCorr[nrSp][3] = g1;
 		SpotsYZOGCorr[nrSp][4] = g2;
 		SpotsYZOGCorr[nrSp][5] = g3;
-		SpotsYZOGCorr[nrSp][6] = spotsYZO[nrSp][7];
+		SpotsYZOGCorr[nrSp][6] = spotsYZO[nrSp][1];
 	}
 	double **TheorSpotsYZWE;TheorSpotsYZWE=allocMatrix(nTspots,9);
 	for (i=0;i<nTspots;i++){for (j=0;j<9;j++){TheorSpotsYZWE[i][j] = TheorSpots[i][j];}}
@@ -393,26 +406,9 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 			MatchDiff[nMatched][0] = minAngle;
 			MatchDiff[nMatched][1] = diffLenM;
 			MatchDiff[nMatched][2] = diffOmeM;
-			SpotsComp[nMatched][0] = spotsYZO[sp][3];
-			for (i=0;i<6;i++){
-				SpotsComp[nMatched][i+1]=SpotsYZOGCorr[sp][i];
-				SpotsComp[nMatched][i+7]=TheorSpotsYZWER[RowBest][i];
-			}
-			SpotsComp[nMatched][13]=spotsYZO[sp][0];
-			SpotsComp[nMatched][14]=spotsYZO[sp][1];
-			SpotsComp[nMatched][15]=spotsYZO[sp][2];
-			SpotsComp[nMatched][16]=spotsYZO[sp][4];
-			SpotsComp[nMatched][17]=spotsYZO[sp][5];
-			SpotsComp[nMatched][18]=spotsYZO[sp][6];
-			SpotsComp[nMatched][19]=minAngle;
-			SpotsComp[nMatched][20]=diffLenM;
-			SpotsComp[nMatched][21]=diffOmeM;
-			for (i=0;i<8;i++){SpList[nMatched][i]=spotsYZO[sp][i];}
-			SpList[nMatched][8]=TheorSpotsYZWER[RowBest][8];
 			nMatched++;
 		}
 	}
-	*nSpotsComp = nMatched;
 	Error[0]=0;Error[1]=0;Error[2]=0;
 	for (i=0;i<nMatched;i++){
 		Error[0] += fabs(MatchDiff[i][1]/nMatched);
@@ -426,12 +422,13 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 	FreeMemMatrix(TheorSpotsYZWE,nTspots);
 	FreeMemMatrix(TheorSpotsYZWER,MaxNSpotsBest);
 	free(Angles);
+	return Error[0];
 }
 
 static inline
-void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double *YMean, double *ZMean,
+void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double **SpotInfoAll,
 		double px, double Lsd, double ybc, double zbc, double tx, double ty, double tz, double p0, double p1,
-		double p2, double *YCorrected, double *ZCorrected)
+		double p2, double **SpotInfoCorr)
 {
 	double txr,tyr,tzr;
 	txr = deg2rad*tx;
@@ -447,8 +444,8 @@ void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double *YMean, do
 	double n0=2,n1=4,n2=2,Yc,Zc;
 	double Rad, Eta, RNorm, DistortFunc, Rcorr, EtaT;
 	for (i=0;i<nIndices;i++){
-		Yc = -(YMean[i]-ybc)*px;
-		Zc =  (ZMean[i]-zbc)*px;
+		Yc = -(SpotInfoAll[i][2]-ybc)*px;
+		Zc =  (SpotInfoAll[i][3]-zbc)*px;
 		double ABC[3] = {0,Yc,Zc};
 		double ABCPr[3];
 		MatrixMult(TRs,ABC,ABCPr);
@@ -459,8 +456,11 @@ void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double *YMean, do
 		EtaT = 90 - Eta;
 		DistortFunc = (p0*(pow(RNorm,n0))*(cos(deg2rad*(2*EtaT)))) + (p1*(pow(RNorm,n1))*(cos(deg2rad*(4*EtaT)))) + (p2*(pow(RNorm,n2))) + 1;
 		Rcorr = Rad * DistortFunc;
-		YCorrected[i] = -Rcorr*sin(deg2rad*Eta);
-		ZCorrected[i] =  Rcorr*cos(deg2rad*Eta);
+		SpotInfoCorr[i][0] = SpotInfoAll[i][0];
+		SpotInfoCorr[i][1] = SpotInfoAll[i][1];
+		SpotInfoCorr[i][4] = SpotInfoAll[i][4];
+		SpotInfoCorr[i][2] = -Rcorr*sin(deg2rad*Eta);
+		SpotInfoCorr[i][3] =  Rcorr*cos(deg2rad*Eta);
 	}
 }
 
@@ -482,17 +482,59 @@ struct data{
 	double BoxSizes[20][2];
 	double **SpotInfoAll;
 	double **hkls;
+	double *Error;
 };
 
 static
 double problem_function(unsigned n, const double *x, double *grad, void* f_data_trial)
 {
-	
+	int i,j,k;
+	struct data *f_data = (struct data *) f_data_trial;
+	int NrPixels = f_data->NrPixels;
+	int nOmeRanges = f_data->nOmeRanges;
+	int nRings = f_data->nRings;
+	int nSpots = f_data->nSpots;
+	int nhkls = f_data->nhkls;
+	double p0 = f_data->p0;
+	double p1 = f_data->p1;
+	double p2 = f_data->p2;
+	double RhoD = f_data->RhoD;
+	double Lsd = f_data->Lsd;
+	double px = f_data->px;
+	double Wavelength = f_data->Wavelength;
+	double MinEta = f_data->MinEta;
+	double OmegaRanges[20][2];
+	double BoxSizes[20][2];
+	for (i=0;i<nOmeRanges;i++){
+		for (j=0;j<2;j++) OmegaRanges[i][j] = f_data->OmegaRanges[i][j];
+		for (j=0;j<4;j++) BoxSizes[i][j] = f_data->BoxSizes[i][j];
+	}
+	double **SpotInfoAll;
+	SpotInfoAll = f_data->SpotInfoAll;
+	double **hkls;
+	hkls = f_data->hkls;
+	double **SpotInfoCorr;
+	SpotInfoCorr = allocMatrix(nSpots,5);
+	double Inp[12];
+	for (i=0;i<12;i++) Inp[i] = x[i];
+	double tx, ty, tz, ybc, zbc, Wedge;
+	tx = x[12];
+	ty = x[13];
+	tz = x[14];
+	ybc = x[15];
+	zbc = x[16];
+	Wedge = x[17];
+	CorrectTiltSpatialDistortion(nSpots, RhoD, SpotInfoAll, px, Lsd, ybc,
+								 zbc, tx, ty, tz, p0, p1, p2, SpotInfoCorr);
+	double error = CalcAngleErrors(nSpots, nhkls, nOmeRanges, Inp, SpotInfoCorr, hkls, Lsd,
+		Wavelength, OmegaRanges, BoxSizes, MinEta, Wedge, 0.0,f_data->Error);
+	printf("Error: %.20lf %.20lf %.20lf\n",f_data->Error[0],f_data->Error[1],f_data->Error[2]); fflush(stdout);
+	return error;
 }
 
 void FitGrain(double Ini[12], double OptP[6], double NonOptP[12], int NonOptPInt[5],
-			  double **SpotInfoAll, double OmegaRanges[20][2],
-			  double BoxSizes[20][4], double **hklsIn, double *Out){
+			  double **SpotInfoAll, double OmegaRanges[20][2], double tol[18],
+			  double BoxSizes[20][4], double **hklsIn, double *Out, double *Error){
 	unsigned n = 18;
 	double x[n], xl[n], xu[n];
 	int i, j;
@@ -517,12 +559,26 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12], int NonOptPInt
 	}
 	f_data.hkls = hklsIn;
 	f_data.SpotInfoAll = SpotInfoAll;
+	f_data.Error = Error;
 	struct data *f_datat;
 	f_datat = &f_data;
 	void* trp = (struct data *) f_datat;
 	
 	// Set x, xl, xu
-	
+	for (i=0;i<12;i++) x[i] = Ini[i];
+	for (i=0;i<6;i++) x[i+12] = OptP[i];
+	for (i=0;i<6;i++){ // Pos and Orient
+		xl[i] = x[i] - tol[i];
+		xu[i] = x[i] + tol[i];
+	}
+	for (i=6;i<12;i++){ // Strains
+		xl[i] = x[i] - (tol[i]/100);
+		xu[i] = x[i] + (tol[i]/100);
+	}
+	for (i=12;i<18;i++){ // Parameters
+		xl[i] = x[i] - tol[i];
+		xu[i] = x[i] + tol[i];
+	}
 	
 	nlopt_opt opt;
 	opt = nlopt_create(NLOPT_LN_NELDERMEAD,n);
@@ -532,7 +588,7 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12], int NonOptPInt
 	double minf;
 	nlopt_optimize(opt,x,&minf);
 	nlopt_destroy(opt);
-	
+	for (i=0;i<18;i++) Out[i] = x[i];
 }
 
 int main(int argc, char *argv[])
@@ -609,7 +665,7 @@ int main(int argc, char *argv[])
 		str = "BC ";
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr == 0){
-			sscanf(aline,"%s %lf %lf",dummy, &yBC, zBC);
+			sscanf(aline,"%s %lf %lf",dummy, &yBC, &zBC);
 			continue;
 		}
 		str = "Wedge ";
@@ -728,6 +784,7 @@ int main(int argc, char *argv[])
 	SpotMF = fopen(fnSpotMatrix,"r");
 	double YZOme[3];
 	int Rnr, nSpots = 0, SpID;
+	fgets(aline,MAX_LINE_LENGTH,SpotMF);
 	while (fgets(aline,MAX_LINE_LENGTH,SpotMF)!=NULL){
 		sscanf(aline,"%d %s %s %lf %lf %lf %s %d",&ID, &SpID, dummy, &YZOme[0],
 			&YZOme[1], &YZOme[2], dummy, &Rnr);
@@ -740,7 +797,7 @@ int main(int argc, char *argv[])
 			nSpots++;
 		}
 	}
-	
+
 	// Read hkls
 	int nhkls = 0;
 	double **hkls;
@@ -773,6 +830,9 @@ int main(int argc, char *argv[])
 	double NonOptP[10] = {p0,p1,p2,RhoD,Lsd,px,Wavelength,Hbeam,Rsample,MinEta};
 	int NonOptPInt[5] = {NrPixels,nOmeRanges,nRings,nSpots,nhkls};
 	double OptP[6] = {tx,ty,tz,yBC,zBC,wedge};
+	double tols[18] = {150,150,150,deg2rad*0.5,deg2rad*0.5,deg2rad*0.5,1,1,1,1,1,1,
+		0.01,0.01,0.01,1,0.01,0.01}; // 150 microns for position, 0.5 degrees for orient, 1 % for latticeParameter,
+					  // 1 degree for tilts, 1 pixel for BC, 1 degree for wedge
 	
 	// Now call a function with all the info which will optimize parameters
 	// Arguments: Ini(12), OptP(6), NonOptP, RingNumbers,  SpotInfoAll, OmegaRanges,
@@ -780,12 +840,16 @@ int main(int argc, char *argv[])
 	// CalcAngleErrors would need Y,Z,Ome before wedge correction.
 	// Everythin till CorrectTiltSpatialDistortion function in FitTiltBCLsd
 	double *Out;
+	double *Error;
+	Error = malloc(3*sizeof(*Error));
 	Out = malloc(18*sizeof(*Out));
-	FitGrain(Ini, OptP, NonOptP, NonOptPInt, SpotInfoAll, OmegaRanges,
-			 BoxSizes, hkls, Out);
+	FitGrain(Ini, OptP, NonOptP, NonOptPInt, SpotInfoAll, OmegaRanges, tols,
+			 BoxSizes, hkls, Out,Error);
 	printf("\nInput:\n");
 	for (i=0;i<12;i++) printf("%f ",Ini[i]);
 	for (i=0;i<6;i++) printf("%f ",OptP[i]);
 	printf("\nOutput:\n");
 	for (i=0;i<18;i++) printf("%f ",Out[i]);
+	printf("\n");
+	
 }
