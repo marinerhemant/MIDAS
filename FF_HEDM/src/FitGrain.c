@@ -831,7 +831,7 @@ int main(int argc, char *argv[])
 	int NonOptPInt[5] = {NrPixels,nOmeRanges,nRings,nSpots,nhkls};
 	double OptP[6] = {tx,ty,tz,yBC,zBC,wedge};
 	double tols[18] = {150,150,150,deg2rad*0.5,deg2rad*0.5,deg2rad*0.5,1,1,1,1,1,1,
-		0.01,0.01,0.01,1,0.01,0.01}; // 150 microns for position, 0.5 degrees for orient, 1 % for latticeParameter,
+		0.3,0.3,0.3,1,1,0.3}; // 150 microns for position, 0.5 degrees for orient, 1 % for latticeParameter,
 					  // 1 degree for tilts, 1 pixel for BC, 1 degree for wedge
 	
 	// Now call a function with all the info which will optimize parameters
