@@ -87,7 +87,7 @@ int main(int argc, char *argv[])
 	int GrainID;
     while(fgets(aline,1000,GrainFile)!=NULL){
 		if (aline[0] == '%') continue;
-        sscanf(aline,"%%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %s %lf %lf %lf %lf %lf %lf %s %s %s %s",&GrainID,&OrientMatrix[0],
+        sscanf(aline,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %s %lf %lf %lf %lf %lf %lf %s %s %s %s",&GrainID,&OrientMatrix[0],
 				&OrientMatrix[1],&OrientMatrix[2],&OrientMatrix[3],&OrientMatrix[4],&OrientMatrix[5],&OrientMatrix[6],
 				&OrientMatrix[7],&OrientMatrix[8],dummy,dummy,dummy,&LatC[0],&LatC[1],&LatC[2],&LatC[3],&LatC[4],&LatC[5],dummy,dummy,dummy,dummy);
 		OrientMat2Quat(OrientMatrix,Quaternion);
