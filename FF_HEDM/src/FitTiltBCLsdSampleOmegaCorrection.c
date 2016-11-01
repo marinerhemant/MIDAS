@@ -238,6 +238,11 @@ double problem_function(
 	int i,j,k;
 	double n0=2,n1=4,n2=2,Yc,Zc;
 	double Rad, Eta, RNorm, DistortFunc, Rcorr, Theta, Diff, IdealTheta, TotalDiff=0, RIdeal,EtaT;
+	double MeanErrorEtas[72];
+	int nMeanErrorEtas[72];
+	for (i=0;i<72;i++) MeanErrorEtas[i] = 0;
+	for (i=0;i<72;i++) nMeanErrorEtas[i] = 0;
+	int idx;
 	for (i=0;i<nIndices;i++){
 		Yc = -(YMean[i]-ybc)*px;
 		Zc =  (ZMean[i]-zbc)*px;
@@ -252,13 +257,23 @@ double problem_function(
 		DistortFunc = (p0*(pow(RNorm,n0))*(cos(deg2rad*(2*EtaT)))) + (p1*(pow(RNorm,n1))*(cos(deg2rad*(4*EtaT)))) + (p2*(pow(RNorm,n2))) + 1;
 		Rcorr = Rad * DistortFunc;
 		RIdeal = Lsd*tan(deg2rad*IdealTtheta[i]);
-		Diff = fabs(1- (Rcorr/RIdeal));
+		Diff = (1- (Rcorr/RIdeal));
 		TotalDiff+=Diff;
+		idx = (Eta + 180)/5;
+		MeanErrorEtas[i] += Diff;
+		nMeanErrorEtas[i] ++;
 	}
+	/*TotalDiff = 0;
+	for (i=0;i<72;i++){
+		if (nMeanErrorEtas[i] !=0){
+			MeanErrorEtas[i] /= (double)nMeanErrorEtas[i];
+			TotalDiff+= MeanErrorEtas[i];
+		}
+	}*/
 	TotalDiff *= MultFactor;
 	NrCalls++;
 #ifdef PRINTOPT
-	printf("Mean Strain: %0.40f\n",TotalDiff/(MultFactor*nIndices));
+	printf("Mean Strain: %0.40f ty:%lf tz:%lf\n",TotalDiff/(MultFactor*nIndices));
 #endif
 	return TotalDiff;
 }
