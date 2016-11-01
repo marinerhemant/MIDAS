@@ -23,7 +23,7 @@ orthros: deps netcdf all
 	Orthros/setup.sh
 
 deps:
-	GetPackages.sh
+	./GetPackages.sh
 
 cuda: help indexrefinecuda peaks mergeoverlapsgpu fittiltbclsdsample \
 	calcradius mergerings processgrains hkls bindata calibrant findsaturatedpx fittiltx fitwedge
