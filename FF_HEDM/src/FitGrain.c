@@ -4,8 +4,8 @@
 //
 // Created by Hemant sharma on 2016/10/24
 // This code is to be used in cases where BC(y) has moved.
-// Will NOT optimize: p0, p1, p2, RhoD, Lsd, tx,ty,tz,zBC,wedge
-// Will optimize: yBC, x,y,z, orient, a,b,c,alpha,beta,gamma
+// Will NOT optimize: p0, p1, p2, RhoD, Lsd
+// Will optimize: yBC,tx,ty,tz,zBC,wedge , x,y,z, orient, a,b,c,alpha,beta,gamma
 // Things to read in: SpotMatrix.csv, Grains.csv, Params.txt
 // Things to read from Params.txt: tx, ty, tz, Lsd, p0, p1, p2,
 //				RhoD, BC, Wedge, NrPixels, px,
@@ -422,7 +422,7 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], do
 	FreeMemMatrix(TheorSpotsYZWE,nTspots);
 	FreeMemMatrix(TheorSpotsYZWER,MaxNSpotsBest);
 	free(Angles);
-	return Error[0];
+	return Error[2];
 }
 
 static inline
@@ -831,7 +831,7 @@ int main(int argc, char *argv[])
 	int NonOptPInt[5] = {NrPixels,nOmeRanges,nRings,nSpots,nhkls};
 	double OptP[6] = {tx,ty,tz,yBC,zBC,wedge};
 	double tols[18] = {150,150,150,deg2rad*0.5,deg2rad*0.5,deg2rad*0.5,1,1,1,1,1,1,
-		0.001,0.001,0.001,1,1,0.01}; // 150 microns for position, 0.5 degrees for orient, 1 % for latticeParameter,
+		1,1,1,1,1,1}; // 150 microns for position, 0.5 degrees for orient, 1 % for latticeParameter,
 					  // 1 degree for tilts, 1 pixel for BC, 1 degree for wedge
 	
 	// Now call a function with all the info which will optimize parameters
