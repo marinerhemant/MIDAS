@@ -422,7 +422,7 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], do
 	FreeMemMatrix(TheorSpotsYZWE,nTspots);
 	FreeMemMatrix(TheorSpotsYZWER,MaxNSpotsBest);
 	free(Angles);
-	return Error[0];
+	return Error[2];
 }
 
 static inline
