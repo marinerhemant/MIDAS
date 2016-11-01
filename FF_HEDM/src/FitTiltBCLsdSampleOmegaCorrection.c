@@ -921,7 +921,7 @@ int main(int argc, char *argv[])
 	double ty,tz,LsdFit,ybcFit,zbcFit,MeanDiff;
 	if (DoFit == 1){
 		printf("Fitting parameters.\n");
-		FitTiltBCLsd(nIndices,Ys,Zs,IdealTtheta,Lsd,RhoD,ybc,zbc,tx,ty,tz,&ty,&tz,&LsdFit,&ybcFit,&zbcFit,p0,p1,p2,&MeanDiff,tolTilts,tolLsd,tolBC,px);
+		FitTiltBCLsd(nIndices,Ys,Zs,IdealTtheta,Lsd,RhoD,ybc,zbc,tx,tyIn,tzIn,&ty,&tz,&LsdFit,&ybcFit,&zbcFit,p0,p1,p2,&MeanDiff,tolTilts,tolLsd,tolBC,px);
 		printf("Number of function calls: %d\n",NrCalls);
 		printf("LsdFit:\t\t%0.12f\nYBCFit:\t\t%0.12f\nZBCFit:\t\t%0.12f\ntyFit:\t\t%0.12f\ntzFit:\t\t%0.12f\nMeanStrain:\t%0.12lf\n",
 			LsdFit,ybcFit,zbcFit,ty,tz,MeanDiff);
