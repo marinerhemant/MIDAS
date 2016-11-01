@@ -265,7 +265,7 @@ double problem_function(
 	}
 	TotalDiff = 0;
 	for (i=0;i<72;i++){
-		if (nMeanErrorEtas[i] !=0){
+		if (nMeanErrorEtas[i] != 0){
 			MeanErrorEtas[i] /= (double)nMeanErrorEtas[i];
 			TotalDiff+= MeanErrorEtas[i];
 		}
