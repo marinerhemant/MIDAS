@@ -264,7 +264,7 @@ double problem_function(
 }
 
 void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean, double *IdealTtheta, double Lsd, double MaxRad, 
-				  double ybc, double zbc, double tx, double *ty, double *tz, double *LsdFit, 
+				  double ybc, double zbc, double tx, double tyIn, double tzIn, double *ty, double *tz, double *LsdFit, 
 				  double *ybcFit, double *zbcFit, double p0, double p1, double p2, double *MeanDiff, double tolTilts, double tolLsd, double tolBC, double px){
 	unsigned n=5;
 	struct my_func_data f_data;
@@ -279,11 +279,11 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean, double *IdealTthet
 	f_data.p1 = p1;
 	f_data.p2 = p2;
 	double x[n], xl[n], xu[n];
-	x[0] = Lsd;  xl[0] = Lsd - tolLsd;   xu[0] = Lsd + tolLsd;
-	x[1] = ybc;  xl[1] = ybc - tolBC;    xu[1] = ybc + tolBC;
-	x[2] = zbc;  xl[2] = zbc - tolBC;    xu[2] = zbc + tolBC;
-	x[3] =   0;  xl[3] =     - tolTilts; xu[3] =     + tolTilts;
-	x[4] =   0;  xl[4] =     - tolTilts; xu[4] =     + tolTilts;
+	x[0] =  Lsd;  xl[0] = Lsd - tolLsd;   xu[0] = Lsd + tolLsd;
+	x[1] =  ybc;  xl[1] = ybc - tolBC;    xu[1] = ybc + tolBC;
+	x[2] =  zbc;  xl[2] = zbc - tolBC;    xu[2] = zbc + tolBC;
+	x[3] = tyIn;  xl[3] = tyIn- tolTilts; xu[3] = tyIn+ tolTilts;
+	x[4] = tzIn;  xl[4] = tzIn- tolTilts; xu[4] = tzIn+ tolTilts;
 	struct my_func_data *f_datat;
 	f_datat = &f_data;
 	void* trp = (struct my_func_data *) f_datat;
@@ -921,7 +921,7 @@ int main(int argc, char *argv[])
 	double ty,tz,LsdFit,ybcFit,zbcFit,MeanDiff;
 	if (DoFit == 1){
 		printf("Fitting parameters.\n");
-		FitTiltBCLsd(nIndices,Ys,Zs,IdealTtheta,Lsd,RhoD,ybc,zbc,tx,&ty,&tz,&LsdFit,&ybcFit,&zbcFit,p0,p1,p2,&MeanDiff,tolTilts,tolLsd,tolBC,px);
+		FitTiltBCLsd(nIndices,Ys,Zs,IdealTtheta,Lsd,RhoD,ybc,zbc,tx,ty,tz,&ty,&tz,&LsdFit,&ybcFit,&zbcFit,p0,p1,p2,&MeanDiff,tolTilts,tolLsd,tolBC,px);
 		printf("Number of function calls: %d\n",NrCalls);
 		printf("LsdFit:\t\t%0.12f\nYBCFit:\t\t%0.12f\nZBCFit:\t\t%0.12f\ntyFit:\t\t%0.12f\ntzFit:\t\t%0.12f\nMeanStrain:\t%0.12lf\n",
 			LsdFit,ybcFit,zbcFit,ty,tz,MeanDiff);
