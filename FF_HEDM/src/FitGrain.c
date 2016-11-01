@@ -422,7 +422,7 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], do
 	FreeMemMatrix(TheorSpotsYZWE,nTspots);
 	FreeMemMatrix(TheorSpotsYZWER,MaxNSpotsBest);
 	free(Angles);
-	return Error[2];
+	return Error[0];
 }
 
 static inline
@@ -830,8 +830,8 @@ int main(int argc, char *argv[])
 	double NonOptP[10] = {p0,p1,p2,RhoD,Lsd,px,Wavelength,Hbeam,Rsample,MinEta};
 	int NonOptPInt[5] = {NrPixels,nOmeRanges,nRings,nSpots,nhkls};
 	double OptP[6] = {tx,ty,tz,yBC,zBC,wedge};
-	double tols[18] = {150/100,150/100,150/100,deg2rad*0.5/100,deg2rad*0.5/100,deg2rad*0.5/100,1/100,1/100,1/100,1/100,1/100,1/100,
-		1,1,1,1,1,1}; // 150 microns for position, 0.5 degrees for orient, 1 % for latticeParameter,
+	double tols[18] = {150,150,150,deg2rad*0.5,deg2rad*0.5,deg2rad*0.5,1,1,1,1,1,1,
+		0.01,0.01,0.01,1,0.01,0.01}; // 150 microns for position, 0.5 degrees for orient, 1 % for latticeParameter,
 					  // 1 degree for tilts, 1 pixel for BC, 1 degree for wedge
 	
 	// Now call a function with all the info which will optimize parameters
