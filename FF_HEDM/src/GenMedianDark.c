@@ -93,7 +93,7 @@ FreeMemMatrixPx(pixelvalue **mat,int nrows)
 int main(int argc, char *argv[]){
 	clock_t start, end;
 	if (argc != 3){
-		printf("Not enough arguments, exiting.\n");
+		printf("Usage: ./GenMedianDark InFN OutFN.\nNot enough arguments, exiting.\n");
 		return 1;
 	}
     double diftotal;

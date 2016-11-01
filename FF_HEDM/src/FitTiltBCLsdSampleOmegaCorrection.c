@@ -18,7 +18,7 @@
 #include <nlopt.h>
 #include <stdint.h>
 
-//#define PRINTOPT
+#define PRINTOPT
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 typedef uint16_t pixelvalue;
