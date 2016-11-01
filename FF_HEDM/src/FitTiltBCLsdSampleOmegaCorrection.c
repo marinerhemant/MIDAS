@@ -260,8 +260,8 @@ double problem_function(
 		Diff = fabs(1- (Rcorr/RIdeal));
 		TotalDiff+=Diff;
 		idx = (Eta + 180)/5;
-		MeanErrorEtas[i] += Diff;
-		nMeanErrorEtas[i] ++;
+		MeanErrorEtas[idx] += Diff;
+		nMeanErrorEtas[idx] ++;
 	}
 	TotalDiff = 0;
 	for (i=0;i<72;i++){
