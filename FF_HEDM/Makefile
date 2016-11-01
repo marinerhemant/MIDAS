@@ -16,13 +16,14 @@ all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting 
 	mergeoverlaps calcradius findsaturatedpx genmediandark fitgrain\
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking
 
-local: packages netcdf all scripts
+local: deps netcdf all
+	local/setup.sh
 
 orthros: deps netcdf all
 	Orthros/setup.sh
 
 deps:
-	Orthros/GetPackages.sh
+	GetPackages.sh
 
 cuda: help indexrefinecuda peaks mergeoverlapsgpu fittiltbclsdsample \
 	calcradius mergerings processgrains hkls bindata calibrant findsaturatedpx fittiltx fitwedge
@@ -41,12 +42,6 @@ help:
 	@echo ..............................................................................................
 	@echo
 	@echo $(NLOPT)
-
-scripts: local/setup.sh
-	local/setup.sh
-
-packages: local/GetPackages.sh
-	local/./GetPackages.sh
 
 netcdf:
 	./GetNetCDF.sh
