@@ -23,8 +23,8 @@ fi
 if [[ $1 == /* ]]; then TOP_PARAM_FILE=$1; else TOP_PARAM_FILE=$(pwd)/$1; fi
 STARTLAYERNR=$2
 ENDLAYERNR=$3
-NCPUS=$4
-DOPEAKSEARCH=$5
+NCPUS=$5
+DOPEAKSEARCH=$4
 STARTFNRFIRSTLAYER=$( awk '$1 ~ /^StartFileNrFirstLayer/ { print $2 } ' ${TOP_PARAM_FILE} )
 RingNrs=$( awk '$1 ~ /^RingThresh/ { print $2 }' ${TOP_PARAM_FILE} )
 SGNum=$( awk '$1 ~ /^SpaceGroup/ { print $2 }' ${TOP_PARAM_FILE} )
