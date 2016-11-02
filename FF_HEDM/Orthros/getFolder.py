@@ -12,7 +12,7 @@ for line in PSContents:
 			if 'Layer' in word:
 				LayerNrThis = int(word[5:])
 				if LayerNrThis == LayerNr:
-					print line
+					print line.split(' ')[1]
 					printed = 1
 folderStem = sys.argv[3] + '*'
 if printed == 0:
