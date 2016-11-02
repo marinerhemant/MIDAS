@@ -17,4 +17,4 @@ for line in PSContents:
 folderStem = sys.argv[3] + '*'
 if printed == 0:
 	folderList = glob.glob(folderStem)
-	print folderList[1]
+	print folderList[-1]
