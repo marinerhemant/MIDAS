@@ -153,7 +153,7 @@ do
        # then run MergeMultipleRings
        FolderStem=${FileStem}_Layer${LAYERNR}_Analysis_Time_
        TmpOutFldr=$( python ${PFDIR}/getFolder.py ${TOP_PARAM_FILE} ${LAYERNR} ${FolderStem})
-       OutFldr=${SeedFolder}/TmpOutFldr/
+       OutFldr=${SeedFolder}/${TmpOutFldr}/
        cp hkls.csv ${OutFldr}
        cp ${TOP_PARAM_FILE} ${OutFldr}
        for RINGNR in $RingNrs
