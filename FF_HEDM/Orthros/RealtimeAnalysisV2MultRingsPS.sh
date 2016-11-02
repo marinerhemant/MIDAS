@@ -209,6 +209,8 @@ do
         rad=$( awk '$1 ~ /^RingRadii/ {print $2 }' $paramstest_this_ring)
         echo "RingRadii $rad" >> paramstest.txt
    done
+   echo "SpotIDs To Index:"
+   wc -l SpotsToIndex.csv
    echo "SpaceGroup $SGNum" >> paramstest.txt
    ${PFDIR}/IndexRefine.sh ${NCPUS} ${TOP_PARAM_FILE}
    rc=$(qstat | grep tomo1 | grep " 384" | awk '{ print $1 }')
