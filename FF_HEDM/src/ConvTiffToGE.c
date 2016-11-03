@@ -74,6 +74,7 @@ int main(int argc, char *argv[]){
 			//printf("%lf %lf %u\n",inter1,inter2, (pixelvalue)inter2);
 			outimage[j] = (pixelvalue) inter2;
 		}
+		for (j=0;j<nElements;j++) printf("%u ",outimage[j]);
 		fwrite(skipContent,8192,1,fileOut);
 		fwrite(outimage,nrPixels*nrPixels*sizeof(pixelvalue),1,fileOut);
 		fclose(fileIn);
