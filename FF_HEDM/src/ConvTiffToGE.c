@@ -23,7 +23,7 @@ typedef uint16_t pixelvalue;
 int main(int argc, char *argv[]){
 	clock_t start, end;
 	if (argc != 6){
-		printf("Usage: ./ConvTiffToGE InFileStem Padding StartNr EndNr InExt.\nRight now works for padding 5 only.\nWill always save .ge3 files as output.\n");
+		printf("Usage: ./ConvTiffToGE InFileStem StartNr EndNr Padding InExt.\nRight now works for padding 5 only.\nWill always save .ge3 files as output.\n");
 		return 1;
 	}
     double diftotal;
