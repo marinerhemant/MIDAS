@@ -42,8 +42,8 @@ int main(int argc, char *argv[]){
 	float maxVal = 0;
 	for (i=startNr;i<=endNr;i++){
 		if (Padding == 5){
-			sprintf(FileName,"%s_%05d.%s",inFStem,i,inExt);
-			sprintf(OutFileName,"%s_%05d.ge3",inFStem,i);
+			sprintf(FileName,"%s%05d.%s",inFStem,i,inExt);
+			sprintf(OutFileName,"%s%05d.ge3",inFStem,i);
 		}else return 1;
 		FILE *fileIn, *fileOut;
 		fileIn = fopen(FileName,"rb");
