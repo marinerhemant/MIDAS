@@ -40,21 +40,21 @@ int main(int argc, char *argv[]){
 	int nrPixels = 2048;
 	long long int nElements = nrPixels*nrPixels;
 	float maxVal = 0;
+	int *skipContent;
+	skipContent = calloc(8192,sizeof(int));
+	pixelvalue *outimage;
+	float *inimage;
+	outimage = malloc(nrPixels*nrPixels*sizeof(*outimage));
+	inimage =  malloc(nrPixels*nrPixels*sizeof(*inimage));
+	FILE *fileIn, *fileOut;
 	for (i=startNr;i<=endNr;i++){
 		if (Padding == 5){
 			sprintf(FileName,"%s%05d.%s",inFStem,i,inExt);
 			sprintf(OutFileName,"%s%05d.ge3",inFStem,i);
 		}else return 1;
-		FILE *fileIn, *fileOut;
 		fileIn = fopen(FileName,"rb");
 		fileOut = fopen(OutFileName,"wb");
 		size_t sz;
-		int *skipContent;
-		skipContent = calloc(8192,sizeof(int));
-		pixelvalue *outimage;
-		float *inimage;
-		outimage = malloc(nrPixels*nrPixels*sizeof(*outimage));
-		inimage =  malloc(nrPixels*nrPixels*sizeof(*inimage));
 		printf("Read file %s.\n",FileName);
 		fflush(stdout);
 		fread(inimage,nElements*sizeof(float),1,fileIn);
@@ -69,5 +69,7 @@ int main(int argc, char *argv[]){
 		}
 		fwrite(skipContent,8192,1,fileOut);
 		fwrite(outimage,nrPixels*nrPixels*sizeof(pixelvalue),1,fileOut);
+		fclose(fileIn);
+		fclose(fileOut);
 	}
 }
