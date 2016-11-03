@@ -945,22 +945,27 @@ int main(int argc, char *argv[])
 	Average = malloc(NrPixels*NrPixels*sizeof(*Average));
 	Image = malloc(NrPixels*NrPixels*sizeof(*Image));
 	fd = fopen(Dark,"rb");
-	fseek(fd,0L,SEEK_END);
-	sz = ftell(fd);
-	rewind(fd);
-	nFrames = sz/(8*1024*1024);
-	Skip = sz - (nFrames*8*1024*1024);
-	printf("Reading dark file:      %s, nFrames: %d, skipping first %ld bytes.\n",Dark,nFrames,Skip);
-	fseek(fd,Skip,SEEK_SET);
-	for (j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]=0;
-	for (i=0;i<nFrames;i++){
-		fread(DarkFile,SizeFile,1,fd);
-		DoImageTransformations(NrTransOpt,TransOpt,DarkFile,NrPixels);
-		for(j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]+=DarkFile[j];
+	if (fd == NULL){
+		printf("Dark file %s could not be read. Making an empty array for dark.\n",Dark);
+		for (j=0;j<(NrPixels*NrPixels);j++)AverageDark[j] = 0;
+	}else{
+		fseek(fd,0L,SEEK_END);
+		sz = ftell(fd);
+		rewind(fd);
+		nFrames = sz/(8*1024*1024);
+		Skip = sz - (nFrames*8*1024*1024);
+		printf("Reading dark file:      %s, nFrames: %d, skipping first %ld bytes.\n",Dark,nFrames,Skip);
+		fseek(fd,Skip,SEEK_SET);
+		for (j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]=0;
+		for (i=0;i<nFrames;i++){
+			fread(DarkFile,SizeFile,1,fd);
+			DoImageTransformations(NrTransOpt,TransOpt,DarkFile,NrPixels);
+			for(j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]+=DarkFile[j];
+		}
+		printf("Dark file read.\n");
+		for (j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]=AverageDark[j]/nFrames;
+		fclose(fd);
 	}
-	printf("Dark file read.\n");
-	for (j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]=AverageDark[j]/nFrames;
-	fclose(fd);
 	int a;
 	for (a=StartNr;a<=EndNr;a++){
 		start = clock();
@@ -974,6 +979,10 @@ int main(int argc, char *argv[])
 		else if (Padding == 8){sprintf(FileName,"%s/%s_%08d%s",folder,fn,a,Ext);}
 		else if (Padding == 9){sprintf(FileName,"%s/%s_%09d%s",folder,fn,a,Ext);}
 		fp = fopen(FileName,"rb");
+		if (fp == NULL){
+			printf("File %s could not be read. Continuing to next one.\n",FileName);
+			continue;
+		}
 		fseek(fp,0L,SEEK_END);
 		sz = ftell(fp);
 		nFrames = sz/(8*1024*1024);
