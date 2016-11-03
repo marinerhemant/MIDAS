@@ -67,10 +67,11 @@ int main(int argc, char *argv[]){
 			}
 			if (inimage[j] < 0) inimage[j] = 0;
 		}
-		printf("%f\n",maxVal);
+		//printf("%f\n",maxVal);
 		for (j=0;j<nElements;j++){
 			inter1 = ((double)inimage[j]) / ((double)maxVal);
 			inter2 = inter1 * 14000;
+			printf("%lf %lf\n",inter1,inter2);
 			outimage[j] = (pixelvalue) (inter2);
 		}
 		fwrite(skipContent,8192,1,fileOut);
