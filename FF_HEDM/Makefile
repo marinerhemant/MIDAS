@@ -13,7 +13,7 @@ SRCDIR=src/
 BINDIR=bin/
 
 all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting \
-	mergeoverlaps calcradius findsaturatedpx genmediandark fitgrain\
+	mergeoverlaps calcradius findsaturatedpx genmediandark fitgrain tiff2ge\
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking
 
 local: deps netcdf all
@@ -106,6 +106,9 @@ processgrains: $(SRCDIR)ProcessGrains.c
 
 indexercuda: $(SRCDIR)IndexerRefineNLOPT.cu
 	$(NCC) $(SRCDIR)IndexerRefineNLOPT.cu -o $(BINDIR)Indexer $(NCFLAGS)
+
+tiff2ge: $(SRCDIR)ConvTiffToGE.c
+	$(CC) $(SRCDIR)ConvTiffToGE.c -o $(BINDIR)ConfTiffToGE $(CFLAGS)
 
 indexrefinecuda: $(SRCDIR)IndexerRefine.cu
 	$(NCC) $(SRCDIR)IndexerRefine.cu -o $(BINDIR)Indexer $(NCFLAGS)
