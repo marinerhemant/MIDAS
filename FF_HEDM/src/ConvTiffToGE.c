@@ -48,6 +48,7 @@ int main(int argc, char *argv[]){
 	outimage = malloc(nrPixels*nrPixels*sizeof(*outimage));
 	inimage =  malloc(nrPixels*nrPixels*sizeof(*inimage));
 	FILE *fileIn, *fileOut;
+	double inter1, inter2;
 	for (i=startNr;i<=endNr;i+=skip){
 		maxVal = 0;
 		if (Padding == 5){
@@ -61,14 +62,16 @@ int main(int argc, char *argv[]){
 		fflush(stdout);
 		fread(inimage,nElements*sizeof(float),1,fileIn);
 		for (j=0;j<nElements;j++){
-			printf("%f ",inimage[j]);
 			if (inimage[j] > maxVal){
 				maxVal = inimage[j];
 			}
 			if (inimage[j] < 0) inimage[j] = 0;
 		}
+		printf("f\n",maxVal);
 		for (j=0;j<nElements;j++){
-			outimage[j] = (pixelvalue) (inimage[j]*14000/maxVal);
+			inter1 = ((double)inimage[j]) / ((double)maxVal);
+			inter2 = inter1 * 14000;
+			outimage[j] = (pixelvalue) (inter2);
 		}
 		fwrite(skipContent,8192,1,fileOut);
 		fwrite(outimage,nrPixels*nrPixels*sizeof(pixelvalue),1,fileOut);
