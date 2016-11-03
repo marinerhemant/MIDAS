@@ -61,6 +61,7 @@ int main(int argc, char *argv[]){
 		fflush(stdout);
 		fread(inimage,nElements*sizeof(float),1,fileIn);
 		for (j=0;j<nElements;j++){
+			printf("%f ",inimage[j]);
 			if (inimage[j] > maxVal){
 				maxVal = inimage[j];
 			}
