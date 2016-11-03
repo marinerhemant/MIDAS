@@ -61,13 +61,13 @@ int main(int argc, char *argv[]){
 		fflush(stdout);
 		fread(inimage,nElements*sizeof(float),1,fileIn);
 		for (j=0;j<nElements;j++){
-			if (inimage[i] > maxVal){
-				maxVal = inimage[i];
+			if (inimage[j] > maxVal){
+				maxVal = inimage[j];
 			}
-			if (inimage[i] < 0) inimage[i] = 0;
+			if (inimage[j] < 0) inimage[j] = 0;
 		}
 		for (j=0;j<nElements;j++){
-			outimage[i] = (pixelvalue) (inimage[i]*14000/maxVal);
+			outimage[j] = (pixelvalue) (inimage[j]*14000/maxVal);
 		}
 		fwrite(skipContent,8192,1,fileOut);
 		fwrite(outimage,nrPixels*nrPixels*sizeof(pixelvalue),1,fileOut);
