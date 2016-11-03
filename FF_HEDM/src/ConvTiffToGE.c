@@ -22,15 +22,16 @@ typedef uint16_t pixelvalue;
 
 int main(int argc, char *argv[]){
 	clock_t start, end;
-	if (argc != 6){
-		printf("Usage: ./ConvTiffToGE InFileStem StartNr EndNr Padding InExt.\nRight now works for padding 5 only.\nWill always save .ge3 files as output.\n");
+	if (argc != 7){
+		printf("Usage: ./ConvTiffToGE InFileStem StartNr EndNr Padding InExt skip(if files are not continuous).\nRight now works for padding 5 only.\nWill always save .ge3 files as output.\n");
 		return 1;
 	}
     double diftotal;
-    int startNr, endNr, Padding;
+    int startNr, endNr, Padding, skip;
     startNr = atoi(argv[2]);
     endNr = atoi(argv[3]);
     Padding = atoi(argv[4]);
+    skip = atoi(argv[6]);
     start = clock();
 	char *inFStem, *inExt;
 	inFStem = argv[1];
@@ -47,7 +48,8 @@ int main(int argc, char *argv[]){
 	outimage = malloc(nrPixels*nrPixels*sizeof(*outimage));
 	inimage =  malloc(nrPixels*nrPixels*sizeof(*inimage));
 	FILE *fileIn, *fileOut;
-	for (i=startNr;i<=endNr;i++){
+	for (i=startNr;i<=endNr;i+=skip){
+		maxVal = 0;
 		if (Padding == 5){
 			sprintf(FileName,"%s%05d.%s",inFStem,i,inExt);
 			sprintf(OutFileName,"%s%05d.ge3",inFStem,i);
