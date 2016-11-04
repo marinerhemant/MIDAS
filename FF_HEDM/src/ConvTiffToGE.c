@@ -56,6 +56,10 @@ int main(int argc, char *argv[]){
 			sprintf(OutFileName,"%s%05d.ge3",inFStem,i);
 		}else return 1;
 		fileIn = fopen(FileName,"rb");
+		if (fileIn == NULL){
+			printf("Could not read %s. Continuing to the next file.\n",FileName);
+			continue;
+		}
 		fileOut = fopen(OutFileName,"wb");
 		size_t sz;
 		printf("Read file %s.\n",FileName);
