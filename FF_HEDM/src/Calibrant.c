@@ -286,6 +286,11 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 			PeakShape[BinNr] += Average[Indices[i][j]];
 			EtaMean[i] += Eta[Indices[i][j]]/NrEachIndexBin[i];
 		}*/
+		if (NrEachIndexBin[i] == 0){
+			//printf("IndexNr: %d, Rmean: %lf, EtaMean: %lf was out of detector, skipping.\n",i,(IdealRmins[i] + IdealRmaxs[i])/2, EtaMean[i]);
+			Rfit = 0;
+			continue;
+		}
 		for (j=0;j<NrPtsForFit;j++){
 			PeakShape[j]=0;
 			Rs[j]=(Rmin+(j*Rstep)+Rstep/2);
@@ -311,7 +316,7 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 			double Rmean=Rm[0];
 			FitPeakShape(NrPtsForFit,Rs,PeakShape,&Rfit,Rstep,Rmean,Etas);
 		}else{
-			printf("All intensities were 0. i=%d of %d, %f %f\n",i,nIndices,IdealRmins[i],IdealRmaxs[i]);
+			printf("All intensities were 0. i=%d of %d, %f %f %lf %lf\n",i,nIndices,IdealRmins[i],IdealRmaxs[i],EtaMi,EtaMa);
 			Rfit = (IdealRmins[i] + IdealRmaxs[i])/2;
 		}
 		RMean[i] = Rfit;
@@ -1020,6 +1025,7 @@ int main(int argc, char *argv[])
 		NrEachIndexBin = malloc(nIndices*sizeof(*NrEachIndexBin));
 		Indices = allocMatrixInt(nIndices,20000);
 		Car2Pol(n_hkls,nEtaBins,NrPixels,NrPixels,ybc,zbc,px,R,Eta,Rmins,Rmaxs,EtaBinsLow,EtaBinsHigh,nIndices,NrEachIndexBin,Indices);
+		//for (i=0;i<nIndices;i++) printf("%d %d\n",i,NrEachIndexBin[i]);
 		double *RMean, *EtaMean, *IdealR, *IdealTtheta, *IdealRmins, *IdealRmaxs;
 		IdealR = malloc(nIndices*sizeof(*IdealR));
 		IdealRmins = malloc(nIndices*sizeof(*IdealRmins));
@@ -1041,6 +1047,31 @@ int main(int argc, char *argv[])
 		} else {
 			CalcFittedMean(nIndices,NrEachIndexBin,Indices,Average,R,Eta,RMean,EtaMean,NrPtsForFit,IdealRmins,IdealRmaxs,nEtaBins,ybc,zbc,px,NrPixels);
 		}
+		// Find the RMean, which are 0 and update accordingly.
+		int countr=0;
+		double *RMean2, *EtaMean2, *IdealTtheta2;
+		RMean2 = malloc(nIndices*sizeof(*RMean2));
+		EtaMean2 = malloc(nIndices*sizeof(*EtaMean2));
+		IdealTtheta2 = malloc(nIndices*sizeof(*IdealTtheta2));
+		for (i=0;i<nIndices;i++){
+			if (RMean[i] != 0){
+				RMean2[countr] = RMean[i];
+				EtaMean2[countr] = EtaMean[i];
+				IdealTtheta2[countr] = IdealTtheta[i];
+				countr++;
+			}
+		}
+		printf("Out of %d slices, %d were in the detector\n",nIndices,countr);
+		//for (i=0;i<nIndices;i++) printf("Orig %d %lf %lf\n",i,RMean[i],EtaMean[i]);
+		nIndices = countr;
+		free(RMean);
+		free(EtaMean);
+		free(IdealTtheta);
+		RMean = RMean2;
+		EtaMean = EtaMean2;
+		IdealTtheta = IdealTtheta2;
+		//for (i=0;i<nIndices;i++) printf("Final %d %lf %lf\n",i,RMean[i],EtaMean[i]);
+		
 		end = clock();
 	    diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
 	    if (FitWeightMean != 1){printf("Number of calls to profiler function: %lld\n",NrCallsProfiler);printf("Time elapsed in fitting peak profiles:\t%f s.\n",diftotal);}
