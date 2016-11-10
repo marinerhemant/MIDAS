@@ -14,7 +14,8 @@ BINDIR=bin/
 
 all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting \
 	mergeoverlaps calcradius findsaturatedpx genmediandark fitgrain tiff2ge\
-	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking
+	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking\
+	mapmultdetectors
 
 local: deps netcdf all
 	local/setup.sh
@@ -62,6 +63,8 @@ peaksfitting: $(SRCDIR)PeaksFittingPerFile.c
 peaksfittingcdf: $(SRCDIR)PeaksFittingPerFile.c
 	$(CC) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile -DCDF=netCDF $(CFLAGSNETCDF) $(CFLAGS) $(CFLAGSNLOPT) 
 
+mapmultdetectors: $(SRCDIR)MapMultipleDetectors.c
+	$(CC) $(SRCDIR)MapMultipleDetectors.c -o $(BINDIR)MapMultipleDetectors $(CFLAGS) 
 
 mergeoverlaps: $(SRCDIR)MergeOverlappingPeaks.c
 	$(CC) $(SRCDIR)MergeOverlappingPeaks.c -o $(BINDIR)MergeOverlappingPeaks $(CFLAGS)
