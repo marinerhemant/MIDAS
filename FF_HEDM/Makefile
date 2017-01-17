@@ -23,6 +23,9 @@ local: deps netcdf all
 orthros: deps netcdf all
 	Orthros/setup.sh
 
+biocluster: deps netcdf all
+	Biocluster/setup.sh
+
 deps:
 	./GetPackages.sh
 
