@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns="http://www.ci.uchicago.edu/swift/SwiftSites">
+
+ <pool handle="localhost">
+   <execution provider="local"/>
+   <filesystem provider="local"/>
+   <workdirectory>/rhome/{env.USER}/swiftwork</workdirectory>
+ </pool>
+
+ <pool handle="cluster">
+   <execution provider="coaster" jobmanager="local:slurm"/>
+
+   <!-- Set partition and account here: -->
+   <filesystem provider="local"/>
+   <workdirectory>/rhome/{env.USER}/swiftwork</workdirectory>
+   <profile namespace="globus" key="jobsPerNode">64</profile> <!-- apps per node! -->
+   <profile namespace="globus" key="maxTime">172000</profile>  <!-- in seconds! -->
+   <profile namespace="globus" key="maxWalltime">20:50:00</profile>
+   <profile namespace="globus" key="lowOverAllocation">100</profile>
+   <profile namespace="globus" key="highOverAllocation">100</profile>
+   <profile namespace="globus" key="queue">batch</profile>
+   <profile namespace="globus" key="slots">2</profile>
+   <profile namespace="globus" key="nodeGranularity">1</profile>
+   <profile namespace="karajan" key="initialScore">10000</profile>
+   <profile namespace="globus" key="maxnodes">2</profile>
+   <profile namespace="karajan" key="jobThrottle">3.19</profile> <!-- eg .11 -> 12 -->
+   <profile namespace="globus" key="softImage">/dev/shm/bins.tar.gz /dev/shm</profile>
+   
+   <!-- <profile namespace="globus" key="ppn">64</profile> -->
+   <!-- <profile namespace="globus" key="project">pi-wilde</profile> -->
+
+   <!-- Set number of jobs and nodes per job here: -->
+   
+   <!-- Set estimated app time (maxwalltime) and requested job time (maxtime) here: -->
+   
+   <!-- Set data staging model and work dir here: -->
+   
+   <!-- Typically leave these constant: -->
+   <!-- <profile namespace="globus" key="slurm.exclusive">false</profile> -->
+   
+ </pool>
+
+</config>
