@@ -1,6 +1,6 @@
 #!/bin/bash
 
-LOCAL_DIR=$( pwd )/Orthros
+LOCAL_DIR=$( pwd )/Biocluster
 CHART=/
 FF_MIDAS_DIR=${LOCAL_DIR%$CHART*}
 BINFOLDER=${FF_MIDAS_DIR}/bin
