@@ -16,6 +16,9 @@ FF_HEDM/local/sites.xml
 FF_HEDM/Orthros/tc.data
 FF_HEDM/Orthros/*.kml
 FF_HEDM/Orthros/*.swiftx
+FF_HEDM/Biocluster/tc.data
+FF_HEDM/Biocluster/*.kml
+FF_HEDM/Biocluster/*.swiftx
 FF_HEDM/local/*.kml
 FF_HEDM/local/*.swiftx
 FF_HEDM/zlib*
