@@ -12,7 +12,7 @@
 
    <!-- Set partition and account here: -->
    <filesystem provider="local"/>
-   <workdirectory>/bigdata/greaneylab/swiftwork</workdirectory>
+   <workdirectory>/bigdata/greaneylab/shared/swiftwork</workdirectory>
    <profile namespace="globus" key="jobsPerNode">64</profile> <!-- apps per node! -->
    <profile namespace="globus" key="maxTime">172000</profile>  <!-- in seconds! -->
    <profile namespace="globus" key="maxWalltime">20:50:00</profile>
