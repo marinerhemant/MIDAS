@@ -25,8 +25,8 @@
    <!--<profile namespace="globus" key="maxnodes">1</profile>-->
    <profile namespace="karajan" key="jobThrottle">0.09</profile> <!-- eg .11 -> 12 -->
    <profile namespace="globus" key="softImage">/dev/shm/bins.tar.gz /dev/shm</profile>
-   <profile namespace="globus" key="slurm.nodes">1</profile>
-   <profile namespace="globus" key="slurm.ntasks">10</profile>
+   <!--<profile namespace="globus" key="slurm.nodes">1</profile>-->
+   <!--<profile namespace="globus" key="slurm.ntasks">10</profile>-->
    <profile namespace="globus" key="slurm.mem-per-cpu">1G</profile>
    <!--<profile namespace="globus" key="ppn">64</profile>-->
  </pool>
