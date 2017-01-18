@@ -30,5 +30,5 @@
 
 <!--   <profile namespace="globus" key="slots">1</profile>-->
 <!--<profile namespace="globus" key="maxnodes">1</profile>-->
-<!--<profile namespace="karajan" key="jobThrottle">0.09</profile> <!-- eg .11 -> 12 -->
+<!--<profile namespace="karajan" key="jobThrottle">0.09</profile>--> <!-- eg .11 -> 12 -->
 <!--   <profile namespace="globus" key="slurm.ntasks">10</profile>-->
