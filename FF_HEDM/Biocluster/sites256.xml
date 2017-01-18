@@ -8,7 +8,7 @@
  </pool>
 
  <pool handle="cluster">
-   <execution provider="coaster" jobmanager="local:pbs"/>
+   <execution provider="coaster" jobmanager="local:slurm"/>
 
    <!-- Set partition and account here: -->
    <filesystem provider="local"/>
