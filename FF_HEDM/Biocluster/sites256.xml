@@ -18,7 +18,7 @@
    <profile namespace="globus" key="maxWalltime">0:05:00</profile>
    <profile namespace="globus" key="lowOverAllocation">100</profile>
    <profile namespace="globus" key="highOverAllocation">100</profile>
-   <profile namespace="globus" key="project">batch</profile>
+   <profile namespace="globus" key="queue">batch</profile>
    <profile namespace="globus" key="nodeGranularity">1</profile>
    <profile namespace="karajan" key="initialScore">10000</profile>
    <profile namespace="globus" key="softImage">/dev/shm/bins.tar.gz /dev/shm</profile>
