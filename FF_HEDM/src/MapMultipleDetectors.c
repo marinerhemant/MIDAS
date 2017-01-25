@@ -95,7 +95,7 @@ int main (int argc, char *argv[]){
 		}
 	}
 	rewind(fileParam);
-	double DetParams[nDetectors][10]; // BC[2], Lsd[1], ts[3], ps[3], RhoD[1], total 10
+	double DetParams[nDetectors][10]; // Lsd[1], BC[2], ts[3], ps[3], RhoD[1], total 10
 	int BigDetSize, NrPixels, BorderToExclude;
 	double px;
 	int counter=0;
@@ -136,7 +136,7 @@ int main (int argc, char *argv[]){
 			continue;
 		}
 	}
-	
+
 	// Initiate BigDetector array
 	int *BigDetector;
 	uint16_t *BigDetU;
@@ -149,7 +149,7 @@ int main (int argc, char *argv[]){
 	totNrPixels ++;
 	BigDetector = malloc(totNrPixels*sizeof(*BigDetector));
 	memset(BigDetector,0,totNrPixels*sizeof(*BigDetector));
-	
+
 	// Run for each detector.
 	int i,j,k;
 	double ybc, zbc, tx, ty, tz, p0, p1, p2, LsdMean=0, RhoD, n0=2, n1=4,
@@ -158,13 +158,15 @@ int main (int argc, char *argv[]){
 	long long int idx;
 	int YCInt, ZCInt;
 	for (i=0;i<nDetectors;i++){
-		LsdMean += DetParams[i][2]/nDetectors;
+		LsdMean += DetParams[i][0]/nDetectors;
 	}
+	printf("Lsd to use: %lf microns.\n",LsdMean);
+	fflush(stdout);
 	for (j=0;j<nDetectors;j++){
 		// Get bc, lsd, ts, ps, RhoD
-		ybc = DetParams[j][0];
-		zbc = DetParams[j][1];
-		Lsd = DetParams[j][2];
+		Lsd = DetParams[j][0];
+		ybc = DetParams[j][1];
+		zbc = DetParams[j][2];
 		tx = DetParams[j][3];
 		ty = DetParams[j][4];
 		tz = DetParams[j][5];
@@ -172,7 +174,8 @@ int main (int argc, char *argv[]){
 		p1 = DetParams[j][7];
 		p2 = DetParams[j][8];
 		RhoD = DetParams[j][9];
-		//printf("%d %d %lf %lf %lf\n",j,nDetectors,tx,ty,tz);
+		printf("Detector %d of %d.\ntx:%lf ty:%lf tz:%lf Lsd:%lf p0:%lf p1:%lf p2:%lf RhoD:%lf\n",j,nDetectors,tx,ty,tz,Lsd,p0,p1,p2,RhoD);
+		fflush(stdout);
 		txr = deg2rad*tx;
 		tyr = deg2rad*ty;
 		tzr = deg2rad*tz;
@@ -212,7 +215,7 @@ int main (int argc, char *argv[]){
 			BigDetU[idx] = 1;
 		}
 	}
-	
+
 	// Find single pixels which were by mistake 0.
 	int nNeighbors = 0;
 	for (i=BigDetSize+1;i<(BigDetSize*(BigDetSize-1))-1;i++){

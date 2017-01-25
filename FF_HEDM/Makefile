@@ -32,8 +32,11 @@ lcrc_cloud: deps netcdf all
 nersc_edison: deps netcdf all
 	Cluster/setup.sh edison
 
-purdue: deps netcdf all
+purdue_conte: deps netcdf all
 	Cluster/setup.sh conte
+
+purdue_rice: deps netcdf all
+	Cluster/setup.sh rice
 
 deps:
 	./GetPackages.sh
