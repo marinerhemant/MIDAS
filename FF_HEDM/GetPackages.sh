@@ -13,11 +13,11 @@ if [ ! -d ${dirThis}/NLOPT ]; then # NLOPT INSTALL
 	make install
 fi
 
-if [ ! -d ${dirThis}/swift-0.95-RC6 ]; then # SWIFT
+if [ ! -d ${dirThis}/swift ]; then # SWIFT
 	cd $dirThis
 	echo $(pwd)
-	wget -O swift-0.95-RC6.tar.gz https://db.tt/62ZtqZvA
-	tar -xvf swift-0.95-RC6.tar.gz
+	wget -O swift.tar.gz http://swift-lang.org/packages/swift-0.96.2.tar.gz #https://db.tt/62ZtqZvA
+	tar -xvf swift.tar.gz
 fi
 
 if [ ! -d ${dirThis}/LIBTIFF ]; then

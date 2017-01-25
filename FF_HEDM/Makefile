@@ -21,10 +21,16 @@ local: deps netcdf all
 	local/setup.sh
 
 orthros: deps netcdf all
-	Orthros/setup.sh
+	Cluster/setup.sh ort
 
 biocluster: deps netcdf all
-	Biocluster/setup.sh
+	Cluster/setup.sh bio
+
+lcrc_cloud: deps netcdf all
+	Cluster/setup.sh lcrc
+
+nersc_edison: deps netcdf all
+	Cluster/setup.sh edison
 
 deps:
 	./GetPackages.sh
