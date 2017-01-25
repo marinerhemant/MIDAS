@@ -11,9 +11,9 @@ if [ ! -d ${dirThis}/zlib/include ]; then #ZLIB
 	mkdir -p $dirThis
 	cd ${dirThis}
 	echo $(pwd)
-	wget http://zlib.net/zlib-1.2.8.tar.gz -O zlib-1.2.8.tar.gz
-	tar -xvf zlib-1.2.8.tar.gz
-	cd zlib-1.2.8
+	wget http://zlib.net/zlib-1.2.11.tar.gz -O zlib-1.2.11.tar.gz
+	tar -xvf zlib-1.2.11.tar.gz
+	cd zlib-1.2.11
 	./configure --prefix=${ZDIR}
 	make install
 fi
