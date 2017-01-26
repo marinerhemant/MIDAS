@@ -18,6 +18,6 @@ ${PFDIR}/SHMOperators.sh $1
 mkdir -p Output
 mkdir -p Results
 mkdir -p logs
-${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME}_shm${1} ${PFDIR}/IndexRefine.swift
+${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME}${1} ${PFDIR}/IndexRefine.swift
 ${BINFOLDER}/ProcessGrains $2
 ls -lh
