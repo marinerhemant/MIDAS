@@ -8,8 +8,9 @@ then
 fi
 
 # Trial option, create a bins.tar.gz, copy it over to /dev/shm of head node.
-tar -cvf bins.tar.gz Spots.bin Data.bin nData.bin ExtraInfo.bin
-cp bins.tar.gz /dev/shm
+tar -cvzf bins.tar.gz Spots.bin Data.bin nData.bin ExtraInfo.bin
+mkdir -p ${HOME}/swiftwork/bins/
+cp bins.tar.gz ${HOME}/swiftwork/bins
 
 #return
 
