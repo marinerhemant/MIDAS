@@ -17,7 +17,7 @@ if [ ! -d ${dirThis}/swift ]; then # SWIFT
 	cd $dirThis
 	echo $(pwd)
 	wget -O swift.tar.gz https://dl.dropboxusercontent.com/u/19201865/swift-0.96.2.tar.gz #https://db.tt/62ZtqZvA
-	tar -xvf swift.tar.gz
+	tar -xvzf swift.tar.gz
 	mv swift-0.96.2 swift
 fi
 
