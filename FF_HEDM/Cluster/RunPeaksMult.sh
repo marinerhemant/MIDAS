@@ -1,4 +1,4 @@
-#!/bin/bash -eux
+#!/bin/bash -eu
 source ${HOME}/.MIDAS/paths
 if [[ $1 == /* ]]; then ParamsFile=$1; else ParamsFile=$(pwd)/$1; fi
 StartNr=$( awk '$1 ~ /^StartNr/ { print $2 }' ${ParamsFile} )
