@@ -115,7 +115,7 @@ do
             echo "ParameterFile used: ${ThisParamFileName}"
             cp ${TOP_PARAM_FILE} ${ThisParamFileName}
             echo "Ring Number: $RINGNR, Threshold: ${Thresholds[$i]}"
-            Fldr=${SeedFolder}/Ring${RINGNR}
+            Fldr=${SeedFolder}/Ring${RINGNR}/Temp
             mkdir -p $Fldr
             cp hkls.csv $Fldr
             echo "Folder $Fldr" >> ${ThisParamFileName}

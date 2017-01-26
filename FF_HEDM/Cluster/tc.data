@@ -1,5 +1,0 @@
-cluster indexstrains /home/hemant/MIDAS/FF_HEDM/Orthros/IndexStrains.sh
-cluster strainsrefine /home/hemant/MIDAS/FF_HEDM/Orthros/StrainsRefine.sh
-cluster peaks /home/hemant/MIDAS/FF_HEDM/Orthros/Peaks.sh
-cluster processPeaks /home/hemant/MIDAS/FF_HEDM/Orthros/ProcessPeaks.sh
-localhost processPeaksFullImg /home/hemant/MIDAS/FF_HEDM/Orthros/ProcessPeaksFullImg.sh
