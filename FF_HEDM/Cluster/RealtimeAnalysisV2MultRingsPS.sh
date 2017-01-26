@@ -115,8 +115,10 @@ do
             echo "ParameterFile used: ${ThisParamFileName}"
             cp ${TOP_PARAM_FILE} ${ThisParamFileName}
             echo "Ring Number: $RINGNR, Threshold: ${Thresholds[$i]}"
-            Fldr=${SeedFolder}/Ring${RINGNR}/Temp
+            Fldr=${SeedFolder}/Ring${RINGNR}
             mkdir -p $Fldr
+            mkdir -p $Fldr/Temp
+            mkdir -p $Fldr/PeakSearch
             cp hkls.csv $Fldr
             echo "Folder $Fldr" >> ${ThisParamFileName}
             echo "RingToIndex $RINGNR" >> ${ThisParamFileName}
