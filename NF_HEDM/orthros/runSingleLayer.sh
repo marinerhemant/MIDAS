@@ -34,7 +34,6 @@ mkdir -p ${FOLDER}
 # Make hkls.csv
 ${BINFOLDER}/GetHKLList ${TOP_PARAM_FILE}
 
-MINCONFIDENCE=0
 SeedOrientations=$( awk '$1 ~ /^SeedOrientations/ { print $2 }' ${TOP_PARAM_FILE} )
 Micf=$(awk '$1 ~ /^MicFileBinary/ { print $2 }' ${TOP_PARAM_FILE})
 MicfT=$(awk '$1 ~ /^MicFileText/ { print $2 }' ${TOP_PARAM_FILE})
@@ -99,34 +98,36 @@ fi
 # MMapImageInfo and scp all the bin files to /dev/shm of each node
 ${BINFOLDER}/MMapImageInfo ${TOP_PARAM_FILE}
 FileList="${DataDirectory}/SpotsInfo.bin ${DataDirectory}/DiffractionSpots.bin ${DataDirectory}/Key.bin ${DataDirectory}/OrientMat.bin"
-if [[ ${NCPUS} == 128 ]]
-then
-	ssh puppy21 cp -v $FileList /dev/shm
-	ssh puppy22 cp -v $FileList /dev/shm
-	ssh puppy37 cp -v $FileList /dev/shm
-	ssh puppy39 cp -v $FileList /dev/shm
-	ssh puppy41 cp -v $FileList /dev/shm
-	ssh puppy43 cp -v $FileList /dev/shm
-	ssh puppy44 cp -v $FileList /dev/shm
-elif [[ ${NCPUS} == 64 ]]
-then
-	ssh pup0100 cp -v $FileList /dev/shm
-elif [[ ${NCPUS} == 320 ]]
-then
-	ssh pup0101 cp -v $FileList /dev/shm/
-	ssh pup0102 cp -v $FileList /dev/shm/
-	ssh pup0103 cp -v $FileList /dev/shm/
-	ssh pup0104 cp -v $FileList /dev/shm/
-	ssh pup0105 cp -v $FileList /dev/shm/
-elif [[ ${NCPUS} == 384 ]]
-then
-	ssh pup0100 cp -v $FileList /dev/shm/
-	ssh pup0101 cp -v $FileList /dev/shm/
-	ssh pup0102 cp -v $FileList /dev/shm/
-	ssh pup0103 cp -v $FileList /dev/shm/
-	ssh pup0104 cp -v $FileList /dev/shm/
-	ssh pup0105 cp -v $FileList /dev/shm/
-fi
+tar -cvf binsNF.tar.gz ${FileList}
+cp binsNF.tar.gz /dev/shm
+#if [[ ${NCPUS} == 128 ]]
+#then
+	#ssh puppy21 cp -v $FileList /dev/shm
+	#ssh puppy22 cp -v $FileList /dev/shm
+	#ssh puppy37 cp -v $FileList /dev/shm
+	#ssh puppy39 cp -v $FileList /dev/shm
+	#ssh puppy41 cp -v $FileList /dev/shm
+	#ssh puppy43 cp -v $FileList /dev/shm
+	#ssh puppy44 cp -v $FileList /dev/shm
+#elif [[ ${NCPUS} == 64 ]]
+#then
+	#ssh pup0100 cp -v $FileList /dev/shm
+#elif [[ ${NCPUS} == 320 ]]
+#then
+	#ssh pup0101 cp -v $FileList /dev/shm/
+	#ssh pup0102 cp -v $FileList /dev/shm/
+	#ssh pup0103 cp -v $FileList /dev/shm/
+	#ssh pup0104 cp -v $FileList /dev/shm/
+	#ssh pup0105 cp -v $FileList /dev/shm/
+#elif [[ ${NCPUS} == 384 ]]
+#then
+	#ssh pup0100 cp -v $FileList /dev/shm/
+	#ssh pup0101 cp -v $FileList /dev/shm/
+	#ssh pup0102 cp -v $FileList /dev/shm/
+	#ssh pup0103 cp -v $FileList /dev/shm/
+	#ssh pup0104 cp -v $FileList /dev/shm/
+	#ssh pup0105 cp -v $FileList /dev/shm/
+#fi
 
 # Process data
 ${SWIFTDIR}/swift -sites.file ${PFDIR}/sites${NCPUS}.xml -tc.file ${PFDIR}/tc.data -config ${PFDIR}/cf ${PFDIR}/FitOrientation.swift \
@@ -140,7 +141,7 @@ then
   echo "RC == 0."
 fi
 
-if [[ $MINCONFIDENCE != 0 ]]
+if [[ ${FFSeedOrientations} == 1 ]]
 then
 	# Change SeedOrientations file, MicFileBinary and MicFileText
 	# then run again
@@ -168,34 +169,36 @@ then
 	# MMapImageInfo and scp all the bin files to /dev/shm of each node
 	${BINFOLDER}/MMapImageInfo ${TOP_PARAM_FILE}
 	FileList="${DataDirectory}/SpotsInfo.bin ${DataDirectory}/DiffractionSpots.bin ${DataDirectory}/Key.bin ${DataDirectory}/OrientMat.bin"
-	if [[ ${NCPUS} == 128 ]]
-	then
-		ssh puppy21 cp -v $FileList /dev/shm
-		ssh puppy22 cp -v $FileList /dev/shm
-		ssh puppy37 cp -v $FileList /dev/shm
-		ssh puppy39 cp -v $FileList /dev/shm
-		ssh puppy41 cp -v $FileList /dev/shm
-		ssh puppy43 cp -v $FileList /dev/shm
-		ssh puppy44 cp -v $FileList /dev/shm
-	elif [[ ${NCPUS} == 64 ]]
-	then
-		ssh pup0100 cp -v $FileList /dev/shm
-	elif [[ ${NCPUS} == 320 ]]
-	then
-		ssh pup0101 cp -v $FileList /dev/shm/
-		ssh pup0102 cp -v $FileList /dev/shm/
-		ssh pup0103 cp -v $FileList /dev/shm/
-		ssh pup0104 cp -v $FileList /dev/shm/
-		ssh pup0105 cp -v $FileList /dev/shm/
-	elif [[ ${NCPUS} == 384 ]]
-	then
-		ssh pup0100 cp -v $FileList /dev/shm/
-		ssh pup0101 cp -v $FileList /dev/shm/
-		ssh pup0102 cp -v $FileList /dev/shm/
-		ssh pup0103 cp -v $FileList /dev/shm/
-		ssh pup0104 cp -v $FileList /dev/shm/
-		ssh pup0105 cp -v $FileList /dev/shm/
-	fi
+	tar -cvf binsNF.tar.gz ${FileList}
+	cp binsNF.tar.gz /dev/shm
+	#if [[ ${NCPUS} == 128 ]]
+	#then
+		#ssh puppy21 cp -v $FileList /dev/shm
+		#ssh puppy22 cp -v $FileList /dev/shm
+		#ssh puppy37 cp -v $FileList /dev/shm
+		#ssh puppy39 cp -v $FileList /dev/shm
+		#ssh puppy41 cp -v $FileList /dev/shm
+		#ssh puppy43 cp -v $FileList /dev/shm
+		#ssh puppy44 cp -v $FileList /dev/shm
+	#elif [[ ${NCPUS} == 64 ]]
+	#then
+		#ssh pup0100 cp -v $FileList /dev/shm
+	#elif [[ ${NCPUS} == 320 ]]
+	#then
+		#ssh pup0101 cp -v $FileList /dev/shm/
+		#ssh pup0102 cp -v $FileList /dev/shm/
+		#ssh pup0103 cp -v $FileList /dev/shm/
+		#ssh pup0104 cp -v $FileList /dev/shm/
+		#ssh pup0105 cp -v $FileList /dev/shm/
+	#elif [[ ${NCPUS} == 384 ]]
+	#then
+		#ssh pup0100 cp -v $FileList /dev/shm/
+		#ssh pup0101 cp -v $FileList /dev/shm/
+		#ssh pup0102 cp -v $FileList /dev/shm/
+		#ssh pup0103 cp -v $FileList /dev/shm/
+		#ssh pup0104 cp -v $FileList /dev/shm/
+		#ssh pup0105 cp -v $FileList /dev/shm/
+	#fi
 	
 	# Process data
 	${SWIFTDIR}/swift -sites.file ${PFDIR}/sites${NCPUS}.xml -tc.file ${PFDIR}/tc.data -config ${PFDIR}/cf ${PFDIR}/FitOrientation.swift \
