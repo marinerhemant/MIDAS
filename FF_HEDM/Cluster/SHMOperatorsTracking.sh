@@ -20,7 +20,7 @@ then
 	for i in $hostsToCopy
 	do
 		echo To be copied to $i
-		rsync -vaP Spots.bin ExtraInfo.bin $i:/dev/shm
+		scp Spots.bin ExtraInfo.bin $i:/dev/shm
 	done
 fi
 
