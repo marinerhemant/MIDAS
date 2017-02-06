@@ -8,12 +8,14 @@ then
 fi
 
 # Trial option, create a bins.tar.gz, copy it over to /dev/shm of head node.
-tar -cvzf bins.tar.gz Spots.bin Data.bin nData.bin ExtraInfo.bin
-mkdir -p ${HOME}/swiftwork/bins/
-cp bins.tar.gz ${HOME}/swiftwork/bins
+#tar -cvzf bins.tar.gz Spots.bin Data.bin nData.bin ExtraInfo.bin
+#mkdir -p ${HOME}/swiftwork/bins/
+#cp bins.tar.gz ${HOME}/swiftwork/bins
 
-if [[ ${MACHINE_NAME} -eq "lcrc" ]]
+if [ ${MACHINE_NAME} = "lcrc" ]
 then
+	cp Spots.bin Data.bin nData.bin ExtraInfo.bin /dev/shm
+	cd /dev/shm
 	hostsToCopy=$( awk '$1 ~ /^192.168/ { print $1 }' /etc/hosts)
 	for i in $hostsToCopy
 	do
