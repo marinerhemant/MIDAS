@@ -12,6 +12,16 @@ tar -cvzf bins.tar.gz Spots.bin ExtraInfo.bin
 mkdir -p ${HOME}/swiftwork/bins/
 cp bins.tar.gz ${HOME}/swiftwork/bins
 
+if [[ ${MACHINE_NAME} -eq "lcrc" ]]
+then
+	hostsToCopy=$( awk '$1 ~ /^192.168/ { print $1 }' /etc/hosts)
+	for i in $hostsToCopy
+	do
+		echo To be copied to $i
+		scp Spots.bin Data.bin nData.bin ExtraInfo.bin $i:/dev/shm
+	done
+fi
+
 #return
 
 #if [[ $1 == 128 ]]
