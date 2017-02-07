@@ -17,11 +17,9 @@ then
 	cp Spots.bin ExtraInfo.bin /dev/shm
 	cd /dev/shm
 	hostsToCopy=$( awk '$1 ~ /^192.168/ { print $1 }' /etc/hosts)
-	for i in $hostsToCopy
-	do
-		echo To be copied to $i
-		scp Spots.bin ExtraInfo.bin $i:/dev/shm
-	done
+	echo ${hostsToCopy} | tr " " "\n" > ${HOME}/scphosts.txt
+	pscp.pssh -v -h ${HOME}/scphosts.txt Spots.bin /dev/shm/Spots.bin
+	pscp.pssh -v -h ${HOME}/scphosts.txt ExtraInfo.bin /dev/shm/ExtraInfo.bin
 fi
 
 #return
