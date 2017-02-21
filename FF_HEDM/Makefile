@@ -17,29 +17,33 @@ all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting 
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking\
 	mapmultdetectors
 
-local_dep: deps netcdf all
+local_dep: all
+	./GetPackages.sh local
 	Cluster/setup.sh local
 
-orthros: deps netcdf all
+orthros: all
+	./GetPackages.sh ort
 	Cluster/setup.sh ort
 
-biocluster: deps netcdf all
+biocluster: all
+	./GetPackages.sh bio
 	Cluster/setup.sh bio
 
-lcrc_cloud: deps netcdf all
+lcrc_cloud: all
+	./GetPackages.sh lcrc
 	Cluster/setup.sh lcrc
 
-nersc_edison: deps netcdf all
+nersc_edison: all
+	./GetPackages.sh edison
 	Cluster/setup.sh edison
 
-purdue_conte: deps netcdf all
+purdue_conte: all
+	./GetPackages.sh conte
 	Cluster/setup.sh conte
 
-purdue_rice: deps netcdf all
+purdue_rice: all
+	./GetPackages.sh rice
 	Cluster/setup.sh rice
-
-deps:
-	./GetPackages.sh
 
 cuda: help indexrefinecuda peaks mergeoverlapsgpu fittiltbclsdsample \
 	calcradius mergerings processgrains hkls bindata calibrant findsaturatedpx fittiltx fitwedge
@@ -58,9 +62,6 @@ help:
 	@echo ..............................................................................................
 	@echo
 	@echo $(NLOPT)
-
-netcdf:
-	./GetNetCDF.sh
 
 calibrant: $(SRCDIR)Calibrant.c
 	$(CC) $(SRCDIR)Calibrant.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)Calibrant $(CFLAGS) $(CFLAGSNLOPT) 

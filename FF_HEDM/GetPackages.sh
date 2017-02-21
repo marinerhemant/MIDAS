@@ -1,5 +1,15 @@
 #!/bin/bash
+
+###### Provide a machine name as argument to check for package
+
 dirThis=${HOME}/.MIDAS
+package=${HOME}/opt/MIDAS/FF_HEDM/Cluster/Packages/${1}.tar.gz
+if [ -f ${package} ]
+then
+	cp ${package} ${dirThis}/
+	cd ${dirThis}
+	tar -xvf ${1}.tar.gz
+fi
 
 if [ ! -d ${dirThis}/NLOPT ]; then # NLOPT INSTALL
 	mkdir -p $dirThis
@@ -31,3 +41,6 @@ if [ ! -d ${dirThis}/LIBTIFF ]; then
 	make all
 	make install
 fi
+
+cd ${HOME}/opt/MIDAS/FF_HEDM
+./GetNetCDF.sh
