@@ -5,6 +5,7 @@ StartNr=$( awk '$1 ~ /^StartNr/ { print $2 }' ${ParamsFile} )
 EndNr=$( awk '$1 ~ /^EndNr/ { print $2 }' ${ParamsFile} )
 echo "Peaks:"
 nNODES=${2}
+export nNODES
 if [ ${nNODES} == 7 ] && [ ${MACHINE_NAME} == 'ort' ]
 then
 	MACHINE_NAME="ortextra"

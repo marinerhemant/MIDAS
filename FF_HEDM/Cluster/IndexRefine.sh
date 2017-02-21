@@ -16,6 +16,7 @@ mv SpotsToIndexUnq.csv SpotsToIndex.csv
 ${PFDIR}/SHMOperators.sh
 
 nNODES=${2}
+export nNODES
 if [ ${nNODES} == 7 ] && [ ${MACHINE_NAME} == 'ort' ]
 then
 	MACHINE_NAME="ortextra"

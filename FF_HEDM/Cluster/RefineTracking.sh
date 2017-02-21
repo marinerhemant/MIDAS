@@ -10,6 +10,7 @@ source ${HOME}/.MIDAS/paths
 rm SpotsToIndex.csv
 
 nNODES=${2}
+export nNODES
 if [ ${nNODES} == 7 ] && [ ${MACHINE_NAME} == 'ort' ]
 then
 	MACHINE_NAME="ortextra"
