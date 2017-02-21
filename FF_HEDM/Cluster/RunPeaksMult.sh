@@ -4,6 +4,12 @@ if [[ $1 == /* ]]; then ParamsFile=$1; else ParamsFile=$(pwd)/$1; fi
 StartNr=$( awk '$1 ~ /^StartNr/ { print $2 }' ${ParamsFile} )
 EndNr=$( awk '$1 ~ /^EndNr/ { print $2 }' ${ParamsFile} )
 echo "Peaks:"
-${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME}${2} ${PFDIR}/RunPeaksMultPeaksOnly.swift -paramsfile=$4 -ringfile=$3 -fstm=$5 -startnr=${StartNr} -endnr=${EndNr}
+nNODES=${2}
+if [ ${nNODES} == 7 ] && [ ${MACHINE_NAME} == 'ort' ]
+then
+	MACHINE_NAME="ortextra"
+fi
+echo "MACHINE NAME is ${MACHINE_NAME}"
+${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/RunPeaksMultPeaksOnly.swift -paramsfile=$4 -ringfile=$3 -fstm=$5 -startnr=${StartNr} -endnr=${EndNr}
 echo "Process Peaks"
-${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME}${2} ${PFDIR}/RunPeaksMultProcessOnly.swift -paramsfile=$4 -ringfile=$3 -fstm=$5 -startnr=${StartNr} -endnr=${EndNr}
+${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/RunPeaksMultProcessOnly.swift -paramsfile=$4 -ringfile=$3 -fstm=$5 -startnr=${StartNr} -endnr=${EndNr}

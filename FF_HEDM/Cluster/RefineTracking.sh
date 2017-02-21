@@ -9,7 +9,14 @@ source ${HOME}/.MIDAS/paths
 
 rm SpotsToIndex.csv
 
-${PFDIR}/SHMOperatorsTracking.sh $1
+nNODES=${2}
+if [ ${nNODES} == 7 ] && [ ${MACHINE_NAME} == 'ort' ]
+then
+	MACHINE_NAME="ortextra"
+fi
+echo "MACHINE NAME is ${MACHINE_NAME}"
+
+${PFDIR}/SHMOperatorsTracking.sh
 mkdir -p Output
 mkdir -p Results
 mkdir -p logs

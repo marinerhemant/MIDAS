@@ -1,11 +1,12 @@
 #!/bin/bash
+source ${HOME}/.MIDAS/paths
 
 cmdname=$(basename $0)
 
 if [[ ${#*} != 5 ]]
 then
-  echo "Provide ParametersFile StartLayerNr EndLayerNr Number of CPUs to use and EmailAddress!"
-  echo "EG. ${cmdname} Parameters.txt 1 1 320 hsharma@anl.gov"
+  echo "Provide ParametersFile StartLayerNr EndLayerNr Number of NODEs to use and EmailAddress!"
+  echo "EG. ${cmdname} Parameters.txt 1 1 6 hsharma@anl.gov"
   echo "The parameter file should have a parameter called OldStateFolder which is the seed folder used in the previous state."
   exit 1
 fi
@@ -26,7 +27,7 @@ do
 	PSThisLayer=${TOP_PARAM_FILE}.Layer${LAYERNR}.txt
 	cp ${TOP_PARAM_FILE} ${PSThisLayer}
 	echo OldFolder ${OldFolder} >> ${PSThisLayer}
-	${HOME}/.MIDAS/MIDAS_V3_FarFieldGrainTracking ${PSThisLayer} ${LAYERNR} ${LAYERNR} $4
+	${PFDIR}/RealtimeAnalysisGrainTracking.sh ${PSThisLayer} ${LAYERNR} ${LAYERNR} $4
 done
 
 EmailAdd=$5
