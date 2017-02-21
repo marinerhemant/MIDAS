@@ -17,33 +17,41 @@ all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting 
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking\
 	mapmultdetectors
 
-local_dep: all
-	./GetPackages.sh local
+local_dep: predeplocal all
 	Cluster/setup.sh local
 
-orthros: all
-	./GetPackages.sh ort
+orthros: predeport all
 	Cluster/setup.sh ort
 
-biocluster: all
-	./GetPackages.sh bio
+biocluster: predepbio all
 	Cluster/setup.sh bio
 
-lcrc_cloud: all
-	./GetPackages.sh lcrc
+lcrc_cloud: predeplcrc all
 	Cluster/setup.sh lcrc
 
-nersc_edison: all
-	./GetPackages.sh edison
+nersc_edison: predepedison all
 	Cluster/setup.sh edison
 
-purdue_conte: all
-	./GetPackages.sh conte
+purdue_conte: predepconte all
 	Cluster/setup.sh conte
 
-purdue_rice: all
-	./GetPackages.sh rice
+purdue_rice: predeprice all
 	Cluster/setup.sh rice
+
+predeplocal:
+	./GetPackages.sh local
+predeport:
+	./GetPackages.sh ort
+predepbio:
+	./GetPackages.sh bio
+predeplcrc:
+	./GetPackages.sh lcrc
+predepedison:
+	./GetPackages.sh edison
+predepconte:
+	./GetPackages.sh conte
+predeprice:
+	./GetPackages.sh rice
 
 cuda: help indexrefinecuda peaks mergeoverlapsgpu fittiltbclsdsample \
 	calcradius mergerings processgrains hkls bindata calibrant findsaturatedpx fittiltx fitwedge
