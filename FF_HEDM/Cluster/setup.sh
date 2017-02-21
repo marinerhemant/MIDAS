@@ -21,4 +21,4 @@ ln -s ${BINFOLDER}/ProcessGrains ${configdir}/MIDAS_V4_FarField_ProcessGrains
 ln -s ${BINFOLDER}/FitGrain ${configdir}/MIDAS_V4_FarField_FitGrain
 
 echo "Congratulations, you can now use MIDAS to run FarField analysis"
-echo "Go to ${HOME}/.MIDAS folder, there are MIDAS_V3... files for running analysis"
+echo "Go to ${HOME}/.MIDAS folder, there are MIDAS_V... files for running analysis"

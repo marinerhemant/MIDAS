@@ -6,7 +6,7 @@ cmdname=$(basename $0)
 
 echo "FF analysis code for GrainTracking and Multiple rings:"
 echo "DO NOT CALL THIS DIRECTLY, USE TRACKGRAINS instead."
-echo "Version: 3, 2016/06/17, in case of problems contact hsharma@anl.gov"
+echo "Version: 4, 2017/02/21, in case of problems contact hsharma@anl.gov"
 
 if [[ ${#*} != 4 ]]
 then
