@@ -9,7 +9,7 @@ source ${HOME}/.MIDAS/paths
 
 rm SpotsToIndex.csv
 
-nNODES=${2}
+nNODES=${1}
 export nNODES
 if [ ${nNODES} == 7 ] && [ ${MACHINE_NAME} == 'ort' ]
 then
