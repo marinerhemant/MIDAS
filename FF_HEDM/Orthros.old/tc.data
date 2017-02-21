@@ -1,4 +1,0 @@
-cluster indexstrains /clhome/TOMO1/PeaksAnalysisHemant/HEDM_V2/FF_HEDM/IndexStrains.sh
-cluster peaks /clhome/TOMO1/PeaksAnalysisHemant/HEDM_V2/FF_HEDM/Peaks.sh
-localhost processPeaks /clhome/TOMO1/PeaksAnalysisHemant/HEDM_V2/FF_HEDM/ProcessPeaks.sh
-localhost processPeaksFullImg /clhome/TOMO1/PeaksAnalysisHemant/HEDM_V2/FF_HEDM/ProcessPeaksFullImg.sh

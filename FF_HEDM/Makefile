@@ -17,8 +17,8 @@ all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting 
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking\
 	mapmultdetectors
 
-local: deps netcdf all
-	local/setup.sh
+local_dep: deps netcdf all
+	Cluster/setup.sh local
 
 orthros: deps netcdf all
 	Cluster/setup.sh ort
