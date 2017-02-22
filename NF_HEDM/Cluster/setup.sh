@@ -10,7 +10,7 @@ configdir=${HOME}/.MIDAS
 configfile=${configdir}/pathsNF
 echo "BINFOLDER=${BINFOLDER}/" > ${configfile}
 echo "PFDIR=${LOCAL_DIR}/" >> ${configfile}
-echo "SWIFTDIR=${HOME}/.MIDAS/swift-0.95-RC6/bin/" >> ${configfile}
+echo "SWIFTDIR=${HOME}/.MIDAS/swift/bin/" >> ${configfile}
 echo "MACHINE_NAME=${1}" >> ${configfile}
 ln -s ${LOCAL_DIR}/runSingleLayer.sh ${configdir}/MIDAS_V4_NearFieldSingleLayer
 ln -s ${LOCAL_DIR}/runMultipleLayers.sh ${configdir}/MIDAS_V4_NearFieldMultipleLayers
