@@ -6,7 +6,7 @@ cmdname=$(basename $0)
 
 if [[ ${#*} != 5 ]];
 then
-  echo "Usage: ${cmdname} parameterfile nCPUS processImages FFSeedOrientations MultiGridPoints"
+  echo "Usage: ${cmdname} parameterfile nCPUS processImages FFSeedOrientations MultiGridPoints nNODEs"
   echo "Eg. ${cmdname} ParametersFile.txt 320 0 0 0"
   echo "FFSeedOrientations is when either Orientations exist already (0) or when you provide a FF Orientation file (1)."
   echo "MultiGridPoints is 0 when you just want to process one spot, otherwise if it is 1, then provide the multiple points"
@@ -16,10 +16,19 @@ then
 fi
 
 if [[ $1 == /* ]]; then TOP_PARAM_FILE=$1; else TOP_PARAM_FILE=$(pwd)/$1; fi
-NCPUS=$2
-processImages=$3
-FFSeedOrientations=$4
-MultiGridPoints=$5
+NCPUS=$5
+processImages=$2
+FFSeedOrientations=$3
+MultiGridPoints=$4
+
+nNODES=${NCPUS}
+export nNODES
+if [ ${nNODES} == 7 ] && [ ${MACHINE_NAME} == 'ort' ]
+then
+	MACHINE_NAME="ortextra"
+fi
+echo "MACHINE NAME is ${MACHINE_NAME}"
+
 
 # Go to the right folder
 DataDirectory=$( awk '$1 ~ /^DataDirectory/ { print $2 }' ${TOP_PARAM_FILE} )
@@ -63,10 +72,10 @@ then
   NRFILESPERDISTANCE=$( awk '$1 ~ /^NrFilesPerDistance/ { print $2 }' ${TOP_PARAM_FILE} )
   NRPIXELS=$( awk '$1 ~ /^NrPixels/ { print $2 }' ${TOP_PARAM_FILE} )
   echo "Median"
-  ${SWIFTDIR}/swift -sites.file ${PFDIR}/sites${NCPUS}.xml -tc.file ${PFDIR}/tc.data -config ${PFDIR}/cf ${PFDIR}/ProcessMedianParallel.swift \
+  ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/ProcessMedianParallel.swift \
     -paramfile=${TOP_PARAM_FILE} -NrLayers=${NDISTANCES} -NrFilesPerLayer=${NRFILESPERDISTANCE} -NrPixels=${NRPIXELS}
   echo "Image"
-  ${SWIFTDIR}/swift -sites.file ${PFDIR}/sites${NCPUS}.xml -tc.file ${PFDIR}/tc.data -config ${PFDIR}/cf ${PFDIR}/ProcessImagesParallel.swift \
+  ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/ProcessImagesParallel.swift \
     -paramfile=${TOP_PARAM_FILE} -NrLayers=${NDISTANCES} -NrFilesPerLayer=${NRFILESPERDISTANCE} -NrPixels=${NRPIXELS}
 fi
 

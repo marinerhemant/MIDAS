@@ -5,8 +5,8 @@ cmdname=$(basename $0)
 
 if [[ ${#*} != 7 ]];
 then
-  echo "Usage: ${cmdname} top_parameter_file(full_path) nCPUS FFSeedOrientations ProcessImages startLayerNr endLayerNr EmailAddress"
-  echo "Eg. ${cmdname} ParametersFile.txt 384 1(or 0) 1(or 0) 1 5 hsharma@anl.gov"
+  echo "Usage: ${cmdname} top_parameter_file(full_path) FFSeedOrientations ProcessImages startLayerNr endLayerNr nNODEs EmailAddress"
+  echo "Eg. ${cmdname} ParametersFile.txt 1(or 0) 1(or 0) 1 5 6 hsharma@anl.gov"
   echo "This will run from layer 1 to 5."
   echo "This will produce the output in the run folder."
   echo "FFSeedOrientations is when either Orientations exist already (0) or when you provide a FF Orientation file (1)."
@@ -25,11 +25,11 @@ then
 fi
 
 PARAMFILE=$1
-NCPUS=$2
-FFSEEDORIENTATIONS=$3
-PROCESSIMAGES=$4
-STARTLAYERNR=$5
-ENDLAYERNR=$6
+NCPUS=$6
+FFSEEDORIENTATIONS=$2
+PROCESSIMAGES=$3
+STARTLAYERNR=$4
+ENDLAYERNR=$5
 STEM=$( awk '$1 ~ /^OrigFileName/ { print $2 }' ${PARAMFILE} )
 CHART=/
 FOLDER=${STEM%$CHART*}

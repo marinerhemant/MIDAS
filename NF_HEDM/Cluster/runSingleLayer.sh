@@ -5,8 +5,8 @@ cmdname=$(basename $0)
 
 if [[ ${#*} != 5 ]];
 then
-  echo "Usage: ${cmdname} top_parameter_file(full_path) nCPUS FFSeedOrientations ProcessImages EmailAddress"
-  echo "Eg. ${cmdname} ParametersFile.txt 384 1(or 0) 1(or 0) hsharma@anl.gov"
+  echo "Usage: ${cmdname} top_parameter_file(full_path) FFSeedOrientations ProcessImages nNODEs EmailAddress"
+  echo "Eg. ${cmdname} ParametersFile.txt 1(or 0) 1(or 0) 6 hsharma@anl.gov"
   echo "This will produce the output in the run folder, called Microstructure.mic."
   echo "FFSeedOrientations is when either Orientations exist already (0) or when you provide a FF Orientation file (1)."
   echo "ProcessImages is whether you want to process the diffraction images (1) or if they were processed earlier (0)."
@@ -18,9 +18,17 @@ then
 fi
 
 if [[ $1 == /* ]]; then TOP_PARAM_FILE=$1; else TOP_PARAM_FILE=$(pwd)/$1; fi
-NCPUS=$2
-FFSeedOrientations=$3
-ProcessImages=$4
+NCPUS=$4
+FFSeedOrientations=$2
+ProcessImages=$3
+
+nNODES=${NCPUS}
+export nNODES
+if [ ${nNODES} == 7 ] && [ ${MACHINE_NAME} == 'ort' ]
+then
+	MACHINE_NAME="ortextra"
+fi
+echo "MACHINE NAME is ${MACHINE_NAME}"
 
 # Go to the right folder
 DataDirectory=$( awk '$1 ~ /^DataDirectory/ { print $2 }' ${TOP_PARAM_FILE} )
@@ -88,49 +96,23 @@ NRPIXELS=$( awk '$1 ~ /^NrPixels/ { print $2 }' ${TOP_PARAM_FILE} )
 if [[ ${ProcessImages} == 1 ]];
 then
   echo "Median"
-  ${SWIFTDIR}/swift -sites.file ${PFDIR}sites${NCPUS}.xml -tc.file ${PFDIR}tc.data -config ${PFDIR}cf ${PFDIR}ProcessMedianParallel.swift \
+  ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}ProcessMedianParallel.swift \
     -paramfile=${TOP_PARAM_FILE} -NrLayers=${NDISTANCES} -NrFilesPerLayer=${NRFILESPERDISTANCE} -NrPixels=${NRPIXELS}
   echo "Image"
-  ${SWIFTDIR}/swift -sites.file ${PFDIR}sites${NCPUS}.xml -tc.file ${PFDIR}tc.data -config ${PFDIR}cf ${PFDIR}ProcessImagesParallel.swift \
+  ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}ProcessImagesParallel.swift \
     -paramfile=${TOP_PARAM_FILE} -NrLayers=${NDISTANCES} -NrFilesPerLayer=${NRFILESPERDISTANCE} -NrPixels=${NRPIXELS}
 fi
 
 # MMapImageInfo and scp all the bin files to /dev/shm of each node
 ${BINFOLDER}/MMapImageInfo ${TOP_PARAM_FILE}
-FileList="${DataDirectory}/SpotsInfo.bin ${DataDirectory}/DiffractionSpots.bin ${DataDirectory}/Key.bin ${DataDirectory}/OrientMat.bin"
-tar -cvf binsNF.tar.gz ${FileList}
-cp binsNF.tar.gz /dev/shm
-#if [[ ${NCPUS} == 128 ]]
-#then
-	#ssh puppy21 cp -v $FileList /dev/shm
-	#ssh puppy22 cp -v $FileList /dev/shm
-	#ssh puppy37 cp -v $FileList /dev/shm
-	#ssh puppy39 cp -v $FileList /dev/shm
-	#ssh puppy41 cp -v $FileList /dev/shm
-	#ssh puppy43 cp -v $FileList /dev/shm
-	#ssh puppy44 cp -v $FileList /dev/shm
-#elif [[ ${NCPUS} == 64 ]]
-#then
-	#ssh pup0100 cp -v $FileList /dev/shm
-#elif [[ ${NCPUS} == 320 ]]
-#then
-	#ssh pup0101 cp -v $FileList /dev/shm/
-	#ssh pup0102 cp -v $FileList /dev/shm/
-	#ssh pup0103 cp -v $FileList /dev/shm/
-	#ssh pup0104 cp -v $FileList /dev/shm/
-	#ssh pup0105 cp -v $FileList /dev/shm/
-#elif [[ ${NCPUS} == 384 ]]
-#then
-	#ssh pup0100 cp -v $FileList /dev/shm/
-	#ssh pup0101 cp -v $FileList /dev/shm/
-	#ssh pup0102 cp -v $FileList /dev/shm/
-	#ssh pup0103 cp -v $FileList /dev/shm/
-	#ssh pup0104 cp -v $FileList /dev/shm/
-	#ssh pup0105 cp -v $FileList /dev/shm/
-#fi
+pushd ${DataDirectory}
+tar -cvzf binsNF.tar.gz SpotsInfo.bin DiffractionSpots.bin Key.bin OrientMat.bin
+mkdir -p ${HOME}/swiftwork/bins/
+cp binsNF.tar.gz ${HOME}/swiftwork/bins
+popd
 
 # Process data
-${SWIFTDIR}/swift -sites.file ${PFDIR}/sites${NCPUS}.xml -tc.file ${PFDIR}/tc.data -config ${PFDIR}/cf ${PFDIR}/FitOrientation.swift \
+${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/FitOrientation.swift \
   -startnr=${STARTNR} -endnr=${ENDNR} -paramfile=${TOP_PARAM_FILE} -micfn=${MICFN}
 
 # Parse Mic file
@@ -141,7 +123,7 @@ then
   echo "RC == 0."
 fi
 
-if [[ ${FFSeedOrientations} == 1 ]]
+if [ ${FFSeedOrientations} == 1 ]
 then
 	# Change SeedOrientations file, MicFileBinary and MicFileText
 	# then run again
@@ -168,40 +150,14 @@ then
 	
 	# MMapImageInfo and scp all the bin files to /dev/shm of each node
 	${BINFOLDER}/MMapImageInfo ${TOP_PARAM_FILE}
-	FileList="${DataDirectory}/SpotsInfo.bin ${DataDirectory}/DiffractionSpots.bin ${DataDirectory}/Key.bin ${DataDirectory}/OrientMat.bin"
-	tar -cvf binsNF.tar.gz ${FileList}
-	cp binsNF.tar.gz /dev/shm
-	#if [[ ${NCPUS} == 128 ]]
-	#then
-		#ssh puppy21 cp -v $FileList /dev/shm
-		#ssh puppy22 cp -v $FileList /dev/shm
-		#ssh puppy37 cp -v $FileList /dev/shm
-		#ssh puppy39 cp -v $FileList /dev/shm
-		#ssh puppy41 cp -v $FileList /dev/shm
-		#ssh puppy43 cp -v $FileList /dev/shm
-		#ssh puppy44 cp -v $FileList /dev/shm
-	#elif [[ ${NCPUS} == 64 ]]
-	#then
-		#ssh pup0100 cp -v $FileList /dev/shm
-	#elif [[ ${NCPUS} == 320 ]]
-	#then
-		#ssh pup0101 cp -v $FileList /dev/shm/
-		#ssh pup0102 cp -v $FileList /dev/shm/
-		#ssh pup0103 cp -v $FileList /dev/shm/
-		#ssh pup0104 cp -v $FileList /dev/shm/
-		#ssh pup0105 cp -v $FileList /dev/shm/
-	#elif [[ ${NCPUS} == 384 ]]
-	#then
-		#ssh pup0100 cp -v $FileList /dev/shm/
-		#ssh pup0101 cp -v $FileList /dev/shm/
-		#ssh pup0102 cp -v $FileList /dev/shm/
-		#ssh pup0103 cp -v $FileList /dev/shm/
-		#ssh pup0104 cp -v $FileList /dev/shm/
-		#ssh pup0105 cp -v $FileList /dev/shm/
-	#fi
+	pushd ${DataDirectory}
+	tar -cvzf binsNF.tar.gz SpotsInfo.bin DiffractionSpots.bin Key.bin OrientMat.bin
+	mkdir -p ${HOME}/swiftwork/bins/
+	cp binsNF.tar.gz ${HOME}/swiftwork/bins
+	popd
 	
 	# Process data
-	${SWIFTDIR}/swift -sites.file ${PFDIR}/sites${NCPUS}.xml -tc.file ${PFDIR}/tc.data -config ${PFDIR}/cf ${PFDIR}/FitOrientation.swift \
+	${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/FitOrientation.swift \
 	  -startnr=${STARTNR} -endnr=${ENDNR} -paramfile=${TOP_PARAM_FILE} -micfn=${MICFN}
 	
 	# Parse Mic file
