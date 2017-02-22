@@ -1,10 +1,12 @@
 type file;
 
-app indexrefine (int spotsinput)
+app indexrefine (int spotsinput, string folder)
 {
-   indexstrains spotsinput;
+   indexstrains spotsinput folder;
 }
 
+string fldr = arg("folder","/data/tomo1/NFTest/");
+
 foreach i in [1:2000] {
-    indexrefine(i);
+    indexrefine(i, fldr);
 }
