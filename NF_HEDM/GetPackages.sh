@@ -1,5 +1,15 @@
 #!/bin/bash
 dirThis=${HOME}/.MIDAS
+mkdir -p ${dirThis}
+package=${HOME}/opt/MIDAS/FF_HEDM/Cluster/Packages/${1}.tar.gz
+echo ${package}
+if [ -f ${package} ]
+then
+	echo "Package found for deployment. ${package}"
+	cp ${package} ${dirThis}/
+	cd ${dirThis}
+	tar -xf ${1}.tar.gz
+fi
 
 if [ ! -d ${dirThis}/NLOPT ]; then # NLOPT INSTALL
 	mkdir -p $dirThis
@@ -13,11 +23,12 @@ if [ ! -d ${dirThis}/NLOPT ]; then # NLOPT INSTALL
 	make install
 fi
 
-if [ ! -d ${dirThis}/swift-0.95-RC6 ]; then # SWIFT
+if [ ! -d ${dirThis}/swift ]; then # SWIFT
 	cd $dirThis
 	echo $(pwd)
-	wget -O swift-0.95-RC6.tar.gz https://db.tt/62ZtqZvA
-	tar -xvf swift-0.95-RC6.tar.gz
+	wget -O swift.tar.gz https://dl.dropboxusercontent.com/u/19201865/swift-0.96.2.tar.gz
+	tar -xvzf swift.tar.gz
+	mv swift-0.96.2 swift
 fi
 
 if [ ! -d ${dirThis}/LIBTIFF ]; then
