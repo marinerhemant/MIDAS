@@ -1,6 +1,6 @@
 #!/bin/bash
 
-LOCAL_DIR=$( pwd )/orthros
+LOCAL_DIR=$( pwd )/Cluster
 CHART=/
 NF_MIDAS_DIR=${LOCAL_DIR%$CHART*}
 BINFOLDER=${NF_MIDAS_DIR}/bin
