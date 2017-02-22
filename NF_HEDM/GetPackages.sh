@@ -1,7 +1,7 @@
 #!/bin/bash
 dirThis=${HOME}/.MIDAS
 mkdir -p ${dirThis}
-package=${HOME}/opt/MIDAS/FF_HEDM/Cluster/Packages/${1}.tar.gz
+package=${HOME}/opt/MIDAS/NF_HEDM/Cluster/Packages/${1}.tar.gz
 echo ${package}
 if [ -f ${package} ]
 then
