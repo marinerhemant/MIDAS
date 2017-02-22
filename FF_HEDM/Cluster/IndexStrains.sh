@@ -1,6 +1,5 @@
 #!/bin/bash
 source ${HOME}/.MIDAS/paths
-echo "Spot ID:"
+echo "Chunk:"
 echo $1
-${BINFOLDER}/IndexerLinuxArgsShm paramstest.txt $1
-${BINFOLDER}/FitPosOrStrains paramstest.txt $1
+${PFDIR}/IndexStrains.py $1
