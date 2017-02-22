@@ -1,4 +1,4 @@
-#!/bin/bash -eu
+#!/bin/bash -eux
 
 source ${HOME}/.MIDAS/pathsNF
 cmdname=$(basename $0)
@@ -53,7 +53,7 @@ then
 fi
 
 # Generate SeedOrientations
-if [[ ${FFSeedOrientations} == 1 ]];
+if [ ${FFSeedOrientations} == 1 ];
 then
   GrainsFile=$( awk '$1 ~ /^GrainsFile/ { print $2 }' ${TOP_PARAM_FILE} )
   MINCONFIDENCE=$(awk '$1 ~ /^MinConfidence/ { print $2 }' ${TOP_PARAM_FILE})

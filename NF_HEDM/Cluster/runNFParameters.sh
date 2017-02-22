@@ -1,4 +1,4 @@
-#!/bin/bash -eu
+#!/bin/bash -eux
 
 source ${HOME}/.MIDAS/pathsNF
 
@@ -6,8 +6,8 @@ cmdname=$(basename $0)
 
 if [[ ${#*} != 5 ]];
 then
-  echo "Usage: ${cmdname} parameterfile nCPUS processImages FFSeedOrientations MultiGridPoints nNODEs"
-  echo "Eg. ${cmdname} ParametersFile.txt 320 0 0 0"
+  echo "Usage: ${cmdname} parameterfile processImages FFSeedOrientations MultiGridPoints nNODEs"
+  echo "Eg. ${cmdname} ParametersFile.txt 0 0 0 6"
   echo "FFSeedOrientations is when either Orientations exist already (0) or when you provide a FF Orientation file (1)."
   echo "MultiGridPoints is 0 when you just want to process one spot, otherwise if it is 1, then provide the multiple points"
   echo "in the parameter file."
