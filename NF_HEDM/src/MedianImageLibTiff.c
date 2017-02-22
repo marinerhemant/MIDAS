@@ -124,6 +124,9 @@ int CalcMedian(char fn[1000],
 	char FileName[1024];
 	pixelvalue **AllIntensities, *MedianArray;
 	AllIntensities = allocMatrixInt(NrPixels,NrFilesPerLayer);
+    time(&timer);
+    tm_info = localtime(&timer);
+    strftime(buffer, 25, "%Y:%m:%d:%H:%M:%S", tm_info);
 	char MedianFileName[1024],MaxIntFileName[1024],MaxIntMedianCorrFileName[1024];
 	sprintf(MedianFileName,"%s_Median_Background_Distance_%d.%s",fn,LayerNr-1,extReduced);
 	sprintf(MaxIntFileName,"%s_MaximumIntensity_Distance_%d.%s",fn,LayerNr-1,extReduced);
