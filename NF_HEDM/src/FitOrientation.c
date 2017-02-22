@@ -292,7 +292,6 @@ main(int argc, char *argv[])
     char *ParamFN;
     FILE *fileParam;
     ParamFN = argv[1];
-    int rown=atoi(argv[2]);
     char *MicFN = argv[3];
     char aline[1000];
     fileParam = fopen(ParamFN,"r");
@@ -503,49 +502,8 @@ main(int argc, char *argv[])
     ObsSpotsInfo = mmap (0, size, PROT_READ, MAP_SHARED, descp, 0);
     check (ObsSpotsInfo == MAP_FAILED, "mmap %s failed: %s",file_name, strerror (errno));
     
-    //Read position.
-    FILE *fp;
-    fp = fopen(fnG,"r");
-    char line[1024];
-    fgets(line,1000,fp);
-    int TotalNrSpots=0;
-    sscanf(line,"%d",&TotalNrSpots);
-    if (rown > TotalNrSpots){
-        printf("Error: Grid point number greater than total number of grid points.\n");
-        return 0;
-    }
-    int counter=0;
-    double y1,y2,xs,ys,gs;
-    double **XY;
-    XY = allocMatrixF(3,3);
-    while(counter<rown){
-        fgets(line,1000,fp);
-        counter+=1;
-    }
-    sscanf(line,"%lf %lf %lf %lf %lf",&y1,&y2,&xs,&ys,&gs);
-    fclose(fp);
-    int UD;
-    if (y1>y2){
-		UD = -1;
-        XY[0][0] =xs;
-        XY[0][1] =ys - y1;
-        XY[1][0] =xs - gs;
-        XY[1][1] =ys + y2;
-        XY[2][0] =xs + gs;
-        XY[2][1] =ys + y2;
-    }
-    else{
-		UD = 1;
-        XY[0][0] =xs;
-        XY[0][1] =ys + y2;
-        XY[1][0] =xs - gs;
-        XY[1][1] =ys - y1;
-        XY[2][0] =xs + gs;
-        XY[2][1] =ys - y1;
-    }
-    double GridSize=2*gs;
-
     //Read Key
+    char line[1024];
     clock_t startthis;
     startthis = clock();
     FILE *fk;
@@ -596,163 +554,15 @@ main(int argc, char *argv[])
     OrientationMatrix = mmap (0, size3, PROT_READ, MAP_SHARED, omf, 0);
     check (OrientationMatrix == MAP_FAILED, "mmap %s failed: %s",omfn, strerror (errno));
 
-    // Go through each orientation and compare with observed spots.
-    clock_t startthis2;
-    startthis2 = clock();
-    int NrPixelsGrid=2*(ceil((gs*2)/px))*(ceil((gs*2)/px));
-    int NrSpotsThis,StartingRowNr;
-    double FracOverT;
-    double RotMatTilts[3][3], OrientationMatThis[9], OrientationMatThisUnNorm[9];
-    RotationTilts(tx,ty,tz,RotMatTilts);
+	// Alloc array and clear it.
     double **OrientMatrix;
     OrientMatrix = allocMatrixF(MAX_POINTS_GRID_GOOD,10);
-    int OrientationGoodID=0;
-    double MatIn[3],P0[nLayers][3],P0T[3];
-    double OrientMatIn[3][3],XG[3],YG[3];
-    double ThrSps[MAX_N_SPOTS][3];
-    MatIn[0]=0;
-    MatIn[1]=0;
-    MatIn[2]=0;
-    for (i=0;i<nLayers;i++){
-        MatIn[0] = -Lsd[i];
-        MatrixMultF(RotMatTilts,MatIn,P0T);
-        for (j=0;j<3;j++){
-            P0[i][j] = P0T[j];
-        }
-    }
-    for (j=0;j<3;j++){
-        XG[j] = XY[j][0];
-        YG[j] = XY[j][1];
-    }
-    printf("Checking orientation grid.\n");
-    for (i=0;i<NrOrientations;i++){
-        NrSpotsThis = NrSpots[i][0];
-        StartingRowNr = NrSpots[i][1];
-        m = 0;
-        for (m=0;m<9;m++){
-            OrientationMatThisUnNorm[m] = OrientationMatrix[i*9+m];
-			if (OrientationMatThisUnNorm[m] == -0.0){
-				OrientationMatThisUnNorm[m] = 0;
-			}
-        }
-        m=0;
-        NormalizeMat(OrientationMatThisUnNorm,OrientationMatThis);
-        for (j=StartingRowNr;j<(StartingRowNr+NrSpotsThis);j++){
-            ThrSps[m][0] = SpotsMat[j*3+0];
-            ThrSps[m][1] = SpotsMat[j*3+1];
-            ThrSps[m][2] = SpotsMat[j*3+2];
-            m++;
-        }
-        Convert9To3x3(OrientationMatThis,OrientMatIn);
-        CalcFracOverlap(nrFiles,nLayers,NrSpotsThis,ThrSps,OmegaStart,
-			OmegaStep,XG,YG,Lsd,SizeObsSpots,RotMatTilts,px,ybc,zbc,
-			gs,P0,NrPixelsGrid,ObsSpotsInfo,OrientMatIn,&FracOverT);
-        if (FracOverT >= minFracOverlap){
-            for (j=0;j<9;j++){
-                OrientMatrix[OrientationGoodID][j] = OrientationMatThis[j];
-            }
-            OrientMatrix[OrientationGoodID][9] = FracOverT;
-            OrientationGoodID++;
-        }
-    }
-    printf("Finished checking orientation grid. Now fitting %d orientations.\n",OrientationGoodID);
-    double BestFrac, BestEuler[3];
-	double ResultMatr[7+(nSaves*4)];
-    if (OrientationGoodID>0){
-		int n_hkls = 0;
-		double hkls[5000][4];
-		double Thetas[5000];
-		char hklfn[1024];
-		sprintf(hklfn,"%s/hkls.csv",direct);
-		FILE *hklf = fopen(hklfn,"r");
-		fgets(aline,1000,hklf);
-		while (fgets(aline,1000,hklf)!=NULL){
-			sscanf(aline, "%s %s %s %s %lf %lf %lf %lf %lf %s %s",dummy,dummy,dummy,
-				dummy,&hkls[n_hkls][3],&hkls[n_hkls][0],&hkls[n_hkls][1],
-				&hkls[n_hkls][2],&Thetas[n_hkls],dummy,dummy);
-			n_hkls++;
-		}
-		double Fractions, EulerIn[3], OrientIn[3][3], FracOut, EulerOutA, EulerOutB,EulerOutC,OMTemp[9];
-		BestFrac = -1;
-		ResultMatr[0] = (double)atoi(argv[2]);
-		ResultMatr[1] = (double)OrientationGoodID;
-		ResultMatr[2] = diftotal;
-		ResultMatr[3] = xs;
-		ResultMatr[4] = ys;
-		ResultMatr[5] = GridSize;
-		ResultMatr[6] = (double)UD;
-		int nFilled = 0;
-		int t;
-		for (i=0;i<nSaves;i++){
-			ResultMatr[7+i*4] = 0;
-			ResultMatr[7+i*4+1] = 0;
-			ResultMatr[7+i*4+2] = 0;
-			ResultMatr[7+i*4+3] = 0;
-		}
-		for (i=0;i<OrientationGoodID;i++){
-            for (j=0;j<9;j++){
-                OMTemp[j] = OrientMatrix[i][j];
-            }
-            Convert9To3x3(OMTemp,OrientIn);
-            OrientMat2Euler(OrientIn,EulerIn);
-            FitOrientation(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,
-				XG,YG,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,
-				OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,
-				ObsSpotsInfo,EulerIn,tol,&EulerOutA,&EulerOutB,
-				&EulerOutC,&FracOut,hkls,Thetas,n_hkls);
-            Fractions = 1-FracOut;
-            if (Fractions > BestFrac){
-				printf("%f %d of %d, EulerAngles: %f %f %f\n",Fractions,i,OrientationGoodID,EulerOutA,EulerOutB,EulerOutC);
-                BestFrac = Fractions;
-                BestEuler[0] = EulerOutA;
-                BestEuler[1] = EulerOutB;
-                BestEuler[2] = EulerOutC;
-                if (1-BestFrac < 0.0001 && nSaves == 1) break;
-            }
-            if (nSaves > 1){
-				for (j=0;j<nFilled;j++){ // ResultMatr format: 7 initial common things, then 4 values for each match, Angle, Angle, Angle and Confidence
-					if (Fractions > ResultMatr[7+j*4+3]){ // Put this in??
-						for (m=nFilled-1;m>=j;m--){ // Move everything upto j
-							if (m == nSaves - 1) continue; // Worst match, trash
-							for (t=0;t<4;t++){
-								ResultMatr[7+(m+1)*4+t] = ResultMatr[7+(m)*4+t];
-							}
-						}
-						ResultMatr[7+j*4] = EulerOutA;
-						ResultMatr[7+j*4+1] = EulerOutB;
-						ResultMatr[7+j*4+2] = EulerOutC;
-						ResultMatr[7+j*4+3] = Fractions;
-					}
-				}
-				if (nFilled < nSaves) nFilled++;
-			}
-        }
-    }else{
-		printf("No good ID found.\n");
-	}
-
+	
+	// Open files for writing
     int result = open(MicFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
     if (result <= 0){
 		printf("Could not open output file.\n");
 		return 1;
-	}
-    end = clock();
-    diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
-    double outresult[11] = {(double)atoi(argv[2]),(double)OrientationGoodID,
-		diftotal,xs,ys,GridSize,(double)UD,BestEuler[0],BestEuler[1],
-		BestEuler[2],BestFrac};
-	int SizeWritten = 11*sizeof(double);
-	int OffsetHere = (rown-1) * SizeWritten;
-    int rc4 = pwrite(result,outresult,SizeWritten,OffsetHere);
-    if (rc4 < 0){
-		printf("Could not write to output file.\n");
-		return 1;
-	}else{
-		printf("Written successfully to %s at %d\n",MicFN,OffsetHere);
-		for (i=0;i<11;i++){
-			printf("%f ",outresult[i]);
-		}
-		printf("\n");
 	}
 	char outfn2[4096];
 	sprintf(outfn2,"%s.AllMatches",MicFN);
@@ -761,13 +571,217 @@ main(int argc, char *argv[])
 		printf("Could not successfully open output file for all matches.\n");
 		return 1;
 	}
-	int SizeWritten2 = (7+(nSaves*4))*sizeof(double);
-	int OffsetThis = (rown-1)*SizeWritten2;
-	int rc5 = pwrite(result2,ResultMatr,SizeWritten2,OffsetThis);
-	if (rc5 < 0){
-		printf("Could not write all matches\n");
-		return 1;
+
+    //Read position.
+    FILE *fp;
+    fp = fopen(fnG,"r");
+    fgets(line,1000,fp);
+    int TotalNrSpots=0;
+    sscanf(line,"%d",&TotalNrSpots);
+    int multF = 1 + (int)floor((TotalNrSpots/2000));
+    int startRowNr = multF*(atoi(argv[2])-1) + 1;
+    int endRowNr = multF*(atoi(argv[2]));
+    int rown;
+    int counter=0;
+    while(counter<startRowNr-1){
+        fgets(line,1000,fp);
+        counter+=1;
+    }
+    for (rown=startRowNr; rown<=endRowNr; rown++){
+	    if (rown > TotalNrSpots){
+	        printf("Error: Grid point number greater than total number of grid points.\n");
+	        return 0;
+	    }
+	    double y1,y2,xs,ys,gs;
+	    double **XY;
+	    XY = allocMatrixF(3,3);
+	    fgets(line,1000,fp);
+	    sscanf(line,"%lf %lf %lf %lf %lf",&y1,&y2,&xs,&ys,&gs);
+	    int UD;
+	    if (y1>y2){
+			UD = -1;
+	        XY[0][0] =xs;
+	        XY[0][1] =ys - y1;
+	        XY[1][0] =xs - gs;
+	        XY[1][1] =ys + y2;
+	        XY[2][0] =xs + gs;
+	        XY[2][1] =ys + y2;
+	    }
+	    else{
+			UD = 1;
+	        XY[0][0] =xs;
+	        XY[0][1] =ys + y2;
+	        XY[1][0] =xs - gs;
+	        XY[1][1] =ys - y1;
+	        XY[2][0] =xs + gs;
+	        XY[2][1] =ys - y1;
+	    }
+	    double GridSize=2*gs;
+	
+	
+	    // Go through each orientation and compare with observed spots.
+	    clock_t startthis2;
+	    startthis2 = clock();
+	    int NrPixelsGrid=2*(ceil((gs*2)/px))*(ceil((gs*2)/px));
+	    int NrSpotsThis,StartingRowNr;
+	    double FracOverT;
+	    double RotMatTilts[3][3], OrientationMatThis[9], OrientationMatThisUnNorm[9];
+	    RotationTilts(tx,ty,tz,RotMatTilts);
+	    int OrientationGoodID=0;
+	    double MatIn[3],P0[nLayers][3],P0T[3];
+	    double OrientMatIn[3][3],XG[3],YG[3];
+	    double ThrSps[MAX_N_SPOTS][3];
+	    MatIn[0]=0;
+	    MatIn[1]=0;
+	    MatIn[2]=0;
+	    for (i=0;i<nLayers;i++){
+	        MatIn[0] = -Lsd[i];
+	        MatrixMultF(RotMatTilts,MatIn,P0T);
+	        for (j=0;j<3;j++){
+	            P0[i][j] = P0T[j];
+	        }
+	    }
+	    for (j=0;j<3;j++){
+	        XG[j] = XY[j][0];
+	        YG[j] = XY[j][1];
+	    }
+	    printf("Checking orientation grid.\n");
+	    for (i=0;i<NrOrientations;i++){
+	        NrSpotsThis = NrSpots[i][0];
+	        StartingRowNr = NrSpots[i][1];
+	        m = 0;
+	        for (m=0;m<9;m++){
+	            OrientationMatThisUnNorm[m] = OrientationMatrix[i*9+m];
+				if (OrientationMatThisUnNorm[m] == -0.0){
+					OrientationMatThisUnNorm[m] = 0;
+				}
+	        }
+	        m=0;
+	        NormalizeMat(OrientationMatThisUnNorm,OrientationMatThis);
+	        for (j=StartingRowNr;j<(StartingRowNr+NrSpotsThis);j++){
+	            ThrSps[m][0] = SpotsMat[j*3+0];
+	            ThrSps[m][1] = SpotsMat[j*3+1];
+	            ThrSps[m][2] = SpotsMat[j*3+2];
+	            m++;
+	        }
+	        Convert9To3x3(OrientationMatThis,OrientMatIn);
+	        CalcFracOverlap(nrFiles,nLayers,NrSpotsThis,ThrSps,OmegaStart,
+				OmegaStep,XG,YG,Lsd,SizeObsSpots,RotMatTilts,px,ybc,zbc,
+				gs,P0,NrPixelsGrid,ObsSpotsInfo,OrientMatIn,&FracOverT);
+	        if (FracOverT >= minFracOverlap){
+	            for (j=0;j<9;j++){
+	                OrientMatrix[OrientationGoodID][j] = OrientationMatThis[j];
+	            }
+	            OrientMatrix[OrientationGoodID][9] = FracOverT;
+	            OrientationGoodID++;
+	        }
+	    }
+	    printf("Finished checking orientation grid. Now fitting %d orientations.\n",OrientationGoodID);
+	    double BestFrac, BestEuler[3];
+		double ResultMatr[7+(nSaves*4)];
+	    if (OrientationGoodID>0){
+			int n_hkls = 0;
+			double hkls[5000][4];
+			double Thetas[5000];
+			char hklfn[1024];
+			sprintf(hklfn,"%s/hkls.csv",direct);
+			FILE *hklf = fopen(hklfn,"r");
+			fgets(aline,1000,hklf);
+			while (fgets(aline,1000,hklf)!=NULL){
+				sscanf(aline, "%s %s %s %s %lf %lf %lf %lf %lf %s %s",dummy,dummy,dummy,
+					dummy,&hkls[n_hkls][3],&hkls[n_hkls][0],&hkls[n_hkls][1],
+					&hkls[n_hkls][2],&Thetas[n_hkls],dummy,dummy);
+				n_hkls++;
+			}
+			double Fractions, EulerIn[3], OrientIn[3][3], FracOut, EulerOutA, EulerOutB,EulerOutC,OMTemp[9];
+			BestFrac = -1;
+			ResultMatr[0] = (double)atoi(argv[2]);
+			ResultMatr[1] = (double)OrientationGoodID;
+			ResultMatr[2] = diftotal;
+			ResultMatr[3] = xs;
+			ResultMatr[4] = ys;
+			ResultMatr[5] = GridSize;
+			ResultMatr[6] = (double)UD;
+			int nFilled = 0;
+			int t;
+			for (i=0;i<nSaves;i++){
+				ResultMatr[7+i*4] = 0;
+				ResultMatr[7+i*4+1] = 0;
+				ResultMatr[7+i*4+2] = 0;
+				ResultMatr[7+i*4+3] = 0;
+			}
+			for (i=0;i<OrientationGoodID;i++){
+	            for (j=0;j<9;j++){
+	                OMTemp[j] = OrientMatrix[i][j];
+	            }
+	            Convert9To3x3(OMTemp,OrientIn);
+	            OrientMat2Euler(OrientIn,EulerIn);
+	            FitOrientation(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,
+					XG,YG,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,
+					OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,
+					ObsSpotsInfo,EulerIn,tol,&EulerOutA,&EulerOutB,
+					&EulerOutC,&FracOut,hkls,Thetas,n_hkls);
+	            Fractions = 1-FracOut;
+	            if (Fractions > BestFrac){
+					printf("%f %d of %d, EulerAngles: %f %f %f\n",Fractions,i,OrientationGoodID,EulerOutA,EulerOutB,EulerOutC);
+	                BestFrac = Fractions;
+	                BestEuler[0] = EulerOutA;
+	                BestEuler[1] = EulerOutB;
+	                BestEuler[2] = EulerOutC;
+	                if (1-BestFrac < 0.0001 && nSaves == 1) break;
+	            }
+	            if (nSaves > 1){
+					for (j=0;j<nFilled;j++){ // ResultMatr format: 7 initial common things, then 4 values for each match, Angle, Angle, Angle and Confidence
+						if (Fractions > ResultMatr[7+j*4+3]){ // Put this in??
+							for (m=nFilled-1;m>=j;m--){ // Move everything upto j
+								if (m == nSaves - 1) continue; // Worst match, trash
+								for (t=0;t<4;t++){
+									ResultMatr[7+(m+1)*4+t] = ResultMatr[7+(m)*4+t];
+								}
+							}
+							ResultMatr[7+j*4] = EulerOutA;
+							ResultMatr[7+j*4+1] = EulerOutB;
+							ResultMatr[7+j*4+2] = EulerOutC;
+							ResultMatr[7+j*4+3] = Fractions;
+						}
+					}
+					if (nFilled < nSaves) nFilled++;
+				}
+	        }
+	    }else{
+			printf("No good ID found.\n");
+		}
+		end = clock();
+	    diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
+	    double outresult[11] = {(double)atoi(argv[2]),(double)OrientationGoodID,
+			diftotal,xs,ys,GridSize,(double)UD,BestEuler[0],BestEuler[1],
+			BestEuler[2],BestFrac};
+		int SizeWritten = 11*sizeof(double);
+		int OffsetHere = (rown-1) * SizeWritten;
+	    int rc4 = pwrite(result,outresult,SizeWritten,OffsetHere);
+	    if (rc4 < 0){
+			printf("Could not write to output file.\n");
+			return 1;
+		}else{
+			printf("Written successfully to %s at %d\n",MicFN,OffsetHere);
+			for (i=0;i<11;i++){
+				printf("%f ",outresult[i]);
+			}
+			printf("\n");
+		}
+		int SizeWritten2 = (7+(nSaves*4))*sizeof(double);
+		int OffsetThis = (rown-1)*SizeWritten2;
+		int rc5 = pwrite(result2,ResultMatr,SizeWritten2,OffsetThis);
+		if (rc5 < 0){
+			printf("Could not write all matches\n");
+			return 1;
+		}
+	    printf("Time elapsed in comparing diffraction spots: %f [s]\n",diftotal);
+	    // Clear OrientMatrix until OrientationGoodID
+	    for (i=0;i<OrientationGoodID;i++){
+			for (j=0;j<10;j++) OrientMatrix[i][j] = 0;
+		}
 	}
-    printf("Time elapsed in comparing diffraction spots: %f [s]\n",diftotal);
+	fclose(fp);
     return 0;
 }

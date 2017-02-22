@@ -85,7 +85,7 @@ ${BINFOLDER}/MakeDiffrSpots $TOP_PARAM_FILE
 nGridPoints=$( wc -l grid.txt | awk '{print $1}' )
 (( nGridPoints = nGridPoints - 1 ))
 STARTNR=1
-ENDNR=${nGridPoints}
+ENDNR=2000 #${nGridPoints}
 echo "StartNr: ${STARTNR}"
 echo "EndNr: ${ENDNR}"
 
@@ -144,7 +144,7 @@ then
 	nGridPoints=$( wc -l grid.txt | awk '{print $1}' )
 	(( nGridPoints = nGridPoints - 1 ))
 	STARTNR=1
-	ENDNR=${nGridPoints}
+	ENDNR=2000 #${nGridPoints}
 	echo "StartNr: ${STARTNR}"
 	echo "EndNr: ${ENDNR}"
 	
