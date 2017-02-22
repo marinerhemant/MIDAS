@@ -1,4 +1,4 @@
-#!/bin/bash -eux
+#!/bin/bash
 
 source ${HOME}/.MIDAS/pathsNF
 cmdname=$(basename $0)
