@@ -110,8 +110,7 @@ int CalcMedian(char fn[1000],
 	int NrPixels,
 	int NrFilesPerLayer,
 	char ext[1024],
-	char extReduced[1024],
-	int roil)
+	char extReduced[1024])
 {
 	time_t timer;
     char buffer[25];
@@ -123,14 +122,16 @@ int CalcMedian(char fn[1000],
 	int i,j,k,FileNr;
 	char FileName[1024];
 	pixelvalue **AllIntensities, *MedianArray;
-	AllIntensities = allocMatrixInt(NrPixels,NrFilesPerLayer);
+	AllIntensities = allocMatrixInt(NrPixels*NrPixels,NrFilesPerLayer);
     time(&timer);
     tm_info = localtime(&timer);
     strftime(buffer, 25, "%Y:%m:%d:%H:%M:%S", tm_info);
+    puts(buffer);
 	char MedianFileName[1024],MaxIntFileName[1024],MaxIntMedianCorrFileName[1024];
 	sprintf(MedianFileName,"%s_Median_Background_Distance_%d.%s",fn,LayerNr-1,extReduced);
 	sprintf(MaxIntFileName,"%s_MaximumIntensity_Distance_%d.%s",fn,LayerNr-1,extReduced);
 	sprintf(MaxIntMedianCorrFileName,"%s_MaximumIntensityMedianCorrected_Distance_%d.%s",fn,LayerNr-1,extReduced);
+	int roil;
 	for (j=0;j<NrFilesPerLayer;j++){
 		TIFFErrorHandler oldhandler;
 		oldhandler = TIFFSetWarningHandler(NULL);
@@ -142,27 +143,34 @@ int CalcMedian(char fn[1000],
 			tdata_t buf;
 			buf = _TIFFmalloc(TIFFScanlineSize(tif));
 			pixelvalue *datar;
-			TIFFReadScanline(tif, buf, roil, 1);
-			datar=(uint16*)buf;
-			for (i=0;i<NrPixels;i++){
-				AllIntensities[i][j] = datar[i];
+			for (roil=0; roil < NrPixels; roil++){
+				TIFFReadScanline(tif, buf, roil, 1);
+				datar=(uint16*)buf;
+				for (i=0;i<NrPixels;i++){
+					AllIntensities[roil*NrPixels+i][j] = datar[i];
+				}
 			}
 			_TIFFfree(buf);
 		}
 		TIFFClose(tif);
+	    time(&timer);
+	    tm_info = localtime(&timer);
+	    strftime(buffer, 25, "%Y:%m:%d:%H:%M:%S", tm_info);
+	    puts(buffer);
+
 	}
 	time(&timer);
     tm_info = localtime(&timer);
     strftime(buffer, 25, "%Y:%m:%d:%H:%M:%S", tm_info);
     puts(buffer);
 	printf("Calculating median.\n");
-	MedianArray = malloc(NrPixels*sizeof(*MedianArray));
+	MedianArray = malloc(NrPixels*NrPixels*sizeof(*MedianArray));
 	pixelvalue *MaxIntArr, *MaxIntMedianArr;
-	MaxIntArr = malloc(NrPixels*sizeof(*MaxIntArr));
-	MaxIntMedianArr = malloc(NrPixels*sizeof(*MaxIntMedianArr));
+	MaxIntArr = malloc(NrPixels*NrPixels*sizeof(*MaxIntArr));
+	MaxIntMedianArr = malloc(NrPixels*NrPixels*sizeof(*MaxIntMedianArr));
 	pixelvalue SubArr[NrFilesPerLayer];
 	int tempVal;
-	for (i=0;i<NrPixels;i++){
+	for (i=0;i<NrPixels*NrPixels;i++){
 		MaxIntArr[i] = 0;
 		MaxIntMedianArr[i] = 0;
 		for (j=0;j<NrFilesPerLayer;j++){
@@ -181,11 +189,11 @@ int CalcMedian(char fn[1000],
     puts(buffer);
 	int SizeOutFile = sizeof(pixelvalue) * NrPixels * NrPixels;
 	int fb = open(MedianFileName, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-	pwrite(fb,MedianArray,NrPixels*sizeof(pixelvalue),NrPixels*roil*sizeof(pixelvalue));
+	pwrite(fb,MedianArray,SizeOutFile,0);
 	int fMaxInt = open(MaxIntFileName,O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-	pwrite(fMaxInt,MaxIntArr,NrPixels*sizeof(pixelvalue),NrPixels*roil*sizeof(pixelvalue));
+	pwrite(fMaxInt,MaxIntArr,SizeOutFile,0);
 	int fMaxIntMedian = open(MaxIntMedianCorrFileName,O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-	pwrite(fMaxIntMedian,MaxIntMedianArr,NrPixels*sizeof(pixelvalue),NrPixels*roil*sizeof(pixelvalue));
+	pwrite(fMaxIntMedian,MaxIntMedianArr,SizeOutFile,0);
 	printf("Median calculated.\n");
 	free(MedianArray);
 	free(MaxIntArr);
@@ -198,13 +206,13 @@ int CalcMedian(char fn[1000],
 static void
 usage(void)
 {
-    printf("MedianImage: usage: ./MedianImage <ParametersFile> <LayerNr> <ImageRowNr>\n");
+    printf("MedianImage: usage: ./MedianImage <ParametersFile> <LayerNr>\n");
 }
 
 int
 main(int argc, char *argv[])
 {
-    if (argc != 4)
+    if (argc != 3)
     {
         usage();
         return 1;
@@ -224,7 +232,6 @@ main(int argc, char *argv[])
     char *str, dummy[1000];
     int LowNr,nLayers,StartNr,NrFilesPerLayer,NrPixels,WFImages=0;
 	nLayers = atoi(argv[2]);
-	int rownr = atoi(argv[3]);
     while (fgets(aline,1000,fileParam)!=NULL){
         str = "RawStartNr ";
         LowNr = strncmp(aline,str,strlen(str));
@@ -281,7 +288,7 @@ main(int argc, char *argv[])
     sprintf(fn,"%s/%s",direct,fn2);
     fclose(fileParam);
 	int ReturnCode;
-	ReturnCode = CalcMedian(fn, nLayers,StartNr,NrPixels,NrFilesPerLayer,ext,extReduced,rownr);
+	ReturnCode = CalcMedian(fn, nLayers,StartNr,NrPixels,NrFilesPerLayer,ext,extReduced);
 	if (ReturnCode == 0){
 		printf("Median Calculation failed. Exiting.");
 		return 0;

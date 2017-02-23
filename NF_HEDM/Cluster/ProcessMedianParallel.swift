@@ -1,8 +1,8 @@
 type file;
 
-app Medians (string pf, int layernr, int rownr)
+app Medians (string pf, int layernr)
 {
-  runmedianparallel pf layernr rownr;
+  runmedianparallel pf layernr;
 }
 
 # Parameters to be modified ############
@@ -10,12 +10,9 @@ app Medians (string pf, int layernr, int rownr)
 string paramfile = arg("paramfile","/data/tomo1/NFTest/ParametersGoldApril14.txt");
 int NrLayers = toInt(arg("NrLayers","3"));
 int NrFilesPerLayer = toInt(arg("NrFilesPerLayer","180"));
-int NrPixels = toInt(arg("NrPixels","1"));
 
 # End parameters #######################
 
 foreach layer in [1:NrLayers] {
-  foreach rownr in [0:(NrPixels-1)] {
-    Medians(paramfile,layer,rownr);
-  }
+  Medians(paramfile,layer,rownr);
 }
