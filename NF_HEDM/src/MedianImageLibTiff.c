@@ -157,7 +157,6 @@ int CalcMedian(char fn[1000],
 	    tm_info = localtime(&timer);
 	    strftime(buffer, 25, "%Y:%m:%d:%H:%M:%S", tm_info);
 	    puts(buffer);
-
 	}
 	time(&timer);
     tm_info = localtime(&timer);

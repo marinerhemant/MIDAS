@@ -149,7 +149,7 @@ then
 	echo "EndNr: ${ENDNR}"
 	
 	# MMapImageInfo and scp all the bin files to /dev/shm of each node
-	${BINFOLDER}/MMapImageInfo ${TOP_PARAM_FILE}
+	${BINFOLDER}/MMapImageInfo ${NEW_PARAM_FILE}
 	pushd ${DataDirectory}
 	tar -cvzf binsNF.tar.gz SpotsInfo.bin DiffractionSpots.bin Key.bin OrientMat.bin
 	mkdir -p ${HOME}/swiftwork/bins/
@@ -158,10 +158,10 @@ then
 	
 	# Process data
 	${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/FitOrientation.swift \
-	  -startnr=${STARTNR} -endnr=${ENDNR} -paramfile=${TOP_PARAM_FILE} -micfn=${MICFN}
+	  -startnr=${STARTNR} -endnr=${ENDNR} -paramfile=${NEW_PARAM_FILE} -micfn=${MICFN}
 	
 	# Parse Mic file
-	${BINFOLDER}/ParseMic ${TOP_PARAM_FILE}
+	${BINFOLDER}/ParseMic ${NEW_PARAM_FILE}
 	RC=${?}
 	if [[ RC != 0 ]]
 	then
