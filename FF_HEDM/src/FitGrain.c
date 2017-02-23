@@ -831,15 +831,12 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	
-	
 	// Group Setup parameters
 	// Non Optimized: NonOptP: double 10 + Int 5
 	// Optimized OptP[6]
 	double NonOptP[10] = {p0,p1,p2,RhoD,Lsd,px,Wavelength,Hbeam,Rsample,MinEta};
 	int NonOptPInt[5] = {NrPixels,nOmeRanges,nRings,nSpots,nhkls};
 	double OptP[6] = {tx,ty,tz,yBC,zBC,wedge};
-		
 	// Now call a function with all the info which will optimize parameters
 	// Arguments: Ini(12), OptP(6), NonOptP, RingNumbers,  SpotInfoAll, OmegaRanges,
 	//			  BoxSizes, hkls
