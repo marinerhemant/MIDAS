@@ -14,5 +14,5 @@ int NrFilesPerLayer = toInt(arg("NrFilesPerLayer","180"));
 # End parameters #######################
 
 foreach layer in [1:NrLayers] {
-  Medians(paramfile,layer,rownr);
+  Medians(paramfile,layer);
 }
