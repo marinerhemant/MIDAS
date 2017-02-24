@@ -4,16 +4,15 @@ Code for reduction of Near-Field and Far-Field High Energy Diffraction Microscop
 
 Neldermead is taken from http://people.sc.fsu.edu/~jburkardt/cpp_src/asa047/asa047.html and modified to include constraints and use as CUDA kernels.
 SGInfo library used to calculate HKLs.
-Need to install libtiff-dev and nlopt for compilation of NF-HEDM codes.
-
+Downloads swift binary, NLOPT, LIBTIFF, NETCDF (curl, hdf5, zlib) for compilation of N(F)F-HEDM codes.
 
 # Installation
-To check help for installation, type "make help" in the terminal.
-For individual help type "make helpnf" or "make helpff" in the terminal.
-To compile individually, need to go to the sub-folder and "make" individually.
-Would need NLOPT and TIFF packages.
-For experimental CUDA codes: go to FF_HEDM folder and "make cuda". This doesn't require any external library.
-
-# Local installation
-To install on a local computer, go to FF_HEDM folder and "make local".
-This will download NLOPT and SWIFT packages and install shortcuts in ${HOME}/.MIDAS directory.
+Go to each sub-folder: NF_HEDM / FF_HEDM and type "make MACHINE_NAME". This will install shortcuts in ${HOME}/.MIDAS directory.
+MACHINE_NAMEs supported:
+local_dep (local deployment)
+orthros
+lcrc_cloud
+biocluster
+nersc_edison
+purdue_rice
+purdue_conte
