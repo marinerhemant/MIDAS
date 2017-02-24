@@ -1,3 +1,9 @@
+
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
+
 type file;
 
 app runfitorientation (string pf, int nr, string micfn)

@@ -1,4 +1,9 @@
 //
+// Copyright (c) 2014, UChicago Argonne, LLC
+// See LICENSE file.
+//
+
+//
 // SaveBinData.c
 //
 // Created by Hemant Sharma on 2014/11/07

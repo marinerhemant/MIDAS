@@ -1,3 +1,9 @@
+
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
+
 type file;
 
 app Medians (string pf, int layernr)

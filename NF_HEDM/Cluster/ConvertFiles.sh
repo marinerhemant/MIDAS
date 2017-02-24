@@ -1,5 +1,10 @@
 #!/bin/bash
 
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
+
 InFS=$1
 OutFS=$2
 FileNr=$3

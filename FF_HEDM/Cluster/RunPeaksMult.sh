@@ -1,4 +1,10 @@
 #!/bin/bash -eu
+
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
+
 source ${HOME}/.MIDAS/paths
 if [[ $1 == /* ]]; then ParamsFile=$1; else ParamsFile=$(pwd)/$1; fi
 StartNr=$( awk '$1 ~ /^StartNr/ { print $2 }' ${ParamsFile} )

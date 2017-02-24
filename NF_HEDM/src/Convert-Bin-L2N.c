@@ -1,3 +1,8 @@
+//
+// Copyright (c) 2014, UChicago Argonne, LLC
+// See LICENSE file.
+//
+
 /*
  * Convert-Bin-L2N.c
  *

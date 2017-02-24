@@ -1,3 +1,8 @@
+//
+// Copyright (c) 2014, UChicago Argonne, LLC
+// See LICENSE file.
+//
+
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>

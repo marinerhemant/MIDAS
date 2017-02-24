@@ -1,3 +1,9 @@
+
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
+
 import sys
 
 grid_old = 'grid_all.txt'

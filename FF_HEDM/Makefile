@@ -1,3 +1,7 @@
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
 CC=gcc
 NCC=nvcc
 NCFLAGS=-O3 -G -g -w -arch sm_52 -lm -rdc=true # -res-usage

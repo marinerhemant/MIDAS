@@ -1,4 +1,10 @@
 #!/bin/bash
+
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
+
 dirThis=${HOME}/.MIDAS
 mkdir -p ${dirThis}
 package=${HOME}/opt/MIDAS/NF_HEDM/Cluster/Packages/${1}NF.tar.gz

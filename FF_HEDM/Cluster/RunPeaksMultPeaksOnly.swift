@@ -1,3 +1,8 @@
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
+
 type file;
 
 app runPeaks (string paramsfn, int fnr, int ringnr)

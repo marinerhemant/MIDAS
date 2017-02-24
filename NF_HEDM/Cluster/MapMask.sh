@@ -1,5 +1,10 @@
 #!/bin/bash
 
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
+
 Xmin=$1 
 Xmax=$2
 Ymin=$3 

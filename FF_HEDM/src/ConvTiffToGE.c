@@ -1,4 +1,9 @@
 //
+// Copyright (c) 2014, UChicago Argonne, LLC
+// See LICENSE file.
+//
+
+//
 // ConvTiffToGE.c
 // Since Perkin Elmer saves output as a binary format, libtiff is not required.
 //

@@ -1,5 +1,10 @@
 #!/bin/bash -eu
 
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
+
 if [[ ${#*} != 5 ]];
 then
   echo "Usage: $0 NFPath FFPath StartLayerNr EndLayerNr FF-NF-Offset "

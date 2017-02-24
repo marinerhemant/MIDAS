@@ -1,3 +1,8 @@
+//
+// Copyright (c) 2014, UChicago Argonne, LLC
+// See LICENSE file.
+//
+
 // Compile using: 
 // gcc -o GetHKLList GetHKLList.c sgclib.c sgfind.c sghkl.c sgsi.c sgio.c -ldl -lm -O3
 

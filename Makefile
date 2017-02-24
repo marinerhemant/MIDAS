@@ -1,3 +1,8 @@
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
+
 NF=NF_HEDM/
 FF=FF_HEDM/
 

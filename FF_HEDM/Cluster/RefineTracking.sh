@@ -1,5 +1,10 @@
 #!/bin/bash -eu
 
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
+
 if [[ ${#*} != 3 ]]
 then
   exit 1

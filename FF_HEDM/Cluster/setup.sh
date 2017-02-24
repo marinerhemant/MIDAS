@@ -1,5 +1,10 @@
 #!/bin/bash
 
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
+
 LOCAL_DIR=$( pwd )/Cluster
 CHART=/
 FF_MIDAS_DIR=${LOCAL_DIR%$CHART*}

@@ -1,4 +1,9 @@
 //
+// Copyright (c) 2014, UChicago Argonne, LLC
+// See LICENSE file.
+//
+
+//
 //	ParseMic.c - To convert from binary to txt file
 //
 //

@@ -1,3 +1,8 @@
+//
+// Copyright (c) 2014, UChicago Argonne, LLC
+// See LICENSE file.
+//
+
 // Code to take output from previous "stage" and check for same grains in
 // the next stage
 //

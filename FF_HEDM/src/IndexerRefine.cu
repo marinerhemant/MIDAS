@@ -1,3 +1,8 @@
+//
+// Copyright (c) 2014, UChicago Argonne, LLC
+// See LICENSE file.
+//
+
 // TODO: Implement FriedelMixed, other 2 are done (Friedel and noFriedel)
 
 

@@ -1,5 +1,10 @@
 #!/bin/bash
 
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
+
 ###### Provide a machine name as argument to check for package
 
 dirThis=${HOME}/.MIDAS

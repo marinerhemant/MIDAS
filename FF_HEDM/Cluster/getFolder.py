@@ -1,3 +1,8 @@
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
+
 import sys, glob
 
 PSFile = sys.argv[1]
