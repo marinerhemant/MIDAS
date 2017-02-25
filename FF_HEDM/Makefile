@@ -24,21 +24,27 @@ all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting 
 local_dep: predeplocal all
 	Cluster/setup.sh local
 
-orthros: predeport all
+# Need to try orthrosextra
+orthros: predeport all  
 	Cluster/setup.sh ort
 
+# Works fine now
 biocluster: predepbio all
 	Cluster/setup.sh bio
 
+# Works ?
 lcrc_cloud: predeplcrc all
 	Cluster/setup.sh lcrc
 
+# Diagnostics?
 nersc_edison: predepedison all
 	Cluster/setup.sh edison
 
+# Works
 purdue_conte: predepconte all
 	Cluster/setup.sh conte
 
+# Works
 purdue_rice: predeprice all
 	Cluster/setup.sh rice
 
