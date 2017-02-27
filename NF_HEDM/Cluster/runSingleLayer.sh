@@ -8,10 +8,10 @@
 source ${HOME}/.MIDAS/pathsNF
 cmdname=$(basename $0)
 
-if [[ ${#*} != 5 ]];
+if [[ ${#*} != 6 ]];
 then
-  echo "Usage: ${cmdname} top_parameter_file(full_path) FFSeedOrientations ProcessImages nNODEs EmailAddress"
-  echo "Eg. ${cmdname} ParametersFile.txt 1(or 0) 1(or 0) 6 hsharma@anl.gov"
+  echo "Usage: ${cmdname} top_parameter_file(full_path) FFSeedOrientations ProcessImages nNODEs MachineName EmailAddress"
+  echo "Eg. ${cmdname} ParametersFile.txt 1(or 0) 1(or 0) 6 orthros hsharma@anl.gov"
   echo "This will produce the output in the run folder, called Microstructure.mic."
   echo "FFSeedOrientations is when either Orientations exist already (0) or when you provide a FF Orientation file (1)."
   echo "ProcessImages is whether you want to process the diffraction images (1) or if they were processed earlier (0)."
@@ -26,14 +26,9 @@ if [[ $1 == /* ]]; then TOP_PARAM_FILE=$1; else TOP_PARAM_FILE=$(pwd)/$1; fi
 NCPUS=$4
 FFSeedOrientations=$2
 ProcessImages=$3
-
+MACHINE_NAME=$5
 nNODES=${NCPUS}
 export nNODES
-if [ ${nNODES} == 7 ] && [ ${MACHINE_NAME} == 'ort' ]
-then
-	MACHINE_NAME="ortextra"
-fi
-echo "MACHINE NAME is ${MACHINE_NAME}"
 
 # Go to the right folder
 DataDirectory=$( awk '$1 ~ /^DataDirectory/ { print $2 }' ${TOP_PARAM_FILE} )
@@ -174,6 +169,6 @@ then
 	fi
 fi 
 
-EmailAdd=$5
+EmailAdd=$6
 echo "The run started with ${cmdname} $@ has finished, please check." | mail -s "MIDAS run finished" ${EmailAdd}
 exit 0

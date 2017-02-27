@@ -28,41 +28,39 @@ all: help bindircheck makediffrspots makediffrspotsff2nf makehexgrid medianimage
 	genseedorientations simulatediffrspots simulatediffrspotslatc convertbinfiles processnfmicremote \
 	mmapimageinfo hkls parsemic
 
-local_dep: predeplocal all
-	Cluster/setup.sh local
+#local:
+local: predeplocal all runsetup
 
-orthros: predeport all
-	Cluster/setup.sh ort
+# Need to try orthrosextra
+orthros: predeport all runsetup
 
-biocluster: predepbio all
-	Cluster/setup.sh bio
+# Works
+biocluster: predepbio all runsetup
 
-lcrc_cloud: predeplcrc all
-	Cluster/setup.sh lcrc
+# Works ?
+lcrc_cloud: predeplcrc all runsetup
 
-nersc_edison: predepedison all
-	Cluster/setup.sh edison
+# Cori?
+nersc: predepnersc all runsetup
 
-purdue_conte: predepconte all
-	Cluster/setup.sh conte
+# Works
+purdue: predeppurdue all runsetup
 
-purdue_rice: predeprice all
-	Cluster/setup.sh rice
+runsetup:
+	Cluster/setup.sh
 
 predeplocal:
 	./GetPackages.sh local
 predeport:
-	./GetPackages.sh ort
+	./GetPackages.sh orthros
 predepbio:
 	./GetPackages.sh bio
 predeplcrc:
 	./GetPackages.sh lcrc
-predepedison:
-	./GetPackages.sh edison
-predepconte:
-	./GetPackages.sh conte
-predeprice:
-	./GetPackages.sh rice
+predepnersc:
+	./GetPackages.sh nersc
+predeppurdue:
+	./GetPackages.sh purdue
 
 bindircheck:
 	mkdir -p $(BINDIR)

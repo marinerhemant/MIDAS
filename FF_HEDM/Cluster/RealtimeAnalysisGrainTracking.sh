@@ -13,10 +13,10 @@ echo "FF analysis code for GrainTracking and Multiple rings:"
 echo "DO NOT CALL THIS DIRECTLY, USE TRACKGRAINS instead."
 echo "Version: 4, 2017/02/21, in case of problems contact hsharma@anl.gov"
 
-if [[ ${#*} != 4 ]]
+if [[ ${#*} != 5 ]]
 then
-  echo "Provide ParametersFile StartLayerNr EndLayerNr and the number of NODEs to use!"
-  echo "EG. ${cmdname} Parameters.txt 1 1 6"
+  echo "Provide ParametersFile StartLayerNr EndLayerNr, the number of NODEs and MachineName to use!"
+  echo "EG. ${cmdname} Parameters.txt 1 1 6 orthros( or orthrosextra)"
   echo "the source parameter file should not have ring numbers and layer numbers in it."
   exit 1
 fi
@@ -25,6 +25,7 @@ if [[ $1 == /* ]]; then TOP_PARAM_FILE=$1; else TOP_PARAM_FILE=$(pwd)/$1; fi
 STARTLAYERNR=$2
 ENDLAYERNR=$3
 NCPUS=$4
+MACHINE_NAME=$5
 STARTFNRFIRSTLAYER=$( awk '$1 ~ /^StartFileNrFirstLayer/ { print $2 } ' ${TOP_PARAM_FILE} )
 RingNrs=$( awk '$1 ~ /^RingThresh/ { print $2 }' ${TOP_PARAM_FILE} )
 SGNum=$( awk '$1 ~ /^SpaceGroup/ { print $2 }' ${TOP_PARAM_FILE} )
@@ -124,7 +125,7 @@ do
 	    i=$((i+1))
 	    echo $i
        done
-       ${PFDIR}/RunPeaksMult.sh ${TOP_PARAM_FILE} ${NCPUS} $RINGNRSFILE $ParamFNStem $fstm
+       ${PFDIR}/RunPeaksMult.sh ${TOP_PARAM_FILE} ${NCPUS} $RINGNRSFILE $ParamFNStem $fstm ${MACHINE_NAME}
        rc=$(qstat | grep tomo1 | grep " 384" | awk '{ print $1 }')
        echo $rc
        mv $RINGNRSFILE ${OutFldr}
@@ -168,6 +169,6 @@ do
    echo "GrainTracking 1" >> paramstest.txt
    echo "OldFolder $OldFolder" >> paramstest.txt
    sed -i 's/^MinNrSpots.*$/MinNrSpots 1/g' ${TOP_PARAM_FILE}
-   ${PFDIR}/RefineTracking.sh ${NCPUS} ${TOP_PARAM_FILE} $OldFolder
+   ${PFDIR}/RefineTracking.sh ${NCPUS} ${TOP_PARAM_FILE} $OldFolder ${MACHINE_NAME}
    rm -rf ${SeedFolder}/output
 done

@@ -12,10 +12,10 @@ cmdname=$(basename $0)
 echo "FF analysis code for Multiple Layers and Multiple rings:"
 echo "Version: 4, 2017/02/21, in case of problems contact hsharma@anl.gov"
 
-if [[ ${#*} != 6 ]]
+if [[ ${#*} != 7 ]]
 then
-  echo "Provide ParametersFile StartLayerNr EndLayerNr DoPeakSearch Number of NODES to use EmailAddress!"
-  echo "EG. ${cmdname} parameters.txt 1 1 1 (or 0) 6 hsharma@anl.gov"
+  echo "Provide ParametersFile StartLayerNr EndLayerNr DoPeakSearch Number of NODES to use MachineName EmailAddress!"
+  echo "EG. ${cmdname} parameters.txt 1 1 1 (or 0) 6 orthros(orthrosextra,local,rice) hsharma@anl.gov"
   echo "the source parameter file should not have ring numbers and layer numbers in it."
   echo "If DoPeakSearch is 0, the parameter file must have a folder name for each layer (in order) to look into and redo analysis."
   echo "For example FolderName Ruby_scan2_Layer1_Analysis_Time_2016_09_19_17_11_07"
@@ -30,6 +30,7 @@ STARTLAYERNR=$2
 ENDLAYERNR=$3
 NCPUS=$5
 DOPEAKSEARCH=$4
+MACHINE_NAME=$6
 STARTFNRFIRSTLAYER=$( awk '$1 ~ /^StartFileNrFirstLayer/ { print $2 } ' ${TOP_PARAM_FILE} )
 RingNrs=$( awk '$1 ~ /^RingThresh/ { print $2 }' ${TOP_PARAM_FILE} )
 SGNum=$( awk '$1 ~ /^SpaceGroup/ { print $2 }' ${TOP_PARAM_FILE} )
@@ -137,7 +138,7 @@ do
 	        i=$((i+1))
 	        echo $i
        done
-       ${PFDIR}/RunPeaksMult.sh ${TOP_PARAM_FILE} ${NCPUS} $RINGNRSFILE $ParamFNStem $fstm
+       ${PFDIR}/RunPeaksMult.sh ${TOP_PARAM_FILE} ${NCPUS} $RINGNRSFILE $ParamFNStem $fstm ${MACHINE_NAME}
        rc=$(qstat | grep tomo1 | grep " 384" | awk '{ print $1 }')
        echo $rc
        mv $RINGNRSFILE ${OutFldr}
@@ -219,12 +220,12 @@ do
    echo "SpotIDs To Index:"
    wc -l SpotsToIndex.csv
    echo "SpaceGroup $SGNum" >> paramstest.txt
-   ${PFDIR}/IndexRefine.sh ${NCPUS} ${TOP_PARAM_FILE}
+   ${PFDIR}/IndexRefine.sh ${NCPUS} ${TOP_PARAM_FILE} ${MACHINE_NAME}
    rc=$(qstat | grep tomo1 | grep " 384" | awk '{ print $1 }')
    echo $rc
    rm -rf ${SeedFolder}/output
 done
 
-EmailAdd=$6
+EmailAdd=$7
 echo "The run started with ${cmdname} $@ has finished, please check." | mail -s "MIDAS run finished" ${EmailAdd}
 exit 0

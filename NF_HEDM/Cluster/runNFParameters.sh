@@ -9,10 +9,10 @@ source ${HOME}/.MIDAS/pathsNF
 
 cmdname=$(basename $0)
 
-if [[ ${#*} != 5 ]];
+if [[ ${#*} != 6 ]];
 then
-  echo "Usage: ${cmdname} parameterfile processImages FFSeedOrientations MultiGridPoints nNODEs"
-  echo "Eg. ${cmdname} ParametersFile.txt 0 0 0 6"
+  echo "Usage: ${cmdname} parameterfile processImages FFSeedOrientations MultiGridPoints nNODEs MachineName"
+  echo "Eg. ${cmdname} ParametersFile.txt 0 0 0 6 orthros"
   echo "FFSeedOrientations is when either Orientations exist already (0) or when you provide a FF Orientation file (1)."
   echo "MultiGridPoints is 0 when you just want to process one spot, otherwise if it is 1, then provide the multiple points"
   echo "in the parameter file."
@@ -25,15 +25,10 @@ NCPUS=$5
 processImages=$2
 FFSeedOrientations=$3
 MultiGridPoints=$4
+MACHINE_NAME=$6
 
 nNODES=${NCPUS}
 export nNODES
-if [ ${nNODES} == 7 ] && [ ${MACHINE_NAME} == 'ort' ]
-then
-	MACHINE_NAME="ortextra"
-fi
-echo "MACHINE NAME is ${MACHINE_NAME}"
-
 
 # Go to the right folder
 DataDirectory=$( awk '$1 ~ /^DataDirectory/ { print $2 }' ${TOP_PARAM_FILE} )

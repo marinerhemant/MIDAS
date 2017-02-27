@@ -21,47 +21,39 @@ all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting 
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking\
 	mapmultdetectors
 
-local_dep: predeplocal all
-	Cluster/setup.sh local
+#local:
+local: predeplocal all runsetup
 
 # Need to try orthrosextra
-orthros: predeport all  
-	Cluster/setup.sh ort
+orthros: predeport all runsetup
 
-# Works fine now
-biocluster: predepbio all
-	Cluster/setup.sh bio
+# Works
+biocluster: predepbio all runsetup
 
 # Works ?
-lcrc_cloud: predeplcrc all
-	Cluster/setup.sh lcrc
+lcrc_cloud: predeplcrc all runsetup
 
 # Cori?
-nersc_edison: predepedison all
-	Cluster/setup.sh edison
+nersc: predepnersc all runsetup
 
 # Works
-purdue_conte: predepconte all
-	Cluster/setup.sh conte
+purdue: predeppurdue all runsetup
 
-# Works
-purdue_rice: predeprice all
-	Cluster/setup.sh rice
+runsetup:
+	Cluster/setup.sh
 
 predeplocal:
 	./GetPackages.sh local
 predeport:
-	./GetPackages.sh ort
+	./GetPackages.sh orthros
 predepbio:
 	./GetPackages.sh bio
 predeplcrc:
 	./GetPackages.sh lcrc
-predepedison:
-	./GetPackages.sh edison
-predepconte:
-	./GetPackages.sh conte
-predeprice:
-	./GetPackages.sh rice
+predepnersc:
+	./GetPackages.sh nersc
+predeppurdue:
+	./GetPackages.sh purdue
 
 cuda: help indexrefinecuda peaks mergeoverlapsgpu fittiltbclsdsample \
 	calcradius mergerings processgrains hkls bindata calibrant findsaturatedpx fittiltx fitwedge

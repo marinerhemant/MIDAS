@@ -4,14 +4,6 @@
 # Copyright (c) 2014, UChicago Argonne, LLC
 # See LICENSE file.
 #
-
-if [[ ${#*} != 2 ]]
-then
-  echo "Provide the number of Nodes to use!"
-  echo "EG. ./IndexRefine.sh 6 Params.txt"
-  exit 1
-fi
-
 source ${HOME}/.MIDAS/paths
 
 cp SpotsToIndex.csv SpotsToIndexIn.csv
@@ -23,10 +15,7 @@ ${PFDIR}/SHMOperators.sh
 
 nNODES=${1}
 export nNODES
-if [ ${nNODES} == 7 ] && [ ${MACHINE_NAME} == 'ort' ]
-then
-	MACHINE_NAME="ortextra"
-fi
+MACHINE_NAME=$3
 echo "MACHINE NAME is ${MACHINE_NAME}"
 
 mkdir -p Output

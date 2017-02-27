@@ -4,24 +4,14 @@
 # Copyright (c) 2014, UChicago Argonne, LLC
 # See LICENSE file.
 #
-
-if [[ ${#*} != 3 ]]
-then
-  exit 1
-fi
-
 source ${HOME}/.MIDAS/paths
 
 rm SpotsToIndex.csv
 
 nNODES=${1}
 export nNODES
-if [ ${nNODES} == 7 ] && [ ${MACHINE_NAME} == 'ort' ]
-then
-	MACHINE_NAME="ortextra"
-fi
+MACHINE_NAME=$4
 echo "MACHINE NAME is ${MACHINE_NAME}"
-
 ${PFDIR}/SHMOperatorsTracking.sh
 mkdir -p Output
 mkdir -p Results

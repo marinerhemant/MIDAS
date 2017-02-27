@@ -12,10 +12,7 @@ EndNr=$( awk '$1 ~ /^EndNr/ { print $2 }' ${ParamsFile} )
 echo "Peaks:"
 nNODES=${2}
 export nNODES
-if [ ${nNODES} == 7 ] && [ ${MACHINE_NAME} == 'ort' ]
-then
-	MACHINE_NAME="ortextra"
-fi
+MACHINE_NAME=$6
 echo "MACHINE NAME is ${MACHINE_NAME}"
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/RunPeaksMultPeaksOnly.swift -paramsfile=$4 -ringfile=$3 -fstm=$5 -startnr=${StartNr} -endnr=${EndNr}
 echo "Process Peaks"

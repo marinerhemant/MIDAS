@@ -8,10 +8,10 @@
 source ${HOME}/.MIDAS/pathsNF
 cmdname=$(basename $0)
 
-if [[ ${#*} != 7 ]];
+if [[ ${#*} != 8 ]];
 then
-  echo "Usage: ${cmdname} top_parameter_file(full_path) FFSeedOrientations ProcessImages startLayerNr endLayerNr nNODEs EmailAddress"
-  echo "Eg. ${cmdname} ParametersFile.txt 1(or 0) 1(or 0) 1 5 6 hsharma@anl.gov"
+  echo "Usage: ${cmdname} top_parameter_file(full_path) FFSeedOrientations ProcessImages startLayerNr endLayerNr nNODEs MachineName EmailAddress"
+  echo "Eg. ${cmdname} ParametersFile.txt 1(or 0) 1(or 0) 1 5 6 orthros hsharma@anl.gov"
   echo "This will run from layer 1 to 5."
   echo "This will produce the output in the run folder."
   echo "FFSeedOrientations is when either Orientations exist already (0) or when you provide a FF Orientation file (1)."
@@ -35,6 +35,7 @@ FFSEEDORIENTATIONS=$2
 PROCESSIMAGES=$3
 STARTLAYERNR=$4
 ENDLAYERNR=$5
+MACHINE_NAME=$7
 STEM=$( awk '$1 ~ /^OrigFileName/ { print $2 }' ${PARAMFILE} )
 CHART=/
 FOLDER=${STEM%$CHART*}
@@ -71,9 +72,9 @@ do
     else
         echo "SeedOrientations ${DATADIRECTORY}/Orientations.txt" >> ${THISPARAMFILE}
     fi
-    ${PFDIR}/runSingleLayer.sh ${THISPARAMFILE} ${NCPUS} ${FFSEEDORIENTATIONS} ${PROCESSIMAGES} $7
+    ${PFDIR}/runSingleLayer.sh ${THISPARAMFILE} ${NCPUS} ${FFSEEDORIENTATIONS} ${PROCESSIMAGES} ${MACHINE_NAME} $8
 done
 
-EmailAdd=$7
+EmailAdd=$8
 echo "The run started with ${cmdname} $@ has finished, please check." | mail -s "MIDAS run finished" ${EmailAdd}
 exit 0
