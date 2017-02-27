@@ -36,7 +36,7 @@ biocluster: predepbio all
 lcrc_cloud: predeplcrc all
 	Cluster/setup.sh lcrc
 
-# Diagnostics? also for Cori
+# Cori?
 nersc_edison: predepedison all
 	Cluster/setup.sh edison
 
