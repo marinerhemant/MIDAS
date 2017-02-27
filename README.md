@@ -11,7 +11,7 @@ Downloads swift binary, NLOPT, LIBTIFF, NETCDF (curl, hdf5, zlib) for compilatio
 # Installation
 Go to each sub-folder: NF_HEDM / FF_HEDM and type "make MACHINE_NAME". This will install shortcuts in ${HOME}/.MIDAS directory.
 
-MACHINE_NAMEs supported:
+MACHINE_NAMEs supported for compiling:
 * local
 * orthros
 * lcrc_cloud
