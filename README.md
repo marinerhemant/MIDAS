@@ -18,3 +18,13 @@ lcrc_cloud
 biocluster
 nersc
 purdue
+
+MACHINE_NAMEs supported during run:
+local
+orthros
+orthrosextra
+lcrc
+edison
+biocluster
+conte
+rice
