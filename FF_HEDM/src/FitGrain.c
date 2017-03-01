@@ -2,7 +2,6 @@
 // Copyright (c) 2014, UChicago Argonne, LLC
 // See LICENSE file.
 //
-
 //
 // FitGrain.c
 //
@@ -483,8 +482,6 @@ struct data{
 	double px;
 	double Wavelength;
 	double MinEta;
-	double Wedge;
-	double zbc;
 	double OmegaRanges[20][2];
 	double BoxSizes[20][2];
 	double **SpotInfoAll;
@@ -529,8 +526,8 @@ double problem_function(unsigned n, const double *x, double *grad, void* f_data_
 	ty = x[13];
 	tz = x[14];
 	ybc = x[15];
-	zbc = f_data->zbc;
-	Wedge = f_data->Wedge;
+	zbc = x[16];
+	Wedge = x[17];
 	CorrectTiltSpatialDistortion(nSpots, RhoD, SpotInfoAll, px, Lsd, ybc,
 								 zbc, tx, ty, tz, p0, p1, p2, SpotInfoCorr);
 	double error = CalcAngleErrors(nSpots, nhkls, nOmeRanges, Inp, SpotInfoCorr, hkls, Lsd,
@@ -540,12 +537,9 @@ double problem_function(unsigned n, const double *x, double *grad, void* f_data_
 }
 
 void FitGrain(double Ini[12], double OptP[6], double NonOptP[12], int NonOptPInt[5],
-			  double **SpotInfoAll, double OmegaRanges[20][2],
+			  double **SpotInfoAll, double OmegaRanges[20][2], double tol[18],
 			  double BoxSizes[20][4], double **hklsIn, double *Out, double *Error){
-	unsigned n = 16;
-	double tol[16] = {250,250,250,deg2rad*0.0005,deg2rad*0.0005,deg2rad*0.0005,1,1,1,1,1,1,
-		1,1,1,1}; // 150 microns for position, 0.0005 degrees for orient, 1 % for latticeParameter,
-					  // 1 degree for tilts, 1 pixel for YBC, 0.00001 degree for wedge
+	unsigned n = 18;
 	double x[n], xl[n], xu[n];
 	int i, j;
 	struct data f_data;
@@ -562,8 +556,6 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12], int NonOptPInt
 	f_data.px = NonOptP[5];
 	f_data.Wavelength = NonOptP[6];
 	f_data.MinEta = NonOptP[9];
-	f_data.zbc = OptP[4];
-	f_data.Wedge = OptP[5];
 	int nOmeRanges = NonOptPInt[1];
 	for (i=0;i<nOmeRanges;i++){
 		for (j=0;j<2;j++) f_data.OmegaRanges[i][j] = OmegaRanges[i][j];
@@ -578,7 +570,7 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12], int NonOptPInt
 	
 	// Set x, xl, xu
 	for (i=0;i<12;i++) x[i] = Ini[i];
-	for (i=0;i<4;i++) x[i+12] = OptP[i];
+	for (i=0;i<6;i++) x[i+12] = OptP[i];
 	for (i=0;i<6;i++){ // Pos and Orient
 		xl[i] = x[i] - tol[i];
 		xu[i] = x[i] + tol[i];
@@ -587,7 +579,7 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12], int NonOptPInt
 		xl[i] = x[i] - (tol[i]/100);
 		xu[i] = x[i] + (tol[i]/100);
 	}
-	for (i=12;i<16;i++){ // Parameters
+	for (i=12;i<18;i++){ // Parameters
 		xl[i] = x[i] - tol[i];
 		xu[i] = x[i] + tol[i];
 	}
@@ -600,9 +592,7 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12], int NonOptPInt
 	double minf;
 	nlopt_optimize(opt,x,&minf);
 	nlopt_destroy(opt);
-	for (i=0;i<16;i++) Out[i] = x[i];
-	Out[16] = OptP[4];
-	Out[17] = OptP[5]; // Calculate the wedge.
+	for (i=0;i<18;i++) Out[i] = x[i];
 }
 
 int main(int argc, char *argv[])
@@ -836,12 +826,18 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
+	
+	
 	// Group Setup parameters
 	// Non Optimized: NonOptP: double 10 + Int 5
 	// Optimized OptP[6]
 	double NonOptP[10] = {p0,p1,p2,RhoD,Lsd,px,Wavelength,Hbeam,Rsample,MinEta};
 	int NonOptPInt[5] = {NrPixels,nOmeRanges,nRings,nSpots,nhkls};
 	double OptP[6] = {tx,ty,tz,yBC,zBC,wedge};
+	double tols[18] = {250,250,250,deg2rad*0.0005,deg2rad*0.0005,deg2rad*0.0005,1,1,1,1,1,1,
+		1,1,1,1,0.00001,0.00001}; // 150 microns for position, 0.0005 degrees for orient, 1 % for latticeParameter,
+					  // 1 degree for tilts, 1 pixel for BC, 0.00001 degree for wedge
+	
 	// Now call a function with all the info which will optimize parameters
 	// Arguments: Ini(12), OptP(6), NonOptP, RingNumbers,  SpotInfoAll, OmegaRanges,
 	//			  BoxSizes, hkls
@@ -851,14 +847,13 @@ int main(int argc, char *argv[])
 	double *Error;
 	Error = malloc(3*sizeof(*Error));
 	Out = malloc(18*sizeof(*Out));
-	FitGrain(Ini, OptP, NonOptP, NonOptPInt, SpotInfoAll, OmegaRanges, BoxSizes, hkls, Out,Error);
+	FitGrain(Ini, OptP, NonOptP, NonOptPInt, SpotInfoAll, OmegaRanges, tols,
+			 BoxSizes, hkls, Out,Error);
 	printf("\nInput:\n");
 	for (i=0;i<12;i++) printf("%f ",Ini[i]);
 	for (i=0;i<6;i++) printf("%f ",OptP[i]);
 	printf("\nOutput:\n");
 	for (i=0;i<18;i++) printf("%f ",Out[i]);
 	printf("\n");
-	end = clock();
-    diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
-    printf("Time elapsed in FitGrain: %f [s]\n",diftotal);
+	
 }
