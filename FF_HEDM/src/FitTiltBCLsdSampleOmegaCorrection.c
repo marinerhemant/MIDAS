@@ -508,15 +508,15 @@ int main(int argc, char *argv[])
     int StartNr, EndNr, LowNr, NrPixels,LayerNr;
     int SpaceGroup;
     double LatticeConstant[6],Wavelength,MaxRingRad,Lsd,MaxTtheta,TthetaTol,ybc,zbc,px,tyIn,tzIn;
-    double tx,tolTilts,tolLsd,tolBC,p0,p1,p2,RhoD,wedge,MinEta,OmegaRanges[20][2],BoxSizes[20][4];
-    int RingNumbers[200],cs=0,nOmeRanges=0,nBoxSizes=0,DoFit,CellStruct,RingToIndex;
+    double tx,tolTilts=1,tolLsd=5000,tolBC=1,p0,p1,p2,RhoD,wedge,MinEta,OmegaRanges[20][2],BoxSizes[20][4];
+    int RingNumbers[200],cs=0,nOmeRanges=0,nBoxSizes=0,DoFit=0,CellStruct=2,RingToIndex;
     double Rsample, Hbeam,MinMatchesToAcceptFrac,MinOmeSpotIDsToIndex,MaxOmeSpotIDsToIndex,Width;
     int UseFriedelPairs=1;
 	double t_int=1, t_gap=0;
-    int NewType = 0, TopLayer = 0;
+    int NewType = 1, TopLayer = 0;
     spotsfn = "InputAll.csv";
     idfn = "SpotsToIndex.bin";
-    double StepSizePos=5,StepSizeOrient=0.2,MarginRadius=200,MarginRadial=200,OmeBinSize=0.1,EtaBinSize=0.1,MarginEta=200,MarginOme=0.7,OmegaStep;
+    double StepSizePos=5,StepSizeOrient=0.2,MarginRadius=500,MarginRadial=500,OmeBinSize=0.1,EtaBinSize=0.1,MarginEta=500,MarginOme=0.5,OmegaStep;
     while (fgets(aline,1000,fileParam)!=NULL){
         str = "OmegaStep ";
         LowNr = strncmp(aline,str,strlen(str));
@@ -630,12 +630,6 @@ int main(int argc, char *argv[])
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %d", dummy, &DoFit);
-            continue;
-        }
-        str = "CellStruct ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %d", dummy, &CellStruct);
             continue;
         }
         str = "RingToIndex ";

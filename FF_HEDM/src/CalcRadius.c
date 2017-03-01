@@ -150,12 +150,6 @@ int main(int argc, char *argv[]){
             sscanf(aline,"%s %lf", dummy, &OmegaStep);
             continue;
         }
-        str = "OmegaFirstFile ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %lf", dummy, &OmegaFirstFile);
-            continue;
-        }
         str = "px ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -184,12 +178,6 @@ int main(int argc, char *argv[]){
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %lf", dummy, &Vsample);
-            continue;
-        }
-        str = "CellStruct ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %d", dummy, &CellStruct);
             continue;
         }
         str = "Wavelength ";
