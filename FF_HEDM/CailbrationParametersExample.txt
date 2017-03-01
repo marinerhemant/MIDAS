@@ -1,3 +1,8 @@
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
+
 ###Parameters needed for Calibration
 FileStem abc # excluding 1 _ just before numbering
 Folder /data/tomo1/trial_nov16/calbrant/ge/ # folder with the raw ge files
