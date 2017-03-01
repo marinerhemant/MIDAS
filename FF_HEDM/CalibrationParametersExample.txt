@@ -4,6 +4,8 @@
 #
 
 ###Parameters needed for Calibration
+
+## File descriptors
 FileStem abc # excluding 1 _ just before numbering
 Folder /data/tomo1/trial_nov16/calbrant/ge/ # folder with the raw ge files
 Ext .ge3 # ge detector extension
