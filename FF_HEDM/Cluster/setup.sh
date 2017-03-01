@@ -22,6 +22,7 @@ ln -s ${BINFOLDER}/Calibrant ${configdir}/MIDAS_V4_FarField_Calibration
 ln -s ${BINFOLDER}/FitWedge ${configdir}/MIDAS_V4_FarField_Wedge
 ln -s ${BINFOLDER}/FitTiltX ${configdir}/MIDAS_V4_FarField_TiltX
 ln -s ${BINFOLDER}/ProcessGrains ${configdir}/MIDAS_V4_FarField_ProcessGrains
+ln -s ${FF_MIDAS_DIR}/CalibrationParametersExample.txt ${configdir}/MIDAS_V4_FarField_Calibration_ExampleFile.txt
 ln -s ${BINFOLDER}/FitGrain ${configdir}/MIDAS_V4_FarField_FitGrain
 
 echo "Congratulations, you can now use MIDAS to run FarField analysis"
