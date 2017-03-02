@@ -483,11 +483,21 @@ struct data{
 	double Wavelength;
 	double MinEta;
 	double OmegaRanges[20][2];
-	double BoxSizes[20][2];
+	double BoxSizes[20][4];
 	double **SpotInfoAll;
 	double **hkls;
-	double *Error;
+	double **SpotInfoCorr;
 };
+
+static double ErrorCalculator(int nSpots, double RhoD, double **SpotInfoAll, double px, double Lsd,
+	double ybc, double zbc, double tx, double ty, double tz, double p0, double p1, double p2, int nhkls,
+	int nOmeRanges, double Inp[12], double **hkls, double Wavelength, double OmegaRanges[20][2],
+	double BoxSizes[20][4], double MinEta, double Wedge, double *Error, double **SpotInfoCorr){
+	CorrectTiltSpatialDistortion(nSpots, RhoD, SpotInfoAll, px, Lsd, ybc,
+								 zbc, tx, ty, tz, p0, p1, p2, SpotInfoCorr);
+	return CalcAngleErrors(nSpots, nhkls, nOmeRanges, Inp, SpotInfoCorr, hkls, Lsd,
+		Wavelength, OmegaRanges, BoxSizes, MinEta, Wedge, 0.0,Error);
+}
 
 static
 double problem_function(unsigned n, const double *x, double *grad, void* f_data_trial)
@@ -508,17 +518,17 @@ double problem_function(unsigned n, const double *x, double *grad, void* f_data_
 	double Wavelength = f_data->Wavelength;
 	double MinEta = f_data->MinEta;
 	double OmegaRanges[20][2];
-	double BoxSizes[20][2];
+	double BoxSizes[20][4];
 	for (i=0;i<nOmeRanges;i++){
 		for (j=0;j<2;j++) OmegaRanges[i][j] = f_data->OmegaRanges[i][j];
 		for (j=0;j<4;j++) BoxSizes[i][j] = f_data->BoxSizes[i][j];
 	}
 	double **SpotInfoAll;
 	SpotInfoAll = f_data->SpotInfoAll;
+	double **SpotInfoCorr;
+	SpotInfoCorr = f_data->SpotInfoCorr;
 	double **hkls;
 	hkls = f_data->hkls;
-	double **SpotInfoCorr;
-	SpotInfoCorr = allocMatrix(nSpots,5);
 	double Inp[12];
 	for (i=0;i<12;i++) Inp[i] = x[i];
 	double tx, ty, tz, ybc, zbc, Wedge;
@@ -528,17 +538,15 @@ double problem_function(unsigned n, const double *x, double *grad, void* f_data_
 	ybc = x[15];
 	zbc = x[16];
 	Wedge = x[17];
-	CorrectTiltSpatialDistortion(nSpots, RhoD, SpotInfoAll, px, Lsd, ybc,
-								 zbc, tx, ty, tz, p0, p1, p2, SpotInfoCorr);
-	double error = CalcAngleErrors(nSpots, nhkls, nOmeRanges, Inp, SpotInfoCorr, hkls, Lsd,
-		Wavelength, OmegaRanges, BoxSizes, MinEta, Wedge, 0.0,f_data->Error);
-	printf("Error: %.20lf %.20lf %.20lf\n",f_data->Error[0],f_data->Error[1],f_data->Error[2]); fflush(stdout);
+	double *Error;
+	Error = malloc(3*sizeof(*Error));
+	double error = ErrorCalculator(nSpots,RhoD,SpotInfoAll,px,Lsd,ybc,zbc,tx,ty,tz,p0,p1,p2,nhkls,nOmeRanges,Inp,hkls,Wavelength,OmegaRanges,BoxSizes,MinEta,Wedge,Error,SpotInfoCorr);
 	return error;
 }
 
 void FitGrain(double Ini[12], double OptP[6], double NonOptP[12], int NonOptPInt[5],
 			  double **SpotInfoAll, double OmegaRanges[20][2], double tol[18],
-			  double BoxSizes[20][4], double **hklsIn, double *Out, double *Error){
+			  double BoxSizes[20][4], double **hklsIn, double *Out){
 	unsigned n = 18;
 	double x[n], xl[n], xu[n];
 	int i, j;
@@ -563,7 +571,9 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12], int NonOptPInt
 	}
 	f_data.hkls = hklsIn;
 	f_data.SpotInfoAll = SpotInfoAll;
-	f_data.Error = Error;
+	double **SpotInfoCorr;
+	SpotInfoCorr = allocMatrix(NonOptPInt[3],5);
+	f_data.SpotInfoCorr = SpotInfoCorr;
 	struct data *f_datat;
 	f_datat = &f_data;
 	void* trp = (struct data *) f_datat;
@@ -583,7 +593,13 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12], int NonOptPInt
 		xl[i] = x[i] - tol[i];
 		xu[i] = x[i] + tol[i];
 	}
-	
+	// Get Initial Error:
+	double *Error;
+	Error = malloc(3*sizeof(*Error));
+	double error = ErrorCalculator(NonOptPInt[3],NonOptP[3],SpotInfoAll,NonOptP[5],NonOptP[4],
+		x[15],x[16],x[12],x[13],x[14],NonOptP[0],NonOptP[1],NonOptP[2],NonOptPInt[4],NonOptPInt[1],
+		x,hklsIn,NonOptP[6],OmegaRanges,BoxSizes,NonOptP[9],x[17],Error,SpotInfoCorr);
+	printf("Initial Error: %.20lf %.20lf %.20lf\n",Error[0],Error[1],Error[2]); fflush(stdout);
 	nlopt_opt opt;
 	opt = nlopt_create(NLOPT_LN_NELDERMEAD,n);
 	nlopt_set_lower_bounds(opt,xl);
@@ -592,6 +608,10 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12], int NonOptPInt
 	double minf;
 	nlopt_optimize(opt,x,&minf);
 	nlopt_destroy(opt);
+	error = ErrorCalculator(NonOptPInt[3],NonOptP[3],SpotInfoAll,NonOptP[5],NonOptP[4],
+		x[15],x[16],x[12],x[13],x[14],NonOptP[0],NonOptP[1],NonOptP[2],NonOptPInt[4],NonOptPInt[1],
+		x,hklsIn,NonOptP[6],OmegaRanges,BoxSizes,NonOptP[9],x[17],Error,SpotInfoCorr);
+	printf("Final Error: %.20lf %.20lf %.20lf\n",Error[0],Error[1],Error[2]); fflush(stdout);
 	for (i=0;i<18;i++) Out[i] = x[i];
 }
 
@@ -617,6 +637,9 @@ int main(int argc, char *argv[])
 		MaxRingRad, MaxTtheta, Wavelength, MinEta,
 		Hbeam, Rsample;
     int NrPixels, nOmeRanges=0, nBoxSizes=0, cs=0, RingNumbers[200], cs2=0;
+	double tols[18] = {250,250,250,deg2rad*0.0005,deg2rad*0.0005,deg2rad*0.0005,1,1,1,1,1,1,
+		1,0.0001,0.0001,1,0.00001,0.00001}; // 150 microns for position, 0.0005 degrees for orient, 1 % for latticeParameter,
+					  // 1 degree for tx, 0.0001 degrees for ty and tz, 1 pixel for yBC, 0.00001 pixel for zBC, 0.00001 degree for wedge
     while (fgets(aline,MAX_LINE_LENGTH,fileParam)!=NULL){
 		str = "tx ";
 		LowNr = strncmp(aline,str,strlen(str));
@@ -637,6 +660,12 @@ int main(int argc, char *argv[])
 			continue;
 		}
 		str = "Lsd ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr == 0){
+			sscanf(aline,"%s %lf",dummy, &Lsd);
+			continue;
+		}
+		str = "FitGrainTolerances ";
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr == 0){
 			sscanf(aline,"%s %lf",dummy, &Lsd);
@@ -834,9 +863,6 @@ int main(int argc, char *argv[])
 	double NonOptP[10] = {p0,p1,p2,RhoD,Lsd,px,Wavelength,Hbeam,Rsample,MinEta};
 	int NonOptPInt[5] = {NrPixels,nOmeRanges,nRings,nSpots,nhkls};
 	double OptP[6] = {tx,ty,tz,yBC,zBC,wedge};
-	double tols[18] = {250,250,250,deg2rad*0.0005,deg2rad*0.0005,deg2rad*0.0005,1,1,1,1,1,1,
-		1,0.0001,0.0001,1,0.00001,0.00001}; // 150 microns for position, 0.0005 degrees for orient, 1 % for latticeParameter,
-					  // 1 degree for tx, 0.0001 degrees for ty and tz, 1 pixel for yBC, 0.00001 pixel for zBC, 0.00001 degree for wedge
 	
 	// Now call a function with all the info which will optimize parameters
 	// Arguments: Ini(12), OptP(6), NonOptP, RingNumbers,  SpotInfoAll, OmegaRanges,
@@ -844,16 +870,14 @@ int main(int argc, char *argv[])
 	// CalcAngleErrors would need Y,Z,Ome before wedge correction.
 	// Everythin till CorrectTiltSpatialDistortion function in FitTiltBCLsd
 	double *Out;
-	double *Error;
-	Error = malloc(3*sizeof(*Error));
 	Out = malloc(18*sizeof(*Out));
 	FitGrain(Ini, OptP, NonOptP, NonOptPInt, SpotInfoAll, OmegaRanges, tols,
-			 BoxSizes, hkls, Out,Error);
+			 BoxSizes, hkls, Out);
 	printf("\nInput:\n");
 	for (i=0;i<12;i++) printf("%f ",Ini[i]);
 	for (i=0;i<6;i++) printf("%f ",OptP[i]);
 	printf("\nOutput:\n");
 	for (i=0;i<18;i++) printf("%f ",Out[i]);
 	printf("\n");
-	
+	end = clock();
 }
