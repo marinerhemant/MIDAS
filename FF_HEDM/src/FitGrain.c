@@ -541,6 +541,7 @@ double problem_function(unsigned n, const double *x, double *grad, void* f_data_
 	double *Error;
 	Error = malloc(3*sizeof(*Error));
 	double error = ErrorCalculator(nSpots,RhoD,SpotInfoAll,px,Lsd,ybc,zbc,tx,ty,tz,p0,p1,p2,nhkls,nOmeRanges,Inp,hkls,Wavelength,OmegaRanges,BoxSizes,MinEta,Wedge,Error,SpotInfoCorr);
+	printf("%.20lf\n",error);fflush(stdout);
 	return error;
 }
 
