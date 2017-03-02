@@ -541,7 +541,7 @@ double problem_function(unsigned n, const double *x, double *grad, void* f_data_
 	double *Error;
 	Error = malloc(3*sizeof(*Error));
 	double error = ErrorCalculator(nSpots,RhoD,SpotInfoAll,px,Lsd,ybc,zbc,tx,ty,tz,p0,p1,p2,nhkls,nOmeRanges,Inp,hkls,Wavelength,OmegaRanges,BoxSizes,MinEta,Wedge,Error,SpotInfoCorr);
-	printf("%.20lf\n",error);fflush(stdout);
+	//printf("%.20lf\n",error);fflush(stdout);
 	return error;
 }
 
@@ -639,7 +639,7 @@ int main(int argc, char *argv[])
 		Hbeam, Rsample;
     int NrPixels, nOmeRanges=0, nBoxSizes=0, cs=0, RingNumbers[200], cs2=0;
 	double tols[18] = {250,250,250,deg2rad*0.0005,deg2rad*0.0005,deg2rad*0.0005,1,1,1,1,1,1,
-		1,0.0001,0.0001,1,0.00001,0.00001}; // 150 microns for position, 0.0005 degrees for orient, 1 % for latticeParameter,
+		1,1,1,1,1,0.000001}; // 150 microns for position, 0.0005 degrees for orient, 1 % for latticeParameter,
 					  // 1 degree for tx, 0.0001 degrees for ty and tz, 1 pixel for yBC, 0.00001 pixel for zBC, 0.00001 degree for wedge
     while (fgets(aline,MAX_LINE_LENGTH,fileParam)!=NULL){
 		str = "tx ";
