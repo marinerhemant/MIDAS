@@ -11,13 +11,11 @@ cat SpotsToIndex.csv |sort|uniq|less > SpotsToIndexUnq.csv
 mv SpotsToIndexUnq.csv SpotsToIndex.csv
 fldr=$( pwd )
 
-${PFDIR}/SHMOperators.sh
-
 nNODES=${1}
 export nNODES
 MACHINE_NAME=$3
 echo "MACHINE NAME is ${MACHINE_NAME}"
-
+${PFDIR}/SHMOperators.sh
 mkdir -p Output
 mkdir -p Results
 mkdir -p logs
