@@ -51,8 +51,6 @@ string direct = arg("DataDirectory","/data/tomo1/NFTest/");
 
 ## Whether do peak search or not
 file imagesdone <"imageprocessing.txt">;
-file simBout[]<simple_mapper;location="output",prefix=prefix2,suffix=".out">;
-file simBerr[]<simple_mapper;location="output",prefix=prefix2,suffix=".err">;
 if (DoPeakSearch == 1){
 	trace("Doing peaksearch.\n");
 	foreach layer in [1:NrLayers] {
@@ -60,6 +58,8 @@ if (DoPeakSearch == 1){
 		string prefix2 = strcat("ImageProcessing_",layer);
 		file simAout <simple_mapper;location="output",prefix=prefix1,suffix=".out">;
 		file simAerr <simple_mapper;location="output",prefix=prefix1,suffix=".err">;
+		file simBout[]<simple_mapper;location="output",prefix=prefix2,suffix=".out">;
+		file simBerr[]<simple_mapper;location="output",prefix=prefix2,suffix=".err">;
 		(simAout,simAerr) = Medians(paramfile,layer);
 		foreach FileNr in [0:(NrFilesPerLayer-1)]{
 			(simBout[FileNr],simBerr[FileNr]) = Images(paramfile, layer, FileNr,simAout);
