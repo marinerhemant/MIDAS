@@ -30,71 +30,17 @@ MACHINE_NAME=$5
 nNODES=${NCPUS}
 export nNODES
 
-# Go to the right folder
-DataDirectory=$( awk '$1 ~ /^DataDirectory/ { print $2 }' ${TOP_PARAM_FILE} )
-cd ${DataDirectory}
-
-STEM=$( awk '$1 ~ /^ReducedFileName/ { print $2 }' ${TOP_PARAM_FILE} )
-CHART=/
-FOLDER=${STEM%$CHART*}
-mkdir -p ${FOLDER}
-
-# Make hkls.csv
-${BINFOLDER}/GetHKLList ${TOP_PARAM_FILE}
-
-SeedOrientations=$( awk '$1 ~ /^SeedOrientations/ { print $2 }' ${TOP_PARAM_FILE} )
-Micf=$(awk '$1 ~ /^MicFileBinary/ { print $2 }' ${TOP_PARAM_FILE})
-MicfT=$(awk '$1 ~ /^MicFileText/ { print $2 }' ${TOP_PARAM_FILE})
-MICFN=${DataDirectory}/${Micf}
-
-if [[ -n $MICFN ]];
-then 
-  rm -rf $MICFN
-fi
-
-# Generate SeedOrientations
-if [ ${FFSeedOrientations} == 1 ];
-then
-  GrainsFile=$( awk '$1 ~ /^GrainsFile/ { print $2 }' ${TOP_PARAM_FILE} )
-  MINCONFIDENCE=$(awk '$1 ~ /^MinConfidence/ { print $2 }' ${TOP_PARAM_FILE})
-  ${BINFOLDER}/GenSeedOrientationsFF2NFHEDM $GrainsFile $SeedOrientations
-fi
-
-NrOrientations=$( wc -l ${SeedOrientations} | awk '{print $1}' )
-echo "NrOrientations ${NrOrientations}" >> ${TOP_PARAM_FILE}
-
-# Make HexGrid and DiffractionSpots
-${BINFOLDER}/MakeHexGrid $TOP_PARAM_FILE
-
-# Filter HexGrid
-if [[ -n $( awk '$1 ~ /^GridMask/ { print }' ${TOP_PARAM_FILE} ) ]];
-then
-  Xmin=$( awk '$1 ~ /^GridMask/ { print $2 }' ${TOP_PARAM_FILE} )
-  Xmax=$( awk '$1 ~ /^GridMask/ { print $3 }' ${TOP_PARAM_FILE} )
-  Ymin=$( awk '$1 ~ /^GridMask/ { print $4 }' ${TOP_PARAM_FILE} )
-  Ymax=$( awk '$1 ~ /^GridMask/ { print $5 }' ${TOP_PARAM_FILE} )
-  awk ' { if (($3 >= '$Xmin') && ($3 <= '$Xmax') && ($4 >= '$Ymin') && ($4 <= '$Ymax'))  print }' < grid.txt >grid_new.txt
-  mv grid.txt grid_old.txt
-  wc -l <grid_new.txt >grid.txt
-  cat grid_new.txt >>grid.txt
-fi
-
-${BINFOLDER}/MakeDiffrSpots $TOP_PARAM_FILE
-
-# Calculate nGridPoints
-nGridPoints=$( wc -l grid.txt | awk '{print $1}' )
-(( nGridPoints = nGridPoints - 1 ))
-STARTNR=1
-ENDNR=2000 #${nGridPoints}
 NDISTANCES=$( awk '$1 ~ /^nDistances/ { print $2 }' ${TOP_PARAM_FILE} )
 NRFILESPERDISTANCE=$( awk '$1 ~ /^NrFilesPerDistance/ { print $2 }' ${TOP_PARAM_FILE} )
-NRPIXELS=$( awk '$1 ~ /^NrPixels/ { print $2 }' ${TOP_PARAM_FILE} )
+DataDirectory=$( awk '$1 ~ /^DataDirectory/ { print $2 }' ${TOP_PARAM_FILE} )
+tmpfn=${DataDirectory}/fns.txt
+echo "paramfn" > tmpfn
+echo "${TOP_PARAM_FILE}" >> tmpfn
 
 # Do Processing
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
-	-StartNumber=${STARTNR} -EndNumber=${ENDNR} -ParameterFileName=${TOP_PARAM_FILE} -MicFileName=${MICFN} \
-	-NrLayers=${NDISTANCES} -NrFilesPerLayer=${NRFILESPERDISTANCE} -DoPeakSearch=${ProcessImages} \
-	-DataDirectory=${DataDirectory}
+	-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
+	-DoPeakSearch=${ProcessImages} -FFSeedOrientations=${FFSeedOrientations}
 
 # Parse Mic file
 ${BINFOLDER}/ParseMic ${TOP_PARAM_FILE}

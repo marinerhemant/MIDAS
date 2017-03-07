@@ -22,6 +22,7 @@ then
   echo "For example FolderName Ruby_scan2_Layer2_Analysis_Time_2016_09_19_17_13_23"
   echo "If these are not provided, it will check the parent folder and if multiple"
   echo "analyses are present for a layer, will take the latest one."
+  echo "If DoPeakSearch is 0, it will overwrite the results in the directory it works."
   exit 1
 fi
 

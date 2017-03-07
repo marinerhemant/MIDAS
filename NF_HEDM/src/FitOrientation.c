@@ -319,15 +319,24 @@ main(int argc, char *argv[])
 	char fn[1000];
 	char fn2[1000];
 	char direct[1000];
+	char gridfn[1000];
     double OmegaRanges[MAX_N_OMEGA_RANGES][2], BoxSizes[MAX_N_OMEGA_RANGES][4];
     int cntr=0,countr=0,conter=0,StartNr,EndNr,intdummy,SpaceGroup;
     int NoOfOmegaRanges=0;
     int nSaves = 1;
+    int gridfnfound = 0;
     while (fgets(aline,1000,fileParam)!=NULL){
 		str = "ReducedFileName ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %s", dummy, fn2);
+            continue;
+        }
+		str = "GridFileName ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %s", dummy, gridfn);
+            gridfnfound = 1;
             continue;
         }
 		str = "SaveNSolutions ";
@@ -474,7 +483,8 @@ main(int argc, char *argv[])
     MaxTtheta = rad2deg*atan(MaxRingRad/Lsd[0]);
     //Read bin files
     char fnG[1000];
-    sprintf(fnG,"%s/grid.txt",direct);
+    if (gridfnfound == 1) sprintf(fnG,"%s/%s",direct,gridfn);
+    else sprintf(fnG,"%s/grid.txt",direct);
     char fnDS[1000];
     char fnKey[1000];
     char fnOr[1000];

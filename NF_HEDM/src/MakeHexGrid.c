@@ -118,8 +118,9 @@ main(int argc, char *argv[])
     ParamFN = argv[1];
     char aline[1000];
     fileParam = fopen(ParamFN,"r");
-    char *str, dummy[1000],direct[1024];
+    char *str, dummy[1000],direct[1024], gridfn[1000];
     int LowNr;
+    int gridfnfound = 0;
     double GridSize, Rsample;
     while (fgets(aline,1000,fileParam)!=NULL){
         str = "GridSize ";
@@ -138,6 +139,13 @@ main(int argc, char *argv[])
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %s", dummy, direct);
+            continue;
+        }
+		str = "GridFileName ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %s", dummy, gridfn);
+            gridfnfound = 1;
             continue;
         }
     }
@@ -160,7 +168,9 @@ main(int argc, char *argv[])
     HexGrid(GridSize,Rsample,NrHex,HtTriangle,ALast,XYGrid);
     printf("Number of grid points: %d.\n",NrGridElements);
     char fn[1024];
-    sprintf(fn,"%s/grid.txt",direct);
+    if (gridfnfound == 1) sprintf(fn,"%s/%s",direct,gridfn);
+    else sprintf(fn,"%s/grid.txt",direct);
+    //sprintf(fn,"%s/grid.txt",direct);
     fp = fopen(fn,"w");
     if (fp==NULL){
         printf("Cannot open file, %s\n",fn);
