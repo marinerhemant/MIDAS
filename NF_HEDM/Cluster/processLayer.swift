@@ -20,7 +20,7 @@ app (file done) PlaceHolder (string prefix, file out[])
 	echo prefix stdout=@filename(done);
 }
 
-app (file done) PlaceHolder2 (string prefix, file out)
+app (file done) PlaceHolder2 (string prefix)
 {
 	echo prefix stdout=@filename(done);
 }
@@ -67,13 +67,13 @@ if (DoPeakSearch == 1){
 	}
 	imagesdone = PlaceHolder("Done",simBout);
 } else {
-	trace("Not doing peaksearch");
-	string prefix2 = "ImageProcessing";
-	file simBout<simple_mapper;location="output",prefix=prefix2,suffix=".out">;
-	imagesdone = PlaceHolder2(prefix2,simBout);
+	trace("Not doing peaksearch.\n");
+	string prefix2 = "ImageProcessing was not done";
+	imagesdone = PlaceHolder2(prefix2);
 }
 
 ## Now MMap Images
+tracef("%s\n",imagesdone);
 file mmapdone <"output/mmapdone.txt">;
 mmapdone = mmapcode(paramfile,direct,imagesdone);
 
