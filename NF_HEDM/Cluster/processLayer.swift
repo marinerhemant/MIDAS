@@ -30,7 +30,7 @@ app runfitorientation (string pf, int nr, string micfn, file mmapdone)
 	fitorientation pf nr micfn;
 }
 
-app (file mmapdone) mmapcode (string paramfn, string dire)
+app (file mmapdone) mmapcode (string paramfn, string dire, file imagedone)
 {
 	mmaps paramfn dire stdout=@filename(mmapdone);
 }
@@ -53,16 +53,16 @@ string direct = arg("DataDirectory","/data/tomo1/NFTest/");
 file imagesdone <"imageprocessing.txt">;
 if (DoPeakSearch == 1){
 	trace("Doing peaksearch.\n");
+	string prefix2 = strcat("ImageProcessing_");
+	file simBout[]<simple_mapper;location="output",prefix=prefix2,suffix=".out">;
+	file simBerr[]<simple_mapper;location="output",prefix=prefix2,suffix=".err">;
 	foreach layer in [1:NrLayers] {
 		string prefix1 = strcat("Median_",layer);
-		string prefix2 = strcat("ImageProcessing_",layer);
 		file simAout <simple_mapper;location="output",prefix=prefix1,suffix=".out">;
 		file simAerr <simple_mapper;location="output",prefix=prefix1,suffix=".err">;
-		file simBout[]<simple_mapper;location="output",prefix=prefix2,suffix=".out">;
-		file simBerr[]<simple_mapper;location="output",prefix=prefix2,suffix=".err">;
 		(simAout,simAerr) = Medians(paramfile,layer);
 		foreach FileNr in [0:(NrFilesPerLayer-1)]{
-			(simBout[FileNr],simBerr[FileNr]) = Images(paramfile, layer, FileNr,simAout);
+			(simBout[(layer-1)*NrFilesPerLayer + FileNr],simBerr[(layer-1)*NrFilesPerLayer + FileNr]) = Images(paramfile, layer, FileNr,simAout);
 		}
 	}
 	imagesdone = PlaceHolder("Done",simBout);
@@ -75,7 +75,7 @@ if (DoPeakSearch == 1){
 
 ## Now MMap Images
 file mmapdone <"output/mmapdone.txt">;
-mmapdone = mmapcode(parafile,direct);
+mmapdone = mmapcode(parafile,direct,imagesdone);
 
 ## Now do FitOrientation
 foreach i in [startnr:endnr] {
