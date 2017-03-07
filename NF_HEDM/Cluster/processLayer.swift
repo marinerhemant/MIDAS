@@ -62,7 +62,7 @@ int ffseed = toInt(arg("FFSeedOrientations","1"));
 # End parameters #######################
 
 # Read data
-Bulknames NameData[] = readData(paramf);
+BulkNames NameData[] = readData(paramf);
 
 foreach dat in NameData {
 	string paramfile = dat.paramfn;
