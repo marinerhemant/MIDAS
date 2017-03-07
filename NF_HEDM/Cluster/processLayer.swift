@@ -30,7 +30,7 @@ app runfitorientation (string pf, int nr, string micfn, file mmapdone)
 	fitorientation pf nr micfn;
 }
 
-app (file mmapdone) mmapcode (sting paramfn, string dire)
+app (file mmapdone) mmapcode (string paramfn, string dire)
 {
 	mmaps paramfn dire stdout=@filename(mmapdone);
 }
