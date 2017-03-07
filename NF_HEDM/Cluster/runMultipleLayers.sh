@@ -51,6 +51,10 @@ DATADIRECTORY=$( awk '$1 ~ /^DataDirectory/ { print $2 }' ${PARAMFILE} )
 
 for ((LAYERNR=${STARTLAYERNR}; LAYERNR<=${ENDLAYERNR}; LAYERNR++))
 do
+	NEWFOLDER=${DATADIRECTORY}/${FOLDER}Layer${LAYERNR}/
+	mkdir -p ${NEWFOLDER}/${FOLDER}
+	cp ${PARAMFILE} ${NEWFOLDER}
+	cd ${NEWFOLDER}
     THISPARAMFILE=${PFSTEM}Layer${LAYERNR}.txt
     cp ${PARAMFILE} ${THISPARAMFILE}
     if [[ $WFIMAGES -eq 1 ]]; then

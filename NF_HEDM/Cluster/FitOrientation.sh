@@ -6,7 +6,7 @@
 #
 
 source ${HOME}/.MIDAS/pathsNF
-TOP_PARAM_FILE = $1
+TOP_PARAM_FILE=$1
 DataDirectory=$( awk '$1 ~ /^DataDirectory/ { print $2 }' ${TOP_PARAM_FILE} )
 Micf=$(awk '$1 ~ /^MicFileBinary/ { print $2 }' ${TOP_PARAM_FILE})
 MICFN=${DataDirectory}/${Micf}

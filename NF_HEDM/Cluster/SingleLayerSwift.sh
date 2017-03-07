@@ -41,6 +41,3 @@ echo "${TOP_PARAM_FILE}" >> ${tmpfn}
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
 	-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
 	-DoPeakSearch=${ProcessImages} -FFSeedOrientations=${FFSeedOrientations}
-
-# Parse Mic file
-${BINFOLDER}/ParseMic ${TOP_PARAM_FILE}
