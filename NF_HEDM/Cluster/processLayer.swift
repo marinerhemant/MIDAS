@@ -75,7 +75,7 @@ if (DoPeakSearch == 1){
 
 ## Now MMap Images
 file mmapdone <"output/mmapdone.txt">;
-mmapdone = mmapcode(parafile,direct,imagesdone);
+mmapdone = mmapcode(paramfile,direct,imagesdone);
 
 ## Now do FitOrientation
 foreach i in [startnr:endnr] {
