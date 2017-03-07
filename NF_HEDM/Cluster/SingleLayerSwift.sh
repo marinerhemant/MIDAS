@@ -93,7 +93,8 @@ NRPIXELS=$( awk '$1 ~ /^NrPixels/ { print $2 }' ${TOP_PARAM_FILE} )
 # Do Processing
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
 	-StartNumber=${STARTNR} -EndNumber=${ENDNR} -ParameterFileName=${TOP_PARAM_FILE} -MicFileName=${MICFN} \
-	-NrLayers=${NDISTANCES} -NrFilesPerLayer=${NRFILESPERDISTANCE} -DoPeakSearch=${ProcessImages}
+	-NrLayers=${NDISTANCES} -NrFilesPerLayer=${NRFILESPERDISTANCE} -DoPeakSearch=${ProcessImages} \
+	-DataDirectory=${DataDirectory}
 
 # Parse Mic file
 ${BINFOLDER}/ParseMic ${TOP_PARAM_FILE}
