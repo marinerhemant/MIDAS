@@ -103,7 +103,7 @@ foreach dat in NameData {
 	file errfit[]<simple_mapper;location="output",prefix="fitorient",suffix=".err">;
 	file outfit[]<simple_mapper;location="output",prefix="fitorient",suffix=".out">;
 	foreach i in [startnr:endnr] {
-		(outfit[i],errfit[i])runfitorientation(paramfile,i,mmapdone);
+		(outfit[i],errfit[i]) = runfitorientation(paramfile,i,mmapdone);
 	}
 	
 	# Now parse mic file
