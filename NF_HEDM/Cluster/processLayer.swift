@@ -32,7 +32,7 @@ app (file outf, file errf) runfitorientation (string pf, int nr, file mmapdone)
 
 app (file mmapdone) mmapcode (string paramfn, file imagedone)
 {
-	mmaps paramfn dire stdout=@filename(mmapdone);
+	mmaps paramfn stdout=@filename(mmapdone);
 }
 
 app parsemic (string paramfn, file trial[])
