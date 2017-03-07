@@ -74,9 +74,6 @@ do
    if [[ ${NewType} == 2 ]];
    then
        OutFldr=${SeedFolder}/${FileStem}_Layer${LAYERNR}_Analysis_Time_${ide}
-       if [ -d "$OutFldr" ]; then
-           mv Layer${LAYERNR} /data/to_delete/${ide}
-       fi
        mkdir -p ${OutFldr}
        cp hkls.csv ${OutFldr}
        cp ${TOP_PARAM_FILE} ${OutFldr}
@@ -109,9 +106,6 @@ do
    elif [[ ${DOPEAKSEARCH} == 1 ]];
    then
        OutFldr=${SeedFolder}/${FileStem}_Layer${LAYERNR}_Analysis_Time_${ide}
-       if [ -d "$OutFldr" ]; then
-           mv Layer${LAYERNR} /data/to_delete/${ide}
-       fi
        mkdir -p ${OutFldr}
        cp hkls.csv ${OutFldr}
        cp ${TOP_PARAM_FILE} ${OutFldr}

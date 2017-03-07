@@ -72,7 +72,8 @@ do
     else
         echo "SeedOrientations ${DATADIRECTORY}/Orientations.txt" >> ${THISPARAMFILE}
     fi
-    ${PFDIR}/runSingleLayer.sh ${THISPARAMFILE} ${NCPUS} ${FFSEEDORIENTATIONS} ${PROCESSIMAGES} ${MACHINE_NAME} $8
+    #${PFDIR}/runSingleLayer.sh ${THISPARAMFILE} ${NCPUS} ${FFSEEDORIENTATIONS} ${PROCESSIMAGES} ${MACHINE_NAME} $8
+    ${PFDIR}/SingleLayerSwift.sh ${THISPARAMFILE} ${NCPUS} ${FFSEEDORIENTATIONS} ${PROCESSIMAGES} ${MACHINE_NAME} $8
 done
 
 EmailAdd=$8

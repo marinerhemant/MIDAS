@@ -351,4 +351,5 @@ int main (int argc, char *argv[]){
 			hkls[i][5],hkls[i][6],hkls[i][7],hkls[i][8],
 			hkls[i][9],hkls[i][10]);
 	}
+	exit(0);
 }
