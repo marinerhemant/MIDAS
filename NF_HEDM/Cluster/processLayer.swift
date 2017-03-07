@@ -25,7 +25,7 @@ app (file done) PlaceHolder2 (string prefix)
 	echo prefix stdout=@filename(done);
 }
 
-app (file outf, file errf) runfitorientation (string pf, int nr file mmapdone)
+app (file outf, file errf) runfitorientation (string pf, int nr, file mmapdone)
 {
 	fitorientation pf nr stdout=@filename(outf) stderr=@filename(errf);
 }
