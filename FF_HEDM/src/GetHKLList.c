@@ -272,7 +272,6 @@ int main (int argc, char *argv[]){
 					if ((iList = IsSuppressed_hkl(SgInfo, Minh, Mink, Minl,
 						Maxk, Maxl, h, k, l)) != 0) {/* Suppressed reflections */
 					} else {
-						//printf("New plane.\n");
 						T_Eq_hkl Eq_hkl;
 						M = BuildEq_hkl(SgInfo, &Eq_hkl, h, k, l);
 						if (SgError != NULL){
@@ -280,7 +279,6 @@ int main (int argc, char *argv[]){
 						}
 						for (i=0;i<Eq_hkl.N;i++){
 							for (j=-1;j<=1;j+=2){
-								//printf("%d %d %d\n",Eq_hkl.h[i]*j,Eq_hkl.k[i]*j,Eq_hkl.l[i]*j);
 								Families[nrFilled][0] = Eq_hkl.h[i]*j;
 								Families[nrFilled][1] = Eq_hkl.k[i]*j;
 								Families[nrFilled][2] = Eq_hkl.l[i]*j;
