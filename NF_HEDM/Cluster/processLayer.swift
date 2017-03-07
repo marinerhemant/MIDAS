@@ -10,9 +10,9 @@ app (file out, file err) Medians (string pf, int layernr)
 	runmedianparallel pf layernr stdout=@filename(out) stderr=@filename(err);
 }
 
-app Images (string paramf, int layern, int filenr, file inp)
+app (file outm, file errm) Images (string paramf, int layern, int filenr, file inp)
 {
-	runimageprocessingparallel paramf layern filenr;
+	runimageprocessingparallel paramf layern filenr stdout=@filename(outm) stderr=@filename(errm);
 }
 
 app (file done) PlaceHolder (string prefix, file out[])
