@@ -107,5 +107,5 @@ foreach dat in NameData {
 	}
 	
 	# Now parse mic file
-	parsemic(paramfile,outfit)
+	parsemic(paramfile,outfit);
 }
