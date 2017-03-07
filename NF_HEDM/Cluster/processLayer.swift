@@ -65,7 +65,7 @@ if (DoPeakSearch == 1){
 			(simBout[FileNr],simBerr[FileNr]) = Images(paramfile, layer, FileNr,simAout);
 		}
 	}
-	imagesdone = PlaceHolder(prefix2,simBout);
+	imagesdone = PlaceHolder("Done",simBout);
 } else {
 	trace("Not doing peaksearch");
 	string prefix2 = "ImageProcessing";
