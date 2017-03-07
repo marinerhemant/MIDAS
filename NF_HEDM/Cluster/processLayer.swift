@@ -67,7 +67,7 @@ if (DoPeakSearch == 1){
 		imagesdone = PlaceHolder(prefix2,simBout);
 	}
 } else {
-	trace("Not doing peaksearch")
+	trace("Not doing peaksearch");
 	string prefix2 = "ImageProcessing";
 	simBout<simple_mapper;location="output",prefix=prefix2,suffix=".out">;
 	imagesdone = PlaceHolder2(prefix2,simBout);
