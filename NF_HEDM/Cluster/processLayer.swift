@@ -52,7 +52,7 @@ string direct = arg("DataDirectory","/data/tomo1/NFTest/");
 ## Whether do peak search or not
 file imagesdone <"imageprocessing.txt">;
 if (DoPeakSearch == 1){
-	tracef("Doing peaksearch.\n");
+	trace("Doing peaksearch.\n");
 	foreach layer in [1:NrLayers] {
 		string prefix1 = strcat("Median_",layer);
 		string prefix2 = strcat("ImageProcessing_",layer);
@@ -67,7 +67,7 @@ if (DoPeakSearch == 1){
 		imagesdone = PlaceHolder(prefix2,simBout);
 	}
 } else {
-	tracef("Not doing peaksearch")
+	trace("Not doing peaksearch")
 	string prefix2 = "ImageProcessing";
 	simBout<simple_mapper;location="output",prefix=prefix2,suffix=".out">;
 	imagesdone = PlaceHolder2(prefix2,simBout);
