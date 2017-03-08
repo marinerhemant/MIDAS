@@ -74,7 +74,10 @@ do
     for ((FILENR=${STARTFILENRTHISLAYER}; FILENR<=${ENDFILENRTHISLAYER}; FILENR++))
     do
 		printf -v filenrformat "%06d" ${FILENR}
-		mv -v ${TOPDATADIRECTORY}/${STEM}_${filenrformat}.${extOrig} ${NEWFOLDER}/${FOLDER}/
+		fn=${TOPDATADIRECTORY}/${STEM}_${filenrformat}.${extOrig}
+		if [ -f ${fn} ]; then
+			mv ${fn} ${NEWFOLDER}/${FOLDER}/
+		fi
 	done
     DATADIRECTORY=${NEWFOLDER}
     GLOBALPOSITIONTHISLAYER=$(($(($(($LAYERNR-1))*$(($LAYERTHICKNESS))))+$STARTGLOBALPOS))

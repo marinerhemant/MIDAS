@@ -70,11 +70,13 @@ foreach dat in NameData {
 	string direct = dat.datadir;
 	string outfolder = strcat(direct,"/output/");
 	# Do the initial setup
-	file setupdone <outfolder + "initialsetup.csv">;
+	string fn = strcat(outfolder,"initialsetup.csv");
+	file setupdone <fn>;
 	setupdone = initialsetup(paramfile,ffseed);
 	
 	## Whether do peak search or not
-	file imagesdone <outfolder + "imageprocessing.txt">;
+	fn = strcat(outfolder,"imageprocessing.txt");
+	file imagesdone <fn>;
 	if (DoPeakSearch == 1){
 		trace("Doing peaksearch.\n");
 		string prefix2 = strcat("ImageProcessing_");
@@ -98,7 +100,8 @@ foreach dat in NameData {
 	
 	## Now MMap Images
 	tracef("%s\n",imagesdone);
-	file mmapdone <outfolder + "mmapdone.txt">;
+	fn = strcat(outfolder, "mmapdone.txt");
+	file mmapdone <fn>;
 	mmapdone = mmapcode(paramfile,imagesdone);
 
 	## Now do FitOrientation
@@ -109,6 +112,7 @@ foreach dat in NameData {
 	}
 	
 	# Now parse mic file
-	file parsedone <outfolder + "parsedone.txt">;
+	fn = strcat(outfolder, "parsedone.txt");
+	file parsedone <fn>;
 	parsedone = parsemic(paramfile,outfit);
 }
