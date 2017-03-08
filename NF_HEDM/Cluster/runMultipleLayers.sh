@@ -71,7 +71,7 @@ do
     ENDFILENRTHISLAYER=$(($STARTFILENRTHISLAYER+$(($(($NDISTANCES))*$(($INCREASEDFILES))))-1))
     printf -v startnr "%06d" ${STARTFILENRTHISLAYER}
     printf -v endnr "%06d" ${ENDFILENRTHISLAYER}
-    mv "${TOPDATADIRECTORY}/${STEM}_{${startnr}..${endnr}.}.${extOrig}" ${NEWFOLDER}/${FOLDER}
+    mv "${TOPDATADIRECTORY}/${STEM}_{${startnr}..${endnr}}.${extOrig}" ${NEWFOLDER}/${FOLDER}
     DATADIRECTORY=${NEWFOLDER}
     GLOBALPOSITIONTHISLAYER=$(($(($(($LAYERNR-1))*$(($LAYERTHICKNESS))))+$STARTGLOBALPOS))
     echo "RawStartNr ${STARTFILENRTHISLAYER}" >> ${THISPARAMFILE}
