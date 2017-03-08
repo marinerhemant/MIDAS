@@ -75,8 +75,8 @@ foreach dat in NameData {
 	setupdone = initialsetup(paramfile,ffseed);
 	
 	## Whether do peak search or not
-	fn = strcat(outfolder,"imageprocessing.txt");
-	file imagesdone <single_file_mapper;file=fn>;
+	string fn2 = strcat(outfolder,"imageprocessing.txt");
+	file imagesdone <single_file_mapper;file=fn2>;
 	if (DoPeakSearch == 1){
 		trace("Doing peaksearch.\n");
 		string prefix2 = strcat("ImageProcessing_");
@@ -100,8 +100,8 @@ foreach dat in NameData {
 	
 	## Now MMap Images
 	tracef("%s\n",imagesdone);
-	fn = strcat(outfolder, "mmapdone.txt");
-	file mmapdone <single_file_mapper;file=fn>;
+	string fn3 = strcat(outfolder, "mmapdone.txt");
+	file mmapdone <single_file_mapper;file=fn3>;
 	mmapdone = mmapcode(paramfile,imagesdone);
 
 	## Now do FitOrientation
@@ -112,7 +112,7 @@ foreach dat in NameData {
 	}
 	
 	# Now parse mic file
-	fn = strcat(outfolder, "parsedone.txt");
-	file parsedone <single_file_mapper;file=fn>;
+	string fn4 = strcat(outfolder, "parsedone.txt");
+	file parsedone <single_file_mapper;file=fn4>;
 	parsedone = parsemic(paramfile,outfit);
 }
