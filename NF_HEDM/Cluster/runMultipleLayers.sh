@@ -10,18 +10,19 @@ cmdname=$(basename $0)
 
 if [[ ${#*} != 8 ]];
 then
-  echo "Usage: ${cmdname} top_parameter_file(full_path) FFSeedOrientations ProcessImages startLayerNr endLayerNr nNODEs MachineName EmailAddress"
+  echo "Usage: ${cmdname} top_parameter_file(just the name, no directory) FFSeedOrientations ProcessImages startLayerNr endLayerNr nNODEs MachineName EmailAddress"
   echo "Eg. ${cmdname} ParametersFile.txt 1(or 0) 1(or 0) 1 5 6 orthros hsharma@anl.gov"
   echo "This will run from layer 1 to 5."
+  echo "Run from the directory with the parameter file."
   echo "This will produce the output in the run folder."
   echo "FFSeedOrientations is when either Orientations exist already (0) or when you provide a FF Orientation file (1)."
   echo "ProcessImages is whether you want to process the diffraction images (1) or if they were processed earlier (0)."
   echo "NOTE: run from the folder with the Key.txt, DiffractionSpots.txt, OrientMat.txt and ParametersFile.txt"
   echo "At least the parameters file should be in the folder from where the command is executed."
   echo "The following parameters should NOT be in the ParametersFile.txt file:"
-  echo "RawStartNr, GlobalPosition, MicFileBinary, MicFileText, ReducedFileName, GrainsFile, SeedOrientations"
+  echo "RawStartNr, GlobalPosition, MicFileBinary, MicFileText, ReducedFileName, GrainsFile, SeedOrientations, DataDirectory"
   echo "The following parameters must be present:"  
-  echo "OrigFileName, OverallStartNr, GlobalPositionFirstLayer, LayerThickness, WFImages, nDistances, NrFilesPerDistance, DataDirectory"
+  echo "OrigFileName, OverallStartNr, GlobalPositionFirstLayer, LayerThickness, WFImages, nDistances, NrFilesPerDistance, TopDataDirectory"
   echo "If WF images were taken, it is assumed there were 10 WF images."  
   echo "If using FF seeding, the grains files should be in the same folder and named: GrainsLayer{LAYERNR}.csv"
   echo "If no seeding is used, a single Orientations.txt file should be present."
@@ -31,6 +32,8 @@ fi
 
 PARAMFILE=$1
 NCPUS=$6
+nNODES=${NCPUS}
+export nNODES
 FFSEEDORIENTATIONS=$2
 PROCESSIMAGES=$3
 STARTLAYERNR=$4
@@ -47,38 +50,50 @@ PFSTEM=${PARAMFILE%.*}
 WFIMAGES=$( awk '$1 ~ /^WFImages/ { print $2 }' ${PARAMFILE} )
 NDISTANCES=$( awk '$1 ~ /^nDistances/ { print $2 }' ${PARAMFILE} )
 NRFILESPERDISTANCE=$( awk '$1 ~ /^NrFilesPerDistance/ { print $2 }' ${PARAMFILE} )
-DATADIRECTORY=$( awk '$1 ~ /^DataDirectory/ { print $2 }' ${PARAMFILE} )
+TOPDATADIRECTORY=$( awk '$1 ~ /^TopDataDirectory/ { print $2 }' ${PARAMFILE} )
+extOrig=$( awk '$1 ~ /^extOrig/ { print $2 }' ${PARAMFILE} )
+tmpfn=${TOPDATADIRECTORY}/fns.txt
+echo "paramfn datadir" > ${tmpfn}
 
 for ((LAYERNR=${STARTLAYERNR}; LAYERNR<=${ENDLAYERNR}; LAYERNR++))
 do
-	NEWFOLDER=${DATADIRECTORY}/${FOLDER}Layer${LAYERNR}/
+	NEWFOLDER=${TOPDATADIRECTORY}/${FOLDER}Layer${LAYERNR}/
 	mkdir -p ${NEWFOLDER}/${FOLDER}
-	cp ${PARAMFILE} ${NEWFOLDER}
+	THISPARAMFILE=${PFSTEM}Layer${LAYERNR}.txt
+	cp ${PARAMFILE} ${NEWFOLDER}/${THISPARAMFILE}
 	cd ${NEWFOLDER}
-    THISPARAMFILE=${PFSTEM}Layer${LAYERNR}.txt
-    cp ${PARAMFILE} ${THISPARAMFILE}
     if [[ $WFIMAGES -eq 1 ]]; then
         INCREASEDFILES=$(($NRFILESPERDISTANCE+10))
     else
         INCREASEDFILES=$NRFILESPERDISTANCE
     fi
     STARTFILENRTHISLAYER=$(($(($(($LAYERNR-1))*$(($NDISTANCES))*$(($INCREASEDFILES))))+$OVERALLSTARTNR))
+    ENDFILENRTHISLAYER=$(($STARTFILENRTHISLAYER+$(($(($NDISTANCES))*$(($INCREASEDFILES))))-1))
+    printf -v startnr "%06d" ${STARTFILENRTHISLAYER}
+    printf -v endnr "%06d" ${ENDFILENRTHISLAYER}
+    mv "${TOPDATADIRECTORY}/${STEM}_{${startnr}..${endnr}.}.${extOrig}" ${NEWFOLDER}/${FOLDER}
+    DATADIRECTORY=${NEWFOLDER}
     GLOBALPOSITIONTHISLAYER=$(($(($(($LAYERNR-1))*$(($LAYERTHICKNESS))))+$STARTGLOBALPOS))
     echo "RawStartNr ${STARTFILENRTHISLAYER}" >> ${THISPARAMFILE}
     echo "GlobalPosition ${GLOBALPOSITIONTHISLAYER}" >> ${THISPARAMFILE}
     echo "MicFileBinary MicrostructureBinary_Layer${LAYERNR}.mic" >> ${THISPARAMFILE}
     echo "MicFileText MicrostructureText_Layer${LAYERNR}.mic" >> ${THISPARAMFILE}
     echo "ReducedFileName ${FOLDER}_Layer${LAYERNR}_Reduced/${FILENAME}" >> ${THISPARAMFILE}
+    echo "DataDirectory ${DATADIRECTORY}" >> ${THISPARAMFILE}
     mkdir -p ${FOLDER}_Layer${LAYERNR}_Reduced
     if [[ ${FFSEEDORIENTATIONS} -eq 1 ]]; then
+		mv ${TOPDATADIRECTORY}/GrainsLayer${LAYERNR}.csv ${DATADIRECTORY}/GrainsLayer${LAYERNR}.csv
         echo "GrainsFile ${DATADIRECTORY}/GrainsLayer${LAYERNR}.csv" >> ${THISPARAMFILE}
         echo "SeedOrientations ${DATADIRECTORY}/Orientations_Layer${LAYERNR}.txt" >> ${THISPARAMFILE}
     else
         echo "SeedOrientations ${DATADIRECTORY}/Orientations.txt" >> ${THISPARAMFILE}
     fi
-    #${PFDIR}/runSingleLayer.sh ${THISPARAMFILE} ${NCPUS} ${FFSEEDORIENTATIONS} ${PROCESSIMAGES} ${MACHINE_NAME} $8
-    ${PFDIR}/SingleLayerSwift.sh ${THISPARAMFILE} ${NCPUS} ${FFSEEDORIENTATIONS} ${PROCESSIMAGES} ${MACHINE_NAME} $8
+    echo "${DATADIRECTORY}/${THISPARAMFILE} ${DATADIRECTORY}" >> ${tmpfn}
 done
+# Do Processing
+${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
+	-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
+	-DoPeakSearch=${PROCESSIMAGES} -FFSeedOrientations=${FFSEEDORIENTATIONS}
 
 EmailAdd=$8
 echo "The run started with ${cmdname} $@ has finished, please check." | mail -s "MIDAS run finished" ${EmailAdd}

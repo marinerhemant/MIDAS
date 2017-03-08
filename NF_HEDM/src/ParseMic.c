@@ -116,5 +116,5 @@ int main (int argc, char *argv[]){
 		}
 		fprintf(out2,"%d\n",PhaseNr);
 	}
-	return 0;
+	return(0);
 }

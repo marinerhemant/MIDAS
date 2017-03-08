@@ -35,9 +35,9 @@ app (file mmapdone) mmapcode (string paramfn, file imagedone)
 	mmaps paramfn stdout=@filename(mmapdone);
 }
 
-app parsemic (string paramfn, file trial[])
+app (file dome) parsemic (string paramfn, file trial[])
 {
-	micparser paramfn;
+	micparser paramfn stdout=@filename(dome);
 }
 
 app (file done) initialsetup ( string paramfn, int ffseed)
@@ -47,6 +47,7 @@ app (file done) initialsetup ( string paramfn, int ffseed)
 
 type BulkNames{
 	string paramfn;
+	string datadir;
 }
 
 # Parameters to be modified ############
@@ -66,22 +67,23 @@ BulkNames NameData[] = readData(paramf);
 
 foreach dat in NameData {
 	string paramfile = dat.paramfn;
-	
+	string direct = dat.datadir;
+	string outfolder = strcat(direct,"/output/");
 	# Do the initial setup
-	file setupdone <"output/initialsetup.csv">;
+	file setupdone <outfolder + "initialsetup.csv">;
 	setupdone = initialsetup(paramfile,ffseed);
 	
 	## Whether do peak search or not
-	file imagesdone <"output/imageprocessing.txt">;
+	file imagesdone <outfolder + "imageprocessing.txt">;
 	if (DoPeakSearch == 1){
 		trace("Doing peaksearch.\n");
 		string prefix2 = strcat("ImageProcessing_");
-		file simBout[]<simple_mapper;location="output",prefix=prefix2,suffix=".out">;
-		file simBerr[]<simple_mapper;location="output",prefix=prefix2,suffix=".err">;
+		file simBout[]<simple_mapper;location=outfolder,prefix=prefix2,suffix=".out">;
+		file simBerr[]<simple_mapper;location=outfolder,prefix=prefix2,suffix=".err">;
 		foreach layer in [1:NrLayers] {
 			string prefix1 = strcat("Median_",layer);
-			file simAout <simple_mapper;location="output",prefix=prefix1,suffix=".out">;
-			file simAerr <simple_mapper;location="output",prefix=prefix1,suffix=".err">;
+			file simAout <simple_mapper;location=outfolder,prefix=prefix1,suffix=".out">;
+			file simAerr <simple_mapper;location=outfolder,prefix=prefix1,suffix=".err">;
 			(simAout,simAerr) = Medians(paramfile,layer,setupdone);
 			foreach FileNr in [0:(NrFilesPerLayer-1)]{
 				(simBout[(layer-1)*NrFilesPerLayer + FileNr],simBerr[(layer-1)*NrFilesPerLayer + FileNr]) = Images(paramfile, layer, FileNr,simAout);
@@ -96,16 +98,17 @@ foreach dat in NameData {
 	
 	## Now MMap Images
 	tracef("%s\n",imagesdone);
-	file mmapdone <"output/mmapdone.txt">;
+	file mmapdone <outfolder + "mmapdone.txt">;
 	mmapdone = mmapcode(paramfile,imagesdone);
-	
+
 	## Now do FitOrientation
-	file errfit[]<simple_mapper;location="output",prefix="fitorient",suffix=".err">;
-	file outfit[]<simple_mapper;location="output",prefix="fitorient",suffix=".out">;
+	file errfit[]<simple_mapper;location=outfolder,prefix="fitorient",suffix=".err">;
+	file outfit[]<simple_mapper;location=outfolder,prefix="fitorient",suffix=".out">;
 	foreach i in [startnr:endnr] {
 		(outfit[i],errfit[i]) = runfitorientation(paramfile,i,mmapdone);
 	}
 	
 	# Now parse mic file
-	parsemic(paramfile,outfit);
+	file parsedone <outfolder + "parsedone.txt">;
+	parsedone = parsemic(paramfile,outfit);
 }
