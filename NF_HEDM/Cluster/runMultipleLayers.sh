@@ -86,6 +86,7 @@ do
         echo "GrainsFile ${DATADIRECTORY}/GrainsLayer${LAYERNR}.csv" >> ${THISPARAMFILE}
         echo "SeedOrientations ${DATADIRECTORY}/Orientations_Layer${LAYERNR}.txt" >> ${THISPARAMFILE}
     else
+		cp ${TOPDATADIRECTORY}/Orientations.txt ${DATADIRECTORY}/Orientations.txt
         echo "SeedOrientations ${DATADIRECTORY}/Orientations.txt" >> ${THISPARAMFILE}
     fi
     echo "${DATADIRECTORY}/${THISPARAMFILE} ${DATADIRECTORY}" >> ${tmpfn}
