@@ -71,12 +71,12 @@ foreach dat in NameData {
 	string outfolder = strcat(direct,"/output/");
 	# Do the initial setup
 	string fn = strcat(outfolder,"initialsetup.csv");
-	file setupdone <fn>;
+	file setupdone <single_file_mapper;file=fn>;
 	setupdone = initialsetup(paramfile,ffseed);
 	
 	## Whether do peak search or not
 	fn = strcat(outfolder,"imageprocessing.txt");
-	file imagesdone <fn>;
+	file imagesdone <single_file_mapper;file=fn>;
 	if (DoPeakSearch == 1){
 		trace("Doing peaksearch.\n");
 		string prefix2 = strcat("ImageProcessing_");
@@ -101,7 +101,7 @@ foreach dat in NameData {
 	## Now MMap Images
 	tracef("%s\n",imagesdone);
 	fn = strcat(outfolder, "mmapdone.txt");
-	file mmapdone <fn>;
+	file mmapdone <single_file_mapper;file=fn>;
 	mmapdone = mmapcode(paramfile,imagesdone);
 
 	## Now do FitOrientation
