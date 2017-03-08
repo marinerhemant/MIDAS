@@ -113,6 +113,6 @@ foreach dat in NameData {
 	
 	# Now parse mic file
 	fn = strcat(outfolder, "parsedone.txt");
-	file parsedone <fn>;
+	file parsedone <single_file_mapper;file=fn>;
 	parsedone = parsemic(paramfile,outfit);
 }
