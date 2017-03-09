@@ -111,8 +111,8 @@ foreach dat in NameData {
 	## Now do FitOrientation
 	file all[];
 	foreach i in [startnr:endnr] {
-		file errfit<simple_mapper;location=outfolder,prefix="fitorient",suffix=".err">;
-		file outfit<simple_mapper;location=outfolder,prefix="fitorient",suffix=".out">;
+		file errfit<simple_mapper;location=outfolder,prefix=strcat("fitorient_",i),suffix=".err">;
+		file outfit<simple_mapper;location=outfolder,prefix=strcat("fitorient_",i),suffix=".out">;
 		(outfit,errfit) = runfitorientation(paramfile,i,mmapdone);
 		if (i %% 100 == 0){
 			tracef("%d %d %d outfit is %s\n",i%%100,i%/100,i,outfit);
