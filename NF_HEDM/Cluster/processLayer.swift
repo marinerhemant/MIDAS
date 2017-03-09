@@ -91,7 +91,7 @@ foreach dat in NameData {
 				(simBout[(layer-1)*NrFilesPerLayer + FileNr],simBerr[(layer-1)*NrFilesPerLayer + FileNr]) = Images(paramfile, layer, FileNr,simAout);
 			}
 		}
-		imagesdone = PlaceHolder("Done",simAout);
+		imagesdone = PlaceHolder2("Done"); # simBout);
 #	} else {
 #		trace("Not doing peaksearch.\n");
 #		string prefix2 = "ImageProcessing was not done";
