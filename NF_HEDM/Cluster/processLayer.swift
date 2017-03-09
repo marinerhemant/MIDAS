@@ -17,13 +17,11 @@ app (file outm, file errm) Images (string paramf, int layern, int filenr, file i
 
 app (file done) PlaceHolder (string prefix, file out[])
 {
-	tracef("%s",prefix);
 	echo prefix stdout=@filename(done);
 }
 
 app (file done) PlaceHolder2 (string prefix)
 {
-	tracef("%s",prefix);
 	echo prefix stdout=@filename(done);
 }
 
@@ -101,6 +99,7 @@ foreach dat in NameData {
 		imagesdone = PlaceHolder(printoutimages,simCout);
 	} else {
 		string prefix2 = "ImageProcessing was not done.";
+		tracef("%s\n",prefix2);
 		imagesdone = PlaceHolder2(prefix2);
 	}
 	
