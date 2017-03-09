@@ -79,19 +79,22 @@ foreach dat in NameData {
 	file imagesdone <single_file_mapper;file=fn2>;
 	if (DoPeakSearch == 1){
 		trace("Doing peaksearch.\n");
-		string prefix2 = strcat("ImageProcessing_");
-		file simBout[]<simple_mapper;location=outfolder,prefix=prefix2,suffix=".out">;
-		file simBerr[]<simple_mapper;location=outfolder,prefix=prefix2,suffix=".err">;
+		string prefixC = "LayersCompleted.txt";
+		file simCout[]<simple_mapper;location=outfolder,prefix=prefixC,suffix=".out">;
 		foreach layer in [1:NrLayers] {
 			string prefix1 = strcat("Median_",layer);
 			file simAout <simple_mapper;location=outfolder,prefix=prefix1,suffix=".out">;
 			file simAerr <simple_mapper;location=outfolder,prefix=prefix1,suffix=".err">;
+			string prefix2 = strcat("ImageProcessing_",layer);
+			file simBout[]<simple_mapper;location=outfolder,prefix=prefix2,suffix=".out">;
+			file simBerr[]<simple_mapper;location=outfolder,prefix=prefix2,suffix=".err">;
 			(simAout,simAerr) = Medians(paramfile,layer,setupdone);
 			foreach FileNr in [0:(NrFilesPerLayer-1)]{
-				(simBout[(layer-1)*NrFilesPerLayer + FileNr],simBerr[(layer-1)*NrFilesPerLayer + FileNr]) = Images(paramfile, layer, FileNr,simAout);
+				(simBout[FileNr],simBerr[FileNr]) = Images(paramfile, layer, FileNr,simAout);
 			}
+			simCout[layer] = PlaceHolder("Done",simBout);
 		}
-		imagesdone = PlaceHolder2("Done"); # simBout);
+		imagesdone = PlaceHolder("Done",simCout);
 #	} else {
 #		trace("Not doing peaksearch.\n");
 #		string prefix2 = "ImageProcessing was not done";
