@@ -115,7 +115,7 @@ foreach dat in NameData {
 		file outfit<simple_mapper;location=outfolder,prefix="fitorient",suffix=".out">;
 		(outfit,errfit) = runfitorientation(paramfile,i,mmapdone);
 		if (i %% 100 == 0){
-			tracef("%d %d %d\n",i%%100,i%/100,i);
+			tracef("%d %d %d outfit is %s\n",i%%100,i%/100,i,outfit);
 			all[i %/ 100] = outfit;
 		}
 	}
