@@ -114,7 +114,10 @@ foreach dat in NameData {
 		file errfit<simple_mapper;location=outfolder,prefix="fitorient",suffix=".err">;
 		file outfit<simple_mapper;location=outfolder,prefix="fitorient",suffix=".out">;
 		(outfit,errfit) = runfitorientation(paramfile,i,mmapdone);
-		all[i] = outfit;
+		int j = i %% 100;
+		if (j == 0){
+			all[i %/ 100] = outfit;
+		}
 	}
 	
 	# Now parse mic file
