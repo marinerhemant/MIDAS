@@ -17,11 +17,13 @@ app (file outm, file errm) Images (string paramf, int layern, int filenr, file i
 
 app (file done) PlaceHolder (string prefix, file out[])
 {
+	tracef("%s",prefix);
 	echo prefix stdout=@filename(done);
 }
 
 app (file done) PlaceHolder2 (string prefix)
 {
+	tracef("%s",prefix);
 	echo prefix stdout=@filename(done);
 }
 
@@ -92,30 +94,30 @@ foreach dat in NameData {
 			foreach FileNr in [0:(NrFilesPerLayer-1)]{
 				(simBout[FileNr],simBerr[FileNr]) = Images(paramfile, layer, FileNr,simAout);
 			}
-			simCout[layer] = PlaceHolder("Done",simBout);
+			string printoutlayer = strcat("Layer done: ",layer);
+			simCout[layer] = PlaceHolder(printoutlayer,simBout);
 		}
-		imagesdone = PlaceHolder("Done",simCout);
-#	} else {
-#		trace("Not doing peaksearch.\n");
-#		string prefix2 = "ImageProcessing was not done";
-#		imagesdone = PlaceHolder2(prefix2);
+		string printoutimages = "All images done.";
+		imagesdone = PlaceHolder(printoutimages,simCout);
+	} else {
+		string prefix2 = "ImageProcessing was not done.";
+		imagesdone = PlaceHolder2(prefix2);
 	}
 	
 	## Now MMap Images
-	#tracef("%s\n",imagesdone);
-	#string fn3 = strcat(outfolder, "mmapdone.txt");
-	#file mmapdone <single_file_mapper;file=fn3>;
-	#mmapdone = mmapcode(paramfile,imagesdone);
+	string fn3 = strcat(outfolder, "mmapdone.txt");
+	file mmapdone <single_file_mapper;file=fn3>;
+	mmapdone = mmapcode(paramfile,imagesdone);
 
 	## Now do FitOrientation
-	#file errfit[]<simple_mapper;location=outfolder,prefix="fitorient",suffix=".err">;
-	#file outfit[]<simple_mapper;location=outfolder,prefix="fitorient",suffix=".out">;
-	#foreach i in [startnr:endnr] {
-	#	(outfit[i],errfit[i]) = runfitorientation(paramfile,i,mmapdone);
-	#}
+	file errfit[]<simple_mapper;location=outfolder,prefix="fitorient",suffix=".err">;
+	file outfit[]<simple_mapper;location=outfolder,prefix="fitorient",suffix=".out">;
+	foreach i in [startnr:endnr] {
+		(outfit[i],errfit[i]) = runfitorientation(paramfile,i,mmapdone);
+	}
 	
 	# Now parse mic file
-	#string fn4 = strcat(outfolder, "parsedone.txt");
-	#file parsedone <single_file_mapper;file=fn4>;
-	#parsedone = parsemic(paramfile,outfit);
+	string fn4 = strcat(outfolder, "parsedone.txt");
+	file parsedone <single_file_mapper;file=fn4>;
+	parsedone = parsemic(paramfile,outfit);
 }
