@@ -115,10 +115,11 @@ foreach dat in NameData {
 		file outfit<simple_mapper;location=outfolder,prefix="fitorient",suffix=".out">;
 		(outfit,errfit) = runfitorientation(paramfile,i,mmapdone);
 		if (i %% 100 == 0){
+			tracef("%d %d %d\n",i%%100,i%/100,i);
 			all[i %/ 100] = outfit;
 		}
 	}
-	
+
 	# Now parse mic file
 	string fn4 = strcat(outfolder, "parsedone.txt");
 	file parsedone <single_file_mapper;file=fn4>;
