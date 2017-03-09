@@ -101,20 +101,20 @@ foreach dat in NameData {
 	}
 	
 	## Now MMap Images
-	tracef("%s\n",imagesdone);
-	string fn3 = strcat(outfolder, "mmapdone.txt");
-	file mmapdone <single_file_mapper;file=fn3>;
-	mmapdone = mmapcode(paramfile,imagesdone);
+	#tracef("%s\n",imagesdone);
+	#string fn3 = strcat(outfolder, "mmapdone.txt");
+	#file mmapdone <single_file_mapper;file=fn3>;
+	#mmapdone = mmapcode(paramfile,imagesdone);
 
 	## Now do FitOrientation
-	file errfit[]<simple_mapper;location=outfolder,prefix="fitorient",suffix=".err">;
-	file outfit[]<simple_mapper;location=outfolder,prefix="fitorient",suffix=".out">;
-	foreach i in [startnr:endnr] {
-		(outfit[i],errfit[i]) = runfitorientation(paramfile,i,mmapdone);
-	}
+	#file errfit[]<simple_mapper;location=outfolder,prefix="fitorient",suffix=".err">;
+	#file outfit[]<simple_mapper;location=outfolder,prefix="fitorient",suffix=".out">;
+	#foreach i in [startnr:endnr] {
+	#	(outfit[i],errfit[i]) = runfitorientation(paramfile,i,mmapdone);
+	#}
 	
 	# Now parse mic file
-	string fn4 = strcat(outfolder, "parsedone.txt");
-	file parsedone <single_file_mapper;file=fn4>;
-	parsedone = parsemic(paramfile,outfit);
+	#string fn4 = strcat(outfolder, "parsedone.txt");
+	#file parsedone <single_file_mapper;file=fn4>;
+	#parsedone = parsemic(paramfile,outfit);
 }
