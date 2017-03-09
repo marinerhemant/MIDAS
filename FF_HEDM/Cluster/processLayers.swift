@@ -15,6 +15,11 @@ app runProcessPeaks (string paramsf, int RNr, file DummyA[], file hkl)
  processPeaks paramsf RNr;
 }
 
+app indexrefine (file param, int spotsinput, file hkl, file spotsfile)
+{
+   indexstrains spotsinput;
+}
+
 # Parameters to be modified #############
 
 int startnr = toInt(arg("startnr","1"));
@@ -40,4 +45,16 @@ foreach Ring in rings {
        (simAout[i],simAerr[i]) = runPeaks(parameterfilename,i,Ring);
     }
     runProcessPeaks(parameterfilename,Ring,simAerr,hkl);
+}
+
+
+### This has to be run from inside the folder
+file params <"paramstest.txt">;
+file hkl <"hkls.csv">;
+file spotsfile <"SpotsToIndex.csv">;
+
+int spots[] = readData("SpotsToIndex.csv");
+
+foreach i in spots {
+    indexrefine(params, i, hkl, spotsfile);
 }

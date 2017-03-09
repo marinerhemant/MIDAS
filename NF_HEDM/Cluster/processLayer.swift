@@ -77,6 +77,7 @@ foreach dat in NameData {
 	## Whether do peak search or not
 	string fn2 = strcat(outfolder,"imageprocessing.txt");
 	file imagesdone <single_file_mapper;file=fn2>;
+	tracef("%s",fn2);
 	if (DoPeakSearch == 1){
 		trace("Doing peaksearch.\n");
 		string prefix2 = strcat("ImageProcessing_");
