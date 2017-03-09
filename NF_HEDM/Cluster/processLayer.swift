@@ -35,9 +35,9 @@ app (file mmapdone) mmapcode (string paramfn, file imagedone)
 	mmaps paramfn stdout=@filename(mmapdone);
 }
 
-app (file dome) parsemic (string paramfn, file trial[])
+app (file dome) parsemic (string paramfn, string direct, file trial[])
 {
-	micparser paramfn stdout=@filename(dome);
+	micparser paramfn direct stdout=@filename(dome);
 }
 
 app (file done) initialsetup ( string paramfn, int ffseed)
@@ -118,5 +118,5 @@ foreach dat in NameData {
 	# Now parse mic file
 	string fn4 = strcat(outfolder, "parsedone.txt");
 	file parsedone <single_file_mapper;file=fn4>;
-	parsedone = parsemic(paramfile,outfit);
+	parsedone = parsemic(paramfile,direct,outfit);
 }
