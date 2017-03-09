@@ -77,7 +77,7 @@ foreach dat in NameData {
 	## Whether do peak search or not
 	string fn2 = strcat(outfolder,"imageprocessing.txt");
 	file imagesdone <single_file_mapper;file=fn2>;
-	tracef("%s",fn2);
+	#tracef("%s\n",fn2);
 	if (DoPeakSearch == 1){
 		trace("Doing peaksearch.\n");
 		string prefix2 = strcat("ImageProcessing_");
@@ -90,6 +90,7 @@ foreach dat in NameData {
 			(simAout,simAerr) = Medians(paramfile,layer,setupdone);
 			foreach FileNr in [0:(NrFilesPerLayer-1)]{
 				(simBout[(layer-1)*NrFilesPerLayer + FileNr],simBerr[(layer-1)*NrFilesPerLayer + FileNr]) = Images(paramfile, layer, FileNr,simAout);
+				tracef("%d\n",(layer-1)*NrFilesPerLayer + FileNr);
 			}
 		}
 		imagesdone = PlaceHolder("Done",simBout);
