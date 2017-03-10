@@ -65,6 +65,7 @@ int ffseed = toInt(arg("FFSeedOrientations","1"));
 # Read data
 BulkNames NameData[] = readData(paramf);
 
+tracef("%s,length=%d",NameData,length(NameData));
 iterate ix {
 	tracef("Layer %d\n",ix);
 	BulkNames dat = NameData[ix];
