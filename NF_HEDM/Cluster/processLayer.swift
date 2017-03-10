@@ -65,7 +65,8 @@ int ffseed = toInt(arg("FFSeedOrientations","1"));
 # Read data
 BulkNames NameData[] = readData(paramf);
 
-iterate dat in NameData {
+iterate ix {
+	dat = NameData[ix];
 	string paramfile = dat.paramfn;
 	string direct = dat.datadir;
 	string outfolder = strcat(direct,"/output/");
@@ -123,4 +124,4 @@ iterate dat in NameData {
 	string fn4 = strcat(outfolder, "parsedone.txt");
 	file parsedone <single_file_mapper;file=fn4>;
 	parsedone = parsemic(paramfile,direct,all);
-}
+} until (ix < length(NameData));
