@@ -98,6 +98,7 @@ do
     fi
     echo "${DATADIRECTORY}/${THISPARAMFILE} ${DATADIRECTORY}" >> ${tmpfn}
 done
+
 # Do Processing
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
 	-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \

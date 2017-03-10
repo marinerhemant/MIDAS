@@ -65,7 +65,7 @@ int ffseed = toInt(arg("FFSeedOrientations","1"));
 # Read data
 BulkNames NameData[] = readData(paramf);
 
-foreach dat in NameData {
+iterate dat in NameData {
 	string paramfile = dat.paramfn;
 	string direct = dat.datadir;
 	string outfolder = strcat(direct,"/output/");
@@ -115,7 +115,6 @@ foreach dat in NameData {
 		file outfit<simple_mapper;location=outfolder,prefix=strcat("fitorient_",i),suffix=".out">;
 		(outfit,errfit) = runfitorientation(paramfile,i,mmapdone);
 		if (i %% 100 == 0){
-			tracef("%d %d %d outfit is %s\n",i%%100,i%/100,i,outfit);
 			all[i %/ 100] = outfit;
 		}
 	}
