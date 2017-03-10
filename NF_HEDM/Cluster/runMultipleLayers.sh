@@ -53,7 +53,6 @@ NRFILESPERDISTANCE=$( awk '$1 ~ /^NrFilesPerDistance/ { print $2 }' ${PARAMFILE}
 TOPDATADIRECTORY=$( awk '$1 ~ /^TopDataDirectory/ { print $2 }' ${PARAMFILE} )
 extOrig=$( awk '$1 ~ /^extOrig/ { print $2 }' ${PARAMFILE} )
 tmpfn=${TOPDATADIRECTORY}/fns.txt
-echo "paramfn datadir" > ${tmpfn}
 
 for ((LAYERNR=${STARTLAYERNR}; LAYERNR<=${ENDLAYERNR}; LAYERNR++))
 do
@@ -96,13 +95,14 @@ do
 		cp ${TOPDATADIRECTORY}/Orientations.txt ${DATADIRECTORY}/Orientations.txt
         echo "SeedOrientations ${DATADIRECTORY}/Orientations.txt" >> ${THISPARAMFILE}
     fi
-    echo "${DATADIRECTORY}/${THISPARAMFILE} ${DATADIRECTORY}" >> ${tmpfn}
+    echo "paramfn datadir" > ${tmpfn}
+	echo "${DATADIRECTORY}/${THISPARAMFILE} ${DATADIRECTORY}" >> ${tmpfn}
+	# Do Processing
+	${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
+		-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
+		-DoPeakSearch=${PROCESSIMAGES} -FFSeedOrientations=${FFSEEDORIENTATIONS}
 done
 
-# Do Processing
-${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
-	-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
-	-DoPeakSearch=${PROCESSIMAGES} -FFSeedOrientations=${FFSEEDORIENTATIONS}
 
 EmailAdd=$8
 echo "The run started with ${cmdname} $@ has finished, please check." | mail -s "MIDAS run finished" ${EmailAdd}

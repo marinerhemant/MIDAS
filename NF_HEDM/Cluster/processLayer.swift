@@ -65,65 +65,62 @@ int ffseed = toInt(arg("FFSeedOrientations","1"));
 # Read data
 BulkNames NameData[] = readData(paramf);
 
-tracef("%s,length=%d",NameData,length(NameData));
-iterate ix {
-	tracef("Layer %d\n",ix);
-	BulkNames dat = NameData[ix];
-	string paramfile = dat.paramfn;
-	string direct = dat.datadir;
-	string outfolder = strcat(direct,"/output/");
-	# Do the initial setup
-	string fn = strcat(outfolder,"initialsetup.csv");
-	file setupdone <single_file_mapper;file=fn>;
-	setupdone = initialsetup(paramfile,ffseed);
-	
-	## Whether do peak search or not
-	string fn2 = strcat(outfolder,"imageprocessing.txt");
-	file imagesdone <single_file_mapper;file=fn2>;
-	if (DoPeakSearch == 1){
-		trace("Doing peaksearch.\n");
-		string prefixC = "LayersCompleted.txt";
-		file simCout[]<simple_mapper;location=outfolder,prefix=prefixC,suffix=".out">;
-		foreach layer in [1:NrLayers] {
-			string prefix1 = strcat("Median_",layer);
-			file simAout <simple_mapper;location=outfolder,prefix=prefix1,suffix=".out">;
-			file simAerr <simple_mapper;location=outfolder,prefix=prefix1,suffix=".err">;
-			string prefix2 = strcat("ImageProcessing_",layer);
-			file simBout[]<simple_mapper;location=outfolder,prefix=prefix2,suffix=".out">;
-			file simBerr[]<simple_mapper;location=outfolder,prefix=prefix2,suffix=".err">;
-			(simAout,simAerr) = Medians(paramfile,layer,setupdone);
-			foreach FileNr in [0:(NrFilesPerLayer-1)]{
-				(simBout[FileNr],simBerr[FileNr]) = Images(paramfile, layer, FileNr,simAout);
-			}
-			string printoutlayer = strcat("Layer done: ",layer);
-			simCout[layer] = PlaceHolder(printoutlayer,simBout);
-		}
-		string printoutimages = "All images done.";
-		imagesdone = PlaceHolder(printoutimages,simCout);
-	} else {
-		string prefix2 = "ImageProcessing was not done.";
-		tracef("%s\n",prefix2);
-		imagesdone = PlaceHolder2(prefix2);
-	}
-	
-	## Now MMap Images
-	string fn3 = strcat(outfolder, "mmapdone.txt");
-	file mmapdone <single_file_mapper;file=fn3>;
-	mmapdone = mmapcode(paramfile,imagesdone);
+tracef("length=%d\n",length(NameData));
+BulkNames dat = NameData[0];
+string paramfile = dat.paramfn;
+string direct = dat.datadir;
+string outfolder = strcat(direct,"/output/");
+# Do the initial setup
+string fn = strcat(outfolder,"initialsetup.csv");
+file setupdone <single_file_mapper;file=fn>;
+setupdone = initialsetup(paramfile,ffseed);
 
-	## Now do FitOrientation
-	file all[];
-	foreach i in [startnr:endnr] {
-		file errfit<simple_mapper;location=outfolder,prefix=strcat("fitorient_",i),suffix=".err">;
-		file outfit<simple_mapper;location=outfolder,prefix=strcat("fitorient_",i),suffix=".out">;
-		(outfit,errfit) = runfitorientation(paramfile,i,mmapdone);
-		if (i %% 100 == 0){
-			all[i %/ 100] = outfit;
+## Whether do peak search or not
+string fn2 = strcat(outfolder,"imageprocessing.txt");
+file imagesdone <single_file_mapper;file=fn2>;
+if (DoPeakSearch == 1){
+	trace("Doing peaksearch.\n");
+	string prefixC = "LayersCompleted.txt";
+	file simCout[]<simple_mapper;location=outfolder,prefix=prefixC,suffix=".out">;
+	foreach layer in [1:NrLayers] {
+		string prefix1 = strcat("Median_",layer);
+		file simAout <simple_mapper;location=outfolder,prefix=prefix1,suffix=".out">;
+		file simAerr <simple_mapper;location=outfolder,prefix=prefix1,suffix=".err">;
+		string prefix2 = strcat("ImageProcessing_",layer);
+		file simBout[]<simple_mapper;location=outfolder,prefix=prefix2,suffix=".out">;
+		file simBerr[]<simple_mapper;location=outfolder,prefix=prefix2,suffix=".err">;
+		(simAout,simAerr) = Medians(paramfile,layer,setupdone);
+		foreach FileNr in [0:(NrFilesPerLayer-1)]{
+			(simBout[FileNr],simBerr[FileNr]) = Images(paramfile, layer, FileNr,simAout);
 		}
+		string printoutlayer = strcat("Layer done: ",layer);
+		simCout[layer] = PlaceHolder(printoutlayer,simBout);
 	}
+	string printoutimages = "All images done.";
+	imagesdone = PlaceHolder(printoutimages,simCout);
+} else {
+	string prefix2 = "ImageProcessing was not done.";
+	tracef("%s\n",prefix2);
+	imagesdone = PlaceHolder2(prefix2);
+}
 
-	# Now parse mic file
-	string fn4 = strcat(outfolder, "parsedone.txt");
-	file parsedone <single_file_mapper;file=fn4>;
-	parsedone = parsemic(paramfile,direct,all);
-} until (ix <= length(NameData));
+## Now MMap Images
+string fn3 = strcat(outfolder, "mmapdone.txt");
+file mmapdone <single_file_mapper;file=fn3>;
+mmapdone = mmapcode(paramfile,imagesdone);
+
+## Now do FitOrientation
+file all[];
+foreach i in [startnr:endnr] {
+	file errfit<simple_mapper;location=outfolder,prefix=strcat("fitorient_",i),suffix=".err">;
+	file outfit<simple_mapper;location=outfolder,prefix=strcat("fitorient_",i),suffix=".out">;
+	(outfit,errfit) = runfitorientation(paramfile,i,mmapdone);
+	if (i %% 100 == 0){
+		all[i %/ 100] = outfit;
+	}
+}
+
+# Now parse mic file
+string fn4 = strcat(outfolder, "parsedone.txt");
+file parsedone <single_file_mapper;file=fn4>;
+parsedone = parsemic(paramfile,direct,all);
