@@ -65,7 +65,6 @@ int ffseed = toInt(arg("FFSeedOrientations","1"));
 # Read data
 BulkNames NameData[] = readData(paramf);
 
-tracef("length=%d\n",length(NameData));
 BulkNames dat = NameData[0];
 string paramfile = dat.paramfn;
 string direct = dat.datadir;

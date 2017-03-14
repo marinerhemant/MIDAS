@@ -7,17 +7,17 @@ type file;
 
 app (file op, file ep) runPeaks (string paramsfn, int fnr, int ringnr)
 {
- peaks paramsfn fnr ringnr stdout=filename(op) stderr=filename(ep);
+	peaks paramsfn fnr ringnr stdout=filename(op) stderr=filename(ep);
 }
 
 app runProcessPeaks (string paramsf, int RNr, file DummyA[], file hkl)
 {
- processPeaks paramsf RNr;
+	processPeaks paramsf RNr;
 }
 
 app indexrefine (file param, int spotsinput, file hkl, file spotsfile)
 {
-   indexstrains spotsinput;
+	indexstrains spotsinput;
 }
 
 # Parameters to be modified #############
@@ -35,18 +35,17 @@ file hkl <"hkls.csv">;
 int rings[] = readData(ringfile);
 
 foreach Ring in rings {
-    string PFst1 = strcat(parameterfilestem,Ring);
-    string parameterfilename = strcat(PFst1,"_",fstm);
-    tracef("%s\n",parameterfilename);
-    string PreFix1 = strcat("PeaksPerFile_",Ring);
-    file simAerr[]<simple_mapper;location="output",prefix=PreFix1,suffix=".err">;
-    file simAout[]<simple_mapper;location="output",prefix=PreFix1,suffix=".out">;
-    foreach i in [startnr:endnr] {
-       (simAout[i],simAerr[i]) = runPeaks(parameterfilename,i,Ring);
-    }
-    runProcessPeaks(parameterfilename,Ring,simAerr,hkl);
+	string PFst1 = strcat(parameterfilestem,Ring);
+	string parameterfilename = strcat(PFst1,"_",fstm);
+	tracef("%s\n",parameterfilename);
+	string PreFix1 = strcat("PeaksPerFile_",Ring);
+	file simAerr[]<simple_mapper;location="output",prefix=PreFix1,suffix=".err">;
+	file simAout[]<simple_mapper;location="output",prefix=PreFix1,suffix=".out">;
+	foreach i in [startnr:endnr] {
+		(simAout[i],simAerr[i]) = runPeaks(parameterfilename,i,Ring);
+	}
+	runProcessPeaks(parameterfilename,Ring,simAerr,hkl);
 }
-
 
 ### This has to be run from inside the folder
 file params <"paramstest.txt">;
@@ -56,5 +55,5 @@ file spotsfile <"SpotsToIndex.csv">;
 int spots[] = readData("SpotsToIndex.csv");
 
 foreach i in spots {
-    indexrefine(params, i, hkl, spotsfile);
+	indexrefine(params, i, hkl, spotsfile);
 }
