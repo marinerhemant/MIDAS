@@ -6,6 +6,7 @@
 #
 
 dirThis=${HOME}/.MIDAS
+rm -rf ${dirThis}
 mkdir -p ${dirThis}
 package=${HOME}/opt/MIDAS/NF_HEDM/Cluster/Packages/${1}NF.tar.gz
 echo ${package}
