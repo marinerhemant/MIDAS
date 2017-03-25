@@ -341,10 +341,18 @@ void Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **Useful
 	double *Rs, *Etas;
 	Rs = malloc(NrPixelsThisRegion*2*sizeof(*Rs));
 	Etas = malloc(NrPixelsThisRegion*2*sizeof(*Etas));
+	double RMin=1e8, RMax=0, EtaMin=190, EtaMax=-190;
 	for (i=0;i<NrPixelsThisRegion;i++){
 		Rs[i] = CalcNorm2(UsefulPixels[i][0]-Ycen,UsefulPixels[i][1]-Zcen);
 		Etas[i] = CalcEtaAngle(UsefulPixels[i][0]-Ycen,UsefulPixels[i][1]-Zcen);
+		if (Rs[i] > RMax) RMax = Rs[i];
+		if (Rs[i] < RMin) RMin = Rs[i];
+		if (Etas[i] > EtaMax) EtaMax = Etas[i];
+		if (Etas[i] < EtaMin) EtaMin = Etas[i];
 	}
+	double MaxEtaWidth, MaxRWidth;
+	MaxRWidth = (RMax - RMin)/2 + 1;
+	MaxEtaWidth = (EtaMax - EtaMin)/2 + atand(2/(RMax+RMin));
 	double Width = sqrt(NrPixelsThisRegion/nPeaks);
 	for (i=0;i<nPeaks;i++){
 		x[(8*i)+1] = MaximaValues[i]; // Imax
@@ -363,17 +371,17 @@ void Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **Useful
 		xl[(8*i)+4] = 0;
 		xl[(8*i)+5] = 0.01;
 		xl[(8*i)+6] = 0.01;
-		xl[(8*i)+7] = 0.005;
-		xl[(8*i)+8] = 0.005;
+		xl[(8*i)+7] = 0.001;
+		xl[(8*i)+8] = 0.001;
 
 		xu[(8*i)+1] = MaximaValues[i]*2;
 		xu[(8*i)+2] = x[(8*i)+2] + 1;
 		xu[(8*i)+3] = x[(8*i)+3] + dEta;
 		xu[(8*i)+4] = 1;
-		xu[(8*i)+5] = 30;
-		xu[(8*i)+6] = 30;
-		xu[(8*i)+7] = 2;
-		xu[(8*i)+8] = 2;
+		xu[(8*i)+5] = MaxRWidth;
+		xu[(8*i)+6] = MaxRWidth;
+		xu[(8*i)+7] = MaxEtaWidth;
+		xu[(8*i)+8] = MaxEtaWidth;
 	}
 	struct func_data f_data;
 	f_data.NrPixels = NrPixelsThisRegion;

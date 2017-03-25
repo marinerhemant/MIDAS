@@ -53,7 +53,7 @@ type BulkNames{
 # Parameters to be modified ############
 
 string paramf = arg("FileData","/data/tomo1/NFTest/ParametersGoldApril14.txt");
-int NrLayers = toInt(arg("NrDistances","3"));
+int NrDistances = toInt(arg("NrDistances","3"));
 int NrFilesPerLayer = toInt(arg("NrFilesPerDistance","180"));
 int startnr = toInt(arg("StartNumber","1"));
 int endnr = toInt(arg("EndNumber","2000"));
@@ -81,19 +81,19 @@ if (DoPeakSearch == 1){
 	trace("Doing peaksearch.\n");
 	string prefixC = "LayersCompleted.txt";
 	file simCout[]<simple_mapper;location=outfolder,prefix=prefixC,suffix=".out">;
-	foreach layer in [1:NrLayers] {
-		string prefix1 = strcat("Median_",layer);
+	foreach distance in [1:NrDistances] {
+		string prefix1 = strcat("Median_",distance);
 		file simAout <simple_mapper;location=outfolder,prefix=prefix1,suffix=".out">;
 		file simAerr <simple_mapper;location=outfolder,prefix=prefix1,suffix=".err">;
-		string prefix2 = strcat("ImageProcessing_",layer);
+		string prefix2 = strcat("ImageProcessing_",distance);
 		file simBout[]<simple_mapper;location=outfolder,prefix=prefix2,suffix=".out">;
 		file simBerr[]<simple_mapper;location=outfolder,prefix=prefix2,suffix=".err">;
-		(simAout,simAerr) = Medians(paramfile,layer,setupdone);
-		foreach FileNr in [0:(NrFilesPerLayer-1)]{
-			(simBout[FileNr],simBerr[FileNr]) = Images(paramfile, layer, FileNr,simAout);
+		(simAout,simAerr) = Medians(paramfile,distance,setupdone);
+		foreach FileNr in [0:(NrFilesPerdistance-1)]{
+			(simBout[FileNr],simBerr[FileNr]) = Images(paramfile, distance, FileNr,simAout);
 		}
-		string printoutlayer = strcat("Layer done: ",layer);
-		simCout[layer] = PlaceHolder(printoutlayer,simBout);
+		string printoutdistance = strcat("distance done: ",distance);
+		simCout[distance] = PlaceHolder(printoutdistance,simBout);
 	}
 	string printoutimages = "All images done.";
 	imagesdone = PlaceHolder(printoutimages,simCout);
