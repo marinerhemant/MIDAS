@@ -8,7 +8,6 @@
 ###### Provide a machine name as argument to check for package
 
 dirThis=${HOME}/.MIDAS
-rm -rf ${dirThis}
 mkdir -p ${dirThis}
 package=${HOME}/opt/MIDAS/FF_HEDM/Cluster/Packages/${1}.tar.gz
 echo ${package}
