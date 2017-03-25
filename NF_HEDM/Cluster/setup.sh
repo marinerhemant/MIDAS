@@ -20,5 +20,5 @@ ln -s ${LOCAL_DIR}/SingleLayerSwift.sh ${configdir}/MIDAS_V4_NearField_SingleLay
 ln -s ${LOCAL_DIR}/runMultipleLayers.sh ${configdir}/MIDAS_V4_NearField_MultipleLayers
 ln -s ${LOCAL_DIR}/runNFParameters.sh ${configdir}/MIDAS_V4_NearField_Parameters
 
-echo "Congratulations, you can now use MIDAS to run NeField analysis"
+echo "Congratulations, you can now use MIDAS to run NearField analysis"
 echo "Go to ${HOME}/.MIDAS folder, there is MIDAS_V4_NearField.....sh files for running analysis"
