@@ -7,7 +7,6 @@ import PIL
 import matplotlib
 matplotlib.use('TkAgg')
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
-from matplotlib.backend_bases import key_press_handler
 from matplotlib.figure import Figure
 import sys
 import Tkinter as Tk
