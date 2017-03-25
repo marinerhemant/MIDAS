@@ -1,3 +1,8 @@
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
+
 # Arguments
 folder = '/var/host/media/removable/Data3/Sharma_Oct14/ge/'
 paramFN = 'PS.txt'

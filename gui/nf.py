@@ -1,3 +1,8 @@
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
+
 import PIL
 import matplotlib
 matplotlib.use('TkAgg')
