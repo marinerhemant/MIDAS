@@ -48,7 +48,7 @@ rm -rf ${SeedFolder}/PFNames.txt
 
 for (( LAYERNR=$STARTLAYERNR; LAYERNR<=$ENDLAYERNR; LAYERNR++ ))
 do
-	${PFDIR}/InitialSetup.sh ${TOP_PARAM_FILE} ${LAYERNR} ${DOPEAKSEARCH}
+	${PFDIR}/InitialSetup.sh ${ParamsFile} ${LAYERNR} ${DOPEAKSEARCH}
 done
 NLAYERS=$(( $ENDLAYERNR - $STARTLAYERNR + 1 ))
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
