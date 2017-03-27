@@ -33,9 +33,9 @@ figcolspan=10
 figrowspan=10
 
 def getfilenames(startFrameNr,distanceNr):
-	medianfn = folder + fnstem + "_Median_Background_Distance_" + str(distanceNr) + ".bin"
+	medianfn = folder + '/' + fnstem + "_Median_Background_Distance_" + str(distanceNr) + ".bin"
 	fnr = startFrameNr + distanceNr*nrfilesperdistance
-	filefn = folder + fnstem + '_{:06d}'.format(fnr) + '.tif'
+	filefn = folder + '/' + fnstem + '_{:06d}'.format(fnr) + '.tif'
 	return [filefn, medianfn]
 
 def draw_plot(frameNr,distanceNr): # always the initial framenr and distance, will calculate the correct framenr automatically
@@ -91,6 +91,7 @@ def plot_updater():
 	global NrPixels
 	global lsd
 	global minThresh
+	global nrfilesperdistance
 	newlsd = float(lsdvar.get())
 	newVar = var.get()
 	newframenr = int(r.get())
@@ -101,8 +102,10 @@ def plot_updater():
 	newndistances = int(ndistancesvar.get())
 	newNrPixels = int(NrPixelsvar.get())
 	newminThresh = float(minThreshvar.get())
+	newnrfilesperdistance = int(nrfilesvar.get())
 	if ((initplot == 1) or 
 		(newminThresh != minThresh) or
+		(newnrfilesperdistance != nrfilesperdistance) or
 		(newframenr != framenr) or 
 		(newdist != dist) or 
 		(newVar != oldVar) or 
@@ -112,6 +115,7 @@ def plot_updater():
 		(newndistances != ndistances) or 
 		(newNrPixels != NrPixels) or 
 		(newlsd !=lsd)):
+		nrfilesperdistance = newnrfilesperdistance
 		minThresh = newminThresh
 		lsd = newlsd
 		NrPixels = newNrPixels
@@ -449,8 +453,8 @@ toolbar.update()
 Tk.Label(master=root,text="Folder").grid(row=figrowspan+1,column=1,sticky=Tk.W)#pack(side=Tk.LEFT)
 foldervar = Tk.StringVar()
 foldervar.set(folder)
-e0 = Tk.Entry(master=root,textvariable=foldervar,width=35)
-e0.grid(row=figrowspan+1,column=2,sticky=Tk.W)#pack(side=Tk.LEFT)
+e0 = Tk.Entry(master=root,textvariable=foldervar,width=50)
+e0.grid(row=figrowspan+1,column=1,sticky=Tk.E,columnspan=2,padx=90)#pack(side=Tk.LEFT)
 
 def folderselect():
 	global folder
@@ -459,7 +463,7 @@ def folderselect():
 	foldervar.set(folder)
 
 buttonfolder = Tk.Button(master=root,text="Select",command=folderselect)
-buttonfolder.grid(row=figrowspan+1,column=1,sticky=Tk.E)
+buttonfolder.grid(row=figrowspan+1,column=1,sticky=Tk.W,padx=100)
 
 Tk.Label(master=root,text="FNStem").grid(row=figrowspan+1,column=2,sticky=Tk.E,padx=10)#pack(side=Tk.LEFT)
 fnstemvar = Tk.StringVar() 
@@ -479,11 +483,11 @@ NrPixelsvar.set(str(NrPixels))
 enrpixels = Tk.Entry(master=root,textvariable=NrPixelsvar,width=5)
 enrpixels.grid(row=figrowspan+1,column=4,sticky=Tk.W,padx=120)#pack(side=Tk.LEFT)
 
-Tk.Label(master=root,text="File Number").grid(row=figrowspan+1,column=4,sticky=Tk.E,padx=90)#pack(side=Tk.LEFT)
+Tk.Label(master=root,text="File Number").grid(row=figrowspan+1,column=4,sticky=Tk.E,padx=120)#pack(side=Tk.LEFT)
 r = Tk.StringVar() 
 r.set(str(framenr))
-e1 = Tk.Entry(master=root,textvariable=r,width=5)
-e1.grid(row=figrowspan+1,column=4,sticky=Tk.E,padx=30)#pack(side=Tk.LEFT)
+e1 = Tk.Entry(master=root,textvariable=r,width=7)
+e1.grid(row=figrowspan+1,column=4,sticky=Tk.E,padx=50)#pack(side=Tk.LEFT)
 e1.focus_set()
 
 def incr_plotupdater():
@@ -532,11 +536,17 @@ elsd = Tk.Entry(master=root,textvariable=lsdvar,width=10)
 elsd.grid(row=figrowspan+2,column=4,sticky=Tk.W,padx=10)#pack(side=Tk.LEFT)
 
 minThresh = 0
-Tk.Label(master=root,text="MinThresh (counts)").grid(row=figrowspan+2,column=4,sticky=Tk.E,padx=100)#pack(side=Tk.LEFT)
+Tk.Label(master=root,text="MinThresh (counts)").grid(row=figrowspan+2,column=4,sticky=Tk.W,padx=100)#pack(side=Tk.LEFT)
 minThreshvar = Tk.StringVar()
 minThreshvar.set(str(minThresh))
-emt = Tk.Entry(master=root,textvariable=minThreshvar,width=10)
-emt.grid(row=figrowspan+2,column=4,sticky=Tk.E,padx=10)#pack(side=Tk.LEFT)
+emt = Tk.Entry(master=root,textvariable=minThreshvar,width=4)
+emt.grid(row=figrowspan+2,column=4,sticky=Tk.E,padx=120)#pack(side=Tk.LEFT)
+
+Tk.Label(master=root,text="NrFilesPerDistance").grid(row=figrowspan+2,column=4,sticky=Tk.E,padx=50)
+nrfilesvar = Tk.StringVar()
+nrfilesvar.set(str(nrfilesperdistance))
+enrfiles = Tk.Entry(master=root,textvariable=nrfilesvar,width=4)
+enrfiles.grid(row=figrowspan+2,column=4,sticky=Tk.E)
 
 button3 = Tk.Button(master=root,text='LineOutHor',command=horline)
 button3.grid(row=figrowspan+3,column=1,sticky=Tk.W,padx=40)#pack(side=Tk.LEFT)
