@@ -19,7 +19,7 @@ ide=$( date +%Y_%m_%d_%H_%M_%S )
 outfolder=${seedfolder}/${filestem}_Layer${layernr}_Analysis_Time_${ide}
 mkdir -p ${outfolder}
 cd ${outfolder}
-cp ${seedfolder}/paramfile ${outfolder}
+cp ${seedfolder}/${paramfile} ${outfolder}
 ${BINFOLDER}/GetHKLList ${paramfile}
 pfname=${outfolder}/Layer${layernr}_MultiRing_${paramfile}
 cp ${paramfile} ${pfname}
