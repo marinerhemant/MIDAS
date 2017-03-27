@@ -67,7 +67,6 @@ if (dopeaksearch == 1) {
 		file simBout[]<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("ProcessPeaks_",ix,"_"),suffix=".out">;
 		foreach Ring,idx in rings {
 			string parameterfilename = paramFileNames[idx];
-			tracef("%s\n",parameterfilename);
 			string PreFix1 = strcat("PeaksPerFile_",Ring);
 			file simAerr[]<simple_mapper;location=strcat(foldername,"/output"),prefix=PreFix1,suffix=".err">;
 			file simAout[]<simple_mapper;location=strcat(foldername,"/output"),prefix=PreFix1,suffix=".out">;
@@ -85,7 +84,6 @@ if (dopeaksearch == 1) {
 		file spotsfile<single_file_mapper;file=strcat(foldername,"/SpotsToIndex.csv")>;
 		file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
 		file simDout<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".out">;
-		tracef("%s %s %s\n",foldername,pfname,simCout);
 		(simDout,simDerr,spotsfile) = postpeaks(foldername,pfname,simCout);
 		file all[];
 		int spots[] = readData(spotsfile);
