@@ -16,3 +16,5 @@ FF_HEDM/Cluster/*.kml
 FF_HEDM/Cluster/*.swiftx
 FF_HEDM/local/*.kml
 FF_HEDM/local/*.swiftx
+gui/*.txt
+gui/*.csv
