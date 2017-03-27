@@ -645,33 +645,42 @@ def YZ4mREta(R,Eta):
 	return -R*math.sin(Eta*deg2rad),R*math.cos(Eta*deg2rad)
 
 def plot_update_spot():
-	global r, spotnrvar
+	global r, spotnrvar, spotnr
 	thisome = float(simulatedspots[spotnr-1].split(' ')[2])
 	rad = float(simulatedspots[spotnr-1].split(' ')[0])
 	eta = float(simulatedspots[spotnr-1].split(' ')[1])
+	ys,zs = YZ4mREta(rad,eta)
 	filenrToRead = int((float(thisome)-float(startome))/omestep)
 	r.set(str(filenrToRead))
 	spotnrvar.set(str(spotnr))
-	# calculate spot position and make a blip on the detector
-	ys,zs = YZ4mREta(rad,eta)
 	ya = pos[0]*math.sin(thisome) + pos[1]*math.cos(thisome)
 	xa = -pos[1]*math.sin(thisome) + pos[0]*math.cos(thisome)
 	yn = NrPixels - (ya + ys*(1-(xa/lsd)))/pixelsize - bcs[dist][0]
 	zn = NrPixels - (zs*(1-(xa/lsd)))/pixelsize - bcs[dist][1]
-	print [ys, ya, yn, zs, zn]
+	print [ys, ya, yn, zs, zn, rad, eta,thisome,filenrToRead]
+	while ((abs(eta) > 90) or (yn > NrPixels) or (zn > NrPixels)):
+		spotnr += 1
+		thisome = float(simulatedspots[spotnr-1].split(' ')[2])
+		rad = float(simulatedspots[spotnr-1].split(' ')[0])
+		eta = float(simulatedspots[spotnr-1].split(' ')[1])
+		filenrToRead = int((float(thisome)-float(startome))/omestep)
+		r.set(str(filenrToRead))
+		spotnrvar.set(str(spotnr))
+		# calculate spot position and make a blip on the detector
+		ys,zs = YZ4mREta(rad,eta)
+		ya = pos[0]*math.sin(thisome) + pos[1]*math.cos(thisome)
+		xa = -pos[1]*math.sin(thisome) + pos[0]*math.cos(thisome)
+		yn = NrPixels - (ya + ys*(1-(xa/lsd)))/pixelsize - bcs[dist][0]
+		zn = NrPixels - (zs*(1-(xa/lsd)))/pixelsize - bcs[dist][1]
+		print [ys, ya, yn, zs, zn, rad, eta,thisome,filenrToRead]
 	plot_updater()
-	a.scatter(yn,zn,s=10,color='red')
+	a.scatter(yn,zn,s=5,color='red')
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH,expand=1)
 
 def incr_spotnr():
 	global spotnr
 	spotnr += 1
-	plot_update_spot()
-
-def decr_spotnr():
-	global spotnr
-	spotnr -= 1
 	plot_update_spot()
 
 def update_spotnr():
@@ -711,8 +720,7 @@ def makespots():
 	plot_update_spot()
 	# put a frame with +,- and load
 	Tk.Button(master=root,text="+",command=incr_spotnr,font=("Helvetica",12)).grid(row=figrowspan+3,column=4,sticky=Tk.W)
-	Tk.Button(master=root,text="-",command=decr_spotnr,font=("Helvetica",12)).grid(row=figrowspan+3,column=4,sticky=Tk.W,padx=50)
-	Tk.Button(master=root,text="Load",command=update_spotnr,font=("Helvetica",12)).grid(row=figrowspan+3,column=4,sticky=Tk.E,padx=50)
+	Tk.Button(master=root,text="Load",command=update_spotnr,font=("Helvetica",12)).grid(row=figrowspan+3,column=4,sticky=Tk.W,padx=70)
 	
 spotnr = 1
 spotnrvar = Tk.StringVar()
