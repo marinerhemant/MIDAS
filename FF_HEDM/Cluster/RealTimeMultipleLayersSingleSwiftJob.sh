@@ -29,6 +29,7 @@ then
 fi
 
 # if [[ $1 == /* ]]; then TOP_PARAM_FILE=$1; else TOP_PARAM_FILE=$(pwd)/$1; fi
+ParamsFile=$1
 STARTLAYERNR=$2
 ENDLAYERNR=$3
 NCPUS=$5
