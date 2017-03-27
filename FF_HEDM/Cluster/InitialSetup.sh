@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash
 
 #
 # Copyright (c) 2014, UChicago Argonne, LLC
@@ -54,7 +54,7 @@ then
 		echo "LowerBoundThreshold ${Thresholds[$i]}" >> ${ThisParamFileName}
 		echo "LayerNr ${layernr}" >> ${ThisParamFileName}
 		echo "StartFileNr $startfilenr" >> ${ThisParamFileName}
-		echo "RingNumbers $RINGNR" >> $PFName
+		echo "RingNumbers $RINGNR" >> $pfname
 		echo $RINGNR >> ${ringnrsfile}
 		i=$((i+1))
 		echo "${ThisParamFileName}" >> ${outfolder}/ParamFileNames.txt
@@ -82,7 +82,7 @@ then
 		echo "LowerBoundThreshold ${Thresholds[$i]}" >> ${ThisParamFileName}
 		echo "LayerNr $layernr" >> ${ThisParamFileName}
 		echo "StartFileNr $startfilenr" >> ${ThisParamFileName}
-		echo "RingNumbers $RINGNR" >> $PFName
+		echo "RingNumbers $RINGNR" >> $pfname
 		echo $RINGNR >> ${ringnrsfile}
 		${BINFOLDER}/FitTiltBCLsdSample ${ThisParamFileName}
 		cp ${Fldr}/PeakSearch/${filestem}_${layernr}/paramstest.txt ${outfolder}/paramstest_RingNr${RINGNR}.txt
