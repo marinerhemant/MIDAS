@@ -57,7 +57,9 @@ string PFNames[] = readData(strcat(seedfolder,"/PFNames.txt"));
 
 if (dopeaksearch == 1) {
 	###### Change to iterate instead of foreach
-	foreach foldername,ix in folderNames { 
+	iterate ix {
+	#foreach foldername,ix in folderNames { 
+		string foldername = folderNames[ix]
 		# equivalent to layernr
 		string paramfilenamefile = strcat(foldername,"/ParamFileNames.txt");
 		string paramFileNames[] = readData(paramfilenamefile);
@@ -96,10 +98,13 @@ if (dopeaksearch == 1) {
 		}
 		file processgrainsout <single_file_mapper;file=strcat(foldername,"output/processgrains.txt")>;
 		processgrainsout = processgrains(foldername,pfname,all);
-	}
+	#}
+	} until (ix == length(folderNames));
 } else {
 	###### Change to iterate instead of foreach
-	foreach foldername,ix in folderNames { 
+	iterate ix {
+	#foreach foldername,ix in folderNames { 
+		string foldername = folderNames[ix]
 		string pfname = PFNames[ix];
 		# equivalent to layernr
 		file spotsfile<single_file_mapper;file=strcat(foldername,"/SpotsToIndex.csv")>;
@@ -118,5 +123,6 @@ if (dopeaksearch == 1) {
 		}
 		file processgrainsout <single_file_mapper;file=strcat(foldername,"output/processgrains.txt")>;
 		processgrainsout = processgrains(foldername,pfname,all);
-	}
+	#}
+	} until (ix == length(folderNames));
 }
