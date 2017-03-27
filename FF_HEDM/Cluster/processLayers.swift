@@ -5,9 +5,9 @@
 
 type file;
 
-app (file op, file ep) runPeaks (string paramsfn, int fnr, int ringnr)
+app (file ep) runPeaks (string paramsfn, int fnr, int ringnr)
 {
-	peaks paramsfn fnr ringnr stdout=filename(op) stderr=filename(ep);
+	peaks paramsfn fnr ringnr stderr=filename(ep);
 }
 
 app (file out, file err) runProcessPeaks (string paramsf, int RNr, file DummyA[])
@@ -68,10 +68,13 @@ if (dopeaksearch == 1) {
 		foreach Ring,idx in rings {
 			string parameterfilename = paramFileNames[idx];
 			string PreFix1 = strcat("PeaksPerFile_",Ring);
-			file simAerr[]<simple_mapper;location=strcat(foldername,"/output"),prefix=PreFix1,suffix=".err">;
-			file simAout[]<simple_mapper;location=strcat(foldername,"/output"),prefix=PreFix1,suffix=".out">;
+			file simAerr[];
 			foreach i in [startnr:endnr] {
-				(simAout[i],simAerr[i]) = runPeaks(parameterfilename,i,Ring);
+				file simx<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat(PreFix1,"_",i,"_",suffix=".err">;
+				simx = runPeaks(parameterfilename,i,Ring);
+				if (i %% 100 == 0){
+					simAerr[i%/100] = simx;
+				}
 			}
 			(simBout[idx],simBerr[idx]) = runProcessPeaks(parameterfilename,Ring,simAerr);
 		}
