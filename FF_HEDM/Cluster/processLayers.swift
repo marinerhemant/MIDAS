@@ -20,7 +20,7 @@ app (file out, file err) mergerings (string pfname, file dummy[])
 	mergeRings pfname stdout=filename(out) stderr=filename(err);
 }
 
-app (file out, file err, file dummy) postpeaks (string foldername, string pfname, file dummy[])
+app (file out, file err, file dummy) postpeaks (string foldername, string pfname, file dummy)
 {
 	postPeaks foldername pfname stdout=filename(out) stderr=filename(err);
 }
