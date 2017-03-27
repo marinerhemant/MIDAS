@@ -70,7 +70,7 @@ if (dopeaksearch == 1) {
 			string PreFix1 = strcat("PeaksPerFile_",Ring);
 			file simAerr[];
 			foreach i in [startnr:endnr] {
-				file simx<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat(PreFix1,"_",i,"_",suffix=".err">;
+				file simx<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat(PreFix1,"_",i,"_"),suffix=".err">;
 				simx = runPeaks(parameterfilename,i,Ring);
 				if (i %% 100 == 0){
 					simAerr[i%/100] = simx;
