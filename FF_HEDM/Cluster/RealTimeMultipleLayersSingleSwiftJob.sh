@@ -42,7 +42,7 @@ nNODES=${NCPUS}
 export nNODES
 echo "MACHINE NAME is ${MACHINE_NAME}"
 
-SeedFolder=$( awk '$1 ~ /^SeedFolder/ { print $2 }' ${TOP_PARAM_FILE} )
+SeedFolder=$( awk '$1 ~ /^SeedFolder/ { print $2 }' ${ParamsFile} )
 rm -rf ${SeedFolder}/FolderNames.txt
 rm -rf ${SeedFolder}/PFNames.txt
 
