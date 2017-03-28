@@ -92,7 +92,7 @@ if (dopeaksearch == 1) {
 		file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
 		file simDout<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".out">;
 		string spotfn = strcat(foldername,"/SpotsToIndex.csv"); 
-		file simCatOut<spotfn>; #<simple_mapper;location=foldername,prefix="SpotsToIndex",suffix=".csv">;
+		file simCatOut<simple_mapper;location=foldername,prefix="SpotsToIndex",suffix=".csv">;
 		(simDout,simDerr,simCatOut) = postpeaks(foldername,pfname,simCout);
 		int spots[] = readData(simCatOut);
 		file all[];
