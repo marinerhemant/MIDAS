@@ -35,7 +35,7 @@ app (file out, file err) postpeaks2 (string foldername, string pfname)
 	postPeaks foldername pfname stdout=filename(out) stderr=filename(err);
 }
 
-app (file out, file err) indexrefine (string foldername, int spotsinput)
+app (file out, file err) indexrefine (string foldername, int spotsinput, file dm)
 {
 	indexstrains spotsinput foldername stdout=filename(out) stderr=filename(err);
 }
@@ -94,12 +94,12 @@ if (dopeaksearch == 1) {
 		(simDout,simDerr) = postpeaks(foldername,pfname,simCout);
 		file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsCopy.csv")>;
 		simCatOut = datareader(strcat(foldername,"/SpotsToIndex.csv"),simDout);
-		int spots = readData(simCatOut);
+		int spots[] = readData(simCatOut);
 		file all[];
 		foreach i in spots {
-			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_"),suffix=".err">;
-			file simEout<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_"),suffix=".out">;
-			(simEout,simEerr) = indexrefine(foldername,i);
+			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",i),suffix=".err">;
+			file simEout<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",i),suffix=".out">;
+			(simEout,simEerr) = indexrefine(foldername,i,simCatOut);
 			if (i %% 100 == 0){
 				all[i %/ 100] = simEout;
 			}
@@ -121,12 +121,12 @@ if (dopeaksearch == 1) {
 		(simDout,simDerr) = postpeaks2(foldername,pfname);
 		file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsCopy.csv")>;
 		simCatOut = datareader(strcat(foldername,"/SpotsToIndex.csv"),simDout);
-		int spots = readData(simCatOut);
+		int spots[] = readData(simCatOut);
 		file all[];
 		foreach i in spots {
-			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_"),suffix=".err">;
-			file simEout<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_"),suffix=".out">;
-			(simEout,simEerr) = indexrefine(foldername,i);
+			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",i),suffix=".err">;
+			file simEout<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",i),suffix=".out">;
+			(simEout,simEerr) = indexrefine(foldername,i,simCatOut);
 			if (i %% 100 == 0){
 				all[i %/ 100] = simEout;
 			}
