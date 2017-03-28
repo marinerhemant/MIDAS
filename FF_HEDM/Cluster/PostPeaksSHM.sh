@@ -7,8 +7,9 @@
 source ${HOME}/.MIDAS/paths
 
 outfolder=$1
-cd ${outfolder}
+pushd ${outfolder}
 pfname=$2
+SeedFolder=$( awk '$1 ~ /^SeedFolder/ { print $2 }' ${pfname} )
 MargABC=$( awk '$1 ~ /^MargABC/ { print $2 }' ${pfname} )
 MargABG=$( awk '$1 ~ /^MargABG/ { print $2 }' ${pfname} )
 FileStem=$( awk '$1 ~ /^FileStem/ {print $2 }' ${pfname} )
@@ -47,4 +48,5 @@ mv SpotsToIndexUnq.csv SpotsToIndex.csv
 ${PFDIR}/SHMOperators.sh
 mkdir -p Output
 mkdir -p Results
-cp -f SpotsToIndex.csv ../$3
+popd
+cp ${outfolder}/SpotsToIndex.csv $3
