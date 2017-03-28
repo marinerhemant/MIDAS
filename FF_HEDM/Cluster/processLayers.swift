@@ -35,7 +35,7 @@ app (file out, file err) postpeaks2 (string foldername, string pfname)
 	postPeaks foldername pfname stdout=filename(out) stderr=filename(err);
 }
 
-app (file out, file err) indexrefine (string foldername, int spotsinput, file dm)
+app (file out, file err) indexrefine (string foldername, int spotsinput)
 {
 	indexstrains spotsinput foldername stdout=filename(out) stderr=filename(err);
 }
@@ -92,13 +92,16 @@ if (dopeaksearch == 1) {
 		file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
 		file simDout<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".out">;
 		(simDout,simDerr) = postpeaks(foldername,pfname,simCout);
+		file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsCopy.csv")>;
+		simCatOut = datareader(strcat(foldername,"/SpotsToIndex.csv"),simDout);
+		int spots = readData(simCatOut);
 		file all[];
-		foreach i in [1:35000] {
+		foreach i in spots {
 			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_"),suffix=".err">;
 			file simEout<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_"),suffix=".out">;
-			(simEout,simEerr) = indexrefine(foldername,i,simDout);
-			if (i %% 10000 == 0){
-				all[i %/ 10000] = simEout;
+			(simEout,simEerr) = indexrefine(foldername,i);
+			if (i %% 100 == 0){
+				all[i %/ 100] = simEout;
 			}
 		}
 		file processgrainsout <single_file_mapper;file=strcat(foldername,"output/processgrains.txt")>;
@@ -114,14 +117,18 @@ if (dopeaksearch == 1) {
 		# equivalent to layernr
 		file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
 		file simDout<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".out">;
+		int spots[];
 		(simDout,simDerr) = postpeaks2(foldername,pfname);
+		file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsCopy.csv")>;
+		simCatOut = datareader(strcat(foldername,"/SpotsToIndex.csv"),simDout);
+		int spots = readData(simCatOut);
 		file all[];
-		foreach i in [1:35000] {
+		foreach i in spots {
 			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_"),suffix=".err">;
 			file simEout<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_"),suffix=".out">;
-			(simEout,simEerr) = indexrefine(foldername,i,simDout);
-			if (i %% 10000 == 0){
-				all[i %/ 10000] = simEout;
+			(simEout,simEerr) = indexrefine(foldername,i);
+			if (i %% 100 == 0){
+				all[i %/ 100] = simEout;
 			}
 		}
 		file processgrainsout <single_file_mapper;file=strcat(foldername,"output/processgrains.txt")>;
