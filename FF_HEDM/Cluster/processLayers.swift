@@ -20,7 +20,7 @@ app (file out, file err) mergerings (string pfname, file dummy[])
 	mergeRings pfname stdout=filename(out) stderr=filename(err);
 }
 
-app (int spots[]) datareader (string foldername,file dm)
+(int spots[]) datareader (string foldername,file dm)
 {
 	spots = readData(strcat(foldername,"/SpotsToIndex.csv"));
 }
