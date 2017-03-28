@@ -91,11 +91,10 @@ if (dopeaksearch == 1) {
 		# take the output, run shmoperators
 		file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
 		file simDout<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".out">;
-		int spots[];
 		(simDout,simDerr) = postpeaks(foldername,pfname,simCout);
 		file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsCopy.csv")>;
 		simCatOut = datareader(strcat(foldername,"/SpotsToIndex.csv"),simDout);
-		spots = readData(simCatOut);
+		int spots = readData(simCatOut);
 		file all[];
 		foreach i in spots {
 			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_"),suffix=".err">;
@@ -118,11 +117,10 @@ if (dopeaksearch == 1) {
 		# equivalent to layernr
 		file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
 		file simDout<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".out">;
-		int spots[];
 		(simDout,simDerr) = postpeaks2(foldername,pfname);
 		file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsCopy.csv")>;
 		simCatOut = datareader(strcat(foldername,"/SpotsToIndex.csv"),simDout);
-		spots = readData(simCatOut);
+		int spots = readData(simCatOut);
 		file all[];
 		foreach i in spots {
 			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_"),suffix=".err">;
