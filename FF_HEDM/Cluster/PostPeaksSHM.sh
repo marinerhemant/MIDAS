@@ -47,3 +47,4 @@ mv SpotsToIndexUnq.csv SpotsToIndex.csv
 ${PFDIR}/SHMOperators.sh
 mkdir -p Output
 mkdir -p Results
+cp -f SpotsToIndex.csv $3
