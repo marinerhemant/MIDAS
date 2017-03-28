@@ -84,8 +84,8 @@ if (dopeaksearch == 1) {
 		file simCout<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("MergeRings_",ix),suffix=".out">;
 		(simCout,simCerr) = mergerings(pfname, simBout);
 		# take the output, run shmoperators
-		file spotsfile<single_file_mapper;file=strcat(foldername,"/SpotsToIndex.csv")>;
 		tracef("%s\n",strcat(foldername,"/SpotsToIndex.csv"));
+		file spotsfile<single_file_mapper;file=strcat(foldername,"/SpotsToIndex.csv")>;
 		file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
 		file simDout<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".out">;
 		(simDout,simDerr,spotsfile) = postpeaks(foldername,pfname,simCout);
