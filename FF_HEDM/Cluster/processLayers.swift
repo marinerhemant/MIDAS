@@ -25,14 +25,14 @@ app (file out) datareader (string fn, file dm)
 	cat fn stdout=filename(out);
 }
 
-app (file out, file err) postpeaks (string foldername, string pfname, file dummy)
+app (file out, file err, file spotsfile) postpeaks (string foldername, string pfname, file dummy)
 {
-	postPeaks foldername pfname stdout=filename(out) stderr=filename(err);
+	postPeaks foldername pfname filename(spotsfile) stdout=filename(out) stderr=filename(err);
 }
 
-app (file out, file err) postpeaks2 (string foldername, string pfname)
+app (file out, file err, file spotsfile) postpeaks2 (string foldername, string pfname)
 {
-	postPeaks foldername pfname stdout=filename(out) stderr=filename(err);
+	postPeaks foldername pfname filename(spotsfile) stdout=filename(out) stderr=filename(err);
 }
 
 app (file out, file err) indexrefine (string foldername, int spotsinput, file dm)
@@ -91,9 +91,8 @@ if (dopeaksearch == 1) {
 		# take the output, run shmoperators
 		file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
 		file simDout<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".out">;
-		(simDout,simDerr) = postpeaks(foldername,pfname,simCout);
-		file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsCopy.csv")>;
-		simCatOut = datareader(strcat(foldername,"/SpotsToIndex.csv"),simDout);
+		file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsToIndex.csv")>;
+		(simDout,simDerr,simCatOut) = postpeaks(foldername,pfname,simCout);
 		int spots[] = readData(simCatOut);
 		file all[];
 		foreach i in spots {
@@ -117,9 +116,8 @@ if (dopeaksearch == 1) {
 		# equivalent to layernr
 		file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
 		file simDout<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".out">;
-		(simDout,simDerr) = postpeaks2(foldername,pfname);
-		file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsCopy.csv")>;
-		simCatOut = datareader(strcat(foldername,"/SpotsToIndex.csv"),simDout);
+		file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsToIndex.csv")>;
+		(simDout,simDerr,simCatOut) = postpeaks2(foldername,pfname);
 		int spots[] = readData(simCatOut);
 		file all[];
 		foreach i in spots {
