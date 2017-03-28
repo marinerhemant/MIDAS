@@ -21,7 +21,7 @@ for Ring in ${RingNrs}
 do
 	cp ${outfolder}/Ring${Ring}/PeakSearch/${FileStem}_${layernr}/paramstest.txt ${outfolder}/paramstest_RingNr${Ring}.txt
 	cp ${outfolder}/Ring${Ring}/PeakSearch/${FileStem}_${layernr}/Radius_StartNr_${SNr}_EndNr_${ENr}_RingNr_${Ring}.csv ${outfolder}/
-	cp ${outfolder}/Ring${Ring}/paramstest_RingNr${Ring}.txt ${outfolder}/paramstest.txt
+	cp ${outfolder}/paramstest_RingNr${Ring}.txt ${outfolder}/paramstest.txt
 done
 sed -i '/^OutputFolder/d' paramstest.txt
 sed -i '/^ResultFolder/d' paramstest.txt
