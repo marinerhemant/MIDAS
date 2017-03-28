@@ -7,7 +7,7 @@
 source ${HOME}/.MIDAS/paths
 echo "Spot ID:"
 echo $1
-if [[ ${#*} == 2 ]]; then
+if [[ ${#*} > 1 ]]; then
 	cd $2
 fi
 ${BINFOLDER}/IndexerLinuxArgsShm paramstest.txt $1
