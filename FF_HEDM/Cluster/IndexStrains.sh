@@ -7,6 +7,9 @@
 source ${HOME}/.MIDAS/paths
 echo "Spot ID:"
 echo $1
+if [[ ${#*} == 2 ]]; then
+	cd $2
+fi
 ${BINFOLDER}/IndexerLinuxArgsShm paramstest.txt $1
 ${BINFOLDER}/FitPosOrStrains paramstest.txt $1
 # This was the idea with 2000 jobs

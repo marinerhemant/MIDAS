@@ -20,9 +20,9 @@ app (file out, file err) mergerings (string pfname, file dummy[])
 	mergeRings pfname stdout=filename(out) stderr=filename(err);
 }
 
-(int spots[]) datareader (string foldername,file dm)
+app (file out) datareader (string fn, file dm)
 {
-	spots = readData(strcat(foldername,"/SpotsToIndex.csv"));
+	cat fn stdout=filename(out);
 }
 
 app (file out, file err) postpeaks (string foldername, string pfname, file dummy)
@@ -35,9 +35,9 @@ app (file out, file err) postpeaks2 (string foldername, string pfname)
 	postPeaks foldername pfname stdout=filename(out) stderr=filename(err);
 }
 
-app (file out, file err) indexrefine (int spotsinput)
+app (file out, file err) indexrefine (string foldername, int spotsinput)
 {
-	indexstrains spotsinput stdout=filename(out) stderr=filename(err);
+	indexstrains spotsinput foldername stdout=filename(out) stderr=filename(err);
 }
 
 app (file out) processgrains (string foldername, string pfname, file dummy[])
@@ -93,7 +93,9 @@ if (dopeaksearch == 1) {
 		file simDout<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".out">;
 		int spots[];
 		(simDout,simDerr) = postpeaks(foldername,pfname,simCout);
-		spots = datareader(foldername,simDout);
+		file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsCopy.csv")>;
+		simCatOut = datareader(strcat(foldername,"/SpotsToIndex.csv"),simDout);
+		spots = readData(simCatOut);
 		file all[];
 		foreach i in spots {
 			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_"),suffix=".err">;
@@ -118,7 +120,9 @@ if (dopeaksearch == 1) {
 		file simDout<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".out">;
 		int spots[];
 		(simDout,simDerr) = postpeaks2(foldername,pfname);
-		spots = datareader(foldername,simDout);
+		file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsCopy.csv")>;
+		simCatOut = datareader(strcat(foldername,"/SpotsToIndex.csv"),simDout);
+		spots = readData(simCatOut);
 		file all[];
 		foreach i in spots {
 			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_"),suffix=".err">;
