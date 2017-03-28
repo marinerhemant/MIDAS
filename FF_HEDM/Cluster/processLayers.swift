@@ -84,7 +84,7 @@ if (dopeaksearch == 1) {
 		# take the output, run shmoperators
 		file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
 		file simCatOut<single_file_mapper;file=strcat(foldername,"SpotsToIndex.csv")>;
-		(simDerr,simCatOut) = postpeaks(foldername,pfname,simCout);
+		(simDerr,simCatOut) = postpeaks(foldername,pfname,simCerr);
 		int spots[] = readData(simCatOut);
 		file all[];
 		foreach i in spots {
