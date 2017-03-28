@@ -117,7 +117,6 @@ if (dopeaksearch == 1) {
 		# equivalent to layernr
 		file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
 		file simDout<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".out">;
-		int spots[];
 		(simDout,simDerr) = postpeaks2(foldername,pfname);
 		file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsCopy.csv")>;
 		simCatOut = datareader(strcat(foldername,"/SpotsToIndex.csv"),simDout);
