@@ -6,4 +6,8 @@
 #
 
 source ${HOME}/.MIDAS/paths
+paramfile=$1 # always relative path
+CHART=/
+flr=${paramfile%$CHART*}
+cd $flr
 ${BINFOLDER}/MergeMultipleRings $1
