@@ -18,3 +18,4 @@ FF_HEDM/local/*.kml
 FF_HEDM/local/*.swiftx
 gui/*.txt
 gui/*.csv
+gui/*.bin

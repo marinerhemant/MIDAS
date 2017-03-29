@@ -3,6 +3,212 @@
 # See LICENSE file.
 #
 
+import PIL
+import matplotlib
+matplotlib.use('TkAgg')
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
+from matplotlib.figure import Figure
+import sys
+import Tkinter as Tk
+import numpy as np
+import time
+import matplotlib.pyplot as plt
+import os
+from scipy import stats
+import tkFileDialog
+import math
+import scipy
+import scipy.ndimage as ndimage
+from math import sin, cos, acos, sqrt, tan, atan, atan2, fabs
+from numpy import linalg as LA
+import math
+
+def _quit():
+	root.quit()
+	root.destroy()
+
+# Helpers
+deg2rad = 0.0174532925199433
+rad2deg = 57.2957795130823
+
+def CalcEtaAngle(XYZ):
+	alpha = rad2deg*np.arccos(np.divide(XYZ[2,:],LA.norm(XYZ[1:,:],axis = 0)))
+	alpha[XYZ[1,:]>0] = -alpha[XYZ[1,:]>0]
+	return alpha
+
+def CalcEtaAngleRad(y,z):
+	Rad = sqrt(y*y+z*z)
+	alpha = rad2deg*math.acos(z/Rad)
+	if y > 0:
+		alpha = -alpha
+	return [alpha,Rad*px]
+
+def YZ4mREta(R,Eta):
+	return [-R*sin(Eta*deg2rad),R*cos(Eta*deg2rad)]
+
+def getfn(fstem,fnum,geNum):
+	return folder + fstem + str(fnum).zfill(padding) + '.ge' + str(geNum)
+
+def getImage(fn,bytesToSkip):
+	print "Reading file: " + fn
+	f = open(fn,'rb')
+	f.seek(bytesToSkip,os.SEEK_SET)
+	data = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
+	f.close()
+	data = np.reshape(data,(NrPixels,NrPixels))
+	data = data.astype(float)
+	return data
+
+def getData(geNum,bytesToSkip):
+	fn = getfn(fileStem,fileNumber,geNum)
+	data = getImage(fn,bytesToSkip)
+	doDark = var.get()
+	if doDark == 1:
+		if dark[geNum-startDetNr] is None:
+			darkfn = getfn(darkStem,darkNum,geNum)
+			dark[geNum-startDetNr] = getImage(darkfn,8192)
+		thisdark = dark[geNum-startDetNr]
+		corrected = np.subtract(data,thisdark)
+	else:
+		corrected = data
+	corrected = np.transpose(corrected)
+	thresholded = stats.threshold(corrected,threshmin=threshold)
+	nonzerocoords = np.nonzero(thresholded)
+	return [thresholded,nonzerocoords]
+
+def readParams():
+	global paramFN
+	paramFN = paramfilevar.get()
+	global folder, fileStem, padding, startDetNr, endDetNr, bigFN
+	global wedge, lsd, px, bcs, tx, wl, bigdetsize, nFramesPerFile
+	global firstFileNumber, darkStem, darkNum, omegaStep, nFilesPerLayer
+	global omegaStart, NrPixels, threshold, RingsToShow, nDetectors
+	paramContents = open(paramFN,'r').readlines()
+	lsd = []
+	bcs = []
+	tx = []
+	RingsToShow = []
+	threshold = 0
+	for line in paramContents:
+		if 'RawFolder' in line.split()[0]:
+			folder = line.split()[1]
+		if 'FileStem' in line.split()[0]:
+			fileStem = line.split()[1]
+		if 'Padding' in line.split()[0]:
+			padding = int(line.split()[1])
+		if 'StartDetNr' in line.split()[0]:
+			startDetNr = int(line.split()[1])
+		if 'EndDetNr' in line.split()[0]:
+			endDetNr = int(line.split()[1])
+		if 'Wedge' in line.split()[0]:
+			wedge = float(line.split()[1])
+		if 'BC' in line.split()[0]:
+			bcs.append([float(line.split()[1]),float(line.split()[2])])
+		if 'px' in line.split()[0]:
+			px = float(line.split()[1])
+		if 'Wavelength' in line.split()[0]:
+			wl = float(line.split()[1])
+		if 'BigDetSize' in line.split()[0]:
+			bigdetsize = int(line.split()[1])
+		if 'nFramesPerFile' in line.split()[0]:
+			nFramesPerFile = int(line.split()[1])
+		if 'FirstFileNumber' in line.split()[0]:
+			firstFileNumber = int(line.split()[1])
+		if 'DarkStem' in line.split()[0]:
+			darkStem = line.split()[1]
+		if 'DarkNum' in line.split()[0]:
+			darkNum = int(line.split()[1])
+		if 'OmegaStep' in line.split()[0]:
+			omegaStep = float(line.split()[1])
+		if 'OmegaFirstFile' in line.split()[0]:
+			omegaStart = float(line.split()[1])
+		if 'NrFilesPerSweep' in line.split()[0]:
+			nFilesPerLayer = int(line.split()[1])
+		if 'NrPixels' in line.split()[0]:
+			NrPixels = int(line.split()[1])
+		if 'NumDetectors' in line.split()[0]:
+			nDetectors = int(line.split()[1])
+		if 'RingThresh' in line.split()[0]:
+			RingsToShow.append(int(line.split()[1]))
+			threshold = max(threshold,float(line.split()[2]))
+		if 'Lsd' in line.split()[0]:
+			lsd.append(float(line.split()[1]))
+		if 'tx' in line.split()[0]:
+			tx.append(float(line.split()[1]))
+		if 'DetParams' in line.split()[0]:
+			lsd.append(float(line.split()[1]))
+			bcs.append([float(line.split()[2]),float(line.split()[3])])
+			tx.append(float(line.split()[4]))
+	bigFN = 'BigDetectorMaskEdgeSize' + str(bigdetsize) + 'x' + str(bigdetsize) + 'Unsigned16Bit.bin'
+	hklGenPath = '~/opt/MIDAS/FF_HEDM/bin/GetHKLList '
+	os.system(hklGenPath + paramFN)
+	# initialization of dark
+	dark = []
+	for i in range(nDetectors):
+		dark.append(None)
+	print "Loaded"
+
+# Main function
+root = Tk.Tk()
+root.wm_title("FF display v0.1 Dt. 2017/03/29 hsharma@anl.gov")
+figur = Figure(figsize=(20,7.5),dpi=100)
+canvas = FigureCanvasTkAgg(figur,master=root)
+a = figur.add_subplot(121,aspect='equal')
+b = figur.add_subplot(122)
+figrowspan = 10
+figcolspan = 10
+canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH)
+toolbar_frame = Tk.Frame(root)
+toolbar_frame.grid(row=figrowspan+4,column=0,columnspan=5,sticky=Tk.W)
+toolbar = NavigationToolbar2TkAgg( canvas, toolbar_frame )
+toolbar.update()
+
+paramFN = 'PS.txt'
+Tk.Label(master=root,text="ParamFile").grid(row=figrowspan+1,column=1,sticky=Tk.W)#pack(side=Tk.LEFT)
+paramfilevar = Tk.StringVar()
+paramfilevar.set(paramFN)
+e0 = Tk.Entry(master=root,textvariable=paramfilevar,width=50)
+e0.grid(row=figrowspan+1,column=1,sticky=Tk.E,padx=90)#pack(side=Tk.LEFT)
+
+def paramfileselect():
+	global paramFN
+	global paramfilevar
+	paramFN = tkFileDialog.askopenfilename()
+	paramfilevar.set(paramFN)
+
+buttonparam = Tk.Button(master=root,text="Select",command=paramfileselect)
+buttonparam.grid(row=figrowspan+1,column=1,sticky=Tk.W,padx=70)
+
+buttonLoadParam = Tk.Button(master=root,text="LoadParams",command=readParams)
+buttonLoadParam.grid(row=figrowspan+1,column=2,sticky=Tk.W)
+
+var = Tk.IntVar()
+c = Tk.Checkbutton(master=root,text="Subtract Dark",variable=var)
+c.grid(row=figrowspan+1,column=2,sticky=Tk.W,padx=120)#pack(side=Tk.LEFT)
+
+def makeBigDet():
+	global mask
+	cmdf = '~/opt/MIDAS/FF_HEDM/bin/MapMultipleDetectors '
+	os.system(cmdf+paramFN)
+	bigf = open(bigFN,'r')
+	mask = np.fromfile(bigf,dtype=np.uint16,count=bigdetsize*bigdetsize)
+	bigf.close()
+	mask = np.reshape(mask,(bigdetsize,bigdetsize))
+	mask = np.transpose(mask)
+	a.imshow(mask,extent=[-bigdetsize/2,bigdetsize/2,-bigdetsize/2,bigdetsize/2])
+	canvas.show()
+	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+
+mask = None
+buttonMakeBigDet = Tk.Button(master=root,text="MakeBigDetector",command=makeBigDet)
+buttonMakeBigDet.grid(row=figrowspan+1,column=2,sticky=Tk.E)
+
+button = Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20))
+button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W,padx=10)#pack(side=Tk.LEFT)
+
+Tk.mainloop()
+
+'''
 # Arguments
 folder = '/var/host/media/removable/Data3/Sharma_Oct14/ge/'
 paramFN = 'PS.txt'
@@ -398,3 +604,4 @@ button2 = Tk.Button(master=root,text='Load',command=plot_updater)
 button2.pack(side=Tk.LEFT)
 
 Tk.mainloop()
+'''

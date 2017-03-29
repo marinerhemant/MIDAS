@@ -282,17 +282,8 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 		BinNr = i % nBinsPerRing;
 		EtaMi = -180 + BinNr*(360/nBinsPerRing);
 		EtaMa = -180 + (BinNr+1)*(360/nBinsPerRing);
-		//printf("%f %f\n",EtaMi,EtaMa);
 		EtaMean[i] = (EtaMi+EtaMa)/2;
-		/*for (j=0;j<NrPtsForFit;j++){PeakShape[j]=0;Rs[j]=(Rmin+(j*Rstep)+Rstep/2);}
-		for (j=0;j<NrEachIndexBin[i];j++){
-			Rthis = R[Indices[i][j]];
-			BinNr = (int)(floor((-Rmin+Rthis)/Rstep));
-			PeakShape[BinNr] += Average[Indices[i][j]];
-			EtaMean[i] += Eta[Indices[i][j]]/NrEachIndexBin[i];
-		}*/
 		if (NrEachIndexBin[i] == 0){
-			//printf("IndexNr: %d, Rmean: %lf, EtaMean: %lf was out of detector, skipping.\n",i,(IdealRmins[i] + IdealRmaxs[i])/2, EtaMean[i]);
 			Rfit = 0;
 			continue;
 		}

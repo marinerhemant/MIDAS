@@ -24,6 +24,7 @@ def _quit():
 
 NrPixels = 2048
 nrfilesperdistance = 720
+padding = 6
 ndistances = 3
 background=100
 fnstem = 'Au1'
@@ -35,7 +36,7 @@ figrowspan=10
 def getfilenames(startFrameNr,distanceNr):
 	medianfn = folder + '/' + fnstem + "_Median_Background_Distance_" + str(distanceNr) + ".bin"
 	fnr = startFrameNr + distanceNr*nrfilesperdistance
-	filefn = folder + '/' + fnstem + '_{:06d}'.format(fnr) + '.tif'
+	filefn = folder + '/' + fnstem + str(fnr).zfill(padding) + '.tif' # '_{:06d}'.format(fnr) + '.tif'
 	return [filefn, medianfn]
 
 def draw_plot(frameNr,distanceNr): # always the initial framenr and distance, will calculate the correct framenr automatically
