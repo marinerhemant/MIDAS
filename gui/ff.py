@@ -76,6 +76,17 @@ def getData(geNum,bytesToSkip):
 	nonzerocoords = np.nonzero(thresholded)
 	return [thresholded,nonzerocoords]
 
+def plot_updater():
+	a.clear()
+	# Plot mask if wanted
+	if mask is not None:
+		readBigDet()
+		a.imshow(mask,extent=[-bigdetsize/2,bigdetsize/2,-bigdetsize/2,bigdetsize/2])
+		canvas.show()
+		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+	else:
+		makeBigDet()
+
 def readParams():
 	global paramFN
 	paramFN = paramfilevar.get()
@@ -157,7 +168,7 @@ a = figur.add_subplot(121,aspect='equal')
 b = figur.add_subplot(122)
 figrowspan = 10
 figcolspan = 10
-canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH)
+canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=5,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH)
 toolbar_frame = Tk.Frame(root)
 toolbar_frame.grid(row=figrowspan+4,column=0,columnspan=5,sticky=Tk.W)
 toolbar = NavigationToolbar2TkAgg( canvas, toolbar_frame )
@@ -186,15 +197,18 @@ var = Tk.IntVar()
 c = Tk.Checkbutton(master=root,text="Subtract Dark",variable=var)
 c.grid(row=figrowspan+1,column=2,sticky=Tk.W,padx=120)#pack(side=Tk.LEFT)
 
-def makeBigDet():
+def readBigDet():
 	global mask
-	cmdf = '~/opt/MIDAS/FF_HEDM/bin/MapMultipleDetectors '
-	os.system(cmdf+paramFN)
 	bigf = open(bigFN,'r')
 	mask = np.fromfile(bigf,dtype=np.uint16,count=bigdetsize*bigdetsize)
 	bigf.close()
 	mask = np.reshape(mask,(bigdetsize,bigdetsize))
 	mask = np.transpose(mask)
+
+def makeBigDet():
+	cmdf = '~/opt/MIDAS/FF_HEDM/bin/MapMultipleDetectors '
+	os.system(cmdf+paramFN)
+	readBigDet()
 	a.imshow(mask,extent=[-bigdetsize/2,bigdetsize/2,-bigdetsize/2,bigdetsize/2])
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
@@ -205,6 +219,9 @@ buttonMakeBigDet.grid(row=figrowspan+1,column=2,sticky=Tk.E)
 
 button = Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20))
 button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W,padx=10)#pack(side=Tk.LEFT)
+
+button2 = Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetica",20))
+button2.grid(row=figrowspan+1,column=5,rowspan=3,sticky=Tk.E,padx=10)#pack(side=Tk.LEFT)
 
 Tk.mainloop()
 

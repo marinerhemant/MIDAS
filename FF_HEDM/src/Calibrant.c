@@ -273,8 +273,13 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 	double RetVal;
 	for (i=0;i<NrPtsForFit;i++)Idxs[0][i]=i;
 	double AllZero;
+	double ytr, ztr;
 	for (i=0;i<nIndices;i++){
-		//printf("%i of %i done.\n",i,nIndices);
+		// If no pixel inside the detector, ignore this bin
+		if (NrEachIndexBin[i] == 0){
+			Rfit = 0;
+			continue;
+		}
 		Rmin = IdealRmins[i];
 		Rmax = IdealRmaxs[i];
 		AllZero=1;
@@ -282,11 +287,28 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 		BinNr = i % nBinsPerRing;
 		EtaMi = -180 + BinNr*(360/nBinsPerRing);
 		EtaMa = -180 + (BinNr+1)*(360/nBinsPerRing);
-		EtaMean[i] = (EtaMi+EtaMa)/2;
-		if (NrEachIndexBin[i] == 0){
+		//Find if either etamin or etamax result in outside the detector, then ignore this bin
+		ytr = ybc - (-Rmax *sin(EtaMa*deg2rad))/px;
+		ztr = zbc + (Rmax*cos(EtaMa*deg2rad))/px;
+		if ((int)ytr > NrPixels -1){
 			Rfit = 0;
 			continue;
 		}
+		if ((int)ztr > NrPixels -1){
+			Rfit = 0;
+			continue;
+		}
+		ytr = ybc - (-Rmax *sin(EtaMi*deg2rad))/px;
+		ztr = zbc + (Rmax*cos(EtaMi*deg2rad))/px;
+		if ((int)ytr > NrPixels -1){
+			Rfit = 0;
+			continue;
+		}
+		if ((int)ztr > NrPixels -1){
+			Rfit = 0;
+			continue;
+		}
+		EtaMean[i] = (EtaMi+EtaMa)/2;
 		for (j=0;j<NrPtsForFit;j++){
 			PeakShape[j]=0;
 			Rs[j]=(Rmin+(j*Rstep)+Rstep/2);
