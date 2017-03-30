@@ -19,8 +19,6 @@ for line in paths:
 folder = os.getcwd()
 psfn = sys.argv[1]
 
-print [psfn, sLayer, eLayer, doPeakSearch, nNodes, machineName, em]
-
 lsd = []
 bc = []
 ts = []
@@ -36,14 +34,26 @@ for line in paramContents:
 		ps.append([line.split()[7],line.split()[8],line.split()[9],line.split()[10]])
 	if line.split()[0] == 'NumDetectors':
 		ndetectors = int(line.split()[1])
+	if line.split()[0] == 'DarkStem':
+		darkstem = line.split()[1]
+	if line.split()[0] == 'RawFolder':
+		rawfolder = line.split()[1]
+	if line.split()[0] == 'DarkNum':
+		darknum = int(line.split()[1])
+	if line.split()[0] == 'Padding':
+		padding = int(line.split()[1])
+	
 
 for detnr in range(1,ndetectors+1):
 	newfolder = folder+'/Detector'+str(detnr)+'/'
 	newfn = psfn+'_det'+str(detnr)
-	os.system('mkdir '+newfolder)
+	os.system('mkdir -p '+newfolder)
 	os.system('cp '+folder+'/'+psfn+' '+newfolder+newfn)
+	darkname = rawfolder + '/' + darkstem + str(darknum).zfill(padding) + '.ge'+str(detnr)
 	f = open(newfolder+newfn,'a')
 	f.write('SeedFolder '+newfolder+'\n')
+	f.write('Ext .ge'+str(detnr)+'\n')
+	f.write('Dark '+darkname+'\n')
 	f.write('Lsd '+lsd[detnr-1]+'\n')
 	f.write('BC '+bc[detnr-1][0]+' '+bc[detnr-1][1]+'\n')
 	f.write('tx '+ts[detnr-1][0]+'\n')
