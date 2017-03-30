@@ -183,6 +183,12 @@ int main (int argc, char *argv[]){
             sscanf(aline,"%s %lf", dummy, &Lsd);
             continue;
         }
+        str = "DetParams ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &Lsd);
+            continue;
+        }
         str = "MaxRingRad ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
