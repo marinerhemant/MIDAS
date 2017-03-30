@@ -179,7 +179,7 @@ int main (int argc, char *argv[]){
 		p1 = DetParams[j][7];
 		p2 = DetParams[j][8];
 		RhoD = DetParams[j][9];
-		printf("Detector %d of %d.\ntx:%lf ty:%lf tz:%lf Lsd:%lf p0:%lf p1:%lf p2:%lf RhoD:%lf\n",j,nDetectors,tx,ty,tz,Lsd,p0,p1,p2,RhoD);
+		printf("Detector %d of %d.\ntx:%lf ty:%lf tz:%lf Lsd:%lf p0:%lf p1:%lf p2:%lf RhoD:%lf\n",j,nDetectors-1,tx,ty,tz,Lsd,p0,p1,p2,RhoD);
 		fflush(stdout);
 		txr = deg2rad*tx;
 		tyr = deg2rad*ty;
@@ -196,8 +196,8 @@ int main (int argc, char *argv[]){
 				i%NrPixels >= NrPixels - BorderToExclude)
 				continue;
 			// Convert to Y and Z
-			Y = i/NrPixels;
-			Z = i%NrPixels;
+			Y = (double) (i/NrPixels);
+			Z = (double) (i%NrPixels);
 			Yc = -(Y-ybc)*px;
 			Zc =  (Z-zbc)*px;
 			double ABC[3] = {0,Yc,Zc};
@@ -214,8 +214,6 @@ int main (int argc, char *argv[]){
 			YCInt = (int)floor((BigDetSize/2) - (-yCorr/px));
 			ZCInt = (int)floor(((zCorr/px + (BigDetSize/2))));
 			idx = (long long int)(YCInt + BigDetSize*ZCInt);
-			//printf("%d %d %lf %lf %lf %lf %lf %lf %lld\n",YCInt,ZCInt,(BigDetSize/2 - (-yCorr/px)),(zCorr/px + BigDetSize/2),Rcorr, Eta, yCorr,zCorr, idx);
-			//fflush(stdout);
 			SetBit(BigDetector,idx);
 			BigDetU[idx] = 1;
 		}
@@ -242,6 +240,8 @@ int main (int argc, char *argv[]){
 			}
 		}
 	}
+	
+	for (i=0;i<1000;i++) for (j=0;j<100;j++) BigDetU[i+BigDetSize*(500+j)] = 1500; // i will be col(y), j will be row(z)
 
 	char FN[MAX_LINE_LENGTH];
 	sprintf(FN,"BigDetectorMask.bin");
