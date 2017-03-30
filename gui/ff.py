@@ -333,7 +333,7 @@ def writeCalibrateParams(pfname,detNum,ringsToExclude):
 			f.write('RingsToExclude '+str(ring)+'\n')
 
 def writeParams():
-	pfname = os.getcwd() + 'GeneratedParameters.txt'
+	pfname = os.getcwd() + '/GeneratedParameters.txt'
 	f = open(pfname,'w')
 	f.write('NumDetectors '+str(nDetectors)+'\n')
 	f.write('RawFolder '+ folder+'\n')
