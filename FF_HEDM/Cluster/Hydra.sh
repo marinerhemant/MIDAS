@@ -24,7 +24,7 @@ then
   exit 1
 fi
 
-${PFDIR}/prepareFilesHydra.py $1
+python ${PFDIR}/prepareFilesHydra.py $1
 nDetectors=4
 for (( detnr=1; detnr<$nDetectors; detnr++ ))
 do
