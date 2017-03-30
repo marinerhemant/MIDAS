@@ -236,8 +236,6 @@ def readParams():
 			endDetNr = int(line.split()[1])
 		if 'Wedge' in line.split()[0]:
 			wedge = float(line.split()[1])
-		if 'BC' in line.split()[0]:
-			bcs.append([float(line.split()[1]),float(line.split()[2])])
 		if 'px' in line.split()[0]:
 			px = float(line.split()[1])
 		if 'Wavelength' in line.split()[0]:
@@ -249,9 +247,14 @@ def readParams():
 		if 'FirstFileNumber' in line.split()[0]:
 			firstFileNumber = int(line.split()[1])
 			fileNumber = firstFileNumber
+		if 'StartFileNrFirstLayer' in line.split()[0]:
+			firstFileNumber = int(line.split()[1])
+			fileNumber = firstFileNumber
 		if 'DarkStem' in line.split()[0]:
 			darkStem = line.split()[1]
 		if 'LatticeParameter' in line.split()[0]:
+			LatC = line
+		if 'LatticeConstant' in line.split()[0]:
 			LatC = line
 		if 'Lsd' in line.split()[0]:
 			lsdline = line
