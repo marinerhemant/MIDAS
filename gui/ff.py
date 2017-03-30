@@ -25,13 +25,13 @@ import math
 from subprocess import Popen, PIPE, STDOUT
 from multiprocessing.dummy import Pool
 
-def _quit():
-	root.quit()
-	root.destroy()
-
 # Helpers
 deg2rad = 0.0174532925199433
 rad2deg = 57.2957795130823
+
+def _quit():
+	root.quit()
+	root.destroy()
 
 def CalcEtaAngle(XYZ):
 	alpha = rad2deg*np.arccos(np.divide(XYZ[2,:],LA.norm(XYZ[1:,:],axis = 0)))
@@ -460,6 +460,27 @@ def askRingsToExclude():
 	buttonConfirmRingsExclude = Tk.Button(master=topCalibrate,text="Confirm",command=calibrateDetector)
 	buttonConfirmRingsExclude.grid(row=3)
 
+def paramfileselect():
+	global paramFN
+	global paramfilevar
+	paramFN = tkFileDialog.askopenfilename()
+	paramfilevar.set(paramFN)
+
+def readBigDet():
+	global mask
+	bigf = open(bigFN,'r')
+	mask = np.fromfile(bigf,dtype=np.uint16,count=bigdetsize*bigdetsize)
+	bigf.close()
+	mask = np.reshape(mask,(bigdetsize,bigdetsize))
+	#mask = np.transpose(mask)
+	mask = mask.astype(float)
+	mask = np.fliplr(np.flipud(mask))
+
+def makeBigDet():
+	cmdf = '~/opt/MIDAS/FF_HEDM/bin/MapMultipleDetectors '
+	os.system(cmdf+paramFN)
+	readBigDet()
+
 # Main function
 root = Tk.Tk()
 root.wm_title("FF display v0.1 Dt. 2017/03/29 hsharma@anl.gov")
@@ -484,12 +505,6 @@ paramfilevar.set(paramFN)
 e0 = Tk.Entry(master=root,textvariable=paramfilevar,width=50)
 e0.grid(row=figrowspan+1,column=1,sticky=Tk.E,padx=90)#pack(side=Tk.LEFT)
 
-def paramfileselect():
-	global paramFN
-	global paramfilevar
-	paramFN = tkFileDialog.askopenfilename()
-	paramfilevar.set(paramFN)
-
 buttonparam = Tk.Button(master=root,text="Select",command=paramfileselect)
 buttonparam.grid(row=figrowspan+1,column=1,sticky=Tk.W,padx=70)
 
@@ -499,21 +514,6 @@ buttonLoadParam.grid(row=figrowspan+1,column=2,sticky=Tk.W)
 var = Tk.IntVar()
 c = Tk.Checkbutton(master=root,text="Subtract Dark",variable=var)
 c.grid(row=figrowspan+1,column=2,sticky=Tk.W,padx=120)#pack(side=Tk.LEFT)
-
-def readBigDet():
-	global mask
-	bigf = open(bigFN,'r')
-	mask = np.fromfile(bigf,dtype=np.uint16,count=bigdetsize*bigdetsize)
-	bigf.close()
-	mask = np.reshape(mask,(bigdetsize,bigdetsize))
-	#mask = np.transpose(mask)
-	mask = mask.astype(float)
-	mask = np.fliplr(np.flipud(mask))
-
-def makeBigDet():
-	cmdf = '~/opt/MIDAS/FF_HEDM/bin/MapMultipleDetectors '
-	os.system(cmdf+paramFN)
-	readBigDet()
 
 mask = None
 buttonMakeBigDet = Tk.Button(master=root,text="MakeBigDetector",command=makeBigDet)
