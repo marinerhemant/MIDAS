@@ -202,7 +202,8 @@ def readParams():
 	global firstFileNumber, darkStem, darkNum, omegaStep, nFilesPerLayer
 	global omegaStart, NrPixels, threshold, RingsToShow, nDetectors
 	global RhoDs, LatC, sg, maxRad, border, ringslines, lsdline
-	global ty, tz, p0, p1, p2, fileNumber, dark, ringRads, ringNrs
+	global ty, tz, p0, p1, p2, fileNumber, dark, ringRads, ringNrs, lsdlocal
+	global bclocal, lsdlocalvar
 	paramContents = open(paramFN,'r').readlines()
 	lsd = []
 	bcs = []
@@ -295,6 +296,12 @@ def readParams():
 	hklinfo = hklfile.readlines()
 	ringRads = []
 	ringNrs = []
+	lsdlocal = lsd[0]
+	lsdlocalvar.set(str(lsdlocal))
+	bclocal[0] = bcs[0][0]
+	bclocal[1] = bcs[0][1]
+	bclocalvar1.set(str(bclocal[0]))
+	bclocalvar2.set(str(bclocal[1]))
 	for ringNr in RingsToShow:
 		for line in hklinfo:
 			if int(line.split()[4]) == ringNr:
@@ -515,6 +522,8 @@ toolbar.update()
 firstRowFrame = Tk.Frame(root)
 firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
 
+lsd = []
+lsdlocal = 1000000
 frameNr = 0
 fileNumber = 0
 paramFN = 'PS.txt'
@@ -525,7 +534,6 @@ paramfilevar = Tk.StringVar()
 paramfilevar.set(paramFN)
 e0 = Tk.Entry(master=firstRowFrame,textvariable=paramfilevar,width=40)
 e0.grid(row=1,column=3,sticky=Tk.W)#pack(side=Tk.LEFT)
-
 
 buttonLoadParam = Tk.Button(master=firstRowFrame,text="LoadParams",command=readParams)
 buttonLoadParam.grid(row=1,column=4,sticky=Tk.W)
@@ -578,9 +586,98 @@ cplotRings = Tk.Checkbutton(master=secondRowFrame,text='Plot Rings',variable=plo
 cplotRings.grid(row=1,column=9,sticky=Tk.E)
 
 button = Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20))
-button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W,padx=10)#pack(side=Tk.LEFT)
+button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W,padx=10)
 
 button2 = Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetica",20))
-button2.grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.E,padx=10)#pack(side=Tk.LEFT)
+button2.grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.E,padx=10)
+
+bframe = Tk.Frame(root)
+bframe.grid(row=figrowspan+1,column=3,rowspan=3,sticky=Tk.W)
+
+def plotRingsOffset():
+	global bclocal
+	global lines2
+	Etas = np.linspace(-180,180,num=360)
+	lines2 = []
+	for ringrad in ringRads:
+		Y = []
+		Z = []
+		for eta in Etas:
+			ringrad2 = ringrad * (lsdlocal / lsdorig)
+			tmp = YZ4mREta(ringrad2,eta)
+			Y.append(tmp[0]/px + bclocal[0])
+			Z.append(tmp[1]/px + bclocal[1])
+		lines2.append(b.plot(Y,Z))
+
+def loadbplot():
+	global bclocal
+	global lsdlocal
+	global lsdorig
+	global initplot2
+	global origdetnum
+	if not initplot2:
+		lims = [b.get_xlim(), b.get_ylim()]
+	frameNr = int(framenrvar.get())
+	threshold = float(thresholdvar.get())
+	upperthreshold = float(maxthresholdvar.get())
+	b.clear()
+	fileNumber = firstFileNumber + frameNr/nFramesPerFile
+	framesToSkip = frameNr % nFramesPerFile
+	bytesToSkip = 8192 + framesToSkip*(2*NrPixels*NrPixels)
+	detnr = int(detnumbvar.get())
+	if detnr != origdetnum or initplot2:
+		origdetnum = detnr
+		bclocal[0] = bcs[detnr-startDetNr][0]
+		bclocal[1] = bcs[detnr-startDetNr][1]
+	else:
+		bclocal[0] = float(bclocalvar1.get())
+		bclocal[1] = float(bclocalvar2.get())
+	print bclocal
+	[data, coords] = getData(detnr,bytesToSkip)
+	lsdorig = lsd[detnr-startDetNr]
+	lsdlocal = float(lsdlocalvar.get())
+	plotRingsOffset()
+	b.imshow(data,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
+	if initplot2:
+		initplot2 = 0
+	else:
+		b.set_xlim([lims[0][0],lims[0][1]])
+		b.set_ylim([lims[1][0],lims[1][1]])
+	numrows, numcols = data.shape
+	def format_coord(x, y):
+	    col = int(x+0.5)
+	    row = int(y+0.5)
+	    if col>=0 and col<numcols and row>=0 and row<numrows:
+	        z = data[row,col]
+	        return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x,y,z)
+	    else:
+	        return 'x=%1.4f, y=%1.4f'%(x,y)
+	b.format_coord = format_coord
+	b.title.set_text("Single Detector Image")
+	canvas.show()
+	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+
+initplot2 = 1
+origdetnum = 1
+bclocal = [0,0]
+Tk.Label(master=bframe,text='DetNum').grid(row=1,column=1,sticky=Tk.W)
+detnumbvar = Tk.StringVar()
+detnumbvar.set(str(1))
+Tk.Entry(master=bframe,textvariable=detnumbvar,width=2).grid(row=1,column=2,sticky=Tk.W)
+
+Tk.Label(master=bframe,text='Lsd').grid(row=2,column=1,sticky=Tk.W)
+lsdlocalvar = Tk.StringVar()
+lsdlocalvar.set(str(lsdlocal))
+Tk.Entry(master=bframe,textvariable=lsdlocalvar,width=9).grid(row=2,column=2,sticky=Tk.W)
+
+Tk.Label(master=bframe,text='BeamCenter').grid(row=3,column=1,sticky=Tk.W)
+bclocalvar1 = Tk.StringVar()
+bclocalvar1.set(str(bclocal[0]))
+Tk.Entry(master=bframe,textvariable=bclocalvar1,width=6).grid(row=3,column=2,sticky=Tk.W)
+bclocalvar2 = Tk.StringVar()
+bclocalvar2.set(str(bclocal[1]))
+Tk.Entry(master=bframe,textvariable=bclocalvar2,width=6).grid(row=3,column=3,sticky=Tk.W)
+
+Tk.Button(master=root,text='Load',command=loadbplot,font=('Helvetica',20)).grid(row=figrowspan+1,column=4,rowspan=3)
 
 Tk.mainloop()
