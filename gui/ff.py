@@ -180,6 +180,20 @@ def plot_updater():
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
+def incr_plotupdater():
+	global frameNr
+	global framenrvar
+	frameNr += 1
+	framenrvar.set(str(frameNr))
+	plot_updater()
+
+def decr_plotupdater():
+	global frameNr
+	global framenrvar
+	frameNr -= 1
+	framenrvar.set(str(frameNr))
+	plot_updater()
+
 def readParams():
 	global paramFN
 	paramFN = paramfilevar.get()
@@ -203,6 +217,8 @@ def readParams():
 	RhoDs = []
 	ringslines = []
 	for line in paramContents:
+		if line == '\n':
+			continue
 		if 'RingThresh' in line.split()[0]:
 			ringslines.append(line)
 			RingsToShow.append(int(line.split()[1]))
@@ -317,7 +333,7 @@ def writeCalibrateParams(pfname,detNum,ringsToExclude):
 			f.write('RingsToExclude '+str(ring)+'\n')
 
 def writeParams():
-	pfname = folder + 'GeneratedParameters.txt'
+	pfname = os.getcwd() + 'GeneratedParameters.txt'
 	f = open(pfname,'w')
 	f.write('NumDetectors '+str(nDetectors)+'\n')
 	f.write('RawFolder '+ folder+'\n')
@@ -496,64 +512,75 @@ toolbar_frame.grid(row=figrowspan+4,column=0,columnspan=5,sticky=Tk.W)
 toolbar = NavigationToolbar2TkAgg( canvas, toolbar_frame )
 toolbar.update()
 
+firstRowFrame = Tk.Frame(root)
+firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
+
 frameNr = 0
 fileNumber = 0
 paramFN = 'PS.txt'
-Tk.Label(master=root,text="ParamFile").grid(row=figrowspan+1,column=1,sticky=Tk.W)#pack(side=Tk.LEFT)
+Tk.Label(master=firstRowFrame,text="ParamFile").grid(row=1,column=1,sticky=Tk.W)#pack(side=Tk.LEFT)
+buttonparam = Tk.Button(master=firstRowFrame,text="Select",command=paramfileselect)
+buttonparam.grid(row=1,column=2,sticky=Tk.W)
 paramfilevar = Tk.StringVar()
 paramfilevar.set(paramFN)
-e0 = Tk.Entry(master=root,textvariable=paramfilevar,width=50)
-e0.grid(row=figrowspan+1,column=1,sticky=Tk.E,padx=90)#pack(side=Tk.LEFT)
+e0 = Tk.Entry(master=firstRowFrame,textvariable=paramfilevar,width=40)
+e0.grid(row=1,column=3,sticky=Tk.W)#pack(side=Tk.LEFT)
 
-buttonparam = Tk.Button(master=root,text="Select",command=paramfileselect)
-buttonparam.grid(row=figrowspan+1,column=1,sticky=Tk.W,padx=70)
 
-buttonLoadParam = Tk.Button(master=root,text="LoadParams",command=readParams)
-buttonLoadParam.grid(row=figrowspan+1,column=2,sticky=Tk.W)
+buttonLoadParam = Tk.Button(master=firstRowFrame,text="LoadParams",command=readParams)
+buttonLoadParam.grid(row=1,column=4,sticky=Tk.W)
 
 var = Tk.IntVar()
-c = Tk.Checkbutton(master=root,text="Subtract Dark",variable=var)
-c.grid(row=figrowspan+1,column=2,sticky=Tk.W,padx=120)#pack(side=Tk.LEFT)
+c = Tk.Checkbutton(master=firstRowFrame,text="Subtract Dark",variable=var)
+c.grid(row=1,column=5,sticky=Tk.W)#pack(side=Tk.LEFT)
 
 mask = None
-buttonMakeBigDet = Tk.Button(master=root,text="MakeBigDetector",command=makeBigDet)
-buttonMakeBigDet.grid(row=figrowspan+1,column=2,sticky=Tk.E)
+buttonMakeBigDet = Tk.Button(master=firstRowFrame,text="MakeBigDetector",command=makeBigDet)
+buttonMakeBigDet.grid(row=1,column=6,sticky=Tk.W)
 
 initplot = 1
 
-buttonCalibrate = Tk.Button(master=root,text="CalibrateDetector",command=askRingsToExclude)
-buttonCalibrate.grid(row=figrowspan+1,column=3,sticky=Tk.W)
+buttonCalibrate = Tk.Button(master=firstRowFrame,text="CalibrateDetector",command=askRingsToExclude)
+buttonCalibrate.grid(row=1,column=7,sticky=Tk.W)
 
-buttonCalibrate = Tk.Button(master=root,text="WriteParams",command=writeParams)
-buttonCalibrate.grid(row=figrowspan+1,column=3,sticky=Tk.W,padx=100)
+buttonCalibrate = Tk.Button(master=firstRowFrame,text="WriteParams",command=writeParams)
+buttonCalibrate.grid(row=1,column=8,sticky=Tk.W)
 
-Tk.Label(master=root,text='FrameNr').grid(row=figrowspan+2,column=1,sticky=Tk.W)
+secondRowFrame = Tk.Frame(root)
+secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
+
+Tk.Label(master=secondRowFrame,text='FrameNr').grid(row=1,column=1,sticky=Tk.W)
 framenrvar = Tk.StringVar()
 framenrvar.set(str(frameNr))
-eFrameNr = Tk.Entry(master=root,textvariable=framenrvar,width=5)
-eFrameNr.grid(row=figrowspan+2,column=1,sticky=Tk.W,padx=100)
+eFrameNr = Tk.Entry(master=secondRowFrame,textvariable=framenrvar,width=4)
+eFrameNr.grid(row=1,column=2,sticky=Tk.W)
 
-Tk.Label(master=root,text='MinThreshold').grid(row=figrowspan+2,column=1,sticky=Tk.E,padx=100)
+buttonIncr = Tk.Button(master=secondRowFrame,text='+',command=incr_plotupdater,font=("Helvetica",12))
+buttonIncr.grid(row=1,column=3,sticky=Tk.W)#pack(side=Tk.LEFT)
+buttonDecr = Tk.Button(master=secondRowFrame,text='-',command=decr_plotupdater,font=("Helvetica",12))
+buttonDecr.grid(row=1,column=4,sticky=Tk.W)#pack(side=Tk.LEFT)
+
+Tk.Label(master=secondRowFrame,text='MinThreshold').grid(row=1,column=5,sticky=Tk.W)
 thresholdvar = Tk.StringVar()
-threshold = 100
+threshold = 0
 thresholdvar.set(str(threshold))
-ethreshold = Tk.Entry(master=root,textvariable=thresholdvar,width=5)
-ethreshold.grid(row=figrowspan+2,column=1,sticky=Tk.E)
+ethreshold = Tk.Entry(master=secondRowFrame,textvariable=thresholdvar,width=5)
+ethreshold.grid(row=1,column=6,sticky=Tk.W)
 
-Tk.Label(master=root,text='MaxThreshold').grid(row=figrowspan+2,column=2,sticky=Tk.W)
+Tk.Label(master=secondRowFrame,text='MaxThreshold').grid(row=1,column=7,sticky=Tk.W)
 maxthresholdvar = Tk.StringVar()
-maxthresholdvar.set(str(12000))
-Tk.Entry(master=root,textvariable=maxthresholdvar,width=5).grid(row=figrowspan+2,column=2,sticky=Tk.W,padx=100)
+maxthresholdvar.set(str(2000))
+Tk.Entry(master=secondRowFrame,textvariable=maxthresholdvar,width=5).grid(row=1,column=8,sticky=Tk.W)
 
 lines = None
 plotRingsVar = Tk.IntVar()
-cplotRings = Tk.Checkbutton(master=root,text='Plot Rings',variable=plotRingsVar,command=clickRings)
-cplotRings.grid(row=figrowspan+2,column=2,sticky=Tk.E)
+cplotRings = Tk.Checkbutton(master=secondRowFrame,text='Plot Rings',variable=plotRingsVar,command=clickRings)
+cplotRings.grid(row=1,column=9,sticky=Tk.E)
 
 button = Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20))
 button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W,padx=10)#pack(side=Tk.LEFT)
 
 button2 = Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetica",20))
-button2.grid(row=figrowspan+1,column=5,rowspan=3,sticky=Tk.E,padx=10)#pack(side=Tk.LEFT)
+button2.grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.E,padx=10)#pack(side=Tk.LEFT)
 
 Tk.mainloop()
