@@ -73,7 +73,7 @@ do
    ParamFNStem=${flr}/Layer${LAYERNR}_Ring
    if [[ ${DOPEAKSEARCH} == 1 ]];
    then
-       OutFldr=${SeedFolder}/${FileStem}_Layer${LAYERNR}_Analysis_Time_${ide}
+       OutFldr=${SeedFolder}/${FileStem}_Layer${LAYERNR}
        mkdir -p ${OutFldr}
        cp hkls.csv ${OutFldr}
        cp ${TOP_PARAM_FILE} ${OutFldr}
@@ -121,9 +121,7 @@ do
        # Call python code to get folder name with the data, 
        # then run FitTiltBCLsdSample for each ring, 
        # then run MergeMultipleRings
-       FolderStem=${FileStem}_Layer${LAYERNR}_Analysis_Time_
-       TmpOutFldr=$( python ${PFDIR}/getFolder.py ${TOP_PARAM_FILE} ${LAYERNR} ${FolderStem})
-       OutFldr=${SeedFolder}/${TmpOutFldr}/
+       OutFldr=${SeedFolder}/${FileStem}_Layer${LAYERNR}
        cp hkls.csv ${OutFldr}
        cp ${TOP_PARAM_FILE} ${OutFldr}
        for RINGNR in $RingNrs

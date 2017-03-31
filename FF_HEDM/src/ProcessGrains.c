@@ -262,6 +262,12 @@ int main(int argc, char *argv[])
             sscanf(aline,"%s %lf", dummy, &Distance);
             continue;
 		}
+		str = "LsdMean ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &Distance);
+            continue;
+		}
 		str = "Wavelength ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
