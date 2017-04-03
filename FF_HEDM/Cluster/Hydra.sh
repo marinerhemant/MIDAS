@@ -45,4 +45,6 @@ do
 	do
 		${PFDIR}/InitialSetupHydra.sh $ParamsFile $LAYERNR $DETNR $outfolder
 	done
+	cd $outfolder
+	${PFDIR}/prepareFilesHydra.py $ParamsFile 1
 done
