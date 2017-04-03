@@ -37,7 +37,7 @@ for i in range(4):
 	LsdMean += float(lsd[i])/4
 
 f = open(psfn,'a')
-f.write('LsdMean '+ LsdMean+'\n')
+f.write('LsdMean '+str(LsdMean)+'\n')
 darkname = rawfolder + '/' + darkstem + str(darknum).zfill(padding) + '.ge'+str(detnr)
 f.write('Ext .ge'+str(detnr)+'\n')
 f.write('Dark '+darkname+'\n')
