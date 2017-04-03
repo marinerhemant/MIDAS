@@ -50,4 +50,5 @@ do
 	done
 	cd $outfolder
 	python ${PFDIR}/prepareFilesHydra.py $ParamsFile 1
+	cd ../
 done
