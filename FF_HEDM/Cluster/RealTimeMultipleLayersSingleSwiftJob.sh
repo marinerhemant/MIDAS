@@ -50,8 +50,7 @@ for (( LAYERNR=$STARTLAYERNR; LAYERNR<=$ENDLAYERNR; LAYERNR++ ))
 do
 	${PFDIR}/InitialSetup.sh ${ParamsFile} ${LAYERNR} ${DOPEAKSEARCH}
 done
-NLAYERS=$(( $ENDLAYERNR - $STARTLAYERNR + 1 ))
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
 	${PFDIR}/processLayers.swift -ringfile=${SeedFolder}/RingInfo.txt \
 	-startnr=${StartNr} -endnr=${EndNr} -SeedFolder=${SeedFolder} \
-	-DoPeakSearch=${DOPEAKSEARCH} -nLayers=${NLAYERS}
+	-DoPeakSearch=${DOPEAKSEARCH}

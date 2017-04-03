@@ -47,7 +47,6 @@ int endnr = toInt(arg("endnr","600"));
 string ringfile = arg("ringfile","RingInfo.txt");
 string seedfolder = arg("SeedFolder","/clhome/FolderNames.txt");
 int dopeaksearch = toInt(arg("DoPeakSearch","1"));
-int nLayers = toInt(arg("nLayers","1"));
 
 # End parameters ########################
 

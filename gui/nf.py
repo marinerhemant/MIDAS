@@ -40,7 +40,7 @@ def _quit():
 def getfilenames(startFrameNr,distanceNr):
 	medianfn = folder + '/' + fnstem + "_Median_Background_Distance_" + str(distanceNr) + ".bin"
 	fnr = startFrameNr + distanceNr*nrfilesperdistance
-	filefn = folder + '/' + fnstem + str(fnr).zfill(padding) + '.tif' # '_{:06d}'.format(fnr) + '.tif'
+	filefn = folder + '/' + fnstem + '_' + str(fnr).zfill(padding) + '.tif' # '_{:06d}'.format(fnr) + '.tif'
 	return [filefn, medianfn]
 
 def draw_plot(frameNr,distanceNr): # always the initial framenr and distance, will calculate the correct framenr automatically
@@ -209,8 +209,8 @@ def horline():
 	horvert = 1 # 1 for horizontal, 2 for vertical
 	clickpos = []
 	cid = canvas.mpl_connect('button_press_event',onclick)
-	lb1 = Tk.Label(master=root,text="Click two (almost) horizontal points")
-	lb1.grid(row=figrowspan+4,column=4,sticky=Tk.W)#pack(side=Tk.BOTTOM)
+	lb1 = Tk.Label(master=thirdRowFrame,text="Click two (almost) horizontal points")
+	lb1.grid(row=1,column=7,columnspan=3,sticky=Tk.W)#pack(side=Tk.BOTTOM)
 
 def vertline():
 	global cid
@@ -234,8 +234,8 @@ def vertline():
 	horvert = 2 # 1 for horizontal, 2 for vertical
 	clickpos = []
 	cid = canvas.mpl_connect('button_press_event',onclick)
-	lb1 = Tk.Label(master=root,text="Click two (almost) vertical points")
-	lb1.grid(row=figrowspan+4,column=4,sticky=Tk.W)#pack(side=Tk.BOTTOM)
+	lb1 = Tk.Label(master=thirdRowFrame,text="Click two (almost) vertical points")
+	lb1.grid(row=1,column=7,columnspan=3,sticky=Tk.W)#pack(side=Tk.BOTTOM)
 
 def top_destroyer():
 	global top2
@@ -263,8 +263,8 @@ def getpos(event):
 	global cid2
 	global button7
 	ix,iy = event.xdata,event.ydata
-	button7 = Tk.Button(master=root,text='Confirm Selection',command=confirmselectspot)
-	button7.grid(row=figrowspan+3,column=4,sticky=Tk.E)#pack(side=Tk.LEFT)
+	button7 = Tk.Button(master=thirdRowFrame,text='Confirm Selection',command=confirmselectspot)
+	button7.grid(row=1,column=7,sticky=Tk.E)#pack(side=Tk.LEFT)
 
 def loadnewdistance():
 	global topNewDistance
@@ -326,8 +326,8 @@ def closeselectspotshelp():
 	global button8
 	topSelectSpotsWindow.destroy()
 	cid2 = canvas.mpl_connect('button_press_event',getpos)
-	button8 = Tk.Button(master=root,text='Compute Distances',command=computedistances)
-	button8.grid(row=figrowspan+3,column=4,sticky=Tk.W)#pack(side=Tk.LEFT)
+	button8 = Tk.Button(master=thirdRowFrame,text='Compute Distances',command=computedistances)
+	button8.grid(row=1,column=8,sticky=Tk.W)#pack(side=Tk.LEFT)
 
 def selectspotsfcn():
 	global topSelectSpotsWindow

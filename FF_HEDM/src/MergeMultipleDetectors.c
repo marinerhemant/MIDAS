@@ -5,9 +5,9 @@
 
 //
 //
-// MergeMultipleRings.c
+// MergeMultipleDetectors.c
 //
-// Created by Hemant Sharma on 2014/07/28
+// Created by Hemant Sharma on 2016/04/01
 //
 //
 
@@ -91,10 +91,14 @@ int main (int argc, char *argv[])
 	clock_t start, end;
 	start = clock();
 	double diftotal;
-	topfolder = 
+	char *topfolder;
+	topfolder = argv[1];
+	char *ParamFN;
+	ParamFN = argv[2];
+	FILE *fileParam;
 	
 	end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
-	printf("Time elapsed:\%f s.\n",diftotal);
+	printf("Time elapsed: %f s.\n",diftotal);
 	return 0;
 }
