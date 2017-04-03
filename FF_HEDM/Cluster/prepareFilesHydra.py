@@ -8,7 +8,7 @@ import os
 from os.path import expanduser
 
 psfn = sys.argv[1]
-detnr = int(sys.argv[1])
+detnr = int(sys.argv[2])
 
 lsd = []
 bc = []

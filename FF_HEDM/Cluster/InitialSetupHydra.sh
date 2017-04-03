@@ -10,13 +10,10 @@ source ${HOME}/.MIDAS/paths
 paramfile=$1 # always relative path
 layernr=$2
 DETECTORNR=$3
-seedfolder=$( pwd ) # Call from the seed folder
+outfolder=$4
 startfilenrfirstlayer=$( awk '$1 ~ /^StartFileNrFirstLayer/ { print $2 } ' ${paramfile} )
 nrfilesperlayer=$( awk '$1 ~ /^NrFilesPerSweep/ { print $2 } ' ${paramfile} )
-filestem=$( awk '$1 ~ /^FileStem/ { print $2 } ' ${paramfile} )
 startfilenr=$((${startfilenrfirstlayer}+$((${nrfilesperlayer}*$((${layernr}-1))))))
-ide=$( date +%Y_%m_%d_%H_%M_%S )
-outfolder=${seedfolder}/${filestem}_Layer${layernr}_Analysis_Time_${ide}
 mkdir -p ${outfolder}
 cd ${outfolder}
 cp ${seedfolder}/${paramfile} ${outfolder}

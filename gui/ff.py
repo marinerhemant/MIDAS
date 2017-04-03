@@ -220,6 +220,8 @@ def readParams():
 	for line in paramContents:
 		if line == '\n':
 			continue
+		if line[0] == '#':
+			continue
 		if 'RingThresh' in line.split()[0]:
 			ringslines.append(line)
 			RingsToShow.append(int(line.split()[1]))

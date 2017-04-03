@@ -32,11 +32,15 @@ echo "Peaks:"
 nNODES=${NCPUS}
 export nNODES
 echo "MACHINE NAME is ${MACHINE_NAME}"
+filestem=$( awk '$1 ~ /^FileStem/ { print $2 } ' ${ParamsFile} )
+seedfolder=$( pwd ) # Call from the seed folder
 
 for (( LAYERNR=$STARTLAYERNR; LAYERNR<=$ENDLAYERNR; LAYERNR++ ))
 do
+	ide=$( date +%Y_%m_%d_%H_%M_%S )
+	outfolder=${seedfolder}/${filestem}_Layer${LAYERNR}_Analysis_Time_${ide}
 	for (( DETNR=1; DETNR<=4; DETNR++ ))
 	do
-		${PFDIR}/InitialSetupHydra.sh $ParamsFile $LAYERNR $DETNR
+		${PFDIR}/InitialSetupHydra.sh $ParamsFile $LAYERNR $DETNR $outfolder
 	done
 done
