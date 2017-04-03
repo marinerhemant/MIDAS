@@ -18,7 +18,6 @@ startfilenr=$((${startfilenrfirstlayer}+$((${nrfilesperlayer}*$((${layernr}-1)))
 mkdir -p ${outfolder}
 cd ${outfolder}
 cp ${seedfolder}/${paramfile} ${outfolder}
-echo "${outfolder}" >> ${seedfolder}/FolderNames.txt
 outfolder=$( echo ${outfolder}/Detector${DETECTORNR}/ )
 echo $outfolder
 mkdir -p ${outfolder}
@@ -41,6 +40,7 @@ i=0
 SNr=$( awk '$1 ~ /^StartNr/ { print $2 }' ${paramfile} )
 ENr=$( awk '$1 ~ /^EndNr/ { print $2 }' ${paramfile} )
 RingNrs=$( awk '$1 ~ /^RingThresh/ { print $2 }' ${paramfile} )
+echo "${outfolder}" >> ${seedfolder}/FolderNames.txt
 echo "${pfname}" >> ${seedfolder}/PFNames.txt
 for RINGNR in ${RingNrs}
 do
