@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash -eux
 
 #
 # Copyright (c) 2014, UChicago Argonne, LLC
