@@ -545,7 +545,7 @@ int main(int argc, char *argv[]){
     int fnr = 0;
     double RhoD, tx, ty, tz, p0, p1, p2;
     while (fgets(aline,1000,fileParam)!=NULL){
-		printf("%s\n",aline);
+		//printf("%s",aline);
 		fflush(stdout);
 		str = "tx ";
         LowNr = strncmp(aline,str,strlen(str));
