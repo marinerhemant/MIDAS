@@ -406,7 +406,7 @@ void Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **Useful
 		IMAX[i] = x[(8*i)+1];
 		RCens[i] = x[(8*i)+2];
 		EtaCens[i] = x[(8*i)+3];
-		printf("%lf %lf %lf %lf\n",RCens[i],EtaCens[i],x[8*i+7],x[8*i+8]);
+		printf("%lf %lf %lf %lf\n",RCens[i],EtaCens[i],x[(8*i)+6],x[8*i+8]);
 		if (x[(8*i)+5] > x[(8*i)+6]){
 			OtherInfo[2*i] = x[(8*i)+5];
 		}else{
