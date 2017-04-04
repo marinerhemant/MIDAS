@@ -427,7 +427,6 @@ int main(int argc, char *argv[]){
 				}
 			}
 			nSpots = nSpotsNew;
-			printf("%d %d %d\n",nSpots,nSpotsNew,FileNr);
 			memset(TempIDsCurrent,0,nOverlapsMaxPerImage*sizeof(*TempIDsCurrent));
 			memset(TempIDsNew,0,nOverlapsMaxPerImage*sizeof(*TempIDsNew));
 		}
