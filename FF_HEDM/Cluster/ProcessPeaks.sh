@@ -14,5 +14,7 @@ echo $flr
 echo $( pwd )
 echo "Ring Nr is $2"
 ${BINFOLDER}/MergeOverlappingPeaks $1 $2
+
 ${BINFOLDER}/CalcRadius $1 $2
+
 ${BINFOLDER}/FitTiltBCLsdSample $1
