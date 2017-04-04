@@ -10,4 +10,7 @@ paramfile=$1 # always full path
 CHART=/
 flr=${paramfile%$CHART*}
 cd $flr
-${BINFOLDER}/MergeMultipleRings $1
+echo $paramfile
+echo $flr
+echo $( pwd )
+${BINFOLDER}/MergeMultipleRings $paramfile

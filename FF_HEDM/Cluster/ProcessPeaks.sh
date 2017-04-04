@@ -5,11 +5,14 @@
 # See LICENSE file.
 #
 source ${HOME}/.MIDAS/paths
-echo $1
 paramfile=$1 # always relative path
 CHART=/
 flr=${paramfile%$CHART*}
 cd $flr
+echo $paramfile
+echo $flr
+echo $( pwd )
+echo "Ring Nr is $2"
 ${BINFOLDER}/MergeOverlappingPeaks $1 $2
 ${BINFOLDER}/CalcRadius $1 $2
 ${BINFOLDER}/FitTiltBCLsdSample $1

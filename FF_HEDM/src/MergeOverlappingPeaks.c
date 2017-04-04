@@ -214,6 +214,7 @@ int main(int argc, char *argv[]){
     FILE *fileParam;
     ParamFN = argv[1];
     int RingNr = atoi(argv[2]);
+    printf("Arguments: %s %s\n",argv[1],argv[2]);
     char aline[1000], *str, dummy[1000];
     fileParam = fopen(ParamFN,"r");
     int LowNr = 1;
