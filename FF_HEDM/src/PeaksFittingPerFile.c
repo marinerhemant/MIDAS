@@ -761,7 +761,7 @@ int main(int argc, char *argv[]){
             continue;
         }
 	}
-	printf("%f\n",Thresh);
+	printf("Threshold: %f\n",Thresh);
 	Width = Width/px;
 	int i,j,k;
     for (i=0;i<NrTransOpt;i++){
