@@ -48,7 +48,6 @@ string seedfolder = arg("SeedFolder","/clhome/FolderNames.txt");
 
 int rings[] = readData(ringfile);
 string folderNames[] = readData(strcat(seedfolder,"/FolderNames.txt"));
-string PFNames[] = readData(strcat(seedfolder,"/PFNames.txt"));
 
 iterate ix {
 	string foldername = folderNames[ix];
