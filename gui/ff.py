@@ -64,7 +64,7 @@ def getImage(fn,bytesToSkip):
 def getImageMax(fn):
 	print "Reading file: " + fn
 	f = open(fn,'rb')
-	f.seed(8192,os.SEEK_SET)
+	f.seek(8192,os.SEEK_SET)
 	dataMax = np.zeros(NrPixels*NrPixels)
 	for framenr in range(nFramesPerFile):
 		data = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
