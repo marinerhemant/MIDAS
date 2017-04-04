@@ -188,7 +188,10 @@ def plot_updater():
 	    row = int(y+0.5)
 	    if col>=0 and col<numcols and row>=0 and row<numrows:
 	        z = mask2[row,col]
-	        return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x,y,z)
+	        yD = y - bigdetsize/2
+	        zD = z - bigdetsize/2
+	        R = sqrt(yD*yD+zD*zD)
+	        return 'x=%1.4f, y=%1.4f, z=%1.4f, RingRad=%1.4f'%(x,y,z,R)
 	    else:
 	        return 'x=%1.4f, y=%1.4f'%(x,y)
 	a.format_coord = format_coord
