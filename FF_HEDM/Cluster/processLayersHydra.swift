@@ -39,6 +39,8 @@ app (file out) processgrains (string foldername, string pfname, file dummy[])
 
 int startnr = toInt(arg("startnr","1"));
 int endnr = toInt(arg("endnr","600"));
+int startlayernr = toInt(arg("startLayer","1"));
+int endlayernr = toInt(arg("endLayer","1"));
 string ringfile = arg("ringfile","RingInfo.txt");
 string seedfolder = arg("SeedFolder","/clhome/FolderNames.txt");
 
@@ -50,8 +52,9 @@ string PFNames[] = readData(strcat(seedfolder,"/PFNames.txt"));
 
 iterate ix {
 	string foldername = folderNames[ix];
+	int layernr = ix + startlayernr;
+	tracef("Layer %d\n",layernr);
 	foreach detector in [1:4]{
-		string paramfilenamefile = 
+		string paramfilenamefile = str(layernr);
 	}
-	string paramfilenamefile = strcat(
 }until (ix == length(foldernames));

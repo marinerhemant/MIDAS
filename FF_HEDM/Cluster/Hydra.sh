@@ -54,4 +54,5 @@ do
 done
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
 	${PFDIR}/processLayersHydra.swift -ringfile=${seedfolder}/RingInfo.txt \
-	-startnr=${StartNr} -endnr=${EndNr} -SeedFolder=${seedfolder}
+	-startnr=${StartNr} -endnr=${EndNr} -SeedFolder=${seedfolder} \
+	-startLayer=${STARTLAYERNR} -endLayer=${ENDLAYERNR}
