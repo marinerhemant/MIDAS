@@ -359,7 +359,7 @@ void Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **Useful
 		x[(8*i)+1] = MaximaValues[i]; // Imax
 		x[(8*i)+2] = CalcNorm2(MaximaPositions[i][0]-Ycen,MaximaPositions[i][1]-Zcen); //Radius
 		x[(8*i)+3] = CalcEtaAngle(MaximaPositions[i][0]-Ycen,MaximaPositions[i][1]-Zcen); // Eta
-		printf("%lf %lf\n",x[(8*i)+2],x[(8*i)+3]);
+		printf("%lf %lf %lf\n",Width,x[(8*i)+2],x[(8*i)+3]);
 		x[(8*i)+4] = 0.5; // Mu
 		x[(8*i)+5] = Width; //SigmaGR
 		x[(8*i)+6] = Width; //SigmaLR
