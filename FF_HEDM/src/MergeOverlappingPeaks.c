@@ -201,7 +201,6 @@ static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], 
 		SortedMatrix[counter2][9] = MyData[i].SigmaEta;
 		counter2++;
 	}
-	printf("%d %d %d\n",counter,counter2,FileNr);
 	free(MyData);
     return counter2;
 }
@@ -427,6 +426,7 @@ int main(int argc, char *argv[]){
 				}
 			}
 			nSpots = nSpotsNew;
+			printf("%d %d\n",nSpots,nSpotsNew,FileNr);
 			memset(TempIDsCurrent,0,nOverlapsMaxPerImage*sizeof(*TempIDsCurrent));
 			memset(TempIDsNew,0,nOverlapsMaxPerImage*sizeof(*TempIDsNew));
 		}
