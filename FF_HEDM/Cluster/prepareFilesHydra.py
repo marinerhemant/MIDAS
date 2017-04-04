@@ -38,7 +38,7 @@ for i in range(4):
 
 f = open(psfn,'a')
 f.write('LsdMean '+str(LsdMean)+'\n')
-darkname = rawfolder + '/' + darkstem + str(darknum).zfill(padding) + '.ge'+str(detnr)
+darkname = rawfolder + '/' + darkstem + '_' + str(darknum).zfill(padding) + '.ge'+str(detnr)
 f.write('Ext .ge'+str(detnr)+'\n')
 f.write('Dark '+darkname+'\n')
 f.write('Lsd '+lsd[detnr-1]+'\n')

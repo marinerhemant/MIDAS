@@ -37,13 +37,13 @@ echo "MACHINE NAME is ${MACHINE_NAME}"
 filestem=$( awk '$1 ~ /^FileStem/ { print $2 } ' ${ParamsFile} )
 seedfolder=$( pwd ) # Call from the seed folder
 rm -rf ${seedfolder}/FolderNames.txt
-rm -rf ${seedfolder}/PFNames.txt
 
 for (( LAYERNR=$STARTLAYERNR; LAYERNR<=$ENDLAYERNR; LAYERNR++ ))
 do
 	ide=$( date +%Y_%m_%d_%H_%M_%S )
 	outfolder=${seedfolder}/${filestem}_Layer${LAYERNR}_Analysis_Time_${ide}
 	echo "${outfolder}" >> ${seedfolder}/FolderNames.txt
+	rm -rf ${outfolder}/PFNames.txt
 	for (( DETNR=1; DETNR<=4; DETNR++ ))
 	do
 		${PFDIR}/InitialSetupHydra.sh $ParamsFile $LAYERNR $DETNR $outfolder
@@ -52,3 +52,6 @@ do
 	python ${PFDIR}/prepareFilesHydra.py $ParamsFile 1
 	cd ../
 done
+${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
+	${PFDIR}/processLayersHydra.swift -ringfile=${seedfolder}/RingInfo.txt \
+	-startnr=${StartNr} -endnr=${EndNr} -SeedFolder=${seedfolder}
