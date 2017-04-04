@@ -176,7 +176,7 @@ def plot_updater():
 		[mask2,(cols,rows)] = getData(startDetNr,bytesToSkip)
 	lines = None
 	doRings()
-	a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
+	a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(0,upperthreshold))
 	if initplot:
 		initplot = 0
 	else:
