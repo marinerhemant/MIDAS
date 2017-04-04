@@ -7,17 +7,17 @@ type file;
 
 app (file ep) runPeaks (string paramsfn, int fnr, int ringnr)
 {
-	peaks paramsfn fnr ringnr stderr=filename(ep);
+	peaks paramsfn fnr ringnr stdout=filename(ep);
 }
 
 app (file err) runProcessPeaks (string paramsf, int RNr, file DummyA[])
 {
-	processPeaks paramsf RNr stderr=filename(err);
+	processPeaks paramsf RNr stdout=filename(err);
 }
 
 app (file err) mergerings (string pfname, file dummy[])
 {
-	mergeRings pfname stderr=filename(err);
+	mergeRings pfname stdout=filename(err);
 }
 
 app (file err, file spotsfile) postpeaks (string foldername, string pfname, file dummy)
