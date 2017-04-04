@@ -374,6 +374,7 @@ int main(int argc, char *argv[]){
 			}
 			//Write all the spots not overlapping to the output file.
 			for (i=0;i<nSpots;i++){
+				printf("We were here!");
 				if (TempIDsCurrent[i] == 0){ // Spot was not overlapping.
 					fprintf(OutFile,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
 							CurrentIDs[i][1],(CurrentIDs[i][2]/CurrentIDs[i][1]),
