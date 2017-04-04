@@ -32,6 +32,11 @@ for line in paramContents:
 	if line.split()[0] == 'Padding':
 		padding = int(line.split()[1])
 
+print lsd
+print bc
+print ts
+print ps
+
 LsdMean = 0
 for i in range(4):
 	LsdMean += float(lsd[i])/4

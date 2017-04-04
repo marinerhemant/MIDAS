@@ -353,6 +353,7 @@ void Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **Useful
 	double MaxEtaWidth, MaxRWidth;
 	MaxRWidth = (RMax - RMin)/2 + 1;
 	MaxEtaWidth = (EtaMax - EtaMin)/2 + atand(2/(RMax+RMin));
+	printf("%lf %lf\n",MaxRWidth,MaxEtaWidth);
 	double Width = sqrt(NrPixelsThisRegion/nPeaks);
 	for (i=0;i<nPeaks;i++){
 		x[(8*i)+1] = MaximaValues[i]; // Imax
