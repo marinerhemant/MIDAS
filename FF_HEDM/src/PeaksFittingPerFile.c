@@ -355,6 +355,8 @@ void Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **Useful
 	MaxEtaWidth = (EtaMax - EtaMin)/2 + atand(2/(RMax+RMin));
 	printf("%lf %lf\n",MaxRWidth,MaxEtaWidth);
 	double Width = sqrt(NrPixelsThisRegion/nPeaks);
+	if (Width > MaxRWidth) Width = MaxRWidth;
+	double initSigmaEta;
 	for (i=0;i<nPeaks;i++){
 		x[(8*i)+1] = MaximaValues[i]; // Imax
 		x[(8*i)+2] = CalcNorm2(MaximaPositions[i][0]-Ycen,MaximaPositions[i][1]-Zcen); //Radius
@@ -363,8 +365,10 @@ void Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **Useful
 		x[(8*i)+4] = 0.5; // Mu
 		x[(8*i)+5] = Width; //SigmaGR
 		x[(8*i)+6] = Width; //SigmaLR
-		x[(8*i)+7] = atand(Width/x[(8*i)+2]); //SigmaGEta //0.5;
-		x[(8*i)+8] = atand(Width/x[(8*i)+2]); //SigmaLEta //0.5;
+		initSigmaEta = Width/x[(8*i)+2];
+		if (initSigmaEta > MaxEtaWidth) initSigmaEta = MaxEtaWidth;
+		x[(8*i)+7] = atand(initSigmaEta); //SigmaGEta //0.5;
+		x[(8*i)+8] = atand(initSigmaEta); //SigmaLEta //0.5;
 
 		double dEta = rad2deg*atan(1/x[(8*i)+2]);
 		xl[(8*i)+1] = MaximaValues[i]/2;
