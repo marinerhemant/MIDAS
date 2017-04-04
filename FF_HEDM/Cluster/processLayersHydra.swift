@@ -55,6 +55,6 @@ iterate ix {
 	int layernr = ix + startlayernr;
 	tracef("Layer %d\n",layernr);
 	foreach detector in [1:4]{
-		string paramfilenamefile = str(layernr);
+		string paramfilenamefile = toString(layernr);
 	}
 }until (ix == length(foldernames));
