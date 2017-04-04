@@ -63,16 +63,18 @@ iterate ix {
 			file simAerr[];
 			foreach i in [startnr:endnr] {
 				file simx<simple_mapper;location=strcat(foldername,"/Detector",detnr,"/output"),prefix=strcat(PreFix1,"_",i,"_"),suffix=".err">;
-				simx = runPeaks(parameterfilename,i,Ring);
+				#simx = runPeaks(parameterfilename,i,Ring);
 				if (i %% 100 == 0){
-					simAerr[i%/100] = simx;
+					#simAerr[i%/100] = simx;
 				}
 			}
-			simBerr[idx] = runProcessPeaks(parameterfilename,Ring,simAerr);
+			tracef("%d %d %d %s %d\n",layernr, detnr, Ring, parameterfilename,Ring);
+			#simBerr[idx] = runProcessPeaks(parameterfilename,Ring,simAerr);
 		}
 		string pfname = strcat(foldername,"/Detector",detnr,"/Layer",layernr,"_MultiRing_ps.txt");
 		file simCerr<simple_mapper;location=strcat(foldername,"/Detector",detnr,"/output"),prefix=strcat("MergeRings_",ix),suffix=".err">;
-		simCerr = mergerings(pfname, simBerr);
+		tracef("%d %d %s\n",layernr,detnr,pfname);
+		#simCerr = mergerings(pfname, simBerr);
 	}
 	# Now merge peaks from the detectors
 	
