@@ -869,6 +869,7 @@ int main(int argc, char *argv[]){
 	double Yc, Zc, n0=2, n1=4, n2=2;
 	double ABC[3], ABCPr[3], XYZ[3];
 	double Rad, Eta, RNorm, DistortFunc, EtaT;
+	int nrCoords = 0;
 	for (i=1;i<NrPixels;i++){
 		for (j=1;j<NrPixels;j++){
 			//Rt = sqrt((i-Ycen)*(i-Ycen)+(j-Zcen)*(j-Zcen)); 
@@ -888,10 +889,15 @@ int main(int argc, char *argv[]){
 			EtaT = 90 - Eta;
 			DistortFunc = (p0*(pow(RNorm,n0))*(cos(deg2rad*(2*EtaT)))) + (p1*(pow(RNorm,n1))*(cos(deg2rad*(4*EtaT)))) + (p2*(pow(RNorm,n2))) + 1;
 			Rt = Rad * DistortFunc / px;
-			if (Rt > Rmin && Rt < Rmax){GoodCoords[((i-1)*NrPixels)+(j-1)] = 1;}
-			else {GoodCoords[((i-1)*NrPixels)+(j-1)] = 0;}
+			if (Rt > Rmin && Rt < Rmax){
+				GoodCoords[((i-1)*NrPixels)+(j-1)] = 1;
+				nrCoords ++;
+			} else {
+				GoodCoords[((i-1)*NrPixels)+(j-1)] = 0;
+			}
 		}
 	}
+	printf("Number of coordinates: %d\n",nrCoords);
 	if (DoFullImage == 1){
 		for (i=0;i<NrPixels*NrPixels;i++) GoodCoords[i] = 1;
 	}
