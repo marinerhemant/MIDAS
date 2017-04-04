@@ -630,21 +630,21 @@ var = Tk.IntVar()
 c = Tk.Checkbutton(master=firstRowFrame,text="Subtract Dark",variable=var)
 c.grid(row=1,column=5,sticky=Tk.W)#pack(side=Tk.LEFT)
 
+getMaxVar = Tk.IntVar()
+c2 = Tk.Checkbutton(master=firstRowFrame,text="MaxOverFrames",variable=getMaxVar)
+c2.grid(row=1,column=6,sticky=Tk.W)#pack(side=Tk.LEFT)
+
 mask = None
 buttonMakeBigDet = Tk.Button(master=firstRowFrame,text="MakeBigDetector",command=makeBigDet)
-buttonMakeBigDet.grid(row=1,column=6,sticky=Tk.W)
+buttonMakeBigDet.grid(row=1,column=7,sticky=Tk.W)
 
 initplot = 1
 
 buttonCalibrate = Tk.Button(master=firstRowFrame,text="CalibrateDetector",command=askRingsToExclude)
-buttonCalibrate.grid(row=1,column=7,sticky=Tk.W)
-
-buttonCalibrate = Tk.Button(master=firstRowFrame,text="WriteParams",command=writeParams)
 buttonCalibrate.grid(row=1,column=8,sticky=Tk.W)
 
-getMaxVar = Tk.IntVar()
-c2 = Tk.Checkbutton(master=firstRowFrame,text="MaxOverFrames",variable=getMaxVar)
-c.grid(row=1,column=9,sticky=Tk.W)#pack(side=Tk.LEFT)
+buttonCalibrate = Tk.Button(master=firstRowFrame,text="WriteParams",command=writeParams)
+buttonCalibrate.grid(row=1,column=9,sticky=Tk.W)
 
 secondRowFrame = Tk.Frame(root)
 secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
