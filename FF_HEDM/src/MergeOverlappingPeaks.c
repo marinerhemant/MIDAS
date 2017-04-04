@@ -374,7 +374,6 @@ int main(int argc, char *argv[]){
 			}
 			//Write all the spots not overlapping to the output file.
 			for (i=0;i<nSpots;i++){
-				printf("Written to SpotsFile: %s\n",OutFileName);
 				if (TempIDsCurrent[i] == 0){ // Spot was not overlapping.
 					fprintf(OutFile,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
 							CurrentIDs[i][1],(CurrentIDs[i][2]/CurrentIDs[i][1]),
@@ -439,6 +438,7 @@ int main(int argc, char *argv[]){
 				CurrentIDs[i][13]);
 		SpotIDNr++;
 	}
+	printf("Total spots: %d\n",SpotIDNr-1);
 	FreeMemMatrix(NewIDs,nOverlapsMaxPerImage);
 	FreeMemMatrix(CurrentIDs,nOverlapsMaxPerImage);
 	FreeMemMatrix(TempIDs,nOverlapsMaxPerImage);
