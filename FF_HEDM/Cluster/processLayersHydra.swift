@@ -74,4 +74,6 @@ iterate ix {
 		file simCerr<simple_mapper;location=strcat(foldername,"/Detector",detnr,"/output"),prefix=strcat("MergeRings_",ix),suffix=".err">;
 		simCerr = mergerings(pfname, simBerr);
 	}
+	# Now merge peaks from the detectors
+	
 }until (ix == length(folderNames));

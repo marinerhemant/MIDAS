@@ -61,9 +61,27 @@ def getImage(fn,bytesToSkip):
 	data = data.astype(float)
 	return data
 
+def getImageMax(fn):
+	print "Reading file: " + fn
+	f = open(fn,'rb')
+	f.seed(8192,os.SEEK_SET)
+	dataMax = np.zeros(NrPixels*NrPixels)
+	for framenr in range(nFramesPerFile):
+		data = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
+		dataMax = np.maximum(dataMax,data)
+	f.close()
+	dataMax = np.reshape(datMax,(NrPixels,NrPixels))
+	dataMax = dataMax.astype(float)
+	return dataMax
+
 def getData(geNum,bytesToSkip):
 	fn = getfn(fileStem,fileNumber,geNum)
-	data = getImage(fn,bytesToSkip)
+	global getMax
+	getMax = getMaxVar.get()
+	if not getMax:
+		data = getImage(fn,bytesToSkip)
+	else:
+		data = getImageMax(fn)
 	doDark = var.get()
 	if doDark == 1:
 		if dark[geNum-startDetNr] is None:
@@ -73,8 +91,6 @@ def getData(geNum,bytesToSkip):
 		corrected = np.subtract(data,thisdark)
 	else:
 		corrected = data
-	#corrected = np.transpose(corrected)
-	#corrected = np.flipud(corrected)
 	corrected[corrected < threshold] = 0
 	nonzerocoords = np.nonzero(corrected)
 	return [corrected,nonzerocoords]
@@ -597,6 +613,7 @@ lsd = []
 lsdlocal = 1000000
 frameNr = 0
 fileNumber = 0
+getMax = 0
 paramFN = 'PS.txt'
 Tk.Label(master=firstRowFrame,text="ParamFile").grid(row=1,column=1,sticky=Tk.W)#pack(side=Tk.LEFT)
 buttonparam = Tk.Button(master=firstRowFrame,text="Select",command=paramfileselect)
@@ -624,6 +641,10 @@ buttonCalibrate.grid(row=1,column=7,sticky=Tk.W)
 
 buttonCalibrate = Tk.Button(master=firstRowFrame,text="WriteParams",command=writeParams)
 buttonCalibrate.grid(row=1,column=8,sticky=Tk.W)
+
+getMaxVar = Tk.IntVar()
+c2 = Tk.Checkbutton(master=firstRowFrame,text="MaxOverFrames",variable=getMaxVar)
+c.grid(row=1,column=9,sticky=Tk.W)#pack(side=Tk.LEFT)
 
 secondRowFrame = Tk.Frame(root)
 secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
