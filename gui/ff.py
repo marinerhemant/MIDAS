@@ -191,7 +191,7 @@ def plot_updater():
 	        xD = x - bigdetsize/2
 	        yD = y - bigdetsize/2
 	        R = sqrt(xD*xD+yD*yD)
-	        return 'x=%1.4f, y=%1.4f, z=%1.4f, RingRad=%1.4f'%(x,y,z,R)
+	        return 'x=%1.4f, y=%1.4f, Intensity=%1.4f, RingRad(pixels)=%1.4f'%(x,y,z,R)
 	    else:
 	        return 'x=%1.4f, y=%1.4f'%(x,y)
 	a.format_coord = format_coord
