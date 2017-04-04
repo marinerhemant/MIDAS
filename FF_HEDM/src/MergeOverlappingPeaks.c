@@ -430,6 +430,7 @@ int main(int argc, char *argv[]){
 			memset(TempIDsNew,0,nOverlapsMaxPerImage*sizeof(*TempIDsNew));
 		}
 	}
+	printf("Total number of spots found: %d\n",nSpots);
 	for (i=0;i<nSpots;i++){
 		fprintf(OutFile,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
 				CurrentIDs[i][1],(CurrentIDs[i][2]/CurrentIDs[i][1]),
