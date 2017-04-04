@@ -57,4 +57,4 @@ iterate ix {
 	foreach detector in [1:4]{
 		string paramfilenamefile = toString(layernr);
 	}
-}until (ix == length(foldernames));
+}until (ix == length(folderNames));
