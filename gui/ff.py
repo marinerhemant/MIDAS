@@ -70,7 +70,7 @@ def getImageMax(fn):
 		data = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
 		dataMax = np.maximum(dataMax,data)
 	f.close()
-	dataMax = np.reshape(datMax,(NrPixels,NrPixels))
+	dataMax = np.reshape(dataMax,(NrPixels,NrPixels))
 	dataMax = dataMax.astype(float)
 	return dataMax
 
