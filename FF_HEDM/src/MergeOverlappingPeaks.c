@@ -170,7 +170,6 @@ static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], 
 	else if (Padding == 9) {sprintf(InFile,"%s/%s_%09d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
     FILE *infileread;
     infileread = fopen(InFile,"r");
-    printf("%s\n",InFile);
     struct InputData *MyData;
     MyData = malloc(nOverlapsMaxPerImage*sizeof(*MyData));
     int counter = 0;
@@ -184,7 +183,6 @@ static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], 
 		counter++;
 	}
 	fclose(infileread);
-	printf("%d %d\n",counter,FileNr);
     qsort(MyData, counter, sizeof(struct InputData), cmpfunc);
     int i,j,counter2=0;
     for (i=0;i<counter;i++){
@@ -203,6 +201,7 @@ static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], 
 		SortedMatrix[counter2][9] = MyData[i].SigmaEta;
 		counter2++;
 	}
+	printf("%d %d %d\n",counter,counter2,FileNr);
 	free(MyData);
     return counter2;
 }
