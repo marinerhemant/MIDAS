@@ -308,7 +308,7 @@ def readParams():
 			p1.append(float(line.split()[8]))
 			p2.append(float(line.split()[9]))
 			RhoDs.append(float(line.split()[10]))
-	if folder[0] = '~':
+	if folder[0] == '~':
 		folder = os.path.expanduser(folder)
 		print folder
 	bigFN = 'BigDetectorMaskEdgeSize' + str(bigdetsize) + 'x' + str(bigdetsize) + 'Unsigned16Bit.bin'
