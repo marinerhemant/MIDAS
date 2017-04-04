@@ -1,4 +1,4 @@
-#!/bin/bash -eux
+#!/bin/bash -e
 
 #
 # Copyright (c) 2014, UChicago Argonne, LLC
@@ -13,7 +13,7 @@ echo $paramfile
 echo $flr
 echo $( pwd )
 echo "Ring Nr is $2"
-${BINFOLDER}/MergeOverlappingPeaks $1 $2
+valgrind --dsymutil=yes --track-origins=yes --leak-check=full -v ${BINFOLDER}/MergeOverlappingPeaks $1 $2
 
 ${BINFOLDER}/CalcRadius $1 $2
 
