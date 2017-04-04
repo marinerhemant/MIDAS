@@ -380,10 +380,10 @@ void Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **Useful
 		xu[(8*i)+2] = x[(8*i)+2] + 1;
 		xu[(8*i)+3] = x[(8*i)+3] + dEta;
 		xu[(8*i)+4] = 1;
-		xu[(8*i)+5] = MaxRWidth;
-		xu[(8*i)+6] = MaxRWidth;
-		xu[(8*i)+7] = MaxEtaWidth;
-		xu[(8*i)+8] = MaxEtaWidth;
+		xu[(8*i)+5] = 20;//MaxRWidth;
+		xu[(8*i)+6] = 20;//MaxRWidth;
+		xu[(8*i)+7] = 1;//MaxEtaWidth;
+		xu[(8*i)+8] = 1;//MaxEtaWidth;
 	}
 	struct func_data f_data;
 	f_data.NrPixels = NrPixelsThisRegion;
