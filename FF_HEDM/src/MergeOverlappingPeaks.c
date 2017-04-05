@@ -317,7 +317,8 @@ int main(int argc, char *argv[]){
 	}else{ // If there are multiple files:
 		for (FileNr=(StartNr+1);FileNr<=EndNr;FileNr++){
 			nSpotsNew = ReadSortFiles(OutFolderName,FileStem,FileNr,RingNr,Padding,NewIDs);
-			//printf("%d\n",FileNr);
+			printf("%d\n",FileNr);
+			fflush(stdout);
 			for (i=0;i<nSpots;i++){
 				minLen = 10000000;
 				IDFound = 0;
