@@ -69,17 +69,18 @@ iterate ix {
 			}
 		}
 	}
+	# Hack to get things to be 
 	file simBerr[]<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("ProcessPeaks_",ix,"_"),suffix=".err">;
-	foreach detnr in [1:4]{
-		string paramfilenamefile = strcat(foldername,"/Detector",detnr,"/ParamFileNames.txt");
-		string paramFileNames[] = readData(paramfilenamefile);
-		foreach Ring,idx in rings {
-			string parameterfilename = paramFileNames[idx];
-			simBerr[idx+(detnr*length(rings))] = runProcessPeaks(parameterfilename,Ring,simAerr);
+	foreach detnr2 in [1:4]{
+		string paramfilenamefile2 = strcat(foldername,"/Detector",detnr,"/ParamFileNames.txt");
+		string paramFileNames2[] = readData(paramfilenamefile2);
+		foreach Ring2,idx2 in rings {
+			string parameterfilename2 = paramFileNames2[idx2];
+			simBerr[idx2+(detnr2*length(rings2))] = runProcessPeaks(parameterfilename2,Ring2,simAerr);
 		}
-		string pfname = strcat(foldername,"/Detector",detnr,"/Layer",layernr,"_MultiRing_ps.txt");
-		file simCerr<simple_mapper;location=strcat(foldername,"/Detector",detnr,"/output"),prefix=strcat("MergeRings_",ix),suffix=".err">;
-		simCerr = mergerings(pfname, simBerr);
+		#~ string pfname = strcat(foldername,"/Detector",detnr,"/Layer",layernr,"_MultiRing_ps.txt");
+		#~ file simCerr<simple_mapper;location=strcat(foldername,"/Detector",detnr,"/output"),prefix=strcat("MergeRings_",ix),suffix=".err">;
+		#~ simCerr = mergerings(pfname, simBerr);
 	}
 	# Now merge peaks from the detectors
 	
