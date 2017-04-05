@@ -258,7 +258,7 @@ int main(int argc, char *argv[]){
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %d", dummy, &EndNr);
-            continue;printf
+            continue;
         }
 	}
 	sprintf(FileStem,"%s_%d",fs,LayerNr);
