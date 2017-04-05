@@ -71,6 +71,8 @@ iterate ix {
 	}
 	file simBerr[]<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("ProcessPeaks_",ix,"_"),suffix=".err">;
 	foreach detnr in [1:4]{
+		string paramfilenamefile = strcat(foldername,"/Detector",detnr,"/ParamFileNames.txt");
+		string paramFileNames[] = readData(paramfilenamefile);
 		foreach Ring,idx in rings {
 			simBerr[idx+(detnr*length(rings))] = runProcessPeaks(parameterfilename,Ring,simAerr);
 		}
