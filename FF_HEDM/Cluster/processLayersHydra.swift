@@ -81,7 +81,7 @@ iterate ix {
 			string parameterfilename2 = paramFileNames2[idx2];
 			simBerr[idx2+(detnr2*length(rings))] = runProcessPeaks(parameterfilename2,Ring2,simAerr);
 		}
-		string pfname = strcat(foldername,"/Detector",detnr,"/Layer",layernr,"_MultiRing_ps.txt");
+		string pfname = strcat(foldername,"/Detector",detnr2,"/Layer",layernr,"_MultiRing_ps.txt");
 		simCerr[detnr2] = mergerings(pfname, simBerr);
 	}
 	# Now merge peaks from the detectors
