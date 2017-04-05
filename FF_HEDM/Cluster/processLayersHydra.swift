@@ -76,7 +76,7 @@ iterate ix {
 		string paramFileNames2[] = readData(paramfilenamefile2);
 		foreach Ring2,idx2 in rings {
 			string parameterfilename2 = paramFileNames2[idx2];
-			simBerr[idx2+(detnr2*length(rings2))] = runProcessPeaks(parameterfilename2,Ring2,simAerr);
+			simBerr[idx2+(detnr2*length(rings))] = runProcessPeaks(parameterfilename2,Ring2,simAerr);
 		}
 		#~ string pfname = strcat(foldername,"/Detector",detnr,"/Layer",layernr,"_MultiRing_ps.txt");
 		#~ file simCerr<simple_mapper;location=strcat(foldername,"/Detector",detnr,"/output"),prefix=strcat("MergeRings_",ix),suffix=".err">;
