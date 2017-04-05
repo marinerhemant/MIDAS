@@ -820,7 +820,7 @@ int main(int argc, char *argv[]){
 	for (i=0;i<(NrPixels*NrPixels);i++){dark[i]=0;darkTemp[i]=0;}
 	pixelvalue *darkcontents;
 	darkcontents = malloc(NrPixels*NrPixels*sizeof(*darkcontents));
-	if (darkfile==NULL){printf("Could not read the dark file. Using no dark subtraction.");}
+	if (darkfile==NULL){printf("Could not read the dark file. Using no dark subtraction.\n");}
 	else{
 		fseek(darkfile,0L,SEEK_END);
 		sz = ftell(darkfile);
