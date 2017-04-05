@@ -65,7 +65,7 @@ iterate ix {
 				simx = runPeaks(parameterfilename,i,Ring);
 				if (i %% 100 == 0){
 					int simAidx = (detnr-1)*length(rings)*(endnr%/100) + idx*(endnr%/100) + (i%/100);
-					tracef("%d %d %d %d \n",detnr,idx,i,simAidx);
+					#~ tracef("%d %d %d %d \n",detnr,idx,i,simAidx);
 					simAerr[simAidx] = simx;
 				}
 			}
@@ -81,8 +81,10 @@ iterate ix {
 			string parameterfilename2 = paramFileNames2[idx2];
 			simBerr[idx2+(detnr2*length(rings))] = runProcessPeaks(parameterfilename2,Ring2,simAerr);
 		}
-		string pfname = strcat(foldername,"/Detector",detnr2,"/Layer",layernr,"_MultiRing_ps.txt");
-		simCerr[detnr2] = mergerings(pfname, simBerr);
+	}
+	foreach detnr3 in [1:4]{
+		string pfname = strcat(foldername,"/Detector",detnr3,"/Layer",layernr,"_MultiRing_ps.txt");
+		simCerr[detnr3] = mergerings(pfname, simBerr);
 	}
 	# Now merge peaks from the detectors
 	
