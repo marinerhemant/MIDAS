@@ -215,6 +215,7 @@ int main(int argc, char *argv[]){
     ParamFN = argv[1];
     int RingNr = atoi(argv[2]);
     printf("Arguments: %s %s\n",argv[1],argv[2]);
+    fflush(stdout);
     char aline[1000], *str, dummy[1000];
     fileParam = fopen(ParamFN,"r");
     int LowNr = 1;
@@ -257,7 +258,7 @@ int main(int argc, char *argv[]){
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %d", dummy, &EndNr);
-            continue;
+            continue;printf
         }
 	}
 	sprintf(FileStem,"%s_%d",fs,LayerNr);
@@ -272,6 +273,8 @@ int main(int argc, char *argv[]){
 					" IMax MinOme(degrees) MaxOme(degress) SigmaR SigmaEta\n";
     
     // Read first file
+    printf("Initial file reading, Arguments: %s %s\n",argv[1],argv[2]);
+    fflush(stdout);
     int FileNr = StartNr;
 	int nSpots,nSpotsNew;
 	double **NewIDs, **CurrentIDs, **TempIDs;
