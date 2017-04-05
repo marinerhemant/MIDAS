@@ -64,7 +64,8 @@ iterate ix {
 				file simx<simple_mapper;location=strcat(foldername,"/Detector",detnr,"/output"),prefix=strcat(PreFix1,"_",i,"_"),suffix=".err">;
 				simx = runPeaks(parameterfilename,i,Ring);
 				if (i %% 100 == 0){
-					simAerr[(i%/100)+(detnr-1)*idx*(endnr%/100)] = simx;
+					int simAidx = (detnr-1)*length(rings)*(endnr%/100) + idx*(endnr%/100) + (i%/100);
+					simAerr[simAidx] = simx;
 				}
 			}
 		}
