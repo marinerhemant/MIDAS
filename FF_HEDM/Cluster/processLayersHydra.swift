@@ -72,7 +72,7 @@ iterate ix {
 	# Hack to get things to be 
 	file simBerr[]<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("ProcessPeaks_",ix,"_"),suffix=".err">;
 	foreach detnr2 in [1:4]{
-		string paramfilenamefile2 = strcat(foldername,"/Detector",detnr,"/ParamFileNames.txt");
+		string paramfilenamefile2 = strcat(foldername,"/Detector",detnr2,"/ParamFileNames.txt");
 		string paramFileNames2[] = readData(paramfilenamefile2);
 		foreach Ring2,idx2 in rings {
 			string parameterfilename2 = paramFileNames2[idx2];
