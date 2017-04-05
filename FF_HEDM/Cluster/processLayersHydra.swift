@@ -74,6 +74,7 @@ iterate ix {
 		string paramfilenamefile = strcat(foldername,"/Detector",detnr,"/ParamFileNames.txt");
 		string paramFileNames[] = readData(paramfilenamefile);
 		foreach Ring,idx in rings {
+			string parameterfilename = paramFileNames[idx];
 			simBerr[idx+(detnr*length(rings))] = runProcessPeaks(parameterfilename,Ring,simAerr);
 		}
 		string pfname = strcat(foldername,"/Detector",detnr,"/Layer",layernr,"_MultiRing_ps.txt");
