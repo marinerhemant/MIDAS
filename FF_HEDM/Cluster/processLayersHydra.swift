@@ -65,7 +65,6 @@ iterate ix {
 				simx = runPeaks(parameterfilename,i,Ring);
 				if (i %% 100 == 0){
 					int simAidx = (detnr-1)*length(rings)*(endnr%/100) + idx*(endnr%/100) + (i%/100);
-					#~ tracef("%d %d %d %d \n",detnr,idx,i,simAidx);
 					simAerr[simAidx] = simx;
 				}
 			}

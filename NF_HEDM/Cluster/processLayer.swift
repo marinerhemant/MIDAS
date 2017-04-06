@@ -54,11 +54,12 @@ type BulkNames{
 
 string paramf = arg("FileData","/data/tomo1/NFTest/ParametersGoldApril14.txt");
 int NrDistances = toInt(arg("NrDistances","3"));
-int NrFilesPerLayer = toInt(arg("NrFilesPerDistance","180"));
+int NrFilesPerDistance = toInt(arg("NrFilesPerDistance","180"));
 int startnr = toInt(arg("StartNumber","1"));
 int endnr = toInt(arg("EndNumber","2000"));
 int DoPeakSearch = toInt(arg("DoPeakSearch","1"));
 int ffseed = toInt(arg("FFSeedOrientations","1"));
+int DoFullLayer = toInt(arg("DoFullLayer","1"));
 
 # End parameters #######################
 
@@ -89,7 +90,7 @@ if (DoPeakSearch == 1){
 		file simBout[]<simple_mapper;location=outfolder,prefix=prefix2,suffix=".out">;
 		file simBerr[]<simple_mapper;location=outfolder,prefix=prefix2,suffix=".err">;
 		(simAout,simAerr) = Medians(paramfile,distance,setupdone);
-		foreach FileNr in [0:(NrFilesPerdistance-1)]{
+		foreach FileNr in [0:(NrFilesPerDistance-1)]{
 			(simBout[FileNr],simBerr[FileNr]) = Images(paramfile, distance, FileNr,simAout);
 		}
 		string printoutdistance = strcat("distance done: ",distance);
@@ -103,23 +104,23 @@ if (DoPeakSearch == 1){
 	imagesdone = PlaceHolder2(prefix2);
 }
 
-## Now MMap Images
-string fn3 = strcat(outfolder, "mmapdone.txt");
-file mmapdone <single_file_mapper;file=fn3>;
-mmapdone = mmapcode(paramfile,imagesdone);
-
-## Now do FitOrientation
-file all[];
-foreach i in [startnr:endnr] {
-	file errfit<simple_mapper;location=outfolder,prefix=strcat("fitorient_",i),suffix=".err">;
-	file outfit<simple_mapper;location=outfolder,prefix=strcat("fitorient_",i),suffix=".out">;
-	(outfit,errfit) = runfitorientation(paramfile,i,mmapdone);
-	if (i %% 100 == 0){
-		all[i %/ 100] = outfit;
+if (DoFullLayer == 1){
+	## Now MMap Images
+	string fn3 = strcat(outfolder, "mmapdone.txt");
+	file mmapdone <single_file_mapper;file=fn3>;
+	mmapdone = mmapcode(paramfile,imagesdone);
+	## Now do FitOrientation
+	file all[];
+	foreach i in [startnr:endnr] {
+		file errfit<simple_mapper;location=outfolder,prefix=strcat("fitorient_",i),suffix=".err">;
+		file outfit<simple_mapper;location=outfolder,prefix=strcat("fitorient_",i),suffix=".out">;
+		(outfit,errfit) = runfitorientation(paramfile,i,mmapdone);
+		if (i %% 100 == 0){
+			all[i %/ 100] = outfit;
+		}
 	}
+	# Now parse mic file
+	string fn4 = strcat(outfolder, "parsedone.txt");
+	file parsedone <single_file_mapper;file=fn4>;
+	parsedone = parsemic(paramfile,direct,all);
 }
-
-# Now parse mic file
-string fn4 = strcat(outfolder, "parsedone.txt");
-file parsedone <single_file_mapper;file=fn4>;
-parsedone = parsemic(paramfile,direct,all);

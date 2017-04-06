@@ -40,4 +40,4 @@ echo "${TOP_PARAM_FILE} ${DataDirectory}" >> ${tmpfn}
 # Do Processing
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
 	-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
-	-DoPeakSearch=${ProcessImages} -FFSeedOrientations=${FFSeedOrientations}
+	-DoPeakSearch=${ProcessImages} -FFSeedOrientations=${FFSeedOrientations} -DoFullLayer=1
