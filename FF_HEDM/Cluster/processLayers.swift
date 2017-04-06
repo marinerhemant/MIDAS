@@ -70,7 +70,7 @@ if (dopeaksearch == 1) {
 				simx = runPeaks(parameterfilename,i,Ring);
 				if (i %% 100 == 0){
 					int simAidx = (i%/100) + idx*(endnr%/100);
-					simAerr[i%/100] = simx;
+					simAerr[simAidx] = simx;
 				}
 			}
 		}
