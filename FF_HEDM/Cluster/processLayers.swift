@@ -88,17 +88,17 @@ if (dopeaksearch == 1) {
 		(simDerr,simCatOut) = postpeaks(foldername,pfname,simCerr);
 		int spots[] = readData(simCatOut);
 		trace(spots);
-		file all[];
+		file allFile[];
 		foreach spotnr in spots {
 			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",spotnr),suffix=".err">;
 			simEerr = indexrefine(foldername,spotnr,simCatOut);
 			trace(spotnr);
 			if (spotnr %% 100 == 0){
-				all[spotnr %/ 100] = simEerr;
+				allFile[spotnr %/ 100] = simEerr;
 			}
 		}
 		file processgrainsout <single_file_mapper;file=strcat(foldername,"/output/processgrains.txt")>;
-		processgrainsout = processgrains(foldername,pfname,all);
+		processgrainsout = processgrains(foldername,pfname,allFile);
 	#}
 	} until (ix == length(folderNames));
 } else {
@@ -112,16 +112,16 @@ if (dopeaksearch == 1) {
 		file simCatOut<single_file_mapper;file=strcat(foldername,"SpotsToIndex.csv")>;
 		(simDerr,simCatOut) = postpeaks2(foldername,pfname);
 		int spots[] = readData(simCatOut);
-		file all[];
+		file allFile2[];
 		foreach i in spots {
 			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",i),suffix=".err">;
 			simEerr = indexrefine(foldername,i,simCatOut);
 			if (i %% 100 == 0){
-				all[i %/ 100] = simEerr;
+				allFile2[i %/ 100] = simEerr;
 			}
 		}
 		file processgrainsout <single_file_mapper;file=strcat(foldername,"/output/processgrains.txt")>;
-		processgrainsout = processgrains(foldername,pfname,all);
+		processgrainsout = processgrains(foldername,pfname,allFile2);
 	#}
 	} until (ix == length(folderNames));
 }
