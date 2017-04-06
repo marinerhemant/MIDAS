@@ -87,6 +87,7 @@ if (dopeaksearch == 1) {
 		file simCatOut<single_file_mapper;file=strcat(foldername,"SpotsToIndex.csv")>;
 		(simDerr,simCatOut) = postpeaks(foldername,pfname,simCerr);
 		int spots[] = readData(simCatOut);
+		trace(spots);
 		file all[];
 		foreach i in spots {
 			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",i),suffix=".err">;
