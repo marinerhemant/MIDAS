@@ -89,11 +89,12 @@ if (dopeaksearch == 1) {
 		int spots[] = readData(simCatOut);
 		trace(spots);
 		file all[];
-		foreach i in spots {
-			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",i),suffix=".err">;
-			simEerr = indexrefine(foldername,i,simCatOut);
-			if (i %% 100 == 0){
-				all[i %/ 100] = simEerr;
+		foreach spotnr in spots {
+			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",spotnr),suffix=".err">;
+			simEerr = indexrefine(foldername,spotnr,simCatOut);
+			trace(spotnr);
+			if (spotnr %% 100 == 0){
+				all[spotnr %/ 100] = simEerr;
 			}
 		}
 		file processgrainsout <single_file_mapper;file=strcat(foldername,"/output/processgrains.txt")>;
