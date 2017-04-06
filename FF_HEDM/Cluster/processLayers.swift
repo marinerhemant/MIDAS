@@ -57,24 +57,26 @@ string PFNames[] = readData(strcat(seedfolder,"/PFNames.txt"));
 if (dopeaksearch == 1) {
 	###### Change to iterate instead of foreach
 	iterate ix {
-	#foreach foldername,ix in folderNames { 
 		string foldername = folderNames[ix];
-		# equivalent to layernr
 		string paramfilenamefile = strcat(foldername,"/ParamFileNames.txt");
 		string paramFileNames[] = readData(paramfilenamefile);
 		file simBerr[]<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("ProcessPeaks_",ix,"_"),suffix=".err">;
+		file simAerr[];
 		foreach Ring,idx in rings {
 			string parameterfilename = paramFileNames[idx];
 			string PreFix1 = strcat("PeaksPerFile_",Ring);
-			file simAerr[];
 			foreach i in [startnr:endnr] {
 				file simx<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat(PreFix1,"_",i,"_"),suffix=".err">;
 				simx = runPeaks(parameterfilename,i,Ring);
 				if (i %% 100 == 0){
+					int simAidx = (i%/100) + idx*(endnr%/100);
 					simAerr[i%/100] = simx;
 				}
 			}
-			simBerr[idx] = runProcessPeaks(parameterfilename,Ring,simAerr);
+		}
+		foreach Ring2,idx2 in rings {
+			string parameterfilename = paramFileNames[idx];
+			simBerr[idx2] = runProcessPeaks(parameterfilename,Ring2,simAerr);
 		}
 		# take the output of this, run mergemultiple rings for each layer
 		string pfname = PFNames[ix];
