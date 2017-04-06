@@ -75,7 +75,7 @@ if (dopeaksearch == 1) {
 			}
 		}
 		foreach Ring2,idx2 in rings {
-			string parameterfilename = paramFileNames[idx];
+			string parameterfilename = paramFileNames[idx2];
 			simBerr[idx2] = runProcessPeaks(parameterfilename,Ring2,simAerr);
 		}
 		# take the output of this, run mergemultiple rings for each layer
