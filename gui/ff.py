@@ -536,6 +536,7 @@ def plotRingsOffset():
 	global lines2
 	Etas = np.linspace(-180,180,num=360)
 	lines2 = []
+	colornr = 0
 	for ringrad in ringRads:
 		Y = []
 		Z = []
@@ -544,7 +545,8 @@ def plotRingsOffset():
 			tmp = YZ4mREta(ringrad2,eta)
 			Y.append(tmp[0]/px + bclocal[0])
 			Z.append(tmp[1]/px + bclocal[1])
-		lines2.append(b.plot(Y,Z))
+		lines2.append(b.plot(Y,Z,color=colors[colornr]))
+		colornr+= 1
 
 def loadbplot():
 	global bclocal
@@ -614,6 +616,8 @@ toolbar_frame = Tk.Frame(root)
 toolbar_frame.grid(row=figrowspan+4,column=0,columnspan=5,sticky=Tk.W)
 toolbar = NavigationToolbar2TkAgg( canvas, toolbar_frame )
 toolbar.update()
+
+colors = ['r','g','b','w','y','o','c','r','g','b','w','y','o','c','r','g','b','w','y','o','c','r','g','b','w','y','o','c','r','g','b','w','y','o','c','r','g','b','w','y','o','c']
 
 firstRowFrame = Tk.Frame(root)
 firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
