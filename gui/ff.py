@@ -617,7 +617,7 @@ toolbar_frame.grid(row=figrowspan+4,column=0,columnspan=5,sticky=Tk.W)
 toolbar = NavigationToolbar2TkAgg( canvas, toolbar_frame )
 toolbar.update()
 
-colors = ['r','g','b','w','y','o','c','r','g','b','w','y','o','c','r','g','b','w','y','o','c','r','g','b','w','y','o','c','r','g','b','w','y','o','c','r','g','b','w','y','o','c']
+colors = ['r','g','b','w','y','c','r','g','b','w','y','c','r','g','b','w','y','c','r','g','b','w','y','c','r','g','b','w','y','c','r','g','b','w','y','c','r','g','b','w','y','c','r','g','b','w','y','c','r','g','b','w','y','c','r','g','b','w','y','c','r','g','b','w','y','c','r','g','b','w','y','c']
 
 firstRowFrame = Tk.Frame(root)
 firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
