@@ -357,6 +357,7 @@ def writeCalibrateParams(pfname,detNum,ringsToExclude):
 	f.write('LatticeParameter 5.411651 5.411651 5.411651 90 90 90\nSpaceGroup 225\n')
 	f.write('NrPixels '+str(NrPixels)+'\n')
 	f.write('Wavelength '+str(wl)+'\n')
+	print lsd
 	f.write('Lsd '+str(lsd[detNum-startDetNr])+'\n')
 	f.write('RhoD '+ str(RhoDs[detNum-startDetNr])+'\n')
 	f.write('StartNr ' + str(firstFileNumber)+'\n')
