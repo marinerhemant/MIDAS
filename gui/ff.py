@@ -224,7 +224,7 @@ def readParams():
 	global omegaStart, NrPixels, threshold, RingsToShow, nDetectors
 	global RhoDs, LatC, sg, maxRad, border, ringslines, lsdline
 	global ty, tz, p0, p1, p2, fileNumber, dark, ringRads, ringNrs, lsdlocal
-	global bclocal, lsdlocalvar
+	global bclocal, lsdlocalvar, WidthTTh
 	paramContents = open(paramFN,'r').readlines()
 	lsd = []
 	bcs = []
@@ -304,6 +304,8 @@ def readParams():
 			lsd.append(float(line.split()[1]))
 		if 'tx' == line.split()[0]:
 			tx.append(float(line.split()[1]))
+		if 'Width' == line.split()[0]:
+			WidthTTh = line.split()[1])
 		if 'DetParams' == line.split()[0]:
 			lsd.append(float(line.split()[1]))
 			bcs.append([float(line.split()[2]),float(line.split()[3])])
@@ -354,7 +356,7 @@ def writeCalibrateParams(pfname,detNum,ringsToExclude):
 	f.write('ImTransOpt 0\n')
 	f.write('BC '+str(bcs[detNum-startDetNr][0])+' '+str(bcs[detNum-startDetNr][1])+'\n')
 	f.write('px '+str(px)+'\n')
-	f.write('Width 1500\n')
+	f.write('Width '+WidthTTh+'\n')
 	f.write('LatticeParameter 5.411651 5.411651 5.411651 90 90 90\nSpaceGroup 225\n')
 	f.write('NrPixels '+str(NrPixels)+'\n')
 	f.write('Wavelength '+str(wl)+'\n')
@@ -363,8 +365,9 @@ def writeCalibrateParams(pfname,detNum,ringsToExclude):
 	f.write('RhoD '+ str(RhoDs[detNum-startDetNr])+'\n')
 	f.write('StartNr ' + str(firstFileNumber)+'\n')
 	f.write('EndNr ' + str(firstFileNumber+nFilesPerLayer-1)+'\n')
-	f.write('tolTilts 4\ntolBC 10\ntolLsd 5000\ntolP 1E-3\np0 0\np1 0\np2 0\nEtaBinSize 5\n')
-	f.write('ty 0\ntz 0\nWedge 0\n')
+	f.write('tolTilts 4\ntolBC 10\ntolLsd 15000\ntolP 1E-3\n')
+	f.write('p0 '+p0[detNum-startDetNr]+'\np1 '+p1[detNum-startDetNr]+'\np2 '+p2[detNum-startDetNr]+'\nEtaBinSize 5\n')
+	f.write('ty '+ty[detNum-startDetNr]+'\ntz '+tz[detNum-startDetNr]+'\nWedge 0\n')
 	f.write('tx '+str(tx[detNum-startDetNr])+'\n')
 	if len(ringsToExclude) > 0:
 		for ring in ringsToExclude:
