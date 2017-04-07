@@ -436,7 +436,7 @@ def parseOutputs(outputs):
 		output = outputs[i]
 		fileWrite = open('DetectorCalibrationOutputDetNr'+str(i)+'.txt','w')
 		for line in output:
-			fileWrite.write(line)
+			fileWrite.write(line+'\n')
 			if 'LsdFit' in line:
 				lsdtemp += float(line.split('\t')[-1])/nFilesPerLayer
 			if 'YBCFit' in line:
@@ -457,6 +457,8 @@ def parseOutputs(outputs):
 				meanstrtemp += float(line.split('\t')[-1])/nFilesPerLayer
 			if 'StdStrain' in line:
 				stdstrtemp += float(line.split('\t')[-1])/nFilesPerLayer
+		fileWrite.close()
+		print 
 		lsd[i] = lsdtemp
 		bcs[i][0] = ybctemp
 		bcs[i][1] = zbctemp
@@ -553,7 +555,6 @@ def plotRingsOffset():
 			Y.append(tmp[0]/px + bclocal[0])
 			Z.append(tmp[1]/px + bclocal[1])
 		lines2.append(b.plot(Y,Z,color=colors[colornr]))
-		print [ringrad, colornr]
 		colornr+= 1
 
 def loadbplot():
