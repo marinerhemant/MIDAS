@@ -108,6 +108,7 @@ def plotRings():
 	global lines
 	Etas = np.linspace(-180,180,num=360)
 	lines = []
+	colornr = 0
 	for ringrad in ringRads:
 		Y = []
 		Z = []
@@ -115,7 +116,8 @@ def plotRings():
 			tmp = YZ4mREta(ringrad,eta)
 			Y.append(tmp[0]/px + bigdetsize/2)
 			Z.append(tmp[1]/px + bigdetsize/2)
-		lines.append(a.plot(Y,Z))
+		lines.append(a.plot(Y,Z,color=colors[colornr]))
+		colornr+= 1
 
 def doRings():
 	global lines
