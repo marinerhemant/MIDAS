@@ -55,7 +55,6 @@ string folderNames[] = readData(strcat(seedfolder,"/FolderNames.txt"));
 string PFNames[] = readData(strcat(seedfolder,"/PFNames.txt"));
 
 if (dopeaksearch == 1) {
-	###### Change to iterate instead of foreach
 	iterate ix {
 		string foldername = folderNames[ix];
 		string paramfilenamefile = strcat(foldername,"/ParamFileNames.txt");
@@ -78,11 +77,9 @@ if (dopeaksearch == 1) {
 			string parameterfilename = paramFileNames[idx2];
 			simBerr[idx2] = runProcessPeaks(parameterfilename,Ring2,simAerr);
 		}
-		# take the output of this, run mergemultiple rings for each layer
 		string pfname = PFNames[ix];
 		file simCerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("MergeRings_",ix),suffix=".err">;
 		simCerr = mergerings(pfname, simBerr);
-		# take the output, run shmoperators
 		file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
 		file simCatOut<single_file_mapper;file=strcat(foldername,"SpotsToIndex.csv")>;
 		(simDerr,simCatOut) = postpeaks(foldername,pfname,simCerr);
@@ -92,22 +89,17 @@ if (dopeaksearch == 1) {
 		foreach spotnr in spots {
 			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",spotnr),suffix=".err">;
 			simEerr = indexrefine(foldername,spotnr,simCatOut);
-			trace(spotnr);
 			if (spotnr %% 100 == 0){
 				allFile[spotnr %/ 100] = simEerr;
 			}
 		}
 		file processgrainsout <single_file_mapper;file=strcat(foldername,"/output/processgrains.txt")>;
 		processgrainsout = processgrains(foldername,pfname,allFile);
-	#}
 	} until (ix == length(folderNames));
 } else {
-	###### Change to iterate instead of foreach
 	iterate ix {
-	#foreach foldername,ix in folderNames { 
 		string foldername = folderNames[ix];
 		string pfname = PFNames[ix];
-		# equivalent to layernr
 		file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
 		file simCatOut<single_file_mapper;file=strcat(foldername,"SpotsToIndex.csv")>;
 		(simDerr,simCatOut) = postpeaks2(foldername,pfname);
@@ -122,6 +114,5 @@ if (dopeaksearch == 1) {
 		}
 		file processgrainsout <single_file_mapper;file=strcat(foldername,"/output/processgrains.txt")>;
 		processgrainsout = processgrains(foldername,pfname,allFile2);
-	#}
 	} until (ix == length(folderNames));
 }
