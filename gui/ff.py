@@ -404,6 +404,7 @@ def writeParams():
 	topWrite = Tk.Toplevel()
 	Tk.Label(topWrite,text='File written to '+pfname).grid(row=1)
 	Tk.Button(master=topWrite,text="Close",command=topWrite.destroy).grid(row=2)
+	print lsd
 
 def redoCalibration():
 	global topCalibrate
