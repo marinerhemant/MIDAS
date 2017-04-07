@@ -305,7 +305,7 @@ def readParams():
 		if 'tx' == line.split()[0]:
 			tx.append(float(line.split()[1]))
 		if 'Width' == line.split()[0]:
-			WidthTTh = line.split()[1])
+			WidthTTh = line.split()[1]
 		if 'DetParams' == line.split()[0]:
 			lsd.append(float(line.split()[1]))
 			bcs.append([float(line.split()[2]),float(line.split()[3])])
