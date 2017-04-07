@@ -243,67 +243,67 @@ def readParams():
 			continue
 		if line[0] == '#':
 			continue
-		if 'RingThresh' in line.split()[0]:
+		if 'RingThresh' == line.split()[0]:
 			ringslines.append(line)
 			RingsToShow.append(int(line.split()[1]))
 			threshold = max(threshold,float(line.split()[2]))
-		if 'RawFolder' in line.split()[0]:
+		if 'RawFolder' == line.split()[0]:
 			folder = line.split()[1]
-		if 'FileStem' in line.split()[0]:
+		if 'FileStem' == line.split()[0]:
 			fileStem = line.split()[1]
-		if 'Padding' in line.split()[0]:
+		if 'Padding' == line.split()[0]:
 			padding = int(line.split()[1])
-		if 'StartDetNr' in line.split()[0]:
+		if 'StartDetNr' == line.split()[0]:
 			startDetNr = int(line.split()[1])
-		if 'EndDetNr' in line.split()[0]:
+		if 'EndDetNr' == line.split()[0]:
 			endDetNr = int(line.split()[1])
-		if 'Wedge' in line.split()[0]:
+		if 'Wedge' == line.split()[0]:
 			wedge = float(line.split()[1])
-		if 'px' in line.split()[0]:
+		if 'px' == line.split()[0]:
 			px = float(line.split()[1])
-		if 'Wavelength' in line.split()[0]:
+		if 'Wavelength' == line.split()[0]:
 			wl = float(line.split()[1])
-		if 'BigDetSize' in line.split()[0]:
+		if 'BigDetSize' == line.split()[0]:
 			bigdetsize = int(line.split()[1])
-		if 'nFramesPerFile' in line.split()[0]:
+		if 'nFramesPerFile' == line.split()[0]:
 			nFramesPerFile = int(line.split()[1])
-		if 'FirstFileNumber' in line.split()[0]:
+		if 'FirstFileNumber' == line.split()[0]:
 			firstFileNumber = int(line.split()[1])
 			fileNumber = firstFileNumber
-		if 'StartFileNrFirstLayer' in line.split()[0]:
+		if 'StartFileNrFirstLayer' == line.split()[0]:
 			firstFileNumber = int(line.split()[1])
 			fileNumber = firstFileNumber
-		if 'DarkStem' in line.split()[0]:
+		if 'DarkStem' == line.split()[0]:
 			darkStem = line.split()[1]
-		if 'LatticeParameter' in line.split()[0]:
+		if 'LatticeParameter' == line.split()[0]:
 			LatC = line
-		if 'LatticeConstant' in line.split()[0]:
+		if 'LatticeConstant' == line.split()[0]:
 			LatC = line
-		if 'Lsd' in line.split()[0]:
+		if 'Lsd' == line.split()[0]:
 			lsdline = line
-		if 'MaxRingRad' in line.split()[0]:
+		if 'MaxRingRad' == line.split()[0]:
 			maxRad = line
-		if 'BorderToExclude' in line.split()[0]:
+		if 'BorderToExclude' == line.split()[0]:
 			border = line
-		if 'DarkNum' in line.split()[0]:
+		if 'DarkNum' == line.split()[0]:
 			darkNum = int(line.split()[1])
-		if 'SpaceGroup' in line.split()[0]:
+		if 'SpaceGroup' == line.split()[0]:
 			sg = int(line.split()[1])
-		if 'OmegaStep' in line.split()[0]:
+		if 'OmegaStep' == line.split()[0]:
 			omegaStep = float(line.split()[1])
-		if 'OmegaFirstFile' in line.split()[0]:
+		if 'OmegaFirstFile' == line.split()[0]:
 			omegaStart = float(line.split()[1])
-		if 'NrFilesPerSweep' in line.split()[0]:
+		if 'NrFilesPerSweep' == line.split()[0]:
 			nFilesPerLayer = int(line.split()[1])
-		if 'NrPixels' in line.split()[0]:
+		if 'NrPixels' == line.split()[0]:
 			NrPixels = int(line.split()[1])
-		if 'NumDetectors' in line.split()[0]:
+		if 'NumDetectors' == line.split()[0]:
 			nDetectors = int(line.split()[1])
-		if 'Lsd' in line.split()[0]:
+		if 'Lsd' == line.split()[0]:
 			lsd.append(float(line.split()[1]))
-		if 'tx' in line.split()[0]:
+		if 'tx' == line.split()[0]:
 			tx.append(float(line.split()[1]))
-		if 'DetParams' in line.split()[0]:
+		if 'DetParams' == line.split()[0]:
 			lsd.append(float(line.split()[1]))
 			bcs.append([float(line.split()[2]),float(line.split()[3])])
 			tx.append(float(line.split()[4]))
@@ -404,7 +404,6 @@ def writeParams():
 	topWrite = Tk.Toplevel()
 	Tk.Label(topWrite,text='File written to '+pfname).grid(row=1)
 	Tk.Button(master=topWrite,text="Close",command=topWrite.destroy).grid(row=2)
-	print lsd
 
 def redoCalibration():
 	global topCalibrate
