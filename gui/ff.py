@@ -224,7 +224,7 @@ def readParams():
 	global omegaStart, NrPixels, threshold, RingsToShow, nDetectors
 	global RhoDs, LatC, sg, maxRad, border, ringslines, lsdline
 	global ty, tz, p0, p1, p2, fileNumber, dark, ringRads, ringNrs, lsdlocal
-	global bclocal, lsdlocalvar, WidthTTh
+	global bclocal, lsdlocalvar, WidthTTh, tolTilts, tolBC, tolLsd, tolP
 	paramContents = open(paramFN,'r').readlines()
 	lsd = []
 	bcs = []
@@ -248,6 +248,14 @@ def readParams():
 			ringslines.append(line)
 			RingsToShow.append(int(line.split()[1]))
 			threshold = max(threshold,float(line.split()[2]))
+		if 'tolTilts' == line.split()[0]:
+			tolTilts = line.split()[1]
+		if 'tolBC' == line.split()[0]:
+			tolBC = line.split()[1]
+		if 'tolLsd' == line.split()[0]:
+			tolLsd = line.split()[1]
+		if 'tolP' == line.split()[0]:
+			tolP = line.split()[1]
 		if 'RawFolder' == line.split()[0]:
 			folder = line.split()[1]
 		if 'FileStem' == line.split()[0]:
@@ -360,12 +368,11 @@ def writeCalibrateParams(pfname,detNum,ringsToExclude):
 	f.write('LatticeParameter 5.411651 5.411651 5.411651 90 90 90\nSpaceGroup 225\n')
 	f.write('NrPixels '+str(NrPixels)+'\n')
 	f.write('Wavelength '+str(wl)+'\n')
-	print lsd
 	f.write('Lsd '+str(lsd[detNum-startDetNr])+'\n')
 	f.write('RhoD '+ str(RhoDs[detNum-startDetNr])+'\n')
 	f.write('StartNr ' + str(firstFileNumber)+'\n')
 	f.write('EndNr ' + str(firstFileNumber+nFilesPerLayer-1)+'\n')
-	f.write('tolTilts 4\ntolBC 10\ntolLsd 15000\ntolP 1E-3\n')
+	f.write('tolTilts '+tolTilts+'\ntolBC '+tolBC+'\ntolLsd '+tolLsd+'\ntolP '+tolP+'\n')
 	f.write('p0 '+str(p0[detNum-startDetNr])+'\np1 '+str(p1[detNum-startDetNr])+'\np2 '+str(p2[detNum-startDetNr])+'\nEtaBinSize 5\n')
 	f.write('ty '+str(ty[detNum-startDetNr])+'\ntz '+str(tz[detNum-startDetNr])+'\nWedge 0\n')
 	f.write('tx '+str(tx[detNum-startDetNr])+'\n')
@@ -461,7 +468,6 @@ def parseOutputs(outputs):
 			if 'StdStrain' in line:
 				stdstrtemp += float(line.split('\t')[-1])/nFilesPerLayer
 		fileWrite.close()
-		print 
 		lsd[i] = lsdtemp
 		bcs[i][0] = ybctemp
 		bcs[i][1] = zbctemp
@@ -587,7 +593,6 @@ def loadbplot():
 	else:
 		bclocal[0] = float(bclocalvar1.get())
 		bclocal[1] = float(bclocalvar2.get())
-	print bclocal
 	[data, coords] = getData(detnr,bytesToSkip)
 	lsdorig = lsd[detnr-startDetNr]
 	lsdlocal = float(lsdlocalvar.get())
