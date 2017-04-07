@@ -238,6 +238,7 @@ def readParams():
 	threshold = 0
 	RhoDs = []
 	ringslines = []
+	lsdline = None
 	for line in paramContents:
 		if line == '\n':
 			continue
@@ -384,7 +385,8 @@ def writeParams():
 		strout = 'DetParams '+ str(lsd[i]) + sep + str(bcs[i][0]) + sep + str(bcs[i][1]) + sep + str(tx[i]) + sep + str(ty[i]) + sep + str(tz[i]) + sep + str(p0[i]) + sep + str(p1[i]) + sep + str(p2[i]) + sep + str(RhoDs[i]) + '\n'
 		f.write(strout)
 	f.write(LatC)
-	f.write(lsdline)
+	if lsdline is not None:
+		f.write(lsdline)
 	f.write('SpaceGroup '+str(sg)+'\n')
 	f.write('Wavelength '+str(wl)+'\n')
 	f.write(maxRad)
