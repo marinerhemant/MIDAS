@@ -578,7 +578,6 @@ def loadbplot():
 	lsdorig = lsd[detnr-startDetNr]
 	lsdlocal = float(lsdlocalvar.get())
 	plotRingsOffset()
-	data = np.flipud(data)
 	b.imshow(data,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
 	if initplot2:
 		initplot2 = 0
