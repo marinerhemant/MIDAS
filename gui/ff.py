@@ -366,8 +366,8 @@ def writeCalibrateParams(pfname,detNum,ringsToExclude):
 	f.write('StartNr ' + str(firstFileNumber)+'\n')
 	f.write('EndNr ' + str(firstFileNumber+nFilesPerLayer-1)+'\n')
 	f.write('tolTilts 4\ntolBC 10\ntolLsd 15000\ntolP 1E-3\n')
-	f.write('p0 '+p0[detNum-startDetNr]+'\np1 '+p1[detNum-startDetNr]+'\np2 '+p2[detNum-startDetNr]+'\nEtaBinSize 5\n')
-	f.write('ty '+ty[detNum-startDetNr]+'\ntz '+tz[detNum-startDetNr]+'\nWedge 0\n')
+	f.write('p0 '+str(p0[detNum-startDetNr])+'\np1 '+str(p1[detNum-startDetNr])+'\np2 '+str(p2[detNum-startDetNr])+'\nEtaBinSize 5\n')
+	f.write('ty '+str(ty[detNum-startDetNr])+'\ntz '+str(tz[detNum-startDetNr])+'\nWedge 0\n')
 	f.write('tx '+str(tx[detNum-startDetNr])+'\n')
 	if len(ringsToExclude) > 0:
 		for ring in ringsToExclude:
