@@ -546,6 +546,7 @@ def plotRingsOffset():
 			Y.append(tmp[0]/px + bclocal[0])
 			Z.append(tmp[1]/px + bclocal[1])
 		lines2.append(b.plot(Y,Z,color=colors[colornr]))
+		print [ringrad, colornr]
 		colornr+= 1
 
 def loadbplot():
