@@ -157,7 +157,7 @@ def plot_updater():
 		framesToSkip = frameNr % nFramesPerFile
 		bytesToSkip = 8192 + framesToSkip*(2*NrPixels*NrPixels)
 		for i in range(startDetNr,endDetNr+1):
-			[thresholded,(cols,rows)] = getData(i,bytesToSkip)
+			[thresholded,(rows,cols)] = getData(i,bytesToSkip)
 			TRs = transforms(i-startDetNr)
 			Xc = np.zeros(rows.shape)
 			Yc = -(cols - bcs[i-startDetNr][0])*px
@@ -173,7 +173,7 @@ def plot_updater():
 		fileNumber = firstFileNumber + frameNr/nFramesPerFile
 		framesToSkip = frameNr % nFramesPerFile
 		bytesToSkip = 8192 + framesToSkip*(2*NrPixels*NrPixels)		
-		[mask2,(cols,rows)] = getData(startDetNr,bytesToSkip)
+		[mask2,(rows,cols)] = getData(startDetNr,bytesToSkip)
 	lines = None
 	doRings()
 	a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(0,upperthreshold))
