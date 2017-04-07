@@ -432,7 +432,9 @@ def parseOutputs(outputs):
 		meanstrtemp = 0
 		stdstrtemp = 0
 		output = outputs[i]
+		fileWrite = open('DetectorCalibrationOutputDetNr'+str(i)+'.txt','w')
 		for line in output:
+			fileWrite.write(line)
 			if 'LsdFit' in line:
 				lsdtemp += float(line.split('\t')[-1])/nFilesPerLayer
 			if 'YBCFit' in line:
