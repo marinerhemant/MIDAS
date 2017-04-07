@@ -585,11 +585,11 @@ def loadbplot():
 	else:
 		b.set_xlim([lims[0][0],lims[0][1]])
 		b.set_ylim([lims[1][0],lims[1][1]])
-	labels = b.get_yticklabels()
+	labels = b.get_yticks()
 	print labels
-	for labelnr in range(len(labels)):
-		labels[labelnr] = NrPixels - int(labels[labelnr])
-	b.set_yticklabels(labels)
+	#~ for labelnr in range(len(labels)):
+		#~ labels[labelnr] = NrPixels - int(labels[labelnr])
+	#~ b.set_yticklabels(labels)
 	numrows, numcols = data.shape
 	def format_coord(x, y):
 	    col = int(x+0.5)
