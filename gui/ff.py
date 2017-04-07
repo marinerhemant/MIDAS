@@ -609,7 +609,7 @@ root.wm_title("FF display v0.1 Dt. 2017/03/29 hsharma@anl.gov")
 figur = Figure(figsize=(20,7.5),dpi=100)
 canvas = FigureCanvasTkAgg(figur,master=root)
 a = figur.add_subplot(121,aspect='equal')
-b, ax = figur.add_subplot(122)
+b = figur.add_subplot(122)
 figrowspan = 10
 figcolspan = 10
 canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=5,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH)
