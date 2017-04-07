@@ -578,13 +578,14 @@ def loadbplot():
 	lsdorig = lsd[detnr-startDetNr]
 	lsdlocal = float(lsdlocalvar.get())
 	plotRingsOffset()
+	data= np.flipud(data)
 	b.imshow(data,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
 	if initplot2:
 		initplot2 = 0
+		b.invert_yaxis()
 	else:
 		b.set_xlim([lims[0][0],lims[0][1]])
 		b.set_ylim([lims[1][0],lims[1][1]])
-	b.invert_yaxis()
 	numrows, numcols = data.shape
 	def format_coord(x, y):
 	    col = int(x+0.5)
