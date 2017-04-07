@@ -553,6 +553,7 @@ def loadbplot():
 	global initplot2
 	global origdetnum
 	global bclocalvar1, bclocalvar2
+	global ax
 	if not initplot2:
 		lims = [b.get_xlim(), b.get_ylim()]
 	frameNr = int(framenrvar.get())
@@ -577,19 +578,24 @@ def loadbplot():
 	lsdorig = lsd[detnr-startDetNr]
 	lsdlocal = float(lsdlocalvar.get())
 	plotRingsOffset()
-	b.imshow(data,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold),extent=[0, NrPixels, -NrPixels, 0])
+	data = np.flipud(data)
+	b.imshow(data,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
 	if initplot2:
 		initplot2 = 0
 	else:
 		b.set_xlim([lims[0][0],lims[0][1]])
 		b.set_ylim([lims[1][0],lims[1][1]])
+	labels = [item.get_text() for item in ax.get_xticklabels()]
+	for labelnr in range(length(labels)):
+		labels[labelnr] = NrPixels - labels[labelnr]
+	ax.set_xticklabels(labels)
 	numrows, numcols = data.shape
 	def format_coord(x, y):
 	    col = int(x+0.5)
 	    row = int(y+0.5)
 	    if col>=0 and col<numcols and row>=0 and row<numrows:
 	        z = data[row,col]
-	        return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x,y,z)
+	        return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x,NrPixels-y,z)
 	    else:
 	        return 'x=%1.4f, y=%1.4f'%(x,y)
 	b.format_coord = format_coord
@@ -603,7 +609,7 @@ root.wm_title("FF display v0.1 Dt. 2017/03/29 hsharma@anl.gov")
 figur = Figure(figsize=(20,7.5),dpi=100)
 canvas = FigureCanvasTkAgg(figur,master=root)
 a = figur.add_subplot(121,aspect='equal')
-b = figur.add_subplot(122)
+b, ax = figur.add_subplot(122)
 figrowspan = 10
 figcolspan = 10
 canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=5,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH)
