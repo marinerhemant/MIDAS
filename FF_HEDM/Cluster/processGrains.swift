@@ -4,7 +4,7 @@
 #
 
 type file;
-app (file out) processgrains (string foldername, string pfname, file dummy[])
+app (file out) processgrains (string foldername, string pfname)
 {
 	processGrains foldername pfname stdout=filename(out);
 }
