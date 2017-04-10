@@ -21,7 +21,7 @@ then
 	echo "For example FolderName Ruby_scan2_Layer1_Analysis_Time_2016_09_19_17_11_07"
 	echo "For example FolderName Ruby_scan2_Layer2_Analysis_Time_2016_09_19_17_13_23"
 	echo "If these are not provided, it will check the parent folder and if multiple"
-	echo "analyses are present for a layer, will take the latest one."
+	echo "analyses are present for a layer, the behavior is unpredictable."
 	echo "If DoPeakSearch is 0, it will overwrite the results in the directory it works."
 	echo "Parameter file name should not be full path, analysis should be run from the directory where the parameter file is."
 	echo "SeedFolder MUST BE the SAME as the folder from which the code is run AND should have the parameter file in it."
@@ -54,3 +54,6 @@ ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
 	${PFDIR}/processLayers.swift -ringfile=${SeedFolder}/RingInfo.txt \
 	-startnr=${StartNr} -endnr=${EndNr} -SeedFolder=${SeedFolder} \
 	-DoPeakSearch=${DOPEAKSEARCH}
+
+${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
+	${PFDIR}/processGrains.swift -SeedFolder=${SeedFolder}

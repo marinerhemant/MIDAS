@@ -89,12 +89,7 @@ if (dopeaksearch == 1) {
 		foreach spotnr in spots {
 			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",spotnr),suffix=".err">;
 			simEerr = indexrefine(foldername,spotnr,simCatOut);
-			if (spotnr %% 100 == 0){
-				allFile[spotnr %/ 100] = simEerr;
-			}
 		}
-		file processgrainsout <single_file_mapper;file=strcat(foldername,"/output/processgrains.txt")>;
-		processgrainsout = processgrains(foldername,pfname,allFile);
 	} until (ix == length(folderNames));
 } else {
 	iterate ix {
@@ -108,11 +103,6 @@ if (dopeaksearch == 1) {
 		foreach i in spots {
 			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",i),suffix=".err">;
 			simEerr = indexrefine(foldername,i,simCatOut);
-			if (i %% 100 == 0){
-				allFile2[i %/ 100] = simEerr;
-			}
 		}
-		file processgrainsout <single_file_mapper;file=strcat(foldername,"/output/processgrains.txt")>;
-		processgrainsout = processgrains(foldername,pfname,allFile2);
 	} until (ix == length(folderNames));
 }
