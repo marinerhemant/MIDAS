@@ -17,6 +17,8 @@ import os
 from scipy import stats
 import tkFileDialog
 import math
+from subprocess import Popen, PIPE, STDOUT
+from multiprocessing.dummy import Pool
 
 # Helper constants
 deg2rad = 0.0174532925199433
@@ -752,6 +754,7 @@ enrfiles = Tk.Entry(master=secondRowFrame,textvariable=nrfilesvar,width=4)
 enrfiles.grid(row=1,column=12,sticky=Tk.W)
 
 def median():
+	cmdout = []
 	pfname = folder + 'ps.txt'
 	f = open(pfname,'w')
 	f.write('extReduced bin\n')
@@ -763,8 +766,14 @@ def median():
 	f.write('DataDirectory '+folder+'\n')
 	f.write('RawStartNr '+str(startframenr)+'\n')
 	f.close()
-	os.system('~/opt/MIDAS/NF_HEDM/Cluster/MedianImageParallel.sh '+pfname+' '+str(dist+1))
-	print 'Calculated median for distance '+ str(dist)
+	for thisdist in range(ndistances):
+		cmdout.append('~/opt/MIDAS/NF_HEDM/Cluster/MedianImageParallel.sh '+pfname+' '+str(thisdist+1))
+	processes = [Popen(cmdname,shell=True,
+				stdin=PIPE, stdout=PIPE, stderr=STDOUT,close_fds=True) for cmdname in cmdout]
+	def get_lines(process):
+		return process.communicate()[0].splitlines()
+	outputs = Pool(len(processes)).map(get_lines,processes)
+	print 'Calculated median for all distances.'
 
 buttonmedian = Tk.Button(master=secondRowFrame,text='Calc Median / MaxOverFrames',command=median)
 buttonmedian.grid(row=1,column=13,sticky=Tk.W)
