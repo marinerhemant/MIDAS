@@ -737,7 +737,7 @@ enrfiles.grid(row=1,column=12,sticky=Tk.W)
 
 def median():
 	pfname = folder + 'ps.txt'
-	f = open(pfname)
+	f = open(pfname,'w')
 	f.write('extReduced .bin\n')
 	f.write('extOrig .tif\n')
 	f.write('WFImages 0\n')
