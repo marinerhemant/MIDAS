@@ -285,9 +285,6 @@ def getpos(event):
 	global cid2
 	global button7
 	ix,iy = event.xdata,event.ydata
-	if lb1 is not None:
-		lb1.grid_forget()
-		lb1 = None
 	button7 = Tk.Button(master=thirdRowFrame,text='Confirm Selection',command=confirmselectspot)
 	button7.grid(row=1,column=7,sticky=Tk.E)#pack(side=Tk.LEFT)
 
@@ -350,9 +347,6 @@ def closeselectspotshelp():
 	global cid2
 	global button8
 	topSelectSpotsWindow.destroy()
-	if lb1 is not None:
-		lb1.grid_forget()
-		lb1 = None
 	cid2 = canvas.mpl_connect('button_press_event',getpos)
 	button8 = Tk.Button(master=thirdRowFrame,text='Compute Distances',command=computedistances)
 	button8.grid(row=1,column=8,sticky=Tk.W)#pack(side=Tk.LEFT)
