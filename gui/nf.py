@@ -747,7 +747,7 @@ def median():
 	f.write('DataDirectory '+folder+'\n')
 	f.write('RawStartNr '+str(startframenr)+'\n')
 	f.close()
-	os.system('~/opt/MIDAS/NF_HEDM/Cluster/MedianImageParallel.sh '+pfname+' '+str(dist))
+	os.system('~/opt/MIDAS/NF_HEDM/Cluster/MedianImageParallel.sh '+pfname+' '+str(dist+1))
 	print 'Calculated median for distance '+ str(dist)
 
 buttonmedian = Tk.Button(master=secondRowFrame,text='Calc Median / MaxOverFrames',command=median)
