@@ -680,9 +680,9 @@ e1.grid(row=1,column=13,sticky=Tk.W)
 e1.focus_set()
 
 buttonIncr = Tk.Button(master=firstRowFrame,text='+',command=incr_plotupdater,font=("Helvetica",12))
-buttonIncr.grid(row=1,column=12,sticky=Tk.W)#pack(side=Tk.LEFT)
+buttonIncr.grid(row=1,column=14,sticky=Tk.W)#pack(side=Tk.LEFT)
 buttonDecr = Tk.Button(master=firstRowFrame,text='-',command=decr_plotupdater,font=("Helvetica",12))
-buttonDecr.grid(row=1,column=13,sticky=Tk.W)#pack(side=Tk.LEFT)
+buttonDecr.grid(row=1,column=15,sticky=Tk.W)#pack(side=Tk.LEFT)
 
 secondRowFrame = Tk.Frame(root)
 secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
