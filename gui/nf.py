@@ -757,7 +757,7 @@ def median():
 		f.write('WFImages 0\n')
 		f.write('OrigFileName '+fnstem+'\n')
 		tempnr = startframenr + thisdist*(nrfilesperdistance - int(nrfilesmedianvar.get()))
-		f.write('NrFilesPerDistance '+tempnr+'\n')
+		f.write('NrFilesPerDistance '+str(tempnr)+'\n')
 		f.write('NrPixels '+str(NrPixels)+'\n')
 		f.write('DataDirectory '+folder+'\n')
 		f.write('RawStartNr '+str(startframenr)+'\n')
