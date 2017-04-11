@@ -67,7 +67,7 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 			imarr2 = imarr
 	else:
 		if var.get() == 1:
-			fnthis = folder + '/' + fnstem + '_MaximumIntensityMedainCorrected_Distance_' + str(dist) + '.bin'
+			fnthis = folder + '/' + fnstem + '_MaximumIntensityMedianCorrected_Distance_' + str(dist) + '.bin'
 		else:
 			fnthis = folder + '/' + fnstem + '_MaximumIntensity_Distance_' + str(dist) + '.bin'
 		f = open(fnthis,'rb')
@@ -101,6 +101,7 @@ def plot_updater():
 	global framenr
 	global dist
 	global oldVar
+	global oldmaxoverframes
 	global initvali
 	global folder
 	global fnstem
@@ -122,7 +123,9 @@ def plot_updater():
 	newminThresh = float(minThreshvar.get())
 	newnrfilesperdistance = int(nrfilesvar.get())
 	newstartframenr = int(startframenrvar.get())
+	newmaxoverframes = maxoverframes.get()
 	if ((initplot == 1) or 
+		(newmaxoverframes != oldmaxoverframes) or
 		(newminThresh != minThresh) or
 		(newnrfilesperdistance != nrfilesperdistance) or
 		(newframenr != framenr) or 
@@ -135,6 +138,7 @@ def plot_updater():
 		(newNrPixels != NrPixels) or 
 		(newstartframenr != startframenr) or
 		(newlsd !=lsd)):
+		oldmaxoverframes = newmaxoverframes
 		nrfilesperdistance = newnrfilesperdistance
 		minThresh = newminThresh
 		lsd = newlsd
@@ -765,6 +769,7 @@ def median():
 buttonmedian = Tk.Button(master=secondRowFrame,text='Calc Median / MaxOverFrames',command=median)
 buttonmedian.grid(row=1,column=13,sticky=Tk.W)
 
+oldmaxoverframes = 0
 maxoverframes = Tk.IntVar()
 
 chkMaxOverFrames = Tk.Checkbutton(master=secondRowFrame,text="Load MaxOverFrames",variable=maxoverframes)
