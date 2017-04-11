@@ -749,25 +749,25 @@ enrfiles.grid(row=1,column=12,sticky=Tk.W)
 
 def median():
 	cmdout = []
-	pfname = folder + 'ps.txt'
-	f = open(pfname,'w')
-	f.write('extReduced bin\n')
-	f.write('extOrig tif\n')
-	f.write('WFImages 0\n')
-	f.write('OrigFileName '+fnstem+'\n')
-	
-	f.write('NrFilesPerDistance '+nrfilesmedianvar.get()+'\n')
-	f.write('NrPixels '+str(NrPixels)+'\n')
-	f.write('DataDirectory '+folder+'\n')
-	f.write('RawStartNr '+str(startframenr)+'\n')
-	f.close()
 	for thisdist in range(ndistances):
-		cmdout.append('~/opt/MIDAS/NF_HEDM/Cluster/MedianImageParallel.sh '+pfname+' '+str(thisdist+1))
-	processes = [Popen(cmdname,shell=True,
-				stdin=PIPE, stdout=PIPE, stderr=STDOUT,close_fds=True) for cmdname in cmdout]
-	def get_lines(process):
-		return process.communicate()[0].splitlines()
-	outputs = Pool(len(processes)).map(get_lines,processes)
+		pfname = folder + 'ps.txt' + str(thisdist)
+		f = open(pfname,'w')
+		f.write('extReduced bin\n')
+		f.write('extOrig tif\n')
+		f.write('WFImages 0\n')
+		f.write('OrigFileName '+fnstem+'\n')
+		tempnr = startframenr + thisdist*(nrfilesperdistance - int(nrfilesmedianvar.get()))
+		f.write('NrFilesPerDistance '+tempnr+'\n')
+		f.write('NrPixels '+str(NrPixels)+'\n')
+		f.write('DataDirectory '+folder+'\n')
+		f.write('RawStartNr '+str(startframenr)+'\n')
+		f.close()
+		#~ cmdout.append('~/opt/MIDAS/NF_HEDM/Cluster/MedianImageParallel.sh '+pfname+' '+str(thisdist+1))
+	#~ processes = [Popen(cmdname,shell=True,
+				#~ stdin=PIPE, stdout=PIPE, stderr=STDOUT,close_fds=True) for cmdname in cmdout]
+	#~ def get_lines(process):
+		#~ return process.communicate()[0].splitlines()
+	#~ outputs = Pool(len(processes)).map(get_lines,processes)
 	print 'Calculated median for all distances.'
 
 buttonmedian = Tk.Button(master=secondRowFrame,text='Calc Median / MaxOverFrames',command=median)
