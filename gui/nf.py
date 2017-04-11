@@ -27,7 +27,7 @@ NrPixels = 2048
 nrfilesperdistance = 720
 padding = 6
 ndistances = 3
-background=100
+background=0
 fnstem = 'Au1'
 folder = '/var/host/media/removable/UNTITLED/Au/'
 figcolspan=10
@@ -49,21 +49,33 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 	if not initplot:
 		lims = [a.get_xlim(), a.get_ylim()]
 	a.clear()
-	fns = getfilenames()
-	im = PIL.Image.open(fns[0])
-	print "Read file " + fns[0]
-	imarr = np.array(im,dtype=np.uint16)
-	doMedian = var.get()
-	if doMedian == 1:
-		f = open(fns[1],'rb')
-		print "Read file " + fns[1]
-		median = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
-		f.close()
-		median = np.reshape(median,(NrPixels,NrPixels))
-		imarr2 = np.subtract(imarr.astype(int),median.astype(int))
-		imarr2 = stats.threshold(imarr2,threshmin=background)
+	if maxoverframes.get() == 0:
+		fns = getfilenames()
+		im = PIL.Image.open(fns[0])
+		print "Read file " + fns[0]
+		imarr = np.array(im,dtype=np.uint16)
+		doMedian = var.get()
+		if doMedian == 1:
+			f = open(fns[1],'rb')
+			print "Read file " + fns[1]
+			median = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
+			f.close()
+			median = np.reshape(median,(NrPixels,NrPixels))
+			imarr2 = np.subtract(imarr.astype(int),median.astype(int))
+			imarr2 = stats.threshold(imarr2,threshmin=background)
+		else:
+			imarr2 = imarr
 	else:
-		imarr2 = imarr
+		if var.get() == 1:
+			fnthis = folder + '/' + fnstem + '_MaximumIntensityMedainCorrected_Distance_' + str(dist) + '.bin'
+		else:
+			fnthis = folder + '/' + fnstem + '_MaximumIntensity_Distance_' + str(dist) + '.bin'
+		f = open(fnthis,'rb')
+		print 'Read file ' + fnthis
+		imarr = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
+		f.close()
+		imarr2 = np.reshape(imarr,(NrPixels,NrPixels))
+		imarr2 = stats.threshold(imarr2,threshmin=background)
 	a.imshow(imarr2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(float(minThreshvar.get()),float(vali.get())))
 	if initplot:
 		initplot = 0
@@ -752,6 +764,11 @@ def median():
 
 buttonmedian = Tk.Button(master=secondRowFrame,text='Calc Median / MaxOverFrames',command=median)
 buttonmedian.grid(row=1,column=13,sticky=Tk.W)
+
+maxoverframes = Tk.IntVar()
+
+chkMaxOverFrames = Tk.Checkbutton(master=firstRowFrame,text="Load MaxOverFrames",variable=maxoverframes)
+chkMaxOverFrames.grid(row=1,column=16,sticky=Tk.W)
 
 thirdRowFrame = Tk.Frame(root)
 thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
