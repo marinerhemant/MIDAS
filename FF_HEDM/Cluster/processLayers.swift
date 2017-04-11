@@ -81,10 +81,9 @@ if (dopeaksearch == 1) {
 		file simCerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("MergeRings_",ix),suffix=".err">;
 		simCerr = mergerings(pfname, simBerr);
 		file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
-		file simCatOut<single_file_mapper;file=strcat(foldername,"SpotsToIndex.csv")>;
+		file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsToIndexSwift.csv")>;
 		(simDerr,simCatOut) = postpeaks(foldername,pfname,simCerr);
 		int spots[] = readData(simCatOut);
-		trace(spots);
 		foreach spotnr in spots {
 			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",spotnr),suffix=".err">;
 			simEerr = indexrefine(foldername,spotnr,simCatOut);

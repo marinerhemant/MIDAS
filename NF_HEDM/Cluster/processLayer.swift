@@ -7,42 +7,42 @@ type file;
 
 app (file out, file err) Medians (string pf, int layernr, file trial)
 {
-	runmedianparallel pf layernr stdout=@filename(out) stderr=@filename(err);
+	runmedianparallel pf layernr stdout=filename(out) stderr=filename(err);
 }
 
 app (file outm, file errm) Images (string paramf, int layern, int filenr, file inp)
 {
-	runimageprocessingparallel paramf layern filenr stdout=@filename(outm) stderr=@filename(errm);
+	runimageprocessingparallel paramf layern filenr stdout=filename(outm) stderr=filename(errm);
 }
 
 app (file done) PlaceHolder (string prefix, file out[])
 {
-	echo prefix stdout=@filename(done);
+	echo prefix stdout=filename(done);
 }
 
 app (file done) PlaceHolder2 (string prefix)
 {
-	echo prefix stdout=@filename(done);
+	echo prefix stdout=filename(done);
 }
 
 app (file outf, file errf) runfitorientation (string pf, int nr, file mmapdone)
 {
-	fitorientation pf nr stdout=@filename(outf) stderr=@filename(errf);
+	fitorientation pf nr stdout=filename(outf) stderr=filename(errf);
 }
 
 app (file mmapdone) mmapcode (string paramfn, file imagedone)
 {
-	mmaps paramfn stdout=@filename(mmapdone);
+	mmaps paramfn stdout=filename(mmapdone);
 }
 
 app (file dome) parsemic (string paramfn, string direct, file trial[])
 {
-	micparser paramfn direct stdout=@filename(dome);
+	micparser paramfn direct stdout=filename(dome);
 }
 
 app (file done) initialsetup ( string paramfn, int ffseed)
 {
-	setupNF paramfn ffseed stdout=@filename(done);
+	setupNF paramfn ffseed stdout=filename(done);
 }
 
 type BulkNames{

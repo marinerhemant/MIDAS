@@ -93,9 +93,14 @@ int main (int argc, char *argv[])
 	double diftotal;
 	char *topfolder;
 	topfolder = argv[1];
-	char *ParamFN;
-	ParamFN = argv[2];
-	FILE *fileParam;
+	int nDetectors = 4;
+	int detNr;
+	char folderName[4096];
+	char FN[4096],hashFN[4096];
+	for (detNr=1;detNr<=nDetectors;detNr++){
+		sprintf(folderName,"%s/Detector%d/",topfolder,detNr);
+		sprintf()
+	}
 	
 	end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;

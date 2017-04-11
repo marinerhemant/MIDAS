@@ -37,20 +37,19 @@ def _quit():
 	root.quit()
 	root.destroy()
 
-def getfilenames(startFrameNr,distanceNr):
-	medianfn = folder + '/' + fnstem + "_Median_Background_Distance_" + str(distanceNr) + ".bin"
-	fnr = startFrameNr + distanceNr*nrfilesperdistance
+def getfilenames():
+	medianfn = folder + '/' + fnstem + "_Median_Background_Distance_" + str(dist) + ".bin"
+	fnr = startframenr + framenr + dist*nrfilesperdistance
 	filefn = folder + '/' + fnstem + '_' + str(fnr).zfill(padding) + '.tif' # '_{:06d}'.format(fnr) + '.tif'
 	return [filefn, medianfn]
 
-def draw_plot(frameNr,distanceNr): # always the initial framenr and distance, will calculate the correct framenr automatically
+def draw_plot(): # always the initial framenr and distance, will calculate the correct framenr automatically
 	global initplot
-	global framenr
 	global imarr2
 	if not initplot:
 		lims = [a.get_xlim(), a.get_ylim()]
 	a.clear()
-	fns = getfilenames(frameNr,distanceNr)
+	fns = getfilenames()
 	im = PIL.Image.open(fns[0])
 	print "Read file " + fns[0]
 	imarr = np.array(im,dtype=np.uint16)
@@ -131,7 +130,7 @@ def plot_updater():
 		initvali = newvali
 		framenr = newframenr
 		dist = newdist
-		draw_plot(framenr,newdist)
+		draw_plot()
 		plotb()
 
 def plotb():
@@ -495,7 +494,7 @@ def plot_update_spot():
 	rad = float(simulatedspots[spotnr-1].split(' ')[0])
 	eta = float(simulatedspots[spotnr-1].split(' ')[1])
 	ys,zs = YZ4mREta(rad,eta)
-	filenrToRead = int((float(thisome)-float(startome))/omestep)
+	filenrToRead = startframenr + int((float(thisome)-float(startome))/omestep)
 	r.set(str(filenrToRead))
 	spotnrvar.set(str(spotnr))
 	ya = pos[0]*math.sin(thisome) + pos[1]*math.cos(thisome)
@@ -508,7 +507,7 @@ def plot_update_spot():
 		thisome = float(simulatedspots[spotnr-1].split(' ')[2])
 		rad = float(simulatedspots[spotnr-1].split(' ')[0])
 		eta = float(simulatedspots[spotnr-1].split(' ')[1])
-		filenrToRead = int((float(thisome)-float(startome))/omestep)
+		filenrToRead = startframenr + int((float(thisome)-float(startome))/omestep)
 		r.set(str(filenrToRead))
 		spotnrvar.set(str(spotnr))
 		# calculate spot position and make a blip on the detector
@@ -570,7 +569,8 @@ def makespots():
 # Global constants initialization
 imarr2 = None
 initplot = 1
-framenr = 20
+framenr = 0
+startframenr = 0
 dist = 0
 horvert = 0
 oldVar = 0
