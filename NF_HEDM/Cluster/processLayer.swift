@@ -20,7 +20,7 @@ app (file done) PlaceHolder (string prefix, file out[])
 	echo prefix stdout=@filename(done);
 }
 
-app (file done) PlaceHolder2 (string prefix)
+app (file done) PlaceHolder2 (string prefix,file tmp)
 {
 	echo prefix stdout=@filename(done);
 }
@@ -101,7 +101,7 @@ if (DoPeakSearch == 1){
 } else {
 	string prefix2 = "ImageProcessing was not done.";
 	tracef("%s\n",prefix2);
-	imagesdone = PlaceHolder2(prefix2);
+	imagesdone = PlaceHolder2(prefix2,setupdone);
 }
 
 if (DoFullLayer == 1){
