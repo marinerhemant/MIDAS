@@ -675,7 +675,7 @@ sfnrfiles.grid(row=1,column=11,sticky=Tk.W)
 Tk.Label(master=firstRowFrame,text="FrameNumber").grid(row=1,column=12,sticky=Tk.W)#pack(side=Tk.LEFT)
 r = Tk.StringVar() 
 r.set(str(framenr))
-e1 = Tk.Entry(master=firstRowFrame,textvariable=r,width=7)
+e1 = Tk.Entry(master=firstRowFrame,textvariable=r,width=5)
 e1.grid(row=1,column=13,sticky=Tk.W)
 e1.focus_set()
 
