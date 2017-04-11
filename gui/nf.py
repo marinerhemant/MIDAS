@@ -669,7 +669,7 @@ enrpixels.grid(row=1,column=9,sticky=Tk.W)#pack(side=Tk.LEFT)
 Tk.Label(master=firstRowFrame,text="StartFileNumberFirstLayer").grid(row=1,column=10,sticky=Tk.W)
 startframenrvar = Tk.StringVar()
 startframenrvar.set(str(startframenr))
-sfnrfiles = Tk.Entry(master=firstRowFrame,textvariable=startframenrvar,width=4)
+sfnrfiles = Tk.Entry(master=firstRowFrame,textvariable=startframenrvar,width=6)
 sfnrfiles.grid(row=1,column=11,sticky=Tk.W)
 
 Tk.Label(master=firstRowFrame,text="FrameNumber").grid(row=1,column=12,sticky=Tk.W)#pack(side=Tk.LEFT)
