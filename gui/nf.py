@@ -757,10 +757,10 @@ def median():
 		f.write('WFImages 0\n')
 		f.write('OrigFileName '+fnstem+'\n')
 		tempnr = startframenr + thisdist*(nrfilesperdistance - int(nrfilesmedianvar.get()))
-		f.write('NrFilesPerDistance '+str(tempnr)+'\n')
+		f.write('NrFilesPerDistance '+nrfilesmedianvar.get()+'\n')
 		f.write('NrPixels '+str(NrPixels)+'\n')
 		f.write('DataDirectory '+folder+'\n')
-		f.write('RawStartNr '+str(startframenr)+'\n')
+		f.write('RawStartNr '+str(tempnr)+'\n')
 		f.close()
 		#~ cmdout.append('~/opt/MIDAS/NF_HEDM/Cluster/MedianImageParallel.sh '+pfname+' '+str(thisdist+1))
 	#~ processes = [Popen(cmdname,shell=True,
