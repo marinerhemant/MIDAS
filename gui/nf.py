@@ -58,6 +58,7 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 		f = open(fns[1],'rb')
 		print "Read file " + fns[1]
 		median = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
+		f.close()
 		median = np.reshape(median,(NrPixels,NrPixels))
 		imarr2 = np.subtract(imarr.astype(int),median.astype(int))
 		imarr2 = stats.threshold(imarr2,threshmin=background)
@@ -266,6 +267,9 @@ def getpos(event):
 	global cid2
 	global button7
 	ix,iy = event.xdata,event.ydata
+	if lb1 is not None:
+		lb1.grid_forget()
+		lb1 = None
 	button7 = Tk.Button(master=thirdRowFrame,text='Confirm Selection',command=confirmselectspot)
 	button7.grid(row=1,column=7,sticky=Tk.E)#pack(side=Tk.LEFT)
 
@@ -328,6 +332,9 @@ def closeselectspotshelp():
 	global cid2
 	global button8
 	topSelectSpotsWindow.destroy()
+	if lb1 is not None:
+		lb1.grid_forget()
+		lb1 = None
 	cid2 = canvas.mpl_connect('button_press_event',getpos)
 	button8 = Tk.Button(master=thirdRowFrame,text='Compute Distances',command=computedistances)
 	button8.grid(row=1,column=8,sticky=Tk.W)#pack(side=Tk.LEFT)
@@ -377,14 +384,14 @@ def bcwindow():
 		Tk.Label(top,text=labeltext).grid(row=dist+1)
 		var1 = Tk.StringVar()
 		var2 = Tk.StringVar()
-		var1.set(str(0))
-		var2.set(str(0))
+		var1.set(str(bcs[dist][0]))
+		var2.set(str(bcs[dist][1]))
 		Tk.Entry(top,textvariable=var1).grid(row=dist+1,column=1)
 		Tk.Entry(top,textvariable=var2).grid(row=dist+1,column=2)
 		varsStore.append([var1,var2])
 	Tk.Label(top,text="Difference in distances eg. 1000 microns").grid(row=ndistances+1)
 	distDiffVar = Tk.StringVar()
-	distDiffVar.set(str(0))
+	distDiffVar.set(str(distDiff))
 	Tk.Entry(top,textvariable=distDiffVar).grid(row=ndistances+1,column=1,columnspan=2)
 	button = Tk.Button(top,text="Press this once done",command=top_destroyer)
 	button.grid(row=ndistances+2,column=0,columnspan=3)
@@ -407,7 +414,7 @@ def selectspots():
 	if not np.any(bcs):
 		top2 = Tk.Toplevel()
 		top2.title("Warning")
-		Tk.Label(top2,text="All beam centers are 0. Do you want to continue?").grid(row=0)
+		Tk.Label(top2,text="All beam centers are 0. Do you want to continue?").grid(row=0,sticky=Tk.W)
 		Tk.Button(top2,text="Go ahead with zeros.",command=top2destroyer).grid(row=1,column=0,sticky=Tk.W)
 		Tk.Button(top2,text="Edit beam centers.",command=bcwindow).grid(row=1,column=1,sticky=Tk.W)
 		selectingspots = 1
@@ -621,6 +628,7 @@ canvas = FigureCanvasTkAgg(figur,master=root)
 a = figur.add_subplot(121,aspect='equal')
 b = figur.add_subplot(122)
 b.title.set_text("LineOuts")
+a.title.set_text("Image")
 canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH)
 toolbar_frame = Tk.Frame(root)
 toolbar_frame.grid(row=figrowspan+4,column=0,columnspan=5,sticky=Tk.W)
@@ -680,79 +688,97 @@ e1.grid(row=1,column=13,sticky=Tk.W)
 e1.focus_set()
 
 buttonIncr = Tk.Button(master=firstRowFrame,text='+',command=incr_plotupdater,font=("Helvetica",12))
-buttonIncr.grid(row=1,column=14,sticky=Tk.W)#pack(side=Tk.LEFT)
+buttonIncr.grid(row=1,column=14,sticky=Tk.W)
 buttonDecr = Tk.Button(master=firstRowFrame,text='-',command=decr_plotupdater,font=("Helvetica",12))
-buttonDecr.grid(row=1,column=15,sticky=Tk.W)#pack(side=Tk.LEFT)
+buttonDecr.grid(row=1,column=15,sticky=Tk.W)
+
+c = Tk.Checkbutton(master=firstRowFrame,text="Subtract Median",variable=var)
+c.grid(row=1,column=16,sticky=Tk.W)
 
 secondRowFrame = Tk.Frame(root)
 secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
 
-Tk.Label(master=secondRowFrame,text="Distance Nr").grid(row=1,column=1,sticky=Tk.W)#pack(side=Tk.LEFT)
+Tk.Label(master=secondRowFrame,text="Distance Nr").grid(row=1,column=1,sticky=Tk.W)
 r2 = Tk.StringVar() 
 r2.set(str(0))
 e2 = Tk.Entry(master=secondRowFrame,textvariable=r2,width=3)
-e2.grid(row=1,column=2,sticky=Tk.W)#pack(side=Tk.LEFT)
+e2.grid(row=1,column=2,sticky=Tk.W)
 e2.focus_set()
 
-Tk.Label(master=secondRowFrame,text="Max Intensity for Color").grid(row=1,column=3,sticky=Tk.W)#pack(side=Tk.LEFT)
+Tk.Label(master=secondRowFrame,text="UpperThreshold").grid(row=1,column=3,sticky=Tk.W)
 e3 = Tk.Entry(master=secondRowFrame,textvariable=vali,width=4)
-e3.grid(row=1,column=4,sticky=Tk.W)#pack(side=Tk.LEFT)
+e3.grid(row=1,column=4,sticky=Tk.W)
 e3.focus_set()
 
-c = Tk.Checkbutton(master=secondRowFrame,text="Subtract Median",variable=var)
-c.grid(row=1,column=5,sticky=Tk.W)#pack(side=Tk.LEFT)
-
-Tk.Label(master=secondRowFrame,text="Pixel Size (microns)").grid(row=1,column=6,sticky=Tk.W)#pack(side=Tk.LEFT)
+Tk.Label(master=secondRowFrame,text="Pixel Size (microns)").grid(row=1,column=5,sticky=Tk.W)
 pxvar = Tk.StringVar()
 pxvar.set(str(pixelsize))
 epx = Tk.Entry(master=secondRowFrame,textvariable=pxvar,width=5)
-epx.grid(row=1,column=7,sticky=Tk.W)#pack(side=Tk.LEFT)
+epx.grid(row=1,column=6,sticky=Tk.W)
 
-Tk.Label(master=secondRowFrame,text="First Lsd (microns)").grid(row=1,column=8,sticky=Tk.W)#pack(side=Tk.LEFT)
+Tk.Label(master=secondRowFrame,text="First Lsd (microns)").grid(row=1,column=7,sticky=Tk.W)
 lsdvar = Tk.StringVar()
 lsdvar.set(str(lsd))
 elsd = Tk.Entry(master=secondRowFrame,textvariable=lsdvar,width=10)
-elsd.grid(row=1,column=9,sticky=Tk.W)#pack(side=Tk.LEFT)
+elsd.grid(row=1,column=8,sticky=Tk.W)
 
 minThresh = 0
-Tk.Label(master=secondRowFrame,text="MinThresh (counts)").grid(row=1,column=10,sticky=Tk.W)#pack(side=Tk.LEFT)
+Tk.Label(master=secondRowFrame,text="MinThresh (counts)").grid(row=1,column=9,sticky=Tk.W)
 minThreshvar = Tk.StringVar()
 minThreshvar.set(str(minThresh))
 emt = Tk.Entry(master=secondRowFrame,textvariable=minThreshvar,width=4)
-emt.grid(row=1,column=11,sticky=Tk.W)#pack(side=Tk.LEFT)
+emt.grid(row=1,column=10,sticky=Tk.W)
 
-Tk.Label(master=secondRowFrame,text="NrFilesPerDistance").grid(row=1,column=12,sticky=Tk.W)
+Tk.Label(master=secondRowFrame,text="NrFilesPerDistance").grid(row=1,column=11,sticky=Tk.W)
 nrfilesvar = Tk.StringVar()
 nrfilesvar.set(str(nrfilesperdistance))
 enrfiles = Tk.Entry(master=secondRowFrame,textvariable=nrfilesvar,width=4)
-enrfiles.grid(row=1,column=13,sticky=Tk.W)
+enrfiles.grid(row=1,column=12,sticky=Tk.W)
+
+def median():
+	pfname = folder + 'ps.txt'
+	f = open(pfname)
+	f.write('extReduced .bin\n')
+	f.write('extOrig .tif\n')
+	f.write('WFImages 0\n')
+	f.write('OrigFileName '+fnstem+'\n')
+	f.write('NrFilesPerDistance '+nrfilesperdistance+'\n')
+	f.write('NrPixels '+NrPixels+'\n')
+	f.write('DataDirectory '+folder+'\n')
+	f.write('RawStartNr '+startframenr+'\n')
+	f.close()
+	os.system('~/opt/MIDAS/NF_HEDM/Cluster/MedianImageParallel.sh '+pfname+' '+str(dist))
+	print 'Calculated median for distance '+ str(dist)
+
+buttonmedian = Tk.Button(master=secondRowFrame,text='Calc Median / MaxOverFrames',command=median)
+buttonmedian.grid(row=1,column=13,sticky=Tk.W)
 
 thirdRowFrame = Tk.Frame(root)
 thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
 
 button3 = Tk.Button(master=thirdRowFrame,text='LineOutHor',command=horline)
-button3.grid(row=1,column=1,sticky=Tk.W)#pack(side=Tk.LEFT)
+button3.grid(row=1,column=1,sticky=Tk.W)
 
 button4 = Tk.Button(master=thirdRowFrame,text='LineOutVert',command=vertline)
-button4.grid(row=1,column=2,sticky=Tk.W)#pack(side=Tk.LEFT)
+button4.grid(row=1,column=2,sticky=Tk.W)
 
 button5 = Tk.Button(master=thirdRowFrame,text='BeamCenter',command=bcwindow)
-button5.grid(row=1,column=3,sticky=Tk.W)#pack(side=Tk.LEFT)
+button5.grid(row=1,column=3,sticky=Tk.W)
 
 button6 = Tk.Button(master=thirdRowFrame,text='Select Spots',command=selectspots)
-button6.grid(row=1,column=4,sticky=Tk.W)#pack(side=Tk.LEFT)
+button6.grid(row=1,column=4,sticky=Tk.W)
 
 buttongetgrain = Tk.Button(master=thirdRowFrame,text='LoadGrain',command=getgrain)
-buttongetgrain.grid(row=1,column=5,sticky=Tk.W)#pack(side=Tk.LEFT)
+buttongetgrain.grid(row=1,column=5,sticky=Tk.W)
 
 spotnrvar = Tk.StringVar()
 bMakeSpots = Tk.Button(master=thirdRowFrame,text="MakeSpots",command=makespots)
 bMakeSpots.grid(row=1,column=6,sticky=Tk.W)
 
 button2 = Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetica",20))
-button2.grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.W)#pack(side=Tk.LEFT)
+button2.grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.W)
 
 button = Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20))
-button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W)#pack(side=Tk.LEFT)
+button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W)
 
 Tk.mainloop()
