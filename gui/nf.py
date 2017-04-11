@@ -755,6 +755,7 @@ def median():
 	f.write('extOrig tif\n')
 	f.write('WFImages 0\n')
 	f.write('OrigFileName '+fnstem+'\n')
+	
 	f.write('NrFilesPerDistance '+nrfilesmedianvar.get()+'\n')
 	f.write('NrPixels '+str(NrPixels)+'\n')
 	f.write('DataDirectory '+folder+'\n')
