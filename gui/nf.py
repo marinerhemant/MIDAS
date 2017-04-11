@@ -717,29 +717,29 @@ e2 = Tk.Entry(master=secondRowFrame,textvariable=r2,width=3)
 e2.grid(row=1,column=2,sticky=Tk.W)
 e2.focus_set()
 
-Tk.Label(master=secondRowFrame,text="UpperThreshold").grid(row=1,column=3,sticky=Tk.W)
-e3 = Tk.Entry(master=secondRowFrame,textvariable=vali,width=4)
-e3.grid(row=1,column=4,sticky=Tk.W)
-e3.focus_set()
-
-Tk.Label(master=secondRowFrame,text="Pixel Size (microns)").grid(row=1,column=5,sticky=Tk.W)
-pxvar = Tk.StringVar()
-pxvar.set(str(pixelsize))
-epx = Tk.Entry(master=secondRowFrame,textvariable=pxvar,width=5)
-epx.grid(row=1,column=6,sticky=Tk.W)
-
-Tk.Label(master=secondRowFrame,text="First Lsd (microns)").grid(row=1,column=7,sticky=Tk.W)
-lsdvar = Tk.StringVar()
-lsdvar.set(str(lsd))
-elsd = Tk.Entry(master=secondRowFrame,textvariable=lsdvar,width=10)
-elsd.grid(row=1,column=8,sticky=Tk.W)
-
 minThresh = 0
-Tk.Label(master=secondRowFrame,text="MinThresh (counts)").grid(row=1,column=9,sticky=Tk.W)
+Tk.Label(master=secondRowFrame,text="MinThresh (cnts)").grid(row=1,column=3,sticky=Tk.W)
 minThreshvar = Tk.StringVar()
 minThreshvar.set(str(minThresh))
 emt = Tk.Entry(master=secondRowFrame,textvariable=minThreshvar,width=4)
-emt.grid(row=1,column=10,sticky=Tk.W)
+emt.grid(row=1,column=4,sticky=Tk.W)
+
+Tk.Label(master=secondRowFrame,text="MaxThresh").grid(row=1,column=5,sticky=Tk.W)
+e3 = Tk.Entry(master=secondRowFrame,textvariable=vali,width=4)
+e3.grid(row=1,column=6,sticky=Tk.W)
+e3.focus_set()
+
+Tk.Label(master=secondRowFrame,text="Pixel Size (um)").grid(row=1,column=7,sticky=Tk.W)
+pxvar = Tk.StringVar()
+pxvar.set(str(pixelsize))
+epx = Tk.Entry(master=secondRowFrame,textvariable=pxvar,width=5)
+epx.grid(row=1,column=8,sticky=Tk.W)
+
+Tk.Label(master=secondRowFrame,text="First Lsd (um)").grid(row=1,column=9,sticky=Tk.W)
+lsdvar = Tk.StringVar()
+lsdvar.set(str(lsd))
+elsd = Tk.Entry(master=secondRowFrame,textvariable=lsdvar,width=10)
+elsd.grid(row=1,column=10,sticky=Tk.W)
 
 Tk.Label(master=secondRowFrame,text="NrFilesPerDistance").grid(row=1,column=11,sticky=Tk.W)
 nrfilesvar = Tk.StringVar()
@@ -755,7 +755,7 @@ def median():
 	f.write('extOrig tif\n')
 	f.write('WFImages 0\n')
 	f.write('OrigFileName '+fnstem+'\n')
-	f.write('NrFilesPerDistance '+str(nrfilesperdistance)+'\n')
+	f.write('NrFilesPerDistance '+nrfilesmedianvar.get()+'\n')
 	f.write('NrPixels '+str(NrPixels)+'\n')
 	f.write('DataDirectory '+folder+'\n')
 	f.write('RawStartNr '+str(startframenr)+'\n')
@@ -772,11 +772,17 @@ def median():
 buttonmedian = Tk.Button(master=secondRowFrame,text='Calc Median / MaxOverFrames',command=median)
 buttonmedian.grid(row=1,column=13,sticky=Tk.W)
 
+Tk.Label(master=secondRowFrame,text="FilesUsedForMedianCalc").grid(row=1,column=14,sticky=Tk.W)
+nrfilesmedianvar = Tk.StringVar()
+nrfilesmedianvar.set(str(nrfilesperdistance))
+enrfilesmedian = Tk.Entry(master=secondRowFrame,textvariable=nrfilesmedianvar,width=4)
+enrfilesmedian.grid(row=1,column=15,sticky=Tk.W)
+
 oldmaxoverframes = 0
 maxoverframes = Tk.IntVar()
 
 chkMaxOverFrames = Tk.Checkbutton(master=secondRowFrame,text="Load MaxOverFrames",variable=maxoverframes)
-chkMaxOverFrames.grid(row=1,column=14,sticky=Tk.W)
+chkMaxOverFrames.grid(row=1,column=16,sticky=Tk.W)
 
 thirdRowFrame = Tk.Frame(root)
 thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
