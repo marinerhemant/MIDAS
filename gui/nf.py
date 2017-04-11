@@ -96,6 +96,7 @@ def plot_updater():
 	global lsd
 	global minThresh
 	global nrfilesperdistance
+	global startframenr
 	newlsd = float(lsdvar.get())
 	newVar = var.get()
 	newframenr = int(r.get())
@@ -107,6 +108,7 @@ def plot_updater():
 	newNrPixels = int(NrPixelsvar.get())
 	newminThresh = float(minThreshvar.get())
 	newnrfilesperdistance = int(nrfilesvar.get())
+	newstartframenr = int(startframenrvar.get())
 	if ((initplot == 1) or 
 		(newminThresh != minThresh) or
 		(newnrfilesperdistance != nrfilesperdistance) or
@@ -118,6 +120,7 @@ def plot_updater():
 		(newfnstem != fnstem) or 
 		(newndistances != ndistances) or 
 		(newNrPixels != NrPixels) or 
+		(newstartframenr != startframenr) or
 		(newlsd !=lsd)):
 		nrfilesperdistance = newnrfilesperdistance
 		minThresh = newminThresh
@@ -129,6 +132,7 @@ def plot_updater():
 		oldVar = newVar
 		initvali = newvali
 		framenr = newframenr
+		startframenr = newstartframenr
 		dist = newdist
 		draw_plot()
 		plotb()
@@ -717,6 +721,12 @@ nrfilesvar.set(str(nrfilesperdistance))
 enrfiles = Tk.Entry(master=secondRowFrame,textvariable=nrfilesvar,width=4)
 enrfiles.grid(row=1,column=13,sticky=Tk.W)
 
+Tk.Label(master=secondRowFrame,text="StartFileNumberFirstLayer").grid(row=1,column=14,sticky=Tk.W)
+startframenrvar = Tk.StringVar()
+startframenrvar.set(str(startframenr))
+sfnrfiles = Tk.Entry(master=secondRowFrame,textvariable=startframenrvar,width=4)
+sfnrfiles.grid(row=1,column=15,sticky=Tk.W)
+
 thirdRowFrame = Tk.Frame(root)
 thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
 
@@ -731,7 +741,6 @@ button5.grid(row=1,column=3,sticky=Tk.W)#pack(side=Tk.LEFT)
 
 button6 = Tk.Button(master=thirdRowFrame,text='Select Spots',command=selectspots)
 button6.grid(row=1,column=4,sticky=Tk.W)#pack(side=Tk.LEFT)
-
 
 buttongetgrain = Tk.Button(master=thirdRowFrame,text='LoadGrain',command=getgrain)
 buttongetgrain.grid(row=1,column=5,sticky=Tk.W)#pack(side=Tk.LEFT)
