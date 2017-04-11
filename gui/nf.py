@@ -767,8 +767,8 @@ buttonmedian.grid(row=1,column=13,sticky=Tk.W)
 
 maxoverframes = Tk.IntVar()
 
-chkMaxOverFrames = Tk.Checkbutton(master=firstRowFrame,text="Load MaxOverFrames",variable=maxoverframes)
-chkMaxOverFrames.grid(row=1,column=16,sticky=Tk.W)
+chkMaxOverFrames = Tk.Checkbutton(master=secondRowFrame,text="Load MaxOverFrames",variable=maxoverframes)
+chkMaxOverFrames.grid(row=1,column=14,sticky=Tk.W)
 
 thirdRowFrame = Tk.Frame(root)
 thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
