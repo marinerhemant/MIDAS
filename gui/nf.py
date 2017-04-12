@@ -81,8 +81,8 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 	a.imshow(imarr2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(float(minThreshvar.get()),float(vali.get())))
 	if initplot:
 		initplot = 0
-		a.invert_xaxis()
-		a.invert_yaxis()
+		#a.invert_xaxis()
+		#a.invert_yaxis()
 	else:
 		a.set_xlim([lims[0][0],lims[0][1]])
 		a.set_ylim([lims[1][0],lims[1][1]])
