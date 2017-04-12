@@ -70,6 +70,7 @@ BulkNames dat = NameData[0];
 string paramfile = dat.paramfn;
 string direct = dat.datadir;
 string outfolder = strcat(direct,"/output/");
+
 # Do the initial setup
 string fn = strcat(outfolder,"initialsetup.csv");
 file setupdone <single_file_mapper;file=fn>;

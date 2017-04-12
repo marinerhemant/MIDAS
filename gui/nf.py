@@ -589,6 +589,29 @@ def makespots():
 	Tk.Button(master=root,text="+",command=incr_spotnr,font=("Helvetica",12)).grid(row=figrowspan+3,column=4,sticky=Tk.W)
 	Tk.Button(master=root,text="Load",command=update_spotnr,font=("Helvetica",12)).grid(row=figrowspan+3,column=4,sticky=Tk.W,padx=70)
 
+def median():
+	cmdout = []
+	for thisdist in range(ndistances):
+		pfname = folder + 'ps.txt' + str(thisdist)
+		f = open(pfname,'w')
+		f.write('extReduced bin\n')
+		f.write('extOrig tif\n')
+		f.write('WFImages 0\n')
+		f.write('OrigFileName '+fnstem+'\n')
+		tempnr = startframenr + thisdist*(nrfilesperdistance - int(nrfilesmedianvar.get()))
+		f.write('NrFilesPerDistance '+nrfilesmedianvar.get()+'\n')
+		f.write('NrPixels '+str(NrPixels)+'\n')
+		f.write('DataDirectory '+folder+'\n')
+		f.write('RawStartNr '+str(tempnr)+'\n')
+		f.close()
+		cmdout.append('~/opt/MIDAS/NF_HEDM/Cluster/MedianImageParallel.sh '+pfname+' '+str(thisdist+1))
+	processes = [Popen(cmdname,shell=True,
+				stdin=PIPE, stdout=PIPE, stderr=STDOUT,close_fds=True) for cmdname in cmdout]
+	def get_lines(process):
+		return process.communicate()[0].splitlines()
+	outputs = Pool(len(processes)).map(get_lines,processes)
+	print 'Calculated median for all distances.'
+
 # Global constants initialization
 imarr2 = None
 initplot = 1
@@ -747,29 +770,6 @@ nrfilesvar.set(str(nrfilesperdistance))
 enrfiles = Tk.Entry(master=secondRowFrame,textvariable=nrfilesvar,width=4)
 enrfiles.grid(row=1,column=12,sticky=Tk.W)
 
-def median():
-	cmdout = []
-	for thisdist in range(ndistances):
-		pfname = folder + 'ps.txt' + str(thisdist)
-		f = open(pfname,'w')
-		f.write('extReduced bin\n')
-		f.write('extOrig tif\n')
-		f.write('WFImages 0\n')
-		f.write('OrigFileName '+fnstem+'\n')
-		tempnr = startframenr + thisdist*(nrfilesperdistance - int(nrfilesmedianvar.get()))
-		f.write('NrFilesPerDistance '+nrfilesmedianvar.get()+'\n')
-		f.write('NrPixels '+str(NrPixels)+'\n')
-		f.write('DataDirectory '+folder+'\n')
-		f.write('RawStartNr '+str(tempnr)+'\n')
-		f.close()
-		cmdout.append('~/opt/MIDAS/NF_HEDM/Cluster/MedianImageParallel.sh '+pfname+' '+str(thisdist+1))
-	processes = [Popen(cmdname,shell=True,
-				stdin=PIPE, stdout=PIPE, stderr=STDOUT,close_fds=True) for cmdname in cmdout]
-	def get_lines(process):
-		return process.communicate()[0].splitlines()
-	outputs = Pool(len(processes)).map(get_lines,processes)
-	print 'Calculated median for all distances.'
-
 buttonmedian = Tk.Button(master=secondRowFrame,text='Calc Median / MaxOverFrames',command=median)
 buttonmedian.grid(row=1,column=13,sticky=Tk.W)
 
@@ -809,6 +809,12 @@ bMakeSpots.grid(row=1,column=6,sticky=Tk.W)
 
 button2 = Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetica",20))
 button2.grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.W)
+
+def load_mic():
+	
+
+buttonLoadMicFile = Tk.Button(master=root,text='LoadMicrostructure',command=load_mic,font=("Helvetica",16))
+buttonLoadMicFile.grid(row=figrowspan+1,column=3,rowspan=3,sticky=Tk.W)
 
 button = Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20))
 button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W)

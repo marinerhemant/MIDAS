@@ -615,7 +615,6 @@ def loadbplot():
 	    else:
 	        return 'x=%1.4f, y=%1.4f'%(x,y)
 	b.format_coord = format_coord
-	b.title.set_text("Single Detector Image")
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
@@ -626,6 +625,8 @@ figur = Figure(figsize=(20,7.5),dpi=100)
 canvas = FigureCanvasTkAgg(figur,master=root)
 a = figur.add_subplot(121,aspect='equal')
 b = figur.add_subplot(122)
+b.title.set_text("Single Detector Display")
+a.title.set_text("Multiple Detector Display")
 figrowspan = 10
 figcolspan = 10
 canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=5,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH)
@@ -716,7 +717,7 @@ cplotRings.grid(row=1,column=9,sticky=Tk.E)
 button = Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20))
 button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W,padx=10)
 
-button2 = Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetica",20))
+button2 = Tk.Button(master=root,text='Load Multiple Detector',command=plot_updater,font=("Helvetica",20))
 button2.grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.E,padx=10)
 
 bframe = Tk.Frame(root)
@@ -743,6 +744,6 @@ bclocalvar2 = Tk.StringVar()
 bclocalvar2.set(str(bclocal[1]))
 Tk.Entry(master=bframe,textvariable=bclocalvar2,width=6).grid(row=3,column=3,sticky=Tk.W)
 
-Tk.Button(master=root,text='Load',command=loadbplot,font=('Helvetica',20)).grid(row=figrowspan+1,column=4,rowspan=3)
+Tk.Button(master=root,text='Load Single Detector',command=loadbplot,font=('Helvetica',20)).grid(row=figrowspan+1,column=4,rowspan=3)
 
 Tk.mainloop()
