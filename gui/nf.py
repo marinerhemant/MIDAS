@@ -817,9 +817,8 @@ def micfileselect():
 def load_mic():
 	global loadmic
 	micfileselect()
-	print micfile
 	f = open(micfile,'r')
-	micfiledata = f.readlines()
+	micfiledata = np.loadtxt(f)
 	f.close()
 	print micfiledata
 	
