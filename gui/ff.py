@@ -721,7 +721,7 @@ def ringSelection():
 	global topRingMaterialSelection
 	wlVar = Tk.StringVar()
 	sgVar = Tk.StringVar()
-	LatticeConstantVar = [6*Tk.StringVar()]
+	LatticeConstantVar = [Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar()]
 	print LatticeConstantVar
 	topRingMaterialSelection = Tk.Toplevel()
 	topRingMaterialSelection.title('Select the SpaceGroup, Wavelength(or Energy), Lattice Constant')
