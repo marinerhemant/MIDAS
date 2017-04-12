@@ -643,7 +643,6 @@ colors = ['r','g','b','c','m','y','r','g','b','c','m','y','r','g','b',
 		  'r','g','b','c','m','y','r','g','b','c','m','y','r','g','b',
 		  'c','m','y','r','g','b','c','m','y','r','g','b','c','m','y']
 
-
 firstRowFrame = Tk.Frame(root)
 firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
 
