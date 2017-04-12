@@ -816,6 +816,7 @@ def micfileselect():
 
 def plotmic():
 	global initplotb
+	global colVar
 	if not initplotb:
 		lims = [b.get_xlim(), b.get_ylim()]
 	b.clear()
@@ -841,6 +842,8 @@ def load_mic():
 	plotmic()
 
 initplotb = 1
+colVar = Tk.IntVar()
+colVar.set(10)
 
 loadmicframe = Tk.Frame(root)
 loadmicframe.grid(row=figrowspan+1,column=3,sticky=Tk.W)
@@ -854,8 +857,6 @@ buttonReplot.grid(row=1,column=2,sticky=Tk.W)
 radioframe = Tk.Frame(root)
 radioframe.grid(row=figrowspan+2,column=3,sticky=Tk.W)
 
-colVar = Tk.IntVar()
-colVar.set(10)
 Tk.Radiobutton(master=radioframe,text='Confidence',variable=colVar,value=10).grid(row=1,column=1,sticky=Tk.W)
 Tk.Radiobutton(master=radioframe,text='Euler0',variable=colVar,value=7).grid(row=1,column=2,sticky=Tk.W)
 Tk.Radiobutton(master=radioframe,text='Euler1',variable=colVar,value=8).grid(row=1,column=3,sticky=Tk.W)
