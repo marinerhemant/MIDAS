@@ -710,11 +710,22 @@ thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
 
 buttonMakeBigDet = Tk.Button(master=thirdRowFrame,text="MakeBigDetector",command=makeBigDet)
 buttonMakeBigDet.grid(row=1,column=1,sticky=Tk.W)
+
 buttonCalibrate = Tk.Button(master=thirdRowFrame,text="CalibrateDetector",command=askRingsToExclude)
 buttonCalibrate.grid(row=1,column=2,sticky=Tk.W)
+
 buttonCalibrate2 = Tk.Button(master=thirdRowFrame,text="WriteParams",command=writeParams)
 buttonCalibrate2.grid(row=1,column=3,sticky=Tk.W)
 
+def ringSelection():
+	global RingsToShow, wl, sg, LatticeConstant
+	global topRingMaterialSelection
+	topRingMaterialSelection = Tk.Toplevel()
+	topRingMaterialSelection.title('Select the SpaceGroup, Wavelength, Lattice Constant')
+	
+	
+buttonSelectRings = Tk.Button(master=thirdRowFrame,text="SelectRingsAndMaterial",command=ringSelection)
+buttonSelectRings.grid(row=1,column=4,sticky=Tk.W)
 
 button = Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20))
 button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W,padx=10)

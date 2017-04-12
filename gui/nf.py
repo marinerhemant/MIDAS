@@ -811,7 +811,7 @@ button2 = Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetic
 button2.grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.W)
 
 def load_mic():
-	
+	global loadmic
 
 buttonLoadMicFile = Tk.Button(master=root,text='LoadMicrostructure',command=load_mic,font=("Helvetica",16))
 buttonLoadMicFile.grid(row=figrowspan+1,column=3,rowspan=3,sticky=Tk.W)
