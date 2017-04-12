@@ -61,6 +61,7 @@ if (dopeaksearch == 1) {
 		string paramFileNames[] = readData(paramfilenamefile);
 		file simBerr[]<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("ProcessPeaks_",ix,"_"),suffix=".err">;
 		file simAerr[];
+		tracef("Total number of jobs for PeakSearch: %d\n",length(rings)*endnr);
 		foreach Ring,idx in rings {
 			string parameterfilename = paramFileNames[idx];
 			string PreFix1 = strcat("PeaksPerFile_",Ring);
@@ -84,6 +85,7 @@ if (dopeaksearch == 1) {
 		file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsToIndexSwift.csv")>;
 		(simDerr,simCatOut) = postpeaks(foldername,pfname,simCerr);
 		int spots[] = readData(simCatOut);
+		tracef("Total number of remaining jobs: %d\n",length(spots));
 		foreach spotnr in spots {
 			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",spotnr),suffix=".err">;
 			simEerr = indexrefine(foldername,spotnr,simCatOut);

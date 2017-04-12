@@ -810,8 +810,19 @@ bMakeSpots.grid(row=1,column=6,sticky=Tk.W)
 button2 = Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetica",20))
 button2.grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.W)
 
+def micfileselect():
+	global micfile
+	global micfilevar
+	micfile = tkFileDialog.askopenfilename()
+	micfilevar.set(micfile)
+
 def load_mic():
 	global loadmic
+	micfileselect()
+	f = open(micfile,'r')
+	micfiledata = f.readlines()
+	f.close()
+	
 
 buttonLoadMicFile = Tk.Button(master=root,text='LoadMicrostructure',command=load_mic,font=("Helvetica",16))
 buttonLoadMicFile.grid(row=figrowspan+1,column=3,rowspan=3,sticky=Tk.W)

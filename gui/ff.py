@@ -721,7 +721,7 @@ def ringSelection():
 	global RingsToShow, wl, sg, LatticeConstant
 	global topRingMaterialSelection
 	topRingMaterialSelection = Tk.Toplevel()
-	topRingMaterialSelection.title('Select the SpaceGroup, Wavelength, Lattice Constant')
+	topRingMaterialSelection.title('Select the SpaceGroup, Wavelength(or Energy), Lattice Constant')
 	
 	
 buttonSelectRings = Tk.Button(master=thirdRowFrame,text="SelectRingsAndMaterial",command=ringSelection)
