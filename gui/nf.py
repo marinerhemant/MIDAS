@@ -820,8 +820,12 @@ def load_mic():
 	f = open(micfile,'r')
 	micfiledata = np.genfromtxt(f,skip_header=4)
 	f.close()
-	print micfiledata
-	
+	b.clear()
+	b.scatter(micfiledata[:,4],micfiledata[:,5],c=micfiledata[:,11])
+	b.title.set_text("MicFile")
+	canvas.show()
+	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH,expand=1)
+
 
 buttonLoadMicFile = Tk.Button(master=root,text='LoadMicrostructure',command=load_mic,font=("Helvetica",16))
 buttonLoadMicFile.grid(row=figrowspan+1,column=3,rowspan=3,sticky=Tk.W)
