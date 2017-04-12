@@ -706,7 +706,7 @@ cplotRings = Tk.Checkbutton(master=secondRowFrame,text='Plot Rings',variable=plo
 cplotRings.grid(row=1,column=9,sticky=Tk.E)
 
 thirdRowFrame = Tk.Frame(root)
-thirdRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
+thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
 
 buttonMakeBigDet = Tk.Button(master=thirdRowFrame,text="MakeBigDetector",command=makeBigDet)
 buttonMakeBigDet.grid(row=1,column=1,sticky=Tk.W)
@@ -719,7 +719,7 @@ buttonCalibrate2.grid(row=1,column=3,sticky=Tk.W)
 button = Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20))
 button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W,padx=10)
 
-button2 = Tk.Button(master=root,text='Load\nMultiple\nDetectors',command=plot_updater,font=("Helvetica",20))
+button2 = Tk.Button(master=root,text='Load\nMultiple\nDetectors',command=plot_updater)
 button2.grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.E,padx=10)
 
 bframe = Tk.Frame(root)
@@ -746,6 +746,6 @@ bclocalvar2 = Tk.StringVar()
 bclocalvar2.set(str(bclocal[1]))
 Tk.Entry(master=bframe,textvariable=bclocalvar2,width=6).grid(row=3,column=3,sticky=Tk.W)
 
-Tk.Button(master=root,text='Load\nSingle\nDetector',command=loadbplot,font=('Helvetica',20)).grid(row=figrowspan+1,column=4,rowspan=3)
+Tk.Button(master=root,text='Load\nSingle\nDetector',command=loadbplot).grid(row=figrowspan+1,column=4,rowspan=3)
 
 Tk.mainloop()
