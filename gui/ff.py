@@ -728,12 +728,12 @@ def ringSelection():
 	topRingMaterialSelection.title('Select the SpaceGroup, Wavelength(or Energy), Lattice Constant')
 	Tk.Label(master=topRingMaterialSelection,text='Please enter the SpaceGroup, Wavelength(or Energy), Lattice Constant').grid(row=1,column=1,columnspan=7,sticky=Tk.W)
 	Tk.Label(master=topRingMaterialSelection,text='SpaceGroup').grid(row=2,column=1,sticky=Tk.W)
-	Tk.Entry(master=topRingMaterialSelection,textvariable=sgVar,width=3).grid(row=2,column=2,sticky=Tk.W)
+	Tk.Entry(master=topRingMaterialSelection,textvariable=sgVar,width=4).grid(row=2,column=2,sticky=Tk.W)
 	Tk.Label(master=topRingMaterialSelection,text='Wavelength').grid(row=3,column=1,sticky=Tk.W)
-	Tk.Entry(master=topRingMaterialSelection,textvariable=wlVar,width=3).grid(row=3,column=2,sticky=Tk.W)
+	Tk.Entry(master=topRingMaterialSelection,textvariable=wlVar,width=8).grid(row=3,column=2,sticky=Tk.W)
 	Tk.Label(master=topRingMaterialSelection,text='LatticeConstant').grid(row=4,column=1,sticky=Tk.W)
 	for i in range(6):
-		Tk.Entry(master=topRingMaterialSelection,textvariable=LatticeConstantVar[i],width=3).grid(row=4,column=i+2,sticky=Tk.W)
+		Tk.Entry(master=topRingMaterialSelection,textvariable=LatticeConstantVar[i],width=6).grid(row=4,column=i+2,sticky=Tk.W)
 	
 	
 buttonSelectRings = Tk.Button(master=thirdRowFrame,text="SelectRingsAndMaterial",command=ringSelection)
