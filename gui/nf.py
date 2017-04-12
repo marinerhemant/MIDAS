@@ -814,6 +814,8 @@ def micfileselect():
 	global micfile
 	micfile = tkFileDialog.askopenfilename()
 
+
+
 def load_mic():
 	global loadmic
 	micfileselect()
@@ -822,15 +824,14 @@ def load_mic():
 	f.close()
 	b.clear()
 	sc = b.scatter(micfiledata[:,3],micfiledata[:,4],c=micfiledata[:,10],lw=0)
-	b.title.set_text("MicFile")
+	b.title.set_text("MicFile (Confidence Coloring)")
 	figur.colorbar(sc,ax=b)
 	figur.tight_layout()
 	canvas.show()
-	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH,expand=1)
+	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
-
-buttonLoadMicFile = Tk.Button(master=root,text='LoadMicrostructure',command=load_mic,font=("Helvetica",16))
-buttonLoadMicFile.grid(row=figrowspan+1,column=3,rowspan=3,sticky=Tk.W)
+buttonLoadMicFile = Tk.Button(master=root,text='LoadMicrostructure',command=load_mic,font=("Helvetica",12))
+buttonLoadMicFile.grid(row=figrowspan+1,column=3,sticky=Tk.W)
 
 button = Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20))
 button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W)
