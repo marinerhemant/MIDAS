@@ -672,16 +672,7 @@ c2 = Tk.Checkbutton(master=firstRowFrame,text="MaxOverFrames",variable=getMaxVar
 c2.grid(row=1,column=6,sticky=Tk.W)#pack(side=Tk.LEFT)
 
 mask = None
-buttonMakeBigDet = Tk.Button(master=firstRowFrame,text="MakeBigDetector",command=makeBigDet)
-buttonMakeBigDet.grid(row=1,column=7,sticky=Tk.W)
-
 initplot = 1
-
-buttonCalibrate = Tk.Button(master=firstRowFrame,text="CalibrateDetector",command=askRingsToExclude)
-buttonCalibrate.grid(row=1,column=8,sticky=Tk.W)
-
-buttonCalibrate = Tk.Button(master=firstRowFrame,text="WriteParams",command=writeParams)
-buttonCalibrate.grid(row=1,column=9,sticky=Tk.W)
 
 secondRowFrame = Tk.Frame(root)
 secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
@@ -713,6 +704,17 @@ lines = None
 plotRingsVar = Tk.IntVar()
 cplotRings = Tk.Checkbutton(master=secondRowFrame,text='Plot Rings',variable=plotRingsVar,command=clickRings)
 cplotRings.grid(row=1,column=9,sticky=Tk.E)
+
+thirdRowFrame = Tk.Frame(root)
+thirdRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
+
+buttonMakeBigDet = Tk.Button(master=thirdRowFrame,text="MakeBigDetector",command=makeBigDet)
+buttonMakeBigDet.grid(row=1,column=1,sticky=Tk.W)
+buttonCalibrate = Tk.Button(master=thirdRowFrame,text="CalibrateDetector",command=askRingsToExclude)
+buttonCalibrate.grid(row=1,column=2,sticky=Tk.W)
+buttonCalibrate2 = Tk.Button(master=thirdRowFrame,text="WriteParams",command=writeParams)
+buttonCalibrate2.grid(row=1,column=3,sticky=Tk.W)
+
 
 button = Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20))
 button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W,padx=10)
