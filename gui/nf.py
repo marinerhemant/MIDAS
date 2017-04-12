@@ -177,7 +177,7 @@ def plotb():
 		b.plot(np.array(xvals),zs)
 		b.title.set_text("LineOutHor")
 		canvas.show()
-		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH,expand=1)
+		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 	elif horvert == 2:
 		b.clear()
 		ys = [clickpos[0][1],clickpos[1][1]]
@@ -195,8 +195,9 @@ def plotb():
 		b.plot(np.array(yvals),zs)
 		b.title.set_text("LineOutVert")
 		canvas.show()
-		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH,expand=1)
-
+		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+	b.set_aspect('auto')
+	
 def onclick(event):
 	global clickpos
 	global lb1
@@ -661,7 +662,7 @@ root.wm_title("NF display v0.1 Dt. 2017/03/25 hsharma@anl.gov")
 figur = Figure(figsize=(20,7.5),dpi=100)
 canvas = FigureCanvasTkAgg(figur,master=root)
 a = figur.add_subplot(121,aspect='equal')
-b = figur.add_subplot(122,aspect='equal')
+b = figur.add_subplot(122)
 b.title.set_text("LineOuts")
 a.title.set_text("Image")
 canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH)
@@ -839,6 +840,7 @@ def plotmic():
 	elif col == 10:
 		b.title.set_text("MicFile (Confidence Coloring)")
 	cb = figur.colorbar(sc,ax=b)
+	b.set_aspect('equal')
 	figur.tight_layout()
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
