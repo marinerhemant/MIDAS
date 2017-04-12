@@ -821,7 +821,7 @@ def load_mic():
 	micfiledata = np.genfromtxt(f,skip_header=4)
 	f.close()
 	b.clear()
-	sc = b.scatter(micfiledata[:,3],micfiledata[:,4],c=micfiledata[:,10]*100,lw=0)
+	sc = b.scatter(micfiledata[:,3],micfiledata[:,4],c=micfiledata[:,10],lw=0)
 	b.title.set_text("MicFile")
 	figur.colorbar(sc,ax=b)
 	figur.tight_layout()
