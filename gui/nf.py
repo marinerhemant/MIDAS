@@ -661,7 +661,7 @@ root.wm_title("NF display v0.1 Dt. 2017/03/25 hsharma@anl.gov")
 figur = Figure(figsize=(20,7.5),dpi=100)
 canvas = FigureCanvasTkAgg(figur,master=root)
 a = figur.add_subplot(121,aspect='equal')
-b = figur.add_subplot(122)
+b = figur.add_subplot(122,aspect='equal')
 b.title.set_text("LineOuts")
 a.title.set_text("Image")
 canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH)
@@ -830,7 +830,14 @@ def plotmic():
 	else:
 		b.set_xlim([lims[0][0],lims[0][1]])
 		b.set_ylim([lims[1][0],lims[1][1]])
-	b.title.set_text("MicFile (Confidence Coloring)")
+	if col == 7:
+		b.title.set_text("MicFile (Euler0)")
+	elif col == 8:
+		b.title.set_text("MicFile (Euler1)")
+	elif col == 9:
+		b.title.set_text("MicFile (Euler2)")
+	elif col == 10:
+		b.title.set_text("MicFile (Confidence Coloring)")
 	cb = figur.colorbar(sc,ax=b)
 	figur.tight_layout()
 	canvas.show()
