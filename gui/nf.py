@@ -307,8 +307,8 @@ def confirmselectspot():
 	global spots
 	global topNewDistance
 	global vali
-	x = NrPixels -ix
-	y = NrPixels - iy
+	x = ix # = NrPixels -ix
+	y = iy # = NrPixels - iy
 	xbc = bcs[dist][0]
 	ybc = bcs[dist][1]
 	spots[dist][0] = x - xbc
@@ -399,7 +399,7 @@ def bcwindow():
 	nCols = 2
 	top = Tk.Toplevel()
 	top.title("Enter beam center values (pixels)")
-	Tk.Label(top,text="Enter beam center values (pixels) REMEMBER to subtract NrPixels from raw coordinates").grid(row=0,columnspan=3)
+	Tk.Label(top,text="Enter beam center values (pixels)").grid(row=0,columnspan=3)
 	varsStore = []
 	for dist in range(nRows):
 		labeltext = "Distance " + str(dist)
@@ -532,8 +532,8 @@ def plot_update_spot():
 	spotnrvar.set(str(spotnr))
 	ya = pos[0]*math.sin(thisome) + pos[1]*math.cos(thisome)
 	xa = -pos[1]*math.sin(thisome) + pos[0]*math.cos(thisome)
-	yn = NrPixels - (ya + ys*(1-(xa/lsd)))/pixelsize - bcs[dist][0]
-	zn = NrPixels - (zs*(1-(xa/lsd)))/pixelsize - bcs[dist][1]
+	yn = (ya + ys*(1-(xa/lsd)))/pixelsize - bcs[dist][0] #NrPixels - (ya + ys*(1-(xa/lsd)))/pixelsize - bcs[dist][0]
+	zn = (zs*(1-(xa/lsd)))/pixelsize - bcs[dist][1] #NrPixels - (zs*(1-(xa/lsd)))/pixelsize - bcs[dist][1]
 	print [ys, ya, yn, zs, zn, rad, eta,thisome,filenrToRead]
 	while ((abs(eta) > 90) or (yn > NrPixels) or (zn > NrPixels)):
 		spotnr += 1
@@ -547,8 +547,8 @@ def plot_update_spot():
 		ys,zs = YZ4mREta(rad,eta)
 		ya = pos[0]*math.sin(thisome) + pos[1]*math.cos(thisome)
 		xa = -pos[1]*math.sin(thisome) + pos[0]*math.cos(thisome)
-		yn = NrPixels - (ya + ys*(1-(xa/lsd)))/pixelsize - bcs[dist][0]
-		zn = NrPixels - (zs*(1-(xa/lsd)))/pixelsize - bcs[dist][1]
+		yn = (ya + ys*(1-(xa/lsd)))/pixelsize - bcs[dist][0] #NrPixels - (ya + ys*(1-(xa/lsd)))/pixelsize - bcs[dist][0]
+		zn = (zs*(1-(xa/lsd)))/pixelsize - bcs[dist][1] #NrPixels - (zs*(1-(xa/lsd)))/pixelsize - bcs[dist][1]
 		print [ys, ya, yn, zs, zn, rad, eta,thisome,filenrToRead]
 	plot_updater()
 	a.scatter(yn,zn,s=5,color='red')
@@ -622,6 +622,49 @@ def median():
 	outputs = Pool(len(processes)).map(get_lines,processes)
 	print 'Calculated median for all distances.'
 
+def micfileselect():
+	global micfile
+	micfile = tkFileDialog.askopenfilename()
+
+def plotmic():
+	global micfiledata
+	global initplotb
+	global colVar
+	global cb
+	if not initplotb:
+		lims = [b.get_xlim(), b.get_ylim()]
+		cb.remove()
+	b.clear()
+	col = colVar.get()
+	sc = b.scatter(micfiledata[:,3],micfiledata[:,4],c=micfiledata[:,col],lw=0)
+	if initplotb:
+		initplotb = 0
+	else:
+		b.set_xlim([lims[0][0],lims[0][1]])
+		b.set_ylim([lims[1][0],lims[1][1]])
+	if col == 7:
+		b.title.set_text("MicFile (Euler0)")
+	elif col == 8:
+		b.title.set_text("MicFile (Euler1)")
+	elif col == 9:
+		b.title.set_text("MicFile (Euler2)")
+	elif col == 10:
+		b.title.set_text("MicFile (Confidence Coloring)")
+	cb = figur.colorbar(sc,ax=b)
+	b.set_aspect('equal')
+	figur.tight_layout()
+	canvas.show()
+	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+
+def load_mic():
+	global micfiledata
+	micfileselect()
+	f = open(micfile,'r')
+	micfiledata = np.genfromtxt(f,skip_header=4)
+	f.close()
+	plotmic()
+
+
 # Global constants initialization
 imarr2 = None
 initplot = 1
@@ -689,6 +732,10 @@ startomevar = Tk.StringVar()
 omestepvar = Tk.StringVar()
 sgvar = Tk.StringVar()
 maxringradvar = Tk.StringVar()
+initplotb = 1
+colVar = Tk.IntVar()
+colVar.set(10)
+micfiledata = None
 
 firstRowFrame = Tk.Frame(root)
 firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
@@ -820,53 +867,6 @@ bMakeSpots.grid(row=1,column=6,sticky=Tk.W)
 
 button2 = Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetica",20))
 button2.grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.W)
-
-def micfileselect():
-	global micfile
-	micfile = tkFileDialog.askopenfilename()
-
-def plotmic():
-	global micfiledata
-	global initplotb
-	global colVar
-	global cb
-	if not initplotb:
-		lims = [b.get_xlim(), b.get_ylim()]
-		cb.remove()
-	b.clear()
-	col = colVar.get()
-	sc = b.scatter(micfiledata[:,3],micfiledata[:,4],c=micfiledata[:,col],lw=0)
-	if initplotb:
-		initplotb = 0
-	else:
-		b.set_xlim([lims[0][0],lims[0][1]])
-		b.set_ylim([lims[1][0],lims[1][1]])
-	if col == 7:
-		b.title.set_text("MicFile (Euler0)")
-	elif col == 8:
-		b.title.set_text("MicFile (Euler1)")
-	elif col == 9:
-		b.title.set_text("MicFile (Euler2)")
-	elif col == 10:
-		b.title.set_text("MicFile (Confidence Coloring)")
-	cb = figur.colorbar(sc,ax=b)
-	b.set_aspect('equal')
-	figur.tight_layout()
-	canvas.show()
-	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
-
-def load_mic():
-	global micfiledata
-	micfileselect()
-	f = open(micfile,'r')
-	micfiledata = np.genfromtxt(f,skip_header=4)
-	f.close()
-	plotmic()
-
-initplotb = 1
-colVar = Tk.IntVar()
-colVar.set(10)
-micfiledata = None
 
 loadmicframe = Tk.Frame(root)
 loadmicframe.grid(row=figrowspan+1,column=3,sticky=Tk.W)
