@@ -814,25 +814,42 @@ def micfileselect():
 	global micfile
 	micfile = tkFileDialog.askopenfilename()
 
-
-
-def load_mic():
-	global loadmic
-	micfileselect()
-	f = open(micfile,'r')
-	micfiledata = np.genfromtxt(f,skip_header=4)
-	f.close()
+def plotmic():
+	global initplotb
+	if not initplotb:
+		lims = [b.get_xlim(), b.get_ylim()]
 	b.clear()
 	col = colVar.get()
 	sc = b.scatter(micfiledata[:,3],micfiledata[:,4],c=micfiledata[:,col],lw=0)
+	if initplotb:
+		initplotb = 0
+	else:
+		b.set_xlim([lims[0][0],lims[0][1]])
+		b.set_ylim([lims[1][0],lims[1][1]])
 	b.title.set_text("MicFile (Confidence Coloring)")
 	figur.colorbar(sc,ax=b)
 	figur.tight_layout()
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
-buttonLoadMicFile = Tk.Button(master=root,text='LoadMicrostructure',command=load_mic,font=("Helvetica",12))
-buttonLoadMicFile.grid(row=figrowspan+1,column=3,sticky=Tk.W)
+def load_mic():
+	global micfiledata
+	micfileselect()
+	f = open(micfile,'r')
+	micfiledata = np.genfromtxt(f,skip_header=4)
+	f.close()
+	plotmic()
+
+initplotb = 1
+
+loadmicframe = Tk.Frame(root)
+loadmicframe.grid(row=figrowspan+1,column=3,sticky=Tk.W)
+
+buttonLoadMicFile = Tk.Button(master=loadmicframe,text='LoadMicrostructure',command=load_mic,font=("Helvetica",12))
+buttonLoadMicFile.grid(row=1,column=1,sticky=Tk.W)
+
+buttonReplot = Tk.Button(master=loadmicframe,text='ReloadMic',command=plotmic(),font=("Helvetica",12))
+buttonReplot.grid(row=1,column=2,sticky=Tk.W)
 
 radioframe = Tk.Frame(root)
 radioframe.grid(row=figrowspan+2,column=3,sticky=Tk.W)
