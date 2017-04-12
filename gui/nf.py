@@ -81,6 +81,8 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 	a.imshow(imarr2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(float(minThreshvar.get()),float(vali.get())))
 	if initplot:
 		initplot = 0
+		a.invert_xaxis()
+		a.invert_yaxis()
 	else:
 		a.set_xlim([lims[0][0],lims[0][1]])
 		a.set_ylim([lims[1][0],lims[1][1]])
@@ -670,7 +672,7 @@ figur = Figure(figsize=(20,7.5),dpi=100)
 canvas = FigureCanvasTkAgg(figur,master=root)
 a = figur.add_subplot(121,aspect='equal')
 b = figur.add_subplot(122)
-b.title.set_text("LineOuts")
+b.title.set_text("LineOuts/MicFile")
 a.title.set_text("Image")
 canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH)
 toolbar_frame = Tk.Frame(root)
