@@ -596,7 +596,8 @@ def loadbplot():
 	[data, coords] = getData(detnr,bytesToSkip)
 	lsdorig = lsd[detnr-startDetNr]
 	lsdlocal = float(lsdlocalvar.get())
-	plotRingsOffset()
+	if plotRingsVar.get() == 1:
+		plotRingsOffset()
 	#data= np.flipud(data)
 	b.imshow(data,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
 	if initplot2:
@@ -652,27 +653,26 @@ frameNr = 0
 fileNumber = 0
 getMax = 0
 paramFN = 'PS.txt'
-Tk.Label(master=firstRowFrame,text="ParamFile").grid(row=1,column=1,sticky=Tk.W)#pack(side=Tk.LEFT)
+mask = None
+initplot = 1
+Tk.Label(master=firstRowFrame,text="ParamFile").grid(row=1,column=1,sticky=Tk.W)
 buttonparam = Tk.Button(master=firstRowFrame,text="Select",command=paramfileselect)
 buttonparam.grid(row=1,column=2,sticky=Tk.W)
 paramfilevar = Tk.StringVar()
 paramfilevar.set(paramFN)
 e0 = Tk.Entry(master=firstRowFrame,textvariable=paramfilevar,width=40)
-e0.grid(row=1,column=3,sticky=Tk.W)#pack(side=Tk.LEFT)
+e0.grid(row=1,column=3,sticky=Tk.W)
 
 buttonLoadParam = Tk.Button(master=firstRowFrame,text="LoadParams",command=readParams)
 buttonLoadParam.grid(row=1,column=4,sticky=Tk.W)
 
 var = Tk.IntVar()
 c = Tk.Checkbutton(master=firstRowFrame,text="Subtract Dark",variable=var)
-c.grid(row=1,column=5,sticky=Tk.W)#pack(side=Tk.LEFT)
+c.grid(row=1,column=5,sticky=Tk.W)
 
 getMaxVar = Tk.IntVar()
 c2 = Tk.Checkbutton(master=firstRowFrame,text="MaxOverFrames",variable=getMaxVar)
-c2.grid(row=1,column=6,sticky=Tk.W)#pack(side=Tk.LEFT)
-
-mask = None
-initplot = 1
+c2.grid(row=1,column=6,sticky=Tk.W)
 
 secondRowFrame = Tk.Frame(root)
 secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
@@ -684,9 +684,9 @@ eFrameNr = Tk.Entry(master=secondRowFrame,textvariable=framenrvar,width=4)
 eFrameNr.grid(row=1,column=2,sticky=Tk.W)
 
 buttonIncr = Tk.Button(master=secondRowFrame,text='+',command=incr_plotupdater,font=("Helvetica",12))
-buttonIncr.grid(row=1,column=3,sticky=Tk.W)#pack(side=Tk.LEFT)
+buttonIncr.grid(row=1,column=3,sticky=Tk.W)
 buttonDecr = Tk.Button(master=secondRowFrame,text='-',command=decr_plotupdater,font=("Helvetica",12))
-buttonDecr.grid(row=1,column=4,sticky=Tk.W)#pack(side=Tk.LEFT)
+buttonDecr.grid(row=1,column=4,sticky=Tk.W)
 
 Tk.Label(master=secondRowFrame,text='MinThreshold').grid(row=1,column=5,sticky=Tk.W)
 thresholdvar = Tk.StringVar()
