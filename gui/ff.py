@@ -334,6 +334,7 @@ def readParams():
 	hklfile = open(hklfn,'r')
 	hklfile.readline()
 	hklinfo = hklfile.readlines()
+	hklfile.close()
 	ringRads = []
 	ringNrs = []
 	lsdlocal = lsd[0]
@@ -718,6 +719,43 @@ buttonCalibrate2.grid(row=1,column=3,sticky=Tk.W)
 
 def selectRings():
 	global topSelectRings
+	hklGenPath = '~/opt/MIDAS/FF_HEDM/bin/GetHKLList '
+	pfname = 'ps_midas_ff.txt'
+	f = open(pfname,'w')
+	f.write('Wavelength ' + str(wl) + '\n')
+	f.write('SpaceGroup ' + str(sg) + '\n')
+	f.write('Lsd ' + str(tempLsd) + '\n')
+	f.write('MaxRingRad ' + str(tempMaxRingRad) + '\n')
+	f.write('LatticeConstant ')
+	for i in range(6):
+		f.write(str(LatticeConstant[i]) + ' ')
+	f.write('\n')
+	f.close()
+	os.system(hklGenPath + pfname)
+	os.system('rm '+pfname)
+	hklfn = 'hkls.csv'
+	hklfile = open(hklfn,'r')
+	hklfile.readline()
+	hklinfo = hklfile.readlines()
+	hklfile.close()
+	maxRingNr = 101
+	hkl = []
+	ds = []
+	gV = []
+	Ttheta = []
+	RingRad = []
+	hklLines = []
+	for ringNr in range(1,maxRingNr):
+		for line in hklinfo:
+			if int(line.split()[4]) == ringNr:
+				hkl.append([int(line.split()[0]),int(line.split()[1]),int(line.split()[2])])
+				ds.append(float(line.split()[3]))
+				gV.append([int(line.split()[5]),int(line.split()[6]),int(line.split()[7])])
+				Ttheta.append(float(line.split()[9]))
+				RingRad.append(float(line.split()[10].split('\n')[0]))
+				hklLines.append(line.split('\n')[0])
+				break
+	print hklLines
 	topSelectRings = Tk.Toplevel()
 	topSelectRings.title('Select Rings')
 
