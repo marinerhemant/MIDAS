@@ -853,7 +853,7 @@ loadmicframe.grid(row=figrowspan+1,column=3,sticky=Tk.W)
 buttonLoadMicFile = Tk.Button(master=loadmicframe,text='LoadMicrostructure',command=load_mic,font=("Helvetica",12))
 buttonLoadMicFile.grid(row=1,column=1,sticky=Tk.W)
 
-buttonReplot = Tk.Button(master=loadmicframe,text='ReloadMic',command=plotmic(),font=("Helvetica",12))
+buttonReplot = Tk.Button(master=loadmicframe,text='ReloadMic',command=plotmic,font=("Helvetica",12))
 buttonReplot.grid(row=1,column=2,sticky=Tk.W)
 
 radioframe = Tk.Frame(root)
