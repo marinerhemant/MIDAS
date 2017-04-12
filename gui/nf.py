@@ -821,7 +821,7 @@ def load_mic():
 	micfiledata = np.genfromtxt(f,skip_header=4)
 	f.close()
 	b.clear()
-	b.scatter(micfiledata[:,4],micfiledata[:,5],c=micfiledata[:,11])
+	b.scatter(micfiledata[:,3],micfiledata[:,4],c=micfiledata[:,10])
 	b.title.set_text("MicFile")
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH,expand=1)
