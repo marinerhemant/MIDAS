@@ -824,7 +824,7 @@ def load_mic():
 	sc = b.scatter(micfiledata[:,3],micfiledata[:,4],c=micfiledata[:,10]*100,lw=0)
 	b.title.set_text("MicFile")
 	figur.colorbar(sc,ax=b)
-	figure.tight_layout()
+	figur.tight_layout()
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH,expand=1)
 
