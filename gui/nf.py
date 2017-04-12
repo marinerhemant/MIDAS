@@ -160,6 +160,10 @@ def plotb():
 	global horvert
 	global imarr2
 	global clickpos
+	global cb
+	if cb is not None:
+		cb.remove()
+		cb = None
 	if horvert == 1:
 		b.clear()
 		xs = [clickpos[0][0],clickpos[1][0]]
@@ -635,6 +639,7 @@ button8 = None
 distDiff = 0
 ix = 0
 iy = 0
+cb = None
 distDiffVar = None
 topSelectSpotsWindow = None
 topNewDistance = None
