@@ -834,12 +834,15 @@ def load_mic():
 buttonLoadMicFile = Tk.Button(master=root,text='LoadMicrostructure',command=load_mic,font=("Helvetica",12))
 buttonLoadMicFile.grid(row=figrowspan+1,column=3,sticky=Tk.W)
 
+radioframe = Tk.Frame(root)
+radioframe.grid(row=figrowspan+2,column=3,sticky=Tk.W)
+
 colVar = Tk.IntVar()
 colVar.set(10)
-Tk.Radiobutton(master=root,text='Confidence',variable=colVar,value=10).grid(row=figrowspan+2,column=3,sticky=Tk.W)
-Tk.Radiobutton(master=root,text='Euler0',variable=colVar,value=7).grid(row=figrowspan+2,column=3,sticky=Tk.W)
-Tk.Radiobutton(master=root,text='Euler1',variable=colVar,value=8).grid(row=figrowspan+2,column=3,sticky=Tk.W)
-Tk.Radiobutton(master=root,text='Euler2',variable=colVar,value=9).grid(row=figrowspan+2,column=3,sticky=Tk.W)
+Tk.Radiobutton(master=radioframe,text='Confidence',variable=colVar,value=10).grid(row=1,column=1,sticky=Tk.W)
+Tk.Radiobutton(master=radioframe,text='Euler0',variable=colVar,value=7).grid(row=1,column=2,sticky=Tk.W)
+Tk.Radiobutton(master=radioframe,text='Euler1',variable=colVar,value=8).grid(row=1,column=3,sticky=Tk.W)
+Tk.Radiobutton(master=radioframe,text='Euler2',variable=colVar,value=9).grid(row=1,column=4,sticky=Tk.W)
 
 button = Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20))
 button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W)
