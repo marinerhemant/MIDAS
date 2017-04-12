@@ -812,16 +812,16 @@ button2.grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.W)
 
 def micfileselect():
 	global micfile
-	global micfilevar
 	micfile = tkFileDialog.askopenfilename()
-	micfilevar.set(micfile)
 
 def load_mic():
 	global loadmic
 	micfileselect()
+	print micfile
 	f = open(micfile,'r')
 	micfiledata = f.readlines()
 	f.close()
+	print micfiledata
 	
 
 buttonLoadMicFile = Tk.Button(master=root,text='LoadMicrostructure',command=load_mic,font=("Helvetica",16))
