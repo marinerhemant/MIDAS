@@ -741,7 +741,6 @@ def selectRings():
 	maxRingNr = 101
 	hkl = []
 	ds = []
-	gV = []
 	Ttheta = []
 	RingRad = []
 	hklLines = []
@@ -750,7 +749,6 @@ def selectRings():
 			if int(line.split()[4]) == ringNr:
 				hkl.append([int(line.split()[0]),int(line.split()[1]),int(line.split()[2])])
 				ds.append(float(line.split()[3]))
-				gV.append([int(line.split()[5]),int(line.split()[6]),int(line.split()[7])])
 				Ttheta.append(float(line.split()[9]))
 				RingRad.append(float(line.split()[10].split('\n')[0]))
 				hklLines.append(line.split('\n')[0])
