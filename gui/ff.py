@@ -716,21 +716,35 @@ buttonCalibrate.grid(row=1,column=2,sticky=Tk.W)
 buttonCalibrate2 = Tk.Button(master=thirdRowFrame,text="WriteParams",command=writeParams)
 buttonCalibrate2.grid(row=1,column=3,sticky=Tk.W)
 
+def selectRings():
+	global topSelectRings
+	topSelectRings = Tk.Toplevel()
+	topSelectRings.title('Select Rings')
+
 def acceptSgWlLatC():
-	global RingsToShow, wl, sg, LatticeConstant
+	global RingsToShow, wl, sg, LatticeConstant, tempLsd, tempMaxRingRad
+	global topRingMaterialSelection
 	wl = float(wlVar.get())
 	sg = int(sgVar.get())
 	LatticeConstant = np.zeros(6)
+	tempLsd = float(tempLsdVar.get())
+	tempMaxRingRad = float(tempMaxRingRadVar.get())
 	for i in range(6):
 		LatticeConstant[i] = float(LatticeConstantVar[i].get())
+	topRingMaterialSelection.destroy()
+	selectRings()
 
 def ringSelection():
-	global wlVar, sgVar, LatticeConstantVar
+	global wlVar, sgVar, LatticeConstantVar, tempLsdVar, tempMaxRingRadVar
 	global topRingMaterialSelection
 	wlVar = Tk.StringVar()
 	sgVar = Tk.StringVar()
+	tempLsdVar = Tk.StringVar()
+	tempMaxRingRadVar = Tk.StringVar()
 	sgVar.set(str(225))
 	wlVar.set(str(0.172979))
+	tempLsdVar.set(str(1000000))
+	tempMaxRingRadVar.set(str(200000))
 	LatticeConstantVar = [Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar()]
 	for i in range(3):
 		LatticeConstantVar[i].set(str(3.6))
@@ -740,12 +754,16 @@ def ringSelection():
 	Tk.Label(master=topRingMaterialSelection,text='Please enter the SpaceGroup, Wavelength(or Energy), Lattice Constant').grid(row=1,column=1,columnspan=7)
 	Tk.Label(master=topRingMaterialSelection,text='SpaceGroup').grid(row=2,column=1,sticky=Tk.W)
 	Tk.Entry(master=topRingMaterialSelection,textvariable=sgVar,width=4).grid(row=2,column=2,sticky=Tk.W)
-	Tk.Label(master=topRingMaterialSelection,text='Wavelength').grid(row=3,column=1,sticky=Tk.W)
+	Tk.Label(master=topRingMaterialSelection,text='Wavelength (A)').grid(row=3,column=1,sticky=Tk.W)
 	Tk.Entry(master=topRingMaterialSelection,textvariable=wlVar,width=8).grid(row=3,column=2,sticky=Tk.W)
-	Tk.Label(master=topRingMaterialSelection,text='LatticeConstant').grid(row=4,column=1,sticky=Tk.W)
+	Tk.Label(master=topRingMaterialSelection,text='LatticeConstant (A)').grid(row=4,column=1,sticky=Tk.W)
 	for i in range(6):
 		Tk.Entry(master=topRingMaterialSelection,textvariable=LatticeConstantVar[i],width=8).grid(row=4,column=i+2,sticky=Tk.W)
-	Tk.Button(master=topRingMaterialSelection,text='Continue',command=acceptSgWlLatC).grid(row=5,column=1,columnspan=7)
+	Tk.Label(master=topRingMaterialSelection,text='Lsd (um)').grid(row=5,column=1,sticky=Tk.W)
+	Tk.Entry(master=topRingMaterialSelection,textvariable=tempLsdVar,width=8).grid(row=5,column=2,sticky=Tk.W)
+	Tk.Label(master=topRingMaterialSelection,text='MaxRingRad (um)').grid(row=6,column=1,sticky=Tk.W)
+	Tk.Entry(master=topRingMaterialSelection,textvariable=tempMaxRingRadVar,width=8).grid(row=6,column=2,sticky=Tk.W)
+	Tk.Button(master=topRingMaterialSelection,text='Continue',command=acceptSgWlLatC).grid(row=7,column=1,columnspan=7)
 	
 buttonSelectRings = Tk.Button(master=thirdRowFrame,text="SelectRingsAndMaterial",command=ringSelection)
 buttonSelectRings.grid(row=1,column=4,sticky=Tk.W)
