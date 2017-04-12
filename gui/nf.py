@@ -161,9 +161,11 @@ def plotb():
 	global imarr2
 	global clickpos
 	global cb
+	global initplotb
 	if cb is not None:
 		cb.remove()
 		cb = None
+		initplotb = 1
 	if horvert == 1:
 		b.clear()
 		xs = [clickpos[0][0],clickpos[1][0]]
