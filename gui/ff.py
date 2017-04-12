@@ -733,7 +733,7 @@ def ringSelection():
 	Tk.Entry(master=topRingMaterialSelection,textvariable=wlVar,width=8).grid(row=3,column=2,sticky=Tk.W)
 	Tk.Label(master=topRingMaterialSelection,text='LatticeConstant').grid(row=4,column=1,sticky=Tk.W)
 	for i in range(6):
-		Tk.Entry(master=topRingMaterialSelection,textvariable=LatticeConstantVar[i],width=6).grid(row=4,column=i+2,sticky=Tk.W)
+		Tk.Entry(master=topRingMaterialSelection,textvariable=LatticeConstantVar[i],width=8).grid(row=4,column=i+2,sticky=Tk.W)
 	
 	
 buttonSelectRings = Tk.Button(master=thirdRowFrame,text="SelectRingsAndMaterial",command=ringSelection)
