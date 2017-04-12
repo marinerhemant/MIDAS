@@ -717,10 +717,17 @@ buttonCalibrate2 = Tk.Button(master=thirdRowFrame,text="WriteParams",command=wri
 buttonCalibrate2.grid(row=1,column=3,sticky=Tk.W)
 
 def ringSelection():
-	global RingsToShow, wl, sg, LatticeConstant
+	global RingsToShow, wlVar, sgVar, LatticeConstantVar
 	global topRingMaterialSelection
+	wlVar = Tk.StringVar()
+	sgVar = Tk.StringVar()
+	LatticeConstantVar = [6*Tk.StringVar()]
+	print LatticeConstantVar
 	topRingMaterialSelection = Tk.Toplevel()
 	topRingMaterialSelection.title('Select the SpaceGroup, Wavelength(or Energy), Lattice Constant')
+	Tk.Label(master=topRingMaterialSelection,text='Please enter the SpaceGroup, Wavelength(or Energy), Lattice Constant').grid(row=1,column=1,rowspan=2,sticky=Tk.W)
+	Tk.Label(master=topRingMaterialSelection,text='SpaceGroup').grid(row=2,column=1,sticky=Tk.W)
+	Tk.Entry(master=topRingMaterialSelection,textvariable=sgVar,width=3).grid(row=2,column=2,sticky=Tk.W)
 	
 	
 buttonSelectRings = Tk.Button(master=thirdRowFrame,text="SelectRingsAndMaterial",command=ringSelection)
