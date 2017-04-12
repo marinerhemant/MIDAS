@@ -815,6 +815,7 @@ def micfileselect():
 	micfile = tkFileDialog.askopenfilename()
 
 def plotmic():
+	global micfiledata
 	global initplotb
 	global colVar
 	if not initplotb:
