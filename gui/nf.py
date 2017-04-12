@@ -845,6 +845,7 @@ def load_mic():
 initplotb = 1
 colVar = Tk.IntVar()
 colVar.set(10)
+micfiledata = None
 
 loadmicframe = Tk.Frame(root)
 loadmicframe.grid(row=figrowspan+1,column=3,sticky=Tk.W)
