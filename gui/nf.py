@@ -818,7 +818,7 @@ def load_mic():
 	global loadmic
 	micfileselect()
 	f = open(micfile,'r')
-	micfiledata = np.loadtxt(f)
+	micfiledata = np.genfromtxt(f,skip_header=4)
 	f.close()
 	print micfiledata
 	
