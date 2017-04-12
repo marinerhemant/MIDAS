@@ -818,8 +818,10 @@ def plotmic():
 	global micfiledata
 	global initplotb
 	global colVar
+	global cb
 	if not initplotb:
 		lims = [b.get_xlim(), b.get_ylim()]
+		cb.remove()
 	b.clear()
 	col = colVar.get()
 	sc = b.scatter(micfiledata[:,3],micfiledata[:,4],c=micfiledata[:,col],lw=0)
@@ -829,7 +831,7 @@ def plotmic():
 		b.set_xlim([lims[0][0],lims[0][1]])
 		b.set_ylim([lims[1][0],lims[1][1]])
 	b.title.set_text("MicFile (Confidence Coloring)")
-	figur.colorbar(sc,ax=b)
+	cb = figur.colorbar(sc,ax=b)
 	figur.tight_layout()
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
