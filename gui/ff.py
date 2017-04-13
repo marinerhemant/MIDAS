@@ -751,14 +751,14 @@ def selectRings():
 				ds.append(float(line.split()[3]))
 				Ttheta.append(float(line.split()[9]))
 				RingRad.append(float(line.split()[10].split('\n')[0]))
-				line = line.replace(' ','\t')
 				hklLines.append(line.split('\n')[0])
 				break
 	topSelectRings = Tk.Toplevel()
 	topSelectRings.title('Select Rings')
 	nrhkls = len(hklLines)
+	Tk.Label(master=topSelectRings,text=hklinfo[0]).grid(row=1,column=0,sticky=Tk.W,columnspan=2)
 	ListBox1 = Tk.Listbox(topSelectRings,width=80,height=15,)
-	ListBox1.grid(row=0,column=0)
+	ListBox1.grid(row=1,column=0)
 	yscroll=Tk.Scrollbar(topSelectRings)
 	yscroll.grid(row=0,column=1,sticky=Tk.N+Tk.S)
 	for line in hklLines:
