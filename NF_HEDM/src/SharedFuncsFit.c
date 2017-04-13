@@ -570,7 +570,7 @@ CalcFracOverlap(
 			for (Layer=0;Layer<nLayers;Layer++){
 				MultY = (int) floor(((((double)(YZSpotsTemp[0]-ybc))*px)*(Lsds[Layer]/Lsd))/px + ybcs[Layer]) + InPixels[k][0];
 				MultZ = (int) floor(((((double)(YZSpotsTemp[1]-zbc))*px)*(Lsds[Layer]/Lsd))/px + zbcs[Layer]) + InPixels[k][1];
-				if (MultY > 2048 || MultY < 0 || MultZ > 2048 || MultZ < 0){
+				if (MultY >= 2048 || MultY < 0 || MultZ >= 2048 || MultZ < 0){
 					OutofBounds = 1;
 					break;
 				}

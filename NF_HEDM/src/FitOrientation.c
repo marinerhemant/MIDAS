@@ -501,7 +501,7 @@ main(int argc, char *argv[])
     SizeObsSpots*=nrPixels;
     SizeObsSpots*=nrFiles;
     SizeObsSpots/=32;
-    printf("%lld\n",SizeObsSpots);
+    //printf("%lld\n",SizeObsSpots*32);
     
     // Read spots info
 	char *file_name = "/dev/shm/SpotsInfo.bin";
