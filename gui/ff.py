@@ -756,6 +756,14 @@ def selectRings():
 	print hklLines
 	topSelectRings = Tk.Toplevel()
 	topSelectRings.title('Select Rings')
+	nrhkls = len(hklLines)
+	ListBox1 = Tk.Listbox(topSelectRings,width=100,height=15)
+	ListBox1.gird(row=0,column=0)
+	yscroll=Tk.Scrollbar(command=ListBox1.yview,orient=Tk.VERTICAL)
+	yscroll.grid(row=0,column=1,sticky=Tk.N+Tk.S)
+	ListBox1.configure(yscrollcomand=yscroll.set)
+	for line in hklLines:
+		ListBox1.insert(Tk.END,line)
 
 def acceptSgWlLatC():
 	global RingsToShow, wl, sg, LatticeConstant, tempLsd, tempMaxRingRad
