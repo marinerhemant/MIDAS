@@ -626,7 +626,7 @@ root.wm_title("FF display v0.1 Dt. 2017/03/29 hsharma@anl.gov")
 figur = Figure(figsize=(20,7.5),dpi=100)
 canvas = FigureCanvasTkAgg(figur,master=root)
 a = figur.add_subplot(121,aspect='equal')
-b = figur.add_subplot(122)
+b = figur.add_subplot(122,aspect='equal')
 b.title.set_text("Single Detector Display")
 a.title.set_text("Multiple Detector Display")
 figrowspan = 10
