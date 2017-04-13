@@ -717,8 +717,15 @@ buttonCalibrate.grid(row=1,column=2,sticky=Tk.W)
 buttonCalibrate2 = Tk.Button(master=thirdRowFrame,text="WriteParams",command=writeParams)
 buttonCalibrate2.grid(row=1,column=3,sticky=Tk.W)
 
+def acceptRings():
+	global RingsToShow
+	items = ListBox1.curselection()
+	RingsToShow = [RingRad[int(item)] for item in items]
+	print RingsToShow
+
 def selectRings():
 	global topSelectRings
+	global hklLines, hkl, ds, Ttheta, RingRad, ListBox1
 	hklGenPath = '~/opt/MIDAS/FF_HEDM/bin/GetHKLList '
 	pfname = 'ps_midas_ff.txt'
 	f = open(pfname,'w')
@@ -766,10 +773,10 @@ def selectRings():
 		ListBox1.insert(Tk.END,line)
 	ListBox1.config(yscrollcommand=yscroll.set)
 	yscroll.config(command=ListBox1.yview)
-	
+	Tk.Button(master=topSelectRings,text='Done',command=acceptRings).grid(row=2,column=0,columnspan=2)
 
 def acceptSgWlLatC():
-	global RingsToShow, wl, sg, LatticeConstant, tempLsd, tempMaxRingRad
+	global wl, sg, LatticeConstant, tempLsd, tempMaxRingRad
 	global topRingMaterialSelection
 	wl = float(wlVar.get())
 	sg = int(sgVar.get())
