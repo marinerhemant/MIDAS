@@ -751,7 +751,7 @@ def selectRings():
 				ds.append(float(line.split()[3]))
 				Ttheta.append(float(line.split()[9]))
 				RingRad.append(float(line.split()[10].split('\n')[0]))
-				line.replace(' ','\t')
+				line = line.replace(' ','\t')
 				hklLines.append(line.split('\n')[0])
 				break
 	topSelectRings = Tk.Toplevel()
