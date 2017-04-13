@@ -732,7 +732,7 @@ def selectRings():
 	f.write('\n')
 	f.close()
 	os.system(hklGenPath + pfname)
-	os.system('rm '+pfname)
+	#os.system('rm '+pfname)
 	hklfn = 'hkls.csv'
 	hklfile = open(hklfn,'r')
 	hklfile.readline()
@@ -759,11 +759,13 @@ def selectRings():
 	nrhkls = len(hklLines)
 	ListBox1 = Tk.Listbox(topSelectRings,width=100,height=15)
 	ListBox1.grid(row=0,column=0)
-	yscroll=Tk.Scrollbar(command=ListBox1.yview,orient=Tk.VERTICAL)
+	yscroll=Tk.Scrollbar(topSelectRings)
 	yscroll.grid(row=0,column=1,sticky=Tk.N+Tk.S)
-	ListBox1.configure(yscrollcommand=yscroll.set)
 	for line in hklLines:
 		ListBox1.insert(Tk.END,line)
+	ListBox1.config(yscrollcommand=yscroll.set)
+	yscroll.config(command=ListBox1.yview)
+	
 
 def acceptSgWlLatC():
 	global RingsToShow, wl, sg, LatticeConstant, tempLsd, tempMaxRingRad
