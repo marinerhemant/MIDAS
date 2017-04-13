@@ -104,6 +104,22 @@ def transforms(idx):
 	Rz = np.array([[cos(tzr),-sin(tzr),0],[sin(tzr),cos(tzr),0],[0,0,1]])
 	return np.dot(Rx,np.dot(Ry,Rz))
 
+def plotRingsOffset():
+	global lines2
+	Etas = np.linspace(-180,180,num=360)
+	lines2 = []
+	colornr = 0
+	for ringrad in ringRads:
+		Y = []
+		Z = []
+		for eta in Etas:
+			ringrad2 = ringrad * (lsdlocal / lsdorig)
+			tmp = YZ4mREta(ringrad2,eta)
+			Y.append(tmp[0]/px + bclocal[0])
+			Z.append(tmp[1]/px + bclocal[1])
+		lines2.append(b.plot(Y,Z,color=colors[colornr]))
+		colornr+= 1
+
 def plotRings():
 	global lines
 	Etas = np.linspace(-180,180,num=360)
@@ -124,16 +140,21 @@ def doRings():
 	plotYesNo = plotRingsVar.get()
 	if plotYesNo == 1:
 		lines = None
+		lines2 = None
 		plotRings()
+		plotRingsOffset()
 	else:
 		if lines is not None:
 			for line in lines:
 				line.pop(0).remove()
 			lines = None
+		if lines2 is not None:
+			for line2 in lines2:
+				line2.pop(0).remove()
+			lines2 = None
 	
 def clickRings():
 	doRings()
-	plotRingsOffset()
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
@@ -550,22 +571,6 @@ def makeBigDet():
 	cmdf = '~/opt/MIDAS/FF_HEDM/bin/MapMultipleDetectors '
 	os.system(cmdf+paramFN)
 	readBigDet()
-
-def plotRingsOffset():
-	global lines2
-	Etas = np.linspace(-180,180,num=360)
-	lines2 = []
-	colornr = 0
-	for ringrad in ringRads:
-		Y = []
-		Z = []
-		for eta in Etas:
-			ringrad2 = ringrad * (lsdlocal / lsdorig)
-			tmp = YZ4mREta(ringrad2,eta)
-			Y.append(tmp[0]/px + bclocal[0])
-			Z.append(tmp[1]/px + bclocal[1])
-		lines2.append(b.plot(Y,Z,color=colors[colornr]))
-		colornr+= 1
 
 def loadbplot():
 	global bclocal
