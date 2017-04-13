@@ -758,7 +758,7 @@ def selectRings():
 	topSelectRings.title('Select Rings')
 	nrhkls = len(hklLines)
 	ListBox1 = Tk.Listbox(topSelectRings,width=100,height=15)
-	ListBox1.gird(row=0,column=0)
+	ListBox1.grid(row=0,column=0)
 	yscroll=Tk.Scrollbar(command=ListBox1.yview,orient=Tk.VERTICAL)
 	yscroll.grid(row=0,column=1,sticky=Tk.N+Tk.S)
 	ListBox1.configure(yscrollcomand=yscroll.set)
