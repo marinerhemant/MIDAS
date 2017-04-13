@@ -736,7 +736,6 @@ def selectRings():
 	hklfn = 'hkls.csv'
 	hklfile = open(hklfn,'r')
 	header = hklfile.readline()
-	print header
 	hklinfo = hklfile.readlines()
 	hklfile.close()
 	maxRingNr = 101
@@ -757,8 +756,8 @@ def selectRings():
 	topSelectRings = Tk.Toplevel()
 	topSelectRings.title('Select Rings')
 	nrhkls = len(hklLines)
-	Tk.Label(master=topSelectRings,text=header.split('\n')[0]).grid(row=1,column=0,sticky=Tk.W,columnspan=2)
-	ListBox1 = Tk.Listbox(topSelectRings,width=80,height=15,)
+	Tk.Label(master=topSelectRings,text=header.split('\n')[0]).grid(row=0,column=0,sticky=Tk.W,columnspan=2)
+	ListBox1 = Tk.Listbox(topSelectRings,width=80,height=15)
 	ListBox1.grid(row=1,column=0)
 	yscroll=Tk.Scrollbar(topSelectRings)
 	yscroll.grid(row=1,column=1,sticky=Tk.N+Tk.S)
