@@ -759,9 +759,9 @@ def selectRings():
 	nrhkls = len(hklLines)
 	ListBox1 = Tk.Listbox(topSelectRings,width=100,height=15)
 	ListBox1.grid(row=0,column=0)
-	yscroll=Tk.Scrollbar(command=ListBox1.yview,orient=Tk.VERTICAL)
+	yscroll=Tk.Scrollbar(root=topSelectRings,command=ListBox1.yview,orient=Tk.VERTICAL)
 	yscroll.grid(row=0,column=1,sticky=Tk.N+Tk.S)
-	ListBox1.configure(yscrollcomand=yscroll.set)
+	ListBox1.configure(yscrollcommand=yscroll.set)
 	for line in hklLines:
 		ListBox1.insert(Tk.END,line)
 
