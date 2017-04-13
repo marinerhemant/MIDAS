@@ -42,4 +42,4 @@ ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/pr
 	-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
 	-DoPeakSearch=${ProcessImages} -FFSeedOrientations=${FFSeedOrientations} -DoFullLayer=1
 
-${BINDIR}/ParseMic ${TOP_PARAM_FILE}
+${BINFOLDER}/ParseMic ${TOP_PARAM_FILE}
