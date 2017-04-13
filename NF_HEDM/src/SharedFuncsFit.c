@@ -580,6 +580,7 @@ CalcFracOverlap(
 				BinNr += (long long int) OmeBin*2048*2048;
 				BinNr += (long long int) 2048*MultY;
 				BinNr += MultZ;
+				printf("%lld\n",BinNr);
 				fflush(stdout);
 				if (TestBit(ObsSpotsInfo,BinNr)){
 					if (AllDistsFound == 1){
