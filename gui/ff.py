@@ -719,10 +719,11 @@ buttonCalibrate2.grid(row=1,column=3,sticky=Tk.W)
 
 def acceptRings():
 	global RingsToShow
+	global ringRads
 	global topSelectRings
 	items = ListBox1.curselection()
-	RingsToShow = [RingRad[int(item)] for item in items]
-	print RingsToShow
+	ringRads = [RingRad[int(item)] for item in items]
+	RingsToShow = [int(item) for item in items]
 	topSelectRings.destroy()
 
 def selectRings():
