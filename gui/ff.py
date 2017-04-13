@@ -781,7 +781,7 @@ def selectRings():
 
 def acceptSgWlLatC():
 	global wl, sg, LatticeConstant, tempLsd, tempMaxRingRad, px, bigdetsize
-	global topRingMaterialSelection
+	global topRingMaterialSelection, lsdlocal, lsdorig
 	wl = float(wlVar.get())
 	sg = int(sgVar.get())
 	LatticeConstant = np.zeros(6)
