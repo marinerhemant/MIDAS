@@ -779,11 +779,12 @@ def selectRings():
 	Tk.Button(master=topSelectRings,text='Done',command=acceptRings).grid(row=2,column=0,columnspan=2)
 
 def acceptSgWlLatC():
-	global wl, sg, LatticeConstant, tempLsd, tempMaxRingRad
+	global wl, sg, LatticeConstant, tempLsd, tempMaxRingRad, px
 	global topRingMaterialSelection
 	wl = float(wlVar.get())
 	sg = int(sgVar.get())
 	LatticeConstant = np.zeros(6)
+	px = float(pxVar.get())
 	tempLsd = float(tempLsdVar.get())
 	tempMaxRingRad = float(tempMaxRingRadVar.get())
 	for i in range(6):
@@ -792,10 +793,11 @@ def acceptSgWlLatC():
 	selectRings()
 
 def ringSelection():
-	global wlVar, sgVar, LatticeConstantVar, tempLsdVar, tempMaxRingRadVar
+	global wlVar, sgVar, LatticeConstantVar, tempLsdVar, tempMaxRingRadVar, pxVar
 	global topRingMaterialSelection
 	wlVar = Tk.StringVar()
 	sgVar = Tk.StringVar()
+	pxVar = Tk.StringVar()
 	tempLsdVar = Tk.StringVar()
 	tempMaxRingRadVar = Tk.StringVar()
 	sgVar.set(str(225))
@@ -820,7 +822,9 @@ def ringSelection():
 	Tk.Entry(master=topRingMaterialSelection,textvariable=tempLsdVar,width=8).grid(row=5,column=2,sticky=Tk.W)
 	Tk.Label(master=topRingMaterialSelection,text='MaxRingRad (um)').grid(row=6,column=1,sticky=Tk.W)
 	Tk.Entry(master=topRingMaterialSelection,textvariable=tempMaxRingRadVar,width=8).grid(row=6,column=2,sticky=Tk.W)
-	Tk.Button(master=topRingMaterialSelection,text='Continue',command=acceptSgWlLatC).grid(row=7,column=1,columnspan=7)
+	Tk.Label(master=topRingMaterialSelection,text='Pixel Size (um)').grid(row=7,column=1,sticky=Tk.W)
+	Tk.Entry(master=topRingMaterialSelection,textvariable=pxVar,width=8).grid(row=7,column=2,sticky=Tk.W)
+	Tk.Button(master=topRingMaterialSelection,text='Continue',command=acceptSgWlLatC).grid(row=8,column=1,columnspan=7)
 	
 buttonSelectRings = Tk.Button(master=thirdRowFrame,text="SelectRingsAndMaterial",command=ringSelection)
 buttonSelectRings.grid(row=1,column=4,sticky=Tk.W)
