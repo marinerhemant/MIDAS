@@ -657,7 +657,8 @@ def plotmic():
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def load_mic():
-	global micfiledata
+	global micfiledata, initplotb
+	initplotb = 1
 	micfileselect()
 	f = open(micfile,'r')
 	micfiledata = np.genfromtxt(f,skip_header=4)
