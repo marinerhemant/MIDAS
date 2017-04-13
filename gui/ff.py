@@ -552,7 +552,6 @@ def makeBigDet():
 	readBigDet()
 
 def plotRingsOffset():
-	global bclocal
 	global lines2
 	Etas = np.linspace(-180,180,num=360)
 	lines2 = []
@@ -791,6 +790,8 @@ def acceptSgWlLatC():
 	for i in range(4):
 		if lsd[i] == 0:
 			lsd[i] = tempLsd
+	lsdlocal = tempLsd
+	lsdorig = tempLsd
 	lsdlocalvar.set(str(tempLsd))
 	tempMaxRingRad = float(tempMaxRingRadVar.get())
 	for i in range(6):
