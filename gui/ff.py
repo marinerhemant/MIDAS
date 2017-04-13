@@ -786,15 +786,15 @@ def acceptSgWlLatC():
 	sg = int(sgVar.get())
 	LatticeConstant = np.zeros(6)
 	px = float(pxVar.get())
-	tempLsd = float(tempLsdVar.get())
-	tempMaxRingRad = float(tempMaxRingRadVar.get())
+	tempLsd = 1000000
+	tempMaxRingRad = 2000000
 	for i in range(6):
 		LatticeConstant[i] = float(LatticeConstantVar[i].get())
 	topRingMaterialSelection.destroy()
 	selectRings()
 
 def ringSelection():
-	global wlVar, sgVar, LatticeConstantVar, tempLsdVar, tempMaxRingRadVar, pxVar
+	global wlVar, sgVar, LatticeConstantVar, pxVar
 	global topRingMaterialSelection
 	wlVar = Tk.StringVar()
 	sgVar = Tk.StringVar()
@@ -804,8 +804,6 @@ def ringSelection():
 	sgVar.set(str(225))
 	wlVar.set(str(0.172979))
 	pxVar.set(str(200))
-	tempLsdVar.set(str(1000000))
-	tempMaxRingRadVar.set(str(2000000))
 	LatticeConstantVar = [Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar()]
 	for i in range(3):
 		LatticeConstantVar[i].set(str(3.6))
@@ -820,13 +818,9 @@ def ringSelection():
 	Tk.Label(master=topRingMaterialSelection,text='LatticeConstant (A)').grid(row=4,column=1,sticky=Tk.W)
 	for i in range(6):
 		Tk.Entry(master=topRingMaterialSelection,textvariable=LatticeConstantVar[i],width=8).grid(row=4,column=i+2,sticky=Tk.W)
-	Tk.Label(master=topRingMaterialSelection,text='Lsd (um)').grid(row=5,column=1,sticky=Tk.W)
-	Tk.Entry(master=topRingMaterialSelection,textvariable=tempLsdVar,width=8).grid(row=5,column=2,sticky=Tk.W)
-	Tk.Label(master=topRingMaterialSelection,text='MaxRingRad (um)').grid(row=6,column=1,sticky=Tk.W)
-	Tk.Entry(master=topRingMaterialSelection,textvariable=tempMaxRingRadVar,width=8).grid(row=6,column=2,sticky=Tk.W)
-	Tk.Label(master=topRingMaterialSelection,text='Pixel Size (um)').grid(row=7,column=1,sticky=Tk.W)
-	Tk.Entry(master=topRingMaterialSelection,textvariable=pxVar,width=8).grid(row=7,column=2,sticky=Tk.W)
-	Tk.Button(master=topRingMaterialSelection,text='Continue',command=acceptSgWlLatC).grid(row=8,column=1,columnspan=7)
+	Tk.Label(master=topRingMaterialSelection,text='Pixel Size (um)').grid(row=5,column=1,sticky=Tk.W)
+	Tk.Entry(master=topRingMaterialSelection,textvariable=pxVar,width=8).grid(row=5,column=2,sticky=Tk.W)
+	Tk.Button(master=topRingMaterialSelection,text='Continue',command=acceptSgWlLatC).grid(row=6,column=1,columnspan=7)
 	
 buttonSelectRings = Tk.Button(master=thirdRowFrame,text="SelectRingsAndMaterial",command=ringSelection)
 buttonSelectRings.grid(row=1,column=4,sticky=Tk.W)
