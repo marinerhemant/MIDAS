@@ -736,6 +736,7 @@ def selectRings():
 	hklfn = 'hkls.csv'
 	hklfile = open(hklfn,'r')
 	header = hklfile.readline()
+	header = header.replace(' ','    ')
 	hklinfo = hklfile.readlines()
 	hklfile.close()
 	maxRingNr = 101
