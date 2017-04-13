@@ -137,6 +137,7 @@ def plotRings():
 
 def doRings():
 	global lines
+	global lines2
 	plotYesNo = plotRingsVar.get()
 	if plotYesNo == 1:
 		lines = None
