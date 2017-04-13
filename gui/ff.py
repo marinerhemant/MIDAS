@@ -654,6 +654,7 @@ fileNumber = 0
 getMax = 0
 paramFN = 'PS.txt'
 mask = None
+bigdetsize = 2048
 initplot = 1
 Tk.Label(master=firstRowFrame,text="ParamFile").grid(row=1,column=1,sticky=Tk.W)
 buttonparam = Tk.Button(master=firstRowFrame,text="Select",command=paramfileselect)
@@ -779,7 +780,7 @@ def selectRings():
 	Tk.Button(master=topSelectRings,text='Done',command=acceptRings).grid(row=2,column=0,columnspan=2)
 
 def acceptSgWlLatC():
-	global wl, sg, LatticeConstant, tempLsd, tempMaxRingRad, px
+	global wl, sg, LatticeConstant, tempLsd, tempMaxRingRad, px, bigdetsize
 	global topRingMaterialSelection
 	wl = float(wlVar.get())
 	sg = int(sgVar.get())
@@ -802,6 +803,7 @@ def ringSelection():
 	tempMaxRingRadVar = Tk.StringVar()
 	sgVar.set(str(225))
 	wlVar.set(str(0.172979))
+	pxVar.set(str(200))
 	tempLsdVar.set(str(1000000))
 	tempMaxRingRadVar.set(str(2000000))
 	LatticeConstantVar = [Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar()]
