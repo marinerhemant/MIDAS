@@ -765,6 +765,7 @@ main(int argc, char *argv[])
 	        }
 	    }else{
 			printf("No good ID found.\n");
+			continue;
 		}
 		end = clock();
 	    diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
