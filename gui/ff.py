@@ -817,11 +817,11 @@ def ringSelection():
 	pxVar = Tk.StringVar()
 	tempLsdVar = Tk.StringVar()
 	tempMaxRingRadVar = Tk.StringVar()
-	sgVar.set(str(225))
-	wlVar.set(str(0.172979))
-	pxVar.set(str(200))
-	tempLsdVar.set(str(1000000))
-	tempMaxRingRadVar.set(str(2000000))
+	sgVar.set(str(sg))
+	wlVar.set(str(wl))
+	pxVar.set(str(px))
+	tempLsdVar.set(str(tempLsd))
+	tempMaxRingRadVar.set(str(tempMaxRingRad))
 	LatticeConstantVar = [Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar()]
 	for i in range(3):
 		LatticeConstantVar[i].set(str(3.6))
@@ -859,6 +859,12 @@ bframe.grid(row=figrowspan+1,column=3,rowspan=3,sticky=Tk.W)
 initplot2 = 1
 origdetnum = 1
 bclocal = [0,0]
+sg = 225
+wl = 0.172979
+px = 200
+tempLsd = 1000000
+tempMaxRingRad = 2000000
+
 Tk.Label(master=bframe,text='DetNum').grid(row=1,column=1,sticky=Tk.W)
 detnumbvar = Tk.StringVar()
 detnumbvar.set(str(1))
