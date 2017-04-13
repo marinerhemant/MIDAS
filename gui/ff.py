@@ -820,7 +820,7 @@ def ringSelection():
 	sgVar.set(str(sg))
 	wlVar.set(str(wl))
 	pxVar.set(str(px))
-	tempLsdVar.set(str(tempLsd))
+	tempLsdVar.set(lsdlocalvar.get())
 	tempMaxRingRadVar.set(str(tempMaxRingRad))
 	LatticeConstantVar = [Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar()]
 	for i in range(3):
