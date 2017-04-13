@@ -106,6 +106,10 @@ def transforms(idx):
 
 def plotRingsOffset():
 	global lines2
+	global lsdlocal, bclocal
+	lsdlocal = float(lsdlocalvar.get())
+	bclocal[0] = float(bclocalvar1.get())
+	bclocal[1] = float(bclocalvar2.get())
 	Etas = np.linspace(-180,180,num=360)
 	lines2 = []
 	colornr = 0
