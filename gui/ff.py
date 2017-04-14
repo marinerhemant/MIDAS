@@ -827,9 +827,10 @@ def firstFileSelector():
 	global fileStem, folder, padding
 	firstfilefullpath = selectFile()
 	folder = os.path.dirname(firstfilefullpath)
-	fullfilename = firstfilefullpath.split('/')[-1].split('.')[:-1]
-	
-	print fillfilename
+	fullfilename = firstfilefullpath.split('/')[-1].split('.')[0]
+	fnstem = '_'.join(fullfilename.split('_')[:-1])
+	print fullfilename
+	print fnstem
 	print folder
 
 def darkFileSelector():
