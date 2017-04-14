@@ -600,6 +600,8 @@ def loadbplot():
 	b.clear()
 	print folder
 	fileNumber = firstFileNumber + frameNr/nFramesPerFile
+	print firstFileNumber
+	print fileNumber
 	framesToSkip = frameNr % nFramesPerFile
 	bytesToSkip = 8192 + framesToSkip*(2*NrPixels*NrPixels)
 	detnr = int(detnumbvar.get())
