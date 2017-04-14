@@ -824,10 +824,16 @@ def selectFile():
 	return tkFileDialog.askopenfilename()
 
 def firstFileSelector():
+	global fileStem, folder, padding
 	firstfilefullpath = selectFile()
-	print firstfilefullpath
+	folder = os.path.dirname(firstfilefullpath)
+	fullfilename = firstfilefullpath.split('/')[-1].split('.')[:-1]
+	
+	print fillfilename
+	print folder
 
 def darkFileSelector():
+	global darkStem,darkNum
 	darkfilefullpath = selectFile()
 	print darkfilefullpath
 
