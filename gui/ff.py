@@ -360,7 +360,6 @@ def readParams():
 			RhoDs.append(float(line.split()[10]))
 	if folder[0] == '~':
 		folder = os.path.expanduser(folder)
-		print folder
 	bigFN = 'BigDetectorMaskEdgeSize' + str(bigdetsize) + 'x' + str(bigdetsize) + 'Unsigned16Bit.bin'
 	hklGenPath = '~/opt/MIDAS/FF_HEDM/bin/GetHKLList '
 	os.system(hklGenPath + paramFN)
@@ -791,7 +790,7 @@ toolbar.update()
 firstRowFrame = Tk.Frame(root)
 firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text="ParamFile").grid(row=1,column=1,sticky=Tk.W)
+Tk.Label(master=firstRowFrame,text="Only for Hydra: ParamFile").grid(row=1,column=1,sticky=Tk.W)
 buttonparam = Tk.Button(master=firstRowFrame,text="Select",command=paramfileselect)
 buttonparam.grid(row=1,column=2,sticky=Tk.W)
 paramfilevar = Tk.StringVar()
@@ -802,20 +801,14 @@ e0.grid(row=1,column=3,sticky=Tk.W)
 buttonLoadParam = Tk.Button(master=firstRowFrame,text="LoadParams",command=readParams)
 buttonLoadParam.grid(row=1,column=4,sticky=Tk.W)
 
+buttonMakeBigDet = Tk.Button(master=firstRowFrame,text="MakeBigDetector",command=makeBigDet)
+buttonMakeBigDet.grid(row=1,column=5,sticky=Tk.W)
 
+buttonCalibrate = Tk.Button(master=firstRowFrame,text="CalibrateDetector",command=askRingsToExclude)
+buttonCalibrate.grid(row=1,column=6,sticky=Tk.W)
 
-var = Tk.IntVar()
-c = Tk.Checkbutton(master=firstRowFrame,text="Subtract Dark",variable=var)
-c.grid(row=1,column=5,sticky=Tk.W)
-
-getMaxVar = Tk.IntVar()
-c2 = Tk.Checkbutton(master=firstRowFrame,text="MaxOverFrames",variable=getMaxVar)
-c2.grid(row=1,column=6,sticky=Tk.W)
-
-lines = None
-plotRingsVar = Tk.IntVar()
-cplotRings = Tk.Checkbutton(master=firstRowFrame,text='Plot Rings',variable=plotRingsVar,command=clickRings)
-cplotRings.grid(row=1,column=7,sticky=Tk.E)
+buttonCalibrate2 = Tk.Button(master=firstRowFrame,text="WriteParams",command=writeParams)
+buttonCalibrate2.grid(row=1,column=7,sticky=Tk.W)
 
 secondRowFrame = Tk.Frame(root)
 secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
@@ -863,14 +856,18 @@ enPixels.grid(row=1,column=14,sticky=Tk.W)
 thirdRowFrame = Tk.Frame(root)
 thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
 
-buttonMakeBigDet = Tk.Button(master=thirdRowFrame,text="MakeBigDetector",command=makeBigDet)
-buttonMakeBigDet.grid(row=1,column=1,sticky=Tk.W)
+var = Tk.IntVar()
+c = Tk.Checkbutton(master=thirdRowFrame,text="Subtract Dark",variable=var)
+c.grid(row=1,column=1,sticky=Tk.W)
 
-buttonCalibrate = Tk.Button(master=thirdRowFrame,text="CalibrateDetector",command=askRingsToExclude)
-buttonCalibrate.grid(row=1,column=2,sticky=Tk.W)
+getMaxVar = Tk.IntVar()
+c2 = Tk.Checkbutton(master=thirdRowFrame,text="MaxOverFrames",variable=getMaxVar)
+c2.grid(row=1,column=2,sticky=Tk.W)
 
-buttonCalibrate2 = Tk.Button(master=thirdRowFrame,text="WriteParams",command=writeParams)
-buttonCalibrate2.grid(row=1,column=3,sticky=Tk.W)
+lines = None
+plotRingsVar = Tk.IntVar()
+cplotRings = Tk.Checkbutton(master=thirdRowFrame,text='Plot Rings',variable=plotRingsVar,command=clickRings)
+cplotRings.grid(row=1,column=3,sticky=Tk.E)
 
 buttonSelectRings = Tk.Button(master=thirdRowFrame,text="SelectRingsAndMaterial",command=ringSelection)
 buttonSelectRings.grid(row=1,column=4,sticky=Tk.W)
