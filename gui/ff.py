@@ -893,6 +893,7 @@ Tk.Label(master=firstRowFrame,text='MaxThreshold').grid(row=1,column=13,sticky=T
 Tk.Entry(master=firstRowFrame,textvariable=maxthresholdvar,width=5).grid(row=1,column=14,sticky=Tk.W)
 
 def replot():
+	global initplot, initplot2
 	threshold = float(thresholdvar.get())
 	upperthreshold = float(maxthresholdvar.get())
 	if nDetectors > 1:
