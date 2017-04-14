@@ -829,7 +829,7 @@ def selectFile():
 def firstFileSelector():
 	global fileStem, folder, padding,firstFileNumber,nFramesPerFile
 	firstfilefullpath = selectFile()
-	folder = os.path.dirname(firstfilefullpath)
+	folder = os.path.dirname(firstfilefullpath) + '/'
 	fullfilename = firstfilefullpath.split('/')[-1].split('.')[0]
 	fileStem = '_'.join(fullfilename.split('_')[:-1])
 	firstFileNumber = int(fullfilename.split('_')[-1])
