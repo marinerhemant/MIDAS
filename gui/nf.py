@@ -713,7 +713,7 @@ spotnr = 1
 # Main funcion
 root = Tk.Tk()
 root.wm_title("NF display v0.1 Dt. 2017/03/25 hsharma@anl.gov")
-figur = Figure(figsize=(20,7.5),dpi=100)
+figur = Figure(figsize=(20,8.5),dpi=100)
 canvas = FigureCanvasTkAgg(figur,master=root)
 a = figur.add_subplot(121,aspect='equal')
 b = figur.add_subplot(122)
