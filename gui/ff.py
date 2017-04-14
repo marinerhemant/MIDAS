@@ -825,7 +825,7 @@ def selectFile():
 	return tkFileDialog.askopenfilename()
 
 def firstFileSelector():
-	global fileStem, folder, padding,firstFileNumber
+	global fileStem, folder, padding,firstFileNumber,nFramesPerFile
 	firstfilefullpath = selectFile()
 	folder = os.path.dirname(firstfilefullpath)
 	fullfilename = firstfilefullpath.split('/')[-1].split('.')[0]
