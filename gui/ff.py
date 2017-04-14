@@ -837,6 +837,8 @@ def selectFile():
 
 def firstFileSelector():
 	global fileStem, folder, padding,firstFileNumber,nFramesPerFile
+	global nDetectors
+	nDetectors = 1
 	firstfilefullpath = selectFile()
 	print firstfilefullpath
 	folder = os.path.dirname(firstfilefullpath) + '/'
