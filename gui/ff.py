@@ -838,7 +838,6 @@ def firstFileSelector():
 	statinfo = os.stat(firstfilefullpath)
 	nFramesPerFile = (statinfo.st_size - 8192)/(2*NrPixels*NrPixels)
 	nFramesPerFileVar.set(nFramesPerFile)
-	print nFramesPerFile
 
 def darkFileSelector():
 	global darkStem,darkNum
