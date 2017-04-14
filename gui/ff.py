@@ -831,7 +831,7 @@ def firstFileSelector():
 	fileStem = '_'.join(fullfilename.split('_')[:-1])
 	firstFileNr = int(fullfilename.split('_')[-1])
 	firstFileNrVar.set(firstFileNr)
-	padding = length(fullfilename.split('_')[-1])
+	padding = len(fullfilename.split('_')[-1])
 	print folder
 	print fileStem
 	print firstFileNr
