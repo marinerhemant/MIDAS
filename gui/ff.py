@@ -858,7 +858,7 @@ def darkFileSelector():
 	darkNum = int(darkfullfilename.split('_')[-1])
 	geNum = int(darkfilefullpath[-1])
 	dark = []
-	for i in range geNum:
+	for i in range(geNum):
 		dark.append(None)
 
 buttonFirstFile = Tk.Button(master=firstRowFrame,text='SelectFirstFile',command=firstFileSelector,font=("Helvetica",12))
