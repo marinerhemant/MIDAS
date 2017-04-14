@@ -825,13 +825,13 @@ def selectFile():
 	return tkFileDialog.askopenfilename()
 
 def firstFileSelector():
-	global fileStem, folder, padding
+	global fileStem, folder, padding,firstFileNumber
 	firstfilefullpath = selectFile()
 	folder = os.path.dirname(firstfilefullpath)
 	fullfilename = firstfilefullpath.split('/')[-1].split('.')[0]
 	fileStem = '_'.join(fullfilename.split('_')[:-1])
-	firstFileNr = int(fullfilename.split('_')[-1])
-	firstFileNrVar.set(firstFileNr)
+	firstFileNumber = int(fullfilename.split('_')[-1])
+	firstFileNrVar.set(firstFileNumber)
 	padding = len(fullfilename.split('_')[-1])
 	statinfo = os.stat(firstfilefullpath)
 	nFramesPerFile = (statinfo.st_size - 8192)/(2*NrPixels*NrPixels)
