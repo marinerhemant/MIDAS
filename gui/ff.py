@@ -860,6 +860,7 @@ def darkFileSelector():
 	geNum = int(darkfilefullpath[-1])
 	dark = []
 	var.set(1)
+	startDetNr = 1
 	for i in range(geNum):
 		dark.append(None)
 
