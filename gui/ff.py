@@ -91,7 +91,9 @@ def getData(geNum,bytesToSkip):
 		data = getImageMax(fn)
 	doDark = var.get()
 	if doDark == 1:
-		if lsd[0] != 0 and dark[geNum-startDetNr] is None:
+		if lsd[0] != 0:
+			startDetNr = 1
+		if dark[geNum-startDetNr] is None:
 			darkfn = getfn(darkStem,darkNum,geNum)
 			dark[geNum-startDetNr] = getImage(darkfn,8192)
 		thisdark = dark[geNum-startDetNr]
@@ -849,11 +851,15 @@ def firstFileSelector():
 	nFramesPerFileVar.set(nFramesPerFile)
 
 def darkFileSelector():
-	global darkStem,darkNum
+	global darkStem,darkNum, dark
 	darkfilefullpath = selectFile()
 	darkfullfilename = darkfilefullpath.split('/')[-1].split('.')[0]
 	darkStem = '_'.join(darkfullfilename.split('_')[:-1])
 	darkNum = int(darkfullfilename.split('_')[-1])
+	geNum = int(darkfilefullpath[-1])
+	dark = []
+	for i in range geNum:
+		dark.append(None)
 
 buttonFirstFile = Tk.Button(master=firstRowFrame,text='SelectFirstFile',command=firstFileSelector,font=("Helvetica",12))
 buttonFirstFile.grid(row=1,column=1,sticky=Tk.W)
