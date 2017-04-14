@@ -742,7 +742,7 @@ def ringSelection():
 	tempMaxRingRadVar.set(str(tempMaxRingRad))
 	LatticeConstantVar = [Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar()]
 	for i in range(3):
-		LatticeConstantVar[i].set(str(3.6))
+		LatticeConstantVar[i].set(str(5.411102))
 		LatticeConstantVar[i+3].set(str(90))
 	topRingMaterialSelection = Tk.Toplevel()
 	topRingMaterialSelection.title('Select the SpaceGroup, Wavelength(or Energy), Lattice Constant')
