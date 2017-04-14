@@ -596,12 +596,13 @@ def loadbplot():
 	frameNr = int(framenrvar.get())
 	threshold = float(thresholdvar.get())
 	upperthreshold = float(maxthresholdvar.get())
+	NrPixels = int(NrPixelsVar.get())
 	b.clear()
 	fileNumber = firstFileNumber + frameNr/nFramesPerFile
 	framesToSkip = frameNr % nFramesPerFile
 	bytesToSkip = 8192 + framesToSkip*(2*NrPixels*NrPixels)
 	detnr = int(detnumbvar.get())
-	if detnr != origdetnum or initplot2:
+	if (detnr != origdetnum or initplot2) and bcs is not None:
 		origdetnum = detnr
 		bclocal[0] = bcs[detnr-startDetNr][0]
 		bclocal[1] = bcs[detnr-startDetNr][1]
@@ -776,6 +777,7 @@ initplot2 = 1
 origdetnum = 1
 bclocal = [0,0]
 sg = 225
+bcs = None
 wl = 0.172979
 px = 200
 NrPixels = 2048
