@@ -378,7 +378,7 @@ def selectspotsfcn():
 	button5.grid(row=1,column=1,sticky=Tk.W)#pack(side=Tk.LEFT)
 	Tk.Label(topSelectSpotsWindow,text="2. It is recommended to have median correction enabled.").grid(row=2,columnspan=2)
 	Tk.Label(topSelectSpotsWindow,text="3. Starting from the first distance, click on or close to a diffraction spot and then click Confirm Selection.").grid(row=3,columnspan=2)
-	Tk.Label(topSelectSpotsWindow,text="4. Repeat this for each distance.").grid(row=4,columnspan=2)
+	Tk.Label(topSelectSpotsWindow,text="4. Repeat this for each distance and select the same spot.").grid(row=4,columnspan=2)
 	Tk.Label(topSelectSpotsWindow,text="5. Click Compute Distances once finished.").grid(row=5,columnspan=2)
 	button6 = Tk.Button(master=topSelectSpotsWindow,text="Ready!",command=closeselectspotshelp)
 	button6.grid(row=6,columnspan=2)	
@@ -399,7 +399,7 @@ def bcwindow():
 	nCols = 2
 	top = Tk.Toplevel()
 	top.title("Enter beam center values (pixels)")
-	Tk.Label(top,text="Enter beam center values (pixels)").grid(row=0,columnspan=3)
+	Tk.Label(top,text="Enter beam center values (pixels). We assume center of the beam is the rotation axis.").grid(row=0,columnspan=3)
 	varsStore = []
 	for dist in range(nRows):
 		labeltext = "Distance " + str(dist)
