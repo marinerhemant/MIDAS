@@ -242,6 +242,10 @@ def incr_plotupdater():
 	global framenrvar
 	frameNr += 1
 	framenrvar.set(str(frameNr))
+	global getMax
+	getMax = getMaxVar.get()
+	if getMax:
+		return
 	if nDetectors > 1:
 		plot_updater()
 	else:
@@ -251,6 +255,10 @@ def decr_plotupdater():
 	global framenrvar
 	frameNr -= 1
 	framenrvar.set(str(frameNr))
+	global getMax
+	getMax = getMaxVar.get()
+	if getMax:
+		return
 	if nDetectors > 1:
 		plot_updater()
 	else:
