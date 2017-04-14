@@ -242,14 +242,19 @@ def incr_plotupdater():
 	global framenrvar
 	frameNr += 1
 	framenrvar.set(str(frameNr))
-	plot_updater()
-
+	if nDetectors > 1:
+		plot_updater()
+	else:
+		loadbplot()
 def decr_plotupdater():
 	global frameNr
 	global framenrvar
 	frameNr -= 1
 	framenrvar.set(str(frameNr))
-	plot_updater()
+	if nDetectors > 1:
+		plot_updater()
+	else:
+		loadbplot()
 
 def readParams():
 	global paramFN
