@@ -832,6 +832,10 @@ def firstFileSelector():
 	firstFileNr = int(fullfilename.split('_')[-1])
 	firstFileNrVar.set(firstFileNr)
 	padding = length(fullfilename.split('_')[-1])
+	print folder
+	print fileStem
+	print firstFileNr
+	print padding
 
 def darkFileSelector():
 	global darkStem,darkNum
