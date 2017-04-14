@@ -787,28 +787,32 @@ toolbar_frame.grid(row=figrowspan+4,column=0,columnspan=5,sticky=Tk.W)
 toolbar = NavigationToolbar2TkAgg( canvas, toolbar_frame )
 toolbar.update()
 
+button = Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20))
+button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W,padx=10)
+
 firstRowFrame = Tk.Frame(root)
 firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text="Only for Hydra: ParamFile").grid(row=1,column=1,sticky=Tk.W)
+Tk.Label(master=firstRowFrame,text="Only for Hydra: ",font=('Helvetica',15)).grid(row=1,column=1,sticky=Tk.W)
+Tk.Label(master=firstRowFrame,text="ParamFile").grid(row=1,column=2,sticky=Tk.W)
 buttonparam = Tk.Button(master=firstRowFrame,text="Select",command=paramfileselect)
-buttonparam.grid(row=1,column=2,sticky=Tk.W)
+buttonparam.grid(row=1,column=3,sticky=Tk.W)
 paramfilevar = Tk.StringVar()
 paramfilevar.set(paramFN)
 e0 = Tk.Entry(master=firstRowFrame,textvariable=paramfilevar,width=20)
-e0.grid(row=1,column=3,sticky=Tk.W)
+e0.grid(row=1,column=4,sticky=Tk.W)
 
 buttonLoadParam = Tk.Button(master=firstRowFrame,text="LoadParams",command=readParams)
-buttonLoadParam.grid(row=1,column=4,sticky=Tk.W)
+buttonLoadParam.grid(row=1,column=5,sticky=Tk.W)
 
 buttonMakeBigDet = Tk.Button(master=firstRowFrame,text="MakeBigDetector",command=makeBigDet)
-buttonMakeBigDet.grid(row=1,column=5,sticky=Tk.W)
+buttonMakeBigDet.grid(row=1,column=6,sticky=Tk.W)
 
 buttonCalibrate = Tk.Button(master=firstRowFrame,text="CalibrateDetector",command=askRingsToExclude)
-buttonCalibrate.grid(row=1,column=6,sticky=Tk.W)
+buttonCalibrate.grid(row=1,column=7,sticky=Tk.W)
 
 buttonCalibrate2 = Tk.Button(master=firstRowFrame,text="WriteParams",command=writeParams)
-buttonCalibrate2.grid(row=1,column=7,sticky=Tk.W)
+buttonCalibrate2.grid(row=1,column=8,sticky=Tk.W)
 
 secondRowFrame = Tk.Frame(root)
 secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
@@ -856,24 +860,21 @@ enPixels.grid(row=1,column=14,sticky=Tk.W)
 thirdRowFrame = Tk.Frame(root)
 thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
 
+buttonSelectRings = Tk.Button(master=thirdRowFrame,text="SelectRingsAndMaterial",command=ringSelection)
+buttonSelectRings.grid(row=1,column=1,sticky=Tk.W)
+
 var = Tk.IntVar()
 c = Tk.Checkbutton(master=thirdRowFrame,text="Subtract Dark",variable=var)
-c.grid(row=1,column=1,sticky=Tk.W)
+c.grid(row=1,column=2,sticky=Tk.W)
 
 getMaxVar = Tk.IntVar()
 c2 = Tk.Checkbutton(master=thirdRowFrame,text="MaxOverFrames",variable=getMaxVar)
-c2.grid(row=1,column=2,sticky=Tk.W)
+c2.grid(row=1,column=3,sticky=Tk.W)
 
 lines = None
 plotRingsVar = Tk.IntVar()
 cplotRings = Tk.Checkbutton(master=thirdRowFrame,text='Plot Rings',variable=plotRingsVar,command=clickRings)
-cplotRings.grid(row=1,column=3,sticky=Tk.E)
-
-buttonSelectRings = Tk.Button(master=thirdRowFrame,text="SelectRingsAndMaterial",command=ringSelection)
-buttonSelectRings.grid(row=1,column=4,sticky=Tk.W)
-
-button = Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20))
-button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W,padx=10)
+cplotRings.grid(row=1,column=4,sticky=Tk.E)
 
 button2 = Tk.Button(master=root,text='Load\nMultiple\nDetectors',command=plot_updater)
 button2.grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.E,padx=10)
