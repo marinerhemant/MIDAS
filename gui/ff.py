@@ -91,7 +91,7 @@ def getData(geNum,bytesToSkip):
 		data = getImageMax(fn)
 	doDark = var.get()
 	if doDark == 1:
-		if lsd[0] != 0:
+		if lsd[0] == 0:
 			startDetNr = 1
 		if dark[geNum-startDetNr] is None:
 			darkfn = getfn(darkStem,darkNum,geNum)
