@@ -616,7 +616,10 @@ def loadbplot():
 		bclocal[0] = float(bclocalvar1.get())
 		bclocal[1] = float(bclocalvar2.get())
 	[data, coords] = getData(detnr,bytesToSkip)
-	lsdorig = lsd[detnr-startDetNr]
+	if lsd[0] != 0:
+		lsdorig = lsd[detnr-startDetNr]
+	else:
+		lsdorig = float(lsdlocalvar.get())
 	lsdlocal = float(lsdlocalvar.get())
 	if plotRingsVar.get() == 1:
 		plotRingsOffset()
