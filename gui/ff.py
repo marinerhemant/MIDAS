@@ -761,6 +761,94 @@ def ringSelection():
 	Tk.Entry(master=topRingMaterialSelection,textvariable=pxVar,width=8).grid(row=7,column=2,sticky=Tk.W)
 	Tk.Button(master=topRingMaterialSelection,text='Continue',command=acceptSgWlLatC).grid(row=8,column=1,columnspan=7)
 
+def selectFile():
+	return tkFileDialog.askopenfilename()
+
+def firstFileSelector():
+	global fileStem, folder, padding,firstFileNumber,nFramesPerFile
+	global nDetectors, detnumbvar
+	firstfilefullpath = selectFile()
+	nDetectors = 1
+	detnumbvar.set(firstfilefullpath[-1])
+	folder = os.path.dirname(firstfilefullpath) + '/'
+	fullfilename = firstfilefullpath.split('/')[-1].split('.')[0]
+	fileStem = '_'.join(fullfilename.split('_')[:-1])
+	firstFileNumber = int(fullfilename.split('_')[-1])
+	firstFileNrVar.set(firstFileNumber)
+	padding = len(fullfilename.split('_')[-1])
+	statinfo = os.stat(firstfilefullpath)
+	nFramesPerFile = (statinfo.st_size - 8192)/(2*NrPixels*NrPixels)
+	nFramesPerFileVar.set(nFramesPerFile)
+
+def darkFileSelector():
+	global darkStem,darkNum, dark
+	darkfilefullpath = selectFile()
+	darkfullfilename = darkfilefullpath.split('/')[-1].split('.')[0]
+	darkStem = '_'.join(darkfullfilename.split('_')[:-1])
+	darkNum = int(darkfullfilename.split('_')[-1])
+	geNum = int(darkfilefullpath[-1])
+	dark = []
+	var.set(1)
+	startDetNr = 1
+	for i in range(geNum):
+		dark.append(None)
+
+def replot():
+	global initplot, initplot2
+	threshold = float(thresholdvar.get())
+	upperthreshold = float(maxthresholdvar.get())
+	if nDetectors > 1:
+		if not initplot:
+			lims = [a.get_xlim(), a.get_ylim()]
+		lines = None
+		doRings()
+		a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
+		if initplot:
+			initplot = 0
+		else:
+			a.set_xlim([lims[0][0],lims[0][1]])
+			a.set_ylim([lims[1][0],lims[1][1]])
+		numrows, numcols = mask2.shape
+		def format_coord(x, y):
+		    col = int(x+0.5)
+		    row = int(y+0.5)
+		    if col>=0 and col<numcols and row>=0 and row<numrows:
+		        z = mask2[row,col]
+		        xD = x - bigdetsize/2
+		        yD = y - bigdetsize/2
+		        R = sqrt(xD*xD+yD*yD)
+		        return 'x=%1.4f, y=%1.4f, Intensity=%1.4f, RingRad(pixels)=%1.4f'%(x,y,z,R)
+		    else:
+		        return 'x=%1.4f, y=%1.4f'%(x,y)
+		a.format_coord = format_coord
+		a.title.set_text("Image")
+		canvas.show()
+		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+	else:
+		if not initplot2:
+			lims = [b.get_xlim(), b.get_ylim()]
+		if plotRingsVar.get() == 1:
+			plotRingsOffset()
+		b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
+		if initplot2:
+			initplot2 = 0
+			b.invert_yaxis()
+		else:
+			b.set_xlim([lims[0][0],lims[0][1]])
+			b.set_ylim([lims[1][0],lims[1][1]])
+		numrows, numcols = bdata.shape
+		def format_coord(x, y):
+		    col = int(x+0.5)
+		    row = int(y+0.5)
+		    if col>=0 and col<numcols and row>=0 and row<numrows:
+		        z = bdata[row,col]
+		        return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x,NrPixels-y,z)
+		    else:
+		        return 'x=%1.4f, y=%1.4f'%(x,y)
+		b.format_coord = format_coord
+		canvas.show()
+		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+
 # Main function
 root = Tk.Tk()
 root.wm_title("FF display v0.1 Dt. 2017/03/29 hsharma@anl.gov")
@@ -830,39 +918,6 @@ button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W,padx=10)
 
 firstRowFrame = Tk.Frame(root)
 firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
-
-def selectFile():
-	return tkFileDialog.askopenfilename()
-
-def firstFileSelector():
-	global fileStem, folder, padding,firstFileNumber,nFramesPerFile
-	global nDetectors, detnumbvar
-	firstfilefullpath = selectFile()
-	nDetectors = 1
-	detnumbvar.set(firstfilefullpath[-1])
-	folder = os.path.dirname(firstfilefullpath) + '/'
-	fullfilename = firstfilefullpath.split('/')[-1].split('.')[0]
-	fileStem = '_'.join(fullfilename.split('_')[:-1])
-	firstFileNumber = int(fullfilename.split('_')[-1])
-	firstFileNrVar.set(firstFileNumber)
-	padding = len(fullfilename.split('_')[-1])
-	statinfo = os.stat(firstfilefullpath)
-	nFramesPerFile = (statinfo.st_size - 8192)/(2*NrPixels*NrPixels)
-	nFramesPerFileVar.set(nFramesPerFile)
-
-def darkFileSelector():
-	global darkStem,darkNum, dark
-	darkfilefullpath = selectFile()
-	darkfullfilename = darkfilefullpath.split('/')[-1].split('.')[0]
-	darkStem = '_'.join(darkfullfilename.split('_')[:-1])
-	darkNum = int(darkfullfilename.split('_')[-1])
-	geNum = int(darkfilefullpath[-1])
-	dark = []
-	var.set(1)
-	startDetNr = 1
-	for i in range(geNum):
-		dark.append(None)
-
 buttonFirstFile = Tk.Button(master=firstRowFrame,text='SelectFirstFile',command=firstFileSelector,font=("Helvetica",12))
 buttonFirstFile.grid(row=1,column=1,sticky=Tk.W)
 
@@ -891,63 +946,6 @@ ethreshold.grid(row=1,column=12,sticky=Tk.W)
 
 Tk.Label(master=firstRowFrame,text='MaxThreshold').grid(row=1,column=13,sticky=Tk.W)
 Tk.Entry(master=firstRowFrame,textvariable=maxthresholdvar,width=5).grid(row=1,column=14,sticky=Tk.W)
-
-def replot():
-	global initplot, initplot2
-	threshold = float(thresholdvar.get())
-	upperthreshold = float(maxthresholdvar.get())
-	if nDetectors > 1:
-		if not initplot:
-			lims = [a.get_xlim(), a.get_ylim()]
-		lines = None
-		doRings()
-		a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
-		if initplot:
-			initplot = 0
-		else:
-			a.set_xlim([lims[0][0],lims[0][1]])
-			a.set_ylim([lims[1][0],lims[1][1]])
-		numrows, numcols = mask2.shape
-		def format_coord(x, y):
-		    col = int(x+0.5)
-		    row = int(y+0.5)
-		    if col>=0 and col<numcols and row>=0 and row<numrows:
-		        z = mask2[row,col]
-		        xD = x - bigdetsize/2
-		        yD = y - bigdetsize/2
-		        R = sqrt(xD*xD+yD*yD)
-		        return 'x=%1.4f, y=%1.4f, Intensity=%1.4f, RingRad(pixels)=%1.4f'%(x,y,z,R)
-		    else:
-		        return 'x=%1.4f, y=%1.4f'%(x,y)
-		a.format_coord = format_coord
-		a.title.set_text("Image")
-		canvas.show()
-		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
-	else:
-		if not initplot2:
-			lims = [b.get_xlim(), b.get_ylim()]
-		if plotRingsVar.get() == 1:
-			plotRingsOffset()
-		b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
-		if initplot2:
-			initplot2 = 0
-			b.invert_yaxis()
-		else:
-			b.set_xlim([lims[0][0],lims[0][1]])
-			b.set_ylim([lims[1][0],lims[1][1]])
-		numrows, numcols = bdata.shape
-		def format_coord(x, y):
-		    col = int(x+0.5)
-		    row = int(y+0.5)
-		    if col>=0 and col<numcols and row>=0 and row<numrows:
-		        z = bdata[row,col]
-		        return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x,NrPixels-y,z)
-		    else:
-		        return 'x=%1.4f, y=%1.4f'%(x,y)
-		b.format_coord = format_coord
-		canvas.show()
-		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
-
 
 Tk.Button(master=firstRowFrame,text='UpdateThresh',command=replot).grid(row=1,column=15,sticky=Tk.W)
 
