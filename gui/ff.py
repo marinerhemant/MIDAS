@@ -591,6 +591,7 @@ def loadbplot():
 	global origdetnum
 	global bclocalvar1, bclocalvar2
 	global ax
+	global fileNumber
 	if not initplot2:
 		lims = [b.get_xlim(), b.get_ylim()]
 	frameNr = int(framenrvar.get())
