@@ -598,6 +598,7 @@ def loadbplot():
 	upperthreshold = float(maxthresholdvar.get())
 	NrPixels = int(NrPixelsVar.get())
 	b.clear()
+	print folder
 	fileNumber = firstFileNumber + frameNr/nFramesPerFile
 	framesToSkip = frameNr % nFramesPerFile
 	bytesToSkip = 8192 + framesToSkip*(2*NrPixels*NrPixels)
@@ -829,7 +830,9 @@ def selectFile():
 def firstFileSelector():
 	global fileStem, folder, padding,firstFileNumber,nFramesPerFile
 	firstfilefullpath = selectFile()
+	print firstfilefullpath
 	folder = os.path.dirname(firstfilefullpath) + '/'
+	print folder
 	fullfilename = firstfilefullpath.split('/')[-1].split('.')[0]
 	fileStem = '_'.join(fullfilename.split('_')[:-1])
 	firstFileNumber = int(fullfilename.split('_')[-1])
