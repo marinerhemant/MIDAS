@@ -820,32 +820,49 @@ button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W,padx=10)
 firstRowFrame = Tk.Frame(root)
 firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text='firstFileNr').grid(row=1,column=1,sticky=Tk.W)
-efirstfile = Tk.Entry(master=firstRowFrame,textvariable=firstFileNrVar,width=5)
-efirstfile.grid(row=1,column=2,sticky=Tk.W)
-Tk.Label(master=firstRowFrame,text='nFramesPerFile').grid(row=1,column=3,sticky=Tk.W)
-enFrames = Tk.Entry(master=firstRowFrame,textvariable=nFramesPerFileVar,width=5)
-enFrames.grid(row=1,column=4,sticky=Tk.W)
+def selectFile():
+	return tkFileDialog.askopenfilename()
 
-Tk.Label(master=firstRowFrame,text='FrameNr').grid(row=1,column=5,sticky=Tk.W)
+def firstFileSelector():
+	firstfilefullpath = selectFile()
+	print firstfilefullpath
+
+def darkFileSelector():
+	darkfilefullpath = selectFile()
+	print darkfilefullpath
+
+buttonFirstFile = Tk.Button(master=firstRowFrame,text='SelectFirstFile',command=firstFileSelector,font=("Helvetica",12))
+buttonFirstFile.grid(row=1,column=1,sticky=Tk.W)
+
+buttonDarkFile = Tk.Button(master=firstRowFrame,text='SelectDarkFile',command=darkFileSelector,font=("Helvetica",12))
+buttonDarkFile.grid(row=1,column=2,sticky=Tk.W)
+
+Tk.Label(master=firstRowFrame,text='firstFileNr').grid(row=1,column=3,sticky=Tk.W)
+efirstfile = Tk.Entry(master=firstRowFrame,textvariable=firstFileNrVar,width=5)
+efirstfile.grid(row=1,column=4,sticky=Tk.W)
+Tk.Label(master=firstRowFrame,text='nFramesPerFile').grid(row=1,column=5,sticky=Tk.W)
+enFrames = Tk.Entry(master=firstRowFrame,textvariable=nFramesPerFileVar,width=5)
+enFrames.grid(row=1,column=6,sticky=Tk.W)
+
+Tk.Label(master=firstRowFrame,text='FrameNr').grid(row=1,column=7,sticky=Tk.W)
 eFrameNr = Tk.Entry(master=firstRowFrame,textvariable=framenrvar,width=4)
-eFrameNr.grid(row=1,column=6,sticky=Tk.W)
+eFrameNr.grid(row=1,column=8,sticky=Tk.W)
 
 buttonIncr = Tk.Button(master=firstRowFrame,text='+',command=incr_plotupdater,font=("Helvetica",12))
-buttonIncr.grid(row=1,column=7,sticky=Tk.W)
+buttonIncr.grid(row=1,column=9,sticky=Tk.W)
 buttonDecr = Tk.Button(master=firstRowFrame,text='-',command=decr_plotupdater,font=("Helvetica",12))
-buttonDecr.grid(row=1,column=8,sticky=Tk.W)
+buttonDecr.grid(row=1,column=10,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text='MinThreshold').grid(row=1,column=9,sticky=Tk.W)
+Tk.Label(master=firstRowFrame,text='MinThreshold').grid(row=1,column=11,sticky=Tk.W)
 ethreshold = Tk.Entry(master=firstRowFrame,textvariable=thresholdvar,width=5)
-ethreshold.grid(row=1,column=10,sticky=Tk.W)
+ethreshold.grid(row=1,column=12,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text='MaxThreshold').grid(row=1,column=11,sticky=Tk.W)
-Tk.Entry(master=firstRowFrame,textvariable=maxthresholdvar,width=5).grid(row=1,column=12,sticky=Tk.W)
+Tk.Label(master=firstRowFrame,text='MaxThreshold').grid(row=1,column=13,sticky=Tk.W)
+Tk.Entry(master=firstRowFrame,textvariable=maxthresholdvar,width=5).grid(row=1,column=14,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text='NrPixels').grid(row=1,column=13,sticky=Tk.W)
+Tk.Label(master=firstRowFrame,text='NrPixels').grid(row=1,column=15,sticky=Tk.W)
 enPixels = Tk.Entry(master=firstRowFrame,textvariable=NrPixelsVar,width=5)
-enPixels.grid(row=1,column=14,sticky=Tk.W)
+enPixels.grid(row=1,column=16,sticky=Tk.W)
 
 secondRowFrame = Tk.Frame(root)
 secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
