@@ -780,6 +780,33 @@ wl = 0.172979
 px = 200
 tempLsd = 1000000
 tempMaxRingRad = 2000000
+firstFileNrVar = Tk.StringVar()
+nFramesPerFileVar = Tk.StringVar()
+firstFileNrVar.set(str(1))
+nFramesPerFileVar.set(str(240))
+paramfilevar = Tk.StringVar()
+paramfilevar.set(paramFN)
+framenrvar = Tk.StringVar()
+framenrvar.set(str(frameNr))
+thresholdvar = Tk.StringVar()
+threshold = 0
+thresholdvar.set(str(threshold))
+maxthresholdvar = Tk.StringVar()
+maxthresholdvar.set(str(2000))
+NrPixelsVar = Tk.StringVar()
+NrPixelsVar.set(str(2048))
+lines = None
+plotRingsVar = Tk.IntVar()
+var = Tk.IntVar()
+getMaxVar = Tk.IntVar()
+detnumbvar = Tk.StringVar()
+detnumbvar.set(str(1))
+lsdlocalvar = Tk.StringVar()
+lsdlocalvar.set(str(lsdlocal))
+bclocalvar1 = Tk.StringVar()
+bclocalvar1.set(str(bclocal[0]))
+bclocalvar2 = Tk.StringVar()
+bclocalvar2.set(str(bclocal[1]))
 
 canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=5,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH)
 toolbar_frame = Tk.Frame(root)
@@ -797,30 +824,24 @@ Tk.Label(master=firstRowFrame,text="Only for Hydra: ",font=('Helvetica',15)).gri
 Tk.Label(master=firstRowFrame,text="ParamFile").grid(row=1,column=2,sticky=Tk.W)
 buttonparam = Tk.Button(master=firstRowFrame,text="Select",command=paramfileselect)
 buttonparam.grid(row=1,column=3,sticky=Tk.W)
-paramfilevar = Tk.StringVar()
-paramfilevar.set(paramFN)
 e0 = Tk.Entry(master=firstRowFrame,textvariable=paramfilevar,width=20)
 e0.grid(row=1,column=4,sticky=Tk.W)
 
 buttonLoadParam = Tk.Button(master=firstRowFrame,text="LoadParams",command=readParams)
 buttonLoadParam.grid(row=1,column=5,sticky=Tk.W)
 
+buttonCalibrate2 = Tk.Button(master=firstRowFrame,text="WriteParams",command=writeParams)
+buttonCalibrate2.grid(row=1,column=6,sticky=Tk.W)
+
 buttonMakeBigDet = Tk.Button(master=firstRowFrame,text="MakeBigDetector",command=makeBigDet)
-buttonMakeBigDet.grid(row=1,column=6,sticky=Tk.W)
+buttonMakeBigDet.grid(row=1,column=7,sticky=Tk.W)
 
 buttonCalibrate = Tk.Button(master=firstRowFrame,text="CalibrateDetector",command=askRingsToExclude)
-buttonCalibrate.grid(row=1,column=7,sticky=Tk.W)
-
-buttonCalibrate2 = Tk.Button(master=firstRowFrame,text="WriteParams",command=writeParams)
-buttonCalibrate2.grid(row=1,column=8,sticky=Tk.W)
+buttonCalibrate.grid(row=1,column=8,sticky=Tk.W)
 
 secondRowFrame = Tk.Frame(root)
 secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
 
-firstFileNrVar = Tk.StringVar()
-nFramesPerFileVar = Tk.StringVar()
-firstFileNrVar.set(str(1))
-nFramesPerFileVar.set(str(240))
 Tk.Label(master=secondRowFrame,text='firstFileNr').grid(row=1,column=1,sticky=Tk.W)
 efirstfile = Tk.Entry(master=secondRowFrame,textvariable=firstFileNrVar,width=5)
 efirstfile.grid(row=1,column=2,sticky=Tk.W)
@@ -829,8 +850,6 @@ enFrames = Tk.Entry(master=secondRowFrame,textvariable=nFramesPerFileVar,width=5
 enFrames.grid(row=1,column=4,sticky=Tk.W)
 
 Tk.Label(master=secondRowFrame,text='FrameNr').grid(row=1,column=5,sticky=Tk.W)
-framenrvar = Tk.StringVar()
-framenrvar.set(str(frameNr))
 eFrameNr = Tk.Entry(master=secondRowFrame,textvariable=framenrvar,width=4)
 eFrameNr.grid(row=1,column=6,sticky=Tk.W)
 
@@ -840,20 +859,13 @@ buttonDecr = Tk.Button(master=secondRowFrame,text='-',command=decr_plotupdater,f
 buttonDecr.grid(row=1,column=8,sticky=Tk.W)
 
 Tk.Label(master=secondRowFrame,text='MinThreshold').grid(row=1,column=9,sticky=Tk.W)
-thresholdvar = Tk.StringVar()
-threshold = 0
-thresholdvar.set(str(threshold))
 ethreshold = Tk.Entry(master=secondRowFrame,textvariable=thresholdvar,width=5)
 ethreshold.grid(row=1,column=10,sticky=Tk.W)
 
 Tk.Label(master=secondRowFrame,text='MaxThreshold').grid(row=1,column=11,sticky=Tk.W)
-maxthresholdvar = Tk.StringVar()
-maxthresholdvar.set(str(2000))
 Tk.Entry(master=secondRowFrame,textvariable=maxthresholdvar,width=5).grid(row=1,column=12,sticky=Tk.W)
 
 Tk.Label(master=secondRowFrame,text='NrPixels').grid(row=1,column=13,sticky=Tk.W)
-NrPixelsVar = Tk.StringVar()
-NrPixelsVar.set(str(2048))
 enPixels = Tk.Entry(master=secondRowFrame,textvariable=NrPixelsVar,width=5)
 enPixels.grid(row=1,column=14,sticky=Tk.W)
 
@@ -863,16 +875,12 @@ thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
 buttonSelectRings = Tk.Button(master=thirdRowFrame,text="SelectRingsAndMaterial",command=ringSelection)
 buttonSelectRings.grid(row=1,column=1,sticky=Tk.W)
 
-var = Tk.IntVar()
 c = Tk.Checkbutton(master=thirdRowFrame,text="Subtract Dark",variable=var)
 c.grid(row=1,column=2,sticky=Tk.W)
 
-getMaxVar = Tk.IntVar()
 c2 = Tk.Checkbutton(master=thirdRowFrame,text="MaxOverFrames",variable=getMaxVar)
 c2.grid(row=1,column=3,sticky=Tk.W)
 
-lines = None
-plotRingsVar = Tk.IntVar()
 cplotRings = Tk.Checkbutton(master=thirdRowFrame,text='Plot Rings',variable=plotRingsVar,command=clickRings)
 cplotRings.grid(row=1,column=4,sticky=Tk.E)
 
@@ -883,21 +891,13 @@ bframe = Tk.Frame(root)
 bframe.grid(row=figrowspan+1,column=3,rowspan=3,sticky=Tk.W)
 
 Tk.Label(master=bframe,text='DetNum').grid(row=1,column=1,sticky=Tk.W)
-detnumbvar = Tk.StringVar()
-detnumbvar.set(str(1))
 Tk.Entry(master=bframe,textvariable=detnumbvar,width=2).grid(row=1,column=2,sticky=Tk.W)
 
 Tk.Label(master=bframe,text='Lsd').grid(row=2,column=1,sticky=Tk.W)
-lsdlocalvar = Tk.StringVar()
-lsdlocalvar.set(str(lsdlocal))
 Tk.Entry(master=bframe,textvariable=lsdlocalvar,width=9).grid(row=2,column=2,sticky=Tk.W)
 
 Tk.Label(master=bframe,text='BeamCenter').grid(row=3,column=1,sticky=Tk.W)
-bclocalvar1 = Tk.StringVar()
-bclocalvar1.set(str(bclocal[0]))
 Tk.Entry(master=bframe,textvariable=bclocalvar1,width=6).grid(row=3,column=2,sticky=Tk.W)
-bclocalvar2 = Tk.StringVar()
-bclocalvar2.set(str(bclocal[1]))
 Tk.Entry(master=bframe,textvariable=bclocalvar2,width=6).grid(row=3,column=3,sticky=Tk.W)
 
 Tk.Button(master=root,text='Load\nSingle\nDetector',command=loadbplot).grid(row=figrowspan+1,column=4,rowspan=3)
