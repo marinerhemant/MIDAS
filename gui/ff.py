@@ -832,15 +832,15 @@ def firstFileSelector():
 	firstFileNr = int(fullfilename.split('_')[-1])
 	firstFileNrVar.set(firstFileNr)
 	padding = len(fullfilename.split('_')[-1])
-	print folder
-	print fileStem
-	print firstFileNr
-	print padding
+	statinfo = os.stat(firstfilefullpath)
+	print statinfo.st_size
 
 def darkFileSelector():
 	global darkStem,darkNum
 	darkfilefullpath = selectFile()
-	print darkfilefullpath
+	darkfullfilename = darkfilefullpath.split('/')[-1].split('.')[0]
+	darkStem = '_'.join(darkfullfilename.split('_')[:-1])
+	darkNum = int(darkfullfilename.split('_')[-1])
 
 buttonFirstFile = Tk.Button(master=firstRowFrame,text='SelectFirstFile',command=firstFileSelector,font=("Helvetica",12))
 buttonFirstFile.grid(row=1,column=1,sticky=Tk.W)
