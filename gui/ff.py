@@ -100,7 +100,6 @@ def getData(geNum,bytesToSkip):
 		corrected = np.subtract(data,thisdark)
 	else:
 		corrected = data
-	corrected[corrected < threshold] = 0
 	nonzerocoords = np.nonzero(corrected)
 	return [corrected,nonzerocoords]
 
@@ -179,6 +178,7 @@ def plot_updater():
 	global threshold
 	global lims
 	global lines
+	global mask2
 	if not initplot:
 		lims = [a.get_xlim(), a.get_ylim()]
 	frameNr = int(framenrvar.get())
@@ -214,7 +214,7 @@ def plot_updater():
 		[mask2,(rows,cols)] = getData(startDetNr,bytesToSkip)
 	lines = None
 	doRings()
-	a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(0,upperthreshold))
+	a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold)
 	if initplot:
 		initplot = 0
 	else:
@@ -597,6 +597,7 @@ def loadbplot():
 	global bclocalvar1, bclocalvar2
 	global ax
 	global fileNumber
+	global bdata
 	if not initplot2:
 		lims = [b.get_xlim(), b.get_ylim()]
 	frameNr = int(framenrvar.get())
@@ -617,7 +618,7 @@ def loadbplot():
 	else:
 		bclocal[0] = float(bclocalvar1.get())
 		bclocal[1] = float(bclocalvar2.get())
-	[data, coords] = getData(detnr,bytesToSkip)
+	[bdata, coords] = getData(detnr,bytesToSkip)
 	if lsd[0] != 0:
 		lsdorig = lsd[detnr-startDetNr]
 	else:
@@ -625,20 +626,19 @@ def loadbplot():
 	lsdlocal = float(lsdlocalvar.get())
 	if plotRingsVar.get() == 1:
 		plotRingsOffset()
-	#data= np.flipud(data)
-	b.imshow(data,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
+	b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
 	if initplot2:
 		initplot2 = 0
 		b.invert_yaxis()
 	else:
 		b.set_xlim([lims[0][0],lims[0][1]])
 		b.set_ylim([lims[1][0],lims[1][1]])
-	numrows, numcols = data.shape
+	numrows, numcols = bdata.shape
 	def format_coord(x, y):
 	    col = int(x+0.5)
 	    row = int(y+0.5)
 	    if col>=0 and col<numcols and row>=0 and row<numrows:
-	        z = data[row,col]
+	        z = bdata[row,col]
 	        return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x,NrPixels-y,z)
 	    else:
 	        return 'x=%1.4f, y=%1.4f'%(x,y)
@@ -671,7 +671,6 @@ def selectRings():
 	f.write('\n')
 	f.close()
 	os.system(hklGenPath + pfname)
-	#os.system('rm '+pfname)
 	hklfn = 'hkls.csv'
 	hklfile = open(hklfn,'r')
 	header = hklfile.readline()
@@ -893,9 +892,63 @@ ethreshold.grid(row=1,column=12,sticky=Tk.W)
 Tk.Label(master=firstRowFrame,text='MaxThreshold').grid(row=1,column=13,sticky=Tk.W)
 Tk.Entry(master=firstRowFrame,textvariable=maxthresholdvar,width=5).grid(row=1,column=14,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text='NrPixels').grid(row=1,column=15,sticky=Tk.W)
+def replot():
+	threshold = float(thresholdvar.get())
+	upperthreshold = float(maxthresholdvar.get())
+	if nDetectors > 1:
+		lines = None
+		doRings()
+		a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
+		if initplot:
+			initplot = 0
+		else:
+			a.set_xlim([lims[0][0],lims[0][1]])
+			a.set_ylim([lims[1][0],lims[1][1]])
+		numrows, numcols = mask2.shape
+		def format_coord(x, y):
+		    col = int(x+0.5)
+		    row = int(y+0.5)
+		    if col>=0 and col<numcols and row>=0 and row<numrows:
+		        z = mask2[row,col]
+		        xD = x - bigdetsize/2
+		        yD = y - bigdetsize/2
+		        R = sqrt(xD*xD+yD*yD)
+		        return 'x=%1.4f, y=%1.4f, Intensity=%1.4f, RingRad(pixels)=%1.4f'%(x,y,z,R)
+		    else:
+		        return 'x=%1.4f, y=%1.4f'%(x,y)
+		a.format_coord = format_coord
+		a.title.set_text("Image")
+		canvas.show()
+		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+	else:
+		if plotRingsVar.get() == 1:
+			plotRingsOffset()
+		b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
+		if initplot2:
+			initplot2 = 0
+			b.invert_yaxis()
+		else:
+			b.set_xlim([lims[0][0],lims[0][1]])
+			b.set_ylim([lims[1][0],lims[1][1]])
+		numrows, numcols = bdata.shape
+		def format_coord(x, y):
+		    col = int(x+0.5)
+		    row = int(y+0.5)
+		    if col>=0 and col<numcols and row>=0 and row<numrows:
+		        z = bdata[row,col]
+		        return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x,NrPixels-y,z)
+		    else:
+		        return 'x=%1.4f, y=%1.4f'%(x,y)
+		b.format_coord = format_coord
+		canvas.show()
+		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+
+
+Tk.Button(master=firstRowFrame,text='UpdateThresh',command=replot).grid(row=1,column=15,sticky=Tk.W)
+
+Tk.Label(master=firstRowFrame,text='NrPixels').grid(row=1,column=16,sticky=Tk.W)
 enPixels = Tk.Entry(master=firstRowFrame,textvariable=NrPixelsVar,width=5)
-enPixels.grid(row=1,column=16,sticky=Tk.W)
+enPixels.grid(row=1,column=17,sticky=Tk.W)
 
 secondRowFrame = Tk.Frame(root)
 secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
