@@ -818,7 +818,7 @@ button = Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20))
 button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W,padx=10)
 
 firstRowFrame = Tk.Frame(root)
-firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
+firstRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
 
 Tk.Label(master=firstRowFrame,text="Only for Hydra: ",font=('Helvetica',15)).grid(row=1,column=1,sticky=Tk.W)
 Tk.Label(master=firstRowFrame,text="ParamFile").grid(row=1,column=2,sticky=Tk.W)
@@ -840,7 +840,7 @@ buttonCalibrate = Tk.Button(master=firstRowFrame,text="CalibrateDetector",comman
 buttonCalibrate.grid(row=1,column=8,sticky=Tk.W)
 
 secondRowFrame = Tk.Frame(root)
-secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
+secondRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
 
 Tk.Label(master=secondRowFrame,text='firstFileNr').grid(row=1,column=1,sticky=Tk.W)
 efirstfile = Tk.Entry(master=secondRowFrame,textvariable=firstFileNrVar,width=5)
@@ -870,7 +870,7 @@ enPixels = Tk.Entry(master=secondRowFrame,textvariable=NrPixelsVar,width=5)
 enPixels.grid(row=1,column=14,sticky=Tk.W)
 
 thirdRowFrame = Tk.Frame(root)
-thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
+thirdRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
 
 buttonSelectRings = Tk.Button(master=thirdRowFrame,text="SelectRingsAndMaterial",command=ringSelection)
 buttonSelectRings.grid(row=1,column=1,sticky=Tk.W)
