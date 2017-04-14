@@ -541,10 +541,8 @@ def calibrateDetector():
 		ringsToExclude = []
 	else:
 		ringsToExclude = [int(rings) for rings in ringsexcludestr.split(',')]
-		print ringsToExclude
 	pfnames = []
 	for i in range(startDetNr,endDetNr+1):
-		print "Detector number " + str(i)
 		pfnames.append('CalibrationDetNr' + str(i) + '.txt')
 		writeCalibrateParams(pfnames[-1],i,ringsToExclude)
 	processes = [Popen(calibratecmd+pfname,shell=True,
@@ -606,10 +604,7 @@ def loadbplot():
 	upperthreshold = float(maxthresholdvar.get())
 	NrPixels = int(NrPixelsVar.get())
 	b.clear()
-	print folder
 	fileNumber = firstFileNumber + frameNr/nFramesPerFile
-	print firstFileNumber
-	print fileNumber
 	framesToSkip = frameNr % nFramesPerFile
 	bytesToSkip = 8192 + framesToSkip*(2*NrPixels*NrPixels)
 	detnr = int(detnumbvar.get())
@@ -846,9 +841,7 @@ def firstFileSelector():
 	firstfilefullpath = selectFile()
 	nDetectors = 1
 	detnumbvar.set(firstfilefullpath[-1])
-	print firstfilefullpath
 	folder = os.path.dirname(firstfilefullpath) + '/'
-	print folder
 	fullfilename = firstfilefullpath.split('/')[-1].split('.')[0]
 	fileStem = '_'.join(fullfilename.split('_')[:-1])
 	firstFileNumber = int(fullfilename.split('_')[-1])
