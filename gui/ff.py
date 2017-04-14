@@ -778,6 +778,7 @@ bclocal = [0,0]
 sg = 225
 wl = 0.172979
 px = 200
+NrPixels = 2048
 tempLsd = 1000000
 tempMaxRingRad = 2000000
 firstFileNrVar = Tk.StringVar()
