@@ -796,11 +796,13 @@ buttonparam = Tk.Button(master=firstRowFrame,text="Select",command=paramfilesele
 buttonparam.grid(row=1,column=2,sticky=Tk.W)
 paramfilevar = Tk.StringVar()
 paramfilevar.set(paramFN)
-e0 = Tk.Entry(master=firstRowFrame,textvariable=paramfilevar,width=40)
+e0 = Tk.Entry(master=firstRowFrame,textvariable=paramfilevar,width=20)
 e0.grid(row=1,column=3,sticky=Tk.W)
 
 buttonLoadParam = Tk.Button(master=firstRowFrame,text="LoadParams",command=readParams)
 buttonLoadParam.grid(row=1,column=4,sticky=Tk.W)
+
+
 
 var = Tk.IntVar()
 c = Tk.Checkbutton(master=firstRowFrame,text="Subtract Dark",variable=var)
