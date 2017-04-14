@@ -810,6 +810,11 @@ getMaxVar = Tk.IntVar()
 c2 = Tk.Checkbutton(master=firstRowFrame,text="MaxOverFrames",variable=getMaxVar)
 c2.grid(row=1,column=6,sticky=Tk.W)
 
+lines = None
+plotRingsVar = Tk.IntVar()
+cplotRings = Tk.Checkbutton(master=firstRowFrame,text='Plot Rings',variable=plotRingsVar,command=clickRings)
+cplotRings.grid(row=1,column=7,sticky=Tk.E)
+
 secondRowFrame = Tk.Frame(root)
 secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
 
@@ -835,11 +840,6 @@ Tk.Label(master=secondRowFrame,text='MaxThreshold').grid(row=1,column=7,sticky=T
 maxthresholdvar = Tk.StringVar()
 maxthresholdvar.set(str(2000))
 Tk.Entry(master=secondRowFrame,textvariable=maxthresholdvar,width=5).grid(row=1,column=8,sticky=Tk.W)
-
-lines = None
-plotRingsVar = Tk.IntVar()
-cplotRings = Tk.Checkbutton(master=secondRowFrame,text='Plot Rings',variable=plotRingsVar,command=clickRings)
-cplotRings.grid(row=1,column=9,sticky=Tk.E)
 
 thirdRowFrame = Tk.Frame(root)
 thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
