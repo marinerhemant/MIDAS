@@ -842,10 +842,10 @@ def selectFile():
 
 def firstFileSelector():
 	global fileStem, folder, padding,firstFileNumber,nFramesPerFile
-	global nDetectors, startDetNr
+	global nDetectors, detnumbvar
 	firstfilefullpath = selectFile()
 	nDetectors = 1
-	startDetNr = int(firstfilefullpath[-1])
+	detnumbvar.set(firstfilefullpath[-1])
 	print firstfilefullpath
 	folder = os.path.dirname(firstfilefullpath) + '/'
 	print folder
@@ -866,6 +866,7 @@ def darkFileSelector():
 	darkNum = int(darkfullfilename.split('_')[-1])
 	geNum = int(darkfilefullpath[-1])
 	dark = []
+	var.set(1)
 	for i in range(geNum):
 		dark.append(None)
 
