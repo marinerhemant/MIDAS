@@ -897,6 +897,8 @@ def replot():
 	threshold = float(thresholdvar.get())
 	upperthreshold = float(maxthresholdvar.get())
 	if nDetectors > 1:
+		if not initplot:
+			lims = [a.get_xlim(), a.get_ylim()]
 		lines = None
 		doRings()
 		a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
@@ -922,6 +924,8 @@ def replot():
 		canvas.show()
 		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 	else:
+		if not initplot2:
+			lims = [b.get_xlim(), b.get_ylim()]
 		if plotRingsVar.get() == 1:
 			plotRingsOffset()
 		b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
