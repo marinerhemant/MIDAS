@@ -91,12 +91,13 @@ def getData(geNum,bytesToSkip):
 		data = getImageMax(fn)
 	doDark = var.get()
 	if doDark == 1:
-		if lsd[0] == 0:
-			startDetNr = 1
-		if dark[geNum-startDetNr] is None:
-			darkfn = getfn(darkStem,darkNum,geNum)
-			dark[geNum-startDetNr] = getImage(darkfn,8192)
-		thisdark = dark[geNum-startDetNr]
+		darkfn = getfn(darkStem,darkNum,geNum)
+		if nDetectors > 1:
+			if dark[geNum-startDetNr] is None:
+				dark[geNum-startDetNr] = getImage(darkfn,8192)
+			thisdark = dark[geNum-startDetNr]
+		else:
+			thisdark = getImage(darkfn,8192)
 		corrected = np.subtract(data,thisdark)
 	else:
 		corrected = data
