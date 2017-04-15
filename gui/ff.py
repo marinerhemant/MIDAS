@@ -711,7 +711,7 @@ def selectRings():
 
 def acceptSgWlLatC():
 	global wl, sg, LatticeConstant, tempLsd, tempMaxRingRad, px, bigdetsize
-	global topRingMaterialSelection, lsdlocal, lsdorig
+	global topRingMaterialSelection, lsdlocal, lsdorig, LatCInit
 	wl = float(wlVar.get())
 	sg = int(sgVar.get())
 	LatticeConstant = np.zeros(6)
@@ -726,6 +726,7 @@ def acceptSgWlLatC():
 	tempMaxRingRad = float(tempMaxRingRadVar.get())
 	for i in range(6):
 		LatticeConstant[i] = float(LatticeConstantVar[i].get())
+	LatCInit = float(LatticeConstantVar[0].get())
 	topRingMaterialSelection.destroy()
 	selectRings()
 
@@ -744,7 +745,7 @@ def ringSelection():
 	tempMaxRingRadVar.set(str(tempMaxRingRad))
 	LatticeConstantVar = [Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar()]
 	for i in range(3):
-		LatticeConstantVar[i].set(str(5.411102))
+		LatticeConstantVar[i].set(str(LatCInit))
 		LatticeConstantVar[i+3].set(str(90))
 	topRingMaterialSelection = Tk.Toplevel()
 	topRingMaterialSelection.title('Select the SpaceGroup, Wavelength(or Energy), Lattice Constant')
@@ -898,6 +899,7 @@ maxthresholdvar = Tk.StringVar()
 maxthresholdvar.set(str(2000))
 NrPixelsVar = Tk.StringVar()
 NrPixelsVar.set(str(2048))
+LatCInit = 5.41116
 lines = None
 plotRingsVar = Tk.IntVar()
 var = Tk.IntVar()
