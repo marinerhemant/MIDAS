@@ -207,7 +207,6 @@ def plot_updater():
 		NewYs = NewYs.astype(int)
 		NewZs = NewZs.astype(int)
 		mask2[bigdetsize/2 - NewZs,bigdetsize/2 - NewYs] = thresholded[rows,cols]
-	lines = None
 	doRings()
 	a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
 	if initplot:
@@ -627,8 +626,7 @@ def loadbplot():
 	else:
 		lsdorig = float(lsdlocalvar.get())
 	lsdlocal = float(lsdlocalvar.get())
-	if plotRingsVar.get() == 1:
-		plotRingsOffset()
+	doRings()
 	b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
 	if initplot2:
 		initplot2 = 0
@@ -804,7 +802,6 @@ def replot():
 	if nDetectors > 1:
 		if not initplot:
 			lims = [a.get_xlim(), a.get_ylim()]
-		lines = None
 		doRings()
 		a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
 		if initplot:
@@ -831,9 +828,7 @@ def replot():
 	else:
 		if not initplot2:
 			lims = [b.get_xlim(), b.get_ylim()]
-		if plotRingsVar.get() == 1:
-			lines = None
-			plotRingsOffset()
+		doRings()
 		b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
 		if initplot2:
 			initplot2 = 0
@@ -901,6 +896,7 @@ NrPixelsVar = Tk.StringVar()
 NrPixelsVar.set(str(2048))
 LatCInit = 5.41116
 lines = None
+lines2 = None
 plotRingsVar = Tk.IntVar()
 var = Tk.IntVar()
 getMaxVar = Tk.IntVar()
