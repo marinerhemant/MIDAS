@@ -152,20 +152,17 @@ def doRings():
 	global lines
 	global lines2
 	plotYesNo = plotRingsVar.get()
-	if plotYesNo == 1:
+	if lines is not None:
+		for line in lines:
+			line.pop(0).remove()
 		lines = None
+	if lines2 is not None:
+		for line2 in lines2:
+			line2.pop(0).remove()
 		lines2 = None
+	if plotYesNo == 1:
 		plotRings()
 		plotRingsOffset()
-	else:
-		if lines is not None:
-			for line in lines:
-				line.pop(0).remove()
-			lines = None
-		if lines2 is not None:
-			for line2 in lines2:
-				line2.pop(0).remove()
-			lines2 = None
 	
 def clickRings():
 	doRings()
@@ -178,7 +175,6 @@ def plot_updater():
 	global frameNr
 	global threshold
 	global lims
-	global lines
 	global mask2
 	if not initplot:
 		lims = [a.get_xlim(), a.get_ylim()]
