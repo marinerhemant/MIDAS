@@ -175,6 +175,7 @@ def plot_updater():
 	global frameNr
 	global threshold
 	global lims
+	global lines
 	global mask2
 	if not initplot:
 		lims = [a.get_xlim(), a.get_ylim()]
@@ -203,6 +204,7 @@ def plot_updater():
 		NewYs = NewYs.astype(int)
 		NewZs = NewZs.astype(int)
 		mask2[bigdetsize/2 - NewZs,bigdetsize/2 - NewYs] = thresholded[rows,cols]
+	lines = None
 	doRings()
 	a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
 	if initplot:
@@ -240,6 +242,7 @@ def incr_plotupdater():
 		plot_updater()
 	else:
 		loadbplot()
+
 def decr_plotupdater():
 	global frameNr
 	global framenrvar
@@ -596,6 +599,7 @@ def loadbplot():
 	global ax
 	global fileNumber
 	global bdata
+	global lines2
 	if not initplot2:
 		lims = [b.get_xlim(), b.get_ylim()]
 	frameNr = int(framenrvar.get())
@@ -622,6 +626,7 @@ def loadbplot():
 	else:
 		lsdorig = float(lsdlocalvar.get())
 	lsdlocal = float(lsdlocalvar.get())
+	lines2 = None
 	doRings()
 	b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
 	if initplot2:
@@ -792,7 +797,7 @@ def darkFileSelector():
 		dark.append(None)
 
 def replot():
-	global initplot, initplot2, lines, lines2
+	global initplot, initplot2
 	threshold = float(thresholdvar.get())
 	upperthreshold = float(maxthresholdvar.get())
 	if nDetectors > 1:
