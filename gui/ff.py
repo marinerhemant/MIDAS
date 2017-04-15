@@ -797,7 +797,7 @@ def darkFileSelector():
 		dark.append(None)
 
 def replot():
-	global initplot, initplot2
+	global initplot, initplot2, global lines, lines2
 	threshold = float(thresholdvar.get())
 	upperthreshold = float(maxthresholdvar.get())
 	if nDetectors > 1:
@@ -831,6 +831,7 @@ def replot():
 		if not initplot2:
 			lims = [b.get_xlim(), b.get_ylim()]
 		if plotRingsVar.get() == 1:
+			lines = None
 			plotRingsOffset()
 		b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
 		if initplot2:
