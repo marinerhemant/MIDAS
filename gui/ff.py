@@ -185,33 +185,27 @@ def plot_updater():
 	threshold = float(thresholdvar.get())
 	upperthreshold = float(maxthresholdvar.get())
 	a.clear()
-	if nDetectors > 1:
-		# Plot mask if wanted
-		if mask is None:
-			readBigDet()
-		## Go through each geNum, get the data, transform it, put it on the bigDet
-		mask2 = np.copy(mask)
-		fileNumber = firstFileNumber + frameNr/nFramesPerFile
-		framesToSkip = frameNr % nFramesPerFile
-		bytesToSkip = 8192 + framesToSkip*(2*NrPixels*NrPixels)
-		for i in range(startDetNr,endDetNr+1):
-			[thresholded,(rows,cols)] = getData(i,bytesToSkip)
-			TRs = transforms(i-startDetNr)
-			Xc = np.zeros(rows.shape)
-			Yc = -(cols - bcs[i-startDetNr][0])*px
-			Zc = (rows - bcs[i-startDetNr][1])*px
-			ABC = np.array([Xc,Yc,Zc])
-			ABCPr = np.dot(TRs,ABC)
-			NewYs = ABCPr[1,:]/px
-			NewZs = ABCPr[2,:]/px
-			NewYs = NewYs.astype(int)
-			NewZs = NewZs.astype(int)
-			mask2[bigdetsize/2 - NewZs,bigdetsize/2 - NewYs] = thresholded[rows,cols]
-	else:
-		fileNumber = firstFileNumber + frameNr/nFramesPerFile
-		framesToSkip = frameNr % nFramesPerFile
-		bytesToSkip = 8192 + framesToSkip*(2*NrPixels*NrPixels)		
-		[mask2,(rows,cols)] = getData(startDetNr,bytesToSkip)
+	# Plot mask if wanted
+	if mask is None:
+		readBigDet()
+	## Go through each geNum, get the data, transform it, put it on the bigDet
+	mask2 = np.copy(mask)
+	fileNumber = firstFileNumber + frameNr/nFramesPerFile
+	framesToSkip = frameNr % nFramesPerFile
+	bytesToSkip = 8192 + framesToSkip*(2*NrPixels*NrPixels)
+	for i in range(startDetNr,endDetNr+1):
+		[thresholded,(rows,cols)] = getData(i,bytesToSkip)
+		TRs = transforms(i-startDetNr)
+		Xc = np.zeros(rows.shape)
+		Yc = -(cols - bcs[i-startDetNr][0])*px
+		Zc = (rows - bcs[i-startDetNr][1])*px
+		ABC = np.array([Xc,Yc,Zc])
+		ABCPr = np.dot(TRs,ABC)
+		NewYs = ABCPr[1,:]/px
+		NewZs = ABCPr[2,:]/px
+		NewYs = NewYs.astype(int)
+		NewZs = NewZs.astype(int)
+		mask2[bigdetsize/2 - NewZs,bigdetsize/2 - NewYs] = thresholded[rows,cols]
 	lines = None
 	doRings()
 	a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
@@ -627,7 +621,7 @@ def loadbplot():
 		bclocal[0] = float(bclocalvar1.get())
 		bclocal[1] = float(bclocalvar2.get())
 	[bdata, coords] = getData(detnr,bytesToSkip)
-	if lsd[0] != 0:
+	if nDetectors > 1:
 		lsdorig = lsd[detnr-startDetNr]
 	else:
 		lsdorig = float(lsdlocalvar.get())
