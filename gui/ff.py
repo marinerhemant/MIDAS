@@ -797,7 +797,7 @@ def darkFileSelector():
 		dark.append(None)
 
 def replot():
-	global initplot, initplot2, global lines, lines2
+	global initplot, initplot2, lines, lines2
 	threshold = float(thresholdvar.get())
 	upperthreshold = float(maxthresholdvar.get())
 	if nDetectors > 1:
