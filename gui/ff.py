@@ -141,7 +141,7 @@ def plotRingsOffset():
 		lines2.append(b.plot(Y,Z,color=colors[colornr]))
 		colornr+= 1
 	txtDisplay = txtDisplay[:-1]
-	Tk.Label(master=root,text=txtDisplay).grid(row=1,column=1)
+	Tk.Label(master=root,text=txtDisplay).grid(row=0,column=1)
 
 def plotRings():
 	global lines
