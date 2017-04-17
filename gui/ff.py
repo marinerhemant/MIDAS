@@ -142,6 +142,8 @@ def plotRingsOffset():
 		colornr+= 1
 	txtDisplay = txtDisplay[:-1]
 	Tk.Label(master=root,text=txtDisplay).grid(row=0,column=1)
+	canvas.show()
+	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def plotRings():
 	global lines
@@ -179,8 +181,6 @@ def doRings():
 	
 def clickRings():
 	doRings()
-	canvas.show()
-	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def plot_updater():
 	global initplot
