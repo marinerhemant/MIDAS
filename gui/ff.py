@@ -165,6 +165,8 @@ def doRings():
 			line2.pop(0).remove()
 		lines2 = None
 	if plotYesNo == 1:
+		if ringRads is None:
+			ringSelection()
 		plotRings()
 		plotRingsOffset()
 	
@@ -886,6 +888,7 @@ initplot = 1
 initplot2 = 1
 origdetnum = 1
 bclocal = [1024,1024]
+ringRads = None
 sg = 225
 bcs = None
 wl = 0.172979
