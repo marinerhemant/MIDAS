@@ -127,7 +127,7 @@ def plotRingsOffset():
 	lines2 = []
 	colornr = 0
 	txtDisplay = 'Selected Rings: '
-	for ringrad,idx in ringRads:
+	for idx, ringrad in enumerate(ringRads):
 		Y = []
 		Z = []
 		for i in range(3):
