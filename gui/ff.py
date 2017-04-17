@@ -229,7 +229,7 @@ def plot_updater():
 	    else:
 	        return 'x=%1.4f, y=%1.4f'%(x,y)
 	a.format_coord = format_coord
-	a.title.set_text("Image")
+	a.title.set_text("Multiple Detector Display")
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
@@ -650,6 +650,7 @@ def loadbplot():
 	        return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x,NrPixels-y,z)
 	    else:
 	        return 'x=%1.4f, y=%1.4f'%(x,y)
+	b.title.set_text("Single Detector Display")
 	b.format_coord = format_coord
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
@@ -833,7 +834,7 @@ def replot():
 		    else:
 		        return 'x=%1.4f, y=%1.4f'%(x,y)
 		a.format_coord = format_coord
-		a.title.set_text("Image")
+		a.title.set_text("Multiple Detector Display")
 		canvas.show()
 		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 	if not initplot2:
@@ -858,6 +859,7 @@ def replot():
 	    else:
 	        return 'x=%1.4f, y=%1.4f'%(x,y)
 	b.format_coord = format_coord
+	b.title.set_text("Single Detector Display")
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
