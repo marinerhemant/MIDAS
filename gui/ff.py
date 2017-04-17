@@ -169,6 +169,7 @@ def doRings():
 			ringSelection()
 		plotRings()
 		plotRingsOffset()
+		Tk.Label(root,text='Rings selected:').grid(row=0,column=0)
 	
 def clickRings():
 	doRings()
@@ -588,7 +589,6 @@ def readBigDet():
 	mask = np.fromfile(bigf,dtype=np.uint16,count=bigdetsize*bigdetsize)
 	bigf.close()
 	mask = np.reshape(mask,(bigdetsize,bigdetsize))
-	#mask = np.transpose(mask)
 	mask = mask.astype(float)
 	mask = np.fliplr(np.flipud(mask))
 
@@ -931,7 +931,7 @@ bclocalvar1.set(str(bclocal[0]))
 bclocalvar2 = Tk.StringVar()
 bclocalvar2.set(str(bclocal[1]))
 
-canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=5,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH)
+canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH)
 toolbar_frame = Tk.Frame(root)
 toolbar_frame.grid(row=figrowspan+4,column=0,columnspan=5,sticky=Tk.W)
 toolbar = NavigationToolbar2TkAgg( canvas, toolbar_frame )
