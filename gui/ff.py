@@ -169,7 +169,7 @@ def doRings():
 			ringSelection()
 		plotRings()
 		plotRingsOffset()
-		Tk.Label(master=root,text='Rings selected:').grid(row=1,column=2)
+		Tk.Label(master=root,text='Rings selected:').grid(row=0,column=0)
 	
 def clickRings():
 	doRings()
