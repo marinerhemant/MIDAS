@@ -140,7 +140,7 @@ def plotRingsOffset():
 			Z.append(tmp[1]/px + bclocal[1])
 		lines2.append(b.plot(Y,Z,color=colors[colornr]))
 		colornr+= 1
-	txtDisplay = txtDisplay[:-1]
+	txtDisplay = txtDisplay[:-2]
 	Tk.Label(master=root,text=txtDisplay).grid(row=0,column=1)
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
