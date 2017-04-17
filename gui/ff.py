@@ -126,13 +126,13 @@ def plotRingsOffset():
 	Etas = np.linspace(-180,180,num=360)
 	lines2 = []
 	colornr = 0
-	txtDisplay = 'Selected Rings (Increasing radius, H K L Radius	 Color): '
+	txtDisplay = 'Selected Rings (Increasing radius, H K L Radius(px) Color): '
 	for idx, ringrad in enumerate(ringRads):
 		Y = []
 		Z = []
 		for i in range(3):
 			txtDisplay += str(hkls[idx][i]) + ' '
-		txtDisplay += str(ringrad) + ' ' + colors[idx] + ','
+		txtDisplay += str(int(ringrad/px)) + ' ' + colors[idx] + ','
 		for eta in Etas:
 			ringrad2 = ringrad * (lsdlocal / lsdorig)
 			tmp = YZ4mREta(ringrad2,eta)
