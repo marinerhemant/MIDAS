@@ -56,7 +56,11 @@ def YZ4mREta(R,Eta):
 	return [-R*sin(Eta*deg2rad),R*cos(Eta*deg2rad)]
 
 def getfn(fstem,fnum,geNum):
-	return folder + fstem + '_' + str(fnum).zfill(padding) + '.ge' + str(geNum)
+	if sepfolderVar.get():
+		fldr = folder + '/ge' + str(geNum) + '/'
+	else:
+		fldr = folder
+	return fldr + fstem + '_' + str(fnum).zfill(padding) + '.ge' + str(geNum)
 
 def getImage(fn,bytesToSkip):
 	print "Reading file: " + fn
@@ -800,11 +804,15 @@ def darkFileSelector():
 
 def replot():
 	global initplot, initplot2
+	global lines2
+	global lines
 	threshold = float(thresholdvar.get())
 	upperthreshold = float(maxthresholdvar.get())
 	if nDetectors > 1:
 		if not initplot:
 			lims = [a.get_xlim(), a.get_ylim()]
+		a.clear()
+		lines = None
 		doRings()
 		a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
 		if initplot:
@@ -828,29 +836,30 @@ def replot():
 		a.title.set_text("Image")
 		canvas.show()
 		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+	if not initplot2:
+		lims = [b.get_xlim(), b.get_ylim()]
+	b.clear()
+	lines2 = None
+	doRings()
+	b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
+	if initplot2:
+		initplot2 = 0
+		b.invert_yaxis()
 	else:
-		if not initplot2:
-			lims = [b.get_xlim(), b.get_ylim()]
-		doRings()
-		b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
-		if initplot2:
-			initplot2 = 0
-			b.invert_yaxis()
-		else:
-			b.set_xlim([lims[0][0],lims[0][1]])
-			b.set_ylim([lims[1][0],lims[1][1]])
-		numrows, numcols = bdata.shape
-		def format_coord(x, y):
-		    col = int(x+0.5)
-		    row = int(y+0.5)
-		    if col>=0 and col<numcols and row>=0 and row<numrows:
-		        z = bdata[row,col]
-		        return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x,NrPixels-y,z)
-		    else:
-		        return 'x=%1.4f, y=%1.4f'%(x,y)
-		b.format_coord = format_coord
-		canvas.show()
-		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+		b.set_xlim([lims[0][0],lims[0][1]])
+		b.set_ylim([lims[1][0],lims[1][1]])
+	numrows, numcols = bdata.shape
+	def format_coord(x, y):
+	    col = int(x+0.5)
+	    row = int(y+0.5)
+	    if col>=0 and col<numcols and row>=0 and row<numrows:
+	        z = bdata[row,col]
+	        return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x,NrPixels-y,z)
+	    else:
+	        return 'x=%1.4f, y=%1.4f'%(x,y)
+	b.format_coord = format_coord
+	canvas.show()
+	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 # Main function
 root = Tk.Tk()
@@ -902,6 +911,9 @@ lines = None
 lines2 = None
 plotRingsVar = Tk.IntVar()
 var = Tk.IntVar()
+hydraVar = Tk.IntVar()
+hydraVar.set(0)
+sepfolderVar = Tk.IntVar()
 getMaxVar = Tk.IntVar()
 detnumbvar = Tk.StringVar()
 detnumbvar.set(str(1))
@@ -971,32 +983,38 @@ c2 = Tk.Checkbutton(master=secondRowFrame,text="MaxOverFrames",variable=getMaxVa
 c2.grid(row=1,column=3,sticky=Tk.W)
 
 cplotRings = Tk.Checkbutton(master=secondRowFrame,text='Plot Rings',variable=plotRingsVar,command=clickRings)
-cplotRings.grid(row=1,column=4,sticky=Tk.E)
+cplotRings.grid(row=1,column=4,sticky=Tk.W)
 
 thirdRowFrame = Tk.Frame(root)
 thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
 
 Tk.Label(master=thirdRowFrame,text="Only for Hydra: ",font=('Helvetica',15)).grid(row=1,column=1,sticky=Tk.W)
-Tk.Label(master=thirdRowFrame,text="ParamFile").grid(row=1,column=2,sticky=Tk.W)
+
+cIsHydra = Tk.Checkbutton(master=thirdRowFrame,text='IsHydra',variable=hydraVar)
+cIsHydra.grid(row=1,column=2,sticky=Tk.W)
+
+Tk.Label(master=thirdRowFrame,text="ParamFile").grid(row=1,column=3,sticky=Tk.W)
 buttonparam = Tk.Button(master=thirdRowFrame,text="Select",command=paramfileselect)
-buttonparam.grid(row=1,column=3,sticky=Tk.W)
+buttonparam.grid(row=1,column=4,sticky=Tk.W)
 e0 = Tk.Entry(master=thirdRowFrame,textvariable=paramfilevar,width=20)
-e0.grid(row=1,column=4,sticky=Tk.W)
+e0.grid(row=1,column=5,sticky=Tk.W)
 
 buttonLoadParam = Tk.Button(master=thirdRowFrame,text="LoadParams",command=readParams)
-buttonLoadParam.grid(row=1,column=5,sticky=Tk.W)
+buttonLoadParam.grid(row=1,column=6,sticky=Tk.W)
 
 buttonCalibrate2 = Tk.Button(master=thirdRowFrame,text="WriteParams",command=writeParams)
-buttonCalibrate2.grid(row=1,column=6,sticky=Tk.W)
+buttonCalibrate2.grid(row=1,column=7,sticky=Tk.W)
 
 buttonMakeBigDet = Tk.Button(master=thirdRowFrame,text="MakeBigDetector",command=makeBigDet)
-buttonMakeBigDet.grid(row=1,column=7,sticky=Tk.W)
+buttonMakeBigDet.grid(row=1,column=8,sticky=Tk.W)
 
 buttonCalibrate = Tk.Button(master=thirdRowFrame,text="CalibrateDetector",command=askRingsToExclude)
-buttonCalibrate.grid(row=1,column=8,sticky=Tk.W)
+buttonCalibrate.grid(row=1,column=9,sticky=Tk.W)
+
+Tk.Checkbutton(master=thirdRowFrame,text='Separate Folders',variable=sepfolderVar).grid(row=1,column=10,sticky=Tk.W)
 
 button2 = Tk.Button(master=root,text='Load\nMultiple\nDetectors',command=plot_updater)
-button2.grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.E,padx=10)
+button2.grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.W)
 
 bframe = Tk.Frame(root)
 bframe.grid(row=figrowspan+1,column=3,rowspan=3,sticky=Tk.W)
