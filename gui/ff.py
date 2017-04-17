@@ -127,11 +127,11 @@ def plotRingsOffset():
 	lines2 = []
 	colornr = 0
 	txtDisplay = 'Selected Rings: '
-	for ringrad in ringRads:
+	for ringrad,idx in ringRads:
 		Y = []
 		Z = []
 		for i in range(3):
-			txtDisplay += str(hkls[i]) + ' '
+			txtDisplay += str(hkls[idx][i]) + ' '
 		txtDisplay += ','
 		for eta in Etas:
 			ringrad2 = ringrad * (lsdlocal / lsdorig)
