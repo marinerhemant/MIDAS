@@ -232,6 +232,7 @@ def plot_updater():
 def incr_plotupdater():
 	global frameNr
 	global framenrvar
+	frameNr = framenrvar.get()
 	frameNr += 1
 	framenrvar.set(str(frameNr))
 	global getMax
@@ -246,6 +247,7 @@ def incr_plotupdater():
 def decr_plotupdater():
 	global frameNr
 	global framenrvar
+	frameNr = framenrvar.get()
 	frameNr -= 1
 	framenrvar.set(str(frameNr))
 	global getMax
