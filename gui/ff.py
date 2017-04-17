@@ -126,9 +126,13 @@ def plotRingsOffset():
 	Etas = np.linspace(-180,180,num=360)
 	lines2 = []
 	colornr = 0
+	txtDisplay = 'Selected Rings: '
 	for ringrad in ringRads:
 		Y = []
 		Z = []
+		for i in range(3):
+			txtDisplay += str(hkls[i]) + ' '
+		txtDisplay += ','
 		for eta in Etas:
 			ringrad2 = ringrad * (lsdlocal / lsdorig)
 			tmp = YZ4mREta(ringrad2,eta)
@@ -136,6 +140,8 @@ def plotRingsOffset():
 			Z.append(tmp[1]/px + bclocal[1])
 		lines2.append(b.plot(Y,Z,color=colors[colornr]))
 		colornr+= 1
+	txtDisplay = txtDisplay[:-1]
+	Tk.Label(master=root,text=txtDisplay).grid(row=1,column=1)
 
 def plotRings():
 	global lines
@@ -167,9 +173,9 @@ def doRings():
 	if plotYesNo == 1:
 		if ringRads is None:
 			ringSelection()
-		plotRings()
-		plotRingsOffset()
-		Tk.Label(master=root,text='Rings selected:').grid(row=0,column=0)
+		else:
+			plotRings()
+			plotRingsOffset()
 	
 def clickRings():
 	doRings()
@@ -273,7 +279,7 @@ def readParams():
 	global wedge, lsd, px, bcs, tx, wl, bigdetsize, nFramesPerFile
 	global firstFileNumber, darkStem, darkNum, omegaStep, nFilesPerLayer
 	global omegaStart, NrPixels, threshold, RingsToShow, nDetectors
-	global RhoDs, LatC, sg, maxRad, border, ringslines, lsdline
+	global RhoDs, LatC, sg, maxRad, border, ringslines, lsdline, hkls
 	global ty, tz, p0, p1, p2, fileNumber, dark, ringRads, ringNrs, lsdlocal
 	global bclocal, lsdlocalvar, WidthTTh, tolTilts, tolBC, tolLsd, tolP
 	paramContents = open(paramFN,'r').readlines()
@@ -398,6 +404,7 @@ def readParams():
 			if int(line.split()[4]) == ringNr:
 				ringRads.append(float(line.split()[-1].split('\n')[0]))
 				ringNrs.append(ringNr)
+				hkls.append([int(line.split()[0]),int(line.split()[1]),int(line.split()[2])])
 				break
 	# initialization of dark
 	dark = []
@@ -661,10 +668,14 @@ def acceptRings():
 	global RingsToShow
 	global ringRads
 	global topSelectRings
+	global hkls
 	items = ListBox1.curselection()
 	ringRads = [RingRad[int(item)] for item in items]
-	RingsToShow = [int(item) for item in items]
+	RingsToShow = [int(item)+1 for item in items]
+	hkls = [hkl[int(item)] for item in items]
 	topSelectRings.destroy()
+	plotRings()
+	plotRingsOffset()
 
 def selectRings():
 	global topSelectRings
