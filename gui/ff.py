@@ -132,7 +132,7 @@ def plotRingsOffset():
 		Z = []
 		for i in range(3):
 			txtDisplay += str(hkls[idx][i]) + ' '
-		txtDisplay += str(int(ringrad/px)) + ' ' + colors[idx] + ','
+		txtDisplay += str(int(ringrad/px)) + ' ' + colors[idx] + ', '
 		for eta in Etas:
 			ringrad2 = ringrad * (lsdlocal / lsdorig)
 			tmp = YZ4mREta(ringrad2,eta)
