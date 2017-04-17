@@ -721,6 +721,8 @@ def acceptSgWlLatC():
 	global wl, sg, LatticeConstant, tempLsd, tempMaxRingRad, px, bigdetsize
 	global topRingMaterialSelection, lsdlocal, lsdorig, LatCInit
 	wl = float(wlVar.get())
+	if wl > 1:
+		wl = 12.398/wl
 	sg = int(sgVar.get())
 	LatticeConstant = np.zeros(6)
 	px = float(pxVar.get())
@@ -760,7 +762,7 @@ def ringSelection():
 	Tk.Label(master=topRingMaterialSelection,text='Please enter the SpaceGroup, Wavelength(or Energy), Lattice Constant, Sample To Detector Distance(Lsd)').grid(row=1,column=1,columnspan=7)
 	Tk.Label(master=topRingMaterialSelection,text='SpaceGroup').grid(row=2,column=1,sticky=Tk.W)
 	Tk.Entry(master=topRingMaterialSelection,textvariable=sgVar,width=4).grid(row=2,column=2,sticky=Tk.W)
-	Tk.Label(master=topRingMaterialSelection,text='Wavelength (A)').grid(row=3,column=1,sticky=Tk.W)
+	Tk.Label(master=topRingMaterialSelection,text='Wavelength (A) or Energy (KeV)').grid(row=3,column=1,sticky=Tk.W)
 	Tk.Entry(master=topRingMaterialSelection,textvariable=wlVar,width=8).grid(row=3,column=2,sticky=Tk.W)
 	Tk.Label(master=topRingMaterialSelection,text='LatticeConstant (A)').grid(row=4,column=1,sticky=Tk.W)
 	for i in range(6):
