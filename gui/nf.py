@@ -57,7 +57,7 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 		print "Read file " + fns[0]
 		imarr = np.array(im,dtype=np.uint16)
 		doMedian = var.get()
-		fnprint = fns[0]
+		fnprint = fns[0].replace(folder,'')
 		if doMedian == 1:
 			f = open(fns[1],'rb')
 			print "Read file " + fns[1]
@@ -75,13 +75,16 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 			fnthis = folder + '/' + fnstem + '_MaximumIntensity_Distance_' + str(dist) + '.bin'
 		f = open(fnthis,'rb')
 		print 'Read file ' + fnthis
-		fnprint = fnthis
+		fnprint = fnthis.replace(folder,'')
 		imarr = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
 		f.close()
 		imarr2 = np.reshape(imarr,(NrPixels,NrPixels))
 		imarr2 = stats.threshold(imarr2,threshmin=background)
 	imarr2 = np.flipud(np.fliplr(imarr2))
-	a.imshow(imarr2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(float(minThreshvar.get()),float(vali.get())))
+	if dolog.get() == 0:
+		a.imshow(imarr2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(float(minThreshvar.get()),float(vali.get())))
+	else:
+		a.imshow(np.log(imarr2),cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(np.log(float(minThreshvar.get())),np.log(float(vali.get()))))
 	if initplot:
 		initplot = 0
 		a.invert_xaxis()
@@ -633,7 +636,6 @@ def micfileselect():
 	micfile = tkFileDialog.askopenfilename()
 
 def plotmic():
-	global micfiledata
 	global initplotb
 	global colVar
 	global cb
@@ -642,9 +644,10 @@ def plotmic():
 		cb.remove()
 	b.clear()
 	col = colVar.get()
+	micfiledatacut = micfiledata[np.where(micfiledata[:,10]>float(cutconfidencevar.get())),:]
 	if cb is not None:
 		cb.remove()
-	sc = b.scatter(micfiledata[:,3],micfiledata[:,4],c=micfiledata[:,col],lw=0)
+	sc = b.scatter(micfiledatacut[:,3],micfiledatacut[:,4],c=micfiledatacut[:,col],lw=0)
 	if initplotb:
 		initplotb = 0
 	else:
@@ -740,10 +743,14 @@ startomevar = Tk.StringVar()
 omestepvar = Tk.StringVar()
 sgvar = Tk.StringVar()
 maxringradvar = Tk.StringVar()
+cutconfidencevar = Tk.StringVar()
+cutoffconfidence = 0
+cutconfidencevar.set(str(cutoffconfidence))
 initplotb = 1
 colVar = Tk.IntVar()
 colVar.set(10)
 micfiledata = None
+dolog = Tk.IntVar()
 
 firstRowFrame = Tk.Frame(root)
 firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
@@ -799,7 +806,7 @@ c.grid(row=1,column=16,sticky=Tk.W)
 secondRowFrame = Tk.Frame(root)
 secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
 
-Tk.Label(master=secondRowFrame,text="Distance Nr").grid(row=1,column=1,sticky=Tk.W)
+Tk.Label(master=secondRowFrame,text="DistanceNr").grid(row=1,column=1,sticky=Tk.W)
 r2 = Tk.StringVar() 
 r2.set(str(0))
 e2 = Tk.Entry(master=secondRowFrame,textvariable=r2,width=3)
@@ -807,7 +814,7 @@ e2.grid(row=1,column=2,sticky=Tk.W)
 e2.focus_set()
 
 minThresh = 0
-Tk.Label(master=secondRowFrame,text="MinThresh (cnts)").grid(row=1,column=3,sticky=Tk.W)
+Tk.Label(master=secondRowFrame,text="MinThresh(cnts)").grid(row=1,column=3,sticky=Tk.W)
 minThreshvar = Tk.StringVar()
 minThreshvar.set(str(minThresh))
 emt = Tk.Entry(master=secondRowFrame,textvariable=minThreshvar,width=4)
@@ -818,38 +825,40 @@ e3 = Tk.Entry(master=secondRowFrame,textvariable=vali,width=4)
 e3.grid(row=1,column=6,sticky=Tk.W)
 e3.focus_set()
 
-Tk.Label(master=secondRowFrame,text="Pixel Size (um)").grid(row=1,column=7,sticky=Tk.W)
+Tk.Checkbutton(master=secondRowFrame,text="LogScale",variable=dolog).grid(row=1,column=7,sticky=Tk.W)
+
+Tk.Label(master=secondRowFrame,text="PixelSize(um)").grid(row=1,column=8,sticky=Tk.W)
 pxvar = Tk.StringVar()
 pxvar.set(str(pixelsize))
 epx = Tk.Entry(master=secondRowFrame,textvariable=pxvar,width=5)
-epx.grid(row=1,column=8,sticky=Tk.W)
+epx.grid(row=1,column=9,sticky=Tk.W)
 
-Tk.Label(master=secondRowFrame,text="First Lsd (um)").grid(row=1,column=9,sticky=Tk.W)
+Tk.Label(master=secondRowFrame,text="FirstLsd(um)").grid(row=1,column=10,sticky=Tk.W)
 lsdvar = Tk.StringVar()
 lsdvar.set(str(lsd))
 elsd = Tk.Entry(master=secondRowFrame,textvariable=lsdvar,width=10)
-elsd.grid(row=1,column=10,sticky=Tk.W)
+elsd.grid(row=1,column=11,sticky=Tk.W)
 
-Tk.Label(master=secondRowFrame,text="NrFilesPerDistance").grid(row=1,column=11,sticky=Tk.W)
+Tk.Label(master=secondRowFrame,text="nFiles/Distance").grid(row=1,column=12,sticky=Tk.W)
 nrfilesvar = Tk.StringVar()
 nrfilesvar.set(str(nrfilesperdistance))
 enrfiles = Tk.Entry(master=secondRowFrame,textvariable=nrfilesvar,width=4)
-enrfiles.grid(row=1,column=12,sticky=Tk.W)
+enrfiles.grid(row=1,column=13,sticky=Tk.W)
 
-buttonmedian = Tk.Button(master=secondRowFrame,text='Calc Median / MaxOverFrames',command=median)
-buttonmedian.grid(row=1,column=13,sticky=Tk.W)
+buttonmedian = Tk.Button(master=secondRowFrame,text='CalcMedian',command=median)
+buttonmedian.grid(row=1,column=14,sticky=Tk.W)
 
-Tk.Label(master=secondRowFrame,text="FilesUsedForMedianCalc").grid(row=1,column=14,sticky=Tk.W)
+Tk.Label(master=secondRowFrame,text="nFilesMedianCalc").grid(row=1,column=15,sticky=Tk.W)
 nrfilesmedianvar = Tk.StringVar()
 nrfilesmedianvar.set(str(nrfilesperdistance))
 enrfilesmedian = Tk.Entry(master=secondRowFrame,textvariable=nrfilesmedianvar,width=4)
-enrfilesmedian.grid(row=1,column=15,sticky=Tk.W)
+enrfilesmedian.grid(row=1,column=16,sticky=Tk.W)
 
 oldmaxoverframes = 0
 maxoverframes = Tk.IntVar()
 
-chkMaxOverFrames = Tk.Checkbutton(master=secondRowFrame,text="Load MaxOverFrames",variable=maxoverframes)
-chkMaxOverFrames.grid(row=1,column=16,sticky=Tk.W)
+chkMaxOverFrames = Tk.Checkbutton(master=secondRowFrame,text="LoadMaxOverFrames",variable=maxoverframes)
+chkMaxOverFrames.grid(row=1,column=17,sticky=Tk.W)
 
 thirdRowFrame = Tk.Frame(root)
 thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
@@ -892,6 +901,12 @@ Tk.Radiobutton(master=radioframe,text='Confidence',variable=colVar,value=10).gri
 Tk.Radiobutton(master=radioframe,text='Euler0',variable=colVar,value=7).grid(row=1,column=2,sticky=Tk.W)
 Tk.Radiobutton(master=radioframe,text='Euler1',variable=colVar,value=8).grid(row=1,column=3,sticky=Tk.W)
 Tk.Radiobutton(master=radioframe,text='Euler2',variable=colVar,value=9).grid(row=1,column=4,sticky=Tk.W)
+
+micframethirdrow = Tk.Frame(root)
+micframethirdrow.grid(row=figrowspan+3,column=3,sticky=Tk.W)
+
+Tk.Label(master=micframethirdrow,text='CutoffConfidence').grid(row=1,column=1,sticky=Tk.W)
+Tk.Entry(master=micframethirdrow,textvariable=cutconfidencevar,width=4).grid(row=1,column=2,sticky=Tk.W)
 
 button = Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20))
 button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W)
