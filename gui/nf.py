@@ -646,6 +646,7 @@ def plotmic():
 	b.clear()
 	col = colVar.get()
 	micfiledatacut = micfiledata[np.where(micfiledata[:,10]>float(cutconfidencevar.get())),:]
+	print micfiledatacut
 	if cb is not None:
 		cb.remove()
 	sc = b.scatter(micfiledatacut[:,3],micfiledatacut[:,4],c=micfiledatacut[:,col],lw=0)
