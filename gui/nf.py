@@ -649,13 +649,13 @@ def plotmic():
 		b.set_xlim([lims[0][0],lims[0][1]])
 		b.set_ylim([lims[1][0],lims[1][1]])
 	if col == 7:
-		b.title.set_text("MicFile "+ micfile + " (Euler0)")
+		b.title.set_text("MicFile (Euler0)")
 	elif col == 8:
-		b.title.set_text("MicFile "+ micfile + " (Euler1)")
+		b.title.set_text("MicFile (Euler1)")
 	elif col == 9:
-		b.title.set_text("MicFile "+ micfile + " (Euler2)")
+		b.title.set_text("MicFile (Euler2)")
 	elif col == 10:
-		b.title.set_text("MicFile "+ micfile + " (Confidence Coloring)")
+		b.title.set_text("MicFile (Confidence Coloring)")
 	cb = figur.colorbar(sc,ax=b)
 	b.set_aspect('equal')
 	figur.tight_layout()
@@ -670,7 +670,6 @@ def load_mic():
 	micfiledata = np.genfromtxt(f,skip_header=4)
 	f.close()
 	plotmic()
-
 
 # Global constants initialization
 imarr2 = None
