@@ -84,7 +84,15 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 	if dolog.get() == 0:
 		a.imshow(imarr2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(float(minThreshvar.get()),float(vali.get())))
 	else:
-		a.imshow(np.log(imarr2),cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(np.log(float(minThreshvar.get())),np.log(float(vali.get()))))
+		minC = float(minThreshvar.get())
+		maxC = float(vali.get())
+		if minC == 0:
+			minC = 1
+		if maxC == 0:
+			maxC = 1
+		imarr2plt = np.copy(imarr2)
+		imarr2plt [imarr2plt == 0] = 1
+		a.imshow(np.log(imarr2plt),cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(np.log(),np.log()))
 	if initplot:
 		initplot = 0
 		a.invert_xaxis()
