@@ -129,6 +129,7 @@ def plot_updater():
 	global minThresh
 	global nrfilesperdistance
 	global startframenr
+	global logscaler
 	newlsd = float(lsdvar.get())
 	newVar = var.get()
 	newframenr = int(r.get())
@@ -142,7 +143,9 @@ def plot_updater():
 	newnrfilesperdistance = int(nrfilesvar.get())
 	newstartframenr = int(startframenrvar.get())
 	newmaxoverframes = maxoverframes.get()
+	newlogscaler = dolog.get()
 	if ((initplot == 1) or 
+		(newlogscaler != logscaler) or
 		(newmaxoverframes != oldmaxoverframes) or
 		(newminThresh != minThresh) or
 		(newnrfilesperdistance != nrfilesperdistance) or
@@ -157,6 +160,7 @@ def plot_updater():
 		(newstartframenr != startframenr) or
 		(newlsd !=lsd)):
 		oldmaxoverframes = newmaxoverframes
+		logscaler = newlogscaler
 		nrfilesperdistance = newnrfilesperdistance
 		minThresh = newminThresh
 		lsd = newlsd
@@ -730,6 +734,7 @@ omestep = 0
 sg = 0
 maxringrad = 0
 spotnr = 1
+logscaler = 0
 
 # Main funcion
 root = Tk.Tk()
