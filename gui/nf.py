@@ -642,6 +642,7 @@ def plotmic():
 	if not initplotb:
 		lims = [b.get_xlim(), b.get_ylim()]
 		cb.remove()
+		cb = None
 	b.clear()
 	col = colVar.get()
 	micfiledatacut = micfiledata[np.where(micfiledata[:,10]>float(cutconfidencevar.get())),:]
