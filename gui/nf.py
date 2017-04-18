@@ -642,6 +642,8 @@ def plotmic():
 		cb.remove()
 	b.clear()
 	col = colVar.get()
+	if cb is not None:
+		cb.remove()
 	sc = b.scatter(micfiledata[:,3],micfiledata[:,4],c=micfiledata[:,col],lw=0)
 	if initplotb:
 		initplotb = 0
