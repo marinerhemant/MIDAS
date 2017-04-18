@@ -57,6 +57,7 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 		print "Read file " + fns[0]
 		imarr = np.array(im,dtype=np.uint16)
 		doMedian = var.get()
+		fnprint = fns[0]
 		if doMedian == 1:
 			f = open(fns[1],'rb')
 			print "Read file " + fns[1]
@@ -74,6 +75,7 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 			fnthis = folder + '/' + fnstem + '_MaximumIntensity_Distance_' + str(dist) + '.bin'
 		f = open(fnthis,'rb')
 		print 'Read file ' + fnthis
+		fnprint = fnthis
 		imarr = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
 		f.close()
 		imarr2 = np.reshape(imarr,(NrPixels,NrPixels))
@@ -97,7 +99,7 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 	    else:
 	        return 'x=%1.4f, y=%1.4f'%(x,y)
 	a.format_coord = format_coord
-	a.title.set_text("Image")
+	a.title.set_text("Image: " + fnprint)
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH,expand=1)
 
@@ -451,11 +453,15 @@ def folderselect():
 
 def incr_plotupdater():
 	global r
+	global framenr
+	framenr = int(r.get())
 	r.set(str(framenr+1))
 	plot_updater()
 
 def decr_plotupdater():
 	global r
+	global framenr
+	framenr = int(r.get())
 	r.set(str(framenr-1))
 	plot_updater()
 
@@ -643,13 +649,13 @@ def plotmic():
 		b.set_xlim([lims[0][0],lims[0][1]])
 		b.set_ylim([lims[1][0],lims[1][1]])
 	if col == 7:
-		b.title.set_text("MicFile (Euler0)")
+		b.title.set_text("MicFile "+ micfile + " (Euler0)")
 	elif col == 8:
-		b.title.set_text("MicFile (Euler1)")
+		b.title.set_text("MicFile "+ micfile + " (Euler1)")
 	elif col == 9:
-		b.title.set_text("MicFile (Euler2)")
+		b.title.set_text("MicFile "+ micfile + " (Euler2)")
 	elif col == 10:
-		b.title.set_text("MicFile (Confidence Coloring)")
+		b.title.set_text("MicFile "+ micfile + " (Confidence Coloring)")
 	cb = figur.colorbar(sc,ax=b)
 	b.set_aspect('equal')
 	figur.tight_layout()
