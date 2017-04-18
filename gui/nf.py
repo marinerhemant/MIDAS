@@ -92,7 +92,7 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 			maxC = 1
 		imarr2plt = np.copy(imarr2)
 		imarr2plt [imarr2plt == 0] = 1
-		a.imshow(np.log(imarr2plt),cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(np.log(),np.log()))
+		a.imshow(np.log(imarr2plt),cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(np.log(minC),np.log(maxC)))
 	if initplot:
 		initplot = 0
 		a.invert_xaxis()
