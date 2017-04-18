@@ -645,7 +645,10 @@ def plotmic():
 		cb = None
 	b.clear()
 	col = colVar.get()
-	micfiledatacut = micfiledata[np.where(micfiledata[:,10]>float(cutconfidencevar.get())),:]
+	confidences = np.copy(micfiledata[:,10])
+	goodrows = np.where(confidences > float(cutconfidencevar.get()))
+	print goodrows
+	micfiledatacut = micfiledata[goodrows,:]
 	print micfiledatacut
 	if cb is not None:
 		cb.remove()
