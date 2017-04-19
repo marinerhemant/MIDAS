@@ -593,6 +593,7 @@ def killtopGetGrain():
 	sg = int(sgvar.get())
 	maxringrad = float(maxringradvar.get())
 	topGetGrain.destroy()
+	makespots()
 
 def getgrain():
 	# open new toplevel window, either read from file or take input, then close
@@ -647,21 +648,21 @@ def plot_update_spot():
 	eta = float(simulatedspots[spotnr-1].split(' ')[1])
 	ys,zs = YZ4mREta(rad,eta)
 	startframenr = int(startframenrvar.get())
-	filenrToRead = int((float(thisome)-float(startome))/omestep)
-	r.set(str(filenrToRead))
+	frameNrToRead = int((float(thisome)-float(startome))/omestep)
+	r.set(str(frameNrToRead))
 	spotnrvar.set(str(spotnr))
 	ya = pos[0]*math.sin(thisome) + pos[1]*math.cos(thisome)
 	xa = -pos[1]*math.sin(thisome) + pos[0]*math.cos(thisome)
 	yn = (ya + ys*(1-(xa/lsd)))/pixelsize - bcs[dist][0] #NrPixels - (ya + ys*(1-(xa/lsd)))/pixelsize - bcs[dist][0]
 	zn = (zs*(1-(xa/lsd)))/pixelsize - bcs[dist][1] #NrPixels - (zs*(1-(xa/lsd)))/pixelsize - bcs[dist][1]
-	print [ys, ya, yn, zs, zn, rad, eta,thisome,filenrToRead]
+	print [ys, ya, yn, zs, zn, rad, eta,thisome,frameNrToRead]
 	while ((abs(eta) > 90) or (yn > NrPixels) or (zn > NrPixels)):
 		spotnr += 1
 		thisome = float(simulatedspots[spotnr-1].split(' ')[2])
 		rad = float(simulatedspots[spotnr-1].split(' ')[0])
 		eta = float(simulatedspots[spotnr-1].split(' ')[1])
-		filenrToRead = int((float(thisome)-float(startome))/omestep)
-		r.set(str(filenrToRead))
+		frameNrToRead = int((float(thisome)-float(startome))/omestep)
+		r.set(str(frameNrToRead))
 		spotnrvar.set(str(spotnr))
 		# calculate spot position and make a blip on the detector
 		ys,zs = YZ4mREta(rad,eta)
@@ -669,7 +670,7 @@ def plot_update_spot():
 		xa = -pos[1]*math.sin(thisome) + pos[0]*math.cos(thisome)
 		yn = (ya + ys*(1-(xa/lsd)))/pixelsize - bcs[dist][0] #NrPixels - (ya + ys*(1-(xa/lsd)))/pixelsize - bcs[dist][0]
 		zn = (zs*(1-(xa/lsd)))/pixelsize - bcs[dist][1] #NrPixels - (zs*(1-(xa/lsd)))/pixelsize - bcs[dist][1]
-		print [ys, ya, yn, zs, zn, rad, eta,thisome,filenrToRead]
+		print [ys, ya, yn, zs, zn, rad, eta,thisome,frameNrToRead]
 	plot_updater()
 	a.scatter(yn,zn,s=5,color='red')
 	canvas.show()
@@ -712,12 +713,12 @@ def makespots():
 	os.system(diffrspotspath+str(lsd)+' '+oroutfn)
 	spotsfn = 'SimulatedDiffractionSpots.txt'
 	simulatedspots = open(spotsfn,'r').readlines()
-	Tk.Label(master=root,text="SpotNumber").grid(row=figrowspan+3,column=3,sticky=Tk.E,padx=50)
-	Tk.Entry(root,textvariable=spotnrvar,width=3).grid(row=figrowspan+3,column=3,sticky=Tk.E)
+	Tk.Label(master=thirdRowFrame,text="SpotNumber").grid(row=1,column=nrthird+1,sticky=Tk.W)
+	Tk.Entry(master=thirdRowFrame,textvariable=spotnrvar,width=3).grid(row=1,column=nrthird+2,sticky=Tk.W)
 	plot_update_spot()
 	# put a frame with +,- and load
-	Tk.Button(master=root,text="+",command=incr_spotnr,font=("Helvetica",12)).grid(row=figrowspan+3,column=4,sticky=Tk.W)
-	Tk.Button(master=root,text="Load",command=update_spotnr,font=("Helvetica",12)).grid(row=figrowspan+3,column=4,sticky=Tk.W,padx=70)
+	Tk.Button(master=thirdRowFrame,text="+",command=incr_spotnr,font=("Helvetica",12)).grid(row=1,column=nrthird+3,sticky=Tk.W)
+	Tk.Button(master=thirdRowFrame,text="Load",command=update_spotnr,font=("Helvetica",12)).grid(row=1,column=nrthird+4,sticky=Tk.W)
 
 def median():
 	cmdout = []
