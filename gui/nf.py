@@ -251,8 +251,8 @@ def plotbBox():
 	xlarge = int(max(clickpos[0][0],clickpos[1][0]))
 	ysmall = int(min(clickpos[0][1],clickpos[1][1]))
 	ylarge = int(max(clickpos[0][1],clickpos[1][1]))
-	xvals = np.linspace(xsmall,xlarge,num=xsmall-xlarge+1)
-	yvals = np.linspace(ysmall,ylarge,num=ysmall-ylarge+1)
+	xvals = np.linspace(xsmall,xlarge,num=-xsmall+xlarge+1)
+	yvals = np.linspace(ysmall,ylarge,num=-ysmall+ylarge+1)
 	zs = []
 	if horvert == 1: # Horizontal
 		for xval in xvals:
