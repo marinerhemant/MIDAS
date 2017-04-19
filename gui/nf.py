@@ -178,7 +178,6 @@ def plot_updater():
 
 def plotb():
 	global horvert
-	global imarr2
 	global clickpos
 	global cb
 	global initplotb
@@ -238,7 +237,6 @@ def onclick(event):
 
 def plotbBox():
 	global horvert
-	global imarr2
 	global clickpos
 	global cb
 	global initplotb
@@ -258,6 +256,7 @@ def plotbBox():
 		for xval in xvals:
 			ztr = 0
 			for yval in yvals:
+				print imarr2[yval,xval]
 				ztr += imarr2[yval,xval]
 			zs.append(ztr)
 		b.plot(np.array(xvals),zs)
@@ -266,6 +265,7 @@ def plotbBox():
 		for yval in yvals:
 			ztr = 0
 			for xval in xvals:
+				print imarr2[yval,xval]
 				ztr += imarr2[yval,xval]
 			zs.append(ztr)
 		b.plot(np.array(yvals),zs)
