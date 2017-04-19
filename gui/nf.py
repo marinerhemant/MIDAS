@@ -1049,7 +1049,7 @@ def euler2orientmat(Euler):
     return m_out
 
 def calcSpots(clickpos):
-	global om
+	global om, pos
 	xs = micfiledatacut[:,3]
 	ys = micfiledatacut[:,4]
 	xdiff = xs - clickpos[0]
@@ -1060,6 +1060,9 @@ def calcSpots(clickpos):
 	print rowcontents
 	Euler = rowcontents[7:10]
 	om = euler2orientmat(Euler)
+	pos[0] = rowcontents[3]
+	pos[1] = rowcontents[4]
+	pos[2] = 0
 	print om
 	getgrain()
 
