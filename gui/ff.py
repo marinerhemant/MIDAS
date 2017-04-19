@@ -219,7 +219,17 @@ def plot_updater():
 		mask2[bigdetsize/2 - NewZs,bigdetsize/2 - NewYs] = thresholded[rows,cols]
 	lines = None
 	doRings()
-	a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
+	if dolog.get() == 0:
+		a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
+	else:
+		if threshold == 0:
+			threshold = 1
+		if upperthreshold == 0:
+			upperthreshold = 1
+		mask3 = np.copy(mask2)
+		mask3 [ mask3 == 1 ] = 10
+		mask3 [ mask3 == 0 ] = 1
+		a.imshow(np.log(mask3),cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(np.log(threshold),np.log(upperthreshold)))
 	if initplot:
 		initplot = 0
 	else:
@@ -643,7 +653,16 @@ def loadbplot():
 	lsdlocal = float(lsdlocalvar.get())
 	lines2 = None
 	doRings()
-	b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
+	if dolog.get() == 0:
+		b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
+	else:
+		if threshold == 0:
+			threshold = 1
+		if upperthreshold == 0:
+			upperthreshold = 1
+		mask3 = np.copy(bdata)
+		mask3 [ mask3 == 0 ] = 1
+		b.imshow(np.log(mask3),cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(np.log(threshold),np.log(upperthreshold)))
 	if initplot2:
 		initplot2 = 0
 		b.invert_yaxis()
@@ -830,7 +849,17 @@ def replot():
 		a.clear()
 		lines = None
 		doRings()
-		a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
+		if dolog.get() == 0:
+			a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
+		else:
+			if threshold == 0:
+				threshold = 1
+			if upperthreshold == 0:
+				upperthreshold = 1
+			mask3 = np.copy(mask2)
+			mask3 [ mask3 == 1 ] = 10
+			mask3 [ mask3 == 0 ] = 1
+			a.imshow(np.log(mask3),cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(np.log(threshold),np.log(upperthreshold)))
 		if initplot:
 			initplot = 0
 		else:
@@ -857,7 +886,16 @@ def replot():
 	b.clear()
 	lines2 = None
 	doRings()
-	b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
+	if dolog.get() == 0:
+		b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
+	else:
+		if threshold == 0:
+			threshold = 1
+		if upperthreshold == 0:
+			upperthreshold = 1
+		mask3 = np.copy(bdata)
+		mask3 [ mask3 == 0 ] = 1
+		b.imshow(np.log(mask3),cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(np.log(threshold),np.log(upperthreshold)))
 	if initplot2:
 		initplot2 = 0
 		b.invert_yaxis()
