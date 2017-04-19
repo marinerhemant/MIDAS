@@ -838,6 +838,8 @@ def onclickmicfile(event):
 def selectpoint():
 	if micfiledata == None:
 		load_mic()
+	if bcs[0][0] == 0:
+		bcwindow()
 	canvas.mpl_connect('button_press_event',onclickmicfile)
 
 # Global constants initialization
