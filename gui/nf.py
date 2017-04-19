@@ -1055,7 +1055,7 @@ def calcSpots(clickpos):
 	ydiff = ys - clickpos[1]
 	lendiff = np.square(xdiff) + np.square(ydiff)
 	rowbest = lendiff == min(lendiff)
-	print rowbest
+	print micfiledata[rowbest,:]
 
 def onclickmicfile(event):
 	clickpos = [event.xdata, event.ydata]
