@@ -490,9 +490,11 @@ main(int argc, char *argv[])
 	if (nRingsToUse > 0){
 		double hklTemps[n_hkls][4];
 		int totalHKLs=0;
+		printf("nRingsToUse: %d\n",nRingsToUse);
 		for (i=0;i<nRingsToUse;i++){
 			for (j=0;j<n_hkls;j++){
 				if ((int)hkls[j][3] == RingsToUse[i]){
+					printf("%d %d\n",(int)hkls[j][3], RingsToUse[i]);
 					hklTemps[totalHKLs][0] = hkls[j][0];
 					hklTemps[totalHKLs][1] = hkls[j][1];
 					hklTemps[totalHKLs][2] = hkls[j][2];
@@ -509,8 +511,8 @@ main(int argc, char *argv[])
 		}
 	}
 	printf("Number of individual diffracting planes: %d\n",n_hkls);
-	for (i=0;i<n_hkls;i++) printf("%d %d %d %d %f\n",hkls[i][0],hkls[i][1],
-		hkls[i][2],hkls[i][3],Thetas[i]);
+	//~ for (i=0;i<n_hkls;i++) printf("%d %d %d %d %f\n",hkls[i][0],hkls[i][1],
+		//~ hkls[i][2],hkls[i][3],Thetas[i]);
     int nRowsPerGrain = 2 * n_hkls;
     TheorSpots = allocMatrix(nRowsPerGrain,3);
     if (TheorSpots == NULL ) {
