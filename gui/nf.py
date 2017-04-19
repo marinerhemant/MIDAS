@@ -847,13 +847,15 @@ def calcSpots(clickpos):
 def onclickmicfile(event):
 	clickpos = [event.xdata, event.ydata]
 	calcSpots(clickpos)
+	canvas.mpl_disconnect(ce2)
 
 def selectpoint():
+	global ce2
 	if micfiledata == None:
 		load_mic()
 	if bcs[0][0] == 0:
 		bcwindow()
-	canvas.mpl_connect('button_press_event',onclickmicfile)
+	ce2 = canvas.mpl_connect('button_press_event',onclickmicfile)
 
 # Global constants initialization
 imarr2 = None
