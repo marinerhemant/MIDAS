@@ -643,25 +643,26 @@ def YZ4mREta(R,Eta):
 
 def plot_update_spot():
 	global r, spotnrvar, spotnr, startframenr
-	thisome = float(simulatedspots[spotnr-1].split(' ')[2])
-	rad = float(simulatedspots[spotnr-1].split(' ')[0])
 	thislsd = float(lsdvar.get()) + float(r2.get()) * float(distDiffVar.get())
 	simlsd = float(lsdvar.get())
-	rad = rad * thislsd/simlsd
-	eta = float(simulatedspots[spotnr-1].split(' ')[1])
 	endome = startome + nrfilesperdistance * omestep
 	minOme = min(startome,endome)
 	maxOme = max(startome,endome)
-	ys,zs = YZ4mREta(rad,eta)
+	
+	thisome = float(simulatedspots[spotnr-1].split(' ')[2])
+	rad = float(simulatedspots[spotnr-1].split(' ')[0])
+	rad = rad * thislsd/simlsd
+	eta = float(simulatedspots[spotnr-1].split(' ')[1])
 	startframenr = int(startframenrvar.get())
 	frameNrToRead = int((float(thisome)-float(startome))/omestep)
 	r.set(str(frameNrToRead))
 	spotnrvar.set(str(spotnr))
-	ya = pos[0]*math.sin(thisome) + pos[1]*math.cos(thisome)
-	xa = -pos[1]*math.sin(thisome) + pos[0]*math.cos(thisome)
+	ys,zs = YZ4mREta(rad,eta)
+	ya = pos[0]*math.sin(thisome*deg2rad) + pos[1]*math.cos(thisome*deg2rad)
+	xa = -pos[1]*math.sin(thisome*deg2rad) + pos[0]*math.cos(thisome*deg2rad)
 	yn = (ya + ys*(1-(xa/thislsd)))/pixelsize + bcs[dist][0]
 	zn = (zs*(1-(xa/thislsd)))/pixelsize + bcs[dist][1]
-	print [ys, ya, yn, zs, zn, rad, eta,thisome,frameNrToRead]
+	print [pos[0], pos[1], ys, ya, yn, zs, zn, rad, eta,thisome,frameNrToRead]
 	while ((yn > NrPixels) or 
 		   (zn > NrPixels) or 
 		   (yn < 0) or 
@@ -677,11 +678,11 @@ def plot_update_spot():
 		spotnrvar.set(str(spotnr))
 		# calculate spot position and make a blip on the detector
 		ys,zs = YZ4mREta(rad,eta)
-		ya = pos[0]*math.sin(thisome) + pos[1]*math.cos(thisome)
-		xa = -pos[1]*math.sin(thisome) + pos[0]*math.cos(thisome)
+		ya = pos[0]*math.sin(thisome*deg2rad) + pos[1]*math.cos(thisome*deg2rad)
+		xa = -pos[1]*math.sin(thisome*deg2rad) + pos[0]*math.cos(thisome*deg2rad)
 		yn = (ya + ys*(1-(xa/thislsd)))/pixelsize + bcs[dist][0]
 		zn = (zs*(1-(xa/thislsd)))/pixelsize + bcs[dist][1]
-		print [ys, ya, yn, zs, zn, rad, eta,thisome,frameNrToRead]
+		print [pos[0], pos[1], ys, ya, yn, zs, zn, rad, eta,thisome,frameNrToRead]
 	plot_updater()
 	a.scatter(yn,zn,s=25,color='red')
 	canvas.show()
