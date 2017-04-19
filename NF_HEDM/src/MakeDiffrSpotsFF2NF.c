@@ -380,7 +380,7 @@ main(int argc, char *argv[])
     char aline[1000];
     fileParam = fopen(ParamFN,"r");
     char *str, dummy[1000],direct[1024],OF[1024];
-    int LowNr, NrOrientations;
+    int LowNr, NrOrientations,RingsToUse[100],nRingsToUse=0;;
     RealType Distance;
     double Distances[10],ExcludePoleAngle,LatticeConstant,Wavelength;
 	RealType OmegaRanges[20][2], BoxSizes[20][4], px, MaxTtheta,  MaxRingRad,
@@ -393,6 +393,13 @@ main(int argc, char *argv[])
         if (LowNr==0){
             sscanf(aline,"%s %lf", dummy, &Distances[cntr]);
             cntr++;
+            continue;
+        }
+		str = "RingsToUse ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &RingsToUse[nRingsToUse]);
+            nRingsToUse++;
             continue;
         }
 		str = "DataDirectory ";
@@ -507,6 +514,28 @@ main(int argc, char *argv[])
 		sscanf(aline, "%lf %lf %lf %s %lf",&hklsIn[n_hkls][0],&hklsIn[n_hkls][1],&hklsIn[n_hkls][2],
 			dummy,&hklsIn[n_hkls][3]);
 		n_hkls++;
+	}
+	if (nRingsToUse > 0){
+		double hklTemps[n_hkls][4];
+		int totalHKLs=0;
+		for (i=0;i<nRingsToUse;i++){
+			for (j=0;j<n_hkls;j++){
+				if ((int)hklsIn[j][3] == RingsToUse[i]){
+					hklTemps[totalHKLs][0] = hklsIn[j][0];
+					hklTemps[totalHKLs][1] = hklsIn[j][1];
+					hklTemps[totalHKLs][2] = hklsIn[j][2];
+					hklTemps[totalHKLs][3] = hklsIn[j][3];
+					totalHKLs++;
+				}
+			}
+		}
+		for (i=0;i<totalHKLs;i++){
+			hklsIn[i][0] = hklTemps[i][0];
+			hklsIn[i][1] = hklTemps[i][1];
+			hklsIn[i][2] = hklTemps[i][2];
+			hklsIn[i][3] = hklTemps[i][3];
+		}
+		n_hkls = totalHKLs;
 	}
 	printf("Number of individual diffracting planes: %d\n",n_hkls);
     int nRowsPerGrain = 2 * n_hkls;
