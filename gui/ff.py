@@ -975,33 +975,39 @@ buttonIncr.grid(row=1,column=9,sticky=Tk.W)
 buttonDecr = Tk.Button(master=firstRowFrame,text='-',command=decr_plotupdater,font=("Helvetica",12))
 buttonDecr.grid(row=1,column=10,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text='MinThreshold').grid(row=1,column=11,sticky=Tk.W)
-ethreshold = Tk.Entry(master=firstRowFrame,textvariable=thresholdvar,width=5)
-ethreshold.grid(row=1,column=12,sticky=Tk.W)
+buttonSelectRings = Tk.Button(master=firstRowFrame,text="SelectRingsAndMaterial",command=ringSelection)
+buttonSelectRings.grid(row=1,column=11,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text='MaxThreshold').grid(row=1,column=13,sticky=Tk.W)
-Tk.Entry(master=firstRowFrame,textvariable=maxthresholdvar,width=5).grid(row=1,column=14,sticky=Tk.W)
+c = Tk.Checkbutton(master=firstRowFrame,text="Subtract Dark",variable=var)
+c.grid(row=1,column=12,sticky=Tk.W)
 
-Tk.Button(master=firstRowFrame,text='UpdateThresh',command=replot).grid(row=1,column=15,sticky=Tk.W)
+c2 = Tk.Checkbutton(master=firstRowFrame,text="MaxOverFrames",variable=getMaxVar)
+c2.grid(row=1,column=13,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text='NrPixels').grid(row=1,column=16,sticky=Tk.W)
-enPixels = Tk.Entry(master=firstRowFrame,textvariable=NrPixelsVar,width=5)
-enPixels.grid(row=1,column=17,sticky=Tk.W)
+cplotRings = Tk.Checkbutton(master=firstRowFrame,text='Plot Rings',variable=plotRingsVar,command=clickRings)
+cplotRings.grid(row=1,column=14,sticky=Tk.W)
 
 secondRowFrame = Tk.Frame(root)
 secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
 
-buttonSelectRings = Tk.Button(master=secondRowFrame,text="SelectRingsAndMaterial",command=ringSelection)
-buttonSelectRings.grid(row=1,column=1,sticky=Tk.W)
+Tk.Label(master=secondRowFrame,text='MinThreshold').grid(row=1,column=1,sticky=Tk.W)
+ethreshold = Tk.Entry(master=secondRowFrame,textvariable=thresholdvar,width=5)
+ethreshold.grid(row=1,column=2,sticky=Tk.W)
 
-c = Tk.Checkbutton(master=secondRowFrame,text="Subtract Dark",variable=var)
-c.grid(row=1,column=2,sticky=Tk.W)
+Tk.Label(master=secondRowFrame,text='MaxThreshold').grid(row=1,column=3,sticky=Tk.W)
+Tk.Entry(master=secondRowFrame,textvariable=maxthresholdvar,width=5).grid(row=1,column=4,sticky=Tk.W)
 
-c2 = Tk.Checkbutton(master=secondRowFrame,text="MaxOverFrames",variable=getMaxVar)
-c2.grid(row=1,column=3,sticky=Tk.W)
+Tk.Button(master=secondRowFrame,text='UpdateThresh',command=replot).grid(row=1,column=5,sticky=Tk.W)
 
-cplotRings = Tk.Checkbutton(master=secondRowFrame,text='Plot Rings',variable=plotRingsVar,command=clickRings)
-cplotRings.grid(row=1,column=4,sticky=Tk.W)
+Tk.Label(master=secondRowFrame,text='NrPixels').grid(row=1,column=6,sticky=Tk.W)
+enPixels = Tk.Entry(master=secondRowFrame,textvariable=NrPixelsVar,width=5)
+enPixels.grid(row=1,column=7,sticky=Tk.W)
+
+dolog = Tk.IntVar()
+Tk.Checkbutton(master=secondRowFrame,text="LogScale",variable=dolog).grid(row=1,column=8,sticky=Tk.W)
+
+showover = Tk.IntVar()
+Tk.Checkbutton(master=secondRowFrame,text="ShowOver",variable=showover).grid(row=1,column=9,sticky=Tk.W)
 
 thirdRowFrame = Tk.Frame(root)
 thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
