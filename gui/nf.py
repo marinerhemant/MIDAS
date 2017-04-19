@@ -867,12 +867,27 @@ def onclickmicfile(event):
 	calcSpots(clickpos)
 	canvas.mpl_disconnect(ce2)
 
+def killlsdwindow():
+	global toplsd
+	toplsd.destroy()
+	lsd = float(lsdvar.get())
+
+def lsdwindow():
+	global toplsd
+	toplsd = Tk.Toplevel()
+	toplsd.title('Sample to Detector Distance Window')
+	Tk.Label(master=toplsd,text='Please input the first sample to detector distance (in um): ').grid(row=0,column=0)
+	Tk.Entry(master=toplsd,textvariable=lsdvar,width=10).grid(row=0,column=1)
+	Tk.Button(master=toplsd,text='Confirm',command=killlsdwindow).grid(row=1,column=0,columnspan=2)
+
 def selectpoint():
 	global ce2
 	if micfiledata == None:
 		load_mic()
 	if bcs[0][0] == 0:
 		bcwindow()
+	if float(lsdvar.get()) == 0:
+		lsdwindow()
 	ce2 = canvas.mpl_connect('button_press_event',onclickmicfile)
 
 # Global constants initialization
