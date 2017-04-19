@@ -749,6 +749,7 @@ def plotmic():
 	global initplotb
 	global colVar
 	global cb
+	global micfiledatacut
 	if not initplotb:
 		lims = [b.get_xlim(), b.get_ylim()]
 		cb.remove()
@@ -757,7 +758,6 @@ def plotmic():
 	col = colVar.get()
 	micfiledatacut = np.copy(micfiledata)
 	micfiledatacut = micfiledatacut[ micfiledatacut[:,10] > float(cutconfidencevar.get()) , :]
-	print float(cutconfidencevar.get())
 	if cb is not None:
 		cb.remove()
 	sc = b.scatter(micfiledatacut[:,3],micfiledatacut[:,4],c=micfiledatacut[:,col],lw=0)
@@ -1036,26 +1036,30 @@ def euler2orientmat(Euler):
     sps = sind(psi)
     sph = sind(phi)
     sth = sind(theta)
-    m_out = np.zeros((3,3))
-    m_out[0][0] = cth * cps - sth * cph * sps
-    m_out[0][1] = -cth * cph * sps - sth * cps
-    m_out[0][2] = sph * sps
-    m_out[1][0] = cth * sps + sth * cph * cps
-    m_out[1][1] = cth * cph * cps - sth * sps
-    m_out[1][2] = -sph * cps
-    m_out[2][0] = sth * sph
-    m_out[2][1] = cth * sph
-    m_out[2][2] = cph
+    m_out = np.zeros(9)
+    m_out[0] = cth * cps - sth * cph * sps
+    m_out[1] = -cth * cph * sps - sth * cps
+    m_out[2] = sph * sps
+    m_out[3] = cth * sps + sth * cph * cps
+    m_out[4] = cth * cph * cps - sth * sps
+    m_out[5] = -sph * cps
+    m_out[6] = sth * sph
+    m_out[7] = cth * sph
+    m_out[8] = cph
     return m_out
 
 def calcSpots(clickpos):
-	xs = micfiledata[:,3]
-	ys = micfiledata[:,4]
+	xs = micfiledatacut[:,3]
+	ys = micfiledatacut[:,4]
 	xdiff = xs - clickpos[0]
 	ydiff = ys - clickpos[1]
 	lendiff = np.square(xdiff) + np.square(ydiff)
 	rowbest = lendiff == min(lendiff)
-	print micfiledata[rowbest,:]
+	rowcontents = micfiledatacut[rowbest,:][0]
+	print rowcontents
+	Euler = rowcontents[7:9]
+	OM = euler2orientmat(Euler)
+	print OM
 
 def onclickmicfile(event):
 	clickpos = [event.xdata, event.ydata]
