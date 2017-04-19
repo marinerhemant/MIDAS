@@ -1057,7 +1057,7 @@ def calcSpots(clickpos):
 	rowbest = lendiff == min(lendiff)
 	print rowbest
 
-def onclickmicfile():
+def onclickmicfile(event):
 	clickpos = [event.xdata, event.ydata]
 	calcSpots(clickpos)
 
