@@ -641,12 +641,13 @@ def YZ4mREta(R,Eta):
 	return -R*math.sin(Eta*deg2rad),R*math.cos(Eta*deg2rad)
 
 def plot_update_spot():
-	global r, spotnrvar, spotnr
+	global r, spotnrvar, spotnr, startframenr
 	thisome = float(simulatedspots[spotnr-1].split(' ')[2])
 	rad = float(simulatedspots[spotnr-1].split(' ')[0])
 	eta = float(simulatedspots[spotnr-1].split(' ')[1])
 	ys,zs = YZ4mREta(rad,eta)
-	filenrToRead = startframenr + int((float(thisome)-float(startome))/omestep)
+	startframenr = int(startframenrvar.get())
+	filenrToRead = int((float(thisome)-float(startome))/omestep)
 	r.set(str(filenrToRead))
 	spotnrvar.set(str(spotnr))
 	ya = pos[0]*math.sin(thisome) + pos[1]*math.cos(thisome)
@@ -659,7 +660,7 @@ def plot_update_spot():
 		thisome = float(simulatedspots[spotnr-1].split(' ')[2])
 		rad = float(simulatedspots[spotnr-1].split(' ')[0])
 		eta = float(simulatedspots[spotnr-1].split(' ')[1])
-		filenrToRead = startframenr + int((float(thisome)-float(startome))/omestep)
+		filenrToRead = int((float(thisome)-float(startome))/omestep)
 		r.set(str(filenrToRead))
 		spotnrvar.set(str(spotnr))
 		# calculate spot position and make a blip on the detector
@@ -788,6 +789,55 @@ def load_mic():
 	micfiledata = np.genfromtxt(f,skip_header=4)
 	f.close()
 	plotmic()
+
+def euler2orientmat(Euler):
+    psi = Euler[0]
+    phi = Euler[1]
+    theta = Euler[2]
+    cps = math.cos(psi)
+    cph = math.cos(phi)
+    cth = math.cos(theta)
+    sps = math.sin(psi)
+    sph = math.sin(phi)
+    sth = math.sin(theta)
+    m_out = np.zeros(9)
+    m_out[0] = cth * cps - sth * cph * sps
+    m_out[1] = -cth * cph * sps - sth * cps
+    m_out[2] = sph * sps
+    m_out[3] = cth * sps + sth * cph * cps
+    m_out[4] = cth * cph * cps - sth * sps
+    m_out[5] = -sph * cps
+    m_out[6] = sth * sph
+    m_out[7] = cth * sph
+    m_out[8] = cph
+    return m_out
+
+def calcSpots(clickpos):
+	global om, pos
+	xs = micfiledatacut[:,3]
+	ys = micfiledatacut[:,4]
+	xdiff = xs - clickpos[0]
+	ydiff = ys - clickpos[1]
+	lendiff = np.square(xdiff) + np.square(ydiff)
+	rowbest = lendiff == min(lendiff)
+	rowcontents = micfiledatacut[rowbest,:][0]
+	print rowcontents
+	Euler = rowcontents[7:10]
+	om = euler2orientmat(Euler)
+	pos[0] = rowcontents[3]
+	pos[1] = rowcontents[4]
+	pos[2] = 0
+	print om
+	getgrain()
+
+def onclickmicfile(event):
+	clickpos = [event.xdata, event.ydata]
+	calcSpots(clickpos)
+
+def selectpoint():
+	if micfiledata == None:
+		load_mic()
+	canvas.mpl_connect('button_press_event',onclickmicfile)
 
 # Global constants initialization
 imarr2 = None
@@ -1025,55 +1075,6 @@ micframethirdrow.grid(row=figrowspan+3,column=3,sticky=Tk.W)
 
 Tk.Label(master=micframethirdrow,text='CutoffConfidence').grid(row=1,column=1,sticky=Tk.W)
 Tk.Entry(master=micframethirdrow,textvariable=cutconfidencevar,width=4).grid(row=1,column=2,sticky=Tk.W)
-
-def euler2orientmat(Euler):
-    psi = Euler[0]
-    phi = Euler[1]
-    theta = Euler[2]
-    cps = math.cos(psi)
-    cph = math.cos(phi)
-    cth = math.cos(theta)
-    sps = math.sin(psi)
-    sph = math.sin(phi)
-    sth = math.sin(theta)
-    m_out = np.zeros(9)
-    m_out[0] = cth * cps - sth * cph * sps
-    m_out[1] = -cth * cph * sps - sth * cps
-    m_out[2] = sph * sps
-    m_out[3] = cth * sps + sth * cph * cps
-    m_out[4] = cth * cph * cps - sth * sps
-    m_out[5] = -sph * cps
-    m_out[6] = sth * sph
-    m_out[7] = cth * sph
-    m_out[8] = cph
-    return m_out
-
-def calcSpots(clickpos):
-	global om, pos
-	xs = micfiledatacut[:,3]
-	ys = micfiledatacut[:,4]
-	xdiff = xs - clickpos[0]
-	ydiff = ys - clickpos[1]
-	lendiff = np.square(xdiff) + np.square(ydiff)
-	rowbest = lendiff == min(lendiff)
-	rowcontents = micfiledatacut[rowbest,:][0]
-	print rowcontents
-	Euler = rowcontents[7:10]
-	om = euler2orientmat(Euler)
-	pos[0] = rowcontents[3]
-	pos[1] = rowcontents[4]
-	pos[2] = 0
-	print om
-	getgrain()
-
-def onclickmicfile(event):
-	clickpos = [event.xdata, event.ydata]
-	calcSpots(clickpos)
-
-def selectpoint():
-	if micfiledata == None:
-		load_mic()
-	canvas.mpl_connect('button_press_event',onclickmicfile)
 
 Tk.Button(master=micframethirdrow,text='SelectPoint',command=selectpoint).grid(row=1,column=3)
 
