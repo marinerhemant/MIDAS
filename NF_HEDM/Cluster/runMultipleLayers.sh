@@ -101,6 +101,7 @@ do
 	${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
 		-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
 		-DoPeakSearch=${PROCESSIMAGES} -FFSeedOrientations=${FFSEEDORIENTATIONS}
+	cd ${TOPDATADIRECTORY}
 done
 
 
