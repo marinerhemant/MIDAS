@@ -509,7 +509,7 @@ main(int argc, char *argv[])
 		}
 	}
 	printf("Number of individual diffracting planes: %d\n",n_hkls);
-	for (int i=0;i<n_hkls;i++) printf("%d %d %d %d %f\n",hkls[i][0],hkls[i][1],
+	for (i=0;i<n_hkls;i++) printf("%d %d %d %d %f\n",hkls[i][0],hkls[i][1],
 		hkls[i][2],hkls[i][3],Thetas[i]);
     int nRowsPerGrain = 2 * n_hkls;
     TheorSpots = allocMatrix(nRowsPerGrain,3);
