@@ -1044,9 +1044,6 @@ enPixels.grid(row=1,column=7,sticky=Tk.W)
 dolog = Tk.IntVar()
 Tk.Checkbutton(master=secondRowFrame,text="LogScale",variable=dolog).grid(row=1,column=8,sticky=Tk.W)
 
-showover = Tk.IntVar()
-Tk.Checkbutton(master=secondRowFrame,text="ShowOver",variable=showover).grid(row=1,column=9,sticky=Tk.W)
-
 thirdRowFrame = Tk.Frame(root)
 thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
 

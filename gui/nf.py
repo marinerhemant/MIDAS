@@ -232,9 +232,109 @@ def onclick(event):
 	if len(clickpos) == 2:
 		canvas.mpl_disconnect(cid)
 		cid = None
-		lb1.grid_forget()#pack_forget()
+		lb1.grid_forget()
 		plotb()
 	return
+
+def plotbBox():
+	global horvert
+	global imarr2
+	global clickpos
+	global cb
+	global initplotb
+	if cb is not None:
+		cb.remove()
+		cb = None
+		initplotb = 1
+	b.clear()
+	xsmall = int(min(clickpos[0][0],clickpos[1][0]))
+	xlarge = int(max(clickpos[0][0],clickpos[1][0]))
+	ysmall = int(min(clickpos[0][1],clickpos[1][1]))
+	ylarge = int(max(clickpos[0][1],clickpos[1][1]))
+	xvals = np.linspace(xsmall,xlarge,num=xsmall-xlarge+1)
+	yvals = np.linspace(ysmall,ylarge,num=ysmall-ylarge+1)
+	zs = []
+	if horvert == 1: # Horizontal
+		for xval in xvals:
+			ztr = 0
+			for yval in yvals:
+				ztr += imarr2[yval,xval]
+			zs.append(ztr)
+		b.plot(np.array(xvals),zs)
+		b.title.set_text('BoxOutHor')
+	elif horvert == 2:
+		for yval in yvals:
+			ztr = 0
+			for xval in xvals:
+				ztr += imarr2[yval,xval]
+			zs.append(ztr)
+		b.plot(np.array(yvals),zs)
+		b.title.set_text('BoxOutVer')
+	canvas.show()
+	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+	b.set_aspect('auto')
+
+def onclickbox(event):
+	global clickpos
+	global lb1
+	global cid
+	clickpos.append((event.xdata, event.ydata))
+	if len(clickpos) == 2:
+		canvas.mpl_disconnect(cid)
+		cid = None
+		lb1.grid_forget()
+		plotbBox()
+	return
+
+def boxhor():
+	global cid
+	global clickpos
+	global horvert
+	global lb1
+	global button7
+	global  button8
+	if button7 is not None:
+		button7.grid_forget()
+		button7 = None
+	if button8 is not None:
+		button8.grid_forget()
+		button8 = None
+	if cid is not None:
+		canvas.mpl_disconnect(cid)
+		cid = None
+	if lb1 is not None:
+		lb1.grid_forget()
+		lb1 = None
+	horvert = 1 # 1 for horizontal, 2 for vertical
+	clickpos = []
+	cid = canvas.mpl_connect('button_press_event',onclickbox)
+	lb1 = Tk.Label(master=thirdRowFrame,text="Click two edges of the box")
+	lb1.grid(row=1,column=nrthird+1,columnspan=3,sticky=Tk.W)
+
+def boxver():
+	global cid
+	global clickpos
+	global horvert
+	global lb1
+	global button7
+	global  button8
+	if button7 is not None:
+		button7.grid_forget()
+		button7 = None
+	if button8 is not None:
+		button8.grid_forget()
+		button8 = None
+	if cid is not None:
+		canvas.mpl_disconnect(cid)
+		cid = None
+	if lb1 is not None:
+		lb1.grid_forget()
+		lb1 = None
+	horvert = 2 # 1 for horizontal, 2 for vertical
+	clickpos = []
+	cid = canvas.mpl_connect('button_press_event',onclickbox)
+	lb1 = Tk.Label(master=thirdRowFrame,text="Click two edges of the box")
+	lb1.grid(row=1,column=nrthird+1,columnspan=3,sticky=Tk.W)
 
 def horline():
 	global cid
@@ -259,7 +359,7 @@ def horline():
 	clickpos = []
 	cid = canvas.mpl_connect('button_press_event',onclick)
 	lb1 = Tk.Label(master=thirdRowFrame,text="Click two (almost) horizontal points")
-	lb1.grid(row=1,column=7,columnspan=3,sticky=Tk.W)#pack(side=Tk.BOTTOM)
+	lb1.grid(row=1,column=nrthird+1,columnspan=3,sticky=Tk.W)
 
 def vertline():
 	global cid
@@ -284,7 +384,7 @@ def vertline():
 	clickpos = []
 	cid = canvas.mpl_connect('button_press_event',onclick)
 	lb1 = Tk.Label(master=thirdRowFrame,text="Click two (almost) vertical points")
-	lb1.grid(row=1,column=7,columnspan=3,sticky=Tk.W)#pack(side=Tk.BOTTOM)
+	lb1.grid(row=1,column=nrthird+1,columnspan=3,sticky=Tk.W)#pack(side=Tk.BOTTOM)
 
 def top_destroyer():
 	global top2
@@ -313,7 +413,7 @@ def getpos(event):
 	global button7
 	ix,iy = event.xdata,event.ydata
 	button7 = Tk.Button(master=thirdRowFrame,text='Confirm Selection',command=confirmselectspot)
-	button7.grid(row=1,column=7,sticky=Tk.E)#pack(side=Tk.LEFT)
+	button7.grid(row=1,column=nrthird+1,sticky=Tk.E)#pack(side=Tk.LEFT)
 
 def loadnewdistance():
 	global topNewDistance
@@ -376,7 +476,7 @@ def closeselectspotshelp():
 	topSelectSpotsWindow.destroy()
 	cid2 = canvas.mpl_connect('button_press_event',getpos)
 	button8 = Tk.Button(master=thirdRowFrame,text='Compute Distances',command=computedistances)
-	button8.grid(row=1,column=8,sticky=Tk.W)#pack(side=Tk.LEFT)
+	button8.grid(row=1,column=nrthird+2,sticky=Tk.W)#pack(side=Tk.LEFT)
 
 def selectspotsfcn():
 	global topSelectSpotsWindow
@@ -816,9 +916,6 @@ buttonIncr.grid(row=1,column=14,sticky=Tk.W)
 buttonDecr = Tk.Button(master=firstRowFrame,text='-',command=decr_plotupdater,font=("Helvetica",12))
 buttonDecr.grid(row=1,column=15,sticky=Tk.W)
 
-c = Tk.Checkbutton(master=firstRowFrame,text="Subtract Median",variable=var)
-c.grid(row=1,column=16,sticky=Tk.W)
-
 secondRowFrame = Tk.Frame(root)
 secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
 
@@ -876,8 +973,12 @@ maxoverframes = Tk.IntVar()
 chkMaxOverFrames = Tk.Checkbutton(master=secondRowFrame,text="LoadMaxOverFrames",variable=maxoverframes)
 chkMaxOverFrames.grid(row=1,column=17,sticky=Tk.W)
 
+c = Tk.Checkbutton(master=secondRowFrame,text="Subtract Median",variable=var)
+c.grid(row=1,column=18,sticky=Tk.W)
+
 thirdRowFrame = Tk.Frame(root)
 thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
+nrthird = 8
 
 button3 = Tk.Button(master=thirdRowFrame,text='LineOutHor',command=horline)
 button3.grid(row=1,column=1,sticky=Tk.W)
@@ -885,18 +986,21 @@ button3.grid(row=1,column=1,sticky=Tk.W)
 button4 = Tk.Button(master=thirdRowFrame,text='LineOutVert',command=vertline)
 button4.grid(row=1,column=2,sticky=Tk.W)
 
+Tk.Button(master=thirdRowFrame,text='BoxOutHor',command=boxhor).grid(row=1,column=3,sticky=Tk.W)
+Tk.Button(master=thirdRowFrame,text='BoxOutVer',command=boxver).grid(row=1,column=4,sticky=Tk.W)
+
 button5 = Tk.Button(master=thirdRowFrame,text='BeamCenter',command=bcwindow)
-button5.grid(row=1,column=3,sticky=Tk.W)
+button5.grid(row=1,column=5,sticky=Tk.W)
 
 button6 = Tk.Button(master=thirdRowFrame,text='Select Spots',command=selectspots)
-button6.grid(row=1,column=4,sticky=Tk.W)
+button6.grid(row=1,column=6,sticky=Tk.W)
 
 buttongetgrain = Tk.Button(master=thirdRowFrame,text='LoadGrain',command=getgrain)
-buttongetgrain.grid(row=1,column=5,sticky=Tk.W)
+buttongetgrain.grid(row=1,column=7,sticky=Tk.W)
 
 spotnrvar = Tk.StringVar()
 bMakeSpots = Tk.Button(master=thirdRowFrame,text="MakeSpots",command=makespots)
-bMakeSpots.grid(row=1,column=6,sticky=Tk.W)
+bMakeSpots.grid(row=1,column=8,sticky=Tk.W)
 
 button2 = Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetica",20))
 button2.grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.W)
@@ -904,10 +1008,10 @@ button2.grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.W)
 loadmicframe = Tk.Frame(root)
 loadmicframe.grid(row=figrowspan+1,column=3,sticky=Tk.W)
 
-buttonLoadMicFile = Tk.Button(master=loadmicframe,text='LoadMicrostructure',command=load_mic,font=("Helvetica",12))
+buttonLoadMicFile = Tk.Button(master=loadmicframe,text='LoadMicrostructure',command=load_mic,font=("Helvetica",11))
 buttonLoadMicFile.grid(row=1,column=1,sticky=Tk.W)
 
-buttonReplot = Tk.Button(master=loadmicframe,text='ReloadMic',command=plotmic,font=("Helvetica",12))
+buttonReplot = Tk.Button(master=loadmicframe,text='ReloadMic',command=plotmic,font=("Helvetica",11))
 buttonReplot.grid(row=1,column=2,sticky=Tk.W)
 
 radioframe = Tk.Frame(root)
@@ -923,6 +1027,13 @@ micframethirdrow.grid(row=figrowspan+3,column=3,sticky=Tk.W)
 
 Tk.Label(master=micframethirdrow,text='CutoffConfidence').grid(row=1,column=1,sticky=Tk.W)
 Tk.Entry(master=micframethirdrow,textvariable=cutconfidencevar,width=4).grid(row=1,column=2,sticky=Tk.W)
+
+def selectpoint():
+	if micfiledata == None:
+		load_mic()
+	
+
+Tk.Button(master=micframethirdrow,text='SelectPoint',command=selectpoint).grid(row=1,column=3)
 
 button = Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20))
 button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W)
