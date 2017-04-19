@@ -28,7 +28,7 @@ rad2deg = 57.2957795130823
 NrPixels = 2048
 nrfilesperdistance = 720
 padding = 6
-ndistances = 3
+ndistances = 6
 background=0
 fnstem = 'Au1'
 folder = '/var/host/media/removable/UNTITLED/Au/'
@@ -174,7 +174,8 @@ def plot_updater():
 		startframenr = newstartframenr
 		dist = newdist
 		draw_plot()
-		plotb()
+		if micfiledata is not None:
+			plotb()
 
 def plotb():
 	global horvert
@@ -222,6 +223,7 @@ def plotb():
 		canvas.show()
 		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 	b.set_aspect('auto')
+	micfiledata = None
 	
 def onclick(event):
 	global clickpos
@@ -641,6 +643,24 @@ def getgrain():
 def YZ4mREta(R,Eta):
 	return -R*math.sin(Eta*deg2rad),R*math.cos(Eta*deg2rad)
 
+def rotationTransforms(ts):
+	txr = ts[0]*deg2rad
+	tyr = ts[1]*deg2rad
+	tzr = ts[2]*deg2rad
+	Rx = np.array([[1,0,0],[0,cos(txr),-sin(txr)],[0,sin(txr),cos(txr)]])
+	Ry = np.array([[cos(tyr),0,sin(tyr)],[0,1,0],[-sin(tyr),0,cos(tyr)]])
+	Rz = np.array([[cos(tzr),-sin(tzr),0],[sin(tzr),cos(tzr),0],[0,0,1]])
+	return np.dot(Rx,np.dot(Ry,Rz))
+
+def DisplacementSpots(a, b, Lsd, yi, zi, omega):
+    OmegaRad = deg2rad * omega
+    sinOme = math.sin(OmegaRad)
+    cosOme = math.cos(OmegaRad)
+    xa = a*cosOme - b*sinOme
+    ya = a*sinOme + b*cosOme
+    t = 1 - (xa/Lsd)
+    return [ya + (yi*t) , t*zi]
+
 def plot_update_spot():
 	global r, spotnrvar, spotnr, startframenr
 	thislsd = float(lsdvar.get()) + float(r2.get()) * float(distDiffVar.get())
@@ -648,12 +668,12 @@ def plot_update_spot():
 	endome = startome + nrfilesperdistance * omestep
 	minOme = min(startome,endome)
 	maxOme = max(startome,endome)
-	
+	startframenr = int(startframenrvar.get())
+
 	thisome = float(simulatedspots[spotnr-1].split(' ')[2])
 	rad = float(simulatedspots[spotnr-1].split(' ')[0])
 	rad = rad * thislsd/simlsd
 	eta = float(simulatedspots[spotnr-1].split(' ')[1])
-	startframenr = int(startframenrvar.get())
 	frameNrToRead = int((float(thisome)-float(startome))/omestep)
 	r.set(str(frameNrToRead))
 	spotnrvar.set(str(spotnr))
@@ -662,7 +682,7 @@ def plot_update_spot():
 	xa = -pos[1]*math.sin(thisome*deg2rad) + pos[0]*math.cos(thisome*deg2rad)
 	yn = (ya + ys*(1-(xa/thislsd)))/pixelsize + bcs[dist][0]
 	zn = (zs*(1-(xa/thislsd)))/pixelsize + bcs[dist][1]
-	print [pos[0], pos[1], ys, ya, yn, zs, zn, rad, eta,thisome,frameNrToRead]
+	#print [pos[0], pos[1], ys, ya, yn, zs, zn, rad, eta,thisome,frameNrToRead]
 	while ((yn > NrPixels) or 
 		   (zn > NrPixels) or 
 		   (yn < 0) or 
@@ -672,17 +692,17 @@ def plot_update_spot():
 		spotnr += 1
 		thisome = float(simulatedspots[spotnr-1].split(' ')[2])
 		rad = float(simulatedspots[spotnr-1].split(' ')[0])
+		rad = rad * thislsd/simlsd
 		eta = float(simulatedspots[spotnr-1].split(' ')[1])
 		frameNrToRead = int((float(thisome)-float(startome))/omestep)
 		r.set(str(frameNrToRead))
 		spotnrvar.set(str(spotnr))
-		# calculate spot position and make a blip on the detector
 		ys,zs = YZ4mREta(rad,eta)
 		ya = pos[0]*math.sin(thisome*deg2rad) + pos[1]*math.cos(thisome*deg2rad)
 		xa = -pos[1]*math.sin(thisome*deg2rad) + pos[0]*math.cos(thisome*deg2rad)
 		yn = (ya + ys*(1-(xa/thislsd)))/pixelsize + bcs[dist][0]
 		zn = (zs*(1-(xa/thislsd)))/pixelsize + bcs[dist][1]
-		print [pos[0], pos[1], ys, ya, yn, zs, zn, rad, eta,thisome,frameNrToRead]
+		#print [pos[0], pos[1], ys, ya, yn, zs, zn, rad, eta,thisome,frameNrToRead]
 	plot_updater()
 	a.scatter(yn,zn,s=25,color='red')
 	canvas.show()
@@ -835,13 +855,11 @@ def calcSpots(clickpos):
 	lendiff = np.square(xdiff) + np.square(ydiff)
 	rowbest = lendiff == min(lendiff)
 	rowcontents = micfiledatacut[rowbest,:][0]
-	print rowcontents
 	Euler = rowcontents[7:10]
 	om = euler2orientmat(Euler)
 	pos[0] = rowcontents[3]
 	pos[1] = rowcontents[4]
 	pos[2] = 0
-	print om
 	getgrain()
 
 def onclickmicfile(event):

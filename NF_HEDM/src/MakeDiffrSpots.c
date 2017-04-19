@@ -352,7 +352,7 @@ main(int argc, char *argv[])
     double Distances[10],ExcludePoleAngle,LatticeConstant,Wavelength;
 	RealType OmegaRanges[20][2], BoxSizes[20][4], px, MaxTtheta,  MaxRingRad,
 		a,b,c,alpha,beta,gamma;
-    int cntr=0,countr=0;
+    int cntr=0,countr=0, RingsToUse[100],nRingsToUse=0;
     int NoOfOmegaRanges=0,SpaceGroup;
     while (fgets(aline,1000,fileParam)!=NULL){
         str = "Lsd ";
@@ -360,6 +360,13 @@ main(int argc, char *argv[])
         if (LowNr==0){
             sscanf(aline,"%s %lf", dummy, &Distances[cntr]);
             cntr++;
+            continue;
+        }
+		str = "RingsToUse ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &RingsToUse[nRingsToUse]);
+            nRingsToUse++;
             continue;
         }
 		str = "DataDirectory ";
@@ -480,9 +487,30 @@ main(int argc, char *argv[])
 			&hkls[n_hkls][2],&Thetas[n_hkls],dummy,dummy);
 		n_hkls++;
 	}
+	if (nRingsToUse > 0){
+		double hklTemps[n_hkls][4];
+		int totalHKLs=0;
+		for (i=0;i<nRingsToUse;i++){
+			for (j=0;j<n_hkls;j++){
+				if ((int)hkls[j][3] == RingsToUse[i]){
+					hklTemps[totalHKLs][0] = hkls[j][0];
+					hklTemps[totalHKLs][1] = hkls[j][1];
+					hklTemps[totalHKLs][2] = hkls[j][2];
+					hklTemps[totalHKLs][3] = hkls[j][3];
+					totalHKLs++;
+				}
+			}
+		}
+		for (i=0;i<totalHKLs;i++){
+			hkls[i][0] = hklTemps[i][0];
+			hkls[i][1] = hklTemps[i][1];
+			hkls[i][2] = hklTemps[i][2];
+			hkls[i][3] = hklTemps[i][3];
+		}
+	}
 	printf("Number of individual diffracting planes: %d\n",n_hkls);
-	//for (int i=0;i<n_hkls;i++) printf("%d %d %d %d %f\n",hkls[i][0],hkls[i][1],
-		//hkls[i][2],hkls[i][3],Thetas[i]);
+	for (int i=0;i<n_hkls;i++) printf("%d %d %d %d %f\n",hkls[i][0],hkls[i][1],
+		hkls[i][2],hkls[i][3],Thetas[i]);
     int nRowsPerGrain = 2 * n_hkls;
     TheorSpots = allocMatrix(nRowsPerGrain,3);
     if (TheorSpots == NULL ) {
