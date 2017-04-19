@@ -1026,10 +1026,45 @@ micframethirdrow.grid(row=figrowspan+3,column=3,sticky=Tk.W)
 Tk.Label(master=micframethirdrow,text='CutoffConfidence').grid(row=1,column=1,sticky=Tk.W)
 Tk.Entry(master=micframethirdrow,textvariable=cutconfidencevar,width=4).grid(row=1,column=2,sticky=Tk.W)
 
+def euler2orientmat(Euler):
+    psi = Euler[0]
+    phi = Euler[1]
+    theta = Euler[2]
+    cps = cosd(psi)
+    cph = cosd(phi)
+    cth = cosd(theta)
+    sps = sind(psi)
+    sph = sind(phi)
+    sth = sind(theta)
+    m_out = np.zeros((3,3))
+    m_out[0][0] = cth * cps - sth * cph * sps
+    m_out[0][1] = -cth * cph * sps - sth * cps
+    m_out[0][2] = sph * sps
+    m_out[1][0] = cth * sps + sth * cph * cps
+    m_out[1][1] = cth * cph * cps - sth * sps
+    m_out[1][2] = -sph * cps
+    m_out[2][0] = sth * sph
+    m_out[2][1] = cth * sph
+    m_out[2][2] = cph
+    return m_out
+
+def calcSpots(clickpos):
+	xs = micfiledata[:,3]
+	ys = micfiledata[:,4]
+	xdiff = xs - clickpos[0]
+	ydiff = ys - clickpos[1]
+	lendiff = xdiff.^2 + ydiff.^2
+	rowbest = lendiff == min(lendiff)
+	print rowbest
+
+def onclickmicfile():
+	clickpos = [event.xdata, event.ydata]
+	calcSpots(clickpos)
+
 def selectpoint():
 	if micfiledata == None:
 		load_mic()
-	
+	canvas.mpl_connect('button_press_event',onclickmicfile)
 
 Tk.Button(master=micframethirdrow,text='SelectPoint',command=selectpoint).grid(row=1,column=3)
 
