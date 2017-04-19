@@ -645,6 +645,9 @@ def plot_update_spot():
 	global r, spotnrvar, spotnr, startframenr
 	thisome = float(simulatedspots[spotnr-1].split(' ')[2])
 	rad = float(simulatedspots[spotnr-1].split(' ')[0])
+	thislsd = float(lsdvar.get()) + float(r2.get()) * float(distDiffVar.get())
+	simlsd = float(lsdvar.get())
+	rad = rad * thislsd/simlsd
 	eta = float(simulatedspots[spotnr-1].split(' ')[1])
 	endome = startome + nrfilesperdistance * omestep
 	minOme = min(startome,endome)
@@ -656,8 +659,8 @@ def plot_update_spot():
 	spotnrvar.set(str(spotnr))
 	ya = pos[0]*math.sin(thisome) + pos[1]*math.cos(thisome)
 	xa = -pos[1]*math.sin(thisome) + pos[0]*math.cos(thisome)
-	yn = (ya + ys*(1-(xa/lsd)))/pixelsize - bcs[dist][0] #NrPixels - (ya + ys*(1-(xa/lsd)))/pixelsize - bcs[dist][0]
-	zn = (zs*(1-(xa/lsd)))/pixelsize - bcs[dist][1] #NrPixels - (zs*(1-(xa/lsd)))/pixelsize - bcs[dist][1]
+	yn = (ya + ys*(1-(xa/thislsd)))/pixelsize - bcs[dist][0]
+	zn = (zs*(1-(xa/thislsd)))/pixelsize - bcs[dist][1]
 	print [ys, ya, yn, zs, zn, rad, eta,thisome,frameNrToRead]
 	while ((abs(eta) > 90) or (yn > NrPixels) or (zn > NrPixels) or (thisome < minOme) or (thisome > maxOme)):
 		spotnr += 1
@@ -671,13 +674,13 @@ def plot_update_spot():
 		ys,zs = YZ4mREta(rad,eta)
 		ya = pos[0]*math.sin(thisome) + pos[1]*math.cos(thisome)
 		xa = -pos[1]*math.sin(thisome) + pos[0]*math.cos(thisome)
-		yn = (ya + ys*(1-(xa/lsd)))/pixelsize - bcs[dist][0] #NrPixels - (ya + ys*(1-(xa/lsd)))/pixelsize - bcs[dist][0]
-		zn = (zs*(1-(xa/lsd)))/pixelsize - bcs[dist][1] #NrPixels - (zs*(1-(xa/lsd)))/pixelsize - bcs[dist][1]
+		yn = (ya + ys*(1-(xa/thislsd)))/pixelsize - bcs[dist][0]
+		zn = (zs*(1-(xa/thislsd)))/pixelsize - bcs[dist][1]
 		print [ys, ya, yn, zs, zn, rad, eta,thisome,frameNrToRead]
 	plot_updater()
-	a.scatter(yn,zn,s=5,color='red')
+	a.scatter(yn,zn,s=25,color='red')
 	canvas.show()
-	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH,expand=1)
+	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def incr_spotnr():
 	global spotnr
@@ -697,6 +700,7 @@ def makespots():
 	f = open(pfname,'w')
 	f.write("SpaceGroup %d\n"%(sg))
 	f.write("Wavelength %lf\n"%(wl))
+	lsd = float(lsdvar.get())
 	f.write("Lsd %lf\n"%(lsd))
 	f.write("MaxRingRad %lf\n"%(maxringrad))
 	f.write("LatticeConstant %lf %lf %lf %lf %lf %lf\n"%(latC[0],latC[1],latC[2],latC[3],latC[4],latC[5]))
