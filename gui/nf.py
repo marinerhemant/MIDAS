@@ -662,7 +662,12 @@ def plot_update_spot():
 	yn = (ya + ys*(1-(xa/thislsd)))/pixelsize - bcs[dist][0]
 	zn = (zs*(1-(xa/thislsd)))/pixelsize - bcs[dist][1]
 	print [ys, ya, yn, zs, zn, rad, eta,thisome,frameNrToRead]
-	while ((abs(eta) > 90) or (yn > NrPixels) or (zn > NrPixels) or (thisome < minOme) or (thisome > maxOme)):
+	while ((yn > NrPixels) or 
+		   (zn > NrPixels) or 
+		   (yn < 0) or 
+		   (zn < 0) or 
+		   (thisome < minOme) or 
+		   (thisome > maxOme)):
 		spotnr += 1
 		thisome = float(simulatedspots[spotnr-1].split(' ')[2])
 		rad = float(simulatedspots[spotnr-1].split(' ')[0])
