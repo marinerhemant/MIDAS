@@ -80,7 +80,7 @@ setupdone = initialsetup(paramfile,ffseed);
 string fn2 = strcat(outfolder,"imageprocessing.txt");
 file imagesdone <single_file_mapper;file=fn2>;
 if (DoPeakSearch == 1){
-	trace("Doing peaksearch.\n");
+	trace("Doing peaksearch.");
 	string prefixC = "LayersCompleted.txt";
 	file simCout[]<simple_mapper;location=outfolder,prefix=prefixC,suffix=".out">;
 	foreach distance in [1:NrDistances] {

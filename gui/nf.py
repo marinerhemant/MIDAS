@@ -682,7 +682,7 @@ def plot_update_spot():
 	xa = -pos[1]*math.sin(thisome*deg2rad) + pos[0]*math.cos(thisome*deg2rad)
 	yn = (ya + ys*(1-(xa/thislsd)))/pixelsize + bcs[dist][0]
 	zn = (zs*(1-(xa/thislsd)))/pixelsize + bcs[dist][1]
-	#print [pos[0], pos[1], ys, ya, yn, zs, zn, rad, eta,thisome,frameNrToRead]
+	print [pos[0], pos[1], ys, zs, xa, ya, yn, zn, rad, eta,thisome,frameNrToRead]
 	while ((yn > NrPixels) or 
 		   (zn > NrPixels) or 
 		   (yn < 0) or 
@@ -702,7 +702,7 @@ def plot_update_spot():
 		xa = -pos[1]*math.sin(thisome*deg2rad) + pos[0]*math.cos(thisome*deg2rad)
 		yn = (ya + ys*(1-(xa/thislsd)))/pixelsize + bcs[dist][0]
 		zn = (zs*(1-(xa/thislsd)))/pixelsize + bcs[dist][1]
-		#print [pos[0], pos[1], ys, ya, yn, zs, zn, rad, eta,thisome,frameNrToRead]
+		print [pos[0], pos[1], ys, zs, xa, ya, yn, zn, rad, eta,thisome,frameNrToRead]
 	plot_updater()
 	a.scatter(yn,zn,s=25,color='red')
 	canvas.show()
