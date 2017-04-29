@@ -698,13 +698,14 @@ def plot_update_spot():
 		r.set(str(frameNrToRead))
 		spotnrvar.set(str(spotnr))
 		ys,zs = YZ4mREta(rad,eta)
-		ya = pos[0]*math.sin(thisome*deg2rad) + pos[1]*math.cos(thisome*deg2rad)
+		ya =  pos[0]*math.sin(thisome*deg2rad) + pos[1]*math.cos(thisome*deg2rad)
 		xa = -pos[1]*math.sin(thisome*deg2rad) + pos[0]*math.cos(thisome*deg2rad)
 		yn = (ya + ys*(1-(xa/thislsd)))/pixelsize + bcs[dist][0]
 		zn = (zs*(1-(xa/thislsd)))/pixelsize + bcs[dist][1]
 		print [pos[0], pos[1], ys, zs, xa, ya, yn, zn, rad, eta,thisome,frameNrToRead]
 	plot_updater()
 	a.scatter(yn,zn,s=25,color='red')
+	# Show Beam Center, unrotated Grain position, rotated Grain Position 
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
