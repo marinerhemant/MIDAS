@@ -42,7 +42,7 @@ def _quit():
 def getfilenames():
 	medianfn = folder + '/' + fnstem + "_Median_Background_Distance_" + str(dist) + ".bin"
 	fnr = startframenr + framenr + dist*nrfilesperdistance
-	filefn = folder + '/' + fnstem + '_' + str(fnr).zfill(padding) + '.tif' # '_{:06d}'.format(fnr) + '.tif'
+	filefn = folder + '/' + fnstem + '_' + str(fnr).zfill(padding) + '.tif'
 	return [filefn, medianfn]
 
 def draw_plot(): # always the initial framenr and distance, will calculate the correct framenr automatically
@@ -706,6 +706,10 @@ def plot_update_spot():
 	plot_updater()
 	a.scatter(yn,zn,s=25,color='red')
 	# Show Beam Center, unrotated Grain position, rotated Grain Position 
+	a.scatter(bcs[dist][0],bcs[dist][1],s=30,color='blue',marker=(5,0))
+	a.scatter(bcs[dist][0]+(pos[1]/pixelsize),bcs[dist][1],s=30,color='green',marker=(5,0))
+	a.scatter(bcs[dist][0]+(ya/pixelsize),bcs[dist][1],s=30,color='yellow',marker=(5,0))
+	a.scatter(bcs[dist][0]+(ys/pixelsize),bcs[dist][1]+(zs/pixelsize),s=30,color='magenta',marker=(5,0))
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
