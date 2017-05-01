@@ -19,5 +19,5 @@ fi
 for ((LAYERNR=$3; LAYERNR<=$4; LAYERNR++))
 do
     FFLAYERNR=$(($((LAYERNR))-$(($5))))
-    cp -v $2/Layer${FFLAYERNR}/Grains.csv $1/GrainsLayer${LAYERNR}.csv
+    cp -v $2/*Layer${FFLAYERNR}*/Grains.csv $1/GrainsLayer${LAYERNR}.csv
 done

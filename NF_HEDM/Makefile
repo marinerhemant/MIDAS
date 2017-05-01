@@ -23,9 +23,9 @@ endif
 SRCDIR=src/
 BINDIR=bin/
 
-all: help bindircheck makediffrspots makediffrspotsff2nf makehexgrid medianimage imageprocessing \
+all: help bindircheck makediffrspots makehexgrid medianimage imageprocessing \
 	fitorientation fitorientationff2nf fitorientationparameters fitorientationparametersmultipoint \
-	genseedorientations simulatediffrspots simulatediffrspotslatc convertbinfiles processnfmicremote \
+	genseedorientations simulatediffrspots processnfmicremote \
 	mmapimageinfo hkls parsemic
 
 #local:
