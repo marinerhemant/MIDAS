@@ -675,7 +675,7 @@ def loadbplot():
 	    row = int(y+0.5)
 	    if col>=0 and col<numcols and row>=0 and row<numrows:
 	        z = bdata[row,col]
-	        return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x,NrPixels-y,z)
+	        return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x,y,z)
 	    else:
 	        return 'x=%1.4f, y=%1.4f'%(x,y)
 	b.title.set_text("Single Detector Display")
@@ -908,7 +908,7 @@ def replot():
 	    row = int(y+0.5)
 	    if col>=0 and col<numcols and row>=0 and row<numrows:
 	        z = bdata[row,col]
-	        return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x,NrPixels-y,z)
+	        return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x,y,z)
 	    else:
 	        return 'x=%1.4f, y=%1.4f'%(x,y)
 	b.format_coord = format_coord
