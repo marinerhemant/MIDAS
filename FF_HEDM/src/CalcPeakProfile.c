@@ -369,16 +369,12 @@ inline void CalcPeakProfile(int **Indices, int *NrEachIndexBin, int idx,double *
 	YZMat4mREta(5,RMs,EtaMs,BoxEdges,ybc,zbc,px);
 	int i;
 	int *Pos,nEdges=0;
-	/*for (i=0;i<5;i++){
-		printf("%f %f\n",BoxEdges[i][0],BoxEdges[i][1]);
-	}*/
 	Pos = malloc(2*sizeof(*Pos));
 	double ThisArea, TotArea=0;
 	for (i=0;i<NrEachIndexBin[idx];i++){
 		Pos[0] = Indices[idx][i] % NrPixels;
 		Pos[1] = Indices[idx][i] / NrPixels;
 		nEdges = CalcNEdges(BoxEdges,Pos,EdgesIn);
-		//printf("%d %d %f %f %f %f %f %d %d\n",NrEachIndexBin[idx],nEdges,RMs[0],RMs[1],RMs[2],RMs[3],RMs[4],Pos[0],Pos[1]);
 		if (nEdges == 0){
 			continue;
 		}
@@ -386,13 +382,11 @@ inline void CalcPeakProfile(int **Indices, int *NrEachIndexBin, int idx,double *
 		ThisArea = CalcAreaPolygon(EdgesOut,nEdges);
 		TotArea += ThisArea;
 		SumIntensity += Average[Indices[idx][i]] * ThisArea;
-		//printf("Pos: %d %d, nEdges: %d, ThisArea: %f, TotArea: %f, SumInt: %f\n",Pos[0],Pos[1],nEdges,ThisArea,TotArea,SumIntensity);
 	}
 	SumIntensity /= TotArea;
 	if (TotArea == 0){
 		SumIntensity = 0;
 	}
-	//printf("%f %d %d %f %f\n",SumIntensity, NrEachIndexBin[idx], nEdges, ThisArea, TotArea);
 	free(Pos);
 	FreeMemMatrix(EdgesIn,10);
 	FreeMemMatrix(EdgesOut,10);

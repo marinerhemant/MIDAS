@@ -25,19 +25,14 @@ app (file done) PlaceHolder2 (string prefix,file tmp)
 	echo prefix stdout=@filename(done);
 }
 
-app (file outf, file errf) runfitorientation (string pf, int nr, file mmapdone)
+app runfitorientation (string pf, int nr, file mmapdone)
 {
-	fitorientation pf nr stdout=@filename(outf) stderr=@filename(errf);
+	fitorientation pf nr;
 }
 
 app (file mmapdone) mmapcode (string paramfn, file imagedone)
 {
 	mmaps paramfn stdout=@filename(mmapdone);
-}
-
-app (file dome) parsemic (string paramfn, string direct, file trial[])
-{
-	micparser paramfn direct stdout=@filename(dome);
 }
 
 app (file done) initialsetup ( string paramfn, int ffseed)
@@ -115,13 +110,6 @@ if (DoFullLayer == 1){
 	foreach i in [startnr:endnr] {
 		file errfit<simple_mapper;location=outfolder,prefix=strcat("fitorient_",i),suffix=".err">;
 		file outfit<simple_mapper;location=outfolder,prefix=strcat("fitorient_",i),suffix=".out">;
-		(outfit,errfit) = runfitorientation(paramfile,i,mmapdone);
-		if (i %% 100 == 0){
-			all[i %/ 100] = outfit;
-		}
+		runfitorientation(paramfile,i,mmapdone);
 	}
-	# Now parse mic file
-	string fn4 = strcat(outfolder, "parsedone.txt");
-	file parsedone <single_file_mapper;file=fn4>;
-	parsedone = parsemic(paramfile,direct,all);
 }

@@ -25,14 +25,17 @@ then
   echo "OrigFileName, OverallStartNr, GlobalPositionFirstLayer, LayerThickness, WFImages, nDistances, NrFilesPerDistance, TopDataDirectory"
   echo "If WF images were taken, it is assumed there were 10 WF images."  
   echo "If using FF seeding, the grains files should be in the same folder and named: GrainsLayer{LAYERNR}.csv"
-  echo "If no seeding is used, a single Orientations.txt file should be present."
+  echo "If using FF seeding, include a file called OrientationsAll.txt with all possible orientations if you want to try all orientations for low confidence points."
+  echo "If using FF seeding, please add 2 lines to your analysis: FullSeedFile and MinConfidence to redo the analysis"
+  echo "using all orientations and minconfidence." 
+  echo "If no seeding is used, a single OrientationsAll.txt file should be present."
   echo "At successfull completion, it will send an email to EmailAddress."
   exit 1
 fi
 
 PARAMFILE=$1
-NCPUS=$6
-nNODES=${NCPUS}
+EmailAdd=$8
+nNODES=$6
 export nNODES
 FFSEEDORIENTATIONS=$2
 PROCESSIMAGES=$3
@@ -53,6 +56,7 @@ NRFILESPERDISTANCE=$( awk '$1 ~ /^NrFilesPerDistance/ { print $2 }' ${PARAMFILE}
 TOPDATADIRECTORY=$( awk '$1 ~ /^TopDataDirectory/ { print $2 }' ${PARAMFILE} )
 extOrig=$( awk '$1 ~ /^extOrig/ { print $2 }' ${PARAMFILE} )
 tmpfn=${TOPDATADIRECTORY}/fns.txt
+AllOrientationFile=$( awk '$1 ~ /^FullSeedFile/ { print $2 }' ${PARAMFILE} )
 
 for ((LAYERNR=${STARTLAYERNR}; LAYERNR<=${ENDLAYERNR}; LAYERNR++))
 do
@@ -89,23 +93,27 @@ do
     mkdir -p ${FOLDER}_Layer${LAYERNR}_Reduced
     if [[ ${FFSEEDORIENTATIONS} -eq 1 ]]; then
 		mv ${TOPDATADIRECTORY}/GrainsLayer${LAYERNR}.csv ${DATADIRECTORY}/GrainsLayer${LAYERNR}.csv
+		if [ -f ${TOPDATADIRECTORY}/OrientationsAll.txt ]; then
+			cp ${TOPDATADIRECTORY}/OrientationsAll.txt ${DATADIRECTORY}/OrientationsAll.txt
+			echo "FullSeedFile ${DATADIRECTORY}/OrientationsAll.txt" >> ${THISPARAMFILE}
+        fi
         echo "GrainsFile ${DATADIRECTORY}/GrainsLayer${LAYERNR}.csv" >> ${THISPARAMFILE}
         echo "SeedOrientations ${DATADIRECTORY}/Orientations_Layer${LAYERNR}.txt" >> ${THISPARAMFILE}
     else
-		cp ${TOPDATADIRECTORY}/Orientations.txt ${DATADIRECTORY}/Orientations.txt
+		cp ${TOPDATADIRECTORY}/OrientationsAll.txt ${DATADIRECTORY}/Orientations.txt
         echo "SeedOrientations ${DATADIRECTORY}/Orientations.txt" >> ${THISPARAMFILE}
     fi
-    echo "paramfn datadir" > ${tmpfn}
-	echo "${DATADIRECTORY}/${THISPARAMFILE} ${DATADIRECTORY}" >> ${tmpfn}
-	# Do Processing
-	${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
-		-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
-		-DoPeakSearch=${PROCESSIMAGES} -FFSeedOrientations=${FFSEEDORIENTATIONS}
-	${BINFOLDER}/ParseMic ${THISPARAMFILE}
+    ${PFDIR}/SingleLayerSwift.sh ${DATADIRECTORY}/${THISPARAMFILE} ${FFSEEDORIENTATIONS} ${PROCESSIMAGES} ${nNODES} ${MACHINE_NAME} ${EmailAdd}
+    #~ echo "paramfn datadir" > ${tmpfn}
+	#~ echo "${DATADIRECTORY}/${THISPARAMFILE} ${DATADIRECTORY}" >> ${tmpfn}
+	#~ # Do Processing
+	#~ ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
+		#~ -FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
+		#~ -DoPeakSearch=${PROCESSIMAGES} -FFSeedOrientations=${FFSEEDORIENTATIONS}
+	#~ ${BINFOLDER}/ParseMic ${THISPARAMFILE}
 	cd ${TOPDATADIRECTORY}
 done
 
 
-EmailAdd=$8
 echo "The run started with ${cmdname} $@ has finished, please check." | mail -s "MIDAS run finished" ${EmailAdd}
 exit 0
