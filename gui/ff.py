@@ -142,6 +142,15 @@ def plotRingsOffset():
 		colornr+= 1
 	txtDisplay = txtDisplay[:-2]
 	Tk.Label(master=root,text=txtDisplay).grid(row=figrowspan-1,column=0)
+	maxl = 300
+	if len(txtDisplay) >maxl:
+		tmpdisplay = ''
+		nseps = int(len(txtDisplay)/maxl + 1)
+		print nseps
+		for i in range(nseps):
+			tmpdisplay += txtDisplay[i*maxl:(i+1)*maxl] + '\n'
+		txtDisplay = tmpdisplay
+	Tk.Label(master=root,text=txtDisplay,justify=Tk.LEFT).grid(row=figrowspan-1,column=0,columnspan=10)
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
@@ -178,6 +187,9 @@ def doRings():
 		else:
 			plotRings()
 			plotRingsOffset()
+	else:
+		canvas.show()
+		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 	
 def clickRings():
 	doRings()
@@ -675,7 +687,10 @@ def loadbplot():
 	    row = int(y+0.5)
 	    if col>=0 and col<numcols and row>=0 and row<numrows:
 	        z = bdata[row,col]
-	        return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x,y,z)
+	        bcx = float(bclocalvar1.get())
+	        bcy = float(bclocalvar1.get())
+	        rr = math.sqrt((x-bcx)**2+(y-bcy)**2)
+	        return 'x=%1.4f, y=%1.4f, z=%1.4f, RingRad(pixels)=%1.4f'%(x,y,z,rr)
 	    else:
 	        return 'x=%1.4f, y=%1.4f'%(x,y)
 	b.title.set_text("Single Detector Display")
@@ -908,7 +923,10 @@ def replot():
 	    row = int(y+0.5)
 	    if col>=0 and col<numcols and row>=0 and row<numrows:
 	        z = bdata[row,col]
-	        return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x,y,z)
+	        bcx = float(bclocalvar1.get())
+	        bcy = float(bclocalvar1.get())
+	        rr = math.sqrt((x-bcx)**2+(y-bcy)**2)
+	        return 'x=%1.4f, y=%1.4f, z=%1.4f, RingRad(pixels)=%1.4f'%(x,y,z,rr)
 	    else:
 	        return 'x=%1.4f, y=%1.4f'%(x,y)
 	b.format_coord = format_coord
@@ -980,7 +998,7 @@ bclocalvar1.set(str(bclocal[0]))
 bclocalvar2 = Tk.StringVar()
 bclocalvar2.set(str(bclocal[1]))
 
-canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH)
+canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 toolbar_frame = Tk.Frame(root)
 toolbar_frame.grid(row=figrowspan+4,column=0,columnspan=5,sticky=Tk.W)
 toolbar = NavigationToolbar2TkAgg( canvas, toolbar_frame )

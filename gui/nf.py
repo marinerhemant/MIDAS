@@ -112,7 +112,7 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 	a.format_coord = format_coord
 	a.title.set_text("Image: " + fnprint)
 	canvas.show()
-	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH,expand=1)
+	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def plot_updater():
 	global initplot
@@ -384,7 +384,7 @@ def vertline():
 	clickpos = []
 	cid = canvas.mpl_connect('button_press_event',onclick)
 	lb1 = Tk.Label(master=thirdRowFrame,text="Click two (almost) vertical points")
-	lb1.grid(row=1,column=nrthird+1,columnspan=3,sticky=Tk.W)#pack(side=Tk.BOTTOM)
+	lb1.grid(row=1,column=nrthird+1,columnspan=3,sticky=Tk.W)
 
 def top_destroyer():
 	global top2
@@ -406,14 +406,14 @@ def top_destroyer():
 		selectspotsfcn()
 
 def getpos(event):
-	# We need to get the ix and iy for center of mass of the spot. For now I will trust what goes on.
+	# We need to get the ix and iy for center of mass of the spot. For now I will trust what the user clicked on.
 	global ix
 	global iy
 	global cid2
 	global button7
 	ix,iy = event.xdata,event.ydata
 	button7 = Tk.Button(master=thirdRowFrame,text='Confirm Selection',command=confirmselectspot)
-	button7.grid(row=1,column=nrthird+1,sticky=Tk.E)#pack(side=Tk.LEFT)
+	button7.grid(row=1,column=nrthird+1,sticky=Tk.E)
 
 def loadnewdistance():
 	global topNewDistance
@@ -424,8 +424,8 @@ def confirmselectspot():
 	global spots
 	global topNewDistance
 	global vali
-	x = ix # = NrPixels -ix
-	y = iy # = NrPixels - iy
+	x = ix
+	y = iy
 	xbc = bcs[dist][0]
 	ybc = bcs[dist][1]
 	spots[dist][0] = x - xbc
@@ -436,12 +436,12 @@ def confirmselectspot():
 	textdisplay = "Old distance was: " + str(dist) + " Which distance now?"
 	Tk.Label(topNewDistance,text=textdisplay).grid(row=0,column=1)
 	edist = Tk.Entry(master=topNewDistance,textvariable=r2)
-	edist.grid(row=1,column=1)#pack(side=Tk.LEFT)
+	edist.grid(row=1,column=1)
 	edist.focus_set()
 	buttondist = Tk.Button(master=topNewDistance,text='Load',command=loadnewdistance)
-	buttondist.grid(row=2,column=1)#pack(side=Tk.LEFT)
+	buttondist.grid(row=2,column=1)
 	buttonkill = Tk.Button(master=topNewDistance,text='Finished',command=loadnewdistance)
-	buttonkill.grid(row=3,column=1)#pack(side=Tk.LEFT)
+	buttonkill.grid(row=3,column=1)
 
 def computedistances():
 	global topDistanceResult
@@ -476,7 +476,7 @@ def closeselectspotshelp():
 	topSelectSpotsWindow.destroy()
 	cid2 = canvas.mpl_connect('button_press_event',getpos)
 	button8 = Tk.Button(master=thirdRowFrame,text='Compute Distances',command=computedistances)
-	button8.grid(row=1,column=nrthird+2,sticky=Tk.W)#pack(side=Tk.LEFT)
+	button8.grid(row=1,column=nrthird+2,sticky=Tk.W)
 
 def selectspotsfcn():
 	global topSelectSpotsWindow
@@ -492,7 +492,7 @@ def selectspotsfcn():
 	Tk.Label(topSelectSpotsWindow,text="Use the following steps as a guide to select spots.").grid(row=0,columnspan=2)
 	Tk.Label(topSelectSpotsWindow,text="1. Make sure you have the correct Beam centers and difference in distances, otheriwse click Enter Beam Centers.").grid(row=1, column=0)
 	button5 = Tk.Button(master=topSelectSpotsWindow,text='Enter Beam Centers',command=bcwindow)
-	button5.grid(row=1,column=1,sticky=Tk.W)#pack(side=Tk.LEFT)
+	button5.grid(row=1,column=1,sticky=Tk.W)
 	Tk.Label(topSelectSpotsWindow,text="2. It is recommended to have median correction enabled.").grid(row=2,columnspan=2)
 	Tk.Label(topSelectSpotsWindow,text="3. Starting from the first distance, click on or close to a diffraction spot and then click Confirm Selection.").grid(row=3,columnspan=2)
 	Tk.Label(topSelectSpotsWindow,text="4. Repeat this for each distance and select the same spot.").grid(row=4,columnspan=2)
@@ -705,7 +705,7 @@ def plot_update_spot():
 		print [pos[0], pos[1], ys, zs, xa, ya, yn, zn, rad, eta,thisome,frameNrToRead]
 	plot_updater()
 	a.scatter(yn,zn,s=25,color='red')
-	# Show Beam Center, unrotated Grain position, rotated Grain Position 
+	# Show Beam Center, unrotated Grain position, rotated Grain Position, Undisplaced Spot Position
 	a.scatter(bcs[dist][0],bcs[dist][1],s=30,color='blue',marker=(5,0))
 	a.scatter(bcs[dist][0]+(pos[1]/pixelsize),bcs[dist][1],s=30,color='green',marker=(5,0))
 	a.scatter(bcs[dist][0]+(ya/pixelsize),bcs[dist][1],s=30,color='yellow',marker=(5,0))
@@ -949,7 +949,7 @@ a = figur.add_subplot(121,aspect='equal')
 b = figur.add_subplot(122)
 b.title.set_text("LineOuts/MicFile")
 a.title.set_text("Image")
-canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)#pack(side=Tk.TOP,fill=Tk.BOTH)
+canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 toolbar_frame = Tk.Frame(root)
 toolbar_frame.grid(row=figrowspan+4,column=0,columnspan=5,sticky=Tk.W)
 toolbar = NavigationToolbar2TkAgg( canvas, toolbar_frame )
@@ -975,32 +975,32 @@ dolog = Tk.IntVar()
 firstRowFrame = Tk.Frame(root)
 firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text="Folder").grid(row=1,column=1,sticky=Tk.W)#pack(side=Tk.LEFT)
+Tk.Label(master=firstRowFrame,text="Folder").grid(row=1,column=1,sticky=Tk.W)
 foldervar = Tk.StringVar()
 foldervar.set(folder)
 e0 = Tk.Entry(master=firstRowFrame,textvariable=foldervar,width=50)
-e0.grid(row=1,column=2,sticky=Tk.W)#pack(side=Tk.LEFT)
+e0.grid(row=1,column=2,sticky=Tk.W)
 
 buttonfolder = Tk.Button(master=firstRowFrame,text="Select",command=folderselect)
 buttonfolder.grid(row=1,column=3,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text="FNStem").grid(row=1,column=4,sticky=Tk.W)#pack(side=Tk.LEFT)
+Tk.Label(master=firstRowFrame,text="FNStem").grid(row=1,column=4,sticky=Tk.W)
 fnstemvar = Tk.StringVar() 
 fnstemvar.set(fnstem)
 efns = Tk.Entry(master=firstRowFrame,textvariable=fnstemvar,width=15)
-efns.grid(row=1,column=5,sticky=Tk.W)#pack(side=Tk.LEFT)
+efns.grid(row=1,column=5,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text="nDistances").grid(row=1,column=6,sticky=Tk.W)#pack(side=Tk.LEFT)
+Tk.Label(master=firstRowFrame,text="nDistances").grid(row=1,column=6,sticky=Tk.W)
 ndistancesvar = Tk.StringVar()
 ndistancesvar.set(str(ndistances))
 endistances = Tk.Entry(master=firstRowFrame,textvariable=ndistancesvar,width=3)
-endistances.grid(row=1,column=7,sticky=Tk.W)#pack(side=Tk.LEFT)
+endistances.grid(row=1,column=7,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text="NrPixels").grid(row=1,column=8,sticky=Tk.W)#pack(side=Tk.LEFT)
+Tk.Label(master=firstRowFrame,text="NrPixels").grid(row=1,column=8,sticky=Tk.W)
 NrPixelsvar = Tk.StringVar()
 NrPixelsvar.set(str(NrPixels))
 enrpixels = Tk.Entry(master=firstRowFrame,textvariable=NrPixelsvar,width=5)
-enrpixels.grid(row=1,column=9,sticky=Tk.W)#pack(side=Tk.LEFT)
+enrpixels.grid(row=1,column=9,sticky=Tk.W)
 
 Tk.Label(master=firstRowFrame,text="StartFileNumberFirstLayer").grid(row=1,column=10,sticky=Tk.W)
 startframenrvar = Tk.StringVar()
@@ -1008,7 +1008,7 @@ startframenrvar.set(str(startframenr))
 sfnrfiles = Tk.Entry(master=firstRowFrame,textvariable=startframenrvar,width=6)
 sfnrfiles.grid(row=1,column=11,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text="FrameNumber").grid(row=1,column=12,sticky=Tk.W)#pack(side=Tk.LEFT)
+Tk.Label(master=firstRowFrame,text="FrameNumber").grid(row=1,column=12,sticky=Tk.W)
 r = Tk.StringVar() 
 r.set(str(framenr))
 e1 = Tk.Entry(master=firstRowFrame,textvariable=r,width=5)
