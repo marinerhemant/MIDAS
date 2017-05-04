@@ -152,7 +152,7 @@ int CalcNEdges(double **BoxEdges, int *Pos, double **Edges) // Box Edges
 		Py[i] = Pos[1] + PosMatrix[i][1];
 	}
 	int nEdges =0;
-	for (i=0;i<4;i++){
+	for (i=0;i<4;i++){ // If the pixel is completely inside the box
 		if (BoxEdges[i][0] >= Px[0] && BoxEdges[i][0] <= Px[2] &&
 			BoxEdges[i][1] >= Py[0] && BoxEdges[i][1] <= Py[2]){
 			Edges[nEdges][0] = BoxEdges[i][0];

@@ -69,79 +69,46 @@ do
    RINGNRSFILE=${flr}/Layer${LAYERNR}_RingInfo.txt
    rm -rf $RINGNRSFILE
    ParamFNStem=${flr}/Layer${LAYERNR}_Ring
-   if [ -d "$LayerDir" ]; then
-       mv Layer${LAYERNR} /data/to_delete/${ide}
-   fi
    mkdir -p ${OutFldr}
    cp hkls.csv ${OutFldr}
    cp ${TOP_PARAM_FILE} ${OutFldr}
-   if [[ ${NewType} == 2 ]];
-   then
-       for RINGNR in $RingNrs
-       do
-            ThisParamFileName=${flr}/Layer${LAYERNR}_Ring${RINGNR}_${fstm}
-            echo "ParameterFile used: ${ThisParamFileName}"
-            echo "Ring Number: $RINGNR, Threshold: ${Thresholds[$i]}"
-            Fldr=${SeedFolder}/Ring${RINGNR}
-            mkdir -p $Fldr
-            cp hkls.csv $Fldr
-            cp ${TOP_PARAM_FILE} ${Fldr}
-            echo "Folder $Fldr" >> ${ThisParamFileName}
-            echo "RingToIndex $RINGNR" >> ${ThisParamFileName}
-            echo "RingNumbers $RINGNR" >> ${ThisParamFileName}
-            echo "LowerBoundThreshold ${Thresholds[$i]}" >> ${ThisParamFileName}
-            echo "LayerNr $LAYERNR" >> ${ThisParamFileName}
-            echo "StartFileNr $StartFileNr" >> ${ThisParamFileName}
-            echo "Output will be saved in $Fldr"
-            echo "RingNumbers $RINGNR" >> $PFName
-            ${BINFOLDER}/FitTiltBCLsdSample ${ThisParamFileName} ${FLTFN}
-            cp ${Fldr}/PeakSearch/${FileStem}_${LAYERNR}/paramstest.txt ${OutFldr}/paramstest_RingNr${RINGNR}.txt
-            cp ${Fldr}/PeakSearch/${FileStem}_${LAYERNR}/Radius_StartNr_${SNr}_EndNr_${ENr}_RingNr_${RINGNR}.csv ${OutFldr}/.
-            RingX=$RINGNR
-            mv ${ThisParamFileName} ${OutFldr}
-            i=$((i + 1))
-	    echo $i
-        done
-        ${BINFOLDER}/MergeMultipleRings ${PFName}
-   else
-       for RINGNR in $RingNrs
-       do
-            ThisParamFileName=${flr}/Layer${LAYERNR}_Ring${RINGNR}_${fstm}
-            echo "ParameterFile used: ${ThisParamFileName}"
-            cp ${TOP_PARAM_FILE} ${ThisParamFileName}
-            echo "Ring Number: $RINGNR, Threshold: ${Thresholds[$i]}"
-            Fldr=${SeedFolder}/Ring${RINGNR}
-            mkdir -p $Fldr
-            cp hkls.csv $Fldr
-            echo "Folder $Fldr" >> ${ThisParamFileName}
-            echo "RingToIndex $RINGNR" >> ${ThisParamFileName}
-            echo "RingNumbers $RINGNR" >> ${ThisParamFileName}
-            echo "LowerBoundThreshold ${Thresholds[$i]}" >> ${ThisParamFileName}
-            echo "LayerNr $LAYERNR" >> ${ThisParamFileName}
-            echo "StartFileNr $StartFileNr" >> ${ThisParamFileName}
-            echo "Output will be saved in $Fldr"
-            echo "RingNumbers $RINGNR" >> $PFName
-            echo $RINGNR >> ${RINGNRSFILE}
-	    i=$((i+1))
-	    echo $i
-       done
-       ${PFDIR}/RunPeaksMult.sh ${TOP_PARAM_FILE} ${NCPUS} $RINGNRSFILE $ParamFNStem $fstm ${MACHINE_NAME}
-       rc=$(qstat | grep tomo1 | grep " 384" | awk '{ print $1 }')
-       echo $rc
-       mv $RINGNRSFILE ${OutFldr}
-       for RINGNR in $RingNrs
-       do
-            ThisParamFileName=${flr}/Layer${LAYERNR}_Ring${RINGNR}_${fstm}
-            Fldr=${SeedFolder}/Ring${RINGNR}
-            cp ${Fldr}/PeakSearch/${FileStem}_${LAYERNR}/paramstest.txt ${OutFldr}/paramstest_RingNr${RINGNR}.txt
-            cp ${Fldr}/PeakSearch/${FileStem}_${LAYERNR}/Radius_StartNr_${SNr}_EndNr_${ENr}_RingNr_${RINGNR}.csv ${OutFldr}/.
-            RingX=$RINGNR
-            mv ${ThisParamFileName} ${OutFldr}
-            i=$((i + 1))
-	    echo $i
-       done
-       ${BINFOLDER}/MergeMultipleRings ${PFName}
-   fi
+   for RINGNR in $RingNrs
+   do
+		ThisParamFileName=${flr}/Layer${LAYERNR}_Ring${RINGNR}_${fstm}
+		echo "ParameterFile used: ${ThisParamFileName}"
+		cp ${TOP_PARAM_FILE} ${ThisParamFileName}
+		echo "Ring Number: $RINGNR, Threshold: ${Thresholds[$i]}"
+		Fldr=${SeedFolder}/Ring${RINGNR}
+		mkdir -p $Fldr
+		cp hkls.csv $Fldr
+		echo "Folder $Fldr" >> ${ThisParamFileName}
+		echo "RingToIndex $RINGNR" >> ${ThisParamFileName}
+		echo "RingNumbers $RINGNR" >> ${ThisParamFileName}
+		echo "LowerBoundThreshold ${Thresholds[$i]}" >> ${ThisParamFileName}
+		echo "LayerNr $LAYERNR" >> ${ThisParamFileName}
+		echo "StartFileNr $StartFileNr" >> ${ThisParamFileName}
+		echo "Output will be saved in $Fldr"
+		echo "RingNumbers $RINGNR" >> $PFName
+		echo $RINGNR >> ${RINGNRSFILE}
+    i=$((i+1))
+    echo $i
+   done
+   ${PFDIR}/RunPeaksMult.sh ${TOP_PARAM_FILE} ${NCPUS} $RINGNRSFILE $ParamFNStem $fstm ${MACHINE_NAME}
+   rc=$(qstat | grep tomo1 | grep " 384" | awk '{ print $1 }')
+   echo $rc
+   mv $RINGNRSFILE ${OutFldr}
+   for RINGNR in $RingNrs
+   do
+		ThisParamFileName=${flr}/Layer${LAYERNR}_Ring${RINGNR}_${fstm}
+		Fldr=${SeedFolder}/Ring${RINGNR}
+		cp ${Fldr}/PeakSearch/${FileStem}_${LAYERNR}/paramstest.txt ${OutFldr}/paramstest_RingNr${RINGNR}.txt
+		cp ${Fldr}/PeakSearch/${FileStem}_${LAYERNR}/Radius_StartNr_${SNr}_EndNr_${ENr}_RingNr_${RINGNR}.csv ${OutFldr}/.
+		RingX=$RINGNR
+		mv ${ThisParamFileName} ${OutFldr}
+		i=$((i + 1))
+    echo $i
+   done
+   ${BINFOLDER}/MergeMultipleRings ${PFName}
    cd ${SeedFolder}
    mv SpotsToIndex* ${OutFldr}
    mv InputAll* ${OutFldr}

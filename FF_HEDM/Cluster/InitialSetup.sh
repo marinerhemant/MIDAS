@@ -17,6 +17,9 @@ filestem=$( awk '$1 ~ /^FileStem/ { print $2 } ' ${paramfile} )
 startfilenr=$((${startfilenrfirstlayer}+$((${nrfilesperlayer}*$((${layernr}-1))))))
 ide=$( date +%Y_%m_%d_%H_%M_%S )
 outfolder=${seedfolder}/${filestem}_Layer${layernr}_Analysis_Time_${ide}
+FolderStem=${filestem}_Layer${layernr}_Analysis_Time_
+cd ${seedfolder}
+oldoutfolder=$( python ${PFDIR}/getFolder.py ${paramfile} ${layernr} ${FolderStem} )
 mkdir -p ${outfolder}
 cd ${outfolder}
 cp ${seedfolder}/${paramfile} ${outfolder}
@@ -63,8 +66,6 @@ then
 elif [[ ${DOPEAKSEARCH} == 0 ]];
 then
 	cd ${seedfolder}
-	FolderStem=${filestem}_Layer${layernr}_Analysis_Time_
-	oldoutfolder=$( python ${PFDIR}/getFolder.py ${paramfile} ${layernr} ${FolderStem} )
 	outfldr=${seedfolder}/${oldoutfolder}/
 	for RINGNR in $RingNrs
 	do
