@@ -24,7 +24,7 @@ SRCDIR=src/
 BINDIR=bin/
 
 all: help bindircheck makediffrspots makehexgrid medianimage imageprocessing \
-	fitorientation fitorientationff2nf fitorientationparameters fitorientationparametersmultipoint \
+	fitorientation fitorientationparameters fitorientationparametersmultipoint \
 	genseedorientations simulatediffrspots processnfmicremote \
 	mmapimageinfo hkls parsemic
 
