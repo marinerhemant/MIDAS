@@ -106,10 +106,7 @@ if (DoFullLayer == 1){
 	file mmapdone <single_file_mapper;file=fn3>;
 	mmapdone = mmapcode(paramfile,imagesdone);
 	## Now do FitOrientation
-	file all[];
 	foreach i in [startnr:endnr] {
-		file errfit<simple_mapper;location=outfolder,prefix=strcat("fitorient_",i),suffix=".err">;
-		file outfit<simple_mapper;location=outfolder,prefix=strcat("fitorient_",i),suffix=".out">;
 		runfitorientation(paramfile,i,mmapdone);
 	}
 }
