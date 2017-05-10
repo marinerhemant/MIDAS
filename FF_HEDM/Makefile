@@ -39,6 +39,8 @@ nersc: predepnersc all runsetup
 # Works
 purdue: predeppurdue all runsetup
 
+lanl: predeplanl all runsetup
+
 runsetup:
 	Cluster/setup.sh
 
@@ -54,6 +56,8 @@ predepnersc:
 	./GetPackages.sh nersc
 predeppurdue:
 	./GetPackages.sh purdue
+predeplanl:
+	./GetPackages.sh lanl
 
 cuda: help indexrefinecuda peaks mergeoverlapsgpu fittiltbclsdsample \
 	calcradius mergerings processgrains hkls bindata calibrant findsaturatedpx fittiltx fitwedge

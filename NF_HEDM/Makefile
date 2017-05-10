@@ -46,6 +46,9 @@ nersc: predepnersc all runsetup
 # Works
 purdue: predeppurdue all runsetup
 
+# LANL
+lanl: predeplanl all runsetup
+
 runsetup:
 	Cluster/setup.sh
 
@@ -61,6 +64,8 @@ predepnersc:
 	./GetPackages.sh nersc
 predeppurdue:
 	./GetPackages.sh purdue
+predeplanl:
+	./GetPackages.sh lanl
 
 bindircheck:
 	mkdir -p $(BINDIR)
