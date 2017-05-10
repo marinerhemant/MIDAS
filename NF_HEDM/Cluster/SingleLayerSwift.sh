@@ -60,7 +60,7 @@ then
 		sed -i "/MicFileBinary/c\MicFileBinary ${Micf}_AllOrientations" ${NEW_PARAM_FILE}
 		sed -i "/MicFileText/c\MicFileText ${MicfT}_AllOrientations" ${NEW_PARAM_FILE}
 		mv grid.txt grid_all.txt
-		python GridSorter.py ${MicfT} ${MINCONFIDENCE}
+		python ${PFDIR}/GridSorter.py ${MicfT} ${MINCONFIDENCE}
 		echo "paramfn datadir" > ${tmpfn}
 		echo "${NEW_PARAM_FILE} ${DataDirectory}" >> ${tmpfn}
 		# Do Processing
