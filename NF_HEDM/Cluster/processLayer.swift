@@ -35,9 +35,9 @@ app (file mmapdone) mmapcode (string paramfn, file imagedone)
 	mmaps paramfn stdout=@filename(mmapdone);
 }
 
-app (file done) initialsetup ( string paramfn, int ffseed)
+app (file done) initialsetup ( string paramfn, int ffseed, int dogrid )
 {
-	setupNF paramfn ffseed stdout=@filename(done);
+	setupNF paramfn ffseed dogrid stdout=@filename(done);
 }
 
 type BulkNames{
@@ -55,6 +55,7 @@ int endnr = toInt(arg("EndNumber","2000"));
 int DoPeakSearch = toInt(arg("DoPeakSearch","1"));
 int ffseed = toInt(arg("FFSeedOrientations","1"));
 int DoFullLayer = toInt(arg("DoFullLayer","1"));
+int DoGrid = toInt(arg("DoGrid","1"));
 
 # End parameters #######################
 
@@ -69,7 +70,7 @@ string outfolder = strcat(direct,"/output/");
 # Do the initial setup
 string fn = strcat(outfolder,"initialsetup.csv");
 file setupdone <single_file_mapper;file=fn>;
-setupdone = initialsetup(paramfile,ffseed);
+setupdone = initialsetup(paramfile,ffseed,DoGrid);
 
 ## Whether do peak search or not
 string fn2 = strcat(outfolder,"imageprocessing.txt");

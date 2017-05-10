@@ -42,7 +42,8 @@ echo "${TOP_PARAM_FILE} ${DataDirectory}" >> ${tmpfn}
 # Do Processing
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
 	-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
-	-DoPeakSearch=${ProcessImages} -FFSeedOrientations=${FFSeedOrientations} -DoFullLayer=1
+	-DoPeakSearch=${ProcessImages} -FFSeedOrientations=${FFSeedOrientations} -DoFullLayer=1 \
+	-DoGrid=1
 
 ${BINFOLDER}/ParseMic ${TOP_PARAM_FILE}
 
@@ -51,7 +52,7 @@ then
 	NEW_PARAM_FILE=${TOP_PARAM_FILE}_AllOrientations.txt
 	cp ${TOP_PARAM_FILE} ${NEW_PARAM_FILE}
 	AllOrientationsFile=$( awk '$1 ~ /^FullSeedFile/ { print $2 }' ${NEW_PARAM_FILE} )
-	if [ -f ${AllOrientationsFile} ]; then
+	if [[ ${AllOrientationsFile} != '' ]]; then
 		MINCONFIDENCE=$(awk '$1 ~ /^MinConfidence/ { print $2 }' ${NEW_PARAM_FILE})
 		echo "Now checking all orientations for all voxels with low confidence."
 		Micf=$(awk '$1 ~ /^MicFileBinary/ { print $2 }' ${NEW_PARAM_FILE})
@@ -66,7 +67,7 @@ then
 		# Do Processing
 		${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
 			-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
-			-DoPeakSearch=0 -FFSeedOrientations=0 -DoFullLayer=1
+			-DoPeakSearch=0 -FFSeedOrientations=0 -DoFullLayer=1 -DoGrid=0
 		${BINFOLDER}/ParseMic ${NEW_PARAM_FILE}
 	fi
 fi
