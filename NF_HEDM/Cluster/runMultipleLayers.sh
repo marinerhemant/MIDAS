@@ -26,8 +26,7 @@ then
   echo "If WF images were taken, it is assumed there were 10 WF images."  
   echo "If using FF seeding, the grains files should be in the same folder and named: GrainsLayer{LAYERNR}.csv"
   echo "If using FF seeding, include a file called OrientationsAll.txt with all possible orientations if you want to try all orientations for low confidence points."
-  echo "If using FF seeding, please add 2 lines to your analysis: FullSeedFile and MinConfidence to redo the analysis"
-  echo "using all orientations and minconfidence." 
+  echo "If using FF seeding, please add line to your analysis: MinConfidence to redo the analysis using all orientations and minconfidence." 
   echo "If no seeding is used, a single OrientationsAll.txt file should be present."
   echo "At successfull completion, it will send an email to EmailAddress."
   exit 1
