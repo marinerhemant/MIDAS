@@ -895,6 +895,31 @@ def selectpoint():
 		lsdwindow()
 	ce2 = canvas.mpl_connect('button_press_event',onclickmicfile)
 
+def selectfirstfile():
+	global firstfile
+	firstfile = tkFileDialog.askopenfilename()
+
+def firstfileselect():
+	global folder, foldervar, fnstem, fnstemvar, startframenr, startframenrvar, r, framenr
+	selectfirstfile()
+	# get folder, fnstem, startfilenrfirstlayer, framenr=0
+	framenr = 0
+	r.set(str(framenr))
+	idx = 0
+	while idx < len(firstfile):
+		idx = firstfile.find('/',idx)
+		if idx == -1:
+			break
+		print idx
+		folderpos = idx
+		idx += 1
+	folder = firstfile[:folderpos]
+	foldervar.set(folder)
+	fnstem = firstfile[folderpos+1:][:-11]
+	fnstemvar.set(fnstem)
+	startframenr = firstfile[folderpos+1:][-10:-4]
+	startframenrvar.set(str(startframenr))
+
 # Global constants initialization
 imarr2 = None
 initplot = 1
@@ -982,32 +1007,6 @@ startframenrvar.set(str(startframenr))
 
 firstRowFrame = Tk.Frame(root)
 firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
-
-def selectfirstfile():
-	global firstfile
-	firstfile = tkFileDialog.askopenfilename()
-
-def firstfileselect():
-	global folder, foldervar, fnstem, fnstemvar, startframenr, startframenrvar, r, framenr
-	selectfirstfile()
-	# get folder, fnstem, startfilenrfirstlayer, framenr=0
-	framenr = 0
-	r.set(str(framenr))
-	idx = 0
-	while idx < len(firstfile):
-		idx = firstfile.find('/',idx)
-		if idx == -1:
-			break
-		print idx
-		folderpos = idx
-		idx += 1
-	folder = firstfile[:folderpos]
-	foldervar.set(folder)
-	fnstem = firstfile[folderpos+1:][:-11]
-	fnstemvar.set(fnstem)
-	startframenr = firstfile[folderpos+1:][-10:-4]
-	startframenrvar.set(str(startframenr))
-	
 
 Tk.Button(master=firstRowFrame,text='FirstFile',command=firstfileselect).grid(row=1,column=1,sticky=Tk.W)
 
