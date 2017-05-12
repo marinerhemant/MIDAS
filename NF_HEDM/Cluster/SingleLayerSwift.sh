@@ -25,11 +25,10 @@ then
 fi
 
 if [[ $1 == /* ]]; then TOP_PARAM_FILE=$1; else TOP_PARAM_FILE=$(pwd)/$1; fi
-NCPUS=$4
+nNODES=$4
 FFSeedOrientations=$2
 ProcessImages=$3
 MACHINE_NAME=$5
-nNODES=${NCPUS}
 export nNODES
 
 NDISTANCES=$( awk '$1 ~ /^nDistances/ { print $2 }' ${TOP_PARAM_FILE} )
