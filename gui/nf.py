@@ -971,54 +971,82 @@ colVar = Tk.IntVar()
 colVar.set(10)
 micfiledata = None
 dolog = Tk.IntVar()
+r = Tk.StringVar() 
+r.set(str(framenr))
+foldervar = Tk.StringVar()
+foldervar.set(folder)
+fnstemvar = Tk.StringVar() 
+fnstemvar.set(fnstem)
+startframenrvar = Tk.StringVar()
+startframenrvar.set(str(startframenr))
 
 firstRowFrame = Tk.Frame(root)
 firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text="Folder").grid(row=1,column=1,sticky=Tk.W)
-foldervar = Tk.StringVar()
-foldervar.set(folder)
+def selectfirstfile():
+	global firstfile
+	firstfile = tkFileDialog.askopenfilename()
+
+def firstfileselect():
+	global folder, foldervar, fnstem, fnstemvar, startframenr, startframenrvar, r, framenr
+	selectfirstfile()
+	# get folder, fnstem, startfilenrfirstlayer, framenr=0
+	framenr = 0
+	r.set(str(framenr))
+	idx = 0
+	while idx < len(firstfile):
+		idx = firstfile.find('/',idx)
+		if idx == -1:
+			break
+		print idx
+		folderpos = idx
+		idx += 1
+	folder = firstfile[:folderpos]
+	foldervar.set(folder)
+	fnstem = firstfile[folderpos+1:][:-11]
+	fnstemvar.set(fnstem)
+	startframenr = firstfile[folderpos+1:][-10:-4]
+	startframenrvar.set(str(startframenr))
+	
+
+Tk.Button(master=firstRowFrame,text='FirstFile',command=firstfileselect).grid(row=1,column=1,sticky=Tk.W)
+
+Tk.Label(master=firstRowFrame,text="Folder").grid(row=1,column=2,sticky=Tk.W)
 e0 = Tk.Entry(master=firstRowFrame,textvariable=foldervar,width=50)
-e0.grid(row=1,column=2,sticky=Tk.W)
+e0.grid(row=1,column=3,sticky=Tk.W)
 
 buttonfolder = Tk.Button(master=firstRowFrame,text="Select",command=folderselect)
-buttonfolder.grid(row=1,column=3,sticky=Tk.W)
+buttonfolder.grid(row=1,column=4,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text="FNStem").grid(row=1,column=4,sticky=Tk.W)
-fnstemvar = Tk.StringVar() 
-fnstemvar.set(fnstem)
+Tk.Label(master=firstRowFrame,text="FNStem").grid(row=1,column=5,sticky=Tk.W)
 efns = Tk.Entry(master=firstRowFrame,textvariable=fnstemvar,width=15)
-efns.grid(row=1,column=5,sticky=Tk.W)
+efns.grid(row=1,column=6,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text="nDistances").grid(row=1,column=6,sticky=Tk.W)
+Tk.Label(master=firstRowFrame,text="nDistances").grid(row=1,column=7,sticky=Tk.W)
 ndistancesvar = Tk.StringVar()
 ndistancesvar.set(str(ndistances))
 endistances = Tk.Entry(master=firstRowFrame,textvariable=ndistancesvar,width=3)
-endistances.grid(row=1,column=7,sticky=Tk.W)
+endistances.grid(row=1,column=8,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text="NrPixels").grid(row=1,column=8,sticky=Tk.W)
+Tk.Label(master=firstRowFrame,text="NrPixels").grid(row=1,column=9,sticky=Tk.W)
 NrPixelsvar = Tk.StringVar()
 NrPixelsvar.set(str(NrPixels))
 enrpixels = Tk.Entry(master=firstRowFrame,textvariable=NrPixelsvar,width=5)
-enrpixels.grid(row=1,column=9,sticky=Tk.W)
+enrpixels.grid(row=1,column=10,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text="StartFileNumberFirstLayer").grid(row=1,column=10,sticky=Tk.W)
-startframenrvar = Tk.StringVar()
-startframenrvar.set(str(startframenr))
+Tk.Label(master=firstRowFrame,text="StartFileNumberFirstLayer").grid(row=1,column=11,sticky=Tk.W)
 sfnrfiles = Tk.Entry(master=firstRowFrame,textvariable=startframenrvar,width=6)
-sfnrfiles.grid(row=1,column=11,sticky=Tk.W)
+sfnrfiles.grid(row=1,column=12,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame,text="FrameNumber").grid(row=1,column=12,sticky=Tk.W)
-r = Tk.StringVar() 
-r.set(str(framenr))
+Tk.Label(master=firstRowFrame,text="FrameNumber").grid(row=1,column=13,sticky=Tk.W)
 e1 = Tk.Entry(master=firstRowFrame,textvariable=r,width=5)
-e1.grid(row=1,column=13,sticky=Tk.W)
+e1.grid(row=1,column=14,sticky=Tk.W)
 e1.focus_set()
 
 buttonIncr = Tk.Button(master=firstRowFrame,text='+',command=incr_plotupdater,font=("Helvetica",12))
-buttonIncr.grid(row=1,column=14,sticky=Tk.W)
+buttonIncr.grid(row=1,column=15,sticky=Tk.W)
 buttonDecr = Tk.Button(master=firstRowFrame,text='-',command=decr_plotupdater,font=("Helvetica",12))
-buttonDecr.grid(row=1,column=15,sticky=Tk.W)
+buttonDecr.grid(row=1,column=16,sticky=Tk.W)
 
 secondRowFrame = Tk.Frame(root)
 secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
