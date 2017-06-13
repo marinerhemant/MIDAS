@@ -11,6 +11,7 @@ grid_new = 'grid.txt'
 micFN = sys.argv[1]
 micFNout = micFN + '_ffResult'
 minConfidence = float(sys.argv[2])
+lowMinConfidence = float(sys.argv[3])
 micF = open(micFN,'r')
 gridF = open(grid_old,'r')
 mic = micF.readlines()
@@ -24,8 +25,7 @@ for line in mic:
 		header.append(line)
 	else:
 		words = line.split("\t")
-		if float(words[10]) < minConfidence and float(words[10]) > minConfidence-0.5:
-			print words[10]
+		if float(words[10]) < minConfidence and float(words[10]) > lowMinConfidence:
 			gridOut.append(grid[i])
 			linesOut.append(line)
 		i = i + 1

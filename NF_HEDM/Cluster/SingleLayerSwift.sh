@@ -19,7 +19,7 @@ then
   echo "ProcessImages is whether you want to process the diffraction images (1) or if they were processed earlier (0)."
   echo "NOTE: run from the folder with the Key.txt, DiffractionSpots.txt, OrientMat.txt and ParametersFile.txt"
   echo "At least the parameters file should be in the folder from where the command is executed."
-  echo "For FF Seeding, add a parameter MinConfidence and FullSeedFile, this will take the result and repeat analysis"
+  echo "For FF Seeding, add a parameter MinConfidence and MinConfidenceLowerBound and FullSeedFile, this will take the result and repeat analysis"
   echo "with all orientations." 
   exit 1
 fi
@@ -53,6 +53,7 @@ then
 	AllOrientationsFile=$( awk '$1 ~ /^FullSeedFile/ { print $2 }' ${NEW_PARAM_FILE} )
 	if [[ ${AllOrientationsFile} != '' ]]; then
 		MINCONFIDENCE=$(awk '$1 ~ /^MinConfidence/ { print $2 }' ${NEW_PARAM_FILE})
+		LOWMINCONFIDENCE=$(awk '$1 ~ /^MinConfidenceLowerBound/ { print $2 }' ${NEW_PARAM_FILE})
 		echo "Now checking all orientations for all voxels with low confidence."
 		Micf=$(awk '$1 ~ /^MicFileBinary/ { print $2 }' ${NEW_PARAM_FILE})
 		MicfT=$(awk '$1 ~ /^MicFileText/ { print $2 }' ${NEW_PARAM_FILE})
@@ -61,7 +62,7 @@ then
 		sed -i "/MicFileBinary/c\MicFileBinary ${Micf}_AllOrientations" ${NEW_PARAM_FILE}
 		sed -i "/MicFileText/c\MicFileText ${MicfT}_AllOrientations" ${NEW_PARAM_FILE}
 		mv grid.txt grid_all.txt
-		python ${PFDIR}/GridSorter.py ${MicfT} ${MINCONFIDENCE}
+		python ${PFDIR}/GridSorter.py ${MicfT} ${MINCONFIDENCE} ${LOWMINCONFIDENCE}
 		echo "paramfn datadir" > ${tmpfn}
 		echo "${NEW_PARAM_FILE} ${DataDirectory}" >> ${tmpfn}
 		# Do Processing
