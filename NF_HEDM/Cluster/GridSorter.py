@@ -25,6 +25,7 @@ for line in mic:
 	else:
 		words = line.split("\t")
 		if float(words[10]) < minConfidence and float(words[10]) > minConfidence-0.5:
+			print words[10]
 			gridOut.append(grid[i])
 			linesOut.append(line)
 		i = i + 1
