@@ -7,7 +7,7 @@
 import sys
 
 grid_old = 'grid_all.txt'
-gid_new = 'grid.txt'
+grid_new = 'grid.txt'
 micFN = sys.argv[1]
 micFNout = micFN + '_ffResult'
 minConfidence = float(sys.argv[2])
