@@ -25,6 +25,7 @@ for line in mic:
 		header.append(line)
 	else:
 		words = line.split("\t")
+		print words
 		if words[10] < minConfidence:
 			gridOut.append(grid[i])
 			linesOut.append(line)
