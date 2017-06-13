@@ -25,12 +25,12 @@ for line in mic:
 		header.append(line)
 	else:
 		words = line.split("\t")
-		print words
-		if words[10] < minConfidence:
+		if words[11] < minConfidence:
 			gridOut.append(grid[i])
 			linesOut.append(line)
 		i = i + 1
 gridOutF = open(grid_new,'w')
+print gridOut
 gridOutF.write("%d\n" % len(gridOut))
 for line in gridOut:
 	gridOutF.write(line)
