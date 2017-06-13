@@ -21,21 +21,22 @@ linesOut = []
 header = []
 for line in mic:
 	if line[0] == '%':
-		i = i + 1
 		header.append(line)
 	else:
 		words = line.split("\t")
-		if words[11] < minConfidence:
+		if float(words[10]) < minConfidence:
 			gridOut.append(grid[i])
 			linesOut.append(line)
 		i = i + 1
 gridOutF = open(grid_new,'w')
-print gridOut
+print "Total number of grid points to try again: " + str(len(gridOut))
 gridOutF.write("%d\n" % len(gridOut))
 for line in gridOut:
 	gridOutF.write(line)
+gridOutF.close()
 micOutF = open(micFNout,'w')
 for line in header:
 	micOutF.write(line)
 for line in linesOut:
 	micOutF.write(line)
+micOutF.close()
