@@ -702,13 +702,16 @@ def acceptRings():
 	global ringRads
 	global topSelectRings
 	global hkls
+	global plotRingsVar
 	items = ListBox1.curselection()
 	ringRads = [RingRad[int(item)] for item in items]
 	RingsToShow = [int(item)+1 for item in items]
 	hkls = [hkl[int(item)] for item in items]
 	topSelectRings.destroy()
-	plotRings()
-	plotRingsOffset()
+	plotRingsVar.set(1)
+	doRings()
+	#plotRings()
+	#plotRingsOffset()
 
 def selectRings():
 	global topSelectRings
