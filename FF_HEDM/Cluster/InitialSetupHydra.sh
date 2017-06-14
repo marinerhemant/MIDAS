@@ -18,7 +18,7 @@ startfilenr=$((${startfilenrfirstlayer}+$((${nrfilesperlayer}*$((${layernr}-1)))
 mkdir -p ${outfolder}
 cd ${outfolder}
 cp ${seedfolder}/${paramfile} ${outfolder}
-outfolder=$( echo ${outfolder}/Detector${DETECTORNR}/ )
+outfolder=${outfolder}/Detector${DETECTORNR}/
 echo $outfolder
 mkdir -p ${outfolder}
 cd ${outfolder}
@@ -40,7 +40,7 @@ i=0
 SNr=$( awk '$1 ~ /^StartNr/ { print $2 }' ${paramfile} )
 ENr=$( awk '$1 ~ /^EndNr/ { print $2 }' ${paramfile} )
 RingNrs=$( awk '$1 ~ /^RingThresh/ { print $2 }' ${paramfile} )
-#echo "${pfname}" >> ${outfolder}/PFNames.txt
+echo "${pfname}" >> ${outfolder}/PFNames.txt
 for RINGNR in ${RingNrs}
 do
 	ThisParamFileName=${outfolder}/Layer${layernr}_Ring${RINGNR}_${paramfile}

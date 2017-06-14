@@ -49,7 +49,7 @@ do
 		${PFDIR}/InitialSetupHydra.sh $ParamsFile $LAYERNR $DETNR $outfolder
 	done
 	cd $outfolder
-	python ${PFDIR}/prepareFilesHydra.py $ParamsFile 1
+	python ${PFDIR}/prepareFilesHydra.py $ParamsFile 1 # This appends stuff to the param files, this is called only to do an initial setup!!
 	cd ../
 done
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \

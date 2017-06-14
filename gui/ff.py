@@ -642,7 +642,6 @@ def loadbplot():
 	threshold = float(thresholdvar.get())
 	upperthreshold = float(maxthresholdvar.get())
 	NrPixels = int(NrPixelsVar.get())
-	b.clear()
 	fileNumber = firstFileNumber + frameNr/nFramesPerFile
 	framesToSkip = frameNr % nFramesPerFile
 	bytesToSkip = 8192 + framesToSkip*(2*NrPixels*NrPixels)
@@ -663,6 +662,7 @@ def loadbplot():
 		lsdorig = float(lsdlocalvar.get())
 	lsdlocal = float(lsdlocalvar.get())
 	lines2 = None
+	b.clear()
 	doRings()
 	if dolog.get() == 0:
 		b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
@@ -897,7 +897,7 @@ def replot():
 		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 	if not initplot2:
 		lims = [b.get_xlim(), b.get_ylim()]
-	b.clear()
+	#b.clear()
 	lines2 = None
 	doRings()
 	if dolog.get() == 0:
