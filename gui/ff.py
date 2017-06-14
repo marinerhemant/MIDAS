@@ -189,7 +189,7 @@ def doRings():
 	else:
 		canvas.show()
 		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
-	
+
 def clickRings():
 	doRings()
 
@@ -206,7 +206,7 @@ def plot_updater():
 	frameNr = int(framenrvar.get())
 	threshold = float(thresholdvar.get())
 	upperthreshold = float(maxthresholdvar.get())
-	a.clear()
+	#a.clear()
 	# Plot mask if wanted
 	if mask is None:
 		readBigDet()
@@ -228,7 +228,7 @@ def plot_updater():
 		NewYs = NewYs.astype(int)
 		NewZs = NewZs.astype(int)
 		mask2[bigdetsize/2 - NewZs,bigdetsize/2 - NewYs] = thresholded[rows,cols]
-	lines = None
+	#lines = None
 	doRings()
 	if dolog.get() == 0:
 		a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
@@ -661,8 +661,8 @@ def loadbplot():
 	else:
 		lsdorig = float(lsdlocalvar.get())
 	lsdlocal = float(lsdlocalvar.get())
-	lines2 = None
-	b.clear()
+	#lines2 = None
+	#b.clear()
 	doRings()
 	if dolog.get() == 0:
 		b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
@@ -860,8 +860,8 @@ def replot():
 	if nDetectors > 1:
 		if not initplot:
 			lims = [a.get_xlim(), a.get_ylim()]
-		a.clear()
-		lines = None
+		#a.clear()
+		#lines = None
 		doRings()
 		if dolog.get() == 0:
 			a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
@@ -898,7 +898,7 @@ def replot():
 	if not initplot2:
 		lims = [b.get_xlim(), b.get_ylim()]
 	#b.clear()
-	lines2 = None
+	#lines2 = None
 	doRings()
 	if dolog.get() == 0:
 		b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
