@@ -181,9 +181,6 @@ def plotRingsOffset():
 		b.set_ylim([lims[1][0],lims[1][1]])
 	txtDisplay = txtDisplay[:-2]
 	maxl = 300
-	if DisplRingInfo is not None:
-		DisplRingInfo.grid_forget()
-		DisplRingInfo = None
 	if len(txtDisplay) >maxl:
 		tmpdisplay = ''
 		nseps = int(len(txtDisplay)/maxl + 1)
@@ -220,6 +217,7 @@ def plotRings():
 def doRings():
 	global lines
 	global lines2
+	global DisplRingInfo
 	plotYesNo = plotRingsVar.get()
 	if lines is not None:
 		for line in lines:
@@ -229,6 +227,9 @@ def doRings():
 		for line2 in lines2:
 			line2.pop(0).remove()
 		lines2 = None
+	if DisplRingInfo is not None:
+		DisplRingInfo.grid_forget()
+		DisplRingInfo = None
 	if plotYesNo == 1:
 		if ringRads is None:
 			ringSelection()
