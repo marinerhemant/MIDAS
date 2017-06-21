@@ -127,7 +127,7 @@ def bcoord():
 	        bcx = float(bclocalvar1.get())
 	        bcy = float(bclocalvar2.get())
 	        #rr = math.sqrt((x-bcx)**2+(y-bcy)**2)
-	        [eta, rr] = CalcEtaAngleRad(x-bcx,y-bcy)
+	        [eta, rr] = CalcEtaAngleRad(-x+bcx,y-bcy)
 	        return 'x=%1.4f, y=%1.4f, Intensity=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,z,rr,eta)
 	    else:
 	        return 'x=%1.4f, y=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,rr,eta)
@@ -143,7 +143,7 @@ def acoord():
 	        xD = x - bigdetsize/2
 	        yD = y - bigdetsize/2
 	        #R = sqrt(xD*xD+yD*yD)
-	        [eta,R] = CalcEtaAngleRad(xD,yD)
+	        [eta,R] = CalcEtaAngleRad(-xD,yD)
 	        return 'x=%1.4f, y=%1.4f, Intensity=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,z,R,eta)
 	    else:
 	        return 'x=%1.4f, y=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,R,eta)
