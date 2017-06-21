@@ -120,6 +120,7 @@ def transforms(idx):
 def plotRingsOffset():
 	global lines2
 	global lsdlocal, bclocal
+	global DisplRingInfo
 	lsdlocal = float(lsdlocalvar.get())
 	bclocal[0] = float(bclocalvar1.get())
 	bclocal[1] = float(bclocalvar2.get())
@@ -142,14 +143,17 @@ def plotRingsOffset():
 		colornr+= 1
 	txtDisplay = txtDisplay[:-2]
 	maxl = 300
+	if DisplRingInfo is not None:
+		DisplRingInfo.grid_forget()
+		DisplRingInfo = None
 	if len(txtDisplay) >maxl:
 		tmpdisplay = ''
 		nseps = int(len(txtDisplay)/maxl + 1)
-		print nseps
 		for i in range(nseps):
 			tmpdisplay += txtDisplay[i*maxl:(i+1)*maxl] + '\n'
 		txtDisplay = tmpdisplay[:-1]
-	Tk.Label(master=root,text=txtDisplay,justify=Tk.LEFT).grid(row=figrowspan-1,column=0,columnspan=10)
+	DisplRingInfo = Tk.Label(master=root,text=txtDisplay,justify=Tk.LEFT)
+	DisplRingInfo.grid(row=figrowspan-1,column=0,columnspan=10)
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
@@ -767,12 +771,11 @@ def selectRings():
 
 def acceptSgWlLatC():
 	global wl, sg, LatticeConstant, tempLsd, tempMaxRingRad, px, bigdetsize
-	global topRingMaterialSelection, lsdlocal, lsdorig, LatCInit
+	global topRingMaterialSelection, lsdlocal, lsdorig
 	wl = float(wlVar.get())
 	if wl > 1:
 		wl = 12.398/wl
 	sg = int(sgVar.get())
-	LatticeConstant = np.zeros(6)
 	px = float(pxVar.get())
 	tempLsd = float(tempLsdVar.get())
 	for i in range(4):
@@ -784,7 +787,6 @@ def acceptSgWlLatC():
 	tempMaxRingRad = float(tempMaxRingRadVar.get())
 	for i in range(6):
 		LatticeConstant[i] = float(LatticeConstantVar[i].get())
-	LatCInit = float(LatticeConstantVar[0].get())
 	topRingMaterialSelection.destroy()
 	selectRings()
 
@@ -802,9 +804,8 @@ def ringSelection():
 	tempLsdVar.set(lsdlocalvar.get())
 	tempMaxRingRadVar.set(str(tempMaxRingRad))
 	LatticeConstantVar = [Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar(),Tk.StringVar()]
-	for i in range(3):
-		LatticeConstantVar[i].set(str(LatCInit))
-		LatticeConstantVar[i+3].set(str(90))
+	for i in range(6):
+		LatticeConstantVar[i].set(str(LatticeConstant[i]))
 	topRingMaterialSelection = Tk.Toplevel()
 	topRingMaterialSelection.title('Select the SpaceGroup, Wavelength(or Energy), Lattice Constant')
 	Tk.Label(master=topRingMaterialSelection,text='Please enter the SpaceGroup, Wavelength(or Energy), Lattice Constant, Sample To Detector Distance(Lsd)').grid(row=1,column=1,columnspan=7)
@@ -983,9 +984,16 @@ maxthresholdvar = Tk.StringVar()
 maxthresholdvar.set(str(2000))
 NrPixelsVar = Tk.StringVar()
 NrPixelsVar.set(str(2048))
-LatCInit = 5.41116
+LatticeConstant = np.zeros(6)
+LatticeConstant[0] = 5.41116
+LatticeConstant[1] = 5.41116
+LatticeConstant[2] = 5.41116
+LatticeConstant[3] = 90
+LatticeConstant[4] = 90
+LatticeConstant[5] = 90
 lines = None
 lines2 = None
+DisplRingInfo = None
 plotRingsVar = Tk.IntVar()
 var = Tk.IntVar()
 hydraVar = Tk.IntVar()
