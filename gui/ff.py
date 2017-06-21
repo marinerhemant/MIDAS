@@ -881,14 +881,12 @@ def replot():
 	global initplot, initplot2
 	global lines2
 	global lines
+	global mask2, bdata
 	threshold = float(thresholdvar.get())
 	upperthreshold = float(maxthresholdvar.get())
-	if nDetectors > 1:
+	if mask2 is not None:
 		if not initplot:
 			lims = [a.get_xlim(), a.get_ylim()]
-		#a.clear()
-		#lines = None
-		doRings()
 		if dolog.get() == 0:
 			a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
 		else:
@@ -905,57 +903,32 @@ def replot():
 		else:
 			a.set_xlim([lims[0][0],lims[0][1]])
 			a.set_ylim([lims[1][0],lims[1][1]])
-		numrows, numcols = mask2.shape
-		def format_coord(x, y):
-		    col = int(x+0.5)
-		    row = int(y+0.5)
-		    if col>=0 and col<numcols and row>=0 and row<numrows:
-		        z = mask2[row,col]
-		        xD = x - bigdetsize/2
-		        yD = y - bigdetsize/2
-		        R = sqrt(xD*xD+yD*yD)
-		        return 'x=%1.4f, y=%1.4f, Intensity=%1.4f, RingRad(pixels)=%1.4f'%(x,y,z,R)
-		    else:
-		        return 'x=%1.4f, y=%1.4f'%(x,y)
-		a.format_coord = format_coord
+		acoord()
 		a.title.set_text("Multiple Detector Display")
 		canvas.show()
 		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
-	if not initplot2:
-		lims = [b.get_xlim(), b.get_ylim()]
-	#b.clear()
-	#lines2 = None
+	if bdata is not None:
+		if not initplot2:
+			lims = [b.get_xlim(), b.get_ylim()]
+		if dolog.get() == 0:
+			b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
+		else:
+			if threshold == 0:
+				threshold = 1
+			if upperthreshold == 0:
+				upperthreshold = 1
+			mask3 = np.copy(bdata)
+			mask3 [ mask3 == 0 ] = 1
+			b.imshow(np.log(mask3),cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(np.log(threshold),np.log(upperthreshold)))
+		if initplot2:
+			initplot2 = 0
+			b.invert_yaxis()
+		else:
+			b.set_xlim([lims[0][0],lims[0][1]])
+			b.set_ylim([lims[1][0],lims[1][1]])
+		bcoord()
+		b.title.set_text("Single Detector Display")
 	doRings()
-	if dolog.get() == 0:
-		b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
-	else:
-		if threshold == 0:
-			threshold = 1
-		if upperthreshold == 0:
-			upperthreshold = 1
-		mask3 = np.copy(bdata)
-		mask3 [ mask3 == 0 ] = 1
-		b.imshow(np.log(mask3),cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(np.log(threshold),np.log(upperthreshold)))
-	if initplot2:
-		initplot2 = 0
-		b.invert_yaxis()
-	else:
-		b.set_xlim([lims[0][0],lims[0][1]])
-		b.set_ylim([lims[1][0],lims[1][1]])
-	numrows, numcols = bdata.shape
-	def format_coord(x, y):
-	    col = int(x+0.5)
-	    row = int(y+0.5)
-	    if col>=0 and col<numcols and row>=0 and row<numrows:
-	        z = bdata[row,col]
-	        bcx = float(bclocalvar1.get())
-	        bcy = float(bclocalvar1.get())
-	        rr = math.sqrt((x-bcx)**2+(y-bcy)**2)
-	        return 'x=%1.4f, y=%1.4f, z=%1.4f, RingRad(pixels)=%1.4f'%(x,y,z,rr)
-	    else:
-	        return 'x=%1.4f, y=%1.4f'%(x,y)
-	b.format_coord = format_coord
-	b.title.set_text("Single Detector Display")
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
