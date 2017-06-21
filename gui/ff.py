@@ -139,7 +139,8 @@ def plotRingsOffset():
 			tmp = YZ4mREta(ringrad2,eta)
 			Y.append(tmp[0]/px + bclocal[0])
 			Z.append(tmp[1]/px + bclocal[1])
-		lines2.append(b.plot(Y,Z,color=colors[colornr]))
+		if bdata is not None:
+			lines2.append(b.plot(Y,Z,color=colors[colornr]))
 		colornr+= 1
 	txtDisplay = txtDisplay[:-2]
 	maxl = 300
@@ -154,6 +155,20 @@ def plotRingsOffset():
 		txtDisplay = tmpdisplay[:-1]
 	DisplRingInfo = Tk.Label(master=root,text=txtDisplay,justify=Tk.LEFT)
 	DisplRingInfo.grid(row=figrowspan-1,column=0,columnspan=10)
+	if bdata is not None:
+		numrows, numcols = bdata.shape
+		def format_coord(x, y):
+		    col = int(x+0.5)
+		    row = int(y+0.5)
+		    if col>=0 and col<numcols and row>=0 and row<numrows:
+		        z = bdata[row,col]
+		        bcx = float(bclocalvar1.get())
+		        bcy = float(bclocalvar1.get())
+		        rr = math.sqrt((x-bcx)**2+(y-bcy)**2)
+		        return 'x=%1.4f, y=%1.4f, z=%1.4f, RingRad(pixels)=%1.4f'%(x,y,z,rr)
+		    else:
+		        return 'x=%1.4f, y=%1.4f'%(x,y)
+		b.format_coord = format_coord
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
@@ -162,15 +177,29 @@ def plotRings():
 	Etas = np.linspace(-180,180,num=360)
 	lines = []
 	colornr = 0
-	for ringrad in ringRads:
-		Y = []
-		Z = []
-		for eta in Etas:
-			tmp = YZ4mREta(ringrad,eta)
-			Y.append(tmp[0]/px + bigdetsize/2)
-			Z.append(tmp[1]/px + bigdetsize/2)
-		lines.append(a.plot(Y,Z,color=colors[colornr]))
-		colornr+= 1
+	if mask2 is not None:
+		for ringrad in ringRads:
+			Y = []
+			Z = []
+			for eta in Etas:
+				tmp = YZ4mREta(ringrad,eta)
+				Y.append(tmp[0]/px + bigdetsize/2)
+				Z.append(tmp[1]/px + bigdetsize/2)
+			lines.append(a.plot(Y,Z,color=colors[colornr]))
+			colornr+= 1
+		numrows, numcols = mask2.shape
+		def format_coord(x, y):
+		    col = int(x+0.5)
+		    row = int(y+0.5)
+		    if col>=0 and col<numcols and row>=0 and row<numrows:
+		        z = mask2[row,col]
+		        xD = x - bigdetsize/2
+		        yD = y - bigdetsize/2
+		        R = sqrt(xD*xD+yD*yD)
+		        return 'x=%1.4f, y=%1.4f, Intensity=%1.4f, RingRad(pixels)=%1.4f'%(x,y,z,R)
+		    else:
+		        return 'x=%1.4f, y=%1.4f'%(x,y)
+		a.format_coord = format_coord
 
 def doRings():
 	global lines
@@ -956,6 +985,8 @@ fileNumber = 0
 getMax = 0
 paramFN = 'PS.txt'
 mask = None
+bdata = None
+mask2 = None
 bigdetsize = 2048
 initplot = 1
 initplot2 = 1
