@@ -128,6 +128,8 @@ def plotRingsOffset():
 	lines2 = []
 	colornr = 0
 	txtDisplay = 'Selected Rings (Increasing radius, H K L Radius(px) Color): '
+	if bdata is not None:
+		lims = [b.get_xlim(), b.get_ylim()]
 	for idx, ringrad in enumerate(ringRads):
 		Y = []
 		Z = []
@@ -142,6 +144,9 @@ def plotRingsOffset():
 		if bdata is not None:
 			lines2.append(b.plot(Y,Z,color=colors[colornr]))
 		colornr+= 1
+	if bdata is not None:
+		b.set_xlim([lims[0][0],lims[0][1]])
+		b.set_ylim([lims[1][0],lims[1][1]])
 	txtDisplay = txtDisplay[:-2]
 	maxl = 300
 	if DisplRingInfo is not None:
@@ -163,7 +168,7 @@ def plotRingsOffset():
 		    if col>=0 and col<numcols and row>=0 and row<numrows:
 		        z = bdata[row,col]
 		        bcx = float(bclocalvar1.get())
-		        bcy = float(bclocalvar1.get())
+		        bcy = float(bclocalvar2.get())
 		        rr = math.sqrt((x-bcx)**2+(y-bcy)**2)
 		        return 'x=%1.4f, y=%1.4f, z=%1.4f, RingRad(pixels)=%1.4f'%(x,y,z,rr)
 		    else:
@@ -178,6 +183,7 @@ def plotRings():
 	lines = []
 	colornr = 0
 	if mask2 is not None:
+		lims = [a.get_xlim(), a.get_ylim()]
 		for ringrad in ringRads:
 			Y = []
 			Z = []
@@ -187,6 +193,8 @@ def plotRings():
 				Z.append(tmp[1]/px + bigdetsize/2)
 			lines.append(a.plot(Y,Z,color=colors[colornr]))
 			colornr+= 1
+		a.set_xlim([lims[0][0],lims[0][1]])
+		a.set_ylim([lims[1][0],lims[1][1]])
 		numrows, numcols = mask2.shape
 		def format_coord(x, y):
 		    col = int(x+0.5)
@@ -721,7 +729,7 @@ def loadbplot():
 	    if col>=0 and col<numcols and row>=0 and row<numrows:
 	        z = bdata[row,col]
 	        bcx = float(bclocalvar1.get())
-	        bcy = float(bclocalvar1.get())
+	        bcy = float(bclocalvar2.get())
 	        rr = math.sqrt((x-bcx)**2+(y-bcy)**2)
 	        return 'x=%1.4f, y=%1.4f, z=%1.4f, RingRad(pixels)=%1.4f'%(x,y,z,rr)
 	    else:
