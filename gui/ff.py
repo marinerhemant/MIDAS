@@ -50,7 +50,7 @@ def CalcEtaAngleRad(y,z):
 	alpha = rad2deg*math.acos(z/Rad)
 	if y > 0:
 		alpha = -alpha
-	return [alpha,Rad*px]
+	return [alpha,Rad]
 
 def YZ4mREta(R,Eta):
 	return [-R*sin(Eta*deg2rad),R*cos(Eta*deg2rad)]
@@ -117,6 +117,38 @@ def transforms(idx):
 	Rz = np.array([[cos(tzr),-sin(tzr),0],[sin(tzr),cos(tzr),0],[0,0,1]])
 	return np.dot(Rx,np.dot(Ry,Rz))
 
+def bcoord():
+	numrows, numcols = bdata.shape
+	def format_coord(x, y):
+	    col = int(x+0.5)
+	    row = int(y+0.5)
+	    if col>=0 and col<numcols and row>=0 and row<numrows:
+	        z = bdata[row,col]
+	        bcx = float(bclocalvar1.get())
+	        bcy = float(bclocalvar2.get())
+	        #rr = math.sqrt((x-bcx)**2+(y-bcy)**2)
+	        [eta, rr] = CalcEtaAngleRad(x-bcx,y-bcy)
+	        return 'x=%1.4f, y=%1.4f, Intensity=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,z,rr,eta)
+	    else:
+	        return 'x=%1.4f, y=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,rr,eta)
+	b.format_coord = format_coord
+
+def acoord():
+	numrows, numcols = mask2.shape
+	def format_coord(x, y):
+	    col = int(x+0.5)
+	    row = int(y+0.5)
+	    if col>=0 and col<numcols and row>=0 and row<numrows:
+	        z = mask2[row,col]
+	        xD = x - bigdetsize/2
+	        yD = y - bigdetsize/2
+	        #R = sqrt(xD*xD+yD*yD)
+	        [eta,R] = CalcEtaAngleRad(xD,yD)
+	        return 'x=%1.4f, y=%1.4f, Intensity=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,z,R,eta)
+	    else:
+	        return 'x=%1.4f, y=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,R,eta)
+	a.format_coord = format_coord
+
 def plotRingsOffset():
 	global lines2
 	global lsdlocal, bclocal
@@ -161,19 +193,7 @@ def plotRingsOffset():
 	DisplRingInfo = Tk.Label(master=root,text=txtDisplay,justify=Tk.LEFT)
 	DisplRingInfo.grid(row=figrowspan-1,column=0,columnspan=10)
 	if bdata is not None:
-		numrows, numcols = bdata.shape
-		def format_coord(x, y):
-		    col = int(x+0.5)
-		    row = int(y+0.5)
-		    if col>=0 and col<numcols and row>=0 and row<numrows:
-		        z = bdata[row,col]
-		        bcx = float(bclocalvar1.get())
-		        bcy = float(bclocalvar2.get())
-		        rr = math.sqrt((x-bcx)**2+(y-bcy)**2)
-		        return 'x=%1.4f, y=%1.4f, z=%1.4f, RingRad(pixels)=%1.4f'%(x,y,z,rr)
-		    else:
-		        return 'x=%1.4f, y=%1.4f'%(x,y)
-		b.format_coord = format_coord
+		bcoord()
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
@@ -195,19 +215,7 @@ def plotRings():
 			colornr+= 1
 		a.set_xlim([lims[0][0],lims[0][1]])
 		a.set_ylim([lims[1][0],lims[1][1]])
-		numrows, numcols = mask2.shape
-		def format_coord(x, y):
-		    col = int(x+0.5)
-		    row = int(y+0.5)
-		    if col>=0 and col<numcols and row>=0 and row<numrows:
-		        z = mask2[row,col]
-		        xD = x - bigdetsize/2
-		        yD = y - bigdetsize/2
-		        R = sqrt(xD*xD+yD*yD)
-		        return 'x=%1.4f, y=%1.4f, Intensity=%1.4f, RingRad(pixels)=%1.4f'%(x,y,z,R)
-		    else:
-		        return 'x=%1.4f, y=%1.4f'%(x,y)
-		a.format_coord = format_coord
+		acoord()
 
 def doRings():
 	global lines
@@ -287,19 +295,7 @@ def plot_updater():
 	else:
 		a.set_xlim([lims[0][0],lims[0][1]])
 		a.set_ylim([lims[1][0],lims[1][1]])
-	numrows, numcols = mask2.shape
-	def format_coord(x, y):
-	    col = int(x+0.5)
-	    row = int(y+0.5)
-	    if col>=0 and col<numcols and row>=0 and row<numrows:
-	        z = mask2[row,col]
-	        xD = x - bigdetsize/2
-	        yD = y - bigdetsize/2
-	        R = sqrt(xD*xD+yD*yD)
-	        return 'x=%1.4f, y=%1.4f, Intensity=%1.4f, RingRad(pixels)=%1.4f'%(x,y,z,R)
-	    else:
-	        return 'x=%1.4f, y=%1.4f'%(x,y)
-	a.format_coord = format_coord
+	acoord()
 	a.title.set_text("Multiple Detector Display")
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
@@ -722,20 +718,8 @@ def loadbplot():
 	else:
 		b.set_xlim([lims[0][0],lims[0][1]])
 		b.set_ylim([lims[1][0],lims[1][1]])
-	numrows, numcols = bdata.shape
-	def format_coord(x, y):
-	    col = int(x+0.5)
-	    row = int(y+0.5)
-	    if col>=0 and col<numcols and row>=0 and row<numrows:
-	        z = bdata[row,col]
-	        bcx = float(bclocalvar1.get())
-	        bcy = float(bclocalvar2.get())
-	        rr = math.sqrt((x-bcx)**2+(y-bcy)**2)
-	        return 'x=%1.4f, y=%1.4f, z=%1.4f, RingRad(pixels)=%1.4f'%(x,y,z,rr)
-	    else:
-	        return 'x=%1.4f, y=%1.4f'%(x,y)
+	bcoord()
 	b.title.set_text("Single Detector Display")
-	b.format_coord = format_coord
 	canvas.show()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
