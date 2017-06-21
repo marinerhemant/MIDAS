@@ -6,6 +6,8 @@ Neldermead is taken from http://people.sc.fsu.edu/~jburkardt/cpp_src/asa047/asa0
 
 SGInfo library used to calculate HKLs.
 
+Some misorientation functions are taken from the ODFPF package from Cornell (https://anisotropy.mae.cornell.edu/onr/Matlab/matlab-functions.html).
+
 Downloads swift binary, NLOPT, LIBTIFF, NETCDF (curl, hdf5, zlib) for compilation of N(F)F-HEDM codes.
 
 # Installation
