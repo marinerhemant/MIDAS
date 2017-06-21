@@ -290,21 +290,21 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 		//Find if either etamin or etamax result in outside the detector, then ignore this bin
 		ytr = ybc - (-Rmax *sin(EtaMa*deg2rad))/px;
 		ztr = zbc + (Rmax*cos(EtaMa*deg2rad))/px;
-		if ((int)ytr > NrPixels -1){
+		if ((int)ytr > NrPixels - 2){
 			Rfit = 0;
 			continue;
 		}
-		if ((int)ztr > NrPixels -1){
+		if ((int)ztr > NrPixels - 2){
 			Rfit = 0;
 			continue;
 		}
 		ytr = ybc - (-Rmax *sin(EtaMi*deg2rad))/px;
 		ztr = zbc + (Rmax*cos(EtaMi*deg2rad))/px;
-		if ((int)ytr > NrPixels -1){
+		if ((int)ytr > NrPixels - 2){
 			Rfit = 0;
 			continue;
 		}
-		if ((int)ztr > NrPixels -1){
+		if ((int)ztr > NrPixels - 2){
 			Rfit = 0;
 			continue;
 		}

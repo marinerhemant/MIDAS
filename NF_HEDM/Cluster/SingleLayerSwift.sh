@@ -19,7 +19,7 @@ then
   echo "ProcessImages is whether you want to process the diffraction images (1) or if they were processed earlier (0)."
   echo "NOTE: run from the folder with the Key.txt, DiffractionSpots.txt, OrientMat.txt and ParametersFile.txt"
   echo "At least the parameters file should be in the folder from where the command is executed."
-  echo "For FF Seeding, add a parameter MinConfidence and MinConfidenceLowerBound and FullSeedFile, this will"
+  echo "For FF Seeding, add parameters MinConfidence and MinConfidenceLowerBound and FullSeedFile, this will"
   echo "take the result and repeat analysis with all orientations." 
   exit 1
 fi

@@ -56,6 +56,7 @@ OmegaFirstFile
 NrDarkFramesDataFile
 OmegaRange
 BoxSize
+HeadSize																# Header size in bytes (if you want to skip a few frames in the beginning, don't used 8192, but the correct number)
 
 ## Analysis parameters
 Width

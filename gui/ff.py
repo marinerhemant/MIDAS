@@ -316,6 +316,7 @@ def readParams():
 	threshold = 0
 	RhoDs = []
 	ringslines = []
+	hkls = []
 	lsdline = None
 	for line in paramContents:
 		if line == '\n':

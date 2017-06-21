@@ -543,6 +543,7 @@ int main(int argc, char *argv[]){
     int FrameNrOmeChange = 1, NrDarkFramesDataFile = 0;
     double OmegaMissing = 0, MisDir;
     double FileOmegaOmeStep[360][2];
+    int headSize = 8192;
     int fnr = 0;
     double RhoD, tx, ty, tz, p0, p1, p2;
     while (fgets(aline,1000,fileParam)!=NULL){
@@ -594,6 +595,12 @@ int main(int argc, char *argv[]){
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %d", dummy, &DoFullImage);
+            continue;
+        }
+        str = "HeadSize ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &headSize);
             continue;
         }
         str = "NrFilesPerSweep ";
@@ -924,6 +931,7 @@ int main(int argc, char *argv[]){
 	}
 	fseek(dummyFile,0L,SEEK_END);
 	sz = ftell(dummyFile);
+	sz = sz - headSize;
 	fclose(dummyFile);
 	nFrames = sz/(8*1024*1024);
 
