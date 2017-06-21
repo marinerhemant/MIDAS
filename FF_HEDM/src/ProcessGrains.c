@@ -203,7 +203,7 @@ int main(int argc, char *argv[])
     fileParam = fopen(ParamFN,"r");
     char *str, dummy[1000];
     int LowNr;
-    int Twin, MinNrSpots, SGNr;
+    int Twin = 0, MinNrSpots, SGNr;
     double Distance, wavelength, LatCin[6];
     double BeamThickness = 0, GlobalPosition = 0;
     int NumPhases = 1, PhaseNr = 1;

@@ -265,11 +265,11 @@ int main(int argc, char *argv[]){
 		PowderInt = PowderIntIn;
 	}
 	double Vgauge = Hbeam * M_PI * Rsample * Rsample;
-	if (DiscModel == 1){
-		Vgauge = DiscArea;
-	}
 	if (Vsample != 0){
 		Vgauge = Vsample;
+	}
+	if (DiscModel == 1){
+		Vgauge = DiscArea;
 	}
 	int i,j;
 	double deltaTheta;
