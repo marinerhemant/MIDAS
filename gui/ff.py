@@ -122,12 +122,11 @@ def bcoord():
 	def format_coord(x, y):
 	    col = int(x+0.5)
 	    row = int(y+0.5)
+	    bcx = float(bclocalvar1.get())
+	    bcy = float(bclocalvar2.get())
+	    [eta, rr] = CalcEtaAngleRad(-x+bcx,y-bcy)
 	    if col>=0 and col<numcols and row>=0 and row<numrows:
 	        z = bdata[row,col]
-	        bcx = float(bclocalvar1.get())
-	        bcy = float(bclocalvar2.get())
-	        #rr = math.sqrt((x-bcx)**2+(y-bcy)**2)
-	        [eta, rr] = CalcEtaAngleRad(-x+bcx,y-bcy)
 	        return 'x=%1.4f, y=%1.4f, Intensity=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,z,rr,eta)
 	    else:
 	        return 'x=%1.4f, y=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,rr,eta)
@@ -138,12 +137,11 @@ def acoord():
 	def format_coord(x, y):
 	    col = int(x+0.5)
 	    row = int(y+0.5)
+	    xD = x - bigdetsize/2
+	    yD = y - bigdetsize/2
+	    [eta,R] = CalcEtaAngleRad(-xD,yD)
 	    if col>=0 and col<numcols and row>=0 and row<numrows:
 	        z = mask2[row,col]
-	        xD = x - bigdetsize/2
-	        yD = y - bigdetsize/2
-	        #R = sqrt(xD*xD+yD*yD)
-	        [eta,R] = CalcEtaAngleRad(-xD,yD)
 	        return 'x=%1.4f, y=%1.4f, Intensity=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,z,R,eta)
 	    else:
 	        return 'x=%1.4f, y=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,R,eta)
