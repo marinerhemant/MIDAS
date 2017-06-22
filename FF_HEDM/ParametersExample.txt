@@ -85,6 +85,7 @@ BeamThickness
 GlobalPosition
 
 ## Optional parameters (not required unless wanted)
+OverlapLength															# In pixels, the spots in consecutive frames will be merged if their COMs lie within this value of each other. Typically 2
 DoFullImage
 FrameOmeChange
 FileOmegaOmeStep

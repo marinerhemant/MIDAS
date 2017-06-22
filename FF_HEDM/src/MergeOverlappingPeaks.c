@@ -223,6 +223,7 @@ int main(int argc, char *argv[]){
     int LayerNr;
     int StartNr, EndNr, Padding=6;
     TmpFolder = "Temp";
+	double MarginOmegaOverlap = sqrt(4);
     while (fgets(aline,1000,fileParam)!=NULL){
         str = "Folder ";
         LowNr = strncmp(aline,str,strlen(str));
@@ -260,10 +261,15 @@ int main(int argc, char *argv[]){
             sscanf(aline,"%s %d", dummy, &EndNr);
             continue;
         }
+        str = "OverlapLength ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &MarginOmegaOverlap);
+            continue;
+        }
 	}
 	sprintf(FileStem,"%s_%d",fs,LayerNr);
 	fclose(fileParam);
-	double MarginOmegaOverlap = sqrt(4);
 	int TotNrFiles = EndNr - StartNr + 1, i,j,k;
 	int nFilesMax = 50;
     char OutFolderName[1024];

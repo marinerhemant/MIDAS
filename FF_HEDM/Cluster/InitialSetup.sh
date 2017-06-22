@@ -87,7 +87,7 @@ then
 		echo $RINGNR >> ${ringnrsfile}
 		${BINFOLDER}/FitTiltBCLsdSample ${ThisParamFileName}
 		cp ${Fldr}/PeakSearch/${filestem}_${layernr}/paramstest.txt ${outfolder}/paramstest_RingNr${RINGNR}.txt
-		cp ${ThisParamFileName} ${outfolder}
+		#cp ${ThisParamFileName} ${outfolder}
 		i=$((i+1))
 	done
 	${PFDIR}/MergeRings.sh ${pfname}
