@@ -14,6 +14,7 @@ then
   echo "Provide ParametersFile StartLayerNr EndLayerNr Number of NODEs to use MachineName and EmailAddress!"
   echo "EG. ${cmdname} Parameters.txt 1 1 6 orhtros(or orthrosextra) hsharma@anl.gov"
   echo "The parameter file should have a parameter called OldStateFolder which is the seed folder used in the previous state."
+  echo "MinNrSpots must be 1!!!!!"
   exit 1
 fi
 

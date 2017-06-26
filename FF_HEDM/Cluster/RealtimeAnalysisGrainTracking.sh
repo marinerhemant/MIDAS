@@ -94,8 +94,6 @@ do
     echo $i
    done
    ${PFDIR}/RunPeaksMult.sh ${TOP_PARAM_FILE} ${NCPUS} $RINGNRSFILE $ParamFNStem $fstm ${MACHINE_NAME}
-   rc=$(qstat | grep tomo1 | grep " 384" | awk '{ print $1 }')
-   echo $rc
    mv $RINGNRSFILE ${OutFldr}
    for RINGNR in $RingNrs
    do
