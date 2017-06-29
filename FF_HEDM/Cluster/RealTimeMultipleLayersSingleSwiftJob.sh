@@ -41,7 +41,15 @@ echo "Peaks:"
 nNODES=${NCPUS}
 export nNODES
 echo "MACHINE NAME is ${MACHINE_NAME}"
-
+if [[ ${MACHINE_NAME} == *"edison"* ]] || [[ ${MACHINE_NAME} == *"cori"* ]]; then
+	echo "We are in NERSC"
+	hn=$( hostname )
+	hn=${hn: -2}
+	hn=$(( hn+20 ))
+	intHN=128.55.143.${val}
+	export intHN
+	echo intHN
+fi 
 SeedFolder=$( awk '$1 ~ /^SeedFolder/ { print $2 }' ${ParamsFile} )
 rm -rf ${SeedFolder}/FolderNames.txt
 rm -rf ${SeedFolder}/PFNames.txt

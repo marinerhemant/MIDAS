@@ -36,6 +36,15 @@ PARAMFILE=$1
 EmailAdd=$8
 nNODES=$6
 export nNODES
+if [[ ${MACHINE_NAME} == *"edison"* ]] || [[ ${MACHINE_NAME} == *"cori"* ]]; then
+	echo "We are in NERSC"
+	hn=$( hostname )
+	hn=${hn: -2}
+	hn=$(( hn+20 ))
+	intHN=128.55.143.${val}
+	export intHN
+	echo intHN
+fi 
 FFSEEDORIENTATIONS=$2
 PROCESSIMAGES=$3
 STARTLAYERNR=$4

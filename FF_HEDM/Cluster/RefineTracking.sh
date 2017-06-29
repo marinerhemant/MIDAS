@@ -12,6 +12,15 @@ nNODES=${1}
 export nNODES
 MACHINE_NAME=$4
 echo "MACHINE NAME is ${MACHINE_NAME}"
+if [[ ${MACHINE_NAME} == *"edison"* ]] || [[ ${MACHINE_NAME} == *"cori"* ]]; then
+	echo "We are in NERSC"
+	hn=$( hostname )
+	hn=${hn: -2}
+	hn=$(( hn+20 ))
+	intHN=128.55.143.${val}
+	export intHN
+	echo intHN
+fi 
 ${PFDIR}/SHMOperatorsTracking.sh
 mkdir -p Output
 mkdir -p Results

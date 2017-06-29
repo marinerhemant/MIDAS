@@ -30,6 +30,16 @@ FFSeedOrientations=$2
 ProcessImages=$3
 MACHINE_NAME=$5
 export nNODES
+if [[ ${MACHINE_NAME} == *"edison"* ]] || [[ ${MACHINE_NAME} == *"cori"* ]]; then
+	echo "We are in NERSC"
+	hn=$( hostname )
+	hn=${hn: -2}
+	hn=$(( hn+20 ))
+	intHN=128.55.143.${val}
+	export intHN
+	echo intHN
+fi
+exit
 
 NDISTANCES=$( awk '$1 ~ /^nDistances/ { print $2 }' ${TOP_PARAM_FILE} )
 NRFILESPERDISTANCE=$( awk '$1 ~ /^NrFilesPerDistance/ { print $2 }' ${TOP_PARAM_FILE} )

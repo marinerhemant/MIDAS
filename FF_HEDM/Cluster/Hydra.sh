@@ -38,6 +38,16 @@ filestem=$( awk '$1 ~ /^FileStem/ { print $2 } ' ${ParamsFile} )
 seedfolder=$( pwd ) # Call from the seed folder
 rm -rf ${seedfolder}/FolderNames.txt
 
+if [[ ${MACHINE_NAME} == *"edison"* ]] || [[ ${MACHINE_NAME} == *"cori"* ]]; then
+	echo "We are in NERSC"
+	hn=$( hostname )
+	hn=${hn: -2}
+	hn=$(( hn+20 ))
+	intHN=128.55.143.${val}
+	export intHN
+	echo intHN
+fi 
+
 for (( LAYERNR=$STARTLAYERNR; LAYERNR<=$ENDLAYERNR; LAYERNR++ ))
 do
 	ide=$( date +%Y_%m_%d_%H_%M_%S )
