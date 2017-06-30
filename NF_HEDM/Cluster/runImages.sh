@@ -28,7 +28,7 @@ if [[ ${MACHINE_NAME} == *"edison"* ]] || [[ ${MACHINE_NAME} == *"cori"* ]]; the
 	hn=$( hostname )
 	hn=${hn: -2}
 	hn=$(( hn+20 ))
-	intHN=128.55.143.${val}
+	intHN=128.55.143.${hn}
 	export intHN
 	echo intHN
 fi 
