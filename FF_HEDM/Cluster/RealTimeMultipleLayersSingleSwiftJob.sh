@@ -58,12 +58,12 @@ if [[ ${MACHINE_NAME} == *"cori"* ]]; then
 	intHN=128.55.224.${hn}
 	export intHN
 	echo "IP address of login node: $intHN"
-	hn=$( hostname )
-	if [[ hn == "cori07" ]]; then
-		intHN=128.55.144.137
-		export intHN
-		echo "Since cori07 has a strange IP address, we overrode it to $intHN"
-	fi
+	#~ hn=$( hostname )
+	#~ if [[ hn == *"07"* ]]; then
+		#~ intHN=128.55.144.137
+		#~ export intHN
+		#~ echo "Since cori07 has a strange IP address, we overrode it to $intHN"
+	#~ fi
 fi
 SeedFolder=$( awk '$1 ~ /^SeedFolder/ { print $2 }' ${ParamsFile} )
 rm -rf ${SeedFolder}/FolderNames.txt

@@ -31,12 +31,12 @@ if [[ ${MACHINE_NAME} == *"cori"* ]]; then
 	intHN=128.55.224.${hn}
 	export intHN
 	echo "IP address of login node: $intHN"
-	hn=$( hostname )
-	if [[ hn == "cori07" ]]; then
-		intHN=128.55.144.137
-		export intHN
-		echo "Since cori07 has a strange IP address, we overrode it to $intHN"
-	fi
+	#~ hn=$( hostname )
+	#~ if [[ hn == *"07"* ]]; then
+		#~ intHN=128.55.144.137
+		#~ export intHN
+		#~ echo "Since cori07 has a strange IP address, we overrode it to $intHN"
+	#~ fi
 fi
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/RunPeaksMultPeaksOnly.swift -paramsfile=$4 -ringfile=$3 -fstm=$5 -startnr=${StartNr} -endnr=${EndNr}
 echo "Process Peaks"

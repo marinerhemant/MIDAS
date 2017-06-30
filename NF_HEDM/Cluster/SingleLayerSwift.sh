@@ -47,12 +47,12 @@ if [[ ${MACHINE_NAME} == *"cori"* ]]; then
 	intHN=128.55.224.${hn}
 	export intHN
 	echo "IP address of login node: $intHN"
-	hn=$( hostname )
-	if [[ hn == "cori07" ]]; then
-		intHN=128.55.144.137
-		export intHN
-		echo "Since cori07 has a strange IP address, we overrode it to $intHN"
-	fi
+	#~ hn=$( hostname )
+	#~ if [[ hn == *"07"* ]]; then
+		#~ intHN=128.55.144.137
+		#~ export intHN
+		#~ echo "Since cori07 has a strange IP address, we overrode it to $intHN"
+	#~ fi
 fi
 NDISTANCES=$( awk '$1 ~ /^nDistances/ { print $2 }' ${TOP_PARAM_FILE} )
 NRFILESPERDISTANCE=$( awk '$1 ~ /^NrFilesPerDistance/ { print $2 }' ${TOP_PARAM_FILE} )
