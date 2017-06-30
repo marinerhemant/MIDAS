@@ -37,7 +37,7 @@ if [[ ${MACHINE_NAME} == *"edison"* ]] || [[ ${MACHINE_NAME} == *"cori"* ]]; the
 	hn=$(( hn+20 ))
 	intHN=128.55.143.${hn}
 	export intHN
-	echo intHN
+	echo $intHN
 fi
 exit
 
