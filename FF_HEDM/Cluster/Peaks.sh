@@ -5,4 +5,5 @@
 # See LICENSE file.
 #
 source ${HOME}/.MIDAS/paths
-${BINFOLDER}/PeaksFittingPerFile $1 $2 $3
+python runPeaks.py ${BINFOLDER} $1 $2 $3
+

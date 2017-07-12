@@ -5,9 +5,9 @@
 
 type file;
 
-app (file ep) runPeaks (string paramsfn, int fnr, int ringnr)
+app (file ep) runPeaks (string ringfile, string paramfile, int fnr)
 {
-	peaks paramsfn fnr ringnr stderr=filename(ep);
+	peaks ringfile paramfile fnr stderr=filename(ep);
 }
 
 app (file err) runProcessPeaks (string paramsf, int RNr, file DummyA[])
@@ -61,17 +61,13 @@ if (dopeaksearch == 1) {
 		string paramFileNames[] = readData(paramfilenamefile);
 		file simBerr[]<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("ProcessPeaks_",ix,"_"),suffix=".err">;
 		file simAerr[];
-		tracef("Total number of jobs for PeakSearch: %d\n",length(rings)*endnr);
-		foreach Ring,idx in rings {
-			string parameterfilename = paramFileNames[idx];
-			string PreFix1 = strcat("PeaksPerFile_",Ring);
-			foreach i in [startnr:endnr] {
-				file simx<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat(PreFix1,"_",i,"_"),suffix=".err">;
-				simx = runPeaks(parameterfilename,i,Ring);
-				if (i %% 100 == 0){
-					int simAidx = (i%/100) + idx*(endnr%/100);
-					simAerr[simAidx] = simx;
-				}
+		tracef("Total number of jobs for PeakSearch: %d\n",endnr);
+		foreach i in [startnr:endnr]{
+			file simx<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PeaksPerFile_",i,"_"),suffix=".err">;
+			simx = runPeaks(ringfile, paramfilenamefile, i);
+			if (i %% 100 == 0){
+				int simAidx = (i%/100);
+				simAerr[simAidx] = simx;
 			}
 		}
 		foreach Ring2,idx2 in rings {
