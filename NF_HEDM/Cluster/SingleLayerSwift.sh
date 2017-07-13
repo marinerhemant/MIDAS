@@ -34,6 +34,7 @@ if [[ ${MACHINE_NAME} == *"edison"* ]]; then
 	echo "We are in NERSC EDISON"
 	hn=$( hostname )
 	hn=${hn: -2}
+	hn=${hn#0}
 	hn=$(( hn+20 ))
 	intHN=128.55.203.${hn}
 	export intHN
@@ -43,6 +44,7 @@ if [[ ${MACHINE_NAME} == *"cori"* ]]; then
 	echo "We are in NERSC CORI"
 	hn=$( hostname )
 	hn=${hn: -2}
+	hn=${hn#0}
 	hn=$(( hn+30 ))
 	intHN=128.55.224.${hn}
 	export intHN
