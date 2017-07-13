@@ -5,5 +5,5 @@
 # See LICENSE file.
 #
 source ${HOME}/.MIDAS/paths
-python ${BINFOLDER}/runPeaks.py ${BINFOLDER} $1 $2 $3
+python ${PFDIR}/runPeaks.py ${BINFOLDER} $1 $2 $3
 
