@@ -65,8 +65,8 @@ if (dopeaksearch == 1) {
 		foreach i in [startnr:endnr]{
 			file simx<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PeaksPerFile_",i,"_"),suffix=".err">;
 			simx = runPeaks(ringfile, paramfilenamefile, i);
-			if (i %% (endnr%/40) == 0){
-				int simAidx = (i%/(endnr%/40));
+			if (i %% 100 == 0){
+				int simAidx = (i%/100);
 				simAerr[simAidx] = simx;
 			}
 		}
