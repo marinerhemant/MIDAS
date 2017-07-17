@@ -19,7 +19,7 @@ startnr=$( awk '$1 ~ /^StartNr/ { print $2 } ' ${paramfile} )
 endnr=$( awk '$1 ~ /^EndNr/ { print $2 } ' ${paramfile} )
 mkdir -p $flr/Ring${2}/PeakSearch/${filestem}_${layernr}
 nfiles=$( ls -l output | wc -l )
-while [[ nfiles != (endnr-startnr + 2) ]];
+while [[ nfiles != endnr-startnr + 2 ]];
 do
 	sleep 1
 	nfiles=$( ls -l output | wc -l )

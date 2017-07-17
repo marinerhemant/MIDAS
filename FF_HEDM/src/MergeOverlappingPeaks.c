@@ -279,7 +279,7 @@ int main(int argc, char *argv[]){
 					" IMax MinOme(degrees) MaxOme(degress) SigmaR SigmaEta\n";
     
     // Read first file
-    printf("Initial file reading, Arguments: %s %s\n",argv[1],argv[2]);
+    //printf("Initial file reading, Arguments: %s %s\n",argv[1],argv[2]);
     fflush(stdout);
     int FileNr = StartNr;
 	int nSpots,nSpotsNew;
@@ -316,7 +316,7 @@ int main(int argc, char *argv[]){
 	TempIDsNew = malloc(nOverlapsMaxPerImage*sizeof(*TempIDsNew));
 	memset(TempIDsCurrent,0,nOverlapsMaxPerImage*sizeof(*TempIDsCurrent));
 	memset(TempIDsNew,0,nOverlapsMaxPerImage*sizeof(*TempIDsNew));
-	printf("We could reach till here.\n"); fflush(stdout);
+	//printf("We could reach till here.\n"); fflush(stdout);
 	int SpotIDNr = 1,counter;
     if (StartNr==EndNr){ // If there is only one file.
 		for (i=0;i<nSpots;i++){
@@ -327,7 +327,7 @@ int main(int argc, char *argv[]){
 	}else{ // If there are multiple files:
 		for (FileNr=(StartNr+1);FileNr<=EndNr;FileNr++){
 			nSpotsNew = ReadSortFiles(OutFolderName,FileStem,FileNr,RingNr,Padding,NewIDs);
-			printf("%d\n",FileNr);
+			//printf("%d\n",FileNr);
 			fflush(stdout);
 			for (i=0;i<nSpots;i++){
 				minLen = 10000000;
