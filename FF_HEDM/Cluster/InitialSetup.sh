@@ -44,12 +44,12 @@ if [[ ${DOPEAKSEARCH} == 1 ]];
 then
 	for RINGNR in ${RingNrs}
 	do
-		mkdir -p ${outfolder}/Ring${RINGNR}/PeakSearch/${filestem}_${layernr}
 		ThisParamFileName=${outfolder}/Layer${layernr}_Ring${RINGNR}_${paramfile}
 		cp ${paramfile} ${ThisParamFileName}
 		Fldr=${outfolder}/Ring${RINGNR}
 		mkdir -p $Fldr/Temp
 		mkdir -p $Fldr/PeakSearch
+		mkdir -p $Fldr/PeakSearch/${filestem}_${layernr}
 		cp hkls.csv $Fldr
 		echo "Folder $Fldr" >> ${ThisParamFileName}
 		echo "RingToIndex $RINGNR" >> ${ThisParamFileName}
