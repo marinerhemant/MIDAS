@@ -304,8 +304,8 @@ int main(int argc, char *argv[]){
 		CurrentIDs[i][12] = NewIDs[i][8];			  // SigmaR
 		CurrentIDs[i][13] = NewIDs[i][9];			  // SigmaEta
 	}
-    int e = CheckDirectoryCreation(Folder,FileStem);
-    if (e ==0) return 1;
+    //int e = CheckDirectoryCreation(Folder,FileStem);
+    //if (e ==0) return 1;
     sprintf(OutFileName,"%s/PeakSearch/%s/Result_StartNr_%d_EndNr_%d_RingNr_%d.csv",Folder,FileStem,StartNr,EndNr,RingNr);
 	FILE *OutFile;
 	OutFile = fopen(OutFileName,"w");
@@ -316,6 +316,7 @@ int main(int argc, char *argv[]){
 	TempIDsNew = malloc(nOverlapsMaxPerImage*sizeof(*TempIDsNew));
 	memset(TempIDsCurrent,0,nOverlapsMaxPerImage*sizeof(*TempIDsCurrent));
 	memset(TempIDsNew,0,nOverlapsMaxPerImage*sizeof(*TempIDsNew));
+	printf("We could reach till here.\n"); fflush(stdout);
 	int SpotIDNr = 1,counter;
     if (StartNr==EndNr){ // If there is only one file.
 		for (i=0;i<nSpots;i++){
@@ -326,7 +327,7 @@ int main(int argc, char *argv[]){
 	}else{ // If there are multiple files:
 		for (FileNr=(StartNr+1);FileNr<=EndNr;FileNr++){
 			nSpotsNew = ReadSortFiles(OutFolderName,FileStem,FileNr,RingNr,Padding,NewIDs);
-			//printf("%d\n",FileNr);
+			printf("%d\n",FileNr);
 			fflush(stdout);
 			for (i=0;i<nSpots;i++){
 				minLen = 10000000;
