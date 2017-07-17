@@ -17,7 +17,6 @@ filestem=$( awk '$1 ~ /^FileStem/ { print $2 } ' ${paramfile} )
 layernr=$( awk '$1 ~ /^LayerNr/ { print $2 } ' ${paramfile} )
 startnr=$( awk '$1 ~ /^StartNr/ { print $2 } ' ${paramfile} )
 endnr=$( awk '$1 ~ /^EndNr/ { print $2 } ' ${paramfile} )
-mkdir -p $flr/Ring${2}/PeakSearch/${filestem}_${layernr}
 nfiles=$( ls output | grep PeaksPerFile | wc -l )
 nfilesreq=$(( $endnr - $startnr + 1 ))
 echo ${nfiles}
