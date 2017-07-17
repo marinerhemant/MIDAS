@@ -45,8 +45,7 @@ if [[ ${MACHINE_NAME} == *"edison"* ]]; then
 	intHN=128.55.203.${hn}
 	export intHN
 	echo "IP address of login node: $intHN"
-fi
-if [[ ${MACHINE_NAME} == *"cori"* ]]; then
+elif [[ ${MACHINE_NAME} == *"cori"* ]]; then
 	echo "We are in NERSC CORI"
 	hn=$( hostname )
 	hn=${hn: -2}
@@ -55,12 +54,9 @@ if [[ ${MACHINE_NAME} == *"cori"* ]]; then
 	intHN=128.55.224.${hn}
 	export intHN
 	echo "IP address of login node: $intHN"
-	#~ hn=$( hostname )
-	#~ if [[ hn == *"07"* ]]; then
-		#~ intHN=128.55.144.137
-		#~ export intHN
-		#~ echo "Since cori07 has a strange IP address, we overrode it to $intHN"
-	#~ fi
+else
+	intHN=10.10.10.100
+	export intHN
 fi
 FFSEEDORIENTATIONS=$2
 PROCESSIMAGES=$3
