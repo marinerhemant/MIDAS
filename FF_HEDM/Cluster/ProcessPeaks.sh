@@ -20,13 +20,13 @@ endnr=$( awk '$1 ~ /^EndNr/ { print $2 } ' ${paramfile} )
 mkdir -p $flr/Ring${2}/PeakSearch/${filestem}_${layernr}
 nfiles=$( ls -l output | wc -l )
 nfilesreq=$(( $endnr - $startnr + 2 ))
-echo nfiles
-echo nfilesreq
+echo ${nfiles}
+echo ${nfilesreq}
 while [[ $nfiles != $nfilesreq ]];
 do
 	sleep 1
 	nfiles=$( ls -l output | wc -l )
-	echo nfiles
+	echo ${nfiles}
 done
 ${BINFOLDER}/MergeOverlappingPeaks $1 $2
 ${BINFOLDER}/CalcRadius $1 $2
