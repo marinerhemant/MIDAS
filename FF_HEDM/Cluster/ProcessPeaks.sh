@@ -18,14 +18,14 @@ layernr=$( awk '$1 ~ /^LayerNr/ { print $2 } ' ${paramfile} )
 startnr=$( awk '$1 ~ /^StartNr/ { print $2 } ' ${paramfile} )
 endnr=$( awk '$1 ~ /^EndNr/ { print $2 } ' ${paramfile} )
 mkdir -p $flr/Ring${2}/PeakSearch/${filestem}_${layernr}
-nfiles=$( ls -l output | wc -l )
-nfilesreq=$(( $endnr - $startnr + 2 ))
+nfiles=$( ls output | grep PeaksPerFile | wc -l )
+nfilesreq=$(( $endnr - $startnr + 1 ))
 echo ${nfiles}
 echo ${nfilesreq}
 while [[ $nfiles != $nfilesreq ]];
 do
 	sleep 1
-	nfiles=$( ls -l output | wc -l )
+	nfiles=$( ls output | grep PeaksPerFile | wc -l )
 	echo ${nfiles}
 done
 ${BINFOLDER}/MergeOverlappingPeaks $1 $2
