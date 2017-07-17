@@ -63,12 +63,9 @@ if (dopeaksearch == 1) {
 		file simAerr[];
 		tracef("Total number of jobs for PeakSearch: %d\n",endnr);
 		foreach i in [startnr:endnr]{
-			file simx<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PeaksPerFile_",i,"_"),suffix=".err">;
+			file simx<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PeaksPerFile_",i),suffix=".err">;
 			simx = runPeaks(ringfile, paramfilenamefile, i);
-			if (i %% 100 == 0){
-				int simAidx = (i%/100);
-				simAerr[simAidx] = simx;
-			}
+			simAerr[i] = simx;
 		}
 		foreach Ring2,idx2 in rings {
 			string parameterfilename = paramFileNames[idx2];
