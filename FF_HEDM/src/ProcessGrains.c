@@ -516,6 +516,7 @@ int main(int argc, char *argv[])
 		 	continue;
 		}else{
 			IDsDone[cres] = IDs[rown];
+			printf("IDs rown = %d\n",IDs[rown]);
 			cres++;
 		}
 		for (k=0;k<9;k++){
