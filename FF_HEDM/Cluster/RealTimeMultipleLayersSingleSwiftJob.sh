@@ -64,20 +64,20 @@ else
 	export intHN
 fi
 SeedFolder=$( awk '$1 ~ /^SeedFolder/ { print $2 }' ${ParamsFile} )
-rm -rf ${SeedFolder}/FolderNames.txt
-rm -rf ${SeedFolder}/PFNames.txt
 
 for (( LAYERNR=$STARTLAYERNR; LAYERNR<=$ENDLAYERNR; LAYERNR++ ))
 do
 	${PFDIR}/InitialSetup.sh ${ParamsFile} ${LAYERNR} ${DOPEAKSEARCH}
+	${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
+		${PFDIR}/processLayers.swift -ringfile=${SeedFolder}/RingInfo.txt \
+		-startnr=${StartNr} -endnr=${EndNr} -SeedFolder=${SeedFolder} \
+		-DoPeakSearch=${DOPEAKSEARCH}
+	outfolder=`cat ${SeedFolder/FolderNames.txt`
+	cd ${outfolder}
+	pfname=`cat ${SeedFolder}/PFNames.txt`
+	${BINFOLDER}/ProcessGrains ${pfname}
+	cd ${SeedFolder}
 done
-${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
-	${PFDIR}/processLayers.swift -ringfile=${SeedFolder}/RingInfo.txt \
-	-startnr=${StartNr} -endnr=${EndNr} -SeedFolder=${SeedFolder} \
-	-DoPeakSearch=${DOPEAKSEARCH}
-
-${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
-	${PFDIR}/processGrains.swift -SeedFolder=${SeedFolder}
 
 EmailAdd=$7
 echo "The run started with ${cmdname} $@ has finished, please check." | mail -s "MIDAS run finished" ${EmailAdd}

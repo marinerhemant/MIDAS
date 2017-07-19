@@ -1479,9 +1479,9 @@ int main(int argc, char *argv[])
 	double a=LatCin[0],b=LatCin[1],c=LatCin[2],alph=LatCin[3],bet=LatCin[4],gamm=LatCin[5];
 	for (i=0;i<3;i++) for (j=0;j<3;j++) Orient0_3[i][j] = Orient0[i*3+j];
 	OrientMat2Euler(Orient0_3,Euler0);
-	//~ char rmCommand[4096];
-	//~ sprintf(rmCommand,"rm -rf %s",FileName);
-	//~ system(rmCommand);
+	char rmCommand[4096];
+	sprintf(rmCommand,"rm -rf %s",FileName);
+	system(rmCommand);
 	double **spotsYZO;
 	spotsYZO=allocMatrix(nSpotsBest,8);
 	int nSpotsYZO=nSpotsBest;

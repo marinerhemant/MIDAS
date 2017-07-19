@@ -38,8 +38,8 @@ i=0
 SNr=$( awk '$1 ~ /^StartNr/ { print $2 }' ${paramfile} )
 ENr=$( awk '$1 ~ /^EndNr/ { print $2 }' ${paramfile} )
 RingNrs=$( awk '$1 ~ /^RingThresh/ { print $2 }' ${paramfile} )
-echo "${outfolder}" >> ${seedfolder}/FolderNames.txt
-echo "${pfname}" >> ${seedfolder}/PFNames.txt
+echo "${outfolder}" > ${seedfolder}/FolderNames.txt
+echo "${pfname}" > ${seedfolder}/PFNames.txt
 if [[ ${DOPEAKSEARCH} == 1 ]];
 then
 	for RINGNR in ${RingNrs}
@@ -60,7 +60,7 @@ then
 		echo "RingNumbers $RINGNR" >> $pfname
 		echo $RINGNR >> ${ringnrsfile}
 		i=$((i+1))
-		echo "${ThisParamFileName}" >> ${outfolder}/ParamFileNames.txt
+		echo "${ThisParamFileName}" > ${outfolder}/ParamFileNames.txt
 	done
 	cp ${ringnrsfile} ${seedfolder}/RingInfo.txt
 elif [[ ${DOPEAKSEARCH} == 0 ]];

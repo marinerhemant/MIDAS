@@ -125,13 +125,6 @@ do
         echo "SeedOrientations ${DATADIRECTORY}/Orientations.txt" >> ${THISPARAMFILE}
     fi
     ${PFDIR}/SingleLayerSwift.sh ${DATADIRECTORY}/${THISPARAMFILE} ${FFSEEDORIENTATIONS} ${PROCESSIMAGES} ${nNODES} ${MACHINE_NAME} ${EmailAdd}
-    #~ echo "paramfn datadir" > ${tmpfn}
-	#~ echo "${DATADIRECTORY}/${THISPARAMFILE} ${DATADIRECTORY}" >> ${tmpfn}
-	#~ # Do Processing
-	#~ ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
-		#~ -FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
-		#~ -DoPeakSearch=${PROCESSIMAGES} -FFSeedOrientations=${FFSEEDORIENTATIONS}
-	#~ ${BINFOLDER}/ParseMic ${THISPARAMFILE}
 	cd ${TOPDATADIRECTORY}
 done
 
