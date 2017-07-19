@@ -78,3 +78,7 @@ ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
 
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
 	${PFDIR}/processGrains.swift -SeedFolder=${SeedFolder}
+
+EmailAdd=$7
+echo "The run started with ${cmdname} $@ has finished, please check." | mail -s "MIDAS run finished" ${EmailAdd}
+exit 0

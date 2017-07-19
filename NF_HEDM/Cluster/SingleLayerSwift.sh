@@ -93,3 +93,7 @@ then
 		${BINFOLDER}/ParseMic ${NEW_PARAM_FILE}
 	fi
 fi
+
+EmailAdd=$6
+echo "The run started with ${cmdname} $@ has finished, please check." | mail -s "MIDAS run finished" ${EmailAdd}
+exit 0
