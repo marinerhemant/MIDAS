@@ -10,6 +10,8 @@ echo $1
 if [[ ${#*} > 1 ]]; then
 	cd $2
 fi
+ls -l *.bin
+ls -l /dev/shm/*.bin
 ${BINFOLDER}/IndexerLinuxArgsShm paramstest.txt $1
 ${BINFOLDER}/FitPosOrStrains paramstest.txt $1
 # This was the idea with 2000 jobs
