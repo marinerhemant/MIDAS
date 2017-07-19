@@ -72,7 +72,7 @@ do
 		${PFDIR}/processLayers.swift -ringfile=${SeedFolder}/RingInfo.txt \
 		-startnr=${StartNr} -endnr=${EndNr} -SeedFolder=${SeedFolder} \
 		-DoPeakSearch=${DOPEAKSEARCH}
-	outfolder=`cat ${SeedFolder/FolderNames.txt`
+	outfolder=`cat ${SeedFolder}/FolderNames.txt`
 	cd ${outfolder}
 	pfname=`cat ${SeedFolder}/PFNames.txt`
 	${BINFOLDER}/ProcessGrains ${pfname}
