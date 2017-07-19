@@ -60,7 +60,7 @@ then
 		echo "RingNumbers $RINGNR" >> $pfname
 		echo $RINGNR >> ${ringnrsfile}
 		i=$((i+1))
-		echo "${ThisParamFileName}" > ${outfolder}/ParamFileNames.txt
+		echo "${ThisParamFileName}" >> ${outfolder}/ParamFileNames.txt
 	done
 	cp ${ringnrsfile} ${seedfolder}/RingInfo.txt
 elif [[ ${DOPEAKSEARCH} == 0 ]];
