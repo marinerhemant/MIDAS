@@ -60,11 +60,10 @@ if (dopeaksearch == 1) {
 		foreach i in [startnr:endnr]{
 			file simx<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PeaksPerFile_",i,"_"),suffix=".err">;
 			simx = runPeaks(ringfile, paramfilenamefile, i);
-			simAerr[i] = simx;
-			#~ if (i %% 100 == 0){
-				#~ int simAidx = (i%/100);
-				#~ simAerr[simAidx] = simx;
-			#~ }
+			if (i %% 100 == 0){
+				int simAidx = (i%/100);
+				simAerr[simAidx] = simx;
+			}
 		}
 		foreach Ring2,idx2 in rings {
 			string parameterfilename = paramFileNames[idx2];
