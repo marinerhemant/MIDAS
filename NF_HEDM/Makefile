@@ -37,10 +37,13 @@ orthros: predeport all runsetup
 # Works
 biocluster: predepbio all runsetup
 
-# Works ?
-lcrc_cloud: predeplcrc all runsetup
+# Works
+lcrc_cloud: predeplcrc_cloud all runsetup
 
-# Cori?
+# Works?
+lcrc: predeplcrc all runsetup
+
+# Works
 nersc: predepnersc all runsetup
 
 # Works
@@ -60,6 +63,8 @@ predepbio:
 	./GetPackages.sh bio
 predeplcrc:
 	./GetPackages.sh lcrc
+predeplcrc_cloud:
+	./GetPackages.sh lcrc_cloud
 predepnersc:
 	./GetPackages.sh nersc
 predeppurdue:

@@ -24,22 +24,24 @@ all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting 
 #local:
 local: predeplocal all runsetup
 
-# Need to try orthrosextra
+# Works
 orthros: predeport all runsetup
 
 # Works
 biocluster: predepbio all runsetup
 
-# Works ?
-lcrc_cloud: predeplcrc all runsetup
+# Works
+lcrc_cloud: predeplcrc_cloud all runsetup
 
-# Cori?
+# Works
 nersc: predepnersc all runsetup
 
 # Works
 purdue: predeppurdue all runsetup
 
 lanl: predeplanl all runsetup
+
+lcrc: predeplcrc all runsetup
 
 runsetup:
 	Cluster/setup.sh
@@ -50,6 +52,8 @@ predeport:
 	./GetPackages.sh orthros
 predepbio:
 	./GetPackages.sh bio
+predeplcrc_cloud:
+	./GetPackages.sh lcrc_cloud
 predeplcrc:
 	./GetPackages.sh lcrc
 predepnersc:
