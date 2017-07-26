@@ -98,17 +98,29 @@ static int cmpfunc (const void *a, const void *b){
 	return (int)(1000000.f*ia->angle - 1000000.f*ib->angle);
 }
 
+static inline
+int StartsWith(const char *a, const char *b)
+{
+	if (strncmp(a,b,strlen(b)) == 0) return 1;
+	return 0;
+}
+
 int main(int argc, char* argv[])
 {
-	if (argc < 11){
-		printf("Usage: MatchGrains   OutFileName       state1.txt state2.txt        SGNr   offset[3]"
-		"     matchMode    beamThickness1 beamThickness2    (optional)weights\n");
-		printf("                                    (list of Grains.csv files)            [microns]"
-		"  (next line)     [microns]      [microns]      [degrees and microns]\n");
+	if (argc < 12){
+		printf("Usage: MatchGrains   OutFileName   state1.txt state2.txt"
+		"     SGNr      offset[3]"
+		"     matchMode    beamThickness1 beamThickness2    matchDuplicates    (optional)weights\n");
+		printf("                                (list of Grains.csv files)"
+		"         [microns][3vals]"
+		" (next line)     [microns]      [microns]       binary[0 or 1]  [degrees and microns]\n");
 		printf("MatchMode: \n\t0: Match orientations only\n\t1: Match "
 		"positions only\n\t2: Match according to both orientation and "
 		"position using supplied weights\n");
-		printf("Offset: 1 value each in x(along beam), y(out the door), z(up) directions. Going from State1 to State2.\n");
+		printf("Offset: 1 value each in x(along beam), y(out the door), z(up)"
+		" directions. Going from State1 to State2.\n");
+		printf("stateN.txt can be a file containing a list of Grains.csv files or a Grains.csv file directly.\n");
+		printf("matchDuplicates must be 1 for now.\n");
 		return 1;
 	}
 	clock_t start, end;
@@ -132,10 +144,12 @@ int main(int argc, char* argv[])
 	matchMode = atoi(argv[8]);
 	beamThickness1 = atof(argv[9]);
 	beamThickness2 = atof(argv[10]);
+	int removeDuplicates;
+	removeDuplicates = atoi(argv[11]);
 	double weights[2];
 	if (matchMode == 2){
-		weights[0] = atof(argv[11]);
-		weights[1] = atof(argv[12]);
+		weights[0] = atof(argv[12]);
+		weights[1] = atof(argv[13]);
 	}
 	char aline[4096],bline[4096];
 	FILE *grainsF;
@@ -153,8 +167,29 @@ int main(int argc, char* argv[])
 	double OrientMatrix[9];
 	double QuatTemp[4];
 	int len;
+	int grainsSupplied = 0;
 	while (fgets(aline,4096,f1)!=NULL){
+		if (StartsWith(aline,"%NumGrains")){
+			grainsSupplied = 1;
+		}
 		if (aline[0] == '%') continue;
+		if (grainsSupplied == 1){ // Was supplied a grains file directly.
+			sscanf(aline,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&GrainID,&OrientMatrix[0],
+				&OrientMatrix[1],&OrientMatrix[2],&OrientMatrix[3],&OrientMatrix[4],&OrientMatrix[5],&OrientMatrix[6],
+				&OrientMatrix[7],&OrientMatrix[8],&Pos1[ThisID][0],&Pos1[ThisID][1],&Pos1[ThisID][2]);
+				OrientMat2Quat(OrientMatrix,QuatTemp);
+				Pos1[ThisID][2] += FNr*beamThickness1;
+				Quats1[ThisID][0] = QuatTemp[0];
+				Quats1[ThisID][1] = QuatTemp[1];
+				Quats1[ThisID][2] = QuatTemp[2];
+				Quats1[ThisID][3] = QuatTemp[3];
+				IDs1[ThisID][0] = ThisID;
+				IDs1[ThisID][1] = FNr;
+				IDs1[ThisID][2] = GrainID;
+				ThisID++;
+				continue;
+		}
+		// List of grains file was supplied.
 		if (aline[0] == '#') continue;
 		len = strlen(aline);
 		aline[len-1] = '\0';
@@ -179,13 +214,36 @@ int main(int argc, char* argv[])
 		fclose(grainsF);
 		FNr++;
 	}
+	grainsSupplied = 0;
 	fclose(f1);
 	int totIDs1, totIDs2;
 	totIDs1 = ThisID;
 	FNr = 0;
 	ThisID = 0;
 	while (fgets(aline,4096,f2)!=NULL){
+		if (StartsWith(aline,"%NumGrains")){
+			grainsSupplied = 1;
+		}
 		if (aline[0] == '%') continue;
+		if (grainsSupplied == 1){ // Was supplied a grains file directly.
+			sscanf(aline,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&GrainID,&OrientMatrix[0],
+				&OrientMatrix[1],&OrientMatrix[2],&OrientMatrix[3],&OrientMatrix[4],&OrientMatrix[5],&OrientMatrix[6],
+				&OrientMatrix[7],&OrientMatrix[8],&Pos2[ThisID][0],&Pos2[ThisID][1],&Pos2[ThisID][2]);
+				Pos2[ThisID][0] += offset[0];
+				Pos2[ThisID][1] += offset[1];
+				Pos2[ThisID][2] += offset[2] + FNr*beamThickness2;
+				OrientMat2Quat(OrientMatrix,QuatTemp);
+				Quats2[ThisID][0] = QuatTemp[0];
+				Quats2[ThisID][1] = QuatTemp[1];
+				Quats2[ThisID][2] = QuatTemp[2];
+				Quats2[ThisID][3] = QuatTemp[3];
+				IDs2[ThisID][0] = ThisID;
+				IDs2[ThisID][1] = FNr;
+				IDs2[ThisID][2] = GrainID;
+				ThisID++;
+				continue;
+		}
+		// List of grains file was supplied.
 		if (aline[0] == '#') continue;
 		len = strlen(aline);
 		aline[len-1] = '\0';
@@ -213,6 +271,9 @@ int main(int argc, char* argv[])
 		FNr++;
 	}
 	fclose(f2);
+	end = clock();
+	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
+	printf("Time to read files: %f s.\n",diftotal);
 	totIDs2 = ThisID;
 	int i,j,k;
 	double Q1[4], Q2[4], Axis[3], Angle, ang, **Angles, difflen;
@@ -296,11 +357,13 @@ int main(int argc, char* argv[])
 		if (doneMatrix[posX][posY] == 1){
 			continue;
 		}
-		for (j=0;j<totIDs1;j++){
-			doneMatrix[j][posY] = 1;
-		}
-		for (j=0;j<totIDs2;j++){
-			doneMatrix[posX][j] = 1;
+		if (removeDuplicates == 1){
+			for (j=0;j<totIDs1;j++){
+				doneMatrix[j][posY] = 1;
+			}
+			for (j=0;j<totIDs2;j++){
+				doneMatrix[posX][j] = 1;
+			}
 		}
 		//printf("%d %d %lf\n", SortMatrix[i].x,SortMatrix[i].y,SortMatrix[i].angle);
 		Q1[0] = Quats1[posX][0];
