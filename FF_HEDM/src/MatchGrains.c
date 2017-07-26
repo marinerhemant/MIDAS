@@ -346,7 +346,13 @@ int main(int argc, char* argv[])
 			}
 		}
 	}
+	end = clock();
+	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
+	printf("Time to make bigArray: %f s.\n",diftotal);
 	qsort(SortMatrix,totIDs1*totIDs2,sizeof(struct sortArrayType),cmpfunc);
+	end = clock();
+	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
+	printf("Time to sort bigArray: %f s.\n",diftotal);
 	int posX, posY;
 	double **Matches;
 	Matches = allocMatrix(totIDs2,26);
