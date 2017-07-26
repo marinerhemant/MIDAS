@@ -241,7 +241,7 @@ int main(int arc, char* argv[]){
 			}
 		}
 	}
-	int TotNumberOfBins = 0;
+	long long int TotNumberOfBins = 0;
 	for (rowno = 0 ; rowno < nSpots ; rowno++ ) {  
 		int ringnr = (int) ObsSpots[rowno][5];
 		double eta = ObsSpots[rowno][6];
