@@ -297,7 +297,7 @@ int main(int argc, char* argv[])
 				Q1[1] = Quats1[j][1];
 				Q1[2] = Quats1[j][2];
 				Q1[3] = Quats1[j][3];
-				Angle = GetMisOrientation(Q1,Q2,Axis,&ang,SGNr);
+				Angle = GetMisOrientationAngle(Q1,Q2,&ang,SGNr);
 				Angles[j][i] = ang;
 				SortMatrix[j*totIDs2+i].angle = Angles[j][i];
 				SortMatrix[j*totIDs2+i].x = j;
@@ -339,7 +339,7 @@ int main(int argc, char* argv[])
 				posT1[0] = Pos1[j][0];
 				posT1[1] = Pos1[j][1];
 				posT1[2] = Pos1[j][2];
-				Angle = GetMisOrientation(Q1,Q2,Axis,&ang,SGNr);
+				Angle = GetMisOrientationAngle(Q1,Q2,&ang,SGNr);
 				difflen = Len3d(posT2[0]-posT1[0],posT2[1]-posT1[1],posT2[2]-posT1[2]);
 				Angles[j][i] = ang/weights[0] + difflen/weights[1];
 				SortMatrix[j*totIDs2+i].angle = Angles[j][i];
@@ -383,7 +383,7 @@ int main(int argc, char* argv[])
 		Q2[1] = Quats2[posY][1];
 		Q2[2] = Quats2[posY][2];
 		Q2[3] = Quats2[posY][3];
-		Angle = GetMisOrientation(Q1,Q2,Axis,&ang,SGNr);
+		Angle = GetMisOrientationAngle(Q1,Q2,&ang,SGNr);
 		Matches[counter][0] = IDs2[posY][0];
 		Matches[counter][1] = IDs2[posY][1];
 		Matches[counter][2] = IDs2[posY][2];
