@@ -283,6 +283,9 @@ int main(int argc, char* argv[])
 	SortMatrix = malloc(totIDs1*totIDs2*sizeof(*SortMatrix));
 	int **doneMatrix;
 	doneMatrix = allocMatrixInt(totIDs1,totIDs2);
+	end = clock();
+	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
+	printf("Time to allocate bigArray: %f s.\n",diftotal);
 	if (matchMode == 0){
 		for (i=0;i<totIDs2;i++){
 			Q2[0] = Quats2[i][0];
