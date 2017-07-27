@@ -301,14 +301,11 @@ double GetMisOrientation(double quat1[4], double quat2[4], double axis[3], doubl
 inline
 double GetMisOrientationAngle(double quat1[4], double quat2[4], double *Angle, int NrSymmetries, double Sym[24][4])
 {
-	double q1FR[4], q2FR[4], q1Inv[4], QP[4], MisV[4];
+	double q1FR[4], q2FR[4], QP[4], MisV[4];
 	BringDownToFundamentalRegionSym(quat1,q1FR,NrSymmetries,Sym);
 	BringDownToFundamentalRegionSym(quat2,q2FR,NrSymmetries,Sym);
-	q1Inv[0] = -q1FR[0];
-	q1Inv[1] =  q1FR[1];
-	q1Inv[2] =  q1FR[2];
-	q1Inv[3] =  q1FR[3];
-	QuaternionProduct(q1Inv,q2FR,QP);
+	q1FR[0] = -q1FR[0];
+	QuaternionProduct(q1FR,q2FR,QP);
 	BringDownToFundamentalRegionSym(QP,MisV,NrSymmetries,Sym);
 	if (MisV[0] > 1) MisV[0] = 1;
 	double angle = 2*(acos(MisV[0]))*rad2deg;
