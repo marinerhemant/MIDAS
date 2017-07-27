@@ -111,6 +111,89 @@ void QuaternionProduct(double q[4], double r[4], double Q[4])
 	}
 }
 
+inline
+int MakeSymmetries(int SGNr, double Sym[24][4])
+{
+	int i, j, NrSymmetries;;
+	if (SGNr <= 2){ // Triclinic
+		NrSymmetries = 1;
+		for (i=0;i<NrSymmetries;i++){
+			for (j=0;j<4;j++){
+				Sym[i][j] = TricSym[i][j];
+			}
+		}
+	}else if (SGNr > 2 && SGNr <= 15){  // Monoclinic
+		NrSymmetries = 2;
+		for (i=0;i<NrSymmetries;i++){
+			for (j=0;j<4;j++){
+				Sym[i][j] = MonoSym[i][j];
+			}
+		}
+	}else if (SGNr >= 16 && SGNr <= 74){ // Orthorhombic
+		NrSymmetries = 4;
+		for (i=0;i<NrSymmetries;i++){
+			for (j=0;j<4;j++){
+				Sym[i][j] = OrtSym[i][j];
+			}
+		}
+	}else if (SGNr >= 75 && SGNr <= 142){  // Tetragonal
+		NrSymmetries = 8;
+		for (i=0;i<NrSymmetries;i++){
+			for (j=0;j<4;j++){
+				Sym[i][j] = TetSym[i][j];
+			}
+		}
+	}else if (SGNr >= 143 && SGNr <= 167){ // Trigonal
+		NrSymmetries = 6;
+		for (i=0;i<NrSymmetries;i++){
+			for (j=0;j<4;j++){
+				Sym[i][j] = TrigSym[i][j];
+			}
+		}
+	}else if (SGNr >= 168 && SGNr <= 194){ // Hexagonal
+		NrSymmetries = 12;
+		for (i=0;i<NrSymmetries;i++){
+			for (j=0;j<4;j++){
+				Sym[i][j] = HexSym[i][j];
+			}
+		}
+	}else if (SGNr >= 195 && SGNr <= 230){ // Cubic
+		NrSymmetries = 24;
+		for (i=0;i<NrSymmetries;i++){
+			for (j=0;j<4;j++){
+				Sym[i][j] = CubSym[i][j];
+			}
+		}
+	}
+	return NrSymmetries;
+}
+
+static inline
+void BringDownToFundamentalRegionSym(double QuatIn[4], double QuatOut[4], int NrSymmetries, double Sym[24][4])
+{
+	int i, maxCosRowNr;
+	double qps[NrSymmetries][4], q2[4], qt[4], maxCos=-10000;
+	for (i=0;i<NrSymmetries;i++){
+		q2[0] = Sym[i][0];
+		q2[1] = Sym[i][1];
+		q2[2] = Sym[i][2];
+		q2[3] = Sym[i][3];
+		QuaternionProduct(QuatIn,q2,qt);
+		qps[i][0] = qt[0];
+		qps[i][1] = qt[1];
+		qps[i][2] = qt[2];
+		qps[i][3] = qt[3];
+		if (maxCos < qt[0]){
+			maxCos = qt[0];
+			maxCosRowNr = i;
+		}
+	}
+	QuatOut[0] = qps[maxCosRowNr][0];
+	QuatOut[1] = qps[maxCosRowNr][1];
+	QuatOut[2] = qps[maxCosRowNr][2];
+	QuatOut[3] = qps[maxCosRowNr][3];
+}
+
 static inline
 void BringDownToFundamentalRegion(double QuatIn[4], double QuatOut[4],int SGNr)
 {
@@ -216,17 +299,17 @@ double GetMisOrientation(double quat1[4], double quat2[4], double axis[3], doubl
 }
 
 inline
-double GetMisOrientationAngle(double quat1[4], double quat2[4], double *Angle,int SGNr)
+double GetMisOrientationAngle(double quat1[4], double quat2[4], double *Angle, int NrSymmetries, double Sym[24][4])
 {
 	double q1FR[4], q2FR[4], q1Inv[4], QP[4], MisV[4];
-	BringDownToFundamentalRegion(quat1,q1FR,SGNr);
-	BringDownToFundamentalRegion(quat2,q2FR,SGNr);
+	BringDownToFundamentalRegionSym(quat1,q1FR,NrSymmetries,Sym);
+	BringDownToFundamentalRegionSym(quat2,q2FR,NrSymmetries,Sym);
 	q1Inv[0] = -q1FR[0];
 	q1Inv[1] =  q1FR[1];
 	q1Inv[2] =  q1FR[2];
 	q1Inv[3] =  q1FR[3];
 	QuaternionProduct(q1Inv,q2FR,QP);
-	BringDownToFundamentalRegion(QP,MisV,SGNr);
+	BringDownToFundamentalRegionSym(QP,MisV,NrSymmetries,Sym);
 	if (MisV[0] > 1) MisV[0] = 1;
 	double angle = 2*(acos(MisV[0]))*rad2deg;
 	*Angle = angle;

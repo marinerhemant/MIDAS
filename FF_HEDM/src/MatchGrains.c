@@ -123,7 +123,7 @@ int main(int argc, char* argv[])
 		"positions only\n\t2: Match according to both orientation and "
 		"position using supplied weights\n");
 		printf("Offset: 1 value each in x(along beam), y(out the door), z(up)"
-		" directions. Going from State1 to State2.\n");
+		" directions. Going from State2 to State1.\n");
 		printf("stateN.txt can be a file containing a list of Grains.csv files or a Grains.csv file directly.\n");
 		printf("matchDuplicates must be 1 for now.\n");
 		return 1;
@@ -291,6 +291,10 @@ int main(int argc, char* argv[])
 	end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
 	printf("Time to allocate bigArray: %f s.\n",diftotal);
+	double Sym[24][4];
+	int NrSymmetries;
+	NrSymmetries = MakeSymmetries(SGNr,Sym);
+	//for (i=0;i<NrSymmetries;i++) printf("%d %lf %lf %lf %lf\n",i,Sym[i][0],Sym[i][1],Sym[i][2],Sym[i][3]);
 	if (matchMode == 0){
 		for (i=0;i<totIDs2;i++){
 			Q2[0] = Quats2[i][0];
@@ -302,7 +306,7 @@ int main(int argc, char* argv[])
 				Q1[1] = Quats1[j][1];
 				Q1[2] = Quats1[j][2];
 				Q1[3] = Quats1[j][3];
-				Angle = GetMisOrientationAngle(Q1,Q2,&ang,SGNr);
+				Angle = GetMisOrientationAngle(Q1,Q2,&ang,NrSymmetries,Sym);
 				Angles[j][i] = ang;
 				SortMatrix[j*totIDs2+i].angle = Angles[j][i];
 				SortMatrix[j*totIDs2+i].x = j;
@@ -357,65 +361,70 @@ int main(int argc, char* argv[])
 	end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
 	printf("Time to make bigArray: %f s.\n",diftotal);
-	qsort(SortMatrix,totIDs1*totIDs2,sizeof(struct sortArrayType),cmpfunc);
-	end = clock();
-	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
-	printf("Time to sort bigArray: %f s.\n",diftotal);
 	int posX, posY;
 	double **Matches;
 	Matches = allocMatrix(totIDs2,26);
 	int counter = 0;
-	for (i=0;i<totIDs1*totIDs2;i++){
-		posX = SortMatrix[i].x; // State1
-		posY = SortMatrix[i].y; // State2
-		if (doneMatrix[posX][posY] == 1){
-			continue;
-		}
-		if (removeDuplicates == 1){
+	if (removeDuplicates == 1){
+		qsort(SortMatrix,totIDs1*totIDs2,sizeof(struct sortArrayType),cmpfunc);
+		end = clock();
+		diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
+		printf("Time to sort bigArray: %f s.\n",diftotal);
+		for (i=0;i<totIDs1*totIDs2;i++){
+			posX = SortMatrix[i].x; // State1
+			posY = SortMatrix[i].y; // State2
+			if (doneMatrix[posX][posY] == 1){
+				continue;
+			}
 			for (j=0;j<totIDs1;j++){
 				doneMatrix[j][posY] = 1;
 			}
 			for (j=0;j<totIDs2;j++){
 				doneMatrix[posX][j] = 1;
 			}
+			//printf("%d %d %lf\n", SortMatrix[i].x,SortMatrix[i].y,SortMatrix[i].angle);
+			Q1[0] = Quats1[posX][0];
+			Q1[1] = Quats1[posX][1];
+			Q1[2] = Quats1[posX][2];
+			Q1[3] = Quats1[posX][3];
+			Q2[0] = Quats2[posY][0];
+			Q2[1] = Quats2[posY][1];
+			Q2[2] = Quats2[posY][2];
+			Q2[3] = Quats2[posY][3];
+			Angle = GetMisOrientationAngle(Q1,Q2,&ang,NrSymmetries,Sym);
+			Matches[counter][0] = IDs2[posY][0];
+			Matches[counter][1] = IDs2[posY][1];
+			Matches[counter][2] = IDs2[posY][2];
+			Matches[counter][3] = IDs1[posX][0];
+			Matches[counter][4] = IDs1[posX][1];
+			Matches[counter][5] = IDs1[posX][2];
+			Matches[counter][6] = Quats2[posY][0];
+			Matches[counter][7] = Quats2[posY][1];
+			Matches[counter][8] = Quats2[posY][2];
+			Matches[counter][9] = Quats2[posY][3];
+			Matches[counter][10] = Quats1[posX][0];
+			Matches[counter][11] = Quats1[posX][1];
+			Matches[counter][12] = Quats1[posX][2];
+			Matches[counter][13] = Quats1[posX][3];
+			Matches[counter][14] = Pos2[posY][0];
+			Matches[counter][15] = Pos2[posY][1];
+			Matches[counter][16] = Pos2[posY][2];
+			Matches[counter][17] = Pos1[posX][0];
+			Matches[counter][18] = Pos1[posX][1];
+			Matches[counter][19] = Pos1[posX][2];
+			Matches[counter][20] = Angles[posX][posY];
+			Matches[counter][21] = ang;
+			Matches[counter][22] = Pos2[posY][0] - Pos1[posX][0];
+			Matches[counter][23] = Pos2[posY][1] - Pos1[posX][1];
+			Matches[counter][24] = Pos2[posY][2] - Pos1[posX][2];
+			Matches[counter][25] = Len3d(Matches[counter][22],Matches[counter][23],Matches[counter][24]);
+			counter ++;
 		}
-		//printf("%d %d %lf\n", SortMatrix[i].x,SortMatrix[i].y,SortMatrix[i].angle);
-		Q1[0] = Quats1[posX][0];
-		Q1[1] = Quats1[posX][1];
-		Q1[2] = Quats1[posX][2];
-		Q1[3] = Quats1[posX][3];
-		Q2[0] = Quats2[posY][0];
-		Q2[1] = Quats2[posY][1];
-		Q2[2] = Quats2[posY][2];
-		Q2[3] = Quats2[posY][3];
-		Angle = GetMisOrientationAngle(Q1,Q2,&ang,SGNr);
-		Matches[counter][0] = IDs2[posY][0];
-		Matches[counter][1] = IDs2[posY][1];
-		Matches[counter][2] = IDs2[posY][2];
-		Matches[counter][3] = IDs1[posX][0];
-		Matches[counter][4] = IDs1[posX][1];
-		Matches[counter][5] = IDs1[posX][2];
-		Matches[counter][6] = Quats2[posY][0];
-		Matches[counter][7] = Quats2[posY][1];
-		Matches[counter][8] = Quats2[posY][2];
-		Matches[counter][9] = Quats2[posY][3];
-		Matches[counter][10] = Quats1[posX][0];
-		Matches[counter][11] = Quats1[posX][1];
-		Matches[counter][12] = Quats1[posX][2];
-		Matches[counter][13] = Quats1[posX][3];
-		Matches[counter][14] = Pos2[posY][0];
-		Matches[counter][15] = Pos2[posY][1];
-		Matches[counter][16] = Pos2[posY][2];
-		Matches[counter][17] = Pos1[posX][0];
-		Matches[counter][18] = Pos1[posX][1];
-		Matches[counter][19] = Pos1[posX][2];
-		Matches[counter][20] = Angles[posX][posY];
-		Matches[counter][21] = ang;
-		Matches[counter][22] = Pos2[posY][0] - Pos1[posX][0];
-		Matches[counter][23] = Pos2[posY][1] - Pos1[posX][1];
-		Matches[counter][24] = Pos2[posY][2] - Pos1[posX][2];
-		Matches[counter][25] = Len3d(Matches[counter][22],Matches[counter][23],Matches[counter][24]);
-		counter ++;
+	} else{
+		counter = 0;
+		for (i=0;i<totIDs2;i++){
+			
+		}
 	}
 
 	FILE *outfile = fopen(outfn,"w");
