@@ -19,7 +19,7 @@ BINDIR=bin/
 all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting \
 	mergeoverlaps calcradius findsaturatedpx genmediandark fitgrain tiff2ge\
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking\
-	mapmultdetectors matchgrains
+	mapmultdetectors matchgrains detectormapper integrator
 
 #local:
 local: predeplocal all runsetup
