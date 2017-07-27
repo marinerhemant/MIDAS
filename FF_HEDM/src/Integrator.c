@@ -254,21 +254,14 @@ int main(int argc, char **argv)
 	rewind(fp);
 	fseek(fp,Skip,SEEK_SET);
 	nFrames = sz / SizeFile;
-	printf("Number of eta bins: %d, number of R bins: %d.\n"
-	"Number of frames: %d\n",nEtaBins,nRBins,nFrames);
-	double *Intensities;
-	Intensities = malloc(nEtaBins*nRBins*sizeof(*Intensities));
-	for (i=0;i<nRBins;i++) for (j=0;j<nEtaBins;j++) Intensities[i*nEtaBins + j] = 0;
+	printf("Number of eta bins: %d, number of R bins: %d.\n",nEtaBins,nRBins);
 	long long int Pos;
 	int nPixels, dataPos;
 	struct data ThisVal;
 	long long int nIters = 0;
 	char outfn[4096];
 	FILE *out;
-	end0 = clock();
-	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
-	printf("Time before starting to do the frames:\t%f s.\n",diftotal);
-
+	double Intensity;
 	for (i=0;i<nFrames;i++){
 		printf("Processing frame number: %d of %d.\n",i+1,nFrames);
 		fread(ImageIn,SizeFile,1,fp);
@@ -284,13 +277,14 @@ int main(int argc, char **argv)
 				Pos = j*nEtaBins + k;
 				nPixels = nPxList[2*Pos + 0];
 				dataPos = nPxList[2*Pos + 1];
+				Intensity = 0;
 				for (l=0;l<nPixels;l++){
 					ThisVal = pxList[dataPos + l];
-					Intensities[j*nEtaBins+k] += Image[ThisVal.y*NrPixelsZ + ThisVal.z]*ThisVal.frac;
+					Intensity += Image[ThisVal.y*NrPixelsZ + ThisVal.z]*ThisVal.frac;
 					//printf("%lf\n",ThisVal.frac);
 					nIters ++;
 				}
-				fprintf(out,"%lf\t%lf\t%lf\n",(RBinsLow[j]+RBinsHigh[j])/2,(EtaBinsLow[k]+EtaBinsHigh[k])/2,Intensities[j*nEtaBins+k]);
+				fprintf(out,"%lf\t%lf\t%lf\n",(RBinsLow[j]+RBinsHigh[j])/2,(EtaBinsLow[k]+EtaBinsHigh[k])/2,Intensity);
 			}
 		}
 		fclose(out);
