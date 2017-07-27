@@ -420,7 +420,6 @@ int main(int argc, char* argv[])
 			for (j=0;j<totIDs2;j++){
 				doneMatrix[posX][j] = 1;
 			}
-			//printf("%d %d %lf\n", SortMatrix[i].x,SortMatrix[i].y,SortMatrix[i].angle);
 			Q1[0] = Quats1[posX][0];
 			Q1[1] = Quats1[posX][1];
 			Q1[2] = Quats1[posX][2];

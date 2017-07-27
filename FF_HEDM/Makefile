@@ -144,6 +144,12 @@ processgrains: $(SRCDIR)ProcessGrains.c
 matchgrains: $(SRCDIR)MatchGrains.c
 	$(CC) $(SRCDIR)MatchGrains.c $(SRCDIR)GetMisorientation.c -o $(BINDIR)MatchGrains $(CFLAGS)
 
+detectormapper: $(SRCDIR)DetectorMapper.c
+	$(CC) $(SRCDIR)DetectorMapper.c -o $(BINDIR)DetectorMapper $(CFLAGS)
+
+integrator: $(SRCDIR)Integrator.c
+	$(CC) $(SRCDIR)Integrator.c -o $(BINDIR)Integrator $(CFLAGS)
+
 indexercuda: $(SRCDIR)IndexerRefineNLOPT.cu
 	$(NCC) $(SRCDIR)IndexerRefineNLOPT.cu -o $(BINDIR)Indexer $(NCFLAGS)
 
