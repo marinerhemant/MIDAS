@@ -285,22 +285,29 @@ int main(int argc, char* argv[])
 	int i,j,k;
 	double Q1[4], Q2[4], Axis[3], Angle, ang, **Angles, difflen;
 	double posT1[3], posT2[3];
-	Angles = allocMatrix(totIDs1,totIDs2);
 	struct sortArrayType *SortMatrix;
 	int **doneMatrix;
+	int *BestPosMatrix;
+	double *BestValMatrix;
 	if (removeDuplicates == 1){
+		Angles = allocMatrix(totIDs1,totIDs2);
 		SortMatrix = malloc(totIDs1*totIDs2*sizeof(*SortMatrix));
 		doneMatrix = allocMatrixInt(totIDs1,totIDs2);
 		end = clock();
 		diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
 		printf("Time to allocate bigArray: %f s.\n",diftotal);
+	} else{
+		BestPosMatrix = malloc(totIDs1*sizeof(*BestPosMatrix));
+		BestValMatrix = malloc(totIDs1*sizeof(*BestValMatrix));
 	}
 	double Sym[24][4];
 	int NrSymmetries;
 	NrSymmetries = MakeSymmetries(SGNr,Sym);
 	//for (i=0;i<NrSymmetries;i++) printf("%d %lf %lf %lf %lf\n",i,Sym[i][0],Sym[i][1],Sym[i][2],Sym[i][3]);
+	double minAngle = 360000000, wt;
 	if (matchMode == 0){
 		for (i=0;i<totIDs2;i++){
+			minAngle = 360000000;
 			Q2[0] = Quats2[i][0];
 			Q2[1] = Quats2[i][1];
 			Q2[2] = Quats2[i][2];
@@ -311,17 +318,24 @@ int main(int argc, char* argv[])
 				Q1[2] = Quats1[j][2];
 				Q1[3] = Quats1[j][3];
 				Angle = GetMisOrientationAngle(Q1,Q2,&ang,NrSymmetries,Sym);
-				Angles[j][i] = ang;
 				if (removeDuplicates == 1){
+					Angles[j][i] = ang;
 					SortMatrix[j*totIDs2+i].angle = Angles[j][i];
 					SortMatrix[j*totIDs2+i].x = j;
 					SortMatrix[j*totIDs2+i].y = i;
 					doneMatrix[j][i] = 0;
+				}else{
+					if (ang < minAngle){
+						minAngle = ang;
+						BestPosMatrix[i] = j;
+						BestValMatrix[i] = ang;
+					}
 				}
 			}
 		}
 	}else if (matchMode == 1){
 		for (i=0;i<totIDs2;i++){
+			minAngle = 360000000;
 			posT2[0] = Pos2[i][0];
 			posT2[1] = Pos2[i][1];
 			posT2[2] = Pos2[i][2];
@@ -330,17 +344,24 @@ int main(int argc, char* argv[])
 				posT1[1] = Pos1[j][1];
 				posT1[2] = Pos1[j][2];
 				difflen = Len3d(posT2[0]-posT1[0],posT2[1]-posT1[1],posT2[2]-posT1[2]);
-				Angles[j][i] = difflen;
 				if (removeDuplicates == 1){
+					Angles[j][i] = difflen;
 					SortMatrix[j*totIDs2+i].angle = Angles[j][i];
 					SortMatrix[j*totIDs2+i].x = j;
 					SortMatrix[j*totIDs2+i].y = i;
 					doneMatrix[j][i] = 0;
+				}else{
+					if (difflen < minAngle){
+						minAngle = difflen;
+						BestPosMatrix[i] = j;
+						BestValMatrix[i] = ang;
+					}
 				}
 			}
 		}
 	}else if (matchMode == 2){
 		for (i=0;i<totIDs2;i++){
+			minAngle = 360000000;
 			Q2[0] = Quats2[i][0];
 			Q2[1] = Quats2[i][1];
 			Q2[2] = Quats2[i][2];
@@ -358,12 +379,19 @@ int main(int argc, char* argv[])
 				posT1[2] = Pos1[j][2];
 				Angle = GetMisOrientationAngle(Q1,Q2,&ang,NrSymmetries,Sym);
 				difflen = Len3d(posT2[0]-posT1[0],posT2[1]-posT1[1],posT2[2]-posT1[2]);
-				Angles[j][i] = ang/weights[0] + difflen/weights[1];
+				wt = ang/weights[0] + difflen/weights[1];
 				if (removeDuplicates == 1){
+					Angles[j][i] = wt;
 					SortMatrix[j*totIDs2+i].angle = Angles[j][i];
 					SortMatrix[j*totIDs2+i].x = j;
 					SortMatrix[j*totIDs2+i].y = i;
 					doneMatrix[j][i] = 0;
+				}else{
+					if (wt < minAngle){
+						minAngle = wt;
+						BestPosMatrix[i] = j;
+						BestValMatrix[i] = ang;
+					}
 				}
 			}
 		}
@@ -432,15 +460,8 @@ int main(int argc, char* argv[])
 		}
 	} else{
 		counter = 0;
-		double minAngle = 360;
 		for (i=0;i<totIDs2;i++){
-			minAngle = 360;
-			for (j=0;j<totIDs1;j++){
-				if (Angles[j][i] < minAngle){
-					minAngle = Angles[j][i];
-					posX = j;
-				}
-			}
+			posX = BestPosMatrix[i];
 			posY = i;
 			Q1[0] = Quats1[posX][0];
 			Q1[1] = Quats1[posX][1];
@@ -471,7 +492,7 @@ int main(int argc, char* argv[])
 			Matches[counter][17] = Pos1[posX][0];
 			Matches[counter][18] = Pos1[posX][1];
 			Matches[counter][19] = Pos1[posX][2];
-			Matches[counter][20] = Angles[posX][posY];
+			Matches[counter][20] = BestValMatrix[posY];
 			Matches[counter][21] = ang;
 			Matches[counter][22] = Pos2[posY][0] - Pos1[posX][0];
 			Matches[counter][23] = Pos2[posY][1] - Pos1[posX][1];
