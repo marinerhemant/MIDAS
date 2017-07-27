@@ -348,7 +348,7 @@ int main(int argc, char* argv[])
 				posT1[0] = Pos1[j][0];
 				posT1[1] = Pos1[j][1];
 				posT1[2] = Pos1[j][2];
-				Angle = GetMisOrientationAngle(Q1,Q2,&ang,SGNr);
+				Angle = GetMisOrientationAngle(Q1,Q2,&ang,NrSymmetries,Sym);
 				difflen = Len3d(posT2[0]-posT1[0],posT2[1]-posT1[1],posT2[2]-posT1[2]);
 				Angles[j][i] = ang/weights[0] + difflen/weights[1];
 				SortMatrix[j*totIDs2+i].angle = Angles[j][i];
