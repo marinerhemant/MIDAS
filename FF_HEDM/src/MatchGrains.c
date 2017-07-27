@@ -115,17 +115,19 @@ int main(int argc, char* argv[])
 	if (argc < 12){
 		printf("Usage: MatchGrains   OutFileName   state1.txt state2.txt"
 		"     SGNr      offset[3]"
-		"     matchMode    beamThickness1 beamThickness2    matchDuplicates    (optional)weights\n");
+		"     matchMode    beamThickness1 beamThickness2    removeDuplicates    (optional)weights\n");
 		printf("                                (list of Grains.csv files)"
 		"         [microns][3vals]"
 		" (next line)     [microns]      [microns]       binary[0 or 1]  [degrees and microns]\n");
 		printf("MatchMode: \n\t0: Match orientations only\n\t1: Match "
 		"positions only\n\t2: Match according to both orientation and "
 		"position using supplied weights\n");
-		printf("Offset: 1 value each in x(along beam), y(out the door), z(up)"
+		printf("Offset: \n\tOne value each in x(along beam), y(out the door), z(up)"
 		" directions. Going from State2 to State1.\n");
-		printf("stateN.txt can be a file containing a list of Grains.csv files or a Grains.csv file directly.\n");
-		printf("matchDuplicates must be 1 for now.\n");
+		printf("stateN.txt: \n\tA file containing a list of Grains.csv files or a Grains.csv file directly.\n");
+		printf("removeDuplicates: \n\t0: will not remove any matched grains from database while matching. This is faster "
+			"\n\t   and desirable if multiple grains can be matched to the same grains. eg. if a \n\t   grain breaks up into 2.\n");
+		printf("\t1: will remove any matched grains from database while matching. This is slower.\n");
 		return 1;
 	}
 	clock_t start, end;
@@ -285,12 +287,14 @@ int main(int argc, char* argv[])
 	double posT1[3], posT2[3];
 	Angles = allocMatrix(totIDs1,totIDs2);
 	struct sortArrayType *SortMatrix;
-	SortMatrix = malloc(totIDs1*totIDs2*sizeof(*SortMatrix));
 	int **doneMatrix;
-	doneMatrix = allocMatrixInt(totIDs1,totIDs2);
-	end = clock();
-	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
-	printf("Time to allocate bigArray: %f s.\n",diftotal);
+	if (removeDuplicates == 1){
+		SortMatrix = malloc(totIDs1*totIDs2*sizeof(*SortMatrix));
+		doneMatrix = allocMatrixInt(totIDs1,totIDs2);
+		end = clock();
+		diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
+		printf("Time to allocate bigArray: %f s.\n",diftotal);
+	}
 	double Sym[24][4];
 	int NrSymmetries;
 	NrSymmetries = MakeSymmetries(SGNr,Sym);
@@ -308,10 +312,12 @@ int main(int argc, char* argv[])
 				Q1[3] = Quats1[j][3];
 				Angle = GetMisOrientationAngle(Q1,Q2,&ang,NrSymmetries,Sym);
 				Angles[j][i] = ang;
-				SortMatrix[j*totIDs2+i].angle = Angles[j][i];
-				SortMatrix[j*totIDs2+i].x = j;
-				SortMatrix[j*totIDs2+i].y = i;
-				doneMatrix[j][i] = 0;
+				if (removeDuplicates == 1){
+					SortMatrix[j*totIDs2+i].angle = Angles[j][i];
+					SortMatrix[j*totIDs2+i].x = j;
+					SortMatrix[j*totIDs2+i].y = i;
+					doneMatrix[j][i] = 0;
+				}
 			}
 		}
 	}else if (matchMode == 1){
@@ -325,10 +331,12 @@ int main(int argc, char* argv[])
 				posT1[2] = Pos1[j][2];
 				difflen = Len3d(posT2[0]-posT1[0],posT2[1]-posT1[1],posT2[2]-posT1[2]);
 				Angles[j][i] = difflen;
-				SortMatrix[j*totIDs2+i].angle = Angles[j][i];
-				SortMatrix[j*totIDs2+i].x = j;
-				SortMatrix[j*totIDs2+i].y = i;
-				doneMatrix[j][i] = 0;
+				if (removeDuplicates == 1){
+					SortMatrix[j*totIDs2+i].angle = Angles[j][i];
+					SortMatrix[j*totIDs2+i].x = j;
+					SortMatrix[j*totIDs2+i].y = i;
+					doneMatrix[j][i] = 0;
+				}
 			}
 		}
 	}else if (matchMode == 2){
@@ -351,10 +359,12 @@ int main(int argc, char* argv[])
 				Angle = GetMisOrientationAngle(Q1,Q2,&ang,NrSymmetries,Sym);
 				difflen = Len3d(posT2[0]-posT1[0],posT2[1]-posT1[1],posT2[2]-posT1[2]);
 				Angles[j][i] = ang/weights[0] + difflen/weights[1];
-				SortMatrix[j*totIDs2+i].angle = Angles[j][i];
-				SortMatrix[j*totIDs2+i].x = j;
-				SortMatrix[j*totIDs2+i].y = i;
-				doneMatrix[j][i] = 0;
+				if (removeDuplicates == 1){
+					SortMatrix[j*totIDs2+i].angle = Angles[j][i];
+					SortMatrix[j*totIDs2+i].x = j;
+					SortMatrix[j*totIDs2+i].y = i;
+					doneMatrix[j][i] = 0;
+				}
 			}
 		}
 	}
@@ -422,8 +432,52 @@ int main(int argc, char* argv[])
 		}
 	} else{
 		counter = 0;
+		double minAngle = 360;
 		for (i=0;i<totIDs2;i++){
-			
+			minAngle = 360;
+			for (j=0;j<totIDs1;j++){
+				if (Angles[j][i] < minAngle){
+					minAngle = Angles[j][i];
+					posX = j;
+				}
+			}
+			posY = i;
+			Q1[0] = Quats1[posX][0];
+			Q1[1] = Quats1[posX][1];
+			Q1[2] = Quats1[posX][2];
+			Q1[3] = Quats1[posX][3];
+			Q2[0] = Quats2[posY][0];
+			Q2[1] = Quats2[posY][1];
+			Q2[2] = Quats2[posY][2];
+			Q2[3] = Quats2[posY][3];
+			Angle = GetMisOrientationAngle(Q1,Q2,&ang,NrSymmetries,Sym);
+			Matches[counter][0] = IDs2[posY][0];
+			Matches[counter][1] = IDs2[posY][1];
+			Matches[counter][2] = IDs2[posY][2];
+			Matches[counter][3] = IDs1[posX][0];
+			Matches[counter][4] = IDs1[posX][1];
+			Matches[counter][5] = IDs1[posX][2];
+			Matches[counter][6] = Quats2[posY][0];
+			Matches[counter][7] = Quats2[posY][1];
+			Matches[counter][8] = Quats2[posY][2];
+			Matches[counter][9] = Quats2[posY][3];
+			Matches[counter][10] = Quats1[posX][0];
+			Matches[counter][11] = Quats1[posX][1];
+			Matches[counter][12] = Quats1[posX][2];
+			Matches[counter][13] = Quats1[posX][3];
+			Matches[counter][14] = Pos2[posY][0];
+			Matches[counter][15] = Pos2[posY][1];
+			Matches[counter][16] = Pos2[posY][2];
+			Matches[counter][17] = Pos1[posX][0];
+			Matches[counter][18] = Pos1[posX][1];
+			Matches[counter][19] = Pos1[posX][2];
+			Matches[counter][20] = Angles[posX][posY];
+			Matches[counter][21] = ang;
+			Matches[counter][22] = Pos2[posY][0] - Pos1[posX][0];
+			Matches[counter][23] = Pos2[posY][1] - Pos1[posX][1];
+			Matches[counter][24] = Pos2[posY][2] - Pos1[posX][2];
+			Matches[counter][25] = Len3d(Matches[counter][22],Matches[counter][23],Matches[counter][24]);
+			counter ++;
 		}
 	}
 
