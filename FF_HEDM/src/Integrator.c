@@ -258,7 +258,6 @@ int main(int argc, char **argv)
 	long long int Pos;
 	int nPixels, dataPos;
 	struct data ThisVal;
-	long long int nIters = 0;
 	char outfn[4096];
 	FILE *out;
 	double Intensity;
@@ -281,15 +280,12 @@ int main(int argc, char **argv)
 				for (l=0;l<nPixels;l++){
 					ThisVal = pxList[dataPos + l];
 					Intensity += Image[ThisVal.y*NrPixelsZ + ThisVal.z]*ThisVal.frac;
-					//printf("%lf\n",ThisVal.frac);
-					nIters ++;
 				}
 				fprintf(out,"%lf\t%lf\t%lf\n",(RBinsLow[j]+RBinsHigh[j])/2,(EtaBinsLow[k]+EtaBinsHigh[k])/2,Intensity);
 			}
 		}
 		fclose(out);
 	}
-	printf("Total number of times pixels were visited: %lld\n",nIters);
 	
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
