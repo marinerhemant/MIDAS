@@ -265,8 +265,15 @@ int main(int argc, char **argv)
 	long long int nIters = 0;
 	char outfn[4096];
 	FILE *out;
+	end0 = clock();
+	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
+	printf("Time before starting to do the frames:\t%f s.\n",diftotal);
+
 	for (i=0;i<nFrames;i++){
-		printf("Processing frame number: %d of %d.\n",i+1,nFrames);
+		end0 = clock();
+		diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
+		printf("Processing frame number: %d of %d.\n"
+		"Time taken till now: %lf",i+1,nFrames,diftotal);
 		fread(ImageIn,SizeFile,1,fp);
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 			ImageT[j] = (double)ImageIn[j] - AverageDark[j];
@@ -275,6 +282,10 @@ int main(int argc, char **argv)
 		out = fopen(outfn,"w");
 		fprintf(out,"%Radius(px)\tEta(px)\tIntensity(counts)\n");
 		Transposer(ImageT,NrPixelsY,NrPixelsZ,Image);
+		end0 = clock();
+		diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
+		printf("Processing frame number: %d of %d.\n"
+		"Time taken till now: %lf",i+1,nFrames,diftotal);
 		for (j=0;j<nRBins;j++){
 			for (k=0;k<nEtaBins;k++){
 				Pos = j*nEtaBins + k;
