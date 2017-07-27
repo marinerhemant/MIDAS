@@ -254,7 +254,8 @@ int main(int argc, char **argv)
 	rewind(fp);
 	fseek(fp,Skip,SEEK_SET);
 	nFrames = sz / SizeFile;
-	printf("Number of eta bins: %d, number of R bins: %d.\n",nEtaBins,nRBins);
+	printf("Number of eta bins: %d, number of R bins: %d.\n"
+	"Number of frames: %d\n",nEtaBins,nRBins,nFrames);
 	double *Intensities;
 	Intensities = malloc(nEtaBins*nRBins*sizeof(*Intensities));
 	for (i=0;i<nRBins;i++) for (j=0;j<nEtaBins;j++) Intensities[i*nEtaBins + j] = 0;
@@ -265,11 +266,12 @@ int main(int argc, char **argv)
 	char outfn[4096];
 	FILE *out;
 	for (i=0;i<nFrames;i++){
+		printf("Processing frame number: %d of %d\n.",i+1,nFrames);
 		fread(ImageIn,SizeFile,1,fp);
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 			ImageT[j] = (double)ImageIn[j] - AverageDark[j];
 		}
-		sprintf(outfn,"%s_integrated.csv",imageFN);
+		sprintf(outfn,"%s_integrated_framenr_%d.csv",imageFN,i);
 		out = fopen(outfn,"w");
 		fprintf(out,"Radius(px)\tEta(px)\tIntensity(counts)\n");
 		Transposer(ImageT,NrPixelsY,NrPixelsZ,Image);
