@@ -266,14 +266,14 @@ int main(int argc, char **argv)
 	char outfn[4096];
 	FILE *out;
 	for (i=0;i<nFrames;i++){
-		printf("Processing frame number: %d of %d\n.",i+1,nFrames);
+		printf("Processing frame number: %d of %d.\n",i+1,nFrames);
 		fread(ImageIn,SizeFile,1,fp);
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 			ImageT[j] = (double)ImageIn[j] - AverageDark[j];
 		}
 		sprintf(outfn,"%s_integrated_framenr_%d.csv",imageFN,i);
 		out = fopen(outfn,"w");
-		fprintf(out,"Radius(px)\tEta(px)\tIntensity(counts)\n");
+		fprintf(out,"%Radius(px)\tEta(px)\tIntensity(counts)\n");
 		Transposer(ImageT,NrPixelsY,NrPixelsZ,Image);
 		for (j=0;j<nRBins;j++){
 			for (k=0;k<nEtaBins;k++){
