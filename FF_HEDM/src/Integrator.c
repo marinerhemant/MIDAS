@@ -119,6 +119,31 @@ static inline void Transposer (double *x, int n1, int n2, double *y)
 	}
 }
 
+static inline
+void
+REtaMapper(
+	double Rmin,
+	double EtaMin,
+	int nEtaBins,
+	int nRBins,
+	double EtaBinSize,
+	double RBinSize,
+	double *EtaBinsLow,
+	double *EtaBinsHigh,
+	double *RBinsLow,
+	double *RBinsHigh)
+{
+	int i, j, k, l;
+	for (i=0;i<nEtaBins;i++){
+		EtaBinsLow[i] = EtaBinSize*i      + EtaMin;
+		EtaBinsHigh[i] = EtaBinSize*(i+1) + EtaMin;
+	}
+	for (i=0;i<nRBins;i++){
+		RBinsLow[i] = RBinSize * i      + Rmin;
+		RBinsHigh[i] = RBinSize * (i+1) + Rmin;
+	}
+}
+
 int main(int argc, char **argv)
 {
     clock_t start, end, start0, end0;
@@ -179,6 +204,17 @@ int main(int argc, char **argv)
 			sscanf(aline,"%s %d", dummy, &NrPixelsZ);
 		}
 	}
+
+	nRBins = (int) ceil((RMax-RMin)/RBinSize);
+	nEtaBins = (int)ceil((EtaMax - EtaMin)/EtaBinSize);
+	double *EtaBinsLow, *EtaBinsHigh;
+	double *RBinsLow, *RBinsHigh;
+	EtaBinsLow = malloc(nEtaBins*sizeof(*EtaBinsLow));
+	EtaBinsHigh = malloc(nEtaBins*sizeof(*EtaBinsHigh));
+	RBinsLow = malloc(nRBins*sizeof(*RBinsLow));
+	RBinsHigh = malloc(nRBins*sizeof(*RBinsHigh));
+	REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh);
+
 	int i,j,k,l;
 	double *Image, *ImageT;
 	pixelvalue *ImageIn;
@@ -218,8 +254,6 @@ int main(int argc, char **argv)
 	rewind(fp);
 	fseek(fp,Skip,SEEK_SET);
 	nFrames = sz / SizeFile;
-	nRBins = (int) ceil((RMax-RMin)/RBinSize);
-	nEtaBins = (int)ceil((EtaMax - EtaMin)/EtaBinSize);
 	printf("Number of eta bins: %d, number of R bins: %d.\n",nEtaBins,nRBins);
 	double *Intensities;
 	Intensities = malloc(nEtaBins*nRBins*sizeof(*Intensities));
@@ -228,11 +262,16 @@ int main(int argc, char **argv)
 	int nPixels, dataPos;
 	struct data ThisVal;
 	long long int nIters = 0;
+	char outfn[4096];
+	FILE *out;
 	for (i=0;i<nFrames;i++){
 		fread(ImageIn,SizeFile,1,fp);
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 			ImageT[j] = (double)ImageIn[j] - AverageDark[j];
 		}
+		sprintf(outfn,"%s_integrated.csv",imageFN);
+		out = fopen(outfn,"w");
+		fprintf(out,"Radius(px)\tEta(px)\tIntensity(counts)\n");
 		Transposer(ImageT,NrPixelsY,NrPixelsZ,Image);
 		for (j=0;j<nRBins;j++){
 			for (k=0;k<nEtaBins;k++){
@@ -245,8 +284,11 @@ int main(int argc, char **argv)
 					//printf("%lf\n",ThisVal.frac);
 					nIters ++;
 				}
+				fprintf(out,"%lf\t%lf\t%lf\n",(RBinsLow[j]+RBinsHigh[j])/2,(EtaBinsLow[k]+EtaBinsHigh[k])/2,Intensities[j*nEtaBins+k]);
 			}
 		}
+		
+		fclose(out);
 	}
 	printf("Total number of times pixels were visited: %lld\n",nIters);
 	
