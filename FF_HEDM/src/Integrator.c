@@ -273,19 +273,21 @@ int main(int argc, char **argv)
 		end0 = clock();
 		diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 		printf("Processing frame number: %d of %d.\n"
-		"Time taken till now: %lf",i+1,nFrames,diftotal);
+		"Time before reading image: %lf\n",i+1,nFrames,diftotal);
 		fread(ImageIn,SizeFile,1,fp);
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 			ImageT[j] = (double)ImageIn[j] - AverageDark[j];
 		}
+		end0 = clock();
+		diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
+		printf("Time after reading and background subtraction: %lf\n",i+1,nFrames,diftotal);
 		sprintf(outfn,"%s_integrated_framenr_%d.csv",imageFN,i);
 		out = fopen(outfn,"w");
 		fprintf(out,"%Radius(px)\tEta(px)\tIntensity(counts)\n");
 		Transposer(ImageT,NrPixelsY,NrPixelsZ,Image);
 		end0 = clock();
 		diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
-		printf("Processing frame number: %d of %d.\n"
-		"Time taken till now: %lf",i+1,nFrames,diftotal);
+		printf("Time after transpose: %lf\n",i+1,nFrames,diftotal);
 		for (j=0;j<nRBins;j++){
 			for (k=0;k<nEtaBins;k++){
 				Pos = j*nEtaBins + k;
