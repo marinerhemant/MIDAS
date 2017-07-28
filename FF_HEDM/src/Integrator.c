@@ -158,7 +158,7 @@ int main(int argc, char **argv)
     system("cp Map.bin nMap.bin /dev/shm");
 	int rc = ReadBins();
 	double RMax, RMin, RBinSize, EtaMax, EtaMin, EtaBinSize;
-	int NrPixelsY = 2048, NrPixelsZ = 2048;
+	int NrPixelsY = 2048, NrPixelsZ = 2048, Normalize = 1;
 	int nEtaBins, nRBins;
     char *ParamFN;
     FILE *paramFile;
@@ -197,6 +197,10 @@ int main(int argc, char **argv)
 		str = "NrPixelsZ ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %d", dummy, &NrPixelsZ);
+		}
+		str = "Normalize ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %d", dummy, &Normalize);
 		}
 		str = "NrPixels ";
 		if (StartsWith(aline,str) == 1){
@@ -283,7 +287,7 @@ int main(int argc, char **argv)
 					Intensity += Image[ThisVal.y*NrPixelsZ + ThisVal.z]*ThisVal.frac;
 					totArea += ThisVal.frac;
 				}
-				if (Intensity != 0) Intensity /= totArea;
+				if (Intensity != 0 && Normalize == 1) Intensity /= totArea;
 				fprintf(out,"%lf\t%lf\t%lf\n",(RBinsLow[j]+RBinsHigh[j])/2,(EtaBinsLow[k]+EtaBinsHigh[k])/2,Intensity);
 			}
 		}
