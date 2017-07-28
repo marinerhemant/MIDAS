@@ -288,6 +288,8 @@ int main(int argc, char **argv)
 				if ((RBinsLow[j]+RBinsHigh[j])/2 == 1000.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == 179.5) printf("%lf %lf %d\n",nPixels,EtaBinsLow[k],EtaBinsHigh[k]);
 				if ((RBinsLow[j]+RBinsHigh[j])/2 == 1000.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == 180.5) printf("%lf %lf %d\n",nPixels,EtaBinsLow[k],EtaBinsHigh[k]);
 				if ((RBinsLow[j]+RBinsHigh[j])/2 == 1000.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == 178.5) printf("%lf %lf %d\n",nPixels,EtaBinsLow[k],EtaBinsHigh[k]);
+				if ((RBinsLow[j]+RBinsHigh[j])/2 == 1000.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == 90.5) printf("%lf %lf %d\n",nPixels,EtaBinsLow[k],EtaBinsHigh[k]);
+				if ((RBinsLow[j]+RBinsHigh[j])/2 == 1000.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == -90.5) printf("%lf %lf %d\n",nPixels,EtaBinsLow[k],EtaBinsHigh[k]);
 			}
 		}
 		fclose(out);
