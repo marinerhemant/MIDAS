@@ -282,10 +282,12 @@ int main(int argc, char **argv)
 					Intensity += Image[ThisVal.y*NrPixelsZ + ThisVal.z]*ThisVal.frac;
 				}
 				fprintf(out,"%lf\t%lf\t%lf\n",(RBinsLow[j]+RBinsHigh[j])/2,(EtaBinsLow[k]+EtaBinsHigh[k])/2,Intensity);
-				if ((RBinsLow[j]+RBinsHigh[j])/2 == 1000.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == -179.5) printf("%d\n",nPixels);
-				if ((RBinsLow[j]+RBinsHigh[j])/2 == 1000.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == -180.5) printf("%d\n",nPixels);
-				if ((RBinsLow[j]+RBinsHigh[j])/2 == 1000.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == 179.5) printf("%d\n",nPixels);
-				if ((RBinsLow[j]+RBinsHigh[j])/2 == 1000.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == 178.5) printf("%d\n",nPixels);
+				if ((RBinsLow[j]+RBinsHigh[j])/2 == 1000.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == -178.5) printf(" %lf %d\n",nPixels,-178.5);
+				if ((RBinsLow[j]+RBinsHigh[j])/2 == 1000.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == -179.5) printf(" %lf %d\n",nPixels,-179.5);
+				if ((RBinsLow[j]+RBinsHigh[j])/2 == 1000.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == -180.5) printf("%lf %d\n",nPixels,-180.5);
+				if ((RBinsLow[j]+RBinsHigh[j])/2 == 1000.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == 179.5) printf("%lf %d\n",nPixels,179.5);
+				if ((RBinsLow[j]+RBinsHigh[j])/2 == 1000.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == 180.5) printf("%lf %d\n",nPixels,180.5);
+				if ((RBinsLow[j]+RBinsHigh[j])/2 == 1000.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == 178.5) printf("%lf %d\n",nPixels,178.5);
 			}
 		}
 		fclose(out);
