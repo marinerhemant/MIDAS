@@ -329,6 +329,7 @@ mapperfcn(
 	double Y, Z, Eta, Rt;
 	int i,j,k,l,m,n;
 	double EtaMi, EtaMa, RMi, RMa;
+	double EtaMiOpp[2],EtaMaOpp[2],EtaT;
 	int RChosen[500], EtaChosen[500];
 	int nrRChosen, nrEtaChosen;
 	double EtaMiTr, EtaMaTr;
@@ -358,6 +359,10 @@ mapperfcn(
 			}
 			EtaMi = 1800;
 			EtaMa = -1800;
+			EtaMiOpp[0] = 1800;
+			EtaMiOpp[1] = 1800;
+			EtaMaOpp[0] = -1800;
+			EtaMaOpp[1] = -1800;
 			RMi = 1E8; // In pixels
 			RMa = -1000;
 			// Calculate RMi, RMa, EtaMi, EtaMa
@@ -370,6 +375,8 @@ mapperfcn(
 					Rt = RetVals[1]; // in pixels
 					if (Eta < EtaMi) EtaMi = Eta;
 					if (Eta > EtaMa) EtaMa = Eta;
+					EtaT = Eta - 360; // EtaMiOpp
+					
 					if (Rt < RMi) RMi = Rt;
 					if (Rt > RMa) RMa = Rt;
 				}
@@ -395,7 +402,9 @@ mapperfcn(
 					// First 179....180
 					EtaMiTr = EtaMa;
 					EtaMaTr = 180;
-					if (EtaBinsHigh[k] >= EtaMiTr && EtaBinsLow[k] <= EtaMaTr){
+					if ((EtaBinsHigh[k] >= EtaMiTr       && EtaBinsLow[k] <= EtaMaTr) ||
+						(EtaBinsHigh[k] >= EtaMiTr - 360 && EtaBinsLow[k] <= EtaMaTr - 360) ||
+						(EtaBinsHigh[k] >= EtaMiTr + 360 && EtaBinsLow[k] <= EtaMaTr + 360)){
 						EtaChosen[nrEtaChosen] = k;
 						nrEtaChosen++;
 						continue;
@@ -403,13 +412,17 @@ mapperfcn(
 					// Now -180...-179
 					EtaMiTr = -180;
 					EtaMaTr = EtaMi;
-					if (EtaBinsHigh[k] >= EtaMiTr && EtaBinsLow[k] <= EtaMaTr){
+					if ((EtaBinsHigh[k] >= EtaMiTr       && EtaBinsLow[k] <= EtaMaTr) ||
+						(EtaBinsHigh[k] >= EtaMiTr - 360 && EtaBinsLow[k] <= EtaMaTr - 360) ||
+						(EtaBinsHigh[k] >= EtaMiTr + 360 && EtaBinsLow[k] <= EtaMaTr + 360)){
 						EtaChosen[nrEtaChosen] = k;
 						nrEtaChosen++;
 						continue;
 					}
 				}
-				if (EtaBinsHigh[k] >= EtaMi && EtaBinsLow[k] <= EtaMa){
+				if ((EtaBinsHigh[k] >= EtaMi       && EtaBinsLow[k] <= EtaMa) ||
+					(EtaBinsHigh[k] >= EtaMi - 360 && EtaBinsLow[k] <= EtaMa - 360) ||
+					(EtaBinsHigh[k] >= EtaMi + 360 && EtaBinsLow[k] <= EtaMa + 360)){
 					EtaChosen[nrEtaChosen] = k;
 					nrEtaChosen++;
 				}
