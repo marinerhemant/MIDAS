@@ -386,6 +386,7 @@ mapperfcn(
 					nrRChosen ++;
 				}
 			}
+			if (i== 1000 && j == 517) printf("%lf %lf\n",EtaMi, EtaMa);
 			for (k=0;k<nEtaBins;k++){
 				if (EtaMa - EtaMi > 180){
 					// First 179....180
