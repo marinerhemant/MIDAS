@@ -463,7 +463,7 @@ mapperfcn(
 							Edges[nEdges][1] = YZ[1]+PosMatrix[m][1];
 							if ((i== 1000 && j == 517 && EtaMin == 179.5 && k == 0) ||
 								(i== 1000 && j == 517 && EtaMin ==-180.5 && k == 0))
-								printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+								printf("Pixel Inside %lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 							nEdges++;
 						}
 					}
@@ -472,6 +472,9 @@ mapperfcn(
 							boxEdge[m][1] >= zMin && boxEdge[m][1] <= zMax){
 								Edges[nEdges][0] = boxEdge[m][0];
 								Edges[nEdges][1] = boxEdge[m][1];
+								if ((i== 1000 && j == 517 && EtaMin == 179.5 && k == 0) ||
+									(i== 1000 && j == 517 && EtaMin ==-180.5 && k == 0))
+									printf("Mask Inside %lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 								nEdges ++;
 							}
 					}
