@@ -420,7 +420,7 @@ mapperfcn(
 			yMax = YZ[0] + 0.5;
 			zMin = YZ[1] - 0.5;
 			zMax = YZ[1] + 0.5;
-			if (i== 1000 && j == 517) printf("%lf %lf %lf %lf %lf %lf\n",EtaMi, EtaMa,yMin,yMax,zMin,zMax);
+			//if (i== 1000 && j == 517) printf("%lf %lf %lf %lf %lf %lf\n",EtaMi, EtaMa,yMin,yMax,zMin,zMax);
 			sumNrBins += nrRChosen * nrEtaChosen;
 			//printf("%d %d\n",nrRChosen,nrEtaChosen);
 			// Line Intercepts ordering: RMin: ymin, ymax, zmin, zmax. RMax: ymin, ymax, zmin, zmax
@@ -445,12 +445,12 @@ mapperfcn(
 					boxEdge[3][0] = RetVals[0];
 					boxEdge[3][1] = RetVals[1];
 					nEdges = 0;
-					if ((i== 1000 && j == 517 && EtaMin == 179.5 && k == 0) ||
-					    (i== 1000 && j == 517 && EtaMin ==-180.5 && k == 0)){
-						for (m=0;m<4;m++){
-							printf("%lf %lf\n",boxEdge[m][0],boxEdge[m][1]);
-						}	
-					}
+					//~ if ((i== 1000 && j == 517 && EtaMin == 179.5 && k == 0) ||
+					    //~ (i== 1000 && j == 517 && EtaMin ==-180.5 && k == 0)){
+						//~ for (m=0;m<4;m++){
+							//~ printf("%lf %lf\n",boxEdge[m][0],boxEdge[m][1]);
+						//~ }	
+					//~ }
 					// Now check if any edge of the pixel is within the polar mask
 					for (m=0;m<4;m++){
 						RThis = sqrt((YZ[0]+PosMatrix[m][0])*(YZ[0]+PosMatrix[m][0])+(YZ[1]+PosMatrix[m][1])*(YZ[1]+PosMatrix[m][1]));
@@ -461,6 +461,9 @@ mapperfcn(
 							EtaThis >= EtaMin && EtaThis <= EtaMax){
 							Edges[nEdges][0] = YZ[0]+PosMatrix[m][0];
 							Edges[nEdges][1] = YZ[1]+PosMatrix[m][1];
+							if ((i== 1000 && j == 517 && EtaMin == 179.5 && k == 0) ||
+								(i== 1000 && j == 517 && EtaMin ==-180.5 && k == 0))
+								printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 							nEdges++;
 						}
 					}
