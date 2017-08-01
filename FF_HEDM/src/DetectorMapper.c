@@ -352,9 +352,6 @@ mapperfcn(
 	for (i=0;i<NrPixelsY;i++){
 		//printf("%d %lld %lld %lld %lld\n",i,TotNrOfBins,nrContinued,sumNrBins,nrContinued+TotNrOfBins);fflush(stdout);
 		for (j=0;j<NrPixelsZ;j++){
-			if (i==50 && j==50){
-				//printf("%d %lld %lld %lld %lld\n",i,TotNrOfBins,nrContinued,sumNrBins,nrContinued+TotNrOfBins);fflush(stdout);
-			}
 			EtaMi = 1800;
 			EtaMa = -1800;
 			RMi = 1E8; // In pixels
