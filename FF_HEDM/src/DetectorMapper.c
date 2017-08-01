@@ -617,8 +617,10 @@ mapperfcn(
 					//printf("%lf %d %lf %lf %lf %lf %lf %lf\n",Area,nEdges,RMin, RMax, Rt, EtaMin, EtaMax, Eta);
 					if (i== 1000 && j == 517 && EtaMin == 179.5 && k == 0) printf("%d %lf\n",nEdges,Area);
 					if (i== 1000 && j == 517 && EtaMin ==-180.5 && k == 0) printf("%d %lf\n",nEdges,Area);
-					for (m=0;m<nEdges;m++){
-						printf("%lf %lf %lf\n",EdgesOut[nEdges][0],EdgesOut[nEdges][1],EtaMin);
+					if (i== 1000 && j == 517 && EtaMin == 179.5 && k == 0) {
+						for (m=0;m<nEdges;m++){
+							printf("%lf %lf %lf\n",EdgesOut[nEdges][0],EdgesOut[nEdges][1],EtaMin);
+						}
 					}
 					if (Area < 1E-5){
 						nrContinued++;
