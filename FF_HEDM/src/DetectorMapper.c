@@ -463,9 +463,9 @@ mapperfcn(
 							EtaThis >= EtaMin && EtaThis <= EtaMax){
 							Edges[nEdges][0] = YZ[0]+PosMatrix[m][0];
 							Edges[nEdges][1] = YZ[1]+PosMatrix[m][1];
-							if ((i== 1000 && j == 517 && EtaMin == 179.5 && k == 0) ||
-								(i== 1000 && j == 517 && EtaMin ==-180.5 && k == 0))
-								printf("Pixel Inside %lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+							//~ if ((i== 1000 && j == 517 && EtaMin == 179.5 && k == 0) ||
+								//~ (i== 1000 && j == 517 && EtaMin ==-180.5 && k == 0))
+								//~ printf("Pixel Inside %lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 							nEdges++;
 						}
 					}
@@ -474,9 +474,6 @@ mapperfcn(
 							boxEdge[m][1] >= zMin && boxEdge[m][1] <= zMax){
 								Edges[nEdges][0] = boxEdge[m][0];
 								Edges[nEdges][1] = boxEdge[m][1];
-								if ((i== 1000 && j == 517 && EtaMin == 179.5 && k == 0) ||
-									(i== 1000 && j == 517 && EtaMin ==-180.5 && k == 0))
-									printf("Mask Inside %lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 								nEdges ++;
 							}
 					}
@@ -573,8 +570,8 @@ mapperfcn(
 							zTempMin = -yMin/tan(EtaMax*deg2rad);
 							zTempMax = -yMax/tan(EtaMax*deg2rad);
 						}
-						if (i== 1000 && j == 517 && EtaMin == 179.5 && k == 0) printf("EMax YMax %lf %lf %lf %lf %lf %lf\n",zMin,zMax,zTempMax,yMax,EtaMax,tan(EtaMax*deg2rad));
-						if (i== 1000 && j == 517 && EtaMin ==-180.5 && k == 0) printf("EMax YMax %lf %lf %lf %lf %lf %lf\n",zMin,zMax,zTempMax,yMax,EtaMax,tan(EtaMax*deg2rad));
+						//~ if (i== 1000 && j == 517 && EtaMin == 179.5 && k == 0) printf("EMax YMax %lf %lf %lf %lf %lf %lf\n",zMin,zMax,zTempMax,yMax,EtaMax,tan(EtaMax*deg2rad));
+						//~ if (i== 1000 && j == 517 && EtaMin ==-180.5 && k == 0) printf("EMax YMax %lf %lf %lf %lf %lf %lf\n",zMin,zMax,zTempMax,yMax,EtaMax,tan(EtaMax*deg2rad));
 						if (BETWEEN(zTempMin,zMin,zMax) == 1){
 							Edges[nEdges][0] = yMin;
 							Edges[nEdges][1] = zTempMin;
@@ -630,13 +627,13 @@ mapperfcn(
 					// Now we have all the edges, let's calculate the area.
 					Area = CalcAreaPolygon(EdgesOut,nEdges);
 					//printf("%lf %d %lf %lf %lf %lf %lf %lf\n",Area,nEdges,RMin, RMax, Rt, EtaMin, EtaMax, Eta);
-					if ((i== 1000 && j == 517 && EtaMin == 179.5 && k == 0) ||
-					    (i== 1000 && j == 517 && EtaMin ==-180.5 && k == 0)){
-						printf("%d %lf\n",nEdges,Area);
-						for (m=0;m<nEdges;m++){
-							printf("%lf %lf %lf\n",EdgesOut[m][0],EdgesOut[m][1],EtaMin);
-						}
-					}
+					//~ if ((i== 1000 && j == 517 && EtaMin == 179.5 && k == 0) ||
+					    //~ (i== 1000 && j == 517 && EtaMin ==-180.5 && k == 0)){
+						//~ printf("%d %lf\n",nEdges,Area);
+						//~ for (m=0;m<nEdges;m++){
+							//~ printf("%lf %lf %lf\n",EdgesOut[m][0],EdgesOut[m][1],EtaMin);
+						//~ }
+					//~ }
 					if (Area < 1E-5){
 						nrContinued++;
 						continue;
