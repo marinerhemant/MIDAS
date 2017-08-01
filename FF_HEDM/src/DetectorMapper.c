@@ -329,7 +329,6 @@ mapperfcn(
 	double Y, Z, Eta, Rt;
 	int i,j,k,l,m,n;
 	double EtaMi, EtaMa, RMi, RMa;
-	double EtaMiOpp[2],EtaMaOpp[2],EtaT;
 	int RChosen[500], EtaChosen[500];
 	int nrRChosen, nrEtaChosen;
 	double EtaMiTr, EtaMaTr;
@@ -355,7 +354,6 @@ mapperfcn(
 		for (j=0;j<NrPixelsZ;j++){
 			if (i==50 && j==50){
 				//printf("%d %lld %lld %lld %lld\n",i,TotNrOfBins,nrContinued,sumNrBins,nrContinued+TotNrOfBins);fflush(stdout);
-				
 			}
 			EtaMi = 1800;
 			EtaMa = -1800;
@@ -375,8 +373,6 @@ mapperfcn(
 					Rt = RetVals[1]; // in pixels
 					if (Eta < EtaMi) EtaMi = Eta;
 					if (Eta > EtaMa) EtaMa = Eta;
-					EtaT = Eta - 360; // EtaMiOpp
-					
 					if (Rt < RMi) RMi = Rt;
 					if (Rt > RMa) RMa = Rt;
 				}
