@@ -615,6 +615,8 @@ mapperfcn(
 					// Now we have all the edges, let's calculate the area.
 					Area = CalcAreaPolygon(EdgesOut,nEdges);
 					//printf("%lf %d %lf %lf %lf %lf %lf %lf\n",Area,nEdges,RMin, RMax, Rt, EtaMin, EtaMax, Eta);
+					if (i== 1000 && j == 517 && EtaMin == 179.5 && k == 0) printf("%d %lf\n",nEdges,Area);
+					if (i== 1000 && j == 517 && EtaMin ==-180.5 && k == 0) printf("%d %lf\n",nEdges,Area);
 					if (Area < 1E-5){
 						nrContinued++;
 						continue;
