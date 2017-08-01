@@ -455,8 +455,10 @@ mapperfcn(
 					for (m=0;m<4;m++){
 						RThis = sqrt((YZ[0]+PosMatrix[m][0])*(YZ[0]+PosMatrix[m][0])+(YZ[1]+PosMatrix[m][1])*(YZ[1]+PosMatrix[m][1]));
 						EtaThis = CalcEtaAngle(YZ[0]+PosMatrix[m][0],YZ[1]+PosMatrix[m][1]);
-						if (EtaMin < -180) EtaThis -= 360;
-						if (EtaMax >  180) EtaThis += 360;
+						if (EtaMin < -180 && signVal(EtaThis) != signVal(EtaMin)) EtaThis -= 360;
+						if (EtaMax >  180 && signVal(EtaThis) != signVal(EtaMax)) EtaThis += 360;
+						if ((i== 1000 && j == 517 && EtaMin == 179.5 && k == 0) ||
+							(i== 1000 && j == 517 && EtaMin ==-180.5 && k == 0))
 						if (RThis   >= RMin   && RThis   <= RMax && 
 							EtaThis >= EtaMin && EtaThis <= EtaMax){
 							Edges[nEdges][0] = YZ[0]+PosMatrix[m][0];
