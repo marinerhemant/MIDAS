@@ -357,10 +357,6 @@ mapperfcn(
 			}
 			EtaMi = 1800;
 			EtaMa = -1800;
-			EtaMiOpp[0] = 1800;
-			EtaMiOpp[1] = 1800;
-			EtaMaOpp[0] = -1800;
-			EtaMaOpp[1] = -1800;
 			RMi = 1E8; // In pixels
 			RMa = -1000;
 			// Calculate RMi, RMa, EtaMi, EtaMa
