@@ -289,6 +289,10 @@ int main(int argc, char **argv)
 				}
 				if (Intensity != 0 && Normalize == 1) Intensity /= totArea;
 				fprintf(out,"%lf\t%lf\t%lf\n",(RBinsLow[j]+RBinsHigh[j])/2,(EtaBinsLow[k]+EtaBinsHigh[k])/2,Intensity);
+				if ((RBinsLow[j]+RBinsHigh[j])/2 == 507.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == -177.5) printf("%d %lf %lf %lf\n",nPixels,EtaBinsLow[k],EtaBinsHigh[k],Intensity);
+				if ((RBinsLow[j]+RBinsHigh[j])/2 == 507.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 ==  182.5) printf("%d %lf %lf %lf\n",nPixels,EtaBinsLow[k],EtaBinsHigh[k],Intensity);
+				if ((RBinsLow[j]+RBinsHigh[j])/2 == 507.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 ==  177.5) printf("%d %lf %lf %lf\n",nPixels,EtaBinsLow[k],EtaBinsHigh[k],Intensity);
+				if ((RBinsLow[j]+RBinsHigh[j])/2 == 507.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == -182.5) printf("%d %lf %lf %lf\n",nPixels,EtaBinsLow[k],EtaBinsHigh[k],Intensity);
 			}
 		}
 		fclose(out);
