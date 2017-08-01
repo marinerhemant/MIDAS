@@ -266,7 +266,7 @@ int main(int argc, char **argv)
 	FILE *out;
 	double Intensity, totArea;
 	for (i=0;i<nFrames;i++){
-		printf("Processing frame number: %d of %d.\n",i+1,nFrames);
+		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
 		fread(ImageIn,SizeFile,1,fp);
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 			ImageT[j] = (double)ImageIn[j] - AverageDark[j];
