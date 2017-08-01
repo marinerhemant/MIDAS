@@ -285,10 +285,14 @@ int main(int argc, char **argv)
 				for (l=0;l<nPixels;l++){
 					ThisVal = pxList[dataPos + l];
 					Intensity += Image[ThisVal.y*NrPixelsZ + ThisVal.z]*ThisVal.frac;
+					if ((RBinsLow[j]+RBinsHigh[j])/2 == 507.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == -180) printf("%d %d %lf\n",ThisVal.y,ThisVal.z, ThisVal.frac);
+					if ((RBinsLow[j]+RBinsHigh[j])/2 == 507.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 ==  180) printf("%d %d %lf\n",ThisVal.y,ThisVal.z, ThisVal.frac);
 					totArea += ThisVal.frac;
 				}
 				if (Intensity != 0 && Normalize == 1) Intensity /= totArea;
 				fprintf(out,"%lf\t%lf\t%lf\n",(RBinsLow[j]+RBinsHigh[j])/2,(EtaBinsLow[k]+EtaBinsHigh[k])/2,Intensity);
+				if ((RBinsLow[j]+RBinsHigh[j])/2 == 507.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == -180.0) printf("%d %lf %lf %lf %lf\n",nPixels,EtaBinsLow[k],EtaBinsHigh[k],Intensity,totArea);
+				if ((RBinsLow[j]+RBinsHigh[j])/2 == 507.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 ==  180.0) printf("%d %lf %lf %lf %lf\n",nPixels,EtaBinsLow[k],EtaBinsHigh[k],Intensity,totArea);
 			}
 		}
 		fclose(out);
