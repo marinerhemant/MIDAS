@@ -534,7 +534,7 @@ mapperfcn(
 							}
 						}
 						//EtaMin,Max and yMin,Max
-						if (EtaMin < 1E-5 || fabs(EtaMin)-180 < 1E-5){
+						if (fabs(EtaMin) < 1E-5 || fabs(fabs(EtaMin)-180) < 1E-5){
 							zTempMin = 0;
 							zTempMax = 0;
 						}else{
@@ -551,7 +551,7 @@ mapperfcn(
 							Edges[nEdges][1] = zTempMax;
 							nEdges++;
 						}
-						if (EtaMax < 1E-5 || fabs(EtaMax)-180 < 1E-5){
+						if (fabs(EtaMax) < 1E-5 || fabs(fabs(EtaMax)-180) < 1E-5){
 							zTempMin = 0;
 							zTempMax = 0;
 						}else{
@@ -571,7 +571,7 @@ mapperfcn(
 							nEdges++;
 						}
 						//EtaMin,Max and zMin,Max
-						if (fabs(EtaMin)-90 < 1E-5){
+						if (fabs(fabs(EtaMin)-90) < 1E-5){
 							yTempMin = 0;
 							yTempMax = 0;
 						}else{
@@ -588,7 +588,7 @@ mapperfcn(
 							Edges[nEdges][1] = zMax;
 							nEdges++;
 						}
-						if (fabs(EtaMax)-90 < 1E-5){
+						if (fabs(fabs(EtaMax)-90) < 1E-5){
 							yTempMin = 0;
 							yTempMax = 0;
 						}else{
