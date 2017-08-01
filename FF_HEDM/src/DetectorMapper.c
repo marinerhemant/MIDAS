@@ -558,8 +558,8 @@ mapperfcn(
 							zTempMin = -yMin/tan(EtaMax*deg2rad);
 							zTempMax = -yMax/tan(EtaMax*deg2rad);
 						}
-						if (i== 1000 && j == 517) printf("EMax YMax %lf %lf %lf %lf %lf %lf\n",zMin,zMax,zTempMax,yMax,EtaMax,tan(EtaMax*deg2rad));
-						if (i== 1000 && j == 517) printf("EMax YMax %lf %lf %lf %lf %lf %lf\n",zMin,zMax,zTempMax,yMax,EtaMax,tan(EtaMax*deg2rad));
+						if (i== 1000 && j == 517 && EtaMin == 179.5 && k == 0) printf("EMax YMax %lf %lf %lf %lf %lf %lf\n",zMin,zMax,zTempMax,yMax,EtaMax,tan(EtaMax*deg2rad));
+						if (i== 1000 && j == 517 && EtaMin ==-180.5 && k == 0) printf("EMax YMax %lf %lf %lf %lf %lf %lf\n",zMin,zMax,zTempMax,yMax,EtaMax,tan(EtaMax*deg2rad));
 						if (BETWEEN(zTempMin,zMin,zMax) == 1){
 							Edges[nEdges][0] = yMin;
 							Edges[nEdges][1] = zTempMin;
