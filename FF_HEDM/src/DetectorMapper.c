@@ -454,6 +454,8 @@ mapperfcn(
 							EtaThis >= EtaMin && EtaThis <= EtaMax){
 							Edges[nEdges][0] = YZ[0]+PosMatrix[m][0];
 							Edges[nEdges][1] = YZ[1]+PosMatrix[m][1];
+							if (i== 961 && j == 518 && EtaMin == 180.0 && EtaMax == 185.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+							if (i== 961 && j == 518 && EtaMin ==-180.0 && EtaMax == 175.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 							nEdges++;
 						}
 					}
@@ -462,6 +464,8 @@ mapperfcn(
 							boxEdge[m][1] >= zMin && boxEdge[m][1] <= zMax){
 								Edges[nEdges][0] = boxEdge[m][0];
 								Edges[nEdges][1] = boxEdge[m][1];
+							if (i== 961 && j == 518 && EtaMin == 180.0 && EtaMax == 185.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+							if (i== 961 && j == 518 && EtaMin ==-180.0 && EtaMax == 175.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 								nEdges ++;
 							}
 					}
@@ -473,6 +477,8 @@ mapperfcn(
 							if (BETWEEN(zTemp,zMin,zMax) == 1){
 								Edges[nEdges][0] = yMin;
 								Edges[nEdges][1] = zTemp;
+							if (i== 961 && j == 518 && EtaMin == 180.0 && EtaMax == 185.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+							if (i== 961 && j == 518 && EtaMin ==-180.0 && EtaMax == 175.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 								nEdges++;
 							}
 						}
@@ -481,6 +487,8 @@ mapperfcn(
 							if (BETWEEN(zTemp,zMin,zMax) == 1){
 								Edges[nEdges][0] = yMax;
 								Edges[nEdges][1] = zTemp;
+							if (i== 961 && j == 518 && EtaMin == 180.0 && EtaMax == 185.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+							if (i== 961 && j == 518 && EtaMin ==-180.0 && EtaMax == 175.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 								nEdges++;
 							}
 						}
@@ -489,6 +497,8 @@ mapperfcn(
 							if (BETWEEN(zTemp,zMin,zMax) == 1){
 								Edges[nEdges][0] = yMin;
 								Edges[nEdges][1] = zTemp;
+							if (i== 961 && j == 518 && EtaMin == 180.0 && EtaMax == 185.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+							if (i== 961 && j == 518 && EtaMin ==-180.0 && EtaMax == 175.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 								nEdges++;
 							}
 						}
@@ -497,6 +507,8 @@ mapperfcn(
 							if (BETWEEN(zTemp,zMin,zMax) == 1){
 								Edges[nEdges][0] = yMax;
 								Edges[nEdges][1] = zTemp;
+							if (i== 961 && j == 518 && EtaMin == 180.0 && EtaMax == 185.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+							if (i== 961 && j == 518 && EtaMin ==-180.0 && EtaMax == 175.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 								nEdges++;
 							}
 						}
@@ -506,6 +518,8 @@ mapperfcn(
 							if (BETWEEN(yTemp,yMin,yMax) == 1){
 								Edges[nEdges][0] = yTemp;
 								Edges[nEdges][1] = zMin;
+							if (i== 961 && j == 518 && EtaMin == 180.0 && EtaMax == 185.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+							if (i== 961 && j == 518 && EtaMin ==-180.0 && EtaMax == 175.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 								nEdges++;
 							}
 						}
@@ -514,6 +528,8 @@ mapperfcn(
 							if (BETWEEN(yTemp,yMin,yMax) == 1){
 								Edges[nEdges][0] = yTemp;
 								Edges[nEdges][1] = zMax;
+							if (i== 961 && j == 518 && EtaMin == 180.0 && EtaMax == 185.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+							if (i== 961 && j == 518 && EtaMin ==-180.0 && EtaMax == 175.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 								nEdges++;
 							}
 						}
@@ -522,6 +538,8 @@ mapperfcn(
 							if (BETWEEN(yTemp,yMin,yMax) == 1){
 								Edges[nEdges][0] = yTemp;
 								Edges[nEdges][1] = zMin;
+							if (i== 961 && j == 518 && EtaMin == 180.0 && EtaMax == 185.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+							if (i== 961 && j == 518 && EtaMin ==-180.0 && EtaMax == 175.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 								nEdges++;
 							}
 						}
@@ -530,6 +548,8 @@ mapperfcn(
 							if (BETWEEN(yTemp,yMin,yMax) == 1){
 								Edges[nEdges][0] = yTemp;
 								Edges[nEdges][1] = zMax;
+							if (i== 961 && j == 518 && EtaMin == 180.0 && EtaMax == 185.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+							if (i== 961 && j == 518 && EtaMin ==-180.0 && EtaMax == 175.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 								nEdges++;
 							}
 						}
@@ -544,11 +564,15 @@ mapperfcn(
 						if (BETWEEN(zTempMin,zMin,zMax) == 1){
 							Edges[nEdges][0] = yMin;
 							Edges[nEdges][1] = zTempMin;
+							if (i== 961 && j == 518 && EtaMin == 180.0 && EtaMax == 185.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+							if (i== 961 && j == 518 && EtaMin ==-180.0 && EtaMax == 175.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 							nEdges++;
 						}
 						if (BETWEEN(zTempMax,zMin,zMax) == 1){
 							Edges[nEdges][0] = yMax;
 							Edges[nEdges][1] = zTempMax;
+							if (i== 961 && j == 518 && EtaMin == 180.0 && EtaMax == 185.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+							if (i== 961 && j == 518 && EtaMin ==-180.0 && EtaMax == 175.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 							nEdges++;
 						}
 						if (EtaMax < 1E-5 || fabs(EtaMax)-180 < 1E-5){
@@ -561,12 +585,16 @@ mapperfcn(
 						if (BETWEEN(zTempMin,zMin,zMax) == 1){
 							Edges[nEdges][0] = yMin;
 							Edges[nEdges][1] = zTempMin;
+							if (i== 961 && j == 518 && EtaMin == 180.0 && EtaMax == 185.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+							if (i== 961 && j == 518 && EtaMin ==-180.0 && EtaMax == 175.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 							nEdges++;
 						}
 						if (BETWEEN(zTempMax,zMin,zMax) == 1){
 							Edges[nEdges][0] = yMax;
 							Edges[nEdges][1] = zTempMax;
 							nEdges++;
+							if (i== 961 && j == 518 && EtaMin == 180.0 && EtaMax == 185.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+							if (i== 961 && j == 518 && EtaMin ==-180.0 && EtaMax == 175.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 						}
 						//EtaMin,Max and zMin,Max
 						if (fabs(EtaMin)-90 < 1E-5){
@@ -579,11 +607,15 @@ mapperfcn(
 						if (BETWEEN(yTempMin,yMin,yMax) == 1){
 							Edges[nEdges][0] = yTempMin;
 							Edges[nEdges][1] = zMin;
+							if (i== 961 && j == 518 && EtaMin == 180.0 && EtaMax == 185.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+							if (i== 961 && j == 518 && EtaMin ==-180.0 && EtaMax == 175.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 							nEdges++;
 						}
 						if (BETWEEN(yTempMax,yMin,yMax) == 1){
 							Edges[nEdges][0] = yTempMax;
 							Edges[nEdges][1] = zMax;
+							if (i== 961 && j == 518 && EtaMin == 180.0 && EtaMax == 185.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+							if (i== 961 && j == 518 && EtaMin ==-180.0 && EtaMax == 175.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 							nEdges++;
 						}
 						if (fabs(EtaMax)-90 < 1E-5){
@@ -596,11 +628,15 @@ mapperfcn(
 						if (BETWEEN(yTempMin,yMin,yMax) == 1){
 							Edges[nEdges][0] = yTempMin;
 							Edges[nEdges][1] = zMin;
+							if (i== 961 && j == 518 && EtaMin == 180.0 && EtaMax == 185.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+							if (i== 961 && j == 518 && EtaMin ==-180.0 && EtaMax == 175.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 							nEdges++;
 						}
 						if (BETWEEN(yTempMax,yMin,yMax) == 1){
 							Edges[nEdges][0] = yTempMax;
 							Edges[nEdges][1] = zMax;
+							if (i== 961 && j == 518 && EtaMin == 180.0 && EtaMax == 185.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
+							if (i== 961 && j == 518 && EtaMin ==-180.0 && EtaMax == 175.0) printf("%lf %lf %lf\n",Edges[nEdges][0],Edges[nEdges][1],EtaMin);
 							nEdges++;
 						}
 					}
