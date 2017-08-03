@@ -273,7 +273,7 @@ int main(int argc, char **argv)
 		}
 		sprintf(outfn,"%s_integrated_framenr_%d.csv",imageFN,i);
 		out = fopen(outfn,"w");
-		fprintf(out,"%nEtaBins:\t%d\tnRBins:\t%d\n%Radius(px)\tEta(px)\tIntensity(counts)\n",nEtaBins,nRBins);
+		fprintf(out,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\tEta(px)\tIntensity(counts)\n",nEtaBins,nRBins);
 		Transposer(ImageT,NrPixelsY,NrPixelsZ,Image);
 		for (j=0;j<nRBins;j++){
 			for (k=0;k<nEtaBins;k++){
