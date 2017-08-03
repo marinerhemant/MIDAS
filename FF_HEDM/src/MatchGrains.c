@@ -507,7 +507,7 @@ int main(int argc, char* argv[])
 	"Pos0State2\tPos1State2\tPos2State2\tPos0State1\tPos1State1\tPos2State1\t"
 	"selectionCriteriaVal\tminAngle\tdiffPosX\tdiffPosY\tdiffPosZ\tEuclideanDistt\n");
 	for (i=0;i<totIDs2;i++){
-		for (j=0;j<26;j++) fprintf(outfile,"%lf\t",Matches[i][j]);
+		for (j=0;j<26;j++) fprintf(outfile,"%10.12lf\t",Matches[i][j]);
 		fprintf(outfile,"\n");
 	}
 	end = clock();
