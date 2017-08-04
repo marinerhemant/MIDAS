@@ -1012,6 +1012,7 @@ int main(int argc, char *argv[])
 		SpotsCopy[i] = SpotIDsToIndex[i];
 		//printf("%d %d\n",SpotsCopy[i],SpotIDsToIndex[i]);
 	}
+	printf("%s\n"fnSpIds);
 	fwrite(SpotsCopy,nSpotIDsToIndex*sizeof(int),1,IDs);
 	fclose(IDs);
 	IndexAll = fopen(fnIndexAll,"w");
