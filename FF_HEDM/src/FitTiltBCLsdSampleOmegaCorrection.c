@@ -836,7 +836,6 @@ int main(int argc, char *argv[])
 	//sprintf(FileName,"%s/%s",folder,fn);
 	sprintf(folder,"%s/PeakSearch/%s/",Folder,FileStem);
 	sprintf(FileName,"%s/PeakSearch/%s/Radius_StartNr_%d_EndNr_%d_RingNr_%d.csv",Folder,FileStem,StartNr,EndNr,RingNumbers[0]);
-	printf("Reading file: %s.\n",FileName);
 	
 	char line[5024];
 	
@@ -869,6 +868,7 @@ int main(int argc, char *argv[])
 	if (NewType == 0){
 		fp = fopen(FileName,"r");
 		fgets(line,5000,fp);
+		printf("Reading file: %s.\n",FileName);
 		while (fgets(line,5000,fp) != NULL){
 			sscanf(line,"%lf %s %lf %lf %lf %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %lf %s %s %s %lf",
 				&SpotsInfo[counter][0],dummy,&SpotsInfo[counter][1],&SpotsInfo[counter][2],&SpotsInfo[counter][3],dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,
@@ -878,6 +878,7 @@ int main(int argc, char *argv[])
 		}
 	}else if (NewType == 1){
 		fp = fopen(FileName,"r");
+		printf("Reading file: %s.\n",FileName);
 		fgets(line,5000,fp);
 		while (fgets(line,5000,fp) != NULL){
 			sscanf(line,"%lf %s %lf %lf %lf %s %s %s %s %s %s %s %s %lf %s %lf %s %s %s",
@@ -889,6 +890,7 @@ int main(int argc, char *argv[])
 		char *fltfn = argv[2];
 		FILE *fltfile = fopen(fltfn,"r");
 		fgets(line,5000,fltfile); // Skip header.
+		printf("Reading file: %s.\n",fltfn);
 		double y,z,ome,Rtemp;
 		int IDtemp;
 		while (fgets(line,5000,fltfile) != NULL){
