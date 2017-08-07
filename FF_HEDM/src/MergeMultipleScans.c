@@ -95,7 +95,7 @@ int main(int arc, char* argv[]){
 				outMatr[nLayers*(i-1)+j][1] = readMatr[j][0];
 				outMatr[nLayers*(i-1)+j][2] = spotIDsTillNow + readMatr[j][1];
 				outMatr[nLayers*(i-1)+j][3] = spotIDsTillNow + readMatr[j][2];
-				printf("%d %d\n",readMatr[j][1], readMatr[j][2]);
+				printf("%d %d %d\n",j,readMatr[j][1], readMatr[j][2]);
 			}
 			fflush(stdout);
 			sprintf(extraFN,"%s/ExtraInfo.bin",outpath);
