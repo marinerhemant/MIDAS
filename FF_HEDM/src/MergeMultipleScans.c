@@ -102,7 +102,6 @@ int main(int arc, char* argv[]){
 			fclose(extraFile);
 			for (j=0;j<IDsThisLayer;j++){
 				ReadMatr[j*12+4] = (double) (spotIDsTillNow+1+j);
-				printf("%d\n",spotIDsTillNow+1+j);
 			}
 			fwrite(ReadMatr,IDsThisLayer*12*sizeof(double),1,outFile);
 			spotIDsTillNow += IDsThisLayer;
