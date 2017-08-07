@@ -95,6 +95,7 @@ int main(int arc, char* argv[]){
 				outMatr[nLayers*(i-1)+j][3] = spotIDsTillNow + readMatr[j][2];
 			}
 			printf("%d %d %d %d %d %d\n",nRings,IDsThisLayer,i,readMatr[j][0],spotIDsTillNow + readMatr[j][1],spotIDsTillNow + readMatr[j][2]);
+			fflush(stdout);
 			sprintf(extraFN,"%s/ExtraInfo.bin",outpath);
 			extraFile = fopen(extraFN,"rb");
 			size_t rc = fread(ReadMatr,IDsThisLayer*12*sizeof(double),1,extraFile);
