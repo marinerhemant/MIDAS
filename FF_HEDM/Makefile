@@ -19,7 +19,7 @@ BINDIR=bin/
 all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting \
 	mergeoverlaps calcradius findsaturatedpx genmediandark fitgrain tiff2ge\
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking\
-	mapmultdetectors matchgrains detectormapper integrator
+	mapmultdetectors matchgrains detectormapper integrator mergemultiplescans
 
 #local:
 local: predeplocal all runsetup
@@ -136,6 +136,9 @@ indexer: $(SRCDIR)IndexerLinuxArgsOptimizedShm.c
 
 bindata: $(SRCDIR)SaveBinData.c
 	$(CC) $(SRCDIR)SaveBinData.c -o $(BINDIR)SaveBinData $(CFLAGS)
+
+mergemultiplescans: $(SRCDIR)MergeMultipleScans.c
+	$(CC) $(SRCDIR)MergeMultipleScans.c -o $(BINDIR)MergeMultipleScans $(CFLAGS)
 
 processgrains: $(SRCDIR)ProcessGrains.c
 	$(CC) $(SRCDIR)ProcessGrains.c $(SRCDIR)GetMisorientation.c $(SRCDIR)CalcStrains.c -o \
