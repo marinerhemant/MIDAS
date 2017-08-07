@@ -110,7 +110,7 @@ int main(int arc, char* argv[]){
 	fclose(outFile);
 	sprintf(outFN,"%s/%s/IDsHash.csv",cwd,outdirpath);
 	outFile = fopen(outFN,"w");
-	for (i=0;i<nLayers;i++){
+	for (i=0;i<nLayers*nRings;i++){
 		for (j=0;j<4;j++){
 			fprintf(outFile,"%d\t",outMatr[i][j]);
 		}
