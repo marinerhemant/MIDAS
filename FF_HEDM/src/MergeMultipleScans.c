@@ -91,6 +91,7 @@ int main(int arc, char* argv[]){
 		if (toSkip == 0){
 			IDsThisLayer = readMatr[nRings-1][2];
 			for (j=0;j<nRings;j++){
+				printf("%d %d %d\n",j,readMatr[j][1], readMatr[j][2]);
 				outMatr[nLayers*(i-1)+j][0] = i;
 				outMatr[nLayers*(i-1)+j][1] = readMatr[j][0];
 				outMatr[nLayers*(i-1)+j][2] = spotIDsTillNow + readMatr[j][1];
