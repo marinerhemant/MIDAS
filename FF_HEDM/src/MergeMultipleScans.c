@@ -80,7 +80,7 @@ int main(int arc, char* argv[]){
 			readMatr[j][1] = startID;
 			readMatr[j][2] = endID;
 			printf("%d %d %d ",ringNr,startID,endID);
-			printf("%d %d %d\n",readMatr[j][0],readMatr[j][1],readMatr[j][2];);
+			printf("%d %d %d\n",readMatr[j][0],readMatr[j][1],readMatr[j][2]);
 			j++;
 			if (endID < startID){
 				toSkip = 1;
