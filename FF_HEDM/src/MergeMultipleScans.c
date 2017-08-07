@@ -67,7 +67,7 @@ int main(int arc, char* argv[]){
 	sprintf(outFN,"%s/%s/ExtraInfo.bin",cwd,outdirpath);
 	outFile = fopen(outFN,"wb");
 	double *ReadMatr;
-	ReadMatr = malloc(nRings*1000000);
+	ReadMatr = malloc(nRings*200000);
 	for (i=1;i<=nLayers;i++){
 		sprintf(outpath,"%s/%s/Layer%d/",cwd,outdirpath,i);
 		sprintf(IDsHashFN,"%s/IDsHash.csv",outpath);
