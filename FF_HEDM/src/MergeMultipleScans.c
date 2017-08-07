@@ -79,8 +79,6 @@ int main(int arc, char* argv[]){
 			readMatr[j][0] = ringNr;
 			readMatr[j][1] = startID;
 			readMatr[j][2] = endID;
-			printf("%d %d %d %d ",j,ringNr,startID,endID);
-			printf("%d %d %d\n",readMatr[j][0],readMatr[j][1],readMatr[j][2]);
 			j++;
 			if (endID < startID){
 				toSkip = 1;
@@ -91,12 +89,10 @@ int main(int arc, char* argv[]){
 		if (toSkip == 0){
 			IDsThisLayer = readMatr[nRings-1][2];
 			for (j=0;j<nRings;j++){
-				printf("%d %d %d\n",j,readMatr[j][1], readMatr[j][2]);
 				outMatr[nRings*(i-1)+j][0] = i;
 				outMatr[nRings*(i-1)+j][1] = readMatr[j][0];
 				outMatr[nRings*(i-1)+j][2] = spotIDsTillNow + readMatr[j][1];
 				outMatr[nRings*(i-1)+j][3] = spotIDsTillNow + readMatr[j][2];
-				printf("%d %d %d\n",j,readMatr[j][1], readMatr[j][2]);
 			}
 			fflush(stdout);
 			sprintf(extraFN,"%s/ExtraInfo.bin",outpath);
