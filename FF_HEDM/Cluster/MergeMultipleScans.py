@@ -11,6 +11,7 @@ if len(sys.argv) == 1:
 	print 'To use this code, add the following parameters to the params.txt and then use as'
 	print '\tMergeMultipleScans.py params.txt'
 	print 'Parameters to add: nLayers, PositionsFile, Padding, FltStem, FltExt, OutDirPath'
+	sys.exit(1)
 
 configFile = sys.argv[1]
 nLayers = 163
