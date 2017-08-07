@@ -83,7 +83,9 @@ int main(int arc, char* argv[]){
 				toSkip = 1;
 				break;
 			}
+			printf("%d %d %d %lf\n",ringNr,startID,endID,dSpacing);
 		}
+		continue;
 		fclose(IDsHashFile);
 		if (toSkip == 0){
 			IDsThisLayer = readMatr[nRings-1][2];
