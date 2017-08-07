@@ -7,7 +7,7 @@ from subprocess import call
 
 print "We are going to process the flt files to generate MIDAS input."
 
-if len(sys.argv[1]) == 1:
+if len(sys.argv) == 1:
 	print 'To use this code, add the following parameters to the params.txt and then use as'
 	print '\tMergeMultipleScans.py params.txt'
 	print 'Parameters to add: nLayers, PositionsFile, Padding, FltStem, FltExt, OutDirPath'
