@@ -83,9 +83,7 @@ int main(int arc, char* argv[]){
 				toSkip = 1;
 				break;
 			}
-			printf("%d %d %d %lf\n",ringNr,startID,endID,dSpacing);
 		}
-		continue;
 		fclose(IDsHashFile);
 		if (toSkip == 0){
 			IDsThisLayer = readMatr[nRings-1][2];
@@ -95,6 +93,7 @@ int main(int arc, char* argv[]){
 				outMatr[nLayers*(i-1)+j][2] = spotIDsTillNow + readMatr[j][1];
 				outMatr[nLayers*(i-1)+j][3] = spotIDsTillNow + readMatr[j][2];
 			}
+			printf("%d %d %d %d %d\n",IDsThisLayer,i,readMatr[j][0],spotIDsTillNow + readMatr[j][1],spotIDsTillNow + readMatr[j][2]);
 			sprintf(extraFN,"%s/ExtraInfo.bin",outpath);
 			extraFile = fopen(extraFN,"rb");
 			size_t rc = fread(ReadMatr,IDsThisLayer*12*sizeof(double),1,extraFile);
