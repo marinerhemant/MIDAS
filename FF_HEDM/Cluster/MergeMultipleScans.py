@@ -126,6 +126,7 @@ for line in positions:
 			fparams.write(paramsline)
 	for writeline in ringradii:
 		fparams.write(writeline)
+	fparams.write('NoSaveAll 1\n');
 	fparams.close()
 	# Make shm
 	call([binfolder+'/SaveBinData'])

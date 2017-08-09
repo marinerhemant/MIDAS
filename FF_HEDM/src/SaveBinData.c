@@ -99,7 +99,14 @@ int main(int arc, char* argv[]){
 	int NrOfRings = 0, NoRingNumbers = 0, RingNumbers[MAX_N_RINGS];
 	double omemargin0, etamargin0, rotationstep, RingRadii[MAX_N_RINGS],
 			RingRadiiUser[MAX_N_RINGS], etabinsize, omebinsize;
+	int nosaveall = 0;
 	while (fgets(aline,4096,fileParam)!=NULL){
+        str = "NoSaveAll ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &nosaveall);
+            continue;
+        }
         str = "MarginOme ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -145,7 +152,10 @@ int main(int arc, char* argv[]){
 			continue;
 		}   
 	}
-	int i;
+
+
+	int i,j,k,t;
+
 	for(i=0;i<MAX_N_RINGS;i++){
 		RingRadii[i]=0;
 	}
@@ -174,6 +184,34 @@ int main(int arc, char* argv[]){
 	n_ome_bins = ceil(360.0 / omebinsize);
 	printf("nRings: %d, nEtas: %d, nOmes: %d\n",n_ring_bins,n_eta_bins,n_ome_bins);
 	printf("Total bins: %d\n",n_ring_bins*n_eta_bins*n_ome_bins);
+	
+	// Make SpotsMatrix
+	double *SpotsMat;
+	SpotsMat = malloc(nSpots*9*sizeof(*SpotsMat));
+	for (i=0;i<nSpots;i++){
+		for (j=0;j<9;j++){
+			SpotsMat[i*9+j] = ObsSpots[i][j];
+		}
+	}
+	// Make ExtraInfoSpotMatrix
+	double *ExtraMat;
+	ExtraMat = malloc(nSpots*14*sizeof(*ExtraMat));
+	for (i=0;i<nSpots;i++){
+		for (j=0;j<14;j++){
+			ExtraMat[i*14+j] = AllSpots[i][j];
+		}
+	}
+	char *SpotsFN = "Spots.bin";
+	char *ExtraFN = "ExtraInfo.bin";
+	FILE *SpotsFile = fopen(SpotsFN,"wb");
+	fwrite(SpotsMat,nSpots*9*sizeof(*SpotsMat),1,SpotsFile);
+	FILE *ExtraFile = fopen(ExtraFN,"wb");
+	fwrite(ExtraMat,nSpots*14*sizeof(*ExtraMat),1,ExtraFile);	
+	if (nosaveall == 1){
+		return 0;
+	}
+	
+	// Only continue if wanted to save all.
 	int i1, i2, i3;
 	data = malloc(n_ring_bins * sizeof(data));
 	if (data == NULL ) {
@@ -292,7 +330,6 @@ int main(int arc, char* argv[]){
 	nDataStore = malloc(LengthNDataStore*2*sizeof(*nDataStore));
 	DataStore = malloc(TotNumberOfBins*sizeof(*DataStore));
 	int localCounter = 0, localNDataVal;
-	int j,k,t;
 	long long int Pos;
 	for (i=0;i<n_ring_bins;i++){
 		for (j=0;j<n_eta_bins;j++){
@@ -312,36 +349,12 @@ int main(int arc, char* argv[]){
 		}
 	}
 	
-	// Make SpotsMatrix
-	double *SpotsMat;
-	SpotsMat = malloc(nSpots*9*sizeof(*SpotsMat));
-	for (i=0;i<nSpots;i++){
-		for (j=0;j<9;j++){
-			SpotsMat[i*9+j] = ObsSpots[i][j];
-		}
-	}
-	
-	// Make ExtraInfoSpotMatrix
-	double *ExtraMat;
-	ExtraMat = malloc(nSpots*14*sizeof(*ExtraMat));
-	for (i=0;i<nSpots;i++){
-		for (j=0;j<14;j++){
-			ExtraMat[i*14+j] = AllSpots[i][j];
-		}
-	}
-	
-	char *SpotsFN = "Spots.bin";
-	char *ExtraFN = "ExtraInfo.bin";
 	char *DataFN = "Data.bin";
 	char *nDataFN = "nData.bin";
 	FILE *DataFile = fopen(DataFN,"wb");
 	fwrite(DataStore,TotNumberOfBins*sizeof(*DataStore),1,DataFile);
 	FILE *nDataFile = fopen(nDataFN,"wb");
 	fwrite(nDataStore,LengthNDataStore*2*sizeof(*nDataStore),1,nDataFile);
-	FILE *SpotsFile = fopen(SpotsFN,"wb");
-	fwrite(SpotsMat,nSpots*9*sizeof(*SpotsMat),1,SpotsFile);
-	FILE *ExtraFile = fopen(ExtraFN,"wb");
-	fwrite(ExtraMat,nSpots*14*sizeof(*ExtraMat),1,ExtraFile);
 	end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
     printf("Total Time elapsed: %f s.\n",diftotal);
