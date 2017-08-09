@@ -71,7 +71,7 @@ int main(int arc, char* argv[]){
 	for (i=1;i<=nLayers;i++){
 		sprintf(outpath,"%s/%s/Layer%d/",cwd,outdirpath,i);
 		sprintf(IDsHashFN,"%s/IDsHash.csv",outpath);
-		printf("Processing layer %d out of %d\n",i,nLayers);
+		printf("Processing layer %d out of %d TotalIDsTillNow: %d\n",i,nLayers,spotIDsTillNow);
 		IDsHashFile = fopen(IDsHashFN,"r");
 		toSkip = 0;
 		j=0;
