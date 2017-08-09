@@ -52,6 +52,8 @@ purdue: predeppurdue all runsetup
 # LANL
 lanl: predeplanl all runsetup
 
+stampede: predepstampede all runsetup
+
 runsetup:
 	Cluster/setup.sh
 
@@ -71,6 +73,8 @@ predeppurdue:
 	./GetPackages.sh purdue
 predeplanl:
 	./GetPackages.sh lanl
+predepstampede:
+	./GetPackages.sh stampede
 
 bindircheck:
 	mkdir -p $(BINDIR)

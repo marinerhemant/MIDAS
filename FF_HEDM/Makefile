@@ -43,6 +43,8 @@ lanl: predeplanl all runsetup
 
 lcrc: predeplcrc all runsetup
 
+stampede: predepstampede all runsetup
+
 runsetup:
 	Cluster/setup.sh
 
@@ -62,6 +64,8 @@ predeppurdue:
 	./GetPackages.sh purdue
 predeplanl:
 	./GetPackages.sh lanl
+predepstampede:
+	./GetPackages.sh stampede
 
 cuda: help indexrefinecuda peaks mergeoverlapsgpu fittiltbclsdsample \
 	calcradius mergerings processgrains hkls bindata calibrant findsaturatedpx fittiltx fitwedge
