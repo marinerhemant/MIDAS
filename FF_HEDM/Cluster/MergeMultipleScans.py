@@ -75,6 +75,7 @@ for line in positions:
 	line = line.rstrip()
 	xpos = 1000 * float(line.split('\t')[0])
 	bcall[0] = bcall[0] - xpos/px
+	print bcall
 	filenr = int(line.split('\t')[2])
 	fname = fstem + str(filenr).zfill(padding) + ext
 	pfname2 = configFile + 'Layer' + str(layernr) + "MultiRing.txt"
@@ -132,4 +133,4 @@ for line in positions:
 	layernr = layernr + 1
 
 os.chdir(parentfolder)
-call([binfolder+'MergeMultipleScans',configFile])
+call([binfolder+'/MergeMultipleScans',configFile])
