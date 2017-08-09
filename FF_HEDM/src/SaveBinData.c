@@ -163,28 +163,6 @@ int main(int arc, char* argv[]){
 		RingRadii[RingNumbers[i]] = RingRadiiUser[i];
 	}
 	CalcDistanceIdealRing(ObsSpots,nSpots,RingRadii);
-	int ****data;
-	int ***ndata;
-	int ***maxndata;
-	int n_ring_bins;
-	int n_eta_bins;
-	int n_ome_bins;
-	int *newarray;
-	int *oldarray;
-	int iEta, iOme, iEta0, iOme0;
-	int rowno;
-	double EtaBinSize = etabinsize;
-	double OmeBinSize = omebinsize;
-	int HighestRingNo = 0;
-	for (i = 0 ; i < MAX_N_RINGS ; i++ ) { 
-	  if ( RingRadii[i] != 0) HighestRingNo = i;
-	}
-	n_ring_bins = HighestRingNo;
-	n_eta_bins = ceil(360.0 / etabinsize);
-	n_ome_bins = ceil(360.0 / omebinsize);
-	printf("nRings: %d, nEtas: %d, nOmes: %d\n",n_ring_bins,n_eta_bins,n_ome_bins);
-	printf("Total bins: %d\n",n_ring_bins*n_eta_bins*n_ome_bins);
-	
 	// Make SpotsMatrix
 	double *SpotsMat;
 	SpotsMat = malloc(nSpots*9*sizeof(*SpotsMat));
@@ -212,6 +190,27 @@ int main(int arc, char* argv[]){
 	}
 	
 	// Only continue if wanted to save all.
+	int ****data;
+	int ***ndata;
+	int ***maxndata;
+	int n_ring_bins;
+	int n_eta_bins;
+	int n_ome_bins;
+	int *newarray;
+	int *oldarray;
+	int iEta, iOme, iEta0, iOme0;
+	int rowno;
+	double EtaBinSize = etabinsize;
+	double OmeBinSize = omebinsize;
+	int HighestRingNo = 0;
+	for (i = 0 ; i < MAX_N_RINGS ; i++ ) { 
+	  if ( RingRadii[i] != 0) HighestRingNo = i;
+	}
+	n_ring_bins = HighestRingNo;
+	n_eta_bins = ceil(360.0 / etabinsize);
+	n_ome_bins = ceil(360.0 / omebinsize);
+	printf("nRings: %d, nEtas: %d, nOmes: %d\n",n_ring_bins,n_eta_bins,n_ome_bins);
+	printf("Total bins: %d\n",n_ring_bins*n_eta_bins*n_ome_bins);
 	int i1, i2, i3;
 	data = malloc(n_ring_bins * sizeof(data));
 	if (data == NULL ) {
