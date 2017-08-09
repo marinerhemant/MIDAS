@@ -113,6 +113,7 @@ for line in positions:
 			if "RingRadii" in paramsline:
 				ringradii.append('RingNumbers '+str(ring)+'\n'+paramsline)
 	## Do Merge Multiple rings
+	bcall[0] = bcall[0] + xpos/px
 	f2.close()
 	call([binfolder+'/MergeMultipleRings',pfname2])
 	call(['cp','hkls.csv','InputAll.csv','InputAllExtraInfoFittingAll.csv','SpotsToIndex.csv','IDsHash.csv','Layer'+str(layernr)])
