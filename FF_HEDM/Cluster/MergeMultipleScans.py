@@ -24,6 +24,7 @@ outdir = os.getcwd() +'/Cu_tri_scanning_HEDM'
 pscontent = open(configFile).readlines()
 rings = []
 threshs = []
+bcall = [0,0]
 for line in pscontent:
 	line = [s for s in line.rstrip().split() if s]
 	if len(line) > 0:
@@ -46,6 +47,11 @@ for line in pscontent:
 			ext = line[1]
 		elif line[0] == 'OutDirPath':
 			outdir = os.getcwd() + '/' + line[1]
+		elif line[0] == 'BCAll':
+			bcall[0] = float(line[1])
+			bcall[1] = float(line[2])
+		elif line[0] == 'px':
+			px = float(line[1])
 
 positions = open(positionsFile).readlines()
 call(['mkdir','-p',outdir])
@@ -64,7 +70,8 @@ for line in positions:
 	if line[0] == '%':
 		continue
 	line = line.rstrip()
-	xpos = float(line.split('\t')[0])
+	xpos = 1000 * float(line.split('\t')[0])
+	bcall[0] = bcall[0] - xpos/px
 	filenr = int(line.split('\t')[2])
 	fname = fstem + str(filenr).zfill(padding) + ext
 	pfname2 = configFile + 'Layer' + str(layernr) + "MultiRing.txt"
@@ -87,6 +94,7 @@ for line in positions:
 		f.write("RingToIndex "+str(ring)+'\n')
 		f.write("LowerBoundThreshold " + str(threshs[i])+'\n')
 		f.write("StartFileNr " + str(filenr)+'\n')
+		f.write('BC '+str(bcall[0])+ ' ' + str(bcall[1]) + '\n')
 		f.close()
 		fldr = 'Ring'+str(ring)
 		outfldr = fldr+'/PeakSearch/'+filestem+"_"+str(layernr)
