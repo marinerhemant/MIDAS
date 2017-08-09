@@ -11,10 +11,13 @@ if len(sys.argv) == 1:
 	print 'To use this code, add the following parameters to the params.txt and then use as'
 	print '\tMergeMultipleScans.py params.txt'
 	print 'Parameters to add: nLayers, PositionsFile, Padding, FltStem, FltExt, OutDirPath'
+	print "Give no beam center, but provide a BCAll parameter for the rotation axis at 0,0"
+	print "Positions file MUST have positions in mm."
 	sys.exit(1)
 
 configFile = sys.argv[1]
 nLayers = 163
+parentfolder = os.getcwd()
 positionsFile = os.getcwd() +'/positions.csv'
 padding = 6
 fstem = os.getcwd() + '/flt/peak_'
@@ -127,3 +130,6 @@ for line in positions:
 	call([binfolder+'/SaveBinData'])
 	os.chdir(outdir)
 	layernr = layernr + 1
+
+os.chdir(parentfolder)
+call([binfolder+'MergeMultipleScans',configFile])
