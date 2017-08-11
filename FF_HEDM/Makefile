@@ -138,6 +138,9 @@ hkls: $(SRCDIR)GetHKLList.c
 indexer: $(SRCDIR)IndexerLinuxArgsOptimizedShm.c
 	$(CC) $(SRCDIR)IndexerLinuxArgsOptimizedShm.c -o $(BINDIR)IndexerLinuxArgsShm $(CFLAGS)
 
+indexscanning: $(SRCDIR)IndexScanningHEDM.c
+	$(CC) $(SRCDIR)IndexScanningHEDM.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)IndexScanningHEDM $(CFLAGS)
+
 bindata: $(SRCDIR)SaveBinData.c
 	$(CC) $(SRCDIR)SaveBinData.c -o $(BINDIR)SaveBinData $(CFLAGS)
 
