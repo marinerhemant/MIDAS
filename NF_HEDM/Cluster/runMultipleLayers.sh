@@ -20,7 +20,7 @@ then
   echo "NOTE: run from the folder with the Key.txt, DiffractionSpots.txt, OrientMat.txt and ParametersFile.txt"
   echo "At least the parameters file should be in the folder from where the command is executed."
   echo "The following parameters should NOT be in the ParametersFile.txt file:"
-  echo "RawStartNr, GlobalPosition, MicFileBinary, MicFileText, ReducedFileName, GrainsFile, SeedOrientations, DataDirectory"
+  echo "RawStartNr, GlobalPosition, MicFileBinary, MicFileText, ReducedFileName, GrainsFile, SeedOrientations, DataDirectory, FullSeedFile"
   echo "The following parameters must be present:"  
   echo "OrigFileName, OverallStartNr, GlobalPositionFirstLayer, LayerThickness, WFImages, nDistances, NrFilesPerDistance, TopDataDirectory"
   echo "If WF images were taken, it is assumed there were 10 WF images."  
@@ -36,6 +36,7 @@ PARAMFILE=$1
 EmailAdd=$8
 nNODES=$6
 export nNODES
+MACHINE_NAME=$7
 if [[ ${MACHINE_NAME} == *"edison"* ]]; then
 	echo "We are in NERSC EDISON"
 	hn=$( hostname )
@@ -62,7 +63,6 @@ FFSEEDORIENTATIONS=$2
 PROCESSIMAGES=$3
 STARTLAYERNR=$4
 ENDLAYERNR=$5
-MACHINE_NAME=$7
 STEM=$( awk '$1 ~ /^OrigFileName/ { print $2 }' ${PARAMFILE} )
 CHART=/
 FOLDER=${STEM%$CHART*}
