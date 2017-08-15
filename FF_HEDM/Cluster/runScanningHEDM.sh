@@ -38,7 +38,7 @@ else
 	export intHN
 fi
 outdirpath=$( awk '$1 ~ /^OutDirPath/ { print $2 }' ${1} )
-tar -cvf bin.tar.gz ${outdirpath}/ExtraInfo.bin
+tar -cvzf bin.tar.gz ${outdirpath}/ExtraInfo.bin
 cp bin.tar.gz ${HOME}/swiftwork/bins/.
 nrelements=$( head -n 1 grid.txt )
 GrainsFN=$( awk '$1 ~ /^GrainsFile/ { print $2 }' ${1} )
