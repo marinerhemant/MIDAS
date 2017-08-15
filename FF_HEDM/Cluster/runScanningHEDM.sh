@@ -11,7 +11,7 @@ ${BINFOLDER}/GetHKLList $1
 #${PFDIR}/MergeMultipleScans.py $1
 #${PFDIR}/MakeMeshGridScanning.py
 
-nNODES=${NCPUS}
+nNODES=6
 export nNODES
 MACHINE_NAME=orthrosall
 echo "MACHINE NAME is ${MACHINE_NAME}"
@@ -44,4 +44,4 @@ ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
  ${PFDIR}/processScanningHEDM.swift -ParamsFile=$1 -GrainsFile=${GrainsFN} \
  -nrelements=${nrelements}
 
-${BINDIR}/ProcessGrainsScanningHEDM $1 ${nrelements}
+${BINFOLDER}/ProcessGrainsScanningHEDM $1 ${nrelements}
