@@ -33,6 +33,6 @@ gridfile = open('grid.txt','w')
 gridfile.write(str(nrpoints*nrpoints)+'\n')
 rownr = 0
 for [i,xs] in enumerate(xv):
-	for [j,xval] in xs:
-		gridfile.write(str(xval)+' '+str(yv[i][j])+' '+str(rownr)+'\n')
+	for j in range(len(xs)):
+		gridfile.write(str(xs[j])+' '+str(yv[i][j])+' '+str(rownr)+'\n')
 		rownr = rownr + 1
