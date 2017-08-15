@@ -1411,7 +1411,7 @@ int main(int argc, char *argv[])
 	ErrorIni = malloc(3*sizeof(*ErrorIni));
 	int nSpotsComp;
 	ConcatPosEulLatc(Ini,Pos0,Euler0,LatCin);
-	for (i=0;i<12;i++) printf("%lf\n",Ini);
+	for (i=0;i<12;i++) printf("%lf\n",Ini[i]);
 	CalcAngleErrors(nSpotsYZO,nhkls,nOmeRanges,Ini,spotsYZO,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,
 					MinEta,wedge,chi,SpotsComp,Splist,ErrorIni,&nSpotsComp);
 	printf("Initial error is: %f %f %f\n",ErrorIni[0],ErrorIni[1],ErrorIni[2]);
