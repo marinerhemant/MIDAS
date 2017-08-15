@@ -229,7 +229,7 @@ int main(int argc, char* argv[]){
 	while(fgets(aline,4096,positionsFile)!=NULL){
 		sscanf(aline,"%lf %s",&ptemp,dummy);
 		positions[count] = 1000*ptemp;
-		printf("%s\n",aline);
+		printf("%lf\n",positions[count]);
 		count ++;
 	}
 	fclose(positionsFile);
