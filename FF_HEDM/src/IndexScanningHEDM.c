@@ -228,7 +228,7 @@ int main(int argc, char* argv[]){
 	int count=0;
 	while(fgets(aline,4096,positionsFile)!=NULL){
 		sscanf(aline,"%lf %s",&positions[count],dummy);
-		printf("%s\n"line);
+		printf("%s\n",line);
 		count ++;
 	}
 	fclose(positionsFile);
