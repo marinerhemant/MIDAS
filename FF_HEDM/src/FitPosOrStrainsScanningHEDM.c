@@ -1378,6 +1378,9 @@ int main(int argc, char *argv[])
 		meanRadius += thisRadius;
 		nSpotsBest++;
 	}
+	char rmCommand[4096];
+	sprintf(rmCommand,"rm -rf %s",FileName);
+	system(rmCommand);
 	meanRadius /= nSpotsBest;
 	fclose(BestFile);
 	// We need here, meanRadius, Pos0[3], Orient0[9], LatCin[6], nSpotsBest, 
