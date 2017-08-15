@@ -229,7 +229,6 @@ int main(int argc, char* argv[]){
 	while(fgets(aline,4096,positionsFile)!=NULL){
 		sscanf(aline,"%lf %s",&ptemp,dummy);
 		positions[count] = 1000*ptemp;
-		printf("%lf\n",positions[count]);
 		count ++;
 	}
 	fclose(positionsFile);
@@ -345,11 +344,11 @@ int main(int argc, char* argv[]){
 					bestLayer = k;
 				}
 			}
-			printf("%d %lf\n",bestLayer,xtr);
 			EtaMarg = atand(MargEta/RadThis);
 			if (IDsInfo[bestLayer*nRings+thisRing][0] != 0){
 				startRowNr = IDsInfo[bestLayer*nRings+thisRing][2];
 				endRowNr = IDsInfo[bestLayer*nRings+thisRing][3];
+				printf("%d %d\n",startRowNr,endRowNr);
 				if (IDsInfo[bestLayer*nRings+thisRing][1] != ringNR){
 					printf("IDs order did not match with IDHash.\nExiting.\n");
 					return 1;
