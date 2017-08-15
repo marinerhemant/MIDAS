@@ -8,6 +8,9 @@
 source ${HOME}/.MIDAS/paths
 ${BINFOLDER}/GetHKLList $1
 
+#${PFDIR}/MergeMultipleScans.py $1
+#${PFDIR}/MakeMeshGridScanning.py
+
 nrelements=$( head -n 1 grid.txt )
 GrainsFN=$( awk '$1 ~ /^GrainsFile/ { print $2 }' ${1} )
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites orthrosall \
