@@ -265,7 +265,6 @@ int main(int argc, char* argv[]){
 	AllSpots = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 	check (AllSpots == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
 	int maxID2 = size/(14*sizeof(double));
-	printf("%d %d\n",maxID,maxID2);
 	double **allSpotsYZO;
 	allSpotsYZO = allocMatrix(maxID,9);
 	for (i=0;i<maxID;i++){ // We save YLab ZLab Omega GrainRadius SpotID RingNumber Eta Theta Radius
@@ -311,6 +310,7 @@ int main(int argc, char* argv[]){
 	for (i=0;i<nGrains;i++){
 		for (j=0;j<3;j++) for (k=0;k<3;k++) OM[j][k] = OrientMatrix[j*3 + k];
 		// For this orientation, make spots
+		printf("%lf %lf %d %d\n",Lsd,MinEta,nOmeRanges,nhkls);
 		CalcDiffractionSpots(Lsd,MinEta,OmegaRanges,nOmeRanges,
 			hkls,nhkls,BoxSizes,&nSpots,OM,TheorSpots);
 		printf("nSpots: %d\n",nSpots);
