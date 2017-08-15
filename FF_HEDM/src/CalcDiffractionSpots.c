@@ -240,7 +240,6 @@ CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3], RealType distance, RealType 
         double GCr[3],NGc=sqrt((Gc[0]*Gc[0])+(Gc[1]*Gc[1])+(Gc[2]*Gc[2])),Ds=hkls[indexhkl][3];
         GCr[0]=Ds*Gc[0]/NGc;GCr[1]=Ds*Gc[1]/NGc;GCr[2]=Ds*Gc[2]/NGc;
         double nrhkls = (double)indexhkl*2 + 1;
-        printf("%d %d\n",nspotsPlane,indexhkl);
         for (i=0 ; i<nspotsPlane ; i++) {
             RealType Omega = omegas[i];
             RealType Eta = etas[i];
@@ -272,7 +271,6 @@ CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3], RealType distance, RealType 
                 nrhkls+=1;
                 spotnr++;
             }
-            printf("Spotnr: %d\n",spotnr);
         }
     }
     *nspots = spotnr;
