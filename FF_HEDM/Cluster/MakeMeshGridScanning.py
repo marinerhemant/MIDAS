@@ -32,4 +32,4 @@ nrpoints = len(xv)
 gridfile = open('grid.txt','w')
 gridfile.write(str(nrpoints)+'\n')
 for [i,pos] in enumerate(xv):
-	gridfile.write(str(pos)+' '+str(yv[i])+' '+i+'\n')
+	gridfile.write(str(pos)+' '+str(yv[i])+' '+str(i)+'\n')
