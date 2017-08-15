@@ -15,6 +15,6 @@ string grainsfn = arg("GrainsFile","Grains.csv");
 int nrelements = toInt(arg("nrelements","26569"));
 
 foreach i in [0:nrelements]{
-	file simx<simple_mapper;location="Output"prefix=strcat("IndexRefine_",i,"_"),suffix=".err">;
+	file simx<simple_mapper;location="Output",prefix=strcat("IndexRefine_",i,"_"),suffix=".err">;
 	simx = runIndexRefineScanning(psfn,grainsfn,i);
 }
