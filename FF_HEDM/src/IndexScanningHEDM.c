@@ -348,7 +348,6 @@ int main(int argc, char* argv[]){
 			if (IDsInfo[bestLayer*nRings+thisRing][0] != 0){
 				startRowNr = IDsInfo[bestLayer*nRings+thisRing][2];
 				endRowNr = IDsInfo[bestLayer*nRings+thisRing][3];
-				printf("%d %d\n",startRowNr,endRowNr);
 				if (IDsInfo[bestLayer*nRings+thisRing][1] != ringNR){
 					printf("IDs order did not match with IDHash.\nExiting.\n");
 					return 1;
