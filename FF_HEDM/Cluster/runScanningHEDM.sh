@@ -9,7 +9,7 @@ source ${HOME}/.MIDAS/paths
 ${BINFOLDER}/GetHKLList $1
 
 #${PFDIR}/MergeMultipleScans.py $1
-#${PFDIR}/MakeMeshGridScanning.py
+${PFDIR}/MakeMeshGridScanning.py
 
 nNODES=6
 export nNODES
