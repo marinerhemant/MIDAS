@@ -98,12 +98,12 @@ int main(int arc, char* argv[]){
 			fflush(stdout);
 			sprintf(extraFN,"%s/ExtraInfo.bin",outpath);
 			extraFile = fopen(extraFN,"rb");
-			size_t rc = fread(ReadMatr,IDsThisLayer*12*sizeof(double),1,extraFile);
+			size_t rc = fread(ReadMatr,IDsThisLayer*14*sizeof(double),1,extraFile);
 			fclose(extraFile);
 			for (j=0;j<IDsThisLayer;j++){
-				ReadMatr[j*12+4] = (double) (spotIDsTillNow+1+j);
+				ReadMatr[j*14+4] = (double) (spotIDsTillNow+1+j);
 			}
-			fwrite(ReadMatr,IDsThisLayer*12*sizeof(double),1,outFile);
+			fwrite(ReadMatr,IDsThisLayer*14*sizeof(double),1,outFile);
 			spotIDsTillNow += IDsThisLayer;
 		}
 	}
