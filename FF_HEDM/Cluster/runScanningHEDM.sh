@@ -43,7 +43,7 @@ cd ${outdirpath}
 tar -cvzf bin.tar.gz ExtraInfo.bin
 cp bin.tar.gz ${HOME}/swiftwork/bins/.
 cd ${origdir}
-nrelements=$( head -n 1 grid.txt )
+nrelements=$( wc -l < grid.txt )
 GrainsFN=$( awk '$1 ~ /^GrainsFile/ { print $2 }' ${1} )
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
  ${PFDIR}/processScanningHEDM.swift -ParamsFile=$1 -GrainsFile=${GrainsFN} \
