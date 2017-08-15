@@ -39,7 +39,7 @@ else
 fi
 outdirpath=$( awk '$1 ~ /^OutDirPath/ { print $2 }' ${1} )
 origdir=$( pwd )
-cd ${outdir}
+cd ${outdirpath}
 tar -cvzf bin.tar.gz ExtraInfo.bin
 cp bin.tar.gz ${HOME}/swiftwork/bins/.
 cd ${origdir}
