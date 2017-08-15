@@ -186,7 +186,7 @@ int main(int argc, char* argv[]){
 			sscanf(aline,"%s %s",dummy,outdirpath);
 		} else if (StartsWith(aline,"nLayers ")){
 			sscanf(aline,"%s %d",dummy,&nLayers);
-		} else if (StartsWith(aline,"LattcieConstant ")){
+		} else if (StartsWith(aline,"LatticeConstant ")){
 			sscanf(aline,"%s %lf %lf %lf %lf %lf %lf",dummy,&LatC[0],&LatC[1],&LatC[2],
 				&LatC[3],&LatC[4],&LatC[5]);
 		}
