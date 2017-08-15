@@ -1350,7 +1350,7 @@ int main(int argc, char *argv[])
 	sprintf(header,"%s%s",h1,h2);
 	int nSpID = 0;
 	char FileName[2048],SpotsCompFN[2048];
-	sprintf(FileName,"%s/BestPos_%09d.csv",OutputFolder,posNr);
+	sprintf(FileName,"BestPos_%09d.csv",posNr);
 	int nSpotsBest=0,*spotIDS;
 	spotIDS = malloc(MaxNSpotsBest*sizeof(*spotIDS));
 	FILE *BestFile;
