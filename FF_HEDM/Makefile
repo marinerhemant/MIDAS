@@ -19,7 +19,8 @@ BINDIR=bin/
 all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting \
 	mergeoverlaps calcradius findsaturatedpx genmediandark fitgrain tiff2ge\
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking\
-	mapmultdetectors matchgrains detectormapper integrator mergemultiplescans
+	mapmultdetectors matchgrains detectormapper integrator mergemultiplescans \
+	fitposorstrainsscanning indexscanning
 
 #local:
 local: predeplocal all runsetup
@@ -93,6 +94,10 @@ fittiltbclsdsample: $(SRCDIR)FitTiltBCLsdSampleOmegaCorrection.c
 
 fitposorstrains: $(SRCDIR)FitPosOrStrains.c
 	$(CC) $(SRCDIR)FitPosOrStrains.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitPosOrStrains $(CFLAGS) \
+	$(CFLAGSNLOPT) 
+
+fitposorstrainsscanning: $(SRCDIR)FitPosOrStrainsScanningHEDM.c
+	$(CC) $(SRCDIR)FitPosOrStrainsScanningHEDM.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitPosOrStrainsScanningHEDM $(CFLAGS) \
 	$(CFLAGSNLOPT) 
 
 peaksfitting: $(SRCDIR)PeaksFittingPerFile.c

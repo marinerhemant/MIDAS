@@ -19,6 +19,8 @@
 //  16-18: Ome y z corrected without wedge till tilts spacial distortion
 //  19-21: IA, LenDiff, OmeDiff
 
+// TODO!!!!!!!!!!! -- IF SCANNING HEDM, FIX POSITION, OPTIMIZE REST
+
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
@@ -1132,6 +1134,7 @@ int main(int argc, char *argv[])
     char *ParamFN;
     FILE *fileParam;
     ParamFN = argv[1];
+    int posNr = atoi(argv[2]);
     char aline[1000];
     fileParam = fopen(ParamFN,"r");
     char *str, dummy[1000],outfolder[1000],spotsfilename[1000],inputfilename[1000];
@@ -1276,21 +1279,7 @@ int main(int argc, char *argv[])
         }
 	}
 	fclose(fileParam);
-	int SpId = atoi(argv[2]);
-	char *SpFN = "SpotsToIndex.csv";
-	FILE *SpFile = fopen(SpFN,"r");
-	int rowNr = 0;
-	int ThisID;
-	int count = 0;
 	char line[5024];
-	while (fgets(line,5000,SpFile)!=NULL){
-		sscanf(line,"%d",&ThisID);
-		if (ThisID == SpId){
-			rowNr = count;
-			break;
-		}
-		count++;
-	}
 	double MaxTtheta = rad2deg*atan(MaxRingRad/Lsd);
 	if (nOmeRanges != nBoxSizes){printf("Number of omega ranges and number of box sizes don't match. Exiting!\n");return 1;}
 	double MargOme=0.01,MargPos=Rsample,MargPos2=Rsample/2,MargOme2=2,chi=0;
@@ -1318,7 +1307,6 @@ int main(int argc, char *argv[])
 				hkls[nhkls][4] = tht;
 				hkls[nhkls][5] = RingRadii[i];
 				hkls[nhkls][6] = RingNumbers[i];
-				//for (j=0;j<7;j++) printf("%f ",hkls[nhkls][j]); printf("\n");
 				nhkls++;
 			}
 		}
@@ -1352,8 +1340,8 @@ int main(int argc, char *argv[])
 	}
 	int tc2 = munmap(AllSpots,size);
 	int nrSpIds=1;
-	char OutFN[1024],OrigOutFN[1024];
-	FILE *OutFNf, *OrigOutFNf;
+	char OutFN[1024];
+	FILE *OutFNf;
 	double OrientsOrig[nrSpIds][10],PositionsOrig[nrSpIds][4],ErrorsOrig[nrSpIds][4],
 		 OrientsFit[nrSpIds][10],PositionsFit[nrSpIds][4],StrainsFit[nrSpIds][7],ErrorsFin[nrSpIds][4];
 	char *h1 = "SpotID,YObsCorrPos,ZObsCorrPos,OmegaObsCorrPos,G1Obs,G2Obs,G3Obs,YExp,ZExp,OmegaExp,G1Exp,G2Exp,G3Exp,";
@@ -1361,119 +1349,41 @@ int main(int argc, char *argv[])
 	char header[2048];
 	sprintf(header,"%s%s",h1,h2);
 	int nSpID = 0;
-	printf("Spot ID being processed: %d.\n",SpId);
 	char FileName[2048],SpotsCompFN[2048];
-	sprintf(FileName,"%s/BestPos_%09d.csv",OutputFolder,SpId);
+	sprintf(FileName,"%s/BestPos_%09d.csv",OutputFolder,posNr);
 	int nSpotsBest=0,*spotIDS;
 	spotIDS = malloc(MaxNSpotsBest*sizeof(*spotIDS));
 	FILE *BestFile;
 	BestFile = fopen(FileName,"r");
 	if (BestFile == NULL){
 		printf("The BestPos file did not exist. Exiting.\n");
-		char KeyFN[1024];
-		sprintf(KeyFN,"%s/Key.bin",ResultFolder);
-		int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-		if (resultKeyFN <= 0){
-			printf("Could not open output file.\n");
-			return 1;
-		}
-		int SizeKeyFile 		= 2  * sizeof(int);
-		int OffStKeyFile 		= SizeKeyFile * rowNr;
-		int KeyInfo[2] = {0, 0};
-		int rc = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
-	    if (rc < 0){
-			printf("Could not write to output file.\n");
-			return 1;
-		}
 		return 0;
 	}
 	fseek(BestFile,0L,SEEK_END);
 	int sz = ftell(BestFile);
 	if (sz == 0){
 		printf("The BestPos file did not exist. Exiting.\n");
-		char KeyFN[1024];
-		sprintf(KeyFN,"%s/Key.bin",ResultFolder);
-		int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-		if (resultKeyFN <= 0){
-			printf("Could not open output file.\n");
-			return 1;
-		}
-		int SizeKeyFile 		= 2  * sizeof(int);
-		int OffStKeyFile 		= SizeKeyFile * rowNr;
-		int KeyInfo[2] = {0, 0};
-		int rc = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
-	    if (rc < 0){
-			printf("Could not write to output file.\n");
-			return 1;
-		}
 		return 0;
 	}
 	rewind(BestFile);
 	double Orient0[9], Pos0[3], IA0, Euler0[3], Orient0_3[3][3],NrExpected,NrObserved,meanRadius=0,thisRadius,completeness;
-	
-	if (GrainTracking == 0){
-		fgets(line,5000,BestFile);
-		fgets(line,5000,BestFile);
-		fgets(line,5000,BestFile);
-		sscanf(line,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf",
-				&IA0,&Orient0[0],&Orient0[1],&Orient0[2],&Orient0[3],&Orient0[4],&Orient0[5],
-				&Orient0[6],&Orient0[7],&Orient0[8],&Pos0[0],&Pos0[1],&Pos0[2],&NrExpected,&NrObserved);
-		completeness = NrObserved/NrExpected;
-		double dummy1,dummy2,dummy3,dummy4,dummy5,dummy6,dummy7,dummy8,dummy9,dummy10,dummy11,dummy12,dummy13,dummy14,dummy15,TempID;
-		double Ytempr, Ztempr, EtaTempr, MaxRadTot=-100;
-		int nSpotsRad = 0;
-		while (fgets(line,5000,BestFile) != NULL){
-			sscanf(line,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf,",&dummy1,&Ytempr,
-				&dummy3,&dummy4,&Ztempr,&dummy6,&dummy7,&dummy8,&dummy9,&dummy10,&dummy11,&thisRadius,&dummy13,&TempID,
-				&dummy14,&dummy15);
-			if (dummy1 >= 0){
-				if (TopLayer == 1){
-					EtaTempr = CalcEtaAngle(Ytempr,Ztempr);
-					if (EtaTempr > 90){
-						meanRadius += thisRadius;
-						nSpotsRad++;
-						if (TakeGrainMax == 1){
-							if (thisRadius > MaxRadTot){
-								MaxRadTot = thisRadius;
-							}
-						}
-					}
-				}else{
-					meanRadius += thisRadius;
-					nSpotsRad++;
-					if (TakeGrainMax == 1){
-						if (thisRadius > MaxRadTot){
-							MaxRadTot = thisRadius;
-						}
-					}
-				}
-				spotIDS[nSpotsBest] = (int)TempID;
-				nSpotsBest++;
-			}
-		}
-		meanRadius /= nSpotsRad;
-		if (TakeGrainMax == 1){
-			meanRadius = MaxRadTot;
-		}
-	} else if (GrainTracking == 1){
-		fgets(line,5000,BestFile);
-		fgets(line,5000,BestFile);
-		sscanf(line,"%lf, %lf, %lf, %lf, %lf, %lf",&LatCin[0],&LatCin[1],
-			&LatCin[2],&LatCin[3],&LatCin[4],&LatCin[5]);
-		fgets(line,5000,BestFile);
-		sscanf(line,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf",
-				&completeness,&Orient0[0],&Orient0[1],&Orient0[2],&Orient0[3],
-				&Orient0[4],&Orient0[5],&Orient0[6],&Orient0[7],&Orient0[8],
-				&Pos0[0],&Pos0[1],&Pos0[2]);
-		while (fgets(line,5000,BestFile) != NULL){
-			sscanf(line,"%d %lf",&spotIDS[nSpotsBest],&thisRadius);
-			meanRadius += thisRadius;
-			nSpotsBest++;
-		}
-		meanRadius /= nSpotsBest;
-	}	
+	fgets(line,5000,BestFile);
+	fgets(line,5000,BestFile);
+	sscanf(line,"%lf, %lf, %lf, %lf, %lf, %lf",&LatCin[0],&LatCin[1],
+		&LatCin[2],&LatCin[3],&LatCin[4],&LatCin[5]);
+	fgets(line,5000,BestFile);
+	sscanf(line,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf",
+			&completeness,&Orient0[0],&Orient0[1],&Orient0[2],&Orient0[3],
+			&Orient0[4],&Orient0[5],&Orient0[6],&Orient0[7],&Orient0[8]);
+	while (fgets(line,5000,BestFile) != NULL){
+		sscanf(line,"%d %lf",&spotIDS[nSpotsBest],&thisRadius);
+		meanRadius += thisRadius;
+		nSpotsBest++;
+	}
+	meanRadius /= nSpotsBest;
 	fclose(BestFile);
-	
+	// We need here, meanRadius, Pos0[3], Orient0[9], LatCin[6], nSpotsBest, 
+	// spotIDS, completeness,
 	double a=LatCin[0],b=LatCin[1],c=LatCin[2],alph=LatCin[3],bet=LatCin[4],gamm=LatCin[5];
 	for (i=0;i<3;i++) for (j=0;j<3;j++) Orient0_3[i][j] = Orient0[i*3+j];
 	OrientMat2Euler(Orient0_3,Euler0);
@@ -1505,11 +1415,11 @@ int main(int argc, char *argv[])
 	printf("Initial error is: %f %f %f\n",ErrorIni[0],ErrorIni[1],ErrorIni[2]);
 	double **spotsYZONew; spotsYZONew=allocMatrix(nSpotsComp,9);
 	for (i=0;i<nSpotsComp;i++){for (j=0;j<9;j++){spotsYZONew[i][j]=Splist[i][j];}}
-	OrientsOrig[nSpID][0] = (double)SpId;
+	OrientsOrig[nSpID][0] = (double)posNr;
 	for (i=0;i<9;i++) OrientsOrig[nSpID][i+1] = Orient0[i];
-	PositionsOrig[nSpID][0] = (double)SpId;
+	PositionsOrig[nSpID][0] = (double)posNr;
 	for (i=0;i<3;i++) PositionsOrig[nSpID][i+1] = Pos0[i];
-	ErrorsOrig[nSpID][0] = (double)SpId;
+	ErrorsOrig[nSpID][0] = (double)posNr;
 	for (i=0;i<3;i++) ErrorsOrig[nSpID][i+1] = ErrorIni[i];
 	double Inp[12]; for (i=0;i<12;i++) Inp[i] = Ini[i];
 	double X[3]; for (i=0;i<3;i++) X[i] = Pos0[i];
@@ -1638,7 +1548,7 @@ int main(int argc, char *argv[])
 	double OF[3][3],OrientFit[9],EulerFit[3],PositionFit[3],LatticeParameterFit[6];for (i=0;i<3;i++) EulerFit[i] = FinalResult[i+3];
 	for (i=0;i<3;i++) PositionFit[i] = FinalResult[i]; for (i=0;i<6;i++) LatticeParameterFit[i] = FinalResult[i+6];
 	Euler2OrientMat(EulerFit,OF);Convert3x3To9(OF,OrientFit);
-	OrientsFit[nSpID][0] = SpId;PositionsFit[nSpID][0] = SpId;ErrorsFin[nSpID][0] = SpId;StrainsFit[nSpID][0] = SpId;
+	OrientsFit[nSpID][0] = posNr;PositionsFit[nSpID][0] = posNr;ErrorsFin[nSpID][0] = posNr;StrainsFit[nSpID][0] = posNr;
 	for (i=0;i<9;i++) OrientsFit[nSpID][i+1] = OrientFit[i];
 	for (i=0;i<3;i++) PositionsFit[nSpID][i+1] = PositionFit[i];
 	for (i=0;i<6;i++) StrainsFit[nSpID][i+1] = LatticeParameterFit[i];
@@ -1654,8 +1564,8 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	int SizeKeyFile 		= 2  * sizeof(int);
-	int OffStKeyFile 		= SizeKeyFile * rowNr;
-	int KeyInfo[2] = {SpId , nSpotsComp};
+	int OffStKeyFile 		= SizeKeyFile * posNr;
+	int KeyInfo[2] = {posNr , nSpotsComp};
 	int rcKey = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
     if (rcKey < 0){
 		printf("Could not write to output file.\n");
@@ -1671,7 +1581,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	int SizeProcessFile 	= nSpotsComp * sizeof(int);
-	int OffStProcessFile 	= MaxNHKLS * sizeof(int) * rowNr;
+	int OffStProcessFile 	= MaxNHKLS * sizeof(int) * posNr;
 	int ProcessInfo[nSpotsComp];
 	for (i=0;i<nSpotsComp;i++){
 		ProcessInfo[i] = SpotsComp[i][0];
@@ -1690,7 +1600,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
     int SizeOutFile 		= 27 * sizeof(double);
-	int OffStSizeOutFile 	= SizeOutFile * rowNr;
+	int OffStSizeOutFile 	= SizeOutFile * posNr;
 	double OutMatr[27];
 	for (i=0;i<10;i++){
 		OutMatr[i] = OrientsFit[nSpID][i];
@@ -1720,7 +1630,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	int SizeSpotsFile 		= 22 * sizeof(double) * nSpotsComp;
-	int OffStSpotsFile 		= 22 * sizeof(double) * MaxNHKLS * rowNr;
+	int OffStSpotsFile 		= 22 * sizeof(double) * MaxNHKLS * posNr;
 	double SpotsCompFNContents[nSpotsComp][22];
 	for (i=0;i<nSpotsComp;i++){
 		for (j=0;j<22;j++){
