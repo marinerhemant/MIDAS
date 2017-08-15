@@ -1262,7 +1262,7 @@ int main(int argc, char *argv[])
 	int h,kt,l,Rnr;
 	double ds,tht, rad;
 	while (fgets(aline,1000,hklf)!=NULL){
-		sscanf(aline, "%d %d %d %lf %d %s %s %s %lf %s %lf",&h,&kt,&l,&ds,&Rnr,dummy,dummy,dummy,&tht,dummy,rad);
+		sscanf(aline, "%d %d %d %lf %d %s %s %s %lf %s %lf",&h,&kt,&l,&ds,&Rnr,dummy,dummy,dummy,&tht,dummy,&rad);
 		if (tht > MaxTtheta/2) break;
 		for (i=0;i<cs;i++){
 			if(Rnr == RingNumbers[i]){
