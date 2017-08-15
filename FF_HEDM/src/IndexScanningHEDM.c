@@ -264,6 +264,8 @@ int main(int argc, char* argv[]){
 	size = s.st_size;
 	AllSpots = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 	check (AllSpots == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
+	int maxID2 = size/(14*sizeof(double));
+	printf("%d %d\n",maxID,maxID2);
 	double **allSpotsYZO;
 	allSpotsYZO = allocMatrix(maxID,9);
 	for (i=0;i<maxID;i++){ // We save YLab ZLab Omega GrainRadius SpotID RingNumber Eta Theta Radius
