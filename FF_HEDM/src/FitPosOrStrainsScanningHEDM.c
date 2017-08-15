@@ -1323,12 +1323,44 @@ int main(int argc, char *argv[])
 	BestFile = fopen(FileName,"r");
 	if (BestFile == NULL){
 		printf("The BestPos file did not exist. Exiting.\n");
+		char KeyFN[1024];
+		sprintf(KeyFN,"%s/Key.bin",OutDirPath);
+		int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+		if (resultKeyFN <= 0){
+			printf("Could not open output file.\n");
+			return 1;
+		}
+		int SizeKeyFile 		= 2  * sizeof(int);
+		int OffStKeyFile 		= SizeKeyFile * posNr;
+		int KeyInfo[2] = {0,0};
+		int rcKey = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
+	    if (rcKey < 0){
+			printf("Could not write to output file.\n");
+			return 1;
+		}
+		rcKey = close(resultKeyFN);
 		return 0;
 	}
 	fseek(BestFile,0L,SEEK_END);
 	int sz = ftell(BestFile);
 	if (sz == 0){
 		printf("The BestPos file did not exist. Exiting.\n");
+		char KeyFN[1024];
+		sprintf(KeyFN,"%s/Key.bin",OutDirPath);
+		int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+		if (resultKeyFN <= 0){
+			printf("Could not open output file.\n");
+			return 1;
+		}
+		int SizeKeyFile 		= 2  * sizeof(int);
+		int OffStKeyFile 		= SizeKeyFile * posNr;
+		int KeyInfo[2] = {0,0};
+		int rcKey = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
+	    if (rcKey < 0){
+			printf("Could not write to output file.\n");
+			return 1;
+		}
+		rcKey = close(resultKeyFN);
 		return 0;
 	}
 	rewind(BestFile);

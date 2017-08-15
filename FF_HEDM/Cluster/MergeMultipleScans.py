@@ -1,5 +1,11 @@
 #!/APSshare/anaconda/x86_64/bin/python
 
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
+
+
 import sys
 import os
 from os.path import expanduser

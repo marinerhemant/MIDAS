@@ -20,7 +20,7 @@ all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting 
 	mergeoverlaps calcradius findsaturatedpx genmediandark fitgrain tiff2ge\
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking\
 	mapmultdetectors matchgrains detectormapper integrator mergemultiplescans \
-	fitposorstrainsscanning indexscanning
+	fitposorstrainsscanning indexscanning processgrainsscanning
 
 #local:
 local: predeplocal all runsetup
@@ -155,6 +155,10 @@ mergemultiplescans: $(SRCDIR)MergeMultipleScans.c
 processgrains: $(SRCDIR)ProcessGrains.c
 	$(CC) $(SRCDIR)ProcessGrains.c $(SRCDIR)GetMisorientation.c $(SRCDIR)CalcStrains.c -o \
 	$(BINDIR)ProcessGrains $(CFLAGS) $(CFLAGSNLOPT) 
+
+processgrainsscanning: $(SRCDIR)ProcessGrainsScanningHEDM.c
+	$(CC) $(SRCDIR)ProcessGrainsScanningHEDM.c $(SRCDIR)GetMisorientation.c $(SRCDIR)CalcStrains.c -o \
+	$(BINDIR)ProcessGrainsScanningHEDM $(CFLAGS) $(CFLAGSNLOPT) 
 
 matchgrains: $(SRCDIR)MatchGrains.c
 	$(CC) $(SRCDIR)MatchGrains.c $(SRCDIR)GetMisorientation.c -o $(BINDIR)MatchGrains $(CFLAGS)
