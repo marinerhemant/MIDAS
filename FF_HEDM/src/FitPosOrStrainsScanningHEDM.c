@@ -1134,7 +1134,11 @@ int main(int argc, char *argv[])
     char *ParamFN;
     FILE *fileParam;
     ParamFN = argv[1];
-    int posNr = atoi(argv[2]);
+    double Pos0[3];
+	Pos0[0] = atof(argv[2]);
+	Pos0[1] = atof(argv[3]);
+	Pos0[2] = 0;
+    int posNr = atoi(argv[4]);
     char aline[1000];
     fileParam = fopen(ParamFN,"r");
     char *str, dummy[1000],outfolder[1000],spotsfilename[1000],inputfilename[1000];
@@ -1366,7 +1370,7 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 	rewind(BestFile);
-	double Orient0[9], Pos0[3], IA0, Euler0[3], Orient0_3[3][3],NrExpected,NrObserved,meanRadius=0,thisRadius,completeness;
+	double Orient0[9], IA0, Euler0[3], Orient0_3[3][3],NrExpected,NrObserved,meanRadius=0,thisRadius,completeness;
 	fgets(line,5000,BestFile);
 	fgets(line,5000,BestFile);
 	sscanf(line,"%lf, %lf, %lf, %lf, %lf, %lf",&LatCin[0],&LatCin[1],
