@@ -1421,7 +1421,8 @@ int main(int argc, char *argv[])
     XFit = malloc(12*sizeof(*XFit));
     double *ErrorInt1;
     ErrorInt1 = malloc(3*sizeof(*ErrorInt1));
-    FitPositionIni(X0,nSpotsComp,spotsYZONew,nhkls,hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,XFit,lb,ub);
+    //FitPositionIni(X0,nSpotsComp,spotsYZONew,nhkls,hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,XFit,lb,ub);
+    for (i=0;i<12;i++) XFit[i] = Ini[i];
     CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,XFit,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
 					SpotsComp,Splist,ErrorInt1,&nSpotsComp);
 	printf("Interim error after fitting Position1: %f %f %f\n",ErrorInt1[0],ErrorInt1[1],ErrorInt1[2]);
@@ -1498,7 +1499,8 @@ int main(int argc, char *argv[])
     for (i=0;i<3;i++) {lb4[i]=XLow2[i];ub4[i]=XHigh2[i];}
     double StrainsFitIn[6];for (i=0;i<6;i++) StrainsFitIn[i]=XFit3[i];
     double *XFit4;XFit4 = malloc(3*sizeof(*XFit4));
-    FitPosSec(X0_4,nSpotsComp,spotsYZONew,nhkls,hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,XFit4,lb4,ub4,OrientFitIn,StrainsFitIn);
+    //FitPosSec(X0_4,nSpotsComp,spotsYZONew,nhkls,hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,XFit4,lb4,ub4,OrientFitIn,StrainsFitIn);
+    for (i=0;i<3;i++) XFit4[i] = Pos0[i];
     double FinalResult[12];for (i=0;i<3;i++) FinalResult[i] = XFit4[i]; for (i=0;i<3;i++) FinalResult[i+3] = XFit2[i]; for (i=0;i<6;i++) FinalResult[i+6] = XFit3[i];
 	double *ErrorFin;
     ErrorFin = malloc(3*sizeof(*ErrorFin));
