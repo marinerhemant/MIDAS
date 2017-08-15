@@ -42,6 +42,6 @@ nrelements=$( head -n 1 grid.txt )
 GrainsFN=$( awk '$1 ~ /^GrainsFile/ { print $2 }' ${1} )
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
  ${PFDIR}/processScanningHEDM.swift -ParamsFile=$1 -GrainsFile=${GrainsFN} \
- -nrelements=${nrelements}
+ -nrelements=${nrelements} -Folder=$( pwd )
 
 ${BINFOLDER}/ProcessGrainsScanningHEDM $1 ${nrelements}

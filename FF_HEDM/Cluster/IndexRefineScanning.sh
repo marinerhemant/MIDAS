@@ -6,6 +6,7 @@
 #
 source ${HOME}/.MIDAS/paths
 echo $( pwd )
+cd $4
 lineNR=$3
 argumentToGive=$( sed "${lineNR}q;d" grid.txt )
 echo $argumentToGive
