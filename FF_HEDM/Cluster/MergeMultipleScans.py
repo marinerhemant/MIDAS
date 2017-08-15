@@ -45,7 +45,7 @@ for line in pscontent:
 		elif line[0] == 'Padding':
 			padding = int(line[1])
 		elif line[0] == 'FltStem':
-			fstem = os.getcwd + '/' + line[1]
+			fstem = os.getcwd() + '/' + line[1]
 		elif line[0] == 'FltExt':
 			ext = line[1]
 		elif line[0] == 'OutDirPath':
