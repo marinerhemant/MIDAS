@@ -7,7 +7,7 @@
 
 import sys
 import os
-from subprocess import call
+import numpy as np
 
 configFile = sys.argv[1]
 pscontent = open(configFile).readlines()
