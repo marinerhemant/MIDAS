@@ -343,6 +343,7 @@ int main(int argc, char* argv[]){
 					bestLayer = k;
 				}
 			}
+			printf("%d %lf\n",bestLayer,xtr);
 			EtaMarg = atand(MargEta/RadThis);
 			if (IDsInfo[bestLayer*nRings+thisRing][0] != 0){
 				startRowNr = IDsInfo[bestLayer*nRings+thisRing][2];
@@ -383,7 +384,6 @@ int main(int argc, char* argv[]){
 				}
 			}
 		}
-		printf("%d %d\n",nMatches,nSpots);
 		if (((double)nMatches)/((double)nSpots) > Completeness){
 			meanIA /= nMatches;
 			if (nMatchesBest < nMatches){
