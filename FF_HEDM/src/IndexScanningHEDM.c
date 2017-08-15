@@ -411,8 +411,8 @@ int main(int argc, char* argv[]){
 		fprintf(outfile,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf\n",
 			bestCompleteness,bestOR[0],bestOR[1],bestOR[2],bestOR[3],bestOR[4],bestOR[5],bestOR[6],
 			bestOR[7],bestOR[8]);
-		for (i=0;i<nSpotsFin;i++){
-			printf("%d\n",bestSpots[i]+1);
+		for (i=0;i<nMatchesBest;i++){
+			printf("%d %d\n",i,bestSpots[i]+1);
 			fprintf(outfile,"%d %lf\n",bestSpots[i]+1,allSpotsYZO[bestSpots[i]][3]);
 		}
 	}
