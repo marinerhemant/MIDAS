@@ -38,8 +38,11 @@ else
 	export intHN
 fi
 outdirpath=$( awk '$1 ~ /^OutDirPath/ { print $2 }' ${1} )
-tar -cvzf bin.tar.gz ${outdirpath}/ExtraInfo.bin
+origdir=$( pwd )
+cd ${outdir}
+tar -cvzf bin.tar.gz ExtraInfo.bin
 cp bin.tar.gz ${HOME}/swiftwork/bins/.
+cd ${origdir}
 nrelements=$( head -n 1 grid.txt )
 GrainsFN=$( awk '$1 ~ /^GrainsFile/ { print $2 }' ${1} )
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
