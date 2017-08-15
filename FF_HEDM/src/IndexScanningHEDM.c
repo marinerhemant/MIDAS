@@ -250,9 +250,6 @@ int main(int argc, char* argv[]){
 	fclose(idsfile);
 	
 	// Read ExtraInfo.bin
-	char cmmd[4096];
-	sprintf(cmmd,"cp %s/ExtraInfo.bin /dev/shm/",outdirpath);
-	system(cmmd);
 	const char *filename = "/dev/shm/ExtraInfo.bin";
 	int rc;
 	double *AllSpots;
