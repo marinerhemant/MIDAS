@@ -1145,12 +1145,11 @@ int main(int argc, char *argv[])
     int LowNr;
     double Wavelength,Lsd;
 	double LatCin[6];
-    double wedge,MinEta,OmegaRanges[20][2],BoxSizes[20][4], MaxRingRad;
+    double wedge=0,MinEta=6,OmegaRanges[20][2],BoxSizes[20][4], MaxRingRad;
     int RingNumbers[200],cs=0,cs2=0,nOmeRanges=0,nBoxSizes=0,CellStruct;
     double Rsample, Hbeam,RingRadii[200],MargABC=0.3,MargABG=0.3;
-  	char OutputFolder[1024],ResultFolder[1024];
-  	int DiscModel = 0, TopLayer = 0, TakeGrainMax = 0;
-  	int GrainTracking = 0;
+  	char OutDirPath[4096];
+  	int DiscModel = 0, TakeGrainMax = 0;
     while (fgets(aline,1000,fileParam)!=NULL){
         str = "LatticeParameter ";
         LowNr = strncmp(aline,str,strlen(str));
@@ -1160,19 +1159,13 @@ int main(int argc, char *argv[])
 					&LatCin[3], &LatCin[4], &LatCin[5]);
             continue;
         }
-        str = "GrainTracking ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %d", dummy, &GrainTracking);
-            continue;
-        }
         str = "Wavelength ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %lf", dummy, &Wavelength);
             continue;
         }
-        str = "Distance ";
+        str = "Lsd ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %lf", dummy, &Lsd);
@@ -1184,16 +1177,10 @@ int main(int argc, char *argv[])
             sscanf(aline,"%s %lf", dummy, &MaxRingRad);
             continue;
         }
-        str = "ExcludePoleAngle ";
+        str = "MinEta ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %lf", dummy, &MinEta);
-            continue;
-        }
-        str = "TopLayer ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %d", dummy, &TopLayer);
             continue;
         }
         str = "Hbeam ";
@@ -1214,18 +1201,11 @@ int main(int argc, char *argv[])
             sscanf(aline,"%s %lf", dummy, &wedge);
             continue;
         }
-        str = "RingNumbers ";
+        str = "RingThresh ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %d", dummy, &RingNumbers[cs]);
             cs++;
-            continue;
-        }
-        str = "RingRadii ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %lf", dummy, &RingRadii[cs2]);
-            cs2++;
             continue;
         }
         str = "OmegaRange ";
@@ -1245,28 +1225,10 @@ int main(int argc, char *argv[])
             nBoxSizes++;
             continue;
         }
-		str = "OutputFolder ";
+		str = "OutDirPath ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %s", dummy, OutputFolder);
-            continue;
-        }
-		str = "ResultFolder ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %s", dummy, ResultFolder);
-            continue;
-        }
-		str = "RefinementFileName ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %s", dummy, inputfilename);
-            continue;
-        }
-		str = "TakeGrainMax ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %d", dummy, &TakeGrainMax);
+            sscanf(aline,"%s %s", dummy, OutDirPath);
             continue;
         }
 		str = "MargABC ";
@@ -1298,9 +1260,9 @@ int main(int argc, char *argv[])
 	}
 	fgets(aline,1000,hklf);
 	int h,kt,l,Rnr;
-	double ds,tht;
+	double ds,tht, rad;
 	while (fgets(aline,1000,hklf)!=NULL){
-		sscanf(aline, "%d %d %d %lf %d %s %s %s %lf %s %s",&h,&kt,&l,&ds,&Rnr,dummy,dummy,dummy,&tht,dummy,dummy);
+		sscanf(aline, "%d %d %d %lf %d %s %s %s %lf %s %lf",&h,&kt,&l,&ds,&Rnr,dummy,dummy,dummy,&tht,dummy,rad);
 		if (tht > MaxTtheta/2) break;
 		for (i=0;i<cs;i++){
 			if(Rnr == RingNumbers[i]){
@@ -1309,7 +1271,7 @@ int main(int argc, char *argv[])
 				hkls[nhkls][2] = l;
 				hkls[nhkls][3] = ds;
 				hkls[nhkls][4] = tht;
-				hkls[nhkls][5] = RingRadii[i];
+				hkls[nhkls][5] = rad;
 				hkls[nhkls][6] = RingNumbers[i];
 				nhkls++;
 			}
@@ -1559,7 +1521,7 @@ int main(int argc, char *argv[])
 	// Start Writing: SpotsCompFN, OutFN, Key, ProcessGrainsFile
 	// Key
 	char KeyFN[1024];
-	sprintf(KeyFN,"%s/Key.bin",ResultFolder);
+	sprintf(KeyFN,"%s/Key.bin",OutDirPath);
 	int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
 	if (resultKeyFN <= 0){
 		printf("Could not open output file.\n");
@@ -1576,7 +1538,7 @@ int main(int argc, char *argv[])
 	rcKey = close(resultKeyFN);
 	// ProcessGrainsFile
 	char ProcessGrainsFN[1024];
-	sprintf(ProcessGrainsFN,"%s/ProcessKey.bin",ResultFolder);
+	sprintf(ProcessGrainsFN,"%s/ProcessKey.bin",OutDirPath);
 	int ProcessKeyFN = open(ProcessGrainsFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
 	if (ProcessKeyFN <=0){
 		printf("Could not open output file.\n");
@@ -1595,7 +1557,7 @@ int main(int argc, char *argv[])
 	}
     rcProcess = close(ProcessKeyFN);
     // Result
-    sprintf(OutFN,"%s/OrientPosFit.bin",ResultFolder);
+    sprintf(OutFN,"%s/OrientPosFit.bin",OutDirPath);
 	int resultOutFN = open(OutFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
 	if (resultOutFN <= 0){
 		printf("Could not open output file.\n");
@@ -1625,7 +1587,7 @@ int main(int argc, char *argv[])
 	}
 	rcOut = close(resultOutFN);
 	// Spots
-	sprintf(SpotsCompFN,"%s/FitBest.bin",OutputFolder);
+	sprintf(SpotsCompFN,"%s/FitBest.bin",OutDirPath);
 	int resultSpotsCompFN = open(SpotsCompFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
 	if (resultSpotsCompFN <= 0){
 		printf("Could not open output file.\n");
