@@ -30,7 +30,7 @@ xv, yv = np.meshgrid(x,y)
 nrpoints = len(xv)
 
 gridfile = open('grid.txt','w')
-gridfile.write(str(nrpoints*nrpoints)+'\n')
+#gridfile.write(str(nrpoints*nrpoints)+'\n')
 rownr = 0
 for [i,xs] in enumerate(xv):
 	for j in range(len(xs)):
