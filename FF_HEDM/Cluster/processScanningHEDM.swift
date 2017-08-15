@@ -7,7 +7,7 @@ type file;
 
 app (file ep) runIndexRefineScanning (string psfn, string grainsfn, int rownr)
 {
-	indexrefinescanning psfn rownr stderr=filename(ep);
+	indexrefinescanning psfn grainsfn rownr stderr=filename(ep);
 }
 
 string psfn = arg("ParamsFile","ps.txt");
