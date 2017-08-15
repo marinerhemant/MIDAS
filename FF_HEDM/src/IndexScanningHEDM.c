@@ -199,7 +199,7 @@ int main(int argc, char* argv[]){
 	FILE *hklf = fopen(hklfn,"r");
 	int ringNr, nhkls=0;
 	double ds, theta, rad, g1, g2, g3, **hkls;
-	hkls = allocMatrix(MAX_N_HKLS,4);
+	hkls = allocMatrix(MAX_N_HKLS,7);
 	while (fgets(aline, 4096,hklf)!=NULL){
 		sscanf(aline,"%s %s %s %lf %d %lf %lf %lf %lf %s %lf",dummy,
 			dummy, dummy, &ds, &ringNr, &g1, &g2, &g3, &theta, dummy, &rad);
