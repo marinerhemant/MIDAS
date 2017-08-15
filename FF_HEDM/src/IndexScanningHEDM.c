@@ -221,13 +221,14 @@ int main(int argc, char* argv[]){
 
 	// Read PositionsFile
 	FILE *positionsFile;
-	double positions[nLayers];
+	double positions[nLayers],ptemp;
 	int IDsInfo[nLayers*nRings][4];
 	positionsFile = fopen(positionsFN,"r");
 	fgets(aline,4096,positionsFile);
 	int count=0;
 	while(fgets(aline,4096,positionsFile)!=NULL){
-		sscanf(aline,"%lf %s",&positions[count],dummy);
+		sscanf(aline,"%lf %s",&ptemp,dummy);
+		positions[count] = 1000*ptemp;
 		printf("%s\n",aline);
 		count ++;
 	}
