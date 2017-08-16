@@ -116,6 +116,7 @@ FreeMemMatrix(double **mat,int nrows)
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
+static inline double sin_cos_to_angle (double s, double c){return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);}
 
 static inline 
 void OrientMat2Euler(double m[3][3],double Euler[3])
