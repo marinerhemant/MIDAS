@@ -88,7 +88,6 @@ void DisplacementInTheSpot(double a, double b, double c, double xi, double yi, d
     *Displ_y = YC - ((XC*IK[1])/(IK[0]));
     *Displ_z = ZC - ((XC*IK[2])/(IK[0]));
     *xtr = YC; // Y is the beam movement direction.
-    printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf\n",XC,YC,*xtr,omega, *Displ_y, *Displ_z, xi, yi, zi);
 }
 
 static inline 
@@ -315,12 +314,9 @@ int main(int argc, char* argv[]){
 		meanIA = 0;
 		bestYet = 0;
 		for (j=0;j<nSpots;j++){
-			printf("%lf %lf %lf %lf\n",Lsd,TheorSpots[j][0],TheorSpots[j][1],TheorSpots[j][2]);
 			DisplacementInTheSpot(x,y,z,Lsd,TheorSpots[j][0],
 				TheorSpots[j][1],TheorSpots[j][2],&DisplY,
 				&DisplZ,&xtr);
-			printf("%lf %lf %lf\n",DisplY,DisplZ,xtr);
-			return;
 			TheorSpots[j][0] += DisplY;
 			TheorSpots[j][1] += DisplZ;
 			OmeThis = TheorSpots[j][2];
