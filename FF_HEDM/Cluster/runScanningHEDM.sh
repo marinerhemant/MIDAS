@@ -11,9 +11,10 @@ ${BINFOLDER}/GetHKLList $1
 ${PFDIR}/MergeMultipleScans.py $1
 ${PFDIR}/MakeMeshGridScanning.py $1
 
-nNODES=6
+nNODES=7
 export nNODES
-MACHINE_NAME=orthrosall
+#MACHINE_NAME=orthrosall
+MACHINE_NAME=orthrosextra
 echo "MACHINE NAME is ${MACHINE_NAME}"
 if [[ ${MACHINE_NAME} == *"edison"* ]]; then
 	echo "We are in NERSC EDISON"
