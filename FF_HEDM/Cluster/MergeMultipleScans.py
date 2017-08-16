@@ -143,10 +143,12 @@ for line in positions:
 				yDet = float(line.split(' ')[11])
 				zDet = float(line.split(' ')[12])
 				omegaDet = float(line.split(' ')[13])
+				print [y, Eta, Ttheta, yOrigNoW]
 				y = y - ypos
 				Eta = CalcEtaAngle(y,z)
 				Ttheta = atand(sqrt(y*y+z*z)/Lsd)
 				yOrigNoW = yOrigNoW - ypos
+				print [y, Eta, Ttheta, yOrigNoW]
 				AllF.write(y+' '+z+' '+ome+' '+grR+' '+ID+' '+RNr+' '+Eta+' '+Ttheta+' '+omeIniNoW+' '+yOrigNoW+' '+zOrigNoW+' '+yDet+' '+zDet+' '+omegaDet+'\n')
 		call(['rm',pfname])
 		outpfn = 'Layer'+str(layernr)+'/paramstest_RingNr'+str(ring)+'.txt'
