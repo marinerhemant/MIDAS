@@ -308,7 +308,6 @@ int main(int argc, char* argv[]){
 	for (i=0;i<nGrains;i++){
 		for (j=0;j<3;j++) for (k=0;k<3;k++) OM[j][k] = OrientMatrix[i*9 + j*3 + k];
 		// For this orientation, make spots
-		for (j=0;j<3;j++) for (k=0;k<3;k++) printf("%lf ",OM[j][k]);
 		CalcDiffractionSpots(Lsd,MinEta,OmegaRanges,nOmeRanges,
 			hkls,nhkls,BoxSizes,&nSpots,OM,TheorSpots);
 		nMatches = 0;
@@ -382,7 +381,6 @@ int main(int argc, char* argv[]){
 				}
 			}
 		}
-		printf("%d %d %lf\n",nMatches,nSpots,meanIA);
 		if (((double)nMatches)/((double)nSpots) > Completeness){
 			meanIA /= nMatches;
 			if (nMatchesBest < nMatches){
