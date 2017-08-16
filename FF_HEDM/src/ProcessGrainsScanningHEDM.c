@@ -326,6 +326,7 @@ int main(int argc, char *argv[])
 	FILE *spotsfile = fopen("SpotMatrix.csv","w");
 	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
 	for (i=0;i<nrIDs;i++){
+		printf("%d\n",i);
 		fread(keyID,2*sizeof(int),1,fileKey);
 		fread(OPThis,27*sizeof(double),1,fileOPFit);
 		if (keyID[1] == 0) continue;
