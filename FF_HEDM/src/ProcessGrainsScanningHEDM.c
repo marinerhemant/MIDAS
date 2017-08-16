@@ -249,7 +249,6 @@ int main(int argc, char *argv[])
 	double *dummySampleInfo;
 	dummySampleInfo = malloc(22*NR_MAX_IDS_PER_GRAIN*sizeof(*dummySampleInfo));
 	int OffSt, ReadSize;
-	printf("We are here.\n"); fflush(stdout);
 
 	// Read IDsHash.csv
 	int IDHash[NR_MAX_IDS_PER_GRAIN*2][3];
@@ -263,7 +262,6 @@ int main(int argc, char *argv[])
 		sscanf(aline,"%s %d %d %d",dummy,&IDHash[count][0],&IDHash[count][1],&IDHash[count][2]);
 		count++;
 	}
-	printf("We are here.\n"); fflush(stdout);
 	int nRings = count;
 	fclose(idsfile);
 	FILE *hklf = fopen("hkls.csv","r");
@@ -279,11 +277,9 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	printf("We are here.\n"); fflush(stdout);
 
 	double **SpotMatrix, **InputMatrix;
 	SpotMatrix = allocMatrix(NR_MAX_IDS_PER_GRAIN*nrIDs,12);
-	printf("We are here.\n"); fflush(stdout);
 	int counterSpotMatrix = 0, startSpotMatrix, rowSpotID;
 	double RetVal, SpotsInfo[NR_MAX_IDS_PER_GRAIN][8];
 	int nspots;
@@ -294,12 +290,10 @@ int main(int argc, char *argv[])
 	double **FinalMatrix;
 	double BeamCenter = 0, FullVol = 0,VNorm;
 	FinalMatrix = allocMatrix(nrIDs,44);
-	printf("We are here.\n"); fflush(stdout);
 	for (i=0;i<nrIDs;i++){
 		for (j=0;j<44;j++) FinalMatrix[i][j] = 0;
 		for (j=0;j<NR_MAX_IDS_PER_GRAIN;j++) for (k=0;k<12;k++) SpotMatrix[i*j][k] = 0;
 	}
-	printf("We are here.\n"); fflush(stdout);
 	FILE *spotsfile = fopen("SpotMatrix.csv","w");
 	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
 	for (i=0;i<nrIDs;i++){
