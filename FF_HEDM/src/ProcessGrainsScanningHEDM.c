@@ -296,7 +296,7 @@ int main(int argc, char *argv[])
 	}
 	FILE *spotsfile = fopen("SpotMatrix.csv","w");
 	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
-	for (i=9978;i<9980;i++)// (i=0;i<nrIDs;i++){
+	for (i=9978;i<9980;i++){// (i=0;i<nrIDs;i++){
 		fread(keyID,2*sizeof(int),1,fileKey);
 		if (keyID[1] == 0) continue;
 		printf("Processing point %d of %d with %d ids matched. ",i,nrIDs,keyID[1]);
