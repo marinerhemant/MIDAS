@@ -381,7 +381,7 @@ int main(int argc, char* argv[]){
 				}
 			}
 		}
-		printf("%d %d\n",nMatches,nSpots);
+		printf("%d %d %lf\n",nMatches,nSpots,meanIA);
 		if (((double)nMatches)/((double)nSpots) > Completeness){
 			meanIA /= nMatches;
 			if (nMatchesBest < nMatches){
