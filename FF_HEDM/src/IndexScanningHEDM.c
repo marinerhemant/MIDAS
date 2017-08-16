@@ -315,7 +315,7 @@ int main(int argc, char* argv[]){
 		meanIA = 0;
 		bestYet = 0;
 		for (j=0;j<nSpots;j++){
-			printf("%lf %lf %lf\n",TheorSpots[j][0],TheorSpots[j][1],TheorSpots[j][2]);
+			printf("%lf %lf %lf %lf\n",Lsd,TheorSpots[j][0],TheorSpots[j][1],TheorSpots[j][2]);
 			DisplacementInTheSpot(x,y,z,Lsd,TheorSpots[j][0],
 				TheorSpots[j][1],TheorSpots[j][2],&DisplY,
 				&DisplZ,&xtr);
