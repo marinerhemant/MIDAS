@@ -114,6 +114,9 @@ FreeMemMatrix(double **mat,int nrows)
     free(mat);
 }
 
+#define deg2rad 0.0174532925199433
+#define rad2deg 57.2957795130823
+
 static inline 
 void OrientMat2Euler(double m[3][3],double Euler[3])
 {
