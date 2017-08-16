@@ -87,7 +87,7 @@ void DisplacementInTheSpot(double a, double b, double c, double xi, double yi, d
     IK[0]=IK[0]/NormIK;IK[1]=IK[1]/NormIK;IK[2]=IK[2]/NormIK;
     *Displ_y = YC - ((XC*IK[1])/(IK[0]));
     *Displ_z = ZC - ((XC*IK[2])/(IK[0]));
-    *xtr = XC;
+    *xtr = YC; // Y is the beam movement direction.
 }
 
 static inline 
