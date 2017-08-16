@@ -321,8 +321,8 @@ int main(int argc, char *argv[])
 	FinalMatrix = allocMatrix(nrIDs,47);
 	for (i=0;i<nrIDs;i++){
 		for (j=0;j<47;j++) FinalMatrix[i][j] = 0;
-		for (j=0;j<NR_MAX_IDS_PER_GRAIN;j++) for (k=0;k<12;k++) SpotMatrix[i*j][k] = 0;
 	}
+	for (j=0;j<NR_MAX_IDS_PER_GRAIN;j++) for (k=0;k<12;k++) SpotMatrix[j][k] = 0;
 	FILE *spotsfile = fopen("SpotMatrix.csv","w");
 	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
 	for (i=0;i<nrIDs;i++){
