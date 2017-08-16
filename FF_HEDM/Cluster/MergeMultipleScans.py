@@ -128,9 +128,7 @@ for line in positions:
 			if line2[0] == '%':
 				AllF.write(line2)
 			else:
-				print line2
 				line2sp = line2.split()
-				print line2sp	
 				y = float(line2sp[0])
 				z = float(line2sp[1])
 				ome = float(line2sp[2])
