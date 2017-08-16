@@ -389,7 +389,7 @@ int main(int argc, char *argv[])
 	for (i=0;i<nrIDs;i++){
 		fread(keyID,2*sizeof(int),1,fileKey);
 		if (keyID[1] == 0) continue;
-		printf("Processing point %d of %d with %d ids matched.\n",i,nrIDs,key[1]);
+		printf("Processing point %d of %d with %d ids matched.\n",i,nrIDs,keyID[1]);
 		NrIDsPerID[i] = keyID[1];
 		fread(OPThis,27*sizeof(double),1,fileOPFit);
 		OffSt = i*22*NR_MAX_IDS_PER_GRAIN*sizeof(double);
