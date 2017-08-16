@@ -128,7 +128,6 @@ for line in positions:
 			if line[0] == '%':
 				AllF.write(line)
 			else:
-				YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)\n");
 				y = float(line.split(' ')[0])
 				z = float(line.split(' ')[1])
 				ome = float(line.split(' ')[2])
