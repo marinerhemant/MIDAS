@@ -194,7 +194,7 @@ int main (int argc, char *argv[])
 				counterTotal++;
 				cntr++;
 		}
-		printf("RingNr: %d TotalSpots: %d SpotsThisRing %d\n",RingNumbers[i],counterTotal,counterTotal-startcntr);
+		printf("RingNr: %d TotalSpots: %d SpotsThisRing: %d\n",RingNumbers[i],counterTotal,counterTotal-startcntr);
 		counterTotal = startcntr;
 		fgets(aline,2000,ext);
 		while(fgets(aline,2000,ext)!=NULL){
