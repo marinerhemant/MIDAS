@@ -400,6 +400,7 @@ int main(int argc, char* argv[]){
 			}
 		}
 	}
+	printf("%d\n",nMatchesBest);
 	if (nMatchesBest > 0){
 		int GrainID = bestSpots[0];
 		char outfilename[4096];
