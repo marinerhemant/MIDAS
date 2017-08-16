@@ -319,7 +319,7 @@ int main(int argc, char* argv[]){
 			DisplacementInTheSpot(x,y,z,Lsd,TheorSpots[j][0],
 				TheorSpots[j][1],TheorSpots[j][2],&DisplY,
 				&DisplZ,&xtr);
-			printf("%lf %lf\n",DisplY,DisplZ);
+			printf("%lf %lf\n",DisplY,DisplZ,xtr);
 			TheorSpots[j][0] += DisplY;
 			TheorSpots[j][1] += DisplZ;
 			OmeThis = TheorSpots[j][2];
