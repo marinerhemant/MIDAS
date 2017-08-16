@@ -279,7 +279,7 @@ int main(int argc, char *argv[])
 	}
 
 	double **SpotMatrix, **InputMatrix;
-	SpotMatrix = allocMatrix(NR_MAX_IDS_PER_GRAIN*nrIDs,12);
+	SpotMatrix = allocMatrix(NR_MAX_IDS_PER_GRAIN,12);
 	int counterSpotMatrix = 0, startSpotMatrix, rowSpotID;
 	double RetVal, SpotsInfo[NR_MAX_IDS_PER_GRAIN][8];
 	int nspots;
@@ -305,7 +305,7 @@ int main(int argc, char *argv[])
 		pread(fullInfoFile,dummySampleInfo,ReadSize,OffSt);
 		nspots = keyID[1];
 		// Now we have all the info, calculate strains and be done.
-		startSpotMatrix = counterSpotMatrix;
+		counterSpotMatrix = 0;
 		for (j=0;j<nspots;j++){
 			SpotsInfo[j][0] = dummySampleInfo[j*22+4];
 			SpotsInfo[j][1] = dummySampleInfo[j*22+5];
@@ -345,7 +345,7 @@ int main(int argc, char *argv[])
 		Orient[2][1] = OPThis[8];
 		Orient[2][2] = OPThis[9];
 		int retval = StrainTensorKenesei(nspots,SpotsInfo,Distance,wavelength,
-			StrainTensorSampleKen,IDHash,dspacings,nRings,startSpotMatrix,SpotMatrix,&RetVal);
+			StrainTensorSampleKen,IDHash,dspacings,nRings,0,SpotMatrix,&RetVal);
 		CalcStrainTensorFableBeaudoin(LatCin,LatticeParameterFit,Orient,StrainTensorSampleFab);
 		FinalMatrix[i][0] = (double)(i+1);
 		for (j=0;j<9;j++) FinalMatrix[i][j+1] = OPThis[j+1];
@@ -363,6 +363,11 @@ int main(int argc, char *argv[])
 		VNorm = FinalMatrix[i][22]*FinalMatrix[i][22]*FinalMatrix[i][22];
 		BeamCenter += (FinalMatrix[i][12])*(VNorm);
 		FullVol += VNorm;
+		for (j=0;j<counterSpotMatrix;j++){
+			fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\n",(int)SpotMatrix[j][0],(int)SpotMatrix[j][1],
+				SpotMatrix[j][2],SpotMatrix[j][3],SpotMatrix[j][4],SpotMatrix[j][5],SpotMatrix[j][6],
+				(int)SpotMatrix[j][7],SpotMatrix[j][8],SpotMatrix[j][9],SpotMatrix[j][10],MultR*SpotMatrix[j][11]);
+		}
 	}
 	int tc2 = munmap(AllSpots,size);	
 	char GrainsFileName[1024];
@@ -372,11 +377,6 @@ int main(int argc, char *argv[])
 	printf("Number of points: %d.\n",nrIDs);
 	BeamCenter /= FullVol;
 	// Write file
-	for (i=0;i<counterSpotMatrix;i++){
-		fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\n",(int)SpotMatrix[i][0],(int)SpotMatrix[i][1],
-			SpotMatrix[i][2],SpotMatrix[i][3],SpotMatrix[i][4],SpotMatrix[i][5],SpotMatrix[i][6],
-			(int)SpotMatrix[i][7],SpotMatrix[i][8],SpotMatrix[i][9],SpotMatrix[i][10],MultR*SpotMatrix[i][11]);
-	}
 	fclose(spotsfile);
 	fprintf(GrainsFile,"%%NumGrains %d\n",nrIDs);
 	fprintf(GrainsFile, "%%BeamCenter %f\n",BeamCenter);
