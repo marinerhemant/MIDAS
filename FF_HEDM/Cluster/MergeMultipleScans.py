@@ -124,24 +124,25 @@ for line in positions:
 		allcontents = AllF.readlines()
 		AllF.close()
 		AllF = open(outfldr + '/InputAllExtraInfoFittingAll.csv','w')
-		for line in allcontents:
-			if line[0] == '%':
-				AllF.write(line)
+		for line2 in allcontents:
+			if line2[0] == '%':
+				AllF.write(line2)
 			else:
-				y = float(line.split(' ')[0])
-				z = float(line.split(' ')[1])
-				ome = float(line.split(' ')[2])
-				grR = float(line.split(' ')[3])
-				ID = float(line.split(' ')[4])
-				RNr = float(line.split(' ')[5])
-				Eta = float(line.split(' ')[6])
-				Ttheta = float(line.split(' ')[7])
-				omeIniNoW = float(line.split(' ')[8])
-				yOrigNoW = float(line.split(' ')[9])
-				zOrigNoW = float(line.split(' ')[10])
-				yDet = float(line.split(' ')[11])
-				zDet = float(line.split(' ')[12])
-				omegaDet = float(line.split(' ')[13])
+				print line2
+				y = float(line2.split(' ')[0])
+				z = float(line2.split(' ')[1])
+				ome = float(line2.split(' ')[2])
+				grR = float(line2.split(' ')[3])
+				ID = float(line2.split(' ')[4])
+				RNr = float(line2.split(' ')[5])
+				Eta = float(line2.split(' ')[6])
+				Ttheta = float(line2.split(' ')[7])
+				omeIniNoW = float(line2.split(' ')[8])
+				yOrigNoW = float(line2.split(' ')[9])
+				zOrigNoW = float(line2.split(' ')[10])
+				yDet = float(line2.split(' ')[11])
+				zDet = float(line2.split(' ')[12])
+				omegaDet = float(line2.split(' ')[13])
 				print [y, Eta, Ttheta, yOrigNoW]
 				y = y - ypos
 				Eta = CalcEtaAngle(y,z)
