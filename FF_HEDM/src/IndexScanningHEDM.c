@@ -320,6 +320,7 @@ int main(int argc, char* argv[]){
 				TheorSpots[j][1],TheorSpots[j][2],&DisplY,
 				&DisplZ,&xtr);
 			printf("%lf %lf\n",DisplY,DisplZ,xtr);
+			continue;
 			TheorSpots[j][0] += DisplY;
 			TheorSpots[j][1] += DisplZ;
 			OmeThis = TheorSpots[j][2];
