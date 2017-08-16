@@ -300,6 +300,8 @@ int main(int argc, char *argv[])
 		for (j=0;j<NR_MAX_IDS_PER_GRAIN;j++) for (k=0;k<12;k++) SpotMatrix[i*j][k] = 0;
 	}
 	printf("We are here.\n"); fflush(stdout);
+	FILE *spotsfile = fopen("SpotMatrix.csv","w");
+	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
 	for (i=0;i<nrIDs;i++){
 		fread(keyID,2*sizeof(int),1,fileKey);
 		if (keyID[1] == 0) continue;
@@ -382,8 +384,6 @@ int main(int argc, char *argv[])
 	printf("Number of points: %d.\n",nrIDs);
 	BeamCenter /= FullVol;
 	// Write file
-	FILE *spotsfile = fopen("SpotMatrix.csv","w");
-	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
 	for (i=0;i<counterSpotMatrix;i++){
 		fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\n",(int)SpotMatrix[i][0],(int)SpotMatrix[i][1],
 			SpotMatrix[i][2],SpotMatrix[i][3],SpotMatrix[i][4],SpotMatrix[i][5],SpotMatrix[i][6],
