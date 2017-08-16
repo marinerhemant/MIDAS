@@ -113,6 +113,29 @@ FreeMemMatrix(double **mat,int nrows)
     free(mat);
 }
 
+static inline 
+void OrientMat2Euler(double m[3][3],double Euler[3])
+{
+    double psi, phi, theta, sph;
+	if (fabs(m[2][2] - 1.0) < EPS){
+		phi = 0;
+	}else{
+	    phi = acos(m[2][2]);
+	}
+    sph = sin(phi);
+    if (fabs(sph) < EPS)
+    {
+        psi = 0.0;
+        theta = (fabs(m[2][2] - 1.0) < EPS) ? sin_cos_to_angle(m[1][0], m[0][0]) : sin_cos_to_angle(-m[1][0], m[0][0]);
+    } else{
+        psi = (fabs(-m[1][2] / sph) <= 1.0) ? sin_cos_to_angle(m[0][2] / sph, -m[1][2] / sph) : sin_cos_to_angle(m[0][2] / sph,1);
+        theta = (fabs(m[2][1] / sph) <= 1.0) ? sin_cos_to_angle(m[2][0] / sph, m[2][1] / sph) : sin_cos_to_angle(m[2][0] / sph,1);
+    }
+    Euler[0] = rad2deg*psi;
+    Euler[1] = rad2deg*phi;
+    Euler[2] = rad2deg*theta;
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc != 3){
@@ -288,10 +311,11 @@ int main(int argc, char *argv[])
 	double StrainTensorSampleFab[3][3];
 	double MultR=1000000;
 	double **FinalMatrix;
+	double Eul[3];
 	double BeamCenter = 0, FullVol = 0,VNorm;
-	FinalMatrix = allocMatrix(nrIDs,44);
+	FinalMatrix = allocMatrix(nrIDs,47);
 	for (i=0;i<nrIDs;i++){
-		for (j=0;j<44;j++) FinalMatrix[i][j] = 0;
+		for (j=0;j<47;j++) FinalMatrix[i][j] = 0;
 		for (j=0;j<NR_MAX_IDS_PER_GRAIN;j++) for (k=0;k<12;k++) SpotMatrix[i*j][k] = 0;
 	}
 	FILE *spotsfile = fopen("SpotMatrix.csv","w");
@@ -360,6 +384,10 @@ int main(int argc, char *argv[])
 		}
 		FinalMatrix[i][42] = MultR * RetVal;
 		FinalMatrix[i][43] = (double)PhaseNr;
+		OrientMat2Euler(Orient,Eul);
+		FinalMatrix[i][44] = Eul[0];
+		FinalMatrix[i][45] = Eul[1];
+		FinalMatrix[i][46] = Eul[2];
 		VNorm = FinalMatrix[i][22]*FinalMatrix[i][22]*FinalMatrix[i][22];
 		BeamCenter += (FinalMatrix[i][12])*(VNorm);
 		FullVol += VNorm;
@@ -389,10 +417,10 @@ int main(int argc, char *argv[])
 	fprintf(GrainsFile,"%%GrainID\tO11\tO12\tO13\tO21\tO22\tO23\tO31\tO32\tO33\tX\tY\tZ\ta\tb"
 						"\tc\talpha\tbeta\tgamma\tDiffPos\tDiffOme\tDiffAngle\tGrainRadius\tConfidence\t");
 	fprintf(GrainsFile,"eFab11\teFab12\teFab13\teFab21\teFab22\teFab23\teFab31\teFab32\teFab33\t");
-	fprintf(GrainsFile,"eKen11\teKen12\teKen13\teKen21\teKen22\teKen23\teKen31\teKen32\teKen33\tRMSErrorStrain\tPhaseNr\n");
+	fprintf(GrainsFile,"eKen11\teKen12\teKen13\teKen21\teKen22\teKen23\teKen31\teKen32\teKen33\tRMSErrorStrain\tPhaseNr\tEul0\tEul1\tEul2\n");
 	for (i=0;i<nrIDs;i++){
 		fprintf(GrainsFile,"%d\t",(int)FinalMatrix[i][0]);
-		for (j=1;j<44;j++){
+		for (j=1;j<47;j++){
 			fprintf(GrainsFile,"%lf\t",FinalMatrix[i][j]);
 		}
 		fprintf(GrainsFile,"\n");
