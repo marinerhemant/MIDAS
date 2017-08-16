@@ -229,10 +229,6 @@ int main(int argc, char *argv[])
     int nrIDs=atoi(argv[2]);
     int *keyID;
 	keyID = malloc(2*sizeof(*keyID));
-	int *IDsPerGrain,*NrIDsPerID;
-	NrIDsPerID = malloc(nrIDs*sizeof(*NrIDsPerID));
-	IDsPerGrain = malloc(NR_MAX_IDS_PER_GRAIN*nrIDs*sizeof(*IDsPerGrain));
-	fread(IDsPerGrain,NR_MAX_IDS_PER_GRAIN*nrIDs*sizeof(int),1,fileProcessKey);
 	double *OPThis;
 	OPThis = malloc(27*sizeof(*OPThis));
 	char cmmd[4096];
@@ -302,7 +298,6 @@ int main(int argc, char *argv[])
 		fread(keyID,2*sizeof(int),1,fileKey);
 		if (keyID[1] == 0) continue;
 		printf("Processing point %d of %d with %d ids matched.\n",i,nrIDs,keyID[1]);
-		NrIDsPerID[i] = keyID[1];
 		fread(OPThis,27*sizeof(double),1,fileOPFit);
 		OffSt = i*22*NR_MAX_IDS_PER_GRAIN*sizeof(double);
 		ReadSize = 22*keyID[1]*sizeof(double);
