@@ -113,94 +113,6 @@ FreeMemMatrix(double **mat,int nrows)
     free(mat);
 }
 
-static inline
-int
-FindInternalAnglesTwins(int nrIDs, int *IDs, int *IDsPerGrain,
-				   int *NrIDsPerID, bool *IDsChecked,
-				   double **OPs, double *ID_IA_Mat, int counter, int Pos,
-				   int StartingID, double *Radiuses, int SGNr)
-{
-	int i,j,k,ThisID,ThisID2;
-	bool AreTwins=false;
-	ID_IA_Mat[(counter*4)] = (double) StartingID;
-	ID_IA_Mat[(counter*4)+1] = (double) Pos;
-	ID_IA_Mat[(counter*4)+2] = OPs[Pos][IAColNr];
-	ID_IA_Mat[(counter*4)+3] = Radiuses[Pos];
-	IDsChecked[Pos] = true;
-	counter++;
-	double Angle, Axis[3],q1[4],q2[4],ang;
-	double OR1[9], OR2[9];
-	for (i=0;i<9;i++){
-		OR1[i] = OPs[Pos][i];
-	}
-	OrientMat2Quat(OR1,q1);
-	for (i=0;i<NrIDsPerID[Pos];i++){
-		ThisID = IDsPerGrain[(Pos*NR_MAX_IDS_PER_GRAIN)+i];
-		for (j=0;j<nrIDs;j++){
-			ThisID2 = IDs[j];
-			if (ThisID == ThisID2 && IDsChecked[j] == false){
-				for (k=0;k<9;k++){
-					OR2[k] = OPs[j][k];
-				}
-				OrientMat2Quat(OR2,q2);
-				Angle = GetMisOrientation(q1,q2,Axis,&ang,SGNr);
-				AreTwins = fabs(ang - 60) < 0.1 && 
-						 ( fabs(Axis[0]) - fabs(Axis[1]) ) < 0.01 &&
-						 ( fabs(Axis[2]) - fabs(Axis[1]) ) < 0.01;
-				if (fabs(ang) < 0.1 || AreTwins){
-					counter = FindInternalAnglesTwins(nrIDs,IDs,IDsPerGrain,NrIDsPerID,IDsChecked,
-							OPs,ID_IA_Mat,counter,j,ThisID,Radiuses,SGNr);
-					break;
-				}
-			}
-		}
-	}
-	int counte = counter;
-	return counte;
-}
-
-static inline
-int
-FindInternalAngles(int nrIDs, int *IDs, int *IDsPerGrain,
-				   int *NrIDsPerID, bool *IDsChecked,
-				   double **OPs, double *ID_IA_Mat, int counter, int Pos,
-				   int StartingID, double *Radiuses,int SGNr)
-{
-	int i,j,k,ThisID,ThisID2;
-	ID_IA_Mat[(counter*4)] = (double) StartingID;
-	ID_IA_Mat[(counter*4)+1] = (double) Pos;
-	ID_IA_Mat[(counter*4)+2] = OPs[Pos][IAColNr];
-	ID_IA_Mat[(counter*4)+3] = Radiuses[Pos];
-	IDsChecked[Pos] = true;
-	counter++;
-	double Angle, Axis[3],q1[4],q2[4],ang;
-	double OR1[9], OR2[9];
-	for (i=0;i<9;i++){
-		OR1[i] = OPs[Pos][i];
-	}
-	OrientMat2Quat(OR1,q1);
-	for (i=0;i<NrIDsPerID[Pos];i++){
-		ThisID = IDsPerGrain[(Pos*NR_MAX_IDS_PER_GRAIN)+i];
-		for (j=0;j<nrIDs;j++){
-			ThisID2 = IDs[j];
-			if (ThisID == ThisID2 && IDsChecked[j] == false){
-				for (k=0;k<9;k++){
-					OR2[k] = OPs[j][k];
-				}
-				OrientMat2Quat(OR2,q2);
-				Angle = GetMisOrientation(q1,q2,Axis,&ang,SGNr);
-				if (fabs(ang) < 0.1){
-					counter = FindInternalAngles(nrIDs,IDs,IDsPerGrain,NrIDsPerID,IDsChecked,
-							OPs,ID_IA_Mat,counter,j,ThisID,Radiuses,SGNr);
-					break;
-				}
-			}
-		}
-	}
-	int counte = counter;
-	return counte;
-}
-
 int main(int argc, char *argv[])
 {
 	if (argc != 3){
@@ -343,8 +255,8 @@ int main(int argc, char *argv[])
 	int OffSt, ReadSize;
 
 	// Read IDsHash.csv
-	int IDHash[NR_MAX_IDS_PER_GRAIN][3];
-	double dspacings[NR_MAX_IDS_PER_GRAIN];
+	int IDHash[NR_MAX_IDS_PER_GRAIN*2][3];
+	double dspacings[NR_MAX_IDS_PER_GRAIN*2];
 	FILE *idsfile;
 	char idsfn[4096];
 	sprintf(idsfn,"%s/IDsHash.csv",OutDirPath);
@@ -388,8 +300,8 @@ int main(int argc, char *argv[])
 	}
 	for (i=0;i<nrIDs;i++){
 		fread(keyID,2*sizeof(int),1,fileKey);
-		printf("Processing point %d of %d with %d ids matched.\n",i,nrIDs,keyID[1]);
 		if (keyID[1] == 0) continue;
+		printf("Processing point %d of %d with %d ids matched.\n",i,nrIDs,keyID[1]);
 		NrIDsPerID[i] = keyID[1];
 		fread(OPThis,27*sizeof(double),1,fileOPFit);
 		OffSt = i*22*NR_MAX_IDS_PER_GRAIN*sizeof(double);
@@ -438,6 +350,7 @@ int main(int argc, char *argv[])
 		Orient[2][2] = OPThis[9];
 		int retval = StrainTensorKenesei(nspots,SpotsInfo,Distance,wavelength,
 			StrainTensorSampleKen,IDHash,dspacings,nRings,startSpotMatrix,SpotMatrix,&RetVal);
+		printf(" %lf ",RetVal );
 		if (retval == 0){
 			printf("Did not read correct hash table for IDs. Exiting\n");
 			return;
