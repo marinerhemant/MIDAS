@@ -1135,8 +1135,8 @@ int main(int argc, char *argv[])
     FILE *fileParam;
     ParamFN = argv[1];
     double Pos0[3];
-	Pos0[0] = -atof(argv[2]);
-	Pos0[1] = -atof(argv[3]);
+	Pos0[0] = atof(argv[2]);
+	Pos0[1] = atof(argv[3]);
 	Pos0[2] = 0;
     int posNr = atoi(argv[4]);
     char aline[1000];
