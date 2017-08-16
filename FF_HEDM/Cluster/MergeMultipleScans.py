@@ -10,7 +10,7 @@ import sys
 import os
 from os.path import expanduser
 from subprocess import call
-from math import acos,sqrt, atand
+from math import acos,sqrt, atan
 
 def CalcEtaAngle(y, z):
 	alpha = 57.2957795130823*acos(z/sqrt(y*y+z*z))
@@ -145,7 +145,7 @@ for line in positions:
 				print [y, Eta, Ttheta, yOrigNoW]
 				y = y - ypos
 				Eta = CalcEtaAngle(y,z)
-				Ttheta = atand(sqrt(y*y+z*z)/Lsd)
+				Ttheta = 57.2957795130823*atan(sqrt(y*y+z*z)/Lsd)
 				yOrigNoW = yOrigNoW - ypos
 				print [y, Eta, Ttheta, yOrigNoW]
 				AllF.write(y+' '+z+' '+ome+' '+grR+' '+ID+' '+RNr+' '+Eta+' '+Ttheta+' '+omeIniNoW+' '+yOrigNoW+' '+zOrigNoW+' '+yDet+' '+zDet+' '+omegaDet+'\n')
