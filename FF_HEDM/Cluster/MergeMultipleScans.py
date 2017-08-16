@@ -10,6 +10,13 @@ import sys
 import os
 from os.path import expanduser
 from subprocess import call
+from math import acos,sqrt, atand
+
+def CalcEtaAngle(y, z):
+	alpha = 57.2957795130823*acos(z/sqrt(y*y+z*z))
+	if (y>0):
+		alpha = -alpha
+	return alpha
 
 print "We are going to process the flt files to generate MIDAS input."
 
@@ -61,6 +68,8 @@ for line in pscontent:
 			bcall[1] = float(line[2])
 		elif line[0] == 'px':
 			px = float(line[1])
+		elif line[0] == 'Lsd':
+			Lsd = float(line[1])
 
 positions = open(positionsFile).readlines()
 call(['mkdir','-p',outdir])
@@ -79,8 +88,8 @@ for line in positions:
 	if line[0] == '%':
 		continue
 	line = line.rstrip()
-	xpos = 1000 * float(line.split('\t')[0])
-	bcall[0] = bcall[0] - xpos/px
+	ypos = 1000 * float(line.split('\t')[0])
+	#bct = bcall[0] - xpos/px
 	filenr = int(line.split('\t')[2])
 	fname = fstem + str(filenr).zfill(padding) + ext
 	pfname2 = configFile + 'Layer' + str(layernr) + "MultiRing.txt"
@@ -110,6 +119,35 @@ for line in positions:
 		call(['mkdir','-p',outfldr])
 		call(['cp','hkls.csv',fldr])
 		call([binfolder+'/FitTiltBCLsdSample',pfname,fname])
+		# Update the InputAllExtraInfoFittingAll.csv with the new BC
+		AllF = open(outfldr + '/InputAllExtraInfoFittingAll.csv','r')
+		allcontents = AllF.readlines()
+		AllF.close()
+		AllF = open(outfldr + '/InputAllExtraInfoFittingAll.csv','w')
+		for line in allcontents:
+			if line[0] == '%':
+				AllF.write(line)
+			else:
+				YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)\n");
+				y = float(line.split(' ')[0])
+				z = float(line.split(' ')[1])
+				ome = float(line.split(' ')[2])
+				grR = float(line.split(' ')[3])
+				ID = float(line.split(' ')[4])
+				RNr = float(line.split(' ')[5])
+				Eta = float(line.split(' ')[6])
+				Ttheta = float(line.split(' ')[7])
+				omeIniNoW = float(line.split(' ')[8])
+				yOrigNoW = float(line.split(' ')[9])
+				zOrigNoW = float(line.split(' ')[10])
+				yDet = float(line.split(' ')[11])
+				zDet = float(line.split(' ')[12])
+				omegaDet = float(line.split(' ')[13])
+				y = y - ypos
+				Eta = CalcEtaAngle(y,z)
+				Ttheta = atand(sqrt(y*y+z*z)/Lsd)
+				yOrigNoW = yOrigNoW - ypos
+				AllF.write(y+' '+z+' '+ome+' '+grR+' '+ID+' '+RNr+' '+Eta+' '+Ttheta+' '+omeIniNoW+' '+yOrigNoW+' '+zOrigNoW+' '+yDet+' '+zDet+' '+omegaDet+'\n')
 		call(['rm',pfname])
 		outpfn = 'Layer'+str(layernr)+'/paramstest_RingNr'+str(ring)+'.txt'
 		call(['cp',outfldr+'/paramstest.txt',outpfn])
@@ -118,7 +156,6 @@ for line in positions:
 			if "RingRadii" in paramsline:
 				ringradii.append('RingNumbers '+str(ring)+'\n'+paramsline)
 	## Do Merge Multiple rings
-	bcall[0] = bcall[0] + xpos/px
 	f2.close()
 	call([binfolder+'/MergeMultipleRings',pfname2])
 	call(['cp','hkls.csv','InputAll.csv','InputAllExtraInfoFittingAll.csv','SpotsToIndex.csv','IDsHash.csv','Layer'+str(layernr)])

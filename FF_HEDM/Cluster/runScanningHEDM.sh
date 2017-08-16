@@ -8,7 +8,7 @@
 source ${HOME}/.MIDAS/paths
 ${BINFOLDER}/GetHKLList $1
 
-#${PFDIR}/MergeMultipleScans.py $1
+${PFDIR}/MergeMultipleScans.py $1
 ${PFDIR}/MakeMeshGridScanning.py $1
 
 nNODES=6

@@ -1019,8 +1019,8 @@ int main(int argc, char *argv[])
 	IndexAll = fopen(fnIndexAll,"w");
 	IndexAllNoHeader = fopen(fnIndexAllNoHeader,"w");
 	ExtraInfo = fopen(fnExtraInfo,"w");
-	fprintf(IndexAll,"YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta\n");
-	fprintf(ExtraInfo,"YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)\n");
+	fprintf(IndexAll,"%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta\n");
+	fprintf(ExtraInfo,"%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)\n");
 	double AverageRingRadius[nrUniqueRingNumbers],RingRadiusThis;
 	int NrSpotsPerRing[nrUniqueRingNumbers];
 	for (i=0;i<nrUniqueRingNumbers;i++){AverageRingRadius[i]=0;NrSpotsPerRing[i]=0;};
