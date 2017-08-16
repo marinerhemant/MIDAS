@@ -89,7 +89,6 @@ for line in positions:
 		continue
 	line = line.rstrip()
 	ypos = 1000 * float(line.split('\t')[0])
-	#bct = bcall[0] - xpos/px
 	filenr = int(line.split('\t')[2])
 	fname = fstem + str(filenr).zfill(padding) + ext
 	pfname2 = configFile + 'Layer' + str(layernr) + "MultiRing.txt"
@@ -147,7 +146,10 @@ for line in positions:
 				Eta = CalcEtaAngle(y,z)
 				Ttheta = 57.2957795130823*atan(sqrt(y*y+z*z)/Lsd)
 				yOrigNoW = yOrigNoW - ypos
-				AllF.write(str(y)+' '+str(z)+' '+str(ome)+' '+str(grR)+' '+str(ID)+' '+str(RNr)+' '+str(Eta)+' '+str(Ttheta)+' '+str(omeIniNoW)+' '+str(yOrigNoW)+' '+str(zOrigNoW)+' '+str(yDet)+' '+str(zDet)+' '+str(omegaDet)+'\n')
+				outstr = '{:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f}\n'.format(y,z,ome,grR,ID,RNr,Eta,Ttheta,omeIniNoW,yOrigNoW,zOrigNoW,yDet,zDet,omegaDet)
+				#AllF.write(str(y)+' '+str(z)+' '+str(ome)+' '+str(grR)+' '+str(ID)+' '+str(RNr)+' '+str(Eta)+' '+str(Ttheta)+' '+str(omeIniNoW)+' '+str(yOrigNoW)+' '+str(zOrigNoW)+' '+str(yDet)+' '+str(zDet)+' '+str(omegaDet)+'\n')
+				AllF.write(outstr)
+		AllF.close()
 		call(['rm',pfname])
 		outpfn = 'Layer'+str(layernr)+'/paramstest_RingNr'+str(ring)+'.txt'
 		call(['cp',outfldr+'/paramstest.txt',outpfn])
