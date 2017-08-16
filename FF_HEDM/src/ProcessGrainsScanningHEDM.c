@@ -296,10 +296,10 @@ int main(int argc, char *argv[])
 	}
 	FILE *spotsfile = fopen("SpotMatrix.csv","w");
 	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
-	for (i=9978;i<9980;i++){// (i=0;i<nrIDs;i++){
+	for (i=0;i<nrIDs;i++){
 		fread(keyID,2*sizeof(int),1,fileKey);
 		if (keyID[1] == 0) continue;
-		printf("Processing point %d of %d with %d ids matched. ",i,nrIDs,keyID[1]);
+		if (i== 9978) printf("Processing point %d of %d with %d ids matched. ",i,nrIDs,keyID[1]);
 		fread(OPThis,27*sizeof(double),1,fileOPFit);
 		OffSt = i*22*NR_MAX_IDS_PER_GRAIN*sizeof(double);
 		ReadSize = 22*keyID[1]*sizeof(double);
@@ -347,7 +347,7 @@ int main(int argc, char *argv[])
 		Orient[2][2] = OPThis[9];
 		int retval = StrainTensorKenesei(nspots,SpotsInfo,Distance,wavelength,
 			StrainTensorSampleKen,IDHash,dspacings,nRings,startSpotMatrix,SpotMatrix,&RetVal);
-		printf("%lf %lf %lf %lf %lf \n",RetVal,OPThis[1],OPThis[2],OPThis[15],OPThis[22] );
+		if (i==9978) printf("%lf %lf %lf %lf %lf \n",RetVal,OPThis[1],OPThis[2],OPThis[15],OPThis[22] );
 		CalcStrainTensorFableBeaudoin(LatCin,LatticeParameterFit,Orient,StrainTensorSampleFab);
 		FinalMatrix[i][0] = (double)(i+1);
 		for (j=0;j<9;j++) FinalMatrix[i][j+1] = OPThis[j+1];
