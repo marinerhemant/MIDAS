@@ -150,7 +150,7 @@ int main (int argc, char *argv[])
 			dummy, &ds, &rnr, dummy, dummy, dummy, dummy, dummy, dummy);
 		//printf("%d %lf %d\n",rnr, ds,nRings);
 		for (i=0;i<nRings;i++){
-			printf("%d\n",RingNumbers[i]);
+			//printf("%d\n",RingNumbers[i]);
 			if (RingNumbers[i] == rnr){
 				dspacing[i] = ds;
 			}
