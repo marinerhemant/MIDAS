@@ -387,9 +387,9 @@ int main(int argc, char *argv[])
 		for (j=0;j<NR_MAX_IDS_PER_GRAIN;j++) for (k=0;k<12;k++) SpotMatrix[i*j][k] = 0;
 	}
 	for (i=0;i<nrIDs;i++){
-		printf("Processing point %d of %d.\n",i,nrIDs);
 		fread(keyID,2*sizeof(int),1,fileKey);
 		if (keyID[1] == 0) continue;
+		printf("Processing point %d of %d with %d ids matched.\n",i,nrIDs,key[1]);
 		NrIDsPerID[i] = keyID[1];
 		fread(OPThis,27*sizeof(double),1,fileOPFit);
 		OffSt = i*22*NR_MAX_IDS_PER_GRAIN*sizeof(double);
