@@ -298,7 +298,6 @@ int main(int argc, char *argv[])
 	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
 	for (i=0;i<nrIDs;i++){
 		fread(keyID,2*sizeof(int),1,fileKey);
-		if (i== 9978) printf("Processing point %d of %d with %d ids matched. ",i,nrIDs,keyID[1]);
 		fread(OPThis,27*sizeof(double),1,fileOPFit);
 		if (keyID[1] == 0) continue;
 		OffSt = i*22*NR_MAX_IDS_PER_GRAIN*sizeof(double);
@@ -347,7 +346,6 @@ int main(int argc, char *argv[])
 		Orient[2][2] = OPThis[9];
 		int retval = StrainTensorKenesei(nspots,SpotsInfo,Distance,wavelength,
 			StrainTensorSampleKen,IDHash,dspacings,nRings,startSpotMatrix,SpotMatrix,&RetVal);
-		if (i==9978) printf("%lf %lf %lf %lf %lf \n",RetVal,OPThis[1],OPThis[2],OPThis[15],OPThis[22] );
 		CalcStrainTensorFableBeaudoin(LatCin,LatticeParameterFit,Orient,StrainTensorSampleFab);
 		FinalMatrix[i][0] = (double)(i+1);
 		for (j=0;j<9;j++) FinalMatrix[i][j+1] = OPThis[j+1];
