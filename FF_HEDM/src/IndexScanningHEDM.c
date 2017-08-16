@@ -306,8 +306,9 @@ int main(int argc, char* argv[]){
 	TheorSpots = allocMatrix(2*nhkls,9);
 	int nMatches, nMatchesBest=0, bestYet, nSpotsFin;
 	for (i=0;i<nGrains;i++){
-		for (j=0;j<3;j++) for (k=0;k<3;k++) OM[j][k] = OrientMatrix[j*3 + k];
+		for (j=0;j<3;j++) for (k=0;k<3;k++) OM[j][k] = OrientMatrix[i*9 + j*3 + k];
 		// For this orientation, make spots
+		for (j=0;j<9;j++) printf("%lf ",OrientMatrix[j]);
 		CalcDiffractionSpots(Lsd,MinEta,OmegaRanges,nOmeRanges,
 			hkls,nhkls,BoxSizes,&nSpots,OM,TheorSpots);
 		nMatches = 0;
