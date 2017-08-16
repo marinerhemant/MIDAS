@@ -424,6 +424,7 @@ int main(int argc, char *argv[])
 	fprintf(GrainsFile,"eFab11\teFab12\teFab13\teFab21\teFab22\teFab23\teFab31\teFab32\teFab33\t");
 	fprintf(GrainsFile,"eKen11\teKen12\teKen13\teKen21\teKen22\teKen23\teKen31\teKen32\teKen33\tRMSErrorStrain\tPhaseNr\tEul0\tEul1\tEul2\n");
 	for (i=0;i<nrIDs;i++){
+		if (FinalMatrix[i][0] == 0) continue;
 		fprintf(GrainsFile,"%d\t",(int)FinalMatrix[i][0]);
 		for (j=1;j<47;j++){
 			fprintf(GrainsFile,"%lf\t",FinalMatrix[i][j]);
