@@ -1567,6 +1567,7 @@ int main(int argc, char *argv[])
 	int SizeKeyFile 		= 2  * sizeof(int);
 	int OffStKeyFile 		= SizeKeyFile * posNr;
 	int KeyInfo[2] = {posNr , nSpotsComp};
+	printf("%d %d\n",posNr,nSpotsComp);
 	int rcKey = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
     if (rcKey < 0){
 		printf("Could not write to output file.\n");
