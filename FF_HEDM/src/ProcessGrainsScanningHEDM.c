@@ -38,6 +38,7 @@
 #define MAX_N_IDS 6000000
 #define NR_MAX_IDS_PER_GRAIN 5000
 #define IAColNr 20 // 20 for Internal Angle, 18 for position, 19 for omega
+#define EPS 1E-12
 
 static void
 check (int test, const char * message, ...)
