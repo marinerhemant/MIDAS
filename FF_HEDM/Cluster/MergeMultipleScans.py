@@ -130,7 +130,7 @@ for line in positions:
 			else:
 				print line2
 				line2sp = line2.split()
-				print line2sp
+				print line2sp	
 				y = float(line2sp[0])
 				z = float(line2sp[1])
 				ome = float(line2sp[2])
@@ -145,13 +145,13 @@ for line in positions:
 				yDet = float(line2sp[11])
 				zDet = float(line2sp[12])
 				omegaDet = float(line2sp[13])
-				print [y, Eta, Ttheta, yOrigNoW]
+				print [y, Eta, Ttheta, yOrigNoW, ypos]
 				y = y - ypos
 				Eta = CalcEtaAngle(y,z)
 				Ttheta = 57.2957795130823*atan(sqrt(y*y+z*z)/Lsd)
 				yOrigNoW = yOrigNoW - ypos
 				print [y, Eta, Ttheta, yOrigNoW]
-				AllF.write(y+' '+z+' '+ome+' '+grR+' '+ID+' '+RNr+' '+Eta+' '+Ttheta+' '+omeIniNoW+' '+yOrigNoW+' '+zOrigNoW+' '+yDet+' '+zDet+' '+omegaDet+'\n')
+				AllF.write(str(y)+' '+str(z)+' '+str(ome)+' '+str(grR)+' '+str(ID)+' '+str(RNr)+' '+str(Eta)+' '+str(Ttheta)+' '+str(omeIniNoW)+' '+str(yOrigNoW)+' '+str(zOrigNoW)+' '+str(yDet)+' '+str(zDet)+' '+str(omegaDet)+'\n')
 		call(['rm',pfname])
 		outpfn = 'Layer'+str(layernr)+'/paramstest_RingNr'+str(ring)+'.txt'
 		call(['cp',outfldr+'/paramstest.txt',outpfn])
