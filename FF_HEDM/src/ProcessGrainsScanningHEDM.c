@@ -293,7 +293,7 @@ int main(int argc, char *argv[])
     
 	char fnkey[1024], fnopfit[1024], fnprocesskey[1024], fnfullinfo[4096];
 	sprintf(fnkey,"%s/Key.bin",OutDirPath);
-	sprintf(fnopfit,"%s/Key.bin",OutDirPath);
+	sprintf(fnopfit,"%s/OrientPosFit.bin",OutDirPath);
 	sprintf(fnprocesskey,"%s/Key.bin",OutDirPath);
 	sprintf(fnfullinfo,"%s/FitBest.bin",OutDirPath);
 	int fullInfoFile = open(fnfullinfo,O_RDONLY);
