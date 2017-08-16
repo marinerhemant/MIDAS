@@ -379,7 +379,7 @@ int main(int argc, char *argv[])
 		CalcStrainTensorFableBeaudoin(LatCin,LatticeParameterFit,Orient,StrainTensorSampleFab);
 		FinalMatrix[i][0] = (double)(i+1);
 		for (j=0;j<9;j++) FinalMatrix[i][j+1] = OPThis[j+1];
-		for (j=0;j<3;j++) FinalMatrix[i][j+10] = -OPThis[j+11]; // Flip positions due to 180 rotation
+		for (j=0;j<3;j++) FinalMatrix[i][j+10] = OPThis[j+11]; // Flip positions due to 180 rotation
 		for (j=0;j<6;j++) FinalMatrix[i][j+13] = OPThis[j+15];
 		for (j=0;j<5;j++) FinalMatrix[i][j+19] = OPThis[j+22];
 		for (j=0;j<3;j++){
