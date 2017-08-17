@@ -109,7 +109,7 @@ imageprocessing: $(SRCDIR)ImageProcessingLibTiff.c
 	$(CC) $(SRCDIR)ImageProcessingLibTiff.c -o $(BINDIR)ImageProcessingLibTiff $(CFLAGS) $(CFLAGSTIFF)
 
 fitorientation: $(SRCDIR)FitOrientation.c
-	$(CC) $(SRCDIR)FitOrientation.c $(SRCDIR)CalcDiffractionSpots.c $(SRCDIR)SharedFuncsFit.c \
+	$(CC) $(SRCDIR)FitOrientation.c $(SRCDIR)GetMisorientation.c $(SRCDIR)CalcDiffractionSpots.c $(SRCDIR)SharedFuncsFit.c \
 	-o $(BINDIR)FitOrientation $(CFLAGS) $(CFLAGSNLOPT)
 
 fitorientationff2nf: $(SRCDIR)FitOrientationFF2NF.c

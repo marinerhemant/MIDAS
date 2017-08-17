@@ -285,6 +285,31 @@ check (int test, const char * message, ...)
     }
 }
 
+static inline void
+QuatToOrientMat(
+    double Quat[4],
+    double OrientMat[3][3])
+{
+    double Q1_2,Q2_2,Q3_2,Q12,Q03,Q13,Q02,Q23,Q01;
+    Q1_2 = Quat[1]*Quat[1];
+    Q2_2 = Quat[2]*Quat[2];
+    Q3_2 = Quat[3]*Quat[3];
+    Q12  = Quat[1]*Quat[2];
+    Q03  = Quat[0]*Quat[3];
+    Q13  = Quat[1]*Quat[3];
+    Q02  = Quat[0]*Quat[2];
+    Q23  = Quat[2]*Quat[3];
+    Q01  = Quat[0]*Quat[1];
+    OrientMat[0][0] = 1 - 2*(Q2_2+Q3_2);
+    OrientMat[0][1] = 2*(Q12-Q03);
+    OrientMat[0][2] = 2*(Q13+Q02);
+    OrientMat[1][0] = 2*(Q12+Q03);
+    OrientMat[1][1] = 1 - 2*(Q1_2+Q3_2);
+    OrientMat[1][2] = 2*(Q23-Q01);
+    OrientMat[2][0] = 2*(Q13-Q02);
+    OrientMat[2][1] = 2*(Q23+Q01);
+    OrientMat[2][2] = 1 - 2*(Q1_2+Q2_2);
+}
 
 int
 main(int argc, char *argv[])
@@ -694,7 +719,7 @@ main(int argc, char *argv[])
 	    }
 	    printf("Finished checking orientation grid. Now fitting %d orientations.\n",OrientationGoodID);
 	    double BestFrac, BestEuler[3];
-		double ResultMatr[7+(nSaves*4)];
+		double ResultMatr[7+(nSaves*4)], QuatIn[4], QuatOut[4];
 	    if (OrientationGoodID>0){
 			int n_hkls = 0;
 			double hkls[5000][4];
@@ -730,7 +755,10 @@ main(int argc, char *argv[])
 	            for (j=0;j<9;j++){
 	                OMTemp[j] = OrientMatrix[i][j];
 	            }
-	            Convert9To3x3(OMTemp,OrientIn);
+	            //Convert9To3x3(OMTemp,OrientIn);
+	            OrientMat2Quat(OMTemp,QuatIn);
+	            BringDownToFundamentalRegion(QuatIn,QuatOut,SpaceGroup);
+	            QuatToOrientMat(QuatOut,OrientIn);
 	            OrientMat2Euler(OrientIn,EulerIn);
 	            FitOrientation(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,
 					XG,YG,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,
