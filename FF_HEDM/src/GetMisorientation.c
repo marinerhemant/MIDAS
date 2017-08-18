@@ -194,7 +194,7 @@ void BringDownToFundamentalRegionSym(double QuatIn[4], double QuatOut[4], int Nr
 	QuatOut[3] = qps[maxCosRowNr][3];
 }
 
-static inline
+inline
 void BringDownToFundamentalRegion(double QuatIn[4], double QuatOut[4],int SGNr)
 {
 	int i, j, maxCosRowNr, NrSymmetries;

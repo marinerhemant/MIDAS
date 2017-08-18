@@ -141,6 +141,32 @@ void OrientMat2Euler(double m[3][3],double Euler[3])
     Euler[2] = rad2deg*theta;
 }
 
+static inline void
+QuatToOrientMat(
+    double Quat[4],
+    double OrientMat[9])
+{
+    double Q1_2,Q2_2,Q3_2,Q12,Q03,Q13,Q02,Q23,Q01;
+    Q1_2 = Quat[1]*Quat[1];
+    Q2_2 = Quat[2]*Quat[2];
+    Q3_2 = Quat[3]*Quat[3];
+    Q12  = Quat[1]*Quat[2];
+    Q03  = Quat[0]*Quat[3];
+    Q13  = Quat[1]*Quat[3];
+    Q02  = Quat[0]*Quat[2];
+    Q23  = Quat[2]*Quat[3];
+    Q01  = Quat[0]*Quat[1];
+    OrientMat[0] = 1 - 2*(Q2_2+Q3_2);
+    OrientMat[1] = 2*(Q12-Q03);
+    OrientMat[2] = 2*(Q13+Q02);
+    OrientMat[3] = 2*(Q12+Q03);
+    OrientMat[4] = 1 - 2*(Q1_2+Q3_2);
+    OrientMat[5] = 2*(Q23-Q01);
+    OrientMat[6] = 2*(Q13-Q02);
+    OrientMat[7] = 2*(Q23+Q01);
+    OrientMat[8] = 1 - 2*(Q1_2+Q2_2);
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc != 3){
@@ -316,7 +342,7 @@ int main(int argc, char *argv[])
 	double StrainTensorSampleFab[3][3];
 	double MultR=1000000;
 	double **FinalMatrix;
-	double Eul[3];
+	double Eul[3], q1[4],q2[4],OR1[9];
 	double BeamCenter = 0, FullVol = 0,VNorm;
 	FinalMatrix = allocMatrix(nrIDs,47);
 	for (i=0;i<nrIDs;i++){
@@ -378,7 +404,15 @@ int main(int argc, char *argv[])
 			StrainTensorSampleKen,IDHash,dspacings,nRings,0,SpotMatrix,&RetVal);
 		CalcStrainTensorFableBeaudoin(LatCin,LatticeParameterFit,Orient,StrainTensorSampleFab);
 		FinalMatrix[i][0] = (double)(i+1);
-		for (j=0;j<9;j++) FinalMatrix[i][j+1] = OPThis[j+1];
+		//for (j=0;j<9;j++) FinalMatrix[i][j+1] = OPThis[j+1];
+		// Take orientation and bring down to FR
+		for (j=0;j<9;j++) OR1[j] = OPThis[j+1];
+		OrientMat2Quat(OR1,q1);
+		BringDownToFundamentalRegion(q1,q2,SGNr);
+		QuatToOrientMat(q2,OR1);
+		for (j=0;j<9;j++){
+			FinalMatrix[i][j+1] = OR1[j];
+		}
 		for (j=0;j<3;j++) FinalMatrix[i][j+10] = OPThis[j+11]; // Flip positions due to 180 rotation
 		for (j=0;j<6;j++) FinalMatrix[i][j+13] = OPThis[j+15];
 		for (j=0;j<5;j++) FinalMatrix[i][j+19] = OPThis[j+22];

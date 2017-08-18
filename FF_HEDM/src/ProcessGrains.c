@@ -181,6 +181,32 @@ FindInternalAngles(int nrIDs, int *IDs, int *IDsPerGrain,
 	return counte;
 }
 
+static inline void
+QuatToOrientMat(
+    double Quat[4],
+    double OrientMat[9])
+{
+    double Q1_2,Q2_2,Q3_2,Q12,Q03,Q13,Q02,Q23,Q01;
+    Q1_2 = Quat[1]*Quat[1];
+    Q2_2 = Quat[2]*Quat[2];
+    Q3_2 = Quat[3]*Quat[3];
+    Q12  = Quat[1]*Quat[2];
+    Q03  = Quat[0]*Quat[3];
+    Q13  = Quat[1]*Quat[3];
+    Q02  = Quat[0]*Quat[2];
+    Q23  = Quat[2]*Quat[3];
+    Q01  = Quat[0]*Quat[1];
+    OrientMat[0] = 1 - 2*(Q2_2+Q3_2);
+    OrientMat[1] = 2*(Q12-Q03);
+    OrientMat[2] = 2*(Q13+Q02);
+    OrientMat[3] = 2*(Q12+Q03);
+    OrientMat[4] = 1 - 2*(Q1_2+Q3_2);
+    OrientMat[5] = 2*(Q23-Q01);
+    OrientMat[6] = 2*(Q13-Q02);
+    OrientMat[7] = 2*(Q23+Q01);
+    OrientMat[8] = 1 - 2*(Q1_2+Q2_2);
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc != 2){
@@ -588,7 +614,13 @@ int main(int argc, char *argv[])
 		}
 		CalcStrainTensorFableBeaudoin(LatCin,LatticeParameterFit,Orient,StrainTensorSampleFab);
 		FinalMatrix[nGrains][0] = (double)IDs[rown];
-		for (j=0;j<21;j++){
+		// Take orientation and bring down to FR
+		BringDownToFundamentalRegion(q1,q2,SGNr);
+		QuatToOrientMat(q2,OR1);
+		for (j=0;j<9;j++){
+			FinalMatrix[nGrains][j+1] = OR1[j];
+		}
+		for (j=9;j<21;j++){
 			FinalMatrix[nGrains][j+1] = OPs[rown][j];
 		}
 		FinalMatrix[nGrains][22] = Radiuses[rown];
