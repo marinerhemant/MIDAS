@@ -101,12 +101,7 @@ for grainNr in range(nGrains):
 		f2 = open(outdir+'/'+'Layer'+str(layernr)+'/IDRings.csv')
 		lines = f2.readlines()
 		origID = lines[sp-startnr-1].split()[1]
-		print origID
-		print sp
-		print startnr
-		print layernr
-		print ringnr
-		print lines[sp-startnr-1].split()[0]
+		print [origID, sp, startnr, layernr, ringnr, lines[sp-startnr-1].split()[0]]
 		if (lines[sp-startnr-1].split()[0]!= ringnr):
 			print "IDs did not match. Please check."
 			sys.exit(1)
