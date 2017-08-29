@@ -410,6 +410,15 @@ int main(int argc, char *argv[])
 		OrientMat2Quat(OR1,q1);
 		BringDownToFundamentalRegion(q1,q2,SGNr);
 		QuatToOrientMat(q2,OR1);
+		Orient[0][0] = OR1[0];
+		Orient[0][1] = OR1[1];
+		Orient[0][2] = OR1[2];
+		Orient[1][0] = OR1[3];
+		Orient[1][1] = OR1[4];
+		Orient[1][2] = OR1[5];
+		Orient[2][0] = OR1[6];
+		Orient[2][1] = OR1[7];
+		Orient[2][2] = OR1[8];
 		for (j=0;j<9;j++){
 			FinalMatrix[i][j+1] = OR1[j];
 		}
@@ -437,7 +446,7 @@ int main(int argc, char *argv[])
 				(int)SpotMatrix[j][7],SpotMatrix[j][8],SpotMatrix[j][9],SpotMatrix[j][10],MultR*SpotMatrix[j][11]);
 		}
 	}
-	int tc2 = munmap(AllSpots,size);	
+	int tc2 = munmap(AllSpots,size);
 	char GrainsFileName[1024];
 	sprintf(GrainsFileName,"Grains.csv");
 	FILE *GrainsFile;

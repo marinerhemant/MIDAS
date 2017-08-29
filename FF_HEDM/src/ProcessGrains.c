@@ -33,6 +33,34 @@
 #define NR_MAX_IDS_PER_GRAIN 5000
 #define IAColNr 20 // 20 for Internal Angle, 18 for position, 19 for omega
 
+#define EPS 1E-12
+#define deg2rad 0.0174532925199433
+#define rad2deg 57.2957795130823
+static inline double sin_cos_to_angle (double s, double c){return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);}
+
+static inline 
+void OrientMat2Euler(double m[3][3],double Euler[3])
+{
+    double psi, phi, theta, sph;
+	if (fabs(m[2][2] - 1.0) < EPS){
+		phi = 0;
+	}else{
+	    phi = acos(m[2][2]);
+	}
+    sph = sin(phi);
+    if (fabs(sph) < EPS)
+    {
+        psi = 0.0;
+        theta = (fabs(m[2][2] - 1.0) < EPS) ? sin_cos_to_angle(m[1][0], m[0][0]) : sin_cos_to_angle(-m[1][0], m[0][0]);
+    } else{
+        psi = (fabs(-m[1][2] / sph) <= 1.0) ? sin_cos_to_angle(m[0][2] / sph, -m[1][2] / sph) : sin_cos_to_angle(m[0][2] / sph,1);
+        theta = (fabs(m[2][1] / sph) <= 1.0) ? sin_cos_to_angle(m[2][0] / sph, m[2][1] / sph) : sin_cos_to_angle(m[2][0] / sph,1);
+    }
+    Euler[0] = rad2deg*psi;
+    Euler[1] = rad2deg*phi;
+    Euler[2] = rad2deg*theta;
+}
+
 static inline
 int**
 allocMatrixInt(int nrows, int ncols)
@@ -457,7 +485,7 @@ int main(int argc, char *argv[])
 	double MultR=1000000;
 	double **FinalMatrix;
 	double BeamCenter = 0, FullVol = 0,VNorm;
-	FinalMatrix = allocMatrix(nGrainPositions,44);
+	FinalMatrix = allocMatrix(nGrainPositions,47);
 	int rown2;
 	int IDHash[NR_MAX_IDS_PER_GRAIN][3];
 	double dspacings[NR_MAX_IDS_PER_GRAIN];
@@ -474,7 +502,7 @@ int main(int argc, char *argv[])
 		MakeHash = 1;
 	}
 	double **SpotMatrix, **InputMatrix;
-	SpotMatrix = allocMatrix(NR_MAX_IDS_PER_GRAIN*nGrainPositions,12);
+	SpotMatrix = allocMatrix(NR_MAX_IDS_PER_GRAIN,12);
 	InputMatrix = allocMatrix(MAX_N_IDS,10);
 	int counterSpotMatrix = 0, nRowsSpotMatrix = NR_MAX_IDS_PER_GRAIN*nGrainPositions;
 	char *inputallfn = "InputAllExtraInfoFittingAll.csv";
@@ -526,8 +554,10 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
+	for (j=0;j<NR_MAX_IDS_PER_GRAIN;j++) for (k=0;k<12;k++) SpotMatrix[j][k] = 0;
 	int rowSpotID, startSpotMatrix;
-	double RetVal;
+	double RetVal, Eul[3];
+	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
 	for (i=0;i<nGrainPositions;i++){
 		rown = GrainPositions[i];
 		DoneAlready = 0;
@@ -567,6 +597,7 @@ int main(int argc, char *argv[])
 		OffSt = rown*22*NR_MAX_IDS_PER_GRAIN*sizeof(double);
 		ReadSize = 22*nspots*sizeof(double);
 		int rc = pread(fullInfoFile,dummySampleInfo,ReadSize,OffSt);
+		counterSpotMatrix = 0;
 		startSpotMatrix = counterSpotMatrix;
 		for (j=0;j<nspots;j++){
 			SpotsInfo[j][0] = dummySampleInfo[j*22+4];
@@ -617,6 +648,15 @@ int main(int argc, char *argv[])
 		// Take orientation and bring down to FR
 		BringDownToFundamentalRegion(q1,q2,SGNr);
 		QuatToOrientMat(q2,OR1);
+		Orient[0][0] = OR1[0];
+		Orient[0][1] = OR1[1];
+		Orient[0][2] = OR1[2];
+		Orient[1][0] = OR1[3];
+		Orient[1][1] = OR1[4];
+		Orient[1][2] = OR1[5];
+		Orient[2][0] = OR1[6];
+		Orient[2][1] = OR1[7];
+		Orient[2][2] = OR1[8];
 		for (j=0;j<9;j++){
 			FinalMatrix[nGrains][j+1] = OR1[j];
 		}
@@ -633,20 +673,23 @@ int main(int argc, char *argv[])
 		}
 		FinalMatrix[nGrains][42] = MultR * RetVal;
 		FinalMatrix[nGrains][43] = (double)PhaseNr;
+		OrientMat2Euler(Orient,Eul);
+		FinalMatrix[i][44] = Eul[0];
+		FinalMatrix[i][45] = Eul[1];
+		FinalMatrix[i][46] = Eul[2];
 		VNorm = FinalMatrix[nGrains][22]*FinalMatrix[nGrains][22]*FinalMatrix[nGrains][22];
 		BeamCenter += (FinalMatrix[nGrains][12])*(VNorm);
 		FullVol += VNorm;
 		nGrains++;
+		for (j=0;j<counterSpotMatrix;j++){
+			fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\n",(int)SpotMatrix[j][0],(int)SpotMatrix[j][1],
+				SpotMatrix[j][2],SpotMatrix[j][3],SpotMatrix[j][4],SpotMatrix[j][5],SpotMatrix[j][6],
+				(int)SpotMatrix[j][7],SpotMatrix[j][8],SpotMatrix[j][9],SpotMatrix[j][10],MultR*SpotMatrix[j][11]);
+		}
 	}
 	printf("Number of grains: %d.\n",nGrains);
 	BeamCenter /= FullVol;
 	// Write file
-	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
-	for (i=0;i<counterSpotMatrix;i++){
-		fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\n",(int)SpotMatrix[i][0],(int)SpotMatrix[i][1],
-			SpotMatrix[i][2],SpotMatrix[i][3],SpotMatrix[i][4],SpotMatrix[i][5],SpotMatrix[i][6],
-			(int)SpotMatrix[i][7],SpotMatrix[i][8],SpotMatrix[i][9],SpotMatrix[i][10],MultR*SpotMatrix[i][11]);
-	}
 	fclose(spotsfile);
 	fprintf(GrainsFile,"%%NumGrains %d\n",nGrains);
 	fprintf(GrainsFile, "%%BeamCenter %f\n",BeamCenter);
@@ -659,10 +702,10 @@ int main(int argc, char *argv[])
 	fprintf(GrainsFile,"%%GrainID\tO11\tO12\tO13\tO21\tO22\tO23\tO31\tO32\tO33\tX\tY\tZ\ta\tb"
 						"\tc\talpha\tbeta\tgamma\tDiffPos\tDiffOme\tDiffAngle\tGrainRadius\tConfidence\t");
 	fprintf(GrainsFile,"eFab11\teFab12\teFab13\teFab21\teFab22\teFab23\teFab31\teFab32\teFab33\t");
-	fprintf(GrainsFile,"eKen11\teKen12\teKen13\teKen21\teKen22\teKen23\teKen31\teKen32\teKen33\tRMSErrorStrain\tPhaseNr\n");
+	fprintf(GrainsFile,"eKen11\teKen12\teKen13\teKen21\teKen22\teKen23\teKen31\teKen32\teKen33\tRMSErrorStrain\tPhaseNr\tEul0\tEul1\tEul2\n");
 	for (i=0;i<nGrains;i++){
 		fprintf(GrainsFile,"%d\t",(int)FinalMatrix[i][0]);
-		for (j=1;j<44;j++){
+		for (j=1;j<47;j++){
 			fprintf(GrainsFile,"%lf\t",FinalMatrix[i][j]);
 		}
 		fprintf(GrainsFile,"\n");

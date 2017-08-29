@@ -143,7 +143,7 @@ int main(int argc, char* argv[]){
 	paramsFN = argv[1];
 	GrainsFN = argv[2];
 	double x, y, z, Lsd, MinEta, OmegaRanges[50][2], BoxSizes[50][4], Wavelength,
-		MargOme, MargRad, MargEta, Completeness, LatC[6];
+		MargOme, MargRad, MargEta, Completeness, LatC[6],completenessTol;
 	int nBoxSizes = 0, nOmeRanges=0, nRings = 0, cs2 = 0, RingNumbers[200], nLayers;
 	x = atof(argv[3]);
 	y = atof(argv[4]);
@@ -182,6 +182,8 @@ int main(int argc, char* argv[]){
 			sscanf(aline,"%s %lf",dummy,&MargEta);
 		} else if (StartsWith(aline,"PositionsFile ")){
 			sscanf(aline,"%s %s",dummy,positionsFN);
+		} else if (StartsWith(aline,"CompletenessTol ")){
+			sscanf(aline,"%s %lf",dummy,&completenessTol);
 		} else if (StartsWith(aline,"OutDirPath ")){
 			sscanf(aline,"%s %s",dummy,outdirpath);
 		} else if (StartsWith(aline,"nLayers ")){
@@ -383,7 +385,7 @@ int main(int argc, char* argv[]){
 		}
 		if (((double)nMatches)/((double)nSpots) > Completeness){
 			meanIA /= nMatches;
-			if (nMatchesBest < nMatches){
+			if (nMatchesBest-completenessTol < nMatches){
 				bestYet = 1;
 			} else if (nMatches == nMatchesBest && meanIA < bestMeanIA){
 				bestYet = 1;
