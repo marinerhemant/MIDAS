@@ -1248,7 +1248,7 @@ int main(int argc, char *argv[])
 	char line[5024];
 	double MaxTtheta = rad2deg*atan(MaxRingRad/Lsd);
 	if (nOmeRanges != nBoxSizes){printf("Number of omega ranges and number of box sizes don't match. Exiting!\n");return 1;}
-	double MargOme=0.01,MargPos=Rsample,MargPos2=Rsample/2,MargOme2=5,chi=0;
+	double MargOme=0.01,MargPos=Rsample,MargPos2=Rsample/2,MargOme2=2,chi=0;
 	int i, j, k, nhkls = 0;
 	double **hkls;
 	hkls = allocMatrix(5000,7);
