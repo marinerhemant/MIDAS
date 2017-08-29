@@ -74,7 +74,7 @@ idsFile = open(sys.argv[3])
 idsInfo = idsFile.readlines()
 
 for grainNr in range(nGrains):
-	print "Writing Grain " + str(grainNr) + 'of ' + str(nGrains) + ' grains.'
+	print "Writing Grain " + str(grainNr) + ' of ' + str(nGrains) + ' grains.'
 	splist = set(spotsList[grainNr])
 	f = open('SpotList.csv.' + str(grainNr),'w')
 	for sp in splist:
