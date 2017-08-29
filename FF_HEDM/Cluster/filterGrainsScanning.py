@@ -16,6 +16,7 @@ uniquegrains = []
 grainIDlist = []
 spotsList = []
 spotsPositions = {}
+writearr = []
 for line in grains:
 	if line[0] == '%' :
 		continue
@@ -26,6 +27,7 @@ for line in grains:
 		if (len(uniquegrains) == 0):
 			uniquegrains.append([e1,e2,e3])
 			grainIDlist.append([int(line.split()[0])])
+			writearr.append([line])
 			spotinfo = spotsFile.readline()
 			spotsList.append([int(spotinfo.split()[1])])
 			spotsPositions[int(spotinfo.split()[1])] = [float(spotinfo.split()[2]),float(spotinfo.split()[3]),float(spotinfo.split()[4])]
@@ -42,8 +44,9 @@ for line in grains:
 			grainFound = 0
 			for grainNr in range(nGrains):
 				eG1 = uniquegrains[grainNr][0]
-				if (fabs(eG1-e1) < 10):
+				if (fabs(eG1-e1) < 10): ## 10 degrees tolerance for first euler angle. This is good enough for now.
 					grainIDlist[grainNr].append(int(line.split()[0]))
+					writearr[grainNr].append(line)
 					spotinfo = spotsFile.readline()
 					grainFound = 1
 					while (int(spotinfo.split()[0]) == int(line.split()[0])):
@@ -56,18 +59,19 @@ for line in grains:
 			if grainFound == 0:
 				uniquegrains.append([e1,e2,e3])
 				grainIDlist.append([int(line.split()[0])])
-				nGrains = nGrains + 1
+				writearr.append([line])
 				spotinfo = spotsFile.readline()
 				spotsList.append([int(spotinfo.split()[1])])
 				spotsPositions[int(spotinfo.split()[1])] = [float(spotinfo.split()[2]),float(spotinfo.split()[3]),float(spotinfo.split()[4])]
 				spotinfo = spotsFile.readline()
 				while (int(spotinfo.split()[0]) == int(line.split()[0])):
-					spotsList[nGrains-1].append(int(spotinfo.split()[1]))
+					spotsList[nGrains].append(int(spotinfo.split()[1]))
 					spotsPositions[int(spotinfo.split()[1])] = [float(spotinfo.split()[2]),float(spotinfo.split()[3]),float(spotinfo.split()[4])]
 					spotinfo = spotsFile.readline()
 					if spotinfo == '':
 						break
 				spotsFile.seek(spotsFile.tell()-len(spotinfo))
+				nGrains = nGrains + 1
 spotsFile.close()
 
 idsFile = open(sys.argv[3])
@@ -84,8 +88,8 @@ for grainNr in range(nGrains):
 		f.write(str(sp)+'\t'+str(layernr)+'\t'+str(spotsPositions[sp][0])+'\t'+str(spotsPositions[sp][1])+'\t'+str(spotsPositions[sp][2])+'\n')
 	f.close()
 	f = open('GrainList.csv'+str(grainNr),'w')
-	for ID in grainIDlist[grainNr]:
-		f.write(str(ID)+'\n')
+	for line in writearr[grainNr]:
+		f.write(line)
 	f.close()
 
 t1 = time.time()
