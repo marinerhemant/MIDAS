@@ -87,8 +87,9 @@ for grainNr in range(nGrains):
 				layernr = int(line.split()[0])
 		f.write(str(sp)+'\t'+str(layernr)+'\t'+str(spotsPositions[sp][0])+'\t'+str(spotsPositions[sp][1])+'\t'+str(spotsPositions[sp][2])+'\n')
 	f.close()
-	f = open('GrainList.csv'+str(grainNr),'w')
+	f = open('GrainList.csv.'+str(grainNr),'w')
 	for line in writearr[grainNr]:
+		print line
 		f.write(line)
 	f.close()
 
