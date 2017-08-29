@@ -50,3 +50,4 @@ ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
  -nrelements=${nrelements} -Folder=$( pwd )
 
 ${BINFOLDER}/ProcessGrainsScanningHEDM $1 ${nrelements}
+python ${PFDIR}/filterGrainsScanning.py $1

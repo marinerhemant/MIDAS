@@ -97,12 +97,13 @@ for grainNr in range(nGrains):
 			if int(line.split()[2]) <= sp and int(line.split()[3]) >= sp:
 				layernr = int(line.split()[0])
 				startnr = int(line.split()[4])
-		# We know which layer, now go into the folder and find out which original ID corresponds to this
-		# sp = startnr + lineNr from the IDRings file
-		# lineNr = sp - startnr
+				ringnr = int(line.split()[1])
 		f2 = open(outdir+'/'+'Layer'+str(layernr)+'/IDRings.csv')
 		lines = f2.readlines()
 		origID = lines[sp-startnr].split()[1]
+		if (lines[sp-startnr].split()[0]!= ringnr):
+			print "IDs did not match. Please check."
+			sys.exit(1)
 		f.write(origID+'\t'+str(sp)+'\t'+str(layernr)+'\t'+str(spotsPositions[sp][0])+'\t'+str(spotsPositions[sp][1])+'\t'+str(spotsPositions[sp][2])+'\n')
 	f.close()
 	f = open('GrainList.csv.'+str(grainNr),'w')
