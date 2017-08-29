@@ -54,9 +54,9 @@ int main(int arc, char* argv[]){
 	FILE *IDsHashFile;
 	int ringNr, startID, endID;
 	int readMatr[nRings][3];
-	int outMatr[nLayers*nRings][4], spotIDsTillNow = 0, IDsThisLayer;
+	int outMatr[nLayers*nRings][5], spotIDsTillNow = 0, IDsThisLayer;
 	for (i=0;i<nLayers*nRings;i++){
-		for (j=0;j<4;j++){
+		for (j=0;j<5;j++){
 			outMatr[i][j] = 0;
 		}
 	}
@@ -94,6 +94,7 @@ int main(int arc, char* argv[]){
 				outMatr[nRings*(i-1)+j][1] = readMatr[j][0];
 				outMatr[nRings*(i-1)+j][2] = spotIDsTillNow + readMatr[j][1];
 				outMatr[nRings*(i-1)+j][3] = spotIDsTillNow + readMatr[j][2];
+				outMatr[nRings*(i-1)+j][4] = spotIDsTillNow; // Starting ID, we will subtract this from the total number of IDs
 			}
 			fflush(stdout);
 			sprintf(extraFN,"%s/ExtraInfo.bin",outpath);
@@ -111,7 +112,7 @@ int main(int arc, char* argv[]){
 	sprintf(outFN,"%s/%s/IDsHash.csv",cwd,outdirpath);
 	outFile = fopen(outFN,"w");
 	for (i=0;i<nLayers*nRings;i++){
-		for (j=0;j<4;j++){
+		for (j=0;j<5;j++){
 			fprintf(outFile,"%d\t",outMatr[i][j]);
 		}
 		fprintf(outFile,"\n");

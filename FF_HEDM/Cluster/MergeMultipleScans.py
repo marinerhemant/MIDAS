@@ -160,7 +160,7 @@ for line in positions:
 	## Do Merge Multiple rings
 	f2.close()
 	call([binfolder+'/MergeMultipleRings',pfname2])
-	call(['cp','hkls.csv','InputAll.csv','InputAllExtraInfoFittingAll.csv','SpotsToIndex.csv','IDsHash.csv','Layer'+str(layernr)])
+	call(['cp','hkls.csv','InputAll.csv','InputAllExtraInfoFittingAll.csv','SpotsToIndex.csv','IDsHash.csv','IDRings.csv','Layer'+str(layernr)])
 	# Generate correct paramstest.txt file first
 	outfolder = outdir+'/Layer'+str(layernr)
 	call(['mv',pfname2,outfolder])

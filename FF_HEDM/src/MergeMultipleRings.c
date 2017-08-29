@@ -156,9 +156,9 @@ int main (int argc, char *argv[])
 			}
 		}
 	}
-    char fnInputAll[1024], fnExtraAll[1024],fnSpIDs[1024];
+    char fnInputAll[1024], fnExtraAll[1024],fnSpIDs[1024],fnidhsh[1024];
     FILE *inp, *ext;
-    FILE *sp;
+    FILE *sp, *idhsh;
     double **Input, **Extra;
     int *SpIDs,**SpotsTemp;
     Input = allocMatrix(MAX_SPOTS_TOTAL,8);
@@ -172,6 +172,9 @@ int main (int argc, char *argv[])
     int cntr;
     int counterIDs=0,IDTemp;
     int startIDNr[nRings], endIDNr[nRings];
+    sprintf(fnidhsh,"%s/IDRings.csv",Folder);
+    idhsh = foepn(fnidhsh,"w");
+    fprintf(idhsh,"RingNumber OriginalID NewID(RingsMerge)\n");
     for (i=0;i<nRings;i++){
 	    sprintf(fnInputAll,"%s/Ring%d/PeakSearch/%s/InputAll.csv",Folder,RingNumbers[i],FileStem);
 	    sprintf(fnExtraAll,"%s/Ring%d/PeakSearch/%s/InputAllExtraInfoFittingAll.csv",Folder,RingNumbers[i],FileStem);
@@ -204,6 +207,7 @@ int main (int argc, char *argv[])
 				&Extra[counterTotal][9],&Extra[counterTotal][10],&Extra[counterTotal][11],&Extra[counterTotal][12],
 				&Extra[counterTotal][13]);
 			Extra[counterTotal][4] = counterTotal+1;
+			fprintf(idhsh,"%d %d %d\n",RingNumbers[i],(int)dumf,counterTotal+1);
 			counterTotal++;
 		}
 		startIDNr[i] = startcntr + 1;
@@ -229,6 +233,7 @@ int main (int argc, char *argv[])
 			}
 		}
 	}
+	fclose(idhsh);
 	//Write files
 	FILE *inpout, *extout, *idout, *idshashout;
 	char fninpout[1024], fnextout[1024], fnidout[1024], fnidshash[1024];

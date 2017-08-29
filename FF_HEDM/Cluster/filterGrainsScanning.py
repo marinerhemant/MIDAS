@@ -1,16 +1,27 @@
 import sys
 from math import fabs
 import time
+import os
 
-if len(sys.argv) < 4:
-	print 'Supply following parameters: Grains.csv, SpotMatrix.csv and IDsHash.csv'
+if len(sys.argv) < 2:
+	print 'Supply following parameters: PS.txt'
 	sys.exit(1)
 
+configFile = sys.argv[1]
+pscontent = open(configFile).readlines()
+for line in pscontent:
+	line = [s for s in line.rstrip().split() if s]
+	if len(line) > 0:
+		if line[0] == 'PositionsFile':
+			positionsFile = os.getcwd() + '/' + line[1]
+		elif line[0] == 'OutDirPath':
+			outdir = os.getcwd() + '/' + line[1]
+
 t0 = time.time()
-grainsFile = open(sys.argv[1])
+grainsFile = open('Grains.csv')
 grains = grainsFile.readlines()
 grainsFile.close()
-spotsFile = open(sys.argv[2])
+spotsFile = open('SpotMatrix.csv')
 spotinfo = spotsFile.readline()
 uniquegrains = []
 grainIDlist = []
@@ -74,7 +85,7 @@ for line in grains:
 				nGrains = nGrains + 1
 spotsFile.close()
 
-idsFile = open(sys.argv[3])
+idsFile = open(outdir+'/IDsHash.csv')
 idsInfo = idsFile.readlines()
 
 for grainNr in range(nGrains):
@@ -85,7 +96,14 @@ for grainNr in range(nGrains):
 		for line in idsInfo:
 			if int(line.split()[2]) <= sp and int(line.split()[3]) >= sp:
 				layernr = int(line.split()[0])
-		f.write(str(sp)+'\t'+str(layernr)+'\t'+str(spotsPositions[sp][0])+'\t'+str(spotsPositions[sp][1])+'\t'+str(spotsPositions[sp][2])+'\n')
+				startnr = int(line.split()[4])
+		# We know which layer, now go into the folder and find out which original ID corresponds to this
+		# sp = startnr + lineNr from the IDRings file
+		# lineNr = sp - startnr
+		f2 = open(outdir+'/'+'Layer'+str(layernr)+'/IDRings.csv')
+		lines = f2.readlines()
+		origID = lines[sp-startnr].split()[1]
+		f.write(origID+'\t'+str(sp)+'\t'+str(layernr)+'\t'+str(spotsPositions[sp][0])+'\t'+str(spotsPositions[sp][1])+'\t'+str(spotsPositions[sp][2])+'\n')
 	f.close()
 	f = open('GrainList.csv.'+str(grainNr),'w')
 	for line in writearr[grainNr]:
