@@ -143,7 +143,7 @@ int main(int argc, char* argv[]){
 	paramsFN = argv[1];
 	GrainsFN = argv[2];
 	double x, y, z, Lsd, MinEta, OmegaRanges[50][2], BoxSizes[50][4], Wavelength,
-		MargOme, MargRad, MargEta, Completeness, LatC[6],completenessTol;
+		MargOme, MargRad, MargEta, Completeness, LatC[6],completenessTol=0;
 	int nBoxSizes = 0, nOmeRanges=0, nRings = 0, cs2 = 0, RingNumbers[200], nLayers;
 	x = atof(argv[3]);
 	y = atof(argv[4]);
@@ -385,9 +385,9 @@ int main(int argc, char* argv[]){
 		}
 		if (((double)nMatches)/((double)nSpots) > Completeness){
 			meanIA /= nMatches;
-			if (nMatchesBest-completenessTol < nMatches){
+			if (nMatchesBest < nMatches){
 				bestYet = 1;
-			} else if (nMatches == nMatchesBest && meanIA < bestMeanIA){
+			} else if (nMatches >= (nMatchesBest-completenessTol) && meanIA < bestMeanIA){
 				bestYet = 1;
 			}
 			if (bestYet == 1){
