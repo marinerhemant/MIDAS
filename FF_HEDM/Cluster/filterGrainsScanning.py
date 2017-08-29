@@ -89,7 +89,6 @@ for grainNr in range(nGrains):
 	f.close()
 	f = open('GrainList.csv.'+str(grainNr),'w')
 	for line in writearr[grainNr]:
-		print line
 		f.write(line)
 	f.close()
 
