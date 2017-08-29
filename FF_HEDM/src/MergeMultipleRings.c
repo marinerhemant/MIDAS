@@ -173,7 +173,7 @@ int main (int argc, char *argv[])
     int counterIDs=0,IDTemp;
     int startIDNr[nRings], endIDNr[nRings];
     sprintf(fnidhsh,"%s/IDRings.csv",Folder);
-    idhsh = foepn(fnidhsh,"w");
+    idhsh = fopen(fnidhsh,"w");
     fprintf(idhsh,"RingNumber OriginalID NewID(RingsMerge)\n");
     for (i=0;i<nRings;i++){
 	    sprintf(fnInputAll,"%s/Ring%d/PeakSearch/%s/InputAll.csv",Folder,RingNumbers[i],FileStem);
