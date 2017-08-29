@@ -414,7 +414,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 		}
 		diffLenM = CalcNorm2((SpotsYZOGCorr[sp][0]-TheorSpotsYZWER[RowBest][0]),(SpotsYZOGCorr[sp][1]-TheorSpotsYZWER[RowBest][1]));
 		diffOmeM = fabs(SpotsYZOGCorr[sp][2]-TheorSpotsYZWER[RowBest][2]);
-		if (minAngle < 1){
+		if (minAngle < 2){
 			MatchDiff[nMatched][0] = minAngle;
 			MatchDiff[nMatched][1] = diffLenM;
 			MatchDiff[nMatched][2] = diffOmeM;
