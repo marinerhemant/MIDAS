@@ -201,6 +201,12 @@ int main (int argc, char *argv[]){
             sscanf(aline,"%s %lf", dummy, &MaxRingRad);
             continue;
         }
+        str = "RhoD ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &MaxRingRad);
+            continue;
+        }
 	}
 	printf("%f %f %f %d %f %f %f %f %f %f\n",wl,Lsd,MaxRingRad,SpaceGrp,LatC[0],LatC[1],LatC[2],LatC[3],LatC[4],LatC[5]);
 	int h, k, l, iList, restriction, M, i, j;

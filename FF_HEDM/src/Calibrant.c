@@ -546,180 +546,6 @@ static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], pix
 	FreeMemMatrixPx(ImageTemp2,NrPixels);
 }
 
-static inline
-double CalcTheta(double a, double b, double c, double alpha,
-	double beta, double gamma, double wavelength, int hkl[3])
-{
-	double cosAlpha = cos(alpha*(M_PI/180.0));
-	double cosBeta  = cos(beta *(M_PI/180.0));
-	double cosGamma = cos(gamma*(M_PI/180.0));
-	double h = (double) hkl[0];
-	double k = (double) hkl[1];
-	double l = (double) hkl[2];
-	double numer =  (((h*h)/(a*a))*(1-(cosAlpha*cosAlpha)))+
-	                (((k*k)/(b*b))*(1-(cosBeta *cosBeta )))+
-	                (((l*l)/(c*c))*(1-(cosGamma*cosGamma)))+
-	                (2*h*k*(((cosAlpha*cosBeta )-cosGamma)/(a*b)))+
-	                (2*h*l*(((cosAlpha*cosGamma)-cosBeta )/(a*c)))+
-	                (2*k*l*(((cosGamma*cosBeta )-cosAlpha)/(b*c)));
-	double denom =  1.0 - ((cosAlpha*cosAlpha) + (cosBeta*cosBeta) +
-					(cosGamma*cosGamma)) + (2*cosAlpha*cosBeta*cosGamma);
-	double sinThetaPerLambda = ((sqrt(numer))/(2.0*sqrt(denom)));
-	return asin(wavelength*sinThetaPerLambda)*180/M_PI;
-}
-
-int PlanesLaB6[55][3] = {{1,0,0},
-						 {1,1,0},
-						 {1,1,1},
-						 {2,0,0},
-						 {2,1,0},
-						 {2,1,1},
-						 {2,2,0},
-						 {3,0,0},
-						 {3,1,0},
-						 {3,1,1},
-						 {2,2,2},
-						 {3,2,0},
-						 {3,2,1},
-						 {4,0,0},
-						 {4,1,0},
-						 {4,1,1},
-						 {3,3,1},
-						 {4,2,0},
-						 {4,2,1},
-						 {3,3,2},
-						 {4,2,2},
-						 {4,3,0},
-						 {4,3,1},
-						 {3,3,3},
-						 {4,3,2},
-						 {5,2,1},
-						 {4,4,0},
-						 {5,2,2},
-						 {4,3,3},
-						 {5,3,1},
-						 {4,4,2},
-						 {6,1,0},
-						 {5,3,2},
-						 {6,2,0},
-						 {5,4,0},
-						 {5,4,1},
-						 {5,3,3},
-						 {6,2,2},
-						 {5,4,2},
-						 {6,3,1},
-						 {4,4,4},
-						 {6,3,2},
-						 {5,4,3},
-						 {5,5,1},
-						 {6,4,0},
-						 {6,4,1},
-						 {5,5,2},
-						 {6,4,2},
-						 {7,2,2},
-						 {7,3,0},
-						 {5,5,3},
-						 {6,5,0},
-						 {6,5,1},
-						 {8,0,0},
-						 {8,1,0}};
-
-int PlanesCeO2[35][3] = {{1,1,1},
-						 {2,0,0},
-						 {2,2,0},
-						 {3,1,1},
-						 {2,2,2},
-						 {4,0,0},
-						 {3,3,1},
-						 {4,2,0},
-						 {4,2,2},
-						 {5,1,1},
-						 {4,4,0},
-						 {5,3,1},
-						 {4,4,2},
-						 {6,2,0},
-						 {5,3,3},
-						 {6,2,2},
-						 {4,4,4},
-						 {7,1,1},
-						 {4,6,0},
-						 {6,4,2},
-						 {5,5,3},
-						 {8,0,0},
-						 {7,3,3},
-						 {6,4,4},
-						 {6,6,0},
-						 {7,5,1},
-						 {6,6,2},
-						 {8,4,0},
-						 {7,5,3},
-						 {8,4,2},
-						 {6,6,4},
-						 {9,3,1},
-						 {8,4,4},
-						 {7,7,1},
-						 {8,6,0}};
-
-static inline 
-int CalcThetas(int CalType, double a, double b, double c, 
-	double alpha,double beta, double gamma, double wavelength,
-	double MaxTtheta, double Thetas[30], int nRingsExclude, int RingsToExclude[20])
-{
-	int i,j;
-	double Theta;
-	int hkl[3], ThisRingToExclude, counter=0;
-	if (CalType == 225){
-		for (i=0;i<100;i++){
-			ThisRingToExclude = 0;
-			for (j=0;j<nRingsExclude;j++){
-				if (i == RingsToExclude[j]-1){
-					ThisRingToExclude = 1;
-					break;
-				}
-			}
-			if (ThisRingToExclude == 1){
-				continue;
-			}
-			hkl[0] = PlanesCeO2[i][0];
-			hkl[1] = PlanesCeO2[i][1];
-			hkl[2] = PlanesCeO2[i][2];
-			Theta = CalcTheta(a,b,c,alpha,beta,gamma,wavelength,hkl);
-			//printf("%d %d %d %f %f\n",hkl[0],hkl[1],hkl[2],2*Theta,MaxTtheta);
-			if (2*Theta > MaxTtheta){
-				return counter;
-			}
-			Thetas[counter] = Theta;
-			counter ++;
-		}
-	} else if (CalType == 221){
-		for (i=0;i<100;i++){
-			ThisRingToExclude = 0;
-			for (j=0;j<nRingsExclude;j++){
-				if (i == RingsToExclude[j]-1){
-					ThisRingToExclude = 1;
-					break;
-				}
-			}
-			if (ThisRingToExclude == 1){
-				continue;
-			}
-			hkl[0] = PlanesLaB6[i][0];
-			hkl[1] = PlanesLaB6[i][1];
-			hkl[2] = PlanesLaB6[i][2];
-			Theta = CalcTheta(a,b,c,alpha,beta,gamma,wavelength,hkl);
-			//printf("%d %d %d %f %f\n",hkl[0],hkl[1],hkl[2],2*Theta,MaxTtheta);
-			if (2*Theta > MaxTtheta){
-				return counter;
-			}
-			Thetas[counter] = Theta;
-			counter++;
-		}
-	} else {
-		printf("Wrong SpaceGroup. Exiting.\n");
-		return 0;
-	}
-}
-
 int main(int argc, char *argv[])
 {
     clock_t start, end, start0, end0;
@@ -942,9 +768,41 @@ int main(int argc, char *argv[])
     double Thetas[100];
     for (i=0;i<100;i++) Thetas[i] = 0;
     int n_hkls = 0;
+    
+    // Instead of the following, call GetHKLList and get Thetas.
+    /*
     n_hkls = CalcThetas(SpaceGroup,LatticeConstant[0],LatticeConstant[1],
 			LatticeConstant[2],LatticeConstant[3],LatticeConstant[4],LatticeConstant[5],
-			Wavelength,MaxTtheta,Thetas,nRingsExclude,RingsExclude);
+			Wavelength,MaxTtheta,Thetas,nRingsExclude,RingsExclude);*/
+	char cmmd[4096];
+	sprintf(cmmd,"~/opt/MIDAS/FF_HEDM/bin/GetHKLList %s",ParamFN);
+	system(cmmd);
+	// Read hkls.csv
+	char *hklfn = "hkls.csv";
+	FILE *hklf = fopen(hklfn,"r");
+	fgets(aline,1000,hklf);
+	int tRnr, Exclude, LastRingDone = 0;
+	double theta;
+	printf("Thetas: ");
+	while (fgets(aline,1000,hklf)!=NULL){
+		sscanf(aline,"%s %s %s %s %d %s %s %s %lf %s %s", dummy, dummy,
+			dummy, dummy, &tRnr, dummy, dummy, dummy, &theta, dummy,dummy);
+		if (theta * 2 > MaxTtheta) break;
+		Exclude = 0;
+		for (i=0;i<nRingsExclude;i++){
+			if (tRnr == RingsExclude[i]){
+				Exclude = 1;
+			}
+		}
+		if (Exclude == 0 && tRnr > LastRingDone){
+			Thetas[n_hkls] = theta;
+			LastRingDone = tRnr;
+			printf("%lf ",theta);
+			n_hkls++;
+		}
+	}
+	printf("\n");
+	
 	printf("Number of planes being considered: %d.\n",n_hkls);
 	printf("The following rings will be excluded:");
 	for (i=0;i<nRingsExclude;i++){

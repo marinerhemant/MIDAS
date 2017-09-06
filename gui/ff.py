@@ -673,12 +673,14 @@ def loadbplot():
 	global fileNumber
 	global bdata
 	global lines2
+	global firstFileNumber
 	if not initplot2:
 		lims = [b.get_xlim(), b.get_ylim()]
 	frameNr = int(framenrvar.get())
 	threshold = float(thresholdvar.get())
 	upperthreshold = float(maxthresholdvar.get())
 	NrPixels = int(NrPixelsVar.get())
+	firstFileNumber = int(firstFileNrVar.get())
 	fileNumber = firstFileNumber + frameNr/nFramesPerFile
 	framesToSkip = frameNr % nFramesPerFile
 	bytesToSkip = 8192 + framesToSkip*(2*NrPixels*NrPixels)

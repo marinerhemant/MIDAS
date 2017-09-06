@@ -900,7 +900,7 @@ def selectfirstfile():
 	firstfile = tkFileDialog.askopenfilename()
 
 def firstfileselect():
-	global folder, foldervar, fnstem, fnstemvar, startframenr, startframenrvar, r, framenr
+	global folder, foldervar, fnstem, fnstemvar, startframenr, startframenrvar, r, framenr, padding
 	selectfirstfile()
 	# get folder, fnstem, startfilenrfirstlayer, framenr=0
 	framenr = 0
@@ -910,14 +910,17 @@ def firstfileselect():
 		idx = firstfile.find('/',idx)
 		if idx == -1:
 			break
-		print idx
 		folderpos = idx
 		idx += 1
 	folder = firstfile[:folderpos]
 	foldervar.set(folder)
-	fnstem = firstfile[folderpos+1:][:-11]
+	# we want to get padding count now
+	fntot = firstfile[folderpos+1:]
+	padding = len(fntot.split('_')[-1].split('.')[0])
+	extlen = len(fntot.split('_')[-1].split('.')[1])
+	fnstem = firstfile[folderpos+1:][:-(2 + padding + extlen)]
 	fnstemvar.set(fnstem)
-	startframenr = firstfile[folderpos+1:][-10:-4]
+	startframenr = int(firstfile[folderpos+1:][-(padding+extlen+1):-(extlen+1)])
 	startframenrvar.set(str(startframenr))
 
 # Global constants initialization
