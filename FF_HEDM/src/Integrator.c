@@ -265,7 +265,7 @@ int main(int argc, char **argv)
 	fseek(fp,0L,SEEK_END);
 	sz = ftell(fp);
 	rewind(fp);
-	fseek(fp,Skip,SEEK_SET);
+	if (FloatFile == 0) fseek(fp,Skip,SEEK_SET);
 	nFrames = sz / SizeFile;
 	printf("Number of eta bins: %d, number of R bins: %d.\n",nEtaBins,nRBins);
 	long long int Pos;
