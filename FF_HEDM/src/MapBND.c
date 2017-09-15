@@ -73,7 +73,7 @@ int main(int argc, char* argv[]){
 	int i, j;
 	int pos;
 	printf("nSpots in BND file: %d\n",nSpots);
-	int skipUnit = sizeof(uint16)*2 + sizeof(float32)*2;
+	int skipUnit = sizeof(uint16_t)*2 + sizeof(float)*2;
 	for (i=0;i<nSpots;i++){
 		fgets(aline,4096,fltFile);
 		fread(&temp2,sizeof(temp2),1,bndFile);
