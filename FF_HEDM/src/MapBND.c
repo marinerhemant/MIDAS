@@ -99,6 +99,6 @@ int main(int argc, char* argv[]){
 	fwrite(outMatr,11*nSpots*sizeof(*outMatr),1,outFN);
 	end = clock();
     diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
-    printf("Time elapsed: %f s.\n",diftotal);
+    printf("Time elapsed for mapping BND file: %f s.\n",diftotal);
     return 0;
 }
