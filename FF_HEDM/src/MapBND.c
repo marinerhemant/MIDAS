@@ -66,6 +66,7 @@ int main(int argc, char* argv[]){
 	fread(&temp3,sizeof(temp3),1,bndFile);
 	fread(&temp2,sizeof(temp2),1,bndFile);
 	int nSpots = (int) temp2;
+	if (nSpots < 1) return 0; // If no spots were there.
 	uint32_t *outMatr;
 	outMatr = malloc(11*nSpots*sizeof(*outMatr));
 	fgets(aline,4096,fltFile);

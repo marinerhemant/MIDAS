@@ -61,6 +61,10 @@ for line in pscontent:
 			fstem = os.getcwd() + '/' + line[1]
 		elif line[0] == 'FltExt':
 			ext = line[1]
+		elif line[0] == 'BinStem':
+			binstem = os.getcwd() + '/' + line[1]
+		elif line[0] == 'BinExt':
+			binext = line[1]
 		elif line[0] == 'OutDirPath':
 			outdir = os.getcwd() + '/' + line[1]
 		elif line[0] == 'BCAll':
@@ -91,6 +95,7 @@ for line in positions:
 	ypos = 1000 * float(line.split('\t')[0])
 	filenr = int(line.split('\t')[2])
 	fname = fstem + str(filenr).zfill(padding) + ext
+	binname = binstem + str(filenr).zfill(padding) + binext
 	pfname2 = configFile + 'Layer' + str(layernr) + "MultiRing.txt"
 	call(['cp',configFile,pfname2])
 	f2 = open(pfname2,"a")
@@ -174,6 +179,8 @@ for line in positions:
 	fparams.close()
 	# Make shm
 	call([binfolder+'/SaveBinData'])
+	# MapBND
+	call([binfolder+'/MapBND',pfname2,fname,binname])
 	os.chdir(outdir)
 	layernr = layernr + 1
 
