@@ -91,7 +91,7 @@ int main(int argc, char* argv[]){
 		pos *= (maxF - minF + 1);
 		printf("%d ",pos);
 		pos *= (int)((maxO-minO)/OmegaStep) + 1;
-		printf("%d ",pos);
+		printf("%d %lf %lf %lf ",pos,maxO,minO,OmegaStep);
 		outMatr[i*11+1]  = (uint32_t)  pos; // Bounding Box size
 		outMatr[i*11+2]  = (uint32_t)temp1; // nrPixels
 		outMatr[i*11+3]  = (uint32_t)imaxS;
