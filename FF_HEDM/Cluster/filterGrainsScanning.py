@@ -98,14 +98,11 @@ for grainNr in range(nGrains):
 				layernr = int(line.split()[0])
 				startnr = int(line.split()[4])
 				ringnr = int(line.split()[1])
+				break
 		f2 = open(outdir+'/'+'Layer'+str(layernr)+'/IDRings.csv')
 		lines = f2.readlines()
 		origID = lines[sp-startnr].split()[1]
 		newRingNr = int(lines[sp-startnr].split()[0])
-		if (newRingNr != ringnr):
-			print [origID, sp, startnr, layernr, ringnr, lines[sp-startnr].split()[0]]
-			print "IDs did not match. Please check."
-			sys.exit(1)
 		f.write(origID+'\t'+str(sp)+'\t'+str(layernr)+'\t'+str(spotsPositions[sp][0])+'\t'+str(spotsPositions[sp][1])+'\t'+str(spotsPositions[sp][2])+'\n')
 	f.close()
 	f = open('GrainList.csv.'+str(grainNr),'w')

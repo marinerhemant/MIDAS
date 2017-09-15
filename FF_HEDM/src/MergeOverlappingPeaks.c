@@ -277,7 +277,7 @@ int main(int argc, char *argv[]){
     sprintf(OutFolderName,"%s/%s",Folder,TmpFolder);
     char header[1024] = "SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px)"
 					" IMax MinOme(degrees) MaxOme(degress) SigmaR SigmaEta\n";
-    
+
     // Read first file
     //printf("Initial file reading, Arguments: %s %s\n",argv[1],argv[2]);
     fflush(stdout);
