@@ -20,7 +20,7 @@
 #include <ctype.h>
 #include <stdint.h>
 
-#define MaxNSpots 1000000
+#define nColsOutMatr 10
 
 static inline
 int StartsWith(const char *a, const char *b)
@@ -59,7 +59,7 @@ int main(int argc, char* argv[]){
 	}
 	startOmega += OmegaStep/2; // Trick for DIGIGrain
 	int minS, maxS, minF, maxF, imaxS, imaxF;
-	double minO, maxO;
+	double minO, maxO, imaxO;
 	float temp3;
 	uint16_t temp1;
 	uint32_t temp2;
@@ -68,10 +68,10 @@ int main(int argc, char* argv[]){
 	int nSpots = (int) temp2;
 	if (nSpots < 1) return 0; // If no spots were there.
 	uint32_t *outMatr;
-	outMatr = malloc(11*nSpots*sizeof(*outMatr));
+	outMatr = malloc(nColsOutMatr*nSpots*sizeof(*outMatr));
 	fgets(aline,4096,fltFile);
 	int i, j;
-	int pos;
+	int pos, nrY, nrZ, nrOme;
 	printf("nSpots in BND file: %d\n",nSpots);
 	int skipUnit = sizeof(uint16_t)*2 + sizeof(float)*2;
 	for (i=0;i<nSpots;i++){
@@ -81,28 +81,27 @@ int main(int argc, char* argv[]){
 		pos = ftell(bndFile);
 		fseek(bndFile,skipUnit*temp1,SEEK_CUR);
 		sscanf(aline, "%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s"
-			" %d %d %s %d %d %d %d %lf %lf",dummy,dummy,dummy,dummy,
+			" %d %d %lf %d %d %d %d %lf %lf",dummy,dummy,dummy,dummy,
 			dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,
-			dummy,dummy,dummy,&imaxS,&imaxF,dummy,&minS,&maxS,&minF,&maxF,
+			dummy,dummy,dummy,&imaxS,&imaxF,&imaxO,&minS,&maxS,&minF,&maxF,
 			&minO,&maxO);
-		outMatr[i*11+0]  = (uint32_t)  pos; // StartPos
-		pos = maxS - minS + 1;
-		pos *= (maxF - minF + 1);
-		pos *= (int)((maxO-minO)/fabs(OmegaStep)) + 1;
-		outMatr[i*11+1]  = (uint32_t)  pos; // Bounding Box size
-		outMatr[i*11+2]  = (uint32_t)temp1; // nrPixels
-		outMatr[i*11+3]  = (uint32_t)imaxS;
-		outMatr[i*11+4]  = (uint32_t)imaxF;
-		outMatr[i*11+5]  = (uint32_t) minS;
-		outMatr[i*11+6]  = (uint32_t) maxS;
-		outMatr[i*11+7]  = (uint32_t) minF;
-		outMatr[i*11+8]  = (uint32_t) maxF;
-		outMatr[i*11+9]  = (uint32_t)((minO-startOmega)/OmegaStep); // MinFrameNr
-		outMatr[i*11+10] = (uint32_t)((maxO-startOmega)/OmegaStep); // MaxFrameNr
+		outMatr[i*nColsOutMatr+0]  = (uint32_t)  pos; // StartPos
+		nrY   = maxS - minS + 1; // nrY
+		nrZ   = (maxF - minF + 1); // nrZ
+		nrOme = (int)((maxO-minO)/fabs(OmegaStep)) + 1; // nrOmega
+		outMatr[i*nColsOutMatr+1]  = (uint32_t)  nrY*nrZ*nrOme; // Bounding Box size
+		outMatr[i*nColsOutMatr+2]  = (uint32_t)temp1; // nrPixels
+		outMatr[i*nColsOutMatr+3]  = (uint32_t) minS; // Edge Y
+		outMatr[i*nColsOutMatr+4]  = (uint32_t) minF; // Edge Z
+		outMatr[i*nColsOutMatr+5]  = (uint32_t) ((minO-startOmega)/OmegaStep); // Edge FrameNr
+		outMatr[i*nColsOutMatr+6]  = (uint32_t) nrY; // nrY
+		outMatr[i*nColsOutMatr+7]  = (uint32_t) nrZ; // nrZ
+		outMatr[i*nColsOutMatr+8]  = (uint32_t) nrOme; // nFrames
+		outMatr[i*nColsOutMatr+9]  = (uint32_t) (imaxS - minS + nrY*(imaxF - minF) + nrY*nrZ*((int)((imaxO-minO)/OmegaStep))); // maximaPos w.r.t. edge of bounding box
 	}
 	FILE *outFN;
 	outFN = fopen("bndMap.bin","wb");
-	fwrite(outMatr,11*nSpots*sizeof(*outMatr),1,outFN);
+	fwrite(outMatr,nColsOutMatr*nSpots*sizeof(*outMatr),1,outFN);
 	end = clock();
     diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
     printf("Time elapsed for mapping BND file: %f s.\n",diftotal);
