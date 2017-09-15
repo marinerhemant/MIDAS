@@ -84,7 +84,10 @@ int main(int argc, char* argv[]){
 			dummy,dummy,dummy,&imaxS,&imaxF,dummy,&minS,&maxS,&minF,&maxF,
 			&minO,&maxO);
 		outMatr[i*11+0]  = (uint32_t)  pos; // StartPos
-		outMatr[i*11+1]  = (uint32_t)((maxS-minS+1)*(maxF-minF+1)*(((int)((maxO-minO)/OmegaStep))+1)); // Bounding Box size
+		pos = maxS - minS + 1;
+		pos *= (maxF - minF + 1);
+		pos *= (int)((maxO-minO)/OmegaStep) + 1;
+		outMatr[i*11+1]  = (uint32_t)  pos; // Bounding Box size
 		outMatr[i*11+2]  = (uint32_t)temp1; // nrPixels
 		outMatr[i*11+3]  = (uint32_t)imaxS;
 		outMatr[i*11+4]  = (uint32_t)imaxF;
