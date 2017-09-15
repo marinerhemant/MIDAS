@@ -73,11 +73,13 @@ int main(int argc, char* argv[]){
 	int i, j;
 	int pos;
 	printf("nSpots in BND file: %d\n",nSpots);
+	int skipUnit = sizeof(uint16)*2 + sizeof(float32)*2;
 	for (i=0;i<nSpots;i++){
 		fgets(aline,4096,fltFile);
 		fread(&temp2,sizeof(temp2),1,bndFile);
 		fread(&temp1,sizeof(temp1),1,bndFile);
 		pos = ftell(bndFile);
+		fseek(bndFile,skipUnit*temp1,SEEK_CUR);
 		sscanf(aline, "%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s"
 			" %d %d %s %d %d %d %d %lf %lf",dummy,dummy,dummy,dummy,
 			dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,
@@ -85,8 +87,11 @@ int main(int argc, char* argv[]){
 			&minO,&maxO);
 		outMatr[i*11+0]  = (uint32_t)  pos; // StartPos
 		pos = maxS - minS + 1;
+		printf("%d ",pos);
 		pos *= (maxF - minF + 1);
+		printf("%d ",pos);
 		pos *= (int)((maxO-minO)/OmegaStep) + 1;
+		printf("%d ",pos);
 		outMatr[i*11+1]  = (uint32_t)  pos; // Bounding Box size
 		outMatr[i*11+2]  = (uint32_t)temp1; // nrPixels
 		outMatr[i*11+3]  = (uint32_t)imaxS;
