@@ -26,7 +26,7 @@ int StartsWith(const char *a, const char *b)
 	return 0;
 }
 
-int main(int arc, char* argv[]){
+int main(int argc, char* argv[]){
 	clock_t start, end;
     double diftotal;
     start = clock();

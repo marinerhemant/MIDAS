@@ -20,7 +20,7 @@ all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting 
 	mergeoverlaps calcradius findsaturatedpx genmediandark fitgrain tiff2ge\
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking\
 	mapmultdetectors matchgrains detectormapper integrator mergemultiplescans \
-	fitposorstrainsscanning indexscanning processgrainsscanning
+	fitposorstrainsscanning indexscanning processgrainsscanning mapbnd
 
 #local:
 local: predeplocal all runsetup
@@ -174,6 +174,9 @@ indexercuda: $(SRCDIR)IndexerRefineNLOPT.cu
 
 tiff2ge: $(SRCDIR)ConvTiffToGE.c
 	$(CC) $(SRCDIR)ConvTiffToGE.c -o $(BINDIR)ConfTiffToGE $(CFLAGS)
+
+mapbnd: $(SRCDIR)MapBND.c
+	$(CC) $(SRCDIR)MapBND.c -o $(BINDIR)MapBND $(CFLAGS)
 
 indexrefinecuda: $(SRCDIR)IndexerRefine.cu
 	$(NCC) $(SRCDIR)IndexerRefine.cu -o $(BINDIR)Indexer $(NCFLAGS)
