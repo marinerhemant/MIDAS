@@ -99,8 +99,6 @@ int main(int argc, char* argv[]){
 		outMatr[i*11+8]  = (uint32_t) maxF;
 		outMatr[i*11+9]  = (uint32_t)((minO-startOmega)/OmegaStep); // MinFrameNr
 		outMatr[i*11+10] = (uint32_t)((maxO-startOmega)/OmegaStep); // MaxFrameNr
-		for (j=0;j<11;j++) printf("%d ",(int)outMatr[i*11+j]);
-		printf("\n");
 	}
 	FILE *outFN;
 	outFN = fopen("bndMap.bin","wb");
