@@ -147,7 +147,6 @@ for line in positions:
 				Ttheta = 57.2957795130823*atan(sqrt(y*y+z*z)/Lsd)
 				yOrigNoW = yOrigNoW - ypos
 				outstr = '{:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f}\n'.format(y,z,ome,grR,ID,RNr,Eta,Ttheta,omeIniNoW,yOrigNoW,zOrigNoW,yDet,zDet,omegaDet)
-				#AllF.write(str(y)+' '+str(z)+' '+str(ome)+' '+str(grR)+' '+str(ID)+' '+str(RNr)+' '+str(Eta)+' '+str(Ttheta)+' '+str(omeIniNoW)+' '+str(yOrigNoW)+' '+str(zOrigNoW)+' '+str(yDet)+' '+str(zDet)+' '+str(omegaDet)+'\n')
 				AllF.write(outstr)
 		AllF.close()
 		call(['rm',pfname])

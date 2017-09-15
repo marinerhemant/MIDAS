@@ -158,7 +158,7 @@ int main(int argc, char **argv)
     system("cp Map.bin nMap.bin /dev/shm");
 	int rc = ReadBins();
 	double RMax, RMin, RBinSize, EtaMax, EtaMin, EtaBinSize;
-	int NrPixelsY = 2048, NrPixelsZ = 2048, Normalize = 1;
+	int NrPixelsY = 2048, NrPixelsZ = 2048, Normalize = 1, FloatFile = 0;
 	int nEtaBins, nRBins;
     char *ParamFN;
     FILE *paramFile;
@@ -202,6 +202,10 @@ int main(int argc, char **argv)
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %d", dummy, &Normalize);
 		}
+		str = "FloatFile ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %d", dummy, &FloatFile);
+		}
 		str = "NrPixels ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %d", dummy, &NrPixelsY);
@@ -223,14 +227,19 @@ int main(int argc, char **argv)
 	double *Image, *ImageT;
 	pixelvalue *ImageIn;
 	pixelvalue *DarkIn;
+	float *ImageFloat;
 	double *AverageDark;
 	DarkIn = malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkIn));
 	AverageDark = malloc(NrPixelsY*NrPixelsZ*sizeof(*AverageDark));
 	for (j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] = 0;
 	ImageIn = malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageIn));
+	ImageFloat = malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageFloat));
 	ImageT = malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageT));
 	Image = malloc(NrPixelsY*NrPixelsZ*sizeof(*Image));
 	int SizeFile = sizeof(pixelvalue)*NrPixelsY*NrPixelsZ;
+	if (FloatFile == 1){
+		SizeFile = sizeof(float)*NrPixelsY*NrPixelsZ;
+	}
 	int nFrames, sz;
 	int Skip = 8192;
 	FILE *fp, *fd;
@@ -267,9 +276,16 @@ int main(int argc, char **argv)
 	double Intensity, totArea;
 	for (i=0;i<nFrames;i++){
 		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
-		fread(ImageIn,SizeFile,1,fp);
-		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
-			ImageT[j] = (double)ImageIn[j] - AverageDark[j];
+		if (FloatFile == 0){
+			fread(ImageIn,SizeFile,1,fp);
+			for (j=0;j<NrPixelsY*NrPixelsZ;j++){
+				ImageT[j] = (double)ImageIn[j] - AverageDark[j];
+			}
+		} else if (FloatFile == 1){
+			fread(ImageFloat,SizeFile,1,fp);
+			for (j=0;j<NrPixelsY*NrPixelsZ;j++){
+				ImageT[j] = (double)ImageFloat[j] - AverageDark[j];
+			}
 		}
 		sprintf(outfn,"%s_integrated_framenr_%d.csv",imageFN,i);
 		out = fopen(outfn,"w");
@@ -285,14 +301,10 @@ int main(int argc, char **argv)
 				for (l=0;l<nPixels;l++){
 					ThisVal = pxList[dataPos + l];
 					Intensity += Image[ThisVal.y*NrPixelsZ + ThisVal.z]*ThisVal.frac;
-					//~ if ((RBinsLow[j]+RBinsHigh[j])/2 == 507.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == -180) printf("%d %d %lf\n",ThisVal.y,ThisVal.z, ThisVal.frac);
-					//~ if ((RBinsLow[j]+RBinsHigh[j])/2 == 507.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 ==  180) printf("%d %d %lf\n",ThisVal.y,ThisVal.z, ThisVal.frac);
 					totArea += ThisVal.frac;
 				}
 				if (Intensity != 0 && Normalize == 1) Intensity /= totArea;
 				fprintf(out,"%lf\t%lf\t%lf\n",(RBinsLow[j]+RBinsHigh[j])/2,(EtaBinsLow[k]+EtaBinsHigh[k])/2,Intensity);
-				//~ if ((RBinsLow[j]+RBinsHigh[j])/2 == 507.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 == -180.0) printf("%d %lf %lf %lf %lf\n",nPixels,EtaBinsLow[k],EtaBinsHigh[k],Intensity,totArea);
-				//~ if ((RBinsLow[j]+RBinsHigh[j])/2 == 507.5 && (EtaBinsLow[k]+EtaBinsHigh[k])/2 ==  180.0) printf("%d %lf %lf %lf %lf\n",nPixels,EtaBinsLow[k],EtaBinsHigh[k],Intensity,totArea);
 			}
 		}
 		fclose(out);
