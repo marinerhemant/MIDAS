@@ -64,7 +64,7 @@ for line in grains:
 				if (fabs(eG1-e1) < 10): ## 10 degrees tolerance for first euler angle. This is good enough for now.
 					grainIDlist[grainNr].append(int(line.split()[0]))
 					writearr[grainNr].append(line)
-					nSpots[grainNr].append([0])
+					nSpots[grainNr].append(0)
 					spotinfo = spotsFile.readline()
 					grainFound = 1
 					while (int(spotinfo.split()[0]) == int(line.split()[0])):
