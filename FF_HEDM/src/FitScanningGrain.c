@@ -209,12 +209,13 @@ int main(int argc, char *argv[]){
 			minF = spotIDInfo[j*(nColsBndMap+2)+2+4];
 			minFrameNr = spotIDInfo[j*(nColsBndMap+2)+2+5];
 			// open bnd file, read data into arr
-			fseek(binFile,spotIDInfo[j*(nColsBndMap+2)+2+0],SEEK_SET);
+			fseek(binFile,(int)bndReadData[0],SEEK_SET);
 			// We are at the beginning of the data it looks like y, z, ome, intensity
 			for (k=0;k<spotIDInfo[j*(nColsBndMap+2)+2+2];k++){
 				fread(&ypx,sizeof(uint16_t),1,binFile);
 				fread(&zpx,sizeof(uint16_t),1,binFile);
 				fread(&ome,sizeof(float),1,binFile);
+				fread(&intensity,sizeof(float),1,binFile);
 				currentFrameNr = (int)((ome-startOmega)/OmegaStep);
 				printf("%d %d %d %d %d %d\n",(int)ypx,(int)zpx,currentFrameNr,minS,minF,minFrameNr);
 			}
