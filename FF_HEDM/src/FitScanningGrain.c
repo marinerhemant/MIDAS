@@ -194,7 +194,7 @@ int main(int argc, char *argv[]){
 		bndfnr = (int)LayerPosInfo[3*i+2];
 		sprintf(bndFN,"%s/%s/Layer%d/bndMap.bin",cwd,outdirpath,i);
 		sprintf(binFN,"%s/%s%06d%s",cwd,bndStem,bndfnr,bndExt);
-		printf("%s\n",binFN);
+		printf("%s\n%d ",binFN,i);
 		bndFile = fopen(bndFN,"rb");
 		binFile = fopen(binFN,"rb");
 		for (j=minRowNr;j<=maxRowNr;j++){
