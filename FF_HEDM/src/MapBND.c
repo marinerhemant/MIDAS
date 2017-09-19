@@ -83,7 +83,7 @@ int main(int argc, char* argv[]){
 		sscanf(aline, "%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s"
 			" %d %d %lf %d %d %d %d %lf %lf",dummy,dummy,dummy,dummy,
 			dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,
-			dummy,dummy,dummy,&imaxS,&imaxF,&imaxO,&minS,&maxS,&minF,&maxF,
+			dummy,dummy,dummy,&imaxF,&imaxS,&imaxO,&minF,&maxF,&minS,&maxS,
 			&minO,&maxO);
 		outMatr[i*nColsOutMatr+0]  = (uint32_t)  pos; // StartPos
 		nrY   = maxS - minS + 1; // nrY
