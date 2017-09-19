@@ -91,6 +91,7 @@ for line in grains:
 				while (int(spotinfo.split()[0]) == int(line.split()[0])):
 					spotsList[nGrains].append(int(spotinfo.split()[1]))
 					writearr2[nGrains].append(int(spotinfo.split()[1]))
+					print writearr2[nGrains]
 					nSpots[nGrains][0] = nSpots[nGrains][0] + 1
 					spotsPositions[int(spotinfo.split()[1])] = [float(spotinfo.split()[2]),float(spotinfo.split()[3]),float(spotinfo.split()[4])]
 					spotinfo = spotsFile.readline()
@@ -112,7 +113,7 @@ for grainNr in range(nGrains):
 	print "Writing Grain " + str(grainNr) + ' of ' + str(nGrains) + ' grains.'
 	f = open('SpotMatch.csv.'+str(grainNr),'w')
 	for line in writearr2[grainNr]:
-		f.write(line[0]+'\t'+line[1]+'\n')
+		f.write(line+'\n')
 	f.close()
 	splist = sorted(set(spotsList[grainNr]))
 	f = open('SpotList.csv.' + str(grainNr),'w')
