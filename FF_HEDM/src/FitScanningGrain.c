@@ -204,12 +204,14 @@ int main(int argc, char *argv[]){
 			fread(bndReadData,SkipBlock,1,bndFile);
 			for (k=0;k<nColsBndMap;k++){
 				spotIDInfo[j*(nColsBndMap+2)+2+k] = (int)bndReadData[k];
+				printf("%d ",(int)bndReadData[k]);
 			}
 			minS = spotIDInfo[j*(nColsBndMap+2)+2+3];
 			minF = spotIDInfo[j*(nColsBndMap+2)+2+4];
 			minFrameNr = spotIDInfo[j*(nColsBndMap+2)+2+5];
 			// open bnd file, read data into arr
 			fseek(binFile,(int)bndReadData[0],SEEK_SET);
+			printf("\n")
 			// We are at the beginning of the data it looks like y, z, ome, intensity
 			for (k=0;k<spotIDInfo[j*(nColsBndMap+2)+2+2];k++){
 				fread(&ypx,sizeof(uint16_t),1,binFile);
