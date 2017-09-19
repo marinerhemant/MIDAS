@@ -176,7 +176,7 @@ int main(int argc, char *argv[]){
 		tempctr++;
 	}
 	for (i=0;i<maxLayerNr;i++){
-		printf("%lf %lf %lf\n",LayerPosInfo[3*tempctr+0],LayerPosInfo[3*tempctr+1],LayerPosInfo[3*tempctr+2]);
+		printf("%lf %lf %lf\n",LayerPosInfo[3*i+0],LayerPosInfo[3*i+1],LayerPosInfo[3*i+2]);
 	}
 
 	// Read BndMap
