@@ -103,8 +103,6 @@ int main(int argc, char* argv[]){
 		outMatr[i*nColsOutMatr+7]  = (int) nrZ; // nrZ
 		outMatr[i*nColsOutMatr+8]  = (int) nrOme; // nFrames
 		outMatr[i*nColsOutMatr+9]  = (int) (imaxS - minS + nrY*(imaxF - minF) + nrY*nrZ*((int)((imaxO-minO)/OmegaStep))); // maximaPos w.r.t. edge of bounding box
-		printf("%d %d %d %d %lf %lf %d %d %lf\n",imaxS,minS,imaxF,minF,imaxO,minO,nrY,nrZ,OmegaStep);
-		for (j=0;j<10;j++) printf("%d ",(int)outMatr[i*nColsOutMatr+j]); printf("\n");
 	}
 	FILE *outFN;
 	outFN = fopen("bndMap.bin","wb");
