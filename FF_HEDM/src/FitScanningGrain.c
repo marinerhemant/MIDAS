@@ -219,7 +219,7 @@ int main(int argc, char *argv[]){
 				fread(&ome,sizeof(float),1,binFile);
 				fread(&intensity,sizeof(float),1,binFile);
 				currentFrameNr = (int)((ome-startOmega)/OmegaStep);
-				printf("%d %d %d %d %d %d\n",(int)ypx,(int)zpx,currentFrameNr,minS,minF,minFrameNr);
+				printf("%d %d %d %f %f\n",(int)ypx,(int)zpx,currentFrameNr,ome,intensity);
 			}
 			return;
 		}
