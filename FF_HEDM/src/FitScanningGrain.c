@@ -57,10 +57,20 @@ int main(int argc, char *argv[]){
 	int GrainNr = atoi(argv[2]);
 	FILE *paramFile;
 	paramFile = fopen(ParamFN,"r");
-	char aline[4096], dummy[4096], outdirpath[4096], cwd[4096];
+	char aline[4096], dummy[4096], outdirpath[4096], cwd[4096], 
+		positionsFN[4096], bndStem[4096], bndExt[4096];
 	while (fgets(aline,4096,paramFile)!=NULL){
 		if (StartsWith(aline,"OutDirPath ")){
 			sscanf(aline, "%s %s",dummy,outdirpath);
+		}
+		if (StartsWith(aline,"PositionsFile ")){
+			sscanf(aline, "%s %s",dummy,positionsFN);
+		}
+		if (StartsWith(aline,"BinStem ")){
+			sscanf(aline, "%s %s",dummy,bndStem);
+		}
+		if (StartsWith(aline,"BinExt ")){
+			sscanf(aline, "%s %s",dummy,bndExt);
 		}
 	}
 	fclose(paramFile);
@@ -134,11 +144,11 @@ int main(int argc, char *argv[]){
 	spotIDInfo = malloc(totUniqSpots*(nColsBndMap+2)*sizeof(*spotIDInfo));
 	int i, j, k, l, LayerNr;
 	double *LayerPosInfo;
-	LayerPosInfo = malloc(2*maxNLayers*sizeof(*LayerPosInfo));
-	int nLayers = 0, currentLayer = 0, *spotIDMap;
+	LayerPosInfo = malloc(3*maxNLayers*sizeof(*LayerPosInfo));
+	int *spotIDMap;
 	spotIDMap = malloc(maxID*sizeof(*spotIDMap));
-	LayerPosInfo[0] = -1;
 	for (i=0;i<maxNLayers;i++){
+		LayerPosInfo[3*i+0] = 0;
 		MinMaxLayers[2*i+0] =  maxNSpots;
 		MinMaxLayers[2*i+1] = -maxNSpots;
 	}
@@ -151,29 +161,41 @@ int main(int argc, char *argv[]){
 		if (MinMaxLayers[LayerNr*2+1] < nSpotIDs) MinMaxLayers[LayerNr*2+1] = nSpotIDs;
 		maxLayerNr = LayerNr;
 		if (nSpotIDs == 0) minLayerNr = LayerNr;
-		if (LayerNr != currentLayer){
-			LayerPosInfo[2*nLayers+0] = (double)LayerNr;
-			currentLayer = LayerNr;
-			nLayers++;
-		}
+		LayerPosInfo[3*LayerNr+0] = (double)LayerNr;
 		nSpotIDs++; 
 	}
 	printf("%d\n",nSpotIDs);
 
+	// Read positions file to get file nrs
+	FILE *positionFile;
+	positionFile = fopen(positionsFN,"r");
+	fgets(aline,4096,positionFile);
+	int tempctr=1;
+	while(fgets(aline,4096,positionFile)!=NULL){
+		sscanf(aline,"%lf %s %lf",&LayerPosInfo[3*tempctr+1],dummy,&LayerPosInfo[3*tempctr+2]);
+		tempctr++;
+	}
+	for (i=0;i<maxLayerNr;i++){
+		printf("%lf %lf %lf\n",LayerPosInfo[3*tempctr+0],LayerPosInfo[3*tempctr+1],LayerPosInfo[3*tempctr+2]);
+	}
+
 	// Read BndMap
 	int SkipBlock = nColsBndMap*sizeof(uint32_t);
 	int skip;
-	int minRowNr, maxRowNr, currSpotID;
-	char bndFN[4096];
-	FILE *bndFile;
+	int minRowNr, maxRowNr, currSpotID, bndfnr;
+	char bndFN[4096], binFN[4096];
+	FILE *bndFile, *binFile;
 	uint32_t *bndReadData;
 	bndReadData = malloc(SkipBlock);
 	for (i=1;i<=maxLayerNr;i++){
 		if (MinMaxLayers[i*2+0] == maxNSpots) continue;
 		minRowNr = MinMaxLayers[i*2+0];
 		maxRowNr = MinMaxLayers[i*2+1];
+		bndfnr = (int)LayerPosInfo[3*i+2];
 		sprintf(bndFN,"%s/%s/Layer%d/bndMap.bin",cwd,outdirpath,i);
+		sprintf(binFN,"%s/%s_%06d%s",cwd,bndStem,bndfnr,bndExt);
 		bndFile = fopen(bndFN,"rb");
+		binFile = fopen(binFN,"rb");
 		for (j=minRowNr;j<=maxRowNr;j++){
 			currSpotID = spotIDInfo[j*(nColsBndMap+2)+0];
 			skip = (currSpotID-1)*SkipBlock;
@@ -184,6 +206,8 @@ int main(int argc, char *argv[]){
 			}
 		}
 		fclose(bndFile);
+		// Open bnd file, read data into arr
+		
 	}
 	
 	end = clock();
