@@ -129,7 +129,6 @@ for grainNr in range(nGrains):
 	mapFile = open('mapFile.csv.'+str(grainNr),'w')
 	mapFile.write(str(len(writearr[grainNr]))+'\t'+str(len(splist))+'\t'+str(sum(nSpots[grainNr]))+'\n')
 	for nrSpots in nSpots[grainNr]:
-		sumSpots = sumSpots + nrSpots
 		mapFile.write(str(nrSpots)+'\n')
 	mapFile.close()
 
