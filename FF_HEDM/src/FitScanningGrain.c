@@ -199,6 +199,7 @@ int main(int argc, char *argv[]){
 		binFile = fopen(binFN,"rb");
 		for (j=minRowNr;j<=maxRowNr;j++){
 			currSpotID = spotIDInfo[j*(nColsBndMap+2)+0];
+			printf("%d\n",currSpotID);
 			skip = (currSpotID-1)*SkipBlock;
 			fseek(bndFile,skip,SEEK_SET);
 			fread(bndReadData,SkipBlock,1,bndFile);
