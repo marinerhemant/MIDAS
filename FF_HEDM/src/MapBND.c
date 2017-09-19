@@ -59,7 +59,7 @@ int main(int argc, char* argv[]){
 	}
 	startOmega += OmegaStep/2; // Trick for DIGIGrain
 	int minS, maxS, minF, maxF, imaxS, imaxF;
-	double minO, maxO, imaxO;
+	double minO, maxO, imaxO, oTemp;
 	float temp3;
 	uint16_t temp1;
 	uint32_t temp2;
@@ -88,7 +88,12 @@ int main(int argc, char* argv[]){
 		outMatr[i*nColsOutMatr+0]  = (int)  pos; // StartPos
 		nrY   = maxS - minS + 1; // nrY
 		nrZ   = (maxF - minF + 1); // nrZ
-		nrOme = (int)((maxO-minO)/fabs(OmegaStep)) + 1; // nrOmega
+		if (OmegaStep < 0){
+			oTemp = minO;
+			minO = maxO;
+			maxO = oTemp;
+		}
+		nrOme = (int)((maxO-minO)/(OmegaStep)) + 1; // nrOmega
 		outMatr[i*nColsOutMatr+1]  = (int)  nrY*nrZ*nrOme; // Bounding Box size
 		outMatr[i*nColsOutMatr+2]  = (int)temp1; // nrPixels
 		outMatr[i*nColsOutMatr+3]  = (int) minS; // Edge Y
@@ -97,7 +102,9 @@ int main(int argc, char* argv[]){
 		outMatr[i*nColsOutMatr+6]  = (int) nrY; // nrY
 		outMatr[i*nColsOutMatr+7]  = (int) nrZ; // nrZ
 		outMatr[i*nColsOutMatr+8]  = (int) nrOme; // nFrames
-		outMatr[i*nColsOutMatr+9]  = (int) (imaxS - minS + nrY*(imaxF - minF) + nrY*nrZ*fabs((int)((imaxO-minO)/OmegaStep))); // maximaPos w.r.t. edge of bounding box
+		outMatr[i*nColsOutMatr+9]  = (int) (imaxS - minS + nrY*(imaxF - minF) + nrY*nrZ*((int)((imaxO-minO)/OmegaStep))); // maximaPos w.r.t. edge of bounding box
+		printf("%d %d %d %d %lf %lf %d %d %lf\n",imaxS,minS,imaxF,minF,imaxO,minO,nrY,nrZ,OmegaStep);
+		for (j=0;j<10;j++) printf("%d ",(int)outMatr[i*nColsOutMatr+j]); printf("\n");
 	}
 	FILE *outFN;
 	outFN = fopen("bndMap.bin","wb");

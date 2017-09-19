@@ -221,6 +221,7 @@ int main(int argc, char *argv[]){
 				currentFrameNr = (int)((ome-startOmega)/OmegaStep);
 				printf("%d %d %d %d %d %d\n",(int)ypx,(int)zpx,currentFrameNr,minS,minF,minFrameNr);
 			}
+			return;
 		}
 		fclose(bndFile);
 	}
