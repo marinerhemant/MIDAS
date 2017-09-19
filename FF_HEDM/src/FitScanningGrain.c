@@ -201,7 +201,7 @@ int main(int argc, char *argv[]){
 			currSpotID = spotIDInfo[j*(nColsBndMap+2)+0];
 			skip = (currSpotID-1)*SkipBlock;
 			fseek(bndFile,skip,SEEK_SET);
-			fread(bndReadData,1,SkipBlock,bndFile);
+			fread(bndReadData,SkipBlock,1,bndFile);
 			for (k=0;k<nColsBndMap;k++){
 				spotIDInfo[j*(nColsBndMap+2)+2+k] = (int)bndReadData[k];
 				printf("%d ",(int)bndReadData[k]);
