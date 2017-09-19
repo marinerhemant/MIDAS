@@ -67,7 +67,7 @@ int main(int argc, char* argv[]){
 	fread(&temp2,sizeof(temp2),1,bndFile);
 	int nSpots = (int) temp2;
 	if (nSpots < 1) return 0; // If no spots were there.
-	uint32_t *outMatr;
+	int *outMatr;
 	outMatr = malloc(nColsOutMatr*nSpots*sizeof(*outMatr));
 	fgets(aline,4096,fltFile);
 	int i, j;
@@ -85,24 +85,24 @@ int main(int argc, char* argv[]){
 			dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,
 			dummy,dummy,dummy,&imaxF,&imaxS,&imaxO,&minF,&maxF,&minS,&maxS,
 			&minO,&maxO);
-		outMatr[i*nColsOutMatr+0]  = (uint32_t)  pos; // StartPos
+		outMatr[i*nColsOutMatr+0]  = (int)  pos; // StartPos
 		nrY   = maxS - minS + 1; // nrY
 		nrZ   = (maxF - minF + 1); // nrZ
 		nrOme = (int)((maxO-minO)/fabs(OmegaStep)) + 1; // nrOmega
-		outMatr[i*nColsOutMatr+1]  = (uint32_t)  nrY*nrZ*nrOme; // Bounding Box size
-		outMatr[i*nColsOutMatr+2]  = (uint32_t)temp1; // nrPixels
-		outMatr[i*nColsOutMatr+3]  = (uint32_t) minS; // Edge Y
-		outMatr[i*nColsOutMatr+4]  = (uint32_t) minF; // Edge Z
-		outMatr[i*nColsOutMatr+5]  = (uint32_t) ((minO-startOmega)/OmegaStep); // Edge FrameNr
-		outMatr[i*nColsOutMatr+6]  = (uint32_t) nrY; // nrY
-		outMatr[i*nColsOutMatr+7]  = (uint32_t) nrZ; // nrZ
-		outMatr[i*nColsOutMatr+8]  = (uint32_t) nrOme; // nFrames
-		outMatr[i*nColsOutMatr+9]  = (uint32_t) (imaxS - minS + nrY*(imaxF - minF) + nrY*nrZ*((int)((imaxO-minO)/OmegaStep))); // maximaPos w.r.t. edge of bounding box
+		outMatr[i*nColsOutMatr+1]  = (int)  nrY*nrZ*nrOme; // Bounding Box size
+		outMatr[i*nColsOutMatr+2]  = (int)temp1; // nrPixels
+		outMatr[i*nColsOutMatr+3]  = (int) minS; // Edge Y
+		outMatr[i*nColsOutMatr+4]  = (int) minF; // Edge Z
+		outMatr[i*nColsOutMatr+5]  = (int) ((minO-startOmega)/OmegaStep); // Edge FrameNr
+		outMatr[i*nColsOutMatr+6]  = (int) nrY; // nrY
+		outMatr[i*nColsOutMatr+7]  = (int) nrZ; // nrZ
+		outMatr[i*nColsOutMatr+8]  = (int) nrOme; // nFrames
+		outMatr[i*nColsOutMatr+9]  = (int) (imaxS - minS + nrY*(imaxF - minF) + nrY*nrZ*((int)((imaxO-minO)/OmegaStep))); // maximaPos w.r.t. edge of bounding box
 		for (j=0;j<10;j++) printf("%d ",(int)outMatr[i*nColsOutMatr+j]); printf("\n");
 	}
 	FILE *outFN;
 	outFN = fopen("bndMap.bin","wb");
-	fwrite(outMatr,nColsOutMatr*nSpots*sizeof(*outMatr),1,outFN);
+	fwrite(outMatr,nColsOutMatr*nSpots*sizeof(int),1,outFN);
 	end = clock();
     diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
     printf("Time elapsed for mapping BND file: %f s.\n",diftotal);
