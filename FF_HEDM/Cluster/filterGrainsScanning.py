@@ -70,7 +70,6 @@ for line in grains:
 					while (int(spotinfo.split()[0]) == int(line.split()[0])):
 						spotsList[grainNr].append(int(spotinfo.split()[1]))
 						writearr2[grainNr].append([spotinfo.split()[0],spotinfo.split()[1]])
-						print nSpots[grainNr][-1]
 						nSpots[grainNr][-1] = nSpots[grainNr][-1] + 1
 						spotsPositions[int(spotinfo.split()[1])] = [float(spotinfo.split()[2]),float(spotinfo.split()[3]),float(spotinfo.split()[4])]
 						spotinfo = spotsFile.readline()
