@@ -44,6 +44,7 @@ for line in grains:
 			spotinfo = spotsFile.readline()
 			spotsList.append([int(spotinfo.split()[1])])
 			writearr2.append([spotinfo.split()[0],spotinfo.split()[1]])
+			print writearr2
 			nSpots.append([1])
 			spotsPositions[int(spotinfo.split()[1])] = [float(spotinfo.split()[2]),float(spotinfo.split()[3]),float(spotinfo.split()[4])]
 			spotinfo = spotsFile.readline()
@@ -83,6 +84,7 @@ for line in grains:
 				spotinfo = spotsFile.readline()
 				spotsList.append([int(spotinfo.split()[1])])
 				writearr2.append([spotinfo.split()[0],spotinfo.split()[1]])
+				print writearr2[-1]
 				nSpots.append([1])
 				spotsPositions[int(spotinfo.split()[1])] = [float(spotinfo.split()[2]),float(spotinfo.split()[3]),float(spotinfo.split()[4])]
 				spotinfo = spotsFile.readline()
