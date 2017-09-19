@@ -98,7 +98,7 @@ int main(int argc, char* argv[]){
 		outMatr[i*nColsOutMatr+7]  = (uint32_t) nrZ; // nrZ
 		outMatr[i*nColsOutMatr+8]  = (uint32_t) nrOme; // nFrames
 		outMatr[i*nColsOutMatr+9]  = (uint32_t) (imaxS - minS + nrY*(imaxF - minF) + nrY*nrZ*((int)((imaxO-minO)/OmegaStep))); // maximaPos w.r.t. edge of bounding box
-		for (j=0;j<10;j++) printf("%d ",outMatr[i*nColsOutMatr+j]);
+		for (j=0;j<10;j++) printf("%d ",(int)outMatr[i*nColsOutMatr+j]); printf("\n")
 	}
 	FILE *outFN;
 	outFN = fopen("bndMap.bin","wb");
