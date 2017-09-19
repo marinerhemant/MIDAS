@@ -175,9 +175,6 @@ int main(int argc, char *argv[]){
 		sscanf(aline,"%lf %s %lf",&LayerPosInfo[3*tempctr+1],dummy,&LayerPosInfo[3*tempctr+2]);
 		tempctr++;
 	}
-	for (i=0;i<maxLayerNr;i++){
-		printf("%lf %lf %lf\n",LayerPosInfo[3*i+0],LayerPosInfo[3*i+1],LayerPosInfo[3*i+2]);
-	}
 
 	// Read BndMap
 	int SkipBlock = nColsBndMap*sizeof(uint32_t);
@@ -196,6 +193,7 @@ int main(int argc, char *argv[]){
 		sprintf(binFN,"%s/%s_%06d%s",cwd,bndStem,bndfnr,bndExt);
 		bndFile = fopen(bndFN,"rb");
 		binFile = fopen(binFN,"rb");
+		printf("%d\n",binFile);
 		for (j=minRowNr;j<=maxRowNr;j++){
 			currSpotID = spotIDInfo[j*(nColsBndMap+2)+0];
 			skip = (currSpotID-1)*SkipBlock;
