@@ -59,22 +59,25 @@ int main(int argc, char *argv[]){
 	paramFile = fopen(ParamFN,"r");
 	char aline[4096], dummy[4096], outdirpath[4096], cwd[4096], 
 		positionsFN[4096], bndStem[4096], bndExt[4096];
+	double OmegaStep, startOmega;
 	while (fgets(aline,4096,paramFile)!=NULL){
 		if (StartsWith(aline,"OutDirPath ")){
 			sscanf(aline, "%s %s",dummy,outdirpath);
-		}
-		if (StartsWith(aline,"PositionsFile ")){
+		} else if (StartsWith(aline,"PositionsFile ")){
 			sscanf(aline, "%s %s",dummy,positionsFN);
-		}
-		if (StartsWith(aline,"BinStem ")){
+		} else if (StartsWith(aline,"BinStem ")){
 			sscanf(aline, "%s %s",dummy,bndStem);
-		}
-		if (StartsWith(aline,"BinExt ")){
+		} else if (StartsWith(aline,"BinExt ")){
 			sscanf(aline, "%s %s",dummy,bndExt);
+		} else if (StartsWith(aline,"OmegaStep ")){
+			sscanf(aline, "%s %lf", dummy, &OmegaStep);
+		} else if (StartsWith(aline,"OmegaFirstFile ")){
+			sscanf(aline, "%s %lf", dummy, &startOmega);
 		}
 	}
 	fclose(paramFile);
 	getcwd(cwd,4096);
+	startOmega += OmegaStep/2; // Trick for DIGIGrain
 	
 	// Read mapFile.csv to get sizes
 	char mapFN[4096];
@@ -92,7 +95,6 @@ int main(int argc, char *argv[]){
 		startposhere += mapArr[mapctr*2+0];
 		mapctr++;
 	}
-	printf("%d %d %d %d\n",totPos,mapctr,totUniqSpots,totAllSpots);
 	
 	//Read SpotMatch.csv to get spotIDs
 	char spotMatchFN[4096];
@@ -106,7 +108,6 @@ int main(int argc, char *argv[]){
 		if (maxID < spotMatchArr[spotmatchctr]) maxID = spotMatchArr[spotmatchctr];
 		spotmatchctr++;
 	}
-	printf("%d\n",spotmatchctr);
 	
 	// Read GrainList.csv & SpotMatch.csv
 	char grainFN[4096];
@@ -164,7 +165,6 @@ int main(int argc, char *argv[]){
 		LayerPosInfo[3*LayerNr+0] = (double)LayerNr;
 		nSpotIDs++; 
 	}
-	printf("%d\n",nSpotIDs);
 
 	// Read positions file to get file nrs
 	FILE *positionFile;
@@ -184,6 +184,9 @@ int main(int argc, char *argv[]){
 	FILE *bndFile, *binFile;
 	uint32_t *bndReadData;
 	bndReadData = malloc(SkipBlock);
+	uint16_t ypx, zpx;
+	float ome, intensity;
+	int minS, minF, minFrameNr, currentFrameNr;
 	for (i=1;i<=maxLayerNr;i++){
 		if (MinMaxLayers[i*2+0] == maxNSpots) continue;
 		minRowNr = MinMaxLayers[i*2+0];
@@ -202,10 +205,21 @@ int main(int argc, char *argv[]){
 			for (k=0;k<nColsBndMap;k++){
 				spotIDInfo[j*(nColsBndMap+2)+2+k] = (int)bndReadData[k];
 			}
+			minS = spotIDInfo[j*(nColsBndMap+2)+2+3];
+			minF = spotIDInfo[j*(nColsBndMap+2)+2+4];
+			minFrameNr = spotIDInfo[j*(nColsBndMap+2)+2+5];
+			// open bnd file, read data into arr
+			fseek(binFile,spotIDInfo[j*(nColsBndMap+2)+2+0],SEEK_SET);
+			// We are at the beginning of the data it looks like y, z, ome, intensity
+			for (k=0;k<spotIDInfo[j*(nColsBndMap+2)+2+2];k++){
+				fread(&ypx,sizeof(uint16_t),1,binFile);
+				fread(&zpx,sizeof(uint16_t),1,binFile);
+				fread(&ome,sizeof(float),1,binFile);
+				currentFrameNr = (int)((ome-startOmega)/OmegaStep);
+				printf("%d %d %d %d %d %d\n",(int)ypx,(int)zpx,currentFrameNr,minS,minF,minFrameNr);
+			}
 		}
 		fclose(bndFile);
-		// Open bnd file, read data into arr
-		
 	}
 	
 	end = clock();
