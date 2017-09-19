@@ -194,16 +194,14 @@ int main(int argc, char *argv[]){
 		bndfnr = (int)LayerPosInfo[3*i+2];
 		sprintf(bndFN,"%s/%s/Layer%d/bndMap.bin",cwd,outdirpath,i);
 		sprintf(binFN,"%s/%s%06d%s",cwd,bndStem,bndfnr,bndExt);
-		printf("%s\n%d ",binFN,i);
+		printf("%s\n",binFN);
 		bndFile = fopen(bndFN,"rb");
 		binFile = fopen(binFN,"rb");
 		for (j=minRowNr;j<=maxRowNr;j++){
 			currSpotID = spotIDInfo[j*(nColsBndMap+2)+0];
 			skip = (currSpotID-1)*SkipBlock;
 			fseek(bndFile,skip,SEEK_SET);
-			printf("%d ",ftell(bndFile));
-			fread(bndReadData,SkipBlock,1,bndFile);
-			printf("%d %d %d \n",currSpotID,skip,SkipBlock);
+			fread(bndReadData,1,SkipBlock,bndFile);
 			for (k=0;k<nColsBndMap;k++){
 				spotIDInfo[j*(nColsBndMap+2)+2+k] = (int)bndReadData[k];
 				printf("%d ",(int)bndReadData[k]);
