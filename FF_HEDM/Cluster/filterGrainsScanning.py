@@ -44,7 +44,6 @@ for line in grains:
 			spotinfo = spotsFile.readline()
 			spotsList.append([int(spotinfo.split()[1])])
 			writearr2.append([int(spotinfo.split()[1])])
-			print writearr2[-1]
 			nSpots.append([1])
 			spotsPositions[int(spotinfo.split()[1])] = [float(spotinfo.split()[2]),float(spotinfo.split()[3]),float(spotinfo.split()[4])]
 			spotinfo = spotsFile.readline()
@@ -84,7 +83,6 @@ for line in grains:
 				spotinfo = spotsFile.readline()
 				spotsList.append([int(spotinfo.split()[1])])
 				writearr2.append([int(spotinfo.split()[1])])
-				print writearr2[-1]
 				nSpots.append([1])
 				spotsPositions[int(spotinfo.split()[1])] = [float(spotinfo.split()[2]),float(spotinfo.split()[3]),float(spotinfo.split()[4])]
 				spotinfo = spotsFile.readline()
@@ -102,27 +100,6 @@ spotsFile.close()
 
 idsFile = open(outdir+'/IDsHash.csv')
 idsInfo = idsFile.readlines()
-
-print writearr2[0][0]
-print writearr2[0][1]
-print writearr2[0][2]
-print writearr2[0][3]
-print writearr2[0][4]
-print writearr2[1][0]
-print writearr2[1][1]
-print writearr2[1][2]
-print writearr2[1][3]
-print writearr2[1][4]
-print writearr2[2][0]
-print writearr2[2][1]
-print writearr2[2][2]
-print writearr2[2][3]
-print writearr2[2][4]
-print writearr2[3][0]
-print writearr2[3][1]
-print writearr2[3][2]
-print writearr2[3][3]
-print writearr2[3][4]
 
 for grainNr in range(nGrains):
 	print "Writing Grain " + str(grainNr) + ' of ' + str(nGrains) + ' grains.'
