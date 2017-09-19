@@ -193,7 +193,7 @@ int main(int argc, char *argv[]){
 		sprintf(binFN,"%s/%s_%06d%s",cwd,bndStem,bndfnr,bndExt);
 		bndFile = fopen(bndFN,"rb");
 		binFile = fopen(binFN,"rb");
-		printf("%d\n",binFile);
+		printf("%d %d\n",minRowNr,maxRowNr);
 		for (j=minRowNr;j<=maxRowNr;j++){
 			currSpotID = spotIDInfo[j*(nColsBndMap+2)+0];
 			skip = (currSpotID-1)*SkipBlock;
