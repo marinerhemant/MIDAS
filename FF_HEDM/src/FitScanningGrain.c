@@ -220,7 +220,6 @@ int main(int argc, char *argv[]){
 				fread(&intensity,sizeof(float),1,binFile);
 				currentFrameNr = (int)((ome-startOmega)/OmegaStep);
 				printf("%d %d %d %d %d %d\n",(int)ypx,(int)zpx,currentFrameNr,minS,minF,minFrameNr);
-				return;
 			}
 		}
 		fclose(bndFile);
