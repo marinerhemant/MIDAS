@@ -176,7 +176,7 @@ int main(int argc, char *argv[]){
 		tempctr++;
 	}
 
-	// Read BndMap
+	// Read BndMap and binFiles
 	int SkipBlock = nColsBndMap*sizeof(uint32_t);
 	int skip;
 	int minRowNr, maxRowNr, currSpotID, bndfnr;
@@ -201,6 +201,7 @@ int main(int argc, char *argv[]){
 			currSpotID = spotIDInfo[j*(nColsBndMap+2)+0];
 			skip = (currSpotID-1)*SkipBlock;
 			fseek(bndFile,skip,SEEK_SET);
+			printf("%d ",ftell(bndFile));
 			fread(bndReadData,SkipBlock,1,bndFile);
 			printf("%d %d %d \n",currSpotID,skip,SkipBlock);
 			for (k=0;k<nColsBndMap;k++){
