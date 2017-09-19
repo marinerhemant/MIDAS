@@ -82,6 +82,7 @@ int main(int argc, char *argv[]){
 		startposhere += mapArr[mapctr*2+0];
 		mapctr++;
 	}
+	printf("%d %d %d %d\n",totPos,mapctr,totUniqSpots,totAllSpots);
 	
 	//Read SpotMatch.csv to get spotIDs
 	char spotMatchFN[4096];
@@ -95,6 +96,7 @@ int main(int argc, char *argv[]){
 		if (maxID < spotMatchArr[spotmatchctr]) maxID = spotMatchArr[spotmatchctr];
 		spotmatchctr++;
 	}
+	printf("%d\n",spotmatchctr)
 	
 	// Read GrainList.csv & SpotMatch.csv
 	char grainFN[4096];
@@ -156,6 +158,7 @@ int main(int argc, char *argv[]){
 		}
 		nSpotIDs++; 
 	}
+	printf("%d\n",nSpotIDs);
 
 	// Read BndMap
 	int SkipBlock = nColsBndMap*sizeof(uint32_t);
@@ -183,7 +186,7 @@ int main(int argc, char *argv[]){
 		fclose(bndFile);
 	}
 	
-	end = clock;
+	end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
 	printf("Time elapsed: %f s.\n",diftotal);
 	return 0;
