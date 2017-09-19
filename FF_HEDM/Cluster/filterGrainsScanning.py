@@ -28,6 +28,8 @@ grainIDlist = []
 spotsList = []
 spotsPositions = {}
 writearr = []
+writearr2 = []
+nSpots = []
 for line in grains:
 	if line[0] == '%' :
 		continue
@@ -41,10 +43,14 @@ for line in grains:
 			writearr.append([line])
 			spotinfo = spotsFile.readline()
 			spotsList.append([int(spotinfo.split()[1])])
+			writearr2.append([spotinfo.split()[0],spotinfo.split()[1]])
+			nSpots.append([1])
 			spotsPositions[int(spotinfo.split()[1])] = [float(spotinfo.split()[2]),float(spotinfo.split()[3]),float(spotinfo.split()[4])]
 			spotinfo = spotsFile.readline()
 			while (int(spotinfo.split()[0]) == int(line.split()[0])):
 				spotsList[0].append(int(spotinfo.split()[1]))
+				writearr2[0].append([spotinfo.split()[0],spotinfo.split()[1]])
+				nSpots[0][0] = nSpots[0][0] + 1
 				spotsPositions[int(spotinfo.split()[1])] = [float(spotinfo.split()[2]),float(spotinfo.split()[3]),float(spotinfo.split()[4])]
 				spotinfo = spotsFile.readline()
 				if spotinfo == '':
@@ -58,10 +64,13 @@ for line in grains:
 				if (fabs(eG1-e1) < 10): ## 10 degrees tolerance for first euler angle. This is good enough for now.
 					grainIDlist[grainNr].append(int(line.split()[0]))
 					writearr[grainNr].append(line)
+					nSpots[grainNr].append([0])
 					spotinfo = spotsFile.readline()
 					grainFound = 1
 					while (int(spotinfo.split()[0]) == int(line.split()[0])):
 						spotsList[grainNr].append(int(spotinfo.split()[1]))
+						writearr2[grainNr].append([spotinfo.split()[0],spotinfo.split()[1]])
+						nSpots[grainNr][-1] = nSpots[grainNr][-1] + 1
 						spotsPositions[int(spotinfo.split()[1])] = [float(spotinfo.split()[2]),float(spotinfo.split()[3]),float(spotinfo.split()[4])]
 						spotinfo = spotsFile.readline()
 						if spotinfo == '':
@@ -73,10 +82,14 @@ for line in grains:
 				writearr.append([line])
 				spotinfo = spotsFile.readline()
 				spotsList.append([int(spotinfo.split()[1])])
+				writearr2.append([spotinfo.split()[0],spotinfo.split()[1]])
+				nSpots.append([1])
 				spotsPositions[int(spotinfo.split()[1])] = [float(spotinfo.split()[2]),float(spotinfo.split()[3]),float(spotinfo.split()[4])]
 				spotinfo = spotsFile.readline()
 				while (int(spotinfo.split()[0]) == int(line.split()[0])):
 					spotsList[nGrains].append(int(spotinfo.split()[1]))
+					writearr2[nGrains].append([spotinfo.split()[0],spotinfo.split()[1]])
+					nSpots[nGrains][0] = nSpots[nGrains][0] + 1
 					spotsPositions[int(spotinfo.split()[1])] = [float(spotinfo.split()[2]),float(spotinfo.split()[3]),float(spotinfo.split()[4])]
 					spotinfo = spotsFile.readline()
 					if spotinfo == '':
@@ -87,9 +100,14 @@ spotsFile.close()
 
 idsFile = open(outdir+'/IDsHash.csv')
 idsInfo = idsFile.readlines()
+mapFile = open(outdir + '/mapFile.csv','w')
 
 for grainNr in range(nGrains):
 	print "Writing Grain " + str(grainNr) + ' of ' + str(nGrains) + ' grains.'
+	f = open('SpotMatch.csv.'+str(grainNr),'w')
+	for line in writearr2[grainNr]:
+		f.write(line[0]+'\t'+line[1]+'\n')
+	f.close()
 	splist = sorted(set(spotsList[grainNr]))
 	f = open('SpotList.csv.' + str(grainNr),'w')
 	for sp in splist:
@@ -109,6 +127,10 @@ for grainNr in range(nGrains):
 	for line in writearr[grainNr]:
 		f.write(line)
 	f.close()
+	mapFile.write(str(len(writearr[grainNr]))+'\t'+str(len(splist))+'\n')
+	for nrSpots in nSpots[grainNr]:
+		mapFile.write(str(nrSpots)+'\t')
+	mapFile.write('\n')
 
 t1 = time.time()
 print "Time elapsed: " + str(t1-t0) + " s."
