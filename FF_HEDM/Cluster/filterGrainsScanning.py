@@ -100,7 +100,6 @@ spotsFile.close()
 
 idsFile = open(outdir+'/IDsHash.csv')
 idsInfo = idsFile.readlines()
-mapFile = open(outdir + '/mapFile.csv','w')
 
 for grainNr in range(nGrains):
 	print "Writing Grain " + str(grainNr) + ' of ' + str(nGrains) + ' grains.'
@@ -127,10 +126,12 @@ for grainNr in range(nGrains):
 	for line in writearr[grainNr]:
 		f.write(line)
 	f.close()
-	mapFile.write(str(len(writearr[grainNr]))+'\t'+str(len(splist))+'\n')
+	mapFile = open('mapFile.csv.'+str(grainNr),'w')
+	mapFile.write(str(len(writearr[grainNr]))+'\t'+str(len(splist))+'\t'+str(sum(nSpots[grainNr]))+'\n')
 	for nrSpots in nSpots[grainNr]:
-		mapFile.write(str(nrSpots)+'\t')
-	mapFile.write('\n')
+		sumSpots = sumSpots + nrSpots
+		mapFile.write(str(nrSpots)+'\n')
+	mapFile.close()
 
 t1 = time.time()
 print "Time elapsed: " + str(t1-t0) + " s."
