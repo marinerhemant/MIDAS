@@ -176,6 +176,10 @@ int main(int argc, char *argv[]){
 		tempctr++;
 	}
 
+	// Allocate spotInfoArr
+	float **spotInfoArr;
+	spotInfoArr = malloc(nSpotIDs*sizeof(*spotInfoArr));
+	
 	// Read BndMap and binFiles
 	int SkipBlock = nColsBndMap*sizeof(int);
 	int skip;
@@ -187,6 +191,7 @@ int main(int argc, char *argv[]){
 	uint16_t ypx, zpx;
 	float ome, intensity;
 	int minS, minF, minFrameNr, currentFrameNr;
+	int idNr = 0;
 	for (i=1;i<=maxLayerNr;i++){
 		if (MinMaxLayers[i*2+0] == maxNSpots) continue;
 		minRowNr = MinMaxLayers[i*2+0];
@@ -194,7 +199,7 @@ int main(int argc, char *argv[]){
 		bndfnr = (int)LayerPosInfo[3*i+2];
 		sprintf(bndFN,"%s/%s/Layer%d/bndMap.bin",cwd,outdirpath,i);
 		sprintf(binFN,"%s/%s%06d%s",cwd,bndStem,bndfnr,bndExt);
-		printf("%s\n",binFN);
+		printf("Reading bin file: %s\n",binFN);
 		bndFile = fopen(bndFN,"rb");
 		binFile = fopen(binFN,"rb");
 		for (j=minRowNr;j<=maxRowNr;j++){
@@ -206,6 +211,8 @@ int main(int argc, char *argv[]){
 				spotIDInfo[j*(nColsBndMap+2)+2+k] = bndReadData[k];
 				printf("%d ",bndReadData[k]);
 			}
+			// allocate a new arr
+			spotInfoArr[idNr] = malloc(spotIDInfo[j*(nColsBndMap+2)+2+1]*sizeof(*spotInfoArr[idNr]));
 			minS = spotIDInfo[j*(nColsBndMap+2)+2+3];
 			minF = spotIDInfo[j*(nColsBndMap+2)+2+4];
 			minFrameNr = spotIDInfo[j*(nColsBndMap+2)+2+5];
@@ -219,9 +226,10 @@ int main(int argc, char *argv[]){
 				fread(&ome,sizeof(float),1,binFile);
 				fread(&intensity,sizeof(float),1,binFile);
 				currentFrameNr = (int)((ome-startOmega)/OmegaStep);
-				printf("%d %d %d %d %f %f\n",k,(int)ypx,(int)zpx,currentFrameNr,ome,intensity);
+				//printf("%d %d %d %f %f\n",k,(int)ypx,(int)zpx,ome,intensity);
 			}
-			return;
+			//return;
+			idNr++;
 		}
 		fclose(bndFile);
 	}
