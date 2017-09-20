@@ -133,6 +133,7 @@ int main(int argc, char *argv[]){
 		if (maxID < spotMatchArr[spotmatchctr]) maxID = spotMatchArr[spotmatchctr];
 		spotmatchctr++;
 	}
+	maxID++;
 	
 	// Read GrainList.csv & SpotMatch.csv
 	char grainFN[4096];
