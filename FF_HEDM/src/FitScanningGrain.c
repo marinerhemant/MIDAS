@@ -190,8 +190,8 @@ int main(int argc, char *argv[]){
 	bndReadData = malloc(SkipBlock);
 	uint16_t ypx, zpx;
 	float ome, intensity;
-	int minS, minF, minFrameNr, currentFrameNr;
-	int idNr = 0;
+	int minY, minZ, nrY, nrZ, minFrameNr, currentFrameNr;
+	int idNr = 0, posToStore;
 	for (i=1;i<=maxLayerNr;i++){
 		if (MinMaxLayers[i*2+0] == maxNSpots) continue;
 		minRowNr = MinMaxLayers[i*2+0];
@@ -209,16 +209,16 @@ int main(int argc, char *argv[]){
 			fread(bndReadData,SkipBlock,1,bndFile);
 			for (k=0;k<nColsBndMap;k++){
 				spotIDInfo[j*(nColsBndMap+2)+2+k] = bndReadData[k];
-				//printf("%d ",bndReadData[k]);
+				printf("%d ",bndReadData[k]);
 			}
 			// allocate a new arr
-			spotInfoArr[idNr] = malloc(spotIDInfo[j*(nColsBndMap+2)+2+1]*sizeof(*spotInfoArr[idNr]));
-			minS = spotIDInfo[j*(nColsBndMap+2)+2+3];
-			minF = spotIDInfo[j*(nColsBndMap+2)+2+4];
+			spotInfoArr[idNr] = calloc(spotIDInfo[j*(nColsBndMap+2)+2+1]*sizeof(*spotInfoArr[idNr]));
+			minY = spotIDInfo[j*(nColsBndMap+2)+2+3];
+			minZ = spotIDInfo[j*(nColsBndMap+2)+2+4];
 			minFrameNr = spotIDInfo[j*(nColsBndMap+2)+2+5];
 			// open bnd file, read data into arr
 			fseek(binFile,(int)bndReadData[0],SEEK_SET);
-			//printf("\n");
+			printf("\n");
 			// We are at the beginning of the data it looks like y, z, ome, intensity
 			for (k=0;k<spotIDInfo[j*(nColsBndMap+2)+2+2];k++){
 				fread(&ypx,sizeof(uint16_t),1,binFile);
@@ -226,9 +226,12 @@ int main(int argc, char *argv[]){
 				fread(&ome,sizeof(float),1,binFile);
 				fread(&intensity,sizeof(float),1,binFile);
 				currentFrameNr = (int)((ome-startOmega)/OmegaStep);
-				//printf("%d %d %d %f %f\n",k,(int)ypx,(int)zpx,ome,intensity);
+				// Calculate position:
+				posToStore = ((int)ypx - minY) + nrY*((int)zpx - minZ) + nrY*nrZ*(currentFrameNr - minFrameNr);
+				spotInfoArr[idNr][posToStore] = intensity;
+				printf("%d %d %d %d %f %f\n",k,(int)ypx,(int)zpx,posToStore,ome,intensity);
 			}
-			//return;
+			return;
 			idNr++;
 		}
 		fclose(bndFile);
