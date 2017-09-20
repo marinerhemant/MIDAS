@@ -73,6 +73,29 @@ int main(int argc, char *argv[]){
 			sscanf(aline, "%s %lf", dummy, &OmegaStep);
 		} else if (StartsWith(aline,"OmegaFirstFile ")){
 			sscanf(aline, "%s %lf", dummy, &startOmega);
+		} else if (StartsWith(aline,"Lsd ")){
+			sscanf(aline,"%s %lf",dummy,&Lsd);
+		} else if (StartsWith(aline,"Distance ")){
+			sscanf(aline,"%s %lf",dummy,&Lsd);
+		} else if (StartsWith(aline,"RingThresh ")){
+			sscanf(aline,"%s %d",dummy, &RingNumbers[nRings]);
+			nRings++;
+		} else if (StartsWith(aline,"OmegaRange ")){
+			sscanf(aline,"%s %lf %lf", dummy, 
+				&OmegaRanges[nOmeRanges][0], &OmegaRanges[nOmeRanges][1]);
+            nOmeRanges++;
+		} else if (StartsWith(aline,"BoxSize ")){
+			sscanf(aline,"%s %lf %lf %lf %lf", dummy, 
+				&BoxSizes[nBoxSizes][0], &BoxSizes[nBoxSizes][1],
+				&BoxSizes[nBoxSizes][2], &BoxSizes[nBoxSizes][3]);
+            nBoxSizes++;
+		} else if (StartsWith(aline,"MinEta ")){
+			sscanf(aline,"%s %lf",dummy,&MinEta);
+		} else if (StartsWith(aline,"Wavelength ")){
+			sscanf(aline,"%s %lf",dummy,&Wavelength);
+		} else if (StartsWith(aline,"LatticeConstant ")){
+			sscanf(aline,"%s %lf %lf %lf %lf %lf %lf",dummy,&LatC[0],&LatC[1],&LatC[2],
+				&LatC[3],&LatC[4],&LatC[5]);
 		}
 	}
 	fclose(paramFile);
