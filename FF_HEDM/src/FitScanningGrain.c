@@ -60,6 +60,8 @@ int main(int argc, char *argv[]){
 	char aline[4096], dummy[4096], outdirpath[4096], cwd[4096], 
 		positionsFN[4096], bndStem[4096], bndExt[4096];
 	double OmegaStep, startOmega;
+	double Lsd, OmegaRanges[50][2], BoxSizes[50][4], MinEta, Wavelength, LatC[6];
+	int RingNumbers[500], nRings=0, nOmeRanges=0, nBoxSizes=0;
 	while (fgets(aline,4096,paramFile)!=NULL){
 		if (StartsWith(aline,"OutDirPath ")){
 			sscanf(aline, "%s %s",dummy,outdirpath);
