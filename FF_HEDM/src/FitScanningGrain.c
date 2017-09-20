@@ -220,7 +220,7 @@ int main(int argc, char *argv[]){
 			// open bnd file, read data into arr
 			fseek(binFile,(int)bndReadData[0],SEEK_SET);
 			// We are at the beginning of the data it looks like y, z, ome, intensity
-			totNrPx += spotIDInfo[j*(nColsBndMap+2)+2+2];
+			totNrPx += spotIDInfo[j*(nColsBndMap+2)+2+1];
 			for (k=0;k<spotIDInfo[j*(nColsBndMap+2)+2+2];k++){
 				fread(&ypx,sizeof(uint16_t),1,binFile);
 				fread(&zpx,sizeof(uint16_t),1,binFile);
@@ -235,6 +235,9 @@ int main(int argc, char *argv[]){
 		}
 		fclose(bndFile);
 	}
+	
+	// Call simulation function: provide nSpots, spotInfoArr 
+	
 	end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
 	printf("Time elapsed: %f s.\n",diftotal);
