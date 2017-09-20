@@ -133,7 +133,7 @@ int main(int argc, char *argv[]){
 		if (maxID < spotMatchArr[spotmatchctr]) maxID = spotMatchArr[spotmatchctr];
 		spotmatchctr++;
 	}
-	maxID++;
+	maxID++; // The array should be one bigger than the maxID
 	
 	// Read GrainList.csv & SpotMatch.csv
 	char grainFN[4096];
@@ -183,7 +183,6 @@ int main(int argc, char *argv[]){
 		sscanf(aline,"%d %d %d",&spotIDInfo[nSpotIDs*(nColsBndMap+2)+0],
 						&spotIDInfo[nSpotIDs*(nColsBndMap+2)+1],&LayerNr);
 		// Store nSpotIDs position corresponding to the new ID so that we can match.
-		printf("%d %d\n",maxID, spotIDInfo[nSpotIDs*(nColsBndMap+2)+1]);
 		spotIDMap[spotIDInfo[nSpotIDs*(nColsBndMap+2)+1]] = nSpotIDs;
 		if (MinMaxLayers[LayerNr*2+0] > nSpotIDs) MinMaxLayers[LayerNr*2+0] = nSpotIDs;
 		if (MinMaxLayers[LayerNr*2+1] < nSpotIDs) MinMaxLayers[LayerNr*2+1] = nSpotIDs;
