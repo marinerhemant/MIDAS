@@ -192,6 +192,7 @@ int main(int argc, char *argv[]){
 	float ome, intensity;
 	int minY, minZ, nrY, nrZ, minFrameNr, currentFrameNr;
 	int idNr = 0, posToStore;
+	long long int totNrPx = 0;
 	for (i=1;i<=maxLayerNr;i++){
 		if (MinMaxLayers[i*2+0] == maxNSpots) continue;
 		minRowNr = MinMaxLayers[i*2+0];
@@ -220,8 +221,9 @@ int main(int argc, char *argv[]){
 			nrZ = spotIDInfo[j*(nColsBndMap+2)+2+7];
 			// open bnd file, read data into arr
 			fseek(binFile,(int)bndReadData[0],SEEK_SET);
-			printf("%d\n",spotIDInfo[j*(nColsBndMap+2)+2+2]);
+			//printf("%d\n",spotIDInfo[j*(nColsBndMap+2)+2+2]);
 			// We are at the beginning of the data it looks like y, z, ome, intensity
+			totNrPx += spotIDInfo[j*(nColsBndMap+2)+2+2];
 			for (k=0;k<spotIDInfo[j*(nColsBndMap+2)+2+2];k++){
 				fread(&ypx,sizeof(uint16_t),1,binFile);
 				fread(&zpx,sizeof(uint16_t),1,binFile);
