@@ -200,7 +200,6 @@ int main(int argc, char *argv[]){
 		bndfnr = (int)LayerPosInfo[3*i+2];
 		sprintf(bndFN,"%s/%s/Layer%d/bndMap.bin",cwd,outdirpath,i);
 		sprintf(binFN,"%s/%s%06d%s",cwd,bndStem,bndfnr,bndExt);
-		//printf("Reading bin file: %s\n",binFN);
 		bndFile = fopen(bndFN,"rb");
 		binFile = fopen(binFN,"rb");
 		for (j=minRowNr;j<=maxRowNr;j++){
@@ -210,7 +209,6 @@ int main(int argc, char *argv[]){
 			fread(bndReadData,SkipBlock,1,bndFile);
 			for (k=0;k<nColsBndMap;k++){
 				spotIDInfo[j*(nColsBndMap+2)+2+k] = bndReadData[k];
-				//printf("%d ",bndReadData[k]);
 			}
 			// allocate a new arr
 			spotInfoArr[idNr] = calloc(spotIDInfo[j*(nColsBndMap+2)+2+1],sizeof(*spotInfoArr[idNr]));
@@ -221,7 +219,6 @@ int main(int argc, char *argv[]){
 			nrZ = spotIDInfo[j*(nColsBndMap+2)+2+7];
 			// open bnd file, read data into arr
 			fseek(binFile,(int)bndReadData[0],SEEK_SET);
-			//printf("%d\n",spotIDInfo[j*(nColsBndMap+2)+2+2]);
 			// We are at the beginning of the data it looks like y, z, ome, intensity
 			totNrPx += spotIDInfo[j*(nColsBndMap+2)+2+2];
 			for (k=0;k<spotIDInfo[j*(nColsBndMap+2)+2+2];k++){
@@ -233,13 +230,11 @@ int main(int argc, char *argv[]){
 				// Calculate position:
 				posToStore = ((int)ypx - minY) + nrY*((int)zpx - minZ) + nrY*nrZ*(currentFrameNr - minFrameNr);
 				spotInfoArr[idNr][posToStore] = intensity;
-				//printf("%d %d %d %d %f %f %d %d\n",k,(int)ypx,(int)zpx,posToStore,ome,intensity,currentFrameNr,minFrameNr);
 			}
 			idNr++;
 		}
 		fclose(bndFile);
 	}
-	printf("%lld\n",totNrPx);
 	end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
 	printf("Time elapsed: %f s.\n",diftotal);
