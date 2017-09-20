@@ -235,7 +235,7 @@ int main(int argc, char *argv[]){
 		}
 		fclose(bndFile);
 	}
-	
+	printf("%lld\n",totNrPx);	
 	// Call simulation function: provide nSpots, spotInfoArr 
 	
 	end = clock();
