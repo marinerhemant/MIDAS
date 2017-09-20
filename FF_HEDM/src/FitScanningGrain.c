@@ -216,6 +216,8 @@ int main(int argc, char *argv[]){
 			minY = spotIDInfo[j*(nColsBndMap+2)+2+3];
 			minZ = spotIDInfo[j*(nColsBndMap+2)+2+4];
 			minFrameNr = spotIDInfo[j*(nColsBndMap+2)+2+5];
+			nrY = spotIDInfo[j*(nColsBndMap+2)+2+6];
+			nrZ = spotIDInfo[j*(nColsBndMap+2)+2+7];
 			// open bnd file, read data into arr
 			fseek(binFile,(int)bndReadData[0],SEEK_SET);
 			printf("\n");
@@ -229,7 +231,7 @@ int main(int argc, char *argv[]){
 				// Calculate position:
 				posToStore = ((int)ypx - minY) + nrY*((int)zpx - minZ) + nrY*nrZ*(currentFrameNr - minFrameNr);
 				spotInfoArr[idNr][posToStore] = intensity;
-				printf("%d %d %d %d %f %f\n",k,(int)ypx,(int)zpx,posToStore,ome,intensity);
+				printf("%d %d %d %d %f %f\n",k,(int)ypx,(int)zpx,posToStore,ome,intensity,currentFrameNr,minFrameNr,);
 			}
 			return;
 			idNr++;
