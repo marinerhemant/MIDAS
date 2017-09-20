@@ -231,7 +231,7 @@ int main(int argc, char *argv[]){
 				// Calculate position:
 				posToStore = ((int)ypx - minY) + nrY*((int)zpx - minZ) + nrY*nrZ*(currentFrameNr - minFrameNr);
 				spotInfoArr[idNr][posToStore] = intensity;
-				printf("%d %d %d %d %f %f\n",k,(int)ypx,(int)zpx,posToStore,ome,intensity,currentFrameNr,minFrameNr,);
+				printf("%d %d %d %d %f %f %d %d\n",k,(int)ypx,(int)zpx,posToStore,ome,intensity,currentFrameNr,minFrameNr);
 			}
 			return;
 			idNr++;
