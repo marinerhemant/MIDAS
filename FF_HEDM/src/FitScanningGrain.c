@@ -170,12 +170,12 @@ int main(int argc, char *argv[]){
 	MinMaxLayers = malloc(maxNLayers*2*sizeof(*MinMaxLayers));
 	spotIDInfo = malloc(totUniqSpots*(nColsBndMap+2)*sizeof(*spotIDInfo));
 	int i, j, k, l, LayerNr;
-	double *LayerPosInfo;
-	LayerPosInfo = malloc(3*maxNLayers*sizeof(*LayerPosInfo));
+	double *layerPosInfo;
+	layerPosInfo = malloc(3*maxNLayers*sizeof(*layerPosInfo));
 	int *spotIDMap;
 	spotIDMap = malloc(maxID*sizeof(*spotIDMap));
 	for (i=0;i<maxNLayers;i++){
-		LayerPosInfo[3*i+0] = 0;
+		layerPosInfo[3*i+0] = 0;
 		MinMaxLayers[2*i+0] =  maxNSpots;
 		MinMaxLayers[2*i+1] = -maxNSpots;
 	}
@@ -188,7 +188,7 @@ int main(int argc, char *argv[]){
 		if (MinMaxLayers[LayerNr*2+1] < nSpotIDs) MinMaxLayers[LayerNr*2+1] = nSpotIDs;
 		maxLayerNr = LayerNr;
 		if (nSpotIDs == 0) minLayerNr = LayerNr;
-		LayerPosInfo[3*LayerNr+0] = (double)LayerNr;
+		layerPosInfo[3*LayerNr+0] = (double)LayerNr;
 		nSpotIDs++; 
 	}
 
@@ -198,7 +198,7 @@ int main(int argc, char *argv[]){
 	fgets(aline,4096,positionFile);
 	int tempctr=1;
 	while(fgets(aline,4096,positionFile)!=NULL){
-		sscanf(aline,"%lf %s %lf",&LayerPosInfo[3*tempctr+1],dummy,&LayerPosInfo[3*tempctr+2]);
+		sscanf(aline,"%lf %s %lf",&layerPosInfo[3*tempctr+1],dummy,&layerPosInfo[3*tempctr+2]);
 		tempctr++;
 	}
 
@@ -223,7 +223,7 @@ int main(int argc, char *argv[]){
 		if (MinMaxLayers[i*2+0] == maxNSpots) continue;
 		minRowNr = MinMaxLayers[i*2+0];
 		maxRowNr = MinMaxLayers[i*2+1];
-		bndfnr = (int)LayerPosInfo[3*i+2];
+		bndfnr = (int)layerPosInfo[3*i+2];
 		sprintf(bndFN,"%s/%s/Layer%d/bndMap.bin",cwd,outdirpath,i);
 		sprintf(binFN,"%s/%s%06d%s",cwd,bndStem,bndfnr,bndExt);
 		bndFile = fopen(bndFN,"rb");
@@ -263,6 +263,20 @@ int main(int argc, char *argv[]){
 	}
 	printf("%lld\n",totNrPx);	
 	// Call simulation function: provide nSpots, spotInfoArr 
+	
+	
+	// Free arrays
+	free(bndReadData);
+	for (i=0;i<nSpotIDs;i++) free(spotInfoArr[i]);
+	free(minMaxLayers);
+	free(mapArr);
+	free(layerPosInfo);
+	free(grainPos);
+	free(spotIDMap);
+	free(grainProps);
+	free(spotIDInfo);
+	free(spotMatchArr);
+	free(spotInfoArr);
 	
 	end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
