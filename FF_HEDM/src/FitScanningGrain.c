@@ -166,8 +166,8 @@ int main(int argc, char *argv[]){
 	sprintf(spotsFN,"SpotList.csv.%d",GrainNr);
 	FILE *spotFile;
 	spotFile = fopen(spotsFN,"r");
-	int *MinMaxLayers, *spotIDInfo, nSpotIDs=0, maxLayerNr, minLayerNr;
-	MinMaxLayers = malloc(maxNLayers*2*sizeof(*MinMaxLayers));
+	int *minMaxLayers, *spotIDInfo, nSpotIDs=0, maxLayerNr, minLayerNr;
+	minMaxLayers = malloc(maxNLayers*2*sizeof(*minMaxLayers));
 	spotIDInfo = malloc(totUniqSpots*(nColsBndMap+2)*sizeof(*spotIDInfo));
 	int i, j, k, l, LayerNr;
 	double *layerPosInfo;
@@ -176,16 +176,16 @@ int main(int argc, char *argv[]){
 	spotIDMap = malloc(maxID*sizeof(*spotIDMap));
 	for (i=0;i<maxNLayers;i++){
 		layerPosInfo[3*i+0] = 0;
-		MinMaxLayers[2*i+0] =  maxNSpots;
-		MinMaxLayers[2*i+1] = -maxNSpots;
+		minMaxLayers[2*i+0] =  maxNSpots;
+		minMaxLayers[2*i+1] = -maxNSpots;
 	}
 	while (fgets(aline,4096,spotFile)!=NULL){
 		sscanf(aline,"%d %d %d",&spotIDInfo[nSpotIDs*(nColsBndMap+2)+0],
 						&spotIDInfo[nSpotIDs*(nColsBndMap+2)+1],&LayerNr);
 		// Store nSpotIDs position corresponding to the new ID so that we can match.
 		spotIDMap[spotIDInfo[nSpotIDs*(nColsBndMap+2)+1]] = nSpotIDs;
-		if (MinMaxLayers[LayerNr*2+0] > nSpotIDs) MinMaxLayers[LayerNr*2+0] = nSpotIDs;
-		if (MinMaxLayers[LayerNr*2+1] < nSpotIDs) MinMaxLayers[LayerNr*2+1] = nSpotIDs;
+		if (minMaxLayers[LayerNr*2+0] > nSpotIDs) minMaxLayers[LayerNr*2+0] = nSpotIDs;
+		if (minMaxLayers[LayerNr*2+1] < nSpotIDs) minMaxLayers[LayerNr*2+1] = nSpotIDs;
 		maxLayerNr = LayerNr;
 		if (nSpotIDs == 0) minLayerNr = LayerNr;
 		layerPosInfo[3*LayerNr+0] = (double)LayerNr;
@@ -220,9 +220,9 @@ int main(int argc, char *argv[]){
 	int idNr = 0, posToStore;
 	long long int totNrPx = 0;
 	for (i=1;i<=maxLayerNr;i++){
-		if (MinMaxLayers[i*2+0] == maxNSpots) continue;
-		minRowNr = MinMaxLayers[i*2+0];
-		maxRowNr = MinMaxLayers[i*2+1];
+		if (minMaxLayers[i*2+0] == maxNSpots) continue;
+		minRowNr = minMaxLayers[i*2+0];
+		maxRowNr = minMaxLayers[i*2+1];
 		bndfnr = (int)layerPosInfo[3*i+2];
 		sprintf(bndFN,"%s/%s/Layer%d/bndMap.bin",cwd,outdirpath,i);
 		sprintf(binFN,"%s/%s%06d%s",cwd,bndStem,bndfnr,bndExt);
