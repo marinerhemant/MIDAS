@@ -239,7 +239,7 @@ int main(int argc, char *argv[]){
 		}
 		fclose(bndFile);
 	}
-	
+	printf("%lld\n",totNrPx);
 	end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
 	printf("Time elapsed: %f s.\n",diftotal);
