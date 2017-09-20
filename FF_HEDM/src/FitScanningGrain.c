@@ -212,7 +212,7 @@ int main(int argc, char *argv[]){
 				printf("%d ",bndReadData[k]);
 			}
 			// allocate a new arr
-			spotInfoArr[idNr] = calloc(spotIDInfo[j*(nColsBndMap+2)+2+1]*sizeof(*spotInfoArr[idNr]));
+			spotInfoArr[idNr] = calloc(spotIDInfo[j*(nColsBndMap+2)+2+1],sizeof(*spotInfoArr[idNr]));
 			minY = spotIDInfo[j*(nColsBndMap+2)+2+3];
 			minZ = spotIDInfo[j*(nColsBndMap+2)+2+4];
 			minFrameNr = spotIDInfo[j*(nColsBndMap+2)+2+5];
