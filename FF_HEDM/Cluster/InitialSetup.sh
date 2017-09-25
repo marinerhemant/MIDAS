@@ -70,6 +70,7 @@ then
 	outfldr=${seedfolder}/${oldoutfolder}/
 	for RINGNR in $RingNrs
 	do
+		cd ${outfolder}
 		cp ${outfldr}/Radius_StartNr_${SNr}_EndNr_${ENr}_RingNr_${RINGNR}.csv ${outfolder}/
 		ThisParamFileName=${outfolder}/Layer${layernr}_Ring${RINGNR}_${paramfile}
 		cp ${paramfile} ${ThisParamFileName}
