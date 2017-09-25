@@ -75,7 +75,7 @@ then
 		cp ${paramfile} ${ThisParamFileName}
 		Fldr=${outfolder}/Ring${RINGNR}
 		mkdir -p $Fldr
-		cp hkls.csv $Fldr
+		cp ${outfldr}/hkls.csv $Fldr
 		mkdir -p ${Fldr}/PeakSearch/${filestem}_${layernr}/
 		cp ${outfolder}/Radius_StartNr_${SNr}_EndNr_${ENr}_RingNr_${RINGNR}.csv ${Fldr}/PeakSearch/${filestem}_${layernr}/ 
 		echo "Folder $Fldr" >> ${ThisParamFileName}
