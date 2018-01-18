@@ -51,4 +51,4 @@ if [ ! -d ${dirThis}/LIBTIFF ]; then
 fi
 
 cd ${HOME}/opt/MIDAS/FF_HEDM
-./GetNetCDF.sh
+#./GetNetCDF.sh
