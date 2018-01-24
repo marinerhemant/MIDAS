@@ -813,14 +813,16 @@ int main(int argc, char *argv[])
 	double tht;
 	int PlaneNumbers[cs];
 	double Thetas[cs];
+	double RingRadsIdeal[cs], rrdideal;
 	int n_hkls = cs,nhkls = 0;
 	while (fgets(aline,1000,hklf)!=NULL){
-		sscanf(aline, "%s %s %s %s %d %s %s %s %lf %s %s",dummy,dummy,dummy,dummy,&Rnr,dummy,dummy,dummy,&tht,dummy,dummy);
+		sscanf(aline, "%s %s %s %s %d %s %s %s %lf %s %lf",dummy,dummy,dummy,dummy,&Rnr,dummy,dummy,dummy,&tht,dummy,&rrdideal);
 		if (tht > MaxTtheta/2) break;
 		for (i=0;i<cs;i++){
 			if(Rnr == RingNumbers[i]){
 				Thetas[nhkls] = tht;
 				PlaneNumbers[nhkls] = Rnr;
+				RingRadsIdeal[nhkls] = rrdideal;
 				break;
 			}
 		}
@@ -929,7 +931,7 @@ int main(int argc, char *argv[])
 	//Useful arrays till now: SpotsInfo,YCorrected,ZCorrected,YCorrWedge,ZCorrWedge,OmegaCorrWedge,EtaCorrWedge
 	int NumberSpotsToKeep=0;
 	int *RowNumbersToKeep;
-	RowNumbersToKeep = malloc(nIndices*sizeof(*RowNumbersToKeep));
+	RowNumbersToKeep = calloc(nIndices,sizeof(*RowNumbersToKeep));
 	int KeepSpot,nSpotIDsToIndex=0,*SpotIDsToIndex;
 	SpotIDsToIndex = malloc(nIndices*sizeof(*SpotIDsToIndex));
 	int UniqueRingNumbers[200], nrUniqueRingNumbers=0,RingNumberThis,RingNumberPresent=0;
@@ -990,8 +992,15 @@ int main(int argc, char *argv[])
 		RingNumberThis = (int)(SpotsInfo[RowNumbersToKeep[i]][4]);
 		for (j=0;j<nrUniqueRingNumbers;j++){
 			if (RingNumberThis == UniqueRingNumbers[j]){
-				RingRadiusThis = sqrt((YCorrWedge[RowNumbersToKeep[i]]*YCorrWedge[RowNumbersToKeep[i]])+(ZCorrWedge[RowNumbersToKeep[i]]*ZCorrWedge[RowNumbersToKeep[i]]));
-				AverageRingRadius[j] += RingRadiusThis;
+				//RingRadiusThis = sqrt((YCorrWedge[RowNumbersToKeep[i]]*YCorrWedge[RowNumbersToKeep[i]])+(ZCorrWedge[RowNumbersToKeep[i]]*ZCorrWedge[RowNumbersToKeep[i]]));
+				// Get the ideal ring nr
+				for (k=0;k<n_hkls;k++){
+					if (RingNumberThis == PlaneNumbers[k]){
+						rrdideal = RingRadsIdeal[k];
+					}
+				}
+				//AverageRingRadius[j] += RingRadiusThis;
+				AverageRingRadius[j] += rrdideal;
 				NrSpotsPerRing[j]++;
 			}
 		}
