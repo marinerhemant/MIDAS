@@ -20,13 +20,27 @@ MACHINE_NAMEs supported for compiling:
 * biocluster
 * nersc
 * purdue
+* lanl
+* lcrc
+* stampede
 
 MACHINE_NAMEs supported during run:
 * local
-* orthros
+* orthrosall
+* orthrosregular
 * orthrosextra
-* lcrc
-* edison
+* orthrosnew
+* lcrc_cloud
+* edison_debug
+* edison_realtime
+* cori_realtime
 * biocluster
 * conte
 * rice
+* halstead
+* darwin
+* blues_batch
+* blues_haswell
+* bebop
+* stamped_normal
+* stampede_largemem
