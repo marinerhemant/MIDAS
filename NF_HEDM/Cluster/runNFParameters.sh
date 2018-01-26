@@ -17,6 +17,7 @@ then
   echo "MultiGridPoints is 0 when you just want to process one spot, otherwise if it is 1, then provide the multiple points"
   echo "in the parameter file."
   echo "processImages = 1 if you want to reduce raw files, 0 otherwise"
+  echo "**********NOTE: For local runs, nNodes should be nCPUs.**********"
   exit 1
 fi
 

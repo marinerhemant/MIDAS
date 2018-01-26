@@ -25,6 +25,7 @@ then
 	echo "If DoPeakSearch is 0, it will overwrite the results in the directory it works."
 	echo "Parameter file name should not be full path, analysis should be run from the directory where the parameter file is."
 	echo "SeedFolder MUST BE the SAME as the folder from which the code is run AND should have the parameter file in it."
+	echo "**********NOTE: For local runs, nNodes should be nCPUs.**********"
 	exit 1
 fi
 

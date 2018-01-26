@@ -18,6 +18,7 @@ then
   echo "Provide ParametersFile StartLayerNr EndLayerNr, the number of NODEs and MachineName to use!"
   echo "EG. ${cmdname} Parameters.txt 1 1 6 orthros( or orthrosextra)"
   echo "the source parameter file should not have ring numbers and layer numbers in it."
+  echo "**********NOTE: For local runs, nNodes should be nCPUs.**********"
   exit 1
 fi
 

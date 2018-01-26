@@ -29,6 +29,7 @@ then
   echo "If using FF seeding, please add line to your analysis: MinConfidence to redo the analysis using all orientations and minconfidence." 
   echo "If no seeding is used, a single OrientationsAll.txt file should be present."
   echo "At successfull completion, it will send an email to EmailAddress."
+  echo "**********NOTE: For local runs, nNodes should be nCPUs.**********"
   exit 1
 fi
 

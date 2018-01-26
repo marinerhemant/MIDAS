@@ -44,3 +44,5 @@ MACHINE_NAMEs supported during run:
 * bebop
 * stamped_normal
 * stampede_largemem
+
+If using local run give nCPUs to use during run.

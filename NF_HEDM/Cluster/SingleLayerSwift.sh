@@ -21,6 +21,7 @@ then
   echo "At least the parameters file should be in the folder from where the command is executed."
   echo "For FF Seeding, add parameters MinConfidence and MinConfidenceLowerBound and FullSeedFile, this will"
   echo "take the result and repeat analysis with all orientations." 
+  echo "**********NOTE: For local runs, nNodes should be nCPUs.**********"
   exit 1
 fi
 

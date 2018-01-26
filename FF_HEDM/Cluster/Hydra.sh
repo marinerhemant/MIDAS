@@ -19,6 +19,7 @@ then
 	echo "the source parameter file should not have ring numbers and layer numbers in it."
 	echo "Parameter file name should not be full path, analysis should be run from the directory where the parameter file is."
 	echo "********SeedFolder MUST NOT BE IN THE PARAMETER FILE.**********"
+	echo "**********NOTE: For local runs, nNodes should be nCPUs.**********"
 	exit 1
 fi
 
