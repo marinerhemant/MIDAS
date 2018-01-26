@@ -7,3 +7,4 @@
 
 source ${HOME}/.MIDAS/paths
 ${BINFOLDER}/SaveBinData
+cp *.bin /dev/shm

@@ -9,4 +9,4 @@ source ${HOME}/.MIDAS/paths
 cd $1
 ${BINFOLDER}/ProcessGrains $2
 ls -lh
-
+rm -fv /dev/shm/*.bin

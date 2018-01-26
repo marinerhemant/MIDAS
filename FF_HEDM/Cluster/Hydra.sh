@@ -57,8 +57,11 @@ else
 	export intHN
 fi
 filestem=$( awk '$1 ~ /^FileStem/ { print $2 } ' ${ParamsFile} )
-seedfolder=$( pwd ) # Call from the seed folder
+seedfolder=$( pwd ) # Call from the seed folder always
 rm -rf ${seedfolder}/FolderNames.txt
+# Make BigMask
+echo "Creating Detector Mask"
+${BINDIR}/MapMultipleDetectors ${ParamsFile}
 for (( LAYERNR=$STARTLAYERNR; LAYERNR<=$ENDLAYERNR; LAYERNR++ ))
 do
 	ide=$( date +%Y_%m_%d_%H_%M_%S )

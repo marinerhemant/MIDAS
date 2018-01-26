@@ -8,6 +8,7 @@
 source ${HOME}/.MIDAS/paths
 
 foldername=$1
+cd ${foldername}
 layernr=$2
 paramfile=${foldername}/Layer${layernr}_MultiRing_ps.txt
 for (( detNr=1; detNr<=4; detNr++ ))
