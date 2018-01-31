@@ -13,6 +13,7 @@ from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import time
 import os
+import glob
 import tkFileDialog
 import math
 import scipy
@@ -32,36 +33,41 @@ def selectFile():
 	return tkFileDialog.askopenfilename()
 
 def firstFileSelector():
-	global fileStem, folder, padding,firstFileNumber
-	global ext, folderVar, nFramesMedianDarkVar
+	global fileStemVar, padding
+	global extvar, folderVar
+	global firstFileNrVar
 	firstfilefullpath = selectFile()
 	folder = os.path.dirname(firstfilefullpath) + '/'
 	fullfilename = firstfilefullpath.split('/')[-1].split('.')[0]
-	ext = '.' + firstfilefullpath.split('.')[-1]
-	fileStem = '_'.join(fullfilename.split('_')[:-1])
+	extvar.set('.' + firstfilefullpath.split('.')[-1])
+	fileStemVar.set('_'.join(fullfilename.split('_')[:-1]))
 	firstFileNumber = int(fullfilename.split('_')[-1])
 	firstFileNrVar.set(firstFileNumber)
 	padding = len(fullfilename.split('_')[-1])
 	folderVar.set(folder)
 
 def darkFileSelector():
-	global darkStem,darkNum,doDark
+	global darkfilefullpath,doDark
 	darkfilefullpath = selectFile()
-	darkfullfilename = darkfilefullpath.split('/')[-1].split('.')[0]
-	darkStem = '_'.join(darkfullfilename.split('_')[:-1])
-	darkNum = int(darkfullfilename.split('_')[-1])
 	doDark.set(1)
 
 def getfn(fstem,fnum):
-	return folder + fstem + '_' + str(fnum).zfill(padding) + ext
+	return folderVar.get() +'/'+ fstem + '_' + str(fnum).zfill(padding) + extVar.get()
 
 def getDarkImage(fn,bytesToSkip):
+	global dark
+	dataDark = np.zeros(NrPixels*NrPixels)
+	statinfo = os.stat(fn)
+	nFramesPerFile = (statinfo.st_size - 8192)/(2*NrPixels*NrPixels)
 	f = open(fn,'rb')
 	f.seek(bytesToSkip,os.SEEK_SET)
-	data = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
+	for framenr in range(nFramesPerFile):
+		data = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
+		data = data.astype(float)
+		dataDark = np.add(dataDark,data)
 	f.close()
-	data = data.astype(float)
-	return data
+	dataDark = dataDark/nFramesPerFile
+	dark = dataDark
 
 def saveFile(arr,fname,fileTypeWrite):
 	if fileTypeWrite == 1: # GE output to uint16
@@ -77,22 +83,20 @@ def saveFile(arr,fname,fileTypeWrite):
 		with open(fname,'wb') as f:
 			np.array(arr).tofile(f)
 
-def processFile(fnr):
+def processFile(fnr): # fnr is the line number in the fnames.txt file
 	global header
 	f = open('imparams.txt','r')
 	params = f.readlines()
-	dark = np.zeros(NrPixels*NrPixels)
-	doDarkProcessing = int(params[0].rstrip())
+	doBadProcessing = int(params[0].rstrip())
 	allFrames = int(params[1].rstrip())
 	sumWrite = int(params[2].rstrip())
 	meanWrite = int(params[3].rstrip())
 	maxWrite = int(params[4].rstrip())
 	fileTypeWrite = int(params[5].rstrip())
 	f.close()
-	if doDarkProcessing == 1:
-		darkfn = getfn(darkStem,darkNum)
-		dark = getDarkImage(darkfn,8192)
-	fn = getfn(fileStem,fnr)
+	f = open('fnames.txt','r')
+	fnames = f.readlines()
+	fn = fnames[fnr].rstrip()
 	statinfo = os.stat(fn)
 	nFramesPerFile = (statinfo.st_size - 8192)/(2*NrPixels*NrPixels)
 	f = open(fn,'rb')
@@ -122,7 +126,7 @@ def processFile(fnr):
 def processImages():
 	starttime = time.time()
 	f = open('imparams.txt','w')
-	f.write(str(doDark.get())+'\n')
+	f.write(str(doBad.get())+'\n')
 	f.write(str(doAllFrames.get())+'\n')
 	f.write(str(doSum.get())+'\n')
 	f.write(str(doMean.get())+'\n')
@@ -130,7 +134,28 @@ def processImages():
 	f.write(str(fileTypeVar.get())+'\n')
 	f.close()
 	pool = Pool(processes=multiprocessing.cpu_count())
-	pipout = range(firstFileNrVar.get(),firstFileNrVar.get()+nFilesVar.get())
+	if doDark.get() == 1:
+		darkfn = darkfilefullpath
+		dark = getDarkImage(darkfn,8192)
+	# We create a fnames.txt file with filenames for each file to process
+	f = open('fnames.txt','w')
+	fileStem = fileStemVar.get()
+	if nFilesVar.get() is not 0:
+		nrFiles = nFilesVar.get()
+		startNr = firstFileNrVar.get()
+		for fnr in range(startNr,startNr+nrFiles):
+			f.write(getfn(fileStem,fnr),'\n')
+	else:
+		## Do a pattern search.
+		if fileStem is not '*':
+			fnames = glob.glob(fileStem+'*')
+		else:
+			fnames = glob.glob('*.ge*')
+		for fname in fnames:
+			f.write(folderVar.get()+'/'+fname+'\n')
+		nrFiles = len(fnames)
+	f.close()
+	pipout = range(nrFiles) #firstFileNrVar.get(),firstFileNrVar.get()+nFilesVar.get())
 	results = pool.map(processFile,pipout)
 	print time.time() - starttime
 
@@ -147,9 +172,10 @@ folder = ''
 folderVar = Tk.StringVar()
 folderVar.set(folder)
 NrPixels = 2048
+dark = np.zeros(NrPixels*NrPixels)
 nFramesPerFile = 240
 nFilesVar = Tk.IntVar()
-nFilesVar.set(1)
+nFilesVar.set(0)
 doDark = Tk.IntVar()
 doDark.set(0)
 doAllFrames = Tk.IntVar()
@@ -160,25 +186,38 @@ doMean = Tk.IntVar()
 doMean.set(0)
 doMax = Tk.IntVar()
 doMax.set(0)
+fileStem = ''
+fileStemVar = Tk.StringVar()
+fileStemVar.set('')
+darkilefullpath=''
+extvar = Tk.StringVar()
+extvar.set('')
+doBad = Tk.IntVar()
+doBad.set(0)
 
 rowFigSize = 3
 colFigSize = 3
 
 Tk.Label(master=root,text="Image pre-processing and conversion using MIDAS",
-	font=("Helvetica",20)).grid(row=0,column=0,rowspan=3,columnspan=3,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+	font=("Helvetica",20)).grid(row=0,column=0,rowspan=rowFigSize,
+	columnspan=colFigSize,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 leftSideFrame = Tk.Frame(root)
-leftSideFrame.grid(row=rowFigSize+1,column=0,rowspan=5,sticky=Tk.W)
+leftSideFrame.grid(row=rowFigSize+1,column=0,rowspan=6,sticky=Tk.W)
 firstRowFrame = Tk.Frame(root)
 firstRowFrame.grid(row=rowFigSize+1,column=1,sticky=Tk.W)
+midRowFrame = Tk.Frame(root)
+midRowFrame.grid(row=rowFigSize+2,column=1,sticky=Tk.W)
 secondRowFrame = Tk.Frame(root)
-secondRowFrame.grid(row=rowFigSize+2,column=1,sticky=Tk.W)
+secondRowFrame.grid(row=rowFigSize+3,column=1,sticky=Tk.W)
 thirdRowFrame = Tk.Frame(root)
-thirdRowFrame.grid(row=rowFigSize+3,column=1,sticky=Tk.W)
+thirdRowFrame.grid(row=rowFigSize+4,column=1,sticky=Tk.W)
 fourthRowFrame = Tk.Frame(root)
-fourthRowFrame.grid(row=rowFigSize+4,column=1,sticky=Tk.W)
+fourthRowFrame.grid(row=rowFigSize+5,column=1,sticky=Tk.W)
 rightSideFrame = Tk.Frame(root)
-rightSideFrame.grid(row=rowFigSize+1,column=2,rowspan=5,sticky=Tk.W)
+rightSideFrame.grid(row=rowFigSize+1,column=2,rowspan=6,sticky=Tk.W)
+bottomFrame = Tk.Frame(root)
+bottomFrame.grid(row=rowFigSize+7,column=0,columnspan=3,sticky=Tk.W)
 
 button = Tk.Button(master=leftSideFrame,text='Quit',command=_quit,font=("Helvetica",20))
 button.grid(row=0,column=0,sticky=Tk.W,padx=10)
@@ -194,9 +233,17 @@ buttonDarkFile.grid(row=1,column=1,sticky=Tk.W)
 cDark = Tk.Checkbutton(master=firstRowFrame,text="Subtract Dark",variable=doDark)
 cDark.grid(row=1,column=2,sticky=Tk.W)
 
-Tk.Label(master=secondRowFrame,text="Folder").grid(row=1,column=0,sticky=Tk.W)
-eFolder= Tk.Entry(master=secondRowFrame,textvariable=folderVar,width=50)
+cBad = Tk.Checkbutton(master=firstRowFrame,text="Correct BadPixels",variable=doBad)
+cBad.grid(row=1,column=3,sticky=Tk.W)
+
+###### Folder info
+Tk.Label(master=midRowFrame,text="Folder  ").grid(row=1,column=0,sticky=Tk.W)
+eFolder= Tk.Entry(master=midRowFrame,textvariable=folderVar,width=71)
 eFolder.grid(row=1,column=1,sticky=Tk.W)
+
+###### Rest info
+Tk.Label(master=secondRowFrame,text='FileStem').grid(row=1,column=0,sticky=Tk.W)
+Tk.Entry(master=secondRowFrame,textvariable=fileStemVar,width=40).grid(row=1,column=1,sticky=Tk.W)
 
 Tk.Label(master=secondRowFrame,text='FirstFileNr').grid(row=1,column=2,sticky=Tk.W)
 efirstfile = Tk.Entry(master=secondRowFrame,textvariable=firstFileNrVar,width=6)
@@ -240,5 +287,12 @@ for text, val in FILEOPTS:
 buttonProcessImages = Tk.Button(master=rightSideFrame,text="Process Images",
 	command=processImages,font=("Helvetica",20))
 buttonProcessImages.grid(row=0,column=0,sticky=Tk.W,padx=10,pady=10)
+
+###### Show some help
+Tk.Label(master=bottomFrame,text='NOTE:',font=('Helvetica 16 bold')).grid(row=0,column=0,sticky=Tk.W)
+Tk.Label(master=bottomFrame,text='1. nFiles=0 would process all the files starting with FileStem name.',
+	font=('Helvetica 16 bold')).grid(row=1,column=0,sticky=Tk.W)
+Tk.Label(master=bottomFrame,text='2. Put FileStem to * to process the whole folder with *.ge* extension, but not in subfolders.',
+	font=('Helvetica 16 bold')).grid(row=2,column=0,sticky=Tk.W)
 
 Tk.mainloop()
