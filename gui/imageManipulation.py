@@ -52,7 +52,7 @@ def darkFileSelector():
 	doDark.set(1)
 
 def getfn(fstem,fnum):
-	return folderVar.get() +'/'+ fstem + '_' + str(fnum).zfill(padding) + extVar.get()
+	return folderVar.get() +'/'+ fstem + '_' + str(fnum).zfill(padding) + extvar.get()
 
 def getDarkImage(fn,bytesToSkip):
 	global dark
@@ -88,15 +88,29 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 	f = open('imparams.txt','r')
 	params = f.readlines()
 	doBadProcessing = int(params[0].rstrip())
-	allFrames = int(params[1].rstrip())
-	sumWrite = int(params[2].rstrip())
-	meanWrite = int(params[3].rstrip())
-	maxWrite = int(params[4].rstrip())
-	fileTypeWrite = int(params[5].rstrip())
+	darkProcessing = int(params[1].rstrip())
+	allFrames = int(params[2].rstrip())
+	sumWrite = int(params[3].rstrip())
+	meanWrite = int(params[4].rstrip())
+	maxWrite = int(params[5].rstrip())
+	fileTypeWrite = int(params[6].rstrip())
 	f.close()
 	f = open('fnames.txt','r')
 	fnames = f.readlines()
 	fn = fnames[fnr].rstrip()
+	dark = np.zeros(NrPixels*NrPixels)
+	if doBadProcessing:
+		detNr = fn[-1]
+		badF = open(os.path.expanduser('~')+'/opt/MIDAS/gui/GEBad/BadImg.ge'+detNr,'rb')
+		badF.seek(8192,os.SEEK_SET)
+		badData = np.fromfile(badF,dtype=np.uint16,count=NrPixels*NrPixels)
+		badData = np.nonzero(badData)
+		nBadData = len(badData[0])
+		print nBadData
+	if darkProcessing:
+		darkfn = darkfilefullpath[:-1] + fn[-1]
+		darkfn = darkfilefullpath
+		dark = getDarkImage(darkfn,8192)
 	statinfo = os.stat(fn)
 	nFramesPerFile = (statinfo.st_size - 8192)/(2*NrPixels*NrPixels)
 	f = open(fn,'rb')
@@ -109,6 +123,11 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 		f.seek(bytesToSkip,os.SEEK_SET)
 		data = np.fromfile(f,dtype=np.uint16,count=NrPixels*NrPixels)
 		data = data.astype(float)
+		if doBadProcessing:
+			### For each non-zero element in badData, correct with mean of 
+			### neighbours, no precaution for edge pixels for now
+			for idx in range(nBadData):
+				data[idx] = (data[idx-1] + data[idx-NrPixels] + data[idx+1] + data[idx+NrPixels])/4
 		corr = np.subtract(data,dark)
 		if allFrames:
 			saveFile(corr,fn+'.frame.'+str(frameNr)+'.cor',fileTypeWrite)
@@ -127,6 +146,7 @@ def processImages():
 	starttime = time.time()
 	f = open('imparams.txt','w')
 	f.write(str(doBad.get())+'\n')
+	f.write(str(doDark.get())+'\n')
 	f.write(str(doAllFrames.get())+'\n')
 	f.write(str(doSum.get())+'\n')
 	f.write(str(doMean.get())+'\n')
@@ -134,17 +154,20 @@ def processImages():
 	f.write(str(fileTypeVar.get())+'\n')
 	f.close()
 	pool = Pool(processes=multiprocessing.cpu_count())
-	if doDark.get() == 1:
-		darkfn = darkfilefullpath
-		dark = getDarkImage(darkfn,8192)
 	# We create a fnames.txt file with filenames for each file to process
 	f = open('fnames.txt','w')
 	fileStem = fileStemVar.get()
 	if nFilesVar.get() is not 0:
 		nrFiles = nFilesVar.get()
 		startNr = firstFileNrVar.get()
-		for fnr in range(startNr,startNr+nrFiles):
-			f.write(getfn(fileStem,fnr),'\n')
+		if doHydra.get():
+			for fnr in range(startNr,startNr+nrFiles):
+				fnTemp = getfn(fileStem,fnr)
+				for detNr in range(1,5):
+					f.write(fnTemp[:-1]+str(detNr)+'\n')
+		else:
+			for fnr in range(startNr,startNr+nrFiles):
+				f.write(getfn(fileStem,fnr)+'\n')
 	else:
 		## Do a pattern search.
 		if fileStem is not '*':
@@ -172,7 +195,6 @@ folder = ''
 folderVar = Tk.StringVar()
 folderVar.set(folder)
 NrPixels = 2048
-dark = np.zeros(NrPixels*NrPixels)
 nFramesPerFile = 240
 nFilesVar = Tk.IntVar()
 nFilesVar.set(0)
@@ -194,6 +216,8 @@ extvar = Tk.StringVar()
 extvar.set('')
 doBad = Tk.IntVar()
 doBad.set(0)
+doHydra = Tk.IntVar()
+doHydra.set(0)
 
 rowFigSize = 3
 colFigSize = 3
@@ -203,9 +227,9 @@ Tk.Label(master=root,text="Image pre-processing and conversion using MIDAS",
 	columnspan=colFigSize,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 leftSideFrame = Tk.Frame(root)
-leftSideFrame.grid(row=rowFigSize+1,column=0,rowspan=6,sticky=Tk.W)
+leftSideFrame.grid(row=rowFigSize+2,column=0,rowspan=5,sticky=Tk.W)
 firstRowFrame = Tk.Frame(root)
-firstRowFrame.grid(row=rowFigSize+1,column=1,sticky=Tk.W)
+firstRowFrame.grid(row=rowFigSize+1,column=1,columnspan=2,sticky=Tk.W)
 midRowFrame = Tk.Frame(root)
 midRowFrame.grid(row=rowFigSize+2,column=1,sticky=Tk.W)
 secondRowFrame = Tk.Frame(root)
@@ -215,7 +239,7 @@ thirdRowFrame.grid(row=rowFigSize+4,column=1,sticky=Tk.W)
 fourthRowFrame = Tk.Frame(root)
 fourthRowFrame.grid(row=rowFigSize+5,column=1,sticky=Tk.W)
 rightSideFrame = Tk.Frame(root)
-rightSideFrame.grid(row=rowFigSize+1,column=2,rowspan=6,sticky=Tk.W)
+rightSideFrame.grid(row=rowFigSize+2,column=2,rowspan=5,sticky=Tk.W)
 bottomFrame = Tk.Frame(root)
 bottomFrame.grid(row=rowFigSize+7,column=0,columnspan=3,sticky=Tk.W)
 
@@ -235,6 +259,9 @@ cDark.grid(row=1,column=2,sticky=Tk.W)
 
 cBad = Tk.Checkbutton(master=firstRowFrame,text="Correct BadPixels",variable=doBad)
 cBad.grid(row=1,column=3,sticky=Tk.W)
+
+cHydra = Tk.Checkbutton(master=firstRowFrame,text="Hydra",variable=doHydra)
+cHydra.grid(row=1,column=4,sticky=Tk.W)
 
 ###### Folder info
 Tk.Label(master=midRowFrame,text="Folder  ").grid(row=1,column=0,sticky=Tk.W)
@@ -294,5 +321,7 @@ Tk.Label(master=bottomFrame,text='1. nFiles=0 would process all the files starti
 	font=('Helvetica 16 bold')).grid(row=1,column=0,sticky=Tk.W)
 Tk.Label(master=bottomFrame,text='2. Put FileStem to * to process the whole folder with *.ge* extension, but not in subfolders.',
 	font=('Helvetica 16 bold')).grid(row=2,column=0,sticky=Tk.W)
+Tk.Label(master=bottomFrame,text='3. For HYDRA, select a dark file for one of the panels.',
+	font=('Helvetica 16 bold')).grid(row=3,column=0,sticky=Tk.W)
 
 Tk.mainloop()
