@@ -280,7 +280,7 @@ Tk.Label(master=secondRowFrame,text='nFiles').grid(row=1,column=4,sticky=Tk.W)
 enFiles = Tk.Entry(master=secondRowFrame,textvariable=nFilesVar,width=5)
 enFiles.grid(row=1,column=5,sticky=Tk.W)
 
-###### Output Options: allFrames, sum, Ave, Mean, Median, darkFromMedian
+###### Output Options: allFrames, sum, Ave, Mean
 Lb1 = Tk.Label(master=thirdRowFrame,text="Output Options:  ")
 Lb1.grid(row=1,column=0,sticky=Tk.W)
 Lb1.config(bg="gray")

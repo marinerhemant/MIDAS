@@ -20,8 +20,9 @@ do
 	cp ${foldername}/Layer${layernr}_MultiRing_ps${detNr}.txt ${paramfile}
 	cp ${foldername}/paramstest${detNr}.txt ${foldername}/paramstest.txt
 	cp ${foldername}/Detector${detNr}/IDsHash.csv ${foldername}/IDsHash${detNr}.csv
+	cp ${foldername}/Detector${detNr}/SpotsToIndex.csv ${foldername}/SpotsToIndex${detNr}.csv
 done
 
 sed -i '/^Lsd /d' ${paramfile}
 ${BINFOLDER}/GetHKLList ${paramfile}
-
+python ${PFDIR}/MergeDetectors.py ${paramfile}

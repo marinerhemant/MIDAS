@@ -12,6 +12,7 @@ layernr=$2
 DETECTORNR=$3
 outfolder=$4
 seedfolder=$( pwd )
+cp ${seedfolder}/BigDetectorMask.bin ${outfolder}
 startfilenrfirstlayer=$( awk '$1 ~ /^StartFileNrFirstLayer/ { print $2 } ' ${paramfile} )
 nrfilesperlayer=$( awk '$1 ~ /^NrFilesPerSweep/ { print $2 } ' ${paramfile} )
 startfilenr=$((${startfilenrfirstlayer}+$((${nrfilesperlayer}*$((${layernr}-1))))))
