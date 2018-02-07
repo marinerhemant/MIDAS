@@ -8,6 +8,10 @@ import os.path
 
 paramfn = sys.argv[1]
 layernr = sys.argv[2]
+if (len(sys.argv)>3){
+	ext = '.ge'+sys.argv[3]
+	darkfn = ''
+}
 paramcontents = open(paramfn,'r').readlines()
 
 for line in paramcontents:
@@ -26,9 +30,10 @@ for line in paramcontents:
 	elif line.startswith('Ext '):
 		ext = line.split()[1]
 
-if not os.path.isfile(darkfn):
-	print 'DARK FILE ' + darkfn + ' does not exist. Exiting!!!'
-	sys.exit(1)
+if darkfn is not '':
+	if not os.path.isfile(darkfn):
+		print 'DARK FILE ' + darkfn + ' does not exist. Exiting!!!'
+		sys.exit(1)
 
 startNr = overallStartNr + nrFilesPerSweep*(layernr-1)
 for fnr in range(startNr,startNr+nrFilesPerSweep):

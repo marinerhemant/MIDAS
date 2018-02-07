@@ -16,8 +16,8 @@ if [[ ${#*} != 6 ]]
 then
 	echo "Provide ParametersFile StartLayerNr EndLayerNr Number of NODES to use MachineName EmailAddress!"
 	echo "EG. ${cmdname} parameters.txt 1 1 6 orthros(orthrosextra,local,rice) hsharma@anl.gov"
-	echo "the source parameter file should not have ring numbers and layer numbers in it."
-	echo "Parameter file name should not be full path, analysis should be run from the directory where the parameter file is."
+	echo "the source parameter file MUST not have ring numbers and layer numbers in it."
+	echo "Parameter file name MUST not be full path, analysis should be run from the directory where the parameter file is."
 	echo "********SeedFolder MUST NOT BE IN THE PARAMETER FILE.**********"
 	echo "**********NOTE: For local runs, nNodes should be nCPUs.**********"
 	exit 1
@@ -74,15 +74,28 @@ do
 		${PFDIR}/InitialSetupHydra.sh $ParamsFile $LAYERNR $DETNR $outfolder
 	done
 	cd $outfolder
+	## Why to do this?
+	sed -i '/^LsdMean /d' $ParamsFile
+	sed -i '/^Ext /d' $ParamsFile
+	sed -i '/^Dark /d' $ParamsFile
+	sed -i '/^Lsd /d' $ParamsFile
+	sed -i '/^BC /d' $ParamsFile
+	sed -i '/^tx /d' $ParamsFile
+	sed -i '/^ty /d' $ParamsFile
+	sed -i '/^tz /d' $ParamsFile
+	sed -i '/^p0 /d' $ParamsFile
+	sed -i '/^p1 /d' $ParamsFile
+	sed -i '/^p2 /d' $ParamsFile
+	sed -i '/^RhoD /d' $ParamsFile
 	python ${PFDIR}/prepareFilesHydra.py $ParamsFile 1 # This appends stuff to the param files, this is called only to do an initial setup!!
 	cd ../
-	${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
-		${PFDIR}/processLayersHydra.swift -ringfile=${seedfolder}/RingInfo.txt \
-		-startnr=${StartNr} -endnr=${EndNr} -SeedFolder=${seedfolder} \
-		-startLayer=${STARTLAYERNR} -endLayer=${ENDLAYERNR}
-	cd ${outfolder}
-	pfname=Layer${LAYERNR}_MultiRing_ps.txt
-	${BINFOLDER}/ProcessGrains ${pfname}
+	#${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
+	#	${PFDIR}/processLayersHydra.swift -ringfile=${seedfolder}/RingInfo.txt \
+	#	-startnr=${StartNr} -endnr=${EndNr} -SeedFolder=${seedfolder} \
+	#	-startLayer=${STARTLAYERNR} -endLayer=${ENDLAYERNR}
+	#cd ${outfolder}
+	#pfname=Layer${LAYERNR}_MultiRing_ps.txt
+	#${BINFOLDER}/ProcessGrains ${pfname}
 	cd ../
 done
 

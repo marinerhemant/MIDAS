@@ -10,6 +10,10 @@ source ${HOME}/.MIDAS/paths
 paramfile=$1 # always relative path
 layernr=$2
 DETECTORNR=$3
+python ${PFDIR}/checkFiles.py ${paramfile} ${layernr} ${DETECTORNR}
+if [[ $? != 0 ]]; then
+	exit 1
+fi
 outfolder=$4
 seedfolder=$( pwd )
 startfilenrfirstlayer=$( awk '$1 ~ /^StartFileNrFirstLayer/ { print $2 } ' ${paramfile} )

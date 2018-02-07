@@ -6,6 +6,7 @@
 #
 source ${HOME}/.MIDAS/paths
 paramfile=$1 # always fill path
+echo ${paramfile}
 CHART=/
 flr=${paramfile%$CHART*}
 cd $flr
