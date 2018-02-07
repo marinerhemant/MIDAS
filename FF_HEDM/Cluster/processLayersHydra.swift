@@ -99,4 +99,8 @@ iterate ix {
 	(simEerr,simCatOut) = postpeaks(foldername,"hydra",simDerr);
 	int spots[] = readData(simCatOut);
 	tracef("Total number of remaining jobs: %d\n",length(spots));
+	foreach spotnr in spots {
+		file simFerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",spotnr),suffix=".err">;
+		simEerr = indexrefine(foldername,spotnr,simCatOut);
+	}
 }until (ix == length(folderNames));
