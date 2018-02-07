@@ -96,13 +96,13 @@ for detNr in range(4):
 	dataExtra[:,4] += totalNrSpots
 	dataExtra[:,0] *= LsdMean/Lsds[detNr]
 	dataExtra[:,1] *= LsdMean/Lsds[detNr]
-	print dataExtra.shape
 	print detNr
+	print dataExtra.shape
 	if len(totDataExtra) is 0:
 		totDataExtra = np.copy(dataExtra)
 	else:
 		print totDataExtra.shape
-		totDataExtra = np.concatenate(totDataExtra,dataExtra)
+		totDataExtra = np.concatenate((totDataExtra,dataExtra))
 	totalNrSpots += nSpots
 
 headinp = open('InputAll1.csv','r').readline()
@@ -121,7 +121,7 @@ for (idx,ringNr) in enumerate(RingNrs):
 		if len(SpotsThisRing) is 0:
 			SpotsThisRing = totDataExtra[thisStartNr:thisEndNr,:]
 		else:
-			SpotsThisRing = np.concatenate(SpotsThisRing,totDataExtra[thisStartNr:thisEndNr,:])
+			SpotsThisRing = np.concatenate((SpotsThisRing,totDataExtra[thisStartNr:thisEndNr,:]))
 	nSpotsThisRing = SpotsThisRing.shape[0]
 	SpotsThisRing = SpotsThisRing[SpotsThisRing[:,2].argsort()]
 	IDHashThisRing = np.zeros(nSpotsThisRing)
