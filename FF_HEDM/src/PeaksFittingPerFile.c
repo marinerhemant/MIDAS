@@ -510,7 +510,7 @@ check (int test, const char * message, ...)
 int main(int argc, char *argv[]){
 	clock_t start, end;
 	if (argc != 4){
-		printf("Not enough arguments, exiting.\n");
+		printf("Usage:\n PeaksFittingPerFile params.txt fileNr ringNr\n");
 		return 1;
 	}
     double diftotal;
