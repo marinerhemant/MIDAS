@@ -125,7 +125,6 @@ for (idx,ringNr) in enumerate(RingNrs):
 		else:
 			SpotsThisRing = np.concatenate((SpotsThisRing,totDataExtra[thisStartNr:thisEndNr,:]))
 	nSpotsThisRing = SpotsThisRing.shape[0]
-	print nSpotsThisRing
 	SpotsThisRing = SpotsThisRing[SpotsThisRing[:,2].argsort()]
 	IDHashThisRing = np.zeros(nSpotsThisRing)
 	for detNr in range(4):
