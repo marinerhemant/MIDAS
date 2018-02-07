@@ -40,6 +40,8 @@ for line in paramcontents:
 		OmegaRangeIndex[1] = float(line.split()[1])
 	elif line.startswith('OverAllRingToIndex '):
 		ringToIndex = int(line.split()[1])
+	elif line.startswith('px '):
+		px = line;
 LsdMean = sum(Lsds)/len(Lsds)
 nRings = len(RingNrs)
 
@@ -71,6 +73,7 @@ for (idx,line) in enumerate(paramcontents):
 		cntr += 1
 paramcontents.append('Mask BigDetectorMask.bin\n')
 paramcontents.append(bigdetinfo)
+paramcontents.append(px)
 f = open('paramstest.txt','w')
 for line in paramcontents:
 	f.write(line)

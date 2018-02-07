@@ -68,6 +68,13 @@ int n_hkls = 0;
 int HKLints[MAX_N_HKLS][4];
 double ABCABG[6];
 
+// For detector mapping!
+int BigDetSize = 0;
+int *BigDetector;
+long long int totNrPixelsBigDetector;
+double pixelsize;
+#define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
+
 // 4d and 3d arrays for storing spots in bins. For fast lookup.
 // - data[iRing][iEta][iOme] points to an array (a bin). It contains the rownumbers [0-based] of the spots in ObsSpotsLab matrix.
 // - ndata holds for each bin how many spots are stored (ndata[iRing][iEta][iOme])
@@ -1090,6 +1097,8 @@ CalcDiffrSpots_Furnace(
    int spotid = 0;
    int OrientID = 0;
    int ringnr = 0;
+   int YCInt, ZCInt;
+   long long int idx;
    
        
    for (indexhkl=0; indexhkl < n_hkls ; indexhkl++)  {
@@ -1135,6 +1144,14 @@ CalcDiffrSpots_Furnace(
                break;
             }
          }
+         
+         // Check if there is bigDetector, check if within the mask
+         if (BigDetSize != 0){
+			 YCInt = (int)floor((BigDetSize/2) - (-yl/pixelsize));
+			 ZCInt = (int)floor(((zl/pixelsize + (BigDetSize/2))));
+			 idx = (long long int)(YCInt + BigDetSize*ZCInt);
+			 if (!TestBit(BigDetector,idx)) KeepSpot = 0;
+		 }
       
          if (KeepSpot) {
             spots[spotnr][0] = OrientID;
@@ -2547,6 +2564,29 @@ ReadParams(
          continue;
       }   
 
+      str = "BigDetSize ";
+      cmpres = strncmp(line, str, strlen(str));
+      if (cmpres == 0) {
+         sscanf(line, "%s %d", dummy, &BigDetSize );
+         totNrPixelsBigDetector = BigDetSize;
+         totNrPixelsBigDetector *= BigDetSize;
+         totNrPixelsBigDetector /= 32;
+         totNrPixelsBigDetector ++;     
+         long long int sz = ReadBigDet();
+         if (sz != totNrPixelsBigDetector){
+			 printf("Size of big detector does not match with the pixel size.");
+			 return(1);
+		 }
+         continue;
+      }   
+
+      str = "px ";
+      cmpres = strncmp(line, str, strlen(str));
+      if (cmpres == 0) {
+         sscanf(line, "%s %lf", dummy, &pixelsize );
+         continue;
+      }   
+
       str = "SpaceGroup ";
       cmpres = strncmp(line, str, strlen(str));
       if (cmpres == 0) {
@@ -3479,6 +3519,23 @@ int ReadSpots(){
 	ObsSpotsLab = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 	check (ObsSpotsLab == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
 	return (int) size/(9*sizeof(double));
+}
+
+int ReadBigDet(){
+	int fd;
+	struct stat s;
+	int status;
+	size_t size;
+	const char *filename = "/dev/shm/BigDetectorMask.bin";
+	int rc;
+	fd = open(filename,O_RDONLY);
+	check(fd < 0, "open %s failed: %s", filename, strerror(errno));
+	status = fstat (fd , &s);
+	check (status < 0, "stat %s failed: %s", filename, strerror(errno));
+	size = s.st_size;
+	BigDetector = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
+	check (ObsSpotsLab == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
+	return (long long int) size;
 }
 
 int UnMap(){
