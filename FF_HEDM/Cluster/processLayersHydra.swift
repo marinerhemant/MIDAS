@@ -5,19 +5,19 @@
 
 type file;
 
-app (file ep) runPeaks (string paramsfn, int fnr, int ringnr)
+app (file ep) runPeaks (string ringfile, string paramfile, int fnr)
 {
-	peaks paramsfn fnr ringnr stdout=filename(ep);
+	peaks ringfile paramfile fnr stderr=filename(ep);
 }
 
 app (file err) runProcessPeaks (string paramsf, int RNr, file DummyA[])
 {
-	processPeaks paramsf RNr stdout=filename(err);
+	processPeaks paramsf RNr stderr=filename(err);
 }
 
 app (file err) mergerings (string pfname, file dummy[])
 {
-	mergeRings pfname stdout=filename(err);
+	mergeRings pfname stderr=filename(err);
 }
 
 app (file err, file spotsfile) postpeaks (string foldername, string pfname, file dummy)
@@ -30,9 +30,9 @@ app (file err) indexrefine (string foldername, int spotsinput, file dm)
 	indexstrains spotsinput foldername stderr=filename(err);
 }
 
-app (file out) processgrains (string foldername, string pfname, file dummy[])
+app (file err) processgrains (string foldername, string pfname, file dummy[])
 {
-	processGrains foldername pfname stdout=filename(out);
+	processGrains foldername pfname stderr=filename(err);
 }
 
 app (file err) mergedetectors (string foldername, int layernr, file dummy[])
@@ -61,17 +61,12 @@ iterate ix {
 	file simAerr[];
 	foreach detnr in [1:4]{
 		string paramfilenamefile = strcat(foldername,"/Detector",detnr,"/ParamFileNames.txt");
-		string paramFileNames[] = readData(paramfilenamefile);
-		foreach Ring,idx in rings {
-			string parameterfilename = paramFileNames[idx];
-			string PreFix1 = strcat("PeaksPerFile_",Ring);
-			foreach i in [startnr:endnr] {
-				file simx<simple_mapper;location=strcat(foldername,"/Detector",detnr,"/output"),prefix=strcat(PreFix1,"_",i,"_"),suffix=".err">;
-				simx = runPeaks(parameterfilename,i,Ring);
-				if (i %% 100 == 0){
-					int simAidx = (detnr-1)*length(rings)*(endnr%/100) + idx*(endnr%/100) + (i%/100);
-					simAerr[simAidx] = simx;
-				}
+		### Submit one job per frame, all the ring info will be taken care of automatically.
+		foreach i in [startnr:endnr] {
+			file simx<simple_mapper;location=strcat(foldername,"/Detector",detnr,"/output"),prefix=strcat("PeaksPerFile_",i,"_"),suffix=".err">;
+			simx = runPeaks(ringfile,paramfilenamefile,i);
+			if (i %% 100 == 0){
+				int simAidx = (detnr-1)*(endnr%/100) + (i%/100);
 			}
 		}
 	}
