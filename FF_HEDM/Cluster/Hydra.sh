@@ -91,13 +91,13 @@ do
 	sed -i '/^RhoD /d' $ParamsFile
 	python ${PFDIR}/prepareFilesHydra.py $ParamsFile 1 # This appends stuff to the param files, this is called only to do an initial setup!!
 	cd ../
-	#${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
-	#	${PFDIR}/processLayersHydra.swift -ringfile=${seedfolder}/RingInfo.txt \
-	#	-startnr=${StartNr} -endnr=${EndNr} -SeedFolder=${seedfolder} \
-	#	-startLayer=${STARTLAYERNR} -endLayer=${ENDLAYERNR}
-	#cd ${outfolder}
-	#pfname=Layer${LAYERNR}_MultiRing_ps.txt
-	#${BINFOLDER}/ProcessGrains ${pfname}
+	${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
+		${PFDIR}/processLayersHydra.swift -ringfile=${seedfolder}/RingInfo.txt \
+		-startnr=${StartNr} -endnr=${EndNr} -SeedFolder=${seedfolder} \
+		-startLayer=${STARTLAYERNR} -endLayer=${ENDLAYERNR}
+	cd ${outfolder}
+	pfname=Layer${LAYERNR}_MultiRing_ps.txt
+	${BINFOLDER}/ProcessGrains ${pfname}
 	cd ../
 done
 
