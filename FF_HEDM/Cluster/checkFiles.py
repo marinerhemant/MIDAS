@@ -7,7 +7,7 @@ import sys, os
 import os.path
 
 paramfn = sys.argv[1]
-layernr = sys.argv[2]
+layernr = int(sys.argv[2])
 print sys.argv[1]
 print sys.argv[2]
 print sys.argv[3]
