@@ -8,10 +8,10 @@ import os.path
 
 paramfn = sys.argv[1]
 layernr = sys.argv[2]
-if (len(sys.argv)>3){
+if (len(sys.argv)>3):
 	ext = '.ge'+sys.argv[3]
 	darkfn = ''
-}
+
 paramcontents = open(paramfn,'r').readlines()
 
 for line in paramcontents:
