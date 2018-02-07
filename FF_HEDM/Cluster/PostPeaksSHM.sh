@@ -8,7 +8,14 @@ source ${HOME}/.MIDAS/paths
 
 outfolder=$1
 pushd ${outfolder}
-${PFDIR}/SHMOperators.sh
+${PFDIR}/SHM.sh
+if [ $2 = "hydra" ]; then
+	tar -cvzf bins.tar.gz Spots.bin Data.bin nData.bin ExtraInfo.bin BigDetectorMask.bin
+else
+	tar -cvzf bins.tar.gz Spots.bin Data.bin nData.bin ExtraInfo.bin
+fi
+mkdir -p ${HOME}/swiftwork/bins/
+cp bins.tar.gz ${HOME}/swiftwork/bins
 mkdir -p Output
 mkdir -p Results
 popd

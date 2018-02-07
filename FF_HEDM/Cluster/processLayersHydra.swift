@@ -91,6 +91,12 @@ iterate ix {
 		simCerr[detnr3] = mergerings(pfname, simBerr);
 	}
 	# Now merge peaks from the detectors
-	file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix="MergeDetectors",suffix=".err">;
+	file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("MergeDetectors",ix),suffix=".err">;
 	simDerr = mergedetectors(foldername,layernr,simCerr);
+	# SHM
+	file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
+	file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsToIndexSwift.csv")>;
+	(simEerr,simCatOut) = postpeaks(foldername,"hydra",simDerr);
+	int spots[] = readData(simCatOut);
+	tracef("Total number of remaining jobs: %d\n",length(spots));
 }until (ix == length(folderNames));
