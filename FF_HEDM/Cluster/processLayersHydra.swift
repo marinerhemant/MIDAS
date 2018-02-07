@@ -35,6 +35,11 @@ app (file out) processgrains (string foldername, string pfname, file dummy[])
 	processGrains foldername pfname stdout=filename(out);
 }
 
+app (file err) mergedetectors (string foldername, string layernr, file dummy[])
+{
+	mergeDetectors foldername layernr stderr=filename(err);
+}
+
 # Parameters to be modified #############
 
 int startnr = toInt(arg("startnr","1"));
@@ -86,5 +91,6 @@ iterate ix {
 		simCerr[detnr3] = mergerings(pfname, simBerr);
 	}
 	# Now merge peaks from the detectors
-	
+	file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix="MergeDetectors",suffix=".err">;
+	simDerr = mergedetectors(foldername,layernr,simCerr);
 }until (ix == length(folderNames));
