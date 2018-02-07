@@ -96,12 +96,9 @@ for detNr in range(4):
 	dataExtra[:,4] += totalNrSpots
 	dataExtra[:,0] *= LsdMean/Lsds[detNr]
 	dataExtra[:,1] *= LsdMean/Lsds[detNr]
-	print detNr
-	print dataExtra.shape
 	if len(totDataExtra) is 0:
 		totDataExtra = np.copy(dataExtra)
 	else:
-		print totDataExtra.shape
 		totDataExtra = np.concatenate((totDataExtra,dataExtra))
 	totalNrSpots += nSpots
 
@@ -125,6 +122,7 @@ for (idx,ringNr) in enumerate(RingNrs):
 		else:
 			SpotsThisRing = np.concatenate((SpotsThisRing,totDataExtra[thisStartNr:thisEndNr,:]))
 	nSpotsThisRing = SpotsThisRing.shape[0]
+	print nSpotsThisRing
 	SpotsThisRing = SpotsThisRing[SpotsThisRing[:,2].argsort()]
 	IDHashThisRing = np.zeros(nSpotsThisRing)
 	for detNr in range(4):
