@@ -27,7 +27,7 @@ for line in paramcontents:
 		ext = line.split()[1]
 
 if not os.path.isfile(darkfn):
-	print 'FILE ' + darkfn + ' does not exist. Exiting!!!'
+	print 'DARK FILE ' + darkfn + ' does not exist. Exiting!!!'
 	sys.exit(1)
 
 startNr = overallStartNr + nrFilesPerSweep*(layernr-1)
