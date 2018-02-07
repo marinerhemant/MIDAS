@@ -40,6 +40,17 @@
 #define MAX_LINE_LENGTH 4096
 #define MaxNSpotsBest 1000
 
+// For detector mapping!
+extern int BigDetSize;
+extern int *BigDetector;
+extern long long int totNrPixelsBigDetector;
+extern double pixelsize;
+
+int BigDetSize = 0;
+int *BigDetector;
+long long int totNrPixelsBigDetector;
+double pixelsize;
+
 static inline
 int**
 allocMatrixInt(int nrows, int ncols)

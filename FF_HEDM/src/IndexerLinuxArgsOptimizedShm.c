@@ -3534,7 +3534,7 @@ int ReadBigDet(){
 	check (status < 0, "stat %s failed: %s", filename, strerror(errno));
 	size = s.st_size;
 	BigDetector = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
-	check (ObsSpotsLab == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
+	check (BigDetector == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
 	return (long long int) size;
 }
 

@@ -49,6 +49,17 @@
 #define CalcNorm3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
 #define CalcNorm2(x,y) sqrt((x)*(x) + (y)*(y))
 
+// For detector mapping!
+extern int BigDetSize;
+extern int *BigDetector;
+extern long long int totNrPixelsBigDetector;
+extern double pixelsize;
+
+int BigDetSize = 0;
+int *BigDetector;
+long long int totNrPixelsBigDetector;
+double pixelsize;
+
 static void
 check (int test, const char * message, ...)
 {

@@ -5,7 +5,7 @@
 
 //
 //  FitPosOrStrains.c
-//  
+//
 //
 //  Created by Hemant Sharma on 2014/06/20.
 //
@@ -36,7 +36,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/types.h>
-#include <sys/mman.h> 
+#include <sys/mman.h>
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -46,6 +46,17 @@
 #define EPS 1E-12
 #define CalcNorm3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
 #define CalcNorm2(x,y) sqrt((x)*(x) + (y)*(y))
+
+// For detector mapping!
+extern int BigDetSize;
+extern int *BigDetector;
+extern long long int totNrPixelsBigDetector;
+extern double pixelsize;
+
+int BigDetSize = 0;
+int *BigDetector;
+long long int totNrPixelsBigDetector;
+double pixelsize;
 
 static void
 check (int test, const char * message, ...)
@@ -59,7 +70,6 @@ check (int test, const char * message, ...)
         exit (EXIT_FAILURE);
     }
 }
-
 
 static inline
 int**
@@ -1159,6 +1169,12 @@ int main(int argc, char *argv[])
             sscanf(aline,"%s %d", dummy, &GrainTracking);
             continue;
         }
+        str = "BigDetSize ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &BigDetSize);
+            continue;
+        }
         str = "Wavelength ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -1351,6 +1367,25 @@ int main(int argc, char *argv[])
 		AllSpotsYZO[i][7] = AllSpots[i*14+5];
 	}
 	int tc2 = munmap(AllSpots,size);
+	if (BigDetSize != 0){
+		totNrPixelsBigDetector = BigDetSize;
+		totNrPixelsBigDetector *= BigDetSize;
+		totNrPixelsBigDetector /= 32;
+		totNrPixelsBigDetector ++;
+		int fbd;
+		const char *bdfn = "/dev/shm/BigDetectorMask.bin";
+		fbd = open(bdfn,O_RDONLY);
+		check(fbd<0,"open %s failed: %s", bdfn, strerror(errno));
+		status = fstat (fbd, &s);
+		check (status < 0, "stat %s failed: %s", bdfn, strerror(errno));
+		size = s.st_size;
+		if (size != totNrPixelsBigDetector){
+			printf("Size of big detector mismatch.\n");
+			return(1);
+		}
+		BigDetector = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
+		check (BigDetector == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
+	}
 	int nrSpIds=1;
 	char OutFN[1024],OrigOutFN[1024];
 	FILE *OutFNf, *OrigOutFNf;

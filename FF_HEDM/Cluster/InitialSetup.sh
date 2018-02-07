@@ -9,6 +9,10 @@ source ${HOME}/.MIDAS/paths
 
 paramfile=$1 # always relative path
 layernr=$2
+python ${PFDIR}/checkFiles.py ${paramfile} ${layernr}
+if [[ $? != 0 ]]; then
+	exit 1
+fi
 DOPEAKSEARCH=$3
 seedfolder=$( awk '$1 ~ /^SeedFolder/ { print $2 }' ${paramfile} )
 startfilenrfirstlayer=$( awk '$1 ~ /^StartFileNrFirstLayer/ { print $2 } ' ${paramfile} )

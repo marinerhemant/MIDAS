@@ -25,6 +25,13 @@
 #define MAX_N_HKLS 1000
 #define MAX_N_OMEGA_RANGES 20
 #define EPS 0.000000001
+#define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
+
+// For detector mapping!
+extern int BigDetSize;
+extern int *BigDetector;
+extern long long int totNrPixelsBigDetector;
+extern double pixelsize;
 
 static inline void
 MatrixMult(
@@ -228,6 +235,8 @@ CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3], RealType distance, RealType 
     RealType zl;
     int nspotsPlane;
     int spotnr = 0;
+    int YCInt, ZCInt;
+    long long int idx;
     for (indexhkl=0; indexhkl < n_hkls ; indexhkl++)  {
         Ghkl[0] = hkls[indexhkl][0];
         Ghkl[1] = hkls[indexhkl][1];
@@ -258,6 +267,13 @@ CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3], RealType distance, RealType 
                     break;
                 }
             }
+            // Check if there is bigDetector, check if within the mask
+			if (BigDetSize != 0){
+				YCInt = (int)floor((BigDetSize/2) - (-yl/pixelsize));
+				ZCInt = (int)floor(((zl/pixelsize + (BigDetSize/2))));
+				idx = (long long int)(YCInt + BigDetSize*ZCInt);
+				if (!TestBit(BigDetector,idx)) KeepSpot = 0;
+			}
             if (KeepSpot==1) {
                 spots[spotnr][0] = yl;
                 spots[spotnr][1] = zl;

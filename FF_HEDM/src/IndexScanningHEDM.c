@@ -36,6 +36,17 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+// For detector mapping!
+extern int BigDetSize;
+extern int *BigDetector;
+extern long long int totNrPixelsBigDetector;
+extern double pixelsize;
+
+int BigDetSize = 0;
+int *BigDetector;
+long long int totNrPixelsBigDetector;
+double pixelsize;
+
 static inline double sind(double x){return sin(deg2rad*x);}
 static inline double cosd(double x){return cos(deg2rad*x);}
 static inline double tand(double x){return tan(deg2rad*x);}
