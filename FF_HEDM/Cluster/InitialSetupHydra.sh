@@ -10,6 +10,7 @@ source ${HOME}/.MIDAS/paths
 paramfile=$1 # always relative path
 layernr=$2
 DETECTORNR=$3
+echo $DETECTORNR
 python ${PFDIR}/checkFiles.py ${paramfile} ${layernr} ${DETECTORNR}
 if [[ $? != 0 ]]; then
 	exit 1
