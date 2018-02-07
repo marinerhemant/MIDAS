@@ -131,7 +131,7 @@ for (idx,ringNr) in enumerate(RingNrs):
 		IDHashThisRing[np.logical_and(SpotsThisRing[:,4] >= thisStartNr, 
 									  SpotsThisRing[:,4] <= thisEndNr)] = detNr + 1
 	SpotsThisRing[:,4] = np.arange(startingID,startingID+nSpotsThisRing,dtype=float)
-	np.savetxt(finput,SpotsThisRing[:8,:],fmt='%12.5f',delimiter=' ',newline='\n')
+	np.savetxt(finput,SpotsThisRing[:,:8],fmt='%12.5f',delimiter=' ',newline='\n')
 	np.savetxt(fextra,SpotsThisRing,fmt='%12.5f',delimiter=' ',newline='\n')
 	if ringNr is ringToIndex:
 		IDsToIndex = SpotsThisRing[np.logical_and(SpotsThisRing[:,2] >= OmegaRangeIndex[0],
