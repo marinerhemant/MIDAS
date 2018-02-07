@@ -105,7 +105,7 @@ for detNr in range(4):
 		totDataExtra = np.concatenate((totDataExtra,dataExtra))
 	totalNrSpots += nSpots
 
-headinp = open('InputAll1.csv','r').readline()
+headinp = open('Detector1/InputAll.csv','r').readline()
 
 startingID = 1
 finput = open('InputAll.csv','a')
