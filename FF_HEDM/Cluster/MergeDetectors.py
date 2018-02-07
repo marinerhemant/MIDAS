@@ -71,6 +71,9 @@ for (idx,line) in enumerate(paramcontents):
 		cntr += 1
 paramcontents.append('Mask BigDetectorMask.bin\n')
 paramcontents.append(bigdetinfo)
+f.open('paramstest.txt','w')
+for line in paramcontents:
+	f.write(line)
 
 ### Load extra info
 totalNrSpots = 0
