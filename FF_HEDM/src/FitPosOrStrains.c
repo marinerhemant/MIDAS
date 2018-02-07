@@ -1379,10 +1379,6 @@ int main(int argc, char *argv[])
 		status = fstat (fbd, &s);
 		check (status < 0, "stat %s failed: %s", bdfn, strerror(errno));
 		size = s.st_size;
-		if (size != totNrPixelsBigDetector){
-			printf("Size of big detector mismatch.\n");
-			return(1);
-		}
 		BigDetector = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 		check (BigDetector == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
 	}

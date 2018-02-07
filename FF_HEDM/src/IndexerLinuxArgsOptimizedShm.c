@@ -2573,10 +2573,6 @@ ReadParams(
          totNrPixelsBigDetector /= 32;
          totNrPixelsBigDetector ++;     
          long long int sz = ReadBigDet();
-         if (sz != totNrPixelsBigDetector){
-			 printf("Size of big detector does not match with the pixel size.");
-			 return(1);
-		 }
          continue;
       }   
 
