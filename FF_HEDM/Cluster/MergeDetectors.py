@@ -140,6 +140,6 @@ for (idx,ringNr) in enumerate(RingNrs):
 												  SpotsThisRing[:,2] <= OmegaRangeIndex[1]),4]
 		np.savetxt(fSpotsToIndex,IDsToIndex,fmt='%d',newline='\n')
 	fIDsHash.write(str(ringNr)+' '+ str(startingID)+ ' ' + 
-		str(startingID+nSpotsThisRing-1) + ' ' + DSpacings[idx]+ '\n')
+		str(startingID+nSpotsThisRing-1) + ' ' + str(DSpacings[idx])+ '\n')
 	np.savetxt(fIDsMap,IDHashThisRing,fmt='%d',newline='\n')
 	startingID += nSpotsThisRing
