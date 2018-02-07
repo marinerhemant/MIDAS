@@ -35,7 +35,7 @@ app (file out) processgrains (string foldername, string pfname, file dummy[])
 	processGrains foldername pfname stdout=filename(out);
 }
 
-app (file err) mergedetectors (string foldername, string layernr, file dummy[])
+app (file err) mergedetectors (string foldername, int layernr, file dummy[])
 {
 	mergeDetectors foldername layernr stderr=filename(err);
 }
