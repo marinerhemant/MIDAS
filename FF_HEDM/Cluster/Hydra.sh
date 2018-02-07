@@ -72,9 +72,11 @@ do
 	for (( DETNR=1; DETNR<=4; DETNR++ ))
 	do
 		${PFDIR}/InitialSetupHydra.sh $ParamsFile $LAYERNR $DETNR $outfolder
+		if [[ $? != 0 ]]; then
+			exit 1
+		fi
 	done
 	cd $outfolder
-	## Why to do this?
 	sed -i '/^LsdMean /d' $ParamsFile
 	sed -i '/^Ext /d' $ParamsFile
 	sed -i '/^Dark /d' $ParamsFile
