@@ -16,7 +16,7 @@ startfilenrfirstlayer=$( awk '$1 ~ /^StartFileNrFirstLayer/ { print $2 } ' ${par
 nrfilesperlayer=$( awk '$1 ~ /^NrFilesPerSweep/ { print $2 } ' ${paramfile} )
 startfilenr=$((${startfilenrfirstlayer}+$((${nrfilesperlayer}*$((${layernr}-1))))))
 mkdir -p ${outfolder}
-cp ${seedfolder}/BigDetectorMask.bin ${outfolder}/
+cp ${seedfolder}/BigDetectorMask.bin ${outfolder}/.
 cd ${outfolder}
 cp ${seedfolder}/${paramfile} ${outfolder}
 outfolder=${outfolder}/Detector${DETECTORNR}/
