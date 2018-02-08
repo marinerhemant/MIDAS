@@ -36,7 +36,7 @@ if darkfn is not '':
 
 startNr = overallStartNr + nrFilesPerSweep*(layernr-1)
 for fnr in range(startNr,startNr+nrFilesPerSweep):
-	fn = rawFolder + fileStem + str(fnr).zfill(padding) + ext
+	fn = rawFolder + fileStem + '_' + str(fnr).zfill(padding) + ext
 	if not os.path.isfile(fn):
 		print 'FILE ' + fn + ' does not exist. Exiting!!!'
 		sys.exit(1)
