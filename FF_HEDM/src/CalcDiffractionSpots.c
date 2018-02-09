@@ -272,7 +272,7 @@ CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3], RealType distance, RealType 
 				YCInt = (int)floor((BigDetSize/2) - (-yl/pixelsize));
 				ZCInt = (int)floor(((zl/pixelsize + (BigDetSize/2))));
 				idx = (long long int)(YCInt + BigDetSize*ZCInt);
-				printf("%lf %lf %d %d %lld\n",yl,zl,YCInt,ZCInt,idx);
+				printf("%d %lf %lf %d %d %lld\n",BigDetSize,yl,zl,YCInt,ZCInt,idx);
 				fflush(stdout);
 				if (!TestBit(BigDetector,idx)) {
 					KeepSpot = 0;
