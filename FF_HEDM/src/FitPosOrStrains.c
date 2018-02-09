@@ -411,7 +411,7 @@ void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double yDet, doub
 static inline
 void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], double **spotsYZO, double **hklsIn, double Lsd, 
 	double Wavelength, double OmegaRange[20][2], double BoxSize[20][4], double MinEta, double wedge, double chi,
-	double **SpotsComp, double **SpList, double *Error, int *nSpotsComp)
+	double **SpotsComp, double **SpList, double *Error, int *nSpotsComp, int notIniRun)
 {
 	int i,j;
 	int nrMatchedIndexer = nspots;
@@ -427,18 +427,23 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 	CalcDiffractionSpots(Lsd,MinEta,OmegaRange,nOmegaRanges,hkls,nhkls,BoxSize,&nTspots,OrientMatrix,TheorSpots);
 	double **SpotsYZOGCorr;SpotsYZOGCorr=allocMatrix(nrMatchedIndexer,7);
 	double DisplY,DisplZ,ys,zs,Omega,Radius,Theta,lenK, yDet, zDet, omeDet, yt, zt;
-	int detNr;
+	int detNr, colRun;
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
 		DisplacementInTheSpot(x[0],x[1],x[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
 		if (BigDetSize == 0){
 			yt = spotsYZO[nrSp][5]-DisplY;
 			zt = spotsYZO[nrSp][6]-DisplZ;
 		}else{
+			if (notIniRun == 0){
+				colRun = 8;
+			} else{
+				colRun = 9;
+			}
 			// Get raw Y pos, raw Z pos, displace them by DisplY/pixelsize and DisplZ/pixelsize
-			yDet = spotsYZO[nrSp][8] + DisplY/pixelsize;
-			zDet = spotsYZO[nrSp][9] - DisplZ/pixelsize;
-			detNr = (int)spotsYZO[nrSp][10] - 1;
-			printf("detNr %d\n",detNr);fflush(stdout);
+			yDet = spotsYZO[nrSp][colRun] + DisplY/pixelsize;
+			zDet = spotsYZO[nrSp][colRun+1] - DisplZ/pixelsize;
+			detNr = (int)spotsYZO[nrSp][colRun+2] - 1;
+			//printf("detNr %d\n",detNr);fflush(stdout);
 			// Use yDet and zDet, correct for tilt, spatial distortion and recompute.
 			CorrectTiltSpatialDistortion(1, DetParams[detNr][9], yDet, zDet, pixelsize,
 				DetParams[detNr][0], DetParams[detNr][1], DetParams[detNr][2], DetParams[detNr][3],
@@ -1724,7 +1729,7 @@ int main(int argc, char *argv[])
 	int nSpotsComp;
 	ConcatPosEulLatc(Ini,Pos0,Euler0,LatCin);
 	CalcAngleErrors(nSpotsYZO,nhkls,nOmeRanges,Ini,spotsYZO,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,
-					MinEta,wedge,chi,SpotsComp,Splist,ErrorIni,&nSpotsComp);
+					MinEta,wedge,chi,SpotsComp,Splist,ErrorIni,&nSpotsComp,0);
 	printf("Initial error is: %f %f %f\n",ErrorIni[0],ErrorIni[1],ErrorIni[2]);
 	double **spotsYZONew; spotsYZONew=allocMatrix(nSpotsComp,12);
 	for (i=0;i<nSpotsComp;i++){
@@ -1777,12 +1782,12 @@ int main(int argc, char *argv[])
     FitPositionIni(X0,nSpotsComp,spotsYZONew,nhkls,hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,XFit,lb,ub);
     for (i=0;i<nSpotsComp;i++) printf("%lf\n",spotsYZONew[i][11]);
     CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,XFit,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
-					SpotsComp,Splist,ErrorInt1,&nSpotsComp);
+					SpotsComp,Splist,ErrorInt1,&nSpotsComp,1);
 	printf("Interim error after fitting Position1: %f %f %f\n",ErrorInt1[0],ErrorInt1[1],ErrorInt1[2]);
 	for (i=0;i<3;i++) XFit[i+3] = Euler0[i];
     for (i=0;i<6;i++) XFit[i+6] = LatCin[i];
     CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,XFit,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
-					SpotsComp,Splist,ErrorInt1,&nSpotsComp);
+					SpotsComp,Splist,ErrorInt1,&nSpotsComp,1);
 	printf("Interim error after fitting Position: %f %f %f\n",ErrorInt1[0],ErrorInt1[1],ErrorInt1[2]);
 	for (i=0;i<nSpotsComp;i++) for (j=0;j<12;j++) spotsYZONew[i][j]=Splist[i][j];
     double X0_2[9];X0_2[0]=Euler0[0];X0_2[1]=Euler0[1];X0_2[2]=Euler0[2];
@@ -1812,7 +1817,7 @@ int main(int argc, char *argv[])
     double *ErrorInt2;
     ErrorInt2 = malloc(3*sizeof(*ErrorInt2));
     CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,UseXFit,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
-					SpotsComp,Splist,ErrorInt2,&nSpotsComp);
+					SpotsComp,Splist,ErrorInt2,&nSpotsComp,1);
     printf("Interim error after fitting Orientation: %f %f %f\n",ErrorInt2[0],ErrorInt2[1],ErrorInt2[2]);
     for (i=0;i<nSpotsComp;i++) for (j=0;j<12;j++) spotsYZONew[i][j]=Splist[i][j];
     double X0_3[6];for (i=0;i<6;i++) X0_3[i] = LatCin[i];
@@ -1836,7 +1841,7 @@ int main(int argc, char *argv[])
     double *ErrorInt3;
     ErrorInt3 = malloc(3*sizeof(*ErrorInt3));
     CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,UseXFit2,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
-					SpotsComp,Splist,ErrorInt3,&nSpotsComp);
+					SpotsComp,Splist,ErrorInt3,&nSpotsComp,1);
     printf("Interim error after fitting strains: %f %f %f\n",ErrorInt3[0],ErrorInt3[1],ErrorInt3[2]);
     for (i=0;i<nSpotsComp;i++) for (j=0;j<12;j++) spotsYZONew[i][j]=Splist[i][j];
     double X0_4[3]; for (i=0;i<3;i++) X0_4[i] = XFit[i];
@@ -1857,7 +1862,7 @@ int main(int argc, char *argv[])
 	double *ErrorFin;
     ErrorFin = malloc(3*sizeof(*ErrorFin));
     CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,FinalResult,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
-					SpotsComp,Splist,ErrorFin,&nSpotsComp);
+					SpotsComp,Splist,ErrorFin,&nSpotsComp,1);
     printf("Final error: %f %f %f\n",ErrorFin[0],ErrorFin[1],ErrorFin[2]);
     for (i=0;i<nSpotsComp;i++) for (j=0;j<12;j++) spotsYZONew[i][j]=Splist[i][j];
     printf("Fitted position is: %f %f %f\nFitted orientation is: %f %f %f\nFitted lattice parameter is: %f %f %f %f %f %f\n",
