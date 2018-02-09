@@ -1727,7 +1727,12 @@ int main(int argc, char *argv[])
 					MinEta,wedge,chi,SpotsComp,Splist,ErrorIni,&nSpotsComp);
 	printf("Initial error is: %f %f %f\n",ErrorIni[0],ErrorIni[1],ErrorIni[2]);
 	double **spotsYZONew; spotsYZONew=allocMatrix(nSpotsComp,12);
-	for (i=0;i<nSpotsComp;i++){for (j=0;j<12;j++){spotsYZONew[i][j]=Splist[i][j];}}
+	for (i=0;i<nSpotsComp;i++){
+		for (j=0;j<12;j++){
+			spotsYZONew[i][j]=Splist[i][j];
+		}
+		printf("%lf\n",spotsYZONew[i][11]);
+	}
 	OrientsOrig[nSpID][0] = (double)SpId;
 	for (i=0;i<9;i++) OrientsOrig[nSpID][i+1] = Orient0[i];
 	PositionsOrig[nSpID][0] = (double)SpId;
