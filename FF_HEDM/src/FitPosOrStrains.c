@@ -427,7 +427,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 	CalcDiffractionSpots(Lsd,MinEta,OmegaRange,nOmegaRanges,hkls,nhkls,BoxSize,&nTspots,OrientMatrix,TheorSpots);
 	double **SpotsYZOGCorr;SpotsYZOGCorr=allocMatrix(nrMatchedIndexer,7);
 	double DisplY,DisplZ,ys,zs,Omega,Radius,Theta,lenK, yDet, zDet, omeDet, yt, zt;
-	int detNr, colRun;
+	int detNr, colRun=9;
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
 		DisplacementInTheSpot(x[0],x[1],x[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
 		if (BigDetSize == 0){
@@ -518,9 +518,9 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 			SpotsComp[nMatched][21]=diffOmeM;
 			for (i=0;i<8;i++){SpList[nMatched][i]=spotsYZO[sp][i];}
 			SpList[nMatched][8]=TheorSpotsYZWER[RowBest][8];
-			SpList[nMatched][9] = spotsYZO[sp][colRun];
-			SpList[nMatched][10] = spotsYZO[sp][colRun];
-			SpList[nMatched][11] = spotsYZO[sp][colRun];
+			SpList[nMatched][9]  = spotsYZO[sp][colRun];
+			SpList[nMatched][10] = spotsYZO[sp][colRun+1];
+			SpList[nMatched][11] = spotsYZO[sp][colRun+2];
 			nMatched++;
 		}
 	}
