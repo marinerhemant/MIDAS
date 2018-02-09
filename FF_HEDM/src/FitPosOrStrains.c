@@ -503,7 +503,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 		}
 		diffLenM = CalcNorm2((SpotsYZOGCorr[sp][0]-TheorSpotsYZWER[RowBest][0]),(SpotsYZOGCorr[sp][1]-TheorSpotsYZWER[RowBest][1]));
 		diffOmeM = fabs(SpotsYZOGCorr[sp][2]-TheorSpotsYZWER[RowBest][2]);
-		if (minAngle < 1){
+		if (minAngle < 3){
 			MatchDiff[nMatched][0] = minAngle;
 			MatchDiff[nMatched][1] = diffLenM;
 			MatchDiff[nMatched][2] = diffOmeM;
@@ -527,6 +527,8 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 			SpList[nMatched][10] = spotsYZO[sp][colRun+1];
 			SpList[nMatched][11] = spotsYZO[sp][colRun+2];
 			nMatched++;
+		}else{
+			printf("Spot not found: minIA: %lf\n",minAngle);
 		}
 	}
 	*nSpotsComp = nMatched;
