@@ -77,18 +77,18 @@ do
 		fi
 	done
 	cd $outfolder
-	sed -i '/^LsdMean /d' $ParamsFile
-	sed -i '/^Ext /d' $ParamsFile
-	sed -i '/^Dark /d' $ParamsFile
-	sed -i '/^Lsd /d' $ParamsFile
-	sed -i '/^BC /d' $ParamsFile
-	sed -i '/^tx /d' $ParamsFile
-	sed -i '/^ty /d' $ParamsFile
-	sed -i '/^tz /d' $ParamsFile
-	sed -i '/^p0 /d' $ParamsFile
-	sed -i '/^p1 /d' $ParamsFile
-	sed -i '/^p2 /d' $ParamsFile
-	sed -i '/^RhoD /d' $ParamsFile
+	#sed -i '/^LsdMean /d' $ParamsFile
+	#sed -i '/^Ext /d' $ParamsFile
+	#sed -i '/^Dark /d' $ParamsFile
+	#sed -i '/^Lsd /d' $ParamsFile
+	#sed -i '/^BC /d' $ParamsFile
+	#sed -i '/^tx /d' $ParamsFile
+	#sed -i '/^ty /d' $ParamsFile
+	#sed -i '/^tz /d' $ParamsFile
+	#sed -i '/^p0 /d' $ParamsFile
+	#sed -i '/^p1 /d' $ParamsFile
+	#sed -i '/^p2 /d' $ParamsFile
+	#sed -i '/^RhoD /d' $ParamsFile
 	python ${PFDIR}/prepareFilesHydra.py $ParamsFile 1 # This appends stuff to the param files, this is called only to do an initial setup!!
 	cd ../
 	${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
