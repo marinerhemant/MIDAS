@@ -1680,7 +1680,6 @@ int main(int argc, char *argv[])
 		}
 	}
 	int tc2 = munmap(AllSpots,size);
-	return(1);
 	/*for (i=0;i<nSpotsBest;i++){
 		for (j=0;j<nSpots;j++){
 			if ((int)spotIDS[i] == (int)AllSpotsYZO[j][3]){
