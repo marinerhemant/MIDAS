@@ -1151,7 +1151,6 @@ CalcDiffrSpots_Furnace(
 			 ZCInt = (int)floor(((zl/pixelsize + (BigDetSize/2))));
 			 idx = (long long int)(YCInt + BigDetSize*ZCInt);
 			 if (!TestBit(BigDetector,idx)) {
-				 printf("Outside the mask: %lf %lf \n",yl,zl);
 				 KeepSpot = 0;
 			 }
 		 }
