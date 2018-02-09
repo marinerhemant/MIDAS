@@ -1510,7 +1510,6 @@ int main(int argc, char *argv[])
 		BigDetector = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 		check (BigDetector == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
 	}
-	return(1);
 	int nrSpIds=1;
 	char OutFN[1024],OrigOutFN[1024];
 	FILE *OutFNf, *OrigOutFNf;
@@ -1658,6 +1657,7 @@ int main(int argc, char *argv[])
 		spotsYZO[i][6] = AllSpots[spotPosAllSpots*14+10];
 		spotsYZO[i][7] = AllSpots[spotPosAllSpots*14+5];
 	}
+	return(1);
 	// In case of Hydra, read raw Y,Z,omega (11,12,13) positions and store in array
 	// Also read the IDsDetectorMap.csv and store the detector numbers. Thus allocate an array 
 	if (BigDetSize != 0){
