@@ -1657,6 +1657,7 @@ int main(int argc, char *argv[])
 		spotsYZO[i][6] = AllSpots[spotPosAllSpots*14+10];
 		spotsYZO[i][7] = AllSpots[spotPosAllSpots*14+5];
 	}
+	return(1);
 	// In case of Hydra, read raw Y,Z,omega (11,12,13) positions and store in array
 	// Also read the IDsDetectorMap.csv and store the detector numbers. Thus allocate an array 
 	if (BigDetSize != 0){
@@ -1679,7 +1680,6 @@ int main(int argc, char *argv[])
 		}
 	}
 	int tc2 = munmap(AllSpots,size);
-	return(1);
 	/*for (i=0;i<nSpotsBest;i++){
 		for (j=0;j<nSpots;j++){
 			if ((int)spotIDS[i] == (int)AllSpotsYZO[j][3]){
