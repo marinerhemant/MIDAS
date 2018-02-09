@@ -10,6 +10,7 @@ echo $1
 if [[ ${#*} > 1 ]]; then
 	cd $2
 fi
+pwd
 ls -l *.bin
 ls -l /dev/shm/*.bin
 ${BINFOLDER}/IndexerLinuxArgsShm paramstest.txt $1

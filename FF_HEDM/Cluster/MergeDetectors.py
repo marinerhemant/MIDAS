@@ -27,9 +27,11 @@ paramfile = sys.argv[1]
 f = open(paramfile,'r')
 paramcontents = f.readlines()
 f.close()
+detParamsLines = []
 for line in paramcontents:
 	if line.startswith('DetParams '):
 		Lsds.append(float(line.split()[1]))
+		detParamsLines.append(line)
 	elif line.startswith('RingThresh '):
 		RingNrs.append(int(line.split()[1]))
 	elif line.startswith('BigDetSize '):
@@ -74,6 +76,8 @@ for (idx,line) in enumerate(paramcontents):
 paramcontents.append('Mask BigDetectorMask.bin\n')
 paramcontents.append(bigdetinfo)
 paramcontents.append(px)
+for line in detParamsLines:
+	paramcontents.append(line)
 f = open('paramstest.txt','w')
 for line in paramcontents:
 	f.write(line)
