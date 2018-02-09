@@ -1514,7 +1514,7 @@ int main(int argc, char *argv[])
 		status = fstat (fbd, &s);
 		check (status < 0, "stat %s failed: %s", bdfn, strerror(errno));
 		size2 = s.st_size;
-		printf("%z\n",size2);
+		printf("%zd\n",size2);
 		BigDetector = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 		check (BigDetector == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
 	}
