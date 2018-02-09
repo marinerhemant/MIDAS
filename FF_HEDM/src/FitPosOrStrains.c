@@ -1264,6 +1264,23 @@ void FitPosSec(double X0[3],int nSpotsComp,double **spotsYZO,int nhkls,double **
 	FreeMemMatrix(f_data.hkls,nhkls);
 }
 
+long long int ReadBigDet(){
+	int fd;
+	struct stat s;
+	int status;
+	size_t size;
+	const char *filename = "/dev/shm/BigDetectorMask.bin";
+	int rc;
+	fd = open(filename,O_RDONLY);
+	check(fd < 0, "open %s failed: %s", filename, strerror(errno));
+	status = fstat (fd , &s);
+	check (status < 0, "stat %s failed: %s", filename, strerror(errno));
+	size = s.st_size;
+	BigDetector = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
+	check (BigDetector == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
+	return (long long int) size;
+}
+
 int main(int argc, char *argv[])
 {
     clock_t start, end;
@@ -1504,20 +1521,12 @@ int main(int argc, char *argv[])
 	check (AllSpots == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
 	int nSpots =  (int) size/(14*sizeof(double));
 	if (BigDetSize != 0){
+		long long int size2 = ReadBigDet();
 		totNrPixelsBigDetector = BigDetSize;
 		totNrPixelsBigDetector *= BigDetSize;
 		totNrPixelsBigDetector /= 32;
 		totNrPixelsBigDetector ++;
-		int fbd;
-		const char *bdfn = "/dev/shm/BigDetectorMask.bin";
-		fbd = open(bdfn,O_RDONLY);
-		check(fbd<0,"open %s failed: %s", bdfn, strerror(errno));
-		status = fstat (fbd, &s);
-		check (status < 0, "stat %s failed: %s", bdfn, strerror(errno));
-		size2 = s.st_size;
-		printf("%zd %lld\n",size2,totNrPixelsBigDetector*4);
-		BigDetector = mmap(0,size2,PROT_READ,MAP_SHARED,fd,0);
-		check (BigDetector == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
+		printf("%lld %lld\n",size2,totNrPixelsBigDetector*4);
 		printf("%d\n",BigDetector[size2/32-1]);//TestBit(BigDetector,24444648));
 	}
 	int nrSpIds=1;
