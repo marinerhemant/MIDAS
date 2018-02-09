@@ -1526,8 +1526,6 @@ int main(int argc, char *argv[])
 		totNrPixelsBigDetector *= BigDetSize;
 		totNrPixelsBigDetector /= 32;
 		totNrPixelsBigDetector ++;
-		printf("%lld %lld\n",size2,totNrPixelsBigDetector*4);
-		printf("%d\n",BigDetector[size2/32-1]);//TestBit(BigDetector,24444648));
 	}
 	int nrSpIds=1;
 	char OutFN[1024],OrigOutFN[1024];
