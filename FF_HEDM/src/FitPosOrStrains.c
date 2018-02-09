@@ -1507,7 +1507,7 @@ int main(int argc, char *argv[])
 		check(fbd<0,"open %s failed: %s", bdfn, strerror(errno));
 		status = fstat (fbd, &s);
 		check (status < 0, "stat %s failed: %s", bdfn, strerror(errno));
-		size2 = s.st_size2;
+		size2 = s.st_size;
 		BigDetector = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 		check (BigDetector == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
 	}
