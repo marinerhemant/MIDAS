@@ -22,7 +22,7 @@ app (file err) mergerings (string pfname, file dummy[])
 
 app (file err, file spotsfile) postpeaks (string foldername, string pfname, file dummy)
 {
-	postPeaksHydra foldername pfname filename(spotsfile) stderr=filename(err);
+	postPeaks foldername pfname filename(spotsfile) stderr=filename(err);
 }
 
 app (file err) indexrefine (string foldername, int spotsinput, file dm)
