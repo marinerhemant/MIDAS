@@ -1518,7 +1518,7 @@ int main(int argc, char *argv[])
 		printf("%zd\n",size2);
 		BigDetector = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 		check (BigDetector == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
-		printf("%d\n",BigDetector[1]);//TestBit(BigDetector,24444648));
+		printf("%d\n",BigDetector[2]);//TestBit(BigDetector,24444648));
 	}
 	int nrSpIds=1;
 	char OutFN[1024],OrigOutFN[1024];
