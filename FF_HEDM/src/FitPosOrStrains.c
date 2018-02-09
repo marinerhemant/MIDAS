@@ -378,6 +378,7 @@ void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double yDet, doub
 		double p2, double *yt, double *zt)
 {
 	double txr,tyr,tzr;
+	printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",tx,ty,tz,p0,p1,p2,MaxRad,px,Lsd,ybc,zbc);
 	txr = deg2rad*tx;
 	tyr = deg2rad*ty;
 	tzr = deg2rad*tz;
