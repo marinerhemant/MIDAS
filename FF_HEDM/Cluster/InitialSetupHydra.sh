@@ -46,6 +46,7 @@ i=0
 SNr=$( awk '$1 ~ /^StartNr/ { print $2 }' ${paramfile} )
 ENr=$( awk '$1 ~ /^EndNr/ { print $2 }' ${paramfile} )
 RingNrs=$( awk '$1 ~ /^RingThresh/ { print $2 }' ${paramfile} )
+fStem=$( awk '$1 ~ /^FileStem/ { print $2 }' ${paramfile} )
 echo "${pfname}" >> ${outfolder}/PFNames.txt
 for RINGNR in ${RingNrs}
 do
@@ -53,7 +54,7 @@ do
 	cp ${paramfile} ${ThisParamFileName}
 	Fldr=${outfolder}/Ring${RINGNR}
 	mkdir -p $Fldr/Temp
-	mkdir -p $Fldr/PeakSearch
+	mkdir -p $Fldr/PeakSearch/${fStem}_${layernr}
 	cp hkls.csv $Fldr
 	echo "Folder $Fldr" >> ${ThisParamFileName}
 	echo "RingToIndex $RINGNR" >> ${ThisParamFileName}
