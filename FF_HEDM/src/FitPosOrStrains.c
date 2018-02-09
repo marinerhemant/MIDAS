@@ -46,6 +46,7 @@
 #define EPS 1E-12
 #define CalcNorm3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
 #define CalcNorm2(x,y) sqrt((x)*(x) + (y)*(y))
+#define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
 
 // For detector mapping!
 extern int BigDetSize;
@@ -1517,6 +1518,7 @@ int main(int argc, char *argv[])
 		printf("%zd\n",size2);
 		BigDetector = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 		check (BigDetector == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
+		TestBit(BigDetector,24444648);
 	}
 	int nrSpIds=1;
 	char OutFN[1024],OrigOutFN[1024];
