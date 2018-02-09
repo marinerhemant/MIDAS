@@ -1715,7 +1715,6 @@ int main(int argc, char *argv[])
 	ConcatPosEulLatc(Ini,Pos0,Euler0,LatCin);
 	CalcAngleErrors(nSpotsYZO,nhkls,nOmeRanges,Ini,spotsYZO,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,
 					MinEta,wedge,chi,SpotsComp,Splist,ErrorIni,&nSpotsComp);
-	return(1);
 	printf("Initial error is: %f %f %f\n",ErrorIni[0],ErrorIni[1],ErrorIni[2]);
 	double **spotsYZONew; spotsYZONew=allocMatrix(nSpotsComp,9);
 	for (i=0;i<nSpotsComp;i++){for (j=0;j<9;j++){spotsYZONew[i][j]=Splist[i][j];}}
