@@ -490,7 +490,10 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 				nTheorSpotsYZWER++;
 			}
 		}
-		if (nTheorSpotsYZWER==0)continue;
+		if (nTheorSpotsYZWER==0){
+			printf("Spot not found!!!\n");
+			continue;
+		}
 		minAngle = 1000000;
 		for (i=0;i<nTheorSpotsYZWER;i++){
 			if (Angles[i]<minAngle){
