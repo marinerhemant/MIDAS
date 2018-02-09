@@ -1659,8 +1659,8 @@ int main(int argc, char *argv[])
 	}
 	// In case of Hydra, read raw Y,Z,omega (11,12,13) positions and store in array
 	// Also read the IDsDetectorMap.csv and store the detector numbers. Thus allocate an array 
+	rawDetectorData = malloc(5*nSpotsBest*sizeof(*rawDetectorData));
 	if (BigDetSize != 0){
-		rawDetectorData = malloc(5*nSpotsBest*sizeof(*rawDetectorData));
 		FILE *DetMapFile;
 		DetMapFile = fopen("IDsDetectorMap.csv","r");
 		int *detmap, cntdetmap=0;
@@ -1669,7 +1669,6 @@ int main(int argc, char *argv[])
 			sscanf(line,"%d",&detmap[cntdetmap]);
 			cntdetmap++;
 		}
-		return(1);
 		for (i=0;i<nSpotsBest;i++){
 			spotPosAllSpots = (int)spotIDS[i] -1;
 			rawDetectorData[i*5+0] = AllSpots[spotPosAllSpots*14+11];
@@ -1678,6 +1677,7 @@ int main(int argc, char *argv[])
 			rawDetectorData[i*5+3] = (double)detmap[spotPosAllSpots];
 			rawDetectorData[i*5+4] = spotIDS[i];
 		}
+		return(1);
 	}
 	int tc2 = munmap(AllSpots,size);
 	/*for (i=0;i<nSpotsBest;i++){
