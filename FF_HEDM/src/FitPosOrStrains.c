@@ -1299,6 +1299,12 @@ int main(int argc, char *argv[])
             sscanf(aline,"%s %d", dummy, &GrainTracking);
             continue;
         }
+        str = "px ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &pixelsize);
+            continue;
+        }
         str = "DetParams ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
