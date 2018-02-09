@@ -1495,7 +1495,6 @@ int main(int argc, char *argv[])
 	AllSpots = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 	check (AllSpots == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
 	int nSpots =  (int) size/(14*sizeof(double));
-	return(1);
 	if (BigDetSize != 0){
 		totNrPixelsBigDetector = BigDetSize;
 		totNrPixelsBigDetector *= BigDetSize;
@@ -1511,6 +1510,7 @@ int main(int argc, char *argv[])
 		BigDetector = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 		check (BigDetector == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
 	}
+	return(1);
 	int nrSpIds=1;
 	char OutFN[1024],OrigOutFN[1024];
 	FILE *OutFNf, *OrigOutFNf;
