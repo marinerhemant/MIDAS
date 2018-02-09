@@ -269,8 +269,8 @@ CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3], RealType distance, RealType 
             }
             // Check if there is bigDetector, check if within the mask
 			if (BigDetSize != 0){
-				YCInt = (int)floor((BigDetSize/2) - (-yl/pixelsize));
-				ZCInt = (int)floor(((zl/pixelsize + (BigDetSize/2))));
+				YCInt = (int)floor((BigDetSize/2) - (int)(-yl/pixelsize));
+				ZCInt = (int)floor((((int)(zl/pixelsize) + (BigDetSize/2))));
 				idx = (long long int)(YCInt + BigDetSize*ZCInt);
 				printf("%d %lf %lf %d %d %lld\n",BigDetSize,yl,zl,YCInt,ZCInt,idx);
 				fflush(stdout);
