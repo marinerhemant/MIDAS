@@ -767,7 +767,7 @@ double FitErrorsOrientStrains(double x[9],int nSpotsComp,double spotsYZO[nSpotsC
 		if (nTheorSpotsYZWER==0)continue;
 		minAngle = 1000000;
 		for (i=0;i<nTheorSpotsYZWER;i++){if (Angles[i]<minAngle){minAngle=Angles[i];}}
-		if (minAngle > 2) continue;
+		if (minAngle > 4) continue;
 		Error += minAngle;
 	}
 	FreeMemMatrix(hklsIn2,nhkls);
