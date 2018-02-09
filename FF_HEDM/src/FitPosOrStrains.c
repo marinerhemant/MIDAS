@@ -640,10 +640,9 @@ double FitErrorsPosT(double x[12],int nSpotsComp,double spotsYZOIn[nSpotsComp][1
 			zt = spotsYZO[nrSp][6]-DisplZ;
 		}else{
 			// Get raw Y pos, raw Z pos, displace them by DisplY/pixelsize and DisplZ/pixelsize
-			yDet = spotsYZO[nrSp][8] + DisplY/pixelsize;
-			zDet = spotsYZO[nrSp][9] - DisplZ/pixelsize;
-			detNr = (int)spotsYZO[nrSp][10] - 1;
-			printf("%d\n",detNr);fflush(stdout);
+			yDet = spotsYZO[nrSp][9] + DisplY/pixelsize;
+			zDet = spotsYZO[nrSp][10] - DisplZ/pixelsize;
+			detNr = (int)spotsYZO[nrSp][11] - 1;
 			// Use yDet and zDet, correct for tilt, spatial distortion and recompute.
 			CorrectTiltSpatialDistortion(1, DetParams[detNr][9], yDet, zDet, pixelsize,
 				DetParams[detNr][0], DetParams[detNr][1], DetParams[detNr][2], DetParams[detNr][3],
@@ -712,9 +711,9 @@ double FitErrorsOrientStrains(double x[9],int nSpotsComp,double spotsYZO[nSpotsC
 			zt = spotsYZO[nrSp][6]-DisplZ;
 		}else{
 			// Get raw Y pos, raw Z pos, displace them by DisplY/pixelsize and DisplZ/pixelsize
-			yDet = spotsYZO[nrSp][8] + DisplY/pixelsize;
-			zDet = spotsYZO[nrSp][9] - DisplZ/pixelsize;
-			detNr = (int)spotsYZO[nrSp][10] - 1;
+			yDet = spotsYZO[nrSp][9] + DisplY/pixelsize;
+			zDet = spotsYZO[nrSp][10] - DisplZ/pixelsize;
+			detNr = (int)spotsYZO[nrSp][11] - 1;
 			// Use yDet and zDet, correct for tilt, spatial distortion and recompute.
 			CorrectTiltSpatialDistortion(1, DetParams[detNr][9], yDet, zDet, pixelsize,
 				DetParams[detNr][0], DetParams[detNr][1], DetParams[detNr][2], DetParams[detNr][3],
@@ -803,9 +802,9 @@ double FitErrorsStrains(double x[6],int nSpotsComp,double spotsYZOIn[nSpotsComp]
 			zt = spotsYZO[nrSp][6]-DisplZ;
 		}else{
 			// Get raw Y pos, raw Z pos, displace them by DisplY/pixelsize and DisplZ/pixelsize
-			yDet = spotsYZO[nrSp][8] + DisplY/pixelsize;
-			zDet = spotsYZO[nrSp][9] - DisplZ/pixelsize;
-			detNr = (int)spotsYZO[nrSp][10] - 1;
+			yDet = spotsYZO[nrSp][9] + DisplY/pixelsize;
+			zDet = spotsYZO[nrSp][10] - DisplZ/pixelsize;
+			detNr = (int)spotsYZO[nrSp][11] - 1;
 			// Use yDet and zDet, correct for tilt, spatial distortion and recompute.
 			CorrectTiltSpatialDistortion(1, DetParams[detNr][9], yDet, zDet, pixelsize,
 				DetParams[detNr][0], DetParams[detNr][1], DetParams[detNr][2], DetParams[detNr][3],
@@ -881,9 +880,9 @@ double FitErrorsPosSec(double x[3],int nSpotsComp,double spotsYZOIn[nSpotsComp][
 			zt = spotsYZO[nrSp][6]-DisplZ;
 		}else{
 			// Get raw Y pos, raw Z pos, displace them by DisplY/pixelsize and DisplZ/pixelsize
-			yDet = spotsYZO[nrSp][8] + DisplY/pixelsize;
-			zDet = spotsYZO[nrSp][9] - DisplZ/pixelsize;
-			detNr = (int)spotsYZO[nrSp][10] - 1;
+			yDet = spotsYZO[nrSp][9] + DisplY/pixelsize;
+			zDet = spotsYZO[nrSp][10] - DisplZ/pixelsize;
+			detNr = (int)spotsYZO[nrSp][11] - 1;
 			// Use yDet and zDet, correct for tilt, spatial distortion and recompute.
 			CorrectTiltSpatialDistortion(1, DetParams[detNr][9], yDet, zDet, pixelsize,
 				DetParams[detNr][0], DetParams[detNr][1], DetParams[detNr][2], DetParams[detNr][3],
