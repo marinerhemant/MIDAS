@@ -1495,6 +1495,7 @@ int main(int argc, char *argv[])
 	AllSpots = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 	check (AllSpots == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
 	int nSpots =  (int) size/(14*sizeof(double));
+	return(1);
 	if (BigDetSize != 0){
 		totNrPixelsBigDetector = BigDetSize;
 		totNrPixelsBigDetector *= BigDetSize;
