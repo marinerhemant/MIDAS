@@ -643,6 +643,7 @@ double FitErrorsPosT(double x[12],int nSpotsComp,double spotsYZOIn[nSpotsComp][1
 			yDet = spotsYZO[nrSp][9] + DisplY/pixelsize;
 			zDet = spotsYZO[nrSp][10] - DisplZ/pixelsize;
 			detNr = (int)spotsYZO[nrSp][11] - 1;
+			printf("%d\n",detNr);
 			// Use yDet and zDet, correct for tilt, spatial distortion and recompute.
 			CorrectTiltSpatialDistortion(1, DetParams[detNr][9], yDet, zDet, pixelsize,
 				DetParams[detNr][0], DetParams[detNr][1], DetParams[detNr][2], DetParams[detNr][3],
