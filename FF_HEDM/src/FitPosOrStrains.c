@@ -438,7 +438,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 			yDet = spotsYZO[nrSp][8] + DisplY/pixelsize;
 			zDet = spotsYZO[nrSp][9] - DisplZ/pixelsize;
 			detNr = (int)spotsYZO[nrSp][10] - 1;
-			printf("%d\n",detNr);
+			printf("%d\n",detNr);fflush(stdout);
 			// Use yDet and zDet, correct for tilt, spatial distortion and recompute.
 			CorrectTiltSpatialDistortion(1, DetParams[detNr][9], yDet, zDet, pixelsize,
 				DetParams[detNr][0], DetParams[detNr][1], DetParams[detNr][2], DetParams[detNr][3],
