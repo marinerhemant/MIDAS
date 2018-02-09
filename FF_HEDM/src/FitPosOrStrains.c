@@ -1731,7 +1731,7 @@ int main(int argc, char *argv[])
 		for (j=0;j<12;j++){
 			spotsYZONew[i][j]=Splist[i][j];
 		}
-		printf("%lf\n",spotsYZONew[i][11]);
+		printf("%lf %lf\n",spotsYZO[i][10],spotsYZONew[i][11]);
 	}
 	OrientsOrig[nSpID][0] = (double)SpId;
 	for (i=0;i<9;i++) OrientsOrig[nSpID][i+1] = Orient0[i];
