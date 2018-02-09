@@ -25,4 +25,4 @@ done
 
 sed -i '/^Lsd /d' ${paramfile}
 ${BINFOLDER}/GetHKLList ${paramfile}
-python ${PFDIR}/MergeDetectors.py ${paramfile}
+/clhome/epd/bin/python ${PFDIR}/MergeDetectors.py ${paramfile}
