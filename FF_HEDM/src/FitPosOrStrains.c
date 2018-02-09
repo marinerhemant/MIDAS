@@ -1779,7 +1779,6 @@ int main(int argc, char *argv[])
     double *ErrorInt1;
     ErrorInt1 = malloc(3*sizeof(*ErrorInt1));
     FitPositionIni(X0,nSpotsComp,spotsYZONew,nhkls,hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,XFit,lb,ub);
-    for (i=0;i<nSpotsComp;i++) printf("%lf\n",spotsYZONew[i][11]);
     CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,XFit,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
 					SpotsComp,Splist,ErrorInt1,&nSpotsComp,1);
 	printf("Interim error after fitting Position1: %f %f %f\n",ErrorInt1[0],ErrorInt1[1],ErrorInt1[2]);
