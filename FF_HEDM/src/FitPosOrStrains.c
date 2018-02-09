@@ -448,9 +448,9 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 				DetParams[detNr][0], DetParams[detNr][1], DetParams[detNr][2], DetParams[detNr][3],
 				DetParams[detNr][4], DetParams[detNr][5], DetParams[detNr][6],DetParams[detNr][7],
 				DetParams[detNr][8], &yt, &zt);
-			printf("%lf %lf  %lf %lf %lf %lf %lf %lf %lf %lf\n",spotsYZO[nrSp][5],
+			/*printf("%lf %lf  %lf %lf %lf %lf %lf %lf %lf %lf\n",spotsYZO[nrSp][5],
 				yt,DisplY,yDet,spotsYZO[nrSp][colRun],spotsYZO[nrSp][6],zt,DisplZ,zDet,
-				spotsYZO[nrSp][colRun+1]);
+				spotsYZO[nrSp][colRun+1]);*/
 		}
 		CorrectForOme(yt,zt,Lsd,spotsYZO[nrSp][4],Wavelength,wedge,&ys,&zs,&Omega);
 		SpotsYZOGCorr[nrSp][0] = ys;
@@ -491,7 +491,6 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 			}
 		}
 		if (nTheorSpotsYZWER==0){
-			printf("Spot not found!!!\n");
 			continue;
 		}
 		minAngle = 1000000;
@@ -527,8 +526,6 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 			SpList[nMatched][10] = spotsYZO[sp][colRun+1];
 			SpList[nMatched][11] = spotsYZO[sp][colRun+2];
 			nMatched++;
-		}else{
-			printf("Spot not found: minIA: %lf\n",minAngle);
 		}
 	}
 	*nSpotsComp = nMatched;
