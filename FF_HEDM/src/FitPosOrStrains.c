@@ -1515,7 +1515,7 @@ int main(int argc, char *argv[])
 		status = fstat (fbd, &s);
 		check (status < 0, "stat %s failed: %s", bdfn, strerror(errno));
 		size2 = s.st_size;
-		printf("%zd %lld\n",size2,totNrPixelsBigDetector*8);
+		printf("%zd %lld\n",size2,totNrPixelsBigDetector*4);
 		BigDetector = mmap(0,size2,PROT_READ,MAP_SHARED,fd,0);
 		check (BigDetector == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
 		printf("%d\n",BigDetector[size2-5281000]);//TestBit(BigDetector,24444648));
