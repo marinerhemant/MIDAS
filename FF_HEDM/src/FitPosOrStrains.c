@@ -1677,8 +1677,8 @@ int main(int argc, char *argv[])
 			rawDetectorData[i*5+3] = (double)detmap[spotPosAllSpots];
 			rawDetectorData[i*5+4] = spotIDS[i];
 		}
-		return(1);
 	}
+	return(1);
 	int tc2 = munmap(AllSpots,size);
 	/*for (i=0;i<nSpotsBest;i++){
 		for (j=0;j<nSpots;j++){
