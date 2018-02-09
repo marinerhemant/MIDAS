@@ -1485,6 +1485,7 @@ int main(int argc, char *argv[])
 	struct stat s;
 	int status;
 	size_t size;
+	size_t size2;
 	const char *filename = "/dev/shm/ExtraInfo.bin";
 	int rc;
 	fd = open(filename,O_RDONLY);
@@ -1506,7 +1507,7 @@ int main(int argc, char *argv[])
 		check(fbd<0,"open %s failed: %s", bdfn, strerror(errno));
 		status = fstat (fbd, &s);
 		check (status < 0, "stat %s failed: %s", bdfn, strerror(errno));
-		size = s.st_size;
+		size2 = s.st_size2;
 		BigDetector = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 		check (BigDetector == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
 	}
@@ -1678,7 +1679,7 @@ int main(int argc, char *argv[])
 			rawDetectorData[i*5+4] = spotIDS[i];
 		}
 	}
-	//int tc2 = munmap(AllSpots,size);
+	int tc2 = munmap(AllSpots,size);
 	return(1);
 	/*for (i=0;i<nSpotsBest;i++){
 		for (j=0;j<nSpots;j++){
