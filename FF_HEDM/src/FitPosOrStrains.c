@@ -448,6 +448,8 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 				DetParams[detNr][0], DetParams[detNr][1], DetParams[detNr][2], DetParams[detNr][3],
 				DetParams[detNr][4], DetParams[detNr][5], DetParams[detNr][6],DetParams[detNr][7],
 				DetParams[detNr][8], &yt, &zt);
+			printf("%lf %lf %lf %lf %lf %lf\n",spotsYZO[nrSp][5],spotsYZO[nrSp][6],
+				yt,zt,DisplY,DisplZ);
 		}
 		CorrectForOme(yt,zt,Lsd,spotsYZO[nrSp][4],Wavelength,wedge,&ys,&zs,&Omega);
 		SpotsYZOGCorr[nrSp][0] = ys;
