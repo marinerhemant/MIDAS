@@ -55,7 +55,6 @@ def getfn(fstem,fnum):
 	return folderVar.get() +'/'+ fstem + '_' + str(fnum).zfill(padding) + extvar.get()
 
 def getDarkImage(fn,bytesToSkip):
-	global dark
 	dataDark = np.zeros(NrPixels*NrPixels)
 	statinfo = os.stat(fn)
 	nFramesPerFile = (statinfo.st_size - 8192)/(2*NrPixels*NrPixels)
@@ -67,7 +66,7 @@ def getDarkImage(fn,bytesToSkip):
 		dataDark = np.add(dataDark,data)
 	f.close()
 	dataDark = dataDark/nFramesPerFile
-	dark = dataDark
+	return dataDark
 
 def saveFile(arr,fname,fileTypeWrite):
 	if fileTypeWrite == 1: # GE output to uint16
@@ -106,7 +105,6 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 		badData = np.fromfile(badF,dtype=np.uint16,count=NrPixels*NrPixels)
 		badData = np.nonzero(badData)
 		nBadData = len(badData[0])
-		print nBadData
 	if darkProcessing:
 		darkfn = darkfilefullpath[:-1] + fn[-1]
 		darkfn = darkfilefullpath
