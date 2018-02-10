@@ -20,7 +20,8 @@ all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting 
 	mergeoverlaps calcradius findsaturatedpx genmediandark fitgrain tiff2ge\
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking\
 	mapmultdetectors matchgrains detectormapper integrator mergemultiplescans \
-	fitposorstrainsscanning indexscanning processgrainsscanning mapbnd fitscanninggrain
+	fitposorstrainsscanning indexscanning processgrainsscanning mapbnd fitscanninggrain \
+	fitgrainhydra
 
 #local:
 local: predeplocal all runsetup
@@ -129,6 +130,9 @@ genmediandark: $(SRCDIR)GenMedianDark.c
 
 fitgrain: $(SRCDIR)FitGrain.c
 	$(CC) $(SRCDIR)FitGrain.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitGrain $(CFLAGS) $(CFLAGSNLOPT)
+
+fitgrainhydra: $(SRCDIR)FitGrainHydra.c
+	$(CC) $(SRCDIR)FitGrainHydra.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitGrainHydra $(CFLAGS) $(CFLAGSNLOPT)
 
 fitscanninggrain: $(SRCDIR)FitScanningGrain.c
 	$(CC) $(SRCDIR)FitScanningGrain.c -o $(BINDIR)FitScanningGrain $(CFLAGS)

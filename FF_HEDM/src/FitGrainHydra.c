@@ -31,6 +31,10 @@
 #include <stdint.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <sys/types.h>
+#include <sys/mman.h>
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -45,11 +49,27 @@ extern int BigDetSize;
 extern int *BigDetector;
 extern long long int totNrPixelsBigDetector;
 extern double pixelsize;
+extern double *rawDetectorData;
 
 int BigDetSize = 0;
 int *BigDetector;
 long long int totNrPixelsBigDetector;
 double pixelsize;
+double *rawDetectorData;
+double DetParams[4][10];
+
+static void
+check (int test, const char * message, ...)
+{
+    if (test) {
+        va_list args;
+        va_start (args, message);
+        vfprintf (stderr, message, args);
+        va_end (args);
+        fprintf (stderr, "\n");
+        exit (EXIT_FAILURE);
+    }
+}
 
 static inline
 int**
@@ -606,6 +626,23 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12], int NonOptPInt
 	for (i=0;i<18;i++) Out[i] = x[i];
 }
 
+long long int ReadBigDet(){
+	int fd;
+	struct stat s;
+	int status;
+	size_t size;
+	const char *filename = "/dev/shm/BigDetectorMask.bin";
+	int rc;
+	fd = open(filename,O_RDONLY);
+	check(fd < 0, "open %s failed: %s", filename, strerror(errno));
+	status = fstat (fd , &s);
+	check (status < 0, "stat %s failed: %s", filename, strerror(errno));
+	size = s.st_size;
+	BigDetector = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
+	check (BigDetector == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
+	return (long long int) size;
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc != 4){
@@ -628,67 +665,31 @@ int main(int argc, char *argv[])
 		MaxRingRad, MaxTtheta, Wavelength, MinEta,
 		Hbeam, Rsample;
     int NrPixels, nOmeRanges=0, nBoxSizes=0, cs=0, RingNumbers[200], cs2=0;
+    int cntrdet = 0;
     while (fgets(aline,MAX_LINE_LENGTH,fileParam)!=NULL){
-		str = "tx ";
-		LowNr = strncmp(aline,str,strlen(str));
-		if (LowNr == 0){
-			sscanf(aline,"%s %lf",dummy, &tx);
-			continue;
-		}
-		str = "ty ";
-		LowNr = strncmp(aline,str,strlen(str));
-		if (LowNr == 0){
-			sscanf(aline,"%s %lf",dummy, &ty);
-			continue;
-		}
-		str = "tz ";
-		LowNr = strncmp(aline,str,strlen(str));
-		if (LowNr == 0){
-			sscanf(aline,"%s %lf",dummy, &tz);
-			continue;
-		}
-		str = "Lsd ";
-		LowNr = strncmp(aline,str,strlen(str));
-		if (LowNr == 0){
-			sscanf(aline,"%s %lf",dummy, &Lsd);
-			continue;
-		}
-		str = "p0 ";
-		LowNr = strncmp(aline,str,strlen(str));
-		if (LowNr == 0){
-			sscanf(aline,"%s %lf",dummy, &p0);
-			continue;
-		}
-		str = "p1 ";
-		LowNr = strncmp(aline,str,strlen(str));
-		if (LowNr == 0){
-			sscanf(aline,"%s %lf",dummy, &p1);
-			continue;
-		}
-		str = "p2 ";
-		LowNr = strncmp(aline,str,strlen(str));
-		if (LowNr == 0){
-			sscanf(aline,"%s %lf",dummy, &p2);
-			continue;
-		}
-		str = "RhoD ";
-		LowNr = strncmp(aline,str,strlen(str));
-		if (LowNr == 0){
-			sscanf(aline,"%s %lf",dummy, &RhoD);
-			continue;
-		}
-		str = "BC ";
-		LowNr = strncmp(aline,str,strlen(str));
-		if (LowNr == 0){
-			sscanf(aline,"%s %lf %lf",dummy, &yBC, &zBC);
-			continue;
-		}
 		str = "Wedge ";
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr == 0){
 			sscanf(aline,"%s %lf",dummy, &wedge);
 			continue;
 		}
+		str = "DetParams ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", 
+				dummy,&DetParams[cntrdet][0],&DetParams[cntrdet][1],&DetParams[cntrdet][2],
+				&DetParams[cntrdet][3],&DetParams[cntrdet][4],&DetParams[cntrdet][5],
+				&DetParams[cntrdet][6],&DetParams[cntrdet][7],&DetParams[cntrdet][8],
+				&DetParams[cntrdet][9]);
+			cntrdet++;
+			continue;
+        }
+        str = "BigDetSize ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &BigDetSize);
+            continue;
+        }
 		str = "px ";
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr == 0){
@@ -754,7 +755,16 @@ int main(int argc, char *argv[])
             continue;
         }
 	}
-	pixelsize = px;
+	char shmcp[4096];
+	sprintf(shmcp, "cp BigDetectorMask.bin /dev/shm/");
+	system(shmcp);
+	if (BigDetSize != 0){
+		long long int size2 = ReadBigDet();
+		totNrPixelsBigDetector = BigDetSize;
+		totNrPixelsBigDetector *= BigDetSize;
+		totNrPixelsBigDetector /= 32;
+		totNrPixelsBigDetector ++;
+	}
 	int nRings = cs;
 	int i,j,k;
 	// Read Grains.csv file, get Orientation, Position, Lattice Parameter
@@ -793,7 +803,7 @@ int main(int argc, char *argv[])
 	// Read SpotMatrix.csv to get raw positions of the diffraction spots.
 	// We need, GrainID(0), SpotID(1), Y(3), Z(4), Ome(5), RingNr(7)
 	double **SpotInfoAll;
-	SpotInfoAll = allocMatrix(MaxNSpotsBest,5);
+	SpotInfoAll = allocMatrix(MaxNSpotsBest,6);
 	FILE *SpotMF;
 	char fnSpotMatrix[MAX_LINE_LENGTH];
 	sprintf(fnSpotMatrix,"%s/SpotMatrix.csv",folder);
@@ -801,6 +811,8 @@ int main(int argc, char *argv[])
 	double YZOme[3];
 	int Rnr, nSpots = 0, SpID;
 	fgets(aline,MAX_LINE_LENGTH,SpotMF);
+	char line[4096];
+	int spotPosAllSpots;
 	while (fgets(aline,MAX_LINE_LENGTH,SpotMF)!=NULL){
 		sscanf(aline,"%d %s %s %lf %lf %lf %s %d",&ID, &SpID, dummy, &YZOme[0],
 			&YZOme[1], &YZOme[2], dummy, &Rnr);
@@ -813,7 +825,20 @@ int main(int argc, char *argv[])
 			nSpots++;
 		}
 	}
-
+	if (BigDetSize != 0){
+		FILE *DetMapFile;
+		DetMapFile = fopen("IDsDetectorMap.csv","r");
+		int *detmap, cntdetmap=0;
+		detmap = malloc(nSpots*sizeof(*detmap));
+		while(fgets(line,5000,DetMapFile)!=NULL){
+			sscanf(line,"%d",&detmap[cntdetmap]);
+			cntdetmap++;
+		}
+		for (i=0;i<nSpots;i++){
+			spotPosAllSpots = (int)SpotInfoAll[i][0] -1;
+			SpotInfoAll[i][5] = (double)detmap[spotPosAllSpots];
+		}
+	}
 	// Read hkls
 	int nhkls = 0;
 	double **hkls;
@@ -840,15 +865,16 @@ int main(int argc, char *argv[])
 	}
 	
 	
-	// Group Setup parameters
-	// Non Optimized: NonOptP: double 10 + Int 5
+	// Group Setup parameters	// Group Setup parameters
+	// Non Optimized: NonOptP: double 5 + Int 5
 	// Optimized OptP[6]
-	double NonOptP[10] = {p0,p1,p2,RhoD,Lsd,px,Wavelength,Hbeam,Rsample,MinEta};
+	pixelsize = px;
+	double NonOptP[5] = {px,Wavelength,Hbeam,Rsample,MinEta};
 	int NonOptPInt[5] = {NrPixels,nOmeRanges,nRings,nSpots,nhkls};
 	double OptP[6] = {tx,ty,tz,yBC,zBC,wedge};
 	double tols[18] = {250,250,250,deg2rad*0.0005,deg2rad*0.0005,deg2rad*0.0005,1,1,1,1,1,1,
-		1,1,1,1,0.00001,0.00001}; // 150 microns for position, 0.0005 degrees for orient, 1 % for latticeParameter,
-					  // 1 degree for tilts, 1 pixel for BC, 0.00001 degree for wedge
+		1,1,1,1,0.00001,0.00001}; // 250 microns for position, 0.0005 degrees for orient, 1 % for latticeParameter,
+					  // 1 degree for tilts, 1 pixel for yBC, 0.00001 pixel for zBC, 0.00001 degree for wedge
 	
 	// Now call a function with all the info which will optimize parameters
 	// Arguments: Ini(12), OptP(6), NonOptP, RingNumbers,  SpotInfoAll, OmegaRanges,
