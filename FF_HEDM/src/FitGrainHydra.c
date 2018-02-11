@@ -778,7 +778,7 @@ int main(int argc, char *argv[])
 	GrainsF = fopen(fnGrains,"r");
 	double Orient[9], Pos[3], LatC[6], Euler[3];
 	double OrientTemp[9], PosTemp[3], LatCTemp[6];
-	int ID;
+	int ID=0;
 	while (fgets(aline,MAX_LINE_LENGTH,GrainsF)!=NULL){
 		sscanf(aline, "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
 			&ID, &OrientTemp[0],&OrientTemp[1],&OrientTemp[2],&OrientTemp[3],&OrientTemp[4],
