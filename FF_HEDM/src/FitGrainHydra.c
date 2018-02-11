@@ -870,7 +870,6 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	return(0);
 	double LsdMean=0;
 	for (i=0;i<4;i++) LsdMean += DetParams[i][0]/4;
 	// Group Setup parameters
