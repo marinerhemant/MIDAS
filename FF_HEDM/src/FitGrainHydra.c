@@ -840,6 +840,7 @@ int main(int argc, char *argv[])
 			sscanf(line,"%d",&detmap[cntdetmap]);
 			cntdetmap++;
 		}
+		printf("%d\n",cntdetmap);
 	return(0);
 		for (i=0;i<nSpots;i++){
 			spotPosAllSpots = (int)SpotInfoAll[i][0] -1;
