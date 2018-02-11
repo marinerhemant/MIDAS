@@ -836,11 +836,11 @@ int main(int argc, char *argv[])
 		}
 		int *detmap, cntdetmap=0;
 		detmap = malloc(nSpots*sizeof(*detmap));
-	return(0);
 		while(fgets(line,4090,DetMapFile)!=NULL){
 			sscanf(line,"%d",&detmap[cntdetmap]);
 			cntdetmap++;
 		}
+	return(0);
 		for (i=0;i<nSpots;i++){
 			spotPosAllSpots = (int)SpotInfoAll[i][0] -1;
 			SpotInfoAll[i][5] = (double)detmap[spotPosAllSpots];
