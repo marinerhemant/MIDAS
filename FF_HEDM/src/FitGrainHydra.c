@@ -826,9 +826,14 @@ int main(int argc, char *argv[])
 			nSpots++;
 		}
 	}
+	printf("%d\n",nSpots);
 	if (BigDetSize != 0){
 		FILE *DetMapFile;
 		DetMapFile = fopen("IDsDetectorMap.csv","r");
+		if (DetMapFile == NULL){
+			printf("Could not open Detector map to read. Exiting\n");
+			return(1);
+		}
 		int *detmap, cntdetmap=0;
 		detmap = malloc(nSpots*sizeof(*detmap));
 		while(fgets(line,4090,DetMapFile)!=NULL){
