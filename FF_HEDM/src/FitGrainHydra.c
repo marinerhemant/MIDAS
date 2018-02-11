@@ -43,6 +43,7 @@
 #define CalcNorm2(x,y) sqrt((x)*(x) + (y)*(y))
 #define MAX_LINE_LENGTH 4096
 #define MaxNSpotsBest 1000
+#define MaxNSpots 6000000
 
 // For detector mapping!
 extern int BigDetSize;
@@ -835,7 +836,7 @@ int main(int argc, char *argv[])
 			return(1);
 		}
 		int *detmap, cntdetmap=0;
-		detmap = malloc(nSpots*sizeof(*detmap));
+		detmap = malloc(MaxNSpots*sizeof(*detmap));
 		while(fgets(line,4090,DetMapFile)!=NULL){
 			sscanf(line,"%d",&detmap[cntdetmap]);
 			cntdetmap++;
