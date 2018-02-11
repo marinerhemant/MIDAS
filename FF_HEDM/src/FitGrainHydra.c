@@ -827,6 +827,7 @@ int main(int argc, char *argv[])
 		}
 	}
 	printf("%d\n",nSpots);
+	return(0);
 	if (BigDetSize != 0){
 		FILE *DetMapFile;
 		DetMapFile = fopen("IDsDetectorMap.csv","r");
