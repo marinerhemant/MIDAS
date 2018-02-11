@@ -827,7 +827,6 @@ int main(int argc, char *argv[])
 			nSpots++;
 		}
 	}
-	printf("%d\n",nSpots);
 	if (BigDetSize != 0){
 		FILE *DetMapFile;
 		DetMapFile = fopen("IDsDetectorMap.csv","r");
@@ -841,8 +840,6 @@ int main(int argc, char *argv[])
 			sscanf(line,"%d",&detmap[cntdetmap]);
 			cntdetmap++;
 		}
-		printf("%d\n",cntdetmap);
-	return(0);
 		for (i=0;i<nSpots;i++){
 			spotPosAllSpots = (int)SpotInfoAll[i][0] -1;
 			SpotInfoAll[i][5] = (double)detmap[spotPosAllSpots];
@@ -873,6 +870,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	return(0);
 	double LsdMean=0;
 	for (i=0;i<4;i++) LsdMean += DetParams[i][0]/4;
 	// Group Setup parameters
