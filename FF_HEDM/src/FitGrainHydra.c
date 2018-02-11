@@ -831,7 +831,7 @@ int main(int argc, char *argv[])
 		DetMapFile = fopen("IDsDetectorMap.csv","r");
 		int *detmap, cntdetmap=0;
 		detmap = malloc(nSpots*sizeof(*detmap));
-		while(fgets(line,5000,DetMapFile)!=NULL){
+		while(fgets(line,4090,DetMapFile)!=NULL){
 			sscanf(line,"%d",&detmap[cntdetmap]);
 			cntdetmap++;
 		}
