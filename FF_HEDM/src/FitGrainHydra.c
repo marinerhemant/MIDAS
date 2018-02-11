@@ -834,9 +834,9 @@ int main(int argc, char *argv[])
 			printf("Could not open Detector map to read. Exiting\n");
 			return(1);
 		}
-	return(0);
 		int *detmap, cntdetmap=0;
 		detmap = malloc(nSpots*sizeof(*detmap));
+	return(0);
 		while(fgets(line,4090,DetMapFile)!=NULL){
 			sscanf(line,"%d",&detmap[cntdetmap]);
 			cntdetmap++;
