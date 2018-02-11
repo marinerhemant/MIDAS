@@ -53,13 +53,11 @@ extern int BigDetSize;
 extern int *BigDetector;
 extern long long int totNrPixelsBigDetector;
 extern double pixelsize;
-extern double *rawDetectorData;
 
 int BigDetSize = 0;
 int *BigDetector;
 long long int totNrPixelsBigDetector;
 double pixelsize;
-double *rawDetectorData;
 double DetParams[4][10];
 
 static void
@@ -1742,7 +1740,6 @@ int main(int argc, char *argv[])
 	}
 	// In case of Hydra, read raw Y,Z,omega (11,12,13) positions and store in array
 	// Also read the IDsDetectorMap.csv and store the detector numbers. Thus allocate an array 
-	rawDetectorData = malloc(5*nSpotsBest*sizeof(*rawDetectorData));
 	if (BigDetSize != 0){
 		FILE *DetMapFile;
 		DetMapFile = fopen("IDsDetectorMap.csv","r");
