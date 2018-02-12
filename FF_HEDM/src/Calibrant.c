@@ -562,7 +562,7 @@ int main(int argc, char *argv[])
     int StartNr, EndNr, LowNr, NrPixels;
     int SpaceGroup,FitWeightMean=0;
     double LatticeConstant[6], Wavelength, MaxRingRad, Lsd, MaxTtheta, TthetaTol, ybc, zbc, EtaBinSize, px,Width;
-    double tx,tolTilts,tolLsd,tolBC,tolP,tyin=0,tzin=0,p0in=0,p1in=0,p2in=0;
+    double tx = 0,tolTilts,tolLsd,tolBC,tolP,tyin=0,tzin=0,p0in=0,p1in=0,p2in=0;
     //int SkipHeader = 1;
     int Padding = 6;
     int NrTransOpt=0;

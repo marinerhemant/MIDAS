@@ -73,6 +73,7 @@ def getDarkImage(fn,bytesToSkip):
 	return dataDark
 
 def saveFile(arr,fname,fileTypeWrite):
+	# Look at renormalization for 1 and 2
 	if fileTypeWrite == 1: # GE output to uint16
 		arr += -(np.min(arr))
 		arr /= np.max(arr)/(65535)
@@ -81,7 +82,12 @@ def saveFile(arr,fname,fileTypeWrite):
 			np.array(header).tofile(f)
 			np.array(arr).tofile(f)
 	elif fileTypeWrite == 2:
-		imsave(fname+'.tif',np.reshape(arr,(NrPixels,NrPixels)))
+		# Rescale arr to shape.
+		arr2 = np.copy(arr)
+		arr2 += -(np.min(arr2))
+		arr2 /= np.max(arr2)/(255)
+		arr2 = arr2.astype(np.uint8)
+		imsave(fname+'.tif',np.reshape(arr2,(NrPixels,NrPixels)))
 	elif fileTypeWrite == 3: # BatchCorr output
 		with open(fname,'wb') as f:
 			np.array(arr).tofile(f)
@@ -139,8 +145,8 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 		if allFrames:
 			writefn = outfn+'.frame.'+str(frameNr)+'.cor'
 			saveFile(corr,writefn,fileTypeWrite)
-			# Do integration here!!
-			call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
+			if doIntegration is 1:
+				call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
 		if sumWrite:
 			sumArr = np.add(sumArr,corr)
 		if maxWrite:
@@ -148,18 +154,18 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 	if sumWrite:
 		writefn = outfn+'.sum'
 		saveFile(sumArr,writefn,fileTypeWrite)
-		# Do integration here!!
-		call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
+		if doIntegration is 1:
+			call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
 	if meanWrite:
 		writefn = outfn+'.ave'
 		saveFile(sumArr/nFramesPerFile,writefn,fileTypeWrite)
-		# Do integration here!!
-		call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
+		if doIntegration is 1:
+			call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
 	if maxWrite:
 		writefn = outfn+'.max'
 		saveFile(maxArr,writefn,fileTypeWrite)
-		# Do integration here!!
-		call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
+		if doIntegration is 1:
+			call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
 
 def processImages():
 	global darkfilefullpath
@@ -433,7 +439,7 @@ Tk.Label(master=root,text="Image pre-processing and conversion using MIDAS",
 	columnspan=colFigSize,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 leftSideFrame = Tk.Frame(root)
-leftSideFrame.grid(row=rowFigSize+2,column=0,rowspan=6,sticky=Tk.W)
+leftSideFrame.grid(row=rowFigSize+1,column=0,rowspan=7,sticky=Tk.W)
 firstRowFrame = Tk.Frame(root)
 firstRowFrame.grid(row=rowFigSize+1,column=1,columnspan=2,sticky=Tk.W)
 secondRowFrame = Tk.Frame(root)
@@ -455,69 +461,67 @@ rightSideFrame.grid(row=rowFigSize+2,column=2,rowspan=7,sticky=Tk.W)
 bottomFrame = Tk.Frame(root)
 bottomFrame.grid(row=rowFigSize+9,column=0,columnspan=4,sticky=Tk.W)
 
-button = Tk.Button(master=leftSideFrame,text='Quit',command=_quit,font=("Helvetica",20))
-button.grid(row=0,column=0,sticky=Tk.W,padx=10)
+Tk.Button(master=leftSideFrame,text='Quit',command=_quit,
+	font=("Helvetica",20)).grid(row=0,column=0,padx=10,pady=10)
 
-buttonFirstFile = Tk.Button(master=firstRowFrame,text='SelectFirstFile',
-	command=firstFileSelector,font=("Helvetica",12))
-buttonFirstFile.grid(row=1,column=0,sticky=Tk.W)
+Tk.Button(master=leftSideFrame,text='Calibrate',command=_quit,
+	font=("Helvetica",20)).grid(row=1,column=0,padx=10,pady=10)
 
-buttonDarkFile = Tk.Button(master=firstRowFrame,text='SelectDarkFile',
-	command=darkFileSelector,font=("Helvetica",12))
-buttonDarkFile.grid(row=1,column=1,sticky=Tk.W)
+Tk.Button(master=firstRowFrame,text='SelectFirstFile',
+	command=firstFileSelector,font=("Helvetica",12)).grid(row=1,
+	column=0,sticky=Tk.W)
 
-cDark = Tk.Checkbutton(master=firstRowFrame,text="Subtract Dark",variable=doDark)
-cDark.grid(row=1,column=2,sticky=Tk.W)
+Tk.Button(master=firstRowFrame,text='SelectDarkFile',
+	command=darkFileSelector,font=("Helvetica",12)).grid(row=1,
+	column=1,sticky=Tk.W)
 
-cBad = Tk.Checkbutton(master=firstRowFrame,text="Correct BadPixels",variable=doBad)
-cBad.grid(row=1,column=3,sticky=Tk.W)
+Tk.Checkbutton(master=firstRowFrame,text="Subtract Dark",
+	variable=doDark).grid(row=1,column=2,sticky=Tk.W)
 
-cHydra = Tk.Checkbutton(master=firstRowFrame,text="Hydra",variable=doHydra)
-cHydra.grid(row=1,column=4,sticky=Tk.W)
+Tk.Checkbutton(master=firstRowFrame,text="Correct BadPixels",
+	variable=doBad).grid(row=1,column=3,sticky=Tk.W)
+
+Tk.Checkbutton(master=firstRowFrame,text="Hydra",
+	variable=doHydra).grid(row=1,column=4,sticky=Tk.W)
 
 ###### Folder info
 Tk.Label(master=midRowFrame,text="Input Folder ").grid(row=1,column=0,sticky=Tk.W)
-eFolder= Tk.Entry(master=midRowFrame,textvariable=folderVar,width=66)
-eFolder.grid(row=1,column=1,sticky=Tk.W)
+Tk.Entry(master=midRowFrame,textvariable=folderVar,width=66).grid(row=1,column=1,sticky=Tk.W)
 
 ###### Rest info
 Tk.Label(master=secondRowFrame,text='FileStem').grid(row=1,column=0,sticky=Tk.W)
 Tk.Entry(master=secondRowFrame,textvariable=fileStemVar,width=40).grid(row=1,column=1,sticky=Tk.W)
 
 Tk.Label(master=secondRowFrame,text='FirstFileNr').grid(row=1,column=2,sticky=Tk.W)
-efirstfile = Tk.Entry(master=secondRowFrame,textvariable=firstFileNrVar,width=6)
-efirstfile.grid(row=1,column=3,sticky=Tk.W)
+Tk.Entry(master=secondRowFrame,textvariable=firstFileNrVar,width=6).grid(row=1,column=3,sticky=Tk.W)
 
 Tk.Label(master=secondRowFrame,text='nFiles').grid(row=1,column=4,sticky=Tk.W)
-enFiles = Tk.Entry(master=secondRowFrame,textvariable=nFilesVar,width=5)
-enFiles.grid(row=1,column=5,sticky=Tk.W)
+Tk.Entry(master=secondRowFrame,textvariable=nFilesVar,width=5).grid(row=1,column=5,sticky=Tk.W)
 
 ###### Output folder info
 Tk.Label(master=twoThirdRowFrame,text="Output Folder").grid(row=1,column=0,sticky=Tk.W)
-eoutFolder= Tk.Entry(master=twoThirdRowFrame,textvariable=outFolderVar,width=66)
-eoutFolder.grid(row=1,column=1,sticky=Tk.W)
+Tk.Entry(master=twoThirdRowFrame,textvariable=outFolderVar,width=66).grid(row=1,column=1,sticky=Tk.W)
 
 ###### Dark file info
 Tk.Label(master=threeThirdRowFrame,text="Dark Filename").grid(row=1,column=0,sticky=Tk.W)
-eoutFolder= Tk.Entry(master=threeThirdRowFrame,textvariable=darkfilefullpathVar,width=66)
-eoutFolder.grid(row=1,column=1,sticky=Tk.W)
+Tk.Entry(master=threeThirdRowFrame,textvariable=darkfilefullpathVar,width=66).grid(row=1,column=1,sticky=Tk.W)
 
 ###### Output Options: allFrames, sum, Ave, Mean
 Lb1 = Tk.Label(master=thirdRowFrame,text="Output Options:  ")
 Lb1.grid(row=1,column=0,sticky=Tk.W)
 Lb1.config(bg="gray")
 
-cAllFrames = Tk.Checkbutton(master=thirdRowFrame,text="WriteAllFrames",variable=doAllFrames)
-cAllFrames.grid(row=1,column=1,sticky=Tk.W)
+Tk.Checkbutton(master=thirdRowFrame,text="WriteAllFrames",
+	variable=doAllFrames).grid(row=1,column=1,sticky=Tk.W)
 
-cSum = Tk.Checkbutton(master=thirdRowFrame,text="WriteSum",variable=doSum)
-cSum.grid(row=1,column=2,sticky=Tk.W)
+Tk.Checkbutton(master=thirdRowFrame,text="WriteSum",
+	variable=doSum).grid(row=1,column=2,sticky=Tk.W)
 
-cMean = Tk.Checkbutton(master=thirdRowFrame,text="WriteMean",variable=doMean)
-cMean.grid(row=1,column=3,sticky=Tk.W)
+Tk.Checkbutton(master=thirdRowFrame,text="WriteMean",
+	variable=doMean).grid(row=1,column=3,sticky=Tk.W)
 
-cMax = Tk.Checkbutton(master=thirdRowFrame,text="WriteMax",variable=doMax)
-cMax.grid(row=1,column=4,sticky=Tk.W)
+Tk.Checkbutton(master=thirdRowFrame,text="WriteMax",
+	variable=doMax).grid(row=1,column=4,sticky=Tk.W)
 
 ###### Saveas types
 Lb2 = Tk.Label(master=fourthRowFrame,text="Output Filetype: ")
@@ -533,13 +537,14 @@ for text, val in FILEOPTS:
 		value=val,font=("Helvetica 16 bold")).grid(row=1,column=val,sticky=Tk.W)
 
 ###### Run processing
-buttonProcessImages = Tk.Button(master=rightSideFrame,text="Process Images",
-	command=processImages,font=("Helvetica",20))
-buttonProcessImages.grid(row=0,column=0,sticky=Tk.W,padx=10,pady=10)
+Tk.Button(master=rightSideFrame,text="Integrate",
+	command=integrate,font=('Helvetica',20)).grid(row=0,
+	column=0,padx=10,pady=10)
 
-buttonIntegrator = Tk.Button(master=rightSideFrame,text="Integrate",
-	command=integrate,font=('Helvetica',20))
-buttonIntegrator.grid(row=1,column=0,sticky=Tk.W,padx=10,pady=10)
+Tk.Button(master=rightSideFrame,text="Process Images",
+	command=processImages,font=("Helvetica",20)).grid(row=1,
+	column=0,padx=10,pady=10)
+
 
 ###### Show some help
 Tk.Label(master=bottomFrame,text='NOTE:',font=('Helvetica 16 bold')).grid(row=0,column=0,sticky=Tk.W)
