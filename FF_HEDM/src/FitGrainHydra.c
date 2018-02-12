@@ -431,7 +431,7 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[24], do
 		ParamsMatrix[i][1] = x[i+20]; //zbc
 		ParamsMatrix[i][2] = x[i+12]; //tx
 		if (showDebug == 0){
-			for (j=0;j<24;j++) printf("%lf ",ParamsMatrix[i][j]); printf("\n");
+			for (j=0;j<3;j++) printf("%lf ",ParamsMatrix[i][j]); printf("\n");
 		}
 	}
 	showDebug = 1;
