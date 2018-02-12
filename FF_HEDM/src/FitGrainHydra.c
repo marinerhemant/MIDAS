@@ -849,7 +849,7 @@ int main(int argc, char *argv[])
 		for (i=0;i<nSpots;i++){
 			spotPosAllSpots = (int)SpotInfoAll[i][0] -1;
 			SpotInfoAll[i][5] = (double)detmap[spotPosAllSpots];
-			printf("%lf\n",SpotInfoAll[i][5]);
+			printf("%lf %d %d\n",SpotInfoAll[i][5],spotPosAllSpots,detmap[spotPosAllSpots]);
 		}
 	}
 	// Read hkls
