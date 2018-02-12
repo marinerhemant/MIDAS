@@ -453,7 +453,7 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[24], do
 			yt,DisplY,yDet,spotsYZO[nrSp][colRun],spotsYZO[nrSp][6],zt,DisplZ,zDet,
 			spotsYZO[nrSp][colRun+1]);*/
 		CorrectForOme(yt,zt,Lsd,spotsYZO[nrSp][4],Wavelength,wedge,&ys,&zs,&Omega);
-		printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",spotsYZO[nrSp][2],ya,DisplY,yDet,yt,ys,spotsYZO[nrSp][3],za,DisplZ,zDet,yt,ys);
+		if (showDebug == 0) printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",spotsYZO[nrSp][2],ya,DisplY,yDet,yt,ys,spotsYZO[nrSp][3],za,DisplZ,zDet,yt,ys);
 		SpotsYZOGCorr[nrSp][0] = ys;
 		SpotsYZOGCorr[nrSp][1] = zs;
 		SpotsYZOGCorr[nrSp][2] = Omega;
