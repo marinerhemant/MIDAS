@@ -822,7 +822,7 @@ int main(int argc, char *argv[])
 	char line[4096];
 	int spotPosAllSpots;
 	while (fgets(aline,MAX_LINE_LENGTH,SpotMF)!=NULL){
-		sscanf(aline,"%d %s %s %lf %lf %lf %s %d",&ID, &SpID, dummy, &YZOme[0],
+		sscanf(aline,"%d %d %s %lf %lf %lf %s %d",&ID, &SpID, dummy, &YZOme[0],
 			&YZOme[1], &YZOme[2], dummy, &Rnr);
 		if (ID == GrainID){
 			SpotInfoAll[nSpots][0] = (double)SpID;
