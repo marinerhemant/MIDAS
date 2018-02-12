@@ -376,7 +376,7 @@ void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double yDet, doub
 		double p2, double *yt, double *zt)
 {
 	double txr,tyr,tzr;
-	if (showDebug == 0) printf("%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",nIndices,MaxRad,yDet,zDet,px,Lsd,ybc,zbc,tx,ty,tz,p0,p1,p2);
+	if (showDebug == 0) printf("%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",nIndices,MaxRad,yDet,zDet,px,Lsd,ybc,zbc,tx,ty,tz,p0,p1,p2);
 	txr = deg2rad*tx;
 	tyr = deg2rad*ty;
 	tzr = deg2rad*tz;
@@ -434,6 +434,7 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[24], do
 	}
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
 		detNr = (int)spotsYZO[nrSp][5] - 1;
+		if (showDebug == 0) printf("%d\n",detNr);
 		CorrectTiltSpatialDistortion(1, DetParams[detNr][9], spotsYZO[nrSp][2], spotsYZO[nrSp][3], pixelsize,
 			DetParams[detNr][0], ParamsMatrix[detNr][0], ParamsMatrix[detNr][1], ParamsMatrix[detNr][2],
 			DetParams[detNr][4], DetParams[detNr][5], DetParams[detNr][6],DetParams[detNr][7],
