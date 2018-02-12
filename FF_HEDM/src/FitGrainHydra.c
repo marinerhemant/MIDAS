@@ -575,7 +575,7 @@ double problem_function(unsigned n, const double *x, double *grad, void* f_data_
 	Wedge = f_data->wedge;
 	double error = CalcAngleErrors(nSpots, nhkls, nOmeRanges, Inp, SpotInfoAll, hkls, LsdMean,
 		Wavelength, OmegaRanges, BoxSizes, MinEta, Wedge, 0.0, f_data->Error);
-	//printf("Error: %.20lf %.20lf %.20lf\n",f_data->Error[0],f_data->Error[1],f_data->Error[2]); fflush(stdout);
+	printf("Error: %.20lf %.20lf %.20lf\n",f_data->Error[0],f_data->Error[1],f_data->Error[2]); fflush(stdout);
 	return error;
 }
 
