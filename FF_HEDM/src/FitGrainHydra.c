@@ -430,11 +430,7 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[24], do
 		ParamsMatrix[i][0] = x[i+16]; //ybc
 		ParamsMatrix[i][1] = x[i+20]; //zbc
 		ParamsMatrix[i][2] = x[i+12]; //tx
-		if (showDebug == 0){
-			for (j=0;j<3;j++) printf("%lf ",ParamsMatrix[i][j]); printf("\n");
-		}
 	}
-	showDebug = 1;
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
 		detNr = (int)spotsYZO[nrSp][5] - 1;
 		CorrectTiltSpatialDistortion(1, DetParams[detNr][9], spotsYZO[nrSp][2], spotsYZO[nrSp][3], pixelsize,
@@ -511,6 +507,7 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[24], do
 			nMatched++;
 		}
 	}
+	printf("%d\n",nMatched);
 	Error[0]=0;Error[1]=0;Error[2]=0;
 	for (i=0;i<nMatched;i++){
 		Error[0] += fabs(MatchDiff[i][1]/nMatched); // Len
