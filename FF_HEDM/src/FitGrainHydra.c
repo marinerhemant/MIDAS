@@ -404,6 +404,8 @@ void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double yDet, doub
 	}
 }
 
+int showDebug = 0;
+
 static inline
 double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[24], double **spotsYZO, double **hklsIn, double Lsd,
 	double Wavelength, double OmegaRange[20][2], double BoxSize[20][4], double MinEta, double wedge, double chi, double *Error)
@@ -428,7 +430,11 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[24], do
 		ParamsMatrix[i][0] = x[i+16]; //ybc
 		ParamsMatrix[i][1] = x[i+20]; //zbc
 		ParamsMatrix[i][2] = x[i+12]; //tx
+		if (showDebug == 0){
+			for (j=0;j<24;j++) printf("%lf ",ParamsMatrix[i][j]); printf("\n");
+		}
 	}
+	showDebug = 1;
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
 		detNr = (int)spotsYZO[nrSp][5] - 1;
 		CorrectTiltSpatialDistortion(1, DetParams[detNr][9], spotsYZO[nrSp][2], spotsYZO[nrSp][3], pixelsize,
@@ -538,8 +544,6 @@ struct data{
 	double *Error;
 };
 
-int showDebug = 0;
-
 static
 double problem_function(unsigned n, const double *x, double *grad, void* f_data_trial)
 {
@@ -572,10 +576,6 @@ double problem_function(unsigned n, const double *x, double *grad, void* f_data_
 	double error = CalcAngleErrors(nSpots, nhkls, nOmeRanges, Inp, SpotInfoAll, hkls, LsdMean,
 		Wavelength, OmegaRanges, BoxSizes, MinEta, Wedge, 0.0, f_data->Error);
 	//printf("Error: %.20lf %.20lf %.20lf\n",f_data->Error[0],f_data->Error[1],f_data->Error[2]); fflush(stdout);
-	if (showDebug == 0){
-		for (i=0;i<24;i++) printf("%lf ",x[i]); printf("\n");
-		showDebug = 1;
-	}
 	return error;
 }
 
