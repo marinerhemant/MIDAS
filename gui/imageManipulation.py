@@ -18,7 +18,7 @@ import tkFileDialog
 import math
 import scipy
 from scipy.misc import imsave
-from subprocess import Popen, PIPE, STDOUT
+from subprocess import Popen, PIPE, STDOUT, call
 from multiprocessing.dummy import Pool
 import multiprocessing
 
@@ -35,7 +35,7 @@ def selectFile():
 def firstFileSelector():
 	global fileStemVar, padding
 	global extvar, folderVar
-	global firstFileNrVar
+	global firstFileNrVar, outFolderVar
 	firstfilefullpath = selectFile()
 	folder = os.path.dirname(firstfilefullpath) + '/'
 	fullfilename = firstfilefullpath.split('/')[-1].split('.')[0]
@@ -97,6 +97,7 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 	meanWrite = int(params[4].rstrip())
 	maxWrite = int(params[5].rstrip())
 	fileTypeWrite = int(params[6].rstrip())
+	doIntegration = int(params[7].rstrip())
 	f.close()
 	f = open('fnames.txt','r')
 	fnames = f.readlines()
@@ -116,7 +117,6 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 		nBadData = len(badData[0])
 	if darkProcessing is 1:
 		darkfn = darkfilefullpath[:-1] + fn[-1]
-		print darkfn
 		dark = getDarkImage(darkfn,8192)
 	statinfo = os.stat(fn)
 	nFramesPerFile = (statinfo.st_size - 8192)/(2*NrPixels*NrPixels)
@@ -137,17 +137,29 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 				data[idx] = (data[idx-1] + data[idx-NrPixels] + data[idx+1] + data[idx+NrPixels])/4
 		corr = np.subtract(data,dark)
 		if allFrames:
-			saveFile(corr,outfn+'.frame.'+str(frameNr)+'.cor',fileTypeWrite)
+			writefn = outfn+'.frame.'+str(frameNr)+'.cor'
+			saveFile(corr,writefn,fileTypeWrite)
+			# Do integration here!!
+			call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
 		if sumWrite:
 			sumArr = np.add(sumArr,corr)
 		if maxWrite:
 			maxArr = np.maximum(maxArr,corr)
 	if sumWrite:
-		saveFile(sumArr,outfn+'.sum',fileTypeWrite)
+		writefn = outfn+'.sum'
+		saveFile(sumArr,writefn,fileTypeWrite)
+		# Do integration here!!
+		call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
 	if meanWrite:
-		saveFile(sumArr/nFramesPerFile,outfn+'.ave',fileTypeWrite)
+		writefn = outfn+'.ave'
+		saveFile(sumArr/nFramesPerFile,writefn,fileTypeWrite)
+		# Do integration here!!
+		call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
 	if maxWrite:
-		saveFile(maxArr,outfn+'.max',fileTypeWrite)
+		writefn = outfn+'.max'
+		saveFile(maxArr,writefn,fileTypeWrite)
+		# Do integration here!!
+		call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
 
 def processImages():
 	global darkfilefullpath
@@ -160,6 +172,7 @@ def processImages():
 	f.write(str(doMean.get())+'\n')
 	f.write(str(doMax.get())+'\n')
 	f.write(str(fileTypeVar.get())+'\n')
+	f.write(str(integrateVar.get())+'\n') # Not to do integration
 	f.close()
 	pool = Pool(processes=multiprocessing.cpu_count())
 	# We create a fnames.txt file with filenames for each file to process
@@ -200,17 +213,50 @@ def processImages():
 	os.remove('imparams.txt')
 	os.remove('fnames.txt')
 	os.remove('outputFnames.txt')
+	if integrateVar.get() is 1:
+		os.remove('ps_midas.txt')
+		os.remove('Map.bin')
+		os.remove('nMap.bin')
 	print time.time() - starttime
 
 def acceptParameters():
 	global topIntegrateParametersSelection
 	topIntegrateParametersSelection.destroy()
+	# Write out all the parameters
+	f = open('ps_midas.txt','w')
+	f.write('EtaBinSize '+str(EtaBinSizeVar.get())+'\n')
+	f.write('RBinSize '+str(RBinSizeVar.get())+'\n')
+	f.write('RMax '+str(RMaxVar.get())+'\n')
+	f.write('RMin '+str(RMinVar.get())+'\n')
+	f.write('EtaMax '+str(EtaMaxVar.get())+'\n')
+	f.write('EtaMin '+str(EtaMinVar.get())+'\n')
+	f.write('NrPixels '+str(NrPixelsVar.get())+'\n')
+	f.write('Normalize '+str(NormalizeVar.get())+'\n')
+	f.write('FloatFile '+str(FloatFileVar.get())+'\n')
+	f.write('tx '+str(txVar.get())+'\n')
+	f.write('ty '+str(tyVar.get())+'\n')
+	f.write('tz '+str(tzVar.get())+'\n')
+	f.write('px '+str(pxVar.get())+'\n')
+	f.write('BC '+str(yBCVar.get())+' '+str(zBCVar.get())+'\n')
+	f.write('Lsd '+str(LsdVar.get())+'\n')
+	f.write('RhoD '+str(RhoDVar.get())+'\n')
+	f.write('p0 '+str(p0Var.get())+'\n')
+	f.write('p1 '+str(p1Var.get())+'\n')
+	f.write('p2 '+str(p2Var.get())+'\n')
+	f.close()
+	# call DetectorMapper
+	cmdname = os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/DetectorMapper'
+	call([cmdname,'ps_midas.txt'])
+	# call processImages
+	processImages()
 
 def integrate():
 	global EtaBinSizeVar, RBinSizeVar, RMaxVar, RMinVar, EtaMaxVar, EtaMinVar
 	global NrPixelsVar, NormalizeVar, FloatFileVar, txVar, tyVar, tzVar
 	global pxVar, yBCVar, zBCVar, LsdVar, RhoDVar, p0Var, p1Var, p2Var
-	global topIntegrateParametersSelection
+	global topIntegrateParametersSelection, integrateVar, fileTypeVar
+	fileTypeVar.set(1)
+	integrateVar.set(1)
 	EtaBinSizeVar = Tk.DoubleVar()
 	RBinSizeVar = Tk.DoubleVar()
 	RMaxVar = Tk.DoubleVar()
@@ -239,7 +285,7 @@ def integrate():
 	EtaMinVar.set(-180.0)
 	NrPixelsVar.set(2048)
 	NormalizeVar.set(1)
-	FloatFileVar.set(1)
+	FloatFileVar.set(0)
 	txVar.set(0.0)
 	tyVar.set(0.0)
 	tzVar.set(0.0)
@@ -376,6 +422,8 @@ doBad = Tk.IntVar()
 doBad.set(0)
 doHydra = Tk.IntVar()
 doHydra.set(0)
+integrateVar = Tk.IntVar()
+integrateVar.set(0)
 
 rowFigSize = 3
 colFigSize = 3
@@ -405,7 +453,7 @@ fifthRowFrame.grid(row=rowFigSize+8,column=1,sticky=Tk.W)
 rightSideFrame = Tk.Frame(root)
 rightSideFrame.grid(row=rowFigSize+2,column=2,rowspan=7,sticky=Tk.W)
 bottomFrame = Tk.Frame(root)
-bottomFrame.grid(row=rowFigSize+9,column=0,columnspan=3,sticky=Tk.W)
+bottomFrame.grid(row=rowFigSize+9,column=0,columnspan=4,sticky=Tk.W)
 
 button = Tk.Button(master=leftSideFrame,text='Quit',command=_quit,font=("Helvetica",20))
 button.grid(row=0,column=0,sticky=Tk.W,padx=10)
@@ -501,5 +549,7 @@ Tk.Label(master=bottomFrame,text='2. Put FileStem to * to process the whole fold
 	font=('Helvetica 16 bold')).grid(row=2,column=0,sticky=Tk.W)
 Tk.Label(master=bottomFrame,text='3. For HYDRA, select a dark file for one of the panels.',
 	font=('Helvetica 16 bold')).grid(row=3,column=0,sticky=Tk.W)
+Tk.Label(master=bottomFrame,text='4. For integration, output filetype will always be reset to GE.',
+	font=('Helvetica 16 bold')).grid(row=4,column=0,sticky=Tk.W)
 
 Tk.mainloop()
