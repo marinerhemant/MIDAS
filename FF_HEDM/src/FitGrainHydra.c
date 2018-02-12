@@ -368,12 +368,15 @@ void SpotToGv(double xi, double yi, double zi, double Omega, double theta, doubl
 	*g3 = k3f;
 }
 
+int showDebug = 0;
+
 static inline
 void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double yDet, double zDet,
 		double px, double Lsd, double ybc, double zbc, double tx, double ty, double tz, double p0, double p1,
 		double p2, double *yt, double *zt)
 {
 	double txr,tyr,tzr;
+	if (showDebug == 0) printf("%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",nIndices,MaxRad,yDet,zDet,px,Lsd,ybc,zbc,tx,ty,tz,p0,p1,p2);
 	txr = deg2rad*tx;
 	tyr = deg2rad*ty;
 	tzr = deg2rad*tz;
@@ -403,8 +406,6 @@ void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double yDet, doub
 		*zt = Rcorr*cos(deg2rad*Eta);
 	}
 }
-
-int showDebug = 0;
 
 static inline
 double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[24], double **spotsYZO, double **hklsIn, double Lsd,
