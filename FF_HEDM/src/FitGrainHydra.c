@@ -830,6 +830,7 @@ int main(int argc, char *argv[])
 			SpotInfoAll[nSpots][2] = YZOme[0];
 			SpotInfoAll[nSpots][3] = YZOme[1];
 			SpotInfoAll[nSpots][4] = YZOme[2];
+			printf("%d\n",SpID);
 			nSpots++;
 		}
 	}
