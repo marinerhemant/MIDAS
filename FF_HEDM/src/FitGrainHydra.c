@@ -425,9 +425,9 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[24], do
 	int detNr;
 	double ParamsMatrix[4][3]; // store yBC 1, zBC 2, tx 3 to 0,1,2
 	for (i=0;i<4;i++){
-		ParamsMatrix[i][0] = x[i+4]; //ybc
-		ParamsMatrix[i][1] = x[i+8]; //zbc
-		ParamsMatrix[i][2] = x[i]; //tx
+		ParamsMatrix[i][0] = x[i+16]; //ybc
+		ParamsMatrix[i][1] = x[i+20]; //zbc
+		ParamsMatrix[i][2] = x[i+12]; //tx
 	}
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
 		detNr = (int)spotsYZO[nrSp][5] - 1;
