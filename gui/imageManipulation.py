@@ -45,14 +45,18 @@ def firstFileSelector():
 	firstFileNrVar.set(firstFileNumber)
 	padding = len(fullfilename.split('_')[-1])
 	folderVar.set(folder)
+	outFolderVar.set(folder)
 
 def darkFileSelector():
-	global darkfilefullpath,doDark
-	darkfilefullpath = selectFile()
+	global darkfilefullpathVar,doDark
+	darkfilefullpathVar.set(selectFile())
 	doDark.set(1)
 
 def getfn(fstem,fnum):
 	return folderVar.get() +'/'+ fstem + '_' + str(fnum).zfill(padding) + extvar.get()
+
+def getoutfn(fstem,fnum):
+	return outFolderVar.get() +'/'+ fstem + '_' + str(fnum).zfill(padding) + extvar.get()
 
 def getDarkImage(fn,bytesToSkip):
 	dataDark = np.zeros(NrPixels*NrPixels)
@@ -96,18 +100,23 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 	f.close()
 	f = open('fnames.txt','r')
 	fnames = f.readlines()
+	f.close()
 	fn = fnames[fnr].rstrip()
+	f = open('outputFnames.txt','r')
+	outfnames = f.readlines()
+	f.close()
+	outfn = outfnames[fnr].rstrip()
 	dark = np.zeros(NrPixels*NrPixels)
-	if doBadProcessing:
+	if doBadProcessing is 1:
 		detNr = fn[-1]
 		badF = open(os.path.expanduser('~')+'/opt/MIDAS/gui/GEBad/BadImg.ge'+detNr,'rb')
 		badF.seek(8192,os.SEEK_SET)
 		badData = np.fromfile(badF,dtype=np.uint16,count=NrPixels*NrPixels)
 		badData = np.nonzero(badData)
 		nBadData = len(badData[0])
-	if darkProcessing:
+	if darkProcessing is 1:
 		darkfn = darkfilefullpath[:-1] + fn[-1]
-		darkfn = darkfilefullpath
+		print darkfn
 		dark = getDarkImage(darkfn,8192)
 	statinfo = os.stat(fn)
 	nFramesPerFile = (statinfo.st_size - 8192)/(2*NrPixels*NrPixels)
@@ -128,19 +137,20 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 				data[idx] = (data[idx-1] + data[idx-NrPixels] + data[idx+1] + data[idx+NrPixels])/4
 		corr = np.subtract(data,dark)
 		if allFrames:
-			saveFile(corr,fn+'.frame.'+str(frameNr)+'.cor',fileTypeWrite)
+			saveFile(corr,outfn+'.frame.'+str(frameNr)+'.cor',fileTypeWrite)
 		if sumWrite:
 			sumArr = np.add(sumArr,corr)
 		if maxWrite:
 			maxArr = np.maximum(maxArr,corr)
 	if sumWrite:
-		saveFile(sumArr,fn+'.sum',fileTypeWrite)
+		saveFile(sumArr,outfn+'.sum',fileTypeWrite)
 	if meanWrite:
-		saveFile(sumArr/nFramesPerFile,fn+'.ave',fileTypeWrite)
+		saveFile(sumArr/nFramesPerFile,outfn+'.ave',fileTypeWrite)
 	if maxWrite:
-		saveFile(maxArr,fn+'.max',fileTypeWrite)
+		saveFile(maxArr,outfn+'.max',fileTypeWrite)
 
 def processImages():
+	global darkfilefullpath
 	starttime = time.time()
 	f = open('imparams.txt','w')
 	f.write(str(doBad.get())+'\n')
@@ -154,6 +164,7 @@ def processImages():
 	pool = Pool(processes=multiprocessing.cpu_count())
 	# We create a fnames.txt file with filenames for each file to process
 	f = open('fnames.txt','w')
+	fout = open('outputFnames.txt','w')
 	fileStem = fileStemVar.get()
 	if nFilesVar.get() is not 0:
 		nrFiles = nFilesVar.get()
@@ -161,11 +172,14 @@ def processImages():
 		if doHydra.get():
 			for fnr in range(startNr,startNr+nrFiles):
 				fnTemp = getfn(fileStem,fnr)
+				outfnTemp = getoutfn(fileStem,fnr)
 				for detNr in range(1,5):
 					f.write(fnTemp[:-1]+str(detNr)+'\n')
+					fout.write(fnTemp[:-1]+str(detNr)+'\n')
 		else:
 			for fnr in range(startNr,startNr+nrFiles):
 				f.write(getfn(fileStem,fnr)+'\n')
+				fout.write(getoutfn(fileStem,fnr)+'\n')
 	else:
 		## Do a pattern search.
 		if fileStem is not '*':
@@ -174,11 +188,155 @@ def processImages():
 			fnames = glob.glob('*.ge*')
 		for fname in fnames:
 			f.write(folderVar.get()+'/'+fname+'\n')
+			fout.write(outFolderVar.get()+'/'+fname+'\n')
 		nrFiles = len(fnames)
+	if not os.path.exists(outFolderVar.get()):
+		os.makedirs(outFolderVar.get())
+	darkfilefullpath = darkfilefullpathVar.get()
 	f.close()
+	fout.close()
 	pipout = range(nrFiles) #firstFileNrVar.get(),firstFileNrVar.get()+nFilesVar.get())
 	results = pool.map(processFile,pipout)
+	os.remove('imparams.txt')
+	os.remove('fnames.txt')
+	os.remove('outputFnames.txt')
 	print time.time() - starttime
+
+def acceptParameters():
+	global topIntegrateParametersSelection
+	topIntegrateParametersSelection.destroy()
+
+def integrate():
+	global EtaBinSizeVar, RBinSizeVar, RMaxVar, RMinVar, EtaMaxVar, EtaMinVar
+	global NrPixelsVar, NormalizeVar, FloatFileVar, txVar, tyVar, tzVar
+	global pxVar, yBCVar, zBCVar, LsdVar, RhoDVar, p0Var, p1Var, p2Var
+	global topIntegrateParametersSelection
+	EtaBinSizeVar = Tk.DoubleVar()
+	RBinSizeVar = Tk.DoubleVar()
+	RMaxVar = Tk.DoubleVar()
+	RMinVar = Tk.DoubleVar()
+	EtaMaxVar = Tk.DoubleVar()
+	EtaMinVar = Tk.DoubleVar()
+	NrPixelsVar = Tk.IntVar()
+	NormalizeVar = Tk.IntVar()
+	FloatFileVar = Tk.IntVar()
+	txVar = Tk.DoubleVar()
+	tyVar = Tk.DoubleVar()
+	tzVar = Tk.DoubleVar()
+	pxVar = Tk.DoubleVar()
+	yBCVar = Tk.DoubleVar()
+	zBCVar = Tk.DoubleVar()
+	LsdVar = Tk.DoubleVar()
+	RhoDVar = Tk.DoubleVar()
+	p0Var = Tk.DoubleVar()
+	p1Var = Tk.DoubleVar()
+	p2Var = Tk.DoubleVar()
+	EtaBinSizeVar.set(5.0)
+	RBinSizeVar.set(1.0)
+	RMaxVar.set(1024.0)
+	RMinVar.set(10.0)
+	EtaMaxVar.set(180.0)
+	EtaMinVar.set(-180.0)
+	NrPixelsVar.set(2048)
+	NormalizeVar.set(1)
+	FloatFileVar.set(1)
+	txVar.set(0.0)
+	tyVar.set(0.0)
+	tzVar.set(0.0)
+	pxVar.set(200.0)
+	yBCVar.set(1024.0)
+	zBCVar.set(1024.0)
+	LsdVar.set(1000000.0)
+	RhoDVar.set(200000.0)
+	p0Var.set(0.0)
+	p1Var.set(0.0)
+	p2Var.set(0.0)
+	topIntegrateParametersSelection = Tk.Toplevel()
+	topIntegrateParametersSelection.title("Select parameters for integration")
+	Tk.Label(master=topIntegrateParametersSelection,text=
+			"Please select the parameters for integration").grid(row=1,
+			column=1,columnspan=10)
+	Tk.Label(master=topIntegrateParametersSelection,
+			text="EtaBinSize (Deg)").grid(row=2,column=1)
+	Tk.Entry(master=topIntegrateParametersSelection,
+			textvariable=EtaBinSizeVar).grid(row=2,column=2)
+	Tk.Label(master=topIntegrateParametersSelection,
+			text="   RBinSize (px)").grid(row=2,column=3)
+	Tk.Entry(master=topIntegrateParametersSelection,
+			textvariable=RBinSizeVar).grid(row=2,column=4)
+	Tk.Label(master=topIntegrateParametersSelection,
+			text="       RMax (px)").grid(row=2,column=5)
+	Tk.Entry(master=topIntegrateParametersSelection,
+			textvariable=RMaxVar).grid(row=2,column=6)
+	Tk.Label(master=topIntegrateParametersSelection,
+			text="       RMin (px)").grid(row=2,column=7)
+	Tk.Entry(master=topIntegrateParametersSelection,
+			textvariable=RMinVar).grid(row=2,column=8)
+	Tk.Label(master=topIntegrateParametersSelection,
+			text="    EtaMax (Deg)").grid(row=3,column=1)
+	Tk.Entry(master=topIntegrateParametersSelection,
+			textvariable=EtaMaxVar).grid(row=3,column=2)
+	Tk.Label(master=topIntegrateParametersSelection,
+			text="    EtaMin (Deg)").grid(row=3,column=3)
+	Tk.Entry(master=topIntegrateParametersSelection,
+			textvariable=EtaMinVar).grid(row=3,column=4)
+	Tk.Label(master=topIntegrateParametersSelection,
+			text="       NrPixels").grid(row=3,column=5)
+	Tk.Entry(master=topIntegrateParametersSelection,
+			textvariable=NrPixelsVar).grid(row=3,column=6)
+	Tk.Label(master=topIntegrateParametersSelection,
+			text="        TX (Deg)").grid(row=3,column=7)
+	Tk.Entry(master=topIntegrateParametersSelection,
+			textvariable=txVar).grid(row=3,column=8)
+	Tk.Label(master=topIntegrateParametersSelection,
+			text="        TY (Deg)").grid(row=4,column=1)
+	Tk.Entry(master=topIntegrateParametersSelection,
+			textvariable=tyVar).grid(row=4,column=2)
+	Tk.Label(master=topIntegrateParametersSelection,
+			text="        TZ (Deg)").grid(row=4,column=3)
+	Tk.Entry(master=topIntegrateParametersSelection,
+			textvariable=tzVar).grid(row=4,column=4)
+	Tk.Label(master=topIntegrateParametersSelection,
+			text="  PixelSize (um)").grid(row=4,column=5)
+	Tk.Entry(master=topIntegrateParametersSelection,
+			textvariable=pxVar).grid(row=4,column=6)
+	Tk.Label(master=topIntegrateParametersSelection,
+			text="        YBC (px)").grid(row=4,column=7)
+	Tk.Entry(master=topIntegrateParametersSelection,
+			textvariable=yBCVar).grid(row=4,column=8)
+	Tk.Label(master=topIntegrateParametersSelection,
+			text="        ZBC (px)").grid(row=5,column=1)
+	Tk.Entry(master=topIntegrateParametersSelection,
+			textvariable=zBCVar).grid(row=5,column=2)
+	Tk.Label(master=topIntegrateParametersSelection,
+			text="   Distance (um)").grid(row=5,column=3)
+	Tk.Entry(master=topIntegrateParametersSelection,
+			textvariable=LsdVar).grid(row=5,column=4)
+	Tk.Label(master=topIntegrateParametersSelection,
+			text="       RhoD (um)").grid(row=5,column=5)
+	Tk.Entry(master=topIntegrateParametersSelection,
+			textvariable=RhoDVar).grid(row=5,column=6)
+	Tk.Label(master=topIntegrateParametersSelection,
+			text="             P0").grid(row=5,column=7)
+	Tk.Entry(master=topIntegrateParametersSelection,
+			textvariable=p0Var).grid(row=5,column=8)
+	Tk.Label(master=topIntegrateParametersSelection,
+			text="             P1").grid(row=6,column=1)
+	Tk.Entry(master=topIntegrateParametersSelection,
+			textvariable=p1Var).grid(row=6,column=2)
+	Tk.Label(master=topIntegrateParametersSelection,
+			text="             P2").grid(row=6,column=3)
+	Tk.Entry(master=topIntegrateParametersSelection,
+			textvariable=p2Var).grid(row=6,column=4)
+	Tk.Checkbutton(master=topIntegrateParametersSelection,
+		text="NormalizeIntensity",variable=NormalizeVar).grid(row=6,
+		column=5,columnspan=2)
+	Tk.Checkbutton(master=topIntegrateParametersSelection,
+		text="FloatFileFormat",variable=FloatFileVar).grid(row=6,
+		column=7,columnspan=2)
+	Tk.Button(master=topIntegrateParametersSelection,
+		text="Continue",command=acceptParameters).grid(row=20,
+		column=1,columnspan=10)
 
 root = Tk.Tk()
 root.wm_title("Image Manipulation Software, MIDAS, v0.1 Dt. 2018/01/30 hsharma@anl.gov")
@@ -191,6 +349,8 @@ firstFileNrVar = Tk.IntVar()
 firstFileNrVar.set(0)
 folder = ''
 folderVar = Tk.StringVar()
+outfolder = ''
+outFolderVar = Tk.StringVar()
 folderVar.set(folder)
 NrPixels = 2048
 nFramesPerFile = 240
@@ -209,7 +369,7 @@ doMax.set(0)
 fileStem = ''
 fileStemVar = Tk.StringVar()
 fileStemVar.set('')
-darkilefullpath=''
+darkfilefullpathVar=Tk.StringVar()
 extvar = Tk.StringVar()
 extvar.set('')
 doBad = Tk.IntVar()
@@ -225,21 +385,27 @@ Tk.Label(master=root,text="Image pre-processing and conversion using MIDAS",
 	columnspan=colFigSize,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 leftSideFrame = Tk.Frame(root)
-leftSideFrame.grid(row=rowFigSize+2,column=0,rowspan=5,sticky=Tk.W)
+leftSideFrame.grid(row=rowFigSize+2,column=0,rowspan=6,sticky=Tk.W)
 firstRowFrame = Tk.Frame(root)
 firstRowFrame.grid(row=rowFigSize+1,column=1,columnspan=2,sticky=Tk.W)
-midRowFrame = Tk.Frame(root)
-midRowFrame.grid(row=rowFigSize+2,column=1,sticky=Tk.W)
 secondRowFrame = Tk.Frame(root)
-secondRowFrame.grid(row=rowFigSize+3,column=1,sticky=Tk.W)
+secondRowFrame.grid(row=rowFigSize+2,column=1,sticky=Tk.W)
+midRowFrame = Tk.Frame(root)
+midRowFrame.grid(row=rowFigSize+3,column=1,sticky=Tk.W)
+twoThirdRowFrame = Tk.Frame(root)
+twoThirdRowFrame.grid(row=rowFigSize+4,column=1,sticky=Tk.W)
+threeThirdRowFrame = Tk.Frame(root)
+threeThirdRowFrame.grid(row=rowFigSize+5,column=1,sticky=Tk.W)
 thirdRowFrame = Tk.Frame(root)
-thirdRowFrame.grid(row=rowFigSize+4,column=1,sticky=Tk.W)
+thirdRowFrame.grid(row=rowFigSize+6,column=1,sticky=Tk.W)
 fourthRowFrame = Tk.Frame(root)
-fourthRowFrame.grid(row=rowFigSize+5,column=1,sticky=Tk.W)
+fourthRowFrame.grid(row=rowFigSize+7,column=1,sticky=Tk.W)
+fifthRowFrame = Tk.Frame(root)
+fifthRowFrame.grid(row=rowFigSize+8,column=1,sticky=Tk.W)
 rightSideFrame = Tk.Frame(root)
-rightSideFrame.grid(row=rowFigSize+2,column=2,rowspan=5,sticky=Tk.W)
+rightSideFrame.grid(row=rowFigSize+2,column=2,rowspan=7,sticky=Tk.W)
 bottomFrame = Tk.Frame(root)
-bottomFrame.grid(row=rowFigSize+7,column=0,columnspan=3,sticky=Tk.W)
+bottomFrame.grid(row=rowFigSize+9,column=0,columnspan=3,sticky=Tk.W)
 
 button = Tk.Button(master=leftSideFrame,text='Quit',command=_quit,font=("Helvetica",20))
 button.grid(row=0,column=0,sticky=Tk.W,padx=10)
@@ -262,8 +428,8 @@ cHydra = Tk.Checkbutton(master=firstRowFrame,text="Hydra",variable=doHydra)
 cHydra.grid(row=1,column=4,sticky=Tk.W)
 
 ###### Folder info
-Tk.Label(master=midRowFrame,text="Folder  ").grid(row=1,column=0,sticky=Tk.W)
-eFolder= Tk.Entry(master=midRowFrame,textvariable=folderVar,width=71)
+Tk.Label(master=midRowFrame,text="Input Folder ").grid(row=1,column=0,sticky=Tk.W)
+eFolder= Tk.Entry(master=midRowFrame,textvariable=folderVar,width=66)
 eFolder.grid(row=1,column=1,sticky=Tk.W)
 
 ###### Rest info
@@ -277,6 +443,16 @@ efirstfile.grid(row=1,column=3,sticky=Tk.W)
 Tk.Label(master=secondRowFrame,text='nFiles').grid(row=1,column=4,sticky=Tk.W)
 enFiles = Tk.Entry(master=secondRowFrame,textvariable=nFilesVar,width=5)
 enFiles.grid(row=1,column=5,sticky=Tk.W)
+
+###### Output folder info
+Tk.Label(master=twoThirdRowFrame,text="Output Folder").grid(row=1,column=0,sticky=Tk.W)
+eoutFolder= Tk.Entry(master=twoThirdRowFrame,textvariable=outFolderVar,width=66)
+eoutFolder.grid(row=1,column=1,sticky=Tk.W)
+
+###### Dark file info
+Tk.Label(master=threeThirdRowFrame,text="Dark Filename").grid(row=1,column=0,sticky=Tk.W)
+eoutFolder= Tk.Entry(master=threeThirdRowFrame,textvariable=darkfilefullpathVar,width=66)
+eoutFolder.grid(row=1,column=1,sticky=Tk.W)
 
 ###### Output Options: allFrames, sum, Ave, Mean
 Lb1 = Tk.Label(master=thirdRowFrame,text="Output Options:  ")
@@ -296,7 +472,7 @@ cMax = Tk.Checkbutton(master=thirdRowFrame,text="WriteMax",variable=doMax)
 cMax.grid(row=1,column=4,sticky=Tk.W)
 
 ###### Saveas types
-Lb2 = Tk.Label(master=fourthRowFrame,text="Select Filetype: ")
+Lb2 = Tk.Label(master=fourthRowFrame,text="Output Filetype: ")
 Lb2.grid(row=1,column=0,sticky=Tk.W)
 Lb2.config(bg="yellow")
 
@@ -312,6 +488,10 @@ for text, val in FILEOPTS:
 buttonProcessImages = Tk.Button(master=rightSideFrame,text="Process Images",
 	command=processImages,font=("Helvetica",20))
 buttonProcessImages.grid(row=0,column=0,sticky=Tk.W,padx=10,pady=10)
+
+buttonIntegrator = Tk.Button(master=rightSideFrame,text="Integrate",
+	command=integrate,font=('Helvetica',20))
+buttonIntegrator.grid(row=1,column=0,sticky=Tk.W,padx=10,pady=10)
 
 ###### Show some help
 Tk.Label(master=bottomFrame,text='NOTE:',font=('Helvetica 16 bold')).grid(row=0,column=0,sticky=Tk.W)
