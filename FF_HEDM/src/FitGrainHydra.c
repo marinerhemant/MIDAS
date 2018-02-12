@@ -453,6 +453,7 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[24], do
 			yt,DisplY,yDet,spotsYZO[nrSp][colRun],spotsYZO[nrSp][6],zt,DisplZ,zDet,
 			spotsYZO[nrSp][colRun+1]);*/
 		CorrectForOme(yt,zt,Lsd,spotsYZO[nrSp][4],Wavelength,wedge,&ys,&zs,&Omega);
+		printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",spotsYZO[nrSp][2],ya,DisplY,yDet,yt,ys,spotsYZO[nrSp][3],za,DisplZ,zDet,yt,ys);
 		SpotsYZOGCorr[nrSp][0] = ys;
 		SpotsYZOGCorr[nrSp][1] = zs;
 		SpotsYZOGCorr[nrSp][2] = Omega;
@@ -507,7 +508,7 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[24], do
 			nMatched++;
 		}
 	}
-	printf("%d\n",nMatched);
+	if (showDebug == 0) printf("%d\n",nMatched); showDebug = 1;
 	Error[0]=0;Error[1]=0;Error[2]=0;
 	for (i=0;i<nMatched;i++){
 		Error[0] += fabs(MatchDiff[i][1]/nMatched); // Len
