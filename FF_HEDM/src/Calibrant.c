@@ -875,7 +875,7 @@ int main(int argc, char *argv[])
 			fread(Image,SizeFile,1,fp);
 			DoImageTransformations(NrTransOpt,TransOpt,Image,NrPixels);
 			for(k=0;k<(NrPixels*NrPixels);k++){
-				Average[k]+=Image[k]-AverageDark[k];
+				Average[k]+=Image[k]-AverageDark[k]; // In reality this is sum
 			}
 		}
 		TotFrames+=nFrames;

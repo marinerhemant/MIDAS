@@ -73,7 +73,6 @@ def getDarkImage(fn,bytesToSkip):
 	return dataDark
 
 def saveFile(arr,fname,fileTypeWrite):
-	# Look at renormalization for 1 and 2
 	if fileTypeWrite == 1: # GE output to uint16
 		arr += -(np.min(arr))
 		arr /= np.max(arr)/(65535)
@@ -82,7 +81,7 @@ def saveFile(arr,fname,fileTypeWrite):
 			np.array(header).tofile(f)
 			np.array(arr).tofile(f)
 	elif fileTypeWrite == 2:
-		# Rescale arr to shape.
+		# Rescale arr to tiff(0--255).
 		arr2 = np.copy(arr)
 		arr2 += -(np.min(arr2))
 		arr2 /= np.max(arr2)/(255)
@@ -104,6 +103,8 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 	maxWrite = int(params[5].rstrip())
 	fileTypeWrite = int(params[6].rstrip())
 	doIntegration = int(params[7].rstrip())
+	fastIntegration = int(params[8].rstrip())
+	OneDOut = int(params[9].rstrip())
 	f.close()
 	f = open('fnames.txt','r')
 	fnames = f.readlines()
@@ -146,7 +147,8 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 			writefn = outfn+'.frame.'+str(frameNr)+'.cor'
 			saveFile(corr,writefn,fileTypeWrite)
 			if doIntegration is 1:
-				call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
+				if fastIntegration is 0:
+					call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
 		if sumWrite:
 			sumArr = np.add(sumArr,corr)
 		if maxWrite:
@@ -155,20 +157,25 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 		writefn = outfn+'.sum'
 		saveFile(sumArr,writefn,fileTypeWrite)
 		if doIntegration is 1:
-			call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
+			if fastIntegration is 0:
+				call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
 	if meanWrite:
 		writefn = outfn+'.ave'
 		saveFile(sumArr/nFramesPerFile,writefn,fileTypeWrite)
 		if doIntegration is 1:
-			call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
+			if fastIntegration is 0:
+				call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
 	if maxWrite:
 		writefn = outfn+'.max'
 		saveFile(maxArr,writefn,fileTypeWrite)
 		if doIntegration is 1:
-			call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
+			if fastIntegration is 0:
+				call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
 
 def processImages():
 	global darkfilefullpath
+	if folderVar.get() is '':
+		return
 	starttime = time.time()
 	f = open('imparams.txt','w')
 	f.write(str(doBad.get())+'\n')
@@ -178,7 +185,9 @@ def processImages():
 	f.write(str(doMean.get())+'\n')
 	f.write(str(doMax.get())+'\n')
 	f.write(str(fileTypeVar.get())+'\n')
-	f.write(str(integrateVar.get())+'\n') # Not to do integration
+	f.write(str(integrateVar.get())+'\n')
+	f.write(str(FastIntegrateVar.get())+'\n')
+	f.write(str(OneDOutVar.get())+'\n')
 	f.close()
 	pool = Pool(processes=multiprocessing.cpu_count())
 	# We create a fnames.txt file with filenames for each file to process
@@ -250,19 +259,30 @@ def acceptParameters():
 	f.write('p1 '+str(p1Var.get())+'\n')
 	f.write('p2 '+str(p2Var.get())+'\n')
 	f.close()
-	# call DetectorMapper
-	cmdname = os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/DetectorMapper'
-	call([cmdname,'ps_midas.txt'])
+	# call DetectorMapper if slow integration was selected
+	if FastIntegrateVar.get() is 0:
+		cmdname = os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/DetectorMapper'
+		call([cmdname,'ps_midas.txt'])
 	# call processImages
 	processImages()
+
+def Enable1D():
+	global cButton1D, OneDOutVar
+	if FastIntegrateVar.get() is 1:
+		cButton1D.config(state=Tk.ACTIVE)
+	else:
+		cButton1D.config(state=Tk.DISABLED)
+		OneDOutVar.set(0)
 
 def integrate():
 	global EtaBinSizeVar, RBinSizeVar, RMaxVar, RMinVar, EtaMaxVar, EtaMinVar
 	global NrPixelsVar, NormalizeVar, FloatFileVar, txVar, tyVar, tzVar
 	global pxVar, yBCVar, zBCVar, LsdVar, RhoDVar, p0Var, p1Var, p2Var
 	global topIntegrateParametersSelection, integrateVar, fileTypeVar
-	fileTypeVar.set(1)
-	integrateVar.set(1)
+	global FastIntegrateVar, OneDOutVar
+	global cButton1D
+	if folderVar.get() is '':
+		return
 	EtaBinSizeVar = Tk.DoubleVar()
 	RBinSizeVar = Tk.DoubleVar()
 	RMaxVar = Tk.DoubleVar()
@@ -283,6 +303,10 @@ def integrate():
 	p0Var = Tk.DoubleVar()
 	p1Var = Tk.DoubleVar()
 	p2Var = Tk.DoubleVar()
+	fileTypeVar.set(1)
+	integrateVar.set(1)
+	FastIntegrateVar.set(0)
+	OneDOutVar.set(0)
 	EtaBinSizeVar.set(5.0)
 	RBinSizeVar.set(1.0)
 	RMaxVar.set(1024.0)
@@ -386,6 +410,16 @@ def integrate():
 	Tk.Checkbutton(master=topIntegrateParametersSelection,
 		text="FloatFileFormat",variable=FloatFileVar).grid(row=6,
 		column=7,columnspan=2)
+	cButtonFast = Tk.Checkbutton(master=topIntegrateParametersSelection,
+		text="Fast Integration(reduced accuracy)",
+		variable=FastIntegrateVar,command=Enable1D)
+	cButtonFast.grid(row=7,column=1,columnspan=3)
+	cButtonFast.config(state=Tk.DISABLED)
+	cButton1D = Tk.Checkbutton(master=topIntegrateParametersSelection,
+		text="1D output (compatible with FastIntegration only)",
+		variable=OneDOutVar)
+	cButton1D.grid(row=7,column=4,columnspan=4)
+	cButton1D.config(state=Tk.DISABLED)
 	Tk.Button(master=topIntegrateParametersSelection,
 		text="Continue",command=acceptParameters).grid(row=20,
 		column=1,columnspan=10)
@@ -430,7 +464,8 @@ doHydra = Tk.IntVar()
 doHydra.set(0)
 integrateVar = Tk.IntVar()
 integrateVar.set(0)
-
+FastIntegrateVar = Tk.IntVar()
+OneDOutVar = Tk.IntVar()
 rowFigSize = 3
 colFigSize = 3
 
