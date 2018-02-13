@@ -173,7 +173,7 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 				call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
 
 def processImages():
-	global darkfilefullpath
+	global darkfilefullpath, nFilesVar
 	if folderVar.get() is '':
 		return
 	starttime = time.time()
@@ -194,36 +194,51 @@ def processImages():
 	f = open('fnames.txt','w')
 	fout = open('outputFnames.txt','w')
 	fileStem = fileStemVar.get()
+	darkfilefullpath = darkfilefullpathVar.get()
+	detExts = []
+	if GE1Var.get():
+		detExts.append(1)
+	if GE2Var.get():
+		detExts.append(2)
+	if GE3Var.get():
+		detExts.append(3)
+	if GE4Var.get():
+		detExts.append(4)
+	if GE5Var.get():
+		detExts.append(5)
+	if '*' in fileStem:
+		nFilesVar.set(0)
 	if nFilesVar.get() is not 0:
 		nrFiles = nFilesVar.get()
 		startNr = firstFileNrVar.get()
-		if doHydra.get():
-			for fnr in range(startNr,startNr+nrFiles):
-				fnTemp = getfn(fileStem,fnr)
-				outfnTemp = getoutfn(fileStem,fnr)
-				for detNr in range(1,5):
-					f.write(fnTemp[:-1]+str(detNr)+'\n')
-					fout.write(fnTemp[:-1]+str(detNr)+'\n')
-		else:
-			for fnr in range(startNr,startNr+nrFiles):
-				f.write(getfn(fileStem,fnr)+'\n')
-				fout.write(getoutfn(fileStem,fnr)+'\n')
+		for fnr in range(startNr,startNr+nrFiles):
+			fnTemp = getfn(fileStem,fnr)
+			outfnTemp = getoutfn(fileStem,fnr)
+			for detNr in detExts:
+				f.write(fnTemp[:-1]+str(detNr)+'\n')
+				fout.write(outfnTemp[:-1]+str(detNr)+'\n')
 	else:
 		## Do a pattern search.
 		if fileStem is not '*':
-			fnames = glob.glob(fileStem+'*')
+			fnames = []
+			for detNr in detExts:
+				fnames.append(glob.glob(fileStem+'*'+'.ge'+str(detNr)))
 		else:
-			fnames = glob.glob('*.ge*')
+			fnames = []
+			for detNr in detExts:
+				fnames.append(glob.glob('*.ge'+str(detNr)))
 		for fname in fnames:
+			# Remove dark file from todo files
+			if darkfilefullpath[darkfilefullpath.rfind('/')+1:] in fname:
+				continue
 			f.write(folderVar.get()+'/'+fname+'\n')
 			fout.write(outFolderVar.get()+'/'+fname+'\n')
 		nrFiles = len(fnames)
 	if not os.path.exists(outFolderVar.get()):
 		os.makedirs(outFolderVar.get())
-	darkfilefullpath = darkfilefullpathVar.get()
 	f.close()
 	fout.close()
-	pipout = range(nrFiles) #firstFileNrVar.get(),firstFileNrVar.get()+nFilesVar.get())
+	pipout = range(nrFiles)
 	results = pool.map(processFile,pipout)
 	os.remove('imparams.txt')
 	os.remove('fnames.txt')
@@ -424,6 +439,18 @@ def integrate():
 		text="Continue",command=acceptParameters).grid(row=20,
 		column=1,columnspan=10)
 
+def CheckGEs():
+	if doHydra.get():
+		GE1Var.set(1)
+		GE2Var.set(1)
+		GE3Var.set(1)
+		GE4Var.set(1)
+	else:
+		GE1Var.set(0)
+		GE2Var.set(0)
+		GE3Var.set(0)
+		GE4Var.set(0)
+
 root = Tk.Tk()
 root.wm_title("Image Manipulation Software, MIDAS, v0.1 Dt. 2018/01/30 hsharma@anl.gov")
 figur = Figure(figsize=(14.5,8.5),dpi=100)
@@ -466,6 +493,19 @@ integrateVar = Tk.IntVar()
 integrateVar.set(0)
 FastIntegrateVar = Tk.IntVar()
 OneDOutVar = Tk.IntVar()
+FastIntegrateVar.set(0)
+OneDOutVar.set(0)
+GE1Var = Tk.IntVar()
+GE1Var.set(0)
+GE2Var = Tk.IntVar()
+GE2Var.set(0)
+GE3Var = Tk.IntVar()
+GE3Var.set(0)
+GE4Var = Tk.IntVar()
+GE4Var.set(0)
+GE5Var = Tk.IntVar()
+GE5Var.set(0)
+
 rowFigSize = 3
 colFigSize = 3
 
@@ -474,27 +514,29 @@ Tk.Label(master=root,text="Image pre-processing and conversion using MIDAS",
 	columnspan=colFigSize,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 leftSideFrame = Tk.Frame(root)
-leftSideFrame.grid(row=rowFigSize+1,column=0,rowspan=7,sticky=Tk.W)
+leftSideFrame.grid(row=rowFigSize+1,column=0,rowspan=8,sticky=Tk.W)
 firstRowFrame = Tk.Frame(root)
 firstRowFrame.grid(row=rowFigSize+1,column=1,columnspan=2,sticky=Tk.W)
+firstSecondRowFrame = Tk.Frame(root)
+firstSecondRowFrame.grid(row=rowFigSize+2,column=1,columnspan=2,sticky=Tk.W)
 secondRowFrame = Tk.Frame(root)
-secondRowFrame.grid(row=rowFigSize+2,column=1,sticky=Tk.W)
+secondRowFrame.grid(row=rowFigSize+3,column=1,sticky=Tk.W)
 midRowFrame = Tk.Frame(root)
-midRowFrame.grid(row=rowFigSize+3,column=1,sticky=Tk.W)
+midRowFrame.grid(row=rowFigSize+4,column=1,sticky=Tk.W)
 twoThirdRowFrame = Tk.Frame(root)
-twoThirdRowFrame.grid(row=rowFigSize+4,column=1,sticky=Tk.W)
+twoThirdRowFrame.grid(row=rowFigSize+5,column=1,sticky=Tk.W)
 threeThirdRowFrame = Tk.Frame(root)
-threeThirdRowFrame.grid(row=rowFigSize+5,column=1,sticky=Tk.W)
+threeThirdRowFrame.grid(row=rowFigSize+6,column=1,sticky=Tk.W)
 thirdRowFrame = Tk.Frame(root)
-thirdRowFrame.grid(row=rowFigSize+6,column=1,sticky=Tk.W)
+thirdRowFrame.grid(row=rowFigSize+7,column=1,sticky=Tk.W)
 fourthRowFrame = Tk.Frame(root)
-fourthRowFrame.grid(row=rowFigSize+7,column=1,sticky=Tk.W)
+fourthRowFrame.grid(row=rowFigSize+8,column=1,sticky=Tk.W)
 fifthRowFrame = Tk.Frame(root)
-fifthRowFrame.grid(row=rowFigSize+8,column=1,sticky=Tk.W)
+fifthRowFrame.grid(row=rowFigSize+9,column=1,sticky=Tk.W)
 rightSideFrame = Tk.Frame(root)
-rightSideFrame.grid(row=rowFigSize+2,column=2,rowspan=7,sticky=Tk.W)
+rightSideFrame.grid(row=rowFigSize+2,column=2,rowspan=8,sticky=Tk.W)
 bottomFrame = Tk.Frame(root)
-bottomFrame.grid(row=rowFigSize+9,column=0,columnspan=4,sticky=Tk.W)
+bottomFrame.grid(row=rowFigSize+10,column=0,columnspan=4,sticky=Tk.W)
 
 Tk.Button(master=leftSideFrame,text='Quit',command=_quit,
 	font=("Helvetica",20)).grid(row=0,column=0,padx=10,pady=10)
@@ -517,15 +559,28 @@ Tk.Checkbutton(master=firstRowFrame,text="Correct BadPixels",
 	variable=doBad).grid(row=1,column=3,sticky=Tk.W)
 
 Tk.Checkbutton(master=firstRowFrame,text="Hydra",
-	variable=doHydra).grid(row=1,column=4,sticky=Tk.W)
+	variable=doHydra,command=CheckGEs).grid(row=1,column=4,sticky=Tk.W)
+
+###### Detector Types
+Tk.Label(master=firstSecondRowFrame,text="Extensions  ").grid(row=1,column=0,sticky=Tk.W)
+Tk.Checkbutton(master=firstSecondRowFrame,text="GE1   ",
+	variable=GE1Var).grid(row=1,column=1,sticky=Tk.W)
+Tk.Checkbutton(master=firstSecondRowFrame,text="GE2   ",
+	variable=GE2Var).grid(row=1,column=2,sticky=Tk.W)
+Tk.Checkbutton(master=firstSecondRowFrame,text="GE3   ",
+	variable=GE3Var).grid(row=1,column=3,sticky=Tk.W)
+Tk.Checkbutton(master=firstSecondRowFrame,text="GE4   ",
+	variable=GE4Var).grid(row=1,column=4,sticky=Tk.W)
+Tk.Checkbutton(master=firstSecondRowFrame,text="GE5   ",
+	variable=GE5Var).grid(row=1,column=5,sticky=Tk.W)
 
 ###### Folder info
 Tk.Label(master=midRowFrame,text="Input Folder ").grid(row=1,column=0,sticky=Tk.W)
 Tk.Entry(master=midRowFrame,textvariable=folderVar,width=66).grid(row=1,column=1,sticky=Tk.W)
 
 ###### Rest info
-Tk.Label(master=secondRowFrame,text='FileStem').grid(row=1,column=0,sticky=Tk.W)
-Tk.Entry(master=secondRowFrame,textvariable=fileStemVar,width=40).grid(row=1,column=1,sticky=Tk.W)
+Tk.Label(master=secondRowFrame,text='FileStem     ').grid(row=1,column=0,sticky=Tk.W)
+Tk.Entry(master=secondRowFrame,textvariable=fileStemVar,width=35).grid(row=1,column=1,sticky=Tk.W)
 
 Tk.Label(master=secondRowFrame,text='FirstFileNr').grid(row=1,column=2,sticky=Tk.W)
 Tk.Entry(master=secondRowFrame,textvariable=firstFileNrVar,width=6).grid(row=1,column=3,sticky=Tk.W)
