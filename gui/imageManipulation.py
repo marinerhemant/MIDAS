@@ -21,6 +21,7 @@ from scipy.misc import imsave
 from subprocess import Popen, PIPE, STDOUT, call
 from multiprocessing.dummy import Pool
 import multiprocessing
+from numba import jit
 
 deg2rad = 0.0174532925199433
 rad2deg = 57.2957795130823
@@ -36,6 +37,7 @@ def firstFileSelector():
 	global fileStemVar, padding
 	global extvar, folderVar
 	global firstFileNrVar, outFolderVar
+	global GE1Var, GE2Var, GE3Var, GE4Var, GE5Var
 	firstfilefullpath = selectFile()
 	folder = os.path.dirname(firstfilefullpath) + '/'
 	fullfilename = firstfilefullpath.split('/')[-1].split('.')[0]
@@ -46,6 +48,17 @@ def firstFileSelector():
 	padding = len(fullfilename.split('_')[-1])
 	folderVar.set(folder)
 	outFolderVar.set(folder)
+	detNr = int(extvar.get()[-1])
+	if detNr is 1:
+		GE1Var.set(1)
+	elif detNr is 2:
+		GE2Var.set(1)
+	elif detNr is 3:
+		GE3Var.set(1)
+	elif detNr is 4:
+		GE4Var.set(1)
+	elif detNr is 5:
+		GE5Var.set(1)
 
 def darkFileSelector():
 	global darkfilefullpathVar,doDark
@@ -71,6 +84,111 @@ def getDarkImage(fn,bytesToSkip):
 	f.close()
 	dataDark = dataDark/nFramesPerFile
 	return dataDark
+
+def transforms():
+	txr = txVar.get()*deg2rad
+	tyr = tyVar.get()*deg2rad
+	tzr = tzVar.get()*deg2rad
+	Rx = np.array([[1,0,0],[0,math.cos(txr),-math.sin(txr)],[0,math.sin(txr),math.cos(txr)]])
+	Ry = np.array([[math.cos(tyr),0,math.sin(tyr)],[0,1,0],[-math.sin(tyr),0,math.cos(tyr)]])
+	Rz = np.array([[math.cos(tzr),-math.sin(tzr),0],[math.sin(tzr),math.cos(tzr),0],[0,0,1]])
+	return np.dot(Rx,np.dot(Ry,Rz))
+
+#create an empty array with np.empty and then pass it as an argument, don't return
+@jit('void(float64[:], float64[:], float64[:], float64[:], float64[:], int64[:])',nopython=True,nogil=True)
+def calcFastIntegration2D(mapR, mapEta, Image, params, Result, nElements):
+	NrPixels = int(params[0])
+	RMin = params[1]
+	RBin = params[2]
+	EtaMin = params[3]
+	EtaBin = params[4]
+	nEtaBins = int(params[5])
+	RMax = params[6]
+	EtaMax = params[7]
+	for i in range(int(NrPixels)*int(NrPixels)):
+		RThis = mapR[i]
+		EtaThis = mapEta[i]
+		if RThis < RMin or RThis >= RMax or EtaThis < EtaMin or EtaThis >= EtaMax:
+			continue
+		RBinNr = (int(RThis) - int(RMin))/int(RBin)
+		EtaBinNr = (int(EtaThis)-int(EtaMin))/int(EtaBin)
+		Pos = RBinNr*nEtaBins + EtaBinNr
+		Result[Pos] += Image[i]
+		nElements[Pos] += 1
+
+#create an empty array with np.empty and then pass it as an argument, don't return
+@jit('void(float64[:], float64[:], float64[:], float64[:], int64[:])',nopython=True,nogil=True)
+def calcFastIntegration1D(mapR, Image, params, Result, nElements):
+	NrPixels = int(params[0])
+	RMin = params[1]
+	RBin = params[2]
+	RMax = params[3]
+	for i in range(NrPixels*NrPixels):
+		RThis = mapR[i]
+		if RThis < RMin or RThis >= RMax:
+			continue
+		RBinNr = (int(RThis) - int(RMin))/int(RBin)
+		Result[RBinNr] += Image[i]
+		nElements[RBinNr] += 1
+
+def saveFastIntegrate(arr, OneDOut, outfn):
+	inittime = time.time()
+	nRBins = int(math.ceil((RMax-RMin)/RBinSize))
+	mapR = Rads.astype(float)
+	if OneDOut is 0:
+		mapEta = Etas.astype(float)
+	Image = arr.astype(float)
+	RArr = []
+	outfile = open(outfn,'w')
+	for i in range(nRBins):
+		RArr.append(RMin + i*RBinSize + RBinSize/2.0)
+	if OneDOut is 0:
+		nEtaBins = int(math.ceil((EtaMax-EtaMin)/EtaBinSize))
+		EtaArr = []
+		for i in range(nEtaBins):
+			EtaArr.append(EtaMin + i*EtaBinSize + EtaBinSize/2.0)
+		Result = np.zeros(nRBins*nEtaBins,dtype=float)
+		nElements = np.zeros(nRBins*nEtaBins,dtype=int)
+		params = np.array([float(NrPixels),RMin,RBinSize,EtaMin,EtaBinSize,float(nEtaBins),RMax,EtaMax]).astype(float)
+		calcFastIntegration2D(mapR,mapEta,Image,params,Result,nElements)
+		outfile.write("Radius(px) Eta(px) Intensity(counts)\n")
+		if normalizer is 0:
+			for i in range(nBins):
+				nElements[i] = 1
+		for RNr in range(nRBins):
+			for EtaNr in range(nEtaBins):
+				outfile.write(str(RArr[RNr])+' '+str(EtaArr[EtaNr])+' '+
+					str(Result[RNr*nEtaBins+EtaNr]/nElements[RNr])+'\n')
+	else:
+		Result = np.zeros(nRBins,dtype=float)
+		nElements = np.zeros(nRBins,dtype=int)
+		params = np.array([float(NrPixels),RMin,RBinSize,RMax]).astype(float)
+		calcFastIntegration1D(mapR,Image,params,Result,nElements)
+		outfile.write("Radius(px) Intensity(counts)\n")
+		if normalizer is 0:
+			for i in range(nBins):
+				nElements[i] = 1
+		for RNr in range(nRBins):
+			outfile.write(str(RArr[RNr])+' '+str(Result[RNr]/nElements[RNr])+'\n')
+	outfile.close()
+	print time.time() - inittime
+
+def mapFastIntegration():
+	global Rads, Etas
+	yArr = -(np.array([np.arange(NrPixels)]*NrPixels).reshape((NrPixels*NrPixels)).astype(float)) + yBCVar.get()
+	zArr = np.transpose(np.array([np.arange(NrPixels)]*NrPixels)).reshape((NrPixels*NrPixels)).astype(float) - zBCVar.get()
+	xArr = np.zeros(NrPixels*NrPixels)
+	ABC = np.array([xArr,yArr,zArr])
+	TRs = transforms()
+	ABCPr = np.dot(TRs,ABC)
+	ABCPr[0,:] = ABCPr[0,:]+LsdVar.get()
+	Lens = np.sqrt(np.add(np.multiply(ABCPr[1,:],ABCPr[1,:]),np.multiply(ABCPr[2,:],ABCPr[2:])))
+	Rads = np.multiply(np.divide(LsdVar.get(),ABCPr[0,:]),Lens)
+	Rads = np.reshape(Rads,(NrPixels*NrPixels))
+	if OneDOutVar.get() is 0:
+		Etas = rad2deg*np.arccos(np.divide(ABCPr[2:],Lens))
+		Etas = np.reshape(Etas,(NrPixels*NrPixels))
+		Etas[np.reshape(ABCPr[1,:]>0,(NrPixels*NrPixels))] *= -1
 
 def saveFile(arr,fname,fileTypeWrite):
 	if fileTypeWrite == 1: # GE output to uint16
@@ -149,6 +267,8 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 			if doIntegration is 1:
 				if fastIntegration is 0:
 					call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
+				else:
+					saveFastIntegrate(corr, OneDOut, writefn+'_integrated_framenr_'+str(frameNr)+'.csv')
 		if sumWrite:
 			sumArr = np.add(sumArr,corr)
 		if maxWrite:
@@ -159,21 +279,28 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 		if doIntegration is 1:
 			if fastIntegration is 0:
 				call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
+			else:
+				saveFastIntegrate(sumArr, OneDOut, writefn+'_integrated_sum_'+'.csv')
 	if meanWrite:
 		writefn = outfn+'.ave'
 		saveFile(sumArr/nFramesPerFile,writefn,fileTypeWrite)
 		if doIntegration is 1:
 			if fastIntegration is 0:
 				call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
+			else:
+				saveFastIntegrate(sumArr/nFramesPerFile, OneDOut, writefn+'_integrated_mean_'+'.csv')
 	if maxWrite:
 		writefn = outfn+'.max'
 		saveFile(maxArr,writefn,fileTypeWrite)
 		if doIntegration is 1:
 			if fastIntegration is 0:
 				call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
+			else:
+				saveFastIntegrate(maxArr, OneDOut, writefn+'_integrated_max_'+'.csv')
 
 def processImages():
-	global darkfilefullpath, nFilesVar
+	global darkfilefullpath, nFilesVar, NrPixels, RBinSize
+	global EtaBinSize, RMin, RMax, EtaMin, EtaMax
 	if folderVar.get() is '':
 		return
 	starttime = time.time()
@@ -195,6 +322,13 @@ def processImages():
 	fout = open('outputFnames.txt','w')
 	fileStem = fileStemVar.get()
 	darkfilefullpath = darkfilefullpathVar.get()
+	NrPixels = NrPixelsVar.get()
+	RBinSize = RBinSizeVar.get()
+	EtaBinSize = EtaBinSizeVar.get()
+	RMin = RMinVar.get()
+	RMax = RMaxVar.get()
+	EtaMin = EtaMinVar.get()
+	EtaMax = EtaMaxVar.get()
 	detExts = []
 	if GE1Var.get():
 		detExts.append(1)
@@ -222,11 +356,11 @@ def processImages():
 		if fileStem is not '*':
 			fnames = []
 			for detNr in detExts:
-				fnames.append(glob.glob(fileStem+'*'+'.ge'+str(detNr)))
+				fnames += glob.glob(fileStem+'*'+'.ge'+str(detNr))
 		else:
 			fnames = []
 			for detNr in detExts:
-				fnames.append(glob.glob('*.ge'+str(detNr)))
+				fnames += glob.glob('*.ge'+str(detNr))
 		for fname in fnames:
 			# Remove dark file from todo files
 			if darkfilefullpath[darkfilefullpath.rfind('/')+1:] in fname:
@@ -243,15 +377,16 @@ def processImages():
 	os.remove('imparams.txt')
 	os.remove('fnames.txt')
 	os.remove('outputFnames.txt')
-	if integrateVar.get() is 1:
+	if integrateVar.get() is 1 and FastIntegrateVar.get() is 0:
 		os.remove('ps_midas.txt')
 		os.remove('Map.bin')
 		os.remove('nMap.bin')
 	print time.time() - starttime
 
 def acceptParameters():
-	global topIntegrateParametersSelection
+	global topIntegrateParametersSelection, normalizer
 	topIntegrateParametersSelection.destroy()
+	normalizer = NormalizeVar.get()
 	# Write out all the parameters
 	f = open('ps_midas.txt','w')
 	f.write('EtaBinSize '+str(EtaBinSizeVar.get())+'\n')
@@ -278,6 +413,8 @@ def acceptParameters():
 	if FastIntegrateVar.get() is 0:
 		cmdname = os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/DetectorMapper'
 		call([cmdname,'ps_midas.txt'])
+	else:
+		mapFastIntegration() # this will create 2 arrays: Rads and/or Etas.
 	# call processImages
 	processImages()
 
@@ -298,50 +435,6 @@ def integrate():
 	global cButton1D
 	if folderVar.get() is '':
 		return
-	EtaBinSizeVar = Tk.DoubleVar()
-	RBinSizeVar = Tk.DoubleVar()
-	RMaxVar = Tk.DoubleVar()
-	RMinVar = Tk.DoubleVar()
-	EtaMaxVar = Tk.DoubleVar()
-	EtaMinVar = Tk.DoubleVar()
-	NrPixelsVar = Tk.IntVar()
-	NormalizeVar = Tk.IntVar()
-	FloatFileVar = Tk.IntVar()
-	txVar = Tk.DoubleVar()
-	tyVar = Tk.DoubleVar()
-	tzVar = Tk.DoubleVar()
-	pxVar = Tk.DoubleVar()
-	yBCVar = Tk.DoubleVar()
-	zBCVar = Tk.DoubleVar()
-	LsdVar = Tk.DoubleVar()
-	RhoDVar = Tk.DoubleVar()
-	p0Var = Tk.DoubleVar()
-	p1Var = Tk.DoubleVar()
-	p2Var = Tk.DoubleVar()
-	fileTypeVar.set(1)
-	integrateVar.set(1)
-	FastIntegrateVar.set(0)
-	OneDOutVar.set(0)
-	EtaBinSizeVar.set(5.0)
-	RBinSizeVar.set(1.0)
-	RMaxVar.set(1024.0)
-	RMinVar.set(10.0)
-	EtaMaxVar.set(180.0)
-	EtaMinVar.set(-180.0)
-	NrPixelsVar.set(2048)
-	NormalizeVar.set(1)
-	FloatFileVar.set(0)
-	txVar.set(0.0)
-	tyVar.set(0.0)
-	tzVar.set(0.0)
-	pxVar.set(200.0)
-	yBCVar.set(1024.0)
-	zBCVar.set(1024.0)
-	LsdVar.set(1000000.0)
-	RhoDVar.set(200000.0)
-	p0Var.set(0.0)
-	p1Var.set(0.0)
-	p2Var.set(0.0)
 	topIntegrateParametersSelection = Tk.Toplevel()
 	topIntegrateParametersSelection.title("Select parameters for integration")
 	Tk.Label(master=topIntegrateParametersSelection,text=
@@ -429,7 +522,6 @@ def integrate():
 		text="Fast Integration(reduced accuracy)",
 		variable=FastIntegrateVar,command=Enable1D)
 	cButtonFast.grid(row=7,column=1,columnspan=3)
-	cButtonFast.config(state=Tk.DISABLED)
 	cButton1D = Tk.Checkbutton(master=topIntegrateParametersSelection,
 		text="1D output (compatible with FastIntegration only)",
 		variable=OneDOutVar)
@@ -466,6 +558,8 @@ outfolder = ''
 outFolderVar = Tk.StringVar()
 folderVar.set(folder)
 NrPixels = 2048
+NrPixelsVar = Tk.IntVar()
+NrPixelsVar.set(NrPixels)
 nFramesPerFile = 240
 nFilesVar = Tk.IntVar()
 nFilesVar.set(0)
@@ -505,6 +599,48 @@ GE4Var = Tk.IntVar()
 GE4Var.set(0)
 GE5Var = Tk.IntVar()
 GE5Var.set(0)
+NormalizeVar = Tk.IntVar()
+FloatFileVar = Tk.IntVar()
+txVar = Tk.DoubleVar()
+tyVar = Tk.DoubleVar()
+tzVar = Tk.DoubleVar()
+pxVar = Tk.DoubleVar()
+yBCVar = Tk.DoubleVar()
+zBCVar = Tk.DoubleVar()
+LsdVar = Tk.DoubleVar()
+RhoDVar = Tk.DoubleVar()
+p0Var = Tk.DoubleVar()
+p1Var = Tk.DoubleVar()
+p2Var = Tk.DoubleVar()
+fileTypeVar.set(1)
+integrateVar.set(1)
+FastIntegrateVar.set(0)
+OneDOutVar.set(0)
+NormalizeVar.set(1)
+FloatFileVar.set(0)
+txVar.set(0.0)
+tyVar.set(0.0)
+tzVar.set(0.0)
+pxVar.set(200.0)
+yBCVar.set(1024.0)
+zBCVar.set(1024.0)
+LsdVar.set(1000000.0)
+RhoDVar.set(200000.0)
+p0Var.set(0.0)
+p1Var.set(0.0)
+p2Var.set(0.0)
+EtaBinSizeVar = Tk.DoubleVar()
+RBinSizeVar = Tk.DoubleVar()
+RMaxVar = Tk.DoubleVar()
+RMinVar = Tk.DoubleVar()
+EtaMaxVar = Tk.DoubleVar()
+EtaMinVar = Tk.DoubleVar()
+EtaBinSizeVar.set(5.0)
+RBinSizeVar.set(1.0)
+RMaxVar.set(1024.0)
+RMinVar.set(10.0)
+EtaMaxVar.set(180.0)
+EtaMinVar.set(-180.0)
 
 rowFigSize = 3
 colFigSize = 3
@@ -561,7 +697,7 @@ Tk.Checkbutton(master=firstRowFrame,text="Correct BadPixels",
 Tk.Checkbutton(master=firstRowFrame,text="Hydra",
 	variable=doHydra,command=CheckGEs).grid(row=1,column=4,sticky=Tk.W)
 
-###### Detector Types
+###### Detector Types and NrPixels
 Tk.Label(master=firstSecondRowFrame,text="Extensions  ").grid(row=1,column=0,sticky=Tk.W)
 Tk.Checkbutton(master=firstSecondRowFrame,text="GE1   ",
 	variable=GE1Var).grid(row=1,column=1,sticky=Tk.W)
@@ -573,6 +709,10 @@ Tk.Checkbutton(master=firstSecondRowFrame,text="GE4   ",
 	variable=GE4Var).grid(row=1,column=4,sticky=Tk.W)
 Tk.Checkbutton(master=firstSecondRowFrame,text="GE5   ",
 	variable=GE5Var).grid(row=1,column=5,sticky=Tk.W)
+
+Tk.Label(master=firstSecondRowFrame,text="NrPixels ").grid(row=1,column=6,sticky=Tk.W)
+Tk.Entry(master=firstSecondRowFrame,textvariable=NrPixelsVar,width=5).grid(row=1,
+	column=7,sticky=Tk.W)
 
 ###### Folder info
 Tk.Label(master=midRowFrame,text="Input Folder ").grid(row=1,column=0,sticky=Tk.W)
