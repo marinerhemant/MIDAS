@@ -85,15 +85,6 @@ def getDarkImage(fn,bytesToSkip):
 	dataDark = dataDark/nFramesPerFile
 	return dataDark
 
-def transforms():
-	txr = txVar.get()*deg2rad
-	tyr = tyVar.get()*deg2rad
-	tzr = tzVar.get()*deg2rad
-	Rx = np.array([[1,0,0],[0,math.cos(txr),-math.sin(txr)],[0,math.sin(txr),math.cos(txr)]])
-	Ry = np.array([[math.cos(tyr),0,math.sin(tyr)],[0,1,0],[-math.sin(tyr),0,math.cos(tyr)]])
-	Rz = np.array([[math.cos(tzr),-math.sin(tzr),0],[math.sin(tzr),math.cos(tzr),0],[0,0,1]])
-	return np.dot(Rx,np.dot(Ry,Rz))
-
 #create an empty array with np.empty and then pass it as an argument, don't return
 @jit('void(float64[:], float64[:], float64[:], float64[:], float64[:], int64[:])',nopython=True,nogil=True)
 def calcFastIntegration2D(mapR, mapEta, Image, params, Result, nElements):
@@ -172,6 +163,15 @@ def saveFastIntegrate(arr, OneDOut, outfn):
 			outfile.write(str(RArr[RNr])+' '+str(Result[RNr]/nElements[RNr])+'\n')
 	outfile.close()
 	print time.time() - inittime
+
+def transforms():
+	txr = txVar.get()*deg2rad
+	tyr = tyVar.get()*deg2rad
+	tzr = tzVar.get()*deg2rad
+	Rx = np.array([[1,0,0],[0,math.cos(txr),-math.sin(txr)],[0,math.sin(txr),math.cos(txr)]])
+	Ry = np.array([[math.cos(tyr),0,math.sin(tyr)],[0,1,0],[-math.sin(tyr),0,math.cos(tyr)]])
+	Rz = np.array([[math.cos(tzr),-math.sin(tzr),0],[math.sin(tzr),math.cos(tzr),0],[0,0,1]])
+	return np.dot(Rx,np.dot(Ry,Rz))
 
 def mapFastIntegration():
 	global Rads, Etas
