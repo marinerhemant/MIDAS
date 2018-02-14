@@ -144,12 +144,10 @@ def saveFastIntegrate(arr, OneDOut, outfn):
 		calcFastIntegration2D(mapR,mapEta,Image,params,Result,nElements)
 		outfile.write("Radius(px) Eta(px) Intensity(counts)\n")
 		if normalizer is 0:
-			for i in range(nBins):
-				nElements[i] = 1
-		for RNr in range(nRBins):
-			for EtaNr in range(nEtaBins):
-				outfile.write(str(RArr[RNr])+' '+str(EtaArr[EtaNr])+' '+
-					str(Result[RNr*nEtaBins+EtaNr]/nElements[RNr])+'\n')
+			nElements.fill(1)
+		outArr = np.vstack((np.array(RArr*nEtaBins),np.array(EtaArr*nRBins)))
+		outArr = np.vstack((outArr,np.divide(Result,nElements)))
+		np.savetxt(outfile,outArr.T,fmt='%10.5f',delimiter=' ',newline='\n')
 	else:
 		Result = np.zeros(nRBins,dtype=float)
 		nElements = np.zeros(nRBins,dtype=int)
@@ -157,10 +155,9 @@ def saveFastIntegrate(arr, OneDOut, outfn):
 		calcFastIntegration1D(mapR,Image,params,Result,nElements)
 		outfile.write("Radius(px) Intensity(counts)\n")
 		if normalizer is 0:
-			for i in range(nBins):
-				nElements[i] = 1
-		for RNr in range(nRBins):
-			outfile.write(str(RArr[RNr])+' '+str(Result[RNr]/nElements[RNr])+'\n')
+			nElements.fill(1)
+		outArr = np.vstack((np.array(RArr),np.divide(Result,nElements)))
+		np.savetxt(outfile,outArr.T,fmt='%10.5f',delimiter=' ',newline='\n')
 	outfile.close()
 	print time.time() - inittime
 
@@ -445,6 +442,7 @@ def integrate():
 		return
 	topIntegrateParametersSelection = Tk.Toplevel()
 	integrateVar.set(1)
+	fileTypeVar.set(1)
 	topIntegrateParametersSelection.title("Select parameters for integration")
 	Tk.Label(master=topIntegrateParametersSelection,text=
 			"Please select the parameters for integration").grid(row=1,
