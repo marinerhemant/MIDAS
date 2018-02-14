@@ -316,6 +316,9 @@ def processImages():
 	f.write(str(FastIntegrateVar.get())+'\n')
 	f.write(str(OneDOutVar.get())+'\n')
 	f.close()
+	nrChecked = doAllFrames.get()+doSum.get()+doMean.get()+doMax.get()
+	if nrChecked is 0:
+		return
 	pool = Pool(processes=multiprocessing.cpu_count())
 	# We create a fnames.txt file with filenames for each file to process
 	f = open('fnames.txt','w')
@@ -414,7 +417,9 @@ def acceptParameters():
 		cmdname = os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/DetectorMapper'
 		call([cmdname,'ps_midas.txt'])
 	else:
+		st = time.time()
 		mapFastIntegration() # this will create 2 arrays: Rads and/or Etas.
+		print time.time() - st
 	# call processImages
 	processImages()
 
@@ -433,9 +438,13 @@ def integrate():
 	global topIntegrateParametersSelection, integrateVar, fileTypeVar
 	global FastIntegrateVar, OneDOutVar
 	global cButton1D
+	nrChecked = doAllFrames.get()+doSum.get()+doMean.get()+doMax.get()
+	if nrChecked is 0:
+		return
 	if folderVar.get() is '':
 		return
 	topIntegrateParametersSelection = Tk.Toplevel()
+	integrateVar.set(1)
 	topIntegrateParametersSelection.title("Select parameters for integration")
 	Tk.Label(master=topIntegrateParametersSelection,text=
 			"Please select the parameters for integration").grid(row=1,
@@ -550,6 +559,8 @@ canvas = FigureCanvasTkAgg(figur,master=root)
 a = figur.add_subplot(111,aspect='equal')
 a.title.set_text("Selected Image")
 
+fileTypeVar = Tk.IntVar()
+fileTypeVar.set(1)
 firstFileNrVar = Tk.IntVar()
 firstFileNrVar.set(0)
 folder = ''
@@ -587,7 +598,7 @@ integrateVar = Tk.IntVar()
 integrateVar.set(0)
 FastIntegrateVar = Tk.IntVar()
 OneDOutVar = Tk.IntVar()
-FastIntegrateVar.set(0)
+FastIntegrateVar.set(1)
 OneDOutVar.set(0)
 GE1Var = Tk.IntVar()
 GE1Var.set(0)
@@ -612,10 +623,6 @@ RhoDVar = Tk.DoubleVar()
 p0Var = Tk.DoubleVar()
 p1Var = Tk.DoubleVar()
 p2Var = Tk.DoubleVar()
-fileTypeVar.set(1)
-integrateVar.set(1)
-FastIntegrateVar.set(0)
-OneDOutVar.set(0)
 NormalizeVar.set(1)
 FloatFileVar.set(0)
 txVar.set(0.0)
@@ -759,8 +766,6 @@ Lb2.grid(row=1,column=0,sticky=Tk.W)
 Lb2.config(bg="yellow")
 
 FILEOPTS = [("GE",1),("TIFF",2),("BATCHCORR",3)]
-fileTypeVar = Tk.IntVar()
-fileTypeVar.set(1)
 
 for text, val in FILEOPTS:
 	Tk.Radiobutton(master=fourthRowFrame,text=text,variable=fileTypeVar,
