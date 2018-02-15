@@ -533,7 +533,6 @@ def integrate():
 		text="1D output (compatible with FastIntegration only)",
 		variable=OneDOutVar)
 	cButton1D.grid(row=7,column=4,columnspan=4)
-	cButton1D.config(state=Tk.ACTIVE)
 	Tk.Button(master=topIntegrateParametersSelection,
 		text="Continue",command=acceptParameters).grid(row=20,
 		column=1,columnspan=10)
@@ -597,7 +596,7 @@ integrateVar.set(0)
 FastIntegrateVar = Tk.IntVar()
 OneDOutVar = Tk.IntVar()
 FastIntegrateVar.set(1)
-OneDOutVar.set(0)
+OneDOutVar.set(1)
 GE1Var = Tk.IntVar()
 GE1Var.set(0)
 GE2Var = Tk.IntVar()

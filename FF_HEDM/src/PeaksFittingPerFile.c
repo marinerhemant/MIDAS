@@ -965,7 +965,11 @@ int main(int argc, char *argv[]){
 	fseek(ImageFile,0L,SEEK_END);
 	sz = ftell(ImageFile);
 	rewind(ImageFile);
-	Skip = sz - ((nFrames-FramesToSkip) * 8*1024*1024);
+	size_t temp = (nFrames-FramesToSkip);
+	temp *= 8;
+	temp *= 1024;
+	temp *= 1024;
+	Skip = sz - temp;
 	printf("Now processing file: %s\n",FN);
 	double beamcurr=1;
 	fseek(ImageFile,Skip,SEEK_SET);
