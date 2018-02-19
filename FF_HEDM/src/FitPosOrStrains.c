@@ -1751,6 +1751,7 @@ int main(int argc, char *argv[])
 		spotsYZO[i][7] = AllSpots[spotPosAllSpots*14+5];
 		spotsYZO[i][8] = AllSpots[spotPosAllSpots*14+11];
 		spotsYZO[i][9] = AllSpots[spotPosAllSpots*14+12];
+		printf("%lf %lf\n",spotsYZO[i][0]spotsYZO[i][1]);
 	}
 	// In case of Hydra, read raw Y,Z,omega (11,12,13) positions and store in array
 	// Also read the IDsDetectorMap.csv and store the detector numbers. Thus allocate an array 

@@ -106,6 +106,8 @@ for detNr in range(4):
 	dataExtra[:,4] += totalNrSpots
 	dataExtra[:,0] *= LsdMean/Lsds[detNr]
 	dataExtra[:,1] *= LsdMean/Lsds[detNr]
+	dataExtra[:,9] *= LsdMean/Lsds[detNr]
+	dataExtra[:,10] *= LsdMean/Lsds[detNr]
 	if len(totDataExtra) is 0:
 		totDataExtra = np.copy(dataExtra)
 	else:
