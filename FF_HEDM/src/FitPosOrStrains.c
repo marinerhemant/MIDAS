@@ -432,7 +432,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 	int detNr, colRun=9;
 	if (printopt == 0) printf("Original\tDisplacedOrig\tCalculated\tCalcWoutLsd\tCalcWoutDispl\tCalcWoutDisLsd\tCalcTotal\tCalcFinal\tDisplY\n");
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
-		if (BigDetSize){
+		if (BigDetSize == 0){
 			DisplacementInTheSpot(x[0],x[1],x[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
 			yt = spotsYZO[nrSp][5]-DisplY;
 			zt = spotsYZO[nrSp][6]-DisplZ;
