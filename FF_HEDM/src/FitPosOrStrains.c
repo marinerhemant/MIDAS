@@ -443,7 +443,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 			detNr = (int)spotsYZO[nrSp][colRun+2] - 1;
 			DisplacementInTheSpot(x[0],x[1],x[2],DetParams[detNr][0],spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
 			// Get raw Y pos, raw Z pos, displace them by DisplY/pixelsize and DisplZ/pixelsize
-			yDet = spotsYZO[nrSp][colRun] + DisplY/pixelsize;
+			yDet = spotsYZO[nrSp][colRun] - DisplY/pixelsize;
 			zDet = spotsYZO[nrSp][colRun+1] - DisplZ/pixelsize;
 			// Use yDet and zDet, correct for tilt, spatial distortion and recompute.
 			CorrectTiltSpatialDistortion(1, DetParams[detNr][9], yDet, zDet, pixelsize,
@@ -454,9 +454,8 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 			yt *= Lsd/DetParams[detNr][0];
 			zt *= Lsd/DetParams[detNr][0];
 			if (printopt == 0)
-			printf("%lf %lf  %lf %lf %lf %lf %lf %lf %lf %lf\n",spotsYZO[nrSp][5]-DisplY,
-				yt,DisplY,yDet,spotsYZO[nrSp][colRun],spotsYZO[nrSp][6]-DisplZ,zt,DisplZ,zDet,
-				spotsYZO[nrSp][colRun+1]);
+			printf("%lf %lf  %lf %lf %lf %lf %lf\n",spotsYZO[nrSp][5]-DisplY,
+				yt,DisplY,yDet,spotsYZO[nrSp][colRun],Lsd,DetParams[detNr][0]);
 		}
 		CorrectForOme(yt,zt,Lsd,spotsYZO[nrSp][4],Wavelength,wedge,&ys,&zs,&Omega);
 		SpotsYZOGCorr[nrSp][0] = ys;
