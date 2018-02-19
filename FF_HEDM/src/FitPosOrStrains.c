@@ -432,7 +432,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 	int detNr, colRun=9;
 	if (printopt == 0) printf("Original\tDisplacedOrig\tCalculated\tCalcWoutLsd\tCalcWoutDispl\tCalcWoutDisLsd\tCalcTotal\tCalcFinal\tDisplY\n");
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
-		if (BigDetSize == 0){
+		if (BigDetSize){
 			DisplacementInTheSpot(x[0],x[1],x[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
 			yt = spotsYZO[nrSp][5]-DisplY;
 			zt = spotsYZO[nrSp][6]-DisplZ;
@@ -445,7 +445,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 			detNr = (int)spotsYZO[nrSp][colRun+2] - 1;
 			DisplacementInTheSpot(x[0],x[1],x[2],DetParams[detNr][0],spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
 			// Get raw Y pos, raw Z pos, displace them by DisplY/pixelsize and DisplZ/pixelsize
-			yDet = spotsYZO[nrSp][colRun] - DisplY/pixelsize;
+			yDet = spotsYZO[nrSp][colRun] + DisplY/pixelsize;
 			zDet = spotsYZO[nrSp][colRun+1] - DisplZ/pixelsize;
 			// Use yDet and zDet, correct for tilt, spatial distortion and recompute.
 			CorrectTiltSpatialDistortion(1, DetParams[detNr][9], yDet, zDet, pixelsize,
