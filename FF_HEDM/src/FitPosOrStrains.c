@@ -445,7 +445,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 			detNr = (int)spotsYZO[nrSp][colRun+2] - 1;
 			DisplacementInTheSpot(x[0],x[1],x[2],DetParams[detNr][0],spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
 			// Get raw Y pos, raw Z pos, displace them by DisplY/pixelsize and DisplZ/pixelsize
-			yDet = spotsYZO[nrSp][colRun] + DisplY/pixelsize;
+			yDet = spotsYZO[nrSp][colRun] - DisplY/pixelsize;
 			zDet = spotsYZO[nrSp][colRun+1] - DisplZ/pixelsize;
 			// Use yDet and zDet, correct for tilt, spatial distortion and recompute.
 			CorrectTiltSpatialDistortion(1, DetParams[detNr][9], yDet, zDet, pixelsize,
@@ -1751,7 +1751,6 @@ int main(int argc, char *argv[])
 		spotsYZO[i][7] = AllSpots[spotPosAllSpots*14+5];
 		spotsYZO[i][8] = AllSpots[spotPosAllSpots*14+11];
 		spotsYZO[i][9] = AllSpots[spotPosAllSpots*14+12];
-		printf("%lf %lf %lf %lf\n",spotsYZO[i][0],spotsYZO[i][1],spotsYZO[i][5],spotsYZO[i][6]);
 	}
 	// In case of Hydra, read raw Y,Z,omega (11,12,13) positions and store in array
 	// Also read the IDsDetectorMap.csv and store the detector numbers. Thus allocate an array 
