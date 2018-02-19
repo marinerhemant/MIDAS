@@ -428,6 +428,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 	CalcDiffractionSpots(Lsd,MinEta,OmegaRange,nOmegaRanges,hkls,nhkls,BoxSize,&nTspots,OrientMatrix,TheorSpots);
 	double **SpotsYZOGCorr;SpotsYZOGCorr=allocMatrix(nrMatchedIndexer,7);
 	double DisplY,DisplZ,ys,zs,Omega,Radius,Theta,lenK, yDet, zDet, omeDet, yt, zt;
+	double yt2, zt2, yt3 zt3, yt4, zt4;
 	int detNr, colRun=9;
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
 		if (BigDetSize == 0){
@@ -443,19 +444,27 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 			detNr = (int)spotsYZO[nrSp][colRun+2] - 1;
 			DisplacementInTheSpot(x[0],x[1],x[2],DetParams[detNr][0],spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
 			// Get raw Y pos, raw Z pos, displace them by DisplY/pixelsize and DisplZ/pixelsize
-			yDet = spotsYZO[nrSp][colRun] - DisplY/pixelsize;
+			yDet = spotsYZO[nrSp][colRun] + DisplY/pixelsize;
 			zDet = spotsYZO[nrSp][colRun+1] - DisplZ/pixelsize;
 			// Use yDet and zDet, correct for tilt, spatial distortion and recompute.
 			CorrectTiltSpatialDistortion(1, DetParams[detNr][9], yDet, zDet, pixelsize,
 				DetParams[detNr][0], DetParams[detNr][1], DetParams[detNr][2], DetParams[detNr][3],
 				DetParams[detNr][4], DetParams[detNr][5], DetParams[detNr][6],DetParams[detNr][7],
 				DetParams[detNr][8], &yt, &zt);
+			yt2 = yt;
+			zt2 = zt;
+			CorrectTiltSpatialDistortion(1, DetParams[detNr][9], spotsYZO[nrSp][colRun], spotsYZO[nrSp][colRun+1], pixelsize,
+				DetParams[detNr][0], DetParams[detNr][1], DetParams[detNr][2], DetParams[detNr][3],
+				DetParams[detNr][4], DetParams[detNr][5], DetParams[detNr][6],DetParams[detNr][7],
+				DetParams[detNr][8], &yt3, &zt3);
+			yt4 = yt3 * Lsd/DetParams[detNr][0];
+			zt4 = zt3 * Lsd/DetParams[detNr][0];
 			// Normalize yt and zt to bring the detector to LsdMean
 			yt *= Lsd/DetParams[detNr][0];
 			zt *= Lsd/DetParams[detNr][0];
 			if (printopt == 0)
-			printf("%lf %lf %lf %lf\n",spotsYZO[nrSp][5]-DisplY,
-				yt,yt/(Lsd/DetParams[detNr][0]),DisplY);
+			printf("%lf %lf %lf %lf %lf %lf %lf\n",spotsYZO[nrSp][5],spotsYZO[nrSp][5]-DisplY,
+				yt,yt2, yt3, yt4,DisplY);
 		}
 		CorrectForOme(yt,zt,Lsd,spotsYZO[nrSp][4],Wavelength,wedge,&ys,&zs,&Omega);
 		SpotsYZOGCorr[nrSp][0] = ys;
