@@ -428,7 +428,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 	CalcDiffractionSpots(Lsd,MinEta,OmegaRange,nOmegaRanges,hkls,nhkls,BoxSize,&nTspots,OrientMatrix,TheorSpots);
 	double **SpotsYZOGCorr;SpotsYZOGCorr=allocMatrix(nrMatchedIndexer,7);
 	double DisplY,DisplZ,ys,zs,Omega,Radius,Theta,lenK, yDet, zDet, omeDet, yt, zt;
-	double yt2, zt2, yt3 zt3, yt4, zt4;
+	double yt2, zt2, yt3, zt3, yt4, zt4;
 	int detNr, colRun=9;
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
 		if (BigDetSize == 0){
