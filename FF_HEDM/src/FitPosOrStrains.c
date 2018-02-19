@@ -406,6 +406,8 @@ void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double yDet, doub
 	}
 }
 
+int printopt = 0;
+
 static inline
 void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], double **spotsYZO, double **hklsIn, double Lsd, 
 	double Wavelength, double OmegaRange[20][2], double BoxSize[20][4], double MinEta, double wedge, double chi,
@@ -451,9 +453,10 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 			// Normalize yt and zt to bring the detector to LsdMean
 			yt *= Lsd/DetParams[detNr][0];
 			zt *= Lsd/DetParams[detNr][0];
-			/*printf("%lf %lf  %lf %lf %lf %lf %lf %lf %lf %lf\n",spotsYZO[nrSp][5],
+			if (printopt = 0)
+			printf("%lf %lf  %lf %lf %lf %lf %lf %lf %lf %lf\n",spotsYZO[nrSp][5],
 				yt,DisplY,yDet,spotsYZO[nrSp][colRun],spotsYZO[nrSp][6],zt,DisplZ,zDet,
-				spotsYZO[nrSp][colRun+1]);*/
+				spotsYZO[nrSp][colRun+1]);
 		}
 		CorrectForOme(yt,zt,Lsd,spotsYZO[nrSp][4],Wavelength,wedge,&ys,&zs,&Omega);
 		SpotsYZOGCorr[nrSp][0] = ys;
@@ -469,6 +472,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 		SpotsYZOGCorr[nrSp][5] = g3;
 		SpotsYZOGCorr[nrSp][6] = spotsYZO[nrSp][7];
 	}
+	printopt = 1;
 	double **TheorSpotsYZWE;TheorSpotsYZWE=allocMatrix(nTspots,9);
 	for (i=0;i<nTspots;i++){for (j=0;j<9;j++){TheorSpotsYZWE[i][j] = TheorSpots[i][j];}}
 	int sp,nTheorSpotsYZWER,nMatched=0,RowBest=0;
