@@ -376,7 +376,6 @@ void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double yDet, doub
 		double p2, double *yt, double *zt)
 {
 	double txr,tyr,tzr;
-	if (showDebug == 0) printf("%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",nIndices,MaxRad,yDet,zDet,px,Lsd,ybc,zbc,tx,ty,tz,p0,p1,p2);
 	txr = deg2rad*tx;
 	tyr = deg2rad*ty;
 	tzr = deg2rad*tz;
@@ -436,7 +435,6 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[24], do
 	}
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
 		detNr = (int)spotsYZO[nrSp][5] - 1;
-		if (showDebug == 0) printf("%d\n",detNr);
 		CorrectTiltSpatialDistortion(1, DetParams[detNr][9], spotsYZO[nrSp][2], spotsYZO[nrSp][3], pixelsize,
 			DetParams[detNr][0], ParamsMatrix[detNr][0], ParamsMatrix[detNr][1], ParamsMatrix[detNr][2],
 			DetParams[detNr][4], DetParams[detNr][5], DetParams[detNr][6],DetParams[detNr][7],
@@ -457,7 +455,6 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[24], do
 			yt,DisplY,yDet,spotsYZO[nrSp][colRun],spotsYZO[nrSp][6],zt,DisplZ,zDet,
 			spotsYZO[nrSp][colRun+1]);*/
 		CorrectForOme(yt,zt,Lsd,spotsYZO[nrSp][4],Wavelength,wedge,&ys,&zs,&Omega);
-		if (showDebug == 0) printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",spotsYZO[nrSp][2],ya,DisplY,yDet,yt,ys,spotsYZO[nrSp][3],za,DisplZ,zDet,yt,ys);
 		SpotsYZOGCorr[nrSp][0] = ys;
 		SpotsYZOGCorr[nrSp][1] = zs;
 		SpotsYZOGCorr[nrSp][2] = Omega;
@@ -512,7 +509,6 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[24], do
 			nMatched++;
 		}
 	}
-	if (showDebug == 0) printf("%d\n",nMatched); showDebug = 1;
 	Error[0]=0;Error[1]=0;Error[2]=0;
 	for (i=0;i<nMatched;i++){
 		Error[0] += fabs(MatchDiff[i][1]/nMatched); // Len
@@ -835,7 +831,6 @@ int main(int argc, char *argv[])
 			SpotInfoAll[nSpots][2] = YZOme[0];
 			SpotInfoAll[nSpots][3] = YZOme[1];
 			SpotInfoAll[nSpots][4] = YZOme[2];
-			printf("%d\n",SpID);
 			nSpots++;
 		}
 	}
@@ -855,7 +850,6 @@ int main(int argc, char *argv[])
 		for (i=0;i<nSpots;i++){
 			spotPosAllSpots = (int)SpotInfoAll[i][0] -1;
 			SpotInfoAll[i][5] = (double)detmap[spotPosAllSpots];
-			printf("%lf %d %d\n",SpotInfoAll[i][5],spotPosAllSpots,detmap[spotPosAllSpots]);
 		}
 	}
 	// Read hkls
