@@ -407,6 +407,8 @@ void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double yDet, doub
 	}
 }
 
+int nIter = 0;
+
 static inline
 double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[24], double **spotsYZO, double **hklsIn, double Lsd,
 	double Wavelength, double OmegaRange[20][2], double BoxSize[20][4], double MinEta, double wedge, double chi, double *Error)
@@ -575,7 +577,10 @@ double problem_function(unsigned n, const double *x, double *grad, void* f_data_
 	Wedge = f_data->wedge;
 	double error = CalcAngleErrors(nSpots, nhkls, nOmeRanges, Inp, SpotInfoAll, hkls, LsdMean,
 		Wavelength, OmegaRanges, BoxSizes, MinEta, Wedge, 0.0, f_data->Error);
-	printf("Error: %.20lf %.20lf %.20lf\n",f_data->Error[0],f_data->Error[1],f_data->Error[2]); fflush(stdout);
+	if (nIter % 100 = 0){
+		printf("Error: %.20lf %.20lf %.20lf\n",f_data->Error[0],f_data->Error[1],f_data->Error[2]); fflush(stdout);
+	}
+	nIter ++;
 	return error;
 }
 
