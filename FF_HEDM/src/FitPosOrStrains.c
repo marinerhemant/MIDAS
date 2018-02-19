@@ -430,7 +430,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 	double DisplY,DisplZ,ys,zs,Omega,Radius,Theta,lenK, yDet, zDet, omeDet, yt, zt;
 	double yt2, zt2, yt3, zt3, yt4, yt5, yt6;
 	int detNr, colRun=9;
-	if (printopt == 0) printf("Original\tDisplacedOrig\tCalculated\tCalcWoutLsd\tCalcWoutDispl\tCalcWoutDisplLsd\tCalcTotal");
+	if (printopt == 0) printf("Original\tDisplacedOrig\tCalculated\tCalcWoutLsd\tCalcWoutDispl\tCalcWoutDisplLsd\tCalcTotal\n");
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
 		if (BigDetSize == 0){
 			DisplacementInTheSpot(x[0],x[1],x[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
