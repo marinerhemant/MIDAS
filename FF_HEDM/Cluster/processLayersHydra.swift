@@ -10,9 +10,9 @@ app (file ep) runPeaksHydra (string ringfile, string foldername, int fnr)
 	peaksHydra ringfile foldername fnr stderr=filename(ep);
 }
 
-app (file err) runProcessPeaks (string paramsf, int RNr, file DummyA[])
+app (file err) runProcessPeaksHydra (string paramsf, int RNr, file DummyA[])
 {
-	processPeaks paramsf RNr stderr=filename(err);
+	processPeaksHydra paramsf RNr stderr=filename(err);
 }
 
 app (file err) mergerings (string pfname, file dummy[])
@@ -75,7 +75,7 @@ iterate ix {
 		string paramFileNames2[] = readData(paramfilenamefile2);
 		foreach Ring2,idx2 in rings {
 			string parameterfilename2 = paramFileNames2[idx2];
-			simBerr[idx2+(detnr2*length(rings))] = runProcessPeaks(parameterfilename2,Ring2,simAerr);
+			simBerr[idx2+(detnr2*length(rings))] = runProcessPeaksHydra(parameterfilename2,Ring2,simAerr);
 		}
 	}
 	foreach detnr3 in [1:4]{
