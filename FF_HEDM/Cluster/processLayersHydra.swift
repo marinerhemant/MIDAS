@@ -5,9 +5,9 @@
 
 type file;
 
-app (file ep) runPeaks (string ringfile, string paramfile, int fnr)
+app (file ep) runPeaksHydra (string ringfile, string foldername, int fnr)
 {
-	peaks ringfile paramfile fnr stderr=filename(ep);
+	peaksHydra ringfile foldername fnr stderr=filename(ep);
 }
 
 app (file err) runProcessPeaks (string paramsf, int RNr, file DummyA[])
@@ -59,6 +59,14 @@ iterate ix {
 	int layernr = ix + startlayernr;
 	tracef("Layer %d\n",layernr);
 	file simAerr[];
+	foreach i in [startnr:endnr] {
+		file simx<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PeaksPerFile_",i,"_"),suffix=".err">;
+		simx = runPeaksHydra(ringfile,foldername,i);
+		if (i %% 100 == 0){
+			int simAidx = (i%/100);
+			simAerr[simAidx] = simx;
+		}
+	}
 	foreach detnr in [1:4]{
 		string paramfilenamefile = strcat(foldername,"/Detector",detnr,"/ParamFileNames.txt");
 		### Submit one job per frame, all the ring info will be taken care of automatically.
