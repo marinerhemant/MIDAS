@@ -518,11 +518,11 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 		}
 		diffLenM = CalcNorm2((SpotsYZOGCorr[sp][0]-TheorSpotsYZWER[RowBest][0]),(SpotsYZOGCorr[sp][1]-TheorSpotsYZWER[RowBest][1]));
 		if (printopt == 0){
-			double etaT1,etaT2;
+			double etaT1,etaT2,RDiff;
 			etaT1 = CalcEtaAngle(SpotsYZOGCorr[sp][0],SpotsYZOGCorr[sp][1]);
 			etaT2 = CalcEtaAngle(TheorSpotsYZWER[RowBest][0],TheorSpotsYZWER[RowBest][1]);
-			printf("%lf %lf\n",CalcNorm2(SpotsYZOGCorr[sp][0],SpotsYZOGCorr[sp][1])-CalcNorm2(TheorSpotsYZWER[RowBest][0],TheorSpotsYZWER[RowBest][1]),
-				etaT1-etaT2);
+			RDiff = CalcNorm2(SpotsYZOGCorr[sp][0],SpotsYZOGCorr[sp][1])-CalcNorm2(TheorSpotsYZWER[RowBest][0],TheorSpotsYZWER[RowBest][1]);
+			printf("%lf %lf\n",RDiff,RDiff*tand(etaT1-etaT2));
 		}
 		diffOmeM = fabs(SpotsYZOGCorr[sp][2]-TheorSpotsYZWER[RowBest][2]);
 		if (minAngle < 3){
