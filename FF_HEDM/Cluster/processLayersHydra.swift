@@ -67,17 +67,6 @@ iterate ix {
 			simAerr[simAidx] = simx;
 		}
 	}
-	foreach detnr in [1:4]{
-		string paramfilenamefile = strcat(foldername,"/Detector",detnr,"/ParamFileNames.txt");
-		### Submit one job per frame, all the ring info will be taken care of automatically.
-		foreach i in [startnr:endnr] {
-			file simx<simple_mapper;location=strcat(foldername,"/Detector",detnr,"/output"),prefix=strcat("PeaksPerFile_",i,"_"),suffix=".err">;
-			simx = runPeaks(ringfile,paramfilenamefile,i);
-			if (i %% 100 == 0){
-				int simAidx = (detnr-1)*(endnr%/100) + (i%/100);
-			}
-		}
-	}
 	# Hack to get things to be 
 	file simBerr[]<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("ProcessPeaks_",ix,"_"),suffix=".err">;
 	file simCerr[]<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("MergeRings_",ix,"_"),suffix=".err">;
