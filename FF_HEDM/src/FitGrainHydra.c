@@ -440,20 +440,10 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[24], do
 			DetParams[detNr][4], DetParams[detNr][5], DetParams[detNr][6],DetParams[detNr][7],
 			DetParams[detNr][8], &ya, &za);
 		DisplacementInTheSpot(x[0],x[1],x[2],DetParams[detNr][0],ya,za,spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
-		// Get raw Y pos, raw Z pos, displace them by DisplY/pixelsize and DisplZ/pixelsize
-		yDet = spotsYZO[nrSp][2] + DisplY/pixelsize;
-		zDet = spotsYZO[nrSp][3] - DisplZ/pixelsize;
-		// Use yDet and zDet, correct for tilt, spatial distortion and recompute.
-		CorrectTiltSpatialDistortion(1, DetParams[detNr][9], yDet, zDet, pixelsize,
-			DetParams[detNr][0], ParamsMatrix[detNr][0], ParamsMatrix[detNr][1], ParamsMatrix[detNr][2],
-			DetParams[detNr][4], DetParams[detNr][5], DetParams[detNr][6],DetParams[detNr][7],
-			DetParams[detNr][8], &yt, &zt);
-		// Normalize yt and zt to bring the detector to LsdMean
+		yt = ya - DisplY;
+		zt = za - DisplZ;
 		yt *= Lsd/DetParams[detNr][0];
 		zt *= Lsd/DetParams[detNr][0];
-		/*printf("%lf %lf  %lf %lf %lf %lf %lf %lf %lf %lf\n",spotsYZO[nrSp][5],
-			yt,DisplY,yDet,spotsYZO[nrSp][colRun],spotsYZO[nrSp][6],zt,DisplZ,zDet,
-			spotsYZO[nrSp][colRun+1]);*/
 		CorrectForOme(yt,zt,Lsd,spotsYZO[nrSp][4],Wavelength,wedge,&ys,&zs,&Omega);
 		SpotsYZOGCorr[nrSp][0] = ys;
 		SpotsYZOGCorr[nrSp][1] = zs;
