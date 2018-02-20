@@ -406,8 +406,6 @@ void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double yDet, doub
 	}
 }
 
-int printopt = 0;
-
 static inline
 void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], double **spotsYZO, double **hklsIn, double Lsd, 
 	double Wavelength, double OmegaRange[20][2], double BoxSize[20][4], double MinEta, double wedge, double chi,
@@ -427,47 +425,11 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 	// TheorSpots are calculated according to LsdMean in case of Hydra
 	CalcDiffractionSpots(Lsd,MinEta,OmegaRange,nOmegaRanges,hkls,nhkls,BoxSize,&nTspots,OrientMatrix,TheorSpots);
 	double **SpotsYZOGCorr;SpotsYZOGCorr=allocMatrix(nrMatchedIndexer,7);
-	double DisplY,DisplZ,ys,zs,Omega,Radius,Theta,lenK, yDet, zDet, omeDet, yt, zt;
-	double yt2, zt2, yt3, zt3, yt4, yt5, yt6;
-	int detNr, colRun=9;
-	if (printopt == 0) printf("Original\tDisplacedOrig\tCalculated\tCalcWoutLsd\tCalcWoutDispl\tCalcWoutDisLsd\tCalcTotal\tCalcFinal\tDisplY\n");
+	double DisplY,DisplZ,ys,zs,Omega,Radius,Theta,lenK, yt, zt;
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
-		if (BigDetSize == 0){
-			DisplacementInTheSpot(x[0],x[1],x[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
-			yt = spotsYZO[nrSp][5]-DisplY;
-			zt = spotsYZO[nrSp][6]-DisplZ;
-		}else{
-			if (notIniRun == 0){
-				colRun = 8;
-			} else{
-				colRun = 9;
-			}
-			detNr = (int)spotsYZO[nrSp][colRun+2] - 1;
-			DisplacementInTheSpot(x[0],x[1],x[2],DetParams[detNr][0],spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
-			// Get raw Y pos, raw Z pos, displace them by DisplY/pixelsize and DisplZ/pixelsize
-			yDet = spotsYZO[nrSp][colRun] + DisplY/pixelsize;
-			zDet = spotsYZO[nrSp][colRun+1] - DisplZ/pixelsize;
-			// Use yDet and zDet, correct for tilt, spatial distortion and recompute.
-			CorrectTiltSpatialDistortion(1, DetParams[detNr][9], yDet, zDet, pixelsize,
-				DetParams[detNr][0], DetParams[detNr][1], DetParams[detNr][2], DetParams[detNr][3],
-				DetParams[detNr][4], DetParams[detNr][5], DetParams[detNr][6],DetParams[detNr][7],
-				DetParams[detNr][8], &yt, &zt);
-			yt2 = yt;
-			zt2 = zt;
-			CorrectTiltSpatialDistortion(1, DetParams[detNr][9], spotsYZO[nrSp][colRun], spotsYZO[nrSp][colRun+1], pixelsize,
-				DetParams[detNr][0], DetParams[detNr][1], DetParams[detNr][2], DetParams[detNr][3],
-				DetParams[detNr][4], DetParams[detNr][5], DetParams[detNr][6],DetParams[detNr][7],
-				DetParams[detNr][8], &yt3, &zt3);
-			yt4 = yt3 * Lsd/DetParams[detNr][0];
-			yt5 = (yt3-DisplY) * Lsd/DetParams[detNr][0];
-			yt6 = yt4 - DisplY;
-			// Normalize yt and zt to bring the detector to LsdMean
-			yt *= Lsd/DetParams[detNr][0];
-			zt *= Lsd/DetParams[detNr][0];
-			if (printopt == 0)
-			printf("%d %lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",detNr,spotsYZO[nrSp][5],spotsYZO[nrSp][5]-DisplY,
-				yt,yt2, yt3, yt4, yt5, yt6, DisplY);
-		}
+		DisplacementInTheSpot(x[0],x[1],x[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
+		yt = spotsYZO[nrSp][5]-DisplY;
+		zt = spotsYZO[nrSp][6]-DisplZ;
 		CorrectForOme(yt,zt,Lsd,spotsYZO[nrSp][4],Wavelength,wedge,&ys,&zs,&Omega);
 		SpotsYZOGCorr[nrSp][0] = ys;
 		SpotsYZOGCorr[nrSp][1] = zs;
@@ -517,13 +479,6 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 			}
 		}
 		diffLenM = CalcNorm2((SpotsYZOGCorr[sp][0]-TheorSpotsYZWER[RowBest][0]),(SpotsYZOGCorr[sp][1]-TheorSpotsYZWER[RowBest][1]));
-		if (printopt == 0){
-			double etaT1,etaT2,RDiff;
-			etaT1 = CalcEtaAngle(SpotsYZOGCorr[sp][0],SpotsYZOGCorr[sp][1]);
-			etaT2 = CalcEtaAngle(TheorSpotsYZWER[RowBest][0],TheorSpotsYZWER[RowBest][1]);
-			RDiff = CalcNorm2(SpotsYZOGCorr[sp][0],SpotsYZOGCorr[sp][1])-CalcNorm2(TheorSpotsYZWER[RowBest][0],TheorSpotsYZWER[RowBest][1]);
-			printf("%lf %lf\n",RDiff,CalcNorm2(TheorSpotsYZWER[RowBest][0],TheorSpotsYZWER[RowBest][1])*tand(etaT1-etaT2));
-		}
 		diffOmeM = fabs(SpotsYZOGCorr[sp][2]-TheorSpotsYZWER[RowBest][2]);
 		if (minAngle < 3){
 			MatchDiff[nMatched][0] = minAngle;
@@ -545,13 +500,9 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 			SpotsComp[nMatched][21]=diffOmeM;
 			for (i=0;i<8;i++){SpList[nMatched][i]=spotsYZO[sp][i];}
 			SpList[nMatched][8]=TheorSpotsYZWER[RowBest][8];
-			SpList[nMatched][9]  = spotsYZO[sp][colRun];
-			SpList[nMatched][10] = spotsYZO[sp][colRun+1];
-			SpList[nMatched][11] = spotsYZO[sp][colRun+2];
 			nMatched++;
 		}
 	}
-	printopt = 1;
 	*nSpotsComp = nMatched;
 	Error[0]=0;Error[1]=0;Error[2]=0;
 	for (i=0;i<nMatched;i++){
@@ -642,7 +593,7 @@ struct data_FitPos{
 };
 
 static inline
-double FitErrorsPosT(double x[12],int nSpotsComp,double spotsYZOIn[nSpotsComp][12],int nhkls,double hklsIn[nhkls][7],
+double FitErrorsPosT(double x[12],int nSpotsComp,double spotsYZOIn[nSpotsComp][9],int nhkls,double hklsIn[nhkls][7],
 					 double Lsd,double Wavelength,int nOmeRanges,double OmegaRanges[nOmeRanges][2],
 					 double BoxSizes[nOmeRanges][4],double MinEta,double wedge,double chi)
 {
@@ -652,9 +603,9 @@ double FitErrorsPosT(double x[12],int nSpotsComp,double spotsYZOIn[nSpotsComp][1
 	for (i=0;i<6;i++)LatC[i] = x[6+i];
 	double **hklsIn2; hklsIn2 = allocMatrix(nhkls,7); for (i=0;i<nhkls;i++) for (j=0;j<7;j++) hklsIn2[i][j] = hklsIn[i][j];
 	double **spotsYZO; 
-	spotsYZO = allocMatrix(nSpotsComp,12); 
+	spotsYZO = allocMatrix(nSpotsComp,9); 
 	for (i=0;i<nSpotsComp;i++){
-		for (j=0;j<12;j++){
+		for (j=0;j<9;j++){
 			spotsYZO[i][j] = spotsYZOIn[i][j];
 		}
 	}
@@ -665,31 +616,11 @@ double FitErrorsPosT(double x[12],int nSpotsComp,double spotsYZOIn[nSpotsComp][1
 	double **TheorSpots;TheorSpots=allocMatrix(MaxNSpotsBest,9);
 	CalcDiffractionSpots(Lsd,MinEta,OmegaRanges,nOmeRanges,hkls,nhkls,BoxSizes,&nTspots,OrientMatrix,TheorSpots);
 	double **SpotsYZOGCorr;SpotsYZOGCorr=allocMatrix(nrMatchedIndexer,3);
-	double DisplY,DisplZ,ys,zs,Omega,Radius,Theta,lenK, yDet, zDet, omeDet, yt, zt;
-	int detNr;
+	double DisplY,DisplZ,ys,zs,Omega,Radius,Theta,lenK, yt, zt;
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
-		if (BigDetSize == 0){
-			DisplacementInTheSpot(x[0],x[1],x[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
-			yt = spotsYZO[nrSp][5]-DisplY;
-			zt = spotsYZO[nrSp][6]-DisplZ;
-		}else{
-			detNr = (int)spotsYZO[nrSp][11] - 1;
-			DisplacementInTheSpot(x[0],x[1],x[2],DetParams[detNr][0],spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
-			// Get raw Y pos, raw Z pos, displace them by DisplY/pixelsize and DisplZ/pixelsize
-			yDet = spotsYZO[nrSp][9] + DisplY/pixelsize;
-			zDet = spotsYZO[nrSp][10] - DisplZ/pixelsize;
-			// Use yDet and zDet, correct for tilt, spatial distortion and recompute.
-			CorrectTiltSpatialDistortion(1, DetParams[detNr][9], yDet, zDet, pixelsize,
-				DetParams[detNr][0], DetParams[detNr][1], DetParams[detNr][2], DetParams[detNr][3],
-				DetParams[detNr][4], DetParams[detNr][5], DetParams[detNr][6],DetParams[detNr][7],
-				DetParams[detNr][8], &yt, &zt);
-			// Normalize yt and zt to bring the detector to LsdMean
-			yt *= Lsd/DetParams[detNr][0];
-			zt *= Lsd/DetParams[detNr][0];
-			/*printf("%lf %lf  %lf %lf %lf %lf %lf %lf %lf %lf\n",spotsYZO[nrSp][5],
-				yt,DisplY,yDet,spotsYZO[nrSp][colRun],spotsYZO[nrSp][6],zt,DisplZ,zDet,
-				spotsYZO[nrSp][colRun+1]);*/
-		}
+		DisplacementInTheSpot(x[0],x[1],x[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
+		yt = spotsYZO[nrSp][5]-DisplY;
+		zt = spotsYZO[nrSp][6]-DisplZ;
 		CorrectForOme(yt,zt,Lsd,spotsYZO[nrSp][4],Wavelength,wedge,&ys,&zs,&Omega);
 		SpotsYZOGCorr[nrSp][0] = ys;
 		SpotsYZOGCorr[nrSp][1] = zs;
@@ -743,31 +674,11 @@ double FitErrorsOrientStrains(double x[9],int nSpotsComp,double spotsYZO[nSpotsC
 	double **TheorSpots;TheorSpots=allocMatrix(MaxNSpotsBest,9);
 	CalcDiffractionSpots(Lsd,MinEta,OmegaRanges,nOmeRanges,hkls,nhkls,BoxSizes,&nTspots,OrientMatrix,TheorSpots);
 	double **SpotsYZOGCorr;SpotsYZOGCorr=allocMatrix(nrMatchedIndexer,4);
-	double DisplY,DisplZ,ys,zs,Omega,Radius,Theta,lenK, yDet, zDet, omeDet, yt, zt;
-	int detNr;
+	double DisplY,DisplZ,ys,zs,Omega,Radius,Theta,lenK,yt,zt;
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
-		if (BigDetSize == 0){
-			DisplacementInTheSpot(x[0],x[1],x[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
-			yt = spotsYZO[nrSp][5]-DisplY;
-			zt = spotsYZO[nrSp][6]-DisplZ;
-		}else{
-			detNr = (int)spotsYZO[nrSp][11] - 1;
-			DisplacementInTheSpot(x[0],x[1],x[2],DetParams[detNr][0],spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
-			// Get raw Y pos, raw Z pos, displace them by DisplY/pixelsize and DisplZ/pixelsize
-			yDet = spotsYZO[nrSp][9] + DisplY/pixelsize;
-			zDet = spotsYZO[nrSp][10] - DisplZ/pixelsize;
-			// Use yDet and zDet, correct for tilt, spatial distortion and recompute.
-			CorrectTiltSpatialDistortion(1, DetParams[detNr][9], yDet, zDet, pixelsize,
-				DetParams[detNr][0], DetParams[detNr][1], DetParams[detNr][2], DetParams[detNr][3],
-				DetParams[detNr][4], DetParams[detNr][5], DetParams[detNr][6],DetParams[detNr][7],
-				DetParams[detNr][8], &yt, &zt);
-			// Normalize yt and zt to bring the detector to LsdMean
-			yt *= Lsd/DetParams[detNr][0];
-			zt *= Lsd/DetParams[detNr][0];
-			/*printf("%lf %lf  %lf %lf %lf %lf %lf %lf %lf %lf\n",spotsYZO[nrSp][5],
-				yt,DisplY,yDet,spotsYZO[nrSp][colRun],spotsYZO[nrSp][6],zt,DisplZ,zDet,
-				spotsYZO[nrSp][colRun+1]);*/
-		}
+		DisplacementInTheSpot(x[0],x[1],x[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
+		yt = spotsYZO[nrSp][5]-DisplY;
+		zt = spotsYZO[nrSp][6]-DisplZ;
 		CorrectForOme(yt,zt,Lsd,spotsYZO[nrSp][4],Wavelength,wedge,&ys,&zs,&Omega);
 		lenK = sqrt((Lsd*Lsd)+(ys*ys)+(zs*zs));
 		Radius = sqrt((ys*ys) + (zs*zs));
@@ -818,7 +729,7 @@ double FitErrorsOrientStrains(double x[9],int nSpotsComp,double spotsYZO[nSpotsC
 }
 
 static inline
-double FitErrorsStrains(double x[6],int nSpotsComp,double spotsYZOIn[nSpotsComp][12],int nhkls,double hklsIn[nhkls][7],
+double FitErrorsStrains(double x[6],int nSpotsComp,double spotsYZOIn[nSpotsComp][9],int nhkls,double hklsIn[nhkls][7],
 						double Lsd,double Wavelength,int nOmeRanges,double OmegaRanges[nOmeRanges][2],
 						double BoxSizes[nOmeRanges][4],double MinEta,double wedge,double chi, double Pos[3],double EulerIn[3])
 {
@@ -828,9 +739,9 @@ double FitErrorsStrains(double x[6],int nSpotsComp,double spotsYZOIn[nSpotsComp]
 	for (i=0;i<6;i++)LatC[i] = x[i];
 	double **hklsIn2; hklsIn2 = allocMatrix(nhkls,7); for (i=0;i<nhkls;i++) for (j=0;j<7;j++) hklsIn2[i][j] = hklsIn[i][j];
 	double **spotsYZO; 
-	spotsYZO = allocMatrix(nSpotsComp,12); 
+	spotsYZO = allocMatrix(nSpotsComp,9); 
 	for (i=0;i<nSpotsComp;i++){
-		for (j=0;j<12;j++){
+		for (j=0;j<9;j++){
 			spotsYZO[i][j] = spotsYZOIn[i][j];
 		}
 	}
@@ -841,31 +752,11 @@ double FitErrorsStrains(double x[6],int nSpotsComp,double spotsYZOIn[nSpotsComp]
 	double **TheorSpots;TheorSpots=allocMatrix(MaxNSpotsBest,9);
 	CalcDiffractionSpots(Lsd,MinEta,OmegaRanges,nOmeRanges,hkls,nhkls,BoxSizes,&nTspots,OrientMatrix,TheorSpots);
 	double **SpotsYZOGCorr;SpotsYZOGCorr=allocMatrix(nrMatchedIndexer,3);
-	double DisplY,DisplZ,ys,zs,Omega,Radius,Theta,lenK, yDet, zDet, omeDet, yt, zt;
-	int detNr;
+	double DisplY,DisplZ,ys,zs,Omega,Radius,Theta,lenK, yt, zt;
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
-		if (BigDetSize == 0){
-			DisplacementInTheSpot(x[0],x[1],x[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
-			yt = spotsYZO[nrSp][5]-DisplY;
-			zt = spotsYZO[nrSp][6]-DisplZ;
-		}else{
-			detNr = (int)spotsYZO[nrSp][11] - 1;
-			DisplacementInTheSpot(x[0],x[1],x[2],DetParams[detNr][0],spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
-			// Get raw Y pos, raw Z pos, displace them by DisplY/pixelsize and DisplZ/pixelsize
-			yDet = spotsYZO[nrSp][9] + DisplY/pixelsize;
-			zDet = spotsYZO[nrSp][10] - DisplZ/pixelsize;
-			// Use yDet and zDet, correct for tilt, spatial distortion and recompute.
-			CorrectTiltSpatialDistortion(1, DetParams[detNr][9], yDet, zDet, pixelsize,
-				DetParams[detNr][0], DetParams[detNr][1], DetParams[detNr][2], DetParams[detNr][3],
-				DetParams[detNr][4], DetParams[detNr][5], DetParams[detNr][6],DetParams[detNr][7],
-				DetParams[detNr][8], &yt, &zt);
-			// Normalize yt and zt to bring the detector to LsdMean
-			yt *= Lsd/DetParams[detNr][0];
-			zt *= Lsd/DetParams[detNr][0];
-			/*printf("%lf %lf  %lf %lf %lf %lf %lf %lf %lf %lf\n",spotsYZO[nrSp][5],
-				yt,DisplY,yDet,spotsYZO[nrSp][colRun],spotsYZO[nrSp][6],zt,DisplZ,zDet,
-				spotsYZO[nrSp][colRun+1]);*/
-		}
+		DisplacementInTheSpot(x[0],x[1],x[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
+		yt = spotsYZO[nrSp][5]-DisplY;
+		zt = spotsYZO[nrSp][6]-DisplZ;
 		CorrectForOme(yt,zt,Lsd,spotsYZO[nrSp][4],Wavelength,wedge,&ys,&zs,&Omega);
 		SpotsYZOGCorr[nrSp][0] = ys;
 		SpotsYZOGCorr[nrSp][1] = zs;
@@ -903,7 +794,7 @@ double FitErrorsStrains(double x[6],int nSpotsComp,double spotsYZOIn[nSpotsComp]
 }
 
 static inline
-double FitErrorsPosSec(double x[3],int nSpotsComp,double spotsYZOIn[nSpotsComp][12],int nhkls,double hklsIn[nhkls][7],
+double FitErrorsPosSec(double x[3],int nSpotsComp,double spotsYZOIn[nSpotsComp][9],int nhkls,double hklsIn[nhkls][7],
 						double Lsd,double Wavelength,int nOmeRanges,double OmegaRanges[nOmeRanges][2],
 						double BoxSizes[nOmeRanges][4],double MinEta,double wedge,double chi,double EulerIn[3],double Strains[6])
 {
@@ -913,9 +804,9 @@ double FitErrorsPosSec(double x[3],int nSpotsComp,double spotsYZOIn[nSpotsComp][
 	for (i=0;i<6;i++)LatC[i] = Strains[i];
 	double **hklsIn2; hklsIn2 = allocMatrix(nhkls,7); for (i=0;i<nhkls;i++) for (j=0;j<7;j++) hklsIn2[i][j] = hklsIn[i][j];
 	double **spotsYZO; 
-	spotsYZO = allocMatrix(nSpotsComp,12); 
+	spotsYZO = allocMatrix(nSpotsComp,9); 
 	for (i=0;i<nSpotsComp;i++){
-		for (j=0;j<12;j++){
+		for (j=0;j<9;j++){
 			spotsYZO[i][j] = spotsYZOIn[i][j];
 		}
 	}
@@ -926,31 +817,12 @@ double FitErrorsPosSec(double x[3],int nSpotsComp,double spotsYZOIn[nSpotsComp][
 	double **TheorSpots;TheorSpots=allocMatrix(MaxNSpotsBest,9);
 	CalcDiffractionSpots(Lsd,MinEta,OmegaRanges,nOmeRanges,hkls,nhkls,BoxSizes,&nTspots,OrientMatrix,TheorSpots);
 	double **SpotsYZOGCorr;SpotsYZOGCorr=allocMatrix(nrMatchedIndexer,3);
-	double DisplY,DisplZ,ys,zs,Omega,Radius,Theta,lenK, yDet, zDet, omeDet, yt, zt;
+	double DisplY,DisplZ,ys,zs,Omega,Radius,Theta,lenK, yt, zt;
 	int detNr;
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
-		if (BigDetSize == 0){
-			DisplacementInTheSpot(x[0],x[1],x[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
-			yt = spotsYZO[nrSp][5]-DisplY;
-			zt = spotsYZO[nrSp][6]-DisplZ;
-		}else{
-			detNr = (int)spotsYZO[nrSp][11] - 1;
-			DisplacementInTheSpot(x[0],x[1],x[2],DetParams[detNr][0],spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
-			// Get raw Y pos, raw Z pos, displace them by DisplY/pixelsize and DisplZ/pixelsize
-			yDet = spotsYZO[nrSp][9] + DisplY/pixelsize;
-			zDet = spotsYZO[nrSp][10] - DisplZ/pixelsize;
-			// Use yDet and zDet, correct for tilt, spatial distortion and recompute.
-			CorrectTiltSpatialDistortion(1, DetParams[detNr][9], yDet, zDet, pixelsize,
-				DetParams[detNr][0], DetParams[detNr][1], DetParams[detNr][2], DetParams[detNr][3],
-				DetParams[detNr][4], DetParams[detNr][5], DetParams[detNr][6],DetParams[detNr][7],
-				DetParams[detNr][8], &yt, &zt);
-			// Normalize yt and zt to bring the detector to LsdMean
-			yt *= Lsd/DetParams[detNr][0];
-			zt *= Lsd/DetParams[detNr][0];
-			/*printf("%lf %lf  %lf %lf %lf %lf %lf %lf %lf %lf\n",spotsYZO[nrSp][5],
-				yt,DisplY,yDet,spotsYZO[nrSp][colRun],spotsYZO[nrSp][6],zt,DisplZ,zDet,
-				spotsYZO[nrSp][colRun+1]);*/
-		}
+		DisplacementInTheSpot(x[0],x[1],x[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
+		yt = spotsYZO[nrSp][5]-DisplY;
+		zt = spotsYZO[nrSp][6]-DisplZ;
 		CorrectForOme(yt,zt,Lsd,spotsYZO[nrSp][4],Wavelength,wedge,&ys,&zs,&Omega);
 		SpotsYZOGCorr[nrSp][0] = ys;
 		SpotsYZOGCorr[nrSp][1] = zs;
@@ -993,9 +865,9 @@ double problem_function_PosIni(unsigned n, const double *x, double *grad, void* 
 	int i,j;
 	struct data_FitPosIni *f_data = (struct data_FitPosIni *) f_data_trial;
 	int nSpotsComp = f_data->nSpotsComp;
-	double spotsYZO[nSpotsComp][12];
+	double spotsYZO[nSpotsComp][9];
 	for (i=0;i<nSpotsComp;i++){
-		for (j=0;j<12;j++){
+		for (j=0;j<9;j++){
 			spotsYZO[i][j] = f_data->spotsYZO[i][j];
 		}
 	}
@@ -1029,9 +901,9 @@ double problem_function_OrientIni(unsigned n, const double *x, double *grad, voi
 	int i,j;
 	struct data_FitOrientIni *f_data = (struct data_FitOrientIni *) f_data_trial;
 	int nSpotsComp = f_data->nSpotsComp;
-	double spotsYZO[nSpotsComp][12];
+	double spotsYZO[nSpotsComp][9];
 	for (i=0;i<nSpotsComp;i++){
-		for (j=0;j<12;j++){
+		for (j=0;j<9;j++){
 			spotsYZO[i][j] = f_data->spotsYZO[i][j];
 		}
 	}
@@ -1066,9 +938,9 @@ double problem_function_StrainIni(unsigned n, const double *x, double *grad, voi
 	int i,j;
 	struct data_FitStrainIni *f_data = (struct data_FitStrainIni *) f_data_trial;
 	int nSpotsComp = f_data->nSpotsComp;
-	double spotsYZO[nSpotsComp][12];
+	double spotsYZO[nSpotsComp][9];
 	for (i=0;i<nSpotsComp;i++){
-		for (j=0;j<12;j++){
+		for (j=0;j<9;j++){
 			spotsYZO[i][j] = f_data->spotsYZO[i][j];
 		}
 	}
@@ -1104,9 +976,9 @@ double problem_function_Pos(unsigned n, const double *x, double *grad, void* f_d
 	int i,j;
 	struct data_FitPos *f_data = (struct data_FitPos *) f_data_trial;
 	int nSpotsComp = f_data->nSpotsComp;
-	double spotsYZO[nSpotsComp][12];
+	double spotsYZO[nSpotsComp][9];
 	for (i=0;i<nSpotsComp;i++){
-		for (j=0;j<12;j++){
+		for (j=0;j<9;j++){
 			spotsYZO[i][j] = f_data->spotsYZO[i][j];
 		}
 	}
@@ -1145,8 +1017,8 @@ void FitPositionIni(double X0[12],int nSpotsComp,double **spotsYZO,int nhkls,dou
 	int i,j;
 	struct data_FitPosIni f_data;
 	f_data.nSpotsComp = nSpotsComp;
-	f_data.spotsYZO = allocMatrix(nSpotsComp,12);
-	for (i=0;i<nSpotsComp;i++) for (j=0;j<12;j++) f_data.spotsYZO[i][j] = spotsYZO[i][j];
+	f_data.spotsYZO = allocMatrix(nSpotsComp,9);
+	for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) f_data.spotsYZO[i][j] = spotsYZO[i][j];
 	f_data.nhkls = nhkls;
 	f_data.hkls = allocMatrix(nhkls,7);
 	for (i=0;i<nhkls;i++) for (j=0;j<7;j++){f_data.hkls[i][j] = hkls[i][j];}
@@ -1196,8 +1068,8 @@ void FitOrientIni(double X0[9],int nSpotsComp,double **spotsYZO,int nhkls,double
 	int i,j;
 	struct data_FitOrientIni f_data;
 	f_data.nSpotsComp = nSpotsComp;
-	f_data.spotsYZO = allocMatrix(nSpotsComp,12);
-	for (i=0;i<nSpotsComp;i++) for (j=0;j<12;j++) f_data.spotsYZO[i][j] = spotsYZO[i][j];
+	f_data.spotsYZO = allocMatrix(nSpotsComp,9);
+	for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) f_data.spotsYZO[i][j] = spotsYZO[i][j];
 	f_data.nhkls = nhkls;
 	f_data.hkls = allocMatrix(nhkls,7);
 	for (i=0;i<nhkls;i++) for (j=0;j<7;j++) f_data.hkls[i][j] = hkls[i][j];
@@ -1249,8 +1121,8 @@ void FitStrainIni(double X0[6],int nSpotsComp,double **spotsYZO,int nhkls,double
 	int i,j;
 	struct data_FitStrainIni f_data;
 	f_data.nSpotsComp = nSpotsComp;
-	f_data.spotsYZO = allocMatrix(nSpotsComp,12);
-	for (i=0;i<nSpotsComp;i++) for (j=0;j<12;j++) f_data.spotsYZO[i][j] = spotsYZO[i][j];
+	f_data.spotsYZO = allocMatrix(nSpotsComp,9);
+	for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) f_data.spotsYZO[i][j] = spotsYZO[i][j];
 	f_data.nhkls = nhkls;
 	f_data.hkls = allocMatrix(nhkls,7);
 	for (i=0;i<nhkls;i++) for (j=0;j<7;j++) f_data.hkls[i][j] = hkls[i][j];
@@ -1303,8 +1175,8 @@ void FitPosSec(double X0[3],int nSpotsComp,double **spotsYZO,int nhkls,double **
 	int i,j;
 	struct data_FitPos f_data;
 	f_data.nSpotsComp = nSpotsComp;
-	f_data.spotsYZO = allocMatrix(nSpotsComp,12);
-	for (i=0;i<nSpotsComp;i++) for (j=0;j<12;j++) f_data.spotsYZO[i][j] = spotsYZO[i][j];
+	f_data.spotsYZO = allocMatrix(nSpotsComp,9);
+	for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) f_data.spotsYZO[i][j] = spotsYZO[i][j];
 	f_data.nhkls = nhkls;
 	f_data.hkls = allocMatrix(nhkls,7);
 	for (i=0;i<nhkls;i++) for (j=0;j<7;j++) f_data.hkls[i][j] = hkls[i][j];
@@ -1740,7 +1612,7 @@ int main(int argc, char *argv[])
 	sprintf(rmCommand,"rm -rf %s",FileName);
 	system(rmCommand);
 	double **spotsYZO;
-	spotsYZO=allocMatrix(nSpotsBest,11);
+	spotsYZO=allocMatrix(nSpotsBest,8);
 	int nSpotsYZO=nSpotsBest;
 	// Idea: spotID always starts from 1 and is increasing in number, so 
 	// spotIDS[i] should correspond to AllSpots[(spotIDS[i]-1)*14+...], this should
@@ -1756,39 +1628,21 @@ int main(int argc, char *argv[])
 		spotsYZO[i][5] = AllSpots[spotPosAllSpots*14+9];
 		spotsYZO[i][6] = AllSpots[spotPosAllSpots*14+10];
 		spotsYZO[i][7] = AllSpots[spotPosAllSpots*14+5];
-		spotsYZO[i][8] = AllSpots[spotPosAllSpots*14+11];
-		spotsYZO[i][9] = AllSpots[spotPosAllSpots*14+12];
-	}
-	// In case of Hydra, read raw Y,Z,omega (11,12,13) positions and store in array
-	// Also read the IDsDetectorMap.csv and store the detector numbers. Thus allocate an array 
-	if (BigDetSize != 0){
-		FILE *DetMapFile;
-		DetMapFile = fopen("IDsDetectorMap.csv","r");
-		int *detmap, cntdetmap=0;
-		detmap = malloc(nSpots*sizeof(*detmap));
-		while(fgets(line,5000,DetMapFile)!=NULL){
-			sscanf(line,"%d",&detmap[cntdetmap]);
-			cntdetmap++;
-		}
-		for (i=0;i<nSpotsBest;i++){
-			spotPosAllSpots = (int)spotIDS[i] -1;
-			spotsYZO[i][10] = (double)detmap[spotPosAllSpots];
-		}
 	}
 	int tc2 = munmap(AllSpots,size);
 	double *Ini; Ini=malloc(12*sizeof(*Ini));
 	double **SpotsComp,**Splist,*ErrorIni;
 	SpotsComp=allocMatrix(MaxNSpotsBest,22);
-	Splist=allocMatrix(MaxNSpotsBest,12);
+	Splist=allocMatrix(MaxNSpotsBest,9);
 	ErrorIni = malloc(3*sizeof(*ErrorIni));
 	int nSpotsComp;
 	ConcatPosEulLatc(Ini,Pos0,Euler0,LatCin);
 	CalcAngleErrors(nSpotsYZO,nhkls,nOmeRanges,Ini,spotsYZO,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,
 					MinEta,wedge,chi,SpotsComp,Splist,ErrorIni,&nSpotsComp,0);
 	printf("Initial error is: %f %f %f\n",ErrorIni[0],ErrorIni[1],ErrorIni[2]);
-	double **spotsYZONew; spotsYZONew=allocMatrix(nSpotsComp,12);
+	double **spotsYZONew; spotsYZONew=allocMatrix(nSpotsComp,9);
 	for (i=0;i<nSpotsComp;i++){
-		for (j=0;j<12;j++){
+		for (j=0;j<9;j++){
 			spotsYZONew[i][j]=Splist[i][j];
 		}
 	}
@@ -1843,7 +1697,7 @@ int main(int argc, char *argv[])
     CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,XFit,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
 					SpotsComp,Splist,ErrorInt1,&nSpotsComp,1);
 	printf("Interim error after fitting Position: %f %f %f\n",ErrorInt1[0],ErrorInt1[1],ErrorInt1[2]);
-	for (i=0;i<nSpotsComp;i++) for (j=0;j<12;j++) spotsYZONew[i][j]=Splist[i][j];
+	for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
     double X0_2[9];X0_2[0]=Euler0[0];X0_2[1]=Euler0[1];X0_2[2]=Euler0[2];
     for (i=0;i<6;i++) X0_2[i+3] = LatCin[i];
     double lb2[9],ub2[9];
@@ -1873,7 +1727,7 @@ int main(int argc, char *argv[])
     CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,UseXFit,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
 					SpotsComp,Splist,ErrorInt2,&nSpotsComp,1);
     printf("Interim error after fitting Orientation: %f %f %f\n",ErrorInt2[0],ErrorInt2[1],ErrorInt2[2]);
-    for (i=0;i<nSpotsComp;i++) for (j=0;j<12;j++) spotsYZONew[i][j]=Splist[i][j];
+    for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
     double X0_3[6];for (i=0;i<6;i++) X0_3[i] = LatCin[i];
     double lb3[6],ub3[6];
     lb3[0] = a*(1-(MargABC/100));
@@ -1897,7 +1751,7 @@ int main(int argc, char *argv[])
     CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,UseXFit2,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
 					SpotsComp,Splist,ErrorInt3,&nSpotsComp,1);
     printf("Interim error after fitting strains: %f %f %f\n",ErrorInt3[0],ErrorInt3[1],ErrorInt3[2]);
-    for (i=0;i<nSpotsComp;i++) for (j=0;j<12;j++) spotsYZONew[i][j]=Splist[i][j];
+    for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
     double X0_4[3]; for (i=0;i<3;i++) X0_4[i] = XFit[i];
 	double XLow2[3], XHigh2[3];
 	for (i=0;i<3;i++){XLow2[i]=X0_4[i]-MargPos2;XHigh2[i]=X0_4[i]+MargPos2;}
@@ -1918,7 +1772,7 @@ int main(int argc, char *argv[])
     CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,FinalResult,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
 					SpotsComp,Splist,ErrorFin,&nSpotsComp,1);
     printf("Final error: %f %f %f\n",ErrorFin[0],ErrorFin[1],ErrorFin[2]);
-    for (i=0;i<nSpotsComp;i++) for (j=0;j<12;j++) spotsYZONew[i][j]=Splist[i][j];
+    for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
     printf("Fitted position is: %f %f %f\nFitted orientation is: %f %f %f\nFitted lattice parameter is: %f %f %f %f %f %f\n",
 				FinalResult[0],FinalResult[1],FinalResult[2],FinalResult[3],FinalResult[4],FinalResult[5],FinalResult[6],FinalResult[7],FinalResult[8],
 				FinalResult[9],FinalResult[10],FinalResult[11]);
