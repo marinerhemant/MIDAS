@@ -545,7 +545,7 @@ double problem_function(unsigned n, const double *x, double *grad, void* f_data_
 								 zbc, tx, ty, tz, p0, p1, p2, SpotInfoCorr);
 	double error = CalcAngleErrors(nSpots, nhkls, nOmeRanges, Inp, SpotInfoCorr, hkls, Lsd,
 		Wavelength, OmegaRanges, BoxSizes, MinEta, Wedge, 0.0,f_data->Error);
-	if (nIter % 100 == 0){
+	if (nIter % 500 == 0){
 		printf("Error: %.20lf %.20lf %.20lf\n",f_data->Error[0],f_data->Error[1],f_data->Error[2]); fflush(stdout);
 	}
 	nIter ++;
