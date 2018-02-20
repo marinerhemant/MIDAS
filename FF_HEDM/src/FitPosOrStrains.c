@@ -482,7 +482,6 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 		SpotsYZOGCorr[nrSp][5] = g3;
 		SpotsYZOGCorr[nrSp][6] = spotsYZO[nrSp][7];
 	}
-	printopt = 1;
 	double **TheorSpotsYZWE;TheorSpotsYZWE=allocMatrix(nTspots,9);
 	for (i=0;i<nTspots;i++){for (j=0;j<9;j++){TheorSpotsYZWE[i][j] = TheorSpots[i][j];}}
 	int sp,nTheorSpotsYZWER,nMatched=0,RowBest=0;
@@ -518,6 +517,13 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 			}
 		}
 		diffLenM = CalcNorm2((SpotsYZOGCorr[sp][0]-TheorSpotsYZWER[RowBest][0]),(SpotsYZOGCorr[sp][1]-TheorSpotsYZWER[RowBest][1]));
+		if (printopt == 0){
+			double etaT1,etaT2;
+			CalcEtaAngle(SpotsYZOGCorr[sp][0],SpotsYZOGCorr[sp][1],&etaT1);
+			CalcEtaAngle(TheorSpotsYZWER[RowBest][0],TheorSpotsYZWER[RowBest][1],&etaT2);
+			printf("%lf %lf\n",CalcNorm2(SpotsYZOGCorr[sp][0],SpotsYZOGCorr[sp][1])-CalcNorm2(TheorSpotsYZWER[RowBest][0],TheorSpotsYZWER[RowBest][1]),
+				etaT1-etaT2);
+		}
 		diffOmeM = fabs(SpotsYZOGCorr[sp][2]-TheorSpotsYZWER[RowBest][2]);
 		if (minAngle < 3){
 			MatchDiff[nMatched][0] = minAngle;
@@ -545,6 +551,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 			nMatched++;
 		}
 	}
+	printopt = 1;
 	*nSpotsComp = nMatched;
 	Error[0]=0;Error[1]=0;Error[2]=0;
 	for (i=0;i<nMatched;i++){
