@@ -12,10 +12,10 @@ cmdname=$(basename $0)
 echo "Analysis code for Hydra:"
 echo "Version: 1, 2017/03/30, in case of problems contact hsharma@anl.gov"
 
-if [[ ${#*} != 6 ]]
+if [[ ${#*} != 7 ]]
 then
-	echo "Provide ParametersFile StartLayerNr EndLayerNr Number of NODES to use MachineName EmailAddress!"
-	echo "EG. ${cmdname} parameters.txt 1 1 6 orthros(orthrosextra,local,rice) hsharma@anl.gov"
+	echo "Provide ParametersFile StartLayerNr EndLayerNr DoPeakSearch Number of NODES to use MachineName EmailAddress!"
+	echo "EG. ${cmdname} parameters.txt 1 1 1 (or 0) 6 orthros(orthrosextra,local,rice) hsharma@anl.gov"
 	echo "the source parameter file MUST not have ring numbers and layer numbers in it."
 	echo "Parameter file name MUST not be full path, analysis should be run from the directory where the parameter file is."
 	echo "********SeedFolder MUST NOT BE IN THE PARAMETER FILE.**********"
@@ -26,9 +26,10 @@ fi
 ParamsFile=$1
 STARTLAYERNR=$2
 ENDLAYERNR=$3
-NCPUS=$4
-MACHINE_NAME=$5
-EM=$6
+DOPEAKSEARCH=$4
+NCPUS=$5
+MACHINE_NAME=$6
+EM=$7
 StartNr=$( awk '$1 ~ /^StartNr/ { print $2 }' ${ParamsFile} )
 EndNr=$( awk '$1 ~ /^EndNr/ { print $2 }' ${ParamsFile} )
 echo "Peaks:"
@@ -82,7 +83,7 @@ do
 	${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
 		${PFDIR}/processLayersHydra.swift -ringfile=${seedfolder}/RingInfo.txt \
 		-startnr=${StartNr} -endnr=${EndNr} -SeedFolder=${seedfolder} \
-		-startLayer=${STARTLAYERNR} -endLayer=${ENDLAYERNR}
+		-startLayer=${STARTLAYERNR} -endLayer=${ENDLAYERNR} -DoPeakSearch=${DOPEAKSEARCH}
 	cd ${outfolder}
 	pfname=${ParamsFile}
 	${BINFOLDER}/ProcessGrains ${pfname}
