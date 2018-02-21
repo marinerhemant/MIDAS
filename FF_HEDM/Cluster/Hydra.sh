@@ -84,7 +84,7 @@ do
 		-startnr=${StartNr} -endnr=${EndNr} -SeedFolder=${seedfolder} \
 		-startLayer=${STARTLAYERNR} -endLayer=${ENDLAYERNR}
 	cd ${outfolder}
-	pfname=Layer${LAYERNR}_MultiRing_ps.txt
+	pfname=${ParamsFile}
 	${BINFOLDER}/ProcessGrains ${pfname}
 	cd ../
 done
