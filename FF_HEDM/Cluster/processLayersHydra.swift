@@ -87,7 +87,6 @@ if (dopeaksearch == 1){
 		}
 		foreach detnr3 in [1:4]{
 			string pfname[] = readData(strcat(foldername,"/Detector",detnr3,"/PFNames.txt"));
-			tracef("Filename: %s\n",pfname[0]);
 			simCerr[detnr3] = mergerings(pfname[0], simBerr);
 		}
 		# Now merge peaks from the detectors
