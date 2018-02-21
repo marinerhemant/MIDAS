@@ -79,8 +79,8 @@ iterate ix {
 		}
 	}
 	foreach detnr3 in [1:4]{
-		string pfname = strcat(foldername,"/Detector",detnr3,"/Layer",layernr,"_MultiRing_ps.txt");
-		simCerr[detnr3] = mergerings(pfname, simBerr);
+		string pfname[] = readData(strcat(foldername,"/Detector",detnr3,"PFNames.txt"));
+		simCerr[detnr3] = mergerings(pfname[0], simBerr);
 	}
 	# Now merge peaks from the detectors
 	file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("MergeDetectors",ix),suffix=".err">;
