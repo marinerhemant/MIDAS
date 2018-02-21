@@ -11,7 +11,7 @@ foldername=$1
 cd ${foldername}
 layernr=$2
 FULLPFNAME=$( cat ${foldername}/Detector1/PFNames.txt )
-echo FULLPFNAME
+echo $FULLPFNAME
 PFNAME="${FULLPFNAME##*/}"
 paramfile=${foldername}/${PFNAME}
 for (( detNr=1; detNr<=4; detNr++ ))
