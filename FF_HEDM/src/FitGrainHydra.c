@@ -903,6 +903,7 @@ int main(int argc, char *argv[])
 			 BoxSizes, hkls, Out,Error);
 	printf("\nInput:\n");
 	for (i=0;i<12;i++) printf("%f ",Ini[i]);
+	OptP[2] += OptP[0];
 	for (i=0;i<12;i++) printf("%f ",OptP[i]);
 	printf("\nOutput:\n");
 	Out[14] += Out[12];
