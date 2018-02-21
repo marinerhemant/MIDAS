@@ -905,6 +905,7 @@ int main(int argc, char *argv[])
 	for (i=0;i<12;i++) printf("%f ",Ini[i]);
 	for (i=0;i<12;i++) printf("%f ",OptP[i]);
 	printf("\nOutput:\n");
+	Out[14] += Out[12];
 	for (i=0;i<24;i++) printf("%f ",Out[i]);
 	printf("\n");
 	end = clock();
