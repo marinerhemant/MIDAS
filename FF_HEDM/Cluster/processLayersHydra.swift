@@ -25,6 +25,11 @@ app (file err, file spotsfile) postpeaks (string foldername, string pfname, file
 	postPeaks foldername pfname filename(spotsfile) stderr=filename(err);
 }
 
+app (file err, file spotsfile) postpeaks2 (string foldername, string pfname)
+{
+	postPeaks foldername pfname filename(spotsfile) stderr=filename(err);
+}
+
 app (file err) indexrefine (string foldername, int spotsinput, file dm)
 {
 	indexstrains spotsinput foldername stderr=filename(err);
@@ -102,10 +107,9 @@ if (dopeaksearch == 1){
 } else {
 	iterate ix {
 		string foldername = folderNames[ix];
-		string pfname = PFNames[ix];
 		file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
 		file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsToIndexSwift.csv")>;
-		(simDerr,simCatOut) = postpeaks2(foldername,pfname);
+		(simDerr,simCatOut) = postpeaks2(foldername,"hydra");
 		int spots[] = readData(simCatOut);
 		tracef("Total number of remaining jobs: %d\n",length(spots));
 		foreach i in spots {
