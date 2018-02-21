@@ -433,6 +433,7 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[24], do
 		ParamsMatrix[i][1] = x[i+20]; //zbc
 		ParamsMatrix[i][2] = x[i+12]; //tx
 	}
+	ParamsMatrix[2][2] += ParamsMatrix[i][0]; // Hack for relative fitting
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
 		detNr = (int)spotsYZO[nrSp][5] - 1;
 		CorrectTiltSpatialDistortion(1, DetParams[detNr][9], spotsYZO[nrSp][2], spotsYZO[nrSp][3], pixelsize,
@@ -876,11 +877,17 @@ int main(int argc, char *argv[])
 	pixelsize = px;
 	double NonOptP[5] = {px,Wavelength,Hbeam,Rsample,MinEta,wedge};
 	int NonOptPInt[5] = {NrPixels,nOmeRanges,nRings,nSpots,nhkls};
-	double OptP[12] = {DetParams[0][3],DetParams[1][3],DetParams[2][3],DetParams[3][3],
+	//~ double OptP[12] = {DetParams[0][3],DetParams[1][3],DetParams[2][3],DetParams[3][3],
+		//~ DetParams[0][1],DetParams[1][1],DetParams[2][1],DetParams[3][1],DetParams[0][2],
+		//~ DetParams[1][2],DetParams[2][2],DetParams[3][2]};
+	//~ double tols[24] = {500,500,500,deg2rad*0.0005,deg2rad*0.0005,deg2rad*0.0005,1,1,1,1,1,1,
+		//~ 5,0.0000001,5,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001};	// 250 microns for position, 0.0005 degrees for orient, 1 % for latticeParameter,
+									//~ // 1 degree for tx[4], 1 pixel for yBC, 1 pixel for zBC
+	double OptP[12] = {DetParams[0][3],DetParams[1][3],DetParams[2][3]-DetParams[0][3],DetParams[3][3],
 		DetParams[0][1],DetParams[1][1],DetParams[2][1],DetParams[3][1],DetParams[0][2],
 		DetParams[1][2],DetParams[2][2],DetParams[3][2]};
 	double tols[24] = {500,500,500,deg2rad*0.0005,deg2rad*0.0005,deg2rad*0.0005,1,1,1,1,1,1,
-		5,0.0000001,5,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001};	// 250 microns for position, 0.0005 degrees for orient, 1 % for latticeParameter,
+		5,0.0000001,0.05,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001};	// 250 microns for position, 0.0005 degrees for orient, 1 % for latticeParameter,
 									// 1 degree for tx[4], 1 pixel for yBC, 1 pixel for zBC
 
 	// Now call a function with all the info which will optimize parameters
