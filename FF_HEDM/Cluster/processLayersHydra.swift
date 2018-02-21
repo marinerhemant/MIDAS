@@ -7,7 +7,7 @@ type file;
 
 app (file ep) runPeaksHydra (string ringfile, string foldername, int fnr)
 {
-	peaksHydra ringfile foldername fnr stdout=filename(ep);
+	peaksHydra ringfile foldername fnr stderr=filename(ep);
 }
 
 app (file err) runProcessPeaksHydra (string paramsf, int RNr, file DummyA[])

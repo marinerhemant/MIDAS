@@ -252,6 +252,7 @@ CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3], RealType distance, RealType 
         for (i=0 ; i<nspotsPlane ; i++) {
             RealType Omega = omegas[i];
             RealType Eta = etas[i];
+            if (isnan(Omega) || isnan(Eta)) continue;
             RealType EtaAbs =  fabs(Eta);
             if ((EtaAbs < ExcludePoleAngle ) || ((180-EtaAbs) < ExcludePoleAngle)) continue;
             CalcSpotPosition(RingRadius, etas[i], &(yl), &(zl));
