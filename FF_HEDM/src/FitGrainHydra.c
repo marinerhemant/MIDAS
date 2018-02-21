@@ -407,7 +407,6 @@ void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double yDet, doub
 }
 
 int nIter = 0;
-int printopt = 0;
 
 static inline
 double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[24], double **spotsYZO, double **hklsIn, double Lsd,
@@ -494,9 +493,6 @@ double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[24], do
 		diffLenM = CalcNorm2((SpotsYZOGCorr[sp][0]-TheorSpotsYZWER[RowBest][0]),(SpotsYZOGCorr[sp][1]-TheorSpotsYZWER[RowBest][1]));
 		diffOmeM = fabs(SpotsYZOGCorr[sp][2]-TheorSpotsYZWER[RowBest][2]);
 		if (minAngle < 1){
-			if (printopt = 0){
-				
-			}
 			MatchDiff[nMatched][0] = minAngle;
 			MatchDiff[nMatched][1] = diffLenM;
 			MatchDiff[nMatched][2] = diffOmeM;
