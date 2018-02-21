@@ -15,6 +15,11 @@ app (file err) runProcessPeaksHydra (string paramsf, int RNr, file DummyA[])
 	processPeaksHydra paramsf RNr stderr=filename(err);
 }
 
+app (file err) runProcessPeaksHydra2 (string paramsf, int RNr)
+{
+	processPeaksHydra paramsf RNr stderr=filename(err);
+}
+
 app (file err) mergerings (string pfname, file dummy[])
 {
 	mergeRings pfname stderr=filename(err);
@@ -106,14 +111,34 @@ if (dopeaksearch == 1){
 } else {
 	iterate ix {
 		string foldername = folderNames[ix];
-		file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
+		int layernr = ix + startlayernr;
+		tracef("Layer %d\n",layernr);
+		file simBerr[]<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("ProcessPeaks_",ix,"_"),suffix=".err">;
+		file simCerr[]<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("MergeRings_",ix,"_"),suffix=".err">;
+		foreach detnr2 in [1:4]{
+			string paramfilenamefile2 = strcat(foldername,"/Detector",detnr2,"/ParamFileNames.txt");
+			string paramFileNames2[] = readData(paramfilenamefile2);
+			foreach Ring2,idx2 in rings {
+				string parameterfilename2 = paramFileNames2[idx2];
+				simBerr[idx2+(detnr2*length(rings))] = runProcessPeaksHydra2(parameterfilename2,Ring2);
+			}
+		}
+		foreach detnr3 in [1:4]{
+			string pfname[] = readData(strcat(foldername,"/Detector",detnr3,"/PFNames.txt"));
+			simCerr[detnr3] = mergerings(pfname[0], simBerr);
+		}
+		# Now merge peaks from the detectors
+		file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("MergeDetectors",ix),suffix=".err">;
+		simDerr = mergedetectors(foldername,layernr,simCerr);
+		# SHM
+		file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
 		file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsToIndexSwift.csv")>;
-		(simDerr,simCatOut) = postpeaks2(foldername,"hydra");
+		(simEerr,simCatOut) = postpeaks(foldername,"hydra",simDerr);
 		int spots[] = readData(simCatOut);
 		tracef("Total number of remaining jobs: %d\n",length(spots));
-		foreach i in spots {
-			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",i),suffix=".err">;
-			simEerr = indexrefine(foldername,i,simCatOut);
+		foreach spotnr in spots {
+			file simFerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",spotnr),suffix=".err">;
+			simFerr = indexrefine(foldername,spotnr,simCatOut);
 		}
 	} until (ix == length(folderNames));
 }
