@@ -887,7 +887,7 @@ int main(int argc, char *argv[])
 		DetParams[0][1],DetParams[1][1],DetParams[2][1],DetParams[3][1],DetParams[0][2],
 		DetParams[1][2],DetParams[2][2],DetParams[3][2]};
 	double tols[24] = {500,500,500,deg2rad*0.0005,deg2rad*0.0005,deg2rad*0.0005,1,1,1,1,1,1,
-		5,0.0000001,0.05,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001};	// 250 microns for position, 0.0005 degrees for orient, 1 % for latticeParameter,
+		5,0.0000001,0.2,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001,0.0000001};	// 250 microns for position, 0.0005 degrees for orient, 1 % for latticeParameter,
 									// 1 degree for tx[4], 1 pixel for yBC, 1 pixel for zBC
 
 	// Now call a function with all the info which will optimize parameters
