@@ -954,6 +954,10 @@ int main(int argc, char *argv[]){
 		OmegaStep = FileOmegaOmeStep[ReadFileNr-StartFileNr][1];
 		Omega = FileOmegaOmeStep[ReadFileNr-StartFileNr][0] + FramesToSkip*OmegaStep;
 	}
+	char OutFolderName[1024];
+	sprintf(OutFolderName,"%s/%s",Folder,TmpFolder);
+	int e = CheckDirectoryCreation(OutFolderName);
+	if (e == 0){ return 1;}
 	char OutFile[1024];
 	if (Padding == 2) {sprintf(OutFile,"%s/%s_%02d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
 	else if (Padding == 3) {sprintf(OutFile,"%s/%s_%03d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
@@ -963,10 +967,6 @@ int main(int argc, char *argv[]){
 	else if (Padding == 7) {sprintf(OutFile,"%s/%s_%07d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
 	else if (Padding == 8) {sprintf(OutFile,"%s/%s_%08d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
 	else if (Padding == 9) {sprintf(OutFile,"%s/%s_%09d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	char OutFolderName[1024];
-	sprintf(OutFolderName,"%s/%s",Folder,TmpFolder);
-	int e = CheckDirectoryCreation(OutFolderName);
-	if (e == 0){ return 1;}
 	FILE *outfilewrite;
 	outfilewrite = fopen(OutFile,"w");
 	fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta\n");
