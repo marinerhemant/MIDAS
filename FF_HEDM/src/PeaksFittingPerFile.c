@@ -546,6 +546,8 @@ int main(int argc, char *argv[]){
     int headSize = 8192;
     int fnr = 0;
     double RhoD, tx, ty, tz, p0, p1, p2;
+    double OmegaRanges[20][2];
+    int nOmeRanges = 0;
     while (fgets(aline,1000,fileParam)!=NULL){
 		//printf("%s",aline);
 		fflush(stdout);
@@ -577,6 +579,14 @@ int main(int argc, char *argv[]){
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %lf", dummy, &p1);
+            continue;
+        }
+        str = "OmegaRange ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf %lf", dummy, 
+				&OmegaRanges[nOmeRanges][0], &OmegaRanges[nOmeRanges][1]);
+            nOmeRanges++;
             continue;
         }
         str = "p2 ";
@@ -944,6 +954,14 @@ int main(int argc, char *argv[]){
 		OmegaStep = FileOmegaOmeStep[ReadFileNr-StartFileNr][1];
 		Omega = FileOmegaOmeStep[ReadFileNr-StartFileNr][0] + FramesToSkip*OmegaStep;
 	}
+	FILE *outfilewrite;
+	outfilewrite = fopen(OutFile,"w");
+	fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta\n");
+	KeepSpot = 0;
+	for (i=0;i<nOmeRanges;i++){
+		if (Omega > OmegaRanges[i][0] && Omega < OmegaRanges[i][1]) KeepSpots = 1;
+	}
+	if (KeepSpots == 0) return;
 	
 	if (Padding == 2){sprintf(FN,"%s/%s_%02d%s",RawFolder,fs,ReadFileNr,Ext);}
 	else if (Padding == 3){sprintf(FN,"%s/%s_%03d%s",RawFolder,fs,ReadFileNr,Ext);}
@@ -1061,9 +1079,6 @@ int main(int argc, char *argv[]){
 	else if (Padding == 7) {sprintf(OutFile,"%s/%s_%07d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
 	else if (Padding == 8) {sprintf(OutFile,"%s/%s_%08d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
 	else if (Padding == 9) {sprintf(OutFile,"%s/%s_%09d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	FILE *outfilewrite;
-	outfilewrite = fopen(OutFile,"w");
-	fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta\n");
 	int TotNrRegions = NrOfReg;
 	for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 		NrPixelsThisRegion = PositionTrackers[RegNr];
