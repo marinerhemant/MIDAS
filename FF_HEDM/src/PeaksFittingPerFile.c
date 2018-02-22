@@ -548,6 +548,7 @@ int main(int argc, char *argv[]){
     double RhoD, tx, ty, tz, p0, p1, p2;
     double OmegaRanges[20][2];
     int nOmeRanges = 0;
+    int minNrPx=1, maxNrPx=10000;
     while (fgets(aline,1000,fileParam)!=NULL){
 		//printf("%s",aline);
 		fflush(stdout);
@@ -555,6 +556,18 @@ int main(int argc, char *argv[]){
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %lf", dummy, &tx);
+            continue;
+        }
+		str = "MinNrPx ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &minNrPx);
+            continue;
+        }
+		str = "MaxNrPx ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &maxNrPx);
             continue;
         }
 		str = "ty ";
@@ -1082,7 +1095,7 @@ int main(int argc, char *argv[]){
 	int TotNrRegions = NrOfReg;
 	for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 		NrPixelsThisRegion = PositionTrackers[RegNr];
-		if (NrPixelsThisRegion == 1){
+		if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
 			TotNrRegions--;
 			continue;
 		}
