@@ -963,6 +963,10 @@ int main(int argc, char *argv[]){
 	else if (Padding == 7) {sprintf(OutFile,"%s/%s_%07d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
 	else if (Padding == 8) {sprintf(OutFile,"%s/%s_%08d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
 	else if (Padding == 9) {sprintf(OutFile,"%s/%s_%09d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
+	char OutFolderName[1024];
+	sprintf(OutFolderName,"%s/%s",Folder,TmpFolder);
+	int e = CheckDirectoryCreation(OutFolderName);
+	if (e == 0){ return 1;}
 	FILE *outfilewrite;
 	outfilewrite = fopen(OutFile,"w");
 	fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta\n");
@@ -1024,10 +1028,6 @@ int main(int argc, char *argv[]){
 	free(ImgCorrBCTemp);
 	free(dark);
 	free(flood);
-	char OutFolderName[1024];
-	sprintf(OutFolderName,"%s/%s",Folder,TmpFolder);
-	int e = CheckDirectoryCreation(OutFolderName);
-	if (e == 0){ return 1;}
 	int nOverlapsMaxPerImage = 10000;
 	// Do Connected components
 	int **BoolImage, **ConnectedComponents;
