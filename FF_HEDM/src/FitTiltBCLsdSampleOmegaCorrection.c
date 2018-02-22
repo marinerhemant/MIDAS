@@ -893,7 +893,7 @@ int main(int argc, char *argv[])
 			sscanf(line,"%lf %s %lf %lf %lf %s %s %s %s %s %s %s %d %lf %s %lf %s %s %s",
 				&SpotsInfo[counter][0],dummy,&SpotsInfo[counter][1],&SpotsInfo[counter][2],&SpotsInfo[counter][3],
 				dummy,dummy,dummy,dummy,dummy,dummy,dummy,&nFramesThis,&SpotsInfo[counter][4],dummy,&SpotsInfo[counter][5],dummy,dummy,dummy);
-			printf("%d %lf %d",counter,SpotsInfo[counter][4],nFramesThis);
+			printf("%d %lf %d\n",counter,SpotsInfo[counter][4],nFramesThis);
 			if (nFramesThis > maxNFrames) continue; // Overwrite the spot if nFrames is greater than maxNFrames
 			counter++;
 		}
