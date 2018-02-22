@@ -873,7 +873,8 @@ int main(int argc, char *argv[])
 	for (i=0;i<n_hkls;i++){IdealTthetas[i]=2*Thetas[i];TthetaMins[i]=IdealTthetas[i]-TthetaTol;TthetaMaxs[i]=IdealTthetas[i]+TthetaTol;}
 	double IdealRs[n_hkls], Rmins[n_hkls], Rmaxs[n_hkls];
 	for (i=0;i<n_hkls;i++){IdealRs[i]=R4mTtheta(IdealTthetas[i],Lsd);Rmins[i]=R4mTtheta(TthetaMins[i],Lsd);Rmaxs[i]=R4mTtheta(TthetaMaxs[i],Lsd);}
-	int counter = 0, nFramesThis;
+	int counter = 0;
+	double nFramesThis;
 	if (NewType == 0){
 		fp = fopen(FileName,"r");
 		fgets(line,5000,fp);
@@ -890,11 +891,10 @@ int main(int argc, char *argv[])
 		printf("Reading file: %s.\n",FileName);
 		fgets(line,5000,fp);
 		while (fgets(line,5000,fp) != NULL){
-			sscanf(line,"%lf %s %lf %lf %lf %s %s %s %s %s %s %s %d %lf %s %lf %s %s %s",
+			sscanf(line,"%lf %s %lf %lf %lf %s %s %s %s %s %s %s %lf %lf %s %lf %s %s %s",
 				&SpotsInfo[counter][0],dummy,&SpotsInfo[counter][1],&SpotsInfo[counter][2],&SpotsInfo[counter][3],
 				dummy,dummy,dummy,dummy,dummy,dummy,dummy,&nFramesThis,&SpotsInfo[counter][4],dummy,&SpotsInfo[counter][5],dummy,dummy,dummy);
-			printf("%s %d %lf %lf %lf %lf %lf %lf %d\n",line,counter,SpotsInfo[counter][0],SpotsInfo[counter][1],SpotsInfo[counter][2],SpotsInfo[counter][3],SpotsInfo[counter][4],SpotsInfo[counter][5],nFramesThis);
-			if (nFramesThis > maxNFrames) continue; // Overwrite the spot if nFrames is greater than maxNFrames
+			if ((int)nFramesThis > maxNFrames) continue; // Overwrite the spot if nFrames is greater than maxNFrames
 			counter++;
 		}
 	}else if (NewType == 2){ // Fable system
