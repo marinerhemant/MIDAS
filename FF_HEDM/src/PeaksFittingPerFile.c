@@ -954,6 +954,15 @@ int main(int argc, char *argv[]){
 		OmegaStep = FileOmegaOmeStep[ReadFileNr-StartFileNr][1];
 		Omega = FileOmegaOmeStep[ReadFileNr-StartFileNr][0] + FramesToSkip*OmegaStep;
 	}
+	char OutFile[1024];
+	if (Padding == 2) {sprintf(OutFile,"%s/%s_%02d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
+	else if (Padding == 3) {sprintf(OutFile,"%s/%s_%03d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
+	else if (Padding == 4) {sprintf(OutFile,"%s/%s_%04d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
+	else if (Padding == 5) {sprintf(OutFile,"%s/%s_%05d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
+	else if (Padding == 6) {sprintf(OutFile,"%s/%s_%06d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
+	else if (Padding == 7) {sprintf(OutFile,"%s/%s_%07d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
+	else if (Padding == 8) {sprintf(OutFile,"%s/%s_%08d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
+	else if (Padding == 9) {sprintf(OutFile,"%s/%s_%09d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
 	FILE *outfilewrite;
 	outfilewrite = fopen(OutFile,"w");
 	fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta\n");
@@ -1070,15 +1079,6 @@ int main(int argc, char *argv[]){
 	z = malloc(NrPixels*10*sizeof(*z));
 	int IsSaturated;
 	int SpotIDStart = 1;
-	char OutFile[1024];
-	if (Padding == 2) {sprintf(OutFile,"%s/%s_%02d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 3) {sprintf(OutFile,"%s/%s_%03d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 4) {sprintf(OutFile,"%s/%s_%04d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 5) {sprintf(OutFile,"%s/%s_%05d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 6) {sprintf(OutFile,"%s/%s_%06d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 7) {sprintf(OutFile,"%s/%s_%07d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 8) {sprintf(OutFile,"%s/%s_%08d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 9) {sprintf(OutFile,"%s/%s_%09d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
 	int TotNrRegions = NrOfReg;
 	for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 		NrPixelsThisRegion = PositionTrackers[RegNr];
