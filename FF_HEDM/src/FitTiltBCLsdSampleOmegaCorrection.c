@@ -514,6 +514,7 @@ int main(int argc, char *argv[])
     int UseFriedelPairs=1;
 	double t_int=1, t_gap=0;
     int NewType = 1, TopLayer = 0;
+    int maxNFrames = 100000;
     spotsfn = "InputAll.csv";
     idfn = "SpotsToIndex.bin";
     double StepSizePos=5,StepSizeOrient=0.2,MarginRadius=500,MarginRadial=500,OmeBinSize=0.1,EtaBinSize=0.1,MarginEta=500,MarginOme=0.5,OmegaStep;
@@ -528,6 +529,12 @@ int main(int argc, char *argv[])
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %lf", dummy, &StepSizePos);
+            continue;
+        }
+        str = "MaxNFrames ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &maxNFrames);
             continue;
         }
         str = "NrPixels ";
@@ -866,7 +873,7 @@ int main(int argc, char *argv[])
 	for (i=0;i<n_hkls;i++){IdealTthetas[i]=2*Thetas[i];TthetaMins[i]=IdealTthetas[i]-TthetaTol;TthetaMaxs[i]=IdealTthetas[i]+TthetaTol;}
 	double IdealRs[n_hkls], Rmins[n_hkls], Rmaxs[n_hkls];
 	for (i=0;i<n_hkls;i++){IdealRs[i]=R4mTtheta(IdealTthetas[i],Lsd);Rmins[i]=R4mTtheta(TthetaMins[i],Lsd);Rmaxs[i]=R4mTtheta(TthetaMaxs[i],Lsd);}
-	int counter = 0;
+	int counter = 0, nFramesThis;
 	if (NewType == 0){
 		fp = fopen(FileName,"r");
 		fgets(line,5000,fp);
@@ -883,9 +890,10 @@ int main(int argc, char *argv[])
 		printf("Reading file: %s.\n",FileName);
 		fgets(line,5000,fp);
 		while (fgets(line,5000,fp) != NULL){
-			sscanf(line,"%lf %s %lf %lf %lf %s %s %s %s %s %s %s %s %lf %s %lf %s %s %s",
+			sscanf(line,"%lf %s %lf %lf %lf %s %s %s %s %s %s %s %d %lf %s %lf %s %s %s",
 				&SpotsInfo[counter][0],dummy,&SpotsInfo[counter][1],&SpotsInfo[counter][2],&SpotsInfo[counter][3],
-				dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,&SpotsInfo[counter][4],dummy,&SpotsInfo[counter][5],dummy,dummy,dummy);
+				dummy,dummy,dummy,dummy,dummy,dummy,dummy,&nFramesThis,&SpotsInfo[counter][4],dummy,&SpotsInfo[counter][5],dummy,dummy,dummy);
+			if (nFramesThis > maxNFrames) continue; // Overwrite the spot if nFrames is greater than maxNFrames
 			counter++;
 		}
 	}else if (NewType == 2){ // Fable system
