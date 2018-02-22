@@ -926,7 +926,6 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	return;
 	int nIndices = counter;
 	SortSpots(nIndices,6,SpotsInfo);
 	printf("Number of planes being considered: %d.\nNumber of spots: %d.\n",n_hkls,nIndices);
