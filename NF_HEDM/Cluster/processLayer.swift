@@ -5,19 +5,19 @@
 
 type file;
 
-app (file out, file err) Medians (string pf, int layernr, file trial)
+app (file out) Medians (string pf, int layernr, file trial)
 {
-	runmedianparallel pf layernr stdout=@filename(out) stderr=@filename(err);
+	runmedianparallel pf layernr stdout=@filename(out);
 }
 
-app (file outm, file errm) Images (string paramf, int layern, int filenr, file inp)
+app (file outm) Images (string paramf, int layern, int filenr, file inp)
 {
-	runimageprocessingparallel paramf layern filenr stdout=@filename(outm) stderr=@filename(errm);
+	runimageprocessingparallel paramf layern filenr stdout=@filename(outm);
 }
 
-app (file done) PlaceHolder (string prefix, file out[])
+app (file done) PlaceHolder (string prefix, string outfolder, file out[])
 {
-	echo prefix stdout=@filename(done);
+	echo2 prefix outfolder stdout=@filename(done);
 }
 
 app (file done) PlaceHolder2 (string prefix,file tmp)
@@ -82,16 +82,18 @@ if (DoPeakSearch == 1){
 	foreach distance in [1:NrDistances] {
 		string prefix1 = strcat("Median_",distance);
 		file simAout <simple_mapper;location=outfolder,prefix=prefix1,suffix=".out">;
-		file simAerr <simple_mapper;location=outfolder,prefix=prefix1,suffix=".err">;
-		string prefix2 = strcat("ImageProcessing_",distance);
-		file simBout[]<simple_mapper;location=outfolder,prefix=prefix2,suffix=".out">;
-		file simBerr[]<simple_mapper;location=outfolder,prefix=prefix2,suffix=".err">;
-		(simAout,simAerr) = Medians(paramfile,distance,setupdone);
+		file simBout[];
+		simAout = Medians(paramfile,distance,setupdone);
 		foreach FileNr in [0:(NrFilesPerDistance-1)]{
-			(simBout[FileNr],simBerr[FileNr]) = Images(paramfile, distance, FileNr,simAout);
+			file simx<simple_mapper;location=outfolder,prefix=strcat("ImageProcessing_",FileNr),suffix=".out">;
+			simx = Images(paramfile, distance, FileNr,simAout);
+			if (FileNr %% 100 == 0){
+				int simAidx = (FileNr%/100) + (distance-1)*(NrFilesPerDistance%/100);
+				tracef("%d %d\n",FileNr,simAidx);
+				simBout[simAidx] = simx;
+			}
 		}
-		string printoutdistance = strcat("distance done: ",distance);
-		simCout[distance] = PlaceHolder(printoutdistance,simBout);
+		simCout[distance] = PlaceHolder(NrFilesPerDistance,outfolder,simBout);
 	}
 	string printoutimages = "All images done.";
 	imagesdone = PlaceHolder(printoutimages,simCout);

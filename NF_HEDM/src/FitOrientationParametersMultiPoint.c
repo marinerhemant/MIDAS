@@ -515,7 +515,8 @@ main(int argc, char *argv[])
         str = "BoxSize ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %lf %lf %lf %lf", dummy, &BoxSizes[countr][0], &BoxSizes[countr][1], &BoxSizes[countr][2], &BoxSizes[countr][3]);
+            sscanf(aline,"%s %lf %lf %lf %lf", dummy, &BoxSizes[countr][0],
+					&BoxSizes[countr][1], &BoxSizes[countr][2], &BoxSizes[countr][3]);
             countr++;
             continue;
         }
@@ -528,17 +529,17 @@ main(int argc, char *argv[])
         str = "GridPoints ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %lf %lf %lf %lf %lf %lf %lf %s %s", dummy, &xc, &yc,
-					&UD, &eul1, &eul2, &eul3, dummy, dummy);
+            sscanf(aline,"%s %s %s %s %lf %lf %s %lf %lf %lf %lf %s %s", dummy, dummy, dummy,
+					dummy, &xc, &yc, dummy, &UD, &eul1, &eul2, &eul3, dummy, dummy);
 			ysmall  = gSze/(2*sqrt(3));
 			ybig  = gSze/(sqrt(3));
-            SpotsInfo[nSpots][0] = xc;
-            SpotsInfo[nSpots][2] = xc - gSze/2;
-            SpotsInfo[nSpots][4] = xc + gSze/2;
-            SpotsInfo[nSpots][6] = eul1;
-            SpotsInfo[nSpots][7] = eul2;
-            SpotsInfo[nSpots][8] = eul3;
-            if (UD > 0){ // Upper triangle
+			SpotsInfo[nSpots][0] = xc;
+			SpotsInfo[nSpots][2] = xc - gSze/2;
+			SpotsInfo[nSpots][4] = xc + gSze/2;
+			SpotsInfo[nSpots][6] = eul1;
+			SpotsInfo[nSpots][7] = eul2;
+			SpotsInfo[nSpots][8] = eul3;
+			if (UD > 0){ // Upper triangle
 				SpotsInfo[nSpots][1] = yc + ybig;
 				SpotsInfo[nSpots][3] = yc - ysmall;
 				SpotsInfo[nSpots][5] = yc - ysmall;
@@ -547,7 +548,7 @@ main(int argc, char *argv[])
 				SpotsInfo[nSpots][3] = yc + ysmall;
 				SpotsInfo[nSpots][5] = yc + ysmall;
 			}
-            nSpots++;
+			nSpots++;
             continue;
         }
         str = "Ice9Input ";
