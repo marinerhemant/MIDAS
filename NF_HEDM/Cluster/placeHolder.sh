@@ -10,11 +10,12 @@ outfolder=$3
 cd $outfolder
 nrfiles=$1
 echo $( pwd )
+echo $1
 echo $nrfiles
-nfiles=$( ls output | grep ImageProcessing_$2 | wc -l )
+nfiles=$( ls | grep ImageProcessing_$2 | wc -l )
 while [[ $nfiles != $nrfiles ]];
 do
 	sleep 1
-	nfiles=$( ls output | grep ImageProcessing_$2 | wc -l )
+	nfiles=$( ls | grep ImageProcessing_$2 | wc -l )
 	echo $nfiles
 done
