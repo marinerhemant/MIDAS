@@ -90,7 +90,7 @@ if (DoPeakSearch == 1){
 		file simBout[];
 		simAout = Medians(paramfile,distance,setupdone);
 		foreach FileNr in [0:(NrFilesPerDistance-1)]{
-			file simx<simple_mapper;location=outfolder,prefix=strcat("ImageProcessing_",FileNr),suffix=".out">;
+			file simx<simple_mapper;location=outfolder,prefix=strcat("ImageProcessing_",FileNr,"_",distance),suffix=".out">;
 			simx = Images(paramfile, distance, FileNr,simAout);
 			if (FileNr %% 100 == 0){
 				int simAidx = (FileNr%/100) + (distance-1)*(NrFilesPerDistance%/100);
