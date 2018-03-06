@@ -94,7 +94,6 @@ if (DoPeakSearch == 1){
 			simx = Images(paramfile, distance, FileNr,simAout);
 			if (FileNr %% 100 == 0){
 				int simAidx = (FileNr%/100) + (distance-1)*(NrFilesPerDistance%/100);
-				tracef("%d %d\n",FileNr,simAidx);
 				simBout[simAidx] = simx;
 			}
 		}
