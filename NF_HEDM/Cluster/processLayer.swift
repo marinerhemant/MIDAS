@@ -15,9 +15,9 @@ app (file outm) Images (string paramf, int layern, int filenr, file inp)
 	runimageprocessingparallel paramf layern filenr stdout=@filename(outm);
 }
 
-app (file done) PlaceHolder (int prefix, string outfolder, file out[])
+app (file done) PlaceHolder (int prefix, int distance, string outfolder, file out[])
 {
-	echo2 prefix outfolder stdout=@filename(done);
+	echo2 prefix distance outfolder stdout=@filename(done);
 }
 
 app (file done) PlaceHolder2 (string prefix,file tmp[])
@@ -90,14 +90,14 @@ if (DoPeakSearch == 1){
 		file simBout[];
 		simAout = Medians(paramfile,distance,setupdone);
 		foreach FileNr in [0:(NrFilesPerDistance-1)]{
-			file simx<simple_mapper;location=outfolder,prefix=strcat("ImageProcessing_",FileNr,"_",distance),suffix=".out">;
+			file simx<simple_mapper;location=outfolder,prefix=strcat("ImageProcessing_",distance,"_",FileNr),suffix=".out">;
 			simx = Images(paramfile, distance, FileNr,simAout);
 			if (FileNr %% 100 == 0){
 				int simAidx = (FileNr%/100) + (distance-1)*(NrFilesPerDistance%/100);
 				simBout[simAidx] = simx;
 			}
 		}
-		simCout[distance] = PlaceHolder(NrFilesPerDistance,outfolder,simBout);
+		simCout[distance] = PlaceHolder(NrFilesPerDistance,distance,outfolder,simBout);
 	}
 	string printoutimages = "All images done.";
 	imagesdone = PlaceHolder2(printoutimages,simCout);

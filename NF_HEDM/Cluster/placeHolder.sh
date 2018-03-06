@@ -6,15 +6,15 @@
 #
 
 source ${HOME}/.MIDAS/paths
-outfolder=$2
+outfolder=$3
 cd $outfolder
 nrfiles=$1
 echo $( pwd )
 echo $nrfiles
-nfiles=$( ls output | grep ImageProcessing | wc -l )
+nfiles=$( ls output | grep ImageProcessing_$2 | wc -l )
 while [[ $nfiles != $nrfiles ]];
 do
 	sleep 1
-	nfiles=$( ls output | grep ImageProcessing | wc -l )
+	nfiles=$( ls output | grep ImageProcessing_$2 | wc -l )
 	echo $nfiles
 done
