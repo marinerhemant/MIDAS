@@ -15,7 +15,7 @@ app (file outm) Images (string paramf, int layern, int filenr, file inp)
 	runimageprocessingparallel paramf layern filenr stdout=@filename(outm);
 }
 
-app (file done) PlaceHolder (string prefix, string outfolder, file out[])
+app (file done) PlaceHolder (int prefix, string outfolder, file out[])
 {
 	echo2 prefix outfolder stdout=@filename(done);
 }
