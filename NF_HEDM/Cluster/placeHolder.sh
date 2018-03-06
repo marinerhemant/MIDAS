@@ -9,9 +9,6 @@ source ${HOME}/.MIDAS/paths
 outfolder=$3
 cd $outfolder
 nrfiles=$1
-echo $( pwd )
-echo $1
-echo $nrfiles
 nfiles=$( ls | grep ImageProcessing_$2 | wc -l )
 while [[ $nfiles != $nrfiles ]];
 do
