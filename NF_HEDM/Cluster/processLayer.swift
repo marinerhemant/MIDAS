@@ -96,7 +96,7 @@ if (DoPeakSearch == 1){
 		simCout[distance] = PlaceHolder(NrFilesPerDistance,outfolder,simBout);
 	}
 	string printoutimages = "All images done.";
-	imagesdone = PlaceHolder(printoutimages,simCout);
+	imagesdone = PlaceHolder2(printoutimages,simCout);
 } else {
 	string prefix2 = "ImageProcessing was not done.";
 	tracef("%s\n",prefix2);
