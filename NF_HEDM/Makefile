@@ -130,9 +130,6 @@ genseedorientations: $(SRCDIR)GenSeedOrientationsFF2NFHEDM.c
 simulatediffrspots: $(SRCDIR)SimulateDiffractionSpots.c
 	$(CC) $(SRCDIR)SimulateDiffractionSpots.c -o $(BINDIR)SimulateDiffractionSpots $(CFLAGS)
 
-simulatediffrspotslatc: $(SRCDIR)SimulateDiffractionSpotsLatticeParameter.c
-	$(CC) $(SRCDIR)SimulateDiffractionSpotsLatticeParameter.c -o $(BINDIR)SimulateDiffractionSpotsLatticeParameter $(CFLAGS)
-
 convertbinfiles: $(SRCDIR)Convert-Bin-L2N.c
 	$(CC) $(SRCDIR)Convert-Bin-L2N.c -o $(BINDIR)ConvertBinFiles $(CFLAGS)
 
