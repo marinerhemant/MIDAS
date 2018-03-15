@@ -999,7 +999,7 @@ int main(int argc, char *argv[])
 					SpotIDsToIndex[nSpotIDsToIndex] = SpotsInfo[i][0];
 					nSpotIDsToIndex++;
 				}else {
-					printf("%d %d %lf %lf %lf\n",RingNumberThis,RingToIndex,OmegaCorrWedge[i],MinOmeSpotIDsToIndex,MaxOmeSpotIDsToIndex);
+					//printf("%d %d %lf %lf %lf\n",RingNumberThis,RingToIndex,OmegaCorrWedge[i],MinOmeSpotIDsToIndex,MaxOmeSpotIDsToIndex);
 				}
 				for (j=0;j<nrUniqueRingNumbers;j++){
 					if (RingNumberThis == UniqueRingNumbers[j]){RingNumberPresent = 1; break;}
