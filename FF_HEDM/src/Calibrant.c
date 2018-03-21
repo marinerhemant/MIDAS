@@ -29,6 +29,7 @@
 typedef uint16_t pixelvalue;
 long long int NrCalls;
 long long int NrCallsProfiler;
+int NrPixelsGlobal = 2048;
 #define MultFactor 1
 
 static inline
@@ -147,7 +148,7 @@ void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc, dou
 				if (R[counter] >= (Rmins[k]-px) && R[counter] <= (Rmaxs[k] + px)){
 					for (l=0;l<nEtaBins;l++){
 						if (Eta[counter] >= (EtaBinsLow[l] - px/R[counter]) && Eta[counter] <= (EtaBinsHigh[l] + px/R[counter])){
-							Indices[(nEtaBins*k)+l][NrEachIndexbin[(nEtaBins*k)+l]] = (i*2048) + j;
+							Indices[(nEtaBins*k)+l][NrEachIndexbin[(nEtaBins*k)+l]] = (i*NrPixelsGlobal) + j;
 							NrEachIndexbin[(nEtaBins*k)+l] += 1;
 							break;
 						}
@@ -559,7 +560,7 @@ int main(int argc, char *argv[])
     fileParam = fopen(ParamFN,"r");
     char *str, dummy[1000];
     char fn[1024],folder[1024],Ext[1024],Dark[1024];
-    int StartNr, EndNr, LowNr, NrPixels;
+    int StartNr, EndNr, LowNr;
     int SpaceGroup,FitWeightMean=0;
     double LatticeConstant[6], Wavelength, MaxRingRad, Lsd, MaxTtheta, TthetaTol, ybc, zbc, EtaBinSize, px,Width;
     double tx = 0,tolTilts,tolLsd,tolBC,tolP,tyin=0,tzin=0,p0in=0,p1in=0,p2in=0;
@@ -614,6 +615,7 @@ int main(int argc, char *argv[])
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %d", dummy, &NrPixels);
+            NrPixelsGlobal = NrPixels;
             continue;
         }
         str = "ImTransOpt ";
@@ -813,10 +815,10 @@ int main(int argc, char *argv[])
 	printf("\n2Theta Tolerance: %f \n",TthetaTol);
 	pixelvalue *DarkFile;
 	double *AverageDark;
-	int SizeFile = sizeof(pixelvalue) * NrPixels * NrPixels;
-	int sz;
+	size_t SizeFile = sizeof(pixelvalue) * NrPixels * NrPixels;
+	size_t sz;
 	char FileName[1024];
-	long Skip;
+	size_t Skip;
 	FILE *fp, *fd;
 	int nFrames, TotFrames=0;
 	double *Average;
@@ -833,8 +835,8 @@ int main(int argc, char *argv[])
 		fseek(fd,0L,SEEK_END);
 		sz = ftell(fd);
 		rewind(fd);
-		nFrames = sz/(8*1024*1024);
-		Skip = sz - (nFrames*8*1024*1024);
+		nFrames = sz/(SizeFile);
+		Skip = sz - (nFrames*SizeFile);
 		printf("Reading dark file:      %s, nFrames: %d, skipping first %ld bytes.\n",Dark,nFrames,Skip);
 		fseek(fd,Skip,SEEK_SET);
 		for (j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]=0;
@@ -866,8 +868,8 @@ int main(int argc, char *argv[])
 		}
 		fseek(fp,0L,SEEK_END);
 		sz = ftell(fp);
-		nFrames = sz/(8*1024*1024);
-		Skip = sz - (nFrames*8*1024*1024);
+		nFrames = sz/(SizeFile);
+		Skip = sz - (nFrames*SizeFile);
 		printf("Reading calibrant file: %s, nFrames: %d, skipping first %ld bytes.\n",FileName,nFrames,Skip);
 		rewind(fp);
 		fseek(fp,Skip,SEEK_SET);
