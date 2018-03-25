@@ -29,6 +29,8 @@
 extern int Flag;
 extern double Wedge;
 extern double Wavelength;
+extern double **OmegaRang;
+extern int nOmeRang;
 
 double**
 allocMatrix(int nrows, int ncols)
@@ -579,7 +581,7 @@ CalcFracOverlap(
     double OmegaThis,ythis,zthis,XGT,YGT,Displ_Y,Displ_Z,ytemp,ztemp,
 		xyz[3],P1[3],ABC[3],outxyz[3],YZSpots[3][2],Lsd,ybc,zbc,P0[3],
 		YZSpotsTemp[2],YZSpotsT[3][2];
-    int **InPixels,NrInPixels, OverlapPixels,Layer;
+    int **InPixels,NrInPixels, OverlapPixels,Layer, omeRangNr;
     double eta, RingRadius, theta, omediff;
     long long int BinNr;
     int MultY, MultZ, AllDistsFound, TotalPixels;
@@ -590,16 +592,25 @@ CalcFracOverlap(
     for (j=0;j<nTspots;j++){
 		ythis = TheorSpots[j][0];
 		zthis = TheorSpots[j][1];
+		OutofBounds = 1;
 		if (Wedge != 0){
 			eta = CalcEta(ythis,zthis);
 			RingRadius = sqrt(ythis*ythis+zthis*zthis);
 			theta = rad2deg*atan(RingRadius/Lsds[0]);
 			omediff = CorrectWedge(eta,theta,Wavelength,Wedge);
 			OmegaThis = TheorSpots[j][2] - omediff;
-			if (OmegaThis > 180){
+			// Check if we just went outside the omegaRange, then make OutofBounds = 1;
+			if (OmegaThis >= 180){
 				OmegaThis -= 360;
-			}else if(OmegaThis < -180){
+			}else if(OmegaThis <= -180){
 				OmegaThis += 360;
+			}
+			for (omeRangNr=0;omeRangNr<nOmeRang;omeRangNr++){
+				if (OmegaThis > OmegaRang[omeRangNr][0] &&
+					OmegaThis < OmegaRang[omeRangNr][1]){
+					OutOfBounds = 0;
+					break;
+				}
 			}
 			printf("%lf %lf %lf\n",omediff,OmegaThis,TheorSpots[j][2]);
 		}else{
@@ -612,7 +623,6 @@ CalcFracOverlap(
 		Lsd = Lsds[0];
 		ybc = ybcs[0];
 		zbc = zbcs[0];
-		OutofBounds = 0;
 		for (k=0;k<3;k++){
 			XGT = XGrain[k];
 			YGT = YGrain[k];

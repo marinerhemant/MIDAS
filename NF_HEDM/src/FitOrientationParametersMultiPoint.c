@@ -29,6 +29,8 @@
 int Flag = 0;
 double Wedge;
 double Wavelength;
+double **OmegaRang;
+int nOmeRang;
 
 double**
 allocMatrixF(int nrows, int ncols)
@@ -566,6 +568,8 @@ main(int argc, char *argv[])
             continue;
         }  
     }
+    OmegaRang = OmegaRanges;
+    nOmeRang = NoOfOmegaRanges;
     gs = gSze;
     fclose(fileParam);
     //Read bin files
