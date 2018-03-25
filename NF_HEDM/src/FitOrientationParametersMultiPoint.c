@@ -27,6 +27,8 @@
 #define MAX_POINTS_GRID_GOOD 300000
 
 int Flag = 0;
+double Wedge;
+double Wavelength;
 
 double**
 allocMatrixF(int nrows, int ncols)
@@ -363,8 +365,7 @@ main(int argc, char *argv[])
         }
     }
     rewind(fileParam);
-    double Lsd[nLayers],ybc[nLayers],zbc[nLayers],ExcludePoleAngle,
-		Wavelength, minFracOverlap,doubledummy;
+    double Lsd[nLayers],ybc[nLayers],zbc[nLayers],ExcludePoleAngle, minFracOverlap,doubledummy;
     double px, OmegaStart,OmegaStep,tol,
            lsdtol,tiltstol,bctola,bctolb,lsdtolrel;
 	char fn[1000];
@@ -375,6 +376,7 @@ main(int argc, char *argv[])
     int NoOfOmegaRanges=0;
     double SpotsInfo[200][9];
     int nSpots=0;
+    Wedge = 0;
     double xc,yc,UD,gSze,gs,eul1,eul2,eul3,ysmall,ybig;
     while (fgets(aline,1000,fileParam)!=NULL){
 		str = "ReducedFileName ";
@@ -473,6 +475,12 @@ main(int argc, char *argv[])
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %lf", dummy, &Wavelength);
+            continue;
+        }
+        str = "Wedge ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &Wedge);
             continue;
         }
         str = "px ";

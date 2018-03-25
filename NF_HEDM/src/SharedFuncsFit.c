@@ -27,6 +27,8 @@
 #define MAX_POINTS_GRID_GOOD 200000
 
 extern int Flag;
+extern double Wedge;
+extern double Wavelength;
 
 double**
 allocMatrix(int nrows, int ncols)
@@ -467,6 +469,91 @@ CalcPixels2(double Edges[3][2], int **Pixels, int *counter)
     }
 }
 
+static inline double
+CalcEta(
+             RealType y,
+             RealType z) {
+    double alpha;
+    alpha = rad2deg * acos(z/sqrt(y*y+z*z));
+    if (y > 0) alpha = -alpha;
+    return alpha;
+}
+
+static inline
+double CorrectWedge(double eta, double theta, 
+		double wl, double wedge)
+{
+	double OmegaIni = 0;
+	double CosOme=cos(deg2rad*OmegaIni), SinOme=sin(deg2rad*OmegaIni);
+	double SinTheta = sin(deg2rad*theta);
+	double CosTheta = cos(deg2rad*theta);
+	double ds = 2*SinTheta/wl;
+	double CosW = cos(deg2rad*wedge);
+	double SinW = sin(deg2rad*wedge);
+	double SinEta = sin(deg2rad*eta);
+	double CosEta = cos(deg2rad*eta);
+	double k1 = -ds*SinTheta;
+	double k2 = -ds*CosTheta*SinEta;
+	double k3 =  ds*CosTheta*CosEta;
+	if (eta == 90){k3 = 0; k2 = -CosTheta;}
+	else if (eta == -90) {k3 = 0; k2 = CosTheta;}
+	double k1f = (k1*CosW) + (k3*SinW);
+	double k2f = k2;
+	double k3f = (k3*CosW) - (k1*SinW);
+	double G1a = (k1f*CosOme) + (k2f*SinOme);
+	double G2a = (k2f*CosOme) - (k1f*SinOme);
+	double G3a = k3f;
+	double LenGa = sqrt((G1a*G1a)+(G2a*G2a)+(G3a*G3a));
+	double g1 = G1a*ds/LenGa;
+	double g2 = G2a*ds/LenGa;
+	double g3 = G3a*ds/LenGa;
+	SinW = 0;
+	CosW = 1;
+	double LenG = sqrt((g1*g1)+(g2*g2)+(g3*g3));
+	double k1i = -(LenG*LenG*wl)/2;
+	double A = (k1i+(g3*SinW))/(CosW);
+	double a_Sin = (g1*g1) + (g2*g2);
+	double b_Sin = 2*A*g2;
+	double c_Sin = (A*A) - (g1*g1);
+	double a_Cos = a_Sin;
+	double b_Cos = -2*A*g1;
+	double c_Cos = (A*A) - (g2*g2);
+	double Par_Sin = (b_Sin*b_Sin) - (4*a_Sin*c_Sin);
+	double Par_Cos = (b_Cos*b_Cos) - (4*a_Cos*c_Cos);
+	double P_check_Sin = 0;
+	double P_check_Cos = 0;
+	double P_Sin,P_Cos;
+	if (Par_Sin >=0) P_Sin=sqrt(Par_Sin);
+	else {P_Sin=0;P_check_Sin=1;}
+	if (Par_Cos>=0) P_Cos=sqrt(Par_Cos);
+	else {P_Cos=0;P_check_Cos=1;}
+	double SinOmega1 = (-b_Sin-P_Sin)/(2*a_Sin);
+	double SinOmega2 = (-b_Sin+P_Sin)/(2*a_Sin);
+	double CosOmega1 = (-b_Cos-P_Cos)/(2*a_Cos);
+	double CosOmega2 = (-b_Cos+P_Cos)/(2*a_Cos);
+	if      (SinOmega1 < -1) SinOmega1=0;
+	else if (SinOmega1 >  1) SinOmega1=0;
+	else if (SinOmega2 < -1) SinOmega2=0;
+	else if (SinOmega2 >  1) SinOmega2=0;
+	if      (CosOmega1 < -1) CosOmega1=0;
+	else if (CosOmega1 >  1) CosOmega1=0;
+	else if (CosOmega2 < -1) CosOmega2=0;
+	else if (CosOmega2 >  1) CosOmega2=0;
+	if (P_check_Sin == 1){SinOmega1=0;SinOmega2=0;}
+	if (P_check_Cos == 1){CosOmega1=0;CosOmega2=0;}
+	double Option1 = fabs((SinOmega1*SinOmega1)+(CosOmega1*CosOmega1)-1);
+	double Option2 = fabs((SinOmega1*SinOmega1)+(CosOmega2*CosOmega2)-1);
+	double Omega1, Omega2;
+	if (Option1 < Option2){Omega1=rad2deg*atan2(SinOmega1,CosOmega1);Omega2=rad2deg*atan2(SinOmega2,CosOmega2);}
+	else {Omega1=rad2deg*atan2(SinOmega1,CosOmega2);Omega2=rad2deg*atan2(SinOmega2,CosOmega1);}
+	double OmeDiff1 = fabs(Omega1-OmegaIni);
+	double OmeDiff2 = fabs(Omega2-OmegaIni);
+	double Omega;
+	if (OmeDiff1 < OmeDiff2)Omega=Omega1;
+	else Omega=Omega2;
+	return Omega;
+}
+
 void
 CalcFracOverlap(
     const int NrOfFiles,
@@ -495,6 +582,7 @@ CalcFracOverlap(
 		xyz[3],P1[3],ABC[3],outxyz[3],YZSpots[3][2],Lsd,ybc,zbc,P0[3],
 		YZSpotsTemp[2],YZSpotsT[3][2];
     int **InPixels,NrInPixels, OverlapPixels,Layer;
+    double eta, RingRadius, theta, omediff;
     long long int BinNr;
     int MultY, MultZ, AllDistsFound, TotalPixels;
     *FracOver = 0;
@@ -504,11 +592,19 @@ CalcFracOverlap(
     for (j=0;j<nTspots;j++){
 		ythis = TheorSpots[j][0];
 		zthis = TheorSpots[j][1];
-		OmegaThis = TheorSpots[j][2];
+		if (Wedge != 0){
+			eta = CalcEta(ythis,zthis);
+			RingRadius = sqrt(ythis*ythis+zthis*zthis);
+			theta = rad2deg*atan(RingRadius/Lsds[0]);
+			omediff = CorrectWedge(eta,theta,Wavelength,Wedge);
+			OmegaThis = TheorSpots[j][2] - omediff;
+		}else{
+			OmegaThis = TheorSpots[j][2];
+		}
 		OmeBin = (int) floor((-OmegaStart+OmegaThis)/OmegaStep);
 		for (k=0;k<3;k++){
-            P0[k] = P0All[0][k];
-        }
+			P0[k] = P0All[0][k];
+		}
 		Lsd = Lsds[0];
 		ybc = ybcs[0];
 		zbc = zbcs[0];

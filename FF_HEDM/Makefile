@@ -93,6 +93,9 @@ calibrant: $(SRCDIR)Calibrant.c
 fittiltbclsdsample: $(SRCDIR)FitTiltBCLsdSampleOmegaCorrection.c
 	$(CC) $(SRCDIR)FitTiltBCLsdSampleOmegaCorrection.c -o $(BINDIR)FitTiltBCLsdSample $(CFLAGS) $(CFLAGSNLOPT) 
 
+forwardsimulation: $(SRCDIR)ForwardSimulation.c
+	$(CC) $(SRCDIR)ForwardSimulation.c -o $(BINDIR)ForwardSimulation $(CFLAGS)
+
 fitposorstrains: $(SRCDIR)FitPosOrStrains.c
 	$(CC) $(SRCDIR)FitPosOrStrains.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitPosOrStrains $(CFLAGS) \
 	$(CFLAGSNLOPT) 
