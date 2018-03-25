@@ -608,7 +608,7 @@ CalcFracOverlap(
 			for (omeRangNr=0;omeRangNr<nOmeRang;omeRangNr++){
 				if (OmegaThis > OmegaRang[omeRangNr][0] &&
 					OmegaThis < OmegaRang[omeRangNr][1]){
-					OutOfBounds = 0;
+					OutofBounds = 0;
 					break;
 				}
 			}
