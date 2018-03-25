@@ -29,7 +29,7 @@
 extern int Flag;
 extern double Wedge;
 extern double Wavelength;
-extern double **OmegaRang;
+extern double OmegaRang[MAX_N_OMEGA_RANGES][2];
 extern int nOmeRang;
 
 double**

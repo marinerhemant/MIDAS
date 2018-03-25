@@ -29,7 +29,7 @@
 int Flag = 0;
 double Wedge;
 double Wavelength;
-double **OmegaRang;
+double OmegaRang[MAX_N_OMEGA_RANGES][2];
 int nOmeRang;
 
 double**
@@ -522,7 +522,11 @@ main(int argc, char *argv[])
             continue;
         }  
     }
-    OmegaRang = OmegaRanges;
+    int i,j,m,nrFiles,nrPixels;
+    for (i=0;i<NoOfOmegaRanges;i++){
+		OmegaRang[i][0] = OmegaRanges[i][0];
+		OmegaRang[i][1] = OmegaRanges[i][1];
+	}
     nOmeRang = NoOfOmegaRanges;
     fclose(fileParam);
     MaxTtheta = rad2deg*atan(MaxRingRad/Lsd[0]);
@@ -537,7 +541,6 @@ main(int argc, char *argv[])
     sprintf(fnKey,"%s/Key.txt",direct);
     sprintf(fnOr,"%s/OrientMat.txt",direct);
     sprintf(fn,"%s/%s",direct,fn2);
-    int i,j,m,nrFiles,nrPixels;
     char *ext="bin";
     int *ObsSpotsInfo;
     int ReadCode;
