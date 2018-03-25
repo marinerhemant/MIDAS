@@ -483,8 +483,6 @@ static inline
 double CorrectWedge(double eta, double theta, 
 		double wl, double wedge)
 {
-	double OmegaIni = 0;
-	double CosOme=cos(deg2rad*OmegaIni), SinOme=sin(deg2rad*OmegaIni);
 	double SinTheta = sin(deg2rad*theta);
 	double CosTheta = cos(deg2rad*theta);
 	double ds = 2*SinTheta/wl;
@@ -500,8 +498,8 @@ double CorrectWedge(double eta, double theta,
 	double k1f = (k1*CosW) + (k3*SinW);
 	double k2f = k2;
 	double k3f = (k3*CosW) - (k1*SinW);
-	double G1a = (k1f*CosOme) + (k2f*SinOme);
-	double G2a = (k2f*CosOme) - (k1f*SinOme);
+	double G1a = (k1f);
+	double G2a = (k2f);
 	double G3a = k3f;
 	double LenGa = sqrt((G1a*G1a)+(G2a*G2a)+(G3a*G3a));
 	double g1 = G1a*ds/LenGa;
@@ -546,8 +544,8 @@ double CorrectWedge(double eta, double theta,
 	double Omega1, Omega2;
 	if (Option1 < Option2){Omega1=rad2deg*atan2(SinOmega1,CosOmega1);Omega2=rad2deg*atan2(SinOmega2,CosOmega2);}
 	else {Omega1=rad2deg*atan2(SinOmega1,CosOmega2);Omega2=rad2deg*atan2(SinOmega2,CosOmega1);}
-	double OmeDiff1 = fabs(Omega1-OmegaIni);
-	double OmeDiff2 = fabs(Omega2-OmegaIni);
+	double OmeDiff1 = fabs(Omega1);
+	double OmeDiff2 = fabs(Omega2);
 	double Omega;
 	if (OmeDiff1 < OmeDiff2)Omega=Omega1;
 	else Omega=Omega2;
@@ -598,6 +596,12 @@ CalcFracOverlap(
 			theta = rad2deg*atan(RingRadius/Lsds[0]);
 			omediff = CorrectWedge(eta,theta,Wavelength,Wedge);
 			OmegaThis = TheorSpots[j][2] - omediff;
+			if (OmegaThis > 180){
+				OmegaThis -= 360;
+			}else if(OmegaThis < -180){
+				OmegaThis += 360;
+			}
+			printf("%lf %lf %lf\n",omediff,OmegaThis,TheorSpots[j][2]);
 		}else{
 			OmegaThis = TheorSpots[j][2];
 		}
