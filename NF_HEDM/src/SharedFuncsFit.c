@@ -612,7 +612,7 @@ CalcFracOverlap(
 					break;
 				}
 			}
-			printf("%lf %lf %lf\n",omediff,OmegaThis,TheorSpots[j][2]);
+			//~ printf("%lf %lf %lf\n",omediff,OmegaThis,TheorSpots[j][2]);
 		}else{
 			OmegaThis = TheorSpots[j][2];
 		}
@@ -690,7 +690,7 @@ CalcFracOverlap(
 				BinNr += (long long int) OmeBin*2048*2048;
 				BinNr += (long long int) 2048*MultY;
 				BinNr += MultZ;
-				printf("%lld %d %d %d %d %d\n",BinNr,Layer,NrOfFiles,OmeBin,MultY,MultZ);
+				//~ printf("%lld %d %d %d %d %d\n",BinNr,Layer,NrOfFiles,OmeBin,MultY,MultZ);
 				fflush(stdout);
 				if (TestBit(ObsSpotsInfo,BinNr)){
 					if (AllDistsFound == 1){
