@@ -80,7 +80,7 @@ then
 		Micf=$(awk '$1 ~ /^MicFileBinary/ { print $2 }' ${NEW_PARAM_FILE})
 		MicfT=$(awk '$1 ~ /^MicFileText/ { print $2 }' ${NEW_PARAM_FILE})
 		sed -i "/SeedOrientations/c\SeedOrientations ${AllOrientationsFile}" ${NEW_PARAM_FILE}
-		sed -i "/MinFracAccept/c\MinFracAccept 0.03" ${NEW_PARAM_FILE}
+		sed -i "/MinFracAccept/c\MinFracAccept 0.06" ${NEW_PARAM_FILE}
 		sed -i "/MicFileBinary/c\MicFileBinary ${Micf}_AllOrientations" ${NEW_PARAM_FILE}
 		sed -i "/MicFileText/c\MicFileText ${MicfT}_AllOrientations" ${NEW_PARAM_FILE}
 		mv grid.txt grid_all.txt
