@@ -70,10 +70,10 @@ ${BINFOLDER}/ParseMic ${TOP_PARAM_FILE}
 
 if [[ ${FFSeedOrientations} == 1 ]]
 then
-	NEW_PARAM_FILE=${TOP_PARAM_FILE}_AllOrientations.txt
-	cp ${TOP_PARAM_FILE} ${NEW_PARAM_FILE}
-	AllOrientationsFile=$( awk '$1 ~ /^FullSeedFile/ { print $2 }' ${NEW_PARAM_FILE} )
+	AllOrientationsFile=$( awk '$1 ~ /^FullSeedFile/ { print $2 }' ${TOP_PARAM_FILE} )
 	if [[ ${AllOrientationsFile} != '' ]]; then
+		NEW_PARAM_FILE=${TOP_PARAM_FILE}_AllOrientations.txt
+		cp ${TOP_PARAM_FILE} ${NEW_PARAM_FILE}
 		MINCONFIDENCE=$(awk '$1 ~ /^MinConfidence/ { print $2 }' ${NEW_PARAM_FILE})
 		LOWMINCONFIDENCE=$(awk '$1 ~ /^MinConfidenceLowerBound/ { print $2 }' ${NEW_PARAM_FILE})
 		echo "Now checking all orientations for all voxels with low confidence."
