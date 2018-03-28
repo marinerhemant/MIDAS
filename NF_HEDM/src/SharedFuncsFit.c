@@ -615,6 +615,7 @@ CalcFracOverlap(
 			//~ printf("%lf %lf %lf\n",omediff,OmegaThis,TheorSpots[j][2]);
 		}else{
 			OmegaThis = TheorSpots[j][2];
+			OutofBounds = 0;
 		}
 		OmeBin = (int) floor((-OmegaStart+OmegaThis)/OmegaStep);
 		for (k=0;k<3;k++){
