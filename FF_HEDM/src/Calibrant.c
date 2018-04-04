@@ -565,7 +565,7 @@ int main(int argc, char *argv[])
     double LatticeConstant[6], Wavelength, MaxRingRad, Lsd, MaxTtheta, TthetaTol, ybc, zbc, EtaBinSize, px,Width;
     double tx = 0,tolTilts,tolLsd,tolBC,tolP,tyin=0,tzin=0,p0in=0,p1in=0,p2in=0;
     //int SkipHeader = 1;
-    int Padding = 6;
+    int Padding = 6, NrPixels;
     int NrTransOpt=0;
     int TransOpt[10], nRingsExclude=0, RingsExclude[50];
     while (fgets(aline,1000,fileParam)!=NULL){
