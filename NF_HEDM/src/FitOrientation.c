@@ -729,13 +729,14 @@ main(int argc, char *argv[])
 	            for (j=0;j<9;j++){
 	                OrientMatrix[OrientationGoodID][j] = OrientationMatThis[j];
 	            }
-	            OrientMatrix[OrientationGoodID][9] = FracOverT;
+	            OrientMatrix[OrientationGoodID][9] = (double)i; // Store the row nr in OrientationsList for grainID determination
 	            OrientationGoodID++;
 	        }
 	    }
 	    printf("Finished checking orientation grid. Now fitting %d orientations.\n",OrientationGoodID);
 	    double BestFrac, BestEuler[3];
 		double ResultMatr[7+(nSaves*4)], QuatIn[4], QuatOut[4];
+		double bestRowNr=0;
 	    if (OrientationGoodID>0){
 			int n_hkls = 0;
 			double hkls[5000][4];
@@ -784,6 +785,7 @@ main(int argc, char *argv[])
 	            Fractions = 1-FracOut;
 	            if (Fractions > BestFrac){
 					printf("%f %d of %d, EulerAngles: %f %f %f\n",Fractions,i,OrientationGoodID,EulerOutA,EulerOutB,EulerOutC);
+					bestRowNr = OrientMatrix[i][9]; // Save best RowNr
 	                BestFrac = Fractions;
 	                BestEuler[0] = EulerOutA;
 	                BestEuler[1] = EulerOutB;
@@ -814,7 +816,7 @@ main(int argc, char *argv[])
 		}
 		end = clock();
 	    diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
-	    double outresult[11] = {(double)atoi(argv[2]),(double)OrientationGoodID,
+	    double outresult[11] = {bestRowNr,(double)OrientationGoodID,
 			diftotal,xs,ys,GridSize,(double)UD,BestEuler[0],BestEuler[1],
 			BestEuler[2],BestFrac};
 		int SizeWritten = 11*sizeof(double);
