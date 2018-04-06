@@ -9,7 +9,7 @@
 //
 //  Created by Hemant Sharma on 2018/03/01.
 //
-//  TODO: Write GE output.
+//  TODO: Write TIFF output for NF.
 //
 
 #include <stdio.h>

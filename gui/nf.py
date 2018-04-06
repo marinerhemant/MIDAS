@@ -507,11 +507,13 @@ def bcwindow():
 	global distDiffVar
 	global cid
 	global lb1
+	global ndistances
 	if cid is not None:
 		canvas.mpl_disconnect(cid)
 		lb1.grid_forget()
 		lb1 = None
 		cid = None
+	ndistances = int(ndistancesvar.get())
 	nRows = ndistances
 	nCols = 2
 	top = Tk.Toplevel()
@@ -814,6 +816,10 @@ def plotmic():
 		b.title.set_text("MicFile (Euler2)")
 	elif col == 10:
 		b.title.set_text("MicFile (Confidence Coloring)")
+	elif col == 1:
+		b.title.set_text("MicFile (OrientationID)")
+	elif col == 11:
+		b.title.set_text("MicFile (PhaseNr)")
 	cb = figur.colorbar(sc,ax=b)
 	b.set_aspect('equal')
 	figur.tight_layout()
@@ -1014,7 +1020,7 @@ firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
 Tk.Button(master=firstRowFrame,text='FirstFile',command=firstfileselect).grid(row=1,column=1,sticky=Tk.W)
 
 Tk.Label(master=firstRowFrame,text="Folder").grid(row=1,column=2,sticky=Tk.W)
-e0 = Tk.Entry(master=firstRowFrame,textvariable=foldervar,width=50)
+e0 = Tk.Entry(master=firstRowFrame,textvariable=foldervar,width=45)
 e0.grid(row=1,column=3,sticky=Tk.W)
 
 buttonfolder = Tk.Button(master=firstRowFrame,text="Select",command=folderselect)
@@ -1061,7 +1067,7 @@ e2.grid(row=1,column=2,sticky=Tk.W)
 e2.focus_set()
 
 minThresh = 0
-Tk.Label(master=secondRowFrame,text="MinThresh(cnts)").grid(row=1,column=3,sticky=Tk.W)
+Tk.Label(master=secondRowFrame,text="MinThresh").grid(row=1,column=3,sticky=Tk.W)
 minThreshvar = Tk.StringVar()
 minThreshvar.set(str(minThresh))
 emt = Tk.Entry(master=secondRowFrame,textvariable=minThreshvar,width=4)
@@ -1107,7 +1113,7 @@ maxoverframes = Tk.IntVar()
 chkMaxOverFrames = Tk.Checkbutton(master=secondRowFrame,text="LoadMaxOverFrames",variable=maxoverframes)
 chkMaxOverFrames.grid(row=1,column=17,sticky=Tk.W)
 
-c = Tk.Checkbutton(master=secondRowFrame,text="Subtract Median",variable=var)
+c = Tk.Checkbutton(master=secondRowFrame,text="Subt Median",variable=var)
 c.grid(row=1,column=18,sticky=Tk.W)
 
 thirdRowFrame = Tk.Frame(root)
@@ -1142,24 +1148,26 @@ button2.grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.W)
 loadmicframe = Tk.Frame(root)
 loadmicframe.grid(row=figrowspan+1,column=3,sticky=Tk.W)
 
-buttonLoadMicFile = Tk.Button(master=loadmicframe,text='LoadMicrostructure',command=load_mic,font=("Helvetica",11))
+buttonLoadMicFile = Tk.Button(master=loadmicframe,text='LoadMic',command=load_mic,font=("Helvetica",11))
 buttonLoadMicFile.grid(row=1,column=1,sticky=Tk.W)
 
 buttonReplot = Tk.Button(master=loadmicframe,text='ReloadMic',command=plotmic,font=("Helvetica",11))
 buttonReplot.grid(row=1,column=2,sticky=Tk.W)
 
 radioframe = Tk.Frame(root)
-radioframe.grid(row=figrowspan+2,column=3,sticky=Tk.W)
+radioframe.grid(row=figrowspan+2,column=3,rowspan=2,sticky=Tk.W)
 
 Tk.Radiobutton(master=radioframe,text='Confidence',variable=colVar,value=10).grid(row=1,column=1,sticky=Tk.W)
-Tk.Radiobutton(master=radioframe,text='Euler0',variable=colVar,value=7).grid(row=1,column=2,sticky=Tk.W)
-Tk.Radiobutton(master=radioframe,text='Euler1',variable=colVar,value=8).grid(row=1,column=3,sticky=Tk.W)
-Tk.Radiobutton(master=radioframe,text='Euler2',variable=colVar,value=9).grid(row=1,column=4,sticky=Tk.W)
+Tk.Radiobutton(master=radioframe,text='GrainID',variable=colVar,value=0).grid(row=1,column=2,sticky=Tk.W)
+Tk.Radiobutton(master=radioframe,text='PhaseNr',variable=colVar,value=11).grid(row=1,column=3,sticky=Tk.W)
+Tk.Radiobutton(master=radioframe,text='Euler0',variable=colVar,value=7).grid(row=2,column=1,sticky=Tk.W)
+Tk.Radiobutton(master=radioframe,text='Euler1',variable=colVar,value=8).grid(row=2,column=2,sticky=Tk.W)
+Tk.Radiobutton(master=radioframe,text='Euler2',variable=colVar,value=9).grid(row=2,column=3,sticky=Tk.W)
 
 micframethirdrow = Tk.Frame(root)
-micframethirdrow.grid(row=figrowspan+3,column=3,sticky=Tk.W)
+micframethirdrow.grid(row=figrowspan+4,column=3,sticky=Tk.W)
 
-Tk.Label(master=micframethirdrow,text='CutoffConfidence').grid(row=1,column=1,sticky=Tk.W)
+Tk.Label(master=micframethirdrow,text='MinConfidence').grid(row=1,column=1,sticky=Tk.W)
 Tk.Entry(master=micframethirdrow,textvariable=cutconfidencevar,width=4).grid(row=1,column=2,sticky=Tk.W)
 
 Tk.Button(master=micframethirdrow,text='SelectPoint',command=selectpoint).grid(row=1,column=3)
