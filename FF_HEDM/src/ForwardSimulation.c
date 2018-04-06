@@ -934,7 +934,7 @@ main(int argc, char *argv[])
 			}
 		}
 	}
-	printf("Writing the GE file.\n");
+	printf("Diffraction spots done, now writing the GE file.\n");
 	int *header;
 	header = malloc(8192);
 	FILE *outfile = fopen(OutFileName,"w");
