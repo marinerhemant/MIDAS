@@ -929,11 +929,12 @@ main(int argc, char *argv[])
 				for (idxNrZ=-2*ceil(GaussWidth);idxNrZ<=2*ceil(GaussWidth);idxNrZ++){
 					currentPos = centIdx + idxNrY*NrPixels + idxNrZ;
 					ImageArr[currentPos] += (uint16_t) (GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask] * PeakIntensity);
-					printf("%u %lf %llu\n",ImageArr[currentPos], GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask], currentPos);
+					//printf("%u %lf %llu\n",ImageArr[currentPos], GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask], currentPos);
 				}
 			}
 		}
 	}
+	printf("Writing the GE file.\n");
 	int *header;
 	header = malloc(8192);
 	FILE *outfile = fopen(OutFileName,"w");
