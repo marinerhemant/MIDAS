@@ -139,51 +139,6 @@ MatrixMultF33(
     }
 }
 
-void
-RotationTilts(
-    double tx,
-    double ty,
-    double tz,
-    double RotMatOut[3][3])
-{
-    tx = deg2rad*tx;
-    ty = deg2rad*ty;
-    tz = deg2rad*tz;
-    double r1[3][3];
-    double r2[3][3];
-    double r3[3][3];
-    double r1r2[3][3];
-    r1[0][0] = cos(tz);
-    r1[0][1] = -sin(tz);
-    r1[0][2] = 0;
-    r1[1][0] = sin(tz);
-    r1[1][1] = cos(tz);
-    r1[1][2] = 0;
-    r1[2][0] = 0;
-    r1[2][1] = 0;
-    r1[2][2] = 1;
-    r2[0][0] = cos(ty);
-    r2[0][1] = 0;
-    r2[0][2] = sin(ty);
-    r2[1][0] = 0;
-    r2[1][1] = 1;
-    r2[1][2] = 0;
-    r2[2][0] = -sin(ty);
-    r2[2][1] = 0;
-    r2[2][2] = cos(ty);
-    r3[0][0] = 1;
-    r3[0][1] = 0;
-    r3[0][2] = 0;
-    r3[1][0] = 0;
-    r3[1][1] = cos(tx);
-    r3[1][2] = -sin(tx);
-    r3[2][0] = 0;
-    r3[2][1] = sin(tx);
-    r3[2][2] = cos(tx);
-    MatrixMultF33(r1,r2,r1r2);
-    MatrixMultF33(r1r2,r3,RotMatOut);
-}
-
 static inline void
 CalcEtaAngle(
              double y,
