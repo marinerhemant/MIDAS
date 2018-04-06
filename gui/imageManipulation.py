@@ -428,6 +428,86 @@ def Enable1D():
 		cButton1D.config(state=Tk.DISABLED)
 		OneDOutVar.set(0)
 
+def processStitch():
+	global topStitch
+	thisfolder = thisfoldervar.get()
+	fstem = fstemvar.get()
+	outfstem = outfstemvar.get()
+	startnr = stnrvar.get()
+	fnext = fnextvar.get()
+	pad = paddingvar.get()
+	dfn = darkfnvar.get()
+	nfilesperscan = nfilesperscanvar.get()
+	nscans = nscansvar.get()
+	nlayers = nlayersvar.get()
+	translation = translationvar.get()
+	npx = npxvar.get()
+	nframes = nframesvar.get()
+	dfile = open(dfn,'rb')
+	head = np.fromfile(dfile,dtype=np.uint8,count=8192)
+	dArr = np.fromfile(dfile,dtype=np.uint16,count=(npx*npx))
+	dArr = dArr.astpe(float)
+	for layerNr in range(nlayers):
+		for scanFileNr in range(nfilesperscan):
+			outFNr = startnr + layerNr*nfilesperscan + scanFileNr
+			outF = open(thisfolder+'/'+outfstem+'_Stitch_'+str(outFNr).zfill(pad)+fnext,'wb')
+			np.array(head).tofile(outF)
+			for frameNr in range(nframes):
+				imgArr = np.zeros(npx*npx)
+				imgArr = imgArr.astype(float)
+				for scanNr in range(nscans):
+					zeroArr = np.zeros(scanNr*translation*npx)
+					positions = range(npx*(npx-scanNr*translation),npx*npx)
+					thisFileNr = layerNr*nfilesperscan*nscans + scanFileNr*nscans + scanNr
+					bytesToSkip = 8192 + frameNr*npx*npx*2
+					inF = open(thisfolder+'/'+fstem+'_'+str(thisFileNr).zfill(pad)+fnext,'rb')
+					inF.seek(bytesToSkip,os.SEEK_SET)
+					data = np.fromfile(inF,dtype=np.uint16,count=(npx*npx))
+					data = data.astype(float)
+					data = data - dArr
+					# This assumes the data for GE was transposed. If not, we would need to convert to 2D, transpose, translate, transpose, convert to 1D
+					np.put(data,positions,zeroArr)
+					data = np.roll(data,scanNr*translation*npx)
+					imgArr += data
+				imgArr += dArr
+				imgArr = imgArr.astype(uint16)
+				np.array(imgArr).tofile(outF)
+	topStitch.destroy()
+
+def stitch_ff():
+	global thisfoldervar, fstemvar, stnrvar, fnextvar, darkfnvar, paddingvar, outfstemvar
+	global nfilesperscanvar, nscansvar, nlayersvar, translationvar, npxvar, nframesvar
+	global topStitch
+	topStitch = Tk.Toplevel()
+	topStitch.title('Stitch FF GE images for further processing')
+	Tk.Label(master=topStitch,text='            Folder').grid(row=1,column=1)
+	Tk.Entry(master=topStitch,textvariable=thisfoldervar,width=50).grid(row=1,column=2,sticky=Tk.W)
+	Tk.Label(master=topStitch,text='         File Stem').grid(row=2,column=1)
+	Tk.Entry(master=topStitch,textvariable=fstemvar,width=50).grid(row=2,column=2,sticky=Tk.W)
+	Tk.Label(master=topStitch,text='      OutFile Stem').grid(row=3,column=1)
+	Tk.Entry(master=topStitch,textvariable=outfstemvar,width=50).grid(row=3,column=2,sticky=Tk.W)
+	Tk.Label(master=topStitch,text='      Start Number').grid(row=4,column=1)
+	Tk.Entry(master=topStitch,textvariable=stnrvar,width=6 ).grid(row=4,column=2,sticky=Tk.W)
+	Tk.Label(master=topStitch,text='           Padding').grid(row=5,column=1)
+	Tk.Entry(master=topStitch,textvariable=paddingvar,width=6 ).grid(row=5,column=2,sticky=Tk.W)
+	Tk.Label(master=topStitch,text='    File Extension').grid(row=6,column=1)
+	Tk.Entry(master=topStitch,textvariable=fnextvar,width=6 ).grid(row=6,column=2,sticky=Tk.W)
+	Tk.Label(master=topStitch,text='         Dark File').grid(row=7,column=1)
+	Tk.Entry(master=topStitch,textvariable=darkfnvar,width=50).grid(row=7,column=2,sticky=Tk.W)
+	Tk.Label(master=topStitch,text='  NrFiles Per Scan').grid(row=8,column=1)
+	Tk.Entry(master=topStitch,textvariable=nfilesperscanvar,width=6 ).grid(row=8,column=2,sticky=Tk.W)
+	Tk.Label(master=topStitch,text='           NrScans').grid(row=9,column=1)
+	Tk.Entry(master=topStitch,textvariable=nscansvar,width=6 ).grid(row=9,column=2,sticky=Tk.W)
+	Tk.Label(master=topStitch,text='          NrLayers').grid(row=10,column=1)
+	Tk.Entry(master=topStitch,textvariable=nlayersvar,width=6 ).grid(row=10,column=2,sticky=Tk.W)
+	Tk.Label(master=topStitch,text='TranslationAmt(px)').grid(row=11,column=1)
+	Tk.Entry(master=topStitch,textvariable=translationvar,width=6 ).grid(row=11,column=2,sticky=Tk.W)
+	Tk.Label(master=topStitch,text='          NrPixels').grid(row=12,column=1)
+	Tk.Entry(master=topStitch,textvariable=npxvar,width=6 ).grid(row=12,column=2,sticky=Tk.W)
+	Tk.Label(master=topStitch,text='   NrFramesPerFile').grid(row=13,column=1)
+	Tk.Entry(master=topStitch,textvariable=nframesvar,width=6 ).grid(row=13,column=2,sticky=Tk.W)
+	Tk.Button(master=topStitch,text="Process",command=processStitch).grid(row=14,column=1,columnspan=2)
+
 def integrate():
 	global EtaBinSizeVar, RBinSizeVar, RMaxVar, RMinVar, EtaMaxVar, EtaMinVar
 	global NrPixelsVar, NormalizeVar, FloatFileVar, txVar, tyVar, tzVar
@@ -645,6 +725,19 @@ RMaxVar.set(1024.0)
 RMinVar.set(10.0)
 EtaMaxVar.set(180.0)
 EtaMinVar.set(-180.0)
+thisfoldervar = Tk.StringVar()
+fstemvar = Tk.StringVar()
+outfstemvar = Tk.StringVar()
+stnrvar = Tk.IntVar()
+fnextvar = Tk.StringVar()
+paddingvar = Tk.IntVar()
+darkfnvar = Tk.StringVar()
+nfilesperscanvar = Tk.IntVar()
+nscansvar = Tk.IntVar()
+nlayersvar = Tk.IntVar()
+translationvar = Tk.IntVar()
+npxvar = Tk.IntVar()
+nframesvar = Tk.IntVar()
 
 rowFigSize = 3
 colFigSize = 3
@@ -681,7 +774,7 @@ bottomFrame.grid(row=rowFigSize+10,column=0,columnspan=4,sticky=Tk.W)
 Tk.Button(master=leftSideFrame,text='Quit',command=_quit,
 	font=("Helvetica",20)).grid(row=0,column=0,padx=10,pady=10)
 
-Tk.Button(master=leftSideFrame,text='Calibrate',command=_quit,
+Tk.Button(master=leftSideFrame,text='StitchFF',command=stitch_ff,
 	font=("Helvetica",20)).grid(row=1,column=0,padx=10,pady=10)
 
 Tk.Button(master=firstRowFrame,text='SelectFirstFile',
