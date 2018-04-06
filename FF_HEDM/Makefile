@@ -21,7 +21,7 @@ all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting 
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking\
 	mapmultdetectors matchgrains detectormapper integrator mergemultiplescans \
 	fitposorstrainsscanning indexscanning processgrainsscanning mapbnd fitscanninggrain \
-	fitgrainhydra
+	fitgrainhydra forwardsimulation
 
 #local:
 local: predeplocal all runsetup
