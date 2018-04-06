@@ -66,17 +66,6 @@ allocMatrix(int nrows, int ncols)
 }
 
 static inline void
-MatrixMult(RealType m[3][3],int  v[3],RealType r[3])
-{
-    int i;
-    for (i=0; i<3; i++) {
-        r[i] = m[i][0]*v[0] +
-        m[i][1]*v[1] +
-        m[i][2]*v[2];
-    }
-}
-
-static inline void
 MatrixMultF(RealType m[3][3],RealType v[3],RealType r[3])
 {
     int i;
