@@ -536,7 +536,7 @@ main(int argc, char *argv[])
 	int LowNr;
 	char *str, dummy[4096], aline[4096];
 	fileParam = fopen(ParamFN,"r");
-	char InFileName[4096], OutFileStem[4096], OutFileExt[4096], Folder[4096], OutFolder[4096];
+	char InFileName[4096], OutFileName[4096];
 	int Padding=6, NrPixels;
 	double Lsd, tx, ty, tz, yBC, zBC, OmegaStep, OmegaStart, OmegaEnd, px;
 	int RingsToUse[500], nRings=0;
@@ -570,40 +570,16 @@ main(int argc, char *argv[])
 				,&LatC[3],&LatC[4],&LatC[5]);
 			continue;
 		}
-		str="Folder ";
-		LowNr = strncmp(aline,str,strlen(str));
-		if (LowNr == 0){
-			sscanf(aline,"%s %s",dummy,Folder);
-			continue;
-		}
-		str="OutFolder ";
-		LowNr = strncmp(aline,str,strlen(str));
-		if (LowNr == 0){
-			sscanf(aline,"%s %s",dummy,OutFolder);
-			continue;
-		}
 		str="InFileName ";
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr == 0){
 			sscanf(aline,"%s %s",dummy,InFileName);
 			continue;
 		}
-		str="OutFileExt ";
+		str="OutFileName ";
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr == 0){
-			sscanf(aline,"%s %s",dummy,OutFileExt);
-			continue;
-		}
-		str="OutFileStem ";
-		LowNr = strncmp(aline,str,strlen(str));
-		if (LowNr == 0){
-			sscanf(aline,"%s %s",dummy,OutFileStem);
-			continue;
-		}
-		str="Padding ";
-		LowNr = strncmp(aline,str,strlen(str));
-		if (LowNr == 0){
-			sscanf(aline,"%s %d",dummy,&Padding);
+			sscanf(aline,"%s %s",dummy,OutFileName);
 			continue;
 		}
 		str="Lsd ";
@@ -717,7 +693,7 @@ main(int argc, char *argv[])
 	}
 	
 	char inpFN[4096];
-	sprintf(inpFN,"%s/%s",Folder,InFileName);
+	sprintf(inpFN,"%s",InFileName);
 	FILE *inpF;
 	inpF = fopen(inpFN,"r");
 	fgets(aline,4096,inpF);
@@ -838,7 +814,7 @@ main(int argc, char *argv[])
 		for (j=0;j<nrPxMask;j++){
 			GaussMask[i*nrPxMask+j] = exp(-0.5*(
 				((i-2*ceil(GaussWidth))*(i-2*ceil(GaussWidth))/(GaussWidth*GaussWidth)) +
-				((i-2*ceil(GaussWidth))*(i-2*ceil(GaussWidth))/(GaussWidth*GaussWidth)) ));//i is slow, j is fast
+				((j-2*ceil(GaussWidth))*(j-2*ceil(GaussWidth))/(GaussWidth*GaussWidth)) ));//i is slow, j is fast
 		}
 	}
 	double centVal = GaussMask[centIdxMask];
@@ -849,10 +825,9 @@ main(int argc, char *argv[])
 	}
 
 	char spotMatrFN[4096];
-	sprintf(spotMatrFN,"%s/SpotMatrix.csv",OutFolder);
+	sprintf(spotMatrFN,"SpotMatrixGen.csv");
 	FILE *spotsfile = fopen(spotMatrFN,"w");
 	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
-	
 	double spotMatr[12];
 	double **TheorSpots;
 	int nTspots, voxNr, spotNr;
@@ -924,6 +899,7 @@ main(int argc, char *argv[])
 			yDet = yBC - yTemp/px;
 			zDet = zBC + zTemp/px;
 			Info[3] = 0.5*atand(sqrt(yThis*yThis+zThis*zThis)/Lsd); // New Theta
+			CalcEtaAngle(yThis,zThis,&etaThis);
 			// Save to SpotMatrix.csv
 			spotMatr[0]  = (double) voxNr + 1;
 			spotMatr[1]  = (double) (n_hkls*voxNr + spotNr);
@@ -931,7 +907,6 @@ main(int argc, char *argv[])
 			spotMatr[3]  = yDet;
 			spotMatr[4]  = zDet;
 			spotMatr[5]  = omeThis;
-			CalcEtaAngle(yThis,zThis,&etaThis);
 			spotMatr[6]  = etaThis;
 			spotMatr[7]  = Info[4];
 			spotMatr[8]  = yThis;
@@ -948,16 +923,23 @@ main(int argc, char *argv[])
 			omeBin *= NrPixels;
 			yBin = (size_t)yDet;
 			zBin = (size_t)zDet;
-			imageBin = yBin*NrPixels + zBin;
+			imageBin = zBin*NrPixels + yBin; // We do a transpose here to generate the correctly oriented GE files.
 			centIdx = omeBin + imageBin;
 			for (idxNrY=-2*ceil(GaussWidth);idxNrY<=2*ceil(GaussWidth);idxNrY++){
 				for (idxNrZ=-2*ceil(GaussWidth);idxNrZ<=2*ceil(GaussWidth);idxNrZ++){
 					currentPos = centIdx + idxNrY*NrPixels + idxNrZ;
-					ImageArr[currentPos] += (uint16_t) GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask] * PeakIntensity;
+					ImageArr[currentPos] += (uint16_t) (GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask] * PeakIntensity);
+					printf("%u %lf %llu\n",ImageArr[currentPos], GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask], currentPos);
 				}
 			}
 		}
 	}
+	int *header;
+	header = malloc(8192);
+	FILE *outfile = fopen(OutFileName,"w");
+	fwrite(header,8192,1,outfile);
+	fwrite(ImageArr,ImageArrSize*sizeof(*ImageArr),1,outfile);
+	fclose(outfile);
 	end = clock();
 	diftotal = ((double)(end-start0))/CLOCKS_PER_SEC;
 	printf("Time elapsed in making diffraction spots: %f [s]\n",diftotal);
