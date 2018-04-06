@@ -30,18 +30,6 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-#define crossProduct(a,b,c) \
-(a)[0] = (b)[1] * (c)[2] - (c)[1] * (b)[2]; \
-(a)[1] = (b)[2] * (c)[0] - (c)[2] * (b)[0]; \
-(a)[2] = (b)[0] * (c)[1] - (c)[0] * (b)[1];
-
-#define dot(v,q) \
-((v)[0] * (q)[0] + \
-(v)[1] * (q)[1] + \
-(v)[2] * (q)[2])
-
-#define CalcLength(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
-
 int n_hkls = 0;
 double hkls[MAX_N_HKLS][4];
 
