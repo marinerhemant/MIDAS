@@ -786,7 +786,7 @@ main(int argc, char *argv[])
 	// Check what type of input is this.
 	str = "%NumGrains ";
 	LowNr = strncmp(aline,str,strlen(str));
-	if (LowNr == 0){ // This is a Grains.csv file
+	if (LowNr == 0){ // This is a Grains.csv file, get OM, Pos, LatC
 		fgets(aline,4096,inpF);
 		fgets(aline,4096,inpF);
 		fgets(aline,4096,inpF);
@@ -797,13 +797,12 @@ main(int argc, char *argv[])
 		fgets(aline,4096,inpF);
 		while(fgets(aline,4096,inpF)!=NULL){
 			sscanf(aline,"%s %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
-				dummy,&InputInfo[nrPoints][0],&InputInfo[nrPoints][1],&InputInfo[nrPoints][2],
-					&InputInfo[nrPoints][3],&InputInfo[nrPoints][4],&InputInfo[nrPoints][5],
-					&InputInfo[nrPoints][6],&InputInfo[nrPoints][7],&InputInfo[nrPoints][8],
-					&InputInfo[nrPoints][9],&InputInfo[nrPoints][10],
-					&InputInfo[nrPoints][11],&InputInfo[nrPoints][12],&InputInfo[nrPoints][13],
-					&InputInfo[nrPoints][14],&InputInfo[nrPoints][15],&InputInfo[nrPoints][16],
-					&InputInfo[nrPoints][17]);
+				dummy,&InputInfo[nrPoints][0], &InputInfo[nrPoints][1], &InputInfo[nrPoints][2],
+					  &InputInfo[nrPoints][3], &InputInfo[nrPoints][4], &InputInfo[nrPoints][5],
+					  &InputInfo[nrPoints][6], &InputInfo[nrPoints][7], &InputInfo[nrPoints][8],
+					  &InputInfo[nrPoints][9], &InputInfo[nrPoints][10],&InputInfo[nrPoints][11],
+					  &InputInfo[nrPoints][12],&InputInfo[nrPoints][13],&InputInfo[nrPoints][14],
+					  &InputInfo[nrPoints][15],&InputInfo[nrPoints][16],&InputInfo[nrPoints][17]);
 			nrPoints++;
 		}
 	}else{
