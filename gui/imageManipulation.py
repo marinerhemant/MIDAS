@@ -446,31 +446,36 @@ def processStitch():
 	dfile = open(dfn,'rb')
 	head = np.fromfile(dfile,dtype=np.uint8,count=8192)
 	dArr = np.fromfile(dfile,dtype=np.uint16,count=(npx*npx))
-	dArr = dArr.astpe(float)
+	dArr = dArr.astype(float)
+	sttime = time.time()
 	for layerNr in range(nlayers):
 		for scanFileNr in range(nfilesperscan):
 			outFNr = startnr + layerNr*nfilesperscan + scanFileNr
 			outF = open(thisfolder+'/'+outfstem+'_Stitch_'+str(outFNr).zfill(pad)+fnext,'wb')
 			np.array(head).tofile(outF)
 			for frameNr in range(nframes):
+				thistime = time.time()
+				print 'Processing FrameNr: ' + str(frameNr) + ' out of ' + str(nframes) + '. Time taken till now: ' + str(thistime - sttime) + 's.'
 				imgArr = np.zeros(npx*npx)
 				imgArr = imgArr.astype(float)
 				for scanNr in range(nscans):
 					zeroArr = np.zeros(scanNr*translation*npx)
 					positions = range(npx*(npx-scanNr*translation),npx*npx)
-					thisFileNr = layerNr*nfilesperscan*nscans + scanFileNr*nscans + scanNr
+					thisFileNr = layerNr*nfilesperscan*nscans + scanFileNr*nscans + scanNr + startnr
 					bytesToSkip = 8192 + frameNr*npx*npx*2
-					inF = open(thisfolder+'/'+fstem+'_'+str(thisFileNr).zfill(pad)+fnext,'rb')
+					inFN = thisfolder+'/'+fstem+'_'+str(thisFileNr).zfill(pad)+fnext
+					inF = open(inFN,'rb')
 					inF.seek(bytesToSkip,os.SEEK_SET)
 					data = np.fromfile(inF,dtype=np.uint16,count=(npx*npx))
 					data = data.astype(float)
 					data = data - dArr
-					# This assumes the data for GE was transposed. If not, we would need to convert to 2D, transpose, translate, transpose, convert to 1D
-					np.put(data,positions,zeroArr)
-					data = np.roll(data,scanNr*translation*npx)
+					# Convert to 2D, translate, convert to 1D
+					data = data.reshape((npx,npx))
+					data = np.roll(data,scanNr*translation,axis=1) # Test
+					data = data.reshape(npx*npx)
 					imgArr += data
 				imgArr += dArr
-				imgArr = imgArr.astype(uint16)
+				imgArr = imgArr.astype(np.uint16)
 				np.array(imgArr).tofile(outF)
 	topStitch.destroy()
 
