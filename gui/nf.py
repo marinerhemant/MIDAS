@@ -985,7 +985,7 @@ b.title.set_text("LineOuts/MicFile")
 a.title.set_text("Image")
 canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 toolbar_frame = Tk.Frame(root)
-toolbar_frame.grid(row=figrowspan+4,column=0,columnspan=5,sticky=Tk.W)
+toolbar_frame.grid(row=figrowspan+5,column=0,columnspan=5,sticky=Tk.W)
 toolbar = NavigationToolbar2TkAgg( canvas, toolbar_frame )
 toolbar.update()
 
@@ -1013,150 +1013,91 @@ fnstemvar = Tk.StringVar()
 fnstemvar.set(fnstem)
 startframenrvar = Tk.StringVar()
 startframenrvar.set(str(startframenr))
+spotnrvar = Tk.StringVar()
+ndistancesvar = Tk.StringVar()
+ndistancesvar.set(str(ndistances))
+NrPixelsvar = Tk.StringVar()
+NrPixelsvar.set(str(NrPixels))
+r2 = Tk.StringVar() 
+r2.set(str(0))
+minThresh = 0
+minThreshvar = Tk.StringVar()
+minThreshvar.set(str(minThresh))
+pxvar = Tk.StringVar()
+pxvar.set(str(pixelsize))
+lsdvar = Tk.StringVar()
+lsdvar.set(str(lsd))
+nrfilesvar = Tk.StringVar()
+nrfilesvar.set(str(nrfilesperdistance))
+nrfilesmedianvar = Tk.StringVar()
+nrfilesmedianvar.set(str(nrfilesperdistance))
+oldmaxoverframes = 0
+maxoverframes = Tk.IntVar()
+nrthird = 8
 
 firstRowFrame = Tk.Frame(root)
 firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
-
 Tk.Button(master=firstRowFrame,text='FirstFile',command=firstfileselect).grid(row=1,column=1,sticky=Tk.W)
-
 Tk.Label(master=firstRowFrame,text="Folder").grid(row=1,column=2,sticky=Tk.W)
-e0 = Tk.Entry(master=firstRowFrame,textvariable=foldervar,width=45)
-e0.grid(row=1,column=3,sticky=Tk.W)
-
-buttonfolder = Tk.Button(master=firstRowFrame,text="Select",command=folderselect)
-buttonfolder.grid(row=1,column=4,sticky=Tk.W)
-
+Tk.Entry(master=firstRowFrame,textvariable=foldervar,width=45).grid(row=1,column=3,sticky=Tk.W)
+Tk.Button(master=firstRowFrame,text="Select",command=folderselect).grid(row=1,column=4,sticky=Tk.W)
 Tk.Label(master=firstRowFrame,text="FNStem").grid(row=1,column=5,sticky=Tk.W)
-efns = Tk.Entry(master=firstRowFrame,textvariable=fnstemvar,width=15)
-efns.grid(row=1,column=6,sticky=Tk.W)
-
+Tk.Entry(master=firstRowFrame,textvariable=fnstemvar,width=15).grid(row=1,column=6,sticky=Tk.W)
 Tk.Label(master=firstRowFrame,text="nDistances").grid(row=1,column=7,sticky=Tk.W)
-ndistancesvar = Tk.StringVar()
-ndistancesvar.set(str(ndistances))
-endistances = Tk.Entry(master=firstRowFrame,textvariable=ndistancesvar,width=3)
-endistances.grid(row=1,column=8,sticky=Tk.W)
-
+Tk.Entry(master=firstRowFrame,textvariable=ndistancesvar,width=3).grid(row=1,column=8,sticky=Tk.W)
 Tk.Label(master=firstRowFrame,text="NrPixels").grid(row=1,column=9,sticky=Tk.W)
-NrPixelsvar = Tk.StringVar()
-NrPixelsvar.set(str(NrPixels))
-enrpixels = Tk.Entry(master=firstRowFrame,textvariable=NrPixelsvar,width=5)
-enrpixels.grid(row=1,column=10,sticky=Tk.W)
-
+Tk.Entry(master=firstRowFrame,textvariable=NrPixelsvar,width=5).grid(row=1,column=10,sticky=Tk.W)
 Tk.Label(master=firstRowFrame,text="StartFileNumberFirstLayer").grid(row=1,column=11,sticky=Tk.W)
-sfnrfiles = Tk.Entry(master=firstRowFrame,textvariable=startframenrvar,width=6)
-sfnrfiles.grid(row=1,column=12,sticky=Tk.W)
-
+Tk.Entry(master=firstRowFrame,textvariable=startframenrvar,width=6).grid(row=1,column=12,sticky=Tk.W)
 Tk.Label(master=firstRowFrame,text="FrameNumber").grid(row=1,column=13,sticky=Tk.W)
-e1 = Tk.Entry(master=firstRowFrame,textvariable=r,width=5)
-e1.grid(row=1,column=14,sticky=Tk.W)
-e1.focus_set()
-
-buttonIncr = Tk.Button(master=firstRowFrame,text='+',command=incr_plotupdater,font=("Helvetica",12))
-buttonIncr.grid(row=1,column=15,sticky=Tk.W)
-buttonDecr = Tk.Button(master=firstRowFrame,text='-',command=decr_plotupdater,font=("Helvetica",12))
-buttonDecr.grid(row=1,column=16,sticky=Tk.W)
+Tk.Entry(master=firstRowFrame,textvariable=r,width=5).grid(row=1,column=14,sticky=Tk.W)
+Tk.Button(master=firstRowFrame,text='+',command=incr_plotupdater,font=("Helvetica",12)).grid(row=1,column=15,sticky=Tk.W)
+Tk.Button(master=firstRowFrame,text='-',command=decr_plotupdater,font=("Helvetica",12)).grid(row=1,column=16,sticky=Tk.W)
 
 secondRowFrame = Tk.Frame(root)
 secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
-
 Tk.Label(master=secondRowFrame,text="DistanceNr").grid(row=1,column=1,sticky=Tk.W)
-r2 = Tk.StringVar() 
-r2.set(str(0))
-e2 = Tk.Entry(master=secondRowFrame,textvariable=r2,width=3)
-e2.grid(row=1,column=2,sticky=Tk.W)
-e2.focus_set()
-
-minThresh = 0
+Tk.Entry(master=secondRowFrame,textvariable=r2,width=3).grid(row=1,column=2,sticky=Tk.W)
 Tk.Label(master=secondRowFrame,text="MinThresh").grid(row=1,column=3,sticky=Tk.W)
-minThreshvar = Tk.StringVar()
-minThreshvar.set(str(minThresh))
-emt = Tk.Entry(master=secondRowFrame,textvariable=minThreshvar,width=4)
-emt.grid(row=1,column=4,sticky=Tk.W)
-
+Tk.Entry(master=secondRowFrame,textvariable=minThreshvar,width=4).grid(row=1,column=4,sticky=Tk.W)
 Tk.Label(master=secondRowFrame,text="MaxThresh").grid(row=1,column=5,sticky=Tk.W)
-e3 = Tk.Entry(master=secondRowFrame,textvariable=vali,width=4)
-e3.grid(row=1,column=6,sticky=Tk.W)
-e3.focus_set()
-
+Tk.Entry(master=secondRowFrame,textvariable=vali,width=4).grid(row=1,column=6,sticky=Tk.W)
 Tk.Checkbutton(master=secondRowFrame,text="LogScale",variable=dolog).grid(row=1,column=7,sticky=Tk.W)
-
 Tk.Label(master=secondRowFrame,text="PixelSize(um)").grid(row=1,column=8,sticky=Tk.W)
-pxvar = Tk.StringVar()
-pxvar.set(str(pixelsize))
-epx = Tk.Entry(master=secondRowFrame,textvariable=pxvar,width=5)
-epx.grid(row=1,column=9,sticky=Tk.W)
-
+Tk.Entry(master=secondRowFrame,textvariable=pxvar,width=5).grid(row=1,column=9,sticky=Tk.W)
 Tk.Label(master=secondRowFrame,text="FirstLsd(um)").grid(row=1,column=10,sticky=Tk.W)
-lsdvar = Tk.StringVar()
-lsdvar.set(str(lsd))
-elsd = Tk.Entry(master=secondRowFrame,textvariable=lsdvar,width=10)
-elsd.grid(row=1,column=11,sticky=Tk.W)
-
+Tk.Entry(master=secondRowFrame,textvariable=lsdvar,width=10).grid(row=1,column=11,sticky=Tk.W)
 Tk.Label(master=secondRowFrame,text="nFiles/Distance").grid(row=1,column=12,sticky=Tk.W)
-nrfilesvar = Tk.StringVar()
-nrfilesvar.set(str(nrfilesperdistance))
-enrfiles = Tk.Entry(master=secondRowFrame,textvariable=nrfilesvar,width=4)
-enrfiles.grid(row=1,column=13,sticky=Tk.W)
-
-buttonmedian = Tk.Button(master=secondRowFrame,text='CalcMedian',command=median)
-buttonmedian.grid(row=1,column=14,sticky=Tk.W)
-
+Tk.Entry(master=secondRowFrame,textvariable=nrfilesvar,width=4).grid(row=1,column=13,sticky=Tk.W)
+Tk.Button(master=secondRowFrame,text='CalcMedian',command=median).grid(row=1,column=14,sticky=Tk.W)
 Tk.Label(master=secondRowFrame,text="nFilesMedianCalc").grid(row=1,column=15,sticky=Tk.W)
-nrfilesmedianvar = Tk.StringVar()
-nrfilesmedianvar.set(str(nrfilesperdistance))
-enrfilesmedian = Tk.Entry(master=secondRowFrame,textvariable=nrfilesmedianvar,width=4)
-enrfilesmedian.grid(row=1,column=16,sticky=Tk.W)
-
-oldmaxoverframes = 0
-maxoverframes = Tk.IntVar()
-
-chkMaxOverFrames = Tk.Checkbutton(master=secondRowFrame,text="LoadMaxOverFrames",variable=maxoverframes)
-chkMaxOverFrames.grid(row=1,column=17,sticky=Tk.W)
-
-c = Tk.Checkbutton(master=secondRowFrame,text="Subt Median",variable=var)
-c.grid(row=1,column=18,sticky=Tk.W)
+Tk.Entry(master=secondRowFrame,textvariable=nrfilesmedianvar,width=4).grid(row=1,column=16,sticky=Tk.W)
+Tk.Checkbutton(master=secondRowFrame,text="LoadMaxOverFrames",variable=maxoverframes).grid(row=1,column=17,sticky=Tk.W)
+Tk.Checkbutton(master=secondRowFrame,text="Subt Median",variable=var).grid(row=1,column=18,sticky=Tk.W)
 
 thirdRowFrame = Tk.Frame(root)
 thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
-nrthird = 8
-
-button3 = Tk.Button(master=thirdRowFrame,text='LineOutHor',command=horline)
-button3.grid(row=1,column=1,sticky=Tk.W)
-
-button4 = Tk.Button(master=thirdRowFrame,text='LineOutVert',command=vertline)
-button4.grid(row=1,column=2,sticky=Tk.W)
-
+Tk.Button(master=thirdRowFrame,text='LineOutHor',command=horline).grid(row=1,column=1,sticky=Tk.W)
+Tk.Button(master=thirdRowFrame,text='LineOutVert',command=vertline).grid(row=1,column=2,sticky=Tk.W)
 Tk.Button(master=thirdRowFrame,text='BoxOutHor',command=boxhor).grid(row=1,column=3,sticky=Tk.W)
 Tk.Button(master=thirdRowFrame,text='BoxOutVer',command=boxver).grid(row=1,column=4,sticky=Tk.W)
+Tk.Button(master=thirdRowFrame,text='BeamCenter',command=bcwindow).grid(row=1,column=5,sticky=Tk.W)
+Tk.Button(master=thirdRowFrame,text='Select Spots',command=selectspots).grid(row=1,column=6,sticky=Tk.W)
 
-button5 = Tk.Button(master=thirdRowFrame,text='BeamCenter',command=bcwindow)
-button5.grid(row=1,column=5,sticky=Tk.W)
+fourthRowFrame = Tk.Frame(root)
+fourthRowFrame.grid(row=figrowspan+4,column=1,sticky=Tk.W)
+Tk.Button(master=fourthRowFrame,text='LoadGrain',command=getgrain).grid(row=1,column=1,sticky=Tk.W)
+Tk.Button(master=fourthRowFrame,text="MakeSpots",command=makespots).grid(row=1,column=2,sticky=Tk.W)
 
-button6 = Tk.Button(master=thirdRowFrame,text='Select Spots',command=selectspots)
-button6.grid(row=1,column=6,sticky=Tk.W)
-
-buttongetgrain = Tk.Button(master=thirdRowFrame,text='LoadGrain',command=getgrain)
-buttongetgrain.grid(row=1,column=7,sticky=Tk.W)
-
-spotnrvar = Tk.StringVar()
-bMakeSpots = Tk.Button(master=thirdRowFrame,text="MakeSpots",command=makespots)
-bMakeSpots.grid(row=1,column=8,sticky=Tk.W)
-
-button2 = Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetica",20))
-button2.grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.W)
+Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetica",20)).grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.W)
 
 loadmicframe = Tk.Frame(root)
 loadmicframe.grid(row=figrowspan+1,column=3,sticky=Tk.W)
-
-buttonLoadMicFile = Tk.Button(master=loadmicframe,text='LoadMic',command=load_mic,font=("Helvetica",11))
-buttonLoadMicFile.grid(row=1,column=1,sticky=Tk.W)
-
-buttonReplot = Tk.Button(master=loadmicframe,text='ReloadMic',command=plotmic,font=("Helvetica",11))
-buttonReplot.grid(row=1,column=2,sticky=Tk.W)
+Tk.Button(master=loadmicframe,text='LoadMic',command=load_mic,font=("Helvetica",11)).grid(row=1,column=1,sticky=Tk.W)
+Tk.Button(master=loadmicframe,text='ReloadMic',command=plotmic,font=("Helvetica",11)).grid(row=1,column=2,sticky=Tk.W)
 
 radioframe = Tk.Frame(root)
 radioframe.grid(row=figrowspan+2,column=3,rowspan=2,sticky=Tk.W)
-
 Tk.Radiobutton(master=radioframe,text='Confidence',variable=colVar,value=10).grid(row=1,column=1,sticky=Tk.W)
 Tk.Radiobutton(master=radioframe,text='GrainID',variable=colVar,value=0).grid(row=1,column=2,sticky=Tk.W)
 Tk.Radiobutton(master=radioframe,text='PhaseNr',variable=colVar,value=11).grid(row=1,column=3,sticky=Tk.W)
@@ -1166,13 +1107,10 @@ Tk.Radiobutton(master=radioframe,text='Euler2',variable=colVar,value=9).grid(row
 
 micframethirdrow = Tk.Frame(root)
 micframethirdrow.grid(row=figrowspan+4,column=3,sticky=Tk.W)
-
 Tk.Label(master=micframethirdrow,text='MinConfidence').grid(row=1,column=1,sticky=Tk.W)
 Tk.Entry(master=micframethirdrow,textvariable=cutconfidencevar,width=4).grid(row=1,column=2,sticky=Tk.W)
-
 Tk.Button(master=micframethirdrow,text='SelectPoint',command=selectpoint).grid(row=1,column=3)
 
-button = Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20))
-button.grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W)
+Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20)).grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W)
 
 Tk.mainloop()
