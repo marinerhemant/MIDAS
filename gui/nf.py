@@ -929,6 +929,9 @@ def firstfileselect():
 	startframenr = int(firstfile[folderpos+1:][-(padding+extlen+1):-(extlen+1)])
 	startframenrvar.set(str(startframenr))
 
+def findOrientation():
+	paramsfile = tkFileDialog.askopenfilename(title='Select the parameter file to use.',filetypes=(('Txt files','*.txt'),('All Files','*.*')))
+
 # Global constants initialization
 imarr2 = None
 initplot = 1
@@ -1088,6 +1091,7 @@ fourthRowFrame = Tk.Frame(root)
 fourthRowFrame.grid(row=figrowspan+4,column=1,sticky=Tk.W)
 Tk.Button(master=fourthRowFrame,text='LoadGrain',command=getgrain).grid(row=1,column=1,sticky=Tk.W)
 Tk.Button(master=fourthRowFrame,text="MakeSpots",command=makespots).grid(row=1,column=2,sticky=Tk.W)
+Tk.Button(master=fourthRowFrame,text="FindOrientation",command=findOrientation).grid(row=1,column=3,sticky=Tk.W)
 
 Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetica",20)).grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.W)
 

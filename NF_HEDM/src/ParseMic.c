@@ -83,10 +83,10 @@ int main (int argc, char *argv[]){
 	fprintf(out,"%%TriEdgeSize %lf\n",MicContents[5]);
 	fprintf(out,"%%NumPhases %d\n",NumPhases);
 	fprintf(out,"%%GlobalPosition %lf\n",GlobalPosition);
-	fprintf(out,"%%RowNr\tNrMatches\tRunTime\tX\tY\tTriEdgeSize\tUpDown\tEul1\tEul2\tEul3\tConfidence\tPhaseNr\n");
+	fprintf(out,"%%OrientationRowNr\tNrMatches\tRunTime\tX\tY\tTriEdgeSize\tUpDown\tEul1\tEul2\tEul3\tConfidence\tPhaseNr\n");
 	for (i=0;i<NrRows;i++){
+		if (MicContents[i*11+j] == 0) continue;
 		for (j=0;j<11;j++){
-			//if (j==5) continue; // Skip writing useless info in cols 0,1,2,5 // Write out everything now
 			fprintf(out,"%lf\t",MicContents[i*11+j]);
 		}
 		fprintf(out,"%d\n",PhaseNr);
@@ -109,8 +109,9 @@ int main (int argc, char *argv[]){
 	fprintf(out2,"%%TriEdgeSize %lf\n",MicContents[5]);
 	fprintf(out2,"%%NumPhases %d\n",NumPhases);
 	fprintf(out2,"%%GlobalPosition %lf\n",GlobalPosition);
-	fprintf(out2,"%%RowNr\tNrMatches\tRunTime\tX\tY\tTriEdgeSize\tUpDown\tEul1\tEul2\tEul3\tConfidence\t...\t...\t...\t...\t...\t...\tPhaseNr\n");
+	fprintf(out2,"%%OrientationRowNr\tNrMatches\tRunTime\tX\tY\tTriEdgeSize\tUpDown\tEul1\tEul2\tEul3\tConfidence\t...\t...\t...\t...\t...\t...\tPhaseNr\n");
 	for (i=0;i<NrRows2;i++){
+		if (AllMatchesMicContents[i*11+j] == 0) continue;
 		for (j=0;j<nCols;j++){
 			fprintf(out2,"%lf\t",AllMatchesMicContents[i*nCols+j]);
 		}

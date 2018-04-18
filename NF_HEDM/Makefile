@@ -26,7 +26,7 @@ BINDIR=bin/
 all: help bindircheck makediffrspots makehexgrid medianimage imageprocessing \
 	fitorientation fitorientationparameters fitorientationparametersmultipoint \
 	genseedorientations simulatediffrspots processnfmicremote \
-	mmapimageinfo hkls parsemic
+	mmapimageinfo hkls parsemic fitorientationsinglepoint
 
 #local:
 local: predeplocal all runsetup
@@ -111,6 +111,10 @@ imageprocessing: $(SRCDIR)ImageProcessingLibTiff.c
 fitorientation: $(SRCDIR)FitOrientation.c
 	$(CC) $(SRCDIR)FitOrientation.c $(SRCDIR)GetMisorientation.c $(SRCDIR)CalcDiffractionSpots.c $(SRCDIR)SharedFuncsFit.c \
 	-o $(BINDIR)FitOrientation $(CFLAGS) $(CFLAGSNLOPT)
+
+fitorientationsinglepoint: $(SRCDIR)FitOrientationSinglePoint.c
+	$(CC) $(SRCDIR)FitOrientationSinglePoint.c $(SRCDIR)GetMisorientation.c $(SRCDIR)CalcDiffractionSpots.c $(SRCDIR)SharedFuncsFit.c \
+	-o $(BINDIR)FitOrientationSinglePoint $(CFLAGS) $(CFLAGSNLOPT)
 
 fitorientationff2nf: $(SRCDIR)FitOrientationFF2NF.c
 	$(CC) $(SRCDIR)FitOrientationFF2NF.c $(SRCDIR)CalcDiffractionSpots.c $(SRCDIR)SharedFuncsFit.c \

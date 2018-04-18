@@ -252,7 +252,7 @@ int main(int argc, char **argv)
 		rewind(fd);
 		nFrames = sz / (SizeFile);
 		printf("Reading dark file:      %s, nFrames: %d, skipping first %ld bytes.\n",darkFN,nFrames,Skip);
-		fseek(fd,Skip,SEEK_SET);
+		if (FloatFile == 0) fseek(fd,Skip,SEEK_SET);
 		for (i=0;i<nFrames;i++){
 			fread(DarkIn,SizeFile,1,fd);
 			for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFrames;
@@ -273,7 +273,7 @@ int main(int argc, char **argv)
 	struct data ThisVal;
 	char outfn[4096];
 	FILE *out;
-	double Intensity, totArea;
+	double Intensity, totArea, ThisInt;
 	for (i=0;i<nFrames;i++){
 		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
 		if (FloatFile == 0){
@@ -300,7 +300,8 @@ int main(int argc, char **argv)
 				totArea = 0;
 				for (l=0;l<nPixels;l++){
 					ThisVal = pxList[dataPos + l];
-					Intensity += Image[ThisVal.y*NrPixelsZ + ThisVal.z]*ThisVal.frac;
+					ThisInt = Image[ThisVal.y*NrPixelsZ + ThisVal.z];
+					Intensity += ThisInt*ThisVal.frac;
 					totArea += ThisVal.frac;
 				}
 				if (Intensity != 0 && Normalize == 1) Intensity /= totArea;
