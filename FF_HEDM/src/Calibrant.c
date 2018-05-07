@@ -828,7 +828,7 @@ int main(int argc, char *argv[])
 		str = "HeadSize ";
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr==0){
-			sscanf(aline,"%s %lf", dummy, &HeadSize);
+			sscanf(aline,"%s %d", dummy, &HeadSize);
 		}
 	}
 	if (NrPixelsY > NrPixelsZ){
@@ -1075,7 +1075,7 @@ int main(int argc, char *argv[])
 		printf("StdStrain:\t%0.12lf\n",StdDiff);
 		FILE *Out;
 		char OutFileName[1024];
-		sprintf(OutFileName,"%s_%05d%s",fn,a,"corr.csv");
+		sprintf(OutFileName,"%s_%06d%s.%s",fn,a,Ext,"corr.csv");
 		Out = fopen(OutFileName,"w");
 		for (i=0;i<nIndices;i++){fprintf(Out,"%f %10.8f %10.8f %f %10.8f %10.8f %f\n",Etas[i],Diffs[i],RadOuts[i],EtaIns[i],DiffIns[i],RadIns[i],IdealTtheta[i]);}
 		fclose(Out);

@@ -20,9 +20,9 @@ all: help bindircheck calibrant calibrantint32 calibrantdouble calibrantfloat \
 	fittiltbclsdsample fitposorstrains peaksfitting \
 	mergeoverlaps calcradius findsaturatedpx genmediandark fitgrain tiff2ge\
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking\
-	mapmultdetectors matchgrains detectormapper integrator mergemultiplescans \
+	mapmultdetectors matchgrains detectormapper mergemultiplescans \
 	fitposorstrainsscanning indexscanning processgrainsscanning mapbnd fitscanninggrain \
-	fitgrainhydra forwardsimulation
+	fitgrainhydra forwardsimulation integrator integratorint32 integratorfloat integratordouble
 
 #local:
 local: predeplocal all runsetup

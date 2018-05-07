@@ -41,8 +41,6 @@
 	typedef float pixelvalue;
 #endif
 
-size_t mapMaskSize = 0;
-int *mapMask;
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
 
@@ -209,7 +207,9 @@ int main(int argc, char **argv)
     size_t GapIntensity=0, BadPxIntensity=0;
     int TransOpt[10];
     int makeMap = 0;
-    while (fgets(aline,4096,paramFile) != NULL){
+    size_t mapMaskSize = 0;
+	int *mapMask;
+	while (fgets(aline,4096,paramFile) != NULL){
 		str = "EtaBinSize ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &EtaBinSize);
@@ -220,7 +220,7 @@ int main(int argc, char **argv)
 		}
 		str = "HeadSize ";
 		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &HeadSize);
+			sscanf(aline,"%s %d", dummy, &HeadSize);
 		}
 		str = "RMax ";
 		if (StartsWith(aline,str) == 1){
@@ -298,10 +298,11 @@ int main(int argc, char **argv)
 	pixelvalue *ImageIn;
 	pixelvalue *DarkIn;
 	float *ImageFloat;
+	double *AverageDarkT;
 	double *AverageDark;
 	DarkIn = malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkIn));
-	AverageDark = malloc(NrPixelsY*NrPixelsZ*sizeof(*AverageDark));
-	for (j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] = 0;
+	AverageDarkT = calloc(NrPixelsY*NrPixelsZ,sizeof(*AverageDarkT));
+	AverageDark = calloc(NrPixelsY*NrPixelsZ,sizeof(*AverageDark));
 	ImageIn = malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageIn));
 	ImageFloat = malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageFloat));
 	ImageT = malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageT));
@@ -335,8 +336,9 @@ int main(int argc, char **argv)
 				}
 				makeMap = 0;
 			}
-			for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFrames;
+			for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDarkT[j] += (double)DarkIn[j]/nFrames;
 		}
+		DoImageTransformations(NrTransOpt,TransOpt,AverageDarkT,AverageDark,NrPixelsY,NrPixelsZ);
 		printf("Dark file read\n");
 	}
 	char *imageFN;
