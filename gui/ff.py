@@ -515,10 +515,7 @@ def writeParams():
 	f.write('Wedge '+str(wedge)+'\n')
 	sep = ' '
 	for i in range(nDetectors):
-		strout = 'DetParams '+ str(lsd[i]) + sep + str(bcs[i][0]) + sep + 
-			str(bcs[i][1]) + sep + str(tx[i]) + sep + str(ty[i]) + sep + 
-			str(tz[i]) + sep + str(p0[i]) + sep + str(p1[i]) + sep + 
-			str(p2[i]) + sep + str(RhoDs[i]) + '\n'
+		strout = 'DetParams '+ str(lsd[i]) + sep + str(bcs[i][0]) + sep + str(bcs[i][1]) + sep + str(tx[i]) + sep + str(ty[i]) + sep + str(tz[i]) + sep + str(p0[i]) + sep + str(p1[i]) + sep + str(p2[i]) + sep + str(RhoDs[i]) + '\n'
 		f.write(strout)
 	f.write(LatC)
 	if lsdline is not None:

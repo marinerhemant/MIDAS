@@ -16,7 +16,8 @@ endif
 SRCDIR=src/
 BINDIR=bin/
 
-all: help bindircheck calibrant fittiltbclsdsample fitposorstrains peaksfitting \
+all: help bindircheck calibrant calibrantint32 calibrantdouble calibrantfloat \
+	fittiltbclsdsample fitposorstrains peaksfitting \
 	mergeoverlaps calcradius findsaturatedpx genmediandark fitgrain tiff2ge\
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking\
 	mapmultdetectors matchgrains detectormapper integrator mergemultiplescans \
@@ -88,7 +89,16 @@ help:
 	@echo $(NLOPT)
 
 calibrant: $(SRCDIR)Calibrant.c
-	$(CC) $(SRCDIR)Calibrant.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)Calibrant $(CFLAGS) $(CFLAGSNLOPT) 
+	$(CC) $(SRCDIR)Calibrant.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)Calibrant -DdataInt16=uint16_t $(CFLAGS) $(CFLAGSNLOPT) 
+
+calibrantdouble: $(SRCDIR)Calibrant.c
+	$(CC) $(SRCDIR)Calibrant.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)CalibrantDouble -DdataDouble=double $(CFLAGS) $(CFLAGSNLOPT) 
+
+calibrantfloat: $(SRCDIR)Calibrant.c
+	$(CC) $(SRCDIR)Calibrant.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)CalibrantFloat -DdataFloat=float $(CFLAGS) $(CFLAGSNLOPT) 
+
+calibrantint32: $(SRCDIR)Calibrant.c
+	$(CC) $(SRCDIR)Calibrant.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)CalibrantInt32 -DdataInt32=uint32_t $(CFLAGS) $(CFLAGSNLOPT) 
 
 fittiltbclsdsample: $(SRCDIR)FitTiltBCLsdSampleOmegaCorrection.c
 	$(CC) $(SRCDIR)FitTiltBCLsdSampleOmegaCorrection.c -o $(BINDIR)FitTiltBCLsdSample $(CFLAGS) $(CFLAGSNLOPT) 
@@ -177,7 +187,16 @@ detectormapper: $(SRCDIR)DetectorMapper.c
 	$(CC) $(SRCDIR)DetectorMapper.c -o $(BINDIR)DetectorMapper $(CFLAGS)
 
 integrator: $(SRCDIR)Integrator.c
-	$(CC) $(SRCDIR)Integrator.c -o $(BINDIR)Integrator $(CFLAGS)
+	$(CC) $(SRCDIR)Integrator.c -o $(BINDIR)Integrator -DdataInt16=uint16_t $(CFLAGS)
+
+integratordouble: $(SRCDIR)Integrator.c
+	$(CC) $(SRCDIR)Integrator.c -o $(BINDIR)IntegratorDouble -DdataDouble=double $(CFLAGS)
+
+integratorfloat: $(SRCDIR)Integrator.c
+	$(CC) $(SRCDIR)Integrator.c -o $(BINDIR)IntegratorFloat -DdataFloat=float $(CFLAGS)
+
+integratorint32: $(SRCDIR)Integrator.c
+	$(CC) $(SRCDIR)Integrator.c -o $(BINDIR)IntegratorInt32 -DdataInt32=uint32_t $(CFLAGS)
 
 indexercuda: $(SRCDIR)IndexerRefineNLOPT.cu
 	$(NCC) $(SRCDIR)IndexerRefineNLOPT.cu -o $(BINDIR)Indexer $(NCFLAGS)

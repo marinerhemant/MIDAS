@@ -568,8 +568,6 @@ mapperfcn(
 							zTempMin = -yMin/tan(EtaMax*deg2rad);
 							zTempMax = -yMax/tan(EtaMax*deg2rad);
 						}
-						//~ if (i== 1000 && j == 517 && EtaMin == 179.5 && k == 0) printf("EMax YMax %lf %lf %lf %lf %lf %lf\n",zMin,zMax,zTempMax,yMax,EtaMax,tan(EtaMax*deg2rad));
-						//~ if (i== 1000 && j == 517 && EtaMin ==-180.5 && k == 0) printf("EMax YMax %lf %lf %lf %lf %lf %lf\n",zMin,zMax,zTempMax,yMax,EtaMax,tan(EtaMax*deg2rad));
 						if (BETWEEN(zTempMin,zMin,zMax) == 1){
 							Edges[nEdges][0] = yMin;
 							Edges[nEdges][1] = zTempMin;
@@ -620,18 +618,9 @@ mapperfcn(
 						nrContinued++;
 						continue;
 					}
-					//printf("%d ",nEdges);
 					nEdges = FindUniques(Edges,EdgesOut,nEdges);
 					// Now we have all the edges, let's calculate the area.
 					Area = CalcAreaPolygon(EdgesOut,nEdges);
-					//printf("%lf %d %lf %lf %lf %lf %lf %lf\n",Area,nEdges,RMin, RMax, Rt, EtaMin, EtaMax, Eta);
-					//~ if ((i== 1000 && j == 517 && EtaMin == 179.5 && k == 0) ||
-					    //~ (i== 1000 && j == 517 && EtaMin ==-180.5 && k == 0)){
-						//~ printf("%d %lf\n",nEdges,Area);
-						//~ for (m=0;m<nEdges;m++){
-							//~ printf("%lf %lf %lf\n",EdgesOut[m][0],EdgesOut[m][1],EtaMin);
-						//~ }
-					//~ }
 					if (Area < 1E-5){
 						nrContinued++;
 						continue;
@@ -644,7 +633,6 @@ mapperfcn(
 						oldarr = pxList[RChosen[k]][EtaChosen[l]];
 						newarr = realloc(oldarr, maxnVal*sizeof(*newarr));
 						if (newarr == NULL){
-						//printf("Memory error: memory full??\n");
 							return 0;
 						}
 						pxList[RChosen[k]][EtaChosen[l]] = newarr;

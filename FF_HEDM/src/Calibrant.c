@@ -11,6 +11,7 @@
 //
 //
 //  Important: row major, starting with y's and going up. Bottom right is 0,0.
+//  TODO: For rectangular detectors, it works only if the longer edge is vertical. Use padY padZ to do this.
 
 #include <stdio.h>
 #include <math.h>
@@ -26,11 +27,26 @@
 //#define PRINTOPT
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
-typedef uint16_t pixelvalue;
+#ifdef dataInt16
+	typedef uint16_t pixelvalue;
+#endif
+#ifdef dataInt32
+	typedef uint32_t pixelvalue;
+#endif
+#ifdef dataDouble
+	typedef double pixelvalue;
+#endif
+#ifdef dataFloat
+	typedef float pixelvalue;
+#endif
 long long int NrCalls;
 long long int NrCallsProfiler;
 int NrPixelsGlobal = 2048;
 #define MultFactor 1
+
+#define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
+size_t mapMaskSize = 0;
+int *mapMask;
 
 static inline
 pixelvalue**
@@ -140,8 +156,8 @@ void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc, dou
 						   double Rmaxs[n_hkls], double EtaBinsLow[nEtaBins], double EtaBinsHigh[nEtaBins], int nIndices, int *NrEachIndexbin, int **Indices){
 	int i, j, k, l, counter=0;
 	for (i=0;i<nIndices;i++) NrEachIndexbin[i]=0;
-	for (i=0;i<y;i++){
-		for (j=0;j<z;j++){
+	for (i=0;i<z;i++){
+		for (j=0;j<y;j++){
 			R[counter] = px*sqrt(((j-ybc)*(j-ybc))+((i-zbc)*(i-zbc)));
 			Eta[counter] = CalcEtaAngle(-(j-ybc),(i-zbc));
 			for (k=0;k<n_hkls;k++){
@@ -547,6 +563,22 @@ static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], pix
 	FreeMemMatrixPx(ImageTemp2,NrPixels);
 }
 
+static inline void MakeSquare (int NrPixels, int NrPixelsY, int NrPixelsZ, pixelvalue *InImage, pixelvalue *OutImage)
+{
+	int i,j,k;
+	if (NrPixelsY == NrPixelsZ){
+		memcpy(OutImage,InImage,NrPixels*NrPixels*sizeof(*InImage));
+	} else {
+		if (NrPixelsY > NrPixelsZ){ // Filling along the slow direction // easy
+			memcpy(OutImage,InImage,NrPixelsY*NrPixelsZ*sizeof(*InImage));
+		} else {
+			for (i=0;i<NrPixelsZ;i++){
+				memcpy(OutImage+i*NrPixelsZ,InImage+i*NrPixelsY,NrPixelsY*sizeof(*InImage));
+			}
+		}
+	}
+}
+
 int main(int argc, char *argv[])
 {
     clock_t start, end, start0, end0;
@@ -563,11 +595,14 @@ int main(int argc, char *argv[])
     int StartNr, EndNr, LowNr;
     int SpaceGroup,FitWeightMean=0;
     double LatticeConstant[6], Wavelength, MaxRingRad, Lsd, MaxTtheta, TthetaTol, ybc, zbc, EtaBinSize, px,Width;
-    double tx = 0,tolTilts,tolLsd,tolBC,tolP,tyin=0,tzin=0,p0in=0,p1in=0,p2in=0;
+    double tx = 0,tolTilts,tolLsd,tolBC,tolP,tyin=0,tzin=0,p0in=0,p1in=0,p2in=0, padY=0, padZ=0;
     //int SkipHeader = 1;
-    int Padding = 6, NrPixels;
+    int Padding = 6, NrPixelsY,NrPixelsZ,NrPixels;
     int NrTransOpt=0;
+    size_t GapIntensity=0, BadPxIntensity=0;
     int TransOpt[10], nRingsExclude=0, RingsExclude[50];
+    int makeMap = 0;
+	int HeadSize = 8192;
     while (fgets(aline,1000,fileParam)!=NULL){
 		str = "FileStem ";
         LowNr = strncmp(aline,str,strlen(str));
@@ -579,6 +614,20 @@ int main(int argc, char *argv[])
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %s", dummy, folder);
+            continue;
+        }
+		str = "GapIntensity ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %zu", dummy, &GapIntensity);
+            makeMap = 1;
+            continue;
+        }
+		str = "BadPxIntensity ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %zu", dummy, &BadPxIntensity);
+            makeMap = 1;
             continue;
         }
 		str = "Ext ";
@@ -614,8 +663,20 @@ int main(int argc, char *argv[])
         str = "NrPixels ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %d", dummy, &NrPixels);
-            NrPixelsGlobal = NrPixels;
+            sscanf(aline,"%s %d", dummy, &NrPixelsY);
+            NrPixelsZ = NrPixelsY;
+            continue;
+        }
+        str = "NrPixelsY ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &NrPixelsY);
+            continue;
+        }
+        str = "NrPixelsZ ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &NrPixelsZ);
             continue;
         }
         str = "ImTransOpt ";
@@ -764,6 +825,18 @@ int main(int argc, char *argv[])
             nRingsExclude++;
             continue;
         }
+		str = "HeadSize ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr==0){
+			sscanf(aline,"%s %lf", dummy, &HeadSize);
+		}
+	}
+	if (NrPixelsY > NrPixelsZ){
+		NrPixels = NrPixelsY;
+		NrPixelsGlobal = NrPixelsY;
+	}else{
+		NrPixels = NrPixelsZ;
+		NrPixelsGlobal = NrPixelsZ;
 	}
 	int i,j,k;
 	printf("NrTransOpt: %d\n",NrTransOpt);
@@ -780,11 +853,6 @@ int main(int argc, char *argv[])
     for (i=0;i<100;i++) Thetas[i] = 0;
     int n_hkls = 0;
     
-    // Instead of the following, call GetHKLList and get Thetas.
-    /*
-    n_hkls = CalcThetas(SpaceGroup,LatticeConstant[0],LatticeConstant[1],
-			LatticeConstant[2],LatticeConstant[3],LatticeConstant[4],LatticeConstant[5],
-			Wavelength,MaxTtheta,Thetas,nRingsExclude,RingsExclude);*/
 	char cmmd[4096];
 	sprintf(cmmd,"~/opt/MIDAS/FF_HEDM/bin/GetHKLList %s",ParamFN);
 	system(cmmd);
@@ -823,8 +891,9 @@ int main(int argc, char *argv[])
 	TthetaTol = Ttheta4mR((MaxRingRad+Width),Lsd) - Ttheta4mR((MaxRingRad-Width),Lsd);
 	printf("\n2Theta Tolerance: %f \n",TthetaTol);
 	pixelvalue *DarkFile;
+	pixelvalue *DarkFile2;
 	double *AverageDark;
-	size_t SizeFile = sizeof(pixelvalue) * NrPixels * NrPixels;
+	size_t SizeFile = sizeof(pixelvalue) * NrPixelsY * NrPixelsZ;
 	size_t sz;
 	char FileName[1024];
 	size_t Skip;
@@ -832,10 +901,13 @@ int main(int argc, char *argv[])
 	int nFrames, TotFrames=0;
 	double *Average;
 	pixelvalue *Image;
-	DarkFile = malloc(NrPixels*NrPixels*sizeof(*DarkFile));
-	AverageDark = malloc(NrPixels*NrPixels*sizeof(*AverageDark));
-	Average = malloc(NrPixels*NrPixels*sizeof(*Average));
-	Image = malloc(NrPixels*NrPixels*sizeof(*Image));
+	pixelvalue *Image2;
+	DarkFile = malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkFile)); // Raw.
+	Image = malloc(NrPixelsY*NrPixelsZ*sizeof(*Image)); // Raw.
+	DarkFile2 = calloc(NrPixels*NrPixels,sizeof(*DarkFile)); // Squared.
+	Image2 = calloc(NrPixels*NrPixels,sizeof(*Image)); // Squared.
+	AverageDark = calloc(NrPixels*NrPixels,sizeof(*AverageDark)); // Squared.
+	Average = calloc(NrPixels*NrPixels,sizeof(*Average)); // Squared.
 	fd = fopen(Dark,"rb");
 	if (fd == NULL){
 		printf("Dark file %s could not be read. Making an empty array for dark.\n",Dark);
@@ -843,16 +915,30 @@ int main(int argc, char *argv[])
 	}else{
 		fseek(fd,0L,SEEK_END);
 		sz = ftell(fd);
+		sz -= HeadSize;
 		rewind(fd);
 		nFrames = sz/(SizeFile);
-		Skip = sz - (nFrames*SizeFile);
+		Skip = HeadSize;
 		printf("Reading dark file:      %s, nFrames: %d, skipping first %ld bytes.\n",Dark,nFrames,Skip);
 		fseek(fd,Skip,SEEK_SET);
-		for (j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]=0;
 		for (i=0;i<nFrames;i++){
 			fread(DarkFile,SizeFile,1,fd);
-			DoImageTransformations(NrTransOpt,TransOpt,DarkFile,NrPixels);
-			for(j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]+=DarkFile[j];
+			MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,DarkFile,DarkFile2);
+			if (makeMap == 1){
+				mapMaskSize = NrPixels;
+				mapMaskSize *= NrPixels;
+				mapMaskSize /= 32;
+				mapMaskSize ++;
+				mapMask = calloc(mapMaskSize,sizeof(*mapMask));
+				for (j=0;j<NrPixels*NrPixels;j++){
+					if (DarkFile2[j] == (pixelvalue) GapIntensity || DarkFile2[j] == (pixelvalue) BadPxIntensity){
+						SetBit(mapMask,j);
+					}
+				}
+				makeMap = 0;
+			}
+			DoImageTransformations(NrTransOpt,TransOpt,DarkFile2,NrPixels);
+			for(j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]+=DarkFile2[j];
 		}
 		printf("Dark file read.\n");
 		for (j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]=AverageDark[j]/nFrames;
@@ -861,7 +947,6 @@ int main(int argc, char *argv[])
 	int a;
 	for (a=StartNr;a<=EndNr;a++){
 		start = clock();
-		for (j=0;j<(NrPixels*NrPixels);j++)Average[j]=0;
 		if (Padding == 2){sprintf(FileName,"%s/%s_%02d%s",folder,fn,a,Ext);}
 		else if (Padding == 3){sprintf(FileName,"%s/%s_%03d%s",folder,fn,a,Ext);}
 		else if (Padding == 4){sprintf(FileName,"%s/%s_%04d%s",folder,fn,a,Ext);}
@@ -877,16 +962,18 @@ int main(int argc, char *argv[])
 		}
 		fseek(fp,0L,SEEK_END);
 		sz = ftell(fp);
+		sz = sz - HeadSize;
 		nFrames = sz/(SizeFile);
-		Skip = sz - (nFrames*SizeFile);
+		Skip = HeadSize;
 		printf("Reading calibrant file: %s, nFrames: %d, skipping first %ld bytes.\n",FileName,nFrames,Skip);
 		rewind(fp);
 		fseek(fp,Skip,SEEK_SET);
 		for (j=0;j<nFrames;j++){
 			fread(Image,SizeFile,1,fp);
-			DoImageTransformations(NrTransOpt,TransOpt,Image,NrPixels);
+			MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,Image,Image2);
+			DoImageTransformations(NrTransOpt,TransOpt,Image2,NrPixels);
 			for(k=0;k<(NrPixels*NrPixels);k++){
-				Average[k]+=Image[k]-AverageDark[k]; // In reality this is sum
+				Average[k]+=Image2[k]-AverageDark[k]; // In reality this is sum
 			}
 		}
 		TotFrames+=nFrames;

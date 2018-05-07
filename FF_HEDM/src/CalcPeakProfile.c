@@ -17,6 +17,10 @@
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 
+#define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
+extern size_t mapMaskSize;
+extern int *mapMask;
+
 static inline
 double**
 allocMatrix(int nrows, int ncols)
@@ -352,7 +356,9 @@ void YZMat4mREta(int NrElements, double *R, double *Eta, double **YZ, double ybc
 	}
 }
 
-inline void CalcPeakProfile(int **Indices, int *NrEachIndexBin, int idx,double *Average,double Rmi,double Rma,double EtaMi,double EtaMa,double ybc,double zbc,double px,int NrPixels,double *ReturnValue)
+inline void CalcPeakProfile(int **Indices, int *NrEachIndexBin, int idx,
+	double *Average,double Rmi,double Rma,double EtaMi,double EtaMa,
+	double ybc,double zbc,double px,int NrPixelsY, double *ReturnValue)
 {
 	double **BoxEdges,*RMs, *EtaMs, **EdgesIn, **EdgesOut;
 	double SumIntensity=0;
@@ -372,14 +378,19 @@ inline void CalcPeakProfile(int **Indices, int *NrEachIndexBin, int idx,double *
 	Pos = malloc(2*sizeof(*Pos));
 	double ThisArea, TotArea=0;
 	for (i=0;i<NrEachIndexBin[idx];i++){
-		Pos[0] = Indices[idx][i] % NrPixels;
-		Pos[1] = Indices[idx][i] / NrPixels;
+		Pos[0] = Indices[idx][i] % NrPixelsY; // This is Y
+		Pos[1] = Indices[idx][i] / NrPixelsY; // This is Z
 		nEdges = CalcNEdges(BoxEdges,Pos,EdgesIn);
 		if (nEdges == 0){
 			continue;
 		}
 		nEdges = FindUniques(EdgesIn,EdgesOut,nEdges);
 		ThisArea = CalcAreaPolygon(EdgesOut,nEdges);
+		if (mapMaskSize !=0){ // Skip this point if it was on the badPx, gap mask
+			if (TestBit(mapMask,Indices[idx][i])){
+				continue;
+			}
+		}
 		TotArea += ThisArea;
 		SumIntensity += Average[Indices[idx][i]] * ThisArea;
 	}

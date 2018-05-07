@@ -7,6 +7,8 @@
 //
 // Hemant Sharma
 // Dt: 2017/07/26 
+//
+// TODO: 1. Transpose is not working right now.
 
 
 #include <stdio.h>
@@ -26,7 +28,23 @@
 #include <sys/types.h>
 #include <stdint.h>
 
-typedef uint16_t pixelvalue;
+#ifdef dataInt16
+	typedef uint16_t pixelvalue;
+#endif
+#ifdef dataInt32
+	typedef uint32_t pixelvalue;
+#endif
+#ifdef dataDouble
+	typedef double pixelvalue;
+#endif
+#ifdef dataFloat
+	typedef float pixelvalue;
+#endif
+
+size_t mapMaskSize = 0;
+int *mapMask;
+#define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
+#define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
 
 static void
 check (int test, const char * message, ...)
@@ -139,8 +157,29 @@ REtaMapper(
 		EtaBinsHigh[i] = EtaBinSize*(i+1) + EtaMin;
 	}
 	for (i=0;i<nRBins;i++){
-		RBinsLow[i] = RBinSize * i      + Rmin;
+		RBinsLow[i] =  RBinSize * i     + Rmin;
 		RBinsHigh[i] = RBinSize * (i+1) + Rmin;
+	}
+}
+
+static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], double *ImageIn, double *ImageOut, int NrPixelsY, int NrPixelsZ)
+{
+	int i,j,k,l,m;
+	if (NrTransOpt == 0) memcpy(ImageOut,ImageIn,NrPixelsY*NrPixelsZ*sizeof(*ImageIn)); // Nothing to do
+    for (i=0;i<NrTransOpt;i++){
+		if (TransOpt[k] == 1){
+			for (k=0;k<NrPixelsY;k++){
+				for (l=0;l<NrPixelsZ;l++){
+					ImageOut[l*NrPixelsY+k] = ImageIn[l*NrPixelsY+(NrPixelsY-k-1)]; // Invert Y
+				}
+			}
+		}else if (TransOpt[k] == 2){
+			for (k=0;k<NrPixelsY;k++){
+				for (l=0;l<NrPixelsZ;l++){
+					ImageOut[l*NrPixelsY+k] = ImageIn[(NrPixelsZ-l-1)*NrPixelsY+k]; // Invert Z
+				}
+			}
+		}
 	}
 }
 
@@ -158,14 +197,19 @@ int main(int argc, char **argv)
     system("cp Map.bin nMap.bin /dev/shm");
 	int rc = ReadBins();
 	double RMax, RMin, RBinSize, EtaMax, EtaMin, EtaBinSize;
-	int NrPixelsY = 2048, NrPixelsZ = 2048, Normalize = 1, FloatFile = 0;
+	int NrPixelsY = 2048, NrPixelsZ = 2048, Normalize = 1;
 	int nEtaBins, nRBins;
     char *ParamFN;
     FILE *paramFile;
     ParamFN = argv[1];
 	char aline[4096], dummy[4096], *str;
 	paramFile = fopen(ParamFN,"r");
-	while (fgets(aline,4096,paramFile) != NULL){
+	int HeadSize = 8192;
+    int NrTransOpt=0;
+    size_t GapIntensity=0, BadPxIntensity=0;
+    int TransOpt[10];
+    int makeMap = 0;
+    while (fgets(aline,4096,paramFile) != NULL){
 		str = "EtaBinSize ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &EtaBinSize);
@@ -173,6 +217,10 @@ int main(int argc, char **argv)
 		str = "RBinSize ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &RBinSize);
+		}
+		str = "HeadSize ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %lf", dummy, &HeadSize);
 		}
 		str = "RMax ";
 		if (StartsWith(aline,str) == 1){
@@ -202,15 +250,29 @@ int main(int argc, char **argv)
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %d", dummy, &Normalize);
 		}
-		str = "FloatFile ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %d", dummy, &FloatFile);
-		}
 		str = "NrPixels ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %d", dummy, &NrPixelsY);
 			sscanf(aline,"%s %d", dummy, &NrPixelsZ);
 		}
+		str = "GapIntensity ";
+        if (StartsWith(aline,str) == 1){
+            sscanf(aline,"%s %zu", dummy, &GapIntensity);
+            makeMap = 1;
+            continue;
+        }
+		str = "BadPxIntensity ";
+        if (StartsWith(aline,str) == 1){
+            sscanf(aline,"%s %zu", dummy, &BadPxIntensity);
+            makeMap = 1;
+            continue;
+        }
+        str = "ImTransOpt ";
+        if (StartsWith(aline,str) == 1){
+            sscanf(aline,"%s %d", dummy, &TransOpt[NrTransOpt]);
+            NrTransOpt++;
+            continue;
+        }
 	}
 
 	nRBins = (int) ceil((RMax-RMin)/RBinSize);
@@ -224,6 +286,14 @@ int main(int argc, char **argv)
 	REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh);
 
 	int i,j,k,l;
+	printf("NrTransOpt: %d\n",NrTransOpt);
+    for (i=0;i<NrTransOpt;i++){
+        if (TransOpt[i] < 0 || TransOpt[i] > 2){printf("TransformationOptions can only be 0, 1, 2.\nExiting.\n");return 0;}
+        printf("TransformationOptions: %d ",TransOpt[i]);
+        if (TransOpt[i] == 0) printf("No change.\n");
+        else if (TransOpt[i] == 1) printf("Flip Left Right.\n");
+        else if (TransOpt[i] == 2) printf("Flip Top Bottom.\n");
+    }
 	double *Image, *ImageT;
 	pixelvalue *ImageIn;
 	pixelvalue *DarkIn;
@@ -237,11 +307,8 @@ int main(int argc, char **argv)
 	ImageT = malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageT));
 	Image = malloc(NrPixelsY*NrPixelsZ*sizeof(*Image));
 	int SizeFile = sizeof(pixelvalue)*NrPixelsY*NrPixelsZ;
-	if (FloatFile == 1){
-		SizeFile = sizeof(float)*NrPixelsY*NrPixelsZ;
-	}
 	int nFrames, sz;
-	int Skip = 8192;
+	int Skip = HeadSize;
 	FILE *fp, *fd;
 	char *darkFN;
 	if (argc > 3){
@@ -252,9 +319,22 @@ int main(int argc, char **argv)
 		rewind(fd);
 		nFrames = sz / (SizeFile);
 		printf("Reading dark file:      %s, nFrames: %d, skipping first %ld bytes.\n",darkFN,nFrames,Skip);
-		if (FloatFile == 0) fseek(fd,Skip,SEEK_SET);
+		fseek(fd,Skip,SEEK_SET);
 		for (i=0;i<nFrames;i++){
 			fread(DarkIn,SizeFile,1,fd);
+			if (makeMap == 1){
+				mapMaskSize = NrPixelsY;
+				mapMaskSize *= NrPixelsZ;
+				mapMaskSize /= 32;
+				mapMaskSize ++;
+				mapMask = calloc(mapMaskSize,sizeof(*mapMask));
+				for (j=0;j<NrPixelsY*NrPixelsZ;j++){
+					if (DarkIn[j] == (pixelvalue) GapIntensity || DarkIn[j] == (pixelvalue) BadPxIntensity){
+						SetBit(mapMask,j);
+					}
+				}
+				makeMap = 0;
+			}
 			for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFrames;
 		}
 		printf("Dark file read\n");
@@ -265,7 +345,7 @@ int main(int argc, char **argv)
 	fseek(fp,0L,SEEK_END);
 	sz = ftell(fp);
 	rewind(fp);
-	if (FloatFile == 0) fseek(fp,Skip,SEEK_SET);
+	fseek(fp,Skip,SEEK_SET);
 	nFrames = sz / SizeFile;
 	printf("Number of eta bins: %d, number of R bins: %d.\n",nEtaBins,nRBins);
 	long long int Pos;
@@ -276,21 +356,15 @@ int main(int argc, char **argv)
 	double Intensity, totArea, ThisInt;
 	for (i=0;i<nFrames;i++){
 		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
-		if (FloatFile == 0){
-			fread(ImageIn,SizeFile,1,fp);
-			for (j=0;j<NrPixelsY*NrPixelsZ;j++){
-				ImageT[j] = (double)ImageIn[j] - AverageDark[j];
-			}
-		} else if (FloatFile == 1){
-			fread(ImageFloat,SizeFile,1,fp);
-			for (j=0;j<NrPixelsY*NrPixelsZ;j++){
-				ImageT[j] = (double)ImageFloat[j] - AverageDark[j];
-			}
+		fread(ImageIn,SizeFile,1,fp);
+		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
+			ImageT[j] = (double)ImageIn[j] - AverageDark[j];
 		}
+		// Transposer(ImageT,NrPixelsY,NrPixelsZ,Image); Not needed anymore
+		DoImageTransformations(NrTransOpt,TransOpt,ImageT,Image,NrPixelsY,NrPixelsZ); // ImageT is in and Image is out
 		sprintf(outfn,"%s_integrated_framenr_%d.csv",imageFN,i);
 		out = fopen(outfn,"w");
 		fprintf(out,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\tEta(px)\tIntensity(counts)\n",nEtaBins,nRBins);
-		Transposer(ImageT,NrPixelsY,NrPixelsZ,Image);
 		for (j=0;j<nRBins;j++){
 			for (k=0;k<nEtaBins;k++){
 				Pos = j*nEtaBins + k;
@@ -300,7 +374,12 @@ int main(int argc, char **argv)
 				totArea = 0;
 				for (l=0;l<nPixels;l++){
 					ThisVal = pxList[dataPos + l];
-					ThisInt = Image[ThisVal.y*NrPixelsZ + ThisVal.z];
+					if (mapMaskSize!=0){
+						if (TestBit(mapMask,ThisVal.z*NrPixelsY + ThisVal.y)){
+							continue;
+						}
+					}
+					ThisInt = Image[ThisVal.z*NrPixelsY + ThisVal.y]; // The data is arranged as y(fast) and then z(slow)
 					Intensity += ThisInt*ThisVal.frac;
 					totArea += ThisVal.frac;
 				}
