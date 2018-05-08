@@ -356,6 +356,7 @@ int main(int argc, char **argv)
 	char outfn[4096];
 	FILE *out;
 	double Intensity, totArea, ThisInt;
+	size_t testPos;
 	for (i=0;i<nFrames;i++){
 		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
 		fread(ImageIn,SizeFile,1,fp);
@@ -377,7 +378,10 @@ int main(int argc, char **argv)
 				for (l=0;l<nPixels;l++){
 					ThisVal = pxList[dataPos + l];
 					if (mapMaskSize!=0){
-						if (TestBit(mapMask,ThisVal.z*NrPixelsY + ThisVal.y)){
+						testPos = ThisVal.z;
+						testPos *= NrPixelsY;
+						testPos += ThisVal.y;
+						if (TestBit(mapMask,testPos)){
 							continue;
 						}
 					}
