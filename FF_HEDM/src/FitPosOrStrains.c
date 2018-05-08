@@ -53,6 +53,7 @@ extern int BigDetSize;
 extern int *BigDetector;
 extern long long int totNrPixelsBigDetector;
 extern double pixelsize;
+extern double DetParams[4][10];
 
 int BigDetSize = 0;
 int *BigDetector;

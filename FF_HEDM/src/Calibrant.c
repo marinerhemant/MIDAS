@@ -45,6 +45,9 @@ int NrPixelsGlobal = 2048;
 #define MultFactor 1
 
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
+extern size_t mapMaskSize;
+extern int *mapMask;
+
 size_t mapMaskSize = 0;
 int *mapMask;
 
@@ -1045,7 +1048,6 @@ int main(int argc, char *argv[])
 		EtaMean = EtaMean2;
 		IdealTtheta = IdealTtheta2;
 		//for (i=0;i<nIndices;i++) printf("Final %d %lf %lf\n",i,RMean[i],EtaMean[i]);
-		
 		end = clock();
 	    diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
 	    if (FitWeightMean != 1){printf("Number of calls to profiler function: %lld\n",NrCallsProfiler);printf("Time elapsed in fitting peak profiles:\t%f s.\n",diftotal);}
@@ -1060,7 +1062,9 @@ int main(int argc, char *argv[])
 		EtaIns = malloc(nIndices*sizeof(*EtaIns));
 		RadIns = malloc(nIndices*sizeof(*RadIns));
 		DiffIns = malloc(nIndices*sizeof(*DiffIns));
-		for (i=0;i<nIndices;i++){Yc[i]=(ybc-(YMean[i]/px));Zc[i]=(zbc+(ZMean[i]/px));}
+		for (i=0;i<nIndices;i++){
+			Yc[i]=(ybc-(YMean[i]/px));Zc[i]=(zbc+(ZMean[i]/px));
+		}
 		CorrectTiltSpatialDistortion(nIndices,MaxRingRad,Yc,Zc,IdealTtheta,px,Lsd,ybc,zbc,tx,tyin,tzin,p0in,p1in,p2in,EtaIns,DiffIns,RadIns,&StdDiff);
 		NrCalls = 0;
 		FitTiltBCLsd(nIndices,Yc,Zc,IdealTtheta,Lsd,MaxRingRad,ybc,zbc,tx,tyin,tzin,p0in,p1in,p2in,&ty,&tz,&LsdFit,&ybcFit,&zbcFit,&p0,&p1,&p2,&MeanDiff,tolTilts,tolLsd,tolBC,tolP,px);
@@ -1077,7 +1081,10 @@ int main(int argc, char *argv[])
 		char OutFileName[1024];
 		sprintf(OutFileName,"%s_%06d%s.%s",fn,a,Ext,"corr.csv");
 		Out = fopen(OutFileName,"w");
-		for (i=0;i<nIndices;i++){fprintf(Out,"%f %10.8f %10.8f %f %10.8f %10.8f %f\n",Etas[i],Diffs[i],RadOuts[i],EtaIns[i],DiffIns[i],RadIns[i],IdealTtheta[i]);}
+		fprintf(Out,"Eta Strain RadFit EtaCalc DiffCalc RadCalc Ideal2Theta\n");
+		for (i=0;i<nIndices;i++){
+			fprintf(Out,"%f %10.8f %10.8f %f %10.8f %10.8f %f\n",Etas[i],Diffs[i],RadOuts[i],EtaIns[i],DiffIns[i],RadIns[i],IdealTtheta[i]);
+		}
 		fclose(Out);
 		FreeMemMatrixInt(Indices,nIndices);
 		free(R);

@@ -391,7 +391,7 @@ int main(int argc, char **argv)
 		}
 		fclose(out);
 	}
-	
+
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	printf("Total time elapsed:\t%f s.\n",diftotal);
