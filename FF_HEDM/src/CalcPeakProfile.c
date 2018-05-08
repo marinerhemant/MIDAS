@@ -394,6 +394,7 @@ inline void CalcPeakProfile(int **Indices, int *NrEachIndexBin, int idx,
 		ThisArea = CalcAreaPolygon(EdgesOut,nEdges);
 		TotArea += ThisArea;
 		//~ printf("%lf %lf %d %d %d\n",TotArea, ThisArea, idx,i,Indices[idx][i]);
+		printf("%lf ",Average[Indices[idx][i]]);
 		SumIntensity += Average[Indices[idx][i]] * ThisArea;
 	}
 	SumIntensity /= TotArea;
