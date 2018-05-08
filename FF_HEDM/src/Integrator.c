@@ -165,13 +165,13 @@ static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], dou
 	int i,j,k,l,m;
 	if (NrTransOpt == 0) memcpy(ImageOut,ImageIn,NrPixelsY*NrPixelsZ*sizeof(*ImageIn)); // Nothing to do
     for (i=0;i<NrTransOpt;i++){
-		if (TransOpt[k] == 1){
+		if (TransOpt[i] == 1){
 			for (k=0;k<NrPixelsY;k++){
 				for (l=0;l<NrPixelsZ;l++){
 					ImageOut[l*NrPixelsY+k] = ImageIn[l*NrPixelsY+(NrPixelsY-k-1)]; // Invert Y
 				}
 			}
-		}else if (TransOpt[k] == 2){
+		}else if (TransOpt[i] == 2){
 			for (k=0;k<NrPixelsY;k++){
 				for (l=0;l<NrPixelsZ;l++){
 					ImageOut[l*NrPixelsY+k] = ImageIn[(NrPixelsZ-l-1)*NrPixelsY+k]; // Invert Z
