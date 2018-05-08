@@ -378,6 +378,12 @@ inline void CalcPeakProfile(int **Indices, int *NrEachIndexBin, int idx,
 	Pos = malloc(2*sizeof(*Pos));
 	double ThisArea, TotArea=0;
 	for (i=0;i<NrEachIndexBin[idx];i++){
+		if (mapMaskSize !=0){ // Skip this point if it was on the badPx, gap mask
+			if (TestBit(mapMask,Indices[idx][i])){
+				//printf("%d %d %d\n",idx,i,Indices[idx][i]);
+				continue;
+			}
+		}
 		Pos[0] = Indices[idx][i] % NrPixelsY; // This is Y
 		Pos[1] = Indices[idx][i] / NrPixelsY; // This is Z
 		nEdges = CalcNEdges(BoxEdges,Pos,EdgesIn);
@@ -386,14 +392,8 @@ inline void CalcPeakProfile(int **Indices, int *NrEachIndexBin, int idx,
 		}
 		nEdges = FindUniques(EdgesIn,EdgesOut,nEdges);
 		ThisArea = CalcAreaPolygon(EdgesOut,nEdges);
-		if (mapMaskSize !=0){ // Skip this point if it was on the badPx, gap mask
-			if (TestBit(mapMask,Indices[idx][i])){
-				//printf("%d %d %d\n",idx,i,Indices[idx][i]);
-				continue;
-			}
-		}
-		printf("%d %d %d\n",idx,i,Indices[idx][i]);
 		TotArea += ThisArea;
+		printf("%lf %lf %d %d %d\n",TotArea, ThisArea, idx,i,Indices[idx][i]);
 		SumIntensity += Average[Indices[idx][i]] * ThisArea;
 	}
 	SumIntensity /= TotArea;
