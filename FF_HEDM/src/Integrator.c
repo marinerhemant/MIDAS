@@ -379,12 +379,9 @@ int main(int argc, char **argv)
 				for (l=0;l<nPixels;l++){
 					ThisVal = pxList[dataPos + l];
 					if (mapMaskSize!=0){
-						//~ testPos = ThisVal.z;
-						//~ testPos *= NrPixelsY;
-						//~ testPos += ThisVal.y;
-						testPos = ThisVal.y;
-						testPos *= NrPixelsZ;
-						testPos += ThisVal.z;
+						testPos = ThisVal.z;
+						testPos *= NrPixelsY;
+						testPos += ThisVal.y;
 						if (TestBit(mapMask,testPos)){
 							printf("Bad Pixel or Gap Pixel %d %d %zu %d %u %u\n",ThisVal.z,ThisVal.y,testPos,Image[testPos],ImageIn[testPos],DarkIn[testPos]);
 							continue;
