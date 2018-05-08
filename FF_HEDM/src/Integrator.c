@@ -319,7 +319,7 @@ int main(int argc, char **argv)
 		sz = ftell(fd);
 		rewind(fd);
 		nFrames = sz / (SizeFile);
-		printf("Reading dark file:      %s, nFrames: %d, skipping first %ld bytes.\n",darkFN,nFrames,Skip);
+		printf("Reading dark file:      %s, nFrames: %d, skipping first %d bytes.\n",darkFN,nFrames,Skip);
 		fseek(fd,Skip,SEEK_SET);
 		for (i=0;i<nFrames;i++){
 			fread(DarkIn,SizeFile,1,fd);
