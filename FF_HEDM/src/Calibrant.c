@@ -336,7 +336,7 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 			Rma = Rs[j] + Rstep/2;
 			CalcPeakProfile(Indices,NrEachIndexBin,i,Average,Rmi,Rma,EtaMi,EtaMa,ybc,zbc,px,NrPixels, &RetVal);
 			PeakShape[j] = RetVal;
-			printf("%lf\n",RetVal);
+			//~ printf("%lf\n",RetVal);
 			if (RetVal != 0){
 				AllZero = 0;
 			}
