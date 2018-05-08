@@ -386,6 +386,7 @@ int main(int argc, char **argv)
 						}
 					}
 					ThisInt = Image[ThisVal.z*NrPixelsY + ThisVal.y]; // The data is arranged as y(fast) and then z(slow)
+					printf("Int: %lf, Area: %lf\n",ThisInt,ThisVal.frac);
 					Intensity += ThisInt*ThisVal.frac;
 					totArea += ThisVal.frac;
 				}
