@@ -388,6 +388,7 @@ inline void CalcPeakProfile(int **Indices, int *NrEachIndexBin, int idx,
 		ThisArea = CalcAreaPolygon(EdgesOut,nEdges);
 		if (mapMaskSize !=0){ // Skip this point if it was on the badPx, gap mask
 			if (TestBit(mapMask,Indices[idx][i])){
+				printf("%d %d %d\n",idx,i,Indices[idx][i]);
 				continue;
 			}
 		}
