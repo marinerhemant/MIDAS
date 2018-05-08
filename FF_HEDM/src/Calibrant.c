@@ -336,9 +336,9 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 			Rma = Rs[j] + Rstep/2;
 			CalcPeakProfile(Indices,NrEachIndexBin,i,Average,Rmi,Rma,EtaMi,EtaMa,ybc,zbc,px,NrPixels, &RetVal);
 			PeakShape[j] = RetVal;
-			if (RetVal != 0){
-				AllZero = 0;
-			}
+			//~ if (RetVal != 0){
+				//~ AllZero = 0;
+			//~ }
 		}
 		for (j=0;j<NrPtsForFit;j++){
 			Etas[j]=EtaMean[i];
