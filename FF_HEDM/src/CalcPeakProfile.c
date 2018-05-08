@@ -397,6 +397,7 @@ inline void CalcPeakProfile(int **Indices, int *NrEachIndexBin, int idx,
 		SumIntensity += Average[Indices[idx][i]] * ThisArea;
 	}
 	SumIntensity /= TotArea;
+	printf("%lf %lf ",SumIntensity,TotArea);
 	if (TotArea == 0){
 		SumIntensity = 0;
 	}
