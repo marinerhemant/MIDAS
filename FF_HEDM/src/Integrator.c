@@ -382,11 +382,12 @@ int main(int argc, char **argv)
 						testPos *= NrPixelsY;
 						testPos += ThisVal.y;
 						if (TestBit(mapMask,testPos)){
+							printf("Bad Pixel or Gap Pixel %d %d %zu\n",ThisVal.z,ThisVal.y,testPos);
 							continue;
 						}
 					}
 					ThisInt = Image[ThisVal.z*NrPixelsY + ThisVal.y]; // The data is arranged as y(fast) and then z(slow)
-					printf("Int: %lf, Area: %lf\n",ThisInt,ThisVal.frac);
+					//printf("Int: %lf, Area: %lf\n",ThisInt,ThisVal.frac);
 					Intensity += ThisInt*ThisVal.frac;
 					totArea += ThisVal.frac;
 				}
