@@ -331,6 +331,7 @@ int main(int argc, char **argv)
 				mapMask = calloc(mapMaskSize,sizeof(*mapMask));
 				for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 					if (DarkIn[j] == (pixelvalue) GapIntensity || DarkIn[j] == (pixelvalue) BadPxIntensity){
+						printf("%d %d %d %d",j,DarkIn[j],(pixelvalue)GapIntensity,(pixelvalue)BadPxIntensity);
 						SetBit(mapMask,j);
 					}
 				}
