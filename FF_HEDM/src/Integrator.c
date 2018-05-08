@@ -386,7 +386,7 @@ int main(int argc, char **argv)
 						testPos *= NrPixelsZ;
 						testPos += ThisVal.z;
 						if (TestBit(mapMask,testPos)){
-							printf("Bad Pixel or Gap Pixel %d %d %zu %d %u\n",ThisVal.z,ThisVal.y,testPos,Image[testPos],ImageIn[testPos]);
+							printf("Bad Pixel or Gap Pixel %d %d %zu %d %u %u\n",ThisVal.z,ThisVal.y,testPos,Image[testPos],ImageIn[testPos],DarkIn[testPos]);
 							continue;
 						}
 					}
