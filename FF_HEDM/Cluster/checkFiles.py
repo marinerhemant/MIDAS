@@ -31,12 +31,12 @@ for line in paramcontents:
 
 if darkfn is not '':
 	if not os.path.isfile(darkfn):
-		print 'DARK FILE ' + darkfn + ' does not exist. Exiting!!!'
-		sys.exit(1)
+		print 'DARK FILE ' + darkfn + ' does not exist. Please check!!!'
+		# ~ sys.exit(1)
 
 startNr = overallStartNr + nrFilesPerSweep*(layernr-1)
 for fnr in range(startNr,startNr+nrFilesPerSweep):
 	fn = rawFolder + '/' + fileStem + '_' + str(fnr).zfill(padding) + ext
 	if not os.path.isfile(fn):
-		print 'FILE ' + fn + ' does not exist. Exiting!!!'
-		sys.exit(1)
+		print 'FILE ' + fn + ' does not exist. Please check!!!'
+		# ~ sys.exit(1)
