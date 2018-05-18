@@ -19,7 +19,7 @@ else
 	FLAGSTIFF=
 endif
 
-all: helpall makenf makeff
+all: helpall
 	@echo Successfully compiled.
 
 makenf:

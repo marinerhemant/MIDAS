@@ -56,10 +56,12 @@ fi
 NDISTANCES=$( awk '$1 ~ /^nDistances/ { print $2 }' ${TOP_PARAM_FILE} )
 NRFILESPERDISTANCE=$( awk '$1 ~ /^NrFilesPerDistance/ { print $2 }' ${TOP_PARAM_FILE} )
 DataDirectory=$( awk '$1 ~ /^DataDirectory/ { print $2 }' ${TOP_PARAM_FILE} )
+BinFN=$( awk '$1 ~ /^MicFileBinary/ { print $2 }' ${TOP_PARAM_FILE} )
 tmpfn=${DataDirectory}/fns.txt
 echo "paramfn datadir" > ${tmpfn}
 echo "${TOP_PARAM_FILE} ${DataDirectory}" >> ${tmpfn}
 
+rm ${BinFN}
 # Do Processing
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
 	-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \

@@ -160,10 +160,13 @@ REtaMapper(
 	}
 }
 
-static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], double *ImageIn, double *ImageOut, int NrPixelsY, int NrPixelsZ)
+static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], pixelvalue *ImageIn, pixelvalue *ImageOut, int NrPixelsY, int NrPixelsZ)
 {
 	int i,j,k,l,m;
-	if (NrTransOpt == 0) memcpy(ImageOut,ImageIn,NrPixelsY*NrPixelsZ*sizeof(*ImageIn)); // Nothing to do
+	if (NrTransOpt == 0){
+		memcpy(ImageOut,ImageIn,NrPixelsY*NrPixelsZ*sizeof(*ImageIn)); // Nothing to do
+		return;
+	}
     for (i=0;i<NrTransOpt;i++){
 		if (TransOpt[i] == 1){
 			for (k=0;k<NrPixelsY;k++){
@@ -294,18 +297,19 @@ int main(int argc, char **argv)
         else if (TransOpt[i] == 1) printf("Flip Left Right.\n");
         else if (TransOpt[i] == 2) printf("Flip Top Bottom.\n");
     }
-	double *Image, *ImageT;
+	double *Image;
 	pixelvalue *ImageIn;
 	pixelvalue *DarkIn;
+	pixelvalue *ImageInT;
+	pixelvalue *DarkInT;
 	float *ImageFloat;
-	double *AverageDarkT;
 	double *AverageDark;
 	DarkIn = malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkIn));
-	AverageDarkT = calloc(NrPixelsY*NrPixelsZ,sizeof(*AverageDarkT));
+	DarkInT = malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkInT));
 	AverageDark = calloc(NrPixelsY*NrPixelsZ,sizeof(*AverageDark));
 	ImageIn = malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageIn));
+	ImageInT = malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageInT));
 	ImageFloat = malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageFloat));
-	ImageT = malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageT));
 	Image = malloc(NrPixelsY*NrPixelsZ*sizeof(*Image));
 	int SizeFile = sizeof(pixelvalue)*NrPixelsY*NrPixelsZ;
 	int nFrames, sz;
@@ -322,7 +326,8 @@ int main(int argc, char **argv)
 		printf("Reading dark file:      %s, nFrames: %d, skipping first %d bytes.\n",darkFN,nFrames,Skip);
 		fseek(fd,Skip,SEEK_SET);
 		for (i=0;i<nFrames;i++){
-			fread(DarkIn,SizeFile,1,fd);
+			fread(DarkInT,SizeFile,1,fd);
+			DoImageTransformations(NrTransOpt,TransOpt,DarkInT,DarkIn,NrPixelsY,NrPixelsZ);
 			if (makeMap == 1){
 				mapMaskSize = NrPixelsY;
 				mapMaskSize *= NrPixelsZ;
@@ -331,15 +336,13 @@ int main(int argc, char **argv)
 				mapMask = calloc(mapMaskSize,sizeof(*mapMask));
 				for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 					if (DarkIn[j] == (pixelvalue) GapIntensity || DarkIn[j] == (pixelvalue) BadPxIntensity){
-						//printf("%d %u %u %u\n",j,DarkIn[j],(pixelvalue)GapIntensity,(pixelvalue)BadPxIntensity);
 						SetBit(mapMask,j);
 					}
 				}
 				makeMap = 0;
 			}
-			for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDarkT[j] += (double)DarkIn[j]/nFrames;
+			for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFrames;
 		}
-		DoImageTransformations(NrTransOpt,TransOpt,AverageDarkT,AverageDark,NrPixelsY,NrPixelsZ);
 		printf("Dark file read\n");
 	}
 	char *imageFN;
@@ -360,12 +363,11 @@ int main(int argc, char **argv)
 	size_t testPos;
 	for (i=0;i<nFrames;i++){
 		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
-		fread(ImageIn,SizeFile,1,fp);
+		fread(ImageInT,SizeFile,1,fp);
+		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
-			ImageT[j] = (double)ImageIn[j] - AverageDark[j];
+			Image[j] = (double)ImageIn[j] - AverageDark[j];
 		}
-		// Transposer(ImageT,NrPixelsY,NrPixelsZ,Image); Not needed anymore
-		DoImageTransformations(NrTransOpt,TransOpt,ImageT,Image,NrPixelsY,NrPixelsZ); // ImageT is in and Image is out
 		sprintf(outfn,"%s_integrated_framenr_%d.csv",imageFN,i);
 		out = fopen(outfn,"w");
 		fprintf(out,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\tEta(px)\tIntensity(counts)\n",nEtaBins,nRBins);
@@ -383,18 +385,19 @@ int main(int argc, char **argv)
 						testPos *= NrPixelsY;
 						testPos += ThisVal.y;
 						if (TestBit(mapMask,testPos)){
-							//~ printf("Bad Pixel or Gap Pixel %d %d %zu %lf Image: %lf Dark: %lf\n",
-									//~ ThisVal.z,ThisVal.y,testPos,Image[testPos],ImageT[testPos],AverageDark[testPos]);
 							continue;
 						}
 					}
 					ThisInt = Image[testPos]; // The data is arranged as y(fast) and then z(slow)
-					//printf("Int: %lf, Area: %lf\n",ThisInt,ThisVal.frac);
 					Intensity += ThisInt*ThisVal.frac;
 					totArea += ThisVal.frac;
 				}
-				if (Intensity != 0 && Normalize == 1) Intensity /= totArea;
-				fprintf(out,"%lf\t%lf\t%lf\n",(RBinsLow[j]+RBinsHigh[j])/2,(EtaBinsLow[k]+EtaBinsHigh[k])/2,Intensity);
+				if (Intensity != 0){
+					if (Normalize == 1){
+						Intensity /= totArea;
+					}
+					fprintf(out,"%lf\t%lf\t%lf\n",(RBinsLow[j]+RBinsHigh[j])/2,(EtaBinsLow[k]+EtaBinsHigh[k])/2,Intensity);
+				}
 			}
 		}
 		fclose(out);
@@ -405,4 +408,3 @@ int main(int argc, char **argv)
 	printf("Total time elapsed:\t%f s.\n",diftotal);
 	return 0;
 }
-

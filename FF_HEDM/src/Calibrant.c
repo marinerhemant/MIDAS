@@ -549,7 +549,14 @@ static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], pix
     pixelvalue **ImageTemp1, **ImageTemp2;
     ImageTemp1 = allocMatrixPX(NrPixels,NrPixels);
     ImageTemp2 = allocMatrixPX(NrPixels,NrPixels);
-	for (k=0;k<NrPixels;k++) for (l=0;l<NrPixels;l++) ImageTemp1[k][l] = Image[(NrPixels*k)+l];
+    if (NrTransOpt == 0){
+		return;
+	}
+	for (k=0;k<NrPixels;k++){
+		for (l=0;l<NrPixels;l++){
+			ImageTemp1[k][l] = Image[(NrPixels*k)+l];
+		}
+	}
 	for (k=0;k<NrTransOpt;k++) {
 		if (TransOpt[k] == 1){
 			for (l=0;l<NrPixels;l++) for (m=0;m<NrPixels;m++) ImageTemp2[l][m] = ImageTemp1[l][NrPixels-m-1]; //Inverting Y.
@@ -562,7 +569,11 @@ static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], pix
 		}
 		for (l=0;l<NrPixels;l++) for (m=0;m<NrPixels;m++) ImageTemp1[l][m] = ImageTemp2[l][m];
 	}
-	for (k=0;k<NrPixels;k++) for (l=0;l<NrPixels;l++) Image[(NrPixels*k)+l] = ImageTemp2[k][l];
+	for (k=0;k<NrPixels;k++){
+		for (l=0;l<NrPixels;l++){
+			Image[(NrPixels*k)+l] = ImageTemp2[k][l];
+		}
+	}
 	FreeMemMatrixPx(ImageTemp1,NrPixels);
 	FreeMemMatrixPx(ImageTemp2,NrPixels);
 }
@@ -600,7 +611,6 @@ int main(int argc, char *argv[])
     int SpaceGroup,FitWeightMean=0;
     double LatticeConstant[6], Wavelength, MaxRingRad, Lsd, MaxTtheta, TthetaTol, ybc, zbc, EtaBinSize, px,Width;
     double tx = 0,tolTilts,tolLsd,tolBC,tolP,tyin=0,tzin=0,p0in=0,p1in=0,p2in=0, padY=0, padZ=0;
-    //int SkipHeader = 1;
     int Padding = 6, NrPixelsY,NrPixelsZ,NrPixels;
     int NrTransOpt=0;
     size_t GapIntensity=0, BadPxIntensity=0;
@@ -885,13 +895,13 @@ int main(int argc, char *argv[])
 		}
 	}
 	printf("\n");
-	
+
 	printf("Number of planes being considered: %d.\n",n_hkls);
 	printf("The following rings will be excluded:");
 	for (i=0;i<nRingsExclude;i++){
 		printf(" %d",RingsExclude[i]);
 	}
-	//Width = Width/px;
+
 	TthetaTol = Ttheta4mR((MaxRingRad+Width),Lsd) - Ttheta4mR((MaxRingRad-Width),Lsd);
 	printf("\n2Theta Tolerance: %f \n",TthetaTol);
 	pixelvalue *DarkFile;
@@ -908,11 +918,19 @@ int main(int argc, char *argv[])
 	pixelvalue *Image2;
 	DarkFile = malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkFile)); // Raw.
 	Image = malloc(NrPixelsY*NrPixelsZ*sizeof(*Image)); // Raw.
-	DarkFile2 = calloc(NrPixels*NrPixels,sizeof(*DarkFile)); // Squared.
-	Image2 = calloc(NrPixels*NrPixels,sizeof(*Image)); // Squared.
+	DarkFile2 = calloc(NrPixels*NrPixels,sizeof(*DarkFile2)); // Squared.
+	Image2 = calloc(NrPixels*NrPixels,sizeof(*Image2)); // Squared.
 	AverageDark = calloc(NrPixels*NrPixels,sizeof(*AverageDark)); // Squared.
 	Average = calloc(NrPixels*NrPixels,sizeof(*Average)); // Squared.
 	fd = fopen(Dark,"rb");
+	
+	uint16_t *outmatr;
+	char fnout[4096];
+	FILE *fout;
+	sprintf(fnout,"%s.square",Dark);
+	fout = fopen(fnout,"w");
+	outmatr = calloc(NrPixels*NrPixels,sizeof(*outmatr));
+	
 	if (fd == NULL){
 		printf("Dark file %s could not be read. Making an empty array for dark.\n",Dark);
 		for (j=0;j<(NrPixels*NrPixels);j++)AverageDark[j] = 0;
@@ -977,7 +995,7 @@ int main(int argc, char *argv[])
 			MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,Image,Image2);
 			DoImageTransformations(NrTransOpt,TransOpt,Image2,NrPixels);
 			for(k=0;k<(NrPixels*NrPixels);k++){
-				Average[k]+=Image2[k]-AverageDark[k]; // In reality this is sum
+				Average[k]+=(double)(Image2[k])-AverageDark[k]; // In reality this is sum
 			}
 		}
 		TotFrames+=nFrames;
@@ -1003,7 +1021,6 @@ int main(int argc, char *argv[])
 		NrEachIndexBin = malloc(nIndices*sizeof(*NrEachIndexBin));
 		Indices = allocMatrixInt(nIndices,20000);
 		Car2Pol(n_hkls,nEtaBins,NrPixels,NrPixels,ybc,zbc,px,R,Eta,Rmins,Rmaxs,EtaBinsLow,EtaBinsHigh,nIndices,NrEachIndexBin,Indices);
-		//for (i=0;i<nIndices;i++) printf("%d %d\n",i,NrEachIndexBin[i]);
 		double *RMean, *EtaMean, *IdealR, *IdealTtheta, *IdealRmins, *IdealRmaxs;
 		IdealR = malloc(nIndices*sizeof(*IdealR));
 		IdealRmins = malloc(nIndices*sizeof(*IdealRmins));
@@ -1040,7 +1057,6 @@ int main(int argc, char *argv[])
 			}
 		}
 		printf("Out of %d slices, %d were in the detector\n",nIndices,countr);
-		//for (i=0;i<nIndices;i++) printf("Orig %d %lf %lf\n",i,RMean[i],EtaMean[i]);
 		nIndices = countr;
 		free(RMean);
 		free(EtaMean);
@@ -1048,7 +1064,6 @@ int main(int argc, char *argv[])
 		RMean = RMean2;
 		EtaMean = EtaMean2;
 		IdealTtheta = IdealTtheta2;
-		//for (i=0;i<nIndices;i++) printf("Final %d %lf %lf\n",i,RMean[i],EtaMean[i]);
 		end = clock();
 	    diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
 	    if (FitWeightMean != 1){printf("Number of calls to profiler function: %lld\n",NrCallsProfiler);printf("Time elapsed in fitting peak profiles:\t%f s.\n",diftotal);}

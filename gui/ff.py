@@ -83,7 +83,7 @@ def getImageMax(fn):
 	dataMax = np.zeros(NrPixels*NrPixels)
 	nFramesToDo = nFramesMaxVar.get()
 	startFrameNr = maxStartFrameNrVar.get()
-	f.seet(startFrameNr*NrPixels*NrPixels*2,os.SEEK_CUR)
+	f.seek(startFrameNr*NrPixels*NrPixels*2,os.SEEK_CUR)
 	for framenr in range(nFramesToDo):
 		data = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
 		dataMax = np.maximum(dataMax,data)
@@ -679,8 +679,8 @@ def loadbplot():
 	global ax
 	global fileNumber
 	global bdata
-	global lines2
-	global firstFileNumber
+	global lines2, NrPixels
+	global firstFileNumber, nFramesPerFile
 	if not initplot2:
 		lims = [b.get_xlim(), b.get_ylim()]
 	frameNr = int(framenrvar.get())
@@ -688,6 +688,7 @@ def loadbplot():
 	upperthreshold = float(maxthresholdvar.get())
 	NrPixels = int(NrPixelsVar.get())
 	firstFileNumber = int(firstFileNrVar.get())
+	nFramesPerFile = int(nFramesPerFileVar.get())
 	fileNumber = firstFileNumber + frameNr/nFramesPerFile
 	framesToSkip = frameNr % nFramesPerFile
 	bytesToSkip = 8192 + framesToSkip*(2*NrPixels*NrPixels)
@@ -858,7 +859,7 @@ def selectFile():
 
 def firstFileSelector():
 	global fileStem, folder, padding,firstFileNumber,nFramesPerFile
-	global nDetectors, detnumbvar
+	global nDetectors, detnumbvar,nFramesMaxVar,nFramesPerFileVar
 	firstfilefullpath = selectFile()
 	nDetectors = 1
 	detnumbvar.set(firstfilefullpath[-1])
@@ -871,6 +872,7 @@ def firstFileSelector():
 	statinfo = os.stat(firstfilefullpath)
 	nFramesPerFile = (statinfo.st_size - 8192)/(2*NrPixels*NrPixels)
 	nFramesPerFileVar.set(nFramesPerFile)
+	nFramesMaxVar.set(nFramesPerFile)
 
 def darkFileSelector():
 	global darkStem,darkNum, dark

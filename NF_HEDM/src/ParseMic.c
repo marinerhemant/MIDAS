@@ -85,7 +85,7 @@ int main (int argc, char *argv[]){
 	fprintf(out,"%%GlobalPosition %lf\n",GlobalPosition);
 	fprintf(out,"%%OrientationRowNr\tNrMatches\tRunTime\tX\tY\tTriEdgeSize\tUpDown\tEul1\tEul2\tEul3\tConfidence\tPhaseNr\n");
 	for (i=0;i<NrRows;i++){
-		if (MicContents[i*11+j] == 0) continue;
+		if (MicContents[i*11] == 0) continue;
 		for (j=0;j<11;j++){
 			fprintf(out,"%lf\t",MicContents[i*11+j]);
 		}
@@ -111,7 +111,7 @@ int main (int argc, char *argv[]){
 	fprintf(out2,"%%GlobalPosition %lf\n",GlobalPosition);
 	fprintf(out2,"%%OrientationRowNr\tNrMatches\tRunTime\tX\tY\tTriEdgeSize\tUpDown\tEul1\tEul2\tEul3\tConfidence\t...\t...\t...\t...\t...\t...\tPhaseNr\n");
 	for (i=0;i<NrRows2;i++){
-		if (AllMatchesMicContents[i*11+j] == 0) continue;
+		if (AllMatchesMicContents[i*nCols] == 0) continue;
 		for (j=0;j<nCols;j++){
 			fprintf(out2,"%lf\t",AllMatchesMicContents[i*nCols+j]);
 		}
