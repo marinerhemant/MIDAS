@@ -61,7 +61,7 @@ tmpfn=${DataDirectory}/fns.txt
 echo "paramfn datadir" > ${tmpfn}
 echo "${TOP_PARAM_FILE} ${DataDirectory}" >> ${tmpfn}
 
-rm ${BinFN}
+rm -f ${BinFN}
 # Do Processing
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
 	-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
