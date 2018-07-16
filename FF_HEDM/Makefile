@@ -48,6 +48,8 @@ lcrc: predeplcrc all runsetup
 
 stampede: predepstampede all runsetup
 
+notchpeak: predepnotchpeak all runsetup
+
 runsetup:
 	Cluster/setup.sh
 
@@ -69,6 +71,8 @@ predeplanl:
 	./GetPackages.sh lanl
 predepstampede:
 	./GetPackages.sh stampede
+predepnotchpeak:
+	./GetPackages.sh notchpeak
 
 cuda: help indexrefinecuda peaks mergeoverlapsgpu fittiltbclsdsample \
 	calcradius mergerings processgrains hkls bindata calibrant findsaturatedpx fittiltx fitwedge

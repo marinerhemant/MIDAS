@@ -23,6 +23,7 @@ MACHINE_NAMEs supported for compiling:
 * lanl
 * lcrc
 * stampede
+* notchpeak
 
 MACHINE_NAMEs supported during run:
 * local
@@ -44,5 +45,6 @@ MACHINE_NAMEs supported during run:
 * bebop
 * stamped_normal
 * stampede_largemem
+* notchpeak
 
 If using local run give nCPUs to use during run.

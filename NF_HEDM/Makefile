@@ -54,6 +54,8 @@ lanl: predeplanl all runsetup
 
 stampede: predepstampede all runsetup
 
+notchpeak: predepnotchpeak all runsetup
+
 runsetup:
 	Cluster/setup.sh
 
@@ -75,6 +77,8 @@ predeplanl:
 	./GetPackages.sh lanl
 predepstampede:
 	./GetPackages.sh stampede
+predepnotchpeak:
+	./GetPackages.sh notchpeak
 
 bindircheck:
 	mkdir -p $(BINDIR)

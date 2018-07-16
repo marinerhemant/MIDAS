@@ -507,6 +507,7 @@ def stitch_ff():
 	Tk.Entry(master=topStitch,textvariable=nlayersvar,width=6 ).grid(row=10,column=2,sticky=Tk.W)
 	Tk.Label(master=topStitch,text='TranslationAmt(px)').grid(row=11,column=1)
 	Tk.Entry(master=topStitch,textvariable=translationvar,width=6 ).grid(row=11,column=2,sticky=Tk.W)
+	Tk.Label(master=topStitch,text='Towards the door is positive.').grid(row=11,column=2)
 	Tk.Label(master=topStitch,text='          NrPixels').grid(row=12,column=1)
 	Tk.Entry(master=topStitch,textvariable=npxvar,width=6 ).grid(row=12,column=2,sticky=Tk.W)
 	Tk.Label(master=topStitch,text='   NrFramesPerFile').grid(row=13,column=1)
