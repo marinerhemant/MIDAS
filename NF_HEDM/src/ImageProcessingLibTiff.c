@@ -963,7 +963,7 @@ main(int argc, char *argv[])
 		sprintf(cmmd2,"%s/opt/MIDAS/NF_HEDM/bin/ParseDeconvOutput %s %s %d", homedir, OutFN2, OutFileName, NrPixels);
 		printf("%s\n%s\n",cmmd,cmmd2);
 		system(cmmd);
-		system(cmmd);
+		system(cmmd2);
 		return 0;
 	}
 	pixelvalue *ys, *zs, *peakID;
