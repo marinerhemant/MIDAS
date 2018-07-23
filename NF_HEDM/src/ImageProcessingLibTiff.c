@@ -776,11 +776,11 @@ main(int argc, char *argv[])
         str = "Deblur ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            doDeblur = 1;
+            sscanf(aline,"%s %d", dummy, &doDeblur);
             continue;
         }
     }
-    if (doDeblur == 1) WriteFinImage = 1;
+    if (doDeblur != 0) WriteFinImage = 1;
 	int i,j,k;
     sprintf(fn,"%s/%s",direct,fn2);
     fclose(fileParam);
@@ -955,11 +955,11 @@ main(int argc, char *argv[])
 		fwrite(FinalImage,SizeOutFile,1,fw);
 		fclose(fw);
 	}
-	if (doDeblur == 1){
+	if (doDeblur != 0){
 		char *homedir = getenv("HOME");
 		char cmmd[4096];
 		char cmmd2[14096];
-		sprintf(cmmd,"/APSshare/anaconda/x86_64/bin/python %s/opt/MIDAS/NF_HEDM/src/RLDeconv.py %s 100", homedir, OutFN2);
+		sprintf(cmmd,"/APSshare/anaconda/x86_64/bin/python %s/opt/MIDAS/NF_HEDM/src/RLDeconv.py %s %d", homedir, OutFN2,doDeblur);
 		sprintf(cmmd2,"%s/opt/MIDAS/NF_HEDM/bin/ParseDeconvOutput %s %s %d", homedir, OutFN2, OutFileName, NrPixels);
 		printf("%s\n%s\n",cmmd,cmmd2);
 		system(cmmd);
