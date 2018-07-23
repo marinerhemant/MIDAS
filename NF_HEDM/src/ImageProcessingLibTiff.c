@@ -964,7 +964,6 @@ main(int argc, char *argv[])
 		printf("%s\n%s\n",cmmd,cmmd2);
 		system(cmmd);
 		system(cmmd2);
-		return 0;
 	}
 	pixelvalue *ys, *zs, *peakID;
 	float32_t *intensity;
@@ -999,6 +998,9 @@ main(int argc, char *argv[])
 			(int)peakID[i],(double)intensity[i]);
 	}
 	fclose(ft);
+	
+	if (doDeblur != 0) return 0;
+	
 	float32_t dummy1 = 1;
 	uint32_t dummy2 = 1;
 	pixelvalue dummy3 = 1;
