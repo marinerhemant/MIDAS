@@ -15,13 +15,13 @@ import os.path
 inpFN = sys.argv[1]
 psfFN = os.path.expanduser('~') + '/opt/MIDAS/gui/psf.tif'
 print 'Input file: ' + inpFN
-print 'Peak Spead Function File: ' + psfFN
+print 'Peak Spread Function File: ' + psfFN
 print 'NrIterations: ' + sys.argv[2]
 imarr = np.fromfile(inpFN,dtype='uint16')
 imarr = imarr.astype('float64')
 imarr = imarr.reshape((2048,2048))
 imarr2 = imarr.copy()
-imarr2 += (np.random.poisson(lam=0.0001,size=imarr.shape)-0.00005)/255.
+imarr2 += (np.random.poisson(lam=0.001,size=imarr.shape)-0.0005)/255.
 
 psfim = Image.open(psfFN)
 psfarr = np.array(psfim,dtype='float64')
