@@ -989,6 +989,16 @@ main(int argc, char *argv[])
 	free(FinalImage);
 	// Write the result file.
 	printf("Now writing file: %s.\n",OutFileName);
+	FILE *ft;
+	char OutFNt[4096];
+	sprintf(OutFNt,"%s.txtOld",OutFileName);
+	ft = fopen(OutFNt,"w");
+	fprintf(ft,"YPos\tZPos\tpeakID\tIntensity\n");
+	for (i=0;i<TotPixelsInt;i++){
+		fprintf(ft,"%d\t%d\t%d\t%lf\n",(int)ys[i],(int)zs[i],
+			(int)peakID[i],(double)intensity[i]);
+	}
+	fclose(ft);
 	float32_t dummy1 = 1;
 	uint32_t dummy2 = 1;
 	pixelvalue dummy3 = 1;
