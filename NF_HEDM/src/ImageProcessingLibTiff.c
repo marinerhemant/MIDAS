@@ -945,6 +945,7 @@ main(int argc, char *argv[])
 		TotPixelsInt = 1;
 		FinalImage[2045] = 1;
 	}
+	printf("Total number of pixels with intensity: %d\n",TotPixelsInt);
 	int SizeOutFile = sizeof(pixelvalue)*NrPixels*NrPixels;
 	char OutFN2[1024];
 	if (WriteFinImage == 1){
@@ -964,7 +965,6 @@ main(int argc, char *argv[])
 		system(cmmd);
 		return 0;
 	}
-	printf("Total number of pixels with intensity: %d\n",TotPixelsInt);
 	pixelvalue *ys, *zs, *peakID;
 	float32_t *intensity;
 	ys = malloc(TotPixelsInt*2*sizeof(*ys));
