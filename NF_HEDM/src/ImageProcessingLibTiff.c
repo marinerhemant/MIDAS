@@ -960,7 +960,7 @@ main(int argc, char *argv[])
 		char cmmd[4096];
 		char cmmd2[14096];
 		sprintf(cmmd,"/APSshare/anaconda/x86_64/bin/python %s/opt/MIDAS/NF_HEDM/src/RLDeconv.py %s %d", homedir, OutFN2,doDeblur);
-		sprintf(cmmd2,"%s/opt/MIDAS/NF_HEDM/bin/ParseDeconvOutput %s %s %d", homedir, OutFN2, OutFileName, NrPixels);
+		sprintf(cmmd2,"%s/opt/MIDAS/NF_HEDM/bin/ParseDeconvOutput %s.tif %s %d", homedir, OutFN2, OutFileName, NrPixels);
 		printf("%s\n%s\n",cmmd,cmmd2);
 		system(cmmd);
 		system(cmmd2);
