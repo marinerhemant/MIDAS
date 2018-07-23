@@ -20,9 +20,9 @@ app (file done) PlaceHolder (int prefix, int distance, string outfolder, file ou
 	echo2 prefix distance outfolder stdout=@filename(done);
 }
 
-app (file done) PlaceHolder2 (string prefix,file tmp[])
+app (file done) PlaceHolder2 (int prefix, string outfolder,file tmp[])
 {
-	echo prefix stdout=@filename(done);
+	echo3 prefix outfolder stdout=@filename(done);
 }
 
 app (file done) PlaceHolder3 (string prefix,file tmp)
@@ -99,8 +99,7 @@ if (DoPeakSearch == 1){
 		}
 		simCout[distance] = PlaceHolder(NrFilesPerDistance,distance,outfolder,simBout);
 	}
-	string printoutimages = "All images done.";
-	imagesdone = PlaceHolder2(printoutimages,simCout);
+	imagesdone = PlaceHolder2(NrDistances,outfolder,simCout);
 } else {
 	string prefix2 = "ImageProcessing was not done.";
 	tracef("%s\n",prefix2);
