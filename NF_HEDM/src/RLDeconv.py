@@ -22,7 +22,7 @@ imarr = np.fromfile(inpFN,dtype='uint16')
 imarr = imarr.astype('float64')
 imarr = imarr.reshape((2048,2048))
 imarr2 = imarr.copy()
-imarr2 += (np.random.poisson(lam=0.0005,size=imarr.shape)-0.00025)/255.
+imarr2 += (np.random.poisson(lam=0.0003,size=imarr.shape)-0.00015)/255.
 
 psfim = Image.open(psfFN)
 psfarr = np.array(psfim,dtype='float64')
