@@ -112,6 +112,9 @@ medianimage: $(SRCDIR)MedianImageLibTiff.c
 imageprocessing: $(SRCDIR)ImageProcessingLibTiff.c
 	$(CC) $(SRCDIR)ImageProcessingLibTiff.c -o $(BINDIR)ImageProcessingLibTiff $(CFLAGS) $(CFLAGSTIFF)
 
+parsedeconv: $(SRCDIR)ParseDeconvOutput.c
+	$(CC) $(SRCDIR)ParseDeconvOutput.c -o $(BINDIR)ParseDeconvOutput $(CFLAGS) $(CFLAGSTIFF)
+
 fitorientation: $(SRCDIR)FitOrientation.c
 	$(CC) $(SRCDIR)FitOrientation.c $(SRCDIR)GetMisorientation.c $(SRCDIR)CalcDiffractionSpots.c $(SRCDIR)SharedFuncsFit.c \
 	-o $(BINDIR)FitOrientation $(CFLAGS) $(CFLAGSNLOPT)

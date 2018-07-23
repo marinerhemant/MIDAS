@@ -19,7 +19,7 @@
 #define ClearBit(A,k) (A[(k/32)] &= ~(1 << (k%32)))
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
 #define float32_t float
-#define MAX_N_OVERLAPS 55000
+#define MAX_N_OVERLAPS 155000
 typedef uint16_t pixelvalue;
 
 #define PIX_SORT(a,b) { if ((a)>(b)) PIX_SWAP((a),(b)); }
@@ -677,7 +677,7 @@ main(int argc, char *argv[])
     char *str, dummy[1000];
     int LowNr,nLayers,StartNr,NrFilesPerLayer,NrPixels,BlanketSubtraction,MeanFiltRadius,WriteFinImage=0;
 	nLayers = atoi(argv[2]);
-	int ImageNr,LoGMaskRadius;
+	int ImageNr,LoGMaskRadius, doDeblur=0;
 	double sigma;
 	ImageNr = atoi(argv[3]);
 	int DoLoGFilter=1,WFImages=0;
@@ -773,7 +773,14 @@ main(int argc, char *argv[])
             sscanf(aline,"%s %s", dummy, extOrig);
             continue;
         }
+        str = "Deblur ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            doDeblur = 1;
+            continue;
+        }
     }
+    if (doDeblur == 1) WriteFinImage = 1;
 	int i,j,k;
     sprintf(fn,"%s/%s",direct,fn2);
     fclose(fileParam);
@@ -939,13 +946,23 @@ main(int argc, char *argv[])
 		FinalImage[2045] = 1;
 	}
 	int SizeOutFile = sizeof(pixelvalue)*NrPixels*NrPixels;
+	char OutFN2[1024];
 	if (WriteFinImage == 1){
 		FILE *fw;
-		char OutFN2[1024];
 		sprintf(OutFN2,"%s/%s_FullImage_%06d.%s%d",direct,ReducedFileName,ImageNr,extReduced,nLayers-1);
 		fw = fopen(OutFN2,"wb");
 		fwrite(FinalImage,SizeOutFile,1,fw);
 		fclose(fw);
+	}
+	if (doDeblur == 1){
+		char *homedir = getenv("HOME");
+		char cmmd[4096];
+		char cmmd2[4096];
+		sprintf(cmmd,"/APSshare/anaconda/x86_64/bin/python %s/opt/MIDAS/NF_HEDM/src/RLDeconv.py %s 100", homedir, OutFN2);
+		system(cmmd);
+		sprintf(cmmd2,"%s/opt/MIDAS/NF_HEDM/bin/ParseDeconvOutput %s %s %d", OutFN2, OutFileName, NrPixels);
+		system(cmmd);
+		return 0;
 	}
 	printf("Total number of pixels with intensity: %d\n",TotPixelsInt);
 	pixelvalue *ys, *zs, *peakID;
