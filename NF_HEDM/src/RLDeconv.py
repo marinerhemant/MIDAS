@@ -14,6 +14,7 @@ import os.path
 # Arguments: filename, nrIterations
 inpFN = sys.argv[1]
 psfFN = os.path.expanduser('~') + '/opt/MIDAS/gui/psf.tif'
+print "Doing Deblur"
 print 'Input file: ' + inpFN
 print 'Peak Spread Function File: ' + psfFN
 print 'NrIterations: ' + sys.argv[2]
