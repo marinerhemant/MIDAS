@@ -30,8 +30,8 @@ nrIterations = int(sys.argv[2])
 deconv_im = restoration.richardson_lucy(imarr2,psfarr,iterations=nrIterations)
 print 'Time elapsed: ' + str(time.time()-t1) + 's.'
 
-deconv_im[deconv_im < 0.02] = 0
-deconv_im[deconv_im >= 0.02] = 1
+deconv_im[deconv_im < 0.1] = 0
+deconv_im[deconv_im >= 0.1] = 1
 #deconv_im = np.array(deconv_im,dtype=bool)
 totPxInt = np.count_nonzero(deconv_im)
 print 'Total pixels with non-zero intensity: ' + str(totPxInt)
