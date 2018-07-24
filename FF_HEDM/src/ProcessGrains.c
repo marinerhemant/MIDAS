@@ -30,6 +30,7 @@
 #include <stdbool.h>
 
 #define MAX_N_IDS 6000000
+#define MAX_ID_IA_MAT 5000000
 #define NR_MAX_IDS_PER_GRAIN 5000
 #define IAColNr 20 // 20 for Internal Angle, 18 for position, 19 for omega
 
@@ -430,8 +431,7 @@ int main(int argc, char *argv[])
 	double *ID_IA_MAT;
 	double ang, Angle, Axis[3],DiffPos,OR1[9],q1[9],OR2[9],q2[4];
 	int counte,counten,totcount=0;
-	ID_IA_MAT = malloc(50000*4*sizeof(*ID_IA_MAT));
-	for (i=0;i<50000*4;i++) ID_IA_MAT[i] = 0;
+	ID_IA_MAT = calloc(MAX_ID_IA_MAT*4,sizeof(*ID_IA_MAT));
 	for (i=0;i<nrIDs;i++){
 		if (i%1000 == 0) printf("Processed %d of %d IDs.\n",i,nrIDs);
 		if (IDsChecked[i] == false){
@@ -482,7 +482,7 @@ int main(int argc, char *argv[])
 	// Calculate Strains Now
 	int fullInfoFile = open("Output/FitBest.bin",O_RDONLY);
 	int OffSt, ReadSize;
-	double MultR=1000000;
+	double MultR=1000000.0;
 	double **FinalMatrix;
 	double BeamCenter = 0, FullVol = 0,VNorm;
 	FinalMatrix = allocMatrix(nGrainPositions,47);
