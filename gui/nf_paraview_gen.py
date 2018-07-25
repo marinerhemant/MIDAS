@@ -21,7 +21,7 @@ import math
 import sys, os
 import numpy as np
 import h5py
-from numba import double, jit
+import time
 
 def writeHDF5File(grID,eul1,eul2,eul3,conf,phNr,fileID):
 	f = h5py.File(fileID,'w')
@@ -38,12 +38,12 @@ def writeHDF5File(grID,eul1,eul2,eul3,conf,phNr,fileID):
 	f.close()
 
 def writeBinaryFile(grID,eul1,eul2,eul3,conf,phNr,fileID):
-	grID.astype('int').tofile(fileID+'IDs.bin')
-	eul1.astype('float').tofile(fileID+'eul1.bin')
-	eul2.astype('float').tofile(fileID+'eul2.bin')
-	eul3.astype('float').tofile(fileID+'eul3.bin')
-	conf.astype('float').tofile(fileID+'conf.bin')
-	phNr.astype('float').tofile(fileID+'phNr.bin')
+	grID.astype(np.int32).tofile(fileID+'IDs.bin')
+	eul1.astype(np.float32).tofile(fileID+'eul1.bin')
+	eul2.astype(np.float32).tofile(fileID+'eul2.bin')
+	eul3.astype(np.float32).tofile(fileID+'eul3.bin')
+	conf.astype(np.float32).tofile(fileID+'conf.bin')
+	phNr.astype(np.float32).tofile(fileID+'phNr.bin')
 
 def writeXMLXdmf(dims,deltas,fn,h5fn,sample_name):
 	f = open(fn,'w')
@@ -114,30 +114,45 @@ def writeXMLXdmf(dims,deltas,fn,h5fn,sample_name):
 	# Close the file
 	f.close()
 
-def mapData(data,dims,spacing):
+def mapData(data,dims,spacing): ## Check for neighboring pixels as well and populate those
 	nrRows,nrCols = data.shape
 	outArr = np.zeros((dims[0],dims[1],7))
 	gridSpacing = data[0,5]
+	extent = int(1 + math.ceil(gridSpacing/spacing))
+	outArr[:,:,6] = 10000
 	for i in range(nrRows):
 		xPos = data[i,3]
 		yPos = data[i,4]
 		xBinNr = int(xPos/spacing + dims[0]/2)
 		yBinNr = int(yPos/spacing + dims[1]/2)
+		xT = spacing*(xBinNr - dims[0]/2)
+		yT = spacing*(yBinNr - dims[1]/2)
+		distt = np.sqrt(np.power((xT-xPos),2)+np.power((yT-yPos),2))
 		if (xBinNr < 0) or (xBinNr > dims[0]-1) or (yBinNr < 0) or (yBinNr > dims[1]-1):
 			continue
 		else:
-			if outArr[xBinNr,yBinNr,6] == 0:
+			if (outArr[xBinNr,yBinNr,6] > distt):
 				outArr[xBinNr,yBinNr,0:6] = data[i,[0,7,8,9,10,11]]
-				outArr[xBinNr,yBinNr,6] = 1
-			else:
-				continue
+				outArr[xBinNr,yBinNr,6] = distt
+		for j in range(-extent,extent+1):
+			for k in range(-extent,extent+1):
+				xBinT = xBinNr + j
+				yBinT = yBinNr + k
+				if (xBinT < 0) or (xBinT > dims[0]-1) or (yBinT < 0) or (yBinT > dims[1]-1):
+					continue
+				xT2 = spacing*(xBinT - dims[0]/2)
+				yT2 = spacing*(yBinT - dims[1]/2)
+				distt2 = np.sqrt(np.power((xT2-xPos),2)+np.power((yT2-yPos),2))
+				if (outArr[xBinT,yBinT,6] > distt2):
+					outArr[xBinT,yBinT,0:6] = data[i,[0,7,8,9,10,11]]
+					outArr[xBinT,yBinT,6] = distt2
 	return outArr
 
 sampleName = 'ss709_AR1_nf2_Rep1'
 filestem = 'MicrostructureText_Layer'
 outfn = 'MicOut'
 startnr = 1
-endnr = 5
+endnr = 1
 minConfidence = 0.1
 zspacing = -2
 xExtent = 1200 # Maximum Extent of xValues in microns
@@ -166,7 +181,9 @@ for fnr in range(startnr,endnr+1):
 	fn = 'ss709_AR1_nf2_R1Layer' + str(fnr) + '/' + filestem + str(fnr) + '.mic'
 	micfiledata = np.genfromtxt(fn,skip_header=4)
 	data = micfiledata[micfiledata[:,10] > minConfidence,:]
+	t1 = time.time()
 	outarr = mapData(data,[Dims[0],Dims[1]],abs(zspacing))
+	print time.time() - t1
 	grainIDs[:,:,dataNr] = outarr[:,:,0]
 	Euler1[:,:,dataNr] = outarr[:,:,1]
 	Euler2[:,:,dataNr] = outarr[:,:,2]
@@ -175,6 +192,9 @@ for fnr in range(startnr,endnr+1):
 	PhaseNr[:,:,dataNr] = outarr[:,:,5]
 	dataNr += direction
 
+from PIL import Image
+im = Image.fromarray(Confidence[:,:,0])
+im.save("trial.tiff")
 # ~ writeHDF5File(grainIDs,Euler1,Euler2,Euler3,Confidence,PhaseNr,outfn+'.h5')
 writeBinaryFile(grainIDs,Euler1,Euler2,Euler3,Confidence,PhaseNr,outfn)
 writeXMLXdmf(Dims,[abs(zspacing)]*3,outfn+'.xmf',outfn,sampleName)
