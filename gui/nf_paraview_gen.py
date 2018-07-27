@@ -8,12 +8,12 @@
 ##
 # HDF5 (compressed output) file arrangement: 
 #            Group			  Dataset
-#		|--- GrainID       -- GrainNr            -- Nonsense value: -10,000, always uint
-#		|--- EulerAngles  |-- EulerAngle1        -- Nonsense value: -10,000, range +-2pi
-#		|                 |-- EulerAngle2        -- Nonsense value: -10,000, range +-2pi
-#		|                 |-- EulerAngle3        -- Nonsense value: -10,000, range +-2pi
-#		|--- Confidence    -- ConfidenceValue    -- Nonsense value: -10,000, range 0...1 
-#		|--- PhaseNumber   -- PhaseNr			 -- Nonsense value: -10,000, range 1...n 
+#		|--- GrainID       -- GrainNr            -- Nonsense value: -15, always uint
+#		|--- EulerAngles  |-- EulerAngle1        -- Nonsense value: -15, range +-2pi
+#		|                 |-- EulerAngle2        -- Nonsense value: -15, range +-2pi
+#		|                 |-- EulerAngle3        -- Nonsense value: -15, range +-2pi
+#		|--- Confidence    -- ConfidenceValue    -- Nonsense value: -15, range 0...1 
+#		|--- PhaseNumber   -- PhaseNr			 -- Nonsense value: -15, range 1...n 
 ##
 
 ### Only modify the following arguments:
@@ -32,6 +32,8 @@ xExtent = 1200 # Maximum Extent of xValues in um
 yExtent = 1200 # Maximum Extent of yValues in um
 			   # (this should be a bit larger than your sample diameter or edge length)
 ####
+
+fillVal = -15
 
 import math
 import sys, os
@@ -134,7 +136,7 @@ def writeXMLXdmf(dims,deltas,fn,h5fn,sample_name):
 def mapData(data,dims,spacing):
 	nrRows,nrCols = data.shape
 	outArr = np.zeros((dims[0],dims[1],7))
-	outArr.fill(-10000)
+	outArr.fill(fillVal)
 	gridSpacing = data[0,5]
 	extent = int(math.ceil(gridSpacing/spacing))
 	outArr[:,:,6] = 10000
