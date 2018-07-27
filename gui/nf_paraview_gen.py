@@ -23,7 +23,7 @@ sampleName = 'ss709_AR1_nf2_R1'
 filestem = 'MicrostructureText_Layer'
 outfn = 'MicOut'
 startnr = 1
-endnr = 4
+endnr = 43
 minConfidence = 0.1
 zspacing = -2
 xyspacing = 2  # X and Y spacing are equal
@@ -76,7 +76,7 @@ def writeXMLXdmf(dims,deltas,fn,h5fn,sample_name):
 	f.write('<Geometry Type="ORIGIN_DXDYDZ">\n')
 	f.write('<!-- Origin -->\n')
 	f.write('<DataItem Dimensions="3" NumberType="Float" Format="XML">\n')
-	f.write('-%d -%d -%d\n'%(dims[0]/2,dims[1]/2,dims[2]/2))
+	f.write('%lf %lf %lf\n'%(-dims[0]/2,-dims[1]/2,-dims[2]/2*(abs(deltas[2])/deltas[2]))))
 	f.write('</DataItem>\n')
 	f.write('<!-- DXDYDZ -->\n')
 	f.write('<DataItem Dimensions="3" NumberType="Float" Format="XML">\n')
@@ -180,10 +180,7 @@ Euler3 = np.zeros((Dims))
 Confidence = np.zeros((Dims))
 PhaseNr = np.zeros((Dims))
 direction = zspacing/abs(zspacing)
-if (direction == 1):
-	dataNr = 0
-else:
-	dataNr = endnr-startnr
+dataNr = 0;
 
 for fnr in range(startnr,endnr+1):
 	print 'LayerNr: '+ str(fnr)
@@ -203,4 +200,4 @@ for fnr in range(startnr,endnr+1):
 
 writeHDF5File(grainIDs.astype(np.int32),Euler1.astype(np.float32),Euler2.astype(np.float32),Euler3.astype(np.float32),Confidence.astype(np.float32),PhaseNr.astype(np.float32),outfn+'.h5')
 # ~ writeBinaryFile(grainIDs,Euler1,Euler2,Euler3,Confidence,PhaseNr,outfn)
-writeXMLXdmf(Dims,[xyspacing,xyspacing,abs(zspacing)],outfn+'.xmf',outfn,sampleName)
+writeXMLXdmf(Dims,[xyspacing,xyspacing,zspacing],outfn+'.xmf',outfn,sampleName)
