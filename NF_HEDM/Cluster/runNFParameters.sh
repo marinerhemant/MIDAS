@@ -63,13 +63,22 @@ echo "Making hexgrid."
 ${BINFOLDER}/MakeHexGrid $TOP_PARAM_FILE
 if [[ ${MultiGridPoints} == 0 ]];
 then
-  echo "Now choose the grid point to process, press enter to continue"
-  echo "The grid points numbers are first column, position (x,y) is 4 and 5 column"
-  read dummyVar
-  cat -n grid.txt
-  echo "REMEMBER: Subtract 1 from the line number (first column)."
-  read GRIDPOINTNR
-  echo "You entered: ${GRIDPOINTNR}"
+  echo "Now enter the x,y coodinates to optimize, no space, separated by a comma"
+  read POS
+  echo "You entered: ${POS}"
+  GRIDPOINTNR=`python <<END
+xy = ${POS}
+x = xy[0]
+y = xy[1]
+grid = open('grid.txt').readline()
+nrElements = int(grid)
+import numpy as np
+grid = np.genfromtxt('grid.txt',skip_header=1)
+distt = np.power((grid[:,2]-x),2) + np.power((grid[:,3]-y),2)
+idx = (distt).argmin()
+print idx+1
+END`
+  echo "This is the line in the grid.txt file, which will be read: " ${GRIDPOINTNR}
 fi
 
 echo "Making diffraction spots."
