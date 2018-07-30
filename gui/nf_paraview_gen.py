@@ -3,8 +3,6 @@
 # See LICENSE file.
 #
 
-## Issues: Check the placement direction of data according to ParaView.
-
 ##
 # HDF5 (compressed output) file arrangement: 
 #            Group			  Dataset
@@ -17,13 +15,13 @@
 ##
 
 ### Only modify the following arguments:
-### Also look at where filename is defined to see if the arrangement is different
+### Also look at where variable FileName is defined to see if the file arrangement is different
 #### 
 sampleName = 'ss709_AR1_nf2_R1'
 filestem = 'MicrostructureText_Layer'
 outfn = 'MicOut'
 startnr = 1
-endnr = 43
+endnr = 10
 minConfidence = 0.1
 zspacing = -2
 xyspacing = 2  # X and Y spacing are equal
@@ -78,11 +76,11 @@ def writeXMLXdmf(dims,deltas,fn,h5fn,sample_name):
 	f.write('<Geometry Type="ORIGIN_DXDYDZ">\n')
 	f.write('<!-- Origin -->\n')
 	f.write('<DataItem Dimensions="3" NumberType="Float" Format="XML">\n')
-	f.write('%lf %lf %lf\n'%(-dims[0]/2,-dims[1]/2,-dims[2]/2*(abs(deltas[2])/deltas[2]))))
+	f.write('%lf %lf %lf\n'%(-dims[0]/2*(abs(deltas[2])/deltas[2]),-dims[1]/2,-dims[2]/2))
 	f.write('</DataItem>\n')
 	f.write('<!-- DXDYDZ -->\n')
 	f.write('<DataItem Dimensions="3" NumberType="Float" Format="XML">\n')
-	f.write('%lf %lf %lf\n'%(deltas[0],deltas[1],deltas[2]))
+	f.write('%lf %lf %lf\n'%(deltas[2],deltas[0],deltas[1]))
 	f.write('</DataItem>\n')
 	f.write('</Geometry>\n')
 	# Data: GrainID, EulerAngles, Confidence, PhaseNr
@@ -141,8 +139,8 @@ def mapData(data,dims,spacing):
 	extent = int(math.ceil(gridSpacing/spacing))
 	outArr[:,:,6] = 10000
 	for i in range(nrRows):
-		xPos = data[i,3]
-		yPos = data[i,4]
+		xPos = data[i,4]
+		yPos = data[i,3]
 		xBinNr = int(xPos/spacing + dims[0]/2)
 		yBinNr = int(yPos/spacing + dims[1]/2)
 		xT = spacing*(xBinNr - dims[0]/2)
@@ -169,10 +167,10 @@ def mapData(data,dims,spacing):
 	return outArr
 
 Dims = [0,0,0]
-Dims[0] = int(xExtent/abs(xyspacing))
-Dims[1] = int(yExtent/abs(xyspacing))
-Dims[2] = (endnr - startnr + 1) # Maximum Extent of zValues
-print 'Dimensions of final array: '
+Dims[1] = int(xExtent/abs(xyspacing))
+Dims[2] = int(yExtent/abs(xyspacing))
+Dims[0] = (endnr - startnr + 1)
+print 'Dimensions of final array:'
 print Dims
 startPos = 0
 grainIDs = np.zeros((Dims))
@@ -181,24 +179,23 @@ Euler2 = np.zeros((Dims))
 Euler3 = np.zeros((Dims))
 Confidence = np.zeros((Dims))
 PhaseNr = np.zeros((Dims))
-direction = zspacing/abs(zspacing)
 dataNr = 0;
 
 for fnr in range(startnr,endnr+1):
 	print 'LayerNr: '+ str(fnr)
-	fn = sampleName + 'Layer' + str(fnr) + '/' + filestem + str(fnr) + '.mic'
-	micfiledata = np.genfromtxt(fn,skip_header=4)
-	data = micfiledata[micfiledata[:,10] > minConfidence,:]
+	FileName = sampleName + 'Layer' + str(fnr) + '/' + filestem + str(fnr) + '.mic'
 	t1 = time.time()
-	outarr = mapData(data,[Dims[0],Dims[1]],abs(xyspacing))
+	micfiledata = np.genfromtxt(FileName,skip_header=4)
+	data = micfiledata[micfiledata[:,10] > minConfidence,:]
+	outarr = mapData(data,[Dims[1],Dims[2]],abs(xyspacing))
 	print time.time() - t1
-	grainIDs[:,:,dataNr] = outarr[:,:,0]
-	Euler1[:,:,dataNr] = outarr[:,:,1]
-	Euler2[:,:,dataNr] = outarr[:,:,2]
-	Euler3[:,:,dataNr] = outarr[:,:,3]
-	Confidence[:,:,dataNr] = outarr[:,:,4]
-	PhaseNr[:,:,dataNr] = outarr[:,:,5]
-	dataNr += direction
+	grainIDs[dataNr,:,:] = outarr[:,:,0]
+	Euler1[dataNr,:,:] = outarr[:,:,1]
+	Euler2[dataNr,:,:] = outarr[:,:,2]
+	Euler3[dataNr,:,:] = outarr[:,:,3]
+	Confidence[dataNr,:,:] = outarr[:,:,4]
+	PhaseNr[dataNr,:,:] = outarr[:,:,5]
+	dataNr += 1
 
 writeHDF5File(grainIDs.astype(np.int32),Euler1.astype(np.float32),Euler2.astype(np.float32),Euler3.astype(np.float32),Confidence.astype(np.float32),PhaseNr.astype(np.float32),outfn+'.h5')
 # ~ writeBinaryFile(grainIDs,Euler1,Euler2,Euler3,Confidence,PhaseNr,outfn)
