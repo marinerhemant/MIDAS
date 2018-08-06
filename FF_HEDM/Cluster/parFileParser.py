@@ -38,7 +38,7 @@ nLayers = [0] * len(fStems)
 firstFileNrs = [0]*len(fStems)
 for line in usefulLines:
 	for i, fStem in enumerate(fStems):
-		if fStem in line:
+		if line.split()[idx] == fStem:
 			if nLayers[i] == 0:
 				# Get the firstFileNr
 				firstFileNrs[i] = int(line.split()[idx+1])
