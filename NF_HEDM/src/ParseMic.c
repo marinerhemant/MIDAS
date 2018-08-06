@@ -82,7 +82,7 @@ int main (int argc, char *argv[]){
 	FILE *out=fopen(outputfile,"w");
 	char outfilebin[4096];
 	sprintf(outfilebin,"%s.map",outputfile);
-	FILE *outmap = fopen(outfilebin,"w");
+	//FILE *outmap = fopen(outfilebin,"w");
 	int i,j;
 	fprintf(out,"%%TriEdgeSize %lf\n",MicContents[5]);
 	fprintf(out,"%%NumPhases %d\n",NumPhases);
@@ -98,7 +98,7 @@ int main (int argc, char *argv[]){
 		fprintf(out,"%d\n",PhaseNr);
 	}
 	// Write out the map.
-	fwrite(map,size_map,1,outmap);
+	//fwrite(map,size_map,1,outmap);
 	// All matches now
 	char inputfile2[4096],outputfile2[4096];
 	sprintf(outputfile2,"%s.AllMatches",outputfile);
