@@ -29,6 +29,7 @@ int main (int argc, char *argv[]){
 	char inputfile[1024];
 	char outputfile[1024];
     int nSaves = 1;
+    int map
     while (fgets(aline,1000,fileParam)!=NULL){
         str = "PhaseNr ";
         LowNr = strncmp(aline,str,strlen(str));
@@ -79,6 +80,9 @@ int main (int argc, char *argv[]){
 	int NrRows = sz/(sizeof(double)*11);
 	printf("NrRows: %d\n",NrRows);
 	FILE *out=fopen(outputfile,"w");
+	char outfilebin[4096];
+	sprintf(outfilebin,"%s.map",outputfile);
+	FILE *outmap = fopen(outfilebin,"w");
 	int i,j;
 	fprintf(out,"%%TriEdgeSize %lf\n",MicContents[5]);
 	fprintf(out,"%%NumPhases %d\n",NumPhases);
@@ -86,11 +90,15 @@ int main (int argc, char *argv[]){
 	fprintf(out,"%%OrientationRowNr\tNrMatches\tRunTime\tX\tY\tTriEdgeSize\tUpDown\tEul1\tEul2\tEul3\tConfidence\tPhaseNr\n");
 	for (i=0;i<NrRows;i++){
 		if (MicContents[i*11+10] == 0) continue;
+		// Let's make a map.
+		
 		for (j=0;j<11;j++){
 			fprintf(out,"%lf\t",MicContents[i*11+j]);
 		}
 		fprintf(out,"%d\n",PhaseNr);
 	}
+	// Write out the map.
+	fwrite(map,size_map,1,outmap);
 	// All matches now
 	char inputfile2[4096],outputfile2[4096];
 	sprintf(outputfile2,"%s.AllMatches",outputfile);
@@ -111,7 +119,7 @@ int main (int argc, char *argv[]){
 	fprintf(out2,"%%GlobalPosition %lf\n",GlobalPosition);
 	fprintf(out2,"%%OrientationRowNr\tNrMatches\tRunTime\tX\tY\tTriEdgeSize\tUpDown\tEul1\tEul2\tEul3\tConfidence\t...\t...\t...\t...\t...\t...\tPhaseNr\n");
 	for (i=0;i<NrRows2;i++){
-		if (AllMatchesMicContents[i*nCols] == 0) continue;
+		if (AllMatchesMicContents[i*nCols+10] == 0) continue;
 		for (j=0;j<nCols;j++){
 			fprintf(out2,"%lf\t",AllMatchesMicContents[i*nCols+j]);
 		}

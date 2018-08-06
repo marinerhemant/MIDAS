@@ -928,7 +928,7 @@ int main(int argc, char *argv[])
 	char fnout[4096];
 	FILE *fout;
 	sprintf(fnout,"%s.square",Dark);
-	fout = fopen(fnout,"w");
+	//fout = fopen(fnout,"w");
 	outmatr = calloc(NrPixels*NrPixels,sizeof(*outmatr));
 	
 	if (fd == NULL){

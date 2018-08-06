@@ -6,7 +6,7 @@
 import PIL
 import matplotlib
 matplotlib.use('TkAgg')
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
 import sys
 import Tkinter as Tk
@@ -785,7 +785,7 @@ def median():
 
 def micfileselect():
 	global micfile
-	micfile = tkFileDialog.askopenfilename()
+	micfile = tkFileDialog.askopenfilename(title='Select the compressed binary file.')
 
 def plotmic():
 	global initplotb
@@ -989,7 +989,7 @@ a.title.set_text("Image")
 canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 toolbar_frame = Tk.Frame(root)
 toolbar_frame.grid(row=figrowspan+5,column=0,columnspan=5,sticky=Tk.W)
-toolbar = NavigationToolbar2TkAgg( canvas, toolbar_frame )
+toolbar = NavigationToolbar2Tk( canvas, toolbar_frame )
 toolbar.update()
 
 vali = Tk.StringVar() 
@@ -1116,5 +1116,7 @@ Tk.Entry(master=micframethirdrow,textvariable=cutconfidencevar,width=4).grid(row
 Tk.Button(master=micframethirdrow,text='SelectPoint',command=selectpoint).grid(row=1,column=3)
 
 Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20)).grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W)
+
+root.bind('<Control-w>', lambda event: root.destroy())
 
 Tk.mainloop()
