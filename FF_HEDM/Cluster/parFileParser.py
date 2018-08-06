@@ -54,5 +54,5 @@ for i, fStem in enumerate(fStems):
 	f.close()
 	runCommand += '~/.MIDAS/MIDAS_V4_FarField_Layers ' + fnOut + ' 1 ' + str(nLayers[i]) + ' 1 ' + nNodes + ' ' + machineName + ' hsharma@anl.gov\n'
 print runCommand
-runFile = open('batchJob' + fnString + '.sh','w')
+runFile = open('batchJob_' + fnString + '.sh','w')
 runFile.write(runCommand)
