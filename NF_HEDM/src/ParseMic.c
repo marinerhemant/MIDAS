@@ -29,7 +29,7 @@ int main (int argc, char *argv[]){
 	char inputfile[1024];
 	char outputfile[1024];
     int nSaves = 1;
-    int map
+    //int map
     while (fgets(aline,1000,fileParam)!=NULL){
         str = "PhaseNr ";
         LowNr = strncmp(aline,str,strlen(str));

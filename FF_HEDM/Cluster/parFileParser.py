@@ -24,7 +24,7 @@ templateContents = templateFile.read()
 fStems = []
 usefulLines = []
 for line in parContents:
-	if fnString in line:
+	if (' ' + fnString) in line:
 		usefulLines.append(line)
 		for word in line.split():
 			if fnString in word:
