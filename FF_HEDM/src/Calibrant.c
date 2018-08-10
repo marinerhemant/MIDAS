@@ -11,7 +11,7 @@
 //
 //
 //  Important: row major, starting with y's and going up. Bottom right is 0,0.
-//  TODO: For rectangular detectors, it works only if the longer edge is vertical. Use padY padZ to do this.
+//  TODO: Implement proper transformations for rectangular detectors.
 
 #include <stdio.h>
 #include <math.h>
@@ -23,22 +23,12 @@
 #include <ctype.h>
 #include <nlopt.h>
 #include <stdint.h>
+#include <tiffio.h>
 
 //#define PRINTOPT
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
-#ifdef dataInt16
-	typedef uint16_t pixelvalue;
-#endif
-#ifdef dataInt32
-	typedef uint32_t pixelvalue;
-#endif
-#ifdef dataDouble
-	typedef double pixelvalue;
-#endif
-#ifdef dataFloat
-	typedef float pixelvalue;
-#endif
+typedef double pixelvalue;
 long long int NrCalls;
 long long int NrCallsProfiler;
 int NrPixelsGlobal = 2048;
@@ -594,6 +584,104 @@ static inline void MakeSquare (int NrPixels, int NrPixelsY, int NrPixelsZ, pixel
 	}
 }
 
+int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
+{
+	int i;
+	if (dType == 1){
+		uint16_t *readData; 
+		readData = calloc(NrPixels,sizeof(*readData));
+		fread(readData,NrPixels*sizeof(*readData),1,f);
+		for (i=0;i<NrPixels;i++){
+			returnArr[i] = (double) readData[i];
+		}
+		return 0;
+	} else if (dType == 2){
+		double *readData;
+		readData = calloc(NrPixels,sizeof(*readData));
+		fread(readData,NrPixels*sizeof(*readData),1,f);
+		for (i=0;i<NrPixels;i++){
+			returnArr[i] = (double) readData[i];
+		}
+		return 0;
+	} else if (dType == 3){
+		float *readData;
+		readData = calloc(NrPixels,sizeof(*readData));
+		fread(readData,NrPixels*sizeof(*readData),1,f);
+		for (i=0;i<NrPixels;i++){
+			returnArr[i] = (double) readData[i];
+		}
+		return 0;
+	} else if (dType == 4){
+		uint32_t *readData;
+		readData = calloc(NrPixels,sizeof(*readData));
+		fread(readData,NrPixels*sizeof(*readData),1,f);
+		for (i=0;i<NrPixels;i++){
+			returnArr[i] = (double) readData[i];
+		}
+		return 0;
+	} else if (dType == 5){
+		int32_t *readData;
+		readData = calloc(NrPixels,sizeof(*readData));
+		fread(readData,NrPixels*sizeof(*readData),1,f);
+		for (i=0;i<NrPixels;i++){
+			returnArr[i] = (double) readData[i];
+		}
+		return 0;
+	} else if (dType == 6){
+		TIFFErrorHandler oldhandler;
+		oldhandler = TIFFSetWarningHandler(NULL);
+		printf("%s\n",fn);
+		TIFF* tif = TIFFOpen(fn, "r");
+		TIFFSetWarningHandler(oldhandler);
+		if (tif){
+			uint32 imagelength;
+			tsize_t scanline;
+			TIFFGetField(tif,TIFFTAG_IMAGELENGTH,&imagelength);
+			scanline = TIFFScanlineSize(tif);
+			tdata_t buf;
+			buf = _TIFFmalloc(scanline);
+			uint32_t *datar;
+			int rnr;
+			for (rnr=0;rnr<imagelength;rnr++){
+				TIFFReadScanline(tif,buf,rnr,1);
+				datar = (uint32_t*)buf;
+				for (i=0;i<scanline/sizeof(uint32_t);i++){
+					returnArr[rnr*(scanline/sizeof(uint32_t)) + i] = (double) datar[i];
+				}
+			}
+		}
+		return 0;
+	} else if (dType == 7){
+		TIFFErrorHandler oldhandler;
+		oldhandler = TIFFSetWarningHandler(NULL);
+		printf("%s\n",fn);
+		TIFF* tif = TIFFOpen(fn, "r");
+		TIFFSetWarningHandler(oldhandler);
+		if (tif){
+			uint32 imagelength;
+			tsize_t scanline;
+			TIFFGetField(tif,TIFFTAG_IMAGELENGTH,&imagelength);
+			scanline = TIFFScanlineSize(tif);
+			tdata_t buf;
+			buf = _TIFFmalloc(scanline);
+			uint8_t *datar;
+			int rnr;
+			for (rnr=0;rnr<imagelength;rnr++){
+				TIFFReadScanline(tif,buf,rnr,1);
+				datar = (uint8_t*)buf;
+				for (i=0;i<scanline/sizeof(uint8_t);i++){
+					if (datar[i] == 1){
+						returnArr[rnr*(scanline/sizeof(uint8_t)) + i] = 1;
+					}
+				}
+			}
+		}
+		return 0;
+	} else {
+		return 127;
+	}
+}
+
 int main(int argc, char *argv[])
 {
     clock_t start, end, start0, end0;
@@ -617,6 +705,8 @@ int main(int argc, char *argv[])
     int TransOpt[10], nRingsExclude=0, RingsExclude[50];
     int makeMap = 0;
 	int HeadSize = 8192;
+	int dType = 1;
+	char GapFN[4096], BadPxFN[4096];
     while (fgets(aline,1000,fileParam)!=NULL){
 		str = "FileStem ";
         LowNr = strncmp(aline,str,strlen(str));
@@ -628,6 +718,26 @@ int main(int argc, char *argv[])
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %s", dummy, folder);
+            continue;
+        }
+		str = "GapFile ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %s", dummy, GapFN);
+            makeMap = 2;
+            continue;
+        }
+		str = "BadPxFile ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %s", dummy, BadPxFN);
+            makeMap = 2;
+            continue;
+        }
+		str = "DataType ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &dType);
             continue;
         }
 		str = "GapIntensity ";
@@ -907,7 +1017,22 @@ int main(int argc, char *argv[])
 	pixelvalue *DarkFile;
 	pixelvalue *DarkFile2;
 	double *AverageDark;
-	size_t SizeFile = sizeof(pixelvalue) * NrPixelsY * NrPixelsZ;
+	size_t pxSize;
+	if (dType == 1){ // Uint16
+		pxSize = sizeof(uint16_t);
+	} else if (dType == 2){ // Double
+		pxSize = sizeof(double);
+	} else if (dType == 3){ // Float
+		pxSize = sizeof(float);
+	} else if (dType == 4){ // Uint32
+		pxSize = sizeof(uint32_t);
+	} else if (dType == 5){ // Int32
+		pxSize = sizeof(int32_t);
+	} else if (dType == 6){ // Tiff Uint32
+		pxSize = sizeof(uint32_t);
+		HeadSize = 0;
+	}
+	size_t SizeFile = pxSize * NrPixelsY * NrPixelsZ;
 	size_t sz;
 	char FileName[1024];
 	size_t Skip;
@@ -930,7 +1055,7 @@ int main(int argc, char *argv[])
 	sprintf(fnout,"%s.square",Dark);
 	//fout = fopen(fnout,"w");
 	outmatr = calloc(NrPixels*NrPixels,sizeof(*outmatr));
-	
+	int rc;
 	if (fd == NULL){
 		printf("Dark file %s could not be read. Making an empty array for dark.\n",Dark);
 		for (j=0;j<(NrPixels*NrPixels);j++)AverageDark[j] = 0;
@@ -944,8 +1069,10 @@ int main(int argc, char *argv[])
 		printf("Reading dark file:      %s, nFrames: %d, skipping first %ld bytes.\n",Dark,nFrames,Skip);
 		fseek(fd,Skip,SEEK_SET);
 		for (i=0;i<nFrames;i++){
-			fread(DarkFile,SizeFile,1,fd);
+			rc = fileReader(fd,Dark,dType,NrPixelsY*NrPixelsZ,DarkFile);
+			//fread(DarkFile,SizeFile,1,fd);
 			MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,DarkFile,DarkFile2);
+			DoImageTransformations(NrTransOpt,TransOpt,DarkFile2,NrPixels);
 			if (makeMap == 1){
 				mapMaskSize = NrPixels;
 				mapMaskSize *= NrPixels;
@@ -959,12 +1086,40 @@ int main(int argc, char *argv[])
 				}
 				makeMap = 0;
 			}
-			DoImageTransformations(NrTransOpt,TransOpt,DarkFile2,NrPixels);
 			for(j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]+=DarkFile2[j];
 		}
 		printf("Dark file read.\n");
 		for (j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]=AverageDark[j]/nFrames;
 		fclose(fd);
+	}
+	if (makeMap == 2){
+		mapMaskSize = NrPixels;
+		mapMaskSize *= NrPixels;
+		mapMaskSize /= 32;
+		mapMaskSize ++;
+		mapMask = calloc(mapMaskSize,sizeof(*mapMask));
+		double *mapper;
+		mapper = calloc(NrPixelsY*NrPixelsZ,sizeof(*mapper));
+		double *mapperSquare;
+		mapperSquare = calloc(NrPixels*NrPixels,sizeof(*mapperSquare));
+		fileReader(fd,GapFN,7,NrPixelsY*NrPixelsZ,mapper);
+		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,mapper,mapperSquare);
+		DoImageTransformations(NrTransOpt,TransOpt,mapperSquare,NrPixels);
+		for (i=0;i<NrPixels*NrPixels;i++){
+			if (mapperSquare[i] == 1){
+				SetBit(mapMask,i);
+				mapperSquare[i] = 0;
+			}
+		}
+		fileReader(fd,BadPxFN,7,NrPixelsY*NrPixelsZ,mapper);
+		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,mapper,mapperSquare);
+		DoImageTransformations(NrTransOpt,TransOpt,mapperSquare,NrPixels);
+		for (i=0;i<NrPixels*NrPixels;i++){
+			if (mapperSquare[i] == 1){
+				SetBit(mapMask,i);
+				mapperSquare[i] = 0;
+			}
+		}
 	}
 	int a;
 	for (a=StartNr;a<=EndNr;a++){
@@ -991,7 +1146,8 @@ int main(int argc, char *argv[])
 		rewind(fp);
 		fseek(fp,Skip,SEEK_SET);
 		for (j=0;j<nFrames;j++){
-			fread(Image,SizeFile,1,fp);
+			rc = fileReader(fp,FileName,dType,NrPixelsY*NrPixelsZ,Image);
+			//fread(Image,SizeFile,1,fp);
 			MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,Image,Image2);
 			DoImageTransformations(NrTransOpt,TransOpt,Image2,NrPixels);
 			for(k=0;k<(NrPixels*NrPixels);k++){

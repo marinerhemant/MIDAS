@@ -27,19 +27,9 @@
 #include <sys/shm.h>
 #include <sys/types.h>
 #include <stdint.h>
+#include <tiffio.h>
 
-#ifdef dataInt16
-	typedef uint16_t pixelvalue;
-#endif
-#ifdef dataInt32
-	typedef uint32_t pixelvalue;
-#endif
-#ifdef dataDouble
-	typedef double pixelvalue;
-#endif
-#ifdef dataFloat
-	typedef float pixelvalue;
-#endif
+typedef double pixelvalue;
 
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
@@ -184,6 +174,104 @@ static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], pix
 	}
 }
 
+int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
+{
+	int i;
+	if (dType == 1){
+		uint16_t *readData; 
+		readData = calloc(NrPixels,sizeof(*readData));
+		fread(readData,NrPixels*sizeof(*readData),1,f);
+		for (i=0;i<NrPixels;i++){
+			returnArr[i] = (double) readData[i];
+		}
+		return 0;
+	} else if (dType == 2){
+		double *readData;
+		readData = calloc(NrPixels,sizeof(*readData));
+		fread(readData,NrPixels*sizeof(*readData),1,f);
+		for (i=0;i<NrPixels;i++){
+			returnArr[i] = (double) readData[i];
+		}
+		return 0;
+	} else if (dType == 3){
+		float *readData;
+		readData = calloc(NrPixels,sizeof(*readData));
+		fread(readData,NrPixels*sizeof(*readData),1,f);
+		for (i=0;i<NrPixels;i++){
+			returnArr[i] = (double) readData[i];
+		}
+		return 0;
+	} else if (dType == 4){
+		uint32_t *readData;
+		readData = calloc(NrPixels,sizeof(*readData));
+		fread(readData,NrPixels*sizeof(*readData),1,f);
+		for (i=0;i<NrPixels;i++){
+			returnArr[i] = (double) readData[i];
+		}
+		return 0;
+	} else if (dType == 5){
+		int32_t *readData;
+		readData = calloc(NrPixels,sizeof(*readData));
+		fread(readData,NrPixels*sizeof(*readData),1,f);
+		for (i=0;i<NrPixels;i++){
+			returnArr[i] = (double) readData[i];
+		}
+		return 0;
+	} else if (dType == 6){
+		TIFFErrorHandler oldhandler;
+		oldhandler = TIFFSetWarningHandler(NULL);
+		printf("%s\n",fn);
+		TIFF* tif = TIFFOpen(fn, "r");
+		TIFFSetWarningHandler(oldhandler);
+		if (tif){
+			uint32 imagelength;
+			tsize_t scanline;
+			TIFFGetField(tif,TIFFTAG_IMAGELENGTH,&imagelength);
+			scanline = TIFFScanlineSize(tif);
+			tdata_t buf;
+			buf = _TIFFmalloc(scanline);
+			uint32_t *datar;
+			int rnr;
+			for (rnr=0;rnr<imagelength;rnr++){
+				TIFFReadScanline(tif,buf,rnr,1);
+				datar = (uint32_t*)buf;
+				for (i=0;i<scanline/sizeof(uint32_t);i++){
+					returnArr[rnr*(scanline/sizeof(uint32_t)) + i] = (double) datar[i];
+				}
+			}
+		}
+		return 0;
+	} else if (dType == 7){
+		TIFFErrorHandler oldhandler;
+		oldhandler = TIFFSetWarningHandler(NULL);
+		printf("%s\n",fn);
+		TIFF* tif = TIFFOpen(fn, "r");
+		TIFFSetWarningHandler(oldhandler);
+		if (tif){
+			uint32 imagelength;
+			tsize_t scanline;
+			TIFFGetField(tif,TIFFTAG_IMAGELENGTH,&imagelength);
+			scanline = TIFFScanlineSize(tif);
+			tdata_t buf;
+			buf = _TIFFmalloc(scanline);
+			uint8_t *datar;
+			int rnr;
+			for (rnr=0;rnr<imagelength;rnr++){
+				TIFFReadScanline(tif,buf,rnr,1);
+				datar = (uint8_t*)buf;
+				for (i=0;i<scanline/sizeof(uint8_t);i++){
+					if (datar[i] == 1){
+						returnArr[rnr*(scanline/sizeof(uint8_t)) + i] = 1;
+					}
+				}
+			}
+		}
+		return 0;
+	} else {
+		return 127;
+	}
+}
+
 int main(int argc, char **argv)
 {
     clock_t start, end, start0, end0;
@@ -212,7 +300,19 @@ int main(int argc, char **argv)
     int makeMap = 0;
     size_t mapMaskSize = 0;
 	int *mapMask;
+	int dType = 1;
+	char GapFN[4096], BadPxFN[4096];
 	while (fgets(aline,4096,paramFile) != NULL){
+		str = "GapFile ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %s", dummy, GapFN);
+			makeMap = 2;
+		}
+		str = "BadPxFile ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %s", dummy, BadPxFN);
+			makeMap = 2;
+		}
 		str = "EtaBinSize ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &EtaBinSize);
@@ -220,6 +320,10 @@ int main(int argc, char **argv)
 		str = "RBinSize ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &RBinSize);
+		}
+		str = "DataType ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %d", dummy, &dType);
 		}
 		str = "HeadSize ";
 		if (StartsWith(aline,str) == 1){
@@ -311,11 +415,27 @@ int main(int argc, char **argv)
 	ImageInT = malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageInT));
 	ImageFloat = malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageFloat));
 	Image = malloc(NrPixelsY*NrPixelsZ*sizeof(*Image));
-	int SizeFile = sizeof(pixelvalue)*NrPixelsY*NrPixelsZ;
+	size_t pxSize;
+	if (dType == 1){ // Uint16
+		pxSize = sizeof(uint16_t);
+	} else if (dType == 2){ // Double
+		pxSize = sizeof(double);
+	} else if (dType == 3){ // Float
+		pxSize = sizeof(float);
+	} else if (dType == 4){ // Uint32
+		pxSize = sizeof(uint32_t);
+	} else if (dType == 5){ // Int32
+		pxSize = sizeof(int32_t);
+	} else if (dType == 6){ // Tiff Uint32
+		pxSize = sizeof(uint32_t);
+		HeadSize = 0;
+	}
+	size_t SizeFile = pxSize * NrPixelsY * NrPixelsZ;
 	int nFrames, sz;
 	int Skip = HeadSize;
 	FILE *fp, *fd;
 	char *darkFN;
+	int nrdone = 0;
 	if (argc > 3){
 		darkFN = argv[3];
 		fd = fopen(darkFN,"rb");
@@ -326,7 +446,7 @@ int main(int argc, char **argv)
 		printf("Reading dark file:      %s, nFrames: %d, skipping first %d bytes.\n",darkFN,nFrames,Skip);
 		fseek(fd,Skip,SEEK_SET);
 		for (i=0;i<nFrames;i++){
-			fread(DarkInT,SizeFile,1,fd);
+			rc = fileReader(fd,darkFN,dType,NrPixelsY*NrPixelsZ,DarkInT);
 			DoImageTransformations(NrTransOpt,TransOpt,DarkInT,DarkIn,NrPixelsY,NrPixelsZ);
 			if (makeMap == 1){
 				mapMaskSize = NrPixelsY;
@@ -337,13 +457,45 @@ int main(int argc, char **argv)
 				for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 					if (DarkIn[j] == (pixelvalue) GapIntensity || DarkIn[j] == (pixelvalue) BadPxIntensity){
 						SetBit(mapMask,j);
+						nrdone++;
 					}
 				}
+				printf("Nr mask pixels: %d\n",nrdone);
 				makeMap = 0;
 			}
 			for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFrames;
 		}
 		printf("Dark file read\n");
+	}
+	if (makeMap == 2){
+		mapMaskSize = NrPixelsY;
+		mapMaskSize *= NrPixelsZ;
+		mapMaskSize /= 32;
+		mapMaskSize ++;
+		mapMask = calloc(mapMaskSize,sizeof(*mapMask));
+		double *mapper;
+		mapper = calloc(NrPixelsY*NrPixelsZ,sizeof(*mapper));
+		double *mapperOut;
+		mapperOut = calloc(NrPixelsY*NrPixelsZ,sizeof(*mapperOut));
+		fileReader(fd,GapFN,7,NrPixelsY*NrPixelsZ,mapper);
+		DoImageTransformations(NrTransOpt,TransOpt,mapper,mapperOut,NrPixelsY,NrPixelsZ);
+		for (i=0;i<NrPixelsY*NrPixelsZ;i++){
+			if (mapperOut[i] != 0){
+				SetBit(mapMask,i);
+				mapperOut[i] = 0;
+				nrdone++;
+			}
+		}
+		fileReader(fd,BadPxFN,7,NrPixelsY*NrPixelsZ,mapper);
+		DoImageTransformations(NrTransOpt,TransOpt,mapper,mapperOut,NrPixelsY,NrPixelsZ);
+		for (i=0;i<NrPixelsY*NrPixelsZ;i++){
+			if (mapperOut[i] != 0){
+				SetBit(mapMask,i);
+				mapperOut[i] = 0;
+				nrdone++;
+			}
+		}
+		printf("Nr mask pixels: %d\n",nrdone);
 	}
 	char *imageFN;
 	imageFN = argv[2];
@@ -361,9 +513,10 @@ int main(int argc, char **argv)
 	FILE *out;
 	double Intensity, totArea, ThisInt;
 	size_t testPos;
+	double RMean, EtaMean;
 	for (i=0;i<nFrames;i++){
 		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
-		fread(ImageInT,SizeFile,1,fp);
+		rc = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
 		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 			Image[j] = (double)ImageIn[j] - AverageDark[j];
@@ -396,7 +549,9 @@ int main(int argc, char **argv)
 					if (Normalize == 1){
 						Intensity /= totArea;
 					}
-					fprintf(out,"%lf\t%lf\t%lf\n",(RBinsLow[j]+RBinsHigh[j])/2,(EtaBinsLow[k]+EtaBinsHigh[k])/2,Intensity);
+					RMean = (RBinsLow[j]+RBinsHigh[j])/2;
+					EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
+					fprintf(out,"%lf\t%lf\t%lf\n",RMean,EtaMean,Intensity);
 				}
 			}
 		}
