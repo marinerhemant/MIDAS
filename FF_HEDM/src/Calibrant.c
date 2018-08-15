@@ -1031,6 +1031,9 @@ int main(int argc, char *argv[])
 	} else if (dType == 6){ // Tiff Uint32
 		pxSize = sizeof(uint32_t);
 		HeadSize = 0;
+	} else if (dType == 7){ // Tiff Uint32
+		pxSize = sizeof(uint8_t);
+		HeadSize = 0;
 	}
 	size_t SizeFile = pxSize * NrPixelsY * NrPixelsZ;
 	size_t sz;
@@ -1053,7 +1056,6 @@ int main(int argc, char *argv[])
 	char fnout[4096];
 	FILE *fout;
 	sprintf(fnout,"%s.square",Dark);
-	//fout = fopen(fnout,"w");
 	outmatr = calloc(NrPixels*NrPixels,sizeof(*outmatr));
 	int rc;
 	if (fd == NULL){
@@ -1070,7 +1072,6 @@ int main(int argc, char *argv[])
 		fseek(fd,Skip,SEEK_SET);
 		for (i=0;i<nFrames;i++){
 			rc = fileReader(fd,Dark,dType,NrPixelsY*NrPixelsZ,DarkFile);
-			//fread(DarkFile,SizeFile,1,fd);
 			MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,DarkFile,DarkFile2);
 			DoImageTransformations(NrTransOpt,TransOpt,DarkFile2,NrPixels);
 			if (makeMap == 1){
@@ -1147,7 +1148,6 @@ int main(int argc, char *argv[])
 		fseek(fp,Skip,SEEK_SET);
 		for (j=0;j<nFrames;j++){
 			rc = fileReader(fp,FileName,dType,NrPixelsY*NrPixelsZ,Image);
-			//fread(Image,SizeFile,1,fp);
 			MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,Image,Image2);
 			DoImageTransformations(NrTransOpt,TransOpt,Image2,NrPixels);
 			for(k=0;k<(NrPixels*NrPixels);k++){
