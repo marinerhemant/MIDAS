@@ -1144,7 +1144,7 @@ int main(int argc, char *argv[])
 		sz = sz - HeadSize;
 		nFrames = sz/(SizeFile);
 		Skip = HeadSize;
-		printf("Reading calibrant file: %s, nFrames: %d, skipping first %ld bytes.\n",FileName,nFrames,Skip);
+		printf("Reading calibrant file: %s, nFrames: %d %d %d, skipping first %ld bytes.\n",FileName,nFrames,(int)sz,(int)SizeFile,Skip);
 		rewind(fp);
 		fseek(fp,Skip,SEEK_SET);
 		for (j=0;j<nFrames;j++){
