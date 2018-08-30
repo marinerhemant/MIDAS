@@ -569,7 +569,7 @@ int main(int argc, char **argv)
 				}
 			}
 			RM1d = RMean;
-			Int1d /= n1dis;
+			Int1d /= n1ds;
 			fprintf(out1d,"%lf %lf\n",RM1d,Int1d);
 			
 		}
