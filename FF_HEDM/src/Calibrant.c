@@ -1032,7 +1032,7 @@ int main(int argc, char *argv[])
 	} else if (dType == 6){ // Tiff Uint32
 		pxSize = sizeof(uint32_t);
 		HeadSize = 0;
-	} else if (dType == 7){ // Tiff Uint32
+	} else if (dType == 7){ // Tiff Uint8
 		pxSize = sizeof(uint8_t);
 		HeadSize = 0;
 	}

@@ -429,7 +429,7 @@ int main(int argc, char **argv)
 	} else if (dType == 6){ // Tiff Uint32
 		pxSize = sizeof(uint32_t);
 		HeadSize = 0;
-	} else if (dType == 7){ // Tiff Uint32
+	} else if (dType == 7){ // Tiff Uint8
 		pxSize = sizeof(uint8_t);
 		HeadSize = 0;
 	}
@@ -514,9 +514,12 @@ int main(int argc, char **argv)
 	struct data ThisVal;
 	char outfn[4096];
 	FILE *out;
+	char outFN1d[4096];
+	FILE *out1d;
 	double Intensity, totArea, ThisInt;
 	size_t testPos;
 	double RMean, EtaMean;
+	double RM1d,Int1d;
 	for (i=0;i<nFrames;i++){
 		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
 		rc = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
@@ -527,7 +530,12 @@ int main(int argc, char **argv)
 		sprintf(outfn,"%s_integrated_framenr_%d.csv",imageFN,i);
 		out = fopen(outfn,"w");
 		fprintf(out,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\tEta(px)\tIntensity(counts)\n",nEtaBins,nRBins);
+		sprintf(outFN1d,"%s_integrated_framenr_%d.1d.csv",imageFN,i);
+		out1d = fopen(outFN1d,"w");
+		fprintf(out1d,"%%nRBins:\t%d\n%%Radius(px)\tIntensity(counts)\n",nRBins);
 		for (j=0;j<nRBins;j++){
+			RMean = (RBinsLow[j]+RBinsHigh[j])/2;
+			Int1d = 0;
 			for (k=0;k<nEtaBins;k++){
 				Pos = j*nEtaBins + k;
 				nPixels = nPxList[2*Pos + 0];
@@ -552,13 +560,17 @@ int main(int argc, char **argv)
 					if (Normalize == 1){
 						Intensity /= totArea;
 					}
-					RMean = (RBinsLow[j]+RBinsHigh[j])/2;
 					EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
+					Int1d += Intensity;
 					fprintf(out,"%lf\t%lf\t%lf\n",RMean,EtaMean,Intensity);
 				}
 			}
+			RM1d = RMean;
+			fprintf(out1d,"%lf %lf\n",RM1d,Int1d);
+			
 		}
 		fclose(out);
+		fclose(out1d);
 	}
 
 	end0 = clock();
