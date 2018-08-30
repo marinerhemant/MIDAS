@@ -520,6 +520,7 @@ int main(int argc, char **argv)
 	size_t testPos;
 	double RMean, EtaMean;
 	double RM1d,Int1d;
+	int n1ds;
 	for (i=0;i<nFrames;i++){
 		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
 		rc = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
@@ -536,6 +537,7 @@ int main(int argc, char **argv)
 		for (j=0;j<nRBins;j++){
 			RMean = (RBinsLow[j]+RBinsHigh[j])/2;
 			Int1d = 0;
+			n1ds = 0;
 			for (k=0;k<nEtaBins;k++){
 				Pos = j*nEtaBins + k;
 				nPixels = nPxList[2*Pos + 0];
@@ -562,10 +564,12 @@ int main(int argc, char **argv)
 					}
 					EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
 					Int1d += Intensity;
+					n1ds ++;
 					fprintf(out,"%lf\t%lf\t%lf\n",RMean,EtaMean,Intensity);
 				}
 			}
 			RM1d = RMean;
+			Int1d /= n1dis;
 			fprintf(out1d,"%lf %lf\n",RM1d,Int1d);
 			
 		}
