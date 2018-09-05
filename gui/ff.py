@@ -860,6 +860,8 @@ def selectFile():
 def firstFileSelector():
 	global fileStem, folder, padding,firstFileNumber,nFramesPerFile
 	global nDetectors, detnumbvar,nFramesMaxVar,nFramesPerFileVar
+	global NrPixels
+	NrPixels = int(NrPixelsVar.get())
 	firstfilefullpath = selectFile()
 	nDetectors = 1
 	detnumbvar.set(firstfilefullpath[-1])

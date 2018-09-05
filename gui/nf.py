@@ -6,7 +6,7 @@
 import PIL
 import matplotlib
 matplotlib.use('TkAgg')
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
 from matplotlib.figure import Figure
 import sys
 import Tkinter as Tk
@@ -989,7 +989,7 @@ a.title.set_text("Image")
 canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 toolbar_frame = Tk.Frame(root)
 toolbar_frame.grid(row=figrowspan+5,column=0,columnspan=5,sticky=Tk.W)
-toolbar = NavigationToolbar2Tk( canvas, toolbar_frame )
+toolbar = NavigationToolbar2TkAgg( canvas, toolbar_frame )
 toolbar.update()
 
 vali = Tk.StringVar() 
