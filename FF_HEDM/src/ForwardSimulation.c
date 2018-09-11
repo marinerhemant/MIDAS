@@ -317,6 +317,8 @@ CalcDiffrSpots_Furnace(
         GLen = 2*M_PI/ds;
         CalcOmega(Gc[0], Gc[1], Gc[2], theta, omegas, etas, &nspotsPlane);
         for (i=0 ; i<nspotsPlane ; i++) {
+			if (isnan(etas[i])) continue;
+			if (isnan(omegas[i])) continue;
 			spots[spotnr][0] = RingRadius;
 			spots[spotnr][1] = etas[i];
 			spots[spotnr][2] = omegas[i];
@@ -691,7 +693,7 @@ main(int argc, char *argv[])
 			continue;
 		}
 	}
-	
+	printf("Output will be saved to: %s\n",OutFileName);
 	char inpFN[4096];
 	sprintf(inpFN,"%s",InFileName);
 	FILE *inpF;
@@ -874,6 +876,7 @@ main(int argc, char *argv[])
 			yTrans = (int) (-yThis/px + yBC);
 			zTrans = (int) ( zThis/px + zBC);
 			idx = yTrans + NrPixels*zTrans;
+			fflush(stdout);
 			DisplY = yDispl[idx];
 			DisplZ = zDispl[idx];
 			if (DisplY == -32100){ // Was not set, check neighbor
