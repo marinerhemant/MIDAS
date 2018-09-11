@@ -1,0 +1,73 @@
+SeedFolder /home/hsharma/Desktop/Analysis/ForwardSim
+RingThresh 1 50
+RingThresh 2 50
+RingThresh 3 50
+RingThresh 4 50
+RingThresh 5 50
+HeadSize 8192
+OverAllRingToIndex 2
+RawFolder /home/hsharma/Desktop/Analysis/ForwardSim
+Twins 0
+TakeGrainMax 0
+Vsample 10000000
+BeamThickness 200
+GlobalPosition 100
+NumPhases 1
+PhaseNr 1
+tInt 0.3
+tGap 0.15
+MinNrSpots 3
+DiscModel 0
+DiscArea 2250000
+MargABC 4.8
+MargABG 4.8
+NrFilesPerSweep 1
+UpperBoundThreshold 12000
+LatticeConstant 3.6 3.6 3.6 90 90 90
+SpaceGroup 225
+FileStem Au_FF
+Ext .ge3
+StartFileNrFirstLayer 1
+Padding 6
+Lsd 914234.0375
+BC 1021.3441289014 1028.1515196259
+tx 0.118059
+ty -0.2134734655
+tz 0.1564419026
+p0 3.30993485E-05
+p1 -4.6602346E-05
+p2 -0.0003920126
+RhoD 204800
+MaxRingRad 204800
+StartNr 1
+EndNr 720
+Rsample 2000
+Hbeam 2000
+DoFit 0
+MinEta 6
+MinOmeSpotIDsToIndex -90
+MaxOmeSpotIDsToIndex 90
+tolTilts 2
+tolBC 10
+tolLsd 5000
+OmegaStep -0.5
+OmegaFirstFile 180
+Wavelength 0.22291
+NrPixels 2048
+px 200
+Width 1500
+GaussWidth 1
+Wedge 0
+Completeness 0.8
+NewType 1                                                                       ### LEAVE AS IS
+OmegaRange -180 180                                                             ### OMEGA RANGE DEFINES WHERE TO LOOK FOR PEAKS (IF SHADOWING CREATE MULTIPLE OMEGA RANGES)
+BoxSize -1000000 1000000 -1000000 1000000                                       ### ACTIVE DETECTOR AREA AT THE OMEGA RANGE (MICRONS) (HORIZONTAL RANGE - NEGATIVE IN INBOARD / VERTICAL RANGE - NEGATIVE IS DOWN)
+StepSizePos 100                                                                   ### GRID SIZE IN SAMPLE SPACE (MICRONS)
+StepSizeOrient 0.2                                                              ### FIBER STEP SIZE (DEG)
+MarginEta 1000                                                                   ### ETA TOLERANCE FROM EXPECTED SPOT POSITION (MICRONS)
+MarginRadius 1000                                                                ### ALLOWABLE GRAIN SIZE MISMATCH (PERCENT)
+MarginRadial 1000                                                                ### RADIAL TOLERANCE FROM EXPECTED SPOT POSITION (MICRONS)
+MarginOme 0.5                                                                     ### OMEGA TOLERANCE FROM EXPECTED SPOT POSITION (DEG)
+OmeBinSize 0.1                                                                  ### LEAVE AS IS
+EtaBinSize 0.1                                                                  ### LEAVE AS IS
+UseFriedelPairs 1                                                               ### USE FRIDEL PAIRS (INDEXING FASTER)
