@@ -8,6 +8,7 @@ import os.path
 
 paramfn = sys.argv[1]
 layernr = int(sys.argv[2])
+darkfn = ''
 if (len(sys.argv)>3):
 	ext = '.ge'+sys.argv[3]
 	darkfn = ''
