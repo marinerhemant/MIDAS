@@ -41,6 +41,8 @@ ${PFDIR}/SHMOperators.sh
 mkdir -p Output
 mkdir -p Results
 mkdir -p logs
+export JAVA_HOME=$HOME/.MIDAS/jre1.8.0_181/
+export PATH="$JAVA_HOME/bin:$PATH"
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/IndexRefine.swift \
  -folder=${fldr}
 ${BINFOLDER}/ProcessGrains $2

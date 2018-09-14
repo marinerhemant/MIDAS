@@ -50,5 +50,9 @@ if [ ! -d ${dirThis}/LIBTIFF ]; then
 	make install
 fi
 
+cd $dirThis
+wget -O jre8.tar.gz https://www.dropbox.com/s/1pawwgh9k1xpdgg/jre-8u181-linux-x64.tar.gz?dl=0
+tar -xvf jre8.tar.gz
+
 cd ${HOME}/opt/MIDAS/FF_HEDM
 #./GetNetCDF.sh

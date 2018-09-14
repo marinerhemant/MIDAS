@@ -80,6 +80,8 @@ do
 	cd $outfolder
 	python ${PFDIR}/prepareFilesHydra.py $ParamsFile 1 # This appends stuff to the param files, this is called only to do an initial setup!!
 	cd ../
+	export JAVA_HOME=$HOME/.MIDAS/jre1.8.0_181/
+	export PATH="$JAVA_HOME/bin:$PATH"
 	${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
 		${PFDIR}/processLayersHydra.swift -ringfile=${seedfolder}/RingInfo.txt \
 		-startnr=${StartNr} -endnr=${EndNr} -SeedFolder=${seedfolder} \

@@ -69,6 +69,8 @@ SeedFolder=$( awk '$1 ~ /^SeedFolder/ { print $2 }' ${ParamsFile} )
 for (( LAYERNR=$STARTLAYERNR; LAYERNR<=$ENDLAYERNR; LAYERNR++ ))
 do
 	${PFDIR}/InitialSetup.sh ${ParamsFile} ${LAYERNR} ${DOPEAKSEARCH}
+	export JAVA_HOME=$HOME/.MIDAS/jre1.8.0_181/
+	export PATH="$JAVA_HOME/bin:$PATH"
 	${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
 		${PFDIR}/processLayers.swift -ringfile=${SeedFolder}/RingInfo.txt \
 		-startnr=${StartNr} -endnr=${EndNr} -SeedFolder=${SeedFolder} \

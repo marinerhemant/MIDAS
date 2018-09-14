@@ -63,6 +63,8 @@ echo "${TOP_PARAM_FILE} ${DataDirectory}" >> ${tmpfn}
 
 rm -f ${BinFN}
 # Do Processing
+export JAVA_HOME=$HOME/.MIDAS/jre1.8.0_181/
+export PATH="$JAVA_HOME/bin:$PATH"
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
 	-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
 	-DoPeakSearch=${ProcessImages} -FFSeedOrientations=${FFSeedOrientations} -DoFullLayer=1 \
@@ -90,6 +92,8 @@ then
 		echo "paramfn datadir" > ${tmpfn}
 		echo "${NEW_PARAM_FILE} ${DataDirectory}" >> ${tmpfn}
 		# Do Processing
+		export JAVA_HOME=$HOME/.MIDAS/jre1.8.0_181/
+		export PATH="$JAVA_HOME/bin:$PATH"
 		${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
 			-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
 			-DoPeakSearch=0 -FFSeedOrientations=0 -DoFullLayer=1 -DoGrid=0

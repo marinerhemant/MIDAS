@@ -45,6 +45,9 @@ cp bin.tar.gz ${HOME}/swiftwork/bins/.
 cd ${origdir}
 nrelements=$( wc -l < grid.txt )
 GrainsFN=$( awk '$1 ~ /^GrainsFile/ { print $2 }' ${1} )
+
+export JAVA_HOME=$HOME/.MIDAS/jre1.8.0_181/
+export PATH="$JAVA_HOME/bin:$PATH"
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
  ${PFDIR}/processScanningHEDM.swift -ParamsFile=$1 -GrainsFile=${GrainsFN} \
  -nrelements=${nrelements} -Folder=$( pwd )

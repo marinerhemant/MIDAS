@@ -36,6 +36,8 @@ else
 	intHN=10.10.10.100
 	export intHN
 fi
+export JAVA_HOME=$HOME/.MIDAS/jre1.8.0_181/
+export PATH="$JAVA_HOME/bin:$PATH"
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/RunPeaksMultPeaksOnly.swift -paramsfile=$4 -ringfile=$3 -fstm=$5 -startnr=${StartNr} -endnr=${EndNr}
 echo "Process Peaks"
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/RunPeaksMultProcessOnly.swift -paramsfile=$4 -ringfile=$3 -fstm=$5 -startnr=${StartNr} -endnr=${EndNr}

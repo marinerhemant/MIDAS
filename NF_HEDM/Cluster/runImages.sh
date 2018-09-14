@@ -56,6 +56,8 @@ NRPIXELS=$( awk '$1 ~ /^NrPixels/ { print $2 }' ${TOP_PARAM_FILE} )
 tmpfn=${DataDirectory}/fns.txt
 echo "paramfn datadir" > ${tmpfn}
 echo "${TOP_PARAM_FILE} ${DataDirectory}" >> ${tmpfn}
+export JAVA_HOME=$HOME/.MIDAS/jre1.8.0_181/
+export PATH="$JAVA_HOME/bin:$PATH"
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
   -FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
   -DoPeakSearch=1 -FFSeedOrientations=${FFSeedOrientations} -DoFullLayer=0
