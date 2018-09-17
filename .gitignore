@@ -5,10 +5,13 @@ NF_HEDM/orthros/*.kml
 NF_HEDM/orthros/*.swiftx
 NF_HEDM/Cluster/*.kml
 NF_HEDM/Cluster/*.swiftx
-FF_HEDM/Example/Indexer/*.bin
-FF_HEDM/src/*.txt
-FF_HEDM/Example/Peaks/Temp/
-FF_HEDM/Example/Indexer/Ruby/
+FF_HEDM/Example/Au_FF*
+FF_HEDM/Example/FolderNames.txt
+FF_HEDM/Example/PFNames.txt
+FF_HEDM/Example/RingInfo.txt
+FF_HEDM/Example/run0*
+FF_HEDM/Example/hkls.csv
+FF_HEDM/Example/SpotMatrixGen.csv
 FF_HEDM/local/tc.data
 FF_HEDM/local/sites.xml
 FF_HEDM/Orthros/tc.data
