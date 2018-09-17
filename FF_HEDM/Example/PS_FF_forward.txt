@@ -1,0 +1,22 @@
+LatticeConstant 4.08 4.08 4.08 90 90 90
+SpaceGroup 225
+InFileName GrainsAu.csv
+OutFileName Au_FF_000001.ge3
+Lsd 1150000.0000
+BC 1024 1024
+tx 0                                            ### TILT OF THE DETECTOR AROUND X RAY BEAM (ALONG ZL) 0.111380461446373146827681921422 (OTHER)
+ty 0
+tz 0
+p0 0
+p1 0
+p2 0
+Wedge 0                                          ### 90-TILT OF THE ROTATION AXIS WITH RESPECT TO X-RAY ABOUT +X
+RhoD 204800
+OmegaStep -0.5
+Wavelength 0.22291
+NrPixels 2048
+px 200
+GaussWidth 1
+OmegaStart 180
+OmegaEnd -180
+PeakIntensity 5000

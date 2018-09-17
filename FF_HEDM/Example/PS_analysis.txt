@@ -1,0 +1,72 @@
+SeedFolder /home/hsharma/opt/MIDAS/FF_HEDM/Example
+RingThresh 1 10
+RingThresh 2 10
+RingThresh 3 10
+HeadSize 8192
+OverAllRingToIndex 2
+RawFolder /home/hsharma/opt/MIDAS/FF_HEDM/Example
+Twins 0
+TakeGrainMax 0
+Vsample 10000000
+BeamThickness 200
+ImTransOpt 0
+GlobalPosition 100
+NumPhases 1
+PhaseNr 1
+tInt 0.3
+tGap 0.15
+MinNrSpots 3
+DiscModel 0
+DiscArea 2250000
+MargABC 4.8
+MargABG 4.8
+NrFilesPerSweep 1
+UpperBoundThreshold 12000
+LatticeConstant 4.08 4.08 4.08 90 90 90
+SpaceGroup 225
+FileStem Au_FF
+Ext .ge3
+StartFileNrFirstLayer 1
+Padding 6
+Lsd 1150000.0000
+BC 1024 1024
+tx 0                                            ### TILT OF THE DETECTOR AROUND X RAY BEAM (ALONG ZL) 0.111380461446373146827681921422 (OTHER)
+ty 0
+tz 0
+p0 0
+p1 0
+p2 0
+Wedge 0                                          ### 90-TILT OF THE ROTATION AXIS WITH RESPECT TO X-RAY ABOUT +X
+RhoD 204800
+MaxRingRad 204800
+StartNr 1
+EndNr 720
+Rsample 2000
+Hbeam 2000
+DoFit 0
+MinEta 6
+MinOmeSpotIDsToIndex -90
+MaxOmeSpotIDsToIndex 90
+tolTilts 2
+tolBC 10
+tolLsd 5000
+OmegaStep -0.5
+OmegaFirstFile 180
+Wavelength 0.22291
+NrPixels 2048
+px 200
+Width 1500
+GaussWidth 1
+Completeness 0.8
+NewType 1
+OmegaRange -180 180
+BoxSize -1000000 1000000 -1000000 1000000
+StepSizePos 100
+StepSizeOrient 0.2
+MarginEta 500
+MarginRadius 500
+MarginRadial 500
+MarginOme 0.5
+OmeBinSize 0.1
+EtaBinSize 0.1
+UseFriedelPairs 1
