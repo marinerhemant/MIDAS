@@ -587,7 +587,6 @@ static inline void MakeSquare (int NrPixels, int NrPixelsY, int NrPixelsZ, pixel
 int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 {
 	int i;
-	printf("%s %d\n",fn,dType);
 	if (dType == 1){
 		uint16_t *readData; 
 		readData = calloc(NrPixels,sizeof(*readData));
