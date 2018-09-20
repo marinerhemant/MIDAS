@@ -562,11 +562,11 @@ int main(int argc, char **argv)
 					if (Normalize == 1){
 						Intensity /= totArea;
 					}
-					EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
-					Int1d += Intensity;
-					n1ds ++;
-					fprintf(out,"%lf\t%lf\t%lf\n",RMean,EtaMean,Intensity);
 				}
+				EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
+				Int1d += Intensity;
+				n1ds ++;
+				fprintf(out,"%lf\t%lf\t%lf\n",RMean,EtaMean,Intensity);
 			}
 			RM1d = RMean;
 			Int1d /= n1ds;
