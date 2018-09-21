@@ -793,6 +793,10 @@ main(int argc, char *argv[])
 	ImageArrSize *= NrPixels;
 	ImageArrSize *= ceil(fabs((OmegaEnd-OmegaStart)/OmegaStep));
 	ImageArr = calloc(ImageArrSize,sizeof(*ImageArr));
+	if (ImageArr == NULL){
+		printf("Could not allocate enough memory for image array. Exiting.\n");
+		return 1;
+	}
 	// Make distortion tilt map for each pixel within the hkl range
 	printf("Making distortion map.\n");
 	double *yDispl, *zDispl;
