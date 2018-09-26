@@ -1,8 +1,5 @@
 NF_HEDM/bin/*
 FF_HEDM/bin/*
-NF_HEDM/orthros/tc.data
-NF_HEDM/orthros/*.kml
-NF_HEDM/orthros/*.swiftx
 NF_HEDM/Cluster/*.kml
 NF_HEDM/Cluster/*.swiftx
 FF_HEDM/Example/Au_FF*
@@ -12,15 +9,8 @@ FF_HEDM/Example/RingInfo.txt
 FF_HEDM/Example/run0*
 FF_HEDM/Example/hkls.csv
 FF_HEDM/Example/SpotMatrixGen.csv
-FF_HEDM/local/tc.data
-FF_HEDM/local/sites.xml
-FF_HEDM/Orthros/tc.data
-FF_HEDM/Orthros/*.kml
-FF_HEDM/Orthros/*.swiftx
 FF_HEDM/Cluster/*.kml
 FF_HEDM/Cluster/*.swiftx
-FF_HEDM/local/*.kml
-FF_HEDM/local/*.swiftx
 gui/*.txt
 gui/*.csv
 gui/*.bin
