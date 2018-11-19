@@ -533,7 +533,7 @@ int main(int argc, char **argv)
 		fprintf(out,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\tEta(px)\tIntensity(counts)\n",nEtaBins,nRBins);
 		sprintf(outFN1d,"%s_integrated_framenr_%d.1d.csv",imageFN,i);
 		out1d = fopen(outFN1d,"w");
-		fprintf(out1d,"%%nRBins:\t%d\n%%Radius(px)\tIntensity(counts)\n",nRBins);
+		fprintf(out1d,"%%nRBins:\t%d\n%%Radius(px)\tIntensity(counts)\tTotalArea(px)\n",nRBins);
 		for (j=0;j<nRBins;j++){
 			RMean = (RBinsLow[j]+RBinsHigh[j])/2;
 			Int1d = 0;
@@ -566,7 +566,7 @@ int main(int argc, char **argv)
 				EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
 				Int1d += Intensity;
 				n1ds ++;
-				fprintf(out,"%lf\t%lf\t%lf\n",RMean,EtaMean,Intensity);
+				fprintf(out,"%lf\t%lf\t%lf\t%lf\n",RMean,EtaMean,Intensity,totArea);
 			}
 			RM1d = RMean;
 			Int1d /= n1ds;
