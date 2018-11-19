@@ -18,9 +18,12 @@ seedfolder=$( awk '$1 ~ /^SeedFolder/ { print $2 }' ${paramfile} )
 startfilenrfirstlayer=$( awk '$1 ~ /^StartFileNrFirstLayer/ { print $2 } ' ${paramfile} )
 nrfilesperlayer=$( awk '$1 ~ /^NrFilesPerSweep/ { print $2 } ' ${paramfile} )
 filestem=$( awk '$1 ~ /^FileStem/ { print $2 } ' ${paramfile} )
-incr=`expr $layernr - 1`
-incr2=`expr $nrfilesperlayer \* $incr`
-startfilenr=`expr $startfilenrfirstlayer + $incr2`
+incr=$(( $layernr - 1 ))
+incr2=$(( $nrfilesperlayer \* $incr ))
+startfilenr=$(( $startfilenrfirstlayer + $incr2 ))
+echo incr
+echo incr2
+echo startfilenr
 ide=$( date +%Y_%m_%d_%H_%M_%S )
 outfolder=${seedfolder}/${filestem}_Layer${layernr}_Analysis_Time_${ide}
 FolderStem=${filestem}_Layer${layernr}_Analysis_Time_
