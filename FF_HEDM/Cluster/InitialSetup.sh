@@ -18,6 +18,9 @@ seedfolder=$( awk '$1 ~ /^SeedFolder/ { print $2 }' ${paramfile} )
 startfilenrfirstlayer=$( awk '$1 ~ /^StartFileNrFirstLayer/ { print $2 } ' ${paramfile} )
 nrfilesperlayer=$( awk '$1 ~ /^NrFilesPerSweep/ { print $2 } ' ${paramfile} )
 filestem=$( awk '$1 ~ /^FileStem/ { print $2 } ' ${paramfile} )
+startfilenr=$( python ${PFDIR}/getStartFileNr.py ${paramfile} ${layernr} )
+echo $startfilenr
+exit 1
 incr=$(( $layernr - 1 ))
 incr2=$(( $nrfilesperlayer \* $incr ))
 startfilenr=$(( $startfilenrfirstlayer + $incr2 ))
