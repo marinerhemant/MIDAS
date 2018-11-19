@@ -21,9 +21,9 @@ filestem=$( awk '$1 ~ /^FileStem/ { print $2 } ' ${paramfile} )
 incr=$(( $layernr - 1 ))
 incr2=$(( $nrfilesperlayer \* $incr ))
 startfilenr=$(( $startfilenrfirstlayer + $incr2 ))
-echo incr
-echo incr2
-echo startfilenr
+echo $incr
+echo $incr2
+echo $startfilenr
 ide=$( date +%Y_%m_%d_%H_%M_%S )
 outfolder=${seedfolder}/${filestem}_Layer${layernr}_Analysis_Time_${ide}
 FolderStem=${filestem}_Layer${layernr}_Analysis_Time_
