@@ -105,13 +105,13 @@ CalcStrainTensorFableBeaudoin(double LatCin[6],double LatticeParameterFit[6],
 	
 	// Calculate strain tensor in the grain coordinate system
 	
-	double CosGPr1 = (cos(alpha1)*cos(beta1)-cos(gamma1)/(sin(alpha1)*sin(beta1)));
+	double CosGPr1 = (cos(alpha1)*cos(beta1)-cos(gamma1))/(sin(alpha1)*sin(beta1));
 	double SinGPr1 = sin(acos(CosGPr1));
 	double A0[3][3] =  {{ a1*sin(beta1)*SinGPr1, 0, 			 0},
 						{-a1*sin(beta1)*CosGPr1, b1*sin(alpha1), 0},
 						{ a1*cos(beta1), 		 b1*cos(alpha1), c1}};
 	
-	double CosGPr2 = (cos(alpha2)*cos(beta2)-cos(gamma2)/(sin(alpha2)*sin(beta2)));
+	double CosGPr2 = (cos(alpha2)*cos(beta2)-cos(gamma2))/(sin(alpha2)*sin(beta2));
 	double SinGPr2 = sin(acos(CosGPr2));
 	double A[3][3] =   {{ a2*sin(beta2)*SinGPr2, 0, 			 0},
 						{-a2*sin(beta2)*CosGPr2, b2*sin(alpha2), 0},
