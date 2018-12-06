@@ -8,7 +8,7 @@ SGInfo library used to calculate HKLs.
 
 Some misorientation functions are taken from the ODFPF package from Cornell (https://anisotropy.mae.cornell.edu/onr/Matlab/matlab-functions.html).
 
-Downloads swift binary, NLOPT, LIBTIFF, NETCDF (curl, hdf5, zlib) for compilation of N(F)F-HEDM codes.
+Downloads jre, swift binary, NLOPT, LIBTIFF, NETCDF (curl, hdf5, zlib) for compilation of N(F)F-HEDM codes.
 
 # Installation
 Go to each sub-folder: NF_HEDM / FF_HEDM and type "make MACHINE_NAME". This will install shortcuts in ${HOME}/.MIDAS directory.
