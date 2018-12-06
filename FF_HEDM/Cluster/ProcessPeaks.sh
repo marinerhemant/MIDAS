@@ -5,7 +5,7 @@
 # See LICENSE file.
 #
 source ${HOME}/.MIDAS/paths
-paramfile=$1 # always fill path
+paramfile=$1 # always full path
 echo ${paramfile}
 CHART=/
 flr=${paramfile%$CHART*}

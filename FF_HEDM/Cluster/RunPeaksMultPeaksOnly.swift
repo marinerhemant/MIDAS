@@ -7,7 +7,7 @@ type file;
 
 app runPeaks (string paramsfn, int fnr, int ringnr)
 {
- peaks paramsfn fnr ringnr;
+ peakstracking paramsfn fnr ringnr;
 }
 
 # Parameters to be modified #############

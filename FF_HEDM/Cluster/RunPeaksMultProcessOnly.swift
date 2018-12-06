@@ -13,8 +13,6 @@ app runProcessPeaks (string paramsf, int RNr, file hkl)
 
 # Parameters to be modified #############
 
-int startnr = toInt(arg("startnr","1"));
-int endnr = toInt(arg("endnr","600"));
 string parameterfilestem = arg("paramsfile","/clhome/TOMO1/PeaksAnalysisHemant/PeaksFittingCode/90_33ParamsFile1.txt");
 string ringfile = arg("ringfile","RingInfo.txt");
 string fstm = arg("fstm","PS.txt");
