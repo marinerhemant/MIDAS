@@ -64,7 +64,9 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 			f.close()
 			median = np.reshape(median,(NrPixels,NrPixels))
 			imarr2 = np.subtract(imarr.astype(int),median.astype(int))
-			imarr2 = np.clip(imarr2,background,1e10)
+			imarr2[imarr2<background] = 0
+			#imarr2 = stats.threshold(imarr2,threshmin=background)
+			#imarr2 = np.clip(imarr2,background,1e10)
 		else:
 			imarr2 = imarr
 	else:
@@ -78,7 +80,9 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 		imarr = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
 		f.close()
 		imarr2 = np.reshape(imarr,(NrPixels,NrPixels))
-		imarr2 = np.clip(imarr2,background,1e10)
+		imarr2[imarr2<background] = 0
+		#imarr2 = stats.threshold(imarr2,threshmin=background)
+		#imarr2 = np.clip(imarr2,background,1e10)
 	imarr2 = np.flipud(np.fliplr(imarr2))
 	if dolog.get() == 0:
 		a.imshow(imarr2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(float(minThreshvar.get()),float(vali.get())))
