@@ -356,13 +356,67 @@ static inline void CorrectHKLsLatC(double LatC[6],double Wavelength, double **hk
 {
 	double a=LatC[0],b=LatC[1],c=LatC[2],alpha=LatC[3],beta=LatC[4],gamma=LatC[5];
 	int hklnr;
+	double SinA = sind(alpha), SinB = sind(beta), SinG = sind(gamma), CosA = cosd(alpha), CosB = cosd(beta), CosG = cosd(gamma);
+	double GammaPr = acosd((CosA*CosB - CosG)/(SinA*SinB)), BetaPr  = acosd((CosG*CosA - CosB)/(SinG*SinA)), SinBetaPr = sind(BetaPr);
+	double Vol = (a*(b*(c*(SinA*(SinBetaPr*(SinG)))))), APr = b*c*SinA/Vol, BPr = c*a*SinB/Vol, CPr = a*b*SinG/Vol;
+	double B[3][3]; B[0][0] = APr; B[0][1] = (BPr*cosd(GammaPr)), B[0][2] = (CPr*cosd(BetaPr)), B[1][0] = 0,
+		B[1][1] = (BPr*sind(GammaPr)), B[1][2] = (-CPr*SinBetaPr*CosA), B[2][0] = 0, B[2][1] = 0, B[2][2] = (CPr*SinBetaPr*SinA);
 	for (hklnr=0;hklnr<n_hkls;hklnr++){
 		double ginit[3]; ginit[0] = hkls[hklnr][0]; ginit[1] = hkls[hklnr][1]; ginit[2] = hkls[hklnr][2];
-		double SinA = sind(alpha), SinB = sind(beta), SinG = sind(gamma), CosA = cosd(alpha), CosB = cosd(beta), CosG = cosd(gamma);
-		double GammaPr = acosd((CosA*CosB - CosG)/(SinA*SinB)), BetaPr  = acosd((CosG*CosA - CosB)/(SinG*SinA)), SinBetaPr = sind(BetaPr);
-		double Vol = (a*(b*(c*(SinA*(SinBetaPr*(SinG)))))), APr = b*c*SinA/Vol, BPr = c*a*SinB/Vol, CPr = a*b*SinG/Vol;
-		double B[3][3]; B[0][0] = APr; B[0][1] = (BPr*cosd(GammaPr)), B[0][2] = (CPr*cosd(BetaPr)), B[1][0] = 0,
-			B[1][1] = (BPr*sind(GammaPr)), B[1][2] = (-CPr*SinBetaPr*CosA), B[2][0] = 0, B[2][1] = 0, B[2][2] = (CPr*SinBetaPr*SinA);
+		double GCart[3];
+		MatrixMult(B,ginit,GCart);
+		double Ds = 1/(sqrt((GCart[0]*GCart[0])+(GCart[1]*GCart[1])+(GCart[2]*GCart[2])));
+		hklsOut[hklnr][0] = GCart[0];
+		hklsOut[hklnr][1] = GCart[1];
+		hklsOut[hklnr][2] = GCart[2];
+		hklsOut[hklnr][3] = (asind((Wavelength)/(2*Ds))); //Theta
+		hklsOut[hklnr][4] = hkls[hklnr][3];
+	}
+}
+
+inline void
+MatInv(double A[3][3], double AInv[3][3])
+{
+	double a = A[0][0];
+	double b = A[0][1];
+	double c = A[0][2];
+	double d = A[1][0];
+	double e = A[1][1];
+	double f = A[1][2];
+	double g = A[2][0];
+	double h = A[2][1];
+	double i = A[2][2];
+	double DetA = (a*(e*i-f*h)) - (b*(i*d-f*g)) + (c*(d*h-e*g));
+	AInv[0][0] =  (e*i-f*h)/DetA;
+	AInv[0][1] = -(b*i-c*h)/DetA;
+	AInv[0][2] =  (b*f-c*e)/DetA;
+	AInv[1][0] = -(d*i-f*g)/DetA;
+	AInv[1][1] =  (a*i-c*g)/DetA;
+	AInv[1][2] = -(a*f-c*d)/DetA;
+	AInv[2][0] =  (d*h-e*g)/DetA;
+	AInv[2][1] = -(a*h-b*g)/DetA;
+	AInv[2][2] =  (a*e-b*d)/DetA;
+}
+
+static inline void CorrectHKLsLatCEpsilon(double LatC[6], double eps[6], double Wavelength, double **hklsOut)
+{
+	double a=LatC[0],b=LatC[1],c=LatC[2],alpha=LatC[3],beta=LatC[4],gamma=LatC[5];
+	int hklnr;
+	double SinA = sind(alpha), SinB = sind(beta), SinG = sind(gamma), CosA = cosd(alpha), CosB = cosd(beta), CosG = cosd(gamma);
+	double GammaPr = acosd((CosA*CosB - CosG)/(SinA*SinB)), BetaPr  = acosd((CosG*CosA - CosB)/(SinG*SinA)), SinBetaPr = sind(BetaPr);
+	double Vol = (a*(b*(c*(SinA*(SinBetaPr*(SinG)))))), APr = b*c*SinA/Vol, BPr = c*a*SinB/Vol, CPr = a*b*SinG/Vol;
+	double B0[3][3]; B0[0][0] = APr; B0[0][1] = (BPr*cosd(GammaPr)), B0[0][2] = (CPr*cosd(BetaPr)), B0[1][0] = 0,
+		B0[1][1] = (BPr*sind(GammaPr)), B0[1][2] = (-CPr*SinBetaPr*CosA), B0[2][0] = 0, B0[2][1] = 0, B0[2][2] = (CPr*SinBetaPr*SinA);
+	double B[3][3], Binv[3][3];
+	Binv[0][0] = (eps[0]+1)/B0[0][0];
+	Binv[1][1] = (eps[3]+1)/B0[1][1];
+	Binv[2][2] = (eps[5]+1)/B0[2][2];
+	Binv[0][1] = (2*eps[1]-B0[0][1]*Binv[1][1])/B0[0][0];
+	Binv[1][2] = (2*eps[4]-B0[1][2]*Binv[2][2])/B0[1][1];
+	Binv[0][2] = (2*eps[2]-B0[0][1]*Binv[1][2]-B0[0][2]*Binv[2][2])/B0[0][0];
+	MatInv(Binv,B);
+	for (hklnr=0;hklnr<n_hkls;hklnr++){
+		double ginit[3]; ginit[0] = hkls[hklnr][0]; ginit[1] = hkls[hklnr][1]; ginit[2] = hkls[hklnr][2];
 		double GCart[3];
 		MatrixMult(B,ginit,GCart);
 		double Ds = 1/(sqrt((GCart[0]*GCart[0])+(GCart[1]*GCart[1])+(GCart[2]*GCart[2])));
@@ -543,6 +597,8 @@ main(int argc, char *argv[])
 	double Lsd, tx, ty, tz, yBC, zBC, OmegaStep, OmegaStart, OmegaEnd, px;
 	int RingsToUse[500], nRings=0;
 	double LatC[6],Wavelength,Wedge=0, p0, p1, p2, RhoD,GaussWidth,PeakIntensity=2000;
+	int writeSpots;
+	int LoadNr = 1;
 	while (fgets(aline,4096,fileParam)!=NULL){
 		str="RingsToUse ";
 		LowNr = strncmp(aline,str,strlen(str));
@@ -674,6 +730,18 @@ main(int argc, char *argv[])
 			sscanf(aline,"%s %d",dummy,&NrPixels);
 			continue;
 		}
+		str="WriteSpots ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr == 0){
+			sscanf(aline,"%s %d",dummy,&writeSpots);
+			continue;
+		}
+		str="LoadNr ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr == 0){
+			sscanf(aline,"%s %d",dummy,&LoadNr);
+			continue;
+		}
 		str="px ";
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr == 0){
@@ -698,16 +766,23 @@ main(int argc, char *argv[])
 	sprintf(inpFN,"%s",InFileName);
 	FILE *inpF;
 	inpF = fopen(inpFN,"r");
+	if (inpF==NULL) return 1;
 	fgets(aline,4096,inpF);
 	// Preallocate Arrays
-	int NrOrientations = 1000000, nrPoints = 0;
-	double EulerThis[3],zThis,OrientThis[9];
+	int NrOrientations, nrPoints = 0;
+	double EulerThis[3],zThis,OrientThis[9],ElasticStrainThis[6];
 	double **InputInfo;
-	InputInfo = allocMatrix(NrOrientations,18); // Save OrientationMatrix, Position, LatC
+	int dataType;
+	double maxVol=0;
+	char strLine[4096];
+	int nrSkip;
 	// Check what type of input is this.
-	str = "%NumGrains ";
-	LowNr = strncmp(aline,str,strlen(str));
-	if (LowNr == 0){ // This is a Grains.csv file, get OM, Pos, LatC
+	if (strncmp(aline,"%NumGrains ",strlen("%NumGrains ")) == 0){ // This is a Grains.csv file, get OM, Pos, LatC
+		dataType = 0;
+		sscanf(aline,"%s %d",dummy,&NrOrientations);
+		NrOrientations++;
+		NrOrientations++;
+		InputInfo = allocMatrix(NrOrientations,18); // Save OrientationMatrix, Position, LatC
 		fgets(aline,4096,inpF);
 		fgets(aline,4096,inpF);
 		fgets(aline,4096,inpF);
@@ -726,32 +801,102 @@ main(int argc, char *argv[])
 					  &InputInfo[nrPoints][15],&InputInfo[nrPoints][16],&InputInfo[nrPoints][17]);
 			nrPoints++;
 		}
-	}else{
-		str = "%TriEdgeSize ";
-		LowNr = strncmp(aline,str,strlen(str));
-		if (LowNr == 0){ // This is a NFTxt.mic file, get OM, Pos, add std LatC
+	}else if (strncmp(aline,"%TriEdgeSize ",strlen("%TriEdgeSize ")) == 0){
+		dataType = 1;
+		NrOrientations = 2000000;
+		InputInfo = allocMatrix(NrOrientations,18); // Save OrientationMatrix, Position, LatC
+		fgets(aline,4096,inpF);
+		fgets(aline,4096,inpF);
+		sscanf(aline,"%s %lf",dummy,&zThis);
+		fgets(aline,4096,inpF);
+		while(fgets(aline,4096,inpF)!=NULL){
+			sscanf(aline,"%s %s %s %lf %lf %s %s %lf %lf %lf %s %s",
+					dummy,dummy,dummy,&InputInfo[nrPoints][9],&InputInfo[nrPoints][10],
+					dummy,dummy,&EulerThis[0],&EulerThis[1],&EulerThis[2],dummy,dummy);
+			InputInfo[nrPoints][11] = zThis;
+			Euler2OrientMat(EulerThis,OrientThis);
+			for (i=0;i<9;i++){
+				InputInfo[nrPoints][i] = OrientThis[i];
+			}
+			for (i=0;i<6;i++){
+				InputInfo[nrPoints][i+12] = LatC[i];
+			}
+			nrPoints++;
+		}
+	}else if (strncmp(aline,"# vtk DataFile ",strlen("# vtk DataFile ")) == 0){
+		dataType = 2;
+		long long int totalPoints,totalElements;
+		fgets(aline,4096,inpF);
+		fgets(aline,4096,inpF);
+		fgets(aline,4096,inpF);
+		fgets(aline,4096,inpF);
+		fgets(aline,4096,inpF);
+		sscanf(aline,"%s %lld",dummy,&totalPoints);
+		for (i=0;i<totalPoints;i++) fgets(aline,4096,inpF);
+		fgets(aline,4096,inpF);
+		fgets(aline,4096,inpF);
+		sscanf(aline,"%s %lld",dummy,&totalElements);
+		InputInfo = allocMatrix(totalElements,20);
+		for (i=0;i<totalElements+1;i++) fgets(aline,4096,inpF);
+		fgets(aline,4096,inpF);
+		// We need info about Volume, Position, EulerAngles, MeshQuality, ElasticStrain
+		for (i=0;i<totalElements+1;i++) fgets(aline,4096,inpF);
+		fgets(aline,4096,inpF);
+		for (i=0;i<totalElements+4;i++) fgets(aline,4096,inpF);
+		fgets(aline,4096,inpF);
+		for (i=0;i<totalElements;i++){
 			fgets(aline,4096,inpF);
+			sscanf(aline,"%lf",&InputInfo[i][18]);
+			if (maxVol < InputInfo[i][18]) maxVol = InputInfo[i][18];
+		}
+		for (i=0;i<3;i++) fgets(aline,4096,inpF);
+		fgets(aline,4096,inpF);
+		for (i=0;i<totalElements;i++){
 			fgets(aline,4096,inpF);
-			sscanf(aline,"%s %lf",dummy,&zThis);
+			sscanf(aline,"%lf %lf %lf",&InputInfo[i][9],&InputInfo[i][10],&InputInfo[i][11]);
+		}
+		for (i=0;i<3;i++) fgets(aline,4096,inpF);
+		fgets(aline,4096,inpF);
+		for (i=0;i<totalElements;i++){
 			fgets(aline,4096,inpF);
-			while(fgets(aline,4096,inpF)!=NULL){
-				sscanf(aline,"%s %s %s %lf %lf %s %s %lf %lf %lf %s %s",
-						dummy,dummy,dummy,&InputInfo[nrPoints][9],&InputInfo[nrPoints][10],
-						dummy,dummy,&EulerThis[0],&EulerThis[1],&EulerThis[2],dummy,dummy);
-				InputInfo[nrPoints][11] = zThis;
-				Euler2OrientMat(EulerThis,OrientThis);
-				for (i=0;i<9;i++){
-					InputInfo[nrPoints][i] = OrientThis[i];
-				}
-				for (i=0;i<6;i++){
-					InputInfo[nrPoints][i+12] = LatC[i];
-				}
-				nrPoints++;
+			sscanf(aline,"%lf %lf %lf",&EulerThis[0],&EulerThis[1],&EulerThis[2]);
+			Euler2OrientMat(EulerThis,OrientThis);
+			for (j=0;j<9;j++){
+				InputInfo[i][j] = OrientThis[j];
 			}
 		}
+		for (i=0;i<3;i++) fgets(aline,4096,inpF);
+		fgets(aline,4096,inpF);
+		for (i=0;i<totalElements;i++){
+			fgets(aline,4096,inpF);
+			sscanf(aline,"%lf",&InputInfo[i][19]);
+		}
+		for (i=0;i<2;i++) fgets(aline,4096,inpF);
+		fgets(aline,4096,inpF);
+		sscanf(aline,"%s %s",dummy,strLine);
+		while (strncmp(strLine,"Plastic",strlen("Plastic")) == 0){
+			for (i=0;i<totalElements+3;i++) fgets(aline,4096,inpF);
+			fgets(aline,4096,inpF);
+			sscanf(aline,"%s %s",dummy,strLine);
+		}
+		fgets(aline,4096,inpF);
+		if (LoadNr == 1){
+			for (i=0;i<totalElements;i++){
+				fgets(aline,4096,inpF);
+				sscanf(aline,"%lf %lf %lf %lf %lf %lf",&InputInfo[i][12],&InputInfo[i][15],&InputInfo[i][17],&InputInfo[i][13],&InputInfo[i][14],&InputInfo[i][16]);
+			}
+		}else {
+			nrSkip = (LoadNr-1)*(totalElements+4) - 1;
+			for (i=0;i<nrSkip;i++) fgets(aline,4096,inpF);
+			for (i=0;i<totalElements;i++){
+				fgets(aline,4096,inpF);
+				sscanf(aline,"%lf %lf %lf %lf %lf %lf",&InputInfo[i][12],&InputInfo[i][15],&InputInfo[i][17],&InputInfo[i][13],&InputInfo[i][14],&InputInfo[i][16]);
+			}
+		} 
+		nrPoints = totalElements;
 	}
 	if (nrPoints == 0) return 1;
-	
+	printf("Read file.\n");
 	// Read hkls file.
 	char *rc;
 	char *hklfn = "hkls.csv";
@@ -787,12 +932,15 @@ main(int argc, char *argv[])
 	}
 	
 	// Allocate image array.
-	uint16_t *ImageArr;
+	double maxInt;
+	double *ImageArr;
+	uint16_t *outArr;
 	size_t ImageArrSize;
 	ImageArrSize = NrPixels;
 	ImageArrSize *= NrPixels;
 	ImageArrSize *= ceil(fabs((OmegaEnd-OmegaStart)/OmegaStep));
 	ImageArr = calloc(ImageArrSize,sizeof(*ImageArr));
+	outArr = malloc(ImageArrSize*sizeof(*outArr));
 	if (ImageArr == NULL){
 		printf("Could not allocate enough memory for image array. Exiting.\n");
 		return 1;
@@ -839,7 +987,7 @@ main(int argc, char *argv[])
 	int nTspots, voxNr, spotNr;
 	int nRowsPerGrain = 2 * n_hkls;
 	TheorSpots = allocMatrix(nRowsPerGrain,7);
-	double OM[3][3],LatCThis[6], **hklsOut;
+	double OM[3][3],LatCThis[6], **hklsOut, **hklsTemp, EpsThis[6];
 	double OmeDiff, yTemp, zTemp, yThis, omeThis, etaThis;
 	double Info[5],DisplY,DisplZ,yDet,zDet,DisplY2,DisplZ2;
 	int yTrans, zTrans;
@@ -847,11 +995,18 @@ main(int argc, char *argv[])
 	long long int idx;
 	size_t omeBin, yBin, zBin, imageBin, centIdx, currentPos;
 	hklsOut = allocMatrix(n_hkls,5);
+	hklsTemp = allocMatrix(n_hkls,5);
 	// Go through each point
 	for (voxNr=0;voxNr<nrPoints;voxNr++){
 		// First calculate new hkls
-		for (i=0;i<6;i++) LatCThis[i] = InputInfo[voxNr][i+12];
-		CorrectHKLsLatC(LatCThis,Wavelength,hklsOut);
+		if (dataType < 2){
+			for (i=0;i<6;i++) LatCThis[i] = InputInfo[voxNr][i+12];
+			CorrectHKLsLatC(LatCThis,Wavelength,hklsOut);
+		}else if (dataType == 2){
+			for (i=0;i<6;i++) EpsThis[i] = InputInfo[voxNr][i+12];
+			CorrectHKLsLatCEpsilon(LatC,EpsThis,Wavelength,hklsOut);
+		}
+		// Get the Orientation Matrix
 		for (i=0;i<3;i++){
 			for (j=0;j<3;j++){
 				OM[i][j] = InputInfo[voxNr][i*3+j];
@@ -920,10 +1075,7 @@ main(int argc, char *argv[])
 			spotMatr[9]  = zThis;
 			spotMatr[10] = Info[3]; // Theta
 			spotMatr[11] = 0.0;
-			fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\n",
-				(int)spotMatr[0],(int)spotMatr[1],spotMatr[2],spotMatr[3],spotMatr[4],
-				spotMatr[5],spotMatr[6],(int)spotMatr[7],spotMatr[8],spotMatr[9],
-				spotMatr[10],spotMatr[11]);
+			if (writeSpots ==1)	fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\n",(int)spotMatr[0],(int)spotMatr[1],spotMatr[2],spotMatr[3],spotMatr[4],spotMatr[5],spotMatr[6],(int)spotMatr[7],spotMatr[8],spotMatr[9],spotMatr[10],spotMatr[11]);
 			// Map yDet,zDet,omeThis to frames.
 			omeBin = (size_t)floor(-(OmegaStart-omeThis)/OmegaStep);
 			omeBin *= NrPixels;
@@ -935,18 +1087,22 @@ main(int argc, char *argv[])
 			for (idxNrY=-2*ceil(GaussWidth);idxNrY<=2*ceil(GaussWidth);idxNrY++){
 				for (idxNrZ=-2*ceil(GaussWidth);idxNrZ<=2*ceil(GaussWidth);idxNrZ++){
 					currentPos = centIdx + idxNrY*NrPixels + idxNrZ;
-					ImageArr[currentPos] += (uint16_t) (GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask] * PeakIntensity);
-					//printf("%u %lf %llu\n",ImageArr[currentPos], GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask], currentPos);
+					ImageArr[currentPos] += (double) (GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask] * PeakIntensity);
+					if (maxInt < ImageArr[currentPos]) maxInt = ImageArr[currentPos];
+					//~ printf("%lf %lf %llu %llu\n",ImageArr[currentPos], GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask], currentPos, (long long unsigned)ImageArrSize);
+					//~ fflush(stdout);
 				}
 			}
 		}
 	}
+	printf("Maximum intensity: %lf\n",maxInt);
+	for (i=0;i<ImageArrSize;i++) outArr[i] = (uint16_t) (ImageArr[i]*15000/maxInt);
 	printf("Diffraction spots done, now writing the GE file.\n");
 	int *header;
 	header = malloc(8192);
 	FILE *outfile = fopen(OutFileName,"w");
 	fwrite(header,8192,1,outfile);
-	fwrite(ImageArr,ImageArrSize*sizeof(*ImageArr),1,outfile);
+	fwrite(outArr,ImageArrSize*sizeof(*outArr),1,outfile);
 	fclose(outfile);
 	end = clock();
 	diftotal = ((double)(end-start0))/CLOCKS_PER_SEC;
