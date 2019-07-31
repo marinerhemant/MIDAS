@@ -1003,6 +1003,7 @@ main(int argc, char *argv[])
 			for (i=0;i<6;i++) LatCThis[i] = InputInfo[voxNr][i+12];
 			CorrectHKLsLatC(LatCThis,Wavelength,hklsOut);
 		}else if (dataType == 2){
+			if (InputInfo[voxNr][i+19] == 0) continue;
 			for (i=0;i<6;i++) EpsThis[i] = InputInfo[voxNr][i+12];
 			CorrectHKLsLatCEpsilon(LatC,EpsThis,Wavelength,hklsOut);
 		}
