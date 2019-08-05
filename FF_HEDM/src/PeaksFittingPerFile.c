@@ -985,7 +985,7 @@ int main(int argc, char *argv[]){
 	fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta\n");
 	int KeepSpots = 0;
 	for (i=0;i<nOmeRanges;i++){
-		if (Omega > OmegaRanges[i][0] && Omega < OmegaRanges[i][1]) KeepSpots = 1;
+		if (Omega >= OmegaRanges[i][0] && Omega <= OmegaRanges[i][1]) KeepSpots = 1;
 	}
 	if (KeepSpots == 0) return;
 	

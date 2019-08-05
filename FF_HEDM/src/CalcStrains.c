@@ -160,7 +160,6 @@ double problem_function(
 		InterDiff = 0;
 		for (j=0;j<6;j++){
 			InterDiff += f_data->A[i][j]*x[j];
-			
 		}
 		Diff = InterDiff - f_data->B[i];
 		TotDiff += Diff*Diff;

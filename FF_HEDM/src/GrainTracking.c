@@ -318,7 +318,8 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	FILE *GrainMatchesFile = fopen(GrainMatchesFileName,"w");
 	fprintf(GrainMatchesFile,"OldID\tNewID\n");
 	FILE *spotsfile = fopen(spotsfilename,"w");
-	int GrainID;
+	int GrainID,nrFilled;
+	double mult;
 	for (i=0;i<nGrains;i++){
 		printf("%d of %d grains tracked.\n",i+1,nGrains);
 		do{ // Check for both EOF and ID matching GrainID
@@ -331,6 +332,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 		}while(fgets(aline,MAX_LINE_LENGTH,SpotMatrixFile)!=NULL);
 		if (spotNr == 0) continue;
 		printf("Nr of spots for %d grain: %d\n",i+1, spotNr);
+		nrFilled = 0;
 		for (j=0;j<spotNr;j++){
 			lenK = CalcNorm3(Distance,YLab[j],ZLab[j]);
 			SpotToGv(Distance/lenK,YLab[j]/lenK,ZLab[j]/lenK,Omegas[j],Thetas[j],&g01,&g02,&g03);
@@ -340,6 +342,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			iEta = floor((180+Etas[j])/etabinsize);
 			Pos = iRing*n_eta_bins*n_ome_bins + iEta*n_ome_bins + iOme;
 			nspots = ndata[Pos*2];
+			if (nspots == 0) continue;
 			DataPos = ndata[Pos*2+1];
 			minAngle = 100000;
 			for ( iSpot = 0 ; iSpot < nspots; iSpot++ ) { // For each potential match, calculate angle between gvectors
@@ -352,6 +355,10 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 				SpotToGv(Distance/lenK,y1/lenK,z1/lenK,ome1,theta1,&g11,&g12,&g13);
 				NormG1 = CalcNorm3(g11,g12,g13);
 				DotGs = (g01*g11) + (g02*g12) + (g03*g13);
+				mult = DotGs/(NormG0*NormG1);
+				if (mult > 1) mult = 1;
+				if (mult < -1) mult = -1;
+				Angle = fabs(acosd(mult));
 				Angle = fabs(acosd(DotGs/(NormG0*NormG1)));
 				if (Angle < minAngle){
 					minAngle = Angle;
@@ -359,18 +366,15 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 					bestRadius = ObsSpotsLab[spotRow*9+3];
 				}
 			}
-			if (nspots == 0){
-				IDs[j] = 0;
-				Rads[j] = 0;
-			}else{
-				IDs[j] = bestID;
-				Rads[j] = bestRadius;
-			}
+			IDs[nrFilled] = bestID;
+			Rads[nrFilled] = bestRadius;
+			nrFilled ++;
 		}
 		// Write CSV files and we are done.
 		GrainID = IDs[0];
 		sprintf(outfilename,"%s/BestPos_%09d.csv",outfolder,GrainID);
 		FILE *outfile = fopen(outfilename,"w");
+		printf("GrainID %d\n",GrainID);
 		fprintf(spotsfile,"%d\n",GrainID);
 		fprintf(outfile,"%d\n",GrainID);
 		fprintf(outfile,"%lf, %lf, %lf, %lf, %lf, %lf\n",GrainInfo[i][12],

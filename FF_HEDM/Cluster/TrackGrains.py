@@ -41,7 +41,7 @@ def removeLinesFile(fn,patternMatch):
 	f.close()
 	f = open(fn,'w')
 	for line in lines:
-		if !line.startswith(patternMatch):
+		if ~line.startswith(patternMatch):
 			f.write(line)
 	f.close()
 
@@ -49,9 +49,13 @@ def moveMultipleFiles(sourceDir,destDir,patternMatch):
 	for fn in glob(sourceDir+patternMatch):
 		shutil.move(fn,destDir)
 
-def runPeaksMult(paramFile,nNodes,ringNrsFile,paramFNStem,fstm,machineName):
+def runPeaksMult(paramFile,nNodes,ringNrsFile,paramFNStem,fstm,machineName,flr):
 	startNr = getValueFromParamFile(paramFile,'StartNr')[0][0]
 	endNr = getValueFromParamFile(paramFile,'EndNr')[0][0]
+	if not os.path.exists(flr+'/output'):
+		os.makedirs(flr+'/output')
+	for nr in range(int(startNr),int(endNr)+1):
+		call(['touch',flr+'/output/'+'PeaksPerFile_'+str(nr)+'.txt'])
 	print 'Peaks:'
 	myenv = os.environ.copy()
 	myenv['nNODES'] = nNodes
@@ -70,12 +74,12 @@ def runPeaksMult(paramFile,nNodes,ringNrsFile,paramFNStem,fstm,machineName):
 	myenv['intHN'] = intHN
 	myenv['JAVA_HOME'] = expanduser('~')+'/.MIDAS/jre1.8.0_181/'
 	myenv['PATH'] = myenv['JAVA_HOME']+'/bin:'+myenv['PATH']
-	cmd = [swiftdir+'/swift','-config',pfdir+'/sites.conf','-sites',machineName,pfdir+'RunPeaksMultPeaksOnly.swift',
-		'-paramsfile='+paramFile,'-ringfile='+ringNrsFile,'-fstm='+fstm,'-startnr='+startNr,'-endnr='+endNr]
+	cmd = swiftdir+'/swift -config '+pfdir+'/sites.conf -sites '+machineName+' '+pfdir+'RunPeaksMultPeaksOnly.swift -paramsfile='+paramFNStem+' -ringfile='+ringNrsFile+' -fstm='+fstm+' -startnr='+startNr+' -endnr='+endNr
+	print cmd
 	check_call(cmd,env=myenv,shell=True)
 	print "Process Peaks"
-	cmd = [swiftdir+'/swift','-config',pfdir+'/sites.conf','-sites',machineName,pfdir+'RunPeaksMultProcessOnly.swift',
-		'-paramsfile='+paramFile,'-ringfile='+ringNrsFile,'-fstm='+fstm,'-startnr='+startNr,'-endnr='+endNr]
+	cmd = swiftdir+'/swift -config '+pfdir+'/sites.conf -sites '+machineName+' '+pfdir+'RunPeaksMultProcessOnly.swift -paramsfile='+paramFNStem+' -ringfile='+ringNrsFile+' -fstm='+fstm+' -startnr='+startNr+' -endnr='+endNr
+	print cmd
 	check_call(cmd,env=myenv,shell=True)
 
 def GrainTracking(paramFile,layerNr,nNodes,machineName):
@@ -130,6 +134,7 @@ def GrainTracking(paramFile,layerNr,nNodes,machineName):
 		Fldr = seedFolder + '/Ring'+ rings[0]
 		if not os.path.exists(Fldr):
 			os.makedirs(Fldr)
+			os.makedirs(Fldr+'/PeakSearch/')
 		shutil.copyfile(os.getcwd()+'/hkls.csv',Fldr+'/hkls.csv')
 		fileAppend(thisParamFN,'Folder '+Fldr)
 		fileAppend(thisParamFN,'RingToIndex '+rings[0])
@@ -140,13 +145,13 @@ def GrainTracking(paramFile,layerNr,nNodes,machineName):
 		fileAppend(PFName,'RingNumbers ' + rings[0])
 		fileAppend(ringNrsFile,rings[0])
 		i+=1
-	runPeaksMult(paramFile,nNodes,ringNrsFile,paramFNStem,fstm,machineName)
+	runPeaksMult(paramFile,nNodes,ringNrsFile,paramFNStem,fstm,machineName,flr)
 	shutil.move(ringNrsFile,outFldr)
 	for rings in ringNrs:
 		thisParamFN = paramFNStem+rings[0]+'_'+fstm
 		Fldr = seedFolder + '/Ring'+ rings[0]
-		shutil.copy2(fldr+'/PeakSearch/'+fileStem+'_'+str(layerNr)+'/paramstest.txt',outFldr+'/paramstest_RingNr'+rings[0]+'.txt')
-		shutil.copy2(fldr+'/PeakSearch/'+fileStem+'_'+str(layerNr)+'/Radius_StartNr_'+sNr+'_EndNr_'+eNr+'_RingNr_'+rings[0]+'.csv',outFldr)
+		shutil.copy2(Fldr+'/PeakSearch/'+fileStem+'_'+str(layerNr)+'/paramstest.txt',outFldr+'/paramstest_RingNr'+rings[0]+'.txt')
+		shutil.copy2(Fldr+'/PeakSearch/'+fileStem+'_'+str(layerNr)+'/Radius_StartNr_'+sNr+'_EndNr_'+eNr+'_RingNr_'+rings[0]+'.csv',outFldr)
 		RingX = rings[0]
 		shutil.move(thisParamFN,outFldr)
 	call([binfolder+'/MergeMultipleRings',PFName])
@@ -180,7 +185,7 @@ def GrainTracking(paramFile,layerNr,nNodes,machineName):
 
 if (len(sys.argv)!=7):
 	print "Provide ParametersFile StartLayerNr EndLayerNr Number of NODEs to use MachineName and EmailAddress!"
-	print "EG. " + sys.argv[0] + " Parameters.txt 1 1 6 orhtros(or orthrosextra) hsharma@anl.gov"
+	print "EG. " + sys.argv[0] + " Parameters.txt 1 1 6 orthros(or orthrosextra) hsharma@anl.gov"
 	print "The parameter file must have a parameter called OldStateFolder which is the seed folder used in the previous state."
 	print "MinNrSpots must be 1!!!!!"
 	print "**********NOTE: For local runs, nNodes should be nCPUs.**********"
@@ -190,10 +195,13 @@ paths = open(expanduser("~")+'/.MIDAS/paths').readlines()
 for line in paths:
 	if 'BINFOLDER' in line:
 		binfolder = line.split('=')[1].rstrip()
+		binfolder += '/'
 	if 'PFDIR' in line:
 		pfdir = line.split('=')[1].rstrip()
+		pfdir += '/'
 	if 'SWIFTDIR' in line:
 		swiftdir = line.split('=')[1].rstrip()
+		swiftdir += '/'
 
 topParamFile = sys.argv[1]
 if topParamFile[0] != '/':
@@ -205,6 +213,8 @@ oldStateFolder = getValueFromParamFile(topParamFile,'OldStateFolder')[0][0]
 for layerNr in range(startLayerNr,endLayerNr+1):
 	os.chdir(oldStateFolder)
 	folders = [s for s in glob('*/') if 'Layer'+str(layerNr) in s]
+	fileStem = getValueFromParamFile(topParamFile,'FileStem')[0][0]
+	folders = [folder for folder in folders if fileStem in folder ]
 	oldFolder = folders[-1]
 	PSThisLayer = topParamFile+'.Layer'+str(layerNr)+'.txt'
 	shutil.copyfile(topParamFile,PSThisLayer)

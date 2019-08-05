@@ -304,8 +304,8 @@ int main(int argc, char *argv[]){
 		CurrentIDs[i][12] = NewIDs[i][8];			  // SigmaR
 		CurrentIDs[i][13] = NewIDs[i][9];			  // SigmaEta
 	}
-    //int e = CheckDirectoryCreation(Folder,FileStem);
-    //if (e ==0) return 1;
+    int e = CheckDirectoryCreation(Folder,FileStem);
+    if (e ==0) return 1;
     sprintf(OutFileName,"%s/PeakSearch/%s/Result_StartNr_%d_EndNr_%d_RingNr_%d.csv",Folder,FileStem,StartNr,EndNr,RingNr);
 	FILE *OutFile;
 	OutFile = fopen(OutFileName,"w");
