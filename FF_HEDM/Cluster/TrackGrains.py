@@ -187,6 +187,7 @@ if (len(sys.argv)!=7):
 	print "Provide ParametersFile StartLayerNr EndLayerNr Number of NODEs to use MachineName and EmailAddress!"
 	print "EG. " + sys.argv[0] + " Parameters.txt 1 1 6 orthros(or orthrosextra) hsharma@anl.gov"
 	print "The parameter file must have a parameter called OldStateFolder which is the seed folder used in the previous state."
+	print "If the filestem is different between the two states, please add a parameter called OldFileStem in the parameter file."
 	print "MinNrSpots must be 1!!!!!"
 	print "**********NOTE: For local runs, nNodes should be nCPUs.**********"
 	sys.exit()
@@ -215,6 +216,14 @@ for layerNr in range(startLayerNr,endLayerNr+1):
 	folders = [s for s in glob('*/') if 'Layer'+str(layerNr) in s]
 	fileStem = getValueFromParamFile(topParamFile,'FileStem')[0][0]
 	folders = [folder for folder in folders if fileStem in folder ]
+	if len(folders) is 0:
+		fileStem = getValueFromParamFile(topParamFile,'OldFileStem')[0][0]
+		folders = [s for s in glob('*/') if 'Layer'+str(layerNr) in s]
+		fileStem = getValueFromParamFile(topParamFile,'FileStem')[0][0]
+		folders = [folder for folder in folders if fileStem in folder ]
+		if len(folders) is 0:
+			print "Could not find the OldStateFolder, did you include an OldFileStem name?"
+			sys.exit()
 	oldFolder = folders[-1]
 	PSThisLayer = topParamFile+'.Layer'+str(layerNr)+'.txt'
 	shutil.copyfile(topParamFile,PSThisLayer)
