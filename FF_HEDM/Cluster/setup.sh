@@ -17,7 +17,7 @@ echo "BINFOLDER=${BINFOLDER}" > ${configfile}
 echo "PFDIR=${LOCAL_DIR}" >> ${configfile}
 echo "SWIFTDIR=${HOME}/.MIDAS/swift/bin" >> ${configfile}
 ln -s ${LOCAL_DIR}/RealTimeMultipleLayersSingleSwiftJob.sh ${configdir}/MIDAS_V4_FarField_Layers
-ln -s ${LOCAL_DIR}/TrackGrains.sh ${configdir}/MIDAS_V4_FarField_TrackGrains
+ln -s ${LOCAL_DIR}/TrackGrains.py ${configdir}/MIDAS_V4_FarField_TrackGrains.py
 ln -s ${BINFOLDER}/Calibrant ${configdir}/MIDAS_V4_FarField_Calibration
 ln -s ${BINFOLDER}/FitWedge ${configdir}/MIDAS_V4_FarField_Wedge
 ln -s ${BINFOLDER}/FitTiltX ${configdir}/MIDAS_V4_FarField_TiltX
