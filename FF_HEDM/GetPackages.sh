@@ -80,6 +80,6 @@ if [ ! -d ${dirThis}/FFTW ]; then # fftw
 	wget -O fftw.tar.gz https://www.dropbox.com/s/dug1mpsr10rvlqi/fftw-3.3.8.tar.gz?dl=0
 	tar -xvzf fftw.tar.gz
 	cd fftw-3.3.8
-	./configure --prefix=${dirThis}/FFTW --enable-shared --enable-float --disable-fortran
+	./configure --prefix=${dirThis}/FFTW --enable-float --disable-fortran
 	make install
 fi
