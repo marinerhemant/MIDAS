@@ -170,7 +170,8 @@ double problem_function(
 inline int
 StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double Distance, double wavelength,
 		double StrainTensorSample[3][3], int IDHash[NR_MAX_IDS_PER_GRAIN][3],
-		double dspacings[NR_MAX_IDS_PER_GRAIN], int nRings, int startSpotMatrix, double **SpotMatrix, double *RetVal)
+		double dspacings[NR_MAX_IDS_PER_GRAIN], int nRings, int startSpotMatrix, double **SpotMatrix, double *RetVal,
+		double StrainTensorInput[3][3])
 		/*SpotsInfo: 0,1,2 - Gobs, 3,4 - Y,Z spot, 5,6 - Y,Z sim, 7 - ID, G Vec should be normalized or not????*/
 {
 	int i,j;
@@ -206,8 +207,13 @@ StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double
 	}
 	int n = 6;
 	double x[n],xl[n],xu[n];
+	x[0] = StrainTensorInput[0][0];
+	x[1] = StrainTensorInput[1][1];
+	x[2] = StrainTensorInput[2][2];
+	x[3] = StrainTensorInput[0][1];
+	x[4] = StrainTensorInput[0][2];
+	x[5] = StrainTensorInput[1][2];
 	for (i=0;i<n;i++){
-		x[i] = 0;
 		xl[i] = -0.01;
 		xu[i] =  0.01;
 	}
