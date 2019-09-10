@@ -637,13 +637,13 @@ int main(int argc, char *argv[])
 		Orient[2][0] = OPs[rown][6];
 		Orient[2][1] = OPs[rown][7];
 		Orient[2][2] = OPs[rown][8];
+		CalcStrainTensorFableBeaudoin(LatCin,LatticeParameterFit,Orient,StrainTensorSampleFab);
 		int retval = StrainTensorKenesei(nspots,SpotsInfo,Distance,wavelength,
-			StrainTensorSampleKen,IDHash,dspacings,nRings,startSpotMatrix,SpotMatrix,&RetVal);
+			StrainTensorSampleKen,IDHash,dspacings,nRings,startSpotMatrix,SpotMatrix,&RetVal,StrainTensorSampleFab);
 		if (retval == 0){
 			printf("Did not read correct hash table for IDs. Exiting\n");
 			return;
 		}
-		CalcStrainTensorFableBeaudoin(LatCin,LatticeParameterFit,Orient,StrainTensorSampleFab);
 		FinalMatrix[nGrains][0] = (double)IDs[rown];
 		// Take orientation and bring down to FR
 		BringDownToFundamentalRegion(q1,q2,SGNr);
