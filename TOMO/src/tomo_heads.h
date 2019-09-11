@@ -131,20 +131,22 @@ typedef struct {
 		use_ring_removal;
 	float start_angle, 
 		end_angle, 
-		angle_interval, 
+		angle_interval,
+		start_shift,
+		end_shift, 
+		shift_interval,
 		*shift_values, 
 		ring_removal_coeff,
 		*theta_list;
 	char DataFileName[4096], 
 		ReconFileName[4096],
-		SliceFileName[4096];
+		SliceFileName[4096],
+		thetaFileName[4096];
 	int sinogram_xdim, 
 		sinogram_ydim, 
 		reconstruction_xdim, 
 		reconstruction_ydim, 
 		theta_list_size,
-		start_shift,
-		end_shift,
 		n_shifts,
 		n_slices,
 		filter;
