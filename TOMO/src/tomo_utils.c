@@ -150,91 +150,82 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 	/* Input file is a text file name with a data link: sino data is a !!!single!!! binary file with darks, whites and tomo data in that order.
 		* The rest of the file consists of the parameters required.
 		* Parameters to be supplied:
-			* DataFileName: name of the file with the raw data or sino data
-			* ReconFileName: Name of the file for saving the reconstruction
-			* are_sinos: If the input is a sinogram instead of raw (cleaned) images [bool]
+			* DataFileName: [char*] name of the file with the raw data or sino data
+			* ReconFileName: [char*] Name of the file for saving the reconstruction
+			* areSinos: If the input is a sinogram instead of raw (cleaned) images [0 or 1]
 			* The data can be one of two types: 
 			* 							sinogram already with float data type, directly give to reconstruct code with some additional centering etc. 
 			* 							dark, whites (2) and then raw images. Using number of angles, we know how many images are there. The scaling with white should be proportional to the distance from a white and appropriate dark value.
-			* det_xdim - [uint]
-			* det_ydim - [uint]
-			* start_angle - [float]
-			* end_angle - [float]
-			* angle_interval - [float]
+			* detXdim - [uint]
+			* detYdim - [uint]
+			* Thetas can either be given as a range:
+			* 	thetaRange: startAngle endAngle angleInterval - [floats]
+			* or a File:
+			* 	thetaFileName [char*] with each line having an angle value [float].
 			* filter - [int] set to * 0: default
-									* 1: Sheep / Logan
+									* 1: Shepp / Logan
 									* 2: Hann
 									* 3: Hamming
 									* 4: Ramp
-			* auto_centering - [bool] default 1
-			* start_shift [int]
-			* end_shift [int]
-			* use_ring_removal - [bool] default 1
-			* ring_removal_coefficient - [float] default 1.0
-			* slices_to_process - -1 for all or FileName or NrOfSlices followed by slice numbers 
+			* shift_values: start_shift end_shift shift_interval [floats] In case of 1 shift, give start_shift=end_shift, shift_interval doesn't matter
+			* ringRemovalCoefficient - If given, will do ringRemoval, otherwise comment or remove line [float] default 1.0
+			* slicesToProcess - -1 for all or FileName
 	*/
+	int arbThetas = 0;
 	FILE *fileParam;
 	fileParam = fopen(inputFN,"r");
 	if (fileParam==NULL) return 1;
 	char dummy[4096],aline[4096], slices[4096];
 	int temp;
+	recon_info_record->use_ring_removal = 0;
 	while(fgets(aline,4096,fileParam)!=NULL){
-		if (strncmp(aline,"DataFileName",strlen("DataFileName"))==0){
+		if (strncmp(aline,"dataFileName",strlen("dataFileName"))==0){
 			sscanf(aline,"%s %s",dummy,recon_info_record->DataFileName);
 		}
-		if (strncmp(aline,"ReconFileName",strlen("ReconFileName"))==0){
+		if (strncmp(aline,"reconFileName",strlen("reconFileName"))==0){
 			sscanf(aline,"%s %s",dummy,recon_info_record->ReconFileName);
 		}
-		if (strncmp(aline,"are_sinos",strlen("are_sinos"))==0){
+		if (strncmp(aline,"areSinos",strlen("areSinos"))==0){
 			sscanf(aline,"%s %ud",dummy,&recon_info_record->are_sinos);
 		}
-		if (strncmp(aline,"det_xdim",strlen("det_xdim"))==0){
+		if (strncmp(aline,"detXdim",strlen("detXdim"))==0){
 			sscanf(aline,"%s %ud",dummy,&recon_info_record->det_xdim);
 		}
-		if (strncmp(aline,"det_ydim",strlen("det_ydim"))==0){
+		if (strncmp(aline,"detYdim",strlen("detYdim"))==0){
 			sscanf(aline,"%s %ud",dummy,&recon_info_record->det_ydim);
-		}
-		if (strncmp(aline,"auto_centering",strlen("auto_centering"))==0){
-			sscanf(aline,"%s %d",dummy,&temp);
-			recon_info_record->auto_centering = temp;
 		}
 		if (strncmp(aline,"filter",strlen("filter"))==0){
 			sscanf(aline,"%s %d",dummy,&recon_info_record->filter);
 		}
-		if (strncmp(aline,"start_angle",strlen("start_angle"))==0){
-			sscanf(aline,"%s %f",dummy,&recon_info_record->start_angle);
+		if (strncmp(aline,"thetaRange",strlen("thetaRange"))==0){
+			sscanf(aline,"%s %f",dummy,&recon_info_record->start_angle,&recon_info_record->end_angle,&recon_info_record->angle_interval);
 		}
-		if (strncmp(aline,"end_angle",strlen("end_angle"))==0){
-			sscanf(aline,"%s %f",dummy,&recon_info_record->end_angle);
+		if (strncmp(aline,"thetaFileName",strlen("thetaFileName"))==0){
+			sscanf(aline,"%s %s",dummy,recon_info_record->thetaFileName);
 		}
-		if (strncmp(aline,"angle_interval",strlen("angle_interval"))==0){
-			sscanf(aline,"%s %f",dummy,&recon_info_record->angle_interval);
+		if (strncmp(aline,"shiftValues",strlen("shiftValues"))==0){
+			sscanf(aline,"%s %f %f %f",dummy,&recon_info_record->start_shift,&recon_info_record->end_shift,&recon_info_record->shift_interval);
 		}
-		if (strncmp(aline,"shift_values",strlen("shift_values"))==0){
-			sscanf(aline,"%s %d %d",dummy,&recon_info_record->start_shift,&recon_info_record->end_shift);
-		}
-		if (strncmp(aline,"use_ring_removal",strlen("use_ring_removal"))==0){
-			sscanf(aline,"%s %d",dummy,&temp);
-			recon_info_record->use_ring_removal = temp;
-		}
-		if (strncmp(aline,"ring_removal_coeff",strlen("ring_removal_coeff"))==0){
+		if (strncmp(aline,"ringRemovalCoeff",strlen("ringRemovalCoeff"))==0){
+			recon_info_record->use_ring_removal = 1;
 			sscanf(aline,"%s %f",dummy,&recon_info_record->ring_removal_coeff);
 		}
-		if (strncmp(aline,"slices_to_process",strlen("slices_to_process"))==0){
+		if (strncmp(aline,"slicesToProcess",strlen("slicesToProcess"))==0){
 			sscanf(aline,"%s %s %s",dummy,slices,dummy);
 		}
 	}
+	recon_info_record->auto_centering = 1; // ALWAYS DONE
 	fseek(fileParam,0,SEEK_SET);
-	recon_info_record->theta_list_size = abs((recon_info_record->end_angle-recon_info_record->start_angle)/recon_info_record->angle_interval);
+	recon_info_record->theta_list_size = abs((recon_info_record->end_angle-recon_info_record->start_angle)/recon_info_record->angle_interval) + 1;
 	recon_info_record->theta_list = (float *) malloc(recon_info_record->theta_list_size*sizeof(float));
 	int i;
-	for (i=0;i<=recon_info_record->theta_list_size;i++){
+	for (i=0;i<recon_info_record->theta_list_size;i++){
 		recon_info_record->theta_list[i] = recon_info_record->start_angle + i*recon_info_record->angle_interval;
 	}
-	recon_info_record->n_shifts = recon_info_record->end_shift-recon_info_record->start_shift+1;
+	recon_info_record->n_shifts = abs((recon_info_record->end_shift-recon_info_record->start_shift))/recon_info_record->shift_interval+1;
 	recon_info_record->shift_values = (float *) malloc(sizeof(float)*(recon_info_record->n_shifts));
-	for (i=recon_info_record->start_shift;i<=recon_info_record->end_shift;i++){
-		recon_info_record->shift_values[i-recon_info_record->start_shift] = i;
+	for (i=0;i<recon_info_record->n_shifts;i++){
+		recon_info_record->shift_values[i] = recon_info_record->start_shift + i*recon_info_record->shift_interval;
 	}
 	long val;
 	char *endptr;
