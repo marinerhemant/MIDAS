@@ -150,8 +150,8 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 	/* Input file is a text file name with a data link: sino data is a !!!single!!! binary file with darks, whites and tomo data in that order.
 		* The rest of the file consists of the parameters required.
 		* Parameters to be supplied:
-			* DataFileName: [char*] name of the file with the raw data or sino data
-			* ReconFileName: [char*] Name of the file for saving the reconstruction
+			* dataFileName: [char*] name of the file with the raw data or sino data
+			* reconFileName: [char*] Name of the file for saving the reconstruction
 			* areSinos: If the input is a sinogram instead of raw (cleaned) images [0 or 1]
 			* The data can be one of two types: 
 			* 							sinogram already with float data type, directly give to reconstruct code with some additional centering etc. 
@@ -168,7 +168,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 									* 2: Hann
 									* 3: Hamming
 									* 4: Ramp
-			* shift_values: start_shift end_shift shift_interval [floats] In case of 1 shift, give start_shift=end_shift, shift_interval doesn't matter
+			* shiftValues: start_shift end_shift shift_interval [floats] In case of 1 shift, give start_shift=end_shift, shift_interval doesn't matter
 			* ringRemovalCoefficient - If given, will do ringRemoval, otherwise comment or remove line [float] default 1.0
 			* slicesToProcess - -1 for all or FileName
 	*/
@@ -199,7 +199,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 			sscanf(aline,"%s %d",dummy,&recon_info_record->filter);
 		}
 		if (strncmp(aline,"thetaRange",strlen("thetaRange"))==0){
-			sscanf(aline,"%s %f",dummy,&recon_info_record->start_angle,&recon_info_record->end_angle,&recon_info_record->angle_interval);
+			sscanf(aline,"%s %f %f %f",dummy,&recon_info_record->start_angle,&recon_info_record->end_angle,&recon_info_record->angle_interval);
 		}
 		if (strncmp(aline,"thetaFileName",strlen("thetaFileName"))==0){
 			arbThetas = 1;
