@@ -468,6 +468,6 @@ void writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *r
 	sprintf(outFileName,"%s_%d_%d_%d_float_4byte.bin",recon_info_record->ReconFileName,sliceNr,recon_info_record->reconstruction_xdim,recon_info_record->reconstruction_xdim);
 	FILE *outfile;
 	outfile = fopen(outFileName,"wb");
-	pwrite(outfile,information->recon_calc_buffer,sizeof(float)*information->reconstruction_size,0);
+	fwrite(information->recon_calc_buffer,sizeof(float)*information->reconstruction_size,1,outfile);
 	fclose(outfile);
 }
