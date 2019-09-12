@@ -61,7 +61,7 @@ void usage(){
 		"	* ringRemovalCoefficient - If given, will do ringRemoval, otherwise comment or remove line [float] default 1.0\n"
 		"	* slicesToProcess - -1 for all or FileName\n"
 		"Output file: float with reconstruction_xdim*reconstruction_xdim size\n"
-		"OutputFileName: {recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_reconstruction_xdim_float_4byte.bin");
+		"OutputFileName: {recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_reconstruction_xdim_float_4byte.bin\n");
 }
 
 int main(int argc, char *argv[])
