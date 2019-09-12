@@ -434,6 +434,13 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_info_record){
 	int j, k;
 	LogProj(information->sino_calc_buffer, information->sinogram_adjusted_xdim, recon_info_record->sinogram_ydim);
+	if (recon_info_record->debug == 1){
+		char outfn[4096];
+		sprintf(outfn,"logproj_sino_%s",recon_info_record->DataFileName);
+		FILE *out = fopen(outfn,"wb");
+		fwrite(information->sino_calc_buffer,sizeof(float)*information->sinogram_adjusted_xdim*recon_info_record->sinogram_ydim,1,out);
+		fclose(out);
+	}
 	for( j = 0; j < recon_info_record->sinogram_ydim; j++ ){
 		for( k = 0; k < information->sinogram_adjusted_xdim; k++ ){
 			information->shifted_recon[j * information->sinogram_adjusted_xdim+ k] = 0.0f;
@@ -463,6 +470,13 @@ void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_inf
 	memcpy(&information->sino_calc_buffer[0], information->shifted_sinogram, sizeof(float) * information->sinogram_adjusted_size);
 	if (recon_info_record->use_ring_removal){
 		RingCorrectionSingle (&information->sino_calc_buffer[0],recon_info_record->ring_removal_coeff,information,recon_info_record);
+	}
+	if (recon_info_record->debug == 1){
+		char outfn[4096];
+		sprintf(outfn,"shifted_sino_%s",recon_info_record->DataFileName);
+		FILE *out = fopen(outfn,"wb");
+		fwrite(information->sino_calc_buffer,sizeof(float)*information->sinogram_adjusted_xdim*recon_info_record->sinogram_ydim,1,out);
+		fclose(out);
 	}
 	for( j = 0; j < recon_info_record->sinogram_ydim; j++ ){
 		memcpy( &information->sinograms_boundary_padding[j * information->sinogram_adjusted_xdim * 2 + information->sinogram_adjusted_xdim / 2 ],&information->sino_calc_buffer[j * information->sinogram_adjusted_xdim ], sizeof(float) * information->sinogram_adjusted_xdim);
