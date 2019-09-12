@@ -104,7 +104,9 @@ int main(int argc, char *argv[])
 	if (recon_info_record.debug == 1){
 		char outfn[4096];
 		sprintf(outfn,"init_sinogram_%s",recon_info_record.DataFileName);
-		fwrite(information.sino_calc_buffer,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.det_ydim,1,outfn);
+		FILE *out = foepn(outfn,'wb');
+		fwrite(information.sino_calc_buffer,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.det_ydim,1,out);
+		fclose(out);
 	}
 	gridrecParams param;
 	setGridRecPSWF(&param);
