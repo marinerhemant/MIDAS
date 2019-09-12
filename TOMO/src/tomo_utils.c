@@ -344,6 +344,7 @@ void readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *
 	if (recon_info_record.debug == 1){
 		char outfn[4096];
 		sprintf(outfn,"init_sinogram_%s",recon_info_record.DataFileName);
+		printf("%s",outfn);
 		fwrite(readStruct->init_sinogram,SizeSino,1,outfn);
 	}
 	Pad(readStruct,&recon_info_record);
