@@ -106,30 +106,23 @@ void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_recor
 		back_pad_size = pad_size - front_pad_size;
 	printf("%d %d\n",front_pad_size,back_pad_size);
 	int frameNr, pxNr, colNr;
-	float front_pad_denom, front_pad_numer, temp_front, back_pad_denom, back_pad_numer, temp_back, white_temp, factor;
-	//FIX PADS!!!!!
-	front_pad_denom = ((float)(readStruct->white_field_sino[0]+readStruct->white_field_sino[recon_info_record->sinogram_xdim]))/2 - readStruct->dark_field_sino_ave[0];
-	back_pad_denom = ((float)(readStruct->white_field_sino[recon_info_record->sinogram_xdim-1]+readStruct->white_field_sino[recon_info_record->sinogram_xdim*2-1]))/2 - readStruct->dark_field_sino_ave[recon_info_record->sinogram_xdim-1];
+	float temp_val, white_temp, factor;
 	for (frameNr=0;frameNr<recon_info_record->sinogram_ydim;frameNr++){
-		front_pad_numer = (float)readStruct->short_sinogram[0] - readStruct->dark_field_sino_ave[0];
-		back_pad_numer = (float)readStruct->short_sinogram[recon_info_record->sinogram_xdim-1] - readStruct->dark_field_sino_ave[recon_info_record->sinogram_xdim-1];
-		temp_front = front_pad_numer / front_pad_denom;
-		temp_back = back_pad_numer / back_pad_denom;
 		factor = (float)frameNr / (float)recon_info_record->theta_list_size;
 		printf("Pads: %f %f, factor: %f\n",temp_front,temp_back,factor);
 		if (temp_front==0) temp_front = 1e-3;
 		if (temp_back==0) temp_back = 1e-3;
 		for (pxNr=0;pxNr<readStruct->sinogram_adjusted_xdim;pxNr ++){
 			if (pxNr<front_pad_size){ // front padding
-				readStruct->norm_sino[frameNr*readStruct->sinogram_adjusted_xdim+pxNr] = temp_front;
+				colNr = 0; // first pixel
 			} else if (pxNr >=front_pad_size+recon_info_record->sinogram_xdim){ // back padding
-				readStruct->norm_sino[frameNr*readStruct->sinogram_adjusted_xdim+pxNr] = temp_back;
+				colNr = recon_info_record->sinogram_xdim-1; // last pixel
 			} else {
-				// Apply our formula
-				colNr = pxNr - front_pad_size;
-				white_temp = (1-factor) * (float) readStruct->white_field_sino[colNr] + (factor) * (float) readStruct->white_field_sino[colNr+recon_info_record->sinogram_xdim];
-				readStruct->norm_sino[frameNr*readStruct->sinogram_adjusted_xdim+pxNr] = ((float)readStruct->short_sinogram[colNr+frameNr*readStruct->sinogram_adjusted_xdim] - readStruct->dark_field_sino_ave[colNr]) /(white_temp-readStruct->dark_field_sino_ave[colNr]);
+				colNr = pxNr - front_pad_size; // actual pixel
 			}
+			white_temp = (1-factor) * (float) readStruct->white_field_sino[colNr] + (factor) * (float) readStruct->white_field_sino[colNr+recon_info_record->sinogram_xdim];
+			temp_val = ((float)readStruct->short_sinogram[colNr+frameNr*readStruct->sinogram_adjusted_xdim] - readStruct->dark_field_sino_ave[colNr]) /(white_temp-readStruct->dark_field_sino_ave[colNr]);
+			readStruct->norm_sino[frameNr*readStruct->sinogram_adjusted_xdim+pxNr] = temp_val;
 		}
 		
 	}
@@ -142,9 +135,9 @@ void Pad (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_record){ //
 	int colNr, frameNr;
 	for (frameNr=0;frameNr<recon_info_record->sinogram_ydim;frameNr++){
 		for (colNr=0;colNr<readStruct->sinogram_adjusted_xdim;colNr++){
-			if (colNr<front_pad_size) readStruct->norm_sino[colNr] = readStruct->init_sinogram[0];
-			else if (colNr>=front_pad_size+recon_info_record->sinogram_xdim) readStruct->norm_sino[colNr] = readStruct->init_sinogram[recon_info_record->sinogram_xdim-1];
-			else readStruct->norm_sino[colNr] = readStruct->init_sinogram[colNr-front_pad_size];
+			if (colNr<front_pad_size) readStruct->norm_sino[colNr+frameNr*sinogram_adjusted_xdim] = readStruct->init_sinogram[frameNr*sinogram_adjusted_xdim];
+			else if (colNr>=front_pad_size+recon_info_record->sinogram_xdim) readStruct->norm_sino[colNr+frameNr*sinogram_adjusted_xdim] = readStruct->init_sinogram[recon_info_record->sinogram_xdim-1+frameNr*sinogram_adjusted_xdim];
+			else readStruct->norm_sino[colNr+frameNr*sinogram_adjusted_xdim] = readStruct->init_sinogram[colNr+frameNr*sinogram_adjusted_xdim-front_pad_size];
 		}
 	}
 }
@@ -241,6 +234,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 			recon_info_record->theta_list_size ++;
 		}
 	}
+	printf("Total number of thetas: %d\n",recon_info_record->theta_list_size);
 	recon_info_record->n_shifts = abs((recon_info_record->end_shift-recon_info_record->start_shift))/recon_info_record->shift_interval+1;
 	recon_info_record->shift_values = (float *) malloc(sizeof(float)*(recon_info_record->n_shifts));
 	int i;
@@ -415,6 +409,8 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	fread(readStruct->short_sinogram,sizeof(unsigned short int)*recon_info_record.det_xdim,1,dataFile); // One row
 	int frameNr;
 	for (frameNr=1;frameNr<recon_info_record.sinogram_ydim;frameNr++){
+		printf("FrameNr: %d\n",frameNr);
+		fflush(stdout);
 		offset = sizeof(unsigned short int)*recon_info_record.det_xdim*(recon_info_record.det_ydim-1);
 		fseek(dataFile,offset,SEEK_CUR);
 		fread((readStruct->short_sinogram)+recon_info_record.det_xdim*frameNr,sizeof(unsigned short int)*recon_info_record.det_xdim,1,dataFile); // One row each at the next subsequent place
