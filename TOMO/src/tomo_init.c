@@ -98,9 +98,9 @@ int main(int argc, char *argv[])
 	// define shift here
 	LOCAL_CONFIG_OPTS information;
 	setSinoSize(&information,&recon_info_record,&readStruct);
-	printf("sino_calc_buffer %ld\n",(long)(sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.det_ydim));
-	information.sino_calc_buffer = (float *) malloc(sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.det_ydim);
-	memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.det_ydim);
+	printf("sino_calc_buffer %ld\n",(long)(sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size));
+	information.sino_calc_buffer = (float *) malloc(sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
+	memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 	if (recon_info_record.debug == 1){
 		char outfn[4096];
 		sprintf(outfn,"init_sinogram_%s",recon_info_record.DataFileName);
