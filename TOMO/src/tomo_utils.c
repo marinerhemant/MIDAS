@@ -104,7 +104,6 @@ void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_recor
 	int pad_size = readStruct->sinogram_adjusted_xdim - recon_info_record->sinogram_xdim,
 		front_pad_size = pad_size / 2,
 		back_pad_size = pad_size - front_pad_size;
-	printf("%d %d\n",front_pad_size,back_pad_size);
 	int frameNr, pxNr, colNr;
 	float temp_val, white_temp, factor;
 	for (frameNr=0;frameNr<recon_info_record->sinogram_ydim;frameNr++){
