@@ -227,7 +227,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 	} else {
 		recon_info_record->theta_list_size = 0;
 		recon_info_record->theta_list = (float *) malloc(MAX_N_THETAS*sizeof(float));
-		FILE *fileTheta = fopen(recon_info_record->thetaFileName);
+		FILE *fileTheta = fopen(recon_info_record->thetaFileName,"r");
 		while (fgets (aline,4096,fileTheta)!=NULL){
 			recon_info_record->theta_list[recon_info_record->theta_list_size] = atoi(aline);
 			recon_info_record->theta_list_size ++;
@@ -235,6 +235,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 	}
 	recon_info_record->n_shifts = abs((recon_info_record->end_shift-recon_info_record->start_shift))/recon_info_record->shift_interval+1;
 	recon_info_record->shift_values = (float *) malloc(sizeof(float)*(recon_info_record->n_shifts));
+	int i;
 	for (i=0;i<recon_info_record->n_shifts;i++){
 		recon_info_record->shift_values[i] = recon_info_record->start_shift + i*recon_info_record->shift_interval;
 	}
@@ -389,13 +390,13 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_info_record){
 	int j, k;
 	LogProj(information->sino_calc_buffer, information->sinogram_adjusted_xdim, recon_info_record->sinogram_ydim);
-	for( int j = 0; j < recon_info_record->sinogram_ydim; j++ ){
-		for( int k = 0; k < information->sinogram_adjusted_xdim; k++ ){
+	for( j = 0; j < recon_info_record->sinogram_ydim; j++ ){
+		for( k = 0; k < information->sinogram_adjusted_xdim; k++ ){
 			information->shifted_recon[j * information->sinogram_adjusted_xdim+ k] = 0.0f;
 		}
 	}
-	for( int j = 0; j < recon_info_record->sinogram_ydim; j++ ){
-		for( int k = 0; k < information->sinogram_adjusted_xdim; k++ ){
+	for( j = 0; j < recon_info_record->sinogram_ydim; j++ ){
+		for( k = 0; k < information->sinogram_adjusted_xdim; k++ ){
 			float kk = k - information->shift; 
 			int nkk = (int)floor(kk);
 			float fInterpPixel = 0.0f;
@@ -419,27 +420,28 @@ void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_inf
 	if (recon_info_record->use_ring_removal){
 		RingCorrectionSingle (&information->sino_calc_buffer[0],recon_info_record->ring_removal_coeff,information,recon_info_record);
 	}
-	for( int j = 0; j < recon_info_record->sinogram_ydim; j++ ){
+	for( j = 0; j < recon_info_record->sinogram_ydim; j++ ){
 		memcpy( &information->sinograms_boundary_padding[j * information->sinogram_adjusted_xdim * 2 + information->sinogram_adjusted_xdim / 2 ],&information->sino_calc_buffer[j * information->sinogram_adjusted_xdim ], sizeof(float) * information->sinogram_adjusted_xdim);
-		for( int k = 0; k < information->sinogram_adjusted_xdim /2; k++ ){
+		for( k = 0; k < information->sinogram_adjusted_xdim /2; k++ ){
 			information->sinograms_boundary_padding[j * information->sinogram_adjusted_xdim * 2 + k ] = information->sinograms_boundary_padding[j * information->sinogram_adjusted_xdim * 2 + information->sinogram_adjusted_xdim / 2 ];
 		}
-		for( int k = 0; k < information->sinogram_adjusted_xdim /2; k++ ){
+		for( k = 0; k < information->sinogram_adjusted_xdim /2; k++ ){
 			information->sinograms_boundary_padding[j * information->sinogram_adjusted_xdim * 2 + information->sinogram_adjusted_xdim / 2 + information->sinogram_adjusted_xdim + k ] = information->sinograms_boundary_padding[j * information->sinogram_adjusted_xdim * 2 + information->sinogram_adjusted_xdim / 2 + information->sinogram_adjusted_xdim - 1];
 		}
 	}
 }
 
 void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_info_record,gridrecParams *param){
-	for (int j=0;j<recon_info_record->reconstruction_ydim;j++){
+	int j,k;
+	for ( j=0;j<recon_info_record->reconstruction_ydim;j++){
 		if (information->shift >= 0){
 			memcpy(&information->recon_calc_buffer[j * recon_info_record->reconstruction_xdim ],&information->reconstructions_boundary_padding[ ( j + recon_info_record->reconstruction_xdim / 2 ) * recon_info_record->reconstruction_xdim * 2 + recon_info_record->reconstruction_xdim / 2 ], sizeof(float) * (recon_info_record->reconstruction_xdim) ); 
 		}else{
 			memcpy(&information->recon_calc_buffer[j * recon_info_record->reconstruction_xdim ],&information->reconstructions_boundary_padding[ ( j + recon_info_record->reconstruction_xdim / 2 ) * recon_info_record->reconstruction_xdim * 2 + recon_info_record->reconstruction_xdim / 2 ], sizeof(float) * (recon_info_record->reconstruction_xdim) );
 		}
 	}
-	for( int j = 0; j < recon_info_record->sinogram_ydim; j++ ){
-		for( int k = 0; k < recon_info_record->reconstruction_xdim; k++ ){
+	for( j = 0; j < recon_info_record->sinogram_ydim; j++ ){
+		for( k = 0; k < recon_info_record->reconstruction_xdim; k++ ){
 			information->shifted_recon[j * recon_info_record->reconstruction_xdim + k] = 0.0f;
 		}
 	}
@@ -447,10 +449,10 @@ void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_info_rec
 	if (recon_info_record->auto_centering){
 		recon_buffer = &information->recon_calc_buffer[0];
 		if (information->shift >= 0){
-			for (int j=0;j<recon_info_record->reconstruction_ydim;j++)
+			for ( j=0;j<recon_info_record->reconstruction_ydim;j++)
 				memcpy (&information->shifted_recon[j*recon_info_record->reconstruction_xdim], (void *) &recon_buffer[(j*recon_info_record->reconstruction_xdim)+ (int)round(information->shift) ], sizeof(float)*(recon_info_record->reconstruction_xdim- (int)round(information->shift) ));
 		} else {
-			for (int j=0;j<recon_info_record->reconstruction_ydim;j++)
+			for ( j=0;j<recon_info_record->reconstruction_ydim;j++)
 				memcpy (&information->shifted_recon[(j*recon_info_record->reconstruction_xdim)+abs ((int)round(information->shift))], (void *) &recon_buffer[j*recon_info_record->reconstruction_xdim], sizeof(float)*(recon_info_record->reconstruction_xdim-abs ((int)round(information->shift) )));
 		}
 		memcpy ((void *) recon_buffer, information->shifted_recon, sizeof(float)*information->reconstruction_size);
