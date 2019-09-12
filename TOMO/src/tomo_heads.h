@@ -174,10 +174,10 @@ typedef struct {
 	int sinogram_adjusted_xdim,
 		reconstruction_size,
 		sinogram_adjusted_size;
-	unsigned short int *short_white_field_sino,
-		*short_sinogram;
+	unsigned short int *short_sinogram;
 	float *norm_sino,
 		*init_sinogram,
+		*white_field_sino,
 		*dark_field_sino_ave;
 } SINO_READ_OPTS;
 
