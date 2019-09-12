@@ -150,7 +150,8 @@ typedef struct {
 		theta_list_size,
 		n_shifts,
 		n_slices,
-		filter;
+		filter,
+		debug;
 	long num_Jobs;
 }GLOBAL_CONFIG_OPTS;
 
