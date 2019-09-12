@@ -95,7 +95,7 @@ void RingCorrectionSingle (float *data, float ring_coeff, LOCAL_CONFIG_OPTS *inf
  * y Images (I_x_y), 
  * the intensity should be 
  * I'_x_y = (I_x_y-D_x)/(W_x-D_x), where
- * W_x = p*W1_x + (1-p)*W2_x and
+ * W_x = (1-p)*W1_x + (p)*W2_x and
  * p = y/nr_y
 */
 // This function assumes the short_sino is the proper sinogram, white_field_sino is two rows of first and last wf image slice, dark_field_sino_ave is a single slice. Size of each sino is recon_info_record->sinogram_xdim, output norm_sino is information->sinogram_adjusted_xdim (padded)
@@ -107,6 +107,7 @@ void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_recor
 	printf("%d %d\n",front_pad_size,back_pad_size);
 	int frameNr, pxNr, colNr;
 	float front_pad_denom, front_pad_numer, temp_front, back_pad_denom, back_pad_numer, temp_back, white_temp, factor;
+	//FIX PADS!!!!!
 	front_pad_denom = ((float)(readStruct->white_field_sino[0]+readStruct->white_field_sino[recon_info_record->sinogram_xdim]))/2 - readStruct->dark_field_sino_ave[0];
 	back_pad_denom = ((float)(readStruct->white_field_sino[recon_info_record->sinogram_xdim-1]+readStruct->white_field_sino[recon_info_record->sinogram_xdim*2-1]))/2 - readStruct->dark_field_sino_ave[recon_info_record->sinogram_xdim-1];
 	for (frameNr=0;frameNr<recon_info_record->sinogram_ydim;frameNr++){
@@ -126,8 +127,8 @@ void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_recor
 			} else {
 				// Apply our formula
 				colNr = pxNr - front_pad_size;
-				white_temp = factor * (float) readStruct->white_field_sino[colNr] + (1-factor) * (float) readStruct->white_field_sino[colNr+recon_info_record->sinogram_xdim];
-				readStruct->norm_sino[frameNr*readStruct->sinogram_adjusted_xdim+pxNr] = ((float)readStruct->short_sinogram[colNr] - readStruct->dark_field_sino_ave[colNr]) /(white_temp-readStruct->dark_field_sino_ave[colNr]);
+				white_temp = (1-factor) * (float) readStruct->white_field_sino[colNr] + (factor) * (float) readStruct->white_field_sino[colNr+recon_info_record->sinogram_xdim];
+				readStruct->norm_sino[frameNr*readStruct->sinogram_adjusted_xdim+pxNr] = ((float)readStruct->short_sinogram[colNr+frameNr*readStruct->sinogram_adjusted_xdim] - readStruct->dark_field_sino_ave[colNr]) /(white_temp-readStruct->dark_field_sino_ave[colNr]);
 			}
 		}
 		
