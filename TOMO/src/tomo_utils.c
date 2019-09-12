@@ -118,6 +118,7 @@ void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_recor
 				colNr = pxNr - front_pad_size; // actual pixel
 			}
 			white_temp = (1-factor) * (float) readStruct->white_field_sino[colNr] + (factor) * (float) readStruct->white_field_sino[colNr+recon_info_record->sinogram_xdim];
+			printf("colNr: %f\n",colNr);fflush(stdout);
 			temp_val = ((float)readStruct->short_sinogram[colNr+frameNr*readStruct->sinogram_adjusted_xdim] - readStruct->dark_field_sino_ave[colNr]) /(white_temp-readStruct->dark_field_sino_ave[colNr]);
 			readStruct->norm_sino[frameNr*readStruct->sinogram_adjusted_xdim+pxNr] = temp_val;
 		}
@@ -405,8 +406,7 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	fread(readStruct->short_sinogram,sizeof(unsigned short int)*recon_info_record.det_xdim,1,dataFile); // One row
 	int frameNr;
 	for (frameNr=1;frameNr<recon_info_record.sinogram_ydim;frameNr++){
-		//printf("FrameNr: %d\n",frameNr);
-		fflush(stdout);
+		//printf("FrameNr: %d\n",frameNr);fflush(stdout);
 		offset = sizeof(unsigned short int)*recon_info_record.det_xdim*(recon_info_record.det_ydim-1);
 		fseek(dataFile,offset,SEEK_CUR);
 		fread((readStruct->short_sinogram)+recon_info_record.det_xdim*frameNr,sizeof(unsigned short int)*recon_info_record.det_xdim,1,dataFile); // One row each at the next subsequent place
