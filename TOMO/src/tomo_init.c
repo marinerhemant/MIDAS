@@ -97,11 +97,11 @@ int main(int argc, char *argv[])
 	// Do till here for each slice, next step is when we have multiple shifts
 	// define shift here
 	LOCAL_CONFIG_OPTS information;
+	setSinoSize(&information,&recon_info_record,&readStruct);
 	printf("sino_calc_buffer %ld %d %d\n",(long)(sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.det_ydim),information.sinogram_adjusted_xdim,recon_info_record.det_ydim);
 	information.sino_calc_buffer = (float *) malloc(sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.det_ydim);
 	memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.det_ydim);
 	gridrecParams param;
-	setSinoSize(&information,&recon_info_record,&readStruct);
 	setGridRecPSWF(&param);
 	param.sinogram_x_dim = information.sinogram_adjusted_xdim * 2; // Always GRIDREC_PADDING_HALF is assumed.
 	param.theta_list = recon_info_record.theta_list;
