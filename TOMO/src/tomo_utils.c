@@ -367,7 +367,7 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	SizeDark = sizeof(float)*recon_info_record.det_xdim;
 	printf("dark_field_sino_ave %ld\n",(long)SizeDark);
 	readStruct->dark_field_sino_ave = (float *) malloc(SizeDark);
-	offset = sizeof(float*)*sliceNr*recon_info_record.det_xdim;
+	offset = sizeof(float)*sliceNr*recon_info_record.det_xdim;
 	fseek(dataFile,offset,SEEK_SET);
 	printf("%ld %ld ",(long int)offset, ftell(dataFile));
 	fread(readStruct->dark_field_sino_ave,SizeDark,1,dataFile);
