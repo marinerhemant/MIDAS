@@ -34,6 +34,7 @@
 #define FILTER_HANN 2
 #define FILTER_HAMMING 3
 #define FILTER_RAMP 4
+#define MAX_N_THETAS 36000
 
 typedef struct PSWF_STRUCT { 
     float   C,
