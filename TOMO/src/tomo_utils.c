@@ -114,7 +114,7 @@ void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_recor
 		back_pad_numer = (float)readStruct->short_sinogram[recon_info_record->sinogram_xdim-1] - readStruct->dark_field_sino_ave[recon_info_record->sinogram_xdim-1];
 		temp_front = front_pad_numer / front_pad_denom;
 		temp_back = back_pad_numer / back_pad_denom;
-		factor = frameNr / recon_info_record->theta_list_size;
+		factor = (float)frameNr / (float)recon_info_record->theta_list_size;
 		printf("Pads: %f %f, factor: %f\n",temp_front,temp_back,factor);
 		if (temp_front==0) temp_front = 1e-3;
 		if (temp_back==0) temp_back = 1e-3;
