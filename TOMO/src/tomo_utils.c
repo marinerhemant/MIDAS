@@ -369,6 +369,7 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	if (recon_info_record.debug == 1){
 		char outfn[4096];
 		sprintf(outfn,"dark_field_%s",recon_info_record.DataFileName);
+		printf("%s",outfn);
 		fwrite(readStruct->dark_field_sino_ave,SizeDark,1,outfn);
 	}
 	// 2 Whites
