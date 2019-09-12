@@ -179,6 +179,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 	char dummy[4096],aline[4096], slices[4096];
 	int temp;
 	recon_info_record->use_ring_removal = 0;
+	recon_info_record->debug = 0;
 	while(fgets(aline,4096,fileParam)!=NULL){
 		if (strncmp(aline,"dataFileName",strlen("dataFileName"))==0){
 			sscanf(aline,"%s %s",dummy,recon_info_record->DataFileName);
@@ -197,6 +198,9 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 		}
 		if (strncmp(aline,"filter",strlen("filter"))==0){
 			sscanf(aline,"%s %d",dummy,&recon_info_record->filter);
+		}
+		if (strncmp(aline,"debug",strlen("debug"))==0){
+			sscanf(aline,"%s %d",dummy,&recon_info_record->debug);
 		}
 		if (strncmp(aline,"thetaRange",strlen("thetaRange"))==0){
 			sscanf(aline,"%s %f %f %f",dummy,&recon_info_record->start_angle,&recon_info_record->end_angle,&recon_info_record->angle_interval);
@@ -337,7 +341,17 @@ void readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *
 	readStruct->init_sinogram = (float *) malloc(SizeSino);
 	readStruct->norm_sino = (float *) malloc(sizeof(float)*readStruct->sinogram_adjusted_xdim*recon_info_record.det_ydim);
 	fread(readStruct->init_sinogram,SizeSino,1,dataFile);
+	if (recon_info_record->debug == 1){
+		char outfn[4096];
+		sprintf(outfn,"init_sinogram_%s",recon_info_record.DataFileName);
+		fwrite(readStruct->init_sinogram,SizeSino,1,outfn);
+	}
 	Pad(readStruct,&recon_info_record);
+	if (recon_info_record.debug == 1){
+		char outfn[4096];
+		sprintf(outfn,"norm_sino_%s",recon_info_record.DataFileName);
+		fwrite(readStruct->norm_sino,sizeof(float)*readStruct->sinogram_adjusted_xdim*recon_info_record.det_ydim,1,outfn);
+	}
 }
 
 void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *readStruct) {
@@ -351,6 +365,11 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	offset = sizeof(float*)*sliceNr*recon_info_record.det_xdim;
 	fseek(dataFile,offset,SEEK_SET);
 	fread(readStruct->dark_field_sino_ave,SizeDark,1,dataFile);
+	if (recon_info_record.debug == 1){
+		char outfn[4096];
+		sprintf(outfn,"dark_field_%s",recon_info_record.DataFileName);
+		fwrite(readStruct->dark_field_sino_ave,SizeDark,1,outfn);
+	}
 	// 2 Whites
 	SizeWhite = sizeof(float)*recon_info_record.det_xdim*2;
 	printf("white_field_sino %ld\n",(long)SizeWhite);
@@ -364,6 +383,11 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 				+ sizeof(float)*recon_info_record.det_xdim*sliceNr; // Partial white
 	fseek(dataFile,offset,SEEK_SET);
 	fread((readStruct->white_field_sino)+recon_info_record.det_xdim,SizeWhite/2,1,dataFile); // Second Row
+	if (recon_info_record.debug == 1){
+		char outfn[4096];
+		sprintf(outfn,"whites_%s",recon_info_record.DataFileName);
+		fwrite(readStruct->white_field_sino,SizeWhite,1,outfn);
+	}
 	// Sino start
 	SizeSino = sizeof(unsigned short int)*recon_info_record.det_xdim*recon_info_record.det_ydim;
 	printf("short_sinogram %ld\n",(long)SizeSino);
@@ -382,10 +406,20 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 		fseek(dataFile,offset,SEEK_CUR);
 		fread((readStruct->short_sinogram)+recon_info_record.det_xdim*frameNr,sizeof(unsigned short int)*recon_info_record.det_xdim,1,dataFile); // One row each at the next subsequent place
 	}
+	if (recon_info_record.debug == 1){
+		char outfn[4096];
+		sprintf(outfn,"short_sinogram_%s",recon_info_record.DataFileName);
+		fwrite(readStruct->short_sinogram,SizeSino,1,outfn);
+	}
 	SizeNormSino = sizeof(float)*readStruct->sinogram_adjusted_xdim*recon_info_record.det_ydim;
 	printf("norm_sino %ld\n",(long)SizeNormSino);
 	readStruct->norm_sino = (float *) malloc(SizeNormSino);
 	Normalize(readStruct,&recon_info_record);
+	if (recon_info_record.debug == 1){
+		char outfn[4096];
+		sprintf(outfn,"norm_sino_%s",recon_info_record.DataFileName);
+		fwrite(readStruct->norm_sino,SizeNormSino,1,outfn);
+	}
 }
 
 void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_info_record){
