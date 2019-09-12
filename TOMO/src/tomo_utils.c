@@ -259,7 +259,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 				recon_info_record->slices_to_process[i] = i;
 			recon_info_record->n_slices = recon_info_record->det_ydim;
 		} else {
-			printf("We are doing only 1 slice: %s",slices);
+			printf("We are doing only 1 slice: %s\n",slices);
 			recon_info_record->slices_to_process = (uint *) malloc(sizeof(uint)*1);
 			recon_info_record->slices_to_process[0] = atoi(slices);
 		}
@@ -367,7 +367,6 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	if (recon_info_record.debug == 1){
 		char outfn[4096];
 		sprintf(outfn,"dark_field_%s",recon_info_record.DataFileName);
-		printf("%s",outfn);
 		FILE *out = fopen(outfn,"wb");
 		fwrite(readStruct->dark_field_sino_ave,SizeDark,1,out);
 		fclose(out);
