@@ -118,8 +118,8 @@ void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_recor
 				colNr = pxNr - front_pad_size; // actual pixel
 			}
 			white_temp = (1-factor) * (float) readStruct->white_field_sino[colNr] + (factor) * (float) readStruct->white_field_sino[colNr+recon_info_record->sinogram_xdim];
-			//printf("colNr pxNr frameNr frontpad backpad pos_filled : %d %d %d %d %d \n",colNr,pxNr,frameNr,front_pad_size,back_pad_size);fflush(stdout);
-			temp_val = ((float)readStruct->short_sinogram[colNr+frameNr*readStruct->sinogram_adjusted_xdim] - readStruct->dark_field_sino_ave[colNr]) /(white_temp-readStruct->dark_field_sino_ave[colNr]);
+			//printf("colNr frameNr xdim totSize : %d %d %d %d\n",colNr,frameNr,readStruct->sinogram_adjusted_xdim,recon_info_record->det_xdim*recon_info_record->theta_list_size);fflush(stdout);
+			temp_val = ((float)readStruct->short_sinogram[colNr+frameNr*recon_info_record->det_xdim] - readStruct->dark_field_sino_ave[colNr]) /(white_temp-readStruct->dark_field_sino_ave[colNr]);
 			readStruct->norm_sino[frameNr*readStruct->sinogram_adjusted_xdim+pxNr] = temp_val;
 		}
 		
@@ -133,9 +133,9 @@ void Pad (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_record){ //
 	int colNr, frameNr;
 	for (frameNr=0;frameNr<recon_info_record->sinogram_ydim;frameNr++){
 		for (colNr=0;colNr<readStruct->sinogram_adjusted_xdim;colNr++){
-			if (colNr<front_pad_size) readStruct->norm_sino[colNr+frameNr*readStruct->sinogram_adjusted_xdim] = readStruct->init_sinogram[frameNr*readStruct->sinogram_adjusted_xdim];
-			else if (colNr>=front_pad_size+recon_info_record->sinogram_xdim) readStruct->norm_sino[colNr+frameNr*readStruct->sinogram_adjusted_xdim] = readStruct->init_sinogram[recon_info_record->sinogram_xdim-1+frameNr*readStruct->sinogram_adjusted_xdim];
-			else readStruct->norm_sino[colNr+frameNr*readStruct->sinogram_adjusted_xdim] = readStruct->init_sinogram[colNr+frameNr*readStruct->sinogram_adjusted_xdim-front_pad_size];
+			if (colNr<front_pad_size) readStruct->norm_sino[colNr+frameNr*readStruct->sinogram_adjusted_xdim] = readStruct->init_sinogram[frameNr*recon_info_record->det_xdim];
+			else if (colNr>=front_pad_size+recon_info_record->sinogram_xdim) readStruct->norm_sino[colNr+frameNr*readStruct->sinogram_adjusted_xdim] = readStruct->init_sinogram[recon_info_record->sinogram_xdim-1+frameNr*recon_info_record->det_xdim];
+			else readStruct->norm_sino[colNr+frameNr*readStruct->sinogram_adjusted_xdim] = readStruct->init_sinogram[colNr+frameNr*recon_info_record->det_xdim-front_pad_size];
 		}
 	}
 }
