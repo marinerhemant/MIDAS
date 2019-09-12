@@ -201,6 +201,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 			sscanf(aline,"%s %f",dummy,&recon_info_record->start_angle,&recon_info_record->end_angle,&recon_info_record->angle_interval);
 		}
 		if (strncmp(aline,"thetaFileName",strlen("thetaFileName"))==0){
+			arbThetas = 1;
 			sscanf(aline,"%s %s",dummy,recon_info_record->thetaFileName);
 		}
 		if (strncmp(aline,"shiftValues",strlen("shiftValues"))==0){
@@ -216,11 +217,21 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 	}
 	recon_info_record->auto_centering = 1; // ALWAYS DONE
 	fseek(fileParam,0,SEEK_SET);
-	recon_info_record->theta_list_size = abs((recon_info_record->end_angle-recon_info_record->start_angle)/recon_info_record->angle_interval) + 1;
-	recon_info_record->theta_list = (float *) malloc(recon_info_record->theta_list_size*sizeof(float));
-	int i;
-	for (i=0;i<recon_info_record->theta_list_size;i++){
-		recon_info_record->theta_list[i] = recon_info_record->start_angle + i*recon_info_record->angle_interval;
+	if (arbThetas == 0){
+		recon_info_record->theta_list_size = abs((recon_info_record->end_angle-recon_info_record->start_angle)/recon_info_record->angle_interval) + 1;
+		recon_info_record->theta_list = (float *) malloc(recon_info_record->theta_list_size*sizeof(float));
+		int i;
+		for (i=0;i<recon_info_record->theta_list_size;i++){
+			recon_info_record->theta_list[i] = recon_info_record->start_angle + i*recon_info_record->angle_interval;
+		}
+	} else {
+		recon_info_record->theta_list_size = 0;
+		recon_info_record->theta_list = (float *) malloc(MAX_N_THETAS*sizeof(float));
+		FILE *fileTheta = fopen(recon_info_record->thetaFileName);
+		while (fgets (aline,4096,fileTheta)!=NULL){
+			recon_info_record->theta_list[recon_info_record->theta_list_size] = atoi(aline);
+			recon_info_record->theta_list_size ++;
+		}
 	}
 	recon_info_record->n_shifts = abs((recon_info_record->end_shift-recon_info_record->start_shift))/recon_info_record->shift_interval+1;
 	recon_info_record->shift_values = (float *) malloc(sizeof(float)*(recon_info_record->n_shifts));
