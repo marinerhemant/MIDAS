@@ -4,7 +4,7 @@ SRCDIR=src/
 BINDIR=bin/
 CFLAGSFFT=-I$${HOME}/.MIDAS/FFTW/include -L$${HOME}/.MIDAS/FFTW/lib -lfftw3f
 
-all: bindircheck tomo_init
+all: bindircheck tomo
 
 bindircheck:
 	mkdir -p $(BINDIR)
