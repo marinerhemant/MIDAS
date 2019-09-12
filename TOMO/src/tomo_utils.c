@@ -327,13 +327,13 @@ void setSinoSize (LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS *recon_info
 void readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *readStruct){
 	FILE *dataFile;
 	dataFile = fopen(recon_info_record.DataFileName,"rb");
-	size_t offset = sizeof(float)*sliceNr*recon_info_record.det_xdim*recon_info_record.det_ydim;
+	size_t offset = sizeof(float)*sliceNr*recon_info_record.det_xdim*recon_info_record.theta_list_size;
 	fseek(dataFile,offset,SEEK_SET);
-	size_t SizeSino = sizeof(float)*recon_info_record.det_xdim*recon_info_record.det_ydim;
+	size_t SizeSino = sizeof(float)*recon_info_record.det_xdim*recon_info_record.theta_list_size;
 	printf("init_sinogram %ld\n",(long)SizeSino);
-	printf("norm_sino %ld\n",(long)(sizeof(float)*readStruct->sinogram_adjusted_xdim*recon_info_record.det_ydim));
+	printf("norm_sino %ld\n",(long)(sizeof(float)*readStruct->sinogram_adjusted_xdim*recon_info_record.theta_list_size));
 	readStruct->init_sinogram = (float *) malloc(SizeSino);
-	readStruct->norm_sino = (float *) malloc(sizeof(float)*readStruct->sinogram_adjusted_xdim*recon_info_record.det_ydim);
+	readStruct->norm_sino = (float *) malloc(sizeof(float)*readStruct->sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 	fread(readStruct->init_sinogram,SizeSino,1,dataFile);
 	if (recon_info_record.debug == 1){
 		char outfn[4096];
@@ -348,7 +348,7 @@ void readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *
 		char outfn[4096];
 		sprintf(outfn,"norm_sino_%s",recon_info_record.DataFileName);
 		FILE *out = fopen(outfn,"wb");
-		fwrite(readStruct->norm_sino,sizeof(float)*readStruct->sinogram_adjusted_xdim*recon_info_record.det_ydim,1,out);
+		fwrite(readStruct->norm_sino,sizeof(float)*readStruct->sinogram_adjusted_xdim*recon_info_record.theta_list_size,1,out);
 		fclose(out);
 	}
 }
@@ -392,7 +392,7 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 		fclose(out);
 	}
 	// Sino start
-	SizeSino = sizeof(unsigned short int)*recon_info_record.det_xdim*recon_info_record.det_ydim;
+	SizeSino = sizeof(unsigned short int)*recon_info_record.det_xdim*recon_info_record.theta_list_size;
 	printf("short_sinogram %ld\n",(long)SizeSino);
 	readStruct->short_sinogram = (unsigned short int *) malloc(SizeSino);
 	offset = sizeof(float)*recon_info_record.det_xdim*recon_info_record.det_ydim // dark
@@ -418,7 +418,7 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 		fwrite(readStruct->short_sinogram,SizeSino,1,out);
 		fclose(out);
 	}
-	SizeNormSino = sizeof(float)*readStruct->sinogram_adjusted_xdim*recon_info_record.det_ydim;
+	SizeNormSino = sizeof(float)*readStruct->sinogram_adjusted_xdim*recon_info_record.theta_list_size;
 	printf("norm_sino %ld\n",(long)SizeNormSino);
 	readStruct->norm_sino = (float *) malloc(SizeNormSino);
 	Normalize(readStruct,&recon_info_record);
