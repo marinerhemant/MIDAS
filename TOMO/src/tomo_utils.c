@@ -118,7 +118,7 @@ void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_recor
 				colNr = pxNr - front_pad_size; // actual pixel
 			}
 			white_temp = (1-factor) * (float) readStruct->white_field_sino[colNr] + (factor) * (float) readStruct->white_field_sino[colNr+recon_info_record->sinogram_xdim];
-			printf("colNr pxNr frameNr frontpad backpad: %d %d %d %d %d \n",colNr,pxNr,frameNr,front_pad_size,back_pad_size);fflush(stdout);
+			//printf("colNr pxNr frameNr frontpad backpad pos_filled : %d %d %d %d %d \n",colNr,pxNr,frameNr,front_pad_size,back_pad_size);fflush(stdout);
 			temp_val = ((float)readStruct->short_sinogram[colNr+frameNr*readStruct->sinogram_adjusted_xdim] - readStruct->dark_field_sino_ave[colNr]) /(white_temp-readStruct->dark_field_sino_ave[colNr]);
 			readStruct->norm_sino[frameNr*readStruct->sinogram_adjusted_xdim+pxNr] = temp_val;
 		}
