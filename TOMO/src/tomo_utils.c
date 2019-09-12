@@ -341,7 +341,7 @@ void readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *
 	readStruct->init_sinogram = (float *) malloc(SizeSino);
 	readStruct->norm_sino = (float *) malloc(sizeof(float)*readStruct->sinogram_adjusted_xdim*recon_info_record.det_ydim);
 	fread(readStruct->init_sinogram,SizeSino,1,dataFile);
-	if (recon_info_record->debug == 1){
+	if (recon_info_record.debug == 1){
 		char outfn[4096];
 		sprintf(outfn,"init_sinogram_%s",recon_info_record.DataFileName);
 		fwrite(readStruct->init_sinogram,SizeSino,1,outfn);
