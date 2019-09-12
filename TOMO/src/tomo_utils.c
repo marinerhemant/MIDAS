@@ -345,7 +345,7 @@ void readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *
 		char outfn[4096];
 		sprintf(outfn,"init_sinogram_%s",recon_info_record.DataFileName);
 		printf("%s",outfn);
-		FILE *out = fopen(outfn,'wb');
+		FILE *out = fopen(outfn,"wb");
 		fwrite(readStruct->init_sinogram,SizeSino,1,out);
 		fclose(out);
 	}
@@ -353,7 +353,7 @@ void readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *
 	if (recon_info_record.debug == 1){
 		char outfn[4096];
 		sprintf(outfn,"norm_sino_%s",recon_info_record.DataFileName);
-		FILE *out = fopen(outfn,'wb');
+		FILE *out = fopen(outfn,"wb");
 		fwrite(readStruct->norm_sino,sizeof(float)*readStruct->sinogram_adjusted_xdim*recon_info_record.det_ydim,1,out);
 		fclose(out);
 	}
@@ -374,7 +374,7 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 		char outfn[4096];
 		sprintf(outfn,"dark_field_%s",recon_info_record.DataFileName);
 		printf("%s",outfn);
-		FILE *out = fopen(outfn,'wb');
+		FILE *out = fopen(outfn,"wb");
 		fwrite(readStruct->dark_field_sino_ave,SizeDark,1,out);
 		fclose(out);
 	}
@@ -394,7 +394,7 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	if (recon_info_record.debug == 1){
 		char outfn[4096];
 		sprintf(outfn,"whites_%s",recon_info_record.DataFileName);
-		FILE *out = fopen(outfn,'wb');
+		FILE *out = fopen(outfn,"wb");
 		fwrite(readStruct->white_field_sino,SizeWhite,1,out);
 		fclose(out);
 	}
@@ -419,7 +419,7 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	if (recon_info_record.debug == 1){
 		char outfn[4096];
 		sprintf(outfn,"short_sinogram_%s",recon_info_record.DataFileName);
-		FILE *out = fopen(outfn,'wb');
+		FILE *out = fopen(outfn,"wb");
 		fwrite(readStruct->short_sinogram,SizeSino,1,out);
 		fclose(out);
 	}
@@ -430,7 +430,7 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	if (recon_info_record.debug == 1){
 		char outfn[4096];
 		sprintf(outfn,"norm_sino_%s",recon_info_record.DataFileName);
-		FILE *out = fopen(outfn,'wb');
+		FILE *out = fopen(outfn,"wb");
 		fwrite(readStruct->norm_sino,SizeNormSino,1,out);
 		fclose(out);
 	}
