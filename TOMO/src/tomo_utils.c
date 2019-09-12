@@ -106,8 +106,8 @@ void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_recor
 		back_pad_size = pad_size - front_pad_size;
 	int frameNr, pxNr, colNr;
 	float front_pad_denom, front_pad_numer, temp_front, back_pad_denom, back_pad_numer, temp_back, white_temp, factor;
-	front_pad_denom = ((float)(readStruct->short_white_field_sino[0]+readStruct->short_white_field_sino[recon_info_record->sinogram_xdim]))/2 - readStruct->dark_field_sino_ave[0];
-	back_pad_denom = ((float)(readStruct->short_white_field_sino[recon_info_record->sinogram_xdim-1]+readStruct->short_white_field_sino[recon_info_record->sinogram_xdim*2-1]))/2 - readStruct->dark_field_sino_ave[recon_info_record->sinogram_xdim-1];
+	front_pad_denom = ((float)(readStruct->white_field_sino[0]+readStruct->white_field_sino[recon_info_record->sinogram_xdim]))/2 - readStruct->dark_field_sino_ave[0];
+	back_pad_denom = ((float)(readStruct->white_field_sino[recon_info_record->sinogram_xdim-1]+readStruct->white_field_sino[recon_info_record->sinogram_xdim*2-1]))/2 - readStruct->dark_field_sino_ave[recon_info_record->sinogram_xdim-1];
 	for (frameNr=0;frameNr<recon_info_record->sinogram_ydim;frameNr++){
 		front_pad_numer = (float)readStruct->short_sinogram[0] - readStruct->dark_field_sino_ave[0];
 		back_pad_numer = (float)readStruct->short_sinogram[recon_info_record->sinogram_xdim-1] - readStruct->dark_field_sino_ave[recon_info_record->sinogram_xdim-1];
@@ -124,7 +124,7 @@ void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_recor
 			} else {
 				// Apply our formula
 				colNr = pxNr - front_pad_size;
-				white_temp = factor * (float) readStruct->short_white_field_sino[colNr] + (1-factor) * (float) readStruct->short_white_field_sino[colNr+recon_info_record->sinogram_xdim];
+				white_temp = factor * (float) readStruct->white_field_sino[colNr] + (1-factor) * (float) readStruct->white_field_sino[colNr+recon_info_record->sinogram_xdim];
 				readStruct->norm_sino[frameNr*readStruct->sinogram_adjusted_xdim+pxNr] = ((float)readStruct->short_sinogram[colNr] - readStruct->dark_field_sino_ave[colNr]) /(white_temp-readStruct->dark_field_sino_ave[colNr]);
 			}
 		}
@@ -155,7 +155,8 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 			* areSinos: If the input is a sinogram instead of raw (cleaned) images [0 or 1]
 			* The data can be one of two types: 
 			* 							sinogram already with float data type, directly give to reconstruct code with some additional centering etc. 
-			* 							dark, whites (2) and then raw images. Using number of angles, we know how many images are there. The scaling with white should be proportional to the distance from a white and appropriate dark value.
+			* 							dark[float], whites (2,floats) and then raw images[shorts]. Using number of angles, we know how many images are there. 
+			* 							The scaling with white should be proportional to the distance from a white and appropriate dark value.
 			* detXdim - [uint]
 			* detYdim - [uint]
 			* Thetas can either be given as a range:
@@ -351,25 +352,25 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	fseek(dataFile,offset,SEEK_SET);
 	fread(readStruct->dark_field_sino_ave,SizeDark,1,dataFile);
 	// 2 Whites
-	SizeWhite = sizeof(unsigned short int)*recon_info_record.det_xdim*2;
-	printf("short_white_field_sino %ld\n",(long)SizeWhite);
-	readStruct->short_white_field_sino = (unsigned short int *) malloc(SizeWhite);
+	SizeWhite = sizeof(float)*recon_info_record.det_xdim*2;
+	printf("white_field_sino %ld\n",(long)SizeWhite);
+	readStruct->white_field_sino = (float *) malloc(SizeWhite);
 	offset = sizeof(float)*recon_info_record.det_xdim*recon_info_record.det_ydim // dark
-				+ sizeof(unsigned short int)*recon_info_record.det_xdim*sliceNr; // Partial white
+				+ sizeof(float)*recon_info_record.det_xdim*sliceNr; // Partial white
 	fseek(dataFile,offset,SEEK_SET);
-	fread(readStruct->short_white_field_sino,SizeWhite/2,1,dataFile); // One Row
+	fread(readStruct->white_field_sino,SizeWhite/2,1,dataFile); // One Row
 	offset = sizeof(float)*recon_info_record.det_xdim*recon_info_record.det_ydim // dark
-				+ sizeof(unsigned short int)*recon_info_record.det_xdim*recon_info_record.det_ydim // One full white
-				+ sizeof(unsigned short int)*recon_info_record.det_xdim*sliceNr; // Partial white
+				+ sizeof(float)*recon_info_record.det_xdim*recon_info_record.det_ydim // One full white
+				+ sizeof(float)*recon_info_record.det_xdim*sliceNr; // Partial white
 	fseek(dataFile,offset,SEEK_SET);
-	fread((readStruct->short_white_field_sino)+recon_info_record.det_xdim,SizeWhite/2,1,dataFile); // Second Row
+	fread((readStruct->white_field_sino)+recon_info_record.det_xdim,SizeWhite/2,1,dataFile); // Second Row
 	// Sino start
 	SizeSino = sizeof(unsigned short int)*recon_info_record.det_xdim*recon_info_record.det_ydim;
 	printf("short_sinogram %ld\n",(long)SizeSino);
 	readStruct->short_sinogram = (unsigned short int *) malloc(SizeSino);
 	offset = sizeof(float)*recon_info_record.det_xdim*recon_info_record.det_ydim // dark
-				+ sizeof(unsigned short int)*recon_info_record.det_xdim*recon_info_record.det_ydim // One full white
-				+ sizeof(unsigned short int)*recon_info_record.det_xdim*recon_info_record.det_ydim; // Second full white
+				+ sizeof(float)*recon_info_record.det_xdim*recon_info_record.det_ydim // One full white
+				+ sizeof(float)*recon_info_record.det_xdim*recon_info_record.det_ydim; // Second full white
 	fseek(dataFile,offset,SEEK_SET);
 	// We are now at the beginning of the image data.
 	offset = sizeof(unsigned short int)*recon_info_record.det_xdim*sliceNr;
