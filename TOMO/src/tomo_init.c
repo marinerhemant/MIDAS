@@ -101,6 +101,11 @@ int main(int argc, char *argv[])
 	printf("sino_calc_buffer %ld\n",(long)(sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.det_ydim));
 	information.sino_calc_buffer = (float *) malloc(sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.det_ydim);
 	memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.det_ydim);
+	if (recon_info_record.debug == 1){
+		char outfn[4096];
+		sprintf(outfn,"init_sinogram_%s",recon_info_record.DataFileName);
+		fwrite(information.sino_calc_buffer,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.det_ydim,1,outfn);
+	}
 	gridrecParams param;
 	setGridRecPSWF(&param);
 	param.sinogram_x_dim = information.sinogram_adjusted_xdim * 2; // Always GRIDREC_PADDING_HALF is assumed.
