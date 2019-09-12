@@ -86,7 +86,7 @@ int main(int argc, char *argv[])
 	SINO_READ_OPTS readStruct;
 	setReadStructSize(&recon_info_record,&readStruct);
 	int sliceNr;
-	sliceNr = 723; // TEMPORARY
+	sliceNr = 350; // TEMPORARY
 	if (recon_info_record.are_sinos){
 		printf("We have sinograms.\n");
 		readSino(sliceNr,recon_info_record,&readStruct);
@@ -115,7 +115,7 @@ int main(int argc, char *argv[])
 	param.filter_type = recon_info_record.filter;
 	param.theta_list_size = recon_info_record.theta_list_size;
 	initGridRec(&param);
-	information.shift = 2; // TEMPORARY
+	information.shift = -4; // TEMPORARY
 	reconCentering(&information,&recon_info_record); // We can probably clean up the arrays after this if not needed.
 	// Placeholder to do the same slice twice
 	setSinoAndReconBuffers(1, &information.sinograms_boundary_padding[0], &information.reconstructions_boundary_padding[0],&param);
