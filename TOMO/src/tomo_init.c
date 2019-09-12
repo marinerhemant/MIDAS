@@ -86,7 +86,7 @@ int main(int argc, char *argv[])
 	SINO_READ_OPTS readStruct;
 	setReadStructSize(&recon_info_record,&readStruct);
 	int sliceNr;
-	sliceNr = 0; // TEMPORARY
+	sliceNr = 723; // TEMPORARY
 	if (recon_info_record.are_sinos){
 		printf("We have sinograms.\n");
 		readSino(sliceNr,recon_info_record,&readStruct);
@@ -98,7 +98,7 @@ int main(int argc, char *argv[])
 	// define shift here
 	LOCAL_CONFIG_OPTS information;
 	setSinoSize(&information,&recon_info_record,&readStruct);
-	printf("sino_calc_buffer %ld %d %d\n",(long)(sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.det_ydim),information.sinogram_adjusted_xdim,recon_info_record.det_ydim);
+	printf("sino_calc_buffer %ld\n",(long)(sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.det_ydim));
 	information.sino_calc_buffer = (float *) malloc(sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.det_ydim);
 	memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.det_ydim);
 	gridrecParams param;
@@ -108,7 +108,7 @@ int main(int argc, char *argv[])
 	param.filter_type = recon_info_record.filter;
 	param.theta_list_size = recon_info_record.theta_list_size;
 	initGridRec(&param);
-	information.shift = 0; // TEMPORARY
+	information.shift = 2; // TEMPORARY
 	reconCentering(&information,&recon_info_record); // We can probably clean up the arrays after this if not needed.
 	// Placeholder to do the same slice twice
 	setSinoAndReconBuffers(1, &information.sinograms_boundary_padding[0], &information.reconstructions_boundary_padding[0],&param);
