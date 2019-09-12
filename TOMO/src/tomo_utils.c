@@ -104,6 +104,7 @@ void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_recor
 	int pad_size = readStruct->sinogram_adjusted_xdim - recon_info_record->sinogram_xdim,
 		front_pad_size = pad_size / 2,
 		back_pad_size = pad_size - front_pad_size;
+	printf("%d %d\n",front_pad_size,back_pad_size);
 	int frameNr, pxNr, colNr;
 	float front_pad_denom, front_pad_numer, temp_front, back_pad_denom, back_pad_numer, temp_back, white_temp, factor;
 	front_pad_denom = ((float)(readStruct->white_field_sino[0]+readStruct->white_field_sino[recon_info_record->sinogram_xdim]))/2 - readStruct->dark_field_sino_ave[0];
@@ -114,6 +115,7 @@ void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_recor
 		temp_front = front_pad_numer / front_pad_denom;
 		temp_back = back_pad_numer / back_pad_denom;
 		factor = frameNr / recon_info_record->theta_list_size;
+		printf("Pads: %f %f, factor: %f\n",temp_front,temp_back,factor);
 		if (temp_front==0) temp_front = 1e-3;
 		if (temp_back==0) temp_back = 1e-3;
 		for (pxNr=0;pxNr<readStruct->sinogram_adjusted_xdim;pxNr ++){
@@ -369,7 +371,6 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	readStruct->dark_field_sino_ave = (float *) malloc(SizeDark);
 	offset = sizeof(float)*sliceNr*recon_info_record.det_xdim;
 	fseek(dataFile,offset,SEEK_SET);
-	printf("%ld %ld ",(long int)offset, ftell(dataFile));
 	fread(readStruct->dark_field_sino_ave,SizeDark,1,dataFile);
 	if (recon_info_record.debug == 1){
 		char outfn[4096];
@@ -386,13 +387,11 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	offset = sizeof(float)*recon_info_record.det_xdim*recon_info_record.det_ydim // dark
 				+ sizeof(float)*recon_info_record.det_xdim*sliceNr; // Partial white
 	fseek(dataFile,offset,SEEK_SET);
-	printf("%ld %ld ",(long int)offset, ftell(dataFile));
 	fread(readStruct->white_field_sino,SizeWhite/2,1,dataFile); // One Row
 	offset = sizeof(float)*recon_info_record.det_xdim*recon_info_record.det_ydim // dark
 				+ sizeof(float)*recon_info_record.det_xdim*recon_info_record.det_ydim // One full white
 				+ sizeof(float)*recon_info_record.det_xdim*sliceNr; // Partial white
 	fseek(dataFile,offset,SEEK_SET);
-	printf("%ld %ld ",(long int)offset, ftell(dataFile));
 	fread((readStruct->white_field_sino)+recon_info_record.det_xdim,SizeWhite/2,1,dataFile); // Second Row
 	if (recon_info_record.debug == 1){
 		char outfn[4096];
@@ -409,17 +408,14 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 				+ sizeof(float)*recon_info_record.det_xdim*recon_info_record.det_ydim // One full white
 				+ sizeof(float)*recon_info_record.det_xdim*recon_info_record.det_ydim; // Second full white
 	fseek(dataFile,offset,SEEK_SET);
-	printf("%ld %ld ",(long int)offset, ftell(dataFile));
 	// We are now at the beginning of the image data.
 	offset = sizeof(unsigned short int)*recon_info_record.det_xdim*sliceNr;
 	fseek(dataFile,offset,SEEK_CUR);
-	printf("%ld %ld ",(long int)offset, ftell(dataFile));
 	fread(readStruct->short_sinogram,sizeof(unsigned short int)*recon_info_record.det_xdim,1,dataFile); // One row
 	int frameNr;
 	for (frameNr=1;frameNr<recon_info_record.sinogram_ydim;frameNr++){
 		offset = sizeof(unsigned short int)*recon_info_record.det_xdim*(recon_info_record.det_ydim-1);
 		fseek(dataFile,offset,SEEK_CUR);
-		printf("%ld %ld ",(long int)offset, ftell(dataFile));
 		fread((readStruct->short_sinogram)+recon_info_record.det_xdim*frameNr,sizeof(unsigned short int)*recon_info_record.det_xdim,1,dataFile); // One row each at the next subsequent place
 	}
 	if (recon_info_record.debug == 1){
