@@ -56,7 +56,7 @@ if [ ! -d ${dirThis}/HDF5 ]; then # HDF5
 	wget -O hdf5.tar.gz https://www.dropbox.com/s/bv4b36qhsilprzf/hdf5-1.8.13.tar.gz?dl=0
 	tar -xvzf hdf5.tar.gz
 	cd hdf5-1.8.13
-	./configure --prefix=${dirThis}/HDF5 --with-zlib=${dirThis}/ZLIB --enable-shared
+	./configure --prefix=${dirThis}/HDF5 --with-zlib=${dirThis}/ZLIB #--enable-shared
 	make install
 fi
 
