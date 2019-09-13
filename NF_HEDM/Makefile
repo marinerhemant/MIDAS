@@ -32,56 +32,38 @@ all: help bindircheck makediffrspots makehexgrid medianimage imageprocessing \
 	medianimagehdf
 
 #local:
-local: predeplocal all runsetup
+local: predep all runsetup
 
 # Need to try orthrosextra
-orthros: predeport all runsetup
+orthros: predep all runsetup
 
 # Works
-biocluster: predepbio all runsetup
+biocluster: predep all runsetup
 
 # Works
-lcrc_cloud: predeplcrc_cloud all runsetup
+lcrc_cloud: predep all runsetup
 
 # Works?
-lcrc: predeplcrc all runsetup
+lcrc: predep all runsetup
 
 # Works
-nersc: predepnersc all runsetup
+nersc: predep all runsetup
 
 # Works
-purdue: predeppurdue all runsetup
+purdue: predep all runsetup
 
 # LANL
-lanl: predeplanl all runsetup
+lanl: predep all runsetup
 
-stampede: predepstampede all runsetup
+stampede: predep all runsetup
 
-notchpeak: predepnotchpeak all runsetup
+notchpeak: predep all runsetup
 
 runsetup:
 	Cluster/setup.sh
 
-predeplocal:
-	./GetPackages.sh local
-predeport:
-	./GetPackages.sh orthros
-predepbio:
-	./GetPackages.sh bio
-predeplcrc:
-	./GetPackages.sh lcrc
-predeplcrc_cloud:
-	./GetPackages.sh lcrc_cloud
-predepnersc:
-	./GetPackages.sh nersc
-predeppurdue:
-	./GetPackages.sh purdue
-predeplanl:
-	./GetPackages.sh lanl
-predepstampede:
-	./GetPackages.sh stampede
-predepnotchpeak:
-	./GetPackages.sh notchpeak
+predep:
+	./GetPackages.sh
 
 bindircheck:
 	mkdir -p $(BINDIR)

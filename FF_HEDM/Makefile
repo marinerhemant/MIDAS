@@ -30,55 +30,31 @@ all: help bindircheck calibrant \
 	fitposorstrainsscanning indexscanning processgrainsscanning mapbnd fitscanninggrain \
 	fitgrainhydra forwardsimulation integrator
 
-#local:
-local: predeplocal all runsetup
+local: predep all runsetup
 
-# Works
-orthros: predeport all runsetup
+orthros: predep all runsetup
 
-# Works
-biocluster: predepbio all runsetup
+biocluster: predep all runsetup
 
-# Works
-lcrc_cloud: predeplcrc_cloud all runsetup
+lcrc_cloud: predep all runsetup
 
-# Works
-nersc: predepnersc all runsetup
+nersc: predep all runsetup
 
-# Works
-purdue: predeppurdue all runsetup
+purdue: predep all runsetup
 
-lanl: predeplanl all runsetup
+lanl: predep all runsetup
 
-lcrc: predeplcrc all runsetup
+lcrc: predep all runsetup
 
-stampede: predepstampede all runsetup
+stampede: predep all runsetup
 
-notchpeak: predepnotchpeak all runsetup
+notchpeak: predep all runsetup
 
 runsetup:
 	Cluster/setup.sh
 
-predeplocal:
-	./GetPackages.sh local
-predeport:
-	./GetPackages.sh orthros
-predepbio:
-	./GetPackages.sh bio
-predeplcrc_cloud:
-	./GetPackages.sh lcrc_cloud
-predeplcrc:
-	./GetPackages.sh lcrc
-predepnersc:
-	./GetPackages.sh nersc
-predeppurdue:
-	./GetPackages.sh purdue
-predeplanl:
-	./GetPackages.sh lanl
-predepstampede:
-	./GetPackages.sh stampede
-predepnotchpeak:
-	./GetPackages.sh notchpeak
+predep:
+	./GetPackages.sh
 
 cuda: help indexrefinecuda peaks mergeoverlapsgpu fittiltbclsdsample \
 	calcradius mergerings processgrains hkls bindata calibrant findsaturatedpx fittiltx fitwedge
