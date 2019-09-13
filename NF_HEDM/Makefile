@@ -6,6 +6,7 @@
 
 CC=gcc
 NCC=nvcc
+H5CC=$${HOME}/.MIDAS/HDF5/bin/h5cc
 NCFLAGS=-O3 -G -g -w -arch sm_52 -lm -rdc=true # -res-usage
 CFLAGS=-fPIC -g -ldl -lm -fgnu89-inline -O3 -w
 NLOPT=""
@@ -20,13 +21,15 @@ ifneq ($(TIFF),"")
 else
 	CFLAGSTIFF=-I$${HOME}/.MIDAS/LIBTIFF/include -L$${HOME}/.MIDAS/LIBTIFF/lib -ltiff
 endif
+CFLAGSHDF=-I$${HOME}/.MIDAS/ZLIB/include -L$${HOME}/.MIDAS/ZLIB/lib -lz -I$${HOME}/.MIDAS/HDF5/include -L$${HOME}/.MIDAS/HDF5/lib -lhdf5 -lhdf5_hl
 SRCDIR=src/
 BINDIR=bin/
 
 all: help bindircheck makediffrspots makehexgrid medianimage imageprocessing \
 	fitorientation fitorientationparameters fitorientationparametersmultipoint \
 	genseedorientations simulatediffrspots processnfmicremote \
-	mmapimageinfo hkls parsemic fitorientationsinglepoint parsedeconv
+	mmapimageinfo hkls parsemic fitorientationsinglepoint parsedeconv imageprocessinghdf \
+	medianimagehdf
 
 #local:
 local: predeplocal all runsetup
@@ -108,6 +111,12 @@ makediffrspotsff2nf: $(SRCDIR)MakeDiffrSpotsFF2NF.c
 
 medianimage: $(SRCDIR)MedianImageLibTiff.c
 	$(CC) $(SRCDIR)MedianImageLibTiff.c -o $(BINDIR)MedianImageLibTiff $(CFLAGS) $(CFLAGSTIFF)
+
+medianimagehdf: $(SRCDIR)MedianImageHDF.c
+	$(H5CC) $(SRCDIR)MedianImageHDF.c -o $(BINDIR)MedianImageHDF $(CFLAGS) $(CFLAGSHDF) -fopenmp
+
+imageprocessinghdf: $(SRCDIR)ImageProcessingHDF.c
+	$(H5CC) $(SRCDIR)ImageProcessingHDF.c -o $(BINDIR)ImageProcessingHDF $(CFLAGS) $(CFLAGSHDF) -fopenmp
 
 imageprocessing: $(SRCDIR)ImageProcessingLibTiff.c
 	$(CC) $(SRCDIR)ImageProcessingLibTiff.c -o $(BINDIR)ImageProcessingLibTiff $(CFLAGS) $(CFLAGSTIFF)
