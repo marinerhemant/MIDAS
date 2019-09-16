@@ -153,6 +153,9 @@ typedef struct {
 		filter,
 		debug;
 	long num_Jobs;
+	int sinogram_adjusted_xdim,
+		reconstruction_size,
+		sinogram_adjusted_size;
 }GLOBAL_CONFIG_OPTS;
 
 typedef struct {
@@ -172,9 +175,6 @@ typedef struct {
 } LOCAL_CONFIG_OPTS;
 
 typedef struct {
-	int sinogram_adjusted_xdim,
-		reconstruction_size,
-		sinogram_adjusted_size;
 	unsigned short int *short_sinogram;
 	float *norm_sino,
 		*init_sinogram,
@@ -185,8 +185,8 @@ typedef struct {
 //--------------------------------------------------------------------------------------------------------------------------
 // Initiate Config Opts Structs
 int setGlobalOpts(char inputFile[], GLOBAL_CONFIG_OPTS *recon_info_record);
-void setSinoSize (LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS *recon_info_record, SINO_READ_OPTS *readStruct);
-void setReadStructSize (GLOBAL_CONFIG_OPTS *recon_info_record, SINO_READ_OPTS *readStruct);
+void setSinoSize (LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS *recon_info_record);
+void setReadStructSize (GLOBAL_CONFIG_OPTS *recon_info_record);
 
 //--------------------------------------------------------------------------------------------------------------------------
 // ReadData

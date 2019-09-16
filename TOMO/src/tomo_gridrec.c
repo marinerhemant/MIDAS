@@ -67,6 +67,9 @@ void destroyFFTMemoryStructures (gridrecParams *param){
 }
 
 void fourn(float data[], unsigned long nn[], int ndim, int isign, gridrecParams *param){
+	clock_t start0, end;
+	double diftotal;
+	start0 = clock();
 	int nx = nn[2];
 	int ny = nn[1];
 	if (ndim != 2){
@@ -82,12 +85,14 @@ void fourn(float data[], unsigned long nn[], int ndim, int isign, gridrecParams 
 		nx, ny, param->nx_prev, param->ny_prev);
 		param->nx_prev = nx;
 		param->ny_prev = ny;
-		param->forward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_MEASURE);
-		param->backward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_BACKWARD, FFTW_MEASURE);
+		if (isign == -1)
+			param->forward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_MEASURE);
+		else
+			param->backward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_BACKWARD, FFTW_MEASURE); // Never done right now.
 	}
 	memcpy(param->in_2d, data+1, nx*ny*sizeof(fftwf_complex));
 	if (isign == -1) fftwf_execute(param->forward_plan_2d);
-	else fftwf_execute(param->backward_plan_2d);
+	else fftwf_execute(param->backward_plan_2d); // Not done right now.
 	memcpy(data+1, param->out_2d, nx*ny*sizeof(fftwf_complex));
 }
 

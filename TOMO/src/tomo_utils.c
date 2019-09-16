@@ -101,7 +101,7 @@ void RingCorrectionSingle (float *data, float ring_coeff, LOCAL_CONFIG_OPTS *inf
 // This function assumes the short_sino is the proper sinogram, white_field_sino is two rows of first and last wf image slice, dark_field_sino_ave is a single slice. Size of each sino is recon_info_record->sinogram_xdim, output norm_sino is information->sinogram_adjusted_xdim (padded)
 
 void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_record){
-	int pad_size = readStruct->sinogram_adjusted_xdim - recon_info_record->sinogram_xdim,
+	int pad_size = recon_info_record->sinogram_adjusted_xdim - recon_info_record->sinogram_xdim,
 		front_pad_size = pad_size / 2,
 		back_pad_size = pad_size - front_pad_size;
 	printf("Pad sizes %d %d\n",front_pad_size,back_pad_size);
@@ -109,7 +109,7 @@ void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_recor
 	float temp_val, white_temp, factor;
 	for (frameNr=0;frameNr<recon_info_record->sinogram_ydim;frameNr++){
 		factor = (float)frameNr / (float)recon_info_record->theta_list_size;
-		for (pxNr=0;pxNr<readStruct->sinogram_adjusted_xdim;pxNr ++){
+		for (pxNr=0;pxNr<recon_info_record->sinogram_adjusted_xdim;pxNr ++){
 			if (pxNr<front_pad_size){ // front padding
 				colNr = 0; // first pixel
 			} else if (pxNr >=front_pad_size+recon_info_record->sinogram_xdim){ // back padding
@@ -120,22 +120,22 @@ void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_recor
 			white_temp = (1-factor) * (float) readStruct->white_field_sino[colNr] + (factor) * (float) readStruct->white_field_sino[colNr+recon_info_record->sinogram_xdim];
 			//printf("colNr frameNr xdim totSize : %d %d %d %d\n",colNr,frameNr,readStruct->sinogram_adjusted_xdim,recon_info_record->det_xdim*recon_info_record->theta_list_size);fflush(stdout);
 			temp_val = ((float)readStruct->short_sinogram[colNr+frameNr*recon_info_record->det_xdim] - readStruct->dark_field_sino_ave[colNr]) /(white_temp-readStruct->dark_field_sino_ave[colNr]);
-			readStruct->norm_sino[frameNr*readStruct->sinogram_adjusted_xdim+pxNr] = temp_val;
+			readStruct->norm_sino[frameNr*recon_info_record->sinogram_adjusted_xdim+pxNr] = temp_val;
 		}
 		
 	}
 }
 
 void Pad (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_record){ // Take the sino directly read (init_sinogram) and pad it, return norm_sino.
-	int pad_size = readStruct->sinogram_adjusted_xdim - recon_info_record->sinogram_xdim,
+	int pad_size = recon_info_record->sinogram_adjusted_xdim - recon_info_record->sinogram_xdim,
 		front_pad_size = pad_size / 2,
 		back_pad_size = pad_size - front_pad_size;
 	int colNr, frameNr;
 	for (frameNr=0;frameNr<recon_info_record->sinogram_ydim;frameNr++){
-		for (colNr=0;colNr<readStruct->sinogram_adjusted_xdim;colNr++){
-			if (colNr<front_pad_size) readStruct->norm_sino[colNr+frameNr*readStruct->sinogram_adjusted_xdim] = readStruct->init_sinogram[frameNr*recon_info_record->det_xdim];
-			else if (colNr>=front_pad_size+recon_info_record->sinogram_xdim) readStruct->norm_sino[colNr+frameNr*readStruct->sinogram_adjusted_xdim] = readStruct->init_sinogram[recon_info_record->sinogram_xdim-1+frameNr*recon_info_record->det_xdim];
-			else readStruct->norm_sino[colNr+frameNr*readStruct->sinogram_adjusted_xdim] = readStruct->init_sinogram[colNr+frameNr*recon_info_record->det_xdim-front_pad_size];
+		for (colNr=0;colNr<recon_info_record->sinogram_adjusted_xdim;colNr++){
+			if (colNr<front_pad_size) readStruct->norm_sino[colNr+frameNr*recon_info_record->sinogram_adjusted_xdim] = readStruct->init_sinogram[frameNr*recon_info_record->det_xdim];
+			else if (colNr>=front_pad_size+recon_info_record->sinogram_xdim) readStruct->norm_sino[colNr+frameNr*recon_info_record->sinogram_adjusted_xdim] = readStruct->init_sinogram[recon_info_record->sinogram_xdim-1+frameNr*recon_info_record->det_xdim];
+			else readStruct->norm_sino[colNr+frameNr*recon_info_record->sinogram_adjusted_xdim] = readStruct->init_sinogram[colNr+frameNr*recon_info_record->det_xdim-front_pad_size];
 		}
 	}
 }
@@ -270,7 +270,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 	return 0;
 }
 
-void setReadStructSize (GLOBAL_CONFIG_OPTS *recon_info_record, SINO_READ_OPTS *readStruct){
+void setReadStructSize (GLOBAL_CONFIG_OPTS *recon_info_record){
 	int power, size;
 	bool still_smaller;
 	still_smaller = true;
@@ -284,27 +284,27 @@ void setReadStructSize (GLOBAL_CONFIG_OPTS *recon_info_record, SINO_READ_OPTS *r
 		}
 	}
 	if (recon_info_record->sinogram_xdim == pow (2, power)){
-		readStruct->sinogram_adjusted_xdim = recon_info_record->sinogram_xdim;
+		recon_info_record->sinogram_adjusted_xdim = recon_info_record->sinogram_xdim;
 		recon_info_record->reconstruction_xdim = recon_info_record->sinogram_xdim;
 		recon_info_record->reconstruction_ydim = recon_info_record->sinogram_xdim;
-		readStruct->sinogram_adjusted_size = readStruct->sinogram_adjusted_xdim * recon_info_record->sinogram_ydim;
-		readStruct->reconstruction_size = recon_info_record->reconstruction_xdim*recon_info_record->reconstruction_ydim;
+		recon_info_record->sinogram_adjusted_size = recon_info_record->sinogram_adjusted_xdim * recon_info_record->sinogram_ydim;
+		recon_info_record->reconstruction_size = recon_info_record->reconstruction_xdim*recon_info_record->reconstruction_ydim;
 		printf ("Sinograms are a power of 2!\n");
 	}else{
 		size = (int) pow (2, power);
-		readStruct->sinogram_adjusted_xdim = size;
-		readStruct->sinogram_adjusted_size = readStruct->sinogram_adjusted_xdim * recon_info_record->sinogram_ydim;
+		recon_info_record->sinogram_adjusted_xdim = size;
+		recon_info_record->sinogram_adjusted_size = recon_info_record->sinogram_adjusted_xdim * recon_info_record->sinogram_ydim;
 		recon_info_record->reconstruction_xdim = size;
 		recon_info_record->reconstruction_ydim = size;
-		readStruct->reconstruction_size = recon_info_record->reconstruction_xdim*recon_info_record->reconstruction_ydim;
-		printf ("Sinograms are not a power of 2.  They will be increased to %d\n", readStruct->sinogram_adjusted_xdim);
+		recon_info_record->reconstruction_size = recon_info_record->reconstruction_xdim*recon_info_record->reconstruction_ydim;
+		printf ("Sinograms are not a power of 2.  They will be increased to %d\n", recon_info_record->sinogram_adjusted_xdim);
 	}
 }
 
-void setSinoSize (LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS *recon_info_record, SINO_READ_OPTS *readStruct){
-	information->sinogram_adjusted_xdim = readStruct->sinogram_adjusted_xdim;
-	information->sinogram_adjusted_size = readStruct->sinogram_adjusted_size;
-	information->reconstruction_size = readStruct->reconstruction_size;
+void setSinoSize (LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS *recon_info_record){
+	information->sinogram_adjusted_xdim = recon_info_record->sinogram_adjusted_xdim;
+	information->sinogram_adjusted_size = recon_info_record->sinogram_adjusted_size;
+	information->reconstruction_size = recon_info_record->reconstruction_size;
 	printf("shifted_recon: %ld\n",(long)(sizeof (float)*information->reconstruction_size));
 	printf("shifted_sinogram %ld\n",(long)(sizeof (float)*information->sinogram_adjusted_size));
 	printf("sinograms_boundary_padding %ld\n",(long)(sizeof(float)*information->sinogram_adjusted_size*2));
@@ -332,9 +332,9 @@ void readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *
 	fseek(dataFile,offset,SEEK_SET);
 	size_t SizeSino = sizeof(float)*recon_info_record.det_xdim*recon_info_record.theta_list_size;
 	printf("init_sinogram %ld\n",(long)SizeSino);
-	printf("norm_sino %ld\n",(long)(sizeof(float)*readStruct->sinogram_adjusted_xdim*recon_info_record.theta_list_size));
+	printf("norm_sino %ld\n",(long)(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size));
 	readStruct->init_sinogram = (float *) malloc(SizeSino);
-	readStruct->norm_sino = (float *) malloc(sizeof(float)*readStruct->sinogram_adjusted_xdim*recon_info_record.theta_list_size);
+	readStruct->norm_sino = (float *) malloc(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 	fread(readStruct->init_sinogram,SizeSino,1,dataFile);
 	if (recon_info_record.debug == 1){
 		char outfn[4096];
@@ -349,7 +349,7 @@ void readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *
 		char outfn[4096];
 		sprintf(outfn,"norm_sino_%s",recon_info_record.DataFileName);
 		FILE *out = fopen(outfn,"wb");
-		fwrite(readStruct->norm_sino,sizeof(float)*readStruct->sinogram_adjusted_xdim*recon_info_record.theta_list_size,1,out);
+		fwrite(readStruct->norm_sino,sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size,1,out);
 		fclose(out);
 	}
 }
@@ -418,7 +418,7 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 		fwrite(readStruct->short_sinogram,SizeSino,1,out);
 		fclose(out);
 	}
-	SizeNormSino = sizeof(float)*readStruct->sinogram_adjusted_xdim*recon_info_record.theta_list_size;
+	SizeNormSino = sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size;
 	printf("norm_sino %ld\n",(long)SizeNormSino);
 	readStruct->norm_sino = (float *) malloc(SizeNormSino);
 	Normalize(readStruct,&recon_info_record);
@@ -522,8 +522,9 @@ void writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *r
 	// Output file: float with reconstruction_xdim*reconstruction_xdim size
 	// OutputFileName: {recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_reconstruction_xdim_float_4byte.bin
 	char outFileName[4096];
-	sprintf(outFileName,"%s_%d_%d_%d_float_4byte.bin",recon_info_record->ReconFileName,sliceNr,recon_info_record->reconstruction_xdim,recon_info_record->reconstruction_xdim);
+	sprintf(outFileName,"%s_%d_%f_%d_%d_float_4byte.bin",recon_info_record->ReconFileName,sliceNr,information->shift,recon_info_record->reconstruction_xdim,recon_info_record->reconstruction_xdim);
 	FILE *outfile;
+	printf("Saving output to : %s.\n",outFileName);
 	outfile = fopen(outFileName,"wb");
 	fwrite(information->recon_calc_buffer,sizeof(float)*information->reconstruction_size,1,outfile);
 	fclose(outfile);

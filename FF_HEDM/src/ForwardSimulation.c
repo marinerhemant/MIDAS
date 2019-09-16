@@ -352,6 +352,31 @@ void Euler2OrientMat(
     m_out[8] = cph;
 }
 
+static inline double sin_cos_to_angle (double s, double c){return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);}
+
+static inline 
+void OrientMat2Euler(double m[3][3],double Euler[3])
+{
+    double psi, phi, theta, sph;
+	if (fabs(m[2][2] - 1.0) < EPS){
+		phi = 0;
+	}else{
+	    phi = acos(m[2][2]);
+	}
+    sph = sin(phi);
+    if (fabs(sph) < EPS)
+    {
+        psi = 0.0;
+        theta = (fabs(m[2][2] - 1.0) < EPS) ? sin_cos_to_angle(m[1][0], m[0][0]) : sin_cos_to_angle(-m[1][0], m[0][0]);
+    } else{
+        psi = (fabs(-m[1][2] / sph) <= 1.0) ? sin_cos_to_angle(m[0][2] / sph, -m[1][2] / sph) : sin_cos_to_angle(m[0][2] / sph,1);
+        theta = (fabs(m[2][1] / sph) <= 1.0) ? sin_cos_to_angle(m[2][0] / sph, m[2][1] / sph) : sin_cos_to_angle(m[2][0] / sph,1);
+    }
+    Euler[0] = rad2deg*psi;
+    Euler[1] = rad2deg*phi;
+    Euler[2] = rad2deg*theta;
+}
+
 static inline void CorrectHKLsLatC(double LatC[6],double Wavelength, double **hklsOut)
 {
 	double a=LatC[0],b=LatC[1],c=LatC[2],alpha=LatC[3],beta=LatC[4],gamma=LatC[5];
@@ -598,7 +623,7 @@ main(int argc, char *argv[])
 	int RingsToUse[500], nRings=0;
 	double LatC[6],Wavelength,Wedge=0, p0, p1, p2, RhoD,GaussWidth,PeakIntensity=2000;
 	int writeSpots;
-	int LoadNr = 1;
+	int LoadNr = 1, UpdatedOrientations = 1;
 	while (fgets(aline,4096,fileParam)!=NULL){
 		str="RingsToUse ";
 		LowNr = strncmp(aline,str,strlen(str));
@@ -742,6 +767,12 @@ main(int argc, char *argv[])
 			sscanf(aline,"%s %d",dummy,&LoadNr);
 			continue;
 		}
+		str="UpdatedOrientations ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr == 0){
+			sscanf(aline,"%s %d",dummy,&UpdatedOrientations);
+			continue;
+		}
 		str="px ";
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr == 0){
@@ -770,7 +801,7 @@ main(int argc, char *argv[])
 	fgets(aline,4096,inpF);
 	// Preallocate Arrays
 	int NrOrientations, nrPoints = 0;
-	double EulerThis[3],zThis,OrientThis[9],ElasticStrainThis[6];
+	double EulerThis[3],zThis,OrientThis[9],ElasticStrainThis[6],OrientTemp[3][3];
 	double **InputInfo;
 	int dataType;
 	double maxVol=0;
@@ -859,10 +890,12 @@ main(int argc, char *argv[])
 		fgets(aline,4096,inpF);
 		for (i=0;i<totalElements;i++){
 			fgets(aline,4096,inpF);
-			sscanf(aline,"%lf %lf %lf",&EulerThis[0],&EulerThis[1],&EulerThis[2]);
-			Euler2OrientMat(EulerThis,OrientThis);
-			for (j=0;j<9;j++){
-				InputInfo[i][j] = OrientThis[j];
+			if (UpdatedOrientations == 0){
+				sscanf(aline,"%lf %lf %lf",&EulerThis[0],&EulerThis[1],&EulerThis[2]);
+				Euler2OrientMat(EulerThis,OrientThis);
+				for (j=0;j<9;j++){
+					InputInfo[i][j] = OrientThis[j];
+				}
 			}
 		}
 		for (i=0;i<3;i++) fgets(aline,4096,inpF);
@@ -886,13 +919,46 @@ main(int argc, char *argv[])
 				sscanf(aline,"%lf %lf %lf %lf %lf %lf",&InputInfo[i][12],&InputInfo[i][15],&InputInfo[i][17],&InputInfo[i][13],&InputInfo[i][14],&InputInfo[i][16]);
 			}
 		}else {
-			nrSkip = (LoadNr-1)*(totalElements+4) - 1;
+			nrSkip = (LoadNr-1)*(totalElements+4);
 			for (i=0;i<nrSkip;i++) fgets(aline,4096,inpF);
 			for (i=0;i<totalElements;i++){
 				fgets(aline,4096,inpF);
 				sscanf(aline,"%lf %lf %lf %lf %lf %lf",&InputInfo[i][12],&InputInfo[i][15],&InputInfo[i][17],&InputInfo[i][13],&InputInfo[i][14],&InputInfo[i][16]);
 			}
-		} 
+		}
+		for (i=0;i<3;i++) fgets(aline,4096,inpF);
+		sscanf(aline,"%s %s",dummy,strLine);
+		// Now read until the Orientations
+		if (UpdatedOrientations == 1){
+			while(strncmp(strLine,"Orientation",strlen("Orientation"))!=0){
+				for (i=0;i<totalElements+4;i++) fgets(aline,4096,inpF);
+				sscanf(aline,"%s %s",dummy,strLine);
+			}
+			fgets(aline,4096,inpF);
+			if (LoadNr == 1){
+				for (i=0;i<totalElements;i++){
+					fgets(aline,4096,inpF);
+					sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf",&OrientTemp[0][0],&OrientTemp[0][1],&OrientTemp[0][2],&OrientTemp[1][0],&OrientTemp[1][1],&OrientTemp[1][2],&OrientTemp[2][0],&OrientTemp[2][1],&OrientTemp[2][2]);
+					OrientMat2Euler(OrientTemp,EulerThis);
+					Euler2OrientMat(EulerThis,OrientThis);
+					for (j=0;j<9;j++){
+						InputInfo[i][j] = OrientThis[j];
+					}
+				}
+			}else{
+				nrSkip = (LoadNr-1)*(totalElements+4);
+				for (i=0;i<nrSkip;i++) fgets(aline,4096,inpF);
+				for (i=0;i<totalElements;i++){
+					fgets(aline,4096,inpF);
+					sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf",&OrientTemp[0][0],&OrientTemp[0][1],&OrientTemp[0][2],&OrientTemp[1][0],&OrientTemp[1][1],&OrientTemp[1][2],&OrientTemp[2][0],&OrientTemp[2][1],&OrientTemp[2][2]);
+					OrientMat2Euler(OrientTemp,EulerThis);
+					Euler2OrientMat(EulerThis,OrientThis);
+					for (j=0;j<9;j++){
+						InputInfo[i][j] = OrientThis[j];
+					}
+				}
+			}
+		}
 		nrPoints = totalElements;
 	}
 	if (nrPoints == 0) return 1;

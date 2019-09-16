@@ -58,9 +58,10 @@ void usage(){
 		"							* 2: Hann\n"
 		"							* 3: Hamming\n"
 		"							* 4: Ramp\n"
-		"	* shiftValues: start_shift end_shift shift_interval [floats] In case of 1 shift, give start_shift=end_shift, shift_interval doesn't matter\n"
+		"	* shiftValues: start_shift end_shift shift_interval [floats] In case of 1 shift, give start_shift=end_shift, shift_interval doesn't matter.\n"
+		" 	*					ENSURE TO GIVE A RANGE WITH EVEN NUMBER OF SHIFTS\n"
 		"	* ringRemovalCoefficient - If given, will do ringRemoval, otherwise comment or remove line [float] default 1.0\n"
-		"	* slicesToProcess - -1 for all or FileName\n"
+		"	* slicesToProcess - -1 for all or FileName. ENSURE TO GIVE EVEN NUMBER OF SLICES\n"
 		"Output file: float with reconstruction_xdim*reconstruction_xdim size\n"
 		"OutputFileName: {recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_reconstruction_xdim_float_4byte.bin\n");
 }
@@ -76,6 +77,7 @@ int main(int argc, char *argv[])
 	fileName = argv[1];
 	int RC;
 	RC = setGlobalOpts(fileName, &recon_info_record);
+	setReadStructSize(&recon_info_record); // Also sets a couple of 
 	if (RC!=0){
 		printf("Parameter file could not be read. Exiting.\n");
 		return 1;
@@ -84,20 +86,19 @@ int main(int argc, char *argv[])
 			// private: information, param, readStruct, sliceNr
 			// public recon_info_record
 	SINO_READ_OPTS readStruct;
-	setReadStructSize(&recon_info_record,&readStruct);
 	int sliceNr;
 	sliceNr = 350; // TEMPORARY
 	if (recon_info_record.are_sinos){
 		printf("We have sinograms.\n");
 		readSino(sliceNr,recon_info_record,&readStruct);
 	} else {
-		printf("We were provided with Dark, Whites (2) and images. We will do pre-processing ourselves.\n");
+		printf("We were provided with Dark, Whites (2) and Images. We will do pre-processing ourselves.\n");
 		readRaw(sliceNr,recon_info_record,&readStruct);
 	}
 	// Do till here for each slice, next step is when we have multiple shifts
 	// define shift here
 	LOCAL_CONFIG_OPTS information;
-	setSinoSize(&information,&recon_info_record,&readStruct);
+	setSinoSize(&information,&recon_info_record);
 	printf("sino_calc_buffer %ld\n",(long)(sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size));
 	information.sino_calc_buffer = (float *) malloc(sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 	memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
