@@ -85,10 +85,13 @@ void fourn(float data[], unsigned long nn[], int ndim, int isign, gridrecParams 
 		nx, ny, param->nx_prev, param->ny_prev);
 		param->nx_prev = nx;
 		param->ny_prev = ny;
-		if (isign == -1)
+		int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_2d.txt");
+		if (rc == 1){
+			param->forward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_WISDOM_ONLY);
+		}else{
 			param->forward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_MEASURE);
-		else
-			param->backward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_BACKWARD, FFTW_MEASURE); // Never done right now.
+			fftwf_export_wisdom_to_filename("fftwf_wisdom_2d.txt");
+		}
 	}
 	memcpy(param->in_2d, data+1, nx*ny*sizeof(fftwf_complex));
 	if (isign == -1) fftwf_execute(param->forward_plan_2d);
@@ -261,12 +264,16 @@ void four1(float data[], unsigned long nn, int isign, gridrecParams *param){
 		param->out_1d = param->in_1d;
 		printf("fft_test1f: creating plans, n=%d, n_prev=%d\n", n, param->n_prev);
 		param->n_prev = n;
-		param->forward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_FORWARD, FFTW_MEASURE);
-		param->backward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_MEASURE);
+		int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_1d.txt");
+		if (rc == 1){
+			param->backward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_WISDOM_ONLY);
+		} else {
+			param->backward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_MEASURE);
+			fftwf_export_wisdom_to_filename("fftwf_wisdom_1d.txt");
+		}
 	}
 	memcpy(param->in_1d, data+1, n*sizeof(fftwf_complex));
-	if (isign == -1) fftwf_execute(param->forward_plan_1d);
-	else fftwf_execute(param->backward_plan_1d);
+	fftwf_execute(param->backward_plan_1d);
 	memcpy(data+1, param->out_1d, n*sizeof(fftwf_complex));
 }
 

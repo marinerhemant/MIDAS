@@ -498,6 +498,13 @@ void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_info_rec
 			memcpy(&information->recon_calc_buffer[j * recon_info_record->reconstruction_xdim ],&information->reconstructions_boundary_padding[ ( j + recon_info_record->reconstruction_xdim / 2 ) * recon_info_record->reconstruction_xdim * 2 + recon_info_record->reconstruction_xdim / 2 ], sizeof(float) * (recon_info_record->reconstruction_xdim) );
 		}
 	}
+	if (recon_info_record->debug == 1){
+		char outfn[4096];
+		sprintf(outfn,"recon_calc_buffer_before_shift_%s",recon_info_record->DataFileName);
+		FILE *out = fopen(outfn,"wb");
+		fwrite(information->recon_calc_buffer,sizeof(float)*recon_info_record->reconstruction_xdim*recon_info_record->reconstruction_ydim,1,out);
+		fclose(out);
+	}
 	for( j = 0; j < recon_info_record->sinogram_ydim; j++ ){
 		for( k = 0; k < recon_info_record->reconstruction_xdim; k++ ){
 			information->shifted_recon[j * recon_info_record->reconstruction_xdim + k] = 0.0f;
