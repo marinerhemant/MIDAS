@@ -71,6 +71,6 @@ if [ ! -d ${dirThis}/FFTW ]; then # fftw
 	wget -O fftw.tar.gz https://www.dropbox.com/s/dug1mpsr10rvlqi/fftw-3.3.8.tar.gz?dl=0
 	tar -xvzf fftw.tar.gz
 	cd fftw-3.3.8
-	./configure --prefix=${dirThis}/FFTW --enable-float --disable-fortran --enable-sse --enable-sse2 --enable-avx --enable-avx2 --enable-avx512 --enable-avx-128-fma --enable-generic-simd128 --enable-generic-simd256
+	./configure --prefix=${dirThis}/FFTW --enable-float --disable-fortran --enable-sse --enable-sse2 --enable-avx --enable-avx2 --enable-avx-128-fma --enable-generic-simd128 --enable-generic-simd256 #--enable-avx512
 	make install
 fi
