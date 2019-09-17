@@ -10,4 +10,4 @@ bindircheck:
 	mkdir -p $(BINDIR)
 
 tomo: $(SRCDIR)/tomo_init.c
-	$(CC) $(SRCDIR)/tomo_init.c $(SRCDIR)/tomo_gridrec.c $(SRCDIR)/tomo_utils.c -o $(BINDIR)/tomo $(CFLAGSFFT) $(CFLAGS) -DPI=M_PI
+	$(CC) $(SRCDIR)/tomo_init.c $(SRCDIR)/tomo_gridrec.c $(SRCDIR)/tomo_utils.c -o $(BINDIR)/tomo $(CFLAGSFFT) $(CFLAGS) -DPI=M_PI -fopenmp

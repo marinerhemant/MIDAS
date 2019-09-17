@@ -88,12 +88,10 @@ typedef struct {
 	unsigned long sinogram_x_dim;
 	fftwf_complex *in_1d, 
 		*out_1d;
-	fftwf_plan forward_plan_1d, 
-		backward_plan_1d;
+	fftwf_plan backward_plan_1d, 
+		forward_plan_2d;
 	fftwf_complex 	*in_2d, 
 		*out_2d;
-	fftwf_plan forward_plan_2d, 
-		backward_plan_2d;
 } gridrecParams;
 
 // Functions
@@ -188,6 +186,7 @@ typedef struct {
 int setGlobalOpts(char inputFile[], GLOBAL_CONFIG_OPTS *recon_info_record);
 void setSinoSize (LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS *recon_info_record);
 void setReadStructSize (GLOBAL_CONFIG_OPTS *recon_info_record);
+void memsets(LOCAL_CONFIG_OPTS *information, SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS recon_info_record);
 
 //--------------------------------------------------------------------------------------------------------------------------
 // ReadData
@@ -204,8 +203,8 @@ void Pad (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_record);
 
 //--------------------------------------------------------------------------------------------------------------------------
 // Processing code
-void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_info_record);
-void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_info_record,gridrecParams *param);
+void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_info_record,size_t offt);
+void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_info_record,gridrecParams *param,size_t offsetRecons);
 void writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_info_record);
 
 #endif

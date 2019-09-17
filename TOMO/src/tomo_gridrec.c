@@ -59,11 +59,11 @@ void initFFTMemoryStructures (gridrecParams *param){
 
 void destroyFFTMemoryStructures (gridrecParams *param){
 	if (param->in_1d != NULL) fftwf_free (param->in_1d);
-	fftwf_destroy_plan(param->forward_plan_1d);
+	//fftwf_destroy_plan(param->forward_plan_1d);
 	fftwf_destroy_plan(param->backward_plan_1d);
 	if (param->in_2d != NULL) fftwf_free (param->in_2d);
 	fftwf_destroy_plan(param->forward_plan_2d);
-	fftwf_destroy_plan(param->backward_plan_2d);
+	//fftwf_destroy_plan(param->backward_plan_2d);
 }
 
 void fourn(float data[], unsigned long nn[], int ndim, int isign, gridrecParams *param){
@@ -78,34 +78,31 @@ void fourn(float data[], unsigned long nn[], int ndim, int isign, gridrecParams 
 	}
 	if ((nx != param->nx_prev) || (ny != param->ny_prev)){
 		if (param->nx_prev != 0) fftwf_free(param->in_1d);
-		printf("in_2d %ld\n",(long)(sizeof(fftwf_complex)*nx*ny));
+		//~ printf("in_2d %ld\n",(long)(sizeof(fftwf_complex)*nx*ny));
 		param->in_2d = fftwf_malloc(sizeof(fftwf_complex)*nx*ny);
 		param->out_2d = param->in_2d;
-		printf("fft_test2f: creating plans, nx=%d, ny=%d, nx_prev=%d, ny_prev=%d\n",
-		nx, ny, param->nx_prev, param->ny_prev);
+		//~ printf("fft_test2f: creating plans, nx=%d, ny=%d, nx_prev=%d, ny_prev=%d\n", nx, ny, param->nx_prev, param->ny_prev);
 		param->nx_prev = nx;
 		param->ny_prev = ny;
 		int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_2d.txt");
 		if (rc == 1){
 			param->forward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_WISDOM_ONLY);
 		}else{
+			printf("Creating wisdom file.\n");
 			param->forward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_MEASURE);
 			fftwf_export_wisdom_to_filename("fftwf_wisdom_2d.txt");
 		}
 	}
 	memcpy(param->in_2d, data+1, nx*ny*sizeof(fftwf_complex));
-	if (isign == -1) fftwf_execute(param->forward_plan_2d);
-	else fftwf_execute(param->backward_plan_2d); // Not done right now.
+	fftwf_execute(param->forward_plan_2d);
 	memcpy(data+1, param->out_2d, nx*ny*sizeof(fftwf_complex));
 }
 
 void reconstruct (gridrecParams *param){
-	initFFTMemoryStructures(param);
 	memset (param->H, 0, (param->M+1)*(param->M+1)*sizeof(complex));
 	phase1 (param);
 	phase2 (param);
 	phase3 (param);
-	destroyFFTMemoryStructures(param);
 	return;
 }
 
@@ -219,10 +216,10 @@ void setGridRecPSWF (gridrecParams *param){
 
 void setSinoAndReconBuffers ( int  number, float *sinogram_address, float *reconstruction_address, gridrecParams *param){
     int     loop;
-    printf("G1 %ld\n",(long)(param->theta_list_size*sizeof(float *)));
-    printf("G2 %ld\n",(long)(param->theta_list_size*sizeof(float *)));
-    printf("S1 %ld\n",(long)(param->imgsiz*sizeof(float *)));
-    printf("S2 %ld\n",(long)(param->imgsiz*sizeof(float *)));
+    //~ printf("G1 %ld\n",(long)(param->theta_list_size*sizeof(float *)));
+    //~ printf("G2 %ld\n",(long)(param->theta_list_size*sizeof(float *)));
+    //~ printf("S1 %ld\n",(long)(param->imgsiz*sizeof(float *)));
+    //~ printf("S2 %ld\n",(long)(param->imgsiz*sizeof(float *)));
     if (param->G1 == NULL)  param->G1 = (float **) malloc((size_t) (param->theta_list_size * sizeof(float *)));
     if (param->G2 == NULL)  param->G2 = (float **) malloc((size_t) (param->theta_list_size * sizeof(float *)));
     if (param->S1 == NULL)  param->S1 = (float **) malloc((size_t) (param->imgsiz * sizeof(float *)));
@@ -259,10 +256,10 @@ void four1(float data[], unsigned long nn, int isign, gridrecParams *param){
 	int n = nn;
 	if (n != param->n_prev){
 		if (param->n_prev != 0) fftwf_free(param->in_1d);
-		printf("in_1d %ld\n",(long)(sizeof(fftwf_complex)*n));
+		//~ printf("in_1d %ld\n",(long)(sizeof(fftwf_complex)*n));
 		param->in_1d = fftwf_malloc(sizeof(fftwf_complex)*n);
 		param->out_1d = param->in_1d;
-		printf("fft_test1f: creating plans, n=%d, n_prev=%d\n", n, param->n_prev);
+		//~ printf("fft_test1f: creating plans, n=%d, n_prev=%d\n", n, param->n_prev);
 		param->n_prev = n;
 		int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_1d.txt");
 		if (rc == 1){
@@ -371,7 +368,7 @@ void get_pswf (float C, pswf_struct **P, gridrecParams *param){
 		i++;
 	}
 	if (i>=NO_PSWFS){
-		fprintf(stderr, "Prolate parameter, C = %f not in data base\n",C);
+		printf(stderr, "Prolate parameter, C = %f not in data base\n",C);
 		exit(2);
 	}
 	*P = &param->pswf_db[i];
@@ -412,15 +409,15 @@ void initGridRec (gridrecParams *param){
 	D1    = param->sampl*D0;
 	param->L     = 2*C*param->sampl/PI;
 	param->scale = D1/param->pdim;
-	printf("cproj %ld\n",(long)((param->pdim+1) * sizeof(complex)));
-	printf("filphase %ld\n",(long)((param->pdim+1) * sizeof(complex)));
-	printf("wtbl %ld\n",(long)((param->ltbl+1) * sizeof(float)));
-	printf("dwtbl %ld\n",(long)((param->ltbl+1) * sizeof(float)));
-	printf("winv %ld\n",(long)(param->M0 * sizeof(float)));
-	printf("work %ld\n",(long)(((int) param->L+1) * sizeof(float)));
-	printf("H %ld\n",(long)((param->M+1)*(param->M+1)*sizeof(complex)));
-	printf("SINE %ld\n",(long)(param->theta_list_size * sizeof (float)));
-	printf("COSE %ld\n",(long)(param->theta_list_size * sizeof (float)));
+	//~ printf("cproj %ld\n",(long)((param->pdim+1) * sizeof(complex)));
+	//~ printf("filphase %ld\n",(long)((param->pdim+1) * sizeof(complex)));
+	//~ printf("wtbl %ld\n",(long)((param->ltbl+1) * sizeof(float)));
+	//~ printf("dwtbl %ld\n",(long)((param->ltbl+1) * sizeof(float)));
+	//~ printf("winv %ld\n",(long)(param->M0 * sizeof(float)));
+	//~ printf("work %ld\n",(long)(((int) param->L+1) * sizeof(float)));
+	//~ printf("H %ld\n",(long)((param->M+1)*(param->M+1)*sizeof(complex)));
+	//~ printf("SINE %ld\n",(long)(param->theta_list_size * sizeof (float)));
+	//~ printf("COSE %ld\n",(long)(param->theta_list_size * sizeof (float)));
 	param->cproj    = (complex *) malloc ((param->pdim+1) * sizeof(complex));
 	param->filphase = (complex *) malloc (((param->pdim/2)+1) * sizeof(complex));
 	param->wtbl     = (float   *) malloc ((param->ltbl+1) * sizeof(float));
@@ -462,7 +459,7 @@ void trig_su (int geom, int n_ang, gridrecParams *param){
 			}
 		}; break;
 		default : {
-		fprintf (stderr, "Illegal value for angle geometry indicator.\n");
+		printf (stderr, "Illegal value for angle geometry indicator.\n");
 		exit(2);
 		}; break;
 	}
@@ -510,7 +507,7 @@ float legendre (  int  n, float *coefs, float  x, gridrecParams *param){
 	float penult, last, newer, y;
 	int j, k, even;
 	if (x>1||x<-1){
-		fprintf(stderr, "\nInvalid argument to legendre()");
+		printf(stderr, "\nInvalid argument to legendre()");
 		exit(2);
 	}
 	y=coefs[0];

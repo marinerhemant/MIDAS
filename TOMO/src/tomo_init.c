@@ -13,7 +13,8 @@
 #include <ctype.h>
 #include <stdint.h>
 #include <stdbool.h>
-
+#include <omp.h>
+#include <unistd.h>
 #include "tomo_heads.h"
 
 /* 
@@ -35,7 +36,7 @@
 
 void usage(){
 	printf("MIDAS-TOMO Code to do tomo recon using Gridrec. Based on tomompi implementation from Brian Tiemann, APS. Maintained by Hemant Sharma, APS (hsharma@anl.gov).\nUsage is: \n"
-		"tomo ParamsFile.txt\n"
+		"tomo ParamsFile.txt numberOfParallelJobs\n"
 		"Params file must have the following parameters:\n"
 		"Input file is a text file name with a data link: sino data is a !!!single!!! binary file with darks, whites and tomo data in that order.\n"
 		"* The rest of the file consists of the parameters required.\n"
@@ -71,7 +72,7 @@ void usage(){
 
 int main(int argc, char *argv[])
 {
-	if (argc!=2){
+	if (argc!=3){
 		usage();
 		return 1;
 	}
@@ -85,47 +86,79 @@ int main(int argc, char *argv[])
 		printf("Parameter file could not be read. Exiting.\n");
 		return 1;
 	}
-	// Make groups of two, read two slices for each omp job, 
-			// private: information, param, readStruct, sliceNr
-			// public recon_info_record
-	SINO_READ_OPTS readStruct;
-	int sliceNr;
-	sliceNr = 350; // TEMPORARY
-	if (recon_info_record.are_sinos){
-		printf("We have sinograms.\n");
-		readSino(sliceNr,recon_info_record,&readStruct);
-	} else {
-		printf("We were provided with Dark, Whites (2) and Images. We will do pre-processing ourselves.\n");
-		readRaw(sliceNr,recon_info_record,&readStruct);
+	recon_info_record.num_Jobs_Read = recon_info_record.n_slices;
+	if (access ("fftwf_wisdom_2d.txt", F_OK) == -1){
+		printf("FFT plan file did not exist, creating one.\n");
+		createPlanFile(recon_info_record);
+	} else if(access ("fftwf_wisdom_1d.txt", F_OK) == -1) {
+		printf("FFT plan file did not exist, creating one.\n");
+		createPlanFile(recon_info_record);
 	}
-	// Do till here for each slice, next step is when we have multiple shifts
-	// define shift here
-	LOCAL_CONFIG_OPTS information;
-	setSinoSize(&information,&recon_info_record);
-	printf("sino_calc_buffer %ld\n",(long)(sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size));
-	information.sino_calc_buffer = (float *) malloc(sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
-	memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
-	if (recon_info_record.debug == 1){
-		char outfn[4096];
-		sprintf(outfn,"init_sinogram_%s",recon_info_record.DataFileName);
-		FILE *out = fopen(outfn,"wb");
-		fwrite(information.sino_calc_buffer,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.det_ydim,1,out);
-		fclose(out);
+	if (recon_info_record.n_shifts==1){
+		int numProcs = atoi(argv[2]), procNr;
+		int nrSlicesThread = (int)ceil((double)recon_info_record.num_Jobs_Read / (2.0*(double)numProcs));
+		printf("Number of FFT jobs per thread %d\n",nrSlicesThread);
+		# pragma omp parallel num_threads(numProcs)
+		{
+			procNr = omp_get_thread_num();
+			int startSliceNr = procNr*nrSlicesThread*2;
+			int endSliceNr = startSliceNr + nrSlicesThread*2;
+			if (endSliceNr > recon_info_record.num_Jobs_Read) endSliceNr = recon_info_record.num_Jobs_Read;
+			printf("%d %d %d %d\n",procNr,startSliceNr,endSliceNr,-startSliceNr+endSliceNr);
+			// Allocate all the structs and arrays now
+			SINO_READ_OPTS readStruct;
+			readStruct.norm_sino = (float *) malloc(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
+			LOCAL_CONFIG_OPTS information;
+			information.shift = recon_info_record.shift_values[0];
+			setSinoSize(&information,&recon_info_record);
+			gridrecParams param;
+			param.sinogram_x_dim = information.sinogram_adjusted_xdim * 2;
+			param.theta_list = recon_info_record.theta_list;
+			param.filter_type = recon_info_record.filter;
+			param.theta_list_size = recon_info_record.theta_list_size;
+			size_t offt, offsetRecons;
+			setGridRecPSWF(&param);
+			initFFTMemoryStructures(&param);
+			initGridRec(&param);
+			int numSlice, sliceRowNr, oldSliceNr;
+			for (numSlice = 0; numSlice<(endSliceNr-startSliceNr)/2; numSlice++){
+				memsets(&information,&readStruct,recon_info_record);
+				int sliceNr;
+				sliceRowNr = startSliceNr + numSlice*2;
+				sliceNr = recon_info_record.slices_to_process[sliceRowNr];
+				oldSliceNr = sliceNr;
+				printf("Slice Nr: %d %d %d\n",sliceNr,startSliceNr,endSliceNr);
+				if (recon_info_record.are_sinos){
+					readSino(sliceNr,recon_info_record,&readStruct);
+				} else {
+					readRaw(sliceNr,recon_info_record,&readStruct);
+				}
+				memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
+				offt = 0;
+				offsetRecons = 0;
+				reconCentering(&information,&recon_info_record,offt);
+				setSinoAndReconBuffers(1, &information.sinograms_boundary_padding[offt], &information.reconstructions_boundary_padding[offsetRecons],&param);
+				sliceRowNr ++;
+				sliceNr = recon_info_record.slices_to_process[sliceRowNr];
+				printf("Slice Nr: %d %d %d\n",sliceNr,startSliceNr,endSliceNr);
+				if (recon_info_record.are_sinos){
+					readSino(sliceNr,recon_info_record,&readStruct);
+				} else {
+					readRaw(sliceNr,recon_info_record,&readStruct);
+				}
+				memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
+				offt = information.sinogram_adjusted_size*2;
+				offsetRecons = information.reconstruction_size*4;
+				reconCentering(&information,&recon_info_record,offt);
+				setSinoAndReconBuffers(2, &information.sinograms_boundary_padding[offt], &information.reconstructions_boundary_padding[offsetRecons],&param);
+				reconstruct(&param);
+				getRecons(&information,&recon_info_record,&param,0);
+				writeRecon(oldSliceNr,&information,&recon_info_record);
+				getRecons(&information,&recon_info_record,&param,offsetRecons);
+				writeRecon(sliceNr,&information,&recon_info_record);
+			}
+			destroyFFTMemoryStructures(&param);
+		}
 	}
-	gridrecParams param;
-	setGridRecPSWF(&param);
-	param.sinogram_x_dim = information.sinogram_adjusted_xdim * 2; // Always GRIDREC_PADDING_HALF is assumed.
-	param.theta_list = recon_info_record.theta_list;
-	param.filter_type = recon_info_record.filter;
-	param.theta_list_size = recon_info_record.theta_list_size;
-	initGridRec(&param);
-	information.shift = -4; // TEMPORARY
-	reconCentering(&information,&recon_info_record); // We can probably clean up the arrays after this if not needed.
-	// Placeholder to do the same slice twice
-	setSinoAndReconBuffers(1, &information.sinograms_boundary_padding[0], &information.reconstructions_boundary_padding[0],&param);
-	setSinoAndReconBuffers(2, &information.sinograms_boundary_padding[0], &information.reconstructions_boundary_padding[0],&param);
-	reconstruct(&param);
-	getRecons(&information,&recon_info_record,&param);
-	writeRecon(sliceNr,&information,&recon_info_record);
 	return 0;
 }
