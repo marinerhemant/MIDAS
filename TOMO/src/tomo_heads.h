@@ -150,8 +150,6 @@ typedef struct {
 		n_slices,
 		filter,
 		debug;
-	long num_Jobs_Read,
-		num_Jobs_Total;
 	int sinogram_adjusted_xdim,
 		reconstruction_size,
 		sinogram_adjusted_size;

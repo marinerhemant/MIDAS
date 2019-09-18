@@ -86,7 +86,6 @@ int main(int argc, char *argv[])
 		printf("Parameter file could not be read. Exiting.\n");
 		return 1;
 	}
-	recon_info_record.num_Jobs_Read = recon_info_record.n_slices;
 	if (access ("fftwf_wisdom_2d.txt", F_OK) == -1){
 		printf("FFT plan file did not exist, creating one.\n");
 		createPlanFile(recon_info_record);
@@ -107,10 +106,10 @@ int main(int argc, char *argv[])
 		# pragma omp parallel num_threads(numProcs)
 		{
 			int procNr = omp_get_thread_num();
-			int nrSlicesThread = (int)ceil((double)recon_info_record.num_Jobs_Read / (2.0*(double)numProcs));
+			int nrSlicesThread = (int)ceil((double)recon_info_record.n_slices / (2.0*(double)numProcs));
 			int startSliceNr = procNr*nrSlicesThread*2;
 			int endSliceNr = startSliceNr + nrSlicesThread*2;
-			if (endSliceNr > recon_info_record.num_Jobs_Read) endSliceNr = recon_info_record.num_Jobs_Read;
+			if (endSliceNr > recon_info_record.n_slices) endSliceNr = recon_info_record.n_slices;
 			printf("%d %d %d %d\n",procNr,startSliceNr,endSliceNr,-startSliceNr+endSliceNr);
 			// Allocate all the structs and arrays now
 			SINO_READ_OPTS readStruct;
