@@ -278,8 +278,11 @@ void four1(float data[], unsigned long nn, int isign, gridrecParams *param){
 			}
 			param->wisdom_string = fftwf_export_wisdom_to_string();
 		} else {
-			int rc = fftwf_import_wisdom_from_string(param->wisdom_string);
-			param->backward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_WISDOM_ONLY);
+			#pragma omp critical
+			{
+				int rc = fftwf_import_wisdom_from_string(param->wisdom_string);
+				param->backward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_WISDOM_ONLY);
+			}
 		}
 	}
 	memcpy(param->in_1d, data+1, n*sizeof(fftwf_complex));
