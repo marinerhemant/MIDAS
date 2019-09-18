@@ -87,7 +87,10 @@ void fourn(float data[], unsigned long nn[], int ndim, int isign, gridrecParams 
 		int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_2d.txt");
 		if (rc == 1){
 			printf("Read wisdom file 2d.\n");
-			param->forward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_WISDOM_ONLY);
+			#pragma omp critical
+			{
+				param->forward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_WISDOM_ONLY);
+			}
 		}else{
 			printf("Creating wisdom file.\n");
 			param->forward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_MEASURE);
@@ -265,7 +268,10 @@ void four1(float data[], unsigned long nn, int isign, gridrecParams *param){
 		int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_1d.txt");
 		if (rc == 1){
 			printf("Read wisdom file 1d.\n");
-			param->backward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_WISDOM_ONLY);
+			#pragma omp critical
+			{
+				param->backward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_WISDOM_ONLY);
+			}
 		} else {
 			param->backward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_MEASURE);
 			fftwf_export_wisdom_to_filename("fftwf_wisdom_1d.txt");
