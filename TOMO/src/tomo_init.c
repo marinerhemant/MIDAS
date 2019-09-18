@@ -150,7 +150,6 @@ int main(int argc, char *argv[])
 				setSinoAndReconBuffers(1, &information.sinograms_boundary_padding[offt], &information.reconstructions_boundary_padding[offsetRecons],&param);
 				sliceRowNr ++;
 				sliceNr = recon_info_record.slices_to_process[sliceRowNr];
-				printf("Slice Nr: %d %d %d\n",sliceNr,startSliceNr,endSliceNr);
 				if (recon_info_record.are_sinos){
 					readSino(sliceNr,recon_info_record,&readStruct);
 				} else {
