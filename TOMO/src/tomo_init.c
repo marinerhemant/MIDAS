@@ -174,7 +174,7 @@ int main(int argc, char *argv[])
 		for (i = 0; i < recon_info_record.n_slices; i ++)
 			readStruct[i].norm_sino = (float *) malloc(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 		// ReadStruct is now ready.
-		int nJobs = (numProcs > recon_info_record.n_slices) ? numProcs : recon_info_record.n_slices;
+		int nJobs = (numProcs < recon_info_record.n_slices) ? numProcs : recon_info_record.n_slices;
 		int procNr;
 		# pragma omp parallel num_threads(nJobs)
 		{
