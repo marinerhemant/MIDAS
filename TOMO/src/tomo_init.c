@@ -67,7 +67,7 @@ void usage(){
 		"OutputFileName: {recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_reconstruction_xdim_float_4byte.bin\n"
 		"The code will generate two text files: fftwf_wisdom_{1,2}d.txt. "
 		"These files are ways to speed up the fft calculation.\n"
-		"First run on a dataset generates these files which can be used to speed up subsequent runs.");
+		"First run on a dataset generates these files which can be used to speed up subsequent runs.\n");
 }
 
 int main(int argc, char *argv[])
@@ -94,11 +94,11 @@ int main(int argc, char *argv[])
 		printf("FFT plan file did not exist, creating one.\n");
 		createPlanFile(recon_info_record);
 	}
-	if (recon_info_record.n_shifts %2 !=0){
+	if (recon_info_record.n_shifts > 1 && recon_info_record.n_shifts %2 !=0){
 		printf("Number of shifts must be even. Exiting\n");
 		return 1;
 	}
-	if (recon_info_record.n_slices %2 !=0){
+	if (recon_info_record.n_shifts == 1 && recon_info_record.n_slices %2 !=0){
 		printf("Number of slices must be even. Exiting\n");
 		return 1;
 	}
