@@ -137,7 +137,7 @@ int main(int argc, char *argv[])
 				sliceRowNr = startSliceNr + numSlice*2;
 				sliceNr = recon_info_record.slices_to_process[sliceRowNr];
 				oldSliceNr = sliceNr;
-				printf("Processing slices: %d %d for thread: %d\n",sliceNr,recon_info_record.slices_to_process[sliceRowNr+1],procNr);
+				printf("Processing slices: %d %d\n",sliceNr,recon_info_record.slices_to_process[sliceRowNr+1]);
 				if (recon_info_record.are_sinos){
 					readSino(sliceNr,recon_info_record,&readStruct);
 				} else {
