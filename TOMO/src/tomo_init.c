@@ -137,7 +137,7 @@ int main(int argc, char *argv[])
 				sliceRowNr = startSliceNr + numSlice*2;
 				sliceNr = recon_info_record.slices_to_process[sliceRowNr];
 				oldSliceNr = sliceNr;
-				printf("Slice Nr: %d %d %d\n",sliceNr,startSliceNr,endSliceNr);
+				printf("Processing slices: %d %d for thread: %d\n",sliceNr,recon_info_record.slices_to_process[sliceRowNr+1],procNr);
 				if (recon_info_record.are_sinos){
 					readSino(sliceNr,recon_info_record,&readStruct);
 				} else {
@@ -217,6 +217,7 @@ int main(int argc, char *argv[])
 				shiftNr = (startJobNr + jobNr*2) % nJobs;
 				localSliceNr = recon_info_record.slices_to_process[sliceNr];
 				information.shift = recon_info_record.shift_values[shiftNr];
+				printf("Processing slice: %d, shifts: %d %d for thread: %d\n",localSliceNr,recon_info_record.shift_values[shiftNr],recon_info_record.shift_values[shiftNr+1],procNr);
 				memcpy(information.sino_calc_buffer,readStruct[localSliceNr].norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 				offt = 0;
 				offsetRecons = 0;
