@@ -127,6 +127,7 @@ int main(int argc, char *argv[])
 			param.theta_list = recon_info_record.theta_list;
 			param.filter_type = recon_info_record.filter;
 			param.theta_list_size = recon_info_record.theta_list_size;
+			param.wisdom_string = (char *) malloc(sizeof(char) * (strlen(recon_info_record.wisdom_string)+1));
 			strcpy(param.wisdom_string,recon_info_record.wisdom_string);
 			size_t offt, offsetRecons;
 			setGridRecPSWF(&param);
@@ -207,6 +208,7 @@ int main(int argc, char *argv[])
 			param.theta_list = recon_info_record.theta_list;
 			param.filter_type = recon_info_record.filter;
 			param.theta_list_size = recon_info_record.theta_list_size;
+			param.wisdom_string = (char *) malloc(sizeof(char) * (strlen(recon_info_record.wisdom_string)+1));
 			strcpy(param.wisdom_string,recon_info_record.wisdom_string);
 			size_t offt, offsetRecons;
 			setGridRecPSWF(&param);

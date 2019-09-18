@@ -607,6 +607,7 @@ void createPlanFile(GLOBAL_CONFIG_OPTS *recon_info_record){
 	setSinoAndReconBuffers(2, &information.sinograms_boundary_padding[0], &information.reconstructions_boundary_padding[0],&param);
 	param.setPlan = 1;
 	reconstruct(&param);
+	recon_info_record->wisdom_string = (char *) malloc(sizeof(char) * (strlen(param.wisdom_string)+1));
 	strcpy(recon_info_record->wisdom_string,param.wisdom_string);
 	destroyFFTMemoryStructures(&param);
 }
