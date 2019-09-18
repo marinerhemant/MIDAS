@@ -348,7 +348,7 @@ void readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *
 	//~ printf("init_sinogram %ld\n",(long)SizeSino);
 	//~ printf("norm_sino %ld\n",(long)(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size));
 	readStruct->init_sinogram = (float *) malloc(SizeSino);
-	#pragma omp critical
+	//#pragma omp critical
 	{
 		fseek(dataFile,offset,SEEK_SET);
 		fread(readStruct->init_sinogram,SizeSino,1,dataFile);
@@ -381,7 +381,7 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	//~ printf("dark_field_sino_ave %ld\n",(long)SizeDark);
 	readStruct->dark_field_sino_ave = (float *) malloc(SizeDark);
 	offset = sizeof(float)*sliceNr*recon_info_record.det_xdim;
-	#pragma omp critical
+	//#pragma omp critical
 	{
 		fseek(dataFile,offset,SEEK_SET);
 		fread(readStruct->dark_field_sino_ave,SizeDark,1,dataFile);
@@ -399,7 +399,7 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	readStruct->white_field_sino = (float *) malloc(SizeWhite);
 	offset = sizeof(float)*recon_info_record.det_xdim*recon_info_record.det_ydim // dark
 				+ sizeof(float)*recon_info_record.det_xdim*sliceNr; // Partial white
-	#pragma omp critical
+	//#pragma omp critical
 	{
 		fseek(dataFile,offset,SEEK_SET);
 		fread(readStruct->white_field_sino,SizeWhite/2,1,dataFile); // One Row
@@ -407,7 +407,7 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	offset = sizeof(float)*recon_info_record.det_xdim*recon_info_record.det_ydim // dark
 				+ sizeof(float)*recon_info_record.det_xdim*recon_info_record.det_ydim // One full white
 				+ sizeof(float)*recon_info_record.det_xdim*sliceNr; // Partial white
-	#pragma omp critical
+	//#pragma omp critical
 	{
 		fseek(dataFile,offset,SEEK_SET);
 		fread((readStruct->white_field_sino)+recon_info_record.det_xdim,SizeWhite/2,1,dataFile); // Second Row
@@ -426,7 +426,7 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	offset = sizeof(float)*recon_info_record.det_xdim*recon_info_record.det_ydim // dark
 				+ sizeof(float)*recon_info_record.det_xdim*recon_info_record.det_ydim // One full white
 				+ sizeof(float)*recon_info_record.det_xdim*recon_info_record.det_ydim; // Second full white
-	#pragma omp critical
+	//#pragma omp critical
 	{
 		fseek(dataFile,offset,SEEK_SET);
 		// We are now at the beginning of the image data.
@@ -438,7 +438,7 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	for (frameNr=1;frameNr<recon_info_record.sinogram_ydim;frameNr++){
 		//printf("FrameNr: %d\n",frameNr);fflush(stdout);
 		offset = sizeof(unsigned short int)*recon_info_record.det_xdim*(recon_info_record.det_ydim-1);
-		#pragma omp critical
+		//#pragma omp critical
 		{
 			fseek(dataFile,offset,SEEK_CUR);
 			fread((readStruct->short_sinogram)+recon_info_record.det_xdim*frameNr,sizeof(unsigned short int)*recon_info_record.det_xdim,1,dataFile); // One row each at the next subsequent place
