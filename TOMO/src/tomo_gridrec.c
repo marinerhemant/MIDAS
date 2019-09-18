@@ -59,11 +59,9 @@ void initFFTMemoryStructures (gridrecParams *param){
 
 void destroyFFTMemoryStructures (gridrecParams *param){
 	if (param->in_1d != NULL) fftwf_free (param->in_1d);
-	//fftwf_destroy_plan(param->forward_plan_1d);
 	fftwf_destroy_plan(param->backward_plan_1d);
 	if (param->in_2d != NULL) fftwf_free (param->in_2d);
 	fftwf_destroy_plan(param->forward_plan_2d);
-	//fftwf_destroy_plan(param->backward_plan_2d);
 }
 
 void fourn(float data[], unsigned long nn[], int ndim, int isign, gridrecParams *param){
@@ -84,17 +82,19 @@ void fourn(float data[], unsigned long nn[], int ndim, int isign, gridrecParams 
 		//~ printf("fft_test2f: creating plans, nx=%d, ny=%d, nx_prev=%d, ny_prev=%d\n", nx, ny, param->nx_prev, param->ny_prev);
 		param->nx_prev = nx;
 		param->ny_prev = ny;
-		int rc;
-		#pragma omp critical
-		{
-			rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_2d.txt");
-		}
-		if (rc == 1){
+		if (param->setPlan == 1){
+			int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_2d.txt");
+			if (rc == 1){
+				param->forward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_WISDOM_ONLY);
+			} else {
+				printf("Creating wisdom file.\n");
+				param->forward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_MEASURE);
+				fftwf_export_wisdom_to_filename("fftwf_wisdom_2d.txt");
+			}
+			param->wisdom_string = fftwf_export_wisdom_to_string();
+		} else {
+			int rc = fftwf_import_wisdom_from_string(param->wisdom_string);
 			param->forward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_WISDOM_ONLY);
-		}else{
-			printf("Creating wisdom file.\n");
-			param->forward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_MEASURE);
-			fftwf_export_wisdom_to_filename("fftwf_wisdom_2d.txt");
 		}
 	}
 	memcpy(param->in_2d, data+1, nx*ny*sizeof(fftwf_complex));
@@ -265,16 +265,18 @@ void four1(float data[], unsigned long nn, int isign, gridrecParams *param){
 		param->out_1d = param->in_1d;
 		//~ printf("fft_test1f: creating plans, n=%d, n_prev=%d\n", n, param->n_prev);
 		param->n_prev = n;
-		int rc;
-		#pragma omp critical
-		{
-			rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_1d.txt");
-		}
-		if (rc == 1){
-			param->backward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_WISDOM_ONLY);
+		if (param->setPlan == 1){
+			int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_1d.txt");
+			if (rc == 1){
+				param->backward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_WISDOM_ONLY);
+			} else {
+				param->backward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_MEASURE);
+				fftwf_export_wisdom_to_filename("fftwf_wisdom_1d.txt");
+			}
+			param->wisdom_string = fftwf_export_wisdom_to_string();
 		} else {
-			param->backward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_MEASURE);
-			fftwf_export_wisdom_to_filename("fftwf_wisdom_1d.txt");
+			int rc = fftwf_import_wisdom_from_string(param->wisdom_string);
+			param->backward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_WISDOM_ONLY);
 		}
 	}
 	memcpy(param->in_1d, data+1, n*sizeof(fftwf_complex));

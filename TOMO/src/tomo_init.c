@@ -86,12 +86,16 @@ int main(int argc, char *argv[])
 		printf("Parameter file could not be read. Exiting.\n");
 		return 1;
 	}
+	// Get FFT Plan
 	if (access ("fftwf_wisdom_2d.txt", F_OK) == -1){
 		printf("FFT plan file did not exist, creating one.\n");
-		createPlanFile(recon_info_record);
+		createPlanFile(&recon_info_record);
 	} else if(access ("fftwf_wisdom_1d.txt", F_OK) == -1) {
 		printf("FFT plan file did not exist, creating one.\n");
-		createPlanFile(recon_info_record);
+		createPlanFile(&recon_info_record);
+	} else {
+		printf("Reading wisdom file.\n");
+		createPlanFile(&recon_info_record);
 	}
 	if (recon_info_record.n_shifts > 1 && recon_info_record.n_shifts %2 !=0){
 		printf("Number of shifts must be even. Exiting\n");
@@ -102,6 +106,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	int numProcs = atoi(argv[2]);
+	int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_1d.txt");
 	if (recon_info_record.n_shifts==1){
 		# pragma omp parallel num_threads(numProcs)
 		{
@@ -122,6 +127,7 @@ int main(int argc, char *argv[])
 			param.theta_list = recon_info_record.theta_list;
 			param.filter_type = recon_info_record.filter;
 			param.theta_list_size = recon_info_record.theta_list_size;
+			strcpy(param.wisdom_string,recon_info_record.wisdom_string);
 			size_t offt, offsetRecons;
 			setGridRecPSWF(&param);
 			initFFTMemoryStructures(&param);
@@ -201,6 +207,7 @@ int main(int argc, char *argv[])
 			param.theta_list = recon_info_record.theta_list;
 			param.filter_type = recon_info_record.filter;
 			param.theta_list_size = recon_info_record.theta_list_size;
+			strcpy(param.wisdom_string,recon_info_record.wisdom_string);
 			size_t offt, offsetRecons;
 			setGridRecPSWF(&param);
 			initFFTMemoryStructures(&param);

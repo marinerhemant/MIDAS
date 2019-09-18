@@ -579,31 +579,34 @@ void writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS re
 	}
 }
 
-void createPlanFile(GLOBAL_CONFIG_OPTS recon_info_record){
-	int sliceNr = recon_info_record.slices_to_process[0];
+void createPlanFile(GLOBAL_CONFIG_OPTS *recon_info_record){
+	int sliceNr = recon_info_record->slices_to_process[0];
 	SINO_READ_OPTS readStruct;
-	readStruct.norm_sino = (float *) malloc(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
+	readStruct.norm_sino = (float *) malloc(sizeof(float)*recon_info_record->sinogram_adjusted_xdim*recon_info_record->theta_list_size);
 	LOCAL_CONFIG_OPTS information;
-	setSinoSize(&information,recon_info_record);
+	GLOBAL_CONFIG_OPTS cpy = *recon_info_record;
+	setSinoSize(&information,cpy);
 	gridrecParams param;
 	param.sinogram_x_dim = information.sinogram_adjusted_xdim * 2;
-	param.theta_list = recon_info_record.theta_list;
-	param.filter_type = recon_info_record.filter;
-	param.theta_list_size = recon_info_record.theta_list_size;
+	param.theta_list = recon_info_record->theta_list;
+	param.filter_type = recon_info_record->filter;
+	param.theta_list_size = recon_info_record->theta_list_size;
 	setGridRecPSWF(&param);
 	initFFTMemoryStructures(&param);
 	initGridRec(&param);
-	information.shift = recon_info_record.shift_values[0];
-	if (recon_info_record.are_sinos){
-		readSino(sliceNr,recon_info_record,&readStruct);
+	information.shift = recon_info_record->shift_values[0];
+	if (recon_info_record->are_sinos){
+		readSino(sliceNr,cpy,&readStruct);
 	} else {
-		readRaw(sliceNr,recon_info_record,&readStruct);
+		readRaw(sliceNr,cpy,&readStruct);
 	}
-	memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
-	reconCentering(&information,recon_info_record,0);
+	memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record->theta_list_size);
+	reconCentering(&information,cpy,0);
 	// Do the same slice twice
 	setSinoAndReconBuffers(1, &information.sinograms_boundary_padding[0], &information.reconstructions_boundary_padding[0],&param);
 	setSinoAndReconBuffers(2, &information.sinograms_boundary_padding[0], &information.reconstructions_boundary_padding[0],&param);
+	param.setPlan = 1;
 	reconstruct(&param);
+	strcpy(recon_info_record->wisdom_string,param.wisdom_string);
 	destroyFFTMemoryStructures(&param);
 }

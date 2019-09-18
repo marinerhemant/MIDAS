@@ -84,7 +84,8 @@ typedef struct {
 		filter_type,
 		n_prev,
 		nx_prev, 
-		ny_prev;
+		ny_prev,
+		setPlan;
 	unsigned long sinogram_x_dim;
 	fftwf_complex *in_1d, 
 		*out_1d;
@@ -92,6 +93,7 @@ typedef struct {
 		forward_plan_2d;
 	fftwf_complex 	*in_2d, 
 		*out_2d;
+	char *wisdom_string;
 } gridrecParams;
 
 // Functions
@@ -153,6 +155,7 @@ typedef struct {
 	int sinogram_adjusted_xdim,
 		reconstruction_size,
 		sinogram_adjusted_size;
+	char *wisdom_string;
 }GLOBAL_CONFIG_OPTS;
 
 typedef struct {
@@ -204,5 +207,6 @@ void Pad (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS recon_info_record);
 void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,size_t offt);
 void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,gridrecParams *param,size_t offsetRecons);
 void writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record);
+void createPlanFile(GLOBAL_CONFIG_OPTS *recon_info_record);
 
 #endif
