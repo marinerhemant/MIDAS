@@ -93,9 +93,11 @@ void fourn(float data[], unsigned long nn[], int ndim, int isign, gridrecParams 
 			}
 			param->wisdom_string = fftwf_export_wisdom_to_string();
 		} else {
-			printf("%s\n",param->wisdom_string); fflush(stdout);
-			int rc = fftwf_import_wisdom_from_string(param->wisdom_string);
-			param->forward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_WISDOM_ONLY);
+			#pragma omp critical
+			{
+				int rc = fftwf_import_wisdom_from_string(param->wisdom_string);
+				param->forward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_WISDOM_ONLY);
+			}
 		}
 	}
 	memcpy(param->in_2d, data+1, nx*ny*sizeof(fftwf_complex));
