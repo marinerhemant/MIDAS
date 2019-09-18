@@ -108,7 +108,7 @@ int main(int argc, char *argv[])
 	int numProcs = atoi(argv[2]);
 	int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_1d.txt");
 	if (recon_info_record.n_shifts==1){
-		printf("ThreadNr StartSliceNr EndSliceNr NrSlices")
+		printf("ThreadNr StartSliceNr EndSliceNr NrSlices");
 		# pragma omp parallel num_threads(numProcs)
 		{
 			int procNr = omp_get_thread_num();
