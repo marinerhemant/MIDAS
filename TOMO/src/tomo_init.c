@@ -244,7 +244,7 @@ int main(int argc, char *argv[])
 			}
 			destroyFFTMemoryStructures(&param);
 		}
-		
 	}
+	printf("Done.\n")
 	return 0;
 }
