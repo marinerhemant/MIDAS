@@ -301,7 +301,7 @@ void setReadStructSize (GLOBAL_CONFIG_OPTS *recon_info_record){
 	}
 }
 
-void memsets(LOCAL_CONFIG_OPTS *information, SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS recon_info_record){
+void memsets(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record){
 	memset(information->shifted_recon,0,sizeof (float)*information->reconstruction_size);
 	memset(information->shifted_sinogram,0,sizeof (float)*information->sinogram_adjusted_size);
 	memset(information->sinograms_boundary_padding,0,sizeof(float)*information->sinogram_adjusted_size*2*2); // Hold two sinos
@@ -313,7 +313,6 @@ void memsets(LOCAL_CONFIG_OPTS *information, SINO_READ_OPTS *readStruct, GLOBAL_
 		memset(information->mean_sino_line_data,0,sizeof (float)*information->sinogram_adjusted_xdim);
 		memset(information->low_pass_sino_lines_data,0,sizeof(float) *information->sinogram_adjusted_xdim);
 	}
-	memset(readStruct->norm_sino,0,sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 }
 
 void setSinoSize (LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS *recon_info_record){

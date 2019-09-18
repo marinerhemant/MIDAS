@@ -186,7 +186,7 @@ typedef struct {
 int setGlobalOpts(char inputFile[], GLOBAL_CONFIG_OPTS *recon_info_record);
 void setSinoSize (LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS *recon_info_record);
 void setReadStructSize (GLOBAL_CONFIG_OPTS *recon_info_record);
-void memsets(LOCAL_CONFIG_OPTS *information, SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS recon_info_record);
+void memsets(LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS recon_info_record);
 
 //--------------------------------------------------------------------------------------------------------------------------
 // ReadData
