@@ -264,7 +264,7 @@ void four1(float data[], unsigned long nn, int isign, gridrecParams *param){
 		param->n_prev = n;
 		int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_1d.txt");
 		if (rc == 1){
-			printf("Read wisdom file 2d.\n");
+			printf("Read wisdom file 1d.\n");
 			param->backward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_WISDOM_ONLY);
 		} else {
 			param->backward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_MEASURE);
