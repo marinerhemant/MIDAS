@@ -184,7 +184,7 @@ typedef struct {
 //--------------------------------------------------------------------------------------------------------------------------
 // Initiate Config Opts Structs
 int setGlobalOpts(char inputFile[], GLOBAL_CONFIG_OPTS *recon_info_record);
-void setSinoSize (LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS *recon_info_record);
+void setSinoSize (LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS recon_info_record);
 void setReadStructSize (GLOBAL_CONFIG_OPTS *recon_info_record);
 void memsets(LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS recon_info_record);
 
@@ -195,16 +195,16 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 
 //--------------------------------------------------------------------------------------------------------------------------
 // Corrections
-void RingCorrectionSingle (float *data, float ring_coeff, LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS *recon_info_record);
+void RingCorrectionSingle (float *data, float ring_coeff, LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS recon_info_record);
 void LogSinogram (float *data, int xdim, int ydim);
 void LogProj(float *data, int xdim, int ydim);
-void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_record);
-void Pad (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_record);
+void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS recon_info_record);
+void Pad (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS recon_info_record);
 
 //--------------------------------------------------------------------------------------------------------------------------
 // Processing code
-void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_info_record,size_t offt);
-void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_info_record,gridrecParams *param,size_t offsetRecons);
-void writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_info_record);
+void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,size_t offt);
+void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,gridrecParams *param,size_t offsetRecons);
+void writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record);
 
 #endif

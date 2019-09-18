@@ -104,12 +104,10 @@ int main(int argc, char *argv[])
 	}
 	int numProcs = atoi(argv[2]);
 	if (recon_info_record.n_shifts==1){
-		int procNr;
-		int nrSlicesThread = (int)ceil((double)recon_info_record.num_Jobs_Read / (2.0*(double)numProcs));
-		printf("Number of FFT jobs per thread %d\n",nrSlicesThread);
 		# pragma omp parallel num_threads(numProcs)
 		{
-			procNr = omp_get_thread_num();
+			int procNr = omp_get_thread_num();
+			int nrSlicesThread = (int)ceil((double)recon_info_record.num_Jobs_Read / (2.0*(double)numProcs));
 			int startSliceNr = procNr*nrSlicesThread*2;
 			int endSliceNr = startSliceNr + nrSlicesThread*2;
 			if (endSliceNr > recon_info_record.num_Jobs_Read) endSliceNr = recon_info_record.num_Jobs_Read;
@@ -119,7 +117,7 @@ int main(int argc, char *argv[])
 			readStruct.norm_sino = (float *) malloc(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 			LOCAL_CONFIG_OPTS information;
 			information.shift = recon_info_record.shift_values[0];
-			setSinoSize(&information,&recon_info_record);
+			setSinoSize(&information,recon_info_record);
 			gridrecParams param;
 			param.sinogram_x_dim = information.sinogram_adjusted_xdim * 2;
 			param.theta_list = recon_info_record.theta_list;
@@ -146,7 +144,7 @@ int main(int argc, char *argv[])
 				memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 				offt = 0;
 				offsetRecons = 0;
-				reconCentering(&information,&recon_info_record,offt);
+				reconCentering(&information,recon_info_record,offt);
 				setSinoAndReconBuffers(1, &information.sinograms_boundary_padding[offt], &information.reconstructions_boundary_padding[offsetRecons],&param);
 				sliceRowNr ++;
 				sliceNr = recon_info_record.slices_to_process[sliceRowNr];
@@ -158,13 +156,13 @@ int main(int argc, char *argv[])
 				memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 				offt = information.sinogram_adjusted_size*2;
 				offsetRecons = information.reconstruction_size*4;
-				reconCentering(&information,&recon_info_record,offt);
+				reconCentering(&information,recon_info_record,offt);
 				setSinoAndReconBuffers(2, &information.sinograms_boundary_padding[offt], &information.reconstructions_boundary_padding[offsetRecons],&param);
 				reconstruct(&param);
-				getRecons(&information,&recon_info_record,&param,0);
-				writeRecon(oldSliceNr,&information,&recon_info_record);
-				getRecons(&information,&recon_info_record,&param,offsetRecons);
-				writeRecon(sliceNr,&information,&recon_info_record);
+				getRecons(&information,recon_info_record,&param,0);
+				writeRecon(oldSliceNr,&information,recon_info_record);
+				getRecons(&information,recon_info_record,&param,offsetRecons);
+				writeRecon(sliceNr,&information,recon_info_record);
 			}
 			destroyFFTMemoryStructures(&param);
 		}
@@ -175,10 +173,9 @@ int main(int argc, char *argv[])
 			readStruct[i].norm_sino = (float *) malloc(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 		// ReadStruct is now ready.
 		int nJobs = (numProcs < recon_info_record.n_slices) ? numProcs : recon_info_record.n_slices;
-		int procNr;
 		# pragma omp parallel num_threads(nJobs)
 		{
-			procNr = omp_get_thread_num();
+			int procNr = omp_get_thread_num();
 			int sliceNr;
 			sliceNr = recon_info_record.slices_to_process[procNr];
 			printf("Reading SliceNr: %d.\n",sliceNr);
@@ -193,13 +190,13 @@ int main(int argc, char *argv[])
 		printf("Number of FFT jobs per thread %d\n",nrSlicesThread);
 		# pragma omp parallel num_threads(numProcs)
 		{
-			procNr = omp_get_thread_num();
+			int procNr = omp_get_thread_num();
 			int startJobNr, endJobNr;
 			startJobNr = procNr*nrSlicesThread*2;
 			endJobNr = (startJobNr + nrSlicesThread*2 > nJobs) ? startJobNr + nrSlicesThread*2 : nJobs;
 			LOCAL_CONFIG_OPTS information;
 			information.shift = recon_info_record.shift_values[0];
-			setSinoSize(&information,&recon_info_record);
+			setSinoSize(&information,recon_info_record);
 			gridrecParams param;
 			param.sinogram_x_dim = information.sinogram_adjusted_xdim * 2;
 			param.theta_list = recon_info_record.theta_list;
@@ -220,20 +217,20 @@ int main(int argc, char *argv[])
 				memcpy(information.sino_calc_buffer,readStruct[localSliceNr].norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 				offt = 0;
 				offsetRecons = 0;
-				reconCentering(&information,&recon_info_record,offt);
+				reconCentering(&information,recon_info_record,offt);
 				setSinoAndReconBuffers(1, &information.sinograms_boundary_padding[offt], &information.reconstructions_boundary_padding[offsetRecons],&param);
 				information.shift = recon_info_record.shift_values[shiftNr+1];
 				offt = information.sinogram_adjusted_size*2;
 				offsetRecons = information.reconstruction_size*4;
-				reconCentering(&information,&recon_info_record,offt);
+				reconCentering(&information,recon_info_record,offt);
 				setSinoAndReconBuffers(2, &information.sinograms_boundary_padding[offt], &information.reconstructions_boundary_padding[offsetRecons],&param);
 				reconstruct(&param);
 				information.shift = recon_info_record.shift_values[shiftNr];
-				getRecons(&information,&recon_info_record,&param,0);
-				writeRecon(localSliceNr,&information,&recon_info_record);
+				getRecons(&information,recon_info_record,&param,0);
+				writeRecon(localSliceNr,&information,recon_info_record);
 				information.shift = recon_info_record.shift_values[shiftNr+1];
-				getRecons(&information,&recon_info_record,&param,offsetRecons);
-				writeRecon(localSliceNr,&information,&recon_info_record);
+				getRecons(&information,recon_info_record,&param,offsetRecons);
+				writeRecon(localSliceNr,&information,recon_info_record);
 			}
 			destroyFFTMemoryStructures(&param);
 		}

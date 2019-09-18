@@ -45,22 +45,22 @@ void LogSinogram (float *data, int xdim, int ydim){
 	}
 }
 
-void RingCorrectionSingle (float *data, float ring_coeff, LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS *recon_info_record) { 
+void RingCorrectionSingle (float *data, float ring_coeff, LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS recon_info_record) { 
 	int         i, j, m; 
 	float       mean_total; 
 	float       tmp; 
 	for (m=0;m<20;m++) {
-		for (i=0;i<recon_info_record->sinogram_ydim;i++)  information->mean_vect[i] = 0.0; 
+		for (i=0;i<recon_info_record.sinogram_ydim;i++)  information->mean_vect[i] = 0.0; 
 		mean_total = 0.0; 
-		for (i=0;i<recon_info_record->sinogram_ydim;i++) {
+		for (i=0;i<recon_info_record.sinogram_ydim;i++) {
 			for (j=0;j<information->sinogram_adjusted_xdim;j++) {
 				information->mean_vect[i] += data[i*information->sinogram_adjusted_xdim+j]; 
 			}
 			information->mean_vect[i] /= information->sinogram_adjusted_xdim; 
 			mean_total += information->mean_vect[i]; 
 		} 
-		mean_total /= recon_info_record->sinogram_ydim; 
-		for (i=0;i<recon_info_record->sinogram_ydim;i++) {
+		mean_total /= recon_info_record.sinogram_ydim; 
+		for (i=0;i<recon_info_record.sinogram_ydim;i++) {
 			for (j=0;j<information->sinogram_adjusted_xdim;j++) {
 				if (information->mean_vect[i] != 0.0) {
 					data[i*information->sinogram_adjusted_xdim+j] = data[i*information->sinogram_adjusted_xdim+j]*mean_total/information->mean_vect[i];
@@ -68,16 +68,16 @@ void RingCorrectionSingle (float *data, float ring_coeff, LOCAL_CONFIG_OPTS *inf
 			}
 		}
 		for (i=0;i<information->sinogram_adjusted_xdim;i++)  information->mean_sino_line_data[i] = 0.0; 
-		for (i=0;i<recon_info_record->sinogram_ydim;i++) 
+		for (i=0;i<recon_info_record.sinogram_ydim;i++) 
 			for (j=0;j<information->sinogram_adjusted_xdim;j++) 
 				information->mean_sino_line_data[j] += data[i*information->sinogram_adjusted_xdim+j]; 
-		for (i=0;i<information->sinogram_adjusted_xdim;i++)  information->mean_sino_line_data[i] /= recon_info_record->sinogram_ydim; 
+		for (i=0;i<information->sinogram_adjusted_xdim;i++)  information->mean_sino_line_data[i] /= recon_info_record.sinogram_ydim; 
 		for (j=1;j<information->sinogram_adjusted_xdim-1;j++) {
 			information->low_pass_sino_lines_data[j] = (information->mean_sino_line_data[j-1]+information->mean_sino_line_data[j]+information->mean_sino_line_data[j+1])/3.0; 
 		}
 		information->low_pass_sino_lines_data[0] = information->mean_sino_line_data[0]; 
 		information->low_pass_sino_lines_data[information->sinogram_adjusted_xdim-1] = information->mean_sino_line_data[information->sinogram_adjusted_xdim-1]; 
-		for (i=0;i<recon_info_record->sinogram_ydim;i++) {
+		for (i=0;i<recon_info_record.sinogram_ydim;i++) {
 			for (j=0;j<information->sinogram_adjusted_xdim;j++) {
 				tmp = information->mean_sino_line_data[j]-information->low_pass_sino_lines_data[j]; 
 				if ((data[i*information->sinogram_adjusted_xdim+j] - (tmp * ring_coeff) ) > 0.0) 
@@ -98,44 +98,44 @@ void RingCorrectionSingle (float *data, float ring_coeff, LOCAL_CONFIG_OPTS *inf
  * W_x = (1-p)*W1_x + (p)*W2_x and
  * p = y/nr_y
 */
-// This function assumes the short_sino is the proper sinogram, white_field_sino is two rows of first and last wf image slice, dark_field_sino_ave is a single slice. Size of each sino is recon_info_record->sinogram_xdim, output norm_sino is information->sinogram_adjusted_xdim (padded)
+// This function assumes the short_sino is the proper sinogram, white_field_sino is two rows of first and last wf image slice, dark_field_sino_ave is a single slice. Size of each sino is recon_info_record.sinogram_xdim, output norm_sino is information->sinogram_adjusted_xdim (padded)
 
-void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_record){
-	int pad_size = recon_info_record->sinogram_adjusted_xdim - recon_info_record->sinogram_xdim,
+void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS recon_info_record){
+	int pad_size = recon_info_record.sinogram_adjusted_xdim - recon_info_record.sinogram_xdim,
 		front_pad_size = pad_size / 2,
 		back_pad_size = pad_size - front_pad_size;
 	//~ printf("P ad sizes %d %d\n",front_pad_size,back_pad_size);
 	int frameNr, pxNr, colNr;
 	float temp_val, white_temp, factor;
-	for (frameNr=0;frameNr<recon_info_record->sinogram_ydim;frameNr++){
-		factor = (float)frameNr / (float)recon_info_record->theta_list_size;
-		for (pxNr=0;pxNr<recon_info_record->sinogram_adjusted_xdim;pxNr ++){
+	for (frameNr=0;frameNr<recon_info_record.sinogram_ydim;frameNr++){
+		factor = (float)frameNr / (float)recon_info_record.theta_list_size;
+		for (pxNr=0;pxNr<recon_info_record.sinogram_adjusted_xdim;pxNr ++){
 			if (pxNr<front_pad_size){ // front padding
 				colNr = 0; // first pixel
-			} else if (pxNr >=front_pad_size+recon_info_record->sinogram_xdim){ // back padding
-				colNr = recon_info_record->sinogram_xdim-1; // last pixel
+			} else if (pxNr >=front_pad_size+recon_info_record.sinogram_xdim){ // back padding
+				colNr = recon_info_record.sinogram_xdim-1; // last pixel
 			} else {
 				colNr = pxNr - front_pad_size; // actual pixel
 			}
-			white_temp = (1-factor) * (float) readStruct->white_field_sino[colNr] + (factor) * (float) readStruct->white_field_sino[colNr+recon_info_record->sinogram_xdim];
-			//printf("colNr frameNr xdim totSize : %d %d %d %d\n",colNr,frameNr,readStruct->sinogram_adjusted_xdim,recon_info_record->det_xdim*recon_info_record->theta_list_size);fflush(stdout);
-			temp_val = ((float)readStruct->short_sinogram[colNr+frameNr*recon_info_record->det_xdim] - readStruct->dark_field_sino_ave[colNr]) /(white_temp-readStruct->dark_field_sino_ave[colNr]);
-			readStruct->norm_sino[frameNr*recon_info_record->sinogram_adjusted_xdim+pxNr] = temp_val;
+			white_temp = (1-factor) * (float) readStruct->white_field_sino[colNr] + (factor) * (float) readStruct->white_field_sino[colNr+recon_info_record.sinogram_xdim];
+			//printf("colNr frameNr xdim totSize : %d %d %d %d\n",colNr,frameNr,readStruct->sinogram_adjusted_xdim,recon_info_record.det_xdim*recon_info_record.theta_list_size);fflush(stdout);
+			temp_val = ((float)readStruct->short_sinogram[colNr+frameNr*recon_info_record.det_xdim] - readStruct->dark_field_sino_ave[colNr]) /(white_temp-readStruct->dark_field_sino_ave[colNr]);
+			readStruct->norm_sino[frameNr*recon_info_record.sinogram_adjusted_xdim+pxNr] = temp_val;
 		}
 		
 	}
 }
 
-void Pad (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS *recon_info_record){ // Take the sino directly read (init_sinogram) and pad it, return norm_sino.
-	int pad_size = recon_info_record->sinogram_adjusted_xdim - recon_info_record->sinogram_xdim,
+void Pad (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS recon_info_record){ // Take the sino directly read (init_sinogram) and pad it, return norm_sino.
+	int pad_size = recon_info_record.sinogram_adjusted_xdim - recon_info_record.sinogram_xdim,
 		front_pad_size = pad_size / 2,
 		back_pad_size = pad_size - front_pad_size;
 	int colNr, frameNr;
-	for (frameNr=0;frameNr<recon_info_record->sinogram_ydim;frameNr++){
-		for (colNr=0;colNr<recon_info_record->sinogram_adjusted_xdim;colNr++){
-			if (colNr<front_pad_size) readStruct->norm_sino[colNr+frameNr*recon_info_record->sinogram_adjusted_xdim] = readStruct->init_sinogram[frameNr*recon_info_record->det_xdim];
-			else if (colNr>=front_pad_size+recon_info_record->sinogram_xdim) readStruct->norm_sino[colNr+frameNr*recon_info_record->sinogram_adjusted_xdim] = readStruct->init_sinogram[recon_info_record->sinogram_xdim-1+frameNr*recon_info_record->det_xdim];
-			else readStruct->norm_sino[colNr+frameNr*recon_info_record->sinogram_adjusted_xdim] = readStruct->init_sinogram[colNr+frameNr*recon_info_record->det_xdim-front_pad_size];
+	for (frameNr=0;frameNr<recon_info_record.sinogram_ydim;frameNr++){
+		for (colNr=0;colNr<recon_info_record.sinogram_adjusted_xdim;colNr++){
+			if (colNr<front_pad_size) readStruct->norm_sino[colNr+frameNr*recon_info_record.sinogram_adjusted_xdim] = readStruct->init_sinogram[frameNr*recon_info_record.det_xdim];
+			else if (colNr>=front_pad_size+recon_info_record.sinogram_xdim) readStruct->norm_sino[colNr+frameNr*recon_info_record.sinogram_adjusted_xdim] = readStruct->init_sinogram[recon_info_record.sinogram_xdim-1+frameNr*recon_info_record.det_xdim];
+			else readStruct->norm_sino[colNr+frameNr*recon_info_record.sinogram_adjusted_xdim] = readStruct->init_sinogram[colNr+frameNr*recon_info_record.det_xdim-front_pad_size];
 		}
 	}
 }
@@ -315,10 +315,10 @@ void memsets(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record
 	}
 }
 
-void setSinoSize (LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS *recon_info_record){
-	information->sinogram_adjusted_xdim = recon_info_record->sinogram_adjusted_xdim;
-	information->sinogram_adjusted_size = recon_info_record->sinogram_adjusted_size;
-	information->reconstruction_size = recon_info_record->reconstruction_size;
+void setSinoSize (LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS recon_info_record){
+	information->sinogram_adjusted_xdim = recon_info_record.sinogram_adjusted_xdim;
+	information->sinogram_adjusted_size = recon_info_record.sinogram_adjusted_size;
+	information->reconstruction_size = recon_info_record.reconstruction_size;
 	//~ printf("shifted_recon: %ld\n",(long)(sizeof (float)*information->reconstruction_size));
 	//~ printf("shifted_sinogram %ld\n",(long)(sizeof (float)*information->sinogram_adjusted_size));
 	//~ printf("sinograms_boundary_padding %ld\n",(long)(sizeof(float)*information->sinogram_adjusted_size*2));
@@ -329,12 +329,12 @@ void setSinoSize (LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS *recon_info
 	information->sinograms_boundary_padding = (float *) malloc (sizeof(float)*information->sinogram_adjusted_size*2*2); // Hold two sinos
 	information->reconstructions_boundary_padding = (float *) malloc (sizeof(float)*information->reconstruction_size*4*2); // Hold two recons
 	information->recon_calc_buffer = (float *) malloc (sizeof(float)*information->reconstruction_size*2);
-	information->sino_calc_buffer = (float *) malloc(sizeof(float)*information->sinogram_adjusted_xdim*recon_info_record->theta_list_size);
-	if (recon_info_record->auto_centering){
-		//~ printf("mean_vect %ld\n",(long)(sizeof (float)*recon_info_record->sinogram_ydim));
+	information->sino_calc_buffer = (float *) malloc(sizeof(float)*information->sinogram_adjusted_xdim*recon_info_record.theta_list_size);
+	if (recon_info_record.auto_centering){
+		//~ printf("mean_vect %ld\n",(long)(sizeof (float)*recon_info_record.sinogram_ydim));
 		//~ printf("mean_sino_line_data %ld\n",(long)(sizeof (float)*information->sinogram_adjusted_xdim));
 		//~ printf("low_pass_sino_lines_data %ld\n",(long)(sizeof(float) *information->sinogram_adjusted_xdim));
-		information->mean_vect = (float *) malloc (sizeof (float)*recon_info_record->sinogram_ydim);
+		information->mean_vect = (float *) malloc (sizeof (float)*recon_info_record.sinogram_ydim);
 		information->mean_sino_line_data = (float *) malloc (sizeof (float)*information->sinogram_adjusted_xdim);
 		information->low_pass_sino_lines_data = (float  *) malloc (sizeof(float) *information->sinogram_adjusted_xdim); 
 	}
@@ -358,7 +358,7 @@ void readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *
 		//~ fwrite(readStruct->init_sinogram,SizeSino,1,out);
 		//~ fclose(out);
 	//~ }
-	Pad(readStruct,&recon_info_record);
+	Pad(readStruct,recon_info_record);
 	//~ if (recon_info_record.debug == 1){
 		//~ char outfn[4096];
 		//~ sprintf(outfn,"norm_sino_%s",recon_info_record.DataFileName);
@@ -435,7 +435,7 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	//~ }
 	SizeNormSino = sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size;
 	//~ printf("norm_sino %ld\n",(long)SizeNormSino);
-	Normalize(readStruct,&recon_info_record);
+	Normalize(readStruct,recon_info_record);
 	//~ if (recon_info_record.debug == 1){
 		//~ char outfn[4096];
 		//~ sprintf(outfn,"norm_sino_%s",recon_info_record.DataFileName);
@@ -448,22 +448,22 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	free(readStruct->dark_field_sino_ave);
 }
 
-void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_info_record,size_t offt){
+void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,size_t offt){
 	int j, k;
-	LogProj(information->sino_calc_buffer, information->sinogram_adjusted_xdim, recon_info_record->sinogram_ydim);
-	//~ if (recon_info_record->debug == 1){
+	LogProj(information->sino_calc_buffer, information->sinogram_adjusted_xdim, recon_info_record.sinogram_ydim);
+	//~ if (recon_info_record.debug == 1){
 		//~ char outfn[4096];
-		//~ sprintf(outfn,"logproj_sino_%s",recon_info_record->DataFileName);
+		//~ sprintf(outfn,"logproj_sino_%s",recon_info_record.DataFileName);
 		//~ FILE *out = fopen(outfn,"wb");
-		//~ fwrite(information->sino_calc_buffer,sizeof(float)*information->sinogram_adjusted_xdim*recon_info_record->sinogram_ydim,1,out);
+		//~ fwrite(information->sino_calc_buffer,sizeof(float)*information->sinogram_adjusted_xdim*recon_info_record.sinogram_ydim,1,out);
 		//~ fclose(out);
 	//~ }
-	for( j = 0; j < recon_info_record->sinogram_ydim; j++ ){
+	for( j = 0; j < recon_info_record.sinogram_ydim; j++ ){
 		for( k = 0; k < information->sinogram_adjusted_xdim; k++ ){
 			information->shifted_recon[j * information->sinogram_adjusted_xdim+ k] = 0.0f;
 		}
 	}
-	for( j = 0; j < recon_info_record->sinogram_ydim; j++ ){
+	for( j = 0; j < recon_info_record.sinogram_ydim; j++ ){
 		for( k = 0; k < information->sinogram_adjusted_xdim; k++ ){
 			float kk = k - information->shift; 
 			int nkk = (int)floor(kk);
@@ -485,17 +485,17 @@ void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_inf
 		}
 	}
 	memcpy(&information->sino_calc_buffer[0], information->shifted_sinogram, sizeof(float) * information->sinogram_adjusted_size);
-	if (recon_info_record->use_ring_removal){
-		RingCorrectionSingle (&information->sino_calc_buffer[0],recon_info_record->ring_removal_coeff,information,recon_info_record);
+	if (recon_info_record.use_ring_removal){
+		RingCorrectionSingle (&information->sino_calc_buffer[0],recon_info_record.ring_removal_coeff,information,recon_info_record);
 	}
-	//~ if (recon_info_record->debug == 1){
+	//~ if (recon_info_record.debug == 1){
 		//~ char outfn[4096];
-		//~ sprintf(outfn,"shifted_sino_%s",recon_info_record->DataFileName);
+		//~ sprintf(outfn,"shifted_sino_%s",recon_info_record.DataFileName);
 		//~ FILE *out = fopen(outfn,"wb");
-		//~ fwrite(information->sino_calc_buffer,sizeof(float)*information->sinogram_adjusted_xdim*recon_info_record->sinogram_ydim,1,out);
+		//~ fwrite(information->sino_calc_buffer,sizeof(float)*information->sinogram_adjusted_xdim*recon_info_record.sinogram_ydim,1,out);
 		//~ fclose(out);
 	//~ }
-	for( j = 0; j < recon_info_record->sinogram_ydim; j++ ){
+	for( j = 0; j < recon_info_record.sinogram_ydim; j++ ){
 		memcpy( &information->sinograms_boundary_padding[offt + j * information->sinogram_adjusted_xdim * 2 + information->sinogram_adjusted_xdim / 2 ],&information->sino_calc_buffer[j * information->sinogram_adjusted_xdim ], sizeof(float) * information->sinogram_adjusted_xdim);
 		for( k = 0; k < information->sinogram_adjusted_xdim /2; k++ ){
 			information->sinograms_boundary_padding[offt + j * information->sinogram_adjusted_xdim * 2 + k ] = information->sinograms_boundary_padding[offt + j * information->sinogram_adjusted_xdim * 2 + information->sinogram_adjusted_xdim / 2 ];
@@ -506,47 +506,47 @@ void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_inf
 	}
 }
 
-void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_info_record,gridrecParams *param, size_t offsetRecons){
+void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,gridrecParams *param, size_t offsetRecons){
 	int j,k;
-	for ( j=0;j<recon_info_record->reconstruction_ydim;j++){
+	for ( j=0;j<recon_info_record.reconstruction_ydim;j++){
 		if (information->shift >= 0){
-			memcpy(&information->recon_calc_buffer[j * recon_info_record->reconstruction_xdim ],&information->reconstructions_boundary_padding[offsetRecons + ( j + recon_info_record->reconstruction_xdim / 2 ) * recon_info_record->reconstruction_xdim * 2 + recon_info_record->reconstruction_xdim / 2 ], sizeof(float) * (recon_info_record->reconstruction_xdim) ); 
+			memcpy(&information->recon_calc_buffer[j * recon_info_record.reconstruction_xdim ],&information->reconstructions_boundary_padding[offsetRecons + ( j + recon_info_record.reconstruction_xdim / 2 ) * recon_info_record.reconstruction_xdim * 2 + recon_info_record.reconstruction_xdim / 2 ], sizeof(float) * (recon_info_record.reconstruction_xdim) ); 
 		}else{
-			memcpy(&information->recon_calc_buffer[j * recon_info_record->reconstruction_xdim ],&information->reconstructions_boundary_padding[offsetRecons + ( j + recon_info_record->reconstruction_xdim / 2 ) * recon_info_record->reconstruction_xdim * 2 + recon_info_record->reconstruction_xdim / 2 ], sizeof(float) * (recon_info_record->reconstruction_xdim) );
+			memcpy(&information->recon_calc_buffer[j * recon_info_record.reconstruction_xdim ],&information->reconstructions_boundary_padding[offsetRecons + ( j + recon_info_record.reconstruction_xdim / 2 ) * recon_info_record.reconstruction_xdim * 2 + recon_info_record.reconstruction_xdim / 2 ], sizeof(float) * (recon_info_record.reconstruction_xdim) );
 		}
 	}
-	//~ if (recon_info_record->debug == 1){
+	//~ if (recon_info_record.debug == 1){
 		//~ char outfn[4096];
-		//~ sprintf(outfn,"recon_calc_buffer_before_shift_%s",recon_info_record->DataFileName);
+		//~ sprintf(outfn,"recon_calc_buffer_before_shift_%s",recon_info_record.DataFileName);
 		//~ FILE *out = fopen(outfn,"wb");
-		//~ fwrite(information->recon_calc_buffer,sizeof(float)*recon_info_record->reconstruction_xdim*recon_info_record->reconstruction_ydim,1,out);
+		//~ fwrite(information->recon_calc_buffer,sizeof(float)*recon_info_record.reconstruction_xdim*recon_info_record.reconstruction_ydim,1,out);
 		//~ fclose(out);
 	//~ }
-	for( j = 0; j < recon_info_record->sinogram_ydim; j++ ){
-		for( k = 0; k < recon_info_record->reconstruction_xdim; k++ ){
-			information->shifted_recon[j * recon_info_record->reconstruction_xdim + k] = 0.0f;
+	for( j = 0; j < recon_info_record.sinogram_ydim; j++ ){
+		for( k = 0; k < recon_info_record.reconstruction_xdim; k++ ){
+			information->shifted_recon[j * recon_info_record.reconstruction_xdim + k] = 0.0f;
 		}
 	}
 	float *recon_buffer;
-	if (recon_info_record->auto_centering){
+	if (recon_info_record.auto_centering){
 		recon_buffer = &information->recon_calc_buffer[0];
 		if (information->shift >= 0){
-			for ( j=0;j<recon_info_record->reconstruction_ydim;j++)
-				memcpy (&information->shifted_recon[j*recon_info_record->reconstruction_xdim], (void *) &recon_buffer[(j*recon_info_record->reconstruction_xdim)+ (int)round(information->shift) ], sizeof(float)*(recon_info_record->reconstruction_xdim- (int)round(information->shift) ));
+			for ( j=0;j<recon_info_record.reconstruction_ydim;j++)
+				memcpy (&information->shifted_recon[j*recon_info_record.reconstruction_xdim], (void *) &recon_buffer[(j*recon_info_record.reconstruction_xdim)+ (int)round(information->shift) ], sizeof(float)*(recon_info_record.reconstruction_xdim- (int)round(information->shift) ));
 		} else {
-			for ( j=0;j<recon_info_record->reconstruction_ydim;j++)
-				memcpy (&information->shifted_recon[(j*recon_info_record->reconstruction_xdim)+abs ((int)round(information->shift))], (void *) &recon_buffer[j*recon_info_record->reconstruction_xdim], sizeof(float)*(recon_info_record->reconstruction_xdim-abs ((int)round(information->shift) )));
+			for ( j=0;j<recon_info_record.reconstruction_ydim;j++)
+				memcpy (&information->shifted_recon[(j*recon_info_record.reconstruction_xdim)+abs ((int)round(information->shift))], (void *) &recon_buffer[j*recon_info_record.reconstruction_xdim], sizeof(float)*(recon_info_record.reconstruction_xdim-abs ((int)round(information->shift) )));
 		}
 		memcpy ((void *) recon_buffer, information->shifted_recon, sizeof(float)*information->reconstruction_size);
 	}
 }
 
-void writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS *recon_info_record){
+void writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record){
 	// The results are in information.recon_calc_buffer
 	// Output file: float with reconstruction_xdim*reconstruction_xdim size
 	// OutputFileName: {recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_reconstruction_xdim_float_4byte.bin
 	char outFileName[4096];
-	sprintf(outFileName,"%s_%d_%f_%d_%d_float_4byte.bin",recon_info_record->ReconFileName,sliceNr,information->shift,recon_info_record->reconstruction_xdim,recon_info_record->reconstruction_xdim);
+	sprintf(outFileName,"%s_%05d_%6.1f_%d_%d_float32.bin",recon_info_record.ReconFileName,sliceNr,information->shift,recon_info_record.reconstruction_xdim,recon_info_record.reconstruction_xdim);
 	FILE *outfile;
 	//printf("Saving output to : %s.\n",outFileName);
 	outfile = fopen(outFileName,"wb");
@@ -559,7 +559,7 @@ void createPlanFile(GLOBAL_CONFIG_OPTS recon_info_record){
 	SINO_READ_OPTS readStruct;
 	readStruct.norm_sino = (float *) malloc(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 	LOCAL_CONFIG_OPTS information;
-	setSinoSize(&information,&recon_info_record);
+	setSinoSize(&information,recon_info_record);
 	gridrecParams param;
 	param.sinogram_x_dim = information.sinogram_adjusted_xdim * 2;
 	param.theta_list = recon_info_record.theta_list;
@@ -575,7 +575,7 @@ void createPlanFile(GLOBAL_CONFIG_OPTS recon_info_record){
 		readRaw(sliceNr,recon_info_record,&readStruct);
 	}
 	memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
-	reconCentering(&information,&recon_info_record,0);
+	reconCentering(&information,recon_info_record,0);
 	// Do the same slice twice
 	setSinoAndReconBuffers(1, &information.sinograms_boundary_padding[0], &information.reconstructions_boundary_padding[0],&param);
 	setSinoAndReconBuffers(2, &information.sinograms_boundary_padding[0], &information.reconstructions_boundary_padding[0],&param);
