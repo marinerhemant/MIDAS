@@ -224,8 +224,6 @@ int main(int argc, char *argv[])
 				shiftNr = (startJobNr + jobNr*2) % nJobs;
 				localSliceNr = recon_info_record.slices_to_process[sliceNr];
 				information.shift = recon_info_record.shift_values[shiftNr];
-				printf("%d %d %d %d %d %d %d %d %f\n",nJobs,nrSlicesThread,procNr,startJobNr,endJobNr,sliceNr,shiftNr,localSliceNr,information.shift);
-				//printf("Processing slice: %d, shifts: %f %f for thread: %d, %d\n",localSliceNr,recon_info_record.shift_values[shiftNr],recon_info_record.shift_values[shiftNr+1],procNr,sliceNr);
 				memcpy(information.sino_calc_buffer,readStruct[sliceNr].norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 				offt = 0;
 				offsetRecons = 0;
