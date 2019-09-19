@@ -175,9 +175,9 @@ int main(int argc, char *argv[])
 			destroyFFTMemoryStructures(&param);
 		}
 	} else { // We have multiple shits, (possibly multiple slices_to_process)
-		SINO_READ_OPTS readStruct[recon_info_record.n_slices];
+		SINO_READ_OPTS readStruct[recon_info_record.n_slices+1];
 		int i;
-		for (i = 0; i < recon_info_record.n_slices; i ++)
+		for (i = 0; i < recon_info_record.n_slices+1; i ++)
 			readStruct[i].norm_sino = (float *) malloc(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 		// ReadStruct is now ready.
 		int nJobs = (numProcs < recon_info_record.n_slices) ? numProcs : recon_info_record.n_slices;
@@ -224,7 +224,7 @@ int main(int argc, char *argv[])
 				shiftNr = (startJobNr + jobNr*2) % nJobs;
 				localSliceNr = recon_info_record.slices_to_process[sliceNr];
 				information.shift = recon_info_record.shift_values[shiftNr];
-				printf("Processing slice: %d, shifts: %f %f for thread: %d, %d\n",localSliceNr,recon_info_record.shift_values[shiftNr],recon_info_record.shift_values[shiftNr+1],procNr,recon_info_record.theta_list_size);
+				printf("Processing slice: %d, shifts: %f %f for thread: %d, %d\n",localSliceNr,recon_info_record.shift_values[shiftNr],recon_info_record.shift_values[shiftNr+1],procNr,sliceNr);
 				memcpy(information.sino_calc_buffer,readStruct[sliceNr].norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 				offt = 0;
 				offsetRecons = 0;
