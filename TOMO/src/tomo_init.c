@@ -201,7 +201,7 @@ int main(int argc, char *argv[])
 			int procNr = omp_get_thread_num();
 			int startJobNr, endJobNr;
 			startJobNr = procNr*nrSlicesThread*2;
-			endJobNr = (startJobNr + nrSlicesThread*2 > nJobs) ? startJobNr + nrSlicesThread*2 : nJobs;
+			endJobNr = (startJobNr + nrSlicesThread*2 < nJobs) ? startJobNr + nrSlicesThread*2 : nJobs;
 			LOCAL_CONFIG_OPTS information;
 			information.shift = recon_info_record.shift_values[0];
 			setSinoSize(&information,recon_info_record);
