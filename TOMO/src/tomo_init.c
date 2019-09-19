@@ -108,7 +108,7 @@ int main(int argc, char *argv[])
 	int numProcs = atoi(argv[2]);
 	int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_1d.txt");
 	if (recon_info_record.n_shifts==1){
-		printf("ThreadNr\tStartSliceNr\tEndSliceNr\tNrSlices\n");
+		//~ printf("ThreadNr\tStartSliceNr\tEndSliceNr\tNrSlices\n");
 		# pragma omp parallel num_threads(numProcs)
 		{
 			int procNr = omp_get_thread_num();
@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
 			int startSliceNr = procNr*nrSlicesThread*2;
 			int endSliceNr = startSliceNr + nrSlicesThread*2;
 			if (endSliceNr > recon_info_record.n_slices) endSliceNr = recon_info_record.n_slices;
-			printf("%d\t\t%d\t\t%d\t\t%d\n",procNr,startSliceNr,endSliceNr,-startSliceNr+endSliceNr);
+			//~ printf("%d\t\t%d\t\t%d\t\t%d\n",procNr,startSliceNr,endSliceNr,-startSliceNr+endSliceNr);
 			// Allocate all the structs and arrays now
 			SINO_READ_OPTS readStruct;
 			readStruct.norm_sino = (float *) malloc(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
@@ -143,7 +143,7 @@ int main(int argc, char *argv[])
 				sliceRowNr = startSliceNr + numSlice*2;
 				sliceNr = recon_info_record.slices_to_process[sliceRowNr];
 				oldSliceNr = sliceNr;
-				printf("Processing step: %d of %d, thread Nr: %d\n",numSlice,(endSliceNr-startSliceNr)/2,procNr);
+				//~ printf("Processing step: %d of %d, thread Nr: %d\n",numSlice,(endSliceNr-startSliceNr)/2,procNr);
 				if (recon_info_record.are_sinos){
 					readSino(sliceNr,recon_info_record,&readStruct);
 				} else {
