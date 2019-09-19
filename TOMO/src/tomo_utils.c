@@ -261,6 +261,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 			recon_info_record->n_slices = recon_info_record->det_ydim;
 		} else {
 			printf("We are doing only 1 slice: %s\n",slices);
+			recon_info_record->n_slices = 1;
 			recon_info_record->slices_to_process = (uint *) malloc(sizeof(uint)*1);
 			recon_info_record->slices_to_process[0] = atoi(slices);
 		}
