@@ -565,7 +565,7 @@ void writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS re
 	// Output file: float with reconstruction_xdim*reconstruction_xdim size
 	// OutputFileName: {recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_reconstruction_xdim_float_4byte.bin
 	char outFileName[4096];
-	if (information->shift > 0.0001){
+	if (information->shift > -0.0001){
 		sprintf(outFileName,"%s_%05d_p%06.1f_%d_%d_float32.bin",recon_info_record.ReconFileName,sliceNr,information->shift,recon_info_record.reconstruction_xdim,recon_info_record.reconstruction_xdim);
 	} else {
 		sprintf(outFileName,"%s_%05d_m%06.1f_%d_%d_float32.bin",recon_info_record.ReconFileName,sliceNr,-information->shift,recon_info_record.reconstruction_xdim,recon_info_record.reconstruction_xdim);
