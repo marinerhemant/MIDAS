@@ -22,6 +22,7 @@ from subprocess import Popen, PIPE, STDOUT, call
 from multiprocessing.dummy import Pool
 import multiprocessing
 from numba import jit
+import PIL
 
 deg2rad = 0.0174532925199433
 rad2deg = 57.2957795130823
@@ -428,6 +429,101 @@ def Enable1D():
 		cButton1D.config(state=Tk.DISABLED)
 		OneDOutVar.set(0)
 
+def processSquare():
+	global tomImageConvert
+	global npxyvar, npxzvar
+	thisfolder = thisfoldervar.get()
+	fstem = fstemvar.get()
+	outfstem = outfstemvar.get()
+	startnr = stnrvar.get()
+	fnext = fnextvar.get()
+	pad = paddingvar.get()
+	npxy = npxyvar.get()
+	npxz = npxzvar.get()
+	if fnext == 'tif':
+		print "We have tif"
+		fn = thisfolder+'/'+fstem+'_'+str(startnr).zfill(pad)+'.'+fnext
+		print fn
+		head = np.fromfile(open(fn,'rb'),dtype=np.uint8,count=8192)
+		im = PIL.Image.open(fn)
+		img = np.array(im,dtype=np.float32)
+		npxyvar.set(img.shape[0])
+		npxzvar.set(img.shape[1])
+		npxy = npxyvar.get()
+		npxz = npxzvar.get()
+		bigdim = max(npxy,npxz)
+		maxVal = np.amax(img)
+		minVal = np.amin(img)
+		imgScale = maxVal - minVal
+		img = (img - minVal) * 65535 / (imgScale)
+		img = img.round()
+		outimg = np.zeros((bigdim,bigdim))
+		outF = open(thisfolder+'/'+outfstem+'_square_'+str(bigdim)+'_px_'+str(startnr).zfill(pad)+'.raw','wb')
+		np.array(head).tofile(outF)
+		outimg[:npxy,:npxz]=img
+		outimg = outimg.astype(np.uint16)
+		np.array(outimg).tofile(outF)
+	else:
+		print "We have RAW."
+		fn = thisfolder+'/'+fstem+'_'+str(startnr).zfill(pad)+'.'+fnext
+		print fn
+		sizefile = os.stat(fn).st_size
+		sizeframe = npxy*npxz*4 # hard coded that float32
+		nFrames = (sizefile - 8192)/sizeframe
+		print nFrames
+		inF = open(fn,'rb')
+		head = np.fromfile(inF,dtype=np.uint8,count=8192)
+		bytesToSkip = 8192
+		inF.seek(bytesToSkip,os.SEEK_SET)
+		bigdim = max(npxy,npxz)
+		outimg = np.zeros((bigdim,bigdim))
+		outimg = outimg.astype(np.uint16)
+		outF = open(thisfolder+'/'+outfstem+'_square_'+str(bigdim)+'_px_'+str(startnr).zfill(pad)+'.'+fnext,'wb')
+		np.array(head).tofile(outF)
+		for framenr in range(nFrames):
+			img = np.fromfile(inF,dtype=np.int32,count=(npxy*npxz))
+			maxVal = np.amax(img)
+			minVal = np.amin(img)
+			imgScale = maxVal - minVal
+			img = (img - minVal) * 65535 / (imgScale)
+			img = img.round()
+			img = img.astype(np.uint16)
+			img = img.reshape((npxy,npxz))
+			outimg[:npxy,:npxz] = img
+			np.array(outimg).tofile(outF)
+	returnBack()
+
+def returnBack():
+	global tomImageConvert
+	topImageConvert.destroy()
+
+def raw_to_ge():
+	global thisfoldervar, fstemvar, stnrvar, endnrvar, fnextvar, paddingvar, outfstemvar
+	global npxyvar, npxzvar
+	global topImageConvert
+	topImageConvert = Tk.Toplevel()
+	topImageConvert.title('Convert Rectangle Shaped Images to Square Images')
+	Tk.Label(master=topImageConvert,text='            Folder').grid(row=1,column=1)
+	Tk.Entry(master=topImageConvert,textvariable=thisfoldervar,width=50).grid(row=1,column=2,sticky=Tk.W)
+	Tk.Label(master=topImageConvert,text='         File Stem').grid(row=2,column=1)
+	Tk.Entry(master=topImageConvert,textvariable=fstemvar,width=50).grid(row=2,column=2,sticky=Tk.W)
+	Tk.Label(master=topImageConvert,text='      OutFile Stem').grid(row=3,column=1)
+	Tk.Entry(master=topImageConvert,textvariable=outfstemvar,width=50).grid(row=3,column=2,sticky=Tk.W)
+	Tk.Label(master=topImageConvert,text='      File Number').grid(row=4,column=1)
+	Tk.Entry(master=topImageConvert,textvariable=stnrvar,width=6 ).grid(row=4,column=2,sticky=Tk.W)
+	Tk.Label(master=topImageConvert,text='           Padding').grid(row=6,column=1)
+	Tk.Entry(master=topImageConvert,textvariable=paddingvar,width=6 ).grid(row=6,column=2,sticky=Tk.W)
+	Tk.Label(master=topImageConvert,text='    File Extension').grid(row=7,column=1)
+	Tk.Entry(master=topImageConvert,textvariable=fnextvar,width=6 ).grid(row=7,column=2,sticky=Tk.W)
+	Tk.Label(master=topImageConvert,text='         NrPixelsY').grid(row=8,column=1)
+	Tk.Entry(master=topImageConvert,textvariable=npxyvar,width=6 ).grid(row=8,column=2,sticky=Tk.W)
+	Tk.Label(master=topImageConvert,text='         NrPixelsZ').grid(row=9,column=1)
+	Tk.Entry(master=topImageConvert,textvariable=npxzvar,width=6 ).grid(row=9,column=2,sticky=Tk.W)
+	Tk.Button(master=topImageConvert,text="Process",command=processSquare).grid(row=10,column=1)
+	Tk.Button(master=topImageConvert,text="Exit",command=returnBack).grid(row=10,column=2)
+	Tk.Label(master=topImageConvert,text="For tiff input: Will take StartNr to EndNr i").grid(row=11,column=1,columnspan=2)
+
+
 def processStitch():
 	global topStitch
 	thisfolder = thisfoldervar.get()
@@ -735,14 +831,19 @@ thisfoldervar = Tk.StringVar()
 fstemvar = Tk.StringVar()
 outfstemvar = Tk.StringVar()
 stnrvar = Tk.IntVar()
+endnrvar = Tk.IntVar()
 fnextvar = Tk.StringVar()
+fnextvar.set('tif')
 paddingvar = Tk.IntVar()
+paddingvar.set(6)
 darkfnvar = Tk.StringVar()
 nfilesperscanvar = Tk.IntVar()
 nscansvar = Tk.IntVar()
 nlayersvar = Tk.IntVar()
 translationvar = Tk.IntVar()
 npxvar = Tk.IntVar()
+npxyvar = Tk.IntVar()
+npxzvar = Tk.IntVar()
 nframesvar = Tk.IntVar()
 
 rowFigSize = 3
@@ -782,6 +883,9 @@ Tk.Button(master=leftSideFrame,text='Quit',command=_quit,
 
 Tk.Button(master=leftSideFrame,text='StitchFF',command=stitch_ff,
 	font=("Helvetica",20)).grid(row=1,column=0,padx=10,pady=10)
+
+Tk.Button(master=leftSideFrame,text='Raw2GE',command=raw_to_ge,
+	font=("Helvetica",20)).grid(row=3,column=0,padx=10,pady=10)
 
 Tk.Button(master=firstRowFrame,text='SelectFirstFile',
 	command=firstFileSelector,font=("Helvetica",12)).grid(row=1,
