@@ -446,19 +446,19 @@ def processSquare():
 		print fn
 		head = np.fromfile(open(fn,'rb'),dtype=np.uint8,count=8192)
 		im = PIL.Image.open(fn)
-		img = np.array(im,dtype=np.float32)
+		img = np.array(im,dtype=np.int32)
 		npxyvar.set(img.shape[0])
 		npxzvar.set(img.shape[1])
 		npxy = npxyvar.get()
 		npxz = npxzvar.get()
 		bigdim = max(npxy,npxz)
-		maxVal = np.amax(img)
-		minVal = np.amin(img)
-		imgScale = maxVal - minVal
-		img = (img - minVal) * 65535 / (imgScale)
+		img = np.where(img==-2,16*65535,img)
+		img = np.where(img==-1,16*65535,img)
+		img = img.astype(np.double)
+		img = img / 16.0
 		img = img.round()
 		outimg = np.zeros((bigdim,bigdim))
-		outF = open(thisfolder+'/'+outfstem+'_square_'+str(bigdim)+'_px_'+str(startnr).zfill(pad)+'.raw','wb')
+		outF = open(thisfolder+'/'+outfstem+'_square_'+str(bigdim)+'_px_'+str(startnr).zfill(pad)+'.ge3','wb')
 		np.array(head).tofile(outF)
 		outimg[:npxy,:npxz]=img
 		outimg = outimg.astype(np.uint16)
@@ -478,15 +478,16 @@ def processSquare():
 		bigdim = max(npxy,npxz)
 		outimg = np.zeros((bigdim,bigdim))
 		outimg = outimg.astype(np.uint16)
-		outF = open(thisfolder+'/'+outfstem+'_square_'+str(bigdim)+'_px_'+str(startnr).zfill(pad)+'.'+fnext,'wb')
+		outF = open(thisfolder+'/'+outfstem+'_square_'+str(bigdim)+'_px_'+str(startnr).zfill(pad)+'.ge3','wb')
 		np.array(head).tofile(outF)
 		for framenr in range(nFrames):
 			img = np.fromfile(inF,dtype=np.int32,count=(npxy*npxz))
-			maxVal = np.amax(img)
-			minVal = np.amin(img)
-			imgScale = maxVal - minVal
-			img = (img - minVal) * 65535 / (imgScale)
+			img = np.where(img==-2,16*65535,img)
+			img = np.where(img==-1,16*65535,img)
+			img = img.astype(np.double)
+			img = img / 16.0
 			img = img.round()
+			print famenr
 			img = img.astype(np.uint16)
 			img = img.reshape((npxy,npxz))
 			outimg[:npxy,:npxz] = img

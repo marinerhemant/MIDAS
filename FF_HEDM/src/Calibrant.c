@@ -1075,6 +1075,7 @@ int main(int argc, char *argv[])
 			MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,DarkFile,DarkFile2);
 			DoImageTransformations(NrTransOpt,TransOpt,DarkFile2,NrPixels);
 			if (makeMap == 1){
+				size_t badPxCounter = 0;
 				mapMaskSize = NrPixels;
 				mapMaskSize *= NrPixels;
 				mapMaskSize /= 32;
@@ -1082,10 +1083,12 @@ int main(int argc, char *argv[])
 				mapMask = calloc(mapMaskSize,sizeof(*mapMask));
 				for (j=0;j<NrPixels*NrPixels;j++){
 					if (DarkFile2[j] == (pixelvalue) GapIntensity || DarkFile2[j] == (pixelvalue) BadPxIntensity){
+						badPxCounter++;
 						SetBit(mapMask,j);
 					}
 				}
 				makeMap = 0;
+				printf("%lld\n",(long long int)badPxCounter);
 			}
 			for(j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]+=DarkFile2[j];
 		}

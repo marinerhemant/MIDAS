@@ -548,7 +548,8 @@ int main(int argc, char *argv[]){
     double RhoD, tx, ty, tz, p0, p1, p2;
     double OmegaRanges[20][2];
     int nOmeRanges = 0;
-    int minNrPx=1, maxNrPx=10000;
+    size_t BadPxIntensity = 0;
+    int minNrPx=1, maxNrPx=10000, makeMap = 0;
     while (fgets(aline,1000,fileParam)!=NULL){
 		//printf("%s",aline);
 		fflush(stdout);
@@ -758,6 +759,13 @@ int main(int argc, char *argv[]){
             sscanf(aline,"%s %d", dummy, &NrDarkFramesDataFile);
             continue;
         }
+        str = "BadPxIntensity ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %zu", dummy, &BadPxIntensity);
+            makeMap = 1;
+            continue;
+        }
         str = "MaxRingRad ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -855,8 +863,8 @@ int main(int argc, char *argv[]){
 		fseek(darkfile,0L,SEEK_END);
 		sz = ftell(darkfile);
 		rewind(darkfile);
-		nFrames = sz/(8*1024*1024);
-		Skip = sz - (nFrames*8*1024*1024);
+		nFrames = sz/(2*NrPixels*NrPixels);
+		Skip = sz - (nFrames*2*NrPixels*NrPixels);
 		fseek(darkfile,Skip,SEEK_SET);
 		printf("Reading dark file: %s, nFrames: %d, skipping first %ld bytes.\n",darkcurrentfilename,nFrames,Skip);
 		for (i=0;i<nFrames;i++){
@@ -956,7 +964,7 @@ int main(int argc, char *argv[]){
 	sz = ftell(dummyFile);
 	sz = sz - headSize;
 	fclose(dummyFile);
-	nFrames = sz/(8*1024*1024);
+	nFrames = sz/(2*NrPixels*NrPixels);
 
 	char FN[2048];
 	int ReadFileNr;
@@ -1010,14 +1018,24 @@ int main(int argc, char *argv[]){
 	sz = ftell(ImageFile);
 	rewind(ImageFile);
 	size_t temp = (nFrames-FramesToSkip);
-	temp *= 8;
-	temp *= 1024;
-	temp *= 1024;
+	temp *= 2;
+	temp *= NrPixels;
+	temp *= NrPixels;
 	Skip = sz - temp;
 	printf("Now processing file: %s\n",FN);
 	double beamcurr=1;
 	fseek(ImageFile,Skip,SEEK_SET);
 	fread(Image,SizeFile,1,ImageFile);
+	if (makeMap == 1){
+		int badPxCounter = 0;
+		for (i=0;i<NrPixels*NrPixels;i++){
+			if (Image[i] == (pixelvalue)BadPxIntensity){
+				Image[i] = 0;
+				badPxCounter++;
+			}
+		}
+		printf("Number of badPixels %d\n",badPxCounter);
+	}
 	fclose(ImageFile);
 	DoImageTransformations(NrTransOpt,TransOpt,Image,NrPixels);
 	printf("Beam current this file: %f, Beam current scaling value: %f\n",beamcurr,bc);
@@ -1030,11 +1048,12 @@ int main(int argc, char *argv[]){
 	for (i=0;i<(NrPixels*NrPixels);i++){
 		ImgCorrBC[i] = (ImgCorrBC[i] - dark[i])/flood[i];
 		ImgCorrBC[i] = ImgCorrBC[i]*bc/beamcurr;
-		if (ImgCorrBC[i] < Thresh){
-			ImgCorrBC[i] = 0;
-		}
 		if (GoodCoords[i] == 0){
 			ImgCorrBC[i] = 0;
+		} else {
+			if (ImgCorrBC[i] < Thresh){
+				ImgCorrBC[i] = 0;
+			}
 		}
 	}
 	free(GoodCoords);

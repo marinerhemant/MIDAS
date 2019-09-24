@@ -348,7 +348,7 @@ main(int argc, char *argv[])
 	char fn2[1000];
 	char direct[1000];
     double OmegaRanges[MAX_N_OMEGA_RANGES][2], BoxSizes[MAX_N_OMEGA_RANGES][4];
-    int cntr=0,countr=0,conter=0,StartNr,EndNr,intdummy,SpaceGroup;
+    int cntr=0,countr=0,conter=0,StartNr,EndNr,intdummy,SpaceGroup, RingsToUse[100],nRingsToUse=0;
     int NoOfOmegaRanges=0;
     Wedge = 0;
     while (fgets(aline,1000,fileParam)!=NULL){
@@ -375,6 +375,13 @@ main(int argc, char *argv[])
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %d", dummy, &SpaceGroup);
+            continue;
+        }
+		str = "RingsToUse ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &RingsToUse[nRingsToUse]);
+            nRingsToUse++;
             continue;
         }
         str = "MaxRingRad ";
@@ -727,6 +734,29 @@ main(int argc, char *argv[])
 				&hkls[n_hkls][2],&Thetas[n_hkls],dummy,dummy);
 			n_hkls++;
 		}
+		if (nRingsToUse > 0){
+			double hklTemps[n_hkls][4];
+			int totalHKLs=0;
+			for (i=0;i<nRingsToUse;i++){
+				for (j=0;j<n_hkls;j++){
+					if ((int)hkls[j][3] == RingsToUse[i]){
+						hklTemps[totalHKLs][0] = hkls[j][0];
+						hklTemps[totalHKLs][1] = hkls[j][1];
+						hklTemps[totalHKLs][2] = hkls[j][2];
+						hklTemps[totalHKLs][3] = hkls[j][3];
+						totalHKLs++;
+					}
+				}
+			}
+			for (i=0;i<totalHKLs;i++){
+				hkls[i][0] = hklTemps[i][0];
+				hkls[i][1] = hklTemps[i][1];
+				hkls[i][2] = hklTemps[i][2];
+				hkls[i][3] = hklTemps[i][3];
+			}
+			n_hkls = totalHKLs;
+		}
+		printf("Number of individual diffracting planes: %d\n",n_hkls);
         BestFrac = -1;
         for (i=0;i<OrientationGoodID;i++){
             for (j=0;j<9;j++){

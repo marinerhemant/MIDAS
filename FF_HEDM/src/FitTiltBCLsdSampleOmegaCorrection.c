@@ -134,31 +134,31 @@ void YZ4mREta(int NrElements, double *R, double *Eta, double *Y, double *Z){
 	}
 }
 
-static inline 
-void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc, double px, double *R, double *Eta, double Rmins[n_hkls],
-						   double Rmaxs[n_hkls], double EtaBinsLow[nEtaBins], double EtaBinsHigh[nEtaBins], int nIndices, int *NrEachIndexbin, int **Indices){
-	int i, j, k, l, counter=0;
-	for (i=0;i<nIndices;i++) NrEachIndexbin[i]=0;
-	for (i=0;i<y;i++){
-		for (j=0;j<z;j++){
-			R[counter] = px*sqrt(((j-ybc)*(j-ybc))+((i-zbc)*(i-zbc)));
-			Eta[counter] = CalcEtaAngle(-(j-ybc),(i-zbc));
-			for (k=0;k<n_hkls;k++){
-				if (R[counter] >= Rmins[k] && R[counter] <= Rmaxs[k]){
-					for (l=0;l<nEtaBins;l++){
-						if (Eta[counter] >= EtaBinsLow[l] && Eta[counter] < EtaBinsHigh[l]){
-							Indices[(nEtaBins*k)+l][NrEachIndexbin[(nEtaBins*k)+l]] = (i*2048) + j;
-							NrEachIndexbin[(nEtaBins*k)+l] += 1;
-							break;
-						}
-					}
-					break;
-				}
-			}
-			counter++;
-		}
-	}
-}
+//~ static inline 
+//~ void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc, double px, double *R, double *Eta, double Rmins[n_hkls],
+						   //~ double Rmaxs[n_hkls], double EtaBinsLow[nEtaBins], double EtaBinsHigh[nEtaBins], int nIndices, int *NrEachIndexbin, int **Indices){
+	//~ int i, j, k, l, counter=0;
+	//~ for (i=0;i<nIndices;i++) NrEachIndexbin[i]=0;
+	//~ for (i=0;i<y;i++){
+		//~ for (j=0;j<z;j++){
+			//~ R[counter] = px*sqrt(((j-ybc)*(j-ybc))+((i-zbc)*(i-zbc)));
+			//~ Eta[counter] = CalcEtaAngle(-(j-ybc),(i-zbc));
+			//~ for (k=0;k<n_hkls;k++){
+				//~ if (R[counter] >= Rmins[k] && R[counter] <= Rmaxs[k]){
+					//~ for (l=0;l<nEtaBins;l++){
+						//~ if (Eta[counter] >= EtaBinsLow[l] && Eta[counter] < EtaBinsHigh[l]){
+							//~ Indices[(nEtaBins*k)+l][NrEachIndexbin[(nEtaBins*k)+l]] = (i*2048) + j;
+							//~ NrEachIndexbin[(nEtaBins*k)+l] += 1;
+							//~ break;
+						//~ }
+					//~ }
+					//~ break;
+				//~ }
+			//~ }
+			//~ counter++;
+		//~ }
+	//~ }
+//~ }
 
 static inline 
 void CalcWeightedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Average, double *R, double *Eta, double *RMean, double *EtaMean){
