@@ -22,7 +22,7 @@
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 #define EPS 1E-5
-#define MAX_N_SPOTS 200
+#define MAX_N_SPOTS 500
 #define MAX_N_OMEGA_RANGES 20
 #define MAX_POINTS_GRID_GOOD 200000
 
