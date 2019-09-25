@@ -867,14 +867,14 @@ main(int argc, char *argv[])
 		fgets(aline,4096,inpF);
 		fgets(aline,4096,inpF);
 		sscanf(aline,"%s %lld",dummy,&totalElements);
-		InputInfo = allocMatrix(totalElements,20);
+		InputInfo = allocMatrix(totalElements,21);
 		for (i=0;i<totalElements+1;i++) fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		// We need info about Volume, Position, EulerAngles, MeshQuality, ElasticStrain
-		for (i=0;i<totalElements+1;i++) fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		for (i=0;i<totalElements+4;i++) fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
+		for (i=0;i<totalElements+5;i++) fgets(aline,4096,inpF);
+		for (i=0;i<totalElements;i++){
+			fgets(aline,4096,inpF);
+			sscanf(aline,"%lf",&InputInfo[i][20]);
+		}
+		for (i=0;i<3;i++)fgets(aline,4096,inpF);
 		for (i=0;i<totalElements;i++){
 			fgets(aline,4096,inpF);
 			sscanf(aline,"%lf",&InputInfo[i][18]);
@@ -959,6 +959,19 @@ main(int argc, char *argv[])
 				}
 			}
 		}
+		FILE *fl;
+		fl = fopen("Orientations.txt","w");
+		int nrElements = 0;
+		for (i=0;i<totalElements;i++){
+			if ((int)InputInfo[i][20] == 1){
+				nrElements++;
+				for (j=0;j<9;j++) fprintf(fl,"%f ",InputInfo[i][j]);
+				fprintf(fl,"\n");
+			}
+		}
+		printf("%d\n",nrElements);
+		fclose(fl);
+		return;
 		nrPoints = totalElements;
 	}
 	if (nrPoints == 0) return 1;

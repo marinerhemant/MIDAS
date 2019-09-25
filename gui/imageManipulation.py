@@ -487,7 +487,7 @@ def processSquare():
 			img = img.astype(np.double)
 			img = img / 16.0
 			img = img.round()
-			print famenr
+			print framenr
 			img = img.astype(np.uint16)
 			img = img.reshape((npxy,npxz))
 			outimg[:npxy,:npxz] = img
