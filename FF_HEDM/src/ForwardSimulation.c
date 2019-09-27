@@ -623,7 +623,7 @@ main(int argc, char *argv[])
 	int RingsToUse[500], nRings=0;
 	double LatC[6],Wavelength,Wedge=0, p0, p1, p2, RhoD,GaussWidth,PeakIntensity=2000;
 	int writeSpots;
-	int LoadNr = 1, UpdatedOrientations = 1;
+	int LoadNr = 0, UpdatedOrientations = 1;
 	while (fgets(aline,4096,fileParam)!=NULL){
 		str="RingsToUse ";
 		LowNr = strncmp(aline,str,strlen(str));
@@ -913,12 +913,14 @@ main(int argc, char *argv[])
 			sscanf(aline,"%s %s",dummy,strLine);
 		}
 		fgets(aline,4096,inpF);
-		if (LoadNr == 1){
+		if (LoadNr == 0){
+			for (i=0;i<totalElements;i++) for (j=12;j<18;j++) InputInfo[i][j] = 0;
+		} else if (LoadNr == 1){
 			for (i=0;i<totalElements;i++){
 				fgets(aline,4096,inpF);
 				sscanf(aline,"%lf %lf %lf %lf %lf %lf",&InputInfo[i][12],&InputInfo[i][15],&InputInfo[i][17],&InputInfo[i][13],&InputInfo[i][14],&InputInfo[i][16]);
 			}
-		}else {
+		}else if (LoadNr > 1) {
 			nrSkip = (LoadNr-1)*(totalElements+4);
 			for (i=0;i<nrSkip;i++) fgets(aline,4096,inpF);
 			for (i=0;i<totalElements;i++){
