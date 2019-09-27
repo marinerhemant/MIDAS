@@ -973,7 +973,6 @@ main(int argc, char *argv[])
 		}
 		printf("%d\n",nrElements);
 		fclose(fl);
-		return;
 		nrPoints = totalElements;
 	}
 	if (nrPoints == 0) return 1;
