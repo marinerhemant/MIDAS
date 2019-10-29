@@ -372,9 +372,9 @@ void OrientMat2Euler(double m[3][3],double Euler[3])
         psi = (fabs(-m[1][2] / sph) <= 1.0) ? sin_cos_to_angle(m[0][2] / sph, -m[1][2] / sph) : sin_cos_to_angle(m[0][2] / sph,1);
         theta = (fabs(m[2][1] / sph) <= 1.0) ? sin_cos_to_angle(m[2][0] / sph, m[2][1] / sph) : sin_cos_to_angle(m[2][0] / sph,1);
     }
-    Euler[0] = rad2deg*psi;
-    Euler[1] = rad2deg*phi;
-    Euler[2] = rad2deg*theta;
+    Euler[0] = psi;
+    Euler[1] = phi;
+    Euler[2] = theta;
 }
 
 static inline void CorrectHKLsLatC(double LatC[6],double Wavelength, double **hklsOut)
