@@ -938,17 +938,19 @@ main(int argc, char *argv[])
 			}
 			fgets(aline,4096,inpF);
 			if (LoadNr == 1){
+				int firstTime=0;
 				for (i=0;i<totalElements;i++){
 					fgets(aline,4096,inpF);
 					sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf",&OrientTemp[0][0],&OrientTemp[0][1],&OrientTemp[0][2],&OrientTemp[1][0],&OrientTemp[1][1],&OrientTemp[1][2],&OrientTemp[2][0],&OrientTemp[2][1],&OrientTemp[2][2]);
 					OrientMat2Euler(OrientTemp,EulerThis);
+					if (firstTime==0) printf("%lf %lf %lf\n",EulerThis[0],EulerThis[1],EulerThis[2]);
+					firstTime=1;
 					Euler2OrientMat(EulerThis,OrientThis);
 					for (j=0;j<9;j++){
 						InputInfo[i][j] = OrientThis[j];
 					}
 				}
 			}else{
-				int firstTime=0;
 				nrSkip = (LoadNr-1)*(totalElements+4);
 				for (i=0;i<nrSkip;i++) fgets(aline,4096,inpF);
 				for (i=0;i<totalElements;i++){
@@ -956,8 +958,6 @@ main(int argc, char *argv[])
 					//~ sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf",&OrientTemp[0][0],&OrientTemp[1][0],&OrientTemp[2][0],&OrientTemp[0][1],&OrientTemp[1][1],&OrientTemp[2][1],&OrientTemp[0][2],&OrientTemp[1][2],&OrientTemp[2][2]);
 					sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf",&OrientTemp[0][0],&OrientTemp[0][1],&OrientTemp[0][2],&OrientTemp[1][0],&OrientTemp[1][1],&OrientTemp[1][2],&OrientTemp[2][0],&OrientTemp[2][1],&OrientTemp[2][2]);
 					OrientMat2Euler(OrientTemp,EulerThis);
-					if (firstTime==0) printf("%lf %lf %lf\n",EulerThis[0],EulerThis[1],EulerThis[2]);
-					firstTime=1;
 					Euler2OrientMat(EulerThis,OrientThis);
 					for (j=0;j<9;j++){
 						InputInfo[i][j] = OrientThis[j];
