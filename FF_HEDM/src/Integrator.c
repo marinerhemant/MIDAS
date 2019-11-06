@@ -530,7 +530,7 @@ int main(int argc, char **argv)
 		}
 		sprintf(outfn,"%s_integrated_framenr_%d.csv",imageFN,i);
 		out = fopen(outfn,"w");
-		fprintf(out,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\tEta(px)\tIntensity(counts)\n",nEtaBins,nRBins);
+		fprintf(out,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\tEta(px)\tIntensity(counts)\tBinArea\n",nEtaBins,nRBins);
 		sprintf(outFN1d,"%s_integrated_framenr_%d.1d.csv",imageFN,i);
 		out1d = fopen(outFN1d,"w");
 		fprintf(out1d,"%%nRBins:\t%d\n%%Radius(px)\tIntensity(counts)\tTotalArea(px)\n",nRBins);

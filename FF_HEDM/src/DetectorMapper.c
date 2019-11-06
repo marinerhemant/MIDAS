@@ -385,29 +385,53 @@ mapperfcn(
 					nrRChosen ++;
 				}
 			}
-			for (k=0;k<nEtaBins;k++){
+			for (k=0;k<nEtaBins;k++){ // If Eta is smaller than 0, check for eta, eta+360, if eta is greater than 0, check for eta, eta-360
+				// First check if the pixel is a special case
 				if (EtaMa - EtaMi > 180){
-					// First 179....180
 					EtaMiTr = EtaMa;
 					EtaMaTr = 360 + EtaMi;
-					if ((EtaBinsHigh[k] >= EtaMiTr && EtaBinsLow[k] <= EtaMaTr)){
-						EtaChosen[nrEtaChosen] = k;
-						nrEtaChosen++;
-						continue;
-					}
-					// Now -180...-179
-					EtaMiTr = -360 + EtaMa;
-					EtaMaTr = EtaMi;
-					if ((EtaBinsHigh[k] >= EtaMiTr && EtaBinsLow[k] <= EtaMaTr)){
-						EtaChosen[nrEtaChosen] = k;
-						nrEtaChosen++;
-						continue;
-					}
-				}else if ((EtaBinsHigh[k] >= EtaMi && EtaBinsLow[k] <= EtaMa)){
+					EtaMa = EtaMaTr;
+					EtaMi = EtaMiTr;
+				}
+				if ((EtaBinsHigh[k] >= EtaMi && EtaBinsLow[k] <= EtaMa)){
 					EtaChosen[nrEtaChosen] = k;
 					nrEtaChosen++;
 					continue;
 				}
+				if (EtaMi < 0){
+					EtaMi += 360;
+					EtaMa += 360;
+				} else {
+					EtaMi -= 360;
+					EtaMa -= 360;
+				}
+				if ((EtaBinsHigh[k] >= EtaMi && EtaBinsLow[k] <= EtaMa)){
+					EtaChosen[nrEtaChosen] = k;
+					nrEtaChosen++;
+					continue;
+				}
+				//~ if (EtaMa - EtaMi > 180){
+					//~ // First 179....180
+					//~ EtaMiTr = EtaMa;
+					//~ EtaMaTr = 360 + EtaMi;
+					//~ if ((EtaBinsHigh[k] >= EtaMiTr && EtaBinsLow[k] <= EtaMaTr)){
+						//~ EtaChosen[nrEtaChosen] = k;
+						//~ nrEtaChosen++;
+						//~ continue;
+					//~ }
+					//~ // Now -180...-179
+					//~ EtaMiTr = -360 + EtaMa;
+					//~ EtaMaTr = EtaMi;
+					//~ if ((EtaBinsHigh[k] >= EtaMiTr && EtaBinsLow[k] <= EtaMaTr)){
+						//~ EtaChosen[nrEtaChosen] = k;
+						//~ nrEtaChosen++;
+						//~ continue;
+					//~ }
+				//~ }else if ((EtaBinsHigh[k] >= EtaMi && EtaBinsLow[k] <= EtaMa)){
+					//~ EtaChosen[nrEtaChosen] = k;
+					//~ nrEtaChosen++;
+					//~ continue;
+				//~ }
 			}
 			yMin = YZ[0] - 0.5;
 			yMax = YZ[0] + 0.5;
