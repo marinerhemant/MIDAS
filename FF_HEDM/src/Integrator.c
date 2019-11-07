@@ -177,7 +177,7 @@ static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], pix
 int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 {
 	int i;
-	if (dType == 1){
+	if (dType == 1){ // Binary with uint16
 		uint16_t *readData; 
 		readData = calloc(NrPixels,sizeof(*readData));
 		fread(readData,NrPixels*sizeof(*readData),1,f);
@@ -185,7 +185,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 			returnArr[i] = (double) readData[i];
 		}
 		return 0;
-	} else if (dType == 2){
+	} else if (dType == 2){ // Binary with double
 		double *readData;
 		readData = calloc(NrPixels,sizeof(*readData));
 		fread(readData,NrPixels*sizeof(*readData),1,f);
@@ -193,7 +193,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 			returnArr[i] = (double) readData[i];
 		}
 		return 0;
-	} else if (dType == 3){
+	} else if (dType == 3){ // Binary with float
 		float *readData;
 		readData = calloc(NrPixels,sizeof(*readData));
 		fread(readData,NrPixels*sizeof(*readData),1,f);
@@ -201,7 +201,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 			returnArr[i] = (double) readData[i];
 		}
 		return 0;
-	} else if (dType == 4){
+	} else if (dType == 4){ // Binary with uint32
 		uint32_t *readData;
 		readData = calloc(NrPixels,sizeof(*readData));
 		fread(readData,NrPixels*sizeof(*readData),1,f);
@@ -209,7 +209,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 			returnArr[i] = (double) readData[i];
 		}
 		return 0;
-	} else if (dType == 5){
+	} else if (dType == 5){ // Binary with int32
 		int32_t *readData;
 		readData = calloc(NrPixels,sizeof(*readData));
 		fread(readData,NrPixels*sizeof(*readData),1,f);
@@ -217,7 +217,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 			returnArr[i] = (double) readData[i];
 		}
 		return 0;
-	} else if (dType == 6){
+	} else if (dType == 6){ // TIFF with uint32 format
 		TIFFErrorHandler oldhandler;
 		oldhandler = TIFFSetWarningHandler(NULL);
 		printf("%s\n",fn);
@@ -241,7 +241,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 			}
 		}
 		return 0;
-	} else if (dType == 7){
+	} else if (dType == 7){ // TIFF with uint8 format
 		TIFFErrorHandler oldhandler;
 		oldhandler = TIFFSetWarningHandler(NULL);
 		printf("%s\n",fn);
@@ -533,7 +533,7 @@ int main(int argc, char **argv)
 		fprintf(out,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\tEta(px)\tIntensity(counts)\tBinArea\n",nEtaBins,nRBins);
 		sprintf(outFN1d,"%s_integrated_framenr_%d.1d.csv",imageFN,i);
 		out1d = fopen(outFN1d,"w");
-		fprintf(out1d,"%%nRBins:\t%d\n%%Radius(px)\tIntensity(counts)\tTotalArea(px)\n",nRBins);
+		fprintf(out1d,"%%nRBins:\t%d\n%%Radius(px)\tIntensity(counts)\n",nRBins);
 		for (j=0;j<nRBins;j++){
 			RMean = (RBinsLow[j]+RBinsHigh[j])/2;
 			Int1d = 0;
@@ -546,10 +546,10 @@ int main(int argc, char **argv)
 				totArea = 0;
 				for (l=0;l<nPixels;l++){
 					ThisVal = pxList[dataPos + l];
+					testPos = ThisVal.z;
+					testPos *= NrPixelsY;
+					testPos += ThisVal.y;
 					if (mapMaskSize!=0){
-						testPos = ThisVal.z;
-						testPos *= NrPixelsY;
-						testPos += ThisVal.y;
 						if (TestBit(mapMask,testPos)){
 							continue;
 						}
@@ -570,7 +570,7 @@ int main(int argc, char **argv)
 			}
 			RM1d = RMean;
 			Int1d /= n1ds;
-			fprintf(out1d,"%lf %lf\n",RM1d,Int1d);
+			fprintf(out1d,"%lf\t%lf\n",RM1d,Int1d);
 			
 		}
 		fclose(out);
