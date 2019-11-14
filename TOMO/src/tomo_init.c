@@ -152,7 +152,7 @@ int main(int argc, char *argv[])
 				memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 				offt = 0;
 				offsetRecons = 0;
-				reconCentering(&information,recon_info_record,offt);
+				reconCentering(&information,recon_info_record,offt,1);
 				setSinoAndReconBuffers(1, &information.sinograms_boundary_padding[offt], &information.reconstructions_boundary_padding[offsetRecons],&param);
 				sliceRowNr ++;
 				sliceNr = recon_info_record.slices_to_process[sliceRowNr];
@@ -164,17 +164,17 @@ int main(int argc, char *argv[])
 				memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 				offt = information.sinogram_adjusted_size*2;
 				offsetRecons = information.reconstruction_size*4;
-				reconCentering(&information,recon_info_record,offt);
+				reconCentering(&information,recon_info_record,offt,1);
 				setSinoAndReconBuffers(2, &information.sinograms_boundary_padding[offt], &information.reconstructions_boundary_padding[offsetRecons],&param);
 				reconstruct(&param);
 				getRecons(&information,recon_info_record,&param,0);
-				writeRecon(oldSliceNr,&information,recon_info_record);
+				writeRecon(oldSliceNr,&information,recon_info_record,recon_info_record.n_shifts);
 				getRecons(&information,recon_info_record,&param,offsetRecons);
-				writeRecon(sliceNr,&information,recon_info_record);
+				writeRecon(sliceNr,&information,recon_info_record,recon_info_record.n_shifts);
 			}
 			destroyFFTMemoryStructures(&param);
 		}
-	} else { // We have multiple shits, (possibly multiple slices_to_process)
+	} else { // We have multiple shifts, (possibly multiple slices_to_process)
 		SINO_READ_OPTS readStruct[recon_info_record.n_slices+1];
 		int i;
 		for (i = 0; i < recon_info_record.n_slices+1; i ++)
@@ -227,20 +227,20 @@ int main(int argc, char *argv[])
 				memcpy(information.sino_calc_buffer,readStruct[sliceNr].norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 				offt = 0;
 				offsetRecons = 0;
-				reconCentering(&information,recon_info_record,offt);
+				reconCentering(&information,recon_info_record,offt,1);
 				setSinoAndReconBuffers(1, &information.sinograms_boundary_padding[offt], &information.reconstructions_boundary_padding[offsetRecons],&param);
 				information.shift = recon_info_record.shift_values[shiftNr+1];
 				offt = information.sinogram_adjusted_size*2;
 				offsetRecons = information.reconstruction_size*4;
-				reconCentering(&information,recon_info_record,offt);
+				reconCentering(&information,recon_info_record,offt,0);
 				setSinoAndReconBuffers(2, &information.sinograms_boundary_padding[offt], &information.reconstructions_boundary_padding[offsetRecons],&param);
 				reconstruct(&param);
 				information.shift = recon_info_record.shift_values[shiftNr];
 				getRecons(&information,recon_info_record,&param,0);
-				writeRecon(localSliceNr,&information,recon_info_record);
+				writeRecon(localSliceNr,&information,recon_info_record,shiftNr);
 				information.shift = recon_info_record.shift_values[shiftNr+1];
 				getRecons(&information,recon_info_record,&param,offsetRecons);
-				writeRecon(localSliceNr,&information,recon_info_record);
+				writeRecon(localSliceNr,&information,recon_info_record,shiftNr+1);
 			}
 			destroyFFTMemoryStructures(&param);
 		}

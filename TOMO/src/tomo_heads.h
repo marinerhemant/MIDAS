@@ -204,9 +204,9 @@ void Pad (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS recon_info_record);
 
 //--------------------------------------------------------------------------------------------------------------------------
 // Processing code
-void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,size_t offt);
+void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,size_t offt,int doLog);
 void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,gridrecParams *param,size_t offsetRecons);
-void writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record);
+void writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,int shiftNr);
 void createPlanFile(GLOBAL_CONFIG_OPTS *recon_info_record);
 
 #endif

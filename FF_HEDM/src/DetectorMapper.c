@@ -21,6 +21,8 @@
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
+double *distortionMap;
+int distortionFile;
 
 static inline
 int BETWEEN(double val, double min, double max)
@@ -349,6 +351,8 @@ mapperfcn(
 	long long int TotNrOfBins = 0;
 	long long int sumNrBins = 0;
 	long long int nrContinued=0;
+	long long int testPos;
+	double ypr,zpr;
 	for (i=0;i<NrPixelsY;i++){
 		for (j=0;j<NrPixelsZ;j++){
 			EtaMi = 1800;
@@ -356,6 +360,11 @@ mapperfcn(
 			RMi = 1E8; // In pixels
 			RMa = -1000;
 			// Calculate RMi, RMa, EtaMi, EtaMa
+			testPos = j;
+			testPos *= NrPixelsY;
+			testPos += i;
+			ypr = (double)i + distortionMap[testPos*2];
+			zpr = (double)j + distortionMap[testPos*2+1];
 			for (k = 0; k < 2; k++){
 				for (l = 0; l < 2; l++){
 					Y = (double)i + dy[k];
@@ -663,6 +672,30 @@ int StartsWith(const char *a, const char *b)
 	return 0;
 }
 
+static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], double *ImageIn, double *ImageOut, int NrPixelsY, int NrPixelsZ)
+{
+	int i,j,k,l,m;
+	if (NrTransOpt == 0){
+		memcpy(ImageOut,ImageIn,NrPixelsY*NrPixelsZ*sizeof(*ImageIn)); // Nothing to do
+		return;
+	}
+    for (i=0;i<NrTransOpt;i++){
+		if (TransOpt[i] == 1){
+			for (k=0;k<NrPixelsY;k++){
+				for (l=0;l<NrPixelsZ;l++){
+					ImageOut[l*NrPixelsY+k] = ImageIn[l*NrPixelsY+(NrPixelsY-k-1)]; // Invert Y
+				}
+			}
+		}else if (TransOpt[i] == 2){
+			for (k=0;k<NrPixelsY;k++){
+				for (l=0;l<NrPixelsZ;l++){
+					ImageOut[l*NrPixelsY+k] = ImageIn[(NrPixelsZ-l-1)*NrPixelsY+k]; // Invert Z
+				}
+			}
+		}
+	}
+}
+
 int main(int argc, char *argv[])
 {
     clock_t start, end, start0, end0;
@@ -677,10 +710,14 @@ int main(int argc, char *argv[])
 		"\n\t\t   p0, p1, p2, EtaBinSize, EtaMin,\n\t\t   EtaMax, RBinSize, RMin, RMax,\n\t\t   NrPixels\n");
 		return(1);
 	}
-    double tx=0.0, ty=0.0, tz=0.0, pxY=200.0, pxZ=200.0, yCen=1024.0, zCen=1024.0, Lsd=1000000.0, RhoD=200000.0, 
+	double tx=0.0, ty=0.0, tz=0.0, pxY=200.0, pxZ=200.0, yCen=1024.0, zCen=1024.0, Lsd=1000000.0, RhoD=200000.0, 
 		p0=0.0, p1=0.0, p2=0.0, EtaBinSize=5, RBinSize=0.25, RMax=1524.0, RMin=10.0, EtaMax=180.0, EtaMin=-180.0;
 	int NrPixelsY=2048, NrPixelsZ=2048;
 	char aline[4096], dummy[4096], *str;
+	distortionFile = 0;
+	char distortionFN[4096];
+	int NrTransOpt=0;
+	int TransOpt[10];
 	paramFile = fopen(ParamFN,"r");
 	while (fgets(aline,4096,paramFile) != NULL){
 		str = "tx ";
@@ -769,8 +806,29 @@ int main(int argc, char *argv[])
 			sscanf(aline,"%s %d", dummy, &NrPixelsY);
 			sscanf(aline,"%s %d", dummy, &NrPixelsZ);
 		}
+		str = "DistortionFile ";
+		if (StartsWith(aline,str)==1){
+			distortionFile = 1;
+			sscanf(aline,"%s %s",dummy, distortionFN);
+		}
+        str = "ImTransOpt ";
+        if (StartsWith(aline,str) == 1){
+            sscanf(aline,"%s %d", dummy, &TransOpt[NrTransOpt]);
+            NrTransOpt++;
+            continue;
+        }
 	}
-    
+	distortionMapY = calloc(NrPixelsY*NrPixelsZ*2,sizeof(double));
+	distortionMapZ = calloc(NrPixelsY*NrPixelsZ*2,sizeof(double));
+	if (distortionFile == 1){
+		FILE distortionFileHandle = fopen(distortionFN,"rb");
+		double *distortionMapTemp;
+		distortionMapTemp = malloc(NrPixelsY*NrPixelsZ*2*sizeof(double));
+		fread(distortionMapTemp,NrPixelsY*NrPixelsZ*sizeof(double),1,distortionFileHandle);
+		DoImageTransformations(NrTransOpt,TransOpt,distortionMapTemp,distortionMapY,NrPixelsY,NrPixelZ);
+	} else{
+		
+	}
     // Parameters needed: Rmax RMin RBinSize (px) EtaMax EtaMin EtaBinSize (degrees)
 	int nEtaBins, nRBins;
 	nRBins = (int) ceil((RMax-RMin)/RBinSize);

@@ -72,7 +72,7 @@ def getfn(fstem,fnum):
 def getoutfn(fstem,fnum):
 	return outFolderVar.get() +'/'+ fstem + '_' + str(fnum).zfill(padding) + extvar.get()
 
-def getDarkImage(fn,bytesToSkip):
+def getDarkImage(fn,bytesToSkip,doBadProcessing,badData):
 	dataDark = np.zeros(NrPixels*NrPixels)
 	statinfo = os.stat(fn)
 	nFramesPerFile = (statinfo.st_size - 8192)/(2*NrPixels*NrPixels)
@@ -81,6 +81,14 @@ def getDarkImage(fn,bytesToSkip):
 	for framenr in range(nFramesPerFile):
 		data = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
 		data = data.astype(float)
+		if doBadProcessing:
+			### For each non-zero element in badData, correct with mean of 
+			### neighbours, no precaution for edge pixels for now
+			for idx in badData:
+				if idx < NrPixels * (NrPixels-1) and idx >= NrPixels:
+					data[idx] = (data[idx-1] + data[idx-NrPixels] + data[idx+1] + data[idx+NrPixels])/4
+				else:
+					data[idx] = 0
 		dataDark = np.add(dataDark,data)
 	f.close()
 	dataDark = dataDark/nFramesPerFile
@@ -190,6 +198,7 @@ def mapFastIntegration():
 
 def saveFile(arr,fname,fileTypeWrite):
 	if fileTypeWrite == 1: # GE output to uint16
+		print [np.min(arr), np.max(arr), np.where(arr==np.min(arr))]
 		arr += -(np.min(arr))
 		arr /= np.max(arr)/(65535)
 		arr = arr.astype(np.uint16)
@@ -233,19 +242,22 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 	dark = np.zeros(NrPixels*NrPixels)
 	if doBadProcessing is 1:
 		detNr = fn[-1]
-		badF = open(os.path.expanduser('~')+'/opt/MIDAS/gui/GEBad/BadImg.ge'+detNr,'rb')
+		badFN = os.path.expanduser('~')+'/opt/MIDAS/gui/GEBad/BadImg.ge'+detNr
+		print badFN
+		badF = open(badFN,'rb')
 		badF.seek(8192,os.SEEK_SET)
 		badData = np.fromfile(badF,dtype=np.uint16,count=NrPixels*NrPixels)
-		badData = np.nonzero(badData)
-		nBadData = len(badData[0])
+		badData = np.nonzero(badData)[0]
+	else:
+		badData = []
 	if darkProcessing is 1:
 		darkfn = darkfilefullpath[:-1] + fn[-1]
-		dark = getDarkImage(darkfn,8192)
+		dark = getDarkImage(darkfn,8192,doBadProcessing,badData)
 	statinfo = os.stat(fn)
 	nFramesPerFile = (statinfo.st_size - 8192)/(2*NrPixels*NrPixels)
 	f = open(fn,'rb')
 	header = np.fromfile(f,dtype=np.uint8,count=8192)
-	sumArr = np.zeros(NrPixels*NrPixels)
+	sumArr = np.zeros(NrPixels*NrPixels,dtype=float)
 	aveArr = np.zeros(NrPixels*NrPixels)
 	maxArr = np.zeros(NrPixels*NrPixels)
 	for frameNr in range(nFramesPerFile):
@@ -256,9 +268,14 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 		if doBadProcessing:
 			### For each non-zero element in badData, correct with mean of 
 			### neighbours, no precaution for edge pixels for now
-			for idx in range(nBadData):
-				data[idx] = (data[idx-1] + data[idx-NrPixels] + data[idx+1] + data[idx+NrPixels])/4
+			for idx in badData:
+				if idx < NrPixels * (NrPixels-1) and idx >= NrPixels:
+					data[idx] = (data[idx-1] + data[idx-NrPixels] + data[idx+1] + data[idx+NrPixels])/4
+				else :
+						data[idx] = 0
 		corr = np.subtract(data,dark)
+		idxz = np.nonzero(corr==np.min(corr))[0][0]
+		print [np.min(corr), np.max(corr), idxz,data[idxz],dark[idxz]]
 		if allFrames:
 			writefn = outfn+'.frame.'+str(frameNr)+'.cor'
 			saveFile(corr,writefn,fileTypeWrite)

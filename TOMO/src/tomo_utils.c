@@ -228,7 +228,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 		recon_info_record->theta_list = (float *) malloc(MAX_N_THETAS*sizeof(float));
 		FILE *fileTheta = fopen(recon_info_record->thetaFileName,"r");
 		while (fgets (aline,4096,fileTheta)!=NULL){
-			recon_info_record->theta_list[recon_info_record->theta_list_size] = atoi(aline);
+			recon_info_record->theta_list[recon_info_record->theta_list_size] = atof(aline);
 			recon_info_record->theta_list_size ++;
 		}
 	}
@@ -247,7 +247,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 		FILE *slicesFile = fopen(recon_info_record->SliceFileName,"r");
 		recon_info_record->n_slices = 0;
 		recon_info_record->slices_to_process = (uint *) malloc(sizeof(uint)*recon_info_record->det_ydim);
-		printf("We are reading the slices file: %s",slices);
+		printf("We are reading the slices file: %s.\n",slices);
 		while(fgets(aline,4096,slicesFile)!=NULL){
 			recon_info_record->slices_to_process[recon_info_record->n_slices] = atoi(aline);
 			recon_info_record->n_slices++;
@@ -467,9 +467,9 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	free(readStruct->dark_field_sino_ave);
 }
 
-void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,size_t offt){
+void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,size_t offt,int doLog){
 	int j, k;
-	LogProj(information->sino_calc_buffer, information->sinogram_adjusted_xdim, recon_info_record.sinogram_ydim);
+	if (doLog ==1) LogProj(information->sino_calc_buffer, information->sinogram_adjusted_xdim, recon_info_record.sinogram_ydim);
 	//~ if (recon_info_record.debug == 1){
 		//~ char outfn[4096];
 		//~ sprintf(outfn,"logproj_sino_%s",recon_info_record.DataFileName);
@@ -560,15 +560,15 @@ void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_reco
 	}
 }
 
-void writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record){
+void writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,int shiftNr){
 	// The results are in information.recon_calc_buffer
 	// Output file: float with reconstruction_xdim*reconstruction_xdim size
 	// OutputFileName: {recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_reconstruction_xdim_float_4byte.bin
 	char outFileName[4096];
 	if (information->shift > -0.0001){
-		sprintf(outFileName,"%s_%05d_p%06.1f_%d_%d_float32.bin",recon_info_record.ReconFileName,sliceNr,information->shift,recon_info_record.reconstruction_xdim,recon_info_record.reconstruction_xdim);
+		sprintf(outFileName,"%s_%05d_%03d_p%06.1f_%d_%d_float32.bin",recon_info_record.ReconFileName,sliceNr,shiftNr,information->shift,recon_info_record.reconstruction_xdim,recon_info_record.reconstruction_xdim);
 	} else {
-		sprintf(outFileName,"%s_%05d_m%06.1f_%d_%d_float32.bin",recon_info_record.ReconFileName,sliceNr,-information->shift,recon_info_record.reconstruction_xdim,recon_info_record.reconstruction_xdim);
+		sprintf(outFileName,"%s_%05d_%03d_m%06.1f_%d_%d_float32.bin",recon_info_record.ReconFileName,sliceNr,shiftNr,-information->shift,recon_info_record.reconstruction_xdim,recon_info_record.reconstruction_xdim);
 	}
 	FILE *outfile;
 	//printf("Saving output to : %s.\n",outFileName);
@@ -599,7 +599,7 @@ void createPlanFile(GLOBAL_CONFIG_OPTS *recon_info_record){
 		readRaw(sliceNr,cpy,&readStruct);
 	}
 	memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record->theta_list_size);
-	reconCentering(&information,cpy,0);
+	reconCentering(&information,cpy,0,1);
 	// Do the same slice twice
 	setSinoAndReconBuffers(1, &information.sinograms_boundary_padding[0], &information.reconstructions_boundary_padding[0],&param);
 	setSinoAndReconBuffers(2, &information.sinograms_boundary_padding[0], &information.reconstructions_boundary_padding[0],&param);
