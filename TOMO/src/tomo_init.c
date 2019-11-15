@@ -72,9 +72,6 @@ void usage(){
 
 int main(int argc, char *argv[])
 {
-	clock_t start0, end0;
-	start0 = clock();
-	double diftotal;
 	if (argc!=3){
 		usage();
 		return 1;
@@ -110,6 +107,7 @@ int main(int argc, char *argv[])
 	}
 	int numProcs = atoi(argv[2]);
 	int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_1d.txt");
+	double start_time = omp_get_wtime();
 	if (recon_info_record.n_shifts==1){
 		printf("Starting processing of all slices with %d threads.\n",numProcs);
 		# pragma omp parallel num_threads(numProcs)
@@ -250,8 +248,7 @@ int main(int argc, char *argv[])
 			//~ destroyFFTMemoryStructures(&param);
 		}
 	}
-	end0 = clock();
-	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
-	printf("Finished, time elapsed: %lf.\n",diftotal);
+	double time = omp_get_wtime() - start_time;
+	printf("Finished, time elapsed: %lf.\n",time);
 	return 0;
 }
