@@ -108,7 +108,7 @@ int main(int argc, char *argv[])
 	int numProcs = atoi(argv[2]);
 	int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_1d.txt");
 	if (recon_info_record.n_shifts==1){
-		//~ printf("ThreadNr\tStartSliceNr\tEndSliceNr\tNrSlices\n");
+		printf("Starting processing of all slices with %d threads.\n",numProcs);
 		# pragma omp parallel num_threads(numProcs)
 		{
 			int procNr = omp_get_thread_num();
@@ -196,7 +196,7 @@ int main(int argc, char *argv[])
 		nJobs = recon_info_record.n_slices * recon_info_record.n_shifts;
 		numProcs = (nJobs < numProcs) ? nJobs : numProcs;
 		int nrSlicesThread = (int)ceil((double)nJobs / (2.0*(double)numProcs));
-		printf("Number of FFT jobs per thread %d\n",nrSlicesThread);
+		printf("Number of FFT jobs per thread %d, Number of threads: %d.\nStarting processing.\n",nrSlicesThread,numProcs);
 		# pragma omp parallel num_threads(numProcs)
 		{
 			int procNr = omp_get_thread_num();
