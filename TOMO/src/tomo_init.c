@@ -194,7 +194,7 @@ int main(int argc, char *argv[])
 			}
 		}
 		nJobs = recon_info_record.n_slices * recon_info_record.n_shifts;
-		numProcs = (nJobs < numProcs) ? nJobs : numProcs;
+		numProcs = (nJobs/2 < numProcs) ? nJobs/2 : numProcs;
 		int nrSlicesThread = (int)ceil((double)nJobs / (2.0*(double)numProcs));
 		printf("Number of FFT jobs per thread %d, Number of threads: %d.\nStarting processing.\n",nrSlicesThread,numProcs);
 		# pragma omp parallel num_threads(numProcs)
