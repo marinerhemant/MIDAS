@@ -72,6 +72,9 @@ void usage(){
 
 int main(int argc, char *argv[])
 {
+	clock_t start0, end0;
+	start0 = clock();
+	double diftotal;
 	if (argc!=3){
 		usage();
 		return 1;
@@ -247,6 +250,8 @@ int main(int argc, char *argv[])
 			//~ destroyFFTMemoryStructures(&param);
 		}
 	}
-	printf("Done.\n");
+	end0 = clock();
+	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
+	printf("Finished, time elapsed: %lf.\n",diftotal);
 	return 0;
 }
