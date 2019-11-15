@@ -249,6 +249,6 @@ int main(int argc, char *argv[])
 		}
 	}
 	double time = omp_get_wtime() - start_time;
-	printf("Finished, time elapsed: %lf.\n",time);
+	printf("Finished, time elapsed: %lf seconds.\n",time);
 	return 0;
 }
