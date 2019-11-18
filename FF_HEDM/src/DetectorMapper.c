@@ -21,7 +21,8 @@
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
-double *distortionMap;
+double *distortionMapY;
+double *distortionMapZ;
 int distortionFile;
 
 static inline
@@ -363,12 +364,12 @@ mapperfcn(
 			testPos = j;
 			testPos *= NrPixelsY;
 			testPos += i;
-			ypr = (double)i + distortionMap[testPos*2];
-			zpr = (double)j + distortionMap[testPos*2+1];
+			ypr = (double)i + distortionMapY[testPos];
+			zpr = (double)j + distortionMapZ[testPos];
 			for (k = 0; k < 2; k++){
 				for (l = 0; l < 2; l++){
-					Y = (double)i + dy[k];
-					Z = (double)j + dz[l];
+					Y = ypr + dy[k];
+					Z = zpr + dz[l];
 					REta4MYZ(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, n0, n1, n2, pxY, RetVals);
 					Eta = RetVals[0];
 					Rt = RetVals[1]; // in pixels
@@ -379,7 +380,7 @@ mapperfcn(
 				}
 			}
 			// Get corrected Y, Z for this position.
-			REta4MYZ((double)i, (double)j, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, n0, n1, n2, pxY, RetVals);
+			REta4MYZ(ypr, zpr, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, n0, n1, n2, pxY, RetVals);
 			Eta = RetVals[0];
 			Rt = RetVals[1]; // in pixels
 			YZ4mREta(Rt,Eta,RetVals2);
@@ -419,28 +420,6 @@ mapperfcn(
 					nrEtaChosen++;
 					continue;
 				}
-				//~ if (EtaMa - EtaMi > 180){
-					//~ // First 179....180
-					//~ EtaMiTr = EtaMa;
-					//~ EtaMaTr = 360 + EtaMi;
-					//~ if ((EtaBinsHigh[k] >= EtaMiTr && EtaBinsLow[k] <= EtaMaTr)){
-						//~ EtaChosen[nrEtaChosen] = k;
-						//~ nrEtaChosen++;
-						//~ continue;
-					//~ }
-					//~ // Now -180...-179
-					//~ EtaMiTr = -360 + EtaMa;
-					//~ EtaMaTr = EtaMi;
-					//~ if ((EtaBinsHigh[k] >= EtaMiTr && EtaBinsLow[k] <= EtaMaTr)){
-						//~ EtaChosen[nrEtaChosen] = k;
-						//~ nrEtaChosen++;
-						//~ continue;
-					//~ }
-				//~ }else if ((EtaBinsHigh[k] >= EtaMi && EtaBinsLow[k] <= EtaMa)){
-					//~ EtaChosen[nrEtaChosen] = k;
-					//~ nrEtaChosen++;
-					//~ continue;
-				//~ }
 			}
 			yMin = YZ[0] - 0.5;
 			yMax = YZ[0] + 0.5;
@@ -818,16 +797,16 @@ int main(int argc, char *argv[])
             continue;
         }
 	}
-	distortionMapY = calloc(NrPixelsY*NrPixelsZ*2,sizeof(double));
-	distortionMapZ = calloc(NrPixelsY*NrPixelsZ*2,sizeof(double));
+	distortionMapY = calloc(NrPixelsY*NrPixelsZ,sizeof(double));
+	distortionMapZ = calloc(NrPixelsY*NrPixelsZ,sizeof(double));
 	if (distortionFile == 1){
-		FILE distortionFileHandle = fopen(distortionFN,"rb");
+		FILE *distortionFileHandle = fopen(distortionFN,"rb");
 		double *distortionMapTemp;
-		distortionMapTemp = malloc(NrPixelsY*NrPixelsZ*2*sizeof(double));
+		distortionMapTemp = malloc(NrPixelsY*NrPixelsZ*sizeof(double));
 		fread(distortionMapTemp,NrPixelsY*NrPixelsZ*sizeof(double),1,distortionFileHandle);
-		DoImageTransformations(NrTransOpt,TransOpt,distortionMapTemp,distortionMapY,NrPixelsY,NrPixelZ);
-	} else{
-		
+		DoImageTransformations(NrTransOpt,TransOpt,distortionMapTemp,distortionMapY,NrPixelsY,NrPixelsZ);
+		fread(distortionMapTemp,NrPixelsY*NrPixelsZ*sizeof(double),1,distortionFileHandle);
+		DoImageTransformations(NrTransOpt,TransOpt,distortionMapTemp,distortionMapZ,NrPixelsY,NrPixelsZ);
 	}
     // Parameters needed: Rmax RMin RBinSize (px) EtaMax EtaMin EtaBinSize (degrees)
 	int nEtaBins, nRBins;
