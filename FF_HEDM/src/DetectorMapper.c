@@ -807,6 +807,7 @@ int main(int argc, char *argv[])
 		DoImageTransformations(NrTransOpt,TransOpt,distortionMapTemp,distortionMapY,NrPixelsY,NrPixelsZ);
 		fread(distortionMapTemp,NrPixelsY*NrPixelsZ*sizeof(double),1,distortionFileHandle);
 		DoImageTransformations(NrTransOpt,TransOpt,distortionMapTemp,distortionMapZ,NrPixelsY,NrPixelsZ);
+		printf("Distortion file %s was provided and read correctly.\n",distortionFN);
 	}
     // Parameters needed: Rmax RMin RBinSize (px) EtaMax EtaMin EtaBinSize (degrees)
 	int nEtaBins, nRBins;
