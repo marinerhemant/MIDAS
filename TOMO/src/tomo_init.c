@@ -63,6 +63,7 @@ void usage(){
 		" 	*					ENSURE TO GIVE A RANGE WITH EVEN NUMBER OF SHIFTS\n"
 		"	* ringRemovalCoefficient - If given, will do ringRemoval, otherwise comment or remove line [float] default 1.0\n"
 		"	* slicesToProcess - -1 for all or FileName. ENSURE TO GIVE EVEN NUMBER OF SLICES\n"
+		"	* ExtraPad - 0 if half padding, 1 if one-half padding"
 		"Output file: float with reconstruction_xdim*reconstruction_xdim size\n"
 		"OutputFileName: {recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_reconstruction_xdim_float_4byte.bin\n"
 		"The code will generate two text files: fftwf_wisdom_{1,2}d.txt. "

@@ -156,6 +156,7 @@ typedef struct {
 		reconstruction_size,
 		sinogram_adjusted_size;
 	char *wisdom_string;
+	int powerIncrement;
 }GLOBAL_CONFIG_OPTS;
 
 typedef struct {

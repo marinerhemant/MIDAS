@@ -288,6 +288,7 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 		// If no pixel inside the detector, ignore this bin
 		if (NrEachIndexBin[i] == 0){
 			Rfit = 0;
+			RMean[i] = Rfit;
 			continue;
 		}
 		Rmin = IdealRmins[i];
@@ -300,22 +301,26 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 		//Find if either etamin or etamax result in outside the detector, then ignore this bin
 		ytr = ybc - (-Rmax *sin(EtaMa*deg2rad))/px;
 		ztr = zbc + (Rmax*cos(EtaMa*deg2rad))/px;
-		if ((int)ytr > NrPixels - 2){
+		if (((int)ytr > NrPixels - 2) || ((int)ytr < 2) ){
 			Rfit = 0;
+			RMean[i] = Rfit;
 			continue;
 		}
-		if ((int)ztr > NrPixels - 2){
+		if (((int)ztr > NrPixels - 2) || ((int)ztr < 2) ){
 			Rfit = 0;
+			RMean[i] = Rfit;
 			continue;
 		}
 		ytr = ybc - (-Rmax *sin(EtaMi*deg2rad))/px;
 		ztr = zbc + (Rmax*cos(EtaMi*deg2rad))/px;
-		if ((int)ytr > NrPixels - 2){
+		if (((int)ytr > NrPixels - 2) || ((int)ytr < 2) ){
 			Rfit = 0;
+			RMean[i] = Rfit;
 			continue;
 		}
-		if ((int)ztr > NrPixels - 2){
+		if (((int)ztr > NrPixels - 2) || ((int)ztr < 2) ){
 			Rfit = 0;
+			RMean[i] = Rfit;
 			continue;
 		}
 		EtaMean[i] = (EtaMi+EtaMa)/2;
@@ -346,7 +351,7 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 			FitPeakShape(NrPtsForFit,Rs,PeakShape,&Rfit,Rstep,Rmean,Etas);
 		}else{
 			printf("All intensities were 0. i=%d of %d, %f %f %lf %lf\n",i,nIndices,IdealRmins[i],IdealRmaxs[i],EtaMi,EtaMa);
-			Rfit = (IdealRmins[i] + IdealRmaxs[i])/2;
+			Rfit = 0;
 		}
 		RMean[i] = Rfit;
 		free(NrPts);
@@ -701,7 +706,7 @@ int main(int argc, char *argv[])
     double tx = 0,tolTilts,tolLsd,tolBC,tolP,tyin=0,tzin=0,p0in=0,p1in=0,p2in=0, padY=0, padZ=0;
     int Padding = 6, NrPixelsY,NrPixelsZ,NrPixels;
     int NrTransOpt=0;
-    size_t GapIntensity=0, BadPxIntensity=0;
+    long long int GapIntensity=0, BadPxIntensity=0;
     int TransOpt[10], nRingsExclude=0, RingsExclude[50];
     int makeMap = 0;
 	int HeadSize = 8192;
@@ -743,14 +748,14 @@ int main(int argc, char *argv[])
 		str = "GapIntensity ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %zu", dummy, &GapIntensity);
+            sscanf(aline,"%s %lld", dummy, &GapIntensity);
             makeMap = 1;
             continue;
         }
 		str = "BadPxIntensity ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %zu", dummy, &BadPxIntensity);
+            sscanf(aline,"%s %lld", dummy, &BadPxIntensity);
             makeMap = 1;
             continue;
         }
@@ -1256,7 +1261,7 @@ int main(int argc, char *argv[])
 		char OutFileName[1024];
 		sprintf(OutFileName,"%s_%06d%s.%s",fn,a,Ext,"corr.csv");
 		Out = fopen(OutFileName,"w");
-		fprintf(Out,"Eta Strain RadFit EtaCalc DiffCalc RadCalc Ideal2Theta\n");
+		fprintf(Out,"%%Eta Strain RadFit EtaCalc DiffCalc RadCalc Ideal2Theta\n");
 		for (i=0;i<nIndices;i++){
 			fprintf(Out,"%f %10.8f %10.8f %f %10.8f %10.8f %f\n",Etas[i],Diffs[i],RadOuts[i],EtaIns[i],DiffIns[i],RadIns[i],IdealTtheta[i]);
 		}

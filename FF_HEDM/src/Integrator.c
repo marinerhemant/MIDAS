@@ -153,7 +153,7 @@ REtaMapper(
 static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], pixelvalue *ImageIn, pixelvalue *ImageOut, int NrPixelsY, int NrPixelsZ)
 {
 	int i,j,k,l,m;
-	if (NrTransOpt == 0){
+	if (NrTransOpt == 0 || (NrTransOpt==1 && TransOpt[0]==0)){
 		memcpy(ImageOut,ImageIn,NrPixelsY*NrPixelsZ*sizeof(*ImageIn)); // Nothing to do
 		return;
 	}
@@ -295,7 +295,7 @@ int main(int argc, char **argv)
 	paramFile = fopen(ParamFN,"r");
 	int HeadSize = 8192;
     int NrTransOpt=0;
-    size_t GapIntensity=0, BadPxIntensity=0;
+    long long int GapIntensity=0, BadPxIntensity=0;
     int TransOpt[10];
     int makeMap = 0;
     size_t mapMaskSize = 0;
@@ -364,13 +364,13 @@ int main(int argc, char **argv)
 		}
 		str = "GapIntensity ";
         if (StartsWith(aline,str) == 1){
-            sscanf(aline,"%s %zu", dummy, &GapIntensity);
+            sscanf(aline,"%s %lld", dummy, &GapIntensity);
             makeMap = 1;
             continue;
         }
 		str = "BadPxIntensity ";
         if (StartsWith(aline,str) == 1){
-            sscanf(aline,"%s %zu", dummy, &BadPxIntensity);
+            sscanf(aline,"%s %lld", dummy, &BadPxIntensity);
             makeMap = 1;
             continue;
         }
@@ -406,14 +406,12 @@ int main(int argc, char **argv)
 	pixelvalue *DarkIn;
 	pixelvalue *ImageInT;
 	pixelvalue *DarkInT;
-	float *ImageFloat;
 	double *AverageDark;
 	DarkIn = malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkIn));
 	DarkInT = malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkInT));
 	AverageDark = calloc(NrPixelsY*NrPixelsZ,sizeof(*AverageDark));
 	ImageIn = malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageIn));
 	ImageInT = malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageInT));
-	ImageFloat = malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageFloat));
 	Image = malloc(NrPixelsY*NrPixelsZ*sizeof(*Image));
 	size_t pxSize;
 	if (dType == 1){ // Uint16

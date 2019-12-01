@@ -491,7 +491,7 @@ def processSquare():
 		inF = open(fn,'rb')
 		head = np.fromfile(inF,dtype=np.uint8,count=8192)
 		bytesToSkip = 8192
-		inF.seek(bytesToSkip,os.SEEK_SET)
+		#inF.seek(bytesToSkip,os.SEEK_SET)
 		bigdim = max(npxy,npxz)
 		outimg = np.zeros((bigdim,bigdim))
 		outimg = outimg.astype(np.uint16)

@@ -104,7 +104,7 @@ void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS recon_info_record
 	int pad_size = recon_info_record.sinogram_adjusted_xdim - recon_info_record.sinogram_xdim,
 		front_pad_size = pad_size / 2,
 		back_pad_size = pad_size - front_pad_size;
-	//~ printf("P ad sizes %d %d\n",front_pad_size,back_pad_size);
+	//~ printf("Pad sizes %d %d\n",front_pad_size,back_pad_size);
 	int frameNr, pxNr, colNr;
 	float temp_val, white_temp, factor;
 	for (frameNr=0;frameNr<recon_info_record.sinogram_ydim;frameNr++){
@@ -174,6 +174,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 	int temp;
 	recon_info_record->use_ring_removal = 0;
 	recon_info_record->debug = 0;
+	recon_info_record->powerIncrement=0;
 	while(fgets(aline,4096,fileParam)!=NULL){
 		if (strncmp(aline,"dataFileName",strlen("dataFileName"))==0){
 			sscanf(aline,"%s %s",dummy,recon_info_record->DataFileName);
@@ -212,6 +213,9 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 		}
 		if (strncmp(aline,"slicesToProcess",strlen("slicesToProcess"))==0){
 			sscanf(aline,"%s %s %s",dummy,slices,dummy);
+		}
+		if (strncmp(aline,"ExtraPad",strlen("ExtraPad"))==0){
+			sscanf(aline,"%s %d",dummy,&recon_info_record->powerIncrement);
 		}
 	}
 	recon_info_record->auto_centering = 1; // ALWAYS DONE
@@ -285,21 +289,20 @@ void setReadStructSize (GLOBAL_CONFIG_OPTS *recon_info_record){
 		}
 	}
 	if (recon_info_record->sinogram_xdim == pow (2, power)){
-		recon_info_record->sinogram_adjusted_xdim = recon_info_record->sinogram_xdim;
-		recon_info_record->reconstruction_xdim = recon_info_record->sinogram_xdim;
-		recon_info_record->reconstruction_ydim = recon_info_record->sinogram_xdim;
-		recon_info_record->sinogram_adjusted_size = recon_info_record->sinogram_adjusted_xdim * recon_info_record->sinogram_ydim;
-		recon_info_record->reconstruction_size = recon_info_record->reconstruction_xdim*recon_info_record->reconstruction_ydim;
 		printf ("Sinograms are a power of 2!\n");
 	}else{
-		size = (int) pow (2, power);
-		recon_info_record->sinogram_adjusted_xdim = size;
-		recon_info_record->sinogram_adjusted_size = recon_info_record->sinogram_adjusted_xdim * recon_info_record->sinogram_ydim;
-		recon_info_record->reconstruction_xdim = size;
-		recon_info_record->reconstruction_ydim = size;
-		recon_info_record->reconstruction_size = recon_info_record->reconstruction_xdim*recon_info_record->reconstruction_ydim;
-		printf ("Sinograms are not a power of 2.  They will be increased to %d\n", recon_info_record->sinogram_adjusted_xdim);
+		printf ("Sinograms are not a power of 2.  They will be increased to %d\n", (int) pow(2,power));
 	}
+	if (recon_info_record->powerIncrement==1){
+		power++;
+		printf("Extra padding was requested. Will increase the size of sinograms by 2 times. The size of reconstruction will be %d\n", (int) pow(2,power));
+	}
+	size = (int) pow (2, power);
+	recon_info_record->sinogram_adjusted_xdim = size;
+	recon_info_record->sinogram_adjusted_size = size * recon_info_record->sinogram_ydim;
+	recon_info_record->reconstruction_xdim = size;
+	recon_info_record->reconstruction_ydim = size;
+	recon_info_record->reconstruction_size = recon_info_record->reconstruction_xdim*recon_info_record->reconstruction_ydim;
 }
 
 void memsets(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record){

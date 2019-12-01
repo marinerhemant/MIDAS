@@ -118,7 +118,7 @@ void FindPeakPositions(
 	for (i=0;i<NrElsLoGMask;i++){
 		LoGFilt[i] = (int)(79720 * (-1/(M_PI*(sigma*sigma*sigma*sigma)))*
 			                       (1 - (((FiltXYs[i][0]*FiltXYs[i][0]) + (FiltXYs[i][1]*FiltXYs[i][1]))/(2*sigma*sigma)))*
-					               (exp(-((FiltXYs[i][0]*FiltXYs[i][0]) + (FiltXYs[i][1]*FiltXYs[i][1]))/(2*sigma*sigma))));
+					               (exp(-((FiltXYs[i][0]*FiltXYs[i][0]) + (FiltXYs[i][1]*FiltXYs[i][1]))/(2*sigma*sigma)))); // What is the 79720 part??????
 	}
 	printf("Applying Laplacian of Gaussian Filter with Gauss Radius = %2.2f and LoG mask radius = %d.\n",sigma,LoGMaskRadius);
 	long *Image3; // LoG filtered image.
