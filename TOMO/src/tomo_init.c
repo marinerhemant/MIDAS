@@ -21,18 +21,12 @@
  * The data can be one of two types: 
  * 							sinogram already with float data type, directly give to reconstruct code with some additional centering etc. 
  * 							dark, whites (2) and then raw images. Using number of angles, we know how many images are there. The scaling with white should be proportional to the distance from a white and appropriate dark value.
- * The functions assume one sinogram being processed for now with one fixed_shift.
 */
 
 // TODO:
-//	1. read Array of slices_to_process.
-//	2. Make array with slices_to_process and shifts, it will be the (number of times we reconstruct)/2. Gridrec can process 2 slices at once.
-//	3. set shift before calling the reconCentering function.
-//	4. Set two slices when we call setSinoAndReconBuffers
-//	5. Check difference between lines 1192 and 1198 in tomompi_client.cpp
-//	6. Change output file to single file.
-//	7. Safe malloc to check NULL ptrs.
-//	8. Check memory usage and determine the number of processes we would be able to run per node.
+//	1. Check size of arrays needed and then allocate number of threads accordingly.
+//	2. If nSlices*nShifts is not a multiple of nThreads, correctly calculate the number of 
+//	3. Safe malloc to check NULL ptrs.
 
 void usage(){
 	printf("MIDAS-TOMO Code to do tomo recon using Gridrec. Based on tomompi implementation from Brian Tiemann, APS. Maintained by Hemant Sharma, APS (hsharma@anl.gov).\nUsage is: \n"

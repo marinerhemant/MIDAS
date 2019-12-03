@@ -165,6 +165,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 			* shiftValues: start_shift end_shift shift_interval [floats] In case of 1 shift, give start_shift=end_shift, shift_interval doesn't matter
 			* ringRemovalCoefficient - If given, will do ringRemoval, otherwise comment or remove line [float] default 1.0
 			* slicesToProcess - -1 for all or FileName
+			* ExtraPad - 0 if half padding, 1 if one-half padding
 	*/
 	int arbThetas = 0;
 	FILE *fileParam;
