@@ -29,16 +29,19 @@ from multiprocessing.dummy import Pool
 deg2rad = 0.0174532925199433
 rad2deg = 57.2957795130823
 
-colors = ['r','g','b','c','m','y','r','g','b','c','m','y','r','g','b',
-		  'c','m','y','r','g','b','c','m','y','r','g','b','c','m','y',
-		  'r','g','b','c','m','y','r','g','b','c','m','y','r','g','b',
-		  'c','m','y','r','g','b','c','m','y','r','g','b','c','m','y',
-		  'r','g','b','c','m','y','r','g','b','c','m','y','r','g','b',
-		  'c','m','y','r','g','b','c','m','y','r','g','b','c','m','y',
-		  'r','g','b','c','m','y','r','g','b','c','m','y','r','g','b',
-		  'c','m','y','r','g','b','c','m','y','r','g','b','c','m','y',
-		  'r','g','b','c','m','y','r','g','b','c','m','y','r','g','b',
-		  'c','m','y','r','g','b','c','m','y','r','g','b','c','m','y']
+colors = ['r','g','b','c','m','y','r','g','b','c','m','y',
+		  'r','g','b','c','m','y','r','g','b','c','m','y',
+		  'r','g','b','c','m','y','r','g','b','c','m','y',
+		  'r','g','b','c','m','y','r','g','b','c','m','y',
+		  'r','g','b','c','m','y','r','g','b','c','m','y',
+		  'r','g','b','c','m','y','r','g','b','c','m','y',
+		  'r','g','b','c','m','y','r','g','b','c','m','y',
+		  'r','g','b','c','m','y','r','g','b','c','m','y',
+		  'r','g','b','c','m','y','r','g','b','c','m','y',
+		  'r','g','b','c','m','y','r','g','b','c','m','y',
+		  'r','g','b','c','m','y','r','g','b','c','m','y',
+		  'r','g','b','c','m','y','r','g','b','c','m','y',
+		  'r','g','b','c','m','y','r','g','b','c','m','y']
 
 def _quit():
 	root.quit()
@@ -83,6 +86,12 @@ def getImage(fn,bytesToSkip):
 	f.close()
 	data = np.reshape(data,(NrPixelsY,NrPixelsZ))
 	data = data.astype(float)
+	if transpose.get() is 1:
+		data = np.transpose(data)
+	if hflip.get() is 1:
+		data = np.flip(data,0)
+	if vflip.get() is 1:
+		data = np.flip(data,1)
 	return data
 
 def getImageMax(fn):
@@ -1070,6 +1079,9 @@ maxStartFrameNrVar = Tk.IntVar()
 nFramesMaxVar.set(240)
 maxStartFrameNrVar.set(0)
 dolog = Tk.IntVar()
+hflip = Tk.IntVar()
+vflip = Tk.IntVar()
+transpose = Tk.IntVar()
 
 canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 toolbar_frame = Tk.Frame(root)
@@ -1094,6 +1106,9 @@ Tk.Button(master=firstRowFrame,text='+',command=incr_plotupdater,font=("Helvetic
 Tk.Button(master=firstRowFrame,text='-',command=decr_plotupdater,font=("Helvetica",12)).grid(row=1,column=11,sticky=Tk.W)
 Tk.Button(master=firstRowFrame,text="RingsMaterial",command=ringSelection).grid(row=1,column=12,sticky=Tk.W)
 Tk.Checkbutton(master=firstRowFrame,text='PlotRings',variable=plotRingsVar,command=clickRings).grid(row=1,column=13,sticky=Tk.W)
+Tk.Checkbutton(master=firstRowFrame,text="HFlip",variable=hflip).grid(row=1,column=14,sticky=Tk.W)
+Tk.Checkbutton(master=firstRowFrame,text="VFilp",variable=vflip).grid(row=1,column=15,sticky=Tk.W)
+Tk.Checkbutton(master=firstRowFrame,text="Transpose",variable=transpose).grid(row=1,column=16,sticky=Tk.W)
 
 secondRowFrame = Tk.Frame(root)
 secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
