@@ -532,8 +532,8 @@ int main(int argc, char *argv[]){
     int LowNr,FileNr,RingNr;
     FileNr = atoi(argv[2]);
     RingNr = atoi(argv[3]);
-    double Thresh, bc=1, Ycen, Zcen, IntSat, OmegaStep, OmegaFirstFile, Lsd, px, Width, Wavelength, LatticeConstant,MaxRingRad;
-    int CellStruct,NrPixels,Padding = 6, StartNr;
+    double Thresh, bc=1, Ycen, Zcen, IntSat, OmegaStep, OmegaFirstFile, Lsd, px, Width, Wavelength,MaxRingRad;
+    int NrPixels,Padding = 6, StartNr;
     char fs[1024];
     int LayerNr;
     int NrTransOpt=0;
@@ -548,7 +548,7 @@ int main(int argc, char *argv[]){
     double RhoD, tx, ty, tz, p0, p1, p2;
     double OmegaRanges[20][2];
     int nOmeRanges = 0;
-    size_t BadPxIntensity = 0;
+    long long int BadPxIntensity = 0;
     int minNrPx=1, maxNrPx=10000, makeMap = 0;
     while (fgets(aline,1000,fileParam)!=NULL){
 		//printf("%s",aline);
@@ -762,7 +762,7 @@ int main(int argc, char *argv[]){
         str = "BadPxIntensity ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %zu", dummy, &BadPxIntensity);
+            sscanf(aline,"%s %lld", dummy, &BadPxIntensity);
             makeMap = 1;
             continue;
         }
