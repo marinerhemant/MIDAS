@@ -549,10 +549,16 @@ int main(int argc, char *argv[]){
     double OmegaRanges[20][2];
     int nOmeRanges = 0;
     long long int BadPxIntensity = 0;
-    int minNrPx=1, maxNrPx=10000, makeMap = 0;
+    int minNrPx=1, maxNrPx=10000, makeMap = 0, maxNPeaks=400;
     while (fgets(aline,1000,fileParam)!=NULL){
 		//printf("%s",aline);
 		fflush(stdout);
+		str = "MaxNPeaks ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &maxNPeaks);
+            continue;
+        }
 		str = "tx ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -1128,6 +1134,33 @@ int main(int argc, char *argv[]){
 		if (IsSaturated == 1){ //Saturated peaks removed
 			TotNrRegions--;
 			continue;
+		}
+		if (nPeaks > maxNPeaks){
+			// Sort peaks by MaxIntensity, remove the smallest peaks until maxNPeaks, arrays needed MaximaPositions, MaximaValues.
+			printf("nPeaks = %d, will be reduced to %d.\n",nPeaks,maxNPeaks);
+			int MaximaPositionsT[nPeaks][2];
+			double MaximaValuesT[nPeaks];
+			double maxIntMax;
+			int maxPos;
+			for (i=0;i<maxNPeaks;i++){
+				maxIntMax = 0;
+				for (j=0;j<nPeaks;j++){
+					if (MaximaValues[j] > maxIntMax){
+						maxPos = j;
+						maxIntMax = MaximaValues[j];
+					}
+				}
+				MaximaPositionsT[i][0] = MaximaPositions[maxPos][0];
+				MaximaPositionsT[i][1] = MaximaPositions[maxPos][1];
+				MaximaValuesT[i] = MaximaValues[maxPos];
+				MaximaValues[maxPos] = 0;
+			}
+			nPeaks = maxNPeaks;
+			for (i=0;i<nPeaks;i++){
+				MaximaValues[i] = MaximaValuesT[i];
+				MaximaPositions[i][0] = MaximaPositionsT[i][0];
+				MaximaPositions[i][1] = MaximaPositionsT[i][1];
+			}
 		}
 		double *IntegratedIntensity, *IMAX, *YCEN, *ZCEN, *Rads, *Etass, *OtherInfo;
 		IntegratedIntensity = malloc(nPeaks*2*sizeof(*IntegratedIntensity));
