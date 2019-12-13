@@ -17,6 +17,8 @@
 #include <ctype.h>
 #include <stdint.h>
 
+#define CalcNorm2(a,b,c,d) sqrt((a-b)*(a-b) + (c-d)*(c-d))
+
 int main (int argc, char *argv[]){
     char *ParamFN;
     FILE *fileParam;
@@ -29,7 +31,6 @@ int main (int argc, char *argv[]){
 	char inputfile[1024];
 	char outputfile[1024];
     int nSaves = 1;
-    //int map
     while (fgets(aline,1000,fileParam)!=NULL){
         str = "PhaseNr ";
         LowNr = strncmp(aline,str,strlen(str));
@@ -70,7 +71,7 @@ int main (int argc, char *argv[]){
 	}
 
 	FILE *inp=fopen(inputfile,"rb");
-	int sz;
+	size_t sz;
 	fseek(inp,0L,SEEK_END);
 	sz = ftell(inp);
 	rewind(inp);
@@ -82,37 +83,97 @@ int main (int argc, char *argv[]){
 	FILE *out=fopen(outputfile,"w");
 	char outfilebin[4096];
 	sprintf(outfilebin,"%s.map",outputfile);
-	//FILE *outmap = fopen(outfilebin,"w");
-	int i,j;
+	FILE *outmap = fopen(outfilebin,"w");
+	size_t i;
+	int j, k;
 	fprintf(out,"%%TriEdgeSize %lf\n",MicContents[5]);
 	fprintf(out,"%%NumPhases %d\n",NumPhases);
 	fprintf(out,"%%GlobalPosition %lf\n",GlobalPosition);
-	fprintf(out,"%%OrientationRowNr\tNrMatches\tRunTime\tX\tY\tTriEdgeSize\tUpDown\tEul1\tEul2\tEul3\tConfidence\tPhaseNr\n");
+	fprintf(out,"%%OrientationRowNr\tOrientationID\tRunTime\tX\tY\tTriEdgeSize\tUpDown\tEul1\tEul2\tEul3\tConfidence\tPhaseNr\n");
+	double minXRange=1e10, minYRange=1e10, maxXRange=-1e10, maxYRange=-1e10;
 	for (i=0;i<NrRows;i++){
 		if (MicContents[i*11+10] == 0) continue;
-		// Let's make a map.
-		
+		// Get min max extent
+		if (MicContents[i*11+3] > maxXRange) maxXRange = MicContents[i*11+3];
+		if (MicContents[i*11+3] < minXRange) minXRange = MicContents[i*11+3];
+		if (MicContents[i*11+4] > maxYRange) maxYRange = MicContents[i*11+4];
+		if (MicContents[i*11+4] < minYRange) minYRange = MicContents[i*11+4];
 		for (j=0;j<11;j++){
 			fprintf(out,"%lf\t",MicContents[i*11+j]);
 		}
 		fprintf(out,"%d\n",PhaseNr);
 	}
+	minXRange -= MicContents[5] + 5;
+	maxXRange += MicContents[5] + 5;
+	minYRange -= MicContents[5] + 5;
+	maxYRange += MicContents[5] + 5;
+	size_t xSizeMap = (maxXRange - minXRange + 1); 
+	size_t ySizeMap = (maxYRange - minYRange + 1);
+	size_t size_map = xSizeMap * ySizeMap;
+	double *map;
+	map = malloc((size_map*7+2)*sizeof(*map));
+	for (i=0;i<size_map*7+2;i++) map[i] =-15;
+	double edge_size = MicContents[5];
+	double *lengthMat;
+	int *RowNrMat;
+	lengthMat = malloc(size_map*sizeof(*lengthMat));
+	RowNrMat = malloc(size_map*sizeof(*RowNrMat));
+	for (i=0;i<size_map;i++) RowNrMat[i] = -1;
+	int intX, intY, posX, posY;
+	size_t posThis;
+	double diffLen;
+	for (i=0;i<NrRows;i++){
+		intX = (int)MicContents[i*11+3];
+		intY = (int)MicContents[i*11+4];
+		for (j=-(edge_size+1);j<=edge_size+1;j++){
+			posX = (xSizeMap-1)/2 + (intX+j);
+			for (k=-(edge_size+1);k<=edge_size+1;k++){
+				posY = (ySizeMap-1)/2 + (intY+k);
+				posThis = posY*xSizeMap + posX;
+				diffLen = CalcNorm2(MicContents[i*11+3],intX+j,MicContents[i*11+4],intY+k);
+				if (RowNrMat[posThis] == -1){
+					RowNrMat[posThis] = i;
+					lengthMat[posThis] = diffLen;
+				}else{
+					if (diffLen < lengthMat[posThis]){
+						RowNrMat[posThis] = i;
+						lengthMat[posThis] = diffLen;
+					}
+				}
+			}
+		}
+	}
+	int thisRowNr;
+	map[0] = xSizeMap;
+	map[1] = ySizeMap;
+	for (i=0;i<size_map;i++){
+		if (RowNrMat[i] != -1){
+			thisRowNr = RowNrMat[i];
+			map[size_map*0+i+2] = MicContents[i*11+10]; // Confidence
+			map[size_map*1+i+2] = MicContents[i*11+7]; // Eul1
+			map[size_map*2+i+2] = MicContents[i*11+8]; // Eul2
+			map[size_map*3+i+2] = MicContents[i*11+9]; // Eul3
+			map[size_map*4+i+2] = MicContents[i*11+1]; // OrientationRowNr (grainID)
+			map[size_map*5+i+2] = MicContents[i*11+11]; // PhaseNr
+			map[size_map*6+i+2] = lengthMat[i]; // Distt from HEDM Voxel
+		}
+	}
 	// Write out the map.
-	//fwrite(map,size_map,1,outmap);
+	fwrite(map,sizeof(*map)*(size_map*7+2),1,outmap);
 	// All matches now
 	char inputfile2[4096],outputfile2[4096];
 	sprintf(outputfile2,"%s.AllMatches",outputfile);
 	sprintf(inputfile2,"%s.AllMatches",inputfile);
 	FILE *inp2 = fopen(inputfile2,"rb");
-	int sz2;
+	size_t sz2;
 	fseek(inp2,0L,SEEK_END);
 	sz2 = ftell(inp2);
 	rewind(inp2);
 	double *AllMatchesMicContents;
 	AllMatchesMicContents = malloc(sz2);
 	fread(AllMatchesMicContents,sz2,1,inp2);
-	int nCols = 7+4*nSaves;
-	int NrRows2 = sz2 / (sizeof(double) * nCols);
+	size_t nCols = 7+4*nSaves;
+	size_t NrRows2 = sz2 / (sizeof(double) * nCols);
 	FILE *out2 = fopen(outputfile2,"w");
 	fprintf(out2,"%%TriEdgeSize %lf\n",MicContents[5]);
 	fprintf(out2,"%%NumPhases %d\n",NumPhases);

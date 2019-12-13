@@ -801,28 +801,58 @@ def plotmic():
 		cb = None
 	b.clear()
 	col = colVar.get()
-	micfiledatacut = np.copy(micfiledata)
-	micfiledatacut = micfiledatacut[ micfiledatacut[:,10] > float(cutconfidencevar.get()) , :]
-	if cb is not None:
-		cb.remove()
-	sc = b.scatter(micfiledatacut[:,3],micfiledatacut[:,4],c=micfiledatacut[:,col],lw=0)
-	if initplotb:
-		initplotb = 0
-	else:
-		b.set_xlim([lims[0][0],lims[0][1]])
-		b.set_ylim([lims[1][0],lims[1][1]])
-	if col == 7:
-		b.title.set_text("MicFile (Euler0)")
-	elif col == 8:
-		b.title.set_text("MicFile (Euler1)")
-	elif col == 9:
-		b.title.set_text("MicFile (Euler2)")
-	elif col == 10:
-		b.title.set_text("MicFile (Confidence Coloring)")
-	elif col == 1:
-		b.title.set_text("MicFile (OrientationID)")
-	elif col == 11:
-		b.title.set_text("MicFile (PhaseNr)")
+	if micfiletype == 1:
+		micfiledatacut = np.copy(micfiledata)
+		micfiledatacut = micfiledatacut[ micfiledatacut[:,10] > float(cutconfidencevar.get()) , :]
+		if cb is not None:
+			cb.remove()
+		sc = b.scatter(micfiledatacut[:,3],micfiledatacut[:,4],c=micfiledatacut[:,col],lw=0)
+		if initplotb:
+			initplotb = 0
+		else:
+			b.set_xlim([lims[0][0],lims[0][1]])
+			b.set_ylim([lims[1][0],lims[1][1]])
+		if col == 7:
+			b.title.set_text("MicFile (Euler0)")
+		elif col == 8:
+			b.title.set_text("MicFile (Euler1)")
+		elif col == 9:
+			b.title.set_text("MicFile (Euler2)")
+		elif col == 10:
+			b.title.set_text("MicFile (Confidence Coloring)")
+		elif col == 1:
+			b.title.set_text("MicFile (OrientationID)")
+		elif col == 11:
+			b.title.set_text("MicFile (PhaseNr)")
+	elif micfiletype == 2:
+		micfiledatacut = np.copy(micfiledata)
+		micfiledatacut = micfiledatacut[micfiledatacut[:,0] > float(cutconfidencevar.get()), :]
+		micfiledatacut = micfiledatacut.reshape((sizeX,sizeY,7))
+		if cb is not None:
+			cb.remove()
+		if col == 7: # Euler0
+			sc = b.imshow(micfiledatacut[:,:,1],cmap=plt.get_cmap('hot'),interpolation='nearest')
+			b.title.set_text("MicMap (Euler0)")
+		if col == 8: # Euler1
+			sc = b.imshow(micfiledatacut[:,:,2],cmap=plt.get_cmap('hot'),interpolation='nearest')
+			b.title.set_text("MicMap (Euler1)")
+		if col == 9: # Euler2
+			sc = b.imshow(micfiledatacut[:,:,3],cmap=plt.get_cmap('hot'),interpolation='nearest')
+			b.title.set_text("MicMap (Euler2)")
+		if col == 10: # Confidence
+			sc = b.imshow(micfiledatacut[:,:,0],cmap=plt.get_cmap('hot'),interpolation='nearest')
+			b.title.set_text("MicMap (Confidence)")
+		if col == 1: # OrientationID
+			sc = b.imshow(micfiledatacut[:,:,4],cmap=plt.get_cmap('hot'),interpolation='nearest')
+			b.title.set_text("MicMap (OrientationID)")
+		if col == 11: # PhaseNr
+			sc = b.imshow(micfiledatacut[:,:,5],cmap=plt.get_cmap('hot'),interpolation='nearest')
+			b.title.set_text("MicMap (PhaseNr)")
+		if initplotb:
+			initplotb = 0
+		else:
+			b.set_xlim([lims[0][0],lims[0][1]])
+			b.set_ylim([lims[1][0],lims[1][1]])
 	cb = figur.colorbar(sc,ax=b)
 	b.set_aspect('equal')
 	figur.tight_layout()
@@ -830,11 +860,20 @@ def plotmic():
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def load_mic():
-	global micfiledata, initplotb
+	global micfiledata, initplotb, micfiletype, sizeX, sizeY
 	initplotb = 1
 	micfileselect()
 	f = open(micfile,'r')
-	micfiledata = np.genfromtxt(f,skip_header=4)
+	if (micfile[-3:] == 'map'):
+		micfiletype = 2
+		sizeX = np.fromfile(f,dtype=np.double,count=1)
+		sizeY = np.fromfile(f,dtype=np.double,count=1)
+		micfiledata = np.fromfile(f,dtype=np.double)
+		if (micfiledata.size/7) != (sizeX*sizeY):
+			print "Size of the map file is not correct. Please check that the file was wirtten properly."
+		micfiledata = micfiledata.reshape((sizeX*sizeY,7))
+	else:
+		micfiledata = np.genfromtxt(f,skip_header=4)
 	f.close()
 	plotmic()
 
@@ -940,6 +979,8 @@ imarr2 = None
 initplot = 1
 framenr = 0
 startframenr = 0
+sizeX = 0
+sizeY = 0
 dist = 0
 horvert = 0
 oldVar = 0
@@ -1040,6 +1081,7 @@ nrfilesmedianvar.set(str(nrfilesperdistance))
 oldmaxoverframes = 0
 maxoverframes = Tk.IntVar()
 nrthird = 8
+micfiletype = 1
 
 firstRowFrame = Tk.Frame(root)
 firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
