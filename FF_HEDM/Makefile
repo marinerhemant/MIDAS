@@ -91,6 +91,10 @@ fitposorstrainsscanning: $(SRCDIR)FitPosOrStrainsScanningHEDM.c
 	$(CC) $(SRCDIR)FitPosOrStrainsScanningHEDM.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitPosOrStrainsScanningHEDM $(CFLAGS) \
 	$(CFLAGSNLOPT) 
 
+peaksfittingomp: $(SRCDIR)PeaksFittingOMP.c
+	$(CC) $(SRCDIR)PeaksFittingOMP.c $(SRCDIR)sharedFunctions.c -o $(BINDIR)PeaksFittingOMP $(CFLAGS) $(CFLAGSNLOPT) $(CFLAGSTIFF) -fopenmp
+
+
 peaksfitting: $(SRCDIR)PeaksFittingPerFile.c
 	$(CC) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile $(CFLAGS) $(CFLAGSNLOPT) 
 

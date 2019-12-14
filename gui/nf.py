@@ -6,15 +6,15 @@
 import PIL
 import matplotlib
 matplotlib.use('TkAgg')
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
 import sys
-import Tkinter as Tk
+import tkinter as Tk
 import numpy as np
 import time
 import matplotlib.pyplot as plt
 import os
-import tkFileDialog
+import tkinter.filedialog as tkFileDialog
 import math
 from subprocess import Popen, PIPE, STDOUT
 from multiprocessing.dummy import Pool
@@ -53,13 +53,13 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 	if maxoverframes.get() == 0:
 		fns = getfilenames()
 		im = PIL.Image.open(fns[0])
-		print "Read file " + fns[0]
+		print("Read file " + fns[0])
 		imarr = np.array(im,dtype=np.uint16)
 		doMedian = var.get()
 		fnprint = fns[0].replace(folder,'')
 		if doMedian == 1:
 			f = open(fns[1],'rb')
-			print "Read file " + fns[1]
+			print("Read file " + fns[1])
 			median = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
 			f.close()
 			median = np.reshape(median,(NrPixels,NrPixels))
@@ -75,7 +75,7 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 		else:
 			fnthis = folder + '/' + fnstem + '_MaximumIntensity_Distance_' + str(dist) + '.bin'
 		f = open(fnthis,'rb')
-		print 'Read file ' + fnthis
+		print('Read file ' + fnthis)
 		fnprint = fnthis.replace(folder,'')
 		imarr = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
 		f.close()
@@ -687,7 +687,7 @@ def plot_update_spot():
 	xa = -pos[1]*math.sin(thisome*deg2rad) + pos[0]*math.cos(thisome*deg2rad)
 	yn = (ya + ys*(1-(xa/thislsd)))/pixelsize + bcs[dist][0]
 	zn = (zs*(1-(xa/thislsd)))/pixelsize + bcs[dist][1]
-	print [pos[0], pos[1], ys, zs, xa, ya, yn, zn, rad, eta,thisome,frameNrToRead]
+	print([pos[0], pos[1], ys, zs, xa, ya, yn, zn, rad, eta,thisome,frameNrToRead])
 	while ((yn > NrPixels) or 
 		   (zn > NrPixels) or 
 		   (yn < 0) or 
@@ -707,7 +707,7 @@ def plot_update_spot():
 		xa = -pos[1]*math.sin(thisome*deg2rad) + pos[0]*math.cos(thisome*deg2rad)
 		yn = (ya + ys*(1-(xa/thislsd)))/pixelsize + bcs[dist][0]
 		zn = (zs*(1-(xa/thislsd)))/pixelsize + bcs[dist][1]
-		print [pos[0], pos[1], ys, zs, xa, ya, yn, zn, rad, eta,thisome,frameNrToRead]
+		print([pos[0], pos[1], ys, zs, xa, ya, yn, zn, rad, eta,thisome,frameNrToRead])
 	plot_updater()
 	a.scatter(yn,zn,s=25,color='red')
 	# Show Beam Center, unrotated Grain position, rotated Grain Position, Undisplaced Spot Position
@@ -784,7 +784,7 @@ def median():
 	def get_lines(process):
 		return process.communicate()[0].splitlines()
 	outputs = Pool(len(processes)).map(get_lines,processes)
-	print 'Calculated median for all distances.'
+	print('Calculated median for all distances.')
 
 def micfileselect():
 	global micfile
@@ -870,7 +870,7 @@ def load_mic():
 		sizeY = np.fromfile(f,dtype=np.double,count=1)
 		micfiledata = np.fromfile(f,dtype=np.double)
 		if (micfiledata.size/7) != (sizeX*sizeY):
-			print "Size of the map file is not correct. Please check that the file was wirtten properly."
+			print("Size of the map file is not correct. Please check that the file was wirtten properly.")
 		micfiledata = micfiledata.reshape((sizeX*sizeY,7))
 	else:
 		micfiledata = np.genfromtxt(f,skip_header=4)
@@ -1033,7 +1033,7 @@ a.title.set_text("Image")
 canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 toolbar_frame = Tk.Frame(root)
 toolbar_frame.grid(row=figrowspan+5,column=0,columnspan=5,sticky=Tk.W)
-toolbar = NavigationToolbar2TkAgg( canvas, toolbar_frame )
+toolbar = NavigationToolbar2Tk( canvas, toolbar_frame )
 toolbar.update()
 
 vali = Tk.StringVar() 

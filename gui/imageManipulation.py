@@ -5,8 +5,8 @@
 
 import matplotlib
 matplotlib.use('TkAgg')
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
-import Tkinter as Tk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+import tkinter as Tk
 import sys
 import numpy as np
 from matplotlib.figure import Figure
@@ -14,10 +14,10 @@ import matplotlib.pyplot as plt
 import time
 import os
 import glob
-import tkFileDialog
+import tkinter.filedialog as tkFileDialog
 import math
 import scipy
-from scipy.misc import imsave
+import imageio
 from subprocess import Popen, PIPE, STDOUT, call
 from multiprocessing.dummy import Pool
 import multiprocessing
@@ -110,8 +110,8 @@ def calcFastIntegration2D(mapR, mapEta, Image, params, Result, nElements):
 		EtaThis = mapEta[i]
 		if RThis < RMin or RThis >= RMax or EtaThis < EtaMin or EtaThis >= EtaMax:
 			continue
-		RBinNr = (int(RThis) - int(RMin))/int(RBin)
-		EtaBinNr = (int(EtaThis)-int(EtaMin))/int(EtaBin)
+		RBinNr = int((int(RThis) - int(RMin))/int(RBin))
+		EtaBinNr = int((int(EtaThis)-int(EtaMin))/int(EtaBin))
 		Pos = RBinNr*nEtaBins + EtaBinNr
 		Result[Pos] += Image[i]
 		nElements[Pos] += 1
@@ -127,7 +127,7 @@ def calcFastIntegration1D(mapR, Image, params, Result, nElements):
 		RThis = mapR[i]
 		if RThis < RMin or RThis >= RMax:
 			continue
-		RBinNr = (int(RThis) - int(RMin))/int(RBin)
+		RBinNr = int((int(RThis) - int(RMin))/int(RBin))
 		Result[RBinNr] += Image[i]
 		nElements[RBinNr] += 1
 
@@ -168,7 +168,7 @@ def saveFastIntegrate(arr, OneDOut, outfn):
 		outArr = np.vstack((np.array(RArr),np.divide(Result,nElements)))
 		np.savetxt(outfile,outArr.T,fmt='%10.5f',delimiter=' ',newline='\n')
 	outfile.close()
-	print time.time() - inittime
+	print(time.time() - inittime)
 
 def transforms():
 	txr = txVar.get()*deg2rad
@@ -198,7 +198,7 @@ def mapFastIntegration():
 
 def saveFile(arr,fname,fileTypeWrite):
 	if fileTypeWrite == 1: # GE output to uint16
-		print [np.min(arr), np.max(arr), np.where(arr==np.min(arr))]
+		print([np.min(arr), np.max(arr), np.where(arr==np.min(arr))])
 		arr += -(np.min(arr))
 		arr /= np.max(arr)/(65535)
 		arr = arr.astype(np.uint16)
@@ -211,7 +211,7 @@ def saveFile(arr,fname,fileTypeWrite):
 		arr2 += -(np.min(arr2))
 		arr2 /= np.max(arr2)/(255)
 		arr2 = arr2.astype(np.uint8)
-		imsave(fname+'.tif',np.reshape(arr2,(NrPixels,NrPixels)))
+		imageio.imwrite(fname+'.tif',np.reshape(arr2,(NrPixels,NrPixels)))
 	elif fileTypeWrite == 3: # BatchCorr output
 		with open(fname,'wb') as f:
 			np.array(arr).tofile(f)
@@ -243,7 +243,7 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 	if doBadProcessing is 1:
 		detNr = fn[-1]
 		badFN = os.path.expanduser('~')+'/opt/MIDAS/gui/GEBad/BadImg.ge'+detNr
-		print badFN
+		print(badFN)
 		badF = open(badFN,'rb')
 		badF.seek(8192,os.SEEK_SET)
 		badData = np.fromfile(badF,dtype=np.uint16,count=NrPixels*NrPixels)
@@ -275,7 +275,7 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 						data[idx] = 0
 		corr = np.subtract(data,dark)
 		idxz = np.nonzero(corr==np.min(corr))[0][0]
-		print [np.min(corr), np.max(corr), idxz,data[idxz],dark[idxz]]
+		print([np.min(corr), np.max(corr), idxz,data[idxz],dark[idxz]])
 		if allFrames:
 			writefn = outfn+'.frame.'+str(frameNr)+'.cor'
 			saveFile(corr,writefn,fileTypeWrite)
@@ -399,7 +399,7 @@ def processImages():
 		os.remove('ps_midas.txt')
 		os.remove('Map.bin')
 		os.remove('nMap.bin')
-	print time.time() - starttime
+	print(time.time() - starttime)
 
 def acceptParameters():
 	global topIntegrateParametersSelection, normalizer
@@ -434,7 +434,7 @@ def acceptParameters():
 	else:
 		st = time.time()
 		mapFastIntegration() # this will create 2 arrays: Rads and/or Etas.
-		print time.time() - st
+		print(time.time() - st)
 	# call processImages
 	processImages()
 
@@ -458,9 +458,9 @@ def processSquare():
 	npxy = npxyvar.get()
 	npxz = npxzvar.get()
 	if fnext == 'tif':
-		print "We have tif"
+		print("We have tif")
 		fn = thisfolder+'/'+fstem+'_'+str(startnr).zfill(pad)+'.'+fnext
-		print fn
+		print(fn)
 		head = np.fromfile(open(fn,'rb'),dtype=np.uint8,count=8192)
 		im = PIL.Image.open(fn)
 		img = np.array(im,dtype=np.int32)
@@ -481,13 +481,13 @@ def processSquare():
 		outimg = outimg.astype(np.uint16)
 		np.array(outimg).tofile(outF)
 	else:
-		print "We have RAW."
+		print("We have RAW.")
 		fn = thisfolder+'/'+fstem+'_'+str(startnr).zfill(pad)+'.'+fnext
-		print fn
+		print(fn)
 		sizefile = os.stat(fn).st_size
 		sizeframe = npxy*npxz*4 # hard coded that float32
 		nFrames = (sizefile - 8192)/sizeframe
-		print nFrames
+		print(nFrames)
 		inF = open(fn,'rb')
 		head = np.fromfile(inF,dtype=np.uint8,count=8192)
 		bytesToSkip = 8192
@@ -504,7 +504,7 @@ def processSquare():
 			img = img.astype(np.double)
 			img = img / 16.0
 			img = img.round()
-			print framenr
+			print(framenr)
 			img = img.astype(np.uint16)
 			img = img.reshape((npxy,npxz))
 			outimg[:npxy,:npxz] = img
@@ -569,7 +569,7 @@ def processStitch():
 			np.array(head).tofile(outF)
 			for frameNr in range(nframes):
 				thistime = time.time()
-				print 'Processing FrameNr: ' + str(frameNr) + ' out of ' + str(nframes) + '. Time taken till now: ' + str(thistime - sttime) + 's.'
+				print('Processing FrameNr: ' + str(frameNr) + ' out of ' + str(nframes) + '. Time taken till now: ' + str(thistime - sttime) + 's.')
 				imgArr = np.zeros(npx*npx)
 				imgArr = imgArr.astype(float)
 				for scanNr in range(nscans):
