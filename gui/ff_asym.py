@@ -6,16 +6,16 @@
 import PIL
 import matplotlib
 matplotlib.use('TkAgg')
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
 import sys
-import Tkinter as Tk
+import tkinter as Tk
 import numpy as np
 import time
 import matplotlib.pyplot as plt
 import os
 from scipy import stats
-import tkFileDialog
+import tkinter.filedialog as tkFileDialog
 import math
 import scipy
 import scipy.ndimage as ndimage
@@ -73,7 +73,7 @@ def getfn(fstem,fnum,geNum):
 		return fldr + fstem + '_' + str(fnum).zfill(padding) + '.' + fnextvar.get()
 
 def getImage(fn,bytesToSkip):
-	print "Reading file: " + fn
+	print("Reading file: " + fn)
 	global Header, BytesPerPixel
 	Header = HeaderVar.get()
 	BytesPerPixel = BytesVar.get()
@@ -95,7 +95,7 @@ def getImage(fn,bytesToSkip):
 	return data
 
 def getImageMax(fn):
-	print "Reading file: " + fn
+	print("Reading file: " + fn)
 	global Header, BytesPerPixel
 	Header = HeaderVar.get()
 	BytesPerPixel = BytesVar.get()
@@ -139,6 +139,28 @@ def getData(geNum,bytesToSkip):
 	nonzerocoords = np.nonzero(corrected)
 	return [corrected,nonzerocoords]
 
+def getDataB(geNum,bytesToSkip):
+	fn = getfn(fileStem,fileNumber,geNum)
+	global getMax
+	getMax = getMaxVar.get()
+	if not getMax:
+		data = getImage(fn,bytesToSkip)
+	else:
+		data = getImageMax(fn)
+	doDark = var.get()
+	if doDark == 1:
+		darkfn = getfn(darkStem,darkNum,geNum)
+		if nDetectors > 1:
+			if dark[geNum-startDetNr] is None:
+				dark[geNum-startDetNr] = getImage(darkfn,Header)
+			thisdark = dark[geNum-startDetNr]
+		else:
+			thisdark = getImage(darkfn,Header)
+		corrected = np.subtract(data,thisdark)
+	else:
+		corrected = data
+	return corrected
+
 def transforms(idx):
 	txr = tx[idx]*deg2rad
 	tyr = ty[idx]*deg2rad
@@ -181,7 +203,7 @@ def acoord():
 def plotRingsOffset():
 	global lines2
 	global lsdlocal, bclocal
-	global DisplRingInfo
+	global DisplRingInfo, refreshPlot
 	lsdlocal = float(lsdlocalvar.get())
 	bclocal[0] = float(bclocalvar1.get())
 	bclocal[1] = float(bclocalvar2.get())
@@ -205,7 +227,7 @@ def plotRingsOffset():
 		if bdata is not None:
 			lines2.append(b.plot(Y,Z,color=colors[colornr]))
 		colornr+= 1
-	if bdata is not None:
+	if bdata is not None and refreshPlot != 1:
 		b.set_xlim([lims[0][0],lims[0][1]])
 		b.set_ylim([lims[1][0],lims[1][1]])
 	txtDisplay = txtDisplay[:-2]
@@ -218,10 +240,11 @@ def plotRingsOffset():
 		txtDisplay = tmpdisplay[:-1]
 	DisplRingInfo = Tk.Label(master=root,text=txtDisplay,justify=Tk.LEFT)
 	DisplRingInfo.grid(row=figrowspan-1,column=0,columnspan=10)
-	if bdata is not None:
+	if bdata is not None and refreshPlot != 1:
 		bcoord()
-	canvas.show()
-	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+	if refreshPlot != 1:
+		canvas.draw()
+		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def plotRings():
 	global lines
@@ -266,10 +289,12 @@ def doRings():
 			plotRings()
 			plotRingsOffset()
 	else:
-		canvas.show()
+		canvas.draw()
 		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def clickRings():
+	global refreshPlot
+	refreshPlot = 0
 	doRings()
 
 def plot_updater():
@@ -294,7 +319,7 @@ def plot_updater():
 		readBigDet()
 	## Go through each geNum, get the data, transform it, put it on the bigDet
 	mask2 = np.copy(mask)
-	fileNumber = firstFileNumber + frameNr/nFramesPerFile
+	fileNumber = int(firstFileNumber + frameNr/nFramesPerFile)
 	framesToSkip = frameNr % nFramesPerFile
 	bytesToSkip = Header + framesToSkip*(BytesPerPixel*NrPixelsY*NrPixelsZ)
 	for i in range(startDetNr,endDetNr+1):
@@ -330,7 +355,7 @@ def plot_updater():
 		a.set_ylim([lims[1][0],lims[1][1]])
 	acoord()
 	a.title.set_text("Multiple Detector Display")
-	canvas.show()
+	canvas.draw()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def incr_plotupdater():
@@ -504,7 +529,7 @@ def readParams():
 	dark = []
 	for i in range(nDetectors):
 		dark.append(None)
-	print "Loaded"
+	print("Loaded")
 
 def writeCalibrateParams(pfname,detNum,ringsToExclude):
 	f = open(pfname,'w')
@@ -708,7 +733,7 @@ def loadbplot():
 	global origdetnum
 	global bclocalvar1, bclocalvar2
 	global ax
-	global fileNumber
+	global fileNumber, refreshPlot
 	global bdata
 	global lines2, NrPixelsY, NrPixelsZ
 	global firstFileNumber, nFramesPerFile
@@ -724,8 +749,8 @@ def loadbplot():
 	NrPixelsZ = int(NrPixelsZVar.get())
 	firstFileNumber = int(firstFileNrVar.get())
 	nFramesPerFile = int(nFramesPerFileVar.get())
-	fileNumber = firstFileNumber + frameNr/nFramesPerFile
-	framesToSkip = frameNr % nFramesPerFile
+	fileNumber = int(firstFileNumber + frameNr/nFramesPerFile)
+	framesToSkip = int(frameNr % nFramesPerFile)
 	bytesToSkip = Header + framesToSkip*(BytesPerPixel*NrPixelsY*NrPixelsZ)
 	detnr = int(detnumbvar.get())
 	if detnr is not -1:
@@ -741,7 +766,7 @@ def loadbplot():
 	else:
 		bclocal[0] = float(bclocalvar1.get())
 		bclocal[1] = float(bclocalvar2.get())
-	[bdata, coords] = getData(detnr,bytesToSkip)
+	bdata = getDataB(detnr,bytesToSkip)
 	if nDetectors > 1:
 		lsdorig = lsd[detnr-startDetNr]
 	else:
@@ -749,6 +774,7 @@ def loadbplot():
 	lsdlocal = float(lsdlocalvar.get())
 	#lines2 = None
 	#b.clear()
+	refreshPlot = 1
 	doRings()
 	if dolog.get() == 0:
 		b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
@@ -768,7 +794,7 @@ def loadbplot():
 		b.set_ylim([lims[1][0],lims[1][1]])
 	bcoord()
 	b.title.set_text("Single Detector Display")
-	canvas.show()
+	canvas.draw()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def acceptRings():
@@ -861,7 +887,7 @@ def acceptSgWlLatC():
 
 def ringSelection():
 	global wlVar, sgVar, LatticeConstantVar, tempLsdVar, tempMaxRingRadVar, pxVar
-	global topRingMaterialSelection
+	global topRingMaterialSelection, refreshPlot
 	wlVar = Tk.StringVar()
 	sgVar = Tk.StringVar()
 	pxVar = Tk.StringVar()
@@ -892,6 +918,7 @@ def ringSelection():
 	Tk.Label(master=topRingMaterialSelection,text='Pixel Size (um)').grid(row=7,column=1,sticky=Tk.W)
 	Tk.Entry(master=topRingMaterialSelection,textvariable=pxVar,width=8).grid(row=7,column=2,sticky=Tk.W)
 	Tk.Button(master=topRingMaterialSelection,text='Continue',command=acceptSgWlLatC).grid(row=8,column=1,columnspan=7)
+	refreshPlot = 0
 
 def selectFile():
 	return tkFileDialog.askopenfilename()
@@ -919,8 +946,9 @@ def firstFileSelector():
 	firstFileNumber = int(fullfilename.split('_')[-1])
 	firstFileNrVar.set(firstFileNumber)
 	padding = len(fullfilename.split('_')[-1])
+	print(padding)
 	statinfo = os.stat(firstfilefullpath)
-	nFramesPerFile = (statinfo.st_size - Header)/(BytesPerPixel*NrPixelsY*NrPixelsZ)
+	nFramesPerFile = int((statinfo.st_size - Header)/(BytesPerPixel*NrPixelsY*NrPixelsZ))
 	nFramesPerFileVar.set(nFramesPerFile)
 	nFramesMaxVar.set(nFramesPerFile)
 
@@ -941,7 +969,7 @@ def replot():
 	global initplot, initplot2
 	global lines2
 	global lines
-	global mask2, bdata
+	global mask2, bdata, refreshPlot
 	threshold = float(thresholdvar.get())
 	upperthreshold = float(maxthresholdvar.get())
 	if mask2 is not None:
@@ -965,7 +993,7 @@ def replot():
 			a.set_ylim([lims[1][0],lims[1][1]])
 		acoord()
 		a.title.set_text("Multiple Detector Display")
-		canvas.show()
+		canvas.draw()
 		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 	if bdata is not None:
 		if not initplot2:
@@ -988,8 +1016,9 @@ def replot():
 			b.set_ylim([lims[1][0],lims[1][1]])
 		bcoord()
 		b.title.set_text("Single Detector Display")
+		refreshPlot = 1
 	doRings()
-	canvas.show()
+	canvas.draw()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 # Main function
@@ -1082,11 +1111,12 @@ dolog = Tk.IntVar()
 hflip = Tk.IntVar()
 vflip = Tk.IntVar()
 transpose = Tk.IntVar()
+refreshPlot = 0
 
 canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 toolbar_frame = Tk.Frame(root)
 toolbar_frame.grid(row=figrowspan+4,column=0,columnspan=10,sticky=Tk.W)
-toolbar = NavigationToolbar2TkAgg( canvas, toolbar_frame )
+toolbar = NavigationToolbar2Tk( canvas, toolbar_frame )
 toolbar.update()
 
 Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20)).grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W,padx=10)
