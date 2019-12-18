@@ -76,7 +76,7 @@ import numpy as np
 grid = np.genfromtxt('grid.txt',skip_header=1)
 distt = np.power((grid[:,2]-x),2) + np.power((grid[:,3]-y),2)
 idx = (distt).argmin()
-print idx+1
+print(idx+1)
 END`
   echo "This is the line in the grid.txt file, which will be read: " ${GRIDPOINTNR}
 fi
