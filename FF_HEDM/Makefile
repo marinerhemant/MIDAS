@@ -22,7 +22,7 @@ endif
 SRCDIR=src/
 BINDIR=bin/
 
-all: help bindircheck calibrant \
+all: help bindircheck calibrant imagemax \
 	fittiltbclsdsample fitposorstrains peaksfitting \
 	mergeoverlaps calcradius findsaturatedpx genmediandark fitgrain tiff2ge\
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking\
@@ -73,6 +73,9 @@ help:
 	@echo ..............................................................................................
 	@echo
 	@echo $(NLOPT)
+
+imagemax: $(SRCDIR)imageMax.c
+	$(CC) $(SRCDIR)imageMax.c -shared -Wl,-soname,imageMax -o $(BINDIR)imageMax.so -fPIC -ldl -lm -fgnu89-inline -O3 -w
 
 calibrant: $(SRCDIR)Calibrant.c
 	$(CC) $(SRCDIR)Calibrant.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)Calibrant $(CFLAGS) $(CFLAGSTIFF) $(CFLAGSNLOPT)

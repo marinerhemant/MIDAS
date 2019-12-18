@@ -114,7 +114,7 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 	        return 'x=%1.4f, y=%1.4f'%(x,y)
 	a.format_coord = format_coord
 	a.title.set_text("Image: " + fnprint)
-	canvas.show()
+	canvas.draw()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def plot_updater():
@@ -205,7 +205,7 @@ def plotb():
 			zs.append(imarr2[y,int(xval)])
 		b.plot(np.array(xvals),zs)
 		b.title.set_text("LineOutHor")
-		canvas.show()
+		canvas.draw()
 		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 	elif horvert == 2:
 		b.clear()
@@ -223,7 +223,7 @@ def plotb():
 			zs.append(imarr2[int(yval),x])
 		b.plot(np.array(yvals),zs)
 		b.title.set_text("LineOutVert")
-		canvas.show()
+		canvas.draw()
 		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 	b.set_aspect('auto')
 	micfiledata = None
@@ -273,7 +273,7 @@ def plotbBox():
 			zs.append(ztr)
 		b.plot(np.array(yvals),zs)
 		b.title.set_text('BoxOutVer')
-	canvas.show()
+	canvas.draw()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 	b.set_aspect('auto')
 
@@ -715,7 +715,7 @@ def plot_update_spot():
 	a.scatter(bcs[dist][0]+(pos[1]/pixelsize),bcs[dist][1],s=30,color='green',marker=(5,0))
 	a.scatter(bcs[dist][0]+(ya/pixelsize),bcs[dist][1],s=30,color='yellow',marker=(5,0))
 	a.scatter(bcs[dist][0]+(ys/pixelsize),bcs[dist][1]+(zs/pixelsize),s=30,color='magenta',marker=(5,0))
-	canvas.show()
+	canvas.draw()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def incr_spotnr():
@@ -820,43 +820,63 @@ def plotmic():
 			b.title.set_text("MicFile (Euler2)")
 		elif col == 10:
 			b.title.set_text("MicFile (Confidence Coloring)")
-		elif col == 1:
+		elif col == 0:
 			b.title.set_text("MicFile (OrientationID)")
 		elif col == 11:
 			b.title.set_text("MicFile (PhaseNr)")
 	elif micfiletype == 2:
 		micfiledatacut = np.copy(micfiledata)
-		micfiledatacut = micfiledatacut[micfiledatacut[:,0] > float(cutconfidencevar.get()), :]
-		micfiledatacut = micfiledatacut.reshape((sizeX,sizeY,7))
+		badcoords = micfiledatacut[:sizeX*sizeY]
+		badcoords = badcoords < float(cutconfidencevar.get())
+		#~ micfiledatacut = micfiledatacut[micfiledatacut[:,0] > float(cutconfidencevar.get()), :]
 		if cb is not None:
 			cb.remove()
 		if col == 7: # Euler0
-			sc = b.imshow(micfiledatacut[:,:,1],cmap=plt.get_cmap('hot'),interpolation='nearest')
+			micfiledatacut = micfiledatacut[sizeX*sizeY:sizeX*sizeY*2]
+			micfiledatacut[badcoords] = -15.0
+			micfiledatacut = micfiledatacut.reshape((sizeY,sizeX))
+			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest')
 			b.title.set_text("MicMap (Euler0)")
 		if col == 8: # Euler1
-			sc = b.imshow(micfiledatacut[:,:,2],cmap=plt.get_cmap('hot'),interpolation='nearest')
+			micfiledatacut = micfiledatacut[sizeX*sizeY*2:sizeX*sizeY*3]
+			micfiledatacut[badcoords] = -15.0
+			micfiledatacut = micfiledatacut.reshape((sizeY,sizeX))
+			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest')
 			b.title.set_text("MicMap (Euler1)")
 		if col == 9: # Euler2
-			sc = b.imshow(micfiledatacut[:,:,3],cmap=plt.get_cmap('hot'),interpolation='nearest')
+			micfiledatacut = micfiledatacut[sizeX*sizeY*3:sizeX*sizeY*4]
+			micfiledatacut[badcoords] = -15.0
+			micfiledatacut = micfiledatacut.reshape((sizeY,sizeX))
+			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest')
 			b.title.set_text("MicMap (Euler2)")
 		if col == 10: # Confidence
-			sc = b.imshow(micfiledatacut[:,:,0],cmap=plt.get_cmap('hot'),interpolation='nearest')
+			micfiledatacut = micfiledatacut[:sizeX*sizeY]
+			micfiledatacut[badcoords] = -15.0
+			micfiledatacut = micfiledatacut.reshape((sizeY,sizeX))
+			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest')
 			b.title.set_text("MicMap (Confidence)")
-		if col == 1: # OrientationID
-			sc = b.imshow(micfiledatacut[:,:,4],cmap=plt.get_cmap('hot'),interpolation='nearest')
+		if col == 0: # OrientationID
+			micfiledatacut = micfiledatacut[sizeX*sizeY*4:sizeX*sizeY*5]
+			micfiledatacut[badcoords] = -15.0
+			micfiledatacut = micfiledatacut.reshape((sizeY,sizeX))
+			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest')
 			b.title.set_text("MicMap (OrientationID)")
 		if col == 11: # PhaseNr
-			sc = b.imshow(micfiledatacut[:,:,5],cmap=plt.get_cmap('hot'),interpolation='nearest')
+			micfiledatacut = micfiledatacut[sizeX*sizeY*5:sizeX*sizeY*6]
+			micfiledatacut[badcoords] = -15.0
+			micfiledatacut = micfiledatacut.reshape((sizeY,sizeX))
+			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest')
 			b.title.set_text("MicMap (PhaseNr)")
 		if initplotb:
 			initplotb = 0
+			b.invert_yaxis()
 		else:
 			b.set_xlim([lims[0][0],lims[0][1]])
 			b.set_ylim([lims[1][0],lims[1][1]])
 	cb = figur.colorbar(sc,ax=b)
 	b.set_aspect('equal')
 	figur.tight_layout()
-	canvas.show()
+	canvas.draw()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def load_mic():
@@ -866,12 +886,13 @@ def load_mic():
 	f = open(micfile,'r')
 	if (micfile[-3:] == 'map'):
 		micfiletype = 2
-		sizeX = np.fromfile(f,dtype=np.double,count=1)
-		sizeY = np.fromfile(f,dtype=np.double,count=1)
+		sizeX = int(np.fromfile(f,dtype=np.double,count=1)[0])
+		sizeY = int(np.fromfile(f,dtype=np.double,count=1)[0])
 		micfiledata = np.fromfile(f,dtype=np.double)
+		print([sizeX,sizeY,micfiledata.size])
 		if (micfiledata.size/7) != (sizeX*sizeY):
 			print("Size of the map file is not correct. Please check that the file was wirtten properly.")
-		micfiledata = micfiledata.reshape((sizeX*sizeY,7))
+		#~ micfiledata = micfiledata.reshape((sizeX*sizeY,7))
 	else:
 		micfiledata = np.genfromtxt(f,skip_header=4)
 	f.close()

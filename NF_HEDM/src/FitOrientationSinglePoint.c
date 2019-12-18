@@ -2,6 +2,7 @@
 // Copyright (c) 2014, UChicago Argonne, LLC
 // See LICENSE file.
 //
+// Give a grid size, and an edge size, run 
 
 #include <stdio.h>
 #include <math.h>

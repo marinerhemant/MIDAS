@@ -107,9 +107,11 @@ int main (int argc, char *argv[]){
 	maxXRange += MicContents[5] + 5;
 	minYRange -= MicContents[5] + 5;
 	maxYRange += MicContents[5] + 5;
-	size_t xSizeMap = (maxXRange - minXRange + 1); 
-	size_t ySizeMap = (maxYRange - minYRange + 1);
+	printf("%lf %lf %lf %lf\n",minXRange,maxXRange,minYRange,minYRange);
+	size_t xSizeMap = (size_t)(ceil(maxXRange) - floor(minXRange) + 1); 
+	size_t ySizeMap = (size_t)(ceil(maxYRange) - floor(minYRange) + 1);
 	size_t size_map = xSizeMap * ySizeMap;
+	printf("%zu %zu %zu\n",xSizeMap,ySizeMap,size_map);
 	double *map;
 	map = malloc((size_map*7+2)*sizeof(*map));
 	for (i=0;i<size_map*7+2;i++) map[i] =-15;
@@ -130,6 +132,7 @@ int main (int argc, char *argv[]){
 			for (k=-(edge_size+1);k<=edge_size+1;k++){
 				posY = (ySizeMap-1)/2 + (intY+k);
 				posThis = posY*xSizeMap + posX;
+				//~ printf("%zu %zu %d %d %d %d %zu %zu\n",xSizeMap, ySizeMap, intX, intY, posX, posY,posThis,size_map);
 				diffLen = CalcNorm2(MicContents[i*11+3],intX+j,MicContents[i*11+4],intY+k);
 				if (RowNrMat[posThis] == -1){
 					RowNrMat[posThis] = i;
@@ -149,13 +152,13 @@ int main (int argc, char *argv[]){
 	for (i=0;i<size_map;i++){
 		if (RowNrMat[i] != -1){
 			thisRowNr = RowNrMat[i];
-			map[size_map*0+i+2] = MicContents[i*11+10]; // Confidence
-			map[size_map*1+i+2] = MicContents[i*11+7]; // Eul1
-			map[size_map*2+i+2] = MicContents[i*11+8]; // Eul2
-			map[size_map*3+i+2] = MicContents[i*11+9]; // Eul3
-			map[size_map*4+i+2] = MicContents[i*11+1]; // OrientationRowNr (grainID)
-			map[size_map*5+i+2] = MicContents[i*11+11]; // PhaseNr
-			map[size_map*6+i+2] = lengthMat[i]; // Distt from HEDM Voxel
+			map[2+i+size_map*0] = MicContents[thisRowNr*11+10]; // Confidence
+			map[2+i+size_map*1] = MicContents[thisRowNr*11+7]; // Eul1
+			map[2+i+size_map*2] = MicContents[thisRowNr*11+8]; // Eul2
+			map[2+i+size_map*3] = MicContents[thisRowNr*11+9]; // Eul3
+			map[2+i+size_map*4] = MicContents[thisRowNr*11+0]; // OrientationRowNr (grainID)
+			map[2+i+size_map*5] = PhaseNr; // PhaseNr
+			map[2+i+size_map*6] = lengthMat[i]; // Distt from HEDM Voxel
 		}
 	}
 	// Write out the map.

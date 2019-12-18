@@ -24,6 +24,8 @@ from numpy import linalg as LA
 import math
 from subprocess import Popen, PIPE, STDOUT
 from multiprocessing.dummy import Pool
+import time
+import ctypes
 
 # Helpers
 deg2rad = 0.0174532925199433
@@ -99,19 +101,40 @@ def getImageMax(fn):
 	global Header, BytesPerPixel
 	Header = HeaderVar.get()
 	BytesPerPixel = BytesVar.get()
+	# Parameters needed for external C Code: fn, Header, BytesPerPixel, NrPixelsY, NrPixelsZ, nFramesToDo, startFrameNr
+	t1 = time.time()
 	f = open(fn,'rb')
 	f.seek(Header,os.SEEK_SET)
 	dataMax = np.zeros(NrPixelsY*NrPixelsZ)
 	nFramesToDo = nFramesMaxVar.get()
 	startFrameNr = maxStartFrameNrVar.get()
-	f.seek(startFrameNr*NrPixelsY*NrPixelsZ*BytesPerPixel,os.SEEK_CUR)
-	for framenr in range(nFramesToDo):
-		if BytesPerPixel == 2:
-			data = np.fromfile(f,dtype=np.uint16,count=(NrPixelsY*NrPixelsZ))
-		elif BytesPerPixel == 4:
-			data = np.fromfile(f,dtype=np.int32,count=(NrPixelsY*NrPixelsZ))
-		dataMax = np.maximum(dataMax,data)
+	#~ f.seek(startFrameNr*NrPixelsY*NrPixelsZ*BytesPerPixel,os.SEEK_CUR)
+	#~ for framenr in range(nFramesToDo):
+		#~ if BytesPerPixel == 2:
+			#~ data = np.fromfile(f,dtype=np.uint16,count=(NrPixelsY*NrPixelsZ))
+		#~ elif BytesPerPixel == 4:
+			#~ data = np.fromfile(f,dtype=np.int32,count=(NrPixelsY*NrPixelsZ))
+		#~ dataMax = np.maximum(dataMax,data)
+	#~ f.close()
+	t1 = time.time()
+	home = os.path.expanduser("~")
+	t = time.time()
+	imageMax = ctypes.CDLL(home + "/opt/MIDAS/FF_HEDM/bin/imageMax.so")
+	imageMax.imageMax(fn.encode('ASCII'),Header,BytesPerPixel,NrPixelsY,NrPixelsZ,nFramesToDo,startFrameNr)
+	#~ home = os.path.expanduser("~")
+	#~ cmmd = home + "/opt/MIDAS/FF_HEDM/bin/imageMax " + fn + " " + str(Header) + " " + str(BytesPerPixel) + " " + str(NrPixelsY) + " " + str(NrPixelsZ) + " " + str(nFramesToDo) + " " + str(startFrameNr)
+	#~ os.system(cmmd)
+	t2 = time.time()
+	f = open(fn+".max","rb")
+	if BytesPerPixel == 2:
+		dataMax = np.fromfile(f,dtype=np.uint16,count=(NrPixelsY*NrPixelsZ))
+	elif BytesPerPixel == 4:
+		dataMax = np.fromfile(f,dtype=np.int32,count=(NrPixelsY*NrPixelsZ))
 	f.close()
+	t3 = time.time()
+	#~ print([t-t1])
+	print("Time taken to calculate max: " + str(t2-t1))
+	#~ print([t3-t2])
 	dataMax = np.reshape(dataMax,(NrPixelsY,NrPixelsZ))
 	dataMax = dataMax.astype(float)
 	return dataMax
