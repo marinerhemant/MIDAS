@@ -16,4 +16,4 @@ for line in paramcontents:
 	elif line.startswith('NrFilesPerSweep '):
 		nrFilesPerSweep = int(line.split()[1])
 startNr = overallStartNr + nrFilesPerSweep*(layernr-1)
-print startNr
+print(startNr)
