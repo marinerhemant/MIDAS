@@ -26,6 +26,6 @@ for rown in range(startRowNr,endRowNr,1):
 	if rown > num_lines-1:
 		break
 	ID = IDs[rown]
-	print ID
+	print(ID)
 	call([binfolder+'/IndexerLinuxArgsShm','paramstest.txt',str(ID)])
 	call([binfolder+'/FitPosOrStrains','paramstest.txt',str(ID)])

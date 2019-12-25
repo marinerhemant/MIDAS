@@ -17,9 +17,9 @@ for line in PSContents:
 			if 'Layer' in word:
 				LayerNrThis = int(word[5:])
 				if LayerNrThis == LayerNr:
-					print line.split(' ')[1].split('\n')[0]
+					print(line.split(' ')[1].split('\n')[0])
 					printed = 1
 folderStem = sys.argv[3] + '*'
 if printed == 0:
 	folderList = glob.glob(folderStem)
-	print folderList[-1]
+	print(folderList[-1])
