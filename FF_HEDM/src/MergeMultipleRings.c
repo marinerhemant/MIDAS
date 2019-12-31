@@ -23,8 +23,8 @@
 #include <ctype.h>
 #include <sys/types.h>
 
-#define MAX_SPOTS_FILE 2000000
-#define MAX_SPOTS_TOTAL 5000000
+#define MAX_SPOTS_FILE 12000000
+#define MAX_SPOTS_TOTAL 25000000
 
 static inline
 double**
