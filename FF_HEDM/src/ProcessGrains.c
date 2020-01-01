@@ -188,8 +188,10 @@ FindInternalAngles(int nrIDs, int *IDs, int *IDsPerGrain,
 		OR1[i] = OPs[Pos][i];
 	}
 	OrientMat2Quat(OR1,q1);
+	size_t posSize = Pos;
+	posSize *= NR_MAX_IDS_PER_GRAIN;
 	for (i=0;i<NrIDsPerID[Pos];i++){
-		ThisID = IDsPerGrain[(Pos*NR_MAX_IDS_PER_GRAIN)+i];
+		ThisID = IDsPerGrain[(posSize)+i];
 		for (j=0;j<nrIDs;j++){
 			ThisID2 = IDs[j];
 			if (ThisID == ThisID2 && IDsChecked[j] == false){
@@ -398,10 +400,10 @@ int main(int argc, char *argv[])
 	readProcess = fread(IDsPerGrain,NR_MAX_IDS_PER_GRAIN*nrIDs*sizeof(int),1,fileProcessKey);
 	for (i=0;i<nrIDs;i++){
 		readKey = fread(keyID,2*sizeof(int),1,fileKey);
+		IDsToKeep[i] = true;
 		if (keyID[0] == 0){
 			IDsToKeep[i] = false;
 		}
-		IDsToKeep[i] = true;
 		NrIDsPerID[i] = keyID[1];
 		readOP = fread(OPThis,27*sizeof(double),1,fileOPFit);
 		counter = 0;
@@ -444,7 +446,7 @@ int main(int argc, char *argv[])
 			minIA = OPs[i][IAColNr];
 			BestGrainPos = i;
 			if (Twin ==0){
-				counten = FindInternalAngles(nrIDs,IDs,IDsPerGrain,NrIDsPerID,
+				counten = FindInternalAngles     (nrIDs,IDs,IDsPerGrain,NrIDsPerID,
 				IDsChecked,OPs,ID_IA_MAT,counte,i,StartingID,Radiuses,SGNr);
 			}else{
 				counten = FindInternalAnglesTwins(nrIDs,IDs,IDsPerGrain,NrIDsPerID,
