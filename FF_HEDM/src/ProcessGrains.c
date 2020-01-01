@@ -362,7 +362,10 @@ int main(int argc, char *argv[])
 	OPs = allocMatrix(nrIDs,23);
 	int *IDsPerGrain,*NrIDsPerID;
 	NrIDsPerID = malloc(nrIDs*sizeof(*NrIDsPerID));
-	IDsPerGrain = malloc(NR_MAX_IDS_PER_GRAIN*nrIDs*sizeof(*IDsPerGrain));
+	size_t sizeMat = NR_MAX_IDS_PER_GRAIN;
+	sizeMat *= nrIDs;
+	sizeMat *= sizeof(*IDsPerGrain);
+	IDsPerGrain = malloc(sizeMat);
 	for (i=0;i<nrIDs;i++){
 		IDsToKeep[i] = false;
 		Radiuses[i] = 0;
