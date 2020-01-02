@@ -486,7 +486,8 @@ int main(int argc, char *argv[])
 	int nspots, rown;
 	// Calculate Strains Now
 	int fullInfoFile = open("Output/FitBest.bin",O_RDONLY);
-	int OffSt, ReadSize;
+	size_t OffSt;
+	size_t ReadSize;
 	double MultR=1000000.0;
 	double **FinalMatrix;
 	double BeamCenter = 0, FullVol = 0,VNorm;
