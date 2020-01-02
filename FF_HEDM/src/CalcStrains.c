@@ -194,6 +194,7 @@ StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double
 			}
 		}
 		if (ds0 == 0){
+			printf("This id was not detected: %d\n",id);
 			return 0;
 		}
 		mydata.B[i] = (dsObs-ds0)/ds0;
