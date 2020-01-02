@@ -341,14 +341,13 @@ int main(int argc, char *argv[])
 		}
 	}
 
-    
 	int i,j,k,ThisID,counter;
-    int *IDs;
-    IDs = malloc(MAX_N_IDS*sizeof(*IDs));
-    for (i=0;i<MAX_N_IDS;i++) IDs[i] = 0;
-    int nrIDs=0;
-    if (IDsFile == NULL)printf("Could not open spots file.\n");
-    while (fgets(line,5024,IDsFile) != NULL){
+	int *IDs;
+	IDs = malloc(MAX_N_IDS*sizeof(*IDs));
+	for (i=0;i<MAX_N_IDS;i++) IDs[i] = 0;
+	int nrIDs=0;
+	if (IDsFile == NULL)printf("Could not open spots file.\n");
+	while (fgets(line,5024,IDsFile) != NULL){
 		sscanf(line,"%d",&IDs[nrIDs]);
 		nrIDs++;
 	}
@@ -603,7 +602,10 @@ int main(int argc, char *argv[])
 		if (OPs[rown][22] < 0.1) continue;
 		
 		nspots = NrIDsPerID[rown];
-		OffSt = rown*22*NR_MAX_IDS_PER_GRAIN*sizeof(double);
+		OffSt = rown;
+		OffSt *= 22;
+		OffSt *= NR_MAX_IDS_PER_GRAIN;
+		OffSt *= sizeof(double);
 		ReadSize = 22*nspots*sizeof(double);
 		int rc = pread(fullInfoFile,dummySampleInfo,ReadSize,OffSt);
 		counterSpotMatrix = 0;
@@ -617,6 +619,7 @@ int main(int argc, char *argv[])
 			SpotsInfo[j][5] = dummySampleInfo[j*22+7];
 			SpotsInfo[j][6] = dummySampleInfo[j*22+8];
 			SpotsInfo[j][7] = dummySampleInfo[j*22+0]; // SpotID
+			printf("%lf %zu",dummySampleInfo[j*22+0],OffSt);
 			rowSpotID = (int) dummySampleInfo[j*22+0] - 1;
 			SpotMatrix[counterSpotMatrix][0] = (double)IDs[rown]; // GrainID
 			SpotMatrix[counterSpotMatrix][1] = dummySampleInfo[j*22+0]; //SpotID
@@ -631,6 +634,7 @@ int main(int argc, char *argv[])
 			SpotMatrix[counterSpotMatrix][10] = InputMatrix[rowSpotID][8]/2.0; //Theta
 			counterSpotMatrix++;
 		}
+		printf("\n");
 		LatticeParameterFit[0] = OPs[rown][12];
 		LatticeParameterFit[1] = OPs[rown][13];
 		LatticeParameterFit[2] = OPs[rown][14];
