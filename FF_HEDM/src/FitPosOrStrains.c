@@ -1510,7 +1510,8 @@ int main(int argc, char *argv[])
 			return 1;
 		}
 		int SizeKeyFile 		= 2  * sizeof(int);
-		int OffStKeyFile 		= SizeKeyFile * rowNr;
+		size_t OffStKeyFile = SizeKeyFile;
+		OffStKeyFile *= rowNr;
 		int KeyInfo[2] = {0, 0};
 		int rc = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
 	    if (rc < 0){
@@ -1531,7 +1532,8 @@ int main(int argc, char *argv[])
 			return 1;
 		}
 		int SizeKeyFile 		= 2  * sizeof(int);
-		int OffStKeyFile 		= SizeKeyFile * rowNr;
+		size_t OffStKeyFile = SizeKeyFile;
+		OffStKeyFile *= rowNr;
 		int KeyInfo[2] = {0, 0};
 		int rc = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
 	    if (rc < 0){
@@ -1796,7 +1798,8 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	int SizeKeyFile 		= 2  * sizeof(int);
-	int OffStKeyFile 		= SizeKeyFile * rowNr;
+	size_t OffStKeyFile = SizeKeyFile;
+	OffStKeyFile *= rowNr;
 	int KeyInfo[2] = {SpId , nSpotsComp};
 	int rcKey = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
     if (rcKey < 0){
@@ -1813,7 +1816,9 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	int SizeProcessFile 	= nSpotsComp * sizeof(int);
-	int OffStProcessFile 	= MaxNHKLS * sizeof(int) * rowNr;
+	size_t OffStProcessFile = MaxNHKLS;
+	OffStProcessFile *= sizeof(int);
+	OffStProcessFile *= rowNr;
 	int ProcessInfo[nSpotsComp];
 	for (i=0;i<nSpotsComp;i++){
 		ProcessInfo[i] = SpotsComp[i][0];
@@ -1832,7 +1837,8 @@ int main(int argc, char *argv[])
 		return 1;
 	}
     int SizeOutFile 		= 27 * sizeof(double);
-	int OffStSizeOutFile 	= SizeOutFile * rowNr;
+	size_t OffStSizeOutFile = SizeOutFile;
+	OffStSizeOutFile *= rowNr;
 	double OutMatr[27];
 	for (i=0;i<10;i++){
 		OutMatr[i] = OrientsFit[nSpID][i];
@@ -1862,7 +1868,10 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	int SizeSpotsFile 		= 22 * sizeof(double) * nSpotsComp;
-	int OffStSpotsFile 		= 22 * sizeof(double) * MaxNHKLS * rowNr;
+	size_t OffStSpotsFile = 22;
+	OffStSpotsFile *= sizeof(double);
+	OffStSpotsFile *= MaxNHKLS;
+	OffStSpotsFile *= rowNr;
 	double SpotsCompFNContents[nSpotsComp][22];
 	for (i=0;i<nSpotsComp;i++){
 		for (j=0;j<22;j++){

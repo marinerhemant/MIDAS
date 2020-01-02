@@ -850,7 +850,8 @@ main(int argc, char *argv[])
 			diftotal,xs,ys,GridSize,(double)UD,BestEuler[0],BestEuler[1],
 			BestEuler[2],BestFrac};
 		int SizeWritten = 11*sizeof(double);
-		int OffsetHere = (rown-1) * SizeWritten;
+		size_t OffsetHere = (rown-1);
+		OffsetHere *= SizeWritten;
 	    int rc4 = pwrite(result,outresult,SizeWritten,OffsetHere);
 	    if (rc4 < 0){
 			printf("Could not write to output file.\n");
@@ -863,7 +864,8 @@ main(int argc, char *argv[])
 			printf("\n");
 		}
 		int SizeWritten2 = (7+(nSaves*4))*sizeof(double);
-		int OffsetThis = (rown-1)*SizeWritten2;
+		size_t OffsetThis = (rown-1);
+		OffsetThis *= SizeWritten2;
 		int rc5 = pwrite(result2,ResultMatr,SizeWritten2,OffsetThis);
 		if (rc5 < 0){
 			printf("Could not write all matches\n");
