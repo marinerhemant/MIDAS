@@ -560,7 +560,7 @@ int main(int argc, char *argv[])
 		}
 	}
 	for (i=0;i<nRings;i++){
-		printf("%lf %lf %lf %lf",IDHash[i][0],IDHash[i][1],IDHash[i][2],dspacings[i]);
+		printf("%d %d %d %lf\n",IDHash[i][0],IDHash[i][1],IDHash[i][2],dspacings[i]);
 	}
 	for (j=0;j<NR_MAX_IDS_PER_GRAIN;j++) for (k=0;k<12;k++) SpotMatrix[j][k] = 0;
 	int rowSpotID, startSpotMatrix;
