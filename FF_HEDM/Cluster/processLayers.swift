@@ -35,6 +35,11 @@ app (file err) indexrefine (string foldername, int spotsinput, file dm)
 	indexstrains spotsinput foldername stderr=filename(err);
 }
 
+app (file err) indexrefine2 (string foldername, int spotsinput)
+{
+	indexstrains spotsinput foldername stderr=filename(err);
+}
+
 # Parameters to be modified #############
 
 int startnr = toInt(arg("startnr","1"));
@@ -89,10 +94,9 @@ if (dopeaksearch == 1) {
 	string foldername = folderNames[0];
 	string pfname = PFNames[0];
 	int spots[] = readData(strcat(foldername,"/SpotsToIndex.csv"));
-	#file fn<simple_mapper;location=strcat(foldername,"/"),prefix="SpotsToIndex",suffix=".csv">;
 	tracef("Total number of remaining jobs: %d\n",length(spots));
-	#foreach i in spots {
-	#	file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",i),suffix=".err">;
-	#	simEerr = indexrefine(foldername,i,fn);
-	#}
+	foreach i in spots {
+		file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",i),suffix=".err">;
+		simEerr = indexrefine(foldername,i);
+	}
 }
