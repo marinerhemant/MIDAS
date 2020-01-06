@@ -45,11 +45,11 @@ int dopeaksearch = toInt(arg("DoPeakSearch","1"));
 
 # End parameters ########################
 
-int rings[] = readData(ringfile);
 string folderNames[] = readData(strcat(seedfolder,"/FolderNames.txt"));
 string PFNames[] = readData(strcat(seedfolder,"/PFNames.txt"));
 
 if (dopeaksearch == 1) {
+	int rings[] = readData(ringfile);
 	iterate ix {
 		string foldername = folderNames[ix];
 		string paramfilenamefile = strcat(foldername,"/ParamFileNames.txt");
