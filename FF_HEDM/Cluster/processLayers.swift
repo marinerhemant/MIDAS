@@ -45,10 +45,9 @@ int dopeaksearch = toInt(arg("DoPeakSearch","1"));
 
 # End parameters ########################
 
-string folderNames[] = readData(strcat(seedfolder,"/FolderNames.txt"));
-string PFNames[] = readData(strcat(seedfolder,"/PFNames.txt"));
-
 if (dopeaksearch == 1) {
+	string folderNames[] = readData(strcat(seedfolder,"/FolderNames.txt"));
+	string PFNames[] = readData(strcat(seedfolder,"/PFNames.txt"));
 	int rings[] = readData(ringfile);
 	iterate ix {
 		string foldername = folderNames[ix];
@@ -83,6 +82,10 @@ if (dopeaksearch == 1) {
 		}
 	} until (ix == length(folderNames));
 } else {
+	string folderNames[] = readData(strcat(seedfolder,"/FolderNames.txt"));
+	string PFNames[] = readData(strcat(seedfolder,"/PFNames.txt"));
+	tracef("%s",folderNames[0]);
+	tracef("%s",PFNames[0]);
 	iterate ix {
 		string foldername = folderNames[ix];
 		string pfname = PFNames[ix];
