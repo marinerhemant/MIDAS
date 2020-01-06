@@ -84,17 +84,15 @@ if (dopeaksearch == 1) {
 } else {
 	string folderNames[] = readData(strcat(seedfolder,"/FolderNames.txt"));
 	string PFNames[] = readData(strcat(seedfolder,"/PFNames.txt"));
-	tracef("%s",folderNames[0]);
-	tracef("%s",PFNames[0]);
-	iterate ix {
-		string foldername = folderNames[ix];
-		string pfname = PFNames[ix];
-		int spots[] = readData(strcat(foldername,"/SpotsToIndex.csv"));
-		file fn<simple_mapper;location=strcat(foldername,"/"),prefix="SpotsToIndex",suffix=".csv">;
-		tracef("Total number of remaining jobs: %d\n",length(spots));
-		foreach i in spots {
-			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",i),suffix=".err">;
-			simEerr = indexrefine(foldername,i,fn);
-		}
-	} until (ix == length(folderNames));
+	tracef("%s\n",folderNames[0]);
+	tracef("%s\n",PFNames[0]);
+	string foldername = folderNames[0];
+	string pfname = PFNames[0];
+	int spots[] = readData(strcat(foldername,"/SpotsToIndex.csv"));
+	file fn<simple_mapper;location=strcat(foldername,"/"),prefix="SpotsToIndex",suffix=".csv">;
+	tracef("Total number of remaining jobs: %d\n",length(spots));
+	foreach i in spots {
+		file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",i),suffix=".err">;
+		simEerr = indexrefine(foldername,i,fn);
+	}
 }
