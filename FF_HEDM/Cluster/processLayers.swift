@@ -87,7 +87,7 @@ if (dopeaksearch == 1) {
 		string foldername = folderNames[ix];
 		string pfname = PFNames[ix];
 		int spots[] = readData(strcat(foldername,"/SpotsToIndex.csv"));
-		file fn<simple_mapper;location=strcat(foldername),"/SpotsToIndex.csv">;
+		file fn<simple_mapper;location=strcat(foldername,"/"),prefix="SpotsToIndex",suffix=".csv">;
 		tracef("Total number of remaining jobs: %d\n",length(spots));
 		foreach i in spots {
 			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",i),suffix=".err">;
