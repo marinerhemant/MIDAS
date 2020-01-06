@@ -619,7 +619,6 @@ int main(int argc, char *argv[])
 			SpotsInfo[j][5] = dummySampleInfo[j*22+7];
 			SpotsInfo[j][6] = dummySampleInfo[j*22+8];
 			SpotsInfo[j][7] = dummySampleInfo[j*22+0]; // SpotID
-			printf("%lf %zu %d%",dummySampleInfo[j*22+0],OffSt,rown);
 			rowSpotID = (int) dummySampleInfo[j*22+0] - 1;
 			SpotMatrix[counterSpotMatrix][0] = (double)IDs[rown]; // GrainID
 			SpotMatrix[counterSpotMatrix][1] = dummySampleInfo[j*22+0]; //SpotID
@@ -634,7 +633,6 @@ int main(int argc, char *argv[])
 			SpotMatrix[counterSpotMatrix][10] = InputMatrix[rowSpotID][8]/2.0; //Theta
 			counterSpotMatrix++;
 		}
-		printf("\n");
 		LatticeParameterFit[0] = OPs[rown][12];
 		LatticeParameterFit[1] = OPs[rown][13];
 		LatticeParameterFit[2] = OPs[rown][14];

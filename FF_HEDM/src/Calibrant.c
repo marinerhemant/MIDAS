@@ -162,45 +162,48 @@ MatrixMult(
 
 static inline 
 void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc, double px, double *R, double *Eta, double Rmins[n_hkls],
-						double Rmaxs[n_hkls], double EtaBinsLow[nEtaBins], double EtaBinsHigh[nEtaBins], int nIndices, int *NrEachIndexbin, int **Indices){
-						//~ double Rmaxs[n_hkls], double EtaBinsLow[nEtaBins], double EtaBinsHigh[nEtaBins], int nIndices, int *NrEachIndexbin, int **Indices,
-						//~ double tx, double ty, double tz, double p0, double p1, double p2, double RhoD, double Lsd){
+						//~ double Rmaxs[n_hkls], double EtaBinsLow[nEtaBins], double EtaBinsHigh[nEtaBins], int nIndices, int *NrEachIndexbin, int **Indices){
+						double Rmaxs[n_hkls], double EtaBinsLow[nEtaBins], double EtaBinsHigh[nEtaBins], int nIndices, int *NrEachIndexbin, int **Indices,
+						double tx, double ty, double tz, double p0, double p1, double p2, double RhoD, double Lsd){
 	int i, j, k, l, counter=0;
 	for (i=0;i<nIndices;i++) NrEachIndexbin[i]=0;
-	//~ double txr, tyr, tzr;
-	//~ txr = deg2rad*tx;
-	//~ tyr = deg2rad*ty;
-	//~ tzr = deg2rad*tz;
-	//~ double Rx[3][3] = {{1,0,0},{0,cos(txr),-sin(txr)},{0,sin(txr),cos(txr)}};
-	//~ double Ry[3][3] = {{cos(tyr),0,sin(tyr)},{0,1,0},{-sin(tyr),0,cos(tyr)}};
-	//~ double Rz[3][3] = {{cos(tzr),-sin(tzr),0},{sin(tzr),cos(tzr),0},{0,0,1}};
-	//~ double TRint[3][3], TRs[3][3];
-	//~ MatrixMultF33(Ry,Rz,TRint);
-	//~ MatrixMultF33(Rx,TRint,TRs);
-	//~ double Yc,Zc,n0=2,n1=4,n2=2;
-	//~ double ABC[3], ABCPr[3], XYZ[3];
-	//~ double Rt,Rad, EtaS, RNorm, DistortFunc, EtaT;
+	double txr, tyr, tzr;
+	txr = deg2rad*tx;
+	tyr = deg2rad*ty;
+	tzr = deg2rad*tz;
+	double Rx[3][3] = {{1,0,0},{0,cos(txr),-sin(txr)},{0,sin(txr),cos(txr)}};
+	double Ry[3][3] = {{cos(tyr),0,sin(tyr)},{0,1,0},{-sin(tyr),0,cos(tyr)}};
+	double Rz[3][3] = {{cos(tzr),-sin(tzr),0},{sin(tzr),cos(tzr),0},{0,0,1}};
+	double TRint[3][3], TRs[3][3];
+	MatrixMultF33(Ry,Rz,TRint);
+	MatrixMultF33(Rx,TRint,TRs);
+	double Yc,Zc,n0=2,n1=4,n2=2;
+	double ABC[3], ABCPr[3], XYZ[3];
+	double Rt,Rad, EtaS, RNorm, DistortFunc, EtaT;
 	for (i=0;i<z;i++){
 		for (j=0;j<y;j++){
-			R[counter] = px*sqrt(((j-ybc)*(j-ybc))+((i-zbc)*(i-zbc)));
-			Eta[counter] = CalcEtaAngle(-(j-ybc),(i-zbc));
-			//~ Yc = (-j + ybc)*px;
-			//~ Zc =  (i - zbc)*px;
-			//~ ABC[0] = 0;
-			//~ ABC[1] = Yc;
-			//~ ABC[2] = Zc;
-			//~ MatrixMult(TRs,ABC,ABCPr);
-			//~ XYZ[0] = Lsd+ABCPr[0];
-			//~ XYZ[1] = ABCPr[1];
-			//~ XYZ[2] = ABCPr[2];
-			//~ Rad = (Lsd/(XYZ[0]))*(sqrt(XYZ[1]*XYZ[1] + XYZ[2]*XYZ[2]));
-			//~ EtaS = CalcEtaAngle(XYZ[1],XYZ[2]);
-			//~ RNorm = Rad/RhoD;
-			//~ EtaT = 90 - EtaS;
-			//~ DistortFunc = (p0*(pow(RNorm,n0))*(cos(deg2rad*(2*EtaT)))) + (p1*(pow(RNorm,n1))*(cos(deg2rad*(4*EtaT)))) + (p2*(pow(RNorm,n2))) + 1;
-			//~ Rt = Rad * DistortFunc / px;
-			//~ R[counter] = Rt;
-			//~ Eta[counter] = EtaS;
+	//~ for (i=0;i<z;i++){
+		//~ for (j=0;j<y;j++){
+			//~ R[counter] = px*sqrt(((j-ybc)*(j-ybc))+((i-zbc)*(i-zbc)));
+			//~ Eta[counter] = CalcEtaAngle(-(j-ybc),(i-zbc));
+			Yc = (-j + ybc)*px;
+			Zc =  (i - zbc)*px;
+			ABC[0] = 0;
+			ABC[1] = Yc;
+			ABC[2] = Zc;
+			MatrixMult(TRs,ABC,ABCPr);
+			XYZ[0] = Lsd+ABCPr[0];
+			XYZ[1] = ABCPr[1];
+			XYZ[2] = ABCPr[2];
+			Rad = (Lsd/(XYZ[0]))*(sqrt(XYZ[1]*XYZ[1] + XYZ[2]*XYZ[2]));
+			EtaS = CalcEtaAngle(XYZ[1],XYZ[2]);
+			RNorm = Rad/RhoD;
+			EtaT = 90 - EtaS;
+			DistortFunc = (p0*(pow(RNorm,n0))*(cos(deg2rad*(2*EtaT)))) + (p1*(pow(RNorm,n1))*(cos(deg2rad*(4*EtaT)))) + (p2*(pow(RNorm,n2))) + 1;
+			Rt = Rad * DistortFunc;
+			R[counter] = Rt;
+			Eta[counter] = EtaS;
+			//~ printf("%lf %lf %lf %lf %lf %lf\n",Yc,Zc,Rt,EtaS,px*sqrt(((j-ybc)*(j-ybc))+((i-zbc)*(i-zbc))),CalcEtaAngle(-(j-ybc),(i-zbc)));
 			for (k=0;k<n_hkls;k++){
 				if (R[counter] >= (Rmins[k]-px) && R[counter] <= (Rmaxs[k] + px)){
 					for (l=0;l<nEtaBins;l++){
@@ -1217,8 +1220,8 @@ int main(int argc, char *argv[])
 		int *NrEachIndexBin;
 		NrEachIndexBin = malloc(nIndices*sizeof(*NrEachIndexBin));
 		Indices = allocMatrixInt(nIndices,20000);
-		Car2Pol(n_hkls,nEtaBins,NrPixels,NrPixels,ybc,zbc,px,R,Eta,Rmins,Rmaxs,EtaBinsLow,EtaBinsHigh,nIndices,NrEachIndexBin,Indices);
-		//~ Car2Pol(n_hkls,nEtaBins,NrPixels,NrPixels,ybc,zbc,px,R,Eta,Rmins,Rmaxs,EtaBinsLow,EtaBinsHigh,nIndices,NrEachIndexBin,Indices,tx,tyin,tzin,p0in,p1in,p2in,MaxRingRad,Lsd);
+		//~ Car2Pol(n_hkls,nEtaBins,NrPixels,NrPixels,ybc,zbc,px,R,Eta,Rmins,Rmaxs,EtaBinsLow,EtaBinsHigh,nIndices,NrEachIndexBin,Indices);
+		Car2Pol(n_hkls,nEtaBins,NrPixels,NrPixels,ybc,zbc,px,R,Eta,Rmins,Rmaxs,EtaBinsLow,EtaBinsHigh,nIndices,NrEachIndexBin,Indices,tx,tyin,tzin,p0in,p1in,p2in,MaxRingRad,Lsd);
 		double *RMean, *EtaMean, *IdealR, *IdealTtheta, *IdealRmins, *IdealRmaxs;
 		IdealR = malloc(nIndices*sizeof(*IdealR));
 		IdealRmins = malloc(nIndices*sizeof(*IdealRmins));

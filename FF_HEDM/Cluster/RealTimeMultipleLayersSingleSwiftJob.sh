@@ -71,6 +71,13 @@ do
 	${PFDIR}/InitialSetup.sh ${ParamsFile} ${LAYERNR} ${DOPEAKSEARCH}
 	export JAVA_HOME=$HOME/.MIDAS/jre1.8.0_181/
 	export PATH="$JAVA_HOME/bin:$PATH"
+	if [[ ${DOPEAKSEARCH} == 0 ]]
+	then
+		outfolder=`cat ${SeedFolder}/FolderNames.txt`
+		cd ${outfolder}
+		pfname=`cat ${SeedFolder}/PFNames.txt`
+		${PFDIR}/PostPeaksSHM.sh ${outfolder} ${pfname} SpotsToIndex.csv
+	fi
 	${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
 		${PFDIR}/processLayers.swift -ringfile=${SeedFolder}/RingInfo.txt \
 		-startnr=${StartNr} -endnr=${EndNr} -SeedFolder=${SeedFolder} \

@@ -86,10 +86,7 @@ if (dopeaksearch == 1) {
 	iterate ix {
 		string foldername = folderNames[ix];
 		string pfname = PFNames[ix];
-		file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
-		file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsToIndexSwift.csv")>;
-		(simDerr,simCatOut) = postpeaks2(foldername,pfname);
-		int spots[] = readData(simCatOut);
+		int spots[] = readData(strcat(foldername,"/SpotsToIndex.csv"));
 		tracef("Total number of remaining jobs: %d\n",length(spots));
 		foreach i in spots {
 			file simEerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("IndexRefine_",ix,"_",i),suffix=".err">;
