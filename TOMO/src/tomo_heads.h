@@ -133,12 +133,12 @@ typedef struct {
 	float start_angle, 
 		end_angle, 
 		angle_interval,
-		start_shift,
-		end_shift, 
-		shift_interval,
 		*shift_values, 
 		ring_removal_coeff,
-		*theta_list;
+		*theta_list,
+		start_shift,
+		end_shift, 
+		shift_interval;
 	char DataFileName[4096], 
 		ReconFileName[4096],
 		SliceFileName[4096],

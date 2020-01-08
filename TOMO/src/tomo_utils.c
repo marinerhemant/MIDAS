@@ -238,7 +238,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 		}
 	}
 	printf("Total number of thetas: %d\n",recon_info_record->theta_list_size);
-	recon_info_record->n_shifts = abs((recon_info_record->end_shift-recon_info_record->start_shift))/recon_info_record->shift_interval+1;
+	recon_info_record->n_shifts = (round)(abs((recon_info_record->end_shift-recon_info_record->start_shift))/recon_info_record->shift_interval)+1;
 	recon_info_record->shift_values = (float *) malloc(sizeof(float)*(recon_info_record->n_shifts));
 	int i;
 	for (i=0;i<recon_info_record->n_shifts;i++){
