@@ -1194,6 +1194,8 @@ int main(int argc, char *argv[])
 		}
 	}
 	int a;
+	double means[11];
+	for (a=0;a<11;a++) means[a] = 0;
 	for (a=StartNr;a<=EndNr;a++){
 		start = clock();
 		if (Padding == 2){sprintf(FileName,"%s/%s_%02d%s",folder,fn,a,Ext);}
@@ -1312,14 +1314,25 @@ int main(int argc, char *argv[])
 		NrCalls = 0;
 		FitTiltBCLsd(nIndices,Yc,Zc,IdealTtheta,Lsd,MaxRingRad,ybc,zbc,tx,tyin,tzin,p0in,p1in,p2in,p3in,&ty,&tz,&LsdFit,&ybcFit,&zbcFit,&p0,&p1,&p2,&p3,&MeanDiff,tolTilts,tolLsd,tolBC,tolP,tolP0,tolP1,tolP2,tolP3,px);
 		printf("Number of function calls: %lld\n",NrCalls);
-		printf("LsdFit:\t\t%0.12f\nYBCFit:\t\t%0.12f\nZBCFit:\t\t%0.12f\ntyFit:\t\t%0.12f\ntzFit:\t\t%0.12f\nP0Fit:\t\t%0.12f\nP1Fit:\t\t%0.12f\nP2Fit:\t\t%0.12f\nP3Fit:\t\t%0.12f\nMeanStrain:\t%0.12lf\n",
+		printf("Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 %0.12f\np2 %0.12f\np3 %0.12f\nMeanStrain %0.12lf\n",
 				LsdFit,ybcFit,zbcFit,ty,tz,p0,p1,p2,p3,MeanDiff);
 		double *Etas, *Diffs, *RadOuts;
 		Etas = malloc(nIndices*sizeof(*Etas));
 		Diffs = malloc(nIndices*sizeof(*Diffs));
 		RadOuts = malloc(nIndices*sizeof(*RadOuts));
 		CorrectTiltSpatialDistortion(nIndices,MaxRingRad,Yc,Zc,IdealTtheta,px,LsdFit,ybcFit,zbcFit,tx,ty,tz,p0,p1,p2,p3,Etas,Diffs,RadOuts,&StdDiff);
-		printf("StdStrain:\t%0.12lf\n",StdDiff);
+		printf("StdStrain %0.12lf\n",StdDiff);
+		means[0] += LsdFit;
+		means[1] += ybcFit;
+		means[2] += zbcFit;
+		means[3] += ty;
+		means[4] += tz;
+		means[5] += p0;
+		means[6] += p1;
+		means[7] += p2;
+		means[8] += p3;
+		means[9] += MeanDiff;
+		means[10] += StdDiff;
 		FILE *Out;
 		char OutFileName[1024];
 		sprintf(OutFileName,"%s_%06d%s.%s",fn,a,Ext,"corr.csv");
@@ -1350,6 +1363,11 @@ int main(int argc, char *argv[])
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	printf("Total time elapsed:\t%f s.\n",diftotal);
+	printf("*******************Mean Values*******************\n");
+	printf("*******************Copy to par*******************\n");
+	for (a=0;a<11;a++) means[a]/= (EndNr-StartNr+1);
+	printf("Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 %0.12f\np2 %0.12f\np3 %0.12f\nMeanStrain %0.12lf\nStdStrain  %0.12lf\n",
+		means[0],means[1],means[2],means[3],means[4],means[5],means[6],means[7],means[8],means[9],means[10]);
 	free(DarkFile);
 	free(AverageDark);
 	free(Average);
