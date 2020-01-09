@@ -162,9 +162,8 @@ MatrixMult(
 
 static inline 
 void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc, double px, double *R, double *Eta, double Rmins[n_hkls],
-						//~ double Rmaxs[n_hkls], double EtaBinsLow[nEtaBins], double EtaBinsHigh[nEtaBins], int nIndices, int *NrEachIndexbin, int **Indices){
 						double Rmaxs[n_hkls], double EtaBinsLow[nEtaBins], double EtaBinsHigh[nEtaBins], int nIndices, int *NrEachIndexbin, int **Indices,
-						double tx, double ty, double tz, double p0, double p1, double p2, double RhoD, double Lsd){
+						double tx, double ty, double tz, double p0, double p1, double p2, double p3, double RhoD, double Lsd){
 	int i, j, k, l, counter=0;
 	for (i=0;i<nIndices;i++) NrEachIndexbin[i]=0;
 	double txr, tyr, tzr;
@@ -182,10 +181,6 @@ void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc, dou
 	double Rt,Rad, EtaS, RNorm, DistortFunc, EtaT;
 	for (i=0;i<z;i++){
 		for (j=0;j<y;j++){
-	//~ for (i=0;i<z;i++){
-		//~ for (j=0;j<y;j++){
-			//~ R[counter] = px*sqrt(((j-ybc)*(j-ybc))+((i-zbc)*(i-zbc)));
-			//~ Eta[counter] = CalcEtaAngle(-(j-ybc),(i-zbc));
 			Yc = (-j + ybc)*px;
 			Zc =  (i - zbc)*px;
 			ABC[0] = 0;
@@ -199,11 +194,10 @@ void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc, dou
 			EtaS = CalcEtaAngle(XYZ[1],XYZ[2]);
 			RNorm = Rad/RhoD;
 			EtaT = 90 - EtaS;
-			DistortFunc = (p0*(pow(RNorm,n0))*(cos(deg2rad*(2*EtaT)))) + (p1*(pow(RNorm,n1))*(cos(deg2rad*(4*EtaT)))) + (p2*(pow(RNorm,n2))) + 1;
+			DistortFunc = (p0*(pow(RNorm,n0))*(cos(deg2rad*(2*EtaT)))) + (p1*(pow(RNorm,n1))*(cos(deg2rad*(4*EtaT+p3)))) + (p2*(pow(RNorm,n2))) + 1;
 			Rt = Rad * DistortFunc;
 			R[counter] = Rt;
 			Eta[counter] = EtaS;
-			//~ printf("%lf %lf %lf %lf %lf %lf\n",Yc,Zc,Rt,EtaS,px*sqrt(((j-ybc)*(j-ybc))+((i-zbc)*(i-zbc))),CalcEtaAngle(-(j-ybc),(i-zbc)));
 			for (k=0;k<n_hkls;k++){
 				if (R[counter] >= (Rmins[k]-px) && R[counter] <= (Rmaxs[k] + px)){
 					for (l=0;l<nEtaBins;l++){
@@ -268,9 +262,7 @@ double problem_function_profile(
 	int i,j,k;
 	double L, G;
 	for (i=0;i<NrPtsForFit;i++){
-		//L = (2/M_PI)*(SigmaL/((4*(Rs[i]-Rcen)*(Rs[i]-Rcen))+(SigmaL*SigmaL)));
 		L = (1/(((Rs[i]-Rcen)*(Rs[i]-Rcen)/(SigmaL*SigmaL))+(1)));
-		//G = (sqrt(4*log(2))/(sqrt(M_PI)*SigmaG))*(exp(((-4*log(2))/(SigmaG*SigmaG))*(Rs[i]-Rcen)*(Rs[i]-Rcen)));
 		G = (exp((-0.5)*(Rs[i]-Rcen)*(Rs[i]-Rcen)/(SigmaG*SigmaG)));
 		CalcIntensity = BG + Imax*((Mu*L)+((1-Mu)*G));
 		TotalDifferenceIntensity += (CalcIntensity - PeakShape[i])*(CalcIntensity - PeakShape[i]);
@@ -382,7 +374,6 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 			Rma = Rs[j] + Rstep/2;
 			CalcPeakProfile(Indices,NrEachIndexBin,i,Average,Rmi,Rma,EtaMi,EtaMa,ybc,zbc,px,NrPixels, &RetVal);
 			PeakShape[j] = RetVal;
-			//~ printf("%lf\n",RetVal);
 			if (RetVal != 0){
 				AllZero = 0;
 			}
@@ -437,7 +428,7 @@ double problem_function(
 	ZMean = &(f_data->ZMean[0]);
 	IdealTtheta = &(f_data->IdealTtheta[0]);
 	px = f_data->px;
-	double Lsd,ybc,zbc,tx,ty,tz,p0,p1,p2,txr,tyr,tzr;
+	double Lsd,ybc,zbc,tx,ty,tz,p0,p1,p2,p3,txr,tyr,tzr;
 	Lsd = x[0];
 	ybc = x[1];
 	zbc = x[2];
@@ -447,6 +438,7 @@ double problem_function(
 	p0  = x[5];
 	p1  = x[6];
 	p2  = x[7];
+	p3  = x[8];
 	txr = deg2rad*tx;
 	tyr = deg2rad*ty;
 	tzr = deg2rad*tz;
@@ -470,7 +462,7 @@ double problem_function(
 		Eta = CalcEtaAngle(XYZ[1],XYZ[2]);
 		RNorm = Rad/MaxRad;
 		EtaT = 90 - Eta;
-		DistortFunc = (p0*(pow(RNorm,n0))*(cos(deg2rad*(2*EtaT)))) + (p1*(pow(RNorm,n1))*(cos(deg2rad*(4*EtaT)))) + (p2*(pow(RNorm,n2))) + 1;
+		DistortFunc = (p0*(pow(RNorm,n0))*(cos(deg2rad*(2*EtaT)))) + (p1*(pow(RNorm,n1))*(cos(deg2rad*(4*EtaT+p3)))) + (p2*(pow(RNorm,n2))) + 1;
 		Rcorr = Rad * DistortFunc;
 		RIdeal = Lsd*tan(deg2rad*IdealTtheta[i]);
 		Diff = fabs(1 - (Rcorr/RIdeal));
@@ -485,10 +477,9 @@ double problem_function(
 }
 
 void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean, double *IdealTtheta, double Lsd, double MaxRad, 
-				  double ybc, double zbc, double tx, double tyin, double tzin, double p0in, double p1in, double p2in, double *ty, double *tz, double *LsdFit, 
-				  double *ybcFit, double *zbcFit, double *p0, double *p1, double *p2, double *MeanDiff, double tolTilts, double tolLsd, double tolBC, double tolP, double px)
+				  double ybc, double zbc, double tx, double tyin, double tzin, double p0in, double p1in, double p2in, double p3in, double *ty, double *tz, double *LsdFit, double *ybcFit, double *zbcFit, double *p0, double *p1, double *p2, double *p3, double *MeanDiff, double tolTilts, double tolLsd, double tolBC, double tolP, double tolP0, double px)
 {
-	unsigned n=8;
+	unsigned n=9;
 	struct my_func_data f_data;
 	f_data.nIndices = nIndices;
 	f_data.YMean = &YMean[0];
@@ -503,9 +494,10 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean, double *IdealTthet
 	x[2] = zbc;   xl[2] = zbc - tolBC;    xu[2] = zbc + tolBC;
 	x[3] = tyin;  xl[3] = tyin- tolTilts; xu[3] = tyin+ tolTilts;
 	x[4] = tzin;  xl[4] = tzin- tolTilts; xu[4] = tzin+ tolTilts;
-	x[5] = p0in;  xl[5] = p0in- tolP;     xu[5] = p0in+ tolP;
+	x[5] = p0in;  xl[5] = p0in- tolP0;    xu[5] = p0in+ tolP0;
 	x[6] = p1in;  xl[6] = p1in- tolP;     xu[6] = p1in+ tolP;
 	x[7] = p2in;  xl[7] = p2in- tolP;     xu[7] = p2in+ tolP;
+	x[8] = p3in;  xl[8] = -45;            xu[8] = 45;
 	struct my_func_data *f_datat;
 	f_datat = &f_data;
 	void* trp = (struct my_func_data *) f_datat;
@@ -526,12 +518,13 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean, double *IdealTthet
 	*p0     = x[5];
 	*p1     = x[6];
 	*p2     = x[7];
+	*p3     = x[8];
 }
 
 static inline
 void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double *YMean, double *ZMean, double *IdealTtheta,
 		double px, double Lsd, double ybc, double zbc, double tx, double ty, double tz, double p0, double p1,
-		double p2, double *Etas, double *Diffs, double *RadOuts, double *StdDiff)
+		double p2, double p3, double *Etas, double *Diffs, double *RadOuts, double *StdDiff)
 {
 	double txr,tyr,tzr;
 	txr = deg2rad*tx;
@@ -557,7 +550,7 @@ void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double *YMean, do
 		Eta = CalcEtaAngle(XYZ[1],XYZ[2]);
 		RNorm = Rad/MaxRad;
 		EtaT = 90 - Eta;
-		DistortFunc = (p0*(pow(RNorm,n0))*(cos(deg2rad*(2*EtaT)))) + (p1*(pow(RNorm,n1))*(cos(deg2rad*(4*EtaT)))) + (p2*(pow(RNorm,n2))) + 1;
+		DistortFunc = (p0*(pow(RNorm,n0))*(cos(deg2rad*(2*EtaT)))) + (p1*(pow(RNorm,n1))*(cos(deg2rad*(4*EtaT+p3)))) + (p2*(pow(RNorm,n2))) + 1;
 		Rcorr = Rad * DistortFunc;
 		RIdeal = Lsd*tan(deg2rad*IdealTtheta[i]);
 		Diff = fabs(1 - (Rcorr/RIdeal));
@@ -739,7 +732,7 @@ int main(int argc, char *argv[])
     int StartNr, EndNr, LowNr;
     int SpaceGroup,FitWeightMean=0;
     double LatticeConstant[6], Wavelength, MaxRingRad, Lsd, MaxTtheta, TthetaTol, ybc, zbc, EtaBinSize, px,Width;
-    double tx = 0,tolTilts,tolLsd,tolBC,tolP,tyin=0,tzin=0,p0in=0,p1in=0,p2in=0, padY=0, padZ=0;
+    double tx = 0,tolTilts,tolLsd,tolBC,tolP,tolP0=0,tyin=0,tzin=0,p0in=0,p1in=0,p2in=0,p3in=0, padY=0, padZ=0;
     int Padding = 6, NrPixelsY,NrPixelsZ,NrPixels;
     int NrTransOpt=0;
     long long int GapIntensity=0, BadPxIntensity=0;
@@ -929,6 +922,12 @@ int main(int argc, char *argv[])
             sscanf(aline,"%s %lf", dummy, &p2in);
             continue;
         }
+        str = "p3 ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &p3in);
+            continue;
+        }
         str = "Width ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -971,6 +970,12 @@ int main(int argc, char *argv[])
             sscanf(aline,"%s %lf", dummy, &tolP);
             continue;
         }
+        str = "tolP0 ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &tolP0);
+            continue;
+        }
         str = "tx ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -996,6 +1001,7 @@ int main(int argc, char *argv[])
 			sscanf(aline,"%s %d", dummy, &HeadSize);
 		}
 	}
+	if (tolP0==0) tolP0 = tolP;
 	if (NrPixelsY > NrPixelsZ){
 		NrPixels = NrPixelsY;
 		NrPixelsGlobal = NrPixelsY;
@@ -1220,8 +1226,7 @@ int main(int argc, char *argv[])
 		int *NrEachIndexBin;
 		NrEachIndexBin = malloc(nIndices*sizeof(*NrEachIndexBin));
 		Indices = allocMatrixInt(nIndices,20000);
-		//~ Car2Pol(n_hkls,nEtaBins,NrPixels,NrPixels,ybc,zbc,px,R,Eta,Rmins,Rmaxs,EtaBinsLow,EtaBinsHigh,nIndices,NrEachIndexBin,Indices);
-		Car2Pol(n_hkls,nEtaBins,NrPixels,NrPixels,ybc,zbc,px,R,Eta,Rmins,Rmaxs,EtaBinsLow,EtaBinsHigh,nIndices,NrEachIndexBin,Indices,tx,tyin,tzin,p0in,p1in,p2in,MaxRingRad,Lsd);
+		Car2Pol(n_hkls,nEtaBins,NrPixels,NrPixels,ybc,zbc,px,R,Eta,Rmins,Rmaxs,EtaBinsLow,EtaBinsHigh,nIndices,NrEachIndexBin,Indices,tx,tyin,tzin,p0in,p1in,p2in,p3in,MaxRingRad,Lsd);
 		double *RMean, *EtaMean, *IdealR, *IdealTtheta, *IdealRmins, *IdealRmaxs;
 		IdealR = malloc(nIndices*sizeof(*IdealR));
 		IdealRmins = malloc(nIndices*sizeof(*IdealRmins));
@@ -1273,7 +1278,7 @@ int main(int argc, char *argv[])
 		YMean = malloc(nIndices*sizeof(*YMean));
 		ZMean = malloc(nIndices*sizeof(*ZMean));
 		YZ4mREta(nIndices,RMean,EtaMean,YMean,ZMean);
-		double ty,tz,LsdFit,ybcFit,zbcFit,p0,p1,p2,MeanDiff,*Yc,*Zc,*EtaIns,*RadIns,*DiffIns,StdDiff;
+		double ty,tz,LsdFit,ybcFit,zbcFit,p0,p1,p2,p3,MeanDiff,*Yc,*Zc,*EtaIns,*RadIns,*DiffIns,StdDiff;
 		Yc=malloc(nIndices*sizeof(*Yc));
 		Zc=malloc(nIndices*sizeof(*Zc));
 		EtaIns = malloc(nIndices*sizeof(*EtaIns));
@@ -1282,17 +1287,17 @@ int main(int argc, char *argv[])
 		for (i=0;i<nIndices;i++){
 			Yc[i]=(ybc-(YMean[i]/px));Zc[i]=(zbc+(ZMean[i]/px));
 		}
-		CorrectTiltSpatialDistortion(nIndices,MaxRingRad,Yc,Zc,IdealTtheta,px,Lsd,ybc,zbc,tx,tyin,tzin,p0in,p1in,p2in,EtaIns,DiffIns,RadIns,&StdDiff);
+		CorrectTiltSpatialDistortion(nIndices,MaxRingRad,Yc,Zc,IdealTtheta,px,Lsd,ybc,zbc,tx,tyin,tzin,p0in,p1in,p2in,p3in,EtaIns,DiffIns,RadIns,&StdDiff);
 		NrCalls = 0;
-		FitTiltBCLsd(nIndices,Yc,Zc,IdealTtheta,Lsd,MaxRingRad,ybc,zbc,tx,tyin,tzin,p0in,p1in,p2in,&ty,&tz,&LsdFit,&ybcFit,&zbcFit,&p0,&p1,&p2,&MeanDiff,tolTilts,tolLsd,tolBC,tolP,px);
+		FitTiltBCLsd(nIndices,Yc,Zc,IdealTtheta,Lsd,MaxRingRad,ybc,zbc,tx,tyin,tzin,p0in,p1in,p2in,p3in,&ty,&tz,&LsdFit,&ybcFit,&zbcFit,&p0,&p1,&p2,&p3,&MeanDiff,tolTilts,tolLsd,tolBC,tolP,tolP0,px);
 		printf("Number of function calls: %lld\n",NrCalls);
-		printf("LsdFit:\t\t%0.12f\nYBCFit:\t\t%0.12f\nZBCFit:\t\t%0.12f\ntyFit:\t\t%0.12f\ntzFit:\t\t%0.12f\nP0Fit:\t\t%0.12f\nP1Fit:\t\t%0.12f\nP2Fit:\t\t%0.12f\nMeanStrain:\t%0.12lf\n",
-				LsdFit,ybcFit,zbcFit,ty,tz,p0,p1,p2,MeanDiff);
+		printf("LsdFit:\t\t%0.12f\nYBCFit:\t\t%0.12f\nZBCFit:\t\t%0.12f\ntyFit:\t\t%0.12f\ntzFit:\t\t%0.12f\nP0Fit:\t\t%0.12f\nP1Fit:\t\t%0.12f\nP2Fit:\t\t%0.12f\nP3Fit:\t\t%0.12f\nMeanStrain:\t%0.12lf\n",
+				LsdFit,ybcFit,zbcFit,ty,tz,p0,p1,p2,p3,MeanDiff);
 		double *Etas, *Diffs, *RadOuts;
 		Etas = malloc(nIndices*sizeof(*Etas));
 		Diffs = malloc(nIndices*sizeof(*Diffs));
 		RadOuts = malloc(nIndices*sizeof(*RadOuts));
-		CorrectTiltSpatialDistortion(nIndices,MaxRingRad,Yc,Zc,IdealTtheta,px,LsdFit,ybcFit,zbcFit,tx,ty,tz,p0,p1,p2,Etas,Diffs,RadOuts,&StdDiff);
+		CorrectTiltSpatialDistortion(nIndices,MaxRingRad,Yc,Zc,IdealTtheta,px,LsdFit,ybcFit,zbcFit,tx,ty,tz,p0,p1,p2,p3,Etas,Diffs,RadOuts,&StdDiff);
 		printf("StdStrain:\t%0.12lf\n",StdDiff);
 		FILE *Out;
 		char OutFileName[1024];

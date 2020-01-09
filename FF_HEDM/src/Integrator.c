@@ -302,6 +302,7 @@ int main(int argc, char **argv)
 	int *mapMask;
 	int dType = 1;
 	char GapFN[4096], BadPxFN[4096];
+	int sumImages=0;
 	while (fgets(aline,4096,paramFile) != NULL){
 		str = "GapFile ";
 		if (StartsWith(aline,str) == 1){
@@ -379,6 +380,11 @@ int main(int argc, char **argv)
             sscanf(aline,"%s %d", dummy, &TransOpt[NrTransOpt]);
             NrTransOpt++;
             continue;
+        }
+        str = "SumImages ";
+        if (StartsWith(aline,str) == 1){
+			sumImages=1;
+			continue;
         }
 	}
 
@@ -519,6 +525,10 @@ int main(int argc, char **argv)
 	double RMean, EtaMean;
 	double RM1d,Int1d;
 	int n1ds;
+	double *sumMatrix;
+	if (sumImages == 1){
+		sumMatrix = calloc(nEtaBins*nRBins*4,sizeof(*sumMatrix));
+	}
 	for (i=0;i<nFrames;i++){
 		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
 		rc = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
@@ -565,16 +575,34 @@ int main(int argc, char **argv)
 				Int1d += Intensity;
 				n1ds ++;
 				fprintf(out,"%lf\t%lf\t%lf\t%lf\n",RMean,EtaMean,Intensity,totArea);
+				if (sumImages==1){
+					if (i==0){
+						sumMatrix[j*nEtaBins*4+k*4+0] = RMean;
+						sumMatrix[j*nEtaBins*4+k*4+1] = EtaMean;
+						sumMatrix[j*nEtaBins*4+k*4+3] = totArea;
+					}
+					sumMatrix[j*nEtaBins*4+k*4+2] += Intensity;
+				}
 			}
 			RM1d = RMean;
 			Int1d /= n1ds;
 			fprintf(out1d,"%lf\t%lf\n",RM1d,Int1d);
-			
 		}
 		fclose(out);
 		fclose(out1d);
 	}
-
+	if (sumImages == 1){
+		FILE *sumFile;
+		char sumFN[4096];
+		sprintf(sumFN,"%s_sum.csv",imageFN);
+		sumFile = fopen(sumFN,"w");
+		fprintf(sumFile,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\tEta(px)\tIntensity(counts)\tBinArea\n");
+		for (i=0;i<nRBins*nEtaBins;i++){
+			for (k=0;k<4;k++)
+				fprintf(sumFile,"%lf\t",sumMatrix[i*4+k]);
+			fprintf(sumFile,"\n");
+		}
+	}
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	printf("Total time elapsed:\t%f s.\n",diftotal);
