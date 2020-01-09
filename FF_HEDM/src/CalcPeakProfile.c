@@ -393,12 +393,9 @@ inline void CalcPeakProfile(int **Indices, int *NrEachIndexBin, int idx,
 		nEdges = FindUniques(EdgesIn,EdgesOut,nEdges);
 		ThisArea = CalcAreaPolygon(EdgesOut,nEdges);
 		TotArea += ThisArea;
-		//~ printf("%lf %lf %d %d %d\n",TotArea, ThisArea, idx,i,Indices[idx][i]);
-		//~ printf("%lf ",Average[Indices[idx][i]]);
 		SumIntensity += Average[Indices[idx][i]] * ThisArea;
 	}
 	SumIntensity /= TotArea;
-	//~ printf("%lf %lf ",SumIntensity,TotArea);
 	if (TotArea == 0){
 		SumIntensity = 0;
 	}
@@ -409,5 +406,4 @@ inline void CalcPeakProfile(int **Indices, int *NrEachIndexBin, int idx,
 	free(EtaMs);
 	FreeMemMatrix(BoxEdges,5);
 	*ReturnValue = SumIntensity;
-	//~ printf("%lf %lf ",SumIntensity,*ReturnValue);
 }

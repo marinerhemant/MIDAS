@@ -477,7 +477,7 @@ double problem_function(
 }
 
 void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean, double *IdealTtheta, double Lsd, double MaxRad, 
-				  double ybc, double zbc, double tx, double tyin, double tzin, double p0in, double p1in, double p2in, double p3in, double *ty, double *tz, double *LsdFit, double *ybcFit, double *zbcFit, double *p0, double *p1, double *p2, double *p3, double *MeanDiff, double tolTilts, double tolLsd, double tolBC, double tolP, double tolP0, double px)
+				  double ybc, double zbc, double tx, double tyin, double tzin, double p0in, double p1in, double p2in, double p3in, double *ty, double *tz, double *LsdFit, double *ybcFit, double *zbcFit, double *p0, double *p1, double *p2, double *p3, double *MeanDiff, double tolTilts, double tolLsd, double tolBC, double tolP, double tolP0, double tolP1, double tolP2, double tolP3, double px)
 {
 	unsigned n=9;
 	struct my_func_data f_data;
@@ -495,9 +495,9 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean, double *IdealTthet
 	x[3] = tyin;  xl[3] = tyin- tolTilts; xu[3] = tyin+ tolTilts;
 	x[4] = tzin;  xl[4] = tzin- tolTilts; xu[4] = tzin+ tolTilts;
 	x[5] = p0in;  xl[5] = p0in- tolP0;    xu[5] = p0in+ tolP0;
-	x[6] = p1in;  xl[6] = p1in- tolP;     xu[6] = p1in+ tolP;
-	x[7] = p2in;  xl[7] = p2in- tolP;     xu[7] = p2in+ tolP;
-	x[8] = p3in;  xl[8] = -45;            xu[8] = 45;
+	x[6] = p1in;  xl[6] = p1in- tolP1;    xu[6] = p1in+ tolP1;
+	x[7] = p2in;  xl[7] = p2in- tolP2;    xu[7] = p2in+ tolP2;
+	x[8] = p3in;  xl[8] = p3in- tolP3;    xu[8] = p3in+ tolP3;
 	struct my_func_data *f_datat;
 	f_datat = &f_data;
 	void* trp = (struct my_func_data *) f_datat;
@@ -732,7 +732,7 @@ int main(int argc, char *argv[])
     int StartNr, EndNr, LowNr;
     int SpaceGroup,FitWeightMean=0;
     double LatticeConstant[6], Wavelength, MaxRingRad, Lsd, MaxTtheta, TthetaTol, ybc, zbc, EtaBinSize, px,Width;
-    double tx = 0,tolTilts,tolLsd,tolBC,tolP,tolP0=0,tyin=0,tzin=0,p0in=0,p1in=0,p2in=0,p3in=0, padY=0, padZ=0;
+    double tx = 0,tolTilts,tolLsd,tolBC,tolP,tolP0=0,tolP1=0,tolP2=0,tolP3=0,tyin=0,tzin=0,p0in=0,p1in=0,p2in=0,p3in=0, padY=0, padZ=0;
     int Padding = 6, NrPixelsY,NrPixelsZ,NrPixels;
     int NrTransOpt=0;
     long long int GapIntensity=0, BadPxIntensity=0;
@@ -976,6 +976,24 @@ int main(int argc, char *argv[])
             sscanf(aline,"%s %lf", dummy, &tolP0);
             continue;
         }
+        str = "tolP1 ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &tolP1);
+            continue;
+        }
+        str = "tolP2 ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &tolP2);
+            continue;
+        }
+        str = "tolP3 ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &tolP3);
+            continue;
+        }
         str = "tx ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -1002,6 +1020,9 @@ int main(int argc, char *argv[])
 		}
 	}
 	if (tolP0==0) tolP0 = tolP;
+	if (tolP1==0) tolP1 = tolP;
+	if (tolP2==0) tolP2 = tolP;
+	if (tolP3==0) tolP3 = 45;
 	if (NrPixelsY > NrPixelsZ){
 		NrPixels = NrPixelsY;
 		NrPixelsGlobal = NrPixelsY;
@@ -1289,7 +1310,7 @@ int main(int argc, char *argv[])
 		}
 		CorrectTiltSpatialDistortion(nIndices,MaxRingRad,Yc,Zc,IdealTtheta,px,Lsd,ybc,zbc,tx,tyin,tzin,p0in,p1in,p2in,p3in,EtaIns,DiffIns,RadIns,&StdDiff);
 		NrCalls = 0;
-		FitTiltBCLsd(nIndices,Yc,Zc,IdealTtheta,Lsd,MaxRingRad,ybc,zbc,tx,tyin,tzin,p0in,p1in,p2in,p3in,&ty,&tz,&LsdFit,&ybcFit,&zbcFit,&p0,&p1,&p2,&p3,&MeanDiff,tolTilts,tolLsd,tolBC,tolP,tolP0,px);
+		FitTiltBCLsd(nIndices,Yc,Zc,IdealTtheta,Lsd,MaxRingRad,ybc,zbc,tx,tyin,tzin,p0in,p1in,p2in,p3in,&ty,&tz,&LsdFit,&ybcFit,&zbcFit,&p0,&p1,&p2,&p3,&MeanDiff,tolTilts,tolLsd,tolBC,tolP,tolP0,tolP1,tolP2,tolP3,px);
 		printf("Number of function calls: %lld\n",NrCalls);
 		printf("LsdFit:\t\t%0.12f\nYBCFit:\t\t%0.12f\nZBCFit:\t\t%0.12f\ntyFit:\t\t%0.12f\ntzFit:\t\t%0.12f\nP0Fit:\t\t%0.12f\nP1Fit:\t\t%0.12f\nP2Fit:\t\t%0.12f\nP3Fit:\t\t%0.12f\nMeanStrain:\t%0.12lf\n",
 				LsdFit,ybcFit,zbcFit,ty,tz,p0,p1,p2,p3,MeanDiff);
