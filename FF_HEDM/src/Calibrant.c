@@ -1364,10 +1364,10 @@ int main(int argc, char *argv[])
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	printf("Total time elapsed:\t%f s.\n",diftotal);
 	printf("*******************Mean Values*******************\n");
-	printf("*******************Copy to par*******************\n");
 	for (a=0;a<11;a++) means[a]/= (EndNr-StartNr+1);
 	printf("Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 %0.12f\np2 %0.12f\np3 %0.12f\nMeanStrain %0.12lf\nStdStrain  %0.12lf\n",
 		means[0],means[1],means[2],means[3],means[4],means[5],means[6],means[7],means[8],means[9],means[10]);
+	printf("*******************Copy to par*******************\n");
 	free(DarkFile);
 	free(AverageDark);
 	free(Average);
