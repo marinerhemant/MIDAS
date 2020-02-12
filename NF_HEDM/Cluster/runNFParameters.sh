@@ -9,6 +9,7 @@ source ${HOME}/.MIDAS/pathsNF
 
 cmdname=$(basename $0)
 
+
 if [[ ${#*} != 6 ]];
 then
   echo "Usage: ${cmdname} parameterfile processImages FFSeedOrientations MultiGridPoints nNODEs MachineName"
@@ -19,6 +20,12 @@ then
   echo "processImages = 1 if you want to reduce raw files, 0 otherwise"
   echo "**********NOTE: For local runs, nNodes should be nCPUs.**********"
   exit 1
+fi
+
+hostname=$( hostname )
+if [[ ${hostname} == *'orthros.aps.anl.gov'* ]]; then
+	echo "Exporting the correct python on orthros."
+	export PATH=/clhome/TOMO1/opt/midasconda/bin:$PATH
 fi
 
 if [[ $1 == /* ]]; then TOP_PARAM_FILE=$1; else TOP_PARAM_FILE=$(pwd)/$1; fi
