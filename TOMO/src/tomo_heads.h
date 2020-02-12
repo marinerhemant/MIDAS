@@ -86,14 +86,17 @@ typedef struct {
 		nx_prev, 
 		ny_prev,
 		setPlan;
-	unsigned long sinogram_x_dim;
+	unsigned long sinogram_x_dim,
+		plan_size;
 	fftwf_complex *in_1d, 
 		*out_1d;
 	fftwf_plan backward_plan_1d, 
 		forward_plan_2d;
 	fftwf_complex 	*in_2d, 
 		*out_2d;
-	char *wisdom_string;
+	char *wisdom_string,
+		planFN1d[4096],
+		planFN2d[4096];
 } gridrecParams;
 
 // Functions

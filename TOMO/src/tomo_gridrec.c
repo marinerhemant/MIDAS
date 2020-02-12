@@ -83,13 +83,13 @@ void fourn(float data[], unsigned long nn[], int ndim, int isign, gridrecParams 
 		param->nx_prev = nx;
 		param->ny_prev = ny;
 		if (param->setPlan == 1){
-			int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_2d.txt");
+			int rc = fftwf_import_wisdom_from_filename(param->planFN2d);
 			if (rc == 1){
 				param->forward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_WISDOM_ONLY);
 			} else {
 				printf("Creating wisdom file.\n");
 				param->forward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_MEASURE);
-				fftwf_export_wisdom_to_filename("fftwf_wisdom_2d.txt");
+				fftwf_export_wisdom_to_filename(param->planFN2d);
 			}
 			param->wisdom_string = fftwf_export_wisdom_to_string();
 		} else {
@@ -269,12 +269,12 @@ void four1(float data[], unsigned long nn, int isign, gridrecParams *param){
 		//~ printf("fft_test1f: creating plans, n=%d, n_prev=%d\n", n, param->n_prev);
 		param->n_prev = n;
 		if (param->setPlan == 1){
-			int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_1d.txt");
+			int rc = fftwf_import_wisdom_from_filename(param->planFN1d);
 			if (rc == 1){
 				param->backward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_WISDOM_ONLY);
 			} else {
 				param->backward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_MEASURE);
-				fftwf_export_wisdom_to_filename("fftwf_wisdom_1d.txt");
+				fftwf_export_wisdom_to_filename(param->planFN1d);
 			}
 			param->wisdom_string = fftwf_export_wisdom_to_string();
 		} else {

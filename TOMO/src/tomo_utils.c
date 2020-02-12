@@ -13,6 +13,7 @@
 #include <ctype.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <unistd.h>
 
 #include "tomo_heads.h"
 
@@ -590,9 +591,25 @@ void createPlanFile(GLOBAL_CONFIG_OPTS *recon_info_record){
 	setSinoSize(&information,cpy);
 	gridrecParams param;
 	param.sinogram_x_dim = information.sinogram_adjusted_xdim * 2;
+	param.sinogram_x_dim *= pow(2,recon_info_record->powerIncrement);
 	param.theta_list = recon_info_record->theta_list;
 	param.filter_type = recon_info_record->filter;
 	param.theta_list_size = recon_info_record->theta_list_size;
+	param.plan_size = recon_info_record->sinogram_adjusted_xdim;
+	param.plan_size *= 2;
+	param.plan_size *= pow(2,recon_info_record->powerIncrement);
+	sprintf(param.planFN1d,"fftwf_wisdom_1d_%d.txt",param.plan_size);
+	sprintf(param.planFN2d,"fftwf_wisdom_2d_%d.txt",param.plan_size);
+	if (access (param.planFN1d, F_OK) == -1){
+		printf("FFT plan file did not exist, creating one.\n");
+		param.setPlan = 1;
+	} else if(access (param.planFN2d, F_OK) == -1) {
+		printf("FFT plan file did not exist, creating one.\n");
+		param.setPlan = 1;
+	} else {
+		printf("Reading wisdom file.\n");
+		param.setPlan = 0;
+	}
 	setGridRecPSWF(&param);
 	initFFTMemoryStructures(&param);
 	initGridRec(&param);
@@ -607,7 +624,6 @@ void createPlanFile(GLOBAL_CONFIG_OPTS *recon_info_record){
 	// Do the same slice twice
 	setSinoAndReconBuffers(1, &information.sinograms_boundary_padding[0], &information.reconstructions_boundary_padding[0],&param);
 	setSinoAndReconBuffers(2, &information.sinograms_boundary_padding[0], &information.reconstructions_boundary_padding[0],&param);
-	param.setPlan = 1;
 	reconstruct(&param);
 	recon_info_record->wisdom_string = (char *) malloc(sizeof(char) * (strlen(param.wisdom_string)+1));
 	strcpy(recon_info_record->wisdom_string,param.wisdom_string);

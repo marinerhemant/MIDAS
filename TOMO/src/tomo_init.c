@@ -82,16 +82,8 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	// Get FFT Plan
-	if (access ("fftwf_wisdom_2d.txt", F_OK) == -1){
-		printf("FFT plan file did not exist, creating one.\n");
-		createPlanFile(&recon_info_record);
-	} else if(access ("fftwf_wisdom_1d.txt", F_OK) == -1) {
-		printf("FFT plan file did not exist, creating one.\n");
-		createPlanFile(&recon_info_record);
-	} else {
-		printf("Reading wisdom file.\n");
-		createPlanFile(&recon_info_record);
-	}
+	createPlanFile(&recon_info_record);
+	// Check if sizes are okay.
 	if (recon_info_record.n_shifts > 1 && recon_info_record.n_shifts %2 !=0){
 		printf("Number of shifts must be even. Exiting\n");
 		return 1;
@@ -125,6 +117,11 @@ int main(int argc, char *argv[])
 			param.filter_type = recon_info_record.filter;
 			param.theta_list_size = recon_info_record.theta_list_size;
 			param.wisdom_string = (char *) malloc(sizeof(char) * (strlen(recon_info_record.wisdom_string)+1));
+			param.plan_size = recon_info_record.sinogram_adjusted_xdim;
+			param.plan_size *= 2;
+			param.plan_size *= pow(2,recon_info_record.powerIncrement);
+			sprintf(param.planFN1d,"fftwf_wisdom_1d_%d.txt",param.plan_size);
+			sprintf(param.planFN2d,"fftwf_wisdom_2d_%d.txt",param.plan_size);
 			param.setPlan = 0;
 			strcpy(param.wisdom_string,recon_info_record.wisdom_string);
 			size_t offt, offsetRecons;
@@ -208,6 +205,11 @@ int main(int argc, char *argv[])
 			param.filter_type = recon_info_record.filter;
 			param.theta_list_size = recon_info_record.theta_list_size;
 			param.wisdom_string = (char *) malloc(sizeof(char) * (strlen(recon_info_record.wisdom_string)+1));
+			param.plan_size = recon_info_record.sinogram_adjusted_xdim;
+			param.plan_size *= 2;
+			param.plan_size *= pow(2,recon_info_record.powerIncrement);
+			sprintf(param.planFN1d,"fftwf_wisdom_1d_%d.txt",param.plan_size);
+			sprintf(param.planFN2d,"fftwf_wisdom_2d_%d.txt",param.plan_size);
 			param.setPlan = 0;
 			strcpy(param.wisdom_string,recon_info_record.wisdom_string);
 			size_t offt, offsetRecons;
