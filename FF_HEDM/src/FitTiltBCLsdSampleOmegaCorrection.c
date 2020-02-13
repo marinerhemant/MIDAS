@@ -902,12 +902,12 @@ int main(int argc, char *argv[])
 		FILE *fltfile = fopen(fltfn,"r");
 		fgets(line,5000,fltfile); // Skip header.
 		printf("Reading file: %s.\n",fltfn);
-		double y,z,ome,Rtemp;
+		double y,z,ome,Rtemp,sumInt;
 		int IDtemp;
 		while (fgets(line,5000,fltfile) != NULL){
-			sscanf(line,"%lf %lf %lf %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %d %s %s %s %s %s %s %s %s %s %s %s %s",
+			sscanf(line,"%lf %lf %lf %s %s %s %s %s %s %s %s %s %s %lf %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %d %s %s %s %s %s %s %s %s %s %s %s %s",
 				&z,&y,&ome,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,
-				dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,
+				dummy,dummy,sumInt,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,
 				dummy,dummy,dummy,dummy,dummy,dummy,dummy,&IDtemp,dummy,dummy,dummy,
 				dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy);
 			//y = 2048.0 - y;
@@ -921,7 +921,7 @@ int main(int argc, char *argv[])
 				SpotsInfo[counter][3] = z;
 				SpotsInfo[counter][4] = (int)PlaneNumbers[0];
 				//printf("%f\n",SpotsInfo[counter][4]);
-				SpotsInfo[counter][5] = 50;
+				SpotsInfo[counter][5] = sumInt;
 				counter++;
 			}
 		}
