@@ -74,3 +74,13 @@ if [ ! -d ${dirThis}/FFTW ]; then # fftw
 	./configure --prefix=${dirThis}/FFTW --enable-float --disable-fortran --enable-sse --enable-sse2 --enable-avx --enable-avx2 --enable-avx-128-fma --enable-generic-simd128 --enable-generic-simd256 #--enable-avx512
 	make install
 fi
+
+if [ ! -d ${dirThis}/MPICH ]; then # mpich
+	cd $dirThis
+	wget -O mpich-3.3.2.tar.gz http://www.mpich.org/static/downloads/3.3.2/mpich-3.3.2.tar.gz
+	tar -xvzf mpich-3.3.2.tar.gz
+	cd mpich-3.3.2
+	./configure --disable-fortran --prefix=${dirThis}/MPICH
+	make
+	make install
+fi

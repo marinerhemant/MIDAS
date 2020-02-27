@@ -10,9 +10,8 @@ if [[ $1 == /* ]]; then ParamsFile=$1; else ParamsFile=$(pwd)/$1; fi
 StartNr=$( awk '$1 ~ /^StartNr/ { print $2 }' ${ParamsFile} )
 EndNr=$( awk '$1 ~ /^EndNr/ { print $2 }' ${ParamsFile} )
 echo "Peaks:"
-nNODES=${2}
-export nNODES
-MACHINE_NAME=$6
+export nNODES=${2}
+export MACHINE_NAME=$6
 echo "MACHINE NAME is ${MACHINE_NAME}"
 if [[ ${MACHINE_NAME} == *"edison"* ]]; then
 	echo "We are in NERSC EDISON"

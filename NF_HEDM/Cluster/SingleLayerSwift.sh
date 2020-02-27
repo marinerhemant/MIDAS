@@ -26,11 +26,10 @@ then
 fi
 
 if [[ $1 == /* ]]; then TOP_PARAM_FILE=$1; else TOP_PARAM_FILE=$(pwd)/$1; fi
-nNODES=$4
+export nNODES=$4
 FFSeedOrientations=$2
 ProcessImages=$3
-MACHINE_NAME=$5
-export nNODES
+export MACHINE_NAME=$5
 if [[ ${MACHINE_NAME} == *"edison"* ]]; then
 	echo "We are in NERSC EDISON"
 	hn=$( hostname )
@@ -56,19 +55,24 @@ fi
 NDISTANCES=$( awk '$1 ~ /^nDistances/ { print $2 }' ${TOP_PARAM_FILE} )
 NRFILESPERDISTANCE=$( awk '$1 ~ /^NrFilesPerDistance/ { print $2 }' ${TOP_PARAM_FILE} )
 DataDirectory=$( awk '$1 ~ /^DataDirectory/ { print $2 }' ${TOP_PARAM_FILE} )
+cd ${DataDirectory}
+outFldr=$( awk '$1 ~ /^ReducedFileName/ { print $2 }' ${TOP_PARAM_FILE} )
+outdir=$( dirname ${outFldr} )
+mkdir -p ${outdir}
+rm -rf output
 BinFN=$( awk '$1 ~ /^MicFileBinary/ { print $2 }' ${TOP_PARAM_FILE} )
 tmpfn=${DataDirectory}/fns.txt
 echo "paramfn datadir" > ${tmpfn}
 echo "${TOP_PARAM_FILE} ${DataDirectory}" >> ${tmpfn}
 
-rm -f ${BinFN}
+rm -f ${BinFN} ${BinFN}.AllMatches
 # Do Processing
 export JAVA_HOME=$HOME/.MIDAS/jre1.8.0_181/
 export PATH="$JAVA_HOME/bin:$PATH"
 ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
 	-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
 	-DoPeakSearch=${ProcessImages} -FFSeedOrientations=${FFSeedOrientations} -DoFullLayer=1 \
-	-DoGrid=1
+	-DoGrid=1 -MachineName=${MACHINE_NAME}
 
 ${BINFOLDER}/ParseMic ${TOP_PARAM_FILE}
 
@@ -96,7 +100,7 @@ then
 		export PATH="$JAVA_HOME/bin:$PATH"
 		${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
 			-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
-			-DoPeakSearch=0 -FFSeedOrientations=0 -DoFullLayer=1 -DoGrid=0
+			-DoPeakSearch=0 -FFSeedOrientations=0 -DoFullLayer=1 -DoGrid=0 -MachineName=${MACHINE_NAME}
 		${BINFOLDER}/ParseMic ${NEW_PARAM_FILE}
 	fi
 fi

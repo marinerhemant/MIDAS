@@ -14,5 +14,5 @@ while [[ $nfiles != $nrfiles ]];
 do
 	sleep 1
 	nfiles=$( ls | grep ImageProcessing_$2 | wc -l )
-	echo $nfiles
+	echo $nfiles $nfiles
 done

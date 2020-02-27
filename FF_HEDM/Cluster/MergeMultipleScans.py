@@ -1,4 +1,4 @@
-#!/APSshare/anaconda/x86_64/bin/python
+#!/clhome/TOMO1/opt/midasconda/bin/python
 
 #
 # Copyright (c) 2014, UChicago Argonne, LLC
@@ -18,14 +18,14 @@ def CalcEtaAngle(y, z):
 		alpha = -alpha
 	return alpha
 
-print "We are going to process the flt files to generate MIDAS input."
+print("We are going to process the flt files to generate MIDAS input.")
 
 if len(sys.argv) == 1:
-	print 'To use this code, add the following parameters to the params.txt and then use as'
-	print '\tMergeMultipleScans.py params.txt'
-	print 'Parameters to add: nLayers, PositionsFile, Padding, FltStem, FltExt, OutDirPath'
-	print "Give no beam center, but provide a BCAll parameter for the rotation axis at 0,0"
-	print "Positions file MUST have positions in mm."
+	print( 'To use this code, add the following parameters to the params.txt and then use as')
+	print( '\tMergeMultipleScans.py params.txt')
+	print( 'Parameters to add: nLayers, PositionsFile, Padding, FltStem, FltExt, OutDirPath')
+	print( "Give no beam center, but provide a BCAll parameter for the rotation axis at 0,0")
+	print( "Positions file MUST have positions in mm.")
 	sys.exit(1)
 
 configFile = sys.argv[1]
@@ -35,7 +35,7 @@ positionsFile = os.getcwd() +'/positions.csv'
 padding = 6
 fstem = os.getcwd() + '/flt/peak_'
 ext = '.ext.flt'
-outdir = os.getcwd() +'/Cu_tri_scanning_HEDM'
+outdir = os.getcwd() +'/TOMO_Recon'
 
 pscontent = open(configFile).readlines()
 rings = []
@@ -92,7 +92,7 @@ for line in positions:
 	if line[0] == '%':
 		continue
 	line = line.rstrip()
-	ypos = 1000 * float(line.split('\t')[0])
+	ypos = 0#1000 * float(line.split('\t')[0])
 	filenr = int(line.split('\t')[2])
 	fname = fstem + str(filenr).zfill(padding) + ext
 	binname = binstem + str(filenr).zfill(padding) + binext

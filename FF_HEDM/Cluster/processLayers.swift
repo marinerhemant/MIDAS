@@ -20,9 +20,9 @@ app (file err) mergerings (string pfname, file dummy[])
 	mergeRings pfname stderr=filename(err);
 }
 
-app (file err, file spotsfile) postpeaks (string foldername, string pfname, file dummy)
+app (file err, file spotsfile) postpeaks (string foldername, string pfname, file dummy, string mn)
 {
-	postPeaks foldername pfname filename(spotsfile) stderr=filename(err);
+	postPeaks foldername pfname filename(spotsfile) mn stderr=filename(err);
 }
 
 app (file err, file spotsfile) postpeaks2 (string foldername, string pfname)
@@ -47,6 +47,7 @@ int endnr = toInt(arg("endnr","600"));
 string ringfile = arg("ringfile","RingInfo.txt");
 string seedfolder = arg("SeedFolder","/clhome/FolderNames.txt");
 int dopeaksearch = toInt(arg("DoPeakSearch","1"));
+string MachineName = arg("MachineName","orthrosnew");
 
 # End parameters ########################
 
@@ -78,7 +79,7 @@ if (dopeaksearch == 1) {
 		simCerr = mergerings(pfname, simBerr);
 		file simDerr<simple_mapper;location=strcat(foldername,"/output"),prefix=strcat("PostPeaksSHM_",ix),suffix=".err">;
 		file simCatOut<single_file_mapper;file=strcat(foldername,"/SpotsToIndexSwift.csv")>;
-		(simDerr,simCatOut) = postpeaks(foldername,pfname,simCerr);
+		(simDerr,simCatOut) = postpeaks(foldername,pfname,simCerr,MachineName);
 		int spots[] = readData(simCatOut);
 		tracef("Total number of remaining jobs: %d\n",length(spots));
 		foreach spotnr in spots {

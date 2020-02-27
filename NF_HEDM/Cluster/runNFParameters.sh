@@ -12,7 +12,7 @@ cmdname=$(basename $0)
 
 if [[ ${#*} != 6 ]];
 then
-  echo "Usage: ${cmdname} parameterfile processImages FFSeedOrientations MultiGridPoints nNODEs MachineName"
+  echo "Usage: ${cmdname} parameterfile FFSeedOrientations processImages MultiGridPoints nNODEs MachineName"
   echo "Eg. ${cmdname} ParametersFile.txt 0 0 0 6 orthros"
   echo "FFSeedOrientations is when either Orientations exist already (0) or when you provide a FF Orientation file (1)."
   echo "MultiGridPoints is 0 when you just want to process one spot, otherwise if it is 1, then provide the multiple points"
@@ -30,13 +30,11 @@ fi
 
 if [[ $1 == /* ]]; then TOP_PARAM_FILE=$1; else TOP_PARAM_FILE=$(pwd)/$1; fi
 NCPUS=$5
-processImages=$2
-FFSeedOrientations=$3
+processImages=$3
+FFSeedOrientations=$2
 MultiGridPoints=$4
-MACHINE_NAME=$6
-
-nNODES=${NCPUS}
-export nNODES
+export MACHINE_NAME=$6
+export nNODES=${NCPUS}
 if [[ ${MACHINE_NAME} == *"edison"* ]]; then
 	echo "We are in NERSC EDISON"
 	hn=$( hostname )
@@ -62,6 +60,10 @@ fi
 # Go to the right folder
 DataDirectory=$( awk '$1 ~ /^DataDirectory/ { print $2 }' ${TOP_PARAM_FILE} )
 cd ${DataDirectory}
+outFldr=$( awk '$1 ~ /^ReducedFileName/ { print $2 }' ${TOP_PARAM_FILE} )
+outdir=$( dirname ${outFldr} )
+mkdir -p ${outdir}
+rm -rf output
 
 # Make hkls.csv
 ${BINFOLDER}/GetHKLList ${TOP_PARAM_FILE}

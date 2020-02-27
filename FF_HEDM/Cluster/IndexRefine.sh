@@ -11,9 +11,8 @@ cat SpotsToIndex.csv |sort|uniq|less > SpotsToIndexUnq.csv
 mv SpotsToIndexUnq.csv SpotsToIndex.csv
 fldr=$( pwd )
 
-nNODES=${1}
-export nNODES
-MACHINE_NAME=$3
+export nNODES=${1}
+export MACHINE_NAME=$3
 echo "MACHINE NAME is ${MACHINE_NAME}"
 if [[ ${MACHINE_NAME} == *"edison"* ]]; then
 	echo "We are in NERSC EDISON"

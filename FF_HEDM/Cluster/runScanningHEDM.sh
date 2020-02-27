@@ -11,9 +11,8 @@ ${BINFOLDER}/GetHKLList $1
 ${PFDIR}/MergeMultipleScans.py $1
 ${PFDIR}/MakeMeshGridScanning.py $1
 
-nNODES=6
-export nNODES
-MACHINE_NAME=orthrosall
+export nNODES=10
+export MACHINE_NAME=orthrosnew
 echo "MACHINE NAME is ${MACHINE_NAME}"
 if [[ ${MACHINE_NAME} == *"edison"* ]]; then
 	echo "We are in NERSC EDISON"
@@ -40,8 +39,8 @@ fi
 outdirpath=$( awk '$1 ~ /^OutDirPath/ { print $2 }' ${1} )
 origdir=$( pwd )
 cd ${outdirpath}
-tar -cvzf bin.tar.gz ExtraInfo.bin
-cp bin.tar.gz ${HOME}/swiftwork/bins/.
+tar -cvzf bins_${MACHINE_NAME}.tar.gz ExtraInfo.bin
+cp bins_${MACHINE_NAME}.tar.gz ${HOME}/swiftwork/bins/.
 cd ${origdir}
 nrelements=$( wc -l < grid.txt )
 GrainsFN=$( awk '$1 ~ /^GrainsFile/ { print $2 }' ${1} )

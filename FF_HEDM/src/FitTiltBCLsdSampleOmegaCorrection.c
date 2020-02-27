@@ -907,7 +907,7 @@ int main(int argc, char *argv[])
 		while (fgets(line,5000,fltfile) != NULL){
 			sscanf(line,"%lf %lf %lf %s %s %s %s %s %s %s %s %s %s %lf %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %d %s %s %s %s %s %s %s %s %s %s %s %s",
 				&z,&y,&ome,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,
-				dummy,dummy,sumInt,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,
+				dummy,dummy,&sumInt,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,
 				dummy,dummy,dummy,dummy,dummy,dummy,dummy,&IDtemp,dummy,dummy,dummy,
 				dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy);
 			//y = 2048.0 - y;

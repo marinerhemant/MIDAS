@@ -75,6 +75,13 @@ PFSTEM=${PARAMFILE%.*}
 WFIMAGES=$( awk '$1 ~ /^WFImages/ { print $2 }' ${PARAMFILE} )
 NDISTANCES=$( awk '$1 ~ /^nDistances/ { print $2 }' ${PARAMFILE} )
 NRFILESPERDISTANCE=$( awk '$1 ~ /^NrFilesPerDistance/ { print $2 }' ${PARAMFILE} )
+if [[ $WFIMAGES -eq 1 ]]; then
+	INCREASEDFILES=$(($NRFILESPERDISTANCE+10))
+else
+	INCREASEDFILES=$NRFILESPERDISTANCE
+fi
+echo $INCREASEDFILES
+exit
 TOPDATADIRECTORY=$( awk '$1 ~ /^TopDataDirectory/ { print $2 }' ${PARAMFILE} )
 extOrig=$( awk '$1 ~ /^extOrig/ { print $2 }' ${PARAMFILE} )
 tmpfn=${TOPDATADIRECTORY}/fns.txt

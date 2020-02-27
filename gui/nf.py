@@ -610,6 +610,9 @@ def getgrain():
 	topGetGrain.title("Load Grain into memory")
 	Tk.Label(master=topGetGrain,text="Please enter the orientation matrix, position, lattice parameter, wavelength, startomega, omegastep, spacegroup, maxringrad",font=("Helvetica",12)).grid(row=1,columnspan=10)
 	Tk.Label(master=topGetGrain,text="Orientation Matrix: ").grid(row=2,column=1)
+	omvar = []
+	posvar = []
+	latCvar = []
 	for i in range(9):
 		var1 = Tk.StringVar()
 		var1.set(str(om[i]))
@@ -687,7 +690,7 @@ def plot_update_spot():
 	xa = -pos[1]*math.sin(thisome*deg2rad) + pos[0]*math.cos(thisome*deg2rad)
 	yn = (ya + ys*(1-(xa/thislsd)))/pixelsize + bcs[dist][0]
 	zn = (zs*(1-(xa/thislsd)))/pixelsize + bcs[dist][1]
-	print([pos[0], pos[1], ys, zs, xa, ya, yn, zn, rad, eta,thisome,frameNrToRead])
+	#~ print([pos[0], pos[1], ys, zs, xa, ya, yn, zn, rad, eta,thisome,frameNrToRead])
 	while ((yn > NrPixels) or 
 		   (zn > NrPixels) or 
 		   (yn < 0) or 
@@ -707,7 +710,7 @@ def plot_update_spot():
 		xa = -pos[1]*math.sin(thisome*deg2rad) + pos[0]*math.cos(thisome*deg2rad)
 		yn = (ya + ys*(1-(xa/thislsd)))/pixelsize + bcs[dist][0]
 		zn = (zs*(1-(xa/thislsd)))/pixelsize + bcs[dist][1]
-		print([pos[0], pos[1], ys, zs, xa, ya, yn, zn, rad, eta,thisome,frameNrToRead])
+		#~ print([pos[0], pos[1], ys, zs, xa, ya, yn, zn, rad, eta,thisome,frameNrToRead])
 	plot_updater()
 	a.scatter(yn,zn,s=25,color='red')
 	# Show Beam Center, unrotated Grain position, rotated Grain Position, Undisplaced Spot Position
@@ -715,6 +718,7 @@ def plot_update_spot():
 	a.scatter(bcs[dist][0]+(pos[1]/pixelsize),bcs[dist][1],s=30,color='green',marker=(5,0))
 	a.scatter(bcs[dist][0]+(ya/pixelsize),bcs[dist][1],s=30,color='yellow',marker=(5,0))
 	a.scatter(bcs[dist][0]+(ys/pixelsize),bcs[dist][1]+(zs/pixelsize),s=30,color='magenta',marker=(5,0))
+	print("Look at the red spot for the diffraction spot position of SpotNr : "+str(spotnr))
 	canvas.draw()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
@@ -956,7 +960,7 @@ def lsdwindow():
 
 def selectpoint():
 	global ce2
-	if micfiledata == None:
+	if micfiledata is None:
 		load_mic()
 	if bcs[0][0] == 0:
 		bcwindow()

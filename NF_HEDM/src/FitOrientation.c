@@ -798,6 +798,7 @@ main(int argc, char *argv[])
 				ResultMatr[7+i*4+2] = 0;
 				ResultMatr[7+i*4+3] = 0;
 			}
+			int firstSol = 0;
 			for (i=0;i<OrientationGoodID;i++){
 	            for (j=0;j<9;j++){
 	                OMTemp[j] = OrientMatrix[i][j];
@@ -823,18 +824,26 @@ main(int argc, char *argv[])
 	                if (1-BestFrac < 0.0001 && nSaves == 1) break;
 	            }
 	            if (nSaves > 1){
-					for (j=0;j<nFilled;j++){ // ResultMatr format: 7 initial common things, then 4 values for each match, Angle, Angle, Angle and Confidence
-						if (Fractions > ResultMatr[7+j*4+3]){ // Put this in??
-							for (m=nFilled-1;m>=j;m--){ // Move everything upto j
-								if (m == nSaves - 1) continue; // Worst match, trash
-								for (t=0;t<4;t++){
-									ResultMatr[7+(m+1)*4+t] = ResultMatr[7+(m)*4+t];
+					if (firstSol == 0){ // Put initial first solution in!!!
+						ResultMatr[7+0] = EulerOutA;
+						ResultMatr[7+1] = EulerOutB;
+						ResultMatr[7+2] = EulerOutC;
+						ResultMatr[7+3] = Fractions;
+						firstSol = 1;
+					} else {
+						for (j=0;j<nFilled;j++){ // ResultMatr format: 7 initial common things, then 4 values for each match, Angle, Angle, Angle and Confidence
+							if (Fractions >= ResultMatr[7+j*4+3]){ // Put this solution in the array.
+								for (m=nFilled-1;m>=j;m--){ // Move everything upto j
+									if (m == nSaves - 1) continue; // Worst match, trash
+									for (t=0;t<4;t++){
+										ResultMatr[7+(m+1)*4+t] = ResultMatr[7+(m)*4+t];
+									}
 								}
+								ResultMatr[7+j*4] = EulerOutA;
+								ResultMatr[7+j*4+1] = EulerOutB;
+								ResultMatr[7+j*4+2] = EulerOutC;
+								ResultMatr[7+j*4+3] = Fractions;
 							}
-							ResultMatr[7+j*4] = EulerOutA;
-							ResultMatr[7+j*4+1] = EulerOutB;
-							ResultMatr[7+j*4+2] = EulerOutC;
-							ResultMatr[7+j*4+3] = Fractions;
 						}
 					}
 					if (nFilled < nSaves) nFilled++;

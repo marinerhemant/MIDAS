@@ -8,9 +8,8 @@ source ${HOME}/.MIDAS/paths
 
 rm SpotsToIndex.csv
 
-nNODES=${1}
-export nNODES
-MACHINE_NAME=$4
+export nNODES=${1}
+export MACHINE_NAME=$4
 echo "MACHINE NAME is ${MACHINE_NAME}"
 if [[ ${MACHINE_NAME} == *"edison"* ]]; then
 	echo "We are in NERSC EDISON"

@@ -28,8 +28,8 @@ BINDIR=bin/
 all: help bindircheck makediffrspots makehexgrid medianimage imageprocessing \
 	fitorientation fitorientationparameters fitorientationparametersmultipoint \
 	genseedorientations simulatediffrspots processnfmicremote \
-	mmapimageinfo hkls parsemic fitorientationsinglepoint parsedeconv imageprocessinghdf \
-	medianimagehdf
+	mmapimageinfo hkls parsemic fitorientationsinglepoint parsedeconv \ 
+	# imageprocessinghdf medianimagehdf
 
 #local:
 local: predep all runsetup

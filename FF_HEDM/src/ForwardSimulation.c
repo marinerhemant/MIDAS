@@ -1023,6 +1023,7 @@ main(int argc, char *argv[])
 	ImageArrSize *= ceil(fabs((OmegaEnd-OmegaStart)/OmegaStep));
 	ImageArr = calloc(ImageArrSize,sizeof(*ImageArr));
 	outArr = malloc(ImageArrSize*sizeof(*outArr));
+	printf("%llu\n",(long long unsigned) ImageArrSize);
 	if (ImageArr == NULL){
 		printf("Could not allocate enough memory for image array. Exiting.\n");
 		return 1;

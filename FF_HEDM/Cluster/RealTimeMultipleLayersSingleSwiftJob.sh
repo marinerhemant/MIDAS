@@ -35,12 +35,11 @@ STARTLAYERNR=$2
 ENDLAYERNR=$3
 NCPUS=$5
 DOPEAKSEARCH=$4
-MACHINE_NAME=$6
+export MACHINE_NAME=$6
 StartNr=$( awk '$1 ~ /^StartNr/ { print $2 }' ${ParamsFile} )
 EndNr=$( awk '$1 ~ /^EndNr/ { print $2 }' ${ParamsFile} )
 echo "Peaks:"
-nNODES=${NCPUS}
-export nNODES
+export nNODES=${NCPUS}
 echo "MACHINE NAME is ${MACHINE_NAME}"
 if [[ ${MACHINE_NAME} == *"edison"* ]]; then
 	echo "We are in NERSC EDISON"
@@ -76,12 +75,12 @@ do
 		outfolder=`cat ${SeedFolder}/FolderNames.txt`
 		cd ${outfolder}
 		pfname=`cat ${SeedFolder}/PFNames.txt`
-		${PFDIR}/PostPeaksSHM.sh ${outfolder} ${pfname} SpotsToIndex.csv
+		${PFDIR}/PostPeaksSHM.sh ${outfolder} ${pfname} SpotsToIndex.csv ${MACHINE_NAME}
 	fi
 	${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} \
 		${PFDIR}/processLayers.swift -ringfile=${SeedFolder}/RingInfo.txt \
 		-startnr=${StartNr} -endnr=${EndNr} -SeedFolder=${SeedFolder} \
-		-DoPeakSearch=${DOPEAKSEARCH}
+		-DoPeakSearch=${DOPEAKSEARCH} -MachineName=${MACHINE_NAME}
 	outfolder=`cat ${SeedFolder}/FolderNames.txt`
 	cd ${outfolder}
 	pfname=`cat ${SeedFolder}/PFNames.txt`

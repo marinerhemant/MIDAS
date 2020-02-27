@@ -28,13 +28,12 @@ STARTLAYERNR=$2
 ENDLAYERNR=$3
 DOPEAKSEARCH=$4
 NCPUS=$5
-MACHINE_NAME=$6
+export MACHINE_NAME=$6
 EM=$7
 StartNr=$( awk '$1 ~ /^StartNr/ { print $2 }' ${ParamsFile} )
 EndNr=$( awk '$1 ~ /^EndNr/ { print $2 }' ${ParamsFile} )
 echo "Peaks:"
-nNODES=${NCPUS}
-export nNODES
+export nNODES=${NCPUS}
 echo "MACHINE NAME is ${MACHINE_NAME}"
 if [[ ${MACHINE_NAME} == *"edison"* ]]; then
 	echo "We are in NERSC EDISON"

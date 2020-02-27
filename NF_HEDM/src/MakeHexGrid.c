@@ -121,7 +121,7 @@ main(int argc, char *argv[])
     char *str, dummy[1000],direct[1024], gridfn[1000];
     int LowNr;
     int gridfnfound = 0;
-    double GridSize, Rsample;
+    double GridSize, Rsample, EdgeLength=0;
     while (fgets(aline,1000,fileParam)!=NULL){
         str = "GridSize ";
         LowNr = strncmp(aline,str,strlen(str));
@@ -129,6 +129,13 @@ main(int argc, char *argv[])
             sscanf(aline,"%s %lf", dummy, &GridSize);
             continue;
         }
+        str = "EdgeLength ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &EdgeLength);
+            continue;
+        }
+
         str = "Rsample ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -150,7 +157,7 @@ main(int argc, char *argv[])
         }
     }
     fclose(fileParam);
-
+	if (EdgeLength==0) EdgeLength = GridSize;
     // Make grid.
     double NrHex, ALarge, ALast,HtTriangle;
     int i,j;
@@ -178,7 +185,7 @@ main(int argc, char *argv[])
     }
     fprintf(fp,"%d\n",NrGridElements);
     for (j=0;j<NrGridElements;j++){
-        fprintf(fp,"%f %f %f %f %f\n",XYGrid[j][0],XYGrid[j][1],XYGrid[j][2],XYGrid[j][3],XYGrid[j][4]);
+        fprintf(fp,"%f %f %f %f %f\n",XYGrid[j][0],XYGrid[j][1],XYGrid[j][2],XYGrid[j][3],EdgeLength/2);
     }
     fclose(fp);
     FreeMemMatrix(XYGrid,NrGridElements);

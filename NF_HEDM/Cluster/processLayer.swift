@@ -35,9 +35,9 @@ app runfitorientation (string pf, int nr, file mmapdone)
 	fitorientation pf nr;
 }
 
-app (file mmapdone) mmapcode (string paramfn, file imagedone)
+app (file mmapdone) mmapcode (string paramfn, file imagedone, string mn)
 {
-	mmaps paramfn stdout=@filename(mmapdone);
+	mmaps paramfn mn stdout=@filename(mmapdone);
 }
 
 app (file done) initialsetup ( string paramfn, int ffseed, int dogrid )
@@ -61,6 +61,7 @@ int DoPeakSearch = toInt(arg("DoPeakSearch","1"));
 int ffseed = toInt(arg("FFSeedOrientations","1"));
 int DoFullLayer = toInt(arg("DoFullLayer","1"));
 int DoGrid = toInt(arg("DoGrid","1"));
+string MachineName = arg("MachineName","orthrosnew");
 
 # End parameters #######################
 
@@ -110,7 +111,7 @@ if (DoFullLayer == 1){
 	## Now MMap Images
 	string fn3 = strcat(outfolder, "mmapdone.txt");
 	file mmapdone <single_file_mapper;file=fn3>;
-	mmapdone = mmapcode(paramfile,imagesdone);
+	mmapdone = mmapcode(paramfile,imagesdone,MachineName);
 	## Now do FitOrientation
 	foreach i in [startnr:endnr] {
 		runfitorientation(paramfile,i,mmapdone);

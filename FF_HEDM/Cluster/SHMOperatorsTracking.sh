@@ -7,7 +7,7 @@
 
 source ${HOME}/.MIDAS/paths
 ${PFDIR}/SHM.sh
-tar -cvzf bins.tar.gz Spots.bin ExtraInfo.bin
+tar -cvzf bins_${MACHINE_NAME}.tar.gz Spots.bin ExtraInfo.bin
 cp *.bin /dev/shm
 mkdir -p ${HOME}/swiftwork/bins/
-cp bins.tar.gz ${HOME}/swiftwork/bins
+cp bins_${MACHINE_NAME}.tar.gz ${HOME}/swiftwork/bins
