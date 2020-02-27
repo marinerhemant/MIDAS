@@ -759,7 +759,7 @@ main(int argc, char *argv[])
 				n_hkls++;
 			}
 			if (nRingsToUse > 0){
-				double hklTemps[n_hkls][4];
+				double hklTemps[n_hkls][4],thetaTemps[n_hkls];
 				int totalHKLs=0;
 				for (i=0;i<nRingsToUse;i++){
 					for (j=0;j<n_hkls;j++){
@@ -768,6 +768,7 @@ main(int argc, char *argv[])
 							hklTemps[totalHKLs][1] = hkls[j][1];
 							hklTemps[totalHKLs][2] = hkls[j][2];
 							hklTemps[totalHKLs][3] = hkls[j][3];
+							thetaTemps[totalHKLs] = Thetas[j];
 							totalHKLs++;
 						}
 					}
@@ -777,6 +778,7 @@ main(int argc, char *argv[])
 					hkls[i][1] = hklTemps[i][1];
 					hkls[i][2] = hklTemps[i][2];
 					hkls[i][3] = hklTemps[i][3];
+					Thetas[i] = thetaTemps[i];
 				}
 				n_hkls = totalHKLs;
 			}
