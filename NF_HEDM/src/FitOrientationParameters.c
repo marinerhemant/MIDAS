@@ -735,7 +735,7 @@ main(int argc, char *argv[])
 			n_hkls++;
 		}
 		if (nRingsToUse > 0){
-			double hklTemps[n_hkls][4],thetaTemps;
+			double hklTemps[n_hkls][4],thetaTemps[n_hkls];
 			int totalHKLs=0;
 			for (i=0;i<nRingsToUse;i++){
 				for (j=0;j<n_hkls;j++){
