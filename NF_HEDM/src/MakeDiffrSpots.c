@@ -507,7 +507,7 @@ main(int argc, char *argv[])
 			hkls[i][1] = hklTemps[i][1];
 			hkls[i][2] = hklTemps[i][2];
 			hkls[i][3] = hklTemps[i][3];
-			Thetas[i] = thetaTemps[i][3];
+			Thetas[i] = thetaTemps[i];
 		}
 		n_hkls = totalHKLs;
 	}
