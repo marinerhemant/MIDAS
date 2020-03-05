@@ -26,7 +26,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/types.h>
-#include <sys/mman.h> 
+#include <sys/mman.h>
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -101,7 +101,7 @@ void DisplacementInTheSpot(double a, double b, double c, double xi, double yi, d
     *xtr = YC; // Y is the beam movement direction.
 }
 
-static inline 
+static inline
 double CalcEtaAngle(double y, double z){
 	double alpha = rad2deg*acos(z/sqrt(y*y+z*z));
 	if (y>0) alpha = -alpha;
@@ -171,11 +171,11 @@ int main(int argc, char* argv[]){
 			sscanf(aline,"%s %d",dummy, &RingNumbers[nRings]);
 			nRings++;
 		} else if (StartsWith(aline,"OmegaRange ")){
-			sscanf(aline,"%s %lf %lf", dummy, 
+			sscanf(aline,"%s %lf %lf", dummy,
 				&OmegaRanges[nOmeRanges][0], &OmegaRanges[nOmeRanges][1]);
             nOmeRanges++;
 		} else if (StartsWith(aline,"BoxSize ")){
-			sscanf(aline,"%s %lf %lf %lf %lf", dummy, 
+			sscanf(aline,"%s %lf %lf %lf %lf", dummy,
 				&BoxSizes[nBoxSizes][0], &BoxSizes[nBoxSizes][1],
 				&BoxSizes[nBoxSizes][2], &BoxSizes[nBoxSizes][3]);
             nBoxSizes++;
@@ -245,7 +245,7 @@ int main(int argc, char* argv[]){
 		count ++;
 	}
 	fclose(positionsFile);
-	
+
 	// Read IDsHash.csv
 	FILE *idsfile;
 	char idsfn[4096];
@@ -261,7 +261,7 @@ int main(int argc, char* argv[]){
 		count++;
 	}
 	fclose(idsfile);
-	
+
 	// Read ExtraInfo.bin
 	const char *filename = "/dev/shm/ExtraInfo.bin";
 	int rc;
@@ -289,7 +289,7 @@ int main(int argc, char* argv[]){
 		allSpotsYZO[i][7] = AllSpots[i*14+7] / 2;
 		allSpotsYZO[i][8] = CalcRad(allSpotsYZO[i][0],allSpotsYZO[i][1]);
 	}
-	int tc2 = munmap(AllSpots,size);	
+	int tc2 = munmap(AllSpots,size);
 
 	// Read orientations from grains file
 	FILE *grainsF;
@@ -307,7 +307,7 @@ int main(int argc, char* argv[]){
 			&OrientMatrix[grainNr*9+7],&OrientMatrix[grainNr*9+8]);
 		grainNr ++;
 	}
-	
+
 	// Go through each orientation
 	double OM[3][3];
 	int nSpots, bestLayer, startRowNr, endRowNr, ringNR, thisRing, layernr, ringTemp;
