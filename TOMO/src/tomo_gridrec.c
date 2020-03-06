@@ -34,16 +34,16 @@ float filterData (float x, gridrecParams *param){
 	}
 	return (x);
 }
-float shlo (float x){	
+float shlo (float x){
 	return fabs(sin(PI*x)/PI);
 }
-float hann (float x){	
+float hann (float x){
 	return fabs(x)*0.5*(1.0+cos(2*PI*x));
 }
-float hamm (float x){	
+float hamm (float x){
 	return fabs(x)*(0.54+0.46*cos(2*PI*x));
 }
-float ramp (float x){	
+float ramp (float x){
 	return fabs(x);
 }
 
@@ -249,15 +249,15 @@ void setSinoAndReconBuffers ( int  number, float *sinogram_address, float *recon
     }
 }
 
-#ifdef INTERP 
+#ifdef INTERP
 inline float Cnvlvnt(float X, gridrecParams *param){
 	return (param->wtbl[(int)X]+(X-(int)X)*param->dwtbl[(int)X]);
-} 
-#else 
+}
+#else
 inline float Cnvlvnt(float X, gridrecParams *param){
 	return (param->wtbl[(int)(X+0.5)]);
-} 
-#endif 
+}
+#endif
 
 void four1(float data[], unsigned long nn, int isign, gridrecParams *param){
 	int n = nn;
@@ -505,7 +505,7 @@ void pswf_su (pswf_struct *pswf, long    ltbl, long    linv, float*  wtbl, float
 	wtbl[0]=1.0;
 	for (i=1;i<=ltbl;i++){
 		wtbl[i]=legendre(nt,coefs,(float)i/ltbl,param)/polyz;
-	
+
 		#ifdef INTERP
 		dwtbl[i]=wtbl[i]-wtbl[i-1];
 		#endif

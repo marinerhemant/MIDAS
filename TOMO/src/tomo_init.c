@@ -17,15 +17,15 @@
 #include <unistd.h>
 #include "tomo_heads.h"
 
-/* 
- * The data can be one of two types: 
- * 							sinogram already with float data type, directly give to reconstruct code with some additional centering etc. 
+/*
+ * The data can be one of two types:
+ * 							sinogram already with float data type, directly give to reconstruct code with some additional centering etc.
  * 							dark, whites (2) and then raw images. Using number of angles, we know how many images are there. The scaling with white should be proportional to the distance from a white and appropriate dark value.
 */
 
 // TODO:
 //	1. Check size of arrays needed and then allocate number of threads accordingly.
-//	2. If nSlices*nShifts is not a multiple of nThreads, correctly calculate the number of 
+//	2. If nSlices*nShifts is not a multiple of nThreads, correctly calculate the number of
 //	3. Safe malloc to check NULL ptrs.
 
 void usage(){
@@ -58,6 +58,7 @@ void usage(){
 		"	* ringRemovalCoefficient - If given, will do ringRemoval, otherwise comment or remove line [float] default 1.0\n"
 		"	* slicesToProcess - -1 for all or FileName. ENSURE TO GIVE EVEN NUMBER OF SLICES\n"
 		"	* ExtraPad - 0 if half padding, 1 if one-half padding"
+		"   * AutoCentering - 0 if want no centering??, 1 (default) if want centering?? (original tomo_mpi does auto_centering always).\n"
 		"Output file: float with reconstruction_xdim*reconstruction_xdim size\n"
 		"OutputFileName: {recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_reconstruction_xdim_float_4byte.bin\n"
 		"The code will generate two text files: fftwf_wisdom_{1,2}d.txt. "
@@ -71,12 +72,13 @@ int main(int argc, char *argv[])
 		usage();
 		return 1;
 	}
+	printf("Number of cores requested: %d\n",atoi(argv[2]));
 	GLOBAL_CONFIG_OPTS recon_info_record;
 	char *fileName;
 	fileName = argv[1];
 	int RC;
 	RC = setGlobalOpts(fileName, &recon_info_record);
-	setReadStructSize(&recon_info_record); // Also sets a couple of 
+	setReadStructSize(&recon_info_record); // Also sets a couple of
 	if (RC!=0){
 		printf("Parameter file could not be read. Exiting.\n");
 		return 1;
@@ -84,13 +86,13 @@ int main(int argc, char *argv[])
 	// Get FFT Plan
 	if (access ("fftwf_wisdom_2d.txt", F_OK) == -1){		createPlanFile(&recon_info_record);
 		printf("FFT plan file did not exist, creating one.\n");		// Check if sizes are okay.
-		createPlanFile(&recon_info_record);	
-	} else if(access ("fftwf_wisdom_1d.txt", F_OK) == -1) {	
-		printf("FFT plan file did not exist, creating one.\n");	
-		createPlanFile(&recon_info_record);	
-	} else {	
-		printf("Reading wisdom file.\n");	
-		createPlanFile(&recon_info_record);	
+		createPlanFile(&recon_info_record);
+	} else if(access ("fftwf_wisdom_1d.txt", F_OK) == -1) {
+		printf("FFT plan file did not exist, creating one.\n");
+		createPlanFile(&recon_info_record);
+	} else {
+		printf("Reading wisdom file.\n");
+		createPlanFile(&recon_info_record);
 	}
 	// Check if sizes are okay.
 	if (recon_info_record.n_shifts > 1 && recon_info_record.n_shifts %2 !=0){

@@ -17,22 +17,22 @@
 
 #include "tomo_heads.h"
 
-void LogProj(float *data, int xdim, int ydim) { 
-	int i, k; 
-	float mean, max; 
+void LogProj(float *data, int xdim, int ydim) {
+	int i, k;
+	float mean, max;
 	for (i=0;i<ydim;i++) {
-		max = data[i*xdim]; 
+		max = data[i*xdim];
 		for (k=0;k<xdim;k++) {
-			if (data[i*xdim+k] > max) 
-				max = data[i*xdim+k]; 
+			if (data[i*xdim+k] > max)
+				max = data[i*xdim+k];
 		}
-		for (k=0;k<xdim;k++) { 
-			if (data[i*xdim+k] <= 0.0) 
+		for (k=0;k<xdim;k++) {
+			if (data[i*xdim+k] <= 0.0)
 				data[i*xdim+k] = 1.0;
-			data[i*xdim+k] = log (max/data[i*xdim+k]); 
-		} 
+			data[i*xdim+k] = log (max/data[i*xdim+k]);
+		}
 	}
-} 
+}
 
 void LogSinogram (float *data, int xdim, int ydim){
 	int i, k;
@@ -46,21 +46,21 @@ void LogSinogram (float *data, int xdim, int ydim){
 	}
 }
 
-void RingCorrectionSingle (float *data, float ring_coeff, LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS recon_info_record) { 
-	int         i, j, m; 
-	float       mean_total; 
-	float       tmp; 
+void RingCorrectionSingle (float *data, float ring_coeff, LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS recon_info_record) {
+	int         i, j, m;
+	float       mean_total;
+	float       tmp;
 	for (m=0;m<20;m++) {
-		for (i=0;i<recon_info_record.sinogram_ydim;i++)  information->mean_vect[i] = 0.0; 
-		mean_total = 0.0; 
+		for (i=0;i<recon_info_record.sinogram_ydim;i++)  information->mean_vect[i] = 0.0;
+		mean_total = 0.0;
 		for (i=0;i<recon_info_record.sinogram_ydim;i++) {
 			for (j=0;j<information->sinogram_adjusted_xdim;j++) {
-				information->mean_vect[i] += data[i*information->sinogram_adjusted_xdim+j]; 
+				information->mean_vect[i] += data[i*information->sinogram_adjusted_xdim+j];
 			}
-			information->mean_vect[i] /= information->sinogram_adjusted_xdim; 
-			mean_total += information->mean_vect[i]; 
-		} 
-		mean_total /= recon_info_record.sinogram_ydim; 
+			information->mean_vect[i] /= information->sinogram_adjusted_xdim;
+			mean_total += information->mean_vect[i];
+		}
+		mean_total /= recon_info_record.sinogram_ydim;
 		for (i=0;i<recon_info_record.sinogram_ydim;i++) {
 			for (j=0;j<information->sinogram_adjusted_xdim;j++) {
 				if (information->mean_vect[i] != 0.0) {
@@ -68,33 +68,33 @@ void RingCorrectionSingle (float *data, float ring_coeff, LOCAL_CONFIG_OPTS *inf
 				}
 			}
 		}
-		for (i=0;i<information->sinogram_adjusted_xdim;i++)  information->mean_sino_line_data[i] = 0.0; 
-		for (i=0;i<recon_info_record.sinogram_ydim;i++) 
-			for (j=0;j<information->sinogram_adjusted_xdim;j++) 
-				information->mean_sino_line_data[j] += data[i*information->sinogram_adjusted_xdim+j]; 
-		for (i=0;i<information->sinogram_adjusted_xdim;i++)  information->mean_sino_line_data[i] /= recon_info_record.sinogram_ydim; 
+		for (i=0;i<information->sinogram_adjusted_xdim;i++)  information->mean_sino_line_data[i] = 0.0;
+		for (i=0;i<recon_info_record.sinogram_ydim;i++)
+			for (j=0;j<information->sinogram_adjusted_xdim;j++)
+				information->mean_sino_line_data[j] += data[i*information->sinogram_adjusted_xdim+j];
+		for (i=0;i<information->sinogram_adjusted_xdim;i++)  information->mean_sino_line_data[i] /= recon_info_record.sinogram_ydim;
 		for (j=1;j<information->sinogram_adjusted_xdim-1;j++) {
-			information->low_pass_sino_lines_data[j] = (information->mean_sino_line_data[j-1]+information->mean_sino_line_data[j]+information->mean_sino_line_data[j+1])/3.0; 
+			information->low_pass_sino_lines_data[j] = (information->mean_sino_line_data[j-1]+information->mean_sino_line_data[j]+information->mean_sino_line_data[j+1])/3.0;
 		}
-		information->low_pass_sino_lines_data[0] = information->mean_sino_line_data[0]; 
-		information->low_pass_sino_lines_data[information->sinogram_adjusted_xdim-1] = information->mean_sino_line_data[information->sinogram_adjusted_xdim-1]; 
+		information->low_pass_sino_lines_data[0] = information->mean_sino_line_data[0];
+		information->low_pass_sino_lines_data[information->sinogram_adjusted_xdim-1] = information->mean_sino_line_data[information->sinogram_adjusted_xdim-1];
 		for (i=0;i<recon_info_record.sinogram_ydim;i++) {
 			for (j=0;j<information->sinogram_adjusted_xdim;j++) {
-				tmp = information->mean_sino_line_data[j]-information->low_pass_sino_lines_data[j]; 
-				if ((data[i*information->sinogram_adjusted_xdim+j] - (tmp * ring_coeff) ) > 0.0) 
-					data[i*information->sinogram_adjusted_xdim+j] -= (tmp * ring_coeff); 
-				else 
-					data[i*information->sinogram_adjusted_xdim+j] = 0.0; 
-			} 
-		} 
+				tmp = information->mean_sino_line_data[j]-information->low_pass_sino_lines_data[j];
+				if ((data[i*information->sinogram_adjusted_xdim+j] - (tmp * ring_coeff) ) > 0.0)
+					data[i*information->sinogram_adjusted_xdim+j] -= (tmp * ring_coeff);
+				else
+					data[i*information->sinogram_adjusted_xdim+j] = 0.0;
+			}
+		}
 	}
 }
 
-/* This is the definition: 
- * 1 dark(D_x), 
- * 2 whites (W1_x, W2_x) and 
- * y Images (I_x_y), 
- * the intensity should be 
+/* This is the definition:
+ * 1 dark(D_x),
+ * 2 whites (W1_x, W2_x) and
+ * y Images (I_x_y),
+ * the intensity should be
  * I'_x_y = (I_x_y-D_x)/(W_x-D_x), where
  * W_x = (1-p)*W1_x + (p)*W2_x and
  * p = y/nr_y
@@ -123,7 +123,7 @@ void Normalize (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS recon_info_record
 			temp_val = ((float)readStruct->short_sinogram[colNr+frameNr*recon_info_record.det_xdim] - readStruct->dark_field_sino_ave[colNr]) /(white_temp-readStruct->dark_field_sino_ave[colNr]);
 			readStruct->norm_sino[frameNr*recon_info_record.sinogram_adjusted_xdim+pxNr] = temp_val;
 		}
-		
+
 	}
 }
 
@@ -148,9 +148,9 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 			* dataFileName: [char*] name of the file with the raw data or sino data
 			* reconFileName: [char*] Name of the file for saving the reconstruction
 			* areSinos: If the input is a sinogram instead of raw (cleaned) images [0 or 1]
-			* The data can be one of two types: 
-			* 							sinogram already with float data type, directly give to reconstruct code with some additional centering etc. 
-			* 							dark[float], whites (2,floats) and then raw images[shorts]. Using number of angles, we know how many images are there. 
+			* The data can be one of two types:
+			* 							sinogram already with float data type, directly give to reconstruct code with some additional centering etc.
+			* 							dark[float], whites (2,floats) and then raw images[shorts]. Using number of angles, we know how many images are there.
 			* 							The scaling with white should be proportional to the distance from a white and appropriate dark value.
 			* detXdim - [uint]
 			* detYdim - [uint]
@@ -167,6 +167,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 			* ringRemovalCoefficient - If given, will do ringRemoval, otherwise comment or remove line [float] default 1.0
 			* slicesToProcess - -1 for all or FileName
 			* ExtraPad - 0 if half padding, 1 if one-half padding
+			* AutoCentering - 0 if want no centering??, 1 (default) if want centering?? (original tomo_mpi does auto_centering always).
 	*/
 	int arbThetas = 0;
 	FILE *fileParam;
@@ -177,6 +178,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 	recon_info_record->use_ring_removal = 0;
 	recon_info_record->debug = 0;
 	recon_info_record->powerIncrement=0;
+	recon_info_record->auto_centering = 1;
 	while(fgets(aline,4096,fileParam)!=NULL){
 		if (strncmp(aline,"dataFileName",strlen("dataFileName"))==0){
 			sscanf(aline,"%s %s",dummy,recon_info_record->DataFileName);
@@ -219,8 +221,10 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 		if (strncmp(aline,"ExtraPad",strlen("ExtraPad"))==0){
 			sscanf(aline,"%s %d",dummy,&recon_info_record->powerIncrement);
 		}
+		if (strncmp(aline,"AutoCentering",strlen("AutoCentering"))==0){
+			sscanf(aline,"%s %d",dummy,&recon_info_record->auto_centering);
+		}
 	}
-	recon_info_record->auto_centering = 1; // ALWAYS DONE
 	fseek(fileParam,0,SEEK_SET);
 	if (arbThetas == 0){
 		recon_info_record->theta_list_size = abs((recon_info_record->end_angle-recon_info_record->start_angle)/recon_info_record->angle_interval) + 1;
@@ -314,11 +318,9 @@ void memsets(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record
 	memset(information->reconstructions_boundary_padding,0,sizeof(float)*information->reconstruction_size*4*2); // Hold two recons
 	memset(information->recon_calc_buffer,0,sizeof(float)*information->reconstruction_size*2);
 	memset(information->sino_calc_buffer,0,sizeof(float)*information->sinogram_adjusted_xdim*recon_info_record.theta_list_size);
-	if (recon_info_record.auto_centering){
-		memset(information->mean_vect,0,sizeof (float)*recon_info_record.sinogram_ydim);
-		memset(information->mean_sino_line_data,0,sizeof (float)*information->sinogram_adjusted_xdim);
-		memset(information->low_pass_sino_lines_data,0,sizeof(float) *information->sinogram_adjusted_xdim);
-	}
+	memset(information->mean_vect,0,sizeof (float)*recon_info_record.sinogram_ydim);
+	memset(information->mean_sino_line_data,0,sizeof (float)*information->sinogram_adjusted_xdim);
+	memset(information->low_pass_sino_lines_data,0,sizeof(float) *information->sinogram_adjusted_xdim);
 }
 
 void setSinoSize (LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS recon_info_record){
@@ -336,14 +338,12 @@ void setSinoSize (LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS recon_info_
 	information->reconstructions_boundary_padding = (float *) malloc (sizeof(float)*information->reconstruction_size*4*2); // Hold two recons
 	information->recon_calc_buffer = (float *) malloc (sizeof(float)*information->reconstruction_size*2);
 	information->sino_calc_buffer = (float *) malloc(sizeof(float)*information->sinogram_adjusted_xdim*recon_info_record.theta_list_size);
-	if (recon_info_record.auto_centering){
-		//~ printf("mean_vect %ld\n",(long)(sizeof (float)*recon_info_record.sinogram_ydim));
-		//~ printf("mean_sino_line_data %ld\n",(long)(sizeof (float)*information->sinogram_adjusted_xdim));
-		//~ printf("low_pass_sino_lines_data %ld\n",(long)(sizeof(float) *information->sinogram_adjusted_xdim));
-		information->mean_vect = (float *) malloc (sizeof (float)*recon_info_record.sinogram_ydim);
-		information->mean_sino_line_data = (float *) malloc (sizeof (float)*information->sinogram_adjusted_xdim);
-		information->low_pass_sino_lines_data = (float  *) malloc (sizeof(float) *information->sinogram_adjusted_xdim); 
-	}
+	//~ printf("mean_vect %ld\n",(long)(sizeof (float)*recon_info_record.sinogram_ydim));
+	//~ printf("mean_sino_line_data %ld\n",(long)(sizeof (float)*information->sinogram_adjusted_xdim));
+	//~ printf("low_pass_sino_lines_data %ld\n",(long)(sizeof(float) *information->sinogram_adjusted_xdim));
+	information->mean_vect = (float *) malloc (sizeof (float)*recon_info_record.sinogram_ydim);
+	information->mean_sino_line_data = (float *) malloc (sizeof (float)*information->sinogram_adjusted_xdim);
+	information->low_pass_sino_lines_data = (float  *) malloc (sizeof(float) *information->sinogram_adjusted_xdim);
 }
 
 void readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *readStruct){
@@ -482,14 +482,16 @@ void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info
 		//~ fwrite(information->sino_calc_buffer,sizeof(float)*information->sinogram_adjusted_xdim*recon_info_record.sinogram_ydim,1,out);
 		//~ fclose(out);
 	//~ }
+	// *******************************The following operation is not correct in size. We will do a memset instead.****************************
+	// for( j = 0; j < recon_info_record.sinogram_ydim; j++ ){
+		// for( k = 0; k < information->sinogram_adjusted_xdim; k++ ){
+			// information->shifted_recon[j * information->sinogram_adjusted_xdim+ k] = 0.0f;
+		// }
+	// }
+	memset(information->shifted_recon,0,information->reconstruction_size*sizeof(float));
 	for( j = 0; j < recon_info_record.sinogram_ydim; j++ ){
 		for( k = 0; k < information->sinogram_adjusted_xdim; k++ ){
-			information->shifted_recon[j * information->sinogram_adjusted_xdim+ k] = 0.0f;
-		}
-	}
-	for( j = 0; j < recon_info_record.sinogram_ydim; j++ ){
-		for( k = 0; k < information->sinogram_adjusted_xdim; k++ ){
-			float kk = k - information->shift; 
+			float kk = k - information->shift;
 			int nkk = (int)floor(kk);
 			float fInterpPixel = 0.0f;
 			float fInterpWeight = 0.0f;
@@ -534,7 +536,7 @@ void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_reco
 	int j,k;
 	for ( j=0;j<recon_info_record.reconstruction_ydim;j++){
 		if (information->shift >= 0){
-			memcpy(&information->recon_calc_buffer[j * recon_info_record.reconstruction_xdim ],&information->reconstructions_boundary_padding[offsetRecons + ( j + recon_info_record.reconstruction_xdim / 2 ) * recon_info_record.reconstruction_xdim * 2 + recon_info_record.reconstruction_xdim / 2 ], sizeof(float) * (recon_info_record.reconstruction_xdim) ); 
+			memcpy(&information->recon_calc_buffer[j * recon_info_record.reconstruction_xdim ],&information->reconstructions_boundary_padding[offsetRecons + ( j + recon_info_record.reconstruction_xdim / 2 ) * recon_info_record.reconstruction_xdim * 2 + recon_info_record.reconstruction_xdim / 2 ], sizeof(float) * (recon_info_record.reconstruction_xdim) );
 		}else{
 			memcpy(&information->recon_calc_buffer[j * recon_info_record.reconstruction_xdim ],&information->reconstructions_boundary_padding[offsetRecons + ( j + recon_info_record.reconstruction_xdim / 2 ) * recon_info_record.reconstruction_xdim * 2 + recon_info_record.reconstruction_xdim / 2 ], sizeof(float) * (recon_info_record.reconstruction_xdim) );
 		}
@@ -546,11 +548,13 @@ void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_reco
 		//~ fwrite(information->recon_calc_buffer,sizeof(float)*recon_info_record.reconstruction_xdim*recon_info_record.reconstruction_ydim,1,out);
 		//~ fclose(out);
 	//~ }
-	for( j = 0; j < recon_info_record.sinogram_ydim; j++ ){
-		for( k = 0; k < recon_info_record.reconstruction_xdim; k++ ){
-			information->shifted_recon[j * recon_info_record.reconstruction_xdim + k] = 0.0f;
-		}
-	}
+	// *******************************The following operation is not correct in size. We will do a memset instead.****************************
+	// for( j = 0; j < recon_info_record.sinogram_ydim; j++ ){
+		// for( k = 0; k < recon_info_record.reconstruction_xdim; k++ ){
+			// information->shifted_recon[j * recon_info_record.reconstruction_xdim + k] = 0.0f;
+		// }
+	// }
+	memset(information->shifted_recon,0,information->reconstruction_size*sizeof(float));
 	float *recon_buffer;
 	if (recon_info_record.auto_centering){
 		recon_buffer = &information->recon_calc_buffer[0];

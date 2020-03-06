@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-fPIC -g -ldl -lm -fgnu89-inline -O3 -w
+CFLAGS=-fPIC -g -ldl -lm -fgnu89-inline -O3 -w -Wall
 SRCDIR=src/
 BINDIR=bin/
 CFLAGSFFT=-I$${HOME}/.MIDAS/FFTW/include -L$${HOME}/.MIDAS/FFTW/lib -lfftw3f
