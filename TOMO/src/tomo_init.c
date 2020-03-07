@@ -79,8 +79,6 @@ int main(int argc, char *argv[])
 	fileName = argv[1];
 	int RC;
 	RC = setGlobalOpts(fileName, &recon_info_record);
-	printf("%lld\n",(long long int) recon_info_record.sizeMatrices);
-	return;
 	setReadStructSize(&recon_info_record);
 	if (RC!=0){
 		printf("Parameter file could not be read. Exiting.\n");
@@ -97,6 +95,8 @@ int main(int argc, char *argv[])
 		printf("Reading wisdom file.\n");
 		createPlanFile(&recon_info_record);
 	}
+	printf("%lld\n",(long long int) recon_info_record.sizeMatrices);
+	return;
 	// Check if sizes are okay.
 	if (recon_info_record.n_shifts > 1 && recon_info_record.n_shifts %2 !=0){
 		printf("Number of shifts must be even. Exiting\n");
