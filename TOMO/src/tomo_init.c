@@ -16,6 +16,7 @@
 #include <omp.h>
 #include <unistd.h>
 #include "tomo_heads.h"
+#include <sys/sysinfo.h>
 
 /*
  * The data can be one of two types:
@@ -95,7 +96,9 @@ int main(int argc, char *argv[])
 		printf("Reading wisdom file.\n");
 		createPlanFile(&recon_info_record);
 	}
-	printf("%lld\n",(long long int) recon_info_record.sizeMatrices);
+	struct sysinfo info;
+	printf("Memory needed per process: %lld GB, Total system RAM: %lld\n",(long long int) recon_info_record.sizeMatrices/(1024*1024*1024),
+			info.freeram/(1024*1024*1024));
 	return;
 	// Check if sizes are okay.
 	if (recon_info_record.n_shifts > 1 && recon_info_record.n_shifts %2 !=0){
