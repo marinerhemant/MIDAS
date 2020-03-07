@@ -86,7 +86,8 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	// Get FFT Plan
-	if (access ("fftwf_wisdom_2d.txt", F_OK) == -1){		createPlanFile(&recon_info_record);
+	if (access ("fftwf_wisdom_2d.txt", F_OK) == -1){
+		createPlanFile(&recon_info_record);
 		printf("FFT plan file did not exist, creating one.\n");		// Check if sizes are okay.
 		createPlanFile(&recon_info_record);
 	} else if(access ("fftwf_wisdom_1d.txt", F_OK) == -1) {
@@ -100,7 +101,6 @@ int main(int argc, char *argv[])
 	sysinfo(&info);
 	long long int maxNProcs = (long long int) info.freeram / (long long int) recon_info_record.sizeMatrices;
 	printf("Memory needed per process: %lld, Total system RAM: %lld, MaxNProcs: %lld \n",(long long int) recon_info_record.sizeMatrices,(long long int) info.freeram, maxNProcs);
-	return;
 	// Check if sizes are okay.
 	if (recon_info_record.n_shifts > 1 && recon_info_record.n_shifts %2 !=0){
 		printf("Number of shifts must be even. Exiting\n");
@@ -110,7 +110,7 @@ int main(int argc, char *argv[])
 		printf("Number of slices must be even. Exiting\n");
 		return 1;
 	}
-	int numProcs = atoi(argv[2]);
+	int numProcs = (atoi(argv[2]) < maxNProcs) ? atoi(argv[2]) : maxNProcs - 2;
 	int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_1d.txt");
 	double start_time = omp_get_wtime();
 	if (recon_info_record.n_shifts==1){
