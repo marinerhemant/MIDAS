@@ -16,7 +16,6 @@
 #include <omp.h>
 #include <unistd.h>
 #include "tomo_heads.h"
-#include <sys/sysinfo.h>
 
 /*
  * The data can be one of two types:
@@ -75,19 +74,17 @@ int main(int argc, char *argv[])
 	}
 	printf("Number of cores requested: %d\n",atoi(argv[2]));
 	GLOBAL_CONFIG_OPTS recon_info_record;
-	recon_info_record.sizeMatrices = 0;
 	char *fileName;
 	fileName = argv[1];
 	int RC;
 	RC = setGlobalOpts(fileName, &recon_info_record);
-	setReadStructSize(&recon_info_record);
+	setReadStructSize(&recon_info_record); // Also sets a couple of
 	if (RC!=0){
 		printf("Parameter file could not be read. Exiting.\n");
 		return 1;
 	}
 	// Get FFT Plan
-	if (access ("fftwf_wisdom_2d.txt", F_OK) == -1){
-		createPlanFile(&recon_info_record);
+	if (access ("fftwf_wisdom_2d.txt", F_OK) == -1){		createPlanFile(&recon_info_record);
 		printf("FFT plan file did not exist, creating one.\n");		// Check if sizes are okay.
 		createPlanFile(&recon_info_record);
 	} else if(access ("fftwf_wisdom_1d.txt", F_OK) == -1) {
@@ -97,10 +94,6 @@ int main(int argc, char *argv[])
 		printf("Reading wisdom file.\n");
 		createPlanFile(&recon_info_record);
 	}
-	struct sysinfo info;
-	sysinfo(&info);
-	long long int maxNProcs = (long long int) info.freeram / (long long int) recon_info_record.sizeMatrices;
-	printf("Memory needed per process: %lld, Total system RAM: %lld, MaxNProcs: %lld \n",(long long int) recon_info_record.sizeMatrices,(long long int) info.freeram, maxNProcs);
 	// Check if sizes are okay.
 	if (recon_info_record.n_shifts > 1 && recon_info_record.n_shifts %2 !=0){
 		printf("Number of shifts must be even. Exiting\n");
@@ -110,7 +103,7 @@ int main(int argc, char *argv[])
 		printf("Number of slices must be even. Exiting\n");
 		return 1;
 	}
-	int numProcs = (atoi(argv[2]) < maxNProcs) ? atoi(argv[2]) : maxNProcs - 2;
+	int numProcs = atoi(argv[2]);
 	int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_1d.txt");
 	double start_time = omp_get_wtime();
 	if (recon_info_record.n_shifts==1){
@@ -125,13 +118,11 @@ int main(int argc, char *argv[])
 			//~ printf("%d\t\t%d\t\t%d\t\t%d\n",procNr,startSliceNr,endSliceNr,-startSliceNr+endSliceNr);
 			// Allocate all the structs and arrays now
 			SINO_READ_OPTS readStruct;
-			readStruct.sizeMatrices = 0;
 			readStruct.norm_sino = (float *) malloc(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 			LOCAL_CONFIG_OPTS information;
 			information.shift = recon_info_record.shift_values[0];
 			setSinoSize(&information,recon_info_record);
 			gridrecParams param;
-			param.sizeMatrices = 0;
 			param.sinogram_x_dim = information.sinogram_adjusted_xdim * 2;
 			param.theta_list = recon_info_record.theta_list;
 			param.filter_type = recon_info_record.filter;
@@ -186,7 +177,6 @@ int main(int argc, char *argv[])
 		SINO_READ_OPTS readStruct[recon_info_record.n_slices];
 		int i;
 		for (i = 0; i < recon_info_record.n_slices; i ++)
-			readStruct[i].sizeMatrices = 0;
 			readStruct[i].norm_sino = (float *) malloc(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 		// ReadStruct is now ready.
 		int nJobs = (numProcs < recon_info_record.n_slices) ? numProcs : recon_info_record.n_slices;
@@ -216,7 +206,6 @@ int main(int argc, char *argv[])
 			information.shift = recon_info_record.shift_values[0];
 			setSinoSize(&information,recon_info_record);
 			gridrecParams param;
-			param.sizeMatrices = 0;
 			param.sinogram_x_dim = information.sinogram_adjusted_xdim * 2;
 			param.theta_list = recon_info_record.theta_list;
 			param.filter_type = recon_info_record.filter;

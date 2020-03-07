@@ -223,10 +223,10 @@ void setGridRecPSWF (gridrecParams *param){
 
 void setSinoAndReconBuffers ( int  number, float *sinogram_address, float *reconstruction_address, gridrecParams *param){
     int     loop;
-    param->sizeMatrices += (param->theta_list_size*sizeof(float *));
-    param->sizeMatrices += (param->theta_list_size*sizeof(float *));
-    param->sizeMatrices += (param->imgsiz*sizeof(float *));
-    param->sizeMatrices += (param->imgsiz*sizeof(float *));
+    //~ printf("G1 %ld\n",(long)(param->theta_list_size*sizeof(float *)));
+    //~ printf("G2 %ld\n",(long)(param->theta_list_size*sizeof(float *)));
+    //~ printf("S1 %ld\n",(long)(param->imgsiz*sizeof(float *)));
+    //~ printf("S2 %ld\n",(long)(param->imgsiz*sizeof(float *)));
     if (param->G1 == NULL)  param->G1 = (float **) malloc((size_t) (param->theta_list_size * sizeof(float *)));
     if (param->G2 == NULL)  param->G2 = (float **) malloc((size_t) (param->theta_list_size * sizeof(float *)));
     if (param->S1 == NULL)  param->S1 = (float **) malloc((size_t) (param->imgsiz * sizeof(float *)));
@@ -425,15 +425,15 @@ void initGridRec (gridrecParams *param){
 	D1    = param->sampl*D0;
 	param->L     = 2*C*param->sampl/PI;
 	param->scale = D1/param->pdim;
-	param->sizeMatrices += ((param->pdim+1) * sizeof(complex));
-	param->sizeMatrices += ((param->pdim+1) * sizeof(complex));
-	param->sizeMatrices += ((param->ltbl+1) * sizeof(float));
-	param->sizeMatrices += ((param->ltbl+1) * sizeof(float));
-	param->sizeMatrices += (param->M0 * sizeof(float));
-	param->sizeMatrices += (((int) param->L+1) * sizeof(float));
-	param->sizeMatrices += ((param->M+1)*(param->M+1)*sizeof(complex));
-	param->sizeMatrices += (param->theta_list_size * sizeof (float));
-	param->sizeMatrices += (param->theta_list_size * sizeof (float));
+	//~ printf("cproj %ld\n",(long)((param->pdim+1) * sizeof(complex)));
+	//~ printf("filphase %ld\n",(long)((param->pdim+1) * sizeof(complex)));
+	//~ printf("wtbl %ld\n",(long)((param->ltbl+1) * sizeof(float)));
+	//~ printf("dwtbl %ld\n",(long)((param->ltbl+1) * sizeof(float)));
+	//~ printf("winv %ld\n",(long)(param->M0 * sizeof(float)));
+	//~ printf("work %ld\n",(long)(((int) param->L+1) * sizeof(float)));
+	//~ printf("H %ld\n",(long)((param->M+1)*(param->M+1)*sizeof(complex)));
+	//~ printf("SINE %ld\n",(long)(param->theta_list_size * sizeof (float)));
+	//~ printf("COSE %ld\n",(long)(param->theta_list_size * sizeof (float)));
 	param->cproj    = (complex *) malloc ((param->pdim+1) * sizeof(complex));
 	param->filphase = (complex *) malloc (((param->pdim/2)+1) * sizeof(complex));
 	param->wtbl     = (float   *) malloc ((param->ltbl+1) * sizeof(float));
