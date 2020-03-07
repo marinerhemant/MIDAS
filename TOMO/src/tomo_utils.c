@@ -629,7 +629,7 @@ void createPlanFile(GLOBAL_CONFIG_OPTS *recon_info_record){
 	setSinoAndReconBuffers(1, &information.sinograms_boundary_padding[0], &information.reconstructions_boundary_padding[0],&param);
 	setSinoAndReconBuffers(2, &information.sinograms_boundary_padding[0], &information.reconstructions_boundary_padding[0],&param);
 	recon_info_record->sizeMatrices += readStruct.sizeMatrices;
-	param.sizeMatrices = 0;
+	readStruct.sizeMatrices = 0;
 	param.setPlan = 1;
 	reconstruct(&param);
 	recon_info_record->wisdom_string = (char *) malloc(sizeof(char) * (strlen(param.wisdom_string)+1));

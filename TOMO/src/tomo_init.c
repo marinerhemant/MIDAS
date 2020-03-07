@@ -125,11 +125,13 @@ int main(int argc, char *argv[])
 			//~ printf("%d\t\t%d\t\t%d\t\t%d\n",procNr,startSliceNr,endSliceNr,-startSliceNr+endSliceNr);
 			// Allocate all the structs and arrays now
 			SINO_READ_OPTS readStruct;
+			readStruct.sizeMatrices = 0;
 			readStruct.norm_sino = (float *) malloc(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 			LOCAL_CONFIG_OPTS information;
 			information.shift = recon_info_record.shift_values[0];
 			setSinoSize(&information,recon_info_record);
 			gridrecParams param;
+			param.sizeMatrices = 0;
 			param.sinogram_x_dim = information.sinogram_adjusted_xdim * 2;
 			param.theta_list = recon_info_record.theta_list;
 			param.filter_type = recon_info_record.filter;
@@ -184,6 +186,7 @@ int main(int argc, char *argv[])
 		SINO_READ_OPTS readStruct[recon_info_record.n_slices];
 		int i;
 		for (i = 0; i < recon_info_record.n_slices; i ++)
+			readStruct[i].sizeMatrices = 0;
 			readStruct[i].norm_sino = (float *) malloc(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 		// ReadStruct is now ready.
 		int nJobs = (numProcs < recon_info_record.n_slices) ? numProcs : recon_info_record.n_slices;
@@ -213,6 +216,7 @@ int main(int argc, char *argv[])
 			information.shift = recon_info_record.shift_values[0];
 			setSinoSize(&information,recon_info_record);
 			gridrecParams param;
+			param.sizeMatrices = 0;
 			param.sinogram_x_dim = information.sinogram_adjusted_xdim * 2;
 			param.theta_list = recon_info_record.theta_list;
 			param.filter_type = recon_info_record.filter;
