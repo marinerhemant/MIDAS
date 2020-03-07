@@ -97,6 +97,7 @@ int main(int argc, char *argv[])
 		createPlanFile(&recon_info_record);
 	}
 	struct sysinfo info;
+	sysinfo(&info);
 	printf("Memory needed per process: %lld, Total system RAM: %lld\n",(long long int) recon_info_record.sizeMatrices,(long long int) info.freeram);
 	return;
 	// Check if sizes are okay.
