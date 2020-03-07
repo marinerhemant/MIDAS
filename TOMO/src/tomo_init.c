@@ -74,11 +74,14 @@ int main(int argc, char *argv[])
 	}
 	printf("Number of cores requested: %d\n",atoi(argv[2]));
 	GLOBAL_CONFIG_OPTS recon_info_record;
+	recon_info_record.sizeMatrices = 0;
 	char *fileName;
 	fileName = argv[1];
 	int RC;
 	RC = setGlobalOpts(fileName, &recon_info_record);
-	setReadStructSize(&recon_info_record); // Also sets a couple of
+	printf("%lld\n",(long long int) recon_info_record.sizeMatrices);
+	return;
+	setReadStructSize(&recon_info_record);
 	if (RC!=0){
 		printf("Parameter file could not be read. Exiting.\n");
 		return 1;
