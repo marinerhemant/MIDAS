@@ -192,8 +192,8 @@ void memsets(LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS recon_info_recor
 
 //--------------------------------------------------------------------------------------------------------------------------
 // ReadData
-void readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *readStruct);
-void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *readStruct);
+int readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *readStruct);
+int readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *readStruct);
 
 //--------------------------------------------------------------------------------------------------------------------------
 // Corrections
@@ -207,7 +207,7 @@ void Pad (SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS recon_info_record);
 // Processing code
 void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,size_t offt,int doLog);
 void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,gridrecParams *param,size_t offsetRecons);
-void writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,int shiftNr);
+int writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,int shiftNr);
 void createPlanFile(GLOBAL_CONFIG_OPTS *recon_info_record);
 
 #endif

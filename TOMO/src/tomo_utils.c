@@ -346,9 +346,13 @@ void setSinoSize (LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS recon_info_
 	}
 }
 
-void readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *readStruct){
+int readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *readStruct){
 	FILE *dataFile;
 	dataFile = fopen(recon_info_record.DataFileName,"rb");
+	if (dataFile == NULL){
+		printf("Could not read datafile: %s",recon_info_record.DataFileName);
+		return 1;
+	}
 	size_t offset = sizeof(float)*sliceNr*recon_info_record.det_xdim*recon_info_record.theta_list_size;
 	size_t SizeSino = sizeof(float)*recon_info_record.det_xdim*recon_info_record.theta_list_size;
 	//~ printf("init_sinogram %ld\n",(long)SizeSino);
@@ -376,11 +380,16 @@ void readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *
 		//~ fclose(out);
 	//~ }
 	free(readStruct->init_sinogram);
+	return 0;
 }
 
-void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *readStruct) {
+int readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *readStruct) {
 	FILE *dataFile;
 	dataFile = fopen(recon_info_record.DataFileName,"rb");
+	if (dataFile == NULL){
+		printf("Could not read datafile: %s",recon_info_record.DataFileName);
+		return 1;
+	}
 	size_t offset, SizeDark, SizeWhite, SizeSino, SizeNormSino;
 	// Dark
 	SizeDark = sizeof(float)*recon_info_record.det_xdim;
@@ -470,6 +479,7 @@ void readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *re
 	free(readStruct->short_sinogram);
 	free(readStruct->white_field_sino);
 	free(readStruct->dark_field_sino_ave);
+	return 0;
 }
 
 void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,size_t offt,int doLog){
@@ -569,7 +579,7 @@ void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_reco
 	}
 }
 
-void writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,int shiftNr){
+int writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,int shiftNr){
 	// The results are in information.recon_calc_buffer
 	// Output file: float with reconstruction_xdim*reconstruction_xdim size
 	// OutputFileName: {recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_reconstruction_xdim_float_4byte.bin
@@ -584,10 +594,11 @@ void writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS re
 	outfile = fopen(outFileName,"wb");
 	if (outfile == NULL){
 		printf("We could not open the file %s for writing. \n",outFileName);
-		return;
+		return 1;
 	}
 	fwrite(information->recon_calc_buffer,sizeof(float)*information->reconstruction_size,1,outfile);
 	fclose(outfile);
+	return 0;
 }
 
 void createPlanFile(GLOBAL_CONFIG_OPTS *recon_info_record){

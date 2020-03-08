@@ -145,9 +145,11 @@ int main(int argc, char *argv[])
 								// recon_info_record.slices_to_process[sliceRowNr],recon_info_record.slices_to_process[sliceRowNr+1]);
 				// fflush(stdout);
 				if (recon_info_record.are_sinos){
-					readSino(sliceNr,recon_info_record,&readStruct);
+					int rc = readSino(sliceNr,recon_info_record,&readStruct);
+					if (rc == 1) continue;
 				} else {
-					readRaw(sliceNr,recon_info_record,&readStruct);
+					int rc = readRaw(sliceNr,recon_info_record,&readStruct);
+					if (rc == 1) continue;
 				}
 				memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 				offt = 0;
@@ -157,9 +159,11 @@ int main(int argc, char *argv[])
 				sliceRowNr ++;
 				sliceNr = recon_info_record.slices_to_process[sliceRowNr];
 				if (recon_info_record.are_sinos){
-					readSino(sliceNr,recon_info_record,&readStruct);
+					int rc = readSino(sliceNr,recon_info_record,&readStruct);
+					if (rc == 1) continue;
 				} else {
-					readRaw(sliceNr,recon_info_record,&readStruct);
+					int rc = readRaw(sliceNr,recon_info_record,&readStruct);
+					if (rc == 1) continue;
 				}
 				memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 				offt = information.sinogram_adjusted_size*2;
@@ -168,9 +172,11 @@ int main(int argc, char *argv[])
 				setSinoAndReconBuffers(2, &information.sinograms_boundary_padding[offt], &information.reconstructions_boundary_padding[offsetRecons],&param);
 				reconstruct(&param);
 				getRecons(&information,recon_info_record,&param,0);
-				writeRecon(oldSliceNr,&information,recon_info_record,recon_info_record.n_shifts);
+				int rw = writeRecon(oldSliceNr,&information,recon_info_record,recon_info_record.n_shifts);
+				if (rw == 1) continue;
 				getRecons(&information,recon_info_record,&param,offsetRecons);
-				writeRecon(sliceNr,&information,recon_info_record,recon_info_record.n_shifts);
+				rw = writeRecon(sliceNr,&information,recon_info_record,recon_info_record.n_shifts);
+				if (rw == 1) continue;
 			}
 			destroyFFTMemoryStructures(&param);
 		}
@@ -181,6 +187,7 @@ int main(int argc, char *argv[])
 			readStruct[i].norm_sino = (float *) malloc(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 		// ReadStruct is now ready.
 		int nJobs = (numProcs < recon_info_record.n_slices) ? numProcs : recon_info_record.n_slices;
+		int badRead = 0;
 		# pragma omp parallel num_threads(nJobs)
 		{
 			int procNr = omp_get_thread_num();
@@ -188,11 +195,14 @@ int main(int argc, char *argv[])
 			sliceNr = recon_info_record.slices_to_process[procNr];
 			printf("Reading SliceNr: %d.\n",sliceNr);
 			if (recon_info_record.are_sinos){
-				readSino(sliceNr,recon_info_record,&readStruct[procNr]);
+				int rc = readSino(sliceNr,recon_info_record,&readStruct[procNr]);
+				if (rc == 1) badRead = 1;
 			} else {
-				readRaw(sliceNr,recon_info_record,&readStruct[procNr]);
+				int rc = readRaw(sliceNr,recon_info_record,&readStruct[procNr]);
+				if (rc == 1) badRead = 1;
 			}
 		}
+		if (badRead == 1) return;
 		nJobs = recon_info_record.n_slices * recon_info_record.n_shifts;
 		numProcs = (nJobs/2 < numProcs) ? nJobs/2 : numProcs;
 		int nrSlicesThread = (int)ceil((double)nJobs / (2.0*(double)numProcs));
@@ -239,10 +249,12 @@ int main(int argc, char *argv[])
 				reconstruct(&param);
 				information.shift = recon_info_record.shift_values[shiftNr];
 				getRecons(&information,recon_info_record,&param,0);
-				writeRecon(localSliceNr,&information,recon_info_record,shiftNr);
+				int rw = writeRecon(localSliceNr,&information,recon_info_record,shiftNr);
+				if (rw == 1) continue;
 				information.shift = recon_info_record.shift_values[shiftNr+1];
 				getRecons(&information,recon_info_record,&param,offsetRecons);
-				writeRecon(localSliceNr,&information,recon_info_record,shiftNr+1);
+				rw = writeRecon(localSliceNr,&information,recon_info_record,shiftNr+1);
+				if (rw == 1) continue;
 			}
 			//~ destroyFFTMemoryStructures(&param);
 		}
