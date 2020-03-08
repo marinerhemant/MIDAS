@@ -350,7 +350,7 @@ int readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *r
 	FILE *dataFile;
 	dataFile = fopen(recon_info_record.DataFileName,"rb");
 	if (dataFile == NULL){
-		printf("Could not read datafile: %s.\n",recon_info_record.DataFileName);
+		printf("SliceNr: %d, Could not read datafile: %s.\n",sliceNr,recon_info_record.DataFileName);
 		return 1;
 	}
 	size_t offset = sizeof(float)*sliceNr*recon_info_record.det_xdim*recon_info_record.theta_list_size;
@@ -387,7 +387,7 @@ int readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *rea
 	FILE *dataFile;
 	dataFile = fopen(recon_info_record.DataFileName,"rb");
 	if (dataFile == NULL){
-		printf("Could not read datafile: %s.\n",recon_info_record.DataFileName);
+		printf("SliceNr: %d, Could not read datafile: %s.\n",sliceNr,recon_info_record.DataFileName);
 		return 1;
 	}
 	size_t offset, SizeDark, SizeWhite, SizeSino, SizeNormSino;
