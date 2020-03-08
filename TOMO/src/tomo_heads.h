@@ -7,12 +7,12 @@
 #define tomo_headsH
 
 #include <stdio.h>
-#include <stdlib.h> 
-#include <string.h> 
-#include <math.h> 
-#include <stddef.h> 
-#include <time.h> 
-#include <sys/stat.h> 
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+#include <stddef.h>
+#include <time.h>
+#include <sys/stat.h>
 #include <fftw3.h>
 #include <stdbool.h>
 
@@ -22,9 +22,9 @@
 
 //--------------------------------------------------------------------------------------------------------------------------
 // Parameters for gridrec
-#define max(A,B) ((A)>(B)?(A):(B)) 
-#define min(A,B) ((A)<(B)?(A):(B)) 
-#define abs(A) ((A)>0 ?(A):-(A)) 
+#define max(A,B) ((A)>(B)?(A):(B))
+#define min(A,B) ((A)<(B)?(A):(B))
+#define abs(A) ((A)>0 ?(A):-(A))
 #define Cmult(A,B,C) {(A).r=(B).r*(C).r-(B).i*(C).i; (A).i=(B).r*(C).i+(B).i*(C).r;}
 #define TOLERANCE 0.1
 #define LTBL_DEF 512
@@ -36,12 +36,12 @@
 #define FILTER_RAMP 4
 #define MAX_N_THETAS 36000
 
-typedef struct PSWF_STRUCT { 
+typedef struct PSWF_STRUCT {
     float   C,
             lmbda;
     int     nt;
     float   coefs[15];
-} pswf_struct; 
+} pswf_struct;
 
 typedef struct {
 	float   r,
@@ -49,49 +49,49 @@ typedef struct {
 } complex;
 
 typedef struct {
-	long pdim, 
-		M, 
-		M0, 
-		M02, 
-		ltbl, 
-		imgsiz; 
-	float sampl, 
-		scale, 
-		L, 
-		X0, 
+	long pdim,
+		M,
+		M0,
+		M02,
+		ltbl,
+		imgsiz;
+	float sampl,
+		scale,
+		L,
+		X0,
 		Y0,
-		*SINE, 
-		*COSE, 
-		*wtbl, 
-		*dwtbl, 
-		*work, 
+		*SINE,
+		*COSE,
+		*wtbl,
+		*dwtbl,
+		*work,
 		*winv,
-		**G1, 
-		**G2, 
-		**S1, 
+		**G1,
+		**G2,
+		**S1,
 		**S2,
-		*sinogram1, 
-		*sinogram2, 
-		*reconstruction1, 
-		*reconstruction2, 
+		*sinogram1,
+		*sinogram2,
+		*reconstruction1,
+		*reconstruction2,
 		*theta_list;
-	complex *cproj, 
-		*filphase, 
+	complex *cproj,
+		*filphase,
 		*H;
-	pswf_struct pswf_db[NO_PSWFS]; 
+	pswf_struct pswf_db[NO_PSWFS];
 	int flag,
 		theta_list_size,
 		filter_type,
 		n_prev,
-		nx_prev, 
+		nx_prev,
 		ny_prev,
 		setPlan;
 	unsigned long sinogram_x_dim;
-	fftwf_complex *in_1d, 
+	fftwf_complex *in_1d,
 		*out_1d;
-	fftwf_plan backward_plan_1d, 
+	fftwf_plan backward_plan_1d,
 		forward_plan_2d;
-	fftwf_complex 	*in_2d, 
+	fftwf_complex 	*in_2d,
 		*out_2d;
 	char *wisdom_string;
 } gridrecParams;
@@ -124,29 +124,29 @@ void destroyFFTMemoryStructures (gridrecParams *param);
 //--------------------------------------------------------------------------------------------------------------------------
 // ConfigurationParameters
 typedef struct {
-	uint det_xdim, 
-		det_ydim, 
+	uint det_xdim,
+		det_ydim,
 		*slices_to_process;
-	bool are_sinos, 
-		auto_centering, 
+	bool are_sinos,
+		auto_centering,
 		use_ring_removal;
-	float start_angle, 
-		end_angle, 
+	float start_angle,
+		end_angle,
 		angle_interval,
-		*shift_values, 
+		*shift_values,
 		ring_removal_coeff,
 		*theta_list,
 		start_shift,
-		end_shift, 
+		end_shift,
 		shift_interval;
-	char DataFileName[4096], 
+	char DataFileName[4096],
 		ReconFileName[4096],
 		SliceFileName[4096],
 		thetaFileName[4096];
-	int sinogram_xdim, 
-		sinogram_ydim, 
-		reconstruction_xdim, 
-		reconstruction_ydim, 
+	int sinogram_xdim,
+		sinogram_ydim,
+		reconstruction_xdim,
+		reconstruction_ydim,
 		theta_list_size,
 		n_shifts,
 		n_slices,
@@ -166,7 +166,7 @@ typedef struct {
 	float *sino_calc_buffer,
 		*recon_calc_buffer,
 		*shifted_recon,
-		*shifted_sinogram,    
+		*shifted_sinogram,
 		*sinograms_boundary_padding,
 		*reconstructions_boundary_padding,
 		*mean_vect,

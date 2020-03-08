@@ -58,7 +58,6 @@ void usage(){
 		"	* ringRemovalCoefficient - If given, will do ringRemoval, otherwise comment or remove line [float] default 1.0\n"
 		"	* slicesToProcess - -1 for all or FileName. ENSURE TO GIVE EVEN NUMBER OF SLICES\n"
 		"	* ExtraPad - 0 if half padding, 1 if one-half padding"
-		"   * AutoCentering - 0 if want no centering??, 1 (default) if want centering?? (original tomo_mpi does auto_centering always).\n"
 		"Output file: float with reconstruction_xdim*reconstruction_xdim size\n"
 		"OutputFileName: {recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_reconstruction_xdim_float_4byte.bin\n"
 		"The code will generate two text files: fftwf_wisdom_{1,2}d.txt. "
@@ -72,7 +71,6 @@ int main(int argc, char *argv[])
 		usage();
 		return 1;
 	}
-	printf("Number of cores requested: %d\n",atoi(argv[2]));
 	GLOBAL_CONFIG_OPTS recon_info_record;
 	char *fileName;
 	fileName = argv[1];
