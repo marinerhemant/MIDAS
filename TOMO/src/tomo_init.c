@@ -141,7 +141,8 @@ int main(int argc, char *argv[])
 				sliceRowNr = startSliceNr + numSlice*2;
 				sliceNr = recon_info_record.slices_to_process[sliceRowNr];
 				oldSliceNr = sliceNr;
-				printf("Processing step: %d of %d, thread Nr: %d\n",numSlice,(endSliceNr-startSliceNr)/2,procNr);
+				printf("Processing step: %d of %d, thread Nr: %d, sliceNrs: %d %d\n",numSlice,(endSliceNr-startSliceNr)/2,procNr,
+								recon_info_record.slices_to_process[sliceRowNr],recon_info_record.slices_to_process[sliceRowNr+1]);
 				fflush(stdout);
 				if (recon_info_record.are_sinos){
 					readSino(sliceNr,recon_info_record,&readStruct);
