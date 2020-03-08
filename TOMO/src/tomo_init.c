@@ -113,8 +113,8 @@ int main(int argc, char *argv[])
 			int startSliceNr = procNr*nrSlicesThread*2;
 			int endSliceNr = startSliceNr + nrSlicesThread*2;
 			if (endSliceNr > recon_info_record.n_slices) endSliceNr = recon_info_record.n_slices;
-			printf("%d\t\t%d\t\t%d\t\t%d\n",procNr,startSliceNr,endSliceNr,-startSliceNr+endSliceNr);
-			fflush(stdout);
+			// printf("%d\t\t%d\t\t%d\t\t%d\n",procNr,startSliceNr,endSliceNr,-startSliceNr+endSliceNr);
+			// fflush(stdout);
 			// Allocate all the structs and arrays now
 			SINO_READ_OPTS readStruct;
 			readStruct.norm_sino = (float *) malloc(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
@@ -141,9 +141,9 @@ int main(int argc, char *argv[])
 				sliceRowNr = startSliceNr + numSlice*2;
 				sliceNr = recon_info_record.slices_to_process[sliceRowNr];
 				oldSliceNr = sliceNr;
-				printf("Processing step: %d of %d, thread Nr: %d, sliceNrs: %d %d\n",numSlice,(endSliceNr-startSliceNr)/2,procNr,
+				// printf("Processing step: %d of %d, thread Nr: %d, sliceNrs: %d %d\n",numSlice,(endSliceNr-startSliceNr)/2,procNr,
 								recon_info_record.slices_to_process[sliceRowNr],recon_info_record.slices_to_process[sliceRowNr+1]);
-				fflush(stdout);
+				// fflush(stdout);
 				if (recon_info_record.are_sinos){
 					readSino(sliceNr,recon_info_record,&readStruct);
 				} else {
