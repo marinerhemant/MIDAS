@@ -348,7 +348,10 @@ void setSinoSize (LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS recon_info_
 
 int readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *readStruct){
 	FILE *dataFile;
-	dataFile = fopen(recon_info_record.DataFileName,"rb");
+	#pragma omp critical
+	{
+		dataFile = fopen(recon_info_record.DataFileName,"rb");
+	}
 	if (dataFile == NULL){
 		printf("SliceNr: %d, Could not read datafile: %s.\n",sliceNr,recon_info_record.DataFileName);
 		return 1;
@@ -385,7 +388,10 @@ int readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *r
 
 int readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *readStruct) {
 	FILE *dataFile;
-	dataFile = fopen(recon_info_record.DataFileName,"rb");
+	#pragma omp critical
+	{
+		dataFile = fopen(recon_info_record.DataFileName,"rb");
+	}
 	if (dataFile == NULL){
 		printf("SliceNr: %d, Could not read datafile: %s.\n",sliceNr,recon_info_record.DataFileName);
 		return 1;
@@ -590,14 +596,17 @@ int writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS rec
 		sprintf(outFileName,"%s_%05d_%03d_m%06.1f_%d_%d_float32.bin",recon_info_record.ReconFileName,sliceNr,shiftNr,-information->shift,recon_info_record.reconstruction_xdim,recon_info_record.reconstruction_xdim);
 	}
 	FILE *outfile;
-	//printf("Saving output to : %s.\n",outFileName);
-	outfile = fopen(outFileName,"wb");
-	if (outfile == NULL){
-		printf("We could not open the file for writing %s.\n",outFileName);
-		return 1;
+	#pragma omp critical
+	{
+		//printf("Saving output to : %s.\n",outFileName);
+		outfile = fopen(outFileName,"wb");
+		if (outfile == NULL){
+			printf("We could not open the file for writing %s.\n",outFileName);
+			return 1;
+		}
+		fwrite(information->recon_calc_buffer,sizeof(float)*information->reconstruction_size,1,outfile);
+		fclose(outfile);
 	}
-	fwrite(information->recon_calc_buffer,sizeof(float)*information->reconstruction_size,1,outfile);
-	fclose(outfile);
 	return 0;
 }
 
