@@ -482,11 +482,12 @@ void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info
 		//~ fwrite(information->sino_calc_buffer,sizeof(float)*information->sinogram_adjusted_xdim*recon_info_record.sinogram_ydim,1,out);
 		//~ fclose(out);
 	//~ }
-	for( j = 0; j < recon_info_record.sinogram_ydim; j++ ){
-		for( k = 0; k < information->sinogram_adjusted_xdim; k++ ){
-			information->shifted_recon[j * information->sinogram_adjusted_xdim+ k] = 0.0f;
-		}
-	}
+	// for( j = 0; j < recon_info_record.sinogram_ydim; j++ ){
+		// for( k = 0; k < information->sinogram_adjusted_xdim; k++ ){
+			// information->shifted_recon[j * information->sinogram_adjusted_xdim+ k] = 0.0f;
+		// }
+	// }
+	memset(information->shifted_recon,0,sizeof (float)*information->reconstruction_size);
 	for( j = 0; j < recon_info_record.sinogram_ydim; j++ ){
 		for( k = 0; k < information->sinogram_adjusted_xdim; k++ ){
 			float kk = k - information->shift;
@@ -546,13 +547,14 @@ void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_reco
 		//~ fwrite(information->recon_calc_buffer,sizeof(float)*recon_info_record.reconstruction_xdim*recon_info_record.reconstruction_ydim,1,out);
 		//~ fclose(out);
 	//~ }
-	for( j = 0; j < recon_info_record.sinogram_ydim; j++ ){
-		for( k = 0; k < recon_info_record.reconstruction_xdim; k++ ){
-			information->shifted_recon[j * recon_info_record.reconstruction_xdim + k] = 0.0f;
-		}
-	}
+	// for( j = 0; j < recon_info_record.sinogram_ydim; j++ ){
+		// for( k = 0; k < recon_info_record.reconstruction_xdim; k++ ){
+			// information->shifted_recon[j * recon_info_record.reconstruction_xdim + k] = 0.0f;
+		// }
+	// }
 	float *recon_buffer;
 	if (recon_info_record.auto_centering){
+		memset(information->shifted_recon,0,sizeof (float)*information->reconstruction_size);
 		recon_buffer = &information->recon_calc_buffer[0];
 		if (information->shift >= 0){
 			for ( j=0;j<recon_info_record.reconstruction_ydim;j++)
