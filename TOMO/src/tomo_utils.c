@@ -482,12 +482,13 @@ void reconCentering(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info
 		//~ fwrite(information->sino_calc_buffer,sizeof(float)*information->sinogram_adjusted_xdim*recon_info_record.sinogram_ydim,1,out);
 		//~ fclose(out);
 	//~ }
+	// ***********************This was not the correct size of shifted_recon. We do it properly now.*******************
+	// *********************** Not needed to reset shifted_recon, so we don't do it now.*******************************
 	// for( j = 0; j < recon_info_record.sinogram_ydim; j++ ){
 		// for( k = 0; k < information->sinogram_adjusted_xdim; k++ ){
 			// information->shifted_recon[j * information->sinogram_adjusted_xdim+ k] = 0.0f;
 		// }
 	// }
-	memset(information->shifted_recon,0,sizeof (float)*information->reconstruction_size);
 	for( j = 0; j < recon_info_record.sinogram_ydim; j++ ){
 		for( k = 0; k < information->sinogram_adjusted_xdim; k++ ){
 			float kk = k - information->shift;
@@ -547,6 +548,7 @@ void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_reco
 		//~ fwrite(information->recon_calc_buffer,sizeof(float)*recon_info_record.reconstruction_xdim*recon_info_record.reconstruction_ydim,1,out);
 		//~ fclose(out);
 	//~ }
+	// ***********************This was not the correct size of shifted_recon. We do it properly now.*******************
 	// for( j = 0; j < recon_info_record.sinogram_ydim; j++ ){
 		// for( k = 0; k < recon_info_record.reconstruction_xdim; k++ ){
 			// information->shifted_recon[j * recon_info_record.reconstruction_xdim + k] = 0.0f;
