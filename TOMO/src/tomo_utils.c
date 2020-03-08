@@ -582,6 +582,9 @@ void writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS re
 	FILE *outfile;
 	//printf("Saving output to : %s.\n",outFileName);
 	outfile = fopen(outFileName,"wb");
+	if (outfile == NULL){
+		printf("We could not open the file %s for writing. \n",outFileName);
+	}
 	fwrite(information->recon_calc_buffer,sizeof(float)*information->reconstruction_size,1,outfile);
 	fclose(outfile);
 }
