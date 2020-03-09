@@ -96,13 +96,13 @@ int main(int argc, char *argv[])
 	}
 	// Get FFT Plan
 	if (access (plan2DFN, F_OK) == -1){
-		printf("FFT plan file did not exist, creating one.\n");		// Check if sizes are okay.
+		printf("FFT plan file did not exist, creating one %s.\n",plan2DFN);		// Check if sizes are okay.
 		createPlanFile(&recon_info_record);
 	} else if(access (plan1DFN, F_OK) == -1) {
-		printf("FFT plan file did not exist, creating one.\n");
+		printf("FFT plan file did not exist, creating one %s.\n",plan2DFN);
 		createPlanFile(&recon_info_record);
 	} else {
-		printf("Reading wisdom file.\n");
+		printf("Reading wisdom file %s.\n",plan2DFN);
 		createPlanFile(&recon_info_record);
 	}
 	struct sysinfo info;
