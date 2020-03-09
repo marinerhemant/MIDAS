@@ -37,15 +37,15 @@
 #define MAX_N_THETAS 36000
 
 typedef struct PSWF_STRUCT {
-    float   C,
-            lmbda;
-    int     nt;
-    float   coefs[15];
+	float C,
+		lmbda;
+	int nt;
+	float coefs[15];
 } pswf_struct;
 
 typedef struct {
-	float   r,
-			i;
+	float r,
+		i;
 } complex;
 
 typedef struct {
@@ -94,6 +94,7 @@ typedef struct {
 	fftwf_complex 	*in_2d,
 		*out_2d;
 	char *wisdom_string;
+	long sizeMatrices;
 } gridrecParams;
 
 // Functions
@@ -157,6 +158,7 @@ typedef struct {
 		sinogram_adjusted_size;
 	char *wisdom_string;
 	int powerIncrement;
+	long sizeMatrices;
 }GLOBAL_CONFIG_OPTS;
 
 typedef struct {
@@ -181,6 +183,7 @@ typedef struct {
 		*init_sinogram,
 		*white_field_sino,
 		*dark_field_sino_ave;
+	long sizeMatrices;
 } SINO_READ_OPTS;
 
 //--------------------------------------------------------------------------------------------------------------------------

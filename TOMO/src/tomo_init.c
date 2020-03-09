@@ -16,6 +16,7 @@
 #include <omp.h>
 #include <unistd.h>
 #include "tomo_heads.h"
+#include <sys/sysinfo.h>
 
 /*
  * The data can be one of two types:
@@ -54,10 +55,12 @@ void usage(){
 		"							* 3: Hamming\n"
 		"							* 4: Ramp\n"
 		"	* shiftValues: start_shift end_shift shift_interval [floats] In case of 1 shift, give start_shift=end_shift, shift_interval doesn't matter.\n"
-		" 	*					ENSURE TO GIVE A RANGE WITH EVEN NUMBER OF SHIFTS\n"
+		"	*					ENSURE TO GIVE A RANGE WITH EVEN NUMBER OF SHIFTS\n"
 		"	* ringRemovalCoefficient - If given, will do ringRemoval, otherwise comment or remove line [float] default 1.0\n"
 		"	* slicesToProcess - -1 for all or FileName. ENSURE TO GIVE EVEN NUMBER OF SLICES\n"
 		"	* ExtraPad - 0 if half padding, 1 if one-half padding"
+		"	* AutoCentering - 0 if don't want reconstruction shifted in one direction (rotation axis in center of recon)\n"
+		"	* 				- 1 if want shift (rotation axis is offset) [default]\n"
 		"Output file: float with reconstruction_xdim*reconstruction_xdim size\n"
 		"OutputFileName: {recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_reconstruction_xdim_float_4byte.bin\n"
 		"The code will generate two text files: fftwf_wisdom_{1,2}d.txt. "
@@ -72,6 +75,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	GLOBAL_CONFIG_OPTS recon_info_record;
+	recon_info_record.sizeMatrices = 0;
 	char *fileName;
 	fileName = argv[1];
 	int RC;
@@ -92,6 +96,10 @@ int main(int argc, char *argv[])
 		printf("Reading wisdom file.\n");
 		createPlanFile(&recon_info_record);
 	}
+	struct sysinfo info;
+	sysinfo(&info);
+	long long int maxNProcs = (long long int) info.freeram / (long long int) recon_info_record.sizeMatrices;
+	printf("Memory needed per process: %lld, Total system RAM: %lld, MaxNProcs: %lld \n",(long long int) recon_info_record.sizeMatrices,(long long int) info.freeram, maxNProcs);
 	// Check if sizes are okay.
 	if (recon_info_record.n_shifts > 1 && recon_info_record.n_shifts %2 !=0){
 		printf("Number of shifts must be even. Exiting\n");
@@ -101,7 +109,7 @@ int main(int argc, char *argv[])
 		printf("Number of slices must be even. Exiting\n");
 		return 1;
 	}
-	int numProcs = atoi(argv[2]);
+	int numProcs = (atoi(argv[2]) < maxNProcs) ? atoi(argv[2]) : maxNProcs - 2;
 	int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_1d.txt");
 	double start_time = omp_get_wtime();
 	if (recon_info_record.n_shifts==1){

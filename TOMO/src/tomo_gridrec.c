@@ -223,6 +223,10 @@ void setGridRecPSWF (gridrecParams *param){
 
 void setSinoAndReconBuffers ( int  number, float *sinogram_address, float *reconstruction_address, gridrecParams *param){
     int     loop;
+    param->sizeMatrices += (param->theta_list_size*sizeof(float *));
+    param->sizeMatrices += (param->theta_list_size*sizeof(float *));
+    param->sizeMatrices += (param->imgsiz*sizeof(float *));
+    param->sizeMatrices += (param->imgsiz*sizeof(float *));
     //~ printf("G1 %ld\n",(long)(param->theta_list_size*sizeof(float *)));
     //~ printf("G2 %ld\n",(long)(param->theta_list_size*sizeof(float *)));
     //~ printf("S1 %ld\n",(long)(param->imgsiz*sizeof(float *)));
@@ -425,6 +429,15 @@ void initGridRec (gridrecParams *param){
 	D1    = param->sampl*D0;
 	param->L     = 2*C*param->sampl/PI;
 	param->scale = D1/param->pdim;
+	param->sizeMatrices += ((param->pdim+1) * sizeof(complex));
+	param->sizeMatrices += ((param->pdim+1) * sizeof(complex));
+	param->sizeMatrices += ((param->ltbl+1) * sizeof(float));
+	param->sizeMatrices += ((param->ltbl+1) * sizeof(float));
+	param->sizeMatrices += (param->M0 * sizeof(float));
+	param->sizeMatrices += (((int) param->L+1) * sizeof(float));
+	param->sizeMatrices += ((param->M+1)*(param->M+1)*sizeof(complex));
+	param->sizeMatrices += (param->theta_list_size * sizeof (float));
+	param->sizeMatrices += (param->theta_list_size * sizeof (float));
 	//~ printf("cproj %ld\n",(long)((param->pdim+1) * sizeof(complex)));
 	//~ printf("filphase %ld\n",(long)((param->pdim+1) * sizeof(complex)));
 	//~ printf("wtbl %ld\n",(long)((param->ltbl+1) * sizeof(float)));
