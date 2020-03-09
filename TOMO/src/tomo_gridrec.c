@@ -84,13 +84,16 @@ void fourn(float data[], unsigned long nn[], int ndim, int isign, gridrecParams 
 		param->nx_prev = nx;
 		param->ny_prev = ny;
 		if (param->setPlan == 1){
-			int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_2d.txt");
+			int fftw2d_size = nx;
+			char plan2DFN[4096];
+			sprintf(plan2DFN,"fftwf_wisdom_2d_%d.txt",(int)fftw2d_size);
+			int rc = fftwf_import_wisdom_from_filename(plan2DFN);
 			if (rc == 1){
 				param->forward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_WISDOM_ONLY);
 			} else {
 				printf("Creating wisdom file.\n");
 				param->forward_plan_2d = fftwf_plan_dft_2d(ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_MEASURE);
-				fftwf_export_wisdom_to_filename("fftwf_wisdom_2d.txt");
+				fftwf_export_wisdom_to_filename(plan2DFN);
 			}
 			param->wisdom_string = fftwf_export_wisdom_to_string();
 		} else {
@@ -275,12 +278,15 @@ void four1(float data[], unsigned long nn, int isign, gridrecParams *param){
 		//~ printf("fft_test1f: creating plans, n=%d, n_prev=%d\n", n, param->n_prev);
 		param->n_prev = n;
 		if (param->setPlan == 1){
-			int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_1d.txt");
+			int fftw1d_size = n;
+			char plan1DFN[4096];
+			sprintf(plan1DFN,"fftwf_wisdom_1d_%d.txt",(int)fftw1d_size);
+			int rc = fftwf_import_wisdom_from_filename(plan1DFN);
 			if (rc == 1){
 				param->backward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_WISDOM_ONLY);
 			} else {
 				param->backward_plan_1d = fftwf_plan_dft_1d(n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_MEASURE);
-				fftwf_export_wisdom_to_filename("fftwf_wisdom_1d.txt");
+				fftwf_export_wisdom_to_filename(plan1DFN);
 			}
 			param->wisdom_string = fftwf_export_wisdom_to_string();
 		} else {
@@ -395,6 +401,26 @@ void get_pswf (float C, pswf_struct **P, gridrecParams *param){
 	}
 	*P = &param->pswf_db[i];
 	return;
+}
+
+void getGridRecFourSizes (gridrecParams *param){
+	float MaxPixSiz, D0, R, D1;
+	long itmp;
+	itmp = param->sinogram_x_dim-1;
+	while (itmp){
+		param->pdim<<=1;
+		itmp>>=1;
+	}
+	param->sampl = 1.0;
+	MaxPixSiz = 1.0;
+	R = 1.0;
+	D0 = R*param->sinogram_x_dim;
+	D1 = param->sampl*D0;
+	itmp = (long int) (D1/MaxPixSiz-1);
+	while (itmp){
+		param->M<<=1;
+		itmp>>=1;
+	}
 }
 
 void initGridRec (gridrecParams *param){

@@ -80,16 +80,25 @@ int main(int argc, char *argv[])
 	fileName = argv[1];
 	int RC;
 	RC = setGlobalOpts(fileName, &recon_info_record);
-	setReadStructSize(&recon_info_record); // Also sets a couple of
+	setReadStructSize(&recon_info_record);
+	gridrecParams pm;
+	pm.sinogram_x_dim = recon_info_record.sinogram_adjusted_xdim * 2;
+	getGridRecFourSizes(&pm);
+	int fftw1d_size = pm.pdim;
+	int fftw2d_size = pm.M;
+	char plan2DFN[4096];
+	sprintf(plan2DFN,"fftwf_wisdom_2d_%d.txt",(int)fftw2d_size);
+	char plan1DFN[4096];
+	sprintf(plan1DFN,"fftwf_wisdom_1d_%d.txt",(int)fftw1d_size);
 	if (RC!=0){
 		printf("Parameter file could not be read. Exiting.\n");
 		return 1;
 	}
 	// Get FFT Plan
-	if (access ("fftwf_wisdom_2d.txt", F_OK) == -1){
+	if (access (plan2DFN, F_OK) == -1){
 		printf("FFT plan file did not exist, creating one.\n");		// Check if sizes are okay.
 		createPlanFile(&recon_info_record);
-	} else if(access ("fftwf_wisdom_1d.txt", F_OK) == -1) {
+	} else if(access (plan1DFN, F_OK) == -1) {
 		printf("FFT plan file did not exist, creating one.\n");
 		createPlanFile(&recon_info_record);
 	} else {

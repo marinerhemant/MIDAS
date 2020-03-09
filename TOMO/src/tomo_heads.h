@@ -115,6 +115,7 @@ float hamm (float x);
 float ramp (float x);
 void reconstruct (gridrecParams *param);
 void initGridRec (gridrecParams *param);
+void getGridRecFourSizes (gridrecParams *param);
 //--------------------------------------------------------------------------------------------------------------------------
 // FFTW
 void four1(float data[], unsigned long nn, int isign, gridrecParams *param);
