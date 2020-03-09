@@ -86,7 +86,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	// Get FFT Plan
-	if (access ("fftwf_wisdom_2d.txt", F_OK) == -1){		createPlanFile(&recon_info_record);
+	if (access ("fftwf_wisdom_2d.txt", F_OK) == -1){
 		printf("FFT plan file did not exist, creating one.\n");		// Check if sizes are okay.
 		createPlanFile(&recon_info_record);
 	} else if(access ("fftwf_wisdom_1d.txt", F_OK) == -1) {
