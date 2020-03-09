@@ -84,7 +84,6 @@ int main(int argc, char *argv[])
 	gridrecParams pm;
 	pm.sinogram_x_dim = recon_info_record.sinogram_adjusted_xdim * 2;
 	getGridRecFourSizes(&pm);
-	printf("%d %d %d\n",(int)pm.sinogram_x_dim,pm.pdim,pm.M);
 	int fftw1d_size = (int)pm.pdim;
 	int fftw2d_size = (int)pm.M;
 	char plan2DFN[4096];
