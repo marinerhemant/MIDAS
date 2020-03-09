@@ -77,6 +77,7 @@ void fourn(float data[], unsigned long nn[], int ndim, int isign, gridrecParams 
 	if ((nx != param->nx_prev) || (ny != param->ny_prev)){
 		if (param->nx_prev != 0) fftwf_free(param->in_1d);
 		//~ printf("in_2d %ld\n",(long)(sizeof(fftwf_complex)*nx*ny));
+		param->sizeMatrices += (long)(sizeof(fftwf_complex)*nx*ny);
 		param->in_2d = fftwf_malloc(sizeof(fftwf_complex)*nx*ny);
 		param->out_2d = param->in_2d;
 		//~ printf("fft_test2f: creating plans, nx=%d, ny=%d, nx_prev=%d, ny_prev=%d\n", nx, ny, param->nx_prev, param->ny_prev);
@@ -268,6 +269,7 @@ void four1(float data[], unsigned long nn, int isign, gridrecParams *param){
 	if (n != param->n_prev){
 		if (param->n_prev != 0) fftwf_free(param->in_1d);
 		//~ printf("in_1d %ld\n",(long)(sizeof(fftwf_complex)*n));
+		param->sizeMatrices += (long)(sizeof(fftwf_complex)*n);
 		param->in_1d = fftwf_malloc(sizeof(fftwf_complex)*n);
 		param->out_1d = param->in_1d;
 		//~ printf("fft_test1f: creating plans, n=%d, n_prev=%d\n", n, param->n_prev);
