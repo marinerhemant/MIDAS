@@ -92,7 +92,7 @@ for line in positions:
 	if line[0] == '%':
 		continue
 	line = line.rstrip()
-	ypos = 0#1000 * float(line.split('\t')[0])
+	ypos = 1000 * float(line.split('\t')[0])
 	filenr = int(line.split('\t')[2])
 	fname = fstem + str(filenr).zfill(padding) + ext
 	binname = binstem + str(filenr).zfill(padding) + binext
