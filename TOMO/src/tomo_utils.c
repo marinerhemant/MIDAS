@@ -366,6 +366,10 @@ int readSino(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record, SINO_READ_OPTS *r
 		fseek(dataFile,offset,SEEK_SET);
 		fread(readStruct->init_sinogram,SizeSino,1,dataFile);
 	}
+	#pragma omp critical
+	{
+		fclose(dataFile);
+	}
 	//~ if (recon_info_record.debug == 1){
 		//~ char outfn[4096];
 		//~ sprintf(outfn,"init_sinogram_%s",recon_info_record.DataFileName);
@@ -464,6 +468,10 @@ int readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *rea
 			fseek(dataFile,offset,SEEK_CUR);
 			fread((readStruct->short_sinogram)+recon_info_record.det_xdim*frameNr,sizeof(unsigned short int)*recon_info_record.det_xdim,1,dataFile); // One row each at the next subsequent place
 		}
+	}
+	#pragma omp critical
+	{
+		fclose(dataFile);
 	}
 	//~ if (recon_info_record.debug == 1){
 		//~ char outfn[4096];
