@@ -174,7 +174,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 	FILE *fileParam;
 	fileParam = fopen(inputFN,"r");
 	if (fileParam==NULL) return 1;
-	char dummy[4096],aline[4096], slices[4096];
+	char dummy[4096], aline[4096], slices[4096];
 	int temp;
 	recon_info_record->use_ring_removal = 0;
 	recon_info_record->debug = 0;

@@ -79,7 +79,7 @@ help:
 	@echo $(NLOPT)
 
 scanningfcns: $(SRCDIR)ScanningFunctions.c
-	$(CC) $(SRCDIR)ScanningFunctions.c -shared -Wl,-soname,scanningfcns -o $(BINDIR)scanningFunctions.so -fPIC -ldl -lm -fgnu89-inline -O3 -w
+	$(CC) $(SRCDIR)ScanningFunctions.c -o $(BINDIR)ScanningFunctions $(CFLAGS) $(CFLAGSNLOPT)
 
 imagemax: $(SRCDIR)imageMax.c
 	$(CC) $(SRCDIR)imageMax.c -shared -Wl,-soname,imageMax -o $(BINDIR)imageMax.so -fPIC -ldl -lm -fgnu89-inline -O3 -w
@@ -88,31 +88,31 @@ calibrant: $(SRCDIR)Calibrant.c
 	$(CC) $(SRCDIR)Calibrant.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)Calibrant $(CFLAGS) $(CFLAGSTIFF) $(CFLAGSNLOPT)
 
 fittiltbclsdsample: $(SRCDIR)FitTiltBCLsdSampleOmegaCorrection.c
-	$(CC) $(SRCDIR)FitTiltBCLsdSampleOmegaCorrection.c -o $(BINDIR)FitTiltBCLsdSample $(CFLAGS) $(CFLAGSNLOPT) 
+	$(CC) $(SRCDIR)FitTiltBCLsdSampleOmegaCorrection.c -o $(BINDIR)FitTiltBCLsdSample $(CFLAGS) $(CFLAGSNLOPT)
 
 forwardsimulation: $(SRCDIR)ForwardSimulation.c
 	$(CC) $(SRCDIR)ForwardSimulation.c -o $(BINDIR)ForwardSimulation $(CFLAGS)
 
 fitposorstrains: $(SRCDIR)FitPosOrStrains.c
 	$(CC) $(SRCDIR)FitPosOrStrains.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitPosOrStrains $(CFLAGS) \
-	$(CFLAGSNLOPT) 
+	$(CFLAGSNLOPT)
 
 fitposorstrainsscanning: $(SRCDIR)FitPosOrStrainsScanningHEDM.c
 	$(CC) $(SRCDIR)FitPosOrStrainsScanningHEDM.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitPosOrStrainsScanningHEDM $(CFLAGS) \
-	$(CFLAGSNLOPT) 
+	$(CFLAGSNLOPT)
 
 ff_mpiomp: $(SRCDIR)MIDAS_FF_MPIOMP.c
 	$(MPICC) $(SRCDIR)MIDAS_FF_MPIOMP.c $(SRCDIR)sharedFunctions.c -o $(BINDIR)MIDAS_FF_MPIOMP $(MPICCFLAGS) $(CFLAGSNLOPT) $(CFLAGSTIFF)
 
 
 peaksfitting: $(SRCDIR)PeaksFittingPerFile.c
-	$(CC) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile $(CFLAGS) $(CFLAGSNLOPT) 
+	$(CC) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile $(CFLAGS) $(CFLAGSNLOPT)
 
 peaksfittingcdf: $(SRCDIR)PeaksFittingPerFile.c
-	$(CC) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile -DCDF=netCDF $(CFLAGSNETCDF) $(CFLAGS) $(CFLAGSNLOPT) 
+	$(CC) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile -DCDF=netCDF $(CFLAGSNETCDF) $(CFLAGS) $(CFLAGSNLOPT)
 
 mapmultdetectors: $(SRCDIR)MapMultipleDetectors.c
-	$(CC) $(SRCDIR)MapMultipleDetectors.c -o $(BINDIR)MapMultipleDetectors $(CFLAGS) 
+	$(CC) $(SRCDIR)MapMultipleDetectors.c -o $(BINDIR)MapMultipleDetectors $(CFLAGS)
 
 mergeoverlaps: $(SRCDIR)MergeOverlappingPeaks.c
 	$(CC) $(SRCDIR)MergeOverlappingPeaks.c -o $(BINDIR)MergeOverlappingPeaks $(CFLAGS)
@@ -142,10 +142,10 @@ fitscanninggrain: $(SRCDIR)FitScanningGrain.c
 	$(CC) $(SRCDIR)FitScanningGrain.c -o $(BINDIR)FitScanningGrain $(CFLAGS)
 
 fittiltx: $(SRCDIR)FitTiltX.c
-	$(CC) $(SRCDIR)FitTiltX.c -o $(BINDIR)FitTiltX  $(CFLAGS) $(CFLAGSNLOPT) 
+	$(CC) $(SRCDIR)FitTiltX.c -o $(BINDIR)FitTiltX  $(CFLAGS) $(CFLAGSNLOPT)
 
 fitwedge: $(SRCDIR)FitWedge.c
-	$(CC) $(SRCDIR)FitWedge.c -o $(BINDIR)FitWedge  $(CFLAGS) $(CFLAGSNLOPT) 
+	$(CC) $(SRCDIR)FitWedge.c -o $(BINDIR)FitWedge  $(CFLAGS) $(CFLAGSNLOPT)
 
 hkls: $(SRCDIR)GetHKLList.c
 	$(CC) $(SRCDIR)GetHKLList.c $(SRCDIR)sgclib.c $(SRCDIR)sgfind.c $(SRCDIR)sghkl.c $(SRCDIR)sgsi.c \
@@ -165,11 +165,11 @@ mergemultiplescans: $(SRCDIR)MergeMultipleScans.c
 
 processgrains: $(SRCDIR)ProcessGrains.c
 	$(CC) $(SRCDIR)ProcessGrains.c $(SRCDIR)GetMisorientation.c $(SRCDIR)CalcStrains.c -o \
-	$(BINDIR)ProcessGrains $(CFLAGS) $(CFLAGSNLOPT) 
+	$(BINDIR)ProcessGrains $(CFLAGS) $(CFLAGSNLOPT)
 
 processgrainsscanning: $(SRCDIR)ProcessGrainsScanningHEDM.c
 	$(CC) $(SRCDIR)ProcessGrainsScanningHEDM.c $(SRCDIR)GetMisorientation.c $(SRCDIR)CalcStrains.c -o \
-	$(BINDIR)ProcessGrainsScanningHEDM $(CFLAGS) $(CFLAGSNLOPT) 
+	$(BINDIR)ProcessGrainsScanningHEDM $(CFLAGS) $(CFLAGSNLOPT)
 
 matchgrains: $(SRCDIR)MatchGrains.c
 	$(CC) $(SRCDIR)MatchGrains.c $(SRCDIR)GetMisorientation.c -o $(BINDIR)MatchGrains $(CFLAGS)

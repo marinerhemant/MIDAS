@@ -108,7 +108,8 @@ int main(int argc, char *argv[])
 	struct sysinfo info;
 	sysinfo(&info);
 	long long int maxNProcs = (long long int) info.freeram / (long long int) recon_info_record.sizeMatrices;
-	printf("Memory needed per process: %lld, Total system RAM: %lld, MaxNProcs: %lld \n",(long long int) recon_info_record.sizeMatrices,(long long int) info.freeram, maxNProcs);
+	printf("Memory needed per process: %lld, Total available RAM: %lld, MaxNProcs: %lld \n",
+			(long long int) recon_info_record.sizeMatrices,(long long int) info.freeram, maxNProcs);
 	// Check if sizes are okay.
 	if (recon_info_record.n_shifts > 1 && recon_info_record.n_shifts %2 !=0){
 		printf("Number of shifts must be even. Exiting\n");
