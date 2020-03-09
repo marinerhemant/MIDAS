@@ -407,6 +407,7 @@ void get_pswf (float C, pswf_struct **P, gridrecParams *param){
 void getGridRecFourSizes (gridrecParams *param){
 	float MaxPixSiz, D0, R, D1;
 	long itmp;
+	param->pdim = 1;
 	itmp = param->sinogram_x_dim-1;
 	while (itmp){
 		param->pdim<<=1;
@@ -418,6 +419,7 @@ void getGridRecFourSizes (gridrecParams *param){
 	D0 = R*param->sinogram_x_dim;
 	D1 = param->sampl*D0;
 	itmp = (long int) (D1/MaxPixSiz-1);
+	param->M = 1;
 	while (itmp){
 		param->M<<=1;
 		itmp>>=1;
