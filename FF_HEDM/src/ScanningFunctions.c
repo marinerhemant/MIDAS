@@ -808,6 +808,11 @@ static double problem_function(
 
 int main (int argc, char *argv[]){
 
+	if (argc!=7){
+		printf("Usage: ./ScanningFunctions ParameterFile BeamPosition  GrainVoxels    SpotInfo    GrainNr numProcs\n"
+			   "Eg.	   ./ScanningFunctions  params.txt   positions.csv voxelPos.csv ExtraInfo.bin    2       64\n");
+		return;
+	}
 	numProcs = argv[6];
 	// Read omegaStep, px, voxelLen, beamFWHM, omeTol, Lsd, Wavelength, nScans from PARAM file.
 	char *paramFN;
