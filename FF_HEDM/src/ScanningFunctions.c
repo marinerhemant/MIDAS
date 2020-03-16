@@ -696,7 +696,7 @@ static inline void PopulateSpotInfoMat (double omegaStep, double px, int nVoxels
 						}
 					}
 				}
-				//~ printf("%lf\n",bestAngle);
+				printf("%lf\n",bestAngle);
 				if (bestAngle < 1){ // Spot was found
 					// We will populate the following arrays now:
 						// idxPos = voxelNr*((nhkls+2)*2)*maxNPos*5 + bestHKLNr*maxNPos*5 + posNr*5
@@ -705,7 +705,7 @@ static inline void PopulateSpotInfoMat (double omegaStep, double px, int nVoxels
 						// filteredSpotInfo:	bestRow*3 + {0,1,2} for y,z,ome of each observed spot position. This will correspond to the next 3 arrays
 						// spotInfoMat:	bestRow*4 + {0,1,2,3} for y,z,ome,frac mean and total corresponding to each simulated spot.
 								// We would need to divide by the total fraction at the end!!!!
-					//~ printf("%ld\n",bestRow);
+					printf("%ld\n",bestRow);
 					idxPos = voxelNr;
 					idxPos *= nhkls+2;
 					idxPos *= 2;
@@ -867,7 +867,7 @@ int main (int argc, char *argv[]){
 	for (i=0;i<nBeamPositions;i++){
 		fgets(aline,4096,positionsFile);
 		sscanf(aline,"%lf",&beamPositions[i]);
-		beamPositions[i] *= 1000;
+		beamPositions[i] *= -1000; // This is multiplied with -1 because if the movement is +ve, beam moves in the negative direction.
 	}
 	fclose(positionsFile);
 
