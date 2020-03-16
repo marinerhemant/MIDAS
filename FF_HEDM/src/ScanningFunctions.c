@@ -695,6 +695,7 @@ static inline void PopulateSpotInfoMat (double omegaStep, double px, int nVoxels
 							bestG2 = gObs[1];
 							bestG3 = gObs[2];
 							bestRow = i;
+							printf("%ld\n",bestRow);
 						}
 					}
 				}
