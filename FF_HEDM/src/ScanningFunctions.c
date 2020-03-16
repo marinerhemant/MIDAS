@@ -962,7 +962,7 @@ int main (int argc, char *argv[]){
 	char line[20000];
 	for (i=0;i<(9+GrainNr);i++) fgets(line,20000,grainsFile);
 	double OM[3][3],LatC[6];
-	sscanf("%s %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %s %lf %lf %lf %lf %lf %lf",dummy,
+	sscanf(line,"%s %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %s %lf %lf %lf %lf %lf %lf",dummy,
 		&OM[0][0],&OM[0][1],&OM[0][2],&OM[1][0],&OM[1][1],&OM[1][2],&OM[2][0],&OM[2][1],&OM[2][2],
 		&LatC[0],&LatC[1],&LatC[2],&LatC[3],&LatC[4],&LatC[5]);
 	double Eul[3];
