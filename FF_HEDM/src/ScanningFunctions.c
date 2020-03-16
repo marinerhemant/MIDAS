@@ -664,7 +664,6 @@ static inline void PopulateSpotInfoMat (double omegaStep, double px, int nVoxels
 		for (spotNr=0;spotNr<nSpots;spotNr++){
 			thisOmega = spotInfo[spotNr*9+4];
 			thisEta = spotInfo[spotNr*9+3];
-			//~ yRot = thisPos[0]*sind(thisOmega) + thisPos[1]*cosd(thisOmega);
 			ringNr = (int) spotInfo[spotNr*9+5];
 			gSim[0] = spotInfo[spotNr*9+0];
 			gSim[1] = spotInfo[spotNr*9+1];
@@ -713,7 +712,7 @@ static inline void PopulateSpotInfoMat (double omegaStep, double px, int nVoxels
 					idxPos *= maxNPos;
 					idxPos += bestHKLNr*maxNPos;
 					idxPos += posNr;
-					FLUT[idxPos] = bestRow;
+					FLUT[idxPos] = bestRow-1;
 					idxPos = voxelNr;
 					idxPos *= nhkls+2;
 					idxPos *= 2;
@@ -726,15 +725,15 @@ static inline void PopulateSpotInfoMat (double omegaStep, double px, int nVoxels
 					Fthis[idxPos + 2] = spotInfo[spotNr*9+4];
 					Fthis[idxPos + 3] = voxelFraction;
 					Fthis[idxPos + 4] = positionNr;
-					if (filteredSpotInfo[bestRow*4 + 0] == 0){
-						filteredSpotInfo[bestRow*4 + 0] = AllSpotsInfo[14*(bestRow-1)+0];
-						filteredSpotInfo[bestRow*4 + 1] = AllSpotsInfo[14*(bestRow-1)+1];
-						filteredSpotInfo[bestRow*4 + 2] = AllSpotsInfo[14*(bestRow-1)+2];
+					if (filteredSpotInfo[(bestRow-1)*4 + 0] == 0){
+						filteredSpotInfo[(bestRow-1)*4 + 0] = AllSpotsInfo[14*(bestRow-1)+0];
+						filteredSpotInfo[(bestRow-1)*4 + 1] = AllSpotsInfo[14*(bestRow-1)+1];
+						filteredSpotInfo[(bestRow-1)*4 + 2] = AllSpotsInfo[14*(bestRow-1)+2];
 					}
-					spotInfoMat[bestRow*4+0] += spotInfo[spotNr*9+7];
-					spotInfoMat[bestRow*4+1] += spotInfo[spotNr*9+8];
-					spotInfoMat[bestRow*4+2] += spotInfo[spotNr*9+4];
-					spotInfoMat[bestRow*4+3] += voxelFraction;
+					spotInfoMat[(bestRow-1)*4+0] += spotInfo[spotNr*9+7];
+					spotInfoMat[(bestRow-1)*4+1] += spotInfo[spotNr*9+8];
+					spotInfoMat[(bestRow-1)*4+2] += spotInfo[spotNr*9+4];
+					spotInfoMat[(bestRow-1)*4+3] += voxelFraction;
 					posNr ++;
 				}
 			}
@@ -809,8 +808,8 @@ static double problem_function(
 int main (int argc, char *argv[]){
 
 	if (argc!=7){
-		printf("Usage: ./ScanningFunctions ParameterFile BeamPosition  GrainVoxels    SpotInfo    GrainNr numProcs\n"
-			   "Eg.	   ./ScanningFunctions  params.txt   positions.csv voxelPos.csv ExtraInfo.bin    2       64\n");
+		printf("Usage: ./ScanningFunctions ParameterFile BeamPosition  GrainVoxels    IDsHash    GrainNr numProcs\n"
+			   "Eg.	   ./ScanningFunctions  params.txt   positions.csv voxelPos.csv IDsHash.csv    2       64\n");
 		return;
 	}
 	numProcs = argv[6];
