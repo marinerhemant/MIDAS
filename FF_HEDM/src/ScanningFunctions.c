@@ -881,6 +881,7 @@ int main (int argc, char *argv[]){
 	double *hklTs;
 	hklTs = calloc(500*4,sizeof(*hklTs));
 	int nhkls = 0;
+	fgets(aline,4096,hklf);
 	while (fgets(aline,4096,hklf)!=NULL){
 		sscanf(aline,"%lf %lf %lf %s %lf",&ht,&kt,&lt,dummy,&ringT);
 		for (i=0;i<nRings;i++){
