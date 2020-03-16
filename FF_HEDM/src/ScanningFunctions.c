@@ -938,7 +938,7 @@ int main (int argc, char *argv[]){
 
 	// AllIDsInfo is to be filled
 	long *AllIDsInfo;
-	AllIDsInfo = calloc(nBeamPositions*nRings,sizeof(*AllIDsInfo));
+	AllIDsInfo = calloc(nBeamPositions*nRings*2,sizeof(*AllIDsInfo));
 	FILE *idsfile;
 	char *idsfn;
 	idsfn = argv[4];
