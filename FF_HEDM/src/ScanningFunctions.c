@@ -911,7 +911,7 @@ int main (int argc, char *argv[]){
 	voxelsT = calloc(nBeamPositions*nBeamPositions,sizeof(*voxelsT));
 	int nVoxels=0;
 	while (fgets(aline,4096,voxelsFile)!=NULL){
-		sscanf("%lf,%lf",&voxelsT[nVoxels*2+0],&voxelsT[nVoxels*2+1]);
+		sscanf(aline,"%lf,%lf",&voxelsT[nVoxels*2+0],&voxelsT[nVoxels*2+1]);
 		printf("%lf %lf\n",voxelsT[nVoxels*2+0],voxelsT[nVoxels*2+1]);
 		nVoxels++;
 	}
