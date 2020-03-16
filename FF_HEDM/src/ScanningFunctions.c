@@ -36,9 +36,7 @@ static inline double acosd(double x){return rad2deg*(acos(x));}
 static inline double atand(double x){return rad2deg*(atan(x));}
 static inline double sin_cos_to_angle (double s, double c){return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);}
 
-static void
-check (int test, const char * message, ...)
-{
+static void check (int test, const char * message, ...){
     if (test) {
         va_list args;
         va_start (args, message);
@@ -49,13 +47,12 @@ check (int test, const char * message, ...)
     }
 }
 
-static inline void
-CalcEtaAngle(double y,double z,double *alpha) {
+static inline void CalcEtaAngle(double y,double z,double *alpha) { // No return but a pointer is updated.
 	*alpha = rad2deg * acos(z/sqrt(y*y+z*z));
 	if (y > 0)    *alpha = -*alpha;
 }
 
-static inline double CalcEta(double y, double z) {
+static inline double CalcEta(double y, double z) { // Returns the eta
 	double alpha;
 	alpha = rad2deg * acos(z/sqrt(y*y+z*z));
 	if (y > 0) alpha = -alpha;
@@ -69,8 +66,7 @@ static inline void MatrixMult(double m[3][3], double v[3], double r[3]){
 	}
 }
 
-static inline void CorrectHKLsLatC(double LatC[6], double *hklsIn,int nhkls,double Lsd,double Wavelength,double *hkls)
-{
+static inline void CorrectHKLsLatC(double LatC[6], double *hklsIn,int nhkls,double Lsd,double Wavelength,double *hkls){
 	double a=LatC[0],b=LatC[1],c=LatC[2],alpha=LatC[3],beta=LatC[4],gamma=LatC[5];
 	int hklnr;
 	double SinA = sind(alpha), SinB = sind(beta), SinG = sind(gamma), CosA = cosd(alpha), CosB = cosd(beta), CosG = cosd(gamma);
@@ -91,9 +87,7 @@ static inline void CorrectHKLsLatC(double LatC[6], double *hklsIn,int nhkls,doub
 	}
 }
 
-static inline
-void Euler2OrientMat( double Euler[3], double m_out[3][3]) // Must be in degrees
-{
+static inline void Euler2OrientMat( double Euler[3], double m_out[3][3]){ // Must be in degrees
 	double psi, phi, theta, cps, cph, cth, sps, sph, sth;
 	psi = Euler[0];
 	phi = Euler[1];
@@ -111,9 +105,7 @@ void Euler2OrientMat( double Euler[3], double m_out[3][3]) // Must be in degrees
 	m_out[2][2] = cph;
 }
 
-static inline
-void OrientMat2Euler(double m[3][3],double Euler[3])
-{
+static inline void OrientMat2Euler(double m[3][3],double Euler[3]){
     double psi, phi, theta, sph;
 	if (fabs(m[2][2] - 1.0) < EPS){
 		phi = 0;
@@ -134,13 +126,7 @@ void OrientMat2Euler(double m[3][3],double Euler[3])
     Euler[2] = rad2deg*theta;
 }
 
-static inline double intersectionCalc(double y, double y1, double y2, double x1, double x2)
-{
-	return x1+(y-y1)*(x2-x1)/(y2-y1);
-}
-
-static inline void
-RotateAroundZ( double v1[3], double alpha, double v2[3]) {
+static inline void RotateAroundZ( double v1[3], double alpha, double v2[3]) {
 	double cosa = cos(alpha*deg2rad);
 	double sina = sin(alpha*deg2rad);
 	double mat[3][3] = {{ cosa, -sina, 0 },
@@ -149,9 +135,7 @@ RotateAroundZ( double v1[3], double alpha, double v2[3]) {
 	MatrixMult(mat, v1, v2);
 }
 
-static inline void
-CalcOmega(double x, double y, double z, double theta, double omegas[4], double etas[4], int * nsol)
-{
+static inline void CalcOmega(double x, double y, double z, double theta, double omegas[4], double etas[4], int * nsol) {
 	*nsol = 0;
 	double ome;
 	double len= sqrt(x*x + y*y + z*z);
@@ -233,8 +217,7 @@ double dy[4] = {-0.5,-0.5,+0.5,+0.5};
 
 // Function to calculate the fraction of a voxel in a beam profile. Omega[degrees]
 // Assuming a gaussian beam profile.
-static inline double IntensityFraction(double voxLen, double beamPosition, double beamFWHM, double voxelPosition[3], double Omega)
-{
+static inline double IntensityFraction(double voxLen, double beamPosition, double beamFWHM, double voxelPosition[3], double Omega) {
 	double xy[4][2], xyPr[4][2], minY=1e6, maxY=-1e6, startY, endY, yStep, intX, volFr=0, sigma, thisPos, delX;
 	int inSide=0, nrYs=200, i, j, splCase = 0;
 	double omePr,etaPr,eta;
@@ -284,9 +267,7 @@ static inline double IntensityFraction(double voxLen, double beamPosition, doubl
 	return volFr;
 }
 
-static inline
-void SpotToGv(double xi, double yi, double zi, double Omega, double theta, double *g1, double *g2, double *g3)
-{
+static inline void SpotToGv(double xi, double yi, double zi, double Omega, double theta, double *g1, double *g2, double *g3) {
 	double CosOme = cosd(Omega), SinOme = sind(Omega);
 	double eta;
 	CalcEtaAngle(yi,zi,&eta);
@@ -310,8 +291,7 @@ void SpotToGv(double xi, double yi, double zi, double Omega, double theta, doubl
 // Output for comparisonType 0: g1,g2,g3,eta,omega,y,z,2theta,nrhkls
 static inline long CalcDiffractionSpots(double Lsd, double Wavelength,
 			double position[3], double LatC[6], double EulerAngles[3],
-			int nhkls, double *hklsIn, double *spotPos, int comparisonType)
-{
+			int nhkls, double *hklsIn, double *spotPos, int comparisonType){
 	double *hkls; // We need h,k,l,theta,ringNr
 	hkls = calloc(nhkls*5,sizeof(*hkls));
 	CorrectHKLsLatC(LatC,hklsIn,nhkls,Lsd,Wavelength,hkls);
