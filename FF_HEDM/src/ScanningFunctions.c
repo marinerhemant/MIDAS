@@ -27,6 +27,8 @@
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
 #define ClearBit(A,k) (A[(k/32)] &= ~(1 << (k%32)))
 int numProcs;
+double dx[4] = {-0.5,+0.5,+0.5,-0.5};
+double dy[4] = {-0.5,-0.5,+0.5,+0.5};
 
 static inline double sind(double x){return sin(deg2rad*x);}
 static inline double cosd(double x){return cos(deg2rad*x);}
@@ -211,10 +213,6 @@ static inline void CalcOmega(double x, double y, double z, double theta, double 
 	}
 }
 
-
-double dx[4] = {-0.5,+0.5,+0.5,-0.5};
-double dy[4] = {-0.5,-0.5,+0.5,+0.5};
-
 // Function to calculate the fraction of a voxel in a beam profile. Omega[degrees]
 // Assuming a gaussian beam profile.
 static inline double IntensityFraction(double voxLen, double beamPosition, double beamFWHM, double voxelPosition[3], double Omega) {
@@ -301,6 +299,7 @@ static inline long CalcDiffractionSpots(double Lsd, double Wavelength,
 	double OM[3][3], theta, RingRadius, omega, eta, etanew, nrhkls;
 	int hklnr, nspotsPlane, i;
 	Euler2OrientMat(EulerAngles,OM);
+	for (i=0;i<3;i++) printf("%lf %lf %lf ",OM[i][0],OM[i][1],OM[i][2]); printf("\n");
 	int spotNr = 0;
 	for (hklnr=0;hklnr<nhkls;hklnr++){
 		Ghkl[0] = hkls[hklnr*5+0];
@@ -970,6 +969,7 @@ int main (int argc, char *argv[]){
 		dummy, dummy, dummy, &LatC[0],&LatC[1],&LatC[2],&LatC[3],&LatC[4],&LatC[5]);
 	double Eul[3];
 	OrientMat2Euler(OM,Eul);
+	for (i=0;i<3;i++) printf("%lf %lf %lf ",OM[i][0],OM[i][1],OM[i][2]); printf("\n");
 	printf("%lf %lf %lf\n",Eul[0],Eul[1],Eul[2]);
 
 	// Setup x
