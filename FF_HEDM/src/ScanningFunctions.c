@@ -912,10 +912,8 @@ int main (int argc, char *argv[]){
 	int nVoxels=0;
 	while (fgets(aline,4096,voxelsFile)!=NULL){
 		sscanf(aline,"%lf,%lf",&voxelsT[nVoxels*2+0],&voxelsT[nVoxels*2+1]);
-		printf("%lf %lf\n",voxelsT[nVoxels*2+0],voxelsT[nVoxels*2+1]);
 		nVoxels++;
 	}
-	return;
 	double *voxelList;
 	voxelList = calloc(nVoxels*2,sizeof(*voxelList));
 	for (i=0;i<nVoxels*2;i++) voxelList[i] = voxelsT[i];
