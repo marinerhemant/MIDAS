@@ -671,7 +671,7 @@ static inline void PopulateSpotInfoMat (double omegaStep, double px, int nVoxels
 			for (positionNr=0;positionNr<nBeamPositions;positionNr++){
 				thisBeamPosition = beamPositions[positionNr];
 				voxelFraction = IntensityFraction(voxelLen,thisBeamPosition,beamFWHM,thisPos,thisOmega);
-				printf("%lf %lf %lf\n",thisPos[0]*sind(thisOmega) + thisPos[1]*cosd(thisOmega),thisBeamPosition,voxelFraction);
+				printf("%lf %lf %lf %lf %lf %lf\n",thisPos[0],thisPos[1],thisOmega,thisPos[0]*sind(thisOmega)+thisPos[1]*cosd(thisOmega),thisBeamPosition,voxelFraction);
 				if (voxelFraction ==0) continue;
 				// Find and set obsSpotPos
 				startRowNr = AllIDsInfo[(positionNr*nRings+ringNr)*2+0];
