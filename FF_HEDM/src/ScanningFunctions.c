@@ -918,6 +918,9 @@ int main (int argc, char *argv[]){
 	free(voxelsT);
 
 	// Read AllSpotsInfo from ExtraInfo.bin
+	char cpCommand[4096];
+	sprintf(cpCommand,"cp ExtraInfo.bin /dev/shm");
+	system(cpCommand);
 	const char *filename = "/dev/shm/ExtraInfo.bin";
 	int rc;
 	double *AllSpotsInfo;
