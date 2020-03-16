@@ -6,7 +6,7 @@ CC=gcc
 NCC=nvcc
 MPICC=LD_LIBRARY_PATH=$${HOME}/.MIDAS/MPICH/lib:$LD_LIBRARY_PATH $${HOME}/.MIDAS/MPICH/bin/mpicc
 NCFLAGS=-O3 -G -g -w -arch sm_52 -lm -rdc=true # -res-usage
-CFLAGS=-fPIC -g -ldl -lm -fgnu89-inline -O3 -w
+CFLAGS=-fPIC -g -ldl -lm -fgnu89-inline -O3 -w -Wall
 MPICCFLAGS=-I$${HOME}/.MIDAS/MPICH/include -L$${HOME}/.MIDAS/MPICH/lib -fopenmp -lmpi -fPIC -g -ldl -lm -fgnu89-inline -O3 -w
 CFLAGSNETCDF=-I$${HOME}/.MIDAS/netcdf/include -L$${HOME}/.MIDAS/netcdf/lib -lnetcdf -I$${HOME}/.MIDAS/hdf5/include -L$${HOME}/.MIDAS/hdf5/lib -lhdf5_hl -lhdf5 -I$${HOME}/.MIDAS/zlib/include -L$${HOME}/.MIDAS/zlib/lib -lz
 NLOPT=""
@@ -79,7 +79,7 @@ help:
 	@echo $(NLOPT)
 
 scanningfcns: $(SRCDIR)ScanningFunctions.c
-	$(CC) $(SRCDIR)ScanningFunctions.c -o $(BINDIR)ScanningFunctions $(CFLAGS) $(CFLAGSNLOPT)
+	$(CC) $(SRCDIR)ScanningFunctions.c -o $(BINDIR)ScanningFunctions $(CFLAGS) $(CFLAGSNLOPT) -fopenmp
 
 imagemax: $(SRCDIR)imageMax.c
 	$(CC) $(SRCDIR)imageMax.c -shared -Wl,-soname,imageMax -o $(BINDIR)imageMax.so -fPIC -ldl -lm -fgnu89-inline -O3 -w

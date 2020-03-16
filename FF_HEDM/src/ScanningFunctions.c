@@ -16,6 +16,7 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <nlopt.h>
+#include <omp.h>
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -23,6 +24,9 @@
 #define CalcNorm3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
 #define CalcNorm2(x,y) sqrt((x)*(x) + (y)*(y))
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
+#define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
+#define ClearBit(A,k) (A[(k/32)] &= ~(1 << (k%32)))
+int numProcs;
 
 static inline double sind(double x){return sin(deg2rad*x);}
 static inline double cosd(double x){return cos(deg2rad*x);}
@@ -51,6 +55,12 @@ CalcEtaAngle(double y,double z,double *alpha) {
 	if (y > 0)    *alpha = -*alpha;
 }
 
+static inline double CalcEta(double y, double z) {
+	double alpha;
+	alpha = rad2deg * acos(z/sqrt(y*y+z*z));
+	if (y > 0) alpha = -alpha;
+	return alpha;
+}
 
 static inline void MatrixMult(double m[3][3], double v[3], double r[3]){
 	int i;
@@ -235,6 +245,8 @@ static inline double IntensityFraction(double voxLen, double beamPosition, doubl
 	if (abs(omePr) < 1e-5) splCase = 1;
 	else if (abs(omePr-90) < 1e-5) splCase = 1;
 	else if (abs(omePr-180) < 1e-5) splCase = 1;
+	else if (abs(omePr-270) < 1e-5) splCase = 1;
+	else if (abs(omePr-360) < 1e-5) splCase = 1;
 	else {
 		if (omePr < 90) etaPr = 90 - omePr;
 		else if (omePr < 180) etaPr = 180 - omePr;
@@ -296,7 +308,7 @@ void SpotToGv(double xi, double yi, double zi, double Omega, double theta, doubl
 // Function to calculate y,z,ome of diffraction spots, given euler angles (degrees), position and lattice parameter.
 // Ideal hkls need to be provided, with 4 columns: h,k,l,ringNr
 // Output for comparisonType 0: g1,g2,g3,eta,omega,y,z,2theta,nrhkls
-static inline int CalcDiffractionSpots(double Lsd, double Wavelength,
+static inline long CalcDiffractionSpots(double Lsd, double Wavelength,
 			double position[3], double LatC[6], double EulerAngles[3],
 			int nhkls, double *hklsIn, double *spotPos, int comparisonType)
 {
@@ -334,10 +346,6 @@ static inline int CalcDiffractionSpots(double Lsd, double Wavelength,
 			RingRadius = sqrt(yspot*yspot + zspot*zspot);
 			CalcEtaAngle(yspot,zspot,&etanew);
 			th = atand(RingRadius/Lsd)/2;
-			spotPos[spotNr*7+3] = etanew;
-			spotPos[spotNr*7+4] = omega;
-			spotPos[spotNr*7+5] = hkls[hklnr*5+4]; // ringNr
-			spotPos[spotNr*7+6] = nrhkls;
 			// Depending on comparisonType:
 			// 1. Gvector:
 			switch (comparisonType){
@@ -347,21 +355,21 @@ static inline int CalcDiffractionSpots(double Lsd, double Wavelength,
 				zs = zspot;
 				lenK =CalcNorm3(xs,ys,zs);
 				SpotToGv(xs/lenK,ys/lenK,zs/lenK,omega,th,&g1,&g2,&g3);
-				spotPos[spotNr*7+0] = g1;
-				spotPos[spotNr*7+1] = g2;
-				spotPos[spotNr*7+2] = g3;
+				spotPos[spotNr*9+0] = g1;
+				spotPos[spotNr*9+1] = g2;
+				spotPos[spotNr*9+2] = g3;
+				spotPos[spotNr*9+3] = etanew;
+				spotPos[spotNr*9+4] = omega;
+				spotPos[spotNr*9+5] = hkls[hklnr*5+4]; // ringNr
+				spotPos[spotNr*9+6] = nrhkls;
+				spotPos[spotNr*9+7] = ys;
+				spotPos[spotNr*9+8] = zs;
 				break;
-			// 2. 2theta, eta, omega
-			case 2:
-				spotPos[spotNr*7+0] = 2*th;
-				spotPos[spotNr*7+1] = etanew;
-				spotPos[spotNr*7+2] = omega;
-				break;
-			// 3. y, z, omega
 			case 3:
-				spotPos[spotNr*7+0] = yspot;
-				spotPos[spotNr*7+1] = zspot;
-				spotPos[spotNr*7+2] = etanew;
+				spotPos[spotNr*4+0] = yspot;
+				spotPos[spotNr*4+1] = zspot;
+				spotPos[spotNr*4+2] = omega;
+				spotPos[spotNr*4+3] = nrhkls;
 				break;
 			default:
 				spotPos[spotNr*7+6] = 0;
@@ -373,69 +381,295 @@ static inline int CalcDiffractionSpots(double Lsd, double Wavelength,
 			spotNr++;
 		}
 	}
+	free(hkls);
 	return spotNr;
 }
 
-// 3 cases:g1,g2,g3 or 2theta,eta,omega or y,z,omega
-// 3 ways to compare spotPositions:
-// 1. InternalAngles (maybe most representative??)
-	// Convert to angles and length, average and then convert back
-// 2. Unitless Angles (2theta, eta, omega) (divided by error)
-	// Errors: 2theta: 0.1*px, eta: 0.1*px converted, omega: (OmegaStep/2)*(1+1/sin(eta))
-// 3. Unitless Position (y, z, omega) (divided by error)
-	// Errors: y: 0.1px, z: 0.1px, omega: (OmegaStep/2)*(1+1/sin(eta))
-// thisSpotPos has: 0,1,2 acc to comparisonType, 3 is eta, 4 is Lsd
-static inline double calcDiffs(double px, double omegaStep, double thisSpotPos[5],double obsSpotPos[3],int comparisonType){
-	int i;
-	double diffs, normParams[3], diff[3];
-	switch (comparisonType)
-	{
-		case 1:
-			break;
-		case 2:
-			normParams[0] = atand(0.1*px*cosd(thisSpotPos[0])/thisSpotPos[4]);
-			normParams[1] = atand(0.1*px/(thisSpotPos[4]*tand(thisSpotPos[0])));
-			normParams[2] = omegaStep*0.5*(1+1/sind(thisSpotPos[3]));
-			for (i=0;i<3;i++) diff[i] = (thisSpotPos[i]-obsSpotPos[i])/normParams[i];
-			break;
-		case 3:
-			normParams[0] = 0.1*px;
-			normParams[1] = 0.1*px;
-			normParams[2] = omegaStep*0.5*(1+1/sind(thisSpotPos[3]));
-			for (i=0;i<3;i++) diff[i] = (thisSpotPos[i]-obsSpotPos[i])/normParams[i];
-			break;
+static inline double CalcDifferences(double omegaStep, double px, long totalNrSpots, double *spotInfoMat, double *filteredSpotInfo){
+	long i;
+	double diff;
+	double normParams[3];
+	normParams[0] = 0.1*px;
+	normParams[1] = 0.1*px;
+	for (i=0;i<totalNrSpots;i++){
+		if (spotInfoMat[i*4+3] == 0) continue;
+		normParams[2] = omegaStep*0.5*(1+1/sind(CalcEta(spotInfoMat[i*4+0],spotInfoMat[i*4+1])));
+		diff +=CalcNorm3((spotInfoMat[i*4+0]-filteredSpotInfo[i*4+0])/normParams[0],
+						 (spotInfoMat[i*4+1]-filteredSpotInfo[i*4+1])/normParams[1],
+						 (spotInfoMat[i*4+2]-filteredSpotInfo[i*4+2])/normParams[2]);
 	}
-	diffs = CalcNorm3(diff[0],diff[1],diff[2]);
-	return diffs;
+	return diff;
 }
 
-// hkls have h,k,l,ringNr
-// obsSpotsInfo arrangement: for each yPosition, there are n spots per ring, already filtered for that grain. Only spots for the grain are supplied.
-// obsSpotsInfo contains y,z,eta,omega,g1,g2,g3,2theta,nrhkls,spotID for each observed spot.
-// IDsInfo has for each yPosition and ringNr, startingrowNr and endingRowNr for that yPosition and ringNr
-// It must have all the rings upto nRings eg, if analysis is not taking ringNrs 1 and 2 into consideration, there must be zeros for those, but not skipped.
-// obsSpotPos needs to be extracted from obsSpotsInfo using correct y-position and ringNr and omega.
-// Given a list of voxels belonging to a grain - 1 in approx. case, multiple in other cases,
-// We will return the weightedDiff.
-// If firstPass is 1, we will read AllSpotsInfo, return obsSpotsInfo, weightedDiff will be 0
-// AllSpotsInfo is the memory mapped file, has Y, Z, Ome, GrRadius, ID, RingNr, Eta, 2Theta .... (14 columns, 1D array)
-// AllIDsInfo has startingRowNr, endingRowNr
-static inline double CalcErrorAngles (double omegaStep, double px, int nVoxels, double *voxelList, double voxelLen,
-									double beamFWHM, int nBeamPositions, double *beamPositions, double omeTol,
-									double *EulLatC, int nhkls, double *hkls,
-									double Lsd, double Wavelength, int comparisonType, double *obsSpotsInfo,
-									long *IDsInfo, int nRings, int firstPass, double *AllSpotsInfo, long *AllIDsInfo,
-									long totalNrSpots, long *nrMatchedSpots){
-	long voxelNr, nSpots, i, j, spotNr, positionNr, ringNr;
-	double thisPos[3], thisBeamPosition, thisOmega, thisEta, bestAngle, ys, zs, lenK, omeObs, *matchedMat;
-	double LatCThis[6], EulersThis[3], thisSpotPos[5], obsSpotPos[3], gObs[3], gSim[3], IA, bestG1,bestG2,bestG3;
-	double *spotInfo, yRot, voxelFraction, diff, weightedDiff=0, bestInfo[13], bestHKLNr;
-	long startRowNr, endRowNr, maxNrSpots = 0, bestRow, spotsFilled;
-	spotInfo = calloc(nhkls*2*7,sizeof(*spotInfo));
-	if (firstPass == 1){
-		matchedMat = calloc(totalNrSpots*5,sizeof(*matchedMat));
-		comparisonType = 1;
+// The following function will compute the updated spot position for one voxel and one combination of EulLatC only.
+// We will provide it with: voxelPos, EulerLatC, array location to be updated, FLUTstartPos, maxNPos, refArr(used to get position Nr). That's it.
+static inline double CalcSpotPosOneVoxOneParam(double omegaStep, double px, double voxelLen, double beamFWHM, int nBeamPositions,
+									double *beamPositions, double omeTol, double *EulLatC, int nhkls, double *hkls,
+									double Lsd, double Wavelength, double voxelPos[3],
+									long *FLUTThis, int *markSpotsMat, long maxNPos, double *refArr, double *spotInfoMat,
+									double *filteredSpotInfo, long totalNrSpots, double *spotInfo){
+	long i, nSpots, positionNr, bestHKLNr, idxPos, spotNr, spotRowNr;
+	double LatCThis[6], EulerThis[3], thisBeamPos,voxelFraction,thisOmega, diff;
+	double normParams[3], yMeanUpd, zMeanUpd, omeMeanUpd, newVoxelFr;
+	normParams[0] = 0.1*px;
+	normParams[1] = 0.1*px;
+	for (i=0;i<3;i++) EulerThis[i] = EulLatC[i];
+	for (i=0;i<6;i++) LatCThis[i] = EulLatC[i+3];
+	nSpots = CalcDiffractionSpots(Lsd,Wavelength,voxelPos,LatCThis,EulerThis,nhkls,hkls,spotInfo,3);
+	for (spotNr=0;spotNr<nSpots;spotNr++){
+		bestHKLNr = (long)spotInfo[spotNr*4+3];
+		thisOmega = spotInfo[spotNr*4+2];
+		for (i=0;i<maxNPos;i++){
+			if (FLUTThis[bestHKLNr*maxNPos+i] >= 0){
+				// We will use the array markSpotsMat to mark the spots we have updated, for those spots, we will calculate the error
+					// For the rest we do a for loop at the end.
+				idxPos = bestHKLNr*maxNPos*5+i*5;
+				positionNr = (long)refArr[idxPos+4];
+				thisBeamPos = beamPositions[positionNr];
+				voxelFraction = IntensityFraction(voxelLen,thisBeamPos,beamFWHM,voxelPos,thisOmega);
+				spotRowNr = FLUTThis[bestHKLNr*maxNPos+i];
+				// SetBit the correct position.
+				SetBit(markSpotsMat,spotRowNr);
+				// Calculate the updated error
+				normParams[2] = omegaStep*0.5*(1+1/sind(CalcEta(spotInfo[spotNr*4+0],spotInfo[spotNr*4+1])));
+				newVoxelFr = spotInfoMat[spotRowNr*4+3] + voxelFraction - refArr[idxPos+3];
+				yMeanUpd =   (spotInfoMat[spotNr*4+0]*spotInfoMat[spotNr*4+3] + spotInfo[spotNr*4+0]*voxelFraction -
+									refArr[idxPos+0]*refArr[idxPos+3])/newVoxelFr;
+				zMeanUpd =   (spotInfoMat[spotNr*4+1]*spotInfoMat[spotNr*4+3] + spotInfo[spotNr*4+1]*voxelFraction -
+									refArr[idxPos+1]*refArr[idxPos+3])/newVoxelFr;
+				omeMeanUpd = (spotInfoMat[spotNr*4+2]*spotInfoMat[spotNr*4+3] + spotInfo[spotNr*4+2]*voxelFraction -
+									refArr[idxPos+2]*refArr[idxPos+3])/newVoxelFr;
+				diff +=CalcNorm3((yMeanUpd  -filteredSpotInfo[spotRowNr*4+0])/normParams[0],
+								 (zMeanUpd  -filteredSpotInfo[spotRowNr*4+1])/normParams[1],
+								 (omeMeanUpd-filteredSpotInfo[spotRowNr*4+2])/normParams[2]);
+			}
+		}
 	}
+	for (i=0;i<totalNrSpots;i++){
+		if (TestBit(markSpotsMat,i)){
+			ClearBit(markSpotsMat,i); // Unmark the array for use next time.
+		} else {
+			if (spotInfoMat[i*4+3] == 0) continue;
+			normParams[2] = omegaStep*0.5*(1+1/sind(CalcEta(spotInfoMat[i*4+0],spotInfoMat[i*4+1])));
+			diff += CalcNorm3((spotInfoMat[i*4+0] - filteredSpotInfo[i*4+0])/normParams[0],
+							  (spotInfoMat[i*4+1] - filteredSpotInfo[i*4+1])/normParams[1],
+							  (spotInfoMat[i*4+2] - filteredSpotInfo[i*4+2])/normParams[2]);
+		}
+	}
+	free(spotInfo);
+	return diff;
+}
+
+// The following function will compute the updated spot position for one voxel only.
+// We will provide it with: voxelPos, EulerLatC, array location to be updated, FLUTstartPos, maxNPos, spotInfoMat.
+static inline void UpdSpotPosOneVox(double omegaStep, double px, double voxelLen, double beamFWHM, int nBeamPositions,
+									double *beamPositions, double omeTol, double *EulLatC, int nhkls, double *hkls,
+									double Lsd, double Wavelength, double voxelPos[3], double *arrUpd,
+									long *FLUTThis, long maxNPos, double *spotInfoMat, double *spotInfo){
+	long i, nSpots, positionNr, bestHKLNr, idxPos, spotNr, spotRowNr;
+	double LatCThis[6], EulerThis[3], thisBeamPos,voxelFraction,thisOmega, newVoxelFr;
+	for (i=0;i<3;i++) EulerThis[i] = EulLatC[i];
+	for (i=0;i<6;i++) LatCThis[i] = EulLatC[i+3];
+	nSpots = CalcDiffractionSpots(Lsd,Wavelength,voxelPos,LatCThis,EulerThis,nhkls,hkls,spotInfo,3);
+	for (spotNr=0;spotNr<nSpots;spotNr++){
+		bestHKLNr = (long)spotInfo[spotNr*4+3];
+		thisOmega = spotInfo[spotNr*4+2];
+		for (i=0;i<maxNPos;i++){
+			if (FLUTThis[bestHKLNr*maxNPos+i] >= 0){
+				idxPos = bestHKLNr*maxNPos*5+i*5;
+				positionNr = (long)arrUpd[idxPos+4];
+				thisBeamPos = beamPositions[positionNr];
+				voxelFraction = IntensityFraction(voxelLen,thisBeamPos,beamFWHM,voxelPos,thisOmega);
+				spotRowNr = FLUTThis[bestHKLNr*maxNPos+i];
+				newVoxelFr = spotInfoMat[spotRowNr*4+3] + voxelFraction - arrUpd[idxPos+3];
+				#pragma omp critical // This must be serialized, otherwise we would be updating same value with multiple threads at the same time.
+				{
+					spotInfoMat[spotRowNr*4+0] *= spotInfoMat[spotRowNr*4+3];
+					spotInfoMat[spotRowNr*4+0] += spotInfo[spotNr*4+0]*voxelFraction - arrUpd[idxPos+0]*arrUpd[idxPos+3];
+					spotInfoMat[spotRowNr*4+0] /= newVoxelFr;
+					spotInfoMat[spotRowNr*4+1] *= spotInfoMat[spotRowNr*4+3];
+					spotInfoMat[spotRowNr*4+1] += spotInfo[spotNr*4+1]*voxelFraction - arrUpd[idxPos+1]*arrUpd[idxPos+3];
+					spotInfoMat[spotRowNr*4+1] /= newVoxelFr;
+					spotInfoMat[spotRowNr*4+2] *= spotInfoMat[spotRowNr*4+3];
+					spotInfoMat[spotRowNr*4+2] += spotInfo[spotNr*4+2]*voxelFraction - arrUpd[idxPos+2]*arrUpd[idxPos+3];
+					spotInfoMat[spotRowNr*4+2] /= newVoxelFr;
+					spotInfoMat[spotRowNr*4+3] = newVoxelFr;
+				}
+				arrUpd[idxPos+0] = spotInfo[spotNr*4+0]; // This is updated for use next time.
+				arrUpd[idxPos+1] = spotInfo[spotNr*4+1];
+				arrUpd[idxPos+2] = spotInfo[spotNr*4+2];
+				arrUpd[idxPos+3] = voxelFraction;
+			}
+		}
+	}
+	free(spotInfo);
+}
+
+// For each
+static inline double UpdateArraysThisLowHigh(double omegaStep, double px, int nVoxels, double *voxelList, double voxelLen,
+										double *x, double *x_prev, double beamFWHM, int nBeamPositions, double *beamPositions, double omeTol,
+										int nhkls, double *hkls, double Lsd, double Wavelength, double *Fthis,
+										long *FLUT, long maxNPos, long totalNrSpots, double *spotInfoMat,
+										double *filteredSpotInfo, double *diffLow, double *diffHigh, double h){
+	double *spotInfoAll;
+	long lenSpotInfoAll;
+	lenSpotInfoAll = numProcs;
+	lenSpotInfoAll *= nhkls;
+	lenSpotInfoAll *= 8;
+	spotInfoAll = calloc(lenSpotInfoAll,sizeof(*spotInfoAll));
+	long voxelNr;
+	# pragma omp parallel num_threads(numProcs)
+	{
+		#pragma omp for private(voxelNr)
+		for (voxelNr=0;voxelNr<nVoxels;voxelNr++){
+			double thisParams[9];
+			thisParams[0] = x[voxelNr*9+0];
+			thisParams[1] = x[voxelNr*9+1];
+			thisParams[2] = x[voxelNr*9+2];
+			thisParams[3] = x[voxelNr*9+3];
+			thisParams[4] = x[voxelNr*9+4];
+			thisParams[5] = x[voxelNr*9+5];
+			thisParams[6] = x[voxelNr*9+6];
+			thisParams[7] = x[voxelNr*9+7];
+			thisParams[8] = x[voxelNr*9+8];
+			if (thisParams[0] == x_prev[voxelNr*9+0] && thisParams[1] == x_prev[voxelNr*9+1] && thisParams[2] == x_prev[voxelNr*9+2] &&
+				thisParams[3] == x_prev[voxelNr*9+3] && thisParams[4] == x_prev[voxelNr*9+4] && thisParams[5] == x_prev[voxelNr*9+5] &&
+				thisParams[6] == x_prev[voxelNr*9+6] && thisParams[7] == x_prev[voxelNr*9+7] && thisParams[8] == x_prev[voxelNr*9+8]) // Nothing changed, do nothing.
+					continue;
+			double voxelPos[3];
+			voxelPos[0] = voxelList[voxelNr*2+0];
+			voxelPos[1] = voxelList[voxelNr*2+1];
+			voxelPos[2] = 0;
+			long posFthis, posFLUT, *FLUTVoxel;
+			posFthis = voxelNr;
+			posFthis *= nhkls+2;
+			posFthis *= 2;
+			posFthis *= maxNPos;
+			posFLUT = posFthis;
+			posFthis *= 5;
+			double *FthisVoxel;
+			FthisVoxel = &Fthis[posFthis];
+			FLUTVoxel = &FLUT[posFLUT];
+			double *spotInfo;
+			long spotInfoPos;
+			int tid = omp_get_thread_num();
+			spotInfoPos = tid;
+			spotInfoPos *= nhkls;
+			spotInfoPos *= 8;
+			spotInfo = &spotInfoAll[spotInfoPos];
+			UpdSpotPosOneVox(omegaStep, px, voxelLen, beamFWHM, nBeamPositions, beamPositions, omeTol, thisParams, nhkls, hkls,
+						Lsd, Wavelength, voxelPos, FthisVoxel, FLUTVoxel, maxNPos,spotInfoMat, spotInfo);
+		}
+	}
+	// Calculate the total error! We provide spotInfoMat and filteredSpotInfo
+	double diffFThis = CalcDifferences(omegaStep,px,totalNrSpots,spotInfoMat,filteredSpotInfo);
+	size_t sizemarkSpotsMat;
+	sizemarkSpotsMat = totalNrSpots;
+	sizemarkSpotsMat /= 32;
+	sizemarkSpotsMat ++;
+	sizemarkSpotsMat *= numProcs;
+	int *totalMarkSpotsMat;
+	totalMarkSpotsMat = calloc(sizemarkSpotsMat,sizeof(*totalMarkSpotsMat));
+	# pragma omp parallel num_threads(numProcs)
+	{
+		#pragma omp for private(voxelNr)
+		for (voxelNr=0;voxelNr<nVoxels;voxelNr++){
+			double voxelPos[3], xlow[9], xhigh[9];
+			xlow[0] = x[voxelNr*9+0];
+			xlow[1] = x[voxelNr*9+1];
+			xlow[2] = x[voxelNr*9+2];
+			xlow[3] = x[voxelNr*9+3];
+			xlow[4] = x[voxelNr*9+4];
+			xlow[5] = x[voxelNr*9+5];
+			xlow[6] = x[voxelNr*9+6];
+			xlow[7] = x[voxelNr*9+7];
+			xlow[8] = x[voxelNr*9+8];
+			voxelPos[0] = voxelList[voxelNr*2+0];
+			voxelPos[1] = voxelList[voxelNr*2+1];
+			voxelPos[2] = 0;
+			xhigh[0] = x[voxelNr*9+0];
+			xhigh[1] = x[voxelNr*9+1];
+			xhigh[2] = x[voxelNr*9+2];
+			xhigh[3] = x[voxelNr*9+3];
+			xhigh[4] = x[voxelNr*9+4];
+			xhigh[5] = x[voxelNr*9+5];
+			xhigh[6] = x[voxelNr*9+6];
+			xhigh[7] = x[voxelNr*9+7];
+			xhigh[8] = x[voxelNr*9+8];
+			long posFthis, posFhl, posFLUT, posTemp, *FLUTVoxel;
+			posFthis = voxelNr;
+			posFthis *= nhkls+2;
+			posFthis *= 2;
+			posFthis *= maxNPos;
+			posFLUT = posFthis;
+			posFthis *= 5;
+			double *FthisVoxel;
+			FthisVoxel = &Fthis[posFthis];
+			FLUTVoxel = &FLUT[posFLUT];
+			long i;
+			double *spotInfo;
+			long spotInfoPos;
+			int tid = omp_get_thread_num();
+			spotInfoPos = tid;
+			spotInfoPos *= nhkls;
+			spotInfoPos *= 8;
+			spotInfo = &spotInfoAll[spotInfoPos];
+			long posMark;
+			posMark = totalNrSpots;
+			posMark /= 32;
+			posMark ++;
+			posMark *= tid;
+			int *markSpotsMat;
+			markSpotsMat = &totalMarkSpotsMat[posMark];
+			for (i=0;i<9;i++){
+				posTemp = i;
+				posTemp *= voxelNr;
+				posTemp *= nhkls+2;
+				posTemp *= 2;
+				posTemp *= 4;
+				posFhl = 9;
+				posFhl *= voxelNr;
+				posFhl *= nhkls+2;
+				posFhl *= 2;
+				posFhl *= 4;
+				posFhl += posTemp;
+				xlow[i] -= h;
+				xhigh[i] += h;
+				diffLow[voxelNr*9+i] = CalcSpotPosOneVoxOneParam(omegaStep, px, voxelLen, beamFWHM, nBeamPositions, beamPositions, omeTol, xlow, nhkls, hkls,
+										Lsd, Wavelength, voxelPos, FLUTVoxel, markSpotsMat, maxNPos, FthisVoxel, spotInfoMat,
+										filteredSpotInfo, totalNrSpots, spotInfo);
+				// Now calculate diffLow[voxelNr*9+i] value
+				diffHigh[voxelNr*9+i] = CalcSpotPosOneVoxOneParam(omegaStep, px, voxelLen, beamFWHM, nBeamPositions, beamPositions, omeTol, xhigh, nhkls, hkls,
+										Lsd, Wavelength, voxelPos, FLUTVoxel, markSpotsMat, maxNPos, FthisVoxel, spotInfoMat,
+										filteredSpotInfo, totalNrSpots, spotInfo);
+			}
+			x_prev[voxelNr*9+0] = x[voxelNr*9+0];
+			x_prev[voxelNr*9+1] = x[voxelNr*9+1];
+			x_prev[voxelNr*9+2] = x[voxelNr*9+2];
+			x_prev[voxelNr*9+3] = x[voxelNr*9+3];
+			x_prev[voxelNr*9+4] = x[voxelNr*9+4];
+			x_prev[voxelNr*9+5] = x[voxelNr*9+5];
+			x_prev[voxelNr*9+6] = x[voxelNr*9+6];
+			x_prev[voxelNr*9+7] = x[voxelNr*9+7];
+			x_prev[voxelNr*9+8] = x[voxelNr*9+8];
+		}
+	}
+	free(spotInfoAll);
+	free(totalMarkSpotsMat);
+	return diffFThis;
+}
+
+static inline void PopulateSpotInfoMat (double omegaStep, double px, int nVoxels, double *voxelList, double voxelLen,
+									double beamFWHM, int nBeamPositions, double *beamPositions, double omeTol, int nRings,
+									double *EulLatC, int nhkls, double *hkls, double Lsd, double Wavelength,
+									double *AllSpotsInfo, long *AllIDsInfo, long totalNrSpots, double *spotInfoMat,
+									double *Fthis, double *filteredSpotInfo, int maxNPos, long *FLUT){
+	long voxelNr, nSpots, i, j, spotNr, positionNr, ringNr;
+	double thisPos[3], thisBeamPosition, thisOmega, thisEta, bestAngle, ys, zs, lenK, omeObs;
+	double LatCThis[6], EulersThis[3], obsSpotPos[3], gObs[3], gSim[3], IA, bestG1,bestG2,bestG3;
+	double *spotInfo, voxelFraction;
+	long startRowNr, endRowNr, bestRow, bestHKLNr, idxPos, posNr, *oldArr, *newArr, nFilled, sizeFilled;
+	spotInfo = calloc(nhkls*2*9,sizeof(*spotInfo));
 	for (voxelNr=0;voxelNr<nVoxels;voxelNr++){
 		thisPos[0] = voxelList[voxelNr*2+0];
 		thisPos[1] = voxelList[voxelNr*2+1];
@@ -444,123 +678,96 @@ static inline double CalcErrorAngles (double omegaStep, double px, int nVoxels, 
 		for (i=0;i<3;i++) EulersThis[i] = EulLatC[voxelNr*9 + i];
 		// Depending on what we want (comparisonType), we can return gVector, 2theta,eta,ome or y,z,ome
 		// spotInfo columns acc to comparisonType:
-		// 1. g1,		g2,		g3,		eta,	omega,	ringNr,		nrhkls
-		// 2. 2theta,	eta,	omega,	eta,	omega,	ringNr,		nrhkls
-		// 3. y,		z,		omega,	eta,	omega,	ringNr,		nrhkls
-		nSpots = CalcDiffractionSpots(Lsd,Wavelength,thisPos,LatCThis,EulersThis,nhkls,hkls,spotInfo,comparisonType);
+		// 1. g1,		g2,		g3,		eta,	omega,	ringNr,		nrhkls,	y,	z
+		// 3. y,		z,		ome,	nrhkls
+		nSpots = CalcDiffractionSpots(Lsd,Wavelength,thisPos,LatCThis,EulersThis,nhkls,hkls,spotInfo,1);
 		for (spotNr=0;spotNr<nSpots;spotNr++){
-			thisOmega = spotInfo[spotNr*7+4];
-			thisEta = spotInfo[spotNr*7+3];
-			yRot = thisPos[0]*sind(thisOmega) + thisPos[1]*cosd(thisOmega);
-			ringNr = (int) spotInfo[spotNr*7+5];
-			for (i=0;i<4;i++) thisSpotPos[i] = spotInfo[spotNr*7+i];
-			gSim[0] = spotInfo[spotNr*7+0]; // Will only be used for firstPass;
-			gSim[1] = spotInfo[spotNr*7+1]; // Will only be used for firstPass;
-			gSim[2] = spotInfo[spotNr*7+2]; // Will only be used for firstPass;
-			bestHKLNr = spotInfo[spotNr*7+6];
-			thisSpotPos[4] = Lsd;
+			thisOmega = spotInfo[spotNr*9+4];
+			thisEta = spotInfo[spotNr*9+3];
+			//~ yRot = thisPos[0]*sind(thisOmega) + thisPos[1]*cosd(thisOmega);
+			ringNr = (int) spotInfo[spotNr*9+5];
+			gSim[0] = spotInfo[spotNr*9+0];
+			gSim[1] = spotInfo[spotNr*9+1];
+			gSim[2] = spotInfo[spotNr*9+2];
+			bestHKLNr = (long)spotInfo[spotNr*9+6];
+			posNr = 0;
 			for (positionNr=0;positionNr<nBeamPositions;positionNr++){
 				thisBeamPosition = beamPositions[positionNr];
 				voxelFraction = IntensityFraction(voxelLen,thisBeamPosition,beamFWHM,thisPos,thisOmega);
 				if (voxelFraction ==0) continue;
 				// Find and set obsSpotPos
-				if (firstPass == 1){
-					startRowNr = AllIDsInfo[(positionNr*nRings+ringNr)*2+0];
-					endRowNr = AllIDsInfo[(positionNr*nRings+ringNr)*2+1];
-					bestAngle = 1e10;
-					for (i=startRowNr;i<=endRowNr;i++){
-						if (matchedMat[i*5+0] == 1) continue;
-						//Everything in AllSpotsInfo needs to have i-1
-						omeObs = AllSpotsInfo[14*(i-1)+2];
-						if (fabs(thisOmega-omeObs) < omeTol){
-							ys = AllSpotsInfo[14*(i-1)+0];
-							zs = AllSpotsInfo[14*(i-1)+1];
-							lenK = CalcNorm3(Lsd,ys,zs);
-							SpotToGv(Lsd/lenK,ys/lenK,zs/lenK,omeObs,AllSpotsInfo[14*(i-1)+7]/2,&gObs[0],&gObs[1],&gObs[2]);
-							IA = fabs(acosd((gSim[0]*gObs[0]+gSim[1]*gObs[1]+gSim[2]*gObs[2])/
-									(CalcNorm3(gSim[0],gSim[1],gSim[2])*CalcNorm3(gObs[0],gObs[1],gObs[2]))));
-							if (IA < bestAngle) {
-								// mark this Spot to be used!!!!
-								bestAngle = IA;
-								bestG1 = gObs[0];
-								bestG2 = gObs[1];
-								bestG3 = gObs[2];
-								bestRow = i;
-							}
+				startRowNr = AllIDsInfo[(positionNr*nRings+ringNr)*2+0];
+				endRowNr = AllIDsInfo[(positionNr*nRings+ringNr)*2+1];
+				bestAngle = 1e10;
+				for (i=startRowNr;i<=endRowNr;i++){
+					//Everything in AllSpotsInfo needs to have i-1
+					omeObs = AllSpotsInfo[14*(i-1)+2];
+					if (fabs(thisOmega-omeObs) < omeTol){
+						ys = AllSpotsInfo[14*(i-1)+0];
+						zs = AllSpotsInfo[14*(i-1)+1];
+						lenK = CalcNorm3(Lsd,ys,zs);
+						SpotToGv(Lsd/lenK,ys/lenK,zs/lenK,omeObs,AllSpotsInfo[14*(i-1)+7]/2,&gObs[0],&gObs[1],&gObs[2]);
+						IA = fabs(acosd((gSim[0]*gObs[0]+gSim[1]*gObs[1]+gSim[2]*gObs[2])/
+								(CalcNorm3(gSim[0],gSim[1],gSim[2])*CalcNorm3(gObs[0],gObs[1],gObs[2]))));
+						if (IA < bestAngle) {
+							// mark this Spot to be used!!!!
+							bestAngle = IA;
+							bestG1 = gObs[0];
+							bestG2 = gObs[1];
+							bestG3 = gObs[2];
+							bestRow = i;
 						}
 					}
-					if (bestAngle < 1){ // Spot was found
-						matchedMat[bestRow*5+0] = 1;
-						matchedMat[bestRow*5+1] = bestG1;
-						matchedMat[bestRow*5+2] = bestG2;
-						matchedMat[bestRow*5+3] = bestG3;
-						matchedMat[bestRow*5+4] = bestHKLNr;
-						obsSpotPos[0] = AllSpotsInfo[14*(i-1)+7];
-						obsSpotPos[1] = AllSpotsInfo[14*(i-1)+6];
-						obsSpotPos[2] = AllSpotsInfo[14*(i-1)+2];
-						diff = calcDiffs(px,omegaStep,thisSpotPos,obsSpotPos,2);
-						weightedDiff += diff*voxelFraction;
+				}
+				if (bestAngle < 1){ // Spot was found
+					// We will populate the following arrays now:
+						// idxPos = voxelNr*((nhkls+2)*2)*maxNPos*5 + bestHKLNr*maxNPos*5 + posNr*5
+						// Fthis:	idxPos + {0,1,2,3} for filling in y,z,ome,frac,positionNr {sim} [simulated positions for each voxel] This is common for each beamPos, except frac and positionNr.
+						// FLUT:	voxelNr*(nhkls+2)*2*maxNPos + bestHKLNr*maxNPos + posNr will fill with bestRowNr
+						// filteredSpotInfo:	bestRow*3 + {0,1,2} for y,z,ome of each observed spot position. This will correspond to the next 3 arrays
+						// spotInfoMat:	bestRow*4 + {0,1,2,3} for y,z,ome,frac mean and total corresponding to each simulated spot.
+								// We would need to divide by the total fraction at the end!!!!
+					idxPos = voxelNr;
+					idxPos *= nhkls+2;
+					idxPos *= 2;
+					idxPos *= maxNPos;
+					idxPos += bestHKLNr*maxNPos;
+					idxPos += posNr;
+					FLUT[idxPos] = bestRow;
+					idxPos = voxelNr;
+					idxPos *= nhkls+2;
+					idxPos *= 2;
+					idxPos *= maxNPos;
+					idxPos *= 5;
+					idxPos += bestHKLNr*maxNPos*5;
+					idxPos += posNr*5;
+					Fthis[idxPos + 0] = spotInfo[spotNr*9+7];
+					Fthis[idxPos + 1] = spotInfo[spotNr*9+8];
+					Fthis[idxPos + 2] = spotInfo[spotNr*9+4];
+					Fthis[idxPos + 3] = voxelFraction;
+					Fthis[idxPos + 4] = positionNr;
+					if (filteredSpotInfo[bestRow*4 + 0] == 0){
+						filteredSpotInfo[bestRow*4 + 0] = AllSpotsInfo[14*(bestRow-1)+0];
+						filteredSpotInfo[bestRow*4 + 1] = AllSpotsInfo[14*(bestRow-1)+1];
+						filteredSpotInfo[bestRow*4 + 2] = AllSpotsInfo[14*(bestRow-1)+2];
 					}
-				} else {
-					startRowNr = IDsInfo[(positionNr*nRings+ringNr)*2+0];
-					endRowNr = IDsInfo[(positionNr*nRings+ringNr)*2+1];
-					for (i=startRowNr;i<=endRowNr;i++){
-						if ((int)obsSpotsInfo[i*9+8] == (int)bestHKLNr){
-							switch (comparisonType)
-							{
-								case 1:
-									obsSpotPos[0] =obsSpotsInfo[i*9+4]; // g1
-									obsSpotPos[1] =obsSpotsInfo[i*9+5]; // g2
-									obsSpotPos[2] =obsSpotsInfo[i*9+6]; // g3
-									break;
-								case 2:
-									obsSpotPos[0] =obsSpotsInfo[i*9+7]; // 2theta
-									obsSpotPos[1] =obsSpotsInfo[i*9+2]; // eta
-									obsSpotPos[2] =obsSpotsInfo[i*9+3]; // omega
-									break;
-								case 3:
-									obsSpotPos[0] =obsSpotsInfo[i*9+0]; // y
-									obsSpotPos[1] =obsSpotsInfo[i*9+1]; // z
-									obsSpotPos[2] =obsSpotsInfo[i*9+3]; // omega
-									break;
-							}
-						}
-					}
-					diff = calcDiffs(px,omegaStep,thisSpotPos,obsSpotPos,comparisonType);
-					weightedDiff += diff*voxelFraction;
+					spotInfoMat[bestRow*4+0] += spotInfo[spotNr*9+7];
+					spotInfoMat[bestRow*4+1] += spotInfo[spotNr*9+8];
+					spotInfoMat[bestRow*4+2] += spotInfo[spotNr*9+4];
+					spotInfoMat[bestRow*4+3] += voxelFraction;
+					posNr ++;
 				}
 			}
 		}
 	}
-	// If firstPass == 1, populate IDsInfo and obsSpotsInfo
-	if (firstPass == 1){
-		for (i=0;i<totalNrSpots;i++){
-			ringNr = AllSpotsInfo[14*i+5];
-			if (matchedMat[i*5+0] == 1){
-				positionNr = 0;
-				for (j=0;j<nBeamPositions;j++) {
-					if (i+1 >= AllIDsInfo[(j*nRings+ringNr)*2+0] && i+1 <= AllIDsInfo[(j*nRings+ringNr)*2+1]) positionNr = j;
-				}
-				if (IDsInfo[(positionNr*nRings+ringNr)*2+0] == 0)
-					IDsInfo[(positionNr*nRings+ringNr)*2+0] = maxNrSpots;
-				IDsInfo[(positionNr*nRings+ringNr)*2+1] = maxNrSpots;
-				obsSpotsInfo[maxNrSpots*9+0] = AllSpotsInfo[14*i+0]; // y
-				obsSpotsInfo[maxNrSpots*9+1] = AllSpotsInfo[14*i+0]; // z
-				obsSpotsInfo[maxNrSpots*9+2] = AllSpotsInfo[14*i+6]; // eta
-				obsSpotsInfo[maxNrSpots*9+3] = AllSpotsInfo[14*i+2]; // omega
-				obsSpotsInfo[maxNrSpots*9+4] = matchedMat[i*5+1]; // g1
-				obsSpotsInfo[maxNrSpots*9+5] = matchedMat[i*5+2]; // g2
-				obsSpotsInfo[maxNrSpots*9+6] = matchedMat[i*5+3]; // g3
-				obsSpotsInfo[maxNrSpots*9+7] = AllSpotsInfo[14*i+7]; // 2Theta
-				obsSpotsInfo[maxNrSpots*9+8] = matchedMat[i*5+4]; // nrhkls
-				maxNrSpots++;
-			}
-		}
-		*nrMatchedSpots = maxNrSpots;
-		free(matchedMat);
+	// Divide spotInfoMat with the total fraction!!!!!!!!
+	for (i=0;i<totalNrSpots;i++){
+		if (spotInfoMat[i*4+3] == 0) continue;
+		spotInfoMat[i*4+0] /= spotInfoMat[i*4+3];
+		spotInfoMat[i*4+1] /= spotInfoMat[i*4+3];
+		spotInfoMat[i*4+2] /= spotInfoMat[i*4+3];
 	}
 	free(spotInfo);
-	return weightedDiff;
 }
 
 // Parameters to be passed by struct:
@@ -571,21 +778,22 @@ struct FITTING_PARAMS {
 		beamFWHM,
 		omeTol,
 		Lsd,
-		Wavelength;
+		Wavelength,
+		h;
 	double *voxelList,
+		*x_prev,
 		*beamPositions,
 		*hkls,
-		*obsSpotsInfo,
-		*AllSpotsInfo;
+		*Fthis,
+		*spotInfoMat,
+		*filteredSpotInfo,
+		*diffLow,
+		*diffHigh;
 	int nBeamPositions,
-		nhkls,
-		ComparisonType,
-		nRings,
-		FirstPass;
-	long *IDsInfo,
-		*AllIDsInfo;
-	long totalNrSpots;
-	long *nrMatchedSpots;
+		nhkls;
+	long *FLUT;
+	long maxNPos,
+		totalNrSpots;
 };
 
 // EulerAngles in Degrees!!!!
@@ -599,42 +807,28 @@ static double problem_function(
 	// x is arranged as EulerAngles, then LatC for each voxel. EulerAngle=x[voxelNr*9+{0,1,2}] and LatC=x[voxelNr*9+{3,4,5,6,7,8}].
 	struct FITTING_PARAMS *f_data = (struct FITTING_PARAMS *) f_data_trial;
 	double omegaStep = f_data->omegaStep, px = f_data->px, voxelLen = f_data->voxelLen, beamFWHM = f_data->beamFWHM, omeTol = f_data->omeTol;
-	double Lsd = f_data->Lsd, Wavelength = f_data->Wavelength;
-	double *voxelList = &(f_data->voxelList[0]), *beamPositions = &(f_data->beamPositions[0]), *hkls = &(f_data->hkls[0]);
-	double *obsSpotsInfo = &(f_data->obsSpotsInfo[0]), *AllSpotsInfo = &(f_data->AllSpotsInfo[0]);
-	int nBeamPositions = f_data->nBeamPositions, nhkls = f_data->nhkls, ComparisonType = f_data->ComparisonType, nRings = f_data->nRings, FirstPass = f_data->FirstPass;
-	long totalNrSpots = f_data->totalNrSpots;
-	long *IDsInfo = &(f_data->IDsInfo[0]);
-	long *AllIDsInfo = &(f_data->AllIDsInfo[0]);
-	long *nrMatchedSpots = &(f_data->nrMatchedSpots); // This is only single pointer, not array pointer.
+	double Lsd = f_data->Lsd, Wavelength = f_data->Wavelength, h = f_data->h;
+	double *voxelList = &(f_data->voxelList[0]), *x_prev = &(f_data->x_prev[0]), *beamPositions = &(f_data->beamPositions[0]), *hkls = &(f_data->hkls[0]);
+	double *Fthis = &(f_data->Fthis[0]), *spotInfoMat = &(f_data->spotInfoMat[0]), *filteredSpotInfo = &(f_data->filteredSpotInfo[0]);
+	double *diffLow = &(f_data->diffLow[0]), *diffHigh = &(f_data->diffHigh[0]);
+	int nBeamPositions = f_data->nBeamPositions, nhkls = f_data->nhkls;
+	long *FLUT = &(f_data->FLUT[0]);
+	long maxNPos = f_data->maxNPos, totalNrSpots = f_data->totalNrSpots;
+	double err;
+	err = UpdateArraysThisLowHigh(omegaStep, px, nVoxels, voxelList, voxelLen, x, x_prev, beamFWHM, nBeamPositions, beamPositions, omeTol,
+								  nhkls, hkls, Lsd, Wavelength, Fthis, FLUT, maxNPos, totalNrSpots, spotInfoMat, filteredSpotInfo, diffLow, diffHigh, h);
 	if (grad){
-		int i, j;
-		double h = 1e-5, *xNew;
-		xNew = malloc(n*sizeof(*xNew));
-		for (j=0;j<n;j++) xNew[j] = x[j];
-		double eNeg, ePos;
+		int i;
 		for (i=0;i<n;i++){
-			xNew[i] -= h;
-			eNeg = CalcErrorAngles (omegaStep, px, nVoxels, voxelList, voxelLen, beamFWHM, nBeamPositions, beamPositions, omeTol,
-						xNew, nhkls, hkls, Lsd, Wavelength, ComparisonType, obsSpotsInfo, IDsInfo, nRings, FirstPass, AllSpotsInfo, AllIDsInfo,
-						totalNrSpots, nrMatchedSpots);
-			xNew[i] += 2*h;
-			ePos = CalcErrorAngles (omegaStep, px, nVoxels, voxelList, voxelLen, beamFWHM, nBeamPositions, beamPositions, omeTol,
-						xNew, nhkls, hkls, Lsd, Wavelength, ComparisonType, obsSpotsInfo, IDsInfo, nRings, FirstPass, AllSpotsInfo, AllIDsInfo,
-						totalNrSpots, nrMatchedSpots);
-			xNew[i] = x[i];
-			grad[i] = (ePos-eNeg)/(2*h);
+			grad[i] = (diffHigh[i] - diffLow[i])/(2*h);
 		}
 	}
-	double error = CalcErrorAngles (omegaStep, px, nVoxels, voxelList, voxelLen, beamFWHM, nBeamPositions, beamPositions, omeTol,
-		x, nhkls, hkls, Lsd, Wavelength, ComparisonType, obsSpotsInfo, IDsInfo, nRings, FirstPass, AllSpotsInfo, AllIDsInfo,
-		totalNrSpots, nrMatchedSpots);
-	return error;
+	return err;
 }
 
-// We assume scans centered around 0, 163 scans with 7 microns mean
 int main (int argc, char *argv[]){
 
+	numProcs = argv[6];
 	// Read omegaStep, px, voxelLen, beamFWHM, omeTol, Lsd, Wavelength, nScans from PARAM file.
 	char *paramFN;
 	paramFN = argv[1];
@@ -676,7 +870,7 @@ int main (int argc, char *argv[]){
 	fclose(fileParam);
 
 	// Read beamPositions from positions.csv file.
-	int i,j,k;
+	long i,j,k;
 	char *positionsFN;
 	positionsFN = argv[2];
 	FILE *positionsFile;
@@ -783,46 +977,9 @@ int main (int argc, char *argv[]){
 	double Eul[3];
 	OrientMat2Euler(OM,Eul);
 
-	// Allocate obsSpotsInfo and IDsInfo and then provide them to problem_function with undefined grad!
-	// obsSpotsInfo needs y,z,eta,omega,g1,g2,g3,2theta,nrhkls for each observed spot for all voxels of the grain.
-	// IDsInfo has for each yPosition and ringNr, startingrowNr and endingRowNr for that yPosition and ringNr.
-	double *obsSpotsInfo;
-	obsSpotsInfo = calloc(totalNrSpots*9,sizeof(*obsSpotsInfo));
-	long *IDsInfo;
-	IDsInfo = calloc(nBeamPositions*nRings,sizeof(*IDsInfo));
-
-	// Make struct
-	long nrMatchedSpots;
-	struct FITTING_PARAMS f_data;
-	f_data.Wavelength = Wavelength;
-	f_data.nBeamPositions = nBeamPositions;
-	f_data.AllIDsInfo = &AllIDsInfo[0];
-	f_data.AllSpotsInfo = &AllSpotsInfo[0];
-	f_data.ComparisonType = 1;
-	f_data.FirstPass = 1;
-	f_data.IDsInfo = &IDsInfo[0];
-	f_data.Lsd = Lsd;
-	f_data.beamFWHM = beamFWHM;
-	f_data.beamPositions = &beamPositions[0];
-	f_data.nRings = nRings;
-	f_data.nhkls = nhkls;
-	f_data.nrMatchedSpots = &nrMatchedSpots;
-	f_data.obsSpotsInfo = &obsSpotsInfo[0];
-	f_data.omeTol = omeTol;
-	f_data.omegaStep = omegaStep;
-	f_data.px = px;
-	f_data.totalNrSpots = totalNrSpots;
-	f_data.voxelLen = voxelLen;
-	f_data.voxelList = &voxelList[0];
-	struct FITTING_PARAMS *f_datat;
-	f_datat = &f_data;
-	void* trp = (struct FITTING_PARAMS *) f_datat;
-
-	// Call problem_function with f_data.
+	// Setup x
 	int n = nVoxels * 9;
-	double *x;
-	double *xl;
-	double *xu;
+	double *x, *xl, *xu;
 	double EulTol = 2; // Degrees
 	double ABCTol = 2; // %
 	double ABGTol = 2; // %
@@ -839,8 +996,78 @@ int main (int argc, char *argv[]){
 		for (j=0;j<3;j++) xu[i*9+3+j] = LatC[j]*(100*ABCTol)/100;
 		for (j=3;j<6;j++) xu[i*9+3+j] = LatC[j]*(100+ABGTol)/100;
 	}
-	double error = problem_function(n,x,NULL,f_datat);
-	obsSpotsInfo = realloc(obsSpotsInfo,nrMatchedSpots*9*sizeof(*obsSpotsInfo));
+
+	// Allocate the arrays:
+	// 3 arrays: Fthis, Flow, Fhigh: 9*nVoxels*maxnPos(ceil(2*beamFWHM/voxelLen)+1)*nhkls*2(nDiffrSpots)*4(y,z,ome,fraction)
+	// Flow and Fhigh, on the other hand, have 9 times more stuff for one value per parameter.
+	// Fthis will have nVoxels*(nhkls+2)*2*maxNPos*5 nrElements because it is constant for each combination of EulLatC for a voxel.
+			// Fthis contains also the posNr for each spot. y,z,ome,frac,posNr
+	int maxNPos = 2*(2+ceil(2*beamFWHM/voxelLen));
+	size_t dataArrSize;
+	double *Fthis;
+	dataArrSize = nVoxels;
+	dataArrSize *= nhkls+2;
+	dataArrSize *= 2;
+	dataArrSize *= maxNPos;
+	dataArrSize *= 5;
+	Fthis = calloc(dataArrSize,sizeof(*Fthis));
+
+	// For each spot we will store 5 things: ymean, zmean, omemean, totalfraction,
+	// Spot Info LUT: voxelNr,nrhkls and spotInfoNrVoxels (nrVoxels,maxNrVoxels) in another array. maxNrVoxels is only to temproraily store the size of LUT array.
+	size_t sizeSpotInfoMat;
+	sizeSpotInfoMat = 4;
+	sizeSpotInfoMat *= totalNrSpots;
+	double *spotInfoMat, *filteredSpotInfo;
+	spotInfoMat = calloc(sizeSpotInfoMat,sizeof(*spotInfoMat));
+	filteredSpotInfo = calloc(sizeSpotInfoMat,sizeof(*filteredSpotInfo));
+	size_t sizeFLUT;
+	sizeFLUT = nVoxels;
+	sizeFLUT *= nhkls + 2;
+	sizeFLUT *= 2;
+	sizeFLUT *= maxNPos;
+	long *FLUT;
+	FLUT = calloc(sizeFLUT,sizeof(*FLUT));
+	for (i=0;i<sizeFLUT;i++) FLUT[i] = -1;
+	double *diffHigh, *diffLow;
+	diffLow = calloc(n,sizeof(*diffLow));
+	diffHigh = calloc(n,sizeof(*diffHigh));
+
+	// We will also make an array to hold the previous values, this way we don't need to re-calculate the function if the parameter was not updated.
+	// This must be for the full voxel, if the voxel parameters were not updated, we do nothing and continue.
+	double *x_prev;
+	x_prev = calloc(n,sizeof(*x_prev));
+	double h = 1e-5;
+
+	PopulateSpotInfoMat(omegaStep, px, nVoxels, voxelList, voxelLen, beamFWHM, nBeamPositions, beamPositions,
+									omeTol, nRings, x, nhkls, hkls, Lsd, Wavelength, AllSpotsInfo, AllIDsInfo,
+									totalNrSpots, spotInfoMat, Fthis, filteredSpotInfo, maxNPos, FLUT);
+
+	struct FITTING_PARAMS f_data;
+	f_data.FLUT = &FLUT[0];
+	f_data.Fthis = &Fthis;
+	f_data.Lsd = Lsd;
+	f_data.Wavelength = Wavelength;
+	f_data.beamFWHM = beamFWHM;
+	f_data.beamPositions = &beamPositions[0];
+	f_data.diffLow = &diffLow[0];
+	f_data.diffHigh = &diffHigh[0];
+	f_data.filteredSpotInfo = &filteredSpotInfo[0];
+	f_data.h = h;
+	f_data.hkls = &hkls[0];
+	f_data.maxNPos = maxNPos;
+	f_data.nBeamPositions = nBeamPositions;
+	f_data.nhkls = nhkls;
+	f_data.omeTol = omeTol;
+	f_data.omegaStep = omegaStep;
+	f_data.px = px;
+	f_data.spotInfoMat = &spotInfoMat[0];
+	f_data.totalNrSpots = totalNrSpots;
+	f_data.voxelLen = voxelLen;
+	f_data.voxelList = &voxelList[0];
+	f_data.x_prev = &x_prev[0];
+	struct FITTING_PARAMS *f_datat;
+	f_datat = &f_data;
+	void* trp = (struct FITTING_PARAMS *) f_datat;
 
 	// Now we call the fitting function.
 	nlopt_opt opt;
