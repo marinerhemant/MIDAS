@@ -868,7 +868,7 @@ int main (int argc, char *argv[]){
 	for (i=0;i<nBeamPositions;i++){
 		fgets(aline,4096,positionsFile);
 		sscanf(aline,"%lf",&beamPositions[i]);
-		beamPositions[i] *= -1000; // This is multiplied with -1 because if the movement is +ve, beam moves in the negative direction.
+		beamPositions[i] *= 1000; // This is multiplied with -1 because if the movement is +ve, beam moves in the negative direction.
 	}
 	fclose(positionsFile);
 
