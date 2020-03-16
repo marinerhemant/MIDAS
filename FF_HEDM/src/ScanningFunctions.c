@@ -824,6 +824,7 @@ int main (int argc, char *argv[]){
 	while(fgets(aline,4096,fileParam)!=NULL){
 		if (strncmp(aline,"OmegaStep",strlen("OmegaStep"))==0){
 			sscanf(aline,"%s %lf",dummy,&omegaStep);
+			omegaStep = fabs(omegaStep);
 		}
 		if (strncmp(aline,"px",strlen("px"))==0){
 			sscanf(aline,"%s %lf",dummy,&px);
