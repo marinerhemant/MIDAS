@@ -697,7 +697,7 @@ static inline void PopulateSpotInfoMat (double omegaStep, double px, int nVoxels
 						}
 					}
 				}
-				printf("%lf\n",bestAngle);
+				//~ printf("%lf\n",bestAngle);
 				if (bestAngle < 1){ // Spot was found
 					// We will populate the following arrays now:
 						// idxPos = voxelNr*((nhkls+2)*2)*maxNPos*5 + bestHKLNr*maxNPos*5 + posNr*5
