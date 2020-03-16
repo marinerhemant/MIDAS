@@ -944,6 +944,7 @@ int main (int argc, char *argv[]){
 	idsfn = argv[4];
 	idsfile = fopen(idsfn,"r");
 	int positionNr, startNr, endNr, ringNr;
+	fgets(aline,4096,idsfile);
 	while(fgets(aline,4096,idsfile)!=NULL){
 		sscanf(aline,"%d %d %d %d",&positionNr,&ringNr,&startNr,&endNr);
 		AllIDsInfo[((positionNr-1)*nRings+ringNr)*2+0] =startNr;
