@@ -1027,6 +1027,30 @@ int main (int argc, char *argv[]){
 									omeTol, nRings, x, nhkls, hkls, Lsd, Wavelength, AllSpotsInfo, AllIDsInfo,
 									totalNrSpots, spotInfoMat, Fthis, filteredSpotInfo, maxNPos, FLUT);
 
+	// For debug, write out Fthis, FLUT, spotInfoMat, filteredSpotInfo
+	FILE *ft = fopen("fthis.csv","w"),
+		 *fl = fopen("flut.csv","w");
+	long nEls;
+	nEls = nVoxels;
+	nEls *= nhkls + 2;
+	nEls *= 2;
+	nEls *= maxNPos;
+	for (i=0;i<nEls;i++){
+		fprintf(ft,"%lf %lf %lf %lf %lf\n",Fthis[i*5+0],Fthis[i*5+1],Fthis[i*5+2],Fthis[i*5+3],Fthis[i*5+4]);
+		fprintf(fl,"%l\n",FLUT[i]);
+	}
+	fclose(ft);
+	fclose(fl);
+	FILE *fs = fopen("fspotInfo.csv","w"),
+		 *ff = fopen("filtered.csv","w");
+	for (i=0;i<totalNrSpots;i++){
+		fprintf(fs,"%lf %lf %lf %lf\n",spotInfoMat[i*4+0],spotInfoMat[i*4+1],spotInfoMat[i*4+2],spotInfoMat[i*4+3]);
+		fprintf(ff,"%lf %lf %lf\n",filteredSpotInfo[i*4+0],filteredSpotInfo[i*4+1],filteredSpotInfo[i*4+2]);
+	}
+	fclose(fs);
+	fclose(ff);
+	return;
+
 	struct FITTING_PARAMS f_data;
 	f_data.FLUT = &FLUT[0];
 	f_data.Fthis = &Fthis;
