@@ -1043,7 +1043,7 @@ int main (int argc, char *argv[]){
 	nEls *= maxNPos;
 	for (i=0;i<nEls;i++){
 		fprintf(ft,"%lf %lf %lf %lf %lf\n",Fthis[i*5+0],Fthis[i*5+1],Fthis[i*5+2],Fthis[i*5+3],Fthis[i*5+4]);
-		fprintf(fl,"%l\n",FLUT[i]);
+		fprintf(fl,"%ld\n",FLUT[i]);
 	}
 	fclose(ft);
 	fclose(fl);
