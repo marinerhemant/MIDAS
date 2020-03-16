@@ -695,7 +695,6 @@ static inline void PopulateSpotInfoMat (double omegaStep, double px, int nVoxels
 							bestG2 = gObs[1];
 							bestG3 = gObs[2];
 							bestRow = i;
-							printf("%ld\n",bestRow);
 						}
 					}
 				}
@@ -707,6 +706,7 @@ static inline void PopulateSpotInfoMat (double omegaStep, double px, int nVoxels
 						// filteredSpotInfo:	bestRow*3 + {0,1,2} for y,z,ome of each observed spot position. This will correspond to the next 3 arrays
 						// spotInfoMat:	bestRow*4 + {0,1,2,3} for y,z,ome,frac mean and total corresponding to each simulated spot.
 								// We would need to divide by the total fraction at the end!!!!
+					printf("%ld\n",bestRow);
 					idxPos = voxelNr;
 					idxPos *= nhkls+2;
 					idxPos *= 2;
