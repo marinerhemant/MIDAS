@@ -105,11 +105,20 @@ int main(int argc, char *argv[])
 		printf("Reading wisdom file %s.\n",plan2DFN);
 		createPlanFile(&recon_info_record);
 	}
-	struct sysinfo info;
-	sysinfo(&info);
-	long long int maxNProcs = (long long int) info.freeram / (long long int) recon_info_record.sizeMatrices;
-	printf("Memory needed per process: %lld, Total available RAM: %lld, MaxNProcs: %lld \n",
-			(long long int) recon_info_record.sizeMatrices,(long long int) info.freeram, maxNProcs);
+	// Read /proc/meminfo to get the available RAM size and calculate maxNProcs accordingly.
+	long long int avRAM;
+	FILE *memf = fopen("/proc/meminfo","r");
+	char aline[4096], dummy[4096];
+	while (fgets(aline,4096,memf)!= NULL){
+		if (strncmp(aline,"MemAvailable:",strlen("MemAvailable:"))==0){
+			sscanf(aline,"%s %lld",dummy,&avRAM);
+			break;
+		}
+	}
+	avRAM *= 1024; // Get in bytes
+	long long int maxNProcs = (long long int) avRAM / (long long int) recon_info_record.sizeMatrices;
+	printf("Memory needed per process: %lld, Total available RAM: %lld, MaxNProcs: %lld.\nWe can run up to %lld processes.\n",
+			(long long int) recon_info_record.sizeMatrices,avRAM, maxNProcs, maxNProcs-2);
 	// Check if sizes are okay.
 	if (recon_info_record.n_shifts > 1 && recon_info_record.n_shifts %2 !=0){
 		printf("Number of shifts must be even. Exiting\n");
