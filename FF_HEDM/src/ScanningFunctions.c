@@ -1200,9 +1200,9 @@ int main (int argc, char *argv[]){
 	nlopt_destroy(opt);
 
 	// Now calculate strains and write out
-	printf("VoxelNr\tOM0\tOM1\tOM2\tOM3\tOM4\tOM5\tOM6\tOM7\tOM8\tx\ty\tz\tA\tB\tC\talpha\tbeta\tgamma\tE00\tE01\tE02\tE10\tE11\tE12\tE20\tE21\tE22\tEul0\tEul1\tEul2\n");
 	FILE *out;
 	out = fopen("refined.csv","w");
+	fprintf(out,"VoxelNr\tOM0\tOM1\tOM2\tOM3\tOM4\tOM5\tOM6\tOM7\tOM8\tx\ty\tz\tA\tB\tC\talpha\tbeta\tgamma\tE00\tE01\tE02\tE10\tE11\tE12\tE20\tE21\tE22\tEul0\tEul1\tEul2\n");
 	double LatticeParameterFit[6], StrainTensorSample[3][3];
 	for (i=0;i<nVoxels;i++){
 		Eul[0] = x[i*9+0];
