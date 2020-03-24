@@ -79,7 +79,7 @@ help:
 	@echo $(NLOPT)
 
 scanningfcns: $(SRCDIR)ScanningFunctions.c
-	$(CC) $(SRCDIR)ScanningFunctions.c -o $(BINDIR)ScanningFunctions $(CFLAGS) $(CFLAGSNLOPT) -fopenmp
+	$(CC) $(SRCDIR)ScanningFunctions.c $(SRCDIR)CalcStrains.c -o $(BINDIR)ScanningFunctions $(CFLAGS) $(CFLAGSNLOPT) -fopenmp
 
 imagemax: $(SRCDIR)imageMax.c
 	$(CC) $(SRCDIR)imageMax.c -shared -Wl,-soname,imageMax -o $(BINDIR)imageMax.so -fPIC -ldl -lm -fgnu89-inline -O3 -w

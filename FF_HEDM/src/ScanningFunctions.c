@@ -861,10 +861,20 @@ int main (int argc, char *argv[]){
 	double omegaStep, px, voxelLen, beamFWHM, omeTol, Lsd, Wavelength;
 	int nScans, rings[500], nRings=0;
 	char aline[4096], dummy[4096];
+	double EulTol = 3*deg2rad; // radians
+	double ABCTol = 3; // %
+	double ABGTol = 3; // %
+	double LatCin[6]; // Reference
 	while(fgets(aline,4096,fileParam)!=NULL){
 		if (strncmp(aline,"OmegaStep",strlen("OmegaStep"))==0){
 			sscanf(aline,"%s %lf",dummy,&omegaStep);
 			omegaStep = fabs(omegaStep);
+		}
+		if (strncmp(aline,"LatticeConstant",strlen("LatticeConstant"))==0){
+			sscanf(aline,"%s %lf %lf %lf %lf %lf %lf",dummy,&LatCin[0],&LatCin[1],&LatCin[2],&LatCin[3],&LatCin[4],&LatCin[5]);
+		}
+		if (strncmp(aline,"LatticeParameter",strlen("LatticeParameter"))==0){
+			sscanf(aline,"%s %lf %lf %lf %lf %lf %lf",dummy,&LatCin[0],&LatCin[1],&LatCin[2],&LatCin[3],&LatCin[4],&LatCin[5]);
 		}
 		if (strncmp(aline,"px",strlen("px"))==0){
 			sscanf(aline,"%s %lf",dummy,&px);
@@ -883,6 +893,16 @@ int main (int argc, char *argv[]){
 		}
 		if (strncmp(aline,"Wavelength",strlen("Wavelength"))==0){
 			sscanf(aline,"%s %lf",dummy,&Wavelength);
+		}
+		if (strncmp(aline,"OrientTol",strlen("OrientTol"))==0){
+			sscanf(aline,"%s %lf",dummy,&EulTol);
+			EulTol *= deg2rad; // Convert to radians
+		}
+		if (strncmp(aline,"ABCTol",strlen("ABCTol"))==0){
+			sscanf(aline,"%s %lf",dummy,&ABCTol);
+		}
+		if (strncmp(aline,"ABGTol",strlen("ABGTol"))==0){
+			sscanf(aline,"%s %lf",dummy,&ABGTol);
 		}
 		if (strncmp(aline,"nLayers",strlen("nLayers"))==0){
 			sscanf(aline,"%s %d",dummy,&nScans);
@@ -1011,9 +1031,6 @@ int main (int argc, char *argv[]){
 	// Setup x
 	int n = nVoxels * 9;
 	double *x, *x_orig, *xl, *xu;
-	double EulTol = 3*deg2rad; // radians
-	double ABCTol = 3; // %
-	double ABGTol = 3; // %
 	x = calloc(n,sizeof(*x));
 	x_orig = calloc(n,sizeof(*x_orig));
 	xl = calloc(n,sizeof(*xl));
@@ -1181,6 +1198,30 @@ int main (int argc, char *argv[]){
 	nlopt_result r = nlopt_optimize(opt, x, &minf);
 	printf("NLOPT Return Code %d, retval = %lf\n",r,minf);
 	nlopt_destroy(opt);
+
+	// Now calculate strains and write out
+	FILE *out;
+	out = fopen("refined.csv","w");
+	double LatticeParameterFit[6], StrainTensorSample[3][3];
+	for (i=0;i<nVoxels;i++){
+		Eul[0] = x[i*9+0];
+		Eul[1] = x[i*9+1];
+		Eul[2] = x[i*9+2];
+		LatticeParameterFit[0] = x[i*9+3+0];
+		LatticeParameterFit[1] = x[i*9+3+1];
+		LatticeParameterFit[2] = x[i*9+3+2];
+		LatticeParameterFit[3] = x[i*9+3+3];
+		LatticeParameterFit[4] = x[i*9+3+4];
+		LatticeParameterFit[5] = x[i*9+3+5];
+		Euler2OrientMat(Eul,OM);
+		CalcStrainTensorFableBeaudoin(LatCin, LatticeParameterFit, OM, StrainTensorSample);
+		fprintf(out,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf 0.0000 %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",
+			(double)i,OM[0][0],OM[0][1],OM[0][2],OM[1][0],OM[1][1],OM[1][2],OM[2][0],OM[2][1],OM[2][2],
+			voxelList[i*2+0],voxelList[i*2+1],LatticeParameterFit[0],LatticeParameterFit[1],LatticeParameterFit[2],LatticeParameterFit[3],
+			LatticeParameterFit[4],LatticeParameterFit[5],StrainTensorSample[0][0],StrainTensorSample[0][1],StrainTensorSample[0][2],
+			StrainTensorSample[1][0],StrainTensorSample[1][1],StrainTensorSample[1][2],StrainTensorSample[2][0],StrainTensorSample[2][1],
+			StrainTensorSample[2][2]);
+	}
 	printf("Original Refined\n");
 	for (i=0;i<n;i++) {
 		printf("%lf %lf\n",x_orig[i],x[i]);
