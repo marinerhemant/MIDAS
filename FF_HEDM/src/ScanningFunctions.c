@@ -1200,7 +1200,7 @@ int main (int argc, char *argv[]){
 	nlopt_destroy(opt);
 
 	// Now calculate strains and write out
-	printf("VoxelNr\tOM0\tOM1\tOM2\tOM3\tOM4\tOM5\tOM6\tOM7\tOM8\tx\ty\tz\tA\tB\tC\talpha\tbeta\tgamma\tE00\tE01\tE02\tE10\tE11\tE12\tE20\tE21\tE22\t\n");
+	printf("VoxelNr\tOM0\tOM1\tOM2\tOM3\tOM4\tOM5\tOM6\tOM7\tOM8\tx\ty\tz\tA\tB\tC\talpha\tbeta\tgamma\tE00\tE01\tE02\tE10\tE11\tE12\tE20\tE21\tE22\tEul0\tEul1\tEul2\n");
 	FILE *out;
 	out = fopen("refined.csv","w");
 	double LatticeParameterFit[6], StrainTensorSample[3][3];
@@ -1216,11 +1216,11 @@ int main (int argc, char *argv[]){
 		LatticeParameterFit[5] = x[i*9+3+5];
 		Euler2OrientMat(Eul,OM);
 		CalcStrainTensorFableBeaudoin(LatCin, LatticeParameterFit, OM, StrainTensorSample);
-		fprintf(out,"%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t0.0000\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",
+		fprintf(out,"%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t0.0000\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",
 			(double)i,OM[0][0],OM[0][1],OM[0][2],OM[1][0],OM[1][1],OM[1][2],OM[2][0],OM[2][1],OM[2][2],
 			voxelList[i*2+0],voxelList[i*2+1],LatticeParameterFit[0],LatticeParameterFit[1],LatticeParameterFit[2],LatticeParameterFit[3],
 			LatticeParameterFit[4],LatticeParameterFit[5],1e6*StrainTensorSample[0][0],1e6*StrainTensorSample[0][1],1e6*StrainTensorSample[0][2],
 			1e6*StrainTensorSample[1][0],1e6*StrainTensorSample[1][1],1e6*StrainTensorSample[1][2],1e6*StrainTensorSample[2][0],1e6*StrainTensorSample[2][1],
-			1e6*StrainTensorSample[2][2]);
+			1e6*StrainTensorSample[2][2],x[i*9+0],x[i*9+1],x[i*9+2]);
 	}
 }
