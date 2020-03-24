@@ -769,7 +769,7 @@ static inline double UpdateArraysThisLowHigh(double omegaStep, double px, int nV
 			x_prev[voxelNr*9+8] = x[voxelNr*9+8];
 		}
 	}
-	printf("Error now: %.40lf\n",diffFThis);
+	printf("Error now: %.12lf\n",diffFThis);
 	fflush(stdout);
 	return diffFThis;
 }
