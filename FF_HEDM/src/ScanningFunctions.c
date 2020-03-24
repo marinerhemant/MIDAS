@@ -1192,7 +1192,10 @@ int main (int argc, char *argv[]){
 	opt = nlopt_create(NLOPT_LD_MMA, n);
 	nlopt_set_lower_bounds(opt, xl);
 	nlopt_set_upper_bounds(opt, xu);
-	nlopt_set_xtol_abs(opt,EPS);
+	double *xtol;
+	xtol = calloc(n,sizeof(*xtol));
+	for (i=0;i<n;i++) xtol[i] = EPS;
+	nlopt_set_xtol_abs(opt,xtol);
 	nlopt_set_maxeval(opt,2e4);
 	nlopt_set_min_objective(opt, problem_function, trp);
 	double minf;
