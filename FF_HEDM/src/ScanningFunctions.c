@@ -1039,11 +1039,11 @@ int main (int argc, char *argv[]){
 		for (j=0;j<3;j++) x[i*9+j] = Eul[j];
 		for (j=0;j<3;j++) xl[i*9+j] = Eul[j] - EulTol;
 		for (j=0;j<3;j++) xu[i*9+j] = Eul[j] + EulTol;
-		for (j=0;j<6;j++) x[i*9+3+j] = LatC[j];
-		for (j=0;j<3;j++) xl[i*9+3+j] = LatC[j]*(100-ABCTol)/100;
-		for (j=3;j<6;j++) xl[i*9+3+j] = LatC[j]*(100-ABGTol)/100;
-		for (j=0;j<3;j++) xu[i*9+3+j] = LatC[j]*(100+ABCTol)/100;
-		for (j=3;j<6;j++) xu[i*9+3+j] = LatC[j]*(100+ABGTol)/100;
+		for (j=0;j<6;j++) x[i*9+3+j] = LatCin[j];
+		for (j=0;j<3;j++) xl[i*9+3+j] = LatCin[j]*(100-ABCTol)/100;
+		for (j=3;j<6;j++) xl[i*9+3+j] = LatCin[j]*(100-ABGTol)/100;
+		for (j=0;j<3;j++) xu[i*9+3+j] = LatCin[j]*(100+ABCTol)/100;
+		for (j=3;j<6;j++) xu[i*9+3+j] = LatCin[j]*(100+ABGTol)/100;
 	}
 	for (i=0;i<n;i++){
 		x_orig[i] = x[i];
