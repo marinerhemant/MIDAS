@@ -1194,9 +1194,8 @@ int main (int argc, char *argv[]){
 	nlopt_set_upper_bounds(opt, xu);
 	double *xtol;
 	xtol = calloc(n,sizeof(*xtol));
-	for (i=0;i<n;i++) xtol[i] = 1e-4*EPS;
 	nlopt_set_xtol_abs(opt,xtol);
-	nlopt_set_maxeval(opt,2e4);
+	nlopt_set_maxeval(opt,1e4);
 	nlopt_set_min_objective(opt, problem_function, trp);
 	double minf;
 	nlopt_result r = nlopt_optimize(opt, x, &minf);
