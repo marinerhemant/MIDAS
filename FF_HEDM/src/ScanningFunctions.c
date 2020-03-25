@@ -371,7 +371,7 @@ static inline void PopulateSpotInfoMat (double omegaStep, double px, int nVoxels
 									double *EulLatC, int nhkls, double *hkls, double Lsd, double Wavelength,
 									double *AllSpotsInfo, long *AllIDsInfo, long totalNrSpots, double *spotInfoMat,
 									double *Fthis, double *filteredSpotInfo, int maxNPos, long *FLUT){
-	long voxelNr, nSpots, i, j, spotNr, positionNr, ringNr;
+	long voxelNr, nSpots, i, j, spotNr, positionNr, ringNr,nMatched=0;
 	double thisPos[3], thisBeamPosition, thisOmega, thisEta, bestAngle, ys, zs, lenK, omeObs;
 	double LatCThis[6], EulersThis[3], obsSpotPos[3], gObs[3], gSim[3], IA;
 	double *spotInfo, voxelFraction;
@@ -448,6 +448,7 @@ static inline void PopulateSpotInfoMat (double omegaStep, double px, int nVoxels
 						filteredSpotInfo[(bestRow-1)*4 + 1] = AllSpotsInfo[14*(bestRow-1)+1];
 						filteredSpotInfo[(bestRow-1)*4 + 2] = AllSpotsInfo[14*(bestRow-1)+2];
 						filteredSpotInfo[(bestRow-1)*4 + 3] = 1;
+						nMatched++;
 					}
 					spotInfoMat[(bestRow-1)*4+0] += spotInfo[spotNr*9+7]*voxelFraction;
 					spotInfoMat[(bestRow-1)*4+1] += spotInfo[spotNr*9+8]*voxelFraction;
@@ -458,6 +459,7 @@ static inline void PopulateSpotInfoMat (double omegaStep, double px, int nVoxels
 			}
 		}
 	}
+	printf("Original nMatched: %ld\n",nMatched);
 	// Divide spotInfoMat with the total fraction!!!!!!!!
 	for (i=0;i<totalNrSpots;i++){
 		if (spotInfoMat[i*4+3] == 0) continue;
