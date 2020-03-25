@@ -480,7 +480,7 @@ static inline double CalcDifferences(double omegaStep, double px, long totalNrSp
 		if (filteredSpotInfo[i*4+3] == 0) continue;
 		if (CalcNorm2(spotInfoMat[i*4+0],spotInfoMat[i*4+1]) == 0){
 			normParams[2] = 1;
-			differencesMat[i] = CalcNorm3((spotInfoMat[i*4+0]-filteredSpotInfo[i*4+0])/normParams[0],
+			differencesMat[i] = 1000 * CalcNorm3((spotInfoMat[i*4+0]-filteredSpotInfo[i*4+0])/normParams[0],
 										  (spotInfoMat[i*4+1]-filteredSpotInfo[i*4+1])/normParams[1],
 										  (spotInfoMat[i*4+2]-filteredSpotInfo[i*4+2])/normParams[2]);
 			td += differencesMat[i];
