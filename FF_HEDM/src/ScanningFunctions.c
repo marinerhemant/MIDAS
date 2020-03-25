@@ -1189,7 +1189,7 @@ int main (int argc, char *argv[]){
 	// Now we call the fitting function.
 	nIters = 0;
 	nlopt_opt opt;
-	opt = nlopt_create(NLOPT_LD_LBFGS, n);
+	opt = nlopt_create(NLOPT_LD_MMA, n);
 	nlopt_set_lower_bounds(opt, xl);
 	nlopt_set_upper_bounds(opt, xu);
 	double *xtol;
