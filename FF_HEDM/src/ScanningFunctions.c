@@ -1171,8 +1171,8 @@ int main (int argc, char *argv[]){
 	//~ double *xtol;
 	//~ xtol = calloc(n,sizeof(*xtol));
 	//~ nlopt_set_xtol_abs(opt,xtol);
-	double *dx;
-	dx = calloc(n,sizeof(*dx));
+	double dx[n];
+	//~ dx = calloc(n,sizeof(*dx));
 	for (i=0;i<nVoxels;i++){
 		for (j=0;j<3;j++) dx[i*9+j] = 1e-6;
 		for (j=3;j<6;j++) dx[i*9+j] = 1e-6;
