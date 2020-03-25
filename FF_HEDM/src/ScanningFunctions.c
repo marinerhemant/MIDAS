@@ -1150,7 +1150,7 @@ int main (int argc, char *argv[]){
 	double *xtol;
 	xtol = calloc(n,sizeof(*xtol));
 	nlopt_set_xtol_abs(opt,xtol);
-	nlopt_set_maxeval(opt,1e4);
+	nlopt_set_maxeval(opt,1e3);
 	nlopt_set_min_objective(opt, problem_function, trp);
 	double minf;
 	nlopt_result r = nlopt_optimize(opt, x, &minf);
