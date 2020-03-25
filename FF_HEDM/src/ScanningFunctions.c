@@ -478,13 +478,17 @@ static inline double CalcDifferences(double omegaStep, double px, long totalNrSp
 		if (filteredSpotInfo[i*4+3] == 0) continue;
 		if (CalcNorm2(spotInfoMat[i*4+0],spotInfoMat[i*4+1]) == 0){
 			normParams[2] = 1;
+			differencesMat[i] = CalcNorm3((spotInfoMat[i*4+0]-filteredSpotInfo[i*4+0])/normParams[0],
+										  (spotInfoMat[i*4+1]-filteredSpotInfo[i*4+1])/normParams[1],
+										  (spotInfoMat[i*4+2]-filteredSpotInfo[i*4+2])/normParams[2]);
+			printf("%lf\n",differencesMat[i]);
 		} else {
 			Eta = CalcEta(spotInfoMat[i*4+0],spotInfoMat[i*4+1]);
 			normParams[2] = omegaStep*0.5*(1+1/sind(Eta));
+			differencesMat[i] = CalcNorm3((spotInfoMat[i*4+0]-filteredSpotInfo[i*4+0])/normParams[0],
+										  (spotInfoMat[i*4+1]-filteredSpotInfo[i*4+1])/normParams[1],
+										  (spotInfoMat[i*4+2]-filteredSpotInfo[i*4+2])/normParams[2]);
 		}
-		differencesMat[i] = CalcNorm3((spotInfoMat[i*4+0]-filteredSpotInfo[i*4+0])/normParams[0],
-						 (spotInfoMat[i*4+1]-filteredSpotInfo[i*4+1])/normParams[1],
-						 (spotInfoMat[i*4+2]-filteredSpotInfo[i*4+2])/normParams[2]);
 		diff += differencesMat[i];
 	}
 	return diff;
@@ -581,7 +585,7 @@ static inline void UpdSpotPosOneVox(double omegaStep, double px, double voxelLen
 			for (i=startRowNr;i<=endRowNr;i++){
 				//Everything in AllSpotsInfo needs to have i-1
 				omeObs = AllSpotsInfo[14*(i-1)+2];
-				if (fabs(thisOmega-omeObs) < 5 && filteredSpotInfo[(i-1)*4+3] == 1){
+				if (filteredSpotInfo[(i-1)*4+3] == 1){
 					ys = AllSpotsInfo[14*(i-1)+0];
 					zs = AllSpotsInfo[14*(i-1)+1];
 					lenK = CalcNorm3(Lsd,ys,zs);
