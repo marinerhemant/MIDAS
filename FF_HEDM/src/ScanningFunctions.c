@@ -1174,9 +1174,9 @@ int main (int argc, char *argv[]){
 	double *dx;
 	dx = calloc(n,sizeof(*dx));
 	for (i=0;i<nVoxels;i++){
-		for (j=0;j<3;j++) dx[i*9+j] = 1e-4;
-		for (j=3;j<6;j++) dx[i*9+j] = 1e-4;
-		for (j=6;j<9;j++) dx[i*9+j] = 1e-3;
+		for (j=0;j<3;j++) dx[i*9+j] = 1e-6;
+		for (j=3;j<6;j++) dx[i*9+j] = 1e-6;
+		for (j=6;j<9;j++) dx[i*9+j] = 1e-6;
 	}
 	nlopt_set_initial_step(opt, dx);
 	nlopt_set_maxeval(opt,1e3);
