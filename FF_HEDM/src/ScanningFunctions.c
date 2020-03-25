@@ -588,30 +588,23 @@ static inline void UpdSpotPosOneVox(double omegaStep, double px, double voxelLen
 					}
 				}
 			}
-			//~ if (bestAngle < 1){ // Spot was found
-				idxPos = bestHKLNr*maxNPos;
-				idxPos += posNr;
-				FLUTThis[idxPos] = bestRow-1;
-				idxPos *= 5;
-				arrUpd[idxPos + 0] = spotInfo[spotNr*9+7];
-				arrUpd[idxPos + 1] = spotInfo[spotNr*9+8];
-				arrUpd[idxPos + 2] = spotInfo[spotNr*9+4];
-				arrUpd[idxPos + 3] = voxelFraction;
-				arrUpd[idxPos + 4] = positionNr;
-				#pragma omp critical
-				{
-					//~ if (filteredSpotInfo[(bestRow-1)*4 + 0] == 0){
-						//~ filteredSpotInfo[(bestRow-1)*4 + 0] = AllSpotsInfo[14*(bestRow-1)+0];
-						//~ filteredSpotInfo[(bestRow-1)*4 + 1] = AllSpotsInfo[14*(bestRow-1)+1];
-						//~ filteredSpotInfo[(bestRow-1)*4 + 2] = AllSpotsInfo[14*(bestRow-1)+2];
-					//~ }
-					spotInfoMat[(bestRow-1)*4+0] += spotInfo[spotNr*9+7]*voxelFraction;
-					spotInfoMat[(bestRow-1)*4+1] += spotInfo[spotNr*9+8]*voxelFraction;
-					spotInfoMat[(bestRow-1)*4+2] += spotInfo[spotNr*9+4]*voxelFraction;
-					spotInfoMat[(bestRow-1)*4+3] += voxelFraction;
-				}
-				posNr ++;
-			//~ }
+			idxPos = bestHKLNr*maxNPos;
+			idxPos += posNr;
+			FLUTThis[idxPos] = bestRow-1;
+			idxPos *= 5;
+			arrUpd[idxPos + 0] = spotInfo[spotNr*9+7];
+			arrUpd[idxPos + 1] = spotInfo[spotNr*9+8];
+			arrUpd[idxPos + 2] = spotInfo[spotNr*9+4];
+			arrUpd[idxPos + 3] = voxelFraction;
+			arrUpd[idxPos + 4] = positionNr;
+			#pragma omp critical
+			{
+				spotInfoMat[(bestRow-1)*4+0] += spotInfo[spotNr*9+7]*voxelFraction;
+				spotInfoMat[(bestRow-1)*4+1] += spotInfo[spotNr*9+8]*voxelFraction;
+				spotInfoMat[(bestRow-1)*4+2] += spotInfo[spotNr*9+4]*voxelFraction;
+				spotInfoMat[(bestRow-1)*4+3] += voxelFraction;
+			}
+			posNr ++;
 		}
 	}
 }
