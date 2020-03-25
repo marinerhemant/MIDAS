@@ -441,10 +441,11 @@ static inline void PopulateSpotInfoMat (double omegaStep, double px, int nVoxels
 					Fthis[idxPos + 2] = spotInfo[spotNr*9+4];
 					Fthis[idxPos + 3] = voxelFraction;
 					Fthis[idxPos + 4] = positionNr;
-					if (filteredSpotInfo[(bestRow-1)*4 + 0] == 0){
+					if (filteredSpotInfo[(bestRow-1)*4 + 3] == 0){
 						filteredSpotInfo[(bestRow-1)*4 + 0] = AllSpotsInfo[14*(bestRow-1)+0];
 						filteredSpotInfo[(bestRow-1)*4 + 1] = AllSpotsInfo[14*(bestRow-1)+1];
 						filteredSpotInfo[(bestRow-1)*4 + 2] = AllSpotsInfo[14*(bestRow-1)+2];
+						filteredSpotInfo[(bestRow-1)*4 + 3] = 1;
 					}
 					spotInfoMat[(bestRow-1)*4+0] += spotInfo[spotNr*9+7]*voxelFraction;
 					spotInfoMat[(bestRow-1)*4+1] += spotInfo[spotNr*9+8]*voxelFraction;
@@ -573,7 +574,7 @@ static inline void UpdSpotPosOneVox(double omegaStep, double px, double voxelLen
 			for (i=startRowNr;i<=endRowNr;i++){
 				//Everything in AllSpotsInfo needs to have i-1
 				omeObs = AllSpotsInfo[14*(i-1)+2];
-				if (fabs(thisOmega-omeObs) < omeTol){
+				if (fabs(thisOmega-omeObs) < 5 && filteredSpotInfo[(i-1)*4+3] == 1){
 					ys = AllSpotsInfo[14*(i-1)+0];
 					zs = AllSpotsInfo[14*(i-1)+1];
 					lenK = CalcNorm3(Lsd,ys,zs);
@@ -587,7 +588,7 @@ static inline void UpdSpotPosOneVox(double omegaStep, double px, double voxelLen
 					}
 				}
 			}
-			if (bestAngle < 1){ // Spot was found
+			//~ if (bestAngle < 1){ // Spot was found
 				idxPos = bestHKLNr*maxNPos;
 				idxPos += posNr;
 				FLUTThis[idxPos] = bestRow-1;
@@ -599,18 +600,18 @@ static inline void UpdSpotPosOneVox(double omegaStep, double px, double voxelLen
 				arrUpd[idxPos + 4] = positionNr;
 				#pragma omp critical
 				{
-					if (filteredSpotInfo[(bestRow-1)*4 + 0] == 0){
-						filteredSpotInfo[(bestRow-1)*4 + 0] = AllSpotsInfo[14*(bestRow-1)+0];
-						filteredSpotInfo[(bestRow-1)*4 + 1] = AllSpotsInfo[14*(bestRow-1)+1];
-						filteredSpotInfo[(bestRow-1)*4 + 2] = AllSpotsInfo[14*(bestRow-1)+2];
-					}
+					//~ if (filteredSpotInfo[(bestRow-1)*4 + 0] == 0){
+						//~ filteredSpotInfo[(bestRow-1)*4 + 0] = AllSpotsInfo[14*(bestRow-1)+0];
+						//~ filteredSpotInfo[(bestRow-1)*4 + 1] = AllSpotsInfo[14*(bestRow-1)+1];
+						//~ filteredSpotInfo[(bestRow-1)*4 + 2] = AllSpotsInfo[14*(bestRow-1)+2];
+					//~ }
 					spotInfoMat[(bestRow-1)*4+0] += spotInfo[spotNr*9+7]*voxelFraction;
 					spotInfoMat[(bestRow-1)*4+1] += spotInfo[spotNr*9+8]*voxelFraction;
 					spotInfoMat[(bestRow-1)*4+2] += spotInfo[spotNr*9+4]*voxelFraction;
 					spotInfoMat[(bestRow-1)*4+3] += voxelFraction;
 				}
 				posNr ++;
-			}
+			//~ }
 		}
 	}
 }
@@ -634,7 +635,7 @@ static inline double UpdateArraysThisLowHigh(double omegaStep, double px, int nV
 	sizeMemset = 4;
 	sizeMemset *= totalNrSpots;
 	memset(spotInfoMat,0,sizeMemset*sizeof(*spotInfoMat));
-	memset(filteredSpotInfo,0,sizeMemset*sizeof(*filteredSpotInfo));
+	//~ memset(filteredSpotInfo,0,sizeMemset*sizeof(*filteredSpotInfo));
 	memset(differencesMat,0,totalNrSpots*sizeof(*differencesMat));
 	# pragma omp parallel num_threads(numProcs) //shared(x,x_prev,voxelList,Fthis,FLUT,spotInfoAll,omegaStep,px,voxelLen,beamFWHM,nBeamPositions,beamPositions,omeTol,nhkls,hkls,Lsd,Wavelength,maxNPos,spotInfoMat)
 	{
