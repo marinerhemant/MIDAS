@@ -470,7 +470,7 @@ static inline void PopulateSpotInfoMat (double omegaStep, double px, int nVoxels
 
 static inline double CalcDifferences(double omegaStep, double px, long totalNrSpots, double *spotInfoMat, double *filteredSpotInfo, double *differencesMat){
 	long i;
-	double diff;
+	double diff=0,td=0;
 	double normParams[3], Eta;
 	normParams[0] = 0.1*px;
 	normParams[1] = 0.1*px;
@@ -481,7 +481,7 @@ static inline double CalcDifferences(double omegaStep, double px, long totalNrSp
 			differencesMat[i] = CalcNorm3((spotInfoMat[i*4+0]-filteredSpotInfo[i*4+0])/normParams[0],
 										  (spotInfoMat[i*4+1]-filteredSpotInfo[i*4+1])/normParams[1],
 										  (spotInfoMat[i*4+2]-filteredSpotInfo[i*4+2])/normParams[2]);
-			printf("%lf\n",differencesMat[i]);
+			td += differencesMat[i];
 		} else {
 			Eta = CalcEta(spotInfoMat[i*4+0],spotInfoMat[i*4+1]);
 			normParams[2] = omegaStep*0.5*(1+1/sind(Eta));
@@ -491,6 +491,7 @@ static inline double CalcDifferences(double omegaStep, double px, long totalNrSp
 		}
 		diff += differencesMat[i];
 	}
+	printf("TD: %lf\n",td);
 	return diff;
 }
 
