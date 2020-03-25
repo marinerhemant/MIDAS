@@ -1143,6 +1143,10 @@ int main (int argc, char *argv[]){
 	current_time = time(NULL);
 	c_time_string = ctime(&current_time);
 	printf("Current time is %s", c_time_string);
+	printf("Populating SpotInfo matrices.\n");
+	PopulateSpotInfoMat(omegaStep, px, nVoxels, voxelList, voxelLen, beamFWHM, nBeamPositions, beamPositions,
+									omeTol, nRings, x, nhkls, hkls, Lsd, Wavelength, AllSpotsInfo, AllIDsInfo,
+									totalNrSpots, spotInfoMat, Fthis, filteredSpotInfo, maxNPos, FLUT);
 
 	// Now we call the fitting function.
 	nIters = 0;
