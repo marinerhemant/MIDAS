@@ -491,7 +491,7 @@ static inline double CalcDifferences(double omegaStep, double px, long totalNrSp
 		}
 		diff += differencesMat[i];
 	}
-	printf("TD: %lf\n",td);
+	printf("TD: %lf ",td);
 	return diff;
 }
 
