@@ -475,7 +475,7 @@ static inline double CalcDifferences(double omegaStep, double px, long totalNrSp
 	normParams[0] = 0.1*px;
 	normParams[1] = 0.1*px;
 	for (i=0;i<totalNrSpots;i++){
-		if (spotInfoMat[i*4+3] == 0) continue;
+		if (filteredSpotInfo[i*4+3] == 0) continue;
 		normParams[2] = omegaStep*0.5*(1+1/sind(CalcEta(spotInfoMat[i*4+0],spotInfoMat[i*4+1])));
 		differencesMat[i] = CalcNorm3((spotInfoMat[i*4+0]-filteredSpotInfo[i*4+0])/normParams[0],
 						 (spotInfoMat[i*4+1]-filteredSpotInfo[i*4+1])/normParams[1],
