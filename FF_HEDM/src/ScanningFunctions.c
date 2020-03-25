@@ -1141,7 +1141,6 @@ int main (int argc, char *argv[]){
 	sizemarkSpotsMat *= numProcs;
 	int *totalMarkSpotsMat;
 	totalMarkSpotsMat = calloc(sizemarkSpotsMat,sizeof(*totalMarkSpotsMat));
-	printf("%ld %ld %ld %ld %ld %ld\n",sizeFLUT,dataArrSize,sizeSpotInfoMat,n,lenSpotInfoAll,sizemarkSpotsMat);
 
 	struct FITTING_PARAMS f_data;
 	f_data.FLUT = &FLUT[0];
