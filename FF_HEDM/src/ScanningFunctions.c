@@ -1091,8 +1091,8 @@ int main (int argc, char *argv[]){
 	x_prev = calloc(n,sizeof(*x_prev));
 	double h = EPS;
 
-	//~ time_t current_time;
-	//~ char* c_time_string;
+	time_t current_time;
+	char* c_time_string;
 	//~ current_time = time(NULL);
 	//~ c_time_string = ctime(&current_time);
 	//~ printf("Current time is %s", c_time_string);
