@@ -28,6 +28,8 @@
 #define ClearBit(A,k) (A[(k/32)] &= ~(1 << (k%32)))
 int numProcs;
 int nIters;
+struct timespec start;
+struct timespec end;
 double dx[4] = {-0.5,+0.5,+0.5,-0.5};
 double dy[4] = {-0.5,-0.5,+0.5,+0.5};
 
@@ -677,12 +679,15 @@ static inline double UpdateArraysThisLowHigh(double omegaStep, double px, int nV
 		}
 	}
 	// Divide spotInfoMat with the total fraction!!!!!!!!
+	long nMatched=0;
 	for (i=0;i<totalNrSpots;i++){
 		if (spotInfoMat[i*4+3] == 0) continue;
+		nMatched++;
 		spotInfoMat[i*4+0] /= spotInfoMat[i*4+3];
 		spotInfoMat[i*4+1] /= spotInfoMat[i*4+3];
 		spotInfoMat[i*4+2] /= spotInfoMat[i*4+3];
 	}
+	printf("Total number of spots matched: %ld\t",nMatched);
 	// Calculate the total error! We provide spotInfoMat and filteredSpotInfo
 	double diffFThis = CalcDifferences(omegaStep,px,totalNrSpots,spotInfoMat,filteredSpotInfo,differencesMat);
 	# pragma omp parallel num_threads(numProcs) //shared(x,x_prev,voxelList,Fthis,FLUT,spotInfoAll,totalMarkSpotsMat,omegaStep,px,voxelLen,beamFWHM,nBeamPositions,beamPositions,omeTol,nhkls,hkls,Lsd,Wavelength,maxNPos,spotInfoMat,filteredSpotInfo,totalNrSpots)
@@ -1131,6 +1136,8 @@ int main (int argc, char *argv[]){
 	struct FITTING_PARAMS *f_datat;
 	f_datat = &f_data;
 	void* trp = (struct FITTING_PARAMS *) f_datat;
+
+	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
 	time_t current_time;
 	char* c_time_string;
 	current_time = time(NULL);
@@ -1140,6 +1147,8 @@ int main (int argc, char *argv[]){
 	PopulateSpotInfoMat(omegaStep, px, nVoxels, voxelList, voxelLen, beamFWHM, nBeamPositions, beamPositions,
 									omeTol, nRings, x, nhkls, hkls, Lsd, Wavelength, AllSpotsInfo, AllIDsInfo,
 									totalNrSpots, spotInfoMat, Fthis, filteredSpotInfo, maxNPos, FLUT);
+	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end);
+	double t_ns = (double)(end.tv_sec - start.tv_sec) * 1.0e9 + (double)(end.tv_nsec - start.tv_nsec);
 
 	// Now we call the fitting function.
 	nIters = 0;
