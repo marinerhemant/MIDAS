@@ -469,6 +469,7 @@ static inline void PopulateMatrices (double omegaStep, double px, int nVoxels, d
 		spotInfoMat[i*4+0] /= spotInfoMat[i*4+3];
 		spotInfoMat[i*4+1] /= spotInfoMat[i*4+3];
 		spotInfoMat[i*4+2] /= spotInfoMat[i*4+3];
+		printf("%lf %lf %lf\n",spotInfoMat[i*4+0],spotInfoMat[i*4+1],spotInfoMat[i*4+2]);
 	}
 	free(spotInfo);
 }
