@@ -638,16 +638,6 @@ static inline double UpdateArraysThisLowHigh(double omegaStep, double px, int nV
 						Lsd, Wavelength, voxelPos, FthisVoxel, FLUTVoxel, maxNPos,spotInfoMat, spotInfo,AllSpotsInfo,AllIDsInfo,filteredSpotInfo);
 		}
 	}
-	// Divide spotInfoMat with the total fraction!!!!!!!!
-	long nMatched=0,i;
-	for (i=0;i<totalNrSpots;i++){
-		if (spotInfoMat[i*4+3] == 0) continue;
-		nMatched++;
-		spotInfoMat[i*4+0] /= spotInfoMat[i*4+3];
-		spotInfoMat[i*4+1] /= spotInfoMat[i*4+3];
-		spotInfoMat[i*4+2] /= spotInfoMat[i*4+3];
-	}
-	printf("Total number of spots matched: %ld\t",nMatched);
 	// Calculate the total error! We provide spotInfoMat and filteredSpotInfo
 	double diffFThis = CalcDifferences(omegaStep,px,totalNrSpots,spotInfoMat,filteredSpotInfo,differencesMat);
 	# pragma omp parallel num_threads(numProcs) //shared(x,x_prev,voxelList,Fthis,FLUT,spotInfoAll,totalMarkSpotsMat,omegaStep,px,voxelLen,beamFWHM,nBeamPositions,beamPositions,omeTol,nhkls,hkls,Lsd,Wavelength,maxNPos,spotInfoMat,filteredSpotInfo,totalNrSpots)
