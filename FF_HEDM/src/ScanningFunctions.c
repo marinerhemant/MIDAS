@@ -32,6 +32,7 @@
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
 #define ClearBit(A,k) (A[(k/32)] &= ~(1 << (k%32)))
+
 int numProcs;
 int nIters;
 struct timespec start;
@@ -39,6 +40,7 @@ struct timespec end;
 double dx[4] = {-0.5,+0.5,+0.5,-0.5};
 double dy[4] = {-0.5,-0.5,+0.5,+0.5};
 nlopt_opt opt;
+
 static inline double sind(double x){return sin(deg2rad*x);}
 static inline double cosd(double x){return cos(deg2rad*x);}
 static inline double tand(double x){return tan(deg2rad*x);}
@@ -800,7 +802,7 @@ int main (int argc, char *argv[]){
 	int nScans, rings[500], nRings=0, maxNEvals=1000;
 	int GrainNr=1;
 	char aline[4096], dummy[4096];
-	char positionsFN[4096];
+	char positionsFN[4096], outFN[4096];
 	char voxelsFN[4096];
 	double EulTol = 3*deg2rad;
 	double ABCTol = 3;
@@ -859,6 +861,9 @@ int main (int argc, char *argv[]){
 		}
 		if (strncmp(aline,"PositionsFile",strlen("PositionsFile"))==0){
 			sscanf(aline,"%s %s",dummy,positionsFN);
+		}
+		if (strncmp(aline,"OutFN",strlen("OutFN"))==0){
+			sscanf(aline,"%s %s",dummy,outFN);
 		}
 		if (strncmp(aline,"VoxelsFile",strlen("VoxelsFile"))==0){
 			sscanf(aline,"%s %s",dummy,voxelsFN);
@@ -1103,7 +1108,7 @@ int main (int argc, char *argv[]){
 	nlopt_destroy(opt);
 
 	FILE *out;
-	out = fopen("refinedResult.csv","w");
+	out = fopen(outFN,"w");
 	fprintf(out,"%VoxelNr\tOM0\tOM1\tOM2\tOM3\tOM4\tOM5\tOM6\tOM7\tOM8\tx\ty\tz\tA\tB\tC\talpha\tbeta\tgamma\tE00\tE01\tE02\tE10\tE11\tE12\tE20\tE21\tE22\tEul0\tEul1\tEul2\n");
 	double LatticeParameterFit[6], StrainTensorSample[3][3];
 	for (i=0;i<nVoxels;i++){
