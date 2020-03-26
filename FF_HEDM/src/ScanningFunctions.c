@@ -564,6 +564,7 @@ static inline void UpdSpotPosOneVox(double omegaStep, double px, double voxelLen
 					spotInfoMat[(bestRow-1)*4+1] += ((spotInfo[spotNr*4+1]-arrUpd[idxPos+1])*arrUpd[idxPos+3])/spotInfoMat[spotRowNr*4+3];
 					spotInfoMat[(bestRow-1)*4+2] += ((spotInfo[spotNr*4+2]-arrUpd[idxPos+2])*arrUpd[idxPos+3])/spotInfoMat[spotRowNr*4+3];
 					printf("%lf %lf %lf\n",spotInfoMat[(bestRow-1)*4+0],spotInfoMat[(bestRow-1)*4+1],spotInfoMat[(bestRow-1)*4+2]);
+					fflush(stdout);
 				}
 				arrUpd[idxPos + 0] = spotInfo[spotNr*4+0];
 				arrUpd[idxPos + 1] = spotInfo[spotNr*4+1];
