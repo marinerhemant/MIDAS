@@ -562,12 +562,9 @@ static inline void UpdSpotPosOneVox(double omegaStep, double px, double voxelLen
 				spotRowNr = FLUTThis[bestHKLNr*maxNPos+i];
 				#pragma omp critical
 				{
-					printf("%lf %lf %lf %lf ",spotInfoMat[spotRowNr*4+0],spotInfoMat[spotRowNr*4+1],spotInfoMat[spotRowNr*4+2],spotInfoMat[spotRowNr*4+3]);
 					spotInfoMat[spotRowNr*4+0] += ((spotInfo[spotNr*4+0]-arrUpd[idxPos+0])*arrUpd[idxPos+3])/spotInfoMat[spotRowNr*4+3];
 					spotInfoMat[spotRowNr*4+1] += ((spotInfo[spotNr*4+1]-arrUpd[idxPos+1])*arrUpd[idxPos+3])/spotInfoMat[spotRowNr*4+3];
 					spotInfoMat[spotRowNr*4+2] += ((spotInfo[spotNr*4+2]-arrUpd[idxPos+2])*arrUpd[idxPos+3])/spotInfoMat[spotRowNr*4+3];
-					printf("%lf %lf %lf %lf \n",spotInfoMat[spotRowNr*4+0],spotInfoMat[spotRowNr*4+1],spotInfoMat[spotRowNr*4+2],spotInfoMat[spotRowNr*4+3]);
-					fflush(stdout);
 				}
 				arrUpd[idxPos + 0] = spotInfo[spotNr*4+0];
 				arrUpd[idxPos + 1] = spotInfo[spotNr*4+1];
