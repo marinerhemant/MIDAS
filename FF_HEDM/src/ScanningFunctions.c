@@ -989,6 +989,9 @@ int main (int argc, char *argv[]){
 	for (i=0;i<n;i++){
 		x_orig[i] = x[i];
 	}
+	for (i=0;i<9;i++){
+		printf("%lf %lf %lf\n",xl[i],x[i],xu[i]);
+	}
 
 	// Allocate Fthis array:
 	// Fthis: nVoxels*maxNPos*(nhkls+2)*2(nDiffrSpots)*5(y,z,ome,fraction,positionNr)
@@ -1107,8 +1110,8 @@ int main (int argc, char *argv[]){
 
 	// Now calculate strains and write out
 	FILE *out;
-	out = fopen("refined.csv","w");
-	fprintf(out,"VoxelNr\tOM0\tOM1\tOM2\tOM3\tOM4\tOM5\tOM6\tOM7\tOM8\tx\ty\tz\tA\tB\tC\talpha\tbeta\tgamma\tE00\tE01\tE02\tE10\tE11\tE12\tE20\tE21\tE22\tEul0\tEul1\tEul2\n");
+	out = fopen("refinedResult.csv","w");
+	fprintf(out,"%VoxelNr\tOM0\tOM1\tOM2\tOM3\tOM4\tOM5\tOM6\tOM7\tOM8\tx\ty\tz\tA\tB\tC\talpha\tbeta\tgamma\tE00\tE01\tE02\tE10\tE11\tE12\tE20\tE21\tE22\tEul0\tEul1\tEul2\n");
 	double LatticeParameterFit[6], StrainTensorSample[3][3];
 	for (i=0;i<nVoxels;i++){
 		Eul[0] = x[i*9+0];
