@@ -432,7 +432,7 @@ static inline void PopulateMatrices (double omegaStep, double px, int nVoxels, d
 							idxPos += bestHKLNr*maxNPos;
 							#pragma omp critical
 							{
-								while (FLUT[idxPos]<0){ // Check if we already filled this up, wait until we find the one not filled up
+								while (FLUT[idxPos]>=0){ // Check if we already filled this up, wait until we find the one not filled up
 									idxPos++;
 								}
 								FLUT[idxPos] = bestRow-1;
