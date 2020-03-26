@@ -370,7 +370,7 @@ static inline long CalcDiffractionSpots(double Lsd, double Wavelength,
 static inline void PopulateMatrices (double omegaStep, double px, int nVoxels, double *voxelList, double voxelLen,
 									 double beamFWHM, int nBeamPositions, double *beamPositions, double omeTol, int nRings,
 									 double Euler[3], double LatC[6], int nhkls, double *hkls, double Lsd, double Wavelength,
-									 long totalNrSpots, long *AllIDsInfo, double *AllSpotsInfo, double *MatrixFilled,
+									 long totalNrSpots, long *AllIDsInfo, double *AllSpotsInfo,
 									 int maxNPos, long *FLUT, double *Fthis, double *spotInfoMat, double *filteredSpotInfo){
 	long i, voxelNr, nSpots, spotNr, positionNr, startRowNr, endRowNr, bestHKLNr, bestRow, idxPos;
 	double etaTol = 1.0, voxelFraction, pos0[3] = {0,0,0}; // EtaTol is assumed to be 1.
@@ -1192,10 +1192,10 @@ int main (int argc, char *argv[]){
 	current_time = time(NULL);
 	c_time_string = ctime(&current_time);
 	printf("Current time is %s", c_time_string);
-	printf("Populating SpotInfo matrices.\n");
-	PopulateSpotInfoMat(omegaStep, px, nVoxels, voxelList, voxelLen, beamFWHM, nBeamPositions, beamPositions,
-									omeTol, nRings, x, nhkls, hkls, Lsd, Wavelength, AllSpotsInfo, AllIDsInfo,
-									totalNrSpots, spotInfoMat, Fthis, filteredSpotInfo, maxNPos, FLUT);
+	printf("Populating matrices.\n");
+	PopulateMatrices (omegaStep, px, nVoxels, voxelList, voxelLen, beamFWHM, nBeamPositions, beamPositions, omeTol, nRings,
+					  Eul, LatCin, nhkls, hkls, Lsd, Wavelength, totalNrSpots, AllIDsInfo, AllSpotsInfo, maxNPos, FLUT, Fthis,
+					  spotInfoMat, filteredSpotInfo);
 	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end);
 	double t_ns = (double)(end.tv_sec - start.tv_sec) * 1.0e9 + (double)(end.tv_nsec - start.tv_nsec);
 
