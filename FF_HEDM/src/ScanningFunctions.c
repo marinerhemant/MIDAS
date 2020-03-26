@@ -434,6 +434,7 @@ static inline void PopulateMatrices (double omegaStep, double px, int nVoxels, d
 								idxPos++;
 							}
 							FLUT[idxPos] = bestRow-1;
+							printf("%ld %ld\n",idxPos,FLUT[idxPos]);
 							idxPos *= 5;
 							Fthis[idxPos + 0] = spotInfo[spotNr*9+7];
 							Fthis[idxPos + 1] = spotInfo[spotNr*9+8];
