@@ -1,3 +1,8 @@
+//
+// Copyright (c) 2014, UChicago Argonne, LLC
+// See LICENSE file.
+//
+
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
@@ -17,6 +22,7 @@
 #include <sys/mman.h>
 #include <nlopt.h>
 #include <omp.h>
+#include <signal.h>
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -32,7 +38,7 @@ struct timespec start;
 struct timespec end;
 double dx[4] = {-0.5,+0.5,+0.5,-0.5};
 double dy[4] = {-0.5,-0.5,+0.5,+0.5};
-
+nlopt_opt opt;
 static inline double sind(double x){return sin(deg2rad*x);}
 static inline double cosd(double x){return cos(deg2rad*x);}
 static inline double tand(double x){return tan(deg2rad*x);}
@@ -40,6 +46,13 @@ static inline double asind(double x){return rad2deg*(asin(x));}
 static inline double acosd(double x){return rad2deg*(acos(x));}
 static inline double atand(double x){return rad2deg*(atan(x));}
 static inline double sin_cos_to_angle (double s, double c){return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);}
+
+void sigintHandler(int sig_num)
+{
+	printf("\n Optimization terminated using Ctrl+C, we will exit gracefully and will write out last result. \n");
+	fflush(stdout);
+	nlopt_force_stop(opt);
+}
 
 static void check (int test, const char * message, ...){
     if (test) {
@@ -239,7 +252,7 @@ static inline double IntensityFraction(double voxLen, double beamPosition, doubl
 		if (etaPr < 45) eta = 90 - etaPr;
 		else eta = etaPr;
 	}
-	// What we need: minY, maxY, startY, endY
+	// What we need: minY, maxY
 	for (i=0;i<4;i++) {
 		xy[i][0] = voxelPosition[0] + dx[i]*voxLen;
 		xy[i][1] = voxelPosition[1] + dy[i]*voxLen;
@@ -353,7 +366,6 @@ static inline long CalcDiffractionSpots(double Lsd, double Wavelength,
 				spotPos[spotNr*4+3] = nrhkls;
 				break;
 			default:
-				spotPos[spotNr*7+6] = 0;
 				spotNr = -1;
 				nrhkls = -1;
 				break;
@@ -366,7 +378,7 @@ static inline long CalcDiffractionSpots(double Lsd, double Wavelength,
 	return spotNr;
 }
 
-// An assumption here that fraction of voxel in the beam does not change
+// An assumption here that fraction of voxel in the beam does not change during optimization
 static inline void PopulateMatrices (double omegaStep, double px, int nVoxels, double *voxelList, double voxelLen,
 									 double beamFWHM, int nBeamPositions, double *beamPositions, double omeTol, int nRings,
 									 double Euler[3], double LatC[6], int nhkls, double *hkls, double Lsd, double Wavelength,
@@ -404,7 +416,7 @@ static inline void PopulateMatrices (double omegaStep, double px, int nVoxels, d
 				for (i=startRowNr;i<=endRowNr;i++){
 					omeObs = AllSpotsInfo[14*(i-1)+2];
 					etaObs = AllSpotsInfo[14*(i-1)+6];
-					if (fabs(thisOmega-omeObs)<omeTol && fabs(thisEta-etaObs)<etaTol){ // We have a candidate
+					if (fabs(thisOmega-omeObs)<omeTol && fabs(thisEta-etaObs)<etaTol){
 						ys = AllSpotsInfo[14*(i-1)+0];
 						zs = AllSpotsInfo[14*(i-1)+1];
 						lenK = CalcNorm3(Lsd,ys,zs);
@@ -412,13 +424,12 @@ static inline void PopulateMatrices (double omegaStep, double px, int nVoxels, d
 						IA = fabs(acosd((gSim[0]*gObs[0]+gSim[1]*gObs[1]+gSim[2]*gObs[2])/
 								(CalcNorm3(gSim[0],gSim[1],gSim[2])*CalcNorm3(gObs[0],gObs[1],gObs[2]))));
 						if (IA < bestAngle) {
-							// mark this Spot to be used!!!!
 							bestAngle = IA;
 							bestRow = i;
 						}
 					}
 				}
-				if (bestAngle < 1){ // Good candidate, we can now find the voxels which can be inside.
+				if (bestAngle < 1){
 					for (voxelNr=0;voxelNr<nVoxels;voxelNr++){
 						thisPos[0] = voxelList[voxelNr*2+0];
 						thisPos[1] = voxelList[voxelNr*2+1];
@@ -436,16 +447,13 @@ static inline void PopulateMatrices (double omegaStep, double px, int nVoxels, d
 									idxPos++;
 								}
 								FLUT[idxPos] = bestRow-1;
-							}
-							idxPos *= 5;
-							Fthis[idxPos + 0] = spotInfo[spotNr*9+7];
-							Fthis[idxPos + 1] = spotInfo[spotNr*9+8];
-							Fthis[idxPos + 2] = spotInfo[spotNr*9+4];
-							Fthis[idxPos + 3] = voxelFraction;
-							Fthis[idxPos + 4] = positionNr;
-							// We also need to fill in spotInfoMat and filteredSpotInfo
-							#pragma omp critical
-							{
+								idxPos *= 5;
+								Fthis[idxPos + 0] = spotInfo[spotNr*9+7];
+								Fthis[idxPos + 1] = spotInfo[spotNr*9+8];
+								Fthis[idxPos + 2] = spotInfo[spotNr*9+4];
+								Fthis[idxPos + 3] = voxelFraction;
+								Fthis[idxPos + 4] = positionNr;
+								// We also need to fill in spotInfoMat and filteredSpotInfo
 								if (filteredSpotInfo[(bestRow-1)*4 + 3] == 0){
 									filteredSpotInfo[(bestRow-1)*4 + 0] = AllSpotsInfo[14*(bestRow-1)+0];
 									filteredSpotInfo[(bestRow-1)*4 + 1] = AllSpotsInfo[14*(bestRow-1)+1];
@@ -510,7 +518,6 @@ static inline double CalcSpotPosOneVoxOneParam(double omegaStep, double px, doub
 		normParams[2] = omegaStep*0.5*(1+1/sind(thisEta));
 		for (i=0;i<maxNPos;i++){
 			if (FLUTThis[bestHKLNr*maxNPos+i] >= 0){
-				// We will use the array markSpotsMat to mark the spots we have updated, for those spots, we will calculate the error. For the rest we do a for loop at the end.
 				idxPos = (bestHKLNr*maxNPos+i)*5;
 				positionNr = (long)refArr[idxPos+4];
 				thisBeamPos = beamPositions[positionNr];
@@ -529,7 +536,7 @@ static inline double CalcSpotPosOneVoxOneParam(double omegaStep, double px, doub
 	}
 	for (i=0;i<totalNrSpots;i++){
 		if (TestBit(markSpotsMat,i)){
-			ClearBit(markSpotsMat,i); // Unmark the array for use next time.
+			ClearBit(markSpotsMat,i);
 		} else {
 			diff += differencesMat[i];
 		}
@@ -537,8 +544,6 @@ static inline double CalcSpotPosOneVoxOneParam(double omegaStep, double px, doub
 	return diff;
 }
 
-// The following function will compute the updated spot position for one voxel only.
-// We will provide it with: voxelPos, EulerLatC, array location to be updated, FLUTstartPos, maxNPos, spotInfoMat.
 static inline void UpdSpotPosOneVox(double omegaStep, double px, double voxelLen, double beamFWHM, int nBeamPositions,
 									double *beamPositions, double omeTol, double *EulLatC, int nRings, int nhkls, double *hkls,
 									double Lsd, double Wavelength, double voxelPos[3], double *arrUpd,
@@ -550,7 +555,6 @@ static inline void UpdSpotPosOneVox(double omegaStep, double px, double voxelLen
 	int ringNr;
 	for (i=0;i<3;i++) EulerThis[i] = EulLatC[i];
 	for (i=0;i<6;i++) LatCThis[i] = EulLatC[i+3];
-	// Go back to 3 as the comparison type since we are not going to update anything except spotPositions
 	nSpots = CalcDiffractionSpots(Lsd,Wavelength,voxelPos,LatCThis,EulerThis,nhkls,hkls,spotInfo,3);
 	for (spotNr=0;spotNr<nSpots;spotNr++){
 		bestHKLNr = (long)spotInfo[spotNr*4+3];
@@ -577,14 +581,13 @@ static inline void UpdSpotPosOneVox(double omegaStep, double px, double voxelLen
 	}
 }
 
-// For each
 static inline double UpdateArraysThisLowHigh(double omegaStep, double px, int nVoxels, double *voxelList, double voxelLen,
 										double *x, double *x_prev, double beamFWHM, int nBeamPositions, double *beamPositions, double omeTol,
 										int nRings, int nhkls, double *hkls, double Lsd, double Wavelength, double *Fthis,
 										long *FLUT, long maxNPos, long totalNrSpots, double *spotInfoMat, double *AllSpotsInfo,
 										long *AllIDsInfo, double *filteredSpotInfo, double *diffLow, double *diffHigh, double h,
 										double *spotInfoAll, int *totalMarkSpotsMat, double *differencesMat){
-	# pragma omp parallel num_threads(numProcs) //shared(x,x_prev,voxelList,Fthis,FLUT,spotInfoAll,omegaStep,px,voxelLen,beamFWHM,nBeamPositions,beamPositions,omeTol,nhkls,hkls,Lsd,Wavelength,maxNPos,spotInfoMat)
+	# pragma omp parallel num_threads(numProcs)
 	{
 		long voxelNr;
 		long procNr = omp_get_thread_num();
@@ -595,7 +598,7 @@ static inline double UpdateArraysThisLowHigh(double omegaStep, double px, int nV
 		long spotInfoPos;
 		spotInfoPos = procNr;
 		spotInfoPos *= nhkls*2;
-		spotInfoPos *= 9;
+		spotInfoPos *= 4;
 		spotInfo = &spotInfoAll[spotInfoPos];
 		for (voxelNr=startVoxNr;voxelNr<endVoxNr;voxelNr++){
 			double thisParams[9];
@@ -610,8 +613,9 @@ static inline double UpdateArraysThisLowHigh(double omegaStep, double px, int nV
 			thisParams[8] = x[voxelNr*9+8];
 			if (thisParams[0] == x_prev[voxelNr*9+0] && thisParams[1] == x_prev[voxelNr*9+1] && thisParams[2] == x_prev[voxelNr*9+2] &&
 				thisParams[3] == x_prev[voxelNr*9+3] && thisParams[4] == x_prev[voxelNr*9+4] && thisParams[5] == x_prev[voxelNr*9+5] &&
-				thisParams[6] == x_prev[voxelNr*9+6] && thisParams[7] == x_prev[voxelNr*9+7] && thisParams[8] == x_prev[voxelNr*9+8]) // Nothing changed, do nothing.
+				thisParams[6] == x_prev[voxelNr*9+6] && thisParams[7] == x_prev[voxelNr*9+7] && thisParams[8] == x_prev[voxelNr*9+8]){
 					continue;
+			}
 			double voxelPos[3];
 			voxelPos[0] = voxelList[voxelNr*2+0];
 			voxelPos[1] = voxelList[voxelNr*2+1];
@@ -630,9 +634,8 @@ static inline double UpdateArraysThisLowHigh(double omegaStep, double px, int nV
 						Lsd, Wavelength, voxelPos, FthisVoxel, FLUTVoxel, maxNPos,spotInfoMat, spotInfo,AllSpotsInfo,AllIDsInfo,filteredSpotInfo);
 		}
 	}
-	// Calculate the total error! We provide spotInfoMat and filteredSpotInfo
 	double diffFThis = CalcDifferences(omegaStep,px,totalNrSpots,spotInfoMat,filteredSpotInfo,differencesMat);
-	# pragma omp parallel num_threads(numProcs) //shared(x,x_prev,voxelList,Fthis,FLUT,spotInfoAll,totalMarkSpotsMat,omegaStep,px,voxelLen,beamFWHM,nBeamPositions,beamPositions,omeTol,nhkls,hkls,Lsd,Wavelength,maxNPos,spotInfoMat,filteredSpotInfo,totalNrSpots)
+	# pragma omp parallel num_threads(numProcs)
 	{
 		long voxelNr;
 		long procNr = omp_get_thread_num();
@@ -643,7 +646,7 @@ static inline double UpdateArraysThisLowHigh(double omegaStep, double px, int nV
 		long spotInfoPos;
 		spotInfoPos = procNr;
 		spotInfoPos *= nhkls*2;
-		spotInfoPos *= 9;
+		spotInfoPos *= 4;
 		spotInfo = &spotInfoAll[spotInfoPos];
 		long posMark;
 		posMark = totalNrSpots;
@@ -692,7 +695,6 @@ static inline double UpdateArraysThisLowHigh(double omegaStep, double px, int nV
 				diffLow[voxelNr*9+i] = CalcSpotPosOneVoxOneParam(omegaStep, px, voxelLen, beamFWHM, nBeamPositions, beamPositions, omeTol, xlow, nhkls, hkls,
 										Lsd, Wavelength, voxelPos, FLUTVoxel, markSpotsMat, maxNPos, FthisVoxel, spotInfoMat,
 										filteredSpotInfo, totalNrSpots, spotInfo, differencesMat);
-				// Now calculate diffLow[voxelNr*9+i] value
 				diffHigh[voxelNr*9+i] = CalcSpotPosOneVoxOneParam(omegaStep, px, voxelLen, beamFWHM, nBeamPositions, beamPositions, omeTol, xhigh, nhkls, hkls,
 										Lsd, Wavelength, voxelPos, FLUTVoxel, markSpotsMat, maxNPos, FthisVoxel, spotInfoMat,
 										filteredSpotInfo, totalNrSpots, spotInfo, differencesMat);
@@ -715,7 +717,6 @@ static inline double UpdateArraysThisLowHigh(double omegaStep, double px, int nV
 	return diffFThis;
 }
 
-// Parameters to be passed by struct:
 struct FITTING_PARAMS {
 	double omegaStep,
 		px,
@@ -747,7 +748,6 @@ struct FITTING_PARAMS {
 		totalNrSpots;
 };
 
-// EulerAngles in radians!!!!
 static double problem_function(
 	unsigned n,
 	const double *x,
@@ -760,8 +760,7 @@ static double problem_function(
 	c_time_string = ctime(&current_time);
 	nIters ++;
 	printf("Iteration Nr: %d Current time is %s", nIters, c_time_string);
-	int nVoxels = n / 9; // nVoxels*9 is the total number of parameters to be optimized.
-	// x is arranged as EulerAngles, then LatC for each voxel. EulerAngle=x[voxelNr*9+{0,1,2}] and LatC=x[voxelNr*9+{3,4,5,6,7,8}].
+	int nVoxels = n / 9;
 	struct FITTING_PARAMS *f_data = (struct FITTING_PARAMS *) f_data_trial;
 	double omegaStep = f_data->omegaStep, px = f_data->px, voxelLen = f_data->voxelLen, beamFWHM = f_data->beamFWHM, omeTol = f_data->omeTol;
 	double Lsd = f_data->Lsd, Wavelength = f_data->Wavelength, h = f_data->h;
@@ -793,7 +792,6 @@ int main (int argc, char *argv[]){
 			   "Eg.	   ./ScanningFunctions  params.txt\n");
 		return;
 	}
-	// Read omegaStep, px, voxelLen, beamFWHM, omeTol, Lsd, Wavelength, nScans from PARAM file.
 	char *paramFN;
 	paramFN = argv[1];
 	FILE *fileParam;
@@ -804,10 +802,10 @@ int main (int argc, char *argv[]){
 	char aline[4096], dummy[4096];
 	char positionsFN[4096];
 	char voxelsFN[4096];
-	double EulTol = 3*deg2rad; // radians
-	double ABCTol = 3; // %
-	double ABGTol = 3; // %
-	double LatCin[6]; // Reference
+	double EulTol = 3*deg2rad;
+	double ABCTol = 3;
+	double ABGTol = 3;
+	double LatCin[6];
 	while(fgets(aline,4096,fileParam)!=NULL){
 		if (strncmp(aline,"OmegaStep",strlen("OmegaStep"))==0){
 			sscanf(aline,"%s %lf",dummy,&omegaStep);
@@ -839,7 +837,7 @@ int main (int argc, char *argv[]){
 		}
 		if (strncmp(aline,"OrientTol",strlen("OrientTol"))==0){
 			sscanf(aline,"%s %lf",dummy,&EulTol);
-			EulTol *= deg2rad; // Convert to radians
+			EulTol *= deg2rad;
 		}
 		if (strncmp(aline,"ABCTol",strlen("ABCTol"))==0){
 			sscanf(aline,"%s %lf",dummy,&ABCTol);
@@ -872,7 +870,6 @@ int main (int argc, char *argv[]){
 	}
 	fclose(fileParam);
 
-	// Read beamPositions from positions.csv file.
 	long i,j,k;
 	FILE *positionsFile;
 	positionsFile = fopen(positionsFN,"r");
@@ -883,12 +880,10 @@ int main (int argc, char *argv[]){
 	for (i=0;i<nBeamPositions;i++){
 		fgets(aline,4096,positionsFile);
 		sscanf(aline,"%lf",&beamPositions[i]);
-		beamPositions[i] *= -1000; // This is multiplied with -1 because if the movement is +ve, beam moves in the negative direction.
+		beamPositions[i] *= -1000;
 	}
 	fclose(positionsFile);
 
-	// Read hkls, nhkls, nRings (maxRingNr) from HKL file.
-	// hkls has h,k,l,ringNr
 	char hklfn[4096];
 	sprintf(hklfn,"hkls.csv");
 	FILE *hklf;
@@ -914,10 +909,9 @@ int main (int argc, char *argv[]){
 	double *hkls;
 	hkls = calloc(nhkls*4,sizeof(*hkls));
 	for (i=0;i<nhkls*4;i++) hkls[i] = hklTs[i];
-	nRings = (int)hkls[nhkls*4-1]; // Highest ring number
+	nRings = (int)hkls[nhkls*4-1];
 	free(hklTs);
 
-	// Read voxelList from VOXELS file.
 	FILE *voxelsFile;
 	voxelsFile = fopen(voxelsFN,"r");
 	double *voxelsT;
@@ -932,7 +926,6 @@ int main (int argc, char *argv[]){
 	for (i=0;i<nVoxels*2;i++) voxelList[i] = voxelsT[i];
 	free(voxelsT);
 
-	// Read AllSpotsInfo from ExtraInfo.bin
 	char cpCommand[4096];
 	sprintf(cpCommand,"cp ExtraInfo.bin /dev/shm");
 	system(cpCommand);
@@ -950,7 +943,6 @@ int main (int argc, char *argv[]){
 	check (AllSpotsInfo == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
 	long totalNrSpots = size/(14*sizeof(double));
 
-	// AllIDsInfo is to be filled
 	long *AllIDsInfo;
 	AllIDsInfo = calloc(nBeamPositions*nRings*2,sizeof(*AllIDsInfo));
 	FILE *idsfile;
@@ -967,7 +959,6 @@ int main (int argc, char *argv[]){
 	}
 	fclose(idsfile);
 
-	// GrainNr
 	char grainFN[4096];
 	sprintf(grainFN,"Grains.csv");
 	FILE *grainsFile;
@@ -981,7 +972,6 @@ int main (int argc, char *argv[]){
 	double Eul[3];
 	OrientMat2Euler(OM,Eul);
 
-	// Setup x
 	int n = nVoxels * 9;
 	double *x, *x_orig, *xl, *xu;
 	x = calloc(n,sizeof(*x));
@@ -1005,8 +995,6 @@ int main (int argc, char *argv[]){
 		printf("%lf %lf %lf\n",xl[i],x[i],xu[i]);
 	}
 
-	// Allocate Fthis array:
-	// Fthis: nVoxels*maxNPos*(nhkls+2)*2(nDiffrSpots)*5(y,z,ome,fraction,positionNr)
 	int maxNPos = 2*(2+ceil(2*beamFWHM/voxelLen));
 	size_t dataArrSize;
 	double *Fthis;
@@ -1017,7 +1005,6 @@ int main (int argc, char *argv[]){
 	dataArrSize *= 5;
 	Fthis = calloc(dataArrSize,sizeof(*Fthis));
 
-	// For each spot we will store 4 things: ymean, zmean, omemean, totalfraction
 	size_t sizeSpotInfoMat;
 	sizeSpotInfoMat = 4;
 	sizeSpotInfoMat *= totalNrSpots;
@@ -1026,7 +1013,6 @@ int main (int argc, char *argv[]){
 	filteredSpotInfo = calloc(sizeSpotInfoMat,sizeof(*filteredSpotInfo));
 	differencesMat = calloc(totalNrSpots,sizeof(*differencesMat));
 
-	// FLUT: For each voxel, each spot, each position, we store the rowNr for spotInfoMat
 	size_t sizeFLUT;
 	sizeFLUT = nVoxels;
 	sizeFLUT *= nhkls + 2;
@@ -1036,13 +1022,10 @@ int main (int argc, char *argv[]){
 	FLUT = calloc(sizeFLUT,sizeof(*FLUT));
 	for (i=0;i<sizeFLUT;i++) FLUT[i] = -1;
 
-	// Temp arrays to store the difference for each parameter to calculate grad.
 	double *diffHigh, *diffLow;
 	diffLow = calloc(n,sizeof(*diffLow));
 	diffHigh = calloc(n,sizeof(*diffHigh));
 
-	// We will also make an array to hold the previous values, this way we don't need to re-calculate the function if the parameter was not updated.
-	// This must be for the full voxel, if the voxel parameters were not updated, we do nothing and continue.
 	double *x_prev;
 	x_prev = calloc(n,sizeof(*x_prev));
 	double h = EPS;
@@ -1051,7 +1034,7 @@ int main (int argc, char *argv[]){
 	long lenSpotInfoAll;
 	lenSpotInfoAll = numProcs;
 	lenSpotInfoAll *= nhkls*2;
-	lenSpotInfoAll *= 9;
+	lenSpotInfoAll *= 4;
 	spotInfoAll = calloc(lenSpotInfoAll,sizeof(*spotInfoAll));
 	size_t sizemarkSpotsMat;
 	sizemarkSpotsMat = totalNrSpots;
@@ -1107,9 +1090,8 @@ int main (int argc, char *argv[]){
 	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end);
 	double t_ns = (double)(end.tv_sec - start.tv_sec) * 1.0e9 + (double)(end.tv_nsec - start.tv_nsec);
 
-	// Now we call the fitting function.
+	signal(SIGINT, sigintHandler);
 	nIters = 0;
-	nlopt_opt opt;
 	opt = nlopt_create(NLOPT_LD_MMA, n);
 	nlopt_set_lower_bounds(opt, xl);
 	nlopt_set_upper_bounds(opt, xu);
@@ -1120,7 +1102,6 @@ int main (int argc, char *argv[]){
 	printf("NLOPT Return Code %d, retval = %lf\n",r,minf);
 	nlopt_destroy(opt);
 
-	// Now calculate strains and write out
 	FILE *out;
 	out = fopen("refinedResult.csv","w");
 	fprintf(out,"%VoxelNr\tOM0\tOM1\tOM2\tOM3\tOM4\tOM5\tOM6\tOM7\tOM8\tx\ty\tz\tA\tB\tC\talpha\tbeta\tgamma\tE00\tE01\tE02\tE10\tE11\tE12\tE20\tE21\tE22\tEul0\tEul1\tEul2\n");
