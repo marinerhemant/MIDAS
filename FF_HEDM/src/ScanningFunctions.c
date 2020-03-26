@@ -874,6 +874,7 @@ int main (int argc, char *argv[]){
 		}
 	}
 	fclose(fileParam);
+	printf("Results will be written out to %s\n",outFN);
 
 	long i,j,k;
 	FILE *positionsFile;
