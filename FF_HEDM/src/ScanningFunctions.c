@@ -544,7 +544,7 @@ static inline void UpdSpotPosOneVox(double omegaStep, double px, double voxelLen
 									double Lsd, double Wavelength, double voxelPos[3], double *arrUpd,
 									long *FLUTThis, long maxNPos, double *spotInfoMat, double *spotInfo,
 									double *AllSpotsInfo, long *AllIDsInfo, double *filteredSpotInfo){
-	long i, nSpots, positionNr, bestHKLNr, idxPos, spotNr, spotRowNr, posNr, startRowNr, endRowNr, bestRow, tmpPos;
+	long i, nSpots, positionNr, bestHKLNr, idxPos, spotNr, spotRowNr, posNr, startRowNr, endRowNr, tmpPos;
 	double LatCThis[6], EulerThis[3], thisBeamPos;
 	double gSim[3], gObs[3], IA, bestAngle, omeObs, ys, zs, lenK;
 	int ringNr;
@@ -562,11 +562,11 @@ static inline void UpdSpotPosOneVox(double omegaStep, double px, double voxelLen
 				spotRowNr = FLUTThis[bestHKLNr*maxNPos+i];
 				#pragma omp critical
 				{
-					printf("%lf %lf %lf %lf",spotInfoMat[(bestRow-1)*4+0],spotInfoMat[(bestRow-1)*4+1],spotInfoMat[(bestRow-1)*4+2],spotInfoMat[spotRowNr*4+3]);
-					spotInfoMat[(bestRow-1)*4+0] += ((spotInfo[spotNr*4+0]-arrUpd[idxPos+0])*arrUpd[idxPos+3])/spotInfoMat[spotRowNr*4+3];
-					spotInfoMat[(bestRow-1)*4+1] += ((spotInfo[spotNr*4+1]-arrUpd[idxPos+1])*arrUpd[idxPos+3])/spotInfoMat[spotRowNr*4+3];
-					spotInfoMat[(bestRow-1)*4+2] += ((spotInfo[spotNr*4+2]-arrUpd[idxPos+2])*arrUpd[idxPos+3])/spotInfoMat[spotRowNr*4+3];
-					printf("%lf %lf %lf %lf \n",spotInfoMat[(bestRow-1)*4+0],spotInfoMat[(bestRow-1)*4+1],spotInfoMat[(bestRow-1)*4+2],spotInfoMat[spotRowNr*4+3]);
+					printf("%lf %lf %lf %lf ",spotInfoMat[spotRowNr*4+0],spotInfoMat[spotRowNr*4+1],spotInfoMat[spotRowNr*4+2],spotInfoMat[spotRowNr*4+3]);
+					spotInfoMat[spotRowNr*4+0] += ((spotInfo[spotNr*4+0]-arrUpd[idxPos+0])*arrUpd[idxPos+3])/spotInfoMat[spotRowNr*4+3];
+					spotInfoMat[spotRowNr*4+1] += ((spotInfo[spotNr*4+1]-arrUpd[idxPos+1])*arrUpd[idxPos+3])/spotInfoMat[spotRowNr*4+3];
+					spotInfoMat[spotRowNr*4+2] += ((spotInfo[spotNr*4+2]-arrUpd[idxPos+2])*arrUpd[idxPos+3])/spotInfoMat[spotRowNr*4+3];
+					printf("%lf %lf %lf %lf \n",spotInfoMat[spotRowNr*4+0],spotInfoMat[spotRowNr*4+1],spotInfoMat[spotRowNr*4+2],spotInfoMat[spotRowNr*4+3]);
 					fflush(stdout);
 				}
 				arrUpd[idxPos + 0] = spotInfo[spotNr*4+0];
@@ -1101,16 +1101,6 @@ int main (int argc, char *argv[]){
 	opt = nlopt_create(NLOPT_LD_MMA, n);
 	nlopt_set_lower_bounds(opt, xl);
 	nlopt_set_upper_bounds(opt, xu);
-	//~ double *xtol;
-	//~ xtol = calloc(n,sizeof(*xtol));
-	//~ nlopt_set_xtol_abs(opt,xtol);
-	//~ double dx[n];
-	//~ for (i=0;i<nVoxels;i++){
-		//~ for (j=0;j<3;j++) dx[i*9+j] = 1e-6;
-		//~ for (j=3;j<6;j++) dx[i*9+j] = 1e-6;
-		//~ for (j=6;j<9;j++) dx[i*9+j] = 1e-6;
-	//~ }
-	//~ nlopt_set_initial_step(opt, dx);
 	nlopt_set_maxeval(opt,1e3);
 	nlopt_set_min_objective(opt, problem_function, trp);
 	double minf;
