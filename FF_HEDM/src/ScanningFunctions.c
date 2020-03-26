@@ -800,7 +800,7 @@ int main (int argc, char *argv[]){
 	FILE *fileParam;
 	fileParam = fopen(paramFN,"r");
 	double omegaStep, px, voxelLen, beamFWHM, omeTol, Lsd, Wavelength;
-	int nScans, rings[500], nRings=0;
+	int nScans, rings[500], nRings=0, maxNEvals=1000;
 	char aline[4096], dummy[4096];
 	double EulTol = 3*deg2rad; // radians
 	double ABCTol = 3; // %
@@ -847,6 +847,9 @@ int main (int argc, char *argv[]){
 		}
 		if (strncmp(aline,"nLayers",strlen("nLayers"))==0){
 			sscanf(aline,"%s %d",dummy,&nScans);
+		}
+		if (strncmp(aline,"maxNEvals",strlen("maxNEvals"))==0){
+			sscanf(aline,"%s %d",dummy,&maxNEvals);
 		}
 		if (strncmp(aline,"RingThresh",strlen("RingThresh"))==0){
 			sscanf(aline,"%s %d",dummy,&rings[nRings]);
@@ -1101,7 +1104,7 @@ int main (int argc, char *argv[]){
 	opt = nlopt_create(NLOPT_LD_MMA, n);
 	nlopt_set_lower_bounds(opt, xl);
 	nlopt_set_upper_bounds(opt, xu);
-	nlopt_set_maxeval(opt,1e3);
+	nlopt_set_maxeval(opt,maxNEvals);
 	nlopt_set_min_objective(opt, problem_function, trp);
 	double minf;
 	nlopt_result r = nlopt_optimize(opt, x, &minf);
