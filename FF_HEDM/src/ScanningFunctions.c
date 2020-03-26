@@ -379,6 +379,7 @@ static inline void PopulateMatrices (double omegaStep, double px, int nVoxels, d
 	spotInfo = calloc(nhkls*2*9,sizeof(*spotInfo));
 	nSpots = CalcDiffractionSpots(Lsd,Wavelength,pos0,LatC,Euler,nhkls,hkls,spotInfo,1);
 	for (spotNr=0;spotNr<nSpots;spotNr++){
+		printf("%ld out of %ld\n",nSpots,spotNr);
 		thisOmega = spotInfo[spotNr*9+4];
 		thisEta = spotInfo[spotNr*9+3];
 		ringNr = (int)spotInfo[spotNr*9+5];
