@@ -788,12 +788,11 @@ static double problem_function(
 
 int main (int argc, char *argv[]){
 
-	if (argc!=7){
-		printf("Usage: ./ScanningFunctions ParameterFile BeamPosition  GrainVoxels    IDsHash    GrainNr numProcs\n"
-			   "Eg.	   ./ScanningFunctions  params.txt   positions.csv voxelPos.csv IDsHash.csv    2       64\n");
+	if (argc!=2){
+		printf("Usage: ./ScanningFunctions ParameterFile\n"
+			   "Eg.	   ./ScanningFunctions  params.txt\n");
 		return;
 	}
-	numProcs = atoi(argv[6]);
 	// Read omegaStep, px, voxelLen, beamFWHM, omeTol, Lsd, Wavelength, nScans from PARAM file.
 	char *paramFN;
 	paramFN = argv[1];
@@ -801,7 +800,10 @@ int main (int argc, char *argv[]){
 	fileParam = fopen(paramFN,"r");
 	double omegaStep, px, voxelLen, beamFWHM, omeTol, Lsd, Wavelength;
 	int nScans, rings[500], nRings=0, maxNEvals=1000;
+	int GrainNr=1;
 	char aline[4096], dummy[4096];
+	char positionsFN[4096];
+	char voxelsFN[4096];
 	double EulTol = 3*deg2rad; // radians
 	double ABCTol = 3; // %
 	double ABGTol = 3; // %
@@ -848,8 +850,20 @@ int main (int argc, char *argv[]){
 		if (strncmp(aline,"nLayers",strlen("nLayers"))==0){
 			sscanf(aline,"%s %d",dummy,&nScans);
 		}
-		if (strncmp(aline,"maxNEvals",strlen("maxNEvals"))==0){
+		if (strncmp(aline,"GrainNr",strlen("GrainNr"))==0){
+			sscanf(aline,"%s %d",dummy,&GrainNr);
+		}
+		if (strncmp(aline,"NProcs",strlen("NProcs"))==0){
+			sscanf(aline,"%s %d",dummy,&numProcs);
+		}
+		if (strncmp(aline,"MaxNEvals",strlen("MaxNEvals"))==0){
 			sscanf(aline,"%s %d",dummy,&maxNEvals);
+		}
+		if (strncmp(aline,"PositionsFile",strlen("PositionsFile"))==0){
+			sscanf(aline,"%s %s",dummy,positionsFN);
+		}
+		if (strncmp(aline,"VoxelsFile",strlen("VoxelsFile"))==0){
+			sscanf(aline,"%s %s",dummy,voxelsFN);
 		}
 		if (strncmp(aline,"RingThresh",strlen("RingThresh"))==0){
 			sscanf(aline,"%s %d",dummy,&rings[nRings]);
@@ -860,8 +874,6 @@ int main (int argc, char *argv[]){
 
 	// Read beamPositions from positions.csv file.
 	long i,j,k;
-	char *positionsFN;
-	positionsFN = argv[2];
 	FILE *positionsFile;
 	positionsFile = fopen(positionsFN,"r");
 	int nBeamPositions = nScans;
@@ -906,8 +918,6 @@ int main (int argc, char *argv[]){
 	free(hklTs);
 
 	// Read voxelList from VOXELS file.
-	char *voxelsFN;
-	voxelsFN = argv[3];
 	FILE *voxelsFile;
 	voxelsFile = fopen(voxelsFN,"r");
 	double *voxelsT;
@@ -944,8 +954,8 @@ int main (int argc, char *argv[]){
 	long *AllIDsInfo;
 	AllIDsInfo = calloc(nBeamPositions*nRings*2,sizeof(*AllIDsInfo));
 	FILE *idsfile;
-	char *idsfn;
-	idsfn = argv[4];
+	char idsfn[4096];
+	sprintf(idsfn,"IDsHash.csv");
 	idsfile = fopen(idsfn,"r");
 	int positionNr, startNr, endNr, ringNr;
 	fgets(aline,4096,idsfile);
@@ -958,7 +968,6 @@ int main (int argc, char *argv[]){
 	fclose(idsfile);
 
 	// GrainNr
-	int GrainNr = atoi(argv[5]);
 	char grainFN[4096];
 	sprintf(grainFN,"Grains.csv");
 	FILE *grainsFile;
