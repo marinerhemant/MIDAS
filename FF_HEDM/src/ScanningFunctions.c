@@ -389,7 +389,7 @@ static inline void PopulateMatrices (double omegaStep, double px, int nVoxels, d
 		startSpotNr = procNr * nrSpotsThread;
 		endSpotNr = (startSpotNr+nrSpotsThread > nSpots) ? nSpots : startSpotNr+nrSpotsThread;
 		for (spotNr=startSpotNr;spotNr<endSpotNr;spotNr++){
-			printf("%ld out of %ld\n",spotNr-startSpotNr+1,endSpotNr-spotNr);
+			printf("%ld out of %ld\n",spotNr-startSpotNr+1,endSpotNr-startSpotNr);
 			thisOmega = spotInfo[spotNr*9+4];
 			thisEta = spotInfo[spotNr*9+3];
 			ringNr = (int)spotInfo[spotNr*9+5];
