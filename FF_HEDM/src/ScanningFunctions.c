@@ -461,75 +461,6 @@ static inline void PopulateMatrices (double omegaStep, double px, int nVoxels, d
 			}
 		}
 	}
-	//~ for (spotNr=0;spotNr<nSpots;spotNr++){
-		//~ printf("%ld out of %ld\n",spotNr,nSpots);
-		//~ thisOmega = spotInfo[spotNr*9+4];
-		//~ thisEta = spotInfo[spotNr*9+3];
-		//~ ringNr = (int)spotInfo[spotNr*9+5];
-		//~ gSim[0] = spotInfo[spotNr*9+0];
-		//~ gSim[1] = spotInfo[spotNr*9+1];
-		//~ gSim[2] = spotInfo[spotNr*9+2];
-		//~ bestHKLNr = (long)spotInfo[spotNr*9+6];
-		//~ for (positionNr=0;positionNr<nBeamPositions;positionNr++){
-			//~ thisBeamPosition = beamPositions[positionNr];
-			//~ startRowNr = AllIDsInfo[(positionNr*nRings+ringNr)*2+0];
-			//~ endRowNr = AllIDsInfo[(positionNr*nRings+ringNr)*2+1];
-			//~ bestAngle = 1e10;
-			//~ for (i=startRowNr;i<=endRowNr;i++){
-				//~ omeObs = AllSpotsInfo[14*(i-1)+2];
-				//~ etaObs = AllSpotsInfo[14*(i-1)+6];
-				//~ if (fabs(thisOmega-omeObs)<omeTol && fabs(thisEta-etaObs)<etaTol){ // We have a candidate
-					//~ ys = AllSpotsInfo[14*(i-1)+0];
-					//~ zs = AllSpotsInfo[14*(i-1)+1];
-					//~ lenK = CalcNorm3(Lsd,ys,zs);
-					//~ SpotToGv(Lsd/lenK,ys/lenK,zs/lenK,omeObs,AllSpotsInfo[14*(i-1)+7]/2,&gObs[0],&gObs[1],&gObs[2]);
-					//~ IA = fabs(acosd((gSim[0]*gObs[0]+gSim[1]*gObs[1]+gSim[2]*gObs[2])/
-							//~ (CalcNorm3(gSim[0],gSim[1],gSim[2])*CalcNorm3(gObs[0],gObs[1],gObs[2]))));
-					//~ if (IA < bestAngle) {
-						//~ // mark this Spot to be used!!!!
-						//~ bestAngle = IA;
-						//~ bestRow = i;
-					//~ }
-				//~ }
-			//~ }
-			//~ if (bestAngle < 1){ // Good candidate, we can now find the voxels which can be inside.
-				//~ for (voxelNr=0;voxelNr<nVoxels;voxelNr++){
-					//~ thisPos[0] = voxelList[voxelNr*2+0];
-					//~ thisPos[1] = voxelList[voxelNr*2+1];
-					//~ thisPos[2] = 0;
-					//~ voxelFraction = IntensityFraction(voxelLen,thisBeamPosition,beamFWHM,thisPos,thisOmega);
-					//~ if (voxelFraction > 0){ // We now know that this voxel is in the beam, let's populate our matrix
-						//~ idxPos = voxelNr;
-						//~ idxPos *= nhkls+2;
-						//~ idxPos *= 2;
-						//~ idxPos *= maxNPos;
-						//~ idxPos += bestHKLNr*maxNPos;
-						//~ while (FLUT[idxPos]<0){ // Check if we already filled this up, wait until we find the one not filled up
-							//~ idxPos++;
-						//~ }
-						//~ FLUT[idxPos] = bestRow-1;
-						//~ idxPos *= 5;
-						//~ Fthis[idxPos + 0] = spotInfo[spotNr*9+7];
-						//~ Fthis[idxPos + 1] = spotInfo[spotNr*9+8];
-						//~ Fthis[idxPos + 2] = spotInfo[spotNr*9+4];
-						//~ Fthis[idxPos + 3] = voxelFraction;
-						//~ Fthis[idxPos + 4] = positionNr;
-						//~ // We also need to fill in spotInfoMat and filteredSpotInfo
-						//~ if (filteredSpotInfo[(bestRow-1)*4 + 3] == 0){
-							//~ filteredSpotInfo[(bestRow-1)*4 + 0] = AllSpotsInfo[14*(bestRow-1)+0];
-							//~ filteredSpotInfo[(bestRow-1)*4 + 1] = AllSpotsInfo[14*(bestRow-1)+1];
-							//~ filteredSpotInfo[(bestRow-1)*4 + 2] = AllSpotsInfo[14*(bestRow-1)+2];
-							//~ filteredSpotInfo[(bestRow-1)*4 + 3] = 1;
-						//~ }
-						//~ spotInfoMat[(bestRow-1)*4+0] += spotInfo[spotNr*9+7]*voxelFraction;
-						//~ spotInfoMat[(bestRow-1)*4+1] += spotInfo[spotNr*9+8]*voxelFraction;
-						//~ spotInfoMat[(bestRow-1)*4+2] += spotInfo[spotNr*9+4]*voxelFraction;
-						//~ spotInfoMat[(bestRow-1)*4+3] += voxelFraction;
-					//~ }
-				//~ }
-			//~ }
-		//~ }
-	//~ }
 	long i;
 	for (i=0;i<totalNrSpots;i++){
 		if (filteredSpotInfo[i*4+3] == 0) continue;
@@ -638,16 +569,16 @@ static inline void UpdSpotPosOneVox(double omegaStep, double px, double voxelLen
 				positionNr = (long)arrUpd[idxPos+4];
 				thisBeamPos = beamPositions[positionNr];
 				spotRowNr = FLUTThis[bestHKLNr*maxNPos+i];
-				arrUpd[idxPos + 0] = spotInfo[spotNr*4+0];
-				arrUpd[idxPos + 1] = spotInfo[spotNr*4+1];
-				arrUpd[idxPos + 2] = spotInfo[spotNr*4+2];
-				arrUpd[idxPos + 4] = positionNr;
 				#pragma omp critical
 				{
 					spotInfoMat[(bestRow-1)*4+0] += ((spotInfo[spotNr*4+0]-arrUpd[idxPos+0])*arrUpd[idxPos+3])/spotInfoMat[spotRowNr*4+3];
 					spotInfoMat[(bestRow-1)*4+1] += ((spotInfo[spotNr*4+1]-arrUpd[idxPos+1])*arrUpd[idxPos+3])/spotInfoMat[spotRowNr*4+3];
 					spotInfoMat[(bestRow-1)*4+2] += ((spotInfo[spotNr*4+2]-arrUpd[idxPos+2])*arrUpd[idxPos+3])/spotInfoMat[spotRowNr*4+3];
 				}
+				arrUpd[idxPos + 0] = spotInfo[spotNr*4+0];
+				arrUpd[idxPos + 1] = spotInfo[spotNr*4+1];
+				arrUpd[idxPos + 2] = spotInfo[spotNr*4+2];
+				arrUpd[idxPos + 4] = positionNr;
 			} else {
 				break;
 			}
