@@ -472,33 +472,22 @@ static inline void PopulateMatrices (double omegaStep, double px, int nVoxels, d
 
 static inline double CalcDifferences(double omegaStep, double px, long totalNrSpots, double *spotInfoMat, double *filteredSpotInfo, double *differencesMat){
 	long i;
-	double diff=0;//,td=0;
+	double diff=0;
 	double normParams[3], Eta;
 	normParams[0] = 0.1*px;
 	normParams[1] = 0.1*px;
 	for (i=0;i<totalNrSpots;i++){
 		if (filteredSpotInfo[i*4+3] == 0) continue;
-		//~ if (CalcNorm2(spotInfoMat[i*4+0],spotInfoMat[i*4+1]) == 0){
-			//~ normParams[2] = 1;
-			//~ differencesMat[i] = 1000 * CalcNorm3((spotInfoMat[i*4+0]-filteredSpotInfo[i*4+0])/normParams[0],
-										  //~ (spotInfoMat[i*4+1]-filteredSpotInfo[i*4+1])/normParams[1],
-										  //~ (spotInfoMat[i*4+2]-filteredSpotInfo[i*4+2])/normParams[2]);
-			//~ td += differencesMat[i];
-		//~ } else {
-			Eta = CalcEta(spotInfoMat[i*4+0],spotInfoMat[i*4+1]);
-			normParams[2] = omegaStep*0.5*(1+1/sind(Eta));
-			differencesMat[i] = CalcNorm3((spotInfoMat[i*4+0]-filteredSpotInfo[i*4+0])/normParams[0],
-										  (spotInfoMat[i*4+1]-filteredSpotInfo[i*4+1])/normParams[1],
-										  (spotInfoMat[i*4+2]-filteredSpotInfo[i*4+2])/normParams[2]);
-		//~ }
+		Eta = CalcEta(spotInfoMat[i*4+0],spotInfoMat[i*4+1]);
+		normParams[2] = omegaStep*0.5*(1+1/sind(Eta));
+		differencesMat[i] = CalcNorm3((spotInfoMat[i*4+0]-filteredSpotInfo[i*4+0])/normParams[0],
+									  (spotInfoMat[i*4+1]-filteredSpotInfo[i*4+1])/normParams[1],
+									  (spotInfoMat[i*4+2]-filteredSpotInfo[i*4+2])/normParams[2]);
 		diff += differencesMat[i];
 	}
-	//~ printf("TD: %lf ",td);
 	return diff;
 }
 
-// The following function will compute the updated spot position for one voxel and one combination of EulLatC only.
-// We will provide it with: voxelPos, EulerLatC, array location to be updated, FLUTstartPos, maxNPos, refArr(used to get position Nr). That's it.
 static inline double CalcSpotPosOneVoxOneParam(double omegaStep, double px, double voxelLen, double beamFWHM, int nBeamPositions,
 									double *beamPositions, double omeTol, double *EulLatC, int nhkls, double *hkls,
 									double Lsd, double Wavelength, double voxelPos[3],
