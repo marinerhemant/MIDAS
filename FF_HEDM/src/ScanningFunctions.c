@@ -430,11 +430,14 @@ static inline void PopulateMatrices (double omegaStep, double px, int nVoxels, d
 							idxPos *= 2;
 							idxPos *= maxNPos;
 							idxPos += bestHKLNr*maxNPos;
-							while (FLUT[idxPos]<0){ // Check if we already filled this up, wait until we find the one not filled up
-								idxPos++;
+							#pragma omp critical
+							{
+								while (FLUT[idxPos]<0){ // Check if we already filled this up, wait until we find the one not filled up
+									idxPos++;
+								}
+								FLUT[idxPos] = bestRow-1;
+								printf("%ld %ld\n",idxPos,FLUT[idxPos]);
 							}
-							FLUT[idxPos] = bestRow-1;
-							printf("%ld %ld\n",idxPos,FLUT[idxPos]);
 							idxPos *= 5;
 							Fthis[idxPos + 0] = spotInfo[spotNr*9+7];
 							Fthis[idxPos + 1] = spotInfo[spotNr*9+8];
