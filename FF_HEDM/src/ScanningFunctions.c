@@ -986,11 +986,11 @@ int main (int argc, char *argv[]){
 	srand48(time(NULL));
 	for (i=0;i<nVoxels;i++){
 		for (j=0;j<3;j++) x[i*9+j] = Eul[j];
-		for (j=0;j<3;j++) x[i*9+j] = Eul[j]*(1+0.01*(drand48()-0.5)); // Change this from starting value by a small random number between -0.5% to 0.5%
+		for (j=0;j<3;j++) x[i*9+j] = Eul[j]*(1+0.003*(drand48()-0.5)); // Change this from starting value by a small random number between -0.5% to 0.5%
 		for (j=0;j<3;j++) xl[i*9+j] = Eul[j] - EulTol;
 		for (j=0;j<3;j++) xu[i*9+j] = Eul[j] + EulTol;
 		for (j=0;j<6;j++) x[i*9+3+j] = LatCin[j];
-		for (j=0;j<6;j++) x[i*9+3+j] = LatCin[j]*(1+0.01*(drand48()-0.5)); // Change this from starting value by a small random number between -0.5% to 0.5%
+		for (j=0;j<6;j++) x[i*9+3+j] = LatCin[j]*(1+0.003*(drand48()-0.5)); // Change this from starting value by a small random number between -0.5% to 0.5%
 		for (j=0;j<3;j++) xl[i*9+3+j] = LatCin[j]*(100-ABCTol)/100;
 		for (j=3;j<6;j++) xl[i*9+3+j] = LatCin[j]*(100-ABGTol)/100;
 		for (j=0;j<3;j++) xu[i*9+3+j] = LatCin[j]*(100+ABCTol)/100;
