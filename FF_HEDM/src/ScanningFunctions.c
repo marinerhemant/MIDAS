@@ -788,7 +788,6 @@ static double problem_function(
 }
 
 int main (int argc, char *argv[]){
-
 	if (argc!=2){
 		printf("Usage: ./ScanningFunctions ParameterFile\n"
 			   "Eg.	   ./ScanningFunctions  params.txt\n");
@@ -984,11 +983,14 @@ int main (int argc, char *argv[]){
 	x_orig = calloc(n,sizeof(*x_orig));
 	xl = calloc(n,sizeof(*xl));
 	xu = calloc(n,sizeof(*xu));
+	srand48(time(NULL));
 	for (i=0;i<nVoxels;i++){
 		for (j=0;j<3;j++) x[i*9+j] = Eul[j];
+		for (j=0;j<3;j++) x[i*9+j] = Eul[j]*0.01*(drand48()-0.5); // Change this from starting value by a small random number between -0.5% to 0.5%
 		for (j=0;j<3;j++) xl[i*9+j] = Eul[j] - EulTol;
 		for (j=0;j<3;j++) xu[i*9+j] = Eul[j] + EulTol;
 		for (j=0;j<6;j++) x[i*9+3+j] = LatCin[j];
+		for (j=0;j<6;j++) x[i*9+3+j] = LatCin[j]*0.01*(drand48()-0.5); // Change this from starting value by a small random number between -0.5% to 0.5%
 		for (j=0;j<3;j++) xl[i*9+3+j] = LatCin[j]*(100-ABCTol)/100;
 		for (j=3;j<6;j++) xl[i*9+3+j] = LatCin[j]*(100-ABGTol)/100;
 		for (j=0;j<3;j++) xu[i*9+3+j] = LatCin[j]*(100+ABCTol)/100;
@@ -1096,8 +1098,23 @@ int main (int argc, char *argv[]){
 	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end);
 	double t_ns = (double)(end.tv_sec - start.tv_sec) * 1.0e9 + (double)(end.tv_nsec - start.tv_nsec);
 
-	signal(SIGINT, sigintHandler);
-	nIters = 0;
+	//~ // Try global optimization
+	//~ signal(SIGINT, sigintHandler);
+	//~ nIters = 0;
+	//~ opt = nlopt_create(NLOPT_G_MLSL,n);
+	//~ nlopt_opt local_opt = nlopt_create(NLOPT_LD_MMA, n);
+	//~ nlopt_set_min_objective(local_opt, problem_function, trp);
+	//~ nlopt_set_maxeval(local_opt,maxNEvals);
+	//~ nlopt_set_local_optimizer(opt,local_opt);
+	//~ nlopt_set_min_objective(opt, problem_function, trp);
+	//~ nlopt_set_lower_bounds(opt, xl);
+	//~ nlopt_set_upper_bounds(opt, xu);
+	//~ double minf;
+	//~ nlopt_result r = nlopt_optimize(opt, x, &minf);
+	//~ printf("NLOPT Return Code %d, retval = %lf\n",r,minf);
+	//~ nlopt_destroy(opt);
+
+	//~ // Local Optimization
 	opt = nlopt_create(NLOPT_LD_MMA, n);
 	nlopt_set_lower_bounds(opt, xl);
 	nlopt_set_upper_bounds(opt, xu);
@@ -1123,6 +1140,9 @@ int main (int argc, char *argv[]){
 		LatticeParameterFit[4] = x[i*9+3+4];
 		LatticeParameterFit[5] = x[i*9+3+5];
 		Euler2OrientMat(Eul,OM);
+		Eul[0] *= rad2deg;
+		Eul[1] *= rad2deg;
+		Eul[2] *= rad2deg;
 		CalcStrainTensorFableBeaudoin(LatCin, LatticeParameterFit, OM, StrainTensorSample);
 		fprintf(out,"%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t0.0000\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",
 			(double)i,OM[0][0],OM[0][1],OM[0][2],OM[1][0],OM[1][1],OM[1][2],OM[2][0],OM[2][1],OM[2][2],
