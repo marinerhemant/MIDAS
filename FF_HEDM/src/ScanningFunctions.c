@@ -802,12 +802,32 @@ int main (int argc, char *argv[]){
 	int GrainNr=1;
 	char aline[4096], dummy[4096];
 	char positionsFN[4096], outFN[4096];
+	char grainFN[4096];
+	char idsfn[4096];
+	char hklfn[4096];
+	char spotInfoFN[4096];
+	sprintf(hklfn,"hkls.csv");
+	sprintf(grainFN,"Grains.csv");
+	sprintf(idsfn,"IDsHash.csv");
+	sprintf(spotInfoFN,"ExtraInfo.bin");
 	char voxelsFN[4096];
 	double EulTol = 3*deg2rad;
 	double ABCTol = 3;
 	double ABGTol = 3;
 	double LatCin[6];
 	while(fgets(aline,4096,fileParam)!=NULL){
+		if (strncmp(aline,"HKLFile",strlen("HKLFile"))==0){
+			sscanf(aline,"%s %s",dummy,hklfn);
+		}
+		if (strncmp(aline,"GrainsFile",strlen("GrainsFile"))==0){
+			sscanf(aline,"%s %s",dummy,grainFN);
+		}
+		if (strncmp(aline,"IDsFile",strlen("IDsFile"))==0){
+			sscanf(aline,"%s %s",dummy,idsfn);
+		}
+		if (strncmp(aline,"SpotsFile",strlen("SpotsFile"))==0){
+			sscanf(aline,"%s %s",dummy,spotInfoFN);
+		}
 		if (strncmp(aline,"OmegaStep",strlen("OmegaStep"))==0){
 			sscanf(aline,"%s %lf",dummy,&omegaStep);
 			omegaStep = fabs(omegaStep);
@@ -889,8 +909,6 @@ int main (int argc, char *argv[]){
 	}
 	fclose(positionsFile);
 
-	char hklfn[4096];
-	sprintf(hklfn,"hkls.csv");
 	FILE *hklf;
 	hklf = fopen(hklfn,"r");
 	double ht,kt,lt,ringT;
@@ -932,7 +950,7 @@ int main (int argc, char *argv[]){
 	free(voxelsT);
 
 	char cpCommand[4096];
-	sprintf(cpCommand,"cp ExtraInfo.bin /dev/shm");
+	sprintf(cpCommand,"cp %s /dev/shm/ExtraInfo.bin",spotInfoFN);
 	system(cpCommand);
 	const char *filename = "/dev/shm/ExtraInfo.bin";
 	int rc;
@@ -951,8 +969,6 @@ int main (int argc, char *argv[]){
 	long *AllIDsInfo;
 	AllIDsInfo = calloc(nBeamPositions*nRings*2,sizeof(*AllIDsInfo));
 	FILE *idsfile;
-	char idsfn[4096];
-	sprintf(idsfn,"IDsHash.csv");
 	idsfile = fopen(idsfn,"r");
 	int positionNr, startNr, endNr, ringNr;
 	fgets(aline,4096,idsfile);
@@ -964,8 +980,6 @@ int main (int argc, char *argv[]){
 	}
 	fclose(idsfile);
 
-	char grainFN[4096];
-	sprintf(grainFN,"Grains.csv");
 	FILE *grainsFile;
 	grainsFile = fopen(grainFN,"r");
 	char line[20000];
@@ -1098,32 +1112,33 @@ int main (int argc, char *argv[]){
 	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end);
 	double t_ns = (double)(end.tv_sec - start.tv_sec) * 1.0e9 + (double)(end.tv_nsec - start.tv_nsec);
 
-	// Try global optimization
-	signal(SIGINT, sigintHandler);
-	nIters = 0;
-	opt = nlopt_create(NLOPT_G_MLSL,n);
-	nlopt_opt local_opt = nlopt_create(NLOPT_LD_MMA, n);
-	nlopt_set_min_objective(local_opt, problem_function, trp);
-	nlopt_set_maxeval(local_opt,maxNEvals);
-	nlopt_set_local_optimizer(opt,local_opt);
-	nlopt_set_min_objective(opt, problem_function, trp);
-	nlopt_set_lower_bounds(opt, xl);
-	nlopt_set_upper_bounds(opt, xu);
-	double minf;
-	nlopt_result r = nlopt_optimize(opt, x, &minf);
-	printf("NLOPT Return Code %d, retval = %lf\n",r,minf);
-	nlopt_destroy(opt);
-
-	// Local Optimization
-	//~ opt = nlopt_create(NLOPT_LD_MMA, n);
+	//~ // Try global optimization
+	//~ signal(SIGINT, sigintHandler);
+	//~ nIters = 0;
+	//~ opt = nlopt_create(NLOPT_G_MLSL_LDS,n);
+	//~ nlopt_set_population(opt,10);
+	//~ nlopt_opt local_opt = nlopt_create(NLOPT_LD_MMA, n);
+	//~ nlopt_set_min_objective(local_opt, problem_function, trp);
+	//~ nlopt_set_maxeval(local_opt,maxNEvals);
+	//~ nlopt_set_local_optimizer(opt,local_opt);
+	//~ nlopt_set_min_objective(opt, problem_function, trp);
 	//~ nlopt_set_lower_bounds(opt, xl);
 	//~ nlopt_set_upper_bounds(opt, xu);
-	//~ nlopt_set_maxeval(opt,maxNEvals);
-	//~ nlopt_set_min_objective(opt, problem_function, trp);
 	//~ double minf;
 	//~ nlopt_result r = nlopt_optimize(opt, x, &minf);
 	//~ printf("NLOPT Return Code %d, retval = %lf\n",r,minf);
 	//~ nlopt_destroy(opt);
+
+	//~ // Local Optimization
+	opt = nlopt_create(NLOPT_LD_MMA, n);
+	nlopt_set_lower_bounds(opt, xl);
+	nlopt_set_upper_bounds(opt, xu);
+	nlopt_set_maxeval(opt,maxNEvals);
+	nlopt_set_min_objective(opt, problem_function, trp);
+	double minf;
+	nlopt_result r = nlopt_optimize(opt, x, &minf);
+	printf("NLOPT Return Code %d, retval = %lf\n",r,minf);
+	nlopt_destroy(opt);
 
 	FILE *out;
 	out = fopen(outFN,"w");
