@@ -438,9 +438,6 @@ int main (int argc, char *argv[]){
 		if (strncmp(aline,"PositionsFile",strlen("PositionsFile"))==0){
 			sscanf(aline,"%s %s",dummy,positionsFN);
 		}
-		if (strncmp(aline,"OutFN",strlen("OutFN"))==0){
-			sscanf(aline,"%s %s",dummy,outFN);
-		}
 		if (strncmp(aline,"VoxelsFile",strlen("VoxelsFile"))==0){
 			sscanf(aline,"%s %s",dummy,voxelsFN);
 		}
@@ -450,7 +447,6 @@ int main (int argc, char *argv[]){
 		}
 	}
 	fclose(fileParam);
-	printf("Results will be written out to %s\n",outFN);
 
 	long i,j,k;
 	FILE *positionsFile;
@@ -531,6 +527,8 @@ int main (int argc, char *argv[]){
 	double thisPosition[3], rotatedPosition[3], LatC[6], Euler[3];
 	double thisOmega, thisEta, thisBeamPosition, voxelFraction;
 	for (voxelNr=0;voxelNr<nVoxels;voxelNr++){
+		printf("%ld\n",voxelNr);
+		fflush(stdout);
 		// Let's simulate the dataset without any pertubation
 		LatC[0] = LatCin[0];
 		LatC[1] = LatCin[1];
