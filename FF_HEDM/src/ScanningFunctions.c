@@ -1131,6 +1131,8 @@ int main (int argc, char *argv[]){
 	//~ nlopt_destroy(opt);
 
 	//~ // Local Optimization
+	signal(SIGINT, sigintHandler);
+	nIters = 0;
 	opt = nlopt_create(NLOPT_LD_MMA, n);
 	nlopt_set_lower_bounds(opt, xl);
 	nlopt_set_upper_bounds(opt, xu);
