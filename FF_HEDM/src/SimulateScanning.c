@@ -607,7 +607,7 @@ int main (int argc, char *argv[]){
 	fb = fopen("SimExtraInfo.bin","wb");
 	fwrite(outSpots,nrFilled*14*sizeof(double),1,fb);
 	fclose(fb);
-	fid = fopen("SimIDsHash.bin","w");
+	fid = fopen("SimIDsHash.csv","w");
 	for (i=0;i<nRings*nBeamPositions;i++)
 		fprintf(fid,"%d %d %d %d %d\n",IDsInfo[i*5+0],IDsInfo[i*5+1],IDsInfo[i*5+2],IDsInfo[i*5+3],IDsInfo[i*5+4]);
 	fclose(fid);
