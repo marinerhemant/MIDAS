@@ -414,8 +414,8 @@ static inline void PopulateMatrices (double omegaStep, double px, int nVoxels, d
 				thisBeamPosition = beamPositions[positionNr];
 				startRowNr = AllIDsInfo[(positionNr*nRings+ringNr)*2+0];
 				endRowNr = AllIDsInfo[(positionNr*nRings+ringNr)*2+1];
+				if (startRowNr == 0) continue;
 				bestAngle = 1e10;
-				printf("%ld %ld\n",startRowNr,endRowNr); fflush(stdout);
 				for (i=startRowNr;i<=endRowNr;i++){
 					omeObs = AllSpotsInfo[14*(i-1)+2];
 					etaObs = AllSpotsInfo[14*(i-1)+6];
