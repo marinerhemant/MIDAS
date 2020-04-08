@@ -5,7 +5,7 @@
 
 //
 //  ForwardSimulation.c
-//  
+//
 //
 //  Created by Hemant Sharma on 2018/03/01.
 //
@@ -38,7 +38,7 @@ allocMatrix(int nrows, int ncols)
 {
     double** arr;
     int i;
-    
+
     arr = malloc(nrows * sizeof(*arr));
     if (arr == NULL ) {
         return NULL;
@@ -49,7 +49,7 @@ allocMatrix(int nrows, int ncols)
             return NULL;
         }
     }
-    
+
     return arr;
 }
 
@@ -116,11 +116,11 @@ RotateAroundZ(
 {
     double cosa = cos(alpha*deg2rad);
     double sina = sin(alpha*deg2rad);
-    
+
     double mat[3][3] = {{ cosa, -sina, 0 },
         { sina,  cosa, 0 },
         { 0, 0, 1}};
-    
+
     MatrixMultF(mat, v1, v2);
 }
 
@@ -174,7 +174,7 @@ CalcOmega(
     double ome;
     double len= sqrt(x*x + y*y + z*z);
     double v=sin(theta*deg2rad)*len;
-    
+
     double almostzero = 1e-4;
     if ( fabs(y) < almostzero ) {
         if (x != 0) {
@@ -194,16 +194,16 @@ CalcOmega(
         double b = (2*v*x) / y2;
         double c = ((v*v) / y2) - 1;
         double discr = b*b - 4*a*c;
-        
+
         double ome1a;
         double ome1b;
         double ome2a;
         double ome2b;
         double cosome1;
         double cosome2;
-        
+
         double eqa, eqb, diffa, diffb;
-        
+
         if (discr >= 0) {
             cosome1 = (-b + sqrt(discr))/(2*a);
             if (fabs(cosome1) <= 1) {
@@ -222,17 +222,17 @@ CalcOmega(
                     *nsol = *nsol + 1;
                 }
             }
-            
+
             cosome2 = (-b - sqrt(discr))/(2*a);
             if (fabs(cosome2) <= 1) {
                 ome2a = acos(cosome2);
                 ome2b = -ome2a;
-                
+
                 eqa = -x*cos(ome2a) + y*sin(ome2a);
                 diffa = fabs(eqa - v);
                 eqb = -x*cos(ome2b) + y*sin(ome2b);
                 diffb = fabs(eqb - v);
-                
+
                 if (diffa < diffb) {
                     omegas[*nsol] = ome2a*rad2deg;
                     *nsol = *nsol + 1;
@@ -354,7 +354,7 @@ void Euler2OrientMat(
 
 static inline double sin_cos_to_angle (double s, double c){return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);}
 
-static inline 
+static inline
 void OrientMat2Euler(double m[3][3],double Euler[3])
 {
     double psi, phi, theta, sph;
@@ -454,7 +454,7 @@ static inline void CorrectHKLsLatCEpsilon(double LatC[6], double eps[6], double 
 }
 
 static inline
-double CorrectWedge(double eta, double theta, 
+double CorrectWedge(double eta, double theta,
 		double wl, double wedge)
 {
 	double SinTheta = sin(deg2rad*theta);
@@ -530,7 +530,7 @@ double CorrectWedge(double eta, double theta,
 
 static inline
 void CorrectTiltSpatialDistortion(double px, double Lsd, double ybc, double zbc,
-		double tx, double ty, double tz, double RhoD, double p0, double p1, double p2, 
+		double tx, double ty, double tz, double RhoD, double p0, double p1, double p2,
 		int NrPixels, double *yDispl, double *zDispl)
 {
 	double txr,tyr,tzr;
@@ -572,9 +572,9 @@ void CorrectTiltSpatialDistortion(double px, double Lsd, double ybc, double zbc,
 			zDiff = Zc - ZCorr;
 			yTrans = (int) (-YCorr/px + ybc);
 			zTrans = (int) ( ZCorr/px + zbc);
-			if (yTrans < 0 || 
-				yTrans >= NrPixels || 
-				zTrans < 0 || 
+			if (yTrans < 0 ||
+				yTrans >= NrPixels ||
+				zTrans < 0 ||
 				zTrans >= NrPixels)
 					continue;
 			idx = yTrans + NrPixels*zTrans;
@@ -622,7 +622,7 @@ main(int argc, char *argv[])
 	double Lsd, tx, ty, tz, yBC, zBC, OmegaStep, OmegaStart, OmegaEnd, px;
 	int RingsToUse[500], nRings=0;
 	double LatC[6],Wavelength,Wedge=0, p0, p1, p2, RhoD,GaussWidth,PeakIntensity=2000;
-	int writeSpots;
+	int writeSpots, isBin=0;
 	int LoadNr = 0, UpdatedOrientations = 1;
 	while (fgets(aline,4096,fileParam)!=NULL){
 		str="RingsToUse ";
@@ -791,191 +791,233 @@ main(int argc, char *argv[])
 			sscanf(aline,"%s %lf",dummy,&PeakIntensity);
 			continue;
 		}
+		str="IsBinary ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr == 0){
+			sscanf(aline,"%s %d",dummy,&isBin);
+			continue;
+		}
 	}
 	printf("Output will be saved to: %s\n",OutFileName);
 	char inpFN[4096];
 	sprintf(inpFN,"%s",InFileName);
-	FILE *inpF;
-	inpF = fopen(inpFN,"r");
-	if (inpF==NULL) return 1;
-	fgets(aline,4096,inpF);
 	// Preallocate Arrays
-	int NrOrientations, nrPoints = 0;
+	long NrOrientations, nrPoints = 0;
 	double EulerThis[3],zThis,OrientThis[9],ElasticStrainThis[6],OrientTemp[3][3];
 	double **InputInfo;
 	int dataType;
 	double maxVol=0;
 	char strLine[4096];
 	int nrSkip;
-	// Check what type of input is this.
-	if (strncmp(aline,"%NumGrains ",strlen("%NumGrains ")) == 0){ // This is a Grains.csv file, get OM, Pos, LatC
-		dataType = 0;
-		sscanf(aline,"%s %d",dummy,&NrOrientations);
-		NrOrientations++;
-		NrOrientations++;
-		InputInfo = allocMatrix(NrOrientations,18); // Save OrientationMatrix, Position, LatC
-		fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		while(fgets(aline,4096,inpF)!=NULL){
-			sscanf(aline,"%s %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
-				dummy,&InputInfo[nrPoints][0], &InputInfo[nrPoints][1], &InputInfo[nrPoints][2],
-					  &InputInfo[nrPoints][3], &InputInfo[nrPoints][4], &InputInfo[nrPoints][5],
-					  &InputInfo[nrPoints][6], &InputInfo[nrPoints][7], &InputInfo[nrPoints][8],
-					  &InputInfo[nrPoints][9], &InputInfo[nrPoints][10],&InputInfo[nrPoints][11],
-					  &InputInfo[nrPoints][12],&InputInfo[nrPoints][13],&InputInfo[nrPoints][14],
-					  &InputInfo[nrPoints][15],&InputInfo[nrPoints][16],&InputInfo[nrPoints][17]);
-			nrPoints++;
+	FILE *inpF;
+	if (isBin) {
+		dataType = 3;
+		inpF = fopen(inpFN,"rb");
+		// We need nrPoints, InputInfo. That's all.
+		size_t sz;
+		sz = ftell(inpF);
+		rewind(inpF);
+		nrPoints = sz / (18*sizeof(double));
+		printf("Number of elements: %ld\n",nrPoints);
+		double *holdArr;
+		holdArr = calloc(nrPoints*18,sizeof(double));
+		InputInfo = allocMatrix(nrPoints,18);
+		fread(holdArr,sz,1,inpF);
+		for (i=0;i<nrPoints;i++){
+			InputInfo[i][0] = holdArr[i*18+3];
+			InputInfo[i][1] = holdArr[i*18+4];
+			InputInfo[i][2] = holdArr[i*18+5];
+			InputInfo[i][3] = holdArr[i*18+6];
+			InputInfo[i][4] = holdArr[i*18+7];
+			InputInfo[i][5] = holdArr[i*18+8];
+			InputInfo[i][6] = holdArr[i*18+9];
+			InputInfo[i][7] = holdArr[i*18+10];
+			InputInfo[i][8] = holdArr[i*18+11];
+			InputInfo[i][9] = holdArr[i*18+0];
+			InputInfo[i][10] = holdArr[i*18+1];
+			InputInfo[i][11] = holdArr[i*18+2];
+			InputInfo[i][12] = holdArr[i*18+12];
+			InputInfo[i][13] = holdArr[i*18+13];
+			InputInfo[i][14] = holdArr[i*18+14];
+			InputInfo[i][15] = holdArr[i*18+15];
+			InputInfo[i][16] = holdArr[i*18+16];
+			InputInfo[i][17] = holdArr[i*18+17];
 		}
-	}else if (strncmp(aline,"%TriEdgeSize ",strlen("%TriEdgeSize ")) == 0){
-		dataType = 1;
-		NrOrientations = 2000000;
-		InputInfo = allocMatrix(NrOrientations,18); // Save OrientationMatrix, Position, LatC
+		free(holdArr);
+	} else {
+		inpF = fopen(inpFN,"r");
+		if (inpF==NULL) return 1;
 		fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		sscanf(aline,"%s %lf",dummy,&zThis);
-		fgets(aline,4096,inpF);
-		while(fgets(aline,4096,inpF)!=NULL){
-			sscanf(aline,"%s %s %s %lf %lf %s %s %lf %lf %lf %s %s",
-					dummy,dummy,dummy,&InputInfo[nrPoints][9],&InputInfo[nrPoints][10],
-					dummy,dummy,&EulerThis[0],&EulerThis[1],&EulerThis[2],dummy,dummy);
-			InputInfo[nrPoints][11] = zThis;
-			Euler2OrientMat(EulerThis,OrientThis);
-			for (i=0;i<9;i++){
-				InputInfo[nrPoints][i] = OrientThis[i];
+		// Check what type of input is this.
+		if (strncmp(aline,"%NumGrains ",strlen("%NumGrains ")) == 0){ // This is a Grains.csv file, get OM, Pos, LatC
+			dataType = 0;
+			sscanf(aline,"%s %d",dummy,&NrOrientations);
+			NrOrientations++;
+			NrOrientations++;
+			InputInfo = allocMatrix(NrOrientations,18); // Save OrientationMatrix, Position, LatC
+			fgets(aline,4096,inpF);
+			fgets(aline,4096,inpF);
+			fgets(aline,4096,inpF);
+			fgets(aline,4096,inpF);
+			fgets(aline,4096,inpF);
+			fgets(aline,4096,inpF);
+			fgets(aline,4096,inpF);
+			fgets(aline,4096,inpF);
+			while(fgets(aline,4096,inpF)!=NULL){
+				sscanf(aline,"%s %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+					dummy,&InputInfo[nrPoints][0], &InputInfo[nrPoints][1], &InputInfo[nrPoints][2],
+						  &InputInfo[nrPoints][3], &InputInfo[nrPoints][4], &InputInfo[nrPoints][5],
+						  &InputInfo[nrPoints][6], &InputInfo[nrPoints][7], &InputInfo[nrPoints][8],
+						  &InputInfo[nrPoints][9], &InputInfo[nrPoints][10],&InputInfo[nrPoints][11],
+						  &InputInfo[nrPoints][12],&InputInfo[nrPoints][13],&InputInfo[nrPoints][14],
+						  &InputInfo[nrPoints][15],&InputInfo[nrPoints][16],&InputInfo[nrPoints][17]);
+				nrPoints++;
 			}
-			for (i=0;i<6;i++){
-				InputInfo[nrPoints][i+12] = LatC[i];
-			}
-			nrPoints++;
-		}
-	}else if (strncmp(aline,"# vtk DataFile ",strlen("# vtk DataFile ")) == 0){
-		dataType = 2;
-		long long int totalPoints,totalElements;
-		fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		sscanf(aline,"%s %lld",dummy,&totalPoints);
-		for (i=0;i<totalPoints;i++) fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		sscanf(aline,"%s %lld",dummy,&totalElements);
-		InputInfo = allocMatrix(totalElements,21);
-		for (i=0;i<totalElements+1;i++) fgets(aline,4096,inpF);
-		for (i=0;i<totalElements+5;i++) fgets(aline,4096,inpF);
-		for (i=0;i<totalElements;i++){
+		}else if (strncmp(aline,"%TriEdgeSize ",strlen("%TriEdgeSize ")) == 0){
+			dataType = 1;
+			NrOrientations = 2000000;
+			InputInfo = allocMatrix(NrOrientations,18); // Save OrientationMatrix, Position, LatC
 			fgets(aline,4096,inpF);
-			sscanf(aline,"%lf",&InputInfo[i][20]);
-		}
-		for (i=0;i<3;i++)fgets(aline,4096,inpF);
-		for (i=0;i<totalElements;i++){
 			fgets(aline,4096,inpF);
-			sscanf(aline,"%lf",&InputInfo[i][18]);
-			if (maxVol < InputInfo[i][18]) maxVol = InputInfo[i][18];
-		}
-		for (i=0;i<3;i++) fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		for (i=0;i<totalElements;i++){
+			sscanf(aline,"%s %lf",dummy,&zThis);
 			fgets(aline,4096,inpF);
-			sscanf(aline,"%lf %lf %lf",&InputInfo[i][9],&InputInfo[i][10],&InputInfo[i][11]);
-		}
-		for (i=0;i<3;i++) fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		for (i=0;i<totalElements;i++){
-			fgets(aline,4096,inpF);
-			if (UpdatedOrientations == 0){
-				sscanf(aline,"%lf %lf %lf",&EulerThis[0],&EulerThis[1],&EulerThis[2]);
+			while(fgets(aline,4096,inpF)!=NULL){
+				sscanf(aline,"%s %s %s %lf %lf %s %s %lf %lf %lf %s %s",
+						dummy,dummy,dummy,&InputInfo[nrPoints][9],&InputInfo[nrPoints][10],
+						dummy,dummy,&EulerThis[0],&EulerThis[1],&EulerThis[2],dummy,dummy);
+				InputInfo[nrPoints][11] = zThis;
 				Euler2OrientMat(EulerThis,OrientThis);
-				for (j=0;j<9;j++){
-					InputInfo[i][j] = OrientThis[j];
+				for (i=0;i<9;i++){
+					InputInfo[nrPoints][i] = OrientThis[i];
 				}
+				for (i=0;i<6;i++){
+					InputInfo[nrPoints][i+12] = LatC[i];
+				}
+				nrPoints++;
 			}
-		}
-		for (i=0;i<3;i++) fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		for (i=0;i<totalElements;i++){
+		}else if (strncmp(aline,"# vtk DataFile ",strlen("# vtk DataFile ")) == 0){
+			dataType = 2;
+			long long int totalPoints,totalElements;
 			fgets(aline,4096,inpF);
-			sscanf(aline,"%lf",&InputInfo[i][19]);
-		}
-		for (i=0;i<2;i++) fgets(aline,4096,inpF);
-		fgets(aline,4096,inpF);
-		sscanf(aline,"%s %s",dummy,strLine);
-		while (strncmp(strLine,"Plastic",strlen("Plastic")) == 0){
-			for (i=0;i<totalElements+3;i++) fgets(aline,4096,inpF);
 			fgets(aline,4096,inpF);
-			sscanf(aline,"%s %s",dummy,strLine);
-		}
-		fgets(aline,4096,inpF);
-		if (LoadNr == 0){
-			for (i=0;i<totalElements;i++) for (j=12;j<18;j++) InputInfo[i][j] = 0;
-		} else if (LoadNr == 1){
+			fgets(aline,4096,inpF);
+			fgets(aline,4096,inpF);
+			fgets(aline,4096,inpF);
+			sscanf(aline,"%s %lld",dummy,&totalPoints);
+			for (i=0;i<totalPoints;i++) fgets(aline,4096,inpF);
+			fgets(aline,4096,inpF);
+			fgets(aline,4096,inpF);
+			sscanf(aline,"%s %lld",dummy,&totalElements);
+			InputInfo = allocMatrix(totalElements,21);
+			for (i=0;i<totalElements+1;i++) fgets(aline,4096,inpF);
+			for (i=0;i<totalElements+5;i++) fgets(aline,4096,inpF);
 			for (i=0;i<totalElements;i++){
 				fgets(aline,4096,inpF);
-				sscanf(aline,"%lf %lf %lf %lf %lf %lf",&InputInfo[i][12],&InputInfo[i][15],&InputInfo[i][17],&InputInfo[i][13],&InputInfo[i][14],&InputInfo[i][16]);
+				sscanf(aline,"%lf",&InputInfo[i][20]);
 			}
-		}else if (LoadNr > 1) {
-			nrSkip = (LoadNr-1)*(totalElements+4);
-			for (i=0;i<nrSkip;i++) fgets(aline,4096,inpF);
+			for (i=0;i<3;i++)fgets(aline,4096,inpF);
 			for (i=0;i<totalElements;i++){
 				fgets(aline,4096,inpF);
-				sscanf(aline,"%lf %lf %lf %lf %lf %lf",&InputInfo[i][12],&InputInfo[i][15],&InputInfo[i][17],&InputInfo[i][13],&InputInfo[i][14],&InputInfo[i][16]);
+				sscanf(aline,"%lf",&InputInfo[i][18]);
+				if (maxVol < InputInfo[i][18]) maxVol = InputInfo[i][18];
 			}
-		}
-		for (i=0;i<3;i++) fgets(aline,4096,inpF);
-		sscanf(aline,"%s %s",dummy,strLine);
-		// Now read until the Orientations
-		if (UpdatedOrientations == 1){
-			while(strncmp(strLine,"Orientation",strlen("Orientation"))!=0){
-				for (i=0;i<totalElements+4;i++) fgets(aline,4096,inpF);
-				sscanf(aline,"%s %s",dummy,strLine);
-			}
+			for (i=0;i<3;i++) fgets(aline,4096,inpF);
 			fgets(aline,4096,inpF);
-			if (LoadNr == 1){
-				for (i=0;i<totalElements;i++){
-					fgets(aline,4096,inpF);
-					sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf",&OrientTemp[0][0],&OrientTemp[1][0],&OrientTemp[2][0],&OrientTemp[0][1],&OrientTemp[1][1],&OrientTemp[2][1],&OrientTemp[0][2],&OrientTemp[1][2],&OrientTemp[2][2]);
-					//~ sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf",&OrientTemp[0][0],&OrientTemp[0][1],&OrientTemp[0][2],&OrientTemp[1][0],&OrientTemp[1][1],&OrientTemp[1][2],&OrientTemp[2][0],&OrientTemp[2][1],&OrientTemp[2][2]);
-					OrientMat2Euler(OrientTemp,EulerThis);
+			for (i=0;i<totalElements;i++){
+				fgets(aline,4096,inpF);
+				sscanf(aline,"%lf %lf %lf",&InputInfo[i][9],&InputInfo[i][10],&InputInfo[i][11]);
+			}
+			for (i=0;i<3;i++) fgets(aline,4096,inpF);
+			fgets(aline,4096,inpF);
+			for (i=0;i<totalElements;i++){
+				fgets(aline,4096,inpF);
+				if (UpdatedOrientations == 0){
+					sscanf(aline,"%lf %lf %lf",&EulerThis[0],&EulerThis[1],&EulerThis[2]);
 					Euler2OrientMat(EulerThis,OrientThis);
 					for (j=0;j<9;j++){
 						InputInfo[i][j] = OrientThis[j];
 					}
 				}
-			}else{
+			}
+			for (i=0;i<3;i++) fgets(aline,4096,inpF);
+			fgets(aline,4096,inpF);
+			for (i=0;i<totalElements;i++){
+				fgets(aline,4096,inpF);
+				sscanf(aline,"%lf",&InputInfo[i][19]);
+			}
+			for (i=0;i<2;i++) fgets(aline,4096,inpF);
+			fgets(aline,4096,inpF);
+			sscanf(aline,"%s %s",dummy,strLine);
+			while (strncmp(strLine,"Plastic",strlen("Plastic")) == 0){
+				for (i=0;i<totalElements+3;i++) fgets(aline,4096,inpF);
+				fgets(aline,4096,inpF);
+				sscanf(aline,"%s %s",dummy,strLine);
+			}
+			fgets(aline,4096,inpF);
+			if (LoadNr == 0){
+				for (i=0;i<totalElements;i++) for (j=12;j<18;j++) InputInfo[i][j] = 0;
+			} else if (LoadNr == 1){
+				for (i=0;i<totalElements;i++){
+					fgets(aline,4096,inpF);
+					sscanf(aline,"%lf %lf %lf %lf %lf %lf",&InputInfo[i][12],&InputInfo[i][15],&InputInfo[i][17],&InputInfo[i][13],&InputInfo[i][14],&InputInfo[i][16]);
+				}
+			}else if (LoadNr > 1) {
 				nrSkip = (LoadNr-1)*(totalElements+4);
 				for (i=0;i<nrSkip;i++) fgets(aline,4096,inpF);
 				for (i=0;i<totalElements;i++){
 					fgets(aline,4096,inpF);
-					sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf",&OrientTemp[0][0],&OrientTemp[1][0],&OrientTemp[2][0],&OrientTemp[0][1],&OrientTemp[1][1],&OrientTemp[2][1],&OrientTemp[0][2],&OrientTemp[1][2],&OrientTemp[2][2]);
-					//~ sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf",&OrientTemp[0][0],&OrientTemp[0][1],&OrientTemp[0][2],&OrientTemp[1][0],&OrientTemp[1][1],&OrientTemp[1][2],&OrientTemp[2][0],&OrientTemp[2][1],&OrientTemp[2][2]);
-					OrientMat2Euler(OrientTemp,EulerThis);
-					Euler2OrientMat(EulerThis,OrientThis);
-					for (j=0;j<9;j++){
-						InputInfo[i][j] = OrientThis[j];
+					sscanf(aline,"%lf %lf %lf %lf %lf %lf",&InputInfo[i][12],&InputInfo[i][15],&InputInfo[i][17],&InputInfo[i][13],&InputInfo[i][14],&InputInfo[i][16]);
+				}
+			}
+			for (i=0;i<3;i++) fgets(aline,4096,inpF);
+			sscanf(aline,"%s %s",dummy,strLine);
+			// Now read until the Orientations
+			if (UpdatedOrientations == 1){
+				while(strncmp(strLine,"Orientation",strlen("Orientation"))!=0){
+					for (i=0;i<totalElements+4;i++) fgets(aline,4096,inpF);
+					sscanf(aline,"%s %s",dummy,strLine);
+				}
+				fgets(aline,4096,inpF);
+				if (LoadNr == 1){
+					for (i=0;i<totalElements;i++){
+						fgets(aline,4096,inpF);
+						sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf",&OrientTemp[0][0],&OrientTemp[1][0],&OrientTemp[2][0],&OrientTemp[0][1],&OrientTemp[1][1],&OrientTemp[2][1],&OrientTemp[0][2],&OrientTemp[1][2],&OrientTemp[2][2]);
+						//~ sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf",&OrientTemp[0][0],&OrientTemp[0][1],&OrientTemp[0][2],&OrientTemp[1][0],&OrientTemp[1][1],&OrientTemp[1][2],&OrientTemp[2][0],&OrientTemp[2][1],&OrientTemp[2][2]);
+						OrientMat2Euler(OrientTemp,EulerThis);
+						Euler2OrientMat(EulerThis,OrientThis);
+						for (j=0;j<9;j++){
+							InputInfo[i][j] = OrientThis[j];
+						}
+					}
+				}else{
+					nrSkip = (LoadNr-1)*(totalElements+4);
+					for (i=0;i<nrSkip;i++) fgets(aline,4096,inpF);
+					for (i=0;i<totalElements;i++){
+						fgets(aline,4096,inpF);
+						sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf",&OrientTemp[0][0],&OrientTemp[1][0],&OrientTemp[2][0],&OrientTemp[0][1],&OrientTemp[1][1],&OrientTemp[2][1],&OrientTemp[0][2],&OrientTemp[1][2],&OrientTemp[2][2]);
+						//~ sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf",&OrientTemp[0][0],&OrientTemp[0][1],&OrientTemp[0][2],&OrientTemp[1][0],&OrientTemp[1][1],&OrientTemp[1][2],&OrientTemp[2][0],&OrientTemp[2][1],&OrientTemp[2][2]);
+						OrientMat2Euler(OrientTemp,EulerThis);
+						Euler2OrientMat(EulerThis,OrientThis);
+						for (j=0;j<9;j++){
+							InputInfo[i][j] = OrientThis[j];
+						}
 					}
 				}
 			}
-		}
-		FILE *fl;
-		fl = fopen("Orientations.txt","w");
-		int nrElements = 0;
-		for (i=0;i<totalElements;i++){
-			if ((int)InputInfo[i][20] == 1){
-				nrElements++;
-				for (j=0;j<9;j++) fprintf(fl,"%f ",InputInfo[i][j]);
-				fprintf(fl,"\n");
+			FILE *fl;
+			fl = fopen("Orientations.txt","w");
+			int nrElements = 0;
+			for (i=0;i<totalElements;i++){
+				if ((int)InputInfo[i][20] == 1){
+					nrElements++;
+					for (j=0;j<9;j++) fprintf(fl,"%f ",InputInfo[i][j]);
+					fprintf(fl,"\n");
+				}
 			}
+			printf("%d\n",nrElements);
+			fclose(fl);
+			nrPoints = totalElements;
 		}
-		printf("%d\n",nrElements);
-		fclose(fl);
-		nrPoints = totalElements;
 	}
 	if (nrPoints == 0) return 1;
 	printf("Read file.\n");
@@ -1012,7 +1054,7 @@ main(int argc, char *argv[])
 		}
 		n_hkls = totalHKLs;
 	}
-	
+
 	// Allocate image array.
 	double maxInt;
 	double *ImageArr;
@@ -1041,7 +1083,7 @@ main(int argc, char *argv[])
 	end = clock();
 	diftotal = ((double)(end-start0))/CLOCKS_PER_SEC;
 	printf("Distortion map done in %lf sec.\n",diftotal);
-	
+
 	// Make GaussMask for blurring
 	int nrPxMask = 1 + 4*((int)ceil(GaussWidth));
 	int centIdxMask = nrPxMask*2*((int)ceil(GaussWidth)) + 2*((int)ceil(GaussWidth)); // This should cover 95% of the total distribution, centered at 2*ceil(GaussWidth)
@@ -1089,6 +1131,8 @@ main(int argc, char *argv[])
 			if (InputInfo[voxNr][i+19] == 0) continue;
 			for (i=0;i<6;i++) EpsThis[i] = InputInfo[voxNr][i+12];
 			CorrectHKLsLatCEpsilon(LatC,EpsThis,Wavelength,hklsOut);
+		} else if (dataType == 3){ // binary file
+			for (i=0;i<6;i++) EpsThis[i] = InputInfo[voxNr][i+12];
 		}
 		// Get the Orientation Matrix
 		for (i=0;i<3;i++){

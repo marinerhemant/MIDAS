@@ -816,9 +816,13 @@ int main (int argc, char *argv[]){
 	double ABCTol = 3;
 	double ABGTol = 3;
 	double LatCin[6];
+	int optType = 0;
 	while(fgets(aline,4096,fileParam)!=NULL){
 		if (strncmp(aline,"HKLFile",strlen("HKLFile"))==0){
 			sscanf(aline,"%s %s",dummy,hklfn);
+		}
+		if (strncmp(aline,"OptType",strlen("OptType"))==0){
+			sscanf(aline,"%s %d",dummy,&optType);
 		}
 		if (strncmp(aline,"GrainsFile",strlen("GrainsFile"))==0){
 			sscanf(aline,"%s %s",dummy,grainFN);
@@ -1133,7 +1137,16 @@ int main (int argc, char *argv[]){
 	//~ // Local Optimization
 	signal(SIGINT, sigintHandler);
 	nIters = 0;
-	opt = nlopt_create(NLOPT_LD_MMA, n);
+	if (optType == 0) opt = nlopt_create(NLOPT_LD_MMA, n);
+	else if (optType == 1) opt = nlopt_create(NLOPT_LD_CCSAQ, n);
+	else if (optType == 2) opt = nlopt_create(NLOPT_LD_SLSQP, n);
+	else if (optType == 3) opt = nlopt_create(NLOPT_LD_LBFGS, n);
+	else if (optType == 4) opt = nlopt_create(NLOPT_LD_TNEWTON_PRECOND_RESTART, n);
+	else if (optType == 5) opt = nlopt_create(NLOPT_LD_TNEWTON_RESTART, n);
+	else if (optType == 6) opt = nlopt_create(NLOPT_LD_TNEWTON_PRECOND, n);
+	else if (optType == 7) opt = nlopt_create(NLOPT_LD_TNEWTON, n);
+	else if (optType == 8) opt = nlopt_create(NLOPT_LD_VAR1, n);
+	else if (optType == 9) opt = nlopt_create(NLOPT_LD_VAR2, n);
 	nlopt_set_lower_bounds(opt, xl);
 	nlopt_set_upper_bounds(opt, xu);
 	nlopt_set_maxeval(opt,maxNEvals);
