@@ -828,13 +828,16 @@ int main (int argc, char *argv[]){
 	double ABCTol = 3;
 	double ABGTol = 3;
 	double LatCin[6];
-	int optType = 0;
+	int optType = 0, fitT = 0;
 	while(fgets(aline,4096,fileParam)!=NULL){
 		if (strncmp(aline,"HKLFile",strlen("HKLFile"))==0){
 			sscanf(aline,"%s %s",dummy,hklfn);
 		}
 		if (strncmp(aline,"OptType",strlen("OptType"))==0){
 			sscanf(aline,"%s %d",dummy,&optType);
+		}
+		if (strncmp(aline,"FitBoth",strlen("FitBoth"))==0){
+			sscanf(aline,"%s %d",dummy,&fitT);
 		}
 		if (strncmp(aline,"GrainsFile",strlen("GrainsFile"))==0){
 			sscanf(aline,"%s %s",dummy,grainFN);
@@ -911,10 +914,10 @@ int main (int argc, char *argv[]){
 	}
 	fclose(fileParam);
 	printf("Results will be written out to %s\n",outFN);
-	if (ABCTol < 0.00001 || ABGTol < 0.00001){
+	if ((ABCTol < 0.00001 || ABGTol < 0.00001) && fitT == 1){
 		printf("We will fit only orientation using omega and eta.\n");
 		FitType = 1;
-	} else if (EulTol < 0.00001) {
+	} else if ((EulTol < 0.00001) && fitT == 1){
 		FitType = 2;
 		printf ("We will fit only lattice parameter using 2theta.\n");
 	} else {
