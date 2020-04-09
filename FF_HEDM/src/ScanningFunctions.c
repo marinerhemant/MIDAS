@@ -914,10 +914,10 @@ int main (int argc, char *argv[]){
 	}
 	fclose(fileParam);
 	printf("Results will be written out to %s\n",outFN);
-	if ((ABCTol < 0.00001 || ABGTol < 0.00001) && fitT == 1){
+	if ((ABCTol < 0.00001 || ABGTol < 0.00001) && fitT == 0){
 		printf("We will fit only orientation using omega and eta.\n");
 		FitType = 1;
-	} else if ((EulTol < 0.00001) && fitT == 1){
+	} else if ((EulTol < 0.00001) && fitT == 0){
 		FitType = 2;
 		printf ("We will fit only lattice parameter using 2theta.\n");
 	} else {
