@@ -40,6 +40,7 @@ struct timespec end;
 double dx[4] = {-0.5,+0.5,+0.5,-0.5};
 double dy[4] = {-0.5,-0.5,+0.5,+0.5};
 nlopt_opt opt;
+int FitType;
 
 static inline double sind(double x){return sin(deg2rad*x);}
 static inline double cosd(double x){return cos(deg2rad*x);}
@@ -487,16 +488,26 @@ static inline void PopulateMatrices (double omegaStep, double px, int nVoxels, d
 static inline double CalcDifferences(double omegaStep, double px, long totalNrSpots, double *spotInfoMat, double *filteredSpotInfo, double *differencesMat){
 	long i;
 	double diff=0;
-	double normParams[3], Eta;
+	double normParams[4], EtaObs, EtaSim;
 	normParams[0] = 0.1*px;
 	normParams[1] = 0.1*px;
 	for (i=0;i<totalNrSpots;i++){
 		if (filteredSpotInfo[i*4+3] == 0) continue;
-		Eta = CalcEta(spotInfoMat[i*4+0],spotInfoMat[i*4+1]);
-		normParams[2] = omegaStep*0.5*(1+1/sind(Eta));
-		differencesMat[i] = CalcNorm3((spotInfoMat[i*4+0]-filteredSpotInfo[i*4+0])/normParams[0],
-									  (spotInfoMat[i*4+1]-filteredSpotInfo[i*4+1])/normParams[1],
-									  (spotInfoMat[i*4+2]-filteredSpotInfo[i*4+2])/normParams[2]);
+		EtaSim = CalcEta(spotInfoMat[i*4+0],spotInfoMat[i*4+1]);
+		normParams[2] = omegaStep*0.5*(1+1/sind(EtaSim));
+		if (FitType == 0){
+			differencesMat[i] = CalcNorm3((spotInfoMat[i*4+0]-filteredSpotInfo[i*4+0])/normParams[0],
+										  (spotInfoMat[i*4+1]-filteredSpotInfo[i*4+1])/normParams[1],
+										  (spotInfoMat[i*4+2]-filteredSpotInfo[i*4+2])/normParams[2]);
+		} else if (FitType == 1){ // Only Orientation Fit, we will use eta and omega difference
+			normParams[3] = atand(sqrt(0.02)*px/CalcNorm2(filteredSpotInfo[i*4+0],filteredSpotInfo[i*4+1]));
+			EtaObs = CalcEta(filteredSpotInfo[i*4+0],filteredSpotInfo[i*4+1]);
+			differencesMat[i] = CalcNorm2((spotInfoMat[i*4+2]-filteredSpotInfo[i*4+2])/normParams[2],
+										  (EtaSim-EtaObs));
+		} else if (FitType == 2){ // Only lattice parameter fit, we will use difference in 2theta or ring radius
+			normParams[3] = sqrt(0.02)*px;
+			differencesMat[i] = CalcNorm2(filteredSpotInfo[i*4+0],filteredSpotInfo[i*4+1])/normParams[3];
+		}
 		diff += differencesMat[i];
 	}
 	return diff;
@@ -794,6 +805,7 @@ int main (int argc, char *argv[]){
 			   "Eg.	   ./ScanningFunctions  params.txt\n");
 		return;
 	}
+	FitType = 0;
 	char *paramFN;
 	paramFN = argv[1];
 	FILE *fileParam;
@@ -899,6 +911,8 @@ int main (int argc, char *argv[]){
 	}
 	fclose(fileParam);
 	printf("Results will be written out to %s\n",outFN);
+	if (ABCTol < 0.00001 || ABGTol < 0.00001) FitType = 1;
+	else if (EulTol < 0.00001) FitType = 2;
 
 	long i,j,k;
 	FILE *positionsFile;
