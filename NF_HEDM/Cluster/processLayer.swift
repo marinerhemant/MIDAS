@@ -30,9 +30,9 @@ app (file done) PlaceHolder3 (string prefix,file tmp)
 	echo prefix stdout=@filename(done);
 }
 
-app runfitorientation (string pf, int nr, file mmapdone)
+app (file outfn) runfitorientation (string pf, int nr, file mmapdone)
 {
-	fitorientation pf nr;
+	fitorientation pf nr stdout=@filename(outfn);
 }
 
 app (file mmapdone) mmapcode (string paramfn, file imagedone, string mn)
@@ -114,6 +114,7 @@ if (DoFullLayer == 1){
 	mmapdone = mmapcode(paramfile,imagesdone,MachineName);
 	## Now do FitOrientation
 	foreach i in [startnr:endnr] {
-		runfitorientation(paramfile,i,mmapdone);
+		file simFitOut<simple_mapper;location=outfolder,prefix=strcat("FitOrientation_",i),suffix=".out">;
+		simFitOut = runfitorientation(paramfile,i,mmapdone);
 	}
 }

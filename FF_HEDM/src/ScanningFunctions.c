@@ -576,7 +576,7 @@ static inline void UpdSpotPosOneVox(double omegaStep, double px, double voxelLen
 			if (FLUTThis[bestHKLNr*maxNPos+i] >= 0){
 				idxPos = (bestHKLNr*maxNPos+i)*5;
 				positionNr = (long)arrUpd[idxPos+4];
-				thisBeamPos = beamPositions[positionNr];
+				thisBeamPos = beamPositions[positionNr]; // Include here update voxelFraction with 4x voxelFraction!!
 				spotRowNr = FLUTThis[bestHKLNr*maxNPos+i];
 				#pragma omp critical
 				{
