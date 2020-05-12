@@ -5,13 +5,15 @@
 
 ##
 # HDF5 (compressed output) file arrangement:
-#            Group            Dataset
-#		|--- GrainID       -- GrainNr            -- Nonsense value: -15, always uint
-#		|--- EulerAngles  |-- EulerAngle1        -- Nonsense value: -15, range +-2pi
-#		|                 |-- EulerAngle2        -- Nonsense value: -15, range +-2pi
-#		|                 |-- EulerAngle3        -- Nonsense value: -15, range +-2pi
-#		|--- Confidence    -- ConfidenceValue    -- Nonsense value: -15, range 0...1
-#		|--- PhaseNumber   -- PhaseNr            -- Nonsense value: -15, range 1...n
+#            Group                  Dataset
+#		|--- FFGrainID           -- FFGrainNr          -- Nonsense value: -15, always uint
+#		|--- GrainNrs            -- GrainNr            -- Nonsense value: -15, always uint
+#		|--- KernelAverageMiso   -- KAM                -- Nonsense value: -15, range 0.180
+#		|--- EulerAngles        |-- EulerAngle1        -- Nonsense value: -15, range +-2pi
+#		|                       |-- EulerAngle2        -- Nonsense value: -15, range +-2pi
+#		|                       |-- EulerAngle3        -- Nonsense value: -15, range +-2pi
+#		|--- Confidence          -- ConfidenceValue    -- Nonsense value: -15, range 0...1
+#		|--- PhaseNumber         -- PhaseNr            -- Nonsense value: -15, range 1...n
 ##
 
 fillVal = -15 # this value can be used to filter out nonsense values.
@@ -26,6 +28,7 @@ spaceGroup = 225 # This is used for misorientation calculation
 startnr = 1
 endnr = 10
 minConfidence = 0.1
+orientTol = 5 # In degrees, used to define grains
 zspacing = -2
 xyspacing = 2  # X and Y spacing are equal
 xExtent = 1200 # Maximum Extent of xValues in um
@@ -62,6 +65,9 @@ outarr = np.zeros((Dims[1],Dims[2],7))
 outarr = outarr.astype(float)
 dimarr = np.array([Dims[1],Dims[2],abs(xyspacing)])
 dimarr = dimarr.astype(int)
+# dl,dx,dy arrays
+diffArr = np.array([[-1,-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1],[-1,0,1,-1,0,1,-1,0,1,-1,0,1,-1,1,-1,0,1,-1,0,1,-1,0,1,-1,0,1],[-1,-1,-1,0,0,0,1,1,1,-1,-1,-1,0,0,1,1,1,-1,-1,-1,0,0,0,1,1,1]])
+diffArr = diffArr.astype(int)
 
 TricSym = np.array([[1.00000,   0.00000,   0.00000,   0.00000],[1.00000,   0.00000,   0.00000,   0.00000]])
 
@@ -187,8 +193,9 @@ def MakeSymmetries(SGNr):
 				Sym[i][j] = CubSym[i][j]
 	return NrSymmetries,Sym
 
-@jit('void(float64[:],float64[:],float64[:])',nopython=True,nogil=True)
-def QuaternionProduct(q, r, Q):
+@jit('float64[:](float64[:],float64[:])',nopython=True,nogil=True)
+def QuaternionProduct(q, r):
+	Q = np.zeros(4)
 	Q[0] = r[0]*q[0] - r[1]*q[1] - r[2]*q[2] - r[3]*q[3]
 	Q[1] = r[1]*q[0] + r[0]*q[1] + r[3]*q[2] - r[2]*q[3]
 	Q[2] = r[2]*q[0] + r[0]*q[2] + r[1]*q[3] - r[3]*q[1]
@@ -198,11 +205,12 @@ def QuaternionProduct(q, r, Q):
 		Q[1] = -Q[1]
 		Q[2] = -Q[2]
 		Q[3] = -Q[3]
+	return Q
 
-@jit('void(float64[:],float64[:],int64,float64[:,:])',nopython=True,nogil=True)
-def BringDownToFundamentalRegionSym(QuatIn, QuatOut, NrSymmetries, Sym):
+@jit('float64[:](float64[:],int64,float64[:,:])',nopython=True,nogil=True)
+def BringDownToFundamentalRegionSym(QuatIn, NrSymmetries, Sym):
+	QuatOut = np.zeros(4)
 	qps = np.zeros((NrSymmetries,4))
-	qt = np.zeros(4)
 	q2 = np.zeros(4)
 	maxCos=-10000.0
 	for i in range(NrSymmetries):
@@ -210,7 +218,7 @@ def BringDownToFundamentalRegionSym(QuatIn, QuatOut, NrSymmetries, Sym):
 		q2[1] = Sym[i][1]
 		q2[2] = Sym[i][2]
 		q2[3] = Sym[i][3]
-		QuaternionProduct(QuatIn,q2,qt)
+		qt = QuaternionProduct(QuatIn,q2)
 		qps[i][0] = qt[0]
 		qps[i][1] = qt[1]
 		qps[i][2] = qt[2]
@@ -222,18 +230,16 @@ def BringDownToFundamentalRegionSym(QuatIn, QuatOut, NrSymmetries, Sym):
 	QuatOut[1] = qps[maxCosRowNr][1]
 	QuatOut[2] = qps[maxCosRowNr][2]
 	QuatOut[3] = qps[maxCosRowNr][3]
+	return QuatOut
 
 @jit('double(float64[:],float64[:],int64,float64[:,:])',nopython=True,nogil=True)
 def GetMisOrientationAngle(quat1, quat2, NrSymmetries, Sym):
-	q1FR = np.zeros(4)
-	q2FR = np.zeros(4)
-	QP = np.zeros(4)
 	MisV = np.zeros(4)
-	BringDownToFundamentalRegionSym(quat1,q1FR,NrSymmetries,Sym)
-	BringDownToFundamentalRegionSym(quat2,q2FR,NrSymmetries,Sym)
+	q1FR = BringDownToFundamentalRegionSym(quat1,NrSymmetries,Sym)
+	q2FR = BringDownToFundamentalRegionSym(quat2,NrSymmetries,Sym)
 	q1FR[0] = -q1FR[0]
-	QuaternionProduct(q1FR,q2FR,QP)
-	BringDownToFundamentalRegionSym(QP,MisV,NrSymmetries,Sym)
+	QP = QuaternionProduct(q1FR,q2FR)
+	MisV = BringDownToFundamentalRegionSym(QP,NrSymmetries,Sym)
 	if (MisV[0] > 1):
 		MisV[0] = 1
 	return 2*(acos(MisV[0]))*rad2deg
@@ -429,18 +435,22 @@ def MakeMisoArr(quats,misoarr,dims,NrSymmetries,Sym):
 					else:
 						misoarr[frameNr][xpos][ypos][12] = GetMisOrientationAngle(quat1,quat2,NrSymmetries,Sym)
 
-def writeHDF5File(grID,eul1,eul2,eul3,conf,phNr,fileID):
+def writeHDF5File(grID,eul1,eul2,eul3,conf,phNr,kam,grNr,fileID):
 	f = h5py.File(fileID,'w')
-	grainIDs = f.create_group('GrainID')
+	grainIDs = f.create_group('FFGrainID')
 	Euls = f.create_group('EulerAngles')
 	Conf = f.create_group('Confidence')
 	PhaseNr = f.create_group('PhaseNumber')
-	GrainID = grainIDs.create_dataset('GrainNrs',data=grID,compression="gzip")
+	GrainNrs = f.create_group('GrainNrs')
+	KAMs = f.create_group('KernelAverageMiso')
+	GrainID = grainIDs.create_dataset('FFGrainNr',data=grID,compression="gzip")
 	Euler1 = Euls.create_dataset('EulerAngle1',data=eul1,compression="gzip")
 	Euler2 = Euls.create_dataset('EulerAngle2',data=eul2,compression="gzip")
 	Euler3 = Euls.create_dataset('EulerAngle3',data=eul3,compression="gzip")
 	confidence = Conf.create_dataset('ConfidenceValue',data=conf,compression="gzip")
 	PhaseNrs = PhaseNr.create_dataset('PhaseNr',data=phNr,compression="gzip")
+	GrainNr = GrainNrs.create_dataset('GrainNr',data=grNr,compression="gzip")
+	KAM = KAMs.create_dataset('KAM',data=kam,compression="gzip")
 	f.close()
 
 def writeXMLXdmf(dims,deltas,fn,h5fn,sample_name):
@@ -465,10 +475,10 @@ def writeXMLXdmf(dims,deltas,fn,h5fn,sample_name):
 	f.write('%lf %lf %lf\n'%(deltas[2],deltas[0],deltas[1]))
 	f.write('</DataItem>\n')
 	f.write('</Geometry>\n')
-	# Data: GrainID, EulerAngles, Confidence, PhaseNr
-	f.write('<Attribute Name="GrainID" AttributeType="Scalar" Center="Cell">\n')
+	# Data: FFGrainID, EulerAngles, Confidence, GrainNr, KernelAverageMisorientation, PhaseNr
+	f.write('<Attribute Name="FFGrainID" AttributeType="Scalar" Center="Cell">\n')
 	f.write('<DataItem Format="HDF" Dimensions="%d %d %d" NumberType="Int">\n'%(dims[0],dims[1],dims[2]))
-	f.write('%s.h5:/GrainID/GrainNrs\n'%(h5fn))
+	f.write('%s.h5:/FFGrainID/FFGrainNr\n'%(h5fn))
 	f.write('</DataItem>\n')
 	f.write('</Attribute>\n')
 	f.write('<Attribute Name="EulerAngles" AttributeType="Vector" Center="Cell">\n')
@@ -488,6 +498,16 @@ def writeXMLXdmf(dims,deltas,fn,h5fn,sample_name):
 	f.write('<Attribute Name="Confidence" AttributeType="Scalar" Center="Cell">\n')
 	f.write('<DataItem Dimensions="%d %d %d" NumberType="Float" Format="HDF">\n'%(dims[0],dims[1],dims[2]))
 	f.write(' %s.h5:/Confidence/ConfidenceValue\n'%(h5fn))
+	f.write('</DataItem>\n')
+	f.write('</Attribute>\n')
+	f.write('<Attribute Name="GrainNr" AttributeType="Scalar" Center="Cell">\n')
+	f.write('<DataItem Dimensions="%d %d %d" NumberType="Int" Format="HDF">\n'%(dims[0],dims[1],dims[2]))
+	f.write(' %s.h5:/GrainNrs/GrainNr\n'%(h5fn))
+	f.write('</DataItem>\n')
+	f.write('</Attribute>\n')
+	f.write('<Attribute Name="KernelAverageMisorientation" AttributeType="Scalar" Center="Cell">\n')
+	f.write('<DataItem Dimensions="%d %d %d" NumberType="Float" Format="HDF">\n'%(dims[0],dims[1],dims[2]))
+	f.write(' %s.h5:/KernelAverageMiso/KAM\n'%(h5fn))
 	f.write('</DataItem>\n')
 	f.write('</Attribute>\n')
 	f.write('<Attribute Name="PhaseNumber" AttributeType="Scalar" Center="Cell">\n')
@@ -547,7 +567,7 @@ def mapData(data,dims,outArr):
 					# ~ outArr[xBinT,yBinT,0:6] = data[i,[0,7,8,9,10,11]]
 					outArr[xBinT,yBinT,6] = distt2
 
-@jit('void(float64[:,:,:,:],int64[:],float64[:,:,:]',nopython=True,nogil=True)
+@jit('void(float64[:,:,:,:],int64[:],float64[:,:,:])',nopython=True,nogil=True)
 def calcKAM(misoarr,dims,kamarr):
 	for frameNr in range(dims[0]):
 		for xpos in range(dims[1]):
@@ -556,6 +576,133 @@ def calcKAM(misoarr,dims,kamarr):
 				totmiso = 0
 				for elNr in range(13):
 					miso = misoarr[frameNr][xpos][ypos][elNr]
+					if miso != fillVal:
+						nEls += 1
+						totmiso += 1
+				# Now we check the other neighbors for which we didn't make the array
+				# 0,1,0
+				if xpos+1 < dims[1]:
+					miso = misoarr[frameNr][xpos+1][ypos][12]
+					if miso != fillVal:
+						nEls += 1
+						totmiso += 1
+				# 0,-1,1
+				if ypos+1 < dims[2]:
+					miso = misoarr[frameNr][xpos-1][ypos+1][11]
+					if miso != fillVal:
+						nEls += 1
+						totmiso += 1
+					# 0,0,1
+					miso = misoarr[frameNr][xpos][ypos+1][10]
+					if miso != fillVal:
+						nEls += 1
+						totmiso += 1
+					# 0,1,1
+					if xpos+1 < dims[1]:
+						miso = misoarr[frameNr][xpos+1][ypos+1][9]
+						if miso != fillVal:
+							nEls += 1
+							totmiso += 1
+				# 1,-1,-1
+				if frameNr + 1 < dims[0]:
+					miso = misoarr[frameNr+1][xpos-1][ypos-1][8]
+					if miso != fillVal:
+						nEls += 1
+						totmiso += 1
+					# 1,0,-1
+					miso = misoarr[frameNr+1][xpos][ypos-1][7]
+					if miso != fillVal:
+						nEls += 1
+						totmiso += 1
+					# 1,1,-1
+					if xpos+1 < dims[1]:
+						miso = misoarr[frameNr+1][xpos+1][ypos-1][6]
+						if miso != fillVal:
+							nEls += 1
+							totmiso += 1
+					# 1,-1,0
+					miso = misoarr[frameNr+1][xpos-1][ypos][5]
+					if miso != fillVal:
+						nEls += 1
+						totmiso += 1
+					# 1,0,0
+					miso = misoarr[frameNr+1][xpos][ypos][4]
+					if miso != fillVal:
+						nEls += 1
+						totmiso += 1
+					# 1,1,0
+					if xpos+1 < dims[1]:
+						miso = misoarr[frameNr+1][xpos+1][ypos][3]
+						if miso != fillVal:
+							nEls += 1
+							totmiso += 1
+					# 1,-1,1
+					miso = misoarr[frameNr+1][xpos-1][ypos+1][2]
+					if miso != fillVal:
+						nEls += 1
+						totmiso += 1
+					# 1,0,1
+					miso = misoarr[frameNr+1][xpos][ypos+1][1]
+					if miso != fillVal:
+						nEls += 1
+						totmiso += 1
+					# 1,1,1
+					if xpos+1 < dims[1]:
+						miso = misoarr[frameNr+1][xpos+1][ypos+1][0]
+						if miso != fillVal:
+							nEls += 1
+							totmiso += 1
+				if nEls > 0:
+					avemiso = totmiso / nEls
+				else:
+					avemiso = fillVal
+				kamarr[frameNr][xpos][ypos] = avemiso
+
+@jit('void(int64,int64,int64,int64,int64[:],int64[:,:],int64,float64[:,:],float64[:,:,:,:],float64[:,:,:])',nopython=True,nogil=True)
+def DFS(a,b,c,grainNr,dims,diffArr,NrSymmetries,Sym,quats,grains):
+	if grains[a][b][c] != 0:
+		return
+	grains[a][b][c] = grainNr
+	quat1 = np.zeros(4)
+	quat2 = np.zeros(4)
+	quat1[0] = quats[a][b][c][0]
+	quat1[1] = quats[a][b][c][1]
+	quat1[2] = quats[a][b][c][2]
+	quat1[3] = quats[a][b][c][3]
+	for diff in range(26):
+		a2 = int(a + diffArr[0][diff])
+		b2 = int(b + diffArr[1][diff])
+		c2 = int(c + diffArr[2][diff])
+		if a2 < 0 or a2 == dims[0]:
+			continue
+		if b2 < 0 or b2 == dims[1]:
+			continue
+		if c2 < 0 or c2 == dims[2]:
+			continue
+		if quats[a2][b2][c2][0] == fillVal:
+			grains[a2][b2][c2] = fillVal
+			continue
+		quat2[0] = quats[a2][b2][c2][0]
+		quat2[1] = quats[a2][b2][c2][1]
+		quat2[2] = quats[a2][b2][c2][2]
+		quat2[3] = quats[a2][b2][c2][3]
+		miso = GetMisOrientationAngle(quat1,quat2,NrSymmetries,Sym)
+		if miso <= orientTol:
+			DFS(a2,b2,c2,grainNr,dims,diffArr,NrSymmetries,Sym,quats,grains)
+
+@jit('void(float64[:,:,:,:],int64[:],int64,float64[:,:],int64[:,:],float64[:,:,:])',nopython=True,nogil=True)
+def calcGrainNrs(quats,dims,NrSymmetries,Sym,diffArr,grains):
+	# We will do the following: using quats and grains, we will get
+	grainNr = 0
+	for layerNr in range(dims[0]):
+		for xpos in range(dims[1]):
+			for ypos in range(dims[2]):
+				if quats[layerNr][xpos][ypos][0] == fillVal:
+					grains[layerNr][xpos][ypos] = fillVal
+				else:
+					if grains[layerNr][xpos][ypos] == 0:
+						grainNr += 1
+						DFS(layerNr,xpos,ypos,grainNr,dims,diffArr,NrSymmetries,Sym,quats,grains)
 
 for fnr in range(startnr,endnr+1):
 	print('LayerNr: '+ str(fnr))
@@ -580,12 +727,24 @@ Sym = Sym.astype(float)
 
 # Get quaternions
 quats = np.zeros((Dims[0],Dims[1],Dims[2],4))
+quats = quats.astype(float)
 Euler2Quat(Dims,Euler1,Euler2,Euler3,quats)
 
 # Make MisoArray
 MisoArr = np.zeros((Dims[0],Dims[1],Dims[2],13))
+MisoArr = MisoArr.astype(float)
 MakeMisoArr(quats,MisoArr,Dims,NrSymmetries,Sym)
 
+# Make kams
+KamArr = np.zeros((Dims))
+KamArr = KamArr.astype(float)
+calcKAM(MisoArr,dims,KamArr)
+
+# Make Grains
+grains = np.zeros((Dims))
+grains = grains.astype(float)
+calcGrainNrs(quats,dims,NrSymmetries,Sym,diffArr,grains)
+
 # write files
-writeHDF5File(grainIDs.astype(np.int32),Euler1.astype(np.float32),Euler2.astype(np.float32),Euler3.astype(np.float32),Confidence.astype(np.float32),PhaseNr.astype(np.float32),outfn+'.h5')
+writeHDF5File(grainIDs.astype(np.int32),Euler1.astype(np.float32),Euler2.astype(np.float32),Euler3.astype(np.float32),Confidence.astype(np.float32),PhaseNr.astype(np.float32),KamArr.astype(np.float32),grains.astype(np.int32),outfn+'.h5')
 writeXMLXdmf(Dims,[xyspacing,xyspacing,zspacing],outfn+'.xmf',outfn,sampleName)
