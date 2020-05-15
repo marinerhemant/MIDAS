@@ -26,7 +26,6 @@ static inline
 void BringDownToFundamentalRegionSym(double QuatIn[4], double QuatOut[4], int NrSymmetries, double Sym[24][4])
 {
 	int i, maxCosRowNr;
-	printf("%d\n",NrSymmetries);
 	double qps[NrSymmetries][4], q2[4], qt[4], maxCos=-10000;
 	for (i=0;i<NrSymmetries;i++){
 		q2[0] = Sym[i][0];
