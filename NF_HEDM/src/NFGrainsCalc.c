@@ -33,9 +33,9 @@ double Sym[24][4] = {
    {0.00000,   0.00000,   0.70711,   0.70711},
    {0.00000,   0.00000,   0.70711,  -0.70711}};
 
-int diffArr[3][26] = {{-1,-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1},
-			  {-1,0,1,-1,0,1,-1,0,1,-1,0,1,-1,1,-1,0,1,-1,0,1,-1,0,1,-1,0,1},
-			  {-1,-1,-1,0,0,0,1,1,1,-1,-1,-1,0,0,1,1,1,-1,-1,-1,0,0,0,1,1,1}};
+int diffArr[3][13] = {{-1,-1,-1,-1,-1,-1,-1,-1,-1, 0, 0, 0, 0},
+					  {-1, 0, 1,-1, 0, 1,-1, 0, 1,-1, 0, 1,-1},
+					  {-1,-1,-1, 0, 0, 0, 1, 1, 1,-1,-1,-1, 0}};
 
 static inline
 void QuaternionProduct(double *q, double *r, double *Q)
@@ -231,9 +231,13 @@ inline void DFS(int a, int b, int c, int grainNr, int *dims, int NrSymmetries, d
 
 void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Euler3, int nrLayers, int xMax, int yMax, double fillVal, int NrSymmetries, int *GrainNrs)
 {
-	int layernr,xpos,ypos;
+	int layernr,xpos,ypos,a2,b2,c2;
 	int grainNr = 0;
 	int i,j;
+	long long int Pos1, Pos2;
+	double *Eul1,*Eul2, miso, ang;
+	Eul1 = calloc(3,sizeof(*Eul1));
+	Eul2 = calloc(3,sizeof(*Eul2));
 	int dims[3] = {nrLayers,xMax,yMax};
 	for (layernr = 0; layernr < nrLayers; layernr++){
 		for (xpos = 0; xpos < xMax; xpos++){
@@ -241,9 +245,32 @@ void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Eul
 				if (Euler1[getIDX(layernr,xpos,ypos,xMax,yMax)] == fillVal){
 					GrainNrs[getIDX(layernr,xpos,ypos,xMax,yMax)] = (int)fillVal;
 				} else {
-					// call DFS here.
+					Pos1 = getIDX(layernr,xpos,ypos,xMax,yMax);
+					Eul1[0] = Euler1[Pos1];
+					Eul1[1] = Euler2[Pos1];
+					Eul1[2] = Euler3[Pos1];
+					// Calculate misorientation with the neighbors, whichever one fits, give that number and continue.
+					for (i=0;i<13;i++){
+						a2 = layernr + diffArr[0][i];
+						b2 = layernr + diffArr[1][i];
+						c2 = layernr + diffArr[2][i];
+						if (a2 < 0 || a2 == nrLayers) continue;
+						if (b2 < 0 || b2 == xMax) continue;
+						if (c2 < 0 || c2 == yMax) continue;
+						Pos2 = getIDX(a2,b2,c2,xMax,yMax);
+						if (Euler1[Pos2] == fillVal) continue;
+						Eul2[0] = Euler1[Pos2];
+						Eul2[1] = Euler2[Pos2];
+						Eul2[2] = Euler3[Pos2];
+						miso = GetMisOrientationAngle(Eul1,Eul2,&ang,NrSymmetries);
+						if (miso < orientTol){
+							GrainNrs[Pos1] = GrainNrs[Pos2];
+							break;
+						}
+					}
+					// No neighbor matched, new grain.
 					grainNr ++;
-					DFS(layernr,xpos,ypos,grainNr,dims,NrSymmetries,Euler1,Euler2,Euler3,GrainNrs,fillVal,orientTol);
+					GrainNrs[Pos1] = grainNr;
 				}
 			}
 		}
