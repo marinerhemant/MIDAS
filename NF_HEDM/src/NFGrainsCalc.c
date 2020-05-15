@@ -7,6 +7,36 @@
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 
+double Sym[24][4] = {
+   {1.00000,   0.00000,   0.00000,   0.00000},
+   {0.70711,   0.70711,   0.00000,   0.00000},
+   {0.00000,   1.00000,   0.00000,   0.00000},
+   {0.70711,  -0.70711,   0.00000,   0.00000},
+   {0.70711,   0.00000,   0.70711,   0.00000},
+   {0.00000,   0.00000,   1.00000,   0.00000},
+   {0.70711,   0.00000,  -0.70711,   0.00000},
+   {0.70711,   0.00000,   0.00000,   0.70711},
+   {0.00000,   0.00000,   0.00000,   1.00000},
+   {0.70711,   0.00000,   0.00000,  -0.70711},
+   {0.50000,   0.50000,   0.50000,   0.50000},
+   {0.50000,  -0.50000,  -0.50000,  -0.50000},
+   {0.50000,  -0.50000,   0.50000,   0.50000},
+   {0.50000,   0.50000,  -0.50000,  -0.50000},
+   {0.50000,   0.50000,  -0.50000,   0.50000},
+   {0.50000,  -0.50000,   0.50000,  -0.50000},
+   {0.50000,  -0.50000,  -0.50000,   0.50000},
+   {0.50000,   0.50000,   0.50000,  -0.50000},
+   {0.00000,   0.70711,   0.70711,   0.00000},
+   {0.00000,  -0.70711,   0.70711,   0.00000},
+   {0.00000,   0.70711,   0.00000,   0.70711},
+   {0.00000,   0.70711,   0.00000,  -0.70711},
+   {0.00000,   0.00000,   0.70711,   0.70711},
+   {0.00000,   0.00000,   0.70711,  -0.70711}};
+
+int diffArr[3][26] = {{-1,-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1},
+			  {-1,0,1,-1,0,1,-1,0,1,-1,0,1,-1,1,-1,0,1,-1,0,1,-1,0,1,-1,0,1},
+			  {-1,-1,-1,0,0,0,1,1,1,-1,-1,-1,0,0,1,1,1,-1,-1,-1,0,0,0,1,1,1}};
+
 static inline
 void QuaternionProduct(double q[4], double r[4], double Q[4])
 {
@@ -23,7 +53,7 @@ void QuaternionProduct(double q[4], double r[4], double Q[4])
 }
 
 static inline
-void BringDownToFundamentalRegionSym(double QuatIn[4], double QuatOut[4], int NrSymmetries, double Sym[24][4])
+void BringDownToFundamentalRegionSym(double QuatIn[4], double QuatOut[4], int NrSymmetries)
 {
 	int i, maxCosRowNr;
 	double qps[NrSymmetries][4], q2[4], qt[4], maxCos=-10000;
@@ -115,26 +145,22 @@ void Euler2Quat(double Euler[3],double Quat[4]){
 }
 
 inline
-double GetMisOrientationAngle(double Eul1[3], double Eul2[3], double *Angle, int NrSymmetries, double Sym[24][4])
+double GetMisOrientationAngle(double Eul1[3], double Eul2[3], double *Angle, int NrSymmetries)
 {
 	double quat1[4], quat2[4];
 	Euler2Quat(Eul1,quat1);
 	Euler2Quat(Eul2,quat2);
 	double q1FR[4], q2FR[4], QP[4], MisV[4];
-	BringDownToFundamentalRegionSym(quat1,q1FR,NrSymmetries,Sym);
-	BringDownToFundamentalRegionSym(quat2,q2FR,NrSymmetries,Sym);
+	BringDownToFundamentalRegionSym(quat1,q1FR,NrSymmetries);
+	BringDownToFundamentalRegionSym(quat2,q2FR,NrSymmetries);
 	q1FR[0] = -q1FR[0];
 	QuaternionProduct(q1FR,q2FR,QP);
-	BringDownToFundamentalRegionSym(QP,MisV,NrSymmetries,Sym);
+	BringDownToFundamentalRegionSym(QP,MisV,NrSymmetries);
 	if (MisV[0] > 1) MisV[0] = 1;
 	double angle = 2*(acos(MisV[0]))*rad2deg;
 	*Angle = angle;
 	return angle;
 }
-
-int diffArr[3][26] = {{-1,-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1},
-			  {-1,0,1,-1,0,1,-1,0,1,-1,0,1,-1,1,-1,0,1,-1,0,1,-1,0,1,-1,0,1},
-			  {-1,-1,-1,0,0,0,1,1,1,-1,-1,-1,0,0,1,1,1,-1,-1,-1,0,0,0,1,1,1}};
 
 inline long long int getIDX (int layerNr, int xpos, int ypos, int xMax, int yMax){
 	long long int retval = layerNr;
@@ -145,7 +171,7 @@ inline long long int getIDX (int layerNr, int xpos, int ypos, int xMax, int yMax
 	return retval;
 }
 
-inline void DFS(int a, int b, int c, int grainNr, int *dims, int NrSymmetries, double Sym[24][4], double *Euler1, double *Euler2, double *Euler3, int *grains, double fillVal, double orientTol){
+inline void DFS(int a, int b, int c, int grainNr, int *dims, int NrSymmetries, double *Euler1, double *Euler2, double *Euler3, int *grains, double fillVal, double orientTol){
 	long long int Pos = getIDX(a,b,c,dims[1],dims[2]);
 	if (grains[Pos] != 0) return;
 	grains[Pos] = grainNr;
@@ -172,24 +198,18 @@ inline void DFS(int a, int b, int c, int grainNr, int *dims, int NrSymmetries, d
 			continue;
 		}
 		double ang, miso;
-		miso = GetMisOrientationAngle(quat1,quat2,&ang,NrSymmetries,Sym);
+		miso = GetMisOrientationAngle(quat1,quat2,&ang,NrSymmetries);
 		if (miso <= orientTol){
 			//DFS(a2,b2,c2,grainNr,dims,NrSymmetries,Sym,Euler1,Euler2,Euler3,grains,fillVal,orientTol);
 		}
 	}
 }
 
-void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Euler3, int nrLayers, int xMax, int yMax, double fillVal, int NrSymmetries, double *Symm, int *GrainNrs)
+void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Euler3, int nrLayers, int xMax, int yMax, double fillVal, int NrSymmetries, int *GrainNrs)
 {
 	int layernr,xpos,ypos;
 	int grainNr = 0;
-	double Sym[24][4];
 	int i,j;
-	for (i=0;i<NrSymmetries;i++){
-		for (j=0;j<4;j++){
-			Sym[i][j] = Symm[i*4+j];
-		}
-	}
 	int dims[3] = {nrLayers,xMax,yMax};
 	for (layernr = 0; layernr < nrLayers; layernr++){
 		for (xpos = 0; xpos < xMax; xpos++){
@@ -199,7 +219,7 @@ void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Eul
 				} else {
 					// call DFS here.
 					grainNr ++;
-					DFS(layernr,xpos,ypos,grainNr,dims,NrSymmetries,Sym,Euler1,Euler2,Euler3,GrainNrs,fillVal,orientTol);
+					DFS(layernr,xpos,ypos,grainNr,dims,NrSymmetries,Euler1,Euler2,Euler3,GrainNrs,fillVal,orientTol);
 				}
 			}
 		}
@@ -214,31 +234,6 @@ int main(int argc,char *argv[]){
 	int yMax = 900;
 	double fillVal = -15;
 	int nrSymmetries = 24;
-	double CubSym[24*4] = {
-		1.00000,   0.00000,   0.00000,   0.00000,
-		0.70711,   0.70711,   0.00000,   0.00000,
-		0.00000,   1.00000,   0.00000,   0.00000,
-		0.70711,  -0.70711,   0.00000,   0.00000,
-		0.70711,   0.00000,   0.70711,   0.00000,
-		0.00000,   0.00000,   1.00000,   0.00000,
-		0.70711,   0.00000,  -0.70711,   0.00000,
-		0.70711,   0.00000,   0.00000,   0.70711,
-		0.00000,   0.00000,   0.00000,   1.00000,
-		0.70711,   0.00000,   0.00000,  -0.70711,
-		0.50000,   0.50000,   0.50000,   0.50000,
-		0.50000,  -0.50000,  -0.50000,  -0.50000,
-		0.50000,  -0.50000,   0.50000,   0.50000,
-		0.50000,   0.50000,  -0.50000,  -0.50000,
-		0.50000,   0.50000,  -0.50000,   0.50000,
-		0.50000,  -0.50000,   0.50000,  -0.50000,
-		0.50000,  -0.50000,  -0.50000,   0.50000,
-		0.50000,   0.50000,   0.50000,  -0.50000,
-		0.00000,   0.70711,   0.70711,   0.00000,
-		0.00000,  -0.70711,   0.70711,   0.00000,
-		0.00000,   0.70711,   0.00000,   0.70711,
-		0.00000,   0.70711,   0.00000,  -0.70711,
-		0.00000,   0.00000,   0.70711,   0.70711,
-		0.00000,   0.00000,   0.70711,  -0.70711};
 	int *GrainNrs;
 	GrainNrs = calloc(nrLayers*xMax*yMax,sizeof(*GrainNrs));
 	FILE *f1 = fopen("EulerAngles1.bin","rb");
@@ -251,5 +246,5 @@ int main(int argc,char *argv[]){
 	fread(Euler1,nrLayers*xMax*yMax*sizeof(double),1,f1);
 	fread(Euler2,nrLayers*xMax*yMax*sizeof(double),1,f2);
 	fread(Euler3,nrLayers*xMax*yMax*sizeof(double),1,f3);
-	calcGrainNrs (orientTol, Euler1, Euler2, Euler3, nrLayers, xMax, yMax, fillVal, nrSymmetries, CubSym, GrainNrs);
+	calcGrainNrs (orientTol, Euler1, Euler2, Euler3, nrLayers, xMax, yMax, fillVal, nrSymmetries, GrainNrs);
 }
