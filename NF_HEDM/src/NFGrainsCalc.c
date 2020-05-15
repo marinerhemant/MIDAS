@@ -7,31 +7,33 @@
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 
-double Sym[24][4] = {
-   {1.00000,   0.00000,   0.00000,   0.00000},
-   {0.70711,   0.70711,   0.00000,   0.00000},
-   {0.00000,   1.00000,   0.00000,   0.00000},
-   {0.70711,  -0.70711,   0.00000,   0.00000},
-   {0.70711,   0.00000,   0.70711,   0.00000},
-   {0.00000,   0.00000,   1.00000,   0.00000},
-   {0.70711,   0.00000,  -0.70711,   0.00000},
-   {0.70711,   0.00000,   0.00000,   0.70711},
-   {0.00000,   0.00000,   0.00000,   1.00000},
-   {0.70711,   0.00000,   0.00000,  -0.70711},
-   {0.50000,   0.50000,   0.50000,   0.50000},
-   {0.50000,  -0.50000,  -0.50000,  -0.50000},
-   {0.50000,  -0.50000,   0.50000,   0.50000},
-   {0.50000,   0.50000,  -0.50000,  -0.50000},
-   {0.50000,   0.50000,  -0.50000,   0.50000},
-   {0.50000,  -0.50000,   0.50000,  -0.50000},
-   {0.50000,  -0.50000,  -0.50000,   0.50000},
-   {0.50000,   0.50000,   0.50000,  -0.50000},
-   {0.00000,   0.70711,   0.70711,   0.00000},
-   {0.00000,  -0.70711,   0.70711,   0.00000},
-   {0.00000,   0.70711,   0.00000,   0.70711},
-   {0.00000,   0.70711,   0.00000,  -0.70711},
-   {0.00000,   0.00000,   0.70711,   0.70711},
-   {0.00000,   0.00000,   0.70711,  -0.70711}};
+double Sym[24][4];
+
+//~ double Sym[24][4]; = {
+   //~ {1.00000,   0.00000,   0.00000,   0.00000},
+   //~ {0.70711,   0.70711,   0.00000,   0.00000},
+   //~ {0.00000,   1.00000,   0.00000,   0.00000},
+   //~ {0.70711,  -0.70711,   0.00000,   0.00000},
+   //~ {0.70711,   0.00000,   0.70711,   0.00000},
+   //~ {0.00000,   0.00000,   1.00000,   0.00000},
+   //~ {0.70711,   0.00000,  -0.70711,   0.00000},
+   //~ {0.70711,   0.00000,   0.00000,   0.70711},
+   //~ {0.00000,   0.00000,   0.00000,   1.00000},
+   //~ {0.70711,   0.00000,   0.00000,  -0.70711},
+   //~ {0.50000,   0.50000,   0.50000,   0.50000},
+   //~ {0.50000,  -0.50000,  -0.50000,  -0.50000},
+   //~ {0.50000,  -0.50000,   0.50000,   0.50000},
+   //~ {0.50000,   0.50000,  -0.50000,  -0.50000},
+   //~ {0.50000,   0.50000,  -0.50000,   0.50000},
+   //~ {0.50000,  -0.50000,   0.50000,  -0.50000},
+   //~ {0.50000,  -0.50000,  -0.50000,   0.50000},
+   //~ {0.50000,   0.50000,   0.50000,  -0.50000},
+   //~ {0.00000,   0.70711,   0.70711,   0.00000},
+   //~ {0.00000,  -0.70711,   0.70711,   0.00000},
+   //~ {0.00000,   0.70711,   0.00000,   0.70711},
+   //~ {0.00000,   0.70711,   0.00000,  -0.70711},
+   //~ {0.00000,   0.00000,   0.70711,   0.70711},
+   //~ {0.00000,   0.00000,   0.70711,  -0.70711}};
 
 int diffArr[3][13] = {{-1,-1,-1,-1,-1,-1,-1,-1,-1, 0, 0, 0, 0},
 					  {-1, 0, 1,-1, 0, 1,-1, 0, 1,-1, 0, 1,-1},
@@ -191,11 +193,12 @@ inline long long int getIDX (int layerNr, int xpos, int ypos, int xMax, int yMax
 	return retval;
 }
 
-void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Euler3, int nrLayers, int xMax, int yMax, double fillVal, int NrSymmetries, int *GrainNrs)
+void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Euler3, int nrLayers, int xMax, int yMax, double fillVal, int NrSymmetries, double *Symm, int *GrainNrs)
 {
 	int layernr,xpos,ypos,a2,b2,c2;
 	int grainNr = 0;
 	int i,j;
+	for (i=0;i<NrSymmetries;i++) for (j=0;j<4;j++) Sym[i][j] = Symm[i+4+j];
 	long long int Pos1, Pos2;
 	double *Eul1,*Eul2, miso, ang;
 	Eul1 = calloc(3,sizeof(*Eul1));
@@ -246,31 +249,31 @@ void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Eul
 	free(Eul2);
 }
 
-int main(int argc,char *argv[]){
-	// Read in Euler1, Euler2, Euler3, Symm, allocate: GrainNrs
-	double orientTol = 5.0;
-	int nrLayers = 3;
-	int xMax = 900;
-	int yMax = 900;
-	double fillVal = -15;
-	int nrSymmetries = 24;
-	int *GrainNrs;
-	GrainNrs = calloc(nrLayers*xMax*yMax,sizeof(*GrainNrs));
-	FILE *f1 = fopen("EulerAngles1.bin","rb");
-	FILE *f2 = fopen("EulerAngles2.bin","rb");
-	FILE *f3 = fopen("EulerAngles3.bin","rb");
-	double *Euler1, *Euler2, *Euler3;
-	Euler1 = calloc(nrLayers*xMax*yMax,sizeof(*Euler1));
-	Euler2 = calloc(nrLayers*xMax*yMax,sizeof(*Euler2));
-	Euler3 = calloc(nrLayers*xMax*yMax,sizeof(*Euler3));
-	fread(Euler1,nrLayers*xMax*yMax*sizeof(double),1,f1);
-	fread(Euler2,nrLayers*xMax*yMax*sizeof(double),1,f2);
-	fread(Euler3,nrLayers*xMax*yMax*sizeof(double),1,f3);
-	calcGrainNrs (orientTol, Euler1, Euler2, Euler3, nrLayers, xMax, yMax, fillVal, nrSymmetries, GrainNrs);
-	FILE *f4 = fopen("GrainNrs.bin","wb");
-	fwrite(GrainNrs,nrLayers*xMax*yMax*sizeof(int),1,f4);
-	fclose(f1);
-	fclose(f2);
-	fclose(f3);
-	fclose(f4);
-}
+//~ int main(int argc,char *argv[]){
+	//~ // Read in Euler1, Euler2, Euler3, Symm, allocate: GrainNrs
+	//~ double orientTol = 5.0;
+	//~ int nrLayers = 3;
+	//~ int xMax = 900;
+	//~ int yMax = 900;
+	//~ double fillVal = -15;
+	//~ int nrSymmetries = 24;
+	//~ int *GrainNrs;
+	//~ GrainNrs = calloc(nrLayers*xMax*yMax,sizeof(*GrainNrs));
+	//~ FILE *f1 = fopen("EulerAngles1.bin","rb");
+	//~ FILE *f2 = fopen("EulerAngles2.bin","rb");
+	//~ FILE *f3 = fopen("EulerAngles3.bin","rb");
+	//~ double *Euler1, *Euler2, *Euler3;
+	//~ Euler1 = calloc(nrLayers*xMax*yMax,sizeof(*Euler1));
+	//~ Euler2 = calloc(nrLayers*xMax*yMax,sizeof(*Euler2));
+	//~ Euler3 = calloc(nrLayers*xMax*yMax,sizeof(*Euler3));
+	//~ fread(Euler1,nrLayers*xMax*yMax*sizeof(double),1,f1);
+	//~ fread(Euler2,nrLayers*xMax*yMax*sizeof(double),1,f2);
+	//~ fread(Euler3,nrLayers*xMax*yMax*sizeof(double),1,f3);
+	//~ calcGrainNrs (orientTol, Euler1, Euler2, Euler3, nrLayers, xMax, yMax, fillVal, nrSymmetries, GrainNrs);
+	//~ FILE *f4 = fopen("GrainNrs.bin","wb");
+	//~ fwrite(GrainNrs,nrLayers*xMax*yMax*sizeof(int),1,f4);
+	//~ fclose(f1);
+	//~ fclose(f2);
+	//~ fclose(f3);
+	//~ fclose(f4);
+//~ }
