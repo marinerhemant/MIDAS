@@ -324,11 +324,11 @@ void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fi
 	for (layernr = 0; layernr < nrLayers; layernr++){
 		for (xpos = 0; xpos < xMax; xpos++){
 			for (ypos = 0; ypos < yMax; ypos++){
-				if (Euler1[getIDX(layernr,xpos,ypos,xMax,yMax)] == fillVal){
-					GrainNrs[getIDX(layernr,xpos,ypos,xMax,yMax)] = (int)fillVal;
+				Pos1 = getIDX(layernr,xpos,ypos,xMax,yMax);
+				if (Euler1[Pos1] == fillVal){
+					GrainNrs[Pos1] = (int)fillVal;
 				} else {
 					GrainFound = 0;
-					Pos1 = getIDX(layernr,xpos,ypos,xMax,yMax);
 					Eul1[0] = Euler1[Pos1];
 					Eul1[1] = Euler2[Pos1];
 					Eul1[2] = Euler3[Pos1];
@@ -357,8 +357,8 @@ void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fi
 						grainNr ++;
 						GrainNrs[Pos1] = grainNr;
 					}
-					if (GrainNrs[Pos1] == 0) printf("0, %d\n",grainNr);
 				}
+				if (GrainNrs[Pos1] == 0) printf("0, %d\n",grainNr);
 			}
 		}
 	}
