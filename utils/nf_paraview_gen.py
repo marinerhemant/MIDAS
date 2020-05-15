@@ -273,33 +273,26 @@ for fnr in range(startnr,endnr+1):
 	PhaseNr[dataNr,:,:] = outarr[:,:,5]
 	dataNr += 1
 
-# Make Symmetries
-NrSymmetries,Sym = MakeSymmetries(spaceGroup)
-Sym = Sym.astype(float)
-
+Euler1.astype(np.float64).tofile('EulerAngles1.bin')
+Euler2.astype(np.float64).tofile('EulerAngles2.bin')
+Euler3.astype(np.float64).tofile('EulerAngles3.bin')
 KamArr = np.zeros((Dims))
 
-# Make Grains
-grains = np.zeros((Dims))
-grains = grains.astype(np.int64)
 # We need to provide the following:
-# orientTol, Euler1, Euler2, Euler3, dims[0], dims[1], dims[2], fillVal, NrSymmetries, Sym, grains.
+# orientTol, dims[0], dims[1], dims[2], fillVal, spaceGroup.
 home = os.path.expanduser("~")
 grainsCalc = ctypes.CDLL(home + "/opt/MIDAS/NF_HEDM/bin/NFGrainsCalc.so")
 grainsCalc.calcGrainNrs.argtypes = (ctypes.c_double,
-										np.ctypeslib.ndpointer(dtype=np.float64,ndim=3,flags='C_CONTIGUOUS'),
-										np.ctypeslib.ndpointer(dtype=np.float64,ndim=3,flags='C_CONTIGUOUS'),
-										np.ctypeslib.ndpointer(dtype=np.float64,ndim=3,flags='C_CONTIGUOUS'),
 										ctypes.c_int,
 										ctypes.c_int,
 										ctypes.c_int,
 										ctypes.c_double,
 										ctypes.c_int,
-										np.ctypeslib.ndpointer(dtype=np.float64,ndim=2,flags='C_CONTIGUOUS'),
-										np.ctypeslib.ndpointer(dtype=np.int64,ndim=3,flags='C_CONTIGUOUS')
 									)
 grainsCalc.calcGrainNrs.restype = None
-grainsCalc.calcGrainNrs(orientTol,Euler1,Euler2,Euler3,Dims[0],Dims[1],Dims[2],fillVal,NrSymmetries,Sym,grains)
+grainsCalc.calcGrainNrs(orientTol,Dims[0],Dims[1],Dims[2],fillVal,spaceGroup)
+grains = np.fromfile('GrainNrs.bin',dtype=np.float64)
+grains = grains.reshape((Dims))
 
 # write files
 writeHDF5File(grainIDs.astype(np.int32),Euler1.astype(np.float32),Euler2.astype(np.float32),Euler3.astype(np.float32),Confidence.astype(np.float32),PhaseNr.astype(np.float32),KamArr.astype(np.float32),grains.astype(np.int32),outfn+'.h5')

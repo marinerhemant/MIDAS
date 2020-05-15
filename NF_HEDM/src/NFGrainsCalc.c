@@ -9,31 +9,134 @@
 
 double Sym[24][4];
 
-//~ double Sym[24][4]; = {
-   //~ {1.00000,   0.00000,   0.00000,   0.00000},
-   //~ {0.70711,   0.70711,   0.00000,   0.00000},
-   //~ {0.00000,   1.00000,   0.00000,   0.00000},
-   //~ {0.70711,  -0.70711,   0.00000,   0.00000},
-   //~ {0.70711,   0.00000,   0.70711,   0.00000},
-   //~ {0.00000,   0.00000,   1.00000,   0.00000},
-   //~ {0.70711,   0.00000,  -0.70711,   0.00000},
-   //~ {0.70711,   0.00000,   0.00000,   0.70711},
-   //~ {0.00000,   0.00000,   0.00000,   1.00000},
-   //~ {0.70711,   0.00000,   0.00000,  -0.70711},
-   //~ {0.50000,   0.50000,   0.50000,   0.50000},
-   //~ {0.50000,  -0.50000,  -0.50000,  -0.50000},
-   //~ {0.50000,  -0.50000,   0.50000,   0.50000},
-   //~ {0.50000,   0.50000,  -0.50000,  -0.50000},
-   //~ {0.50000,   0.50000,  -0.50000,   0.50000},
-   //~ {0.50000,  -0.50000,   0.50000,  -0.50000},
-   //~ {0.50000,  -0.50000,  -0.50000,   0.50000},
-   //~ {0.50000,   0.50000,   0.50000,  -0.50000},
-   //~ {0.00000,   0.70711,   0.70711,   0.00000},
-   //~ {0.00000,  -0.70711,   0.70711,   0.00000},
-   //~ {0.00000,   0.70711,   0.00000,   0.70711},
-   //~ {0.00000,   0.70711,   0.00000,  -0.70711},
-   //~ {0.00000,   0.00000,   0.70711,   0.70711},
-   //~ {0.00000,   0.00000,   0.70711,  -0.70711}};
+double TricSym[2][4] = { // This is just for house keeping to make it 2 rows
+   {1.00000,   0.00000,   0.00000,   0.00000},
+   {1.00000,   0.00000,   0.00000,   0.00000}};
+
+double MonoSym[2][4] = {
+   {1.00000,   0.00000,   0.00000,   0.00000},
+   {0.00000,   1.00000,   0.00000,   0.00000}};
+
+double OrtSym[4][4] = {
+   {1.00000,   0.00000,   0.00000,   0.00000},
+   {1.00000,   1.00000,   0.00000,   0.00000},
+   {0.00000,   0.00000,   1.00000,   0.00000},
+   {0.00000,   0.00000,   0.00000,   1.00000}};
+
+double TetSym[8][4] = {
+   {1.00000,   0.00000,   0.00000,   0.00000},
+   {0.70711,   0.00000,   0.00000,   0.70711},
+   {0.00000,   0.00000,   0.00000,   1.00000},
+   {0.70711,  -0.00000,  -0.00000,  -0.70711},
+   {0.00000,   1.00000,   0.00000,   0.00000},
+   {0.00000,   0.00000,   1.00000,   0.00000},
+   {0.00000,   0.70711,   0.70711,   0.00000},
+   {0.00000,  -0.70711,   0.70711,   0.00000}};
+
+double TrigSym[6][4] = {
+   {1.00000,   0.00000,   0.00000,   0.00000},
+   {0.50000,   0.00000,   0.00000,   0.86603},
+   {0.50000,  -0.00000,  -0.00000,  -0.86603},
+   {0.00000,   0.50000,  -0.86603,   0.00000},
+   {0.00000,   1.00000,   0.00000,   0.00000},
+   {0.00000,   0.50000,   0.86603,   0.00000}};
+
+double HexSym[12][4] = {
+   {1.00000,   0.00000,   0.00000,   0.00000},
+   {0.86603,   0.00000,   0.00000,   0.50000},
+   {0.50000,   0.00000,   0.00000,   0.86603},
+   {0.00000,   0.00000,   0.00000,   1.00000},
+   {0.50000,  -0.00000,  -0.00000,  -0.86603},
+   {0.86603,  -0.00000,  -0.00000,  -0.50000},
+   {0.00000,   1.00000,   0.00000,   0.00000},
+   {0.00000,   0.86603,   0.50000,   0.00000},
+   {0.00000,   0.50000,   0.86603,   0.00000},
+   {0.00000,   0.00000,   1.00000,   0.00000},
+   {0.00000,  -0.50000,   0.86603,   0.00000},
+   {0.00000,  -0.86603,   0.50000,   0.00000}};
+
+double CubSym[24][4] = {
+   {1.00000,   0.00000,   0.00000,   0.00000},
+   {0.70711,   0.70711,   0.00000,   0.00000},
+   {0.00000,   1.00000,   0.00000,   0.00000},
+   {0.70711,  -0.70711,   0.00000,   0.00000},
+   {0.70711,   0.00000,   0.70711,   0.00000},
+   {0.00000,   0.00000,   1.00000,   0.00000},
+   {0.70711,   0.00000,  -0.70711,   0.00000},
+   {0.70711,   0.00000,   0.00000,   0.70711},
+   {0.00000,   0.00000,   0.00000,   1.00000},
+   {0.70711,   0.00000,   0.00000,  -0.70711},
+   {0.50000,   0.50000,   0.50000,   0.50000},
+   {0.50000,  -0.50000,  -0.50000,  -0.50000},
+   {0.50000,  -0.50000,   0.50000,   0.50000},
+   {0.50000,   0.50000,  -0.50000,  -0.50000},
+   {0.50000,   0.50000,  -0.50000,   0.50000},
+   {0.50000,  -0.50000,   0.50000,  -0.50000},
+   {0.50000,  -0.50000,  -0.50000,   0.50000},
+   {0.50000,   0.50000,   0.50000,  -0.50000},
+   {0.00000,   0.70711,   0.70711,   0.00000},
+   {0.00000,  -0.70711,   0.70711,   0.00000},
+   {0.00000,   0.70711,   0.00000,   0.70711},
+   {0.00000,   0.70711,   0.00000,  -0.70711},
+   {0.00000,   0.00000,   0.70711,   0.70711},
+   {0.00000,   0.00000,   0.70711,  -0.70711}};
+
+inline
+int MakeSymmetries(int SGNr)
+{
+	int i, j, NrSymmetries;;
+	if (SGNr <= 2){ // Triclinic
+		NrSymmetries = 1;
+		for (i=0;i<NrSymmetries;i++){
+			for (j=0;j<4;j++){
+				Sym[i][j] = TricSym[i][j];
+			}
+		}
+	}else if (SGNr > 2 && SGNr <= 15){  // Monoclinic
+		NrSymmetries = 2;
+		for (i=0;i<NrSymmetries;i++){
+			for (j=0;j<4;j++){
+				Sym[i][j] = MonoSym[i][j];
+			}
+		}
+	}else if (SGNr >= 16 && SGNr <= 74){ // Orthorhombic
+		NrSymmetries = 4;
+		for (i=0;i<NrSymmetries;i++){
+			for (j=0;j<4;j++){
+				Sym[i][j] = OrtSym[i][j];
+			}
+		}
+	}else if (SGNr >= 75 && SGNr <= 142){  // Tetragonal
+		NrSymmetries = 8;
+		for (i=0;i<NrSymmetries;i++){
+			for (j=0;j<4;j++){
+				Sym[i][j] = TetSym[i][j];
+			}
+		}
+	}else if (SGNr >= 143 && SGNr <= 167){ // Trigonal
+		NrSymmetries = 6;
+		for (i=0;i<NrSymmetries;i++){
+			for (j=0;j<4;j++){
+				Sym[i][j] = TrigSym[i][j];
+			}
+		}
+	}else if (SGNr >= 168 && SGNr <= 194){ // Hexagonal
+		NrSymmetries = 12;
+		for (i=0;i<NrSymmetries;i++){
+			for (j=0;j<4;j++){
+				Sym[i][j] = HexSym[i][j];
+			}
+		}
+	}else if (SGNr >= 195 && SGNr <= 230){ // Cubic
+		NrSymmetries = 24;
+		for (i=0;i<NrSymmetries;i++){
+			for (j=0;j<4;j++){
+				Sym[i][j] = CubSym[i][j];
+			}
+		}
+	}
+	return NrSymmetries;
+}
 
 int diffArr[3][13] = {{-1,-1,-1,-1,-1,-1,-1,-1,-1, 0, 0, 0, 0},
 					  {-1, 0, 1,-1, 0, 1,-1, 0, 1,-1, 0, 1,-1},
@@ -193,12 +296,25 @@ inline long long int getIDX (int layerNr, int xpos, int ypos, int xMax, int yMax
 	return retval;
 }
 
-void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Euler3, int nrLayers, int xMax, int yMax, double fillVal, int NrSymmetries, double *Symm, int *GrainNrs)
+void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fillVal, int SGNum)
 {
+	int NrSymmetries;
+	NrSymmetries = MakeSymmetries(SGNum);
+	int *GrainNrs;
+	GrainNrs = calloc(nrLayers*xMax*yMax,sizeof(*GrainNrs));
+	FILE *f1 = fopen("EulerAngles1.bin","rb");
+	FILE *f2 = fopen("EulerAngles2.bin","rb");
+	FILE *f3 = fopen("EulerAngles3.bin","rb");
+	double *Euler1, *Euler2, *Euler3;
+	Euler1 = calloc(nrLayers*xMax*yMax,sizeof(*Euler1));
+	Euler2 = calloc(nrLayers*xMax*yMax,sizeof(*Euler2));
+	Euler3 = calloc(nrLayers*xMax*yMax,sizeof(*Euler3));
+	fread(Euler1,nrLayers*xMax*yMax*sizeof(double),1,f1);
+	fread(Euler2,nrLayers*xMax*yMax*sizeof(double),1,f2);
+	fread(Euler3,nrLayers*xMax*yMax*sizeof(double),1,f3);
 	int layernr,xpos,ypos,a2,b2,c2;
 	int grainNr = 0;
 	int i,j;
-	for (i=0;i<NrSymmetries;i++) for (j=0;j<4;j++) Sym[i][j] = Symm[i+4+j];
 	long long int Pos1, Pos2;
 	double *Eul1,*Eul2, miso, ang;
 	Eul1 = calloc(3,sizeof(*Eul1));
@@ -245,6 +361,12 @@ void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Eul
 			}
 		}
 	}
+	FILE *f4 = fopen("GrainNrs.bin","wb");
+	fwrite(GrainNrs,nrLayers*xMax*yMax*sizeof(int),1,f4);
+	fclose(f1);
+	fclose(f2);
+	fclose(f3);
+	fclose(f4);
 	free(Eul1);
 	free(Eul2);
 }
