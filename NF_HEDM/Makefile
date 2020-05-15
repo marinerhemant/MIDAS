@@ -28,7 +28,7 @@ BINDIR=bin/
 all: help bindircheck makediffrspots makehexgrid medianimage imageprocessing \
 	fitorientation fitorientationparameters fitorientationparametersmultipoint \
 	genseedorientations simulatediffrspots processnfmicremote \
-	mmapimageinfo hkls parsemic fitorientationsinglepoint parsedeconv 
+	mmapimageinfo hkls parsemic fitorientationsinglepoint parsedeconv nfgrainscalc
 	# imageprocessinghdf medianimagehdf
 
 #local:
@@ -147,6 +147,9 @@ hkls: $(SRCDIR)GetHKLList.c
 
 parsemic: $(SRCDIR)ParseMic.c
 	$(CC) $(SRCDIR)ParseMic.c -o $(BINDIR)ParseMic $(CFLAGS)
+
+nfgrainscalc: $(SRCDIR)NFGrainsCalc.c
+	$(CC) $(SRCDIR)NFGrainsCalc.c -shared -Wl,-soname,NFGrainsCalc -o $(BINDIR)NFGrainsCalc.so -fPIC -ldl -lm -fgnu89-inline -O3 -w
 
 clean:
 	rm -rf $(BINDIR)

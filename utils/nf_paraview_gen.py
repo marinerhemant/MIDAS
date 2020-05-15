@@ -44,6 +44,7 @@ import h5py
 import time
 from numba import jit
 from math import cos, sin, tan, sqrt, asin, acos, atan
+import ctypes
 rad2deg = 57.2957795130823
 
 Dims = np.array([0,0,0])
@@ -83,77 +84,6 @@ HexSym = np.array([[1.00000,   0.00000,   0.00000,   0.00000],[0.86603,   0.0000
 
 CubSym = np.array([[1.00000,   0.00000,   0.00000,   0.00000],[0.70711,   0.70711,   0.00000,   0.00000],[0.00000,   1.00000,   0.00000,   0.00000],[0.70711,  -0.70711,   0.00000,   0.00000],[0.70711,   0.00000,   0.70711,   0.00000],[0.00000,   0.00000,   1.00000,   0.00000],[0.70711,   0.00000,  -0.70711,   0.00000],[0.70711,   0.00000,   0.00000,   0.70711],[0.00000,   0.00000,   0.00000,   1.00000],[0.70711,   0.00000,   0.00000,  -0.70711],[0.50000,   0.50000,   0.50000,   0.50000],[0.50000,  -0.50000,  -0.50000,  -0.50000],[0.50000,  -0.50000,   0.50000,   0.50000],[0.50000,   0.50000,  -0.50000,  -0.50000],[0.50000,   0.50000,  -0.50000,   0.50000],[0.50000,  -0.50000,   0.50000,  -0.50000],[0.50000,  -0.50000,  -0.50000,   0.50000],[0.50000,   0.50000,   0.50000,  -0.50000],[0.00000,   0.70711,   0.70711,   0.00000],[0.00000,  -0.70711,   0.70711,   0.00000],[0.00000,   0.70711,   0.00000,   0.70711],[0.00000,   0.70711,   0.00000,  -0.70711],[0.00000,   0.00000,   0.70711,   0.70711],[0.00000,   0.00000,   0.70711,  -0.70711]])
 
-@jit('void(int64[:],float64[:,:,:], float64[:,:,:], float64[:,:,:], float64[:,:,:,:])',nopython=True,nogil=True)
-def Euler2Quat(nEls,eul1,eul2,eul3,quats):
-	OrientMat = np.zeros(9)
-	Quat = np.zeros(4)
-	for frameNr in range(nEls[0]):
-		for xPos in range(nEls[1]):
-			for yPos in range(nEls[2]):
-				psi = eul1[frameNr,xPos,yPos]
-				phi = eul2[frameNr,xPos,yPos]
-				theta = eul3[frameNr,xPos,yPos]
-				if (psi == fillVal):
-					quats[frameNr,xPos,yPos,0] = fillVal
-					quats[frameNr,xPos,yPos,1] = fillVal
-					quats[frameNr,xPos,yPos,2] = fillVal
-					quats[frameNr,xPos,yPos,3] = fillVal
-				cps = cos(psi)
-				cph = cos(phi)
-				cth = cos(theta)
-				sps = sin(psi)
-				sph = sin(phi)
-				sth = sin(theta)
-				OrientMat[0] = cth * cps - sth * cph * sps
-				OrientMat[1] = -cth * cph * sps - sth * cps
-				OrientMat[2] = sph * sps
-				OrientMat[3] = cth * sps + sth * cph * cps
-				OrientMat[4] = cth * cph * cps - sth * sps
-				OrientMat[5] = -sph * cps
-				OrientMat[6] = sth * sph
-				OrientMat[7] = cth * sph
-				OrientMat[8] = cph
-				trace = OrientMat[0] + OrientMat[4] + OrientMat[8];
-				if(trace > 0):
-					s = 0.5/sqrt(trace+1.0);
-					Quat[0] = 0.25/s;
-					Quat[1] = (OrientMat[7]-OrientMat[5])*s;
-					Quat[2] = (OrientMat[2]-OrientMat[6])*s;
-					Quat[3] = (OrientMat[3]-OrientMat[1])*s;
-				else:
-					if (OrientMat[0]>OrientMat[4] and OrientMat[0]>OrientMat[8]):
-						s = 2.0*sqrt(1.0+OrientMat[0]-OrientMat[4]-OrientMat[8]);
-						Quat[0] = (OrientMat[7]-OrientMat[5])/s;
-						Quat[1] = 0.25*s;
-						Quat[2] = (OrientMat[1]+OrientMat[3])/s;
-						Quat[3] = (OrientMat[2]+OrientMat[6])/s;
-					elif (OrientMat[4] > OrientMat[8]):
-						s = 2.0*sqrt(1.0+OrientMat[4]-OrientMat[0]-OrientMat[8]);
-						Quat[0] = (OrientMat[2]-OrientMat[6])/s;
-						Quat[1] = (OrientMat[1]+OrientMat[3])/s;
-						Quat[2] = 0.25*s;
-						Quat[3] = (OrientMat[5]+OrientMat[7])/s;
-					else:
-						s = 2.0*sqrt(1.0+OrientMat[8]-OrientMat[0]-OrientMat[4]);
-						Quat[0] = (OrientMat[3]-OrientMat[1])/s;
-						Quat[1] = (OrientMat[2]+OrientMat[6])/s;
-						Quat[2] = (OrientMat[5]+OrientMat[7])/s;
-						Quat[3] = 0.25*s;
-				if (Quat[0] < 0):
-					Quat[0] = -Quat[0];
-					Quat[1] = -Quat[1];
-					Quat[2] = -Quat[2];
-					Quat[3] = -Quat[3];
-				QNorm = sqrt(Quat[0]*Quat[0] + Quat[1]*Quat[1] + Quat[2]*Quat[2] + Quat[3]*Quat[3]);
-				Quat[0] /= QNorm;
-				Quat[1] /= QNorm;
-				Quat[2] /= QNorm;
-				Quat[3] /= QNorm;
-				quats[frameNr,xPos,yPos,0] = Quat[0]
-				quats[frameNr,xPos,yPos,1] = Quat[1]
-				quats[frameNr,xPos,yPos,2] = Quat[2]
-				quats[frameNr,xPos,yPos,3] = Quat[3]
-
 def MakeSymmetries(SGNr):
 	Sym = np.zeros((24,4))
 	if (SGNr <= 2): # Triclinic
@@ -192,248 +122,6 @@ def MakeSymmetries(SGNr):
 			for j in range(4):
 				Sym[i][j] = CubSym[i][j]
 	return NrSymmetries,Sym
-
-@jit('float64[:](float64[:],float64[:])',nopython=True,nogil=True)
-def QuaternionProduct(q, r):
-	Q = np.zeros(4)
-	Q[0] = r[0]*q[0] - r[1]*q[1] - r[2]*q[2] - r[3]*q[3]
-	Q[1] = r[1]*q[0] + r[0]*q[1] + r[3]*q[2] - r[2]*q[3]
-	Q[2] = r[2]*q[0] + r[0]*q[2] + r[1]*q[3] - r[3]*q[1]
-	Q[3] = r[3]*q[0] + r[0]*q[3] + r[2]*q[1] - r[1]*q[2]
-	if (Q[0] < 0):
-		Q[0] = -Q[0]
-		Q[1] = -Q[1]
-		Q[2] = -Q[2]
-		Q[3] = -Q[3]
-	return Q
-
-@jit('float64[:](float64[:],int64,float64[:,:])',nopython=True,nogil=True)
-def BringDownToFundamentalRegionSym(QuatIn, NrSymmetries, Sym):
-	QuatOut = np.zeros(4)
-	qps = np.zeros((NrSymmetries,4))
-	q2 = np.zeros(4)
-	maxCos=-10000.0
-	for i in range(NrSymmetries):
-		q2[0] = Sym[i][0]
-		q2[1] = Sym[i][1]
-		q2[2] = Sym[i][2]
-		q2[3] = Sym[i][3]
-		qt = QuaternionProduct(QuatIn,q2)
-		qps[i][0] = qt[0]
-		qps[i][1] = qt[1]
-		qps[i][2] = qt[2]
-		qps[i][3] = qt[3]
-		if (maxCos < qt[0]):
-			maxCos = qt[0]
-			maxCosRowNr = i
-	QuatOut[0] = qps[maxCosRowNr][0]
-	QuatOut[1] = qps[maxCosRowNr][1]
-	QuatOut[2] = qps[maxCosRowNr][2]
-	QuatOut[3] = qps[maxCosRowNr][3]
-	return QuatOut
-
-@jit('double(float64[:],float64[:],int64,float64[:,:])',nopython=True,nogil=True)
-def GetMisOrientationAngle(quat1, quat2, NrSymmetries, Sym):
-	MisV = np.zeros(4)
-	q1FR = BringDownToFundamentalRegionSym(quat1,NrSymmetries,Sym)
-	q2FR = BringDownToFundamentalRegionSym(quat2,NrSymmetries,Sym)
-	q1FR[0] = -q1FR[0]
-	QP = QuaternionProduct(q1FR,q2FR)
-	MisV = BringDownToFundamentalRegionSym(QP,NrSymmetries,Sym)
-	if (MisV[0] > 1):
-		MisV[0] = 1
-	return 2*(acos(MisV[0]))*rad2deg
-
-@jit('void(float64[:,:,:,:],float64[:,:,:,:],int64[:],int64,float64[:,:])',nopython=True,nogil=True)
-def MakeMisoArr(quats,misoarr,dims,NrSymmetries,Sym):
-	quat1 = np.zeros(4)
-	quat2 = np.zeros(4)
-	for frameNr in range(dims[0]):
-		for xpos in range(dims[1]):
-			for ypos in range(dims[2]):
-				quat1[0] = quats[frameNr][xpos][ypos][0]
-				quat1[1] = quats[frameNr][xpos][ypos][1]
-				quat1[2] = quats[frameNr][xpos][ypos][2]
-				quat1[3] = quats[frameNr][xpos][ypos][3]
-				if quat1[0] == fillVal: # fillVal quat, not to be used
-					for i in range(13):
-						misoarr[frameNr][xpos][ypos][i] = fillVal
-				# -1,-1,-1
-				f2 = frameNr - 1
-				x2 = xpos - 1
-				y2 = ypos - 1
-				if f2 < 0 or x2 < 0 or y2 < 0:
-					misoarr[frameNr][xpos][ypos][0] = fillVal
-				else:
-					quat2[0] = quats[f2][x2][y2][0]
-					quat2[1] = quats[f2][x2][y2][1]
-					quat2[2] = quats[f2][x2][y2][2]
-					quat2[3] = quats[f2][x2][y2][3]
-					if quat2[0] == fillVal:
-						misoarr[frameNr][xpos][ypos][0] = fillVal
-					else:
-						misoarr[frameNr][xpos][ypos][0] = GetMisOrientationAngle(quat1,quat2,NrSymmetries,Sym)
-				# -1,0,-1
-				x2 = xpos
-				if f2 < 0 or x2 < 0 or y2 < 0:
-					misoarr[frameNr][xpos][ypos][0] = fillVal
-				else:
-					quat2[0] = quats[f2][x2][y2][0]
-					quat2[1] = quats[f2][x2][y2][1]
-					quat2[2] = quats[f2][x2][y2][2]
-					quat2[3] = quats[f2][x2][y2][3]
-					if quat2[0] == fillVal:
-						misoarr[frameNr][xpos][ypos][1] = fillVal
-					else:
-						misoarr[frameNr][xpos][ypos][1] = GetMisOrientationAngle(quat1,quat2,NrSymmetries,Sym)
-				# -1,1,-1
-				x2 = xpos + 1
-				if f2 < 0 or x2 < 0 or y2 < 0:
-					misoarr[frameNr][xpos][ypos][0] = fillVal
-				else:
-					quat2[0] = quats[f2][x2][y2][0]
-					quat2[1] = quats[f2][x2][y2][1]
-					quat2[2] = quats[f2][x2][y2][2]
-					quat2[3] = quats[f2][x2][y2][3]
-					if quat2[0] == fillVal:
-						misoarr[frameNr][xpos][ypos][2] = fillVal
-					else:
-						misoarr[frameNr][xpos][ypos][2] = GetMisOrientationAngle(quat1,quat2,NrSymmetries,Sym)
-				# -1,-1,0
-				x2 = xpos - 1
-				y2 = ypos
-				if f2 < 0 or x2 < 0 or y2 < 0:
-					misoarr[frameNr][xpos][ypos][0] = fillVal
-				else:
-					quat2[0] = quats[f2][x2][y2][0]
-					quat2[1] = quats[f2][x2][y2][1]
-					quat2[2] = quats[f2][x2][y2][2]
-					quat2[3] = quats[f2][x2][y2][3]
-					if quat2[0] == fillVal:
-						misoarr[frameNr][xpos][ypos][3] = fillVal
-					else:
-						misoarr[frameNr][xpos][ypos][3] = GetMisOrientationAngle(quat1,quat2,NrSymmetries,Sym)
-				# -1,0,0
-				x2 = xpos
-				if f2 < 0 or x2 < 0 or y2 < 0:
-					misoarr[frameNr][xpos][ypos][0] = fillVal
-				else:
-					quat2[0] = quats[f2][x2][y2][0]
-					quat2[1] = quats[f2][x2][y2][1]
-					quat2[2] = quats[f2][x2][y2][2]
-					quat2[3] = quats[f2][x2][y2][3]
-					if quat2[0] == fillVal:
-						misoarr[frameNr][xpos][ypos][4] = fillVal
-					else:
-						misoarr[frameNr][xpos][ypos][4] = GetMisOrientationAngle(quat1,quat2,NrSymmetries,Sym)
-				# -1,1,0
-				x2 = xpos + 1
-				if f2 < 0 or x2 < 0 or y2 < 0:
-					misoarr[frameNr][xpos][ypos][0] = fillVal
-				else:
-					quat2[0] = quats[f2][x2][y2][0]
-					quat2[1] = quats[f2][x2][y2][1]
-					quat2[2] = quats[f2][x2][y2][2]
-					quat2[3] = quats[f2][x2][y2][3]
-					if quat2[0] == fillVal:
-						misoarr[frameNr][xpos][ypos][5] = fillVal
-					else:
-						misoarr[frameNr][xpos][ypos][5] = GetMisOrientationAngle(quat1,quat2,NrSymmetries,Sym)
-				# -1,-1,1
-				x2 = xpos - 1
-				y2 = ypos + 1
-				if f2 < 0 or x2 < 0 or y2 < 0:
-					misoarr[frameNr][xpos][ypos][0] = fillVal
-				else:
-					quat2[0] = quats[f2][x2][y2][0]
-					quat2[1] = quats[f2][x2][y2][1]
-					quat2[2] = quats[f2][x2][y2][2]
-					quat2[3] = quats[f2][x2][y2][3]
-					if quat2[0] == fillVal:
-						misoarr[frameNr][xpos][ypos][6] = fillVal
-					else:
-						misoarr[frameNr][xpos][ypos][6] = GetMisOrientationAngle(quat1,quat2,NrSymmetries,Sym)
-				# -1,0,1
-				x2 = xpos
-				if f2 < 0 or x2 < 0 or y2 < 0:
-					misoarr[frameNr][xpos][ypos][0] = fillVal
-				else:
-					quat2[0] = quats[f2][x2][y2][0]
-					quat2[1] = quats[f2][x2][y2][1]
-					quat2[2] = quats[f2][x2][y2][2]
-					quat2[3] = quats[f2][x2][y2][3]
-					if quat2[0] == fillVal:
-						misoarr[frameNr][xpos][ypos][7] = fillVal
-					else:
-						misoarr[frameNr][xpos][ypos][7] = GetMisOrientationAngle(quat1,quat2,NrSymmetries,Sym)
-				# -1,1,1
-				x2 = xpos + 1
-				if f2 < 0 or x2 < 0 or y2 < 0:
-					misoarr[frameNr][xpos][ypos][0] = fillVal
-				else:
-					quat2[0] = quats[f2][x2][y2][0]
-					quat2[1] = quats[f2][x2][y2][1]
-					quat2[2] = quats[f2][x2][y2][2]
-					quat2[3] = quats[f2][x2][y2][3]
-					if quat2[0] == fillVal:
-						misoarr[frameNr][xpos][ypos][8] = fillVal
-					else:
-						misoarr[frameNr][xpos][ypos][8] = GetMisOrientationAngle(quat1,quat2,NrSymmetries,Sym)
-				# 0,-1,-1
-				f2 = frameNr
-				x2 = xpos - 1
-				y2 = ypos - 1
-				if f2 < 0 or x2 < 0 or y2 < 0:
-					misoarr[frameNr][xpos][ypos][0] = fillVal
-				else:
-					quat2[0] = quats[f2][x2][y2][0]
-					quat2[1] = quats[f2][x2][y2][1]
-					quat2[2] = quats[f2][x2][y2][2]
-					quat2[3] = quats[f2][x2][y2][3]
-					if quat2[0] == fillVal:
-						misoarr[frameNr][xpos][ypos][9] = fillVal
-					else:
-						misoarr[frameNr][xpos][ypos][9] = GetMisOrientationAngle(quat1,quat2,NrSymmetries,Sym)
-				# 0,0,-1
-				x2 = xpos
-				if f2 < 0 or x2 < 0 or y2 < 0:
-					misoarr[frameNr][xpos][ypos][0] = fillVal
-				else:
-					quat2[0] = quats[f2][x2][y2][0]
-					quat2[1] = quats[f2][x2][y2][1]
-					quat2[2] = quats[f2][x2][y2][2]
-					quat2[3] = quats[f2][x2][y2][3]
-					if quat2[0] == fillVal:
-						misoarr[frameNr][xpos][ypos][10] = fillVal
-					else:
-						misoarr[frameNr][xpos][ypos][10] = GetMisOrientationAngle(quat1,quat2,NrSymmetries,Sym)
-				# 0,1,-1
-				x2 = xpos + 1
-				if f2 < 0 or x2 < 0 or y2 < 0:
-					misoarr[frameNr][xpos][ypos][0] = fillVal
-				else:
-					quat2[0] = quats[f2][x2][y2][0]
-					quat2[1] = quats[f2][x2][y2][1]
-					quat2[2] = quats[f2][x2][y2][2]
-					quat2[3] = quats[f2][x2][y2][3]
-					if quat2[0] == fillVal:
-						misoarr[frameNr][xpos][ypos][11] = fillVal
-					else:
-						misoarr[frameNr][xpos][ypos][11] = GetMisOrientationAngle(quat1,quat2,NrSymmetries,Sym)
-				# 0,-1,0
-				x2 = xpos - 1
-				y2 = ypos
-				if f2 < 0 or x2 < 0 or y2 < 0:
-					misoarr[frameNr][xpos][ypos][0] = fillVal
-				else:
-					quat2[0] = quats[f2][x2][y2][0]
-					quat2[1] = quats[f2][x2][y2][1]
-					quat2[2] = quats[f2][x2][y2][2]
-					quat2[3] = quats[f2][x2][y2][3]
-					if quat2[0] == fillVal:
-						misoarr[frameNr][xpos][ypos][12] = fillVal
-					else:
-						misoarr[frameNr][xpos][ypos][12] = GetMisOrientationAngle(quat1,quat2,NrSymmetries,Sym)
 
 def writeHDF5File(grID,eul1,eul2,eul3,conf,phNr,kam,grNr,fileID):
 	f = h5py.File(fileID,'w')
@@ -567,143 +255,6 @@ def mapData(data,dims,outArr):
 					# ~ outArr[xBinT,yBinT,0:6] = data[i,[0,7,8,9,10,11]]
 					outArr[xBinT,yBinT,6] = distt2
 
-@jit('void(float64[:,:,:,:],int64[:],float64[:,:,:])',nopython=True,nogil=True)
-def calcKAM(misoarr,dims,kamarr):
-	for frameNr in range(dims[0]):
-		for xpos in range(dims[1]):
-			for ypos in range(dims[2]):
-				nEls = 0
-				totmiso = 0
-				for elNr in range(13):
-					miso = misoarr[frameNr][xpos][ypos][elNr]
-					if miso != fillVal:
-						nEls += 1
-						totmiso += 1
-				# Now we check the other neighbors for which we didn't make the array
-				# 0,1,0
-				if xpos+1 < dims[1]:
-					miso = misoarr[frameNr][xpos+1][ypos][12]
-					if miso != fillVal:
-						nEls += 1
-						totmiso += 1
-				# 0,-1,1
-				if ypos+1 < dims[2]:
-					miso = misoarr[frameNr][xpos-1][ypos+1][11]
-					if miso != fillVal:
-						nEls += 1
-						totmiso += 1
-					# 0,0,1
-					miso = misoarr[frameNr][xpos][ypos+1][10]
-					if miso != fillVal:
-						nEls += 1
-						totmiso += 1
-					# 0,1,1
-					if xpos+1 < dims[1]:
-						miso = misoarr[frameNr][xpos+1][ypos+1][9]
-						if miso != fillVal:
-							nEls += 1
-							totmiso += 1
-				# 1,-1,-1
-				if frameNr + 1 < dims[0]:
-					miso = misoarr[frameNr+1][xpos-1][ypos-1][8]
-					if miso != fillVal:
-						nEls += 1
-						totmiso += 1
-					# 1,0,-1
-					miso = misoarr[frameNr+1][xpos][ypos-1][7]
-					if miso != fillVal:
-						nEls += 1
-						totmiso += 1
-					# 1,1,-1
-					if xpos+1 < dims[1]:
-						miso = misoarr[frameNr+1][xpos+1][ypos-1][6]
-						if miso != fillVal:
-							nEls += 1
-							totmiso += 1
-					# 1,-1,0
-					miso = misoarr[frameNr+1][xpos-1][ypos][5]
-					if miso != fillVal:
-						nEls += 1
-						totmiso += 1
-					# 1,0,0
-					miso = misoarr[frameNr+1][xpos][ypos][4]
-					if miso != fillVal:
-						nEls += 1
-						totmiso += 1
-					# 1,1,0
-					if xpos+1 < dims[1]:
-						miso = misoarr[frameNr+1][xpos+1][ypos][3]
-						if miso != fillVal:
-							nEls += 1
-							totmiso += 1
-					# 1,-1,1
-					miso = misoarr[frameNr+1][xpos-1][ypos+1][2]
-					if miso != fillVal:
-						nEls += 1
-						totmiso += 1
-					# 1,0,1
-					miso = misoarr[frameNr+1][xpos][ypos+1][1]
-					if miso != fillVal:
-						nEls += 1
-						totmiso += 1
-					# 1,1,1
-					if xpos+1 < dims[1]:
-						miso = misoarr[frameNr+1][xpos+1][ypos+1][0]
-						if miso != fillVal:
-							nEls += 1
-							totmiso += 1
-				if nEls > 0:
-					avemiso = totmiso / nEls
-				else:
-					avemiso = fillVal
-				kamarr[frameNr][xpos][ypos] = avemiso
-
-@jit('void(int64,int64,int64,int64,int64[:],int64[:,:],int64,float64[:,:],float64[:,:,:,:],float64[:,:,:])',nopython=True,nogil=True)
-def DFS(a,b,c,grainNr,dims,diffArr,NrSymmetries,Sym,quats,grains):
-	if grains[a][b][c] != 0:
-		return
-	grains[a][b][c] = grainNr
-	quat1 = np.zeros(4)
-	quat2 = np.zeros(4)
-	quat1[0] = quats[a][b][c][0]
-	quat1[1] = quats[a][b][c][1]
-	quat1[2] = quats[a][b][c][2]
-	quat1[3] = quats[a][b][c][3]
-	for diff in range(26):
-		a2 = int(a + diffArr[0][diff])
-		b2 = int(b + diffArr[1][diff])
-		c2 = int(c + diffArr[2][diff])
-		if a2 < 0 or a2 == dims[0]:
-			continue
-		if b2 < 0 or b2 == dims[1]:
-			continue
-		if c2 < 0 or c2 == dims[2]:
-			continue
-		if quats[a2][b2][c2][0] == fillVal:
-			grains[a2][b2][c2] = fillVal
-			continue
-		quat2[0] = quats[a2][b2][c2][0]
-		quat2[1] = quats[a2][b2][c2][1]
-		quat2[2] = quats[a2][b2][c2][2]
-		quat2[3] = quats[a2][b2][c2][3]
-		miso = GetMisOrientationAngle(quat1,quat2,NrSymmetries,Sym)
-		if miso <= orientTol:
-			DFS(a2,b2,c2,grainNr,dims,diffArr,NrSymmetries,Sym,quats,grains)
-
-@jit('void(float64[:,:,:,:],int64[:],int64,float64[:,:],int64[:,:],float64[:,:,:])',nopython=True,nogil=True)
-def calcGrainNrs(quats,dims,NrSymmetries,Sym,diffArr,grains):
-	# We will do the following: using quats and grains, we will get
-	grainNr = 0
-	for layerNr in range(dims[0]):
-		for xpos in range(dims[1]):
-			for ypos in range(dims[2]):
-				if quats[layerNr][xpos][ypos][0] == fillVal:
-					grains[layerNr][xpos][ypos] = fillVal
-				else:
-					if grains[layerNr][xpos][ypos] == 0:
-						grainNr += 1
-						DFS(layerNr,xpos,ypos,grainNr,dims,diffArr,NrSymmetries,Sym,quats,grains)
-
 for fnr in range(startnr,endnr+1):
 	print('LayerNr: '+ str(fnr))
 	FileName = sampleName + 'Layer' + str(fnr) + '/' + filestem + str(fnr) + '.mic'
@@ -725,25 +276,26 @@ for fnr in range(startnr,endnr+1):
 NrSymmetries,Sym = MakeSymmetries(spaceGroup)
 Sym = Sym.astype(float)
 
-# Get quaternions
-quats = np.zeros((Dims[0],Dims[1],Dims[2],4))
-quats = quats.astype(float)
-Euler2Quat(Dims,Euler1,Euler2,Euler3,quats)
-
-# Make MisoArray
-MisoArr = np.zeros((Dims[0],Dims[1],Dims[2],13))
-MisoArr = MisoArr.astype(float)
-MakeMisoArr(quats,MisoArr,Dims,NrSymmetries,Sym)
-
-# Make kams
-KamArr = np.zeros((Dims))
-KamArr = KamArr.astype(float)
-calcKAM(MisoArr,dims,KamArr)
-
 # Make Grains
 grains = np.zeros((Dims))
-grains = grains.astype(float)
-calcGrainNrs(quats,dims,NrSymmetries,Sym,diffArr,grains)
+# We need to provide the following:
+# orientTol, Euler1, Euler2, Euler3, dims[0], dims[1], dims[2], fillVal, NrSymmetries, Sym, grains.
+home = os.path.expanduser("~")
+grainsCalc = ctypes.CDLL(home + "/opt/MIDAS/NF_HEDM/bin/NFGrainsCalc.so")
+grainsCalc.calcGrainNrs.argtypes = (ctypes.c_double,
+										np.ctypeslib.ndpointer(dtype=np.float64,ndim=3,flags='C_CONTIGUOUS'),
+										np.ctypeslib.ndpointer(dtype=np.float64,ndim=3,flags='C_CONTIGUOUS'),
+										np.ctypeslib.ndpointer(dtype=np.float64,ndim=3,flags='C_CONTIGUOUS'),
+										ctypes.c_int,
+										ctypes.c_int,
+										ctypes.c_int,
+										ctypes.c_double,
+										ctypes.c_int,
+										np.ctypeslib.ndpointer(dtype=np.float64,ndim=2,flags='C_CONTIGUOUS'),
+										np.ctypeslib.ndpointer(dtype=np.int64,ndim=3,flags='C_CONTIGUOUS')
+									)
+grainsCalc.calcGrainNrs.restype = None
+grainsCalc.calcGrainNrs(orientTol,Euler1,Euler2,Euler3,dims[0],dims[1],dims[2],fillVal,NrSymmetries,Sym,grains)
 
 # write files
 writeHDF5File(grainIDs.astype(np.int32),Euler1.astype(np.float32),Euler2.astype(np.float32),Euler3.astype(np.float32),Confidence.astype(np.float32),PhaseNr.astype(np.float32),KamArr.astype(np.float32),grains.astype(np.int32),outfn+'.h5')
