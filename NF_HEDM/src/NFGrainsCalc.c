@@ -216,9 +216,9 @@ void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Eul
 					// Calculate misorientation with the neighbors, whichever one fits, give that number and continue.
 					for (i=0;i<13;i++){
 						a2 = layernr + diffArr[0][i];
-						b2 = layernr + diffArr[1][i];
-						c2 = layernr + diffArr[2][i];
-						printf("%d %d %d\n",a2,b2,c2);
+						b2 = xpos + diffArr[1][i];
+						c2 = ypos + diffArr[2][i];
+						//~ printf("%d %d %d\n",a2,b2,c2);
 						if (a2 < 0 || a2 == nrLayers) continue;
 						if (b2 < 0 || b2 == xMax) continue;
 						if (c2 < 0 || c2 == yMax) continue;
@@ -228,7 +228,7 @@ void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Eul
 						Eul2[1] = Euler2[Pos2];
 						Eul2[2] = Euler3[Pos2];
 						miso = GetMisOrientationAngle(Eul1,Eul2,&ang,NrSymmetries);
-						printf("%lf\n",miso);
+						//~ printf("%lf\n",miso);
 						if (miso < orientTol){
 							GrainNrs[Pos1] = GrainNrs[Pos2];
 							GrainFound = 1;
