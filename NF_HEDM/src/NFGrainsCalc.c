@@ -198,7 +198,7 @@ inline void DFS(int a, int b, int c, int grainNr, int *dims, int NrSymmetries, d
 			continue;
 		}
 		double ang, miso;
-		printf("%d %d %d\n",a2,b2,c2);
+		printf("%d %d %d %d\n",a2,b2,c2,grainNr);
 		fflush(stdout);
 		miso = GetMisOrientationAngle(quat1,quat2,&ang,NrSymmetries);
 		if (miso <= orientTol){
