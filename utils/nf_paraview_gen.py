@@ -296,7 +296,7 @@ grainsCalc.calcGrainNrs.argtypes = (ctypes.c_double,
 										np.ctypeslib.ndpointer(dtype=np.int64,ndim=3,flags='C_CONTIGUOUS')
 									)
 grainsCalc.calcGrainNrs.restype = None
-grainsCalc.calcGrainNrs(orientTol,Euler1,Euler2,Euler3,dims[0],dims[1],dims[2],fillVal,NrSymmetries,Sym,grains)
+grainsCalc.calcGrainNrs(orientTol,Euler1,Euler2,Euler3,Dims[0],Dims[1],Dims[2],fillVal,NrSymmetries,Sym,grains)
 
 # write files
 writeHDF5File(grainIDs.astype(np.int32),Euler1.astype(np.float32),Euler2.astype(np.float32),Euler3.astype(np.float32),Confidence.astype(np.float32),PhaseNr.astype(np.float32),KamArr.astype(np.float32),grains.astype(np.int32),outfn+'.h5')
