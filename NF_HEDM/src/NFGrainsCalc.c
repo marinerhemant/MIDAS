@@ -174,7 +174,7 @@ inline void DFS(int a, int b, int c, int grainNr, int *dims, int NrSymmetries, d
 		double ang, miso;
 		miso = GetMisOrientationAngle(quat1,quat2,&ang,NrSymmetries,Sym);
 		if (miso <= orientTol){
-			DFS(a2,b2,c2,grainNr,dims,NrSymmetries,Sym,Euler1,Euler2,Euler3,grains,fillVal,orientTol);
+			//DFS(a2,b2,c2,grainNr,dims,NrSymmetries,Sym,Euler1,Euler2,Euler3,grains,fillVal,orientTol);
 		}
 	}
 }
