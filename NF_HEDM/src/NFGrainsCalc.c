@@ -86,7 +86,7 @@ static inline double acosd(double x){return rad2deg*(acos(x));}
 static inline double atand(double x){return rad2deg*(atan(x));}
 
 static inline
-void Euler2Quat(double Euler[3],double Quat[4]){
+void Euler2Quat(double Euler[3], double *Quat){
 	double psi, phi, theta, cps, cph, cth, sps, sph, sth;
 	double OrientMat[9];
 	psi = Euler[0];
@@ -147,12 +147,16 @@ void Euler2Quat(double Euler[3],double Quat[4]){
 inline
 double GetMisOrientationAngle(double Eul1[3], double Eul2[3], double *Angle, int NrSymmetries)
 {
-	double quat1[4], quat2[4];
+	double *quat1, *quat2;
+	quat1 = calloc(4,sizeof(*quat1));
+	quat2 = calloc(4,sizeof(*quat2));
 	Euler2Quat(Eul1,quat1);
 	Euler2Quat(Eul2,quat2);
 	double q1FR[4], q2FR[4], QP[4], MisV[4];
 	BringDownToFundamentalRegionSym(quat1,q1FR,NrSymmetries);
 	BringDownToFundamentalRegionSym(quat2,q2FR,NrSymmetries);
+	free(quat1);
+	free(quat2);
 	q1FR[0] = -q1FR[0];
 	QuaternionProduct(q1FR,q2FR,QP);
 	BringDownToFundamentalRegionSym(QP,MisV,NrSymmetries);
@@ -175,11 +179,10 @@ inline void DFS(int a, int b, int c, int grainNr, int *dims, int NrSymmetries, d
 	long long int Pos = getIDX(a,b,c,dims[1],dims[2]);
 	if (grains[Pos] != 0) return;
 	grains[Pos] = grainNr;
-	double Eul1[3],Eul2[3], quat1[4], quat2[4];
+	double Eul1[3],Eul2[3];
 	Eul1[0] = Euler1[Pos];
 	Eul1[1] = Euler2[Pos];
 	Eul1[2] = Euler3[Pos];
-	Euler2Quat(Eul1,quat1);
 	int diff;
 	double ang, miso;
 	for (diff = 0; diff < 26; diff++){
@@ -193,12 +196,11 @@ inline void DFS(int a, int b, int c, int grainNr, int *dims, int NrSymmetries, d
 		Eul2[0] = Euler1[Pos2];
 		Eul2[1] = Euler2[Pos2];
 		Eul2[2] = Euler3[Pos2];
-		Euler2Quat(Eul2,quat2);
-		if (quat2[0] == fillVal){
+		if (Eul2[0] == fillVal){
 			grains[Pos2] = fillVal;
 			continue;
 		}
-		miso = GetMisOrientationAngle(quat1,quat2,&ang,NrSymmetries);
+		miso = GetMisOrientationAngle(Eul1,Eul2,&ang,NrSymmetries);
 		printf("%d %d %d %d %lf %lf\n",a2,b2,c2,grainNr,miso,ang);
 		fflush(stdout);
 		if (miso <= orientTol){
