@@ -218,6 +218,7 @@ void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Eul
 						a2 = layernr + diffArr[0][i];
 						b2 = layernr + diffArr[1][i];
 						c2 = layernr + diffArr[2][i];
+						printf("%d %d %d\n",a2,b2,c2);
 						if (a2 < 0 || a2 == nrLayers) continue;
 						if (b2 < 0 || b2 == xMax) continue;
 						if (c2 < 0 || c2 == yMax) continue;
