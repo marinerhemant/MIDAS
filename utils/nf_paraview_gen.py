@@ -21,19 +21,19 @@ fillVal = -15 # this value can be used to filter out nonsense values.
 ### Only modify the following arguments:
 ### Also look at where variable FileName is defined to see if the file arrangement is different
 ####
-sampleName = 'ss709_AR1_nf2_R1'
-filestem = 'MicrostructureText_Layer'
-outfn = 'MicOut'
-spaceGroup = 225 # This is used for misorientation calculation
+sampleName = 'Fe9Cr_61116_def'
+filestem = 'MicrostructureTxt_Fe9Cr_61116_def_nf_layer'
+outfn = 'MicOut_Fe9Cr_6116_def'
+spaceGroup = 229 # This is used for misorientation calculation
 startnr = 1
-endnr = 10
+endnr = 3
 minConfidence = 0.1
-orientTol = 5 # In degrees, used to define grains
+orientTol = 5.0 # In degrees, used to define grains
 zspacing = -2
 xyspacing = 2  # X and Y spacing are equal
-xExtent = 1200 # Maximum Extent of xValues in um
+xExtent = 1800 # Maximum Extent of xValues in um
 			   # (this should be a bit larger than your sample diameter or edge length)
-yExtent = 1200 # Maximum Extent of yValues in um
+yExtent = 1800 # Maximum Extent of yValues in um
 			   # (this should be a bit larger than your sample diameter or edge length)
 ####
 
@@ -257,7 +257,8 @@ def mapData(data,dims,outArr):
 
 for fnr in range(startnr,endnr+1):
 	print('LayerNr: '+ str(fnr))
-	FileName = sampleName + 'Layer' + str(fnr) + '/' + filestem + str(fnr) + '.mic'
+	#FileName = sampleName + 'Layer' + str(fnr) + '/' + filestem + str(fnr) + '.mic'
+	FileName = filestem + str(fnr) + '.mic'
 	t1 = time.time()
 	micfiledata = np.genfromtxt(FileName,skip_header=4)
 	data = micfiledata[micfiledata[:,10] > minConfidence,:]
