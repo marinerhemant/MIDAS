@@ -38,7 +38,7 @@ int diffArr[3][26] = {{-1,-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,
 			  {-1,-1,-1,0,0,0,1,1,1,-1,-1,-1,0,0,1,1,1,-1,-1,-1,0,0,0,1,1,1}};
 
 static inline
-void QuaternionProduct(double q[4], double r[4], double Q[4])
+void QuaternionProduct(double *q, double *r, double *Q)
 {
 	Q[0] = r[0]*q[0] - r[1]*q[1] - r[2]*q[2] - r[3]*q[3];
 	Q[1] = r[1]*q[0] + r[0]*q[1] + r[3]*q[2] - r[2]*q[3];
@@ -53,29 +53,35 @@ void QuaternionProduct(double q[4], double r[4], double Q[4])
 }
 
 static inline
-void BringDownToFundamentalRegionSym(double QuatIn[4], double QuatOut[4], int NrSymmetries)
+void BringDownToFundamentalRegionSym(double *QuatIn, double *QuatOut, int NrSymmetries)
 {
 	int i, maxCosRowNr;
-	double qps[NrSymmetries][4], q2[4], qt[4], maxCos=-10000;
+	double *qps, *q2, *qt, maxCos=-10000;
+	qps = calloc(NrSymmetries*4,sizeof(*qps));
+	q2 = calloc(4,sizeof(*q2));
+	qt = calloc(4,sizeof(*qt));
 	for (i=0;i<NrSymmetries;i++){
 		q2[0] = Sym[i][0];
 		q2[1] = Sym[i][1];
 		q2[2] = Sym[i][2];
 		q2[3] = Sym[i][3];
 		QuaternionProduct(QuatIn,q2,qt);
-		qps[i][0] = qt[0];
-		qps[i][1] = qt[1];
-		qps[i][2] = qt[2];
-		qps[i][3] = qt[3];
+		qps[i*4+0] = qt[0];
+		qps[i*4+1] = qt[1];
+		qps[i*4+2] = qt[2];
+		qps[i*4+3] = qt[3];
 		if (maxCos < qt[0]){
 			maxCos = qt[0];
 			maxCosRowNr = i;
 		}
 	}
-	QuatOut[0] = qps[maxCosRowNr][0];
-	QuatOut[1] = qps[maxCosRowNr][1];
-	QuatOut[2] = qps[maxCosRowNr][2];
-	QuatOut[3] = qps[maxCosRowNr][3];
+	free(q2);
+	free(qt);
+	QuatOut[0] = qps[maxCosRowNr*4+0];
+	QuatOut[1] = qps[maxCosRowNr*4+1];
+	QuatOut[2] = qps[maxCosRowNr*4+2];
+	QuatOut[3] = qps[maxCosRowNr*4+3];
+	free(qps);
 }
 
 static inline double sind(double x){return sin(deg2rad*x);}
@@ -86,9 +92,10 @@ static inline double acosd(double x){return rad2deg*(acos(x));}
 static inline double atand(double x){return rad2deg*(atan(x));}
 
 static inline
-void Euler2Quat(double Euler[3], double *Quat){
+void Euler2Quat(double *Euler, double *Quat){
 	double psi, phi, theta, cps, cph, cth, sps, sph, sth;
-	double OrientMat[9];
+	double *OrientMat;
+	OrientMat = calloc(9,sizeof(*OrientMat));
 	psi = Euler[0];
 	phi = Euler[1];
 	theta = Euler[2];
@@ -131,6 +138,7 @@ void Euler2Quat(double Euler[3], double *Quat){
 			Quat[3] = 0.25*s;
 		}
 	}
+	free(OrientMat);
 	if (Quat[0] < 0){
 		Quat[0] = -Quat[0];
 		Quat[1] = -Quat[1];
@@ -145,23 +153,31 @@ void Euler2Quat(double Euler[3], double *Quat){
 }
 
 inline
-double GetMisOrientationAngle(double Eul1[3], double Eul2[3], double *Angle, int NrSymmetries)
+double GetMisOrientationAngle(double *Eul1, double *Eul2, double *Angle, int NrSymmetries)
 {
 	double *quat1, *quat2;
 	quat1 = calloc(4,sizeof(*quat1));
 	quat2 = calloc(4,sizeof(*quat2));
 	Euler2Quat(Eul1,quat1);
 	Euler2Quat(Eul2,quat2);
-	double q1FR[4], q2FR[4], QP[4], MisV[4];
+	double *q1FR, *q2FR, *QP, *MisV;
+	q1FR = calloc(4,sizeof(*q1FR));
+	q2FR = calloc(4,sizeof(*q2FR));
+	QP = calloc(4,sizeof(*QP));
+	MisV = calloc(4,sizeof(*MisV));
 	BringDownToFundamentalRegionSym(quat1,q1FR,NrSymmetries);
 	BringDownToFundamentalRegionSym(quat2,q2FR,NrSymmetries);
 	free(quat1);
 	free(quat2);
 	q1FR[0] = -q1FR[0];
 	QuaternionProduct(q1FR,q2FR,QP);
+	free(q1FR);
+	free(q2FR);
 	BringDownToFundamentalRegionSym(QP,MisV,NrSymmetries);
+	free(QP);
 	if (MisV[0] > 1) MisV[0] = 1;
 	double angle = 2*(acos(MisV[0]))*rad2deg;
+	free(MisV);
 	*Angle = angle;
 	return angle;
 }
@@ -179,7 +195,9 @@ inline void DFS(int a, int b, int c, int grainNr, int *dims, int NrSymmetries, d
 	long long int Pos = getIDX(a,b,c,dims[1],dims[2]);
 	if (grains[Pos] != 0) return;
 	grains[Pos] = grainNr;
-	double Eul1[3],Eul2[3];
+	double *Eul1,*Eul2;
+	Eul1 = calloc(3,sizeof(*Eul1));
+	Eul2 = calloc(3,sizeof(*Eul2));
 	Eul1[0] = Euler1[Pos];
 	Eul1[1] = Euler2[Pos];
 	Eul1[2] = Euler3[Pos];
@@ -207,6 +225,8 @@ inline void DFS(int a, int b, int c, int grainNr, int *dims, int NrSymmetries, d
 			DFS(a2,b2,c2,grainNr,dims,NrSymmetries,Euler1,Euler2,Euler3,grains,fillVal,orientTol);
 		}
 	}
+	free(Eul1);
+	free(Eul2);
 }
 
 void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Euler3, int nrLayers, int xMax, int yMax, double fillVal, int NrSymmetries, int *GrainNrs)
