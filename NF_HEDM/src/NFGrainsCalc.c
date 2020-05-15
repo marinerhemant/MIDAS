@@ -232,6 +232,7 @@ void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Eul
 					}
 					// No neighbor matched, new grain.
 					grainNr ++;
+					printf("GrainNr: %d\n",grainNr);
 					GrainNrs[Pos1] = grainNr;
 				}
 			}
