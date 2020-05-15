@@ -279,6 +279,7 @@ Sym = Sym.astype(float)
 
 # Make Grains
 grains = np.zeros((Dims))
+grains = grains.astype(np.int64)
 # We need to provide the following:
 # orientTol, Euler1, Euler2, Euler3, dims[0], dims[1], dims[2], fillVal, NrSymmetries, Sym, grains.
 home = os.path.expanduser("~")
