@@ -348,6 +348,7 @@ void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fi
 						miso = GetMisOrientationAngle(Eul1,Eul2,&ang,NrSymmetries);
 						if (miso < orientTol){
 							GrainNrs[Pos1] = GrainNrs[Pos2];
+							printf("%d\n",GrainNrs[Pos2]);
 							GrainFound = 1;
 							break;
 						}
@@ -358,7 +359,7 @@ void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fi
 						GrainNrs[Pos1] = grainNr;
 					}
 				}
-				if (GrainNrs[Pos1] == 0) printf("%lf %lf %lf\n",Euler1[Pos1],Euler2[Pos1],Euler3[Pos1]);
+				//~ if (GrainNrs[Pos1] == 0) printf("%lf %lf %lf\n",Euler1[Pos1],Euler2[Pos1],Euler3[Pos1]);
 			}
 		}
 	}
