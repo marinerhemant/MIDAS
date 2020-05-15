@@ -191,44 +191,6 @@ inline long long int getIDX (int layerNr, int xpos, int ypos, int xMax, int yMax
 	return retval;
 }
 
-inline void DFS(int a, int b, int c, int grainNr, int *dims, int NrSymmetries, double *Euler1, double *Euler2, double *Euler3, int *grains, double fillVal, double orientTol){
-	long long int Pos = getIDX(a,b,c,dims[1],dims[2]);
-	if (grains[Pos] != 0) return;
-	grains[Pos] = grainNr;
-	double *Eul1,*Eul2;
-	Eul1 = calloc(3,sizeof(*Eul1));
-	Eul2 = calloc(3,sizeof(*Eul2));
-	Eul1[0] = Euler1[Pos];
-	Eul1[1] = Euler2[Pos];
-	Eul1[2] = Euler3[Pos];
-	int diff;
-	double ang, miso;
-	for (diff = 0; diff < 26; diff++){
-		int a2 = a + diffArr[0][diff];
-		int b2 = b + diffArr[1][diff];
-		int c2 = c + diffArr[2][diff];
-		if (a2 < 0 || a2 == dims[0]) continue;
-		if (b2 < 0 || b2 == dims[1]) continue;
-		if (c2 < 0 || c2 == dims[2]) continue;
-		long long int Pos2 = getIDX(a2,b2,c2,dims[1],dims[2]);
-		Eul2[0] = Euler1[Pos2];
-		Eul2[1] = Euler2[Pos2];
-		Eul2[2] = Euler3[Pos2];
-		if (Eul2[0] == fillVal){
-			grains[Pos2] = fillVal;
-			continue;
-		}
-		miso = GetMisOrientationAngle(Eul1,Eul2,&ang,NrSymmetries);
-		printf("%d %d %d %d %lf %lf\n",a2,b2,c2,grainNr,miso,ang);
-		fflush(stdout);
-		if (miso <= orientTol){
-			DFS(a2,b2,c2,grainNr,dims,NrSymmetries,Euler1,Euler2,Euler3,grains,fillVal,orientTol);
-		}
-	}
-	free(Eul1);
-	free(Eul2);
-}
-
 void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Euler3, int nrLayers, int xMax, int yMax, double fillVal, int NrSymmetries, int *GrainNrs)
 {
 	int layernr,xpos,ypos,a2,b2,c2;
@@ -275,6 +237,8 @@ void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Eul
 			}
 		}
 	}
+	free(Eul1);
+	free(Eul2);
 }
 
 int main(int argc,char *argv[]){
@@ -298,4 +262,10 @@ int main(int argc,char *argv[]){
 	fread(Euler2,nrLayers*xMax*yMax*sizeof(double),1,f2);
 	fread(Euler3,nrLayers*xMax*yMax*sizeof(double),1,f3);
 	calcGrainNrs (orientTol, Euler1, Euler2, Euler3, nrLayers, xMax, yMax, fillVal, nrSymmetries, GrainNrs);
+	FILE *f4 = fopen("GrainNrs.bin","wb");
+	fwrite(GrainNrs,nrLayers*xMax*yMax*sizeof(int),1,f4);
+	fclose(f1);
+	fclose(f2);
+	fclose(f3);
+	fclose(f4);
 }
