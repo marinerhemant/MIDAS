@@ -277,9 +277,7 @@ for fnr in range(startnr,endnr+1):
 NrSymmetries,Sym = MakeSymmetries(spaceGroup)
 Sym = Sym.astype(float)
 
-Euler1.astype(np.float64).tofile('EulerAngles1.bin')
-Euler2.astype(np.float64).tofile('EulerAngles2.bin')
-Euler3.astype(np.float64).tofile('EulerAngles3.bin')
+KamArr = np.zeros((Dims))
 
 # Make Grains
 grains = np.zeros((Dims))
