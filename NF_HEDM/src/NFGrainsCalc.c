@@ -358,7 +358,7 @@ void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fi
 						GrainNrs[Pos1] = grainNr;
 					}
 				}
-				if (GrainNrs[Pos1] == 0) printf("0, %d\n",grainNr);
+				if (GrainNrs[Pos1] == 0) printf("%lf %lf %lf\n",Euler1[Pos1],Euler2[Pos1],Euler3[Pos1]);
 			}
 		}
 	}
