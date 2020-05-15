@@ -151,6 +151,9 @@ parsemic: $(SRCDIR)ParseMic.c
 nfgrainscalc: $(SRCDIR)NFGrainsCalc.c
 	$(CC) $(SRCDIR)NFGrainsCalc.c -shared -Wl,-soname,NFGrainsCalc -o $(BINDIR)NFGrainsCalc.so -fPIC -ldl -lm -fgnu89-inline -O3 -w
 
+mainnfgrainscalc: $(SRCDIR)NFGrainsCalc.c
+	$(CC) $(SRCDIR)NFGrainsCalc.c -o $(BINDIR)NFGrainsCalcMain -fPIC -ldl -lm -fgnu89-inline -O3 -w
+
 clean:
 	rm -rf $(BINDIR)
 	mkdir $(BINDIR)

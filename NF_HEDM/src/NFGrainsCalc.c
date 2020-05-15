@@ -2,6 +2,8 @@
 // We will provide the orientTol, 3 euler angle arrays, dimensions of the arrays and fillVal, will get back grain IDs
 //
 
+#include<stdio.h>
+
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 
@@ -202,4 +204,52 @@ void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Eul
 			}
 		}
 	}
+}
+
+int main(int argc,char *argv[]){
+	// Read in Euler1, Euler2, Euler3, Symm, allocate: GrainNrs
+	double orientTol = 5.0;
+	int nrLayers = 3;
+	int xMax = 900;
+	int yMax = 900;
+	double fillVal = -15;
+	int nrSymmetries = 24;
+	double CubSym[24*4] = {
+		1.00000,   0.00000,   0.00000,   0.00000,
+		0.70711,   0.70711,   0.00000,   0.00000,
+		0.00000,   1.00000,   0.00000,   0.00000,
+		0.70711,  -0.70711,   0.00000,   0.00000,
+		0.70711,   0.00000,   0.70711,   0.00000,
+		0.00000,   0.00000,   1.00000,   0.00000,
+		0.70711,   0.00000,  -0.70711,   0.00000,
+		0.70711,   0.00000,   0.00000,   0.70711,
+		0.00000,   0.00000,   0.00000,   1.00000,
+		0.70711,   0.00000,   0.00000,  -0.70711,
+		0.50000,   0.50000,   0.50000,   0.50000,
+		0.50000,  -0.50000,  -0.50000,  -0.50000,
+		0.50000,  -0.50000,   0.50000,   0.50000,
+		0.50000,   0.50000,  -0.50000,  -0.50000,
+		0.50000,   0.50000,  -0.50000,   0.50000,
+		0.50000,  -0.50000,   0.50000,  -0.50000,
+		0.50000,  -0.50000,  -0.50000,   0.50000,
+		0.50000,   0.50000,   0.50000,  -0.50000,
+		0.00000,   0.70711,   0.70711,   0.00000,
+		0.00000,  -0.70711,   0.70711,   0.00000,
+		0.00000,   0.70711,   0.00000,   0.70711,
+		0.00000,   0.70711,   0.00000,  -0.70711,
+		0.00000,   0.00000,   0.70711,   0.70711,
+		0.00000,   0.00000,   0.70711,  -0.70711};
+	int *GrainNrs;
+	GrainNrs = calloc(nrLayers*xMax*yMax,sizeof(*GrainNrs));
+	FILE *f1 = fopen("EulerAngles1.bin","rb");
+	FILE *f2 = fopen("EulerAngles2.bin","rb");
+	FILE *f3 = fopen("EulerAngles3.bin","rb");
+	double *Euler1, *Euler2, *Euler3;
+	Euler1 = calloc(nrLayers*xMax*yMax,sizeof(*Euler1));
+	Euler2 = calloc(nrLayers*xMax*yMax,sizeof(*Euler2));
+	Euler3 = calloc(nrLayers*xMax*yMax,sizeof(*Euler3));
+	fread(Euler1,nrLayers*xMax*yMax*sizeof(double),1,f1);
+	fread(Euler2,nrLayers*xMax*yMax*sizeof(double),1,f2);
+	fread(Euler3,nrLayers*xMax*yMax*sizeof(double),1,f3);
+	calcGrainNrs (orientTol, Euler1, Euler2, Euler3, nrLayers, xMax, yMax, fillVal, nrSymmetries, CubSym, GrainNrs);
 }
