@@ -46,6 +46,13 @@ void BringDownToFundamentalRegionSym(double QuatIn[4], double QuatOut[4], int Nr
 	QuatOut[3] = qps[maxCosRowNr][3];
 }
 
+static inline double sind(double x){return sin(deg2rad*x);}
+static inline double cosd(double x){return cos(deg2rad*x);}
+static inline double tand(double x){return tan(deg2rad*x);}
+static inline double asind(double x){return rad2deg*(asin(x));}
+static inline double acosd(double x){return rad2deg*(acos(x));}
+static inline double atand(double x){return rad2deg*(atan(x));}
+
 static inline
 void Euler2Quat(double Euler[3],double Quat[4]){
 	double psi, phi, theta, cps, cph, cth, sps, sph, sth;
