@@ -227,6 +227,7 @@ void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Eul
 						Eul2[1] = Euler2[Pos2];
 						Eul2[2] = Euler3[Pos2];
 						miso = GetMisOrientationAngle(Eul1,Eul2,&ang,NrSymmetries);
+						printf("%lf\n",miso);
 						if (miso < orientTol){
 							GrainNrs[Pos1] = GrainNrs[Pos2];
 							GrainFound = 1;
