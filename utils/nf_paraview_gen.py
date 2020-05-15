@@ -291,7 +291,7 @@ grainsCalc.calcGrainNrs.argtypes = (ctypes.c_double,
 									)
 grainsCalc.calcGrainNrs.restype = None
 grainsCalc.calcGrainNrs(orientTol,Dims[0],Dims[1],Dims[2],fillVal,spaceGroup)
-grains = np.fromfile('GrainNrs.bin',dtype=np.float64)
+grains = np.fromfile('GrainNrs.bin',dtype=np.int32)
 grains = grains.reshape((Dims))
 
 # write files
