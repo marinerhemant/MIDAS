@@ -201,12 +201,14 @@ void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Eul
 	Eul1 = calloc(3,sizeof(*Eul1));
 	Eul2 = calloc(3,sizeof(*Eul2));
 	int dims[3] = {nrLayers,xMax,yMax};
+	int GrainFound;
 	for (layernr = 0; layernr < nrLayers; layernr++){
 		for (xpos = 0; xpos < xMax; xpos++){
 			for (ypos = 0; ypos < yMax; ypos++){
 				if (Euler1[getIDX(layernr,xpos,ypos,xMax,yMax)] == fillVal){
 					GrainNrs[getIDX(layernr,xpos,ypos,xMax,yMax)] = (int)fillVal;
 				} else {
+					GrainFound = 0;
 					Pos1 = getIDX(layernr,xpos,ypos,xMax,yMax);
 					Eul1[0] = Euler1[Pos1];
 					Eul1[1] = Euler2[Pos1];
@@ -227,13 +229,16 @@ void calcGrainNrs (double orientTol, double *Euler1, double *Euler2, double *Eul
 						miso = GetMisOrientationAngle(Eul1,Eul2,&ang,NrSymmetries);
 						if (miso < orientTol){
 							GrainNrs[Pos1] = GrainNrs[Pos2];
+							GrainFound = 1;
 							break;
 						}
 					}
-					// No neighbor matched, new grain.
-					grainNr ++;
-					printf("GrainNr: %d\n",grainNr);
-					GrainNrs[Pos1] = grainNr;
+					if (GrainFound == 0){
+						// No neighbor matched, new grain.
+						grainNr ++;
+						printf("GrainNr: %d\n",grainNr);
+						GrainNrs[Pos1] = grainNr;
+					}
 				}
 			}
 		}
