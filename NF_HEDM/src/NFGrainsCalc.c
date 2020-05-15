@@ -361,6 +361,7 @@ void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fi
 			}
 		}
 	}
+	printf("Total number of grains: %d\n",grainNr);
 	FILE *f4 = fopen("GrainNrs.bin","wb");
 	fwrite(GrainNrs,nrLayers*xMax*yMax*sizeof(int),1,f4);
 	fclose(f1);
