@@ -294,6 +294,8 @@ grainsCalc.calcGrainNrs(orientTol,Dims[0],Dims[1],Dims[2],fillVal,spaceGroup)
 grains = np.fromfile('GrainNrs.bin',dtype=np.int32)
 grains = grains.reshape((Dims))
 
+print(np.count_nonzero(grains))
+
 # write files
 writeHDF5File(grainIDs.astype(np.int32),Euler1.astype(np.float32),Euler2.astype(np.float32),Euler3.astype(np.float32),Confidence.astype(np.float32),PhaseNr.astype(np.float32),KamArr.astype(np.float32),grains.astype(np.int32),outfn+'.h5')
 writeXMLXdmf(Dims,[xyspacing,xyspacing,zspacing],outfn+'.xmf',outfn,sampleName)
