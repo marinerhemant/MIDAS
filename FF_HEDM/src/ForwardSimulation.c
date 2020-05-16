@@ -854,12 +854,12 @@ main(int argc, char *argv[])
 			InputInfo[i][15] = holdArr[i*18+15];
 			InputInfo[i][16] = holdArr[i*18+16];
 			InputInfo[i][17] = holdArr[i*18+17];
-			for (j=0;j<18;j++){
-				printf("%lf ",InputInfo[i][j]);
-			}
-			printf("\n");
+			//~ for (j=0;j<18;j++){
+				//~ printf("%lf ",InputInfo[i][j]);
+			//~ }
+			//~ printf("\n");
 		}
-		return;
+		//~ return;
 		free(holdArr);
 	} else {
 		inpF = fopen(inpFN,"r");
