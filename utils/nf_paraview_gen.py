@@ -28,9 +28,9 @@ spaceGroup = 229 # This is used for misorientation calculation
 startnr = 1
 endnr = 20
 minConfidence = 0.1
-orientTol = 1.0 # In degrees, used to define grains
+orientTol = 5.0 # In degrees, used to define grains
 zspacing = -2
-xyspacing = 5  # X and Y spacing are equal
+xyspacing = 3  # X and Y spacing are equal
 xExtent = 500 # Maximum Extent of xValues in um
 			   # (this should be a bit larger than your sample diameter or edge length)
 yExtent = 1200 # Maximum Extent of yValues in um
