@@ -300,6 +300,7 @@ inline void DFS (int *Pos, int grainNr){
 	long long int Pos1 = getIDX(Pos[0],Pos[1],Pos[2],Dims[1],Dims[2]);
 	if (Euler1[Pos1] != 0) return;
 	GrainNrs[Pos1] = grainNr;
+	printf("Grain Nr: %d\n",grainNr);
 	int i;
 	double *Eul1,*Eul2, miso, ang;
 	Eul1 = calloc(3,sizeof(*Eul1));
