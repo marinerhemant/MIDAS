@@ -290,16 +290,65 @@ inline long long int getIDX (int layerNr, int xpos, int ypos, int xMax, int yMax
 	return retval;
 }
 
+int Dims[3];
+double fV, oT;
+int NSym;
+double *Euler1, *Euler2, *Euler3;
+int *GrainNrs;
+
+inline void DFS (int *Pos, int grainNr){
+	long long int Pos1 = getIDX(Pos[0],Pos[1],Pos[2],Dims[1],Dims[2]);
+	if (Euler1[Pos1] == fV) return;
+	int i;
+	double *Eul1,*Eul2, miso, ang;
+	Eul1 = calloc(3,sizeof(*Eul1));
+	Eul2 = calloc(3,sizeof(*Eul2));
+	Eul1[0] = Euler1[Pos1];
+	Eul1[1] = Euler2[Pos1];
+	Eul1[2] = Euler3[Pos1];
+	int a2,b2,c2;
+	long long int Pos2;
+	int *PosNext;
+	PosNext = calloc(3,sizeof(int));
+	for (i=0;i<13;i++){
+		a2 = Pos[0] + diffArr[0][i];
+		b2 = Pos[1] + diffArr[1][i];
+		c2 = Pos[2] + diffArr[2][i];
+		if (a2 < 0 || a2 == Dims[0]) continue;
+		if (b2 < 0 || b2 == Dims[1]) continue;
+		if (c2 < 0 || c2 == Dims[2]) continue;
+		Pos2 = getIDX(a2,b2,c2,Dims[1],Dims[2]);
+		if (Euler1[Pos2] == fV) continue;
+		Eul2[0] = Euler1[Pos2];
+		Eul2[1] = Euler2[Pos2];
+		Eul2[2] = Euler3[Pos2];
+		miso = GetMisOrientationAngle(Eul1,Eul2,&ang,NSym);
+		if (miso < oT){
+			PosNext[0] = a2;
+			PosNext[1] = b2;
+			PosNext[2] = c2;
+			DFS(PosNext,grainNr);
+		}
+	}
+	free(Eul1);
+	free(Eul2);
+	free(PosNext);
+}
+
 void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fillVal, int SGNum)
 {
 	int NrSymmetries;
 	NrSymmetries = MakeSymmetries(SGNum);
-	int *GrainNrs;
+	NSym = NrSymmetries;
+	Dims[0] = nrLayers;
+	Dims[1] = xMax;
+	Dims[2] = yMax;
+	fV = fillVal;
+	oT = orientTol;
 	GrainNrs = calloc(nrLayers*xMax*yMax,sizeof(*GrainNrs));
 	FILE *f1 = fopen("EulerAngles1.bin","rb");
 	FILE *f2 = fopen("EulerAngles2.bin","rb");
 	FILE *f3 = fopen("EulerAngles3.bin","rb");
-	double *Euler1, *Euler2, *Euler3;
 	Euler1 = calloc(nrLayers*xMax*yMax,sizeof(*Euler1));
 	Euler2 = calloc(nrLayers*xMax*yMax,sizeof(*Euler2));
 	Euler3 = calloc(nrLayers*xMax*yMax,sizeof(*Euler3));
@@ -308,13 +357,10 @@ void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fi
 	fread(Euler3,nrLayers*xMax*yMax*sizeof(double),1,f3);
 	int layernr,xpos,ypos,a2,b2,c2;
 	int grainNr = 0;
-	int i,j;
-	long long int Pos1, Pos2;
-	double *Eul1,*Eul2, miso, ang;
-	Eul1 = calloc(3,sizeof(*Eul1));
-	Eul2 = calloc(3,sizeof(*Eul2));
-	int dims[3] = {nrLayers,xMax,yMax};
-	int GrainFound;
+	int i,j, *Pos;
+	Pos = calloc(3,sizeof(int));
+	long long int Pos1;
+	//~ int GrainFound;
 	for (layernr = 0; layernr < nrLayers; layernr++){
 		for (xpos = 0; xpos < xMax; xpos++){
 			for (ypos = 0; ypos < yMax; ypos++){
@@ -322,36 +368,42 @@ void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fi
 				if (Euler1[Pos1] == fillVal){
 					GrainNrs[Pos1] = (int)fillVal;
 				} else {
-					GrainFound = 0;
-					Eul1[0] = Euler1[Pos1];
-					Eul1[1] = Euler2[Pos1];
-					Eul1[2] = Euler3[Pos1];
-					// Calculate misorientation with the neighbors, whichever one fits, give that number and continue.
-					for (i=0;i<13;i++){
-						a2 = layernr + diffArr[0][i];
-						b2 = xpos + diffArr[1][i];
-						c2 = ypos + diffArr[2][i];
-						if (a2 < 0 || a2 == nrLayers) continue;
-						if (b2 < 0 || b2 == xMax) continue;
-						if (c2 < 0 || c2 == yMax) continue;
-						Pos2 = getIDX(a2,b2,c2,xMax,yMax);
-						if (Euler1[Pos2] == fillVal) continue;
-						Eul2[0] = Euler1[Pos2];
-						Eul2[1] = Euler2[Pos2];
-						Eul2[2] = Euler3[Pos2];
-						miso = GetMisOrientationAngle(Eul1,Eul2,&ang,NrSymmetries);
-						if (miso < orientTol){
-							GrainNrs[Pos1] = GrainNrs[Pos2];
-							GrainFound = 1;
-							break;
-						}
-					}
-					if (GrainFound == 0){
-						// No neighbor matched, new grain.
-						grainNr ++;
-						GrainNrs[Pos1] = grainNr;
-					}
+					grainNr++;
+					Pos[0] = layernr;
+					Pos[1] = xpos;
+					Pos[2] = ypos;
+					DFS(Pos,grainNr);
 				}
+					//~ GrainFound = 0;
+					//~ Eul1[0] = Euler1[Pos1];
+					//~ Eul1[1] = Euler2[Pos1];
+					//~ Eul1[2] = Euler3[Pos1];
+					//~ // Calculate misorientation with the neighbors, whichever one fits, give that number and continue.
+					//~ for (i=0;i<13;i++){
+						//~ a2 = layernr + diffArr[0][i];
+						//~ b2 = xpos + diffArr[1][i];
+						//~ c2 = ypos + diffArr[2][i];
+						//~ if (a2 < 0 || a2 == nrLayers) continue;
+						//~ if (b2 < 0 || b2 == xMax) continue;
+						//~ if (c2 < 0 || c2 == yMax) continue;
+						//~ Pos2 = getIDX(a2,b2,c2,xMax,yMax);
+						//~ if (Euler1[Pos2] == fillVal) continue;
+						//~ Eul2[0] = Euler1[Pos2];
+						//~ Eul2[1] = Euler2[Pos2];
+						//~ Eul2[2] = Euler3[Pos2];
+						//~ miso = GetMisOrientationAngle(Eul1,Eul2,&ang,NrSymmetries);
+						//~ if (miso < orientTol){
+							//~ GrainNrs[Pos1] = GrainNrs[Pos2];
+							//~ GrainFound = 1;
+							//~ break;
+						//~ }
+					//~ }
+					//~ if (GrainFound == 0){
+						//~ // No neighbor matched, new grain.
+						//~ grainNr ++;
+						//~ GrainNrs[Pos1] = grainNr;
+					//~ }
+				//~ }
 			}
 		}
 	}
@@ -362,8 +414,10 @@ void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fi
 	fclose(f2);
 	fclose(f3);
 	fclose(f4);
-	free(Eul1);
-	free(Eul2);
+	free(Euler1);
+	free(Euler2);
+	free(Euler3);
+	free(GrainNrs);
 }
 
 //~ int main(int argc,char *argv[]){
