@@ -31,9 +31,9 @@ minConfidence = 0.1
 orientTol = 15.0 # In degrees, used to define grains
 zspacing = -2
 xyspacing = 2  # X and Y spacing are equal
-xExtent = 750 # Maximum Extent of xValues in um
+xExtent = 500 # Maximum Extent of xValues in um
 			   # (this should be a bit larger than your sample diameter or edge length)
-yExtent = 1500 # Maximum Extent of yValues in um
+yExtent = 1200 # Maximum Extent of yValues in um
 			   # (this should be a bit larger than your sample diameter or edge length)
 ####
 
