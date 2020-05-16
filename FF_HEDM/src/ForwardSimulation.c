@@ -1139,7 +1139,6 @@ main(int argc, char *argv[])
 	size_t omeBin, yBin, zBin, imageBin, centIdx, currentPos;
 	hklsOut = allocMatrix(n_hkls,5);
 	hklsTemp = allocMatrix(n_hkls,5);
-	return;
 	// Go through each point
 	for (voxNr=0;voxNr<nrPoints;voxNr++){
 		// First calculate new hkls
@@ -1160,6 +1159,7 @@ main(int argc, char *argv[])
 				OM[i][j] = InputInfo[voxNr][i*3+j];
 			}
 		}
+		return;
 		// Calculate the spots now.
 		CalcDiffrSpots_Furnace(hklsOut,OM,Lsd,Wavelength,TheorSpots,&nTspots);
 		// For each spot, calculate displacement, calculate tilt and wedge effect.
