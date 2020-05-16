@@ -815,10 +815,11 @@ main(int argc, char *argv[])
 		inpF = fopen(inpFN,"rb");
 		// We need nrPoints, InputInfo. That's all.
 		size_t sz;
+		fseek(inpF,0L,SEEK_END);
 		sz = ftell(inpF);
 		rewind(inpF);
 		nrPoints = sz / (18*sizeof(double));
-		printf("Number of elements: %ld\n",nrPoints);
+		printf("Number of elements: %ld, Size: %ld\n",nrPoints,(long int)sz);
 		double *holdArr;
 		holdArr = calloc(nrPoints*18,sizeof(double));
 		InputInfo = allocMatrix(nrPoints,18);
@@ -1054,6 +1055,7 @@ main(int argc, char *argv[])
 		}
 		n_hkls = totalHKLs;
 	}
+	printf("Number of planes: %d\n",n_hkls);
 
 	// Allocate image array.
 	double maxInt;
@@ -1133,6 +1135,7 @@ main(int argc, char *argv[])
 			CorrectHKLsLatCEpsilon(LatC,EpsThis,Wavelength,hklsOut);
 		} else if (dataType == 3){ // binary file
 			for (i=0;i<6;i++) EpsThis[i] = InputInfo[voxNr][i+12];
+			CorrectHKLsLatCEpsilon(LatC,EpsThis,Wavelength,hklsOut);
 		}
 		// Get the Orientation Matrix
 		for (i=0;i<3;i++){
