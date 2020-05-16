@@ -368,7 +368,7 @@ void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fi
 				Pos1 = getIDX(layernr,xpos,ypos,xMax,yMax);
 				if (Euler1[Pos1] == fillVal){
 					GrainNrs[Pos1] = (int)fillVal;
-				} else {
+				} else if (GrainNrs[Pos1] == 0){
 					grainNr++;
 					Pos[0] = layernr;
 					Pos[1] = xpos;
