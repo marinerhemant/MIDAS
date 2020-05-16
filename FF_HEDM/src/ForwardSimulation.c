@@ -442,7 +442,7 @@ static inline void CorrectHKLsLatCEpsilon(double LatC[6], double eps[6], double 
 	Binv[0][2] = (2*eps[2]-B0[0][1]*Binv[1][2]-B0[0][2]*Binv[2][2])/B0[0][0];
 	int i, j;
 	MatInv(Binv,B);
-	for (i=0;i<3;i++) for (j=0;j<3;j++) printf("%lf %lf %lf ",B0[i][j],Binv[i][j],B[i][j]); printf("\n");
+	for (i=0;i<3;i++) {for (j=0;j<3;j++) {printf("%lf %lf %lf ",B0[i][j],Binv[i][j],B[i][j]); }}printf("\n");
 	for (hklnr=0;hklnr<n_hkls;hklnr++){
 		double ginit[3]; ginit[0] = hkls[hklnr][0]; ginit[1] = hkls[hklnr][1]; ginit[2] = hkls[hklnr][2];
 		double GCart[3];
