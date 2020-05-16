@@ -21,13 +21,13 @@ fillVal = -15 # this value can be used to filter out nonsense values.
 ### Only modify the following arguments:
 ### Also look at where variable FileName is defined to see if the file arrangement is different
 ####
-sampleName = 'Fe9Cr_61116_def'
-filestem = 'MicrostructureTxt_Fe9Cr_61116_def_nf_layer'
-outfn = 'MicOut_Fe9Cr_6116_def'
+sampleName = 'kgt1147_def'
+filestem = 'MicrostructureTxt_kgt1147_def_nf_layerMicrostructureTxt_Fe9Cr_61116_def_nf_layer'
+outfn = 'MicOut_kgt1147_def'
 spaceGroup = 229 # This is used for misorientation calculation
 startnr = 1
-endnr = 49
-minConfidence = 0.1
+endnr = 101
+minConfidence = 0.6
 orientTol = 10.0 # In degrees, used to define grains
 zspacing = -5
 xyspacing = 3  # X and Y spacing are equal
