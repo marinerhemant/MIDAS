@@ -22,7 +22,7 @@ fillVal = -15 # this value can be used to filter out nonsense values.
 ### Also look at where variable FileName is defined to see if the file arrangement is different (Line266)
 ####
 sampleName = 'kgt1147_def'
-filestem = 'MicrostructureTxt_kgt1147_def_nf_layerMicrostructureTxt_Fe9Cr_61116_def_nf_layer'
+filestem = 'MicrostructureTxt_kgt1147_def_nf_layer'
 outfn = 'MicOut_kgt1147_def'
 spaceGroup = 229 # This is used for misorientation calculation
 startnr = 1
