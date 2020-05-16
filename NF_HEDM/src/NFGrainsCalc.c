@@ -325,7 +325,7 @@ inline void DFS (int *Pos, int grainNr){
 		Eul2[2] = Euler3[Pos2];
 		miso = GetMisOrientationAngle(Eul1,Eul2,&ang,NSym);
 		if (miso < oT){
-			printf("%d %d %d %d %d %d Found!",a,b,c,a2,b2,c2);
+			printf("%d %d %d %d %d %d %d Found!",Pos[0],Pos[1],Pos[2],a2,b2,c2,grainNr);
 			PosNext[0] = a2;
 			PosNext[1] = b2;
 			PosNext[2] = c2;
