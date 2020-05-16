@@ -1182,7 +1182,7 @@ main(int argc, char *argv[])
 			yTrans = (int) (-yThis/px + yBC);
 			zTrans = (int) ( zThis/px + zBC);
 			idx = yTrans + NrPixels*zTrans;
-			printf("%lld %d %d\n",yTrans,zTrans);
+			printf("%lld %d %d\n",idx,yTrans,zTrans);
 			fflush(stdout);
 			DisplY = yDispl[idx];
 			DisplZ = zDispl[idx];
