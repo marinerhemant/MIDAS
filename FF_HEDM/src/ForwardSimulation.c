@@ -450,6 +450,7 @@ static inline void CorrectHKLsLatCEpsilon(double LatC[6], double eps[6], double 
 		hklsOut[hklnr][2] = GCart[2];
 		hklsOut[hklnr][3] = (asind((Wavelength)/(2*Ds))); //Theta
 		hklsOut[hklnr][4] = hkls[hklnr][3];
+		printf("%lf %lf %lf %lf\n",hkls[hklnr][0],hkls[hklnr][1],hkls[hklnr][2],hkls[hklnr][3]);
 	}
 }
 
@@ -1155,7 +1156,7 @@ main(int argc, char *argv[])
 			for (i=0;i<6;i++) EpsThis[i] = InputInfo[voxNr][i+12];
 			CorrectHKLsLatCEpsilon(LatC,EpsThis,Wavelength,hklsOut);
 			printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",LatC[0],LatC[1],LatC[2],LatC[3],LatC[4],LatC[5],EpsThis[0],EpsThis[1],EpsThis[2],EpsThis[3],EpsThis[4],EpsThis[5],Wavelength);
-			//~ for (i=0;i<n_hkls;i++) printf("%d%lf %lf %lf %lf %lf\n",voxNr,hklsOut[i][0],hklsOut[i][1],hklsOut[i][2],hklsOut[i][3],hklsOut[i][4]);
+			//~ for (i=0;i<n_hkls;i++) printf("%d %lf %lf %lf %lf %lf\n",voxNr,hklsOut[i][0],hklsOut[i][1],hklsOut[i][2],hklsOut[i][3],hklsOut[i][4]);
 		}
 		// Get the Orientation Matrix
 		for (i=0;i<3;i++){
