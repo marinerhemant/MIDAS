@@ -825,15 +825,26 @@ main(int argc, char *argv[])
 		InputInfo = allocMatrix(nrPoints,18);
 		fread(holdArr,sz,1,inpF);
 		for (i=0;i<nrPoints;i++){
-			InputInfo[i][0] = holdArr[i*18+3];
-			InputInfo[i][1] = holdArr[i*18+4];
-			InputInfo[i][2] = holdArr[i*18+5];
-			InputInfo[i][3] = holdArr[i*18+6];
-			InputInfo[i][4] = holdArr[i*18+7];
-			InputInfo[i][5] = holdArr[i*18+8];
-			InputInfo[i][6] = holdArr[i*18+9];
-			InputInfo[i][7] = holdArr[i*18+10];
-			InputInfo[i][8] = holdArr[i*18+11];
+			OrientTemp[0][0] = holdArr[i*18+3];
+			OrientTemp[0][1] = holdArr[i*18+4];
+			OrientTemp[0][2] = holdArr[i*18+5];
+			OrientTemp[1][0] = holdArr[i*18+6];
+			OrientTemp[1][1] = holdArr[i*18+7];
+			OrientTemp[1][2] = holdArr[i*18+8];
+			OrientTemp[2][0] = holdArr[i*18+9];
+			OrientTemp[2][1] = holdArr[i*18+10];
+			OrientTemp[2][2] = holdArr[i*18+11];
+			OrientMat2Euler(OrientTemp,EulerThis);
+			Euler2OrientMat(EulerThis,OrientThis);
+			InputInfo[i][0] = OrientThis[3];
+			InputInfo[i][1] = OrientThis[4];
+			InputInfo[i][2] = OrientThis[5];
+			InputInfo[i][3] = OrientThis[6];
+			InputInfo[i][4] = OrientThis[7];
+			InputInfo[i][5] = OrientThis[8];
+			InputInfo[i][6] = OrientThis[9];
+			InputInfo[i][7] = OrientThis[10];
+			InputInfo[i][8] = OrientThis[11];
 			InputInfo[i][9] = holdArr[i*18+0];
 			InputInfo[i][10] = holdArr[i*18+1];
 			InputInfo[i][11] = holdArr[i*18+2];
@@ -843,7 +854,12 @@ main(int argc, char *argv[])
 			InputInfo[i][15] = holdArr[i*18+15];
 			InputInfo[i][16] = holdArr[i*18+16];
 			InputInfo[i][17] = holdArr[i*18+17];
+			for (j=0;j<18;j++){
+				printf("%lf ",InputInfo[i][j]);
+			}
+			printf("\n");
 		}
+		return;
 		free(holdArr);
 	} else {
 		inpF = fopen(inpFN,"r");
