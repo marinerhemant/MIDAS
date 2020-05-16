@@ -19,7 +19,7 @@
 fillVal = -15 # this value can be used to filter out nonsense values.
 
 ### Only modify the following arguments:
-### Also look at where variable FileName is defined to see if the file arrangement is different
+### Also look at where variable FileName is defined to see if the file arrangement is different (Line266)
 ####
 sampleName = 'kgt1147_def'
 filestem = 'MicrostructureTxt_kgt1147_def_nf_layerMicrostructureTxt_Fe9Cr_61116_def_nf_layer'
