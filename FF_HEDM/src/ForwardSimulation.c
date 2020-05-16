@@ -430,7 +430,7 @@ static inline void CorrectHKLsLatCEpsilon(double LatC[6], double eps[6], double 
 	double SinA = sind(alpha), SinB = sind(beta), SinG = sind(gamma), CosA = cosd(alpha), CosB = cosd(beta), CosG = cosd(gamma);
 	double GammaPr = acosd((CosA*CosB - CosG)/(SinA*SinB)), BetaPr  = acosd((CosG*CosA - CosB)/(SinG*SinA)), SinBetaPr = sind(BetaPr);
 	double Vol = (a*(b*(c*(SinA*(SinBetaPr*(SinG)))))), APr = b*c*SinA/Vol, BPr = c*a*SinB/Vol, CPr = a*b*SinG/Vol;
-	printf("%lf\n",Vol);
+	//~ printf("%lf\n",Vol);
 	double B0[3][3]; B0[0][0] = APr; B0[0][1] = (BPr*cosd(GammaPr)), B0[0][2] = (CPr*cosd(BetaPr)), B0[1][0] = 0,
 		B0[1][1] = (BPr*sind(GammaPr)), B0[1][2] = (-CPr*SinBetaPr*CosA), B0[2][0] = 0, B0[2][1] = 0, B0[2][2] = (CPr*SinBetaPr*SinA);
 	double B[3][3], Binv[3][3];
@@ -440,9 +440,11 @@ static inline void CorrectHKLsLatCEpsilon(double LatC[6], double eps[6], double 
 	Binv[0][1] = (2*eps[1]-B0[0][1]*Binv[1][1])/B0[0][0];
 	Binv[1][2] = (2*eps[4]-B0[1][2]*Binv[2][2])/B0[1][1];
 	Binv[0][2] = (2*eps[2]-B0[0][1]*Binv[1][2]-B0[0][2]*Binv[2][2])/B0[0][0];
+	Binv[2][1] = Binv[1][2];
+	Binv[2][0] = Binv[0][2];
 	int i, j;
 	MatInv(Binv,B);
-	for (i=0;i<3;i++) {for (j=0;j<3;j++) {printf("%lf %lf %lf ",B0[i][j],Binv[i][j],B[i][j]); }}printf("\n");
+	//~ for (i=0;i<3;i++) {for (j=0;j<3;j++) {printf("%lf %lf %lf ",B0[i][j],Binv[i][j],B[i][j]); }}printf("\n");
 	for (hklnr=0;hklnr<n_hkls;hklnr++){
 		double ginit[3]; ginit[0] = hkls[hklnr][0]; ginit[1] = hkls[hklnr][1]; ginit[2] = hkls[hklnr][2];
 		double GCart[3];
@@ -453,7 +455,7 @@ static inline void CorrectHKLsLatCEpsilon(double LatC[6], double eps[6], double 
 		hklsOut[hklnr][2] = GCart[2];
 		hklsOut[hklnr][3] = (asind((Wavelength)/(2*Ds))); //Theta
 		hklsOut[hklnr][4] = hkls[hklnr][3];
-		printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",Wavelength,Ds,hkls[hklnr][0],hkls[hklnr][1],hkls[hklnr][2],hkls[hklnr][3],hklsOut[hklnr][0],hklsOut[hklnr][1],hklsOut[hklnr][2],hklsOut[hklnr][3],hklsOut[hklnr][4]);
+		//~ printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",Wavelength,Ds,hkls[hklnr][0],hkls[hklnr][1],hkls[hklnr][2],hkls[hklnr][3],hklsOut[hklnr][0],hklsOut[hklnr][1],hklsOut[hklnr][2],hklsOut[hklnr][3],hklsOut[hklnr][4]);
 	}
 }
 
