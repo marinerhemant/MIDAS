@@ -1134,7 +1134,8 @@ main(int argc, char *argv[])
 	double OmeDiff, yTemp, zTemp, yThis, omeThis, etaThis;
 	double Info[5],DisplY,DisplZ,yDet,zDet,DisplY2,DisplZ2;
 	int yTrans, zTrans;
-	int yTrans2, zTrans2, idxNrY,idxNrZ;
+	//~ int yTrans2, zTrans2;
+	int idxNrY,idxNrZ;
 	long long int idx;
 	size_t omeBin, yBin, zBin, imageBin, centIdx, currentPos;
 	hklsOut = allocMatrix(n_hkls,5);
