@@ -440,6 +440,8 @@ static inline void CorrectHKLsLatCEpsilon(double LatC[6], double eps[6], double 
 	Binv[0][1] = (2*eps[1]-B0[0][1]*Binv[1][1])/B0[0][0];
 	Binv[1][2] = (2*eps[4]-B0[1][2]*Binv[2][2])/B0[1][1];
 	Binv[0][2] = (2*eps[2]-B0[0][1]*Binv[1][2]-B0[0][2]*Binv[2][2])/B0[0][0];
+	int i, j;
+	for (i=0;i<3;i++) for (j=0;j<3;j++) printf("%lf %lf ",B0[i][j],B[i][j]); printf("\n");
 	MatInv(Binv,B);
 	for (hklnr=0;hklnr<n_hkls;hklnr++){
 		double ginit[3]; ginit[0] = hkls[hklnr][0]; ginit[1] = hkls[hklnr][1]; ginit[2] = hkls[hklnr][2];
@@ -451,7 +453,7 @@ static inline void CorrectHKLsLatCEpsilon(double LatC[6], double eps[6], double 
 		hklsOut[hklnr][2] = GCart[2];
 		hklsOut[hklnr][3] = (asind((Wavelength)/(2*Ds))); //Theta
 		hklsOut[hklnr][4] = hkls[hklnr][3];
-		printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",Wavelength,Ds,hkls[hklnr][0],hkls[hklnr][1],hkls[hklnr][2],hkls[hklnr][3],hklsOut[hklnr][0],hklsOut[hklnr][1],hklsOut[hklnr][2],hklsOut[hklnr][3],hklsOut[hklnr][4]);
+		//~ printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",Wavelength,Ds,hkls[hklnr][0],hkls[hklnr][1],hkls[hklnr][2],hkls[hklnr][3],hklsOut[hklnr][0],hklsOut[hklnr][1],hklsOut[hklnr][2],hklsOut[hklnr][3],hklsOut[hklnr][4]);
 	}
 }
 
@@ -1156,7 +1158,7 @@ main(int argc, char *argv[])
 		} else if (dataType == 3){ // binary file
 			for (i=0;i<6;i++) EpsThis[i] = InputInfo[voxNr][i+12];
 			CorrectHKLsLatCEpsilon(LatC,EpsThis,Wavelength,hklsOut);
-			printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",LatC[0],LatC[1],LatC[2],LatC[3],LatC[4],LatC[5],EpsThis[0],EpsThis[1],EpsThis[2],EpsThis[3],EpsThis[4],EpsThis[5],Wavelength);
+			//~ printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",LatC[0],LatC[1],LatC[2],LatC[3],LatC[4],LatC[5],EpsThis[0],EpsThis[1],EpsThis[2],EpsThis[3],EpsThis[4],EpsThis[5],Wavelength);
 			//~ for (i=0;i<n_hkls;i++) printf("%d %lf %lf %lf %lf %lf\n",voxNr,hklsOut[i][0],hklsOut[i][1],hklsOut[i][2],hklsOut[i][3],hklsOut[i][4]);
 		}
 		// Get the Orientation Matrix
