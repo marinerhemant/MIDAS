@@ -1071,7 +1071,7 @@ main(int argc, char *argv[])
 		}
 		n_hkls = totalHKLs;
 	}
-	for (i=0;i<n_hkls;i++) printf("%lf ",hkls[i][3]); printf("\n");
+	//~ for (i=0;i<n_hkls;i++) printf("%lf ",hkls[i][3]); printf("\n");
 	printf("Number of planes: %d\n",n_hkls);
 
 	// Allocate image array.
@@ -1152,9 +1152,9 @@ main(int argc, char *argv[])
 			for (i=0;i<6;i++) EpsThis[i] = InputInfo[voxNr][i+12];
 			CorrectHKLsLatCEpsilon(LatC,EpsThis,Wavelength,hklsOut);
 		} else if (dataType == 3){ // binary file
-			for (i=0;i<6;i++) EpsThis[i] = InputInfo[voxNr][i+18];
+			for (i=0;i<6;i++) EpsThis[i] = InputInfo[voxNr][i+12];
 			CorrectHKLsLatCEpsilon(LatC,EpsThis,Wavelength,hklsOut);
-			for (i=0;i<n_hkls;i++) printf("%lf ",hklsOut[i][3]); printf("\n");
+			for (i=0;i<n_hkls;i++) printf("%d %lf %lf %lf %lf %lf\n",voxNr,hklsOut[i][0],hklsOut[i][1],hklsOut[i][2],hklsOut[i][3],hklsOut[i][4]);
 		}
 		// Get the Orientation Matrix
 		for (i=0;i<3;i++){
@@ -1185,8 +1185,8 @@ main(int argc, char *argv[])
 			yTrans = (int) (-yThis/px + yBC);
 			zTrans = (int) ( zThis/px + zBC);
 			idx = yTrans + NrPixels*zTrans;
-			printf("%lld %d %lf %lf %lf %lf %lf %lf %lf\n",idx,zTrans,zThis,zBC,zTemp,DisplZ2,Info[0],Info[1],cosd(Info[1]));
-			fflush(stdout);
+			//~ printf("%lld %d %lf %lf %lf %lf %lf %lf %lf\n",idx,zTrans,zThis,zBC,zTemp,DisplZ2,Info[0],Info[1],cosd(Info[1]));
+			//~ fflush(stdout);
 			DisplY = yDispl[idx];
 			DisplZ = zDispl[idx];
 			if (DisplY == -32100){ // Was not set, check neighbor
