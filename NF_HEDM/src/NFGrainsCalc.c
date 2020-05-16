@@ -366,14 +366,14 @@ void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fi
 	for (layernr = 0; layernr < nrLayers; layernr++){
 		for (xpos = 0; xpos < xMax; xpos++){
 			for (ypos = 0; ypos < yMax; ypos++){
-				Pos1 = getIDX(layernr,xpos,ypos,xMax,yMax);
+				Pos[0] = layernr;
+				Pos[1] = xpos;
+				Pos[2] = ypos;
+				Pos1 = getIDX(Pos[0],Pos[1],Pos[2],Dims[1],Dims[2]);
 				if (Euler1[Pos1] == fillVal){
 					GrainNrs[Pos1] = (int)fillVal;
 				} else if (GrainNrs[Pos1] == 0){
 					grainNr++;
-					Pos[0] = layernr;
-					Pos[1] = xpos;
-					Pos[2] = ypos;
 					DFS(Pos,grainNr);
 				}
 					//~ GrainFound = 0;
