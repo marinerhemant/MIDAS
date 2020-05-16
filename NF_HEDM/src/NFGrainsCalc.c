@@ -374,6 +374,7 @@ void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fi
 					GrainNrs[Pos1] = (int)fillVal;
 				} else if (GrainNrs[Pos1] == 0){
 					grainNr++;
+					printf("Initial grainNr: %d\n",grainNr);
 					DFS(Pos,grainNr);
 				}
 					//~ GrainFound = 0;
