@@ -1172,8 +1172,8 @@ main(int argc, char *argv[])
 			// Get diplacements due to spot position
 			yTemp = -Info[0]*sin(Info[1]*deg2rad);
 			zTemp =  Info[0]*cos(Info[1]*deg2rad);
-			yTrans2 = (int) (-yTemp/px + yBC);
-			zTrans2 = (int) ( zTemp/px + zBC);
+			//~ yTrans2 = (int) (-yTemp/px + yBC);
+			//~ zTrans2 = (int) ( zTemp/px + zBC);
 			DisplacementInTheSpot(InputInfo[voxNr][9],InputInfo[voxNr][10],
 				InputInfo[voxNr][11],Lsd,yTemp,zTemp,omeThis,&DisplY2,&DisplZ2);
 			yThis = yTemp-DisplY2; // These are displaced for grain position, not tilted.
@@ -1182,7 +1182,7 @@ main(int argc, char *argv[])
 			yTrans = (int) (-yThis/px + yBC);
 			zTrans = (int) ( zThis/px + zBC);
 			idx = yTrans + NrPixels*zTrans;
-			printf("%lld %d %d\n",idx,yTrans,zTrans);
+			printf("%lld %d %lf %lf %lf %lf %lf %lf %lf\n",idx,zTrans,zThis,zBC,zTemp,DisplZ2,Info[0],Info[1],cosd(Info[1]));
 			fflush(stdout);
 			DisplY = yDispl[idx];
 			DisplZ = zDispl[idx];
