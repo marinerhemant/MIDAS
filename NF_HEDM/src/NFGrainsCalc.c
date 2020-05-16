@@ -138,9 +138,9 @@ int MakeSymmetries(int SGNr)
 	return NrSymmetries;
 }
 
-int diffArr[3][13] = {{-1,-1,-1,-1,-1,-1,-1,-1,-1, 0, 0, 0, 0},
-					  {-1,-1,-1, 0, 0, 0, 1, 1, 1,-1,-1,-1, 0},
-					  {-1, 0, 1,-1, 0, 1,-1, 0, 1,-1, 0, 1,-1}};
+int diffArr[3][26] = {{-1,-1,-1,-1,-1,-1,-1,-1,-1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+					  {-1,-1,-1, 0, 0, 0, 1, 1, 1,-1,-1,-1, 0, 0, 1, 1, 1,-1,-1,-1, 0, 0, 0, 1, 1, 1},
+					  {-1, 0, 1,-1, 0, 1,-1, 0, 1,-1, 0, 1,-1, 1,-1, 0, 1,-1, 0, 1,-1, 0, 1,-1, 0, 1}};
 
 static inline
 void QuaternionProduct(double *q, double *r, double *Q)
@@ -311,7 +311,7 @@ inline void DFS (int *Pos, int grainNr){
 	long long int Pos2;
 	int *PosNext;
 	PosNext = calloc(3,sizeof(int));
-	for (i=0;i<13;i++){
+	for (i=0;i<26;i++){
 		a2 = Pos[0] + diffArr[0][i];
 		b2 = Pos[1] + diffArr[1][i];
 		c2 = Pos[2] + diffArr[2][i];
