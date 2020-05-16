@@ -453,7 +453,7 @@ static inline void CorrectHKLsLatCEpsilon(double LatC[6], double eps[6], double 
 		hklsOut[hklnr][2] = GCart[2];
 		hklsOut[hklnr][3] = (asind((Wavelength)/(2*Ds))); //Theta
 		hklsOut[hklnr][4] = hkls[hklnr][3];
-		//~ printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",Wavelength,Ds,hkls[hklnr][0],hkls[hklnr][1],hkls[hklnr][2],hkls[hklnr][3],hklsOut[hklnr][0],hklsOut[hklnr][1],hklsOut[hklnr][2],hklsOut[hklnr][3],hklsOut[hklnr][4]);
+		printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",Wavelength,Ds,hkls[hklnr][0],hkls[hklnr][1],hkls[hklnr][2],hkls[hklnr][3],hklsOut[hklnr][0],hklsOut[hklnr][1],hklsOut[hklnr][2],hklsOut[hklnr][3],hklsOut[hklnr][4]);
 	}
 }
 
