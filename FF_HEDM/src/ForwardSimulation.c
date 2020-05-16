@@ -1071,6 +1071,7 @@ main(int argc, char *argv[])
 		}
 		n_hkls = totalHKLs;
 	}
+	for (i=0;i<n_hkls;i++) printf("%lf ",hkls[i][3]); printf("\n");
 	printf("Number of planes: %d\n",n_hkls);
 
 	// Allocate image array.
@@ -1153,6 +1154,7 @@ main(int argc, char *argv[])
 		} else if (dataType == 3){ // binary file
 			for (i=0;i<6;i++) EpsThis[i] = InputInfo[voxNr][i+12];
 			CorrectHKLsLatCEpsilon(LatC,EpsThis,Wavelength,hklsOut);
+			for (i=0;i<n_hkls;i++) printf("%lf ",hklsOut[i][3]); printf("\n");
 		}
 		// Get the Orientation Matrix
 		for (i=0;i<3;i++){
