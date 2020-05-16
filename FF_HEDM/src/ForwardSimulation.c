@@ -1152,7 +1152,7 @@ main(int argc, char *argv[])
 			for (i=0;i<6;i++) EpsThis[i] = InputInfo[voxNr][i+12];
 			CorrectHKLsLatCEpsilon(LatC,EpsThis,Wavelength,hklsOut);
 		} else if (dataType == 3){ // binary file
-			for (i=0;i<6;i++) EpsThis[i] = InputInfo[voxNr][i+12];
+			for (i=0;i<6;i++) EpsThis[i] = InputInfo[voxNr][i+18];
 			CorrectHKLsLatCEpsilon(LatC,EpsThis,Wavelength,hklsOut);
 			for (i=0;i<n_hkls;i++) printf("%lf ",hklsOut[i][3]); printf("\n");
 		}
