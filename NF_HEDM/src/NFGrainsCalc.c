@@ -189,12 +189,6 @@ void BringDownToFundamentalRegionSym(double *QuatIn, double *QuatOut, int NrSymm
 	free(qps);
 }
 
-static inline double sind(double x){return sin(deg2rad*x);}
-static inline double cosd(double x){return cos(deg2rad*x);}
-static inline double tand(double x){return tan(deg2rad*x);}
-static inline double asind(double x){return rad2deg*(asin(x));}
-static inline double acosd(double x){return rad2deg*(acos(x));}
-static inline double atand(double x){return rad2deg*(atan(x));}
 
 static inline
 void Euler2Quat(double *Euler, double *Quat){
@@ -204,8 +198,8 @@ void Euler2Quat(double *Euler, double *Quat){
 	psi = Euler[0];
 	phi = Euler[1];
 	theta = Euler[2];
-	cps = cosd(psi) ; cph = cosd(phi); cth = cosd(theta);
-	sps = sind(psi); sph = sind(phi); sth = sind(theta);
+	cps = cos(psi) ; cph = cos(phi); cth = cos(theta);
+	sps = sin(psi); sph = sin(phi); sth = sin(theta);
 	OrientMat[0] = cth * cps - sth * cph * sps;
 	OrientMat[1] = -cth * cph * sps - sth * cps;
 	OrientMat[2] = sph * sps;

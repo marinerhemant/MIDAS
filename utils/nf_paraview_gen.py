@@ -26,11 +26,11 @@ filestem = 'MicrostructureTxt_Fe9Cr_61116_def_nf_layer'
 outfn = 'MicOut_Fe9Cr_6116_def'
 spaceGroup = 229 # This is used for misorientation calculation
 startnr = 1
-endnr = 3
+endnr = 20
 minConfidence = 0.1
-orientTol = 0.1 # In degrees, used to define grains
+orientTol = 1.0 # In degrees, used to define grains
 zspacing = -2
-xyspacing = 2  # X and Y spacing are equal
+xyspacing = 1  # X and Y spacing are equal
 xExtent = 500 # Maximum Extent of xValues in um
 			   # (this should be a bit larger than your sample diameter or edge length)
 yExtent = 1200 # Maximum Extent of yValues in um
