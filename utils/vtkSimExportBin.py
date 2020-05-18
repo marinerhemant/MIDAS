@@ -31,8 +31,7 @@ fnout = 'MIDAS_Input_Cycle4_OutputStep20.bin'
 fout = open(fnout,'w')
 outarr = np.zeros((numCells,18))
 for ctr in range(numCells):
-	# ~ EA = EulerAngles[ctr] # If wanted original orientations
-	# ~ OMThis = R.from_euler('xyz',EA,degrees=False).as_matrix()
+	# ~ OMThis = R.from_euler('xyz',EulerAngles[ctr],degrees=False).as_matrix() # If wanted original orientations
 	OMThis = OMs[ctr] # comment if wanted original orientations
 	StrainThis = Strains[ctr] # comment this and next two lines if wanted zero strains
 	StrainsThis = np.array([[StrainThis[0],StrainThis[1],StrainThis[2]],[StrainThis[1],StrainThis[3],StrainThis[4]],[StrainThis[2],StrainThis[4],StrainThis[5]]])
