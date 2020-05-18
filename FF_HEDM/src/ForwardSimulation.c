@@ -1222,7 +1222,7 @@ main(int argc, char *argv[])
 			CalcEtaAngle(yThis,zThis,&etaThis);
 			// Save to SpotMatrix.csv
 			spotMatr[0]  = (double) voxNr + 1;
-			spotMatr[1]  = (double) (n_hkls*voxNr + spotNr);
+			spotMatr[1]  = (double) (n_hkls*2*voxNr + spotNr);
 			spotMatr[2]  = Info[2];
 			spotMatr[3]  = yDet;
 			spotMatr[4]  = zDet;
