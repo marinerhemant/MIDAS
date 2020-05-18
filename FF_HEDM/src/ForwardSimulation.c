@@ -842,15 +842,15 @@ main(int argc, char *argv[])
 			OrientTemp[2][2] = holdArr[i*18+11];
 			OrientMat2Euler(OrientTemp,EulerThis);
 			Euler2OrientMat(EulerThis,OrientThis);
-			InputInfo[i][0] = OrientThis[3];
-			InputInfo[i][1] = OrientThis[4];
-			InputInfo[i][2] = OrientThis[5];
-			InputInfo[i][3] = OrientThis[6];
-			InputInfo[i][4] = OrientThis[7];
-			InputInfo[i][5] = OrientThis[8];
-			InputInfo[i][6] = OrientThis[9];
-			InputInfo[i][7] = OrientThis[10];
-			InputInfo[i][8] = OrientThis[11];
+			InputInfo[i][0] = OrientThis[0];
+			InputInfo[i][1] = OrientThis[1];
+			InputInfo[i][2] = OrientThis[2];
+			InputInfo[i][3] = OrientThis[3];
+			InputInfo[i][4] = OrientThis[4];
+			InputInfo[i][5] = OrientThis[5];
+			InputInfo[i][6] = OrientThis[6];
+			InputInfo[i][7] = OrientThis[7];
+			InputInfo[i][8] = OrientThis[8];
 			InputInfo[i][9] = holdArr[i*18+0];
 			InputInfo[i][10] = holdArr[i*18+1];
 			InputInfo[i][11] = holdArr[i*18+2];
@@ -1222,7 +1222,7 @@ main(int argc, char *argv[])
 			CalcEtaAngle(yThis,zThis,&etaThis);
 			// Save to SpotMatrix.csv
 			spotMatr[0]  = (double) voxNr + 1;
-			spotMatr[1]  = (double) (n_hkls*2*voxNr + spotNr);
+			spotMatr[1]  = (double) (n_hkls*2*voxNr + spotNr + 1);
 			spotMatr[2]  = Info[2];
 			spotMatr[3]  = yDet;
 			spotMatr[4]  = zDet;
