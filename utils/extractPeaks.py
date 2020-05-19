@@ -13,6 +13,8 @@ fStem = 'ss_ff_line_beam'
 fn = '/data/tomo1/shastri_mar20_data/shastri_mar20/ge5/ss_ff_line_beam_000019.ge5'
 darkfn = '/data/tomo1/shastri_mar20_data/shastri_mar20/ge5/dark_before_000018.ge5'
 window = 12 # Size of window to extract
+peakInfoFN = folder + 'PeakInfo.csv'
+piF = open(peakInfoFN,'w')
 
 f = open(fn,'rb')
 darkf = open(darkfn,'rb')
@@ -44,3 +46,4 @@ for fNr in range(1,nFrames+1):
 			outfn = thisFN.replace('.csv',thisExt)
 			im = Image.fromarray(thisPeakInfo)
 			im.save(outfn)
+			piF.write([xPos-int(window/2),xPos+int(window/2+1),yPos-int(window/2),yPos+int(window/2+1),peakInfo[4],peakInfo[3])
