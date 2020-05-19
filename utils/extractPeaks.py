@@ -15,6 +15,7 @@ darkfn = '/data/tomo1/shastri_mar20_data/shastri_mar20/ge5/dark_before_000018.ge
 window = 12 # Size of window to extract
 peakInfoFN = folder + 'PeakInfo.csv'
 piF = open(peakInfoFN,'w')
+piF.write("FileName\txleft\txright\tybottom\tytop\txcen\tycen")
 
 f = open(fn,'rb')
 darkf = open(darkfn,'rb')
@@ -46,4 +47,4 @@ for fNr in range(1,nFrames+1):
 			outfn = thisFN.replace('.csv',thisExt)
 			im = Image.fromarray(thisPeakInfo)
 			im.save(outfn)
-			piF.write(outfn+' '+str(xPos-int(window/2))+' '+str(xPos+int(window/2+1))+' '+str(yPos-int(window/2))+' '+str(yPos+int(window/2+1))+' '+str(peakInfo[4])+' '+str(peakInfo[3]))
+			piF.write(outfn+' '+str(xPos-int(window/2))+' '+str(xPos+int(window/2+1))+' '+str(yPos-int(window/2))+' '+str(yPos+int(window/2+1))+' '+str(peakInfo[4])+' '+str(peakInfo[3])+'\n')
