@@ -46,4 +46,4 @@ for fNr in range(1,nFrames+1):
 			outfn = thisFN.replace('.csv',thisExt)
 			im = Image.fromarray(thisPeakInfo)
 			im.save(outfn)
-			piF.write([xPos-int(window/2),xPos+int(window/2+1),yPos-int(window/2),yPos+int(window/2+1),peakInfo[4],peakInfo[3]])
+			piF.write(outfn+str(xPos-int(window/2))+str(xPos+int(window/2+1))+str(yPos-int(window/2))+str(yPos+int(window/2+1))+str(peakInfo[4])+str(peakInfo[3]))
