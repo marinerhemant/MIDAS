@@ -10,27 +10,27 @@ cmdname=$(basename $0)
 
 if [[ ${#*} != 8 ]];
 then
-  echo "Usage: ${cmdname} top_parameter_file(just the name, no directory) FFSeedOrientations ProcessImages startLayerNr endLayerNr nNODEs MachineName EmailAddress"
-  echo "Eg. ${cmdname} ParametersFile.txt 1(or 0) 1(or 0) 1 5 6 orthros hsharma@anl.gov"
-  echo "This will run from layer 1 to 5."
-  echo "Run from the directory with the parameter file."
-  echo "This will produce the output in the run folder."
-  echo "FFSeedOrientations is when either Orientations exist already (0) or when you provide a FF Orientation file (1)."
-  echo "ProcessImages is whether you want to process the diffraction images (1) or if they were processed earlier (0)."
-  echo "NOTE: run from the folder with the Key.txt, DiffractionSpots.txt, OrientMat.txt and ParametersFile.txt"
-  echo "At least the parameters file should be in the folder from where the command is executed."
-  echo "The following parameters should NOT be in the ParametersFile.txt file:"
-  echo "RawStartNr, GlobalPosition, MicFileBinary, MicFileText, ReducedFileName, GrainsFile, SeedOrientations, DataDirectory, FullSeedFile"
-  echo "The following parameters must be present:"
-  echo "OrigFileName, OverallStartNr, GlobalPositionFirstLayer, LayerThickness, WFImages, nDistances, NrFilesPerDistance, TopDataDirectory"
-  echo "If WF images were taken, it is assumed there were 10 WF images."
-  echo "If using FF seeding, the grains files should be in the same folder and named: GrainsLayer{LAYERNR}.csv"
-  echo "If using FF seeding, include a file called OrientationsAll.txt with all possible orientations if you want to try all orientations for low confidence points."
-  echo "If using FF seeding, please add line to your analysis: MinConfidence to redo the analysis using all orientations and minconfidence."
-  echo "If no seeding is used, a single OrientationsAll.txt file should be present."
-  echo "At successfull completion, it will send an email to EmailAddress."
-  echo "**********NOTE: For local runs, nNodes should be nCPUs.**********"
-  exit 1
+	echo "Usage: ${cmdname} top_parameter_file(just the name, no directory) FFSeedOrientations ProcessImages startLayerNr endLayerNr nNODEs MachineName EmailAddress"
+	echo "Eg. ${cmdname} ParametersFile.txt 1(or 0) 1(or 0) 1 5 6 orthros hsharma@anl.gov"
+	echo "This will run from layer 1 to 5."
+	echo "Run from the directory with the parameter file."
+	echo "This will produce the output in the run folder."
+	echo "FFSeedOrientations is when either Orientations exist already (0) or when you provide a FF Orientation file (1)."
+	echo "ProcessImages is whether you want to process the diffraction images (1) or if they were processed earlier (0)."
+	echo "NOTE: run from the folder with the Key.txt, DiffractionSpots.txt, OrientMat.txt and ParametersFile.txt"
+	echo "At least the parameters file should be in the folder from where the command is executed."
+	echo "The following parameters should NOT be in the ParametersFile.txt file:"
+	echo "RawStartNr, GlobalPosition, MicFileBinary, MicFileText, ReducedFileName, GrainsFile, SeedOrientations, DataDirectory, FullSeedFile"
+	echo "The following parameters must be present:"
+	echo "OrigFileName, OverallStartNr, GlobalPositionFirstLayer, LayerThickness, WFImages, nDistances, NrFilesPerDistance, TopDataDirectory"
+	echo "If WF images were taken, it is assumed there were 10 WF images."
+	echo "If using FF seeding, the grains files should be in the same folder and named: GrainsLayer{LAYERNR}.csv"
+	echo "If using FF seeding, include a file called OrientationsAll.txt with all possible orientations if you want to try all orientations for low confidence points."
+	echo "If using FF seeding, please add line to your analysis: MinConfidence to redo the analysis using all orientations and minconfidence."
+	echo "If no seeding is used, a single OrientationsAll.txt file should be present."
+	echo "At successfull completion, it will send an email to EmailAddress."
+	echo "**********NOTE: For local runs, nNodes should be nCPUs.**********"
+	exit 1
 fi
 
 PARAMFILE=$1
@@ -80,7 +80,6 @@ if [[ $WFIMAGES -eq 1 ]]; then
 else
 	INCREASEDFILES=$NRFILESPERDISTANCE
 fi
-echo $INCREASEDFILES
 
 TOPDATADIRECTORY=$( awk '$1 ~ /^TopDataDirectory/ { print $2 }' ${PARAMFILE} )
 extOrig=$( awk '$1 ~ /^extOrig/ { print $2 }' ${PARAMFILE} )
