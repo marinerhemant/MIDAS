@@ -6,10 +6,17 @@
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
+#define maxNGrains 1000000
 
+int Dims[3];
+double fV, oT;
+int NSym;
+int grainSize;
+double *Euler1, *Euler2, *Euler3;
+int *GrainNrs;
 double Sym[24][4];
 
-double TricSym[2][4] = { // This is just for house keeping to make it 2 rows
+double TricSym[2][4] = {
    {1.00000,   0.00000,   0.00000,   0.00000},
    {1.00000,   0.00000,   0.00000,   0.00000}};
 
@@ -81,9 +88,7 @@ double CubSym[24][4] = {
    {0.00000,   0.00000,   0.70711,   0.70711},
    {0.00000,   0.00000,   0.70711,  -0.70711}};
 
-inline
-int MakeSymmetries(int SGNr)
-{
+inline int MakeSymmetries(int SGNr){
 	int i, j, NrSymmetries;;
 	if (SGNr <= 2){ // Triclinic
 		NrSymmetries = 1;
@@ -142,9 +147,7 @@ int diffArr[3][26] = {{-1,-1,-1,-1,-1,-1,-1,-1,-1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
 					  {-1,-1,-1, 0, 0, 0, 1, 1, 1,-1,-1,-1, 0, 0, 1, 1, 1,-1,-1,-1, 0, 0, 0, 1, 1, 1},
 					  {-1, 0, 1,-1, 0, 1,-1, 0, 1,-1, 0, 1,-1, 1,-1, 0, 1,-1, 0, 1,-1, 0, 1,-1, 0, 1}};
 
-static inline
-void QuaternionProduct(double *q, double *r, double *Q)
-{
+static inline void QuaternionProduct(double *q, double *r, double *Q){
 	Q[0] = r[0]*q[0] - r[1]*q[1] - r[2]*q[2] - r[3]*q[3];
 	Q[1] = r[1]*q[0] + r[0]*q[1] + r[3]*q[2] - r[2]*q[3];
 	Q[2] = r[2]*q[0] + r[0]*q[2] + r[1]*q[3] - r[3]*q[1];
@@ -157,9 +160,7 @@ void QuaternionProduct(double *q, double *r, double *Q)
 	}
 }
 
-static inline
-void BringDownToFundamentalRegionSym(double *QuatIn, double *QuatOut, int NrSymmetries)
-{
+static inline void BringDownToFundamentalRegionSym(double *QuatIn, double *QuatOut, int NrSymmetries){
 	int i, maxCosRowNr;
 	double *qps, *q2, *qt, maxCos=-10000;
 	qps = calloc(NrSymmetries*4,sizeof(*qps));
@@ -189,9 +190,7 @@ void BringDownToFundamentalRegionSym(double *QuatIn, double *QuatOut, int NrSymm
 	free(qps);
 }
 
-
-static inline
-void Euler2Quat(double *Euler, double *Quat){
+static inline void Euler2Quat(double *Euler, double *Quat){
 	double psi, phi, theta, cps, cph, cth, sps, sph, sth;
 	double *OrientMat;
 	OrientMat = calloc(9,sizeof(*OrientMat));
@@ -251,9 +250,7 @@ void Euler2Quat(double *Euler, double *Quat){
 	Quat[3] /= QNorm;
 }
 
-inline
-double GetMisOrientationAngle(double *Eul1, double *Eul2, double *Angle, int NrSymmetries)
-{
+inline double GetMisOrientationAngle(double *Eul1, double *Eul2, double *Angle, int NrSymmetries){
 	double *quat1, *quat2;
 	quat1 = calloc(4,sizeof(*quat1));
 	quat2 = calloc(4,sizeof(*quat2));
@@ -290,16 +287,11 @@ inline long long int getIDX (int layerNr, int xpos, int ypos, int xMax, int yMax
 	return retval;
 }
 
-int Dims[3];
-double fV, oT;
-int NSym;
-double *Euler1, *Euler2, *Euler3;
-int *GrainNrs;
-
 inline void DFS (int *Pos, int grainNr){
 	long long int Pos1 = getIDX(Pos[0],Pos[1],Pos[2],Dims[1],Dims[2]);
 	if (GrainNrs[Pos1] != 0) return;
 	GrainNrs[Pos1] = grainNr;
+	grainSize++;
 	int i;
 	double *Eul1,*Eul2, miso, ang;
 	Eul1 = calloc(3,sizeof(*Eul1));
@@ -337,8 +329,7 @@ inline void DFS (int *Pos, int grainNr){
 	free(PosNext);
 }
 
-void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fillVal, int SGNum)
-{
+void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fillVal, int SGNum){
 	int NrSymmetries;
 	NrSymmetries = MakeSymmetries(SGNum);
 	NSym = NrSymmetries;
@@ -361,8 +352,12 @@ void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fi
 	int grainNr = 0;
 	int i,j, *Pos;
 	Pos = calloc(3,sizeof(int));
-	long long int Pos1;
-	//~ int GrainFound;
+	long long int Pos1, Pos2;
+	double *Eul1,*Eul2, miso, ang;
+	Eul1 = calloc(3,sizeof(*Eul1));
+	Eul2 = calloc(3,sizeof(*Eul2));
+	int *grainSizes;
+	grainSizes = calloc(maxNGrains,sizeof(*grainSizes));
 	for (layernr = 0; layernr < nrLayers; layernr++){
 		for (xpos = 0; xpos < xMax; xpos++){
 			for (ypos = 0; ypos < yMax; ypos++){
@@ -374,79 +369,74 @@ void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fi
 					GrainNrs[Pos1] = (int)fillVal;
 				} else if (GrainNrs[Pos1] == 0){
 					grainNr++;
+					grainSize = 0;
 					DFS(Pos,grainNr);
+					grainSizes[grainNr] = grainSize;
 				}
-					//~ GrainFound = 0;
-					//~ Eul1[0] = Euler1[Pos1];
-					//~ Eul1[1] = Euler2[Pos1];
-					//~ Eul1[2] = Euler3[Pos1];
-					//~ // Calculate misorientation with the neighbors, whichever one fits, give that number and continue.
-					//~ for (i=0;i<13;i++){
-						//~ a2 = layernr + diffArr[0][i];
-						//~ b2 = xpos + diffArr[1][i];
-						//~ c2 = ypos + diffArr[2][i];
-						//~ if (a2 < 0 || a2 == nrLayers) continue;
-						//~ if (b2 < 0 || b2 == xMax) continue;
-						//~ if (c2 < 0 || c2 == yMax) continue;
-						//~ Pos2 = getIDX(a2,b2,c2,xMax,yMax);
-						//~ if (Euler1[Pos2] == fillVal) continue;
-						//~ Eul2[0] = Euler1[Pos2];
-						//~ Eul2[1] = Euler2[Pos2];
-						//~ Eul2[2] = Euler3[Pos2];
-						//~ miso = GetMisOrientationAngle(Eul1,Eul2,&ang,NrSymmetries);
-						//~ if (miso < orientTol){
-							//~ GrainNrs[Pos1] = GrainNrs[Pos2];
-							//~ GrainFound = 1;
-							//~ break;
-						//~ }
-					//~ }
-					//~ if (GrainFound == 0){
-						//~ // No neighbor matched, new grain.
-						//~ grainNr ++;
-						//~ GrainNrs[Pos1] = grainNr;
-					//~ }
-				//~ }
+			}
+		}
+	}
+	int thisGrainNr;
+	int *GSArr;
+	GSArr = calloc(nrLayers*xMax*yMax,sizeof(*GSArr));
+	double *kamArr;
+	kamArr = calloc(nrLayers*xMax*yMax,sizeof(*kamArr));
+	int nrKAM;
+	for (layernr = 0; layernr < nrLayers; layernr++){
+		for (xpos = 0; xpos < xMax; xpos++){
+			for (ypos = 0; ypos < yMax; ypos++){
+				Pos1 = getIDX(layernr,xpos,ypos,Dims[1],Dims[2]);
+				thisGrainNr = GrainNrs[Pos1];
+				if (thisGrainNr == fV){
+					GSArr[Pos1] = (int)fV;
+				} else {
+					// put grain sizes
+					GSArr[Pos1] = grainSizes[thisGrainNr];
+					// Calculate kam
+					nrKAM = 0;
+					Eul1[0] = Euler1[Pos1];
+					Eul1[1] = Euler2[Pos1];
+					Eul1[2] = Euler3[Pos1];
+					for (i=0;i<26;i++){
+						a2 = layernr + diffArr[0][i];
+						b2 = xpos + diffArr[1][i];
+						c2 = ypos + diffArr[2][i];
+						if (a2 < 0 || a2 == Dims[0]) continue;
+						if (b2 < 0 || b2 == Dims[1]) continue;
+						if (c2 < 0 || c2 == Dims[2]) continue;
+						Pos2 = getIDX(a2,b2,c2,Dims[1],Dims[2]);
+						if (GrainNrs[Pos2] !=fV){
+							Eul2[0] = Euler1[Pos2];
+							Eul2[1] = Euler2[Pos2];
+							Eul2[2] = Euler3[Pos2];
+							miso = GetMisOrientationAngle(Eul1,Eul2,&ang,NSym);
+							nrKAM ++;
+							kamArr[Pos1] += miso;
+						}
+					}
+					if (nrKAM > 0) kamArr[Pos1] /= nrKAM;
+					else kamArr[Pos1] = fV;
+				}
 			}
 		}
 	}
 	printf("Total number of grains: %d\n",grainNr);
 	FILE *f4 = fopen("GrainNrs.bin","wb");
+	FILE *f5 = fopen("GrainSizes.bin","wb");
+	FILE *f6 = fopen("KAMArr.bin","wb");
 	fwrite(GrainNrs,nrLayers*xMax*yMax*sizeof(int),1,f4);
+	fwrite(GSArr,nrLayers*xMax*yMax*sizeof(int),1,f5);
+	fwrite(kamArr,nrLayers*xMax*yMax*sizeof(double),1,f6);
 	fclose(f1);
 	fclose(f2);
 	fclose(f3);
 	fclose(f4);
+	fclose(f5);
+	fclose(f6);
 	free(Euler1);
 	free(Euler2);
 	free(Euler3);
 	free(GrainNrs);
+	free(GSArr);
+	free(kamArr);
 }
-
-//~ int main(int argc,char *argv[]){
-	//~ // Read in Euler1, Euler2, Euler3, Symm, allocate: GrainNrs
-	//~ double orientTol = 5.0;
-	//~ int nrLayers = 3;
-	//~ int xMax = 900;
-	//~ int yMax = 900;
-	//~ double fillVal = -15;
-	//~ int nrSymmetries = 24;
-	//~ int *GrainNrs;
-	//~ GrainNrs = calloc(nrLayers*xMax*yMax,sizeof(*GrainNrs));
-	//~ FILE *f1 = fopen("EulerAngles1.bin","rb");
-	//~ FILE *f2 = fopen("EulerAngles2.bin","rb");
-	//~ FILE *f3 = fopen("EulerAngles3.bin","rb");
-	//~ double *Euler1, *Euler2, *Euler3;
-	//~ Euler1 = calloc(nrLayers*xMax*yMax,sizeof(*Euler1));
-	//~ Euler2 = calloc(nrLayers*xMax*yMax,sizeof(*Euler2));
-	//~ Euler3 = calloc(nrLayers*xMax*yMax,sizeof(*Euler3));
-	//~ fread(Euler1,nrLayers*xMax*yMax*sizeof(double),1,f1);
-	//~ fread(Euler2,nrLayers*xMax*yMax*sizeof(double),1,f2);
-	//~ fread(Euler3,nrLayers*xMax*yMax*sizeof(double),1,f3);
-	//~ calcGrainNrs (orientTol, Euler1, Euler2, Euler3, nrLayers, xMax, yMax, fillVal, nrSymmetries, GrainNrs);
-	//~ FILE *f4 = fopen("GrainNrs.bin","wb");
-	//~ fwrite(GrainNrs,nrLayers*xMax*yMax*sizeof(int),1,f4);
-	//~ fclose(f1);
-	//~ fclose(f2);
-	//~ fclose(f3);
-	//~ fclose(f4);
-//~ }
