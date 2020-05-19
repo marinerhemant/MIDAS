@@ -7,7 +7,8 @@
 # HDF5 (compressed output) file arrangement:
 #            Group                  Dataset
 #		|--- FFGrainID           -- FFGrainNr          -- Nonsense value: -15, always uint
-#		|--- GrainNrs            -- GrainNr            -- Nonsense value: -15, always uint
+#		|--- Grains             |-- GrainNr            -- Nonsense value: -15, always uint
+#		|                       |-- GrainSize          -- Nonsense value: -15, always uint
 #		|--- KernelAverageMiso   -- KAM                -- Nonsense value: -15, range 0.180
 #		|--- EulerAngles        |-- EulerAngle1        -- Nonsense value: -15, range +-2pi
 #		|                       |-- EulerAngle2        -- Nonsense value: -15, range +-2pi
@@ -88,7 +89,7 @@ def writeHDF5File(grID,eul1,eul2,eul3,conf,phNr,kam,grNr,grSz,fileID):
 	confidence = Conf.create_dataset('ConfidenceValue',data=conf,compression="gzip")
 	PhaseNrs = PhaseNr.create_dataset('PhaseNr',data=phNr,compression="gzip")
 	GrainNr = Grains.create_dataset('GrainNr',data=grNr,compression="gzip")
-	GrainSizes = Grains.create_dataset('GrainSizes',data=grSz,compression="gzip")
+	GrainSizes = Grains.create_dataset('GrainSize',data=grSz,compression="gzip")
 	KAM = KAMs.create_dataset('KAM',data=kam,compression="gzip")
 	f.close()
 
@@ -146,7 +147,7 @@ def writeXMLXdmf(dims,deltas,fn,h5fn,sample_name):
 	f.write('</Attribute>\n')
 	f.write('<Attribute Name="GrainSizes" AttributeType="Scalar" Center="Cell">\n')
 	f.write('<DataItem Dimensions="%d %d %d" NumberType="Int" Format="HDF">\n'%(dims[0],dims[1],dims[2]))
-	f.write(' %s.h5:/Grains/GrainSizes\n'%(h5fn))
+	f.write(' %s.h5:/Grains/GrainSize\n'%(h5fn))
 	f.write('</DataItem>\n')
 	f.write('</Attribute>\n')
 	f.write('<Attribute Name="KernelAverageMisorientation" AttributeType="Scalar" Center="Cell">\n')
