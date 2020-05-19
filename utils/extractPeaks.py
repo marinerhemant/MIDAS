@@ -25,7 +25,7 @@ dark = np.reshape(dark,(NrPixels,NrPixels))
 dark = dark.astype(float)
 
 for fNr in range(1,nFrames+1):
-	printf(fNr)
+	print(fNr)
 	BytesToSkip = fHead + (fNr-1)*NrPixels*NrPixels*2
 	f.seek(BytesToSkip,os.SEEK_SET)
 	thisFrame = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
