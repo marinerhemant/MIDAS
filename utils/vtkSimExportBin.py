@@ -1,5 +1,3 @@
-# MatMul code from Siddharth Maddali (smaddali@alumni.cmu.edu)
-
 import vtk
 from vtk.numpy_interface import dataset_adapter as dsa
 import numpy as np
@@ -34,7 +32,7 @@ outarr = np.zeros((numCells,18))
 for ctr in range(numCells):
 	OMThis = OM2[ctr]
 	OMThis = OMs[ctr] # comment if wanted original orientations
-	StrainThis = Strains[ctr] # comment this and next two lines if wanted zero strains
+	StrainThis = Strains[ctr] # comment this and next few lines if wanted zero strains
 	StrainsThis = np.array([[StrainThis[0],StrainThis[1],StrainThis[2]],[StrainThis[1],StrainThis[3],StrainThis[4]],[StrainThis[2],StrainThis[4],StrainThis[5]]])
 	StrainRotated = np.matmul(np.matmul(OMThis,StrainsThis),OMThis.T)
 	outarr[ctr][12] = StrainRotated[0,0]
