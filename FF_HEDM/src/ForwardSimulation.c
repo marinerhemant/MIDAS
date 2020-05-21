@@ -1186,8 +1186,8 @@ main(int argc, char *argv[])
 			//~ zTrans2 = (int) ( zTemp/px + zBC);
 			DisplacementInTheSpot(InputInfo[voxNr][9],InputInfo[voxNr][10],
 				InputInfo[voxNr][11],Lsd,yTemp,zTemp,omeThis,&DisplY2,&DisplZ2);
-			yThis = yTemp-DisplY2; // These are displaced for grain position, not tilted.
-			zThis = zTemp-DisplZ2; // These should be written to SpotMatrix.csv
+			yThis = yTemp+DisplY2; // These are displaced for grain position, not tilted.
+			zThis = zTemp+DisplZ2; // These should be written to SpotMatrix.csv
 			// Get tilt displacements
 			yTrans = (int) (-yThis/px + yBC);
 			zTrans = (int) ( zThis/px + zBC);
@@ -1214,8 +1214,8 @@ main(int argc, char *argv[])
 					return 1;
 				}
 			}
-			yTemp = yThis - DisplY;
-			zTemp = zThis - DisplZ;
+			yTemp = yThis + DisplY;
+			zTemp = zThis + DisplZ;
 			yDet = yBC - yTemp/px;
 			zDet = zBC + zTemp/px;
 			Info[3] = 0.5*atand(sqrt(yThis*yThis+zThis*zThis)/Lsd); // New Theta
