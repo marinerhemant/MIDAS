@@ -1214,8 +1214,8 @@ main(int argc, char *argv[])
 					return 1;
 				}
 			}
-			yTemp = yThis + DisplY;
-			zTemp = zThis + DisplZ;
+			yTemp = yThis - DisplY;
+			zTemp = zThis - DisplZ;
 			yDet = yBC - yTemp/px;
 			zDet = zBC + zTemp/px;
 			Info[3] = 0.5*atand(sqrt(yThis*yThis+zThis*zThis)/Lsd); // New Theta

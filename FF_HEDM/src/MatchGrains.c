@@ -125,9 +125,11 @@ int main(int argc, char* argv[])
 		printf("Offset: \n\tOne value each in x(along beam), y(out the door), z(up)"
 		" directions. Going from State2 to State1.\n");
 		printf("stateN.txt: \n\tA file containing a list of Grains.csv files or a Grains.csv file directly.\n");
-		printf("removeDuplicates: \n\t0: will not remove any matched grains from database while matching. This is faster "
-			"\n\t   and desirable if multiple grains can be matched to the same grains. eg. if a \n\t   grain breaks up into 2.\n");
+		printf("removeDuplicates: \n"
+			"\t0: will not remove any matched grains from database while matching. This is faster\n"
+			"\t   and desirable if multiple grains can be matched to the same grains. eg. if a \n\t   grain breaks up into 2.\n");
 		printf("\t1: will remove any matched grains from database while matching. This is slower.\n");
+		printf("\t   If removeDuplicates is 1, number of grains in state2 must be greater than in state1 (confirm TODO).\n");
 		return 1;
 	}
 	clock_t start, end;
