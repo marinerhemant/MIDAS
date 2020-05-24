@@ -2,6 +2,7 @@ import numpy as np
 import os
 import random
 from PIL import Image
+import matplotlib.pyplot as plt
 from math import sin, cos, exp, sqrt, atan, asin, acos
 rad2deg = 57.2957795130823
 deg2rad = 0.0174532925199
@@ -14,7 +15,7 @@ Lsd = 1000000
 MaxRingRad = 204800
 RingsToUse = [1,2,3]
 nFrames = 200
-SpotsFrame = 30 # guide for number of spots per frame, not necessary that it will be this much
+SpotsFrame = 10 # guide for number of spots per frame, not necessary that it will be this much
 px = 200
 ycen = 1024
 zcen = 1024
@@ -76,7 +77,7 @@ for frameNr in range(nFrames):
 					if z < 0 or z >= NrPixels:
 						continue
 					radHere = sqrt((y-ycen)**2+(z-zcen)**2)
-					etaThis = acos((z - zcen)/radHere)*rad2deg
+					etaThis = acos((z - zcen)/radHere)*rad2deg if eta > 0 else -acos((z - zcen)/radHere)*rad2deg
 					etaDiff = (etaThis-eta)/etaWidth
 					radDiff = (radHere-thisRad/px)/rWidth
 					SigY = (etaDiff**2)
@@ -87,6 +88,7 @@ for frameNr in range(nFrames):
 					G = exp(SigY+SigZ)
 					Int = int(BG + A*((Mu*L)+(1-Mu)*G))
 					frame[y,z] += Int
+					# ~ print([y,z,Int])
 			fPeakInfo.write(str(frameNr)+','+str(spotNr)+','+str(yPeak)+','+str(zPeak)+','+str(A)+','+str(BG)+','+str(Mu)+','+str(yWidth)+','+str(zWidth)+','+str(eta)+','+str(thisRad)+'\n')
 	im = Image.fromarray(frame)
 	im.save(outfn,compression=None)
