@@ -5,12 +5,12 @@
 
 //
 //  PeaksFittingPerFile.c
-//  
+//
 //
 //  Created by Hemant Sharma on 2014/07/04.
 //
 //
-//  
+//
 // Only 8-connected is implemented for now.
 //
 // TODO: Rectangular detector, read netcdf etc.
@@ -71,7 +71,7 @@ FreeMemMatrixPx(pixelvalue **mat,int nrows)
     free(mat);
 }
 
-static inline 
+static inline
 double CalcEtaAngle(double y, double z){
 	double alpha = rad2deg*acos(z/sqrt(y*y+z*z));
 	if (y>0) alpha = -alpha;
@@ -172,14 +172,13 @@ static inline void DepthFirstSearch(int x, int y, int current_label, int NrPixel
 	if (x < 0 || x == NrPixels) return;
 	if (y < 0 || y == NrPixels) return;
 	if ((ConnectedComponents[x][y]!=0)||(BoolImage[x][y]==0)) return;
-	
+
 	ConnectedComponents[x][y] = current_label;
 	Positions[current_label][PositionTrackers[current_label]] = (x*NrPixels) + y;
 	PositionTrackers[current_label] += 1;
 	int direction;
 	for (direction=0;direction<8;++direction){
 		DepthFirstSearch(x + dx[direction], y + dy[direction], current_label, NrPixels, BoolImage, ConnectedComponents,Positions,PositionTrackers);
-		
 	}
 }
 
@@ -238,7 +237,7 @@ static inline unsigned FindRegionalMaxima(double *z,int **PixelPositions,
 		}
 	}
 	if (nPeaks==0){
-        MaximaPositions[nPeaks][0] = PixelPositions[NrPixelsThisRegion/2][0];	
+        MaximaPositions[nPeaks][0] = PixelPositions[NrPixelsThisRegion/2][0];
         MaximaPositions[nPeaks][1] = PixelPositions[NrPixelsThisRegion/2][1];
         MaximaValues[nPeaks] = z[NrPixelsThisRegion/2];
         nPeaks=1;
@@ -285,7 +284,8 @@ double problem_function(
 	for (i=0;i<NrPixels;i++){
 		IntPeaks = 0;
 		for (j=0;j<nPeaks;j++){
-			L = 1/(((((Rs[i]-R[j])*(Rs[i]-R[j]))/((SigmaLR[j])*(SigmaLR[j])))+1)*((((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/((SigmaLEta[j])*(SigmaLEta[j])))+1));
+			//~ L = 1/(((((Rs[i]-R[j])*(Rs[i]-R[j]))/((SigmaLR[j])*(SigmaLR[j])))+1)*((((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/((SigmaLEta[j])*(SigmaLEta[j])))+1));
+			L = 1/(((((Rs[i]-R[j])*(Rs[i]-R[j]))/((SigmaLR[j])*(SigmaLR[j]))))+((((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/((SigmaLEta[j])*(SigmaLEta[j]))))+1);
 			G = exp(-(0.5*(((Rs[i]-R[j])*(Rs[i]-R[j]))/(SigmaGR[j]*SigmaGR[j])))-(0.5*(((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/(SigmaGEta[j]*SigmaGEta[j]))));
 			IntPeaks += IMAX[j]*((Mu[j]*L) + ((1-Mu[j])*G));
 		}
@@ -314,7 +314,8 @@ static inline void CalcIntegratedIntensity(int nPeaks,double *x,double *Rs,doubl
 		NrOfPixels[j] = 0;
 		IntegratedIntensity[j] = 0;
 		for (i=0;i<NrPixelsThisRegion;i++){
-			L = 1/(((((Rs[i]-R[j])*(Rs[i]-R[j]))/((SigmaLR[j])*(SigmaLR[j])))+1)*((((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/((SigmaLEta[j])*(SigmaLEta[j])))+1));
+			//~ L = 1/(((((Rs[i]-R[j])*(Rs[i]-R[j]))/((SigmaLR[j])*(SigmaLR[j])))+1)*((((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/((SigmaLEta[j])*(SigmaLEta[j])))+1));
+			L = 1/(((((Rs[i]-R[j])*(Rs[i]-R[j]))/((SigmaLR[j])*(SigmaLR[j]))))+((((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/((SigmaLEta[j])*(SigmaLEta[j]))))+1);
 			G = exp(-(0.5*(((Rs[i]-R[j])*(Rs[i]-R[j]))/(SigmaGR[j]*SigmaGR[j])))-(0.5*(((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/(SigmaGEta[j]*SigmaGEta[j]))));
 			IntPeaks = IMAX[j]*((Mu[j]*L) + ((1-Mu[j])*G));
 			if (IntPeaks > BG){
@@ -329,7 +330,7 @@ static inline void CalcIntegratedIntensity(int nPeaks,double *x,double *Rs,doubl
 }
 
 void Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **UsefulPixels, double *MaximaValues,
-				int **MaximaPositions, double *IntegratedIntensity, double *IMAX, double *YCEN, double *ZCEN, 
+				int **MaximaPositions, double *IntegratedIntensity, double *IMAX, double *YCEN, double *ZCEN,
 				double *RCens, double *EtaCens,double Ycen, double Zcen, double Thresh, int *NrPx,double *OtherInfo)
 {
 	unsigned n = 1 + (8*nPeaks);
@@ -604,7 +605,7 @@ int main(int argc, char *argv[]){
         str = "OmegaRange ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %lf %lf", dummy, 
+            sscanf(aline,"%s %lf %lf", dummy,
 				&OmegaRanges[nOmeRanges][0], &OmegaRanges[nOmeRanges][1]);
             nOmeRanges++;
             continue;
@@ -888,7 +889,7 @@ int main(int argc, char *argv[]){
 	Transposer(darkTemp,NrPixels,dark);
 	free(darkcontents);
 	//Finished reading dark file.
-	
+
 	FILE *floodfile=fopen(floodfilename,"rb");
 	if (floodfile==NULL){
 		printf("Could not read the flood file. Using no flood correction.\n");
@@ -920,7 +921,7 @@ int main(int argc, char *argv[]){
 	int nrCoords = 0;
 	for (i=1;i<NrPixels;i++){
 		for (j=1;j<NrPixels;j++){
-			//Rt = sqrt((i-Ycen)*(i-Ycen)+(j-Zcen)*(j-Zcen)); 
+			//Rt = sqrt((i-Ycen)*(i-Ycen)+(j-Zcen)*(j-Zcen));
 			// Correct for tilts and Distortion here
 			Yc = (-i + Ycen)*px;
 			Zc =  (j - Zcen)*px;
@@ -949,7 +950,7 @@ int main(int argc, char *argv[]){
 	if (DoFullImage == 1){
 		for (i=0;i<NrPixels*NrPixels;i++) GoodCoords[i] = 1;
 	}
-	
+
 	// Get nFrames:
 	FILE *dummyFile;
 	char dummyFN[2048];
@@ -976,7 +977,7 @@ int main(int argc, char *argv[]){
 	int ReadFileNr;
 	ReadFileNr = StartFileNr + ((FileNr-1) / nFrames);
 	int FramesToSkip = ((FileNr-1) % nFrames);
-	
+
 	if (fnr != 0){
 		OmegaStep = FileOmegaOmeStep[ReadFileNr-StartFileNr][1];
 		Omega = FileOmegaOmeStep[ReadFileNr-StartFileNr][0] + FramesToSkip*OmegaStep;
@@ -1002,7 +1003,7 @@ int main(int argc, char *argv[]){
 		if (Omega >= OmegaRanges[i][0] && Omega <= OmegaRanges[i][1]) KeepSpots = 1;
 	}
 	if (KeepSpots == 0) return;
-	
+
 	if (Padding == 2){sprintf(FN,"%s/%s_%02d%s",RawFolder,fs,ReadFileNr,Ext);}
 	else if (Padding == 3){sprintf(FN,"%s/%s_%03d%s",RawFolder,fs,ReadFileNr,Ext);}
 	else if (Padding == 4){sprintf(FN,"%s/%s_%04d%s",RawFolder,fs,ReadFileNr,Ext);}

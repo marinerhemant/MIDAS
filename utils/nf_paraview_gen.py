@@ -17,22 +17,25 @@
 #		|--- PhaseNumber         -- PhaseNr            -- Nonsense value: -15, range 1...n
 ##
 
+# Before running this, please execute the following command in bash:
+#		ulimit -S -s 131072
+
 fillVal = -15 # this value can be used to filter out nonsense values.
 
 ### Only modify the following arguments:
 ### Also look at where variable FileName is defined to see if the file arrangement is different (Line218)
 ####
-sampleName = 'kgt1147_def'
-filestem = 'MicrostructureTxt_kgt1147_def_nf_layer'
-outfn = 'MicOut_kgt1147_def'
+sampleName = 'HeatHTNS9_crack_NF'
+filestem = 'MicrostructureText_Layer'
+outfn = 'MicHeatHTNS9'
 spaceGroup = 229 # This is used for misorientation calculation
-startnr = 1
-endnr = 101
-minConfidence = 0.6
+startnr = 0
+endnr = 36
+minConfidence = 0.3
 orientTol = 10.0 # In degrees, used to define grains
-zspacing = -5
-xyspacing = 5  # X and Y spacing are equal
-xExtent = 600 # Maximum Extent of xValues in um
+zspacing = -2
+xyspacing = 2  # X and Y spacing are equal
+xExtent = 1400 # Maximum Extent of xValues in um
 			   # (this should be a bit larger than your sample diameter or edge length)
 yExtent = 1400 # Maximum Extent of yValues in um
 			   # (this should be a bit larger than your sample diameter or edge length)
@@ -214,8 +217,8 @@ def mapData(data,dims,outArr):
 
 for fnr in range(startnr,endnr+1):
 	print('LayerNr: '+ str(fnr))
-	#FileName = sampleName + 'Layer' + str(fnr) + '/' + filestem + str(fnr) + '.mic'
-	FileName = filestem + str(fnr) + '.mic'
+	FileName = sampleName + 'Layer' + str(fnr) + '/' + filestem + str(fnr) + '.mic'
+	#~ FileName = filestem + str(fnr) + '.mic'
 	t1 = time.time()
 	micfiledata = np.genfromtxt(FileName,skip_header=4)
 	data = micfiledata[micfiledata[:,10] > minConfidence,:]
