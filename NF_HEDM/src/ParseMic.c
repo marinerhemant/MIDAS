@@ -111,6 +111,8 @@ int main (int argc, char *argv[]){
 	size_t xSizeMap = (size_t)(ceil(maxXRange) - floor(minXRange) + 1);
 	size_t ySizeMap = (size_t)(ceil(maxYRange) - floor(minYRange) + 1);
 	size_t size_map = xSizeMap * ySizeMap;
+	int refValX = (minXRange + maxXRange)/2;
+	int refValY = (minYRange + maxYRange)/2;
 	printf("Size of map: %zu %zu %zu\n",xSizeMap,ySizeMap,size_map);
 	double *map;
 	map = malloc((size_map*7+2)*sizeof(*map));
@@ -129,9 +131,9 @@ int main (int argc, char *argv[]){
 		intX = (int)MicContents[i*11+3];
 		intY = (int)MicContents[i*11+4];
 		for (j=-(edge_size+1);j<=edge_size+1;j++){
-			posX = (xSizeMap-1)/2 + (intX+j);
+			posX = -refValX + (xSizeMap-1)/2 + (intX+j);
 			for (k=-(edge_size+1);k<=edge_size+1;k++){
-				posY = (ySizeMap-1)/2 + (intY+k);
+				posY = -refValY + (ySizeMap-1)/2 + (intY+k);
 				posThis = posY*xSizeMap + posX;
 				//~ printf("%zu %zu\n",posThis,size_map);
 				printf("%zu %zu %d %d %d %d %lld %zu\n",xSizeMap, ySizeMap, intX, intY, posX, posY,posThis,size_map);
@@ -151,16 +153,18 @@ int main (int argc, char *argv[]){
 	int thisRowNr;
 	map[0] = xSizeMap;
 	map[1] = ySizeMap;
+	map[2] = refValX;
+	map[3] = refValY;
 	for (i=0;i<size_map;i++){
 		if (RowNrMat[i] != -1){
 			thisRowNr = RowNrMat[i];
-			map[2+i+size_map*0] = MicContents[thisRowNr*11+10]; // Confidence
-			map[2+i+size_map*1] = MicContents[thisRowNr*11+7]; // Eul1
-			map[2+i+size_map*2] = MicContents[thisRowNr*11+8]; // Eul2
-			map[2+i+size_map*3] = MicContents[thisRowNr*11+9]; // Eul3
-			map[2+i+size_map*4] = MicContents[thisRowNr*11+0]; // OrientationRowNr (grainID)
-			map[2+i+size_map*5] = PhaseNr; // PhaseNr
-			map[2+i+size_map*6] = lengthMat[i]; // Distt from HEDM Voxel
+			map[4+i+size_map*0] = MicContents[thisRowNr*11+10]; // Confidence
+			map[4+i+size_map*1] = MicContents[thisRowNr*11+7]; // Eul1
+			map[4+i+size_map*2] = MicContents[thisRowNr*11+8]; // Eul2
+			map[4+i+size_map*3] = MicContents[thisRowNr*11+9]; // Eul3
+			map[4+i+size_map*4] = MicContents[thisRowNr*11+0]; // OrientationRowNr (grainID)
+			map[4+i+size_map*5] = PhaseNr; // PhaseNr
+			map[4+i+size_map*6] = lengthMat[i]; // Distt from HEDM Voxel
 		}
 	}
 	// Write out the map.
