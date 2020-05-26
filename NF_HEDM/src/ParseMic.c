@@ -103,12 +103,11 @@ int main (int argc, char *argv[]){
 		}
 		fprintf(out,"%d\n",PhaseNr);
 	}
-	printf("%lf %lf %lf %lf\n",minXRange,maxXRange,minYRange,minYRange);
 	minXRange -= MicContents[5] + 25;
 	maxXRange += MicContents[5] + 25;
 	minYRange -= MicContents[5] + 25;
 	maxYRange += MicContents[5] + 25;
-	printf("%lf %lf %lf %lf\n",minXRange,maxXRange,minYRange,minYRange);
+	printf("%lf %lf %lf %lf\n",minXRange,maxXRange,minYRange,maxYRange);
 	size_t xSizeMap = (size_t)(ceil(maxXRange) - floor(minXRange) + 1);
 	size_t ySizeMap = (size_t)(ceil(maxYRange) - floor(minYRange) + 1);
 	size_t size_map = xSizeMap * ySizeMap;
