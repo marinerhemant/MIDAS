@@ -832,7 +832,7 @@ def plotmic():
 		micfiledatacut = np.copy(micfiledata)
 		badcoords = micfiledatacut[:sizeX*sizeY]
 		badcoords = badcoords < float(cutconfidencevar.get())
-		exten = [refX,sizeX,refY,sizeY]
+		exten = [refX,refX+sizeX,refY,refX+sizeY]
 		#~ micfiledatacut = micfiledatacut[micfiledatacut[:,0] > float(cutconfidencevar.get()), :]
 		if cb is not None:
 			cb.remove()
