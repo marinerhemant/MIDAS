@@ -125,6 +125,7 @@ int main (int argc, char *argv[]){
 	long long int posThis;
 	double diffLen;
 	for (i=0;i<NrRows;i++){
+		if (MicContents[i*11+10] == 0) continue;
 		intX = (int)MicContents[i*11+3];
 		intY = (int)MicContents[i*11+4];
 		for (j=-(edge_size+1);j<=edge_size+1;j++){
