@@ -901,6 +901,7 @@ def load_mic():
 			print("Size of the map file is not correct. Please check that the file was wirtten properly.")
 		#~ micfiledata = micfiledata.reshape((sizeX*sizeY,7))
 	else:
+		micfiletype = 1
 		micfiledata = np.genfromtxt(f,skip_header=4)
 	f.close()
 	plotmic()
