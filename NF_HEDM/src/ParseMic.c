@@ -108,7 +108,7 @@ int main (int argc, char *argv[]){
 	minYRange -= MicContents[5] + 5;
 	maxYRange += MicContents[5] + 5;
 	printf("%lf %lf %lf %lf\n",minXRange,maxXRange,minYRange,minYRange);
-	size_t xSizeMap = (size_t)(ceil(maxXRange) - floor(minXRange) + 1); 
+	size_t xSizeMap = (size_t)(ceil(maxXRange) - floor(minXRange) + 1);
 	size_t ySizeMap = (size_t)(ceil(maxYRange) - floor(minYRange) + 1);
 	size_t size_map = xSizeMap * ySizeMap;
 	printf("%zu %zu %zu\n",xSizeMap,ySizeMap,size_map);
@@ -132,6 +132,7 @@ int main (int argc, char *argv[]){
 			for (k=-(edge_size+1);k<=edge_size+1;k++){
 				posY = (ySizeMap-1)/2 + (intY+k);
 				posThis = posY*xSizeMap + posX;
+				printf("%zu %zu",posThis,size_map)
 				//~ printf("%zu %zu %d %d %d %d %zu %zu\n",xSizeMap, ySizeMap, intX, intY, posX, posY,posThis,size_map);
 				diffLen = CalcNorm2(MicContents[i*11+3],intX+j,MicContents[i*11+4],intY+k);
 				if (RowNrMat[posThis] == -1){

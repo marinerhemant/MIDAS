@@ -50,8 +50,8 @@ for frameNr in range(nFrames):
 		etaVar = (350/spotsThisRing - 10)/2
 		etaMids = np.arange(-175+etaVar,175,(350-etaVar)/spotsThisRing)
 		etas = [etaThis + np.random.uniform(-etaVar,etaVar) for etaThis in etaMids]
-		yWidths = np.random.uniform(0,3,size=spotsThisRing)
-		zWidths = np.random.uniform(0,3,size=spotsThisRing)
+		yWidths = np.random.uniform(0.5,3,size=spotsThisRing)
+		zWidths = np.random.uniform(0.5,3,size=spotsThisRing)
 		As = np.random.uniform(50,1500,size=spotsThisRing)
 		BGs = np.random.uniform(0,10,size=spotsThisRing)
 		Mus = np.random.uniform(0,1,size=spotsThisRing)
