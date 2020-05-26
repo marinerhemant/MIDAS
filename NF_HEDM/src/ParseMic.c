@@ -85,7 +85,7 @@ int main (int argc, char *argv[]){
 	sprintf(outfilebin,"%s.map",outputfile);
 	FILE *outmap = fopen(outfilebin,"w");
 	size_t i;
-	int j, k;
+	long long int j, k;
 	fprintf(out,"%%TriEdgeSize %lf\n",MicContents[5]);
 	fprintf(out,"%%NumPhases %d\n",NumPhases);
 	fprintf(out,"%%GlobalPosition %lf\n",GlobalPosition);
@@ -107,11 +107,11 @@ int main (int argc, char *argv[]){
 	maxXRange += MicContents[5] + 25;
 	minYRange -= MicContents[5] + 25;
 	maxYRange += MicContents[5] + 25;
-	printf("%lf %lf %lf %lf\n",minXRange,maxXRange,minYRange,maxYRange);
+	printf("Ranges for map: %lf %lf %lf %lf\n",minXRange,maxXRange,minYRange,maxYRange);
 	size_t xSizeMap = (size_t)(ceil(maxXRange) - floor(minXRange) + 1);
 	size_t ySizeMap = (size_t)(ceil(maxYRange) - floor(minYRange) + 1);
 	size_t size_map = xSizeMap * ySizeMap;
-	printf("%zu %zu %zu\n",xSizeMap,ySizeMap,size_map);
+	printf("Size of map: %zu %zu %zu\n",xSizeMap,ySizeMap,size_map);
 	double *map;
 	map = malloc((size_map*7+2)*sizeof(*map));
 	for (i=0;i<size_map*7+2;i++) map[i] =-15;
