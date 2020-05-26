@@ -147,19 +147,19 @@ def plot_updater():
 	newstartframenr = int(startframenrvar.get())
 	newmaxoverframes = maxoverframes.get()
 	newlogscaler = dolog.get()
-	if ((initplot == 1) or 
+	if ((initplot == 1) or
 		(newlogscaler != logscaler) or
 		(newmaxoverframes != oldmaxoverframes) or
 		(newminThresh != minThresh) or
 		(newnrfilesperdistance != nrfilesperdistance) or
-		(newframenr != framenr) or 
-		(newdist != dist) or 
-		(newVar != oldVar) or 
-		(newvali != initvali) or 
-		(newfolder != folder) or 
-		(newfnstem != fnstem) or 
-		(newndistances != ndistances) or 
-		(newNrPixels != NrPixels) or 
+		(newframenr != framenr) or
+		(newdist != dist) or
+		(newVar != oldVar) or
+		(newvali != initvali) or
+		(newfolder != folder) or
+		(newfnstem != fnstem) or
+		(newndistances != ndistances) or
+		(newNrPixels != NrPixels) or
 		(newstartframenr != startframenr) or
 		(newlsd !=lsd)):
 		oldmaxoverframes = newmaxoverframes
@@ -227,7 +227,7 @@ def plotb():
 		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 	b.set_aspect('auto')
 	micfiledata = None
-	
+
 def onclick(event):
 	global clickpos
 	global lb1
@@ -501,7 +501,7 @@ def selectspotsfcn():
 	Tk.Label(topSelectSpotsWindow,text="4. Repeat this for each distance and select the same spot.").grid(row=4,columnspan=2)
 	Tk.Label(topSelectSpotsWindow,text="5. Click Compute Distances once finished.").grid(row=5,columnspan=2)
 	button6 = Tk.Button(master=topSelectSpotsWindow,text="Ready!",command=closeselectspotshelp)
-	button6.grid(row=6,columnspan=2)	
+	button6.grid(row=6,columnspan=2)
 
 def bcwindow():
 	global bcs
@@ -691,11 +691,11 @@ def plot_update_spot():
 	yn = (ya + ys*(1-(xa/thislsd)))/pixelsize + bcs[dist][0]
 	zn = (zs*(1-(xa/thislsd)))/pixelsize + bcs[dist][1]
 	#~ print([pos[0], pos[1], ys, zs, xa, ya, yn, zn, rad, eta,thisome,frameNrToRead])
-	while ((yn > NrPixels) or 
-		   (zn > NrPixels) or 
-		   (yn < 0) or 
-		   (zn < 0) or 
-		   (thisome < minOme) or 
+	while ((yn > NrPixels) or
+		   (zn > NrPixels) or
+		   (yn < 0) or
+		   (zn < 0) or
+		   (thisome < minOme) or
 		   (thisome > maxOme)):
 		spotnr += 1
 		thisome = float(simulatedspots[spotnr-1].split(' ')[2])
@@ -884,7 +884,7 @@ def plotmic():
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def load_mic():
-	global micfiledata, initplotb, micfiletype, sizeX, sizeY
+	global micfiledata, initplotb, micfiletype, sizeX, sizeY, refX, refY
 	initplotb = 1
 	micfileselect()
 	f = open(micfile,'r')
@@ -892,6 +892,8 @@ def load_mic():
 		micfiletype = 2
 		sizeX = int(np.fromfile(f,dtype=np.double,count=1)[0])
 		sizeY = int(np.fromfile(f,dtype=np.double,count=1)[0])
+		refX = int(np.fromfile(f,dtype=np.double,count=1)[0])
+		refY = int(np.fromfile(f,dtype=np.double,count=1)[0])
 		micfiledata = np.fromfile(f,dtype=np.double)
 		print([sizeX,sizeY,micfiledata.size])
 		if (micfiledata.size/7) != (sizeX*sizeY):
@@ -1006,6 +1008,8 @@ framenr = 0
 startframenr = 0
 sizeX = 0
 sizeY = 0
+refX = 0
+refY = 0
 dist = 0
 horvert = 0
 oldVar = 0
@@ -1061,7 +1065,7 @@ toolbar_frame.grid(row=figrowspan+5,column=0,columnspan=5,sticky=Tk.W)
 toolbar = NavigationToolbar2Tk( canvas, toolbar_frame )
 toolbar.update()
 
-vali = Tk.StringVar() 
+vali = Tk.StringVar()
 vali.set(str(100))
 var = Tk.IntVar()
 wlvar = Tk.StringVar()
@@ -1077,11 +1081,11 @@ colVar = Tk.IntVar()
 colVar.set(10)
 micfiledata = None
 dolog = Tk.IntVar()
-r = Tk.StringVar() 
+r = Tk.StringVar()
 r.set(str(framenr))
 foldervar = Tk.StringVar()
 foldervar.set(folder)
-fnstemvar = Tk.StringVar() 
+fnstemvar = Tk.StringVar()
 fnstemvar.set(fnstem)
 startframenrvar = Tk.StringVar()
 startframenrvar.set(str(startframenr))
@@ -1090,7 +1094,7 @@ ndistancesvar = Tk.StringVar()
 ndistancesvar.set(str(ndistances))
 NrPixelsvar = Tk.StringVar()
 NrPixelsvar.set(str(NrPixels))
-r2 = Tk.StringVar() 
+r2 = Tk.StringVar()
 r2.set(str(0))
 minThresh = 0
 minThreshvar = Tk.StringVar()

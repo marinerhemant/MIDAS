@@ -80,6 +80,7 @@ int main (int argc, char *argv[]){
 	fread(MicContents,sz,1,inp);
 	int NrRows = sz/(sizeof(double)*11);
 	printf("NrRows: %d\n",NrRows);
+	if (NrRows==0) return;
 	FILE *out=fopen(outputfile,"w");
 	char outfilebin[4096];
 	sprintf(outfilebin,"%s.map",outputfile);
