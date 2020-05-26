@@ -116,8 +116,8 @@ int main (int argc, char *argv[]){
 	int refValY = (minYRange + maxYRange)/2;
 	printf("Size of map: %zu %zu %zu\n",xSizeMap,ySizeMap,size_map);
 	double *map;
-	map = malloc((size_map*7+2)*sizeof(*map));
-	for (i=0;i<size_map*7+2;i++) map[i] =-15;
+	map = malloc((size_map*7+4)*sizeof(*map));
+	for (i=0;i<size_map*7+4;i++) map[i] =-15;
 	double edge_size = MicContents[5];
 	double *lengthMat;
 	int *RowNrMat;
@@ -136,8 +136,7 @@ int main (int argc, char *argv[]){
 			for (k=-(edge_size+1);k<=edge_size+1;k++){
 				posY = -refValY + (ySizeMap-1)/2 + (intY+k);
 				posThis = posY*xSizeMap + posX;
-				//~ printf("%zu %zu\n",posThis,size_map);
-				printf("%zu %zu %d %d %d %d %lld %zu\n",xSizeMap, ySizeMap, intX, intY, posX, posY,posThis,size_map);
+				//~ printf("%zu %zu %d %d %d %d %lld %zu\n",xSizeMap, ySizeMap, intX, intY, posX, posY,posThis,size_map);
 				diffLen = CalcNorm2(MicContents[i*11+3],intX+j,MicContents[i*11+4],intY+k);
 				if (RowNrMat[posThis] == -1){
 					RowNrMat[posThis] = i;
@@ -169,7 +168,7 @@ int main (int argc, char *argv[]){
 		}
 	}
 	// Write out the map.
-	fwrite(map,sizeof(*map)*(size_map*7+2),1,outmap);
+	fwrite(map,sizeof(*map)*(size_map*7+4),1,outmap);
 	// All matches now
 	char inputfile2[4096],outputfile2[4096];
 	sprintf(outputfile2,"%s.AllMatches",outputfile);
