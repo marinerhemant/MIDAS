@@ -832,6 +832,7 @@ def plotmic():
 		micfiledatacut = np.copy(micfiledata)
 		badcoords = micfiledatacut[:sizeX*sizeY]
 		badcoords = badcoords < float(cutconfidencevar.get())
+		exten = [refX,sizeX,refY,sizeY]
 		#~ micfiledatacut = micfiledatacut[micfiledatacut[:,0] > float(cutconfidencevar.get()), :]
 		if cb is not None:
 			cb.remove()
@@ -839,37 +840,37 @@ def plotmic():
 			micfiledatacut = micfiledatacut[sizeX*sizeY:sizeX*sizeY*2]
 			micfiledatacut[badcoords] = -15.0
 			micfiledatacut = micfiledatacut.reshape((sizeY,sizeX))
-			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest')
+			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest',extent=exten)
 			b.title.set_text("MicMap (Euler0)")
 		if col == 8: # Euler1
 			micfiledatacut = micfiledatacut[sizeX*sizeY*2:sizeX*sizeY*3]
 			micfiledatacut[badcoords] = -15.0
 			micfiledatacut = micfiledatacut.reshape((sizeY,sizeX))
-			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest')
+			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest',extent=exten)
 			b.title.set_text("MicMap (Euler1)")
 		if col == 9: # Euler2
 			micfiledatacut = micfiledatacut[sizeX*sizeY*3:sizeX*sizeY*4]
 			micfiledatacut[badcoords] = -15.0
 			micfiledatacut = micfiledatacut.reshape((sizeY,sizeX))
-			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest')
+			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest',extent=exten)
 			b.title.set_text("MicMap (Euler2)")
 		if col == 10: # Confidence
 			micfiledatacut = micfiledatacut[:sizeX*sizeY]
 			micfiledatacut[badcoords] = -15.0
 			micfiledatacut = micfiledatacut.reshape((sizeY,sizeX))
-			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest')
+			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest',extent=exten)
 			b.title.set_text("MicMap (Confidence)")
 		if col == 0: # OrientationID
 			micfiledatacut = micfiledatacut[sizeX*sizeY*4:sizeX*sizeY*5]
 			micfiledatacut[badcoords] = -15.0
 			micfiledatacut = micfiledatacut.reshape((sizeY,sizeX))
-			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest')
+			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest',extent=exten)
 			b.title.set_text("MicMap (OrientationID)")
 		if col == 11: # PhaseNr
 			micfiledatacut = micfiledatacut[sizeX*sizeY*5:sizeX*sizeY*6]
 			micfiledatacut[badcoords] = -15.0
 			micfiledatacut = micfiledatacut.reshape((sizeY,sizeX))
-			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest')
+			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest',extent=exten)
 			b.title.set_text("MicMap (PhaseNr)")
 		if initplotb:
 			initplotb = 0
