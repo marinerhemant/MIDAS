@@ -112,8 +112,6 @@ int main (int argc, char *argv[]){
 	size_t xSizeMap = (size_t)(ceil(maxXRange) - floor(minXRange) + 1);
 	size_t ySizeMap = (size_t)(ceil(maxYRange) - floor(minYRange) + 1);
 	size_t size_map = xSizeMap * ySizeMap;
-	int refValX = (minXRange + maxXRange)/2;
-	int refValY = (minYRange + maxYRange)/2;
 	printf("Size of map: %zu %zu %zu\n",xSizeMap,ySizeMap,size_map);
 	double *map;
 	map = malloc((size_map*7+4)*sizeof(*map));
@@ -132,9 +130,9 @@ int main (int argc, char *argv[]){
 		intX = (int)MicContents[i*11+3];
 		intY = (int)MicContents[i*11+4];
 		for (j=-(edge_size+1);j<=edge_size+1;j++){
-			posX = -refValX + (xSizeMap-1)/2 + (intX+j);
+			posX = -minXRange + (intX+j);
 			for (k=-(edge_size+1);k<=edge_size+1;k++){
-				posY = -refValY + (ySizeMap-1)/2 + (intY+k);
+				posY = -minYRange + (intY+k);
 				posThis = posY*xSizeMap + posX;
 				//~ printf("%zu %zu %d %d %d %d %lld %zu\n",xSizeMap, ySizeMap, intX, intY, posX, posY,posThis,size_map);
 				diffLen = CalcNorm2(MicContents[i*11+3],intX+j,MicContents[i*11+4],intY+k);
@@ -153,8 +151,8 @@ int main (int argc, char *argv[]){
 	int thisRowNr;
 	map[0] = xSizeMap;
 	map[1] = ySizeMap;
-	map[2] = refValX;
-	map[3] = refValY;
+	map[2] = minXRange;
+	map[3] = minYRange;
 	for (i=0;i<size_map;i++){
 		if (RowNrMat[i] != -1){
 			thisRowNr = RowNrMat[i];
