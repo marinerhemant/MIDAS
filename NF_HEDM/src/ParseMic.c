@@ -122,7 +122,7 @@ int main (int argc, char *argv[]){
 	RowNrMat = malloc(size_map*sizeof(*RowNrMat));
 	for (i=0;i<size_map;i++) RowNrMat[i] = -1;
 	int intX, intY, posX, posY;
-	size_t posThis;
+	long long int posThis;
 	double diffLen;
 	for (i=0;i<NrRows;i++){
 		intX = (int)MicContents[i*11+3];
@@ -133,7 +133,7 @@ int main (int argc, char *argv[]){
 				posY = (ySizeMap-1)/2 + (intY+k);
 				posThis = posY*xSizeMap + posX;
 				//~ printf("%zu %zu\n",posThis,size_map);
-				printf("%zu %zu %d %d %d %d %zu %zu\n",xSizeMap, ySizeMap, intX, intY, posX, posY,posThis,size_map);
+				printf("%zu %zu %d %d %d %d %lld %zu\n",xSizeMap, ySizeMap, intX, intY, posX, posY,posThis,size_map);
 				diffLen = CalcNorm2(MicContents[i*11+3],intX+j,MicContents[i*11+4],intY+k);
 				if (RowNrMat[posThis] == -1){
 					RowNrMat[posThis] = i;
