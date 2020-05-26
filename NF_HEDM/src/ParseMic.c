@@ -103,6 +103,7 @@ int main (int argc, char *argv[]){
 		}
 		fprintf(out,"%d\n",PhaseNr);
 	}
+	printf("%lf %lf %lf %lf\n",minXRange,maxXRange,minYRange,minYRange);
 	minXRange -= MicContents[5] + 25;
 	maxXRange += MicContents[5] + 25;
 	minYRange -= MicContents[5] + 25;
