@@ -93,6 +93,9 @@ ReadBinFiles(
     NrOfFiles = EndNr - StartNr + 1;
     NrOfPixels = 2048*2048;
     long long int kT;
+    kT = nLayers;
+    kT *= NrOfPixels;
+    kT /= 32;
     for (k=0;k<nLayers;k++){
         for (i=StartNr;i<=EndNr;i++){
             sprintf(FileName,"%s_%06d.%s%d",FileStem,i,ext,k);
@@ -143,9 +146,8 @@ ReadBinFiles(
                 BinNr += TempCntr;
                 BinNr += (ythis*(2048));
                 BinNr += zthis;
-                printf("%lld %d %d %d %lld %d %d %d %d %d %d %d\n",BinNr,k,NrOfFiles,NrOfPixels,TempCntr,ythis,zthis,nElements,j,(int)ys[j],(int)zs[j], i);
-                fflush(stdout);
-                if (BinNr < 0){
+                if (BinNr < 0 || BinNr >= kT){
+					printf("%lld %d %d %d %lld %d %d %d %d %d %d %d\n",BinNr,k,NrOfFiles,NrOfPixels,TempCntr,ythis,zthis,nElements,j,(int)ys[j],(int)zs[j], i);
 					printf("Something was wrong with the Binary Files. Distance %d and FileNr %d contained %d for y and %d for z position. Please check, exiting.\n",k,i,ythis,zthis);
 					return 0;
 				}
