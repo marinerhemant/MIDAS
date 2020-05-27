@@ -97,7 +97,7 @@ ReadBinFiles(
         for (i=StartNr;i<=EndNr;i++){
             sprintf(FileName,"%s_%06d.%s%d",FileStem,i,ext,k);
             fp = fopen(FileName,"r");
-            if (checkFOPEN(fp,FileName) return 0;
+            if (checkFOPEN(fp,FileName)) return 0;
             size_t sz;
             sz = fread(&dummy,sizeof(float32_t),1,fp);
             ReadHeader(fp,&Header1);
@@ -259,9 +259,9 @@ main(int argc, char *argv[])
     fd = fopen(fnDS,"r");
     fk = fopen(fnKey,"r");
     fo = fopen(fnOr,"r");
-    if checkFOPEN(fd,fnDS) return 1;
-    if checkFOPEN(fk,fnKey) return 1;
-    if checkFOPEN(fo,fnOr) return 1;
+    if (checkFOPEN(fd,fnDS)) return 1;
+    if (checkFOPEN(fk,fnKey)) return 1;
+    if (checkFOPEN(fo,fnOr)) return 1;
     char *rx;
     rx = fgets(line,1000,fk);
     sscanf(line,"%d",&NrOrientations);
@@ -309,10 +309,10 @@ main(int argc, char *argv[])
 	fDS = fopen(DS,"wb");
 	fKEY = fopen(KEY,"wb");
 	fOM = fopen(OM,"wb");
-    if checkFOPEN(fSI,SI) return 1;
-    if checkFOPEN(fDS,DS) return 1;
-    if checkFOPEN(fKEY,KEY) return 1;
-    if checkFOPEN(fOM,OM) return 1;
+    if (checkFOPEN(fSI,SI)) return 1;
+    if (checkFOPEN(fDS,DS)) return 1;
+    if (checkFOPEN(fKEY,KEY)) return 1;
+    if (checkFOPEN(fOM,OM)) return 1;
   	fwrite(ObsSpotsInfo,SizeObsSpots*sizeof(*ObsSpotsInfo),1,fSI);
   	fwrite(SpotsMat,TotalDiffrSpots*3*sizeof(*SpotsMat),1,fDS);
   	fwrite(NrSpots,NrOrientations*2*sizeof(*NrSpots),1,fKEY);
