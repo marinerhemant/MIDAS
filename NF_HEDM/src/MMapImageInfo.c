@@ -95,7 +95,6 @@ ReadBinFiles(
     long long int kT;
     kT = nLayers;
     kT *= NrOfPixels;
-    kT /= 32;
     for (k=0;k<nLayers;k++){
         for (i=StartNr;i<=EndNr;i++){
             sprintf(FileName,"%s_%06d.%s%d",FileStem,i,ext,k);
