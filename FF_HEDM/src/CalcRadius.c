@@ -62,7 +62,7 @@ FreeMemMatrix(double **mat,int nrows)
     free(mat);
 }
 
-static inline 
+static inline
 double CalcEtaAngle(double y, double z){
 	double alpha = rad2deg*acos(z/sqrt(y*y+z*z));
 	if (y>0) alpha = -alpha;
@@ -89,7 +89,7 @@ int main(int argc, char *argv[]){
     fileParam = fopen(ParamFN,"r");
     int LowNr = 1;
     char Folder[1024], FileStem[1024], fs[1024];
-    int StartNr, EndNr, Padding=6,LayerNr;
+    int StartNr, EndNr, LayerNr;
     double Ycen, Zcen, OmegaStep, OmegaFirstFile, Lsd, px, Wavelength, LatticeConstant,Rsample,Hbeam;
     int CellStruct, TopLayer=0;
     double PowderIntIn = 0;
@@ -106,12 +106,6 @@ int main(int argc, char *argv[]){
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %s", dummy, fs);
-            continue;
-        }
-        str = "Padding ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %d", dummy, &Padding);
             continue;
         }
         str = "LayerNr ";

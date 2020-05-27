@@ -5,7 +5,7 @@
 
 //
 //  Calibrant.c
-//  
+//
 //
 //  Created by Hemant Sharma on 2014/06/18.
 //
@@ -116,14 +116,14 @@ MatrixMultF33(
     }
 }
 
-static inline 
+static inline
 double CalcEtaAngle(double y, double z){
 	double alpha = rad2deg*acos(z/sqrt(y*y+z*z));
 	if (y>0) alpha = -alpha;
 	return alpha;
 }
 
-static inline 
+static inline
 double R4mTtheta(double Ttheta, double Lsd)
 {
 	return Lsd*tan(deg2rad*Ttheta);
@@ -160,7 +160,7 @@ MatrixMult(
 }
 
 
-static inline 
+static inline
 void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc, double px, double *R, double *Eta, double Rmins[n_hkls],
 						double Rmaxs[n_hkls], double EtaBinsLow[nEtaBins], double EtaBinsHigh[nEtaBins], int nIndices, int *NrEachIndexbin, int **Indices,
 						double tx, double ty, double tz, double p0, double p1, double p2, double p3, double RhoD, double Lsd){
@@ -215,7 +215,7 @@ void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc, dou
 	}
 }
 
-static inline 
+static inline
 void CalcWeightedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Average, double *R, double *Eta, double *RMean, double *EtaMean){
 	int i,j,k;
 	double TotIntensities[nIndices];
@@ -270,11 +270,11 @@ double problem_function_profile(
 	NrCallsProfiler++;
 #ifdef PRINTOPT
 	printf("Peak profiler intensity difference: %f\n",TotalDifferenceIntensity);
-#endif	
+#endif
 	return TotalDifferenceIntensity;
 }
 
-void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPtsForFit], 
+void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPtsForFit],
 				double *Rfit, double Rstep, double Rmean, double Etas[NrPtsForFit])
 {
 	unsigned n = 6;
@@ -476,7 +476,7 @@ double problem_function(
 	return TotalDiff;
 }
 
-void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean, double *IdealTtheta, double Lsd, double MaxRad, 
+void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean, double *IdealTtheta, double Lsd, double MaxRad,
 				  double ybc, double zbc, double tx, double tyin, double tzin, double p0in, double p1in, double p2in, double p3in, double *ty, double *tz, double *LsdFit, double *ybcFit, double *zbcFit, double *p0, double *p1, double *p2, double *p3, double *MeanDiff, double tolTilts, double tolLsd, double tolBC, double tolP, double tolP0, double tolP1, double tolP2, double tolP3, double px)
 {
 	unsigned n=9;
@@ -622,7 +622,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 {
 	int i;
 	if (dType == 1){
-		uint16_t *readData; 
+		uint16_t *readData;
 		readData = calloc(NrPixels,sizeof(*readData));
 		fread(readData,NrPixels*sizeof(*readData),1,f);
 		for (i=0;i<NrPixels;i++){
@@ -853,7 +853,7 @@ int main(int argc, char *argv[])
         str = "LatticeParameter ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %lf %lf %lf %lf %lf %lf", dummy, 
+            sscanf(aline,"%s %lf %lf %lf %lf %lf %lf", dummy,
 				&LatticeConstant[0],&LatticeConstant[1],
 				&LatticeConstant[2],&LatticeConstant[3],
 				&LatticeConstant[4],&LatticeConstant[5]);
@@ -862,7 +862,7 @@ int main(int argc, char *argv[])
         str = "LatticeConstant ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %lf %lf %lf %lf %lf %lf", dummy, 
+            sscanf(aline,"%s %lf %lf %lf %lf %lf %lf", dummy,
 				&LatticeConstant[0],&LatticeConstant[1],
 				&LatticeConstant[2],&LatticeConstant[3],
 				&LatticeConstant[4],&LatticeConstant[5]);
@@ -1044,7 +1044,7 @@ int main(int argc, char *argv[])
     double Thetas[100];
     for (i=0;i<100;i++) Thetas[i] = 0;
     int n_hkls = 0;
-    
+
 	char cmmd[4096];
 	sprintf(cmmd,"~/opt/MIDAS/FF_HEDM/bin/GetHKLList %s",ParamFN);
 	system(cmmd);
@@ -1119,7 +1119,7 @@ int main(int argc, char *argv[])
 	AverageDark = calloc(NrPixels*NrPixels,sizeof(*AverageDark)); // Squared.
 	Average = calloc(NrPixels*NrPixels,sizeof(*Average)); // Squared.
 	fd = fopen(Dark,"rb");
-	
+
 	uint16_t *outmatr;
 	char fnout[4096];
 	FILE *fout;
@@ -1198,14 +1198,7 @@ int main(int argc, char *argv[])
 	for (a=0;a<11;a++) means[a] = 0;
 	for (a=StartNr;a<=EndNr;a++){
 		start = clock();
-		if (Padding == 2){sprintf(FileName,"%s/%s_%02d%s",folder,fn,a,Ext);}
-		else if (Padding == 3){sprintf(FileName,"%s/%s_%03d%s",folder,fn,a,Ext);}
-		else if (Padding == 4){sprintf(FileName,"%s/%s_%04d%s",folder,fn,a,Ext);}
-		else if (Padding == 5){sprintf(FileName,"%s/%s_%05d%s",folder,fn,a,Ext);}
-		else if (Padding == 6){sprintf(FileName,"%s/%s_%06d%s",folder,fn,a,Ext);}
-		else if (Padding == 7){sprintf(FileName,"%s/%s_%07d%s",folder,fn,a,Ext);}
-		else if (Padding == 8){sprintf(FileName,"%s/%s_%08d%s",folder,fn,a,Ext);}
-		else if (Padding == 9){sprintf(FileName,"%s/%s_%09d%s",folder,fn,a,Ext);}
+		sprintf(FileName,"%s/%s_%0*d%s",folder,fn,Padding,a,Ext);
 		fp = fopen(FileName,"rb");
 		if (fp == NULL){
 			printf("File %s could not be read. Continuing to next one.\n",FileName);

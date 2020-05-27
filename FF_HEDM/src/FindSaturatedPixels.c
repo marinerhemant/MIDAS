@@ -79,14 +79,7 @@ int main (int argc, char *argv[])
 	printf("Number of saturated pixels per dark frame = %d.\n",NrSatPxDark);
     for (i=startNr;i<=endNr;i++){
 		nrSaturatedPixels = 0 - NrSatPxDark;
-		if (Padding == 2){sprintf(filename,"%s/%s_%02d%s",folder,filestem,i,ext);}
-		else if (Padding == 3){sprintf(filename,"%s/%s_%03d%s",folder,filestem,i,ext);}
-		else if (Padding == 4){sprintf(filename,"%s/%s_%04d%s",folder,filestem,i,ext);}
-		else if (Padding == 5){sprintf(filename,"%s/%s_%05d%s",folder,filestem,i,ext);}
-		else if (Padding == 6){sprintf(filename,"%s/%s_%06d%s",folder,filestem,i,ext);}
-		else if (Padding == 7){sprintf(filename,"%s/%s_%07d%s",folder,filestem,i,ext);}
-		else if (Padding == 8){sprintf(filename,"%s/%s_%08d%s",folder,filestem,i,ext);}
-		else if (Padding == 9){sprintf(filename,"%s/%s_%09d%s",folder,filestem,i,ext);}
+		sprintf(filename,"%s/%s_%0*d%s",folder,filestem,Padding,i,ext);
 		fileread = fopen(filename,"r");
 		if (fileread == NULL){
 			printf("Could not read the input file: %s. Exiting.\n",filename);

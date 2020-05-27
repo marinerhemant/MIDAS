@@ -954,14 +954,7 @@ int main(int argc, char *argv[]){
 	// Get nFrames:
 	FILE *dummyFile;
 	char dummyFN[2048];
-	if (Padding == 2){sprintf(dummyFN,"%s/%s_%02d%s",RawFolder,fs,StartFileNr,Ext);}
-	else if (Padding == 3){sprintf(dummyFN,"%s/%s_%03d%s",RawFolder,fs,StartFileNr,Ext);}
-	else if (Padding == 4){sprintf(dummyFN,"%s/%s_%04d%s",RawFolder,fs,StartFileNr,Ext);}
-	else if (Padding == 5){sprintf(dummyFN,"%s/%s_%05d%s",RawFolder,fs,StartFileNr,Ext);}
-	else if (Padding == 6){sprintf(dummyFN,"%s/%s_%06d%s",RawFolder,fs,StartFileNr,Ext);}
-	else if (Padding == 7){sprintf(dummyFN,"%s/%s_%07d%s",RawFolder,fs,StartFileNr,Ext);}
-	else if (Padding == 8){sprintf(dummyFN,"%s/%s_%08d%s",RawFolder,fs,StartFileNr,Ext);}
-	else if (Padding == 9){sprintf(dummyFN,"%s/%s_%09d%s",RawFolder,fs,StartFileNr,Ext);}
+	sprintf(dummyFN,"%s/%s_%0*d%s",RawFolder,fs,Padding,StartFileNr,Ext);
 	dummyFile = fopen(dummyFN,"rb");
 	if (dummyFile == NULL){
 		printf("Could not read the input file %s. Exiting.\n",dummyFN);
@@ -987,14 +980,7 @@ int main(int argc, char *argv[]){
 	int e = CheckDirectoryCreation(OutFolderName);
 	if (e == 0){ return 1;}
 	char OutFile[1024];
-	if (Padding == 2) {sprintf(OutFile,"%s/%s_%02d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 3) {sprintf(OutFile,"%s/%s_%03d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 4) {sprintf(OutFile,"%s/%s_%04d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 5) {sprintf(OutFile,"%s/%s_%05d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 6) {sprintf(OutFile,"%s/%s_%06d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 7) {sprintf(OutFile,"%s/%s_%07d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 8) {sprintf(OutFile,"%s/%s_%08d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 9) {sprintf(OutFile,"%s/%s_%09d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
+	sprintf(OutFile,"%s/%s_%0*d_%d_PS.csv",OutFolderName,FileStem,Padding,FileNr,RingNr);
 	FILE *outfilewrite;
 	outfilewrite = fopen(OutFile,"w");
 	fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta\n");
@@ -1003,16 +989,7 @@ int main(int argc, char *argv[]){
 		if (Omega >= OmegaRanges[i][0] && Omega <= OmegaRanges[i][1]) KeepSpots = 1;
 	}
 	if (KeepSpots == 0) return;
-
-	if (Padding == 2){sprintf(FN,"%s/%s_%02d%s",RawFolder,fs,ReadFileNr,Ext);}
-	else if (Padding == 3){sprintf(FN,"%s/%s_%03d%s",RawFolder,fs,ReadFileNr,Ext);}
-	else if (Padding == 4){sprintf(FN,"%s/%s_%04d%s",RawFolder,fs,ReadFileNr,Ext);}
-	else if (Padding == 5){sprintf(FN,"%s/%s_%05d%s",RawFolder,fs,ReadFileNr,Ext);}
-	else if (Padding == 6){sprintf(FN,"%s/%s_%06d%s",RawFolder,fs,ReadFileNr,Ext);}
-	else if (Padding == 7){sprintf(FN,"%s/%s_%07d%s",RawFolder,fs,ReadFileNr,Ext);}
-	else if (Padding == 8){sprintf(FN,"%s/%s_%08d%s",RawFolder,fs,ReadFileNr,Ext);}
-	else if (Padding == 9){sprintf(FN,"%s/%s_%09d%s",RawFolder,fs,ReadFileNr,Ext);}
-
+	sprintf(FN,"%s/%s_%0*d%s",RawFolder,fs,Padding,ReadFileNr,Ext);}
 	printf("Reading file: %s\n",FN);
 	FILE *ImageFile = fopen(FN,"rb");
 	if (ImageFile == NULL){

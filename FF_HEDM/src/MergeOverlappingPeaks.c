@@ -32,7 +32,7 @@
 #define CalcNorm2(x,y)   sqrt((x)*(x) + (y)*(y))
 #define nOverlapsMaxPerImage 10000
 
-static inline 
+static inline
 double CalcEtaAngle(double y, double z){
 	double alpha = rad2deg*acos(z/sqrt(y*y+z*z));
 	if (y>0) alpha = -alpha;
@@ -159,15 +159,8 @@ static inline int CheckDirectoryCreation(char Folder[1024],char FileStem[1024])
 static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], int FileNr, int RingNr, int Padding, double **SortedMatrix)
 {
 	char aline[1000];
-    char InFile[1024];
-	if (Padding == 2) {sprintf(InFile,"%s/%s_%02d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 3) {sprintf(InFile,"%s/%s_%03d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 4) {sprintf(InFile,"%s/%s_%04d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 5) {sprintf(InFile,"%s/%s_%05d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 6) {sprintf(InFile,"%s/%s_%06d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 7) {sprintf(InFile,"%s/%s_%07d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 8) {sprintf(InFile,"%s/%s_%08d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
-	else if (Padding == 9) {sprintf(InFile,"%s/%s_%09d_%d_PS.csv",OutFolderName,FileStem,FileNr,RingNr);}
+	char InFile[1024];
+	sprintf(InFile,"%s/%s_%0*d_%d_PS.csv",OutFolderName,FileStem,Padding,FileNr,RingNr);
     FILE *infileread;
     infileread = fopen(InFile,"r");
     struct InputData *MyData;
@@ -176,7 +169,7 @@ static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], 
     fgets(aline,1000,infileread);
     double SpotID,IntegratedIntensity,Omega,YCen,ZCen,IMax,Radius,Eta,NumberOfPixels;
     while (fgets(aline,1000,infileread)!=NULL){
-		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", 
+		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
 					&(MyData[counter].SpotID), &(MyData[counter].IntegratedIntensity), &(MyData[counter].Omega),
 					&(MyData[counter].YCen), &(MyData[counter].ZCen), &(MyData[counter].IMax), &(MyData[counter].Radius),
 					&(MyData[counter].Eta), &(MyData[counter].SigmaR), &(MyData[counter].SigmaEta));

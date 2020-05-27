@@ -56,10 +56,8 @@ int main(int argc, char *argv[]){
 	double inter1, inter2;
 	for (i=startNr;i<=endNr;i+=skip){
 		maxVal = 0;
-		if (Padding == 5){
-			sprintf(FileName,"%s%05d.%s",inFStem,i,inExt);
-			sprintf(OutFileName,"%s%05d.ge3",inFStem,i);
-		}else return 1;
+		sprintf(FileName,"%s%0*d.%s",inFStem,Padding,i,inExt);
+		sprintf(OutFileName,"%s%0*d.ge3",inFStem,Padding,i);
 		fileIn = fopen(FileName,"rb");
 		if (fileIn == NULL){
 			printf("Could not read %s. Continuing to the next file.\n",FileName);
