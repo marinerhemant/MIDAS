@@ -79,7 +79,8 @@ ReadBinFiles(
     int nLayers,
     long long int ObsSpotsSize)
 {
-    int i,j,k,nElements=0,nElements_previous,nCheck,ythis,zthis,NrOfFiles,NrOfPixels;
+    int i,j,k,nElements=0,nElements_previous,nCheck,ythis,zthis,NrOfFiles;
+    long long NrOfPixels;
     long long int BinNr;
     long long int TempCntr;
     float32_t dummy;
@@ -142,12 +143,13 @@ ReadBinFiles(
                 BinNr = k;
                 BinNr *=NrOfFiles;
                 BinNr *= NrOfPixels;
-                TempCntr = (counter*(NrOfPixels));
+                TempCntr = counter;
+                TempCnts *= NrOfPixels;
                 BinNr += TempCntr;
                 BinNr += (ythis*(2048));
                 BinNr += zthis;
                 if (BinNr < 0 || BinNr >= kT){
-					printf("%lld %d %d %d %lld %d %d %d %d %d %d %d\n",BinNr,k,NrOfFiles,NrOfPixels,TempCntr,ythis,zthis,nElements,j,(int)ys[j],(int)zs[j], i);
+					printf("%lld %d %d %d %lld %d %d %d %d %d %d %d %d\n",BinNr,k,NrOfFiles,NrOfPixels,TempCntr,ythis,zthis,nElements,j,(int)ys[j],(int)zs[j], i);
 					printf("Something was wrong with the Binary Files. Distance %d and FileNr %d contained %d for y and %d for z position. Please check, exiting.\n",k,i,ythis,zthis);
 					return 0;
 				}
