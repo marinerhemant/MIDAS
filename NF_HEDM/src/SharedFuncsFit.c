@@ -693,7 +693,7 @@ CalcFracOverlap(
 				TempCntr *= 2048;
 				BinNr += TempCntr;
 				TempCntr = 2048;
-				TempCntr *= 2048;
+				TempCntr *= MultY;
 				BinNr += TempCntr;
 				BinNr += MultZ;
 				//~ printf("%lld %d %d %d %d %d\n",BinNr,Layer,NrOfFiles,OmeBin,MultY,MultZ);
