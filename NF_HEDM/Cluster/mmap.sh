@@ -15,4 +15,7 @@ sleep 5
 tar -cvzf binsNF_${2}.tar.gz SpotsInfo.bin DiffractionSpots.bin Key.bin OrientMat.bin
 mkdir -p ${HOME}/swiftwork/bins/
 cp binsNF_${2}.tar.gz ${HOME}/swiftwork/bins
+if [[ ${2} == *"local"* ]]; then
+	cp SpotsInfo.bin DiffractionSpots.bin Key.bin OrientMat.bin /dev/shm
+fi
 popd
