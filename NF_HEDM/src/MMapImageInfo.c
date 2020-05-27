@@ -143,10 +143,10 @@ ReadBinFiles(
                 BinNr += TempCntr;
                 BinNr += (ythis*(2048));
                 BinNr += zthis;
-                printf("%lld %d %d %d %lld %d %d %d %d %d %d\n",BinNr,k,NrOfFiles,NrOfPixels,TempCntr,ythis,zthis,nElements,j,(int)ys[j],(int)zs[j]);
+                printf("%lld %d %d %d %lld %d %d %d %d %d %d %d\n",BinNr,k,NrOfFiles,NrOfPixels,TempCntr,ythis,zthis,nElements,j,(int)ys[j],(int)zs[j], i);
                 fflush(stdout);
                 if (BinNr < 0){
-					printf("Something was wrong with the Binary Files. It contained %d for y and %d for z position. Please check, exiting.\n",ythis,zthis);
+					printf("Something was wrong with the Binary Files. Distance %d and FileNr %d contained %d for y and %d for z position. Please check, exiting.\n",k,i,ythis,zthis);
 					return 0;
 				}
                 SetBit(ObsSpotsMat,BinNr);
