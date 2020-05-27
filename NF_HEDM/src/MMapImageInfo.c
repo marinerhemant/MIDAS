@@ -144,7 +144,7 @@ ReadBinFiles(
                 BinNr *=NrOfFiles;
                 BinNr *= NrOfPixels;
                 TempCntr = counter;
-                TempCnts *= NrOfPixels;
+                TempCntr *= NrOfPixels;
                 BinNr += TempCntr;
                 BinNr += (ythis*(2048));
                 BinNr += zthis;
