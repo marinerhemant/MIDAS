@@ -143,7 +143,7 @@ ReadBinFiles(
                 BinNr += TempCntr;
                 BinNr += (ythis*(2048));
                 BinNr += zthis;
-                printf("%lld %d %d %d %lld %d %d\n",BinNr,k,NrOfFiles,NrOfPixels,TempCntr,ythis,zthis);
+                printf("%lld %d %d %d %lld %d %d %d %d %d %d\n",BinNr,k,NrOfFiles,NrOfPixels,TempCntr,ythis,zthis,nElements,j,(int)ys[j],(int)zs[j]);
                 fflush(stdout);
                 SetBit(ObsSpotsMat,BinNr);
             }
