@@ -147,7 +147,7 @@ ReadBinFiles(
                 fflush(stdout);
                 if (BinNr < 0){
 					printf("Something was wrong with the Binary Files. It contained %d for y and %d for z position. Please check, we are exiting.\n",ythis,zthis);
-					retrun 0;
+					return 0;
 				}
                 SetBit(ObsSpotsMat,BinNr);
             }
