@@ -482,7 +482,7 @@ CalcEta(
 }
 
 static inline
-double CorrectWedge(double eta, double theta, 
+double CorrectWedge(double eta, double theta,
 		double wl, double wedge)
 {
 	double SinTheta = sin(deg2rad*theta);
@@ -583,7 +583,7 @@ CalcFracOverlap(
 		YZSpotsTemp[2],YZSpotsT[3][2];
     int **InPixels,NrInPixels, OverlapPixels,Layer, omeRangNr;
     double eta, RingRadius, theta, omediff;
-    long long int BinNr;
+    long long int BinNr, TempCntr;
     int MultY, MultZ, AllDistsFound, TotalPixels;
     *FracOver = 0;
     InPixels = allocMatrixInt(NrPixelsGrid,2);
@@ -688,8 +688,13 @@ CalcFracOverlap(
 				BinNr = Layer*NrOfFiles;
 				BinNr *= 2048;
 				BinNr *= 2048;
-				BinNr += (long long int) OmeBin*2048*2048;
-				BinNr += (long long int) 2048*MultY;
+				TempCntr = OmeBin;
+				TempCntr *= 2048;
+				TempCntr *= 2048;
+				BinNr += TempCntr;
+				TempCntr = 2048;
+				TempCntr *= 2048;
+				BinNr += TempCntr;
 				BinNr += MultZ;
 				//~ printf("%lld %d %d %d %d %d\n",BinNr,Layer,NrOfFiles,OmeBin,MultY,MultZ);
 				fflush(stdout);
