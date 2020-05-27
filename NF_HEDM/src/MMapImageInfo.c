@@ -170,6 +170,7 @@ main(int argc, char *argv[])
     ParamFN = argv[1];
     char aline[1000], line[1000];
     fileParam = fopen(ParamFN,"r");
+    if (checkFOPEN(fileParam,ParamFN)) return 1;
     char *str, dummy[1000];
     int LowNr,nLayers;
     while (fgets(aline,1000,fileParam)!=NULL){
