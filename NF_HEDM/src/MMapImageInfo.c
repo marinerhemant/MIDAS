@@ -61,6 +61,14 @@ realloc_buffers(int nElements, int nElements_previous,
     }
 }
 
+int checkFOPEN(FILE *f, char *fn){
+	if (f == NULL){
+		printf("Could not open %s\n",fn);
+		return 1;
+	}
+	else return 0;
+}
+
 int
 ReadBinFiles(
     char FileStem[1000],
@@ -89,6 +97,7 @@ ReadBinFiles(
         for (i=StartNr;i<=EndNr;i++){
             sprintf(FileName,"%s_%06d.%s%d",FileStem,i,ext,k);
             fp = fopen(FileName,"r");
+            if (checkFOPEN(fp,FileName) return 0;
             size_t sz;
             sz = fread(&dummy,sizeof(float32_t),1,fp);
             ReadHeader(fp,&Header1);
@@ -148,14 +157,13 @@ ReadBinFiles(
     free(intensity);
 }
 
-
 int
 main(int argc, char *argv[])
 {
     clock_t start, end;
     double diftotal;
     start = clock();
-    
+
     // Read params file.
     char *ParamFN;
     FILE *fileParam;
@@ -207,8 +215,9 @@ main(int argc, char *argv[])
         if (LowNr==0){
             Flag = 1;
             continue;
-        }        
+        }
     }
+    printf("%d %s %s %d %d %d\n",nLayers,fn2,direct,StartNr,EndNr,Flag);
     fclose(fileParam);
     //Read bin files
     char fnG[1000];
@@ -250,6 +259,9 @@ main(int argc, char *argv[])
     fd = fopen(fnDS,"r");
     fk = fopen(fnKey,"r");
     fo = fopen(fnOr,"r");
+    if checkFOPEN(fd,fnDS) return 1;
+    if checkFOPEN(fk,fnKey) return 1;
+    if checkFOPEN(fo,fnOr) return 1;
     char *rx;
     rx = fgets(line,1000,fk);
     sscanf(line,"%d",&NrOrientations);
@@ -297,6 +309,10 @@ main(int argc, char *argv[])
 	fDS = fopen(DS,"wb");
 	fKEY = fopen(KEY,"wb");
 	fOM = fopen(OM,"wb");
+    if checkFOPEN(fSI,SI) return 1;
+    if checkFOPEN(fDS,DS) return 1;
+    if checkFOPEN(fKEY,KEY) return 1;
+    if checkFOPEN(fOM,OM) return 1;
   	fwrite(ObsSpotsInfo,SizeObsSpots*sizeof(*ObsSpotsInfo),1,fSI);
   	fwrite(SpotsMat,TotalDiffrSpots*3*sizeof(*SpotsMat),1,fDS);
   	fwrite(NrSpots,NrOrientations*2*sizeof(*NrSpots),1,fKEY);
