@@ -28,7 +28,8 @@ def getValueFromParamFile(paramfn,searchStr,nLines=1,wordNr=1,nWords=1):
 			line = line.replace('\t',' ')
 			line = line.replace('\n',' ')
 			words = line.split(' ')
-			words = filter(None,words)
+			# ~ words = filter(None,words)
+			words = [_f for _f in words if _f]
 			ret_list.append(words[wordNr:wordNr+nWords])
 			nrLines += 1
 			if (nrLines == nLines):
@@ -56,16 +57,16 @@ def runPeaksMult(paramFile,nNodes,ringNrsFile,paramFNStem,fstm,machineName,flr):
 		os.makedirs(flr+'/output')
 	for nr in range(int(startNr),int(endNr)+1):
 		call(['touch',flr+'/output/'+'PeaksPerFile_'+str(nr)+'.txt'])
-	print 'Peaks:'
+	print('Peaks:')
 	myenv = os.environ.copy()
 	myenv['nNODES'] = nNodes
 	if 'edison' in machineName:
-		hn = check_output(['hostname'])		
+		hn = check_output(['hostname'])
 		hn = int(hn.split()[0][-2:])
 		hn += 20
 		intHN = '128.55.203.'+str(hn)
 	elif 'cori' in machineName:
-		hn = check_output(['hostname'])		
+		hn = check_output(['hostname'])
 		hn = int(hn.split()[0][-2:])
 		hn += 30
 		intHN = '128.55.224.'+str(hn)
@@ -75,11 +76,11 @@ def runPeaksMult(paramFile,nNodes,ringNrsFile,paramFNStem,fstm,machineName,flr):
 	myenv['JAVA_HOME'] = expanduser('~')+'/.MIDAS/jre1.8.0_181/'
 	myenv['PATH'] = myenv['JAVA_HOME']+'/bin:'+myenv['PATH']
 	cmd = swiftdir+'/swift -config '+pfdir+'/sites.conf -sites '+machineName+' '+pfdir+'RunPeaksMultPeaksOnly.swift -paramsfile='+paramFNStem+' -ringfile='+ringNrsFile+' -fstm='+fstm+' -startnr='+startNr+' -endnr='+endNr
-	print cmd
+	print(cmd)
 	check_call(cmd,env=myenv,shell=True)
-	print "Process Peaks"
+	print("Process Peaks")
 	cmd = swiftdir+'/swift -config '+pfdir+'/sites.conf -sites '+machineName+' '+pfdir+'RunPeaksMultProcessOnly.swift -paramsfile='+paramFNStem+' -ringfile='+ringNrsFile+' -fstm='+fstm+' -startnr='+startNr+' -endnr='+endNr
-	print cmd
+	print(cmd)
 	check_call(cmd,env=myenv,shell=True)
 
 def GrainTracking(paramFile,layerNr,nNodes,machineName):
@@ -95,19 +96,19 @@ def GrainTracking(paramFile,layerNr,nNodes,machineName):
 	sNr = getValueFromParamFile(paramFile,'StartNr')[0][0]
 	eNr = getValueFromParamFile(paramFile,'EndNr')[0][0]
 	minNrSpots = getValueFromParamFile(paramFile,'MinNrSpots')[0][0]
-	print 'Ring to be used for seed points: '+finalRingToIndex
+	print('Ring to be used for seed points: '+finalRingToIndex)
 	flr = os.path.dirname(paramFile) + '/'
 	fstm = paramFile.split('/')[-1]
-	print fstm
+	print(fstm)
 	fileStem = getValueFromParamFile(paramFile,'FileStem')[0][0]
 	OldFolder = getValueFromParamFile(paramFile,'OldFolder')[0][0]
 	startFileNr = startNrFirstLayer + nrFilesPerLayer*(layerNr-1)
-	print os.getcwd()
+	print(os.getcwd())
 	call([binfolder+'/GetHKLList',paramFile])
-	print 'StartFileNr ' + str(startFileNr)
-	print 'Creating overall parameter file for this layer:'
+	print('StartFileNr ' + str(startFileNr))
+	print('Creating overall parameter file for this layer:')
 	PFName = flr+'/Layer'+str(layerNr)+'_MultiRing_'+fstm
-	print PFName
+	print(PFName)
 	shutil.copyfile(paramFile,PFName)
 	shutil.copyfile(os.getcwd()+'/hkls.csv',seedFolder+'/hkls.csv')
 	fileAppend(PFName,'LayerNr '+str(layerNr)+'\n')
@@ -128,9 +129,9 @@ def GrainTracking(paramFile,layerNr,nNodes,machineName):
 	i=0
 	for rings in ringNrs:
 		thisParamFN = paramFNStem+rings[0]+'_'+fstm
-		print 'ParameterFile used: ' + thisParamFN
+		print('ParameterFile used: ' + thisParamFN)
 		shutil.copyfile(paramFile,thisParamFN)
-		print 'Ring Number: ' + rings[0] + ', Threshold: ' + thresholds[i][0]
+		print('Ring Number: ' + rings[0] + ', Threshold: ' + thresholds[i][0])
 		Fldr = seedFolder + '/Ring'+ rings[0]
 		if not os.path.exists(Fldr):
 			os.makedirs(Fldr)
@@ -184,12 +185,12 @@ def GrainTracking(paramFile,layerNr,nNodes,machineName):
 ##### main
 
 if (len(sys.argv)!=7):
-	print "Provide ParametersFile StartLayerNr EndLayerNr Number of NODEs to use MachineName and EmailAddress!"
-	print "EG. " + sys.argv[0] + " Parameters.txt 1 1 6 orthros(or orthrosextra) hsharma@anl.gov"
-	print "The parameter file must have a parameter called OldStateFolder which is the seed folder used in the previous state."
-	print "If the filestem is different between the two states, please add a parameter called OldFileStem in the parameter file."
-	print "MinNrSpots must be 1!!!!!"
-	print "**********NOTE: For local runs, nNodes should be nCPUs.**********"
+	print("Provide ParametersFile StartLayerNr EndLayerNr Number of NODEs to use MachineName and EmailAddress!")
+	print("EG. " + sys.argv[0] + " Parameters.txt 1 1 6 orthros(or orthrosextra) hsharma@anl.gov")
+	print("The parameter file must have a parameter called OldStateFolder which is the seed folder used in the previous state.")
+	print("If the filestem is different between the two states, please add a parameter called OldFileStem in the parameter file.")
+	print("MinNrSpots must be 1!!!!!")
+	print("**********NOTE: For local runs, nNodes should be nCPUs.**********")
 	sys.exit()
 
 paths = open(expanduser("~")+'/.MIDAS/paths').readlines()
@@ -222,7 +223,7 @@ for layerNr in range(startLayerNr,endLayerNr+1):
 		fileStem = getValueFromParamFile(topParamFile,'FileStem')[0][0]
 		folders = [folder for folder in folders if fileStem in folder ]
 		if len(folders) is 0:
-			print "Could not find the OldStateFolder, did you include an OldFileStem name?"
+			print("Could not find the OldStateFolder, did you include an OldFileStem name?")
 			sys.exit()
 	oldFolder = folders[-1]
 	PSThisLayer = topParamFile+'.Layer'+str(layerNr)+'.txt'
