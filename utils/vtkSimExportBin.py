@@ -26,20 +26,21 @@ OM2 = dataset.CellData['OrientationTensor-Cycle-1-OutputStep-1'][IDsToKeep]
 
 # Let's now take the last output and create a bin file, write out pos, orient, strain(rotated to crystal)
 fnout = 'MIDAS_Input_OrigOrientOrigStrain.bin'
+#~ fnout = 'MIDAS_Input_Cycle4OutputStep20.bin'
 fout = open(fnout,'w')
 outarr = np.zeros((numCells,18))
 for ctr in range(numCells):
-	OMThis = OM2[ctr]
-	# ~ OMThis = OMs[ctr] # comment if wanted original orientations
-	# ~ StrainThis = Strains[ctr] # comment this and next few lines if wanted zero strains
-	# ~ StrainsThis = np.array([[StrainThis[0],StrainThis[1],StrainThis[2]],[StrainThis[1],StrainThis[3],StrainThis[4]],[StrainThis[2],StrainThis[4],StrainThis[5]]])
-	# ~ StrainRotated = np.matmul(np.matmul(OMThis,StrainsThis),OMThis.T)
-	# ~ outarr[ctr][12] = StrainRotated[0,0]
-	# ~ outarr[ctr][13] = StrainRotated[0,1]
-	# ~ outarr[ctr][14] = StrainRotated[0,2]
-	# ~ outarr[ctr][15] = StrainRotated[1,1]
-	# ~ outarr[ctr][16] = StrainRotated[1,2]
-	# ~ outarr[ctr][17] = StrainRotated[2,2]
+	OMThis = R.from_matrix(OM2[ctr]).as_matrix() # This doesn't work directly since the values are quite far from a unit matrix.
+	#~ OMThis = R.from_matrix(OMs[ctr]).as_matrix() # comment if wanted original orientations
+	#~ StrainThis = Strains[ctr] # comment this and next few lines if wanted zero strains
+	#~ StrainsThis = np.array([[StrainThis[0],StrainThis[1],StrainThis[2]],[StrainThis[1],StrainThis[3],StrainThis[4]],[StrainThis[2],StrainThis[4],StrainThis[5]]])
+	#~ StrainRotated = np.matmul(np.matmul(OMThis,StrainsThis),OMThis.T)
+	#~ outarr[ctr][12] = StrainRotated[0,0]
+	#~ outarr[ctr][13] = StrainRotated[0,1]
+	#~ outarr[ctr][14] = StrainRotated[0,2]
+	#~ outarr[ctr][15] = StrainRotated[1,1]
+	#~ outarr[ctr][16] = StrainRotated[1,2]
+	#~ outarr[ctr][17] = StrainRotated[2,2]
 	outarr[ctr][0] = Positions[ctr,0]
 	outarr[ctr][1] = Positions[ctr,1]
 	outarr[ctr][2] = Positions[ctr,2]
