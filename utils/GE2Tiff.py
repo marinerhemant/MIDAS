@@ -1,5 +1,5 @@
 import numpy as np
-import os.path
+import os.path as path
 from PIL import Image
 
 fName = '/data/tomo1/shastri_mar20_data/shastri_mar20/ge5/ss_ff_line_beam_000019.ge5'
