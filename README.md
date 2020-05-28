@@ -1,5 +1,7 @@
 # MIDAS
 
+**** V5 Released ****
+
 Code for reduction of Near-Field and Far-Field High Energy Diffraction Microscopy (HEDM) data.
 
 Neldermead is taken from http://people.sc.fsu.edu/~jburkardt/cpp_src/asa047/asa047.html and modified to include constraints and use as CUDA kernels.
