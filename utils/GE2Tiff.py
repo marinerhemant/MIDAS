@@ -31,4 +31,4 @@ for frameNr in range(nFrames):
 	thisFrame -= thresh
 	thisFrame[thisFrame < 0] = 0
 	im = Image.fromarray(thisFrame)
-	im.save(outfn,compression=None)
+	im.save(outFN,compression=None)
