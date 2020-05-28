@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import os.path as path
 from PIL import Image
 
@@ -21,6 +22,7 @@ else:
 f = open(fName,'rb')
 f.seek(fHead,os.SEEK_SET)
 for frameNr in range(nFrames):
+	print(frameNr)
 	outFN =path.dirname(fName) + '/tiffs/' + path.basename(fName).replace('.ge5','') + '_FrameNr_'+ str(frameNr) + '.tif'
 	thisFrame = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
 	thisFrame = np.reshape(thisFrame,(NrPixels,NrPixels))
