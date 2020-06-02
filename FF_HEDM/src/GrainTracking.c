@@ -359,7 +359,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 				if (mult > 1) mult = 1;
 				if (mult < -1) mult = -1;
 				Angle = fabs(acosd(mult));
-				Angle = fabs(acosd(DotGs/(NormG0*NormG1)));
+				//~ Angle = fabs(acosd(DotGs/(NormG0*NormG1)));
 				if (Angle < minAngle){
 					minAngle = Angle;
 					bestID = (int) ObsSpotsLab[spotRow*9 + 4];
