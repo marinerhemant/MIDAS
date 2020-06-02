@@ -363,6 +363,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 				if (Angle < minAngle){
 					minAngle = Angle;
 					bestID = (int) ObsSpotsLab[spotRow*9 + 4];
+					printf("%d ",bestID);
 					bestRadius = ObsSpotsLab[spotRow*9+3];
 				}
 			}
