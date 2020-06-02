@@ -75,6 +75,7 @@ def runPeaksMult(paramFile,nNodes,ringNrsFile,paramFNStem,fstm,machineName,flr):
 	myenv['intHN'] = intHN
 	myenv['JAVA_HOME'] = expanduser('~')+'/.MIDAS/jre1.8.0_181/'
 	myenv['PATH'] = myenv['JAVA_HOME']+'/bin:'+myenv['PATH']
+	myenv['MACHINE_NAME'] = machineName
 	cmd = swiftdir+'/swift -config '+pfdir+'/sites.conf -sites '+machineName+' '+pfdir+'RunPeaksMultPeaksOnly.swift -paramsfile='+paramFNStem+' -ringfile='+ringNrsFile+' -fstm='+fstm+' -startnr='+startNr+' -endnr='+endNr
 	print(cmd)
 	check_call(cmd,env=myenv,shell=True)
