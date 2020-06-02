@@ -15,11 +15,11 @@
 //
 // Data Model: (loop over grains)
 // 0.	Read GrainsOld.csv (first line) to get idea about nGrains.
-// 1.	Read SpotMatrixOld.csv -> Pick spots for a grain and 
+// 1.	Read SpotMatrixOld.csv -> Pick spots for a grain and
 //		the positions (y,z,ome,RingNr).
 // 2.	Read Data.bin (row number in Spots.bin), nData.bin (number of
 //		spots in a certain bin in Data.bin) and Spots.bin.
-//			NOTE: All 3 bin files are for 
+//			NOTE: All 3 bin files are for
 // 3.	Calculate best match, based on Internal Angle.
 // 4.	Write out a .csv file for grain having IDs matched, abc, alpha,
 //		beta, gamma, position, orientation, radius per spot.
@@ -43,7 +43,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/types.h>
-#include <sys/mman.h> 
+#include <sys/mman.h>
 
 #define MAX_LINE_LENGTH 4096
 #define RealType double
@@ -66,7 +66,7 @@ static inline double acosd(double x){return rad2deg*(acos(x));}
 static inline double atand(double x){return rad2deg*(atan(x));}
 static inline double sin_cos_to_angle (double s, double c){return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);}
 
-static inline 
+static inline
 double CalcEtaAngle(double y, double z){
 	double alpha = rad2deg*acos(z/sqrt(y*y+z*z));
 	if (y>0) alpha = -alpha;
@@ -122,7 +122,7 @@ int ReadBins(){
     size = s.st_size;
     data = mmap (0, size, PROT_READ, MAP_SHARED, fd, 0);
     check (data == MAP_FAILED, "mmap %s failed: %s",file_name, strerror (errno));
-    
+
     int fd2;
     struct stat s2;
     int status2;
@@ -177,7 +177,7 @@ int UnMap(){
     check (status2 < 0, "stat %s failed: %s", file_name2, strerror (errno));
     size_t size2 = s2.st_size;
     rc = munmap (ndata,size2);
-	
+
 	int fd3;
 	struct stat s3;
 	int status3;
@@ -246,8 +246,8 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			&GrainInfo[grainNr][9],&GrainInfo[grainNr][10],&GrainInfo[grainNr][11],
 			&GrainInfo[grainNr][12],&GrainInfo[grainNr][13],&GrainInfo[grainNr][14],
 			&GrainInfo[grainNr][15],&GrainInfo[grainNr][16],&GrainInfo[grainNr][17],
-			dummy, dummy, dummy, dummy,&GrainInfo[grainNr][18],dummy, dummy, dummy, 
-			dummy, dummy, dummy, dummy, dummy, dummy, dummy, dummy,dummy, dummy, 
+			dummy, dummy, dummy, dummy,&GrainInfo[grainNr][18],dummy, dummy, dummy,
+			dummy, dummy, dummy, dummy, dummy, dummy, dummy, dummy,dummy, dummy,
 			dummy, dummy,dummy, dummy, dummy, dummy);
 		grainNr++;
 	}
@@ -267,25 +267,25 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	char outfolder[MAX_LINE_LENGTH];
 	while(fgets(aline,MAX_LINE_LENGTH,ParamsFile)!=NULL){
 		str = "EtaBinSize ";
-		LowNr = strncmp(aline, str, strlen(str));         
+		LowNr = strncmp(aline, str, strlen(str));
 		if (LowNr == 0) {
 			sscanf(aline, "%s %lf", dummy, &etabinsize);
 			continue;
 		}
         str = "OmeBinSize ";
-		LowNr = strncmp(aline, str, strlen(str));         
+		LowNr = strncmp(aline, str, strlen(str));
 		if (LowNr == 0) {
 			sscanf(aline, "%s %lf", dummy, &omebinsize);
 			continue;
 		}
         str = "Distance ";
-		LowNr = strncmp(aline, str, strlen(str));         
+		LowNr = strncmp(aline, str, strlen(str));
 		if (LowNr == 0) {
 			sscanf(aline, "%s %lf", dummy, &Distance);
 			continue;
 		}
         str = "OutputFolder ";
-		LowNr = strncmp(aline, str, strlen(str));         
+		LowNr = strncmp(aline, str, strlen(str));
 		if (LowNr == 0) {
 			sscanf(aline, "%s %s", dummy, outfolder);
 			continue;
@@ -293,7 +293,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	}
 	n_ome_bins = ceil(360.0 / omebinsize);
 	n_eta_bins = ceil(360.0 / etabinsize);
-	
+
 	// Go through all grains, reading Ome, RingNr, Eta
 	sprintf(spotsMatrixOldFN,"%s/SpotMatrix.csv",oldFolder);
 	FILE *SpotMatrixFile = fopen(spotsMatrixOldFN,"r");
@@ -371,7 +371,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			nrFilled ++;
 		}
 		// Write CSV files and we are done.
-		GrainID = IDs[0];
+		GrainID = IDs[1];
 		sprintf(outfilename,"%s/BestPos_%09d.csv",outfolder,GrainID);
 		FILE *outfile = fopen(outfilename,"w");
 		printf("GrainID %d\n",GrainID);
