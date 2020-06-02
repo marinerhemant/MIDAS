@@ -1043,7 +1043,9 @@ main(int argc, char *argv[])
 		}
 	}
 	if (nrPoints == 0) return 1;
-	printf("Read file.\n");
+	printf("Read file., total number of orientations: %d\n",nrPoints);
+	if (writeSpots ==1) printf("Will generate a SpotMatrixGen.csv file.\n");
+	else printf("Will not generate a SpotMatrixGen.csv file.\n");
 	// Read hkls file.
 	char *rc;
 	char *hklfn = "hkls.csv";
