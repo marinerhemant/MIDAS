@@ -3,6 +3,17 @@
 # See LICENSE file.
 #
 
+import math
+import sys, os
+import numpy as np
+import h5py
+import time
+from numba import jit
+from math import cos, sin, tan, sqrt, asin, acos, atan
+import ctypes
+import matplotlib.pyplot as plt
+rad2deg = 57.2957795130823
+
 ##
 # HDF5 (compressed output) file arrangement:
 #            Group                  Dataset
@@ -23,33 +34,29 @@
 fillVal = -15 # this value can be used to filter out nonsense values.
 
 ### Only modify the following arguments:
-### Also look at where variable FileName is defined to see if the file arrangement is different (Line218)
+### Also look at where variable FileName is defined to see if the file arrangement is different (Line345)
 ####
 sampleName = 'HeatHTNS9_crack_NF'
 filestem = 'MicrostructureText_Layer'
 outfn = 'MicHeatHTNS9'
+formula = 'NiTi7'
+materialName = 'NS9'
+sample = 'HeatHTNS9'
+scanN = 'Begin'
 spaceGroup = 229 # This is used for misorientation calculation
 startnr = 0
 endnr = 36
+thisPhaseNr = 1
+LatC = np.array([3.6,3.6,3.6,90,90,90],dtype=np.float32)
 minConfidence = 0.3
 orientTol = 10.0 # In degrees, used to define grains
 zspacing = -2
-xyspacing = 2  # X and Y spacing are equal
+xyspacing = 5  # X and Y spacing are equal, should be equal to the edge_size used during reconstruction
 xExtent = 1400 # Maximum Extent of xValues in um
-			   # (this should be a bit larger than your sample diameter or edge length)
+			   # (this should be larger than 2x the sample radius or 2x the distance between the farther edge of the sample and the rotation axis)
 yExtent = 1400 # Maximum Extent of yValues in um
-			   # (this should be a bit larger than your sample diameter or edge length)
+			   # (this should be larger than 2x the sample radius or 2x the distance between the farther edge of the sample and the rotation axis)
 ####
-
-import math
-import sys, os
-import numpy as np
-import h5py
-import time
-from numba import jit
-from math import cos, sin, tan, sqrt, asin, acos, atan
-import ctypes
-rad2deg = 57.2957795130823
 
 Dims = np.array([0,0,0])
 Dims = Dims.astype(int)
@@ -76,6 +83,125 @@ outarr = np.zeros((Dims[1],Dims[2],7))
 outarr = outarr.astype(float)
 dimarr = np.array([Dims[1],Dims[2],abs(xyspacing)])
 dimarr = dimarr.astype(int)
+
+origHead = '''# TEM_PIXperUM          1.000000
+           # x-star                1
+           # y-star                1
+           # z-star                1
+           # WorkingDistance       1.000000
+           #
+           # Phase 1
+           # MaterialName
+           # Formula
+           # Info
+           # Symmetry              43
+           # LatticeConstants
+           # NumberFamilies
+           # hklFamilies
+           # hklFamilies
+           # hklFamilies
+           # hklFamilies
+           # Categories 0 0 0 0 0
+           #
+           # GRID: SqrGrid
+           # XSTEP:
+           # YSTEP:
+           # NCOLS_ODD:
+           # NCOLS_EVEN:
+           # NROWS:
+           #
+           # OPERATOR:
+           #
+           # SAMPLEID:
+           #
+           # SCANID:
+           #'''
+
+compound_dt = np.dtype({'names':['H','K','L','Solution 1','Diffraction Intensity','Solution 2'],'formats':['<i4','<i4','<i4','<i1','<f4','<i1']})
+
+def writeH5EBSDFile(eul1,eul2,eul3,conf,phNr,fileID):
+	f = h5py.File(fileID,'w')
+	f.attrs['FileVersion'] = np.array([5],dtype=np.int32)
+	ETA = np.array([0.],dtype=np.float32)
+	f.create_dataset('EulerTransformationAngle',data=ETA)
+	ETAx = np.array([0.,0.,1.],dtype=np.float32)
+	f.create_dataset('EulerTransformationAxis',data=ETAx)
+	STA = np.array([0.],dtype=np.float32)
+	f.create_dataset('SampleTransformationAngle',data=STA)
+	STAx = np.array([0.,0.,1.],dtype=np.float32)
+	f.create_dataset('SampleTransformationAxis',data=STAx)
+	Idx = np.arange(1,Dims[0]+1).astype(np.int32)
+	f.create_dataset('Index',data=Idx)
+	XP = np.array(Dims[1],dtype=np.int64)
+	f.create_dataset('Max X Points',data=XP)
+	YP = np.array(Dims[2],dtype=np.int64)
+	f.create_dataset('Max Y Points',data=YP)
+	htl = 1 if zspacing < 0 else 0
+	STO = np.array([htl],dtype=np.uint32)
+	f.create_dataset('Stacking Order',data=STO)
+	xyR = np.array([xyspacing],dtype=np.float32)
+	zR = np.array([abs(zspacing)],dtype=np.float32)
+	f.create_dataset('X Resolution',data=xyR)
+	f.create_dataset('Y Resolution',data=xyR)
+	f.create_dataset('Z Resolution',data=zR)
+	f.create_dataset('Manufacturer',(1,),data=np.string_("TSL"))
+	zSI = np.array(1,dtype=np.int64)
+	zEI = np.array(Dims[0] + 1,dtype=np.int64)
+	f.create_dataset('ZStartIndex',data=zSI)
+	f.create_dataset('ZEndIndex',data=zEI)
+	x = np.arange(0,Dims[1]*xyspacing,xyspacing) # We need to now map each voxel
+	y = np.arange(0,Dims[2]*xyspacing,xyspacing) # We need to now map each voxel
+	yv,xv = np.meshgrid(x,y)
+	xPosArr = xv.reshape(Dims[1]*Dims[2]).astype(np.float32)
+	yPosArr = yv.reshape(Dims[1]*Dims[2]).astype(np.float32)
+	for i in range(1,Dims[0]+1):
+		gpL = f.create_group(str(i))
+		dGPL = gpL.create_group('Data')
+		hGPL = gpL.create_group('Header')
+		hGPL.create_dataset('GRID',data=np.string_('SqrGrid'))
+		hGPL.create_dataset('SAMPLEID',data=np.string_(sample))
+		hGPL.create_dataset('SCANID',data=np.string_(scanN))
+		nCev = np.array(Dims[1],dtype=np.uint32)
+		hGPL.create_dataset('NCOLS_EVEN',data=nCev)
+		hGPL.create_dataset('NCOLS_ODD',data=nCev)
+		nRows = np.array(Dims[2],dtype=np.uint32)
+		hGPL.create_dataset('NROWS',data=nRows)
+		hGPL.create_dataset('TEM_PIXperUM',data=np.array([1],dtype=np.float32))
+		hGPL.create_dataset('x-star',data=np.array([1],dtype=np.float32))
+		hGPL.create_dataset('y-star',data=np.array([1],dtype=np.float32))
+		hGPL.create_dataset('z-star',data=np.array([1],dtype=np.float32))
+		hGPL.create_dataset('WorkingDistance',data=np.array([1],dtype=np.float32))
+		hGPL.create_dataset('OPERATOR',data=np.string_(' '))
+		hGPL.create_dataset('OriginalFile',data=np.string_(' '))
+		hGPL.create_dataset('OriginalHeader',data=np.string_(origHead))
+		pHGPL = hGPL.create_group('Phases')
+		phHGPL = pHGPL.create_group(str(thisPhaseNr))
+		phHGPL.create_dataset('Formula',data=np.string_(formula))
+		phHGPL.create_dataset('Info',data=np.string_(' '))
+		phHGPL.create_dataset('MaterialName',data=np.string_(materialName))
+		phHGPL.create_dataset('LatticeConstants',data=LatC)
+		phHGPL.create_dataset('Phase',data=np.array(thisPhaseNr,dtype=np.int32))
+		phHGPL.create_dataset('Symmetry',data=np.array([43],dtype=np.int32))
+		phHGPL.create_dataset('NumberFamilies',data=np.array([4],dtype=np.int32))
+		hklGPL = phHGPL.create_group('hklFamilies')
+		arrDs0 = np.array([1]).astype(compound_dt)
+		hklGPL.create_dataset('0',data=arrDs0)
+		hklGPL.create_dataset('1',data=arrDs0)
+		hklGPL.create_dataset('2',data=arrDs0)
+		hklGPL.create_dataset('3',data=arrDs0)
+		hGPL.create_dataset('XSTEP',data=xyR)
+		hGPL.create_dataset('YSTEP',data=xyR)
+		CIThis = conf[i-1,:,:].astype(np.float32).reshape((Dims[1]*Dims[2]))
+		dGPL.create_dataset('Confidence Index',data=CIThis)
+		Phi1 = eul1[i-1,:,:].astype(np.float32).reshape((Dims[1]*Dims[2]))
+		Phi = eul2[i-1,:,:].astype(np.float32).reshape((Dims[1]*Dims[2]))
+		Phi2 = eul3[i-1,:,:].astype(np.float32).reshape((Dims[1]*Dims[2]))
+		dGPL.create_dataset('Phi1',data=Phi1)
+		dGPL.create_dataset('Phi',data=Phi)
+		dGPL.create_dataset('Phi2',data=Phi2)
+		dGPL.create_dataset('X Position',data=xPosArr)
+		dGPL.create_dataset('Y Position',data=yPosArr)
+	f.close()
 
 def writeHDF5File(grID,eul1,eul2,eul3,conf,phNr,kam,grNr,grSz,fileID):
 	f = h5py.File(fileID,'w')
@@ -175,7 +301,7 @@ def mapData(data,dims,outArr):
 	nrRows,nrCols = data.shape
 	outArr.fill(fillVal)
 	gridSpacing = data[0,5]
-	extent = int(math.ceil(gridSpacing/spacing))
+	extent = int(math.ceil(5*gridSpacing/spacing))
 	outArr[:,:,6] = 10000
 	for i in range(nrRows):
 		xPos = data[i,4]
@@ -232,32 +358,35 @@ for fnr in range(startnr,endnr+1):
 	Confidence[dataNr,:,:] = outarr[:,:,4]
 	PhaseNr[dataNr,:,:] = outarr[:,:,5]
 	dataNr += 1
+	# ~ plt.imshow(Confidence[0,:,:])
+	# ~ plt.show()
 
-Euler1.astype(np.float64).tofile('EulerAngles1.bin')
-Euler2.astype(np.float64).tofile('EulerAngles2.bin')
-Euler3.astype(np.float64).tofile('EulerAngles3.bin')
-KamArr = np.zeros((Dims))
+# ~ Euler1.astype(np.float64).tofile('EulerAngles1.bin')
+# ~ Euler2.astype(np.float64).tofile('EulerAngles2.bin')
+# ~ Euler3.astype(np.float64).tofile('EulerAngles3.bin')
+# ~ KamArr = np.zeros((Dims))
 
-# We need to provide the following:
-# orientTol, dims[0], dims[1], dims[2], fillVal, spaceGroup.
-home = os.path.expanduser("~")
-grainsCalc = ctypes.CDLL(home + "/opt/MIDAS/NF_HEDM/bin/NFGrainsCalc.so")
-grainsCalc.calcGrainNrs.argtypes = (ctypes.c_double,
-										ctypes.c_int,
-										ctypes.c_int,
-										ctypes.c_int,
-										ctypes.c_double,
-										ctypes.c_int,
-									)
-grainsCalc.calcGrainNrs.restype = None
-grainsCalc.calcGrainNrs(orientTol,Dims[0],Dims[1],Dims[2],fillVal,spaceGroup)
-grains = np.fromfile('GrainNrs.bin',dtype=np.int32)
-grains = grains.reshape((Dims))
-grainSizes = np.fromfile('GrainSizes.bin',dtype=np.int32)
-grainSizes = grainSizes.reshape((Dims))
-KamArr = np.fromfile('KAMArr.bin',dtype=np.float64)
-KamArr = KamArr.reshape((Dims))
+# ~ # We need to provide the following:
+# ~ # orientTol, dims[0], dims[1], dims[2], fillVal, spaceGroup.
+# ~ home = os.path.expanduser("~")
+# ~ grainsCalc = ctypes.CDLL(home + "/opt/MIDAS/NF_HEDM/bin/NFGrainsCalc.so")
+# ~ grainsCalc.calcGrainNrs.argtypes = (ctypes.c_double,
+										# ~ ctypes.c_int,
+										# ~ ctypes.c_int,
+										# ~ ctypes.c_int,
+										# ~ ctypes.c_double,
+										# ~ ctypes.c_int,
+									# ~ )
+# ~ grainsCalc.calcGrainNrs.restype = None
+# ~ grainsCalc.calcGrainNrs(orientTol,Dims[0],Dims[1],Dims[2],fillVal,spaceGroup)
+# ~ grains = np.fromfile('GrainNrs.bin',dtype=np.int32)
+# ~ grains = grains.reshape((Dims))
+# ~ grainSizes = np.fromfile('GrainSizes.bin',dtype=np.int32)
+# ~ grainSizes = grainSizes.reshape((Dims))
+# ~ KamArr = np.fromfile('KAMArr.bin',dtype=np.float64)
+# ~ KamArr = KamArr.reshape((Dims))
 
-# write files
-writeHDF5File(grainIDs.astype(np.int32),Euler1.astype(np.float32),Euler2.astype(np.float32),Euler3.astype(np.float32),Confidence.astype(np.float32),PhaseNr.astype(np.float32),KamArr.astype(np.float32),grains.astype(np.int32),grainSizes.astype(np.int32),outfn+'.h5')
-writeXMLXdmf(Dims,[xyspacing,xyspacing,zspacing],outfn+'.xmf',outfn,sampleName)
+# ~ # write files
+# ~ writeHDF5File(grainIDs.astype(np.int32),Euler1.astype(np.float32),Euler2.astype(np.float32),Euler3.astype(np.float32),Confidence.astype(np.float32),PhaseNr.astype(np.float32),KamArr.astype(np.float32),grains.astype(np.int32),grainSizes.astype(np.int32),outfn+'.h5')
+# ~ writeXMLXdmf(Dims,[xyspacing,xyspacing,zspacing],outfn+'.xmf',outfn,sampleName)
+writeH5EBSDFile(Euler1,Euler2,Euler3,Confidence,PhaseNr,outfn+'.h5ebsd')

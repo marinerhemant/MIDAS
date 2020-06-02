@@ -15,7 +15,7 @@ if [ ! -d ${dirThis}/NLOPT ]; then # NLOPT INSTALL
 	cd $dirThis
 	echo $(pwd)
 	wget http://ab-initio.mit.edu/nlopt/nlopt-2.4.2.tar.gz
-	tar -xvf nlopt-2.4.2.tar.gz
+	tar -xzf nlopt-2.4.2.tar.gz
 	cd nlopt-2.4.2
 	./configure --prefix=${dirThis}/NLOPT
 	make all
@@ -26,7 +26,7 @@ if [ ! -d ${dirThis}/swift ]; then # SWIFT
 	cd $dirThis
 	echo $(pwd)
 	wget -O swift.tar.gz https://www.dropbox.com/s/rhcav2jxplemuma/swift-0.96.2.tar.gz?dl=0
-	tar -xvzf swift.tar.gz
+	tar -xzf swift.tar.gz
 	mv swift-0.96.2 swift
 fi
 
@@ -34,53 +34,54 @@ if [ ! -d ${dirThis}/LIBTIFF ]; then # TIFF
 	cd $dirThis
 	echo $(pwd)
 	wget -O libtiff.tar.gz http://download.osgeo.org/libtiff/tiff-4.0.6.tar.gz
-	tar -xvf libtiff.tar.gz
+	tar -xzf libtiff.tar.gz
 	cd tiff-4.0.6
 	./configure --prefix=${dirThis}/LIBTIFF
 	make all
 	make install
 fi
-if [ ! -d ${dirThis}/ZLIB ]; then # ZLIB
-	cd $dirThis
-	echo $(pwd)
-	wget -O zlib.tar.gz https://www.dropbox.com/s/v44annn9lvx84e2/zlib-1.2.11.tar.gz?dl=0
-	tar -xvzf zlib.tar.gz
-	cd zlib-1.2.11
-	./configure --prefix=${dirThis}/ZLIB
-	make install
-fi
 
-if [ ! -d ${dirThis}/HDF5 ]; then # HDF5
-	cd $dirThis
-	echo $(pwd)
-	wget -O hdf5.tar.gz https://www.dropbox.com/s/bv4b36qhsilprzf/hdf5-1.8.13.tar.gz?dl=0
-	tar -xvzf hdf5.tar.gz
-	cd hdf5-1.8.13
-	./configure --prefix=${dirThis}/HDF5 --with-zlib=${dirThis}/ZLIB #--enable-shared
-	make install
-fi
+#~ if [ ! -d ${dirThis}/ZLIB ]; then # ZLIB
+	#~ cd $dirThis
+	#~ echo $(pwd)
+	#~ wget -O zlib.tar.gz https://www.dropbox.com/s/v44annn9lvx84e2/zlib-1.2.11.tar.gz?dl=0
+	#~ tar -xzf zlib.tar.gz
+	#~ cd zlib-1.2.11
+	#~ ./configure --prefix=${dirThis}/ZLIB
+	#~ make install
+#~ fi
+
+#~ if [ ! -d ${dirThis}/HDF5 ]; then # HDF5
+	#~ cd $dirThis
+	#~ echo $(pwd)
+	#~ wget -O hdf5.tar.gz https://www.dropbox.com/s/bv4b36qhsilprzf/hdf5-1.8.13.tar.gz?dl=0
+	#~ tar -xzf hdf5.tar.gz
+	#~ cd hdf5-1.8.13
+	#~ ./configure --prefix=${dirThis}/HDF5 --with-zlib=${dirThis}/ZLIB #--enable-shared
+	#~ make install
+#~ fi
 
 if [ ! -d ${dirThis}/jre1.8.0_181 ]; then # java
 	cd $dirThis
 	wget -O jre8.tar.gz https://www.dropbox.com/s/1pawwgh9k1xpdgg/jre-8u181-linux-x64.tar.gz?dl=0
-	tar -xvzf jre8.tar.gz
+	tar -xzf jre8.tar.gz
 fi
 
 if [ ! -d ${dirThis}/FFTW ]; then # fftw
 	cd $dirThis
 	wget -O fftw.tar.gz https://www.dropbox.com/s/dug1mpsr10rvlqi/fftw-3.3.8.tar.gz?dl=0
-	tar -xvzf fftw.tar.gz
+	tar -xzf fftw.tar.gz
 	cd fftw-3.3.8
 	./configure --prefix=${dirThis}/FFTW --enable-float --disable-fortran --enable-sse --enable-sse2 --enable-avx --enable-avx2 --enable-avx-128-fma --enable-generic-simd128 --enable-generic-simd256 #--enable-avx512
 	make install
 fi
 
-if [ ! -d ${dirThis}/MPICH ]; then # mpich
-	cd $dirThis
-	wget -O mpich-3.3.2.tar.gz http://www.mpich.org/static/downloads/3.3.2/mpich-3.3.2.tar.gz
-	tar -xvzf mpich-3.3.2.tar.gz
-	cd mpich-3.3.2
-	./configure --disable-fortran --prefix=${dirThis}/MPICH
-	make
-	make install
-fi
+#~ if [ ! -d ${dirThis}/MPICH ]; then # mpich
+	#~ cd $dirThis
+	#~ wget -O mpich-3.3.2.tar.gz http://www.mpich.org/static/downloads/3.3.2/mpich-3.3.2.tar.gz
+	#~ tar -xzf mpich-3.3.2.tar.gz
+	#~ cd mpich-3.3.2
+	#~ ./configure --disable-fortran --prefix=${dirThis}/MPICH
+	#~ make
+	#~ make install
+#~ fi
