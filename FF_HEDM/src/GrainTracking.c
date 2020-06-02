@@ -366,12 +366,13 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 					bestRadius = ObsSpotsLab[spotRow*9+3];
 				}
 			}
+			printf("%d\n",bestID);
 			IDs[nrFilled] = bestID;
 			Rads[nrFilled] = bestRadius;
 			nrFilled ++;
 		}
 		// Write CSV files and we are done.
-		for (iSpot=0;iSpot<n_spots;iSpot++) printf("%d\n",(int)ObsSpotsLab[iSpot*9+4]);
+		//~ for (iSpot=0;iSpot<n_spots;iSpot++) printf("%d\n",(int)ObsSpotsLab[iSpot*9+4]);
 		GrainID = IDs[0];
 		sprintf(outfilename,"%s/BestPos_%09d.csv",outfolder,GrainID);
 		FILE *outfile = fopen(outfilename,"w");
