@@ -371,7 +371,8 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			nrFilled ++;
 		}
 		// Write CSV files and we are done.
-		GrainID = IDs[1];
+		for (iSpot=0;iSpot<nrFilled;iSpot++) printf("%d\n",IDs[i]);
+		GrainID = IDs[0];
 		sprintf(outfilename,"%s/BestPos_%09d.csv",outfolder,GrainID);
 		FILE *outfile = fopen(outfilename,"w");
 		printf("GrainID %d\n",GrainID);
