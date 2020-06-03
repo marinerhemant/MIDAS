@@ -59,6 +59,8 @@ stampede: predep all runsetup
 
 notchpeak: predep all runsetup
 
+upitt: predep all runsetup
+
 runsetup:
 	Cluster/setup.sh
 
