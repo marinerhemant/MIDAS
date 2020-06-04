@@ -3238,6 +3238,7 @@ DoIndexing(
 
       // Generate 'ideal spots on the ring', NB ttheta input is ttheta of ideal ring
       nPlaneNormals = 0;
+      usingFriedelPair = 0;
       if (Params.UseFriedelPairs == 1) {
          usingFriedelPair = 1;  // 1= true 0 = false
          GenerateIdealSpotsFriedel(ys, zs, RingTtheta[ringnr], eta, omega, ringnr,
@@ -3257,7 +3258,7 @@ DoIndexing(
       if ( nPlaneNormals == 0 ) {
         if (usingFriedelPair == 1){
             printf("No Friedel pair found, exiting.\n");
-            //~ exit(0);
+            exit(0);
         }
          usingFriedelPair = 0; // affects skipping
          printf("Trying all plane normals.\n");
