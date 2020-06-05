@@ -50,8 +50,8 @@ for grainNr in range(1,nGrains+1):
 		yPos2 /= nLayersFound
 		xErr = abs(xPos - xPos2)
 		yErr = abs(yPos - yPos2)
-		rotXPos = xPos*cos(radians(rotAngle)) - ypos*sin(radians(rotAngle))
-		rotYPos = xPos*sin(radians(rotAngle)) + ypos*cos(radians(rotAngle))
+		rotXPos = xPos*cos(radians(rotAngle)) - yPos*sin(radians(rotAngle))
+		rotYPos = xPos*sin(radians(rotAngle)) + yPos*cos(radians(rotAngle))
 		outArr[grainCtr,0] = xPos
 		outArr[grainCtr,1] = yPos
 		outArr[grainCtr,2] = xErr
