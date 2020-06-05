@@ -52,6 +52,7 @@ for grainNr in range(1,nGrains+1):
 		outArr[grainCtr,1] = yPos
 		outArr[grainCtr,2] = xErr
 		outArr[grainCtr,3] = yErr
+		grainCtr += 1
 
 np.savetxt(outFN,outArr)
 
