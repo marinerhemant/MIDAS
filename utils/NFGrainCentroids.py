@@ -10,6 +10,7 @@ ConfidenceThresh = 0.05
 lowLimitConf = 0.10
 
 outArr = np.zeros((nGrains,4))
+grainCtr = 0
 for grainNr in range(1,nGrains+1):
 	xPos = 0
 	yPos = 0
@@ -40,16 +41,17 @@ for grainNr in range(1,nGrains+1):
 				xPos2 += xCen2
 				yPos2 += yCen2
 				nLayersFound += nRows
-	xPos /= nLayersFound
-	yPos /= nLayersFound
-	xPos2 /= nLayersFound
-	yPos2 /= nLayersFound
-	xErr = abs(xPos - xPos2)
-	yErr = abs(yPos - yPos2)
-	outArr[grainNr-1,0] = xPos
-	outArr[grainNr-1,1] = yPos
-	outArr[grainNr-1,2] = xErr
-	outArr[grainNr-1,3] = yErr
+	if nLayersFound > 0:
+		xPos /= nLayersFound
+		yPos /= nLayersFound
+		xPos2 /= nLayersFound
+		yPos2 /= nLayersFound
+		xErr = abs(xPos - xPos2)
+		yErr = abs(yPos - yPos2)
+		outArr[grainCtr,0] = xPos
+		outArr[grainCtr,1] = yPos
+		outArr[grainCtr,2] = xErr
+		outArr[grainCtr,3] = yErr
 
 np.savetxt(outFN,outArr)
 
