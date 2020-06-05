@@ -2,10 +2,10 @@ import numpy as np
 import os
 
 nLayers = 7
-nGrains = 276
-micFN = 'MicrostructureZr0_1Fe_3dpa_TxtFab.mic'
+nGrains = 226
+micFN = 'MicrostructureZrTxt.mic'
 outFN = 'GrainCentroidsWeighted.csv'
-minConfidence = 0.35
+minConfidence = 0.5
 ConfidenceThresh = 0.05
 lowLimitConf = 0.10
 
