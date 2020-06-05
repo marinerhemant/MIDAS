@@ -1,5 +1,6 @@
 import numpy as np
 import os
+from math import radians, cos, sin
 
 nLayers = 7
 nGrains = 226
@@ -8,6 +9,7 @@ outFN = 'GrainCentroidsWeighted.csv'
 minConfidence = 0.5
 ConfidenceThresh = 0.05
 lowLimitConf = 0.10
+rotAngle = -4
 
 outArr = np.zeros((nGrains,4))
 grainCtr = 0
@@ -48,6 +50,8 @@ for grainNr in range(1,nGrains+1):
 		yPos2 /= nLayersFound
 		xErr = abs(xPos - xPos2)
 		yErr = abs(yPos - yPos2)
+		rotXPos = xPos*cos(radians(rotAngle)) - ypos*sin(radians(rotAngle))
+		rotYPos = xPos*sin(radians(rotAngle)) + ypos*cos(radians(rotAngle))
 		outArr[grainCtr,0] = xPos
 		outArr[grainCtr,1] = yPos
 		outArr[grainCtr,2] = xErr
