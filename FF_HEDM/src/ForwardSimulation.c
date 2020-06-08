@@ -907,7 +907,7 @@ main(int argc, char *argv[])
 						  &InputInfo[nrPoints][9], &InputInfo[nrPoints][10],&InputInfo[nrPoints][11],
 						  &InputInfo[nrPoints][12],&InputInfo[nrPoints][13],&InputInfo[nrPoints][14],
 						  &InputInfo[nrPoints][15],&InputInfo[nrPoints][16],&InputInfo[nrPoints][17]);
-				fprintf(foutGrains,"%d\t",nrPoints);
+				fprintf(foutGrains,"%d\t",nrPoints+1);
 				for (i=0;i<18;i++) fprintf(foutGrains,"%lf\t",InputInfo[nrPoints][i]);
 				fprintf(foutGrains,"\n");
 				nrPoints++;
