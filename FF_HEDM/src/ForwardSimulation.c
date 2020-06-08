@@ -912,6 +912,7 @@ main(int argc, char *argv[])
 				fprintf(foutGrains,"\n");
 				nrPoints++;
 			}
+			fclose(foutGrains);
 		}else if (strncmp(aline,"%TriEdgeSize ",strlen("%TriEdgeSize ")) == 0){
 			dataType = 1;
 			NrOrientations = 2000000;
