@@ -238,17 +238,13 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	int grainNr=0;
 	while(fgets(aline,MAX_LINE_LENGTH,GrainsFile)!=NULL){
 		sscanf(aline,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf "
-			"%lf %lf %lf %lf %lf %lf %s %s %s %s %lf %s %s %s %s %s %s %s "
-			"%s %s %s %s %s %s %s %s %s %s %s %s",&GrainIDsOld[grainNr],
+			"%lf %lf %lf %lf %lf %lf",&GrainIDsOld[grainNr],
 			&GrainInfo[grainNr][0],&GrainInfo[grainNr][1],&GrainInfo[grainNr][2],
 			&GrainInfo[grainNr][3],&GrainInfo[grainNr][4],&GrainInfo[grainNr][5],
 			&GrainInfo[grainNr][6],&GrainInfo[grainNr][7],&GrainInfo[grainNr][8],
 			&GrainInfo[grainNr][9],&GrainInfo[grainNr][10],&GrainInfo[grainNr][11],
 			&GrainInfo[grainNr][12],&GrainInfo[grainNr][13],&GrainInfo[grainNr][14],
-			&GrainInfo[grainNr][15],&GrainInfo[grainNr][16],&GrainInfo[grainNr][17],
-			dummy, dummy, dummy, dummy,&GrainInfo[grainNr][18],dummy, dummy, dummy,
-			dummy, dummy, dummy, dummy, dummy, dummy, dummy, dummy,dummy, dummy,
-			dummy, dummy,dummy, dummy, dummy, dummy);
+			&GrainInfo[grainNr][15],&GrainInfo[grainNr][16],&GrainInfo[grainNr][17]);
 		grainNr++;
 	}
 	if (grainNr != nGrains){
@@ -372,6 +368,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			Rads[nrFilled] = bestRadius;
 			nrFilled ++;
 		}
+		GrainInfo[i][18] = nrFilled;
 		// Write CSV files and we are done.
 		//~ for (iSpot=0;iSpot<n_spots;iSpot++) printf("%d\n",(int)ObsSpotsLab[iSpot*9+4]);
 		GrainID = IDs[0];
