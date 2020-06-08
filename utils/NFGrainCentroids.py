@@ -52,8 +52,8 @@ for grainNr in range(1,nGrains+1):
 		yErr = abs(yPos - yPos2)
 		rotXPos = xPos*cos(radians(rotAngle)) - yPos*sin(radians(rotAngle))
 		rotYPos = xPos*sin(radians(rotAngle)) + yPos*cos(radians(rotAngle))
-		outArr[grainCtr,0] = xPos
-		outArr[grainCtr,1] = yPos
+		outArr[grainCtr,0] = rotXPos
+		outArr[grainCtr,1] = rotYPos
 		outArr[grainCtr,2] = xErr
 		outArr[grainCtr,3] = yErr
 		grainCtr += 1
