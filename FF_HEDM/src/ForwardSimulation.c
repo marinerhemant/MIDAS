@@ -874,18 +874,30 @@ main(int argc, char *argv[])
 		// Check what type of input is this.
 		if (strncmp(aline,"%NumGrains ",strlen("%NumGrains ")) == 0){ // This is a Grains.csv file, get OM, Pos, LatC
 			dataType = 0;
+			printf("We will write a separate Grains.csv file matching the GrainIDs.\n");
 			sscanf(aline,"%s %d",dummy,&NrOrientations);
+			FILE *foutGrains;
+			foutGrains = fopen("GrainsGen.csv","w");
+			fprintf(foutGrains,"%s",aline);
 			NrOrientations++;
 			NrOrientations++;
 			InputInfo = allocMatrix(NrOrientations,18); // Save OrientationMatrix, Position, LatC
 			fgets(aline,4096,inpF);
+			fprintf(foutGrains,"%s",aline);
 			fgets(aline,4096,inpF);
+			fprintf(foutGrains,"%s",aline);
 			fgets(aline,4096,inpF);
+			fprintf(foutGrains,"%s",aline);
 			fgets(aline,4096,inpF);
+			fprintf(foutGrains,"%s",aline);
 			fgets(aline,4096,inpF);
+			fprintf(foutGrains,"%s",aline);
 			fgets(aline,4096,inpF);
+			fprintf(foutGrains,"%s",aline);
 			fgets(aline,4096,inpF);
+			fprintf(foutGrains,"%s",aline);
 			fgets(aline,4096,inpF);
+			fprintf(foutGrains,"%s",aline);
 			while(fgets(aline,4096,inpF)!=NULL){
 				sscanf(aline,"%s %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
 					dummy,&InputInfo[nrPoints][0], &InputInfo[nrPoints][1], &InputInfo[nrPoints][2],
@@ -894,6 +906,9 @@ main(int argc, char *argv[])
 						  &InputInfo[nrPoints][9], &InputInfo[nrPoints][10],&InputInfo[nrPoints][11],
 						  &InputInfo[nrPoints][12],&InputInfo[nrPoints][13],&InputInfo[nrPoints][14],
 						  &InputInfo[nrPoints][15],&InputInfo[nrPoints][16],&InputInfo[nrPoints][17]);
+				fprintf(foutGrains,"%d\t",nrPoints);
+				for (i=0;i<18;i++) fprintf(foutGrains,"%lf\t",InputInfo[nrPoints][i]);
+				fprintf(foutGrains,"\n");
 				nrPoints++;
 			}
 		}else if (strncmp(aline,"%TriEdgeSize ",strlen("%TriEdgeSize ")) == 0){

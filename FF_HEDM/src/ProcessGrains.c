@@ -14,7 +14,7 @@
 //  - Single file reading is implemented now.
 //  New Features (2014/11/19):
 //  - Strains!!
-//  
+//
 
 #include <stdio.h>
 #include <math.h>
@@ -39,7 +39,7 @@
 #define rad2deg 57.2957795130823
 static inline double sin_cos_to_angle (double s, double c){return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);}
 
-static inline 
+static inline
 void OrientMat2Euler(double m[3][3],double Euler[3])
 {
     double psi, phi, theta, sph;
@@ -153,7 +153,7 @@ FindInternalAnglesTwins(int nrIDs, int *IDs, int *IDsPerGrain,
 				}
 				OrientMat2Quat(OR2,q2);
 				Angle = GetMisOrientation(q1,q2,Axis,&ang,SGNr);
-				AreTwins = fabs(ang - 60) < 0.1 && 
+				AreTwins = fabs(ang - 60) < 0.1 &&
 						 ( fabs(Axis[0]) - fabs(Axis[1]) ) < 0.01 &&
 						 ( fabs(Axis[2]) - fabs(Axis[1]) ) < 0.01;
 				if (fabs(ang) < 0.1 || AreTwins){
@@ -334,7 +334,7 @@ int main(int argc, char *argv[])
 		str = "LatticeConstant ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %lf %lf %lf %lf %lf %lf", dummy, 
+            sscanf(aline,"%s %lf %lf %lf %lf %lf %lf", dummy,
 						&LatCin[0], &LatCin[1], &LatCin[2],
 						&LatCin[3], &LatCin[4], &LatCin[5]);
             continue;
@@ -466,7 +466,7 @@ int main(int argc, char *argv[])
 			nGrainPositions ++;
 		}
 	}
-	
+
 	//Write out
 	char GrainsFileName[1024];
 	sprintf(GrainsFileName,"Grains.csv");
@@ -518,10 +518,10 @@ int main(int argc, char *argv[])
 	int currentRing;
 	while (fgets(aline,2000,inpfile)!=NULL){
 		sscanf(aline,"%lf %lf %lf %s %lf %lf %lf %lf %s %s %s %lf %lf %lf",&InputMatrix[counterIF][6], &InputMatrix[counterIF][7], &InputMatrix[counterIF][0],
-			dummy, &InputMatrix[counterIF][1], &InputMatrix[counterIF][5], &InputMatrix[counterIF][4], &InputMatrix[counterIF][8], dummy, dummy, dummy, 
+			dummy, &InputMatrix[counterIF][1], &InputMatrix[counterIF][5], &InputMatrix[counterIF][4], &InputMatrix[counterIF][8], dummy, dummy, dummy,
 			&InputMatrix[counterIF][2], &InputMatrix[counterIF][3],&InputMatrix[counterIF][9]);
 		if ((int)InputMatrix[counterIF][1] != counterIF+1){
-			printf("IDs dont match.\nExiting\n"); 
+			printf("IDs dont match.\nExiting\n");
 			return(1);
 		}
 		// Write Hash Matrix if needed.
@@ -550,7 +550,7 @@ int main(int argc, char *argv[])
 		double ds;
 		int rnr;
 		while (fgets(aline2,2000,hklf)!=NULL){
-			sscanf(aline2,"%s %s %s %lf %d %s %s %s %s %s %s", dummy, dummy, 
+			sscanf(aline2,"%s %s %s %lf %d %s %s %s %s %s %s", dummy, dummy,
 				dummy, &ds, &rnr, dummy, dummy, dummy, dummy, dummy, dummy);
 			for (i=0;i<nRings;i++){
 				if (IDHash[i][0] == rnr){
@@ -600,7 +600,7 @@ int main(int argc, char *argv[])
 			}
 		}
 		if (OPs[rown][22] < 0.1) continue;
-		
+
 		nspots = NrIDsPerID[rown];
 		OffSt = rown;
 		OffSt *= 22;
@@ -693,9 +693,10 @@ int main(int argc, char *argv[])
 		FullVol += VNorm;
 		nGrains++;
 		for (j=0;j<counterSpotMatrix;j++){
-			fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\n",(int)SpotMatrix[j][0],(int)SpotMatrix[j][1],
-				SpotMatrix[j][2],SpotMatrix[j][3],SpotMatrix[j][4],SpotMatrix[j][5],SpotMatrix[j][6],
-				(int)SpotMatrix[j][7],SpotMatrix[j][8],SpotMatrix[j][9],SpotMatrix[j][10],MultR*SpotMatrix[j][11]);
+			for (k=0;k<2;k++) fprintf(spotsfile,"%d\t",(int)SpotMatrix[j][k]);
+			for (k=2;k<7;k++) fprintf(spotsfile,"%lf\t",SpotMatrix[j][k]);
+			fprintf(spotsfile,"%lf\t",SpotMatrix[j][7]);
+			for (k=8;k<12;k++) fprintf(spotsfile,"%lf\t",SpotMatrix[j][k]);
 		}
 	}
 	printf("Number of grains: %d.\n",nGrains);

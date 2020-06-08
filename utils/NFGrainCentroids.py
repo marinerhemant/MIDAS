@@ -40,8 +40,8 @@ for grainNr in range(1,nGrains+1):
 				yCen2 = np.mean(filteredMic2[:,4])
 				xPos += xCen * nRows
 				yPos += yCen * nRows
-				xPos2 += xCen2
-				yPos2 += yCen2
+				xPos2 += xCen2 * nRows
+				yPos2 += yCen2 * nRows
 				nLayersFound += nRows
 	if nLayersFound > 0:
 		xPos /= nLayersFound

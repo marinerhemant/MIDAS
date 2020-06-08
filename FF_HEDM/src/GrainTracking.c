@@ -321,7 +321,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	int GrainID,nrFilled;
 	double mult;
 	for (i=0;i<nGrains;i++){
-		printf("%d of %d grains tracked.\n",i+1,nGrains);
+		printf("Trying to track %d grain out of %d grains.\n",i+1,nGrains);
 		do{ // Check for both EOF and ID matching GrainID
 			sscanf(aline,"%d %s %s %$s %s %s %s",&ID,dummy,dummy,dummy,dummy,dummy,dummy);
 			if (ID != GrainIDsOld[i]){
