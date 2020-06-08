@@ -331,7 +331,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			spotNr ++;
 		}while(fgets(aline,MAX_LINE_LENGTH,SpotMatrixFile)!=NULL);
 		if (spotNr == 0) continue;
-		printf("Nr of spots for %d grain: %d\n",i+1, spotNr);
+		printf("Nr of spots for grain %d: %d\n",i+1, spotNr);
 		nrFilled = 0;
 		for (j=0;j<spotNr;j++){
 			lenK = CalcNorm3(Distance,YLab[j],ZLab[j]);
@@ -363,11 +363,11 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 				if (Angle < minAngle){
 					minAngle = Angle;
 					bestID = (int) ObsSpotsLab[spotRow*9 + 4];
-					printf("%d ",bestID);
+					//~ printf("%d ",bestID);
 					bestRadius = ObsSpotsLab[spotRow*9+3];
 				}
 			}
-			printf("%d\n",bestID);
+			//~ printf("%d\n",bestID);
 			IDs[nrFilled] = bestID;
 			Rads[nrFilled] = bestRadius;
 			nrFilled ++;
