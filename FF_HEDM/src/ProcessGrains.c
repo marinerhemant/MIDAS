@@ -405,10 +405,10 @@ int main(int argc, char *argv[])
 				continue;
 			}
 			OPs[i][counter] = OPThis[j];
-			printf("%lf ",OPs[i][counter]);
+			//~ printf("%lf ",OPs[i][counter]);
 			counter++;
 		}
-		printf("\n");
+		//~ printf("\n");
 		Radiuses[i] = OPThis[25];
 	}
 	int StartingID,ThisID1,ThisID2;
