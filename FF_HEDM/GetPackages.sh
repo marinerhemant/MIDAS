@@ -73,7 +73,7 @@ if [ ! -d ${dirThis}/FFTW ]; then # fftw
 	tar -xzf fftw.tar.gz
 	cd fftw-3.3.8
 	./configure --prefix=${dirThis}/FFTW --enable-float --disable-fortran --enable-sse --enable-sse2 --enable-avx --enable-avx2 --enable-avx-128-fma --enable-generic-simd128 --enable-generic-simd256 #--enable-avx512
-	make install
+	make -j8 install
 fi
 
 #~ if [ ! -d ${dirThis}/MPICH ]; then # mpich
