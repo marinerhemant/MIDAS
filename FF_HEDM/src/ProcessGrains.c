@@ -260,7 +260,7 @@ int main(int argc, char *argv[])
     fileParam = fopen(ParamFN,"r");
     char *str, dummy[1000];
     int LowNr;
-    int Twin = 0, MinNrSpots, SGNr;
+    int Twin = 0, MinNrSpots = 1, SGNr = 225;
     double Distance, wavelength, LatCin[6];
     double BeamThickness = 0, GlobalPosition = 0;
     int NumPhases = 1, PhaseNr = 1;
@@ -323,12 +323,6 @@ int main(int argc, char *argv[])
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %lf", dummy, &Distance);
-            continue;
-		}
-		str = "Wavelength ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %lf", dummy, &wavelength);
             continue;
 		}
 		str = "LatticeConstant ";
