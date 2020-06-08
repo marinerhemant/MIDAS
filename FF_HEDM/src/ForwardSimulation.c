@@ -876,8 +876,9 @@ main(int argc, char *argv[])
 			dataType = 0;
 			printf("We will write a separate Grains.csv file matching the GrainIDs.\n");
 			sscanf(aline,"%s %d",dummy,&NrOrientations);
+			char *GrainOutFN = "GrainsGen.csv";
 			FILE *foutGrains;
-			foutGrains = fopen("GrainsGen.csv","w");
+			foutGrains = fopen(GrainOutFN,"w");
 			fprintf(foutGrains,"%s",aline);
 			NrOrientations++;
 			NrOrientations++;
