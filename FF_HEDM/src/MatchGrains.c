@@ -510,7 +510,7 @@ int main(int argc, char* argv[])
 	"selectionCriteriaVal\tminAngle\tdiffPosX\tdiffPosY\tdiffPosZ\tEuclideanDistt\n");
 	for (i=0;i<totIDs2;i++){
 		for (j=0;j<6;j++) fprintf(outfile,"%d\t",(int)Matches[i][j]);
-		for (j=6;j<26;j++) fprintf(outfile,"%.7lf\t",Matches[i][j]);
+		for (j=6;j<26;j++) fprintf(outfile,"%lf\t",Matches[i][j]);
 		fprintf(outfile,"\n");
 	}
 	end = clock();
