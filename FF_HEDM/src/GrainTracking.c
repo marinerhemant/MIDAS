@@ -368,7 +368,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			Rads[nrFilled] = bestRadius;
 			nrFilled ++;
 		}
-		GrainInfo[i][18] = nrFilled;
+		GrainInfo[i][18] = nrFilled/spotNr;
 		// Write CSV files and we are done.
 		//~ for (iSpot=0;iSpot<n_spots;iSpot++) printf("%d\n",(int)ObsSpotsLab[iSpot*9+4]);
 		GrainID = IDs[0];
