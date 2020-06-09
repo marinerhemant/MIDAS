@@ -1,4 +1,4 @@
-#!/bin/bash -eu
+#!/bin/bash +eu
 
 #
 # Copyright (c) 2014, UChicago Argonne, LLC

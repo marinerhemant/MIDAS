@@ -1416,6 +1416,10 @@ int main(int argc, char *argv[])
 	int SpId = atoi(argv[2]);
 	char *SpFN = "SpotsToIndex.csv";
 	FILE *SpFile = fopen(SpFN,"r");
+	if (SpFile == NULL){
+		printf("Could not read the SpotsToIndex.csv file. Exiting.\n");
+		return 1;
+	}
 	int rowNr = 0;
 	int ThisID;
 	int count = 0;
@@ -1485,7 +1489,6 @@ int main(int argc, char *argv[])
 	}
 	int nrSpIds=1;
 	char OutFN[1024],OrigOutFN[1024];
-	FILE *OutFNf, *OrigOutFNf;
 	double OrientsOrig[nrSpIds][10],PositionsOrig[nrSpIds][4],ErrorsOrig[nrSpIds][4],
 		 OrientsFit[nrSpIds][10],PositionsFit[nrSpIds][4],StrainsFit[nrSpIds][7],ErrorsFin[nrSpIds][4];
 	char *h1 = "SpotID,YObsCorrPos,ZObsCorrPos,OmegaObsCorrPos,G1Obs,G2Obs,G3Obs,YExp,ZExp,OmegaExp,G1Exp,G2Exp,G3Exp,";
