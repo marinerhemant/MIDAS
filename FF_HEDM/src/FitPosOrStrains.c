@@ -144,7 +144,7 @@ static inline double acosd(double x){return rad2deg*(acos(x));}
 static inline double atand(double x){return rad2deg*(atan(x));}
 static inline double sin_cos_to_angle (double s, double c){return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);}
 
-static inline 
+static inline
 void OrientMat2Euler(double m[3][3],double Euler[3])
 {
     double psi, phi, theta, sph;
@@ -243,7 +243,7 @@ void DisplacementInTheSpot(double a, double b, double c, double xi, double yi, d
     *Displ_z = ZC - ((XC*IK[2])/(IK[0]));
 }
 
-static inline 
+static inline
 double CalcEtaAngle(double y, double z){
 	double alpha = rad2deg*acos(z/sqrt(y*y+z*z));
 	if (y>0) alpha = -alpha;
@@ -408,7 +408,7 @@ void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double yDet, doub
 }
 
 static inline
-void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], double **spotsYZO, double **hklsIn, double Lsd, 
+void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], double **spotsYZO, double **hklsIn, double Lsd,
 	double Wavelength, double OmegaRange[20][2], double BoxSize[20][4], double MinEta, double wedge, double chi,
 	double **SpotsComp, double **SpList, double *Error, int *nSpotsComp, int notIniRun)
 {
@@ -603,8 +603,8 @@ double FitErrorsPosT(double x[12],int nSpotsComp,double spotsYZOIn[nSpotsComp][9
 	double LatC[6];
 	for (i=0;i<6;i++)LatC[i] = x[6+i];
 	double **hklsIn2; hklsIn2 = allocMatrix(nhkls,7); for (i=0;i<nhkls;i++) for (j=0;j<7;j++) hklsIn2[i][j] = hklsIn[i][j];
-	double **spotsYZO; 
-	spotsYZO = allocMatrix(nSpotsComp,9); 
+	double **spotsYZO;
+	spotsYZO = allocMatrix(nSpotsComp,9);
 	for (i=0;i<nSpotsComp;i++){
 		for (j=0;j<9;j++){
 			spotsYZO[i][j] = spotsYZOIn[i][j];
@@ -739,8 +739,8 @@ double FitErrorsStrains(double x[6],int nSpotsComp,double spotsYZOIn[nSpotsComp]
 	double LatC[6];
 	for (i=0;i<6;i++)LatC[i] = x[i];
 	double **hklsIn2; hklsIn2 = allocMatrix(nhkls,7); for (i=0;i<nhkls;i++) for (j=0;j<7;j++) hklsIn2[i][j] = hklsIn[i][j];
-	double **spotsYZO; 
-	spotsYZO = allocMatrix(nSpotsComp,9); 
+	double **spotsYZO;
+	spotsYZO = allocMatrix(nSpotsComp,9);
 	for (i=0;i<nSpotsComp;i++){
 		for (j=0;j<9;j++){
 			spotsYZO[i][j] = spotsYZOIn[i][j];
@@ -804,8 +804,8 @@ double FitErrorsPosSec(double x[3],int nSpotsComp,double spotsYZOIn[nSpotsComp][
 	double LatC[6];
 	for (i=0;i<6;i++)LatC[i] = Strains[i];
 	double **hklsIn2; hklsIn2 = allocMatrix(nhkls,7); for (i=0;i<nhkls;i++) for (j=0;j<7;j++) hklsIn2[i][j] = hklsIn[i][j];
-	double **spotsYZO; 
-	spotsYZO = allocMatrix(nSpotsComp,9); 
+	double **spotsYZO;
+	spotsYZO = allocMatrix(nSpotsComp,9);
 	for (i=0;i<nSpotsComp;i++){
 		for (j=0;j<9;j++){
 			spotsYZO[i][j] = spotsYZOIn[i][j];
@@ -1262,7 +1262,7 @@ int main(int argc, char *argv[])
         str = "LatticeParameter ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %lf %lf %lf %lf %lf %lf", dummy, 
+            sscanf(aline,"%s %lf %lf %lf %lf %lf %lf", dummy,
 					&LatCin[0], &LatCin[1], &LatCin[2],
 					&LatCin[3], &LatCin[4], &LatCin[5]);
             continue;
@@ -1282,7 +1282,7 @@ int main(int argc, char *argv[])
         str = "DetParams ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", 
+            sscanf(aline,"%s %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
 				dummy,&DetParams[cntrdet][0],&DetParams[cntrdet][1],&DetParams[cntrdet][2],
 				&DetParams[cntrdet][3],&DetParams[cntrdet][4],&DetParams[cntrdet][5],
 				&DetParams[cntrdet][6],&DetParams[cntrdet][7],&DetParams[cntrdet][8],
@@ -1361,7 +1361,7 @@ int main(int argc, char *argv[])
         str = "OmegaRange ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %lf %lf", dummy, 
+            sscanf(aline,"%s %lf %lf", dummy,
 				&OmegaRanges[nOmeRanges][0], &OmegaRanges[nOmeRanges][1]);
             nOmeRanges++;
             continue;
@@ -1369,7 +1369,7 @@ int main(int argc, char *argv[])
         str = "BoxSize ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %lf %lf %lf %lf", dummy, 
+            sscanf(aline,"%s %lf %lf %lf %lf", dummy,
 				&BoxSizes[nBoxSizes][0], &BoxSizes[nBoxSizes][1],
 				&BoxSizes[nBoxSizes][2], &BoxSizes[nBoxSizes][3]);
             nBoxSizes++;
@@ -1544,7 +1544,7 @@ int main(int argc, char *argv[])
 	}
 	rewind(BestFile);
 	double Orient0[9], Pos0[3], IA0, Euler0[3], Orient0_3[3][3],NrExpected,NrObserved,meanRadius=0,thisRadius,completeness;
-	
+
 	if (GrainTracking == 0){
 		fgets(line,5000,BestFile);
 		fgets(line,5000,BestFile);
@@ -1605,19 +1605,19 @@ int main(int argc, char *argv[])
 			nSpotsBest++;
 		}
 		meanRadius /= nSpotsBest;
-	}	
+	}
 	fclose(BestFile);
-	
+
 	double a=LatCin[0],b=LatCin[1],c=LatCin[2],alph=LatCin[3],bet=LatCin[4],gamm=LatCin[5];
 	for (i=0;i<3;i++) for (j=0;j<3;j++) Orient0_3[i][j] = Orient0[i*3+j];
 	OrientMat2Euler(Orient0_3,Euler0);
 	char rmCommand[4096];
 	sprintf(rmCommand,"rm -rf %s",FileName);
-	system(rmCommand);
+	//~ system(rmCommand);
 	double **spotsYZO;
 	spotsYZO=allocMatrix(nSpotsBest,8);
 	int nSpotsYZO=nSpotsBest;
-	// Idea: spotID always starts from 1 and is increasing in number, so 
+	// Idea: spotID always starts from 1 and is increasing in number, so
 	// spotIDS[i] should correspond to AllSpots[(spotIDS[i]-1)*14+...], this should
 	// reduce execution time.
 	int spotPosAllSpots;
@@ -1787,7 +1787,7 @@ int main(int argc, char *argv[])
 	for (i=0;i<3;i++) PositionsFit[nSpID][i+1] = PositionFit[i];
 	for (i=0;i<6;i++) StrainsFit[nSpID][i+1] = LatticeParameterFit[i];
 	for (i=0;i<3;i++) ErrorsFin[nSpID][i+1] = ErrorFin[i];
-	
+
 	// Start Writing: SpotsCompFN, OutFN, Key, ProcessGrainsFile
 	// Key
 	char KeyFN[1024];
@@ -1884,7 +1884,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	rcSpots = close(resultSpotsCompFN);
-	
+
 	// Clean stuff
 	FreeMemMatrix(hkls,5000);
     free(spotIDS);
