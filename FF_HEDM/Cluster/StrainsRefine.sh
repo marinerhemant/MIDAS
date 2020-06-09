@@ -1,4 +1,4 @@
-#!/bin/bash +eu
+#!/bin/bash
 
 #
 # Copyright (c) 2014, UChicago Argonne, LLC
@@ -8,4 +8,5 @@
 source ${HOME}/.MIDAS/paths
 echo "Spot ID:"
 echo $1
+set +e
 ${BINFOLDER}/FitPosOrStrains paramstest.txt $1
