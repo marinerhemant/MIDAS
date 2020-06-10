@@ -260,7 +260,7 @@ int main(int argc, char *argv[])
     fileParam = fopen(ParamFN,"r");
     char *str, dummy[1000];
     int LowNr;
-    int Twin = 0, MinNrSpots = 1, SGNr = 225;
+    int Twin = 0, MinNrSpots = 1, SGNr = 225, TrackGrains = 0;
     double Distance, wavelength, LatCin[6];
     double BeamThickness = 0, GlobalPosition = 0;
     int NumPhases = 1, PhaseNr = 1;
@@ -449,6 +449,7 @@ int main(int argc, char *argv[])
 			}
 			totcount+=counten;
 			nGrainsMatched[i] = counten;
+			printf("%d\n",counten);
 			if (counten < MinNrSpots) continue;
 			for (j=0;j<counten;j++){
 				if (ID_IA_MAT[(j*4)+2] < minIA){
