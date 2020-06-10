@@ -449,7 +449,7 @@ int main(int argc, char *argv[])
 			}
 			totcount+=counten;
 			nGrainsMatched[i] = counten;
-			printf("%d\n",counten);
+			printf("%d %d\n",i,counten);
 			if (counten < MinNrSpots) continue;
 			for (j=0;j<counten;j++){
 				if (ID_IA_MAT[(j*4)+2] < minIA){
