@@ -327,7 +327,6 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			spotNr ++;
 		}while(fgets(aline,MAX_LINE_LENGTH,SpotMatrixFile)!=NULL);
 		if (spotNr == 0) continue;
-		printf("Nr of spots for grain %d: %d\n",i+1, spotNr);
 		nrFilled = 0;
 		for (j=0;j<spotNr;j++){
 			lenK = CalcNorm3(Distance,YLab[j],ZLab[j]);
@@ -368,6 +367,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			Rads[nrFilled] = bestRadius;
 			nrFilled ++;
 		}
+		printf("New grain ID: %d, nr of spots expected: %d, Nr of spots matched: %d",GrainID, spotNr, nrFilled);
 		GrainInfo[i][18] = (double)nrFilled/ (double)spotNr;
 		// Write CSV files and we are done.
 		//~ for (iSpot=0;iSpot<n_spots;iSpot++) printf("%d\n",(int)ObsSpotsLab[iSpot*9+4]);
