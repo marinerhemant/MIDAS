@@ -172,6 +172,10 @@ int main (int argc, char *argv[]){
 	sprintf(outputfile2,"%s.AllMatches",outputfile);
 	sprintf(inputfile2,"%s.AllMatches",inputfile);
 	FILE *inp2 = fopen(inputfile2,"rb");
+	if (inp2 == NULL){
+		printf("AllMatched file not found. Exiting\n");
+		return;
+	}
 	size_t sz2;
 	fseek(inp2,0L,SEEK_END);
 	sz2 = ftell(inp2);
