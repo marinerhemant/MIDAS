@@ -371,8 +371,10 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			Rads[nrFilled] = bestRadius;
 			nrFilled ++;
 		}
-		if (nrFilled == 0)
+		if (nrFilled == 0){
+			printf("Nothing found. Skipping to next grain.\n");
 			continue;
+		}
 		GrainID = IDs[0];
 		printf("New grain ID: %d, nr of spots expected: %d, Nr of spots matched: %d\n",GrainID, spotNr, nrFilled);
 		GrainInfo[i][18] = (double)nrFilled/ (double)spotNr;
