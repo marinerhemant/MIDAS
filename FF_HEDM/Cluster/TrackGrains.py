@@ -157,9 +157,9 @@ def GrainTracking(paramFile,layerNr,nNodes,machineName):
 		RingX = rings[0]
 		shutil.move(thisParamFN,outFldr)
 	print('MergeMultipleRings')
-	os.listdir(seedFolder)
+	print(os.listdir(seedFolder))
 	call([binfolder+'/MergeMultipleRings',PFName])
-	os.listdir(seedFolder)
+	print(os.listdir(seedFolder))
 	print('Changing to seedFolder')
 	os.chdir(seedFolder)
 	return
