@@ -396,7 +396,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			GrainInfo[i][18],GrainInfo[i][0],GrainInfo[i][1],GrainInfo[i][2],GrainInfo[i][3],
 			GrainInfo[i][4],GrainInfo[i][5],GrainInfo[i][6],GrainInfo[i][7],GrainInfo[i][8],
 			GrainInfo[i][9],GrainInfo[i][10],GrainInfo[i][11]);
-		for (j=0;j<spotNr;j++){
+		for (j=0;j<nrFilled;j++){
 			fprintf(outfile,"%d %lf\n",IDs[j],Rads[j]);
 		}
 		fprintf(GrainMatchesFile,"%d\t%d\n",GrainIDsOld[i],GrainID);
