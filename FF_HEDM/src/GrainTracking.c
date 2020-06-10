@@ -314,6 +314,10 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	FILE *GrainMatchesFile = fopen(GrainMatchesFileName,"w");
 	fprintf(GrainMatchesFile,"OldID\tNewID\n");
 	FILE *spotsfile = fopen(spotsfilename,"w");
+	if (spotsfile == NULL){
+		printf("Could not write to %s.\n",spotsfilename);
+		return 1;
+	}
 	int GrainID,nrFilled;
 	double mult;
 	for (i=0;i<nGrains;i++){
@@ -374,7 +378,11 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 		//~ for (iSpot=0;iSpot<n_spots;iSpot++) printf("%d\n",(int)ObsSpotsLab[iSpot*9+4]);
 		sprintf(outfilename,"%s/BestPos_%09d.csv",outfolder,GrainID);
 		FILE *outfile = fopen(outfilename,"w");
-		printf("GrainID %d\n",GrainID);
+		//~ printf("GrainID %d\n",GrainID);
+		if (outfile == NULL){
+			printf("Could not write to %s.\n",outfilename);
+			return 1;
+		}
 		fprintf(spotsfile,"%d\n",GrainID);
 		fprintf(outfile,"%d\n",GrainID);
 		fprintf(outfile,"%lf, %lf, %lf, %lf, %lf, %lf\n",GrainInfo[i][12],
