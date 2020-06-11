@@ -403,6 +403,7 @@ int main(int argc, char* argv[])
 	printf("Time to make bigArray: %f s.\n",diftotal);
 	int posX, posY;
 	double **Matches;
+	printf("%d\n",totIDs2);
 	Matches = allocMatrix(totIDs2,26);
 	int counter = 0;
 	if (removeDuplicates == 1){
