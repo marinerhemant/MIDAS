@@ -450,7 +450,7 @@ int main(int argc, char *argv[])
 			}
 			totcount+=counten;
 			nGrainsMatched[i] = counten;
-			printf("%d %d\n",i,counten);
+			//~ printf("%d %d\n",i,counten);
 			if (counten < MinNrSpots) continue;
 			for (j=0;j<counten;j++){
 				if (ID_IA_MAT[(j*4)+2] < minIA){
@@ -557,9 +557,7 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	for (i=0;i<nRings;i++){
-		printf("%d %d %d %lf\n",IDHash[i][0],IDHash[i][1],IDHash[i][2],dspacings[i]);
-	}
+	//~ for (i=0;i<nRings;i++) printf("%d %d %d %lf\n",IDHash[i][0],IDHash[i][1],IDHash[i][2],dspacings[i]);
 	for (j=0;j<NR_MAX_IDS_PER_GRAIN;j++) for (k=0;k<12;k++) SpotMatrix[j][k] = 0;
 	int rowSpotID, startSpotMatrix;
 	double RetVal, Eul[3];
