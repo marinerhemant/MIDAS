@@ -405,6 +405,7 @@ int main(int argc, char* argv[])
 	double **Matches;
 	printf("%d\n",totIDs2);
 	Matches = allocMatrix(totIDs2,26);
+	printf("Alloc Done"); fflush(stdout);
 	int counter = 0;
 	if (removeDuplicates == 1){
 		qsort(SortMatrix,totIDs1*totIDs2,sizeof(struct sortArrayType),cmpfunc);
