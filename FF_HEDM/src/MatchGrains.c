@@ -403,9 +403,7 @@ int main(int argc, char* argv[])
 	printf("Time to make bigArray: %f s.\n",diftotal);
 	int posX, posY;
 	double **Matches;
-	printf("%d\n",totIDs2); fflush(stdout);
 	Matches = allocMatrix(totIDs2,26);
-	printf("Alloc Done"); fflush(stdout);
 	int counter = 0;
 	if (removeDuplicates == 1){
 		qsort(SortMatrix,totIDs1*totIDs2,sizeof(struct sortArrayType),cmpfunc);
