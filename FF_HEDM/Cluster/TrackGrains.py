@@ -156,13 +156,8 @@ def GrainTracking(paramFile,layerNr,nNodes,machineName):
 		shutil.copy2(Fldr+'/PeakSearch/'+fileStem+'_'+str(layerNr)+'/Radius_StartNr_'+sNr+'_EndNr_'+eNr+'_RingNr_'+rings[0]+'.csv',outFldr)
 		RingX = rings[0]
 		shutil.move(thisParamFN,outFldr)
-	print('MergeMultipleRings')
-	print(os.listdir(seedFolder))
 	call([binfolder+'/MergeMultipleRings',PFName])
-	print(os.listdir(seedFolder))
-	print('Changing to seedFolder')
 	os.chdir(seedFolder)
-	return
 	moveMultipleFiles(os.getcwd()+'/',outFldr,'SpotsToIndex*')
 	moveMultipleFiles(os.getcwd()+'/',outFldr,'InputAll*')
 	shutil.move(PFName,outFldr)
