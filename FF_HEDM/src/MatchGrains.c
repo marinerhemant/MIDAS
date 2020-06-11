@@ -61,30 +61,22 @@ FreeMemMatrixInt(int **mat,int nrows)
     free(mat);
 }
 
-int DBG;
-
 static inline
 double**
 allocMatrix(int nrows, int ncols)
 {
-	printf("Allocating matrix of size: %dx%d\n",nrows,ncols); fflush(stdout);
     double** arr;
     int i;
     arr = malloc(nrows * sizeof(*arr));
-    printf("Allocating matrix of size: %d\n",nrows); fflush(stdout);
     if (arr == NULL ) {
         return NULL;
     }
-    printf("Allocating matrix of size: %d\n",nrows); fflush(stdout);
     for ( i = 0 ; i < nrows ; i++) {
-		if (DBG == 1) printf("%d\n",i);
         arr[i] = malloc(ncols * sizeof(*arr[i]));
-        //~ printf("Allocating matrix of size: %d\n",ncols); fflush(stdout);
         if (arr[i] == NULL ) {
             return NULL;
         }
     }
-    printf("Allocating matrix of size: %dx%d\n",nrows,ncols); fflush(stdout);
     return arr;
 }
 
@@ -175,7 +167,6 @@ int main(int argc, char* argv[])
 	int FNr = 0;
 	int ThisID = 0;
 	int GrainID;
-	DBG = 0;
 	Quats1 = allocMatrix(MAX_N_GRAINS,4);
 	Quats2 = allocMatrix(MAX_N_GRAINS,4);
 	Pos1 = allocMatrix(MAX_N_GRAINS,3);
@@ -413,9 +404,7 @@ int main(int argc, char* argv[])
 	int posX, posY;
 	double **Matches;
 	printf("%d\n",totIDs2); fflush(stdout);
-	DBG = 1;
 	Matches = allocMatrix(totIDs2,26);
-	DBG = 0;
 	printf("Alloc Done"); fflush(stdout);
 	int counter = 0;
 	if (removeDuplicates == 1){
