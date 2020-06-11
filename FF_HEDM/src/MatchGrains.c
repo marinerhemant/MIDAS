@@ -75,6 +75,7 @@ allocMatrix(int nrows, int ncols)
     }
     printf("Allocating matrix of size: %d\n",nrows); fflush(stdout);
     for ( i = 0 ; i < nrows ; i++) {
+		printf("%d\n",i);
         arr[i] = malloc(ncols * sizeof(*arr[i]));
         //~ printf("Allocating matrix of size: %d\n",ncols); fflush(stdout);
         if (arr[i] == NULL ) {
