@@ -65,6 +65,7 @@ static inline
 double**
 allocMatrix(int nrows, int ncols)
 {
+	printf("Allocating matrix of size: %dx%d\n",nrows,ncols); fflush(stdout);
     double** arr;
     int i;
     arr = malloc(nrows * sizeof(*arr));
