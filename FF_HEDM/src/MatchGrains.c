@@ -69,15 +69,19 @@ allocMatrix(int nrows, int ncols)
     double** arr;
     int i;
     arr = malloc(nrows * sizeof(*arr));
+    printf("Allocating matrix of size: %d\n",nrows); fflush(stdout);
     if (arr == NULL ) {
         return NULL;
     }
+    printf("Allocating matrix of size: %d\n",nrows); fflush(stdout);
     for ( i = 0 ; i < nrows ; i++) {
         arr[i] = malloc(ncols * sizeof(*arr[i]));
+        printf("Allocating matrix of size: %d\n",ncols); fflush(stdout);
         if (arr[i] == NULL ) {
             return NULL;
         }
     }
+    printf("Allocating matrix of size: %dx%d\n",nrows,ncols); fflush(stdout);
     return arr;
 }
 
