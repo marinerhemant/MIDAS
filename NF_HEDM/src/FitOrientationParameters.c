@@ -320,7 +320,7 @@ main(int argc, char *argv[])
     clock_t start, end;
     double diftotal;
     start = clock();
-    
+
     // Read params file.
     char *ParamFN;
     FILE *fileParam;
@@ -411,7 +411,7 @@ main(int argc, char *argv[])
         str = "LatticeParameter ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %lf %lf %lf %lf %lf %lf", dummy, 
+            sscanf(aline,"%s %lf %lf %lf %lf %lf %lf", dummy,
 				&LatticeConstant[0],&LatticeConstant[1],
 				&LatticeConstant[2],&LatticeConstant[3],
 				&LatticeConstant[4],&LatticeConstant[5]);
@@ -527,7 +527,7 @@ main(int argc, char *argv[])
         if (LowNr==0){
             Flag = 1;
             continue;
-        }  
+        }
     }
     int i,j,m,nrFiles,nrPixels;
     for (i=0;i<NoOfOmegaRanges;i++){
