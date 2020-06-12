@@ -693,6 +693,7 @@ int main(int argc, char *argv[])
 			for (k=2;k<7;k++) fprintf(spotsfile,"%lf\t",SpotMatrix[j][k]);
 			fprintf(spotsfile,"%lf\t",SpotMatrix[j][7]);
 			for (k=8;k<12;k++) fprintf(spotsfile,"%lf\t",SpotMatrix[j][k]);
+			fprintf(spotsfile,"\n");
 		}
 	}
 	printf("Number of grains: %d.\n",nGrains);
