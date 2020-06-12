@@ -87,6 +87,10 @@ int main(int argc, char *argv[]){
     int RingNr = atoi(argv[2]);
     char aline[1000], *str, dummy[1000];
     fileParam = fopen(ParamFN,"r");
+    if (fileParam == NULL){
+		printf("Could not read file %s\n",ParamFN);
+		return 1;
+	}
     int LowNr = 1;
     char Folder[1024], FileStem[1024], fs[1024];
     int StartNr, EndNr, LayerNr;
@@ -205,6 +209,10 @@ int main(int argc, char *argv[]){
     sprintf(InputFile,"%s/PeakSearch/%s/Result_StartNr_%d_EndNr_%d_RingNr_%d.csv",Folder,FileStem,StartNr,EndNr,RingNr);
 	FILE *Infile;
 	Infile = fopen(InputFile,"r");
+    if (Infile == NULL){
+		printf("Could not read file %s\n",InputFile);
+		return 1;
+	}
 	fgets(aline,1000,Infile);
 	int counter = 0;
 	double **SpotsMat;

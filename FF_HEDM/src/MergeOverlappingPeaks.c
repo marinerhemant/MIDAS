@@ -163,6 +163,7 @@ static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], 
 	sprintf(InFile,"%s/%s_%0*d_%d_PS.csv",OutFolderName,FileStem,Padding,FileNr,RingNr);
     FILE *infileread;
     infileread = fopen(InFile,"r");
+    if (infileread == NULL) printf("Could not read the input file %s\n",InFile);
     struct InputData *MyData;
     MyData = malloc(nOverlapsMaxPerImage*sizeof(*MyData));
     int counter = 0;
@@ -211,6 +212,10 @@ int main(int argc, char *argv[]){
     fflush(stdout);
     char aline[1000], *str, dummy[1000];
     fileParam = fopen(ParamFN,"r");
+    if (fileParam == NULL){
+		printf("Could not read file %s\n",ParamFN);
+		return 1;
+	}
     int LowNr = 1;
     char Folder[1024], FileStem[1024],*TmpFolder,fs[1024];
     int LayerNr;
