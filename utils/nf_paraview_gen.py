@@ -358,35 +358,35 @@ for fnr in range(startnr,endnr+1):
 	Confidence[dataNr,:,:] = outarr[:,:,4]
 	PhaseNr[dataNr,:,:] = outarr[:,:,5]
 	dataNr += 1
-	# ~ plt.imshow(Confidence[0,:,:])
-	# ~ plt.show()
+	plt.imshow(Confidence[0,:,:])
+	plt.show()
 
-# ~ Euler1.astype(np.float64).tofile('EulerAngles1.bin')
-# ~ Euler2.astype(np.float64).tofile('EulerAngles2.bin')
-# ~ Euler3.astype(np.float64).tofile('EulerAngles3.bin')
-# ~ KamArr = np.zeros((Dims))
+Euler1.astype(np.float64).tofile('EulerAngles1.bin')
+Euler2.astype(np.float64).tofile('EulerAngles2.bin')
+Euler3.astype(np.float64).tofile('EulerAngles3.bin')
+KamArr = np.zeros((Dims))
 
-# ~ # We need to provide the following:
-# ~ # orientTol, dims[0], dims[1], dims[2], fillVal, spaceGroup.
-# ~ home = os.path.expanduser("~")
-# ~ grainsCalc = ctypes.CDLL(home + "/opt/MIDAS/NF_HEDM/bin/NFGrainsCalc.so")
-# ~ grainsCalc.calcGrainNrs.argtypes = (ctypes.c_double,
-										# ~ ctypes.c_int,
-										# ~ ctypes.c_int,
-										# ~ ctypes.c_int,
-										# ~ ctypes.c_double,
-										# ~ ctypes.c_int,
-									# ~ )
-# ~ grainsCalc.calcGrainNrs.restype = None
-# ~ grainsCalc.calcGrainNrs(orientTol,Dims[0],Dims[1],Dims[2],fillVal,spaceGroup)
-# ~ grains = np.fromfile('GrainNrs.bin',dtype=np.int32)
-# ~ grains = grains.reshape((Dims))
-# ~ grainSizes = np.fromfile('GrainSizes.bin',dtype=np.int32)
-# ~ grainSizes = grainSizes.reshape((Dims))
-# ~ KamArr = np.fromfile('KAMArr.bin',dtype=np.float64)
-# ~ KamArr = KamArr.reshape((Dims))
+# We need to provide the following:
+# orientTol, dims[0], dims[1], dims[2], fillVal, spaceGroup.
+home = os.path.expanduser("~")
+grainsCalc = ctypes.CDLL(home + "/opt/MIDAS/NF_HEDM/bin/NFGrainsCalc.so")
+grainsCalc.calcGrainNrs.argtypes = (ctypes.c_double,
+										ctypes.c_int,
+										ctypes.c_int,
+										ctypes.c_int,
+										ctypes.c_double,
+										ctypes.c_int,
+									)
+grainsCalc.calcGrainNrs.restype = None
+grainsCalc.calcGrainNrs(orientTol,Dims[0],Dims[1],Dims[2],fillVal,spaceGroup)
+grains = np.fromfile('GrainNrs.bin',dtype=np.int32)
+grains = grains.reshape((Dims))
+grainSizes = np.fromfile('GrainSizes.bin',dtype=np.int32)
+grainSizes = grainSizes.reshape((Dims))
+KamArr = np.fromfile('KAMArr.bin',dtype=np.float64)
+KamArr = KamArr.reshape((Dims))
 
-# ~ # write files
-# ~ writeHDF5File(grainIDs.astype(np.int32),Euler1.astype(np.float32),Euler2.astype(np.float32),Euler3.astype(np.float32),Confidence.astype(np.float32),PhaseNr.astype(np.float32),KamArr.astype(np.float32),grains.astype(np.int32),grainSizes.astype(np.int32),outfn+'.h5')
-# ~ writeXMLXdmf(Dims,[xyspacing,xyspacing,zspacing],outfn+'.xmf',outfn,sampleName)
+# write files
+writeHDF5File(grainIDs.astype(np.int32),Euler1.astype(np.float32),Euler2.astype(np.float32),Euler3.astype(np.float32),Confidence.astype(np.float32),PhaseNr.astype(np.float32),KamArr.astype(np.float32),grains.astype(np.int32),grainSizes.astype(np.int32),outfn+'.h5')
+writeXMLXdmf(Dims,[xyspacing,xyspacing,zspacing],outfn+'.xmf',outfn,sampleName)
 writeH5EBSDFile(Euler1,Euler2,Euler3,Confidence,PhaseNr,outfn+'.h5ebsd')
