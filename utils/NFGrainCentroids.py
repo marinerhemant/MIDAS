@@ -2,8 +2,10 @@ import numpy as np
 import os
 from math import radians, cos, sin
 
-nLayers = 7
-nGrains = 226
+# ~ nLayers = 7
+# ~ nGrains = 226
+nLayers = 5
+nGrains = 382
 micFN = 'MicrostructureZrTxt.mic'
 outFN = 'GrainCentroidsWeighted.csv'
 minConfidence = 0.5

@@ -177,14 +177,17 @@ def plot_updater():
 		startframenr = newstartframenr
 		dist = newdist
 		draw_plot()
-		if micfiledata is not None:
+		if bPlot is not None:
 			plotb()
+		if micPlot is not None:
+			plotmic()
 
 def plotb():
 	global horvert
 	global clickpos
 	global cb
 	global initplotb
+	global micPlot, micfiledata, bPlot
 	if cb is not None:
 		cb.remove()
 		cb = None
@@ -226,6 +229,8 @@ def plotb():
 		canvas.draw()
 		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 	b.set_aspect('auto')
+	bPlot = 1
+	micPlot = None
 	micfiledata = None
 
 def onclick(event):
@@ -677,7 +682,6 @@ def plot_update_spot():
 	minOme = min(startome,endome)
 	maxOme = max(startome,endome)
 	startframenr = int(startframenrvar.get())
-
 	thisome = float(simulatedspots[spotnr-1].split(' ')[2])
 	rad = float(simulatedspots[spotnr-1].split(' ')[0])
 	rad = rad * thislsd/simlsd
@@ -799,6 +803,9 @@ def plotmic():
 	global colVar
 	global cb
 	global micfiledatacut
+	global micPlot, bPlot
+	micPlot = 1
+	bPlot = None
 	if not initplotb:
 		lims = [b.get_xlim(), b.get_ylim()]
 		cb.remove()
@@ -1081,6 +1088,8 @@ cutconfidencevar.set(str(cutoffconfidence))
 initplotb = 1
 colVar = Tk.IntVar()
 colVar.set(10)
+bPlot = None
+micPlot = None
 micfiledata = None
 dolog = Tk.IntVar()
 r = Tk.StringVar()
