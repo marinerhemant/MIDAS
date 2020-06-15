@@ -3258,7 +3258,7 @@ DoIndexing(
       if ( nPlaneNormals == 0 ) {
         if (usingFriedelPair == 1){
             printf("No Friedel pair found, exiting.\n");
-            exit(0);
+            //~ exit(0);
         }
          usingFriedelPair = 0; // affects skipping
          printf("Trying all plane normals.\n");

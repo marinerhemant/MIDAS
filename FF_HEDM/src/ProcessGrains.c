@@ -426,7 +426,6 @@ int main(int argc, char *argv[])
 		GrainPositions[i] = 0;
 		nGrainsMatched[i] = 0;
 		if (IDsToKeep[i] == false){
-			printf("Skip %d\n",i);
 			IDsChecked[i] = true;
 		}
 	}
