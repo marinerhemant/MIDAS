@@ -1880,7 +1880,9 @@ int main(int argc, char *argv[])
 	for (i=0;i<nSpotsComp;i++){
 		for (j=0;j<22;j++){
 			SpotsCompFNContents[i][j] = SpotsComp[i][j];
+			printf("%lf ",SpotsComp[i][j]);
 		}
+		printf("\n");
 	}
 	int rcSpots = pwrite(resultSpotsCompFN,SpotsCompFNContents,SizeSpotsFile,OffStSpotsFile);
     if (rcSpots < 0){
