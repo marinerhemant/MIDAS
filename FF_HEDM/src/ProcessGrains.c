@@ -596,7 +596,7 @@ int main(int argc, char *argv[])
 			}
 		}
 		if (OPs[rown][22] < 0.1){
-			printf("Skipped\n.")
+			printf("Skipped\n.");
 			continue;
 		}
 
