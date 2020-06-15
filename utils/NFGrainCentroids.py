@@ -2,9 +2,9 @@ import numpy as np
 import os
 from math import radians, cos, sin
 
-# ~ nLayers = 7
+nLayers = 7
 # ~ nGrains = 226
-nLayers = 5
+# ~ nLayers = 5
 nGrains = 382
 micFN = 'MicrostructureZrTxt.mic'
 outFN = 'GrainCentroidsWeighted.csv'
@@ -65,3 +65,8 @@ np.savetxt(outFN,outArr)
 import matplotlib.pyplot as plt
 plt.errorbar(outArr[:,0],outArr[:,1],yerr=outArr[:,3],xerr=outArr[:,2],linewidth=0,markersize=10,marker='o')
 plt.show()
+
+import numpy as np
+outArr = np.genfromtxt('GrainCentroidsWeighted.csv')
+import matplotlib.pyplot as plt
+fig,ax = plt.subplots(1,1); ax.errorbar(outArr[:,0],outArr[:,1],yerr=outArr[:,3],xerr=outArr[:,2],linewidth=0,markersize=10,marker='o'); ax.set_aspect('equal'); plt.show()
