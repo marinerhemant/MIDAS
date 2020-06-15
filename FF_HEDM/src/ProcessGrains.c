@@ -394,7 +394,6 @@ int main(int argc, char *argv[])
 	for (i=0;i<nrIDs;i++){
 		readKey = fread(keyID,2*sizeof(int),1,fileKey);
 		IDsToKeep[i] = true;
-		//~ printf("%d %d\n",keyID[0],keyID[1]);
 		if (keyID[0] == 0){
 			IDsToKeep[i] = false;
 		}
@@ -406,10 +405,10 @@ int main(int argc, char *argv[])
 				continue;
 			}
 			OPs[i][counter] = OPThis[j];
-			//~ printf("%lf ",OPs[i][counter]);
+			printf("%lf ",OPs[i][counter]);
 			counter++;
 		}
-		//~ printf("\n");
+		printf("\n");
 		Radiuses[i] = OPThis[25];
 	}
 	int StartingID,ThisID1,ThisID2;
