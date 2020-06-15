@@ -567,6 +567,7 @@ int main(int argc, char *argv[])
 		DoneAlready = 0;
 		for (j=0;j<cres;j++){
 			if (IDsDone[j] == IDs[rown]){
+				printf("Done Already\n.");
 				DoneAlready = 1;
 			}
 		}
