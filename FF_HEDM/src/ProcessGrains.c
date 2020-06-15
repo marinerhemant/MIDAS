@@ -405,10 +405,10 @@ int main(int argc, char *argv[])
 				continue;
 			}
 			OPs[i][counter] = OPThis[j];
-			printf("%lf ",OPs[i][counter]);
+			//~ printf("%lf ",OPs[i][counter]);
 			counter++;
 		}
-		printf("\n");
+		//~ printf("\n");
 		Radiuses[i] = OPThis[25];
 	}
 	int StartingID,ThisID1,ThisID2;
@@ -449,8 +449,11 @@ int main(int argc, char *argv[])
 			}
 			totcount+=counten;
 			nGrainsMatched[i] = counten;
-			printf("%d %d\n",i,counten);
-			if (counten < MinNrSpots) continue;
+			//~ printf("%d %d\n",i,counten);
+			if (counten < MinNrSpots){
+				printf()
+				continue;
+			}
 			for (j=0;j<counten;j++){
 				if (ID_IA_MAT[(j*4)+2] < minIA){
 					minIA = ID_IA_MAT[(j*4)+2];
@@ -461,9 +464,10 @@ int main(int argc, char *argv[])
 			GrainPositions[nGrainPositions] = BestGrainPos;
 			Radiuses[BestGrainPos] = maxRadThis;
 			nGrainPositions ++;
+		} else {
+			printf("%d\n",i);
 		}
 	}
-	printf("%d\n",nGrainPositions);
 
 	//Write out
 	char GrainsFileName[1024];
