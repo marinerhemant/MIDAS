@@ -37,9 +37,10 @@ ${PFDIR}/SHMOperatorsTracking.sh
 mkdir -p Output
 mkdir -p Results
 mkdir -p logs
+thisfldr=$( pwd )
 ${BINFOLDER}/GrainTracking $3 paramstest.txt
 export JAVA_HOME=$HOME/.MIDAS/jre1.8.0_181/
 export PATH="$JAVA_HOME/bin:$PATH"
-${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/RefineTracking.swift
+${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/RefineTracking.swift -outfolder=${thisfldr}/logs
 ${BINFOLDER}/ProcessGrains $2
 ls -lh
