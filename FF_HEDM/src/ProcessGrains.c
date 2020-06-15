@@ -394,8 +394,8 @@ int main(int argc, char *argv[])
 	for (i=0;i<nrIDs;i++){
 		readKey = fread(keyID,2*sizeof(int),1,fileKey);
 		IDsToKeep[i] = true;
+		printf("%d %d\n",keyID[0],keyID[1]);
 		if (keyID[0] == 0){
-			printf("%d %d\n",keyID[0],keyID[1]);
 			IDsToKeep[i] = false;
 		}
 		NrIDsPerID[i] = keyID[1];
