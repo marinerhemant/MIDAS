@@ -320,6 +320,8 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 	}
 	int GrainID,nrFilled;
 	double mult;
+	int *GrainIDS, tempID;
+	GrainIDS = malloc(nGrains*sizeof(*GrainIDS));
 	for (i=0;i<nGrains;i++){
 		printf("Trying to track %d grain out of %d grains. ",i+1,nGrains);
 		do{ // Check for both EOF and ID matching GrainID
@@ -375,7 +377,35 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			printf("Nothing found. Skipping to next grain.\n");
 			continue;
 		}
-		GrainID = IDs[0];
+		int IDDone = 0;
+		for (j=0;j<i-1;j++){
+			if (GrainIDS[j] == IDs[0]){
+				IDDone = 1;
+			}
+		}
+		if (IDDone) {
+			IDDone = 0;
+			for (j=0;j<i-1;j++){
+				if (GrainIDS[j] == IDs[1]){
+					IDDone = 1;
+				}
+			}
+			if (IDDone){
+				IDDone = 0;
+				for (j=0;j<i-1;j++){
+					if (GrainIDS[j] == IDs[2]){
+						IDDone = 1;
+					}
+				}
+				if (IDDone) tempID = IDs[3];
+				else tempID = IDs[2];
+			} else {
+				tempID = IDs[1];
+			}
+		} else {
+			tempID = IDs[0];
+		}
+		GrainID = tempID;
 		printf("New grain ID: %d, nr of spots expected: %d, Nr of spots matched: %d\n",GrainID, spotNr, nrFilled);
 		GrainInfo[i][18] = (double)nrFilled/ (double)spotNr;
 		// Write CSV files and we are done.
