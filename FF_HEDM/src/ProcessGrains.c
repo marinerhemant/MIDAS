@@ -451,7 +451,7 @@ int main(int argc, char *argv[])
 			nGrainsMatched[i] = counten;
 			//~ printf("%d %d\n",i,counten);
 			if (counten < MinNrSpots){
-				printf()
+				printf("Skipped\n");
 				continue;
 			}
 			for (j=0;j<counten;j++){
