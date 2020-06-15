@@ -395,6 +395,7 @@ int main(int argc, char *argv[])
 		readKey = fread(keyID,2*sizeof(int),1,fileKey);
 		IDsToKeep[i] = true;
 		if (keyID[0] == 0){
+			printf("%d %d\n",keyID[0],keyID[1]);
 			IDsToKeep[i] = false;
 		}
 		NrIDsPerID[i] = keyID[1];
@@ -452,7 +453,6 @@ int main(int argc, char *argv[])
 			nGrainsMatched[i] = counten;
 			//~ printf("%d %d\n",i,counten);
 			if (counten < MinNrSpots){
-				printf("Skipped\n");
 				continue;
 			}
 			for (j=0;j<counten;j++){
@@ -465,11 +465,8 @@ int main(int argc, char *argv[])
 			GrainPositions[nGrainPositions] = BestGrainPos;
 			Radiuses[BestGrainPos] = maxRadThis;
 			nGrainPositions ++;
-		} else {
-			printf("%d\n",i);
 		}
 	}
-
 	//Write out
 	char GrainsFileName[1024];
 	sprintf(GrainsFileName,"Grains.csv");
