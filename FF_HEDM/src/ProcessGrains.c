@@ -595,7 +595,10 @@ int main(int argc, char *argv[])
 				cres++;
 			}
 		}
-		if (OPs[rown][22] < 0.1) continue;
+		if (OPs[rown][22] < 0.1){
+			printf("Skipped\n.")
+			continue;
+		}
 
 		nspots = NrIDsPerID[rown];
 		OffSt = rown;
