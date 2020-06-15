@@ -405,6 +405,7 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 		} else {
 			tempID = IDs[0];
 		}
+		GrainIDS[i] = tempID;
 		GrainID = tempID;
 		printf("New grain ID: %d, nr of spots expected: %d, Nr of spots matched: %d\n",GrainID, spotNr, nrFilled);
 		GrainInfo[i][18] = (double)nrFilled/ (double)spotNr;
