@@ -1804,7 +1804,7 @@ int main(int argc, char *argv[])
 	size_t OffStKeyFile = SizeKeyFile;
 	OffStKeyFile *= rowNr;
 	int KeyInfo[2] = {SpId , nSpotsComp};
-	printf("%d %d %d %d\n",SpId,nSpotsComp,(int)OffStKeyFile,rowNr);
+	//~ printf("%d %d %d %d\n",SpId,nSpotsComp,(int)OffStKeyFile,rowNr);
 	int rcKey = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
     if (rcKey < 0){
 		printf("Could not write to output file.\n");
@@ -1880,9 +1880,9 @@ int main(int argc, char *argv[])
 	for (i=0;i<nSpotsComp;i++){
 		for (j=0;j<22;j++){
 			SpotsCompFNContents[i][j] = SpotsComp[i][j];
-			printf("%lf ",SpotsComp[i][j]);
+			//~ printf("%lf ",SpotsComp[i][j]);
 		}
-		printf("\n");
+		//~ printf("\n");
 	}
 	int rcSpots = pwrite(resultSpotsCompFN,SpotsCompFNContents,SizeSpotsFile,OffStSpotsFile);
     if (rcSpots < 0){
