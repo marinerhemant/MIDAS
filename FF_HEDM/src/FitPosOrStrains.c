@@ -1804,6 +1804,7 @@ int main(int argc, char *argv[])
 	size_t OffStKeyFile = SizeKeyFile;
 	OffStKeyFile *= rowNr;
 	int KeyInfo[2] = {SpId , nSpotsComp};
+	printf("%d %d\n",SpId,nSpotsComp);
 	int rcKey = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
     if (rcKey < 0){
 		printf("Could not write to output file.\n");
