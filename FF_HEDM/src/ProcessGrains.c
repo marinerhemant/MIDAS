@@ -464,6 +464,7 @@ int main(int argc, char *argv[])
 			nGrainPositions ++;
 		}
 	}
+	printf("%d\n",nGrainPositions);
 
 	//Write out
 	char GrainsFileName[1024];
