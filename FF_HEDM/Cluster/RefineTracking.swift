@@ -5,7 +5,7 @@
 
 type file;
 
-app indexrefine (file param, int spotsinput, file hkl, file spotsfile, file simout)
+app (file simout) indexrefine (file param, int spotsinput, file hkl, file spotsfile)
 {
    strainsrefine spotsinput stdout=filename(simout);
 }
@@ -19,5 +19,5 @@ int spots[] = readData("SpotsToIndex.csv");
 
 foreach i in spots {
 	file simout<simple_mapper;location=outfldr,prefix=strcat("Refine_",i),suffix=".out">;
-    indexrefine(params, i, hkl, spotsfile,simout);
+    simout = indexrefine(params, i, hkl, spotsfile);
 }
