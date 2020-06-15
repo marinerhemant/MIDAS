@@ -8,6 +8,6 @@
 source ${HOME}/.MIDAS/paths
 echo "Spot ID:"
 echo $1
-set +e
+#~ set +e
 ${BINFOLDER}/FitPosOrStrains paramstest.txt $1
 echo $1
