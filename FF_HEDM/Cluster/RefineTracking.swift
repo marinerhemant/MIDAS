@@ -18,6 +18,6 @@ string outfldr = arg("outfolder","/clhome/TOMO1/aboc");
 int spots[] = readData("SpotsToIndex.csv");
 
 foreach i in spots {
-	file simout<simple_mapper;location=strcat(outfldr,"output"),prefix=strcat("Refine_",i),suffix=".out">;
+	file simout<simple_mapper;location=outfldr,prefix=strcat("Refine_",i),suffix=".out">;
     indexrefine(params, i, hkl, spotsfile,simout);
 }
