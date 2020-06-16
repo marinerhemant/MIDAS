@@ -43,11 +43,11 @@ formula = 'NiTi7'
 materialName = 'NS9'
 sample = 'HeatHTNS9'
 scanN = 'Begin'
-spaceGroup = 229 # This is used for misorientation calculation
+spaceGroup = 194 # This is used for misorientation calculation
 startnr = 0
 endnr = 36
 thisPhaseNr = 1
-LatC = np.array([3.6,3.6,3.6,90,90,90],dtype=np.float32)
+LatC = np.array([2.9243, 2.9243, 4.6726 ,90.0, 90.0, 120.0],dtype=np.float32)
 minConfidence = 0.3
 orientTol = 10.0 # In degrees, used to define grains
 zspacing = -2
@@ -94,7 +94,7 @@ origHead = '''# TEM_PIXperUM          1.000000
            # MaterialName
            # Formula
            # Info
-           # Symmetry              43
+           # Symmetry              62
            # LatticeConstants
            # NumberFamilies
            # hklFamilies
@@ -181,7 +181,7 @@ def writeH5EBSDFile(eul1,eul2,eul3,conf,phNr,fileID):
 		phHGPL.create_dataset('MaterialName',data=np.string_(materialName))
 		phHGPL.create_dataset('LatticeConstants',data=LatC)
 		phHGPL.create_dataset('Phase',data=np.array(thisPhaseNr,dtype=np.int32))
-		phHGPL.create_dataset('Symmetry',data=np.array([43],dtype=np.int32))
+		phHGPL.create_dataset('Symmetry',data=np.array([62],dtype=np.int32))
 		phHGPL.create_dataset('NumberFamilies',data=np.array([4],dtype=np.int32))
 		hklGPL = phHGPL.create_group('hklFamilies')
 		arrDs0 = np.array([1]).astype(compound_dt)
