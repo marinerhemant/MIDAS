@@ -12,28 +12,4 @@ Some misorientation functions are taken from the ODFPF package from Cornell (htt
 
 Downloads jre, swift binary, NLOPT, LIBTIFF, NETCDF (curl, hdf5, zlib) for compilation of N(F)F-HEDM codes.
 
-More details at https://github.com/marinerhemant/MIDAS/wiki
-
-MACHINE_NAMEs supported during run:
-* local
-* orthrosall
-* orthrosregular
-* orthrosextra
-* orthrosnew
-* lcrc_cloud
-* edison_debug
-* edison_realtime
-* cori_realtime
-* biocluster
-* conte
-* rice
-* halstead
-* darwin
-* blues_batch
-* blues_haswell
-* bebop
-* stamped_normal
-* stampede_largemem
-* notchpeak
-
-If using local run give nCPUs to use during run.
+**More details at https://github.com/marinerhemant/MIDAS/wiki**
