@@ -358,8 +358,6 @@ for fnr in range(startnr,endnr+1):
 	Confidence[dataNr,:,:] = outarr[:,:,4]
 	PhaseNr[dataNr,:,:] = outarr[:,:,5]
 	dataNr += 1
-	plt.imshow(Confidence[0,:,:])
-	plt.show()
 
 Euler1.astype(np.float64).tofile('EulerAngles1.bin')
 Euler2.astype(np.float64).tofile('EulerAngles2.bin')
