@@ -304,8 +304,8 @@ def mapData(data,dims,outArr):
 	extent = int(math.ceil(5*gridSpacing/spacing))
 	outArr[:,:,6] = 10000
 	for i in range(nrRows):
-		xPos = data[i,4]
-		yPos = data[i,3]
+		xPos = data[i,3]
+		yPos = data[i,4]
 		xBinNr = int(xPos/spacing + dims[0]/2)
 		yBinNr = int(yPos/spacing + dims[1]/2)
 		xT = spacing*(xBinNr - dims[0]/2)
