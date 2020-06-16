@@ -594,7 +594,7 @@ main(int argc, char *argv[])
         counter+=1;
     }
     sscanf(line,"%lf %lf %lf %lf %lf",&y1,&y2,&xs,&ys,&gs);
-    printf("Processing line: %s\n.",line);
+    printf("Processing line: %s",line);
     fclose(fp);
     if (y1>y2){
         XY[0][0] =xs;

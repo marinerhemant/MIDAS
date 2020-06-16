@@ -212,6 +212,8 @@ if topParamFile[0] != '/':
 startLayerNr = int(sys.argv[2])
 endLayerNr = int(sys.argv[3])
 oldStateFolder = getValueFromParamFile(topParamFile,'OldStateFolder')[0][0]
+##### Add PeaksFolder to supply peaks
+# ~ oldPeaksFolder = getValueFromParamFile(topParamFile,'PeaksFolder')[0][0]
 
 for layerNr in range(startLayerNr,endLayerNr+1):
 	os.chdir(oldStateFolder)
