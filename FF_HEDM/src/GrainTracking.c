@@ -378,26 +378,14 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 			continue;
 		}
 		int IDDone = 0;
-		for (j=0;j<i-1;j++){
-			if (GrainIDS[j] == IDs[0]){
-				IDDone = 1;
-			}
-		}
-		if (IDDone) {
+		for (j=0;j<i;j++) if (GrainIDS[j] == IDs[0]) IDDone = 1;
+		if (IDDone == 1) {
 			IDDone = 0;
-			for (j=0;j<i-1;j++){
-				if (GrainIDS[j] == IDs[1]){
-					IDDone = 1;
-				}
-			}
-			if (IDDone){
+			for (j=0;j<i;j++) if (GrainIDS[j] == IDs[1]) IDDone = 1;
+			if (IDDone == 1){
 				IDDone = 0;
-				for (j=0;j<i-1;j++){
-					if (GrainIDS[j] == IDs[2]){
-						IDDone = 1;
-					}
-				}
-				if (IDDone) tempID = IDs[3];
+				for (j=0;j<i;j++) if (GrainIDS[j] == IDs[2]) IDDone = 1;
+				if (IDDone == 1) tempID = IDs[3];
 				else tempID = IDs[2];
 			} else {
 				tempID = IDs[1];
