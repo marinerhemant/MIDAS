@@ -26,7 +26,7 @@ for nr,fstm in enumerate(fileStems):
 	startFileNr = startFileNrs[nr]
 	outfn = outFolder + fstm + '.csv'
 	outf = open(outfn,'w')
-	outf.write('FrameNr\tNrPixels\txCen\tyCen\n')
+	outf.write('FrameNr\tNrPixels\txCen\tyCen\tSumInt\n')
 	for incr in range(nrFilesPerLayer):
 		thisFileNr = startFileNr + incr
 		fn = dataFolder + fstm + '_' + str(thisFileNr).zfill(padding) + ext
