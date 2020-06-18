@@ -224,7 +224,10 @@ if (endLayerNr == startLayerNr) and (len(oldPeaksFolder) == 1):
 		os.makedirs(outFldr)
 	PSThisLayer = topParamFile+'.Layer'+str(endLayerNr)+'.txt'
 	shutil.copyfile(topParamFile,outFldr + '/' +PSThisLayer)
-	fileAppend(outFldr + '/' +PSThisLayer,'OldFolder '+oldStateFolder+'\n')
+	os.chdir(outFldr)
+	fileAppend(PSThisLayer,'OldFolder '+oldStateFolder+'\n')
+	removeLinesFile(PSThisLayer,'MinNrSpots')
+	fileAppend(PSThisLayer,'MinNrSpots 1')
 	oldPeaksFolder = oldPeaksFolder[0][0]
 	shutil.copy2(oldPeaksFolder+'/InputAll.csv',outFldr)
 	shutil.copy2(oldPeaksFolder+'/InputAllExtraInfoFittingAll.csv',outFldr)
@@ -234,12 +237,11 @@ if (endLayerNr == startLayerNr) and (len(oldPeaksFolder) == 1):
 	shutil.copy2(oldPeaksFolder+'/paramstest.txt',outFldr)
 	shutil.copy2(oldPeaksFolder+'/SpotsToIndex.csv',outFldr)
 	shutil.copy2(oldPeaksFolder+'/Spots.bin',outFldr)
-	os.chdir(outFldr)
 	removeLinesFile(os.getcwd()+'/paramstest.txt','OutputFolder')
 	removeLinesFile(os.getcwd()+'/paramstest.txt','ResultFolder')
 	fileAppend(os.getcwd()+'/paramstest.txt','OutputFolder '+outFldr+'/Output')
 	fileAppend(os.getcwd()+'/paramstest.txt','ResultFolder '+outFldr+'/Results'
-	fileAppend(os.getcwd()+'/paramstest.txt','GrainTracking 1')
+	fileAppend(os.getcwd()+'/paramstest.txt','GrainTracking 1\n')
 	fileAppend(os.getcwd()+'/paramstest.txt','OldFolder '+oldStateFolder)
 	call([pfdir+'/RefineTracking.sh',nNodes,PSThisLayer,oldStateFolder,sys.argv[5]])
 else:
