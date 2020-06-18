@@ -217,7 +217,8 @@ oldPeaksFolder = getValueFromParamFile(topParamFile,'PeaksFolder')
 
 if (endLayerNr == startLayerNr) and (len(oldPeaksFolder) == 1):
 	layerNr = startLayerNr
-	paramFile = topParamFile
+	paramFile = os.path.basename(topParamFile)
+	print(paramFile)
 	seedFolder = getValueFromParamFile(paramFile,'SeedFolder')[0][0]
 	ide = strftime("%Y_%m_%d_%H_%M_%S", gmtime())
 	fileStem = getValueFromParamFile(paramFile,'FileStem')[0][0]
@@ -225,8 +226,8 @@ if (endLayerNr == startLayerNr) and (len(oldPeaksFolder) == 1):
 	outFldr = seedFolder + '/' + layerDir + '/'
 	if not os.path.exists(outFldr):
 		os.makedirs(outFldr)
-	PSThisLayer = topParamFile+'.Layer'+str(endLayerNr)+'.txt'
-	shutil.copyfile(topParamFile,outFldr + '/' +PSThisLayer)
+	PSThisLayer = paramFile+'.Layer'+str(endLayerNr)+'.txt'
+	shutil.copyfile(paramFile,outFldr + '/' +PSThisLayer)
 	os.chdir(outFldr)
 	fileAppend(PSThisLayer,'OldFolder '+oldStateFolder+'\n')
 	removeLinesFile(PSThisLayer,'MinNrSpots')
