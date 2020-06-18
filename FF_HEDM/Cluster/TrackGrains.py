@@ -240,7 +240,7 @@ if (endLayerNr == startLayerNr) and (len(oldPeaksFolder) == 1):
 	removeLinesFile(os.getcwd()+'/paramstest.txt','OutputFolder')
 	removeLinesFile(os.getcwd()+'/paramstest.txt','ResultFolder')
 	fileAppend(os.getcwd()+'/paramstest.txt','OutputFolder '+outFldr+'/Output')
-	fileAppend(os.getcwd()+'/paramstest.txt','ResultFolder '+outFldr+'/Results'
+	fileAppend(os.getcwd()+'/paramstest.txt','ResultFolder '+outFldr+'/Results')
 	fileAppend(os.getcwd()+'/paramstest.txt','GrainTracking 1\n')
 	fileAppend(os.getcwd()+'/paramstest.txt','OldFolder '+oldStateFolder)
 	call([pfdir+'/RefineTracking.sh',nNodes,PSThisLayer,oldStateFolder,sys.argv[5]])
