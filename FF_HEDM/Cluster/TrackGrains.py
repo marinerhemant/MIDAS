@@ -216,6 +216,7 @@ oldStateFolder = getValueFromParamFile(topParamFile,'OldStateFolder')[0][0]
 oldPeaksFolder = getValueFromParamFile(topParamFile,'PeaksFolder')
 
 if (endLayerNr == startLayerNr) and (len(oldPeaksFolder) == 1):
+	paramFile = topParamFile
 	seedFolder = getValueFromParamFile(paramFile,'SeedFolder')[0][0]
 	ide = strftime("%Y_%m_%d_%H_%M_%S", gmtime())
 	layerDir = fileStem + '_Layer' + str(layerNr) + '_Analysis_Time_' + ide
