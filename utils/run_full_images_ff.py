@@ -15,7 +15,6 @@ ext = '.raw'
 nrPixels = nrPxY*nrPxZ
 header = 8192 + bytesPerPx*nrPixels
 nrFramesPerFile = 3000
-# ~ nrFramesPerFile = 1
 startFileNrs = [15, 25, 40, 53]
 padding = 6
 nrFilesPerLayer = 6
@@ -33,8 +32,6 @@ for nr,fstm in enumerate(fileStems):
 		f = open(fn)
 		f.seek(header,0)
 		for frameNr in range(nrFramesPerFile):
-			# ~ bytesToSkip = header + frameNr*bytesPerPx*nrPixels
-			# ~ f.seek(bytesToSkip,0)
 			data = np.fromfile(f,dtype=np.int32,count=(nrPixels))
 			data = data.reshape((nrPxY,nrPxZ))
 			data = np.flip(data,0)

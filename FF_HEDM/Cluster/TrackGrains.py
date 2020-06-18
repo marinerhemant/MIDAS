@@ -213,24 +213,51 @@ startLayerNr = int(sys.argv[2])
 endLayerNr = int(sys.argv[3])
 oldStateFolder = getValueFromParamFile(topParamFile,'OldStateFolder')[0][0]
 ##### Add PeaksFolder to supply peaks
-# ~ oldPeaksFolder = getValueFromParamFile(topParamFile,'PeaksFolder')[0][0]
+oldPeaksFolder = getValueFromParamFile(topParamFile,'PeaksFolder')
 
-for layerNr in range(startLayerNr,endLayerNr+1):
-	os.chdir(oldStateFolder)
-	folders = [s for s in glob('*/') if 'Layer'+str(layerNr) in s]
-	fileStem = getValueFromParamFile(topParamFile,'FileStem')[0][0]
-	folders = [folder for folder in folders if fileStem in folder ]
-	if len(folders) is 0:
-		fileStem = getValueFromParamFile(topParamFile,'OldFileStem')[0][0]
+if (endLayerNr == startLayerNr) and (len(oldPeaksFolder) == 1):
+	seedFolder = getValueFromParamFile(paramFile,'SeedFolder')[0][0]
+	ide = strftime("%Y_%m_%d_%H_%M_%S", gmtime())
+	layerDir = fileStem + '_Layer' + str(layerNr) + '_Analysis_Time_' + ide
+	outFldr = seedFolder + '/' + layerDir + '/'
+	if not os.path.exists(outFldr):
+		os.makedirs(outFldr)
+	PSThisLayer = topParamFile+'.Layer'+str(endLayerNr)+'.txt'
+	shutil.copyfile(topParamFile,outFldr + '/' +PSThisLayer)
+	fileAppend(outFldr + '/' +PSThisLayer,'OldFolder '+oldStateFolder+'\n')
+	oldPeaksFolder = oldPeaksFolder[0][0]
+	shutil.copy2(oldPeaksFolder+'/InputAll.csv',outFldr)
+	shutil.copy2(oldPeaksFolder+'/InputAllExtraInfoFittingAll.csv',outFldr)
+	shutil.copy2(oldPeaksFolder+'/Data.bin',outFldr)
+	shutil.copy2(oldPeaksFolder+'/ExtraInfo.bin',outFldr)
+	shutil.copy2(oldPeaksFolder+'/hkls.csv',outFldr)
+	shutil.copy2(oldPeaksFolder+'/paramstest.txt',outFldr)
+	shutil.copy2(oldPeaksFolder+'/SpotsToIndex.csv',outFldr)
+	shutil.copy2(oldPeaksFolder+'/Spots.bin',outFldr)
+	os.chdir(outFldr)
+	removeLinesFile(os.getcwd()+'/paramstest.txt','OutputFolder')
+	removeLinesFile(os.getcwd()+'/paramstest.txt','ResultFolder')
+	fileAppend(os.getcwd()+'/paramstest.txt','OutputFolder '+outFldr+'/Output')
+	fileAppend(os.getcwd()+'/paramstest.txt','ResultFolder '+outFldr+'/Results'
+	fileAppend(os.getcwd()+'/paramstest.txt','GrainTracking 1')
+	fileAppend(os.getcwd()+'/paramstest.txt','OldFolder '+oldStateFolder)
+	call([pfdir+'/RefineTracking.sh',nNodes,PSThisLayer,oldStateFolder,sys.argv[5]])
+else:
+	for layerNr in range(startLayerNr,endLayerNr+1):
+		os.chdir(oldStateFolder)
 		folders = [s for s in glob('*/') if 'Layer'+str(layerNr) in s]
 		fileStem = getValueFromParamFile(topParamFile,'FileStem')[0][0]
 		folders = [folder for folder in folders if fileStem in folder ]
 		if len(folders) is 0:
-			print("Could not find the OldStateFolder, did you include an OldFileStem name?")
-			sys.exit()
-	oldFolder = folders[-1]
-	PSThisLayer = topParamFile+'.Layer'+str(layerNr)+'.txt'
-	shutil.copyfile(topParamFile,PSThisLayer)
-	fileAppend(PSThisLayer,"OldFolder "+oldStateFolder+'/'+oldFolder+"\n")
-	GrainTracking(PSThisLayer,layerNr,sys.argv[4],sys.argv[5])
-
+			fileStem = getValueFromParamFile(topParamFile,'OldFileStem')[0][0]
+			folders = [s for s in glob('*/') if 'Layer'+str(layerNr) in s]
+			# ~ fileStem = getValueFromParamFile(topParamFile,'FileStem')[0][0]
+			folders = [folder for folder in folders if fileStem in folder ]
+			if len(folders) is 0:
+				print("Could not find the OldStateFolder, did you include an OldFileStem name?")
+				sys.exit()
+		oldFolder = folders[-1]
+		PSThisLayer = topParamFile+'.Layer'+str(layerNr)+'.txt'
+		shutil.copyfile(topParamFile,PSThisLayer)
+		fileAppend(PSThisLayer,"OldFolder "+oldStateFolder+'/'+oldFolder+"\n")
+		GrainTracking(PSThisLayer,layerNr,sys.argv[4],sys.argv[5])
