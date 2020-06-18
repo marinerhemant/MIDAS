@@ -247,7 +247,7 @@ if (endLayerNr == startLayerNr) and (len(oldPeaksFolder) == 1):
 	fileAppend(os.getcwd()+'/paramstest.txt','ResultFolder '+outFldr+'/Results')
 	fileAppend(os.getcwd()+'/paramstest.txt','GrainTracking 1\n')
 	fileAppend(os.getcwd()+'/paramstest.txt','OldFolder '+oldStateFolder)
-	call([pfdir+'/RefineTracking.sh',nNodes,PSThisLayer,sys.argv[4],sys.argv[5]])
+	call([pfdir+'/RefineTracking.sh',sys.argv[4],PSThisLayer,oldStateFolder,sys.argv[5]])
 else:
 	for layerNr in range(startLayerNr,endLayerNr+1):
 		os.chdir(oldStateFolder)
