@@ -102,9 +102,6 @@ for ring in ringNrs:
 	radd.attrs['head'] = np.string_(open(fileName).readline())
 	radii.append(arr)
 
-print(len(radii))
-print(radii[0])
-
 ringNrs = [int(r) for r in ringNrs]
 
 for grain in Grains:
@@ -117,10 +114,7 @@ for grain in Grains:
 		ringNr = IDRings[IDRings[:,2]==spotID,0]
 		pos = ringNrs.index(ringNr)
 		subInfo = radii[pos]
-		print(orig_ID)
 		subInfo = subInfo[orig_ID-1]
-		print(subInfo)
-		print(subInfo.shape)
 		for ctr2,val in enumerate(subInfo):
 			print([ctr,ctr2,val,RadiusInfo.shape])
 			RadiusInfo[ctr,ctr2] = val
