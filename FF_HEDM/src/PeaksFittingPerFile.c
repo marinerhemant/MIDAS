@@ -355,6 +355,7 @@ void Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **Useful
 	double MaxEtaWidth, MaxRWidth;
 	MaxRWidth = (RMax - RMin)/2 + 1;
 	MaxEtaWidth = (EtaMax - EtaMin)/2 + atand(2/(RMax+RMin));
+	if (EtaMax - EtaMin > 180) MaxEtaWidth -= 180;
 	double Width = sqrt(NrPixelsThisRegion/nPeaks);
 	if (Width > MaxRWidth) Width = MaxRWidth;
 	double initSigmaEta;
