@@ -422,4 +422,5 @@ int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersF
 		spotNr = 0;
 		fclose(outfile);
 	}
+	return 0;
 }
