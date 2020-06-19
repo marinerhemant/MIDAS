@@ -89,13 +89,13 @@ for ring in ringNrs:
 	group2 = group1.create_group('Ring'+ring)
 	group3 = group2.create_group('Temp')
 	tempFileStem = os.getcwd() + '/Ring' + ring + '/Temp/'
-	# ~ for fNr in range(startNr, endNr+1):
-		# ~ fileName = tempFileStem + fStem + '_' + layerNr + '_' + str(fNr).zfill(pad) + '_' + ring +'_PS.csv'
-		# ~ if os.path.exists(fileName):
-			# ~ arr = np.genfromtxt(fileName,skip_header=1)
-			# ~ if arr.shape[0] > 0:
-				# ~ tmpd = group3.create_dataset(os.path.basename(fileName),data=arr)
-				# ~ tmpd.attrs['head'] = np.string_(open(fileName).readline())
+	for fNr in range(startNr, endNr+1):
+		fileName = tempFileStem + fStem + '_' + layerNr + '_' + str(fNr).zfill(pad) + '_' + ring +'_PS.csv'
+		if os.path.exists(fileName):
+			arr = np.genfromtxt(fileName,skip_header=1)
+			if arr.shape[0] > 0:
+				tmpd = group3.create_dataset(os.path.basename(fileName),data=arr)
+				tmpd.attrs['head'] = np.string_(open(fileName).readline())
 	fileName = os.getcwd() + '/Radius_StartNr_' + str(startNr) + '_EndNr_' + str(endNr) + '_RingNr_' + ring + '.csv'
 	arr = np.genfromtxt(fileName,skip_header=1)
 	radd = group2.create_dataset(os.path.basename(fileName),data=arr)
@@ -111,10 +111,9 @@ for grain in Grains:
 	for ctr,spot in enumerate(spotsThisGrain):
 		spotID = int(spot[1])
 		orig_ID = int(IDRings[IDRings[:,2]==spotID,1])
-		ringNr = IDRings[IDRings[:,2]==spotID,0]
+		ringNr = int(IDRings[IDRings[:,2]==spotID,0])
 		pos = ringNrs.index(ringNr)
-		subInfo = radii[pos]
-		subInfo = subInfo[orig_ID-1]
+		subInfo = radii[pos][orig_ID-1]
 		RadiusInfo[ctr,:] = subInfo
 	RadiusInfo = np.hstack((spotsThisGrain,RadiusInfo))
 	spd = outFile.create_dataset('GrainID'+str(thisID)+'SpotMatrix_Radius',data=RadiusInfo)
