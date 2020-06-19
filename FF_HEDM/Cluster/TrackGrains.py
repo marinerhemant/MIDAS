@@ -137,6 +137,7 @@ def GrainTracking(paramFile,layerNr,nNodes,machineName):
 		if not os.path.exists(Fldr):
 			os.makedirs(Fldr)
 			os.makedirs(Fldr+'/PeakSearch/')
+			os.makedirs(Fldr+'/Temp/')
 		shutil.copyfile(os.getcwd()+'/hkls.csv',Fldr+'/hkls.csv')
 		fileAppend(thisParamFN,'Folder '+Fldr)
 		fileAppend(thisParamFN,'RingToIndex '+rings[0])
