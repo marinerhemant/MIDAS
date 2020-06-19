@@ -234,6 +234,7 @@ if (endLayerNr == startLayerNr) and (len(oldPeaksFolder) == 1):
 	fileAppend(PSThisLayer,'MinNrSpots 1')
 	oldPeaksFolder = oldPeaksFolder[0][0]
 	shutil.copy2(oldPeaksFolder+'/InputAll.csv',outFldr)
+	shutil.copy2(oldPeaksFolder+'/IDRings.csv',outFldr)
 	shutil.copy2(oldPeaksFolder+'/InputAllExtraInfoFittingAll.csv',outFldr)
 	shutil.copy2(oldPeaksFolder+'/Data.bin',outFldr)
 	shutil.copy2(oldPeaksFolder+'/ExtraInfo.bin',outFldr)
