@@ -30,7 +30,7 @@ def getValueFromParamFile(paramfn,searchStr,nLines=1,wordNr=1,nWords=1):
 				return ret_list
 	return ret_list
 
-paramFN = sys.argv[1]
+paramFile = sys.argv[1]
 outFN = sys.argv[2]
 ringNrs = getValueFromParamFile(paramFile,'RingThresh',100)
 startNr = int(getValueFromParamFile(paramFile,'StartNr')[0][0])
