@@ -62,27 +62,27 @@ f.readline()
 hGr = f.readline()
 f.close()
 
-outFile.attrs['Software'] = np.string_("MIDAS")
-outFile.attrs['Version'] = np.string_("5.0")
-outFile.attrs['Contact'] = np.string_("hsharma@anl.gov")
+outFile.attrss['Software'] = np.string_("MIDAS")
+outFile.attrss['Version'] = np.string_("5.0")
+outFile.attrss['Contact'] = np.string_("hsharma@anl.gov")
 outFile.create_dataset('ParametersFile',data=np.string_(open(paramFile).read()))
 group1 = outFile.create_group('RawFiles')
 group1.create_dataset('paramstest',data=np.string_(open('paramstest.txt').read()))
 sm = group1.create_dataset('SpotMatrix',data=SpotMatrix)
-sm.attr['head'] = np.string_(open('SpotMatrix.csv').readline())
+sm.attrs['head'] = np.string_(open('SpotMatrix.csv').readline())
 gr = group1.create_dataset('Grains',data=Grains)
-gr.attr['head'] = np.string_(hGr)
+gr.attrs['head'] = np.string_(hGr)
 idr = group1.create_dataset('IDRings',data=IDRings)
-idr.attr['head'] = np.string_(open('IDRings.csv').readline())
+idr.attrs['head'] = np.string_(open('IDRings.csv').readline())
 idh = group1.create_dataset('IDsHash',data=IDsHash)
-idh.attr['head'] = np.string_(open('IDsHash.csv').readline())
+idh.attrs['head'] = np.string_(open('IDsHash.csv').readline())
 ipa = group1.create_dataset('InputAll',data=InputAll)
-ipa.attr['head'] = np.string_(open('InputAll.csv').readline())
+ipa.attrs['head'] = np.string_(open('InputAll.csv').readline())
 ipe = group1.create_dataset('InputAllExtraInfo',data=InputAllExtra)
-ipe.attr['head'] = np.string_(open('InputAllExtraInfoFittingAll.csv').readline())
+ipe.attrs['head'] = np.string_(open('InputAllExtraInfoFittingAll.csv').readline())
 group1.create_dataset('SpotsToIndex',data=SpotsToIndex)
 hk = group1.create_dataset('HKLs',data=HKLs)
-hk.attr['head'] = np.string_(open('hkls.csv').readline())
+hk.attrs['head'] = np.string_(open('hkls.csv').readline())
 
 radii = []
 for ring in ringNrs:
@@ -95,11 +95,11 @@ for ring in ringNrs:
 			arr = np.genfromtxt(fileName,skip_header=1)
 			if arr.shape[0] > 0:
 				tmpd = group3.create_dataset(os.path.basename(fileName),data=arr)
-				tmpd.attr['head'] = np.string_(open(fileName).readline())
+				tmpd.attrs['head'] = np.string_(open(fileName).readline())
 	fileName = os.getcwd() + 'Radius_StartNr_' + str(startNr) + '_EndNr_' + str(endNr) + '_RingNr_' + ring + '.csv'
 	arr = np.genfromtxt(fileName,skip_header=1)
 	radd = group2.create_dataset(os.path.basename(fileName),data=arr)
-	radd.attr['head'] = np.string_(open(fileName).readline())
+	radd.attrs['head'] = np.string_(open(fileName).readline())
 	radii.append(arr)
 
 ringNrs = [int(r) for r in ringNrs]
@@ -118,4 +118,4 @@ for grain in Grains:
 		RadiusInfo[ctr,:] = subInfo[int(subInfo[:,0]) == orig_ID,:]
 	RadiusInfo = np.hstack((RadiusInfo,spotsThisGrain))
 	spd = outFile.create_dataset('GrainID'+str(thiID)+'SpotMatrix_Radius',data=RadiusInfo)
-	spd.attr['header'] = headSpots
+	spd.attrs['header'] = headSpots
