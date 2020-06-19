@@ -108,9 +108,9 @@ for ring in ringNrs:
 
 ringNrs = [int(r) for r in ringNrs]
 
-for grain in Grains:
+for counter,grain in enumerate(Grains):
 	thisID = int(grain[0])
-	print("Processing Grain: "+str(thisID))
+	print("Processing grain "+str(counter)+' out of '+str(Grains.shape[0]) + ' grains.')
 	grg = outFile.create_group('GrainID'+str(thisID))
 	grd = grg.create_dataset('GrainInfo',data=grain)
 	grd.attrs['header'] = hGr
