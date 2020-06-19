@@ -346,6 +346,7 @@ void Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **Useful
 	for (i=0;i<NrPixelsThisRegion;i++){
 		Rs[i] = CalcNorm2(UsefulPixels[i][0]-Ycen,UsefulPixels[i][1]-Zcen);
 		Etas[i] = CalcEtaAngle(UsefulPixels[i][0]-Ycen,UsefulPixels[i][1]-Zcen);
+		printf("%lf \n",Etas[i]);
 		if (Rs[i] > RMax) RMax = Rs[i];
 		if (Rs[i] < RMin) RMin = Rs[i];
 		if (Etas[i] > EtaMax) EtaMax = Etas[i];
