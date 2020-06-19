@@ -389,6 +389,7 @@ int main(int argc, char *argv[]){
 							(CurrentIDs[i][3]/CurrentIDs[i][1]),(CurrentIDs[i][4]/CurrentIDs[i][1]),
 							CurrentIDs[i][5],CurrentIDs[i][10],CurrentIDs[i][11],CurrentIDs[i][12],
 							CurrentIDs[i][13]);
+					printf("%d %lf %lf\n",SpotIDNr,CurrentIDs[i][12],CurrentIDs[i][13]);
 					SpotIDNr++;
 				}
 			}
@@ -445,6 +446,7 @@ int main(int argc, char *argv[]){
 				(CurrentIDs[i][3]/CurrentIDs[i][1]),(CurrentIDs[i][4]/CurrentIDs[i][1]),
 				CurrentIDs[i][5],CurrentIDs[i][10],CurrentIDs[i][11],CurrentIDs[i][12],
 				CurrentIDs[i][13]);
+		printf("%d %lf %lf\n",SpotIDNr,CurrentIDs[i][12],CurrentIDs[i][13]);
 		SpotIDNr++;
 	}
 	printf("Total spots: %d\n",SpotIDNr-1);
