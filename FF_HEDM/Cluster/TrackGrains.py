@@ -184,6 +184,7 @@ def GrainTracking(paramFile,layerNr,nNodes,machineName):
 	fileAppend(os.getcwd()+'/paramstest.txt','GrainTracking 1')
 	fileAppend(os.getcwd()+'/paramstest.txt','OldFolder '+OldFolder)
 	call([pfdir+'/RefineTracking.sh',nNodes,paramFile,OldFolder,machineName])
+	print("Done")
 
 ##### main
 
