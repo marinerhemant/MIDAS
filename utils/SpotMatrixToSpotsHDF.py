@@ -96,7 +96,7 @@ for ring in ringNrs:
 			if arr.shape[0] > 0:
 				tmpd = group3.create_dataset(os.path.basename(fileName),data=arr)
 				tmpd.attrs['head'] = np.string_(open(fileName).readline())
-	fileName = os.getcwd() + 'Radius_StartNr_' + str(startNr) + '_EndNr_' + str(endNr) + '_RingNr_' + ring + '.csv'
+	fileName = os.getcwd() + '/Radius_StartNr_' + str(startNr) + '_EndNr_' + str(endNr) + '_RingNr_' + ring + '.csv'
 	arr = np.genfromtxt(fileName,skip_header=1)
 	radd = group2.create_dataset(os.path.basename(fileName),data=arr)
 	radd.attrs['head'] = np.string_(open(fileName).readline())
