@@ -113,7 +113,9 @@ for grain in Grains:
 		orig_ID = IDRings[IDRings[:,2]==spotID,1]
 		ringNr = IDRings[IDRings[:,2]==spotID,0]
 		pos = ringNrs.index(ringNr)
-		subInfo = radii[pos][orig_ID-1]
+		subInfo = radii[pos]
+		print(orig_ID)
+		subInfo = subInfo[orig_ID-1]
 		print(subInfo)
 		print(subInfo.shape)
 		RadiusInfo[ctr,:] = subInfo
