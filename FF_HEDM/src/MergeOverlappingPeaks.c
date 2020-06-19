@@ -379,6 +379,7 @@ int main(int argc, char *argv[]){
 					if (CurrentIDs[i][13] < NewIDs[BestID][9]){
 						CurrentIDs[i][13] =  NewIDs[BestID][9]; // SigmaEta
 					}
+					printf("%lf %lf %lf %lf\n",CurrentIDs[i][12],NewIDs[BestID][8],CurrentIDs[i][13],NewIDs[BestID][9]);
 				}
 			}
 			//Write all the spots not overlapping to the output file.
