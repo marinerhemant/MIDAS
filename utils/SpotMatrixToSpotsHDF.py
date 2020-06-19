@@ -73,7 +73,7 @@ group1 = outFile.create_group('RawFiles')
 group1.create_dataset('paramstest',data=np.string_(open('paramstest.txt').read()))
 sm = group1.create_dataset('SpotMatrix',data=SpotMatrix)
 sm.attrs['head'] = np.string_(open('SpotMatrix.csv').readline())
-gr = group1.create_dataset('Grains',data=Grains)
+gr = group1.create_dataset('AllGrains',data=Grains)
 gr.attrs['head'] = np.string_(hGr)
 idr = group1.create_dataset('IDRings',data=IDRings)
 idr.attrs['head'] = np.string_(open('IDRings.csv').readline())
@@ -108,10 +108,12 @@ for ring in ringNrs:
 
 ringNrs = [int(r) for r in ringNrs]
 
+gg = outFile.create_group('Grains')
+
 for counter,grain in enumerate(Grains):
 	thisID = int(grain[0])
 	print("Processing grain "+str(counter)+' out of '+str(Grains.shape[0]) + ' grains.')
-	grg = outFile.create_group('GrainID'+str(thisID))
+	grg = gg.create_group('GrainID_'+str(thisID))
 	grd = grg.create_dataset('GrainInfo',data=grain)
 	grd.attrs['header'] = hGr
 	spotsThisGrain = SpotMatrix[SpotMatrix[:,0] == thisID]
