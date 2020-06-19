@@ -111,6 +111,9 @@ ringNrs = [int(r) for r in ringNrs]
 for grain in Grains:
 	thisID = int(grain[0])
 	print("Processing Grain: "+str(thisID))
+	grg = outFile.create_dataset('GrainID'+str(thisID))
+	grd = grg.create_dataset('GrainInfo',data=grain)
+	grd.attrs['header'] = hGr
 	spotsThisGrain = SpotMatrix[SpotMatrix[:,0] == thisID]
 	RadiusInfo = np.empty((spotsThisGrain.shape[0],19))
 	for ctr,spot in enumerate(spotsThisGrain):
@@ -121,5 +124,5 @@ for grain in Grains:
 		subInfo = radii[pos][orig_ID-1]
 		RadiusInfo[ctr,:] = subInfo
 	RadiusInfo = np.hstack((spotsThisGrain,RadiusInfo))
-	spd = outFile.create_dataset('GrainID'+str(thisID)+'SpotMatrix_Radius',data=RadiusInfo)
+	spd = grg.create_dataset('SpotMatrix_Radius',data=RadiusInfo)
 	spd.attrs['header'] = headSpots
