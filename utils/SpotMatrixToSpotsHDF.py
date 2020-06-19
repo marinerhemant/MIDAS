@@ -107,7 +107,7 @@ ringNrs = [int(r) for r in ringNrs]
 for grain in Grains:
 	thisID = int(grain[0])
 	spotsThisGrain = SpotMatrix[SpotMatrix[:,0] == thisID]
-	RadiusInfo = np.array([spotsThisGrain.shape[0],19])
+	RadiusInfo = np.array((spotsThisGrain.shape[0],19))
 	for ctr,spot in enumerate(spotsThisGrain):
 		spotID = int(spot[1])
 		orig_ID = int(IDRings[IDRings[:,2]==spotID,1])
