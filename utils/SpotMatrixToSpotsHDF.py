@@ -113,9 +113,10 @@ for grain in Grains:
 		orig_ID = IDRings[IDRings[:,2]==spotID,1]
 		ringNr = IDRings[IDRings[:,2]==spotID,0]
 		pos = ringNrs.index(ringNr)
-		subInfo = radii[pos]
-		radInfo = subInfo[int(subInfo[:,0]) == orig_ID,:]
-		RadiusInfo[ctr,:] = subInfo[int(subInfo[:,0]) == orig_ID,:]
+		subInfo = radii[pos][orig_ID-1]
+		print(subInfo)
+		print(subInfo.shape)
+		RadiusInfo[ctr,:] = subInfo
 	RadiusInfo = np.hstack((RadiusInfo,spotsThisGrain))
 	spd = outFile.create_dataset('GrainID'+str(thiID)+'SpotMatrix_Radius',data=RadiusInfo)
 	spd.attrs['header'] = headSpots
