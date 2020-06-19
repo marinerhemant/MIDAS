@@ -121,7 +121,8 @@ for grain in Grains:
 		subInfo = subInfo[orig_ID-1]
 		print(subInfo)
 		print(subInfo.shape)
-		RadiusInfo[ctr,1:20] = subInfo
+		for ctr2,val in enumerate(subInfo):
+			RadiusInfo[ctr,ctr2] = val
 	RadiusInfo = np.hstack((spotsThisGrain,RadiusInfo))
 	spd = outFile.create_dataset('GrainID'+str(thiID)+'SpotMatrix_Radius',data=RadiusInfo)
 	spd.attrs['header'] = headSpots
