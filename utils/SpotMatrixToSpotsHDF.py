@@ -32,7 +32,7 @@ def getValueFromParamFile(paramfn,searchStr,nLines=1,wordNr=1,nWords=1):
 
 paramFile = sys.argv[1]
 outFN = sys.argv[2]
-ringNrs = getValueFromParamFile(paramFile,'RingThresh',100)
+ringNrs = [s[0] for s in getValueFromParamFile(paramFile,'RingThresh',100)]
 startNr = int(getValueFromParamFile(paramFile,'StartNr')[0][0])
 endNr = int(getValueFromParamFile(paramFile,'EndNr')[0][0])
 fStem = getValueFromParamFile(paramFile,'FileStem')[0][0]
