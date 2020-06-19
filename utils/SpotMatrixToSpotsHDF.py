@@ -111,7 +111,7 @@ ringNrs = [int(r) for r in ringNrs]
 for grain in Grains:
 	thisID = int(grain[0])
 	print("Processing Grain: "+str(thisID))
-	grg = outFile.create_dataset('GrainID'+str(thisID))
+	grg = outFile.create_group('GrainID'+str(thisID))
 	grd = grg.create_dataset('GrainInfo',data=grain)
 	grd.attrs['header'] = hGr
 	spotsThisGrain = SpotMatrix[SpotMatrix[:,0] == thisID]
