@@ -174,7 +174,7 @@ static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], 
 					&(MyData[counter].SpotID), &(MyData[counter].IntegratedIntensity), &(MyData[counter].Omega),
 					&(MyData[counter].YCen), &(MyData[counter].ZCen), &(MyData[counter].IMax), &(MyData[counter].Radius),
 					&(MyData[counter].Eta), &(MyData[counter].SigmaR), &(MyData[counter].SigmaEta));
-		printf("%lf %s",MyData[counter].SigmaEta,)
+		printf("%lf %s",MyData[counter].SigmaEta,aline);
 		counter++;
 	}
 	fclose(infileread);
