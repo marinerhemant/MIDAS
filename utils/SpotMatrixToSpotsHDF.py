@@ -48,6 +48,8 @@ SpotsToIndex = np.genfromtxt('SpotsToIndex.csv',skip_header=1)
 HKLs = np.genfromtxt('hkls.csv',skip_header=1)
 outFile = h5py.File(outFN,'w')
 
+headSpots = 'GrainID SpotID Omega DetectorHor DetectorVert OmeRaw Eta RingNr YLab ZLab Theta StrainError OriginalRadiusFileSpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax MinOme(degrees) MaxOme(degress) Radius(px) Theta(degrees) Eta(degrees) DeltaOmega NImgs RingNr GrainVolume GrainRadius PowderIntensity SigmaR SigmaEta'
+
 f = open('Grains.csv','r')
 nGrains = int(f.readline().split()[1])
 beamCenter = float(f.readline().split()[1])
@@ -104,7 +106,6 @@ ringNrs = [int(r) for r in ringNrs]
 
 for grain in Grains:
 	thisID = int(grain[0])
-	thisgrd = outFile.create_group('GrainNumber'+str(thisID))
 	spotsThisGrain = SpotMatrix[SpotMatrix[:,0] == thisID]
 	RadiusInfo = np.array([spotsThisGrain.shape[0],19])
 	for ctr,spot in enumerate(spotsThisGrain):
@@ -116,4 +117,5 @@ for grain in Grains:
 		radInfo = subInfo[int(subInfo[:,0]) == orig_ID,:]
 		RadiusInfo[ctr,:] = subInfo[int(subInfo[:,0]) == orig_ID,:]
 	RadiusInfo = np.hstack((RadiusInfo,spotsThisGrain))
-	thisgrd.create_dataset('SpotMatrix_Radius',data=RadiusInfo)
+	spd = outFile.create_dataset('GrainID'+str(thiID)+'SpotMatrix_Radius',data=RadiusInfo)
+	spd.attr['header'] = headSpots
