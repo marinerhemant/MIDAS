@@ -158,6 +158,7 @@ def GrainTracking(paramFile,layerNr,nNodes,machineName):
 		shutil.move(thisParamFN,outFldr)
 	call([binfolder+'/MergeMultipleRings',PFName])
 	os.chdir(seedFolder)
+	moveMultipleFiles(os.getcwd()+'/',outFldr,'IDRings*')
 	moveMultipleFiles(os.getcwd()+'/',outFldr,'SpotsToIndex*')
 	moveMultipleFiles(os.getcwd()+'/',outFldr,'InputAll*')
 	shutil.move(PFName,outFldr)
