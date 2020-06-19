@@ -86,6 +86,7 @@ hk.attrs['head'] = np.string_(open('hkls.csv').readline())
 
 radii = []
 for ring in ringNrs:
+	print("Processing ring: "+ring)
 	group2 = group1.create_group('Ring'+ring)
 	group3 = group2.create_group('Temp')
 	tempFileStem = os.getcwd() + '/Ring' + ring + '/Temp/'
@@ -106,6 +107,7 @@ ringNrs = [int(r) for r in ringNrs]
 
 for grain in Grains:
 	thisID = int(grain[0])
+	print("Processing Grain: "+str(thisID))
 	spotsThisGrain = SpotMatrix[SpotMatrix[:,0] == thisID]
 	RadiusInfo = np.empty((spotsThisGrain.shape[0],19))
 	for ctr,spot in enumerate(spotsThisGrain):
