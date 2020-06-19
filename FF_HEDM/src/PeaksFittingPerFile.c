@@ -419,7 +419,7 @@ void Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **Useful
 		}else{
 			OtherInfo[2*i+1] = x[(8*i)+8];
 		}
-		printf("%lf %lf %lf\n",OtherInfo[2*i+1],x[8*i+7],x[8*i+8]);
+		printf("%lf %lf %lf %lf\n",OtherInfo[2*i+1],x[8*i+7],x[8*i+8],MaxEtaWidth);
 	}
 	YZ4mREta(nPeaks,RCens,EtaCens,YCEN,ZCEN);
 	CalcIntegratedIntensity(nPeaks,x,Rs,Etas,NrPixelsThisRegion,IntegratedIntensity,NrPx);
