@@ -2,6 +2,9 @@ import os
 import sys
 import numpy as np
 import h5py
+import warnings
+
+warnings.filterwarnings('ignore')
 
 # What we want to write:
 # Software Information, contact info
