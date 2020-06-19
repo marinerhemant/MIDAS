@@ -112,8 +112,8 @@ for grain in Grains:
 	spotsThisGrain = SpotMatrix[SpotMatrix[:,0] == thisID]
 	RadiusInfo = np.array([spotsThisGrain.shape[0],19])
 	for ctr,spot in enumerate(spotsThisGrain):
-		spotID = spot[1]
-		orig_ID = IDRings[IDRings[:,2]==spotID,1]
+		spotID = int(spot[1])
+		orig_ID = int(IDRings[IDRings[:,2]==spotID,1])
 		ringNr = IDRings[IDRings[:,2]==spotID,0]
 		pos = ringNrs.index(ringNr)
 		subInfo = radii[pos]
