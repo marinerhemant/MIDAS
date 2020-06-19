@@ -174,7 +174,7 @@ static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], 
 					&(MyData[counter].SpotID), &(MyData[counter].IntegratedIntensity), &(MyData[counter].Omega),
 					&(MyData[counter].YCen), &(MyData[counter].ZCen), &(MyData[counter].IMax), &(MyData[counter].Radius),
 					&(MyData[counter].Eta), &(MyData[counter].SigmaR), &(MyData[counter].SigmaEta));
-		printf("%lf %s",MyData[counter].SigmaEta,aline);
+		printf("%s %lf %s",InFile,MyData[counter].SigmaEta,aline);
 		counter++;
 	}
 	fclose(infileread);
@@ -378,10 +378,10 @@ int main(int argc, char *argv[]){
 					if (CurrentIDs[i][12] < NewIDs[BestID][8]){
 						CurrentIDs[i][12] =  NewIDs[BestID][8]; // SigmaR
 					}
+					//~ printf("%lf %lf %lf %lf\n",CurrentIDs[i][12],NewIDs[BestID][8],CurrentIDs[i][13],NewIDs[BestID][9]);
 					if (CurrentIDs[i][13] < NewIDs[BestID][9]){
 						CurrentIDs[i][13] =  NewIDs[BestID][9]; // SigmaEta
 					}
-					//~ printf("%lf %lf %lf %lf\n",CurrentIDs[i][12],NewIDs[BestID][8],CurrentIDs[i][13],NewIDs[BestID][9]);
 				}
 			}
 			//Write all the spots not overlapping to the output file.
