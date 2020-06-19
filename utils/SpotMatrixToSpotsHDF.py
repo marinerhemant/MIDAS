@@ -102,7 +102,7 @@ for ring in ringNrs:
 	radd.attrs['head'] = np.string_(open(fileName).readline())
 	radii.append(arr)
 
-len(radii)
+print(len(radii))
 print(radii[0])
 
 ringNrs = [int(r) for r in ringNrs]
