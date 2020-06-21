@@ -236,6 +236,8 @@ if (endLayerNr == startLayerNr) and (len(oldPeaksFolder) == 1):
 	removeLinesFile(PSThisLayer,'MinNrSpots')
 	fileAppend(PSThisLayer,'MinNrSpots 1')
 	oldPeaksFolder = oldPeaksFolder[0][0]
+	for fil in glob('Radius*'):
+		shutil.copy2(fil,outFldr)
 	shutil.copy2(oldPeaksFolder+'/InputAll.csv',outFldr)
 	shutil.copy2(oldPeaksFolder+'/IDRings.csv',outFldr)
 	shutil.copy2(oldPeaksFolder+'/InputAllExtraInfoFittingAll.csv',outFldr)
