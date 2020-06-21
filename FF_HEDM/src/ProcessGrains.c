@@ -433,7 +433,7 @@ int main(int argc, char *argv[])
 	double ang, Angle, Axis[3],DiffPos,OR1[9],q1[9],OR2[9],q2[4];
 	int counte,counten,totcount=0;
 	ID_IA_MAT = calloc(MAX_ID_IA_MAT*4,sizeof(*ID_IA_MAT));
-	FILE *fIDs = fopen("IDsKey.csv","w");
+	FILE *fIDs = fopen("GrainIDsKey.csv","w");
 	for (i=0;i<nrIDs;i++){
 		if (i%1000 == 0) printf("Processed %d of %d IDs.\n",i,nrIDs);
 		if (IDsChecked[i] == false){
