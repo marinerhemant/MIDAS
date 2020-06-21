@@ -413,7 +413,7 @@ int main(int argc, char *argv[])
 		Radiuses[i] = OPThis[25];
 	}
 	int StartingID,ThisID1,ThisID2;
-	int nGrainPositions = 0,BestGrainPos;
+	int nGrainPositions = 0,BestGrainPos, bestGrainID;
 	int *GrainPositions,*nGrainsMatched;
 	GrainPositions = malloc(nrIDs*sizeof(*GrainPositions));
 	nGrainsMatched = malloc(nrIDs*sizeof(*nGrainsMatched));
@@ -433,6 +433,7 @@ int main(int argc, char *argv[])
 	double ang, Angle, Axis[3],DiffPos,OR1[9],q1[9],OR2[9],q2[4];
 	int counte,counten,totcount=0;
 	ID_IA_MAT = calloc(MAX_ID_IA_MAT*4,sizeof(*ID_IA_MAT));
+	FILE *fIDs = fopen("IDsKey.csv","w");
 	for (i=0;i<nrIDs;i++){
 		if (i%1000 == 0) printf("Processed %d of %d IDs.\n",i,nrIDs);
 		if (IDsChecked[i] == false){
@@ -455,17 +456,28 @@ int main(int argc, char *argv[])
 				continue;
 			}
 			for (j=0;j<counten;j++){
+				// Write out the following information: for each counten, save the IDs Matched, so that we can use them later
+				// ID_IA_MAT[(j*4)+1] has the row Number, ID_IA_MAT[(j*4)] has the ID, these are the two things we need......
 				if (ID_IA_MAT[(j*4)+2] < minIA){
 					minIA = ID_IA_MAT[(j*4)+2];
 					BestGrainPos = (int)ID_IA_MAT[(j*4)+1];
+					bestGrainID = (int)ID_IA_MAT[(j*4)];
 					maxRadThis = ID_IA_MAT[(j*4)+3];
 				}
 			}
+			fprintf(fIDs,"%d %d ",bestGrainID,BestGrainPos);
+			for (j=0;j<counten;j++){
+				// Write out ID_IA_MAT[(j*4)] (0,1) along with BestGrainPos and corresponding ID
+				if ((int)ID_IA_MAT[(j*4)+1] == BestGrainPos) continue;
+				fprintf(fIDs,"%d %d ",(int)ID_IA_MAT[(j*4)],(int)ID_IA_MAT[(j*4)+1]);
+			}
+			fprintf(fIDs,"\n");
 			GrainPositions[nGrainPositions] = BestGrainPos;
 			Radiuses[BestGrainPos] = maxRadThis;
 			nGrainPositions ++;
 		}
 	}
+	fclose(fIDs);
 	//Write out
 	char GrainsFileName[1024];
 	sprintf(GrainsFileName,"Grains.csv");
