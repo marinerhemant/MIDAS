@@ -1236,7 +1236,7 @@ main(int argc, char *argv[])
 			}
 			yTemp = yThis + DisplY;
 			zTemp = zThis + DisplZ;
-			yDet = yBC - yTemp/px + 0.5;
+			yDet = yBC - yTemp/px - 0.5;
 			zDet = zBC + zTemp/px + 0.5;
 			Info[3] = 0.5*atand(sqrt(yThis*yThis+zThis*zThis)/Lsd); // New Theta
 			CalcEtaAngle(yThis,zThis,&etaThis);
