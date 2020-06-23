@@ -24,6 +24,23 @@ Strains = dataset.CellData['ElasticStrainTensor-Cycle-4-OutputStep-20'][IDsToKee
 OMs = dataset.CellData['OrientationTensor-Cycle-4-OutputStep-20'][IDsToKeep]
 OM2 = dataset.CellData['OrientationTensor-Cycle-1-OutputStep-1'][IDsToKeep]
 
+import matplotlib.pyplot as plt
+maxIDX = np.argmax(PSED)
+orig_orient = R.from_matrix(OM2[maxIDX]).as_euler('zxz',degrees=True)
+maxPSEDs = np.zeros(80)
+nrs = np.zeros(80)
+for cycle in range(1,5):
+	for step in range(1,21):
+		thisKey = 'PlasticStrainEnergyDensity-Cycle-' + str(cycle) + '-OutputStep-' + str(step)
+		maxPSEDs[(cycle-1)*20+step-1] = dataset.CellData[thisKey][IDsToKeep][maxIDX]
+		thisKey2 = 'OrientationTensor-Cycle-' + str(cycle) + '-OutputStep-' + str(step)
+		new_orient = R.from_matrix(dataset.CellData[thisKey2][IDsToKeep][maxIDX]).as_euler('zxz',degrees=True)
+		miso = new_orient - orig_orient
+		print (miso)
+		nrs[(cycle-1)*20+step-1] = (cycle-1)*20+step-1
+plt.scatter(maxPSEDs,nrs)
+plt.show()
+
 # Let's now take the last output and create a bin file, write out pos, orient, strain(rotated to crystal)
 # ~ fnout = 'MIDAS_Input_OrigOrientOrigStrain.bin'
 fnout = 'MIDAS_Input_Cycle4OutputStep20.bin'
