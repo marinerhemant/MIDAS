@@ -969,7 +969,6 @@ def firstFileSelector():
 	firstFileNumber = int(fullfilename.split('_')[-1])
 	firstFileNrVar.set(firstFileNumber)
 	padding = len(fullfilename.split('_')[-1])
-	print(padding)
 	statinfo = os.stat(firstfilefullpath)
 	nFramesPerFile = int((statinfo.st_size - Header)/(BytesPerPixel*NrPixelsY*NrPixelsZ))
 	nFramesPerFileVar.set(nFramesPerFile)
