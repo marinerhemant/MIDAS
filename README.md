@@ -12,4 +12,4 @@ Some misorientation functions are taken from the ODFPF package from Cornell (htt
 
 Downloads jre, swift binary, NLOPT, LIBTIFF, NETCDF (curl, hdf5, zlib) for compilation of N(F)F-HEDM codes.
 
-**More details at https://github.com/marinerhemant/MIDAS/wiki**
+**More details at [MIDAS-WIKI](https://github.com/marinerhemant/MIDAS/wiki)**
