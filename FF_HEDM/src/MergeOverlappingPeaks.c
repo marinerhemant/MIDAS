@@ -126,6 +126,7 @@ struct InputData{
 	double Eta;
 	double SigmaR;
 	double SigmaEta;
+	double NrPx;
 };
 
 static int cmpfunc (const void * a, const void *b){
@@ -170,11 +171,11 @@ static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], 
     fgets(aline,1000,infileread);
     double SpotID,IntegratedIntensity,Omega,YCen,ZCen,IMax,Radius,Eta,NumberOfPixels;
     while (fgets(aline,1000,infileread)!=NULL){
-		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
 					&(MyData[counter].SpotID), &(MyData[counter].IntegratedIntensity), &(MyData[counter].Omega),
 					&(MyData[counter].YCen), &(MyData[counter].ZCen), &(MyData[counter].IMax), &(MyData[counter].Radius),
-					&(MyData[counter].Eta), &(MyData[counter].SigmaR), &(MyData[counter].SigmaEta));
-		printf("%s %lf %s",InFile,MyData[counter].SigmaEta,aline);
+					&(MyData[counter].Eta), &(MyData[counter].SigmaR), &(MyData[counter].SigmaEta), &(MyData[counter].NrPx));
+		//printf("%s %lf %s",InFile,MyData[counter].SigmaEta,aline);
 		counter++;
 	}
 	fclose(infileread);
@@ -194,7 +195,8 @@ static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], 
 		SortedMatrix[counter2][7] = MyData[i].Eta;
 		SortedMatrix[counter2][8] = MyData[i].SigmaR;
 		SortedMatrix[counter2][9] = MyData[i].SigmaEta;
-		printf("%lf\n",MyData[i].SigmaEta);
+		SortedMatrix[counter2][10] = MyData[i].NrPx;
+		//~ printf("%lf\n",MyData[i].SigmaEta);
 		counter2++;
 	}
 	free(MyData);
@@ -284,9 +286,9 @@ int main(int argc, char *argv[]){
     int FileNr = StartNr;
 	int nSpots,nSpotsNew;
 	double **NewIDs, **CurrentIDs, **TempIDs;
-	NewIDs = allocMatrix(nOverlapsMaxPerImage,10);
-	CurrentIDs = allocMatrix(nOverlapsMaxPerImage,14);
-	TempIDs = allocMatrix(nOverlapsMaxPerImage,14);
+	NewIDs = allocMatrix(nOverlapsMaxPerImage,11);
+	CurrentIDs = allocMatrix(nOverlapsMaxPerImage,15);
+	TempIDs = allocMatrix(nOverlapsMaxPerImage,15);
     nSpots = ReadSortFiles(OutFolderName,FileStem,FileNr,RingNr,Padding,NewIDs);
     for (i=0;i<nSpots;i++){
 		CurrentIDs[i][0] = NewIDs[i][0];              // SpotID
@@ -303,6 +305,7 @@ int main(int argc, char *argv[]){
 		CurrentIDs[i][11] = NewIDs[i][2];			  // MaxOmega
 		CurrentIDs[i][12] = NewIDs[i][8];			  // SigmaR
 		CurrentIDs[i][13] = NewIDs[i][9];			  // SigmaEta
+		CurrentIDs[i][14] = NewIDs[i][10];			  // NrPx
 	}
     int e = CheckDirectoryCreation(Folder,FileStem);
     if (e ==0) return 1;
@@ -320,9 +323,9 @@ int main(int argc, char *argv[]){
 	int SpotIDNr = 1,counter;
     if (StartNr==EndNr){ // If there is only one file.
 		for (i=0;i<nSpots;i++){
-			fprintf(OutFile,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",(int)NewIDs[i][0],NewIDs[i][1],NewIDs[i][2],
+			fprintf(OutFile,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",(int)NewIDs[i][0],NewIDs[i][1],NewIDs[i][2],
 												  NewIDs[i][3],NewIDs[i][4],NewIDs[i][5],NewIDs[i][2],NewIDs[i][2],
-												  NewIDs[i][8],NewIDs[i][9]);
+												  NewIDs[i][8],NewIDs[i][9],NewIDs[i][10]);
 		}
 	}else{ // If there are multiple files:
 		for (FileNr=(StartNr+1);FileNr<=EndNr;FileNr++){
@@ -382,16 +385,17 @@ int main(int argc, char *argv[]){
 					if (CurrentIDs[i][13] < NewIDs[BestID][9]){
 						CurrentIDs[i][13] =  NewIDs[BestID][9]; // SigmaEta
 					}
+					CurrentIDs[i][14] += NewIDs[BestID][10]; // NrPx
 				}
 			}
 			//Write all the spots not overlapping to the output file.
 			for (i=0;i<nSpots;i++){
 				if (TempIDsCurrent[i] == 0){ // Spot was not overlapping.
-					fprintf(OutFile,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
+					fprintf(OutFile,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
 							CurrentIDs[i][1],(CurrentIDs[i][2]/CurrentIDs[i][1]),
 							(CurrentIDs[i][3]/CurrentIDs[i][1]),(CurrentIDs[i][4]/CurrentIDs[i][1]),
 							CurrentIDs[i][5],CurrentIDs[i][10],CurrentIDs[i][11],CurrentIDs[i][12],
-							CurrentIDs[i][13]);
+							CurrentIDs[i][13],CurrentIDs[i][14]);
 					SpotIDNr++;
 				}
 			}
@@ -399,7 +403,7 @@ int main(int argc, char *argv[]){
 			counter = 0;
 			for (i=0;i<nSpots;i++){
 				if (TempIDsCurrent[i] == 1){ // Spot was overlapping.
-					for (j=0;j<12;j++){
+					for (j=0;j<15;j++){
 						TempIDs[counter][j] = CurrentIDs[i][j];
 					}
 					counter++;
@@ -421,6 +425,7 @@ int main(int argc, char *argv[]){
 					TempIDs[counter][11] = NewIDs[i][2];			 // MaxOmega
 					TempIDs[counter][12] = NewIDs[i][8];			 // SigmaR
 					TempIDs[counter][13] = NewIDs[i][9];			 // SigmaEta
+					TempIDs[counter][14] = NewIDs[i][10];			 // NrPx
 					counter++;
 				}
 			}
@@ -428,12 +433,12 @@ int main(int argc, char *argv[]){
 				printf("Number of spots mismatch. Please have a look.\n");
 			}
 			for (i=0;i<nSpots;i++){
-				for (j=0;j<12;j++){
+				for (j=0;j<15;j++){
 					CurrentIDs[i][j] = 0;
 				}
 			}
 			for (i=0;i<nSpotsNew;i++){
-				for (j=0;j<12;j++){
+				for (j=0;j<15;j++){
 					CurrentIDs[i][j] = TempIDs[i][j];
 				}
 			}
@@ -443,12 +448,12 @@ int main(int argc, char *argv[]){
 		}
 	}
 	for (i=0;i<nSpots;i++){
-		fprintf(OutFile,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
+		fprintf(OutFile,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
 				CurrentIDs[i][1],(CurrentIDs[i][2]/CurrentIDs[i][1]),
 				(CurrentIDs[i][3]/CurrentIDs[i][1]),(CurrentIDs[i][4]/CurrentIDs[i][1]),
 				CurrentIDs[i][5],CurrentIDs[i][10],CurrentIDs[i][11],CurrentIDs[i][12],
-				CurrentIDs[i][13]);
-		printf("%d %lf %lf\n",SpotIDNr,CurrentIDs[i][12],CurrentIDs[i][13]);
+				CurrentIDs[i][13],CurrentIDs[i][14]);
+		//~ printf("%d %lf %lf\n",SpotIDNr,CurrentIDs[i][12],CurrentIDs[i][13]);
 		SpotIDNr++;
 	}
 	printf("Total spots: %d\n",SpotIDNr-1);
