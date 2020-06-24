@@ -175,7 +175,6 @@ static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], 
 					&(MyData[counter].SpotID), &(MyData[counter].IntegratedIntensity), &(MyData[counter].Omega),
 					&(MyData[counter].YCen), &(MyData[counter].ZCen), &(MyData[counter].IMax), &(MyData[counter].Radius),
 					&(MyData[counter].Eta), &(MyData[counter].SigmaR), &(MyData[counter].SigmaEta), &(MyData[counter].NrPx));
-		//printf("%s %lf %s",InFile,MyData[counter].SigmaEta,aline);
 		counter++;
 	}
 	fclose(infileread);
@@ -196,7 +195,6 @@ static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], 
 		SortedMatrix[counter2][8] = MyData[i].SigmaR;
 		SortedMatrix[counter2][9] = MyData[i].SigmaEta;
 		SortedMatrix[counter2][10] = MyData[i].NrPx;
-		//~ printf("%lf\n",MyData[i].SigmaEta);
 		counter2++;
 	}
 	free(MyData);
@@ -281,7 +279,6 @@ int main(int argc, char *argv[]){
 					" IMax MinOme(degrees) MaxOme(degress) SigmaR SigmaEta\n";
 
     // Read first file
-    //printf("Initial file reading, Arguments: %s %s\n",argv[1],argv[2]);
     fflush(stdout);
     int FileNr = StartNr;
 	int nSpots,nSpotsNew;
@@ -319,7 +316,6 @@ int main(int argc, char *argv[]){
 	TempIDsNew = malloc(nOverlapsMaxPerImage*sizeof(*TempIDsNew));
 	memset(TempIDsCurrent,0,nOverlapsMaxPerImage*sizeof(*TempIDsCurrent));
 	memset(TempIDsNew,0,nOverlapsMaxPerImage*sizeof(*TempIDsNew));
-	//printf("We could reach till here.\n"); fflush(stdout);
 	int SpotIDNr = 1,counter;
     if (StartNr==EndNr){ // If there is only one file.
 		for (i=0;i<nSpots;i++){
@@ -330,7 +326,6 @@ int main(int argc, char *argv[]){
 	}else{ // If there are multiple files:
 		for (FileNr=(StartNr+1);FileNr<=EndNr;FileNr++){
 			nSpotsNew = ReadSortFiles(OutFolderName,FileStem,FileNr,RingNr,Padding,NewIDs);
-			//printf("%d\n",FileNr);
 			fflush(stdout);
 			for (i=0;i<nSpots;i++){
 				minLen = 10000000;
@@ -381,7 +376,6 @@ int main(int argc, char *argv[]){
 					if (CurrentIDs[i][12] < NewIDs[BestID][8]){
 						CurrentIDs[i][12] =  NewIDs[BestID][8]; // SigmaR
 					}
-					//~ printf("%lf %lf %lf %lf\n",CurrentIDs[i][12],NewIDs[BestID][8],CurrentIDs[i][13],NewIDs[BestID][9]);
 					if (CurrentIDs[i][13] < NewIDs[BestID][9]){
 						CurrentIDs[i][13] =  NewIDs[BestID][9]; // SigmaEta
 					}
@@ -453,7 +447,6 @@ int main(int argc, char *argv[]){
 				(CurrentIDs[i][3]/CurrentIDs[i][1]),(CurrentIDs[i][4]/CurrentIDs[i][1]),
 				CurrentIDs[i][5],CurrentIDs[i][10],CurrentIDs[i][11],CurrentIDs[i][12],
 				CurrentIDs[i][13],CurrentIDs[i][14]);
-		//~ printf("%d %lf %lf\n",SpotIDNr,CurrentIDs[i][12],CurrentIDs[i][13]);
 		SpotIDNr++;
 	}
 	printf("Total spots: %d\n",SpotIDNr-1);
