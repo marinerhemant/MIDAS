@@ -24,6 +24,9 @@ Strains = dataset.CellData['ElasticStrainTensor-Cycle-4-OutputStep-20'][IDsToKee
 OMs = dataset.CellData['OrientationTensor-Cycle-4-OutputStep-20'][IDsToKeep]
 OM2 = dataset.CellData['OrientationTensor-Cycle-1-OutputStep-1'][IDsToKeep]
 
+for grainNr in range(1,nGrains):
+	print([grainNr,np.max(PSED[grainIDs==grainNr]),OMs[np.argmax(PSED[grainIDs==grainNr])]])
+
 import matplotlib.pyplot as plt
 maxIDX = np.argmax(PSED)
 orig_orient = R.from_matrix(OM2[maxIDX]).as_euler('zxz',degrees=True)
