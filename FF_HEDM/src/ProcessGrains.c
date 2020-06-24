@@ -451,7 +451,7 @@ int main(int argc, char *argv[])
 			}
 			totcount+=counten;
 			nGrainsMatched[i] = counten;
-			printf("%d %d\n",i,counten);
+			//printf("%d %d\n",i,counten);
 			if (counten < MinNrSpots){
 				continue;
 			}

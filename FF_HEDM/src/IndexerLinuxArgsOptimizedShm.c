@@ -3437,7 +3437,7 @@ DoIndexing(
       printf("\n==> Best Match: No_of_theoretical_spots No_of_spots_found fraction: %d %d %0.2f\n", bestnTspotsIsp, bestnMatchesIsp, fracMatches );
       if (fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 || (int)bestnMatchesIsp == -1 || bestMatchFound == 0){
 		  printf("Nothing good was found. Exiting.\n");
-		  return 0;
+		  exit(0);
 	  }
       BestMatches[SpotIDIdx][0] = SpotIDIdx+1;
       BestMatches[SpotIDIdx][1] = SpotID;
@@ -3458,8 +3458,6 @@ DoIndexing(
    FreeMemMatrix( GrainSpots, nRowsPerGrain);
    FreeMemMatrix( AllGrainSpots, nRowsOutput);
    FreeMemMatrix( BestMatches, nSpotIDs);
-
-   return 0;
 }
 
 
