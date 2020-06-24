@@ -25,7 +25,7 @@ OMs = dataset.CellData['OrientationTensor-Cycle-4-OutputStep-20'][IDsToKeep]
 OM2 = dataset.CellData['OrientationTensor-Cycle-1-OutputStep-1'][IDsToKeep]
 
 for grainNr in range(1,nGrains):
-	print([grainNr,np.max(PSED[grainIDs==grainNr]),OMs[np.argmax(PSED[grainIDs==grainNr])]])
+	print([grainNr,np.max(PSED[grainIDs==grainNr]),np.mean(PSED[grainIDs==grainNr]),np.min(PSED[grainIDs==grainNr]),np.std(PSED[grainIDs==grainNr])])#OMs[np.argmax(PSED[grainIDs==grainNr])]])
 
 import matplotlib.pyplot as plt
 maxIDX = np.argmax(PSED)
