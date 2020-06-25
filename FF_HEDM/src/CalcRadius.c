@@ -233,7 +233,7 @@ int main(int argc, char *argv[]){
 	printf("mhkl: %d\n",mhkl);
     char header[2048] = "SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px)"
 					" IMax MinOme(degrees) MaxOme(degress) Radius(px) Theta(degrees) Eta(degrees) "
-					" DeltaOmega NImgs RingNr GrainVolume GrainRadius PowderIntensity SigmaR SigmaEta NrPx\n";
+					" DeltaOmega NImgs RingNr GrainVolume GrainRadius PowderIntensity SigmaR SigmaEta NrPx NrPxTot\n";
 	char OutFile[2048];
 	sprintf(OutFile,"%s/PeakSearch/%s/Radius_StartNr_%d_EndNr_%d_RingNr_%d.csv",Folder,FileStem,StartNr,EndNr,RingNr);
 	FILE *outfile;
@@ -243,12 +243,12 @@ int main(int argc, char *argv[]){
 	double **Sigmas;
 	Sigmas = allocMatrix(MAX_N_SPOTS,2);
 	double *NrPx;
-	NrPx = calloc(MAX_N_SPOTS,sizeof(*NrPx));
+	NrPx = allocMatrix(MAX_N_SPOTS,2);
 	double MinOme=100000, MaxOme=-100000;
 	while (fgets(aline,1000,Infile)!=NULL){
 		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&SpotsMat[counter][0],&SpotsMat[counter][1],
 				&SpotsMat[counter][2],&SpotsMat[counter][3],&SpotsMat[counter][4],&SpotsMat[counter][5],
-				&SpotsMat[counter][6],&SpotsMat[counter][7],&Sigmas[counter][0],&Sigmas[counter][1],&NrPx[counter]);
+				&SpotsMat[counter][6],&SpotsMat[counter][7],&Sigmas[counter][0],&Sigmas[counter][1],&NrPx[counter][0],&NrPx[counter][1]);
 		PowderInt += SpotsMat[counter][1];
 		if (SpotsMat[counter][2] < MinOme) MinOme = SpotsMat[counter][2];
 		if (SpotsMat[counter][2] > MaxOme) MaxOme = SpotsMat[counter][2];
@@ -289,7 +289,7 @@ int main(int argc, char *argv[]){
 		for (j=0;j<16;j++){
 			fprintf(outfile,"%f ",SpotsMat[i][j]);
 		}
-		fprintf(outfile,"%f %f %f %f\n",PowderInt,Sigmas[i][0],Sigmas[i][1],NrPx[i]);
+		fprintf(outfile,"%f %f %f %f %f\n",PowderInt,Sigmas[i][0],Sigmas[i][1],NrPx[i][0],NrPx[i][1]);
 	}
 	totVol /= (mhkl*2*omrang/360.0);
 	FreeMemMatrix(SpotsMat,MAX_N_SPOTS);
