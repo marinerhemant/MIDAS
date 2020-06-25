@@ -211,6 +211,10 @@ void SpotToGv(double xi, double yi, double zi, double Omega, double theta, doubl
 
 int main(int argc, char *argv[]) // Arguments: OldFolder, NewFolder, ParametersFile
 {
+	if (argc != 3){
+		printf("Usage:\n GrainTracking OldFolder(where Grains file is located) Parameters.txt\n");
+		return 1;
+	}
 	int i,j,k;
 	char *oldFolder, *ParamsFN;
 	oldFolder = argv[1];

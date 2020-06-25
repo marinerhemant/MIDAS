@@ -205,6 +205,10 @@ static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], 
 }
 
 int main(int argc, char *argv[]){
+	if (argc != 3){
+		printf("Usage:\n MergeOverlappingPeaks params.txt ringNr\n");
+		return 1;
+	}
 	clock_t start, end;
     double diftotal;
     start = clock();

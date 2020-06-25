@@ -77,6 +77,10 @@ static inline double acosd(double x){return rad2deg*(acos(x));}
 static inline double atand(double x){return rad2deg*(atan(x));}
 
 int main(int argc, char *argv[]){
+	if (argc != 3){
+		printf("Usage:\n CalcGrains params.txt ringNr\n");
+		return 1;
+	}
 	clock_t start, end;
     double diftotal;
     start = clock();
