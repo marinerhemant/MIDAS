@@ -146,7 +146,7 @@ def writeH5EBSDFile(eul1,eul2,eul3,conf,phNr,fileID):
 	f.create_dataset('Z Resolution',data=zR)
 	f.create_dataset('Manufacturer',(1,),data=np.string_("TSL"))
 	zSI = np.array(1,dtype=np.int64)
-	zEI = np.array(Dims[0] + 1,dtype=np.int64)
+	zEI = np.array(Dims[0],dtype=np.int64)
 	f.create_dataset('ZStartIndex',data=zSI)
 	f.create_dataset('ZEndIndex',data=zEI)
 	x = np.arange(0,Dims[1]*xyspacing,xyspacing) # We need to now map each voxel
