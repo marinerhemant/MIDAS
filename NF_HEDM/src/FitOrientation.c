@@ -38,6 +38,7 @@ double Wedge;
 double Wavelength;
 double OmegaRang[MAX_N_OMEGA_RANGES][2];
 int nOmeRang;
+int SpaceGrp;
 
 double**
 allocMatrixF(int nrows, int ncols)

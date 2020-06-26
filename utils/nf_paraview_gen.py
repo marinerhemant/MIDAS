@@ -51,7 +51,7 @@ LatC = np.array([2.9243, 2.9243, 4.6726 ,90.0, 90.0, 120.0],dtype=np.float32)
 minConfidence = 0.3
 orientTol = 10.0 # In degrees, used to define grains
 zspacing = -2
-xyspacing = 5  # X and Y spacing are equal, should be equal to the edge_size used during reconstruction
+xyspacing = 2  # X and Y spacing are equal, should be equal to the edge_size used during reconstruction
 xExtent = 1400 # Maximum Extent of xValues in um
 			   # (this should be larger than 2x the sample radius or 2x the distance between the farther edge of the sample and the rotation axis)
 yExtent = 1400 # Maximum Extent of yValues in um
