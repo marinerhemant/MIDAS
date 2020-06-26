@@ -246,7 +246,7 @@ int main(int argc, char *argv[]){
 	double totVol=0;
 	double **Sigmas;
 	Sigmas = allocMatrix(MAX_N_SPOTS,2);
-	double *NrPx;
+	double **NrPx;
 	NrPx = allocMatrix(MAX_N_SPOTS,2);
 	double MinOme=100000, MaxOme=-100000;
 	while (fgets(aline,1000,Infile)!=NULL){
