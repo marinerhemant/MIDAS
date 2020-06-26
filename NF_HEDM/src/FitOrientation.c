@@ -15,7 +15,7 @@
 #include <ctype.h>
 #include <nlopt.h>
 #include <stdint.h>
-#include <sys/mman.h> 
+#include <sys/mman.h>
 #include <errno.h>
 #include <stdarg.h>
 #include <sys/ipc.h>
@@ -263,7 +263,7 @@ FitOrientation(
 	void* trp = (struct my_func_data *) f_datat;
 	double tole = 1e-3;
 	nlopt_opt opt;
-	opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);	
+	opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
 	nlopt_set_lower_bounds(opt, xl);
 	nlopt_set_upper_bounds(opt, xu);
 	nlopt_set_min_objective(opt, problem_function, trp);
@@ -321,7 +321,7 @@ main(int argc, char *argv[])
     clock_t start, end;
     double diftotal;
     start = clock();
-    
+
     // Read params file.
     char *ParamFN;
     FILE *fileParam;
@@ -421,7 +421,7 @@ main(int argc, char *argv[])
         str = "LatticeParameter ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %lf %lf %lf %lf %lf %lf", dummy, 
+            sscanf(aline,"%s %lf %lf %lf %lf %lf %lf", dummy,
 				&LatticeConstant[0],&LatticeConstant[1],
 				&LatticeConstant[2],&LatticeConstant[3],
 				&LatticeConstant[4],&LatticeConstant[5]);
@@ -520,7 +520,7 @@ main(int argc, char *argv[])
         if (LowNr==0){
             Flag = 1;
             continue;
-        }  
+        }
     }
     int i,j,m,nrFiles,nrPixels;
     for (i=0;i<NoOfOmegaRanges;i++){
@@ -550,7 +550,7 @@ main(int argc, char *argv[])
     SizeObsSpots*=nrFiles;
     SizeObsSpots/=32;
     //printf("%lld\n",SizeObsSpots*32);
-    
+
     // Read spots info
 	char *file_name = "/dev/shm/SpotsInfo.bin";
     int descp;
@@ -565,7 +565,7 @@ main(int argc, char *argv[])
     size = s.st_size;
     ObsSpotsInfo = mmap (0, size, PROT_READ, MAP_SHARED, descp, 0);
     check (ObsSpotsInfo == MAP_FAILED, "mmap %s failed: %s",file_name, strerror (errno));
-    
+
     //Read Key
     char line[1024];
     clock_t startthis;
@@ -585,7 +585,7 @@ main(int argc, char *argv[])
         NrSpots[i][1] = TotalDiffrSpots - NrSpots[i][0];
     }
     fclose(fk);
-    
+
     // Read DiffractionSpots
     double *SpotsMat;
     char *spfn = "/dev/shm/DiffractionSpots.bin";
@@ -601,7 +601,7 @@ main(int argc, char *argv[])
     size2 = s2.st_size;
     SpotsMat = mmap (0, size2, PROT_READ, MAP_SHARED, spf, 0);
     check (SpotsMat == MAP_FAILED, "mmap %s failed: %s",spfn, strerror (errno));
-    
+
     // Read OrientationMatrix
     double *OrientationMatrix;
     char *omfn = "/dev/shm/OrientMat.bin";
@@ -621,7 +621,7 @@ main(int argc, char *argv[])
 	// Alloc array and clear it.
     double **OrientMatrix;
     OrientMatrix = allocMatrixF(MAX_POINTS_GRID_GOOD,10);
-	
+
 	// Open files for writing
     int result = open(MicFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
     if (result <= 0){
@@ -681,8 +681,8 @@ main(int argc, char *argv[])
 	        XY[2][1] =ys - y1;
 	    }
 	    double GridSize=2*gs;
-	
-	
+
+
 	    // Go through each orientation and compare with observed spots.
 	    clock_t startthis2;
 	    startthis2 = clock();

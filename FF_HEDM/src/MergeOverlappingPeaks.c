@@ -310,7 +310,7 @@ int main(int argc, char *argv[]){
 		CurrentIDs[i][12] = NewIDs[i][8];			  // SigmaR
 		CurrentIDs[i][13] = NewIDs[i][9];			  // SigmaEta
 		CurrentIDs[i][14] = NewIDs[i][10];			  // NrPx
-		CurrentIDs[i][15] = NewIDs[i][11];			  // NrPx
+		CurrentIDs[i][15] = NewIDs[i][11];			  // NrPxTot
 	}
     int e = CheckDirectoryCreation(Folder,FileStem);
     if (e ==0) return 1;
