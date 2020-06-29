@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from math import sqrt, pi
-import calcMiso
+# ~ import calcMiso
 micdata = np.genfromtxt('MicrostructureText_Layer4.mic',skip_header=4)
 grains = np.genfromtxt('GrainsLayer4.csv',skip_header=9)
 nGrains,z = grains.shape
@@ -15,7 +15,6 @@ for grainNr in range(nGrains):
 	out[grainNr,:] = np.array([grCOM[0],grCOM[1],avgPos[0],avgPos[1],sqrt((grCOM[0]-avgPos[0])**2+(grCOM[1]-avgPos[1])**2),grain[22],sqrt(nrPts*sqrt(3)/pi),grain[22]-sqrt(nrPts*sqrt(3)/pi)])
 
 print(np.mean(out[:,4]))
-print(out)
 plt.scatter(out[:,4],out[:,6])
 plt.show()
 

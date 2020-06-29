@@ -792,8 +792,8 @@ def loadbplot():
 	bdata = getDataB(detnr,bytesToSkip)
 	if nDetectors > 1:
 		lsdorig = lsd[detnr-startDetNr]
-	else:
-		lsdorig = float(lsdlocalvar.get())
+	# ~ else:
+		# ~ lsdorig = float(lsdlocalvar.get())
 	lsdlocal = float(lsdlocalvar.get())
 	#lines2 = None
 	#b.clear()

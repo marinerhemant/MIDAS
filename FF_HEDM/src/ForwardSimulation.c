@@ -630,6 +630,7 @@ main(int argc, char *argv[])
 	double LatC[6],Wavelength,Wedge=0, p0, p1, p2, RhoD,GaussWidth,PeakIntensity=2000;
 	int writeSpots, isBin=0;
 	int LoadNr = 0, UpdatedOrientations = 1;
+	double eRes = 0;
 	while (fgets(aline,4096,fileParam)!=NULL){
 		str="RingsToUse ";
 		LowNr = strncmp(aline,str,strlen(str));
@@ -801,6 +802,12 @@ main(int argc, char *argv[])
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr == 0){
 			sscanf(aline,"%s %d",dummy,&isBin);
+			continue;
+		}
+		str="EResolution ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr == 0){
+			sscanf(aline,"%s %lf",dummy,&eRes);
 			continue;
 		}
 	}
@@ -1129,8 +1136,8 @@ main(int argc, char *argv[])
 	printf("Distortion map done in %lf sec.\n",diftotal);
 
 	// Make GaussMask for blurring
-	int nrPxMask = 1 + 4*((int)ceil(GaussWidth));
-	int centIdxMask = nrPxMask*2*((int)ceil(GaussWidth)) + 2*((int)ceil(GaussWidth)); // This should cover 95% of the total distribution, centered at 2*ceil(GaussWidth)
+	int nrPxMask = 1 + 8*((int)ceil(GaussWidth));
+	int centIdxMask = nrPxMask*4*((int)ceil(GaussWidth)) + 4*((int)ceil(GaussWidth)); // This should cover 95% of the total distribution, centered at 2*ceil(GaussWidth)
 	double *GaussMask, sumMask=0; // sumMask to normalize
 	GaussMask = calloc(nrPxMask*nrPxMask,sizeof(*GaussMask));
 	for (i=0;i<nrPxMask;i++){
@@ -1262,8 +1269,8 @@ main(int argc, char *argv[])
 			zBin = (size_t)zDet;
 			imageBin = zBin*NrPixels + yBin; // We do a transpose here to generate the correctly oriented GE files.
 			centIdx = omeBin + imageBin;
-			for (idxNrY=-2*ceil(GaussWidth);idxNrY<=2*ceil(GaussWidth);idxNrY++){
-				for (idxNrZ=-2*ceil(GaussWidth);idxNrZ<=2*ceil(GaussWidth);idxNrZ++){
+			for (idxNrY=-4*ceil(GaussWidth);idxNrY<=4*ceil(GaussWidth);idxNrY++){
+				for (idxNrZ=-4*ceil(GaussWidth);idxNrZ<=4*ceil(GaussWidth);idxNrZ++){
 					currentPos = centIdx + idxNrY*NrPixels + idxNrZ;
 					ImageArr[currentPos] += (double) (GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask] * PeakIntensity);
 					if (maxInt < ImageArr[currentPos]) maxInt = ImageArr[currentPos];
