@@ -117,7 +117,7 @@ for counter,grain in enumerate(Grains):
 	grd = grg.create_dataset('GrainInfo',data=grain)
 	grd.attrs['header'] = hGr
 	spotsThisGrain = SpotMatrix[SpotMatrix[:,0] == thisID]
-	RadiusInfo = np.empty((spotsThisGrain.shape[0],20))
+	RadiusInfo = np.empty((spotsThisGrain.shape[0],21))
 	for ctr,spot in enumerate(spotsThisGrain):
 		spotID = int(spot[1])
 		orig_ID = int(IDRings[IDRings[:,2]==spotID,1])

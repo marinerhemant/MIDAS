@@ -10,7 +10,7 @@ source ${HOME}/.MIDAS/paths
 cmdname=$(basename $0)
 
 echo "FF analysis code for Multiple Layers and Multiple rings:"
-echo "Version: 5, 2017/03/14, in case of problems contact hsharma@anl.gov"
+echo "Version: 5, 2020/07/01, in case of problems contact hsharma@anl.gov"
 
 if [[ ${#*} != 7 ]]
 then

@@ -454,7 +454,7 @@ def confirmselectspot():
 def computedistances():
 	global topDistanceResult
 	global lsd
-	nsols = ndistances*(ndistances-1)/2
+	nsols = int(ndistances*(ndistances-1)/2)
 	xs = np.zeros(nsols)
 	ys = np.zeros(nsols)
 	idx = 0
