@@ -88,6 +88,7 @@ hk = group1.create_dataset('HKLs',data=HKLs)
 hk.attrs['head'] = np.string_(open('hkls.csv').readline())
 
 radii = []
+nColsRad = 21
 for ring in ringNrs:
 	print("Processing ring: "+ring)
 	group2 = group1.create_group('Ring'+ring)
@@ -102,6 +103,7 @@ for ring in ringNrs:
 				tmpd.attrs['head'] = np.string_(open(fileName).readline())
 	fileName = os.getcwd() + '/Radius_StartNr_' + str(startNr) + '_EndNr_' + str(endNr) + '_RingNr_' + ring + '.csv'
 	arr = np.genfromtxt(fileName,skip_header=1)
+	nSps,nColsRad = arr.shape
 	radd = group2.create_dataset(os.path.basename(fileName),data=arr)
 	radd.attrs['head'] = np.string_(open(fileName).readline())
 	radii.append(arr)
@@ -117,7 +119,7 @@ for counter,grain in enumerate(Grains):
 	grd = grg.create_dataset('GrainInfo',data=grain)
 	grd.attrs['header'] = hGr
 	spotsThisGrain = SpotMatrix[SpotMatrix[:,0] == thisID]
-	RadiusInfo = np.empty((spotsThisGrain.shape[0],21))
+	RadiusInfo = np.empty((spotsThisGrain.shape[0],nColsRad))
 	for ctr,spot in enumerate(spotsThisGrain):
 		spotID = int(spot[1])
 		orig_ID = int(IDRings[IDRings[:,2]==spotID,1])
