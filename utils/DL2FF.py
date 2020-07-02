@@ -81,6 +81,7 @@ NrSpots = 0
 for peakNr in range(nPeaks):
 	thisY = peaksInfo[peakNr,2] - BC[0]
 	thisZ = peaksInfo[peakNr,3] - BC[1]
+	thisInt = peaksInfo[peakNr,4]
 	thisRad = sqrt(thisY**2+thisZ**2) * px
 	thisR = thisRad / px
 	thisEta = CalcEtaAngle(thisY,thisZ)
@@ -95,7 +96,7 @@ for peakNr in range(nPeaks):
 			f = open(fn,'r')
 			SpotID = len(f.readlines()) - 1
 			f.close()
-			outstr = str(SpotID) + ' 100 ' + str(thisOmega) + ' ' + str(thisY+BC[0]) + ' ' + str(thisZ+BC[1]) + ' 100 ' + str(thisR) + ' ' + str(thisEta) + ' 1 1 1 1 1\n'
+			outstr = str(SpotID) + ' '+ str(thisInt) + ' ' + str(thisOmega) + ' ' + str(thisY+BC[0]) + ' ' + str(thisZ+BC[1]) + ' 100 ' + str(thisR) + ' ' + str(thisEta) + ' 1 1 1 1 1\n'
 			f = open(fn,'a')
 			f.write(outstr)
 			f.close()
