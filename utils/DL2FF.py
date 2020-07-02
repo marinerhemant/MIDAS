@@ -5,8 +5,8 @@ from os.path import expanduser
 import os
 from math import sqrt, degrees, acos
 
-peaksFN = 'center-of-mass-dl.csv'
-pFile = 'psAu.txt'
+peaksFN = 'center-of-mass-dl-394-sz11.csv'
+pFile = 'PS_ss.txt'
 nCPUs = 2
 
 ###### pFile must not have seedFolder and FolderName arguments, also the filename must not have path appended to it.
@@ -59,8 +59,8 @@ for ctr,ringNr in enumerate(ringNrs):
 peaksInfo = np.genfromtxt(peaksFN,delimiter=',',skip_header=1)
 nPeaks,ncols = peaksInfo.shape
 
-firstFrameNr = int(peaksInfo[0,1]) + 1
-lastFrameNr = int(peaksInfo[-1,1]) + 1
+firstFrameNr = int(np.min(peaksInfo[:,1])) + 1
+lastFrameNr = int(np.max(peaksInfo[:,1])) + 1
 head = 'SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta\n'
 for ringNr in ringNrs:
 	folN = thisFolder+folder+'Ring'+str(ringNr)+'/Temp/'
@@ -89,7 +89,7 @@ for peakNr in range(nPeaks):
 			f = open(fn,'r')
 			SpotID = len(f.readlines()) - 1
 			f.close()
-			outstr = str(SpotID) + ' 100 ' + str(thisOmega) + ' ' + str(thisY+BC[0]) + ' ' + str(thisZ+BC[1]) + ' 100 ' + str(thisR) + ' ' + str(thisEta) + ' 1 1\n'
+			outstr = str(SpotID) + ' 100 ' + str(thisOmega) + ' ' + str(thisY+BC[0]) + ' ' + str(thisZ+BC[1]) + ' 100 ' + str(thisR) + ' ' + str(thisEta) + ' 1 1 1 1 1\n'
 			f = open(fn,'a')
 			f.write(outstr)
 			f.close()
@@ -122,4 +122,4 @@ f.write('FolderName '+folder[:-1]+'\n')
 f.write('SeedFolder '+thisFolder+'\n')
 f.close()
 
-check_call(expanduser('~')+'/.MIDAS/MIDAS_V5_FarField_Layers '+pFile+'.New.txt 1 1 0 '+ str(nCPUs) + ' local sd',shell=True)
+# ~ check_call(expanduser('~')+'/.MIDAS/MIDAS_V5_FarField_Layers '+pFile+'.New.txt 1 1 0 '+ str(nCPUs) + ' local sd',shell=True)
