@@ -284,8 +284,8 @@ double problem_function(
 	for (i=0;i<NrPixels;i++){
 		IntPeaks = 0;
 		for (j=0;j<nPeaks;j++){
-			//~ L = 1/(((((Rs[i]-R[j])*(Rs[i]-R[j]))/((SigmaLR[j])*(SigmaLR[j])))+1)*((((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/((SigmaLEta[j])*(SigmaLEta[j])))+1));
-			L = 1/(((((Rs[i]-R[j])*(Rs[i]-R[j]))/((SigmaLR[j])*(SigmaLR[j]))))+((((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/((SigmaLEta[j])*(SigmaLEta[j]))))+1);
+			L = 1/(((((Rs[i]-R[j])*(Rs[i]-R[j]))/((SigmaLR[j])*(SigmaLR[j])))+1)*((((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/((SigmaLEta[j])*(SigmaLEta[j])))+1));
+			//~ L = 1/(((((Rs[i]-R[j])*(Rs[i]-R[j]))/((SigmaLR[j])*(SigmaLR[j]))))+((((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/((SigmaLEta[j])*(SigmaLEta[j]))))+1);
 			G = exp(-(0.5*(((Rs[i]-R[j])*(Rs[i]-R[j]))/(SigmaGR[j]*SigmaGR[j])))-(0.5*(((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/(SigmaGEta[j]*SigmaGEta[j]))));
 			IntPeaks += IMAX[j]*((Mu[j]*L) + ((1-Mu[j])*G));
 		}
@@ -314,8 +314,8 @@ static inline void CalcIntegratedIntensity(int nPeaks,double *x,double *Rs,doubl
 		NrOfPixels[j] = 0;
 		IntegratedIntensity[j] = 0;
 		for (i=0;i<NrPixelsThisRegion;i++){
-			//~ L = 1/(((((Rs[i]-R[j])*(Rs[i]-R[j]))/((SigmaLR[j])*(SigmaLR[j])))+1)*((((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/((SigmaLEta[j])*(SigmaLEta[j])))+1));
-			L = 1/(((((Rs[i]-R[j])*(Rs[i]-R[j]))/((SigmaLR[j])*(SigmaLR[j]))))+((((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/((SigmaLEta[j])*(SigmaLEta[j]))))+1);
+			L = 1/(((((Rs[i]-R[j])*(Rs[i]-R[j]))/((SigmaLR[j])*(SigmaLR[j])))+1)*((((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/((SigmaLEta[j])*(SigmaLEta[j])))+1));
+			//~ L = 1/(((((Rs[i]-R[j])*(Rs[i]-R[j]))/((SigmaLR[j])*(SigmaLR[j]))))+((((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/((SigmaLEta[j])*(SigmaLEta[j]))))+1);
 			G = exp(-(0.5*(((Rs[i]-R[j])*(Rs[i]-R[j]))/(SigmaGR[j]*SigmaGR[j])))-(0.5*(((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/(SigmaGEta[j]*SigmaGEta[j]))));
 			IntPeaks = IMAX[j]*((Mu[j]*L) + ((1-Mu[j])*G));
 			if (IntPeaks > BG){

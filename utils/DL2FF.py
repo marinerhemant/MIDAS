@@ -9,6 +9,8 @@ peaksFN = 'center-of-mass-dl.csv'
 pFile = 'psAu.txt'
 nCPUs = 2
 
+###### pFile must not have seedFolder and FolderName arguments, also the filename must not have path appended to it.
+
 def getValueFromParamFile(paramfn,searchStr,nLines=1,wordNr=1,nWords=1):
 	ret_list = []
 	nrLines = 0
