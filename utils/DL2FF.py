@@ -4,10 +4,16 @@ from glob import glob
 from os.path import expanduser
 import os
 from math import sqrt, degrees, acos
+import argparse
 
-peaksFN = 'center-of-mass-dl-394-sz11.csv'
-pFile = 'PS_ss.txt'
-nCPUs = 2
+parser = argparse.ArgumentParser(description='HEDM reconstruction.')
+parser.add_argument('-peak',   type=str, required=True, help='peak info csv')
+parser.add_argument('-para',   type=str, required=True, help='parameters txt')
+args, unparsed = parser.parse_known_args()
+
+peaksFN = args.peak
+pFile = args.para
+nCPUs = 32
 
 ###### pFile must not have seedFolder and FolderName arguments, also the filename must not have path appended to it.
 
@@ -122,4 +128,4 @@ f.write('FolderName '+folder[:-1]+'\n')
 f.write('SeedFolder '+thisFolder+'\n')
 f.close()
 
-# ~ check_call(expanduser('~')+'/.MIDAS/MIDAS_V5_FarField_Layers '+pFile+'.New.txt 1 1 0 '+ str(nCPUs) + ' local sd',shell=True)
+check_call(expanduser('~')+'/.MIDAS/MIDAS_V5_FarField_Layers '+pFile+'.New.txt 1 1 0 '+ str(nCPUs) + ' local sd',shell=True)
