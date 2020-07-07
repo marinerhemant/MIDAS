@@ -1098,7 +1098,7 @@ int main(int argc, char *argv[]){
 	for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 		NrPixelsThisRegion = PositionTrackers[RegNr];
 		if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
-			printf("Removed peak with %d pixels.\n",NrPixelsThisRegion);
+			printf("Removed peak with %d pixels, position: %d %d.\n",NrPixelsThisRegion,MaximaPositions[i][0],MaximaPositions[i][1]);
 			TotNrRegions--;
 			continue;
 		}
@@ -1116,7 +1116,7 @@ int main(int argc, char *argv[]){
 		}
 		if (nPeaks > maxNPeaks){
 			// Sort peaks by MaxIntensity, remove the smallest peaks until maxNPeaks, arrays needed MaximaPositions, MaximaValues.
-			printf("nPeaks = %d, will be reduced to %d, position: %d %d.\n",nPeaks,maxNPeaks,MaximaPositions[i][0],MaximaPositions[i][1]);
+			printf("nPeaks = %d, will be reduced to %d.\n",nPeaks,maxNPeaks);
 			int MaximaPositionsT[nPeaks][2];
 			double MaximaValuesT[nPeaks];
 			double maxIntMax;
