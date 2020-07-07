@@ -19,8 +19,11 @@ thresh = 80
 
 if path.exists(dName):
 	darkf = open(dName,'rb')
-	darkf.seek(fHead,os.SEEK_SET)
-	dark = np.fromfile(darkf,dtype=np.uint16,count=(NrPixels*NrPixels))
+	nFrames = int((os.path.getsize(dName) - 8192) / (2*NrPixels*NrPixels))
+	darkf.seek(8192,os.SEEK_SET)
+	for nr in range(nFrames):
+		dark += np.fromfile(darkf,dtype=np.uint16,count=(NrPixels*NrPixels))
+	dark /= nFrames
 	dark = np.reshape(dark,(NrPixels,NrPixels))
 	dark = dark.astype(float)
 else:
@@ -35,7 +38,6 @@ for frameNr in range(nFrames):
 	thisFrame = np.reshape(thisFrame,(NrPixels,NrPixels))
 	thisFrame = thisFrame.astype(float)
 	thisFrame = thisFrame - dark
-	# ~ thisFrame -= thresh
 	thisFrame[thisFrame < thresh] = 0
 	im = Image.fromarray(thisFrame)
 	im.save(outFN,compression=None)
