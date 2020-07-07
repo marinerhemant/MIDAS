@@ -20,11 +20,11 @@ thresh = 80
 dark = np.zeros(NrPixels*NrPixels)
 if path.exists(dName):
 	darkf = open(dName,'rb')
-	nFrames = int((os.path.getsize(dName) - 8192) / (2*NrPixels*NrPixels))
+	nFramesDark = int((os.path.getsize(dName) - 8192) / (2*NrPixels*NrPixels))
 	darkf.seek(8192,os.SEEK_SET)
 	for nr in range(nFrames):
 		dark += np.fromfile(darkf,dtype=np.uint16,count=(NrPixels*NrPixels))
-	dark /= nFrames
+	dark /= nFramesDark
 	dark = np.reshape(dark,(NrPixels,NrPixels))
 	dark = dark.astype(float)
 else:
@@ -33,7 +33,7 @@ else:
 f = open(fName,'rb')
 f.seek(fHead,os.SEEK_SET)
 for frameNr in range(nFrames):
-	print(frameNr)
+	print([frameNr,nFrames])
 	outFN =path.dirname(fName) + '/tiffs/' + path.basename(fName).replace('.ge3','') + '_FrameNr_'+ str(frameNr) + '.tif'
 	thisFrame = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
 	thisFrame = np.reshape(thisFrame,(NrPixels,NrPixels))
