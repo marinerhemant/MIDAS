@@ -1097,11 +1097,6 @@ int main(int argc, char *argv[]){
 	int TotNrRegions = NrOfReg;
 	for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 		NrPixelsThisRegion = PositionTrackers[RegNr];
-		if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
-			printf("Removed peak with %d pixels, position: %d %d.\n",NrPixelsThisRegion,MaximaPositions[i][0],MaximaPositions[i][1]);
-			TotNrRegions--;
-			continue;
-		}
 		for (i=0;i<NrPixelsThisRegion;i++){
 			UsefulPixels[i][0] = (int)(Positions[RegNr][i]/NrPixels);
 			UsefulPixels[i][1] = (int)(Positions[RegNr][i]%NrPixels);
@@ -1109,6 +1104,11 @@ int main(int argc, char *argv[]){
 		}
 		unsigned nPeaks;
 		nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,MaximaPositions,MaximaValues,&IsSaturated,IntSat);
+		if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
+			printf("Removed peak with %d pixels, position: %d %d.\n",NrPixelsThisRegion,MaximaPositions[0][0],MaximaPositions[0][1]);
+			TotNrRegions--;
+			continue;
+		}
 		if (IsSaturated == 1){ //Saturated peaks removed
 			printf("Saturated peak removed.\n");
 			TotNrRegions--;
