@@ -1098,6 +1098,7 @@ int main(int argc, char *argv[]){
 	for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 		NrPixelsThisRegion = PositionTrackers[RegNr];
 		if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
+			printf("Removed peak with %d pixels.",NrPixelsThisRegion);
 			TotNrRegions--;
 			continue;
 		}
