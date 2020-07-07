@@ -11,7 +11,8 @@ from PIL import Image
 # ~ dName = '/data/tomo1/mli_aug18_data/ge3/dark_before_000393.ge3'
 fName = '/data/tomo1/mli_aug18_data/ge3/ss_sam_ff3_000406.ge3'
 dName = '/data/tomo1/mli_aug18_data/ge3/dark_before_000405.ge3'
-fHead = 8192
+# ~ fHead = 8192
+fHead = 8396800
 NrPixels = 2048
 nFrames = 1440
 thresh = 80
@@ -34,7 +35,7 @@ for frameNr in range(nFrames):
 	thisFrame = np.reshape(thisFrame,(NrPixels,NrPixels))
 	thisFrame = thisFrame.astype(float)
 	thisFrame = thisFrame - dark
-	thisFrame -= thresh
-	thisFrame[thisFrame < 0] = 0
+	# ~ thisFrame -= thresh
+	thisFrame[thisFrame < thresh] = 0
 	im = Image.fromarray(thisFrame)
 	im.save(outFN,compression=None)
