@@ -17,6 +17,7 @@ NrPixels = 2048
 nFrames = 1440
 thresh = 80
 
+dark = np.zeros(NrPixels*NrPixels)
 if path.exists(dName):
 	darkf = open(dName,'rb')
 	nFrames = int((os.path.getsize(dName) - 8192) / (2*NrPixels*NrPixels))
