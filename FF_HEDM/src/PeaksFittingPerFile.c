@@ -1031,7 +1031,7 @@ int main(int argc, char *argv[]){
 	for (i=0;i<(NrPixels*NrPixels);i++){
 		ImgCorrBC[i] = (ImgCorrBC[i] - dark[i])/flood[i];
 		ImgCorrBC[i] = ImgCorrBC[i]*bc/beamcurr;
-		printf("%lf\n",ImgCorrBC[i]);
+		printf("%lf %lf %lf %lf %lf\n",ImgCorrBC[i],dark[i],flood[i],bc,beamcurr);
 		if (GoodCoords[i] == 0){
 			ImgCorrBC[i] = 0;
 		} else {
