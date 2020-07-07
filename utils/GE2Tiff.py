@@ -22,7 +22,7 @@ if path.exists(dName):
 	darkf = open(dName,'rb')
 	nFramesDark = int((os.path.getsize(dName) - 8192) / (2*NrPixels*NrPixels))
 	darkf.seek(8192,os.SEEK_SET)
-	for nr in range(nFrames):
+	for nr in range(nFramesDark):
 		dark += np.fromfile(darkf,dtype=np.uint16,count=(NrPixels*NrPixels))
 	dark /= nFramesDark
 	dark = np.reshape(dark,(NrPixels,NrPixels))
