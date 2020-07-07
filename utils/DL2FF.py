@@ -55,8 +55,9 @@ check_call('mkdir -p '+thisFolder+folder,shell=True)
 check_call(binFolder+'/GetHKLList ' + paramFile,shell=True)
 hkls = np.genfromtxt('hkls.csv',skip_header=1)
 check_call('cp '+thisFolder+'hkls.csv '+thisFolder+folder,shell=True)
-ringNrs=(set(list(hkls[:,4].flat)))
-ringNrs = [int(s) for s in ringNrs]
+# ~ ringNrs=(set(list(hkls[:,4].flat)))
+# ~ ringNrs = [int(s) for s in ringNrs]
+ringNrs = Rings
 ringSzs = np.zeros(len(ringNrs))
 for ctr,ringNr in enumerate(ringNrs):
 	for row in hkls:
