@@ -16,3 +16,4 @@ NF_HEDM/*.o
 gui/*.txt
 gui/*.csv
 gui/*.bin
+utils/__pycache__

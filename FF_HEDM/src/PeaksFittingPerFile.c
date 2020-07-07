@@ -1156,7 +1156,7 @@ int main(int argc, char *argv[]){
 		for (i=0;i<nPeaks;i++){
 			fprintf(outfilewrite,"%d %f %f %f %f %f %f %f ",(SpotIDStart+i),IntegratedIntensity[i],Omega,YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
 			for (j=0;j<2;j++) fprintf(outfilewrite, "%f ",OtherInfo[2*i+j]);
-			fprintf(outfilewrite,"%d %d",NrPx[i],NrPixelsThisRegion);
+			fprintf(outfilewrite,"%d %d %f %f",NrPx[i],NrPixelsThisRegion,MaximaPositions[i][0],MaximaPositions[i][1]);
 			fprintf(outfilewrite,"\n");
 		}
 		SpotIDStart += nPeaks;
