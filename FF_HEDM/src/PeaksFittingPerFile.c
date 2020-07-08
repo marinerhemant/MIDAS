@@ -338,7 +338,7 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **UsefulP
 	x[0] = Thresh/2;
 	xl[0] = 0;
 	xu[0] = Thresh;
-	int i;
+	int i,j;
 	double *Rs, *Etas;
 	Rs = malloc(NrPixelsThisRegion*2*sizeof(*Rs));
 	Etas = malloc(NrPixelsThisRegion*2*sizeof(*Etas));
@@ -388,6 +388,8 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **UsefulP
 		xu[(8*i)+6] = MaxRWidth;
 		xu[(8*i)+7] = MaxEtaWidth;
 		xu[(8*i)+8] = MaxEtaWidth;
+
+		for (j=0;j<8;j++) printf("%lf %lf %lf\n",x[8*i+j],xl[8*i+j],xu[8*i+j]);
 	}
 	struct func_data f_data;
 	f_data.NrPixels = NrPixelsThisRegion;
