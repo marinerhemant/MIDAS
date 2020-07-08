@@ -986,7 +986,7 @@ int main(int argc, char *argv[]){
 	sprintf(OutFile,"%s/%s_%0*d_%d_PS.csv",OutFolderName,FileStem,Padding,FileNr,RingNr);
 	FILE *outfilewrite;
 	outfilewrite = fopen(OutFile,"w");
-	fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion maxY maxZ diffY diffZ rawIMax fitResult\n");
+	fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion maxY maxZ diffY diffZ rawIMax returnCode\n");
 	int KeepSpots = 0;
 	for (i=0;i<nOmeRanges;i++){
 		if (Omega >= OmegaRanges[i][0] && Omega <= OmegaRanges[i][1]) KeepSpots = 1;
