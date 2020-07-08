@@ -407,7 +407,7 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **UsefulP
 	nlopt_set_min_objective(opt, problem_function, trp);
 	double minf;
 	int rc = nlopt_optimize(opt, x, &minf);
-	printf("RC: %d\n",rc)
+	printf("RC: %d\n",rc);
 	nlopt_destroy(opt);
 	for (i=0;i<nPeaks;i++){
 		IMAX[i] = x[(8*i)+1];
