@@ -389,7 +389,7 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **UsefulP
 		xu[(8*i)+7] = MaxEtaWidth;
 		xu[(8*i)+8] = MaxEtaWidth;
 
-		for (j=0;j<8;j++) printf("%lf %lf %lf\n",x[8*i+j],xl[8*i+j],xu[8*i+j]);
+		for (j=0;j<8;j++) printf("Args: %lf %lf %lf\n",x[8*i+j],xl[8*i+j],xu[8*i+j]);
 	}
 	struct func_data f_data;
 	f_data.NrPixels = NrPixelsThisRegion;
@@ -407,6 +407,7 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **UsefulP
 	nlopt_set_min_objective(opt, problem_function, trp);
 	double minf;
 	int rc = nlopt_optimize(opt, x, &minf);
+	printf("RC: %d\n",rc)
 	nlopt_destroy(opt);
 	for (i=0;i<nPeaks;i++){
 		IMAX[i] = x[(8*i)+1];
