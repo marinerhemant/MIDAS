@@ -329,7 +329,7 @@ static inline void CalcIntegratedIntensity(int nPeaks,double *x,double *Rs,doubl
 	}
 }
 
-void Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **UsefulPixels, double *MaximaValues,
+int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **UsefulPixels, double *MaximaValues,
 				int **MaximaPositions, double *IntegratedIntensity, double *IMAX, double *YCEN, double *ZCEN,
 				double *RCens, double *EtaCens,double Ycen, double Zcen, double Thresh, int *NrPx,double *OtherInfo)
 {
@@ -404,7 +404,7 @@ void Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **Useful
 	nlopt_set_maxtime(opt, 300);
 	nlopt_set_min_objective(opt, problem_function, trp);
 	double minf;
-	nlopt_optimize(opt, x, &minf);
+	int rc = nlopt_optimize(opt, x, &minf);
 	nlopt_destroy(opt);
 	for (i=0;i<nPeaks;i++){
 		IMAX[i] = x[(8*i)+1];
@@ -425,6 +425,7 @@ void Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **Useful
 	CalcIntegratedIntensity(nPeaks,x,Rs,Etas,NrPixelsThisRegion,IntegratedIntensity,NrPx);
 	free(Rs);
 	free(Etas);
+	return rc;
 }
 
 static inline int CheckDirectoryCreation(char Folder[1024])
@@ -1153,11 +1154,11 @@ int main(int argc, char *argv[]){
 		int *NrPx;
 		NrPx = malloc(nPeaks*2*sizeof(*NrPx));
 		printf("%d %d %d %d\n",RegNr,NrOfReg,NrPixelsThisRegion,nPeaks);
-		Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo);
+		int rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo);
 		for (i=0;i<nPeaks;i++){
 			fprintf(outfilewrite,"%d %f %f %f %f %f %f %f ",(SpotIDStart+i),IntegratedIntensity[i],Omega,YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
 			for (j=0;j<2;j++) fprintf(outfilewrite, "%f ",OtherInfo[2*i+j]);
-			fprintf(outfilewrite,"%d %d %d %d %f %f %f\n",NrPx[i],NrPixelsThisRegion,MaximaPositions[i][0],MaximaPositions[i][1],(double)MaximaPositions[i][0]-YCEN[i]-Ycen,(double)MaximaPositions[i][1]-ZCEN[i]-Zcen,MaximaValues[i]);
+			fprintf(outfilewrite,"%d %d %d %d %f %f %f %d\n",NrPx[i],NrPixelsThisRegion,MaximaPositions[i][0],MaximaPositions[i][1],(double)MaximaPositions[i][0]-YCEN[i]-Ycen,(double)MaximaPositions[i][1]-ZCEN[i]-Zcen,MaximaValues[i],rc);
 		}
 		SpotIDStart += nPeaks;
 		free(IntegratedIntensity);
