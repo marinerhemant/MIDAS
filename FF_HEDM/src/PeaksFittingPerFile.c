@@ -366,7 +366,7 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **UsefulP
 		x[(8*i)+5] = Width; //SigmaGR
 		x[(8*i)+6] = Width; //SigmaLR
 		initSigmaEta = Width/x[(8*i)+2];
-		if (initSigmaEta > MaxEtaWidth) initSigmaEta = MaxEtaWidth;
+		if (atand(initSigmaEta) > MaxEtaWidth) initSigmaEta = tand(MaxEtaWidth);
 		x[(8*i)+7] = atand(initSigmaEta); //SigmaGEta //0.5;
 		x[(8*i)+8] = atand(initSigmaEta); //SigmaLEta //0.5;
 
