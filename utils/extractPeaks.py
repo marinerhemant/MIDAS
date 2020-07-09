@@ -35,8 +35,7 @@ for fNr in range(1,nFrames+1):
 	for ring in Rings:
 		thisFN = folder+'Ring'+str(ring)+'/Temp/'+fStem+'_'+str(layerNr)+'_'+str(fNr).zfill(padding)+'_'+str(ring)+'_PS.csv'
 		peaksData = np.genfromtxt(thisFN,skip_header=1)
-		print(peaksData.shape)
-		nPeaks,t = peaksData.shape
+		nPeaks = peaksData.size // 19
 		for peakNr in range(nPeaks):
 			if nPeaks > 1:
 				peakInfo = peaksData[peakNr]
