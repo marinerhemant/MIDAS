@@ -867,12 +867,7 @@ main(int argc, char *argv[])
 			InputInfo[i][15] = holdArr[i*18+15];
 			InputInfo[i][16] = holdArr[i*18+16];
 			InputInfo[i][17] = holdArr[i*18+17];
-			//~ for (j=0;j<18;j++){
-				//~ printf("%lf ",InputInfo[i][j]);
-			//~ }
-			//~ printf("\n");
 		}
-		//~ return;
 		free(holdArr);
 	} else {
 		inpF = fopen(inpFN,"r");
@@ -1029,7 +1024,6 @@ main(int argc, char *argv[])
 					for (i=0;i<totalElements;i++){
 						fgets(aline,4096,inpF);
 						sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf",&OrientTemp[0][0],&OrientTemp[1][0],&OrientTemp[2][0],&OrientTemp[0][1],&OrientTemp[1][1],&OrientTemp[2][1],&OrientTemp[0][2],&OrientTemp[1][2],&OrientTemp[2][2]);
-						//~ sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf",&OrientTemp[0][0],&OrientTemp[0][1],&OrientTemp[0][2],&OrientTemp[1][0],&OrientTemp[1][1],&OrientTemp[1][2],&OrientTemp[2][0],&OrientTemp[2][1],&OrientTemp[2][2]);
 						OrientMat2Euler(OrientTemp,EulerThis);
 						Euler2OrientMat(EulerThis,OrientThis);
 						for (j=0;j<9;j++){
@@ -1167,7 +1161,6 @@ main(int argc, char *argv[])
 	double OmeDiff, yTemp, zTemp, yThis, omeThis, etaThis;
 	double Info[5],DisplY,DisplZ,yDet,zDet,DisplY2,DisplZ2;
 	int yTrans, zTrans;
-	//~ int yTrans2, zTrans2;
 	int idxNrY,idxNrZ;
 	long long int idx;
 	size_t omeBin, yBin, zBin, imageBin, centIdx, currentPos;
@@ -1187,8 +1180,6 @@ main(int argc, char *argv[])
 		} else if (dataType == 3){ // binary file
 			for (i=0;i<6;i++) EpsThis[i] = InputInfo[voxNr][i+12];
 			CorrectHKLsLatCEpsilon(LatC,EpsThis,Wavelength,hklsOut);
-			//~ printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",LatC[0],LatC[1],LatC[2],LatC[3],LatC[4],LatC[5],EpsThis[0],EpsThis[1],EpsThis[2],EpsThis[3],EpsThis[4],EpsThis[5],Wavelength);
-			//~ for (i=0;i<n_hkls;i++) printf("%d %lf %lf %lf %lf %lf\n",voxNr,hklsOut[i][0],hklsOut[i][1],hklsOut[i][2],hklsOut[i][3],hklsOut[i][4]);
 		}
 		// Get the Orientation Matrix
 		for (i=0;i<3;i++){
@@ -1209,8 +1200,6 @@ main(int argc, char *argv[])
 			// Get diplacements due to spot position
 			yTemp = -Info[0]*sin(Info[1]*deg2rad);
 			zTemp =  Info[0]*cos(Info[1]*deg2rad);
-			//~ yTrans2 = (int) (-yTemp/px + yBC);
-			//~ zTrans2 = (int) ( zTemp/px + zBC);
 			DisplacementInTheSpot(InputInfo[voxNr][9],InputInfo[voxNr][10],
 				InputInfo[voxNr][11],Lsd,yTemp,zTemp,omeThis,&DisplY2,&DisplZ2);
 			yThis = yTemp+DisplY2; // These are displaced for grain position, not tilted.
@@ -1219,8 +1208,6 @@ main(int argc, char *argv[])
 			yTrans = (int) (-yThis/px + yBC);
 			zTrans = (int) ( zThis/px + zBC);
 			idx = yTrans + NrPixels*zTrans;
-			//~ printf("%lld %d %lf %lf %lf %lf %lf %lf %lf\n",idx,zTrans,zThis,zBC,zTemp,DisplZ2,Info[0],Info[1],cosd(Info[1]));
-			//~ fflush(stdout);
 			DisplY = yDispl[idx];
 			DisplZ = zDispl[idx];
 			if (DisplY == -32100){ // Was not set, check neighbor
@@ -1274,8 +1261,6 @@ main(int argc, char *argv[])
 					currentPos = centIdx + idxNrY*NrPixels + idxNrZ;
 					ImageArr[currentPos] += (double) (GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask] * PeakIntensity);
 					if (maxInt < ImageArr[currentPos]) maxInt = ImageArr[currentPos];
-					//~ printf("%lf %lf %llu %llu\n",ImageArr[currentPos], GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask], currentPos, (long long unsigned)ImageArrSize);
-					//~ fflush(stdout);
 				}
 			}
 		}
