@@ -4,9 +4,7 @@
 
 Code for reduction of Near-Field and Far-Field High Energy Diffraction Microscopy (HEDM) data developed at Advanced Photon Source.
 
-In case of problems, contatct [Dr. Hemant Sharma](mailto:hsharma@anl.gov?subject=[MIDAS]).
-
-Neldermead is taken from [ASA047](http://people.sc.fsu.edu/~jburkardt/cpp_src/asa047/asa047.html) and modified to include constraints and use as CUDA kernels.
+In case of problems, contatct [Dr. Hemant Sharma](mailto:hsharma@anl.gov?subject=[MIDAS]%20From%20Github).
 
 [SGInfo](http://cci.lbl.gov/sginfo/) library used to calculate HKLs.
 
