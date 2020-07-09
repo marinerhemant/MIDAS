@@ -1179,11 +1179,11 @@ int main(int argc, char *argv[]){
 	free(PositionTrackers);
 	free(z);
 	free(MaximaValues);
-    //FreeMemMatrixInt(Positions,nOverlapsMaxPerImage);
+	FreeMemMatrixInt(Positions,nOverlapsMaxPerImage);
 	FreeMemMatrixInt(MaximaPositions,NrPixels*10);
 	FreeMemMatrixInt(UsefulPixels,NrPixels*10);
 	end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
-    printf("Time elapsed: %f s.\n",diftotal);
-    return 0;
+	printf("Time elapsed: %f s.\n",diftotal);
+	return 0;
 }

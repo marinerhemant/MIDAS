@@ -345,6 +345,10 @@ int main(int argc, char *argv[])
 		sscanf(line,"%d",&IDs[nrIDs]);
 		nrIDs++;
 	}
+	if (nrIDs == 0){
+		printf("No ID was found in SpotsToIndex.csv file. Please check your parameters file.\n");
+		return 1;
+	}
 	fclose(IDsFile);
 	printf("Total of %d IDs will be sorted into grains now.\n",nrIDs);
 	bool *IDsToKeep;
@@ -376,15 +380,15 @@ int main(int argc, char *argv[])
 	FILE *fileOPFit = fopen("Results/OrientPosFit.bin","r");
 	FILE *fileProcessKey = fopen("Results/ProcessKey.bin","r");
 	if (fileKey == NULL){
-		printf("Key file was not found. Exiting.\n");
+		printf("Key file was not found. This means nothing was indexed in the previous step.\nTypically this means parameters were not correct. Please check.\nExiting.\n");
 		return 1;
 	}
 	if (fileOPFit == NULL){
-		printf("OrientPos file was not found. Exiting.\n");
+		printf("OrientPos file was not found. This means nothing was indexed in the previous step.\nTypically this means parameters were not correct. Please check.\nExiting.\n");
 		return 1;
 	}
 	if (fileProcessKey == NULL){
-		printf("ProcessKey file was not found. Exiting.\n");
+		printf("ProcessKey file was not found. This means nothing was indexed in the previous step.\nTypically this means parameters were not correct. Please check.\nExiting.\n");
 		return 1;
 	}
 	int *keyID;
@@ -394,7 +398,6 @@ int main(int argc, char *argv[])
 	for (i=0;i<nrIDs;i++){
 		readKey = fread(keyID,2*sizeof(int),1,fileKey);
 		IDsToKeep[i] = true;
-		//~ printf("%d %d %d\n",IDs[i],keyID[0],keyID[1]);
 		if (keyID[0] == 0){
 			IDsToKeep[i] = false;
 		}
@@ -406,10 +409,8 @@ int main(int argc, char *argv[])
 				continue;
 			}
 			OPs[i][counter] = OPThis[j];
-			//~ printf("%lf ",OPs[i][counter]);
 			counter++;
 		}
-		//~ printf("\n");
 		Radiuses[i] = OPThis[25];
 	}
 	int StartingID,ThisID1,ThisID2;
@@ -570,7 +571,6 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	//~ for (i=0;i<nRings;i++) printf("%d %d %d %lf\n",IDHash[i][0],IDHash[i][1],IDHash[i][2],dspacings[i]);
 	for (j=0;j<NR_MAX_IDS_PER_GRAIN;j++) for (k=0;k<12;k++) SpotMatrix[j][k] = 0;
 	int rowSpotID, startSpotMatrix;
 	double RetVal, Eul[3];

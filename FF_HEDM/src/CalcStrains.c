@@ -32,7 +32,7 @@
 #define NR_MAX_IDS_PER_GRAIN 5000
 
 inline void
-MatMult(double m[3][3], double n[3][3], double res[3][3]) 
+MatMult(double m[3][3], double n[3][3], double res[3][3])
 {
    int r;
    for (r=0; r<3; r++) {
@@ -45,7 +45,7 @@ MatMult(double m[3][3], double n[3][3], double res[3][3])
       res[r][2] = m[r][0]*n[0][2] +
                   m[r][1]*n[1][2] +
                   m[r][2]*n[2][2];
-   }    
+   }
 }
 
 inline void
@@ -95,28 +95,28 @@ CalcStrainTensorFableBeaudoin(double LatCin[6],double LatticeParameterFit[6],
 	double beta1  = deg2rad*LatCin[4];
 	double gamma1 = deg2rad*LatCin[5];
 	// Strained parameters
-	
+
 	double a2 = LatticeParameterFit[0];
 	double b2 = LatticeParameterFit[1];
 	double c2 = LatticeParameterFit[2];
 	double alpha2 = deg2rad*LatticeParameterFit[3];
 	double beta2  = deg2rad*LatticeParameterFit[4];
 	double gamma2 = deg2rad*LatticeParameterFit[5];
-	
+
 	// Calculate strain tensor in the grain coordinate system
-	
+
 	double CosGPr1 = (cos(alpha1)*cos(beta1)-cos(gamma1))/(sin(alpha1)*sin(beta1));
 	double SinGPr1 = sin(acos(CosGPr1));
 	double A0[3][3] =  {{ a1*sin(beta1)*SinGPr1, 0, 			 0},
 						{-a1*sin(beta1)*CosGPr1, b1*sin(alpha1), 0},
 						{ a1*cos(beta1), 		 b1*cos(alpha1), c1}};
-	
+
 	double CosGPr2 = (cos(alpha2)*cos(beta2)-cos(gamma2))/(sin(alpha2)*sin(beta2));
 	double SinGPr2 = sin(acos(CosGPr2));
 	double A[3][3] =   {{ a2*sin(beta2)*SinGPr2, 0, 			 0},
 						{-a2*sin(beta2)*CosGPr2, b2*sin(alpha2), 0},
 						{ a2*cos(beta2), 		 b2*cos(alpha2), c2}};
-	
+
 	double I[3][3] = {{1, 0, 0},
 					  {0, 1, 0},
 					  {0, 0, 1}};
@@ -194,7 +194,7 @@ StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double
 			}
 		}
 		if (ds0 == 0){
-			printf("This id was not detected: %d %lf\n",id,SpotsInfo[i][7]);
+			printf("This id was not detected: %d %lf. Something is wrong. Please contact hsharma@anl.gov to investigate.\n",id,SpotsInfo[i][7]);
 			return 0;
 		}
 		mydata.B[i] = (dsObs-ds0)/ds0;
@@ -242,7 +242,7 @@ StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double
 	StrainTensorSample[2][2] = x[2];
 	for (i=0;i<nspots;i++){
 		SpotMatrix[i+startSpotMatrix][11] = (mydata.B[i] - (mydata.A[i][0]*x[0] + // No fabs, to get feeling of sign.
-			   mydata.A[i][1]*x[1] + mydata.A[i][2]*x[2] + mydata.A[i][3]*x[3] + 
+			   mydata.A[i][1]*x[1] + mydata.A[i][2]*x[2] + mydata.A[i][3]*x[3] +
 			   mydata.A[i][4]*x[4] + mydata.A[i][5]*x[5]));
 	}
 	return 1;
