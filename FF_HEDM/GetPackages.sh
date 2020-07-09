@@ -41,25 +41,25 @@ if [ ! -d ${dirThis}/LIBTIFF ]; then # TIFF
 	make install
 fi
 
-#~ if [ ! -d ${dirThis}/ZLIB ]; then # ZLIB
-	#~ cd $dirThis
-	#~ echo $(pwd)
-	#~ wget -O zlib.tar.gz https://www.dropbox.com/s/v44annn9lvx84e2/zlib-1.2.11.tar.gz?dl=0
-	#~ tar -xzf zlib.tar.gz
-	#~ cd zlib-1.2.11
-	#~ ./configure --prefix=${dirThis}/ZLIB
-	#~ make install
-#~ fi
+if [ ! -d ${dirThis}/ZLIB ]; then # ZLIB
+	cd $dirThis
+	echo $(pwd)
+	wget -O zlib.tar.gz https://www.dropbox.com/s/v44annn9lvx84e2/zlib-1.2.11.tar.gz?dl=0
+	tar -xzf zlib.tar.gz
+	cd zlib-1.2.11
+	./configure --prefix=${dirThis}/ZLIB
+	make install
+fi
 
-#~ if [ ! -d ${dirThis}/HDF5 ]; then # HDF5
-	#~ cd $dirThis
-	#~ echo $(pwd)
-	#~ wget -O hdf5.tar.gz https://www.dropbox.com/s/bv4b36qhsilprzf/hdf5-1.8.13.tar.gz?dl=0
-	#~ tar -xzf hdf5.tar.gz
-	#~ cd hdf5-1.8.13
-	#~ ./configure --prefix=${dirThis}/HDF5 --with-zlib=${dirThis}/ZLIB #--enable-shared
-	#~ make install
-#~ fi
+if [ ! -d ${dirThis}/HDF5 ]; then # HDF5
+	cd $dirThis
+	echo $(pwd)
+	wget -O hdf5.tar.gz https://www.dropbox.com/s/bv4b36qhsilprzf/hdf5-1.8.13.tar.gz?dl=0
+	tar -xzf hdf5.tar.gz
+	cd hdf5-1.8.13
+	./configure --prefix=${dirThis}/HDF5 --with-zlib=${dirThis}/ZLIB #--enable-shared
+	make install
+fi
 
 if [ ! -d ${dirThis}/jre1.8.0_181 ]; then # java
 	cd $dirThis
@@ -76,12 +76,12 @@ if [ ! -d ${dirThis}/FFTW ]; then # fftw
 	make -j8 install
 fi
 
-#~ if [ ! -d ${dirThis}/MPICH ]; then # mpich
-	#~ cd $dirThis
-	#~ wget -O mpich-3.3.2.tar.gz http://www.mpich.org/static/downloads/3.3.2/mpich-3.3.2.tar.gz
-	#~ tar -xzf mpich-3.3.2.tar.gz
-	#~ cd mpich-3.3.2
-	#~ ./configure --disable-fortran --prefix=${dirThis}/MPICH
-	#~ make
-	#~ make install
-#~ fi
+if [ ! -d ${dirThis}/MPICH ]; then # mpich
+	cd $dirThis
+	wget -O mpich-3.3.2.tar.gz http://www.mpich.org/static/downloads/3.3.2/mpich-3.3.2.tar.gz
+	tar -xzf mpich-3.3.2.tar.gz
+	cd mpich-3.3.2
+	./configure --disable-fortran --prefix=${dirThis}/MPICH
+	make
+	make install
+fi

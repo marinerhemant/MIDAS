@@ -10,6 +10,6 @@ SGInfo library used to calculate HKLs.
 
 Some misorientation functions are taken from the [ODFPF](https://anisotropy.mae.cornell.edu/onr/Matlab/matlab-functions.html) package from Cornell.
 
-Downloads jre, swift binary, NLOPT, LIBTIFF, NETCDF (curl, hdf5, zlib) for compilation of N(F)F-HEDM codes.
+Downloads [jre](https://www.oracle.com/java/technologies/javase-jre8-downloads.html), [swift](http://swift-lang.org/main/), [NLOPT](https://nlopt.readthedocs.io/en/latest/), [LIBTIFF](http://www.libtiff.org/), [FFTW](http://www.fftw.org/), [HDF5](https://www.hdfgroup.org/solutions/hdf5/), [MPICH](https://www.mpich.org/), [ZLIB](https://zlib.net/) for compilation of N(F)F-HEDM codes.
 
 **More details at** [MIDAS-WIKI](https://github.com/marinerhemant/MIDAS/wiki)
