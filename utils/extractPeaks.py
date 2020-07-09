@@ -26,16 +26,16 @@ dark = dark.astype(float)
 
 for fNr in range(1,nFrames+1):
 	print(fNr)
-	BytesToSkip = fHead + (fNr-1)*NrPixels*NrPixels*2
-	f.seek(BytesToSkip,os.SEEK_SET)
-	thisFrame = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
-	thisFrame = np.reshape(thisFrame,(NrPixels,NrPixels))
-	thisFrame = thisFrame.astype(float)
-	thisFrame = thisFrame - dark
+	# ~ BytesToSkip = fHead + (fNr-1)*NrPixels*NrPixels*2
+	# ~ f.seek(BytesToSkip,os.SEEK_SET)
+	# ~ thisFrame = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
+	# ~ thisFrame = np.reshape(thisFrame,(NrPixels,NrPixels))
+	# ~ thisFrame = thisFrame.astype(float)
+	# ~ thisFrame = thisFrame - dark
 	for ring in Rings:
 		thisFN = folder+'Ring'+str(ring)+'/Temp/'+fStem+'_'+str(layerNr)+'_'+str(fNr).zfill(padding)+'_'+str(ring)+'_PS.csv'
 		peaksData = np.genfromtxt(thisFN,skip_header=1)
-		nPeaks = peaksData.size // 10
+		nPeaks,t = peaksData.shape
 		for peakNr in range(nPeaks):
 			if nPeaks > 1:
 				peakInfo = peaksData[peakNr]
@@ -43,9 +43,9 @@ for fNr in range(1,nFrames+1):
 				peakInfo = peaksData
 			xPos = int(peakInfo[4])
 			yPos = int(peakInfo[3])
-			thisPeakInfo = thisFrame[xPos-int(window/2):xPos+int(window/2+1),yPos-int(window/2):yPos+int(window/2+1)]
+			# ~ thisPeakInfo = thisFrame[xPos-int(window/2):xPos+int(window/2+1),yPos-int(window/2):yPos+int(window/2+1)]
 			thisExt = '_'+str(peakNr)+'.tif'
 			outfn = thisFN.replace('.csv',thisExt)
-			im = Image.fromarray(thisPeakInfo)
-			im.save(outfn)
+			# ~ im = Image.fromarray(thisPeakInfo)
+			# ~ im.save(outfn)
 			piF.write(outfn+' '+str(xPos-int(window/2))+' '+str(xPos+int(window/2+1))+' '+str(yPos-int(window/2))+' '+str(yPos+int(window/2+1))+' '+str(peakInfo[4])+' '+str(peakInfo[3])+'\n')
