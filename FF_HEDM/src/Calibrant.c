@@ -1276,8 +1276,6 @@ int main(int argc, char *argv[])
 				EtaMean2[countr] = EtaMean[i];
 				IdealTtheta2[countr] = IdealTtheta[i];
 				countr++;
-			} else {
-				printf("Outside: %d %lf %lf %lf %lf\n",i,IdealR[i],RMean[i],EtaMean[i],IdealTtheta[i]);
 			}
 		}
 		printf("Out of %d slices, %d were in the detector\n",nIndices,countr);
