@@ -241,7 +241,7 @@ def plotRingsOffset():
 		b.set_xlim([lims[0][0],lims[0][1]])
 		b.set_ylim([lims[1][0],lims[1][1]])
 	txtDisplay = txtDisplay[:-2]
-	maxl = 300
+	maxl = 270
 	if len(txtDisplay) >maxl:
 		tmpdisplay = ''
 		nseps = int(len(txtDisplay)/maxl + 1)

@@ -4,7 +4,7 @@
 
 Code for reduction of Near-Field and Far-Field High Energy Diffraction Microscopy (HEDM) data developed at Advanced Photon Source.
 
-In case of problems, contatct [Dr. Hemant Sharma](mailto:hsharma@anl.gov?subject=[MIDAS]%20From%20Github).
+In case of problems, contatct [Hemant Sharma](mailto:hsharma@anl.gov?subject=[MIDAS]%20From%20Github).
 
 [SGInfo](http://cci.lbl.gov/sginfo/) library used to calculate HKLs.
 

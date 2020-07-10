@@ -112,13 +112,13 @@ int StartsWith(const char *a, const char *b)
 
 int main(int argc, char* argv[])
 {
-	if (argc < 12){
+	if (argc < 13){
 		printf("Usage: MatchGrains   OutFileName   state1.txt state2.txt"
 		"     SGNr      offset[3]"
-		"     matchMode    beamThickness1 beamThickness2    removeDuplicates    (optional)weights\n");
+		"     matchMode    beamThickness1 beamThickness2    removeDuplicates       sizeFilter     (optional)weights\n");
 		printf("                                (list of Grains.csv files)"
-		"         [microns][3vals]"
-		" (next line)     [microns]      [microns]       binary[0 or 1]  [degrees and microns]\n");
+		"   [int] [microns][3vals]"
+		" (next line)      [microns]     [microns]        binary[0 or 1]      %[0 or value]  [degrees and microns]\n");
 		printf("MatchMode: \n\t0: Match orientations only\n\t1: Match "
 		"positions only\n\t2: Match according to both orientation and "
 		"position using supplied weights\n");
@@ -129,14 +129,14 @@ int main(int argc, char* argv[])
 			"\t0: will not remove any matched grains from database while matching. This is faster\n"
 			"\t   and desirable if multiple grains can be matched to the same grains. eg. if a \n\t   grain breaks up into 2.\n");
 		printf("\t1: will remove any matched grains from database while matching. This is slower.\n");
-		printf("\t   If removeDuplicates is 1, number of grains in state2 must be greater than in state1 (confirm TODO).\n");
+		printf("\t   sizeFilter: 0 will not make filter based on grain size, value [float] will only match grains within value% of the grain size.\n");
 		return 1;
 	}
 	clock_t start, end;
 	double diftotal;
 	start = clock();
 	char *fn1, *fn2;
-	char *outfn;
+	char *outfn, dummy[4096];
 	FILE *f1, *f2;
 	outfn = argv[1];
 	fn1 = argv[2];
@@ -155,6 +155,8 @@ int main(int argc, char* argv[])
 	beamThickness2 = atof(argv[10]);
 	int removeDuplicates;
 	removeDuplicates = atoi(argv[11]);
+	double sizeFilter;
+	sizeFilter = atof(argv[11]);
 	double weights[2];
 	if (matchMode == 2){
 		weights[0] = atof(argv[12]);
@@ -162,7 +164,7 @@ int main(int argc, char* argv[])
 	}
 	char aline[4096],bline[4096];
 	FILE *grainsF;
-	double **Quats1, **Quats2, **Pos1, **Pos2;
+	double **Quats1, **Quats2, **Pos1, **Pos2, *GrSize1, *GrSize2;
 	int **IDs1, **IDs2; // Final ID, FNr, InitialID.
 	int FNr = 0;
 	int ThisID = 0;
@@ -173,6 +175,8 @@ int main(int argc, char* argv[])
 	Pos2 = allocMatrix(MAX_N_GRAINS,3);
 	IDs1 = allocMatrixInt(MAX_N_GRAINS,3);
 	IDs2 = allocMatrixInt(MAX_N_GRAINS,3);
+	GrSize1 = calloc(MAX_N_GRAINS,sizeof(*GrSize1));
+	GrSize2 = calloc(MAX_N_GRAINS,sizeof(*GrSize2));
 	double OrientMatrix[9];
 	double QuatTemp[4];
 	int len;
@@ -183,9 +187,10 @@ int main(int argc, char* argv[])
 		}
 		if (aline[0] == '%') continue;
 		if (grainsSupplied == 1){ // Was supplied a grains file directly.
-			sscanf(aline,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&GrainID,&OrientMatrix[0],
+			sscanf(aline,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %s %s %s %s %s %s %s %lf",&GrainID,&OrientMatrix[0],
 				&OrientMatrix[1],&OrientMatrix[2],&OrientMatrix[3],&OrientMatrix[4],&OrientMatrix[5],&OrientMatrix[6],
-				&OrientMatrix[7],&OrientMatrix[8],&Pos1[ThisID][0],&Pos1[ThisID][1],&Pos1[ThisID][2]);
+				&OrientMatrix[7],&OrientMatrix[8],&Pos1[ThisID][0],&Pos1[ThisID][1],&Pos1[ThisID][2],dummy,dummy,dummy,
+				dummy,dummy,dummy,dummy,dummy,dummy,&GrSize1[ThisID]);
 				OrientMat2Quat(OrientMatrix,QuatTemp);
 				Pos1[ThisID][2] += FNr*beamThickness1;
 				Quats1[ThisID][0] = QuatTemp[0];
@@ -206,9 +211,10 @@ int main(int argc, char* argv[])
 		printf("Reading file: %s\n",aline);fflush(stdout);
 		while (fgets(bline,4096,grainsF)!=NULL){
 			if (bline[0] == '%') continue;
-			sscanf(bline,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&GrainID,&OrientMatrix[0],
+			sscanf(bline,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %s %s %s %s %s %s %s %lf",&GrainID,&OrientMatrix[0],
 				&OrientMatrix[1],&OrientMatrix[2],&OrientMatrix[3],&OrientMatrix[4],&OrientMatrix[5],&OrientMatrix[6],
-				&OrientMatrix[7],&OrientMatrix[8],&Pos1[ThisID][0],&Pos1[ThisID][1],&Pos1[ThisID][2]);
+				&OrientMatrix[7],&OrientMatrix[8],&Pos1[ThisID][0],&Pos1[ThisID][1],&Pos1[ThisID][2],dummy,dummy,dummy,
+				dummy,dummy,dummy,dummy,dummy,dummy,&GrSize1[ThisID]);
 				OrientMat2Quat(OrientMatrix,QuatTemp);
 				Pos1[ThisID][2] += FNr*beamThickness1;
 				Quats1[ThisID][0] = QuatTemp[0];
@@ -235,9 +241,10 @@ int main(int argc, char* argv[])
 		}
 		if (aline[0] == '%') continue;
 		if (grainsSupplied == 1){ // Was supplied a grains file directly.
-			sscanf(aline,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&GrainID,&OrientMatrix[0],
+			sscanf(aline,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %s %s %s %s %s %s %s %lf",&GrainID,&OrientMatrix[0],
 				&OrientMatrix[1],&OrientMatrix[2],&OrientMatrix[3],&OrientMatrix[4],&OrientMatrix[5],&OrientMatrix[6],
-				&OrientMatrix[7],&OrientMatrix[8],&Pos2[ThisID][0],&Pos2[ThisID][1],&Pos2[ThisID][2]);
+				&OrientMatrix[7],&OrientMatrix[8],&Pos2[ThisID][0],&Pos2[ThisID][1],&Pos2[ThisID][2],dummy,dummy,dummy,
+				dummy,dummy,dummy,dummy,dummy,dummy,&GrSize2[ThisID]);
 				Pos2[ThisID][0] += offset[0];
 				Pos2[ThisID][1] += offset[1];
 				Pos2[ThisID][2] += offset[2] + FNr*beamThickness2;
@@ -260,9 +267,10 @@ int main(int argc, char* argv[])
 		printf("Reading file: %s\n",aline);fflush(stdout);
 		while (fgets(bline,4096,grainsF)!=NULL){
 			if (bline[0] == '%') continue;
-			sscanf(bline,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&GrainID,&OrientMatrix[0],
+			sscanf(bline,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %s %s %s %s %s %s %s %lf",&GrainID,&OrientMatrix[0],
 				&OrientMatrix[1],&OrientMatrix[2],&OrientMatrix[3],&OrientMatrix[4],&OrientMatrix[5],&OrientMatrix[6],
-				&OrientMatrix[7],&OrientMatrix[8],&Pos2[ThisID][0],&Pos2[ThisID][1],&Pos2[ThisID][2]);
+				&OrientMatrix[7],&OrientMatrix[8],&Pos2[ThisID][0],&Pos2[ThisID][1],&Pos2[ThisID][2],dummy,dummy,dummy,
+				dummy,dummy,dummy,dummy,dummy,dummy,&GrSize2[ThisID]);
 				Pos2[ThisID][0] += offset[0];
 				Pos2[ThisID][1] += offset[1];
 				Pos2[ThisID][2] += offset[2] + FNr*beamThickness2;
@@ -300,6 +308,7 @@ int main(int argc, char* argv[])
 		printf("Time to allocate bigArray: %f s.\n",diftotal);
 	} else{
 		BestPosMatrix = malloc(totIDs1*sizeof(*BestPosMatrix));
+		for (i=0;i<totIDs1;i++) BestPosMatrix[i] = -1;
 		BestValMatrix = malloc(totIDs1*sizeof(*BestValMatrix));
 	}
 	double Sym[24][4];
@@ -307,6 +316,7 @@ int main(int argc, char* argv[])
 	NrSymmetries = MakeSymmetries(SGNr,Sym);
 	//for (i=0;i<NrSymmetries;i++) printf("%d %lf %lf %lf %lf\n",i,Sym[i][0],Sym[i][1],Sym[i][2],Sym[i][3]);
 	double minAngle = 360000000, wt;
+	int goodMatch;
 	if (matchMode == 0){
 		for (i=0;i<totIDs2;i++){
 			minAngle = 360000000;
@@ -320,6 +330,11 @@ int main(int argc, char* argv[])
 				Q1[2] = Quats1[j][2];
 				Q1[3] = Quats1[j][3];
 				Angle = GetMisOrientationAngle(Q1,Q2,&ang,NrSymmetries,Sym);
+				if (sizeFilter !=0){
+					if (abs(GrSize1[i] - GrSize2[j]) > GrSize1[i]*0.01*sizeFilter){
+						Angle = 100000; // This will make it a bad match automatically.
+					}
+				}
 				if (removeDuplicates == 1){
 					Angles[j][i] = ang;
 					SortMatrix[j*totIDs2+i].angle = Angles[j][i];
@@ -346,6 +361,11 @@ int main(int argc, char* argv[])
 				posT1[1] = Pos1[j][1];
 				posT1[2] = Pos1[j][2];
 				difflen = Len3d(posT2[0]-posT1[0],posT2[1]-posT1[1],posT2[2]-posT1[2]);
+				if (sizeFilter !=0){
+					if (abs(GrSize1[i] - GrSize2[j]) > GrSize1[i]*0.01*sizeFilter){
+						difflen = 100000; // This will make it a bad match automatically.
+					}
+				}
 				if (removeDuplicates == 1){
 					Angles[j][i] = difflen;
 					SortMatrix[j*totIDs2+i].angle = Angles[j][i];
@@ -356,7 +376,7 @@ int main(int argc, char* argv[])
 					if (difflen < minAngle){
 						minAngle = difflen;
 						BestPosMatrix[i] = j;
-						BestValMatrix[i] = ang;
+						BestValMatrix[i] = difflen;
 					}
 				}
 			}
@@ -382,6 +402,11 @@ int main(int argc, char* argv[])
 				Angle = GetMisOrientationAngle(Q1,Q2,&ang,NrSymmetries,Sym);
 				difflen = Len3d(posT2[0]-posT1[0],posT2[1]-posT1[1],posT2[2]-posT1[2]);
 				wt = ang/weights[0] + difflen/weights[1];
+				if (sizeFilter !=0){
+					if (abs(GrSize1[i] - GrSize2[j]) > GrSize1[i]*0.01*sizeFilter){
+						wt = 100000; // This will make it a bad match automatically.
+					}
+				}
 				if (removeDuplicates == 1){
 					Angles[j][i] = wt;
 					SortMatrix[j*totIDs2+i].angle = Angles[j][i];
@@ -392,7 +417,7 @@ int main(int argc, char* argv[])
 					if (wt < minAngle){
 						minAngle = wt;
 						BestPosMatrix[i] = j;
-						BestValMatrix[i] = ang;
+						BestValMatrix[i] = wt;
 					}
 				}
 			}
@@ -403,7 +428,7 @@ int main(int argc, char* argv[])
 	printf("Time to make bigArray: %f s.\n",diftotal);
 	int posX, posY;
 	double **Matches;
-	Matches = allocMatrix(totIDs2,26);
+	Matches = allocMatrix(totIDs2,28);
 	int counter = 0;
 	if (removeDuplicates == 1){
 		qsort(SortMatrix,totIDs1*totIDs2,sizeof(struct sortArrayType),cmpfunc);
@@ -451,18 +476,21 @@ int main(int argc, char* argv[])
 			Matches[counter][17] = Pos1[posX][0];
 			Matches[counter][18] = Pos1[posX][1];
 			Matches[counter][19] = Pos1[posX][2];
-			Matches[counter][20] = Angles[posX][posY];
-			Matches[counter][21] = ang;
-			Matches[counter][22] = Pos2[posY][0] - Pos1[posX][0];
-			Matches[counter][23] = Pos2[posY][1] - Pos1[posX][1];
-			Matches[counter][24] = Pos2[posY][2] - Pos1[posX][2];
-			Matches[counter][25] = Len3d(Matches[counter][22],Matches[counter][23],Matches[counter][24]);
+			Matches[counter][20] = GrSize1[posX];
+			Matches[counter][21] = GrSize2[posY];
+			Matches[counter][22] = Angles[posX][posY];
+			Matches[counter][23] = ang;
+			Matches[counter][24] = Pos2[posY][0] - Pos1[posX][0];
+			Matches[counter][25] = Pos2[posY][1] - Pos1[posX][1];
+			Matches[counter][26] = Pos2[posY][2] - Pos1[posX][2];
+			Matches[counter][27] = Len3d(Matches[counter][24],Matches[counter][25],Matches[counter][26]);
 			counter ++;
 		}
 	} else{
 		counter = 0;
 		for (i=0;i<totIDs2;i++){
 			posX = BestPosMatrix[i];
+			if (posX == -1) continue;
 			posY = i;
 			Q1[0] = Quats1[posX][0];
 			Q1[1] = Quats1[posX][1];
@@ -493,12 +521,14 @@ int main(int argc, char* argv[])
 			Matches[counter][17] = Pos1[posX][0];
 			Matches[counter][18] = Pos1[posX][1];
 			Matches[counter][19] = Pos1[posX][2];
-			Matches[counter][20] = BestValMatrix[posY];
-			Matches[counter][21] = ang;
-			Matches[counter][22] = Pos2[posY][0] - Pos1[posX][0];
-			Matches[counter][23] = Pos2[posY][1] - Pos1[posX][1];
-			Matches[counter][24] = Pos2[posY][2] - Pos1[posX][2];
-			Matches[counter][25] = Len3d(Matches[counter][22],Matches[counter][23],Matches[counter][24]);
+			Matches[counter][20] = GrSize1[posX];
+			Matches[counter][21] = GrSize2[posY];
+			Matches[counter][22] = BestValMatrix[posY];
+			Matches[counter][23] = ang;
+			Matches[counter][24] = Pos2[posY][0] - Pos1[posX][0];
+			Matches[counter][25] = Pos2[posY][1] - Pos1[posX][1];
+			Matches[counter][26] = Pos2[posY][2] - Pos1[posX][2];
+			Matches[counter][27] = Len3d(Matches[counter][24],Matches[counter][25],Matches[counter][26]);
 			counter ++;
 		}
 	}
@@ -507,10 +537,10 @@ int main(int argc, char* argv[])
 	fprintf(outfile,"%%NewIDState2\tFNrState2\tOrigIDState2\tNewIDState1\tFNrState1\tOrigIDState1\t"
 	"Quat0State2\tQuat1State2\tQuat2State2\tQuat3State2\tQuat0State1\tQuat1State1\tQuat2State1\tQuat3State1\t"
 	"Pos0State2\tPos1State2\tPos2State2\tPos0State1\tPos1State1\tPos2State1\t"
-	"selectionCriteriaVal\tminAngle\tdiffPosX\tdiffPosY\tdiffPosZ\tEuclideanDistt\n");
+	"GrainSize1\tGrainSize2\tselectionCriteriaVal\tminAngle\tdiffPosX\tdiffPosY\tdiffPosZ\tEuclideanDistt\n");
 	for (i=0;i<totIDs2;i++){
 		for (j=0;j<6;j++) fprintf(outfile,"%d\t",(int)Matches[i][j]);
-		for (j=6;j<26;j++) fprintf(outfile,"%lf\t",Matches[i][j]);
+		for (j=6;j<28;j++) fprintf(outfile,"%lf\t",Matches[i][j]);
 		fprintf(outfile,"\n");
 	}
 	end = clock();
