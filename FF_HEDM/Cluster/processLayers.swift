@@ -7,7 +7,7 @@ type file;
 
 app (file ep) runPeaks (string ringfile, string paramfile, int fnr)
 {
-	peaks ringfile paramfile fnr stderr=filename(ep);
+	peaks ringfile paramfile fnr stdout=filename(ep);
 }
 
 app (file err) runProcessPeaks (string paramsf, int RNr, file DummyA[])

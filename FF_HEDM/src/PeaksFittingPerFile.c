@@ -1099,6 +1099,8 @@ int main(int argc, char *argv[]){
 	int IsSaturated;
 	int SpotIDStart = 1;
 	int TotNrRegions = NrOfReg;
+	clock_t timer1, timer2;
+	double timex=0;
 	for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 		NrPixelsThisRegion = PositionTrackers[RegNr];
 		for (i=0;i<NrPixelsThisRegion;i++){
@@ -1157,7 +1159,10 @@ int main(int argc, char *argv[]){
 		int *NrPx;
 		NrPx = malloc(nPeaks*2*sizeof(*NrPx));
 		printf("%d %d %d %d\n",RegNr,NrOfReg,NrPixelsThisRegion,nPeaks);
+		timer1 = clock();
 		int rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo);
+		timer2 = clock();
+		timex += ((double)(timer2 - timer1))/CLOCKS_PER_SEC;
 		for (i=0;i<nPeaks;i++){
 			fprintf(outfilewrite,"%d %f %f %f %f %f %f %f ",(SpotIDStart+i),IntegratedIntensity[i],Omega,YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
 			for (j=0;j<2;j++) fprintf(outfilewrite, "%f ",OtherInfo[2*i+j]);
@@ -1172,6 +1177,7 @@ int main(int argc, char *argv[]){
 		free(Etass);
 		free(NrPx);
 	}
+	printf("Time spent in fitting: %lf\n",timex);
 	printf("Number of regions = %d\n",TotNrRegions);
 	printf("Number of peaks = %d\n",SpotIDStart-1);
 	fclose(outfilewrite);
