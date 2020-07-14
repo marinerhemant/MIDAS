@@ -1184,7 +1184,7 @@ int main(int argc, char *argv[]){
 		free(Etass);
 		free(NrPx);
 	}
-	printf("Time spent in fitting: %lf\n",timex);
+	printf("Time spent in fitting: %llf\n",timex);
 	printf("Number of regions = %d\n",TotNrRegions);
 	printf("Number of peaks = %d\n",SpotIDStart-1);
 	fclose(outfilewrite);
