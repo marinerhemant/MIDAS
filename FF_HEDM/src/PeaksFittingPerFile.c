@@ -1165,10 +1165,10 @@ int main(int argc, char *argv[]){
 		OtherInfo = malloc(nPeaks*10*sizeof(*OtherInfo));
 		int *NrPx;
 		NrPx = malloc(nPeaks*2*sizeof(*NrPx));
-		printf("%d %d %d %d\n",RegNr,NrOfReg,NrPixelsThisRegion,nPeaks);
 		clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&timer1);
 		int rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo);
 		clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&timer2);
+		printf("%d %d %d %d %llf\n",RegNr,NrOfReg,NrPixelsThisRegion,nPeaks,diff(timer1,timer2));
 		timex += diff(timer1,timer2);
 		for (i=0;i<nPeaks;i++){
 			fprintf(outfilewrite,"%d %f %f %f %f %f %f %f ",(SpotIDStart+i),IntegratedIntensity[i],Omega,YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
