@@ -1242,6 +1242,8 @@ main(int argc, char *argv[])
 			zTemp = zThis + DisplZ;
 			yDet = yBC - yTemp/px;
 			zDet = zBC + zTemp/px + 0.5;
+			if (yDet < 0) continue;
+			if (zDet < 0) continue;
 			Info[3] = 0.5*atand(sqrt(yThis*yThis+zThis*zThis)/Lsd); // New Theta
 			CalcEtaAngle(yThis,zThis,&etaThis);
 			// Save to SpotMatrix.csv
