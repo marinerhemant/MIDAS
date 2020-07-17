@@ -630,7 +630,7 @@ main(int argc, char *argv[])
 	double LatC[6],Wavelength,Wedge=0, p0, p1, p2, RhoD,GaussWidth,PeakIntensity=2000;
 	int writeSpots, isBin=0;
 	int LoadNr = 0, UpdatedOrientations = 1;
-	double eRes = 0;
+	double eRes = 0, minConfidence = 0;
 	while (fgets(aline,4096,fileParam)!=NULL){
 		str="RingsToUse ";
 		LowNr = strncmp(aline,str,strlen(str));
@@ -676,6 +676,12 @@ main(int argc, char *argv[])
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr == 0){
 			sscanf(aline,"%s %lf",dummy,&Lsd);
+			continue;
+		}
+		str="MinConfidence ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr == 0){
+			sscanf(aline,"%s %lf",dummy,&minConfidence);
 			continue;
 		}
 		str="tx ";
@@ -804,7 +810,7 @@ main(int argc, char *argv[])
 			sscanf(aline,"%s %d",dummy,&isBin);
 			continue;
 		}
-		str="EResolution ";
+		str="EResolution "; // todo
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr == 0){
 			sscanf(aline,"%s %lf",dummy,&eRes);
@@ -923,10 +929,12 @@ main(int argc, char *argv[])
 			fgets(aline,4096,inpF);
 			sscanf(aline,"%s %lf",dummy,&zThis);
 			fgets(aline,4096,inpF);
+			double thisConfidence;
 			while(fgets(aline,4096,inpF)!=NULL){
-				sscanf(aline,"%s %s %s %lf %lf %s %s %lf %lf %lf %s %s",
+				sscanf(aline,"%s %s %s %lf %lf %s %s %lf %lf %lf %lf %s",
 						dummy,dummy,dummy,&InputInfo[nrPoints][9],&InputInfo[nrPoints][10],
-						dummy,dummy,&EulerThis[0],&EulerThis[1],&EulerThis[2],dummy,dummy);
+						dummy,dummy,&EulerThis[0],&EulerThis[1],&EulerThis[2],&thisConfidence,dummy);
+				if (thisConfidence <= minConfidence) continue;
 				InputInfo[nrPoints][11] = zThis;
 				Euler2OrientMat(EulerThis,OrientThis);
 				for (i=0;i<9;i++){

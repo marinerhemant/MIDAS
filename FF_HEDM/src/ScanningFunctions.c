@@ -754,8 +754,10 @@ struct FITTING_PARAMS {
 		*differencesMat;
 	int nBeamPositions,
 		nhkls,
-		nRings;
-	int *totalMarkSpotsMat;
+		nRings,
+		nConn;
+	int *totalMarkSpotsMat,
+		*Connections;
 	long *FLUT,
 		*AllIDsInfo;
 	long maxNPos,
@@ -802,7 +804,35 @@ static double problem_function(
 // TODO: Make a connectivity function, implement constraints.
 // Maximum difference in euler angles: 0.1 degrees, max change in lattice parameter 0.0001 fraction
 
-static void conn(double *voxelList, double *voxelLen, int nVoxels, )
+static int conn(double *voxelList, double voxelLen, int nVoxels, int *Connections){
+	// How to find connections (8-coonected): we have a list of voxels (with x,y positions) and we have the voxel length
+	int i, j;
+	int nConn = 0;
+	double px1[2], px2[2];
+	for (i=0;i<nVoxels;i++){
+		px1[0] = voxelList[i*2+0];
+		px1[1] = voxelList[i*2+1];
+		for (j=i+1;j<nVoxels;j++){
+			px2[0] = voxelList[j*2+0];
+			px2[1] = voxelList[j*2+1];
+			if (CalcNorm2(px1[0]-px2[0],px1[0]-px2[0]) < sqrt(2)*voxelLen+1){ // we use 1 micron extra for rounding off errors
+				Connections[nConn*2+0] = i;
+				Connections[nConn*2+1] = j;
+				nConn++;
+			}
+		}
+	}
+	return nConn;
+}
+
+// nlopt_add_inequality_mconstraint(opt,unsigned m,nlopt_mfunc c,void* c_data,const double* tol);
+// we need to make a function void c(unsigned m, double *result, unsigned n, const double* x, double* grad, void* f_data);
+// ci <=0 is the constraint, grad of constraint (m*n in size) is always 0 (since constraints are linear in this case)
+// m is the number of connectivity parameters, c_data is the orientation/latticeparameter variation allowed, tol is a pointer to m values <1e-8 (not 0 here for stopping criteria)
+// f_data will still be supplied but is not used
+// Our constraint will be orient difference between neighbors < a, latticeparameter difference between neighbors < b
+// a and b will be supplied in the c_data pointer
+
 
 int main (int argc, char *argv[]){
 	if (argc!=2){
@@ -1100,6 +1130,12 @@ int main (int argc, char *argv[]){
 	int *totalMarkSpotsMat;
 	totalMarkSpotsMat = calloc(sizemarkSpotsMat,sizeof(*totalMarkSpotsMat));
 
+	// Make connections
+	int maxNConnections = nVoxels*8;
+	int *Connections;
+	Connections = calloc(2*maxNConnections,sizeof(*Connections));
+	int nConn = conn(voxelList, voxelLen, nVoxels, Connections);
+
 	struct FITTING_PARAMS f_data;
 	f_data.FLUT = &FLUT[0];
 	f_data.Fthis = &Fthis[0];
@@ -1129,6 +1165,8 @@ int main (int argc, char *argv[]){
 	f_data.AllSpotsInfo = &AllSpotsInfo[0];
 	f_data.AllIDsInfo = &AllIDsInfo[0];
 	f_data.differencesMat = &differencesMat[0];
+	f_data.Connections = &Connections[0];
+	f_data.nConn = nConn;
 	struct FITTING_PARAMS *f_datat;
 	f_datat = &f_data;
 	void* trp = (struct FITTING_PARAMS *) f_datat;
@@ -1163,6 +1201,7 @@ int main (int argc, char *argv[]){
 	//~ printf("NLOPT Return Code %d, retval = %lf\n",r,minf);
 	//~ nlopt_destroy(opt);
 
+
 	// Local Optimization
 	signal(SIGINT, sigintHandler);
 	nIters = 0;
@@ -1180,13 +1219,6 @@ int main (int argc, char *argv[]){
 	nlopt_set_upper_bounds(opt, xu);
 	nlopt_set_maxeval(opt,maxNEvals);
 	nlopt_set_min_objective(opt, problem_function, trp);
-	// nlopt_add_inequality_mconstraint(opt,unsigned m,nlopt_mfunc c,void* c_data,const double* tol);
-	// we need to make a function void c(unsigned m, double *result, unsigned n, const double* x, double* grad, void* f_data);
-	// ci <=0 is the constraint, grad of constraint (m*n in size) is always 0 (since constraints are linear in this case)
-	// m is the number of connectivity parameters, c_data is the orientation/latticeparameter variation allowed, tol is a pointer to m values <1e-8 (not 0 here for stopping criteria)
-	// f_data will still be supplied but is not used
-	// Our constraint will be orient difference between neighbors < a, latticeparameter difference between neighbors < b
-	// a and b will be supplied in the c_data pointer
 	double minf;
 	nlopt_result r = nlopt_optimize(opt, x, &minf);
 	printf("NLOPT Return Code %d, retval = %lf\n",r,minf);
