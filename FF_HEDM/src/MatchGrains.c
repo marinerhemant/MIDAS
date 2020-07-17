@@ -292,6 +292,8 @@ int main(int argc, char* argv[])
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
 	printf("Time to read files: %f s.\n",diftotal);
 	totIDs2 = ThisID;
+	double **Matches;
+	Matches = allocMatrix(totIDs2,28);
 	int i,j,k;
 	double Q1[4], Q2[4], Axis[3], Angle, ang, **Angles, difflen;
 	double posT1[3], posT2[3];
@@ -427,8 +429,6 @@ int main(int argc, char* argv[])
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
 	printf("Time to make bigArray: %f s.\n",diftotal);
 	int posX, posY;
-	double **Matches;
-	Matches = allocMatrix(totIDs2,28);
 	int counter = 0;
 	if (removeDuplicates == 1){
 		qsort(SortMatrix,totIDs1*totIDs2,sizeof(struct sortArrayType),cmpfunc);
@@ -540,8 +540,12 @@ int main(int argc, char* argv[])
 	"GrainSize1\tGrainSize2\tselectionCriteriaVal\tminAngle\tdiffPosX\tdiffPosY\tdiffPosZ\tEuclideanDistt\n");
 	for (i=0;i<totIDs2;i++){
 		for (j=0;j<6;j++) fprintf(outfile,"%d\t",(int)Matches[i][j]);
-		for (j=6;j<28;j++) fprintf(outfile,"%lf\t",Matches[i][j]);
-		fprintf(outfile,"\n");
+		for (j=6;j<27;j++) fprintf(outfile,"%lf\t",Matches[i][j]);
+		fprintf(outfile,"%lf\n",Matches[i][27]);
+		//~ for (j=0;j<6;j++) printf("%d\t",(int)Matches[i][j]);
+		//~ for (j=6;j<28;j++) printf("%lf\t",Matches[i][j]);
+		//~ printf("\n");
+		//~ printf("%lf\n",Matches[i][13]);
 	}
 	end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;

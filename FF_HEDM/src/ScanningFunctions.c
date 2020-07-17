@@ -236,7 +236,7 @@ static inline void CalcOmega(double x, double y, double z, double theta, double 
 // Assuming a gaussian beam profile.
 static inline double IntensityFraction(double voxLen, double beamPosition, double beamFWHM, double voxelPosition[3], double Omega) {
 	double xy[4][2], xyPr[4][2], minY=1e6, maxY=-1e6, startY, endY, yStep, intX, volFr=0, sigma, thisPos, delX;
-	int inSide=0, nrYs=200, i, j, splCase = 0;
+	int inSide=0, nrYs=500, i, j, splCase = 0;
 	double omePr,etaPr,eta;
 	sigma = beamFWHM/(2*sqrt(2*log(2)));
 	// Convert from Omega to Eta (look in the computation notebook, 08/19/19 pg. 34 for calculation)
@@ -263,10 +263,10 @@ static inline double IntensityFraction(double voxLen, double beamPosition, doubl
 		if (xyPr[i][1] < minY) {minY = xyPr[i][1];}
 		if (xyPr[i][1] > maxY) {maxY = xyPr[i][1];}
 	}
-	if (maxY >= beamPosition - beamFWHM && minY <= beamPosition + beamFWHM) inSide = 1;
+	if (maxY >= beamPosition - 2*beamFWHM && minY <= beamPosition + 2*beamFWHM) inSide = 1;
 	if (inSide == 1){
-		startY = (minY > beamPosition - beamFWHM) ? minY : beamPosition - beamFWHM;
-		endY = (maxY < beamPosition + beamFWHM) ? maxY : beamPosition + beamFWHM;
+		startY = (minY > beamPosition - 2*beamFWHM) ? minY : beamPosition - 2*beamFWHM;
+		endY = (maxY < beamPosition + 2*beamFWHM) ? maxY : beamPosition + 2*beamFWHM;
 		yStep = (endY-startY)/((double)nrYs);
 		for (i=0;i<=nrYs;i++){
 			if (splCase == 1) delX = 1;
@@ -799,6 +799,11 @@ static double problem_function(
 	return err;
 }
 
+// TODO: Make a connectivity function, implement constraints.
+// Maximum difference in euler angles: 0.1 degrees, max change in lattice parameter 0.0001 fraction
+
+static void conn(double *voxelList, double *voxelLen, int nVoxels, )
+
 int main (int argc, char *argv[]){
 	if (argc!=2){
 		printf("Usage: ./ScanningFunctions ParameterFile\n"
@@ -1046,7 +1051,7 @@ int main (int argc, char *argv[]){
 		printf("%lf %lf %lf\n",xl[i],x[i],xu[i]);
 	}
 
-	int maxNPos = 2*(2+ceil(2*beamFWHM/voxelLen));
+	int maxNPos = 2*(2+ceil(4*beamFWHM/voxelLen));
 	size_t dataArrSize;
 	double *Fthis;
 	dataArrSize = nVoxels;
@@ -1158,7 +1163,7 @@ int main (int argc, char *argv[]){
 	//~ printf("NLOPT Return Code %d, retval = %lf\n",r,minf);
 	//~ nlopt_destroy(opt);
 
-	//~ // Local Optimization
+	// Local Optimization
 	signal(SIGINT, sigintHandler);
 	nIters = 0;
 	if (optType == 0) opt = nlopt_create(NLOPT_LD_MMA, n);
@@ -1175,6 +1180,13 @@ int main (int argc, char *argv[]){
 	nlopt_set_upper_bounds(opt, xu);
 	nlopt_set_maxeval(opt,maxNEvals);
 	nlopt_set_min_objective(opt, problem_function, trp);
+	// nlopt_add_inequality_mconstraint(opt,unsigned m,nlopt_mfunc c,void* c_data,const double* tol);
+	// we need to make a function void c(unsigned m, double *result, unsigned n, const double* x, double* grad, void* f_data);
+	// ci <=0 is the constraint, grad of constraint (m*n in size) is always 0 (since constraints are linear in this case)
+	// m is the number of connectivity parameters, c_data is the orientation/latticeparameter variation allowed, tol is a pointer to m values <1e-8 (not 0 here for stopping criteria)
+	// f_data will still be supplied but is not used
+	// Our constraint will be orient difference between neighbors < a, latticeparameter difference between neighbors < b
+	// a and b will be supplied in the c_data pointer
 	double minf;
 	nlopt_result r = nlopt_optimize(opt, x, &minf);
 	printf("NLOPT Return Code %d, retval = %lf\n",r,minf);
