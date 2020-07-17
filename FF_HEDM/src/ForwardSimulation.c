@@ -1237,7 +1237,7 @@ main(int argc, char *argv[])
 					DisplZ = zDispl[idx+NrPixels];
 				}else{
 					printf("No neighbor was set for tilts. Please check. idx = %lld\n",(long long int)idx);
-					return 1;
+					continue;
 				}
 			}
 			yTemp = yThis + DisplY;
