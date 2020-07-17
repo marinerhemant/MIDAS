@@ -1216,7 +1216,7 @@ main(int argc, char *argv[])
 			yTrans = (int) (-yThis/px + yBC);
 			zTrans = (int) ( zThis/px + zBC);
 			idx = yTrans + NrPixels*zTrans;
-			printf("%lld\n",(long long int) idx); fflush(stdout);
+			printf("%lf %lf %lf %lf %d %d %lf %lf %lf %lld\n",yTemp, zTemp, yThis, zThis, yTrans, zTrans, px, yBC, zBC, (long long int) idx); fflush(stdout);
 			DisplY = yDispl[idx];
 			DisplZ = zDispl[idx];
 			if (DisplY == -32100){ // Was not set, check neighbor
