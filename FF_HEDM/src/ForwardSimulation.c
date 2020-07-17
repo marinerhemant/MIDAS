@@ -1228,9 +1228,11 @@ main(int argc, char *argv[])
 					DisplY = yDispl[idx+1];
 					DisplZ = zDispl[idx+1];
 				}else if(yDispl[idx-NrPixels] != -32100.0){
+					if (idx-NrPixels < 0) continue;
 					DisplY = yDispl[idx-NrPixels];
 					DisplZ = zDispl[idx-NrPixels];
 				}else if(yDispl[idx+NrPixels] != -32100.0){
+					if (idx + NrPixels > NrPixels*NrPixels -1 ) continue;
 					DisplY = yDispl[idx+NrPixels];
 					DisplZ = zDispl[idx+NrPixels];
 				}else{
