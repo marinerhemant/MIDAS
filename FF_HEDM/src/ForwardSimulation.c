@@ -584,8 +584,8 @@ void CorrectTiltSpatialDistortion(double px, double Lsd, double ybc, double zbc,
 				zTrans >= NrPixels)
 					continue;
 			idx = yTrans + NrPixels*zTrans;
-			printf("%lf %lf %lf %lf %lf %lf %d %d %lld %d %d\n",
-				Rcorr,Eta,YCorr,ZCorr,yDiff,zDiff,yTrans,zTrans,idx,i,j);
+			printf("%lf%lf %lf %lf %lf %lf %lf %lf %lf %d %d %lld %d %d\n",
+				Rad,Rcorr,Eta,Yc,Zc,YCorr,ZCorr,yDiff,zDiff,yTrans,zTrans,idx,i,j);
 			fflush(stdout);
 			yDispl[idx] = yDiff;
 			zDispl[idx] = zDiff;
