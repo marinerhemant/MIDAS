@@ -584,9 +584,10 @@ void CorrectTiltSpatialDistortion(double px, double Lsd, double ybc, double zbc,
 				zTrans >= NrPixels)
 					continue;
 			idx = yTrans + NrPixels*zTrans;
-			printf("%lf%lf %lf %lf %lf %lf %lf %lf %lf %d %d %lld %d %d\n",
-				Rad,Rcorr,Eta,Yc,Zc,YCorr,ZCorr,yDiff,zDiff,yTrans,zTrans,idx,i,j);
-			fflush(stdout);
+			if (idx < 0) continue;
+			//~ printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %d %d %lld %d %d\n",
+				//~ Rad,Rcorr,Eta,Yc,Zc,YCorr,ZCorr,yDiff,zDiff,yTrans,zTrans,idx,i,j);
+			//~ fflush(stdout);
 			yDispl[idx] = yDiff;
 			zDispl[idx] = zDiff;
 		}
@@ -1236,8 +1237,9 @@ main(int argc, char *argv[])
 					DisplY = yDispl[idx+NrPixels];
 					DisplZ = zDispl[idx+NrPixels];
 				}else{
-					printf("No neighbor was set for tilts. Please check. idx = %lld\n",(long long int)idx);
-					return 1;
+					//~ printf("No neighbor was set for tilts. Please check. idx = %lld\n",(long long int)idx);
+					//~ return 1;
+					continue;
 				}
 			}
 			yTemp = yThis + DisplY;
