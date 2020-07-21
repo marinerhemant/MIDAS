@@ -178,7 +178,7 @@ static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], 
 					&(MyData[counter].SpotID), &(MyData[counter].IntegratedIntensity), &(MyData[counter].Omega),
 					&(MyData[counter].YCen), &(MyData[counter].ZCen), &(MyData[counter].IMax), &(MyData[counter].Radius),
 					&(MyData[counter].Eta), &(MyData[counter].SigmaR), &(MyData[counter].SigmaEta), &(MyData[counter].NrPx),
-					&(MyData[counter].NrPxTot),dummy,dummy,&maxY,&maxZ);
+					&(MyData[counter].NrPxTot),dummy,&maxY,&maxZ);
 		if (UseMaximaPositions==1){
 			MyData[counter].YCen = maxY;
 			MyData[counter].ZCen = maxZ;
