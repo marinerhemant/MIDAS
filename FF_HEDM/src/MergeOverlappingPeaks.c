@@ -174,7 +174,7 @@ static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], 
     fgets(aline,1000,infileread);
     double SpotID,IntegratedIntensity,Omega,YCen,ZCen,IMax,Radius,Eta,NumberOfPixels,maxY,maxZ;
     while (fgets(aline,1000,infileread)!=NULL){
-		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %lf %lf",
+		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %lf %lf",
 					&(MyData[counter].SpotID), &(MyData[counter].IntegratedIntensity), &(MyData[counter].Omega),
 					&(MyData[counter].YCen), &(MyData[counter].ZCen), &(MyData[counter].IMax), &(MyData[counter].Radius),
 					&(MyData[counter].Eta), &(MyData[counter].SigmaR), &(MyData[counter].SigmaEta), &(MyData[counter].NrPx),
