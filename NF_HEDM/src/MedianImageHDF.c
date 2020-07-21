@@ -24,7 +24,7 @@ pixelvalue quick_select(pixelvalue a[], int n) ;
 omp_lock_t lock;
 
 #define PIX_SWAP(a,b) { pixelvalue temp=(a);(a)=(b);(b)=temp; }
-pixelvalue quick_select(pixelvalue a[], int n) 
+pixelvalue quick_select(pixelvalue a[], int n)
 {
     int low, high ;
     int median;
@@ -58,58 +58,8 @@ pixelvalue quick_select(pixelvalue a[], int n)
         if (hh >= median)
             high = hh - 1;
     }
-}   
+}
 #undef PIX_SWAP
-
-pixelvalue**
-allocMatrixInt(int nrows, int ncols)
-{
-    pixelvalue** arr;
-    int i;
-    arr = malloc(nrows * sizeof(*arr));
-    for ( i = 0 ; i < nrows ; i++) {
-        arr[i] = malloc(ncols * sizeof(*arr[i]));
-    }
-    return arr;
-}
-
-pixelvalue***
-allocMatrix3Int(int nrows, int ncols, int nmats)
-{
-    pixelvalue*** arr;
-    int i,j;
-    arr = malloc(nrows * sizeof(*arr));
-    for ( i = 0 ; i < nrows ; i++) {
-        arr[i] = malloc(ncols * sizeof(*arr[i]));
-		for (j=0;j<ncols;j++){
-			arr[i][j] = malloc(nmats * sizeof(*arr[i][j]));
-		}
-    }
-    return arr;
-}
-
-void
-FreeMemMatrixInt(pixelvalue **mat,int nrows)
-{
-    int r;
-    for ( r = 0 ; r < nrows ; r++) {
-        free(mat[r]);
-    }
-    free(mat);
-}
-
-void
-FreeMemMatrix3Int(pixelvalue ***mat,int nrows, int ncols)
-{
-    int r,c;
-    for ( r = 0 ; r < nrows ; r++) {
-		for (c=0;c<ncols;c++){
-			free(mat[r][c]);
-		}
-        free(mat[r]);
-    }
-    free(mat);
-}
 
 static inline void CalcMedian(hid_t file, int NrFilesPerDistance, int NrDistances, int NrPixels, int DistanceNr)
 {
@@ -241,16 +191,14 @@ usage(void)
 int
 main(int argc, char *argv[])
 {
-    if (argc != 2)
-    {
-        usage();
-        return 1;
-    }
-
-    clock_t start, end;
-    double diftotal;
-    start = clock();
-    
+	if (argc != 2)
+	{
+		usage();
+		return 1;
+	}
+		clock_t start, end;
+	double diftotal;
+	start = clock();
 	herr_t status, status_n;
 	htri_t avail;
 	unsigned int filter_info;
@@ -279,16 +227,14 @@ main(int argc, char *argv[])
 	dataset = H5Dopen(file,"/measurement/instrument/detector/geometry/nr_pixels",H5P_DEFAULT);
 	status = H5Dread(dataset,H5T_NATIVE_INT,H5S_ALL,H5S_ALL,H5P_DEFAULT,&NrPixels);
 	printf("NrPixels %d\n",NrPixels);
-
 	int DistanceNr;
 	# pragma omp parallel num_threads(NrDistances) shared(file,NrFilesPerDistance,NrDistances,NrPixels) private(DistanceNr)
 	{
 		DistanceNr = omp_get_thread_num();
 		CalcMedian(file,NrFilesPerDistance,NrDistances,NrPixels,DistanceNr);
 	}
-
-    end = clock();
-    diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
-    printf("Time elapsed in reading files, computing median and saving data to original HDF: %f [s]\n",diftotal);
-    return 0;
+	end = clock();
+	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
+	printf("Time elapsed in reading files, computing median and saving data to original HDF: %f [s]\n",diftotal);
+	return 0;
 }

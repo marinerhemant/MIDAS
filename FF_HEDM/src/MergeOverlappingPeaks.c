@@ -32,6 +32,8 @@
 #define CalcNorm2(x,y)   sqrt((x)*(x) + (y)*(y))
 #define nOverlapsMaxPerImage 10000
 
+int UseMaximaPositions;
+
 static inline
 double CalcEtaAngle(double y, double z){
 	double alpha = rad2deg*acos(z/sqrt(y*y+z*z));
@@ -160,7 +162,7 @@ static inline int CheckDirectoryCreation(char Folder[1024],char FileStem[1024])
 
 static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], int FileNr, int RingNr, int Padding, double **SortedMatrix)
 {
-	char aline[1000];
+	char aline[1000],dummy[1000];
 	char InFile[1024];
 	sprintf(InFile,"%s/%s_%0*d_%d_PS.csv",OutFolderName,FileStem,Padding,FileNr,RingNr);
     FILE *infileread;
@@ -170,13 +172,17 @@ static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], 
     MyData = malloc(nOverlapsMaxPerImage*sizeof(*MyData));
     int counter = 0;
     fgets(aline,1000,infileread);
-    double SpotID,IntegratedIntensity,Omega,YCen,ZCen,IMax,Radius,Eta,NumberOfPixels;
+    double SpotID,IntegratedIntensity,Omega,YCen,ZCen,IMax,Radius,Eta,NumberOfPixels,maxY,maxZ;
     while (fgets(aline,1000,infileread)!=NULL){
-		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %lf %lf",
 					&(MyData[counter].SpotID), &(MyData[counter].IntegratedIntensity), &(MyData[counter].Omega),
 					&(MyData[counter].YCen), &(MyData[counter].ZCen), &(MyData[counter].IMax), &(MyData[counter].Radius),
 					&(MyData[counter].Eta), &(MyData[counter].SigmaR), &(MyData[counter].SigmaEta), &(MyData[counter].NrPx),
-					&(MyData[counter].NrPxTot));
+					&(MyData[counter].NrPxTot),dummy,dummy,&maxY,&maxZ);
+		if (UseMaximaPositions==1){
+			MyData[counter].YCen = maxY;
+			MyData[counter].ZCen = maxZ;
+		}
 		counter++;
 	}
 	fclose(infileread);
@@ -231,6 +237,7 @@ int main(int argc, char *argv[]){
     int StartNr, EndNr, Padding=6;
     TmpFolder = "Temp";
 	double MarginOmegaOverlap = sqrt(4);
+	UseMaximaPositions = 0;
     while (fgets(aline,1000,fileParam)!=NULL){
         str = "Folder ";
         LowNr = strncmp(aline,str,strlen(str));
@@ -272,6 +279,12 @@ int main(int argc, char *argv[]){
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %lf", dummy, &MarginOmegaOverlap);
+            continue;
+        }
+        str = "UseMaximaPositions ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &UseMaximaPositions);
             continue;
         }
 	}

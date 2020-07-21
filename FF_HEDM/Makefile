@@ -107,12 +107,11 @@ fitposorstrainsscanning: $(SRCDIR)FitPosOrStrainsScanningHEDM.c
 ff_mpiomp: $(SRCDIR)MIDAS_FF_MPIOMP.c
 	$(MPICC) $(SRCDIR)MIDAS_FF_MPIOMP.c $(SRCDIR)sharedFunctions.c -o $(BINDIR)MIDAS_FF_MPIOMP $(MPICCFLAGS) $(CFLAGSNLOPT) $(CFLAGSTIFF)
 
-
 peaksfitting: $(SRCDIR)PeaksFittingPerFile.c
 	$(CC) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile $(CFLAGS) $(CFLAGSNLOPT)
 
-peaksfittingcdf: $(SRCDIR)PeaksFittingPerFile.c
-	$(CC) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile -DCDF=netCDF $(CFLAGSNETCDF) $(CFLAGS) $(CFLAGSNLOPT)
+peaksfittingomp: $(SRCDIR)PeaksFittingOMP.c
+	$(CC) $(SRCDIR)PeaksFittingOMP.c $(SRCDIR)sharedFunctions.c -o $(BINDIR)PeaksFittingPerFile $(MPICCFLAGS) $(CFLAGSNLOPT) $(CFLAGSTIFF) $(CFLAGS) $(CFLAGSNLOPT)
 
 mapmultdetectors: $(SRCDIR)MapMultipleDetectors.c
 	$(CC) $(SRCDIR)MapMultipleDetectors.c -o $(BINDIR)MapMultipleDetectors $(CFLAGS)
