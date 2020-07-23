@@ -23,7 +23,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define MAX_N_GRAINS 1000000
+#define MAX_N_GRAINS 100000
 
 static inline
 double Len3d(double x, double y, double z)
@@ -292,8 +292,6 @@ int main(int argc, char* argv[])
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
 	printf("Time to read files: %f s.\n",diftotal);
 	totIDs2 = ThisID;
-	double **Matches;
-	Matches = allocMatrix(totIDs2,28);
 	int i,j,k;
 	double Q1[4], Q2[4], Axis[3], Angle, ang, **Angles, difflen;
 	double posT1[3], posT2[3];
@@ -301,18 +299,15 @@ int main(int argc, char* argv[])
 	int **doneMatrix;
 	int *BestPosMatrix;
 	double *BestValMatrix;
-	if (removeDuplicates == 1){
-		Angles = allocMatrix(totIDs1,totIDs2);
-		SortMatrix = malloc(totIDs1*totIDs2*sizeof(*SortMatrix));
-		doneMatrix = allocMatrixInt(totIDs1,totIDs2);
-		end = clock();
-		diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
-		printf("Time to allocate bigArray: %f s.\n",diftotal);
-	} else{
-		BestPosMatrix = malloc(totIDs1*sizeof(*BestPosMatrix));
-		for (i=0;i<totIDs1;i++) BestPosMatrix[i] = -1;
-		BestValMatrix = malloc(totIDs1*sizeof(*BestValMatrix));
-	}
+	Angles = allocMatrix(totIDs1,totIDs2);
+	SortMatrix = malloc(totIDs1*totIDs2*sizeof(*SortMatrix));
+	doneMatrix = allocMatrixInt(totIDs1,totIDs2);
+	end = clock();
+	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
+	printf("Time to allocate bigArray: %f s.\n",diftotal);
+	BestPosMatrix = malloc(totIDs2*sizeof(*BestPosMatrix));
+	for (i=0;i<totIDs1;i++) BestPosMatrix[i] = -1;
+	BestValMatrix = malloc(totIDs2*sizeof(*BestValMatrix));
 	double Sym[24][4];
 	int NrSymmetries;
 	NrSymmetries = MakeSymmetries(SGNr,Sym);
@@ -428,6 +423,8 @@ int main(int argc, char* argv[])
 	end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
 	printf("Time to make bigArray: %f s.\n",diftotal);
+	double *Matches;
+	Matches = calloc(totIDs2*28,sizeof(*Matches));
 	int posX, posY;
 	int counter = 0;
 	if (removeDuplicates == 1){
@@ -456,37 +453,37 @@ int main(int argc, char* argv[])
 			Q2[2] = Quats2[posY][2];
 			Q2[3] = Quats2[posY][3];
 			Angle = GetMisOrientationAngle(Q1,Q2,&ang,NrSymmetries,Sym);
-			Matches[counter][0] = IDs2[posY][0];
-			Matches[counter][1] = IDs2[posY][1];
-			Matches[counter][2] = IDs2[posY][2];
-			Matches[counter][3] = IDs1[posX][0];
-			Matches[counter][4] = IDs1[posX][1];
-			Matches[counter][5] = IDs1[posX][2];
-			Matches[counter][6] = Quats2[posY][0];
-			Matches[counter][7] = Quats2[posY][1];
-			Matches[counter][8] = Quats2[posY][2];
-			Matches[counter][9] = Quats2[posY][3];
-			Matches[counter][10] = Quats1[posX][0];
-			Matches[counter][11] = Quats1[posX][1];
-			Matches[counter][12] = Quats1[posX][2];
-			Matches[counter][13] = Quats1[posX][3];
-			Matches[counter][14] = Pos2[posY][0];
-			Matches[counter][15] = Pos2[posY][1];
-			Matches[counter][16] = Pos2[posY][2];
-			Matches[counter][17] = Pos1[posX][0];
-			Matches[counter][18] = Pos1[posX][1];
-			Matches[counter][19] = Pos1[posX][2];
-			Matches[counter][20] = GrSize1[posX];
-			Matches[counter][21] = GrSize2[posY];
-			Matches[counter][22] = Angles[posX][posY];
-			Matches[counter][23] = ang;
-			Matches[counter][24] = Pos2[posY][0] - Pos1[posX][0];
-			Matches[counter][25] = Pos2[posY][1] - Pos1[posX][1];
-			Matches[counter][26] = Pos2[posY][2] - Pos1[posX][2];
-			Matches[counter][27] = Len3d(Matches[counter][24],Matches[counter][25],Matches[counter][26]);
+			Matches[counter*28+0] = IDs2[posY][0];
+			Matches[counter*28+1] = IDs2[posY][1];
+			Matches[counter*28+2] = IDs2[posY][2];
+			Matches[counter*28+3] = IDs1[posX][0];
+			Matches[counter*28+4] = IDs1[posX][1];
+			Matches[counter*28+5] = IDs1[posX][2];
+			Matches[counter*28+6] = Quats2[posY][0];
+			Matches[counter*28+7] = Quats2[posY][1];
+			Matches[counter*28+8] = Quats2[posY][2];
+			Matches[counter*28+9] = Quats2[posY][3];
+			Matches[counter*28+10] = Quats1[posX][0];
+			Matches[counter*28+11] = Quats1[posX][1];
+			Matches[counter*28+12] = Quats1[posX][2];
+			Matches[counter*28+13] = Quats1[posX][3];
+			Matches[counter*28+14] = Pos2[posY][0];
+			Matches[counter*28+15] = Pos2[posY][1];
+			Matches[counter*28+16] = Pos2[posY][2];
+			Matches[counter*28+17] = Pos1[posX][0];
+			Matches[counter*28+18] = Pos1[posX][1];
+			Matches[counter*28+19] = Pos1[posX][2];
+			Matches[counter*28+20] = GrSize1[posX];
+			Matches[counter*28+21] = GrSize2[posY];
+			Matches[counter*28+22] = Angles[posX][posY];
+			Matches[counter*28+23] = ang;
+			Matches[counter*28+24] = Pos2[posY][0] - Pos1[posX][0];
+			Matches[counter*28+25] = Pos2[posY][1] - Pos1[posX][1];
+			Matches[counter*28+26] = Pos2[posY][2] - Pos1[posX][2];
+			Matches[counter*28+27] = Len3d(Matches[counter*28+24],Matches[counter*28+25],Matches[counter*28+26]);
 			counter ++;
 		}
-	} else{
+	} else {
 		counter = 0;
 		for (i=0;i<totIDs2;i++){
 			posX = BestPosMatrix[i];
@@ -501,47 +498,46 @@ int main(int argc, char* argv[])
 			Q2[2] = Quats2[posY][2];
 			Q2[3] = Quats2[posY][3];
 			Angle = GetMisOrientationAngle(Q1,Q2,&ang,NrSymmetries,Sym);
-			Matches[counter][0] = IDs2[posY][0];
-			Matches[counter][1] = IDs2[posY][1];
-			Matches[counter][2] = IDs2[posY][2];
-			Matches[counter][3] = IDs1[posX][0];
-			Matches[counter][4] = IDs1[posX][1];
-			Matches[counter][5] = IDs1[posX][2];
-			Matches[counter][6] = Quats2[posY][0];
-			Matches[counter][7] = Quats2[posY][1];
-			Matches[counter][8] = Quats2[posY][2];
-			Matches[counter][9] = Quats2[posY][3];
-			Matches[counter][10] = Quats1[posX][0];
-			Matches[counter][11] = Quats1[posX][1];
-			Matches[counter][12] = Quats1[posX][2];
-			Matches[counter][13] = Quats1[posX][3];
-			Matches[counter][14] = Pos2[posY][0];
-			Matches[counter][15] = Pos2[posY][1];
-			Matches[counter][16] = Pos2[posY][2];
-			Matches[counter][17] = Pos1[posX][0];
-			Matches[counter][18] = Pos1[posX][1];
-			Matches[counter][19] = Pos1[posX][2];
-			Matches[counter][20] = GrSize1[posX];
-			Matches[counter][21] = GrSize2[posY];
-			Matches[counter][22] = BestValMatrix[posY];
-			Matches[counter][23] = ang;
-			Matches[counter][24] = Pos2[posY][0] - Pos1[posX][0];
-			Matches[counter][25] = Pos2[posY][1] - Pos1[posX][1];
-			Matches[counter][26] = Pos2[posY][2] - Pos1[posX][2];
-			Matches[counter][27] = Len3d(Matches[counter][24],Matches[counter][25],Matches[counter][26]);
+			Matches[counter*28+0] = IDs2[posY][0];
+			Matches[counter*28+1] = IDs2[posY][1];
+			Matches[counter*28+2] = IDs2[posY][2];
+			Matches[counter*28+3] = IDs1[posX][0];
+			Matches[counter*28+4] = IDs1[posX][1];
+			Matches[counter*28+5] = IDs1[posX][2];
+			Matches[counter*28+6] = Quats2[posY][0];
+			Matches[counter*28+7] = Quats2[posY][1];
+			Matches[counter*28+8] = Quats2[posY][2];
+			Matches[counter*28+9] = Quats2[posY][3];
+			Matches[counter*28+10] = Quats1[posX][0];
+			Matches[counter*28+11] = Quats1[posX][1];
+			Matches[counter*28+12] = Quats1[posX][2];
+			Matches[counter*28+13] = Quats1[posX][3];
+			Matches[counter*28+14] = Pos2[posY][0];
+			Matches[counter*28+15] = Pos2[posY][1];
+			Matches[counter*28+16] = Pos2[posY][2];
+			Matches[counter*28+17] = Pos1[posX][0];
+			Matches[counter*28+18] = Pos1[posX][1];
+			Matches[counter*28+19] = Pos1[posX][2];
+			Matches[counter*28+20] = GrSize1[posX];
+			Matches[counter*28+21] = GrSize2[posY];
+			Matches[counter*28+22] = BestValMatrix[posY];
+			Matches[counter*28+23] = ang;
+			Matches[counter*28+24] = Pos2[posY][0] - Pos1[posX][0];
+			Matches[counter*28+25] = Pos2[posY][1] - Pos1[posX][1];
+			Matches[counter*28+26] = Pos2[posY][2] - Pos1[posX][2];
+			Matches[counter*28+27] = Len3d(Matches[counter*28+24],Matches[counter*28+25],Matches[counter*28+26]);
 			counter ++;
 		}
 	}
-
 	FILE *outfile = fopen(outfn,"w");
 	fprintf(outfile,"%%NewIDState2\tFNrState2\tOrigIDState2\tNewIDState1\tFNrState1\tOrigIDState1\t"
 	"Quat0State2\tQuat1State2\tQuat2State2\tQuat3State2\tQuat0State1\tQuat1State1\tQuat2State1\tQuat3State1\t"
 	"Pos0State2\tPos1State2\tPos2State2\tPos0State1\tPos1State1\tPos2State1\t"
 	"GrainSize1\tGrainSize2\tselectionCriteriaVal\tminAngle\tdiffPosX\tdiffPosY\tdiffPosZ\tEuclideanDistt\n");
 	for (i=0;i<totIDs2;i++){
-		for (j=0;j<6;j++) fprintf(outfile,"%d\t",(int)Matches[i][j]);
-		for (j=6;j<27;j++) fprintf(outfile,"%lf\t",Matches[i][j]);
-		fprintf(outfile,"%lf\n",Matches[i][27]);
+		for (j=0;j<6;j++) fprintf(outfile,"%d\t",(int)Matches[i*28+j]);
+		for (j=6;j<27;j++) fprintf(outfile,"%lf\t",Matches[i*28+j]);
+		fprintf(outfile,"%lf\n",Matches[i*28+27]);
 		//~ for (j=0;j<6;j++) printf("%d\t",(int)Matches[i][j]);
 		//~ for (j=6;j<28;j++) printf("%lf\t",Matches[i][j]);
 		//~ printf("\n");
