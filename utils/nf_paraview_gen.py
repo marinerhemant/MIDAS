@@ -26,10 +26,13 @@ rad2deg = 57.2957795130823
 #		|                       |-- EulerAngle3        -- Nonsense value: -15, range +-2pi
 #		|--- Confidence          -- ConfidenceValue    -- Nonsense value: -15, range 0...1
 #		|--- PhaseNumber         -- PhaseNr            -- Nonsense value: -15, range 1...n
+#		|--- Positions          |-- X                  --                      [microns]
+#		|                       |-- Y                  --                      [microns]
+#		|                       |-- Z                  --                      [microns]
 ##
 
 # Before running this, please execute the following command in bash:
-#		ulimit -S -s 131072
+#		ulimit -S -s 1310720
 
 fillVal = -15 # this value can be used to filter out nonsense values.
 
@@ -52,6 +55,7 @@ minConfidence = 0.3
 orientTol = 10.0 # In degrees, used to define grains
 zspacing = -2
 xyspacing = 2  # X and Y spacing are equal, should be equal to the edge_size used during reconstruction
+startZ = 0 # Starting Z position
 xExtent = 1400 # Maximum Extent of xValues in um
 			   # (this should be larger than 2x the sample radius or 2x the distance between the farther edge of the sample and the rotation axis)
 yExtent = 1400 # Maximum Extent of yValues in um
@@ -72,14 +76,17 @@ Euler2 = np.zeros((Dims))
 Euler3 = np.zeros((Dims))
 Confidence = np.zeros((Dims))
 PhaseNr = np.zeros((Dims))
+xVals = np.zeros((Dims))
+yVals = np.zeros((Dims))
+zVals = np.zeros((Dims))
 Euler1.fill(fillVal)
 Euler2.fill(fillVal)
 Euler3.fill(fillVal)
 Confidence.fill(fillVal)
 PhaseNr.fill(fillVal)
 grainIDs.fill(fillVal)
-dataNr = 0;
-outarr = np.zeros((Dims[1],Dims[2],7))
+dataNr = 0
+outarr = np.zeros((Dims[1],Dims[2],9))
 outarr = outarr.astype(float)
 dimarr = np.array([Dims[1],Dims[2],abs(xyspacing)])
 dimarr = dimarr.astype(int)
@@ -203,7 +210,7 @@ def writeH5EBSDFile(eul1,eul2,eul3,conf,phNr,fileID):
 		dGPL.create_dataset('Y Position',data=yPosArr)
 	f.close()
 
-def writeHDF5File(grID,eul1,eul2,eul3,conf,phNr,kam,grNr,grSz,fileID):
+def writeHDF5File(grID,eul1,eul2,eul3,conf,phNr,kam,grNr,grSz,,x,y,zfileID):
 	f = h5py.File(fileID,'w')
 	grainIDs = f.create_group('FFGrainID')
 	Euls = f.create_group('EulerAngles')
@@ -211,6 +218,7 @@ def writeHDF5File(grID,eul1,eul2,eul3,conf,phNr,kam,grNr,grSz,fileID):
 	PhaseNr = f.create_group('PhaseNumber')
 	Grains = f.create_group('Grains')
 	KAMs = f.create_group('KernelAverageMiso')
+	Poss = f.create_group('Positions')
 	GrainID = grainIDs.create_dataset('FFGrainNr',data=grID,compression="gzip")
 	Euler1 = Euls.create_dataset('EulerAngle1',data=eul1,compression="gzip")
 	Euler2 = Euls.create_dataset('EulerAngle2',data=eul2,compression="gzip")
@@ -220,6 +228,9 @@ def writeHDF5File(grID,eul1,eul2,eul3,conf,phNr,kam,grNr,grSz,fileID):
 	GrainNr = Grains.create_dataset('GrainNr',data=grNr,compression="gzip")
 	GrainSizes = Grains.create_dataset('GrainSize',data=grSz,compression="gzip")
 	KAM = KAMs.create_dataset('KAM',data=kam,compression="gzip")
+	X = Poss.create_dataset('X',data=x,compression="gzip")
+	Y = Poss.create_dataset('Y',data=y,compression="gzip")
+	Z = Poss.create_dataset('Z',data=z,compression="gzip")
 	f.close()
 
 def writeXMLXdmf(dims,deltas,fn,h5fn,sample_name):
@@ -357,34 +368,39 @@ for fnr in range(startnr,endnr+1):
 	Euler3[dataNr,:,:] = outarr[:,:,3]
 	Confidence[dataNr,:,:] = outarr[:,:,4]
 	PhaseNr[dataNr,:,:] = outarr[:,:,5]
+	for i in range(Dims[1]):
+		for j in range(Dims[2]):
+			xVals[dataNr,i,j] = dimarr[2]*(i-dimarr[0]/2)
+			yVals[dataNr,i,j] = dimarr[2]*(j-dimarr[0]/2)
+			zVals[dataNr,i,j] = dataNr*zspacing + startZ
 	dataNr += 1
 
-# ~ Euler1.astype(np.float64).tofile('EulerAngles1.bin')
-# ~ Euler2.astype(np.float64).tofile('EulerAngles2.bin')
-# ~ Euler3.astype(np.float64).tofile('EulerAngles3.bin')
-# ~ KamArr = np.zeros((Dims))
+Euler1.astype(np.float64).tofile('EulerAngles1.bin')
+Euler2.astype(np.float64).tofile('EulerAngles2.bin')
+Euler3.astype(np.float64).tofile('EulerAngles3.bin')
+KamArr = np.zeros((Dims))
 
-# ~ # We need to provide the following:
-# ~ # orientTol, dims[0], dims[1], dims[2], fillVal, spaceGroup.
-# ~ home = os.path.expanduser("~")
-# ~ grainsCalc = ctypes.CDLL(home + "/opt/MIDAS/NF_HEDM/bin/NFGrainsCalc.so")
-# ~ grainsCalc.calcGrainNrs.argtypes = (ctypes.c_double,
-										# ~ ctypes.c_int,
-										# ~ ctypes.c_int,
-										# ~ ctypes.c_int,
-										# ~ ctypes.c_double,
-										# ~ ctypes.c_int,
-									# ~ )
-# ~ grainsCalc.calcGrainNrs.restype = None
-# ~ grainsCalc.calcGrainNrs(orientTol,Dims[0],Dims[1],Dims[2],fillVal,spaceGroup)
-# ~ grains = np.fromfile('GrainNrs.bin',dtype=np.int32)
-# ~ grains = grains.reshape((Dims))
-# ~ grainSizes = np.fromfile('GrainSizes.bin',dtype=np.int32)
-# ~ grainSizes = grainSizes.reshape((Dims))
-# ~ KamArr = np.fromfile('KAMArr.bin',dtype=np.float64)
-# ~ KamArr = KamArr.reshape((Dims))
+# We need to provide the following:
+# orientTol, dims[0], dims[1], dims[2], fillVal, spaceGroup.
+home = os.path.expanduser("~")
+grainsCalc = ctypes.CDLL(home + "/opt/MIDAS/NF_HEDM/bin/NFGrainsCalc.so")
+grainsCalc.calcGrainNrs.argtypes = (ctypes.c_double,
+										ctypes.c_int,
+										ctypes.c_int,
+										ctypes.c_int,
+										ctypes.c_double,
+										ctypes.c_int,
+									)
+grainsCalc.calcGrainNrs.restype = None
+grainsCalc.calcGrainNrs(orientTol,Dims[0],Dims[1],Dims[2],fillVal,spaceGroup)
+grains = np.fromfile('GrainNrs.bin',dtype=np.int32)
+grains = grains.reshape((Dims))
+grainSizes = np.fromfile('GrainSizes.bin',dtype=np.int32)
+grainSizes = grainSizes.reshape((Dims))
+KamArr = np.fromfile('KAMArr.bin',dtype=np.float64)
+KamArr = KamArr.reshape((Dims))
 
-# ~ # write files
-# ~ writeHDF5File(grainIDs.astype(np.int32),Euler1.astype(np.float32),Euler2.astype(np.float32),Euler3.astype(np.float32),Confidence.astype(np.float32),PhaseNr.astype(np.float32),KamArr.astype(np.float32),grains.astype(np.int32),grainSizes.astype(np.int32),outfn+'.h5')
-# ~ writeXMLXdmf(Dims,[xyspacing,xyspacing,zspacing],outfn+'.xmf',outfn,sampleName)
+# write files
+writeHDF5File(grainIDs.astype(np.int32),Euler1.astype(np.float32),Euler2.astype(np.float32),Euler3.astype(np.float32),Confidence.astype(np.float32),PhaseNr.astype(np.float32),KamArr.astype(np.float32),grains.astype(np.int32),grainSizes.astype(np.int32),xVals.astype(np.float32),yVals.astype(np.float32),zVals.astype(np.float32),outfn+'.h5')
+writeXMLXdmf(Dims,[xyspacing,xyspacing,zspacing],outfn+'.xmf',outfn,sampleName)
 writeH5EBSDFile(Euler1,Euler2,Euler3,Confidence,PhaseNr,outfn+'.h5ebsd')
