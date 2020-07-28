@@ -352,8 +352,15 @@ def mapData(data,dims,outArr):
 					# ~ outArr[xBinT,yBinT,0:6] = data[i,[0,7,8,9,10,11]]
 					outArr[xBinT,yBinT,6] = distt2
 
+x = np.linspace(-dimarr[0]*dimarr[2]/2,(Dims[1]-1-dimarr[0]/2)*dimarr[2],Dims[1])
+y = np.linspace(-dimarr[0]*dimarr[2]/2,(Dims[2]-1-dimarr[0]/2)*dimarr[2],Dims[2])
+xx,yy = np.meshgrid(x,y)
+
 for fnr in range(startnr,endnr+1):
 	print('LayerNr: '+ str(fnr))
+	xVals[dataNr,:,:] = xx
+	yVals[dataNr,:,:] = yy
+	zVals[dataNr,:,:] = dataNr*zspacing + startZ
 	FileName = sampleName + 'Layer' + str(fnr) + '/' + filestem + str(fnr) + '.mic'
 	#~ FileName = filestem + str(fnr) + '.mic'
 	t1 = time.time()
@@ -368,11 +375,6 @@ for fnr in range(startnr,endnr+1):
 	Euler3[dataNr,:,:] = outarr[:,:,3]
 	Confidence[dataNr,:,:] = outarr[:,:,4]
 	PhaseNr[dataNr,:,:] = outarr[:,:,5]
-	for i in range(Dims[1]):
-		for j in range(Dims[2]):
-			xVals[dataNr,i,j] = dimarr[2]*(i-dimarr[0]/2)
-			yVals[dataNr,i,j] = dimarr[2]*(j-dimarr[0]/2)
-			zVals[dataNr,i,j] = dataNr*zspacing + startZ
 	dataNr += 1
 
 Euler1.astype(np.float64).tofile('EulerAngles1.bin')

@@ -287,13 +287,17 @@ double problem_function(
 		SigmaLEta[i] = x[(8*i)+8];
 	}
 	double TotalDifferenceIntensity = 0, CalcIntensity, IntPeaks;
-	double L, G;
+	double L, G,DR,DE,R2,E2;
 	for (i=0;i<NrPixels;i++){
 		IntPeaks = 0;
 		for (j=0;j<nPeaks;j++){
-			L = 1/(((((Rs[i]-R[j])*(Rs[i]-R[j]))/((SigmaLR[j])*(SigmaLR[j])))+1)*((((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/((SigmaLEta[j])*(SigmaLEta[j])))+1));
-			//~ L = 1/(((((Rs[i]-R[j])*(Rs[i]-R[j]))/((SigmaLR[j])*(SigmaLR[j]))))+((((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/((SigmaLEta[j])*(SigmaLEta[j]))))+1);
-			G = exp(-(0.5*(((Rs[i]-R[j])*(Rs[i]-R[j]))/(SigmaGR[j]*SigmaGR[j])))-(0.5*(((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/(SigmaGEta[j]*SigmaGEta[j]))));
+			DR = Rs[i]-R[j];
+			R2 = DR*DR;
+			DE = Etas[i]-Eta[j];
+			E2 = DE*DE;
+			L = 1/(((R2/((SigmaLR[j])*(SigmaLR[j])))+1)*((E2/((SigmaLEta[j])*(SigmaLEta[j])))+1));
+			//~ L = 1/(((R2/((SigmaLR[j])*(SigmaLR[j]))))+((E2/((SigmaLEta[j])*(SigmaLEta[j]))))+1);
+			G = exp(-(0.5*(R2/(SigmaGR[j]*SigmaGR[j])))-(0.5*(E2/(SigmaGEta[j]*SigmaGEta[j]))));
 			IntPeaks += IMAX[j]*((Mu[j]*L) + ((1-Mu[j])*G));
 		}
 		CalcIntensity = BG + IntPeaks;
@@ -316,14 +320,18 @@ static inline void CalcIntegratedIntensity(int nPeaks,double *x,double *Rs,doubl
 		SigmaGEta[i] = x[(8*i)+7];
 		SigmaLEta[i] = x[(8*i)+8];
 	}
-	double IntPeaks, L, G, BGToAdd;
+	double IntPeaks, L, G, BGToAdd,DR,DE,R2,E2;
 	for (j=0;j<nPeaks;j++){
 		NrOfPixels[j] = 0;
 		IntegratedIntensity[j] = 0;
 		for (i=0;i<NrPixelsThisRegion;i++){
-			L = 1/(((((Rs[i]-R[j])*(Rs[i]-R[j]))/((SigmaLR[j])*(SigmaLR[j])))+1)*((((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/((SigmaLEta[j])*(SigmaLEta[j])))+1));
-			//~ L = 1/(((((Rs[i]-R[j])*(Rs[i]-R[j]))/((SigmaLR[j])*(SigmaLR[j]))))+((((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/((SigmaLEta[j])*(SigmaLEta[j]))))+1);
-			G = exp(-(0.5*(((Rs[i]-R[j])*(Rs[i]-R[j]))/(SigmaGR[j]*SigmaGR[j])))-(0.5*(((Etas[i]-Eta[j])*(Etas[i]-Eta[j]))/(SigmaGEta[j]*SigmaGEta[j]))));
+			DR = Rs[i]-R[j];
+			R2 = DR*DR;
+			DE = Etas[i]-Eta[j];
+			E2 = DE*DE;
+			L = 1/(((R2/((SigmaLR[j])*(SigmaLR[j])))+1)*((E2/((SigmaLEta[j])*(SigmaLEta[j])))+1));
+			//~ L = 1/(((R2/((SigmaLR[j])*(SigmaLR[j]))))+((E2/((SigmaLEta[j])*(SigmaLEta[j]))))+1);
+			G = exp(-(0.5*(R2/(SigmaGR[j]*SigmaGR[j])))-(0.5*(E2/(SigmaGEta[j]*SigmaGEta[j]))));
 			IntPeaks = IMAX[j]*((Mu[j]*L) + ((1-Mu[j])*G));
 			if (IntPeaks > BG){
 				NrOfPixels[j] += 1;
