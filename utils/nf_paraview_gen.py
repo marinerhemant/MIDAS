@@ -48,7 +48,7 @@ sample = 'HeatHTNS9'
 scanN = 'Begin'
 spaceGroup = 194 # This is used for misorientation calculation
 startnr = 0
-endnr = 36
+endnr = 2
 thisPhaseNr = 1
 LatC = np.array([2.9243, 2.9243, 4.6726 ,90.0, 90.0, 120.0],dtype=np.float32)
 minConfidence = 0.3
