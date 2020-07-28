@@ -210,7 +210,7 @@ def writeH5EBSDFile(eul1,eul2,eul3,conf,phNr,fileID):
 		dGPL.create_dataset('Y Position',data=yPosArr)
 	f.close()
 
-def writeHDF5File(grID,eul1,eul2,eul3,conf,phNr,kam,grNr,grSz,x,y,zfileID):
+def writeHDF5File(grID,eul1,eul2,eul3,conf,phNr,kam,grNr,grSz,x,y,z,fileID):
 	f = h5py.File(fileID,'w')
 	grainIDs = f.create_group('FFGrainID')
 	Euls = f.create_group('EulerAngles')
