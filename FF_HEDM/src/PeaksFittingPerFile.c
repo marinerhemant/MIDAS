@@ -825,17 +825,26 @@ int main(int argc, char *argv[]){
             fnr++;
             continue;
         }
+        str = "IsEDF";
+        LowNr = strncmp()
 	}
 	printf("Threshold: %f\n",Thresh);
 	Width = Width/px;
 	int i,j,k;
     for (i=0;i<NrTransOpt;i++){
-        if (TransOpt[i] < 0 || TransOpt[i] > 3){printf("TransformationOptions can only be 0, 1, 2 or 3.\nExiting.\n");return 0;}
+        if (TransOpt[i] < 0 || TransOpt[i] > 3){
+			printf("TransformationOptions can only be 0, 1, 2 or 3.\nExiting.\n");
+			return 0;
+		}
         printf("TransformationOptions: %d ",TransOpt[i]);
-        if (TransOpt[i] == 0) printf("No change.\n");
-        else if (TransOpt[i] == 1) printf("Flip Left Right.\n");
-        else if (TransOpt[i] == 2) printf("Flip Top Bottom.\n");
-        else printf("Transpose.\n");
+        if (TransOpt[i] == 0)
+			printf("No change.\n");
+        else if (TransOpt[i] == 1)
+			printf("Flip Left Right.\n");
+        else if (TransOpt[i] == 2)
+			printf("Flip Top Bottom.\n");
+        else
+			printf("Transpose.\n");
     }
 	sprintf(FileStem,"%s_%d",fs,LayerNr);
 	fclose(fileParam);

@@ -37,7 +37,7 @@ rad2deg = 57.2957795130823
 fillVal = -15 # this value can be used to filter out nonsense values.
 
 ### Only modify the following arguments:
-### Also look at where variable FileName is defined to see if the file arrangement is different (Line345)
+### Also look at where variable FileName is defined to see if the file arrangement is different (Line364)
 ####
 sampleName = 'HeatHTNS9_crack_NF'
 filestem = 'MicrostructureText_Layer'

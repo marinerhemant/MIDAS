@@ -65,7 +65,7 @@ FreeMemMatrix(double **mat,int nrows)
 static inline double signVal(double x){
 	if (x == 0) return 1.0;
 	else return x/fabs(x);
-} 
+}
 
 static inline
 void
@@ -97,7 +97,7 @@ MatrixMultF33(
     }
 }
 
-static inline 
+static inline
 double CalcEtaAngle(double y, double z){
 	double alpha = rad2deg*acos(z/sqrt(y*y+z*z));
 	if (y>0) alpha = -alpha;
@@ -181,8 +181,8 @@ static inline
 int
 nOutside(
 	double pos,
-	int direction, 
-	double tempIntercepts[], 
+	int direction,
+	double tempIntercepts[],
 	int nIntercepts)
 {
 	int i;
@@ -241,7 +241,7 @@ double CalcAreaPolygon(double **Edges, int nEdges){
 	}
 	center.x /= nEdges;
 	center.y /= nEdges;
-	
+
 	qsort(MyData, nEdges, sizeof(struct Point), cmpfunc);
 	double **SortedEdges;
 	SortedEdges = allocMatrix(nEdges+1,2);
@@ -251,7 +251,7 @@ double CalcAreaPolygon(double **Edges, int nEdges){
 	}
 	SortedEdges[nEdges][0] = MyData[0].x;
 	SortedEdges[nEdges][1] = MyData[0].y;
-	
+
 	double Area=0;
 	for (i=0;i<nEdges;i++){
 		Area += 0.5*((SortedEdges[i][0]*SortedEdges[i+1][1])-(SortedEdges[i+1][0]*SortedEdges[i][1]));
@@ -288,18 +288,18 @@ struct data {
 	double frac;
 };
 
-static inline 
-long long int 
+static inline
+long long int
 mapperfcn(
-	double tx, 
-	double ty, 
-	double tz, 
-	int NrPixelsY, 
+	double tx,
+	double ty,
+	double tz,
+	int NrPixelsY,
 	int NrPixelsZ,
 	double pxY,
-	double pxZ, 
-	double Ycen, 
-	double Zcen, 
+	double pxZ,
+	double Ycen,
+	double Zcen,
 	double Lsd,
 	double RhoD,
 	double p0,
@@ -311,8 +311,8 @@ mapperfcn(
 	double *RBinsHigh,
 	int nRBins,
 	int nEtaBins,
-	struct data ***pxList, 
-	int **nPxList, 
+	struct data ***pxList,
+	int **nPxList,
 	int **maxnPx)
 {
 	double txr, tyr, tzr;
@@ -454,7 +454,7 @@ mapperfcn(
 						EtaThis = CalcEtaAngle(YZ[0]+PosMatrix[m][0],YZ[1]+PosMatrix[m][1]);
 						if (EtaMin < -180 && signVal(EtaThis) != signVal(EtaMin)) EtaThis -= 360;
 						if (EtaMax >  180 && signVal(EtaThis) != signVal(EtaMax)) EtaThis += 360;
-						if (RThis   >= RMin   && RThis   <= RMax && 
+						if (RThis   >= RMin   && RThis   <= RMax &&
 							EtaThis >= EtaMin && EtaThis <= EtaMax){
 							Edges[nEdges][0] = YZ[0]+PosMatrix[m][0];
 							Edges[nEdges][1] = YZ[1]+PosMatrix[m][1];
@@ -686,10 +686,10 @@ int main(int argc, char *argv[])
     if (argc != 2){
 		printf("******************Supply a parameter file as argument.******************\n"
 		"Parameters needed: tx, ty, tz, px, BC, Lsd, RhoD,"
-		"\n\t\t   p0, p1, p2, EtaBinSize, EtaMin,\n\t\t   EtaMax, RBinSize, RMin, RMax,\n\t\t   NrPixels\n");
+		"\n\t\t   p0, p1, p2, EtaBinSize, EtaMin,\n\t\t   EtaMax, RBinSize, RMin, RMax,\n\t\t   NrPixels, px(PixelSize)\n");
 		return(1);
 	}
-	double tx=0.0, ty=0.0, tz=0.0, pxY=200.0, pxZ=200.0, yCen=1024.0, zCen=1024.0, Lsd=1000000.0, RhoD=200000.0, 
+	double tx=0.0, ty=0.0, tz=0.0, pxY=200.0, pxZ=200.0, yCen=1024.0, zCen=1024.0, Lsd=1000000.0, RhoD=200000.0,
 		p0=0.0, p1=0.0, p2=0.0, EtaBinSize=5, RBinSize=0.25, RMax=1524.0, RMin=10.0, EtaMax=180.0, EtaMin=-180.0;
 	int NrPixelsY=2048, NrPixelsZ=2048;
 	char aline[4096], dummy[4096], *str;
@@ -842,7 +842,7 @@ int main(int argc, char *argv[])
     // Parameters needed: tx, ty, tz, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen, zCen, Lsd, RhoD, p0, p1, p2
     long long int TotNrOfBins = mapperfcn(tx, ty, tz, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen,
 								zCen, Lsd, RhoD, p0, p1, p2, EtaBinsLow,
-								EtaBinsHigh, RBinsLow, RBinsHigh, nRBins, 
+								EtaBinsHigh, RBinsLow, RBinsHigh, nRBins,
 								nEtaBins, pxList, nPxList, maxnPx);
 	printf("Total Number of bins %lld\n",TotNrOfBins); fflush(stdout);
 	long long int LengthNPxList = nRBins * nEtaBins;
@@ -867,7 +867,7 @@ int main(int argc, char *argv[])
 			localCounter += localNPxVal;
 		}
 	}
-	
+
 	// Write out
 	char *mapfn = "Map.bin";
 	char *nmapfn = "nMap.bin";
@@ -875,7 +875,7 @@ int main(int argc, char *argv[])
 	FILE *nmapfile = fopen(nmapfn,"wb");
 	fwrite(pxListStore,TotNrOfBins*sizeof(*pxListStore),1,mapfile);
 	fwrite(nPxListStore,LengthNPxList*2*sizeof(*nPxListStore),1,nmapfile);
-    
+
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	printf("Total time elapsed:\t%f s.\n",diftotal);

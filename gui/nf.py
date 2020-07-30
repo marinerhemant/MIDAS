@@ -905,7 +905,7 @@ def load_mic():
 		micfiledata = np.fromfile(f,dtype=np.double)
 		print([sizeX,sizeY,micfiledata.size])
 		if (micfiledata.size/7) != (sizeX*sizeY):
-			print("Size of the map file is not correct. Please check that the file was wirtten properly.")
+			print("Size of the map file is not correct. Please check that the file was written properly.")
 		#~ micfiledata = micfiledata.reshape((sizeX*sizeY,7))
 	else:
 		micfiletype = 1

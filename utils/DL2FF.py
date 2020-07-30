@@ -13,7 +13,7 @@ args, unparsed = parser.parse_known_args()
 
 peaksFN = args.peak
 pFile = args.para
-nCPUs = 32
+nCPUs = 2
 
 ###### pFile must not have seedFolder and FolderName arguments, also the filename must not have path appended to it.
 
