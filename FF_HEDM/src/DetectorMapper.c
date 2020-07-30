@@ -686,7 +686,7 @@ int main(int argc, char *argv[])
     if (argc != 2){
 		printf("******************Supply a parameter file as argument.******************\n"
 		"Parameters needed: tx, ty, tz, px, BC, Lsd, RhoD,"
-		"\n\t\t   p0, p1, p2, EtaBinSize, EtaMin,\n\t\t   EtaMax, RBinSize, RMin, RMax,\n\t\t   NrPixels, px(PixelSize)\n");
+		"\n\t\t   p0, p1, p2, EtaBinSize, EtaMin,\n\t\t   EtaMax, RBinSize, RMin, RMax,\n\t\t   NrPixels\n");
 		return(1);
 	}
 	double tx=0.0, ty=0.0, tz=0.0, pxY=200.0, pxZ=200.0, yCen=1024.0, zCen=1024.0, Lsd=1000000.0, RhoD=200000.0,
