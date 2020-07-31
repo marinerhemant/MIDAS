@@ -826,7 +826,7 @@ def selectRings():
 	global topSelectRings
 	global hklLines, hkl, ds, Ttheta, RingRad, ListBox1
 	hklGenPath = '~/opt/MIDAS/FF_HEDM/bin/GetHKLList '
-	pfname = 'ps_midas_ff.txt'
+	pfname = '/dev/shm/ps_midas_ff.txt'
 	f = open(pfname,'w')
 	f.write('Wavelength ' + str(wl) + '\n')
 	f.write('SpaceGroup ' + str(sg) + '\n')
