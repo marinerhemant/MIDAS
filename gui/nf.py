@@ -740,7 +740,9 @@ def makespots():
 	global spotnrvar
 	global simulatedspots
 	global r
-	pfname = "ps.txt"
+	thisdir = os.getcwd()
+	os.chdir('/dev/shm')
+	pfname = "/dev/shm/ps.txt"
 	f = open(pfname,'w')
 	f.write("SpaceGroup %d\n"%(sg))
 	f.write("Wavelength %lf\n"%(wl))
@@ -753,8 +755,8 @@ def makespots():
 	os.system(hklpath+pfname)
 	genseedorpath = '~/opt/MIDAS/NF_HEDM/bin/GenSeedOrientationsFF2NFHEDM '
 	diffrspotspath = '~/opt/MIDAS/NF_HEDM/bin/SimulateDiffractionSpots '
-	orinfn = 'orin.txt'
-	oroutfn = 'orout.txt'
+	orinfn = '/dev/shm/orin.txt'
+	oroutfn = '/dev/shm/orout.txt'
 	instr = "120 %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n"%(om[0],om[1],om[2],om[3],om[4],
 			om[5],om[6],om[7],om[8],pos[0],pos[1],pos[2],latC[0],latC[1],latC[2],latC[3],latC[4],latC[5])
 	f = open(orinfn,'w')
@@ -762,7 +764,8 @@ def makespots():
 	f.close()
 	os.system(genseedorpath+orinfn+' '+oroutfn)
 	os.system(diffrspotspath+str(lsd)+' '+oroutfn)
-	spotsfn = 'SimulatedDiffractionSpots.txt'
+	os.chdir(thisdir)
+	spotsfn = '/dev/shm/SimulatedDiffractionSpots.txt'
 	simulatedspots = open(spotsfn,'r').readlines()
 	Tk.Label(master=thirdRowFrame,text="SpotNumber").grid(row=1,column=nrthird+1,sticky=Tk.W)
 	Tk.Entry(master=thirdRowFrame,textvariable=spotnrvar,width=3).grid(row=1,column=nrthird+2,sticky=Tk.W)
@@ -774,7 +777,7 @@ def makespots():
 def median():
 	cmdout = []
 	for thisdist in range(ndistances):
-		pfname = folder + 'ps.txt' + str(thisdist)
+		pfname = '/dev/shm/ps.txt' + str(thisdist)
 		f = open(pfname,'w')
 		f.write('extReduced bin\n')
 		f.write('extOrig tif\n')

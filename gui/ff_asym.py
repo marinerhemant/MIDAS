@@ -825,6 +825,8 @@ def acceptRings():
 def selectRings():
 	global topSelectRings
 	global hklLines, hkl, ds, Ttheta, RingRad, ListBox1
+	thisdir = os.getcwd()
+	os.chdir('/dev/shm')
 	hklGenPath = '~/opt/MIDAS/FF_HEDM/bin/GetHKLList '
 	pfname = '/dev/shm/ps_midas_ff.txt'
 	f = open(pfname,'w')
@@ -844,6 +846,7 @@ def selectRings():
 	header = header.replace(' ','      ')
 	hklinfo = hklfile.readlines()
 	hklfile.close()
+	os.chdir(thisdir)
 	maxRingNr = 101
 	hkl = []
 	ds = []
