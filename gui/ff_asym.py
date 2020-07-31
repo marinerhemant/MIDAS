@@ -113,7 +113,7 @@ def getImageMax(fn):
 	imageMax = ctypes.CDLL(home + "/opt/MIDAS/FF_HEDM/bin/imageMax.so")
 	imageMax.imageMax(fn.encode('ASCII'),Header,BytesPerPixel,NrPixelsY,NrPixelsZ,nFramesToDo,startFrameNr)
 	t2 = time.time()
-	f = open(fn+".max","rb")
+	f = open("/dev/shm/img.max","rb")
 	if BytesPerPixel == 2:
 		dataMax = np.fromfile(f,dtype=np.uint16,count=(NrPixelsY*NrPixelsZ))
 	elif BytesPerPixel == 4:
