@@ -1,6 +1,6 @@
 //
 // We will provide the orientTol, 3 euler angle arrays, dimensions of the arrays and fillVal, will get back grain IDs
-//
+// TODO: Do things in 2D instead of 3D.
 
 #include<stdio.h>
 

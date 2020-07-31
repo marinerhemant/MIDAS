@@ -825,8 +825,8 @@ int main(int argc, char *argv[]){
             fnr++;
             continue;
         }
-        str = "IsEDF";
-        LowNr = strncmp()
+        //~ str = "IsEDF";
+        //~ LowNr = strncmp()
 	}
 	printf("Threshold: %f\n",Thresh);
 	Width = Width/px;
