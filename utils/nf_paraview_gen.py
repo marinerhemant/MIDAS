@@ -40,7 +40,7 @@ fillVal = -15 # this value can be used to filter out nonsense values.
 ### Also look at where variable FileName is defined to see if the file arrangement is different (Line364)
 ####
 sampleName = 'HeatHTNS9_crack_NF'
-filestem = 'MicrostructureText_Layer'
+filestem = 'MicrostructureText_Layer' #### CHECK LINE 364
 outfn = 'MicHeatHTNS9'
 formula = 'NiTi7'
 materialName = 'NS9'
@@ -354,7 +354,7 @@ def mapData(data,dims,outArr):
 
 x = np.linspace(-dimarr[0]*dimarr[2]/2,(Dims[1]-1-dimarr[0]/2)*dimarr[2],Dims[1])
 y = np.linspace(-dimarr[0]*dimarr[2]/2,(Dims[2]-1-dimarr[0]/2)*dimarr[2],Dims[2])
-xx,yy = np.meshgrid(x,y)
+xx,yy = np.meshgrid(y,x)
 
 for fnr in range(startnr,endnr+1):
 	print('LayerNr: '+ str(fnr))
