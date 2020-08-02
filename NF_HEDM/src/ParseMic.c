@@ -129,9 +129,9 @@ int main (int argc, char *argv[]){
 		if (MicContents[i*11+10] == 0) continue;
 		intX = (int)MicContents[i*11+3];
 		intY = (int)MicContents[i*11+4];
-		for (j=-(edge_size+1);j<=edge_size+1;j++){
+		for (j=-(edge_size+5);j<=edge_size+5;j++){
 			posX = -minXRange + (intX+j);
-			for (k=-(edge_size+1);k<=edge_size+1;k++){
+			for (k=-(edge_size+5);k<=edge_size+5;k++){
 				posY = -minYRange + (intY+k);
 				posThis = posY*xSizeMap + posX;
 				//~ printf("%zu %zu %d %d %d %d %lld %zu\n",xSizeMap, ySizeMap, intX, intY, posX, posY,posThis,size_map);
