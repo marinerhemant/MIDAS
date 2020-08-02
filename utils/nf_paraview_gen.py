@@ -368,8 +368,8 @@ def mapData(data,dims,outArr):
 					outArr[xBinT,yBinT,6] = distt2
 
 x = np.linspace(-dimarr[0]*dimarr[2]/2,(Dims[1]-1-dimarr[0]/2)*dimarr[2],Dims[1])
-y = np.linspace(-dimarr[0]*dimarr[2]/2,(Dims[2]-1-dimarr[0]/2)*dimarr[2],Dims[2])
-xx,yy = np.meshgrid(y,x)
+y = np.linspace(-dimarr[1]*dimarr[2]/2,(Dims[2]-1-dimarr[1]/2)*dimarr[2],Dims[2])
+yy,xx = np.meshgrid(y,x)
 
 for fnr in range(startnr,endnr+1):
 	print('LayerNr: '+ str(fnr))
