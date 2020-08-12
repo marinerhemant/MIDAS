@@ -63,6 +63,7 @@ for ctr,ringNr in enumerate(ringNrs):
 	for row in hkls:
 		if int(row[4]) == ringNr:
 			ringSzs[ctr] = float(row[10])
+
 peaksInfo = np.genfromtxt(peaksFN,delimiter=',',skip_header=1)
 nPeaks,ncols = peaksInfo.shape
 

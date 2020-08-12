@@ -10,10 +10,7 @@
 //  Created by Hemant Sharma on 2014/07/04.
 //
 //
-//
-// Only 8-connected is implemented for now.
-//
-// TODO: Rectangular detector, read netcdf etc.
+// TODO: Rectangular detector, read edf, omp.
 
 #include <stdio.h>
 #include <math.h>
@@ -30,9 +27,6 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <fcntl.h>
-#ifdef CDF
-#include <netcdf.h>
-#endif
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -399,10 +393,10 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **UsefulP
 		xu[(8*i)+2] = x[(8*i)+2] + 1;
 		xu[(8*i)+3] = x[(8*i)+3] + dEta;
 		xu[(8*i)+4] = 1;
-		xu[(8*i)+5] = MaxRWidth;
-		xu[(8*i)+6] = MaxRWidth;
-		xu[(8*i)+7] = MaxEtaWidth;
-		xu[(8*i)+8] = MaxEtaWidth;
+		xu[(8*i)+5] = 2*MaxRWidth;
+		xu[(8*i)+6] = 2*MaxRWidth;
+		xu[(8*i)+7] = 2*MaxEtaWidth;
+		xu[(8*i)+8] = 2*MaxEtaWidth;
 
 		//~ for (j=0;j<9;j++) printf("Args: %lf %lf %lf\n",x[8*i+j],xl[8*i+j],xu[8*i+j]);
 	}

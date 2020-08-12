@@ -3,6 +3,8 @@
 # See LICENSE file.
 #
 
+###### TODO: SET CLIM DRAGBAR FOR MIC FILE
+
 import PIL
 import matplotlib
 matplotlib.use('TkAgg')
