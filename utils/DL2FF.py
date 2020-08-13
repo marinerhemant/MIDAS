@@ -96,7 +96,7 @@ for peakNr in range(nPeaks):
 			folN = thisFolder+folder+'Ring'+str(ringNr)+'/Temp/'
 			fn = folN + fileStem + '_1_' + str(thisFrame).zfill(padding) + '_' + str(ringNr) + '_PS.csv'
 			f = open(fn,'r')
-			SpotID = len(f.readlines()) - 1
+			SpotID = len(f.readlines())
 			f.close()
 			outstr = str(SpotID) + ' '+ str(thisInt) + ' ' + str(thisOmega) + ' ' + str(thisY+BC[0]) + ' ' + str(thisZ+BC[1]) + ' 100 ' + str(thisR) + ' ' + str(thisEta) + ' 1 1 1 1 1\n'
 			f = open(fn,'a')
