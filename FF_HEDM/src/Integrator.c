@@ -454,7 +454,8 @@ int main(int argc, char **argv)
 		HeadSize = 0;
 	}
 	size_t SizeFile = pxSize * NrPixelsY * NrPixelsZ;
-	int nFrames, sz;
+	int nFrames;
+	size_t sz;
 	int Skip = HeadSize;
 	FILE *fp, *fd;
 	char *darkFN;
