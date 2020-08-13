@@ -528,7 +528,7 @@ int main(int argc, char **argv)
 	rewind(fp);
 	fseek(fp,Skip,SEEK_SET);
 	nFrames = sz / SizeFile;
-	printf("Number of eta bins: %d, number of R bins: %d.\n",nEtaBins,nRBins);
+	printf("Number of eta bins: %d, number of R bins: %d. Number of frames in the file: %d\n",nEtaBins,nRBins,(int)nFrames);
 	long long int Pos;
 	int nPixels, dataPos;
 	struct data ThisVal;
