@@ -48,7 +48,7 @@ sample = 'HeatHTNS9'
 scanN = 'Begin'
 spaceGroup = 194 # This is used for misorientation calculation
 startnr = 0
-endnr = 2
+endnr = 37
 thisPhaseNr = 1
 LatC = np.array([2.9243, 2.9243, 4.6726 ,90.0, 90.0, 120.0],dtype=np.float32)
 minConfidence = 0.3
@@ -126,7 +126,7 @@ origHead = '''# TEM_PIXperUM          1.000000
 
 compound_dt = np.dtype({'names':['H','K','L','Solution 1','Diffraction Intensity','Solution 2'],'formats':['<i4','<i4','<i4','<i1','<f4','<i1']})
 
-def writeH5EBSDFile(eul1,eul2,eul3,conf,phNr,fileID):
+def writeH5EBSDFile(eul1,eul2,eul3,conf,phNr,grID,fileID):
 	f = h5py.File(fileID,'w')
 	f.attrs['FileVersion'] = np.array([5],dtype=np.int32)
 	ETA = np.array([0.],dtype=np.float32)
@@ -198,6 +198,8 @@ def writeH5EBSDFile(eul1,eul2,eul3,conf,phNr,fileID):
 		hklGPL.create_dataset('3',data=arrDs0)
 		hGPL.create_dataset('XSTEP',data=xyR)
 		hGPL.create_dataset('YSTEP',data=xyR)
+		grThis = grID[i-1,:,:].astype(np.int32).reshape((Dims[1]*Dims[2]))
+		dGPL.create_dataset('FFGrainID',data=grThis)
 		CIThis = conf[i-1,:,:].astype(np.float32).reshape((Dims[1]*Dims[2]))
 		dGPL.create_dataset('Confidence Index',data=CIThis)
 		Phi1 = eul1[i-1,:,:].astype(np.float32).reshape((Dims[1]*Dims[2]))
@@ -420,4 +422,4 @@ KamArr = KamArr.reshape((Dims))
 # write files
 writeHDF5File(grainIDs.astype(np.int32),Euler1.astype(np.float32),Euler2.astype(np.float32),Euler3.astype(np.float32),Confidence.astype(np.float32),PhaseNr.astype(np.float32),KamArr.astype(np.float32),grains.astype(np.int32),grainSizes.astype(np.int32),xVals.astype(np.float32),yVals.astype(np.float32),zVals.astype(np.float32),outfn+'.h5')
 writeXMLXdmf(Dims,[xyspacing,xyspacing,zspacing],outfn+'.xmf',outfn,sampleName)
-writeH5EBSDFile(Euler1,Euler2,Euler3,Confidence,PhaseNr,outfn+'.h5ebsd')
+writeH5EBSDFile(Euler1,Euler2,Euler3,Confidence,PhaseNr,grainIDs,outfn+'.h5ebsd')

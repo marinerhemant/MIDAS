@@ -596,20 +596,17 @@ main(int argc, char *argv[])
     sscanf(line,"%lf %lf %lf %lf %lf",&y1,&y2,&xs,&ys,&gs);
     printf("Processing line: %s",line);
     fclose(fp);
+    XY[0][0] =xs;
+    XY[1][0] =xs - gs;
+    XY[2][0] =xs + gs;
     if (y1>y2){
-        XY[0][0] =xs;
         XY[0][1] =ys - y1;
-        XY[1][0] =xs - gs;
         XY[1][1] =ys + y2;
-        XY[2][0] =xs + gs;
         XY[2][1] =ys + y2;
     }
     else{
-        XY[0][0] =xs;
         XY[0][1] =ys + y2;
-        XY[1][0] =xs - gs;
         XY[1][1] =ys - y1;
-        XY[2][0] =xs + gs;
         XY[2][1] =ys - y1;
     }
     double GridSize=2*gs;
@@ -786,8 +783,8 @@ main(int argc, char *argv[])
 					for (m=0;m<3;m++){
 						printf("%f ",OMBest[j][m]);
 					}
-					printf("\n");
 				}
+				printf("\n");
 				for (j=0;j<nLayers;j++){
 					printf("Layer Nr: %d, Lsd: %f, BCs: %f %f\n", j,LsdFit[j],BCsFit[j][0],BCsFit[j][1]);
 				}
