@@ -3,12 +3,12 @@ from subprocess import check_call
 from glob import glob
 from os.path import expanduser
 import os
-from math import sqrt, degrees, acos
+from math import sqrt, degrees, acos, cos, sin
 import argparse
 
 parser = argparse.ArgumentParser(description='HEDM reconstruction.')
-parser.add_argument('-peak',   type=str, required=True, help='peak info csv')
-parser.add_argument('-para',   type=str, required=True, help='parameters txt')
+parser.add_argument('-peak',   type=str, required=True, help='peakinfo.csv')
+parser.add_argument('-para',   type=str, required=True, help='parameters.txt')
 args, unparsed = parser.parse_known_args()
 
 peaksFN = args.peak
@@ -48,8 +48,15 @@ BC = [float(s) for s in getValueFromParamFile(paramFile,'BC',nWords=2)[0]]
 Rings = [int(s[0]) for s in getValueFromParamFile(paramFile,'RingThresh',nLines=100)]
 omegaStep = float(getValueFromParamFile(paramFile,'OmegaStep')[0][0])
 omegaStart = float(getValueFromParamFile(paramFile,'OmegaFirstFile')[0][0])
-
+tx = float(getValueFromParamFile(paramFile,'tx')[0][0])
+ty = float(getValueFromParamFile(paramFile,'ty')[0][0])
+tz = float(getValueFromParamFile(paramFile,'tz')[0][0])
+Lsd = float(getValueFromParamFile(paramFile,'Lsd')[0][0])
 width=float(getValueFromParamFile(paramFile,'Width')[0][0])
+RhoD=float(getValueFromParamFile(paramFile,'RhoD')[0][0])
+p0=float(getValueFromParamFile(paramFile,'p0')[0][0])
+p1=float(getValueFromParamFile(paramFile,'p1')[0][0])
+p2=float(getValueFromParamFile(paramFile,'p2')[0][0])
 folder = fileStem + '_Layer1_Analysis_Time_2020_06_11_12_55_10/'
 check_call('mkdir -p '+thisFolder+folder,shell=True)
 check_call(binFolder+'/GetHKLList ' + paramFile,shell=True)
@@ -64,6 +71,18 @@ for ctr,ringNr in enumerate(ringNrs):
 		if int(row[4]) == ringNr:
 			ringSzs[ctr] = float(row[10])
 
+deg2rad = 0.0174532925199433
+rad2deg = 57.2957795130823
+txr = deg2rad*tx
+tyr = deg2rad*ty
+tzr = deg2rad*tz
+Rx = np.array([[1,0,0],[0,cos(txr),-sin(txr)],[0,sin(txr),cos(txr)]])
+Ry = np.array([[cos(tyr),0,sin(tyr)],[0,1,0],[-sin(tyr),0,cos(tyr)]])
+Rz = np.array([[cos(tzr),-sin(tzr),0],[sin(tzr),cos(tzr),0],[0,0,1]])
+R = np.dot(Rx,np.dot(Ry,Rz))
+n0=2
+n1=4
+n2=2
 peaksInfo = np.genfromtxt(peaksFN,delimiter=',',skip_header=1)
 nPeaks,ncols = peaksInfo.shape
 
@@ -81,10 +100,19 @@ for ringNr in ringNrs:
 
 NrSpots = 0
 for peakNr in range(nPeaks):
-	thisY = peaksInfo[peakNr,2] - BC[0]
-	thisZ = peaksInfo[peakNr,3] - BC[1]
+	Yc = (peaksInfo[peakNr,2] - BC[0])*px
+	Zc = (peaksInfo[peakNr,3] - BC[1])*px
+	ABC = np.array([0,Yc,Zc])
+	ABCPr = np.dot(ABC,R)
+	XYZ = ABCPr
+	XYZ[0] += Lsd
+	Rad = (Lsd/(XYZ[0]))*(sqrt(XYZ[1]*XYZ[1] + XYZ[2]*XYZ[2]))
+	Eta = CalcEtaAngle(XYZ[1],XYZ[2])
+	RNorm = Rad/RhoD
+	EtaT = 90 - Eta
+	DistortFunc = p0*(RNorm**n0)*cos(degrees(2*EtaT)) + p1*(RNorm**n1)*cos(degrees(4*EtaT)) + p2*(RNorm**n2) + 1
+	thisRad = Rad * DistortFunc
 	thisInt = peaksInfo[peakNr,4]
-	thisRad = sqrt(thisY**2+thisZ**2) * px
 	thisR = thisRad / px
 	thisEta = CalcEtaAngle(thisY,thisZ)
 	thisFrame = int(peaksInfo[peakNr,1]) + 1
