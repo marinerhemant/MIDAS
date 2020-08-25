@@ -46,21 +46,21 @@ thisFolder = os.getcwd() + '/'
 paramFile = thisFolder + pFile
 binFolder = expanduser('~')+ '/opt/MIDAS/FF_HEDM/bin/'
 fileStem = getValueFromParamFile(paramFile,'FileStem')[0][0]
-px = float(getValueFromParamFile(paramFile,'px')[0][0])
+# ~ px = float(getValueFromParamFile(paramFile,'px')[0][0])
 padding = int(getValueFromParamFile(paramFile,'Padding')[0][0])
-BC = [float(s) for s in getValueFromParamFile(paramFile,'BC',nWords=2)[0]]
+# ~ BC = [float(s) for s in getValueFromParamFile(paramFile,'BC',nWords=2)[0]]
 Rings = [int(s[0]) for s in getValueFromParamFile(paramFile,'RingThresh',nLines=100)]
-omegaStep = float(getValueFromParamFile(paramFile,'OmegaStep')[0][0])
-omegaStart = float(getValueFromParamFile(paramFile,'OmegaFirstFile')[0][0])
-tx = float(getValueFromParamFile(paramFile,'tx')[0][0])
-ty = float(getValueFromParamFile(paramFile,'ty')[0][0])
-tz = float(getValueFromParamFile(paramFile,'tz')[0][0])
-Lsd = float(getValueFromParamFile(paramFile,'Lsd')[0][0])
-width=float(getValueFromParamFile(paramFile,'Width')[0][0])
-RhoD=float(getValueFromParamFile(paramFile,'RhoD')[0][0])
-p0=float(getValueFromParamFile(paramFile,'p0')[0][0])
-p1=float(getValueFromParamFile(paramFile,'p1')[0][0])
-p2=float(getValueFromParamFile(paramFile,'p2')[0][0])
+# ~ omegaStep = float(getValueFromParamFile(paramFile,'OmegaStep')[0][0])
+# ~ omegaStart = float(getValueFromParamFile(paramFile,'OmegaFirstFile')[0][0])
+# ~ tx = float(getValueFromParamFile(paramFile,'tx')[0][0])
+# ~ ty = float(getValueFromParamFile(paramFile,'ty')[0][0])
+# ~ tz = float(getValueFromParamFile(paramFile,'tz')[0][0])
+# ~ Lsd = float(getValueFromParamFile(paramFile,'Lsd')[0][0])
+# ~ width=float(getValueFromParamFile(paramFile,'Width')[0][0])
+# ~ RhoD=float(getValueFromParamFile(paramFile,'RhoD')[0][0])
+# ~ p0=float(getValueFromParamFile(paramFile,'p0')[0][0])
+# ~ p1=float(getValueFromParamFile(paramFile,'p1')[0][0])
+# ~ p2=float(getValueFromParamFile(paramFile,'p2')[0][0])
 folder = fileStem + '_Layer1_Analysis_Time_2020_06_11_12_55_10/'
 check_call('mkdir -p '+thisFolder+folder,shell=True)
 check_call(binFolder+'/GetHKLList ' + paramFile,shell=True)
