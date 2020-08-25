@@ -621,7 +621,15 @@ int main(int argc, char **argv)
 	if (sumImages == 1){
 		FILE *sumFile;
 		char sumFN[4096];
-		sprintf(sumFN,"%s_sum.csv",imageFN);
+		if (separateFolder == 0){
+			sprintf(sumFN,"%s_sum.csv",imageFN);
+		} else {
+			char fn2[4096];
+			sprintf(fn2,"%s",imageFN);
+			char *bname;
+			bname = basename(fn2);
+			sprintf(sumFN,"%s/%s_sum.csv",outputFolder,bname);
+		}
 		sumFile = fopen(sumFN,"w");
 		fprintf(sumFile,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n");
 		for (i=0;i<nRBins*nEtaBins;i++){
