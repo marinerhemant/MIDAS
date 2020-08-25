@@ -121,6 +121,7 @@ for fNr in range(firstFrameNr,lastFrameNr+1):
 			peaksDiff = np.sqrt((peaksThisFrame[:,2] - thisY)**2+(peaksThisFrame[:,3] - thisZ)**2)
 			filtPeaks = peaksThisFrame[peaksDiff < maxDiff]
 			if filtPeaks.size == 0:
+				writestr = str(fNr-1)
 				for i in range (19):
 					writestr += str(filtCO[i]) + ' '
 				writestr += '\n'
@@ -140,6 +141,7 @@ for fNr in range(firstFrameNr,lastFrameNr+1):
 				peaksDiff = np.sqrt((peaksThisFrame[:,2] - thisY)**2+(peaksThisFrame[:,3] - thisZ)**2)
 				filtPeaks = peaksThisFrame[peaksDiff < maxDiff]
 				if filtPeaks.size == 0:
+					writestr = str(fNr-1)
 					for i in range (19):
 						writestr += str(filtCO[i]) + ' '
 					writestr += '\n'
