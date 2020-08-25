@@ -5,7 +5,9 @@ from os.path import expanduser
 import os
 from math import sqrt, degrees, acos, cos, sin
 import argparse
+import warnings
 
+warnings.filterwarnings('ignore')
 parser = argparse.ArgumentParser(description='DL-FF-HEDM reconstruction.')
 parser.add_argument('-peakFile',     type=str, required=True, help='peakinfo.csv')
 parser.add_argument('-nCPUs',    type=int, required=True, help='Number of CPUs to use')
