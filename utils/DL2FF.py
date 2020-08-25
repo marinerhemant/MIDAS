@@ -97,6 +97,7 @@ peaksInfo = np.genfromtxt(peaksFN,delimiter=',',skip_header=1)
 nPeaks,ncols = peaksInfo.shape
 firstFrameNr = int(np.min(peaksInfo[:,1])) + 1
 lastFrameNr = int(np.max(peaksInfo[:,1])) + 1
+fNotFound = open('COPeaksNotFound.csv','ab')
 head = 'SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta\n'
 NrSpots = 0
 for fNr in range(firstFrameNr,lastFrameNr+1):
@@ -118,7 +119,7 @@ for fNr in range(firstFrameNr,lastFrameNr+1):
 			peaksDiff = np.sqrt((peaksThisFrame[:,2] - thisY)**2+(peaksThisFrame[:,3] - thisZ)**2)
 			filtPeaks = peaksThisFrame[peaksDiff < maxDiff]
 			if filtPeaks.size == 0:
-				print(filtCO)
+				np.savetxt(fNotFound,filtCO,delimiter=' ',newline='\n')
 				continue
 			filtCO[3] = filtPeaks[0][2]
 			filtCO[4] = filtPeaks[0][3]
@@ -134,7 +135,7 @@ for fNr in range(firstFrameNr,lastFrameNr+1):
 				peaksDiff = np.sqrt((peaksThisFrame[:,2] - thisY)**2+(peaksThisFrame[:,3] - thisZ)**2)
 				filtPeaks = peaksThisFrame[peaksDiff < maxDiff]
 				if filtPeaks.size == 0:
-					print(filtCO)
+					np.savetxt(fNotFound,filtCO,delimiter=' ',newline='\n')
 					continue
 				filtCO[3] = filtPeaks[0][2]
 				filtCO[4] = filtPeaks[0][3]
