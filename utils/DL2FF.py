@@ -99,7 +99,7 @@ peaksInfo = np.genfromtxt(peaksFN,delimiter=',',skip_header=1)
 nPeaks,ncols = peaksInfo.shape
 firstFrameNr = int(np.min(peaksInfo[:,1])) + 1
 lastFrameNr = int(np.max(peaksInfo[:,1])) + 1
-fNotFound = open('COPeaksNotFound.csv','ab')
+fNotFound = open('COPeaksNotFound.csv','w')
 head = 'SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta\n'
 NrSpots = 0
 for fNr in range(firstFrameNr,lastFrameNr+1):
