@@ -118,7 +118,7 @@ for fNr in range(firstFrameNr,lastFrameNr+1):
 			peaksDiff = np.sqrt((peaksThisFrame[:,2] - thisY)**2+(peaksThisFrame[:,3] - thisZ)**2)
 			filtPeaks = peaksThisFrame[peaksDiff < maxDiff]
 			if filtPeaks.size == 0:
-				print(filtCO+"Not found.")
+				print(filtCO)
 				continue
 			filtCO[3] = filtPeaks[0][2]
 			filtCO[4] = filtPeaks[0][3]
@@ -134,7 +134,7 @@ for fNr in range(firstFrameNr,lastFrameNr+1):
 				peaksDiff = np.sqrt((peaksThisFrame[:,2] - thisY)**2+(peaksThisFrame[:,3] - thisZ)**2)
 				filtPeaks = peaksThisFrame[peaksDiff < maxDiff]
 				if filtPeaks.size == 0:
-					print(filtCO+"Not found.")
+					print(filtCO)
 					continue
 				filtCO[3] = filtPeaks[0][2]
 				filtCO[4] = filtPeaks[0][3]
