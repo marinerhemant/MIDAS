@@ -121,7 +121,7 @@ for fNr in range(firstFrameNr,lastFrameNr+1):
 			peaksDiff = np.sqrt((peaksThisFrame[:,2] - thisY)**2+(peaksThisFrame[:,3] - thisZ)**2)
 			filtPeaks = peaksThisFrame[peaksDiff < maxDiff]
 			if filtPeaks.size == 0:
-				writestr = str(fNr-1)
+				writestr = str(fNr-1) + ' '
 				for i in range (19):
 					writestr += str(filtCO[i]) + ' '
 				writestr += '\n'
@@ -141,7 +141,7 @@ for fNr in range(firstFrameNr,lastFrameNr+1):
 				peaksDiff = np.sqrt((peaksThisFrame[:,2] - thisY)**2+(peaksThisFrame[:,3] - thisZ)**2)
 				filtPeaks = peaksThisFrame[peaksDiff < maxDiff]
 				if filtPeaks.size == 0:
-					writestr = str(fNr-1)
+					writestr = str(fNr-1) + ' '
 					for i in range (19):
 						writestr += str(filtCO[i]) + ' '
 					writestr += '\n'
@@ -195,31 +195,31 @@ for fNr in range(firstFrameNr,lastFrameNr+1):
 			# ~ f.close()
 			# ~ NrSpots += 1
 
-# Now run MergeOverlappingPeaks, then CalcRadius, then run a new FF analysis without peaksearch. A bit convoluted, but easiest way for now
-# First MergeOverlappingPeaks
-os.chdir(thisFolder+folder)
-for ringNr in ringNrs:
-	os.chdir(thisFolder+folder)
-	folN = thisFolder+folder+'Ring'+str(ringNr)
-	thisParamFile = thisFolder + folder + 'Layer1_' + pFile
-	check_call('cp '+paramFile+' '+thisParamFile,shell=True)
-	pf = open(thisParamFile,'a')
-	pf.write('Folder '+folN+'\n')
-	pf.write('RingToIndex '+str(ringNr)+'\n')
-	pf.write('RingNumbers '+str(ringNr)+'\n')
-	pf.write('LayerNr 1\n')
-	pf.close()
-	check_call(binFolder+'MergeOverlappingPeaks '+thisParamFile+' '+str(ringNr),shell=True)
-	check_call(binFolder+'CalcRadius '+thisParamFile+' '+str(ringNr),shell=True)
-	resFile=folN + '/PeakSearch/' + fileStem + '_1/Radius_StartNr_' + str(firstFrameNr) + '_EndNr_' + str(lastFrameNr) + '_RingNr_' + str(ringNr) + '.csv'
-	check_call('cp ' + resFile + ' ' + thisFolder + folder,shell=True)
+# ~ # Now run MergeOverlappingPeaks, then CalcRadius, then run a new FF analysis without peaksearch. A bit convoluted, but easiest way for now
+# ~ # First MergeOverlappingPeaks
+# ~ os.chdir(thisFolder+folder)
+# ~ for ringNr in ringNrs:
+	# ~ os.chdir(thisFolder+folder)
+	# ~ folN = thisFolder+folder+'Ring'+str(ringNr)
+	# ~ thisParamFile = thisFolder + folder + 'Layer1_' + pFile
+	# ~ check_call('cp '+paramFile+' '+thisParamFile,shell=True)
+	# ~ pf = open(thisParamFile,'a')
+	# ~ pf.write('Folder '+folN+'\n')
+	# ~ pf.write('RingToIndex '+str(ringNr)+'\n')
+	# ~ pf.write('RingNumbers '+str(ringNr)+'\n')
+	# ~ pf.write('LayerNr 1\n')
+	# ~ pf.close()
+	# ~ check_call(binFolder+'MergeOverlappingPeaks '+thisParamFile+' '+str(ringNr),shell=True)
+	# ~ check_call(binFolder+'CalcRadius '+thisParamFile+' '+str(ringNr),shell=True)
+	# ~ resFile=folN + '/PeakSearch/' + fileStem + '_1/Radius_StartNr_' + str(firstFrameNr) + '_EndNr_' + str(lastFrameNr) + '_RingNr_' + str(ringNr) + '.csv'
+	# ~ check_call('cp ' + resFile + ' ' + thisFolder + folder,shell=True)
 
-os.chdir(thisFolder)
-newParamFile = paramFile + '.New.txt'
-check_call('cp '+paramFile+' '+newParamFile,shell=True)
-f = open(newParamFile,'a')
-f.write('FolderName '+folder[:-1]+'\n')
-f.write('SeedFolder '+thisFolder+'\n')
-f.close()
+# ~ os.chdir(thisFolder)
+# ~ newParamFile = paramFile + '.New.txt'
+# ~ check_call('cp '+paramFile+' '+newParamFile,shell=True)
+# ~ f = open(newParamFile,'a')
+# ~ f.write('FolderName '+folder[:-1]+'\n')
+# ~ f.write('SeedFolder '+thisFolder+'\n')
+# ~ f.close()
 
-check_call(expanduser('~')+'/.MIDAS/MIDAS_V5_FarField_Layers '+pFile+'.New.txt 1 1 0 '+ str(nCPUs) + ' local sd',shell=True)
+# ~ check_call(expanduser('~')+'/.MIDAS/MIDAS_V5_FarField_Layers '+pFile+'.New.txt 1 1 0 '+ str(nCPUs) + ' local sd',shell=True)
