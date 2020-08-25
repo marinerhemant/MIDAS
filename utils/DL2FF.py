@@ -90,7 +90,7 @@ for ctr,ringNr in enumerate(ringNrs):
 
 # find the layerNr for CO
 COLayer = [s for s in COfolder.split('_') if 'Layer' in s][0].replace('Layer','')
-COFStem = COfolder.split('Layer')[0] + COLayer
+COFStem = COfolder.split('Layer')[0] + COLayer + '_'
 
 #### Will read CO folder peaks and only write matching peaks
 peaksInfo = np.genfromtxt(peaksFN,delimiter=',',skip_header=1)
