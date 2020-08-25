@@ -15,7 +15,7 @@
 //				RhoD, BC, Wedge, NrPixels, px,
 //				Wavelength, OmegaRange, BoxSize
 //				MinEta, Hbeam, Rsample, RingNumbers (will provide cs),
-//				RingRadii, 
+//				RingRadii,
 
 #include <stdio.h>
 #include <math.h>
@@ -121,7 +121,7 @@ static inline double acosd(double x){return rad2deg*(acos(x));}
 static inline double atand(double x){return rad2deg*(atan(x));}
 static inline double sin_cos_to_angle (double s, double c){return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);}
 
-static inline 
+static inline
 void OrientMat2Euler(double m[3][3],double Euler[3])
 {
     double psi, phi, theta, sph;
@@ -236,7 +236,7 @@ void DisplacementInTheSpot(double a, double b, double c, double xi, double yi, d
     *Displ_z = ZC - ((XC*IK[2])/(IK[0]));
 }
 
-static inline 
+static inline
 double CalcEtaAngle(double y, double z){
 	double alpha = rad2deg*acos(z/sqrt(y*y+z*z));
 	if (y>0) alpha = -alpha;
@@ -350,7 +350,7 @@ void SpotToGv(double xi, double yi, double zi, double Omega, double theta, doubl
 }
 
 static inline
-double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], double **spotsYZO, double **hklsIn, double Lsd, 
+double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], double **spotsYZO, double **hklsIn, double Lsd,
 	double Wavelength, double OmegaRange[20][2], double BoxSize[20][4], double MinEta, double wedge, double chi, double *Error)
 {
 	int i,j;
@@ -583,7 +583,7 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12], int NonOptPInt
 	struct data *f_datat;
 	f_datat = &f_data;
 	void* trp = (struct data *) f_datat;
-	
+
 	// Set x, xl, xu
 	for (i=0;i<12;i++) x[i] = Ini[i];
 	for (i=0;i<6;i++) x[i+12] = OptP[i];
@@ -599,7 +599,7 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12], int NonOptPInt
 		xl[i] = x[i] - tol[i];
 		xu[i] = x[i] + tol[i];
 	}
-	
+
 	nlopt_opt opt;
 	opt = nlopt_create(NLOPT_LN_NELDERMEAD,n);
 	nlopt_set_lower_bounds(opt,xl);
@@ -628,7 +628,7 @@ int main(int argc, char *argv[])
     ParamFN = argv[2];
     fileParam = fopen(ParamFN,"r");
     char *str, dummy[MAX_LINE_LENGTH];
-    double tx, ty, tz, Lsd, p0, p1, p2, RhoD, yBC, zBC, wedge, px, a, 
+    double tx, ty, tz, Lsd, p0, p1, p2, RhoD, yBC, zBC, wedge, px, a,
 		b, c, alpha, beta, gamma, OmegaRanges[20][2], BoxSizes[20][4],
 		MaxRingRad, MaxTtheta, Wavelength, MinEta,
 		Hbeam, Rsample;
@@ -786,15 +786,15 @@ int main(int argc, char *argv[])
 		}
 	}
 	double Orient33[3][3];
-	for (i=0;i<3;i++) 
-		for (j=0;j<3;j++) 
+	for (i=0;i<3;i++)
+		for (j=0;j<3;j++)
 			Orient33[i][j] = Orient[i*3+j];
 	OrientMat2Euler(Orient33,Euler);
 	double Ini[12];
 	for (i=0;i<3;i++) Ini[i] = Pos[i];
 	for (i=0;i<3;i++) Ini[i+3] = Euler[i];
 	for (i=0;i<6;i++) Ini[i+6] = LatC[i];
-	
+
 	// Read SpotMatrix.csv to get raw positions of the diffraction spots.
 	// We need, GrainID(0), SpotID(1), Y(3), Z(4), Ome(5), RingNr(7)
 	double **SpotInfoAll;
@@ -843,8 +843,8 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	
-	
+
+
 	// Group Setup parameters
 	// Non Optimized: NonOptP: double 10 + Int 5
 	// Optimized OptP[6]
@@ -854,7 +854,7 @@ int main(int argc, char *argv[])
 	double tols[18] = {250,250,250,deg2rad*0.0005,deg2rad*0.0005,deg2rad*0.0005,1,1,1,1,1,1,
 		1,1,1,1,0.00001,0.00001}; // 150 microns for position, 0.0005 degrees for orient, 1 % for latticeParameter,
 					  // 1 degree for tilts, 1 pixel for BC, 0.00001 degree for wedge
-	
+
 	// Now call a function with all the info which will optimize parameters
 	// Arguments: Ini(12), OptP(6), NonOptP, RingNumbers,  SpotInfoAll, OmegaRanges,
 	//			  BoxSizes, hkls

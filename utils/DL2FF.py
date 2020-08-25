@@ -6,14 +6,18 @@ import os
 from math import sqrt, degrees, acos, cos, sin
 import argparse
 
-parser = argparse.ArgumentParser(description='HEDM reconstruction.')
-parser.add_argument('-peak',   type=str, required=True, help='peakinfo.csv')
-parser.add_argument('-para',   type=str, required=True, help='parameters.txt')
+parser = argparse.ArgumentParser(description='DL-FF-HEDM reconstruction.')
+parser.add_argument('-peakFile',     type=str, required=True, help='peakinfo.csv')
+parser.add_argument('-nCPUs',    type=int, required=True, help='Number of CPUs to use')
+parser.add_argument('-paramFile',     type=str, required=True, help='parameters.txt')
+parser.add_argument('-COfolder', type=str, required=True, help='Folder with conventional peaksearch')
 args, unparsed = parser.parse_known_args()
 
-peaksFN = args.peak
-pFile = args.para
-nCPUs = 2
+peaksFN = args.peakFile
+pFile = args.paramFile
+COfolder = args.COfolder
+nCPUs = args.nCPUs
+maxDiff = 3
 
 ###### pFile must not have seedFolder and FolderName arguments, also the filename must not have path appended to it.
 
@@ -34,9 +38,9 @@ def getValueFromParamFile(paramfn,searchStr,nLines=1,wordNr=1,nWords=1):
 				return ret_list
 	return ret_list
 
-def CalcEtaAngle(y,z):
-	alpha = -degrees(acos(z/sqrt(y*y+z*z))) if y > 0 else degrees(acos(z/sqrt(y*y+z*z)))
-	return alpha
+# ~ def CalcEtaAngle(y,z):
+	# ~ alpha = -degrees(acos(z/sqrt(y*y+z*z))) if y > 0 else degrees(acos(z/sqrt(y*y+z*z)))
+	# ~ return alpha
 
 thisFolder = os.getcwd() + '/'
 paramFile = thisFolder + pFile
@@ -71,66 +75,114 @@ for ctr,ringNr in enumerate(ringNrs):
 		if int(row[4]) == ringNr:
 			ringSzs[ctr] = float(row[10])
 
-deg2rad = 0.0174532925199433
-rad2deg = 57.2957795130823
-txr = deg2rad*tx
-tyr = deg2rad*ty
-tzr = deg2rad*tz
-Rx = np.array([[1,0,0],[0,cos(txr),-sin(txr)],[0,sin(txr),cos(txr)]])
-Ry = np.array([[cos(tyr),0,sin(tyr)],[0,1,0],[-sin(tyr),0,cos(tyr)]])
-Rz = np.array([[cos(tzr),-sin(tzr),0],[sin(tzr),cos(tzr),0],[0,0,1]])
-R = np.dot(Rx,np.dot(Ry,Rz))
-n0=2
-n1=4
-n2=2
+# ~ deg2rad = 0.0174532925199433
+# ~ rad2deg = 57.2957795130823
+# ~ txr = deg2rad*tx
+# ~ tyr = deg2rad*ty
+# ~ tzr = deg2rad*tz
+# ~ Rx = np.array([[1,0,0],[0,cos(txr),-sin(txr)],[0,sin(txr),cos(txr)]])
+# ~ Ry = np.array([[cos(tyr),0,sin(tyr)],[0,1,0],[-sin(tyr),0,cos(tyr)]])
+# ~ Rz = np.array([[cos(tzr),-sin(tzr),0],[sin(tzr),cos(tzr),0],[0,0,1]])
+# ~ R = np.dot(Rx,np.dot(Ry,Rz))
+# ~ n0=2
+# ~ n1=4
+# ~ n2=2
+
+# find the layerNr for CO
+COLayer = [s for s in COfolder.split('_') if 'Layer' in s][0].replace('Layer','')
+COFStem = COfolder.split('Layer')[0] + COLayer
+
+#### Will read CO folder peaks and only write matching peaks
 peaksInfo = np.genfromtxt(peaksFN,delimiter=',',skip_header=1)
 nPeaks,ncols = peaksInfo.shape
-
 firstFrameNr = int(np.min(peaksInfo[:,1])) + 1
 lastFrameNr = int(np.max(peaksInfo[:,1])) + 1
 head = 'SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta\n'
-for ringNr in ringNrs:
-	folN = thisFolder+folder+'Ring'+str(ringNr)+'/Temp/'
-	check_call('mkdir -p '+folN,shell=True)
-	for fNr in range(firstFrameNr,lastFrameNr+1):
+NrSpots = 0
+for fNr in range(firstFrameNr,lastFrameNr+1):
+	peaksThisFrame = peaksInfo[peaksInfo[:,1] == fNr-1]
+	for ringNr in ringNrs:
+		folN = thisFolder+folder+'Ring'+str(ringNr)+'/Temp/'
+		check_call('mkdir -p '+folN,shell=True)
 		fn = folN + fileStem + '_1_' + str(fNr).zfill(padding) + '_' + str(ringNr) + '_PS.csv'
 		f = open(fn,'w')
 		f.write(head)
+		# Read COfolder analysis, find the same peaks and write out
+		COFname = COfolder + '/Ring' + str(ringNr) +'/Temp/' + COFStem + str(fNr).zfill(padding) + '_' + str(ringNr) + '_PS.csv'
+		COPeaks = np.genfromtxt(COFname,skip_header=1)
+		nPeaks = COPeaks.size//19
+		if nPeaks ==1:
+			filtCO = COPeaks
+			thisY = filtCO[3]
+			thisZ = filtCO[4]
+			peaksDiff = np.sqrt((peaksThisFrame[:,2] - thisY)**2+(peaksThisFrame[:,3] - thisZ)**2)
+			filtPeaks = peaksThisFrame[peaksDiff < maxDiff]
+			if filtPeaks.size == 0:
+				print(filtCO+"Not found.")
+				continue
+			filtCO[3] = filtPeaks[0][2]
+			filtCO[4] = filtPeaks[0][3]
+			writestr = ''
+			for i in range (19):
+				writestr += filtCO[i] + ' '
+			writestr += '\n'
+			f.write(writestr)
+		else:
+			for filtCO in COPeaks:
+				thisY = filtCO[3]
+				thisZ = filtCO[4]
+				peaksDiff = np.sqrt((peaksThisFrame[:,2] - thisY)**2+(peaksThisFrame[:,3] - thisZ)**2)
+				filtPeaks = peaksThisFrame[peaksDiff < maxDiff]
+				if filtPeaks.size == 0:
+					print(filtCO+"Not found.")
+					continue
+				filtCO[3] = filtPeaks[0][2]
+				filtCO[4] = filtPeaks[0][3]
+				writestr = ''
+				for i in range (19):
+					writestr += filtCO[i] + ' '
+				writestr += '\n'
+				f.write(writestr)
 		f.close()
 
-NrSpots = 0
-for peakNr in range(nPeaks):
-	Yc = (peaksInfo[peakNr,2] - BC[0])*px
-	Zc = (peaksInfo[peakNr,3] - BC[1])*px
-	ABC = np.array([0,Yc,Zc])
-	ABCPr = np.dot(ABC,R)
-	XYZ = ABCPr
-	XYZ[0] += Lsd
-	Rad = (Lsd/(XYZ[0]))*(sqrt(XYZ[1]*XYZ[1] + XYZ[2]*XYZ[2]))
-	Eta = CalcEtaAngle(XYZ[1],XYZ[2])
-	RNorm = Rad/RhoD
-	EtaT = 90 - Eta
-	DistortFunc = p0*(RNorm**n0)*cos(degrees(2*EtaT)) + p1*(RNorm**n1)*cos(degrees(4*EtaT)) + p2*(RNorm**n2) + 1
-	thisRad = Rad * DistortFunc
-	thisInt = peaksInfo[peakNr,4]
-	thisR = thisRad / px
-	thisEta = CalcEtaAngle(thisY,thisZ)
-	thisFrame = int(peaksInfo[peakNr,1]) + 1
-	thisOmega = omegaStart + (thisFrame-1)*omegaStep
-	for ctr,ringNr in enumerate(ringNrs):
-		tmpRingSz = ringSzs[ctr]
-		if thisRad < tmpRingSz + width and thisRad > tmpRingSz - width:
-			# now we write
-			folN = thisFolder+folder+'Ring'+str(ringNr)+'/Temp/'
-			fn = folN + fileStem + '_1_' + str(thisFrame).zfill(padding) + '_' + str(ringNr) + '_PS.csv'
-			f = open(fn,'r')
-			SpotID = len(f.readlines())
-			f.close()
-			outstr = str(SpotID) + ' '+ str(thisInt) + ' ' + str(thisOmega) + ' ' + str(thisY+BC[0]) + ' ' + str(thisZ+BC[1]) + ' 100 ' + str(thisR) + ' ' + str(thisEta) + ' 1 1 1 1 1\n'
-			f = open(fn,'a')
-			f.write(outstr)
-			f.close()
-			NrSpots += 1
+# ~ for peakNr in range(nPeaks):
+	# ~ Yc = (peaksInfo[peakNr,2] - BC[0])*px
+	# ~ Zc = (peaksInfo[peakNr,3] - BC[1])*px
+	# ~ ABC = np.array([0,Yc,Zc])
+	# ~ ABCPr = np.dot(ABC,R)
+	# ~ XYZ = ABCPr
+	# ~ XYZ[0] += Lsd
+	# ~ Rad = (Lsd/(XYZ[0]))*(sqrt(XYZ[1]*XYZ[1] + XYZ[2]*XYZ[2]))
+	# ~ Eta = CalcEtaAngle(XYZ[1],XYZ[2])
+	# ~ RNorm = Rad/RhoD
+	# ~ EtaT = 90 - Eta
+	# ~ DistortFunc = p0*(RNorm**n0)*cos(degrees(2*EtaT)) + p1*(RNorm**n1)*cos(degrees(4*EtaT)) + p2*(RNorm**n2) + 1
+	# ~ thisRad = Rad * DistortFunc
+	# ~ thisInt = peaksInfo[peakNr,4]
+	# ~ thisR = thisRad / px
+	# ~ thisEta = Eta
+	# ~ thisFrame = int(peaksInfo[peakNr,1]) + 1
+	# ~ thisOmega = omegaStart + (thisFrame-1)*omegaStep
+	# ~ if thisFrame != 9:
+		# ~ continue
+	# ~ for ctr,ringNr in enumerate(ringNrs):
+		# ~ tmpRingSz = ringSzs[ctr]
+		# ~ if ringNr != 1:
+			# ~ continue
+		# ~ print(peaksInfo[peakNr,2],peaksInfo[peakNr,3],thisRad-tmpRingSz)
+		# ~ if thisRad < tmpRingSz + width and thisRad > tmpRingSz - width:
+			# ~ print(peaksInfo[peakNr])
+			# ~ # now we write
+			# ~ folN = thisFolder+folder+'Ring'+str(ringNr)+'/Temp/'
+			# ~ fn = folN + fileStem + '_1_' + str(thisFrame).zfill(padding) + '_' + str(ringNr) + '_PS.csv'
+			# ~ f = open(fn,'r')
+			# ~ SpotID = len(f.readlines())
+			# ~ f.close()
+			# ~ outstr = str(SpotID) + ' '+ str(thisInt) + ' ' + str(thisOmega) + ' ' + str(peaksInfo[peakNr,2]) + ' ' + str(peaksInfo[peakNr,3]) + ' 100 ' + str(thisR) + ' ' + str(thisEta) + ' 1 1 1 1 1\n'
+			# ~ f = open(fn,'a')
+			# ~ f.write(outstr)
+			# ~ f.close()
+			# ~ NrSpots += 1
 
 # Now run MergeOverlappingPeaks, then CalcRadius, then run a new FF analysis without peaksearch. A bit convoluted, but easiest way for now
 # First MergeOverlappingPeaks

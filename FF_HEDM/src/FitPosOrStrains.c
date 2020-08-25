@@ -148,12 +148,16 @@ static inline
 void OrientMat2Euler(double m[3][3],double Euler[3])
 {
     double psi, phi, theta, sph;
+    double determinant;
+    determinant = m[0][0] * ((m[1][1]*m[2][2]) - (m[2][1]*m[1][2])) -m[0][1] * (m[1][0] * m[2][2] - m[2][0] * m[1][2]) + m[0][2] * (m[1][0] * m[2][1] - m[2][0] * m[1][1]);
+    printf("Determinant: %lf\n",determinant);
+
 	if (fabs(m[2][2] - 1.0) < EPS){
 		phi = 0;
 	}else{
 	    phi = acos(m[2][2]);
 	}
-    sph = sin(phi);
+	sph = sin(phi);
     if (fabs(sph) < EPS)
     {
         psi = 0.0;
@@ -413,6 +417,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 	double **SpotsComp, double **SpList, double *Error, int *nSpotsComp, int notIniRun)
 {
 	int i,j;
+	//~ for (i=0;i<12;i++) printf("%lf ",x[i]); printf("\n");
 	int nrMatchedIndexer = nspots;
 	double **MatchDiff;
 	MatchDiff = allocMatrix(nrMatchedIndexer,3);
@@ -444,6 +449,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 		SpotsYZOGCorr[nrSp][4] = g2;
 		SpotsYZOGCorr[nrSp][5] = g3;
 		SpotsYZOGCorr[nrSp][6] = spotsYZO[nrSp][7];
+		//~ printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",ys,zs,Omega,spotsYZO[nrSp][0],spotsYZO[nrSp][1],spotsYZO[nrSp][2],spotsYZO[nrSp][3],spotsYZO[nrSp][4],spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][7]);
 	}
 	double **TheorSpotsYZWE;TheorSpotsYZWE=allocMatrix(nTspots,9);
 	for (i=0;i<nTspots;i++){for (j=0;j<9;j++){TheorSpotsYZWE[i][j] = TheorSpots[i][j];}}
@@ -456,7 +462,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 		GObs[0]=SpotsYZOGCorr[sp][3];GObs[1]=SpotsYZOGCorr[sp][4];GObs[2]=SpotsYZOGCorr[sp][5];
 		NormGObs = CalcNorm3(GObs[0],GObs[1],GObs[2]);
 		for (i=0;i<nTspots;i++){
-			if (((int)TheorSpotsYZWE[i][7]==(int)SpotsYZOGCorr[sp][6])&&(fabs(SpotsYZOGCorr[sp][2]-TheorSpotsYZWE[i][2])<3.0)){
+			if (((int)TheorSpotsYZWE[i][7]==(int)SpotsYZOGCorr[sp][6])&&(fabs(SpotsYZOGCorr[sp][2]-TheorSpotsYZWE[i][2])<5.0)){
 				for (j=0;j<9;j++){TheorSpotsYZWER[nTheorSpotsYZWER][j]=TheorSpotsYZWE[i][j];}
 				GTheors[0]=TheorSpotsYZWE[i][3];
 				GTheors[1]=TheorSpotsYZWE[i][4];
@@ -481,6 +487,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 		}
 		diffLenM = CalcNorm2((SpotsYZOGCorr[sp][0]-TheorSpotsYZWER[RowBest][0]),(SpotsYZOGCorr[sp][1]-TheorSpotsYZWER[RowBest][1]));
 		diffOmeM = fabs(SpotsYZOGCorr[sp][2]-TheorSpotsYZWER[RowBest][2]);
+		//~ printf("%lf\n",minAngle);
 		if (minAngle < 1){
 			MatchDiff[nMatched][0] = minAngle;
 			MatchDiff[nMatched][1] = diffLenM;
@@ -1239,6 +1246,10 @@ long long int ReadBigDet(){
 
 int main(int argc, char *argv[])
 {
+	if (argc != 3){
+		printf("Usage:\n FitPosOrStrains Parameters.txt SpotID\n");
+		return 1;
+	}
     clock_t start, end;
     double diftotal;
     start = clock();
@@ -1602,6 +1613,7 @@ int main(int argc, char *argv[])
 				&completeness,&Orient0[0],&Orient0[1],&Orient0[2],&Orient0[3],
 				&Orient0[4],&Orient0[5],&Orient0[6],&Orient0[7],&Orient0[8],
 				&Pos0[0],&Pos0[1],&Pos0[2]);
+		printf("%s\n",line);
 		while (fgets(line,5000,BestFile) != NULL){
 			sscanf(line,"%d %lf",&spotIDS[nSpotsBest],&thisRadius);
 			meanRadius += thisRadius;
@@ -1613,10 +1625,16 @@ int main(int argc, char *argv[])
 
 	double a=LatCin[0],b=LatCin[1],c=LatCin[2],alph=LatCin[3],bet=LatCin[4],gamm=LatCin[5];
 	for (i=0;i<3;i++) for (j=0;j<3;j++) Orient0_3[i][j] = Orient0[i*3+j];
+	for (i=0;i<9;i++) printf("%lf ",Orient0[i]); printf("\n");
 	OrientMat2Euler(Orient0_3,Euler0);
+	for (i=0;i<3;i++) printf("%lf ",Euler0[i]); printf("\n");
+	Euler2OrientMat(Euler0,Orient0_3);Convert3x3To9(Orient0_3,Orient0);
+	for (i=0;i<9;i++) printf("%lf ",Orient0[i]); printf("\n");
+	OrientMat2Euler(Orient0_3,Euler0);
+	for (i=0;i<3;i++) printf("%lf ",Euler0[i]); printf("\n");
 	char rmCommand[4096];
-	sprintf(rmCommand,"rm -rf %s",FileName);
-	system(rmCommand);
+	//~ sprintf(rmCommand,"rm -rf %s",FileName);
+	//~ system(rmCommand);
 	double **spotsYZO;
 	spotsYZO=allocMatrix(nSpotsBest,8);
 	int nSpotsYZO=nSpotsBest;
@@ -1645,7 +1663,7 @@ int main(int argc, char *argv[])
 	ConcatPosEulLatc(Ini,Pos0,Euler0,LatCin);
 	CalcAngleErrors(nSpotsYZO,nhkls,nOmeRanges,Ini,spotsYZO,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,
 					MinEta,wedge,chi,SpotsComp,Splist,ErrorIni,&nSpotsComp,0);
-	printf("Initial error is: %f %f %f\n",ErrorIni[0],ErrorIni[1],ErrorIni[2]);
+	printf("Initial error is: %d %d %f %f %f\n",nSpotsYZO,nSpotsComp,ErrorIni[0],ErrorIni[1],ErrorIni[2]);
 	double **spotsYZONew; spotsYZONew=allocMatrix(nSpotsComp,9);
 	for (i=0;i<nSpotsComp;i++){
 		for (j=0;j<9;j++){
@@ -1786,7 +1804,9 @@ int main(int argc, char *argv[])
 	for (i=0;i<3;i++) PositionFit[i] = FinalResult[i]; for (i=0;i<6;i++) LatticeParameterFit[i] = FinalResult[i+6];
 	Euler2OrientMat(EulerFit,OF);Convert3x3To9(OF,OrientFit);
 	OrientsFit[nSpID][0] = SpId;PositionsFit[nSpID][0] = SpId;ErrorsFin[nSpID][0] = SpId;StrainsFit[nSpID][0] = SpId;
-	for (i=0;i<9;i++) OrientsFit[nSpID][i+1] = OrientFit[i];
+	for (i=0;i<9;i++) {
+		OrientsFit[nSpID][i+1] = OrientFit[i];
+	}
 	for (i=0;i<3;i++) PositionsFit[nSpID][i+1] = PositionFit[i];
 	for (i=0;i<6;i++) StrainsFit[nSpID][i+1] = LatticeParameterFit[i];
 	for (i=0;i<3;i++) ErrorsFin[nSpID][i+1] = ErrorFin[i];
