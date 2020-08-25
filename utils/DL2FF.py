@@ -124,7 +124,7 @@ for fNr in range(firstFrameNr,lastFrameNr+1):
 			filtCO[4] = filtPeaks[0][3]
 			writestr = ''
 			for i in range (19):
-				writestr += filtCO[i] + ' '
+				writestr += str(filtCO[i]) + ' '
 			writestr += '\n'
 			f.write(writestr)
 		else:
@@ -140,7 +140,7 @@ for fNr in range(firstFrameNr,lastFrameNr+1):
 				filtCO[4] = filtPeaks[0][3]
 				writestr = ''
 				for i in range (19):
-					writestr += filtCO[i] + ' '
+					writestr += str(filtCO[i]) + ' '
 				writestr += '\n'
 				f.write(writestr)
 		f.close()
