@@ -832,7 +832,7 @@ main(int argc, char *argv[])
 				Euler2OrientMat(EulOut,OrientIn);
 				Convert3x3To9(OrientIn,OMTemp);
 				OrientMat2Quat(OMTemp,QuatOut);
-				thisMiso = GetMisOrientation(QuatIn,QuatOut,axis,&thMiso,SpaceGroup);
+				thMiso = GetMisOrientation(QuatIn,QuatOut,axis,&thisMiso,SpaceGroup);
 				printf("%lf %lf \n",thisMiso,thMiso);
 				Fractions = 1-FracOut;
 				if (Fractions >= BestFrac){
