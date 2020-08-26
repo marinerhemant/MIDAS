@@ -19,7 +19,7 @@ peaksFN = args.peakFile
 pFile = args.paramFile
 COfolder = args.COfolder
 nCPUs = args.nCPUs
-maxDiff = 3
+maxDiff = 7
 
 ###### pFile must not have seedFolder and FolderName arguments, also the filename must not have path appended to it.
 
