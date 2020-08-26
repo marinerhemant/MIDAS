@@ -319,6 +319,11 @@ QuatToOrientMat(
 int
 main(int argc, char *argv[])
 {
+	if (argc != 4){
+		printf("Usage:\n FitOrientation params.txt GroupNr(out of 2000) MicFN\n");
+		return 1;
+	}
+
     clock_t start, end;
     double diftotal;
     start = clock();
