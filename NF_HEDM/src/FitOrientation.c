@@ -526,7 +526,7 @@ main(int argc, char *argv[])
         str = "NearestMisorientation ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            MinMiso = 1;
+			sscanf(aline,"%s %d",dummy,&MinMiso);
             continue;
         }
     }
