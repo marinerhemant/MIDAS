@@ -100,6 +100,19 @@ Convert9To3x3(double MatIn[9],double MatOut[3][3])
     }
 }
 
+void
+Convert3x3To9(double MatIn[3][3],double MatOut[9])
+{
+    int i,j,k=0;
+    for (i=0;i<3;i++){
+        for (j=0;j<3;j++){
+            MatOut[k] = MatIn[i][j];
+            k++;
+        }
+    }
+}
+
+
 struct Theader {
     uint32_t uBlockHeader;
     uint16_t BlockType;

@@ -356,6 +356,7 @@ main(int argc, char *argv[])
     int nSaves = 1;
     int gridfnfound = 0;
     Wedge = 0;
+    int MinMiso = 0;
     while (fgets(aline,1000,fileParam)!=NULL){
 		str = "ReducedFileName ";
         LowNr = strncmp(aline,str,strlen(str));
@@ -520,6 +521,12 @@ main(int argc, char *argv[])
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             Flag = 1;
+            continue;
+        }
+        str = "NearestMisorientation ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            MinMiso = 1;
             continue;
         }
     }
@@ -801,32 +808,50 @@ main(int argc, char *argv[])
 				ResultMatr[7+i*4+2] = 0;
 				ResultMatr[7+i*4+3] = 0;
 			}
-			int firstSol = 0;
+			int firstSol = 0, UpdSol = 0;
+			double bestMiso = 180, thisMiso, thMiso, axis[3];
 			for (i=0;i<OrientationGoodID;i++){
-	            for (j=0;j<9;j++){
-	                OMTemp[j] = OrientMatrix[i][j];
-	            }
-	            //Convert9To3x3(OMTemp,OrientIn);
-	            OrientMat2Quat(OMTemp,QuatIn);
-	            BringDownToFundamentalRegion(QuatIn,QuatOut,SpaceGroup);
-	            QuatToOrientMat(QuatOut,OrientIn);
-	            OrientMat2Euler(OrientIn,EulerIn);
-	            FitOrientation(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,
+				for (j=0;j<9;j++) OMTemp[j] = OrientMatrix[i][j];
+				//Convert9To3x3(OMTemp,OrientIn);
+				OrientMat2Quat(OMTemp,QuatIn);
+				BringDownToFundamentalRegion(QuatIn,QuatOut,SpaceGroup);
+				QuatToOrientMat(QuatOut,OrientIn);
+				for (j=0;j<4;j++) QuatIn[j] = QuatOut[j];
+				OrientMat2Euler(OrientIn,EulerIn);
+				FitOrientation(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,
 					XG,YG,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,
 					OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,
 					ObsSpotsInfo,EulerIn,tol,&EulerOutA,&EulerOutB,
 					&EulerOutC,&FracOut,hkls,Thetas,n_hkls);
-	            Fractions = 1-FracOut;
-	            if (Fractions > BestFrac){
+				double EulOut[3] = {EulerOutA, EulerOutB, EulerOutC};
+				Euler2OrientMat(EulOut,OrientIn);
+				Convert3x3To9(OrientIn,OMTemp);
+				OrientMat2Quat(OMTemp,QuatOut);
+				thisMiso = GetMisOrientation(QuatIn,QuatOut,axis,&thMiso,SpaceGroup);
+				printf("%lf %lf \n",thisMiso,thMiso);
+				Fractions = 1-FracOut;
+				if (Fractions >= BestFrac){
 					printf("%f %d of %d, EulerAngles: %f %f %f\n",Fractions,i,OrientationGoodID,EulerOutA,EulerOutB,EulerOutC);
-					bestRowNr = OrientMatrix[i][9]; // Save best RowNr
-	                BestFrac = Fractions;
-	                BestEuler[0] = EulerOutA;
-	                BestEuler[1] = EulerOutB;
-	                BestEuler[2] = EulerOutC;
-	                if (1-BestFrac < 0.0001 && nSaves == 1) break;
-	            }
-	            if (nSaves > 1){
+					if (MinMiso == 1 && firstSol == 1 && Fractions == BestFrac){ // We will now calculate if the solution is farther away or not
+						if (thisMiso < bestMiso){
+							UpdSol = 1;
+							bestMiso = thisMiso;
+						} else UpdSol = 0;
+					} else {
+						bestMiso = 180;
+						UpdSol = 1;
+						firstSol = 1;
+					}
+					if (UpdSol ==1){
+						bestRowNr = OrientMatrix[i][9]; // Save best RowNr
+						BestFrac = Fractions;
+						BestEuler[0] = EulerOutA;
+						BestEuler[1] = EulerOutB;
+						BestEuler[2] = EulerOutC;
+						if (1-BestFrac < 0.0001 && nSaves == 1) break;
+					}
+				}
+				if (nSaves > 1){
 					if (firstSol == 0){ // Put initial first solution in!!!
 						ResultMatr[7+0] = EulerOutA;
 						ResultMatr[7+1] = EulerOutB;
