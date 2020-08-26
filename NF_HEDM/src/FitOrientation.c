@@ -838,7 +838,7 @@ main(int argc, char *argv[])
 					printf("%f %d of %d, EulerAngles: %f %f %f\n",Fractions,i,OrientationGoodID,EulerOutA,EulerOutB,EulerOutC,thisMiso);
 					if (MinMiso == 1 && firstSol == 1 && Fractions == BestFrac){ // We will now calculate if the solution is farther away or not
 						if (thisMiso < bestMiso){
-							printf("\t\t\t\t\t\tOriginal misorientation from starting orientation: %lf, New better misorientation: %lf\n",bestMiso,thisMiso);
+							printf("Original misorientation from starting orientation: %lf, OrientationRowNr: %lf, New better misorientation: %lf, OrientationRowNr: %lf\n",bestMiso,bestRowNr,thisMiso,OrientMatrix[i][9]);
 							UpdSol = 1;
 							bestMiso = thisMiso;
 						} else UpdSol = 0;
@@ -849,6 +849,7 @@ main(int argc, char *argv[])
 					}
 					if (UpdSol ==1){
 						bestRowNr = OrientMatrix[i][9]; // Save best RowNr
+						printf("%lf\n",bestRowNr);
 						BestFrac = Fractions;
 						BestEuler[0] = EulerOutA;
 						BestEuler[1] = EulerOutB;
