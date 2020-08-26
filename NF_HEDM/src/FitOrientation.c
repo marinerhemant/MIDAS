@@ -844,8 +844,6 @@ main(int argc, char *argv[])
 						} else UpdSol = 0;
 					} else {
 						bestMiso = thisMiso;
-						if (Fractions > BestFrac) bestMiso = 180;
-						else bestMiso = thisMiso;
 						UpdSol = 1;
 						firstSol = 1;
 					}
