@@ -833,10 +833,9 @@ main(int argc, char *argv[])
 				Convert3x3To9(OrientIn,OMTemp);
 				OrientMat2Quat(OMTemp,QuatOut);
 				thMiso = GetMisOrientation(QuatIn,QuatOut,axis,&thisMiso,SpaceGroup);
-				printf("%lf %lf \n",thisMiso,thMiso);
 				Fractions = 1-FracOut;
 				if (Fractions >= BestFrac){
-					printf("%f %d of %d, EulerAngles: %f %f %f\n",Fractions,i,OrientationGoodID,EulerOutA,EulerOutB,EulerOutC);
+					printf("%f %d of %d, EulerAngles: %f %f %f, Misorientation from starting orientation: %lf\n",Fractions,i,OrientationGoodID,EulerOutA,EulerOutB,EulerOutC,thisMiso);
 					if (MinMiso == 1 && firstSol == 1 && Fractions == BestFrac){ // We will now calculate if the solution is farther away or not
 						if (thisMiso < bestMiso){
 							UpdSol = 1;
