@@ -48,7 +48,7 @@ sample = 'HeatHTNS9'
 scanN = 'Begin'
 spaceGroup = 194 # This is used for misorientation calculation
 startnr = 0
-endnr = 36
+endnr = 1#36
 thisPhaseNr = 1
 LatC = np.array([2.9243, 2.9243, 4.6726 ,90.0, 90.0, 120.0],dtype=np.float32)
 minConfidence = 0.3
@@ -154,7 +154,8 @@ def writeDREAM3DFile(eul1,eul2,eul3,conf,phNr,grID,fileID):
 	ced.attrs['TupleDimensions'] = np.array([2],dtype=np.uint64)
 	csd = ced.create_dataset('CrystalStructures',np.array([999,0]),dtype=np.uint32)
 	makeAttrs([2],[1],[2],'DataArray<uint32_t>','x=2',csd)
-	lcd = ced.create_dataset('LatticeConstants',np.array([[0,LatC[0]],[0,LatC[1]],[0,LatC[2]],[0,LatC[3]],[0,LatC[4]],[0,LatC[5]]]),dtype=np.float32)
+	latcarr = [[0,LatC[0]],[0,LatC[1]],[0,LatC[2]],[0,LatC[3]],[0,LatC[4]],[0,LatC[5]]]
+	lcd = ced.create_dataset('LatticeConstants',np.array(latcarr),dtype=np.float32)
 	makeAttrs([2],[6],[2],'DataArray<float>','x=2',lcd)
 	mnd = ced.create_dataset('MaterialName',np.array(['Invalid Phase',materialName]))
 	makeAttrs([2],[1],[2],'StringDataArray','x=2',mnd)
