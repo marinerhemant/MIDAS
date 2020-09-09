@@ -126,6 +126,94 @@ origHead = '''# TEM_PIXperUM          1.000000
 
 compound_dt = np.dtype({'names':['H','K','L','Solution 1','Diffraction Intensity','Solution 2'],'formats':['<i4','<i4','<i4','<i1','<f4','<i1']})
 
+def makeAttrs(dav,cd,td,ot,tad,dataset):
+	dataset.attrs['DataArrayVersion'] = np.array(dav,dtype=np.int32)
+	dataset.attrs['ComponentDimensions'] = np.array(cd,dtype=np.uint64)
+	dataset.attrs['TupleDimensions'] = np.array(td,dtype=np.uint64)
+	dataset.attrs['ObjectType'] = np.string_(ot)
+	dataset.attrs['Tuple Axis Dimensions'] = np.string_(tad)
+
+def writeDREAM3DFile(eul1,eul2,eul3,conf,phNr,grID,fileID):
+	f = h5py.File(fileID,'w')
+	f.attrs['DREAM3D Version'] = np.string_("1.2.812.508bf5f37")
+	f.attrs['FileVersion'] = np.string_("7.0")
+	dcb = f.create_group('DataContainerBundles')
+	dc = f.create_group('DataContainers')
+	idc = dc.create_group('ImageDataContainer')
+	sgg = idc.create_group('_SIMPL_GEOMETRY')
+	sgg.attrs['GeometryType'] = np.array([0],dtype=np.uint32)
+	sgg.attrs['UnitDimensionality'] = np.array([3],dtype=np.uint32)
+	sgg.attrs['SpatialDimensionality'] = np.array([3],dtype=np.uint32)
+	sgg.attrs['GeometryTypeName'] = np.string_('ImageGeometry')
+	sgg.attrs['GeometryName'] = np.string_('ImageGeometry')
+	dimd = sgg.create_dataset('DIMENSIONS',np.array([Dims[1],Dims[2],Dims[0]]),dtype=np.int8)
+	origd = sgg.create_dataset('ORIGIN',np.array([0,0,0]),dtype=np.float32)
+	spacd = sgg.create_dataset('SPACING',np.array([xyspacing,xyspacing,abs(zspacing)]),dtype=np.float32)
+	ced = idc.create_group('CellEnsembleData')
+	ced.attrs['AttributeMatrixType'] = np.array([11],dtype=np.uint32)
+	ced.attrs['TupleDimensions'] = np.array([2],dtype=np.uint64)
+	csd = ced.create_dataset('CrystalStructures',np.array([999,0]),dtype=np.uint32)
+	makeAttrs([2],[1],[2],'DataArray<uint32_t>','x=2',csd)
+	lcd = ced.create_dataset('LatticeConstants',np.array([[0,LatC[0]],[0,LatC[1]],[0,LatC[2]],[0,LatC[3]],[0,LatC[4]],[0,LatC[5]]])
+	makeAttrs([2],[6],[2],'DataArray<float>','x=2',lcd)
+	mnd = ced.create_dataset('MaterialName',np.array(['Invalid Phase',materialName]))
+	makeAttrs([2],[1],[2],'StringDataArray','x=2',mnd)
+	cd = idc.create_group('CellData')
+	cd.attrs['AttributeMatrixType'] = np.array([3],dtype=np.uint32)
+	cd.attrs['TupleDimensions'] = np.array([Dims[1],Dims[2],Dims[0]],dtype=np.uint64)
+	conf = conf.reshape((Dims[0],Dims[1],Dims[2],1)).astype(np.float32)
+	cid = cd.creat_dataset('Confidence Index',data=conf,dtype=np.float32)
+	makeAttrs([2],[1],[Dims[1],Dims[2],Dims[0]],'DataArray<float>','x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]),cid)
+	# ~ cid.attrs['DataArrayVersion'] = np.array([2],dtype=np.int32)
+	# ~ cid.attrs['ComponentDimensions'] = np.array([1],dtype=np.uint64)
+	# ~ cid.attrs['TupleDimensions'] = np.array([Dims[1],Dims[2],Dims[0]],dtype=np.uint64)
+	# ~ cid.attrs['ObjectType'] = np.string_('DataArray<float>')
+	# ~ cid.attrs['Tuple Axis Dimensions'] = np.string_('x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]))
+	eul1 = eul1.reshape((Dims[0],Dims[1],Dims[2],1)).astype(np.float32)
+	eul2 = eul2.reshape((Dims[0],Dims[1],Dims[2],1)).astype(np.float32)
+	eul3 = eul3.reshape((Dims[0],Dims[1],Dims[2],1)).astype(np.float32)
+	eul = np.concatenate((eul1,eul2,eul3),3)
+	ead = cd.creat_dataset('EulerAngles',data=eul,dtype=np.float32)
+	makeAttrs([2],[3],[Dims[1],Dims[2],Dims[0]],'DataArray<float>','x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]),ead)
+	# ~ ead.attrs['DataArrayVersion'] = np.array([2],dtype=np.int32)
+	# ~ ead.attrs['ComponentDimensions'] = np.array([3],dtype=np.uint64)
+	# ~ ead.attrs['TupleDimensions'] = np.array([Dims[1],Dims[2],Dims[0]],dtype=np.uint64)
+	# ~ ead.attrs['ObjectType'] = np.string_('DataArray<float>')
+	# ~ ead.attrs['Tuple Axis Dimensions'] = np.string_('x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]))
+	pd = cd.create_dataset('Phases',data=phNr,dtype=np.int32)
+	makeAttrs([2],[1],[Dims[1],Dims[2],Dims[0]],'DataArray<int32_t>','x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]),pd)
+	# ~ pd.attrs['DataArrayVersion'] = np.array([2],dtype=np.int32)
+	# ~ pd.attrs['ComponentDimensions'] = np.array([1],dtype=np.uint64)
+	# ~ pd.attrs['TupleDimensions'] = np.array([Dims[1],Dims[2],Dims[0]],dtype=np.uint64)
+	# ~ pd.attrs['ObjectType'] = np.string_('DataArray<int32_t>')
+	# ~ pd.attrs['Tuple Axis Dimensions'] = np.string_('x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]))
+	gd = cd.create_dataset('FF Grain ID',data=grID,dtype=np.int32)
+	makeAttrs([2],[1],[Dims[1],Dims[2],Dims[0]],'DataArray<int32_t>','x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]),gd)
+	# ~ gd.attrs['DataArrayVersion'] = np.array([2],dtype=np.int32)
+	# ~ gd.attrs['ComponentDimensions'] = np.array([1],dtype=np.uint64)
+	# ~ gd.attrs['TupleDimensions'] = np.array([Dims[1],Dims[2],Dims[0]],dtype=np.uint64)
+	# ~ gd.attrs['ObjectType'] = np.string_('DataArray<int32_t>')
+	# ~ gd.attrs['Tuple Axis Dimensions'] = np.string_('x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]))
+	x = np.arange(0,Dims[1]*xyspacing,xyspacing)
+	y = np.arange(0,Dims[2]*xyspacing,xyspacing)
+	xv,yv = np.meshgrid(x,y)
+	xPosArr = np.tile(xv.reshape(Dims[1]*Dims[2]),(Dims[0],1)).reshape((Dims[0],Dims[1],Dims[2],1))
+	yPosArr = np.tile(yv.reshape(Dims[1]*Dims[2]),(Dims[0],1)).reshape((Dims[0],Dims[1],Dims[2],1))
+	xd = cd.create_dataset('X Position',data=xPosArr,dtype=np.float32)
+	yd = cd.create_dataset('Y Position',data=yPosArr,dtype=np.float32)
+	makeAttrs([2],[1],[Dims[1],Dims[2],Dims[0]],'DataArray<float>','x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]),xd)
+	makeAttrs([2],[1],[Dims[1],Dims[2],Dims[0]],'DataArray<float>','x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]),yd)
+	# ~ xd.attrs['DataArrayVersion'] = np.array([2],dtype=np.int32)
+	# ~ xd.attrs['ComponentDimensions'] = np.array([1],dtype=np.uint64)
+	# ~ xd.attrs['TupleDimensions'] = np.array([Dims[1],Dims[2],Dims[0]],dtype=np.uint64)
+	# ~ xd.attrs['ObjectType'] = np.string_('DataArray<float>')
+	# ~ xd.attrs['Tuple Axis Dimensions'] = np.string_('x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]))
+	# ~ yd.attrs['DataArrayVersion'] = np.array([2],dtype=np.int32)
+	# ~ yd.attrs['ComponentDimensions'] = np.array([1],dtype=np.uint64)
+	# ~ yd.attrs['TupleDimensions'] = np.array([Dims[1],Dims[2],Dims[0]],dtype=np.uint64)
+	# ~ yd.attrs['ObjectType'] = np.string_('DataArray<float>')
+	# ~ yd.attrs['Tuple Axis Dimensions'] = np.string_('x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]))
+
 def writeH5EBSDFile(eul1,eul2,eul3,conf,phNr,grID,fileID):
 	f = h5py.File(fileID,'w')
 	f.attrs['FileVersion'] = np.array([5],dtype=np.int32)
@@ -394,32 +482,33 @@ for fnr in range(startnr,endnr+1):
 	PhaseNr[dataNr,:,:] = outarr[:,:,5]
 	dataNr += 1
 
-Euler1.astype(np.float64).tofile('EulerAngles1.bin')
-Euler2.astype(np.float64).tofile('EulerAngles2.bin')
-Euler3.astype(np.float64).tofile('EulerAngles3.bin')
-KamArr = np.zeros((Dims))
+# ~ Euler1.astype(np.float64).tofile('EulerAngles1.bin')
+# ~ Euler2.astype(np.float64).tofile('EulerAngles2.bin')
+# ~ Euler3.astype(np.float64).tofile('EulerAngles3.bin')
+# ~ KamArr = np.zeros((Dims))
 
-# We need to provide the following:
-# orientTol, dims[0], dims[1], dims[2], fillVal, spaceGroup.
-home = os.path.expanduser("~")
-grainsCalc = ctypes.CDLL(home + "/opt/MIDAS/NF_HEDM/bin/NFGrainsCalc.so")
-grainsCalc.calcGrainNrs.argtypes = (ctypes.c_double,
-										ctypes.c_int,
-										ctypes.c_int,
-										ctypes.c_int,
-										ctypes.c_double,
-										ctypes.c_int,
-									)
-grainsCalc.calcGrainNrs.restype = None
-grainsCalc.calcGrainNrs(orientTol,Dims[0],Dims[1],Dims[2],fillVal,spaceGroup)
-grains = np.fromfile('GrainNrs.bin',dtype=np.int32)
-grains = grains.reshape((Dims))
-grainSizes = np.fromfile('GrainSizes.bin',dtype=np.int32)
-grainSizes = grainSizes.reshape((Dims))
-KamArr = np.fromfile('KAMArr.bin',dtype=np.float64)
-KamArr = KamArr.reshape((Dims))
+# ~ # We need to provide the following:
+# ~ # orientTol, dims[0], dims[1], dims[2], fillVal, spaceGroup.
+# ~ home = os.path.expanduser("~")
+# ~ grainsCalc = ctypes.CDLL(home + "/opt/MIDAS/NF_HEDM/bin/NFGrainsCalc.so")
+# ~ grainsCalc.calcGrainNrs.argtypes = (ctypes.c_double,
+										# ~ ctypes.c_int,
+										# ~ ctypes.c_int,
+										# ~ ctypes.c_int,
+										# ~ ctypes.c_double,
+										# ~ ctypes.c_int,
+									# ~ )
+# ~ grainsCalc.calcGrainNrs.restype = None
+# ~ grainsCalc.calcGrainNrs(orientTol,Dims[0],Dims[1],Dims[2],fillVal,spaceGroup)
+# ~ grains = np.fromfile('GrainNrs.bin',dtype=np.int32)
+# ~ grains = grains.reshape((Dims))
+# ~ grainSizes = np.fromfile('GrainSizes.bin',dtype=np.int32)
+# ~ grainSizes = grainSizes.reshape((Dims))
+# ~ KamArr = np.fromfile('KAMArr.bin',dtype=np.float64)
+# ~ KamArr = KamArr.reshape((Dims))
 
 # write files
-writeHDF5File(grainIDs.astype(np.int32),Euler1.astype(np.float32),Euler2.astype(np.float32),Euler3.astype(np.float32),Confidence.astype(np.float32),PhaseNr.astype(np.float32),KamArr.astype(np.float32),grains.astype(np.int32),grainSizes.astype(np.int32),xVals.astype(np.float32),yVals.astype(np.float32),zVals.astype(np.float32),outfn+'.h5')
-writeXMLXdmf(Dims,[xyspacing,xyspacing,zspacing],outfn+'.xmf',outfn,sampleName)
-writeH5EBSDFile(Euler1,Euler2,Euler3,Confidence,PhaseNr,grainIDs,outfn+'.h5ebsd')
+# ~ writeHDF5File(grainIDs.astype(np.int32),Euler1.astype(np.float32),Euler2.astype(np.float32),Euler3.astype(np.float32),Confidence.astype(np.float32),PhaseNr.astype(np.float32),KamArr.astype(np.float32),grains.astype(np.int32),grainSizes.astype(np.int32),xVals.astype(np.float32),yVals.astype(np.float32),zVals.astype(np.float32),outfn+'.h5')
+# ~ writeXMLXdmf(Dims,[xyspacing,xyspacing,zspacing],outfn+'.xmf',outfn,sampleName)
+# ~ writeH5EBSDFile(Euler1,Euler2,Euler3,Confidence,PhaseNr,grainIDs,outfn+'.h5ebsd')
+writeDREAM3DFile(Euler1,Euler2,Euler3,Confidence,PhaseNr,grainIDs,outfn+'.dream3d')
