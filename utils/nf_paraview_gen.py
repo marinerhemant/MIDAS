@@ -164,7 +164,7 @@ def writeDREAM3DFile(eul1,eul2,eul3,conf,phNr,grID,fileID):
 	cd.attrs['AttributeMatrixType'] = np.array([3],dtype=np.uint32)
 	cd.attrs['TupleDimensions'] = np.array([Dims[1],Dims[2],Dims[0]],dtype=np.uint64)
 	conf = conf.reshape((Dims[0],Dims[1],Dims[2],1)).astype(np.float32)
-	cid = cd.creat_dataset('Confidence Index',data=conf,dtype=np.float32)
+	cid = cd.create_dataset('Confidence Index',data=conf,dtype=np.float32)
 	makeAttrs([2],[1],[Dims[1],Dims[2],Dims[0]],'DataArray<float>','x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]),cid)
 	# ~ cid.attrs['DataArrayVersion'] = np.array([2],dtype=np.int32)
 	# ~ cid.attrs['ComponentDimensions'] = np.array([1],dtype=np.uint64)
