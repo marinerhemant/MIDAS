@@ -175,7 +175,7 @@ def writeDREAM3DFile(eul1,eul2,eul3,conf,phNr,grID,fileID):
 	eul2 = eul2.reshape((Dims[0],Dims[1],Dims[2],1)).astype(np.float32)
 	eul3 = eul3.reshape((Dims[0],Dims[1],Dims[2],1)).astype(np.float32)
 	eul = np.concatenate((eul1,eul2,eul3),3)
-	ead = cd.creat_dataset('EulerAngles',data=eul,dtype=np.float32)
+	ead = cd.create_dataset('EulerAngles',data=eul,dtype=np.float32)
 	makeAttrs([2],[3],[Dims[1],Dims[2],Dims[0]],'DataArray<float>','x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]),ead)
 	# ~ ead.attrs['DataArrayVersion'] = np.array([2],dtype=np.int32)
 	# ~ ead.attrs['ComponentDimensions'] = np.array([3],dtype=np.uint64)
