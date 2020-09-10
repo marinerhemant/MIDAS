@@ -133,11 +133,78 @@ def makeAttrs(dav,cd,td,ot,tad,dataset):
 	dataset.attrs['ObjectType'] = np.string_(ot)
 	dataset.attrs['Tuple Axis Dimensions'] = np.string_(tad)
 
+pipestr = '''{
+    "0": {
+        "AngleRepresentation": 0,
+        "CellAttributeMatrixName": "CellData",
+        "CellEnsembleAttributeMatrixName": "CellEnsembleData",
+        "DataContainerName": "ImageDataContainer",
+        "FilterVersion": "6.5.138",
+        "Filter_Enabled": true,
+        "Filter_Human_Label": "Import H5EBSD File",
+        "Filter_Name": "ReadH5Ebsd",
+        "Filter_Uuid": "{4ef7f56b-616e-5a80-9e68-1da8f35ad235}",
+        "InputFile": "abc.h5ebsd",
+        "RefFrameZDir": 1,
+        "SelectedArrayNames": [
+            "X Position",
+            "Phi",
+            "Phi2",
+            "Phi1",
+            "EulerAngles",
+            "Confidence Index",
+            "Y Position",
+            "FF Grain ID"
+        ],
+        "UseTransformations": 1,
+        "ZEndIndex": 37,
+        "ZStartIndex": 1
+    },
+    "1": {
+        "FilterVersion": "1.2.812",
+        "Filter_Enabled": true,
+        "Filter_Human_Label": "Create Data Array",
+        "Filter_Name": "CreateDataArray",
+        "Filter_Uuid": "{77f392fb-c1eb-57da-a1b1-e7acf9239fb8}",
+        "InitializationRange": {
+            "Max": 0,
+            "Min": 0
+        },
+        "InitializationType": 0,
+        "InitializationValue": "1",
+        "NewArray": {
+            "Attribute Matrix Name": "CellData",
+            "Data Array Name": "Phases",
+            "Data Container Name": "ImageDataContainer"
+        },
+        "NumberOfComponents": 1,
+        "ScalarType": 4
+    },
+    "2": {
+        "FilterVersion": "1.2.812",
+        "Filter_Enabled": true,
+        "Filter_Human_Label": "Write DREAM.3D Data File",
+        "Filter_Name": "DataContainerWriter",
+        "Filter_Uuid": "{3fcd4c43-9d75-5b86-aad4-4441bc914f37}",
+        "OutputFile": "abc.dream3d",
+        "WriteTimeSeries": 0,
+        "WriteXdmfFile": 1
+    },
+    "PipelineBuilder": {
+        "Name": "Pipeline",
+        "Number_Filters": 3,
+        "Version": 6
+    }
+}
+'''
+
 def writeDREAM3DFile(eul1,eul2,eul3,conf,phNr,grID,fileID):
 	f = h5py.File(fileID,'w')
 	f.attrs['DREAM3D Version'] = np.string_("1.2.812.508bf5f37")
 	f.attrs['FileVersion'] = np.string_("7.0")
 	dcb = f.create_group('DataContainerBundles')
+	pg = f.create_group('Pipeline')
+	pipedb = pg.create_dataset('Pipeline',
 	dc = f.create_group('DataContainers')
 	idc = dc.create_group('ImageDataContainer')
 	sgg = idc.create_group('_SIMPL_GEOMETRY')
