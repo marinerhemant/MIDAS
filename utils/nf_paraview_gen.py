@@ -203,8 +203,8 @@ def writeDREAM3DFile(eul1,eul2,eul3,conf,phNr,grID,fileID):
 	f.attrs['DREAM3D Version'] = np.string_("1.2.812.508bf5f37")
 	f.attrs['FileVersion'] = np.string_("7.0")
 	dcb = f.create_group('DataContainerBundles')
-	pg = f.create_group('Pipeline')
-	pipedb = pg.create_dataset('Pipeline',
+	# ~ pg = f.create_group('Pipeline')
+	# ~ pipedb = pg.create_dataset('Pipeline',data=
 	dc = f.create_group('DataContainers')
 	idc = dc.create_group('ImageDataContainer')
 	sgg = idc.create_group('_SIMPL_GEOMETRY')
@@ -224,10 +224,10 @@ def writeDREAM3DFile(eul1,eul2,eul3,conf,phNr,grID,fileID):
 	latcarr = np.tile(LatC,2)
 	lcd = ced.create_dataset('LatticeConstants',data=latcarr.reshape(2,6),dtype=np.float32)
 	makeAttrs([2],[6],[2],'DataArray<float>','x=2',lcd)
-	dt = h5py.special_dtype(vlen=str)
-	mnd = ced.create_dataset('MaterialName',(2,),dtype=dt)
-	mnd[0] = 'Invalid Phase'
-	mnd[1] = materialName
+	# ~ dt = h5py.special_dtype(vlen=str)
+	# ~ mnd = ced.create_dataset('MaterialName',(2,),dtype=dt)
+	# ~ mnd[0] = 'Invalid Phase'
+	# ~ mnd[1] = materialName
 	makeAttrs([2],[1],[2],'StringDataArray','x=2',mnd)
 	cd = idc.create_group('CellData')
 	cd.attrs['AttributeMatrixType'] = np.array([3],dtype=np.uint32)
