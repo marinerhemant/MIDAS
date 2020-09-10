@@ -228,7 +228,7 @@ def writeDREAM3DFile(eul1,eul2,eul3,conf,phNr,grID,fileID):
 	# ~ mnd = ced.create_dataset('MaterialName',(2,),dtype=dt)
 	# ~ mnd[0] = 'Invalid Phase'
 	# ~ mnd[1] = materialName
-	makeAttrs([2],[1],[2],'StringDataArray','x=2',mnd)
+	# ~ makeAttrs([2],[1],[2],'StringDataArray','x=2',mnd)
 	cd = idc.create_group('CellData')
 	cd.attrs['AttributeMatrixType'] = np.array([3],dtype=np.uint32)
 	cd.attrs['TupleDimensions'] = np.array([Dims[1],Dims[2],Dims[0]],dtype=np.uint64)
