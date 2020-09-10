@@ -157,7 +157,7 @@ pipestr = '''{
             "FF Grain ID"
         ],
         "UseTransformations": 1,
-        "ZEndIndex": 37,
+        "ZEndIndex": '''+ str(endnr+1)+''',
         "ZStartIndex": 1
     },
     "1": {
@@ -203,8 +203,10 @@ def writeDREAM3DFile(eul1,eul2,eul3,conf,phNr,grID,fileID):
 	f.attrs['DREAM3D Version'] = np.string_("1.2.812.508bf5f37")
 	f.attrs['FileVersion'] = np.string_("7.0")
 	dcb = f.create_group('DataContainerBundles')
-	# ~ pg = f.create_group('Pipeline')
-	# ~ pipedb = pg.create_dataset('Pipeline',data=
+	pg = f.create_group('Pipeline')
+	pg.attrs['Pipeline Version'] = np.array([2],dtype=np.int32)
+	pg.attrs['Current Pipelne'] = np.string_('Pipeline')
+	pipedb = pg.create_dataset('Pipeline',data=np.string_(pipestr))
 	dc = f.create_group('DataContainers')
 	idc = dc.create_group('ImageDataContainer')
 	sgg = idc.create_group('_SIMPL_GEOMETRY')
