@@ -198,7 +198,60 @@ pipestr = '''{
 }
 '''
 
+xdmfcontents = '''<?xml version="1.0"?>
+<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd"[]>
+<Xdmf xmlns:xi="http://www.w3.org/2003/XInclude" Version="2.2">
+ <Domain>
+  <!-- *************** START OF ImageDataContainer *************** -->
+  <Grid Name="ImageDataContainer" GridType="Uniform">
+    <Topology TopologyType="3DCoRectMesh" Dimensions="'''+str(Dims[0]+1)+' '+str(Dims[1]+1)+' '+ +str(Dims[2]+1)+''' "></Topology>
+    <Geometry Type="ORIGIN_DXDYDZ">
+      <!-- Origin  Z, Y, X -->
+      <DataItem Format="XML" Dimensions="3">0 0 0</DataItem>
+      <!-- DxDyDz (Spacing/Resolution) Z, Y, X -->
+      <DataItem Format="XML" Dimensions="3">'''+str(abs(zspacing))+' '+str(xyspacing)+' '+str(xyspacing)+'''</DataItem>
+    </Geometry>
+    <Attribute Name="Confidence Index" AttributeType="Scalar" Center="Cell">
+      <DataItem Format="HDF" Dimensions="'''+str(Dims[0])+' '+str(Dims[1])+' '+ +str(Dims[2])+''' 1" NumberType="Float" Precision="4" >
+        '''+outfn+'.dream3d'+''':/DataContainers/ImageDataContainer/CellData/Confidence Index
+      </DataItem>
+    </Attribute>
+    <Attribute Name="EulerAngles" AttributeType="Vector" Center="Cell">
+      <DataItem Format="HDF" Dimensions="'''+str(Dims[0])+' '+str(Dims[1])+' '+ +str(Dims[2])+''' 3" NumberType="Float" Precision="4" >
+        '''+outfn+'.dream3d'+''':/DataContainers/ImageDataContainer/CellData/EulerAngles
+      </DataItem>
+    </Attribute>
+    <Attribute Name="Phases" AttributeType="Scalar" Center="Cell">
+      <DataItem Format="HDF" Dimensions="'''+str(Dims[0])+' '+str(Dims[1])+' '+ +str(Dims[2])+''' 1" NumberType="Int" Precision="4" >
+        '''+outfn+'.dream3d'+''':/DataContainers/ImageDataContainer/CellData/Phases
+      </DataItem>
+    </Attribute>
+    <Attribute Name="X Position" AttributeType="Scalar" Center="Cell">
+      <DataItem Format="HDF" Dimensions="'''+str(Dims[0])+' '+str(Dims[1])+' '+ +str(Dims[2])+''' 1" NumberType="Float" Precision="4" >
+        '''+outfn+'.dream3d'+''':/DataContainers/ImageDataContainer/CellData/X Position
+      </DataItem>
+    </Attribute>
+    <Attribute Name="Y Position" AttributeType="Scalar" Center="Cell">
+      <DataItem Format="HDF" Dimensions="'''+str(Dims[0])+' '+str(Dims[1])+' '+ +str(Dims[2])+''' 1" NumberType="Float" Precision="4" >
+        '''+outfn+'.dream3d'+''':/DataContainers/ImageDataContainer/CellData/Y Position
+      </DataItem>
+    </Attribute>
+    </Attribute>
+    <Attribute Name="FF Grain ID" AttributeType="Scalar" Center="Cell">
+      <DataItem Format="HDF" Dimensions="'''+str(Dims[0])+' '+str(Dims[1])+' '+ +str(Dims[2])+''' 1" NumberType="Int" Precision="4" >
+        '''+outfn+'.dream3d'+''':/DataContainers/ImageDataContainer/CellData/FF Grain ID
+      </DataItem>
+    </Attribute>
+  </Grid>
+  <!-- *************** END OF ImageDataContainer *************** -->
+ </Domain>
+</Xdmf>
+'''
+
 def writeDREAM3DFile(eul1,eul2,eul3,conf,phNr,grID,fileID):
+	fxdmf = open(outfn+'.xdmf','w')
+	fxdmf.write(xdmfcontents)
+	fxdmf.close()
 	f = h5py.File(fileID,'w')
 	f.attrs['DREAM3D Version'] = np.string_("1.2.812.508bf5f37")
 	f.attrs['FileVersion'] = np.string_("7.0")
@@ -226,47 +279,22 @@ def writeDREAM3DFile(eul1,eul2,eul3,conf,phNr,grID,fileID):
 	latcarr = np.tile(LatC,2)
 	lcd = ced.create_dataset('LatticeConstants',data=latcarr.reshape(2,6),dtype=np.float32)
 	makeAttrs([2],[6],[2],'DataArray<float>','x=2',lcd)
-	# ~ dt = h5py.special_dtype(vlen=str)
-	# ~ mnd = ced.create_dataset('MaterialName',(2,),dtype=dt)
-	# ~ mnd[0] = 'Invalid Phase'
-	# ~ mnd[1] = materialName
-	# ~ makeAttrs([2],[1],[2],'StringDataArray','x=2',mnd)
 	cd = idc.create_group('CellData')
 	cd.attrs['AttributeMatrixType'] = np.array([3],dtype=np.uint32)
 	cd.attrs['TupleDimensions'] = np.array([Dims[1],Dims[2],Dims[0]],dtype=np.uint64)
 	conf = conf.reshape((Dims[0],Dims[1],Dims[2],1)).astype(np.float32)
 	cid = cd.create_dataset('Confidence Index',data=conf,dtype=np.float32)
 	makeAttrs([2],[1],[Dims[1],Dims[2],Dims[0]],'DataArray<float>','x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]),cid)
-	# ~ cid.attrs['DataArrayVersion'] = np.array([2],dtype=np.int32)
-	# ~ cid.attrs['ComponentDimensions'] = np.array([1],dtype=np.uint64)
-	# ~ cid.attrs['TupleDimensions'] = np.array([Dims[1],Dims[2],Dims[0]],dtype=np.uint64)
-	# ~ cid.attrs['ObjectType'] = np.string_('DataArray<float>')
-	# ~ cid.attrs['Tuple Axis Dimensions'] = np.string_('x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]))
 	eul1 = eul1.reshape((Dims[0],Dims[1],Dims[2],1)).astype(np.float32)
 	eul2 = eul2.reshape((Dims[0],Dims[1],Dims[2],1)).astype(np.float32)
 	eul3 = eul3.reshape((Dims[0],Dims[1],Dims[2],1)).astype(np.float32)
 	eul = np.concatenate((eul1,eul2,eul3),3)
 	ead = cd.create_dataset('EulerAngles',data=eul,dtype=np.float32)
 	makeAttrs([2],[3],[Dims[1],Dims[2],Dims[0]],'DataArray<float>','x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]),ead)
-	# ~ ead.attrs['DataArrayVersion'] = np.array([2],dtype=np.int32)
-	# ~ ead.attrs['ComponentDimensions'] = np.array([3],dtype=np.uint64)
-	# ~ ead.attrs['TupleDimensions'] = np.array([Dims[1],Dims[2],Dims[0]],dtype=np.uint64)
-	# ~ ead.attrs['ObjectType'] = np.string_('DataArray<float>')
-	# ~ ead.attrs['Tuple Axis Dimensions'] = np.string_('x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]))
 	pd = cd.create_dataset('Phases',data=phNr,dtype=np.int32)
 	makeAttrs([2],[1],[Dims[1],Dims[2],Dims[0]],'DataArray<int32_t>','x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]),pd)
-	# ~ pd.attrs['DataArrayVersion'] = np.array([2],dtype=np.int32)
-	# ~ pd.attrs['ComponentDimensions'] = np.array([1],dtype=np.uint64)
-	# ~ pd.attrs['TupleDimensions'] = np.array([Dims[1],Dims[2],Dims[0]],dtype=np.uint64)
-	# ~ pd.attrs['ObjectType'] = np.string_('DataArray<int32_t>')
-	# ~ pd.attrs['Tuple Axis Dimensions'] = np.string_('x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]))
 	gd = cd.create_dataset('FF Grain ID',data=grID,dtype=np.int32)
 	makeAttrs([2],[1],[Dims[1],Dims[2],Dims[0]],'DataArray<int32_t>','x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]),gd)
-	# ~ gd.attrs['DataArrayVersion'] = np.array([2],dtype=np.int32)
-	# ~ gd.attrs['ComponentDimensions'] = np.array([1],dtype=np.uint64)
-	# ~ gd.attrs['TupleDimensions'] = np.array([Dims[1],Dims[2],Dims[0]],dtype=np.uint64)
-	# ~ gd.attrs['ObjectType'] = np.string_('DataArray<int32_t>')
-	# ~ gd.attrs['Tuple Axis Dimensions'] = np.string_('x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]))
 	x = np.arange(0,Dims[1]*xyspacing,xyspacing)
 	y = np.arange(0,Dims[2]*xyspacing,xyspacing)
 	xv,yv = np.meshgrid(x,y)
@@ -276,16 +304,6 @@ def writeDREAM3DFile(eul1,eul2,eul3,conf,phNr,grID,fileID):
 	yd = cd.create_dataset('Y Position',data=yPosArr,dtype=np.float32)
 	makeAttrs([2],[1],[Dims[1],Dims[2],Dims[0]],'DataArray<float>','x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]),xd)
 	makeAttrs([2],[1],[Dims[1],Dims[2],Dims[0]],'DataArray<float>','x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]),yd)
-	# ~ xd.attrs['DataArrayVersion'] = np.array([2],dtype=np.int32)
-	# ~ xd.attrs['ComponentDimensions'] = np.array([1],dtype=np.uint64)
-	# ~ xd.attrs['TupleDimensions'] = np.array([Dims[1],Dims[2],Dims[0]],dtype=np.uint64)
-	# ~ xd.attrs['ObjectType'] = np.string_('DataArray<float>')
-	# ~ xd.attrs['Tuple Axis Dimensions'] = np.string_('x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]))
-	# ~ yd.attrs['DataArrayVersion'] = np.array([2],dtype=np.int32)
-	# ~ yd.attrs['ComponentDimensions'] = np.array([1],dtype=np.uint64)
-	# ~ yd.attrs['TupleDimensions'] = np.array([Dims[1],Dims[2],Dims[0]],dtype=np.uint64)
-	# ~ yd.attrs['ObjectType'] = np.string_('DataArray<float>')
-	# ~ yd.attrs['Tuple Axis Dimensions'] = np.string_('x='+str(Dims[1])+',y='+str(Dims[2])+',z='+str(Dims[0]))
 
 def writeH5EBSDFile(eul1,eul2,eul3,conf,phNr,grID,fileID):
 	f = h5py.File(fileID,'w')
