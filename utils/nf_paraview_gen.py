@@ -157,7 +157,8 @@ def writeDREAM3DFile(eul1,eul2,eul3,conf,phNr,grID,fileID):
 	latcarr = np.tile(LatC,2)
 	lcd = ced.create_dataset('LatticeConstants',data=latcarr.reshape(2,6),dtype=np.float32)
 	makeAttrs([2],[6],[2],'DataArray<float>','x=2',lcd)
-	mnd = ced.create_dataset('MaterialName',data=np.array(['Invalid Phase',materialName]))
+	mnList = [n.encode("ascii","ignore") for n in ['Invalid Phase',materialName]]
+	mnd = ced.create_dataset('MaterialName',(len(mnList),1),'S10',mnList)
 	makeAttrs([2],[1],[2],'StringDataArray','x=2',mnd)
 	cd = idc.create_group('CellData')
 	cd.attrs['AttributeMatrixType'] = np.array([3],dtype=np.uint32)
