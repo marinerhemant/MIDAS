@@ -204,7 +204,7 @@ xdmfcontents = '''<?xml version="1.0"?>
  <Domain>
   <!-- *************** START OF ImageDataContainer *************** -->
   <Grid Name="ImageDataContainer" GridType="Uniform">
-    <Topology TopologyType="3DCoRectMesh" Dimensions="'''+str(Dims[0]+1)+' '+str(Dims[1]+1)+' '+ +str(Dims[2]+1)+''' "></Topology>
+    <Topology TopologyType="3DCoRectMesh" Dimensions="'''+str(Dims[0]+1)+' '+str(Dims[1]+1)+' '+ str(Dims[2]+1)+''' "></Topology>
     <Geometry Type="ORIGIN_DXDYDZ">
       <!-- Origin  Z, Y, X -->
       <DataItem Format="XML" Dimensions="3">0 0 0</DataItem>
@@ -212,27 +212,27 @@ xdmfcontents = '''<?xml version="1.0"?>
       <DataItem Format="XML" Dimensions="3">'''+str(abs(zspacing))+' '+str(xyspacing)+' '+str(xyspacing)+'''</DataItem>
     </Geometry>
     <Attribute Name="Confidence Index" AttributeType="Scalar" Center="Cell">
-      <DataItem Format="HDF" Dimensions="'''+str(Dims[0])+' '+str(Dims[1])+' '+ +str(Dims[2])+''' 1" NumberType="Float" Precision="4" >
+      <DataItem Format="HDF" Dimensions="'''+str(Dims[0])+' '+str(Dims[1])+' '+ str(Dims[2])+''' 1" NumberType="Float" Precision="4" >
         '''+outfn+'.dream3d'+''':/DataContainers/ImageDataContainer/CellData/Confidence Index
       </DataItem>
     </Attribute>
     <Attribute Name="EulerAngles" AttributeType="Vector" Center="Cell">
-      <DataItem Format="HDF" Dimensions="'''+str(Dims[0])+' '+str(Dims[1])+' '+ +str(Dims[2])+''' 3" NumberType="Float" Precision="4" >
+      <DataItem Format="HDF" Dimensions="'''+str(Dims[0])+' '+str(Dims[1])+' '+ str(Dims[2])+''' 3" NumberType="Float" Precision="4" >
         '''+outfn+'.dream3d'+''':/DataContainers/ImageDataContainer/CellData/EulerAngles
       </DataItem>
     </Attribute>
     <Attribute Name="Phases" AttributeType="Scalar" Center="Cell">
-      <DataItem Format="HDF" Dimensions="'''+str(Dims[0])+' '+str(Dims[1])+' '+ +str(Dims[2])+''' 1" NumberType="Int" Precision="4" >
+      <DataItem Format="HDF" Dimensions="'''+str(Dims[0])+' '+str(Dims[1])+' '+ str(Dims[2])+''' 1" NumberType="Int" Precision="4" >
         '''+outfn+'.dream3d'+''':/DataContainers/ImageDataContainer/CellData/Phases
       </DataItem>
     </Attribute>
     <Attribute Name="X Position" AttributeType="Scalar" Center="Cell">
-      <DataItem Format="HDF" Dimensions="'''+str(Dims[0])+' '+str(Dims[1])+' '+ +str(Dims[2])+''' 1" NumberType="Float" Precision="4" >
+      <DataItem Format="HDF" Dimensions="'''+str(Dims[0])+' '+str(Dims[1])+' '+ str(Dims[2])+''' 1" NumberType="Float" Precision="4" >
         '''+outfn+'.dream3d'+''':/DataContainers/ImageDataContainer/CellData/X Position
       </DataItem>
     </Attribute>
     <Attribute Name="Y Position" AttributeType="Scalar" Center="Cell">
-      <DataItem Format="HDF" Dimensions="'''+str(Dims[0])+' '+str(Dims[1])+' '+ +str(Dims[2])+''' 1" NumberType="Float" Precision="4" >
+      <DataItem Format="HDF" Dimensions="'''+str(Dims[0])+' '+str(Dims[1])+' '+ str(Dims[2])+''' 1" NumberType="Float" Precision="4" >
         '''+outfn+'.dream3d'+''':/DataContainers/ImageDataContainer/CellData/Y Position
       </DataItem>
     </Attribute>
