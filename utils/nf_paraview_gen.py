@@ -236,12 +236,6 @@ xdmfcontents = '''<?xml version="1.0"?>
         '''+outfn+'.dream3d'+''':/DataContainers/ImageDataContainer/CellData/Y Position
       </DataItem>
     </Attribute>
-    </Attribute>
-    <Attribute Name="FF Grain ID" AttributeType="Scalar" Center="Cell">
-      <DataItem Format="HDF" Dimensions="'''+str(Dims[0])+' '+str(Dims[1])+' '+ +str(Dims[2])+''' 1" NumberType="Int" Precision="4" >
-        '''+outfn+'.dream3d'+''':/DataContainers/ImageDataContainer/CellData/FF Grain ID
-      </DataItem>
-    </Attribute>
   </Grid>
   <!-- *************** END OF ImageDataContainer *************** -->
  </Domain>
