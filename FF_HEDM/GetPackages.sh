@@ -76,12 +76,12 @@ if [ ! -d ${dirThis}/FFTW ]; then # fftw
 	make -j8 install
 fi
 
-if [ ! -d ${dirThis}/MPICH ]; then # mpich
-	cd $dirThis
-	wget -O mpich-3.3.2.tar.gz http://www.mpich.org/static/downloads/3.3.2/mpich-3.3.2.tar.gz
-	tar -xzf mpich-3.3.2.tar.gz
-	cd mpich-3.3.2
-	./configure --disable-fortran --prefix=${dirThis}/MPICH
-	make
-	make install
-fi
+#~ if [ ! -d ${dirThis}/MPICH ]; then # mpich
+	#~ cd $dirThis
+	#~ wget -O mpich-3.3.2.tar.gz http://www.mpich.org/static/downloads/3.3.2/mpich-3.3.2.tar.gz
+	#~ tar -xzf mpich-3.3.2.tar.gz
+	#~ cd mpich-3.3.2
+	#~ ./configure --disable-fortran --prefix=${dirThis}/MPICH
+	#~ make
+	#~ make install
+#~ fi
