@@ -262,7 +262,7 @@ def writeDREAM3DFile(eul1,eul2,eul3,conf,phNr,grID,fileID):
 	sgg.attrs['SpatialDimensionality'] = np.array([3],dtype=np.uint32)
 	sgg.attrs['GeometryTypeName'] = np.string_('ImageGeometry')
 	sgg.attrs['GeometryName'] = np.string_('ImageGeometry')
-	dimd = sgg.create_dataset('DIMENSIONS',data=np.array([Dims[1],Dims[2],Dims[0]]),dtype=np.int8)
+	dimd = sgg.create_dataset('DIMENSIONS',data=np.array([Dims[1],Dims[2],Dims[0]]),dtype=np.int64)
 	origd = sgg.create_dataset('ORIGIN',data=np.array([0,0,0]),dtype=np.float32)
 	spacd = sgg.create_dataset('SPACING',data=np.array([xyspacing,xyspacing,abs(zspacing)]),dtype=np.float32)
 	ced = idc.create_group('CellEnsembleData')
