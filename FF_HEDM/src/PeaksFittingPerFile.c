@@ -561,7 +561,7 @@ int main(int argc, char *argv[]){
     int headSize = 8192;
     int fnr = 0;
     double RhoD, tx, ty, tz, p0, p1, p2;
-    double OmegaRanges[20][2];
+    double OmegaRanges[2000][2];
     int nOmeRanges = 0;
     long long int BadPxIntensity = 0;
     int minNrPx=1, maxNrPx=10000, makeMap = 0, maxNPeaks=400;

@@ -351,7 +351,7 @@ void SpotToGv(double xi, double yi, double zi, double Omega, double theta, doubl
 
 static inline
 double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], double **spotsYZO, double **hklsIn, double Lsd,
-	double Wavelength, double OmegaRange[20][2], double BoxSize[20][4], double MinEta, double wedge, double chi, double *Error)
+	double Wavelength, double OmegaRange[2000][2], double BoxSize[20][4], double MinEta, double wedge, double chi, double *Error)
 {
 	int i,j;
 	int nrMatchedIndexer = nspots;
@@ -493,8 +493,8 @@ struct data{
 	double px;
 	double Wavelength;
 	double MinEta;
-	double OmegaRanges[20][2];
-	double BoxSizes[20][2];
+	double OmegaRanges[2000][2];
+	double BoxSizes[2000][2];
 	double **SpotInfoAll;
 	double **hkls;
 	double *Error;
@@ -520,8 +520,8 @@ double problem_function(unsigned n, const double *x, double *grad, void* f_data_
 	double px = f_data->px;
 	double Wavelength = f_data->Wavelength;
 	double MinEta = f_data->MinEta;
-	double OmegaRanges[20][2];
-	double BoxSizes[20][2];
+	double OmegaRanges[2000][2];
+	double BoxSizes[2000][2];
 	for (i=0;i<nOmeRanges;i++){
 		for (j=0;j<2;j++) OmegaRanges[i][j] = f_data->OmegaRanges[i][j];
 		for (j=0;j<4;j++) BoxSizes[i][j] = f_data->BoxSizes[i][j];
@@ -553,7 +553,7 @@ double problem_function(unsigned n, const double *x, double *grad, void* f_data_
 }
 
 void FitGrain(double Ini[12], double OptP[6], double NonOptP[12], int NonOptPInt[5],
-			  double **SpotInfoAll, double OmegaRanges[20][2], double tol[18],
+			  double **SpotInfoAll, double OmegaRanges[2000][2], double tol[18],
 			  double BoxSizes[20][4], double **hklsIn, double *Out, double *Error){
 	unsigned n = 18;
 	double x[n], xl[n], xu[n];
@@ -629,7 +629,7 @@ int main(int argc, char *argv[])
     fileParam = fopen(ParamFN,"r");
     char *str, dummy[MAX_LINE_LENGTH];
     double tx, ty, tz, Lsd, p0, p1, p2, RhoD, yBC, zBC, wedge, px, a,
-		b, c, alpha, beta, gamma, OmegaRanges[20][2], BoxSizes[20][4],
+		b, c, alpha, beta, gamma, OmegaRanges[2000][2], BoxSizes[2000][4],
 		MaxRingRad, MaxTtheta, Wavelength, MinEta,
 		Hbeam, Rsample;
     int NrPixels, nOmeRanges=0, nBoxSizes=0, cs=0, RingNumbers[200], cs2=0;

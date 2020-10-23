@@ -5,7 +5,7 @@
 
 //
 //  CalcDiffractionSpots.c
-//  
+//
 //
 //  Created by Hemant Sharma on 12/3/13.
 //
@@ -23,7 +23,7 @@
 #define rad2deg 57.2957795130823
 #define RealType double
 #define MAX_N_HKLS 1000
-#define MAX_N_OMEGA_RANGES 20
+#define MAX_N_OMEGA_RANGES 2000
 #define EPS 0.000000001
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
 
@@ -60,7 +60,7 @@ MatrixMultF(
     }
 }
 
-static inline 
+static inline
 void
 RotateAroundZ(
     RealType v1[3],
@@ -136,7 +136,7 @@ CalcOmega(
     RealType ome;
     RealType len= sqrt(x*x + y*y + z*z);
     RealType v=sin(theta*deg2rad)*len;
-    
+
     RealType almostzero = 1e-4;
     if ( fabs(y) < almostzero ) {
         if (x != 0) {
@@ -156,16 +156,16 @@ CalcOmega(
         RealType b = (2*v*x) / y2;
         RealType c = ((v*v) / y2) - 1;
         RealType discr = b*b - 4*a*c;
-        
+
         RealType ome1a;
         RealType ome1b;
         RealType ome2a;
         RealType ome2b;
         RealType cosome1;
         RealType cosome2;
-        
+
         RealType eqa, eqb, diffa, diffb;
-        
+
         if (discr >= 0) {
             cosome1 = (-b + sqrt(discr))/(2*a);
             if (fabs(cosome1) <= 1) {
@@ -184,17 +184,17 @@ CalcOmega(
                     *nsol = *nsol + 1;
                 }
             }
-            
+
             cosome2 = (-b - sqrt(discr))/(2*a);
             if (fabs(cosome2) <= 1) {
                 ome2a = acos(cosome2);
                 ome2b = -ome2a;
-                
+
                 eqa = -x*cos(ome2a) + y*sin(ome2a);
                 diffa = fabs(eqa - v);
                 eqb = -x*cos(ome2b) + y*sin(ome2b);
                 diffb = fabs(eqb - v);
-                
+
                 if (diffa < diffb) {
                     omegas[*nsol] = ome2a*rad2deg;
                     *nsol = *nsol + 1;
@@ -296,15 +296,15 @@ CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3], RealType distance, RealType 
 }
 
 int
-CalcDiffractionSpots(double Distance, 
-	double ExcludePoleAngle, 
-	double OmegaRanges[MAX_N_OMEGA_RANGES][2], 
+CalcDiffractionSpots(double Distance,
+	double ExcludePoleAngle,
+	double OmegaRanges[MAX_N_OMEGA_RANGES][2],
 	int NoOfOmegaRanges,
 	double **hkls,
 	int n_hkls,
-	double BoxSizes[MAX_N_OMEGA_RANGES][4], 
+	double BoxSizes[MAX_N_OMEGA_RANGES][4],
 	int *nTspots,
-	double OrientMatr[3][3], 
+	double OrientMatr[3][3],
 	double **TheorSpots)
 {
     *nTspots = 0;
