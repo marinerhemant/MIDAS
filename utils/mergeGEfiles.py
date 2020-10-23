@@ -4,8 +4,7 @@ import os
 folder = '/home/beams/S1IDUSER/mnt/s1c/smaddali_oct20/ge3/trial/'
 fileStem = 'Si_shard2_trench1_ff_at_Pt_nightscan'
 startNr = 197
-nrFiles = 4
-nrFrames = 1441
+nrFiles = 99
 padding = 6
 ext = '.ge3'
 
