@@ -47,6 +47,7 @@
 #define CalcNorm3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
 #define CalcNorm2(x,y) sqrt((x)*(x) + (y)*(y))
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
+#define MAXNOMEGARANGES 2000
 
 // For detector mapping!
 extern int BigDetSize;
@@ -413,7 +414,7 @@ void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double yDet, doub
 
 static inline
 void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], double **spotsYZO, double **hklsIn, double Lsd,
-	double Wavelength, double OmegaRange[20][2], double BoxSize[20][4], double MinEta, double wedge, double chi,
+	double Wavelength, double OmegaRange[MAXNOMEGARANGES][2], double BoxSize[MAXNOMEGARANGES][4], double MinEta, double wedge, double chi,
 	double **SpotsComp, double **SpList, double *Error, int *nSpotsComp, int notIniRun)
 {
 	int i,j;
@@ -543,8 +544,8 @@ struct data_FitPosIni{
 	double Lsd;
 	double Wavelength;
 	int nOmeRanges;
-	double OmegaRanges[20][2];
-	double BoxSizes[20][4];
+	double OmegaRanges[MAXNOMEGARANGES][2];
+	double BoxSizes[MAXNOMEGARANGES][4];
 	double MinEta;
 	double wedge;
 	double chi;
@@ -558,8 +559,8 @@ struct data_FitOrientIni{
 	double Lsd;
 	double Wavelength;
 	int nOmeRanges;
-	double OmegaRanges[20][2];
-	double BoxSizes[20][4];
+	double OmegaRanges[MAXNOMEGARANGES][2];
+	double BoxSizes[MAXNOMEGARANGES][4];
 	double MinEta;
 	double wedge;
 	double chi;
@@ -574,8 +575,8 @@ struct data_FitStrainIni{
 	double Lsd;
 	double Wavelength;
 	int nOmeRanges;
-	double OmegaRanges[20][2];
-	double BoxSizes[20][4];
+	double OmegaRanges[MAXNOMEGARANGES][2];
+	double BoxSizes[MAXNOMEGARANGES][4];
 	double MinEta;
 	double wedge;
 	double chi;
@@ -591,8 +592,8 @@ struct data_FitPos{
 	double Lsd;
 	double Wavelength;
 	int nOmeRanges;
-	double OmegaRanges[20][2];
-	double BoxSizes[20][4];
+	double OmegaRanges[MAXNOMEGARANGES][2];
+	double BoxSizes[MAXNOMEGARANGES][4];
 	double MinEta;
 	double wedge;
 	double chi;
@@ -889,8 +890,8 @@ double problem_function_PosIni(unsigned n, const double *x, double *grad, void* 
 	double Lsd = f_data->Lsd;
 	double Wavelength = f_data->Wavelength;
 	int nOmeRanges = f_data->nOmeRanges;
-	double OmegaRanges[20][2];
-	double BoxSizes[20][4];
+	double OmegaRanges[MAXNOMEGARANGES][2];
+	double BoxSizes[MAXNOMEGARANGES][4];
 	for (i=0;i<nOmeRanges;i++){
 		for (j=0;j<2;j++) OmegaRanges[i][j] = f_data->OmegaRanges[i][j];
 		for (j=0;j<4;j++) BoxSizes[i][j] = f_data->BoxSizes[i][j];
@@ -925,8 +926,8 @@ double problem_function_OrientIni(unsigned n, const double *x, double *grad, voi
 	double Lsd = f_data->Lsd;
 	double Wavelength = f_data->Wavelength;
 	int nOmeRanges = f_data->nOmeRanges;
-	double OmegaRanges[20][2];
-	double BoxSizes[20][4];
+	double OmegaRanges[MAXNOMEGARANGES][2];
+	double BoxSizes[MAXNOMEGARANGES][4];
 	for (i=0;i<nOmeRanges;i++){
 		for (j=0;j<2;j++) OmegaRanges[i][j] = f_data->OmegaRanges[i][j];
 		for (j=0;j<4;j++) BoxSizes[i][j] = f_data->BoxSizes[i][j];
@@ -962,8 +963,8 @@ double problem_function_StrainIni(unsigned n, const double *x, double *grad, voi
 	double Lsd = f_data->Lsd;
 	double Wavelength = f_data->Wavelength;
 	int nOmeRanges = f_data->nOmeRanges;
-	double OmegaRanges[20][2];
-	double BoxSizes[20][4];
+	double OmegaRanges[MAXNOMEGARANGES][2];
+	double BoxSizes[MAXNOMEGARANGES][4];
 	for (i=0;i<nOmeRanges;i++){
 		for (j=0;j<2;j++) OmegaRanges[i][j] = f_data->OmegaRanges[i][j];
 		for (j=0;j<4;j++) BoxSizes[i][j] = f_data->BoxSizes[i][j];
@@ -1000,8 +1001,8 @@ double problem_function_Pos(unsigned n, const double *x, double *grad, void* f_d
 	double Lsd = f_data->Lsd;
 	double Wavelength = f_data->Wavelength;
 	int nOmeRanges = f_data->nOmeRanges;
-	double OmegaRanges[20][2];
-	double BoxSizes[20][4];
+	double OmegaRanges[MAXNOMEGARANGES][2];
+	double BoxSizes[MAXNOMEGARANGES][4];
 	for (i=0;i<nOmeRanges;i++){
 		for (j=0;j<2;j++) OmegaRanges[i][j] = f_data->OmegaRanges[i][j];
 		for (j=0;j<4;j++) BoxSizes[i][j] = f_data->BoxSizes[i][j];
@@ -1017,7 +1018,7 @@ double problem_function_Pos(unsigned n, const double *x, double *grad, void* f_d
 }
 
 void FitPositionIni(double X0[12],int nSpotsComp,double **spotsYZO,int nhkls,double **hkls,double Lsd,
-					double Wavelength,int nOmeRanges,double OmegaRanges[20][2],double BoxSizes[20][4],
+					double Wavelength,int nOmeRanges,double OmegaRanges[MAXNOMEGARANGES][2],double BoxSizes[MAXNOMEGARANGES][4],
 					double MinEta,double wedge,double chi,double *XFit,double lb[12],double ub[12])
 {
 	unsigned n=12;
@@ -1068,7 +1069,7 @@ void FitPositionIni(double X0[12],int nSpotsComp,double **spotsYZO,int nhkls,dou
 }
 
 void FitOrientIni(double X0[9],int nSpotsComp,double **spotsYZO,int nhkls,double **hkls,double Lsd,
-				  double Wavelength,int nOmeRanges,double OmegaRanges[20][2],double BoxSizes[20][4],
+				  double Wavelength,int nOmeRanges,double OmegaRanges[MAXNOMEGARANGES][2],double BoxSizes[MAXNOMEGARANGES][4],
 				  double MinEta,double wedge,double chi,double *XFit,double lb[9],double ub[9],double Pos[3])
 {
 	unsigned n=9;
@@ -1120,7 +1121,7 @@ void FitOrientIni(double X0[9],int nSpotsComp,double **spotsYZO,int nhkls,double
 }
 
 void FitStrainIni(double X0[6],int nSpotsComp,double **spotsYZO,int nhkls,double **hkls,double Lsd,
-				  double Wavelength,int nOmeRanges,double OmegaRanges[20][2],double BoxSizes[20][4],
+				  double Wavelength,int nOmeRanges,double OmegaRanges[MAXNOMEGARANGES][2],double BoxSizes[MAXNOMEGARANGES][4],
 				  double MinEta,double wedge, double chi,double *XFit,double lb[6],double ub[6],
 				  double Pos[3],double Orient[3])
 {
@@ -1174,7 +1175,7 @@ void FitStrainIni(double X0[6],int nSpotsComp,double **spotsYZO,int nhkls,double
 }
 
 void FitPosSec(double X0[3],int nSpotsComp,double **spotsYZO,int nhkls,double **hkls,double Lsd,
-				  double Wavelength,int nOmeRanges,double OmegaRanges[20][2],double BoxSizes[20][4],
+				  double Wavelength,int nOmeRanges,double OmegaRanges[MAXNOMEGARANGES][2],double BoxSizes[MAXNOMEGARANGES][4],
 				  double MinEta,double wedge,double chi,double *XFit,double lb[3],double ub[3],
 				  double Orient[3],double Strains[6])
 {
@@ -1262,7 +1263,7 @@ int main(int argc, char *argv[])
     int LowNr;
     double Wavelength,Lsd;
 	double LatCin[6];
-    double wedge,MinEta,OmegaRanges[20][2],BoxSizes[20][4], MaxRingRad;
+    double wedge,MinEta,OmegaRanges[MAXNOMEGARANGES][2],BoxSizes[MAXNOMEGARANGES][4], MaxRingRad;
     int RingNumbers[200],cs=0,cs2=0,nOmeRanges=0,nBoxSizes=0,CellStruct;
     double Rsample, Hbeam,RingRadii[200],MargABC=0.3,MargABG=0.3;
   	char OutputFolder[1024],ResultFolder[1024];

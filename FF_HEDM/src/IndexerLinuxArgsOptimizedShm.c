@@ -46,7 +46,7 @@ check (int test, const char * message, ...)
 #define MAX_N_MATCHES 1
 #define MAX_N_RINGS 500
 #define MAX_N_HKLS 5000
-#define MAX_N_OMEGARANGES 72
+#define MAX_N_OMEGARANGES 2000
 #define N_COL_THEORSPOTS 14
 #define N_COL_OBSSPOTS 9
 #define N_COL_GRAINSPOTS 17
