@@ -987,7 +987,8 @@ int main(int argc, char *argv[])
 		if (((EtaCorrWedge[i] > (-180+MinEta)) && (EtaCorrWedge[i] < -MinEta))|| ((EtaCorrWedge[i] > MinEta) && (EtaCorrWedge[i] < (180-MinEta)))){
 			KeepSpot = 0;
 			for (j=0;j<nOmeRanges;j++){
-				if ((OmegaCorrWedge[i]>OmegaRanges[j][0])&&(OmegaCorrWedge[i]<OmegaRanges[j][1])&&(YCorrWedge[i]>BoxSizes[j][0])
+				print("%lf %lf %lf\n",OmegaRanges[j][1],OmegaCorrWedge[i],OmegaRanges[j][0]);
+				if ((OmegaCorrWedge[i]>=OmegaRanges[j][0])&&(OmegaCorrWedge[i]<=OmegaRanges[j][1])&&(YCorrWedge[i]>BoxSizes[j][0])
 				  &&(YCorrWedge[i]<BoxSizes[j][1])&&(ZCorrWedge[i]>BoxSizes[j][2])&&(ZCorrWedge[i]<BoxSizes[j][3])){KeepSpot=1;break;}
 			}
 			if (KeepSpot == 1){
