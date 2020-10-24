@@ -5,7 +5,7 @@
 
 //
 //  FitTiltBCLsdSample.c
-//  
+//
 //
 //  Created by Hemant Sharma on 2014/06/18.
 //
@@ -106,14 +106,14 @@ MatrixMultF33(
     }
 }
 
-static inline 
+static inline
 double CalcEtaAngle(double y, double z){
 	double alpha = rad2deg*acos(z/sqrt(y*y+z*z));
 	if (y>0) alpha = -alpha;
 	return alpha;
 }
 
-static inline 
+static inline
 double R4mTtheta(double Ttheta, double Lsd)
 {
 	return Lsd*tan(deg2rad*Ttheta);
@@ -134,7 +134,7 @@ void YZ4mREta(int NrElements, double *R, double *Eta, double *Y, double *Z){
 	}
 }
 
-//~ static inline 
+//~ static inline
 //~ void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc, double px, double *R, double *Eta, double Rmins[n_hkls],
 						   //~ double Rmaxs[n_hkls], double EtaBinsLow[nEtaBins], double EtaBinsHigh[nEtaBins], int nIndices, int *NrEachIndexbin, int **Indices){
 	//~ int i, j, k, l, counter=0;
@@ -160,7 +160,7 @@ void YZ4mREta(int NrElements, double *R, double *Eta, double *Y, double *Z){
 	//~ }
 //~ }
 
-static inline 
+static inline
 void CalcWeightedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Average, double *R, double *Eta, double *RMean, double *EtaMean){
 	int i,j,k;
 	double TotIntensities[nIndices];
@@ -283,8 +283,8 @@ double problem_function(
 	return TotalDiff;
 }
 
-void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean, double *IdealTtheta, double Lsd, double MaxRad, 
-				  double ybc, double zbc, double tx, double tyIn, double tzIn, double *ty, double *tz, double *LsdFit, 
+void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean, double *IdealTtheta, double Lsd, double MaxRad,
+				  double ybc, double zbc, double tx, double tyIn, double tzIn, double *ty, double *tz, double *LsdFit,
 				  double *ybcFit, double *zbcFit, double p0, double p1, double p2, double *MeanDiff, double tolTilts, double tolLsd, double tolBC, double px){
 	unsigned n=5;
 	struct my_func_data f_data;
@@ -508,7 +508,7 @@ int main(int argc, char *argv[])
     int StartNr, EndNr, LowNr, NrPixels,LayerNr;
     int SpaceGroup;
     double LatticeConstant[6],Wavelength,MaxRingRad,Lsd,MaxTtheta,TthetaTol,ybc,zbc,px,tyIn,tzIn;
-    double tx,tolTilts=1,tolLsd=5000,tolBC=1,p0,p1,p2,RhoD,wedge,MinEta,OmegaRanges[20][2],BoxSizes[20][4];
+    double tx,tolTilts=1,tolLsd=5000,tolBC=1,p0,p1,p2,RhoD,wedge,MinEta,OmegaRanges[2000][2],BoxSizes[2000][4];
     int RingNumbers[200],cs=0,nOmeRanges=0,nBoxSizes=0,DoFit=0,CellStruct=2,RingToIndex;
     double Rsample, Hbeam,MinMatchesToAcceptFrac,MinOmeSpotIDsToIndex,MaxOmeSpotIDsToIndex,Width;
     int UseFriedelPairs=1;
@@ -648,7 +648,7 @@ int main(int argc, char *argv[])
         str = "LatticeConstant ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %lf %lf %lf %lf %lf %lf", dummy, 
+            sscanf(aline,"%s %lf %lf %lf %lf %lf %lf", dummy,
 				&LatticeConstant[0],&LatticeConstant[1],
 				&LatticeConstant[2],&LatticeConstant[3],
 				&LatticeConstant[4],&LatticeConstant[5]);
@@ -843,9 +843,9 @@ int main(int argc, char *argv[])
 	//sprintf(FileName,"%s/%s",folder,fn);
 	sprintf(folder,"%s/PeakSearch/%s/",Folder,FileStem);
 	sprintf(FileName,"%s/PeakSearch/%s/Radius_StartNr_%d_EndNr_%d_RingNr_%d.csv",Folder,FileStem,StartNr,EndNr,RingNumbers[0]);
-	
+
 	char line[5024];
-	
+
 	char *hklfn = "hkls.csv";
 	FILE *hklf = fopen(hklfn,"r");
 	fgets(aline,1000,hklf);
