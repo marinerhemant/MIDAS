@@ -413,6 +413,11 @@ int main(int argc, char *argv[]){
 							(CurrentIDs[i][3]/CurrentIDs[i][1]),(CurrentIDs[i][4]/CurrentIDs[i][1]),
 							CurrentIDs[i][5],CurrentIDs[i][10],CurrentIDs[i][11],CurrentIDs[i][12],
 							CurrentIDs[i][13],CurrentIDs[i][14],CurrentIDs[i][15]);
+					printf("Written: %d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
+							CurrentIDs[i][1],(CurrentIDs[i][2]/CurrentIDs[i][1]),
+							(CurrentIDs[i][3]/CurrentIDs[i][1]),(CurrentIDs[i][4]/CurrentIDs[i][1]),
+							CurrentIDs[i][5],CurrentIDs[i][10],CurrentIDs[i][11],CurrentIDs[i][12],
+							CurrentIDs[i][13],CurrentIDs[i][14],CurrentIDs[i][15]);
 					SpotIDNr++;
 				}
 			}
@@ -467,6 +472,11 @@ int main(int argc, char *argv[]){
 	}
 	for (i=0;i<nSpots;i++){
 		fprintf(OutFile,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
+				CurrentIDs[i][1],(CurrentIDs[i][2]/CurrentIDs[i][1]),
+				(CurrentIDs[i][3]/CurrentIDs[i][1]),(CurrentIDs[i][4]/CurrentIDs[i][1]),
+				CurrentIDs[i][5],CurrentIDs[i][10],CurrentIDs[i][11],CurrentIDs[i][12],
+				CurrentIDs[i][13],CurrentIDs[i][14],CurrentIDs[i][15]);
+		printf("Written %d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
 				CurrentIDs[i][1],(CurrentIDs[i][2]/CurrentIDs[i][1]),
 				(CurrentIDs[i][3]/CurrentIDs[i][1]),(CurrentIDs[i][4]/CurrentIDs[i][1]),
 				CurrentIDs[i][5],CurrentIDs[i][10],CurrentIDs[i][11],CurrentIDs[i][12],
