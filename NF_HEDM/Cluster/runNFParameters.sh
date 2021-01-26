@@ -72,7 +72,7 @@ echo "Making hexgrid."
 ${BINFOLDER}/MakeHexGrid $TOP_PARAM_FILE
 if [[ ${MultiGridPoints} == 0 ]];
 then
-  echo "Now enter the x,y coodinates to optimize, no space, separated by a comma"
+  echo "Now enter the x,y coordinates to optimize, no space, separated by a comma"
   read POS
   echo "You entered: ${POS}"
   GRIDPOINTNR=`python <<END

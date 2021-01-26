@@ -2,6 +2,8 @@ SeedFolder /home/hsharma/opt/MIDAS/FF_HEDM/Example						# Directory where the re
 RingThresh 1 10															# Ring number and threshold for the ring to be used in analysis.
 RingThresh 2 10															# Ring number and threshold for the ring to be used in analysis.
 RingThresh 3 10															# Ring number and threshold for the ring to be used in analysis.
+RingThresh 4 10															# Ring number and threshold for the ring to be used in analysis.
+RingThresh 5 10															# Ring number and threshold for the ring to be used in analysis.
 HeadSize 8192															# Size (in bytes) of the header in the raw data.
 OverAllRingToIndex 2													# Ring number of the ring to be used to generate candidate orientations. Preferably use a ring with low multiplicity to lower runtime.
 RawFolder /home/hsharma/opt/MIDAS/FF_HEDM/Example						# Directory where the raw data lives.
@@ -28,19 +30,19 @@ FileStem Au_FF															# Starting file name of the dataset up to the _ bef
 Ext .ge3																# File name extension.
 StartFileNrFirstLayer 1													# First file number of the first layer.
 Padding 6																# Number of digits in the file name.
-Lsd 1150000.0000														# Distance between the rotation axis and the detector. (um)
-BC 1024 1024															# Beam center horizontal and vertical. (px px)
+Lsd 1000000.0000														# Distance between the rotation axis and the detector. (um)
+BC 1022 1022															# Beam center horizontal and vertical. (px px)
 tx 0																	# Rotation of the detector from ideal position about x-ray beam. (deg)
 ty 0																	# Rotation of the detector from ideal position about the horizontal axis towards the door. (deg)
 tz 0																	# Rotation of the detector from ideal position about the vertical axis up. (deg)
 p0 0																	# Detector distortion parameter.
 p1 0																	# Detector distortion parameter.
 p2 0																	# Detector distortion parameter.
-Wedge 0																	# 
+Wedge 0																	#
 RhoD 204800
 MaxRingRad 204800
 StartNr 1
-EndNr 720
+EndNr 1440
 Rsample 2000
 Hbeam 2000
 DoFit 0
@@ -50,7 +52,7 @@ MaxOmeSpotIDsToIndex 90
 tolTilts 2
 tolBC 10
 tolLsd 5000
-OmegaStep -0.5
+OmegaStep -0.25
 OmegaFirstFile 180
 Wavelength 0.22291
 NrPixels 2048
