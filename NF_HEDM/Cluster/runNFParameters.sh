@@ -23,7 +23,7 @@ then
 fi
 
 hostname=$( hostname )
-if [[ ${hostname} == *'orthros.aps.anl.gov'* ]]; then
+if [[ ${hostname} == *'orthros.xray.aps.anl.gov'* ]]; then
 	echo "Exporting the correct python on orthros."
 	export PATH=/clhome/TOMO1/opt/midasconda/bin:$PATH
 fi
