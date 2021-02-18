@@ -30,7 +30,7 @@ for line in paramcontents:
 	elif line.startswith('Ext '):
 		ext = line.split()[1]
 
-if darkfn is not '':
+if darkfn != '':
 	if not os.path.isfile(darkfn):
 		print('DARK FILE ' + darkfn + ' does not exist. Please check!!!')
 		# ~ sys.exit(1)
