@@ -69,7 +69,7 @@ def getfn(fstem,fnum,geNum):
 		fldr = folder + '/ge' + str(geNum) + '/'
 	else:
 		fldr = folder
-	if geNum is not -1:
+	if geNum != -1:
 		return fldr + fstem + '_' + str(fnum).zfill(padding) + '.ge' + str(geNum)
 	else:
 		return fldr + fstem + '_' + str(fnum).zfill(padding) + '.' + fnextvar.get()
@@ -88,11 +88,11 @@ def getImage(fn,bytesToSkip):
 	f.close()
 	data = np.reshape(data,(NrPixelsY,NrPixelsZ))
 	data = data.astype(float)
-	if transpose.get() is 1:
+	if transpose.get() == 1:
 		data = np.transpose(data)
-	if hflip.get() is 1:
+	if hflip.get() == 1:
 		data = np.flip(data,0)
-	if vflip.get() is 1:
+	if vflip.get() == 1:
 		data = np.flip(data,1)
 	return data
 
@@ -762,7 +762,7 @@ def loadbplot():
 	framesToSkip = int(frameNr % nFramesPerFile)
 	bytesToSkip = Header + framesToSkip*(BytesPerPixel*NrPixelsY*NrPixelsZ)
 	detnr = int(detnumbvar.get())
-	if detnr is not -1:
+	if detnr != -1:
 		if (detnr != origdetnum or initplot2) and bcs is not None:
 			origdetnum = detnr
 			bclocal[0] = bcs[detnr-startDetNr][0]

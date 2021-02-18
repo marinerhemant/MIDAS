@@ -5,7 +5,7 @@
 
 //
 //
-//  
+//
 //
 //  Created by Hemant Sharma on 2013/11/13.
 //
@@ -30,14 +30,17 @@ HexGrid(
     double NrHex,
     double HtTriangle,
     double ALast,
-    double **XY)
+    double **XY,
+    double EdgeLength)
 {
     int i,j;
     int counter=0;
     int NrRowElements;
-    double ythis,xstart,ynext, ysmall, ybig;
+    double ythis,xstart,ynext, ysmall, ybig, xt1, xt2;
     ysmall = HtTriangle*(1.0/3.0);
     ybig = HtTriangle*(2.0/3.0);
+    xt1 = EdgeLength*sqrt(3)/6;
+    xt2 = EdgeLength*sqrt(3)*2/6;
     for (i=-NrHex;i<=NrHex;i++){
         if (i == 0){
             continue;
@@ -53,16 +56,22 @@ HexGrid(
         xstart = -ALast + (fabs(i)*GridSize*0.5);
         for (j=0;j<NrRowElements;j++)
         {
-            XY[counter][0] = ynext;
             if (ynext==ybig){
-                XY[counter][1] = ysmall;
+				//~ XY[counter][0] = ynext;
+                //~ XY[counter][1] = ysmall;
+				XY[counter][0] = xt2;
+                XY[counter][1] = xt1;
             }
             else{
-                XY[counter][1] = ybig;
+				//~ XY[counter][0] = ynext;
+                //~ XY[counter][1] = ybig;
+				XY[counter][0] = xt1;
+                XY[counter][1] = xt2;
             }
             XY[counter][2] = xstart + (GridSize*j)/2;
             XY[counter][3] = ythis - (ynext*i/(fabs(i)));
-            XY[counter][4] = GridSize/2;
+            //~ XY[counter][4] = GridSize/2;
+            XY[counter][4] = EdgeLength/2;
             counter++;
             if (ynext==ybig){
                 ynext = ysmall;
@@ -79,7 +88,7 @@ allocMatrix(int nrows, int ncols)
 {
     double** arr;
     int i;
-    
+
     arr = malloc(nrows * sizeof(*arr));
     if (arr == NULL ) {
         return NULL;
@@ -90,7 +99,7 @@ allocMatrix(int nrows, int ncols)
             return NULL;
         }
     }
-    
+
     return arr;
 }
 
@@ -112,7 +121,7 @@ main(int argc, char *argv[])
     clock_t start, end;
     double diftotal;
     start = clock();
-    
+
     char *ParamFN;
     FILE *fileParam;
     ParamFN = argv[1];
@@ -172,7 +181,7 @@ main(int argc, char *argv[])
     }
     double **XYGrid;
     XYGrid = allocMatrix(NrGridElements,5);
-    HexGrid(GridSize,Rsample,NrHex,HtTriangle,ALast,XYGrid);
+    HexGrid(GridSize,Rsample,NrHex,HtTriangle,ALast,XYGrid,EdgeLength);
     printf("Number of grid points: %d.\n",NrGridElements);
     char fn[1024];
     if (gridfnfound == 1) sprintf(fn,"%s/%s",direct,gridfn);
@@ -185,7 +194,7 @@ main(int argc, char *argv[])
     }
     fprintf(fp,"%d\n",NrGridElements);
     for (j=0;j<NrGridElements;j++){
-        fprintf(fp,"%f %f %f %f %f\n",XYGrid[j][0],XYGrid[j][1],XYGrid[j][2],XYGrid[j][3],EdgeLength/2);
+        fprintf(fp,"%f %f %f %f %f\n",XYGrid[j][0],XYGrid[j][1],XYGrid[j][2],XYGrid[j][3],XYGrid[j][4]);
     }
     fclose(fp);
     FreeMemMatrix(XYGrid,NrGridElements);
