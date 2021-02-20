@@ -1569,7 +1569,6 @@ int DoIndexing(int SpotIDs,int nSpotIDs,struct TParams Params )
 		if ( nPlaneNormals == 0 ) {
 			if (usingFriedelPair == 1){
 				printf("No Friedel pair found, will try everything.\n");
-				return 0;
 			}
 			usingFriedelPair = 0;
 			printf("Trying all plane normals.\n");
