@@ -226,7 +226,8 @@ ReadBinFiles(
                 BinNr = k;
                 BinNr *=NrOfFiles;
                 BinNr *= NrOfPixels;
-                TempCntr = (counter*(NrOfPixels));
+                TempCntr = NrOfPixels;
+                TempCntr *= counter;
                 BinNr += TempCntr;
                 BinNr += (ythis*(2048));
                 BinNr += zthis;
