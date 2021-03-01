@@ -260,7 +260,7 @@ main(int argc, char *argv[])
     ReadCode = ReadBinFiles(fn,ext,StartNr,EndNr,ObsSpotsInfo,nLayers,SizeObsSpots);
     if (ReadCode == 0){
         printf("Reading bin files did not go well. Please check.\n");
-        return 0;
+        return 1;
     }
     printf("Read Orientations\n");
     clock_t startthis;

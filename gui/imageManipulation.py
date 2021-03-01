@@ -75,14 +75,14 @@ def getoutfn(fstem,fnum):
 def getDarkImage(fn,bytesToSkip,doBadProcessing,badData):
 	dataDark = np.zeros(NrPixels*NrPixels)
 	statinfo = os.stat(fn)
-	nFramesPerFile = (statinfo.st_size - 8192)/(2*NrPixels*NrPixels)
+	nFramesPerFile = int((statinfo.st_size - 8192)/(2*NrPixels*NrPixels))
 	f = open(fn,'rb')
 	f.seek(bytesToSkip,os.SEEK_SET)
 	for framenr in range(nFramesPerFile):
 		data = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
 		data = data.astype(float)
 		if doBadProcessing:
-			### For each non-zero element in badData, correct with mean of 
+			### For each non-zero element in badData, correct with mean of
 			### neighbours, no precaution for edge pixels for now
 			for idx in badData:
 				if idx < NrPixels * (NrPixels-1) and idx >= NrPixels:
@@ -254,7 +254,7 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 		darkfn = darkfilefullpath[:-1] + fn[-1]
 		dark = getDarkImage(darkfn,8192,doBadProcessing,badData)
 	statinfo = os.stat(fn)
-	nFramesPerFile = (statinfo.st_size - 8192)/(2*NrPixels*NrPixels)
+	nFramesPerFile = int((statinfo.st_size - 8192)/(2*NrPixels*NrPixels))
 	f = open(fn,'rb')
 	header = np.fromfile(f,dtype=np.uint8,count=8192)
 	sumArr = np.zeros(NrPixels*NrPixels,dtype=float)
@@ -266,7 +266,7 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 		data = np.fromfile(f,dtype=np.uint16,count=NrPixels*NrPixels)
 		data = data.astype(float)
 		if doBadProcessing:
-			### For each non-zero element in badData, correct with mean of 
+			### For each non-zero element in badData, correct with mean of
 			### neighbours, no precaution for edge pixels for now
 			for idx in badData:
 				if idx < NrPixels * (NrPixels-1) and idx >= NrPixels:

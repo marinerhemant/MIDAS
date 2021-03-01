@@ -588,7 +588,7 @@ void FindPeakPositions(
 					PosFill = PosFill+1;
 				}
 				while(TestBit(ImageEdges,PosFill)){
-		
+
 					Image4[PosFill] = PeakNumber;
 					SetBit(FilledEdges,PosFill);
 					PosFill++;
@@ -620,14 +620,14 @@ static inline void DepthFirstSearch(int x, int y, int current_label, int NrPixel
 	if (x < 0 || x == NrPixels) return;
 	if (y < 0 || y == NrPixels) return;
 	if ((ConnectedComponents[x][y]!=0)||(BoolImage[x][y]==0)) return;
-	
+
 	ConnectedComponents[x][y] = current_label;
 	Positions[current_label][PositionTrackers[current_label]] = (x*NrPixels) + y;
 	PositionTrackers[current_label] += 1;
 	int direction;
 	for (direction=0;direction<8;++direction){
 		DepthFirstSearch(x + dx[direction], y + dy[direction], current_label, NrPixels, BoolImage, ConnectedComponents,Positions,PositionTrackers);
-		
+
 	}
 }
 
@@ -666,7 +666,7 @@ main(int argc, char *argv[])
     clock_t start, end;
     double diftotal;
     start = clock();
-    
+
     // Read params file.
     char *ParamFN;
     FILE *fileParam;
@@ -681,7 +681,6 @@ main(int argc, char *argv[])
 	double sigma;
 	ImageNr = atoi(argv[3]);
 	int DoLoGFilter=1,WFImages=0;
-	WFImages = 0;
     while (fgets(aline,1000,fileParam)!=NULL){
         str = "RawStartNr ";
         LowNr = strncmp(aline,str,strlen(str));
@@ -801,12 +800,10 @@ main(int argc, char *argv[])
 	sprintf(MedianFileName,"%s_Median_Background_Distance_%d.%s",fn,nLayers-1,extReduced);
 	FILE *MFI = fopen(MedianFileName,"r");
 	int rc = fread(MedFltImg,SizeFile,1,MFI);
-	
+
 	// Use LibTiff to read files
 	int FileNr = ((nLayers - 1) * NrFilesPerLayer) + StartNr + ImageNr;
-	if (WFImages == 1){
-		FileNr += (nLayers-1)*10;
-	}
+	FileNr += (nLayers-1)*WFImages;
 	sprintf(FileName,"%s_%06d.%s",fn,FileNr,extOrig);
 	TIFFErrorHandler oldhandler;
 	oldhandler = TIFFSetWarningHandler(NULL);
@@ -998,9 +995,9 @@ main(int argc, char *argv[])
 			(int)peakID[i],(double)intensity[i]);
 	}
 	fclose(ft);
-	
+
 	if (doDeblur != 0) return 0;
-	
+
 	float32_t dummy1 = 1;
 	uint32_t dummy2 = 1;
 	pixelvalue dummy3 = 1;

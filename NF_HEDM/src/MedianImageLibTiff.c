@@ -21,7 +21,7 @@ typedef uint16_t pixelvalue;
 pixelvalue quick_select(pixelvalue a[], int n) ;
 
 #define PIX_SWAP(a,b) { pixelvalue temp=(a);(a)=(b);(b)=temp; }
-pixelvalue quick_select(pixelvalue a[], int n) 
+pixelvalue quick_select(pixelvalue a[], int n)
 {
     int low, high ;
     int median;
@@ -55,7 +55,7 @@ pixelvalue quick_select(pixelvalue a[], int n)
         if (hh >= median)
             high = hh - 1;
     }
-}   
+}
 #undef PIX_SWAP
 
 pixelvalue**
@@ -225,7 +225,7 @@ main(int argc, char *argv[])
     clock_t start, end;
     double diftotal;
     start = clock();
-    
+
     // Read params file.
     char *ParamFN;
     FILE *fileParam;
@@ -286,9 +286,7 @@ main(int argc, char *argv[])
             continue;
         }
     }
-    if (WFImages == 1){
-		StartNr = StartNr + (nLayers-1)*10;
-	}
+	StartNr = StartNr + (nLayers-1)*WFImages;
     sprintf(fn,"%s/%s",direct,fn2);
     fclose(fileParam);
 	int ReturnCode;
