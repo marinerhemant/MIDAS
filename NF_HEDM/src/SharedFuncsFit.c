@@ -177,6 +177,7 @@ ReadBinFiles(
     NrOfFiles = EndNr - StartNr + 1;
     NrOfPixels = 2048*2048;
     long long int kT;
+    kT = ObsSpotsSize*32;
     /*for (kT=0;kT<ObsSpotsSize;kT++){
         ObsSpotsMat[k] = 0;
     }*/
@@ -229,9 +230,9 @@ ReadBinFiles(
                 BinNr += TempCntr;
                 BinNr += (ythis*(2048));
                 BinNr += zthis;
-                if (BinNr < 0 || BinNr > ObsSpotsSize){
+                if (BinNr < 0 || BinNr > kT){
 					printf("BinNr was out of bounds.\n");
-					printf("%lld %d %d %d %d %lld %d %d\n",BinNr, k, NrOfFiles, NrOfPixels, counter, TempCntr, ythis, zthis);fflush(stdout);
+					printf("%lld %lld %d %d %d %d %lld %d %d\n",BinNr, k, NrOfFiles, NrOfPixels, counter, TempCntr, ythis, zthis, ObsSpotsSize);fflush(stdout);
 					return 0;
 				}
                 SetBit(ObsSpotsMat,BinNr);
