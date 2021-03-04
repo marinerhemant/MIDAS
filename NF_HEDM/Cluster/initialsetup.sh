@@ -19,7 +19,11 @@ FOLDER=${STEM%$CHART*}
 mkdir -p ${FOLDER}
 
 # Make hkls.csv
-${BINFOLDER}/GetHKLList ${TOP_PARAM_FILE}
+doHKLs=$( awk '$1 ~ /^supplyHKLs/ { print $2 } ' ${TOP_PARAM_FILE} )
+if [ ! -z "$doHKLs" ]
+then
+	${BINFOLDER}/GetHKLList ${TOP_PARAM_FILE}
+fi
 
 # Generate SeedOrientations
 SeedOrientations=$( awk '$1 ~ /^SeedOrientations/ { print $2 }' ${TOP_PARAM_FILE} )

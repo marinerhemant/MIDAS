@@ -66,7 +66,11 @@ mkdir -p ${outdir}
 rm -rf output
 
 # Make hkls.csv
-${BINFOLDER}/GetHKLList ${TOP_PARAM_FILE}
+doHKLs=$( awk '$1 ~ /^supplyHKLs/ { print $2 } ' ${TOP_PARAM_FILE} )
+if [ ! -z "$doHKLs" ]
+then
+	${BINFOLDER}/GetHKLList ${TOP_PARAM_FILE}
+fi
 
 echo "Making hexgrid."
 ${BINFOLDER}/MakeHexGrid $TOP_PARAM_FILE

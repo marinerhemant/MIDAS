@@ -27,7 +27,13 @@ cd ${seedfolder}
 mkdir -p ${outfolder}
 cd ${outfolder}
 cp ${seedfolder}/${paramfile} ${outfolder}
-${BINFOLDER}/GetHKLList ${paramfile}
+doHKLs=$( awk '$1 ~ /^supplyHKLs/ { print $2 } ' ${paramfile} )
+if [ -z "$doHKLs" ]
+then
+	${BINFOLDER}/GetHKLList ${paramfile}
+else
+	cp ${seedfolder}/hkls.csv ${outfolder}
+fi
 pfname=${outfolder}/Layer${layernr}_MultiRing_${paramfile}
 cp ${paramfile} ${pfname}
 finalringtoindex=$( awk '$1 ~ /^OverAllRingToIndex/ { print $2 }' ${paramfile} )
@@ -83,7 +89,7 @@ then
 		mkdir -p $Fldr
 		cp ${outfldr}/hkls.csv $Fldr
 		mkdir -p ${Fldr}/PeakSearch/${filestem}_${layernr}/
-		cp ${outfolder}/Radius_StartNr_${SNr}_EndNr_${ENr}_RingNr_${RINGNR}.csv ${Fldr}/PeakSearch/${filestem}_${layernr}/ 
+		cp ${outfolder}/Radius_StartNr_${SNr}_EndNr_${ENr}_RingNr_${RINGNR}.csv ${Fldr}/PeakSearch/${filestem}_${layernr}/
 		echo "Folder $Fldr" >> ${ThisParamFileName}
 		echo "RingToIndex $RINGNR" >> ${ThisParamFileName}
 		echo "RingNumbers $RINGNR" >> ${ThisParamFileName}
