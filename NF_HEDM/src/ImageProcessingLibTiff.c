@@ -805,6 +805,8 @@ main(int argc, char *argv[])
 	int FileNr = ((nLayers - 1) * NrFilesPerLayer) + StartNr + ImageNr;
 	FileNr += (nLayers-1)*WFImages;
 	sprintf(FileName,"%s_%06d.%s",fn,FileNr,extOrig);
+	printf("Opening file: %s\n",FileName);
+	fflush(stdout);
 	TIFFErrorHandler oldhandler;
 	oldhandler = TIFFSetWarningHandler(NULL);
 	TIFF* tif = TIFFOpen(FileName, "r");
