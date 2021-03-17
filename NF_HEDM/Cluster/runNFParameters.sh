@@ -67,7 +67,7 @@ rm -rf output
 
 # Make hkls.csv
 doHKLs=$( awk '$1 ~ /^supplyHKLs/ { print $2 } ' ${TOP_PARAM_FILE} )
-if [ ! -z "$doHKLs" ]
+if [ -z "$doHKLs" ]
 then
 	${BINFOLDER}/GetHKLList ${TOP_PARAM_FILE}
 fi
