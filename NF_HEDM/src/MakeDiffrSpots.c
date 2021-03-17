@@ -5,7 +5,7 @@
 
 //
 //  MakeDiffrSpots.c
-//  
+//
 //
 //  Created by Hemant Sharma on 2013/11/19
 //
@@ -51,7 +51,7 @@ allocMatrix(int nrows, int ncols)
 {
     double** arr;
     int i;
-    
+
     arr = malloc(nrows * sizeof(*arr));
     if (arr == NULL ) {
         return NULL;
@@ -62,7 +62,7 @@ allocMatrix(int nrows, int ncols)
             return NULL;
         }
     }
-    
+
     return arr;
 }
 
@@ -122,11 +122,11 @@ RotateAroundZ(
 {
     RealType cosa = cos(alpha*deg2rad);
     RealType sina = sin(alpha*deg2rad);
-    
+
     RealType mat[3][3] = {{ cosa, -sina, 0 },
         { sina,  cosa, 0 },
         { 0, 0, 1}};
-    
+
     MatrixMultF(mat, v1, v2);
 }
 
@@ -165,7 +165,7 @@ CalcOmega(
     RealType ome;
     RealType len= sqrt(x*x + y*y + z*z);
     RealType v=sin(theta*deg2rad)*len;
-    
+
     RealType almostzero = 1e-4;
     if ( fabs(y) < almostzero ) {
         if (x != 0) {
@@ -185,16 +185,16 @@ CalcOmega(
         RealType b = (2*v*x) / y2;
         RealType c = ((v*v) / y2) - 1;
         RealType discr = b*b - 4*a*c;
-        
+
         RealType ome1a;
         RealType ome1b;
         RealType ome2a;
         RealType ome2b;
         RealType cosome1;
         RealType cosome2;
-        
+
         RealType eqa, eqb, diffa, diffb;
-        
+
         if (discr >= 0) {
             cosome1 = (-b + sqrt(discr))/(2*a);
             if (fabs(cosome1) <= 1) {
@@ -213,17 +213,17 @@ CalcOmega(
                     *nsol = *nsol + 1;
                 }
             }
-            
+
             cosome2 = (-b - sqrt(discr))/(2*a);
             if (fabs(cosome2) <= 1) {
                 ome2a = acos(cosome2);
                 ome2b = -ome2a;
-                
+
                 eqa = -x*cos(ome2a) + y*sin(ome2a);
                 diffa = fabs(eqa - v);
                 eqb = -x*cos(ome2b) + y*sin(ome2b);
                 diffb = fabs(eqb - v);
-                
+
                 if (diffa < diffb) {
                     omegas[*nsol] = ome2a*rad2deg;
                     *nsol = *nsol + 1;
@@ -339,7 +339,7 @@ main(int argc, char *argv[])
     double diftotal;
     start0 = clock();
     int i,j,k,t,p;
-    
+
     // Read params file.
     char *ParamFN;
     FILE *fileParam;
@@ -427,7 +427,7 @@ main(int argc, char *argv[])
         str = "OmegaRange ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %lf %lf", dummy, 
+            sscanf(aline,"%s %lf %lf", dummy,
 				&OmegaRanges[NoOfOmegaRanges][0],
 				&OmegaRanges[NoOfOmegaRanges][1]);
             NoOfOmegaRanges++;
@@ -436,13 +436,14 @@ main(int argc, char *argv[])
         str = "BoxSize ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
-            sscanf(aline,"%s %lf %lf %lf %lf", dummy, 
-				&BoxSizes[countr][0], &BoxSizes[countr][1], 
+            sscanf(aline,"%s %lf %lf %lf %lf", dummy,
+				&BoxSizes[countr][0], &BoxSizes[countr][1],
 				&BoxSizes[countr][2], &BoxSizes[countr][3]);
             countr++;
             continue;
         }
     }
+    return;
     fclose(fileParam);
     MaxTtheta = (180/M_PI)*atan(MaxRingRad/Distances[0]);
     Distance = Distances[0];
@@ -473,7 +474,7 @@ main(int argc, char *argv[])
 		printf("Nr of Orientations mismatch. Exiting.\n");
 		return (1);
 	}
-    
+
     // For each position and each orientation, generate spots and save.
     RealType **TheorSpots;
     int nTspots;
