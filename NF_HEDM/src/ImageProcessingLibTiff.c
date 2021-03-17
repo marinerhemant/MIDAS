@@ -808,6 +808,10 @@ main(int argc, char *argv[])
 	TIFFErrorHandler oldhandler;
 	oldhandler = TIFFSetWarningHandler(NULL);
 	TIFF* tif = TIFFOpen(FileName, "r");
+	if (tif == NULL){
+		printf("%s not found.",FileName);
+		return 1;
+	}
 	TIFFSetWarningHandler(oldhandler);
 	int interInt;
 	if (tif) {

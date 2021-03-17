@@ -143,6 +143,10 @@ int CalcMedian(char fn[1000],
 		FileNr = ((LayerNr - 1) * NrFilesPerLayer) + StartNr + j;
 		sprintf(FileName,"%s_%06d.%s",fn,FileNr,ext);
 		TIFF* tif = TIFFOpen(FileName, "r");
+		if (tif == NULL){
+			printf("%s not found.\n",FileName);
+			return 0;
+		}
 		TIFFSetWarningHandler(oldhandler);
 		if (tif) {
 			tdata_t buf;
