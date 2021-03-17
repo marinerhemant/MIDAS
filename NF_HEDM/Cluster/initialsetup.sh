@@ -18,6 +18,12 @@ CHART=/
 FOLDER=${STEM%$CHART*}
 mkdir -p ${FOLDER}
 
+hostname=$( hostname )
+if [[ ${hostname} == *'orthros.xray.aps.anl.gov'* ]]; then
+	echo "Exporting the correct python on orthros."
+	export PATH=/clhome/TOMO1/opt/midasconda/bin:$PATH
+fi
+
 # Make hkls.csv
 doHKLs=$( awk '$1 ~ /^supplyHKLs/ { print $2 } ' ${TOP_PARAM_FILE} )
 if [ ! -z "$doHKLs" ]
@@ -41,8 +47,14 @@ if [ ${DoGrid} == 1 ];
 then
   ${BINFOLDER}/MakeHexGrid $TOP_PARAM_FILE
 
+  # if tomo file was supplied
+  if [[ -n $( awk '$1 ~ /^TomoImage/ { print }' ${TOP_PARAM_FILE} ) ]];
+  then
+    tomoPxSize=$( awk '$1 ~ /^TomoPixelSize/ { print $2 }' ${TOP_PARAM_FILE} )
+    TomoFN=$( awk '$1 ~ /^TomoImage/ { print }' ${TOP_PARAM_FILE} )
+    ${BINFOLDER}/filterGridfromTomo ${TomoFN} ${tomoPxSize}
   # Filter HexGrid
-  if [[ -n $( awk '$1 ~ /^GridMask/ { print }' ${TOP_PARAM_FILE} ) ]];
+  else if [[ -n $( awk '$1 ~ /^GridMask/ { print }' ${TOP_PARAM_FILE} ) ]];
   then
     Xmin=$( awk '$1 ~ /^GridMask/ { print $2 }' ${TOP_PARAM_FILE} )
     Xmax=$( awk '$1 ~ /^GridMask/ { print $3 }' ${TOP_PARAM_FILE} )

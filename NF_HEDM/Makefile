@@ -27,7 +27,7 @@ BINDIR=bin/
 
 all: help bindircheck makediffrspots makehexgrid medianimage imageprocessing \
 	fitorientation fitorientationparameters fitorientationparametersmultipoint \
-	genseedorientations simulatediffrspots processnfmicremote \
+	genseedorientations simulatediffrspots processnfmicremote gridfiltertomo\
 	mmapimageinfo hkls parsemic fitorientationsinglepoint parsedeconv nfgrainscalc
 	# imageprocessinghdf medianimagehdf
 
@@ -107,6 +107,9 @@ imageprocessing: $(SRCDIR)ImageProcessingLibTiff.c
 
 parsedeconv: $(SRCDIR)ParseDeconvOutput.c
 	$(CC) $(SRCDIR)ParseDeconvOutput.c -o $(BINDIR)ParseDeconvOutput $(CFLAGS) $(CFLAGSTIFF)
+
+gridfiltertomo: $(SRCDIR)filterGridfromTomo.c
+	$(CC) $(SRCDIR)filterGridfromTomo.c -o $(BINDIR)filterGridfromTomo $(CFLAGS)
 
 fitorientation: $(SRCDIR)FitOrientation.c
 	$(CC) $(SRCDIR)FitOrientation.c $(SRCDIR)GetMisorientation.c $(SRCDIR)CalcDiffractionSpots.c $(SRCDIR)SharedFuncsFit.c \
