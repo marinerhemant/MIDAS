@@ -27,7 +27,7 @@ fi
 # Make hkls.csv
 doHKLs=$( awk '$1 ~ /^supplyHKLs/ { print $2 } ' ${TOP_PARAM_FILE} )
 echo $doHKLs
-if [ ! -z "$doHKLs" ]
+if [ -z "$doHKLs" ]
 then
 	echo "We will generate hkls."
 	${BINFOLDER}/GetHKLList ${TOP_PARAM_FILE}
