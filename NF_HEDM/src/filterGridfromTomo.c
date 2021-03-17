@@ -16,7 +16,6 @@ int main (int argc, char *argv[]){
 	uint8_t *imTomo;
 	imTomo = calloc(nrPxTomo*nrPxTomo,sizeof(uint8_t));
 	fread(imTomo,sz*sizeof(uint8_t),1,tomoF);
-	printf("%d %d \n", (int)imTomo[700*1400+700],(int)imTomo[1357+1400*1033]);
 	fclose(tomoF);
 	printf("Size of tomo image: %d Pixel dimension: %d\n",(int)sz,(int)nrPxTomo);
 	FILE *gridF, *gridOut;
