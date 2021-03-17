@@ -443,7 +443,6 @@ main(int argc, char *argv[])
             continue;
         }
     }
-    return;
     fclose(fileParam);
     MaxTtheta = (180/M_PI)*atan(MaxRingRad/Distances[0]);
     Distance = Distances[0];
