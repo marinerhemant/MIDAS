@@ -51,7 +51,7 @@ then
   if [[ -n $( awk '$1 ~ /^TomoImage/ { print }' ${TOP_PARAM_FILE} ) ]];
   then
     tomoPxSize=$( awk '$1 ~ /^TomoPixelSize/ { print $2 }' ${TOP_PARAM_FILE} )
-    TomoFN=$( awk '$1 ~ /^TomoImage/ { print }' ${TOP_PARAM_FILE} )
+    TomoFN=$( awk '$1 ~ /^TomoImage/ { print $2 }' ${TOP_PARAM_FILE} )
     echo ${tomoPxSize}
     echo ${TomoFN}
     ${BINFOLDER}/filterGridfromTomo ${TomoFN} ${tomoPxSize}
