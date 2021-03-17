@@ -53,6 +53,8 @@ then
     tomoPxSize=$( awk '$1 ~ /^TomoPixelSize/ { print $2 }' ${TOP_PARAM_FILE} )
     TomoFN=$( awk '$1 ~ /^TomoImage/ { print }' ${TOP_PARAM_FILE} )
     ${BINFOLDER}/filterGridfromTomo ${TomoFN} ${tomoPxSize}
+    mv grid.txt grid_unfilt.txt
+    mv gridNew.txt grid.txt
   # Filter HexGrid
   else if [[ -n $( awk '$1 ~ /^GridMask/ { print }' ${TOP_PARAM_FILE} ) ]];
   then
