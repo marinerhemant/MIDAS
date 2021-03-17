@@ -480,6 +480,10 @@ main(int argc, char *argv[])
     char *rc;
     char *hklfn = "hkls.csv";
 	FILE *hklf = fopen(hklfn,"r");
+    if (hklf==NULL){
+        printf("Could not read file %s\n",hklfn);
+        return (1);
+    }
 	rc = fgets(aline,1000,hklf);
 	while (fgets(aline,1000,hklf)!=NULL){
 		sscanf(aline, "%s %s %s %s %lf %lf %lf %lf %lf %s %s",dummy,dummy,dummy,
