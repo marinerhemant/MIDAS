@@ -35,7 +35,7 @@ int main (int argc, char *argv[]){
 		sscanf(aline,"%s %s %lf %lf %s",dummy,dummy,&x,&y,dummy);
 		xPos = (int)((x/pxTomo)+nrPxTomo/2);
 		yPos = (int)((y/pxTomo)+nrPxTomo/2);
-		if (xPos >= 0 && yPos >= 0 && xPos < (int)nrPxTomo && yPos < (int)nrPxTomo && imTomo[nrPxTomo*(nrPxTomo-yPos) + (nrPxTomo-xPos)] !=0){
+		if (xPos >= 0 && yPos >= 0 && xPos < (int)nrPxTomo && yPos < (int)nrPxTomo && imTomo[nrPxTomo*(nrPxTomo-yPos) + (xPos)] !=0){
 			fprintf(gridOut,"%s",aline);
 			nrRows++;
 		}
