@@ -1067,7 +1067,7 @@ logscaler = 0
 # Main funcion
 root = Tk.Tk()
 root.wm_title("NF display v0.1 Dt. 2017/03/25 hsharma@anl.gov")
-figur = Figure(figsize=(19,8.3),dpi=100)
+figur = Figure(figsize=(17,8),dpi=100)
 canvas = FigureCanvasTkAgg(figur,master=root)
 a = figur.add_subplot(121,aspect='equal')
 b = figur.add_subplot(122)
@@ -1144,8 +1144,8 @@ Tk.Label(master=firstRowFrame,text="StartFileNumberFirstLayer").grid(row=1,colum
 Tk.Entry(master=firstRowFrame,textvariable=startframenrvar,width=6).grid(row=1,column=12,sticky=Tk.W)
 Tk.Label(master=firstRowFrame,text="FrameNumber").grid(row=1,column=13,sticky=Tk.W)
 Tk.Entry(master=firstRowFrame,textvariable=r,width=5).grid(row=1,column=14,sticky=Tk.W)
-Tk.Button(master=firstRowFrame,text='+',command=incr_plotupdater,font=("Helvetica",12)).grid(row=1,column=15,sticky=Tk.W)
-Tk.Button(master=firstRowFrame,text='-',command=decr_plotupdater,font=("Helvetica",12)).grid(row=1,column=16,sticky=Tk.W)
+Tk.Button(master=firstRowFrame,text='+',command=incr_plotupdater,font=("Helvetica",8)).grid(row=1,column=15,sticky=Tk.W)
+Tk.Button(master=firstRowFrame,text='-',command=decr_plotupdater,font=("Helvetica",8)).grid(row=1,column=16,sticky=Tk.W)
 
 secondRowFrame = Tk.Frame(root)
 secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
@@ -1183,12 +1183,12 @@ Tk.Button(master=fourthRowFrame,text='LoadGrain',command=getgrain).grid(row=1,co
 Tk.Button(master=fourthRowFrame,text="MakeSpots",command=makespots).grid(row=1,column=2,sticky=Tk.W)
 Tk.Button(master=fourthRowFrame,text="FindOrientation",command=findOrientation).grid(row=1,column=3,sticky=Tk.W)
 
-Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetica",20)).grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.W)
+Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetica",12)).grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.W)
 
 loadmicframe = Tk.Frame(root)
 loadmicframe.grid(row=figrowspan+1,column=3,sticky=Tk.W)
-Tk.Button(master=loadmicframe,text='LoadMic',command=load_mic,font=("Helvetica",11)).grid(row=1,column=1,sticky=Tk.W)
-Tk.Button(master=loadmicframe,text='ReloadMic',command=plotmic,font=("Helvetica",11)).grid(row=1,column=2,sticky=Tk.W)
+Tk.Button(master=loadmicframe,text='LoadMic',command=load_mic,font=("Helvetica",8)).grid(row=1,column=1,sticky=Tk.W)
+Tk.Button(master=loadmicframe,text='ReloadMic',command=plotmic,font=("Helvetica",8)).grid(row=1,column=2,sticky=Tk.W)
 
 radioframe = Tk.Frame(root)
 radioframe.grid(row=figrowspan+2,column=3,rowspan=2,sticky=Tk.W)
@@ -1205,7 +1205,7 @@ Tk.Label(master=micframethirdrow,text='MinConfidence').grid(row=1,column=1,stick
 Tk.Entry(master=micframethirdrow,textvariable=cutconfidencevar,width=4).grid(row=1,column=2,sticky=Tk.W)
 Tk.Button(master=micframethirdrow,text='SelectPoint',command=selectpoint).grid(row=1,column=3)
 
-Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20)).grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W)
+Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",12)).grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W)
 
 root.bind('<Control-w>', lambda event: root.destroy())
 
