@@ -1183,7 +1183,7 @@ Tk.Button(master=fourthRowFrame,text='LoadGrain',command=getgrain).grid(row=1,co
 Tk.Button(master=fourthRowFrame,text="MakeSpots",command=makespots).grid(row=1,column=2,sticky=Tk.W)
 Tk.Button(master=fourthRowFrame,text="FindOrientation",command=findOrientation).grid(row=1,column=3,sticky=Tk.W)
 
-Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetica",12)).grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.W)
+Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetica",10)).grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.W)
 
 loadmicframe = Tk.Frame(root)
 loadmicframe.grid(row=figrowspan+1,column=3,sticky=Tk.W)
@@ -1205,7 +1205,7 @@ Tk.Label(master=micframethirdrow,text='MinConfidence').grid(row=1,column=1,stick
 Tk.Entry(master=micframethirdrow,textvariable=cutconfidencevar,width=4).grid(row=1,column=2,sticky=Tk.W)
 Tk.Button(master=micframethirdrow,text='SelectPoint',command=selectpoint).grid(row=1,column=3)
 
-Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",12)).grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W)
+Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",10)).grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W)
 
 root.bind('<Control-w>', lambda event: root.destroy())
 
