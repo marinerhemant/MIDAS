@@ -102,9 +102,9 @@ do
     ENDFILENRTHISLAYER=$(($STARTFILENRTHISLAYER+$(($(($NDISTANCES))*$(($INCREASEDFILES))))-1))
     printf -v startnr "%06d" ${STARTFILENRTHISLAYER}
     printf -v endnr "%06d" ${ENDFILENRTHISLAYER}
-    if [[ -n $( awk '$1 ~ /^TomoImage/ { print }' ${TOP_PARAM_FILE} ) ]];
+    if [[ -n $( awk '$1 ~ /^TomoImage/ { print }' ${PARAMFILE} ) ]];
     then
-        TomoFN=$( awk '$1 ~ /^TomoImage/ { print $2 }' ${TOP_PARAM_FILE} )
+        TomoFN=$( awk '$1 ~ /^TomoImage/ { print $2 }' ${PARAMFILE} )
         cp ${TomoFN} ${NEWFOLDER}
     fi
     for ((FILENR=${STARTFILENRTHISLAYER}; FILENR<=${ENDFILENRTHISLAYER}; FILENR++))
