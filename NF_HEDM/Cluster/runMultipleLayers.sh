@@ -92,6 +92,11 @@ do
 	mkdir -p ${NEWFOLDER}/${FOLDER}
 	THISPARAMFILE=${PFSTEM}Layer${LAYERNR}.txt
 	cp ${PARAMFILE} ${NEWFOLDER}/${THISPARAMFILE}
+    if [[ -n $( awk '$1 ~ /^TomoImage/ { print }' ${PARAMFILE} ) ]];
+    then
+        TomoFN=$( awk '$1 ~ /^TomoImage/ { print $2 }' ${PARAMFILE} )
+        cp ${TomoFN} ${NEWFOLDER}
+    fi
 	cd ${NEWFOLDER}
     if [[ $WFIMAGES -eq 1 ]]; then
         INCREASEDFILES=$(($NRFILESPERDISTANCE+10))
@@ -102,11 +107,6 @@ do
     ENDFILENRTHISLAYER=$(($STARTFILENRTHISLAYER+$(($(($NDISTANCES))*$(($INCREASEDFILES))))-1))
     printf -v startnr "%06d" ${STARTFILENRTHISLAYER}
     printf -v endnr "%06d" ${ENDFILENRTHISLAYER}
-    if [[ -n $( awk '$1 ~ /^TomoImage/ { print }' ${PARAMFILE} ) ]];
-    then
-        TomoFN=$( awk '$1 ~ /^TomoImage/ { print $2 }' ${PARAMFILE} )
-        cp ${TomoFN} ${NEWFOLDER}
-    fi
     for ((FILENR=${STARTFILENRTHISLAYER}; FILENR<=${ENDFILENRTHISLAYER}; FILENR++))
     do
 		printf -v filenrformat "%06d" ${FILENR}
