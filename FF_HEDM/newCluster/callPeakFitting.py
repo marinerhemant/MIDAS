@@ -35,7 +35,7 @@ def getParameters(ParamFileName):
 	return params
 
 params = getParameters(paramFN)
-\blockNr = 0
+blockNr = 0
 numProcs = 64
 nBlocks = int(args.nNodes)
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMP ")+paramFN+' '+str(blockNr)+' '+str(nBlocks)+' '+str(params['nFrames'])+' '+str(numProcs),shell=True)
