@@ -907,6 +907,7 @@ void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames){
 	int endFileNr = (int)(ceil((double)nFrames / (double)nBlocks)) * (blockNr+1) < nFrames ? (int)(ceil((double)nFrames / (double)nBlocks)) * (blockNr+1) : nFrames;
 	int nrJobs = (endFileNr - startFileNr + 1)*nRings;
 	// OMP from here
+	printf("%d %d %d\n",nRings,startFileNr,endFileNr);
 	int FileNr,thisRingNr;
 	# pragma omp parallel
 	# pragma omp for collapse (2)
@@ -1023,7 +1024,10 @@ void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames){
 		for (i=0;i<nOmeRanges;i++){
 			if (Omega >= OmegaRanges[i][0] && Omega <= OmegaRanges[i][1]) KeepSpots = 1;
 		}
-		if (KeepSpots == 0) return;
+		if (KeepSpots == 0){
+			printf("Returning\n");
+			return;
+		}
 		sprintf(FN,"%s/%s_%0*d%s",RawFolder,fs,Padding,ReadFileNr,Ext);
 		printf("Reading file: %s\n",FN);
 		FILE *ImageFile = fopen(FN,"rb");
