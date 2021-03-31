@@ -3,6 +3,7 @@ import argparse
 import warnings
 import time
 import os
+import subprocess
 
 warnings.filterwarnings('ignore')
 parser = argparse.ArgumentParser(description='''MIDAS_PeaksFitting''', formatter_class=argparse.RawTextHelpFormatter)
