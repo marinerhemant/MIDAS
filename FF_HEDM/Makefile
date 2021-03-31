@@ -120,6 +120,9 @@ mapmultdetectors: $(SRCDIR)MapMultipleDetectors.c
 mergeoverlaps: $(SRCDIR)MergeOverlappingPeaks.c
 	$(CC) $(SRCDIR)MergeOverlappingPeaks.c -o $(BINDIR)MergeOverlappingPeaks $(CFLAGS)
 
+mergeoverlapsall: $(SRCDIR)MergeOverlappingPeaksAll.c
+	$(CC) $(SRCDIR)MergeOverlappingPeaksAll.c -o $(BINDIR)MergeOverlappingPeaksAll $(CFLAGS)
+
 calcradius: $(SRCDIR)CalcRadius.c
 	$(CC) $(SRCDIR)CalcRadius.c -o $(BINDIR)CalcRadius $(CFLAGS)
 
