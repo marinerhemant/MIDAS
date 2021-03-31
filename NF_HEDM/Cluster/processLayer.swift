@@ -74,9 +74,11 @@ string direct = dat.datadir;
 string outfolder = strcat(direct,"/output/");
 
 # Do the initial setup
-string fn = strcat(outfolder,"initialsetup.csv");
-file setupdone <single_file_mapper;file=fn>;
-setupdone = initialsetup(paramfile,ffseed,DoGrid);
+if (DoFullLayer == 1){
+	string fn = strcat(outfolder,"initialsetup.csv");
+	file setupdone <single_file_mapper;file=fn>;
+	setupdone = initialsetup(paramfile,ffseed,DoGrid);
+}
 
 ## Whether do peak search or not
 string fn2 = strcat(outfolder,"imageprocessing.txt");

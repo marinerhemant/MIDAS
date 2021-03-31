@@ -40,7 +40,7 @@ fillVal = -15 # this value can be used to filter out nonsense values.
 ### Also look at where variable FileName is defined to see if the file arrangement is different (Line364)
 ####
 sampleName = 'HeatHTNS9_crack_NF'
-filestem = 'MicrostructureText_Layer' #### CHECK LINE 364
+filestem = 'MicrostructureText_Layer' #### CHECK LINE 554
 outfn = 'MicHeatHTNS9'
 formula = 'NiTi7'
 materialName = 'NS9'
@@ -54,7 +54,7 @@ LatC = np.array([2.9243, 2.9243, 4.6726 ,90.0, 90.0, 120.0],dtype=np.float32)
 minConfidence = 0.3
 orientTol = 10.0 # In degrees, used to define grains
 zspacing = -2
-xyspacing = 2  # X and Y spacing are equal, should be equal to the edge_size used during reconstruction
+xyspacing = 2  # X and Y spacing are equal, should be equal to the grid_size used during reconstruction
 startZ = 0 # Starting Z position
 xExtent = 1400 # Maximum Extent of xValues in um
 			   # (this should be larger than 2x the sample radius or 2x the distance between the farther edge of the sample and the rotation axis)

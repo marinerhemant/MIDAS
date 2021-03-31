@@ -14,6 +14,7 @@ ifneq ($(NLOPT),"")
 	CFLAGSNLOPT=-I$(NLOPT)/include -L$(NLOPT)/lib -lnlopt
 else
 	CFLAGSNLOPT=-I$${HOME}/.MIDAS/NLOPT/include -L$${HOME}/.MIDAS/NLOPT/lib -lnlopt
+	CFLAGSNLOPTSO=-I$${HOME}/.MIDAS/NLOPTShared/include -L$${HOME}/.MIDAS/NLOPTShared/lib -lnlopt
 endif
 TIFF=""
 ifneq ($(TIFF),"")
@@ -26,7 +27,7 @@ BINDIR=bin/
 
 all: help bindircheck calibrant imagemax \
 	fittiltbclsdsample fitposorstrains peaksfitting \
-	mergeoverlaps calcradius findsaturatedpx genmediandark fitgrain tiff2ge\
+	mergeoverlaps calcradius findsaturatedpx genmediandark fitgrain tiff2ge \
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking\
 	mapmultdetectors matchgrains detectormapper mergemultiplescans \
 	fitposorstrainsscanning indexscanning processgrainsscanning mapbnd fitscanninggrain \
@@ -110,8 +111,8 @@ ff_mpiomp: $(SRCDIR)MIDAS_FF_MPIOMP.c
 peaksfitting: $(SRCDIR)PeaksFittingPerFile.c
 	$(CC) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile $(CFLAGS) $(CFLAGSNLOPT)
 
-peaksfittingomp: $(SRCDIR)PeaksFittingMultRingsOMP.c
-	$(CC) $(SRCDIR)PeaksFittingMultRingsOMP.c -o $(BINDIR)PeaksFittingOMP $(MPICCFLAGS) $(CFLAGSNLOPT) $(CFLAGSTIFF) $(CFLAGS) $(CFLAGSNLOPT)
+peaksfittingompso: $(SRCDIR)PeaksFittingOMPso.c
+	$(CC) $(SRCDIR)PeaksFittingOMPso.c -shared -Wl,-soname,PeaksFittingOMPso -o $(BINDIR)PeaksFittingOMPso.so $(CFLAGSNLOPTSO) $(CFLAGS)
 
 mapmultdetectors: $(SRCDIR)MapMultipleDetectors.c
 	$(CC) $(SRCDIR)MapMultipleDetectors.c -o $(BINDIR)MapMultipleDetectors $(CFLAGS)

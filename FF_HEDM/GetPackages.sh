@@ -22,6 +22,19 @@ if [ ! -d ${dirThis}/NLOPT ]; then # NLOPT INSTALL
 	make install
 fi
 
+if [ ! -d ${dirThis}/NLOPTShared ]; then # NLOPT INSTALL
+	mkdir -p $dirThis
+	cd $dirThis
+	echo $(pwd)
+	wget http://ab-initio.mit.edu/nlopt/nlopt-2.4.2.tar.gz
+	rm -rf nlopt-2.4.2
+	tar -xzf nlopt-2.4.2.tar.gz
+	cd nlopt-2.4.2
+	./configure --prefix=${dirThis}/NLOPTShared --enable-shared
+	make all
+	make install
+fi
+
 if [ ! -d ${dirThis}/swift ]; then # SWIFT
 	cd $dirThis
 	echo $(pwd)

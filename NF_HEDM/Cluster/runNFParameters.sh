@@ -74,6 +74,17 @@ fi
 
 echo "Making hexgrid."
 ${BINFOLDER}/MakeHexGrid $TOP_PARAM_FILE
+if [[ -n $( awk '$1 ~ /^GridMask/ { print }' ${TOP_PARAM_FILE} ) ]];
+then
+  Xmin=$( awk '$1 ~ /^GridMask/ { print $2 }' ${TOP_PARAM_FILE} )
+  Xmax=$( awk '$1 ~ /^GridMask/ { print $3 }' ${TOP_PARAM_FILE} )
+  Ymin=$( awk '$1 ~ /^GridMask/ { print $4 }' ${TOP_PARAM_FILE} )
+  Ymax=$( awk '$1 ~ /^GridMask/ { print $5 }' ${TOP_PARAM_FILE} )
+  awk ' { if (($3 >= '$Xmin') && ($3 <= '$Xmax') && ($4 >= '$Ymin') && ($4 <= '$Ymax'))  print }' < grid.txt >grid_new.txt
+  mv grid.txt grid_old.txt
+  wc -l <grid_new.txt >grid.txt
+  cat grid_new.txt >>grid.txt
+fi
 if [[ ${MultiGridPoints} == 0 ]];
 then
   echo "Now enter the x,y coordinates to optimize, no space, separated by a comma"
@@ -122,7 +133,7 @@ then
   export PATH="$JAVA_HOME/bin:$PATH"
   ${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
     -FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
-    -DoPeakSearch=${processImages} -FFSeedOrientations=${FFSeedOrientations} -DoFullLayer=0
+    -DoPeakSearch=${processImages} -FFSeedOrientations=${FFSeedOrientations} -DoFullLayer=0 -DoGrid=0
 fi
 
 echo "Finding parameters."
