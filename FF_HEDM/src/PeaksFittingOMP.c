@@ -933,7 +933,7 @@ void main(int argc, char *argv[]){
 		FILE *hklf = fopen(hklfn,"r");
 		if (hklf == NULL){
 			printf("HKL file could not be read. Exiting\n");
-			return 1;
+			continue;
 		}
 		char aliner[1000];
 		fgets(aliner,1000,hklf);
@@ -1006,7 +1006,7 @@ void main(int argc, char *argv[]){
 		dummyFile = fopen(dummyFN,"rb");
 		if (dummyFile == NULL){
 			printf("Could not read the input file %s. Exiting.\n",dummyFN);
-			return 1;
+			continue;
 		}
 		fseek(dummyFile,0L,SEEK_END);
 		size_t szt = ftell(dummyFile);
@@ -1038,7 +1038,7 @@ void main(int argc, char *argv[]){
 		FILE *ImageFile = fopen(FN,"rb");
 		if (ImageFile == NULL){
 			printf("Could not read the input file. Exiting.\n");
-			return 1;
+			continue;
 		}
 		pixelvalue *Image;
 		Image = calloc(NrPixels*NrPixels,sizeof(*Image));
