@@ -81,13 +81,7 @@ string outfolder = strcat(direct,"/output/");
 # Do the initial setup
 string fn = strcat(outfolder,"initialsetup.csv");
 file setupdone <single_file_mapper;file=fn>;
-if (DoFullLayer == 1){
-	setupdone = initialsetup(paramfile,ffseed,DoGrid);
-else{
-	string prefixr = "Initial setup was not done because fullLayer was not done.";
-	tracef("%s\n",prefixr);
-	setupdone = PlaceHolder4(prefixr);
-}
+setupdone = initialsetup(paramfile,ffseed,DoGrid);
 
 ## Whether do peak search or not
 string fn2 = strcat(outfolder,"imageprocessing.txt");
