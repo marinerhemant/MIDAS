@@ -112,7 +112,7 @@ peaksfitting: $(SRCDIR)PeaksFittingPerFile.c
 	$(CC) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile $(CFLAGS) $(CFLAGSNLOPT)
 
 peaksfittingomp: $(SRCDIR)PeaksFittingOMP.c
-	$(CC) $(SRCDIR)PeaksFittingOMP.c -o $(BINDIR)PeaksFittingOMP $(CFLAGSNLOPT) $(CFLAGS)
+	$(CC) $(SRCDIR)PeaksFittingOMP.c -o $(BINDIR)PeaksFittingOMP -fopenmp $(CFLAGSNLOPT) $(CFLAGS)
 
 mapmultdetectors: $(SRCDIR)MapMultipleDetectors.c
 	$(CC) $(SRCDIR)MapMultipleDetectors.c -o $(BINDIR)MapMultipleDetectors $(CFLAGS)
