@@ -1151,7 +1151,7 @@ void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames){
 			unsigned nPeaks;
 			nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,MaximaPositions,MaximaValues,&IsSaturated,IntSat);
 			if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
-				printf("Removed peak with %d pixels, position: %d %d.\n",NrPixelsThisRegion,MaximaPositions[0][0],MaximaPositions[0][1]);
+				printf("Removed peak with %d pixels, position: %d %d, frame: %d, ring: %d.\n",NrPixelsThisRegion,MaximaPositions[0][0],MaximaPositions[0][1],FileNr,RingNr);
 				TotNrRegions--;
 				continue;
 			}
