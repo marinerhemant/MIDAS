@@ -1153,7 +1153,7 @@ void main(int argc, char *argv[]){
 			unsigned nPeaks;
 			nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,MaximaPositions,MaximaValues,&IsSaturated,IntSat);
 			if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
-				printf("Removed peak with %d pixels, position: %d %d, FrameNr: %d.\n",NrPixelsThisRegion,MaximaPositions[0][0],MaximaPositions[0][1],FileNr);
+				//~ printf("Removed peak with %d pixels, position: %d %d, FrameNr: %d.\n",NrPixelsThisRegion,MaximaPositions[0][0],MaximaPositions[0][1],FileNr);
 				TotNrRegions--;
 				continue;
 			}
