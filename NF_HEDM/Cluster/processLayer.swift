@@ -30,6 +30,11 @@ app (file done) PlaceHolder3 (string prefix,file tmp)
 	echo prefix stdout=@filename(done);
 }
 
+app (file done) PlaceHolder4 (string prefix)
+{
+	echo prefix stdout=@filename(done);
+}
+
 app (file outfn) runfitorientation (string pf, int nr, file mmapdone)
 {
 	fitorientation pf nr stdout=@filename(outfn);
@@ -74,10 +79,14 @@ string direct = dat.datadir;
 string outfolder = strcat(direct,"/output/");
 
 # Do the initial setup
+string fn = strcat(outfolder,"initialsetup.csv");
+file setupdone <single_file_mapper;file=fn>;
 if (DoFullLayer == 1){
-	string fn = strcat(outfolder,"initialsetup.csv");
-	file setupdone <single_file_mapper;file=fn>;
 	setupdone = initialsetup(paramfile,ffseed,DoGrid);
+else{
+	string prefixr = "Initial setup was not done because fullLayer was not done.";
+	tracef("%s\n",prefixr);
+	setupdone = PlaceHolder4(prefixr);
 }
 
 ## Whether do peak search or not
