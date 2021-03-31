@@ -524,7 +524,7 @@ check (int test, const char * message, ...)
     }
 }
 
-void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames){
+void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames, int numProcs){
 	// NFrames must be total number of frames, it will start from 0 and end at nFrames
 	clock_t start, end;
 	double diftotal;
@@ -909,7 +909,7 @@ void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames){
 	// OMP from here
 	printf("%d %d %d\n",nRings,startFileNr,endFileNr);
 	int FileNr,thisRingNr;
-	# pragma omp parallel
+	# pragma omp parallel num_threads(numProcs)
 	# pragma omp for collapse (2)
 	for (FileNr=startFileNr;FileNr<endFileNr;FileNr++)
 	for (thisRingNr=0;thisRingNr<nRings;thisRingNr++)

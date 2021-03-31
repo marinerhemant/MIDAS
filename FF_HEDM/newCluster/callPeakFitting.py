@@ -38,8 +38,9 @@ def getParameters(ParamFileName):
 params = getParameters(paramFN)
 home = os.path.expanduser("~")
 peaksCalc = ctypes.CDLL(home + "/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPso.so")
-peaksCalc.peaksFit.argtypes = [ctypes.c_char_p,ctypes.c_int,ctypes.c_int,ctypes.c_int]
+peaksCalc.peaksFit.argtypes = [ctypes.c_char_p,ctypes.c_int,ctypes.c_int,ctypes.c_int,ctypes.c_int]
 peaksCalc.peaksFit.restype = None
 blockNr = 0
+numProcs = 64
 pfN = str.encode(paramFN)
-peaksCalc.peaksFit(pfN,blockNr,nBlocks,params['nFrames'])
+peaksCalc.peaksFit(pfN,blockNr,nBlocks,params['nFrames'],numProcs)
