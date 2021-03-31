@@ -921,7 +921,7 @@ void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames){
 		double Thresh;
 		Thresh = Thresholds[thisRingNr];
 		// this can be inside omp loop
-		printf("Threshold: %f\n",Thresh);
+		//~ printf("Threshold: %f\n",Thresh);
 		double RingRad;
 		char hklfn[2040];
 		sprintf(hklfn,"%s/hkls.csv",Folder);
@@ -942,16 +942,16 @@ void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames){
 			}
 		}
 		RingRad = RingRad/px;
-		printf("RingNr = %d RingRad = %f\n",RingNr, RingRad);
+		//~ printf("RingNr = %d RingRad = %f\n",RingNr, RingRad);
 		double Rmin=RingRad-Width, Rmax=RingRad+Width;
 		double Omega;
 		int Nadditions;
 		if (fnr == 0){
 			if (FileNr - StartNr + 1 < FrameNrOmeChange){
-				Omega = OmegaFirstFile + ((FileNr-StartNr)*OmegaStep);
+				Omega = OmegaFirstFile + ((FileNr-StartNr -1)*OmegaStep);
 			} else {
 				Nadditions = (int) ((FileNr - StartNr + 1) / FrameNrOmeChange)  ;
-				Omega = OmegaFirstFile + ((FileNr-StartNr)*OmegaStep) + MisDir*OmegaMissing*Nadditions;
+				Omega = OmegaFirstFile + ((FileNr-StartNr-1)*OmegaStep) + MisDir*OmegaMissing*Nadditions;
 			}
 	    }
 		int *GoodCoords;
@@ -993,7 +993,7 @@ void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames){
 				}
 			}
 		}
-		printf("Number of coordinates: %d\n",nrCoords);
+		//~ printf("Number of coordinates: %d\n",nrCoords);
 		// Get nFrames:
 		FILE *dummyFile;
 		char dummyFN[2048];
@@ -1025,11 +1025,11 @@ void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames){
 			if (Omega >= OmegaRanges[i][0] && Omega <= OmegaRanges[i][1]) KeepSpots = 1;
 		}
 		if (KeepSpots == 0){
-			printf("KeepSpots 0, continuing\n");
+			//~ printf("KeepSpots 0, continuing\n");
 			continue;
 		}
 		sprintf(FN,"%s/%s_%0*d%s",RawFolder,fs,Padding,ReadFileNr,Ext);
-		printf("Reading file: %s\n",FN);
+		//~ printf("Reading file: %s\n",FN);
 		FILE *ImageFile = fopen(FN,"rb");
 		if (ImageFile == NULL){
 			printf("Could not read the input file. Exiting.\n");
@@ -1052,7 +1052,7 @@ void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames){
 		//~ temp *= NrPixels;
 		//~ temp *= NrPixels;
 		//~ long int Sk = szt - temp;
-		printf("Now processing file: %s\n",FN);
+		//~ printf("Now processing file: %s\n",FN);
 		double beamcurr=1;
 		fseek(ImageFile,Sk,SEEK_SET);
 		fread(Image,SizeFile,1,ImageFile);
@@ -1064,11 +1064,11 @@ void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames){
 					badPxCounter++;
 				}
 			}
-			printf("Number of badPixels %d\n",badPxCounter);
+			//~ printf("Number of badPixels %d\n",badPxCounter);
 		}
 		fclose(ImageFile);
 		DoImageTransformations(NrTransOpt,TransOpt,Image,NrPixels);
-		printf("Beam current this file: %f, Beam current scaling value: %f\n",beamcurr,bc);
+		//~ printf("Beam current this file: %f, Beam current scaling value: %f\n",beamcurr,bc);
 		double *ImgCorrBCTemp, *ImgCorrBC;
 		ImgCorrBC = malloc(NrPixels*NrPixels*sizeof(*ImgCorrBC));
 		ImgCorrBCTemp = malloc(NrPixels*NrPixels*sizeof(*ImgCorrBCTemp));
@@ -1201,7 +1201,7 @@ void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames){
 			clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&timer1);
 			int rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo);
 			clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&timer2);
-			printf("%d %d %d %d %llf\n",RegNr,NrOfReg,NrPixelsThisRegion,nPeaks,diff(timer1,timer2));
+			//~ printf("%d %d %d %d %llf\n",RegNr,NrOfReg,NrPixelsThisRegion,nPeaks,diff(timer1,timer2));
 			timex += diff(timer1,timer2);
 			for (i=0;i<nPeaks;i++){
 				fprintf(outfilewrite,"%d %f %f %f %f %f %f %f ",(SpotIDStart+i),IntegratedIntensity[i],Omega,YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
@@ -1218,9 +1218,9 @@ void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames){
 			free(OtherInfo);
 			free(NrPx);
 		}
-		printf("Time spent in fitting: %llf\n",timex);
-		printf("Number of regions = %d\n",TotNrRegions);
-		printf("Number of peaks = %d\n",SpotIDStart-1);
+		//~ printf("Time spent in fitting: %llf\n",timex);
+		//~ printf("Number of regions = %d\n",TotNrRegions);
+		//~ printf("Number of peaks = %d\n",SpotIDStart-1);
 		fclose(outfilewrite);
 		free(ImgCorrBC);
 		free(PositionTrackers);
