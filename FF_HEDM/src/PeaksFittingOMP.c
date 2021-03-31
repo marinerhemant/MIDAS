@@ -4,10 +4,10 @@
 //
 
 //
-//  PeaksFittingPerFile.c
+//  PeaksFittingOMP.c
 //
 //
-//  Created by Hemant Sharma on 2014/07/04.
+//  Created by Hemant Sharma on 2021/03/31.
 //
 //
 // TODO: Rectangular detector, read edf, omp.
@@ -1158,13 +1158,13 @@ void main(int argc, char *argv[]){
 				continue;
 			}
 			if (IsSaturated == 1){ //Saturated peaks removed
-				printf("Saturated peak removed.\n");
+				//~ printf("Saturated peak removed.\n");
 				TotNrRegions--;
 				continue;
 			}
 			if (nPeaks > maxNPeaks){
 				// Sort peaks by MaxIntensity, remove the smallest peaks until maxNPeaks, arrays needed MaximaPositions, MaximaValues.
-				printf("nPeaks = %d, will be reduced to %d.\n",nPeaks,maxNPeaks);
+				//~ printf("nPeaks = %d, will be reduced to %d.\n",nPeaks,maxNPeaks);
 				int MaximaPositionsT[nPeaks][2];
 				double MaximaValuesT[nPeaks];
 				double maxIntMax;
