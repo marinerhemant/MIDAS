@@ -1025,8 +1025,8 @@ void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames){
 			if (Omega >= OmegaRanges[i][0] && Omega <= OmegaRanges[i][1]) KeepSpots = 1;
 		}
 		if (KeepSpots == 0){
-			printf("Returning\n");
-			return;
+			printf("KeepSpots 0, continuing\n");
+			continue;
 		}
 		sprintf(FN,"%s/%s_%0*d%s",RawFolder,fs,Padding,ReadFileNr,Ext);
 		printf("Reading file: %s\n",FN);
