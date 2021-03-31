@@ -524,7 +524,12 @@ check (int test, const char * message, ...)
     }
 }
 
-void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames, int numProcs){
+void main(int argc, char *argv[]){
+	char *ParamFN = argv[1];
+	int blockNr = atoi(argv[2]);
+	int nBlocks = atoi(argv[3]);
+	int nFrames = atoi(argv[4]);
+	int numProcs = atoi(argv[5]);
 	// NFrames must be total number of frames, it will start from 0 and end at nFrames
 	clock_t start, end;
 	double diftotal;

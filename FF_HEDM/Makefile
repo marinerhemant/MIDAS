@@ -111,8 +111,8 @@ ff_mpiomp: $(SRCDIR)MIDAS_FF_MPIOMP.c
 peaksfitting: $(SRCDIR)PeaksFittingPerFile.c
 	$(CC) $(SRCDIR)PeaksFittingPerFile.c -o $(BINDIR)PeaksFittingPerFile $(CFLAGS) $(CFLAGSNLOPT)
 
-peaksfittingompso: $(SRCDIR)PeaksFittingOMPso.c
-	$(CC) $(SRCDIR)PeaksFittingOMPso.c -shared -Wl,-soname,PeaksFittingOMPso -o $(BINDIR)PeaksFittingOMPso.so $(CFLAGSNLOPTSO) $(CFLAGS)
+peaksfittingomp: $(SRCDIR)PeaksFittingOMP.c
+	$(CC) $(SRCDIR)PeaksFittingOMP.c -o $(BINDIR)PeaksFittingOMP $(CFLAGSNLOPT) $(CFLAGS)
 
 mapmultdetectors: $(SRCDIR)MapMultipleDetectors.c
 	$(CC) $(SRCDIR)MapMultipleDetectors.c -o $(BINDIR)MapMultipleDetectors $(CFLAGS)

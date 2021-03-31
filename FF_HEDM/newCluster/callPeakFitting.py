@@ -14,7 +14,6 @@ parser.add_argument('-nNodes',    type=int, required=True, help='Number of CPUs 
 args, unparsed = parser.parse_known_args()
 
 paramFN = args.paramFile
-nBlocks = int(args.nNodes)
 
 def getParameters(ParamFileName):
 	paramContents = open(ParamFileName).read()
@@ -36,11 +35,7 @@ def getParameters(ParamFileName):
 	return params
 
 params = getParameters(paramFN)
-home = os.path.expanduser("~")
-peaksCalc = ctypes.CDLL(home + "/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPso.so")
-peaksCalc.peaksFit.argtypes = [ctypes.c_char_p,ctypes.c_int,ctypes.c_int,ctypes.c_int,ctypes.c_int]
-peaksCalc.peaksFit.restype = None
-blockNr = 0
+\blockNr = 0
 numProcs = 64
-pfN = str.encode(paramFN)
-peaksCalc.peaksFit(pfN,blockNr,nBlocks,params['nFrames'],numProcs)
+nBlocks = int(args.nNodes)
+subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMP ")+paramFN+' '+str(blockNr)+' '+str(nBlocks)+' '+str(params['nFrames'])+' '+str(numProcs),shell=True)
