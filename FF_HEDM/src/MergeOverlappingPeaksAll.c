@@ -179,7 +179,7 @@ static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], 
 					&(MyData[counter].YCen), &(MyData[counter].ZCen), &(MyData[counter].IMax), &(MyData[counter].Radius),
 					&(MyData[counter].Eta), &(MyData[counter].SigmaR), &(MyData[counter].SigmaEta), &(MyData[counter].NrPx),
 					&(MyData[counter].NrPxTot),dummy,&maxY,&maxZ);
-		printf("%s %lf %lf \n",aline,maxY,maxZ);
+		//~ printf("%s %lf %lf \n",aline,maxY,maxZ);
 		if (UseMaximaPositions==1){
 			MyData[counter].YCen = maxY;
 			MyData[counter].ZCen = maxZ;
@@ -413,11 +413,11 @@ int main(int argc, char *argv[]){
 							(CurrentIDs[i][3]/CurrentIDs[i][1]),(CurrentIDs[i][4]/CurrentIDs[i][1]),
 							CurrentIDs[i][5],CurrentIDs[i][10],CurrentIDs[i][11],CurrentIDs[i][12],
 							CurrentIDs[i][13],CurrentIDs[i][14],CurrentIDs[i][15]);
-					printf("Written: %d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
-							CurrentIDs[i][1],(CurrentIDs[i][2]/CurrentIDs[i][1]),
-							(CurrentIDs[i][3]/CurrentIDs[i][1]),(CurrentIDs[i][4]/CurrentIDs[i][1]),
-							CurrentIDs[i][5],CurrentIDs[i][10],CurrentIDs[i][11],CurrentIDs[i][12],
-							CurrentIDs[i][13],CurrentIDs[i][14],CurrentIDs[i][15]);
+					//~ printf("Written: %d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
+							//~ CurrentIDs[i][1],(CurrentIDs[i][2]/CurrentIDs[i][1]),
+							//~ (CurrentIDs[i][3]/CurrentIDs[i][1]),(CurrentIDs[i][4]/CurrentIDs[i][1]),
+							//~ CurrentIDs[i][5],CurrentIDs[i][10],CurrentIDs[i][11],CurrentIDs[i][12],
+							//~ CurrentIDs[i][13],CurrentIDs[i][14],CurrentIDs[i][15]);
 					SpotIDNr++;
 				}
 			}
@@ -476,11 +476,11 @@ int main(int argc, char *argv[]){
 				(CurrentIDs[i][3]/CurrentIDs[i][1]),(CurrentIDs[i][4]/CurrentIDs[i][1]),
 				CurrentIDs[i][5],CurrentIDs[i][10],CurrentIDs[i][11],CurrentIDs[i][12],
 				CurrentIDs[i][13],CurrentIDs[i][14],CurrentIDs[i][15]);
-		printf("Written %d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
-				CurrentIDs[i][1],(CurrentIDs[i][2]/CurrentIDs[i][1]),
-				(CurrentIDs[i][3]/CurrentIDs[i][1]),(CurrentIDs[i][4]/CurrentIDs[i][1]),
-				CurrentIDs[i][5],CurrentIDs[i][10],CurrentIDs[i][11],CurrentIDs[i][12],
-				CurrentIDs[i][13],CurrentIDs[i][14],CurrentIDs[i][15]);
+		//~ printf("Written %d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
+				//~ CurrentIDs[i][1],(CurrentIDs[i][2]/CurrentIDs[i][1]),
+				//~ (CurrentIDs[i][3]/CurrentIDs[i][1]),(CurrentIDs[i][4]/CurrentIDs[i][1]),
+				//~ CurrentIDs[i][5],CurrentIDs[i][10],CurrentIDs[i][11],CurrentIDs[i][12],
+				//~ CurrentIDs[i][13],CurrentIDs[i][14],CurrentIDs[i][15]);
 		SpotIDNr++;
 	}
 	printf("Total spots: %d\n",SpotIDNr-1);
