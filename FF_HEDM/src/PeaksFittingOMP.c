@@ -1019,6 +1019,7 @@ void main(int argc, char *argv[]){
 		}
 		char OutFile[1024];
 		sprintf(OutFile,"%s/%s_%0*d_PS.csv",OutFolderName,FileStem,Padding,FileNr+StartNr);
+		printf("%s\n",OutFile);
 		FILE *outfilewrite;
 		outfilewrite = fopen(OutFile,"w");
 		fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode\n");
