@@ -1016,7 +1016,7 @@ void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames){
 			Omega = FileOmegaOmeStep[ReadFileNr-StartFileNr][0] + FramesToSkip*FileOmegaOmeStep[ReadFileNr-StartFileNr][1];
 		}
 		char OutFile[1024];
-		sprintf(OutFile,"%s/%s_%0*d_%d_PS.csv",OutFolderName,FileStem,Padding,FileNr,RingNr);
+		sprintf(OutFile,"%s/%s_%0*d_%d_PS.csv",OutFolderName,FileStem,Padding,FileNr+StartNr,RingNr);
 		FILE *outfilewrite;
 		outfilewrite = fopen(OutFile,"w");
 		fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode\n");
