@@ -948,10 +948,10 @@ void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames){
 		int Nadditions;
 		if (fnr == 0){
 			if (FileNr - StartNr + 1 < FrameNrOmeChange){
-				Omega = OmegaFirstFile + ((FileNr-StartNr -1)*OmegaStep);
+				Omega = OmegaFirstFile + ((FileNr-StartNr+1)*OmegaStep);
 			} else {
 				Nadditions = (int) ((FileNr - StartNr + 1) / FrameNrOmeChange)  ;
-				Omega = OmegaFirstFile + ((FileNr-StartNr-1)*OmegaStep) + MisDir*OmegaMissing*Nadditions;
+				Omega = OmegaFirstFile + ((FileNr-StartNr+1)*OmegaStep) + MisDir*OmegaMissing*Nadditions;
 			}
 	    }
 		int *GoodCoords;
@@ -1016,7 +1016,7 @@ void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames){
 			Omega = FileOmegaOmeStep[ReadFileNr-StartFileNr][0] + FramesToSkip*FileOmegaOmeStep[ReadFileNr-StartFileNr][1];
 		}
 		char OutFile[1024];
-		sprintf(OutFile,"%s/%s_%0*d_%d_PS.csv",OutFolderName,FileStem,Padding,FileNr+StartNr,RingNr);
+		sprintf(OutFile,"%s/%s_%0*d_%d_PS.csv",OutFolderName,FileStem,Padding,FileNr,RingNr);
 		FILE *outfilewrite;
 		outfilewrite = fopen(OutFile,"w");
 		fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode\n");
@@ -1151,7 +1151,7 @@ void peaksFit(const char *ParamFN, int blockNr, int nBlocks, int nFrames){
 			unsigned nPeaks;
 			nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,MaximaPositions,MaximaValues,&IsSaturated,IntSat);
 			if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
-				printf("Removed peak with %d pixels, position: %d %d, frame: %d, ring: %d.\n",NrPixelsThisRegion,MaximaPositions[0][0],MaximaPositions[0][1],FileNr,RingNr);
+				printf("Removed peak with %d pixels, position: %d %d.\n",NrPixelsThisRegion,MaximaPositions[0][0],MaximaPositions[0][1]);
 				TotNrRegions--;
 				continue;
 			}
