@@ -531,9 +531,7 @@ void main(int argc, char *argv[]){
 	int nFrames = atoi(argv[4]);
 	int numProcs = atoi(argv[5]);
 	// NFrames must be total number of frames, it will start from 0 and end at nFrames
-	clock_t start, end;
-	double diftotal;
-	start = clock();
+	double start_time = omp_get_wtime();
 	FILE *fileParam;
 	char aline[1000];
 	fileParam = fopen(ParamFN,"r");
@@ -1230,8 +1228,7 @@ void main(int argc, char *argv[]){
 	free(GoodCoords);
 	free(dark);
 	free(flood);
-	end = clock();
-	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
-	printf("Time elapsed: %f s.\n",diftotal);
+	double time = omp_get_wtime() - start_time;
+	printf("Finished, time elapsed: %lf seconds.\n",time);
 	return 0;
 }
