@@ -1021,28 +1021,24 @@ void main(int argc, char *argv[]){
 			BoolImage[idxctr] = &BoolImageAll[idxoffset];
 			ConnectedComponents[idxctr] = &ConnCompAll[idxoffset];
 		}
-		Positions = malloc(nOverlapsMaxPerImage);
+		Positions = allocMatrixInt(nOverlapsMaxPerImage,NrPixels*4);
 		idxoffset = nOverlapsMaxPerImage;
 		idxoffset *= procNum;
 		PositionTrackers = &PosTrackersAll[idxoffset];
-		for (idxctr=0;idxctr<nOverlapsMaxPerImage;idxctr++){
-			idxoffset = nOverlapsMaxPerImage; idxoffset *= NrPixels; idxoffset *= 4; idxoffset *= procNum;
-			Positions[idxctr] = &PosAll[idxoffset];
-		}
 		MaximaPositions = allocMatrixInt(NrPixels*10,2);
 		MaximaValues = malloc(NrPixels*10*sizeof(*MaximaValues));
 		UsefulPixels = allocMatrixInt(NrPixels*10,2);
 		z = malloc(NrPixels*10*sizeof(*z));
-				double *IntegratedIntensity, *IMAX, *YCEN, *ZCEN, *Rads, *Etass, *OtherInfo;
-				IntegratedIntensity = calloc(nPeaks*2,sizeof(*IntegratedIntensity));
-				IMAX = malloc(nPeaks*2*sizeof(*IMAX));
-				YCEN = malloc(nPeaks*2*sizeof(*YCEN));
-				ZCEN = malloc(nPeaks*2*sizeof(*ZCEN));
-				Rads = malloc(nPeaks*2*sizeof(*Rads));
-				Etass = malloc(nPeaks*2*sizeof(*Etass));
-				OtherInfo = malloc(nPeaks*10*sizeof(*OtherInfo));
-				int *NrPx;
-				NrPx = malloc(nPeaks*2*sizeof(*NrPx));
+		double *IntegratedIntensity, *IMAX, *YCEN, *ZCEN, *Rads, *Etass, *OtherInfo;
+		IntegratedIntensity = calloc(maxNPeaks*2,sizeof(*IntegratedIntensity));
+		IMAX = malloc(maxNPeaks*2*sizeof(*IMAX));
+		YCEN = malloc(maxNPeaks*2*sizeof(*YCEN));
+		ZCEN = malloc(maxNPeaks*2*sizeof(*ZCEN));
+		Rads = malloc(maxNPeaks*2*sizeof(*Rads));
+		Etass = malloc(maxNPeaks*2*sizeof(*Etass));
+		OtherInfo = malloc(maxNPeaks*10*sizeof(*OtherInfo));
+		int *NrPx;
+		NrPx = malloc(maxNPeaks*2*sizeof(*NrPx));
 		for (FileNr = thisStNr; FileNr < thisEndNr; FileNr++){
 			double Thresh;
 			int i,j,k;
@@ -1136,6 +1132,7 @@ void main(int argc, char *argv[]){
 			int NrOfReg;
 			for (i=0;i<NrPixels;i++){
 				for (j=0;j<NrPixels;j++){
+					ConnectedComponents[i][j] = 0;
 					if (ImgCorrBC[(i*NrPixels)+j] != 0){
 						BoolImage[i][j] = 1;
 					}else{
@@ -1143,29 +1140,26 @@ void main(int argc, char *argv[]){
 					}
 				}
 			}
-			NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
-			/*FILE *connectedcomps;
-			char conncomp[1024];
-			pixelvalue *CCP;
-			CCP = malloc(NrPixels*NrPixels*sizeof(*CCP));
-			memset(CCP,0,NrPixels*NrPixels*sizeof(*CCP));
-			for (i=0;i<NrPixels;i++){
-				for (j=0;j<NrPixels;j++){
-					if (ConnectedComponents[i][j] != 0){
-						CCP[(i*NrPixels)+j] = ConnectedComponents[i][j];
-					}
+			for (i=0;i<nOverlapsMaxPerImage;i++){
+				PositionTrackers[i] = 0;
+				for (j=0;j<NrPixels*4;j++){
+					Positions[i][j] = 0;
 				}
 			}
-			sprintf(conncomp,"%sccp",FN);
-			connectedcomps = fopen(conncomp,"w");
-			fwrite(CCP,NrPixels*NrPixels*sizeof(pixelvalue),1,connectedcomps);
-			fclose(connectedcomps);
-			free(CCP);*/
+			NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
 			int RegNr,NrPixelsThisRegion;
 			int IsSaturated;
 			int SpotIDStart = 1;
 			int TotNrRegions = NrOfReg;
 			long double timex=0;
+			for (i=0;i<NrPixels*10;i++){
+				MaximaPositions[i][0] = 0;
+				MaximaPositions[i][1] = 0;
+				MaximaValues[i] = 0;
+				UsefulPixels[i][0] = 0;
+				UsefulPixels[i][1] = 0;
+				z[i] = 0;
+			}
 			for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 				NrPixelsThisRegion = PositionTrackers[RegNr];
 				for (i=0;i<NrPixelsThisRegion;i++){
@@ -1177,18 +1171,15 @@ void main(int argc, char *argv[]){
 				unsigned nPeaks;
 				nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,MaximaPositions,MaximaValues,&IsSaturated,IntSat);
 				if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
-					//~ printf("Removed peak with %d pixels, position: %d %d, FrameNr: %d.\n",NrPixelsThisRegion,MaximaPositions[0][0],MaximaPositions[0][1],FileNr);
 					TotNrRegions--;
 					continue;
 				}
 				if (IsSaturated == 1){ //Saturated peaks removed
-					//~ printf("Saturated peak removed.\n");
 					TotNrRegions--;
 					continue;
 				}
 				if (nPeaks > maxNPeaks){
 					// Sort peaks by MaxIntensity, remove the smallest peaks until maxNPeaks, arrays needed MaximaPositions, MaximaValues.
-					//~ printf("nPeaks = %d, will be reduced to %d.\n",nPeaks,maxNPeaks);
 					int MaximaPositionsT[nPeaks][2];
 					double MaximaValuesT[nPeaks];
 					double maxIntMax;
@@ -1222,6 +1213,13 @@ void main(int argc, char *argv[]){
 				SpotIDStart += nPeaks;
 			}
 			fclose(outfilewrite);
+			free(IntegratedIntensity);
+			free(IMAX);
+			free(YCEN);
+			free(ZCEN);
+			free(Rads);
+			free(Etass);
+			free(NrPx);
 		}
 		free(z);
 		free(MaximaValues);
