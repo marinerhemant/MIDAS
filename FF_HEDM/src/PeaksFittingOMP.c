@@ -1033,6 +1033,16 @@ void main(int argc, char *argv[]){
 		MaximaValues = malloc(NrPixels*10*sizeof(*MaximaValues));
 		UsefulPixels = allocMatrixInt(NrPixels*10,2);
 		z = malloc(NrPixels*10*sizeof(*z));
+				double *IntegratedIntensity, *IMAX, *YCEN, *ZCEN, *Rads, *Etass, *OtherInfo;
+				IntegratedIntensity = calloc(nPeaks*2,sizeof(*IntegratedIntensity));
+				IMAX = malloc(nPeaks*2*sizeof(*IMAX));
+				YCEN = malloc(nPeaks*2*sizeof(*YCEN));
+				ZCEN = malloc(nPeaks*2*sizeof(*ZCEN));
+				Rads = malloc(nPeaks*2*sizeof(*Rads));
+				Etass = malloc(nPeaks*2*sizeof(*Etass));
+				OtherInfo = malloc(nPeaks*10*sizeof(*OtherInfo));
+				int *NrPx;
+				NrPx = malloc(nPeaks*2*sizeof(*NrPx));
 		for (FileNr = thisStNr; FileNr < thisEndNr; FileNr++){
 			double Thresh;
 			int i,j,k;
@@ -1203,16 +1213,6 @@ void main(int argc, char *argv[]){
 						MaximaPositions[i][1] = MaximaPositionsT[i][1];
 					}
 				}
-				double *IntegratedIntensity, *IMAX, *YCEN, *ZCEN, *Rads, *Etass, *OtherInfo;
-				IntegratedIntensity = calloc(nPeaks*2,sizeof(*IntegratedIntensity));
-				IMAX = malloc(nPeaks*2*sizeof(*IMAX));
-				YCEN = malloc(nPeaks*2*sizeof(*YCEN));
-				ZCEN = malloc(nPeaks*2*sizeof(*ZCEN));
-				Rads = malloc(nPeaks*2*sizeof(*Rads));
-				Etass = malloc(nPeaks*2*sizeof(*Etass));
-				OtherInfo = malloc(nPeaks*10*sizeof(*OtherInfo));
-				int *NrPx;
-				NrPx = malloc(nPeaks*2*sizeof(*NrPx));
 				int rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo);
 				for (i=0;i<nPeaks;i++){
 					fprintf(outfilewrite,"%d %f %f %f %f %f %f %f ",(SpotIDStart+i),IntegratedIntensity[i],Omega,YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
@@ -1220,14 +1220,6 @@ void main(int argc, char *argv[]){
 					fprintf(outfilewrite,"%d %d %d %d %d %f %f %f %d\n",NrPx[i],NrPixelsThisRegion,nPeaks,MaximaPositions[i][0],MaximaPositions[i][1],(double)MaximaPositions[i][0]-YCEN[i]-Ycen,(double)MaximaPositions[i][1]-ZCEN[i]-Zcen,MaximaValues[i],rc);
 				}
 				SpotIDStart += nPeaks;
-				free(IntegratedIntensity);
-				free(IMAX);
-				free(YCEN);
-				free(ZCEN);
-				free(Rads);
-				free(Etass);
-				free(OtherInfo);
-				free(NrPx);
 			}
 			fclose(outfilewrite);
 		}
