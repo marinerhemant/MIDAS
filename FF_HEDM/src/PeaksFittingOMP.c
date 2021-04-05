@@ -990,6 +990,20 @@ void main(int argc, char *argv[]){
 	bigArrSize *= numProcs;
 	PosAll = calloc(bigArrSize,sizeof(*PosAll));
 	PosTrackersAll = calloc(nOverlapsMaxPerImage*numProcs,sizeof(*PosTrackersAll));
+	// Get nFrames:
+	FILE *dummyFile;
+	char dummyFN[2048];
+	sprintf(dummyFN,"%s/%s_%0*d%s",RawFolder,fs,Padding,StartFileNr,Ext);
+	dummyFile = fopen(dummyFN,"rb");
+	if (dummyFile == NULL){
+		printf("Could not read the input file %s. Exiting.\n",dummyFN);
+		return;
+	}
+	fseek(dummyFile,0L,SEEK_END);
+	size_t szt = ftell(dummyFile);
+	szt = szt - headSize;
+	fclose(dummyFile);
+	int nF = szt/(size_t)(2*NrPixels*NrPixels);
 
 	int startFileNr = (int)(ceil((double)nFrames / (double)nBlocks)) * blockNr;
 	int endFileNr = (int)(ceil((double)nFrames / (double)nBlocks)) * (blockNr+1) < nFrames ? (int)(ceil((double)nFrames / (double)nBlocks)) * (blockNr+1) : nFrames;
@@ -1052,20 +1066,6 @@ void main(int argc, char *argv[]){
 					Omega = OmegaFirstFile + ((FileNr-StartNr+1)*OmegaStep) + MisDir*OmegaMissing*Nadditions;
 				}
 		    }
-			// Get nFrames:
-			FILE *dummyFile;
-			char dummyFN[2048];
-			sprintf(dummyFN,"%s/%s_%0*d%s",RawFolder,fs,Padding,StartFileNr,Ext);
-			dummyFile = fopen(dummyFN,"rb");
-			if (dummyFile == NULL){
-				printf("Could not read the input file %s. Exiting.\n",dummyFN);
-				continue;
-			}
-			fseek(dummyFile,0L,SEEK_END);
-			size_t szt = ftell(dummyFile);
-			szt = szt - headSize;
-			fclose(dummyFile);
-			int nF = szt/(size_t)(2*NrPixels*NrPixels);
 			char FN[2048];
 			int ReadFileNr;
 			ReadFileNr = StartFileNr + ((FileNr) / nF);
