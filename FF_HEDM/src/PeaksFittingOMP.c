@@ -1213,14 +1213,14 @@ void main(int argc, char *argv[]){
 				SpotIDStart += nPeaks;
 			}
 			fclose(outfilewrite);
-			free(IntegratedIntensity);
-			free(IMAX);
-			free(YCEN);
-			free(ZCEN);
-			free(Rads);
-			free(Etass);
-			free(NrPx);
 		}
+		free(IntegratedIntensity);
+		free(IMAX);
+		free(YCEN);
+		free(ZCEN);
+		free(Rads);
+		free(Etass);
+		free(NrPx);
 		free(z);
 		free(MaximaValues);
 		FreeMemMatrixInt(MaximaPositions,NrPixels*10);
