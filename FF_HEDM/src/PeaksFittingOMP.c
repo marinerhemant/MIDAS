@@ -977,11 +977,11 @@ void main(int argc, char *argv[]){
 	bigArrSize *= NrPixels;
 	bigArrSize *= numProcs;
 	pixelvalue *ImageAll;
-	ImageAll = calloc(bigArrSize,sizeof(*ImageAll));
 	double *ImgCorrBCAll, *ImgCorrBCTempAll;
+	int *BoolImageAll, *ConnCompAll, *PosAll, *PosTrackersAll;
+	ImageAll = calloc(bigArrSize,sizeof(*ImageAll));
 	ImgCorrBCAll = calloc(bigArrSize,sizeof(*ImgCorrBCAll));
 	ImgCorrBCTempAll = calloc(bigArrSize,sizeof(*ImgCorrBCTempAll));
-	int *BoolImageAll, *ConnCompAll, *PosAll, *PosTrackersAll;
 	BoolImageAll = calloc(bigArrSize,sizeof(*BoolImageAll));
 	ConnCompAll = calloc(bigArrSize,sizeof(*ConnCompAll));
 	bigArrSize = nOverlapsMaxPerImage;
@@ -1058,6 +1058,10 @@ void main(int argc, char *argv[]){
 			int i,j,k;
 			double Omega;
 			int Nadditions;
+			char FN[2048];
+			int ReadFileNr;
+			ReadFileNr = StartFileNr + ((FileNr) / nF);
+			int FramesToSkip = ((FileNr) % nF);
 			if (fnr == 0){
 				if (FileNr - StartNr + 1 < FrameNrOmeChange){
 					Omega = OmegaFirstFile + ((FileNr-StartNr+1)*OmegaStep);
@@ -1065,12 +1069,7 @@ void main(int argc, char *argv[]){
 					Nadditions = (int) ((FileNr - StartNr + 1) / FrameNrOmeChange)  ;
 					Omega = OmegaFirstFile + ((FileNr-StartNr+1)*OmegaStep) + MisDir*OmegaMissing*Nadditions;
 				}
-		    }
-			char FN[2048];
-			int ReadFileNr;
-			ReadFileNr = StartFileNr + ((FileNr) / nF);
-			int FramesToSkip = ((FileNr) % nF);
-			if (fnr != 0){
+			} else {
 				Omega = FileOmegaOmeStep[ReadFileNr-StartFileNr][0] + FramesToSkip*FileOmegaOmeStep[ReadFileNr-StartFileNr][1];
 			}
 			char OutFile[1024];
@@ -1110,11 +1109,9 @@ void main(int argc, char *argv[]){
 						badPxCounter++;
 					}
 				}
-				//~ printf("Number of badPixels %d\n",badPxCounter);
 			}
 			fclose(ImageFile);
 			DoImageTransformations(NrTransOpt,TransOpt,Image,NrPixels);
-			//~ printf("Beam current this file: %f, Beam current scaling value: %f\n",beamcurr,bc);
 			for (i=0;i<(NrPixels*NrPixels);i++) ImgCorrBCTemp[i]=Image[i];
 			Transposer(ImgCorrBCTemp,NrPixels,ImgCorrBC);
 			for (i=0;i<(NrPixels*NrPixels);i++){
@@ -1227,7 +1224,13 @@ void main(int argc, char *argv[]){
 		FreeMemMatrixInt(UsefulPixels,NrPixels*10);
 	}
 
-	// outside omp loop
+	free(ImageAll);
+	free(ImgCorrBCAll);
+	free(ImgCorrBCTempAll);
+	free(BoolImageAll);
+	free(ConnCompAll);
+	free(PosAll);
+	free(PosTrackersAll);
 	free(GoodCoords);
 	free(dark);
 	free(flood);
