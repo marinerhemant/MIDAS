@@ -1016,8 +1016,8 @@ void main(int argc, char *argv[]){
 		//Need to calculate: FileNr
 		int FileNr;
 		int procNum = omp_get_thread_num();
-		int thisStNr = startFileNr + procNum*nrJobs;
-		int thisEndNr = (procNum+1)*nrJobs >endFileNr ? endFileNr : (procNum+1)*nrJobs;
+		int thisStNr = startFileNr + procNum*nrJobs > endFileNr ? endFileNr : startFileNr + procNum*nrJobs;
+		int thisEndNr = startFileNr + (procNum+1)*nrJobs >endFileNr ? endFileNr : startFileNr + (procNum+1)*nrJobs;
 		int idxctr;
 		pixelvalue *Image;
 		double *ImgCorrBCTemp, *ImgCorrBC, *MaximaValues, *z;
