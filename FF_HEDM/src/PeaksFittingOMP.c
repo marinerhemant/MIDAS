@@ -1046,9 +1046,9 @@ void main(int argc, char *argv[]){
 		BoolImage = malloc(NrPixels*sizeof(*BoolImage));
 		ConnectedComponents = malloc(NrPixels*sizeof(*ConnectedComponents));
 		for (idxctr = 0; idxctr < NrPixels; idxctr++){
-			idxoffset += NrPixels;
 			BoolImage[idxctr] = &BoolImageAll[idxoffset];
 			ConnectedComponents[idxctr] = &ConnCompAll[idxoffset];
+			idxoffset += NrPixels;
 		}
 		idxoffset = nOverlapsMaxPerImage;
 		idxoffset *= procNum;
@@ -1056,12 +1056,20 @@ void main(int argc, char *argv[]){
 		idxoffset = NrPixels; idxoffset *= 10; idxoffset *= procNum;
 		MaximaValues = &MaxValAll[idxoffset];
 		z = &zAll[idxoffset];
+		Positions = allocMatrixInt(nOverlapsMaxPerImage,NrPixels*4);
+		Positions = malloc(nOverlapsMaxPerImage*sizeof(*Positions));
+		idxoffset = nOverlapsMaxPerImage; idxoffset *= NrPixels; idxoffset *= 4; idxoffset *= procNum;
+		for (idxctr=0;idxctr<nOverlapsMaxPerImage;idxctr++){
+			Positions[idxctr] = &PosAll[idxoffset];
+			idxoffset += NrPixels *4;
+		}
 		MaximaPositions = malloc(NrPixels*10*sizeof(*MaximaPositions));
 		UsefulPixels = malloc(NrPixels*10*sizeof(*UsefulPixels));
+		idxoffset = NrPixels; idxoffset *= 20; idxoffset *= procNum;
 		for (idxctr=0;idxctr<NrPixels*10;idxctr++){
-			idxoffset = NrPixels; idxoffset *= 20; idxoffset *= procNum;
 			MaximaPositions[idxctr] = &MaxPosAll[idxoffset];
 			UsefulPixels[idxctr] = &UsefulPxAll[idxoffset];
+			idxoffset += 2*idxctr;
 		}
 		idxoffset = maxNPeaks; idxoffset *= 2; idxoffset *= procNum;
 		IntegratedIntensity = &IntIntAll[idxoffset];
