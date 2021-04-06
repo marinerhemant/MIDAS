@@ -1010,11 +1010,11 @@ void main(int argc, char *argv[]){
 	int nrJobs = (int)(ceil((double)(endFileNr - startFileNr)/(double)(numProcs-1)));
 	// OMP from here
 	printf("%d %d %d %d %d\n",nRings,startFileNr,endFileNr,numProcs,nrJobs);
-	int FileNr;
 	int nrFilesDone=0;
 	# pragma omp parallel num_threads(numProcs)
 	{
 		//Need to calculate: FileNr
+		int FileNr;
 		int procNum = omp_get_thread_num();
 		int thisStNr = startFileNr + procNum*nrJobs;
 		int thisEndNr = (procNum+1)*nrJobs >endFileNr ? endFileNr : (procNum+1)*nrJobs;
