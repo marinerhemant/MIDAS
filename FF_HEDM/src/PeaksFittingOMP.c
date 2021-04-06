@@ -1209,29 +1209,29 @@ void main(int argc, char *argv[]){
 			}
 			fclose(outfilewrite);
 		}
-		free(IntegratedIntensity);
-		free(IMAX);
-		free(YCEN);
-		free(ZCEN);
-		free(Rads);
-		free(Etass);
-		free(NrPx);
-		free(z);
-		free(MaximaValues);
-		FreeMemMatrixInt(MaximaPositions,NrPixels*10);
-		FreeMemMatrixInt(UsefulPixels,NrPixels*10);
+		//~ free(IntegratedIntensity);
+		//~ free(IMAX);
+		//~ free(YCEN);
+		//~ free(ZCEN);
+		//~ free(Rads);
+		//~ free(Etass);
+		//~ free(NrPx);
+		//~ free(z);
+		//~ free(MaximaValues);
+		//~ FreeMemMatrixInt(MaximaPositions,NrPixels*10);
+		//~ FreeMemMatrixInt(UsefulPixels,NrPixels*10);
 	}
 
-	free(ImageAll);
-	free(ImgCorrBCAll);
-	free(ImgCorrBCTempAll);
-	free(BoolImageAll);
-	free(ConnCompAll);
-	free(PosAll);
-	free(PosTrackersAll);
-	free(GoodCoords);
-	free(dark);
-	free(flood);
+	//~ free(ImageAll);
+	//~ free(ImgCorrBCAll);
+	//~ free(ImgCorrBCTempAll);
+	//~ free(BoolImageAll);
+	//~ free(ConnCompAll);
+	//~ free(PosAll);
+	//~ free(PosTrackersAll);
+	//~ free(GoodCoords);
+	//~ free(dark);
+	//~ free(flood);
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);
 	return 0;
