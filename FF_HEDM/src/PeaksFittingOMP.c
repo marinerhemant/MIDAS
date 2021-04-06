@@ -1012,13 +1012,12 @@ void main(int argc, char *argv[]){
 	printf("%d %d %d %d %d\n",nRings,startFileNr,endFileNr,numProcs,nrJobs);
 	int FileNr;
 	# pragma omp parallel num_threads(numProcs)
-	//~ # pragma omp for //collapse (2)
-	//~ for (FileNr=startFileNr;FileNr<endFileNr;FileNr++)
 	{
 		//Need to calculate: FileNr
 		int procNum = omp_get_thread_num();
-		int thisStNr = procNum*nrJobs;
+		int thisStNr = startFileNr + procNum*nrJobs;
 		int thisEndNr = (procNum+1)*nrJobs >endFileNr ? endFileNr : (procNum+1)*nrJobs;
+		printf("%d %d %d %d %d %d %d\n",procNum,thisStNr,thisEndNr,startFileNr,endFileNr,nrjobs,numProcs);
 		int idxctr;
 		pixelvalue *Image;
 		double *ImgCorrBCTemp, *ImgCorrBC, *MaximaValues, *z;
@@ -1074,7 +1073,7 @@ void main(int argc, char *argv[]){
 			}
 			char OutFile[1024];
 			sprintf(OutFile,"%s/%s_%0*d_PS.csv",OutFolderName,FileStem,Padding,FileNr+StartNr);
-			printf("Output file name: %s\n",OutFile);
+			//~ printf("Output file name: %s\n",OutFile);
 			FILE *outfilewrite;
 			outfilewrite = fopen(OutFile,"w");
 			fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode\n");
@@ -1148,7 +1147,6 @@ void main(int argc, char *argv[]){
 			int IsSaturated;
 			int SpotIDStart = 1;
 			int TotNrRegions = NrOfReg;
-			long double timex=0;
 			for (i=0;i<NrPixels*10;i++){
 				MaximaPositions[i][0] = 0;
 				MaximaPositions[i][1] = 0;
