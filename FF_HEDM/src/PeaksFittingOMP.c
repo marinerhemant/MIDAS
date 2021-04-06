@@ -1056,7 +1056,7 @@ void main(int argc, char *argv[]){
 		idxoffset = NrPixels; idxoffset *= 10; idxoffset *= procNum;
 		MaximaValues = &MaxValAll[idxoffset];
 		z = &zAll[idxoffset];
-		Positions = allocMatrixInt(nOverlapsMaxPerImage,NrPixels*4);
+		//~ Positions = allocMatrixInt(nOverlapsMaxPerImage,NrPixels*4);
 		Positions = malloc(nOverlapsMaxPerImage*sizeof(*Positions));
 		idxoffset = nOverlapsMaxPerImage; idxoffset *= NrPixels; idxoffset *= 4; idxoffset *= procNum;
 		for (idxctr=0;idxctr<nOverlapsMaxPerImage;idxctr++){
