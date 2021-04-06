@@ -1018,7 +1018,6 @@ void main(int argc, char *argv[]){
 		int procNum = omp_get_thread_num();
 		int thisStNr = startFileNr + procNum*nrJobs;
 		int thisEndNr = (procNum+1)*nrJobs >endFileNr ? endFileNr : (procNum+1)*nrJobs;
-		printf("%d %d %d %d %d %d %d\n",procNum,thisStNr,thisEndNr,startFileNr,endFileNr,nrJobs,numProcs);
 		int idxctr;
 		pixelvalue *Image;
 		double *ImgCorrBCTemp, *ImgCorrBC, *MaximaValues, *z;
@@ -1053,6 +1052,7 @@ void main(int argc, char *argv[]){
 		OtherInfo = malloc(maxNPeaks*10*sizeof(*OtherInfo));
 		int *NrPx;
 		NrPx = malloc(maxNPeaks*2*sizeof(*NrPx));
+		printf("%d %d %d %d %d %d %d\n",procNum,thisStNr,thisEndNr,startFileNr,endFileNr,nrJobs,numProcs);
 		for (FileNr = thisStNr; FileNr < thisEndNr; FileNr++){
 			#pragma omp critical
 			{
