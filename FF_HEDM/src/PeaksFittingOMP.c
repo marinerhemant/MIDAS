@@ -1007,7 +1007,7 @@ void main(int argc, char *argv[]){
 
 	int startFileNr = (int)(ceil((double)nFrames / (double)nBlocks)) * blockNr;
 	int endFileNr = (int)(ceil((double)nFrames / (double)nBlocks)) * (blockNr+1) < nFrames ? (int)(ceil((double)nFrames / (double)nBlocks)) * (blockNr+1) : nFrames;
-	int nrJobs = (endFileNr - startFileNr)/numProcs;
+	int nrJobs = (int)(ceil(double)(endFileNr - startFileNr)/(double)numProcs);
 	// OMP from here
 	printf("%d %d %d %d %d\n",nRings,startFileNr,endFileNr,numProcs,nrJobs);
 	int FileNr;
