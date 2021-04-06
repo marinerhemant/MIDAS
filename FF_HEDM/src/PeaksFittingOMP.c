@@ -1214,17 +1214,17 @@ void main(int argc, char *argv[]){
 			}
 			fclose(outfilewrite);
 		}
-		//~ free(IntegratedIntensity);
-		//~ free(IMAX);
-		//~ free(YCEN);
-		//~ free(ZCEN);
-		//~ free(Rads);
-		//~ free(Etass);
-		//~ free(NrPx);
-		//~ free(z);
-		//~ free(MaximaValues);
-		//~ FreeMemMatrixInt(MaximaPositions,NrPixels*10);
-		//~ FreeMemMatrixInt(UsefulPixels,NrPixels*10);
+		free(IntegratedIntensity);
+		free(IMAX);
+		free(YCEN);
+		free(ZCEN);
+		free(Rads);
+		free(Etass);
+		free(NrPx);
+		free(z);
+		free(MaximaValues);
+		FreeMemMatrixInt(MaximaPositions,NrPixels*10);
+		FreeMemMatrixInt(UsefulPixels,NrPixels*10);
 	}
 
 	//~ free(ImageAll);
