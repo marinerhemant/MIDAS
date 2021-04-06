@@ -1011,6 +1011,7 @@ void main(int argc, char *argv[]){
 	// OMP from here
 	printf("%d %d %d %d %d\n",nRings,startFileNr,endFileNr,numProcs,nrJobs);
 	int FileNr;
+	int nrFilesDone=0;
 	# pragma omp parallel num_threads(numProcs)
 	{
 		//Need to calculate: FileNr
@@ -1053,6 +1054,10 @@ void main(int argc, char *argv[]){
 		int *NrPx;
 		NrPx = malloc(maxNPeaks*2*sizeof(*NrPx));
 		for (FileNr = thisStNr; FileNr < thisEndNr; FileNr++){
+			#pragma omp critical
+			{
+				nrFilesDone++;
+			}
 			double Thresh;
 			int i,j,k;
 			double Omega;
@@ -1233,6 +1238,6 @@ void main(int argc, char *argv[]){
 	//~ free(dark);
 	//~ free(flood);
 	double time = omp_get_wtime() - start_time;
-	printf("Finished, time elapsed: %lf seconds.\n",time);
+	printf("Finished, time elapsed: %lf seconds, nrFramesDone: %d.\n",time,nrFilesDone);
 	return 0;
 }
