@@ -977,8 +977,8 @@ void main(int argc, char *argv[]){
 	bigArrSize *= NrPixels;
 	bigArrSize *= numProcs;
 	pixelvalue *ImageAll;
-	double *ImgCorrBCAll, *ImgCorrBCTempAll;
-	int *BoolImageAll, *ConnCompAll, *PosAll, *PosTrackersAll;
+	double *ImgCorrBCAll, *ImgCorrBCTempAll, *MaxValAll, *zAll, *IntIntAll, *ImaxAll, *YcenAll, *ZcenAll, *RAll, *EtaAll, *OIAll;
+	int *BoolImageAll, *ConnCompAll, *PosAll, *PosTrackersAll, *MaxPosAll, *UsefulPxAll, *NrPxAll;
 	ImageAll = calloc(bigArrSize,sizeof(*ImageAll));
 	ImgCorrBCAll = calloc(bigArrSize,sizeof(*ImgCorrBCAll));
 	ImgCorrBCTempAll = calloc(bigArrSize,sizeof(*ImgCorrBCTempAll));
@@ -990,6 +990,18 @@ void main(int argc, char *argv[]){
 	bigArrSize *= numProcs;
 	PosAll = calloc(bigArrSize,sizeof(*PosAll));
 	PosTrackersAll = calloc(nOverlapsMaxPerImage*numProcs,sizeof(*PosTrackersAll));
+	MaxPosAll = calloc(NrPixels*20*numProcs,sizeof(*MaxPosAll));
+	MaxValAll = calloc(NrPixels*10*numProcs,sizeof(*MaxValAll));
+	UsefulPxAll = calloc(NrPixels*20*numProcs,sizeof(*UsefulPxAll));
+	zAll = calloc(NrPixels*10*numProcs,sizeof(*zAll));
+	IntIntAll = calloc(maxNPeaks*2*numProcs,sizeof(*IntIntAll));
+	ImaxAll = calloc(maxNPeaks*2*numProcs,sizeof(*ImaxAll));
+	YcenAll = calloc(maxNPeaks*2*numProcs,sizeof(*YcenAll));
+	ZcenAll = calloc(maxNPeaks*2*numProcs,sizeof(*ZcenAll));
+	RAll = calloc(maxNPeaks*2*numProcs,sizeof(*RAll));
+	EtaAll = calloc(maxNPeaks*2*numProcs,sizeof(*EtaAll));
+	OIAll = calloc(maxNPeaks*10*numProcs,sizeof(*OIAll));
+	NrPxAll = calloc(maxNPeaks*2*numProcs,sizeof(*NrPxAll));
 	// Get nFrames:
 	FILE *dummyFile;
 	char dummyFN[2048];
@@ -1011,17 +1023,21 @@ void main(int argc, char *argv[]){
 	// OMP from here
 	printf("%d %d %d %d %d %d\n",nRings,startFileNr,endFileNr,numProcs,nrJobs,blockNr);
 	int nrFilesDone=0;
+	int FileNr;
 	# pragma omp parallel num_threads(numProcs)
+	# pragma omp parallel for
+	for (FileNr = startFileNr; FileNr < endFileNr; FileNr++)
 	{
-		//Need to calculate: FileNr
-		int FileNr;
+		//No need to calculate: FileNr
+		//~ int FileNr;
 		int procNum = omp_get_thread_num();
-		int thisStNr = startFileNr + procNum*nrJobs > endFileNr ? endFileNr : startFileNr + procNum*nrJobs;
-		int thisEndNr = startFileNr + (procNum+1)*nrJobs >endFileNr ? endFileNr : startFileNr + (procNum+1)*nrJobs;
+		//~ int thisStNr = startFileNr + procNum*nrJobs > endFileNr ? endFileNr : startFileNr + procNum*nrJobs;
+		//~ int thisEndNr = startFileNr + (procNum+1)*nrJobs >endFileNr ? endFileNr : startFileNr + (procNum+1)*nrJobs;
 		int idxctr;
 		pixelvalue *Image;
 		double *ImgCorrBCTemp, *ImgCorrBC, *MaximaValues, *z;
-		int **BoolImage, **ConnectedComponents, **Positions, *PositionTrackers, **MaximaPositions, **UsefulPixels;
+		double *IntegratedIntensity, *IMAX, *YCEN, *ZCEN, *Rads, *Etass, *OtherInfo;
+		int **BoolImage, **ConnectedComponents, **Positions, *PositionTrackers, **MaximaPositions, **UsefulPixels, *NrPx;
 		size_t idxoffset;
 		idxoffset = NrPixels; idxoffset *= NrPixels; idxoffset *= procNum;
 		Image = &ImageAll[idxoffset];
@@ -1034,186 +1050,191 @@ void main(int argc, char *argv[]){
 			BoolImage[idxctr] = &BoolImageAll[idxoffset];
 			ConnectedComponents[idxctr] = &ConnCompAll[idxoffset];
 		}
-		Positions = allocMatrixInt(nOverlapsMaxPerImage,NrPixels*4);
 		idxoffset = nOverlapsMaxPerImage;
 		idxoffset *= procNum;
 		PositionTrackers = &PosTrackersAll[idxoffset];
-		MaximaPositions = allocMatrixInt(NrPixels*10,2);
-		MaximaValues = malloc(NrPixels*10*sizeof(*MaximaValues));
-		UsefulPixels = allocMatrixInt(NrPixels*10,2);
-		z = malloc(NrPixels*10*sizeof(*z));
-		double *IntegratedIntensity, *IMAX, *YCEN, *ZCEN, *Rads, *Etass, *OtherInfo;
-		IntegratedIntensity = calloc(maxNPeaks*2,sizeof(*IntegratedIntensity));
-		IMAX = malloc(maxNPeaks*2*sizeof(*IMAX));
-		YCEN = malloc(maxNPeaks*2*sizeof(*YCEN));
-		ZCEN = malloc(maxNPeaks*2*sizeof(*ZCEN));
-		Rads = malloc(maxNPeaks*2*sizeof(*Rads));
-		Etass = malloc(maxNPeaks*2*sizeof(*Etass));
-		OtherInfo = malloc(maxNPeaks*10*sizeof(*OtherInfo));
-		int *NrPx;
-		NrPx = malloc(maxNPeaks*2*sizeof(*NrPx));
-		printf("%d %d %d %d %d %d %d %d\n",procNum,thisEndNr-thisStNr,thisStNr,thisEndNr,startFileNr,endFileNr,nrJobs,numProcs);
-		for (FileNr = thisStNr; FileNr < thisEndNr; FileNr++){
-			#pragma omp critical
-			{
-				nrFilesDone++;
-			}
-			double Thresh;
-			int i,j,k;
-			double Omega;
-			int Nadditions;
-			char FN[2048];
-			int ReadFileNr;
-			ReadFileNr = StartFileNr + ((FileNr) / nF);
-			int FramesToSkip = ((FileNr) % nF);
-			if (fnr == 0){
-				if (FileNr - StartNr + 1 < FrameNrOmeChange){
-					Omega = OmegaFirstFile + ((FileNr-StartNr+1)*OmegaStep);
-				} else {
-					Nadditions = (int) ((FileNr - StartNr + 1) / FrameNrOmeChange)  ;
-					Omega = OmegaFirstFile + ((FileNr-StartNr+1)*OmegaStep) + MisDir*OmegaMissing*Nadditions;
-				}
-			} else {
-				Omega = FileOmegaOmeStep[ReadFileNr-StartFileNr][0] + FramesToSkip*FileOmegaOmeStep[ReadFileNr-StartFileNr][1];
-			}
-			char OutFile[1024];
-			sprintf(OutFile,"%s/%s_%0*d_PS.csv",OutFolderName,FileStem,Padding,FileNr+StartNr);
-			//~ printf("Output file name: %s\n",OutFile);
-			FILE *outfilewrite;
-			outfilewrite = fopen(OutFile,"w");
-			fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode\n");
-			int KeepSpots = 0;
-			for (i=0;i<nOmeRanges;i++){
-				if (Omega >= OmegaRanges[i][0] && Omega <= OmegaRanges[i][1]) KeepSpots = 1;
-			}
-			if (KeepSpots == 0){
-				continue;
-			}
-			sprintf(FN,"%s/%s_%0*d%s",RawFolder,fs,Padding,ReadFileNr,Ext);
-			FILE *ImageFile = fopen(FN,"rb");
-			if (ImageFile == NULL){
-				printf("Could not read the input file. Exiting.\n");
-				continue;
-			}
-			// We can just calculate where to be using nF-FramesToSkip, this is needed because FrameNr is now starting from 0, not 1.
-			size_t temp = FramesToSkip;
-			temp *= 2;
-			temp *= NrPixels;
-			temp *= NrPixels;
-			long int Sk = temp;
-			Sk += headSize;
-			double beamcurr=1;
-			fseek(ImageFile,Sk,SEEK_SET);
-			fread(Image,SizeFile,1,ImageFile);
-			if (makeMap == 1){
-				int badPxCounter = 0;
-				for (i=0;i<NrPixels*NrPixels;i++){
-					if (Image[i] == (pixelvalue)BadPxIntensity){
-						Image[i] = 0;
-						badPxCounter++;
-					}
-				}
-			}
-			fclose(ImageFile);
-			DoImageTransformations(NrTransOpt,TransOpt,Image,NrPixels);
-			for (i=0;i<(NrPixels*NrPixels);i++) ImgCorrBCTemp[i]=Image[i];
-			Transposer(ImgCorrBCTemp,NrPixels,ImgCorrBC);
-			for (i=0;i<(NrPixels*NrPixels);i++){
-				if (GoodCoords[i] == 0){
-					ImgCorrBC[i] = 0;
-				} else {
-					ImgCorrBC[i] = (ImgCorrBC[i] - dark[i])/flood[i];
-					ImgCorrBC[i] = ImgCorrBC[i]*bc/beamcurr;
-					if (ImgCorrBC[i] < GoodCoords[i]){
-						ImgCorrBC[i] = 0;
-					}
-				}
-			}
-			// Do Connected components
-			int NrOfReg;
-			for (i=0;i<NrPixels;i++){
-				for (j=0;j<NrPixels;j++){
-					ConnectedComponents[i][j] = 0;
-					if (ImgCorrBC[(i*NrPixels)+j] != 0){
-						BoolImage[i][j] = 1;
-					}else{
-						BoolImage[i][j] = 0;
-					}
-				}
-			}
-			for (i=0;i<nOverlapsMaxPerImage;i++){
-				PositionTrackers[i] = 0;
-				for (j=0;j<NrPixels*4;j++){
-					Positions[i][j] = 0;
-				}
-			}
-			NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
-			int RegNr,NrPixelsThisRegion;
-			int IsSaturated;
-			int SpotIDStart = 1;
-			int TotNrRegions = NrOfReg;
-			for (i=0;i<NrPixels*10;i++){
-				MaximaPositions[i][0] = 0;
-				MaximaPositions[i][1] = 0;
-				MaximaValues[i] = 0;
-				UsefulPixels[i][0] = 0;
-				UsefulPixels[i][1] = 0;
-				z[i] = 0;
-			}
-			for (RegNr=1;RegNr<=NrOfReg;RegNr++){
-				NrPixelsThisRegion = PositionTrackers[RegNr];
-				for (i=0;i<NrPixelsThisRegion;i++){
-					UsefulPixels[i][0] = (int)(Positions[RegNr][i]/NrPixels);
-					UsefulPixels[i][1] = (int)(Positions[RegNr][i]%NrPixels);
-					z[i] = ImgCorrBC[((UsefulPixels[i][0])*NrPixels) + (UsefulPixels[i][1])];
-				}
-				Thresh = GoodCoords[((UsefulPixels[0][0])*NrPixels) + (UsefulPixels[0][1])];
-				unsigned nPeaks;
-				nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,MaximaPositions,MaximaValues,&IsSaturated,IntSat);
-				if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
-					TotNrRegions--;
-					continue;
-				}
-				if (IsSaturated == 1){ //Saturated peaks removed
-					TotNrRegions--;
-					continue;
-				}
-				if (nPeaks > maxNPeaks){
-					// Sort peaks by MaxIntensity, remove the smallest peaks until maxNPeaks, arrays needed MaximaPositions, MaximaValues.
-					int MaximaPositionsT[nPeaks][2];
-					double MaximaValuesT[nPeaks];
-					double maxIntMax;
-					int maxPos;
-					for (i=0;i<maxNPeaks;i++){
-						maxIntMax = 0;
-						for (j=0;j<nPeaks;j++){
-							if (MaximaValues[j] > maxIntMax){
-								maxPos = j;
-								maxIntMax = MaximaValues[j];
-							}
-						}
-						MaximaPositionsT[i][0] = MaximaPositions[maxPos][0];
-						MaximaPositionsT[i][1] = MaximaPositions[maxPos][1];
-						MaximaValuesT[i] = MaximaValues[maxPos];
-						MaximaValues[maxPos] = 0;
-					}
-					nPeaks = maxNPeaks;
-					for (i=0;i<nPeaks;i++){
-						MaximaValues[i] = MaximaValuesT[i];
-						MaximaPositions[i][0] = MaximaPositionsT[i][0];
-						MaximaPositions[i][1] = MaximaPositionsT[i][1];
-					}
-				}
-				int rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo);
-				for (i=0;i<nPeaks;i++){
-					fprintf(outfilewrite,"%d %f %f %f %f %f %f %f ",(SpotIDStart+i),IntegratedIntensity[i],Omega,YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
-					for (j=0;j<2;j++) fprintf(outfilewrite, "%f ",OtherInfo[2*i+j]);
-					fprintf(outfilewrite,"%d %d %d %d %d %f %f %f %d\n",NrPx[i],NrPixelsThisRegion,nPeaks,MaximaPositions[i][0],MaximaPositions[i][1],(double)MaximaPositions[i][0]-YCEN[i]-Ycen,(double)MaximaPositions[i][1]-ZCEN[i]-Zcen,MaximaValues[i],rc);
-				}
-				SpotIDStart += nPeaks;
-			}
-			fclose(outfilewrite);
+		idxoffset = NrPixels; idxoffset *= 10; idxoffset *= procNum;
+		MaximaValues = &MaxValAll[idxoffset];
+		z = &zAll[idxoffset];
+		MaximaPositions = malloc(NrPixels*10*sizeof(*MaximaPositions));
+		UsefulPixels = malloc(NrPixels*10*sizeof(*UsefulPixels));
+		for (idxctr=0;idxctr<NrPixels*10;idxctr++){
+			idxoffset = NrPixels; idxoffset *= 20; idxoffset *= procNum;
+			MaximaPositions[idxctr] = &MaxPosAll[idxoffset];
+			UsefulPixels[idxctr] = &UsefulPxAll[idxoffset];
 		}
+		idxoffset = maxNPeaks; idxoffset *= 2; idxoffset *= procNum;
+		IntegratedIntensity = &IntIntAll[idxoffset];
+		IMAX = &ImaxAll[idxoffset];
+		YCEN = &YcenAll[idxoffset];
+		ZCEN = &ZcenAll[idxoffset];
+		Rads = &RAll[idxoffset];
+		Etass = &EtaAll[idxoffset];
+		NrPx = &NrPxAll[idxoffset];
+		idxoffset *= 5;
+		OtherInfo = &OIAll[idxoffset];
+		//~ printf("%d %d %d %d %d %d %d %d\n",procNum,thisEndNr-thisStNr,thisStNr,thisEndNr,startFileNr,endFileNr,nrJobs,numProcs);
+		//~ for (FileNr = thisStNr; FileNr < thisEndNr; FileNr++){
+		#pragma omp critical
+		{
+			nrFilesDone++;
+		}
+		double Thresh;
+		int i,j,k;
+		double Omega;
+		int Nadditions;
+		char FN[2048];
+		int ReadFileNr;
+		ReadFileNr = StartFileNr + ((FileNr) / nF);
+		int FramesToSkip = ((FileNr) % nF);
+		if (fnr == 0){
+			if (FileNr - StartNr + 1 < FrameNrOmeChange){
+				Omega = OmegaFirstFile + ((FileNr-StartNr+1)*OmegaStep);
+			} else {
+				Nadditions = (int) ((FileNr - StartNr + 1) / FrameNrOmeChange)  ;
+				Omega = OmegaFirstFile + ((FileNr-StartNr+1)*OmegaStep) + MisDir*OmegaMissing*Nadditions;
+			}
+		} else {
+			Omega = FileOmegaOmeStep[ReadFileNr-StartFileNr][0] + FramesToSkip*FileOmegaOmeStep[ReadFileNr-StartFileNr][1];
+		}
+		char OutFile[1024];
+		sprintf(OutFile,"%s/%s_%0*d_PS.csv",OutFolderName,FileStem,Padding,FileNr+StartNr);
+		//~ printf("Output file name: %s\n",OutFile);
+		FILE *outfilewrite;
+		outfilewrite = fopen(OutFile,"w");
+		fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode\n");
+		int KeepSpots = 0;
+		for (i=0;i<nOmeRanges;i++){
+			if (Omega >= OmegaRanges[i][0] && Omega <= OmegaRanges[i][1]) KeepSpots = 1;
+		}
+		if (KeepSpots == 0){
+			continue;
+		}
+		sprintf(FN,"%s/%s_%0*d%s",RawFolder,fs,Padding,ReadFileNr,Ext);
+		FILE *ImageFile = fopen(FN,"rb");
+		if (ImageFile == NULL){
+			printf("Could not read the input file. Exiting.\n");
+			continue;
+		}
+		// We can just calculate where to be using nF-FramesToSkip, this is needed because FrameNr is now starting from 0, not 1.
+		size_t temp = FramesToSkip;
+		temp *= 2;
+		temp *= NrPixels;
+		temp *= NrPixels;
+		long int Sk = temp;
+		Sk += headSize;
+		double beamcurr=1;
+		fseek(ImageFile,Sk,SEEK_SET);
+		fread(Image,SizeFile,1,ImageFile);
+		if (makeMap == 1){
+			int badPxCounter = 0;
+			for (i=0;i<NrPixels*NrPixels;i++){
+				if (Image[i] == (pixelvalue)BadPxIntensity){
+					Image[i] = 0;
+					badPxCounter++;
+				}
+			}
+		}
+		fclose(ImageFile);
+		DoImageTransformations(NrTransOpt,TransOpt,Image,NrPixels);
+		for (i=0;i<(NrPixels*NrPixels);i++) ImgCorrBCTemp[i]=Image[i];
+		Transposer(ImgCorrBCTemp,NrPixels,ImgCorrBC);
+		for (i=0;i<(NrPixels*NrPixels);i++){
+			if (GoodCoords[i] == 0){
+				ImgCorrBC[i] = 0;
+			} else {
+				ImgCorrBC[i] = (ImgCorrBC[i] - dark[i])/flood[i];
+				ImgCorrBC[i] = ImgCorrBC[i]*bc/beamcurr;
+				if (ImgCorrBC[i] < GoodCoords[i]){
+					ImgCorrBC[i] = 0;
+				}
+			}
+		}
+		// Do Connected components
+		int NrOfReg;
+		for (i=0;i<NrPixels;i++){
+			for (j=0;j<NrPixels;j++){
+				ConnectedComponents[i][j] = 0;
+				if (ImgCorrBC[(i*NrPixels)+j] != 0){
+					BoolImage[i][j] = 1;
+				}else{
+					BoolImage[i][j] = 0;
+				}
+			}
+		}
+		for (i=0;i<nOverlapsMaxPerImage;i++){
+			PositionTrackers[i] = 0;
+			for (j=0;j<NrPixels*4;j++){
+				Positions[i][j] = 0;
+			}
+		}
+		NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
+		int RegNr,NrPixelsThisRegion;
+		int IsSaturated;
+		int SpotIDStart = 1;
+		int TotNrRegions = NrOfReg;
+		for (i=0;i<NrPixels*10;i++){
+			MaximaPositions[i][0] = 0;
+			MaximaPositions[i][1] = 0;
+			MaximaValues[i] = 0;
+			UsefulPixels[i][0] = 0;
+			UsefulPixels[i][1] = 0;
+			z[i] = 0;
+		}
+		for (RegNr=1;RegNr<=NrOfReg;RegNr++){
+			NrPixelsThisRegion = PositionTrackers[RegNr];
+			for (i=0;i<NrPixelsThisRegion;i++){
+				UsefulPixels[i][0] = (int)(Positions[RegNr][i]/NrPixels);
+				UsefulPixels[i][1] = (int)(Positions[RegNr][i]%NrPixels);
+				z[i] = ImgCorrBC[((UsefulPixels[i][0])*NrPixels) + (UsefulPixels[i][1])];
+			}
+			Thresh = GoodCoords[((UsefulPixels[0][0])*NrPixels) + (UsefulPixels[0][1])];
+			unsigned nPeaks;
+			nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,MaximaPositions,MaximaValues,&IsSaturated,IntSat);
+			if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
+				TotNrRegions--;
+				continue;
+			}
+			if (IsSaturated == 1){ //Saturated peaks removed
+				TotNrRegions--;
+				continue;
+			}
+			if (nPeaks > maxNPeaks){
+				// Sort peaks by MaxIntensity, remove the smallest peaks until maxNPeaks, arrays needed MaximaPositions, MaximaValues.
+				int MaximaPositionsT[nPeaks][2];
+				double MaximaValuesT[nPeaks];
+				double maxIntMax;
+				int maxPos;
+				for (i=0;i<maxNPeaks;i++){
+					maxIntMax = 0;
+					for (j=0;j<nPeaks;j++){
+						if (MaximaValues[j] > maxIntMax){
+							maxPos = j;
+							maxIntMax = MaximaValues[j];
+						}
+					}
+					MaximaPositionsT[i][0] = MaximaPositions[maxPos][0];
+					MaximaPositionsT[i][1] = MaximaPositions[maxPos][1];
+					MaximaValuesT[i] = MaximaValues[maxPos];
+					MaximaValues[maxPos] = 0;
+				}
+				nPeaks = maxNPeaks;
+				for (i=0;i<nPeaks;i++){
+					MaximaValues[i] = MaximaValuesT[i];
+					MaximaPositions[i][0] = MaximaPositionsT[i][0];
+					MaximaPositions[i][1] = MaximaPositionsT[i][1];
+				}
+			}
+			int rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo);
+			for (i=0;i<nPeaks;i++){
+				fprintf(outfilewrite,"%d %f %f %f %f %f %f %f ",(SpotIDStart+i),IntegratedIntensity[i],Omega,YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
+				for (j=0;j<2;j++) fprintf(outfilewrite, "%f ",OtherInfo[2*i+j]);
+				fprintf(outfilewrite,"%d %d %d %d %d %f %f %f %d\n",NrPx[i],NrPixelsThisRegion,nPeaks,MaximaPositions[i][0],MaximaPositions[i][1],(double)MaximaPositions[i][0]-YCEN[i]-Ycen,(double)MaximaPositions[i][1]-ZCEN[i]-Zcen,MaximaValues[i],rc);
+			}
+			SpotIDStart += nPeaks;
+		}
+		fclose(outfilewrite);
+		//~ }
 		free(IntegratedIntensity);
 		free(IMAX);
 		free(YCEN);
