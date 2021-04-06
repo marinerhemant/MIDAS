@@ -1227,16 +1227,16 @@ void main(int argc, char *argv[]){
 		FreeMemMatrixInt(UsefulPixels,NrPixels*10);
 	}
 
-	//~ free(ImageAll);
-	//~ free(ImgCorrBCAll);
-	//~ free(ImgCorrBCTempAll);
-	//~ free(BoolImageAll);
-	//~ free(ConnCompAll);
-	//~ free(PosAll);
-	//~ free(PosTrackersAll);
-	//~ free(GoodCoords);
-	//~ free(dark);
-	//~ free(flood);
+	free(ImageAll);
+	free(ImgCorrBCAll);
+	free(ImgCorrBCTempAll);
+	free(BoolImageAll);
+	free(ConnCompAll);
+	free(PosAll);
+	free(PosTrackersAll);
+	free(GoodCoords);
+	free(dark);
+	free(flood);
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds, nrFramesDone: %d.\n",time,nrFilesDone);
 	return 0;
