@@ -1009,7 +1009,7 @@ void main(int argc, char *argv[]){
 	int endFileNr = (int)(ceil((double)nFrames / (double)nBlocks)) * (blockNr+1) < nFrames ? (int)(ceil((double)nFrames / (double)nBlocks)) * (blockNr+1) : nFrames;
 	int nrJobs = (int)(ceil((double)(endFileNr - startFileNr)/(double)(numProcs)));
 	// OMP from here
-	printf("%d %d %d %d %d\n",nRings,startFileNr,endFileNr,numProcs,nrJobs);
+	printf("%d %d %d %d %d %d\n",nRings,startFileNr,endFileNr,numProcs,nrJobs,blockNr);
 	int nrFilesDone=0;
 	# pragma omp parallel num_threads(numProcs)
 	{
