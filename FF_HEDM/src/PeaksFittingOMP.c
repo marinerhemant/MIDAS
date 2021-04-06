@@ -1047,7 +1047,9 @@ void main(int argc, char *argv[]){
 		ConnectedComponents = malloc(NrPixels*sizeof(*ConnectedComponents));
 		for (idxctr = 0; idxctr < NrPixels; idxctr++){
 			BoolImage[idxctr] = &BoolImageAll[idxoffset];
+			memset(&BoolImage[idxctr],0,NrPixels*sizeof(**BoolImage));
 			ConnectedComponents[idxctr] = &ConnCompAll[idxoffset];
+			memset(&ConnectedComponents[idxctr],0,NrPixels*sizeof(**ConnectedComponents));
 			idxoffset += NrPixels;
 		}
 		idxoffset = nOverlapsMaxPerImage;
@@ -1243,6 +1245,11 @@ void main(int argc, char *argv[]){
 		}
 		fclose(outfilewrite);
 		//~ }
+		free(BoolImage);
+		free(ConnectedComponents);
+		free(Positions);
+		free(MaximaPositions);
+		free(UsefulPixels);
 		//~ free(IntegratedIntensity);
 		//~ free(IMAX);
 		//~ free(YCEN);
