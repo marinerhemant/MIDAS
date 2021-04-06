@@ -1047,9 +1047,7 @@ void main(int argc, char *argv[]){
 		ConnectedComponents = malloc(NrPixels*sizeof(*ConnectedComponents));
 		for (idxctr = 0; idxctr < NrPixels; idxctr++){
 			BoolImage[idxctr] = &BoolImageAll[idxoffset];
-			memset(&BoolImage[idxctr],0,NrPixels*sizeof(**BoolImage));
 			ConnectedComponents[idxctr] = &ConnCompAll[idxoffset];
-			memset(&ConnectedComponents[idxctr],0,NrPixels*sizeof(**ConnectedComponents));
 			idxoffset += NrPixels;
 		}
 		idxoffset = nOverlapsMaxPerImage;
