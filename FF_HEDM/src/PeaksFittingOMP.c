@@ -1069,7 +1069,7 @@ void main(int argc, char *argv[]){
 		for (idxctr=0;idxctr<NrPixels*10;idxctr++){
 			MaximaPositions[idxctr] = &MaxPosAll[idxoffset];
 			UsefulPixels[idxctr] = &UsefulPxAll[idxoffset];
-			idxoffset += 2*idxctr;
+			idxoffset += 2;
 		}
 		idxoffset = maxNPeaks; idxoffset *= 2; idxoffset *= procNum;
 		IntegratedIntensity = &IntIntAll[idxoffset];
