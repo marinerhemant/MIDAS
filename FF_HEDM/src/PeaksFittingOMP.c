@@ -1054,6 +1054,7 @@ void main(int argc, char *argv[]){
 		size_t idxoffset;
 		idxoffset = NrPixels; idxoffset *= NrPixels; idxoffset *= procNum;
 		printf("%zu",idxoffset);
+		/*
 		Image = &ImageAll[idxoffset];
 		ImgCorrBC = &ImgCorrBCAll[idxoffset];
 		ImgCorrBCTemp = &ImgCorrBCTempAll[idxoffset];
@@ -1263,7 +1264,7 @@ void main(int argc, char *argv[]){
 		//~ FreeMemMatrixInt(BoolImage,NrPixels);
 		//~ FreeMemMatrixInt(Positions,nOverlapsMaxPerImage);
 		//~ FreeMemMatrixInt(MaximaPositions,NrPixels*10);
-		//~ FreeMemMatrixInt(UsefulPixels,NrPixels*10);
+		//~ FreeMemMatrixInt(UsefulPixels,NrPixels*10);*/
 	}
 
 	free(ImageAll);
