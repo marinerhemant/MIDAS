@@ -1053,7 +1053,7 @@ void main(int argc, char *argv[]){
 		int *BoolImage, *ConnectedComponents, *Positions, *PositionTrackers, *MaximaPositions, *UsefulPixels, *NrPx;
 		size_t idxoffset;
 		idxoffset = NrPixels; idxoffset *= NrPixels; idxoffset *= procNum;
-		printf("%lld\n",(long long int)idxoffset);
+		printf("%lld %lld %d\n",(long long int)idxoffset, (long long int)NrPixels*NrPixels*procNum,NrPixels,procNum);
 		/*
 		Image = &ImageAll[idxoffset];
 		ImgCorrBC = &ImgCorrBCAll[idxoffset];
