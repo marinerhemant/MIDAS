@@ -1248,9 +1248,9 @@ void main(int argc, char *argv[]){
 		//~ }
 		free(BoolImage);
 		free(ConnectedComponents);
-		free(Positions);
-		free(MaximaPositions);
-		free(UsefulPixels);
+		//~ free(Positions);
+		//~ free(MaximaPositions);
+		//~ free(UsefulPixels);
 		//~ free(IntegratedIntensity);
 		//~ free(IMAX);
 		//~ free(YCEN);
@@ -1260,8 +1260,9 @@ void main(int argc, char *argv[]){
 		//~ free(NrPx);
 		//~ free(z);
 		//~ free(MaximaValues);
-		//~ FreeMemMatrixInt(MaximaPositions,NrPixels*10);
-		//~ FreeMemMatrixInt(UsefulPixels,NrPixels*10);
+		FreeMemMatrixInt(Positions,nOverlapsMaxPerImage);
+		FreeMemMatrixInt(MaximaPositions,NrPixels*10);
+		FreeMemMatrixInt(UsefulPixels,NrPixels*10);
 	}
 
 	free(ImageAll);
