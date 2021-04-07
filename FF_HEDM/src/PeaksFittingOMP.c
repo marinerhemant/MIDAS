@@ -525,20 +525,20 @@ check (int test, const char * message, ...)
 }
 
 void main(int argc, char *argv[]){
-	const rlim_t kStackSize = 2000*1024*1024;
-	struct rlimit r1;
-	int rc;
-	rc = getrlimit(RLIMIT_STACK,&r1);
-	if (rc == 0){
-		if (r1.rlim_cur < kStackSize){
-			r1.rlim_cur = kStackSize;
-			rc = setrlimit(RLIMIT_STACK,&r1);
-			if (rc != 0){
-				printf("Something went wrong, cannot increase stack size, returned result: %d! Exiting",rc);
-				return 1;
-			}
-		}
-	}
+	//~ const rlim_t kStackSize = 2000*1024*1024;
+	//~ struct rlimit r1;
+	//~ int rc;
+	//~ rc = getrlimit(RLIMIT_STACK,&r1);
+	//~ if (rc == 0){
+		//~ if (r1.rlim_cur < kStackSize){
+			//~ r1.rlim_cur = kStackSize;
+			//~ rc = setrlimit(RLIMIT_STACK,&r1);
+			//~ if (rc != 0){
+				//~ printf("Something went wrong, cannot increase stack size, returned result: %d! Exiting",rc);
+				//~ return 1;
+			//~ }
+		//~ }
+	//~ }
 	char *ParamFN = argv[1];
 	int blockNr = atoi(argv[2]);
 	int nBlocks = atoi(argv[3]);
@@ -1038,14 +1038,11 @@ void main(int argc, char *argv[]){
 	int nrFilesDone=0;
 	int FileNr;
 	//~ # pragma omp parallel num_threads(numProcs)
-	# pragma omp parallel for num_threads(numProcs) private(FileNr)
+	# pragma omp parallel for num_threads(numProcs) private(FileNr) schedule(guided)
 	for (FileNr = startFileNr; FileNr < endFileNr; FileNr++)
 	{
 		//No need to calculate: FileNr
-		//~ int FileNr;
 		int procNum = omp_get_thread_num();
-		//~ int thisStNr = startFileNr + procNum*nrJobs > endFileNr ? endFileNr : startFileNr + procNum*nrJobs;
-		//~ int thisEndNr = startFileNr + (procNum+1)*nrJobs >endFileNr ? endFileNr : startFileNr + (procNum+1)*nrJobs;
 		int idxctr;
 		pixelvalue *Image;
 		double *ImgCorrBCTemp, *ImgCorrBC, *MaximaValues, *z;
@@ -1059,20 +1056,14 @@ void main(int argc, char *argv[]){
 		ImgCorrBCTemp = &ImgCorrBCTempAll[idxoffset];
 		BoolImage = &BoolImageAll[idxoffset];
 		ConnectedComponents = &ConnCompAll[idxoffset];
-		//~ BoolImage = allocMatrixInt(NrPixels,NrPixels);
-		//~ ConnectedComponents = allocMatrixInt(NrPixels,NrPixels);
 		idxoffset = nOverlapsMaxPerImage;
 		idxoffset *= procNum;
 		PositionTrackers = &PosTrackersAll[idxoffset];
 		idxoffset = NrPixels; idxoffset *= 10; idxoffset *= procNum;
 		MaximaValues = &MaxValAll[idxoffset];
 		z = &zAll[idxoffset];
-		//~ Positions = allocMatrixInt(nOverlapsMaxPerImage,NrPixels*4);
 		idxoffset = nOverlapsMaxPerImage; idxoffset *= NrPixels; idxoffset *= 4; idxoffset *= procNum;
 		Positions = &PosAll[idxoffset];
-
-		//~ MaximaPositions = allocMatrixInt(NrPixels*10,2);
-		//~ UsefulPixels = allocMatrixInt(NrPixels*10,2);
 		idxoffset = NrPixels; idxoffset *= 20; idxoffset *= procNum;
 		UsefulPixels = &UsefulPxAll[idxoffset];
 		MaximaPositions = &MaxPosAll[idxoffset];
@@ -1086,8 +1077,6 @@ void main(int argc, char *argv[]){
 		NrPx = &NrPxAll[idxoffset];
 		idxoffset *= 5;
 		OtherInfo = &OIAll[idxoffset];
-		//~ printf("%d %d %d %d %d %d %d %d\n",procNum,thisEndNr-thisStNr,thisStNr,thisEndNr,startFileNr,endFileNr,nrJobs,numProcs);
-		//~ for (FileNr = thisStNr; FileNr < thisEndNr; FileNr++){
 		#pragma omp critical
 		{
 			nrFilesDone++;
@@ -1112,7 +1101,6 @@ void main(int argc, char *argv[]){
 		}
 		char OutFile[1024];
 		sprintf(OutFile,"%s/%s_%0*d_PS.csv",OutFolderName,FileStem,Padding,FileNr+StartNr);
-		//~ printf("Output file name: %s\n",OutFile);
 		FILE *outfilewrite;
 		outfilewrite = fopen(OutFile,"w");
 		fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode\n");
@@ -1244,26 +1232,6 @@ void main(int argc, char *argv[]){
 			SpotIDStart += nPeaks;
 		}
 		fclose(outfilewrite);
-		//~ }
-		//~ free(BoolImage);
-		//~ free(ConnectedComponents);
-		//~ free(Positions);
-		//~ free(MaximaPositions);
-		//~ free(UsefulPixels);
-		//~ free(IntegratedIntensity);
-		//~ free(IMAX);
-		//~ free(YCEN);
-		//~ free(ZCEN);
-		//~ free(Rads);
-		//~ free(Etass);
-		//~ free(NrPx);
-		//~ free(z);
-		//~ free(MaximaValues);
-		//~ FreeMemMatrixInt(ConnectedComponents,NrPixels);
-		//~ FreeMemMatrixInt(BoolImage,NrPixels);
-		//~ FreeMemMatrixInt(Positions,nOverlapsMaxPerImage);
-		//~ FreeMemMatrixInt(MaximaPositions,NrPixels*10);
-		//~ FreeMemMatrixInt(UsefulPixels,NrPixels*10);
 	}
 
 	free(ImageAll);
@@ -1273,6 +1241,18 @@ void main(int argc, char *argv[]){
 	free(ConnCompAll);
 	free(PosAll);
 	free(PosTrackersAll);
+	free(MaxPosAll);
+	free(MaxValAll);
+	free(UsefulPxAll);
+	free(zAll);
+	free(IntIntAll);
+	free(ImaxAll);
+	free(YcenAll);
+	free(ZcenAll);
+	free(RAll);
+	free(EtaAll);
+	free(OIAll);
+	free(NrPxAll);
 	free(GoodCoords);
 	free(dark);
 	free(flood);
