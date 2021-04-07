@@ -1070,8 +1070,8 @@ void main(int argc, char *argv[]){
 		//~ UsefulPixels = malloc(NrPixels*10*sizeof(*UsefulPixels));
 		idxoffset = NrPixels; idxoffset *= 20; idxoffset *= procNum;
 		for (idxctr=0;idxctr<NrPixels*10;idxctr++){
-			MaximaPositions[idxctr] = &MaxPosAll[idxoffset];
-			UsefulPixels[idxctr] = &UsefulPxAll[idxoffset];
+			//~ MaximaPositions[idxctr] = &MaxPosAll[idxoffset];
+			//~ UsefulPixels[idxctr] = &UsefulPxAll[idxoffset];
 			idxoffset += 2;
 		}
 		idxoffset = maxNPeaks; idxoffset *= 2; idxoffset *= procNum;
