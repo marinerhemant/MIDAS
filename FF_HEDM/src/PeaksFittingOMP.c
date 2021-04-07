@@ -1034,7 +1034,7 @@ void main(int argc, char *argv[]){
 	int endFileNr = (int)(ceil((double)nFrames / (double)nBlocks)) * (blockNr+1) < nFrames ? (int)(ceil((double)nFrames / (double)nBlocks)) * (blockNr+1) : nFrames;
 	int nrJobs = (int)(ceil((double)(endFileNr - startFileNr)/(double)(numProcs)));
 	// OMP from here
-	printf("%d %d %d %d %d %d\n",nRings,startFileNr,endFileNr,numProcs,nrJobs,blockNr);
+	printf("StartFileNr: %d EndFileNr: %d numProcs: %d nrJobs/proc: %d blockNr: %d nrBlocks: %d\n",startFileNr,endFileNr,numProcs,nrJobs,blockNr,nBlocks);
 	int nrFilesDone=0;
 	int FileNr;
 	//~ # pragma omp parallel num_threads(numProcs)
@@ -1053,7 +1053,7 @@ void main(int argc, char *argv[]){
 		int *BoolImage, *ConnectedComponents, *Positions, *PositionTrackers, *MaximaPositions, *UsefulPixels, *NrPx;
 		size_t idxoffset;
 		idxoffset = NrPixels; idxoffset *= NrPixels; idxoffset *= procNum;
-		printf("FileNr: %d startFileNr: %d endFileNr: %d\n",FileNr,startFileNr,endFileNr);
+		printf("FileNr: %d\n",FileNr);
 		Image = &ImageAll[idxoffset];
 		ImgCorrBC = &ImgCorrBCAll[idxoffset];
 		ImgCorrBCTemp = &ImgCorrBCTempAll[idxoffset];
