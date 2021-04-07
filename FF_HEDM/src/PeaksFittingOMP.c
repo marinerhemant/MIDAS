@@ -1063,8 +1063,11 @@ void main(int argc, char *argv[]){
 			//~ Positions[idxctr] = &PosAll[idxoffset];
 			idxoffset += NrPixels *4;
 		}
-		MaximaPositions = malloc(NrPixels*10*sizeof(*MaximaPositions));
-		UsefulPixels = malloc(NrPixels*10*sizeof(*UsefulPixels));
+
+		MaximaPositions = allocMatrixInt(NrPixels*10,2);
+		UsefulPixels = allocMatrixInt(NrPixels*10,2);
+		//~ MaximaPositions = malloc(NrPixels*10*sizeof(*MaximaPositions));
+		//~ UsefulPixels = malloc(NrPixels*10*sizeof(*UsefulPixels));
 		idxoffset = NrPixels; idxoffset *= 20; idxoffset *= procNum;
 		for (idxctr=0;idxctr<NrPixels*10;idxctr++){
 			MaximaPositions[idxctr] = &MaxPosAll[idxoffset];
