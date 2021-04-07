@@ -527,7 +527,7 @@ check (int test, const char * message, ...)
 }
 
 void main(int argc, char *argv[]){
-	const rlim_t kStackSize = 200*1024*1024;
+	const rlim_t kStackSize = 2000*1024*1024;
 	struct rlimit r1;
 	int rc;
 	rc = getrlimit(RLIMIT_STACK,&r1);
