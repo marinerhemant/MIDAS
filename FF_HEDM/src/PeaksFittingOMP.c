@@ -1043,11 +1043,13 @@ void main(int argc, char *argv[]){
 		Image = &ImageAll[idxoffset];
 		ImgCorrBC = &ImgCorrBCAll[idxoffset];
 		ImgCorrBCTemp = &ImgCorrBCTempAll[idxoffset];
-		BoolImage = malloc(NrPixels*sizeof(*BoolImage));
-		ConnectedComponents = malloc(NrPixels*sizeof(*ConnectedComponents));
+		BoolImage = allocMatrixInt(NrPixels,NrPixels);
+		ConnectedComponents = allocMatrixInt(NrPixels,NrPixels);
+		//~ BoolImage = malloc(NrPixels*sizeof(*BoolImage));
+		//~ ConnectedComponents = malloc(NrPixels*sizeof(*ConnectedComponents));
 		for (idxctr = 0; idxctr < NrPixels; idxctr++){
-			BoolImage[idxctr] = &BoolImageAll[idxoffset];
-			ConnectedComponents[idxctr] = &ConnCompAll[idxoffset];
+			//~ BoolImage[idxctr] = &BoolImageAll[idxoffset];
+			//~ ConnectedComponents[idxctr] = &ConnCompAll[idxoffset];
 			idxoffset += NrPixels;
 		}
 		idxoffset = nOverlapsMaxPerImage;
@@ -1246,8 +1248,8 @@ void main(int argc, char *argv[]){
 		}
 		fclose(outfilewrite);
 		//~ }
-		free(BoolImage);
-		free(ConnectedComponents);
+		//~ free(BoolImage);
+		//~ free(ConnectedComponents);
 		//~ free(Positions);
 		//~ free(MaximaPositions);
 		//~ free(UsefulPixels);
@@ -1260,6 +1262,8 @@ void main(int argc, char *argv[]){
 		//~ free(NrPx);
 		//~ free(z);
 		//~ free(MaximaValues);
+		FreeMemMatrixInt(ConnectedComponents,NrPixels);
+		FreeMemMatrixInt(BoolImage,NrPixels);
 		FreeMemMatrixInt(Positions,nOverlapsMaxPerImage);
 		FreeMemMatrixInt(MaximaPositions,NrPixels*10);
 		FreeMemMatrixInt(UsefulPixels,NrPixels*10);
