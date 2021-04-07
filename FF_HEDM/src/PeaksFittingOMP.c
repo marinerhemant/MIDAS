@@ -189,10 +189,8 @@ static inline void DepthFirstSearch(int x, int y, int current_label, int NrPixel
 
 static inline int FindConnectedComponents(int *BoolImage, int NrPixels, int *ConnectedComponents, int **Positions, int *PositionTrackers){
 	int i,j;
-	for (i=0;i<NrPixels;i++){
-		for (j=0;j<NrPixels;j++){
-			ConnectedComponents[i*NrPixels+j] = 0;
-		}
+	for (i=0;i<NrPixels*NrPixels;i++){
+		ConnectedComponents[i] = 0;
 	}
 	int component = 0;
 	for (i=0;i<NrPixels;++i) {
@@ -1055,6 +1053,7 @@ void main(int argc, char *argv[]){
 		int *BoolImage, *ConnectedComponents, *Positions, *PositionTrackers, *MaximaPositions, *UsefulPixels, *NrPx;
 		size_t idxoffset;
 		idxoffset = NrPixels; idxoffset *= NrPixels; idxoffset *= procNum;
+		printf("%zu",idxoffset);
 		Image = &ImageAll[idxoffset];
 		ImgCorrBC = &ImgCorrBCAll[idxoffset];
 		ImgCorrBCTemp = &ImgCorrBCTempAll[idxoffset];
@@ -1166,14 +1165,11 @@ void main(int argc, char *argv[]){
 		}
 		// Do Connected components
 		int NrOfReg;
-		for (i=0;i<NrPixels;i++){
-			for (j=0;j<NrPixels;j++){
-				ConnectedComponents[i*NrPixels+j] = 0;
-				if (ImgCorrBC[(i*NrPixels)+j] != 0){
-					BoolImage[i*NrPixels+j] = 1;
-				}else{
-					BoolImage[i*NrPixels+j] = 0;
-				}
+		for (i=0;i<NrPixels*NrPixels;i++){
+			if (ImgCorrBC[i] != 0){
+				BoolImage[i] = 1;
+			}else{
+				BoolImage[i] = 0;
 			}
 		}
 		for (i=0;i<nOverlapsMaxPerImage;i++){
