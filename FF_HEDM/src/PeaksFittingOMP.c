@@ -1038,7 +1038,7 @@ void main(int argc, char *argv[]){
 	int nrFilesDone=0;
 	int FileNr;
 	//~ # pragma omp parallel num_threads(numProcs)
-	# pragma omp parallel for num_threads(numProcs) private(FileNr) schedule(guided)
+	# pragma omp parallel for num_threads(numProcs) private(FileNr) schedule(dynamic)
 	for (FileNr = startFileNr; FileNr < endFileNr; FileNr++)
 	{
 		//No need to calculate: FileNr
