@@ -234,15 +234,15 @@ static inline unsigned FindRegionalMaxima(double *z,int *PixelPositions,
 			}
 		}
 		if (isRegionalMax == 1){
-			MaximaPositions[nPeaks*NrPixels*10+0] = xThis;
-			MaximaPositions[nPeaks*NrPixels*10+1] = yThis;
+			MaximaPositions[nPeaks*2+0] = xThis;
+			MaximaPositions[nPeaks*2+1] = yThis;
 			MaximaValues[nPeaks] = zThis;
 			nPeaks++;
 		}
 	}
 	if (nPeaks==0){
-        MaximaPositions[nPeaks*NrPixels*10+0] = PixelPositions[NrPixelsThisRegion+0];
-        MaximaPositions[nPeaks*NrPixels*10+1] = PixelPositions[NrPixelsThisRegion+1];
+        MaximaPositions[nPeaks*2+0] = PixelPositions[NrPixelsThisRegion+0];
+        MaximaPositions[nPeaks*2+1] = PixelPositions[NrPixelsThisRegion+1];
         MaximaValues[nPeaks] = z[NrPixelsThisRegion/2];
         nPeaks=1;
 	}
@@ -372,8 +372,8 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPi
 	double initSigmaEta;
 	for (i=0;i<nPeaks;i++){
 		x[(8*i)+1] = MaximaValues[i]; // Imax
-		x[(8*i)+2] = CalcNorm2(MaximaPositions[i*NrPixels*10+0]-Ycen,MaximaPositions[i*NrPixels*10+1]-Zcen); //Radius
-		x[(8*i)+3] = CalcEtaAngle(MaximaPositions[i*NrPixels*10+0]-Ycen,MaximaPositions[i*NrPixels*10+1]-Zcen); // Eta
+		x[(8*i)+2] = CalcNorm2(MaximaPositions[i*2+0]-Ycen,MaximaPositions[i*2+1]-Zcen); //Radius
+		x[(8*i)+3] = CalcEtaAngle(MaximaPositions[i*2+0]-Ycen,MaximaPositions[i*2+1]-Zcen); // Eta
 		x[(8*i)+4] = 0.5; // Mu
 		x[(8*i)+5] = Width; //SigmaGR
 		x[(8*i)+6] = Width; //SigmaLR
@@ -1173,8 +1173,8 @@ void main(int argc, char *argv[]){
 		int SpotIDStart = 1;
 		int TotNrRegions = NrOfReg;
 		for (i=0;i<NrPixels*10;i++){
-			MaximaPositions[i*NrPixels*10+0] = 0;
-			MaximaPositions[i*NrPixels*10+1] = 0;
+			MaximaPositions[i*2+0] = 0;
+			MaximaPositions[i*2+1] = 0;
 			MaximaValues[i] = 0;
 			UsefulPixels[i*2+0] = 0;
 			UsefulPixels[i*2+1] = 0;
@@ -1212,23 +1212,23 @@ void main(int argc, char *argv[]){
 							maxIntMax = MaximaValues[j];
 						}
 					}
-					MaximaPositionsT[i*2+0] = MaximaPositions[maxPos*NrPixels*10+0];
-					MaximaPositionsT[i*2+1] = MaximaPositions[maxPos*NrPixels*10+1];
+					MaximaPositionsT[i*2+0] = MaximaPositions[maxPos*2+0];
+					MaximaPositionsT[i*2+1] = MaximaPositions[maxPos*2+1];
 					MaximaValuesT[i] = MaximaValues[maxPos];
 					MaximaValues[maxPos] = 0;
 				}
 				nPeaks = maxNPeaks;
 				for (i=0;i<nPeaks;i++){
 					MaximaValues[i] = MaximaValuesT[i];
-					MaximaPositions[i*NrPixels*10+0] = MaximaPositionsT[i*2+0];
-					MaximaPositions[i*NrPixels*10+1] = MaximaPositionsT[i*2+1];
+					MaximaPositions[i*2+0] = MaximaPositionsT[i*2+0];
+					MaximaPositions[i*2+1] = MaximaPositionsT[i*2+1];
 				}
 			}
 			int rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo,NrPixels);
 			for (i=0;i<nPeaks;i++){
 				fprintf(outfilewrite,"%d %f %f %f %f %f %f %f ",(SpotIDStart+i),IntegratedIntensity[i],Omega,YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
 				for (j=0;j<2;j++) fprintf(outfilewrite, "%f ",OtherInfo[2*i+j]);
-				fprintf(outfilewrite,"%d %d %d %d %d %f %f %f %d\n",NrPx[i],NrPixelsThisRegion,nPeaks,MaximaPositions[i*NrPixels*10+0],MaximaPositions[i*NrPixels*10+1],(double)MaximaPositions[i*NrPixels*10+0]-YCEN[i]-Ycen,(double)MaximaPositions[i*NrPixels*10+1]-ZCEN[i]-Zcen,MaximaValues[i],rc);
+				fprintf(outfilewrite,"%d %d %d %d %d %f %f %f %d\n",NrPx[i],NrPixelsThisRegion,nPeaks,MaximaPositions[i*2+0],MaximaPositions[i*2+1],(double)MaximaPositions[i*2+0]-YCEN[i]-Ycen,(double)MaximaPositions[i*2+1]-ZCEN[i]-Zcen,MaximaValues[i],rc);
 			}
 			SpotIDStart += nPeaks;
 		}
