@@ -171,14 +171,14 @@ static inline void Transposer (double *x, int n, double *y)
 const int dx[] = {+1,  0, -1,  0, +1, -1, +1, -1};
 const int dy[] = { 0, +1,  0, -1, +1, +1, -1, -1};
 
-static inline void DepthFirstSearch(int x, int y, int current_label, int NrPixels, int **BoolImage, int **ConnectedComponents,int **Positions, int *PositionTrackers)
+static inline void DepthFirstSearch(int x, int y, int current_label, int NrPixels, int *BoolImage, int *ConnectedComponents,int *Positions, int *PositionTrackers)
 {
 	if (x < 0 || x == NrPixels) return;
 	if (y < 0 || y == NrPixels) return;
-	if ((ConnectedComponents[x][y]!=0)||(BoolImage[x][y]==0)) return;
+	if ((ConnectedComponents[x*NrPixels+y]!=0)||(BoolImage[x*NrPixels+y]==0)) return;
 
-	ConnectedComponents[x][y] = current_label;
-	Positions[current_label][PositionTrackers[current_label]] = (x*NrPixels) + y;
+	ConnectedComponents[x*NrPixels+y] = current_label;
+	Positions[current_label*NrPixels*4+PositionTrackers[current_label]] = (x*NrPixels) + y;
 	PositionTrackers[current_label] += 1;
 	int direction;
 	for (direction=0;direction<8;++direction){
@@ -186,17 +186,17 @@ static inline void DepthFirstSearch(int x, int y, int current_label, int NrPixel
 	}
 }
 
-static inline int FindConnectedComponents(int **BoolImage, int NrPixels, int **ConnectedComponents, int **Positions, int *PositionTrackers){
+static inline int FindConnectedComponents(int *BoolImage, int NrPixels, int *ConnectedComponents, int **Positions, int *PositionTrackers){
 	int i,j;
 	for (i=0;i<NrPixels;i++){
 		for (j=0;j<NrPixels;j++){
-			ConnectedComponents[i][j] = 0;
+			ConnectedComponents[i*NrPixels+j] = 0;
 		}
 	}
 	int component = 0;
 	for (i=0;i<NrPixels;++i) {
 		for (j=0;j<NrPixels;++j) {
-			if ((ConnectedComponents[i][j]==0) && (BoolImage[i][j] == 1)){
+			if ((ConnectedComponents[i*NrPixels+j]==0) && (BoolImage[i*NrPixels+j] == 1)){
 				DepthFirstSearch(i,j,++component,NrPixels,BoolImage,ConnectedComponents,Positions,PositionTrackers);
 			}
 		}
@@ -204,9 +204,9 @@ static inline int FindConnectedComponents(int **BoolImage, int NrPixels, int **C
 	return component;
 }
 
-static inline unsigned FindRegionalMaxima(double *z,int **PixelPositions,
-		int NrPixelsThisRegion,int **MaximaPositions,double *MaximaValues,
-		int *IsSaturated, double IntSat)
+static inline unsigned FindRegionalMaxima(double *z,int *PixelPositions,
+		int NrPixelsThisRegion,int *MaximaPositions,double *MaximaValues,
+		int *IsSaturated, double IntSat,int NrPixels)
 {
 	unsigned nPeaks = 0;
 	int i,j,k,l;
@@ -222,27 +222,27 @@ static inline unsigned FindRegionalMaxima(double *z,int **PixelPositions,
 		} else {
 			*IsSaturated = 0;
 		}
-		xThis = PixelPositions[i][0];
-		yThis = PixelPositions[i][1];
+		xThis = PixelPositions[i*2+0];
+		yThis = PixelPositions[i*2+1];
 		for (j=0;j<8;j++){
 			xNext = xThis + dx[j];
 			yNext = yThis + dy[j];
 			for (k=0;k<NrPixelsThisRegion;k++){
-				if (xNext == PixelPositions[k][0] && yNext == PixelPositions[k][1] && z[k] > (zThis)){
+				if (xNext == PixelPositions[k*2+0] && yNext == PixelPositions[k*2+1] && z[k] > (zThis)){
 					isRegionalMax = 0;
 				}
 			}
 		}
 		if (isRegionalMax == 1){
-			MaximaPositions[nPeaks][0] = xThis;
-			MaximaPositions[nPeaks][1] = yThis;
+			MaximaPositions[nPeaks*NrPixels*10+0] = xThis;
+			MaximaPositions[nPeaks*NrPixels*10+1] = yThis;
 			MaximaValues[nPeaks] = zThis;
 			nPeaks++;
 		}
 	}
 	if (nPeaks==0){
-        MaximaPositions[nPeaks][0] = PixelPositions[NrPixelsThisRegion/2][0];
-        MaximaPositions[nPeaks][1] = PixelPositions[NrPixelsThisRegion/2][1];
+        MaximaPositions[nPeaks*NrPixels*10+0] = PixelPositions[NrPixelsThisRegion+0];
+        MaximaPositions[nPeaks*NrPixels*10+1] = PixelPositions[NrPixelsThisRegion+1];
         MaximaValues[nPeaks] = z[NrPixelsThisRegion/2];
         nPeaks=1;
 	}
@@ -341,9 +341,9 @@ static inline void CalcIntegratedIntensity(int nPeaks,double *x,double *Rs,doubl
 	}
 }
 
-int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **UsefulPixels, double *MaximaValues,
-				int **MaximaPositions, double *IntegratedIntensity, double *IMAX, double *YCEN, double *ZCEN,
-				double *RCens, double *EtaCens,double Ycen, double Zcen, double Thresh, int *NrPx,double *OtherInfo)
+int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPixels, double *MaximaValues,
+				int *MaximaPositions, double *IntegratedIntensity, double *IMAX, double *YCEN, double *ZCEN,
+				double *RCens, double *EtaCens,double Ycen, double Zcen, double Thresh, int *NrPx,double *OtherInfo,int NrPixels)
 {
 	unsigned n = 1 + (8*nPeaks);
 	double x[n],xl[n],xu[n];
@@ -356,8 +356,8 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **UsefulP
 	Etas = malloc(NrPixelsThisRegion*2*sizeof(*Etas));
 	double RMin=1e8, RMax=0, EtaMin=190, EtaMax=-190;
 	for (i=0;i<NrPixelsThisRegion;i++){
-		Rs[i] = CalcNorm2(UsefulPixels[i][0]-Ycen,UsefulPixels[i][1]-Zcen);
-		Etas[i] = CalcEtaAngle(UsefulPixels[i][0]-Ycen,UsefulPixels[i][1]-Zcen);
+		Rs[i] = CalcNorm2(UsefulPixels[i*2+0]-Ycen,UsefulPixels[i*2+1]-Zcen);
+		Etas[i] = CalcEtaAngle(UsefulPixels[i*2+0]-Ycen,UsefulPixels[i*2+1]-Zcen);
 		if (Rs[i] > RMax) RMax = Rs[i];
 		if (Rs[i] < RMin) RMin = Rs[i];
 		if (Etas[i] > EtaMax) EtaMax = Etas[i];
@@ -372,8 +372,8 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int **UsefulP
 	double initSigmaEta;
 	for (i=0;i<nPeaks;i++){
 		x[(8*i)+1] = MaximaValues[i]; // Imax
-		x[(8*i)+2] = CalcNorm2(MaximaPositions[i][0]-Ycen,MaximaPositions[i][1]-Zcen); //Radius
-		x[(8*i)+3] = CalcEtaAngle(MaximaPositions[i][0]-Ycen,MaximaPositions[i][1]-Zcen); // Eta
+		x[(8*i)+2] = CalcNorm2(MaximaPositions[i*NrPixels*10+0]-Ycen,MaximaPositions[i*NrPixels*10+1]-Zcen); //Radius
+		x[(8*i)+3] = CalcEtaAngle(MaximaPositions[i*NrPixels*10+0]-Ycen,MaximaPositions[i*NrPixels*10+1]-Zcen); // Eta
 		x[(8*i)+4] = 0.5; // Mu
 		x[(8*i)+5] = Width; //SigmaGR
 		x[(8*i)+6] = Width; //SigmaLR
@@ -1037,45 +1037,31 @@ void main(int argc, char *argv[]){
 		pixelvalue *Image;
 		double *ImgCorrBCTemp, *ImgCorrBC, *MaximaValues, *z;
 		double *IntegratedIntensity, *IMAX, *YCEN, *ZCEN, *Rads, *Etass, *OtherInfo;
-		int **BoolImage, **ConnectedComponents, **Positions, *PositionTrackers, **MaximaPositions, **UsefulPixels, *NrPx;
+		int *BoolImage, *ConnectedComponents, *Positions, *PositionTrackers, *MaximaPositions, *UsefulPixels, *NrPx;
 		size_t idxoffset;
 		idxoffset = NrPixels; idxoffset *= NrPixels; idxoffset *= procNum;
 		Image = &ImageAll[idxoffset];
 		ImgCorrBC = &ImgCorrBCAll[idxoffset];
 		ImgCorrBCTemp = &ImgCorrBCTempAll[idxoffset];
-		BoolImage = allocMatrixInt(NrPixels,NrPixels);
-		ConnectedComponents = allocMatrixInt(NrPixels,NrPixels);
-		//~ BoolImage = malloc(NrPixels*sizeof(*BoolImage));
-		//~ ConnectedComponents = malloc(NrPixels*sizeof(*ConnectedComponents));
-		for (idxctr = 0; idxctr < NrPixels; idxctr++){
-			//~ BoolImage[idxctr] = &BoolImageAll[idxoffset];
-			//~ ConnectedComponents[idxctr] = &ConnCompAll[idxoffset];
-			idxoffset += NrPixels;
-		}
+		BoolImage = &BoolImageAll[idxoffset];
+		ConnectedComponents = &ConnCompAll[idxoffset];
+		//~ BoolImage = allocMatrixInt(NrPixels,NrPixels);
+		//~ ConnectedComponents = allocMatrixInt(NrPixels,NrPixels);
 		idxoffset = nOverlapsMaxPerImage;
 		idxoffset *= procNum;
 		PositionTrackers = &PosTrackersAll[idxoffset];
 		idxoffset = NrPixels; idxoffset *= 10; idxoffset *= procNum;
 		MaximaValues = &MaxValAll[idxoffset];
 		z = &zAll[idxoffset];
-		Positions = allocMatrixInt(nOverlapsMaxPerImage,NrPixels*4);
-		//~ Positions = malloc(nOverlapsMaxPerImage*sizeof(*Positions));
+		//~ Positions = allocMatrixInt(nOverlapsMaxPerImage,NrPixels*4);
 		idxoffset = nOverlapsMaxPerImage; idxoffset *= NrPixels; idxoffset *= 4; idxoffset *= procNum;
-		for (idxctr=0;idxctr<nOverlapsMaxPerImage;idxctr++){
-			//~ Positions[idxctr] = &PosAll[idxoffset];
-			idxoffset += NrPixels *4;
-		}
+		Positions = &PosAll[idxoffset];
 
-		MaximaPositions = allocMatrixInt(NrPixels*10,2);
-		UsefulPixels = allocMatrixInt(NrPixels*10,2);
-		//~ MaximaPositions = malloc(NrPixels*10*sizeof(*MaximaPositions));
-		//~ UsefulPixels = malloc(NrPixels*10*sizeof(*UsefulPixels));
+		//~ MaximaPositions = allocMatrixInt(NrPixels*10,2);
+		//~ UsefulPixels = allocMatrixInt(NrPixels*10,2);
 		idxoffset = NrPixels; idxoffset *= 20; idxoffset *= procNum;
-		for (idxctr=0;idxctr<NrPixels*10;idxctr++){
-			//~ MaximaPositions[idxctr] = &MaxPosAll[idxoffset];
-			//~ UsefulPixels[idxctr] = &UsefulPxAll[idxoffset];
-			idxoffset += 2;
-		}
+		UsefulPixels = &UsefulPxAll[idxoffset];
+		MaximaPositions = &MaxPosAll[idxoffset];
 		idxoffset = maxNPeaks; idxoffset *= 2; idxoffset *= procNum;
 		IntegratedIntensity = &IntIntAll[idxoffset];
 		IMAX = &ImaxAll[idxoffset];
@@ -1167,18 +1153,18 @@ void main(int argc, char *argv[]){
 		int NrOfReg;
 		for (i=0;i<NrPixels;i++){
 			for (j=0;j<NrPixels;j++){
-				ConnectedComponents[i][j] = 0;
+				ConnectedComponents[i*NrPixels+j] = 0;
 				if (ImgCorrBC[(i*NrPixels)+j] != 0){
-					BoolImage[i][j] = 1;
+					BoolImage[i*NrPixels+j] = 1;
 				}else{
-					BoolImage[i][j] = 0;
+					BoolImage[i*NrPixels+j] = 0;
 				}
 			}
 		}
 		for (i=0;i<nOverlapsMaxPerImage;i++){
 			PositionTrackers[i] = 0;
 			for (j=0;j<NrPixels*4;j++){
-				Positions[i][j] = 0;
+				Positions[i*NrPixels*4+j] = 0;
 			}
 		}
 		NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
@@ -1187,23 +1173,23 @@ void main(int argc, char *argv[]){
 		int SpotIDStart = 1;
 		int TotNrRegions = NrOfReg;
 		for (i=0;i<NrPixels*10;i++){
-			MaximaPositions[i][0] = 0;
-			MaximaPositions[i][1] = 0;
+			MaximaPositions[i*NrPixels*10+0] = 0;
+			MaximaPositions[i*NrPixels*10+1] = 0;
 			MaximaValues[i] = 0;
-			UsefulPixels[i][0] = 0;
-			UsefulPixels[i][1] = 0;
+			UsefulPixels[i*2+0] = 0;
+			UsefulPixels[i*2+1] = 0;
 			z[i] = 0;
 		}
 		for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 			NrPixelsThisRegion = PositionTrackers[RegNr];
 			for (i=0;i<NrPixelsThisRegion;i++){
-				UsefulPixels[i][0] = (int)(Positions[RegNr][i]/NrPixels);
-				UsefulPixels[i][1] = (int)(Positions[RegNr][i]%NrPixels);
-				z[i] = ImgCorrBC[((UsefulPixels[i][0])*NrPixels) + (UsefulPixels[i][1])];
+				UsefulPixels[i*2+0] = (int)(Positions[RegNr*NrPixels*4+i]/NrPixels);
+				UsefulPixels[i*2+1] = (int)(Positions[RegNr*NrPixels*4+i]%NrPixels);
+				z[i] = ImgCorrBC[((UsefulPixels[i*2+0])*NrPixels) + (UsefulPixels[i*2+1])];
 			}
-			Thresh = GoodCoords[((UsefulPixels[0][0])*NrPixels) + (UsefulPixels[0][1])];
+			Thresh = GoodCoords[((UsefulPixels[0*2+0])*NrPixels) + (UsefulPixels[0*2+1])];
 			unsigned nPeaks;
-			nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,MaximaPositions,MaximaValues,&IsSaturated,IntSat);
+			nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,MaximaPositions,MaximaValues,&IsSaturated,IntSat,NrPixels);
 			if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
 				TotNrRegions--;
 				continue;
@@ -1214,7 +1200,7 @@ void main(int argc, char *argv[]){
 			}
 			if (nPeaks > maxNPeaks){
 				// Sort peaks by MaxIntensity, remove the smallest peaks until maxNPeaks, arrays needed MaximaPositions, MaximaValues.
-				int MaximaPositionsT[nPeaks][2];
+				int MaximaPositionsT[nPeaks*2];
 				double MaximaValuesT[nPeaks];
 				double maxIntMax;
 				int maxPos;
@@ -1226,23 +1212,23 @@ void main(int argc, char *argv[]){
 							maxIntMax = MaximaValues[j];
 						}
 					}
-					MaximaPositionsT[i][0] = MaximaPositions[maxPos][0];
-					MaximaPositionsT[i][1] = MaximaPositions[maxPos][1];
+					MaximaPositionsT[i*2+0] = MaximaPositions[maxPos*NrPixels*10+0];
+					MaximaPositionsT[i*2+1] = MaximaPositions[maxPos*NrPixels*10+1];
 					MaximaValuesT[i] = MaximaValues[maxPos];
 					MaximaValues[maxPos] = 0;
 				}
 				nPeaks = maxNPeaks;
 				for (i=0;i<nPeaks;i++){
 					MaximaValues[i] = MaximaValuesT[i];
-					MaximaPositions[i][0] = MaximaPositionsT[i][0];
-					MaximaPositions[i][1] = MaximaPositionsT[i][1];
+					MaximaPositions[i*NrPixels*10+0] = MaximaPositionsT[i*2+0];
+					MaximaPositions[i*NrPixels*10+1] = MaximaPositionsT[i*2+1];
 				}
 			}
-			int rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo);
+			int rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo,NrPixels);
 			for (i=0;i<nPeaks;i++){
 				fprintf(outfilewrite,"%d %f %f %f %f %f %f %f ",(SpotIDStart+i),IntegratedIntensity[i],Omega,YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
 				for (j=0;j<2;j++) fprintf(outfilewrite, "%f ",OtherInfo[2*i+j]);
-				fprintf(outfilewrite,"%d %d %d %d %d %f %f %f %d\n",NrPx[i],NrPixelsThisRegion,nPeaks,MaximaPositions[i][0],MaximaPositions[i][1],(double)MaximaPositions[i][0]-YCEN[i]-Ycen,(double)MaximaPositions[i][1]-ZCEN[i]-Zcen,MaximaValues[i],rc);
+				fprintf(outfilewrite,"%d %d %d %d %d %f %f %f %d\n",NrPx[i],NrPixelsThisRegion,nPeaks,MaximaPositions[i*NrPixels*10+0],MaximaPositions[i*NrPixels*10+1],(double)MaximaPositions[i*NrPixels*10+0]-YCEN[i]-Ycen,(double)MaximaPositions[i*NrPixels*10+1]-ZCEN[i]-Zcen,MaximaValues[i],rc);
 			}
 			SpotIDStart += nPeaks;
 		}
@@ -1262,11 +1248,11 @@ void main(int argc, char *argv[]){
 		//~ free(NrPx);
 		//~ free(z);
 		//~ free(MaximaValues);
-		FreeMemMatrixInt(ConnectedComponents,NrPixels);
-		FreeMemMatrixInt(BoolImage,NrPixels);
-		FreeMemMatrixInt(Positions,nOverlapsMaxPerImage);
-		FreeMemMatrixInt(MaximaPositions,NrPixels*10);
-		FreeMemMatrixInt(UsefulPixels,NrPixels*10);
+		//~ FreeMemMatrixInt(ConnectedComponents,NrPixels);
+		//~ FreeMemMatrixInt(BoolImage,NrPixels);
+		//~ FreeMemMatrixInt(Positions,nOverlapsMaxPerImage);
+		//~ FreeMemMatrixInt(MaximaPositions,NrPixels*10);
+		//~ FreeMemMatrixInt(UsefulPixels,NrPixels*10);
 	}
 
 	free(ImageAll);
