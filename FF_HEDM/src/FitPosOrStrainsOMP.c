@@ -1478,7 +1478,7 @@ int main(int argc, char *argv[])
 		double MargOme=0.01,MargPos=Rsample,MargPos2=Rsample/2,MargOme2=2,chi=0;
 		int i, j, k, nhkls = 0;
 		double **hkls;
-		hkls = allocMatrix(5000,7);
+		hkls = allocMatrix(MaxNHKLS,7);
 		char *hklfn = "hkls.csv";
 		FILE *hklf = fopen(hklfn,"r");
 		if (hklf == NULL){
@@ -1842,33 +1842,14 @@ int main(int argc, char *argv[])
 		for (i=0;i<3;i++) ErrorsFin[nSpID][i+1] = ErrorFin[i];
 
 		// Start Writing: SpotsCompFN, OutFN, Key, ProcessGrainsFile
-		// Key
 		char KeyFN[1024];
 		sprintf(KeyFN,"%s/Key.bin",ResultFolder);
-		int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-		if (resultKeyFN <= 0){
-			printf("Could not open output file.\n");
-			continue;
-		}
 		int SizeKeyFile 		= 2  * sizeof(int);
 		size_t OffStKeyFile = SizeKeyFile;
 		OffStKeyFile *= rowNr;
 		int KeyInfo[2] = {SpId , nSpotsComp};
-		printf("%d %d %d %d\n",SpId,nSpotsComp,(int)OffStKeyFile,rowNr);
-		int rcKey = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
-	    if (rcKey < 0){
-			printf("Could not write to output file.\n");
-			continue;
-		}
-		rcKey = close(resultKeyFN);
-		// ProcessGrainsFile
 		char ProcessGrainsFN[1024];
 		sprintf(ProcessGrainsFN,"%s/ProcessKey.bin",ResultFolder);
-		int ProcessKeyFN = open(ProcessGrainsFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-		if (ProcessKeyFN <=0){
-			printf("Could not open output file.\n");
-			continue;
-		}
 		int SizeProcessFile 	= nSpotsComp * sizeof(int);
 		size_t OffStProcessFile = MaxNHKLS;
 		OffStProcessFile *= sizeof(int);
@@ -1877,19 +1858,7 @@ int main(int argc, char *argv[])
 		for (i=0;i<nSpotsComp;i++){
 			ProcessInfo[i] = SpotsComp[i][0];
 		}
-		int rcProcess = pwrite(ProcessKeyFN,ProcessInfo,SizeProcessFile,OffStProcessFile);
-		if (rcProcess < 0){
-			printf("Could not write to output file.\n");
-			continue;
-		}
-	    rcProcess = close(ProcessKeyFN);
-	    // Result
 	    sprintf(OutFN,"%s/OrientPosFit.bin",ResultFolder);
-		int resultOutFN = open(OutFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-		if (resultOutFN <= 0){
-			printf("Could not open output file.\n");
-			continue;
-		}
 	    int SizeOutFile 		= 27 * sizeof(double);
 		size_t OffStSizeOutFile = SizeOutFile;
 		OffStSizeOutFile *= rowNr;
@@ -1908,19 +1877,7 @@ int main(int argc, char *argv[])
 		}
 		OutMatr[25] = meanRadius;
 		OutMatr[26] = completeness;
-		int rcOut = pwrite(resultOutFN,OutMatr,SizeOutFile,OffStSizeOutFile);
-	    if (rcOut < 0){
-			printf("Could not write to output file.\n");
-			continue;
-		}
-		rcOut = close(resultOutFN);
-		// Spots
 		sprintf(SpotsCompFN,"%s/FitBest.bin",OutputFolder);
-		int resultSpotsCompFN = open(SpotsCompFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-		if (resultSpotsCompFN <= 0){
-			printf("Could not open output file.\n");
-			continue;
-		}
 		int SizeSpotsFile 		= 22 * sizeof(double) * nSpotsComp;
 		size_t OffStSpotsFile = 22;
 		OffStSpotsFile *= sizeof(double);
@@ -1934,13 +1891,46 @@ int main(int argc, char *argv[])
 			}
 			//~ printf("\n");
 		}
-		int rcSpots = pwrite(resultSpotsCompFN,SpotsCompFNContents,SizeSpotsFile,OffStSpotsFile);
-	    if (rcSpots < 0){
-			printf("Could not write to output file.\n");
-			continue;
+		#pragma omp critical
+		{
+			int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+			if (resultKeyFN <= 0){
+				printf("Could not open output file.\n");
+			}
+			int rcKey = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
+		    if (rcKey < 0){
+				printf("Could not write to output file.\n");
+			}
+			rcKey = close(resultKeyFN);
+			int ProcessKeyFN = open(ProcessGrainsFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+			if (ProcessKeyFN <=0){
+				printf("Could not open output file.\n");
+			}
+			int rcProcess = pwrite(ProcessKeyFN,ProcessInfo,SizeProcessFile,OffStProcessFile);
+			if (rcProcess < 0){
+				printf("Could not write to output file.\n");
+			}
+		    rcProcess = close(ProcessKeyFN);
+			int resultOutFN = open(OutFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+			if (resultOutFN <= 0){
+				printf("Could not open output file.\n");
+			}
+			int rcOut = pwrite(resultOutFN,OutMatr,SizeOutFile,OffStSizeOutFile);
+		    if (rcOut < 0){
+				printf("Could not write to output file.\n");
+			}
+			rcOut = close(resultOutFN);
+			int resultSpotsCompFN = open(SpotsCompFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+			if (resultSpotsCompFN <= 0){
+				printf("Could not open output file.\n");
+			}
+			int rcSpots = pwrite(resultSpotsCompFN,SpotsCompFNContents,SizeSpotsFile,OffStSpotsFile);
+		    if (rcSpots < 0){
+				printf("Could not write to output file.\n");
+			}
+			rcSpots = close(resultSpotsCompFN);
 		}
-		rcSpots = close(resultSpotsCompFN);
-		FreeMemMatrix(hkls,5000);
+		FreeMemMatrix(hkls,MaxNHKLS);
 		free(spotIDS);
 		FreeMemMatrix(spotsYZO,nSpotsBest);
 		free(Ini);
