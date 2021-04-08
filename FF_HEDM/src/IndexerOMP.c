@@ -1905,8 +1905,8 @@ main(int argc, char *argv[])
 	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
 	for (thisRowNr = 0; thisRowNr < nSpotIDs; thisRowNr++){
 		int thisSpotID = SpotIDs[thisRowNr];
-		printf("%d %d %d\n",thisSpotID,thisRowNr,nSpotIDs);
 		DoIndexing(thisSpotID,Params);
+		printf("%d %d %d\n",thisSpotID,thisRowNr,nSpotIDs);
 	}
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);
