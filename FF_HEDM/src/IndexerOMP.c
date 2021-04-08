@@ -1708,6 +1708,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	CreateNumberedFilenameW("BestPos_", (int) SpotID, 9, ".csv", fn2);
 	MakeFullFileName(ffn2, Params.OutputFolder, fn2);
 	WriteBestMatch(ffn, GrainMatches, matchNr, AllGrainSpots, rownr, ffn2);
+	printf("%s %s\n",ffn,ffn2);
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 	FreeMemMatrix( TheorSpots, nRowsPerGrain);
 	FreeMemMatrix( GrainSpots, nRowsPerGrain);
@@ -1906,7 +1907,7 @@ main(int argc, char *argv[])
 	for (thisRowNr = 0; thisRowNr < nSpotIDs; thisRowNr++){
 		int thisSpotID = SpotIDs[thisRowNr];
 		DoIndexing(thisSpotID,Params);
-		printf("%d %d %d\n",thisSpotID,thisRowNr,nSpotIDs);
+		//~ printf("%d %d %d\n",thisSpotID,thisRowNr,nSpotIDs);
 	}
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);
