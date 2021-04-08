@@ -986,7 +986,7 @@ GenerateIdealSpotsFriedelMixed(RealType ys,RealType zs,RealType Ttheta,RealType 
 	*NoOfSteps = 0;
 	nFPCandidates = 0;
 	if (fabs(sin(Eta * deg2rad)) < SinMinEtaReject) {
-		printf("The spot is too close to the poles. This technique to find mixed friedel pair would not work satisfactorily. So don't use mixed friedel pair.\n");
+		//~ printf("The spot is too close to the poles. This technique to find mixed friedel pair would not work satisfactorily. So don't use mixed friedel pair.\n");
 		return;
 	}
 	GenerateIdealSpots(ys, zs, Ttheta, Eta, Ring_rad, Rsample, Hbeam, StepSizePos, y0_vector, z0_vector, &NoOfSpots);
