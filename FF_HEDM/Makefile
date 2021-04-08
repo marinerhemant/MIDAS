@@ -101,6 +101,10 @@ fitposorstrains: $(SRCDIR)FitPosOrStrains.c
 	$(CC) $(SRCDIR)FitPosOrStrains.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitPosOrStrains $(CFLAGS) \
 	$(CFLAGSNLOPT)
 
+fitposorstrainsomp: $(SRCDIR)FitPosOrStrainsOMP.c
+	$(CC) $(SRCDIR)FitPosOrStrainsOMP.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitPosOrStrainsOMP -fopenmp $(CFLAGS) \
+	$(CFLAGSNLOPT)
+
 fitposorstrainsscanning: $(SRCDIR)FitPosOrStrainsScanningHEDM.c
 	$(CC) $(SRCDIR)FitPosOrStrainsScanningHEDM.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitPosOrStrainsScanningHEDM $(CFLAGS) \
 	$(CFLAGSNLOPT)
