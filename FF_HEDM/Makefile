@@ -160,6 +160,9 @@ hkls: $(SRCDIR)GetHKLList.c
 indexer: $(SRCDIR)IndexerLinuxArgsOptimizedShm.c
 	$(CC) $(SRCDIR)IndexerLinuxArgsOptimizedShm.c -o $(BINDIR)IndexerLinuxArgsShm $(CFLAGS)
 
+indexeromp: $(SRCDIR)IndexerOMP.c
+	$(CC) $(SRCDIR)IndexerOMP.c -o $(BINDIR)IndexerOMP -fopenmp $(CFLAGS)
+
 indexscanning: $(SRCDIR)IndexScanningHEDM.c
 	$(CC) $(SRCDIR)IndexScanningHEDM.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)IndexScanningHEDM $(CFLAGS)
 

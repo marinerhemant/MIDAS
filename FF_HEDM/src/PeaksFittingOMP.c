@@ -557,8 +557,6 @@ void main(int argc, char *argv[]){
 	char *str, dummy[1000], Folder[1024], FileStem[1024], *TmpFolder, darkcurrentfilename[1024], floodfilename[1024], Ext[1024],RawFolder[1024];
 	TmpFolder = "Temp";
 	int LowNr;
-	//~ FileNr = atoi(argv[2]);
-	//~ RingNr = atoi(argv[3]);
 	double bc=1, Ycen, Zcen, IntSat, OmegaStep, OmegaFirstFile, Lsd, px, Width, Wavelength,MaxRingRad;
 	int NrPixels,Padding = 6, StartNr;
 	char fs[1024];
