@@ -1426,8 +1426,8 @@ int main(int argc, char *argv[])
 	fclose(fileParam);
 
 	//////////////////////////// OPENMP
-	int *SpotIDs;
-	int nSpotIDs;
+	int *SptIDs;
+	int nSptIDs;
 	int nBlocks = atoi(argv[2]);
 	int blockNr = atoi(argv[3]);
 	int nSpotsToIndex = atoi(argv[4]);
@@ -1437,24 +1437,24 @@ int main(int argc, char *argv[])
 	startRowNr = (int) (ceil((double)nSpotsToIndex / (double)nBlocks)) * blockNr;
 	int tmp = (int)(ceil((double)nSpotsToIndex / (double)nBlocks)) * (blockNr+1);
 	endRowNr = tmp < (nSpotsToIndex-1) ? tmp : (nSpotsToIndex-1);
-	nSpotIDs = endRowNr-startRowNr+1;
-	SpotIDs = malloc(nSpotIDs*sizeof(*SpotIDs));
+	nSptIDs = endRowNr-startRowNr+1;
+	SptIDs = malloc(nSptIDs*sizeof(*SptIDs));
 	// Read spotIDs
 	int it;
 	FILE *spotsFile = fopen("SpotsToIndex.csv","r");
 	for (it=0;it<startRowNr;it++){
 		fgets(aline,1000,spotsFile);
 	}
-	for (it=0;it<nSpotIDs;it++){
+	for (it=0;it<nSptIDs;it++){
 		fgets(aline,1000,spotsFile);
-		sscanf(aline,"%d",&SpotIDs[it]);
+		sscanf(aline,"%d",&SptIDs[it]);
 	}
 	fclose(spotsFile);
 	int thisRowNr;
 	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
-	for (thisRowNr = 0; thisRowNr < nSpotIDs; thisRowNr++){
+	for (thisRowNr = 0; thisRowNr < nSptIDs; thisRowNr++){
 		//~ printf("%d %d\n",thisRowNr,nSpotIDs);
-		int SpId = SpotIDs[thisRowNr];
+		int SpId = SptIDs[thisRowNr];
 		char *SpFN = "SpotsToIndex.csv";
 		FILE *SpFile = fopen(SpFN,"r");
 		if (SpFile == NULL){
@@ -1825,7 +1825,7 @@ int main(int argc, char *argv[])
 	    ErrorFin = malloc(3*sizeof(*ErrorFin));
 	    CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,FinalResult,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
 						SpotsComp,Splist,ErrorFin,&nSpotsComp,1);
-	    printf("Spot %d out of %d, final error: %f %f %f\n",thisRowNr,nSpotIDs,ErrorFin[0],ErrorFin[1],ErrorFin[2]);
+	    printf("Spot %d out of %d, final error: %f %f %f\n",thisRowNr,nSptIDs,ErrorFin[0],ErrorFin[1],ErrorFin[2]);
 	    for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
 	    printf("Fitted position is: %f %f %f\nFitted orientation is: %f %f %f\nFitted lattice parameter is: %f %f %f %f %f %f\n",
 					FinalResult[0],FinalResult[1],FinalResult[2],FinalResult[3],FinalResult[4],FinalResult[5],FinalResult[6],FinalResult[7],FinalResult[8],
