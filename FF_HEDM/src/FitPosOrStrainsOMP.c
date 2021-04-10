@@ -1828,9 +1828,9 @@ int main(int argc, char *argv[])
 						SpotsComp,Splist,ErrorFin,&nSpotsComp,1);
 	    printf("Spot %d out of %d, final error: %f %f %f\n",thisRowNr,nSpotIDs,ErrorFin[0],ErrorFin[1],ErrorFin[2]);
 	    for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
-	    //~ printf("Fitted position is: %f %f %f\nFitted orientation is: %f %f %f\nFitted lattice parameter is: %f %f %f %f %f %f\n",
-					//~ FinalResult[0],FinalResult[1],FinalResult[2],FinalResult[3],FinalResult[4],FinalResult[5],FinalResult[6],FinalResult[7],FinalResult[8],
-					//~ FinalResult[9],FinalResult[10],FinalResult[11]);
+	    printf("Fitted position is: %f %f %f\nFitted orientation is: %f %f %f\nFitted lattice parameter is: %f %f %f %f %f %f\n",
+					FinalResult[0],FinalResult[1],FinalResult[2],FinalResult[3],FinalResult[4],FinalResult[5],FinalResult[6],FinalResult[7],FinalResult[8],
+					FinalResult[9],FinalResult[10],FinalResult[11]);
 		double OF[3][3],OrientFit[9],EulerFit[3],PositionFit[3],LatticeParameterFit[6];for (i=0;i<3;i++) EulerFit[i] = FinalResult[i+3];
 		for (i=0;i<3;i++) PositionFit[i] = FinalResult[i]; for (i=0;i<6;i++) LatticeParameterFit[i] = FinalResult[i+6];
 		Euler2OrientMat(EulerFit,OF);Convert3x3To9(OF,OrientFit);
