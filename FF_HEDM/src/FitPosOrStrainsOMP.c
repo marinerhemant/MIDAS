@@ -1424,6 +1424,29 @@ int main(int argc, char *argv[])
         }
 	}
 	fclose(fileParam);
+	double *AllSpots;
+	int fd;
+	struct stat s;
+	int status;
+	size_t size;
+	size_t size2;
+	const char *filename = "/dev/shm/ExtraInfo.bin";
+	int rc;
+	fd = open(filename,O_RDONLY);
+	check(fd < 0, "open %s failed: %s", filename, strerror(errno));
+	status = fstat (fd , &s);
+	check (status < 0, "stat %s failed: %s", filename, strerror(errno));
+	size = s.st_size;
+	AllSpots = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
+	check (AllSpots == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
+	int nSpots =  (int) size/(14*sizeof(double));
+	if (BigDetSize != 0){
+		long long int size2 = ReadBigDet();
+		totNrPixelsBigDetector = BigDetSize;
+		totNrPixelsBigDetector *= BigDetSize;
+		totNrPixelsBigDetector /= 32;
+		totNrPixelsBigDetector ++;
+	}
 
 	//////////////////////////// OPENMP
 	int *SptIDs;
@@ -1507,29 +1530,7 @@ int main(int argc, char *argv[])
 				}
 			}
 		}
-		double *AllSpots;
-		int fd;
-		struct stat s;
-		int status;
-		size_t size;
-		size_t size2;
-		const char *filename = "/dev/shm/ExtraInfo.bin";
-		int rc;
-		fd = open(filename,O_RDONLY);
-		check(fd < 0, "open %s failed: %s", filename, strerror(errno));
-		status = fstat (fd , &s);
-		check (status < 0, "stat %s failed: %s", filename, strerror(errno));
-		size = s.st_size;
-		AllSpots = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
-		check (AllSpots == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
-		int nSpots =  (int) size/(14*sizeof(double));
-		if (BigDetSize != 0){
-			long long int size2 = ReadBigDet();
-			totNrPixelsBigDetector = BigDetSize;
-			totNrPixelsBigDetector *= BigDetSize;
-			totNrPixelsBigDetector /= 32;
-			totNrPixelsBigDetector ++;
-		}
+
 		int nrSpIds=1;
 		char OutFN[1024],OrigOutFN[1024];
 		double OrientsOrig[nrSpIds][10],PositionsOrig[nrSpIds][4],ErrorsOrig[nrSpIds][4],
@@ -1685,7 +1686,7 @@ int main(int argc, char *argv[])
 			spotsYZO[i][6] = AllSpots[spotPosAllSpots*14+10];
 			spotsYZO[i][7] = AllSpots[spotPosAllSpots*14+5];
 		}
-		int tc2 = munmap(AllSpots,size);
+		//~ int tc2 = munmap(AllSpots,size);
 		double *Ini; Ini=malloc(12*sizeof(*Ini));
 		double **SpotsComp,**Splist,*ErrorIni;
 		SpotsComp=allocMatrix(MaxNSpotsBest,22);
