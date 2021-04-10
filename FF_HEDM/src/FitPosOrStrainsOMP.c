@@ -1556,16 +1556,15 @@ int main(int argc, char *argv[])
 			size_t OffStKeyFile = SizeKeyFile;
 			OffStKeyFile *= rowNr;
 			int KeyInfo[2] = {0, 0};
-			#pragma omp critical {
+			#pragma omp critical
+			{
 				int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
 				if (resultKeyFN <= 0){
 					printf("Could not open output file.\n");
-					continue;
 				}
 				int rc = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
 			    if (rc < 0){
 					printf("Could not write to output file.\n");
-					continue;
 				}
 			}
 			continue;
@@ -1580,16 +1579,15 @@ int main(int argc, char *argv[])
 			size_t OffStKeyFile = SizeKeyFile;
 			OffStKeyFile *= rowNr;
 			int KeyInfo[2] = {0, 0};
-			#pragma omp critical {
+			#pragma omp critical
+			{
 				int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
 				if (resultKeyFN <= 0){
 					printf("Could not open output file.\n");
-					continue;
 				}
 				int rc = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
 			    if (rc < 0){
 					printf("Could not write to output file.\n");
-					continue;
 				}
 			}
 			continue;
