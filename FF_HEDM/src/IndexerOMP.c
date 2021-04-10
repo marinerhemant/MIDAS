@@ -1708,21 +1708,13 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	CreateNumberedFilenameW("BestPos_", (int) SpotID, 9, ".csv", fn2);
 	MakeFullFileName(ffn2, Params.OutputFolder, fn2);
 	WriteBestMatch(ffn, GrainMatches, matchNr, AllGrainSpots, rownr, ffn2);
-	printf("%lf %s %s\n",fracMatches,ffn,ffn2);
+	printf("%lf %s %s\n",fracMatches,ffn2);
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 	FreeMemMatrix( TheorSpots, nRowsPerGrain);
 	FreeMemMatrix( GrainSpots, nRowsPerGrain);
 	FreeMemMatrix( AllGrainSpots, nRowsOutput);
 	FreeMemMatrix( BestMatches, 2);
 }
-
-void
-ConcatStr(char *str1, char *str2, char *resStr)
-{
-	strcpy(resStr, str1);
-	strcat(resStr, str2);
-}
-
 
 int ReadBins()
 {
@@ -1903,7 +1895,7 @@ main(int argc, char *argv[])
 	}
 	fclose(spotsFile);
 	int thisRowNr;
-	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
+	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic) shared(ObsSpotsLab)
 	for (thisRowNr = 0; thisRowNr < nSpotIDs; thisRowNr++){
 		int thisSpotID = SpotIDs[thisRowNr];
 		DoIndexing(thisSpotID,Params);
