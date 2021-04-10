@@ -1261,7 +1261,7 @@ int main(int argc, char *argv[])
     char *str, dummy[1000],outfolder[1000],spotsfilename[1000],inputfilename[1000];
     int LowNr;
     double Wavelength,Lsd;
-	double LatCin[6];
+	double LatCinT[6];
     double wedge,MinEta,OmegaRanges[MAXNOMEGARANGES][2],BoxSizes[MAXNOMEGARANGES][4], MaxRingRad;
     int RingNumbers[200],cs=0,cs2=0,nOmeRanges=0,nBoxSizes=0,CellStruct;
     double Rsample, Hbeam,RingRadii[200],MargABC=0.3,MargABG=0.3;
@@ -1274,8 +1274,8 @@ int main(int argc, char *argv[])
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %lf %lf %lf %lf %lf %lf", dummy,
-					&LatCin[0], &LatCin[1], &LatCin[2],
-					&LatCin[3], &LatCin[4], &LatCin[5]);
+					&LatCinT[0], &LatCinT[1], &LatCinT[2],
+					&LatCinT[3], &LatCinT[4], &LatCinT[5]);
             continue;
         }
         str = "GrainTracking ";
@@ -1455,6 +1455,7 @@ int main(int argc, char *argv[])
 	for (thisRowNr = 0; thisRowNr < nSptIDs; thisRowNr++){
 		//~ printf("%d %d\n",thisRowNr,nSpotIDs);
 		int SpId = SptIDs[thisRowNr];
+		double LatCin[6];
 		char *SpFN = "SpotsToIndex.csv";
 		FILE *SpFile = fopen(SpFN,"r");
 		if (SpFile == NULL){
@@ -1477,6 +1478,7 @@ int main(int argc, char *argv[])
 		if (nOmeRanges != nBoxSizes){printf("Number of omega ranges and number of box sizes don't match. Exiting!\n");continue;}
 		double MargOme=0.01,MargPos=Rsample,MargPos2=Rsample/2,MargOme2=2,chi=0;
 		int i, j, k, nhkls = 0;
+		for (i=0;i<6;i++) LatCin = LatCinT;
 		double **hkls;
 		hkls = allocMatrix(MaxNHKLS,7);
 		char *hklfn = "hkls.csv";
