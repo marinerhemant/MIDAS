@@ -1473,6 +1473,35 @@ int main(int argc, char *argv[])
 		sscanf(aline,"%d",&SptIDs[it]);
 	}
 	fclose(spotsFile);
+	double **hkls;
+	hkls = allocMatrix(MaxNHKLS,7);
+	char *hklfn = "hkls.csv";
+	FILE *hklf = fopen(hklfn,"r");
+	if (hklf == NULL){
+		printf("Could not read the hkl file. Exiting.\n");
+		return;
+	}
+	fgets(aline,1000,hklf);
+	int h,kt,l,Rnr, nhkls=0;
+	double ds,tht;
+	double MaxTtheta = rad2deg*atan(MaxRingRad/Lsd);
+	while (fgets(aline,1000,hklf)!=NULL){
+		sscanf(aline, "%d %d %d %lf %d %s %s %s %lf %s %s",&h,&kt,&l,&ds,&Rnr,dummy,dummy,dummy,&tht,dummy,dummy);
+		if (tht > MaxTtheta/2) break;
+		for (it=0;it<cs;it++){
+			if(Rnr == RingNumbers[it]){
+				hkls[nhkls][0] = h;
+				hkls[nhkls][1] = kt;
+				hkls[nhkls][2] = l;
+				hkls[nhkls][3] = ds;
+				hkls[nhkls][4] = tht;
+				hkls[nhkls][5] = RingRadii[it];
+				hkls[nhkls][6] = RingNumbers[it];
+				//for (j=0;j<7;j++) printf("%f ",hkls[nhkls][j]); printf("\n");
+				nhkls++;
+			}
+		}
+	}
 	int thisRowNr;
 	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
 	for (thisRowNr = 0; thisRowNr < nSptIDs; thisRowNr++){
@@ -1497,39 +1526,10 @@ int main(int argc, char *argv[])
 			}
 			count++;
 		}
-		double MaxTtheta = rad2deg*atan(MaxRingRad/Lsd);
 		if (nOmeRanges != nBoxSizes){printf("Number of omega ranges and number of box sizes don't match. Exiting!\n");continue;}
 		double MargOme=0.01,MargPos=Rsample,MargPos2=Rsample/2,MargOme2=2,chi=0;
-		int i, j, k, nhkls = 0;
+		int i, j, k;
 		for (i=0;i<6;i++) LatCin[i] = LatCinT[i];
-		double **hkls;
-		hkls = allocMatrix(MaxNHKLS,7);
-		char *hklfn = "hkls.csv";
-		FILE *hklf = fopen(hklfn,"r");
-		if (hklf == NULL){
-			printf("Could not read the hkl file. Exiting.\n");
-			continue;
-		}
-		fgets(aline,1000,hklf);
-		int h,kt,l,Rnr;
-		double ds,tht;
-		while (fgets(aline,1000,hklf)!=NULL){
-			sscanf(aline, "%d %d %d %lf %d %s %s %s %lf %s %s",&h,&kt,&l,&ds,&Rnr,dummy,dummy,dummy,&tht,dummy,dummy);
-			if (tht > MaxTtheta/2) break;
-			for (i=0;i<cs;i++){
-				if(Rnr == RingNumbers[i]){
-					hkls[nhkls][0] = h;
-					hkls[nhkls][1] = kt;
-					hkls[nhkls][2] = l;
-					hkls[nhkls][3] = ds;
-					hkls[nhkls][4] = tht;
-					hkls[nhkls][5] = RingRadii[i];
-					hkls[nhkls][6] = RingNumbers[i];
-					//for (j=0;j<7;j++) printf("%f ",hkls[nhkls][j]); printf("\n");
-					nhkls++;
-				}
-			}
-		}
 
 		int nrSpIds=1;
 		char OutFN[1024],OrigOutFN[1024];
@@ -1933,7 +1933,7 @@ int main(int argc, char *argv[])
 			}
 			rcSpots = close(resultSpotsCompFN);
 		}
-		FreeMemMatrix(hkls,MaxNHKLS);
+		//~ FreeMemMatrix(hkls,MaxNHKLS);
 		free(spotIDS);
 		FreeMemMatrix(spotsYZO,nSpotsBest);
 		free(Ini);
