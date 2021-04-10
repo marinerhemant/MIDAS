@@ -57,11 +57,11 @@ extern long long int totNrPixelsBigDetector;
 extern double pixelsize;
 extern double DetParams[4][10];
 
-int BigDetSize = 0;
-int *BigDetector;
-long long int totNrPixelsBigDetector;
-double pixelsize;
-double DetParams[4][10];
+//~ int BigDetSize = 0;
+//~ int *BigDetector;
+//~ long long int totNrPixelsBigDetector;
+//~ double pixelsize;
+//~ double DetParams[4][10];
 
 static void
 check (int test, const char * message, ...)
