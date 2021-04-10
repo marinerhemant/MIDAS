@@ -1437,7 +1437,7 @@ int main(int argc, char *argv[])
 	int endRowNr;
 	startRowNr = (int) (ceil((double)nSpotsToIndex / (double)nBlocks)) * blockNr;
 	int tmp = (int)(ceil((double)nSpotsToIndex / (double)nBlocks)) * (blockNr+1);
-	endRowNr = tmp < nSpotsToIndex ? tmp : nSpotsToIndex;
+	endRowNr = tmp < (nSpotsToIndex-1) ? tmp : (nSpotsToIndex-1);
 	nSpotIDs = endRowNr-startRowNr+1;
 	SpotIDs = malloc(nSpotIDs*sizeof(*SpotIDs));
 	// Read spotIDs
