@@ -57,8 +57,6 @@ check (int test, const char * message, ...)
 RealType *ObsSpotsLab;
 int n_spots = 0;
 
-// To store the orientation matrices
-RealType OrMat[MAX_N_OR][3][3];
 
 // hkls to use
 double hkls[MAX_N_HKLS][7];
@@ -1547,6 +1545,8 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	RealType eta    = ObsSpotsLab[SpotRowNo*9+6];
 	RealType ttheta = ObsSpotsLab[SpotRowNo*9+7];
 	int   ringnr = (int) ObsSpotsLab[SpotRowNo*9+5];
+	// To store the orientation matrices
+	RealType OrMat[MAX_N_OR][3][3];
 	char *hklfn = "hkls.csv";
 	FILE *hklf = fopen(hklfn,"r");
 	char aline[1024], dummy[1000];
@@ -1895,7 +1895,7 @@ main(int argc, char *argv[])
 	}
 	fclose(spotsFile);
 	int thisRowNr;
-	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic) shared(ObsSpotsLab)
+	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
 	for (thisRowNr = 0; thisRowNr < nSpotIDs; thisRowNr++){
 		int thisSpotID = SpotIDs[thisRowNr];
 		DoIndexing(thisSpotID,Params);
