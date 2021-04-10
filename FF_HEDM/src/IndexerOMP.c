@@ -1708,7 +1708,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	CreateNumberedFilenameW("BestPos_", (int) SpotID, 9, ".csv", fn2);
 	MakeFullFileName(ffn2, Params.OutputFolder, fn2);
 	WriteBestMatch(ffn, GrainMatches, matchNr, AllGrainSpots, rownr, ffn2);
-	printf("%lf %s\n",fracMatches,ffn2);
+	printf("ID: %d, Confidence: %lf\n",SpotIDs,fracMatches);
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 	FreeMemMatrix( TheorSpots, nRowsPerGrain);
 	FreeMemMatrix( GrainSpots, nRowsPerGrain);
