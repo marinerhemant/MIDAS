@@ -1831,9 +1831,9 @@ int main(int argc, char *argv[])
 	    ErrorFin = malloc(3*sizeof(*ErrorFin));
 	    CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,FinalResult,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
 						SpotsComp,Splist,ErrorFin,&nSpotsComp,1);
-	    printf("SpotID %d, %d out of %d, final error: %f %f %f. ",SpId,thisRowNr,nSptIDs,ErrorFin[0],ErrorFin[1],ErrorFin[2]);
+	    printf("SpotID %-6d, %-6d out of %-6d, Errors: %-7f %-7f %-7f, ",SpId,thisRowNr,nSptIDs,ErrorFin[0],ErrorFin[1],ErrorFin[2]);
 	    for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
-	    printf("Fitvals: Pos: %f %f %f, Orient: %f %f %f, LatC: %f %f %f %f %f %f\n",
+	    printf("Fitvals: Pos: %-7f %-7f %-7f, Orient: %-7f %-7f %-7f, LatC: %-7f %-7f %-7f %-7f %-7f %-7f\n",
 					FinalResult[0],FinalResult[1],FinalResult[2],FinalResult[3],FinalResult[4],FinalResult[5],FinalResult[6],FinalResult[7],FinalResult[8],
 					FinalResult[9],FinalResult[10],FinalResult[11]);
 		double OF[3][3],OrientFit[9],EulerFit[3],PositionFit[3],LatticeParameterFit[6];for (i=0;i<3;i++) EulerFit[i] = FinalResult[i+3];
