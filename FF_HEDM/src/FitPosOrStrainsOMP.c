@@ -1502,9 +1502,21 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
+	fclose(hklf);
+	if (nOmeRanges != nBoxSizes){printf("Number of omega ranges and number of box sizes don't match. Exiting!\n");return;}
+	double MargOme=0.01,MargPos=Rsample,MargPos2=Rsample/2,MargOme2=2,chi=0;
 	int thisRowNr;
 	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
 	for (thisRowNr = 0; thisRowNr < nSptIDs; thisRowNr++){
+		int nrSpIds=1;
+		char OutFN[1024],OrigOutFN[1024];
+		double OrientsOrig[nrSpIds][10],PositionsOrig[nrSpIds][4],ErrorsOrig[nrSpIds][4],
+			 OrientsFit[nrSpIds][10],PositionsFit[nrSpIds][4],StrainsFit[nrSpIds][7],ErrorsFin[nrSpIds][4];
+		char *h1 = "SpotID,YObsCorrPos,ZObsCorrPos,OmegaObsCorrPos,G1Obs,G2Obs,G3Obs,YExp,ZExp,OmegaExp,G1Exp,G2Exp,G3Exp,";
+		char *h2 = "YObsCorrWedge,ZObsCorrWedge,OmegaObsCorrWedge,OmegaObs,YObs,ZObs,InternalAngle,DiffLen,DiffOmega\n";
+		char header[2048];
+		sprintf(header,"%s%s",h1,h2);
+		int i, j, k;
 		//~ printf("%d %d\n",thisRowNr,nSpotIDs);
 		int SpId = SptIDs[thisRowNr];
 		double LatCin[6];
@@ -1526,19 +1538,8 @@ int main(int argc, char *argv[])
 			}
 			count++;
 		}
-		if (nOmeRanges != nBoxSizes){printf("Number of omega ranges and number of box sizes don't match. Exiting!\n");continue;}
-		double MargOme=0.01,MargPos=Rsample,MargPos2=Rsample/2,MargOme2=2,chi=0;
-		int i, j, k;
 		for (i=0;i<6;i++) LatCin[i] = LatCinT[i];
 
-		int nrSpIds=1;
-		char OutFN[1024],OrigOutFN[1024];
-		double OrientsOrig[nrSpIds][10],PositionsOrig[nrSpIds][4],ErrorsOrig[nrSpIds][4],
-			 OrientsFit[nrSpIds][10],PositionsFit[nrSpIds][4],StrainsFit[nrSpIds][7],ErrorsFin[nrSpIds][4];
-		char *h1 = "SpotID,YObsCorrPos,ZObsCorrPos,OmegaObsCorrPos,G1Obs,G2Obs,G3Obs,YExp,ZExp,OmegaExp,G1Exp,G2Exp,G3Exp,";
-		char *h2 = "YObsCorrWedge,ZObsCorrWedge,OmegaObsCorrWedge,OmegaObs,YObs,ZObs,InternalAngle,DiffLen,DiffOmega\n";
-		char header[2048];
-		sprintf(header,"%s%s",h1,h2);
 		int nSpID = 0;
 		//~ printf("Spot ID being processed: %d.\n",SpId);
 		char FileName[2048],SpotsCompFN[2048];
@@ -1548,44 +1549,48 @@ int main(int argc, char *argv[])
 		FILE *BestFile;
 		BestFile = fopen(FileName,"r");
 		if (BestFile == NULL){
-			printf("The BestPos file did not exist. Exiting.\n");
+			printf("The BestPos file did not exist for SpotID %d. Continuing to next ID.\n",SpId);
 			char KeyFN[1024];
 			sprintf(KeyFN,"%s/Key.bin",ResultFolder);
-			int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-			if (resultKeyFN <= 0){
-				printf("Could not open output file.\n");
-				continue;
-			}
 			int SizeKeyFile 		= 2  * sizeof(int);
 			size_t OffStKeyFile = SizeKeyFile;
 			OffStKeyFile *= rowNr;
 			int KeyInfo[2] = {0, 0};
-			int rc = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
-		    if (rc < 0){
-				printf("Could not write to output file.\n");
-				continue;
+			#pragma omp critical {
+				int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+				if (resultKeyFN <= 0){
+					printf("Could not open output file.\n");
+					continue;
+				}
+				int rc = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
+			    if (rc < 0){
+					printf("Could not write to output file.\n");
+					continue;
+				}
 			}
 			continue;
 		}
 		fseek(BestFile,0L,SEEK_END);
 		int sz = ftell(BestFile);
 		if (sz == 0){
-			printf("The BestPos file did not exist. Exiting.\n");
+			printf("The BestPos file was empty for SpotID %d. Continuing to next ID.\n",SpId);
 			char KeyFN[1024];
 			sprintf(KeyFN,"%s/Key.bin",ResultFolder);
-			int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-			if (resultKeyFN <= 0){
-				printf("Could not open output file.\n");
-				continue;
-			}
 			int SizeKeyFile 		= 2  * sizeof(int);
 			size_t OffStKeyFile = SizeKeyFile;
 			OffStKeyFile *= rowNr;
 			int KeyInfo[2] = {0, 0};
-			int rc = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
-		    if (rc < 0){
-				printf("Could not write to output file.\n");
-				continue;
+			#pragma omp critical {
+				int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+				if (resultKeyFN <= 0){
+					printf("Could not open output file.\n");
+					continue;
+				}
+				int rc = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
+			    if (rc < 0){
+					printf("Could not write to output file.\n");
+					continue;
+				}
 			}
 			continue;
 		}
@@ -1667,7 +1672,7 @@ int main(int argc, char *argv[])
 		//~ for (i=0;i<3;i++) printf("%lf ",Euler0[i]); printf("\n");
 		char rmCommand[4096];
 		sprintf(rmCommand,"rm -rf %s",FileName);
-		//~ system(rmCommand);
+		system(rmCommand);
 		double **spotsYZO;
 		spotsYZO=allocMatrix(nSpotsBest,8);
 		int nSpotsYZO=nSpotsBest;
@@ -1828,9 +1833,9 @@ int main(int argc, char *argv[])
 	    ErrorFin = malloc(3*sizeof(*ErrorFin));
 	    CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,FinalResult,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
 						SpotsComp,Splist,ErrorFin,&nSpotsComp,1);
-	    printf("Spot %d out of %d, final error: %f %f %f\n",thisRowNr,nSptIDs,ErrorFin[0],ErrorFin[1],ErrorFin[2]);
+	    printf("SpotID %d, %d out of %d, final error: %f %f %f. ",SpId,thisRowNr,nSptIDs,ErrorFin[0],ErrorFin[1],ErrorFin[2]);
 	    for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
-	    printf("Fitted position is: %f %f %f\nFitted orientation is: %f %f %f\nFitted lattice parameter is: %f %f %f %f %f %f\n",
+	    printf("Fitted position is: %f %f %f, fitted orientation is: %f %f %f, fitted lattice parameter is: %f %f %f %f %f %f\n",
 					FinalResult[0],FinalResult[1],FinalResult[2],FinalResult[3],FinalResult[4],FinalResult[5],FinalResult[6],FinalResult[7],FinalResult[8],
 					FinalResult[9],FinalResult[10],FinalResult[11]);
 		double OF[3][3],OrientFit[9],EulerFit[3],PositionFit[3],LatticeParameterFit[6];for (i=0;i<3;i++) EulerFit[i] = FinalResult[i+3];
