@@ -1424,7 +1424,6 @@ int main(int argc, char *argv[])
         }
 	}
 	fclose(fileParam);
-	int SpId = atoi(argv[2]);
 
 	//////////////////////////// OPENMP
 	int *SpotIDs;
