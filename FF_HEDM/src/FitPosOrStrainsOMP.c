@@ -1833,7 +1833,7 @@ int main(int argc, char *argv[])
 						SpotsComp,Splist,ErrorFin,&nSpotsComp,1);
 	    printf("SpotID %d, %d out of %d, final error: %f %f %f. ",SpId,thisRowNr,nSptIDs,ErrorFin[0],ErrorFin[1],ErrorFin[2]);
 	    for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
-	    printf("Fitted position is: %f %f %f, fitted orientation is: %f %f %f, fitted lattice parameter is: %f %f %f %f %f %f\n",
+	    printf("Fitvals: Pos: %f %f %f, Orient: %f %f %f, LatC: %f %f %f %f %f %f\n",
 					FinalResult[0],FinalResult[1],FinalResult[2],FinalResult[3],FinalResult[4],FinalResult[5],FinalResult[6],FinalResult[7],FinalResult[8],
 					FinalResult[9],FinalResult[10],FinalResult[11]);
 		double OF[3][3],OrientFit[9],EulerFit[3],PositionFit[3],LatticeParameterFit[6];for (i=0;i<3;i++) EulerFit[i] = FinalResult[i+3];
