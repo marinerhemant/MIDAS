@@ -1635,7 +1635,7 @@ int main(int argc, char *argv[])
 	for (i=0;i<3;i++) printf("%lf ",Euler0[i]); printf("\n");
 	char rmCommand[4096];
 	sprintf(rmCommand,"rm -rf %s",FileName);
-	system(rmCommand);
+	//~ system(rmCommand);
 	double **spotsYZO;
 	spotsYZO=allocMatrix(nSpotsBest,8);
 	int nSpotsYZO=nSpotsBest;
