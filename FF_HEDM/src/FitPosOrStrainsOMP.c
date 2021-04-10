@@ -1478,7 +1478,7 @@ int main(int argc, char *argv[])
 		if (nOmeRanges != nBoxSizes){printf("Number of omega ranges and number of box sizes don't match. Exiting!\n");continue;}
 		double MargOme=0.01,MargPos=Rsample,MargPos2=Rsample/2,MargOme2=2,chi=0;
 		int i, j, k, nhkls = 0;
-		for (i=0;i<6;i++) LatCin = LatCinT;
+		for (i=0;i<6;i++) LatCin[i] = LatCinT[i];
 		double **hkls;
 		hkls = allocMatrix(MaxNHKLS,7);
 		char *hklfn = "hkls.csv";
