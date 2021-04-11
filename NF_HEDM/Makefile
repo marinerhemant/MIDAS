@@ -115,6 +115,10 @@ fitorientation: $(SRCDIR)FitOrientation.c
 	$(CC) $(SRCDIR)FitOrientation.c $(SRCDIR)GetMisorientation.c $(SRCDIR)CalcDiffractionSpots.c $(SRCDIR)SharedFuncsFit.c \
 	-o $(BINDIR)FitOrientation $(CFLAGS) $(CFLAGSNLOPT)
 
+fitorientationomp: $(SRCDIR)FitOrientationOMP.c
+	$(CC) $(SRCDIR)FitOrientationOMP.c $(SRCDIR)GetMisorientation.c $(SRCDIR)CalcDiffractionSpots.c $(SRCDIR)SharedFuncsFit.c \
+	-o $(BINDIR)FitOrientationOMP -fopenmp $(CFLAGS) $(CFLAGSNLOPT)
+
 fitorientationsinglepoint: $(SRCDIR)FitOrientationSinglePoint.c
 	$(CC) $(SRCDIR)FitOrientationSinglePoint.c $(SRCDIR)GetMisorientation.c $(SRCDIR)CalcDiffractionSpots.c $(SRCDIR)SharedFuncsFit.c \
 	-o $(BINDIR)FitOrientationSinglePoint $(CFLAGS) $(CFLAGSNLOPT)

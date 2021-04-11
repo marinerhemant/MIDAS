@@ -1497,7 +1497,6 @@ int main(int argc, char *argv[])
 				hkls[nhkls][4] = tht;
 				hkls[nhkls][5] = RingRadii[it];
 				hkls[nhkls][6] = RingNumbers[it];
-				//for (j=0;j<7;j++) printf("%f ",hkls[nhkls][j]); printf("\n");
 				nhkls++;
 			}
 		}
@@ -1517,7 +1516,6 @@ int main(int argc, char *argv[])
 		char header[2048];
 		sprintf(header,"%s%s",h1,h2);
 		int i, j, k;
-		//~ printf("%d %d\n",thisRowNr,nSpotIDs);
 		int SpId = SptIDs[thisRowNr];
 		double LatCin[6];
 		char *SpFN = "SpotsToIndex.csv";
@@ -1541,7 +1539,6 @@ int main(int argc, char *argv[])
 		for (i=0;i<6;i++) LatCin[i] = LatCinT[i];
 
 		int nSpID = 0;
-		//~ printf("Spot ID being processed: %d.\n",SpId);
 		char FileName[2048],SpotsCompFN[2048];
 		sprintf(FileName,"%s/BestPos_%09d.csv",OutputFolder,SpId);
 		int nSpotsBest=0,*spotIDS;
@@ -1649,7 +1646,6 @@ int main(int argc, char *argv[])
 					&completeness,&Orient0[0],&Orient0[1],&Orient0[2],&Orient0[3],
 					&Orient0[4],&Orient0[5],&Orient0[6],&Orient0[7],&Orient0[8],
 					&Pos0[0],&Pos0[1],&Pos0[2]);
-			//~ printf("%s\n",line);
 			while (fgets(line,5000,BestFile) != NULL){
 				sscanf(line,"%d %lf",&spotIDS[nSpotsBest],&thisRadius);
 				meanRadius += thisRadius;
@@ -1661,13 +1657,9 @@ int main(int argc, char *argv[])
 
 		double a=LatCin[0],b=LatCin[1],c=LatCin[2],alph=LatCin[3],bet=LatCin[4],gamm=LatCin[5];
 		for (i=0;i<3;i++) for (j=0;j<3;j++) Orient0_3[i][j] = Orient0[i*3+j];
-		//~ for (i=0;i<9;i++) printf("%lf ",Orient0[i]); printf("\n");
 		OrientMat2Euler(Orient0_3,Euler0);
-		//~ for (i=0;i<3;i++) printf("%lf ",Euler0[i]); printf("\n");
 		Euler2OrientMat(Euler0,Orient0_3);Convert3x3To9(Orient0_3,Orient0);
-		//~ for (i=0;i<9;i++) printf("%lf ",Orient0[i]); printf("\n");
 		OrientMat2Euler(Orient0_3,Euler0);
-		//~ for (i=0;i<3;i++) printf("%lf ",Euler0[i]); printf("\n");
 		char rmCommand[4096];
 		sprintf(rmCommand,"rm -rf %s",FileName);
 		system(rmCommand);
@@ -1689,7 +1681,6 @@ int main(int argc, char *argv[])
 			spotsYZO[i][6] = AllSpots[spotPosAllSpots*14+10];
 			spotsYZO[i][7] = AllSpots[spotPosAllSpots*14+5];
 		}
-		//~ int tc2 = munmap(AllSpots,size);
 		double *Ini; Ini=malloc(12*sizeof(*Ini));
 		double **SpotsComp,**Splist,*ErrorIni;
 		SpotsComp=allocMatrix(MaxNSpotsBest,22);
@@ -1699,7 +1690,6 @@ int main(int argc, char *argv[])
 		ConcatPosEulLatc(Ini,Pos0,Euler0,LatCin);
 		CalcAngleErrors(nSpotsYZO,nhkls,nOmeRanges,Ini,spotsYZO,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,
 						MinEta,wedge,chi,SpotsComp,Splist,ErrorIni,&nSpotsComp,0);
-		//~ printf("Initial error is: %d %d %f %f %f\n",nSpotsYZO,nSpotsComp,ErrorIni[0],ErrorIni[1],ErrorIni[2]);
 		double **spotsYZONew; spotsYZONew=allocMatrix(nSpotsComp,9);
 		for (i=0;i<nSpotsComp;i++){
 			for (j=0;j<9;j++){
@@ -1722,7 +1712,6 @@ int main(int argc, char *argv[])
 			EulerLow[i]=Euler0[i]-MargOme;
 			EulerHigh[i]=Euler0[i]+MargOme;
 		}
-		//~ printf("Initial orientation was: %f %f %f\n",Euler0[0],Euler0[1],Euler0[2]);
 		if (XLow[0] < -Rsample) XLow[0] = -Rsample;
 	    if (XLow[1] < -Rsample) XLow[1] = -Rsample;
 	    if (XLow[2] < -Hbeam/2) XLow[2] = -Hbeam/2;
@@ -1751,12 +1740,10 @@ int main(int argc, char *argv[])
 	    FitPositionIni(X0,nSpotsComp,spotsYZONew,nhkls,hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,XFit,lb,ub);
 	    CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,XFit,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
 						SpotsComp,Splist,ErrorInt1,&nSpotsComp,1);
-		//~ printf("Interim error after fitting Position1: %f %f %f\n",ErrorInt1[0],ErrorInt1[1],ErrorInt1[2]);
 		for (i=0;i<3;i++) XFit[i+3] = Euler0[i];
 	    for (i=0;i<6;i++) XFit[i+6] = LatCin[i];
 	    CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,XFit,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
 						SpotsComp,Splist,ErrorInt1,&nSpotsComp,1);
-		//~ printf("Interim error after fitting Position: %f %f %f\n",ErrorInt1[0],ErrorInt1[1],ErrorInt1[2]);
 		for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
 	    double X0_2[9];X0_2[0]=Euler0[0];X0_2[1]=Euler0[1];X0_2[2]=Euler0[2];
 	    for (i=0;i<6;i++) X0_2[i+3] = LatCin[i];
@@ -1786,7 +1773,6 @@ int main(int argc, char *argv[])
 	    ErrorInt2 = malloc(3*sizeof(*ErrorInt2));
 	    CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,UseXFit,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
 						SpotsComp,Splist,ErrorInt2,&nSpotsComp,1);
-	    //~ printf("Interim error after fitting Orientation: %f %f %f\n",ErrorInt2[0],ErrorInt2[1],ErrorInt2[2]);
 	    for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
 	    double X0_3[6];for (i=0;i<6;i++) X0_3[i] = LatCin[i];
 	    double lb3[6],ub3[6];
@@ -1810,7 +1796,6 @@ int main(int argc, char *argv[])
 	    ErrorInt3 = malloc(3*sizeof(*ErrorInt3));
 	    CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,UseXFit2,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
 						SpotsComp,Splist,ErrorInt3,&nSpotsComp,1);
-	    //~ printf("Interim error after fitting strains: %f %f %f\n",ErrorInt3[0],ErrorInt3[1],ErrorInt3[2]);
 	    for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
 	    double X0_4[3]; for (i=0;i<3;i++) X0_4[i] = XFit[i];
 		double XLow2[3], XHigh2[3];
@@ -1893,9 +1878,7 @@ int main(int argc, char *argv[])
 		for (i=0;i<nSpotsComp;i++){
 			for (j=0;j<22;j++){
 				SpotsCompFNContents[i][j] = SpotsComp[i][j];
-				//~ printf("%lf ",SpotsComp[i][j]);
 			}
-			//~ printf("\n");
 		}
 		#pragma omp critical
 		{
@@ -1936,7 +1919,6 @@ int main(int argc, char *argv[])
 			}
 			rcSpots = close(resultSpotsCompFN);
 		}
-		//~ FreeMemMatrix(hkls,MaxNHKLS);
 		free(spotIDS);
 		FreeMemMatrix(spotsYZO,nSpotsBest);
 		free(Ini);
@@ -1954,6 +1936,7 @@ int main(int argc, char *argv[])
 		free(ErrorFin);
 	}
 
+	FreeMemMatrix(hkls,MaxNHKLS);
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);
 	return 0;
