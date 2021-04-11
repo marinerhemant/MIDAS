@@ -925,9 +925,9 @@ main(int argc, char *argv[])
 		    if (rc4 < 0){
 				printf("Could not write to output file %d %d %d.\n",OffsetHere,rown,startRowNr,endRowNr);
 			}else{
-				printf("Written successfully to %s at %d\n",MicFN,OffsetHere);
+				printf("Written successfully to %s at %d for rowNumber %d ",MicFN,OffsetHere,rown);
 				for (i=0;i<11;i++){
-					printf("%f ",outresult[i]);
+					printf("%.1f ",outresult[i]);
 				}
 				printf("\n");
 			}
