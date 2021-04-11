@@ -656,6 +656,7 @@ main(int argc, char *argv[])
 		counter+=1;
 	}
 	char *lines[nrows];
+	printf("%d\n",TotalNrSpots);
 	printf("%d %d %d\n",startRowNr,endRowNr,nrows);
 	//~ lines = malloc(nrows*sizeof(*lines));
 	//~ lines[0] = malloc(nrows*1000*sizeof(**lines));
