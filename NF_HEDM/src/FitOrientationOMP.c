@@ -673,7 +673,6 @@ main(int argc, char *argv[])
 	for (rown=startRowNr; rown<=endRowNr; rown++){
 		clock_t start, end;
 		double diftotal;
-		printf("%d %d %d\n",startRowNr,rown,endRowNr);
 		start = clock();
 		int i,j,k,m;
 	    if (rown > TotalNrSpots){
@@ -924,7 +923,7 @@ main(int argc, char *argv[])
 			// Write files
 		    int rc4 = pwrite(result,outresult,SizeWritten,OffsetHere);
 		    if (rc4 < 0){
-				printf("Could not write to output file.\n");
+				printf("Could not write to output file %d %d %d.\n",OffsetHere,rown,startRowNr,endRowNr);
 			}else{
 				printf("Written successfully to %s at %d\n",MicFN,OffsetHere);
 				for (i=0;i<11;i++){
@@ -934,7 +933,7 @@ main(int argc, char *argv[])
 			}
 			int rc5 = pwrite(result2,ResultMatr,SizeWritten2,OffsetThis);
 			if (rc5 < 0){
-				printf("Could not write all matches\n");
+				printf("Could not write all matches %d %d %d.\n",OffsetThis,rown,startRowNr,endRowNr);
 			}
 			close(result);
 			close(result2);
