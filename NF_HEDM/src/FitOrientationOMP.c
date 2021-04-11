@@ -924,7 +924,7 @@ main(int argc, char *argv[])
 		    if (rc4 < 0){
 				printf("Could not write to output file %d %d %d.\n",OffsetHere,rown,startRowNr,endRowNr);
 			}else{
-				printf("%d, %d ",OffsetHere,rown);
+				printf("%zu %d ",OffsetHere,rown);
 				for (i=0;i<11;i++){
 					printf("%.5f ",outresult[i]);
 				}
