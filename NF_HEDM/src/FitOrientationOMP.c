@@ -657,7 +657,6 @@ main(int argc, char *argv[])
 	}
 	char **lines;
 	lines = malloc(nrows*sizeof(*lines));
-	printf("%d\n",TotalNrSpots);
 	printf("%d %d %d\n",startRowNr,endRowNr,nrows);
 	//~ lines = malloc(nrows*sizeof(*lines));
 	//~ lines[0] = malloc(nrows*1000*sizeof(**lines));
@@ -927,7 +926,7 @@ main(int argc, char *argv[])
 			}else{
 				printf("%d, %d ",OffsetHere,rown);
 				for (i=0;i<11;i++){
-					printf("%.3f ",outresult[i]);
+					printf("%.5f ",outresult[i]);
 				}
 				printf("\n");
 			}
