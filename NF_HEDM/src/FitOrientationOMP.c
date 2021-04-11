@@ -655,11 +655,15 @@ main(int argc, char *argv[])
 		fgets(line,1000,fp);
 		counter+=1;
 	}
-	char **lines;
-	lines = malloc(nrows*sizeof(*lines));
-	lines[0] = malloc(nrows*1000*sizeof(**lines));
-	for (it=1;it<nrows;it++) lines[it] = lines[0] + it*1000;
-	for (it=0;it<nrows;it++) fgets(lines[it],1000,fp);
+	char *lines[nrows];
+	//~ lines = malloc(nrows*sizeof(*lines));
+	//~ lines[0] = malloc(nrows*1000*sizeof(**lines));
+	//~ for (it=1;it<nrows;it++) lines[it] = lines[0] + it*1000;
+	for (it=0;it<nrows;it++){
+		fgets(line,1000,fp);
+		lines[it] = strndup(line,1000);
+	}
+	//~ for (it=0;it<nrows;it++) fgets(lines[it],1000,fp);
 	fclose(fp);
 	// DO OMP HERE??????
 	#pragma omp parallel for num_threads(numProcs) private(rown) schedule(dynamic)
