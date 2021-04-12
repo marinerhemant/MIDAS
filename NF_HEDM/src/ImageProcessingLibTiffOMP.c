@@ -838,7 +838,7 @@ main(int argc, char *argv[])
 		TIFF* tif = TIFFOpen(FileName, "r");
 		if (tif == NULL){
 			printf("%s not found.",FileName);
-			return 1;
+			continue;
 		}
 		TIFFSetWarningHandler(oldhandler);
 		int interInt;
@@ -901,7 +901,7 @@ main(int argc, char *argv[])
 			}
 		}else{
 			printf("Wrong MedFiltRadius!!! Exiting.\n");
-			return 0;
+			continue;
 		}
 		pixelvalue *Image3;
 		Image3 = malloc(NrPixels*NrPixels*sizeof(*Image3)); // Median filtered image.
@@ -1028,7 +1028,7 @@ main(int argc, char *argv[])
 		}
 		fclose(ft);
 
-		if (doDeblur != 0) return 0;
+		if (doDeblur != 0) continue;
 
 		float32_t dummy1 = 1;
 		uint32_t dummy2 = 1;
