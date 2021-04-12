@@ -160,14 +160,14 @@ int CalcMedian(char fn[1000],
 	pixelvalue *MaxIntArr, *MaxIntMedianArr;
 	MaxIntArr = malloc(NrPixels*NrPixels*sizeof(*MaxIntArr));
 	MaxIntMedianArr = malloc(NrPixels*NrPixels*sizeof(*MaxIntMedianArr));
-	pixelvalue SubArr[NrFilesPerLayer];
-	int tempVal;
 	#pragma omp parallel for num_threads(numProcs) private(k)
 	for (k=0;k<NrPixels;k++){
+		pixelvalue SubArr[NrFilesPerLayer];
+		int tempVal;
 		int t;
 		for (t=0;t<NrPixels;t++){
 			int it;
-			it= k*NrPixels + t;
+			it = k*NrPixels + t;
 			MaxIntArr[it] = 0;
 			MaxIntMedianArr[it] = 0;
 			for (j=0;j<NrFilesPerLayer;j++){
