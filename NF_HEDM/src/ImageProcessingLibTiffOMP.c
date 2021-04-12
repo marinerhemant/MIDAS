@@ -792,12 +792,12 @@ main(int argc, char *argv[])
 	sprintf(fn,"%s/%s",direct,fn2);
 	fclose(fileParam);
 
-	int nBlocks = atoi(argv[2]);
-	int blockNr = atoi(argv[3]);
+	int nBlocks = atoi(argv[3]);
+	int blockNr = atoi(argv[2]);
 	int numProcs = atoi(argv[4]);
 	int nrFilesTotal = nDistances*NrFilesPerLayer;
 	int startNr, endNr;
-	startNr = (int)(ceil((double)nrFilesTotal / (double)nBlocks))*blockNr;
+	startNr = (int)(ceil((double)nrFilesTotal / (double)nBlocks)) * blockNr;
 	int tmp = (int)(ceil((double)nrFilesTotal / (double)nBlocks)) * (blockNr+1);
 	endNr = tmp < (nrFilesTotal-1) ? tmp : (nrFilesTotal-1);
 	printf("%d %d %d %d %d %d\n",nBlocks,blockNr,numProcs,nrFilesTotal,startNr,endNr);
