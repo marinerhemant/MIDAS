@@ -14,6 +14,7 @@
 #include <ctype.h>
 #include <stdint.h>
 #include <tiffio.h>
+#include <omp.h>
 
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
 #define ClearBit(A,k) (A[(k/32)] &= ~(1 << (k%32)))
@@ -652,20 +653,18 @@ static inline int FindConnectedComponents(int **BoolImage, int NrPixels, int **C
 static void
 usage(void)
 {
-    printf("ImageProcessing: usage: ./ImageProcessing <ParameterFile> <LayerNr> <ImageNr>\n");
+    printf("ImageProcessing: usage: ./ImageProcessing <ParameterFile> <blockNr> <nBlocks> <numProcs>\n");
 }
 
 int
 main(int argc, char *argv[])
 {
-	if (argc < 4)
+	if (argc < 5)
 	{
 		usage();
 		return 1;
 	}
-	clock_t start, end;
-	double diftotal;
-	start = clock();
+	double start_time = omp_get_wtime();
 
 	// Read params file.
 	char *ParamFN;
@@ -675,13 +674,24 @@ main(int argc, char *argv[])
 	char fn2[1000],fn[1000], direct[1000], extOrig[1000], extReduced[1000],ReducedFileName[1024];
 	fileParam = fopen(ParamFN,"r");
 	char *str, dummy[1000];
-	int LowNr,nLayers,StartNr,NrFilesPerLayer,NrPixels,BlanketSubtraction,MeanFiltRadius,WriteFinImage=0;
-	nLayers = atoi(argv[2]);
-	int ImageNr,LoGMaskRadius, doDeblur=0;
+	int LowNr,StartNr,NrFilesPerLayer,NrPixels,BlanketSubtraction,MeanFiltRadius,WriteFinImage=0;
+	int LoGMaskRadius, doDeblur=0;
 	double sigma;
 	ImageNr = atoi(argv[3]);
-	int DoLoGFilter=1,WFImages=0;
+	int DoLoGFilter=1,WFImages=0,nDistances,stNr = 0;
 	while (fgets(aline,1000,fileParam)!=NULL){
+		str = "StartNr ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr==0){
+			sscanf(aline,"%s %d", dummy, &stNr);
+			continue;
+		}
+		str = "nDistances ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr==0){
+			sscanf(aline,"%s %d", dummy, &nDistances);
+			continue;
+		}
 		str = "RawStartNr ";
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr==0){
@@ -780,320 +790,336 @@ main(int argc, char *argv[])
 		}
 	}
 	if (doDeblur != 0) WriteFinImage = 1;
-	int i,j,k;
 	sprintf(fn,"%s/%s",direct,fn2);
 	fclose(fileParam);
-	FILE *fk;
-	char OutFN[5024];
-	sprintf(OutFN,"%s/%s_%06d.%s%d",direct,ReducedFileName,ImageNr,extReduced,nLayers-1);
-	char OutFileName[5024];
-	strcpy(OutFileName,OutFN);
-	fk = fopen(OutFileName,"wb");
 
-	pixelvalue *Image, *Image2, *MedFltImg;
-	char FileName[1024];
-	Image = malloc(NrPixels*NrPixels*sizeof(*Image)); // Original image.
-	Image2 = malloc(NrPixels*NrPixels*sizeof(*Image2)); // Median filtered image.
-	int SizeFile = sizeof(pixelvalue) * NrPixels * NrPixels;
-	MedFltImg = malloc(NrPixels*NrPixels*sizeof(*MedFltImg));
-	char MedianFileName[1024];
-	sprintf(MedianFileName,"%s_Median_Background_Distance_%d.%s",fn,nLayers-1,extReduced);
-	FILE *MFI = fopen(MedianFileName,"r");
-	int rc = fread(MedFltImg,SizeFile,1,MFI);
+	int nBlocks = atoi(argv[2]);
+	int blockNr = atoi(argv[3]);
+	int numProcs = atoi(argv[4]);
+	int nrFilesTotal = nDistances*NrFilesPerLayer;
+	int startNr, endNr;
+	startNr = (int)(ceil((double)nrFilesTotal / (double)nBlocks))*blockNr;
+	int tmp = (int)(ceil((double)nrFilesTotal / (double)nBlocks)) * (blockNr+1);
+	endRowNr = tmp < (nrFilesTotal-1) ? tmp : (nrFilesTotal-1);
+	// OMP
+	#pragma omp parallel for num_threads(numProcs) private(fnr)
+	for (fnr=startNr;fnr<endNr;fnr++)
+	{
+		int ImageNr, layerNr;
+		layerNr = fnr/NrFilesPerLayer;
+		ImageNr = fnr%NrFilesPerLayer;
+		int i,j,k;
+		FILE *fk;
+		char OutFN[5024];
+		sprintf(OutFN,"%s/%s_%06d.%s%d",direct,ReducedFileName,ImageNr,extReduced,layerNr-1);
+		char OutFileName[5024];
+		strcpy(OutFileName,OutFN);
+		fk = fopen(OutFileName,"wb");
 
-	// Use LibTiff to read files
-	int FileNr = ((nLayers - 1) * NrFilesPerLayer) + StartNr + ImageNr;
-	FileNr += (nLayers-1)*WFImages;
-	sprintf(FileName,"%s_%06d.%s",fn,FileNr,extOrig);
-	printf("Opening file: %s\n",FileName);
-	fflush(stdout);
-	TIFFErrorHandler oldhandler;
-	oldhandler = TIFFSetWarningHandler(NULL);
-	TIFF* tif = TIFFOpen(FileName, "r");
-	if (tif == NULL){
-		printf("%s not found.",FileName);
-		return 1;
-	}
-	TIFFSetWarningHandler(oldhandler);
-	int interInt;
-	if (tif) {
-		printf("Read file %s\n",FileName);
-		tdata_t buf;
-		buf = _TIFFmalloc(TIFFScanlineSize(tif));
-		uint16 *datar;
-		int rnr;
-		for (rnr=0;rnr<NrPixels;rnr++){
-			TIFFReadScanline(tif, buf, rnr, 1);
-			datar=(uint16*)buf;
+		pixelvalue *Image, *Image2, *MedFltImg;
+		char FileName[1024];
+		Image = malloc(NrPixels*NrPixels*sizeof(*Image)); // Original image.
+		Image2 = malloc(NrPixels*NrPixels*sizeof(*Image2)); // Median filtered image.
+		int SizeFile = sizeof(pixelvalue) * NrPixels * NrPixels;
+		MedFltImg = malloc(NrPixels*NrPixels*sizeof(*MedFltImg));
+		char MedianFileName[1024];
+		sprintf(MedianFileName,"%s_Median_Background_Distance_%d.%s",fn,layerNr-1,extReduced);
+		FILE *MFI = fopen(MedianFileName,"r");
+		int rc = fread(MedFltImg,SizeFile,1,MFI);
+
+		// Use LibTiff to read files
+		int FileNr = ((layerNr - 1) * NrFilesPerLayer) + StartNr + ImageNr;
+		FileNr += (layerNr-1)*WFImages;
+		sprintf(FileName,"%s_%06d.%s",fn,FileNr,extOrig);
+		printf("Opening file: %s\n",FileName);
+		fflush(stdout);
+		TIFFErrorHandler oldhandler;
+		oldhandler = TIFFSetWarningHandler(NULL);
+		TIFF* tif = TIFFOpen(FileName, "r");
+		if (tif == NULL){
+			printf("%s not found.",FileName);
+			return 1;
+		}
+		TIFFSetWarningHandler(oldhandler);
+		int interInt;
+		if (tif) {
+			printf("Read file %s\n",FileName);
+			tdata_t buf;
+			buf = _TIFFmalloc(TIFFScanlineSize(tif));
+			uint16 *datar;
+			int rnr;
+			for (rnr=0;rnr<NrPixels;rnr++){
+				TIFFReadScanline(tif, buf, rnr, 1);
+				datar=(uint16*)buf;
+				for (i=0;i<NrPixels;i++){
+					interInt = (int)datar[i] - (int)MedFltImg[rnr*NrPixels+i] - (int) BlanketSubtraction;
+					Image[rnr*NrPixels+i] = (pixelvalue)(interInt > 0 ? interInt : 0);
+				}
+			}
+			_TIFFfree(buf);
+		}
+		TIFFClose(tif);
+
+		printf("Applying median filter with radius = %d.\n",MeanFiltRadius);
+		if (MeanFiltRadius == 1){
+			pixelvalue array[9];
+			for (i=0; i<(NrPixels*NrPixels); i++){
+				if (((i+1) % NrPixels <= MeanFiltRadius)
+					|| ((NrPixels - ((i+1) % NrPixels)) < MeanFiltRadius)
+					|| (i<(NrPixels*MeanFiltRadius))
+					|| (i>(NrPixels*NrPixels - (NrPixels*MeanFiltRadius)))){
+					Image2[i] = Image[i];
+				}else{
+					int countr = 0;
+					for (j=-MeanFiltRadius;j<=MeanFiltRadius;j++){
+						for (k=-MeanFiltRadius;k<=MeanFiltRadius;k++){
+							array[countr] = Image[i+(NrPixels*j)+k];
+							countr++;
+						}
+					}
+					Image2[i] = opt_med9(array);
+				}
+			}
+		}else if (MeanFiltRadius == 2){
+			pixelvalue array[25];
+			for (i=0; i<(NrPixels*NrPixels); i++){
+				if (((i+1) % NrPixels <= MeanFiltRadius)
+					|| ((NrPixels - ((i+1) % NrPixels)) < MeanFiltRadius)
+					|| (i<(NrPixels*MeanFiltRadius))
+					|| (i>(NrPixels*NrPixels - (NrPixels*MeanFiltRadius)))){
+					Image2[i] = Image[i];
+				}else{
+					int countr = 0;
+					for (j=-MeanFiltRadius;j<=MeanFiltRadius;j++){
+						for (k=-MeanFiltRadius;k<=MeanFiltRadius;k++){
+							array[countr] = Image[i+(NrPixels*j)+k];
+							countr++;
+						}
+					}
+					Image2[i] = opt_med25(array);
+				}
+			}
+		}else{
+			printf("Wrong MedFiltRadius!!! Exiting.\n");
+			return 0;
+		}
+		pixelvalue *Image3;
+		Image3 = malloc(NrPixels*NrPixels*sizeof(*Image3)); // Median filtered image.
+		for (i=0;i<NrPixels*NrPixels;i++){
+			Image3[i] = Image2[i];
+		}
+		pixelvalue *FinalImage;
+		FinalImage = malloc(NrPixels*NrPixels*sizeof(*FinalImage));
+		int TotPixelsInt=0;
+		for (i=0;i<NrPixels*NrPixels;i++) FinalImage[i] = 0;
+		if (DoLoGFilter == 1){
+			int *Image4;
+			Image4 = malloc(NrPixels*NrPixels*sizeof(*Image4));
+			FindPeakPositions(LoGMaskRadius,sigma,Image2,NrPixels,Image4);
+			int LoGMaskRadius2 = 4;
+			double sigma2 = 1;
+			int *Image5;
+			Image5 = malloc(NrPixels*NrPixels*sizeof(*Image5));
+			FindPeakPositions(LoGMaskRadius2,sigma2,Image3,NrPixels,Image5);
+			free(Image2);
+			free(Image3);
+			for (i=0;i<NrPixels*NrPixels;i++){
+				if (Image4[i]!=0){
+					FinalImage[i] = Image4[i]*10;
+					TotPixelsInt++;
+				}else if(Image5[i]!=0){
+					FinalImage[i] = Image5[i]*10;
+					TotPixelsInt++;
+				}else{
+					FinalImage[i] = 0;
+				}
+			}
+			free(Image4);
+			free(Image5);
+		}else{
+			for (i=0;i<NrPixels*NrPixels;i++){
+				FinalImage[i] = (pixelvalue)Image2[i];
+				if (Image2[i]!=0) TotPixelsInt++;
+			}/*
+			int **BoolImage, **ConnectedComponents;
+			BoolImage = allocMatrixInt(NrPixels,NrPixels);
+			ConnectedComponents = allocMatrixInt(NrPixels,NrPixels);
+			int **Positions;
+			int nOverlapsMaxPerImage = 100000;
+			Positions = allocMatrixInt(nOverlapsMaxPerImage,NrPixels*4);
+			int *PositionTrackers;
+			PositionTrackers = malloc(nOverlapsMaxPerImage*sizeof(*PositionTrackers));
+			for (i=0;i<nOverlapsMaxPerImage;i++)PositionTrackers[i] = 0;
+			int NrOfReg;
 			for (i=0;i<NrPixels;i++){
-				interInt = (int)datar[i] - (int)MedFltImg[rnr*NrPixels+i] - (int) BlanketSubtraction;
-				Image[rnr*NrPixels+i] = (pixelvalue)(interInt > 0 ? interInt : 0);
+				for (j=0;j<NrPixels;j++){
+					if (Image2[(i*NrPixels)+j] != 0){
+						BoolImage[i][j] = 1;
+					}else{
+						BoolImage[i][j] = 0;
+					}
+				}
+			}
+			int rnr,cnr;
+			NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
+			for (i=0;i<NrPixels*NrPixels;i++){
+				rnr = i/NrPixels;
+				cnr = i%NrPixels;
+				FinalImage[i] = ConnectedComponents[rnr][cnr];
+			}*/
+		}
+		if (TotPixelsInt > 0){
+			TotPixelsInt--;
+		}else{
+			TotPixelsInt = 1;
+			FinalImage[2045] = 1;
+		}
+		printf("Total number of pixels with intensity: %d\n",TotPixelsInt);
+		int SizeOutFile = sizeof(pixelvalue)*NrPixels*NrPixels;
+		char OutFN2[1024];
+		if (WriteFinImage == 1){
+			FILE *fw;
+			sprintf(OutFN2,"%s/%s_FullImage_%06d.%s%d",direct,ReducedFileName,ImageNr,extReduced,layerNr-1);
+			fw = fopen(OutFN2,"wb");
+			fwrite(FinalImage,SizeOutFile,1,fw);
+			fclose(fw);
+		}
+		if (doDeblur != 0){
+			char *homedir = getenv("HOME");
+			char cmmd[4096];
+			char cmmd2[14096];
+			sprintf(cmmd,"%s/opt/midasconda/bin/python %s/opt/MIDAS/NF_HEDM/src/RLDeconv.py %s %d", homedir, homedir, OutFN2,doDeblur);
+			sprintf(cmmd2,"%s/opt/MIDAS/NF_HEDM/bin/ParseDeconvOutput %s.tif %s %d", homedir, OutFN2, OutFileName, NrPixels);
+			printf("%s\n%s\n",cmmd,cmmd2);
+			system(cmmd);
+			system(cmmd2);
+		}
+		pixelvalue *ys, *zs, *peakID;
+		float32_t *intensity;
+		ys = malloc(TotPixelsInt*2*sizeof(*ys));
+		zs = malloc(TotPixelsInt*2*sizeof(*zs));
+		peakID = malloc(TotPixelsInt*2*sizeof(*peakID));
+		intensity = malloc(TotPixelsInt*2*sizeof(*intensity));
+		int PeaksFilledCounter=0;
+		int RowNr, ColNr;
+		for (i=0;i<NrPixels*NrPixels;i++){
+			if (FinalImage[i]!=0){
+				peakID[PeaksFilledCounter] = FinalImage[i];
+				intensity[PeaksFilledCounter] = Image[i];
+				RowNr = i/NrPixels;
+				ColNr = i%NrPixels;
+				ys[PeaksFilledCounter] = NrPixels - 1 - ColNr;
+				zs[PeaksFilledCounter] = NrPixels - 1 - RowNr;
+				PeaksFilledCounter++;
 			}
 		}
-		_TIFFfree(buf);
-	}
-	TIFFClose(tif);
+		free(Image);
+		free(FinalImage);
+		// Write the result file.
+		printf("Now writing file: %s.\n",OutFileName);
+		FILE *ft;
+		char OutFNt[4096];
+		sprintf(OutFNt,"%s.txtOld",OutFileName);
+		ft = fopen(OutFNt,"w");
+		fprintf(ft,"YPos\tZPos\tpeakID\tIntensity\n");
+		for (i=0;i<TotPixelsInt;i++){
+			fprintf(ft,"%d\t%d\t%d\t%lf\n",(int)ys[i],(int)zs[i],
+				(int)peakID[i],(double)intensity[i]);
+		}
+		fclose(ft);
 
-	printf("Applying median filter with radius = %d.\n",MeanFiltRadius);
-	if (MeanFiltRadius == 1){
-		pixelvalue array[9];
-		for (i=0; i<(NrPixels*NrPixels); i++){
-			if (((i+1) % NrPixels <= MeanFiltRadius)
-				|| ((NrPixels - ((i+1) % NrPixels)) < MeanFiltRadius)
-				|| (i<(NrPixels*MeanFiltRadius))
-				|| (i>(NrPixels*NrPixels - (NrPixels*MeanFiltRadius)))){
-				Image2[i] = Image[i];
-			}else{
-				int countr = 0;
-				for (j=-MeanFiltRadius;j<=MeanFiltRadius;j++){
-					for (k=-MeanFiltRadius;k<=MeanFiltRadius;k++){
-						array[countr] = Image[i+(NrPixels*j)+k];
-						countr++;
-					}
-				}
-				Image2[i] = opt_med9(array);
-			}
-		}
-	}else if (MeanFiltRadius == 2){
-		pixelvalue array[25];
-		for (i=0; i<(NrPixels*NrPixels); i++){
-			if (((i+1) % NrPixels <= MeanFiltRadius)
-				|| ((NrPixels - ((i+1) % NrPixels)) < MeanFiltRadius)
-				|| (i<(NrPixels*MeanFiltRadius))
-				|| (i>(NrPixels*NrPixels - (NrPixels*MeanFiltRadius)))){
-				Image2[i] = Image[i];
-			}else{
-				int countr = 0;
-				for (j=-MeanFiltRadius;j<=MeanFiltRadius;j++){
-					for (k=-MeanFiltRadius;k<=MeanFiltRadius;k++){
-						array[countr] = Image[i+(NrPixels*j)+k];
-						countr++;
-					}
-				}
-				Image2[i] = opt_med25(array);
-			}
-		}
-	}else{
-		printf("Wrong MedFiltRadius!!! Exiting.\n");
-		return 0;
-	}
-	pixelvalue *Image3;
-	Image3 = malloc(NrPixels*NrPixels*sizeof(*Image3)); // Median filtered image.
-	for (i=0;i<NrPixels*NrPixels;i++){
-		Image3[i] = Image2[i];
-	}
-	pixelvalue *FinalImage;
-	FinalImage = malloc(NrPixels*NrPixels*sizeof(*FinalImage));
-	int TotPixelsInt=0;
-	for (i=0;i<NrPixels*NrPixels;i++) FinalImage[i] = 0;
-	if (DoLoGFilter == 1){
-		int *Image4;
-		Image4 = malloc(NrPixels*NrPixels*sizeof(*Image4));
-		FindPeakPositions(LoGMaskRadius,sigma,Image2,NrPixels,Image4);
-		int LoGMaskRadius2 = 4;
-		double sigma2 = 1;
-		int *Image5;
-		Image5 = malloc(NrPixels*NrPixels*sizeof(*Image5));
-		FindPeakPositions(LoGMaskRadius2,sigma2,Image3,NrPixels,Image5);
+		if (doDeblur != 0) return 0;
+
+		float32_t dummy1 = 1;
+		uint32_t dummy2 = 1;
+		pixelvalue dummy3 = 1;
+		char dummy4 = 'x';
+		uint32_t DataSize16 = TotPixelsInt*2 + dummy3;
+		uint32_t DataSize32 = TotPixelsInt*4 + dummy3;
+		fwrite(&dummy1,sizeof(float32_t),1,fk);
+		//Start writing header.
+		fwrite(&dummy2,sizeof(uint32_t),1,fk); //uBlockHeader
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //BlockType
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //DataFormat
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NumChildren
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NameSize
+		fwrite(&DataSize16,sizeof(uint32_t),1,fk); //DataSize
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //ChunkNumber
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //TotalChunks
+		fwrite(&dummy4,sizeof(char)*dummy3,1,fk); //BlockName
+		//Finish writing header.
+		fwrite(&dummy2,sizeof(uint32_t),1,fk);
+		fwrite(&dummy2,sizeof(uint32_t),1,fk);
+		fwrite(&dummy2,sizeof(uint32_t),1,fk);
+		fwrite(&dummy2,sizeof(uint32_t),1,fk);
+		fwrite(&dummy2,sizeof(uint32_t),1,fk);
+		//Start writing header.
+		fwrite(&dummy2,sizeof(uint32_t),1,fk); //uBlockHeader
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //BlockType
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //DataFormat
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NumChildren
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NameSize
+		fwrite(&DataSize16,sizeof(uint32_t),1,fk); //DataSize
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //ChunkNumber
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //TotalChunks
+		fwrite(&dummy4,sizeof(char)*dummy3,1,fk); //BlockName
+		//Finish writing header.
+		//Now write y positions.
+		fwrite(ys,TotPixelsInt*sizeof(pixelvalue),1,fk);
+		//Start writing header.
+		fwrite(&dummy2,sizeof(uint32_t),1,fk); //uBlockHeader
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //BlockType
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //DataFormat
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NumChildren
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NameSize
+		fwrite(&DataSize16,sizeof(uint32_t),1,fk); //DataSize
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //ChunkNumber
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //TotalChunks
+		fwrite(&dummy4,sizeof(char)*dummy3,1,fk); //BlockName
+		//Finish writing header.
+		//Now write z positions.
+		fwrite(zs,TotPixelsInt*sizeof(pixelvalue),1,fk);
+		//Start writing header.
+		fwrite(&dummy2,sizeof(uint32_t),1,fk); //uBlockHeader
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //BlockType
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //DataFormat
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NumChildren
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NameSize
+		fwrite(&DataSize32,sizeof(uint32_t),1,fk); //DataSize
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //ChunkNumber
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //TotalChunks
+		fwrite(&dummy4,sizeof(char)*dummy3,1,fk); //BlockName
+		//Finish writing header.
+		//Now write intensities.
+		fwrite(intensity,TotPixelsInt*sizeof(float32_t),1,fk);
+		//Start writing header.
+		fwrite(&dummy2,sizeof(uint32_t),1,fk); //uBlockHeader
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //BlockType
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //DataFormat
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NumChildren
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NameSize
+		fwrite(&DataSize16,sizeof(uint32_t),1,fk); //DataSize
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //ChunkNumber
+		fwrite(&dummy3,sizeof(pixelvalue),1,fk); //TotalChunks
+		fwrite(&dummy4,sizeof(char)*dummy3,1,fk); //BlockName
+		//Finish writing header.
+		//Now write PeakIDs.
+		fwrite(peakID,TotPixelsInt*sizeof(pixelvalue),1,fk);
+		printf("File written, now closing.\n");
+		fclose(fk);
+		printf("File writing finished.\n");
+	    free(ys);
+	    free(zs);
+	    free(peakID);
+	    free(intensity);
+		/*free(Image);
 		free(Image2);
 		free(Image3);
-		for (i=0;i<NrPixels*NrPixels;i++){
-			if (Image4[i]!=0){
-				FinalImage[i] = Image4[i]*10;
-				TotPixelsInt++;
-			}else if(Image5[i]!=0){
-				FinalImage[i] = Image5[i]*10;
-				TotPixelsInt++;
-			}else{
-				FinalImage[i] = 0;
-			}
-		}
 		free(Image4);
 		free(Image5);
-	}else{
-		for (i=0;i<NrPixels*NrPixels;i++){
-			FinalImage[i] = (pixelvalue)Image2[i];
-			if (Image2[i]!=0) TotPixelsInt++;
-		}/*
-		int **BoolImage, **ConnectedComponents;
-		BoolImage = allocMatrixInt(NrPixels,NrPixels);
-		ConnectedComponents = allocMatrixInt(NrPixels,NrPixels);
-		int **Positions;
-		int nOverlapsMaxPerImage = 100000;
-		Positions = allocMatrixInt(nOverlapsMaxPerImage,NrPixels*4);
-		int *PositionTrackers;
-		PositionTrackers = malloc(nOverlapsMaxPerImage*sizeof(*PositionTrackers));
-		for (i=0;i<nOverlapsMaxPerImage;i++)PositionTrackers[i] = 0;
-		int NrOfReg;
-		for (i=0;i<NrPixels;i++){
-			for (j=0;j<NrPixels;j++){
-				if (Image2[(i*NrPixels)+j] != 0){
-					BoolImage[i][j] = 1;
-				}else{
-					BoolImage[i][j] = 0;
-				}
-			}
-		}
-		int rnr,cnr;
-		NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
-		for (i=0;i<NrPixels*NrPixels;i++){
-			rnr = i/NrPixels;
-			cnr = i%NrPixels;
-			FinalImage[i] = ConnectedComponents[rnr][cnr];
-		}*/
+		free(FinalImage);*/
 	}
-	if (TotPixelsInt > 0){
-		TotPixelsInt--;
-	}else{
-		TotPixelsInt = 1;
-		FinalImage[2045] = 1;
-	}
-	printf("Total number of pixels with intensity: %d\n",TotPixelsInt);
-	int SizeOutFile = sizeof(pixelvalue)*NrPixels*NrPixels;
-	char OutFN2[1024];
-	if (WriteFinImage == 1){
-		FILE *fw;
-		sprintf(OutFN2,"%s/%s_FullImage_%06d.%s%d",direct,ReducedFileName,ImageNr,extReduced,nLayers-1);
-		fw = fopen(OutFN2,"wb");
-		fwrite(FinalImage,SizeOutFile,1,fw);
-		fclose(fw);
-	}
-	if (doDeblur != 0){
-		char *homedir = getenv("HOME");
-		char cmmd[4096];
-		char cmmd2[14096];
-		sprintf(cmmd,"%s/opt/midasconda/bin/python %s/opt/MIDAS/NF_HEDM/src/RLDeconv.py %s %d", homedir, homedir, OutFN2,doDeblur);
-		sprintf(cmmd2,"%s/opt/MIDAS/NF_HEDM/bin/ParseDeconvOutput %s.tif %s %d", homedir, OutFN2, OutFileName, NrPixels);
-		printf("%s\n%s\n",cmmd,cmmd2);
-		system(cmmd);
-		system(cmmd2);
-	}
-	pixelvalue *ys, *zs, *peakID;
-	float32_t *intensity;
-	ys = malloc(TotPixelsInt*2*sizeof(*ys));
-	zs = malloc(TotPixelsInt*2*sizeof(*zs));
-	peakID = malloc(TotPixelsInt*2*sizeof(*peakID));
-	intensity = malloc(TotPixelsInt*2*sizeof(*intensity));
-	int PeaksFilledCounter=0;
-	int RowNr, ColNr;
-	for (i=0;i<NrPixels*NrPixels;i++){
-		if (FinalImage[i]!=0){
-			peakID[PeaksFilledCounter] = FinalImage[i];
-			intensity[PeaksFilledCounter] = Image[i];
-			RowNr = i/NrPixels;
-			ColNr = i%NrPixels;
-			ys[PeaksFilledCounter] = NrPixels - 1 - ColNr;
-			zs[PeaksFilledCounter] = NrPixels - 1 - RowNr;
-			PeaksFilledCounter++;
-		}
-	}
-	free(Image);
-	free(FinalImage);
-	// Write the result file.
-	printf("Now writing file: %s.\n",OutFileName);
-	FILE *ft;
-	char OutFNt[4096];
-	sprintf(OutFNt,"%s.txtOld",OutFileName);
-	ft = fopen(OutFNt,"w");
-	fprintf(ft,"YPos\tZPos\tpeakID\tIntensity\n");
-	for (i=0;i<TotPixelsInt;i++){
-		fprintf(ft,"%d\t%d\t%d\t%lf\n",(int)ys[i],(int)zs[i],
-			(int)peakID[i],(double)intensity[i]);
-	}
-	fclose(ft);
-
-	if (doDeblur != 0) return 0;
-
-	float32_t dummy1 = 1;
-	uint32_t dummy2 = 1;
-	pixelvalue dummy3 = 1;
-	char dummy4 = 'x';
-	uint32_t DataSize16 = TotPixelsInt*2 + dummy3;
-	uint32_t DataSize32 = TotPixelsInt*4 + dummy3;
-	fwrite(&dummy1,sizeof(float32_t),1,fk);
-	//Start writing header.
-	fwrite(&dummy2,sizeof(uint32_t),1,fk); //uBlockHeader
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //BlockType
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //DataFormat
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NumChildren
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NameSize
-	fwrite(&DataSize16,sizeof(uint32_t),1,fk); //DataSize
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //ChunkNumber
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //TotalChunks
-	fwrite(&dummy4,sizeof(char)*dummy3,1,fk); //BlockName
-	//Finish writing header.
-	fwrite(&dummy2,sizeof(uint32_t),1,fk);
-	fwrite(&dummy2,sizeof(uint32_t),1,fk);
-	fwrite(&dummy2,sizeof(uint32_t),1,fk);
-	fwrite(&dummy2,sizeof(uint32_t),1,fk);
-	fwrite(&dummy2,sizeof(uint32_t),1,fk);
-	//Start writing header.
-	fwrite(&dummy2,sizeof(uint32_t),1,fk); //uBlockHeader
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //BlockType
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //DataFormat
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NumChildren
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NameSize
-	fwrite(&DataSize16,sizeof(uint32_t),1,fk); //DataSize
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //ChunkNumber
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //TotalChunks
-	fwrite(&dummy4,sizeof(char)*dummy3,1,fk); //BlockName
-	//Finish writing header.
-	//Now write y positions.
-	fwrite(ys,TotPixelsInt*sizeof(pixelvalue),1,fk);
-	//Start writing header.
-	fwrite(&dummy2,sizeof(uint32_t),1,fk); //uBlockHeader
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //BlockType
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //DataFormat
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NumChildren
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NameSize
-	fwrite(&DataSize16,sizeof(uint32_t),1,fk); //DataSize
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //ChunkNumber
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //TotalChunks
-	fwrite(&dummy4,sizeof(char)*dummy3,1,fk); //BlockName
-	//Finish writing header.
-	//Now write z positions.
-	fwrite(zs,TotPixelsInt*sizeof(pixelvalue),1,fk);
-	//Start writing header.
-	fwrite(&dummy2,sizeof(uint32_t),1,fk); //uBlockHeader
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //BlockType
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //DataFormat
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NumChildren
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NameSize
-	fwrite(&DataSize32,sizeof(uint32_t),1,fk); //DataSize
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //ChunkNumber
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //TotalChunks
-	fwrite(&dummy4,sizeof(char)*dummy3,1,fk); //BlockName
-	//Finish writing header.
-	//Now write intensities.
-	fwrite(intensity,TotPixelsInt*sizeof(float32_t),1,fk);
-	//Start writing header.
-	fwrite(&dummy2,sizeof(uint32_t),1,fk); //uBlockHeader
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //BlockType
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //DataFormat
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NumChildren
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //NameSize
-	fwrite(&DataSize16,sizeof(uint32_t),1,fk); //DataSize
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //ChunkNumber
-	fwrite(&dummy3,sizeof(pixelvalue),1,fk); //TotalChunks
-	fwrite(&dummy4,sizeof(char)*dummy3,1,fk); //BlockName
-	//Finish writing header.
-	//Now write PeakIDs.
-	fwrite(peakID,TotPixelsInt*sizeof(pixelvalue),1,fk);
-	printf("File written, now closing.\n");
-	fclose(fk);
-	printf("File writing finished.\n");
-    end = clock();
-    diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
-    printf("Time elapsed in correcting image for layer %d, image %d: %f [s]\n",nLayers,ImageNr,diftotal);
-    free(ys);
-    free(zs);
-    free(peakID);
-    free(intensity);
-	/*free(Image);
-	free(Image2);
-	free(Image3);
-	free(Image4);
-	free(Image5);
-	free(FinalImage);*/
+	double time = omp_get_wtime() - start_time;
+	printf("Finished, time elapsed: %lf seconds.\n",time);
     return 0;
 }

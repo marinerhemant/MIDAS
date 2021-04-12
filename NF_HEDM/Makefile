@@ -108,6 +108,9 @@ imageprocessinghdf: $(SRCDIR)ImageProcessingHDF.c
 imageprocessing: $(SRCDIR)ImageProcessingLibTiff.c
 	$(CC) $(SRCDIR)ImageProcessingLibTiff.c -o $(BINDIR)ImageProcessingLibTiff $(CFLAGS) $(CFLAGSTIFF)
 
+imageprocessingomp: $(SRCDIR)ImageProcessingLibTiffOMP.c
+	$(CC) $(SRCDIR)ImageProcessingLibTiffOMP.c -o $(BINDIR)ImageProcessingLibTiffOMP -fopenmp $(CFLAGS) $(CFLAGSTIFF)
+
 parsedeconv: $(SRCDIR)ParseDeconvOutput.c
 	$(CC) $(SRCDIR)ParseDeconvOutput.c -o $(BINDIR)ParseDeconvOutput $(CFLAGS) $(CFLAGSTIFF)
 
