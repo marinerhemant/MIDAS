@@ -801,6 +801,7 @@ main(int argc, char *argv[])
 	startNr = (int)(ceil((double)nrFilesTotal / (double)nBlocks))*blockNr;
 	int tmp = (int)(ceil((double)nrFilesTotal / (double)nBlocks)) * (blockNr+1);
 	endRowNr = tmp < (nrFilesTotal-1) ? tmp : (nrFilesTotal-1);
+	int fnr;
 	// OMP
 	#pragma omp parallel for num_threads(numProcs) private(fnr)
 	for (fnr=startNr;fnr<endNr;fnr++)
