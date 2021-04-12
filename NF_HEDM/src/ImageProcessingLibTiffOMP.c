@@ -677,7 +677,6 @@ main(int argc, char *argv[])
 	int LowNr,StartNr,NrFilesPerLayer,NrPixels,BlanketSubtraction,MeanFiltRadius,WriteFinImage=0;
 	int LoGMaskRadius, doDeblur=0;
 	double sigma;
-	ImageNr = atoi(argv[3]);
 	int DoLoGFilter=1,WFImages=0,nDistances,stNr = 0;
 	while (fgets(aline,1000,fileParam)!=NULL){
 		str = "StartNr ";
@@ -800,7 +799,7 @@ main(int argc, char *argv[])
 	int startNr, endNr;
 	startNr = (int)(ceil((double)nrFilesTotal / (double)nBlocks))*blockNr;
 	int tmp = (int)(ceil((double)nrFilesTotal / (double)nBlocks)) * (blockNr+1);
-	endRowNr = tmp < (nrFilesTotal-1) ? tmp : (nrFilesTotal-1);
+	endNr = tmp < (nrFilesTotal-1) ? tmp : (nrFilesTotal-1);
 	int fnr;
 	// OMP
 	#pragma omp parallel for num_threads(numProcs) private(fnr)
