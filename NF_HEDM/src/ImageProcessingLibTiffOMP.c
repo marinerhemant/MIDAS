@@ -807,7 +807,7 @@ main(int argc, char *argv[])
 	for (fnr=startNr;fnr<endNr;fnr++)
 	{
 		int ImageNr, layerNr;
-		layerNr = fnr/NrFilesPerLayer;
+		layerNr = fnr/NrFilesPerLayer + 1;
 		ImageNr = fnr%NrFilesPerLayer;
 		int i,j,k;
 		FILE *fk;
@@ -825,6 +825,7 @@ main(int argc, char *argv[])
 		MedFltImg = malloc(NrPixels*NrPixels*sizeof(*MedFltImg));
 		char MedianFileName[1024];
 		sprintf(MedianFileName,"%s_Median_Background_Distance_%d.%s",fn,layerNr-1,extReduced);
+		printf("%d
 		FILE *MFI = fopen(MedianFileName,"r");
 		int rc = fread(MedFltImg,SizeFile,1,MFI);
 
