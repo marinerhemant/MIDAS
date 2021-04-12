@@ -844,7 +844,7 @@ main(int argc, char *argv[])
 		TIFFSetWarningHandler(oldhandler);
 		int interInt;
 		if (tif) {
-			printf("Read file %s\n",FileName);
+			//~ printf("Read file %s\n",FileName);
 			tdata_t buf;
 			buf = _TIFFmalloc(TIFFScanlineSize(tif));
 			uint16 *datar;
@@ -861,7 +861,7 @@ main(int argc, char *argv[])
 		}
 		TIFFClose(tif);
 
-		printf("Applying median filter with radius = %d.\n",MeanFiltRadius);
+		//~ printf("Applying median filter with radius = %d.\n",MeanFiltRadius);
 		if (MeanFiltRadius == 1){
 			pixelvalue array[9];
 			for (i=0; i<(NrPixels*NrPixels); i++){
@@ -975,7 +975,7 @@ main(int argc, char *argv[])
 			TotPixelsInt = 1;
 			FinalImage[2045] = 1;
 		}
-		printf("Total number of pixels with intensity: %d\n",TotPixelsInt);
+		//~ printf("Total number of pixels with intensity: %d\n",TotPixelsInt);
 		int SizeOutFile = sizeof(pixelvalue)*NrPixels*NrPixels;
 		char OutFN2[1024];
 		if (WriteFinImage == 1){
@@ -991,7 +991,7 @@ main(int argc, char *argv[])
 			char cmmd2[14096];
 			sprintf(cmmd,"%s/opt/midasconda/bin/python %s/opt/MIDAS/NF_HEDM/src/RLDeconv.py %s %d", homedir, homedir, OutFN2,doDeblur);
 			sprintf(cmmd2,"%s/opt/MIDAS/NF_HEDM/bin/ParseDeconvOutput %s.tif %s %d", homedir, OutFN2, OutFileName, NrPixels);
-			printf("%s\n%s\n",cmmd,cmmd2);
+			//~ printf("%s\n%s\n",cmmd,cmmd2);
 			system(cmmd);
 			system(cmmd2);
 		}
@@ -1017,7 +1017,7 @@ main(int argc, char *argv[])
 		free(Image);
 		free(FinalImage);
 		// Write the result file.
-		printf("Now writing file: %s.\n",OutFileName);
+		//~ printf("Now writing file: %s.\n",OutFileName);
 		FILE *ft;
 		char OutFNt[4096];
 		sprintf(OutFNt,"%s.txtOld",OutFileName);
@@ -1106,9 +1106,9 @@ main(int argc, char *argv[])
 		//Finish writing header.
 		//Now write PeakIDs.
 		fwrite(peakID,TotPixelsInt*sizeof(pixelvalue),1,fk);
-		printf("File written, now closing.\n");
+		//~ printf("File written, now closing.\n");
 		fclose(fk);
-		printf("File writing finished.\n");
+		//~ printf("File writing finished.\n");
 	    free(ys);
 	    free(zs);
 	    free(peakID);
