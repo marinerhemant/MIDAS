@@ -832,7 +832,7 @@ main(int argc, char *argv[])
 		int FileNr = ((layerNr - 1) * NrFilesPerLayer) + StartNr + ImageNr;
 		FileNr += (layerNr-1)*WFImages;
 		sprintf(FileName,"%s_%06d.%s",fn,FileNr,extOrig);
-		printf("Opening file: %s\n",FileName);
+		printf("%d %d %d %d %d\n",fnr,startNr,endNr,ImageNr,layerNr);
 		fflush(stdout);
 		TIFFErrorHandler oldhandler;
 		oldhandler = TIFFSetWarningHandler(NULL);
