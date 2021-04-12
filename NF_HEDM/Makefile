@@ -96,6 +96,9 @@ makediffrspotsff2nf: $(SRCDIR)MakeDiffrSpotsFF2NF.c
 medianimage: $(SRCDIR)MedianImageLibTiff.c
 	$(CC) $(SRCDIR)MedianImageLibTiff.c -o $(BINDIR)MedianImageLibTiff $(CFLAGS) $(CFLAGSTIFF)
 
+medianimageomp: $(SRCDIR)MedianImageLibTiffOMP.c
+	$(CC) $(SRCDIR)MedianImageLibTiffOMP.c -o $(BINDIR)MedianImageLibTiffOMP -fopenmp $(CFLAGS) $(CFLAGSTIFF)
+
 medianimagehdf: $(SRCDIR)MedianImageHDF.c
 	$(H5CC) $(SRCDIR)MedianImageHDF.c -o $(BINDIR)MedianImageHDF $(CFLAGS) $(CFLAGSHDF) -fopenmp
 
