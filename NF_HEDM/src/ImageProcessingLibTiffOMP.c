@@ -860,6 +860,7 @@ main(int argc, char *argv[])
 			_TIFFfree(buf);
 		}
 		TIFFClose(tif);
+		free(MedFltImg);
 
 		//~ printf("Applying median filter with radius = %d.\n",MeanFiltRadius);
 		if (MeanFiltRadius == 1){
@@ -922,8 +923,6 @@ main(int argc, char *argv[])
 			int *Image5;
 			Image5 = malloc(NrPixels*NrPixels*sizeof(*Image5));
 			FindPeakPositions(LoGMaskRadius2,sigma2,Image3,NrPixels,Image5);
-			free(Image2);
-			free(Image3);
 			for (i=0;i<NrPixels*NrPixels;i++){
 				if (Image4[i]!=0){
 					FinalImage[i] = Image4[i]*10;
@@ -969,6 +968,8 @@ main(int argc, char *argv[])
 				FinalImage[i] = ConnectedComponents[rnr][cnr];
 			}*/
 		}
+		free(Image2);
+		free(Image3);
 		if (TotPixelsInt > 0){
 			TotPixelsInt--;
 		}else{
