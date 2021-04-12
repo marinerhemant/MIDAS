@@ -799,7 +799,7 @@ main(int argc, char *argv[])
 	int startNr, endNr;
 	startNr = (int)(ceil((double)nrFilesTotal / (double)nBlocks)) * blockNr;
 	int tmp = (int)(ceil((double)nrFilesTotal / (double)nBlocks)) * (blockNr+1);
-	endNr = tmp < (nrFilesTotal-1) ? tmp : (nrFilesTotal-1);
+	endNr = tmp < (nrFilesTotal) ? tmp : (nrFilesTotal);
 	printf("%d %d %d %d %d %d\n",nBlocks,blockNr,numProcs,nrFilesTotal,startNr,endNr);
 	int fnr;
 	// OMP
