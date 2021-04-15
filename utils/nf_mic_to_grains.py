@@ -13,7 +13,6 @@ maxNrGrains = 5000 # You can increase this if number of expected grains is highe
 def calcGrains(mic,grains):
 	nrows,ncols = mic.shape
 	nGrains = 0
-	nrows = 40000
 	for rownr in range(nrows):
 		eulThis = mic[rownr,7:10]
 		if nGrains == 0:
