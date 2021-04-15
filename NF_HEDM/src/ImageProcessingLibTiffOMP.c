@@ -628,7 +628,6 @@ static inline void DepthFirstSearch(int x, int y, int current_label, int NrPixel
 	int direction;
 	for (direction=0;direction<8;++direction){
 		DepthFirstSearch(x + dx[direction], y + dy[direction], current_label, NrPixels, BoolImage, ConnectedComponents,Positions,PositionTrackers);
-
 	}
 }
 
