@@ -5,7 +5,7 @@ import calcMiso
 rad2deg = 57.2957795130823
 sgNum = 225
 minAngle = 1
-micFile = 'MicrostructureText_Layer1.mic'
+micFile = 'MicrostructureTxtLayer0_H2.mic'
 grainsFN = 'Grains.csv'
 minConfidence = 0.5
 maxNrGrains = 5000 # You can increase this if number of expected grains is higher.
