@@ -801,6 +801,17 @@ main(int argc, char *argv[])
 	endNr = tmp < (nrFilesTotal) ? tmp : (nrFilesTotal);
 	printf("%d %d %d %d %d %d\n",nBlocks,blockNr,numProcs,nrFilesTotal,startNr,endNr);
 	int fnr;
+	pixelvalue *MedFltImg;
+	int SizeFile = sizeof(pixelvalue) * NrPixels * NrPixels;
+	MedFltImg = malloc(NrPixels*NrPixels*nDistances*sizeof(*MedFltImg));
+	int dNr;
+	for (dNr=0;dNr<nDistances;dNr++){
+		char MedianFileName[1024];
+		sprintf(MedianFileName,"%s_Median_Background_Distance_%d.%s",fn,dNr,extReduced);
+		FILE *MFI = fopen(MedianFileName,"r");
+		fread(&MedFltImg[NrPixels*NrPixels*dNr],SizeFile,1,MFI);
+		fclose(MFI);
+	}
 	// OMP
 	#pragma omp parallel for num_threads(numProcs) private(fnr)
 	for (fnr=startNr;fnr<endNr;fnr++)
@@ -816,16 +827,12 @@ main(int argc, char *argv[])
 		strcpy(OutFileName,OutFN);
 		fk = fopen(OutFileName,"wb");
 
-		pixelvalue *Image, *Image2, *MedFltImg;
+		pixelvalue *Image, *Image2;//, *MedFltImg;
 		char FileName[1024];
 		Image = malloc(NrPixels*NrPixels*sizeof(*Image)); // Original image.
 		Image2 = malloc(NrPixels*NrPixels*sizeof(*Image2)); // Median filtered image.
-		int SizeFile = sizeof(pixelvalue) * NrPixels * NrPixels;
-		MedFltImg = malloc(NrPixels*NrPixels*sizeof(*MedFltImg));
-		char MedianFileName[1024];
-		sprintf(MedianFileName,"%s_Median_Background_Distance_%d.%s",fn,layerNr-1,extReduced);
-		FILE *MFI = fopen(MedianFileName,"r");
-		int rc = fread(MedFltImg,SizeFile,1,MFI);
+		//~ MedFltImg = malloc(NrPixels*NrPixels*sizeof(*MedFltImg));
+		//~ int rc = fread(MedFltImg,SizeFile,1,MFI);
 
 		// Use LibTiff to read files
 		int FileNr = ((layerNr - 1) * NrFilesPerLayer) + StartNr + ImageNr;
@@ -842,6 +849,7 @@ main(int argc, char *argv[])
 		}
 		TIFFSetWarningHandler(oldhandler);
 		int interInt;
+		size_t startVal;
 		if (tif) {
 			//~ printf("Read file %s\n",FileName);
 			tdata_t buf;
@@ -852,14 +860,14 @@ main(int argc, char *argv[])
 				TIFFReadScanline(tif, buf, rnr, 1);
 				datar=(uint16*)buf;
 				for (i=0;i<NrPixels;i++){
-					interInt = (int)datar[i] - (int)MedFltImg[rnr*NrPixels+i] - (int) BlanketSubtraction;
+					startVal = layerNr-1; startVal *= NrPixels; startVal *= NrPixels; startVal += rnr*NrPixels+i;
+					interInt = (int)datar[i] - (int)MedFltImg[startVal] - (int) BlanketSubtraction;
 					Image[rnr*NrPixels+i] = (pixelvalue)(interInt > 0 ? interInt : 0);
 				}
 			}
 			_TIFFfree(buf);
 		}
 		TIFFClose(tif);
-		free(MedFltImg);
 
 		//~ printf("Applying median filter with radius = %d.\n",MeanFiltRadius);
 		if (MeanFiltRadius == 1){
@@ -1120,6 +1128,7 @@ main(int argc, char *argv[])
 		free(Image5);
 		free(FinalImage);*/
 	}
+	free(MedFltImg);
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);
     return 0;

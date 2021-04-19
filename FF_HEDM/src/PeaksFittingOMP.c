@@ -187,7 +187,7 @@ static inline void DepthFirstSearch(int x, int y, int current_label, int NrPixel
 	}
 }
 
-static inline int FindConnectedComponents(int *BoolImage, int NrPixels, int *ConnectedComponents, int **Positions, int *PositionTrackers){
+static inline int FindConnectedComponents(int *BoolImage, int NrPixels, int *ConnectedComponents, int *Positions, int *PositionTrackers){
 	int i,j;
 	for (i=0;i<NrPixels*NrPixels;i++){
 		ConnectedComponents[i] = 0;
