@@ -843,8 +843,6 @@ main(int argc, char *argv[])
 		size_t offsetPos = procNum; offsetPos *= NrPixels; offsetPos *= NrPixels;
 		Image = &Images[offsetPos];
 		Image2 = &Images2[offsetPos];
-		//~ Image = malloc(NrPixels*NrPixels*sizeof(*Image)); // Original image.
-		//~ Image2 = malloc(NrPixels*NrPixels*sizeof(*Image2)); // Median filtered image.
 
 		// Use LibTiff to read files
 		int FileNr = ((layerNr - 1) * NrFilesPerLayer) + StartNr + ImageNr;
@@ -863,7 +861,6 @@ main(int argc, char *argv[])
 		int interInt;
 		size_t startVal;
 		if (tif) {
-			//~ printf("Read file %s\n",FileName);
 			tdata_t buf;
 			buf = _TIFFmalloc(TIFFScanlineSize(tif));
 			uint16 *datar;
@@ -881,7 +878,6 @@ main(int argc, char *argv[])
 		}
 		TIFFClose(tif);
 
-		//~ printf("Applying median filter with radius = %d.\n",MeanFiltRadius);
 		if (MeanFiltRadius == 1){
 			pixelvalue array[9];
 			for (i=0; i<(NrPixels*NrPixels); i++){
@@ -924,18 +920,16 @@ main(int argc, char *argv[])
 			printf("Wrong MedFiltRadius!!! Exiting.\n");
 			continue;
 		}
-		pixelvalue *Image3;
-		Image3 = &Images3[offsetPos];
-		//~ Image3 = malloc(NrPixels*NrPixels*sizeof(*Image3)); // Median filtered image.
-		for (i=0;i<NrPixels*NrPixels;i++){
-			Image3[i] = Image2[i];
-		}
 		pixelvalue *FinalImage;
 		FinalImage = &FinalImages[offsetPos];
-		//~ FinalImage = malloc(NrPixels*NrPixels*sizeof(*FinalImage));
 		int TotPixelsInt=0;
 		for (i=0;i<NrPixels*NrPixels;i++) FinalImage[i] = 0;
 		if (DoLoGFilter == 1){
+			pixelvalue *Image3;
+			Image3 = &Images3[offsetPos];
+			for (i=0;i<NrPixels*NrPixels;i++){
+				Image3[i] = Image2[i];
+			}
 			int *Image4;
 			Image4 = malloc(NrPixels*NrPixels*sizeof(*Image4));
 			FindPeakPositions(LoGMaskRadius,sigma,Image2,NrPixels,Image4);
@@ -989,8 +983,6 @@ main(int argc, char *argv[])
 				FinalImage[i] = ConnectedComponents[rnr][cnr];
 			}*/
 		}
-		//~ free(Image2);
-		//~ free(Image3);
 		if (TotPixelsInt > 0){
 			TotPixelsInt--;
 		}else{
