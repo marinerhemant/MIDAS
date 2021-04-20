@@ -809,13 +809,24 @@ main(int argc, char *argv[])
 		char MedianFileName[1024];
 		sprintf(MedianFileName,"%s_Median_Background_Distance_%d.%s",fn,dNr,extReduced);
 		FILE *MFI = fopen(MedianFileName,"r");
+		if (MFI == NULL){
+			printf("Median file not found. Exiting\n");
+			return 1;
+		}
 		fread(&MedFltImg[NrPixels*NrPixels*dNr],SizeFile,1,MFI);
 		fclose(MFI);
 	}
+	pixelvalue *Images, *Images2, *Images3, *FinalImages;
+	size_t bigArrSz = numProcs; bigArrSz *= NrPixels; bigArrSz *= NrPixels;
+	Images = malloc(bigArrSz*sizeof(*Images)); // Original image.
+	Images2 = malloc(bigArrSz*sizeof(*Images2)); // Median filtered image.
+	Images3 = malloc(bigArrSz*sizeof(*Images3));
+	FinalImages = malloc(bigArrSz*sizeof(*FinalImages));
 	// OMP
 	#pragma omp parallel for num_threads(numProcs) private(fnr)
 	for (fnr=startNr;fnr<endNr;fnr++)
 	{
+		int procNum = omp_get_thread_num();
 		int ImageNr, layerNr;
 		layerNr = fnr/NrFilesPerLayer + 1;
 		ImageNr = fnr%NrFilesPerLayer;
@@ -829,10 +840,11 @@ main(int argc, char *argv[])
 
 		pixelvalue *Image, *Image2;//, *MedFltImg;
 		char FileName[1024];
-		Image = malloc(NrPixels*NrPixels*sizeof(*Image)); // Original image.
-		Image2 = malloc(NrPixels*NrPixels*sizeof(*Image2)); // Median filtered image.
-		//~ MedFltImg = malloc(NrPixels*NrPixels*sizeof(*MedFltImg));
-		//~ int rc = fread(MedFltImg,SizeFile,1,MFI);
+		size_t offsetPos = procNum; offsetPos *= NrPixels; offsetPos *= NrPixels;
+		Image = &Images[offsetPos];
+		Image2 = &Images2[offsetPos];
+		//~ Image = malloc(NrPixels*NrPixels*sizeof(*Image)); // Original image.
+		//~ Image2 = malloc(NrPixels*NrPixels*sizeof(*Image2)); // Median filtered image.
 
 		// Use LibTiff to read files
 		int FileNr = ((layerNr - 1) * NrFilesPerLayer) + StartNr + ImageNr;
@@ -913,12 +925,14 @@ main(int argc, char *argv[])
 			continue;
 		}
 		pixelvalue *Image3;
-		Image3 = malloc(NrPixels*NrPixels*sizeof(*Image3)); // Median filtered image.
+		Image3 = &Images3[offsetPos];
+		//~ Image3 = malloc(NrPixels*NrPixels*sizeof(*Image3)); // Median filtered image.
 		for (i=0;i<NrPixels*NrPixels;i++){
 			Image3[i] = Image2[i];
 		}
 		pixelvalue *FinalImage;
-		FinalImage = malloc(NrPixels*NrPixels*sizeof(*FinalImage));
+		FinalImage = &FinalImages[offsetPos];
+		//~ FinalImage = malloc(NrPixels*NrPixels*sizeof(*FinalImage));
 		int TotPixelsInt=0;
 		for (i=0;i<NrPixels*NrPixels;i++) FinalImage[i] = 0;
 		if (DoLoGFilter == 1){
@@ -947,8 +961,8 @@ main(int argc, char *argv[])
 			for (i=0;i<NrPixels*NrPixels;i++){
 				FinalImage[i] = (pixelvalue)Image2[i];
 				if (Image2[i]!=0) TotPixelsInt++;
-			}/*
-			int **BoolImage, **ConnectedComponents;
+			}
+			/*int **BoolImage, **ConnectedComponents;
 			BoolImage = allocMatrixInt(NrPixels,NrPixels);
 			ConnectedComponents = allocMatrixInt(NrPixels,NrPixels);
 			int **Positions;
@@ -975,8 +989,8 @@ main(int argc, char *argv[])
 				FinalImage[i] = ConnectedComponents[rnr][cnr];
 			}*/
 		}
-		free(Image2);
-		free(Image3);
+		//~ free(Image2);
+		//~ free(Image3);
 		if (TotPixelsInt > 0){
 			TotPixelsInt--;
 		}else{
@@ -1022,8 +1036,8 @@ main(int argc, char *argv[])
 				PeaksFilledCounter++;
 			}
 		}
-		free(Image);
-		free(FinalImage);
+		//~ free(Image);
+		//~ free(FinalImage);
 		// Write the result file.
 		//~ printf("Now writing file: %s.\n",OutFileName);
 		FILE *ft;

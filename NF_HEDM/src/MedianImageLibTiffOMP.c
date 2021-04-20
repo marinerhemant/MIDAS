@@ -125,6 +125,7 @@ int CalcMedian(char fn[1000],
 	char MedianFileName[1024],MaxIntFileName[1024],MaxIntMedianCorrFileName[1024];
 	sprintf(MedianFileName,"%s_Median_Background_Distance_%d.%s",fn,LayerNr-1,extReduced);
 	sprintf(MaxIntFileName,"%s_MaximumIntensity_Distance_%d.%s",fn,LayerNr-1,extReduced);
+	int fld = 0;
 	sprintf(MaxIntMedianCorrFileName,"%s_MaximumIntensityMedianCorrected_Distance_%d.%s",fn,LayerNr-1,extReduced);
 	#pragma omp parallel for num_threads(numProcs) private(j)
 	for (j=0;j<NrFilesPerLayer;j++){
@@ -136,6 +137,7 @@ int CalcMedian(char fn[1000],
 		TIFF* tif = TIFFOpen(FileName, "r");
 		if (tif == NULL){
 			printf("%s not found.\n",FileName);
+			fld = 1;
 			continue;
 		}
 		TIFFSetWarningHandler(oldhandler);
@@ -155,6 +157,7 @@ int CalcMedian(char fn[1000],
 		}
 		TIFFClose(tif);
 	}
+	if (fld == 0) return 0;
 	printf("Calculating median.\n");
 	MedianArray = malloc(NrPixels*NrPixels*sizeof(*MedianArray));
 	pixelvalue *MaxIntArr, *MaxIntMedianArr;
@@ -279,8 +282,8 @@ main(int argc, char *argv[])
 	int ReturnCode;
 	ReturnCode = CalcMedian(fn, nLayers,StartNr,NrPixels,NrFilesPerLayer,ext,extReduced,numProcs);
 	if (ReturnCode == 0){
-		printf("Median Calculation failed. Exiting.");
-		return 0;
+		printf("Median Calculation failed. Exiting.\n");
+		return 1;
 	}
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);
