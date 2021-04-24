@@ -91,6 +91,9 @@ imagemax: $(SRCDIR)imageMax.c
 calibrant: $(SRCDIR)Calibrant.c
 	$(CC) $(SRCDIR)Calibrant.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)Calibrant $(CFLAGS) $(CFLAGSTIFF) $(CFLAGSNLOPT)
 
+fitsetup: $(SRCDIR)FitSetupParamsAll.c
+	$(CC) $(SRCDIR)FitSetupParamsAll.c -o $(BINDIR)FitSetup $(CFLAGS) $(CFLAGSNLOPT)
+
 fittiltbclsdsample: $(SRCDIR)FitTiltBCLsdSampleOmegaCorrection.c
 	$(CC) $(SRCDIR)FitTiltBCLsdSampleOmegaCorrection.c -o $(BINDIR)FitTiltBCLsdSample $(CFLAGS) $(CFLAGSNLOPT)
 
