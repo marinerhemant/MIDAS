@@ -822,7 +822,10 @@ def plotmic():
 		micfiledatacut = micfiledatacut[ micfiledatacut[:,10] > float(cutconfidencevar.get()) , :]
 		if cb is not None:
 			cb.remove()
-		sc = b.scatter(micfiledatacut[:,3],micfiledatacut[:,4],c=micfiledatacut[:,col],lw=0)
+		if col == 10:
+			sc = b.scatter(micfiledatacut[:,3],micfiledatacut[:,4],c=micfiledatacut[:,col],lw=0,cmap=plt.get_cmap('jet'),vmax=float(maxConfVar.get()))
+		else:
+			sc = b.scatter(micfiledatacut[:,3],micfiledatacut[:,4],c=micfiledatacut[:,col],lw=0,cmap=plt.get_cmap('jet'))
 		if initplotb:
 			initplotb = 0
 		else:
@@ -870,7 +873,7 @@ def plotmic():
 			micfiledatacut = micfiledatacut[:sizeX*sizeY]
 			micfiledatacut[badcoords] = -15.0
 			micfiledatacut = micfiledatacut.reshape((sizeY,sizeX))
-			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest',extent=exten)
+			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest',extent=exten,vmax=float(maxConfVar.get()))
 			b.title.set_text("MicMap (Confidence)")
 		if col == 0: # OrientationID
 			micfiledatacut = micfiledatacut[sizeX*sizeY*4:sizeX*sizeY*5]
@@ -901,6 +904,7 @@ def load_mic():
 	initplotb = 1
 	micfileselect()
 	f = open(micfile,'r')
+	print(micfile)
 	if (micfile[-3:] == 'map'):
 		micfiletype = 2
 		sizeX = int(np.fromfile(f,dtype=np.double,count=1)[0])
@@ -1090,6 +1094,9 @@ maxringradvar = Tk.StringVar()
 cutconfidencevar = Tk.StringVar()
 cutoffconfidence = 0
 cutconfidencevar.set(str(cutoffconfidence))
+maxConfVar = Tk.StringVar()
+maxConf = 1
+maxConfVar.set(str(maxConf))
 initplotb = 1
 colVar = Tk.IntVar()
 colVar.set(10)
@@ -1187,8 +1194,9 @@ Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetica",10)).gr
 
 loadmicframe = Tk.Frame(root)
 loadmicframe.grid(row=figrowspan+1,column=3,sticky=Tk.W)
-Tk.Button(master=loadmicframe,text='LoadMic',command=load_mic,font=("Helvetica",8)).grid(row=1,column=1,sticky=Tk.W)
-Tk.Button(master=loadmicframe,text='ReloadMic',command=plotmic,font=("Helvetica",8)).grid(row=1,column=2,sticky=Tk.W)
+Tk.Button(master=loadmicframe,text='LoadMic',command=load_mic).grid(row=1,column=1,sticky=Tk.W)
+Tk.Button(master=loadmicframe,text='ReloadMic',command=plotmic).grid(row=1,column=2,sticky=Tk.W)
+Tk.Button(master=loadmicframe,text='SelectPoint',command=selectpoint).grid(row=1,column=3)
 
 radioframe = Tk.Frame(root)
 radioframe.grid(row=figrowspan+2,column=3,rowspan=2,sticky=Tk.W)
@@ -1201,9 +1209,9 @@ Tk.Radiobutton(master=radioframe,text='Euler2',variable=colVar,value=9).grid(row
 
 micframethirdrow = Tk.Frame(root)
 micframethirdrow.grid(row=figrowspan+4,column=3,sticky=Tk.W)
-Tk.Label(master=micframethirdrow,text='MinConfidence').grid(row=1,column=1,sticky=Tk.W)
+Tk.Label(master=micframethirdrow,text='ConfidenceCutoffs').grid(row=1,column=1,sticky=Tk.W)
 Tk.Entry(master=micframethirdrow,textvariable=cutconfidencevar,width=4).grid(row=1,column=2,sticky=Tk.W)
-Tk.Button(master=micframethirdrow,text='SelectPoint',command=selectpoint).grid(row=1,column=3)
+Tk.Entry(master=micframethirdrow,textvariable=maxConfVar,width=4).grid(row=1,column=3,sticky=Tk.W)
 
 Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",10)).grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W)
 

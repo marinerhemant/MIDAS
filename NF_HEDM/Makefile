@@ -84,6 +84,9 @@ help:
 	@echo
 	@echo $(TIFF) $(NLOPT)
 
+comparelayers: $(SRCDIR)compareLayers.c
+	$(CC) $(SRCDIR)compareLayers.c -o $(BINDIR)compareLayers $(CFLAGS)
+
 makehexgrid: $(SRCDIR)MakeHexGrid.c
 	$(CC) $(SRCDIR)MakeHexGrid.c -o $(BINDIR)MakeHexGrid $(CFLAGS)
 

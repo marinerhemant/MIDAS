@@ -838,7 +838,7 @@ main(int argc, char *argv[])
 		strcpy(OutFileName,OutFN);
 		fk = fopen(OutFileName,"wb");
 
-		pixelvalue *Image, *Image2;//, *MedFltImg;
+		pixelvalue *Image, *Image2;
 		char FileName[1024];
 		size_t offsetPos = procNum; offsetPos *= NrPixels; offsetPos *= NrPixels;
 		Image = &Images[offsetPos];
@@ -923,7 +923,8 @@ main(int argc, char *argv[])
 		pixelvalue *FinalImage;
 		FinalImage = &FinalImages[offsetPos];
 		int TotPixelsInt=0;
-		for (i=0;i<NrPixels*NrPixels;i++) FinalImage[i] = 0;
+		memset(FinalImage,0,NrPixels*NrPixels*sizeof(pixelvalue));
+		//~ for (i=0;i<NrPixels*NrPixels;i++) FinalImage[i] = 0;
 		if (DoLoGFilter == 1){
 			pixelvalue *Image3;
 			Image3 = &Images3[offsetPos];
@@ -1028,10 +1029,7 @@ main(int argc, char *argv[])
 				PeaksFilledCounter++;
 			}
 		}
-		//~ free(Image);
-		//~ free(FinalImage);
 		// Write the result file.
-		//~ printf("Now writing file: %s.\n",OutFileName);
 		FILE *ft;
 		char OutFNt[4096];
 		sprintf(OutFNt,"%s.txtOld",OutFileName);
@@ -1120,19 +1118,11 @@ main(int argc, char *argv[])
 		//Finish writing header.
 		//Now write PeakIDs.
 		fwrite(peakID,TotPixelsInt*sizeof(pixelvalue),1,fk);
-		//~ printf("File written, now closing.\n");
 		fclose(fk);
-		//~ printf("File writing finished.\n");
 	    free(ys);
 	    free(zs);
 	    free(peakID);
 	    free(intensity);
-		/*free(Image);
-		free(Image2);
-		free(Image3);
-		free(Image4);
-		free(Image5);
-		free(FinalImage);*/
 	}
 	free(MedFltImg);
 	double time = omp_get_wtime() - start_time;

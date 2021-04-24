@@ -525,20 +525,10 @@ check (int test, const char * message, ...)
 }
 
 void main(int argc, char *argv[]){
-	//~ const rlim_t kStackSize = 2000*1024*1024;
-	//~ struct rlimit r1;
-	//~ int rc;
-	//~ rc = getrlimit(RLIMIT_STACK,&r1);
-	//~ if (rc == 0){
-		//~ if (r1.rlim_cur < kStackSize){
-			//~ r1.rlim_cur = kStackSize;
-			//~ rc = setrlimit(RLIMIT_STACK,&r1);
-			//~ if (rc != 0){
-				//~ printf("Something went wrong, cannot increase stack size, returned result: %d! Exiting",rc);
-				//~ return 1;
-			//~ }
-		//~ }
-	//~ }
+	if (argc != 6){
+		printf("Usage: %s Params.txt blockNr nBlocks nFrames numProcs\n",argv[0]);
+		return;
+	}
 	char *ParamFN = argv[1];
 	int blockNr = atoi(argv[2]);
 	int nBlocks = atoi(argv[3]);
