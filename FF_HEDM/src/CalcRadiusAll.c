@@ -284,7 +284,7 @@ int main(int argc, char *argv[]){
 		// Calc ringNr
 		rrd = SpotsMat[counter][8]*px;
 		for (i=0;i<nRings;i++){
-			if (fabs(rrd-RingsRads[i]) < width){
+			if (fabs(rrd-RingRads[i]) < width){
 				ctr = i;
 				RingNr = RingNrs[i];
 			}
