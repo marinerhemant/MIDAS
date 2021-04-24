@@ -832,6 +832,7 @@ int main(int argc, char *argv[])
 	while (fgets(aline,1000,hklf)!=NULL){
 		sscanf(aline, "%s %s %s %s %d %s %s %s %lf %s %lf",dummy,dummy,dummy,dummy,&Rnr,dummy,dummy,dummy,&tht,dummy,&rrdideal);
 		if (tht > MaxTtheta/2) break;
+		printf("%d\n",Rnr);
 		for (i=0;i<cs;i++){
 			if(Rnr == RingNumbers[i] && donePlanes[i] == 0){
 				donePlanes[i] = 1;
