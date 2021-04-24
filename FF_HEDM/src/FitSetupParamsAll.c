@@ -843,7 +843,7 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	printf("%d\n",cs);
+	printf("%d %d\n",cs,nhkls);
 	for (i=0;i<n_hkls;i++) printf("%d %d\n",PlaneNumbers[i],RingNumbers[i]);
 	TthetaTol = Ttheta4mR((MaxRingRad+Width),Lsd) - Ttheta4mR((MaxRingRad-Width),Lsd);
 	double IdealTthetas[n_hkls], TthetaMins[n_hkls], TthetaMaxs[n_hkls];
