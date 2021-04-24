@@ -303,10 +303,8 @@ int main(int argc, char *argv[]){
 	}
 	double omrang = MaxOme - MinOme;
 	for (i=0;i<nRings;i++){
-		printf("%lf ",PowderInt[i]);
 		PowderInt[i] /= (EndNr-StartNr+1);
 	}
-	printf("\n");
 	//~ if (PowderIntIn > 0){
 		//~ PowderInt = PowderIntIn;
 	//~ }
