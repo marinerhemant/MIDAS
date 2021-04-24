@@ -278,6 +278,7 @@ int main(int argc, char *argv[]){
 		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&SpotsMat[counter][0],&SpotsMat[counter][1],
 				&SpotsMat[counter][2],&SpotsMat[counter][3],&SpotsMat[counter][4],&SpotsMat[counter][5],
 				&SpotsMat[counter][6],&SpotsMat[counter][7],&Sigmas[counter][0],&Sigmas[counter][1],&NrPx[counter][0],&NrPx[counter][1]);
+		printf("%s %lf %lf\n",aline,NrPx[counter][0],NrPx[counter][1]);
 		if (SpotsMat[counter][2] < MinOme) MinOme = SpotsMat[counter][2];
 		if (SpotsMat[counter][2] > MaxOme) MaxOme = SpotsMat[counter][2];
 		SpotsMat[counter][8] = CalcNorm2(SpotsMat[counter][3]-Ycen,SpotsMat[counter][4]-Zcen);
