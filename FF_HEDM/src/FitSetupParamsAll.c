@@ -23,7 +23,7 @@
 #include <nlopt.h>
 #include <stdint.h>
 
-#define PRINTOPT
+//~ #define PRINTOPT
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 typedef uint16_t pixelvalue;
@@ -255,7 +255,7 @@ double problem_function(
 	TotalDiff *= MultFactor;
 	NrCalls++;
 #ifdef PRINTOPT
-	printf("Mean Strain: %0.40f ty: %lf tz: %lf bc: %lf %lf %lf\n",TotalDiff/(MultFactor*nIndices),ty,tz,ybc,zbc,Lsd);
+	printf("Mean Strain: %0.40f ty: %lf tz: %lf bc: %lf %lf Lsd: %lf\n",TotalDiff/(MultFactor*nIndices),ty,tz,ybc,zbc,Lsd);
 #endif
 	return TotalDiff;
 }
