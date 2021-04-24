@@ -273,32 +273,42 @@ int main(int argc, char *argv[]){
 	double **NrPx;
 	NrPx = allocMatrix(MAX_N_SPOTS,2);
 	double MinOme=100000, MaxOme=-100000;
-	int ctr;
+	int thisRings[nRings][2];
+	double tempArr[14];
 	while (fgets(aline,1000,Infile)!=NULL){
-		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&SpotsMat[counter][0],&SpotsMat[counter][1],
-				&SpotsMat[counter][2],&SpotsMat[counter][3],&SpotsMat[counter][4],&SpotsMat[counter][5],
-				&SpotsMat[counter][6],&SpotsMat[counter][7],&Sigmas[counter][0],&Sigmas[counter][1],&NrPx[counter][0],&NrPx[counter][1],&SpotsMat[counter][8],&SpotsMat[counter][10]);
-		if (SpotsMat[counter][2] < MinOme) MinOme = SpotsMat[counter][2];
-		if (SpotsMat[counter][2] > MaxOme) MaxOme = SpotsMat[counter][2];
-		printf("%lf %lf\n",SpotsMat[counter][8],CalcNorm2(SpotsMat[counter][3]-Ycen,SpotsMat[counter][4]-Zcen));
-		// Calc ringNr, might need to assign the spot to multiple rings.
-		rrd = SpotsMat[counter][8]*px;
+		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&tempArr[0],&tempArr[1],&tempArr[2],&tempArr[3],
+			&tempArr[4],&tempArr[5],&tempArr[6],&tempArr[7],&tempArr[8],&tempArr[9],&tempArr[10],&tempArr[11],&tempArr[12],
+			&tempArr[13]);
+		rrd = tempArr[12]*px;
 		for (i=0;i<nRings;i++){
 			if (fabs(rrd-RingRads[i]) < width){
-				ctr = i;
-				RingNr = RingNrs[i];
+				SpotsMat[counter][0] = counter+1;
+				SpotsMat[counter][1] = tempArr[0];
+				SpotsMat[counter][2] = tempArr[0];
+				SpotsMat[counter][3] = tempArr[0];
+				SpotsMat[counter][4] = tempArr[0];
+				SpotsMat[counter][5] = tempArr[0];
+				SpotsMat[counter][6] = tempArr[0];
+				SpotsMat[counter][7] = tempArr[0];
+				Sigmas[counter][0] = tempArr[0];
+				Sigmas[counter][1] = tempArr[0];
+				NrPx[counter][0] = tempArr[0];
+				NrPx[counter][0] = tempArr[0];
+				SpotsMat[counter][8] = tempArr[0];
+				SpotsMat[counter][10] = tempArr[0];
+				if (SpotsMat[counter][2] < MinOme) MinOme = SpotsMat[counter][2];
+				if (SpotsMat[counter][2] > MaxOme) MaxOme = SpotsMat[counter][2];
+				PowderInt[i] += SpotsMat[counter][1];
+				SpotsMat[counter][9] = 0.5*(atand(SpotsMat[counter][8]*px/Lsd));
+				SpotsMat[counter][11] = fabs(OmegaStep) + SpotsMat[counter][7] - SpotsMat[counter][6];
+				SpotsMat[counter][12] = SpotsMat[counter][11]/fabs(OmegaStep);
+				SpotsMat[counter][13] = RingNrs[i];
+				if (TopLayer == 1 && fabs(SpotsMat[counter][10]) < 90)
+				{}
+				else {
+					counter++;
+				}
 			}
-		}
-		PowderInt[ctr] += SpotsMat[counter][1];
-		SpotsMat[counter][9] = 0.5*(atand(SpotsMat[counter][8]*px/Lsd));
-		//~ SpotsMat[counter][10] = CalcEtaAngle(-(SpotsMat[counter][3]-Ycen),(SpotsMat[counter][4]-Zcen));
-		SpotsMat[counter][11] = fabs(OmegaStep) + SpotsMat[counter][7] - SpotsMat[counter][6];
-		SpotsMat[counter][12] = SpotsMat[counter][11]/fabs(OmegaStep);
-		SpotsMat[counter][13] = RingNr;
-		if (TopLayer == 1 && fabs(SpotsMat[counter][10]) < 90)
-		{}
-		else {
-			counter++;
 		}
 	}
 	double omrang = MaxOme - MinOme;
@@ -315,7 +325,7 @@ int main(int argc, char *argv[]){
 	if (DiscModel == 1){
 		Vgauge = DiscArea;
 	}
-	int j;
+	int j,ctr;
 	double deltaTheta;
 	for (i=0;i<counter;i++){
 		RingNr = SpotsMat[i][13];
