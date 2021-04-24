@@ -836,6 +836,7 @@ int main(int argc, char *argv[])
 				Thetas[nhkls] = tht;
 				PlaneNumbers[nhkls] = Rnr;
 				RingRadsIdeal[nhkls] = rrdideal;
+				nhkls++;
 				break;
 			}
 		}
