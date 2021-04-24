@@ -840,6 +840,7 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
+	for (i=0;i<n_hkls;i++) printf("%d\n",PlaneNumbers[i]);
 	TthetaTol = Ttheta4mR((MaxRingRad+Width),Lsd) - Ttheta4mR((MaxRingRad-Width),Lsd);
 	double IdealTthetas[n_hkls], TthetaMins[n_hkls], TthetaMaxs[n_hkls];
 	for (i=0;i<n_hkls;i++){IdealTthetas[i]=2*Thetas[i];TthetaMins[i]=IdealTthetas[i]-TthetaTol;TthetaMaxs[i]=IdealTthetas[i]+TthetaTol;}
@@ -911,7 +912,6 @@ int main(int argc, char *argv[])
 		omegaCorrTemp = SpotsInfo[i][1];
 		// Omega correction
 		SpotsInfo[i][1] = omegaCorrTemp - (t_gap/(t_gap+t_int))*OmegaStep*(1.0 - fabs(2*Zs[i] - (double)NrPixels) /(double) NrPixels);
-		printf("%d\n",(int)SpotsInfo[i][4]);
 		for (j=0;j<n_hkls;j++){
 			if (PlaneNumbers[j] == (int)SpotsInfo[i][4]){
 				IdealTtheta[i] = IdealTthetas[j];
