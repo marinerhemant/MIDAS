@@ -274,28 +274,27 @@ int main(int argc, char *argv[]){
 	NrPx = allocMatrix(MAX_N_SPOTS,2);
 	double MinOme=100000, MaxOme=-100000;
 	int thisRings[nRings][2];
-	double tempArr[14];
+	double tempArr[13],dummyDouble;
 	while (fgets(aline,1000,Infile)!=NULL){
-		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&tempArr[0],&tempArr[1],&tempArr[2],&tempArr[3],
-			&tempArr[4],&tempArr[5],&tempArr[6],&tempArr[7],&tempArr[8],&tempArr[9],&tempArr[10],&tempArr[11],&tempArr[12],
-			&tempArr[13]);
+		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&dummyDouble,&tempArr[0],&tempArr[1],&tempArr[2],&tempArr[3],
+			&tempArr[4],&tempArr[5],&tempArr[6],&tempArr[7],&tempArr[8],&tempArr[9],&tempArr[10],&tempArr[11],&tempArr[12]);
 		rrd = tempArr[12]*px;
 		for (i=0;i<nRings;i++){
 			if (fabs(rrd-RingRads[i]) < width){
 				SpotsMat[counter][0] = counter+1;
 				SpotsMat[counter][1] = tempArr[0];
-				SpotsMat[counter][2] = tempArr[0];
-				SpotsMat[counter][3] = tempArr[0];
-				SpotsMat[counter][4] = tempArr[0];
-				SpotsMat[counter][5] = tempArr[0];
-				SpotsMat[counter][6] = tempArr[0];
-				SpotsMat[counter][7] = tempArr[0];
-				Sigmas[counter][0] = tempArr[0];
-				Sigmas[counter][1] = tempArr[0];
-				NrPx[counter][0] = tempArr[0];
-				NrPx[counter][0] = tempArr[0];
-				SpotsMat[counter][8] = tempArr[0];
-				SpotsMat[counter][10] = tempArr[0];
+				SpotsMat[counter][2] = tempArr[1];
+				SpotsMat[counter][3] = tempArr[2];
+				SpotsMat[counter][4] = tempArr[3];
+				SpotsMat[counter][5] = tempArr[4];
+				SpotsMat[counter][6] = tempArr[5];
+				SpotsMat[counter][7] = tempArr[6];
+				Sigmas[counter][0] = tempArr[7];
+				Sigmas[counter][1] = tempArr[8];
+				NrPx[counter][0] = tempArr[9];
+				NrPx[counter][0] = tempArr[10];
+				SpotsMat[counter][8] = tempArr[11];
+				SpotsMat[counter][10] = tempArr[12];
 				if (SpotsMat[counter][2] < MinOme) MinOme = SpotsMat[counter][2];
 				if (SpotsMat[counter][2] > MaxOme) MaxOme = SpotsMat[counter][2];
 				PowderInt[i] += SpotsMat[counter][1];
