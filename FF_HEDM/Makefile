@@ -130,6 +130,9 @@ mergeoverlapsall: $(SRCDIR)MergeOverlappingPeaksAll.c
 calcradius: $(SRCDIR)CalcRadius.c
 	$(CC) $(SRCDIR)CalcRadius.c -o $(BINDIR)CalcRadius $(CFLAGS)
 
+calcradiusall: $(SRCDIR)CalcRadiusAll.c
+	$(CC) $(SRCDIR)CalcRadiusAll.c -o $(BINDIR)CalcRadiusAll $(CFLAGS)
+
 findsaturatedpx: $(SRCDIR)FindSaturatedPixels.c
 	$(CC) $(SRCDIR)FindSaturatedPixels.c -o $(BINDIR)FindSaturatedPixels $(CFLAGS)
 
