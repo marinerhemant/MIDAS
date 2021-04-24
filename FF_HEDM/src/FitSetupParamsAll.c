@@ -255,7 +255,7 @@ double problem_function(
 	TotalDiff *= MultFactor;
 	NrCalls++;
 #ifdef PRINTOPT
-	printf("Mean Strain: %0.40f ty: %lf tz: %lf bc: %lf %lf \n",TotalDiff/(MultFactor*nIndices),ty,tz,ybc,zbc);
+	printf("Mean Strain: %0.40f ty: %lf tz: %lf bc: %lf %lf %lf\n",TotalDiff/(MultFactor*nIndices),ty,tz,ybc,zbc,Lsd);
 #endif
 	return TotalDiff;
 }
