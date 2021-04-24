@@ -275,7 +275,7 @@ int main(int argc, char *argv[]){
 	double MinOme=100000, MaxOme=-100000;
 	int ctr;
 	while (fgets(aline,1000,Infile)!=NULL){
-		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&SpotsMat[counter][0],&SpotsMat[counter][1],
+		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&SpotsMat[counter][0],&SpotsMat[counter][1],
 				&SpotsMat[counter][2],&SpotsMat[counter][3],&SpotsMat[counter][4],&SpotsMat[counter][5],
 				&SpotsMat[counter][6],&SpotsMat[counter][7],&Sigmas[counter][0],&Sigmas[counter][1],&NrPx[counter][0],&NrPx[counter][1]);
 		printf("%s %lf %lf\n",aline,NrPx[counter][0],NrPx[counter][1]);
