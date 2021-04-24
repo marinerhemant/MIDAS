@@ -267,7 +267,6 @@ int main(int argc, char *argv[]){
 	FILE *outfile;
 	outfile = fopen(OutFile,"w");
 	fprintf(outfile,"%s",header);
-	//~ double totVol=0;
 	double **Sigmas;
 	Sigmas = allocMatrix(MAX_N_SPOTS,2);
 	double **NrPx;
@@ -295,8 +294,8 @@ int main(int argc, char *argv[]){
 				NrPx[counter][1] = tempArr[10];
 				SpotsMat[counter][8] = tempArr[11];
 				SpotsMat[counter][10] = tempArr[12];
-				if (SpotsMat[counter][2] < MinOme) MinOme = SpotsMat[counter][2];
-				if (SpotsMat[counter][2] > MaxOme) MaxOme = SpotsMat[counter][2];
+				//~ if (SpotsMat[counter][2] < MinOme) MinOme = SpotsMat[counter][2];
+				//~ if (SpotsMat[counter][2] > MaxOme) MaxOme = SpotsMat[counter][2];
 				PowderInt[i] += SpotsMat[counter][1];
 				SpotsMat[counter][9] = 0.5*(atand(SpotsMat[counter][8]*px/Lsd));
 				SpotsMat[counter][11] = fabs(OmegaStep) + SpotsMat[counter][7] - SpotsMat[counter][6];
@@ -310,13 +309,9 @@ int main(int argc, char *argv[]){
 			}
 		}
 	}
-	double omrang = MaxOme - MinOme;
 	for (i=0;i<nRings;i++){
 		PowderInt[i] /= (EndNr-StartNr+1);
 	}
-	//~ if (PowderIntIn > 0){
-		//~ PowderInt = PowderIntIn;
-	//~ }
 	double Vgauge = Hbeam * M_PI * Rsample * Rsample;
 	if (Vsample != 0){
 		Vgauge = Vsample;
@@ -346,7 +341,6 @@ int main(int argc, char *argv[]){
 		}
 		fprintf(outfile,"%f %f %f %f %f\n",PowderInt[ctr],Sigmas[i][0],Sigmas[i][1],NrPx[i][0],NrPx[i][1]);
 	}
-	//~ totVol /= (mhkl*2*omrang/360.0);
 	FreeMemMatrix(SpotsMat,MAX_N_SPOTS);
 	end = clock();
     diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
