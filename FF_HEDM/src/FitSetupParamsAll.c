@@ -824,15 +824,17 @@ int main(int argc, char *argv[])
 	fgets(aline,1000,hklf);
 	int Rnr;
 	double tht;
-	int PlaneNumbers[cs];
+	int PlaneNumbers[cs], donePlanes[cs];
 	double Thetas[cs];
 	double RingRadsIdeal[cs], rrdideal;
 	int n_hkls = cs,nhkls = 0;
+	for (i=0;i<cs;i++) donePlanes[i] == 0;
 	while (fgets(aline,1000,hklf)!=NULL){
 		sscanf(aline, "%s %s %s %s %d %s %s %s %lf %s %lf",dummy,dummy,dummy,dummy,&Rnr,dummy,dummy,dummy,&tht,dummy,&rrdideal);
 		if (tht > MaxTtheta/2) break;
 		for (i=0;i<cs;i++){
-			if(Rnr == RingNumbers[i]){
+			if(Rnr == RingNumbers[i] && donePlanes[i] == 0){
+				donePlanes[i] = 1;
 				Thetas[nhkls] = tht;
 				PlaneNumbers[nhkls] = Rnr;
 				RingRadsIdeal[nhkls] = rrdideal;
