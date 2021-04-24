@@ -275,13 +275,13 @@ int main(int argc, char *argv[]){
 	double MinOme=100000, MaxOme=-100000;
 	int ctr;
 	while (fgets(aline,1000,Infile)!=NULL){
-		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&SpotsMat[counter][0],&SpotsMat[counter][1],
+		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&SpotsMat[counter][0],&SpotsMat[counter][1],
 				&SpotsMat[counter][2],&SpotsMat[counter][3],&SpotsMat[counter][4],&SpotsMat[counter][5],
-				&SpotsMat[counter][6],&SpotsMat[counter][7],&Sigmas[counter][0],&Sigmas[counter][1],&NrPx[counter][0],&NrPx[counter][1]);
+				&SpotsMat[counter][6],&SpotsMat[counter][7],&Sigmas[counter][0],&Sigmas[counter][1],&NrPx[counter][0],&NrPx[counter][1],&SpotsMat[counter][8],&SpotsMat[counter][10]);
 		if (SpotsMat[counter][2] < MinOme) MinOme = SpotsMat[counter][2];
 		if (SpotsMat[counter][2] > MaxOme) MaxOme = SpotsMat[counter][2];
-		SpotsMat[counter][8] = CalcNorm2(SpotsMat[counter][3]-Ycen,SpotsMat[counter][4]-Zcen);
-		// Calc ringNr
+		//~ SpotsMat[counter][8] = CalcNorm2(SpotsMat[counter][3]-Ycen,SpotsMat[counter][4]-Zcen);
+		// Calc ringNr, might need to assign the spot to multiple rings.
 		rrd = SpotsMat[counter][8]*px;
 		for (i=0;i<nRings;i++){
 			if (fabs(rrd-RingRads[i]) < width){
@@ -291,7 +291,7 @@ int main(int argc, char *argv[]){
 		}
 		PowderInt[ctr] += SpotsMat[counter][1];
 		SpotsMat[counter][9] = 0.5*(atand(SpotsMat[counter][8]*px/Lsd));
-		SpotsMat[counter][10] = CalcEtaAngle(-(SpotsMat[counter][3]-Ycen),(SpotsMat[counter][4]-Zcen));
+		//~ SpotsMat[counter][10] = CalcEtaAngle(-(SpotsMat[counter][3]-Ycen),(SpotsMat[counter][4]-Zcen));
 		SpotsMat[counter][11] = fabs(OmegaStep) + SpotsMat[counter][7] - SpotsMat[counter][6];
 		SpotsMat[counter][12] = SpotsMat[counter][11]/fabs(OmegaStep);
 		SpotsMat[counter][13] = RingNr;

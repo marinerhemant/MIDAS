@@ -297,7 +297,7 @@ int main(int argc, char *argv[]){
     char OutFileName[1024];
     sprintf(OutFolderName,"%s/%s",Folder,TmpFolder);
     char header[1024] = "SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px)"
-					" IMax MinOme(degrees) MaxOme(degress) SigmaR SigmaEta NrPx NrPxTot\n";
+					" IMax MinOme(degrees) MaxOme(degress) SigmaR SigmaEta NrPx NrPxTot Radius(px) Eta(px)\n";
 
     // Read first file
     fflush(stdout);
@@ -341,9 +341,9 @@ int main(int argc, char *argv[]){
 	int SpotIDNr = 1,counter;
     if (StartNr==EndNr){ // If there is only one file.
 		for (i=0;i<nSpots;i++){
-			fprintf(OutFile,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",(int)NewIDs[i][0],NewIDs[i][1],NewIDs[i][2],
+			fprintf(OutFile,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",(int)NewIDs[i][0],NewIDs[i][1],NewIDs[i][2],
 												  NewIDs[i][3],NewIDs[i][4],NewIDs[i][5],NewIDs[i][2],NewIDs[i][2],
-												  NewIDs[i][8],NewIDs[i][9],NewIDs[i][10],NewIDs[i][11]);
+												  NewIDs[i][8],NewIDs[i][9],NewIDs[i][10],NewIDs[i][11],NewIDs[i][6],NewIDs[i][7]);
 		}
 	}else{ // If there are multiple files:
 		for (FileNr=(StartNr+1);FileNr<=EndNr;FileNr++){
@@ -387,6 +387,8 @@ int main(int argc, char *argv[]){
 					if (CurrentIDs[i][5] < NewIDs[BestID][5]){
 						CurrentIDs[i][5] =  NewIDs[BestID][5]; // IMax update
 					}
+					CurrentIDs[i][6] =  NewIDs[BestID][6];
+					CurrentIDs[i][7] =  NewIDs[BestID][7];
 					CurrentIDs[i][8] =  NewIDs[BestID][3]; // Ycen
 					CurrentIDs[i][9] =  NewIDs[BestID][4]; // ZCen
 					if (CurrentIDs[i][10] > NewIDs[BestID][2]){
@@ -408,16 +410,11 @@ int main(int argc, char *argv[]){
 			//Write all the spots not overlapping to the output file.
 			for (i=0;i<nSpots;i++){
 				if (TempIDsCurrent[i] == 0){ // Spot was not overlapping.
-					fprintf(OutFile,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
+					fprintf(OutFile,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
 							CurrentIDs[i][1],(CurrentIDs[i][2]/CurrentIDs[i][1]),
 							(CurrentIDs[i][3]/CurrentIDs[i][1]),(CurrentIDs[i][4]/CurrentIDs[i][1]),
 							CurrentIDs[i][5],CurrentIDs[i][10],CurrentIDs[i][11],CurrentIDs[i][12],
-							CurrentIDs[i][13],CurrentIDs[i][14],CurrentIDs[i][15]);
-					//~ printf("Written: %d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
-							//~ CurrentIDs[i][1],(CurrentIDs[i][2]/CurrentIDs[i][1]),
-							//~ (CurrentIDs[i][3]/CurrentIDs[i][1]),(CurrentIDs[i][4]/CurrentIDs[i][1]),
-							//~ CurrentIDs[i][5],CurrentIDs[i][10],CurrentIDs[i][11],CurrentIDs[i][12],
-							//~ CurrentIDs[i][13],CurrentIDs[i][14],CurrentIDs[i][15]);
+							CurrentIDs[i][13],CurrentIDs[i][14],CurrentIDs[i][15],CurrentIDs[i][6],CurrentIDs[i][7]);
 					SpotIDNr++;
 				}
 			}
@@ -471,11 +468,11 @@ int main(int argc, char *argv[]){
 		}
 	}
 	for (i=0;i<nSpots;i++){
-		fprintf(OutFile,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
+		fprintf(OutFile,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
 				CurrentIDs[i][1],(CurrentIDs[i][2]/CurrentIDs[i][1]),
 				(CurrentIDs[i][3]/CurrentIDs[i][1]),(CurrentIDs[i][4]/CurrentIDs[i][1]),
 				CurrentIDs[i][5],CurrentIDs[i][10],CurrentIDs[i][11],CurrentIDs[i][12],
-				CurrentIDs[i][13],CurrentIDs[i][14],CurrentIDs[i][15]);
+				CurrentIDs[i][13],CurrentIDs[i][14],CurrentIDs[i][15],CurrentIDs[i][6],CurrentIDs[i][7]);
 		//~ printf("Written %d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",SpotIDNr,
 				//~ CurrentIDs[i][1],(CurrentIDs[i][2]/CurrentIDs[i][1]),
 				//~ (CurrentIDs[i][3]/CurrentIDs[i][1]),(CurrentIDs[i][4]/CurrentIDs[i][1]),
