@@ -298,7 +298,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean, double *IdealTthet
 }
 
 static inline
-void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double *YMean, double *ZMean, double *IdealTtheta,
+void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double *YMean, double *ZMean,
 		double px, double Lsd, double ybc, double zbc, double tx, double ty, double tz, double p0, double p1,
 		double p2, double *YCorrected, double *ZCorrected)
 {
@@ -481,14 +481,14 @@ int main(int argc, char *argv[])
     int SpaceGroup;
     double LatticeConstant[6],Wavelength,MaxRingRad,Lsd,MaxTtheta,TthetaTol,ybc,zbc,px,tyIn,tzIn;
     double tx,tolTilts=1,tolLsd=5000,tolBC=1,p0,p1,p2,RhoD,wedge,MinEta,OmegaRanges[2000][2],BoxSizes[2000][4];
-    int RingNumbers[200],cs=0,nOmeRanges=0,nBoxSizes=0,DoFit=0,CellStruct=2,RingToIndex;
+    int RingNumbers[200],cs=0,nOmeRanges=0,nBoxSizes=0,DoFit=0,RingToIndex;
     double Rsample, Hbeam,MinMatchesToAcceptFrac,MinOmeSpotIDsToIndex,MaxOmeSpotIDsToIndex,Width;
     int UseFriedelPairs=1;
 	double t_int=1, t_gap=0;
     int NewType = 1, TopLayer = 0;
     int maxNFrames = 100000;
     spotsfn = "InputAll.csv";
-    idfn = "SpotsToIndex.bin";
+    idfn = "SpotsToIndex.csv";
     double StepSizePos=5,StepSizeOrient=0.2,MarginRadius=500,MarginRadial=500,OmeBinSize=0.1,EtaBinSize=0.1,MarginEta=500,MarginOme=0.5,OmegaStep;
     while (fgets(aline,1000,fileParam)!=NULL){
         str = "OmegaStep ";
@@ -929,7 +929,7 @@ int main(int argc, char *argv[])
 	double *YCorrected, *ZCorrected;
 	YCorrected = malloc(nIndices*sizeof(*YCorrected));
 	ZCorrected = malloc(nIndices*sizeof(*ZCorrected));
-	CorrectTiltSpatialDistortion(nIndices,RhoD,Ys,Zs,IdealTtheta,px,LsdFit,ybcFit,zbcFit,tx,ty,tz,p0,p1,p2,YCorrected,ZCorrected);
+	CorrectTiltSpatialDistortion(nIndices,RhoD,Ys,Zs,px,LsdFit,ybcFit,zbcFit,tx,ty,tz,p0,p1,p2,YCorrected,ZCorrected);
 	double *YCorrWedge,*ZCorrWedge,*OmegaCorrWedge,*EtaCorrWedge,*TthetaCorrWedge,YCorrWedgeT,ZCorrWedgeT,OmegaCorrWedgeT,EtaCorrWedgeT,TthetaCorrWedgeT;
 	YCorrWedge = malloc(nIndices*sizeof(*YCorrWedge));
 	ZCorrWedge = malloc(nIndices*sizeof(*ZCorrWedge));
@@ -991,14 +991,15 @@ int main(int argc, char *argv[])
 	sprintf(fnIndexAllNoHeader,"%s/InputAllNoHeader.csv",folder);
 	sprintf(fnExtraInfo,"%s/InputAllExtraInfoFittingAll.csv",folder);
 	sprintf(fnSpIds,"%s/%s",folder,idfn);
-	IDs = fopen(fnSpIds,"wb");
-	int *SpotsCopy;
-	SpotsCopy = malloc(nSpotIDsToIndex*sizeof(*SpotsCopy));
+	IDs = fopen(fnSpIds,"w");
+	//~ int *SpotsCopy;
+	//~ SpotsCopy = malloc(nSpotIDsToIndex*sizeof(*SpotsCopy));
 	for (i=0;i<nSpotIDsToIndex;i++){
-		SpotsCopy[i] = SpotIDsToIndex[i];
+		//~ SpotsCopy[i] = SpotIDsToIndex[i];
+		fprintf(IDs,"%d\n",SpotIDsToIndex[i]);
 		//printf("%d %d\n",SpotsCopy[i],SpotIDsToIndex[i]);
 	}
-	fwrite(SpotsCopy,nSpotIDsToIndex*sizeof(int),1,IDs);
+	//~ fwrite(SpotsCopy,nSpotIDsToIndex*sizeof(int),1,IDs);
 	fclose(IDs);
 	IndexAll = fopen(fnIndexAll,"w");
 	IndexAllNoHeader = fopen(fnIndexAllNoHeader,"w");
@@ -1046,7 +1047,7 @@ int main(int argc, char *argv[])
 	PF = fopen(parfn,"w");
 	fprintf(PF,"LatticeConstant %f;\n",LatticeConstant[0]);
 	fprintf(PF,"LatticeParameter %f %f %f %f %f %f;\n",LatticeConstant[0],LatticeConstant[1],LatticeConstant[2],LatticeConstant[3],LatticeConstant[4],LatticeConstant[5]);
-	fprintf(PF,"CellStruct %d;\n",CellStruct);
+	fprintf(PF,"CellStruct %d;\n",2);
 	fprintf(PF,"MaxRingRad %f;\n",MaxRingRad);
 	fprintf(PF,"Wavelength %f;\n",Wavelength);
 	fprintf(PF,"Distance %f;\n",LsdFit);
