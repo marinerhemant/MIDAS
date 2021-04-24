@@ -23,7 +23,7 @@
 #include <nlopt.h>
 #include <stdint.h>
 
-//~ #define PRINTOPT
+#define PRINTOPT
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 typedef uint16_t pixelvalue;
@@ -838,13 +838,11 @@ int main(int argc, char *argv[])
 				Thetas[nhkls] = tht;
 				PlaneNumbers[nhkls] = Rnr;
 				RingRadsIdeal[nhkls] = rrdideal;
-				printf("%d %d\n",Rnr,i);
 				nhkls++;
 				break;
 			}
 		}
 	}
-	for (i=0;i<n_hkls;i++) printf("%d %d\n",PlaneNumbers[i],RingNumbers[i]);
 	TthetaTol = Ttheta4mR((MaxRingRad+Width),Lsd) - Ttheta4mR((MaxRingRad-Width),Lsd);
 	double IdealTthetas[n_hkls], TthetaMins[n_hkls], TthetaMaxs[n_hkls];
 	for (i=0;i<n_hkls;i++){IdealTthetas[i]=2*Thetas[i];TthetaMins[i]=IdealTthetas[i]-TthetaTol;TthetaMaxs[i]=IdealTthetas[i]+TthetaTol;}
