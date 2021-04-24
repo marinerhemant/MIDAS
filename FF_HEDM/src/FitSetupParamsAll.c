@@ -23,7 +23,7 @@
 #include <nlopt.h>
 #include <stdint.h>
 
-#define PRINTOPT
+//~ #define PRINTOPT
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 typedef uint16_t pixelvalue;
@@ -265,6 +265,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean, double *IdealTthet
 				  double *ybcFit, double *zbcFit, double p0, double p1, double p2, double *MeanDiff, double tolTilts, double tolLsd, double tolBC, double px){
 	unsigned n=5;
 	struct my_func_data f_data;
+	int it; for (it=0;it<nIndices;it++) printf("%lf\n",IdealTtheta[it]);
 	f_data.nIndices = nIndices;
 	f_data.YMean = &YMean[0];
 	f_data.ZMean = &ZMean[0];
