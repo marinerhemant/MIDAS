@@ -237,7 +237,10 @@ double problem_function(
 		Rcorr = Rad * DistortFunc;
 		RIdeal = Lsd*tan(deg2rad*IdealTtheta[i]);
 		Diff = fabs(1- (Rcorr/RIdeal));
-		TotalDiff+=Diff;
+#ifdef PRINTOPT
+		printf("%lf %lf %lf\n",Rcorr,RIdeal,Diff);
+#endif
+		//~ TotalDiff+=Diff;
 		idx = (Eta + 180)/5;
 		MeanErrorEtas[idx] += Diff;
 		nMeanErrorEtas[idx] ++;
