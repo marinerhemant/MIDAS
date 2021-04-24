@@ -280,7 +280,7 @@ int main(int argc, char *argv[]){
 				&SpotsMat[counter][6],&SpotsMat[counter][7],&Sigmas[counter][0],&Sigmas[counter][1],&NrPx[counter][0],&NrPx[counter][1],&SpotsMat[counter][8],&SpotsMat[counter][10]);
 		if (SpotsMat[counter][2] < MinOme) MinOme = SpotsMat[counter][2];
 		if (SpotsMat[counter][2] > MaxOme) MaxOme = SpotsMat[counter][2];
-		//~ SpotsMat[counter][8] = CalcNorm2(SpotsMat[counter][3]-Ycen,SpotsMat[counter][4]-Zcen);
+		printf("%lf %lf\n",SpotsMat[counter][8],CalcNorm2(SpotsMat[counter][3]-Ycen,SpotsMat[counter][4]-Zcen));
 		// Calc ringNr, might need to assign the spot to multiple rings.
 		rrd = SpotsMat[counter][8]*px;
 		for (i=0;i<nRings;i++){
