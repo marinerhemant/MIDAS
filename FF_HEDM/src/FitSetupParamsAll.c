@@ -238,7 +238,7 @@ double problem_function(
 		RIdeal = Lsd*tan(deg2rad*IdealTtheta[i]);
 		Diff = fabs(1- (Rcorr/RIdeal));
 #ifdef PRINTOPT
-		printf("%lf %lf %lf\n",Rcorr,RIdeal,Diff);
+		printf("%lf %lf %lf\n",Lsd,IdealTtheta[i],Diff);
 #endif
 		//~ TotalDiff+=Diff;
 		idx = (Eta + 180)/5;
