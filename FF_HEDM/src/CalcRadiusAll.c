@@ -78,8 +78,8 @@ static inline double acosd(double x){return rad2deg*(acos(x));}
 static inline double atand(double x){return rad2deg*(atan(x));}
 
 int main(int argc, char *argv[]){
-	if (argc != 3){
-		printf("Usage:\n CalcGrains params.txt ringNr\n");
+	if (argc != 2){
+		printf("Usage:\n %s params.txt\n",argv[0]);
 		return 1;
 	}
 	clock_t start, end;
