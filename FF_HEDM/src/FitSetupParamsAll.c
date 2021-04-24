@@ -832,7 +832,6 @@ int main(int argc, char *argv[])
 	while (fgets(aline,1000,hklf)!=NULL){
 		sscanf(aline, "%s %s %s %s %d %s %s %s %lf %s %lf",dummy,dummy,dummy,dummy,&Rnr,dummy,dummy,dummy,&tht,dummy,&rrdideal);
 		if (tht > MaxTtheta/2) break;
-		printf("%d %d %d\n",Rnr,RingNumbers[0],donePlanes[0]);
 		for (i=0;i<cs;i++){
 			if(Rnr == RingNumbers[i] && donePlanes[i] == 0){
 				donePlanes[i] = 1;
@@ -845,7 +844,6 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	printf("%d %d\n",cs,nhkls);
 	for (i=0;i<n_hkls;i++) printf("%d %d\n",PlaneNumbers[i],RingNumbers[i]);
 	TthetaTol = Ttheta4mR((MaxRingRad+Width),Lsd) - Ttheta4mR((MaxRingRad-Width),Lsd);
 	double IdealTthetas[n_hkls], TthetaMins[n_hkls], TthetaMaxs[n_hkls];
