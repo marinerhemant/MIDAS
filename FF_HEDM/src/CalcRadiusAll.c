@@ -292,7 +292,7 @@ int main(int argc, char *argv[]){
 				Sigmas[counter][0] = tempArr[7];
 				Sigmas[counter][1] = tempArr[8];
 				NrPx[counter][0] = tempArr[9];
-				NrPx[counter][0] = tempArr[10];
+				NrPx[counter][1] = tempArr[10];
 				SpotsMat[counter][8] = tempArr[11];
 				SpotsMat[counter][10] = tempArr[12];
 				if (SpotsMat[counter][2] < MinOme) MinOme = SpotsMat[counter][2];
