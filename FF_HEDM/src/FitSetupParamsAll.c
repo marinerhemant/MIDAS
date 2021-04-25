@@ -936,12 +936,12 @@ int main(int argc, char *argv[])
 	// Sort spots per ring
     char fnidhsh[1024];
     FILE *idhsh;
-    sprintf(fnidhsh,"%s/PeakSearch/%s/IDRings.csv",Folder,FileStem);
+    sprintf(fnidhsh,"%s/IDRings.csv",folder);
     idhsh = fopen(fnidhsh,"w");
     fprintf(idhsh,"RingNumber OriginalID NewID(RingsMerge)\n");
 	FILE *idshashout;
 	char fnidshash[1024];
-    sprintf(fnidshash,"%s/PeakSearch/%s/IDsHash.csv",Folder,FileStem);
+    sprintf(fnidshash,"%s/IDsHash.csv",folder);
     printf("%s\n%s\n",fnidshash,fnidhsh);
     idshashout = fopen(fnidshash,"w");
 	int nSpotsThis,nctr=0,colN,startrowN=0;
