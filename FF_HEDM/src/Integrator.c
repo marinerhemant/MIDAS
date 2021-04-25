@@ -585,20 +585,20 @@ int main(int argc, char **argv)
 				dataPos = nPxList[2*Pos + 1];
 				Intensity = 0;
 				totArea = 0;
-				//~ for (l=0;l<nPixels;l++){
-					//~ ThisVal = pxList[dataPos + l];
-					//~ testPos = ThisVal.z;
-					//~ testPos *= NrPixelsY;
-					//~ testPos += ThisVal.y;
-					//~ if (mapMaskSize!=0){
-						//~ if (TestBit(mapMask,testPos)){
-							//~ continue;
-						//~ }
-					//~ }
-					//~ ThisInt = Image[testPos]; // The data is arranged as y(fast) and then z(slow)
-					//~ Intensity += ThisInt*ThisVal.frac;
-					//~ totArea += ThisVal.frac;
-				//~ }
+				for (l=0;l<nPixels;l++){
+					ThisVal = pxList[dataPos + l];
+					testPos = ThisVal.z;
+					testPos *= NrPixelsY;
+					testPos += ThisVal.y;
+					if (mapMaskSize!=0){
+						if (TestBit(mapMask,testPos)){
+							continue;
+						}
+					}
+					ThisInt = Image[testPos]; // The data is arranged as y(fast) and then z(slow)
+					Intensity += ThisInt*ThisVal.frac;
+					totArea += ThisVal.frac;
+				}
 				if (Intensity != 0){
 					if (Normalize == 1){
 						Intensity /= totArea;
@@ -607,7 +607,7 @@ int main(int argc, char **argv)
 				EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
 				Int1d += Intensity;
 				n1ds ++;
-				fprintf(out,"%lf\t%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,Intensity,totArea);
+				//~ fprintf(out,"%lf\t%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,Intensity,totArea);
 				if (sumImages==1){
 					if (i==0){
 						sumMatrix[j*nEtaBins*5+k*5+0] = RMean;
