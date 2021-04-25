@@ -961,7 +961,7 @@ int main(int argc, char *argv[])
 		SortSpots(nSpotsThis,spotsTemp);
 		for (j=0;j<nSpotsThis;j++){
 			spotsall[j+startrowN][0] = j+startrowN+1;
-			for (colN=0;colN<6;colN++){
+			for (colN=1;colN<6;colN++){
 				spotsall[j+startrowN][colN] = spotsTemp[j][colN];
 			}
 			fprintf(idhsh,"%d %d %d\n",PlaneNumbers[i],(int)spotsTemp[j][0],(int)spotsall[j+startrowN][0]);
