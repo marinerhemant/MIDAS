@@ -413,7 +413,7 @@ void CorrectWedge(double yc, double zc, double Lsd, double OmegaIni, double wl, 
 	double Omega;
 	if (OmeDiff1 < OmeDiff2)Omega=Omega1;
 	else Omega=Omega2;
-	if (fabs(Omega - OmegaIni) > 1) printf("%lf %lf %lf %lf\n",Omega,OmegaIni,Omega1,Omega2);
+	if (fabs(Omega - OmegaIni) > 1) printf("%lf %lf %lf %lf %lf %lf\n",Omega,OmegaIni,Omega1,Omega2,OmeDiff1,OmeDiff2);
 	double SinOmega=sin(deg2rad*Omega);
 	double CosOmega=cos(deg2rad*Omega);
 	double Fact = (g1*CosOmega) - (g2*SinOmega);
