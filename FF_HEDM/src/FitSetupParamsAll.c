@@ -961,10 +961,10 @@ int main(int argc, char *argv[])
 		SortSpots(nSpotsThis,spotsTemp);
 		for (j=0;j<nSpotsThis;j++){
 			spotsall[j+startrowN][0] = j+startrowN+1;
-			for (colN=1;colN<6;colN++){
+			for (colN=0;colN<6;colN++){
 				spotsall[j+startrowN][colN] = spotsTemp[j][colN];
 			}
-			fprintf(idhsh,"%d %d %d\n",PlaneNumbers[i],spotsTemp[j][0],spotsall[j+startrowN][0]);
+			fprintf(idhsh,"%d %d %d\n",PlaneNumbers[i],(int)spotsTemp[j][0],(int)spotsall[j+startrowN][0]);
 		}
 		fprintf(idshashout,"%d %d %d %lf\n",PlaneNumbers[i],startrowN+1,startrowN+nSpotsThis+1,ds[i]);
 		startrowN += nSpotsThis;
