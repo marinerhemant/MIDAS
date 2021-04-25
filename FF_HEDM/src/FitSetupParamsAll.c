@@ -966,7 +966,7 @@ int main(int argc, char *argv[])
 			}
 			fprintf(idhsh,"%d %d %d\n",PlaneNumbers[i],spotsTemp[j][0],spotsall[j+startrowN][0]);
 		}
-		fprintf(idshashout,"%d %d %d %lf",PlaneNumbers[i],startrowN+1,startrowN+nSpotsThis+1,ds[i]);
+		fprintf(idshashout,"%d %d %d %lf\n",PlaneNumbers[i],startrowN+1,startrowN+nSpotsThis+1,ds[i]);
 		startrowN += nSpotsThis;
 		FreeMemMatrix(spotsTemp,nSpotsThis);
 	}
