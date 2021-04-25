@@ -393,6 +393,7 @@ void CorrectWedge(double yc, double zc, double Lsd, double OmegaIni, double wl, 
 	double SinOmega2 = (-b_Sin+P_Sin)/(2*a_Sin);
 	double CosOmega1 = (-b_Cos-P_Cos)/(2*a_Cos);
 	double CosOmega2 = (-b_Cos+P_Cos)/(2*a_Cos);
+	printf("%lf %lf %lf %lf\n",SinOmega1,SinOmega2,CosOmega1,CosOmega2);
 	if      (SinOmega1 < -1) SinOmega1=0;
 	else if (SinOmega1 >  1) SinOmega1=0;
 	else if (SinOmega2 < -1) SinOmega2=0;
