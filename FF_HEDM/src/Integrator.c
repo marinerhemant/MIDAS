@@ -313,7 +313,7 @@ int main(int argc, char **argv)
 	int *mapMask;
 	int dType = 1;
 	char GapFN[4096], BadPxFN[4096], outputFolder[4096];
-	int sumImages=0, separateFolder=0,writeBinary=0;
+	int sumImages=0, separateFolder=0,newOutput=0;
 	while (fgets(aline,4096,paramFile) != NULL){
 		str = "GapFile ";
 		if (StartsWith(aline,str) == 1){
@@ -325,10 +325,6 @@ int main(int argc, char **argv)
 			sscanf(aline,"%s %s", dummy, outputFolder);
 			separateFolder = 1;
 		}
-		str = "WriteBinary ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %d", dummy, &writeBinary);
-		}
 		str = "BadPxFile ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %s", dummy, BadPxFN);
@@ -337,6 +333,10 @@ int main(int argc, char **argv)
 		str = "EtaBinSize ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &EtaBinSize);
+		}
+		str = "NewOutput ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %d", dummy, &newOutput);
 		}
 		str = "RBinSize ";
 		if (StartsWith(aline,str) == 1){
@@ -546,7 +546,8 @@ int main(int argc, char **argv)
 	int nPixels, dataPos;
 	struct data ThisVal;
 	char outfn[4096];
-	FILE *out;
+	char outfn2[4096];
+	FILE *out,*out2;
 	char outFN1d[4096];
 	char dmyt[10000];
 	FILE *out1d;
@@ -559,13 +560,9 @@ int main(int argc, char **argv)
 	if (sumImages == 1){
 		sumMatrix = calloc(nEtaBins*nRBins*5,sizeof(*sumMatrix));
 	}
-	double *outArr, *out1dArr;
+	double *outArr, *outThisArr, *out1dArr;
 	char *outext;
-	if (writeBinary == 1){
-		outArr = calloc(nEtaBins*nRBins*5,sizeof(*outArr));
-		out1dArr = calloc(nRBins*3,sizeof(*outArr));
-		outext = ".bin";
-	} else outext = ".csv";
+	outext = ".csv";
 	for (i=0;i<nFrames;i++){
 		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
 		rc = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
@@ -584,16 +581,21 @@ int main(int argc, char **argv)
 			sprintf(outfn,"%s/%s_integrated_framenr_%d%s",outputFolder,bname,i,outext);
 			sprintf(outFN1d,"%s/%s_integrated_framenr_%d.1d%s",outputFolder,bname,i,outext);
 		}
-		if (writeBinary == 0){
-			out = fopen(outfn,"w");
-			fprintf(out,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n",nEtaBins,nRBins);
-			out1d = fopen(outFN1d,"w");
-			fprintf(out1d,"%%nRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tIntensity(counts)\n",nRBins);
-		} else {
-			out = fopen(outfn,"wb");
-			//~ fprintf(out,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n",nEtaBins,nRBins);
-			out1d = fopen(outFN1d,"wb");
-			//~ fprintf(out1d,"%%nRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tIntensity(counts)\n",nRBins);
+		out = fopen(outfn,"w");
+		out1d = fopen(outFN1d,"w");
+		fprintf(out1d,"%%nRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tIntensity(counts)\n",nRBins);
+		if (newOutput == 0) fprintf(out,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n",nEtaBins,nRBins);
+		else fprintf(out,"%%Intensity(counts)");
+		if (i==0 && newOutput==1){
+			if (separateFolder==0) sprintf(outfn2,"%s.REtaAreaMap.csv",imageFN);
+			else{
+				char fn2[4096];
+				sprintf(fn2,"%s",imageFN);
+				char *bnname;
+				bnname = basename(fn2);
+				sprintf(outfn2,"%s/%s.REtaAreaMap.csv",outputFolder,bnname);
+			}
+			fprintf(outfn2,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tBinArea\n",nEtaBins,nRBins);
 		}
 		for (j=0;j<nRBins;j++){
 			RMean = (RBinsLow[j]+RBinsHigh[j])/2;
@@ -627,15 +629,11 @@ int main(int argc, char **argv)
 				EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
 				Int1d += Intensity;
 				n1ds ++;
-				if (writeBinary == 0) fprintf(out,"%lf\t%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,Intensity,totArea);
-				else{
-					if (i==0){
-						outArr[j*nEtaBins*5+k*5+0] = RMean;
-						outArr[j*nEtaBins*5+k*5+1] = atand(RMean*px/Lsd);
-						outArr[j*nEtaBins*5+k*5+2] = EtaMean;
-						outArr[j*nEtaBins*5+k*5+4] = totArea;
-					}
-					outArr[j*nEtaBins*5+k*5+3] = Intensity;
+				if (newOutput == 0){
+					fprintf(out2,"%lf\t%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,Intensity,totArea);
+				}else{
+					if (i==0) fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
+					fprintf(out,"%lf\n",Intensity);
 				}
 				if (sumImages==1){
 					if (i==0){
@@ -648,16 +646,7 @@ int main(int argc, char **argv)
 				}
 			}
 			Int1d /= n1ds;
-			if (writeBinary ==0) fprintf(out1d,"%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),Int1d);
-			else{
-				out1dArr[j*3+0] = RMean;
-				out1dArr[j*3+1] = atand(RMean*px/Lsd);
-				out1dArr[j*3+2] = Int1d;
-			}
-		}
-		if (writeBinary == 1){
-			fwrite(outArr,nEtaBins*nRBins*5*sizeof(*outArr),1,out);
-			fwrite(out1dArr,nRBins*3*sizeof(*out1dArr),1,out1d);
+			fprintf(out1d,"%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),Int1d);
 		}
 		fclose(out);
 		fclose(out1d);
@@ -674,17 +663,12 @@ int main(int argc, char **argv)
 			bname = basename(fn2);
 			sprintf(sumFN,"%s/%s_sum%s",outputFolder,bname,outext);
 		}
-		if (writeBinary == 0){
-			sumFile = fopen(sumFN,"w");
-			fprintf(sumFile,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n");
-			for (i=0;i<nRBins*nEtaBins;i++){
-				for (k=0;k<4;k++)
-					fprintf(sumFile,"%lf\t",sumMatrix[i*5+k]);
-				fprintf(sumFile,"\n");
-			}
-		} else{
-			sumFile = fopen(sumFN,"wb");
-			fwrite(sumMatrix,nEtaBins*nRBins*5*sizeof(*sumMatrix),1,sumFile);
+		sumFile = fopen(sumFN,"w");
+		fprintf(sumFile,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n");
+		for (i=0;i<nRBins*nEtaBins;i++){
+			for (k=0;k<4;k++)
+				fprintf(sumFile,"%lf\t",sumMatrix[i*5+k]);
+			fprintf(sumFile,"\n");
 		}
 	}
 	end0 = clock();
