@@ -489,10 +489,10 @@ int main(int argc, char *argv[])
     int UseFriedelPairs=1;
 	double t_int=1, t_gap=0;
     int NewType = 1, TopLayer = 0;
-    int maxNFrames = 100000;
+    int maxNFrames = 100000, SGnum = 225;
     spotsfn = "InputAll.csv";
     idfn = "SpotsToIndex.csv";
-    double StepSizePos=5,StepSizeOrient=0.2,MarginRadius=500,MarginRadial=500,OmeBinSize=0.1,EtaBinSize=0.1,MarginEta=500,MarginOme=0.5,OmegaStep;
+    double StepSizePos=5,StepSizeOrient=0.2,MarginRadius=500,MarginRadial=500,OmeBinSize=0.1,EtaBinSize=0.1,MarginEta=500,MarginOme=0.5,OmegaStep,MargABC=2.0,MargABG=2.0;
     while (fgets(aline,1000,fileParam)!=NULL){
         str = "OmegaStep ";
         LowNr = strncmp(aline,str,strlen(str));
@@ -558,6 +558,18 @@ int main(int argc, char *argv[])
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %lf", dummy, &MarginOme);
+            continue;
+        }
+        str = "MargABC ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &MargABC);
+            continue;
+        }
+        str = "MargABG ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &MargABG);
             continue;
         }
         str = "OmeBinSize ";
@@ -701,6 +713,12 @@ int main(int argc, char *argv[])
             sscanf(aline,"%s %lf", dummy, &tolLsd);
             continue;
         }
+        str = "SpaceGroup ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &SGnum);
+            continue;
+        }
         str = "tx ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -826,11 +844,11 @@ int main(int argc, char *argv[])
 	double tht;
 	int PlaneNumbers[cs], donePlanes[cs];
 	double Thetas[cs];
-	double RingRadsIdeal[cs], rrdideal;
+	double RingRadsIdeal[cs], ds[cs], rrdideal, dsthis;
 	int n_hkls = cs,nhkls = 0;
 	for (i=0;i<cs;i++) donePlanes[i] = 0;
 	while (fgets(aline,1000,hklf)!=NULL){
-		sscanf(aline, "%s %s %s %s %d %s %s %s %lf %s %lf",dummy,dummy,dummy,dummy,&Rnr,dummy,dummy,dummy,&tht,dummy,&rrdideal);
+		sscanf(aline, "%s %s %s %lf %d %s %s %s %lf %s %lf",dummy,dummy,dummy,dsthis,&Rnr,dummy,dummy,dummy,&tht,dummy,&rrdideal);
 		if (tht > MaxTtheta/2) break;
 		for (i=0;i<cs;i++){
 			if(Rnr == RingNumbers[i] && donePlanes[i] == 0){
@@ -838,6 +856,7 @@ int main(int argc, char *argv[])
 				Thetas[nhkls] = tht;
 				PlaneNumbers[nhkls] = Rnr;
 				RingRadsIdeal[nhkls] = rrdideal;
+				ds[nhkls] = dsthis;
 				nhkls++;
 				break;
 			}
@@ -915,6 +934,16 @@ int main(int argc, char *argv[])
 		if (SpotsInfo[i][1] > 180) SpotsInfo[i][1] -= 360;
 	}
 	// Sort spots per ring
+    char fnidhsh[1024];
+    FILE *idhsh;
+    sprintf(fnidhsh,"%s/PeakSearch/%s/IDRings.csv",Folder,FileStem);
+    idhsh = fopen(fnidhsh,"w");
+    fprintf(idhsh,"RingNumber OriginalID NewID(RingsMerge)\n");
+	FILE *idshashout;
+	char fnidshash[1024];
+    sprintf(fnidshash,"%s/PeakSearch/%s/IDsHash.csv",Folder,FileStem);
+    printf("%s\n%s\n",fnidshash,fnidhsh);
+    idshashout = fopen(fnidshash,"w");
 	int nSpotsThis,nctr=0,colN,startrowN=0;
 	double **spotsall;
 	spotsall = allocMatrix(nIndices,6);
@@ -930,13 +959,21 @@ int main(int argc, char *argv[])
 			}
 		}
 		SortSpots(nSpotsThis,spotsTemp);
-		for (j=0;j<nSpotsThis;j++) for (colN=0;colN<6;colN++) spotsall[j+startrowN][colN] = spotsTemp[j][colN];
+		for (j=0;j<nSpotsThis;j++){
+			spotsall[j+startrowN][0] = j+startrowN+1;
+			for (colN=1;colN<6;colN++){
+				spotsall[j+startrowN][colN] = spotsTemp[j][colN];
+			}
+			fprintf(idhsh,"%d %d %d\n",PlaneNumbers[i],spotsTemp[j][0],spotsall[j+startrowN][0]);
+		}
+		fprintf(idshashout,"%d %d %d %lf",PlaneNumbers[i],startrowN+1,startrowN+nSpotsThis+1,ds[i]);
 		startrowN += nSpotsThis;
 		FreeMemMatrix(spotsTemp,nSpotsThis);
 	}
+	fclose(idhsh);
+	fclose(idshashout);
 	for (i=0;i<nIndices;i++) for (j=0;j<6;j++) SpotsInfo[i][j] = spotsall[i][j];
 	FreeMemMatrix(spotsall,nIndices);
-	//~ SortSpots(nIndices,SpotsInfo);
 	double *Ys, *Zs, *IdealTtheta,omegaCorrTemp;
 	Ys = malloc(nIndices*sizeof(*Ys));
 	Zs = malloc(nIndices*sizeof(*Zs));
@@ -1081,10 +1118,11 @@ int main(int argc, char *argv[])
 	fclose(IndexAllNoHeader);
 	fclose(ExtraInfo);
 	PF = fopen(parfn,"w");
-	fprintf(PF,"LatticeConstant %f;\n",LatticeConstant[0]);
+	//~ fprintf(PF,"LatticeConstant %f;\n",LatticeConstant[0]);
 	fprintf(PF,"LatticeParameter %f %f %f %f %f %f;\n",LatticeConstant[0],LatticeConstant[1],LatticeConstant[2],LatticeConstant[3],LatticeConstant[4],LatticeConstant[5]);
-	fprintf(PF,"CellStruct %d;\n",2);
+	//~ fprintf(PF,"CellStruct %d;\n",2);
 	fprintf(PF,"MaxRingRad %f;\n",MaxRingRad);
+	fprintf(PF,"SpaceGroup %d\n",SGnum);
 	fprintf(PF,"Wavelength %f;\n",Wavelength);
 	fprintf(PF,"Distance %f;\n",LsdFit);
 	fprintf(PF,"Rsample %f;\n",Rsample);
@@ -1112,6 +1150,8 @@ int main(int argc, char *argv[])
 	}
 	fprintf(PF,"MarginEta %f;\n",MarginEta);
 	fprintf(PF,"MarginOme %f;\n",MarginOme);
+	fprintf(PF,"MargABC %f;\n",MargABC);
+	fprintf(PF,"MargABG %f;\n",MargABG);
 	fprintf(PF,"MarginRadial %f;\n",MarginRadial);
 	fprintf(PF,"MinMatchesToAcceptFrac %f;\n",MinMatchesToAcceptFrac);
 	fprintf(PF,"SpotsFileName %s\n",spotsfn);
