@@ -1015,7 +1015,7 @@ int main(int argc, char *argv[])
 		YCorrWedge[i] = YCorrWedgeT;
 		ZCorrWedge[i] = ZCorrWedgeT;
 		OmegaCorrWedge[i] = OmegaCorrWedgeT;
-		if (fabs(OmegaCorrWedgeT-SpotsInfo[i][1])>0.1) printf("%lf %lf %lf %lf %lf %lf\n",YCorrected[i],YCorrWedgeT,ZCorrected[i],ZCorrWedgeT,SpotsInfo[i][1],OmegaCorrWedgeT);
+		//~ if (fabs(OmegaCorrWedgeT-SpotsInfo[i][1])>0.1) printf("%lf %lf %lf %lf %lf %lf\n",YCorrected[i],YCorrWedgeT,ZCorrected[i],ZCorrWedgeT,SpotsInfo[i][1],OmegaCorrWedgeT);
 		EtaCorrWedge[i] = EtaCorrWedgeT;
 		TthetaCorrWedge[i] = TthetaCorrWedgeT;
 	}
