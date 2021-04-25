@@ -585,21 +585,20 @@ int main(int argc, char **argv)
 				dataPos = nPxList[2*Pos + 1];
 				Intensity = 0;
 				totArea = 0;
-				for (l=0;l<nPixels;l++){
-					ThisVal = pxList[dataPos + l];
-					testPos = ThisVal.z;
-					testPos *= NrPixelsY;
-					testPos += ThisVal.y;
-					if (mapMaskSize!=0){
-						if (TestBit(mapMask,testPos)){
-							continue;
-						}
-					}
+				//~ for (l=0;l<nPixels;l++){
+					//~ ThisVal = pxList[dataPos + l];
+					//~ testPos = ThisVal.z;
+					//~ testPos *= NrPixelsY;
+					//~ testPos += ThisVal.y;
+					//~ if (mapMaskSize!=0){
+						//~ if (TestBit(mapMask,testPos)){
+							//~ continue;
+						//~ }
+					//~ }
 					//~ ThisInt = Image[testPos]; // The data is arranged as y(fast) and then z(slow)
-					ThisInt = *(Image+testPos); // The data is arranged as y(fast) and then z(slow)
-					Intensity += ThisInt*ThisVal.frac;
-					totArea += ThisVal.frac;
-				}
+					//~ Intensity += ThisInt*ThisVal.frac;
+					//~ totArea += ThisVal.frac;
+				//~ }
 				if (Intensity != 0){
 					if (Normalize == 1){
 						Intensity /= totArea;
