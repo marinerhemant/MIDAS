@@ -416,6 +416,7 @@ int main(int argc, char **argv)
 			continue;
         }
 	}
+	printf("%d %s\n",separateFolder,outputFolder);
 	nRBins = (int) ceil((RMax-RMin)/RBinSize);
 	nEtaBins = (int)ceil((EtaMax - EtaMin)/EtaBinSize);
 	double *EtaBinsLow, *EtaBinsHigh;
