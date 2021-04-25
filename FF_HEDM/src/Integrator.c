@@ -595,8 +595,8 @@ int main(int argc, char **argv)
 							continue;
 						}
 					}
-					//~ ThisInt = Image[testPos]; // The data is arranged as y(fast) and then z(slow)
-					ThisInt = *(Image+testPos); // The data is arranged as y(fast) and then z(slow)
+					ThisInt = Image[testPos]; // The data is arranged as y(fast) and then z(slow)
+					//~ ThisInt = *(Image+testPos); // The data is arranged as y(fast) and then z(slow)
 					Intensity += ThisInt*ThisVal.frac;
 					totArea += ThisVal.frac;
 				}
