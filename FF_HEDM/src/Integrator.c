@@ -543,6 +543,7 @@ int main(int argc, char **argv)
 	char outfn[4096];
 	FILE *out;
 	char outFN1d[4096];
+	char dmyt[10000];
 	FILE *out1d;
 	double Intensity, totArea, ThisInt;
 	size_t testPos;
@@ -574,6 +575,7 @@ int main(int argc, char **argv)
 		out = fopen(outfn,"w");
 		fprintf(out,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n",nEtaBins,nRBins);
 		out1d = fopen(outFN1d,"w");
+		setbuf(out1d,dmyt);
 		fprintf(out1d,"%%nRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tIntensity(counts)\n",nRBins);
 		for (j=0;j<nRBins;j++){
 			RMean = (RBinsLow[j]+RBinsHigh[j])/2;
