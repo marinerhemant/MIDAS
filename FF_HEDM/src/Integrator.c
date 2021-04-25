@@ -328,7 +328,6 @@ int main(int argc, char **argv)
 		str = "WriteBinary ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %d", dummy, &writeBinary);
-			separateFolder = 1;
 		}
 		str = "BadPxFile ";
 		if (StartsWith(aline,str) == 1){
