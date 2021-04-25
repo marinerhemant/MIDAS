@@ -930,6 +930,7 @@ int main(int argc, char *argv[])
 		for (j=0;j<nIndices;j++){
 			if (SpotsInfo[i][4] == PlaneNumbers[i]){
 				for (colN=0;colN<6;colN++) spotsTemp[nctr][colN] = SpotsInfo[i][colN];
+				printf("%d %d\n",nctr,nSpotsThis);
 				nctr++;
 			}
 		}
