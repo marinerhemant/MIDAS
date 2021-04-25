@@ -443,7 +443,7 @@ static int cmpfunc (const void * a, const void *b){
 	return (int)(1000.f*ia->Omega - 1000.f*ib->Omega);
 }
 
-static inline void SortSpots(int nIndices, int nCols, double **SpotsInfo){
+static inline void SortSpots(int nIndices, double **SpotsInfo){
 	struct SpotsData *MyData;
     MyData = malloc(nIndices*sizeof(*MyData));
     int i,j,k;
@@ -904,7 +904,8 @@ int main(int argc, char *argv[])
 			//~ }
 		//~ }
 	//~ }
-	for (i=0;i<n_hkls;i++) printf("%d\n",nSpotsEachRing[i]);
+	printf("Number spots per ring: ");
+	for (i=0;i<n_hkls;i++) printf("%d ",nSpotsEachRing[i]); printf("\n");
 	int nIndices = counter;
 	printf("Number of planes being considered: %d.\nNumber of spots: %d.\n",n_hkls,nIndices);
 	double *Ys, *Zs, *IdealTtheta,omegaCorrTemp;
@@ -917,7 +918,8 @@ int main(int argc, char *argv[])
 		if (SpotsInfo[i][1] < -180) SpotsInfo[i][1] += 360;
 		if (SpotsInfo[i][1] > 180) SpotsInfo[i][1] -= 360;
 	}
-	SortSpots(nIndices,6,SpotsInfo);
+
+	SortSpots(nIndices,SpotsInfo);
 	for (i=0;i<nIndices;i++){
 		Ys[i]=SpotsInfo[i][2];
 		Zs[i]=SpotsInfo[i][3];
