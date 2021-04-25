@@ -595,7 +595,6 @@ int main(int argc, char **argv)
 			out1d = fopen(outFN1d,"wb");
 			//~ fprintf(out1d,"%%nRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tIntensity(counts)\n",nRBins);
 		}
-		printf("%s %s\n",outfn,outFN1d);
 		for (j=0;j<nRBins;j++){
 			RMean = (RBinsLow[j]+RBinsHigh[j])/2;
 			Int1d = 0;
