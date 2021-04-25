@@ -410,10 +410,10 @@ void CorrectWedge(double yc, double zc, double Lsd, double OmegaIni, double wl, 
 	else {Omega1=rad2deg*atan2(SinOmega1,CosOmega2);Omega2=rad2deg*atan2(SinOmega2,CosOmega1);}
 	double OmeDiff1 = fabs(Omega1-OmegaIni);
 	double OmeDiff2 = fabs(Omega2-OmegaIni);
-	if (OmeDiff1 == 360){
+	if (fabs(OmeDiff1-360) < 0.1){
 		OmeDiff1 = 0; Omega1 *= -1;
 	}
-	if (OmeDiff2 == 360){
+	if (fabs(OmeDiff2-360) < 0.1){
 		OmeDiff2 = 0; Omega2 *= -1;
 	}
 	double Omega;
