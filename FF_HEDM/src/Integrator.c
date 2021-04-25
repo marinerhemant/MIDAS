@@ -625,6 +625,9 @@ int main(int argc, char **argv)
 		}
 		fclose(out);
 		fclose(out1d);
+	end0 = clock();
+	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
+	printf("Total time elapsed:\t%f s.\n",diftotal);
 	}
 	if (sumImages == 1){
 		FILE *sumFile;
@@ -645,9 +648,6 @@ int main(int argc, char **argv)
 				fprintf(sumFile,"%lf\t",sumMatrix[i*5+k]);
 			fprintf(sumFile,"\n");
 		}
-	end0 = clock();
-	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
-	printf("Total time elapsed:\t%f s.\n",diftotal);
 	}
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
