@@ -908,10 +908,6 @@ int main(int argc, char *argv[])
 	for (i=0;i<n_hkls;i++) printf("%d ",nSpotsEachRing[i]); printf("\n");
 	int nIndices = counter;
 	printf("Number of planes being considered: %d.\nNumber of spots: %d.\n",n_hkls,nIndices);
-	double *Ys, *Zs, *IdealTtheta,omegaCorrTemp;
-	Ys = malloc(nIndices*sizeof(*Ys));
-	Zs = malloc(nIndices*sizeof(*Zs));
-	IdealTtheta = malloc(nIndices*sizeof(*IdealTtheta));
 	for (i=0;i<nIndices;i++){
 		// Omega correction
 		SpotsInfo[i][1] = SpotsInfo[i][1] - (t_gap/(t_gap+t_int))*OmegaStep*(1.0 - fabs(2*SpotsInfo[i][3] - (double)NrPixels) /(double) NrPixels);
@@ -929,9 +925,7 @@ int main(int argc, char *argv[])
 		nctr = 0;
 		for (j=0;j<nIndices;j++){
 			if (SpotsInfo[j][4] == PlaneNumbers[i]){
-				for (colN=0;colN<6;colN++) spotsTemp[nctr][colN] = SpotsInfo[i][colN];
-				printf("%d %d %d %d\n",nctr,nSpotsThis,j,nIndices);
-				fflush(stdout);
+				for (colN=0;colN<6;colN++) spotsTemp[nctr][colN] = SpotsInfo[j][colN];
 				nctr++;
 			}
 		}
@@ -943,6 +937,10 @@ int main(int argc, char *argv[])
 	for (i=0;i<nIndices;i++) for (j=0;j<6;j++) SpotsInfo[i][j] = spotsall[i][j];
 	FreeMemMatrix(spotsall,nIndices);
 	//~ SortSpots(nIndices,SpotsInfo);
+	double *Ys, *Zs, *IdealTtheta,omegaCorrTemp;
+	Ys = malloc(nIndices*sizeof(*Ys));
+	Zs = malloc(nIndices*sizeof(*Zs));
+	IdealTtheta = malloc(nIndices*sizeof(*IdealTtheta));
 	for (i=0;i<nIndices;i++){
 		Ys[i]=SpotsInfo[i][2];
 		Zs[i]=SpotsInfo[i][3];
