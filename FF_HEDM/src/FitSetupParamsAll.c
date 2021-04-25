@@ -393,15 +393,14 @@ void CorrectWedge(double yc, double zc, double Lsd, double OmegaIni, double wl, 
 	double SinOmega2 = (-b_Sin+P_Sin)/(2*a_Sin);
 	double CosOmega1 = (-b_Cos-P_Cos)/(2*a_Cos);
 	double CosOmega2 = (-b_Cos+P_Cos)/(2*a_Cos);
-	printf("%lf %lf %lf %lf\n",SinOmega1,SinOmega2,CosOmega1,CosOmega2);
-	if      (SinOmega1 < -1) SinOmega1=0;
-	else if (SinOmega1 >  1) SinOmega1=0;
-	else if (SinOmega2 < -1) SinOmega2=0;
-	else if (SinOmega2 >  1) SinOmega2=0;
-	if      (CosOmega1 < -1) CosOmega1=0;
-	else if (CosOmega1 >  1) CosOmega1=0;
-	else if (CosOmega2 < -1) CosOmega2=0;
-	else if (CosOmega2 >  1) CosOmega2=0;
+	if      (SinOmega1 < -1) SinOmega1=-1;
+	else if (SinOmega1 >  1) SinOmega1=1;
+	else if (SinOmega2 < -1) SinOmega2=-1;
+	else if (SinOmega2 >  1) SinOmega2=1;
+	if      (CosOmega1 < -1) CosOmega1=-1;
+	else if (CosOmega1 >  1) CosOmega1=1;
+	else if (CosOmega2 < -1) CosOmega2=-1;
+	else if (CosOmega2 >  1) CosOmega2=1;
 	if (P_check_Sin == 1){SinOmega1=0;SinOmega2=0;}
 	if (P_check_Cos == 1){CosOmega1=0;CosOmega2=0;}
 	double Option1 = fabs((SinOmega1*SinOmega1)+(CosOmega1*CosOmega1)-1);
