@@ -585,7 +585,7 @@ int main(int argc, char **argv)
 		out1d = fopen(outFN1d,"w");
 		fprintf(out1d,"%%nRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tIntensity(counts)\n",nRBins);
 		if (newOutput == 0) fprintf(out,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n",nEtaBins,nRBins);
-		else fprintf(out,"%%Intensity(counts)");
+		else fprintf(out,"%%Intensity(counts)\n");
 		if (i==0 && newOutput==1){
 			if (separateFolder==0) sprintf(outfn2,"%s.REtaAreaMap.csv",imageFN);
 			else{
