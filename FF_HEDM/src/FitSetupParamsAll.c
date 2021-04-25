@@ -918,8 +918,29 @@ int main(int argc, char *argv[])
 		if (SpotsInfo[i][1] < -180) SpotsInfo[i][1] += 360;
 		if (SpotsInfo[i][1] > 180) SpotsInfo[i][1] -= 360;
 	}
-
-	SortSpots(nIndices,SpotsInfo);
+	// Sort spots per ring
+	int nSpotsThis,nctr=0,colN,startrowN=0;
+	double **spotsall;
+	spotsall = allocMatrix(nIndices,6);
+	for (i=0;i<n_hkls;i++){
+		double **spotsTemp;
+		nSpotsThis = nSpotsEachRing[i];
+		spotsTemp = allocMatrix(nSpotsThis,6);
+		nctr = 0;
+		for (j=0;j<nIndices;j++){
+			if (SpotsInfo[i][4] == PlaneNumbers[i]){
+				for (colN=0;colN<6;colN++) spotsTemp[nctr][colN] = SpotsInfo[i][colN];
+				nctr++;
+			}
+		}
+		SortSpots(nSpotsThis,spotsTemp);
+		for (j=0;j<nSpotsThis;j++) for (colN=0;colN<6;colN++) spotsall[j+startrowN][colN] = spotsTemp[j][colN];
+		startrowN += nSpotsThis;
+		FreeMemMatrix(spotsTemp,nSpotsThis);
+	}
+	for (i=0;i<nIndices;i++) for (j=0;j<6;j++) SpotsInfo[i][j] = spotsall[i][j];
+	FreeMemMatrix(spotsall,nIndices);
+	//~ SortSpots(nIndices,SpotsInfo);
 	for (i=0;i<nIndices;i++){
 		Ys[i]=SpotsInfo[i][2];
 		Zs[i]=SpotsInfo[i][3];
