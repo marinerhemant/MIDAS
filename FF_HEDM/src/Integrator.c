@@ -188,6 +188,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 		for (i=0;i<NrPixels;i++){
 			returnArr[i] = (double) readData[i];
 		}
+		free(readData);
 		return 0;
 	} else if (dType == 2){ // Binary with double
 		double *readData;
@@ -196,6 +197,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 		for (i=0;i<NrPixels;i++){
 			returnArr[i] = (double) readData[i];
 		}
+		free(readData);
 		return 0;
 	} else if (dType == 3){ // Binary with float
 		float *readData;
@@ -204,6 +206,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 		for (i=0;i<NrPixels;i++){
 			returnArr[i] = (double) readData[i];
 		}
+		free(readData);
 		return 0;
 	} else if (dType == 4){ // Binary with uint32
 		uint32_t *readData;
@@ -212,6 +215,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 		for (i=0;i<NrPixels;i++){
 			returnArr[i] = (double) readData[i];
 		}
+		free(readData);
 		return 0;
 	} else if (dType == 5){ // Binary with int32
 		int32_t *readData;
@@ -220,6 +224,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 		for (i=0;i<NrPixels;i++){
 			returnArr[i] = (double) readData[i];
 		}
+		free(readData);
 		return 0;
 	} else if (dType == 6){ // TIFF with uint32 format
 		TIFFErrorHandler oldhandler;
@@ -243,6 +248,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 					returnArr[rnr*(scanline/sizeof(uint32_t)) + i] = (double) datar[i];
 				}
 			}
+			_TIFFfree(buf);
 		}
 		return 0;
 	} else if (dType == 7){ // TIFF with uint8 format
@@ -269,6 +275,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 					}
 				}
 			}
+			_TIFFfree(buf);
 		}
 		return 0;
 	} else {

@@ -990,11 +990,15 @@ for text, val in FILEOPTS:
 		value=val,font=("Helvetica 16 bold")).grid(row=1,column=val,sticky=Tk.W)
 
 ###### Run processing
-Tk.Button(master=rightSideFrame,text="Integrate",
-	command=integrate,font=('Helvetica',20)).grid(row=0,
-	column=0,padx=10,pady=10)
+Tk.Button(master=firstRowFrame,text="Integrate",
+	command=integrate,font=('Helvetica',20)).grid(row=1,
+	column=5,padx=10,pady=10)
 
 Tk.Button(master=rightSideFrame,text="Process Images",
+	command=processImages,font=("Helvetica",20)).grid(row=0,
+	column=0,padx=10,pady=10)
+
+Tk.Button(master=rightSideFrame,text="Batch Images",
 	command=processImages,font=("Helvetica",20)).grid(row=1,
 	column=0,padx=10,pady=10)
 
