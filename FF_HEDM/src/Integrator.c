@@ -607,7 +607,7 @@ int main(int argc, char **argv)
 				EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
 				Int1d += Intensity;
 				n1ds ++;
-				//~ fprintf(out,"%lf\t%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,Intensity,totArea);
+				fprintf(out,"%lf\t%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,Intensity,totArea);
 				if (sumImages==1){
 					if (i==0){
 						sumMatrix[j*nEtaBins*5+k*5+0] = RMean;
