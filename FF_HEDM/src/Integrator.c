@@ -630,7 +630,7 @@ int main(int argc, char **argv)
 				Int1d += Intensity;
 				n1ds ++;
 				if (newOutput == 0){
-					fprintf(out2,"%lf\t%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,Intensity,totArea);
+					fprintf(out,"%lf\t%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,Intensity,totArea);
 				}else{
 					if (i==0) fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
 					fprintf(out,"%lf\n",Intensity);
