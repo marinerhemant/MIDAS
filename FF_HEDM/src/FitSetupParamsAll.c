@@ -850,6 +850,8 @@ int main(int argc, char *argv[])
 	for (i=0;i<n_hkls;i++){IdealRs[i]=R4mTtheta(IdealTthetas[i],Lsd);Rmins[i]=R4mTtheta(TthetaMins[i],Lsd);Rmaxs[i]=R4mTtheta(TthetaMaxs[i],Lsd);}
 	int counter = 0;
 	double nFramesThis;
+	int nSpotsEachRing[n_hkls];
+	for (i=0;i<n_hkls;i++) nSpotsEachRing[i] = 0;
 	//~ if (NewType == 0){
 		//~ fp = fopen(FileName,"r");
 		//~ fgets(line,5000,fp);
@@ -869,6 +871,7 @@ int main(int argc, char *argv[])
 		sscanf(line,"%lf %s %lf %lf %lf %s %s %s %s %s %s %s %lf %lf %s %lf %s %s %s",
 			&SpotsInfo[counter][0],dummy,&SpotsInfo[counter][1],&SpotsInfo[counter][2],&SpotsInfo[counter][3],
 			dummy,dummy,dummy,dummy,dummy,dummy,dummy,&nFramesThis,&SpotsInfo[counter][4],dummy,&SpotsInfo[counter][5],dummy,dummy,dummy);
+		for (i=0;i<n_hkls;i++) if ((int)SpotsInfo[counter][4] == PlaneNumbers[i]) nSpotsEachRing[i]++;
 		if ((int)nFramesThis > maxNFrames) continue; // Overwrite the spot if nFrames is greater than maxNFrames
 		counter++;
 	}
@@ -901,19 +904,23 @@ int main(int argc, char *argv[])
 			//~ }
 		//~ }
 	//~ }
+	for (i=0;i<n_hkls;i++) printf("%d\n",nSpotsEachRing[i]);
 	int nIndices = counter;
-	SortSpots(nIndices,6,SpotsInfo);
 	printf("Number of planes being considered: %d.\nNumber of spots: %d.\n",n_hkls,nIndices);
 	double *Ys, *Zs, *IdealTtheta,omegaCorrTemp;
 	Ys = malloc(nIndices*sizeof(*Ys));
 	Zs = malloc(nIndices*sizeof(*Zs));
 	IdealTtheta = malloc(nIndices*sizeof(*IdealTtheta));
 	for (i=0;i<nIndices;i++){
+		// Omega correction
+		SpotsInfo[i][1] = SpotsInfo[i][1] - (t_gap/(t_gap+t_int))*OmegaStep*(1.0 - fabs(2*SpotsInfo[i][3] - (double)NrPixels) /(double) NrPixels);
+		if (SpotsInfo[i][1] < -180) SpotsInfo[i][1] += 360;
+		if (SpotsInfo[i][1] > 180) SpotsInfo[i][1] -= 360;
+	}
+	SortSpots(nIndices,6,SpotsInfo);
+	for (i=0;i<nIndices;i++){
 		Ys[i]=SpotsInfo[i][2];
 		Zs[i]=SpotsInfo[i][3];
-		omegaCorrTemp = SpotsInfo[i][1];
-		// Omega correction
-		SpotsInfo[i][1] = omegaCorrTemp - (t_gap/(t_gap+t_int))*OmegaStep*(1.0 - fabs(2*Zs[i] - (double)NrPixels) /(double) NrPixels);
 		for (j=0;j<n_hkls;j++){
 			if (PlaneNumbers[j] == (int)SpotsInfo[i][4]){
 				IdealTtheta[i] = IdealTthetas[j];

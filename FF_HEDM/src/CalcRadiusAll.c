@@ -11,6 +11,8 @@
 //
 // Created by Hemant Sharma on 2014/07/15
 //
+//
+// Need to update SpotIDs when assigned to multiple rings.
 
 #include <stdio.h>
 #include <math.h>
