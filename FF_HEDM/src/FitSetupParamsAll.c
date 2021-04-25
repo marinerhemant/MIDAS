@@ -848,7 +848,7 @@ int main(int argc, char *argv[])
 	int n_hkls = cs,nhkls = 0;
 	for (i=0;i<cs;i++) donePlanes[i] = 0;
 	while (fgets(aline,1000,hklf)!=NULL){
-		sscanf(aline, "%s %s %s %lf %d %s %s %s %lf %s %lf",dummy,dummy,dummy,dsthis,&Rnr,dummy,dummy,dummy,&tht,dummy,&rrdideal);
+		sscanf(aline, "%s %s %s %lf %d %s %s %s %lf %s %lf",dummy,dummy,dummy,&dsthis,&Rnr,dummy,dummy,dummy,&tht,dummy,&rrdideal);
 		if (tht > MaxTtheta/2) break;
 		for (i=0;i<cs;i++){
 			if(Rnr == RingNumbers[i] && donePlanes[i] == 0){
