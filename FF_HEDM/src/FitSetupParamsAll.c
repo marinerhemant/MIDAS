@@ -1066,7 +1066,7 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	printf("nRejects: %d, Spots to keep: %d, SpotIDsToIndex: %d\n",nRejects,NumberSpotsToKeep,nSpotIDsToIndex);
+	printf("nRejects: %d, nIndices: %d, Spots to keep: %d, SpotIDsToIndex: %d\n",nRejects,nIndices,NumberSpotsToKeep,nSpotIDsToIndex);
 	FILE *IndexAll, *IndexAllNoHeader, *ExtraInfo, *IDs, *PF;
 	char fnIndexAll[2048],fnIndexAllNoHeader[2048],fnExtraInfo[2048],fnSpIds[1024],parfn[1024];
 	sprintf(parfn,"%s/paramstest.txt",folder);
