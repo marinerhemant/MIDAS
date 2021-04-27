@@ -55,6 +55,7 @@ for layerNr in range(startLayerNr,endLayerNr+1):
 	thisPF.write('Folder '+thisDir+'\n')
 	thisPF.write('LayerNr '+str(layerNr)+'\n')
 	thisPF.write('StartFileNr '+str(thisStartNr)+'\n')
+	thisPF.close()
 	innerFolder = thisDir + 'PeakSearch/'+fStem+' '+str(layerNr)+'/'
 	Path(innerFolder).mkdir(parents=True,exist_ok=True)
 	Path(thisDir+'/Temp').mkdir(parents=True,exist_ok=True)
