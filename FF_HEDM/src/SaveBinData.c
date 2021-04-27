@@ -11,8 +11,8 @@
 //
 
 #include <stdio.h>
-#include <math.h> 
-#include <stdlib.h> 
+#include <math.h>
+#include <stdlib.h>
 #include <time.h>
 #include <string.h>
 #include <limits.h>
@@ -54,7 +54,7 @@ CalcDistanceIdealRing(double **ObsSpotsLab, int nspots, double RingRadii[]  )
        double z = ObsSpotsLab[i][1];
        double rad = sqrt(y*y + z*z);
        int ringno = (int) ObsSpotsLab[i][5];
-       ObsSpotsLab[i][8] = rad - RingRadii[ringno]; 
+       ObsSpotsLab[i][8] = rad - RingRadii[ringno];
     }
 
 }
@@ -120,28 +120,28 @@ int main(int arc, char* argv[]){
             continue;
         }
         str = "EtaBinSize ";
-		LowNr = strncmp(aline, str, strlen(str));         
-		if (LowNr == 0) {         
+		LowNr = strncmp(aline, str, strlen(str));
+		if (LowNr == 0) {
 			sscanf(aline, "%s %lf", dummy, &etabinsize);
-			continue;         
+			continue;
 		}
         str = "StepsizeOrient ";
-		LowNr = strncmp(aline, str, strlen(str));         
-		if (LowNr == 0) {         
+		LowNr = strncmp(aline, str, strlen(str));
+		if (LowNr == 0) {
 			sscanf(aline, "%s %lf", dummy, &rotationstep);
-			continue;         
+			continue;
 		}
         str = "OmeBinSize ";
-		LowNr = strncmp(aline, str, strlen(str));         
-		if (LowNr == 0) {         
+		LowNr = strncmp(aline, str, strlen(str));
+		if (LowNr == 0) {
 			sscanf(aline, "%s %lf", dummy, &omebinsize);
-			continue;         
+			continue;
 		}
 		str = "RingRadii ";
-		LowNr = strncmp(aline, str, strlen(str));             
+		LowNr = strncmp(aline, str, strlen(str));
 		if (LowNr == 0) {
 			sscanf(aline, "%s %lf", dummy, &RingRadiiUser[NrOfRings]);
-			NrOfRings++;           
+			NrOfRings++;
 			continue;
 		}
 		str = "RingNumbers ";
@@ -150,7 +150,7 @@ int main(int arc, char* argv[]){
 			sscanf(aline, "%s %d", dummy, &RingNumbers[NoRingNumbers]);
 			NoRingNumbers++;
 			continue;
-		}   
+		}
 	}
 
 
@@ -178,17 +178,18 @@ int main(int arc, char* argv[]){
 		for (j=0;j<14;j++){
 			ExtraMat[i*14+j] = AllSpots[i][j];
 		}
+		printf("%lf\n",AllSpots[i][4]);
 	}
 	char *SpotsFN = "Spots.bin";
 	char *ExtraFN = "ExtraInfo.bin";
 	FILE *SpotsFile = fopen(SpotsFN,"wb");
 	fwrite(SpotsMat,nSpots*9*sizeof(*SpotsMat),1,SpotsFile);
 	FILE *ExtraFile = fopen(ExtraFN,"wb");
-	fwrite(ExtraMat,nSpots*14*sizeof(*ExtraMat),1,ExtraFile);	
+	fwrite(ExtraMat,nSpots*14*sizeof(*ExtraMat),1,ExtraFile);
 	if (nosaveall == 1){
 		return 0;
 	}
-	
+
 	// Only continue if wanted to save all.
 	int ****data;
 	int ***ndata;
@@ -203,7 +204,7 @@ int main(int arc, char* argv[]){
 	double EtaBinSize = etabinsize;
 	double OmeBinSize = omebinsize;
 	int HighestRingNo = 0;
-	for (i = 0 ; i < MAX_N_RINGS ; i++ ) { 
+	for (i = 0 ; i < MAX_N_RINGS ; i++ ) {
 	  if ( RingRadii[i] != 0) HighestRingNo = i;
 	}
 	n_ring_bins = HighestRingNo;
@@ -228,29 +229,29 @@ int main(int arc, char* argv[]){
 			if (data[i1][i2] == NULL ) {
 				printf("Memory error: memory full?\n");
 				return 1;
-			}           
+			}
 			for (i3 = 0 ; i3 < n_ome_bins ; i3++) {
 				data[i1][i2][i3] = NULL;
 			}
-		} 
+		}
 	}
 	ndata = malloc(n_ring_bins * sizeof(ndata));
 	if (ndata == NULL ) {
 		printf("Memory error: memory full?\n");
 		return 1;
-	}                                                              
+	}
 	for (i1 = 0 ; i1 < n_ring_bins ; i1++) {
 		ndata[i1] = malloc(n_eta_bins * sizeof(ndata[i1]));
 		if (ndata[i1] == NULL ) {
 			printf("Memory error: memory full?\n");
 			return 1;
-		}       
+		}
 		for (i2 = 0 ; i2 < n_eta_bins ; i2++) {
 			ndata[i1][i2] = malloc(n_ome_bins * sizeof(ndata[i1][i2]));
 			if (ndata[i1][i2] == NULL ) {
 				printf("Memory error: memory full?\n");
 				return 1;
-			}  
+			}
 			for (i3 = 0 ; i3 < n_ome_bins ; i3++) {
 				ndata[i1][i2][i3] = 0;
 			}
@@ -260,26 +261,26 @@ int main(int arc, char* argv[]){
 	if (maxndata == NULL ) {
 		printf("Memory error: memory full?\n");
 		return 1;
-	}    
+	}
 	for (i1 = 0 ; i1 < n_ring_bins ; i1++) {
 		maxndata[i1] = malloc(n_eta_bins * sizeof(maxndata[i1]));
 		if (maxndata[i1] == NULL ) {
 			printf("Memory error: memory full?\n");
 			return 1;
-		}       
+		}
 		for (i2 = 0 ; i2 < n_eta_bins ; i2++) {
 			maxndata[i1][i2] = malloc(n_ome_bins * sizeof(maxndata[i1][i2]));
 			if (maxndata[i1][i2] == NULL ) {
 				printf("Memory error: memory full?\n");
 				return 1;
-			}           
+			}
 			for (i3 = 0 ; i3 < n_ome_bins ; i3++) {
 				maxndata[i1][i2][i3] = 0;
 			}
 		}
 	}
 	long long int TotNumberOfBins = 0;
-	for (rowno = 0 ; rowno < nSpots ; rowno++ ) {  
+	for (rowno = 0 ; rowno < nSpots ; rowno++ ) {
 		int ringnr = (int) ObsSpots[rowno][5];
 		double eta = ObsSpots[rowno][6];
 		double omega = ObsSpots[rowno][2];
@@ -291,7 +292,7 @@ int main(int arc, char* argv[]){
 		double omemax = 180 + omega + omemargin;
 		int iOmeMin = floor(omemin / omebinsize);
 		int iOmeMax = floor(omemax / omebinsize);
-		double etamargin = rad2deg * atan(etamargin0/RingRadii[ringnr]) + 0.5 * rotationstep; 
+		double etamargin = rad2deg * atan(etamargin0/RingRadii[ringnr]) + 0.5 * rotationstep;
 		double etamin = 180 + eta - etamargin;
 		double etamax = 180 + eta + etamargin;
 		int iEtaMin = floor(etamin / etabinsize);
@@ -303,16 +304,16 @@ int main(int arc, char* argv[]){
 				iOme = iOme0 % n_ome_bins;
 				if ( iOme < 0 ) iOme = iOme + n_ome_bins;
 				int iSpot = ndata[iRing][iEta][iOme];
-				int maxnspot = maxndata[iRing][iEta][iOme]; 
-				if ( iSpot >= maxnspot ) { 
+				int maxnspot = maxndata[iRing][iEta][iOme];
+				if ( iSpot >= maxnspot ) {
 					maxnspot = maxnspot + 2;
-					oldarray = data[iRing][iEta][iOme]; 
+					oldarray = data[iRing][iEta][iOme];
 					newarray = realloc(oldarray, maxnspot * sizeof(*newarray) );
 					if ( newarray == NULL ) {
 						printf("Memory error: memory full?\n");
 						return 1;
 					}
-					data[iRing][iEta][iOme] = newarray; 
+					data[iRing][iEta][iOme] = newarray;
 					maxndata[iRing][iEta][iOme] = maxnspot;
 				}
 				data[iRing][iEta][iOme][iSpot] = rowno; // Put row number
@@ -332,7 +333,7 @@ int main(int arc, char* argv[]){
 	long long int Pos;
 	for (i=0;i<n_ring_bins;i++){
 		for (j=0;j<n_eta_bins;j++){
-			for (k=0;k<n_ome_bins;k++){	
+			for (k=0;k<n_ome_bins;k++){
 				localNDataVal = ndata[i][j][k];
 				Pos = i*n_eta_bins;
 				Pos *= n_ome_bins;
@@ -347,7 +348,7 @@ int main(int arc, char* argv[]){
 			}
 		}
 	}
-	
+
 	char *DataFN = "Data.bin";
 	char *nDataFN = "nData.bin";
 	FILE *DataFile = fopen(DataFN,"wb");
