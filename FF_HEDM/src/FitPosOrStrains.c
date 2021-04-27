@@ -450,7 +450,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 		SpotsYZOGCorr[nrSp][4] = g2;
 		SpotsYZOGCorr[nrSp][5] = g3;
 		SpotsYZOGCorr[nrSp][6] = spotsYZO[nrSp][7];
-		//~ printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",ys,zs,Omega,spotsYZO[nrSp][0],spotsYZO[nrSp][1],spotsYZO[nrSp][2],spotsYZO[nrSp][3],spotsYZO[nrSp][4],spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][7]);
+		printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",ys,zs,Omega,spotsYZO[nrSp][0],spotsYZO[nrSp][1],spotsYZO[nrSp][2],spotsYZO[nrSp][3],spotsYZO[nrSp][4],spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][7]);
 	}
 	double **TheorSpotsYZWE;TheorSpotsYZWE=allocMatrix(nTspots,9);
 	for (i=0;i<nTspots;i++){for (j=0;j<9;j++){TheorSpotsYZWE[i][j] = TheorSpots[i][j];}}
