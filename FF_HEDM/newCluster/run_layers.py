@@ -34,9 +34,9 @@ for line in paramContents:
 	if line.startswith('SeedFolder'):
 		topdir = line.split()[1]
 	if line.startswith('StartNr'):
-		startNr = line.split()[1]
+		startNr = int(line.split()[1])
 	if line.startswith('EndNr'):
-		endNr = line.split()[1]
+		endNr = int(line.split()[1])
 
 nFrames = endNr - startNr + 1
 # We need to add Folder, StartFileNr and LayerNr to the parameter file
