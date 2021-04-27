@@ -12,8 +12,8 @@ import shutil
 warnings.filterwarnings('ignore')
 parser = argparse.ArgumentParser(description='''MIDAS_FF, contact hsharma@anl.gov Parameter file must be in the same folder as the desired output folder(SeedFolder)''', formatter_class=RawTextHelpFormatter)
 parser.add_argument('-nCPUs',    type=int, required=True, help='Number of CPUs to use')
-parser.add_argument('-startLayerNr',type=int,required=True,help='Start Layer Number'
-parser.add_argument('-endLayerNr',type=int,required=True,help='End Layer Number'
+parser.add_argument('-startLayerNr',type=int,required=True,help='Start Layer Number')
+parser.add_argument('-endLayerNr',type=int,required=True,help='End Layer Number')
 parser.add_argument('-paramFile', type=str, required=True, help='ParameterFileName')
 args, unparsed = parser.parse_known_args()
 paramFN = args.paramFile
