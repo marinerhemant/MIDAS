@@ -70,6 +70,7 @@ for layerNr in range(startLayerNr,endLayerNr+1):
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinData"),shell=True)
 	nSpotsToIndex = len(open('SpotsToIndex.csv').readlines())
 	shutil.copy2(thisParamFN,innerFolder)
+	shutil.copy2(thisDir+'/hkls.csv',innerFolder)
 	Path(innerFolder+'Output').mkdir(parents=True,exist_ok=True)
 	Path(innerFolder+'Results').mkdir(parents=True,exist_ok=True)
 	# Next 2 commands on multiple nodes
