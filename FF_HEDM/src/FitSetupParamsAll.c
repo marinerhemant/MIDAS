@@ -1034,7 +1034,7 @@ int main(int argc, char *argv[])
 	RowNumbersToKeep = calloc(nIndices,sizeof(*RowNumbersToKeep));
 	int KeepSpot,nSpotIDsToIndex=0,*SpotIDsToIndex;
 	SpotIDsToIndex = malloc(nIndices*sizeof(*SpotIDsToIndex));
-	int UniqueRingNumbers[200], nrUniqueRingNumbers=0,RingNumberThis,RingNumberPresent=0;
+	int UniqueRingNumbers[200], nrUniqueRingNumbers=0,RingNumberThis,RingNumberPresent=0,nRejects = 0;
 	for (i=0;i<nIndices;i++){
 		if (((EtaCorrWedge[i] > (-180+MinEta)) && (EtaCorrWedge[i] < -MinEta))|| ((EtaCorrWedge[i] > MinEta) && (EtaCorrWedge[i] < (180-MinEta)))){
 			KeepSpot = 0;
@@ -1061,10 +1061,12 @@ int main(int argc, char *argv[])
 					UniqueRingNumbers[nrUniqueRingNumbers] = RingNumberThis;
 					nrUniqueRingNumbers++;
 				}
+			} else{
+				nRejects++;
 			}
 		}
 	}
-	printf("Spots to keep: %d, SpotIDsToIndex: %d\n",NumberSpotsToKeep,nSpotIDsToIndex);
+	printf("nRejects: %d, Spots to keep: %d, SpotIDsToIndex: %d\n",nRejects,NumberSpotsToKeep,nSpotIDsToIndex);
 	FILE *IndexAll, *IndexAllNoHeader, *ExtraInfo, *IDs, *PF;
 	char fnIndexAll[2048],fnIndexAllNoHeader[2048],fnExtraInfo[2048],fnSpIds[1024],parfn[1024];
 	sprintf(parfn,"%s/paramstest.txt",folder);
