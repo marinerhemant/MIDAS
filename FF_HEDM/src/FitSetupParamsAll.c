@@ -1005,7 +1005,9 @@ int main(int argc, char *argv[])
 		printf("Number of function calls: %d\n",NrCalls);
 		printf("LsdFit:\t\t%0.12f\nYBCFit:\t\t%0.12f\nZBCFit:\t\t%0.12f\ntyFit:\t\t%0.12f\ntzFit:\t\t%0.12f\nMeanStrain:\t%0.12lf\n",
 			LsdFit,ybcFit,zbcFit,ty,tz,MeanDiff);
-	} else {printf("Fitting not used. Using intial values for final results.\n");LsdFit = Lsd;ty = tyIn;tz = tzIn;ybcFit = ybc;zbcFit = zbc;}
+	} else {
+		printf("Fitting not used. Using intial values for final results.\n");LsdFit = Lsd;ty = tyIn;tz = tzIn;ybcFit = ybc;zbcFit = zbc;
+	}
 	end = clock();
     diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
     printf("Time elapsed: %f s.\n",diftotal);
@@ -1064,6 +1066,8 @@ int main(int argc, char *argv[])
 			} else{
 				nRejects++;
 			}
+		} else {
+			nRejects++;
 		}
 	}
 	printf("nRejects: %d, nIndices: %d, Spots to keep: %d, SpotIDsToIndex: %d\n",nRejects,nIndices,NumberSpotsToKeep,nSpotIDsToIndex);
