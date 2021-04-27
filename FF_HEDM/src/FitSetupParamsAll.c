@@ -844,8 +844,8 @@ int main(int argc, char *argv[])
 	}
 	FILE *fp;
 	//sprintf(FileName,"%s/%s",folder,fn);
-	sprintf(folder,"%s/PeakSearch/%s/",Folder,FileStem);
-	sprintf(FileName,"%s/PeakSearch/%s/Radius_StartNr_%d_EndNr_%d.csv",Folder,FileStem,StartNr,EndNr);
+	sprintf(folder,"%s/",Folder);
+	sprintf(FileName,"%s/Radius_StartNr_%d_EndNr_%d.csv",Folder,StartNr,EndNr);
 	char line[5024];
 	char *hklfn = "hkls.csv";
 	FILE *hklf = fopen(hklfn,"r");
@@ -1032,10 +1032,8 @@ int main(int argc, char *argv[])
 	}
 	//Useful arrays till now: SpotsInfo,YCorrected,ZCorrected,YCorrWedge,ZCorrWedge,OmegaCorrWedge,EtaCorrWedge
 	int NumberSpotsToKeep=0;
-	int *RowNumbersToKeep;
 	int *goodRows;
 	goodRows = calloc(nIndices,sizeof(*goodRows));
-	RowNumbersToKeep = calloc(nIndices,sizeof(*RowNumbersToKeep));
 	int KeepSpot,nSpotIDsToIndex=0,*SpotIDsToIndex;
 	SpotIDsToIndex = malloc(nIndices*sizeof(*SpotIDsToIndex));
 	int UniqueRingNumbers[200], nrUniqueRingNumbers=0,RingNumberThis,RingNumberPresent=0,nRejects = 0;
@@ -1048,7 +1046,6 @@ int main(int argc, char *argv[])
 			}
 			if (KeepSpot == 1){
 				goodRows[i] = 1;
-				RowNumbersToKeep[NumberSpotsToKeep] = i;
 				NumberSpotsToKeep++;
 				RingNumberThis = (int)(SpotsInfo[i][4]);
 				RingNumberPresent = 0;
@@ -1170,7 +1167,6 @@ int main(int argc, char *argv[])
 	free(OmegaCorrWedge);
 	free(EtaCorrWedge);
 	free(TthetaCorrWedge);
-	free(RowNumbersToKeep);
 	free(SpotIDsToIndex);
 	end = clock();
     diftotal = ((double)(end-start))/CLOCKS_PER_SEC;

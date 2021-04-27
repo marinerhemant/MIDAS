@@ -226,7 +226,7 @@ int main(int argc, char *argv[]){
 	sprintf(FileStem,"%s_%d",fs,LayerNr);
 	fclose(fileParam);
 	char InputFile[2048];
-    sprintf(InputFile,"%s/PeakSearch/%s/Result_StartNr_%d_EndNr_%d.csv",Folder,FileStem,StartNr,EndNr);
+    sprintf(InputFile,"%s/Result_StartNr_%d_EndNr_%d.csv",Folder,StartNr,EndNr);
 	FILE *Infile;
 	Infile = fopen(InputFile,"r");
     if (Infile == NULL){
@@ -265,7 +265,7 @@ int main(int argc, char *argv[]){
 					" IMax MinOme(degrees) MaxOme(degress) Radius(px) Theta(degrees) Eta(degrees) "
 					" DeltaOmega NImgs RingNr GrainVolume GrainRadius PowderIntensity SigmaR SigmaEta NrPx NrPxTot\n";
 	char OutFile[2048];
-	sprintf(OutFile,"%s/PeakSearch/%s/Radius_StartNr_%d_EndNr_%d.csv",Folder,FileStem,StartNr,EndNr);
+	sprintf(OutFile,"%s/Radius_StartNr_%d_EndNr_%d.csv",Folder,StartNr,EndNr);
 	FILE *outfile;
 	outfile = fopen(OutFile,"w");
 	fprintf(outfile,"%s",header);
