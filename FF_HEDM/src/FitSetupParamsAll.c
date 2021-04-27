@@ -1033,6 +1033,8 @@ int main(int argc, char *argv[])
 	//Useful arrays till now: SpotsInfo,YCorrected,ZCorrected,YCorrWedge,ZCorrWedge,OmegaCorrWedge,EtaCorrWedge
 	int NumberSpotsToKeep=0;
 	int *RowNumbersToKeep;
+	int *goodRows;
+	goodRows = calloc(nIndices,sizeof(*goodRows));
 	RowNumbersToKeep = calloc(nIndices,sizeof(*RowNumbersToKeep));
 	int KeepSpot,nSpotIDsToIndex=0,*SpotIDsToIndex;
 	SpotIDsToIndex = malloc(nIndices*sizeof(*SpotIDsToIndex));
@@ -1041,11 +1043,11 @@ int main(int argc, char *argv[])
 		if (((EtaCorrWedge[i] > (-180+MinEta)) && (EtaCorrWedge[i] < -MinEta))|| ((EtaCorrWedge[i] > MinEta) && (EtaCorrWedge[i] < (180-MinEta)))){
 			KeepSpot = 0;
 			for (j=0;j<nOmeRanges;j++){
-				//~ printf("%lf %lf %lf\n",OmegaRanges[j][1],OmegaCorrWedge[i],OmegaRanges[j][0]);
 				if ((OmegaCorrWedge[i]>=OmegaRanges[j][0])&&(OmegaCorrWedge[i]<=OmegaRanges[j][1])&&(YCorrWedge[i]>BoxSizes[j][0])
 				  &&(YCorrWedge[i]<BoxSizes[j][1])&&(ZCorrWedge[i]>BoxSizes[j][2])&&(ZCorrWedge[i]<BoxSizes[j][3])){KeepSpot=1;break;}
 			}
 			if (KeepSpot == 1){
+				goodRows[i] = 1;
 				RowNumbersToKeep[NumberSpotsToKeep] = i;
 				NumberSpotsToKeep++;
 				RingNumberThis = (int)(SpotsInfo[i][4]);
@@ -1053,8 +1055,6 @@ int main(int argc, char *argv[])
 				if (RingNumberThis == RingToIndex && OmegaCorrWedge[i]>=MinOmeSpotIDsToIndex && OmegaCorrWedge[i]<=MaxOmeSpotIDsToIndex){
 					SpotIDsToIndex[nSpotIDsToIndex] = SpotsInfo[i][0];
 					nSpotIDsToIndex++;
-				//~ }else {
-					//~ printf("%d %d %lf %lf %lf\n",RingNumberThis,RingToIndex,OmegaCorrWedge[i],MinOmeSpotIDsToIndex,MaxOmeSpotIDsToIndex);
 				}
 				for (j=0;j<nrUniqueRingNumbers;j++){
 					if (RingNumberThis == UniqueRingNumbers[j]){RingNumberPresent = 1; break;}
@@ -1081,55 +1081,31 @@ int main(int argc, char *argv[])
 	sprintf(fnExtraInfo,"%s/InputAllExtraInfoFittingAll.csv",folder);
 	sprintf(fnSpIds,"%s/%s",folder,idfn);
 	IDs = fopen(fnSpIds,"w");
-	//~ int *SpotsCopy;
-	//~ SpotsCopy = malloc(nSpotIDsToIndex*sizeof(*SpotsCopy));
 	for (i=0;i<nSpotIDsToIndex;i++){
-		//~ SpotsCopy[i] = SpotIDsToIndex[i];
 		fprintf(IDs,"%d\n",SpotIDsToIndex[i]);
-		//printf("%d %d\n",SpotsCopy[i],SpotIDsToIndex[i]);
 	}
-	//~ fwrite(SpotsCopy,nSpotIDsToIndex*sizeof(int),1,IDs);
 	fclose(IDs);
 	IndexAll = fopen(fnIndexAll,"w");
 	IndexAllNoHeader = fopen(fnIndexAllNoHeader,"w");
 	ExtraInfo = fopen(fnExtraInfo,"w");
 	fprintf(IndexAll,"%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta\n");
 	fprintf(ExtraInfo,"%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)\n");
-	double AverageRingRadius[nrUniqueRingNumbers],RingRadiusThis;
-	int NrSpotsPerRing[nrUniqueRingNumbers];
-	for (i=0;i<nrUniqueRingNumbers;i++){AverageRingRadius[i]=0;NrSpotsPerRing[i]=0;};
-	for (i=0;i<NumberSpotsToKeep;i++){
-		RingNumberThis = (int)(SpotsInfo[RowNumbersToKeep[i]][4]);
-		for (j=0;j<nrUniqueRingNumbers;j++){
-			if (RingNumberThis == UniqueRingNumbers[j]){
-				//RingRadiusThis = sqrt((YCorrWedge[RowNumbersToKeep[i]]*YCorrWedge[RowNumbersToKeep[i]])+(ZCorrWedge[RowNumbersToKeep[i]]*ZCorrWedge[RowNumbersToKeep[i]]));
-				// Get the ideal ring nr
-				for (k=0;k<n_hkls;k++){
-					if (RingNumberThis == PlaneNumbers[k]){
-						rrdideal = RingRadsIdeal[k];
-					}
-				}
-				//AverageRingRadius[j] += RingRadiusThis;
-				AverageRingRadius[j] += rrdideal;
-				NrSpotsPerRing[j]++;
-			}
+	for (i=0;i<nIndices;i++){
+		if (goodRows[i] == 1){
+			fprintf(IndexAll,"%12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f\n",YCorrWedge[i],ZCorrWedge[i],OmegaCorrWedge[i],
+				SpotsInfo[i][5],SpotsInfo[i][0],SpotsInfo[i][4],EtaCorrWedge[i],TthetaCorrWedge[i]);
+			fprintf(IndexAllNoHeader,"%12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f\n",YCorrWedge[i],ZCorrWedge[i],OmegaCorrWedge[i],
+				SpotsInfo[i][5],SpotsInfo[i][0],SpotsInfo[i][4],EtaCorrWedge[i],TthetaCorrWedge[i]);
+			fprintf(ExtraInfo,"%12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f\n",YCorrWedge[i],
+				ZCorrWedge[i],OmegaCorrWedge[i],SpotsInfo[i][5],SpotsInfo[i][0],SpotsInfo[i][4],EtaCorrWedge[i],TthetaCorrWedge[i],SpotsInfo[i][1],
+				YCorrected[i],ZCorrected[i],SpotsInfo[i][2],SpotsInfo[i][3],SpotsInfo[i][1]);
+		} else{
+			fprintf(IndexAll,"0.000 0.000 0.000 0.0000 %12.5f 0.0000 0.0000 0.0000\n",SpotsInfo[i][0]);
+			fprintf(IndexAllNoHeader,"0.000 0.000 0.000 0.0000 %12.5f 0.0000 0.0000 0.0000\n",SpotsInfo[i][0]);
+			fprintf(ExtraInfo,"0.000 0.000 0.000 0.0000 %12.5f 0.0000 0.0000 0.0000 0.000 0.000 0.000 0.0000 0.000 0.000 0.000 0.0000 0.0000\n",SpotsInfo[i][0]);
 		}
-		fprintf(IndexAll,"%12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f\n",YCorrWedge[RowNumbersToKeep[i]],
-			ZCorrWedge[RowNumbersToKeep[i]],OmegaCorrWedge[RowNumbersToKeep[i]],SpotsInfo[RowNumbersToKeep[i]][5],
-			SpotsInfo[RowNumbersToKeep[i]][0],SpotsInfo[RowNumbersToKeep[i]][4],EtaCorrWedge[RowNumbersToKeep[i]],
-			TthetaCorrWedge[RowNumbersToKeep[i]]);
-		fprintf(IndexAllNoHeader,"%12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f\n",YCorrWedge[RowNumbersToKeep[i]],
-			ZCorrWedge[RowNumbersToKeep[i]],OmegaCorrWedge[RowNumbersToKeep[i]],SpotsInfo[RowNumbersToKeep[i]][5],
-			SpotsInfo[RowNumbersToKeep[i]][0],SpotsInfo[RowNumbersToKeep[i]][4],EtaCorrWedge[RowNumbersToKeep[i]],
-			TthetaCorrWedge[RowNumbersToKeep[i]]);
-		fprintf(ExtraInfo,"%12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f\n",YCorrWedge[RowNumbersToKeep[i]],
-			ZCorrWedge[RowNumbersToKeep[i]],OmegaCorrWedge[RowNumbersToKeep[i]],SpotsInfo[RowNumbersToKeep[i]][5],
-			SpotsInfo[RowNumbersToKeep[i]][0],SpotsInfo[RowNumbersToKeep[i]][4],EtaCorrWedge[RowNumbersToKeep[i]],
-			TthetaCorrWedge[RowNumbersToKeep[i]],SpotsInfo[RowNumbersToKeep[i]][1],YCorrected[RowNumbersToKeep[i]],
-			ZCorrected[RowNumbersToKeep[i]],SpotsInfo[RowNumbersToKeep[i]][2],SpotsInfo[RowNumbersToKeep[i]][3],
-			SpotsInfo[RowNumbersToKeep[i]][1]);
 	}
-	for (i=0;i<nrUniqueRingNumbers;i++)AverageRingRadius[i]/=NrSpotsPerRing[i];
+
 	fclose(IndexAll);
 	fclose(IndexAllNoHeader);
 	fclose(ExtraInfo);
@@ -1153,7 +1129,6 @@ int main(int argc, char *argv[])
 		fprintf(PF,"RingNumbers %d;\n",UniqueRingNumbers[i]);
 	}
 	for (i=0;i<nrUniqueRingNumbers;i++){
-		//fprintf(PF,"RingRadii %f;\n",AverageRingRadius[i]); // Might be a problem for deformed materials?
 		fprintf(PF,"RingRadii %f;\n",IdealRs[i]);
 	}
 	fprintf(PF,"UseFriedelPairs %d;\n",UseFriedelPairs);
