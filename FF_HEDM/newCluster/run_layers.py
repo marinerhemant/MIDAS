@@ -17,9 +17,9 @@ parser.add_argument('-endLayerNr',type=int,required=True,help='End Layer Number'
 parser.add_argument('-paramFile', type=str, required=True, help='ParameterFileName')
 args, unparsed = parser.parse_known_args()
 paramFN = args.paramFile
-startLayerNr = args.startLayerNr
-endLayerNr = args.endLayerNr
-numProcs = args.nCPUs
+startLayerNr = int(args.startLayerNr)
+endLayerNr = int(args.endLayerNr)
+numProcs = int(args.nCPUs)
 
 baseNameParamFN = paramFN.split('/')[-1]
 homedir = os.path.expanduser('~')
