@@ -825,6 +825,7 @@ void main(int argc, char *argv[]){
 		//~ str = "IsEDF";
 		//~ LowNr = strncmp()
 	}
+	printf("%s\n",Folder);
 	Width = Width/px;
 	int a,b;
 	for (a=0;a<NrTransOpt;a++){
