@@ -55,7 +55,7 @@ for layerNr in range(startLayerNr,endLayerNr+1):
 	thisPF.write('Folder '+thisDir+'\n')
 	thisPF.write('LayerNr '+str(layerNr)+'\n')
 	thisPF.write('StartFileNr '+str(thisStartNr)+'\n')
-	innerFolder = thisDir + 'PeakSearch/'+fstem+' '+str(layerNr)+'/'
+	innerFolder = thisDir + 'PeakSearch/'+fStem+' '+str(layerNr)+'/'
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" "+baseNameParamFN,shell=True)
 	## Next Command on multiple nodes
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMP")+' '+baseNameParamFN+' 0 1 '+str(nFrames)+' '+str(numProcs),shell=True)
