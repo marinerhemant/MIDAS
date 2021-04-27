@@ -568,8 +568,8 @@ void main(int argc, char *argv[]){
 	long long int BadPxIntensity = 0;
 	int minNrPx=1, maxNrPx=10000, makeMap = 0, maxNPeaks=400;
 	while (fgets(aline,1000,fileParam)!=NULL){
-		//~ printf("%s",aline);
-		//~ fflush(stdout);
+		printf("%s",aline);
+		fflush(stdout);
 		str = "MaxNPeaks ";
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr==0){
