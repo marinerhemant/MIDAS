@@ -178,7 +178,7 @@ int main(int arc, char* argv[]){
 		for (j=0;j<14;j++){
 			ExtraMat[i*14+j] = AllSpots[i][j];
 		}
-		printf("%d %lf\n",i,AllSpots[i][4]);
+		//~ printf("%d %lf\n",i,AllSpots[i][4]);
 	}
 	char *SpotsFN = "Spots.bin";
 	char *ExtraFN = "ExtraInfo.bin";
