@@ -1676,7 +1676,7 @@ int main(int argc, char *argv[])
 			spotsYZO[i][1] = AllSpots[spotPosAllSpots*14+1];
 			spotsYZO[i][2] = AllSpots[spotPosAllSpots*14+2];
 			spotsYZO[i][3] = AllSpots[spotPosAllSpots*14+4];
-			printf("%lf %lf\n",spotsYZO[i][3],spotIDS[i]);
+			printf("%lf %d\n",spotsYZO[i][3],spotIDS[i]);
 			spotsYZO[i][4] = AllSpots[spotPosAllSpots*14+8];
 			spotsYZO[i][5] = AllSpots[spotPosAllSpots*14+9];
 			spotsYZO[i][6] = AllSpots[spotPosAllSpots*14+10];
