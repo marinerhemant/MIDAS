@@ -1819,7 +1819,7 @@ main(int argc, char *argv[])
 	char *ParamFN;
 	char fn[1024];
 	if (argc != 6) {
-		printf("Supply a parameter file, blockNr, nBlocks, nSpotsToIndex, numProcs as arguments: ie %s param.txt nBlocks blockNr nSpotsToIndex numProcs\n\n", argv[0]);
+		printf("Supply a parameter file, blockNr, nBlocks, nSpotsToIndex, numProcs as arguments: ie %s param.txt blockNr nBlocks nSpotsToIndex numProcs\n\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
 	ParamFN = argv[1];
