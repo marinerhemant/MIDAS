@@ -1669,13 +1669,14 @@ int main(int argc, char *argv[])
 		// Idea: spotID always starts from 1 and is increasing in number, so
 		// spotIDS[i] should correspond to AllSpots[(spotIDS[i]-1)*14+...], this should
 		// reduce execution time.
-		int spotPosAllSpots;
+		size_t spotPosAllSpots;
 		for (i=0;i<nSpotsBest;i++){
 			spotPosAllSpots = (int)spotIDS[i]-1;
 			spotsYZO[i][0] = AllSpots[spotPosAllSpots*14+0];
 			spotsYZO[i][1] = AllSpots[spotPosAllSpots*14+1];
 			spotsYZO[i][2] = AllSpots[spotPosAllSpots*14+2];
 			spotsYZO[i][3] = AllSpots[spotPosAllSpots*14+4];
+			printf("%lf %lf\n",spotsYZO[i][3],spotIDS[i]);
 			spotsYZO[i][4] = AllSpots[spotPosAllSpots*14+8];
 			spotsYZO[i][5] = AllSpots[spotPosAllSpots*14+9];
 			spotsYZO[i][6] = AllSpots[spotPosAllSpots*14+10];
