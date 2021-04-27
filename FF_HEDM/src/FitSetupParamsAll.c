@@ -475,7 +475,7 @@ static inline void SortSpots(int nIndices, double **SpotsInfo){
 
 int main(int argc, char *argv[])
 {
-	if (argc != 6) {
+	if (argc != 2) {
 		printf("Usage: %s Params.txt\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
