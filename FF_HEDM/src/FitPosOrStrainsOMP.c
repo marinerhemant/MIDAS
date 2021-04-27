@@ -1249,7 +1249,7 @@ long long int ReadBigDet(){
 int main(int argc, char *argv[])
 {
 	if (argc != 6){
-		printf("Supply a parameter file, nBlocks, blockNr, nSpotsToIndex, numProcs as arguments: ie %s param.txt nBlocks blockNr nSpotsToIndex numProcs\n\n", argv[0]);
+		printf("Supply a parameter file, blockNr, nBlocks, nSpotsToIndex, numProcs as arguments: ie %s param.txt nBlocks blockNr nSpotsToIndex numProcs\n\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
 	double start_time = omp_get_wtime();
@@ -1451,8 +1451,8 @@ int main(int argc, char *argv[])
 	//////////////////////////// OPENMP
 	int *SptIDs;
 	int nSptIDs;
-	int nBlocks = atoi(argv[2]);
-	int blockNr = atoi(argv[3]);
+	int nBlocks = atoi(argv[3]);
+	int blockNr = atoi(argv[2]);
 	int nSpotsToIndex = atoi(argv[4]);
 	int numProcs = atoi(argv[5]);
 	int startRowNr;

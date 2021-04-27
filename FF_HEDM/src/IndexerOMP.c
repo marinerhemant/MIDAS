@@ -3,6 +3,10 @@
 // See LICENSE file.
 //
 
+// 04/26/2021
+// Hemant Sharma
+// OpenMP version of IndexerLinuxArgsShm code.
+
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
@@ -322,7 +326,9 @@ void CalcOmega(RealType x,RealType y,RealType z,RealType theta,RealType omegas[4
 	}
 }
 
-void CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3],RealType LatticeConstant,RealType Wavelength ,RealType distance,RealType RingRadii[],RealType OmegaRange[][2],RealType BoxSizes[][4],int NOmegaRanges,RealType ExcludePoleAngle,RealType **spots,int *nspots)
+void CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3],RealType LatticeConstant,RealType Wavelength,
+	RealType distance,RealType RingRadii[],RealType OmegaRange[][2],RealType BoxSizes[][4],int NOmegaRanges,
+	RealType ExcludePoleAngle,RealType **spots,int *nspots)
 {
 	int i, OmegaRangeNo;
 	RealType DSpacings[MAX_N_HKLS];
@@ -403,7 +409,8 @@ void CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3],RealType LatticeConstant
 	*nspots = spotnr;
 }
 
-void CompareSpots(RealType **TheorSpots,int   nTheorSpots,RealType *ObsSpots,RealType RefRad,RealType MarginRad,RealType MarginRadial,RealType etamargins[],RealType omemargins[],int   *nMatch,RealType **GrainSpots)
+void CompareSpots(RealType **TheorSpots,int   nTheorSpots,RealType *ObsSpots,RealType RefRad,RealType MarginRad,
+	RealType MarginRadial,RealType etamargins[],RealType omemargins[],int   *nMatch,RealType **GrainSpots)
 {
 	int nMatched = 0;
 	int nNonMatched = 0;
@@ -607,7 +614,8 @@ int GenerateCandidateOrientationsF(double hkl[3],RealType hklnormal[3],RealType 
 	return 0;
 }
 
-void displacement_spot_needed_COM(RealType a,RealType b,RealType c,RealType xi,RealType yi,RealType zi,RealType omega,RealType *Displ_y,RealType *Displ_z)
+void displacement_spot_needed_COM(RealType a,RealType b,RealType c,RealType xi,RealType yi,RealType zi,RealType omega,
+	RealType *Displ_y,RealType *Displ_z)
 {
 	RealType lenInv = 1/sqrt(xi*xi + yi*yi + zi*zi);
 	xi = xi*lenInv;
@@ -644,7 +652,8 @@ void spot_to_gv(RealType xi,RealType yi,RealType zi,RealType Omega,RealType *g1,
 	*g3 = zn;
 }
 
-void spot_to_gv_pos(RealType xi,RealType yi,RealType zi,RealType Omega,RealType cx,RealType cy,RealType cz,RealType *g1,RealType *g2,RealType *g3)
+void spot_to_gv_pos(RealType xi,RealType yi,RealType zi,RealType Omega,RealType cx,RealType cy,RealType cz,RealType *g1,
+	RealType *g2,RealType *g3)
 {
 	RealType v[3], vr[3];
 	v[0] = cx;
@@ -658,7 +667,8 @@ void spot_to_gv_pos(RealType xi,RealType yi,RealType zi,RealType Omega,RealType 
 }
 
 void
-FriedelEtaCalculation(RealType ys,RealType zs,RealType ttheta,RealType eta,RealType Ring_rad,RealType Rsample,RealType Hbeam,RealType *EtaMinFr,RealType *EtaMaxFr)
+FriedelEtaCalculation(RealType ys,RealType zs,RealType ttheta,RealType eta,RealType Ring_rad,RealType Rsample,
+	RealType Hbeam,RealType *EtaMinFr,RealType *EtaMaxFr)
 {
 	RealType quadr_coeff2 = 0;
 	RealType eta_Hbeam, quadr_coeff, coeff_y0 = 0, coeff_z0 = 0, y0_max_z0, y0_min_z0, y0_max = 0, y0_min = 0, z0_min = 0, z0_max = 0;
@@ -750,7 +760,8 @@ FriedelEtaCalculation(RealType ys,RealType zs,RealType ttheta,RealType eta,RealT
 	*EtaMaxFr = max(Eta1,Eta2);
 }
 
-void GenerateIdealSpots(RealType ys,RealType zs,RealType ttheta,RealType eta,RealType Ring_rad,RealType Rsample,RealType Hbeam,RealType step_size,RealType y0_vector[],RealType z0_vector[],int * NoOfSteps)
+void GenerateIdealSpots(RealType ys,RealType zs,RealType ttheta,RealType eta,RealType Ring_rad,RealType Rsample,
+	RealType Hbeam,RealType step_size,RealType y0_vector[],RealType z0_vector[],int * NoOfSteps)
 {
 	int quadr_coeff2 = 0;
 	RealType eta_Hbeam, quadr_coeff, coeff_y0 = 0, coeff_z0 = 0, y0_max_z0, y0_min_z0, y0_max = 0, y0_min = 0, z0_min = 0, z0_max = 0;
@@ -880,7 +891,8 @@ void calc_n_max_min(RealType xi,RealType yi,RealType ys,RealType y0,RealType R_s
 	*n_min = - *n_max;
 }
 
-void spot_to_unrotated_coordinates(RealType xi,RealType yi,RealType zi,RealType ys,RealType zs,RealType y0,RealType z0,RealType step_size_in_x,int n,RealType omega,RealType *a,RealType *b,RealType *c)
+void spot_to_unrotated_coordinates(RealType xi,RealType yi,RealType zi,RealType ys,RealType zs,RealType y0,
+	RealType z0,RealType step_size_in_x,int n,RealType omega,RealType *a,RealType *b,RealType *c)
 {
 	RealType lambda = (step_size_in_x)*(n/xi);
 	RealType x1 = lambda*xi;
@@ -893,7 +905,9 @@ void spot_to_unrotated_coordinates(RealType xi,RealType yi,RealType zi,RealType 
 	*c = z1;
 }
 
-void GenerateIdealSpotsFriedel(RealType ys,RealType zs,RealType ttheta,RealType eta,RealType omega,int ringno,RealType Ring_rad,RealType Rsample,RealType Hbeam,RealType OmeTol,RealType RadiusTol,RealType y0_vector[],RealType z0_vector[],int * NoOfSteps)
+void GenerateIdealSpotsFriedel(RealType ys,RealType zs,RealType ttheta,RealType eta,RealType omega,int ringno,
+	RealType Ring_rad,RealType Rsample,RealType Hbeam,RealType OmeTol,RealType RadiusTol,RealType y0_vector[],
+	RealType z0_vector[],int * NoOfSteps)
 {
 	RealType EtaF;
 	RealType OmeF;
@@ -960,7 +974,9 @@ void MakeUnitLength(RealType x,RealType y,RealType z,RealType *xu,RealType *yu,R
 }
 
 void
-GenerateIdealSpotsFriedelMixed(RealType ys,RealType zs,RealType Ttheta,RealType Eta,RealType Omega,int RingNr,RealType Ring_rad,RealType Lsd,RealType Rsample,RealType Hbeam,RealType StepSizePos,RealType OmeTol,RealType RadialTol,RealType EtaTol,RealType spots_y[],RealType spots_z[],int * NoOfSteps)
+GenerateIdealSpotsFriedelMixed(RealType ys,RealType zs,RealType Ttheta,RealType Eta,RealType Omega,int RingNr,
+	RealType Ring_rad,RealType Lsd,RealType Rsample,RealType Hbeam,RealType StepSizePos,RealType OmeTol,RealType RadialTol,
+	RealType EtaTol,RealType spots_y[],RealType spots_z[],int * NoOfSteps)
 {
 	const int MinEtaReject = 10;
 	RealType omegasFP[4];
@@ -984,7 +1000,6 @@ GenerateIdealSpotsFriedelMixed(RealType ys,RealType zs,RealType Ttheta,RealType 
 	*NoOfSteps = 0;
 	nFPCandidates = 0;
 	if (fabs(sin(Eta * deg2rad)) < SinMinEtaReject) {
-		//~ printf("The spot is too close to the poles. This technique to find mixed friedel pair would not work satisfactorily. So don't use mixed friedel pair.\n");
 		return;
 	}
 	GenerateIdealSpots(ys, zs, Ttheta, Eta, Ring_rad, Rsample, Hbeam, StepSizePos, y0_vector, z0_vector, &NoOfSpots);
@@ -1171,7 +1186,8 @@ int ReadParams(char FileName[],struct TParams * Params)
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
 			sscanf(line, "%s %lf", dummy, &(Params->LatticeConstant) );
-			sscanf(line, "%s %lf %lf %lf %lf %lf %lf", dummy, &ABCABG[0], &ABCABG[1], &ABCABG[2], &ABCABG[3], &ABCABG[4], &ABCABG[5]);
+			sscanf(line, "%s %lf %lf %lf %lf %lf %lf", dummy, &ABCABG[0], &ABCABG[1], &ABCABG[2], &ABCABG[3], &ABCABG[4],
+															  &ABCABG[5]);
 			continue;
 		}
 		str = "Wavelength ";
@@ -1565,9 +1581,6 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	hkl[0] = RingHKL[ringnr][0];
 	hkl[1] = RingHKL[ringnr][1];
 	hkl[2] = RingHKL[ringnr][2];
-	//~ printf("\n--------------------------------------------------------------------------\n");
-	//~ printf("%8s %10s %9s %9s %9s %9s %9s %7s\n", "SpotID", "SpotRowNo", "ys", "zs", "omega", "eta", "ttheta", "ringno");
-	//~ printf("%8.0f %10d %9.2f %9.2f %9.3f %9.3f %9.3f %7d\n\n", SpotID, SpotRowNo, ys, zs, omega, eta, ttheta, ringnr);
 	long long int SpotID2 = (int) SpotIDs;
 	nPlaneNormals = 0;
 	usingFriedelPair = 0;
@@ -1578,20 +1591,18 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		y0_vector, z0_vector, &nPlaneNormals);
 		if (nPlaneNormals == 0 ) {
 			GenerateIdealSpotsFriedelMixed(ys, zs, RingTtheta[ringnr], eta, omega, ringnr,
-			Params.RingRadii[ringnr], Params.Distance, Params.Rsample, Params.Hbeam, Params.StepsizePos,
-			Params.MarginOme, Params.MarginRadial, Params.MarginEta,
-			y0_vector, z0_vector, &nPlaneNormals);
+				Params.RingRadii[ringnr], Params.Distance, Params.Rsample, Params.Hbeam, Params.StepsizePos,
+				Params.MarginOme, Params.MarginRadial, Params.MarginEta,
+				y0_vector, z0_vector, &nPlaneNormals);
 		}
 	}
 	if ( nPlaneNormals == 0 ) {
 		if (usingFriedelPair == 1){
-			//~ printf("No Friedel pair found, will try everything.\n");
 		}
 		usingFriedelPair = 0;
-		//~ printf("Trying all plane normals.\n");
-		GenerateIdealSpots(ys, zs, RingTtheta[ringnr], eta, Params.RingRadii[ringnr], Params.Rsample, Params.Hbeam, Params.StepsizePos, y0_vector, z0_vector, &nPlaneNormals);
+		GenerateIdealSpots(ys, zs, RingTtheta[ringnr], eta, Params.RingRadii[ringnr], Params.Rsample, Params.Hbeam,
+			Params.StepsizePos, y0_vector, z0_vector, &nPlaneNormals);
 	}
-	//~ printf("No of Plane normals: %d\n\n", nPlaneNormals);
 	bestnMatchesIsp = -1;
 	bestnTspotsIsp = 0;
 	isp = 0;
@@ -1611,7 +1622,8 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		orDelta = 1;
 		while (or < nOrient) {
 			int t;
-			CalcDiffrSpots_Furnace(OrMat[or], Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii, Params.OmegaRanges, Params.BoxSizes, Params.NoOfOmegaRanges, Params.ExcludePoleAngle, TheorSpots, &nTspots);
+			CalcDiffrSpots_Furnace(OrMat[or], Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii,
+				Params.OmegaRanges, Params.BoxSizes, Params.NoOfOmegaRanges, Params.ExcludePoleAngle, TheorSpots, &nTspots);
 			MinMatchesToAccept = nTspots * Params.MinMatchesToAcceptFrac;
 			bestnMatchesPos = -1;
 			bestnTspotsPos =  0;
@@ -1630,7 +1642,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 					TheorSpots[sp][11] = TheorSpots[sp][5] +  Displ_z;
 					CalcEtaAngle( TheorSpots[sp][10], TheorSpots[sp][11], &TheorSpots[sp][12] );
 					TheorSpots[sp][13] = sqrt(TheorSpots[sp][10] * TheorSpots[sp][10] + TheorSpots[sp][11] * TheorSpots[sp][11]) -
-					Params.RingRadii[(int)TheorSpots[sp][9]];
+											Params.RingRadii[(int)TheorSpots[sp][9]];
 				}
 				CompareSpots(TheorSpots, nTspots, ObsSpotsLab, RefRad,
 				Params.MarginRad, Params.MarginRadial, etamargins, omemargins,
@@ -1686,12 +1698,10 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 			fracMatches = (RealType) bestnMatchesRot/bestnTspotsRot;
 			if (fracMatches < 0.5) ispDelta = 5 - round(fracMatches * (5-1) / 0.5);
 		}
-		//~ printf("==> planenormal #pns #or #pos #Theor #Matches: %d %d %d %d %d %d\n", isp, nPlaneNormals, nOrient, 2*n_max+1, bestnTspotsRot, bestnMatchesRot);
 		isp = isp + ispDelta;
 	}
 
 	fracMatches = (RealType) bestnMatchesIsp/bestnTspotsIsp;
-	//~ printf("\n==> Best Match: No_of_theoretical_spots No_of_spots_found fraction: %d %d %0.2f\n", bestnTspotsIsp, bestnMatchesIsp, fracMatches );
 	if (fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 || (int)bestnMatchesIsp == -1 || bestMatchFound == 0){
 		return;
 	}
@@ -1700,9 +1710,6 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	BestMatches[SpotIDIdx][2] = bestnTspotsIsp;
 	BestMatches[SpotIDIdx][3] = bestnMatchesIsp;
 	BestMatches[SpotIDIdx][4] = fracMatches;
-	//~ end = clock();
-	//~ dif = ((double)(end-start))/CLOCKS_PER_SEC;
-	//~ printf("Time elapsed [s] [min]: %f %f\n", dif, dif/60);
 	CreateNumberedFilenameW("BestGrain_", (int) SpotID, 9, ".txt", fn);
 	MakeFullFileName(ffn, Params.OutputFolder, fn);
 	CreateNumberedFilenameW("BestPos_", (int) SpotID, 9, ".csv", fn2);
@@ -1807,14 +1814,12 @@ main(int argc, char *argv[])
 {
 	double start_time = omp_get_wtime();
 	printf("\n\n\t\tIndexerOMP v6.0\nContact hsharma@anl.gov in case of questions about the MIDAS project.\n\n");
-	//~ clock_t end, start0;
-	//~ double diftotal;
 	int returncode;
 	struct TParams Params;
 	char *ParamFN;
 	char fn[1024];
 	if (argc != 6) {
-		printf("Supply a parameter file, nBlocks, blockNr, nSpotsToIndex, numProcs as arguments: ie %s param.txt nBlocks blockNr nSpotsToIndex numProcs\n\n", argv[0]);
+		printf("Supply a parameter file, blockNr, nBlocks, nSpotsToIndex, numProcs as arguments: ie %s param.txt nBlocks blockNr nSpotsToIndex numProcs\n\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
 	ParamFN = argv[1];
@@ -1870,11 +1875,10 @@ main(int argc, char *argv[])
 	printf("No of bins for omega : %d\n", n_ome_bins);
 	printf("Total no of bins     : %d\n\n", n_ring_bins * n_eta_bins * n_ome_bins);
 	printf("Finished binning.\n\n");
-	//~ start0 = clock();
 	int *SpotIDs;
 	int nSpotIDs;
-	int nBlocks = atoi(argv[2]);
-	int blockNr = atoi(argv[3]);
+	int nBlocks = atoi(argv[3]);
+	int blockNr = atoi(argv[2]);
 	int nSpotsToIndex = atoi(argv[4]);
 	int numProcs = atoi(argv[5]);
 	int startRowNr;
@@ -1899,7 +1903,6 @@ main(int argc, char *argv[])
 	for (thisRowNr = 0; thisRowNr < nSpotIDs; thisRowNr++){
 		int thisSpotID = SpotIDs[thisRowNr];
 		DoIndexing(thisSpotID,Params);
-		//~ printf("%d %d %d\n",thisSpotID,thisRowNr,nSpotIDs);
 	}
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);
