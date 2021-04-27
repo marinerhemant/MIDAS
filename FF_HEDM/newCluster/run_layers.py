@@ -41,6 +41,7 @@ for line in paramContents:
 nFrames = endNr - startNr + 1
 # We need to add Folder, StartFileNr and LayerNr to the parameter file
 for layerNr in range(startLayerNr,endLayerNr+1):
+	startTime = time.time()
 	thisStartNr = startNrFirstLayer + (layerNr-1)*nrFilesPerSweep
 	thisT = datetime.datetime.now()
 	tod = datetime.date.today()
@@ -77,3 +78,4 @@ for layerNr in range(startLayerNr,endLayerNr+1):
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerOMP")+' paramstest.txt 0 1 '+str(nSpotsToIndex)+' '+str(numProcs),shell=True)
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitPosOrStrainsOMP")+' paramstest.txt 0 1 '+str(nSpotsToIndex)+' '+str(numProcs),shell=True)
 	subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/ProcessGrains') + ' ' + baseNameParamFN,shell=True)
+	print("Time Elapsed: "+str(time.time()-startTime)+" seconds.")
