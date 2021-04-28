@@ -1432,11 +1432,9 @@ int main(int argc, char *argv[])
 	int status;
 	size_t size;
 	size_t size2;
-	printf("%s\n",ResultFolder);
 	char tmpstr[2048];
 	sprintf(tmpstr,"%s",ResultFolder);
 	char filename[2048], *cwd=dirname(tmpstr);
-	printf("%s\n",ResultFolder);
 	sprintf(filename,"%s/ExtraInfo.bin",cwd);
 	int rc;
 	fd = open(filename,O_RDONLY);
@@ -1842,7 +1840,6 @@ int main(int argc, char *argv[])
 		// Start Writing: SpotsCompFN, OutFN, Key, ProcessGrainsFile
 		char KeyFN[1024];
 		sprintf(KeyFN,"%s/Key.bin",ResultFolder);
-		printf("%s\n",KeyFN);
 		int SizeKeyFile 		= 2  * sizeof(int);
 		size_t OffStKeyFile = SizeKeyFile;
 		OffStKeyFile *= rowNr;
