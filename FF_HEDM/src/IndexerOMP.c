@@ -1870,6 +1870,7 @@ main(int argc, char *argv[])
 			}
 		}
 	}
+	return;
 	char *cwd = dirname(Params.OutputFolder);
 	printf("%s\n",cwd);return;
 	printf("No of hkl's: %d\n", n_hkls);
