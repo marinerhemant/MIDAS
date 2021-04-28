@@ -1924,6 +1924,6 @@ main(int argc, char *argv[])
 	}
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);
-	int tc = UnMap(cwd);
+	int tc = UnMap(cwdstr);
 	return(0);
 }
