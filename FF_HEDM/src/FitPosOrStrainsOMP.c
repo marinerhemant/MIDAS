@@ -1432,7 +1432,9 @@ int main(int argc, char *argv[])
 	int status;
 	size_t size;
 	size_t size2;
+	printf("%s\n",ResultFolder);
 	char filename[2048], *cwd=dirname(ResultFolder);
+	printf("%s\n",ResultFolder);
 	sprintf(filename,"%s/ExtraInfo.bin",cwd);
 	int rc;
 	fd = open(filename,O_RDONLY);
