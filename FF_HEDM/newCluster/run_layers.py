@@ -41,6 +41,7 @@ for line in paramContents:
 nFrames = endNr - startNr + 1
 # We need to add Folder, StartFileNr and LayerNr to the parameter file
 for layerNr in range(startLayerNr,endLayerNr+1):
+	# Single node commands
 	startTime = time.time()
 	thisStartNr = startNrFirstLayer + (layerNr-1)*nrFilesPerSweep
 	thisT = datetime.datetime.now()
@@ -58,6 +59,8 @@ for layerNr in range(startLayerNr,endLayerNr+1):
 	thisPF.write('StartFileNr '+str(thisStartNr)+'\n')
 	thisPF.close()
 	Path(thisDir+'/Temp').mkdir(parents=True,exist_ok=True)
+	Path(thisDir+'Output').mkdir(parents=True,exist_ok=True)
+	Path(thisDir+'Results').mkdir(parents=True,exist_ok=True)
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" "+thisParamFN,shell=True)
 	## Next Command on multiple nodes
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMP")+' '+baseNameParamFN+' 0 1 '+str(nFrames)+' '+str(numProcs),shell=True)
@@ -67,8 +70,6 @@ for layerNr in range(startLayerNr,endLayerNr+1):
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetup")+' '+baseNameParamFN,shell=True)
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinData"),shell=True)
 	nSpotsToIndex = len(open('SpotsToIndex.csv').readlines())
-	Path(thisDir+'Output').mkdir(parents=True,exist_ok=True)
-	Path(thisDir+'Results').mkdir(parents=True,exist_ok=True)
 	# Next 2 commands on multiple nodes
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerOMP")+' paramstest.txt 0 1 '+str(nSpotsToIndex)+' '+str(numProcs),shell=True)
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitPosOrStrainsOMP")+' paramstest.txt 0 1 '+str(nSpotsToIndex)+' '+str(numProcs),shell=True)
