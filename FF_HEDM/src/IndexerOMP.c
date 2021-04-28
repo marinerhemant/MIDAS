@@ -23,6 +23,7 @@
 #include <sys/shm.h>
 #include <sys/types.h>
 #include <omp.h>
+#include <libgen.h>
 
 static void
 check (int test, const char * message, ...)
