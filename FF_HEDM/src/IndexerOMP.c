@@ -1152,6 +1152,7 @@ int ReadParams(char FileName[],struct TParams * Params)
 		printf("Cannot open file: %s.\n", FileName);
 		return(1);
 	}
+	totNrPixelsBigDetector = 0;
 	while (fgets(line, MAX_LINE_LENGTH, fp) != NULL) {
 		str = "RingNumbers ";
 		cmpres = strncmp(line, str, strlen(str));
@@ -1168,7 +1169,6 @@ int ReadParams(char FileName[],struct TParams * Params)
 			totNrPixelsBigDetector *= BigDetSize;
 			totNrPixelsBigDetector /= 32;
 			totNrPixelsBigDetector ++;
-			size_t sz = ReadBigDet();
 			continue;
 		}
 		str = "px ";
@@ -1332,6 +1332,10 @@ int ReadParams(char FileName[],struct TParams * Params)
 		}
 		printf("Warning: skipping line in parameters file:\n");
 		printf("%s\n", line);
+	}
+	if (totNrPixelsBigDetector != 0){
+		char *cwd = dirname(Params->OutputFolder);
+		size_t sz = ReadBigDet(cwd);
 	}
 	int i;
 	for (i = 0 ; i < MAX_N_RINGS ; i++ ) Params->RingRadii[i] = 0;
@@ -1725,14 +1729,13 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	FreeMemMatrix( BestMatches, 2);
 }
 
-int ReadBins()
+int ReadBins(char *cwd)
 {
 	int fd;
 	struct stat s;
 	int status;
 	size_t size;
-	char file_name[2048], cwd[2048];
-	getcwd(cwd,sizeof(cwd));
+	char file_name[2048];
 	sprintf(file_name,"%s/Data.bin",cwd);
 	int rc;
 	fd = open (file_name, O_RDONLY);
@@ -1759,14 +1762,13 @@ int ReadBins()
 	return 1;
 }
 
-int ReadSpots()
+int ReadSpots(char *cwd)
 {
 	int fd;
 	struct stat s;
 	int status;
 	size_t size;
-	char filename[2048], cwd[2048];
-	getcwd(cwd,sizeof(cwd));
+	char filename[2048];
 	sprintf(filename,"%s/Spots.bin",cwd);
 	int rc;
 	fd = open(filename,O_RDONLY);
@@ -1779,14 +1781,13 @@ int ReadSpots()
 	return (int) size/(9*sizeof(double));
 }
 
-int UnMap()
+int UnMap(char *cwd)
 {
 	int fd;
 	struct stat s;
 	int status;
 	size_t size;
-	char file_name[2048], cwd[2048];
-	getcwd(cwd,sizeof(cwd));
+	char file_name[2048];
 	sprintf(file_name,"%s/Data.bin",cwd);
 	int rc;
 	fd = open (file_name, O_RDONLY);
@@ -1868,10 +1869,11 @@ main(int argc, char *argv[])
 			}
 		}
 	}
+	char *cwd = dirname(Params.OutputFolder);
 	printf("No of hkl's: %d\n", n_hkls);
-	n_spots = ReadSpots();
+	n_spots = ReadSpots(cwd);
 	printf("Binned data...\n");
-	int rc = ReadBins();
+	int rc = ReadBins(cwd);
 	int HighestRingNo = 0;
 	for (i = 0 ; i < MAX_N_RINGS ; i++ ) {
 		if ( Params.RingRadii[i] != 0) HighestRingNo = i;
@@ -1917,6 +1919,6 @@ main(int argc, char *argv[])
 	}
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);
-	int tc = UnMap();
+	int tc = UnMap(cwd);
 	return(0);
 }

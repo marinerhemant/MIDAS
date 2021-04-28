@@ -1229,13 +1229,12 @@ void FitPosSec(double X0[3],int nSpotsComp,double **spotsYZO,int nhkls,double **
 	FreeMemMatrix(f_data.hkls,nhkls);
 }
 
-long long int ReadBigDet(){
+long long int ReadBigDet(char *cwd){
 	int fd;
 	struct stat s;
 	int status;
 	size_t size;
-	char filename[2048], cwd[2048];
-	getcwd(cwd,sizeof(cwd));
+	char filename[2048];
 	sprintf(filename,"%s/BigDetectorMask.bin",cwd);
 	int rc;
 	fd = open(filename,O_RDONLY);
@@ -1432,8 +1431,7 @@ int main(int argc, char *argv[])
 	int status;
 	size_t size;
 	size_t size2;
-	char filename[2048], cwd[2048];
-	getcwd(cwd,sizeof(cwd));
+	char filename[2048], *cwd=dirname(ResultFolder);
 	sprintf(filename,"%s/ExtraInfo.bin",cwd);
 	int rc;
 	fd = open(filename,O_RDONLY);
@@ -1445,7 +1443,7 @@ int main(int argc, char *argv[])
 	check (AllSpots == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
 	int nSpots =  (int) size/(14*sizeof(double));
 	if (BigDetSize != 0){
-		long long int size2 = ReadBigDet();
+		long long int size2 = ReadBigDet(cwd);
 		totNrPixelsBigDetector = BigDetSize;
 		totNrPixelsBigDetector *= BigDetSize;
 		totNrPixelsBigDetector /= 32;

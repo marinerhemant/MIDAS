@@ -67,10 +67,6 @@ for layerNr in range(startLayerNr,endLayerNr+1):
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetup")+' '+baseNameParamFN,shell=True)
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinData"),shell=True)
 	nSpotsToIndex = len(open('SpotsToIndex.csv').readlines())
-	shutil.copy2('Data.bin','/dev/shm/')
-	shutil.copy2('nData.bin','/dev/shm/')
-	shutil.copy2('ExtraInfo.bin','/dev/shm/')
-	shutil.copy2('Spots.bin','/dev/shm/')
 	Path(thisDir+'Output').mkdir(parents=True,exist_ok=True)
 	Path(thisDir+'Results').mkdir(parents=True,exist_ok=True)
 	# Next 2 commands on multiple nodes
