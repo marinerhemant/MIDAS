@@ -1872,8 +1872,8 @@ main(int argc, char *argv[])
 	}
 	char tmpstr[2048];
 	sprintf(tmpstr,"%s",Params.OutputFolder);
-	char *cwd = dirname(tmpstr);
-	printf("%s\n",cwd);
+	char *cwdstr = dirname(tmpstr);
+	printf("%s\n",cwdstr);
 	return;
 	printf("No of hkl's: %d\n", n_hkls);
 	n_spots = ReadSpots(cwd);
