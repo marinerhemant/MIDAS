@@ -1871,7 +1871,7 @@ main(int argc, char *argv[])
 		}
 	}
 	char *cwd = dirname(Params.OutputFolder);
-	printf("%s\n",cwd);return;
+	printf("%s\n",Params.OutputFolder);return;
 	printf("No of hkl's: %d\n", n_hkls);
 	n_spots = ReadSpots(cwd);
 	printf("Binned data...\n");
