@@ -1870,8 +1870,8 @@ main(int argc, char *argv[])
 			}
 		}
 	}
-	return;
 	char *cwd = dirname(Params.OutputFolder);
+	return;
 	printf("%s\n",cwd);return;
 	printf("No of hkl's: %d\n", n_hkls);
 	n_spots = ReadSpots(cwd);
