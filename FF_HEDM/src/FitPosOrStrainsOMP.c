@@ -1433,7 +1433,9 @@ int main(int argc, char *argv[])
 	size_t size;
 	size_t size2;
 	printf("%s\n",ResultFolder);
-	char filename[2048], *cwd=dirname(ResultFolder);
+	char tmpstr[2048];
+	sprintf(tmpstr,"%s",ResultFolder);
+	char filename[2048], *cwd=dirname(tmpstr);
 	printf("%s\n",ResultFolder);
 	sprintf(filename,"%s/ExtraInfo.bin",cwd);
 	int rc;
