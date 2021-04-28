@@ -1116,14 +1116,13 @@ struct TParams {
    int UseFriedelPairs;
 };
 
-size_t ReadBigDet()
+size_t ReadBigDet(char *cwd)
 {
 	int fd;
 	struct stat s;
 	int status;
 	size_t size;
-	char filename[2048], cwd[2048];
-	getcwd(cwd,sizeof(cwd));
+	char filename[2048];
 	sprintf(filename,"%s/BigDetectorMask.bin",cwd);
 	int rc;
 	fd = open(filename,O_RDONLY);
@@ -1874,7 +1873,6 @@ main(int argc, char *argv[])
 	char tmpstr[2048];
 	sprintf(tmpstr,"%s",Params.OutputFolder);
 	char *cwdstr = dirname(tmpstr);
-	printf("%s\n",cwdstr);
 	printf("No of hkl's: %d\n", n_hkls);
 	n_spots = ReadSpots(cwdstr);
 	printf("Binned data...\n");

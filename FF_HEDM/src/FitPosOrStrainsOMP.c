@@ -38,6 +38,7 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <omp.h>
+#include <libgen.h>
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
