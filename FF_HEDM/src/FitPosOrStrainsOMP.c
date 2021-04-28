@@ -1234,7 +1234,8 @@ long long int ReadBigDet(){
 	struct stat s;
 	int status;
 	size_t size;
-	const char *filename = "/dev/shm/BigDetectorMask.bin";
+	char filename[2048];
+	sprintf(filename,"%s/BigDetectorMask.bin",getcwd());
 	int rc;
 	fd = open(filename,O_RDONLY);
 	check(fd < 0, "open %s failed: %s", filename, strerror(errno));

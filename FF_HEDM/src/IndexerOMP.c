@@ -1121,7 +1121,8 @@ size_t ReadBigDet()
 	struct stat s;
 	int status;
 	size_t size;
-	const char *filename = "/dev/shm/BigDetectorMask.bin";
+	char filename[2048];
+	sprintf(filename,"%s/BigDetectorMask.bin",getcwd());
 	int rc;
 	fd = open(filename,O_RDONLY);
 	check(fd < 0, "open %s failed: %s", filename, strerror(errno));
@@ -1729,7 +1730,8 @@ int ReadBins()
 	struct stat s;
 	int status;
 	size_t size;
-	const char * file_name = "/dev/shm/Data.bin";
+	char file_name[2048];
+	sprintf(file_name,"%s/Data.bin",getcwd());
 	int rc;
 	fd = open (file_name, O_RDONLY);
 	check (fd < 0, "open %s failed: %s", file_name, strerror (errno));
@@ -1741,7 +1743,8 @@ int ReadBins()
 	int fd2;
 	struct stat s2;
 	int status2;
-	const char* file_name2 = "/dev/shm/nData.bin";
+	char file_name2[2048];
+	sprintf(file_name2,"%s/nData.bin",getcwd());
 	fd2 = open (file_name2, O_RDONLY);
 	check (fd2 < 0, "open %s failed: %s", file_name2, strerror (errno));
 	status2 = fstat (fd2, & s2);
@@ -1760,7 +1763,7 @@ int ReadSpots()
 	struct stat s;
 	int status;
 	size_t size;
-	const char filename[2048];
+	char filename[2048];
 	sprintf(filename,"%s/Spots.bin",getcwd());
 	int rc;
 	fd = open(filename,O_RDONLY);
@@ -1779,7 +1782,8 @@ int UnMap()
 	struct stat s;
 	int status;
 	size_t size;
-	const char * file_name = "/dev/shm/Data.bin";
+	char file_name[2048];
+	sprintf(file_name,"%s/Data.bin",getcwd());
 	int rc;
 	fd = open (file_name, O_RDONLY);
 	check (fd < 0, "open %s failed: %s", file_name, strerror (errno));
@@ -1790,7 +1794,8 @@ int UnMap()
 	int fd2;
 	struct stat s2;
 	int status2;
-	const char* file_name2 = "/dev/shm/nData.bin";
+	char file_name2[2048];
+	sprintf(file_name2,"%s/nData.bin",getcwd());
 	fd2 = open (file_name2, O_RDONLY);
 	check (fd2 < 0, "open %s failed: %s", file_name2, strerror (errno));
 	status2 = fstat (fd2, & s2);
@@ -1800,7 +1805,8 @@ int UnMap()
 	int fd3;
 	struct stat s3;
 	int status3;
-	const char *filename3 = "/dev/shm/Spots.bin";
+	char filename3[2048];
+	sprintf(filename3,"%s/Spots.bin",getcwd());
 	fd3 = open(filename3,O_RDONLY);
 	check(fd3 < 0, "open %s failed: %s", filename3, strerror(errno));
 	status3 = fstat (fd3 , &s3);
