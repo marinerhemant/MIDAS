@@ -1769,7 +1769,6 @@ int ReadSpots(char *cwd)
 	int status;
 	size_t size;
 	char filename[2048];
-	printf("%s\n",cwd); fflush(stdout);
 	sprintf(filename,"%s/Spots.bin",cwd);
 	int rc;
 	fd = open(filename,O_RDONLY);

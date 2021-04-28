@@ -1838,6 +1838,7 @@ int main(int argc, char *argv[])
 		// Start Writing: SpotsCompFN, OutFN, Key, ProcessGrainsFile
 		char KeyFN[1024];
 		sprintf(KeyFN,"%s/Key.bin",ResultFolder);
+		printf("%s\n",KeyFN);
 		int SizeKeyFile 		= 2  * sizeof(int);
 		size_t OffStKeyFile = SizeKeyFile;
 		OffStKeyFile *= rowNr;
