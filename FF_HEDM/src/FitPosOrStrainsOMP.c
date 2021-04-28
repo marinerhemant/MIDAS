@@ -1430,7 +1430,8 @@ int main(int argc, char *argv[])
 	int status;
 	size_t size;
 	size_t size2;
-	const char *filename = "/dev/shm/ExtraInfo.bin";
+	char filename[2048];
+	sprintf(filename,"%s/ExtraInfo.bin",getcwd());
 	int rc;
 	fd = open(filename,O_RDONLY);
 	check(fd < 0, "open %s failed: %s", filename, strerror(errno));

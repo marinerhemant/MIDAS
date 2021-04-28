@@ -57,8 +57,6 @@ for layerNr in range(startLayerNr,endLayerNr+1):
 	thisPF.write('LayerNr '+str(layerNr)+'\n')
 	thisPF.write('StartFileNr '+str(thisStartNr)+'\n')
 	thisPF.close()
-	# ~ innerFolder = thisDir + 'PeakSearch/'+fStem+'_'+str(layerNr)+'/'
-	# ~ Path(innerFolder).mkdir(parents=True,exist_ok=True)
 	Path(thisDir+'/Temp').mkdir(parents=True,exist_ok=True)
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" "+thisParamFN,shell=True)
 	## Next Command on multiple nodes
@@ -67,17 +65,12 @@ for layerNr in range(startLayerNr,endLayerNr+1):
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAll")+' '+baseNameParamFN,shell=True)
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAll")+' '+baseNameParamFN,shell=True)
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetup")+' '+baseNameParamFN,shell=True)
-	# ~ os.chdir(innerFolder)
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinData"),shell=True)
 	nSpotsToIndex = len(open('SpotsToIndex.csv').readlines())
-	# ~ shutil.copy2(thisParamFN,innerFolder)
 	shutil.copy2('Data.bin','/dev/shm/')
 	shutil.copy2('nData.bin','/dev/shm/')
 	shutil.copy2('ExtraInfo.bin','/dev/shm/')
 	shutil.copy2('Spots.bin','/dev/shm/')
-	# ~ shutil.copy2(thisDir+'/hkls.csv',innerFolder)
-	# ~ Path(innerFolder+'Output').mkdir(parents=True,exist_ok=True)
-	# ~ Path(innerFolder+'Results').mkdir(parents=True,exist_ok=True)
 	Path(thisDir+'Output').mkdir(parents=True,exist_ok=True)
 	Path(thisDir+'Results').mkdir(parents=True,exist_ok=True)
 	# Next 2 commands on multiple nodes
