@@ -1234,8 +1234,9 @@ long long int ReadBigDet(){
 	struct stat s;
 	int status;
 	size_t size;
-	char filename[2048];
-	sprintf(filename,"%s/BigDetectorMask.bin",getcwd());
+	char filename[2048], cwd[2048];
+	getcwd(cwd,sizeof(cwd));
+	sprintf(filename,"%s/BigDetectorMask.bin",cwd);
 	int rc;
 	fd = open(filename,O_RDONLY);
 	check(fd < 0, "open %s failed: %s", filename, strerror(errno));
@@ -1431,8 +1432,9 @@ int main(int argc, char *argv[])
 	int status;
 	size_t size;
 	size_t size2;
-	char filename[2048];
-	sprintf(filename,"%s/ExtraInfo.bin",getcwd());
+	char filename[2048], cwd[2048];
+	getcwd(cwd,sizeof(cwd));
+	sprintf(filename,"%s/ExtraInfo.bin",cwd);
 	int rc;
 	fd = open(filename,O_RDONLY);
 	check(fd < 0, "open %s failed: %s", filename, strerror(errno));
