@@ -30,7 +30,7 @@ for line in mic:
 			linesOut.append(line)
 		i = i + 1
 gridOutF = open(grid_new,'w')
-print "Total number of grid points to try again: " + str(len(gridOut))
+print ("Total number of grid points to try again: " + str(len(gridOut)))
 gridOutF.write("%d\n" % len(gridOut))
 for line in gridOut:
 	gridOutF.write(line)

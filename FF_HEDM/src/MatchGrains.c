@@ -129,7 +129,7 @@ int main(int argc, char* argv[])
 			"\t0: will not remove any matched grains from database while matching. This is faster\n"
 			"\t   and desirable if multiple grains can be matched to the same grains. eg. if a \n\t   grain breaks up into 2.\n");
 		printf("\t1: will remove any matched grains from database while matching. This is slower.\n");
-		printf("\t   sizeFilter: 0 will not make filter based on grain size, value [float] will only match grains within value% of the grain size.\n");
+		printf("\t   sizeFilter: 0 will not make filter based on grain size, value [float] will only match grains within value\% of the grain size.\n");
 		return 1;
 	}
 	clock_t start, end;

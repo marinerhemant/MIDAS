@@ -39,7 +39,7 @@ fillVal = -15 # this value can be used to filter out nonsense values.
 ### Only modify the following arguments:
 ### Also look at where variable FileName is defined to see if the file arrangement is different (Line 554)
 ####
-sampleName = 'HeatHTNS9_crack_NF'
+sampleName = 'park_sam_cx5b_s0_nf'
 filestem = 'MicrostructureText_Layer' #### CHECK LINE 554
 outfn = 'MicHeatHTNS9'
 formula = 'NiTi7'
@@ -47,8 +47,8 @@ materialName = 'NS9'
 sample = 'HeatHTNS9'
 scanN = 'Begin'
 spaceGroup = 194 # This is used for misorientation calculation
-startnr = 0
-endnr = 36
+startnr = 1
+endnr = 18
 thisPhaseNr = 1
 LatC = np.array([2.9243, 2.9243, 4.6726 ,90.0, 90.0, 120.0],dtype=np.float32)
 minConfidence = 0.3
