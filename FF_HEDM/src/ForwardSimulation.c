@@ -1279,13 +1279,15 @@ main(int argc, char *argv[])
 					if (currentPos < 0) continue;
 					if (currentPos >= ImageArrSize) continue;
 					ImageArr[currentPos] += (double) (GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask] * PeakIntensity);
-					if (maxInt < ImageArr[currentPos]) maxInt = ImageArr[currentPos];
+					//~ if (maxInt < ImageArr[currentPos]) maxInt = ImageArr[currentPos];
 				}
 			}
 		}
 	}
+	size_t cntr;
+	for (cntr=0;cntr<ImageArrSize;cntr++) if (maxInt < ImageArr[cntr]) maxInt = ImageArr[cntr];
 	printf("Maximum intensity: %lf\n",maxInt);
-	for (i=0;i<ImageArrSize;i++) outArr[i] = (uint16_t) (ImageArr[i]*15000/maxInt);
+	for (cntr=0;cntr<ImageArrSize;cntr++) outArr[i] = (uint16_t) (ImageArr[i]*15000/maxInt);
 	printf("Diffraction spots done, now writing the GE file.\n");
 	int *header;
 	header = malloc(8192*sizeof(char));
