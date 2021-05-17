@@ -1287,6 +1287,7 @@ main(int argc, char *argv[])
 			}
 		}
 	}
+	FreeMemMatrix(InputInfo,MAX_NR_POINTS);
 	size_t cntr;
 	for (cntr=0;cntr<ImageArrSize;cntr++) if (maxInt < ImageArr[cntr]) maxInt = ImageArr[cntr];
 	printf("Maximum intensity: %lf\n",maxInt);
