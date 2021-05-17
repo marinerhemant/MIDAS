@@ -1288,10 +1288,9 @@ main(int argc, char *argv[])
 	for (i=0;i<ImageArrSize;i++) outArr[i] = (uint16_t) (ImageArr[i]*15000/maxInt);
 	printf("Diffraction spots done, now writing the GE file.\n");
 	int *header;
-	header = malloc(8192);
+	header = malloc(8192*sizeof(*char));
 	FILE *outfile = fopen(OutFileName,"w");
 	fwrite(header,8192,1,outfile);
-	free(header);
 	fwrite(outArr,ImageArrSize*sizeof(*outArr),1,outfile);
 	fclose(outfile);
 	end = clock();
