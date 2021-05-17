@@ -1219,6 +1219,7 @@ main(int argc, char *argv[])
 			zTrans = (int) ( zThis/px + zBC);
 			idx = yTrans + NrPixels*zTrans;
 			if (idx < 1) continue;
+			if (idx >= NrPixels*NrPixels) continue;
 			//~ printf("%lf %lf %lf %lf %d %d %lf %lf %lf %lld\n",yTemp, zTemp, yThis, zThis, yTrans, zTrans, px, yBC, zBC, (long long int) idx); fflush(stdout);
 			DisplY = yDispl[idx];
 			DisplZ = zDispl[idx];
