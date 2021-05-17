@@ -881,18 +881,6 @@ int main(int argc, char *argv[])
 	double nFramesThis;
 	int nSpotsEachRing[n_hkls];
 	for (i=0;i<n_hkls;i++) nSpotsEachRing[i] = 0;
-	//~ if (NewType == 0){
-		//~ fp = fopen(FileName,"r");
-		//~ fgets(line,5000,fp);
-		//~ printf("Reading file: %s.\n",FileName);
-		//~ while (fgets(line,5000,fp) != NULL){
-			//~ sscanf(line,"%lf %s %lf %lf %lf %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %lf %s %s %s %lf",
-				//~ &SpotsInfo[counter][0],dummy,&SpotsInfo[counter][1],&SpotsInfo[counter][2],&SpotsInfo[counter][3],dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,
-				//~ dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,
-				//~ dummy,dummy,dummy,&SpotsInfo[counter][4],dummy,dummy,dummy,&SpotsInfo[counter][5]);
-			//~ counter++;
-		//~ }
-	//~ }else if (NewType == 1){
 	fp = fopen(FileName,"r");
 	printf("Reading file: %s.\n",FileName);
 	fgets(line,5000,fp);

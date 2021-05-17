@@ -1198,6 +1198,7 @@ main(int argc, char *argv[])
 		}
 		// Calculate the spots now.
 		CalcDiffrSpots_Furnace(hklsOut,OM,Lsd,Wavelength,TheorSpots,&nTspots);
+		fflush(stdout);
 		// For each spot, calculate displacement, calculate tilt and wedge effect.
 		for (spotNr=0;spotNr<nTspots;spotNr++){
 			// Calculate Tilt Effect
@@ -1275,6 +1276,8 @@ main(int argc, char *argv[])
 			for (idxNrY=-4*ceil(GaussWidth);idxNrY<=4*ceil(GaussWidth);idxNrY++){
 				for (idxNrZ=-4*ceil(GaussWidth);idxNrZ<=4*ceil(GaussWidth);idxNrZ++){
 					currentPos = centIdx + idxNrY*NrPixels + idxNrZ;
+					if (currentPos < 0) continue;
+					if (currentPos >= ImageArrSize) continue;
 					ImageArr[currentPos] += (double) (GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask] * PeakIntensity);
 					if (maxInt < ImageArr[currentPos]) maxInt = ImageArr[currentPos];
 				}
