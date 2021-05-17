@@ -1074,10 +1074,9 @@ main(int argc, char *argv[])
 	if (writeSpots ==1) printf("Will generate a SpotMatrixGen.csv file.\n");
 	else printf("Will not generate a SpotMatrixGen.csv file.\n");
 	// Read hkls file.
-	char *rc;
 	char *hklfn = "hkls.csv";
 	FILE *hklf = fopen(hklfn,"r");
-	rc = fgets(aline,1000,hklf);
+	fgets(aline,1000,hklf);
 	int thisRingNr;
 	while (fgets(aline,1000,hklf)!=NULL){
 		sscanf(aline, "%lf %lf %lf %s %lf",
@@ -1292,10 +1291,10 @@ main(int argc, char *argv[])
 	header = malloc(8192);
 	FILE *outfile = fopen(OutFileName,"w");
 	fwrite(header,8192,1,outfile);
+	free(header);
 	fwrite(outArr,ImageArrSize*sizeof(*outArr),1,outfile);
 	fclose(outfile);
 	end = clock();
 	diftotal = ((double)(end-start0))/CLOCKS_PER_SEC;
 	printf("Time elapsed in making diffraction spots: %f [s]\n",diftotal);
-	return 0;
 }
