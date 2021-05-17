@@ -1277,7 +1277,6 @@ main(int argc, char *argv[])
 			for (idxNrY=-4*ceil(GaussWidth);idxNrY<=4*ceil(GaussWidth);idxNrY++){
 				for (idxNrZ=-4*ceil(GaussWidth);idxNrZ<=4*ceil(GaussWidth);idxNrZ++){
 					currentPos = centIdx + idxNrY*NrPixels + idxNrZ;
-					printf("%lld\n",(long long int) currentPos); fflush(stdout);
 					if (currentPos < 0) continue;
 					if (currentPos >= ImageArrSize) continue;
 					ImageArr[currentPos] += (double) (GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask] * PeakIntensity);
