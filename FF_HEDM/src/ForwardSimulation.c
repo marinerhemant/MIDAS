@@ -1290,7 +1290,6 @@ main(int argc, char *argv[])
 			}
 		}
 	}
-	return;
 	printf("Maximum intensity: %lf\n",maxInt);
 	for (i=0;i<ImageArrSize;i++) outArr[i] = (uint16_t) (ImageArr[i]*15000/maxInt);
 	printf("Diffraction spots done, now writing the GE file.\n");
