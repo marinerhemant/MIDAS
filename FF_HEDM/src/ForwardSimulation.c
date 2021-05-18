@@ -1071,7 +1071,6 @@ main(int argc, char *argv[])
 			nrPoints = totalElements;
 		}
 	}
-	return;
 	if (nrPoints == 0) return 1;
 	printf("Read file., total number of orientations: %d\n",nrPoints);
 	if (writeSpots ==1) printf("Will generate a SpotMatrixGen.csv file.\n");
@@ -1108,6 +1107,7 @@ main(int argc, char *argv[])
 		}
 		n_hkls = totalHKLs;
 	}
+	return;
 	//~ for (i=0;i<n_hkls;i++) printf("%lf ",hkls[i][3]); printf("\n");
 	printf("Number of planes: %d\n",n_hkls);
 
