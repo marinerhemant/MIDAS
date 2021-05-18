@@ -1084,6 +1084,10 @@ main(int argc, char *argv[])
 		sscanf(aline, "%lf %lf %lf %s %lf",
 			&hkls[n_hkls][0],&hkls[n_hkls][1],&hkls[n_hkls][2],dummy,&hkls[n_hkls][3]);
 		n_hkls++;
+		if (n_hkls >= MAX_N_HKLS){
+			printf("MAX_N_HKLS exceeded. Please check! Aborting.\n");
+			return 1;
+		}
 	}
 	if (nRings > 0){
 		double hklTemps[n_hkls][4];
@@ -1107,7 +1111,6 @@ main(int argc, char *argv[])
 		}
 		n_hkls = totalHKLs;
 	}
-	return;
 	//~ for (i=0;i<n_hkls;i++) printf("%lf ",hkls[i][3]); printf("\n");
 	printf("Number of planes: %d\n",n_hkls);
 
