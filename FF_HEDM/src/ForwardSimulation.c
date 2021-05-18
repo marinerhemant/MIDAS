@@ -25,6 +25,7 @@
 #define RealType double
 #define MAX_N_HKLS 5000
 #define EPS 0.00001
+#define MAX_NR_POINTS 2000000
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -830,6 +831,7 @@ main(int argc, char *argv[])
 	char strLine[4096];
 	int nrSkip;
 	FILE *inpF;
+	InputInfo = allocMatrix(MAX_NR_POINTS,21);
 	if (isBin) {
 		dataType = 3;
 		inpF = fopen(inpFN,"rb");
@@ -842,7 +844,7 @@ main(int argc, char *argv[])
 		printf("Number of elements: %ld, Size: %ld\n",nrPoints,(long int)sz);
 		double *holdArr;
 		holdArr = calloc(nrPoints*18,sizeof(double));
-		InputInfo = allocMatrix(nrPoints,18);
+		//~ InputInfo = allocMatrix(nrPoints,18);
 		fread(holdArr,sz,1,inpF);
 		for (i=0;i<nrPoints;i++){
 			OrientTemp[0][0] = holdArr[i*18+3];
@@ -891,7 +893,7 @@ main(int argc, char *argv[])
 			fprintf(foutGrains,"%s",aline);
 			NrOrientations++;
 			NrOrientations++;
-			InputInfo = allocMatrix(NrOrientations,18); // Save OrientationMatrix, Position, LatC
+			//~ InputInfo = allocMatrix(NrOrientations,18); // Save OrientationMatrix, Position, LatC
 			fgets(aline,4096,inpF);
 			fprintf(foutGrains,"%s",aline);
 			fgets(aline,4096,inpF);
@@ -925,7 +927,7 @@ main(int argc, char *argv[])
 		}else if (strncmp(aline,"%TriEdgeSize ",strlen("%TriEdgeSize ")) == 0){
 			dataType = 1;
 			NrOrientations = 2000000;
-			InputInfo = allocMatrix(NrOrientations,18); // Save OrientationMatrix, Position, LatC
+			//~ InputInfo = allocMatrix(NrOrientations,18); // Save OrientationMatrix, Position, LatC
 			fgets(aline,4096,inpF);
 			fgets(aline,4096,inpF);
 			sscanf(aline,"%s %lf",dummy,&zThis);
@@ -959,7 +961,7 @@ main(int argc, char *argv[])
 			fgets(aline,4096,inpF);
 			fgets(aline,4096,inpF);
 			sscanf(aline,"%s %lld",dummy,&totalElements);
-			InputInfo = allocMatrix(totalElements,21);
+			//~ InputInfo = allocMatrix(totalElements,21);
 			for (i=0;i<totalElements+1;i++) fgets(aline,4096,inpF);
 			for (i=0;i<totalElements+5;i++) fgets(aline,4096,inpF);
 			for (i=0;i<totalElements;i++){
@@ -1297,4 +1299,5 @@ main(int argc, char *argv[])
 	end = clock();
 	diftotal = ((double)(end-start0))/CLOCKS_PER_SEC;
 	printf("Time elapsed in making diffraction spots: %f [s]\n",diftotal);
+	FreeMemMatrix(InputInfo,MAX_NR_POINTS);
 }
