@@ -156,11 +156,11 @@ int main(int argc, char* argv[])
 	int removeDuplicates;
 	removeDuplicates = atoi(argv[11]);
 	double sizeFilter;
-	sizeFilter = atof(argv[11]);
+	sizeFilter = atof(argv[12]);
 	double weights[2];
 	if (matchMode == 2){
-		weights[0] = atof(argv[12]);
-		weights[1] = atof(argv[13]);
+		weights[0] = atof(argv[13]);
+		weights[1] = atof(argv[14]);
 	}
 	char aline[4096],bline[4096];
 	FILE *grainsF;
@@ -403,6 +403,8 @@ int main(int argc, char* argv[])
 					if (abs(GrSize1[i] - GrSize2[j]) > GrSize1[i]*0.01*sizeFilter){
 						wt = 100000; // This will make it a bad match automatically.
 					}
+				} else {
+					wt = wt;
 				}
 				if (removeDuplicates == 1){
 					Angles[j][i] = wt;
@@ -538,10 +540,10 @@ int main(int argc, char* argv[])
 		for (j=0;j<6;j++) fprintf(outfile,"%d\t",(int)Matches[i*28+j]);
 		for (j=6;j<27;j++) fprintf(outfile,"%lf\t",Matches[i*28+j]);
 		fprintf(outfile,"%lf\n",Matches[i*28+27]);
-		//~ for (j=0;j<6;j++) printf("%d\t",(int)Matches[i][j]);
-		//~ for (j=6;j<28;j++) printf("%lf\t",Matches[i][j]);
+		//~ for (j=0;j<6;j++) printf("%d\t",(int)Matches[i*28+j]);
+		//~ for (j=6;j<28;j++) printf("%lf\t",Matches[i*28+j]);
 		//~ printf("\n");
-		//~ printf("%lf\n",Matches[i][13]);
+		//~ printf("%lf\n",Matches[i*28+13]);
 	}
 	end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
