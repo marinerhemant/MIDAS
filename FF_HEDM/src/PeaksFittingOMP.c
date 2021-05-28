@@ -10,7 +10,8 @@
 //  Created by Hemant Sharma on 2021/03/31.
 //
 //
-// TODO: Rectangular detector, read edf, omp.
+// TODO: Rectangular detector: experimental support is included now, flood will not read properly, also, not all image transforms are supported for transforms (eg. transpose might give strange values)
+// 		Read edf
 
 #include <stdio.h>
 #include <math.h>
@@ -481,6 +482,23 @@ static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], pix
 	FreeMemMatrixPx(ImageTemp2,NrPixels);
 }
 
+static inline void MakeSquare (int NrPixels, int NrPixelsY, int NrPixelsZ, pixelvalue *InImage, pixelvalue *OutImage)
+{
+	int i,j,k;
+	if (NrPixelsY == NrPixelsZ){
+		memcpy(OutImage,InImage,NrPixels*NrPixels*sizeof(*InImage));
+	} else {
+		if (NrPixelsY > NrPixelsZ){ // Filling along the slow direction // easy
+			memcpy(OutImage,InImage,NrPixelsY*NrPixelsZ*sizeof(*InImage));
+		} else {
+			for (i=0;i<NrPixelsZ;i++){
+				memcpy(OutImage+i*NrPixelsZ,InImage+i*NrPixelsY,NrPixelsY*sizeof(*InImage));
+			}
+		}
+	}
+}
+
+
 static inline
 void
 MatrixMult(
@@ -548,7 +566,7 @@ void main(int argc, char *argv[]){
 	TmpFolder = "Temp";
 	int LowNr;
 	double bc=1, Ycen, Zcen, IntSat, OmegaStep, OmegaFirstFile, Lsd, px, Width, Wavelength,MaxRingRad;
-	int NrPixels,Padding = 6, StartNr;
+	int NrPixels, NrPxY=0,NrPxZ=0,Padding = 6, StartNr;
 	char fs[1024];
 	int LayerNr;
 	int NrTransOpt=0;
@@ -740,7 +758,19 @@ void main(int argc, char *argv[]){
 			sscanf(aline,"%s %d", dummy, &LayerNr);
 			continue;
 		}
-		str = "NrPixels ";
+		str = "NrPixelsY ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr==0){
+			sscanf(aline,"%s %d", dummy, &NrPxY);
+			continue;
+		}
+		str = "NrPixelsZ ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr==0){
+			sscanf(aline,"%s %d", dummy, &NrPxZ);
+			continue;
+		}
+			str = "NrPixels ";
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr==0){
 			sscanf(aline,"%s %d", dummy, &NrPixels);
@@ -825,6 +855,16 @@ void main(int argc, char *argv[]){
 		//~ str = "IsEDF";
 		//~ LowNr = strncmp()
 	}
+	if (NrPxY !=0){
+		if (NrPxY > NrPxZ){
+			NrPixels = NrPxY;
+		} else {
+			NrPixels = NrPxZ;
+		}
+	} else {
+		NrPxY = NrPixels;
+		NrPxZ = NrPixels;
+	}
 	Width = Width/px;
 	int a,b;
 	for (a=0;a<NrTransOpt;a++){
@@ -845,28 +885,31 @@ void main(int argc, char *argv[]){
 	sprintf(FileStem,"%s_%d",fs,LayerNr);
 	fclose(fileParam);
     // Dark file reading from here.
-	double *dark, *flood, *darkTemp;;
+	double *dark, *flood, *darkTemp;
 	dark = calloc(NrPixels*NrPixels,sizeof(*dark));
 	darkTemp = calloc(NrPixels*NrPixels,sizeof(*darkTemp));
 	flood = calloc(NrPixels*NrPixels,sizeof(*flood));
 	FILE *darkfile=fopen(darkcurrentfilename,"rb");
 	size_t sz;
 	int nFrs;
-	int SizeFile = sizeof(pixelvalue) * NrPixels * NrPixels;
+	int SizeFile = sizeof(pixelvalue) * NrPxY * NrPxZ;
 	long int Skip;
-	pixelvalue *darkcontents;
+	pixelvalue *darkcontents, *darkAsym;
 	darkcontents = calloc(NrPixels*NrPixels,sizeof(*darkcontents));
+	darkAsym = calloc(NrPxY*NrPxZ,sizeof(*darkAsym));
 	if (darkfile==NULL){printf("Could not read the dark file. Using no dark subtraction.\n");}
 	else{
 		fseek(darkfile,0L,SEEK_END);
 		sz = ftell(darkfile);
 		rewind(darkfile);
-		nFrs = sz/(2*NrPixels*NrPixels);
-		Skip = sz - (nFrs*2*NrPixels*NrPixels);
+		nFrs = sz/(2*NrPxY*NrPxZ);
+		Skip = sz - (nFrs*2*NrPxY*NrPxZ);
 		fseek(darkfile,Skip,SEEK_SET);
 		printf("Reading dark file: %s, nFrames: %d, skipping first %ld bytes.\n",darkcurrentfilename,nFrs,Skip);
 		for (a=0;a<nFrs;a++){
-			fread(darkcontents,SizeFile,1,darkfile);
+			//~ fread(darkcontents,SizeFile,1,darkfile);
+			fread(darkAsym,SizeFile,1,darkfile);
+			MakeSquare(NrPixels,NrPxY,NrPxZ,darkAsym,darkcontents);
 			DoImageTransformations(NrTransOpt,TransOpt,darkcontents,NrPixels);
 			for (b=0;b<(NrPixels*NrPixels);b++){
 				darkTemp[b] += darkcontents[b];
@@ -880,6 +923,7 @@ void main(int argc, char *argv[]){
 	Transposer(darkTemp,NrPixels,dark);
 	free(darkTemp);
 	free(darkcontents);
+	free(darkAsym);
 	//Finished reading dark file.
 	FILE *floodfile=fopen(floodfilename,"rb");
 	if (floodfile==NULL){
@@ -977,10 +1021,14 @@ void main(int argc, char *argv[]){
 	size_t bigArrSize = NrPixels;
 	bigArrSize *= NrPixels;
 	bigArrSize *= numProcs;
-	pixelvalue *ImageAll;
+	size_t asymBigArrSize = NrPxY;
+	asymBigArrSize *= NrPxZ;
+	asymBigArrSize *= numProcs;
+	pixelvalue *ImageAll, *ImageAsymAll;
 	double *ImgCorrBCAll, *ImgCorrBCTempAll, *MaxValAll, *zAll, *IntIntAll, *ImaxAll, *YcenAll, *ZcenAll, *RAll, *EtaAll, *OIAll;
 	int *BoolImageAll, *ConnCompAll, *PosAll, *PosTrackersAll, *MaxPosAll, *UsefulPxAll, *NrPxAll;
 	ImageAll = calloc(bigArrSize,sizeof(*ImageAll));
+	ImageAsymAll = calloc(asymBigArrSize,sizeof(*ImageAsymAll));
 	ImgCorrBCAll = calloc(bigArrSize,sizeof(*ImgCorrBCAll));
 	ImgCorrBCTempAll = calloc(bigArrSize,sizeof(*ImgCorrBCTempAll));
 	BoolImageAll = calloc(bigArrSize,sizeof(*BoolImageAll));
@@ -1003,6 +1051,7 @@ void main(int argc, char *argv[]){
 	EtaAll = calloc(maxNPeaks*2*numProcs,sizeof(*EtaAll));
 	OIAll = calloc(maxNPeaks*10*numProcs,sizeof(*OIAll));
 	NrPxAll = calloc(maxNPeaks*2*numProcs,sizeof(*NrPxAll));
+
 	// Get nFrames:
 	FILE *dummyFile;
 	char dummyFN[2048];
@@ -1016,7 +1065,7 @@ void main(int argc, char *argv[]){
 	size_t szt = ftell(dummyFile);
 	szt = szt - headSize;
 	fclose(dummyFile);
-	int nF = szt/(size_t)(2*NrPixels*NrPixels);
+	int nF = szt/(size_t)(2*NrPxY*NrPxZ);
 
 	int startFileNr = (int)(ceil((double)nFrames / (double)nBlocks)) * blockNr;
 	int endFileNr = (int)(ceil((double)nFrames / (double)nBlocks)) * (blockNr+1) < nFrames ? (int)(ceil((double)nFrames / (double)nBlocks)) * (blockNr+1) : nFrames;
@@ -1032,14 +1081,16 @@ void main(int argc, char *argv[]){
 		//No need to calculate: FileNr
 		int procNum = omp_get_thread_num();
 		int idxctr;
-		pixelvalue *Image;
+		pixelvalue *Image, *ImageAsym;
 		double *ImgCorrBCTemp, *ImgCorrBC, *MaximaValues, *z;
 		double *IntegratedIntensity, *IMAX, *YCEN, *ZCEN, *Rads, *Etass, *OtherInfo;
 		int *BoolImage, *ConnectedComponents, *Positions, *PositionTrackers, *MaximaPositions, *UsefulPixels, *NrPx;
 		size_t idxoffset;
 		idxoffset = NrPixels; idxoffset *= NrPixels; idxoffset *= procNum;
+		size_t asym_idxoffset; asym_idxoffset = NrPxY; asym_idxoffset *= NrPxZ; asym_idxoffset *= procNum;
 		printf("FrameNr: %d\n",FileNr);
 		Image = &ImageAll[idxoffset];
+		ImageAsym = &ImageAsymAll[asym_idxoffset];
 		ImgCorrBC = &ImgCorrBCAll[idxoffset];
 		ImgCorrBCTemp = &ImgCorrBCTempAll[idxoffset];
 		BoolImage = &BoolImageAll[idxoffset];
@@ -1108,13 +1159,15 @@ void main(int argc, char *argv[]){
 		// We can just calculate where to be using nF-FramesToSkip, this is needed because FrameNr is now starting from 0, not 1.
 		size_t temp = FramesToSkip;
 		temp *= 2;
-		temp *= NrPixels;
-		temp *= NrPixels;
+		temp *= NrPxY;
+		temp *= NrPxZ;
 		long int Sk = temp;
 		Sk += headSize;
 		double beamcurr=1;
 		fseek(ImageFile,Sk,SEEK_SET);
-		fread(Image,SizeFile,1,ImageFile);
+		//~ fread(Image,SizeFile,1,ImageFile);
+		fread(ImageAsym,SizeFile,1,ImageFile);
+		MakeSquare(NrPixels,NrPxY,NrPxZ,ImageAsym,Image);
 		if (makeMap == 1){
 			int badPxCounter = 0;
 			for (i=0;i<NrPixels*NrPixels;i++){

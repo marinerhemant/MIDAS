@@ -306,7 +306,7 @@ int main(int argc, char* argv[])
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
 	printf("Time to allocate bigArray: %f s.\n",diftotal);
 	BestPosMatrix = malloc(totIDs2*sizeof(*BestPosMatrix));
-	for (i=0;i<totIDs1;i++) BestPosMatrix[i] = -1;
+	for (i=0;i<totIDs2;i++) BestPosMatrix[i] = -1;
 	BestValMatrix = malloc(totIDs2*sizeof(*BestValMatrix));
 	double Sym[24][4];
 	int NrSymmetries;
@@ -347,7 +347,7 @@ int main(int argc, char* argv[])
 				}
 			}
 		}
-	}else if (matchMode == 1){
+	} else if (matchMode == 1){
 		for (i=0;i<totIDs2;i++){
 			minAngle = 360000000;
 			posT2[0] = Pos2[i][0];
@@ -378,7 +378,7 @@ int main(int argc, char* argv[])
 				}
 			}
 		}
-	}else if (matchMode == 2){
+	} else if (matchMode == 2){
 		for (i=0;i<totIDs2;i++){
 			minAngle = 360000000;
 			Q2[0] = Quats2[i][0];

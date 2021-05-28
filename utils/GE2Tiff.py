@@ -56,3 +56,18 @@ for fnr in range(nrFiles):
 		thisFrame[thisFrame < thresh] = 0
 		im = Image.fromarray(thisFrame)
 		im.save(outFN,compression=None)
+
+'''
+import numpy as np
+import os
+fn = "Sim_000011.ge3"
+NrPixels = 2048
+frameNrToRead = 21 #starting from 0
+headSize = 8192
+sizeFrame = NrPixels*NrPixels*2
+nFrames = int((os.stat(fn).st_size - headSize) / sizeFrame)
+skip_size = sizeFrame*frameNrToRead + headSize
+f = open(fn,"rb")
+f.seek(skip_size,os.SEEK_SET)
+thisFrame = np.reshape(np.fromfile(f,dtype=np.uint16,count=NrPixels*NrPixels))
+'''
