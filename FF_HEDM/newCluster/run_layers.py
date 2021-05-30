@@ -15,11 +15,15 @@ parser.add_argument('-nCPUs',    type=int, required=True, help='Number of CPUs t
 parser.add_argument('-startLayerNr',type=int,required=True,help='Start Layer Number')
 parser.add_argument('-endLayerNr',type=int,required=True,help='End Layer Number')
 parser.add_argument('-paramFile', type=str, required=True, help='ParameterFileName')
+parser.add_argument('-nNodes', type=str, required=True, help='Number of Nodes')
+parser.add_argument('-machineName', type=str, required=True, help='Machine Name')
 args, unparsed = parser.parse_known_args()
 paramFN = args.paramFile
+machineName = args.machineName
 startLayerNr = int(args.startLayerNr)
 endLayerNr = int(args.endLayerNr)
-numProcs = int(args.nCPUs)
+numProcs = args.nCPUs
+nNodes = args.nNodes
 
 baseNameParamFN = paramFN.split('/')[-1]
 homedir = os.path.expanduser('~')
@@ -62,16 +66,21 @@ for layerNr in range(startLayerNr,endLayerNr+1):
 	Path(thisDir+'Output').mkdir(parents=True,exist_ok=True)
 	Path(thisDir+'Results').mkdir(parents=True,exist_ok=True)
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" "+thisParamFN,shell=True)
-	## Next Command on multiple nodes
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMP")+' '+baseNameParamFN+' 0 1 '+str(nFrames)+' '+str(numProcs),shell=True)
-	# Next Commands on single node
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAll")+' '+baseNameParamFN,shell=True)
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAll")+' '+baseNameParamFN,shell=True)
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetup")+' '+baseNameParamFN,shell=True)
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinData"),shell=True)
-	nSpotsToIndex = len(open('SpotsToIndex.csv').readlines())
-	# Next 2 commands on multiple nodes
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerOMP")+' paramstest.txt 0 1 '+str(nSpotsToIndex)+' '+str(numProcs),shell=True)
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitPosOrStrainsOMP")+' paramstest.txt 0 1 '+str(nSpotsToIndex)+' '+str(numProcs),shell=True)
-	subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/ProcessGrains') + ' ' + baseNameParamFN,shell=True)
+	## Call the SWIFT Code
+	# Find swiftdir, also the sites.conf dir, then go
+	swiftcmd = os.path.expanduser('~/.MIDAS/swift/bin/swift') + ' -config ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/sites.conf') + ' -sites ' + machineName + ' ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/runLayer.swift') + ' -folder=' + thisDir + ' -paramfn='+ baseNameParamFN + ' -nrNodes=' + nNodes + ' -nFrames=' + str(nFrames) + ' -numProcs='+ numProcs
+	print(swiftcmd)
+	subprocess.call(swiftcmd)
+	# ~ ## Next Command on multiple nodes
+	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMP")+' '+baseNameParamFN+' 0 1 '+str(nFrames)+' '+str(numProcs),shell=True)
+	# ~ # Next Commands on single node
+	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAll")+' '+baseNameParamFN,shell=True)
+	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAll")+' '+baseNameParamFN,shell=True)
+	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetup")+' '+baseNameParamFN,shell=True)
+	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinData"),shell=True)
+	# ~ nSpotsToIndex = len(open('SpotsToIndex.csv').readlines())
+	# ~ # Next 2 commands on multiple nodes
+	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerOMP")+' paramstest.txt 0 1 '+str(nSpotsToIndex)+' '+str(numProcs),shell=True)
+	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitPosOrStrainsOMP")+' paramstest.txt 0 1 '+str(nSpotsToIndex)+' '+str(numProcs),shell=True)
+	# ~ subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/ProcessGrains') + ' ' + baseNameParamFN,shell=True)
 	print("Time Elapsed: "+str(time.time()-startTime)+" seconds.")
