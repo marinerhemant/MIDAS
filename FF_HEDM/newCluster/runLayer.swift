@@ -33,7 +33,7 @@ file peaks[];
 foreach nodeNr in [0,nrNodes-1] {
 	file peak<simple_mapper;location=strcat(folder,"/output"),prefix=strcat("Peaks_",i,"_"),suffix=".out">;
 	peak = runPeaks(folder,paramfn,nodeNr,nrNodes,nFrames,numProcs);
-	peaks[i] = peak;
+	peaks[nodeNr] = peak;
 }
 file postpeak<simple_mapper;location=strcat(folder,"/output"),prefix="PostPeaks",suffix=".out">;
 postPeak = runPostPeaks(folder,paramfn,peaks);
@@ -41,7 +41,7 @@ file indexrefines[];
 foreach nodeNr in [0,nrNodes-1] {
 	file indexrefine<simple_mapper;location=strcat(folder,"/output"),prefix=strcat("IndexRefine_",i,"_"),suffix=".out">;
 	indexRefine = runIndexRefine(folder,nodeNr,nrNodes,numProcs,postPeak);
-	indexrefines[i] = indexRefine;
+	indexrefines[nodeNr] = indexRefine;
 }
 file processGrain<simple_mapper;location=strcat(folder,"/output"),prefix="ProcessGrains",suffix=".out">;
 processGrain = runProcessGrains(folder,paramfn,indexrefines);
