@@ -24,7 +24,7 @@ startLayerNr = int(args.startLayerNr)
 endLayerNr = int(args.endLayerNr)
 numProcs = args.nCPUs
 nNodes = args.nNodes
-os.environ[nNODES] = str(nNodes)
+os.environ["nNODES"] = str(nNodes)
 
 baseNameParamFN = paramFN.split('/')[-1]
 homedir = os.path.expanduser('~')
