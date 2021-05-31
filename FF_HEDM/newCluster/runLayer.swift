@@ -40,8 +40,8 @@ postpeak = runPostPeaks(folder,paramfn,peaks);
 file indexrefines[];
 foreach nodeNr in [0,nrNodes-1] {
 	file indexrefine<simple_mapper;location=strcat(folder,"/output"),prefix=strcat("IndexRefine_",nodeNr,"_"),suffix=".out">;
-	indexRefine = runIndexRefine(folder,nodeNr,nrNodes,numProcs,postpeak);
-	indexrefines[nodeNr] = indexRefine;
+	indexrefine = runIndexRefine(folder,nodeNr,nrNodes,numProcs,postpeak);
+	indexrefines[nodeNr] = indexrefine;
 }
 file processGrain<simple_mapper;location=strcat(folder,"/output"),prefix="ProcessGrains",suffix=".out">;
 processGrain = runProcessGrains(folder,paramfn,indexrefines);
