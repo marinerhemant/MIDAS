@@ -35,7 +35,7 @@ foreach nodeNr in [0,nrNodes-1] {
 	peak = runPeaks(folder,paramfn,nodeNr,nrNodes,nFrames,numProcs);
 	peaks[nodeNr] = peak;
 }
-file postpeak<simple_mapper;location=strcat(folder,"/output"),prefix="PostPeaks",suffix=".out">;
+file postpeak<single_file_mapper;file=strcat(folder,"/output/PostPeaks.out")>;
 postPeak = runPostPeaks(folder,paramfn,peaks);
 file indexrefines[];
 foreach nodeNr in [0,nrNodes-1] {
