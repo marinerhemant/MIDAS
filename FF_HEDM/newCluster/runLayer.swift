@@ -31,7 +31,7 @@ int numProcs = toInt(arg("numProcs","32"));
 
 file peaks[];
 foreach nodeNr in [0,nrNodes-1] {
-	file peak<simple_mapper;location=strcat(folder,"/output"),prefix=strcat("Peaks_",i,"_"),suffix=".out">;
+	file peak<simple_mapper;location=strcat(folder,"/output"),prefix=strcat("Peaks_",nodeNr,"_"),suffix=".out">;
 	peak = runPeaks(folder,paramfn,nodeNr,nrNodes,nFrames,numProcs);
 	peaks[nodeNr] = peak;
 }
@@ -39,7 +39,7 @@ file postpeak<simple_mapper;location=strcat(folder,"/output"),prefix="PostPeaks"
 postPeak = runPostPeaks(folder,paramfn,peaks);
 file indexrefines[];
 foreach nodeNr in [0,nrNodes-1] {
-	file indexrefine<simple_mapper;location=strcat(folder,"/output"),prefix=strcat("IndexRefine_",i,"_"),suffix=".out">;
+	file indexrefine<simple_mapper;location=strcat(folder,"/output"),prefix=strcat("IndexRefine_",nodeNr,"_"),suffix=".out">;
 	indexRefine = runIndexRefine(folder,nodeNr,nrNodes,numProcs,postPeak);
 	indexrefines[nodeNr] = indexRefine;
 }
