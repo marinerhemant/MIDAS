@@ -1300,5 +1300,5 @@ void main(int argc, char *argv[]){
 	free(flood);
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds, nrFramesDone: %d.\n",time,nrFilesDone);
-	//~ return 0;
+	return 0;
 }
