@@ -1276,6 +1276,7 @@ void main(int argc, char *argv[]){
 	}
 
 	free(ImageAll);
+	free(ImageAsymAll);
 	free(ImgCorrBCAll);
 	free(ImgCorrBCTempAll);
 	free(BoolImageAll);
