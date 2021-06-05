@@ -50,16 +50,16 @@ allocMatrixInt(int nrows, int ncols)
     return arr;
 }
 
-static inline
-void
-FreeMemMatrixInt(int **mat,int nrows)
-{
-    int r;
-    for ( r = 0 ; r < nrows ; r++) {
-        free(mat[r]);
-    }
-    free(mat);
-}
+//~ static inline
+//~ void
+//~ FreeMemMatrixInt(int **mat,int nrows)
+//~ {
+    //~ int r;
+    //~ for ( r = 0 ; r < nrows ; r++) {
+        //~ free(mat[r]);
+    //~ }
+    //~ free(mat);
+//~ }
 
 static inline
 double**
@@ -80,16 +80,16 @@ allocMatrix(int nrows, int ncols)
     return arr;
 }
 
-static inline
-void
-FreeMemMatrix(double **mat,int nrows)
-{
-    int r;
-    for ( r = 0 ; r < nrows ; r++) {
-        free(mat[r]);
-    }
-    free(mat);
-}
+//~ static inline
+//~ void
+//~ FreeMemMatrix(double **mat,int nrows)
+//~ {
+    //~ int r;
+    //~ for ( r = 0 ; r < nrows ; r++) {
+        //~ free(mat[r]);
+    //~ }
+    //~ free(mat);
+//~ }
 
 struct sortArrayType{
 	double angle;
@@ -484,6 +484,7 @@ int main(int argc, char* argv[])
 			Matches[counter*28+26] = Pos2[posY][2] - Pos1[posX][2];
 			Matches[counter*28+27] = Len3d(Matches[counter*28+24],Matches[counter*28+25],Matches[counter*28+26]);
 			counter ++;
+			if (counter == totIDs2) break;
 		}
 	} else {
 		counter = 0;
