@@ -73,6 +73,7 @@ for layerNr in range(startLayerNr,endLayerNr+1):
 	swiftcmd = os.path.expanduser('~/.MIDAS/swift/bin/swift') + ' -config ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/sites.conf') + ' -sites ' + machineName + ' ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/runLayer.swift') + ' -folder=' + thisDir + ' -paramfn='+ baseNameParamFN + ' -nrNodes=' + str(nNodes) + ' -nFrames=' + str(nFrames) + ' -numProcs='+ str(numProcs)
 	print(swiftcmd)
 	subprocess.call(swiftcmd,shell=True)
+	#### This following code if running on a single node, or if multiple nodes are involed, the parameters " 0 1 " can be substituted by " nodeNr nrNodes " on the multiple node jobs. nodeNr starts from 0.
 	# ~ ## Next Command on multiple nodes
 	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMP")+' '+baseNameParamFN+' 0 1 '+str(nFrames)+' '+str(numProcs),shell=True)
 	# ~ # Next Commands on single node
