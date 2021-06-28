@@ -1,12 +1,12 @@
 import numpy as np
 import os
 
-folder = '/home/beams/S1IDUSER/mnt/s1c/smaddali_oct20/ge3/trial/'
-fileStem = 'Si_shard2_trench1_ff_at_Pt_nightscan'
-startNr = 197
-nrFiles = 99
+folder = '/home/beams/S1IDUSER/mnt/s1c/smaddali_jun21/ge5/'
+fileStem = 'test_sam1'
+startNr = 108
+nrFiles = 96
 padding = 6
-ext = '.ge3'
+ext = '.ge5'
 
 outfn = folder + fileStem + '_Merged_' + str(startNr).zfill(padding) + ext
 outfile = open(outfn,'wb')
@@ -15,6 +15,7 @@ np.array(header).tofile(outfile)
 
 for fNr in range(startNr,startNr+nrFiles):
 	fName = folder + fileStem + '_' + str(fNr).zfill(padding) + ext
+	print(fNr)
 	f = open(fName,'rb')
 	f.seek(8192,os.SEEK_SET)
 	thisData = np.fromfile(f,dtype=np.uint16)
