@@ -565,8 +565,8 @@ void main(int argc, char *argv[]){
 	char *str, dummy[1000], Folder[1024], FileStem[1024], *TmpFolder, darkcurrentfilename[1024], floodfilename[1024], Ext[1024],RawFolder[1024];
 	TmpFolder = "Temp";
 	int LowNr;
-	double bc=1, Ycen, Zcen, IntSat, OmegaStep, OmegaFirstFile, Lsd, px, Width, Wavelength,MaxRingRad;
-	int NrPixels, NrPxY=0,NrPxZ=0,Padding = 6, StartNr;
+	double bc=1, Ycen, Zcen, IntSat, OmegaStep, OmegaFirstFile, Lsd, px=200, Width, Wavelength,MaxRingRad;
+	int NrPixels=2048, NrPxY=0,NrPxZ=0,Padding = 6, StartNr;
 	char fs[1024];
 	int LayerNr;
 	int NrTransOpt=0;
