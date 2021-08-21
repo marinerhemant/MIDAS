@@ -687,7 +687,7 @@ static int conn(double *voxelList, double voxelLen, int nVoxels, int *Connection
 // a and b will be supplied in the c_data pointer
 
 
-void populate_arrays (char paramFN){
+void populate_arrays (char *paramFN){
 	FILE *fileParam;
 	printf("%s\n",paramFN);
 	fileParam = fopen(paramFN,"r");
