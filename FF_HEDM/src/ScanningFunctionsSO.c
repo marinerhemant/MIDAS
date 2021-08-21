@@ -634,8 +634,7 @@ static double problem_function(
 	char* c_time_string;
 	current_time = time(NULL);
 	c_time_string = ctime(&current_time);
-	nIters ++;
-	printf("Iteration Nr: %d Current time is %s", nIters, c_time_string);
+	printf("Current time is %s", c_time_string);
 	int nVoxels = n / 9;
 	struct FITTING_PARAMS *f_data = (struct FITTING_PARAMS *) f_data_trial;
 	double omegaStep = f_data->omegaStep, px = f_data->px, voxelLen = f_data->voxelLen, beamFWHM = f_data->beamFWHM, omeTol = f_data->omeTol;
@@ -658,7 +657,7 @@ static double problem_function(
 // Maximum difference in euler angles: 0.1 degrees, max change in lattice parameter 0.0001 fraction
 
 static int conn(double *voxelList, double voxelLen, int nVoxels, int *Connections){
-	// How to find connections (8-coonected): we have a list of voxels (with x,y positions) and we have the voxel length
+	// How to find connections (8-connected): we have a list of voxels (with x,y positions) and we have the voxel length
 	int i, j;
 	int nConn = 0;
 	double px1[2], px2[2];
@@ -937,10 +936,12 @@ void populate_arrays (char *paramFN){
 	spotInfoAll = calloc(lenSpotInfoAll,sizeof(*spotInfoAll));
 
 	// Make connections
-	int maxNConnections = nVoxels*8;
+	/*int maxNConnections = nVoxels*8;
 	int *Connections;
 	Connections = calloc(2*maxNConnections,sizeof(*Connections));
 	int nConn = conn(voxelList, voxelLen, nVoxels, Connections);
+	*/
+	int nConn = 2*8*nVoxels;
 
 	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
 	time_t current_time;
@@ -958,9 +959,10 @@ void populate_arrays (char *paramFN){
 	fprintf(paramsT,"%s\n",paramFN);
 	for(i=0;i<8;i++) fprintf(paramsT,"%zu\n",saveParams[i]);
 	fprintf(paramsT,"\n");
-	FILE *connF = fopen("/dev/shm/Connections.bin","wb");
-	fwrite(Connections,nConn*2*sizeof(*Connections),1,connF);
-	fclose(connF);
+	fclose(paramsT);
+	//~ FILE *connF = fopen("/dev/shm/Connections.bin","wb");
+	//~ fwrite(Connections,nConn*2*sizeof(*Connections),1,connF);
+	//~ fclose(connF);
 	FILE *fthisF = fopen("/dev/shm/Fthis.bin","wb");
 	fwrite(Fthis,dataArrSize*sizeof(*Fthis),1,fthisF);
 	fclose(fthisF);
@@ -991,22 +993,24 @@ double evaluateF(){
 	size_t nVoxels,nhkls,nConn,maxNPos,dataArrSize,sizeFLUT,totalNrSpots,sizeSpotInfoMat;
 	fgets(aline,4096,paramsT);
 	sscanf(aline,"%s",paramFN);
+	printf("%s\n",paramFN);
 	fgets(aline,4096,paramsT);
-	sscanf(aline,"%zu",nVoxels);
+	sscanf(aline,"%zu",&nVoxels);
 	fgets(aline,4096,paramsT);
-	sscanf(aline,"%zu",nhkls);
+	sscanf(aline,"%zu",&nhkls);
 	fgets(aline,4096,paramsT);
-	sscanf(aline,"%zu",nConn);
+	sscanf(aline,"%zu",&nConn);
 	fgets(aline,4096,paramsT);
-	sscanf(aline,"%zu",maxNPos);
+	sscanf(aline,"%zu",&maxNPos);
 	fgets(aline,4096,paramsT);
-	sscanf(aline,"%zu",dataArrSize);
+	sscanf(aline,"%zu",&dataArrSize);
 	fgets(aline,4096,paramsT);
-	sscanf(aline,"%zu",sizeFLUT);
+	sscanf(aline,"%zu",&sizeFLUT);
 	fgets(aline,4096,paramsT);
-	sscanf(aline,"%zu",totalNrSpots);
+	sscanf(aline,"%zu",&totalNrSpots);
 	fgets(aline,4096,paramsT);
-	sscanf(aline,"%zu",sizeSpotInfoMat);
+	sscanf(aline,"%zu",&sizeSpotInfoMat);
+	fclose(paramsT);
 	int n = nVoxels*9;
 	FILE *fileParam;
 	fileParam = fopen(paramFN,"r");
@@ -1211,14 +1215,14 @@ double evaluateF(){
 	check (x == MAP_FAILED,"mmap %s failed: %s", "/dev/shm/x.bin", strerror(errno));
 	close(fd);
 	// Read Connections
-	int *Connections;
-	fd = open("/dev/shm/Connections.bin",O_RDWR);
-	check(fd < 0, "open %s failed: %s", "/dev/shm/Connections.bin", strerror(errno));
-	status = fstat(fd,&s);
-	size = s.st_size;
-	Connections = mmap(0,size,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);
-	check (Connections == MAP_FAILED,"mmap %s failed: %s", "/dev/shm/Connections.bin", strerror(errno));
-	close(fd);
+	//~ int *Connections;
+	//~ fd = open("/dev/shm/Connections.bin",O_RDWR);
+	//~ check(fd < 0, "open %s failed: %s", "/dev/shm/Connections.bin", strerror(errno));
+	//~ status = fstat(fd,&s);
+	//~ size = s.st_size;
+	//~ Connections = mmap(0,size,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);
+	//~ check (Connections == MAP_FAILED,"mmap %s failed: %s", "/dev/shm/Connections.bin", strerror(errno));
+	//~ close(fd);
 	// Read Fthis
 	double *Fthis;
 	fd = open("/dev/shm/Fthis.bin",O_RDWR);
@@ -1280,18 +1284,24 @@ double evaluateF(){
 	f_data.AllSpotsInfo = &AllSpotsInfo[0];
 	f_data.AllIDsInfo = &AllIDsInfo[0];
 	f_data.differencesMat = &differencesMat[0];
-	f_data.Connections = &Connections[0];
+	//~ f_data.Connections = &Connections[0];
 	f_data.nConn = nConn;
 	struct FITTING_PARAMS *f_datat;
 	f_datat = &f_data;
 	void* trp = (struct FITTING_PARAMS *) f_datat;
 	double function_val = problem_function(n,x,trp);
+	time_t current_time;
+	char* c_time_string;
+	current_time = time(NULL);
+	c_time_string = ctime(&current_time);
+	printf("Current time is %s", c_time_string);
 	return function_val;
 }
 
-int main(){
+/*int main(){
 	const char *fn = "ps.txt";
 	populate_arrays(fn);
 	double fval = evaluateF();
 	printf("%lf\n",fval);
 }
+*/
