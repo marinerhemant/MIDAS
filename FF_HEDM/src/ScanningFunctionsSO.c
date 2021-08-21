@@ -1287,3 +1287,10 @@ double evaluateF(){
 	double function_val = problem_function(n,x,trp);
 	return function_val;
 }
+
+int main(){
+	const char fn = "ps.txt";
+	populate_arrays(fn);
+	double fval = evaluateF();
+	printf("%lf\n",fval);
+}
