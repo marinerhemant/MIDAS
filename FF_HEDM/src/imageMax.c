@@ -12,7 +12,7 @@ void imageMax (char *fn, int Header, int BytesPerPixel, int NrPixelsY, int NrPix
 	fseek(dataFile,Header,SEEK_SET);
 	int frameNr;
 	char fn2[4096];
-	sprintf(fn2,"/dev/shm/img.max",fn);
+	sprintf(fn2,"/dev/shm/img.max");
 	FILE *out = fopen(fn2,"w");
 	long long int i, j, Pos;
 	if (BytesPerPixel == 2){ // GE File
