@@ -82,6 +82,9 @@ help:
 scanningfcns: $(SRCDIR)ScanningFunctions.c
 	$(CC) $(SRCDIR)ScanningFunctions.c $(SRCDIR)CalcStrains.c -o $(BINDIR)ScanningFunctions $(CFLAGS) $(CFLAGSNLOPT) -fopenmp
 
+scanningfcnsso: $(SRCDIR)ScanningFunctionsSO.c
+	$(CC) $(SRCDIR)ScanningFunctionsSO.c  -shared -Wl,-soname,imageMax -o $(BINDIR)ScanningFunctionsSO.so $(CFLAGS) -fopenmp
+
 simulatescanning: $(SRCDIR)SimulateScanning.c
 	$(CC) $(SRCDIR)SimulateScanning.c -o $(BINDIR)SimulateScanning $(CFLAGS) $(CFLAGSNLOPT) -fopenmp
 

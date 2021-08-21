@@ -180,7 +180,7 @@ for line in positions:
 	# Make shm
 	call([binfolder+'/SaveBinData'])
 	# MapBND
-	call([binfolder+'/MapBND',pfname2,fname,binname])
+	call([binfolder+'/MapBND',pfname2,fname,binname]) # Not needed right now if we don't have the bounding box data.
 	os.chdir(outdir)
 	layernr = layernr + 1
 
