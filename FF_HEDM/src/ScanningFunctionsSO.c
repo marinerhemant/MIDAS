@@ -689,6 +689,7 @@ static int conn(double *voxelList, double voxelLen, int nVoxels, int *Connection
 
 void populate_arrays (char *paramFN){
 	FILE *fileParam;
+	printf("%s\n",paramFN);
 	fileParam = fopen(paramFN,"r");
 	double omegaStep, px, voxelLen, beamFWHM, omeTol, Lsd, Wavelength;
 	int nScans, rings[500], nRings=0;
