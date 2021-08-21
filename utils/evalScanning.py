@@ -1,5 +1,4 @@
-from ctypes import *
-import numpy as np
+import ctypes
 import os
 
 home = os.path.expanduser('~')
