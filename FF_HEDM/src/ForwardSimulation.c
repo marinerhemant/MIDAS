@@ -268,6 +268,51 @@ FreeMemMatrix(
     free(mat);
 }
 
+void
+RotationTilts(
+    double tx,
+    double ty,
+    double tz,
+    double RotMatOut[3][3])
+{
+    tx = deg2rad*tx;
+    ty = deg2rad*ty;
+    tz = deg2rad*tz;
+    double r1[3][3];
+    double r2[3][3];
+    double r3[3][3];
+    double r1r2[3][3];
+    r1[0][0] = cos(tz);
+    r1[0][1] = -sin(tz);
+    r1[0][2] = 0;
+    r1[1][0] = sin(tz);
+    r1[1][1] = cos(tz);
+    r1[1][2] = 0;
+    r1[2][0] = 0;
+    r1[2][1] = 0;
+    r1[2][2] = 1;
+    r2[0][0] = cos(ty);
+    r2[0][1] = 0;
+    r2[0][2] = sin(ty);
+    r2[1][0] = 0;
+    r2[1][1] = 1;
+    r2[1][2] = 0;
+    r2[2][0] = -sin(ty);
+    r2[2][1] = 0;
+    r2[2][2] = cos(ty);
+    r3[0][0] = 1;
+    r3[0][1] = 0;
+    r3[0][2] = 0;
+    r3[1][0] = 0;
+    r3[1][1] = cos(tx);
+    r3[1][2] = -sin(tx);
+    r3[2][0] = 0;
+    r3[2][1] = sin(tx);
+    r3[2][2] = cos(tx);
+    MatrixMultF33(r1,r2,r1r2);
+    MatrixMultF33(r1r2,r3,RotMatOut);
+}
+
 static inline
 void DisplacementInTheSpot(double a, double b, double c, double xi, double yi, double zi,
 						double omega, double *Displ_y, double *Displ_z)
@@ -460,6 +505,27 @@ static inline void CorrectHKLsLatCEpsilon(double LatC[6], double eps[6], double 
 	}
 }
 
+void
+DisplacementSpots(
+    RealType a,
+    RealType b,
+    RealType Lsd,
+    RealType yi,
+    RealType zi,
+    RealType omega,
+    RealType *Displ_y,
+    RealType *Displ_z)
+{
+    RealType OmegaRad = deg2rad * omega;
+    RealType sinOme = sin(OmegaRad);
+    RealType cosOme = cos(OmegaRad);
+    RealType xa = a*cosOme - b*sinOme;
+    RealType ya = a*sinOme + b*cosOme;
+    RealType t = 1 - (xa/Lsd);
+    *Displ_y = ya + (yi*t);
+    *Displ_z = t*zi;
+}
+
 static inline
 double CorrectWedge(double eta, double theta,
 		double wl, double wedge)
@@ -631,7 +697,7 @@ main(int argc, char *argv[])
 	int RingsToUse[500], nRings=0;
 	double LatC[6],Wavelength,Wedge=0, p0, p1, p2, RhoD,GaussWidth,PeakIntensity=2000;
 	int writeSpots, isBin=0;
-	int LoadNr = 0, UpdatedOrientations = 1;
+	int LoadNr = 0, UpdatedOrientations = 1, nfOutput = 0;
 	double eRes = 0, minConfidence = 0;
 	while (fgets(aline,4096,fileParam)!=NULL){
 		str="RingsToUse ";
@@ -810,6 +876,12 @@ main(int argc, char *argv[])
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr == 0){
 			sscanf(aline,"%s %d",dummy,&isBin);
+			continue;
+		}
+		str="NFOutput ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr == 0){
+			sscanf(aline,"%s %d",dummy,&nfOutput);
 			continue;
 		}
 		str="EResolution "; // todo
@@ -1172,8 +1244,19 @@ main(int argc, char *argv[])
 	int nRowsPerGrain = 2 * n_hkls;
 	TheorSpots = allocMatrix(nRowsPerGrain,7);
 	double OM[3][3],LatCThis[6], **hklsOut, **hklsTemp, EpsThis[6];
+	double RotMatTilts[3][3];
+	RotationTilts(tx,ty,tz,RotMatTilts);
+    double MatIn[3],P0[3],P0T[3];
+    MatIn[0]=0;
+    MatIn[1]=0;
+    MatIn[2]=0;
+	MatIn[0] = -Lsd;
+	MatrixMultF(RotMatTilts,MatIn,P0T);
+	for (j=0;j<3;j++){
+		P0[j] = P0T[j];
+	}
 	double OmeDiff, yTemp, zTemp, yThis, omeThis, etaThis;
-	double Info[5],DisplY,DisplZ,yDet,zDet,DisplY2,DisplZ2;
+	double Info[5],DisplY,DisplZ,yDet,zDet,DisplY2,DisplZ2,xGrain,yGrain, xyz[3],P1[3],ABC[3],outxyz[3],YZSpotsT[2];
 	int yTrans, zTrans;
 	int idxNrY,idxNrZ;
 	long long int idx;
@@ -1203,74 +1286,93 @@ main(int argc, char *argv[])
 		}
 		// Calculate the spots now.
 		CalcDiffrSpots_Furnace(hklsOut,OM,Lsd,Wavelength,TheorSpots,&nTspots);
-		fflush(stdout);
 		// For each spot, calculate displacement, calculate tilt and wedge effect.
 		for (spotNr=0;spotNr<nTspots;spotNr++){
 			// Calculate Tilt Effect
 			for (i=0;i<5;i++) Info[i] = TheorSpots[spotNr][i]; // Info has: R,eta,ome,theta,ringnr
-			OmeDiff = CorrectWedge(Info[1],Info[3],Wavelength,Wedge);
-			omeThis = Info[2] - OmeDiff;
-			if (omeThis >= OmegaEnd*OmegaStep/fabs(OmegaStep)) continue;
-			if (omeThis < OmegaStart*OmegaStep/fabs(OmegaStep)) continue;
-			// Get diplacements due to spot position
-			yTemp = -Info[0]*sin(Info[1]*deg2rad);
-			zTemp =  Info[0]*cos(Info[1]*deg2rad);
-			DisplacementInTheSpot(InputInfo[voxNr][9],InputInfo[voxNr][10],
-				InputInfo[voxNr][11],Lsd,yTemp,zTemp,omeThis,&DisplY2,&DisplZ2);
-			yThis = yTemp+DisplY2; // These are displaced for grain position, not tilted.
-			zThis = zTemp+DisplZ2; // These should be written to SpotMatrix.csv
-			// Get tilt displacements
-			yTrans = (int) (-yThis/px + yBC);
-			zTrans = (int) ( zThis/px + zBC);
-			idx = yTrans + NrPixels*zTrans;
-			if (idx < 1) continue;
-			if (idx >= NrPixels*NrPixels) continue;
-			//~ printf("%lf %lf %lf %lf %d %d %lf %lf %lf %lld\n",yTemp, zTemp, yThis, zThis, yTrans, zTrans, px, yBC, zBC, (long long int) idx); fflush(stdout);
-			DisplY = yDispl[idx];
-			DisplZ = zDispl[idx];
-			if (DisplY == -32100){ // Was not set, check neighbor
-				if (idx-NrPixels < 0) continue;
-				if (idx+NrPixels > NrPixels*NrPixels-1) continue;
-				if (yDispl[idx-1] != -32100.0){
-					DisplY = yDispl[idx-1];
-					DisplZ = zDispl[idx-1];
-				}else if(yDispl[idx+1] != -32100.0){
-					DisplY = yDispl[idx+1];
-					DisplZ = zDispl[idx+1];
-				}else if(yDispl[idx-NrPixels] != -32100.0){
-					DisplY = yDispl[idx-NrPixels];
-					DisplZ = zDispl[idx-NrPixels];
-				}else if(yDispl[idx+NrPixels] != -32100.0){
-					DisplY = yDispl[idx+NrPixels];
-					DisplZ = zDispl[idx+NrPixels];
-				}else{
-					//~ printf("No neighbor was set for tilts. Please check. idx = %lld\n",(long long int)idx);
-					//~ return 1;
-					continue;
+			if (nfOutput == 1){
+				// What we need: yDet, zDet, omeThis
+				omeThis = Info[2];
+				xGrain = InputInfo[voxNr][9];
+				yGrain = InputInfo[voxNr][10];
+				yTemp = -Info[0]*sin(Info[1]*deg2rad);
+				zTemp =  Info[0]*cos(Info[1]*deg2rad);
+				DisplacementSpots(xGrain,yGrain,Lsd,yTemp,zTemp,omeThis,&DisplY2,&DisplZ2);
+				xyz[0] = 0; xyz[1] = DisplY2; xyz[2] = DisplZ2;
+				MatrixMultF(RotMatTilts,xyz,P1);
+				for (i=0;i<3;i++){
+					ABC[i] = P1[i]-P0[i];
 				}
+				outxyz[0] = 0; outxyz[1] = P0[1] -(ABC[1]*P0[0])/(ABC[0]); outxyz[2] = P0[2] -(ABC[2]*P0[0])/(ABC[0]);
+				YZSpotsT[0] = -(outxyz[1])/px + yBC; YZSpotsT[1] = (outxyz[2])/px + zBC; // The y is calculated in negative way to match FF!
+				if (YZSpotsT[0] > NrPixels || YZSpotsT[0] < 0 || YZSpotsT[1] > NrPixels || YZSpotsT[1] < 0) continue;
+				yDet = YZSpotsT[0];
+				zDet = YZSpotsT[1];
+			} else {
+				OmeDiff = CorrectWedge(Info[1],Info[3],Wavelength,Wedge);
+				omeThis = Info[2] - OmeDiff;
+				if (omeThis >= OmegaEnd*OmegaStep/fabs(OmegaStep)) continue;
+				if (omeThis < OmegaStart*OmegaStep/fabs(OmegaStep)) continue;
+				// Get diplacements due to spot position
+				yTemp = -Info[0]*sin(Info[1]*deg2rad);
+				zTemp =  Info[0]*cos(Info[1]*deg2rad);
+				DisplacementInTheSpot(InputInfo[voxNr][9],InputInfo[voxNr][10],
+					InputInfo[voxNr][11],Lsd,yTemp,zTemp,omeThis,&DisplY2,&DisplZ2);
+				yThis = yTemp+DisplY2; // These are displaced for grain position, not tilted.
+				zThis = zTemp+DisplZ2; // These should be written to SpotMatrix.csv
+				// Get tilt displacements
+				yTrans = (int) (-yThis/px + yBC);
+				zTrans = (int) ( zThis/px + zBC);
+				idx = yTrans + NrPixels*zTrans;
+				if (idx < 1) continue;
+				if (idx >= NrPixels*NrPixels) continue;
+				//~ printf("%lf %lf %lf %lf %d %d %lf %lf %lf %lld\n",yTemp, zTemp, yThis, zThis, yTrans, zTrans, px, yBC, zBC, (long long int) idx); fflush(stdout);
+				DisplY = yDispl[idx];
+				DisplZ = zDispl[idx];
+				if (DisplY == -32100){ // Was not set, check neighbor
+					if (idx-NrPixels < 0) continue;
+					if (idx+NrPixels > NrPixels*NrPixels-1) continue;
+					if (yDispl[idx-1] != -32100.0){
+						DisplY = yDispl[idx-1];
+						DisplZ = zDispl[idx-1];
+					}else if(yDispl[idx+1] != -32100.0){
+						DisplY = yDispl[idx+1];
+						DisplZ = zDispl[idx+1];
+					}else if(yDispl[idx-NrPixels] != -32100.0){
+						DisplY = yDispl[idx-NrPixels];
+						DisplZ = zDispl[idx-NrPixels];
+					}else if(yDispl[idx+NrPixels] != -32100.0){
+						DisplY = yDispl[idx+NrPixels];
+						DisplZ = zDispl[idx+NrPixels];
+					}else{
+						//~ printf("No neighbor was set for tilts. Please check. idx = %lld\n",(long long int)idx);
+						//~ return 1;
+						continue;
+					}
+				}
+				yTemp = yThis + DisplY;
+				zTemp = zThis + DisplZ;
+				yDet = yBC - yTemp/px;
+				zDet = zBC + zTemp/px + 0.5;
+				if (yDet < 0) continue;
+				if (zDet < 0) continue;
+				Info[3] = 0.5*atand(sqrt(yThis*yThis+zThis*zThis)/Lsd); // New Theta
+				CalcEtaAngle(yThis,zThis,&etaThis);
+				// Save to SpotMatrix.csv
+				spotMatr[0]  = (double) voxNr + 1;
+				spotMatr[1]  = (double) (n_hkls*2*voxNr + spotNr + 1);
+				spotMatr[2]  = Info[2];
+				spotMatr[3]  = yDet;
+				spotMatr[4]  = zDet;
+				spotMatr[5]  = omeThis;
+				spotMatr[6]  = etaThis;
+				spotMatr[7]  = Info[4];
+				spotMatr[8]  = yThis;
+				spotMatr[9]  = zThis;
+				spotMatr[10] = Info[3]; // Theta
+				spotMatr[11] = 0.0;
+				if (writeSpots ==1)	fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\n",(int)spotMatr[0],(int)spotMatr[1],spotMatr[2],spotMatr[3],spotMatr[4],spotMatr[5],spotMatr[6],(int)spotMatr[7],spotMatr[8],spotMatr[9],spotMatr[10],spotMatr[11]);
 			}
-			yTemp = yThis + DisplY;
-			zTemp = zThis + DisplZ;
-			yDet = yBC - yTemp/px;
-			zDet = zBC + zTemp/px + 0.5;
-			if (yDet < 0) continue;
-			if (zDet < 0) continue;
-			Info[3] = 0.5*atand(sqrt(yThis*yThis+zThis*zThis)/Lsd); // New Theta
-			CalcEtaAngle(yThis,zThis,&etaThis);
-			// Save to SpotMatrix.csv
-			spotMatr[0]  = (double) voxNr + 1;
-			spotMatr[1]  = (double) (n_hkls*2*voxNr + spotNr + 1);
-			spotMatr[2]  = Info[2];
-			spotMatr[3]  = yDet;
-			spotMatr[4]  = zDet;
-			spotMatr[5]  = omeThis;
-			spotMatr[6]  = etaThis;
-			spotMatr[7]  = Info[4];
-			spotMatr[8]  = yThis;
-			spotMatr[9]  = zThis;
-			spotMatr[10] = Info[3]; // Theta
-			spotMatr[11] = 0.0;
-			if (writeSpots ==1)	fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\n",(int)spotMatr[0],(int)spotMatr[1],spotMatr[2],spotMatr[3],spotMatr[4],spotMatr[5],spotMatr[6],(int)spotMatr[7],spotMatr[8],spotMatr[9],spotMatr[10],spotMatr[11]);
 			// Map yDet,zDet,omeThis to frames.
 			omeBin = (size_t)floor(-(OmegaStart-omeThis)/OmegaStep);
 			omeBin *= NrPixels;
