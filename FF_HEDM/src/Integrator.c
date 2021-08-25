@@ -668,7 +668,7 @@ int main(int argc, char **argv)
 		if (newOutput == 0){
 			fprintf(sumFile,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n");
 			for (i=0;i<nRBins*nEtaBins;i++){
-				for (k=0;k<4;k++)
+				for (k=0;k<5;k++)
 					fprintf(sumFile,"%lf\t",sumMatrix[i*5+k]);
 				fprintf(sumFile,"\n");
 			}
