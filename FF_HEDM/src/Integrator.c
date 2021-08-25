@@ -673,7 +673,7 @@ int main(int argc, char **argv)
 				fprintf(sumFile,"\n");
 			}
 		} else {
-			fprintf(sumFile,"Intensity(counts)\n");
+			fprintf(sumFile,"%%Intensity(counts)\n");
 			for (i=0;i<nRBins*nEtaBins;i++){
 				fprintf(sumFile,"%lf\n",sumMatrix[i*5+3]);
 			}
