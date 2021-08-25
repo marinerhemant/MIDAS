@@ -84,7 +84,7 @@ int ReadBins(){
     struct stat s;
     int status;
     size_t size;
-    const char * file_name = "/dev/shm/Map.bin";
+    const char * file_name = "Map.bin";
     int rc;
     fd = open (file_name, O_RDONLY);
     check (fd < 0, "open %s failed: %s", file_name, strerror (errno));
@@ -99,7 +99,7 @@ int ReadBins(){
     int fd2;
     struct stat s2;
     int status2;
-    const char* file_name2 = "/dev/shm/nMap.bin";
+    const char* file_name2 = "nMap.bin";
     fd2 = open (file_name2, O_RDONLY);
     check (fd2 < 0, "open %s failed: %s", file_name2, strerror (errno));
     status2 = fstat (fd2, & s2);
@@ -294,7 +294,7 @@ int main(int argc, char **argv)
 		".\n");
 		return(1);
 	}
-    system("cp Map.bin nMap.bin /dev/shm");
+    //~ system("cp Map.bin nMap.bin /dev/shm");
 	int rc = ReadBins();
 	double RMax, RMin, RBinSize, EtaMax, EtaMin, EtaBinSize, Lsd, px;
 	int NrPixelsY = 2048, NrPixelsZ = 2048, Normalize = 1;
@@ -665,11 +665,18 @@ int main(int argc, char **argv)
 			sprintf(sumFN,"%s/%s_sum%s",outputFolder,bname,outext);
 		}
 		sumFile = fopen(sumFN,"w");
-		fprintf(sumFile,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n");
-		for (i=0;i<nRBins*nEtaBins;i++){
-			for (k=0;k<4;k++)
-				fprintf(sumFile,"%lf\t",sumMatrix[i*5+k]);
-			fprintf(sumFile,"\n");
+		if (newOutput == 0){
+			fprintf(sumFile,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n");
+			for (i=0;i<nRBins*nEtaBins;i++){
+				for (k=0;k<4;k++)
+					fprintf(sumFile,"%lf\t",sumMatrix[i*5+k]);
+				fprintf(sumFile,"\n");
+			}
+		} else {
+			fprintf(sumFile,"Intensity(counts)\n");
+			for (i=0;i<nRBins*nEtaBins;i++){
+				fprintf(sumFile,"%lf\n",sumMatrix[i*5+3]);
+			}
 		}
 	}
 	end0 = clock();

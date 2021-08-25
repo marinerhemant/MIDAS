@@ -1214,15 +1214,6 @@ double evaluateF(){
 	x = mmap(0,size,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);
 	check (x == MAP_FAILED,"mmap %s failed: %s", "/dev/shm/x.bin", strerror(errno));
 	close(fd);
-	// Read Connections
-	//~ int *Connections;
-	//~ fd = open("/dev/shm/Connections.bin",O_RDWR);
-	//~ check(fd < 0, "open %s failed: %s", "/dev/shm/Connections.bin", strerror(errno));
-	//~ status = fstat(fd,&s);
-	//~ size = s.st_size;
-	//~ Connections = mmap(0,size,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);
-	//~ check (Connections == MAP_FAILED,"mmap %s failed: %s", "/dev/shm/Connections.bin", strerror(errno));
-	//~ close(fd);
 	// Read Fthis
 	double *Fthis;
 	fd = open("/dev/shm/Fthis.bin",O_RDWR);
@@ -1297,11 +1288,3 @@ double evaluateF(){
 	printf("Current time is %s", c_time_string);
 	return function_val;
 }
-
-/*int main(){
-	const char *fn = "ps.txt";
-	populate_arrays(fn);
-	double fval = evaluateF();
-	printf("%lf\n",fval);
-}
-*/
