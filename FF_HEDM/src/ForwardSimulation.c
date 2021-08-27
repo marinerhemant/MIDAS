@@ -1265,6 +1265,7 @@ main(int argc, char *argv[])
 	hklsTemp = allocMatrix(n_hkls,5);
 	printf("Total number of orientations: %d\n",nrPoints);
 	// Go through each point
+	// Should we do OMP
 	for (voxNr=0;voxNr<nrPoints;voxNr++){
 		// First calculate new hkls
 		if (dataType < 2){

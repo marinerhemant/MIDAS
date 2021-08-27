@@ -31,7 +31,8 @@ all: help bindircheck calibrant imagemax \
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking\
 	mapmultdetectors matchgrains detectormapper mergemultiplescans \
 	fitposorstrainsscanning indexscanning processgrainsscanning mapbnd fitscanninggrain \
-	fitgrainhydra forwardsimulation integrator
+	fitgrainhydra forwardsimulation integrator \
+	peaksfittingomp indexeromp fitsetup fitposorstrainsomp mergeoverlapsall calcradiusall
 
 local: predep all runsetup
 
