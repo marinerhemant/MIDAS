@@ -90,7 +90,7 @@ hk.attrs['head'] = np.string_(open('hkls.csv').readline())
 nColsRad = 21
 # We have a merged filesystem now, not according to rings
 # Put Temp data
-group2 = group1.creat_group('Temp')
+group2 = group1.create_group('Temp')
 for fNr in range(startNr,endNr+1):
 	fileName = f'{os.getcwd()}/Temp/{fstem}_{layerNr}_{str(fNr).zfill(pad)}_PS.csv'
 	if os.path.exists(fileName):
