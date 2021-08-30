@@ -129,7 +129,7 @@ for counter,grain in enumerate(Grains):
 		orig_ID = int(IDRings[IDRings[:,2]==spotID,1])
 		ringNr = int(IDRings[IDRings[:,2]==spotID,0])
 		pos = ringNrs.index(ringNr)
-		subInfo = radii[pos][orig_ID-1]
+		subInfo = radii[orig_ID-1]
 		RadiusInfo[ctr,:] = subInfo
 	RadiusInfo = np.hstack((spotsThisGrain,RadiusInfo))
 	spd = grg.create_dataset('SpotMatrix_Radius',data=RadiusInfo)
