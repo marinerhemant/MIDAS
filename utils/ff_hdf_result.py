@@ -114,7 +114,7 @@ resd.attrs['head'] = np.string_(open(fileName).readline())
 resarr = arr
 
 ringNrs = [int(r) for r in ringNrs]
-gg = outFile.create_froup('Grains')
+gg = outFile.create_group('Grains')
 
 for counter,grain in enumerate(Grains):
 	thisID = int(grain[0])
