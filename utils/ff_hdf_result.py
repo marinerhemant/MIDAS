@@ -87,7 +87,6 @@ group1.create_dataset('SpotsToIndex',data=SpotsToIndex)
 hk = group1.create_dataset('HKLs',data=HKLs)
 hk.attrs['head'] = np.string_(open('hkls.csv').readline())
 
-nColsRad = 21
 # We have a merged filesystem now, not according to rings
 # Put Temp data
 group2 = group1.create_group('Temp')
