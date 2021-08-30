@@ -23,9 +23,7 @@ def getValueFromParamFile(paramfn,searchStr,nLines=1,wordNr=1,nWords=1):
 	PSContents = f.readlines()
 	for line in PSContents:
 		if line.startswith(searchStr+' '):
-			line = line.replace('\t',' ')
-			line = line.replace('\n',' ')
-			words = line.split(' ')
+			words = line.replace('\t',' ').replace('\n',' ').split(' ')
 			words = [_f for _f in words if _f]
 			ret_list.append(words[wordNr:wordNr+nWords])
 			nrLines += 1
@@ -35,7 +33,6 @@ def getValueFromParamFile(paramfn,searchStr,nLines=1,wordNr=1,nWords=1):
 
 paramFile = sys.argv[1]
 outFN = sys.argv[2]
-ringNrs = [s[0] for s in getValueFromParamFile(paramFile,'RingThresh',100)]
 startNr = int(getValueFromParamFile(paramFile,'StartNr')[0][0])
 endNr = int(getValueFromParamFile(paramFile,'EndNr')[0][0])
 fStem = getValueFromParamFile(paramFile,'FileStem')[0][0]
@@ -112,7 +109,6 @@ resd = group1.create_dataset(os.path.basename(fileName),data=arr)
 resd.attrs['head'] = np.string_(open(fileName).readline())
 resarr = arr
 
-ringNrs = [int(r) for r in ringNrs]
 gg = outFile.create_group('Grains')
 
 for counter,grain in enumerate(Grains):
@@ -127,7 +123,6 @@ for counter,grain in enumerate(Grains):
 		spotID = int(spot[1])
 		orig_ID = int(IDRings[IDRings[:,2]==spotID,1])
 		ringNr = int(IDRings[IDRings[:,2]==spotID,0])
-		pos = ringNrs.index(ringNr)
 		subInfo = radii[orig_ID-1]
 		RadiusInfo[ctr,:] = subInfo
 	RadiusInfo = np.hstack((spotsThisGrain,RadiusInfo))
