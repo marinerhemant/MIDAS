@@ -92,7 +92,7 @@ nColsRad = 21
 # Put Temp data
 group2 = group1.create_group('Temp')
 for fNr in range(startNr,endNr+1):
-	fileName = f'{os.getcwd()}/Temp/{fstem}_{layerNr}_{str(fNr).zfill(pad)}_PS.csv'
+	fileName = f'{os.getcwd()}/Temp/{fStem}_{layerNr}_{str(fNr).zfill(pad)}_PS.csv'
 	if os.path.exists(fileName):
 		arr = np.genfromtxt(fileName,skip_header=1)
 		if arr.shape[0] > 0:
