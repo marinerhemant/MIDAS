@@ -7,7 +7,7 @@
 //  Created by Hemant Sharma on 2017/07/10.
 //
 //
-//
+// TODO: Add option to give QbinSize instead of RbinSize, look at 0,90,180,270
 
 #include <stdio.h>
 #include <math.h>

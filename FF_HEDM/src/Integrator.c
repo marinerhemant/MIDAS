@@ -8,8 +8,7 @@
 // Hemant Sharma
 // Dt: 2017/07/26
 //
-// TODO: 1. Transpose is not working right now.
-
+// TODO: Add option to give QbinSize instead of RbinSize
 
 #include <stdio.h>
 #include <math.h>
@@ -313,7 +312,7 @@ int main(int argc, char **argv)
 	int *mapMask;
 	int dType = 1;
 	char GapFN[4096], BadPxFN[4096], outputFolder[4096];
-	int sumImages=0, separateFolder=0,newOutput=0;
+	int sumImages=0, separateFolder=0,newOutput=0, binOutput = 0;
 	while (fgets(aline,4096,paramFile) != NULL){
 		str = "GapFile ";
 		if (StartsWith(aline,str) == 1){
@@ -337,6 +336,10 @@ int main(int argc, char **argv)
 		str = "NewOutput ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %d", dummy, &newOutput);
+		}
+		str = "BinOutput ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %d", dummy, &binOutput);
 		}
 		str = "RBinSize ";
 		if (StartsWith(aline,str) == 1){
@@ -563,6 +566,21 @@ int main(int argc, char **argv)
 	double *outArr, *outThisArr, *out1dArr;
 	char *outext;
 	outext = ".csv";
+	size_t bigArrSize = nEtaBins*nRBins;
+	double *IntArrPerFrame;
+	IntArrPerFrame = calloc(bigArrSize,sizeof(*IntArrPerFrame));
+	FILE *out3;
+	if (newOutput == 1){
+		char outfnAll[4096];
+		char fn3[4096];
+		sprintf(fn3,"%s",imageFN);
+		char *bname3;
+		bname3 = basename(fn3);
+		sprintf(outfnAll,"%s/%s_integrated.bin",outputFolder,bname3,outext);
+		printf("%s\n",outfnAll);
+		out3 = fopen(outfnAll,"wb");
+	}
+	// Add OMP here to do frames in parallel.
 	for (i=0;i<nFrames;i++){
 		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
 		rc = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
@@ -581,11 +599,12 @@ int main(int argc, char **argv)
 			sprintf(outfn,"%s/%s_integrated_framenr_%d%s",outputFolder,bname,i,outext);
 			sprintf(outFN1d,"%s/%s_integrated_framenr_%d.1d%s",outputFolder,bname,i,outext);
 		}
-		out = fopen(outfn,"w");
-		out1d = fopen(outFN1d,"w");
-		fprintf(out1d,"%%nRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tIntensity(counts)\n",nRBins);
-		if (newOutput == 0) fprintf(out,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n",nEtaBins,nRBins);
-		else fprintf(out,"%%Intensity(counts)\n");
+		if (newOutput == 0){
+			out = fopen(outfn,"w");
+			out1d = fopen(outFN1d,"w");
+			fprintf(out1d,"%%nRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tIntensity(counts)\n",nRBins);
+			fprintf(out,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n",nEtaBins,nRBins);
+		}
 		if (i==0 && newOutput==1){
 			if (separateFolder==0) sprintf(outfn2,"%s.REtaAreaMap.csv",imageFN);
 			else{
@@ -598,6 +617,7 @@ int main(int argc, char **argv)
 			out2 = fopen(outfn2,"w");
 			fprintf(out2,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tBinArea\n",nEtaBins,nRBins);
 		}
+		memset(IntArrPerFrame,0,bigArrSize);
 		for (j=0;j<nRBins;j++){
 			RMean = (RBinsLow[j]+RBinsHigh[j])/2;
 			Int1d = 0;
@@ -634,7 +654,7 @@ int main(int argc, char **argv)
 					fprintf(out,"%lf\t%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,Intensity,totArea);
 				}else{
 					if (i==0) fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
-					fprintf(out,"%lf\n",Intensity);
+					IntArrPerFrame[j*nEtaBins+k] = Intensity;
 				}
 				if (sumImages==1){
 					if (i==0){
@@ -647,11 +667,19 @@ int main(int argc, char **argv)
 				}
 			}
 			Int1d /= n1ds;
-			fprintf(out1d,"%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),Int1d);
+			if (newOutput == 0)
+				fprintf(out1d,"%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),Int1d);
 		}
-		fclose(out);
-		fclose(out1d);
+		if (newOutput == 1){
+			fwrite(IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),1,out3);
+			//~ for (j=0;j<bigArrSize;j++) fprintf(out3,"%lf ",IntArrPerFrame[j]);
+			//~ fprintf(out3,"\n");
+		} else{
+			fclose(out);
+			fclose(out1d);
+		}
 	}
+	if (newOutput == 1) fclose(out3);
 	if (sumImages == 1){
 		FILE *sumFile;
 		char sumFN[4096];
