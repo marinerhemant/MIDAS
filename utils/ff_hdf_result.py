@@ -108,7 +108,7 @@ radii = arr
 # Put Merge Result
 fileName = f'{os.getcwd()}/Result_StartNr_{startNr}_EndNr_{endNr}.csv'
 arr = np.genfromtxt(fileName,skip_header=1)
-nSps,nColsRad = arr.shape
+nSps,nTrs = arr.shape
 resd = group1.create_dataset(os.path.basename(fileName),data=arr)
 resd.attrs['head'] = np.string_(open(fileName).readline())
 resarr = arr
@@ -118,7 +118,7 @@ gg = outFile.create_group('Grains')
 
 for counter,grain in enumerate(Grains):
 	thisID = int(grain[0])
-	print(f'Processing grain {counter} out of {Grains.shape[0]} grains.')
+	print(f'Processing grain {counter} out of {Grains.shape[0]-1} grains.')
 	grg = gg.create_group('GrainID_'+str(thisID))
 	grd = grg.create_dataset('GrainInfo',data=grain)
 	grd.attrs['header'] = hGr
