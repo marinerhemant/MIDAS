@@ -581,6 +581,7 @@ int main(int argc, char **argv)
 		out3 = fopen(outfnAll,"wb");
 	}
 	// Add OMP here to do frames in parallel.
+	int nrowsOut = 0;
 	for (i=0;i<nFrames;i++){
 		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
 		rc = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
@@ -653,7 +654,10 @@ int main(int argc, char **argv)
 				if (newOutput == 0){
 					fprintf(out,"%lf\t%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,Intensity,totArea);
 				}else{
-					if (i==0) fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
+					if (i==0){
+						fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
+						nrowsOut++;
+					}
 					IntArrPerFrame[j*nEtaBins+k] = Intensity;
 				}
 				if (sumImages==1){
@@ -672,11 +676,12 @@ int main(int argc, char **argv)
 		}
 		if (newOutput == 1){
 			fwrite(IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),1,out3);
-			//~ for (j=0;j<bigArrSize;j++) fprintf(out3,"%lf ",IntArrPerFrame[j]);
-			//~ fprintf(out3,"\n");
 		} else{
 			fclose(out);
 			fclose(out1d);
+		}
+		if (i==0){
+			fclose(out2);
 		}
 	}
 	if (newOutput == 1) fclose(out3);
