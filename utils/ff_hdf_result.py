@@ -117,7 +117,7 @@ gg = outFile.create_group('Grains')
 
 for counter,grain in enumerate(Grains):
 	thisID = int(grain[0])
-	print(f'Processing grain {counter} out of {Grains.shape[0]-1} grains.')
+	print(f'Processing grain {counter+1} out of {Grains.shape[0]} grains.')
 	grg = gg.create_group('GrainID_'+str(thisID))
 	grd = grg.create_dataset('GrainInfo',data=grain)
 	grd.attrs['header'] = hGr
