@@ -430,7 +430,7 @@ int main(int argc, char **argv)
 	RBinsHigh = malloc(nRBins*sizeof(*RBinsHigh));
 	REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh);
 
-	int i,j,k,l;
+	int i,l;
 	printf("NrTransOpt: %d\n",NrTransOpt);
     for (i=0;i<NrTransOpt;i++){
         if (TransOpt[i] < 0 || TransOpt[i] > 2){printf("TransformationOptions can only be 0, 1, 2.\nExiting.\n");return 0;}
@@ -504,16 +504,16 @@ int main(int argc, char **argv)
 				mapMaskSize /= 32;
 				mapMaskSize ++;
 				mapMask = calloc(mapMaskSize,sizeof(*mapMask));
-				for (j=0;j<NrPixelsY*NrPixelsZ;j++){
-					if (DarkIn[j] == (pixelvalue) GapIntensity || DarkIn[j] == (pixelvalue) BadPxIntensity){
-						SetBit(mapMask,j);
+				for (l=0;l<NrPixelsY*NrPixelsZ;l++){
+					if (DarkIn[l] == (pixelvalue) GapIntensity || DarkIn[l] == (pixelvalue) BadPxIntensity){
+						SetBit(mapMask,l);
 						nrdone++;
 					}
 				}
 				printf("Nr mask pixels: %d\n",nrdone);
 				makeMap = 0;
 			}
-			for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFrames;
+			for(l=0;l<NrPixelsY*NrPixelsZ;l++) AverageDark[l] += (double)DarkIn[l]/nFrames;
 		}
 		printf("Dark file read\n");
 	}
@@ -570,6 +570,7 @@ int main(int argc, char **argv)
 	# pragma omp parallel for num_threads(numProcs) private(i) schedule(dynamic)
 	for (i=0;i<nFrames;i++){
 
+		int j, k;
 		int procNum = omp_get_thread_num();
 
 		size_t seekIntArr = nEtaBins*nRBins;
