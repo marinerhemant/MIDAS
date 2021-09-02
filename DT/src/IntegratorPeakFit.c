@@ -634,15 +634,13 @@ int main(int argc, char **argv)
 			fprintf(out2,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tBinArea\n",nEtaBins,nRBins);
 		}
 		memset(IntArrPerFrame,0,nEtaBins*nRBins);
-		//~ for (j=0;j<nRBins;j++){
-			//~ RMean = (RBinsLow[j]+RBinsHigh[j])/2;
-			//~ Int1d = 0;
-			//~ n1ds = 0;
-			//~ for (k=0;k<nEtaBins;k++){
-				//~ EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
-				//~ if (i==0){
-					//~ fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
-				//~ }
+		for (j=0;j<nRBins;j++){
+			RMean = (RBinsLow[j]+RBinsHigh[j])/2;
+			for (k=0;k<nEtaBins;k++){
+				EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
+				if (i==0){
+					fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
+				}
 				//~ Pos = j*nEtaBins + k;
 				//~ nPixels = nPxList[2*Pos + 0];
 				//~ dataPos = nPxList[2*Pos + 1];
@@ -668,8 +666,8 @@ int main(int argc, char **argv)
 					//~ }
 				//~ }
 				//~ IntArrPerFrame[j*nEtaBins+k] = Intensity;
-			//~ }
-		//~ }
+			}
+		}
 		//~ #pragma omp critical
 		//~ {
 			//~ char outfnAll[4096];
