@@ -678,6 +678,7 @@ int main(int argc, char **argv)
 			if (rc2 < 0){
 				printf("Could not write the output.\n");
 			}
+			close(out3);
 		}
 		if (i==0){
 			fclose(out2);
