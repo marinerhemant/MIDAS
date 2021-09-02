@@ -599,7 +599,7 @@ int main(int argc, char **argv)
 
 		size_t offsetOutFile = nEtaBins*nRBins;
 		offsetOutFile *= i*sizeof(double);
-		printf("%zu %zu %zu %zu %zu %zu %zu\n",bigArrSizeF,bigArrSize,seekIntArr,seekArr,seekFile,seekFrame,offsetOutFile);
+		//~ printf("%zu %zu %zu %zu %zu %zu %zu\n",bigArrSizeF,bigArrSize,seekIntArr,seekArr,seekFile,seekFrame,offsetOutFile);
 		#pragma omp critical
 		{
 			FILE *fThis;
