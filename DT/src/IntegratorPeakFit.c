@@ -621,9 +621,9 @@ int main(int argc, char **argv)
 			fclose(fThis);
 		}
 		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
-		//~ for (j=0;j<NrPixelsY*NrPixelsZ;j++){
-			//~ Image[j] = (double)ImageIn[j] - AverageDark[j];
-		//~ }
+		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
+			Image[j] = (double)ImageIn[j] - AverageDark[j];
+		}
 		//~ if (i==0){
 			//~ char fn2[4096];
 			//~ sprintf(fn2,"%s",imageFN);
