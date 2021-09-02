@@ -620,7 +620,7 @@ int main(int argc, char **argv)
 			printf("Processing frame number: %d of %d of file %s. RC: %d\n",i+1,nFrames,imageFN,rc);
 			fclose(fThis);
 		}
-		//~ DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
+		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
 		//~ for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 			//~ Image[j] = (double)ImageIn[j] - AverageDark[j];
 		//~ }
@@ -630,7 +630,6 @@ int main(int argc, char **argv)
 			//~ char *bname;
 			//~ bname = basename(fn2);
 			//~ sprintf(outfn2,"%s/%s.REtaAreaMap.csv",outputFolder,bname);
-			printf("%s\n",outfn2);
 			//~ out2 = fopen(outfn2,"w");
 			//~ fprintf(out2,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tBinArea\n",nEtaBins,nRBins);
 		//~ }
@@ -640,6 +639,10 @@ int main(int argc, char **argv)
 			//~ Int1d = 0;
 			//~ n1ds = 0;
 			//~ for (k=0;k<nEtaBins;k++){
+				//~ EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
+				//~ if (i==0){
+					//~ fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
+				//~ }
 				//~ Pos = j*nEtaBins + k;
 				//~ nPixels = nPxList[2*Pos + 0];
 				//~ dataPos = nPxList[2*Pos + 1];
@@ -663,10 +666,6 @@ int main(int argc, char **argv)
 					//~ if (Normalize == 1){
 						//~ Intensity /= totArea;
 					//~ }
-				//~ }
-				//~ EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
-				//~ if (i==0){
-					//~ fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
 				//~ }
 				//~ IntArrPerFrame[j*nEtaBins+k] = Intensity;
 			//~ }
