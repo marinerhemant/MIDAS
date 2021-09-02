@@ -12,6 +12,7 @@ FF_HEDM/Example/SpotMatrixGen.csv
 FF_HEDM/Cluster/*.kml
 FF_HEDM/Cluster/*.swiftx
 TOMO/bin/*
+DT/bin/*
 NF_HEDM/*.o
 gui/*.txt
 gui/*.csv

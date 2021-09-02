@@ -588,22 +588,22 @@ int main(int argc, char **argv)
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 			Image[j] = (double)ImageIn[j] - AverageDark[j];
 		}
-		if (separateFolder == 0){
-			sprintf(outfn,"%s_integrated_framenr_%d%s",imageFN,i,outext);
-			sprintf(outFN1d,"%s_integrated_framenr_%d.1d%s",imageFN,i,outext);
-		} else {
-			char fn2[4096];
-			sprintf(fn2,"%s",imageFN);
-			char *bname;
-			bname = basename(fn2);
-			sprintf(outfn,"%s/%s_integrated_framenr_%d%s",outputFolder,bname,i,outext);
-			sprintf(outFN1d,"%s/%s_integrated_framenr_%d.1d%s",outputFolder,bname,i,outext);
-		}
 		if (newOutput == 0){
 			out = fopen(outfn,"w");
 			out1d = fopen(outFN1d,"w");
 			fprintf(out1d,"%%nRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tIntensity(counts)\n",nRBins);
 			fprintf(out,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n",nEtaBins,nRBins);
+			if (separateFolder == 0){
+				sprintf(outfn,"%s_integrated_framenr_%d%s",imageFN,i,outext);
+				sprintf(outFN1d,"%s_integrated_framenr_%d.1d%s",imageFN,i,outext);
+			} else {
+				char fn2[4096];
+				sprintf(fn2,"%s",imageFN);
+				char *bname;
+				bname = basename(fn2);
+				sprintf(outfn,"%s/%s_integrated_framenr_%d%s",outputFolder,bname,i,outext);
+				sprintf(outFN1d,"%s/%s_integrated_framenr_%d.1d%s",outputFolder,bname,i,outext);
+			}
 		}
 		if (i==0 && newOutput==1){
 			if (separateFolder==0) sprintf(outfn2,"%s.REtaAreaMap.csv",imageFN);
