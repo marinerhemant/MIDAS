@@ -599,83 +599,83 @@ int main(int argc, char **argv)
 
 		size_t offsetOutFile = nEtaBins*nRBins;
 		offsetOutFile *= i*sizeof(double);
-
-		#pragma omp critical
-		{
-			FILE *fThis;
-			fThis = fopen(imageFN,"rb");
-			fseek(fThis,seekFile,SEEK_SET);
-			printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
-			rc = fileReader(fThis,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
-		}
-		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
-		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
-			Image[j] = (double)ImageIn[j] - AverageDark[j];
-		}
-		if (i==0){
-			sprintf(outfn2,"%s/%s.REtaAreaMap.csv",outputFolder,imageFN);
-			out2 = fopen(outfn2,"w");
-			fprintf(out2,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tBinArea\n",nEtaBins,nRBins);
-		}
-		memset(IntArrPerFrame,0,nEtaBins*nRBins);
-		for (j=0;j<nRBins;j++){
-			RMean = (RBinsLow[j]+RBinsHigh[j])/2;
-			Int1d = 0;
-			n1ds = 0;
-			for (k=0;k<nEtaBins;k++){
-				Pos = j*nEtaBins + k;
-				nPixels = nPxList[2*Pos + 0];
-				dataPos = nPxList[2*Pos + 1];
-				Intensity = 0;
-				totArea = 0;
-				for (l=0;l<nPixels;l++){
-					ThisVal = pxList[dataPos + l];
-					testPos = ThisVal.z;
-					testPos *= NrPixelsY;
-					testPos += ThisVal.y;
-					if (mapMaskSize!=0){
-						if (TestBit(mapMask,testPos)){
-							continue;
-						}
-					}
-					ThisInt = Image[testPos]; // The data is arranged as y(fast) and then z(slow)
-					Intensity += ThisInt*ThisVal.frac;
-					totArea += ThisVal.frac;
-				}
-				if (Intensity != 0){
-					if (Normalize == 1){
-						Intensity /= totArea;
-					}
-				}
-				EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
-				if (i==0){
-					fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
-				}
-				IntArrPerFrame[j*nEtaBins+k] = Intensity;
-			}
-		}
-		#pragma omp critical
-		{
-			char outfnAll[4096];
-			char fn3[4096];
-			sprintf(fn3,"%s",imageFN);
-			char *bname3;
-			bname3 = basename(fn3);
-			sprintf(outfnAll,"%s/%s_integrated.bin",outputFolder,bname3);
-			printf("%s\n",outfnAll);
-			int out3 = open(outfnAll,O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-			if (out3 <=0){
-				printf("Could not open output file.\n");
-			}
-			// Here we need to pwrite to the right location.
-			int rc = pwrite(out3,IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),offsetOutFile);
-			if (rc < 0){
-				printf("Could not write the output.\n");
-			}
-		}
-		if (i==0){
-			fclose(out2);
-		}
+		printf("%zu %zu %zu %zu %zu %zu %zu\n",bigArrSizeF,bigArrSize,seekIntArr,seekArr,seekFile,seekFrame,offsetOutFile);
+		//~ #pragma omp critical
+		//~ {
+			//~ FILE *fThis;
+			//~ fThis = fopen(imageFN,"rb");
+			//~ fseek(fThis,seekFile,SEEK_SET);
+			//~ printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
+			//~ rc = fileReader(fThis,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
+		//~ }
+		//~ DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
+		//~ for (j=0;j<NrPixelsY*NrPixelsZ;j++){
+			//~ Image[j] = (double)ImageIn[j] - AverageDark[j];
+		//~ }
+		//~ if (i==0){
+			//~ sprintf(outfn2,"%s/%s.REtaAreaMap.csv",outputFolder,imageFN);
+			//~ out2 = fopen(outfn2,"w");
+			//~ fprintf(out2,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tBinArea\n",nEtaBins,nRBins);
+		//~ }
+		//~ memset(IntArrPerFrame,0,nEtaBins*nRBins);
+		//~ for (j=0;j<nRBins;j++){
+			//~ RMean = (RBinsLow[j]+RBinsHigh[j])/2;
+			//~ Int1d = 0;
+			//~ n1ds = 0;
+			//~ for (k=0;k<nEtaBins;k++){
+				//~ Pos = j*nEtaBins + k;
+				//~ nPixels = nPxList[2*Pos + 0];
+				//~ dataPos = nPxList[2*Pos + 1];
+				//~ Intensity = 0;
+				//~ totArea = 0;
+				//~ for (l=0;l<nPixels;l++){
+					//~ ThisVal = pxList[dataPos + l];
+					//~ testPos = ThisVal.z;
+					//~ testPos *= NrPixelsY;
+					//~ testPos += ThisVal.y;
+					//~ if (mapMaskSize!=0){
+						//~ if (TestBit(mapMask,testPos)){
+							//~ continue;
+						//~ }
+					//~ }
+					//~ ThisInt = Image[testPos]; // The data is arranged as y(fast) and then z(slow)
+					//~ Intensity += ThisInt*ThisVal.frac;
+					//~ totArea += ThisVal.frac;
+				//~ }
+				//~ if (Intensity != 0){
+					//~ if (Normalize == 1){
+						//~ Intensity /= totArea;
+					//~ }
+				//~ }
+				//~ EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
+				//~ if (i==0){
+					//~ fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
+				//~ }
+				//~ IntArrPerFrame[j*nEtaBins+k] = Intensity;
+			//~ }
+		//~ }
+		//~ #pragma omp critical
+		//~ {
+			//~ char outfnAll[4096];
+			//~ char fn3[4096];
+			//~ sprintf(fn3,"%s",imageFN);
+			//~ char *bname3;
+			//~ bname3 = basename(fn3);
+			//~ sprintf(outfnAll,"%s/%s_integrated.bin",outputFolder,bname3);
+			//~ printf("%s\n",outfnAll);
+			//~ int out3 = open(outfnAll,O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+			//~ if (out3 <=0){
+				//~ printf("Could not open output file.\n");
+			//~ }
+			//~ // Here we need to pwrite to the right location.
+			//~ int rc = pwrite(out3,IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),offsetOutFile);
+			//~ if (rc < 0){
+				//~ printf("Could not write the output.\n");
+			//~ }
+		//~ }
+		//~ if (i==0){
+			//~ fclose(out2);
+		//~ }
 	}
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
