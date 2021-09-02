@@ -565,7 +565,7 @@ int main(int argc, char **argv)
 	IntArrPerFrameAll = calloc(bigArrSize,sizeof(*IntArrPerFrameAll));
 	// OMP HERE
 	# pragma omp parallel for num_threads(numProcs) private(i) schedule(dynamic)
-	for (i=0;i<200;i++){
+	for (i=0;i<nFrames;i++){
 
 		int j,k,jk;
 		int procNum = omp_get_thread_num();
