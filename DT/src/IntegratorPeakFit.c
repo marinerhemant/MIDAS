@@ -633,7 +633,7 @@ int main(int argc, char **argv)
 			out2 = fopen(outfn2,"w");
 			fprintf(out2,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tBinArea\n",nEtaBins,nRBins);
 		}
-		//~ memset(IntArrPerFrame,0,nEtaBins*nRBins);
+		memset(IntArrPerFrame,0,nEtaBins*nRBins);
 		//~ for (j=0;j<nRBins;j++){
 			//~ RMean = (RBinsLow[j]+RBinsHigh[j])/2;
 			//~ Int1d = 0;
