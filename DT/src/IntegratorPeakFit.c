@@ -288,7 +288,7 @@ int main(int argc, char **argv)
     clock_t start, end, start0, end0;
     start0 = clock();
     double diftotal;
-    if (argc < 4){
+    if (argc < 5){
 		printf("Usage: ./Integrator ParamFN numProcs ImageName (optional)DarkName\n"
 		"Optional:\n\tDark file: dark correction with average of all dark frames"
 		".\n");
@@ -551,6 +551,7 @@ int main(int argc, char **argv)
 	fclose(fp);
 	nFrames = sz / SizeFile;
 	printf("Number of eta bins: %d, number of R bins: %d. Number of frames in the file: %d\n",nEtaBins,nRBins,(int)nFrames);
+	return;
 	long long int Pos;
 	int nPixels, dataPos;
 	struct data ThisVal;
