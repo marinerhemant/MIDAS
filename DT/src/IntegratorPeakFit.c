@@ -557,11 +557,8 @@ int main(int argc, char **argv)
 	fclose(fp);
 	nFrames = sz / SizeFile;
 	printf("Number of eta bins: %d, number of R bins: %d. Number of frames in the file: %d\n",nEtaBins,nRBins,(int)nFrames);
-	char outfn[4096];
 	char outfn2[4096];
-	FILE *out,*out2;
-	char *outext;
-	outext = ".csv";
+	FILE *out2;
 	size_t bigArrSize = nEtaBins*nRBins;
 	bigArrSize *= numProcs;
 	double *IntArrPerFrameAll;
@@ -597,15 +594,15 @@ int main(int argc, char **argv)
 		offsetOutFile *= i;
 		offsetOutFile *= sizeof(double);
 
-		#pragma omp critical
-		{
+		//~ #pragma omp critical
+		//~ {
 			FILE *fThis;
 			fThis = fopen(imageFN,"rb");
 			fseek(fThis,seekFile,SEEK_SET);
 			int rc3 = fileReader(fThis,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
 			printf("Processing frame number: %d of %d of file %s. RC: %d\n",i+1,nFrames,imageFN,rc3);
 			fclose(fThis);
-		}
+		//~ }
 		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 			Image[j] = (double)ImageIn[j] - AverageDark[j];
@@ -630,9 +627,6 @@ int main(int argc, char **argv)
 			RMean = (RBinsLow[j]+RBinsHigh[j])/2;
 			for (k=0;k<nEtaBins;k++){
 				EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
-				if (i==0){
-					fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
-				}
 				Pos = j*nEtaBins + k;
 				nPixels = nPxList[2*Pos + 0];
 				dataPos = nPxList[2*Pos + 1];
@@ -652,6 +646,9 @@ int main(int argc, char **argv)
 					Intensity += ThisInt*ThisVal.frac;
 					totArea += ThisVal.frac;
 				}
+				if (i==0){
+					fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
+				}
 				if (Intensity != 0){
 					if (Normalize == 1){
 						Intensity /= totArea;
@@ -660,14 +657,14 @@ int main(int argc, char **argv)
 				IntArrPerFrame[j*nEtaBins+k] = Intensity;
 			}
 		}
+		char outfnAll[4096];
+		char fn3[4096];
+		sprintf(fn3,"%s",imageFN);
+		char *bname3;
+		bname3 = basename(fn3);
+		sprintf(outfnAll,"%s/%s_integrated.bin",outputFolder,bname3);
 		#pragma omp critical
 		{
-			char outfnAll[4096];
-			char fn3[4096];
-			sprintf(fn3,"%s",imageFN);
-			char *bname3;
-			bname3 = basename(fn3);
-			sprintf(outfnAll,"%s/%s_integrated.bin",outputFolder,bname3);
 			//~ printf("%s\n",outfnAll);
 			int out3 = open(outfnAll,O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
 			if (out3 <=0){
