@@ -659,28 +659,28 @@ int main(int argc, char **argv)
 				IntArrPerFrame[j*nEtaBins+k] = Intensity;
 			}
 		}
-		#pragma omp critical
-		{
-			char outfnAll[4096];
-			char fn3[4096];
-			sprintf(fn3,"%s",imageFN);
-			char *bname3;
-			bname3 = basename(fn3);
-			sprintf(outfnAll,"%s/%s_integrated.bin",outputFolder,bname3);
-			printf("%s\n",outfnAll);
-			int out3 = open(outfnAll,O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-			if (out3 <=0){
-				printf("Could not open output file.\n");
-			}
-			// Here we need to pwrite to the right location.
-			int rc = pwrite(out3,IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),offsetOutFile);
-			if (rc < 0){
-				printf("Could not write the output.\n");
-			}
-		}
-		if (i==0){
-			fclose(out2);
-		}
+		//~ #pragma omp critical
+		//~ {
+			//~ char outfnAll[4096];
+			//~ char fn3[4096];
+			//~ sprintf(fn3,"%s",imageFN);
+			//~ char *bname3;
+			//~ bname3 = basename(fn3);
+			//~ sprintf(outfnAll,"%s/%s_integrated.bin",outputFolder,bname3);
+			//~ printf("%s\n",outfnAll);
+			//~ int out3 = open(outfnAll,O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+			//~ if (out3 <=0){
+				//~ printf("Could not open output file.\n");
+			//~ }
+			//~ // Here we need to pwrite to the right location.
+			//~ int rc = pwrite(out3,IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),offsetOutFile);
+			//~ if (rc < 0){
+				//~ printf("Could not write the output.\n");
+			//~ }
+		//~ }
+		//~ if (i==0){
+			//~ fclose(out2);
+		//~ }
 	}
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
