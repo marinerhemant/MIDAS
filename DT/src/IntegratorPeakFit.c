@@ -608,7 +608,7 @@ int main(int argc, char **argv)
 			printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
 			rc = fileReader(fThis,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
 		}
-		//~ DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
+		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
 		//~ for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 			//~ Image[j] = (double)ImageIn[j] - AverageDark[j];
 		//~ }
