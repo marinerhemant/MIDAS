@@ -606,12 +606,12 @@ int main(int argc, char **argv)
 			fThis = fopen(imageFN,"rb");
 			fseek(fThis,seekFile,SEEK_SET);
 			printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
-			rc = fileReader(fThis,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
+			//~ rc = fileReader(fThis,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
 		}
-		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
-		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
-			Image[j] = (double)ImageIn[j] - AverageDark[j];
-		}
+		//~ DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
+		//~ for (j=0;j<NrPixelsY*NrPixelsZ;j++){
+			//~ Image[j] = (double)ImageIn[j] - AverageDark[j];
+		//~ }
 		//~ if (i==0){
 			//~ sprintf(outfn2,"%s/%s.REtaAreaMap.csv",outputFolder,imageFN);
 			//~ out2 = fopen(outfn2,"w");
