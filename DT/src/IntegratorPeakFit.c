@@ -568,7 +568,7 @@ int main(int argc, char **argv)
 	IntArrPerFrameAll = calloc(bigArrSize,sizeof(*IntArrPerFrameAll));
 	// OMP HERE
 	# pragma omp parallel for num_threads(numProcs) private(i) schedule(dynamic)
-	for (i=0;i<nFrames;i++){
+	for (i=0;i<200;i++){
 
 		int j,k,jk;
 		int procNum = omp_get_thread_num();
@@ -602,8 +602,8 @@ int main(int argc, char **argv)
 			FILE *fThis;
 			fThis = fopen(imageFN,"rb");
 			fseek(fThis,seekFile,SEEK_SET);
-			rc = fileReader(fThis,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
-			printf("Processing frame number: %d of %d of file %s. RC: %d\n",i+1,nFrames,imageFN,rc);
+			int rc3 = fileReader(fThis,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
+			printf("Processing frame number: %d of %d of file %s. RC: %d\n",i+1,nFrames,imageFN,rc3);
 			fclose(fThis);
 		}
 		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
