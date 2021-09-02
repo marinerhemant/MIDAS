@@ -663,8 +663,8 @@ int main(int argc, char **argv)
 		char *bname3;
 		bname3 = basename(fn3);
 		sprintf(outfnAll,"%s/%s_integrated.bin",outputFolder,bname3);
-		#pragma omp critical
-		{
+		//~ #pragma omp critical
+		//~ {
 			//~ printf("%s\n",outfnAll);
 			int out3 = open(outfnAll,O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
 			if (out3 <=0){
@@ -676,7 +676,7 @@ int main(int argc, char **argv)
 				printf("Could not write the output.\n");
 			}
 			close(out3);
-		}
+		//~ }
 		if (i==0){
 			fclose(out2);
 		}
