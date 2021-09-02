@@ -288,7 +288,7 @@ int main(int argc, char **argv)
     clock_t start, end, start0, end0;
     start0 = clock();
     double diftotal;
-    if (argc < 5){
+    if (argc < 4){
 		printf("Usage: ./Integrator ParamFN numProcs ImageName (optional)DarkName\n"
 		"Optional:\n\tDark file: dark correction with average of all dark frames"
 		".\n");
@@ -445,7 +445,7 @@ int main(int argc, char **argv)
 	pixelvalue *ImageInTAll;
 	pixelvalue *DarkInT;
 	double *AverageDark;
-	int numProcs = atoi(argv[3]);
+	int numProcs = atoi(argv[2]);
 	size_t bigArrSizeF = NrPixelsY;
 	bigArrSizeF *= NrPixelsZ;
 	bigArrSizeF *= numProcs;
@@ -542,7 +542,7 @@ int main(int argc, char **argv)
 		printf("Nr mask pixels: %d\n",nrdone);
 	}
 	char *imageFN;
-	imageFN = argv[2];
+	imageFN = argv[3];
 	fp = fopen(imageFN,"rb");
 	fseek(fp,0L,SEEK_END);
 	sz = ftell(fp);
@@ -551,7 +551,6 @@ int main(int argc, char **argv)
 	fclose(fp);
 	nFrames = sz / SizeFile;
 	printf("Number of eta bins: %d, number of R bins: %d. Number of frames in the file: %d\n",nEtaBins,nRBins,(int)nFrames);
-	return;
 	long long int Pos;
 	int nPixels, dataPos;
 	struct data ThisVal;
@@ -576,6 +575,7 @@ int main(int argc, char **argv)
 	bigArrSize *= numProcs;
 	double *IntArrPerFrameAll;
 	IntArrPerFrameAll = calloc(bigArrSize,sizeof(*IntArrPerFrameAll));
+	return;
 	// OMP HERE
 	# pragma omp parallel for num_threads(numProcs) private(i) schedule(dynamic)
 	for (i=0;i<nFrames;i++){
