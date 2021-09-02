@@ -420,6 +420,7 @@ int main(int argc, char **argv)
         }
 	}
 	printf("%d %s\n",separateFolder,outputFolder);
+	if (separateFolder == 0) sprintf(outputFolder,".");
 	nRBins = (int) ceil((RMax-RMin)/RBinSize);
 	nEtaBins = (int)ceil((EtaMax - EtaMin)/EtaBinSize);
 	double *EtaBinsLow, *EtaBinsHigh;
@@ -575,7 +576,6 @@ int main(int argc, char **argv)
 	bigArrSize *= numProcs;
 	double *IntArrPerFrameAll;
 	IntArrPerFrameAll = calloc(bigArrSize,sizeof(*IntArrPerFrameAll));
-	return;
 	// OMP HERE
 	# pragma omp parallel for num_threads(numProcs) private(i) schedule(dynamic)
 	for (i=0;i<nFrames;i++){
@@ -596,21 +596,24 @@ int main(int argc, char **argv)
 		size_t seekFrame = SizeFile;
 		seekFrame *= i;
 		seekFile += seekFrame;
-		FILE *fThis;
-		fThis = fopen(imageFN,"rb");
-		fseek(fThis,seekFile,SEEK_SET);
 
 		size_t offsetOutFile = nEtaBins*nRBins;
 		offsetOutFile *= i*sizeof(double);
 
-		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
-		rc = fileReader(fThis,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
+		#pragma omp critical
+		{
+			FILE *fThis;
+			fThis = fopen(imageFN,"rb");
+			fseek(fThis,seekFile,SEEK_SET);
+			printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
+			rc = fileReader(fThis,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
+		}
 		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 			Image[j] = (double)ImageIn[j] - AverageDark[j];
 		}
 		if (i==0){
-			sprintf(outfn2,"%s.REtaAreaMap.csv",imageFN);
+			sprintf(outfn2,"%s/%s.REtaAreaMap.csv",outputFolder,imageFN);
 			out2 = fopen(outfn2,"w");
 			fprintf(out2,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tBinArea\n",nEtaBins,nRBins);
 		}
