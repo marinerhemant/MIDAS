@@ -678,9 +678,9 @@ int main(int argc, char **argv)
 				printf("Could not write the output.\n");
 			}
 		}
-		//~ if (i==0){
-			//~ fclose(out2);
-		//~ }
+		if (i==0){
+			fclose(out2);
+		}
 	}
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
