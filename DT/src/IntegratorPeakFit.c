@@ -439,23 +439,28 @@ int main(int argc, char **argv)
         else if (TransOpt[i] == 1) printf("Flip Left Right.\n");
         else if (TransOpt[i] == 2) printf("Flip Top Bottom.\n");
     }
-	double *ImageAll;
-	pixelvalue *ImageInAll;
 	pixelvalue *DarkIn;
-	pixelvalue *ImageInTAll;
 	pixelvalue *DarkInT;
 	double *AverageDark;
+
+
+	DarkIn = calloc(NrPixelsY*NrPixelsZ,sizeof(*DarkIn));
+	DarkInT = calloc(NrPixelsY*NrPixelsZ,sizeof(*DarkInT));
+	AverageDark = calloc(NrPixelsY*NrPixelsZ,sizeof(*AverageDark));
+
 	int numProcs = atoi(argv[2]);
 	printf("Numprocs: %d OutputFolder: %s\n",numProcs,outputFolder);
 	size_t bigArrSizeF = NrPixelsY;
 	bigArrSizeF *= NrPixelsZ;
 	bigArrSizeF *= numProcs;
-	DarkIn = calloc(NrPixelsY*NrPixelsZ,sizeof(*DarkIn));
-	DarkInT = calloc(NrPixelsY*NrPixelsZ,sizeof(*DarkInT));
-	AverageDark = calloc(NrPixelsY*NrPixelsZ,sizeof(*AverageDark));
+
+	double *ImageAll;
+	pixelvalue *ImageInAll;
+	pixelvalue *ImageInTAll;
 	ImageInAll = calloc(bigArrSizeF,sizeof(*ImageInAll));
 	ImageInTAll = calloc(bigArrSizeF,sizeof(*ImageInTAll));
 	ImageAll = calloc(bigArrSizeF,sizeof(*ImageAll));
+
 	size_t pxSize;
 	if (dType == 1){ // Uint16
 		pxSize = sizeof(uint16_t);
@@ -579,34 +584,41 @@ int main(int argc, char **argv)
 	// OMP HERE
 	# pragma omp parallel for num_threads(numProcs) private(i) schedule(dynamic)
 	for (i=0;i<nFrames;i++){
-		double *Image;
-		pixelvalue *ImageIn, *ImageInT;
-		double *IntArrPerFrame;
+
 		int procNum = omp_get_thread_num();
+
 		size_t seekIntArr = nEtaBins*nRBins;
 		seekIntArr *= procNum;
+		double *IntArrPerFrame;
 		IntArrPerFrame = &IntArrPerFrameAll[seekIntArr];
+
 		size_t seekArr = NrPixelsY;
 		seekArr *= NrPixelsZ;
 		seekArr *= procNum;
+
+		double *Image;
+		pixelvalue *ImageIn, *ImageInT;
 		Image = &ImageAll[seekArr];
 		ImageIn = &ImageInAll[seekArr];
 		ImageInT = &ImageInTAll[seekArr];
+
 		size_t seekFile = Skip;
 		size_t seekFrame = SizeFile;
 		seekFrame *= i;
 		seekFile += seekFrame;
 
 		size_t offsetOutFile = nEtaBins*nRBins;
-		offsetOutFile *= i*sizeof(double);
-		//~ printf("%zu %zu %zu %zu %zu %zu %zu\n",bigArrSizeF,bigArrSize,seekIntArr,seekArr,seekFile,seekFrame,offsetOutFile);
+		offsetOutFile *= i;
+		offsetOutFile *= sizeof(double);
+
 		#pragma omp critical
 		{
 			FILE *fThis;
 			fThis = fopen(imageFN,"rb");
 			fseek(fThis,seekFile,SEEK_SET);
-			printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
 			rc = fileReader(fThis,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
+			printf("Processing frame number: %d of %d of file %s. RC: %d\n",i+1,nFrames,imageFN,rc);
+			fclose(fThis);
 		}
 		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
@@ -673,8 +685,8 @@ int main(int argc, char **argv)
 				//~ printf("Could not open output file.\n");
 			//~ }
 			//~ // Here we need to pwrite to the right location.
-			//~ int rc = pwrite(out3,IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),offsetOutFile);
-			//~ if (rc < 0){
+			//~ int rc2 = pwrite(out3,IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),offsetOutFile);
+			//~ if (rc2 < 0){
 				//~ printf("Could not write the output.\n");
 			//~ }
 		//~ }
