@@ -93,7 +93,7 @@ for fNr in range(startNr,endNr+1):
 	if os.path.exists(fileName):
 		arr = np.genfromtxt(fileName,skip_header=1)
 		if arr.shape[0] > 0:
-			tmpd = group3.create_dataset(os.path.basename(fileName),data=arr)
+			tmpd = group2.create_dataset(os.path.basename(fileName),data=arr)
 			tmpd.attrs['head'] = np.string_(open(fileName).readline())
 # Put Radii
 fileName = f'{os.getcwd()}/Radius_StartNr_{startNr}_EndNr_{endNr}.csv'

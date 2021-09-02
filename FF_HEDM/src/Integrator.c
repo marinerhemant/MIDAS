@@ -674,12 +674,12 @@ int main(int argc, char **argv)
 		}
 		if (newOutput == 1){
 			fwrite(IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),1,out3);
+			if (i==0){
+				fclose(out2);
+			}
 		} else{
 			fclose(out);
 			fclose(out1d);
-		}
-		if (i==0){
-			fclose(out2);
 		}
 	}
 	if (newOutput == 1) fclose(out3);
