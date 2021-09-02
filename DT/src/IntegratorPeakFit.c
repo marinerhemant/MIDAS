@@ -419,7 +419,6 @@ int main(int argc, char **argv)
 			continue;
         }
 	}
-	printf("%d %s\n",separateFolder,outputFolder);
 	if (separateFolder == 0) sprintf(outputFolder,".");
 	nRBins = (int) ceil((RMax-RMin)/RBinSize);
 	nEtaBins = (int)ceil((EtaMax - EtaMin)/EtaBinSize);
@@ -447,6 +446,7 @@ int main(int argc, char **argv)
 	pixelvalue *DarkInT;
 	double *AverageDark;
 	int numProcs = atoi(argv[2]);
+	printf("%d %d %s\n",numProcs,separateFolder,outputFolder);
 	size_t bigArrSizeF = NrPixelsY;
 	bigArrSizeF *= NrPixelsZ;
 	bigArrSizeF *= numProcs;
