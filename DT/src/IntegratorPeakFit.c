@@ -612,11 +612,11 @@ int main(int argc, char **argv)
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 			Image[j] = (double)ImageIn[j] - AverageDark[j];
 		}
-		//~ if (i==0){
-			//~ sprintf(outfn2,"%s/%s.REtaAreaMap.csv",outputFolder,imageFN);
-			//~ out2 = fopen(outfn2,"w");
-			//~ fprintf(out2,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tBinArea\n",nEtaBins,nRBins);
-		//~ }
+		if (i==0){
+			sprintf(outfn2,"%s/%s.REtaAreaMap.csv",outputFolder,imageFN);
+			out2 = fopen(outfn2,"w");
+			fprintf(out2,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tBinArea\n",nEtaBins,nRBins);
+		}
 		//~ memset(IntArrPerFrame,0,nEtaBins*nRBins);
 		//~ for (j=0;j<nRBins;j++){
 			//~ RMean = (RBinsLow[j]+RBinsHigh[j])/2;
