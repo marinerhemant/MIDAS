@@ -618,7 +618,7 @@ int main(int argc, char **argv)
 			char *bname;
 			bname = basename(fn2);
 			sprintf(outfn2,"%s/%s.REtaAreaMap.csv",outputFolder,bname);
-			printf("%s\n",outfn2);
+			//~ printf("%s\n",outfn2);
 			out2 = fopen(outfn2,"w");
 			fprintf(out2,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tBinArea\n",nEtaBins,nRBins);
 		}
