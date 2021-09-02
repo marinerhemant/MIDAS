@@ -557,24 +557,9 @@ int main(int argc, char **argv)
 	fclose(fp);
 	nFrames = sz / SizeFile;
 	printf("Number of eta bins: %d, number of R bins: %d. Number of frames in the file: %d\n",nEtaBins,nRBins,(int)nFrames);
-	long long int Pos;
-	int nPixels, dataPos;
-	struct data ThisVal;
 	char outfn[4096];
 	char outfn2[4096];
 	FILE *out,*out2;
-	char outFN1d[4096];
-	char dmyt[10000];
-	FILE *out1d;
-	double Intensity, totArea, ThisInt;
-	size_t testPos;
-	double RMean, EtaMean;
-	double Int1d;
-	int n1ds;
-	double *sumMatrix;
-	if (sumImages == 1){
-		sumMatrix = calloc(nEtaBins*nRBins*5,sizeof(*sumMatrix));
-	}
 	char *outext;
 	outext = ".csv";
 	size_t bigArrSize = nEtaBins*nRBins;
@@ -634,6 +619,12 @@ int main(int argc, char **argv)
 			fprintf(out2,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tBinArea\n",nEtaBins,nRBins);
 		}
 		memset(IntArrPerFrame,0,nEtaBins*nRBins);
+		double Intensity, totArea, ThisInt;
+		long long int Pos;
+		int nPixels, dataPos;
+		struct data ThisVal;
+		size_t testPos;
+		double RMean, EtaMean;
 		for (j=0;j<nRBins;j++){
 			RMean = (RBinsLow[j]+RBinsHigh[j])/2;
 			for (k=0;k<nEtaBins;k++){
@@ -641,55 +632,55 @@ int main(int argc, char **argv)
 				if (i==0){
 					fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
 				}
-				//~ Pos = j*nEtaBins + k;
-				//~ nPixels = nPxList[2*Pos + 0];
-				//~ dataPos = nPxList[2*Pos + 1];
-				//~ Intensity = 0;
-				//~ totArea = 0;
-				//~ for (l=0;l<nPixels;l++){
-					//~ ThisVal = pxList[dataPos + l];
-					//~ testPos = ThisVal.z;
-					//~ testPos *= NrPixelsY;
-					//~ testPos += ThisVal.y;
-					//~ if (mapMaskSize!=0){
-						//~ if (TestBit(mapMask,testPos)){
-							//~ continue;
-						//~ }
-					//~ }
-					//~ ThisInt = Image[testPos]; // The data is arranged as y(fast) and then z(slow)
-					//~ Intensity += ThisInt*ThisVal.frac;
-					//~ totArea += ThisVal.frac;
-				//~ }
-				//~ if (Intensity != 0){
-					//~ if (Normalize == 1){
-						//~ Intensity /= totArea;
-					//~ }
-				//~ }
-				//~ IntArrPerFrame[j*nEtaBins+k] = Intensity;
+				Pos = j*nEtaBins + k;
+				nPixels = nPxList[2*Pos + 0];
+				dataPos = nPxList[2*Pos + 1];
+				Intensity = 0;
+				totArea = 0;
+				for (l=0;l<nPixels;l++){
+					ThisVal = pxList[dataPos + l];
+					testPos = ThisVal.z;
+					testPos *= NrPixelsY;
+					testPos += ThisVal.y;
+					if (mapMaskSize!=0){
+						if (TestBit(mapMask,testPos)){
+							continue;
+						}
+					}
+					ThisInt = Image[testPos]; // The data is arranged as y(fast) and then z(slow)
+					Intensity += ThisInt*ThisVal.frac;
+					totArea += ThisVal.frac;
+				}
+				if (Intensity != 0){
+					if (Normalize == 1){
+						Intensity /= totArea;
+					}
+				}
+				IntArrPerFrame[j*nEtaBins+k] = Intensity;
 			}
 		}
-		//~ #pragma omp critical
-		//~ {
-			//~ char outfnAll[4096];
-			//~ char fn3[4096];
-			//~ sprintf(fn3,"%s",imageFN);
-			//~ char *bname3;
-			//~ bname3 = basename(fn3);
-			//~ sprintf(outfnAll,"%s/%s_integrated.bin",outputFolder,bname3);
-			//~ printf("%s\n",outfnAll);
-			//~ int out3 = open(outfnAll,O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-			//~ if (out3 <=0){
-				//~ printf("Could not open output file.\n");
-			//~ }
-			//~ // Here we need to pwrite to the right location.
-			//~ int rc2 = pwrite(out3,IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),offsetOutFile);
-			//~ if (rc2 < 0){
-				//~ printf("Could not write the output.\n");
-			//~ }
-		//~ }
-		//~ if (i==0){
-			//~ fclose(out2);
-		//~ }
+		#pragma omp critical
+		{
+			char outfnAll[4096];
+			char fn3[4096];
+			sprintf(fn3,"%s",imageFN);
+			char *bname3;
+			bname3 = basename(fn3);
+			sprintf(outfnAll,"%s/%s_integrated.bin",outputFolder,bname3);
+			printf("%s\n",outfnAll);
+			int out3 = open(outfnAll,O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+			if (out3 <=0){
+				printf("Could not open output file.\n");
+			}
+			// Here we need to pwrite to the right location.
+			int rc2 = pwrite(out3,IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),offsetOutFile);
+			if (rc2 < 0){
+				printf("Could not write the output.\n");
+			}
+		}
+		if (i==0){
+			fclose(out2);
+		}
 	}
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
