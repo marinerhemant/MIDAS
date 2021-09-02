@@ -620,57 +620,57 @@ int main(int argc, char **argv)
 			printf("Processing frame number: %d of %d of file %s. RC: %d\n",i+1,nFrames,imageFN,rc);
 			fclose(fThis);
 		}
-		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
-		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
-			Image[j] = (double)ImageIn[j] - AverageDark[j];
-		}
-		if (i==0){
-			char fn2[4096];
-			sprintf(fn2,"%s",imageFN);
-			char *bname;
-			bname = basename(fn2);
-			sprintf(outfn2,"%s/%s.REtaAreaMap.csv",outputFolder,bname);
-			//~ printf("%s\n",outfn2);
-			out2 = fopen(outfn2,"w");
-			fprintf(out2,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tBinArea\n",nEtaBins,nRBins);
-		}
-		memset(IntArrPerFrame,0,nEtaBins*nRBins);
-		for (j=0;j<nRBins;j++){
-			RMean = (RBinsLow[j]+RBinsHigh[j])/2;
-			Int1d = 0;
-			n1ds = 0;
-			for (k=0;k<nEtaBins;k++){
-				Pos = j*nEtaBins + k;
-				nPixels = nPxList[2*Pos + 0];
-				dataPos = nPxList[2*Pos + 1];
-				Intensity = 0;
-				totArea = 0;
-				for (l=0;l<nPixels;l++){
-					ThisVal = pxList[dataPos + l];
-					testPos = ThisVal.z;
-					testPos *= NrPixelsY;
-					testPos += ThisVal.y;
-					if (mapMaskSize!=0){
-						if (TestBit(mapMask,testPos)){
-							continue;
-						}
-					}
-					ThisInt = Image[testPos]; // The data is arranged as y(fast) and then z(slow)
-					Intensity += ThisInt*ThisVal.frac;
-					totArea += ThisVal.frac;
-				}
-				if (Intensity != 0){
-					if (Normalize == 1){
-						Intensity /= totArea;
-					}
-				}
-				EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
-				if (i==0){
-					fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
-				}
-				IntArrPerFrame[j*nEtaBins+k] = Intensity;
-			}
-		}
+		//~ DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
+		//~ for (j=0;j<NrPixelsY*NrPixelsZ;j++){
+			//~ Image[j] = (double)ImageIn[j] - AverageDark[j];
+		//~ }
+		//~ if (i==0){
+			//~ char fn2[4096];
+			//~ sprintf(fn2,"%s",imageFN);
+			//~ char *bname;
+			//~ bname = basename(fn2);
+			//~ sprintf(outfn2,"%s/%s.REtaAreaMap.csv",outputFolder,bname);
+			printf("%s\n",outfn2);
+			//~ out2 = fopen(outfn2,"w");
+			//~ fprintf(out2,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tBinArea\n",nEtaBins,nRBins);
+		//~ }
+		//~ memset(IntArrPerFrame,0,nEtaBins*nRBins);
+		//~ for (j=0;j<nRBins;j++){
+			//~ RMean = (RBinsLow[j]+RBinsHigh[j])/2;
+			//~ Int1d = 0;
+			//~ n1ds = 0;
+			//~ for (k=0;k<nEtaBins;k++){
+				//~ Pos = j*nEtaBins + k;
+				//~ nPixels = nPxList[2*Pos + 0];
+				//~ dataPos = nPxList[2*Pos + 1];
+				//~ Intensity = 0;
+				//~ totArea = 0;
+				//~ for (l=0;l<nPixels;l++){
+					//~ ThisVal = pxList[dataPos + l];
+					//~ testPos = ThisVal.z;
+					//~ testPos *= NrPixelsY;
+					//~ testPos += ThisVal.y;
+					//~ if (mapMaskSize!=0){
+						//~ if (TestBit(mapMask,testPos)){
+							//~ continue;
+						//~ }
+					//~ }
+					//~ ThisInt = Image[testPos]; // The data is arranged as y(fast) and then z(slow)
+					//~ Intensity += ThisInt*ThisVal.frac;
+					//~ totArea += ThisVal.frac;
+				//~ }
+				//~ if (Intensity != 0){
+					//~ if (Normalize == 1){
+						//~ Intensity /= totArea;
+					//~ }
+				//~ }
+				//~ EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
+				//~ if (i==0){
+					//~ fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
+				//~ }
+				//~ IntArrPerFrame[j*nEtaBins+k] = Intensity;
+			//~ }
+		//~ }
 		//~ #pragma omp critical
 		//~ {
 			//~ char outfnAll[4096];
