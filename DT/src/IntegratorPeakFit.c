@@ -28,7 +28,6 @@
 #include <stdint.h>
 #include <tiffio.h>
 #include <libgen.h>
-#include <omp.h>
 
 typedef double pixelvalue;
 
@@ -288,8 +287,8 @@ int main(int argc, char **argv)
     clock_t start, end, start0, end0;
     start0 = clock();
     double diftotal;
-    if (argc < 4){
-		printf("Usage: ./Integrator ParamFN numProcs ImageName (optional)DarkName\n"
+    if (argc < 3){
+		printf("Usage: ./Integrator ParamFN ImageName (optional)DarkName\n"
 		"Optional:\n\tDark file: dark correction with average of all dark frames"
 		".\n");
 		return(1);
@@ -419,7 +418,7 @@ int main(int argc, char **argv)
 			continue;
         }
 	}
-	if (separateFolder == 0) sprintf(outputFolder,".");
+	printf("%d %s\n",separateFolder,outputFolder);
 	nRBins = (int) ceil((RMax-RMin)/RBinSize);
 	nEtaBins = (int)ceil((EtaMax - EtaMin)/EtaBinSize);
 	double *EtaBinsLow, *EtaBinsHigh;
@@ -430,7 +429,7 @@ int main(int argc, char **argv)
 	RBinsHigh = malloc(nRBins*sizeof(*RBinsHigh));
 	REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh);
 
-	int i,l;
+	int i,j,k,l;
 	printf("NrTransOpt: %d\n",NrTransOpt);
     for (i=0;i<NrTransOpt;i++){
         if (TransOpt[i] < 0 || TransOpt[i] > 2){printf("TransformationOptions can only be 0, 1, 2.\nExiting.\n");return 0;}
@@ -439,28 +438,18 @@ int main(int argc, char **argv)
         else if (TransOpt[i] == 1) printf("Flip Left Right.\n");
         else if (TransOpt[i] == 2) printf("Flip Top Bottom.\n");
     }
+	double *Image;
+	pixelvalue *ImageIn;
 	pixelvalue *DarkIn;
+	pixelvalue *ImageInT;
 	pixelvalue *DarkInT;
 	double *AverageDark;
-
-
-	DarkIn = calloc(NrPixelsY*NrPixelsZ,sizeof(*DarkIn));
-	DarkInT = calloc(NrPixelsY*NrPixelsZ,sizeof(*DarkInT));
+	DarkIn = malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkIn));
+	DarkInT = malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkInT));
 	AverageDark = calloc(NrPixelsY*NrPixelsZ,sizeof(*AverageDark));
-
-	int numProcs = atoi(argv[2]);
-	printf("Numprocs: %d OutputFolder: %s\n",numProcs,outputFolder);
-	size_t bigArrSizeF = NrPixelsY;
-	bigArrSizeF *= NrPixelsZ;
-	bigArrSizeF *= numProcs;
-
-	double *ImageAll;
-	pixelvalue *ImageInAll;
-	pixelvalue *ImageInTAll;
-	ImageInAll = calloc(bigArrSizeF,sizeof(*ImageInAll));
-	ImageInTAll = calloc(bigArrSizeF,sizeof(*ImageInTAll));
-	ImageAll = calloc(bigArrSizeF,sizeof(*ImageAll));
-
+	ImageIn = malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageIn));
+	ImageInT = malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageInT));
+	Image = malloc(NrPixelsY*NrPixelsZ*sizeof(*Image));
 	size_t pxSize;
 	if (dType == 1){ // Uint16
 		pxSize = sizeof(uint16_t);
@@ -486,8 +475,8 @@ int main(int argc, char **argv)
 	FILE *fp, *fd;
 	char *darkFN;
 	int nrdone = 0;
-	if (argc > 4){
-		darkFN = argv[4];
+	if (argc > 3){
+		darkFN = argv[3];
 		fd = fopen(darkFN,"rb");
 		fseek(fd,0L,SEEK_END);
 		sz = ftell(fd);
@@ -504,16 +493,16 @@ int main(int argc, char **argv)
 				mapMaskSize /= 32;
 				mapMaskSize ++;
 				mapMask = calloc(mapMaskSize,sizeof(*mapMask));
-				for (l=0;l<NrPixelsY*NrPixelsZ;l++){
-					if (DarkIn[l] == (pixelvalue) GapIntensity || DarkIn[l] == (pixelvalue) BadPxIntensity){
-						SetBit(mapMask,l);
+				for (j=0;j<NrPixelsY*NrPixelsZ;j++){
+					if (DarkIn[j] == (pixelvalue) GapIntensity || DarkIn[j] == (pixelvalue) BadPxIntensity){
+						SetBit(mapMask,j);
 						nrdone++;
 					}
 				}
 				printf("Nr mask pixels: %d\n",nrdone);
 				makeMap = 0;
 			}
-			for(l=0;l<NrPixelsY*NrPixelsZ;l++) AverageDark[l] += (double)DarkIn[l]/nFrames;
+			for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFrames;
 		}
 		printf("Dark file read\n");
 	}
@@ -548,92 +537,99 @@ int main(int argc, char **argv)
 		printf("Nr mask pixels: %d\n",nrdone);
 	}
 	char *imageFN;
-	imageFN = argv[3];
+	imageFN = argv[2];
 	fp = fopen(imageFN,"rb");
 	fseek(fp,0L,SEEK_END);
 	sz = ftell(fp);
 	rewind(fp);
 	fseek(fp,Skip,SEEK_SET);
-	fclose(fp);
 	nFrames = sz / SizeFile;
 	printf("Number of eta bins: %d, number of R bins: %d. Number of frames in the file: %d\n",nEtaBins,nRBins,(int)nFrames);
+	long long int Pos;
+	int nPixels, dataPos;
+	struct data ThisVal;
+	char outfn[4096];
 	char outfn2[4096];
-	FILE *out2;
+	FILE *out,*out2;
+	char outFN1d[4096];
+	char dmyt[10000];
+	FILE *out1d;
+	double Intensity, totArea, ThisInt;
+	size_t testPos;
+	double RMean, EtaMean;
+	double Int1d;
+	int n1ds;
+	double *sumMatrix;
+	if (sumImages == 1){
+		sumMatrix = calloc(nEtaBins*nRBins*5,sizeof(*sumMatrix));
+	}
+	double *outArr, *outThisArr, *out1dArr;
+	char *outext;
+	outext = ".csv";
 	size_t bigArrSize = nEtaBins*nRBins;
-	bigArrSize *= numProcs;
-	double *IntArrPerFrameAll;
-	IntArrPerFrameAll = calloc(bigArrSize,sizeof(*IntArrPerFrameAll));
-	// OMP HERE
-	# pragma omp parallel for num_threads(numProcs) private(i) schedule(dynamic)
+	double *IntArrPerFrame;
+	IntArrPerFrame = calloc(bigArrSize,sizeof(*IntArrPerFrame));
+	FILE *out3;
+	if (newOutput == 1){
+		char outfnAll[4096];
+		char fn3[4096];
+		sprintf(fn3,"%s",imageFN);
+		char *bname3;
+		bname3 = basename(fn3);
+		sprintf(outfnAll,"%s/%s_integrated.bin",outputFolder,bname3,outext);
+		printf("%s\n",outfnAll);
+		out3 = fopen(outfnAll,"wb");
+	}
+	// Add OMP here to do frames in parallel.
 	for (i=0;i<nFrames;i++){
-
-		int j,k,jk;
-		int procNum = omp_get_thread_num();
-
-		size_t seekIntArr = nEtaBins*nRBins;
-		seekIntArr *= procNum;
-		double *IntArrPerFrame;
-		IntArrPerFrame = &IntArrPerFrameAll[seekIntArr];
-
-		size_t seekArr = NrPixelsY;
-		seekArr *= NrPixelsZ;
-		seekArr *= procNum;
-
-		double *Image;
-		pixelvalue *ImageIn, *ImageInT;
-		Image = &ImageAll[seekArr];
-		ImageIn = &ImageInAll[seekArr];
-		ImageInT = &ImageInTAll[seekArr];
-
-		size_t seekFile = Skip;
-		size_t seekFrame = SizeFile;
-		seekFrame *= i;
-		seekFile += seekFrame;
-
-		size_t offsetOutFile = nEtaBins*nRBins;
-		offsetOutFile *= i;
-		offsetOutFile *= sizeof(double);
-
-		//~ #pragma omp critical
-		//~ {
-			FILE *fThis;
-			fThis = fopen(imageFN,"rb");
-			fseek(fThis,seekFile,SEEK_SET);
-			int rc3 = fileReader(fThis,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
-			printf("Processing frame number: %d of %d of file %s. RC: %d\n",i+1,nFrames,imageFN,rc3);
-			fclose(fThis);
-		//~ }
+		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
+		rc = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
 		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 			Image[j] = (double)ImageIn[j] - AverageDark[j];
 		}
-		if (i==0){
-			char fn2[4096];
-			sprintf(fn2,"%s",imageFN);
-			char *bname;
-			bname = basename(fn2);
-			sprintf(outfn2,"%s/%s.REtaAreaMap.csv",outputFolder,bname);
+		if (newOutput == 0){
+			if (separateFolder == 0){
+				sprintf(outfn,"%s_integrated_framenr_%d%s",imageFN,i,outext);
+				sprintf(outFN1d,"%s_integrated_framenr_%d.1d%s",imageFN,i,outext);
+			} else {
+				char fn2[4096];
+				sprintf(fn2,"%s",imageFN);
+				char *bname;
+				bname = basename(fn2);
+				sprintf(outfn,"%s/%s_integrated_framenr_%d%s",outputFolder,bname,i,outext);
+				sprintf(outFN1d,"%s/%s_integrated_framenr_%d.1d%s",outputFolder,bname,i,outext);
+			}
+			out = fopen(outfn,"w");
+			out1d = fopen(outFN1d,"w");
+			fprintf(out1d,"%%nRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tIntensity(counts)\n",nRBins);
+			fprintf(out,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n",nEtaBins,nRBins);
+		}
+		if (i==0 && newOutput==1){
+			if (separateFolder==0) sprintf(outfn2,"%s.REtaAreaMap.csv",imageFN);
+			else{
+				char fn2[4096];
+				sprintf(fn2,"%s",imageFN);
+				char *bnname;
+				bnname = basename(fn2);
+				sprintf(outfn2,"%s/%s.REtaAreaMap.csv",outputFolder,bnname);
+			}
 			out2 = fopen(outfn2,"w");
 			fprintf(out2,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tBinArea\n",nEtaBins,nRBins);
 		}
-		memset(IntArrPerFrame,0,nEtaBins*nRBins);
-		double Intensity, totArea, ThisInt;
-		long long int Pos;
-		int nPixels, dataPos;
-		struct data ThisVal;
-		size_t testPos;
-		double RMean, EtaMean;
+		memset(IntArrPerFrame,0,bigArrSize);
 		for (j=0;j<nRBins;j++){
 			RMean = (RBinsLow[j]+RBinsHigh[j])/2;
+			Int1d = 0;
+			n1ds = 0;
 			for (k=0;k<nEtaBins;k++){
-				EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
 				Pos = j*nEtaBins + k;
 				nPixels = nPxList[2*Pos + 0];
 				dataPos = nPxList[2*Pos + 1];
 				Intensity = 0;
 				totArea = 0;
-				for (jk=0;jk<nPixels;jk++){
-					ThisVal = pxList[dataPos + jk];
+				for (l=0;l<nPixels;l++){
+					ThisVal = pxList[dataPos + l];
 					testPos = ThisVal.z;
 					testPos *= NrPixelsY;
 					testPos += ThisVal.y;
@@ -646,39 +642,72 @@ int main(int argc, char **argv)
 					Intensity += ThisInt*ThisVal.frac;
 					totArea += ThisVal.frac;
 				}
-				if (i==0){
-					fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
-				}
 				if (Intensity != 0){
 					if (Normalize == 1){
 						Intensity /= totArea;
 					}
 				}
-				IntArrPerFrame[j*nEtaBins+k] = Intensity;
+				EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
+				Int1d += Intensity;
+				n1ds ++;
+				if (newOutput == 0){
+					fprintf(out,"%lf\t%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,Intensity,totArea);
+				}else{
+					if (i==0){
+						fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
+					}
+					IntArrPerFrame[j*nEtaBins+k] = Intensity;
+				}
+				if (sumImages==1){
+					if (i==0){
+						sumMatrix[j*nEtaBins*5+k*5+0] = RMean;
+						sumMatrix[j*nEtaBins*5+k*5+1] = atand(RMean*px/Lsd);
+						sumMatrix[j*nEtaBins*5+k*5+2] = EtaMean;
+						sumMatrix[j*nEtaBins*5+k*5+4] = totArea;
+					}
+					sumMatrix[j*nEtaBins*5+k*5+3] += Intensity;
+				}
 			}
+			Int1d /= n1ds;
+			if (newOutput == 0)
+				fprintf(out1d,"%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),Int1d);
 		}
-		char outfnAll[4096];
-		char fn3[4096];
-		sprintf(fn3,"%s",imageFN);
-		char *bname3;
-		bname3 = basename(fn3);
-		sprintf(outfnAll,"%s/%s_integrated.bin",outputFolder,bname3);
-		//~ #pragma omp critical
-		//~ {
-			//~ printf("%s\n",outfnAll);
-			int out3 = open(outfnAll,O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-			if (out3 <=0){
-				printf("Could not open output file.\n");
+		if (newOutput == 1){
+			fwrite(IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),1,out3);
+			if (i==0){
+				fclose(out2);
 			}
-			// Here we need to pwrite to the right location.
-			int rc2 = pwrite(out3,IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),offsetOutFile);
-			if (rc2 < 0){
-				printf("Could not write the output.\n");
+		} else{
+			fclose(out);
+			fclose(out1d);
+		}
+	}
+	if (newOutput == 1) fclose(out3);
+	if (sumImages == 1){
+		FILE *sumFile;
+		char sumFN[4096];
+		if (separateFolder == 0){
+			sprintf(sumFN,"%s_sum%s",imageFN,outext);
+		} else {
+			char fn2[4096];
+			sprintf(fn2,"%s",imageFN);
+			char *bname;
+			bname = basename(fn2);
+			sprintf(sumFN,"%s/%s_sum%s",outputFolder,bname,outext);
+		}
+		sumFile = fopen(sumFN,"w");
+		if (newOutput == 0){
+			fprintf(sumFile,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n");
+			for (i=0;i<nRBins*nEtaBins;i++){
+				for (k=0;k<5;k++)
+					fprintf(sumFile,"%lf\t",sumMatrix[i*5+k]);
+				fprintf(sumFile,"\n");
 			}
-			close(out3);
-		//~ }
-		if (i==0){
-			fclose(out2);
+		} else {
+			fprintf(sumFile,"%%Intensity(counts)\n");
+			for (i=0;i<nRBins*nEtaBins;i++){
+				fprintf(sumFile,"%lf\n",sumMatrix[i*5+3]);
+			}
 		}
 	}
 	end0 = clock();
