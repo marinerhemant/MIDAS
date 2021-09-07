@@ -354,6 +354,7 @@ mapperfcn(
 	long long int nrContinued=0;
 	long long int testPos;
 	double ypr,zpr;
+	double RT, ET;
 	for (i=0;i<NrPixelsY;i++){
 		for (j=0;j<NrPixelsZ;j++){
 			EtaMi = 1800;
@@ -615,6 +616,19 @@ mapperfcn(
 						continue;
 					}
 					nEdges = FindUniques(Edges,EdgesOut,nEdges);
+					for (m=0;m<nEdges;m++){
+						RT = sqrt(EdgesOut[m][0]*EdgesOut[m][0] + EdgesOut[m][1]*EdgesOut[m][1]);
+						ET = CalcEtaAngle(EdgesOut[m][0],EdgesOut[m][1]);
+						// check if out of range
+						for (n=0;n<4;n++){
+							if (BETWEEN(RT,RMin,RMax) == 0){
+								printf("Outside %lf %lf\n",EdgesOut[m][0],EdgesOut[m][1]);
+							}
+							if (BETWEEN(ET,EtaMin,EtaMax) == 0){
+								printf("Outside %lf %lf\n",EdgesOut[m][0],EdgesOut[m][1]);
+							}
+						}
+					}
 					// Now we have all the edges, let's calculate the area.
 					Area = CalcAreaPolygon(EdgesOut,nEdges);
 					if (Area < 1E-5){
