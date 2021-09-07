@@ -77,6 +77,7 @@ double CalcEtaAng(double y, double z){
 static inline
 double CalcR(y,ybc,z,zbc){
 	double R = sqrt((y-ybc)*(y-ybc)+(z-zbc)*(z-zbc));
+	return R;
 }
 
 static inline
