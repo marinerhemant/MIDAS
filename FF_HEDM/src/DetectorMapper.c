@@ -632,9 +632,9 @@ mapperfcn(
 						nrContinued++;
 						continue;
 					}
-					for (m=0;m<nEdges;m++) printf("%d %d %d %d %d %lf %lf\n",i,j,k,l,nEdges,EdgesOut[m][0],EdgesOut[m][1]);
-					printf("%d %d %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",i,j,EtaMi,EtaMin,EtaMa,EtaMax,RMi,RMin,RMa,RMax,Area);
-					for (m=0;m<4;m++) printf("%lf %lf ",boxEdge[m][0],boxEdge[m][1]); printf("\n");
+					//~ for (m=0;m<nEdges;m++) printf("%d %d %d %d %d %lf %lf\n",i,j,k,l,nEdges,EdgesOut[m][0],EdgesOut[m][1]);
+					//~ printf("%d %d %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",i,j,EtaMi,EtaMin,EtaMa,EtaMax,RMi,RMin,RMa,RMax,Area);
+					//~ for (m=0;m<4;m++) printf("%lf %lf ",boxEdge[m][0],boxEdge[m][1]); printf("\n");
 					// Populate the arrays
 					maxnVal = maxnPx[RChosen[k]][EtaChosen[l]];
 					nVal = nPxList[RChosen[k]][EtaChosen[l]];
@@ -657,7 +657,7 @@ mapperfcn(
 				}
 			}
 			if (totPxArea > 1.1) printf("Exceeded %lf\n", totPxArea);
-			else printf("Area: %lf]n",totPxArea);
+			else printf("Area: %lf\n",totPxArea);
 		}
 	}
 	return TotNrOfBins;
