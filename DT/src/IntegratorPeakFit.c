@@ -867,8 +867,8 @@ int main(int argc, char **argv)
 			if (newOutput == 0) fprintf(out1d,"%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),Int1d);
 		}
 
-		for (j=0;j<nElsTot*nEtaFits;j++) printf("%lf ",peakIntensities[j]);
-		printf("\n");
+		//~ for (j=0;j<nElsTot*nEtaFits;j++) printf("%lf ",peakIntensities[j]);
+		//~ printf("\n");
 		// Do peak fitting here
 		for (j=0;j<nEtaFits;j++){
 			for (k=0;k<nRadFits;k++){
@@ -880,16 +880,16 @@ int main(int argc, char **argv)
 				IntensityThis = &peakIntensities[peakPos];
 				nElsThis = (int)radiiToFit[k][5];
 				FitPeakShape(nElsThis,RFitThis,IntensityThis,ResultArr,RBinSize,RMean);
-				printf("%lf ",RMean);
+				//~ printf("%lf ",RMean);
 				for (l=0;l<8;l++){
 					peakValArrPos = nFits;
 					peakValArrPos *= l;
 					peakValArrPos += j*nRadFits;
 					peakValArrPos += k;
 					peakVals[peakValArrPos] = ResultArr[l];
-					printf("%lf ",ResultArr[l]);
+					//~ printf("%lf ",ResultArr[l]);
 				}
-				printf("\n");
+				//~ printf("\n");
 			}
 		}
 
