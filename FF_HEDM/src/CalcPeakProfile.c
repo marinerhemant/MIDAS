@@ -96,11 +96,11 @@ int FindUniques (double **EdgesIn, double **EdgesOut, int nEdgesIn,double RMin,d
 		}
 		if (BETWEEN(RT,RMin,RMax) == 0){
 			duplicate = 1;
-			printf("Outside: %lf %lf %lf",RT,RMin,RMax);
+			printf("Outside: %lf %lf %lf\n",RT,RMin,RMax);
 		}
 		if (BETWEEN(ET,EtaMin,EtaMax) == 0){
 			duplicate = 1;
-			printf("Outside: %lf %lf %lf",ET,EtaMin,EtaMax);
+			printf("Outside: %lf %lf %lf\n",ET,EtaMin,EtaMax);
 		}
 		// let's check if we went outside by mistake 
 		if (duplicate == 0){
