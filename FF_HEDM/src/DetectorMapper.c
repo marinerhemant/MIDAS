@@ -275,14 +275,21 @@ int FindUniques (double **EdgesIn, double **EdgesOut, int nEdgesIn, double RMin,
 		}
 		RT = sqrt(EdgesIn[i][0]*EdgesIn[i][0] + EdgesIn[i][1]*EdgesIn[i][1]);
 		ET = CalcEtaAngle(EdgesIn[i][0],EdgesIn[i][1]);
+		if (fabs(ET - EtaMin) > 180){
+			printf("%lf %lf %lf %lf\n",ET,360+ET,EtaMin,EtaMax);
+			ET = 360 + ET;
+		}else if (fabs(ET - EtaMax) > 180){
+			printf("%lf %lf %lf %lf\n",ET,360-ET,EtaMin,EtaMax);
+			ET = 360 - ET;
+		}
 		if (BETWEEN(RT,RMin,RMax) == 0){
-			//~ printf("Outside %lf %lf\n",EdgesIn[i][0],EdgesIn[i][1]);
+			printf("Outside %lf %lf %lf\n",RT,RMin,RMax);
 			duplicate = 1;
 		}
-		//~ if (BETWEEN(ET,EtaMin,EtaMax) == 0){
-			//~ printf("Outside %lf %lf\n",EdgesIn[i][0],EdgesIn[i][1]);
-			//~ duplicate = 1;
-		//~ }
+		if (BETWEEN(ET,EtaMin,EtaMax) == 0){
+			printf("Outside %lf %lf %lf\n",ET,EtaMin,EtaMax);
+			duplicate = 1;
+		}
 		if (duplicate == 0){
 			EdgesOut[nEdgesOut][0] = EdgesIn[i][0];
 			EdgesOut[nEdgesOut][1] = EdgesIn[i][1];
