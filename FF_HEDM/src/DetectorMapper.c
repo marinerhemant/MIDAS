@@ -28,7 +28,7 @@ int distortionFile;
 static inline
 int BETWEEN(double val, double min, double max)
 {
-	return ((val < max && val > min) ? 1 : 0 );
+	return ((val <= max && val >= min) ? 1 : 0 );
 }
 
 static inline
