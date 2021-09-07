@@ -641,7 +641,7 @@ mapperfcn(
 					TotNrOfBins++;
 				}
 			}
-			if (totPxArea > 1.1) printf("Exceeded\n");
+			if (totPxArea > 1.1) printf("Exceeded %lf\n", totPxArea);
 		}
 	}
 	return TotNrOfBins;
