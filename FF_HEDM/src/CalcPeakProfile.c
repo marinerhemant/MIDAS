@@ -69,7 +69,7 @@ int BETWEEN(double val, double min, double max)
 	return ((val-EPS <= max && val+EPS >= min) ? 1 : 0 );
 }
 static inline
-double CalcEtaAngle(double y, double z){
+double CalcEtaAng(double y, double z){
 	double alpha = rad2deg*acos(z/sqrt(y*y+z*z));
 	if (y>0) alpha = -alpha;
 	return alpha;
