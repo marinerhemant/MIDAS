@@ -752,7 +752,9 @@ int main(int argc, char **argv)
 							continue;
 						}
 					}
-					if (i==0) AreaMapPixels[testPos] += ThisVal.frac;
+					if (i==0){
+						AreaMapPixels[testPos] += ThisVal.frac;
+					}
 					ThisInt = Image[testPos]; // The data is arranged as y(fast) and then z(slow)
 					Intensity += ThisInt*ThisVal.frac;
 					totArea += ThisVal.frac;

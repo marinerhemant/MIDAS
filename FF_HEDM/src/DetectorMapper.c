@@ -426,6 +426,7 @@ mapperfcn(
 			zMin = YZ[1] - 0.5;
 			zMax = YZ[1] + 0.5;
 			sumNrBins += nrRChosen * nrEtaChosen;
+			double totPxArea = 0;
 			// Line Intercepts ordering: RMin: ymin, ymax, zmin, zmax. RMax: ymin, ymax, zmin, zmax
 			//							 EtaMin: ymin, ymax, zmin, zmax. EtaMax: ymin, ymax, zmin, zmax.
 			for (k=0;k<nrRChosen;k++){
@@ -635,10 +636,12 @@ mapperfcn(
 					pxList[RChosen[k]][EtaChosen[l]][nVal].y = i;
 					pxList[RChosen[k]][EtaChosen[l]][nVal].z = j;
 					pxList[RChosen[k]][EtaChosen[l]][nVal].frac = Area;
+					totPxArea += Area;
 					(nPxList[RChosen[k]][EtaChosen[l]])++;
 					TotNrOfBins++;
 				}
 			}
+			if (totPxArea > 1.1) printf("Exceeded\n");
 		}
 	}
 	return TotNrOfBins;
