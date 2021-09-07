@@ -92,20 +92,23 @@ int FindUniques (double **EdgesIn, double **EdgesOut, int nEdgesIn,double RMin,d
 				duplicate = 1;
 			}
 		}
-		RT = CalcR(EdgesIn[i][0],ybc,EdgesIn[i][1],zbc);
-		ET = CalcEtaAng(EdgesIn[i][0],EdgesIn[i][1]);
-		if (fabs(ET - EtaMin) > 180){
-			ET = 360 + ET;
-		}else if (fabs(ET - EtaMax) > 180){
-			ET = 360 - ET;
-		}
-		if (BETWEEN(RT,RMin/px,RMax/px) == 0){
-			duplicate = 1;
-			printf("Outside: %lf %lf %lf\n",RT,RMin,RMax);
-		} else printf("Inside: %lf %lf %lf\n",RT,RMin,RMax);
-		if (BETWEEN(ET,EtaMin,EtaMax) == 0){
-			duplicate = 1;
-			printf("Outside: %lf %lf %lf\n",ET,EtaMin,EtaMax);
+		printf("%lf %lf %lf %lf\n",RMin/px,RMax/px,EdgesIn[i][0],EdgesIn[i][1]);
+		if (duplicate == 0){
+			RT = CalcR(EdgesIn[i][0],ybc,EdgesIn[i][1],zbc);
+			ET = CalcEtaAng(EdgesIn[i][0],EdgesIn[i][1]);
+			if (fabs(ET - EtaMin) > 180){
+				ET = 360 + ET;
+			}else if (fabs(ET - EtaMax) > 180){
+				ET = 360 - ET;
+			}
+			if (BETWEEN(RT,RMin/px,RMax/px) == 0){
+				duplicate = 1;
+				printf("Outside: %lf %lf %lf\n",RT,RMin,RMax);
+			} else printf("Inside: %lf %lf %lf\n",RT,RMin,RMax);
+			if (BETWEEN(ET,EtaMin,EtaMax) == 0){
+				duplicate = 1;
+				printf("Outside: %lf %lf %lf\n",ET,EtaMin,EtaMax);
+			}
 		}
 		// let's check if we went outside by mistake 
 		if (duplicate == 0){
