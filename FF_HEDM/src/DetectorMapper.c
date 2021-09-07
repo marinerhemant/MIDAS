@@ -276,11 +276,11 @@ int FindUniques (double **EdgesIn, double **EdgesOut, int nEdgesIn, double RMin,
 		RT = sqrt(EdgesIn[i][0]*EdgesIn[i][0] + EdgesIn[i][1]*EdgesIn[i][1]);
 		ET = CalcEtaAngle(EdgesIn[i][0],EdgesIn[i][1]);
 		if (BETWEEN(RT,RMin,RMax) == 0){
-			printf("Outside %lf %lf\n",EdgesIn[i][0],EdgesIn[i][1]);
+			//~ printf("Outside %lf %lf\n",EdgesIn[i][0],EdgesIn[i][1]);
 			duplicate = 1;
 		}
 		if (BETWEEN(ET,EtaMin,EtaMax) == 0){
-			printf("Outside %lf %lf\n",EdgesIn[i][0],EdgesIn[i][1]);
+			//~ printf("Outside %lf %lf\n",EdgesIn[i][0],EdgesIn[i][1]);
 			duplicate = 1;
 		}
 		if (duplicate == 0){
@@ -436,7 +436,7 @@ mapperfcn(
 			yMax = YZ[0] + 0.5;
 			zMin = YZ[1] - 0.5;
 			zMax = YZ[1] + 0.5;
-			printf("%lf %lf %lf %lf %lf %lf\n",yMin,yMax,zMin,zMax,YZ[0],YZ[1]);
+			//~ printf("%lf %lf %lf %lf %lf %lf\n",yMin,yMax,zMin,zMax,YZ[0],YZ[1]);
 			sumNrBins += nrRChosen * nrEtaChosen;
 			double totPxArea = 0;
 			// Line Intercepts ordering: RMin: ymin, ymax, zmin, zmax. RMax: ymin, ymax, zmin, zmax
