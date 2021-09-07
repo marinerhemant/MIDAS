@@ -21,6 +21,7 @@
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
+#define EPS 1E-6
 double *distortionMapY;
 double *distortionMapZ;
 int distortionFile;
@@ -28,7 +29,7 @@ int distortionFile;
 static inline
 int BETWEEN(double val, double min, double max)
 {
-	return ((val <= max && val >= min) ? 1 : 0 );
+	return ((val-EPS <= max && val+EPS >= min) ? 1 : 0 );
 }
 
 static inline
