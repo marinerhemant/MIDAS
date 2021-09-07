@@ -277,18 +277,14 @@ int FindUniques (double **EdgesIn, double **EdgesOut, int nEdgesIn, double RMin,
 		RT = sqrt(EdgesIn[i][0]*EdgesIn[i][0] + EdgesIn[i][1]*EdgesIn[i][1]);
 		ET = CalcEtaAngle(EdgesIn[i][0],EdgesIn[i][1]);
 		if (fabs(ET - EtaMin) > 180){
-			//~ printf("%lf %lf %lf %lf\n",ET,360+ET,EtaMin,EtaMax);
 			ET = 360 + ET;
 		}else if (fabs(ET - EtaMax) > 180){
-			//~ printf("%lf %lf %lf %lf\n",ET,360-ET,EtaMin,EtaMax);
 			ET = 360 - ET;
 		}
 		if (BETWEEN(RT,RMin,RMax) == 0){
-			//~ printf("Outside %lf %lf %lf\n",RT,RMin,RMax);
 			duplicate = 1;
 		}
 		if (BETWEEN(ET,EtaMin,EtaMax) == 0){
-			//~ printf("Outside %lf %lf %lf\n",ET,EtaMin,EtaMax);
 			duplicate = 1;
 		}
 		if (duplicate == 0){
@@ -444,7 +440,6 @@ mapperfcn(
 			yMax = YZ[0] + 0.5;
 			zMin = YZ[1] - 0.5;
 			zMax = YZ[1] + 0.5;
-			//~ printf("%lf %lf %lf %lf %lf %lf\n",yMin,yMax,zMin,zMax,YZ[0],YZ[1]);
 			sumNrBins += nrRChosen * nrEtaChosen;
 			double totPxArea = 0;
 			// Line Intercepts ordering: RMin: ymin, ymax, zmin, zmax. RMax: ymin, ymax, zmin, zmax
@@ -644,9 +639,6 @@ mapperfcn(
 						nrContinued++;
 						continue;
 					}
-					//~ for (m=0;m<nEdges;m++) printf("%d %d %d %d %d %lf %lf\n",i,j,k,l,nEdges,EdgesOut[m][0],EdgesOut[m][1]);
-					//~ printf("%d %d %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",i,j,EtaMi,EtaMin,EtaMa,EtaMax,RMi,RMin,RMa,RMax,Area);
-					//~ for (m=0;m<4;m++) printf("%lf %lf ",boxEdge[m][0],boxEdge[m][1]); printf("\n");
 					// Populate the arrays
 					maxnVal = maxnPx[RChosen[k]][EtaChosen[l]];
 					nVal = nPxList[RChosen[k]][EtaChosen[l]];
@@ -668,8 +660,6 @@ mapperfcn(
 					TotNrOfBins++;
 				}
 			}
-			//~ if (totPxArea > 1.1) printf("Exceeded %lf\n", totPxArea);
-			//~ else printf("Area: %lf\n",totPxArea);
 		}
 	}
 	return TotNrOfBins;
