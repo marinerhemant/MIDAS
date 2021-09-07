@@ -37,8 +37,6 @@ int NrPixelsGlobal = 2048;
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
 extern size_t mapMaskSize;
 extern int *mapMask;
-int nRejects;
-int nGood;
 
 size_t mapMaskSize = 0;
 int *mapMask;
@@ -329,8 +327,6 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 	for (i=0;i<NrPtsForFit;i++)Idxs[0][i]=i;
 	double AllZero;
 	double ytr, ztr;
-	nGood = 0;
-	nRejects = 0;
 	for (i=0;i<nIndices;i++){
 		// If no pixel inside the detector, ignore this bin
 		if (NrEachIndexBin[i] == 0){
@@ -404,7 +400,6 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 		free(Rm);
 		free(Etam);
 	}
-	printf("%d %d\n",nGood,nRejects);
 	FreeMemMatrixInt(Idxs,1);
 }
 
