@@ -620,13 +620,12 @@ mapperfcn(
 						RT = sqrt(EdgesOut[m][0]*EdgesOut[m][0] + EdgesOut[m][1]*EdgesOut[m][1]);
 						ET = CalcEtaAngle(EdgesOut[m][0],EdgesOut[m][1]);
 						// check if out of range
-						for (n=0;n<4;n++){
-							if (BETWEEN(RT,RMin,RMax) == 0){
-								printf("Outside %lf %lf\n",EdgesOut[m][0],EdgesOut[m][1]);
-							}
-							if (BETWEEN(ET,EtaMin,EtaMax) == 0){
-								printf("Outside %lf %lf\n",EdgesOut[m][0],EdgesOut[m][1]);
-							}
+						if (BETWEEN(RT,RMin,RMax) == 0){
+							printf("Outside %lf %lf\n",EdgesOut[m][0],EdgesOut[m][1]);
+							break;
+						}
+						if (BETWEEN(ET,EtaMin,EtaMax) == 0){
+							printf("Outside %lf %lf\n",EdgesOut[m][0],EdgesOut[m][1]);
 						}
 					}
 					// Now we have all the edges, let's calculate the area.
