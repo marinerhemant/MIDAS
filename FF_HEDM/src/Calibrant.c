@@ -275,7 +275,7 @@ double problem_function_profile(
 }
 
 void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPtsForFit],
-				double *Rfit, double Rstep, double Rmean, double Etas[NrPtsForFit])
+				double *Rfit, double Rstep, double Rmean)
 {
 	unsigned n = 6;
 	double x[n],xl[n],xu[n];
@@ -390,7 +390,7 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 		if (AllZero != 1){
 			CalcWeightedMean(1, NrPts, Idxs, PeakShape, Rs, Etas, Rm, Etam);
 			double Rmean=Rm[0];
-			FitPeakShape(NrPtsForFit,Rs,PeakShape,&Rfit,Rstep,Rmean,Etas);
+			FitPeakShape(NrPtsForFit,Rs,PeakShape,&Rfit,Rstep,Rmean);
 		}else{
 			printf("All intensities were 0. i=%d of %d, %f %f %lf %lf\n",i,nIndices,IdealRmins[i],IdealRmaxs[i],EtaMi,EtaMa);
 			Rfit = 0;

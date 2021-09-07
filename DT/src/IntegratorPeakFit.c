@@ -32,7 +32,7 @@
 
 typedef double pixelvalue;
 
-//#define PRINTOPT
+//~ #define PRINTOPT
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
 #define rad2deg 57.2957795130823
@@ -325,6 +325,37 @@ double problem_function_profile(
 	return TotalDifferenceIntensity;
 }
 
+static
+double CalcIntegratedIntensity(
+	const double *x,
+	void* f_data_trial)
+{
+	struct my_profile_func_data *f_data = (struct my_profile_func_data *) f_data_trial;
+	int NrPtsForFit = f_data->NrPtsForFit;
+	double *Rs, *PeakShape;
+	Rs = &(f_data->Rs[0]);
+	PeakShape = &(f_data->PeakShape[0]);
+	double Rcen, Mu, SigmaG, SigmaL, Imax, BG;
+	Rcen = x[0];
+	Mu = x[1];
+	SigmaG = x[2];
+	SigmaL = x[3];
+	Imax = x[4];
+	BG = x[5];
+	double TotalIntensity=0;
+	int i,j,k;
+	double L, G;
+	for (i=0;i<NrPtsForFit;i++){
+		L = (1/(((Rs[i]-Rcen)*(Rs[i]-Rcen)/(SigmaL*SigmaL))+(1)));
+		G = (exp((-0.5)*(Rs[i]-Rcen)*(Rs[i]-Rcen)/(SigmaG*SigmaG)));
+		TotalIntensity += BG + Imax*((Mu*L)+((1-Mu)*G));
+	}
+#ifdef PRINTOPT
+	printf("Peak fit intensity value: %lf\n",TotalIntensity);
+#endif
+	return TotalIntensity;
+}
+
 void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPtsForFit],
 				double *Rfit, double Rstep, double Rmean)
 {
@@ -345,8 +376,8 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	}
 	x[0] = Rmean; xl[0] = Rs[0];    xu[0] = Rs[NrPtsForFit-1];
 	x[1] = 0.5;   xl[1] = 0;        xu[1] = 1;
-	x[2] = Rstep;     xl[2] = Rstep/2;  xu[2] = Rstep*NrPtsForFit/2;
-	x[3] = Rstep;     xl[3] = Rstep/2;  xu[3] = Rstep*NrPtsForFit/2;
+	x[2] = Rstep;     xl[2] = Rstep/5;  xu[2] = Rstep*NrPtsForFit/2;
+	x[3] = Rstep;     xl[3] = Rstep/5;  xu[3] = Rstep*NrPtsForFit/2;
 	x[4] = MaxI;  xl[4] = MaxI/100; xu[4] = MaxI*1.5;
 	x[5] = BG0;   xl[5] = 0;        xu[5] = BG0*1.5;
 	struct my_profile_func_data *f_datat;
@@ -361,7 +392,14 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	nlopt_optimize(opt, x, &minf);
 	nlopt_destroy(opt);
 	MeanDiff = sqrt(minf)/(NrPtsForFit);
-	*Rfit = x[0];
+	Rfit[0] = x[0];
+	Rfit[1] = x[1];
+	Rfit[2] = x[2];
+	Rfit[3] = x[3];
+	Rfit[4] = x[4];
+	Rfit[5] = x[5];
+	Rfit[6] = MeanDiff;
+	Rfit[7] = CalcIntegratedIntensity(x,trp); // Calculate integrated intensity
 }
 
 
@@ -397,7 +435,7 @@ int main(int argc, char **argv)
 	char GapFN[4096], BadPxFN[4096], outputFolder[4096];
 	int sumImages=0, separateFolder=0,newOutput=0, binOutput = 0;
 	double radiiToFit[maxNFits][6], etasToFit[maxNFits][4];
-	int nRadFits = 0, nEtaFits = 0;
+	size_t nRadFits = 0, nEtaFits = 0;
 	while (fgets(aline,4096,paramFile) != NULL){
 		str = "GapFile ";
 		if (StartsWith(aline,str) == 1){
@@ -518,14 +556,15 @@ int main(int argc, char **argv)
         }
 	}
 	//~ printf("%d %s\n",separateFolder,outputFolder);
+	if (separateFolder == 0) sprintf(outputFolder,".");
 
 	// Let's make an array to store the intensities for fitting peaks
 	double *peakIntensities, *peakVals, *AreaMapPixels;
-	int nFits = nEtaFits * nRadFits;
-	peakVals = calloc(nFits*7,sizeof(*peakVals));
-	int iRadFit, iEtaFit, nEls, nElsTot=0;
+	size_t nFits = nEtaFits * nRadFits;
+	peakVals = calloc(nFits*8,sizeof(*peakVals));
+	size_t iRadFit, iEtaFit, nEls, nElsTot=0;
 	for (iRadFit=0;iRadFit<nRadFits;iRadFit++){
-		nEls = (int)(ceil(radiiToFit[iRadFit][1]*2 / RBinSize));
+		nEls = (int)(ceil(radiiToFit[iRadFit][1]*2 / RBinSize)) + 2;
 		radiiToFit[iRadFit][4] = nElsTot;
 		radiiToFit[iRadFit][5] = nEls;
 		nElsTot += nEls;
@@ -683,16 +722,24 @@ int main(int argc, char **argv)
 	size_t bigArrSize = nEtaBins*nRBins;
 	double *IntArrPerFrame;
 	IntArrPerFrame = calloc(bigArrSize,sizeof(*IntArrPerFrame));
-	FILE *out3;
+	FILE *out3, *outPeakFit;
+	int etaFitNr, radFitNr, radBinFitNr;
+	size_t PeakIntPos, peakPos, nElsThis, peakValArrPos;
+	double *RPosArr, *RFitThis, *IntensityThis, *ResultArr;
+	RPosArr = calloc(nElsTot,sizeof(*RPosArr));
+	ResultArr = malloc(8*sizeof(*ResultArr));
 	if (newOutput == 1){
 		char outfnAll[4096];
+		char outfnFit[4096];
 		char fn3[4096];
 		sprintf(fn3,"%s",imageFN);
 		char *bname3;
 		bname3 = basename(fn3);
 		sprintf(outfnAll,"%s/%s_integrated.bin",outputFolder,bname3,outext);
+		sprintf(outfnFit,"%s/%s_PeakFits.bin",outputFolder,bname3,outext);
 		printf("%s\n",outfnAll);
 		out3 = fopen(outfnAll,"wb");
+		outPeakFit = fopen(outfnFit,"wb");
 	}
 	// Add OMP here to do frames in parallel.
 	for (i=0;i<nFrames;i++){
@@ -732,11 +779,33 @@ int main(int argc, char **argv)
 			fprintf(out2,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tBinArea\n",nEtaBins,nRBins);
 		}
 		memset(IntArrPerFrame,0,bigArrSize);
+		memset(peakIntensities,0,nElsTot*nEtaFits);
 		for (j=0;j<nRBins;j++){
 			RMean = (RBinsLow[j]+RBinsHigh[j])/2;
 			Int1d = 0;
 			n1ds = 0;
+			radFitNr = -1;
+			for (k=0;k<nRadFits;k++){
+				if (RBinsHigh[j] >= radiiToFit[k][2] && RBinsLow[j] <= radiiToFit[k][3]){
+					radFitNr = k;
+					radBinFitNr = (int) ((RBinsHigh[j]-radiiToFit[k][2])/RBinSize);
+					//~ printf("%d %d %lf %lf %lf %lf\n",radFitNr,radBinFitNr,RBinsHigh[j], radiiToFit[k][2],RBinsLow[j], radiiToFit[k][3]);
+					RPosArr[(int)radiiToFit[k][4]+ radBinFitNr] = RMean;
+					if (radBinFitNr >= (int)radiiToFit[k][5]){
+						printf("Something went wrong in fitting calculation, exiting %d %lf.\n",radBinFitNr,radiiToFit[k][5]);
+						return 1;
+					}
+				}
+			}
 			for (k=0;k<nEtaBins;k++){
+				if (radFitNr > -1){
+					etaFitNr = -1;
+					for (l=0;l<nEtaFits;l++){
+						if (EtaBinsHigh[k] >= etasToFit[l][2] && EtaBinsLow[k] <= etasToFit[l][3]){
+							etaFitNr = l;
+						}
+					}
+				}
 				Pos = j*nEtaBins + k;
 				nPixels = nPxList[2*Pos + 0];
 				dataPos = nPxList[2*Pos + 1];
@@ -764,6 +833,15 @@ int main(int argc, char **argv)
 						Intensity /= totArea;
 					}
 				}
+				if (etaFitNr > -1){
+					// Put Intensity in a bin
+					PeakIntPos = nElsTot;
+					PeakIntPos *= etaFitNr;
+					PeakIntPos += (int)radiiToFit[radFitNr][4];
+					PeakIntPos += radBinFitNr;
+					//~ printf("%zu\n",PeakIntPos);
+					peakIntensities[PeakIntPos] += Intensity;
+				}
 				EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
 				Int1d += Intensity;
 				n1ds ++;
@@ -786,14 +864,43 @@ int main(int argc, char **argv)
 				}
 			}
 			Int1d /= n1ds;
-			if (newOutput == 0)
-				fprintf(out1d,"%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),Int1d);
+			if (newOutput == 0) fprintf(out1d,"%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),Int1d);
 		}
+
+		for (j=0;j<nElsTot*nEtaFits;j++) printf("%lf ",peakIntensities[j]);
+		printf("\n");
+		// Do peak fitting here
+		for (j=0;j<nEtaFits;j++){
+			for (k=0;k<nRadFits;k++){
+				RMean = radiiToFit[k][0];
+				peakPos = j;
+				peakPos *= nElsTot;
+				peakPos += (int)radiiToFit[k][4];
+				RFitThis = &RPosArr[(int)radiiToFit[k][4]];
+				IntensityThis = &peakIntensities[peakPos];
+				nElsThis = (int)radiiToFit[k][5];
+				FitPeakShape(nElsThis,RFitThis,IntensityThis,ResultArr,RBinSize,RMean);
+				printf("%lf ",RMean);
+				for (l=0;l<8;l++){
+					peakValArrPos = nFits;
+					peakValArrPos *= l;
+					peakValArrPos += j*nRadFits;
+					peakValArrPos += k;
+					peakVals[peakValArrPos] = ResultArr[l];
+					printf("%lf ",ResultArr[l]);
+				}
+				printf("\n");
+			}
+		}
+
 		if (newOutput == 1){
+			fwrite(peakVals,nFits*8*sizeof(*peakVals),1,outPeakFit);
 			fwrite(IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),1,out3);
 			if (i==0){
 				FILE *areamap;
-				areamap = fopen("AreaFractionPixels.bin","wb");
+				char areamapfn[4096];
+				sprintf(areamapfn,"%s/AreaFractionPixels.bin",outputFolder);
+				areamap = fopen(areamapfn,"wb");
 				fwrite(AreaMapPixels,NrPixelsY*NrPixelsZ*sizeof(double),1,areamap);
 				fclose(areamap);
 				fclose(out2);
@@ -803,7 +910,10 @@ int main(int argc, char **argv)
 			fclose(out1d);
 		}
 	}
-	if (newOutput == 1) fclose(out3);
+	if (newOutput == 1){
+		fclose(out3);
+		fclose(outPeakFit);
+	}
 	if (sumImages == 1){
 		FILE *sumFile;
 		char sumFN[4096];
