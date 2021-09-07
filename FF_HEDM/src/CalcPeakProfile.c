@@ -62,11 +62,23 @@ double PosMatrix[4][2]={{-0.5, -0.5},
 #define FindSmaller(Val1,Val2)  Val1 > Val2 ? Val2 : Val1
 #define FindLarger(Val1,Val2)  Val1 > Val2 ? Val1 : Val2
 #define Len2d(x,y) sqrt(x*x + y*y)
+#define EPS 1E-6
+static inline
+int BETWEEN(double val, double min, double max)
+{
+	return ((val-EPS <= max && val+EPS >= min) ? 1 : 0 );
+}
+static inline
+double CalcEtaAngle(double y, double z){
+	double alpha = rad2deg*acos(z/sqrt(y*y+z*z));
+	if (y>0) alpha = -alpha;
+	return alpha;
+}
 
 static inline
-int FindUniques (double **EdgesIn, double **EdgesOut, int nEdgesIn){
+int FindUniques (double **EdgesIn, double **EdgesOut, int nEdgesIn,double RMin,double RMax,double EtaMin, double EtaMax){
 	int i,j, nEdgesOut=0, duplicate;
-	double Len;
+	double Len, RT, ET;
 	for (i=0;i<nEdgesIn;i++){
 		duplicate = 0;
 		for (j=i+1;j<nEdgesIn;j++){
@@ -75,6 +87,22 @@ int FindUniques (double **EdgesIn, double **EdgesOut, int nEdgesIn){
 				duplicate = 1;
 			}
 		}
+		RT = sqrt(EdgesIn[i][0]*EdgesIn[i][0] + EdgesIn[i][1]*EdgesIn[i][1]);
+		ET = CalcEtaAngle(EdgesIn[i][0],EdgesIn[i][1]);
+		if (fabs(ET - EtaMin) > 180){
+			ET = 360 + ET;
+		}else if (fabs(ET - EtaMax) > 180){
+			ET = 360 - ET;
+		}
+		if (BETWEEN(RT,RMin,RMax) == 0){
+			duplicate = 1;
+			printf("Outside: %lf %lf %lf",RT,RMin,RMax);
+		}
+		if (BETWEEN(ET,EtaMin,EtaMax) == 0){
+			duplicate = 1;
+			printf("Outside: %lf %lf %lf",ET,EtaMin,EtaMax);
+		}
+		// let's check if we went outside by mistake 
 		if (duplicate == 0){
 			EdgesOut[nEdgesOut][0] = EdgesIn[i][0];
 			EdgesOut[nEdgesOut][1] = EdgesIn[i][1];
@@ -167,6 +195,7 @@ int CalcNEdges(double **BoxEdges, int *Pos, double **Edges) // Box Edges
 	if (nEdges == 4){
 		return nEdges;
 	}
+	// Should we use the code used in DetectorMapper?????
 	double XIntersect, YIntersect, XP1, XP2, YP1, YP2, M, YP, XP;
 	double SmallX, LargeX, SmallY, LargeY;
 	double Intersects[10][2];
@@ -390,7 +419,7 @@ inline void CalcPeakProfile(int **Indices, int *NrEachIndexBin, int idx,
 		if (nEdges == 0){
 			continue;
 		}
-		nEdges = FindUniques(EdgesIn,EdgesOut,nEdges);
+		nEdges = FindUniques(EdgesIn,EdgesOut,nEdges,Rmi,Rma,EtaMi,EtaMa);
 		ThisArea = CalcAreaPolygon(EdgesOut,nEdges);
 		TotArea += ThisArea;
 		SumIntensity += Average[Indices[idx][i]] * ThisArea;
