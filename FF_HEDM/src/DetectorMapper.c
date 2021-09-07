@@ -425,6 +425,7 @@ mapperfcn(
 			yMax = YZ[0] + 0.5;
 			zMin = YZ[1] - 0.5;
 			zMax = YZ[1] + 0.5;
+			printf("%lf %lf %lf %lf\n",yMin,yMax,zMin,zMax);
 			sumNrBins += nrRChosen * nrEtaChosen;
 			double totPxArea = 0;
 			// Line Intercepts ordering: RMin: ymin, ymax, zmin, zmax. RMax: ymin, ymax, zmin, zmax
