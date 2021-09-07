@@ -626,6 +626,10 @@ mapperfcn(
 						continue;
 					}
 					nEdges = FindUniques(Edges,EdgesOut,nEdges,RMin,RMax,EtaMin,EtaMax);
+					if (nEdges < 3){
+						nrContinued++;
+						continue;
+					}
 					// Now we have all the edges, let's calculate the area.
 					Area = CalcAreaPolygon(EdgesOut,nEdges);
 					if (Area < 1E-5){
