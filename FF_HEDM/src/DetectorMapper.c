@@ -425,7 +425,7 @@ mapperfcn(
 			yMax = YZ[0] + 0.5;
 			zMin = YZ[1] - 0.5;
 			zMax = YZ[1] + 0.5;
-			printf("%lf %lf %lf %lf\n",yMin,yMax,zMin,zMax);
+			printf("%lf %lf %lf %lf %lf %lf\n",yMin,yMax,zMin,zMax,YZ[0],YZ[1]);
 			sumNrBins += nrRChosen * nrEtaChosen;
 			double totPxArea = 0;
 			// Line Intercepts ordering: RMin: ymin, ymax, zmin, zmax. RMax: ymin, ymax, zmin, zmax
@@ -621,7 +621,7 @@ mapperfcn(
 						nrContinued++;
 						continue;
 					}
-					for (m=0;m<nEdges;m++) printf("%d %d %d %d %d %lf %lf %lf %lf %lf %lf\n",i,j,k,l,nEdges,yMin,zMin,EdgesOut[m][0],EdgesOut[m][1],YZ[0],YZ[1]);
+					for (m=0;m<nEdges;m++) printf("%d %d %d %d %d %lf %lf\n",i,j,k,l,nEdges,EdgesOut[m][0],EdgesOut[m][1]);
 					printf("%d %d %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",i,j,EtaMi,EtaMin,EtaMa,EtaMax,RMi,RMin,RMa,RMax,Area);
 					// Populate the arrays
 					maxnVal = maxnPx[RChosen[k]][EtaChosen[l]];
