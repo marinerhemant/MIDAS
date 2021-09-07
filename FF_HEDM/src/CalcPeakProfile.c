@@ -20,6 +20,8 @@
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
 extern size_t mapMaskSize;
 extern int *mapMask;
+extern int nRejects;
+extern int nGood;
 
 static inline
 double**
@@ -62,26 +64,9 @@ double PosMatrix[4][2]={{-0.5, -0.5},
 #define FindSmaller(Val1,Val2)  Val1 > Val2 ? Val2 : Val1
 #define FindLarger(Val1,Val2)  Val1 > Val2 ? Val1 : Val2
 #define Len2d(x,y) sqrt(x*x + y*y)
-#define EPS 1E-6
-static inline
-int BETWEEN(double val, double min, double max)
-{
-	return ((val-EPS <= max && val+EPS >= min) ? 1 : 0 );
-}
-static inline
-double CalcEtaAng(double y, double z){
-	double alpha = rad2deg*acos(z/sqrt(y*y+z*z));
-	if (y>0) alpha = -alpha;
-	return alpha;
-}
-static inline
-double CalcR(y,ybc,z,zbc){
-	double R = sqrt((y-ybc)*(y-ybc)+(z-zbc)*(z-zbc));
-	return R;
-}
 
 static inline
-int FindUniques (double **EdgesIn, double **EdgesOut, int nEdgesIn,double RMin,double RMax,double EtaMin, double EtaMax,double px, double ybc, double zbc){
+int FindUniques (double **EdgesIn, double **EdgesOut, int nEdgesIn,double RMin,double RMax,double EtaMin, double EtaMax,double px, double ybc, double zbc, double **BoxEdges){
 	int i,j, nEdgesOut=0, duplicate;
 	double Len, RT, ET;
 	for (i=0;i<nEdgesIn;i++){
@@ -92,25 +77,6 @@ int FindUniques (double **EdgesIn, double **EdgesOut, int nEdgesIn,double RMin,d
 				duplicate = 1;
 			}
 		}
-		printf("%lf %lf %lf %lf\n",RMin/px,RMax/px,EdgesIn[i][0],EdgesIn[i][1]);
-		if (duplicate == 0){
-			RT = CalcR(EdgesIn[i][0],ybc,EdgesIn[i][1],zbc);
-			ET = CalcEtaAng(EdgesIn[i][0],EdgesIn[i][1]);
-			if (fabs(ET - EtaMin) > 180){
-				ET = 360 + ET;
-			}else if (fabs(ET - EtaMax) > 180){
-				ET = 360 - ET;
-			}
-			if (BETWEEN(RT,RMin/px,RMax/px) == 0){
-				duplicate = 1;
-				printf("Outside: %lf %lf %lf\n",RT,RMin,RMax);
-			} else printf("Inside: %lf %lf %lf\n",RT,RMin,RMax);
-			if (BETWEEN(ET,EtaMin,EtaMax) == 0){
-				duplicate = 1;
-				printf("Outside: %lf %lf %lf\n",ET,EtaMin,EtaMax);
-			}
-		}
-		// let's check if we went outside by mistake 
 		if (duplicate == 0){
 			EdgesOut[nEdgesOut][0] = EdgesIn[i][0];
 			EdgesOut[nEdgesOut][1] = EdgesIn[i][1];
@@ -427,7 +393,7 @@ inline void CalcPeakProfile(int **Indices, int *NrEachIndexBin, int idx,
 		if (nEdges == 0){
 			continue;
 		}
-		nEdges = FindUniques(EdgesIn,EdgesOut,nEdges,Rmi,Rma,EtaMi,EtaMa,px,ybc,zbc);
+		nEdges = FindUniques(EdgesIn,EdgesOut,nEdges,Rmi,Rma,EtaMi,EtaMa,px,ybc,zbc,BoxEdges);
 		ThisArea = CalcAreaPolygon(EdgesOut,nEdges);
 		TotArea += ThisArea;
 		SumIntensity += Average[Indices[idx][i]] * ThisArea;
