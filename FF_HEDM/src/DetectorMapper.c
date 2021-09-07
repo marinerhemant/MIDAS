@@ -279,10 +279,10 @@ int FindUniques (double **EdgesIn, double **EdgesOut, int nEdgesIn, double RMin,
 			//~ printf("Outside %lf %lf\n",EdgesIn[i][0],EdgesIn[i][1]);
 			duplicate = 1;
 		}
-		if (BETWEEN(ET,EtaMin,EtaMax) == 0){
+		//~ if (BETWEEN(ET,EtaMin,EtaMax) == 0){
 			//~ printf("Outside %lf %lf\n",EdgesIn[i][0],EdgesIn[i][1]);
-			duplicate = 1;
-		}
+			//~ duplicate = 1;
+		//~ }
 		if (duplicate == 0){
 			EdgesOut[nEdgesOut][0] = EdgesIn[i][0];
 			EdgesOut[nEdgesOut][1] = EdgesIn[i][1];
@@ -656,8 +656,8 @@ mapperfcn(
 					TotNrOfBins++;
 				}
 			}
-			//~ if (totPxArea > 1.1) printf("Exceeded %lf\n", totPxArea);
-			//~ else printf("Area: %lf\n",totPxArea);
+			if (totPxArea > 1.1) printf("Exceeded %lf\n", totPxArea);
+			else printf("Area: %lf\n",totPxArea);
 		}
 	}
 	return TotNrOfBins;
