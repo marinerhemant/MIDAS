@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <errno.h>
+#include <nlopt.h>
 #include <stdarg.h>
 #include <fcntl.h>
 #include <ctype.h>
@@ -31,9 +32,11 @@
 
 typedef double pixelvalue;
 
+//#define PRINTOPT
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
 #define rad2deg 57.2957795130823
+#define maxNFits 300
 
 static inline double atand(double x){return rad2deg*(atan(x));}
 
@@ -282,6 +285,86 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 	}
 }
 
+struct my_profile_func_data{
+	int NrPtsForFit;
+	double *Rs;
+	double *PeakShape;
+};
+
+static
+double problem_function_profile(
+	unsigned n,
+	const double *x,
+	double *grad,
+	void* f_data_trial)
+{
+	struct my_profile_func_data *f_data = (struct my_profile_func_data *) f_data_trial;
+	int NrPtsForFit = f_data->NrPtsForFit;
+	double *Rs, *PeakShape;
+	Rs = &(f_data->Rs[0]);
+	PeakShape = &(f_data->PeakShape[0]);
+	double Rcen, Mu, SigmaG, SigmaL, Imax, BG;
+	Rcen = x[0];
+	Mu = x[1];
+	SigmaG = x[2];
+	SigmaL = x[3];
+	Imax = x[4];
+	BG = x[5];
+	double TotalDifferenceIntensity=0,CalcIntensity;
+	int i,j,k;
+	double L, G;
+	for (i=0;i<NrPtsForFit;i++){
+		L = (1/(((Rs[i]-Rcen)*(Rs[i]-Rcen)/(SigmaL*SigmaL))+(1)));
+		G = (exp((-0.5)*(Rs[i]-Rcen)*(Rs[i]-Rcen)/(SigmaG*SigmaG)));
+		CalcIntensity = BG + Imax*((Mu*L)+((1-Mu)*G));
+		TotalDifferenceIntensity += (CalcIntensity - PeakShape[i])*(CalcIntensity - PeakShape[i]);
+	}
+#ifdef PRINTOPT
+	printf("Peak profiler intensity difference: %f\n",TotalDifferenceIntensity);
+#endif
+	return TotalDifferenceIntensity;
+}
+
+void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPtsForFit],
+				double *Rfit, double Rstep, double Rmean)
+{
+	unsigned n = 6;
+	double x[n],xl[n],xu[n];
+	struct my_profile_func_data f_data;
+	f_data.NrPtsForFit = NrPtsForFit;
+	f_data.Rs = &Rs[0];
+	f_data.PeakShape = &PeakShape[0];
+	double BG0 = (PeakShape[0]+PeakShape[NrPtsForFit-1])/2;
+	if (BG0 < 0) BG0=0;
+	double MaxI=-100000;
+	int i;
+	for (i=0;i<NrPtsForFit;i++){
+		if (PeakShape[i] > MaxI){
+			MaxI=PeakShape[i];
+		}
+	}
+	x[0] = Rmean; xl[0] = Rs[0];    xu[0] = Rs[NrPtsForFit-1];
+	x[1] = 0.5;   xl[1] = 0;        xu[1] = 1;
+	x[2] = Rstep;     xl[2] = Rstep/2;  xu[2] = Rstep*NrPtsForFit/2;
+	x[3] = Rstep;     xl[3] = Rstep/2;  xu[3] = Rstep*NrPtsForFit/2;
+	x[4] = MaxI;  xl[4] = MaxI/100; xu[4] = MaxI*1.5;
+	x[5] = BG0;   xl[5] = 0;        xu[5] = BG0*1.5;
+	struct my_profile_func_data *f_datat;
+	f_datat = &f_data;
+	void* trp = (struct my_profile_func_data *) f_datat;
+	nlopt_opt opt;
+	opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
+	nlopt_set_lower_bounds(opt, xl);
+	nlopt_set_upper_bounds(opt, xu);
+	nlopt_set_min_objective(opt, problem_function_profile, trp);
+	double minf,MeanDiff;
+	nlopt_optimize(opt, x, &minf);
+	nlopt_destroy(opt);
+	MeanDiff = sqrt(minf)/(NrPtsForFit);
+	*Rfit = x[0];
+}
+
+
 int main(int argc, char **argv)
 {
     clock_t start, end, start0, end0;
@@ -313,6 +396,8 @@ int main(int argc, char **argv)
 	int dType = 1;
 	char GapFN[4096], BadPxFN[4096], outputFolder[4096];
 	int sumImages=0, separateFolder=0,newOutput=0, binOutput = 0;
+	double radiiToFit[maxNFits][6], etasToFit[maxNFits][4];
+	int nRadFits = 0, nEtaFits = 0;
 	while (fgets(aline,4096,paramFile) != NULL){
 		str = "GapFile ";
 		if (StartsWith(aline,str) == 1){
@@ -328,6 +413,20 @@ int main(int argc, char **argv)
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %s", dummy, BadPxFN);
 			makeMap = 2;
+		}
+		str = "RadiusToFit ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %lf %lf", dummy, &radiiToFit[nRadFits][0], &radiiToFit[nRadFits][1]);
+			radiiToFit[nRadFits][2] = radiiToFit[nRadFits][0] - radiiToFit[nRadFits][1];
+			radiiToFit[nRadFits][3] = radiiToFit[nRadFits][0] + radiiToFit[nRadFits][1];
+			nRadFits++;
+		}
+		str = "EtaToFit ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %lf %lf", dummy, &etasToFit[nEtaFits][0], &etasToFit[nEtaFits][1]);
+			etasToFit[nEtaFits][2] = etasToFit[nEtaFits][0] - etasToFit[nEtaFits][1];
+			etasToFit[nEtaFits][3] = etasToFit[nEtaFits][0] + etasToFit[nEtaFits][1];
+			nEtaFits++;
 		}
 		str = "EtaBinSize ";
 		if (StartsWith(aline,str) == 1){
@@ -418,7 +517,22 @@ int main(int argc, char **argv)
 			continue;
         }
 	}
-	printf("%d %s\n",separateFolder,outputFolder);
+	//~ printf("%d %s\n",separateFolder,outputFolder);
+
+	// Let's make an array to store the intensities for fitting peaks
+	double *peakIntensities, *peakVals, *AreaMapPixels;
+	int nFits = nEtaFits * nRadFits;
+	peakVals = calloc(nFits*7,sizeof(*peakVals));
+	int iRadFit, iEtaFit, nEls, nElsTot=0;
+	for (iRadFit=0;iRadFit<nRadFits;iRadFit++){
+		nEls = (int)(ceil(radiiToFit[iRadFit][1]*2 / RBinSize));
+		radiiToFit[iRadFit][4] = nElsTot;
+		radiiToFit[iRadFit][5] = nEls;
+		nElsTot += nEls;
+	}
+	peakIntensities = calloc(nElsTot*nEtaFits,sizeof(*peakIntensities));
+	AreaMapPixels = calloc(NrPixelsY*NrPixelsZ,sizeof(*AreaMapPixels));
+
 	nRBins = (int) ceil((RMax-RMin)/RBinSize);
 	nEtaBins = (int)ceil((EtaMax - EtaMin)/EtaBinSize);
 	double *EtaBinsLow, *EtaBinsHigh;
@@ -638,6 +752,7 @@ int main(int argc, char **argv)
 							continue;
 						}
 					}
+					if (i==0) AreaMapPixels[testPos] += ThisVal.frac;
 					ThisInt = Image[testPos]; // The data is arranged as y(fast) and then z(slow)
 					Intensity += ThisInt*ThisVal.frac;
 					totArea += ThisVal.frac;
@@ -675,6 +790,10 @@ int main(int argc, char **argv)
 		if (newOutput == 1){
 			fwrite(IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),1,out3);
 			if (i==0){
+				FILE *areamap;
+				areamap = fopen("AreaFractionPixels.bin","wb");
+				fwrite(AreaMapPixels,NrPixelsY*NrPixelsZ*sizeof(double),1,areamap);
+				fclose(areamap);
 				fclose(out2);
 			}
 		} else{

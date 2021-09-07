@@ -25,4 +25,4 @@ detectormapper: $(SRCDIR)DetectorMapper.c
 	$(CC) $(SRCDIR)DetectorMapper.c -o $(BINDIR)DetectorMapper $(CFLAGS)
 
 integratorpeakfit: $(SRCDIR)IntegratorPeakFit.c
-	$(CC) $(SRCDIR)IntegratorPeakFit.c -o $(BINDIR)IntegratorPeakFit -fopenmp $(CFLAGS) $(CFLAGSTIFF)
+	$(CC) $(SRCDIR)IntegratorPeakFit.c -o $(BINDIR)IntegratorPeakFit -fopenmp $(CFLAGS) $(CFLAGSNLOPT) $(CFLAGSTIFF)
