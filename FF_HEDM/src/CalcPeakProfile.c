@@ -74,9 +74,13 @@ double CalcEtaAngle(double y, double z){
 	if (y>0) alpha = -alpha;
 	return alpha;
 }
+static inline
+double CalcR(y,ybc,z,zbc){
+	double R = sqrt((y-ybc)*(y-ybc)+(z-zbc)*(z-zbc));
+}
 
 static inline
-int FindUniques (double **EdgesIn, double **EdgesOut, int nEdgesIn,double RMin,double RMax,double EtaMin, double EtaMax){
+int FindUniques (double **EdgesIn, double **EdgesOut, int nEdgesIn,double RMin,double RMax,double EtaMin, double EtaMax,double px, double ybc, double zbc){
 	int i,j, nEdgesOut=0, duplicate;
 	double Len, RT, ET;
 	for (i=0;i<nEdgesIn;i++){
@@ -87,17 +91,17 @@ int FindUniques (double **EdgesIn, double **EdgesOut, int nEdgesIn,double RMin,d
 				duplicate = 1;
 			}
 		}
-		RT = sqrt(EdgesIn[i][0]*EdgesIn[i][0] + EdgesIn[i][1]*EdgesIn[i][1]);
-		ET = CalcEtaAngle(EdgesIn[i][0],EdgesIn[i][1]);
+		RT = CalcR(EdgesIn[i][0],ybc,EdgesIn[i][1],zbc);
+		ET = CalcEtaAng(EdgesIn[i][0],EdgesIn[i][1]);
 		if (fabs(ET - EtaMin) > 180){
 			ET = 360 + ET;
 		}else if (fabs(ET - EtaMax) > 180){
 			ET = 360 - ET;
 		}
-		if (BETWEEN(RT,RMin,RMax) == 0){
+		if (BETWEEN(RT,RMin/px,RMax/px) == 0){
 			duplicate = 1;
 			printf("Outside: %lf %lf %lf\n",RT,RMin,RMax);
-		}
+		} else printf("Inside: %lf %lf %lf\n",RT,RMin,RMax);
 		if (BETWEEN(ET,EtaMin,EtaMax) == 0){
 			duplicate = 1;
 			printf("Outside: %lf %lf %lf\n",ET,EtaMin,EtaMax);
@@ -419,7 +423,7 @@ inline void CalcPeakProfile(int **Indices, int *NrEachIndexBin, int idx,
 		if (nEdges == 0){
 			continue;
 		}
-		nEdges = FindUniques(EdgesIn,EdgesOut,nEdges,Rmi,Rma,EtaMi,EtaMa);
+		nEdges = FindUniques(EdgesIn,EdgesOut,nEdges,Rmi,Rma,EtaMi,EtaMa,px,ybc,zbc);
 		ThisArea = CalcAreaPolygon(EdgesOut,nEdges);
 		TotArea += ThisArea;
 		SumIntensity += Average[Indices[idx][i]] * ThisArea;
