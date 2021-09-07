@@ -262,9 +262,9 @@ double CalcAreaPolygon(double **Edges, int nEdges){
 }
 
 static inline
-int FindUniques (double **EdgesIn, double **EdgesOut, int nEdgesIn){
+int FindUniques (double **EdgesIn, double **EdgesOut, int nEdgesIn, double RMin, double RMax, double EtaMin, double EtaMax){
 	int i,j, nEdgesOut=0, duplicate;
-	double Len;
+	double Len, RT,ET;
 	for (i=0;i<nEdgesIn;i++){
 		duplicate = 0;
 		for (j=i+1;j<nEdgesIn;j++){
@@ -272,6 +272,16 @@ int FindUniques (double **EdgesIn, double **EdgesOut, int nEdgesIn){
 			if (Len ==0){
 				duplicate = 1;
 			}
+		}
+		RT = sqrt(EdgesIn[i][0]*EdgesIn[i][0] + EdgesIn[i][1]*EdgesIn[i][1]);
+		ET = CalcEtaAngle(EdgesIn[i][0],EdgesIn[i][1]);
+		if (BETWEEN(RT,RMin,RMax) == 0){
+			printf("Outside %lf %lf\n",EdgesIn[i][0],EdgesIn[i][1]);
+			duplicate = 1;
+		}
+		if (BETWEEN(ET,EtaMin,EtaMax) == 0){
+			printf("Outside %lf %lf\n",EdgesIn[i][0],EdgesIn[i][1]);
+			duplicate = 1;
 		}
 		if (duplicate == 0){
 			EdgesOut[nEdgesOut][0] = EdgesIn[i][0];
@@ -615,19 +625,7 @@ mapperfcn(
 						nrContinued++;
 						continue;
 					}
-					nEdges = FindUniques(Edges,EdgesOut,nEdges);
-					for (m=0;m<nEdges;m++){
-						RT = sqrt(EdgesOut[m][0]*EdgesOut[m][0] + EdgesOut[m][1]*EdgesOut[m][1]);
-						ET = CalcEtaAngle(EdgesOut[m][0],EdgesOut[m][1]);
-						// check if out of range
-						if (BETWEEN(RT,RMin,RMax) == 0){
-							printf("Outside %lf %lf\n",EdgesOut[m][0],EdgesOut[m][1]);
-							break;
-						}
-						if (BETWEEN(ET,EtaMin,EtaMax) == 0){
-							printf("Outside %lf %lf\n",EdgesOut[m][0],EdgesOut[m][1]);
-						}
-					}
+					nEdges = FindUniques(Edges,EdgesOut,nEdges,RMin,RMax,EtaMin,EtaMax);
 					// Now we have all the edges, let's calculate the area.
 					Area = CalcAreaPolygon(EdgesOut,nEdges);
 					if (Area < 1E-5){
@@ -659,6 +657,7 @@ mapperfcn(
 				}
 			}
 			if (totPxArea > 1.1) printf("Exceeded %lf\n", totPxArea);
+			else printf("Area: %lf]n",totPxArea);
 		}
 	}
 	return TotNrOfBins;
