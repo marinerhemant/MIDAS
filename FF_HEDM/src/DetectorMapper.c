@@ -614,7 +614,7 @@ mapperfcn(
 						continue;
 					}
 					nEdges = FindUniques(Edges,EdgesOut,nEdges);
-					for (m=0;m<nEdges;m++) printf("%lf %lf %lf %lf\n",i,j,Edges[m][0],Edges[m][1]);
+					for (m=0;m<nEdges;m++) printf("%d %d %lf %lf\n",i,j,EdgesOut[m][0],EdgesOut[m][1]);
 					// Now we have all the edges, let's calculate the area.
 					Area = CalcAreaPolygon(EdgesOut,nEdges);
 					if (Area < 1E-5){
