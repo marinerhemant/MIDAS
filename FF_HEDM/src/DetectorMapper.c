@@ -620,7 +620,7 @@ mapperfcn(
 						nrContinued++;
 						continue;
 					}
-					for (m=0;m<nEdges;m++) printf("%d %d %d %d %d %lf %lf %lf %lf %lf %lf\n",i,j,k,l,nEdges,yMin,zMin,EdgesOut[m][0],EdgesOut[m][1],Eta,Rt);
+					for (m=0;m<nEdges;m++) printf("%d %d %d %d %d %lf %lf %lf %lf %lf %lf\n",i,j,k,l,nEdges,yMin,zMin,EdgesOut[m][0],EdgesOut[m][1],YZ[0],YZ[1]);
 					printf("%d %d %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",i,j,EtaMi,EtaMin,EtaMa,EtaMax,RMi,RMin,RMa,RMax,Area);
 					// Populate the arrays
 					maxnVal = maxnPx[RChosen[k]][EtaChosen[l]];
