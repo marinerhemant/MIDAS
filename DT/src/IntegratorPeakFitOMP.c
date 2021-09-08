@@ -309,9 +309,9 @@ double problem_function_profile(
 	Rcen = x[0];
 	Mu = x[1];
 	SigmaG = x[2];
-	SigmaL = x[3];
-	Imax = x[4];
-	BG = x[5];
+	SigmaL = x[2];
+	Imax = x[3];
+	BG = x[4];
 	double TotalDifferenceIntensity=0,CalcIntensity;
 	int i,j,k;
 	double L, G;
@@ -340,9 +340,9 @@ double CalcIntegratedIntensity(
 	Rcen = x[0];
 	Mu = x[1];
 	SigmaG = x[2];
-	SigmaL = x[3];
-	Imax = x[4];
-	BG = x[5];
+	SigmaL = x[2];
+	Imax = x[3];
+	BG = x[4];
 	double TotalIntensity=0;
 	int i,j,k;
 	double L, G;
@@ -360,7 +360,7 @@ double CalcIntegratedIntensity(
 void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPtsForFit],
 				double *Rfit, double Rstep, double Rmean)
 {
-	unsigned n = 6;
+	unsigned n = 5;
 	double x[n],xl[n],xu[n];
 	struct my_profile_func_data f_data;
 	f_data.NrPtsForFit = NrPtsForFit;
@@ -379,9 +379,9 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	x[0] = Rmean; xl[0] = Rs[0];    xu[0] = Rs[NrPtsForFit-1];
 	x[1] = 0.5;   xl[1] = 0;        xu[1] = 1;
 	x[2] = 1;     xl[2] = 0.05;  xu[2] = 100;
-	x[3] = 1;     xl[3] = 0.05;  xu[3] = 100;
-	x[4] = MaxI;  xl[4] = MaxI/100; xu[4] = MaxI*1.5;
-	x[5] = BG0;   xl[5] = 0;        xu[5] = BG0*1.5;
+	//~ x[3] = 1;     xl[3] = 0.05;  xu[3] = 100;
+	x[3] = MaxI;  xl[3] = MaxI/100; xu[3] = MaxI*1.5;
+	x[4] = BG0;   xl[4] = 0;        xu[4] = BG0*1.5;
 	struct my_profile_func_data *f_datat;
 	f_datat = &f_data;
 	void* trp = (struct my_profile_func_data *) f_datat;
@@ -397,9 +397,9 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	Rfit[0] = x[0];
 	Rfit[1] = x[1];
 	Rfit[2] = x[2];
-	Rfit[3] = x[3];
+	Rfit[3] = x[2];
 	Rfit[4] = x[4];
-	Rfit[5] = x[5];
+	Rfit[5] = x[3];
 	Rfit[6] = BG0;
 	Rfit[7] = MeanDiff;
 	Rfit[8] = CalcIntegratedIntensity(x,trp); // Calculate integrated intensity
