@@ -37,7 +37,7 @@ typedef double pixelvalue;
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
 #define rad2deg 57.2957795130823
 #define maxNFits 300
-#define NrValsFitOutput 10
+#define NrValsFitOutput 11
 
 static inline double atand(double x){return rad2deg*(atan(x));}
 
@@ -403,6 +403,7 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	if (Rfit[7] < 0) Rfit[7] = 0;
 	Rfit[8] = TotInt; // Total intensity
 	Rfit[9] = TotInt - (BG0*NrPtsForFit); // Total intensity after removing background
+	Rfit[10] = MaxI; // Input Max Intensity
 	for (i=0;i<NrValsFitOutput;i++) printf("%lf ",Rfit[i]); prinf("\n");
 }
 
