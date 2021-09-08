@@ -378,8 +378,8 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	x[0] = Rmean; xl[0] = Rs[0];    xu[0] = Rs[NrPtsForFit-1];
 	x[1] = 0.5;   xl[1] = 0;        xu[1] = 1;
 	x[2] = 1; xl[2] = 0.5;  xu[2] = 500; // This is now FWHM
-	x[3] = MaxI;  xl[3] = MaxI/100; xu[3] = MaxI*3;
-	x[4] = BG0;   xl[4] = 0;        xu[4] = BG0*3;
+	x[3] = MaxI;  xl[3] = MaxI/100; xu[3] = MaxI;
+	x[4] = BG0;   xl[4] = 0;        xu[4] = BG0;
 	struct my_profile_func_data *f_datat;
 	f_datat = &f_data;
 	void* trp = (struct my_profile_func_data *) f_datat;
@@ -403,8 +403,7 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	if (Rfit[7] < 0) Rfit[7] = 0;
 	Rfit[8] = TotInt; // Total intensity
 	Rfit[9] = TotInt - (BG0*NrPtsForFit); // Total intensity after removing background
-	for (i=0;i<NrValsFitOutput;i++) printf("%lf ",Rfit[i]);
-	printf("%d %lf %lf %lf\n",NrPtsForFit,Rmean,MaxI,BG0);
+	for (i=0;i<NrValsFitOutput;i++) printf("%lf ",Rfit[i]); prinf("\n");
 }
 
 
