@@ -632,7 +632,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 	int nFramesDark = sz / (SizeFile);
 	//~ printf("Reading dark file:      %s, nFrames: %d, skipping first %d bytes.\n",darkFN,nFrames,Skip);
 	fseek(fd,Skip,SEEK_SET);
-	for (i=0;i<nFrames;i++){
+	for (i=0;i<nFramesDark;i++){
 		int retCode = fileReader(fd,darkFN,dType,NrPixelsY*NrPixelsZ,DarkInT);
 		DoImageTransformations(NrTransOpt,TransOpt,DarkInT,DarkIn,NrPixelsY,NrPixelsZ);
 		if (makeMap == 1){
@@ -650,7 +650,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 			//~ printf("Nr mask pixels: %d\n",nrdone);
 			makeMap = 0;
 		}
-		for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFrames;
+		for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFramesDark;
 	}
 	//~ printf("Dark file read\n");
 	if (makeMap == 2){
