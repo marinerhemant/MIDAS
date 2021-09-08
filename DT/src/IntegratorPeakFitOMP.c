@@ -624,7 +624,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 	fseek(fd,0L,SEEK_END);
 	sz = ftell(fd);
 	rewind(fd);
-	//~ nFrames = sz / (SizeFile);
+	int nFramesDark = sz / (SizeFile);
 	//~ printf("Reading dark file:      %s, nFrames: %d, skipping first %d bytes.\n",darkFN,nFrames,Skip);
 	fseek(fd,Skip,SEEK_SET);
 	for (i=0;i<nFrames;i++){
@@ -683,7 +683,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 	sz = ftell(fp);
 	rewind(fp);
 	fseek(fp,Skip,SEEK_SET);
-	nFrames = (sz-Skip) / SizeFile;
+	//~ nFrames = (sz-Skip) / SizeFile;
 	//~ printf("Number of eta bins: %d, number of R bins: %d. Number of frames in the file: %d\n",nEtaBins,nRBins,(int)nFrames);
 	long long int Pos;
 	int nPixels, dataPos;
