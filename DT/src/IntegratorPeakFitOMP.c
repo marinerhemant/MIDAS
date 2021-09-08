@@ -404,7 +404,7 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 }
 
 
-int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr)
+int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int nFrames)
 {
     clock_t start, end, start0, end0;
     start0 = clock();
@@ -615,7 +615,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr)
 		HeadSize = 0;
 	}
 	size_t SizeFile = pxSize * NrPixelsY * NrPixelsZ;
-	int nFrames;
+	//~ int nFrames;
 	size_t sz;
 	int Skip = HeadSize;
 	FILE *fp, *fd;
@@ -624,7 +624,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr)
 	fseek(fd,0L,SEEK_END);
 	sz = ftell(fd);
 	rewind(fd);
-	nFrames = sz / (SizeFile);
+	//~ nFrames = sz / (SizeFile);
 	//~ printf("Reading dark file:      %s, nFrames: %d, skipping first %d bytes.\n",darkFN,nFrames,Skip);
 	fseek(fd,Skip,SEEK_SET);
 	for (i=0;i<nFrames;i++){
@@ -948,7 +948,6 @@ int main(int argc, char **argv)
 	char *darkFN = argv[7];
 	int nFrames = atoi(argv[8]);
 	int numProcs = atoi(argv[9]);
-	int frameNr;
 
 	// Get Number of Sinos
 	double radiiToFit[maxNFits][6], etasToFit[maxNFits][4];
@@ -991,18 +990,19 @@ int main(int argc, char **argv)
 	double *SinoArr;
 	SinoArr = calloc(arrSize,sizeof(*SinoArr));
 
+	int fileNr;
 	int rc = ReadBins();
-	#pragma omp parallel for num_threads(numProcs) private(frameNr) schedule(dynamic)
-	for (frameNr=startNr;frameNr<=endNr;frameNr++)
+	#pragma omp parallel for num_threads(numProcs) private(fileNr) schedule(dynamic)
+	for (fileNr=startNr;fileNr<=endNr;fileNr++)
 	{
 		char FN[4096];
-		sprintf(FN,"%s_%0*d%s",FileStem,pad,frameNr,ext);
+		sprintf(FN,"%s_%0*d%s",FileStem,pad,fileNr,ext);
 		double *thisArr;
-		size_t loc = frameNr - startNr;
+		size_t loc = fileNr - startNr;
 		loc *= totalNrSinos;
 		loc *= nFrames;
 		thisArr = &SinoArr[loc];
-		int rt = mainFunc(pfn,darkFN,FN,thisArr);
+		int rt = mainFunc(pfn,darkFN,FN,thisArr,nFrames);
 	}
 	double *SinoArrArranged;
 	SinoArrArranged = malloc(arrSize*sizeof(*SinoArrArranged));
