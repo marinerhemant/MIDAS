@@ -304,20 +304,20 @@ double problem_function_profile(
 	double *Rs, *PeakShape;
 	Rs = &(f_data->Rs[0]);
 	PeakShape = &(f_data->PeakShape[0]);
-	double Rcen, Mu, SigmaG, SigmaL, Imax, BG;
+	double Rcen, Mu, Sigma, FWHM, Imax, BG;
 	Rcen = x[0];
 	Mu = x[1];
-	SigmaG = x[2];
-	SigmaL = x[3];
-	Imax = x[4];
-	BG = x[5];
+	FWHM = x[2];
+	Sigma = FWHM / (2*sqrt(2*log(2)));
+	Imax = x[3];
+	BG = x[4];
 	double TotalDifferenceIntensity=0,CalcIntensity;
 	int i,j,k;
 	double L, G;
 	for (i=0;i<NrPtsForFit;i++){
-		L = (1/(((Rs[i]-Rcen)*(Rs[i]-Rcen)/(SigmaL*SigmaL))+(1)));
-		G = (exp((-0.5)*(Rs[i]-Rcen)*(Rs[i]-Rcen)/(SigmaG*SigmaG)));
-		CalcIntensity = BG + Imax*((Mu*L)+((1-Mu)*G));
+		L = FWHM/((2*M_PI)*((Rs[i]-Rcen)*(Rs[i]-Rcen) + (FWHM/2)*(FWHM/2)));
+		G = exp((-0.5)*(Rs[i]-Rcen)*(Rs[i]-Rcen)/(Sigma*Sigma))/(Sigma*sqrt(2*M_PI));
+		CalcIntensity = BG + Imax*((Mu*G)+((1-Mu)*L));
 		TotalDifferenceIntensity += (CalcIntensity - PeakShape[i])*(CalcIntensity - PeakShape[i]);
 	}
 #ifdef PRINTOPT
@@ -333,23 +333,22 @@ double CalcIntegratedIntensity(
 {
 	struct my_profile_func_data *f_data = (struct my_profile_func_data *) f_data_trial;
 	int NrPtsForFit = f_data->NrPtsForFit;
-	double *Rs, *PeakShape;
+	double *Rs;
 	Rs = &(f_data->Rs[0]);
-	PeakShape = &(f_data->PeakShape[0]);
-	double Rcen, Mu, SigmaG, SigmaL, Imax, BG;
+	double Rcen, Mu, Sigma, FWHM, Imax, BG;
 	Rcen = x[0];
 	Mu = x[1];
-	SigmaG = x[2];
-	SigmaL = x[3];
-	Imax = x[4];
-	BG = x[5];
+	FWHM = x[2];
+	Sigma = FWHM / (2*sqrt(2*log(2)));
+	Imax = x[3];
+	BG = x[4];
 	double TotalIntensity=0;
 	int i,j,k;
 	double L, G;
 	for (i=0;i<NrPtsForFit;i++){
-		L = (1/(((Rs[i]-Rcen)*(Rs[i]-Rcen)/(SigmaL*SigmaL))+(1)));
-		G = (exp((-0.5)*(Rs[i]-Rcen)*(Rs[i]-Rcen)/(SigmaG*SigmaG)));
-		TotalIntensity += BG + Imax*((Mu*L)+((1-Mu)*G));
+		L = FWHM/((2*M_PI)*((Rs[i]-Rcen)*(Rs[i]-Rcen) + (FWHM/2)*(FWHM/2)));
+		G = exp((-0.5)*(Rs[i]-Rcen)*(Rs[i]-Rcen)/(Sigma*Sigma))/(Sigma*sqrt(2*M_PI));
+		TotalIntensity += BG + Imax*((Mu*G)+((1-Mu)*L));
 	}
 #ifdef PRINTOPT
 	printf("Peak fit intensity value: %lf\n",TotalIntensity);
@@ -360,7 +359,7 @@ double CalcIntegratedIntensity(
 void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPtsForFit],
 				double *Rfit, double Rstep, double Rmean)
 {
-	unsigned n = 6;
+	unsigned n = 5;
 	double x[n],xl[n],xu[n];
 	struct my_profile_func_data f_data;
 	f_data.NrPtsForFit = NrPtsForFit;
@@ -377,10 +376,9 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	}
 	x[0] = Rmean; xl[0] = Rs[0];    xu[0] = Rs[NrPtsForFit-1];
 	x[1] = 0.5;   xl[1] = 0;        xu[1] = 1;
-	x[2] = Rstep;     xl[2] = Rstep/5;  xu[2] = Rstep*NrPtsForFit/2;
-	x[3] = Rstep;     xl[3] = Rstep/5;  xu[3] = Rstep*NrPtsForFit/2;
-	x[4] = MaxI;  xl[4] = MaxI/100; xu[4] = MaxI*1.5;
-	x[5] = BG0;   xl[5] = 0;        xu[5] = BG0*1.5;
+	x[2] = 1; xl[2] = 0.001;  xu[2] = 500; // This is now FWHM
+	x[3] = MaxI;  xl[3] = MaxI/100; xu[3] = MaxI*3;
+	x[4] = BG0;   xl[4] = 0;        xu[4] = BG0*3;
 	struct my_profile_func_data *f_datat;
 	f_datat = &f_data;
 	void* trp = (struct my_profile_func_data *) f_datat;
@@ -398,7 +396,7 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	Rfit[2] = x[2];
 	Rfit[3] = x[3];
 	Rfit[4] = x[4];
-	Rfit[5] = x[5];
+	Rfit[5] = BG0;
 	Rfit[6] = MeanDiff;
 	Rfit[7] = CalcIntegratedIntensity(x,trp); // Calculate integrated intensity
 }
@@ -866,7 +864,6 @@ int main(int argc, char **argv)
 			Int1d /= n1ds;
 			if (newOutput == 0) fprintf(out1d,"%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),Int1d);
 		}
-
 		// Do peak fitting here
 		for (j=0;j<nEtaFits;j++){
 			for (k=0;k<nRadFits;k++){
@@ -891,7 +888,6 @@ int main(int argc, char **argv)
 				}
 			}
 		}
-
 		if (newOutput == 1){
 			fwrite(IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),1,out3);
 			if (i==0){
@@ -909,6 +905,12 @@ int main(int argc, char **argv)
 		}
 	}
 	if (newOutput == 1){
+		//~ for (i=0;i<nFits*NrValsFitOutput;i++){
+			//~ for (j=0;j<nFrames;j++){
+				//~ printf("%lf,",peakVals[i*nFrames+j]);
+			//~ }
+			//~ printf("\n");
+		//~ }
 		fwrite(peakVals,nFits*NrValsFitOutput*nFrames*sizeof(*peakVals),1,outPeakFit);
 		fclose(out3);
 		fclose(outPeakFit);

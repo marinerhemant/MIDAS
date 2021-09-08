@@ -19,7 +19,7 @@ peaksFN = args.peakFile
 pFile = args.paramFile
 COfolder = args.COfolder
 nCPUs = args.nCPUs
-maxDiff = 7
+maxDiff = 7 # Maximum position difference to match with conventional peaksearch results.
 
 ###### pFile must not have seedFolder and FolderName arguments, also the filename must not have path appended to it.
 
