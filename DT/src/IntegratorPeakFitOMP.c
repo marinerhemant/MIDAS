@@ -32,7 +32,7 @@
 
 typedef double pixelvalue;
 
-#define PRINTOPT2
+//~ #define PRINTOPT2
 //~ #define PRINTOPT
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
@@ -407,7 +407,7 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	Rfit[9] = TotInt; // Total intensity
 	Rfit[10] = TotInt - (BG0*NrPtsForFit); // Total intensity after removing background
 	Rfit[11] = MaxI; // Input Max Intensity
-	for (i=0;i<NrValsFitOutput;i++) printf("%lf ",Rfit[i]); printf("\n");
+	//~ for (i=0;i<NrValsFitOutput;i++) printf("%lf ",Rfit[i]); printf("\n");
 }
 
 
