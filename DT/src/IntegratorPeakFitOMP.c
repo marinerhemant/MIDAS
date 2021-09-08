@@ -1047,7 +1047,7 @@ int main(int argc, char **argv)
 	for (iVal=0;iVal<NrValsFitOutput;iVal++){
 		for (iRad=0;iRad<nRadFits;iRad++){
 			for (iEta=0;iEta<nEtaFits;iEta++){
-				sprintf(outFN,"%s_%s_RadRange_%d_EtaRange_%d.bin",SinoBaseName,valTypes[iVal],iRad,iEta);
+				sprintf(outFN,"%s_%s_RadRange_%d_EtaRange_%d_size_%dx%d_double.bin",SinoBaseName,valTypes[iVal],iRad,iEta,nFiles,nFrames);
 				outFile = fopen(outFN,"wb");
 				fwrite(SinoArrArranged,sinoSize,1,outFile);
 				fclose(outFile);
