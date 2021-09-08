@@ -375,6 +375,7 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 			MaxI=PeakShape[i];
 		}
 	}
+	if (TotInt < 0) TotInt = 0;
 	x[0] = Rmean; xl[0] = Rs[0];    xu[0] = Rs[NrPtsForFit-1];
 	x[1] = 0.5;   xl[1] = 0;        xu[1] = 1;
 	x[2] = 1; xl[2] = 0.5;  xu[2] = 500; // This is now FWHM
@@ -400,6 +401,7 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	Rfit[5] = BG0;
 	Rfit[6] = MeanDiff;
 	Rfit[7] = CalcIntegratedIntensity(x,trp); // Calculate integrated intensity
+	if (Rfit[7] < 0) RFit[7] = 0;
 	Rfit[8] = TotInt; // Total intensity after removing background
 }
 
