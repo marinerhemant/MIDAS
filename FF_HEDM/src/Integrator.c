@@ -543,7 +543,7 @@ int main(int argc, char **argv)
 	sz = ftell(fp);
 	rewind(fp);
 	fseek(fp,Skip,SEEK_SET);
-	nFrames = sz / SizeFile;
+	nFrames = (sz-Skip) / SizeFile;
 	printf("Number of eta bins: %d, number of R bins: %d. Number of frames in the file: %d\n",nEtaBins,nRBins,(int)nFrames);
 	long long int Pos;
 	int nPixels, dataPos;
