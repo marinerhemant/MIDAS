@@ -24,5 +24,5 @@ bindircheck:
 detectormapper: $(SRCDIR)DetectorMapper.c
 	$(CC) $(SRCDIR)DetectorMapper.c -o $(BINDIR)DetectorMapper $(CFLAGS)
 
-integratorpeakfit: $(SRCDIR)IntegratorPeakFit.c
-	$(CC) $(SRCDIR)IntegratorPeakFit.c -o $(BINDIR)IntegratorPeakFit -fopenmp $(CFLAGS) $(CFLAGSNLOPT) $(CFLAGSTIFF)
+integratorpeakfitomp: $(SRCDIR)IntegratorPeakFitOMP.c
+	$(CC) $(SRCDIR)IntegratorPeakFitOMP.c -o $(BINDIR)IntegratorPeakFitOMP -fopenmp $(CFLAGS) $(CFLAGSNLOPT) $(CFLAGSTIFF)

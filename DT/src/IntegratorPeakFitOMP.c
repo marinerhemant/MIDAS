@@ -404,25 +404,17 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 }
 
 
-int main(int argc, char **argv)
+int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 {
     clock_t start, end, start0, end0;
     start0 = clock();
     double diftotal;
-    if (argc < 3){
-		printf("Usage: ./Integrator ParamFN ImageName (optional)DarkName\n"
-		"Optional:\n\tDark file: dark correction with average of all dark frames"
-		".\n");
-		return(1);
-	}
     //~ system("cp Map.bin nMap.bin /dev/shm");
 	int rc = ReadBins();
 	double RMax, RMin, RBinSize, EtaMax, EtaMin, EtaBinSize, Lsd, px;
 	int NrPixelsY = 2048, NrPixelsZ = 2048, Normalize = 1;
 	int nEtaBins, nRBins;
-    char *ParamFN;
     FILE *paramFile;
-    ParamFN = argv[1];
 	char aline[4096], dummy[4096], *str;
 	paramFile = fopen(ParamFN,"r");
 	int HeadSize = 8192;
@@ -628,39 +620,35 @@ int main(int argc, char **argv)
 	size_t sz;
 	int Skip = HeadSize;
 	FILE *fp, *fd;
-	char *darkFN;
 	int nrdone = 0;
-	if (argc > 3){
-		darkFN = argv[3];
-		fd = fopen(darkFN,"rb");
-		fseek(fd,0L,SEEK_END);
-		sz = ftell(fd);
-		rewind(fd);
-		nFrames = sz / (SizeFile);
-		printf("Reading dark file:      %s, nFrames: %d, skipping first %d bytes.\n",darkFN,nFrames,Skip);
-		fseek(fd,Skip,SEEK_SET);
-		for (i=0;i<nFrames;i++){
-			rc = fileReader(fd,darkFN,dType,NrPixelsY*NrPixelsZ,DarkInT);
-			DoImageTransformations(NrTransOpt,TransOpt,DarkInT,DarkIn,NrPixelsY,NrPixelsZ);
-			if (makeMap == 1){
-				mapMaskSize = NrPixelsY;
-				mapMaskSize *= NrPixelsZ;
-				mapMaskSize /= 32;
-				mapMaskSize ++;
-				mapMask = calloc(mapMaskSize,sizeof(*mapMask));
-				for (j=0;j<NrPixelsY*NrPixelsZ;j++){
-					if (DarkIn[j] == (pixelvalue) GapIntensity || DarkIn[j] == (pixelvalue) BadPxIntensity){
-						SetBit(mapMask,j);
-						nrdone++;
-					}
+	fd = fopen(darkFN,"rb");
+	fseek(fd,0L,SEEK_END);
+	sz = ftell(fd);
+	rewind(fd);
+	nFrames = sz / (SizeFile);
+	printf("Reading dark file:      %s, nFrames: %d, skipping first %d bytes.\n",darkFN,nFrames,Skip);
+	fseek(fd,Skip,SEEK_SET);
+	for (i=0;i<nFrames;i++){
+		rc = fileReader(fd,darkFN,dType,NrPixelsY*NrPixelsZ,DarkInT);
+		DoImageTransformations(NrTransOpt,TransOpt,DarkInT,DarkIn,NrPixelsY,NrPixelsZ);
+		if (makeMap == 1){
+			mapMaskSize = NrPixelsY;
+			mapMaskSize *= NrPixelsZ;
+			mapMaskSize /= 32;
+			mapMaskSize ++;
+			mapMask = calloc(mapMaskSize,sizeof(*mapMask));
+			for (j=0;j<NrPixelsY*NrPixelsZ;j++){
+				if (DarkIn[j] == (pixelvalue) GapIntensity || DarkIn[j] == (pixelvalue) BadPxIntensity){
+					SetBit(mapMask,j);
+					nrdone++;
 				}
-				printf("Nr mask pixels: %d\n",nrdone);
-				makeMap = 0;
 			}
-			for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFrames;
+			printf("Nr mask pixels: %d\n",nrdone);
+			makeMap = 0;
 		}
-		printf("Dark file read\n");
+		for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFrames;
 	}
+	printf("Dark file read\n");
 	if (makeMap == 2){
 		mapMaskSize = NrPixelsY;
 		mapMaskSize *= NrPixelsZ;
@@ -691,8 +679,6 @@ int main(int argc, char **argv)
 		}
 		printf("Nr mask pixels: %d\n",nrdone);
 	}
-	char *imageFN;
-	imageFN = argv[2];
 	fp = fopen(imageFN,"rb");
 	fseek(fp,0L,SEEK_END);
 	sz = ftell(fp);
@@ -948,4 +934,30 @@ int main(int argc, char **argv)
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	printf("Total time elapsed:\t%f s.\n",diftotal);
 	return 0;
+}
+
+int main(int argc, char **argv)
+{
+	if (argc != 9){
+		printf("Usage: ./IntegratorPeakFitOMP ParamFN FileStem(fullpath until _before digits) StartNr EndNr Padding ext darkFN numProcs\n");
+		return 1;
+	}
+	char *pfn = argv[1];
+	char *FileStem = argv[2];
+	int startNr = atoi(argv[3]);
+	int endNr = atoi(argv[4]);
+	int pad = atoi(argv[5]);
+	char *ext = argv[6];
+	char *darkFN = argv[7];
+	int numProcs = atoi(argv[8]);
+	int frameNr;
+
+	#pragma omp parallel for num_threads(numProcs) private(frameNr) schedule(dynamic)
+	for (frameNr=startNr;frameNr<=endNr;frameNr++)
+	{
+		char FN[4096];
+		sprintf(FN,"%s_%0*d%s",FileStem,pad,frameNr,ext);
+		printf("%s\n",FN);
+		int rt = mainFunc(pfn,darkFN,FN);
+	}
 }
