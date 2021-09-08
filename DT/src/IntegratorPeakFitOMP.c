@@ -37,7 +37,7 @@ typedef double pixelvalue;
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
 #define rad2deg 57.2957795130823
 #define maxNFits 300
-#define NrValsFitOutput 11
+#define NrValsFitOutput 12
 
 static inline double atand(double x){return rad2deg*(atan(x));}
 
@@ -304,20 +304,20 @@ double problem_function_profile(
 	double *Rs, *PeakShape;
 	Rs = &(f_data->Rs[0]);
 	PeakShape = &(f_data->PeakShape[0]);
-	double Rcen, Mu, Sigma, FWHM, Imax, BG;
+	double Rcen, Mu, SigmaG, SigmaL, Imax, BG;
 	Rcen = x[0];
 	Mu = x[1];
-	FWHM = x[2];
-	Sigma = FWHM / (2*sqrt(2*log(2)));
-	Imax = x[3];
-	BG = x[4];
+	SigmaG = x[2];
+	SigmaL = x[3];
+	Imax = x[4];
+	BG = x[5];
 	double TotalDifferenceIntensity=0,CalcIntensity;
 	int i,j,k;
 	double L, G;
 	for (i=0;i<NrPtsForFit;i++){
-		L = FWHM/((2*M_PI)*((Rs[i]-Rcen)*(Rs[i]-Rcen) + (FWHM/2)*(FWHM/2)));
-		G = exp((-0.5)*(Rs[i]-Rcen)*(Rs[i]-Rcen)/(Sigma*Sigma))/(Sigma*sqrt(2*M_PI));
-		CalcIntensity = BG + Imax*((Mu*G)+((1-Mu)*L));
+		L = (1/(((Rs[i]-Rcen)*(Rs[i]-Rcen)/(SigmaL*SigmaL))+(1)));
+		G = (exp((-0.5)*(Rs[i]-Rcen)*(Rs[i]-Rcen)/(SigmaG*SigmaG)));
+		CalcIntensity = BG + Imax*((Mu*L)+((1-Mu)*G));
 		TotalDifferenceIntensity += (CalcIntensity - PeakShape[i])*(CalcIntensity - PeakShape[i]);
 	}
 #ifdef PRINTOPT
@@ -335,20 +335,20 @@ double CalcIntegratedIntensity(
 	int NrPtsForFit = f_data->NrPtsForFit;
 	double *Rs;
 	Rs = &(f_data->Rs[0]);
-	double Rcen, Mu, Sigma, FWHM, Imax, BG;
+	double Rcen, Mu, SigmaG, SigmaL, Imax, BG;
 	Rcen = x[0];
 	Mu = x[1];
-	FWHM = x[2];
-	Sigma = FWHM / (2*sqrt(2*log(2)));
-	Imax = x[3];
-	BG = x[4];
+	SigmaG = x[2];
+	SigmaL = x[3];
+	Imax = x[4];
+	BG = x[5];
 	double TotalIntensity=0;
 	int i,j,k;
 	double L, G;
 	for (i=0;i<NrPtsForFit;i++){
-		L = FWHM/((2*M_PI)*((Rs[i]-Rcen)*(Rs[i]-Rcen) + (FWHM/2)*(FWHM/2)));
-		G = exp((-0.5)*(Rs[i]-Rcen)*(Rs[i]-Rcen)/(Sigma*Sigma))/(Sigma*sqrt(2*M_PI));
-		TotalIntensity += BG + Imax*((Mu*G)+((1-Mu)*L));
+		L = (1/(((Rs[i]-Rcen)*(Rs[i]-Rcen)/(SigmaL*SigmaL))+(1)));
+		G = (exp((-0.5)*(Rs[i]-Rcen)*(Rs[i]-Rcen)/(SigmaG*SigmaG)));
+		TotalIntensity = BG + Imax*((Mu*L)+((1-Mu)*G));
 	}
 #ifdef PRINTOPT
 	printf("Peak fit intensity value: %lf\n",TotalIntensity);
@@ -359,7 +359,7 @@ double CalcIntegratedIntensity(
 void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPtsForFit],
 				double *Rfit, double Rstep, double Rmean)
 {
-	unsigned n = 5;
+	unsigned n = 6;
 	double x[n],xl[n],xu[n];
 	struct my_profile_func_data f_data;
 	f_data.NrPtsForFit = NrPtsForFit;
@@ -377,9 +377,10 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	}
 	x[0] = Rmean; xl[0] = Rs[0];    xu[0] = Rs[NrPtsForFit-1];
 	x[1] = 0.5;   xl[1] = 0;        xu[1] = 1;
-	x[2] = 1; xl[2] = 0.5;  xu[2] = 500; // This is now FWHM
-	x[3] = MaxI;  xl[3] = MaxI/100; xu[3] = MaxI;
-	x[4] = BG0;   xl[4] = 0;        xu[4] = BG0;
+	x[2] = Rstep;     xl[2] = Rstep/2;  xu[2] = Rstep*NrPtsForFit/2;
+	x[3] = Rstep;     xl[3] = Rstep/2;  xu[3] = Rstep*NrPtsForFit/2;
+	x[4] = MaxI;  xl[4] = MaxI/100; xu[4] = MaxI*1.5;
+	x[5] = BG0;   xl[5] = 0;        xu[5] = BG0*1.5;
 	struct my_profile_func_data *f_datat;
 	f_datat = &f_data;
 	void* trp = (struct my_profile_func_data *) f_datat;
@@ -397,13 +398,13 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	Rfit[2] = x[2];
 	Rfit[3] = x[3];
 	Rfit[4] = x[4];
-	Rfit[5] = BG0;
-	Rfit[6] = MeanDiff;
-	Rfit[7] = CalcIntegratedIntensity(x,trp); // Calculate integrated intensity
-	if (Rfit[7] < 0) Rfit[7] = 0;
-	Rfit[8] = TotInt; // Total intensity
-	Rfit[9] = TotInt - (BG0*NrPtsForFit); // Total intensity after removing background
-	Rfit[10] = MaxI; // Input Max Intensity
+	Rfit[5] = x[5];
+	Rfit[6] = BG0;
+	Rfit[7] = MeanDiff;
+	Rfit[8] = CalcIntegratedIntensity(x,trp); // Calculate integrated intensity
+	Rfit[9] = TotInt; // Total intensity
+	Rfit[10] = TotInt - (BG0*NrPtsForFit); // Total intensity after removing background
+	Rfit[11] = MaxI; // Input Max Intensity
 	for (i=0;i<NrValsFitOutput;i++) printf("%lf ",Rfit[i]); printf("\n");
 }
 
@@ -1037,14 +1038,16 @@ int main(int argc, char **argv)
 	char *valTypes[NrValsFitOutput];
 	valTypes[0] = "RMEAN";
 	valTypes[1] = "MixFactor";
-	valTypes[2] = "FWHM";
-	valTypes[3] = "MaxInt";
-	valTypes[4] = "BGFit";
-	valTypes[5] = "BGSimple";
-	valTypes[6] = "MeanError";
-	valTypes[7] = "FitIntegratedIntensity";
-	valTypes[8] = "TotalIntensity";
-	valTypes[9] = "TotalIntensityBackgroundCorr";
+	valTypes[2] = "SigmaG";
+	valTypes[3] = "SigmaL";
+	valTypes[4] = "MaxInt";
+	valTypes[5] = "BGFit";
+	valTypes[6] = "BGSimple";
+	valTypes[7] = "MeanError";
+	valTypes[8] = "FitIntegratedIntensity";
+	valTypes[9] = "TotalIntensity";
+	valTypes[10] = "TotalIntensityBackgroundCorr";
+	valTypes[11] = "MaxIntensityObs";
 	FILE *outFile;
 	fStemBaseName = basename(FileStem);
 	sprintf(SinoBaseName,"%s/%s",outputFolder,fStemBaseName);
