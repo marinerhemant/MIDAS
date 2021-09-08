@@ -95,7 +95,7 @@ int ReadBins(){
     check (status < 0, "stat %s failed: %s", file_name, strerror (errno));
     size = s.st_size;
     int sizelen = 2*(int)sizeof(int) + (int)sizeof(double);
-    printf("Map size in bytes: %lld, each element size: %d, total elements: %lld. \n",(long long int)size,sizelen,(long long int)(size/sizelen));
+    //~ printf("Map size in bytes: %lld, each element size: %d, total elements: %lld. \n",(long long int)size,sizelen,(long long int)(size/sizelen));
     pxList = mmap (0, size, PROT_READ, MAP_SHARED, fd, 0);
     check (pxList == MAP_FAILED, "mmap %s failed: %s",file_name, strerror (errno));
 
@@ -109,7 +109,7 @@ int ReadBins(){
     check (status2 < 0, "stat %s failed: %s", file_name2, strerror (errno));
     size_t size2 = s2.st_size;
     nPxList = mmap (0, size2, PROT_READ, MAP_SHARED, fd2, 0);
-    printf("nMap size in bytes: %lld, each element size: %d, total elements: %lld. \n",(long long int)size2,2*(int)sizeof(int),2*(long long int)(size2/sizeof(int)));
+    //~ printf("nMap size in bytes: %lld, each element size: %d, total elements: %lld. \n",(long long int)size2,2*(int)sizeof(int),2*(long long int)(size2/sizeof(int)));
     fflush(stdout);
     check (nPxList == MAP_FAILED, "mmap %s failed: %s",file_name, strerror (errno));
 	return 1;
@@ -580,10 +580,10 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 	//~ printf("NrTransOpt: %d\n",NrTransOpt);
     for (i=0;i<NrTransOpt;i++){
         if (TransOpt[i] < 0 || TransOpt[i] > 2){printf("TransformationOptions can only be 0, 1, 2.\nExiting.\n");return 0;}
-        printf("TransformationOptions: %d ",TransOpt[i]);
-        if (TransOpt[i] == 0) printf("No change.\n");
-        else if (TransOpt[i] == 1) printf("Flip Left Right.\n");
-        else if (TransOpt[i] == 2) printf("Flip Top Bottom.\n");
+        //~ printf("TransformationOptions: %d ",TransOpt[i]);
+        //~ if (TransOpt[i] == 0) printf("No change.\n");
+        //~ else if (TransOpt[i] == 1) printf("Flip Left Right.\n");
+        //~ else if (TransOpt[i] == 2) printf("Flip Top Bottom.\n");
     }
 	double *Image;
 	pixelvalue *ImageIn;
