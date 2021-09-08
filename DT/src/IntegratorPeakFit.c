@@ -556,8 +556,10 @@ int main(int argc, char **argv)
 			continue;
         }
 	}
-	//~ printf("%d %s\n",separateFolder,outputFolder);
-	if (separateFolder == 0) sprintf(outputFolder,".");
+	if (separateFolder == 0){
+		sprintf(outputFolder,".");
+		separateFolder = 1;
+	}
 
 	// Let's make an array to store the intensities for fitting peaks
 	double *peakIntensities, *peakVals, *AreaMapPixels;
@@ -790,7 +792,6 @@ int main(int argc, char **argv)
 				if (RBinsHigh[j] >= radiiToFit[k][2] && RBinsLow[j] <= radiiToFit[k][3]){
 					radFitNr = k;
 					radBinFitNr = (int) ((RBinsHigh[j]-radiiToFit[k][2])/RBinSize);
-					//~ printf("%d %d %lf %lf %lf %lf\n",radFitNr,radBinFitNr,RBinsHigh[j], radiiToFit[k][2],RBinsLow[j], radiiToFit[k][3]);
 					RPosArr[(int)radiiToFit[k][4]+ radBinFitNr] = RMean;
 					if (radBinFitNr >= (int)radiiToFit[k][5]){
 						printf("Something went wrong in fitting calculation, exiting %d %lf.\n",radBinFitNr,radiiToFit[k][5]);
@@ -835,12 +836,10 @@ int main(int argc, char **argv)
 					}
 				}
 				if (etaFitNr > -1){
-					// Put Intensity in a bin
 					PeakIntPos = nElsTot;
 					PeakIntPos *= etaFitNr;
 					PeakIntPos += (int)radiiToFit[radFitNr][4];
 					PeakIntPos += radBinFitNr;
-					//~ printf("%d %d %d %d %d %lld\n",(int)nElsTot,(int)etaFitNr,(int)radiiToFit[radFitNr][4],(int)radBinFitNr,(int)radFitNr,(long long int) PeakIntPos);
 					peakIntensities[PeakIntPos] += Intensity;
 				}
 				EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
@@ -910,8 +909,6 @@ int main(int argc, char **argv)
 		}
 	}
 	if (newOutput == 1){
-		//~ for (j=0;j<nFits*NrValsFitOutput*nFrames;j++) printf("%lf ",peakVals[j]);
-		//~ printf("\n");
 		fwrite(peakVals,nFits*NrValsFitOutput*nFrames*sizeof(*peakVals),1,outPeakFit);
 		fclose(out3);
 		fclose(outPeakFit);
