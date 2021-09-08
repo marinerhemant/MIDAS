@@ -37,7 +37,7 @@ typedef double pixelvalue;
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
 #define rad2deg 57.2957795130823
 #define maxNFits 300
-#define NrValsFitOutput 8
+#define NrValsFitOutput 9
 
 static inline double atand(double x){return rad2deg*(atan(x));}
 
@@ -367,10 +367,11 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	f_data.PeakShape = &PeakShape[0];
 	double BG0 = (PeakShape[0]+PeakShape[NrPtsForFit-1])/2;
 	if (BG0 < 0) BG0=0;
-	double MaxI=-100000;
+	double MaxI=-100000, TotInt = 0;
 	int i;
 	for (i=0;i<NrPtsForFit;i++){
 		if (PeakShape[i] > MaxI){
+			TotInt += PeakShape[i] - BG0;
 			MaxI=PeakShape[i];
 		}
 	}
@@ -399,6 +400,7 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	Rfit[5] = BG0;
 	Rfit[6] = MeanDiff;
 	Rfit[7] = CalcIntegratedIntensity(x,trp); // Calculate integrated intensity
+	Rfit[8] = TotInt; // Total intensity after removing background
 }
 
 
@@ -696,7 +698,7 @@ int main(int argc, char **argv)
 	sz = ftell(fp);
 	rewind(fp);
 	fseek(fp,Skip,SEEK_SET);
-	nFrames = sz / SizeFile;
+	nFrames = (sz-Skip) / SizeFile;
 	printf("Number of eta bins: %d, number of R bins: %d. Number of frames in the file: %d\n",nEtaBins,nRBins,(int)nFrames);
 	long long int Pos;
 	int nPixels, dataPos;
