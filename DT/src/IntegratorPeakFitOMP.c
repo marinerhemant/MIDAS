@@ -32,6 +32,7 @@
 
 typedef double pixelvalue;
 
+#define PRINTOPT2
 //~ #define PRINTOPT
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
@@ -350,7 +351,7 @@ double CalcIntegratedIntensity(
 		G = (exp((-0.5)*(Rs[i]-Rcen)*(Rs[i]-Rcen)/(SigmaG*SigmaG)));
 		TotalIntensity = BG + Imax*((Mu*L)+((1-Mu)*G));
 	}
-#ifdef PRINTOPT
+#ifdef PRINTOPT2
 	printf("Peak fit intensity value: %lf\n",TotalIntensity);
 #endif
 	return TotalIntensity;
