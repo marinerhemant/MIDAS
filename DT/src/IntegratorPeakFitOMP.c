@@ -731,11 +731,11 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 	}
 	printf("Processing file %s.\n",imageFN);
 	for (i=0;i<nFrames;i++){
-		/*int rcode = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
+		//~ int rcode = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
 		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 			Image[j] = (double)ImageIn[j] - AverageDark[j];
-		}*/
+		}
 		if (newOutput == 0){
 			if (separateFolder == 0){
 				sprintf(outfn,"%s_integrated_framenr_%d%s",imageFN,i,outext);
