@@ -731,11 +731,11 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 	}
 	printf("Processing file %s.\n",imageFN);
 	for (i=0;i<nFrames;i++){
-		int rcode = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
+		/*int rcode = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
 		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 			Image[j] = (double)ImageIn[j] - AverageDark[j];
-		}
+		}*/
 		if (newOutput == 0){
 			if (separateFolder == 0){
 				sprintf(outfn,"%s_integrated_framenr_%d%s",imageFN,i,outext);
@@ -767,7 +767,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 		}
 		memset(IntArrPerFrame,0,bigArrSize);
 		memset(peakIntensities,0,nElsTot*nEtaFits);
-		/*for (j=0;j<nRBins;j++){
+		for (j=0;j<nRBins;j++){
 			RMean = (RBinsLow[j]+RBinsHigh[j])/2;
 			Int1d = 0;
 			n1ds = 0;
@@ -849,7 +849,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 			}
 			Int1d /= n1ds;
 			if (newOutput == 0) fprintf(out1d,"%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),Int1d);
-		}*/
+		}
 		// Do peak fitting here
 		for (j=0;j<nEtaFits;j++){
 			for (k=0;k<nRadFits;k++){
