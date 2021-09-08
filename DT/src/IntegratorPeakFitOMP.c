@@ -625,6 +625,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 	FILE *fp, *fd;
 	int nrdone = 0;
 	fd = fopen(darkFN,"rb");
+	printf("%d\n",fd);
 	fseek(fd,0L,SEEK_END);
 	sz = ftell(fd);
 	rewind(fd);
