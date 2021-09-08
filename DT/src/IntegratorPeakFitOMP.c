@@ -189,7 +189,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 		readData = calloc(NrPixels,sizeof(*readData));
 		fread(readData,NrPixels*sizeof(*readData),1,f);
 		for (i=0;i<NrPixels;i++){
-			//~ returnArr[i] = (double) readData[i];
+			returnArr[i] = (double) readData[i];
 		}
 		free(readData);
 		return 0;
