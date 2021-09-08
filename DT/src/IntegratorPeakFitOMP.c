@@ -398,8 +398,8 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	Rfit[1] = x[1];
 	Rfit[2] = x[2];
 	Rfit[3] = x[2];
-	Rfit[4] = x[4];
-	Rfit[5] = x[3];
+	Rfit[4] = x[3];
+	Rfit[5] = x[4];
 	Rfit[6] = BG0;
 	Rfit[7] = MeanDiff;
 	Rfit[8] = CalcIntegratedIntensity(x,trp); // Calculate integrated intensity
