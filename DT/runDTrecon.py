@@ -3,8 +3,8 @@ from os.path import expanduser
 import subprocess
 
 fStem = '/data/tomo1/mpe_mar21_data/mpe_mar21/ge3/TiPt_DAC_s3_dt_PFocus_att000_bot'
-startNr = 2950
-endNr = 2950
+startNr = 2917
+endNr = 2981
 pad = 6
 nFrames = 182
 numProcs = 32
