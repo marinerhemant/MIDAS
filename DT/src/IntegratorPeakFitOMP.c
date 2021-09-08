@@ -1049,8 +1049,11 @@ int main(int argc, char **argv)
 		for (iRad=0;iRad<nRadFits;iRad++){
 			for (iEta=0;iEta<nEtaFits;iEta++){
 				sprintf(outFN,"%s_FileNrs_%d_%d_%s_RadRange_%d_EtaRange_%d_size_%dx%d_double.bin",SinoBaseName,startNr,endNr,valTypes[iVal],iRad,iEta,nFiles,nFrames);
+				posArranged  =  iVal*nRadFits*nEtaFits*nFrames*nFiles;
+				posArranged +=           iRad*nEtaFits*nFrames*nFiles;
+				posArranged +=                    iEta*nFrames*nFiles;
 				outFile = fopen(outFN,"wb");
-				fwrite(SinoArrArranged,sinoSize,1,outFile);
+				fwrite(&SinoArrArranged[posArranged],sinoSize,1,outFile);
 				fclose(outFile);
 			}
 		}
