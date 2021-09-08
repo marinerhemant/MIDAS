@@ -401,7 +401,7 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	Rfit[5] = BG0;
 	Rfit[6] = MeanDiff;
 	Rfit[7] = CalcIntegratedIntensity(x,trp); // Calculate integrated intensity
-	if (Rfit[7] < 0) RFit[7] = 0;
+	if (Rfit[7] < 0) Rfit[7] = 0;
 	Rfit[8] = TotInt; // Total intensity after removing background
 }
 
