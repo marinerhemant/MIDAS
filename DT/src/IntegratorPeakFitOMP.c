@@ -772,8 +772,8 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 			out2 = fopen(outfn2,"w");
 			fprintf(out2,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tBinArea\n",nEtaBins,nRBins);
 		}
-		memset(IntArrPerFrame,0,bigArrSize);
-		memset(peakIntensities,0,nElsTot*nEtaFits);
+		memset(IntArrPerFrame,0,bigArrSize*sizeof(double));
+		memset(peakIntensities,0,nElsTot*nEtaFits*sizeof(double));
 		for (j=0;j<nRBins;j++){
 			RMean = (RBinsLow[j]+RBinsHigh[j])/2;
 			Int1d = 0;
