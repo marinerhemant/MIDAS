@@ -196,7 +196,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 	} else if (dType == 2){ // Binary with double
 		double *readData;
 		readData = calloc(NrPixels,sizeof(*readData));
-		fread(readData,NrPixels*sizeof(*readData),1,f);
+		//~ fread(readData,NrPixels*sizeof(*readData),1,f);
 		for (i=0;i<NrPixels;i++){
 			returnArr[i] = (double) readData[i];
 		}
@@ -731,7 +731,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 	}
 	printf("Processing file %s.\n",imageFN);
 	for (i=0;i<nFrames;i++){
-		//~ int rcode = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
+		int rcode = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
 		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 			Image[j] = (double)ImageIn[j] - AverageDark[j];
