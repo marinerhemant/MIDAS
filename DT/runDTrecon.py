@@ -14,5 +14,5 @@ paramFN = 'ps.txt'
 
 # ~ subprocess.call(expanduser('~/opt/MIDAS/DT/bin/DetectorMapper')+' '+paramFN,shell=True)
 
-cmd = f'{expanduser("~/opt/MIDAS/DT/bin/IntegratorPeakFitOMP")} {paramFN} {fStem} {startNr} {endNr} {pad} {ext} {darkFN} {numProcs} {totalNrSinos}'
+cmd = f'{expanduser("~/opt/MIDAS/DT/bin/IntegratorPeakFitOMP")} {paramFN} {fStem} {startNr} {endNr} {pad} {ext} {darkFN} {nFrames} {numProcs}'
 subprocess.call(cmd,shell=True)
