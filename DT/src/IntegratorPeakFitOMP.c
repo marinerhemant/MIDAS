@@ -577,7 +577,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 	REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh);
 
 	int i,j,k,l;
-	printf("NrTransOpt: %d\n",NrTransOpt);
+	//~ printf("NrTransOpt: %d\n",NrTransOpt);
     for (i=0;i<NrTransOpt;i++){
         if (TransOpt[i] < 0 || TransOpt[i] > 2){printf("TransformationOptions can only be 0, 1, 2.\nExiting.\n");return 0;}
         printf("TransformationOptions: %d ",TransOpt[i]);
@@ -626,7 +626,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 	sz = ftell(fd);
 	rewind(fd);
 	nFrames = sz / (SizeFile);
-	printf("Reading dark file:      %s, nFrames: %d, skipping first %d bytes.\n",darkFN,nFrames,Skip);
+	//~ printf("Reading dark file:      %s, nFrames: %d, skipping first %d bytes.\n",darkFN,nFrames,Skip);
 	fseek(fd,Skip,SEEK_SET);
 	for (i=0;i<nFrames;i++){
 		rc = fileReader(fd,darkFN,dType,NrPixelsY*NrPixelsZ,DarkInT);
@@ -643,12 +643,12 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 					nrdone++;
 				}
 			}
-			printf("Nr mask pixels: %d\n",nrdone);
+			//~ printf("Nr mask pixels: %d\n",nrdone);
 			makeMap = 0;
 		}
 		for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFrames;
 	}
-	printf("Dark file read\n");
+	//~ printf("Dark file read\n");
 	if (makeMap == 2){
 		mapMaskSize = NrPixelsY;
 		mapMaskSize *= NrPixelsZ;
@@ -677,7 +677,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 				nrdone++;
 			}
 		}
-		printf("Nr mask pixels: %d\n",nrdone);
+		//~ printf("Nr mask pixels: %d\n",nrdone);
 	}
 	fp = fopen(imageFN,"rb");
 	fseek(fp,0L,SEEK_END);
@@ -685,7 +685,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 	rewind(fp);
 	fseek(fp,Skip,SEEK_SET);
 	nFrames = (sz-Skip) / SizeFile;
-	printf("Number of eta bins: %d, number of R bins: %d. Number of frames in the file: %d\n",nEtaBins,nRBins,(int)nFrames);
+	//~ printf("Number of eta bins: %d, number of R bins: %d. Number of frames in the file: %d\n",nEtaBins,nRBins,(int)nFrames);
 	long long int Pos;
 	int nPixels, dataPos;
 	struct data ThisVal;
@@ -726,13 +726,12 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 		bname3 = basename(fn3);
 		sprintf(outfnAll,"%s/%s_integrated.bin",outputFolder,bname3,outext);
 		sprintf(outfnFit,"%s/%s_PeakFits.bin",outputFolder,bname3,outext);
-		printf("%s\n",outfnAll);
+		//~ printf("%s\n",outfnAll);
 		out3 = fopen(outfnAll,"wb");
 		outPeakFit = fopen(outfnFit,"wb");
 	}
-	// Add OMP here to do frames in parallel.
+	printf("Processing file %s.\n",imageFN);
 	for (i=0;i<nFrames;i++){
-		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
 		rc = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
 		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
@@ -932,7 +931,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 	}
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
-	printf("Total time elapsed:\t%f s.\n",diftotal);
+	//~ printf("Total time elapsed:\t%f s.\n",diftotal);
 	return 0;
 }
 
