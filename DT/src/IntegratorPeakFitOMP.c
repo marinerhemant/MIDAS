@@ -767,7 +767,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 		}
 		memset(IntArrPerFrame,0,bigArrSize);
 		memset(peakIntensities,0,nElsTot*nEtaFits);
-		for (j=0;j<nRBins;j++){
+		/*for (j=0;j<nRBins;j++){
 			RMean = (RBinsLow[j]+RBinsHigh[j])/2;
 			Int1d = 0;
 			n1ds = 0;
@@ -849,7 +849,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 			}
 			Int1d /= n1ds;
 			if (newOutput == 0) fprintf(out1d,"%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),Int1d);
-		}
+		}*/
 		// Do peak fitting here
 		for (j=0;j<nEtaFits;j++){
 			for (k=0;k<nRadFits;k++){
@@ -901,33 +901,33 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 		fclose(out3);
 		fclose(outPeakFit);
 	}
-	if (sumImages == 1){
-		FILE *sumFile;
-		char sumFN[4096];
-		if (separateFolder == 0){
-			sprintf(sumFN,"%s_sum%s",imageFN,outext);
-		} else {
-			char fn2[4096];
-			sprintf(fn2,"%s",imageFN);
-			char *bname;
-			bname = basename(fn2);
-			sprintf(sumFN,"%s/%s_sum%s",outputFolder,bname,outext);
-		}
-		sumFile = fopen(sumFN,"w");
-		if (newOutput == 0){
-			fprintf(sumFile,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n");
-			for (i=0;i<nRBins*nEtaBins;i++){
-				for (k=0;k<5;k++)
-					fprintf(sumFile,"%lf\t",sumMatrix[i*5+k]);
-				fprintf(sumFile,"\n");
-			}
-		} else {
-			fprintf(sumFile,"%%Intensity(counts)\n");
-			for (i=0;i<nRBins*nEtaBins;i++){
-				fprintf(sumFile,"%lf\n",sumMatrix[i*5+3]);
-			}
-		}
-	}
+	//~ if (sumImages == 1){
+		//~ FILE *sumFile;
+		//~ char sumFN[4096];
+		//~ if (separateFolder == 0){
+			//~ sprintf(sumFN,"%s_sum%s",imageFN,outext);
+		//~ } else {
+			//~ char fn2[4096];
+			//~ sprintf(fn2,"%s",imageFN);
+			//~ char *bname;
+			//~ bname = basename(fn2);
+			//~ sprintf(sumFN,"%s/%s_sum%s",outputFolder,bname,outext);
+		//~ }
+		//~ sumFile = fopen(sumFN,"w");
+		//~ if (newOutput == 0){
+			//~ fprintf(sumFile,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n");
+			//~ for (i=0;i<nRBins*nEtaBins;i++){
+				//~ for (k=0;k<5;k++)
+					//~ fprintf(sumFile,"%lf\t",sumMatrix[i*5+k]);
+				//~ fprintf(sumFile,"\n");
+			//~ }
+		//~ } else {
+			//~ fprintf(sumFile,"%%Intensity(counts)\n");
+			//~ for (i=0;i<nRBins*nEtaBins;i++){
+				//~ fprintf(sumFile,"%lf\n",sumMatrix[i*5+3]);
+			//~ }
+		//~ }
+	//~ }
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	//~ printf("Total time elapsed:\t%f s.\n",diftotal);
