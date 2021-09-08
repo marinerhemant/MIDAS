@@ -404,7 +404,7 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 }
 
 
-int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
+int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr)
 {
     clock_t start, end, start0, end0;
     start0 = clock();
@@ -729,7 +729,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 		out3 = fopen(outfnAll,"wb");
 		outPeakFit = fopen(outfnFit,"wb");
 	}
-	printf("Processing file %s.\n",imageFN);
+	printf("Processing file %s\n",imageFN);
 	for (i=0;i<nFrames;i++){
 		int rcode = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
 		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
@@ -891,43 +891,42 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 		}
 	}
 	if (newOutput == 1){
-		//~ for (i=0;i<nFits*NrValsFitOutput;i++){
-			//~ for (j=0;j<nFrames;j++){
-				//~ printf("%lf,",peakVals[i*nFrames+j]);
-			//~ }
-			//~ printf("\n");
-		//~ }
+		for (i=0;i<nFits*NrValsFitOutput;i++){
+			for (j=0;j<nFrames;j++){
+				retValArr[i*nFrames+j] = peakVals[i*nFrames+j];
+			}
+		}
 		fwrite(peakVals,nFits*NrValsFitOutput*nFrames*sizeof(*peakVals),1,outPeakFit);
 		fclose(out3);
 		fclose(outPeakFit);
 	}
-	//~ if (sumImages == 1){
-		//~ FILE *sumFile;
-		//~ char sumFN[4096];
-		//~ if (separateFolder == 0){
-			//~ sprintf(sumFN,"%s_sum%s",imageFN,outext);
-		//~ } else {
-			//~ char fn2[4096];
-			//~ sprintf(fn2,"%s",imageFN);
-			//~ char *bname;
-			//~ bname = basename(fn2);
-			//~ sprintf(sumFN,"%s/%s_sum%s",outputFolder,bname,outext);
-		//~ }
-		//~ sumFile = fopen(sumFN,"w");
-		//~ if (newOutput == 0){
-			//~ fprintf(sumFile,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n");
-			//~ for (i=0;i<nRBins*nEtaBins;i++){
-				//~ for (k=0;k<5;k++)
-					//~ fprintf(sumFile,"%lf\t",sumMatrix[i*5+k]);
-				//~ fprintf(sumFile,"\n");
-			//~ }
-		//~ } else {
-			//~ fprintf(sumFile,"%%Intensity(counts)\n");
-			//~ for (i=0;i<nRBins*nEtaBins;i++){
-				//~ fprintf(sumFile,"%lf\n",sumMatrix[i*5+3]);
-			//~ }
-		//~ }
-	//~ }
+	if (sumImages == 1){
+		FILE *sumFile;
+		char sumFN[4096];
+		if (separateFolder == 0){
+			sprintf(sumFN,"%s_sum%s",imageFN,outext);
+		} else {
+			char fn2[4096];
+			sprintf(fn2,"%s",imageFN);
+			char *bname;
+			bname = basename(fn2);
+			sprintf(sumFN,"%s/%s_sum%s",outputFolder,bname,outext);
+		}
+		sumFile = fopen(sumFN,"w");
+		if (newOutput == 0){
+			fprintf(sumFile,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n");
+			for (i=0;i<nRBins*nEtaBins;i++){
+				for (k=0;k<5;k++)
+					fprintf(sumFile,"%lf\t",sumMatrix[i*5+k]);
+				fprintf(sumFile,"\n");
+			}
+		} else {
+			fprintf(sumFile,"%%Intensity(counts)\n");
+			for (i=0;i<nRBins*nEtaBins;i++){
+				fprintf(sumFile,"%lf\n",sumMatrix[i*5+3]);
+			}
+		}
+	}
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	//~ printf("Total time elapsed:\t%f s.\n",diftotal);
@@ -936,8 +935,8 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
 
 int main(int argc, char **argv)
 {
-	if (argc != 9){
-		printf("Usage: ./IntegratorPeakFitOMP ParamFN FileStem(fullpath until _before digits) StartNr EndNr Padding ext darkFN numProcs\n");
+	if (argc != 10){
+		printf("Usage: ./IntegratorPeakFitOMP ParamFN FileStem(fullpath until _before digits) StartNr EndNr Padding ext darkFN nFrames numProcs \n");
 		return 1;
 	}
 	char *pfn = argv[1];
@@ -947,15 +946,54 @@ int main(int argc, char **argv)
 	int pad = atoi(argv[5]);
 	char *ext = argv[6];
 	char *darkFN = argv[7];
-	int numProcs = atoi(argv[8]);
+	int nFrames = atoi(argv[8]);
+	int numProcs = atoi(argv[9]);
 	int frameNr;
+
+	// Get Number of Sinos
+	double radiiToFit[maxNFits][6], etasToFit[maxNFits][4];
+	size_t nRadFits = 0, nEtaFits = 0;
+	FILE *paramFile;
+	char aline[4096], dummy[4096], *str;
+	paramFile = fopen(pfn,"r");
+	while (fgets(aline,4096,paramFile) != NULL){
+		str = "RadiusToFit ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %lf %lf", dummy, &radiiToFit[nRadFits][0], &radiiToFit[nRadFits][1]);
+			radiiToFit[nRadFits][2] = radiiToFit[nRadFits][0] - radiiToFit[nRadFits][1];
+			radiiToFit[nRadFits][3] = radiiToFit[nRadFits][0] + radiiToFit[nRadFits][1];
+			nRadFits++;
+		}
+		str = "EtaToFit ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %lf %lf", dummy, &etasToFit[nEtaFits][0], &etasToFit[nEtaFits][1]);
+			etasToFit[nEtaFits][2] = etasToFit[nEtaFits][0] - etasToFit[nEtaFits][1];
+			etasToFit[nEtaFits][3] = etasToFit[nEtaFits][0] + etasToFit[nEtaFits][1];
+			nEtaFits++;
+		}
+	}
+	size_t totalNrSinos = nRadFits*nEtaFits*NrValsFitOutput;
+	size_t arrSize = totalNrSinos;
+	arrSize *= nFrames;
+	arrSize *= (endNr - startNr + 1);
+	double *SinoArr;
+	SinoArr = calloc(arrSize,sizeof(*SinoArr));
+
 	int rc = ReadBins();
 	#pragma omp parallel for num_threads(numProcs) private(frameNr) schedule(dynamic)
 	for (frameNr=startNr;frameNr<=endNr;frameNr++)
 	{
 		char FN[4096];
 		sprintf(FN,"%s_%0*d%s",FileStem,pad,frameNr,ext);
-		//~ printf("%s\n",FN);
-		int rt = mainFunc(pfn,darkFN,FN);
+		double *thisArr;
+		size_t loc = frameNr - startNr;
+		loc *= totalNrSinos;
+		loc *= nFrames;
+		thisArr = &SinoArr[loc];
+		int rt = mainFunc(pfn,darkFN,FN,thisArr);
+	}
+	size_t i;
+	for (i=0;i<arrSize;i++){
+		printf("%lf ",SinoArr[i]);
 	}
 }
