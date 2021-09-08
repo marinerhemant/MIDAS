@@ -187,7 +187,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 	if (dType == 1){ // Binary with uint16
 		uint16_t *readData;
 		readData = calloc(NrPixels,sizeof(*readData));
-		fread(readData,NrPixels*sizeof(*readData),1,f);
+		//~ fread(readData,NrPixels*sizeof(*readData),1,f);
 		for (i=0;i<NrPixels;i++){
 			returnArr[i] = (double) readData[i];
 		}
@@ -196,7 +196,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 	} else if (dType == 2){ // Binary with double
 		double *readData;
 		readData = calloc(NrPixels,sizeof(*readData));
-		//~ fread(readData,NrPixels*sizeof(*readData),1,f);
+		fread(readData,NrPixels*sizeof(*readData),1,f);
 		for (i=0;i<NrPixels;i++){
 			returnArr[i] = (double) readData[i];
 		}
