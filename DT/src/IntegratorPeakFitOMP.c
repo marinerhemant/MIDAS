@@ -377,7 +377,7 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	}
 	x[0] = Rmean; xl[0] = Rs[0];    xu[0] = Rs[NrPtsForFit-1];
 	x[1] = 0.5;   xl[1] = 0;        xu[1] = 1;
-	x[2] = 1; xl[2] = 0.001;  xu[2] = 500; // This is now FWHM
+	x[2] = 1; xl[2] = 0.01;  xu[2] = 500; // This is now FWHM
 	x[3] = MaxI;  xl[3] = MaxI/100; xu[3] = MaxI*3;
 	x[4] = BG0;   xl[4] = 0;        xu[4] = BG0*3;
 	struct my_profile_func_data *f_datat;
@@ -954,7 +954,8 @@ int main(int argc, char **argv)
 	double radiiToFit[maxNFits][6], etasToFit[maxNFits][4];
 	size_t nRadFits = 0, nEtaFits = 0;
 	FILE *paramFile;
-	char aline[4096], dummy[4096], *str;
+	char aline[4096], dummy[4096], *str, outputFolder[4096];
+	int separateFolder = 0;
 	paramFile = fopen(pfn,"r");
 	while (fgets(aline,4096,paramFile) != NULL){
 		str = "RadiusToFit ";
@@ -971,11 +972,22 @@ int main(int argc, char **argv)
 			etasToFit[nEtaFits][3] = etasToFit[nEtaFits][0] + etasToFit[nEtaFits][1];
 			nEtaFits++;
 		}
+		str = "OutFolder ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %s", dummy, outputFolder);
+			separateFolder = 1;
+		}
 	}
+	if (separateFolder == 0){
+		sprintf(outputFolder,".");
+		separateFolder = 1;
+	}
+
 	size_t totalNrSinos = nRadFits*nEtaFits*NrValsFitOutput;
+	int nFiles = (endNr - startNr + 1);
 	size_t arrSize = totalNrSinos;
 	arrSize *= nFrames;
-	arrSize *= (endNr - startNr + 1);
+	arrSize *= nFiles;
 	double *SinoArr;
 	SinoArr = calloc(arrSize,sizeof(*SinoArr));
 
@@ -992,8 +1004,54 @@ int main(int argc, char **argv)
 		thisArr = &SinoArr[loc];
 		int rt = mainFunc(pfn,darkFN,FN,thisArr);
 	}
-	size_t i;
-	for (i=0;i<arrSize;i++){
-		printf("%lf ",SinoArr[i]);
+	double *SinoArrArranged;
+	SinoArrArranged = malloc(arrSize*sizeof(*SinoArrArranged));
+	size_t iVal, iRad, iEta, iFrame, iFile, posArranged, posArr;
+	for (iVal=0;iVal<NrValsFitOutput;iVal++){
+		for (iRad=0;iRad<nRadFits;iRad++){
+			for (iEta=0;iEta<nEtaFits;iEta++){
+				for (iFrame=0;iFrame<nFrames;iFrame++){
+					for (iFile=0;iFile<nFiles;iFile++){
+						posArranged  =  iVal*nRadFits*nEtaFits*nFrames*nFiles;
+						posArranged +=           iRad*nEtaFits*nFrames*nFiles;
+						posArranged +=                    iEta*nFrames*nFiles;
+						posArranged +=                          iFrame*nFiles;
+						posArranged +=                                  iFile;
+						posArr  = iFile*NrValsFitOutput*nRadFits*nEtaFits*nFrames;
+						posArr +=                  iVal*nRadFits*nEtaFits*nFrames;
+						posArr +=                           iRad*nEtaFits*nFrames;
+						posArr +=                                    iEta*nFrames;
+						posArr +=                                          iFrame;
+						SinoArrArranged[posArranged] = SinoArr[posArr];
+					}
+				}
+			}
+		}
+	}
+	// What's needed: separateFolder. Then save the sinos with the appropriate fileStemBaseName
+	char SinoBaseName[4096],*fStemBaseName, outFN[4096];
+	char *valTypes[NrValsFitOutput];
+	valTypes[0] = "RMEAN";
+	valTypes[1] = "MixFactor";
+	valTypes[2] = "FWHM";
+	valTypes[3] = "MaxInt";
+	valTypes[4] = "BGFit";
+	valTypes[5] = "BGSimple";
+	valTypes[6] = "MeanError";
+	valTypes[7] = "FitIntegratedIntensity";
+	valTypes[8] = "TotalIntensityBackgroundCorr";
+	FILE *outFile;
+	fStemBaseName = basename(FileStem);
+	sprintf(SinoBaseName,"%s/%s",outputFolder,fStemBaseName);
+	size_t sinoSize = nFrames*nFiles*sizeof(double);
+	for (iVal=0;iVal<NrValsFitOutput;iVal++){
+		for (iRad=0;iRad<nRadFits;iRad++){
+			for (iEta=0;iEta<nEtaFits;iEta++){
+				sprintf(outFN,"%s_%s_RadRange_%d_EtaRange_%d.bin",SinoBaseName,valTypes[iVal],iRad,iEta);
+				outFile = fopen(outFN,"wb");
+				fwrite(SinoArrArranged,sinoSize,1,outFile);
+				fclose(outFile);
+			}
+		}
 	}
 }
