@@ -4,11 +4,10 @@ import subprocess
 
 fStem = '/data/tomo1/mpe_mar21_data/mpe_mar21/ge3/TiPt_DAC_s3_dt_PFocus_att000_bot'
 startNr = 2917
-# ~ endNr = 2981
-endNr = 2918
+endNr = 2981
 pad = 6
-nFrames = 1
-numProcs = 1
+nFrames = 182
+numProcs = 32
 ext = '.ge3'
 darkFN = '/data/tomo1/mpe_mar21_data/mpe_mar21/ge3/dark_before_002916.ge3'
 paramFN = 'ps.txt'
