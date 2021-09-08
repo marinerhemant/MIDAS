@@ -4,7 +4,8 @@ import subprocess
 
 fStem = '/data/tomo1/mpe_mar21_data/mpe_mar21/ge3/TiPt_DAC_s3_dt_PFocus_att000_bot'
 startNr = 2917
-endNr = 2981
+# ~ endNr = 2981
+endNr = 2918
 pad = 6
 nFrames = 1
 numProcs = 1
