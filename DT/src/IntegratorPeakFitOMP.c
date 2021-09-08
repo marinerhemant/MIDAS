@@ -373,9 +373,10 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	for (i=0;i<NrPtsForFit;i++){
 		TotInt += PeakShape[i];
 		if (PeakShape[i] > MaxI){
-			MaxI=PeakShape[i] - BG0;
+			MaxI=PeakShape[i];
 		}
 	}
+	MaxI -= BG0;
 	x[0] = Rmean; xl[0] = Rs[0];    xu[0] = Rs[NrPtsForFit-1];
 	x[1] = 0.5;   xl[1] = 0;        xu[1] = 1;
 	x[2] = 1;     xl[2] = 0.05;  xu[2] = 100;
