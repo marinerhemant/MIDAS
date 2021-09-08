@@ -1044,10 +1044,11 @@ int main(int argc, char **argv)
 	fStemBaseName = basename(FileStem);
 	sprintf(SinoBaseName,"%s/%s",outputFolder,fStemBaseName);
 	size_t sinoSize = nFrames*nFiles*sizeof(double);
+	for (iVal=0;iVal < arrSize;iVal++) printf("%lf ",SinoArrArranged[iVal]);
 	for (iVal=0;iVal<NrValsFitOutput;iVal++){
 		for (iRad=0;iRad<nRadFits;iRad++){
 			for (iEta=0;iEta<nEtaFits;iEta++){
-				sprintf(outFN,"%s_%s_RadRange_%d_EtaRange_%d_size_%dx%d_double.bin",SinoBaseName,valTypes[iVal],iRad,iEta,nFiles,nFrames);
+				sprintf(outFN,"%s_FileNrs_%d_%d_%s_RadRange_%d_EtaRange_%d_size_%dx%d_double.bin",SinoBaseName,startNr,endNr,valTypes[iVal],iRad,iEta,nFiles,nFrames);
 				outFile = fopen(outFN,"wb");
 				fwrite(SinoArrArranged,sinoSize,1,outFile);
 				fclose(outFile);
