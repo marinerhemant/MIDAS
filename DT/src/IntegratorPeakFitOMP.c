@@ -410,7 +410,6 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN)
     start0 = clock();
     double diftotal;
     //~ system("cp Map.bin nMap.bin /dev/shm");
-	int rc = ReadBins();
 	double RMax, RMin, RBinSize, EtaMax, EtaMin, EtaBinSize, Lsd, px;
 	int NrPixelsY = 2048, NrPixelsZ = 2048, Normalize = 1;
 	int nEtaBins, nRBins;
@@ -950,7 +949,7 @@ int main(int argc, char **argv)
 	char *darkFN = argv[7];
 	int numProcs = atoi(argv[8]);
 	int frameNr;
-
+	int rc = ReadBins();
 	#pragma omp parallel for num_threads(numProcs) private(frameNr) schedule(dynamic)
 	for (frameNr=startNr;frameNr<=endNr;frameNr++)
 	{
