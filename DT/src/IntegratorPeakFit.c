@@ -550,7 +550,7 @@ int main(int argc, char **argv)
         }
         str = "SumImages ";
         if (StartsWith(aline,str) == 1){
-			sumImages=1;
+			sscanf(aline,"%s %d", dummy, &sumImages);
 			continue;
         }
 	}
