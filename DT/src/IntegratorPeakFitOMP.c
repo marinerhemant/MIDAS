@@ -1044,7 +1044,7 @@ int main(int argc, char **argv)
 	fStemBaseName = basename(FileStem);
 	sprintf(SinoBaseName,"%s/%s",outputFolder,fStemBaseName);
 	size_t sinoSize = nFrames*nFiles*sizeof(double);
-	for (iVal=0;iVal < arrSize;iVal++) printf("%lf ",SinoArrArranged[iVal]);
+	//~ for (iVal=0;iVal < arrSize;iVal++) printf("%lf ",SinoArrArranged[iVal]);
 	for (iVal=0;iVal<NrValsFitOutput;iVal++){
 		for (iRad=0;iRad<nRadFits;iRad++){
 			for (iEta=0;iEta<nEtaFits;iEta++){
