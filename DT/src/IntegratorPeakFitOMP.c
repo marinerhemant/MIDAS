@@ -349,7 +349,7 @@ double CalcIntegratedIntensity(
 	for (i=0;i<NrPtsForFit;i++){
 		L = (1/(((Rs[i]-Rcen)*(Rs[i]-Rcen)/(SigmaL*SigmaL))+(1)));
 		G = (exp((-0.5)*(Rs[i]-Rcen)*(Rs[i]-Rcen)/(SigmaG*SigmaG)));
-		TotalIntensity = BG + Imax*((Mu*L)+((1-Mu)*G));
+		TotalIntensity += BG + Imax*((Mu*L)+((1-Mu)*G));
 	}
 #ifdef PRINTOPT2
 	printf("Peak fit intensity value: %lf\n",TotalIntensity);
