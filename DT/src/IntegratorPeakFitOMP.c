@@ -956,7 +956,7 @@ int main(int argc, char **argv)
 	{
 		char FN[4096];
 		sprintf(FN,"%s_%0*d%s",FileStem,pad,frameNr,ext);
-		printf("%s\n",FN);
+		//~ printf("%s\n",FN);
 		int rt = mainFunc(pfn,darkFN,FN);
 	}
 }
