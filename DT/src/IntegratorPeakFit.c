@@ -37,6 +37,7 @@ typedef double pixelvalue;
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
 #define rad2deg 57.2957795130823
 #define maxNFits 300
+#define NrValsFitOutput 8
 
 static inline double atand(double x){return rad2deg*(atan(x));}
 
@@ -561,7 +562,6 @@ int main(int argc, char **argv)
 	// Let's make an array to store the intensities for fitting peaks
 	double *peakIntensities, *peakVals, *AreaMapPixels;
 	size_t nFits = nEtaFits * nRadFits;
-	peakVals = calloc(nFits*8,sizeof(*peakVals));
 	size_t iRadFit, iEtaFit, nEls, nElsTot=0;
 	for (iRadFit=0;iRadFit<nRadFits;iRadFit++){
 		nEls = (int)(ceil(radiiToFit[iRadFit][1]*2 / RBinSize)) + 2;
@@ -723,11 +723,12 @@ int main(int argc, char **argv)
 	double *IntArrPerFrame;
 	IntArrPerFrame = calloc(bigArrSize,sizeof(*IntArrPerFrame));
 	FILE *out3, *outPeakFit;
-	int etaFitNr, radFitNr, radBinFitNr;
+	int etaFitNr, radFitNr, radBinFitNr,nEtaF;
 	size_t PeakIntPos, peakPos, nElsThis, peakValArrPos;
 	double *RPosArr, *RFitThis, *IntensityThis, *ResultArr;
 	RPosArr = calloc(nElsTot,sizeof(*RPosArr));
-	ResultArr = malloc(8*sizeof(*ResultArr));
+	ResultArr = malloc(NrValsFitOutput*sizeof(*ResultArr));
+	peakVals = calloc(nFits*NrValsFitOutput*nFrames,sizeof(*peakVals));
 	if (newOutput == 1){
 		char outfnAll[4096];
 		char outfnFit[4096];
@@ -798,11 +799,11 @@ int main(int argc, char **argv)
 				}
 			}
 			for (k=0;k<nEtaBins;k++){
+				etaFitNr = -1;
 				if (radFitNr > -1){
-					etaFitNr = -1;
-					for (l=0;l<nEtaFits;l++){
-						if (EtaBinsHigh[k] >= etasToFit[l][2] && EtaBinsLow[k] <= etasToFit[l][3]){
-							etaFitNr = l;
+					for (nEtaF=0;nEtaF<nEtaFits;nEtaF++){
+						if (EtaBinsHigh[k] >= etasToFit[nEtaF][2] && EtaBinsLow[k] <= etasToFit[nEtaF][3]){
+							etaFitNr = nEtaF;
 						}
 					}
 				}
@@ -839,7 +840,7 @@ int main(int argc, char **argv)
 					PeakIntPos *= etaFitNr;
 					PeakIntPos += (int)radiiToFit[radFitNr][4];
 					PeakIntPos += radBinFitNr;
-					//~ printf("%zu\n",PeakIntPos);
+					//~ printf("%d %d %d %d %d %lld\n",(int)nElsTot,(int)etaFitNr,(int)radiiToFit[radFitNr][4],(int)radBinFitNr,(int)radFitNr,(long long int) PeakIntPos);
 					peakIntensities[PeakIntPos] += Intensity;
 				}
 				EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
@@ -867,8 +868,6 @@ int main(int argc, char **argv)
 			if (newOutput == 0) fprintf(out1d,"%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),Int1d);
 		}
 
-		//~ for (j=0;j<nElsTot*nEtaFits;j++) printf("%lf ",peakIntensities[j]);
-		//~ printf("\n");
 		// Do peak fitting here
 		for (j=0;j<nEtaFits;j++){
 			for (k=0;k<nRadFits;k++){
@@ -880,21 +879,21 @@ int main(int argc, char **argv)
 				IntensityThis = &peakIntensities[peakPos];
 				nElsThis = (int)radiiToFit[k][5];
 				FitPeakShape(nElsThis,RFitThis,IntensityThis,ResultArr,RBinSize,RMean);
-				//~ printf("%lf ",RMean);
-				for (l=0;l<8;l++){
-					peakValArrPos = nFits;
-					peakValArrPos *= l;
-					peakValArrPos += j*nRadFits;
-					peakValArrPos += k;
+				for (l=0;l<NrValsFitOutput;l++){
+					// Arranged as each parameter, then each fit, then each frame: size of each parameter: nFits*nFrames, size of each fit: nFrames
+					peakValArrPos = l;
+					peakValArrPos *= nEtaFits;
+					peakValArrPos *= nRadFits;
+					peakValArrPos *= nFrames;
+					peakValArrPos += k*nEtaFits*nFrames;
+					peakValArrPos += j*nFrames;
+					peakValArrPos += i;
 					peakVals[peakValArrPos] = ResultArr[l];
-					//~ printf("%lf ",ResultArr[l]);
 				}
-				//~ printf("\n");
 			}
 		}
 
 		if (newOutput == 1){
-			fwrite(peakVals,nFits*8*sizeof(*peakVals),1,outPeakFit);
 			fwrite(IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),1,out3);
 			if (i==0){
 				FILE *areamap;
@@ -911,6 +910,9 @@ int main(int argc, char **argv)
 		}
 	}
 	if (newOutput == 1){
+		//~ for (j=0;j<nFits*NrValsFitOutput*nFrames;j++) printf("%lf ",peakVals[j]);
+		//~ printf("\n");
+		fwrite(peakVals,nFits*NrValsFitOutput*nFrames*sizeof(*peakVals),1,outPeakFit);
 		fclose(out3);
 		fclose(outPeakFit);
 	}
