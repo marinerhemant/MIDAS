@@ -404,7 +404,7 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	Rfit[8] = TotInt; // Total intensity
 	Rfit[9] = TotInt - (BG0*NrPtsForFit); // Total intensity after removing background
 	Rfit[10] = MaxI; // Input Max Intensity
-	for (i=0;i<NrValsFitOutput;i++) printf("%lf ",Rfit[i]); prinf("\n");
+	for (i=0;i<NrValsFitOutput;i++) printf("%lf ",Rfit[i]); printf("\n");
 }
 
 
