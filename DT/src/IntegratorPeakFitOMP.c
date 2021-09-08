@@ -37,7 +37,7 @@ typedef double pixelvalue;
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
 #define rad2deg 57.2957795130823
 #define maxNFits 300
-#define NrValsFitOutput 9
+#define NrValsFitOutput 10
 
 static inline double atand(double x){return rad2deg*(atan(x));}
 
@@ -371,11 +371,10 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	int i;
 	for (i=0;i<NrPtsForFit;i++){
 		if (PeakShape[i] > MaxI){
-			TotInt += PeakShape[i] - BG0;
+			TotInt += PeakShape[i];
 			MaxI=PeakShape[i];
 		}
 	}
-	if (TotInt < 0) TotInt = 0;
 	x[0] = Rmean; xl[0] = Rs[0];    xu[0] = Rs[NrPtsForFit-1];
 	x[1] = 0.5;   xl[1] = 0;        xu[1] = 1;
 	x[2] = 1; xl[2] = 0.5;  xu[2] = 500; // This is now FWHM
@@ -402,7 +401,8 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	Rfit[6] = MeanDiff;
 	Rfit[7] = CalcIntegratedIntensity(x,trp); // Calculate integrated intensity
 	if (Rfit[7] < 0) Rfit[7] = 0;
-	Rfit[8] = TotInt; // Total intensity after removing background
+	Rfit[8] = TotInt; // Total intensity
+	Rfit[9] = TotInt - (BG0*NrPtsForFit); // Total intensity after removing background
 }
 
 
@@ -1041,7 +1041,8 @@ int main(int argc, char **argv)
 	valTypes[5] = "BGSimple";
 	valTypes[6] = "MeanError";
 	valTypes[7] = "FitIntegratedIntensity";
-	valTypes[8] = "TotalIntensityBackgroundCorr";
+	valTypes[8] = "TotalIntensity";
+	valTypes[9] = "TotalIntensityBackgroundCorr";
 	FILE *outFile;
 	fStemBaseName = basename(FileStem);
 	sprintf(SinoBaseName,"%s/%s",outputFolder,fStemBaseName);
