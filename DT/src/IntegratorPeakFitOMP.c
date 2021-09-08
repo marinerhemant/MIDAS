@@ -378,8 +378,8 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	}
 	x[0] = Rmean; xl[0] = Rs[0];    xu[0] = Rs[NrPtsForFit-1];
 	x[1] = 0.5;   xl[1] = 0;        xu[1] = 1;
-	x[2] = Rstep;     xl[2] = Rstep/2;  xu[2] = Rstep*NrPtsForFit/2;
-	x[3] = Rstep;     xl[3] = Rstep/2;  xu[3] = Rstep*NrPtsForFit/2;
+	x[2] = 1;     xl[2] = 0.05;  xu[2] = 100;
+	x[3] = 1;     xl[3] = 0.05;  xu[3] = 100;
 	x[4] = MaxI;  xl[4] = MaxI/100; xu[4] = MaxI*1.5;
 	x[5] = BG0;   xl[5] = 0;        xu[5] = BG0*1.5;
 	struct my_profile_func_data *f_datat;
