@@ -1014,7 +1014,7 @@ int main(int argc, char **argv)
 		thisArr = &SinoArr[loc];
 		int rt = mainFunc(pfn,darkFN,FN,thisArr,nFrames);
 	}
-	double *SinoArrArranged;
+	float *SinoArrArranged;
 	SinoArrArranged = malloc(arrSize*sizeof(*SinoArrArranged));
 	size_t iVal, iRad, iEta, iFrame, iFile, posArranged, posArr;
 	for (iVal=0;iVal<NrValsFitOutput;iVal++){
@@ -1056,7 +1056,7 @@ int main(int argc, char **argv)
 	FILE *outFile;
 	fStemBaseName = basename(FileStem);
 	sprintf(SinoBaseName,"%s/%s",outputFolder,fStemBaseName);
-	size_t sinoSize = nFrames*nFiles*sizeof(double);
+	size_t sinoSize = nFrames*nFiles*sizeof(*SinoArrArranged);
 	//~ for (iVal=0;iVal < arrSize;iVal++) printf("%lf ",SinoArrArranged[iVal]);
 	for (iVal=0;iVal<NrValsFitOutput;iVal++){
 		for (iRad=0;iRad<nRadFits;iRad++){
