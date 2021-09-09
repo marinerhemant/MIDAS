@@ -687,6 +687,8 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 				nrdone++;
 			}
 		}
+		free(mapper);
+		free(mapperOut);
 		//~ printf("Nr mask pixels: %d\n",nrdone);
 	}
 	fp = fopen(imageFN,"rb");
@@ -1048,6 +1050,7 @@ int main(int argc, char **argv)
 			}
 		}
 	}
+	free(SinoArr);
 	// What's needed: separateFolder. Then save the sinos with the appropriate fileStemBaseName
 	char SinoBaseName[4096],*fStemBaseName, outFN[4096];
 	char *valTypes[NrValsFitOutput];
@@ -1081,4 +1084,5 @@ int main(int argc, char **argv)
 			}
 		}
 	}
+	free(SinoArrArranged);
 }
