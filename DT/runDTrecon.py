@@ -17,7 +17,7 @@ rads = [558, 664, 687]
 rWidth = 10
 rBinSize = 0.25
 
-etaRange = [-220, 220]
+etaRange = [-200, 195]
 etas = [-180,-90,0,90,180]
 etaWidth = 10
 etaBinSize = 0.3
@@ -36,8 +36,10 @@ for rad in rads:
 	updF.write(f'RadiusToFit {rad} {rWidth}\n')
 for eta in etas:
 	updF.write(f'EtaToFit {eta} {etaWidth}\n')
+updF.close()
 
 cmd1 = f'{expanduser("~/opt/MIDAS/DT/bin/DetectorMapper")} {paramFN}.upd'
+print(cmd1)
 subprocess.call(cmd1,shell=True)
 
 cmd = f'{expanduser("~/opt/MIDAS/DT/bin/IntegratorPeakFitOMP")} {paramFN}.upd {fStem} {startNr} {endNr} {pad} {ext} {darkFN} {nFrames} {numProcs}'
