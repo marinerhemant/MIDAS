@@ -379,7 +379,7 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 			RTemp = Rs[i];
 		}
 	}
-	if (fabs(RTemp-Rmean)<2) Rmean = RTemp;
+	if (fabs(RTemp-Rmean)<2.0) Rmean = RTemp;
 	MaxI -= BG0;
 	x[0] = Rmean; xl[0] = Rs[0];    xu[0] = Rs[NrPtsForFit-1];
 	x[1] = 0.5;   xl[1] = 0;        xu[1] = 1;
