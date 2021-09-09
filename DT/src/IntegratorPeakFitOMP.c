@@ -735,15 +735,13 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 		sprintf(fn3,"%s",imageFN);
 		char *bname3;
 		bname3 = basename(fn3);
-		sprintf(outfnAll,"%s/%s_integrated.bin",outputFolder,bname3,outext);
-		sprintf(outfnFit,"%s/%s_PeakFits.bin",outputFolder,bname3,outext);
+		sprintf(outfnAll,"%s/%s_integrated.bin",outputFolder,bname3);
+		sprintf(outfnFit,"%s/%s_PeakFits.bin",outputFolder,bname3);
 		//~ printf("%s\n",outfnAll);
 		out3 = fopen(outfnAll,"wb");
 		outPeakFit = fopen(outfnFit,"wb");
 		char outpeakfn[4096];
-		char *b2name;
-		b2name = basename(imageFN);
-		sprintf(outpeakfn,"%s/%s.LineOuts.bin",outputFolder,b2name);
+		sprintf(outpeakfn,"%s/%s.LineOuts.bin",outputFolder,bname3);
 		outPeak = fopen(outpeakfn,"wb");
 	}
 	printf("Processing file %s\n",imageFN);
