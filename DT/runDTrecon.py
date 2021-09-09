@@ -44,10 +44,10 @@ updF.close()
 
 cmd1 = f'{expanduser("~/opt/MIDAS/DT/bin/DetectorMapper")} {paramFN}.upd'
 print(cmd1)
-# ~ subprocess.call(cmd1,shell=True)
+subprocess.call(cmd1,shell=True)
 
 cmd = f'{expanduser("~/opt/MIDAS/DT/bin/IntegratorPeakFitOMP")} {paramFN}.upd {fStem} {startNr} {endNr} {pad} {ext} {darkFN} {nFrames} {numProcs}'
-# ~ subprocess.call(cmd,shell=True)
+subprocess.call(cmd,shell=True)
 
 from skimage.transform import iradon
 import numpy as np
