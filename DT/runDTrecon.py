@@ -11,8 +11,30 @@ numProcs = 32
 ext = '.ge3'
 darkFN = '/data/tomo1/mpe_mar21_data/mpe_mar21/ge3/dark_before_002916.ge3'
 paramFN = 'ps.txt'
+radRange = [500, 600]
+rads = [558, 664, 687]
+rWidth = 10
+etaRange = [-220, 220]
+etas = [-180,-90,0,90,180]
+etaWidth = 10
 
-subprocess.call(expanduser('~/opt/MIDAS/DT/bin/DetectorMapper')+' '+paramFN,shell=True)
+paramContents = open(paramFN,'r').readlines()
+updF = open(paramFN+'.upd','w')
+for line in paramContents:
+	updF.write(line)
+updF.write(f'RMin {radRange[0]}\n')
+updF.write(f'RMax {radRange[1]}\n')
+updF.write(f'EtaMin {etaRange[0]}\n')
+updF.write(f'EtaMax {etaRange[1]}\n')
+for rad in rads:
+	updF.write(f'RadiusToFit {rad} {rWidth}\n')
+for eta in etas:
+	updF.write(f'EtaToFit {eta} {etaWidth}\n')
 
-cmd = f'{expanduser("~/opt/MIDAS/DT/bin/IntegratorPeakFitOMP")} {paramFN} {fStem} {startNr} {endNr} {pad} {ext} {darkFN} {nFrames} {numProcs}'
-subprocess.call(cmd,shell=True)
+cmd1 = f'{expanduser("~/opt/MIDAS/DT/bin/DetectorMapper")} {paramFN}.upd'
+# ~ subprocess.call(cmd1,shell=True)
+
+cmd = f'{expanduser("~/opt/MIDAS/DT/bin/IntegratorPeakFitOMP")} {paramFN}.upd {fStem} {startNr} {endNr} {pad} {ext} {darkFN} {nFrames} {numProcs}'
+print(cmd1)
+print(cmd)
+# ~ subprocess.call(cmd,shell=True)
