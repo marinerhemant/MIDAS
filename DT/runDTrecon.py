@@ -55,7 +55,7 @@ subprocess.call(cmd,shell=True)
 
 ## Read caked output
 # Map:
-fn = f'{fstem}_{str(startNr).zfill(pad)}{ext}.REtaAreaMap.csv'
+fn = f'{fStem}_{str(startNr).zfill(pad)}{ext}.REtaAreaMap.csv'
 f = open(fn)
 line1 = f.readline().split()
 etaBins = int(line1[1])
@@ -65,14 +65,14 @@ data = np.genfromtxt(f) # Cols: Radius[px] 2Theta[degrees] Eta[degrees] BinArea[
 f.close()
 sizeFile = nFrames*etaBins*rBins
 for fnr in range(startNr,endNr+1):
-	fn = f'{fstem}_{str(fnr).zfill(pad)}{ext}_integrated.bin'
+	fn = f'{fStem}_{str(fnr).zfill(pad)}{ext}_integrated.bin'
 	data = np.fromfile(fn,dtype=double,count=(sizeFile)).reshape(nFrames,etaBins*rBins)
 	print(data.shape)
 
 ## Read Lineouts:
 nEtas = len(etas)
 for fnr in range(startNr,endNr+1):
-	fn = f'{fstem}_{str(fnr).zfill(pad)}{ext}.LineOuts.bin'
+	fn = f'{fStem}_{str(fnr).zfill(pad)}{ext}.LineOuts.bin'
 	f = open(fn)
 	nEls = int(np.fromfile(f,dtype=np.ulonglong,count=(3))[0])
 	data = np.fromfile(f,dtype=np.double,count=(nFrames*nEls*nEtas)).reshape((nFrames,nEls*nEtas))
