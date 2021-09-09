@@ -65,5 +65,5 @@ for rad in rads:
 			fn = f'{outfStem}_FileNrs_{startNr}_{endNr}_{output}_Rad_{rad}_pm_{rWidth}_Eta_{eta}_pm_{etaWidth}_size_{nFiles}x{nFrames}_float32.bin'
 			outfn = f'{fn}_recon_{nFiles}x{nFiles}.bin'
 			sino = np.transpose(np.fromfile(fn,dtype=np.float32,count=(nFrames*nFiles)).reshape((nFrames,nFiles)))
-			recon = iradon(sinogram,theta=thetas)
+			recon = iradon(sino,theta=thetas)
 			recon.astype(np.float32).tofile(outfn)
