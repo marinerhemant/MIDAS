@@ -59,5 +59,5 @@ outputs = ['RMEAN','MixFactor','SigmaG','SigmaL','MaxInt','BGFit',
 for rad in rads:
 	for eta in etas:
 		for output in outputs:
-			fn = f'{baseFN}_FileNrs_{startNr}_{endNr}_{output}_Rad_{rad}_pm_{rWidth}_Eta_{eta}_pm_{etaWidth}_size_{nFiles}x{nFrames}_float32.bin'
+			fn = f'{outfStem}_FileNrs_{startNr}_{endNr}_{output}_Rad_{rad}_pm_{rWidth}_Eta_{eta}_pm_{etaWidth}_size_{nFiles}x{nFrames}_float32.bin'
 			print([fn, os.path.exists(fn)])
