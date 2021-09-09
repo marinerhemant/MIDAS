@@ -15,12 +15,12 @@ ext = '.ge3'
 darkFN = 'data/dark_before_002916.ge3'
 paramFN = 'ps.txt'
 
-radRange = [538,578]
+radRange = [545,570]
 rads = [558]
 rWidth = 10
 rBinSize = 0.25
 
-etaRange = [-195, 105]
+etaRange = [-192, 102]
 etas = [-180,-90,0,90]
 etaWidth = 10
 etaBinSize = 0.3
