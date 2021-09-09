@@ -1,15 +1,18 @@
 import os
 from os.path import expanduser, basename
 import subprocess
+import numpy as np
 
-fStem = '/data/tomo1/mpe_mar21_data/mpe_mar21/ge3/TiPt_DAC_s3_dt_PFocus_att000_bot'
+startOme = 0
+omeStep = 1
+fStem = 'data/TiPt_DAC_s3_dt_PFocus_att000_bot'
 startNr = 2917
 endNr = 2981
 pad = 6
 nFrames = 182
 numProcs = 33
 ext = '.ge3'
-darkFN = '/data/tomo1/mpe_mar21_data/mpe_mar21/ge3/dark_before_002916.ge3'
+darkFN = 'data/dark_before_002916.ge3'
 paramFN = 'ps.txt'
 
 radRange = [538,578]
@@ -30,6 +33,7 @@ for line in paramContents:
 	if line.startswith('OutFolder'):
 		OutFolder = line.split()[1]
 	updF.write(line)
+
 updF.write(f'RMin {radRange[0]}\n')
 updF.write(f'RMax {radRange[1]}\n')
 updF.write(f'RBinSize {rBinSize}\n')
@@ -38,23 +42,47 @@ updF.write(f'EtaMin {etaRange[0]}\n')
 updF.write(f'EtaMax {etaRange[1]}\n')
 for rad in rads:
 	updF.write(f'RadiusToFit {rad} {rWidth}\n')
+
 for eta in etas:
 	updF.write(f'EtaToFit {eta} {etaWidth}\n')
 updF.close()
 
 cmd1 = f'{expanduser("~/opt/MIDAS/DT/bin/DetectorMapper")} {paramFN}.upd'
-print(cmd1)
 subprocess.call(cmd1,shell=True)
 
 cmd = f'{expanduser("~/opt/MIDAS/DT/bin/IntegratorPeakFitOMP")} {paramFN}.upd {fStem} {startNr} {endNr} {pad} {ext} {darkFN} {nFrames} {numProcs}'
 subprocess.call(cmd,shell=True)
 
-from skimage.transform import iradon
-import numpy as np
-import matplotlib.pyplot as plt
+## Read caked output
+# Map:
+fn = f'{fstem}_{str(startNr).zfill(pad)}{ext}.REtaAreaMap.csv'
+f = open(fn)
+line1 = f.readline().split()
+etaBins = int(line1[1])
+rBins = int(line1[3])
+f.readline()
+data = np.genfromtxt(f) # Cols: Radius[px] 2Theta[degrees] Eta[degrees] BinArea[pixels]
+f.close()
+sizeFile = nFrames*etaBins*rBins
+for fnr in range(startNr,endNr+1):
+	fn = f'{fstem}_{str(fnr).zfill(pad)}{ext}_integrated.bin'
+	data = np.fromfile(fn,dtype=double,count=(sizeFile)).reshape(nFrames,etaBins*rBins)
+	print(data.shape)
+
+## Read Lineouts:
+nEtas = len(etas)
+for fnr in range(startNr,endNr+1):
+	fn = f'{fstem}_{str(fnr).zfill(pad)}{ext}.LineOuts.bin'
+	f = open(fn)
+	nEls = int(np.fromfile(f,dtype=np.ulonglong,count=(3))[0])
+	data = np.fromfile(f,dtype=np.double,count=(nFrames*nEls*nEtas)).reshape((nFrames,nEls*nEtas))
+	f.close()
+	print(data.shape)
 
 ## Read the sinos and do all recons.
-thetas = np.linspace(0,nFrames-1,nFrames)
+from skimage.transform import iradon
+
+thetas = np.linspace(startOme,startOme+(nFrames-1)*omeStep,nFrames)
 baseFN = basename(fStem)
 outfStem = f'{OutFolder}/{baseFN}'
 outputs = ['RMEAN','MixFactor','SigmaG','SigmaL','MaxInt','BGFit',
@@ -65,6 +93,7 @@ for rad in rads:
 			fn = f'{outfStem}_FileNrs_{startNr}_{endNr}_{output}_Rad_{rad}_pm_{rWidth}_Eta_{eta}_pm_{etaWidth}_size_{nFiles}x{nFrames}_float32.bin'
 			outfn = f'{fn}_recon_{nFiles}x{nFiles}.bin'
 			print(f'ReconFN: {outfn}')
+			# Read the sino
 			sino = np.transpose(np.fromfile(fn,dtype=np.float32,count=(nFrames*nFiles)).reshape((nFrames,nFiles)))
 			recon = iradon(sino,theta=thetas)
 			recon.astype(np.float32).tofile(outfn)
