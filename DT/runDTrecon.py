@@ -63,13 +63,12 @@ line1 = f.readline().split()
 etaBins = int(line1[1])
 rBins = int(line1[3])
 f.readline()
-data = np.genfromtxt(f) # Cols: Radius[px] 2Theta[degrees] Eta[degrees] BinArea[pixels]
+REtaAreaMap = np.genfromtxt(f) # Cols: Radius[px] 2Theta[degrees] Eta[degrees] BinArea[pixels]
 f.close()
 sizeFile = nFrames*etaBins*rBins
 for fnr in range(startNr,endNr+1):
 	fn = f'{outfStem}_{str(fnr).zfill(pad)}{ext}_integrated.bin'
-	data = np.fromfile(fn,dtype=np.double,count=(sizeFile)).reshape(nFrames,etaBins*rBins)
-	print(data.shape)
+	data = np.fromfile(fn,dtype=np.double,count=(sizeFile)).reshape(nFrames,etaBins*rBins) # Actual intensity values
 
 ## Read Lineouts:
 nEtas = len(etas)
@@ -77,14 +76,12 @@ for fnr in range(startNr,endNr+1):
 	fn = f'{outfStem}_{str(fnr).zfill(pad)}{ext}.LineOuts.bin'
 	f = open(fn)
 	nEls = int(np.fromfile(f,dtype=np.ulonglong,count=(3))[0])
-	data = np.fromfile(f,dtype=np.double,count=(nFrames*nEls*nEtas)).reshape((nFrames,nEls*nEtas))
+	data = np.fromfile(f,dtype=np.double,count=(nFrames*nEls*nEtas)).reshape((nFrames,nEls*nEtas)) # Intensity values for the lineouts
 	f.close()
-	print(data.shape)
 
 ## Read the sinos and do all recons.
 from skimage.transform import iradon
-
-thetas = np.linspace(startOme,startOme+(nFrames-1)*omeStep,nFrames)
+angles = np.linspace(startOme,startOme+(nFrames-1)*omeStep,nFrames)
 outputs = ['RMEAN','MixFactor','SigmaG','SigmaL','MaxInt','BGFit',
 	'BGSimple','MeanError','FitIntegratedIntensity','TotalIntensity','TotalIntensityBackgroundCorr','MaxIntensityObs']
 for rad in rads:
@@ -95,5 +92,5 @@ for rad in rads:
 			print(f'ReconFN: {outfn}')
 			# Read the sino
 			sino = np.transpose(np.fromfile(fn,dtype=np.float32,count=(nFrames*nFiles)).reshape((nFrames,nFiles)))
-			recon = iradon(sino,theta=thetas)
+			recon = iradon(sino,theta=angles)
 			recon.astype(np.float32).tofile(outfn)
