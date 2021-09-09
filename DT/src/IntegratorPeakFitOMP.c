@@ -899,6 +899,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 				areamap = fopen(areamapfn,"wb");
 				fwrite(AreaMapPixels,NrPixelsY*NrPixelsZ*sizeof(double),1,areamap);
 				fclose(areamap);
+				free(AreaMapPixels);
 				fclose(out2);
 				//~ printf("%zu\n",sizeof(size_t));
 				fwrite(&nElsTot,sizeof(size_t),1,outPeak);
@@ -952,6 +953,23 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	//~ printf("Total time elapsed:\t%f s.\n",diftotal);
+	free(peakIntensities);
+	free(EtaBinsLow);
+	free(EtaBinsHigh);
+	free(RBinsLow);
+	free(RBinsHigh);
+	free(DarkIn);
+	free(DarkInT);
+	free(AverageDark);
+	free(ImageIn);
+	free(ImageInT);
+	free(Image);
+	free(IntArrPerFrame);
+	free(RPosArr);
+	free(ResultArr);
+	free(peakVals);
+	if (mapMaskSize != 0) free(mapMask);
+	if (sumImages == 1) free(sumMatrix);
 	return 0;
 }
 
