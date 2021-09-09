@@ -1025,8 +1025,10 @@ int main(int argc, char **argv)
 						posArranged  =  iVal*nRadFits*nEtaFits*nFrames*nFiles;
 						posArranged +=           iRad*nEtaFits*nFrames*nFiles;
 						posArranged +=                    iEta*nFrames*nFiles;
-						posArranged +=                          iFrame*nFiles;
-						posArranged +=                                  iFile;
+						posArranged +=                          iFile*nFrames;
+						posArranged +=                                  iFrame;
+						//~ posArranged +=                          iFrame*nFiles;
+						//~ posArranged +=                                  iFile;
 						posArr  = iFile*NrValsFitOutput*nRadFits*nEtaFits*nFrames;
 						posArr +=                  iVal*nRadFits*nEtaFits*nFrames;
 						posArr +=                           iRad*nEtaFits*nFrames;
