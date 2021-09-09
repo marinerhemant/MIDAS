@@ -1,7 +1,6 @@
 import os
 from os.path import expanduser, basename
 import subprocess
-from skimage.transform import iradon
 
 fStem = '/data/tomo1/mpe_mar21_data/mpe_mar21/ge3/TiPt_DAC_s3_dt_PFocus_att000_bot'
 startNr = 2917
@@ -50,8 +49,10 @@ print(cmd1)
 cmd = f'{expanduser("~/opt/MIDAS/DT/bin/IntegratorPeakFitOMP")} {paramFN}.upd {fStem} {startNr} {endNr} {pad} {ext} {darkFN} {nFrames} {numProcs}'
 # ~ subprocess.call(cmd,shell=True)
 
+# ~ from skimage.transform import iradon
+
 ## Read the sinos and do all recons.
-baseFN = baseName(fStem)
+baseFN = basename(fStem)
 outfStem = f'{OutFolder}/{baseFN}'
 outputs = ['RMEAN','MixFactor','SigmaG','SigmaL','MaxInt','BGFit',
 	'BGSimple','MeanError','FitIntegratedIntensity','TotalIntensity','TotalIntensityBackgroundCorr','MaxIntensityObs']
