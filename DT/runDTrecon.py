@@ -68,7 +68,7 @@ f.close()
 sizeFile = nFrames*etaBins*rBins
 for fnr in range(startNr,endNr+1):
 	fn = f'{outfStem}_{str(fnr).zfill(pad)}{ext}_integrated.bin'
-	data = np.fromfile(fn,dtype=double,count=(sizeFile)).reshape(nFrames,etaBins*rBins)
+	data = np.fromfile(fn,dtype=np.double,count=(sizeFile)).reshape(nFrames,etaBins*rBins)
 	print(data.shape)
 
 ## Read Lineouts:
