@@ -38,9 +38,9 @@ for eta in etas:
 	updF.write(f'EtaToFit {eta} {etaWidth}\n')
 
 cmd1 = f'{expanduser("~/opt/MIDAS/DT/bin/DetectorMapper")} {paramFN}.upd'
-# ~ subprocess.call(cmd1,shell=True)
+subprocess.call(cmd1,shell=True)
 
 cmd = f'{expanduser("~/opt/MIDAS/DT/bin/IntegratorPeakFitOMP")} {paramFN}.upd {fStem} {startNr} {endNr} {pad} {ext} {darkFN} {nFrames} {numProcs}'
 print(cmd1)
 print(cmd)
-# ~ subprocess.call(cmd,shell=True)
+subprocess.call(cmd,shell=True)
