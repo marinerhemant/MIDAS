@@ -903,7 +903,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 				fwrite(&nEtaFits,sizeof(size_t),1,outPeak);
 				fwrite(&nRadFits,sizeof(size_t),1,outPeak);
 			}
-			fwrite(&peakIntensities,nElsTot*nEtaFits*sizeof(double),1,outPeak);
+			fwrite(peakIntensities,nElsTot*nEtaFits*sizeof(double),1,outPeak);
 		} else{
 			fclose(out);
 			fclose(out1d);
