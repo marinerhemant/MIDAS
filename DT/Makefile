@@ -16,7 +16,7 @@ endif
 SRCDIR=src/
 BINDIR=bin/
 
-all: bindircheck detectormapper integratorpeakfit
+all: bindircheck detectormapper integratorpeakfitomp
 
 bindircheck:
 	mkdir -p $(BINDIR)
