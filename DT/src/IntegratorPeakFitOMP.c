@@ -742,7 +742,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 		outPeakFit = fopen(outfnFit,"wb");
 		char outpeakfn[4096];
 		sprintf(outpeakfn,"%s/%s.LineOuts.bin",outputFolder,bname3);
-		//~ outPeak = fopen(outpeakfn,"wb");
+		outPeak = fopen(outpeakfn,"wb");
 	}
 	printf("Processing file %s\n",imageFN);
 	for (i=0;i<nFrames;i++){
@@ -916,7 +916,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 		}
 		fwrite(peakVals,nFits*NrValsFitOutput*nFrames*sizeof(*peakVals),1,outPeakFit);
 		fclose(out3);
-		//~ fclose(outPeak);
+		fclose(outPeak);
 		fclose(outPeakFit);
 	}
 	if (sumImages == 1){
