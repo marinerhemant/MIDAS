@@ -49,9 +49,12 @@ print(cmd1)
 cmd = f'{expanduser("~/opt/MIDAS/DT/bin/IntegratorPeakFitOMP")} {paramFN}.upd {fStem} {startNr} {endNr} {pad} {ext} {darkFN} {nFrames} {numProcs}'
 # ~ subprocess.call(cmd,shell=True)
 
-# ~ from skimage.transform import iradon
+from skimage.transform import iradon
+import numpy as np
+import matplotlib.pyplot as plt
 
 ## Read the sinos and do all recons.
+thetas = np.linspace(0,nFrames-1,nFrames)
 baseFN = basename(fStem)
 outfStem = f'{OutFolder}/{baseFN}'
 outputs = ['RMEAN','MixFactor','SigmaG','SigmaL','MaxInt','BGFit',
@@ -60,4 +63,7 @@ for rad in rads:
 	for eta in etas:
 		for output in outputs:
 			fn = f'{outfStem}_FileNrs_{startNr}_{endNr}_{output}_Rad_{rad}_pm_{rWidth}_Eta_{eta}_pm_{etaWidth}_size_{nFiles}x{nFrames}_float32.bin'
-			print([fn, os.path.exists(fn)])
+			outfn = f'{fn}_recon_{nFiles}x{nFiles}.bin'
+			sino = np.transpose(np.fromfile(fn,dtype=np.float32,count=(nFrames*nFiles)).reshape((nFrames,nFiles)))
+			recon = iradon(sinogram,theta=thetas)
+			recon.astype(np.float32).tofile(outfn)
