@@ -898,11 +898,12 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 				fwrite(AreaMapPixels,NrPixelsY*NrPixelsZ*sizeof(double),1,areamap);
 				fclose(areamap);
 				fclose(out2);
-				fwrite((int)nElsTot,sizeof(int),1,outPeak);
-				fwrite((int)nEtaFits,sizeof(int),1,outPeak);
-				fwrite((int)nRadFits,sizeof(int),1,outPeak);
+				printf("%zu\n",sizeof(size_t));
+				fwrite(&nElsTot,sizeof(size_t),1,outPeak);
+				fwrite(&nEtaFits,sizeof(size_t),1,outPeak);
+				fwrite(&nRadFits,sizeof(size_t),1,outPeak);
 			}
-			//~ fwrite(peakIntensities,nElsTot*nEtaFits*sizeof(double),1,outPeak);
+			fwrite(&peakIntensities,nElsTot*nEtaFits*sizeof(double),1,outPeak);
 		} else{
 			fclose(out);
 			fclose(out1d);
