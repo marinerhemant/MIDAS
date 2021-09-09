@@ -20,7 +20,7 @@ rads = [558]
 rWidth = 10
 rBinSize = 0.25
 
-etaRange = [-200, 195]
+etaRange = [-195, 105]
 etas = [-180,-90,0,90]
 etaWidth = 10
 etaBinSize = 0.3
