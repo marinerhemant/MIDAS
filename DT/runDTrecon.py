@@ -12,13 +12,13 @@ ext = '.ge3'
 darkFN = '/data/tomo1/mpe_mar21_data/mpe_mar21/ge3/dark_before_002916.ge3'
 paramFN = 'ps.txt'
 
-radRange = [200, 1200]
-rads = [558, 664, 687]
+radRange = [538,578]
+rads = [558]
 rWidth = 10
 rBinSize = 0.25
 
 etaRange = [-200, 195]
-etas = [-180,-90,0,90,180]
+etas = [-180,-90,0,90]
 etaWidth = 10
 etaBinSize = 0.3
 
