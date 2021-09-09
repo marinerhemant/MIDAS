@@ -404,13 +404,13 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	Rfit[2] = x[2];
 	Rfit[3] = x[2];
 	Rfit[4] = x[3];
-	Rfit[5] = x[4];
-	Rfit[6] = BG0;
-	Rfit[7] = MeanDiff;
-	Rfit[8] = CalcIntegratedIntensity(x,trp); // Calculate integrated intensity
-	Rfit[9] = TotInt; // Total intensity
-	Rfit[10] = TotInt - (BG0*NrPtsForFit); // Total intensity after removing background
-	Rfit[11] = MaxI; // Input Max Intensity
+	Rfit[5] = MaxI; // Input Max Intensity
+	Rfit[6] = x[4];
+	Rfit[7] = BG0;
+	Rfit[8] = MeanDiff;
+	Rfit[9] = CalcIntegratedIntensity(x,trp); // Calculate integrated intensity
+	Rfit[10] = TotInt; // Total intensity
+	Rfit[11] = TotInt - (BG0*NrPtsForFit); // Total intensity after removing background
 	//~ for (i=0;i<NrValsFitOutput;i++) printf("%lf ",Rfit[i]); printf("\n");
 }
 
@@ -727,6 +727,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 	RPosArr = calloc(nElsTot,sizeof(*RPosArr));
 	ResultArr = malloc(NrValsFitOutput*sizeof(*ResultArr));
 	peakVals = calloc(nFits*NrValsFitOutput*nFrames,sizeof(*peakVals));
+	FILE *outPeak;
 	if (newOutput == 1){
 		char outfnAll[4096];
 		char outfnFit[4096];
@@ -739,6 +740,11 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 		//~ printf("%s\n",outfnAll);
 		out3 = fopen(outfnAll,"wb");
 		outPeakFit = fopen(outfnFit,"wb");
+		char outpeakfn[4096];
+		char *b2name;
+		b2name = basename(imageFN);
+		sprintf(outpeakfn,"%s/%s.LineOuts.bin",outputFolder,b2name);
+		outPeak = fopen(outpeakfn,"wb");
 	}
 	printf("Processing file %s\n",imageFN);
 	for (i=0;i<nFrames;i++){
@@ -894,7 +900,11 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 				fwrite(AreaMapPixels,NrPixelsY*NrPixelsZ*sizeof(double),1,areamap);
 				fclose(areamap);
 				fclose(out2);
+				fwrite((int)nElsTot,sizeof(int),1,outPeak);
+				fwrite((int)nEtaFits,sizeof(int),1,outPeak);
+				fwrite((int)nRadFits,sizeof(int),1,outPeak);
 			}
+			fwrite(peakIntensities,nElsTot*nEtaFits*sizeof(*peakIntensities),1,outPeak);
 		} else{
 			fclose(out);
 			fclose(out1d);
@@ -908,6 +918,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 		}
 		fwrite(peakVals,nFits*NrValsFitOutput*nFrames*sizeof(*peakVals),1,outPeakFit);
 		fclose(out3);
+		fclose(outPeak);
 		fclose(outPeakFit);
 	}
 	if (sumImages == 1){
@@ -1046,13 +1057,13 @@ int main(int argc, char **argv)
 	valTypes[2] = "SigmaG";
 	valTypes[3] = "SigmaL";
 	valTypes[4] = "MaxInt";
-	valTypes[5] = "BGFit";
-	valTypes[6] = "BGSimple";
-	valTypes[7] = "MeanError";
-	valTypes[8] = "FitIntegratedIntensity";
-	valTypes[9] = "TotalIntensity";
-	valTypes[10] = "TotalIntensityBackgroundCorr";
-	valTypes[11] = "MaxIntensityObs";
+	valTypes[5] = "MaxIntensityObs";
+	valTypes[6] = "BGFit";
+	valTypes[7] = "BGSimple";
+	valTypes[8] = "MeanError";
+	valTypes[9] = "FitIntegratedIntensity";
+	valTypes[10] = "TotalIntensity";
+	valTypes[11] = "TotalIntensityBackgroundCorr";
 	FILE *outFile;
 	fStemBaseName = basename(FileStem);
 	sprintf(SinoBaseName,"%s/%s",outputFolder,fStemBaseName);
