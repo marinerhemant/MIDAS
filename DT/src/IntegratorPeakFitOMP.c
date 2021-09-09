@@ -358,7 +358,7 @@ double CalcIntegratedIntensity(
 }
 
 void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPtsForFit],
-				double *Rfit, double Rstep, double Rmean)
+				double *Rfit, double Rstep)
 {
 	unsigned n = 5;
 	double x[n],xl[n],xu[n];
@@ -369,13 +369,17 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 	double BG0 = (PeakShape[0]+PeakShape[NrPtsForFit-1])/2;
 	if (BG0 < 0) BG0=0;
 	double MaxI=-100000, TotInt = 0;
+	double Rmean = (Rs[0] + Rs[NrPtsForFit-1])/2;
+	double RTemp;
 	int i;
 	for (i=0;i<NrPtsForFit;i++){
 		TotInt += PeakShape[i];
 		if (PeakShape[i] > MaxI){
 			MaxI=PeakShape[i];
+			RTemp = Rs[i];
 		}
 	}
+	if (fabs(RTemp-Rmean)<2) Rmean = RTemp;
 	MaxI -= BG0;
 	x[0] = Rmean; xl[0] = Rs[0];    xu[0] = Rs[NrPtsForFit-1];
 	x[1] = 0.5;   xl[1] = 0;        xu[1] = 1;
@@ -860,14 +864,13 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 		// Do peak fitting here
 		for (j=0;j<nEtaFits;j++){
 			for (k=0;k<nRadFits;k++){
-				RMean = radiiToFit[k][0];
 				peakPos = j;
 				peakPos *= nElsTot;
 				peakPos += (int)radiiToFit[k][4];
 				RFitThis = &RPosArr[(int)radiiToFit[k][4]];
 				IntensityThis = &peakIntensities[peakPos];
 				nElsThis = (int)radiiToFit[k][5];
-				FitPeakShape(nElsThis,RFitThis,IntensityThis,ResultArr,RBinSize,RMean);
+				FitPeakShape(nElsThis,RFitThis,IntensityThis,ResultArr,RBinSize);
 				for (l=0;l<NrValsFitOutput;l++){
 					// Arranged as each parameter, then each fit, then each frame: size of each parameter: nFits*nFrames, size of each fit: nFrames
 					peakValArrPos = l;
