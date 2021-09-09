@@ -1061,7 +1061,7 @@ int main(int argc, char **argv)
 	for (iVal=0;iVal<NrValsFitOutput;iVal++){
 		for (iRad=0;iRad<nRadFits;iRad++){
 			for (iEta=0;iEta<nEtaFits;iEta++){
-				sprintf(outFN,"%s_FileNrs_%d_%d_%s_Rad_%lf_pm_%lf_Eta_%lf_pm_%lf_size_%dx%d_double.bin",SinoBaseName,startNr,endNr,valTypes[iVal],radiiToFit[iRad][0],radiiToFit[iRad][1],etasToFit[iEta][0],etasToFit[iEta][1],nFiles,nFrames);
+				sprintf(outFN,"%s_FileNrs_%d_%d_%s_Rad_%d_pm_%d_Eta_%d_pm_%d_size_%dx%d_double.bin",SinoBaseName,startNr,endNr,valTypes[iVal],(int)radiiToFit[iRad][0],(int)radiiToFit[iRad][1],(int)etasToFit[iEta][0],(int)etasToFit[iEta][1],nFiles,nFrames);
 				posArranged  =  iVal*nRadFits*nEtaFits*nFrames*nFiles;
 				posArranged +=           iRad*nEtaFits*nFrames*nFiles;
 				posArranged +=                    iEta*nFrames*nFiles;
