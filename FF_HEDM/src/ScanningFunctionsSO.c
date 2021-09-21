@@ -1202,7 +1202,7 @@ double evaluateF(double *x){
 	check(fd < 0, "open %s failed: %s", filename, strerror(errno));
 	int status = fstat (fd , &s);
 	size = s.st_size;
-	AllSpotsInfo = mmap(0,size,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);
+	AllSpotsInfo = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 	check (AllSpotsInfo == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
 	close(fd);
 	// Read x
@@ -1230,7 +1230,7 @@ double evaluateF(double *x){
 	check(fd < 0, "open %s failed: %s", "/dev/shm/FLUT.bin", strerror(errno));
 	status = fstat(fd,&s);
 	size = s.st_size;
-	FLUT = mmap(0,size,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);
+	FLUT = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 	check (FLUT == MAP_FAILED,"mmap %s failed: %s", "/dev/shm/FLUT.bin", strerror(errno));
 	close(fd);
 	// Read spotInfoMat
@@ -1239,16 +1239,16 @@ double evaluateF(double *x){
 	check(fd < 0, "open %s failed: %s", "/dev/shm/spotInfoMat.bin", strerror(errno));
 	status = fstat(fd,&s);
 	size = s.st_size;
-	spotInfoMat = mmap(0,size,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);
+	spotInfoMat = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 	check (spotInfoMat == MAP_FAILED,"mmap %s failed: %s", "/dev/shm/spotInfoMat.bin", strerror(errno));
 	close(fd);
-	// Read silteredSpotInfo
+	// Read filteredSpotInfo
 	double *filteredSpotInfo;
 	fd = open("/dev/shm/filteredSpotInfo.bin",O_RDWR);
 	check(fd < 0, "open %s failed: %s", "/dev/shm/filteredSpotInfo.bin", strerror(errno));
 	status = fstat(fd,&s);
 	size = s.st_size;
-	filteredSpotInfo = mmap(0,size,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);
+	filteredSpotInfo = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 	check (filteredSpotInfo == MAP_FAILED,"mmap %s failed: %s", "/dev/shm/filteredSpotInfo.bin", strerror(errno));
 	close(fd);
 	// Make struct to pass to problem function
