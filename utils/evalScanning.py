@@ -21,7 +21,16 @@ scanningFCNs.evaluateF.restypes = ctypes.c_double
 function_val = scanningFCNs.evaluateF(x.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
 
 for voxNr in range(3511):
-	x[voxNr*9+0] *= 1.005
-	x[voxNr*9+1] *= 1.005
+	x[voxNr*9+0] *= 1.001
+	x[voxNr*9+1] *= 1.001
+function_val = scanningFCNs.evaluateF(x.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
 
+for voxNr in range(3511):
+	x[voxNr*9+0] *= 1.001
+	x[voxNr*9+1] *= 1.001
+function_val = scanningFCNs.evaluateF(x.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
+
+for voxNr in range(3511):
+	x[voxNr*9+0] *= 1.001
+	x[voxNr*9+1] *= 1.001
 function_val = scanningFCNs.evaluateF(x.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
