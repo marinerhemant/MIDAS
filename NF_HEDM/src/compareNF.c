@@ -320,7 +320,6 @@ main(int argc, char *argv[])
     nOmeRang = NoOfOmegaRanges;
     fclose(fileParam);
     MaxTtheta = rad2deg*atan(MaxRingRad/Lsd[0]);
-    char *ext="bin";
     int *ObsSpotsInfo;
     nrFiles = EndNr - StartNr + 1;
     nrPixels = 2048*2048;
