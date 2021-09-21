@@ -924,7 +924,6 @@ CalcOverlapAccOrient(
 		OmegaStep,XG,YG,Lsd,SizeObsSpots,RotMatTilts,px,ybc,zbc,gs,
 		P0,NrPixelsGrid,ObsSpotsInfo,OrientMatIn,&FracOver);
     *FracOverlap = FracOver;
-    FreeMemMatrix(TheorSpots,MAX_N_SPOTS);
 }
 
 void
@@ -967,7 +966,6 @@ SimulateAccOrient(
     SimulateDiffractionImage(NrOfFiles,nLayers,nTspots,TheorSpots,OmegaStart,
 		OmegaStep,XG,YG,Lsd,SizeObsSpots,RotMatTilts,px,ybc,zbc,gs,
 		P0,NrPixelsGrid,ObsSpotsInfo,OrientMatIn);
-    FreeMemMatrix(TheorSpots,MAX_N_SPOTS);
 }
 
 void
