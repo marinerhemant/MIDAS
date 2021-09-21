@@ -331,7 +331,7 @@ main(int argc, char *argv[])
     //printf("%lld\n",SizeObsSpots*32);
 
     // Read spots info
-	char *file_name = "SpotsInfo.bin";
+	char *file_name = "/dev/shm/SpotsInfo.bin";
     int descp;
     struct stat s;
     int status;
