@@ -1,5 +1,6 @@
 import ctypes
 import os
+import numpy as np
 
 home = os.path.expanduser('~')
 paramFN = 'ps.txt' # This files contains all the parameters required to evaluate the function.
@@ -11,5 +12,11 @@ scanningFCNs.populate_arrays(paramFN.encode('ASCII'))
 # For the lattice parameter: ABCTol defines how much in % the first 3 parameters are allowed to deviate, ABGTol defines how much the next 3 parameters are allowed to deviate.
 # A number of other helper arrays are also written to help in analysis.
 
-# To change x, we can modify the /dev/shm/x.bin file and call the following function, which will return the value of the function calculated as 
-function_val = scanningFCNs.evaluateF()
+# To change x, we can modify the /dev/shm/x.bin file and call the following function, which will return the value of the function calculated as
+
+x = np.fromfile('/dev/shm/x.bin',dtype=np.double,count=(3511*9))
+x = x.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+scanningFCNs.evaluateF.argtypes = ctypes.POINTER(ctypes.c_double)
+scanningFCNs.evaluateF.restypes = ctypes.c_double
+
+function_val = scanningFCNs.evaluateF(x)

@@ -156,10 +156,13 @@ double problem_function(
         ybc[i] = x[6+nLayers+i];
         zbc[i] = x[6+nLayers+nLayers+i];
     }
+	double *TheorSpots;
+	TheorSpots = malloc(MAX_N_SPOTS*3*sizeof(*TheorSpots));
     CalcOverlapAccOrient(NrOfFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XGrain,
 		YGrain,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,
 		Thetas,OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,
-		ObsSpotsInfo,OrientMatIn,&FracOverlap);
+		ObsSpotsInfo,OrientMatIn,&FracOverlap,TheorSpots);
+	free(TheorSpots);
     return (1 - FracOverlap);
 }
 
@@ -661,7 +664,8 @@ main(int argc, char *argv[])
     int OrientationGoodID=0;
     double MatIn[3],P0[nLayers][3],P0T[3];
     double OrientMatIn[3][3],XG[3],YG[3];
-    double ThrSps[MAX_N_SPOTS][3];
+	double *ThrSps;
+	ThrSps = malloc(MAX_N_SPOTS*3*sizeof(*ThrSps));
     MatIn[0]=0;
     MatIn[1]=0;
     MatIn[2]=0;
@@ -690,9 +694,9 @@ main(int argc, char *argv[])
         m=0;
         NormalizeMat(OrientationMatThisUnNorm,OrientationMatThis);
         for (j=StartingRowNr;j<(StartingRowNr+NrSpotsThis);j++){
-            ThrSps[m][0] = SpotsMat[j][0];
-            ThrSps[m][1] = SpotsMat[j][1];
-            ThrSps[m][2] = SpotsMat[j][2];
+            ThrSps[m*3+0] = SpotsMat[j][0];
+            ThrSps[m*3+1] = SpotsMat[j][1];
+            ThrSps[m*3+2] = SpotsMat[j][2];
             m++;
         }
         Convert9To3x3(OrientationMatThis,OrientMatIn);

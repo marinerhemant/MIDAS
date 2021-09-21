@@ -981,7 +981,7 @@ void populate_arrays (char *paramFN){
 	double t_ns = (double)(end.tv_sec - start.tv_sec) * 1.0e9 + (double)(end.tv_nsec - start.tv_nsec);
 }
 
-double evaluateF(){
+double evaluateF(double *x){
 	// What needs to be read here:
 		// 1. nVoxels, nhkls, nConn, maxNPos, dataArrSize, sizeFLUT, totalNrSpots.
 		// 2. Arrays: Connections, Fthis, FLUT, spotInfoMat, filteredSpotInfo, 
@@ -1206,14 +1206,15 @@ double evaluateF(){
 	check (AllSpotsInfo == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
 	close(fd);
 	// Read x
-	double *x;
-	fd = open("/dev/shm/x.bin",O_RDWR);
-	check(fd < 0, "open %s failed: %s", "/dev/shm/x.bin", strerror(errno));
-	status = fstat(fd,&s);
-	size = s.st_size;
-	x = mmap(0,size,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);
-	check (x == MAP_FAILED,"mmap %s failed: %s", "/dev/shm/x.bin", strerror(errno));
-	close(fd);
+	// x will be passed as an argument.
+	//~ double *x;
+	//~ fd = open("/dev/shm/x.bin",O_RDWR);
+	//~ check(fd < 0, "open %s failed: %s", "/dev/shm/x.bin", strerror(errno));
+	//~ status = fstat(fd,&s);
+	//~ size = s.st_size;
+	//~ x = mmap(0,size,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);
+	//~ check (x == MAP_FAILED,"mmap %s failed: %s", "/dev/shm/x.bin", strerror(errno));
+	//~ close(fd);
 	// Read Fthis
 	double *Fthis;
 	fd = open("/dev/shm/Fthis.bin",O_RDWR);

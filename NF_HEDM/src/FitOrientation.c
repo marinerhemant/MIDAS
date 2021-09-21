@@ -117,6 +117,8 @@ double problem_function(
     const long long int SizeObsSpots = f_data->SizeObsSpots;
     double XGrain[3];
     double YGrain[3];
+	double *TheorSpots;
+	TheorSpots = malloc(MAX_N_SPOTS*3*sizeof(*TheorSpots));
     const double OmegaStart = f_data->OmegaStart;
     const double OmegaStep = f_data->OmegaStep;
     const double px = f_data->px;
@@ -171,7 +173,8 @@ double problem_function(
     CalcOverlapAccOrient(NrOfFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XGrain,
 		YGrain,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,
 		Thetas,OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,
-		ObsSpotsInfo,OrientMatIn,&FracOverlap);
+		ObsSpotsInfo,OrientMatIn,&FracOverlap,TheorSpots);
+	free(TheorSpots);
     return (1 - FracOverlap);
 }
 
@@ -707,7 +710,8 @@ main(int argc, char *argv[])
 	    int OrientationGoodID=0;
 	    double MatIn[3],P0[nLayers][3],P0T[3];
 	    double OrientMatIn[3][3],XG[3],YG[3];
-	    double ThrSps[MAX_N_SPOTS][3];
+	    double *ThrSps;
+	    ThrSps = malloc(MAX_N_SPOTS*3*sizeof(*ThrSps));
 	    MatIn[0]=0;
 	    MatIn[1]=0;
 	    MatIn[2]=0;
@@ -736,9 +740,9 @@ main(int argc, char *argv[])
 	        m=0;
 	        NormalizeMat(OrientationMatThisUnNorm,OrientationMatThis);
 	        for (j=StartingRowNr;j<(StartingRowNr+NrSpotsThis);j++){
-	            ThrSps[m][0] = SpotsMat[j*3+0];
-	            ThrSps[m][1] = SpotsMat[j*3+1];
-	            ThrSps[m][2] = SpotsMat[j*3+2];
+	            ThrSps[m*3+0] = SpotsMat[j*3+0];
+	            ThrSps[m*3+1] = SpotsMat[j*3+1];
+	            ThrSps[m*3+2] = SpotsMat[j*3+2];
 	            m++;
 	        }
 	        Convert9To3x3(OrientationMatThis,OrientMatIn);

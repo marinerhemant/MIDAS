@@ -159,6 +159,8 @@ double problem_function(
     }
 	double netResult = 0;
 	int ps;
+	double *TheorSpots;
+	TheorSpots = malloc(MAX_N_SPOTS*3*sizeof(*TheorSpots));
 	for (i=0;i<nSpots;i++){
 	    double OrientMatIn[3][3], FracOverlap, EulIn[3];
 	    //Check euler angles positions!
@@ -175,10 +177,11 @@ double problem_function(
 	    CalcOverlapAccOrient(NrOfFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XGrain,
 			YGrain,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,
 			Thetas,OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,
-			ObsSpotsInfo,OrientMatIn,&FracOverlap);
+			ObsSpotsInfo,OrientMatIn,&FracOverlap,TheorSpots);
 		netResult += FracOverlap;
 		IndividualResults[i] = FracOverlap;
 	}
+	free(TheorSpots);
 	netResult /= nSpots;
     return (1 - netResult);
 }
