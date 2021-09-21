@@ -12,7 +12,7 @@ scanningFCNs.populate_arrays(paramFN.encode('ASCII'))
 # For the lattice parameter: ABCTol defines how much in % the first 3 parameters are allowed to deviate, ABGTol defines how much the next 3 parameters are allowed to deviate.
 # A number of other helper arrays are also written to help in analysis.
 
-# To change x, we can modify the /dev/shm/x.bin file and call the following function, which will return the value of the function calculated as
+# To change x, we can read the /dev/shm/x.bin file and pass the array to our function scanningFCNs.evaluateF to get a function value. The code below shows an example where x is modified multiple times and re-evaluated.
 
 x = np.fromfile('/dev/shm/x.bin',dtype=np.double,count=(3511*9))
 scanningFCNs.evaluateF.argtypes = [ctypes.POINTER(ctypes.c_double)]
