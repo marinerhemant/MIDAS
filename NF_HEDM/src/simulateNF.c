@@ -76,251 +76,11 @@ allocMatrixIntF(int nrows, int ncols)
     return arr;
 }
 
-struct my_func_data{
-	int NrOfFiles;
-    int nLayers;
-    double ExcludePoleAngle;
-    long long int SizeObsSpots;
-    double XGrain[3];
-    double YGrain[3];
-    double OmegaStart;
-    double OmegaStep;
-    double px;
-    double gs;
-    double hkls[5000][4];
-    int n_hkls;
-    double Thetas[5000];
-    int NoOfOmegaRanges;
-    int NrPixelsGrid;
-    double OmegaRanges[MAX_N_OMEGA_RANGES][2];
-    double BoxSizes[MAX_N_OMEGA_RANGES][4];
-    double **P0;
-    int *ObsSpotsInfo;
-    double *Lsd;
-    double RotMatTilts[3][3];
-    double *ybc;
-    double *zbc;
-};
-
-static
-double problem_function(
-    unsigned n,
-	const double *x,
-	double *grad,
-	void* f_data_trial)
-{
-	struct my_func_data *f_data = (struct my_func_data *) f_data_trial;
-	int i, j, count = 1;
-	const int NrOfFiles = f_data->NrOfFiles;
-    const int nLayers = f_data->nLayers;
-    const double ExcludePoleAngle = f_data->ExcludePoleAngle;
-    const long long int SizeObsSpots = f_data->SizeObsSpots;
-    double XGrain[3];
-    double YGrain[3];
-    const double OmegaStart = f_data->OmegaStart;
-    const double OmegaStep = f_data->OmegaStep;
-    const double px = f_data->px;
-    const double gs = f_data->gs;
-    const int NoOfOmegaRanges = f_data->NoOfOmegaRanges;
-    const int NrPixelsGrid = f_data->NrPixelsGrid;
-    double P0[nLayers][3];
-    double OmegaRanges[MAX_N_OMEGA_RANGES][2];
-    double BoxSizes[MAX_N_OMEGA_RANGES][4];
-    double hkls[5000][4];
-    int n_hkls = f_data->n_hkls;
-    double Thetas[5000];
-    for (i=0;i<5000;i++){
-		hkls[i][0] = f_data->hkls[i][0];
-		hkls[i][1] = f_data->hkls[i][1];
-		hkls[i][2] = f_data->hkls[i][2];
-		hkls[i][3] = f_data->hkls[i][3];
-		Thetas[i] = f_data->Thetas[i];
-	}
-    int *ObsSpotsInfo;
-	ObsSpotsInfo = &(f_data->ObsSpotsInfo[0]);
-	double *Lsd;
-	Lsd = &(f_data->Lsd[0]);
-	double *ybc;
-	ybc = &(f_data->ybc[0]);
-	double *zbc;
-	zbc = &(f_data->zbc[0]);
-	for (i=0;i<3;i++){
-		XGrain[i] = f_data->XGrain[i];
-		YGrain[i] = f_data->YGrain[i];
-		for (j=0;j<nLayers;j++){
-			P0[j][i] = f_data->P0[j][i];
-		}
-	}
-	for (i=0;i<MAX_N_OMEGA_RANGES;i++){
-		for (j=0;j<2;j++){
-			OmegaRanges[i][j] = f_data->OmegaRanges[i][j];
-		}
-		for (j=0;j<4;j++){
-			BoxSizes[i][j] = f_data->BoxSizes[i][j];
-		}
-	}
-	double RotMatTilts[3][3];
-	for (i=0;i<3;i++){
-		for (j=0;j<3;j++){
-			RotMatTilts[i][j] = f_data->RotMatTilts[i][j];
-		}
-	}
-    double OrientMatIn[3][3], FracOverlap, x2[3];
-    x2[0] = x[0]; x2[1] = x[1]; x2[2] = x[2];
-    Euler2OrientMat(x2,OrientMatIn);
-    CalcOverlapAccOrient(NrOfFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XGrain,
-		YGrain,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,
-		Thetas,OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,
-		ObsSpotsInfo,OrientMatIn,&FracOverlap);
-    return (1 - FracOverlap);
-}
-
-void
-FitOrientation(
-    const int NrOfFiles,
-    const int nLayers,
-    const double ExcludePoleAngle,
-    double Lsd[nLayers],
-    const long long int SizeObsSpots,
-    const double XGrain[3],
-    const double YGrain[3],
-    double RotMatTilts[3][3],
-    const double OmegaStart,
-    const double OmegaStep,
-    const double px,
-    double ybc[nLayers],
-    double zbc[nLayers],
-    const double gs,
-    double OmegaRanges[MAX_N_OMEGA_RANGES][2],
-    const int NoOfOmegaRanges,
-    double BoxSizes[MAX_N_OMEGA_RANGES][4],
-    double P0[nLayers][3],
-    const int NrPixelsGrid,
-    int *ObsSpotsInfo,
-    double EulerIn[3],
-    double tol,
-    double *EulerOutA,
-    double *EulerOutB,
-    double *EulerOutC,
-    double *ResultFracOverlap,
-    double hkls[5000][4],
-    double Thetas[5000],
-    int n_hkls)
-{
-	unsigned n;
-    long int i,j;
-    n  = 3;
-    double x[n],xl[n],xu[n];
-    for( i=0; i<n; i++)
-    {
-        x[i] = EulerIn[i];
-        xl[i] = x[i] - (tol*M_PI/180);
-        xu[i] = x[i] + (tol*M_PI/180);
-    }
-	struct my_func_data f_data;
-	f_data.NrOfFiles = NrOfFiles;
-	f_data.nLayers = nLayers;
-	f_data.n_hkls = n_hkls;
-	for (i=0;i<5000;i++){
-		f_data.hkls[i][0] = hkls[i][0];
-		f_data.hkls[i][1] = hkls[i][1];
-		f_data.hkls[i][2] = hkls[i][2];
-		f_data.hkls[i][3] = hkls[i][3];
-		f_data.Thetas[i] = Thetas[i];
-	}
-	f_data.ExcludePoleAngle = ExcludePoleAngle;
-	f_data.SizeObsSpots = SizeObsSpots;
-	f_data.P0 = allocMatrixF(nLayers,3);
-	for (i=0;i<3;i++){
-		f_data.XGrain[i] = XGrain[i];
-		f_data.YGrain[i] = YGrain[i];
-		for (j=0;j<nLayers;j++){
-			f_data.P0[j][i] = P0[j][i];
-		}
-		for (j=0;j<3;j++){
-			f_data.RotMatTilts[i][j] = RotMatTilts[i][j];
-		}
-	}
-	for (i=0;i<MAX_N_OMEGA_RANGES;i++){
-		for (j=0;j<2;j++){
-			f_data.OmegaRanges[i][j] = OmegaRanges[i][j];
-		}
-		for (j=0;j<4;j++){
-			f_data.BoxSizes[i][j] = BoxSizes[i][j];
-		}
-	}
-	f_data.ObsSpotsInfo = &ObsSpotsInfo[0];
-	f_data.Lsd = &Lsd[0];
-	f_data.ybc = &ybc[0];
-	f_data.zbc = &zbc[0];
-	f_data.OmegaStart = OmegaStart;
-	f_data.OmegaStep = OmegaStep;
-	f_data.px = px;
-	f_data.gs = gs;
-	f_data.NoOfOmegaRanges = NoOfOmegaRanges;
-	f_data.NrPixelsGrid = NrPixelsGrid;
-	struct my_func_data *f_datat;
-	f_datat = &f_data;
-	void* trp = (struct my_func_data *) f_datat;
-	double tole = 1e-3;
-	nlopt_opt opt;
-	opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-	nlopt_set_lower_bounds(opt, xl);
-	nlopt_set_upper_bounds(opt, xu);
-	nlopt_set_min_objective(opt, problem_function, trp);
-	double minf=1;
-	nlopt_optimize(opt, x, &minf);
-	nlopt_destroy(opt);
-    *ResultFracOverlap = minf;
-    *EulerOutA = x[0];
-    *EulerOutB = x[1];
-    *EulerOutC = x[2];
-}
-
-static void
-check (int test, const char * message, ...)
-{
-    if (test) {
-        va_list args;
-        va_start (args, message);
-        vfprintf (stderr, message, args);
-        va_end (args);
-        fprintf (stderr, "\n");
-        exit (EXIT_FAILURE);
-    }
-}
-
-static inline void
-QuatToOrientMat(
-    double Quat[4],
-    double OrientMat[3][3])
-{
-    double Q1_2,Q2_2,Q3_2,Q12,Q03,Q13,Q02,Q23,Q01;
-    Q1_2 = Quat[1]*Quat[1];
-    Q2_2 = Quat[2]*Quat[2];
-    Q3_2 = Quat[3]*Quat[3];
-    Q12  = Quat[1]*Quat[2];
-    Q03  = Quat[0]*Quat[3];
-    Q13  = Quat[1]*Quat[3];
-    Q02  = Quat[0]*Quat[2];
-    Q23  = Quat[2]*Quat[3];
-    Q01  = Quat[0]*Quat[1];
-    OrientMat[0][0] = 1 - 2*(Q2_2+Q3_2);
-    OrientMat[0][1] = 2*(Q12-Q03);
-    OrientMat[0][2] = 2*(Q13+Q02);
-    OrientMat[1][0] = 2*(Q12+Q03);
-    OrientMat[1][1] = 1 - 2*(Q1_2+Q3_2);
-    OrientMat[1][2] = 2*(Q23-Q01);
-    OrientMat[2][0] = 2*(Q13-Q02);
-    OrientMat[2][1] = 2*(Q23+Q01);
-    OrientMat[2][2] = 1 - 2*(Q1_2+Q2_2);
-}
-
 int
 main(int argc, char *argv[])
 {
 	if (argc != 4){
-		printf("Usage:\n FitOrientation params.txt InputMicFN OutputFN\n");
+		printf("Usage:\n simulateNF params.txt InputMicFN OutputFN\n");
 		return 1;
 	}
 
@@ -548,7 +308,7 @@ main(int argc, char *argv[])
     fclose(fileParam);
     MaxTtheta = rad2deg*atan(MaxRingRad/Lsd[0]);
     char *ext="bin";
-    int *ObsSpotsInfo;
+    uint16_t *ObsSpotsInfo;
     nrFiles = EndNr - StartNr + 1;
     nrPixels = 2048*2048;
     long long int SizeObsSpots;
@@ -643,14 +403,9 @@ main(int argc, char *argv[])
 	}
 	printf("Writing output file\n");
 	FILE *OutputF;
-	uint16_t *ObsInt16;
-	ObsInt16 = malloc(SizeObsSpots*sizeof(*ObsInt16));
-	size_t cont;
-	for (cont=0;cont<SizeObsSpots;cont++) ObsInt16[cont] = ObsSpotsInfo[cont];
-	free(ObsSpotsInfo);
 	OutputF = fopen(outputFN,"wb");
 	char dummychar[8192];
 	fwrite(dummychar,8192,1,OutputF);
-	fwrite(ObsInt16,SizeObsSpots*sizeof(*ObsInt16),1,OutputF);
+	fwrite(ObsSpotsInfo,SizeObsSpots*sizeof(*ObsSpotsInfo),1,OutputF);
 	return 0;
 }

@@ -756,7 +756,7 @@ SimulateDiffractionImage(
     const double gs,
     double P0All[nLayers][3],
     const int NrPixelsGrid,
-    int *ObsSpotsInfo,
+    uint16_t *ObsSpotsInfo,
     double OrientMatIn[3][3])
 {
     int j,OmeBin,OutofBounds,k,l;
@@ -956,7 +956,7 @@ SimulateAccOrient(
     double BoxSizes[MAX_N_OMEGA_RANGES][4],
     double P0[nLayers][3],
     const int NrPixelsGrid,
-    int *ObsSpotsInfo,
+    uint16_t *ObsSpotsInfo,
     double OrientMatIn[3][3])
 {
     int nTspots,i;
