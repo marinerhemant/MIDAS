@@ -640,12 +640,17 @@ main(int argc, char *argv[])
 		YG[2] = ys+dy2;
 		Euler2OrientMat(eulThis,OMIn);
 		SimulateAccOrient(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XG,YG,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,Thetas,OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,ObsSpotsInfo,OMIn);
-		printf("%d\n",lineNr++);
 	}
+	printf("Writing output file\n");
 	FILE *OutputF;
+	uint16_t *ObsInt16;
+	ObsInt16 = malloc(SizeObsSpots*sizeof(*ObsInt16));
+	size_t cont;
+	for (cont=0;cont<SizeObsSpots;cont++) ObsInt16[cont] = ObsSpotsInfo[cont];
+	free(ObsSpotsInfo);
 	OutputF = fopen(outputFN,"wb");
 	char dummychar[8192];
 	fwrite(dummychar,8192,1,OutputF);
-	fwrite(ObsSpotsInfo,SizeObsSpots*sizeof(*ObsSpotsInfo),1,OutputF);
+	fwrite(ObsInt16,SizeObsSpots*sizeof(*ObsInt16),1,OutputF);
 	return 0;
 }
