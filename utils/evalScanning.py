@@ -16,7 +16,7 @@ scanningFCNs.populate_arrays(paramFN.encode('ASCII'))
 
 x = np.fromfile('/dev/shm/x.bin',dtype=np.double,count=(3511*9))
 x = x.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-scanningFCNs.evaluateF.argtypes = ctypes.POINTER(ctypes.c_double)
+scanningFCNs.evaluateF.argtypes = [ctypes.POINTER(ctypes.c_double)]
 scanningFCNs.evaluateF.restypes = ctypes.c_double
 
 function_val = scanningFCNs.evaluateF(x)
