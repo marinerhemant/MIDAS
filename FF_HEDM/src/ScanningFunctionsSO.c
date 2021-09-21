@@ -592,7 +592,7 @@ static inline double UpdateArraysThis(double omegaStep, double px, int nVoxels, 
 		}
 	}
 	double diffFThis = CalcDifferences(omegaStep,px,totalNrSpots,spotInfoMat,filteredSpotInfo,differencesMat);
-	printf("Error now: %.12lf\n",diffFThis);
+	//~ printf("Error now: %.12lf\n",diffFThis);
 	fflush(stdout);
 	return diffFThis;
 }
@@ -634,7 +634,7 @@ static double problem_function(
 	char* c_time_string;
 	current_time = time(NULL);
 	c_time_string = ctime(&current_time);
-	printf("Current time is %s", c_time_string);
+	//~ printf("Current time is %s", c_time_string);
 	int nVoxels = n / 9;
 	struct FITTING_PARAMS *f_data = (struct FITTING_PARAMS *) f_data_trial;
 	double omegaStep = f_data->omegaStep, px = f_data->px, voxelLen = f_data->voxelLen, beamFWHM = f_data->beamFWHM, omeTol = f_data->omeTol;
@@ -688,7 +688,7 @@ static int conn(double *voxelList, double voxelLen, int nVoxels, int *Connection
 
 void populate_arrays (char *paramFN){
 	FILE *fileParam;
-	printf("%s\n",paramFN);
+	//~ printf("%s\n",paramFN);
 	fileParam = fopen(paramFN,"r");
 	double omegaStep, px, voxelLen, beamFWHM, omeTol, Lsd, Wavelength;
 	int nScans, rings[500], nRings=0;
@@ -948,7 +948,7 @@ void populate_arrays (char *paramFN){
 	char* c_time_string;
 	current_time = time(NULL);
 	c_time_string = ctime(&current_time);
-	printf("Current time is %s", c_time_string);
+	//~ printf("Current time is %s", c_time_string);
 	printf("Populating matrices.\n");
 	PopulateMatrices (omegaStep, px, nVoxels, voxelList, voxelLen, beamFWHM, nBeamPositions, beamPositions, omeTol, nRings,
 					  Eul, LatCin, nhkls, hkls, Lsd, Wavelength, totalNrSpots, AllIDsInfo, AllSpotsInfo, maxNPos, FLUT, Fthis,
@@ -993,7 +993,7 @@ double evaluateF(double *x){
 	size_t nVoxels,nhkls,nConn,maxNPos,dataArrSize,sizeFLUT,totalNrSpots,sizeSpotInfoMat;
 	fgets(aline,4096,paramsT);
 	sscanf(aline,"%s",paramFN);
-	printf("%s\n",paramFN);
+	//~ printf("%s\n",paramFN);
 	fgets(aline,4096,paramsT);
 	sscanf(aline,"%zu",&nVoxels);
 	fgets(aline,4096,paramsT);
@@ -1286,6 +1286,7 @@ double evaluateF(double *x){
 	char* c_time_string;
 	current_time = time(NULL);
 	c_time_string = ctime(&current_time);
-	printf("Current time is %s", c_time_string);
+	//~ printf("Current time is %s", c_time_string);
+	printf("%lf\n",function_val);
 	return function_val;
 }
