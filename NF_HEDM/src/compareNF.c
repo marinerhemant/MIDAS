@@ -335,8 +335,8 @@ main(int argc, char *argv[])
 	char cmmd[4096];
 	sprintf(cmmd,"~/opt/MIDAS/FF_HEDM/bin/GetHKLList %s",ParamFN);
 	system(cmmd);
-    char *MicFN = argv[3];
-    double fracThresh = atof(argv[4]);
+    char *MicFN = argv[2];
+    double fracThresh = atof(argv[3]);
     char aline[4096];
     fileParam = fopen(ParamFN,"r");
     char *str, dummy[4096];
