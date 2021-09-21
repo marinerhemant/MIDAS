@@ -332,6 +332,10 @@ main(int argc, char *argv[])
     char *ParamFN;
     FILE *fileParam;
     ParamFN = argv[1];
+	char cmmd[4096];
+	sprintf(cmmd,"~/opt/MIDAS/NF_HEDM/bin/GetHKLList %s",ParamFN);
+	system(cmmd);
+	return 1;
     char *MicFN = argv[3];
     char *outputFN = argv[4];
     char aline[4096];

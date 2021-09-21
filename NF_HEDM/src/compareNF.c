@@ -320,7 +320,7 @@ int
 main(int argc, char *argv[])
 {
 	if (argc != 4){
-		printf("Usage:\n FitOrientation params.txt InputMicFN ConfDiff\n");
+		printf("Usage:\n FitOrientation params.txt InputMicFN ConfDiff\n Must have SpotInfo.bin in the same directory.\n");
 		return 1;
 	}
 
@@ -332,6 +332,9 @@ main(int argc, char *argv[])
     char *ParamFN;
     FILE *fileParam;
     ParamFN = argv[1];
+	char cmmd[4096];
+	sprintf(cmmd,"~/opt/MIDAS/FF_HEDM/bin/GetHKLList %s",ParamFN);
+	system(cmmd);
     char *MicFN = argv[3];
     double fracThresh = atof(argv[4]);
     char aline[4096];

@@ -872,6 +872,7 @@ int main(int argc, char *argv[])
 	printf("\nOutput:\n");
 	for (i=0;i<18;i++) printf("%f ",Out[i]);
 	printf("\n");
+	printf("Input tx: %lf, Fit tx: %lf\n",tx,Out[12]);
 	end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
     printf("Time elapsed: %f s.\n",diftotal);
