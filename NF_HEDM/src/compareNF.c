@@ -433,11 +433,11 @@ main(int argc, char *argv[])
 		Euler2OrientMat(eulThis,OMIn);
 		CalcOverlapAccOrient(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XG,YG,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,Thetas,OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,ObsSpotsInfo,OMIn,&FracCalc,TheorSpots);
 		lineNr += 1;
-		//~ if (origConf - FracCalc > fracThresh){
-			//~ fprintf(outMicF,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf 0\n",(double)lineNr,FracCalc,origConf-FracCalc,xs,ys,edgeLen,ud,eulThis[0],eulThis[1],eulThis[2],origConf);
-		//~ } else{
-			//~ fprintf(outMicF,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf 1\n",(double)lineNr,FracCalc,origConf-FracCalc,xs,ys,edgeLen,ud,eulThis[0],eulThis[1],eulThis[2],origConf);
-		//~ }
+		if (origConf - FracCalc > fracThresh){
+			fprintf(outMicF,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf 0\n",(double)lineNr,FracCalc,origConf-FracCalc,xs,ys,edgeLen,ud,eulThis[0],eulThis[1],eulThis[2],origConf);
+		} else{
+			fprintf(outMicF,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf 1\n",(double)lineNr,FracCalc,origConf-FracCalc,xs,ys,edgeLen,ud,eulThis[0],eulThis[1],eulThis[2],origConf);
+		}
 	}
 	return 0;
 }
