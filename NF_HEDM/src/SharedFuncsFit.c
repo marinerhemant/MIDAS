@@ -579,7 +579,7 @@ CalcFracOverlap(
     const int NrOfFiles,
     const int nLayers,
     const int nTspots,
-    double TheorSpots[MAX_N_SPOTS][3],
+    double *TheorSpots,
     double OmegaStart,
     double OmegaStep,
     double XGrain[3],
@@ -610,15 +610,15 @@ CalcFracOverlap(
 	OverlapPixels = 0;
 	TotalPixels=0;
     for (j=0;j<nTspots;j++){
-		ythis = TheorSpots[j][0];
-		zthis = TheorSpots[j][1];
+		ythis = TheorSpots[j*3+0];
+		zthis = TheorSpots[j*3+1];
 		OutofBounds = 1;
 		if (Wedge != 0){
 			eta = CalcEta(ythis,zthis);
 			RingRadius = sqrt(ythis*ythis+zthis*zthis);
 			theta = rad2deg*atan(RingRadius/Lsds[0]);
 			omediff = CorrectWedge(eta,theta,Wavelength,Wedge);
-			OmegaThis = TheorSpots[j][2] - omediff;
+			OmegaThis = TheorSpots[j*3+2] - omediff;
 			// Check if we just went outside the omegaRange, then make OutofBounds = 1;
 			if (OmegaThis >= 180){
 				OmegaThis -= 360;
@@ -633,7 +633,7 @@ CalcFracOverlap(
 				}
 			}
 		}else{
-			OmegaThis = TheorSpots[j][2];
+			OmegaThis = TheorSpots[j*3+2];
 			OutofBounds = 0;
 		}
 		OmeBin = (int) floor((-OmegaStart+OmegaThis)/OmegaStep);
@@ -742,7 +742,7 @@ SimulateDiffractionImage(
     const int NrOfFiles,
     const int nLayers,
     const int nTspots,
-    double TheorSpots[MAX_N_SPOTS][3],
+    double *TheorSpots,
     double OmegaStart,
     double OmegaStep,
     double XGrain[3],
@@ -771,15 +771,15 @@ SimulateDiffractionImage(
 	OverlapPixels = 0;
 	TotalPixels=0;
     for (j=0;j<nTspots;j++){
-		ythis = TheorSpots[j][0];
-		zthis = TheorSpots[j][1];
+		ythis = TheorSpots[j*3+0];
+		zthis = TheorSpots[j*3+1];
 		OutofBounds = 1;
 		if (Wedge != 0){
 			eta = CalcEta(ythis,zthis);
 			RingRadius = sqrt(ythis*ythis+zthis*zthis);
 			theta = rad2deg*atan(RingRadius/Lsds[0]);
 			omediff = CorrectWedge(eta,theta,Wavelength,Wedge);
-			OmegaThis = TheorSpots[j][2] - omediff;
+			OmegaThis = TheorSpots[j*3+2] - omediff;
 			// Check if we just went outside the omegaRange, then make OutofBounds = 1;
 			if (OmegaThis >= 180){
 				OmegaThis -= 360;
@@ -794,7 +794,7 @@ SimulateDiffractionImage(
 				}
 			}
 		}else{
-			OmegaThis = TheorSpots[j][2];
+			OmegaThis = TheorSpots[j*3+2];
 			OutofBounds = 0;
 		}
 		OmeBin = (int) floor((-OmegaStart+OmegaThis)/OmegaStep);
@@ -907,25 +907,20 @@ CalcOverlapAccOrient(
     const int NrPixelsGrid,
     int *ObsSpotsInfo,
     double OrientMatIn[3][3],
-    double *FracOverlap)
+    double *FracOverlap,
+    double *TheorSpots)
 {
     int nTspots,i;
-    double **TheorSpots, Lsd0=Lsd[0];
-    TheorSpots = allocMatrix(MAX_N_SPOTS,3);
+    double Lsd0=Lsd[0];
     CalcDiffractionSpots(Lsd0, ExcludePoleAngle, OmegaRanges, NoOfOmegaRanges,
 		hkls, n_hkls, Thetas, BoxSizes, &nTspots, OrientMatIn,TheorSpots);
     double FracOver;
-    double XG[3],YG[3],ThrSps[nTspots][3];
+    double XG[3],YG[3];
     for (i=0;i<3;i++){
         XG[i] = XGrain[i];
         YG[i] = YGrain[i];
     }
-    for (i=0;i<nTspots;i++){
-        ThrSps[i][0] = TheorSpots[i][0];
-        ThrSps[i][1] = TheorSpots[i][1];
-        ThrSps[i][2] = TheorSpots[i][2];
-    }
-    CalcFracOverlap(NrOfFiles,nLayers,nTspots,ThrSps,OmegaStart,
+    CalcFracOverlap(NrOfFiles,nLayers,nTspots,TheorSpots,OmegaStart,
 		OmegaStep,XG,YG,Lsd,SizeObsSpots,RotMatTilts,px,ybc,zbc,gs,
 		P0,NrPixelsGrid,ObsSpotsInfo,OrientMatIn,&FracOver);
     *FracOverlap = FracOver;
@@ -957,24 +952,19 @@ SimulateAccOrient(
     double P0[nLayers][3],
     const int NrPixelsGrid,
     uint16_t *ObsSpotsInfo,
-    double OrientMatIn[3][3])
+    double OrientMatIn[3][3],
+    double *TheorSpots)
 {
     int nTspots,i;
-    double **TheorSpots, Lsd0=Lsd[0];
-    TheorSpots = allocMatrix(MAX_N_SPOTS,3);
+    double Lsd0=Lsd[0];
     CalcDiffractionSpots(Lsd0, ExcludePoleAngle, OmegaRanges, NoOfOmegaRanges,
 		hkls, n_hkls, Thetas, BoxSizes, &nTspots, OrientMatIn,TheorSpots);
-    double XG[3],YG[3],ThrSps[nTspots][3];
+    double XG[3],YG[3];
     for (i=0;i<3;i++){
         XG[i] = XGrain[i];
         YG[i] = YGrain[i];
     }
-    for (i=0;i<nTspots;i++){
-        ThrSps[i][0] = TheorSpots[i][0];
-        ThrSps[i][1] = TheorSpots[i][1];
-        ThrSps[i][2] = TheorSpots[i][2];
-    }
-    SimulateDiffractionImage(NrOfFiles,nLayers,nTspots,ThrSps,OmegaStart,
+    SimulateDiffractionImage(NrOfFiles,nLayers,nTspots,TheorSpots,OmegaStart,
 		OmegaStep,XG,YG,Lsd,SizeObsSpots,RotMatTilts,px,ybc,zbc,gs,
 		P0,NrPixelsGrid,ObsSpotsInfo,OrientMatIn);
     FreeMemMatrix(TheorSpots,MAX_N_SPOTS);

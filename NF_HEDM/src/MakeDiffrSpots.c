@@ -266,7 +266,7 @@ CalcDiffrSpots_Furnace(
                        RealType BoxSizes[][4],
                        int NOmegaRanges,
                        RealType ExcludePoleAngle,
-                       RealType **spots,
+                       RealType *spots,
                        int *nspots)
 {
     int i, OmegaRangeNo;
@@ -310,9 +310,9 @@ CalcDiffrSpots_Furnace(
                 }
             }
             if (KeepSpot==1) {
-                spots[spotnr][0] = yl;
-                spots[spotnr][1] = zl;
-                spots[spotnr][2] = omegas[i];
+                spots[spotnr*3+0] = yl;
+                spots[spotnr*3+1] = zl;
+                spots[spotnr*3+2] = omegas[i];
                 spotnr++;
                 spotid++;
             }
@@ -475,7 +475,7 @@ main(int argc, char *argv[])
 	}
 
     // For each position and each orientation, generate spots and save.
-    RealType **TheorSpots;
+    RealType *TheorSpots;
     int nTspots;
     char *rc;
     char *hklfn = "hkls.csv";
@@ -519,7 +519,7 @@ main(int argc, char *argv[])
 	//~ for (i=0;i<n_hkls;i++) printf("%f %f %f %d %f\n",hkls[i][0],hkls[i][1],
 		//~ hkls[i][2],(int)hkls[i][3],Thetas[i]);
     int nRowsPerGrain = 2 * n_hkls;
-    TheorSpots = allocMatrix(nRowsPerGrain,3);
+    TheorSpots = malloc(nRowsPerGrain*3*sizeof(*TheorSpots));
     if (TheorSpots == NULL ) {
         printf("Memory error: could not allocate memory for output matrix. Memory full?\n");
         return 1;
@@ -557,14 +557,14 @@ main(int argc, char *argv[])
         }
         fprintf(fl,"\n");
         for (i=0;i<nTspots;i++){
-            fprintf(ft,"%f %f %f\n",TheorSpots[i][0],TheorSpots[i][1],TheorSpots[i][2]);
+            fprintf(ft,"%f %f %f\n",TheorSpots[i*3+0],TheorSpots[i*3+1],TheorSpots[i*3+2]);
         }
     }
     fclose(ft);
     fclose(fg);
     fclose(fl);
     FreeMemMatrix(randQ,NrOrientations);
-    FreeMemMatrix(TheorSpots,nRowsPerGrain);
+    free(TheorSpots);
     end = clock();
     diftotal = ((double)(end-start0))/CLOCKS_PER_SEC;
     printf("Time elapsed in making diffraction spots: %f [s]\n",diftotal);

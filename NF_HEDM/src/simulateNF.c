@@ -382,6 +382,8 @@ main(int argc, char *argv[])
 	fgets(aline,4096,InpMicF);
 	fgets(aline,4096,InpMicF);
 	int lineNr=0;
+	double *TheorSpots;
+	TheorSpots = malloc(MAX_N_SPOTS*3*sizeof(*TheorSpots));
 	while (fgets(aline,4096,InpMicF)!= NULL){
 		sscanf(aline,"%s %s %s %lf %lf %lf %lf %lf %lf %lf %lf %s",dummy,dummy,dummy,&xs,&ys,&edgeLen,&ud,&eulThis[0],&eulThis[1],&eulThis[2],&origConf,dummy);
 		gs = edgeLen/2;
@@ -399,7 +401,7 @@ main(int argc, char *argv[])
 		YG[1] = ys+dy2;
 		YG[2] = ys+dy2;
 		Euler2OrientMat(eulThis,OMIn);
-		SimulateAccOrient(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XG,YG,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,Thetas,OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,ObsSpotsInfo,OMIn);
+		SimulateAccOrient(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XG,YG,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,Thetas,OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,ObsSpotsInfo,OMIn,TheorSpots);
 	}
 	printf("Writing output file\n");
 	FILE *OutputF;

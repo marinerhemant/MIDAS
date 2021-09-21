@@ -208,7 +208,7 @@ CalcDiffrSpots_Furnace(
                        int n_hkls,
                        double Thetas[5000],
                        RealType ExcludePoleAngle,
-                       RealType **spots,
+                       RealType *spots,
                        int *nspots)
 {
     int i, OmegaRangeNo;
@@ -251,9 +251,9 @@ CalcDiffrSpots_Furnace(
                 }
             }
             if (KeepSpot==1) {
-                spots[spotnr][0] = yl;
-                spots[spotnr][1] = zl;
-                spots[spotnr][2] = omegas[i];
+                spots[spotnr*3+0] = yl;
+                spots[spotnr*3+1] = zl;
+                spots[spotnr*3+2] = omegas[i];
                 spotnr++;
                 spotid++;
             }
@@ -273,14 +273,10 @@ CalcDiffractionSpots(double Distance,
 	double BoxSizes[MAX_N_OMEGA_RANGES][4], 
 	int *nTspots, 
 	double OrientMatr[3][3], 
-	double **TheorSpots)
+	double *TheorSpots)
 {
     *nTspots = 0;
     int nTsps;
-    if (TheorSpots == NULL ) {
-        printf("Memory error: could not allocate memory for output matrix. Memory full?\n");
-        return 1;
-    }
     CalcDiffrSpots_Furnace(OrientMatr, Distance, OmegaRanges, BoxSizes,
 		NoOfOmegaRanges, hkls, n_hkls, Thetas, ExcludePoleAngle, TheorSpots, &nTsps);
     *nTspots = nTsps;
