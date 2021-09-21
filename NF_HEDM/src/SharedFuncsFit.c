@@ -915,15 +915,10 @@ CalcOverlapAccOrient(
     CalcDiffractionSpots(Lsd0, ExcludePoleAngle, OmegaRanges, NoOfOmegaRanges,
 		hkls, n_hkls, Thetas, BoxSizes, &nTspots, OrientMatIn,TheorSpots);
     double FracOver;
-    double XG[3],YG[3];
-    for (i=0;i<3;i++){
-        XG[i] = XGrain[i];
-        YG[i] = YGrain[i];
-    }
-    CalcFracOverlap(NrOfFiles,nLayers,nTspots,TheorSpots,OmegaStart,
-		OmegaStep,XG,YG,Lsd,SizeObsSpots,RotMatTilts,px,ybc,zbc,gs,
-		P0,NrPixelsGrid,ObsSpotsInfo,OrientMatIn,&FracOver);
-    *FracOverlap = FracOver;
+    //~ CalcFracOverlap(NrOfFiles,nLayers,nTspots,TheorSpots,OmegaStart,
+		//~ OmegaStep,XGrain,YGrain,Lsd,SizeObsSpots,RotMatTilts,px,ybc,zbc,gs,
+		//~ P0,NrPixelsGrid,ObsSpotsInfo,OrientMatIn,&FracOver);
+    //~ *FracOverlap = FracOver;
 }
 
 void
