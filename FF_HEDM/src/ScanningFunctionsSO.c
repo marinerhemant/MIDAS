@@ -1287,6 +1287,6 @@ double evaluateF(double *x){
 	current_time = time(NULL);
 	c_time_string = ctime(&current_time);
 	//~ printf("Current time is %s", c_time_string);
-	printf("%lf\n",function_val);
+	//~ printf("%lf\n",function_val);
 	return function_val;
 }
