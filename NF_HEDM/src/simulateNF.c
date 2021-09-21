@@ -613,6 +613,7 @@ main(int argc, char *argv[])
 	double OMIn[3][3], FracCalc;
 	FILE *InpMicF;
 	InpMicF = fopen(MicFN,"r");
+	if (InpMicF == NULL) return 1;
 	char outFN[4096];
 	sprintf(outFN,"%s.output.csv",MicFN);
 	fgets(aline,4096,InpMicF);
