@@ -591,7 +591,7 @@ main(int argc, char *argv[])
 	double hkls[5000][4];
 	double Thetas[5000];
 	char hklfn[1024];
-	sprintf(hklfn,"%s/hkls.csv",direct);
+	sprintf(hklfn,"hkls.csv");
 	FILE *hklf = fopen(hklfn,"r");
 	fgets(aline,1000,hklf);
 	while (fgets(aline,1000,hklf)!=NULL){
