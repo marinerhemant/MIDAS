@@ -124,6 +124,14 @@ fitorientation: $(SRCDIR)FitOrientation.c
 	$(CC) $(SRCDIR)FitOrientation.c $(SRCDIR)GetMisorientation.c $(SRCDIR)CalcDiffractionSpots.c $(SRCDIR)SharedFuncsFit.c \
 	-o $(BINDIR)FitOrientation $(CFLAGS) $(CFLAGSNLOPT)
 
+comparenf: $(SRCDIR)compareNF.c
+	$(CC) $(SRCDIR)compareNF.c $(SRCDIR)CalcDiffractionSpots.c $(SRCDIR)SharedFuncsFit.c \
+	-o $(BINDIR)compareNF $(CFLAGS) $(CFLAGSNLOPT)
+
+simulatenf: $(SRCDIR)simulateNF.c
+	$(CC) $(SRCDIR)simulateNF.c $(SRCDIR)CalcDiffractionSpots.c $(SRCDIR)SharedFuncsFit.c \
+	-o $(BINDIR)simulateNF $(CFLAGS) $(CFLAGSNLOPT)
+
 fitorientationomp: $(SRCDIR)FitOrientationOMP.c
 	$(CC) $(SRCDIR)FitOrientationOMP.c $(SRCDIR)GetMisorientation.c $(SRCDIR)CalcDiffractionSpots.c $(SRCDIR)SharedFuncsFit.c \
 	-o $(BINDIR)FitOrientationOMP -fopenmp $(CFLAGS) $(CFLAGSNLOPT)

@@ -1,4 +1,5 @@
 from math import sin, cos, acos, sqrt
+import numpy as np
 
 TricSym=[[1.00000,0.00000,0.00000,0.00000],[1.00000,0.00000,0.00000,0.00000]];
 MonoSym=[[1.00000,0.00000,0.00000,0.00000],[0.00000,1.00000,0.00000,0.00000]];
@@ -119,6 +120,25 @@ def Euler2OrientMat(Euler):
 	m_out[6] = sth * sph
 	m_out[7] = cth * sph
 	m_out[8] = cph
+	return m_out
+
+def eul2omMat(euler):
+	m_out = np.zeros((euler.shape[0],9))
+	cps = np.cos(euler[:,0])
+	cph = np.cos(euler[:,1])
+	cth = np.cos(euler[:,2])
+	sps = np.sin(euler[:,0])
+	sph = np.sin(euler[:,1])
+	sth = np.sin(euler[:,2])
+	m_out[:,0] = cth * cps - sth * cph * sps
+	m_out[:,1] = -cth * cph * sps - sth * cps
+	m_out[:,2] = sph * sps
+	m_out[:,3] = cth * sps + sth * cph * cps
+	m_out[:,4] = cth * cph * cps - sth * sps
+	m_out[:,5] = -sph * cps
+	m_out[:,6] = sth * sph
+	m_out[:,7] = cth * sph
+	m_out[:,8] = cph
 	return m_out
 
 # Euler angles must be in radians, answer in radians as well
