@@ -67,6 +67,6 @@ plt.errorbar(outArr[:,0],outArr[:,1],yerr=outArr[:,3],xerr=outArr[:,2],linewidth
 plt.show()
 
 import numpy as np
-outArr = np.genfromtxt('GrainCentroidsWeighted.csv')
+outArr = np.genfromtxt(outFN)
 import matplotlib.pyplot as plt
 fig,ax = plt.subplots(1,1); ax.errorbar(outArr[:,0],outArr[:,1],yerr=outArr[:,3],xerr=outArr[:,2],linewidth=0,markersize=10,marker='o'); ax.set_aspect('equal'); plt.show()
