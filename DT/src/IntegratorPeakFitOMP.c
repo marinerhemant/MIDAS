@@ -420,7 +420,6 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
     clock_t start, end, start0, end0;
     start0 = clock();
     double diftotal;
-    //~ system("cp Map.bin nMap.bin /dev/shm");
 	double RMax, RMin, RBinSize, EtaMax, EtaMin, EtaBinSize, Lsd, px;
 	int NrPixelsY = 2048, NrPixelsZ = 2048, Normalize = 1;
 	int nEtaBins, nRBins;
@@ -979,6 +978,7 @@ int main(int argc, char **argv)
 		printf("Usage: ./IntegratorPeakFitOMP ParamFN FileStem(fullpath until _before digits) StartNr EndNr Padding ext darkFN nFrames numProcs \n");
 		return 1;
 	}
+    system("cp Map.bin nMap.bin /dev/shm");
 	char *pfn = argv[1];
 	char *FileStem = argv[2];
 	int startNr = atoi(argv[3]);
