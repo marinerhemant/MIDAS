@@ -823,7 +823,8 @@ int main(int argc, char *argv[])
 	int nhkls = 0;
 	double **hkls;
 	hkls = allocMatrix(MaxNSpotsBest,4); // We need h,k,l and RingNr
-	char *hklfn = "hkls.csv";
+	char hklfn;
+	sprintf(hklfn, "%s/hkls.csv", folder);
 	FILE *hklf = fopen(hklfn,"r");
 	if (hklf == NULL){
 		printf("Could not read the hkl file. Exiting.\n");
