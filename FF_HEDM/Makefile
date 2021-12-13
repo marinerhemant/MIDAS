@@ -180,11 +180,17 @@ indexer: $(SRCDIR)IndexerLinuxArgsOptimizedShm.c
 indexeromp: $(SRCDIR)IndexerOMP.c
 	$(CC) $(SRCDIR)IndexerOMP.c -o $(BINDIR)IndexerOMP -fopenmp $(CFLAGS)
 
+indexerscanningomp: $(SRCDIR)IndexerScanningOMP.c
+	$(CC) $(SRCDIR)IndexerScanningOMP.c -o $(BINDIR)IndexerScanningOMP -fopenmp $(CFLAGS)
+
 indexscanning: $(SRCDIR)IndexScanningHEDM.c
 	$(CC) $(SRCDIR)IndexScanningHEDM.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)IndexScanningHEDM $(CFLAGS)
 
 bindata: $(SRCDIR)SaveBinData.c
 	$(CC) $(SRCDIR)SaveBinData.c -o $(BINDIR)SaveBinData $(CFLAGS)
+
+bindatascanning: $(SRCDIR)SaveBinDataScanning.c
+	$(CC) $(SRCDIR)SaveBinDataScanning.c -o $(BINDIR)SaveBinDataScanning $(CFLAGS)
 
 mergemultiplescans: $(SRCDIR)MergeMultipleScans.c
 	$(CC) $(SRCDIR)MergeMultipleScans.c -o $(BINDIR)MergeMultipleScans $(CFLAGS)

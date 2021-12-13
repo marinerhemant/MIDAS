@@ -54,7 +54,7 @@ check (int test, const char * message, ...)
 #define MAX_N_HKLS 5000
 #define MAX_N_OMEGARANGES 2000
 #define N_COL_THEORSPOTS 14
-#define N_COL_OBSSPOTS 9
+#define N_COL_OBSSPOTS 10
 #define N_COL_GRAINSPOTS 17
 #define N_COL_GRAINMATCHES 16
 
@@ -68,17 +68,24 @@ double hkls[MAX_N_HKLS][7];
 int n_hkls = 0;
 int HKLints[MAX_N_HKLS][4];
 double ABCABG[6];
+//~ RealType RingTtheta[MAX_N_RINGS];
+//~ int   RingMult[MAX_N_RINGS];
+double   RingHKL[MAX_N_RINGS][3];
 
 // For detector mapping!
 int BigDetSize = 0;
 int *BigDetector;
 long long int totNrPixelsBigDetector;
 double pixelsize;
+double BeamSize;
+int numScans;
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
 
 int *data;
 int *ndata;
 int SGNum;
+double *grid;
+double *ypos;
 
 // the number of elements of the data arrays above
 int n_ring_bins;
@@ -410,8 +417,10 @@ void CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3],RealType LatticeConstant
 	*nspots = spotnr;
 }
 
-void CompareSpots(RealType **TheorSpots,int   nTheorSpots,RealType *ObsSpots,RealType RefRad,RealType MarginRad,
-	RealType MarginRadial,RealType etamargins[],RealType omemargins[],int   *nMatch,RealType **GrainSpots)
+void CompareSpots(RealType **TheorSpots, int nTheorSpots,
+				  RealType RefRad, RealType MarginRad, RealType MarginRadial,
+				  RealType etamargins[], RealType omemargins[], int *nMatch,
+				  RealType **GrainSpots, RealType xThis, RealType yThis)
 {
 	int nMatched = 0;
 	int nNonMatched = 0;
@@ -419,17 +428,21 @@ void CompareSpots(RealType **TheorSpots,int   nTheorSpots,RealType *ObsSpots,Rea
 	int RingNr;
 	int iOme, iEta;
 	int spotRow, spotRowBest;
-	int MatchFound ;
+	int MatchFound;
 	RealType diffOme;
 	RealType diffOmeBest;
-	int iRing;
-	int iSpot;
-	RealType etamargin, omemargin;
+	int iRing, iPos;
+	long long int iSpot;
+	int scannrobs, scannrtheor;
+	RealType etamargin, omemargin, yRot, ySpot;
 	for ( sp = 0 ; sp < nTheorSpots ; sp++ )  {
 		RingNr = (int) TheorSpots[sp][9];
 		iRing = RingNr-1;
 		iEta = floor((180+TheorSpots[sp][12])/EtaBinSize);
 		iOme = floor((180+TheorSpots[sp][6])/OmeBinSize);
+		yRot = xThis * sin(deg2rad*TheorSpots[sp][6]) + yThis * cos(deg2rad*TheorSpots[sp][6]);
+		//~ printf("%lf %lf %lf %lf\n",yRot,xThis,yThis,TheorSpots[sp][6]);
+		// use iOme, xpos and yPos to calculate scanNr
 		etamargin = etamargins[RingNr];
 		omemargin = omemargins[(int) floor(fabs(TheorSpots[sp][12]))];
 		MatchFound = 0;
@@ -438,17 +451,22 @@ void CompareSpots(RealType **TheorSpots,int   nTheorSpots,RealType *ObsSpots,Rea
 		long long int nspots = ndata[Pos*2];
 		long long int DataPos = ndata[Pos*2+1];
 		for ( iSpot = 0 ; iSpot < nspots; iSpot++ ) {
-			spotRow = data[DataPos + iSpot];
-			if ( fabs(TheorSpots[sp][13] - ObsSpots[spotRow*9+8]) < MarginRadial )  {
-				if ( fabs(RefRad - ObsSpots[spotRow*9+3]) < MarginRad ) {
-				if ( fabs(TheorSpots[sp][12] - ObsSpots[spotRow*9+6]) < etamargin ) {
-					diffOme = fabs(TheorSpots[sp][6] - ObsSpots[spotRow*9+2]);
-					if ( diffOme < diffOmeBest ) {
-						diffOmeBest = diffOme;
-						spotRowBest = spotRow;
-						MatchFound = 1;
+			spotRow = data[(DataPos + iSpot)*2+0];
+			scannrobs = data[(DataPos + iSpot)*2+1];
+			ySpot = ypos[scannrobs];
+			//~ printf("%lf %lf %lf %lf %d\n",ySpot,fabs(yRot-ySpot), BeamSize/2,ObsSpots[spotRow*10+9],scannrobs);
+			if ( fabs(yRot - ySpot) < BeamSize/2){
+				if ( fabs(TheorSpots[sp][13] - ObsSpotsLab[spotRow*10+8]) < MarginRadial )  {
+					if ( fabs(RefRad - ObsSpotsLab[spotRow*10+3]) < MarginRad ) {
+						if ( fabs(TheorSpots[sp][12] - ObsSpotsLab[spotRow*10+6]) < etamargin ) {
+							diffOme = fabs(TheorSpots[sp][6] - ObsSpotsLab[spotRow*10+2]);
+							if ( diffOme < diffOmeBest ) {
+								diffOmeBest = diffOme;
+								spotRowBest = spotRow;
+								MatchFound = 1;
+							}
+						}
 					}
-				}
 				}
 			}
 		}
@@ -456,18 +474,18 @@ void CompareSpots(RealType **TheorSpots,int   nTheorSpots,RealType *ObsSpots,Rea
 			GrainSpots[nMatched][0] = nMatched;
 			GrainSpots[nMatched][1] = 999.0;
 			GrainSpots[nMatched][2] = TheorSpots[sp][10];
-			GrainSpots[nMatched][3] = ObsSpots[spotRowBest*9+0];
-			GrainSpots[nMatched][4] = ObsSpots[spotRowBest*9+0] - TheorSpots[sp][10];
+			GrainSpots[nMatched][3] = ObsSpotsLab[spotRowBest*10+0];
+			GrainSpots[nMatched][4] = ObsSpotsLab[spotRowBest*10+0] - TheorSpots[sp][10];
 			GrainSpots[nMatched][5] = TheorSpots[sp][11];
-			GrainSpots[nMatched][6] = ObsSpots[spotRowBest*9+1];
-			GrainSpots[nMatched][7] = ObsSpots[spotRowBest*9+1] - TheorSpots[sp][11];
+			GrainSpots[nMatched][6] = ObsSpotsLab[spotRowBest*10+1];
+			GrainSpots[nMatched][7] = ObsSpotsLab[spotRowBest*10+1] - TheorSpots[sp][11];
 			GrainSpots[nMatched][8] = TheorSpots[sp][6];
-			GrainSpots[nMatched][9] = ObsSpots[spotRowBest*9+2];
-			GrainSpots[nMatched][10]= ObsSpots[spotRowBest*9+2] - TheorSpots[sp][6];
+			GrainSpots[nMatched][9] = ObsSpotsLab[spotRowBest*10+2];
+			GrainSpots[nMatched][10]= ObsSpotsLab[spotRowBest*10+2] - TheorSpots[sp][6];
 			GrainSpots[nMatched][11] = RefRad;
-			GrainSpots[nMatched][12] = ObsSpots[spotRowBest*9+3];
-			GrainSpots[nMatched][13] = ObsSpots[spotRowBest*9+3] - RefRad;
-			GrainSpots[nMatched][14] = ObsSpots[spotRowBest*9+4];
+			GrainSpots[nMatched][12] = ObsSpotsLab[spotRowBest*10+3];
+			GrainSpots[nMatched][13] = ObsSpotsLab[spotRowBest*10+3] - RefRad;
+			GrainSpots[nMatched][14] = ObsSpotsLab[spotRowBest*10+4];
 			nMatched++;
 		} else {
 			nNonMatched++;
@@ -667,286 +685,6 @@ void spot_to_gv_pos(RealType xi,RealType yi,RealType zi,RealType Omega,RealType 
 	spot_to_gv( xi, yi, zi, Omega, g1, g2, g3);
 }
 
-void
-FriedelEtaCalculation(RealType ys,RealType zs,RealType ttheta,RealType eta,RealType Ring_rad,RealType Rsample,
-	RealType Hbeam,RealType *EtaMinFr,RealType *EtaMaxFr)
-{
-	RealType quadr_coeff2 = 0;
-	RealType eta_Hbeam, quadr_coeff, coeff_y0 = 0, coeff_z0 = 0, y0_max_z0, y0_min_z0, y0_max = 0, y0_min = 0, z0_min = 0, z0_max = 0;
-	if (eta > 90) eta_Hbeam = 180 - eta;
-	else if (eta < -90) eta_Hbeam = 180 - fabs(eta);
-	else eta_Hbeam = 90 - fabs(eta);
-	Hbeam = Hbeam + 2*(Rsample*tan(ttheta*deg2rad))*(sin(eta_Hbeam*deg2rad));
-	RealType eta_pole = 1 + rad2deg*acos(1-(Hbeam/Ring_rad));
-	RealType eta_equator = 1 + rad2deg*acos(1-(Rsample/Ring_rad));
-	if ((eta >= eta_pole) && (eta <= (90-eta_equator)) ) {
-		quadr_coeff = 1;
-		coeff_y0 = -1;
-		coeff_z0 = 1;
-	} else if ( (eta >=(90+eta_equator)) && (eta <= (180-eta_pole)) ) {
-		quadr_coeff = 2;
-		coeff_y0 = -1;
-		coeff_z0 = -1;
-	} else if ( (eta >= (-90+eta_equator) ) && (eta <= -eta_pole) )   {
-		quadr_coeff = 2;
-		coeff_y0 = 1;
-		coeff_z0 = 1;
-	} else if ( (eta >= (-180+eta_pole) ) && (eta <= (-90-eta_equator)) )  {
-		quadr_coeff = 1;
-		coeff_y0 = 1;
-		coeff_z0 = -1;
-	} else quadr_coeff = 0;
-	RealType y0_max_Rsample = ys + Rsample;
-	RealType y0_min_Rsample = ys - Rsample;
-	RealType z0_max_Hbeam = zs + 0.5 * Hbeam;
-	RealType z0_min_Hbeam = zs - 0.5 * Hbeam;
-	if (quadr_coeff == 1) {
-		y0_max_z0 = coeff_y0 * sqrt((Ring_rad * Ring_rad)-(z0_max_Hbeam * z0_max_Hbeam));
-		y0_min_z0 = coeff_y0 * sqrt((Ring_rad * Ring_rad)-(z0_min_Hbeam * z0_min_Hbeam));
-	} else if (quadr_coeff == 2) {
-		y0_max_z0 = coeff_y0 * sqrt((Ring_rad * Ring_rad)-(z0_min_Hbeam * z0_min_Hbeam));
-		y0_min_z0 = coeff_y0 * sqrt((Ring_rad * Ring_rad)-(z0_max_Hbeam * z0_max_Hbeam));
-	}
-	if (quadr_coeff > 0)  {
-		y0_max = min(y0_max_Rsample, y0_max_z0);
-		y0_min = max(y0_min_Rsample, y0_min_z0);
-	} else {
-		if ((eta > -eta_pole) && (eta < eta_pole ))  {
-			y0_max = y0_max_Rsample;
-			y0_min = y0_min_Rsample;
-			coeff_z0 = 1;
-		} else if (eta < (-180+eta_pole))  {
-			y0_max = y0_max_Rsample;
-			y0_min = y0_min_Rsample;
-			coeff_z0 = -1;
-		} else if (eta > (180-eta_pole))  {
-			y0_max = y0_max_Rsample;
-			y0_min = y0_min_Rsample;
-			coeff_z0 = -1;
-		} else if (( eta > (90-eta_equator)) && (eta < (90+eta_equator)) ) {
-			quadr_coeff2 = 1;
-			z0_max = z0_max_Hbeam;
-			z0_min = z0_min_Hbeam;
-			coeff_y0 = -1;
-		} else if ((eta > (-90-eta_equator)) && (eta < (-90+eta_equator)) ) {
-			quadr_coeff2 = 1;
-			z0_max = z0_max_Hbeam;
-			z0_min = z0_min_Hbeam;
-			coeff_y0 = 1;
-		}
-	}
-	if ( quadr_coeff2 == 0 ) {
-		z0_min = coeff_z0 * sqrt((Ring_rad * Ring_rad)-(y0_min * y0_min));
-		z0_max = coeff_z0 * sqrt((Ring_rad * Ring_rad)-(y0_max * y0_max));
-	} else {
-		y0_min = coeff_y0 * sqrt((Ring_rad * Ring_rad)-(z0_min * z0_min));
-		y0_max = coeff_y0 * sqrt((Ring_rad * Ring_rad)-(z0_max * z0_max));
-	}
-	RealType dYMin = ys - y0_min;
-	RealType dYMax = ys - y0_max;
-	RealType dZMin = zs - z0_min;
-	RealType dZMax = zs - z0_max;
-	RealType YMinFrIdeal =  y0_min;
-	RealType YMaxFrIdeal =  y0_max;
-	RealType ZMinFrIdeal = -z0_min;
-	RealType ZMaxFrIdeal = -z0_max;
-	RealType YMinFr = YMinFrIdeal - dYMin;
-	RealType YMaxFr = YMaxFrIdeal - dYMax;
-	RealType ZMinFr = ZMinFrIdeal + dZMin;
-	RealType ZMaxFr = ZMaxFrIdeal + dZMax;
-	RealType Eta1, Eta2;
-	CalcEtaAngle((YMinFr + ys),(ZMinFr - zs), &Eta1);
-	CalcEtaAngle((YMaxFr + ys),(ZMaxFr - zs), &Eta2);
-	*EtaMinFr = min(Eta1,Eta2);
-	*EtaMaxFr = max(Eta1,Eta2);
-}
-
-void GenerateIdealSpots(RealType ys,RealType zs,RealType ttheta,RealType eta,RealType Ring_rad,RealType Rsample,
-	RealType Hbeam,RealType step_size,RealType y0_vector[],RealType z0_vector[],int * NoOfSteps)
-{
-	int quadr_coeff2 = 0;
-	RealType eta_Hbeam, quadr_coeff, coeff_y0 = 0, coeff_z0 = 0, y0_max_z0, y0_min_z0, y0_max = 0, y0_min = 0, z0_min = 0, z0_max = 0;
-	RealType y01, z01, y02, z02, y_diff, z_diff, length;
-	int nsteps;
-	if (eta > 90) eta_Hbeam = 180 - eta;
-	else if (eta < -90) eta_Hbeam = 180 - fabs(eta);
-	else eta_Hbeam = 90 - fabs(eta);
-	Hbeam = Hbeam + 2*(Rsample*tan(ttheta*deg2rad))*(sin(eta_Hbeam*deg2rad));
-	RealType eta_pole = 1 + rad2deg*acos(1-(Hbeam/Ring_rad));
-	RealType eta_equator = 1 + rad2deg*acos(1-(Rsample/Ring_rad));
-	if ((eta >= eta_pole) && (eta <= (90-eta_equator)) ) {
-		quadr_coeff = 1;
-		coeff_y0 = -1;
-		coeff_z0 = 1;
-	} else if ( (eta >=(90+eta_equator)) && (eta <= (180-eta_pole)) ) {
-		quadr_coeff = 2;
-		coeff_y0 = -1;
-		coeff_z0 = -1;
-	} else if ( (eta >= (-90+eta_equator) ) && (eta <= -eta_pole) )   {
-		quadr_coeff = 2;
-		coeff_y0 = 1;
-		coeff_z0 = 1;
-	} else if ( (eta >= (-180+eta_pole) ) && (eta <= (-90-eta_equator)) )  {
-		quadr_coeff = 1;
-		coeff_y0 = 1;
-		coeff_z0 = -1;
-	} else quadr_coeff = 0;
-	RealType y0_max_Rsample = ys + Rsample;
-	RealType y0_min_Rsample = ys - Rsample;
-	RealType z0_max_Hbeam = zs + 0.5 * Hbeam;
-	RealType z0_min_Hbeam = zs - 0.5 * Hbeam;
-	if (quadr_coeff == 1) {
-		y0_max_z0 = coeff_y0 * sqrt((Ring_rad * Ring_rad)-(z0_max_Hbeam * z0_max_Hbeam));
-		y0_min_z0 = coeff_y0 * sqrt((Ring_rad * Ring_rad)-(z0_min_Hbeam * z0_min_Hbeam));
-	} else if (quadr_coeff == 2) {
-		y0_max_z0 = coeff_y0 * sqrt((Ring_rad * Ring_rad)-(z0_min_Hbeam * z0_min_Hbeam));
-		y0_min_z0 = coeff_y0 * sqrt((Ring_rad * Ring_rad)-(z0_max_Hbeam * z0_max_Hbeam));
-	}
-	if (quadr_coeff > 0)  {
-		y0_max = min(y0_max_Rsample, y0_max_z0);
-		y0_min = max(y0_min_Rsample, y0_min_z0);
-	} else {
-		if ((eta > -eta_pole) && (eta < eta_pole ))  {
-			y0_max = y0_max_Rsample;
-			y0_min = y0_min_Rsample;
-			coeff_z0 = 1;
-		} else if (eta < (-180+eta_pole))  {
-			y0_max = y0_max_Rsample;
-			y0_min = y0_min_Rsample;
-			coeff_z0 = -1;
-		} else if (eta > (180-eta_pole))  {
-			y0_max = y0_max_Rsample;
-			y0_min = y0_min_Rsample;
-			coeff_z0 = -1;
-		} else if (( eta > (90-eta_equator)) && (eta < (90+eta_equator)) ) {
-			quadr_coeff2 = 1;
-			z0_max = z0_max_Hbeam;
-			z0_min = z0_min_Hbeam;
-			coeff_y0 = -1;
-		} else if ((eta > (-90-eta_equator)) && (eta < (-90+eta_equator)) ) {
-			quadr_coeff2 = 1;
-			z0_max = z0_max_Hbeam;
-			z0_min = z0_min_Hbeam;
-			coeff_y0 = 1;
-		}
-	}
-	if (quadr_coeff2 == 0 ) {
-		y01 = y0_min;
-		z01 = coeff_z0 * sqrt((Ring_rad * Ring_rad )-(y01 * y01));
-		y02 = y0_max;
-		z02 = coeff_z0 * sqrt((Ring_rad * Ring_rad )-(y02 * y02));
-		y_diff = y01 - y02;
-		z_diff = z01 - z02;
-		length = sqrt(y_diff * y_diff + z_diff * z_diff);
-		nsteps = ceil(length/step_size);
-	} else {
-		z01 = z0_min;
-		y01 = coeff_y0 * sqrt((Ring_rad * Ring_rad )-((z01 * z01)));
-		z02 = z0_max;
-		y02 = coeff_y0 * sqrt((Ring_rad * Ring_rad )-((z02 * z02)));
-		y_diff = y01 - y02;
-		z_diff = z01 - z02;
-		length = sqrt(y_diff * y_diff + z_diff * z_diff);
-		nsteps = ceil(length/step_size);
-	}
-	if ((nsteps % 2) == 0 ) {
-		nsteps = nsteps +1;
-	}
-	if ( nsteps == 1 ) {
-		if (quadr_coeff2 == 0) {
-			y0_vector[0] = (y0_max+y0_min)/2;
-			z0_vector[0] = coeff_z0 * sqrt((Ring_rad * Ring_rad)-(y0_vector[0] * y0_vector[0]));
-		} else {
-			z0_vector[0] = (z0_max+z0_min)/2;
-			y0_vector[0] = coeff_y0 * sqrt((Ring_rad * Ring_rad)-(z0_vector[0] * z0_vector[0]));
-		}
-	} else {
-		int i;
-		RealType stepsizeY = (y0_max-y0_min)/(nsteps-1);
-		RealType stepsizeZ = (z0_max-z0_min)/(nsteps-1);
-		if (quadr_coeff2 == 0) {
-			for (i=0 ; i < nsteps ; i++) {
-				y0_vector[i] = y0_min + i*stepsizeY;
-				z0_vector[i] = coeff_z0 * sqrt((Ring_rad * Ring_rad)-(y0_vector[i] * y0_vector[i]));
-			}
-		} else {
-			for (i=0 ; i < nsteps ; i++) {
-				z0_vector[i] = z0_min + i*stepsizeZ;
-				y0_vector[i] = coeff_y0 * sqrt((Ring_rad * Ring_rad)-(z0_vector[i] * z0_vector[i]));
-			}
-		}
-	}
-	*NoOfSteps = nsteps;
-}
-
-void calc_n_max_min(RealType xi,RealType yi,RealType ys,RealType y0,RealType R_sample,int step_size,int * n_max,int * n_min)
-{
-	RealType dy = ys-y0;
-	RealType a = xi*xi + yi*yi;
-	RealType b = 2*yi*dy;
-	RealType c = dy*dy - R_sample*R_sample;
-	RealType D = b*b - 4*a*c;
-	RealType P = sqrt(D);
-	RealType lambda_max = (-b+P)/(2*a) + 20;
-	*n_max = (int)((lambda_max*xi)/(step_size));
-	*n_min = - *n_max;
-}
-
-void spot_to_unrotated_coordinates(RealType xi,RealType yi,RealType zi,RealType ys,RealType zs,RealType y0,
-	RealType z0,RealType step_size_in_x,int n,RealType omega,RealType *a,RealType *b,RealType *c)
-{
-	RealType lambda = (step_size_in_x)*(n/xi);
-	RealType x1 = lambda*xi;
-	RealType y1 = ys - y0 + lambda*yi;
-	RealType z1 = zs - z0 + lambda*zi;
-	RealType cosOme = cos(omega*deg2rad);
-	RealType sinOme = sin(omega*deg2rad);
-	*a = (x1*cosOme) + (y1*sinOme);
-	*b = (y1*cosOme) - (x1*sinOme);
-	*c = z1;
-}
-
-void GenerateIdealSpotsFriedel(RealType ys,RealType zs,RealType ttheta,RealType eta,RealType omega,int ringno,
-	RealType Ring_rad,RealType Rsample,RealType Hbeam,RealType OmeTol,RealType RadiusTol,RealType y0_vector[],
-	RealType z0_vector[],int * NoOfSteps)
-{
-	RealType EtaF;
-	RealType OmeF;
-	RealType EtaMinF, EtaMaxF, etaIdealF;
-	RealType IdealYPos, IdealZPos;
-	*NoOfSteps = 0;
-	if (omega < 0 )  OmeF = omega + 180;
-	else             OmeF = omega - 180;
-	if ( eta < 0 )  EtaF = -180 - eta;
-	else            EtaF = 180 - eta;
-	int r;
-	int rno_obs;
-	RealType ome_obs, eta_obs;
-	for (r=0 ; r < n_spots ; r++) {
-		rno_obs = round(ObsSpotsLab[r*9+5]);
-		ome_obs = ObsSpotsLab[r*9+2];
-		eta_obs = ObsSpotsLab[r*9+6];
-		if ( rno_obs != ringno ) continue;
-		if ( fabs(ome_obs - OmeF) > OmeTol) continue;
-		RealType yf = ObsSpotsLab[r*9+0];
-		RealType zf = ObsSpotsLab[r*9+1];
-		RealType EtaTransf;
-		CalcEtaAngle(yf + ys, zf - zs, &EtaTransf);
-		RealType radius = sqrt((yf + ys)*(yf + ys) + (zf - zs)*(zf - zs));
-		if ( fabs(radius - 2*Ring_rad) > RadiusTol)  continue;
-		FriedelEtaCalculation(ys, zs, ttheta, eta, Ring_rad, Rsample, Hbeam, &EtaMinF, &EtaMaxF);
-		if (( EtaTransf < EtaMinF) || (EtaTransf > EtaMaxF) ) continue;
-		RealType ZPositionAccZ = zs - (( zf + zs)/2);
-		RealType YPositionAccY = ys - ((-yf + ys)/2);
-		CalcEtaAngle(YPositionAccY, ZPositionAccZ, &etaIdealF);
-		CalcSpotPosition(Ring_rad, etaIdealF, &IdealYPos, &IdealZPos);
-		y0_vector[*NoOfSteps] = IdealYPos;
-		z0_vector[*NoOfSteps] = IdealZPos;
-		(*NoOfSteps)++;
-	}
-}
-
-
 int AddUnique(int *arr, int *n, int val)
 {
 	int i;
@@ -972,118 +710,6 @@ void MakeUnitLength(RealType x,RealType y,RealType z,RealType *xu,RealType *yu,R
 	*xu = x/len;
 	*yu = y/len;
 	*zu = z/len;
-}
-
-void
-GenerateIdealSpotsFriedelMixed(RealType ys,RealType zs,RealType Ttheta,RealType Eta,RealType Omega,int RingNr,
-	RealType Ring_rad,RealType Lsd,RealType Rsample,RealType Hbeam,RealType StepSizePos,RealType OmeTol,RealType RadialTol,
-	RealType EtaTol,RealType spots_y[],RealType spots_z[],int * NoOfSteps)
-{
-	const int MinEtaReject = 10;
-	RealType omegasFP[4];
-	RealType etasFP[4];
-	int nsol;
-	int nFPCandidates;
-	RealType theta = Ttheta/2;
-	RealType SinMinEtaReject = sin(MinEtaReject * deg2rad);
-	RealType y0_vector[2000];
-	RealType z0_vector[2000];
-	RealType G1, G2, G3;
-	int SpOnRing, NoOfSpots;
-	int FPCandidatesUnique[2000];
-	RealType FPCandidates[2000][3];
-	RealType xi, yi, zi;
-	RealType y0, z0;
-	RealType YFP1, ZFP1;
-	int nMax, nMin;
-	RealType EtaTolDeg;
-	EtaTolDeg = rad2deg* atan(EtaTol / Ring_rad);
-	*NoOfSteps = 0;
-	nFPCandidates = 0;
-	if (fabs(sin(Eta * deg2rad)) < SinMinEtaReject) {
-		return;
-	}
-	GenerateIdealSpots(ys, zs, Ttheta, Eta, Ring_rad, Rsample, Hbeam, StepSizePos, y0_vector, z0_vector, &NoOfSpots);
-	for (SpOnRing = 0 ; SpOnRing < NoOfSpots ; ++SpOnRing ) {
-		y0 = y0_vector[SpOnRing];
-		z0 = z0_vector[SpOnRing];
-		MakeUnitLength(Lsd, y0, z0, &xi, &yi, &zi);
-		spot_to_gv(Lsd, y0, z0, Omega, &G1, &G2, &G3);
-		CalcOmega(-G1, -G2, -G3, theta, omegasFP, etasFP, &nsol);
-		if (nsol <= 1) {
-			printf("no omega solutions. skipping plane.\n");
-			continue;
-		}
-		RealType OmegaFP, EtaFP, diff0, diff1;
-		diff0 = fabs(omegasFP[0] - Omega);
-		if (diff0 > 180) diff0 = 360 - diff0;
-		diff1 = fabs(omegasFP[1] - Omega);
-		if (diff1 > 180) diff1 = 360 - diff1;
-		if (  diff0 < diff1)  {
-			OmegaFP = omegasFP[0];
-			EtaFP   = etasFP[0];
-		} else {
-			OmegaFP = omegasFP[1];
-			EtaFP   = etasFP[1];
-		}
-		CalcSpotPosition(Ring_rad, EtaFP, &YFP1, &ZFP1);
-		calc_n_max_min(xi, yi, ys, y0, Rsample, StepSizePos, &nMax, &nMin);
-		RealType a, b, c, YFP, ZFP, RadialPosFP, EtaFPCorr;
-		int n;
-		for (n = nMin ; n <= nMax ; ++n ){
-			spot_to_unrotated_coordinates(xi, yi, zi, ys, zs, y0, z0, StepSizePos, n, Omega, &a, &b, &c);
-			if (fabs(c) > Hbeam/2) continue;
-			RealType Dy,Dz;
-			displacement_spot_needed_COM(a, b, c, Lsd, YFP1, ZFP1, OmegaFP, &Dy, &Dz);
-			YFP = YFP1 + Dy;
-			ZFP = ZFP1 + Dz;
-			RadialPosFP = sqrt(YFP*YFP + ZFP*ZFP) - Ring_rad;
-			CalcEtaAngle(YFP,ZFP, &EtaFPCorr);
-			int *spotRows;
-			int nspotRows, iSpot, spotRow;
-			GetBin(RingNr, EtaFPCorr, OmegaFP, &spotRows, &nspotRows);
-			RealType diffPos2, dy, dz;
-			for ( iSpot = 0 ; iSpot < nspotRows ; iSpot++ ) {
-				spotRow = spotRows[iSpot];
-				if ( (fabs(RadialPosFP - ObsSpotsLab[spotRow*9+8]) < RadialTol ) &&
-					 (fabs(OmegaFP - ObsSpotsLab[spotRow*9+2]) < OmeTol ) &&
-					 (fabs(EtaFPCorr - ObsSpotsLab[spotRow*9+6]) < EtaTolDeg )  ){
-					dy = (YFP-ObsSpotsLab[spotRow*9+0]);
-					dz = (ZFP-ObsSpotsLab[spotRow*9+1]);
-					diffPos2 = dy*dy + dz*dz;
-					int i;
-					int idx = nFPCandidates;
-					for (i=0 ; i < nFPCandidates ; ++i) {
-						if (FPCandidates[i][0] == ObsSpotsLab[spotRow*9+4] )   {
-							if (diffPos2 < FPCandidates[i][2] )  {
-								idx = i;
-							} else {
-								idx = -1;
-							}
-							break;
-						}
-					}
-					if (idx >= 0) {
-						FPCandidates[idx][0] = ObsSpotsLab[spotRow*9+4];
-						FPCandidates[idx][1] = SpOnRing;
-						FPCandidates[idx][2] = diffPos2;
-						if (idx == nFPCandidates) nFPCandidates++;
-					}
-				}
-			}
-		}
-	}
-	int i;
-	int nFPCandidatesUniq = 0;
-	for (i=0 ; i < nFPCandidates ; ++i) {
-		AddUnique(FPCandidatesUnique, &nFPCandidatesUniq, FPCandidates[i][1]);
-	}
-	int iFP;
-	for (iFP = 0 ; iFP < nFPCandidatesUniq ; ++iFP) {
-		spots_y[iFP] = y0_vector[FPCandidatesUnique[iFP]];
-		spots_z[iFP] = z0_vector[FPCandidatesUnique[iFP]];
-	}
-	*NoOfSteps = nFPCandidatesUniq;
 }
 
 struct TParams {
@@ -1114,6 +740,7 @@ struct TParams {
    char SpotsFileName[4096];
    char IDsFileName [4096];
    int UseFriedelPairs;
+   int RingToIndex;
 };
 
 size_t ReadBigDet(char *cwd)
@@ -1161,6 +788,13 @@ int ReadParams(char FileName[],struct TParams * Params)
 			NoRingNumbers++;
 			continue;
 		}
+		str = "RingToIndex ";
+		cmpres = strncmp(line, str, strlen(str));
+		if (cmpres == 0) {
+			sscanf(line, "%s %d", dummy, &(Params->RingToIndex) );
+			NoRingNumbers++;
+			continue;
+		}
 		str = "BigDetSize ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
@@ -1175,6 +809,13 @@ int ReadParams(char FileName[],struct TParams * Params)
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
 			sscanf(line, "%s %lf", dummy, &pixelsize );
+			continue;
+		}
+		str = "BeamSize ";
+		cmpres = strncmp(line, str, strlen(str));
+		if (cmpres == 0) {
+			sscanf(line, "%s %lf", dummy, &BeamSize);
+			BeamSize += 0.1;
 			continue;
 		}
 		str = "SpaceGroup ";
@@ -1343,10 +984,6 @@ int ReadParams(char FileName[],struct TParams * Params)
 	return(0);
 }
 
-void CreateNumberedFilenameW(char stem[1000],int aNumber,int numberOfDigits,char ext[10],char fn[1000+10+numberOfDigits+1])
-{
-	sprintf(fn, "%s%0*d%s", stem, numberOfDigits, aNumber, ext);
-}
 
 RealType CalcAvgIA(RealType *Arr, int n)
 {
@@ -1363,7 +1000,7 @@ RealType CalcAvgIA(RealType *Arr, int n)
 }
 
 int
-WriteBestMatch(char *FileName,RealType **GrainMatches,int ngrains,RealType **AllGrainSpots,int nrows,char *FileName2)
+WriteBestMatch(RealType **GrainMatches,int ngrains,RealType **AllGrainSpots,int nrows,char *FileName2)
 {
 	int r, g, c;
 	RealType smallestIA = 99999;
@@ -1458,89 +1095,11 @@ void MakeFullFileName(char* fullFileName, char* aPath, char* aFileName)
 	}
 }
 
-int DoIndexing(int SpotIDs,struct TParams Params )
+int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, struct TParams Params )
 {
-	//~ clock_t start, end;
-	double dif;
-	RealType HalfBeam = Params.Hbeam /2 ;
-	RealType MinMatchesToAccept;
-	RealType ga, gb, gc;
-	int   nTspots;
-	int   bestnMatchesIsp, bestnMatchesRot, bestnMatchesPos;
-	int   bestnTspotsIsp, bestnTspotsRot, bestnTspotsPos;
-	int   matchNr;
-	int   nOrient;
-	RealType hklnormal[3];
-	RealType Displ_y;
-	RealType Displ_z;
-	int   or;
-	int   sp;
-	int   nMatches;
-	int   r,c, i;
-	RealType y0_vector[MAX_N_STEPS];
-	RealType z0_vector[MAX_N_STEPS];
-	int   nPlaneNormals;
-	double   hkl[3];
-	RealType g1, g2, g3;
-	int   isp;
-	RealType xi, yi, zi;
-	int   n_max, n_min, n;
-	RealType y0, z0;
-	RealType RingTtheta[MAX_N_RINGS];
-	int   RingMult[MAX_N_RINGS];
-	double   RingHKL[MAX_N_RINGS][3];
-	int   orDelta, ispDelta, nDelta;
-	RealType fracMatches;
-	int   rownr;
-	int   SpotRowNo;
-	int usingFriedelPair;
-	RealType **BestMatches;
-
+	int i;
 	RealType omemargins[181];
 	RealType etamargins[MAX_N_RINGS];
-	char fn[1000];
-	char ffn[1000];
-	char fn2[1000];
-	char ffn2[1000];
-	RealType **GrainMatches;
-	RealType **TheorSpots;
-	RealType **GrainSpots;
-	RealType **AllGrainSpots;
-	RealType **GrainMatchesT;
-	RealType **AllGrainSpotsT;
-	int nRowsOutput = MAX_N_MATCHES * 2 * n_hkls;
-	AllGrainSpots = allocMatrix(nRowsOutput, N_COL_GRAINSPOTS);
-	if (AllGrainSpots == NULL ) {
-		printf("Memory error: could not allocate memory for output matrix. Memory full?\n");
-		return 1;
-	}
-	AllGrainSpotsT = allocMatrix(nRowsOutput, N_COL_GRAINSPOTS);
-	if (AllGrainSpotsT == NULL ) {
-		printf("Memory error: could not allocate memory for output matrix. Memory full?\n");
-		return 1;
-	}
-	GrainMatchesT = allocMatrix(MAX_N_MATCHES, N_COL_GRAINMATCHES);
-	if (GrainMatchesT == NULL ) {
-		printf("Memory error: could not allocate memory for output matrix. Memory full?\n");
-		return 1;
-	}
-	GrainMatches = allocMatrix(MAX_N_MATCHES, N_COL_GRAINMATCHES);
-	if (GrainMatches == NULL ) {
-		printf("Memory error: could not allocate memory for output matrix. Memory full?\n");
-		return 1;
-	}
-	int nRowsPerGrain = 2 * n_hkls;
-	GrainSpots = allocMatrix(nRowsPerGrain, N_COL_GRAINSPOTS );
-	TheorSpots = allocMatrix(nRowsPerGrain, N_COL_THEORSPOTS);
-	if (TheorSpots == NULL ) {
-		printf("Memory error: could not allocate memory for output matrix. Memory full?\n");
-		return 1;
-	}
-	BestMatches = allocMatrix(2, 5);
-	if (BestMatches == NULL ) {
-		printf("Memory error: could not allocate memory for output matrix. Memory full?\n");
-		return 1;
-	}
 	for ( i = 1 ; i < 180 ; i++) omemargins[i] = Params.MarginOme + ( 0.5 * Params.StepsizeOrient / fabs(sin(i * deg2rad)));
 	omemargins[0] = omemargins[1];
 	omemargins[180] = omemargins[1];
@@ -1548,184 +1107,170 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		if ( Params.RingRadii[i] == 0) etamargins[i] = 0;
 		else etamargins[i] = rad2deg * atan(Params.MarginEta/Params.RingRadii[i]) + 0.5 * Params.StepsizeOrient;
 	}
-	int SpotIDIdx = 0;
-	//~ printf("Starting indexing...\n");
-	//~ start = clock();
-	RealType MinInternalAngle=1000;
-	matchNr = 0;
-	rownr = 0;
-	RealType SpotID = SpotIDs;
-	FindInMatrix(&ObsSpotsLab[0*9+0], n_spots, N_COL_OBSSPOTS, 4, SpotID, &SpotRowNo);
-	if (SpotRowNo == -1) {
-		//~ printf("WARNING: SpotId %lf not found in spots file! Ignoring this spotID.\n", SpotID);
-		return;
-	}
-	RealType ys     = ObsSpotsLab[SpotRowNo*9+0];
-	RealType zs     = ObsSpotsLab[SpotRowNo*9+1];
-	RealType omega  = ObsSpotsLab[SpotRowNo*9+2];
-	RealType RefRad = ObsSpotsLab[SpotRowNo*9+3];
-	RealType eta    = ObsSpotsLab[SpotRowNo*9+6];
-	RealType ttheta = ObsSpotsLab[SpotRowNo*9+7];
-	int   ringnr = (int) ObsSpotsLab[SpotRowNo*9+5];
-	// To store the orientation matrices
+	RealType ga = xThis, gb = yThis, gc = zThis;
+	int   SpotRowNo;
+	FindInMatrix(&ObsSpotsLab[0*10+0], n_spots, N_COL_OBSSPOTS, 4, SpotID, &SpotRowNo);
+	RealType y0 = ObsSpotsLab[SpotRowNo*10+0];
+	RealType z0 = ObsSpotsLab[SpotRowNo*10+1];
+	RealType omega = ObsSpotsLab[SpotRowNo*10+2];
+	int ringnr = (int)ObsSpotsLab[SpotRowNo*10+5];
+	RealType xi,yi,zi, g1, g2, g3, hklnormal[3], hkl[3];
+	MakeUnitLength(Params.Distance, y0, z0, &xi, &yi, &zi );
+	spot_to_gv(xi, yi, zi, omega,  &g1, &g2, &g3);
+	hklnormal[0] = g1;
+	hklnormal[1] = g2;
+	hklnormal[2] = g3;
+	int nOrient, or = 0, orDelta = 1;
+	RealType RefRad = ObsSpotsLab[SpotRowNo*10+3];
 	RealType OrMat[MAX_N_OR][3][3];
-	char *hklfn = "hkls.csv";
-	FILE *hklf = fopen(hklfn,"r");
-	char aline[1024], dummy[1000];
-	fgets(aline,1000,hklf);
-	int Rnr;
-	double hc,kc,lc,tth;
-	for (i=0;i<MAX_N_RINGS;i++) RingMult[i] = 0;
-	while (fgets(aline,1000,hklf)!=NULL){
-		sscanf(aline, "%s %s %s %s %d %lf %lf %lf %s %lf %s",dummy,dummy,dummy,dummy,&Rnr,&hc,&kc,&lc,dummy,&tth,dummy);
-		RingMult[Rnr]++;
-		RingHKL[Rnr][0] = hc;
-		RingHKL[Rnr][1] = kc;
-		RingHKL[Rnr][2] = lc;
-		RingTtheta[Rnr] = tth;
-	}
 	hkl[0] = RingHKL[ringnr][0];
 	hkl[1] = RingHKL[ringnr][1];
 	hkl[2] = RingHKL[ringnr][2];
-	long long int SpotID2 = (int) SpotIDs;
-	nPlaneNormals = 0;
-	usingFriedelPair = 0;
-	if (Params.UseFriedelPairs == 1) {
-		usingFriedelPair = 1;
-		GenerateIdealSpotsFriedel(ys, zs, RingTtheta[ringnr], eta, omega, ringnr,
-		Params.RingRadii[ringnr], Params.Rsample, Params.Hbeam, Params.MarginOme, Params.MarginRadial,
-		y0_vector, z0_vector, &nPlaneNormals);
-		if (nPlaneNormals == 0 ) {
-			GenerateIdealSpotsFriedelMixed(ys, zs, RingTtheta[ringnr], eta, omega, ringnr,
-				Params.RingRadii[ringnr], Params.Distance, Params.Rsample, Params.Hbeam, Params.StepsizePos,
-				Params.MarginOme, Params.MarginRadial, Params.MarginEta,
-				y0_vector, z0_vector, &nPlaneNormals);
+	GenerateCandidateOrientationsF(hkl, hklnormal, Params.StepsizeOrient, OrMat, &nOrient,ringnr);
+	printf("%d %d %lf %lf %lf\n",SpotID,nOrient,y0,z0,omega);
+	RealType **TheorSpots;
+	RealType **GrainSpots;
+	RealType **GrainMatches;
+	RealType **AllGrainSpots;
+	RealType **GrainMatchesT;
+	RealType **AllGrainSpotsT;
+	RealType **BestMatches;
+	int nRowsOutput = MAX_N_MATCHES * 2 * n_hkls;
+	AllGrainSpotsT = allocMatrix(nRowsOutput, N_COL_GRAINSPOTS);
+	GrainMatchesT = allocMatrix(MAX_N_MATCHES, N_COL_GRAINMATCHES);
+	GrainMatches = allocMatrix(MAX_N_MATCHES, N_COL_GRAINMATCHES);
+	BestMatches = allocMatrix(2, 5);
+	AllGrainSpots = allocMatrix(nRowsOutput, N_COL_GRAINSPOTS);
+	int nRowsPerGrain = 2 * n_hkls, nTspots;
+	GrainSpots = allocMatrix(nRowsPerGrain, N_COL_GRAINSPOTS );
+	TheorSpots = allocMatrix(nRowsPerGrain, N_COL_THEORSPOTS);
+	RealType MinMatchesToAccept;
+	int   bestnMatchesIsp = -1, bestnMatchesRot = -1, bestnMatchesPos;
+	int   bestnTspotsIsp, bestnTspotsRot, bestnTspotsPos;
+	int nMatches, bestMatchFound=0;
+	int r,c;
+	int   rownr = 0;
+	int   matchNr=0, sp;
+	RealType MinInternalAngle=1000;
+	RealType Displ_y, Displ_z;
+	RealType fracMatches = 0;
+	RealType bestConfidence=0;
+	RealType FracThis;
+	while (or < nOrient) {
+		CalcDiffrSpots_Furnace(OrMat[or], Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii,
+			Params.OmegaRanges, Params.BoxSizes, Params.NoOfOmegaRanges, Params.ExcludePoleAngle, TheorSpots, &nTspots);
+		MinMatchesToAccept = nTspots * Params.MinMatchesToAcceptFrac;
+		bestnMatchesPos = -1;
+		bestnTspotsPos =  0;
+		for (sp = 0 ; sp < nTspots ; sp++) {
+			displacement_spot_needed_COM(ga, gb, gc, TheorSpots[sp][3], TheorSpots[sp][4],
+			TheorSpots[sp][5], TheorSpots[sp][6], &Displ_y, &Displ_z );
+			TheorSpots[sp][10] = TheorSpots[sp][4] +  Displ_y;
+			TheorSpots[sp][11] = TheorSpots[sp][5] +  Displ_z;
+			CalcEtaAngle( TheorSpots[sp][10], TheorSpots[sp][11], &TheorSpots[sp][12] );
+			TheorSpots[sp][13] = sqrt(TheorSpots[sp][10] * TheorSpots[sp][10] + TheorSpots[sp][11] * TheorSpots[sp][11]) -
+									Params.RingRadii[(int)TheorSpots[sp][9]];
 		}
-	}
-	if ( nPlaneNormals == 0 ) {
-		if (usingFriedelPair == 1){
-		}
-		usingFriedelPair = 0;
-		GenerateIdealSpots(ys, zs, RingTtheta[ringnr], eta, Params.RingRadii[ringnr], Params.Rsample, Params.Hbeam,
-			Params.StepsizePos, y0_vector, z0_vector, &nPlaneNormals);
-	}
-	bestnMatchesIsp = -1;
-	bestnTspotsIsp = 0;
-	isp = 0;
-	int bestMatchFound = 0;
-	while (isp < nPlaneNormals) {
-		y0 = y0_vector[isp];
-		z0 = z0_vector[isp];
-		MakeUnitLength(Params.Distance, y0, z0, &xi, &yi, &zi );
-		spot_to_gv(xi, yi, zi, omega,  &g1, &g2, &g3);
-		hklnormal[0] = g1;
-		hklnormal[1] = g2;
-		hklnormal[2] = g3;
-		GenerateCandidateOrientationsF(hkl, hklnormal, Params.StepsizeOrient, OrMat, &nOrient,ringnr);
-		bestnMatchesRot = -1;
-		bestnTspotsRot = 0;
-		or = 0;
-		orDelta = 1;
-		while (or < nOrient) {
-			int t;
-			CalcDiffrSpots_Furnace(OrMat[or], Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii,
-				Params.OmegaRanges, Params.BoxSizes, Params.NoOfOmegaRanges, Params.ExcludePoleAngle, TheorSpots, &nTspots);
-			MinMatchesToAccept = nTspots * Params.MinMatchesToAcceptFrac;
-			bestnMatchesPos = -1;
-			bestnTspotsPos =  0;
-			calc_n_max_min(xi, yi, ys, y0, Params.Rsample, Params.StepsizePos, &n_max, &n_min);
-			n = n_min;
-			while (n <= n_max) {
-				spot_to_unrotated_coordinates(xi, yi, zi, ys, zs, y0, z0, Params.StepsizePos, n, omega, &ga, &gb, &gc );
-				if (fabs(gc) > HalfBeam) {
-					n++;
-					continue;
+		CompareSpots(TheorSpots, nTspots, RefRad,
+		Params.MarginRad, Params.MarginRadial, etamargins, omemargins,
+		&nMatches, GrainSpots, xThis, yThis);
+		// We now have nMatches, check if this is best, then we can save these.
+		FracThis = (double)nMatches / (double)nTspots;
+		if (FracThis > Params.MinMatchesToAcceptFrac){
+			if (FracThis >= bestConfidence){
+				// This is the best match till now, let's save this.
+				bestMatchFound = 1;
+				// Make the array
+				for (i = 0 ;  i < 9 ; i ++) GrainMatchesT[0][i] = OrMat[or][i/3][i%3];
+				GrainMatchesT[0][9]  = ga;
+				GrainMatchesT[0][10] = gb;
+				GrainMatchesT[0][11] = gc;
+				GrainMatchesT[0][12] = nTspots;
+				GrainMatchesT[0][13] = nMatches;
+				GrainMatchesT[0][14] = 1;
+				for (r = 0 ; r < nTspots ; r++) {
+					for (c = 0 ; c < 15 ; c++) AllGrainSpotsT[r][c] = GrainSpots[r][c];
+					AllGrainSpotsT[r][15] = 1;
 				}
-				for (sp = 0 ; sp < nTspots ; sp++) {
-					displacement_spot_needed_COM(ga, gb, gc, TheorSpots[sp][3], TheorSpots[sp][4],
-					TheorSpots[sp][5], TheorSpots[sp][6], &Displ_y, &Displ_z );
-					TheorSpots[sp][10] = TheorSpots[sp][4] +  Displ_y;
-					TheorSpots[sp][11] = TheorSpots[sp][5] +  Displ_z;
-					CalcEtaAngle( TheorSpots[sp][10], TheorSpots[sp][11], &TheorSpots[sp][12] );
-					TheorSpots[sp][13] = sqrt(TheorSpots[sp][10] * TheorSpots[sp][10] + TheorSpots[sp][11] * TheorSpots[sp][11]) -
-											Params.RingRadii[(int)TheorSpots[sp][9]];
+				CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance );
+				if (FracThis == bestConfidence && GrainMatchesT[0][15] > MinInternalAngle) continue;
+				else{
+					MinInternalAngle = GrainMatchesT[0][15];
+					bestnMatchesIsp = nMatches;
+					bestnTspotsIsp = nTspots;
+					rownr = nTspots;
+					matchNr = 1;
+					for (i=0;i<17;i++) GrainMatches[0][i] = GrainMatchesT[0][i];
+					for (r = 0 ; r < nTspots ; r++) for (c = 0 ; c < 17 ; c++) AllGrainSpots[r][c] = AllGrainSpotsT[r][c];
+					for (r = nTspots; r < nRowsOutput; r++) for (c=0;c<17;c++) AllGrainSpots[r][c] = 0;
 				}
-				CompareSpots(TheorSpots, nTspots, ObsSpotsLab, RefRad,
-				Params.MarginRad, Params.MarginRadial, etamargins, omemargins,
-				&nMatches, GrainSpots);
-				if (nMatches > bestnMatchesPos) {
-					bestnMatchesPos = nMatches;
-					bestnTspotsPos = nTspots;
-				}
-				if ( (nMatches > 0) &&
-					 (matchNr < 100) &&
-					 (nMatches >= MinMatchesToAccept) ) {
-					bestMatchFound = 1;
-					for (i = 0 ;  i < 9 ; i ++) GrainMatchesT[0][i] = OrMat[or][i/3][i%3];
-					GrainMatchesT[0][9]  = ga;
-					GrainMatchesT[0][10] = gb;
-					GrainMatchesT[0][11] = gc;
-					GrainMatchesT[0][12] = nTspots;
-					GrainMatchesT[0][13] = nMatches;
-					GrainMatchesT[0][14] = 1;
-					for (r = 0 ; r < nTspots ; r++) {
-						for (c = 0 ; c < 15 ; c++) AllGrainSpotsT[r][c] = GrainSpots[r][c];
-						AllGrainSpotsT[r][15] = 1;
-					}
-					CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance );
-					if (GrainMatchesT[0][15] < MinInternalAngle){
-						MinInternalAngle = GrainMatchesT[0][15];
-						rownr = nTspots;
-						matchNr = 1;
-						for (i=0;i<17;i++) GrainMatches[0][i] = GrainMatchesT[0][i];
-						for (r = 0 ; r < nTspots ; r++) for (c = 0 ; c < 17 ; c++) AllGrainSpots[r][c] = AllGrainSpotsT[r][c];
-						for (r = nTspots; r < nRowsOutput; r++) for (c=0;c<17;c++) AllGrainSpots[r][c] = 0;
-					}
-				}
-				nDelta = 1;
-				if (nTspots != 0) {
-					fracMatches = (RealType)nMatches/nTspots;
-					if (fracMatches < 0.5) { nDelta = 10 - round(fracMatches * (10-1) / 0.5); }
-				}
-				n = n + nDelta;
+				
 			}
-			if (bestnMatchesPos > bestnMatchesRot) {
-				bestnMatchesRot = bestnMatchesPos;
-				bestnTspotsRot = bestnTspotsPos;
-			}
-			or = or + orDelta;
 		}
-		if (bestnMatchesRot > bestnMatchesIsp) {
-			bestnMatchesIsp = bestnMatchesRot;
-			bestnTspotsIsp = bestnTspotsRot;
-		}
-		ispDelta = 1;
-		if ((!usingFriedelPair) && (bestnTspotsRot != 0)) {
-			fracMatches = (RealType) bestnMatchesRot/bestnTspotsRot;
-			if (fracMatches < 0.5) ispDelta = 5 - round(fracMatches * (5-1) / 0.5);
-		}
-		isp = isp + ispDelta;
+		or += orDelta;
+		//~ if (nMatches > bestnMatchesPos) {
+			//~ bestnMatchesPos = nMatches;
+			//~ bestnTspotsPos = nTspots;
+		//~ }
+		//~ if ( (nMatches > 0) &&
+			 //~ (matchNr < 100) &&
+			 //~ (nMatches >= MinMatchesToAccept) ) {
+			//~ bestMatchFound = 1;
+			//~ for (i = 0 ;  i < 9 ; i ++) GrainMatchesT[0][i] = OrMat[or][i/3][i%3];
+			//~ GrainMatchesT[0][9]  = ga;
+			//~ GrainMatchesT[0][10] = gb;
+			//~ GrainMatchesT[0][11] = gc;
+			//~ GrainMatchesT[0][12] = nTspots;
+			//~ GrainMatchesT[0][13] = nMatches;
+			//~ GrainMatchesT[0][14] = 1;
+			//~ for (r = 0 ; r < nTspots ; r++) {
+				//~ for (c = 0 ; c < 15 ; c++) AllGrainSpotsT[r][c] = GrainSpots[r][c];
+				//~ AllGrainSpotsT[r][15] = 1;
+			//~ }
+			//~ CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance );
+			//~ if (GrainMatchesT[0][15] < MinInternalAngle){
+				//~ MinInternalAngle = GrainMatchesT[0][15];
+				//~ rownr = nTspots;
+				//~ matchNr = 1;
+				//~ for (i=0;i<17;i++) GrainMatches[0][i] = GrainMatchesT[0][i];
+				//~ for (r = 0 ; r < nTspots ; r++) for (c = 0 ; c < 17 ; c++) AllGrainSpots[r][c] = AllGrainSpotsT[r][c];
+				//~ for (r = nTspots; r < nRowsOutput; r++) for (c=0;c<17;c++) AllGrainSpots[r][c] = 0;
+			//~ }
+		//~ }
+		//~ if (bestnMatchesPos > bestnMatchesRot) {
+			//~ bestnMatchesRot = bestnMatchesPos;
+			//~ bestnTspotsRot = bestnTspotsPos;
+		//~ }
+		//~ if (bestnMatchesRot > bestnMatchesIsp) {
+			//~ bestnMatchesIsp = bestnMatchesRot;
+			//~ bestnTspotsIsp = bestnTspotsRot;
+		//~ }
+		//~ or = or + orDelta;
 	}
-
 	fracMatches = (RealType) bestnMatchesIsp/bestnTspotsIsp;
 	if (fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 || (int)bestnMatchesIsp == -1 || bestMatchFound == 0){
 		return;
 	}
+	if (fracMatches < Params.MinMatchesToAcceptFrac) return;
+	int SpotIDIdx = 0;
 	BestMatches[SpotIDIdx][0] = SpotIDIdx+1;
 	BestMatches[SpotIDIdx][1] = SpotID;
 	BestMatches[SpotIDIdx][2] = bestnTspotsIsp;
 	BestMatches[SpotIDIdx][3] = bestnMatchesIsp;
 	BestMatches[SpotIDIdx][4] = fracMatches;
-	CreateNumberedFilenameW("BestGrain_", (int) SpotID, 9, ".txt", fn);
-	MakeFullFileName(ffn, Params.OutputFolder, fn);
-	CreateNumberedFilenameW("BestPos_", (int) SpotID, 9, ".csv", fn2);
+	char fn2[1000];
+	char ffn2[1000];
+	sprintf(fn2, "%s%0*d_%0*d%s", "BestPos_", 6,voxNr, 9, SpotID, ".csv");
 	MakeFullFileName(ffn2, Params.OutputFolder, fn2);
-	WriteBestMatch(ffn, GrainMatches, matchNr, AllGrainSpots, rownr, ffn2);
-	printf("ID: %d, Confidence: %lf\n",SpotIDs,fracMatches);
+	printf("%s\n",ffn2);
+	WriteBestMatch(GrainMatches, matchNr, AllGrainSpots, rownr, ffn2);
+	printf("ID: %d, voxNr: %d, Confidence: %lf\n",SpotID,voxNr,fracMatches);
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
+	FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
 	FreeMemMatrix( TheorSpots, nRowsPerGrain);
 	FreeMemMatrix( GrainSpots, nRowsPerGrain);
 	FreeMemMatrix( AllGrainSpots, nRowsOutput);
+	FreeMemMatrix( AllGrainSpotsT, nRowsOutput);
 	FreeMemMatrix( BestMatches, 2);
 }
 
@@ -1789,60 +1334,20 @@ int ReadSpots(char *cwd)
 	size = s.st_size;
 	ObsSpotsLab = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 	check (ObsSpotsLab == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
-	return (int) size/(9*sizeof(double));
-}
-
-int UnMap(char *cwd)
-{
-	int fd;
-	struct stat s;
-	int status;
-	size_t size;
-	char file_name[2048];
-	sprintf(file_name,"/dev/shm/Data.bin");
-	int rc;
-	fd = open (file_name, O_RDONLY);
-	check (fd < 0, "open %s failed: %s", file_name, strerror (errno));
-	status = fstat (fd, & s);
-	check (status < 0, "stat %s failed: %s", file_name, strerror (errno));
-	size = s.st_size;
-	rc = munmap (data,size);
-	int fd2;
-	struct stat s2;
-	int status2;
-	char file_name2[2048];
-	sprintf(file_name2,"/dev/shm/nData.bin");
-	fd2 = open (file_name2, O_RDONLY);
-	check (fd2 < 0, "open %s failed: %s", file_name2, strerror (errno));
-	status2 = fstat (fd2, & s2);
-	check (status2 < 0, "stat %s failed: %s", file_name2, strerror (errno));
-	size_t size2 = s2.st_size;
-	rc = munmap (ndata,size2);
-	int fd3;
-	struct stat s3;
-	int status3;
-	char filename3[2048];
-	sprintf(filename3,"/dev/shm/Spots.bin");
-	fd3 = open(filename3,O_RDONLY);
-	check(fd3 < 0, "open %s failed: %s", filename3, strerror(errno));
-	status3 = fstat (fd3 , &s3);
-	check (status3 < 0, "stat %s failed: %s", filename3, strerror(errno));
-	size_t size3 = s3.st_size;
-	rc = munmap(ObsSpotsLab,size3);
-	return 1;
+	return (int) size/(10*sizeof(double));
 }
 
 int
 main(int argc, char *argv[])
 {
 	double start_time = omp_get_wtime();
-	printf("\n\n\t\tIndexerOMP v6.0\nContact hsharma@anl.gov in case of questions about the MIDAS project.\n\n");
+	printf("\n\n\t\tIndexerScanningOMP v6.0\nContact hsharma@anl.gov in case of questions about the MIDAS project.\n\n");
 	int returncode;
 	struct TParams Params;
 	char *ParamFN;
 	char fn[1024];
 	if (argc != 6) {
-		printf("Supply a parameter file, blockNr, nBlocks, nSpotsToIndex, numProcs as arguments: ie %s param.txt blockNr nBlocks nSpotsToIndex numProcs\n\n", argv[0]);
+		printf("Supply a parameter file, blockNr, nBlocks, numScans, numProcs as arguments: ie %s param.txt blockNr nBlocks numScans numProcs\n\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
 	ParamFN = argv[1];
@@ -1863,6 +1368,9 @@ main(int argc, char *argv[])
 	double hc,kc,lc,RRd,Ds,tht;
 	while (fgets(aline,1000,hklf)!=NULL){
 		sscanf(aline, "%d %d %d %lf %d %lf %lf %lf %lf %s %lf",&hi,&ki,&li,&Ds,&Rnr,&hc,&kc,&lc,&tht,dummy,&RRd);
+		RingHKL[Rnr][0] = hc;
+		RingHKL[Rnr][1] = kc;
+		RingHKL[Rnr][2] = lc;
 		for (i=0;i<Params.NrOfRings;i++){
 			if (Rnr == Params.RingNumbers[i]){
 				HKLints[n_hkls][0] = hi;
@@ -1880,12 +1388,13 @@ main(int argc, char *argv[])
 			}
 		}
 	}
+	fclose(hklf);
 	char tmpstr[2048];
 	sprintf(tmpstr,"%s",Params.OutputFolder);
 	char *cwdstr = dirname(tmpstr);
 	printf("No of hkl's: %d\n", n_hkls);
 	n_spots = ReadSpots(cwdstr);
-	printf("Binned data...\n");
+	printf("nSpots = %d, Binned data...\n",n_spots);
 	int rc = ReadBins(cwdstr);
 	int HighestRingNo = 0;
 	for (i = 0 ; i < MAX_N_RINGS ; i++ ) {
@@ -1905,33 +1414,69 @@ main(int argc, char *argv[])
 	int nSpotIDs;
 	int nBlocks = atoi(argv[3]);
 	int blockNr = atoi(argv[2]);
-	int nSpotsToIndex = atoi(argv[4]);
+	numScans = atoi(argv[4]);
 	int numProcs = atoi(argv[5]);
 	int startRowNr;
 	int endRowNr;
-	startRowNr = (int) (ceil((double)nSpotsToIndex / (double)nBlocks)) * blockNr;
-	int tmp = (int)(ceil((double)nSpotsToIndex / (double)nBlocks)) * (blockNr+1);
-	endRowNr = tmp < (nSpotsToIndex-1) ? tmp : (nSpotsToIndex-1);
+
+	// Get nVoxels
+	int nVoxels = numScans * numScans;
+	startRowNr = (int) (ceil((double)nVoxels / (double)nBlocks)) * blockNr;
+	int tmp = (int)(ceil((double)nVoxels / (double)nBlocks)) * (blockNr+1);
+	endRowNr = tmp < (nVoxels) ? tmp : (nVoxels);
 	nSpotIDs = endRowNr-startRowNr+1;
 	SpotIDs = malloc(nSpotIDs*sizeof(*SpotIDs));
-	// Read spotIDs
-	FILE *spotsFile = fopen("SpotsToIndex.csv","r");
-	for (i=0;i<startRowNr;i++){
-		fgets(aline,1000,spotsFile);
+	printf("%d %d %d %d %d %d %d\n",numScans,nVoxels,nBlocks,blockNr,startRowNr,endRowNr,numProcs);
+
+	// Make the grid (read positions from the positions.csv file).
+	FILE *positionsF = fopen("positions.csv","r");
+	if (positionsF == NULL){
+		printf("positions.csv file not found.\n");
+		return 1;
 	}
-	for (i=0;i<nSpotIDs;i++){
-		fgets(aline,1000,spotsFile);
-		sscanf(aline,"%d",&SpotIDs[i]);
+	grid = malloc(nVoxels*2*sizeof(*grid));
+	ypos = malloc(numScans*sizeof(*ypos));
+	for (i=0;i<numScans;i++){
+		fgets(aline,1000,positionsF);
+		sscanf(aline,"%lf",&ypos[i]);
 	}
-	fclose(spotsFile);
+	int j;
+	for (i=0;i<numScans;i++){
+		for (j=0;j<numScans;j++){
+			grid[(i*numScans+j)*2+0] = ypos[i];
+			grid[(i*numScans+j)*2+1] = ypos[j];
+		}
+	}
+
+	int RingToIndex = Params.RingToIndex;
+	int startRowNrSp=MAX_N_SPOTS, endRowNrSp=0;
+	for (i=0;i<n_spots;i++){
+		if (ObsSpotsLab[i*10+5] == RingToIndex && startRowNrSp > i) startRowNrSp = i;
+		if (ObsSpotsLab[i*10+5] == RingToIndex && endRowNrSp < i) endRowNrSp = i;
+	}
+
 	int thisRowNr;
 	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
-	for (thisRowNr = 0; thisRowNr < nSpotIDs; thisRowNr++){
-		int thisSpotID = SpotIDs[thisRowNr];
-		DoIndexing(thisSpotID,Params);
+	for (thisRowNr = startRowNr; thisRowNr < endRowNr; thisRowNr++){
+		// Find which spotIDs are in this voxel to be indexed.
+		double xThis=0, yThis=0;
+		xThis = grid[thisRowNr*2+0];
+		yThis = grid[thisRowNr*2+1];
+		double angle, newY;
+		int idnr;
+		int thisID;
+		//~ printf("%d %lf %lf\n", thisRowNr,xThis,yThis);
+		for (idnr = startRowNrSp; idnr<=endRowNrSp; idnr++){
+			angle = ObsSpotsLab[idnr*10+2];
+			thisID = (int)ObsSpotsLab[idnr*10+4];
+			newY = xThis * sin(deg2rad*angle) + yThis * cos(deg2rad*angle);
+			if (fabs(newY - ypos[(int)ObsSpotsLab[idnr*10+9]]) <= BeamSize/2){
+				//~ printf("%d %d %lf %lf %lf %lf %lf %lf\n",idnr,thisID, angle, xThis, yThis, newY, ypos[(int)ObsSpotsLab[idnr*10+9]], ObsSpotsLab[idnr*10+9]);
+				DoIndexing(thisID,thisRowNr,xThis,yThis,0,Params);
+			}
+		}
 	}
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);
-	//~ int tc = UnMap(cwdstr);
 	return(0);
 }

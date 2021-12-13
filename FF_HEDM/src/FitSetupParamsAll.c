@@ -492,7 +492,7 @@ int main(int argc, char *argv[])
     char folder[1024],Folder[1024],*spotsfn,outfolder[1024],resultfolder[1024],*idfn,FileStem[1024],fs[1024];
     int StartNr, EndNr, LowNr, NrPixels,LayerNr;
     int SpaceGroup;
-    double LatticeConstant[6],Wavelength,MaxRingRad,Lsd,MaxTtheta,TthetaTol,ybc,zbc,px,tyIn,tzIn;
+    double LatticeConstant[6],Wavelength,MaxRingRad,Lsd,MaxTtheta,TthetaTol,ybc,zbc,px,tyIn,tzIn, BeamSize = 0;
     double tx,tolTilts=1,tolLsd=5000,tolBC=1,p0,p1,p2,RhoD,wedge,MinEta,OmegaRanges[2000][2],BoxSizes[2000][4];
     int RingNumbers[200],cs=0,nOmeRanges=0,nBoxSizes=0,DoFit=0,RingToIndex;
     double Rsample, Hbeam,MinMatchesToAcceptFrac,MinOmeSpotIDsToIndex,MaxOmeSpotIDsToIndex,Width;
@@ -691,6 +691,12 @@ int main(int argc, char *argv[])
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %lf", dummy, &px);
+            continue;
+        }
+        str = "BeamSize ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &BeamSize);
             continue;
         }
         str = "Width ";
@@ -1104,6 +1110,8 @@ int main(int argc, char *argv[])
 	fprintf(PF,"Distance %f;\n",LsdFit);
 	fprintf(PF,"Rsample %f;\n",Rsample);
 	fprintf(PF,"Hbeam %f;\n",Hbeam);
+	fprintf(PF,"px %f;\n",px);
+	fprintf(PF,"BeamSize %f;\n",BeamSize);
 	fprintf(PF,"StepsizePos %f;\n",StepSizePos);
 	fprintf(PF,"StepsizeOrient %f;\n",StepSizeOrient);
 	fprintf(PF,"MarginRadius %f;\n",MarginRadius);
