@@ -1127,7 +1127,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 	hkl[1] = RingHKL[ringnr][1];
 	hkl[2] = RingHKL[ringnr][2];
 	GenerateCandidateOrientationsF(hkl, hklnormal, Params.StepsizeOrient, OrMat, &nOrient,ringnr);
-	printf("%d %d %lf %lf %lf\n",SpotID,nOrient,y0,z0,omega);
+	printf("%d %d %lf %lf %lf %d\n",SpotID,nOrient,y0,z0,omega,(int)ObsSpotsLab[SpotRowNo*10+9]);
 	RealType **TheorSpots;
 	RealType **GrainSpots;
 	RealType **GrainMatches;
@@ -1465,13 +1465,13 @@ main(int argc, char *argv[])
 		double angle, newY;
 		int idnr;
 		int thisID;
-		//~ printf("%d %lf %lf\n", thisRowNr,xThis,yThis);
+		printf("%d %lf %lf\n", thisRowNr,xThis,yThis);
 		for (idnr = startRowNrSp; idnr<=endRowNrSp; idnr++){
 			angle = ObsSpotsLab[idnr*10+2];
 			thisID = (int)ObsSpotsLab[idnr*10+4];
 			newY = xThis * sin(deg2rad*angle) + yThis * cos(deg2rad*angle);
 			if (fabs(newY - ypos[(int)ObsSpotsLab[idnr*10+9]]) <= BeamSize/2){
-				//~ printf("%d %d %lf %lf %lf %lf %lf %lf\n",idnr,thisID, angle, xThis, yThis, newY, ypos[(int)ObsSpotsLab[idnr*10+9]], ObsSpotsLab[idnr*10+9]);
+			//~ printf("%d %d %lf %lf %lf %lf %lf %lf\n",idnr,thisID, angle, xThis, yThis, newY, ypos[(int)ObsSpotsLab[idnr*10+9]], ObsSpotsLab[idnr*10+9]);
 				DoIndexing(thisID,thisRowNr,xThis,yThis,0,Params);
 			}
 		}
