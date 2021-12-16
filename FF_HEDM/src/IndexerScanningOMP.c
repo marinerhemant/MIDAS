@@ -1187,7 +1187,16 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 		FreeMemMatrix( BestMatches, 2);
 		return;
 	}
-	if (fracMatches < Params.MinMatchesToAcceptFrac) return;
+	if (fracMatches < Params.MinMatchesToAcceptFrac){
+		FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
+		FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
+		FreeMemMatrix( TheorSpots, nRowsPerGrain);
+		FreeMemMatrix( GrainSpots, nRowsPerGrain);
+		FreeMemMatrix( AllGrainSpots, nRowsOutput);
+		FreeMemMatrix( AllGrainSpotsT, nRowsOutput);
+		FreeMemMatrix( BestMatches, 2);
+		return;
+	}
 	int SpotIDIdx = 0;
 	BestMatches[SpotIDIdx][0] = SpotIDIdx+1;
 	BestMatches[SpotIDIdx][1] = SpotID;
