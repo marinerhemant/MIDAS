@@ -407,7 +407,7 @@ main(int argc, char *argv[])
 		YG[1] = ys+dy2;
 		YG[2] = ys+dy2;
 		Euler2OrientMat(eulThis,OMIn);
-		SimulateAccOrient(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XG,YG,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,Thetas,OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,ObsSpotsInfo,OMIn,TheorSpots);
+		SimulateAccOrient(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XG,YG,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,Thetas,OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,ObsSpotsInfo,OMIn,TheorSpots, nrPixels);
 	}
 	printf("Writing output file\n");
 	FILE *OutputF;

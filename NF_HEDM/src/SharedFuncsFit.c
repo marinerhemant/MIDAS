@@ -595,7 +595,8 @@ CalcFracOverlap(
     const int NrPixelsGrid,
     int *ObsSpotsInfo,
     double OrientMatIn[3][3],
-    double *FracOver)
+    double *FracOver,
+    int nrPixels)
 {
     int j,OmeBin,OutofBounds,k,l;
     double OmegaThis,ythis,zthis,XGT,YGT,Displ_Y,Displ_Z,ytemp,ztemp,
@@ -661,7 +662,7 @@ CalcFracOverlap(
 			outxyz[2] = P0[2] -(ABC[2]*P0[0])/(ABC[0]);
 			YZSpotsT[k][0] = (outxyz[1])/px + ybc;
 			YZSpotsT[k][1] = (outxyz[2])/px + zbc;
-			if (YZSpotsT[k][0] > 2048 || YZSpotsT[k][0] < 0 || YZSpotsT[k][1] > 2048 || YZSpotsT[k][1] < 0){
+			if (YZSpotsT[k][0] > sqrt(nrPixels) || YZSpotsT[k][0] < 0 || YZSpotsT[k][1] > sqrt(nrPixels) || YZSpotsT[k][1] < 0){
 				OutofBounds = 1;
 				break;
 			}
@@ -699,18 +700,18 @@ CalcFracOverlap(
 			for (Layer=0;Layer<nLayers;Layer++){
 				MultY = (int) floor(((((double)(YZSpotsTemp[0]-ybc))*px)*(Lsds[Layer]/Lsd))/px + ybcs[Layer]) + InPixels[k][0];
 				MultZ = (int) floor(((((double)(YZSpotsTemp[1]-zbc))*px)*(Lsds[Layer]/Lsd))/px + zbcs[Layer]) + InPixels[k][1];
-				if (MultY >= 2048 || MultY < 0 || MultZ >= 2048 || MultZ < 0){
+				if (MultY >= sqrt(nrPixels) || MultY < 0 || MultZ >= sqrt(nrPixels) || MultZ < 0){
 					OutofBounds = 1;
 					break;
 				}
 				BinNr = Layer*NrOfFiles;
-				BinNr *= 2048;
-				BinNr *= 2048;
+				BinNr *= sqrt(nrPixels);
+				BinNr *= sqrt(nrPixels);
 				TempCntr = OmeBin;
-				TempCntr *= 2048;
-				TempCntr *= 2048;
+				TempCntr *= sqrt(nrPixels);
+				TempCntr *= sqrt(nrPixels);
 				BinNr += TempCntr;
-				TempCntr = 2048;
+				TempCntr = sqrt(nrPixels);
 				TempCntr *= MultY;
 				BinNr += TempCntr;
 				BinNr += MultZ;
@@ -757,7 +758,8 @@ SimulateDiffractionImage(
     double P0All[nLayers][3],
     const int NrPixelsGrid,
     uint16_t *ObsSpotsInfo,
-    double OrientMatIn[3][3])
+    double OrientMatIn[3][3],
+    int nrPixels)
 {
     int j,OmeBin,OutofBounds,k,l;
     double OmegaThis,ythis,zthis,XGT,YGT,Displ_Y,Displ_Z,ytemp,ztemp,
@@ -822,7 +824,7 @@ SimulateDiffractionImage(
 			outxyz[2] = P0[2] -(ABC[2]*P0[0])/(ABC[0]);
 			YZSpotsT[k][0] = (outxyz[1])/px + ybc;
 			YZSpotsT[k][1] = (outxyz[2])/px + zbc;
-			if (YZSpotsT[k][0] > 2048 || YZSpotsT[k][0] < 0 || YZSpotsT[k][1] > 2048 || YZSpotsT[k][1] < 0){
+			if (YZSpotsT[k][0] > sqrt(nrPixels) || YZSpotsT[k][0] < 0 || YZSpotsT[k][1] > sqrt(nrPixels) || YZSpotsT[k][1] < 0){
 				OutofBounds = 1;
 				break;
 			}
@@ -860,17 +862,17 @@ SimulateDiffractionImage(
 			for (Layer=0;Layer<nLayers;Layer++){
 				MultY = (int) floor(((((double)(YZSpotsTemp[0]-ybc))*px)*(Lsds[Layer]/Lsd))/px + ybcs[Layer]) + InPixels[k][0];
 				MultZ = (int) floor(((((double)(YZSpotsTemp[1]-zbc))*px)*(Lsds[Layer]/Lsd))/px + zbcs[Layer]) + InPixels[k][1];
-				if (MultY >= 2048 || MultY < 0 || MultZ >= 2048 || MultZ < 0){
+				if (MultY >= sqrt(nrPixels) || MultY < 0 || MultZ >= sqrt(nrPixels) || MultZ < 0){
 					break;
 				}
 				BinNr = Layer*NrOfFiles;
-				BinNr *= 2048;
-				BinNr *= 2048;
+				BinNr *= sqrt(nrPixels);
+				BinNr *= sqrt(nrPixels);
 				TempCntr = OmeBin;
-				TempCntr *= 2048;
-				TempCntr *= 2048;
+				TempCntr *= sqrt(nrPixels);
+				TempCntr *= sqrt(nrPixels);
 				BinNr += TempCntr;
-				TempCntr = 2048;
+				TempCntr = sqrt(nrPixels);
 				TempCntr *= MultY;
 				BinNr += TempCntr;
 				BinNr += MultZ;
@@ -908,7 +910,8 @@ CalcOverlapAccOrient(
     int *ObsSpotsInfo,
     double OrientMatIn[3][3],
     double *FracOverlap,
-    double *TheorSpots)
+    double *TheorSpots,
+    int nrPixels)
 {
     int nTspots,i;
     double Lsd0=Lsd[0];
@@ -917,7 +920,7 @@ CalcOverlapAccOrient(
     double FracOver;
     CalcFracOverlap(NrOfFiles,nLayers,nTspots,TheorSpots,OmegaStart,
 		OmegaStep,XGrain,YGrain,Lsd,SizeObsSpots,RotMatTilts,px,ybc,zbc,gs,
-		P0,NrPixelsGrid,ObsSpotsInfo,OrientMatIn,&FracOver);
+		P0,NrPixelsGrid,ObsSpotsInfo,OrientMatIn,&FracOver, nrPixels);
     *FracOverlap = FracOver;
 }
 
@@ -947,12 +950,13 @@ SimulateAccOrient(
     const int NrPixelsGrid,
     uint16_t *ObsSpotsInfo,
     double OrientMatIn[3][3],
-    double *TheorSpots)
+    double *TheorSpots,
+    int nrPixels)
 {
     int nTspots,i;
     double Lsd0=Lsd[0];
     CalcDiffractionSpots(Lsd0, ExcludePoleAngle, OmegaRanges, NoOfOmegaRanges,
-		hkls, n_hkls, Thetas, BoxSizes, &nTspots, OrientMatIn,TheorSpots);
+		hkls, n_hkls, Thetas, BoxSizes, &nTspots, OrientMatIn,TheorSpots, nrPixels);
     double XG[3],YG[3];
     for (i=0;i<3;i++){
         XG[i] = XGrain[i];
@@ -960,7 +964,7 @@ SimulateAccOrient(
     }
     SimulateDiffractionImage(NrOfFiles,nLayers,nTspots,TheorSpots,OmegaStart,
 		OmegaStep,XG,YG,Lsd,SizeObsSpots,RotMatTilts,px,ybc,zbc,gs,
-		P0,NrPixelsGrid,ObsSpotsInfo,OrientMatIn);
+		P0,NrPixelsGrid,ObsSpotsInfo,OrientMatIn,nrPixels);
 }
 
 void

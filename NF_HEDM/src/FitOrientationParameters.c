@@ -31,6 +31,7 @@ double Wedge;
 double Wavelength;
 double OmegaRang[MAX_N_OMEGA_RANGES][2];
 int nOmeRang;
+int nrPixels;
 
 double**
 allocMatrixF(int nrows, int ncols)
@@ -161,7 +162,7 @@ double problem_function(
     CalcOverlapAccOrient(NrOfFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XGrain,
 		YGrain,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,
 		Thetas,OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,
-		ObsSpotsInfo,OrientMatIn,&FracOverlap,TheorSpots);
+		ObsSpotsInfo,OrientMatIn,&FracOverlap,TheorSpots,nrPixels);
 	free(TheorSpots);
     return (1 - FracOverlap);
 }
@@ -532,7 +533,7 @@ main(int argc, char *argv[])
             continue;
         }
     }
-    int i,j,m,nrFiles,nrPixels;
+    int i,j,m,nrFiles;
     for (i=0;i<NoOfOmegaRanges;i++){
 		OmegaRang[i][0] = OmegaRanges[i][0];
 		OmegaRang[i][1] = OmegaRanges[i][1];
