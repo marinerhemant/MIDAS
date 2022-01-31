@@ -138,7 +138,7 @@ main(int argc, char *argv[])
     double OmegaRanges[MAX_N_OMEGA_RANGES][2], BoxSizes[MAX_N_OMEGA_RANGES][4];
     int cntr=0,countr=0,conter=0,StartNr,EndNr,intdummy,SpaceGroup, RingsToUse[100],nRingsToUse=0;
     int NoOfOmegaRanges=0;
-    int nSaves = 1, nrPixels;
+    int nSaves = 1;
     int gridfnfound = 0;
     Wedge = 0;
     int MinMiso = 0;
@@ -197,12 +197,6 @@ main(int argc, char *argv[])
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %d", dummy, &EndNr);
-            continue;
-        }
-        str = "NrPixels ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %d", dummy, &nrPixels);
             continue;
         }
         str = "ExcludePoleAngle ";
@@ -321,7 +315,7 @@ main(int argc, char *argv[])
             continue;
         }
     }
-    int i,j,m,nrFiles;
+    int i,j,m,nrFiles,nrPixels;
     for (i=0;i<NoOfOmegaRanges;i++){
 		OmegaRang[i][0] = OmegaRanges[i][0];
 		OmegaRang[i][1] = OmegaRanges[i][1];
@@ -331,7 +325,7 @@ main(int argc, char *argv[])
     MaxTtheta = rad2deg*atan(MaxRingRad/Lsd[0]);
     int *ObsSpotsInfo;
     nrFiles = EndNr - StartNr + 1;
-    nrPixels = nrPixels*nrPixels;
+    nrPixels = 2048*2048;
     long long int SizeObsSpots;
     SizeObsSpots = (nLayers);
     SizeObsSpots*=nrPixels;
@@ -437,7 +431,7 @@ main(int argc, char *argv[])
 		YG[2] = ys+dy2;
 		// We need to make diffraction spots now. Use eulThis to calc OM, then calcDiffrSpots
 		Euler2OrientMat(eulThis,OMIn);
-		CalcOverlapAccOrient(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XG,YG,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,Thetas,OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,ObsSpotsInfo,OMIn,&FracCalc,TheorSpots,nrPixels);
+		CalcOverlapAccOrient(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XG,YG,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,Thetas,OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,ObsSpotsInfo,OMIn,&FracCalc,TheorSpots);
 		lineNr += 1;
 		if (origConf - FracCalc > fracThresh){
 			fprintf(outMicF,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf 0\n",(double)lineNr,FracCalc,origConf-FracCalc,xs,ys,edgeLen,ud,eulThis[0],eulThis[1],eulThis[2],origConf);

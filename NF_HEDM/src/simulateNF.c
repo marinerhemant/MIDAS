@@ -122,36 +122,36 @@ main(int argc, char *argv[])
     double OmegaRanges[MAX_N_OMEGA_RANGES][2], BoxSizes[MAX_N_OMEGA_RANGES][4];
     int cntr=0,countr=0,conter=0,StartNr,EndNr,intdummy,SpaceGroup, RingsToUse[100],nRingsToUse=0;
     int NoOfOmegaRanges=0;
-    int nSaves = 1,nrPixels;
+    int nSaves = 1;
     int gridfnfound = 0;
     Wedge = 0;
     int MinMiso = 0;
     while (fgets(aline,1000,fileParam)!=NULL){
-		//~ str = "ReducedFileName ";
-        //~ LowNr = strncmp(aline,str,strlen(str));
-        //~ if (LowNr==0){
-            //~ sscanf(aline,"%s %s", dummy, fn2);
-            //~ continue;
-        //~ }
-		//~ str = "GridFileName ";
-        //~ LowNr = strncmp(aline,str,strlen(str));
-        //~ if (LowNr==0){
-            //~ sscanf(aline,"%s %s", dummy, gridfn);
-            //~ gridfnfound = 1;
-            //~ continue;
-        //~ }
-		//~ str = "SaveNSolutions ";
-        //~ LowNr = strncmp(aline,str,strlen(str));
-        //~ if (LowNr==0){
-            //~ sscanf(aline,"%s %d", dummy, &nSaves);
-            //~ continue;
-        //~ }
-		//~ str = "DataDirectory ";
-        //~ LowNr = strncmp(aline,str,strlen(str));
-        //~ if (LowNr==0){
-            //~ sscanf(aline,"%s %s", dummy, direct);
-            //~ continue;
-        //~ }
+		str = "ReducedFileName ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %s", dummy, fn2);
+            continue;
+        }
+		str = "GridFileName ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %s", dummy, gridfn);
+            gridfnfound = 1;
+            continue;
+        }
+		str = "SaveNSolutions ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &nSaves);
+            continue;
+        }
+		str = "DataDirectory ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %s", dummy, direct);
+            continue;
+        }
         str = "Lsd ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -181,12 +181,6 @@ main(int argc, char *argv[])
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %d", dummy, &EndNr);
-            continue;
-        }
-        str = "NrPixels ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %d", dummy, &nrPixels);
             continue;
         }
         str = "ExcludePoleAngle ";
@@ -305,7 +299,7 @@ main(int argc, char *argv[])
             continue;
         }
     }
-    int i,j,m,nrFiles;
+    int i,j,m,nrFiles,nrPixels;
     for (i=0;i<NoOfOmegaRanges;i++){
 		OmegaRang[i][0] = OmegaRanges[i][0];
 		OmegaRang[i][1] = OmegaRanges[i][1];
@@ -316,7 +310,7 @@ main(int argc, char *argv[])
     char *ext="bin";
     uint16_t *ObsSpotsInfo;
     nrFiles = EndNr - StartNr + 1;
-    nrPixels = nrPixels*nrPixels;
+    nrPixels = 2048*2048;
     long long int SizeObsSpots;
     SizeObsSpots = (nLayers);
     SizeObsSpots*=nrPixels;
@@ -407,14 +401,11 @@ main(int argc, char *argv[])
 		YG[1] = ys+dy2;
 		YG[2] = ys+dy2;
 		Euler2OrientMat(eulThis,OMIn);
-		SimulateAccOrient(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XG,YG,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,Thetas,OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,ObsSpotsInfo,OMIn,TheorSpots, nrPixels);
+		SimulateAccOrient(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XG,YG,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,Thetas,OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,ObsSpotsInfo,OMIn,TheorSpots);
 	}
 	printf("Writing output file\n");
 	FILE *OutputF;
 	OutputF = fopen(outputFN,"wb");
-	int maxVal=0;
-	for (i=0;i<SizeObsSpots;i++) if (maxVal < ObsSpotsInfo[i]) maxVal = ObsSpotsInfo[i];
-	printf("%d\n",maxVal);
 	char dummychar[8192];
 	fwrite(dummychar,8192,1,OutputF);
 	fwrite(ObsSpotsInfo,SizeObsSpots*sizeof(*ObsSpotsInfo),1,OutputF);
