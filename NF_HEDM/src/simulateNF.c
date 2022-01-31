@@ -151,7 +151,7 @@ main(int argc, char *argv[])
         //~ if (LowNr==0){
             //~ sscanf(aline,"%s %s", dummy, direct);
             //~ continue;
-        }
+        //~ }
         str = "Lsd ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
