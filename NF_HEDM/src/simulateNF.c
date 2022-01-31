@@ -412,6 +412,9 @@ main(int argc, char *argv[])
 	printf("Writing output file\n");
 	FILE *OutputF;
 	OutputF = fopen(outputFN,"wb");
+	int maxVal=0;
+	for (i=0;i<SizeObsSpots;i++) if (maxVal < ObsSpotsInfo[i]) maxVal = ObsSpotsInfo[i];
+	printf("%d\n",maxVal);
 	char dummychar[8192];
 	fwrite(dummychar,8192,1,OutputF);
 	fwrite(ObsSpotsInfo,SizeObsSpots*sizeof(*ObsSpotsInfo),1,OutputF);
