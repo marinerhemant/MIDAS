@@ -1946,6 +1946,7 @@ int main(int argc, char *argv[])
 	}
 
 	FreeMemMatrix(hkls,MaxNHKLS);
+	free(SptIDs);
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);
 	return 0;

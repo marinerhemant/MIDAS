@@ -1709,6 +1709,13 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 
 	fracMatches = (RealType) bestnMatchesIsp/bestnTspotsIsp;
 	if (fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 || (int)bestnMatchesIsp == -1 || bestMatchFound == 0){
+		FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
+		FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
+		FreeMemMatrix( TheorSpots, nRowsPerGrain);
+		FreeMemMatrix( GrainSpots, nRowsPerGrain);
+		FreeMemMatrix( AllGrainSpots, nRowsOutput);
+		FreeMemMatrix( AllGrainSpotsT, nRowsOutput);
+		FreeMemMatrix( BestMatches, 2);
 		return;
 	}
 	BestMatches[SpotIDIdx][0] = SpotIDIdx+1;
@@ -1723,9 +1730,11 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	WriteBestMatch(ffn, GrainMatches, matchNr, AllGrainSpots, rownr, ffn2);
 	printf("ID: %d, Confidence: %lf\n",SpotIDs,fracMatches);
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
+	FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
 	FreeMemMatrix( TheorSpots, nRowsPerGrain);
 	FreeMemMatrix( GrainSpots, nRowsPerGrain);
 	FreeMemMatrix( AllGrainSpots, nRowsOutput);
+	FreeMemMatrix( AllGrainSpotsT, nRowsOutput);
 	FreeMemMatrix( BestMatches, 2);
 }
 
