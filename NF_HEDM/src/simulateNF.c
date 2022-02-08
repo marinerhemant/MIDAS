@@ -420,6 +420,7 @@ main(int argc, char *argv[])
 		fwrite(ObsSpotsInfo,SizeObsSpots*sizeof(*ObsSpotsInfo),1,OutputF);
 		fclose(OutputF);
 	}
+	printf("Done with full file\n");
 	size_t idxpos,tmpcntr,nrF=0;
 	for (i=0;i<2048;i++){
 		for (j=0;j<2048;j++){
