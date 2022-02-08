@@ -126,32 +126,33 @@ main(int argc, char *argv[])
     int gridfnfound = 0;
     Wedge = 0;
     int MinMiso = 0;
+    int skipBin = 0;
     while (fgets(aline,1000,fileParam)!=NULL){
-		str = "ReducedFileName ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %s", dummy, fn2);
-            continue;
-        }
-		str = "GridFileName ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %s", dummy, gridfn);
-            gridfnfound = 1;
-            continue;
-        }
-		str = "SaveNSolutions ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %d", dummy, &nSaves);
-            continue;
-        }
-		str = "DataDirectory ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %s", dummy, direct);
-            continue;
-        }
+		//~ str = "ReducedFileName ";
+        //~ LowNr = strncmp(aline,str,strlen(str));
+        //~ if (LowNr==0){
+            //~ sscanf(aline,"%s %s", dummy, fn2);
+            //~ continue;
+        //~ }
+		//~ str = "GridFileName ";
+        //~ LowNr = strncmp(aline,str,strlen(str));
+        //~ if (LowNr==0){
+            //~ sscanf(aline,"%s %s", dummy, gridfn);
+            //~ gridfnfound = 1;
+            //~ continue;
+        //~ }
+		//~ str = "SaveNSolutions ";
+        //~ LowNr = strncmp(aline,str,strlen(str));
+        //~ if (LowNr==0){
+            //~ sscanf(aline,"%s %d", dummy, &nSaves);
+            //~ continue;
+        //~ }
+		//~ str = "DataDirectory ";
+        //~ LowNr = strncmp(aline,str,strlen(str));
+        //~ if (LowNr==0){
+            //~ sscanf(aline,"%s %s", dummy, direct);
+            //~ continue;
+        //~ }
         str = "Lsd ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -163,6 +164,12 @@ main(int argc, char *argv[])
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %d", dummy, &SpaceGroup);
+            continue;
+        }
+        str = "SaveReducedOutput ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+			skipBin = 1;
             continue;
         }
         str = "MaxRingRad ";
@@ -299,7 +306,7 @@ main(int argc, char *argv[])
             continue;
         }
     }
-    int i,j,m,nrFiles,nrPixels;
+    int i,j,k,l,m,nrFiles,nrPixels;
     for (i=0;i<NoOfOmegaRanges;i++){
 		OmegaRang[i][0] = OmegaRanges[i][0];
 		OmegaRang[i][1] = OmegaRanges[i][1];
@@ -308,7 +315,7 @@ main(int argc, char *argv[])
     fclose(fileParam);
     MaxTtheta = rad2deg*atan(MaxRingRad/Lsd[0]);
     char *ext="bin";
-    uint16_t *ObsSpotsInfo;
+    uint16_t *ObsSpotsInfo, *binArr;
     nrFiles = EndNr - StartNr + 1;
     nrPixels = 2048*2048;
     long long int SizeObsSpots;
@@ -318,6 +325,7 @@ main(int argc, char *argv[])
     SizeObsSpots;
     printf("%lld\n",SizeObsSpots);
     ObsSpotsInfo = calloc(SizeObsSpots,sizeof(*ObsSpotsInfo));
+    binArr = calloc(SizeObsSpots,sizeof(*binArr)); // This is assuming we have quarter of data with signal, not unreasonable. 
 
 	double RotMatTilts[3][3];
 	RotationTilts(tx,ty,tz,RotMatTilts);
@@ -376,7 +384,7 @@ main(int argc, char *argv[])
 	printf("%s\n",MicFN);
 	if (InpMicF == NULL) return 1;
 	char outFN[4096];
-	sprintf(outFN,"%s.output.csv",MicFN);
+	sprintf(outFN,"%s.bin",outputFN);
 	fgets(aline,4096,InpMicF);
 	fgets(aline,4096,InpMicF);
 	fgets(aline,4096,InpMicF);
@@ -405,9 +413,42 @@ main(int argc, char *argv[])
 	}
 	printf("Writing output file\n");
 	FILE *OutputF;
-	OutputF = fopen(outputFN,"wb");
-	char dummychar[8192];
-	fwrite(dummychar,8192,1,OutputF);
-	fwrite(ObsSpotsInfo,SizeObsSpots*sizeof(*ObsSpotsInfo),1,OutputF);
+	if (skipBin == 0){
+		OutputF = fopen(outputFN,"wb");
+		char dummychar[8192];
+		fwrite(dummychar,8192,1,OutputF);
+		fwrite(ObsSpotsInfo,SizeObsSpots*sizeof(*ObsSpotsInfo),1,OutputF);
+		fclose(OutputF);
+	}
+	size_t idxpos,tmpcntr,nrF=0;
+	for (i=0;i<2048;i++){
+		for (j=0;j<2048;j++){
+			for (k=0;k<nrFiles;k++){
+				for (l=0;l<nLayers;l++){
+					idxpos = l*nrFiles;
+					idxpos *= 2048;
+					idxpos *= 2048;
+					idxpos = 2048;
+					idxpos *= 2048;
+					idxpos *= k;
+					idxpos += tmpcntr;
+					idxpos += 2048*j;
+					idxpos += i;
+					if (ObsSpotsInfo[idxpos] != 0){
+						binArr[nrF*5+0] = j;
+						binArr[nrF*5+1] = i;
+						binArr[nrF*5+2] = k;
+						binArr[nrF*5+3] = l;
+						binArr[nrF*5+4] = ObsSpotsInfo[idxpos];
+						nrF ++;
+					}
+				}
+			}
+		}
+	}
+	printf("Total number of illuminated pixels: %zu\n",nrF);
+	OutputF = fopen(outFN,"wb");
+	fwrite(binArr,nrF*5*sizeof(*binArr),1,OutputF);
+	fclose(OutputF);
 	return 0;
 }
