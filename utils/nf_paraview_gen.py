@@ -53,7 +53,7 @@ thisPhaseNr = 1
 LatC = np.array([2.9243, 2.9243, 4.6726 ,90.0, 90.0, 120.0],dtype=np.float32)
 minConfidence = 0.3
 orientTol = 10.0 # In degrees, used to define grains
-zspacing = -2
+zspacing = -2 # Must always be positive for Dream3D
 xyspacing = 2  # X and Y spacing are equal, should be equal to the grid_size used during reconstruction
 startZ = 0 # Starting Z position
 xExtent = 1400 # Maximum Extent of xValues in um

@@ -26,6 +26,7 @@ from subprocess import Popen, PIPE, STDOUT
 from multiprocessing.dummy import Pool
 import time
 import ctypes
+import re
 
 # Helpers
 deg2rad = 0.0174532925199433
@@ -1070,6 +1071,7 @@ tempLsd = 1000000
 tempMaxRingRad = 2000000
 firstFileNrVar = Tk.StringVar()
 fnextvar = Tk.StringVar()
+fnextvar.set('.ge5')
 nFramesPerFileVar = Tk.StringVar()
 firstFileNrVar.set(str(1))
 nFramesPerFileVar.set(str(240))
@@ -1132,8 +1134,13 @@ toolbar.update()
 
 Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20)).grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W,padx=10)
 
+zeroRowFrame = Tk.Frame(root)
+zeroRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
+Tk.Label(master=zeroRowFrame,text='FileStem').grid(row=1,column=1,sticky=Tk.W)
+Tk.Entry(master=zeroRowFrame,text=fnextvar,width=10).grid(row=1,column=2,sticky=Tk.W)
+
 firstRowFrame = Tk.Frame(root)
-firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
+firstRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
 Tk.Button(master=firstRowFrame,text='FirstFile',command=firstFileSelector,font=("Helvetica",12)).grid(row=1,column=1,sticky=Tk.W)
 Tk.Button(master=firstRowFrame,text='DarkFile',command=darkFileSelector,font=("Helvetica",12)).grid(row=1,column=2,sticky=Tk.W)
 Tk.Checkbutton(master=firstRowFrame,text="DarkCorr",variable=var).grid(row=1,column=3,sticky=Tk.W)
@@ -1152,7 +1159,7 @@ Tk.Checkbutton(master=firstRowFrame,text="VFilp",variable=vflip).grid(row=1,colu
 Tk.Checkbutton(master=firstRowFrame,text="Transpose",variable=transpose).grid(row=1,column=16,sticky=Tk.W)
 
 secondRowFrame = Tk.Frame(root)
-secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
+secondRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
 Tk.Label(master=secondRowFrame,text='NrPixelsHor').grid(row=1,column=1,sticky=Tk.W)
 Tk.Entry(master=secondRowFrame,textvariable=NrPixelsZVar,width=5).grid(row=1,column=2,sticky=Tk.W)
 Tk.Label(master=secondRowFrame,text='NrPixelsVert').grid(row=1,column=3,sticky=Tk.W)
@@ -1174,7 +1181,7 @@ Tk.Label(master=secondRowFrame,text="HeadSize").grid(row=1,column=19,sticky=Tk.W
 Tk.Entry(master=secondRowFrame,textvariable=HeaderVar,width=5).grid(row=1,column=20,sticky=Tk.W)
 
 thirdRowFrame = Tk.Frame(root)
-thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
+thirdRowFrame.grid(row=figrowspan+4,column=1,sticky=Tk.W)
 Tk.Label(master=thirdRowFrame,text="Hydra Only:",font=('Helvetica',15)).grid(row=1,column=1,sticky=Tk.W)
 Tk.Checkbutton(master=thirdRowFrame,text='IsHydra',variable=hydraVar).grid(row=1,column=2,sticky=Tk.W)
 Tk.Label(master=thirdRowFrame,text="ParamFile").grid(row=1,column=3,sticky=Tk.W)
