@@ -947,18 +947,20 @@ def firstFileSelector():
 	NrPixelsY = int(NrPixelsYVar.get())
 	NrPixelsZ = int(NrPixelsZVar.get())
 	firstfilefullpath = selectFile()
-	nDetectors = 1
-	if firstfilefullpath[-1].isdigit():
-		detnumbvar.set(firstfilefullpath[-1])
-	else:
-		detnumbvar.set('-1')
-		fnextvar.set(firstfilefullpath.split('.')[-1])
-	folder = os.path.dirname(firstfilefullpath) + '/'
 	fullfilename = firstfilefullpath.split('/')[-1].split('.')[0]
 	fileStem = '_'.join(fullfilename.split('_')[:-1])
 	firstFileNumber = int(fullfilename.split('_')[-1])
 	firstFileNrVar.set(firstFileNumber)
 	padding = len(fullfilename.split('_')[-1])
+	nDetectors = 1
+	# Check here for the extension of the detector, if it contains .geX, then set detnumbvar as X, else set fnextvar
+	tempext = (firstfilefullpath.split(fullfilename)[-1])[1:]
+	if len(tempext) == 3 and tempext[-1].isdigit():
+		detnumbvar.set(tempext[-1])
+	else:
+		detnumbvar.set('-1')
+		fnextvar.set(tempext)
+	folder = os.path.dirname(firstfilefullpath) + '/'
 	statinfo = os.stat(firstfilefullpath)
 	nFramesPerFile = int((statinfo.st_size - Header)/(BytesPerPixel*NrPixelsY*NrPixelsZ))
 	nFramesPerFileVar.set(nFramesPerFile)
@@ -1134,13 +1136,13 @@ toolbar.update()
 
 Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20)).grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W,padx=10)
 
-zeroRowFrame = Tk.Frame(root)
-zeroRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
-Tk.Label(master=zeroRowFrame,text='FileStem').grid(row=1,column=1,sticky=Tk.W)
-Tk.Entry(master=zeroRowFrame,text=fnextvar,width=10).grid(row=1,column=2,sticky=Tk.W)
+# ~ zeroRowFrame = Tk.Frame(root)
+# ~ zeroRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
+# ~ Tk.Label(master=zeroRowFrame,text='FileStem').grid(row=1,column=1,sticky=Tk.W)
+# ~ Tk.Entry(master=zeroRowFrame,text=fnextvar,width=10).grid(row=1,column=2,sticky=Tk.W)
 
 firstRowFrame = Tk.Frame(root)
-firstRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
+firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
 Tk.Button(master=firstRowFrame,text='FirstFile',command=firstFileSelector,font=("Helvetica",12)).grid(row=1,column=1,sticky=Tk.W)
 Tk.Button(master=firstRowFrame,text='DarkFile',command=darkFileSelector,font=("Helvetica",12)).grid(row=1,column=2,sticky=Tk.W)
 Tk.Checkbutton(master=firstRowFrame,text="DarkCorr",variable=var).grid(row=1,column=3,sticky=Tk.W)
@@ -1159,7 +1161,7 @@ Tk.Checkbutton(master=firstRowFrame,text="VFilp",variable=vflip).grid(row=1,colu
 Tk.Checkbutton(master=firstRowFrame,text="Transpose",variable=transpose).grid(row=1,column=16,sticky=Tk.W)
 
 secondRowFrame = Tk.Frame(root)
-secondRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
+secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
 Tk.Label(master=secondRowFrame,text='NrPixelsHor').grid(row=1,column=1,sticky=Tk.W)
 Tk.Entry(master=secondRowFrame,textvariable=NrPixelsZVar,width=5).grid(row=1,column=2,sticky=Tk.W)
 Tk.Label(master=secondRowFrame,text='NrPixelsVert').grid(row=1,column=3,sticky=Tk.W)
@@ -1181,7 +1183,7 @@ Tk.Label(master=secondRowFrame,text="HeadSize").grid(row=1,column=19,sticky=Tk.W
 Tk.Entry(master=secondRowFrame,textvariable=HeaderVar,width=5).grid(row=1,column=20,sticky=Tk.W)
 
 thirdRowFrame = Tk.Frame(root)
-thirdRowFrame.grid(row=figrowspan+4,column=1,sticky=Tk.W)
+thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
 Tk.Label(master=thirdRowFrame,text="Hydra Only:",font=('Helvetica',15)).grid(row=1,column=1,sticky=Tk.W)
 Tk.Checkbutton(master=thirdRowFrame,text='IsHydra',variable=hydraVar).grid(row=1,column=2,sticky=Tk.W)
 Tk.Label(master=thirdRowFrame,text="ParamFile").grid(row=1,column=3,sticky=Tk.W)
