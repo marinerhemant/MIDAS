@@ -1585,6 +1585,8 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		RingTtheta[Rnr] = tth;
 	}
 	fclose(hklf);
+	printf("Read hklf\n");
+	fflush(stdout);
 	hkl[0] = RingHKL[ringnr][0];
 	hkl[1] = RingHKL[ringnr][1];
 	hkl[2] = RingHKL[ringnr][2];
