@@ -1549,7 +1549,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		else etamargins[i] = rad2deg * atan(Params.MarginEta/Params.RingRadii[i]) + 0.5 * Params.StepsizeOrient;
 	}
 	int SpotIDIdx = 0;
-	//~ printf("Starting indexing...\n");
+	printf("Starting indexing...\n");
 	//~ start = clock();
 	RealType MinInternalAngle=1000;
 	matchNr = 0;
@@ -1949,6 +1949,7 @@ main(int argc, char *argv[])
 	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
 	for (thisRowNr = 0; thisRowNr < nSpotIDs; thisRowNr++){
 		int thisSpotID = SpotIDs[thisRowNr];
+		printf("%d\n",thisSpotID);
 		DoIndexing(thisSpotID,Params);
 	}
 	double time = omp_get_wtime() - start_time;
