@@ -1557,8 +1557,8 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	RealType SpotID = SpotIDs;
 	FindInMatrix(&ObsSpotsLab[0*9+0], n_spots, N_COL_OBSSPOTS, 4, SpotID, &SpotRowNo);
 	if (SpotRowNo == -1) {
-		//~ printf("WARNING: SpotId %lf not found in spots file! Ignoring this spotID.\n", SpotID);
-		return;
+		printf("WARNING: SpotId %lf not found in spots file! Ignoring this spotID.\n", SpotID);
+		return 1;
 	}
 	RealType ys     = ObsSpotsLab[SpotRowNo*9+0];
 	RealType zs     = ObsSpotsLab[SpotRowNo*9+1];
@@ -1717,7 +1717,8 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		FreeMemMatrix( AllGrainSpots, nRowsOutput);
 		FreeMemMatrix( AllGrainSpotsT, nRowsOutput);
 		FreeMemMatrix( BestMatches, 2);
-		return;
+		printf("Nothing good found for ID: %d.\n",SpotIDs);
+		return 1;
 	}
 	BestMatches[SpotIDIdx][0] = SpotIDIdx+1;
 	BestMatches[SpotIDIdx][1] = SpotID;
