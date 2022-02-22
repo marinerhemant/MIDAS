@@ -68,6 +68,8 @@ double hkls[MAX_N_HKLS][7];
 int n_hkls = 0;
 int HKLints[MAX_N_HKLS][4];
 double ABCABG[6];
+double RingHKL[MAX_N_RINGS][3];
+RealType RingTtheta[MAX_N_RINGS];
 
 // For detector mapping!
 int BigDetSize = 0;
@@ -1486,9 +1488,6 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	RealType xi, yi, zi;
 	int   n_max, n_min, n;
 	RealType y0, z0;
-	RealType RingTtheta[MAX_N_RINGS];
-	int   RingMult[MAX_N_RINGS];
-	double   RingHKL[MAX_N_RINGS][3];
 	int   orDelta, ispDelta, nDelta;
 	RealType fracMatches;
 	int   rownr;
@@ -1549,8 +1548,6 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		else etamargins[i] = rad2deg * atan(Params.MarginEta/Params.RingRadii[i]) + 0.5 * Params.StepsizeOrient;
 	}
 	int SpotIDIdx = 0;
-	printf("Starting indexing...\n");
-	//~ start = clock();
 	RealType MinInternalAngle=1000;
 	matchNr = 0;
 	rownr = 0;
@@ -1570,26 +1567,6 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	int   ringnr = (int) ObsSpotsLab[SpotRowNo*9+5];
 	// To store the orientation matrices
 	RealType OrMat[MAX_N_OR][3][3];
-	printf("Reading hkl\n");
-	fflush(stdout);
-	char *hklfn = "hkls.csv";
-	FILE *hklf = fopen(hklfn,"r");
-	char aline[1024], dummy[1000];
-	fgets(aline,1000,hklf);
-	int Rnr;
-	double hc,kc,lc,tth;
-	for (i=0;i<MAX_N_RINGS;i++) RingMult[i] = 0;
-	while (fgets(aline,1000,hklf)!=NULL){
-		sscanf(aline, "%s %s %s %s %d %lf %lf %lf %s %lf %s",dummy,dummy,dummy,dummy,&Rnr,&hc,&kc,&lc,dummy,&tth,dummy);
-		RingMult[Rnr]++;
-		RingHKL[Rnr][0] = hc;
-		RingHKL[Rnr][1] = kc;
-		RingHKL[Rnr][2] = lc;
-		RingTtheta[Rnr] = tth;
-	}
-	fclose(hklf);
-	printf("Read hklf\n");
-	fflush(stdout);
 	hkl[0] = RingHKL[ringnr][0];
 	hkl[1] = RingHKL[ringnr][1];
 	hkl[2] = RingHKL[ringnr][2];
@@ -1880,9 +1857,13 @@ main(int argc, char *argv[])
 	fgets(aline,1000,hklf);
 	int Rnr,i;
 	int hi,ki,li;
-	double hc,kc,lc,RRd,Ds,tht;
+	double hc,kc,lc,RRd,Ds,tht,tth;
 	while (fgets(aline,1000,hklf)!=NULL){
-		sscanf(aline, "%d %d %d %lf %d %lf %lf %lf %lf %s %lf",&hi,&ki,&li,&Ds,&Rnr,&hc,&kc,&lc,&tht,dummy,&RRd);
+		sscanf(aline, "%d %d %d %lf %d %lf %lf %lf %lf %lf %lf",&hi,&ki,&li,&Ds,&Rnr,&hc,&kc,&lc,&tht,&tth,&RRd);
+		RingHKL[Rnr][0] = hc;
+		RingHKL[Rnr][1] = kc;
+		RingHKL[Rnr][2] = lc;
+		RingTtheta[Rnr] = tth;
 		for (i=0;i<Params.NrOfRings;i++){
 			if (Rnr == Params.RingNumbers[i]){
 				HKLints[n_hkls][0] = hi;
