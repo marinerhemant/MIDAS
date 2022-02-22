@@ -1896,8 +1896,9 @@ main(int argc, char *argv[])
 	char *cwdstr = dirname(tmpstr);
 	printf("No of hkl's: %d\n", n_hkls);
 	n_spots = ReadSpots(cwdstr);
-	printf("Binned data...\n");
+	printf("Reading binned data...\n");
 	int rc = ReadBins(cwdstr);
+	printf("Binned data read.\n");
 	int HighestRingNo = 0;
 	for (i = 0 ; i < MAX_N_RINGS ; i++ ) {
 		if ( Params.RingRadii[i] != 0) HighestRingNo = i;
