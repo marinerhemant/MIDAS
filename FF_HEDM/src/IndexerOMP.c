@@ -1570,7 +1570,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	hkl[0] = RingHKL[ringnr][0];
 	hkl[1] = RingHKL[ringnr][1];
 	hkl[2] = RingHKL[ringnr][2];
-	printf("Reached here\n"); fflush(stdout);
+	printf("Reached here %lf %lf %lf\n",hkl[0],hkl[1],hkl[2]); fflush(stdout);
 	long long int SpotID2 = (int) SpotIDs;
 	nPlaneNormals = 0;
 	usingFriedelPair = 0;
