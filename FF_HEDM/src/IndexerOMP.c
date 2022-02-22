@@ -1558,6 +1558,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	FindInMatrix(&ObsSpotsLab[0*9+0], n_spots, N_COL_OBSSPOTS, 4, SpotID, &SpotRowNo);
 	if (SpotRowNo == -1) {
 		printf("WARNING: SpotId %lf not found in spots file! Ignoring this spotID.\n", SpotID);
+		fflush(stdout);
 		return 1;
 	}
 	RealType ys     = ObsSpotsLab[SpotRowNo*9+0];
@@ -1569,6 +1570,8 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	int   ringnr = (int) ObsSpotsLab[SpotRowNo*9+5];
 	// To store the orientation matrices
 	RealType OrMat[MAX_N_OR][3][3];
+	printf("Reading hkl\n");
+	fflush(stdout);
 	char *hklfn = "hkls.csv";
 	FILE *hklf = fopen(hklfn,"r");
 	char aline[1024], dummy[1000];
