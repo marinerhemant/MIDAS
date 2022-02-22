@@ -1950,6 +1950,7 @@ main(int argc, char *argv[])
 	for (thisRowNr = 0; thisRowNr < nSpotIDs; thisRowNr++){
 		int thisSpotID = SpotIDs[thisRowNr];
 		printf("%d\n",thisSpotID);
+		fflush(stdout);
 		DoIndexing(thisSpotID,Params);
 	}
 	double time = omp_get_wtime() - start_time;
