@@ -1545,6 +1545,7 @@ int main(int argc, char *argv[])
 			}
 			count++;
 		}
+		fclose(SpFile);
 		for (i=0;i<6;i++) LatCin[i] = LatCinT[i];
 
 		int nSpID = 0;
@@ -1898,6 +1899,7 @@ int main(int argc, char *argv[])
 			int rcKey = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
 		    if (rcKey < 0){
 				printf("Could not write to output file.\n");
+				rcKey = close(resultKeyFN);
 			}
 			rcKey = close(resultKeyFN);
 			int ProcessKeyFN = open(ProcessGrainsFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
