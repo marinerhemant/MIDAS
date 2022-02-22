@@ -1584,6 +1584,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		RingHKL[Rnr][2] = lc;
 		RingTtheta[Rnr] = tth;
 	}
+	fclose(hklf);
 	hkl[0] = RingHKL[ringnr][0];
 	hkl[1] = RingHKL[ringnr][1];
 	hkl[2] = RingHKL[ringnr][2];
@@ -1889,6 +1890,7 @@ main(int argc, char *argv[])
 			}
 		}
 	}
+	fclose(hklf);
 	char tmpstr[2048];
 	sprintf(tmpstr,"%s",Params.OutputFolder);
 	char *cwdstr = dirname(tmpstr);
