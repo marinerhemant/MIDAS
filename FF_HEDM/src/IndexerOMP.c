@@ -1749,7 +1749,9 @@ int ReadBins(char *cwd)
 	sprintf(file_name,"%s/Data.bin",cwd);
 	char cmmd[4096];
 	sprintf(cmmd,"cp %s /dev/shm/",file_name);
+	printf("Copying Data.bin\n");
 	system(cmmd);
+	printf("Copied Data.bin\n");
 	sprintf(file_name,"/dev/shm/Data.bin");
 	int rc;
 	fd = open (file_name, O_RDONLY);
@@ -1759,13 +1761,16 @@ int ReadBins(char *cwd)
 	size = s.st_size;
 	data = mmap (0, size, PROT_READ, MAP_SHARED, fd, 0);
 	check (data == MAP_FAILED, "mmap %s failed: %s",file_name, strerror (errno));
+	printf("Data.bin read\n");
 	int fd2;
 	struct stat s2;
 	int status2;
 	char file_name2[2048];
 	sprintf(file_name2,"%s/nData.bin",cwd);
 	sprintf(cmmd,"cp %s /dev/shm/",file_name2);
+	printf("Copying nData.bin\n");
 	system(cmmd);
+	printf("Copied nData.bin\n");
 	sprintf(file_name2,"/dev/shm/nData.bin");
 	fd2 = open (file_name2, O_RDONLY);
 	check (fd2 < 0, "open %s failed: %s", file_name2, strerror (errno));
@@ -1773,10 +1778,9 @@ int ReadBins(char *cwd)
 	check (status2 < 0, "stat %s failed: %s", file_name2, strerror (errno));
 	size_t size2 = s2.st_size;
 	ndata = mmap (0, size2, PROT_READ, MAP_SHARED, fd2, 0);
-	printf("%lld %d %lld \n",(long long int)size2,(int)sizeof(int),(long long int)(size2/sizeof(int)));
-	fflush(stdout);
 	check (ndata == MAP_FAILED, "mmap %s failed: %s",file_name, strerror (errno));
-	return 1;
+	printf("nData.bin read\n");
+	printf("%lld %d %lld \n",(long long int)size2,(int)sizeof(int),(long long int)(size2/sizeof(int)));
 }
 
 int ReadSpots(char *cwd)
@@ -1899,6 +1903,7 @@ main(int argc, char *argv[])
 	printf("Reading binned data...\n");
 	int rc = ReadBins(cwdstr);
 	printf("Binned data read.\n");
+	fflush(stdout);
 	int HighestRingNo = 0;
 	for (i = 0 ; i < MAX_N_RINGS ; i++ ) {
 		if ( Params.RingRadii[i] != 0) HighestRingNo = i;
@@ -1913,6 +1918,7 @@ main(int argc, char *argv[])
 	printf("No of bins for omega : %d\n", n_ome_bins);
 	printf("Total no of bins     : %d\n\n", n_ring_bins * n_eta_bins * n_ome_bins);
 	printf("Finished binning.\n\n");
+	fflush(stdout);
 	int *SpotIDs;
 	int nSpotIDs;
 	int nBlocks = atoi(argv[3]);
@@ -1936,6 +1942,8 @@ main(int argc, char *argv[])
 		sscanf(aline,"%d",&SpotIDs[i]);
 	}
 	fclose(spotsFile);
+	printf("Read spots info\n");
+	fflush(stdout);
 	int thisRowNr;
 	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
 	for (thisRowNr = 0; thisRowNr < nSpotIDs; thisRowNr++){
