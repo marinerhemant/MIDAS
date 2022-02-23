@@ -1692,6 +1692,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		isp = isp + ispDelta;
 	}
 
+	printf("Reached here 3"); fflush(stdout);
 	fracMatches = (RealType) bestnMatchesIsp/bestnTspotsIsp;
 	if (fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 || (int)bestnMatchesIsp == -1 || bestMatchFound == 0){
 		FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
@@ -1709,7 +1710,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	BestMatches[SpotIDIdx][2] = bestnTspotsIsp;
 	BestMatches[SpotIDIdx][3] = bestnMatchesIsp;
 	BestMatches[SpotIDIdx][4] = fracMatches;
-	printf("Reached here 3"); fflush(stdout);
+	printf("Reached here 4"); fflush(stdout);
 	CreateNumberedFilenameW("BestGrain_", (int) SpotID, 9, ".txt", fn);
 	MakeFullFileName(ffn, Params.OutputFolder, fn);
 	CreateNumberedFilenameW("BestPos_", (int) SpotID, 9, ".csv", fn2);
