@@ -1607,6 +1607,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		hklnormal[1] = g2;
 		hklnormal[2] = g3;
 		GenerateCandidateOrientationsF(hkl, hklnormal, Params.StepsizeOrient, OrMat, &nOrient,ringnr);
+		printf("Reached here 3, %d",nOrient); fflush(stdout);
 		bestnMatchesRot = -1;
 		bestnTspotsRot = 0;
 		or = 0;
@@ -1692,7 +1693,6 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		isp = isp + ispDelta;
 	}
 
-	printf("Reached here 3"); fflush(stdout);
 	fracMatches = (RealType) bestnMatchesIsp/bestnTspotsIsp;
 	if (fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 || (int)bestnMatchesIsp == -1 || bestMatchFound == 0){
 		FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
