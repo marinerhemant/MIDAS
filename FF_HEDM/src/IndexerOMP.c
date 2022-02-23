@@ -1710,7 +1710,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	BestMatches[SpotIDIdx][2] = bestnTspotsIsp;
 	BestMatches[SpotIDIdx][3] = bestnMatchesIsp;
 	BestMatches[SpotIDIdx][4] = fracMatches;
-	printf("Reached here 4"); fflush(stdout);
+	//~ printf("Reached here 4\n"); fflush(stdout);
 	CreateNumberedFilenameW("BestGrain_", (int) SpotID, 9, ".txt", fn);
 	MakeFullFileName(ffn, Params.OutputFolder, fn);
 	CreateNumberedFilenameW("BestPos_", (int) SpotID, 9, ".csv", fn2);
@@ -1891,7 +1891,7 @@ main(int argc, char *argv[])
 	char *cwdstr = dirname(tmpstr);
 	printf("No of hkl's: %d\n", n_hkls);
 	n_spots = ReadSpots(cwdstr);
-	printf("Reading binned data...\n");
+	printf("Reading binned data from %s...\n",cwdstr);
 	int rc = ReadBins(cwdstr);
 	printf("Binned data read.\n");
 	fflush(stdout);
