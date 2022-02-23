@@ -1827,6 +1827,9 @@ int UnMap(char *cwd)
 	check (status3 < 0, "stat %s failed: %s", filename3, strerror(errno));
 	size_t size3 = s3.st_size;
 	rc = munmap(ObsSpotsLab,size3);
+	system("rm /dev/shm/Spots.bin");
+	system("rm /dev/shm/Data.bin");
+	system("rm /dev/shm/nData.bin");
 	return 1;
 }
 
@@ -1940,6 +1943,6 @@ main(int argc, char *argv[])
 	}
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);
-	//~ int tc = UnMap(cwdstr);
+	int tc = UnMap(cwdstr);
 	return(0);
 }
