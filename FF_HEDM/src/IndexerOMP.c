@@ -1597,7 +1597,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	bestnTspotsIsp = 0;
 	isp = 0;
 	int bestMatchFound = 0;
-	printf("Reached here2\n"); fflush(stdout);
+	printf("Reached here2 %d\n",nPlaneNormals); fflush(stdout);
 	while (isp < nPlaneNormals) {
 		y0 = y0_vector[isp];
 		z0 = z0_vector[isp];
@@ -1709,6 +1709,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	BestMatches[SpotIDIdx][2] = bestnTspotsIsp;
 	BestMatches[SpotIDIdx][3] = bestnMatchesIsp;
 	BestMatches[SpotIDIdx][4] = fracMatches;
+	printf("Reached here 3"); fflush(stdout);
 	CreateNumberedFilenameW("BestGrain_", (int) SpotID, 9, ".txt", fn);
 	MakeFullFileName(ffn, Params.OutputFolder, fn);
 	CreateNumberedFilenameW("BestPos_", (int) SpotID, 9, ".csv", fn2);
