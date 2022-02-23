@@ -1607,7 +1607,6 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		hklnormal[1] = g2;
 		hklnormal[2] = g3;
 		GenerateCandidateOrientationsF(hkl, hklnormal, Params.StepsizeOrient, OrMat, &nOrient,ringnr);
-		printf("Reached here 3, %d",nOrient); fflush(stdout);
 		bestnMatchesRot = -1;
 		bestnTspotsRot = 0;
 		or = 0;
@@ -1621,6 +1620,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 			bestnTspotsPos =  0;
 			calc_n_max_min(xi, yi, ys, y0, Params.Rsample, Params.StepsizePos, &n_max, &n_min);
 			n = n_min;
+			printf("Reached here 3, %d\n",n_max); fflush(stdout);
 			while (n <= n_max) {
 				spot_to_unrotated_coordinates(xi, yi, zi, ys, zs, y0, z0, Params.StepsizePos, n, omega, &ga, &gb, &gc );
 				if (fabs(gc) > HalfBeam) {
