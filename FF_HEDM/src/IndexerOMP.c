@@ -1622,11 +1622,11 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 			n = n_min;
 			while (n <= n_max) {
 				spot_to_unrotated_coordinates(xi, yi, zi, ys, zs, y0, z0, Params.StepsizePos, n, omega, &ga, &gb, &gc );
-				printf("Reached here 3, %lf %lf\n",gc,HalfBeam); fflush(stdout);
 				if (fabs(gc) > HalfBeam) {
 					n++;
 					continue;
 				}
+				printf("Reached here 3, %lf %lf\n",gc,HalfBeam); fflush(stdout);
 				for (sp = 0 ; sp < nTspots ; sp++) {
 					displacement_spot_needed_COM(ga, gb, gc, TheorSpots[sp][3], TheorSpots[sp][4],
 					TheorSpots[sp][5], TheorSpots[sp][6], &Displ_y, &Displ_z );
