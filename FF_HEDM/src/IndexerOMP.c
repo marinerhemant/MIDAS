@@ -1642,7 +1642,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 					bestnMatchesPos = nMatches;
 					bestnTspotsPos = nTspots;
 				}
-				printf("Reached here 3, %lf %lf\n",bestnMatchesPos,bestnTspotsPos); fflush(stdout);
+				//~ printf("Reached here 3, %lf %lf\n",bestnMatchesPos,bestnTspotsPos); fflush(stdout);
 				if ( (nMatches > 0) &&
 					 (matchNr < 100) &&
 					 (nMatches >= MinMatchesToAccept) ) {
