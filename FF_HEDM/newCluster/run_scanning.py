@@ -8,6 +8,7 @@ import os
 import datetime
 from pathlib import Path
 import shutil
+from math import acos,sqrt, atan
 
 def CalcEtaAngle(y, z):
 	alpha = 57.2957795130823*acos(z/sqrt(y*y+z*z))
