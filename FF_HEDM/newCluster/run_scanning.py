@@ -45,7 +45,7 @@ for line in paramContents:
 positions = open('positions.csv').readlines()
 
 nFrames = endNr - startNr + 1
-for layerNr in range(nScans):
+for layerNr in range(1,nScans+1):
 	ypos = positions[layerNr]
 	thisStartNr = startNrFirstLayer + (layerNr-1)*nrFilesPerSweep
 	folderName = str(thisStartNr)
