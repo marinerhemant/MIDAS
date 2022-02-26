@@ -49,7 +49,7 @@ for line in paramContents:
 		endNr = int(line.split()[1])
 	if line.startswith('nScans'):
 		nScans = int(line.split()[1])
-	if line[0] == 'Lsd':
+	if line.startswith('Lsd') == 'Lsd':
 		Lsd = float(line[1])
 
 print(Lsd)
