@@ -46,7 +46,7 @@ positions = open('positions.csv').readlines()
 
 nFrames = endNr - startNr + 1
 for layerNr in range(1,nScans+1):
-	ypos = positions[layerNr]
+	ypos = float(positions[layerNr-1])
 	thisStartNr = startNrFirstLayer + (layerNr-1)*nrFilesPerSweep
 	folderName = str(thisStartNr)
 	thisDir = topdir + '/' + folderName + '/'
@@ -74,7 +74,7 @@ for layerNr in range(1,nScans+1):
 	AllF = open('InputAllExtraInfoFittingAll.csv','r')
 	allcontents = AllF.readlines()
 	AllF.close()
-	AllF = open(topdir+'/InputAllExtraInfoFittingAll{layerNr}.csv','w')
+	AllF = open(topdir+'/InputAllExtraInfoFittingAll'+str(layerNr-1)+'.csv','w')
 	for line2 in allcontents:
 		if line2[0] == '%':
 			AllF.write(line2)
