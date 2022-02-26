@@ -48,7 +48,7 @@ nFrames = endNr - startNr + 1
 for layerNr in range(nScans):
 	ypos = positions[layerNr]
 	thisStartNr = startNrFirstLayer + (layerNr-1)*nrFilesPerSweep
-	folderName = thisStartNr
+	folderName = str(thisStartNr)
 	thisDir = topdir + '/' + folderName + '/'
 	Path(thisDir).mkdir(parents=True,exist_ok=True)
 	os.chdir(thisDir)
