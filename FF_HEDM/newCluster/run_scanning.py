@@ -52,7 +52,7 @@ for line in paramContents:
 	if line[0] == 'Lsd':
 		Lsd = float(line[1])
 
-
+print(Lsd)
 positions = open('positions.csv').readlines()
 
 nFrames = endNr - startNr + 1
