@@ -49,8 +49,8 @@ for line in paramContents:
 		endNr = int(line.split()[1])
 	if line.startswith('nScans'):
 		nScans = int(line.split()[1])
-	if line.startswith('Lsd') == 'Lsd':
-		Lsd = float(line[1])
+	if line.startswith('Lsd'):
+		Lsd = float(line.split()[1])
 
 print(Lsd)
 positions = open('positions.csv').readlines()
