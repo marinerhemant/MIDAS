@@ -56,7 +56,7 @@ print(Lsd)
 positions = open('positions.csv').readlines()
 
 nFrames = endNr - startNr + 1
-for layerNr in range(11,nScans+1):
+for layerNr in range(1,nScans+1):
 	print(layerNr)
 	ypos = float(positions[layerNr-1])
 	thisStartNr = startNrFirstLayer + (layerNr-1)*nrFilesPerSweep
@@ -107,7 +107,7 @@ for layerNr in range(11,nScans+1):
 			zDet = float(line2sp[12])
 			omegaDet = float(line2sp[13])
 			y = y - ypos
-			if (y*y+z*z) == 0:
+			if (y*y+z*z) < np.finfo(np.float32).eps:
 				continue
 			Eta = CalcEtaAngle(y,z)
 			Ttheta = 57.2957795130823*atan(sqrt(y*y+z*z)/Lsd)
@@ -119,6 +119,6 @@ for layerNr in range(11,nScans+1):
 os.chdir(topdir)
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
 # Parallel after this
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP")+' 0 1 '+ str(nScans)+' '+str(nCPUs))
+subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP")+' 0 1 '+ str(nScans)+' '+str(numProcs))
 
 print("Time Elapsed: "+str(time.time()-startTime)+" seconds.")

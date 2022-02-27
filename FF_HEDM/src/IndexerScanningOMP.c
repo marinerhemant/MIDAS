@@ -1093,7 +1093,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 	hkl[1] = RingHKL[ringnr][1];
 	hkl[2] = RingHKL[ringnr][2];
 	GenerateCandidateOrientationsF(hkl, hklnormal, Params.StepsizeOrient, OrMat, &nOrient,ringnr);
-	printf("%d %d %lf %lf %lf %d\n",SpotID,nOrient,y0,z0,omega,(int)ObsSpotsLab[SpotRowNo*10+9]);
+	//~ printf("%d %d %lf %lf %lf %d\n",SpotID,nOrient,y0,z0,omega,(int)ObsSpotsLab[SpotRowNo*10+9]);
 	RealType **TheorSpots;
 	RealType **GrainSpots;
 	RealType **GrainMatches;
