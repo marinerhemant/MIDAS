@@ -106,6 +106,8 @@ for layerNr in range(1,nScans+1):
 			zDet = float(line2sp[12])
 			omegaDet = float(line2sp[13])
 			y = y - ypos
+			if (y*y+z*z) == 0:
+				continue
 			Eta = CalcEtaAngle(y,z)
 			Ttheta = 57.2957795130823*atan(sqrt(y*y+z*z)/Lsd)
 			yOrigNoW = yOrigNoW - ypos
