@@ -120,6 +120,6 @@ os.chdir(topdir)
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
 # NEED TO MAKE PARAMSTEST.TXT, update folders, add BeamSize and px
 # Parallel after this
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP")+' paramstest.txt 0 1 '+ str(nScans)+' '+str(numProcs))
+subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP")+' paramstest.txt 0 1 '+ str(nScans)+' '+str(numProcs),shell=True)
 
 print("Time Elapsed: "+str(time.time()-startTime)+" seconds.")
