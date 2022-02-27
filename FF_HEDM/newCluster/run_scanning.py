@@ -56,7 +56,7 @@ print(Lsd)
 positions = open('positions.csv').readlines()
 
 nFrames = endNr - startNr + 1
-for layerNr in range(1,nScans+1):
+for layerNr in range(1,nScans+2):
 	print(layerNr)
 	ypos = float(positions[layerNr-1])
 	thisStartNr = startNrFirstLayer + (layerNr-1)*nrFilesPerSweep
@@ -75,13 +75,13 @@ for layerNr in range(1,nScans+1):
 	Path(thisDir+'/Temp').mkdir(parents=True,exist_ok=True)
 	# ~ Path(thisDir+'Output').mkdir(parents=True,exist_ok=True)
 	# ~ Path(thisDir+'Results').mkdir(parents=True,exist_ok=True)
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" "+thisParamFN,shell=True)
+	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" "+thisParamFN,shell=True)
 	# TODO: call the PeaksFittingOMP code using swift to run PeakSearch on all the scans in parallel
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMP")+' '+baseNameParamFN+' 0 1 '+str(nFrames)+' '+str(numProcs),shell=True)
+	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMP")+' '+baseNameParamFN+' 0 1 '+str(nFrames)+' '+str(numProcs),shell=True)
 	# These need to be done sequentially
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAll")+' '+baseNameParamFN,shell=True)
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAll")+' '+baseNameParamFN,shell=True)
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetup")+' '+baseNameParamFN,shell=True)
+	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAll")+' '+baseNameParamFN,shell=True)
+	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAll")+' '+baseNameParamFN,shell=True)
+	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetup")+' '+baseNameParamFN,shell=True)
 	# Now do the position correction
 	AllF = open('InputAllExtraInfoFittingAll.csv','r')
 	allcontents = AllF.readlines()
@@ -118,7 +118,8 @@ for layerNr in range(1,nScans+1):
 
 os.chdir(topdir)
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
+# NEED TO MAKE PARAMSTEST.TXT, update folders, add BeamSize and px
 # Parallel after this
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP")+' 0 1 '+ str(nScans)+' '+str(numProcs))
+subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP")+' paramstest.txt 0 1 '+ str(nScans)+' '+str(numProcs))
 
 print("Time Elapsed: "+str(time.time()-startTime)+" seconds.")
