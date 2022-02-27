@@ -1146,6 +1146,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 		if (FracThis > Params.MinMatchesToAcceptFrac){
 			if (FracThis >= bestConfidence){
 				// This is the best match till now, let's save this.
+				bestConfidence = FracThis;
 				bestMatchFound = 1;
 				// Make the array
 				for (i = 0 ;  i < 9 ; i ++) GrainMatchesT[0][i] = OrMat[or][i/3][i%3];
@@ -1175,6 +1176,16 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 			}
 		}
 		or += orDelta;
+	}
+	if (bestnMatchesIsp < 0){
+		FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
+		FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
+		FreeMemMatrix( TheorSpots, nRowsPerGrain);
+		FreeMemMatrix( GrainSpots, nRowsPerGrain);
+		FreeMemMatrix( AllGrainSpots, nRowsOutput);
+		FreeMemMatrix( AllGrainSpotsT, nRowsOutput);
+		FreeMemMatrix( BestMatches, 2);
+		return;
 	}
 	fracMatches = (RealType) bestnMatchesIsp/bestnTspotsIsp;
 	printf("%lf %d %d\n",fracMatches,bestnMatchesIsp,bestnTspotsIsp);
