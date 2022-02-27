@@ -1177,7 +1177,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 		or += orDelta;
 	}
 	fracMatches = (RealType) bestnMatchesIsp/bestnTspotsIsp;
-	printf("%lf\n",fracMatches);
+	printf("%lf %d %d\n",fracMatches,bestnMatchesIsp,bestnTspotsIsp);
 	if (fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 || (int)bestnMatchesIsp == -1 || bestMatchFound == 0){
 		FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 		FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
