@@ -1100,7 +1100,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 	RealType **AllGrainSpots;
 	RealType **GrainMatchesT;
 	RealType **AllGrainSpotsT;
-	RealType **BestMatches;
+	//~ RealType **BestMatches;
 	int nRowsOutput = MAX_N_MATCHES * 2 * n_hkls;
 	int nRowsPerGrain = 2 * n_hkls, nTspots;
 	GrainMatches = allocMatrix(MAX_N_MATCHES, N_COL_GRAINMATCHES);
@@ -1109,7 +1109,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 	AllGrainSpotsT = allocMatrix(nRowsOutput, N_COL_GRAINSPOTS);
 	GrainSpots = allocMatrix(nRowsPerGrain, N_COL_GRAINSPOTS );
 	TheorSpots = allocMatrix(nRowsPerGrain, N_COL_THEORSPOTS);
-	BestMatches = allocMatrix(2, 5);
+	//~ BestMatches = allocMatrix(2, 5);
 
 	RealType MinMatchesToAccept;
 	int   bestnMatchesIsp = -1, bestnMatchesRot = -1, bestnMatchesPos;
@@ -1180,7 +1180,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 		FreeMemMatrix( GrainSpots, nRowsPerGrain);
 		FreeMemMatrix( AllGrainSpots, nRowsOutput);
 		FreeMemMatrix( AllGrainSpotsT, nRowsOutput);
-		FreeMemMatrix( BestMatches, 2);
+		//~ FreeMemMatrix( BestMatches, 2);
 		return;
 	}
 	fracMatches = (RealType) bestnMatchesIsp/bestnTspotsIsp;
@@ -1191,7 +1191,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 		FreeMemMatrix( GrainSpots, nRowsPerGrain);
 		FreeMemMatrix( AllGrainSpots, nRowsOutput);
 		FreeMemMatrix( AllGrainSpotsT, nRowsOutput);
-		FreeMemMatrix( BestMatches, 2);
+		//~ FreeMemMatrix( BestMatches, 2);
 		return;
 	}
 	if (fracMatches < Params.MinMatchesToAcceptFrac){
@@ -1201,15 +1201,15 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 		FreeMemMatrix( GrainSpots, nRowsPerGrain);
 		FreeMemMatrix( AllGrainSpots, nRowsOutput);
 		FreeMemMatrix( AllGrainSpotsT, nRowsOutput);
-		FreeMemMatrix( BestMatches, 2);
+		//~ FreeMemMatrix( BestMatches, 2);
 		return;
 	}
 	int SpotIDIdx = 0;
-	BestMatches[SpotIDIdx][0] = SpotIDIdx+1;
-	BestMatches[SpotIDIdx][1] = SpotID;
-	BestMatches[SpotIDIdx][2] = bestnTspotsIsp;
-	BestMatches[SpotIDIdx][3] = bestnMatchesIsp;
-	BestMatches[SpotIDIdx][4] = fracMatches;
+	//~ BestMatches[SpotIDIdx][0] = SpotIDIdx+1;
+	//~ BestMatches[SpotIDIdx][1] = SpotID;
+	//~ BestMatches[SpotIDIdx][2] = bestnTspotsIsp;
+	//~ BestMatches[SpotIDIdx][3] = bestnMatchesIsp;
+	//~ BestMatches[SpotIDIdx][4] = fracMatches;
 	char fn2[1000];
 	char ffn2[1000];
 	sprintf(fn2, "%s%0*d_%0*d%s", "BestPos_", 6,voxNr, 9, SpotID, ".csv");
@@ -1223,7 +1223,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 	FreeMemMatrix( GrainSpots, nRowsPerGrain);
 	FreeMemMatrix( AllGrainSpots, nRowsOutput);
 	FreeMemMatrix( AllGrainSpotsT, nRowsOutput);
-	FreeMemMatrix( BestMatches, 2);
+	//~ FreeMemMatrix( BestMatches, 2);
 }
 
 int ReadBins(char *cwd)

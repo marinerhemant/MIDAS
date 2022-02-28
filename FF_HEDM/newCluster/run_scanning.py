@@ -81,7 +81,7 @@ for layerNr in range(1,nScans+1):
 	# These need to be done sequentially
 	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAll")+' '+baseNameParamFN,shell=True)
 	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAll")+' '+baseNameParamFN,shell=True)
-	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetup")+' '+baseNameParamFN,shell=True)
+	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetup")+' '+baseNameParamFN,shell=True)
 	# Now do the position correction
 	AllF = open('InputAllExtraInfoFittingAll.csv','r')
 	allcontents = AllF.readlines()
