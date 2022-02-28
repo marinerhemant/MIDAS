@@ -1135,12 +1135,9 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 			TheorSpots[sp][10] = TheorSpots[sp][4] +  Displ_y;
 			TheorSpots[sp][11] = TheorSpots[sp][5] +  Displ_z;
 			CalcEtaAngle( TheorSpots[sp][10], TheorSpots[sp][11], &TheorSpots[sp][12] );
-			TheorSpots[sp][13] = sqrt(TheorSpots[sp][10] * TheorSpots[sp][10] + TheorSpots[sp][11] * TheorSpots[sp][11]) -
-									Params.RingRadii[(int)TheorSpots[sp][9]];
+			TheorSpots[sp][13] = sqrt(TheorSpots[sp][10] * TheorSpots[sp][10] + TheorSpots[sp][11] * TheorSpots[sp][11]) - Params.RingRadii[(int)TheorSpots[sp][9]];
 		}
-		CompareSpots(TheorSpots, nTspots, RefRad,
-		Params.MarginRad, Params.MarginRadial, etamargins, omemargins,
-		&nMatches, GrainSpots, xThis, yThis);
+		CompareSpots(TheorSpots, nTspots, RefRad, Params.MarginRad, Params.MarginRadial, etamargins, omemargins, &nMatches, GrainSpots, xThis, yThis);
 		// We now have nMatches, check if this is best, then we can save these.
 		FracThis = (double)nMatches / (double)nTspots;
 		if (FracThis > Params.MinMatchesToAcceptFrac){
@@ -1172,7 +1169,6 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 					for (r = 0 ; r < nTspots ; r++) for (c = 0 ; c < 17 ; c++) AllGrainSpots[r][c] = AllGrainSpotsT[r][c];
 					for (r = nTspots; r < nRowsOutput; r++) for (c=0;c<17;c++) AllGrainSpots[r][c] = 0;
 				}
-				
 			}
 		}
 		or += orDelta;
@@ -1437,7 +1433,7 @@ main(int argc, char *argv[])
 			thisID = (int)ObsSpotsLab[idnr*10+4];
 			newY = xThis * sin(deg2rad*angle) + yThis * cos(deg2rad*angle);
 			if (fabs(newY - ypos[(int)ObsSpotsLab[idnr*10+9]]) <= BeamSize/2){
-			//~ printf("%d %d %lf %lf %lf %lf %lf %lf\n",idnr,thisID, angle, xThis, yThis, newY, ypos[(int)ObsSpotsLab[idnr*10+9]], ObsSpotsLab[idnr*10+9]);
+				printf("%d %d %d %d %d %d\n",idnr,startRowNrSp,endRowNrSp,thisRowNr,startRowNr,endRowNr);
 				DoIndexing(thisID,thisRowNr,xThis,yThis,0,Params);
 			}
 		}
