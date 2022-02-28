@@ -429,9 +429,9 @@ main(int argc, char *argv[])
 					idxpos = l*nrFiles;
 					idxpos *= 2048;
 					idxpos *= 2048;
-					idxpos = 2048;
-					idxpos *= 2048;
-					idxpos *= k;
+					tmpcntr = 2048;
+					tmpcntr *= 2048;
+					tmpcntr *= k;
 					idxpos += tmpcntr;
 					idxpos += 2048*j;
 					idxpos += i;
