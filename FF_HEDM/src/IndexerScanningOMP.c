@@ -1433,7 +1433,7 @@ main(int argc, char *argv[])
 			thisID = (int)ObsSpotsLab[idnr*10+4];
 			newY = xThis * sin(deg2rad*angle) + yThis * cos(deg2rad*angle);
 			if (fabs(newY - ypos[(int)ObsSpotsLab[idnr*10+9]]) <= BeamSize/2){
-				printf("%d %d %d %d %d %d\n",idnr,startRowNrSp,endRowNrSp,thisRowNr,startRowNr,endRowNr);
+				if ((idnr - startRowNrSp)%100 == 0) printf("%d %d %d %d %d %d\n",idnr,startRowNrSp,endRowNrSp,thisRowNr,startRowNr,endRowNr);
 				DoIndexing(thisID,thisRowNr,xThis,yThis,0,Params);
 			}
 		}
