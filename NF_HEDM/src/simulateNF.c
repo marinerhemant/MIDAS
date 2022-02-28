@@ -422,10 +422,11 @@ main(int argc, char *argv[])
 	}
 	printf("Done with full file\n");
 	size_t idxpos,tmpcntr,nrF=0;
-	for (i=0;i<2048;i++){
-		for (j=0;j<2048;j++){
-			for (k=0;k<nrFiles;k++){
-				for (l=0;l<nLayers;l++){
+	// Do it differently
+	for (l=0;l<nLayers;l++){
+		for (k=0;k<nrFiles;k++){
+			for (j=0;j<2048;j++){
+				for (i=0;i<2048;i++){
 					idxpos = l*nrFiles;
 					idxpos *= 2048;
 					idxpos *= 2048;
