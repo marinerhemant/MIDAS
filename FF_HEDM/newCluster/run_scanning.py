@@ -16,6 +16,7 @@ def CalcEtaAngle(y, z):
 		alpha = -alpha
 	return alpha
 
+startTime = time.time()
 
 warnings.filterwarnings('ignore')
 parser = argparse.ArgumentParser(description='''MIDAS_FF, contact hsharma@anl.gov Parameter file must be in the same folder as the desired output folder(SeedFolder)''', formatter_class=RawTextHelpFormatter)
@@ -51,6 +52,12 @@ for line in paramContents:
 		nScans = int(line.split()[1])
 	if line.startswith('Lsd'):
 		Lsd = float(line.split()[1])
+	if line.startswith('OverAllRingToIndex'):
+		RingToIndex = int(line.split()[1])
+	if line.startswith('BeamSize'):
+		BeamSize = float(line.split()[1])
+	if line.startswith('px'):
+		px = float(line.split()[1])
 
 print(Lsd)
 positions = open('positions.csv').readlines()
@@ -73,14 +80,14 @@ for layerNr in range(1,nScans+1):
 	thisPF.write('StartFileNr '+str(thisStartNr)+'\n')
 	thisPF.close()
 	Path(thisDir+'/Temp').mkdir(parents=True,exist_ok=True)
-	# ~ Path(thisDir+'Output').mkdir(parents=True,exist_ok=True)
-	# ~ Path(thisDir+'Results').mkdir(parents=True,exist_ok=True)
-	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" "+thisParamFN,shell=True)
+	Path(thisDir+'Output').mkdir(parents=True,exist_ok=True)
+	Path(thisDir+'Results').mkdir(parents=True,exist_ok=True)
+	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" "+thisParamFN,shell=True)
 	# TODO: call the PeaksFittingOMP code using swift to run PeakSearch on all the scans in parallel
-	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMP")+' '+baseNameParamFN+' 0 1 '+str(nFrames)+' '+str(numProcs),shell=True)
+	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMP")+' '+baseNameParamFN+' 0 1 '+str(nFrames)+' '+str(numProcs),shell=True)
 	# These need to be done sequentially
-	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAll")+' '+baseNameParamFN,shell=True)
-	# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAll")+' '+baseNameParamFN,shell=True)
+	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAll")+' '+baseNameParamFN,shell=True)
+	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAll")+' '+baseNameParamFN,shell=True)
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetup")+' '+baseNameParamFN,shell=True)
 	# Now do the position correction
 	AllF = open('InputAllExtraInfoFittingAll.csv','r')
@@ -115,10 +122,28 @@ for layerNr in range(1,nScans+1):
 			outstr = '{:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f}\n'.format(y,z,ome,grR,ID,RNr,Eta,Ttheta,omeIniNoW,yOrigNoW,zOrigNoW,yDet,zDet,omegaDet)
 			AllF.write(outstr)
 	AllF.close()
+	shutil.copy2(thisDir+'/paramstest.txt',topdir+'/paramstest.txt')
+	shutil.copy2(thisDir+'/hkls.csv',topdir+'/hkls.csv')
 
 os.chdir(topdir)
+Path(topdir+'Output').mkdir(parents=True,exist_ok=True)
+Path(topdir+'Results').mkdir(parents=True,exist_ok=True)
+paramsf = open('paramstest.txt','r')
+lines = paramsf.readlines()
+paramsf.close()
+paramsf = open('paramstest.txt','w')
+for line in lines:
+	if line.startswith('OutputFolder'):
+		paramsf.write('OutputFolder '+topdir+'/Output\n')
+	elif line.startswith('ResultFolder'):
+		paramsf.write('ResultFolder '+topdir+'/Results\n')
+	else:
+		paramsf.write(line)
+paramsf.write('BeamSize '+str(BeamSize)+'\n')
+paramsf.write('px '+str(px)+'\n')
+paramsf.write('RingToIndex '+str(RingToIndex)+'\n')
+paramsf.close()
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
-# NEED TO MAKE PARAMSTEST.TXT, update folders, add BeamSize and px
 # Parallel after this
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP")+' paramstest.txt 0 1 '+ str(nScans)+' '+str(numProcs),shell=True)
 

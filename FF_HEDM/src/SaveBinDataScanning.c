@@ -209,7 +209,7 @@ int main(int argc, char* argv[]){
 		}
 		SpotsMat[i*10+8] = ObsSpots[i][15];
 		SpotsMat[i*10+9] = ObsSpots[i][14];
-		printf("%d\n",(int)SpotsMat[i*10+4]);
+		//~ printf("%d\n",(int)SpotsMat[i*10+4]);
 	}
 	// Make ExtraInfoSpotMatrix
 	double *ExtraMat;
