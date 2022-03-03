@@ -986,37 +986,39 @@ WriteBestMatch(RealType **GrainMatches,int ngrains,RealType **AllGrainSpots,int 
 			bestGrainIdx = g;
 		}
 	}
-	if (bestGrainIdx != -1) {
-		FILE *fp2;
-		fp2 = fopen(FileName2,"w");
-		if (fp2==NULL) {
-			printf("Cannot open file: %s\n", FileName2);
-			return(1);
-		}
-		RealType bestGrainID =  GrainMatches[bestGrainIdx][14];
-		fprintf(fp2, "%lf\n%lf\n",bestGrainID,bestGrainID);
-		fprintf(fp2,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf\n",
-		GrainMatches[bestGrainIdx][15], GrainMatches[bestGrainIdx][0], GrainMatches[bestGrainIdx][1],
-		GrainMatches[bestGrainIdx][2], GrainMatches[bestGrainIdx][3], GrainMatches[bestGrainIdx][4],
-		GrainMatches[bestGrainIdx][5], GrainMatches[bestGrainIdx][6], GrainMatches[bestGrainIdx][7],
-		GrainMatches[bestGrainIdx][8], GrainMatches[bestGrainIdx][9], GrainMatches[bestGrainIdx][10],
-		GrainMatches[bestGrainIdx][11], GrainMatches[bestGrainIdx][12], GrainMatches[bestGrainIdx][13]);
-		for (r = 0 ; r < nrows ; r++ ) {
-			if (AllGrainSpots[r][15] == bestGrainID ) {
-				for (c = 0; c < N_COL_GRAINSPOTS; c++) {
-					if (c!=1) fprintf(fp2,"%14lf, ", AllGrainSpots[r][c]);
+	#pragma omp critical
+	{
+		if (bestGrainIdx != -1) {
+			FILE *fp2;
+			fp2 = fopen(FileName2,"w");
+			if (fp2==NULL) {
+				printf("Cannot open file: %s\n", FileName2);
+			} else{
+				RealType bestGrainID =  GrainMatches[bestGrainIdx][14];
+				fprintf(fp2, "%lf\n%lf\n",bestGrainID,bestGrainID);
+				fprintf(fp2,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf\n",
+				GrainMatches[bestGrainIdx][15], GrainMatches[bestGrainIdx][0], GrainMatches[bestGrainIdx][1],
+				GrainMatches[bestGrainIdx][2], GrainMatches[bestGrainIdx][3], GrainMatches[bestGrainIdx][4],
+				GrainMatches[bestGrainIdx][5], GrainMatches[bestGrainIdx][6], GrainMatches[bestGrainIdx][7],
+				GrainMatches[bestGrainIdx][8], GrainMatches[bestGrainIdx][9], GrainMatches[bestGrainIdx][10],
+				GrainMatches[bestGrainIdx][11], GrainMatches[bestGrainIdx][12], GrainMatches[bestGrainIdx][13]);
+				for (r = 0 ; r < nrows ; r++ ) {
+					if (AllGrainSpots[r][15] == bestGrainID ) {
+						for (c = 0; c < N_COL_GRAINSPOTS; c++) {
+							if (c!=1) fprintf(fp2,"%14lf, ", AllGrainSpots[r][c]);
+						}
+						fprintf(fp2, "\n");
+					}
 				}
-				fprintf(fp2, "\n");
 			}
+			fclose(fp2);
 		}
-		fclose(fp2);
+		else {
+			FILE *fp2;
+			fp2 = fopen(FileName2,"w");
+			fclose(fp2);
+		}
 	}
-	else {
-		FILE *fp2;
-		fp2 = fopen(FileName2,"w");
-		fclose(fp2);
-	}
-	return (0);
 }
 
 void CalcIA(RealType **GrainMatches,int ngrains,RealType **AllGrainSpots,RealType distance)
@@ -1070,12 +1072,12 @@ void MakeFullFileName(char* fullFileName, char* aPath, char* aFileName)
 	}
 }
 
-int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, struct TParams Params )
+int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, struct TParams Params, int SpotRowNo )
 {
 	int i;
 	RealType ga = xThis, gb = yThis, gc = zThis;
-	int   SpotRowNo;
-	FindInMatrix(&ObsSpotsLab[0*10+0], n_spots, N_COL_OBSSPOTS, 4, SpotID, &SpotRowNo);
+	//~ int   SpotRowNo;
+	//~ FindInMatrix(&ObsSpotsLab[0*10+0], n_spots, N_COL_OBSSPOTS, 4, SpotID, &SpotRowNo);
 	RealType y0 = ObsSpotsLab[SpotRowNo*10+0];
 	RealType z0 = ObsSpotsLab[SpotRowNo*10+1];
 	RealType omega = ObsSpotsLab[SpotRowNo*10+2];
@@ -1124,6 +1126,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 	RealType bestConfidence=0;
 	RealType FracThis;
 	while (or < nOrient) {
+		//~ printf("%d %d\n",or,nOrient);
 		CalcDiffrSpots_Furnace(OrMat[or], Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii,
 			Params.OmegaRanges, Params.BoxSizes, Params.NoOfOmegaRanges, Params.ExcludePoleAngle, TheorSpots, &nTspots);
 		MinMatchesToAccept = nTspots * Params.MinMatchesToAcceptFrac;
@@ -1158,8 +1161,9 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 					AllGrainSpotsT[r][15] = 1;
 				}
 				CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance );
-				if (FracThis == bestConfidence && GrainMatchesT[0][15] > MinInternalAngle) continue;
-				else{
+				if (FracThis == bestConfidence && GrainMatchesT[0][15] > MinInternalAngle){
+					
+				} else{
 					MinInternalAngle = GrainMatchesT[0][15];
 					bestnMatchesIsp = nMatches;
 					bestnTspotsIsp = nTspots;
@@ -1173,6 +1177,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 		}
 		or += orDelta;
 	}
+	//~ printf("Here2\n");
 	if (bestnMatchesIsp < 0){
 		FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 		FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
@@ -1427,14 +1432,17 @@ main(int argc, char *argv[])
 		double angle, newY;
 		int idnr;
 		int thisID;
-		printf("%d %lf %lf\n", thisRowNr,xThis,yThis);
+		printf("%d %lf %lf %d %d\n", thisRowNr,xThis,yThis,startRowNrSp,endRowNrSp);
 		for (idnr = startRowNrSp; idnr<=endRowNrSp; idnr++){
 			angle = ObsSpotsLab[idnr*10+2];
 			thisID = (int)ObsSpotsLab[idnr*10+4];
 			newY = xThis * sin(deg2rad*angle) + yThis * cos(deg2rad*angle);
+			//~ if ((idnr - startRowNrSp)%100 == 0) {
+				//~ printf("%d %d %d %d %d %d\n",idnr,startRowNrSp,endRowNrSp,thisRowNr,startRowNr,endRowNr);
+				//~ fflush(stdout);
+			//~ }
 			if (fabs(newY - ypos[(int)ObsSpotsLab[idnr*10+9]]) <= BeamSize/2){
-				if ((idnr - startRowNrSp)%100 == 0) printf("%d %d %d %d %d %d\n",idnr,startRowNrSp,endRowNrSp,thisRowNr,startRowNr,endRowNr);
-				DoIndexing(thisID,thisRowNr,xThis,yThis,0,Params);
+				DoIndexing(thisID,thisRowNr,xThis,yThis,0,Params,idnr);
 			}
 		}
 	}
