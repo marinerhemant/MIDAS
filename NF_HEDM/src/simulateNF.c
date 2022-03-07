@@ -325,7 +325,11 @@ main(int argc, char *argv[])
     SizeObsSpots;
     printf("%lld\n",SizeObsSpots);
     ObsSpotsInfo = calloc(SizeObsSpots,sizeof(*ObsSpotsInfo));
-    binArr = calloc(SizeObsSpots,sizeof(*binArr)); // This is assuming we have quarter of data with signal, not unreasonable. 
+    binArr = calloc(SizeObsSpots,sizeof(*binArr)); // This is assuming we have quarter of data with signal, not unreasonable.
+    if (ObsSpotsInfo == NULL || binArr == NULL){
+		printf("Could not allocate arrays! Ran out of RAM?");
+		return 1;
+	}
 
 	double RotMatTilts[3][3];
 	RotationTilts(tx,ty,tz,RotMatTilts);
@@ -392,6 +396,10 @@ main(int argc, char *argv[])
 	int lineNr=0;
 	double *TheorSpots;
 	TheorSpots = malloc(MAX_N_SPOTS*3*sizeof(*TheorSpots));
+	if (TheorSpots == NULL){
+		printf("Could not allocate memory\n");
+		return 1;
+	}
 	while (fgets(aline,4096,InpMicF)!= NULL){
 		sscanf(aline,"%s %s %s %lf %lf %lf %lf %lf %lf %lf %lf %s",dummy,dummy,dummy,&xs,&ys,&edgeLen,&ud,&eulThis[0],&eulThis[1],&eulThis[2],&origConf,dummy);
 		gs = edgeLen/2;
@@ -415,6 +423,10 @@ main(int argc, char *argv[])
 	FILE *OutputF;
 	if (skipBin == 0){
 		OutputF = fopen(outputFN,"wb");
+		if (OutputF == NULL){
+			printf("Could not write output file\n");
+			return 1;
+		}
 		char dummychar[8192];
 		fwrite(dummychar,8192,1,OutputF);
 		fwrite(ObsSpotsInfo,SizeObsSpots*sizeof(*ObsSpotsInfo),1,OutputF);
@@ -450,6 +462,10 @@ main(int argc, char *argv[])
 	}
 	printf("Total number of illuminated pixels: %zu\n",nrF);
 	OutputF = fopen(outFN,"wb");
+	if (OutputF == NULL){
+		printf("Could not write output file\n");
+		return 1;
+	}
 	fwrite(binArr,nrF*5*sizeof(*binArr),1,OutputF);
 	fclose(OutputF);
 	return 0;
