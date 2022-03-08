@@ -1944,7 +1944,7 @@ main(int argc, char *argv[])
 	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
 	for (thisRowNr = 0; thisRowNr < nSpotIDs; thisRowNr++){
 		int thisSpotID = SpotIDs[thisRowNr];
-		printf("%d\n",thisSpotID);
+		printf("%d %d\n",thisSpotID,thisRowNr);
 		fflush(stdout);
 		DoIndexing(thisSpotID,Params);
 	}
