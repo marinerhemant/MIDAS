@@ -1596,7 +1596,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	bestnTspotsIsp = 0;
 	isp = 0;
 	int bestMatchFound = 0;
-	printf("%d\n",SpotIDs);
+	printf("%d %d\n",SpotIDs,nPlaneNormals);
 	while (isp < nPlaneNormals) {
 		y0 = y0_vector[isp];
 		z0 = z0_vector[isp];
