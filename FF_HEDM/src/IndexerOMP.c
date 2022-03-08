@@ -1611,6 +1611,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		or = 0;
 		orDelta = 1;
 		printf("%d\n",nOrient);
+		fflush(stdout);
 		while (or < nOrient) {
 			int t;
 			CalcDiffrSpots_Furnace(OrMat[or], Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii,
