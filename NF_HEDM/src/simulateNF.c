@@ -434,20 +434,21 @@ main(int argc, char *argv[])
 	}
 	printf("Done with full file\n");
 	size_t idxpos,tmpcntr,nrF=0;
-	// Do it differently
+	// Sequential read.
+	idxpos = 0;
 	for (l=0;l<nLayers;l++){
 		for (k=0;k<nrFiles;k++){
 			for (j=0;j<2048;j++){
 				for (i=0;i<2048;i++){
-					idxpos = l*nrFiles;
-					idxpos *= 2048;
-					idxpos *= 2048;
-					tmpcntr = 2048;
-					tmpcntr *= 2048;
-					tmpcntr *= k;
-					idxpos += tmpcntr;
-					idxpos += 2048*j;
-					idxpos += i;
+					//~ idxpos = l*nrFiles;
+					//~ idxpos *= 2048;
+					//~ idxpos *= 2048;
+					//~ tmpcntr = 2048;
+					//~ tmpcntr *= 2048;
+					//~ tmpcntr *= k;
+					//~ idxpos += tmpcntr;
+					//~ idxpos += 2048*j;
+					//~ idxpos += i;
 					if (ObsSpotsInfo[idxpos] != 0){
 						binArr[nrF*5+0] = j;
 						binArr[nrF*5+1] = i;
@@ -456,6 +457,7 @@ main(int argc, char *argv[])
 						binArr[nrF*5+4] = ObsSpotsInfo[idxpos];
 						nrF ++;
 					}
+					idxpos ++;
 				}
 			}
 		}

@@ -1596,6 +1596,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	bestnTspotsIsp = 0;
 	isp = 0;
 	int bestMatchFound = 0;
+	printf("%d\n",SpotIDs);
 	while (isp < nPlaneNormals) {
 		y0 = y0_vector[isp];
 		z0 = z0_vector[isp];
@@ -1939,6 +1940,7 @@ main(int argc, char *argv[])
 	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
 	for (thisRowNr = 0; thisRowNr < nSpotIDs; thisRowNr++){
 		int thisSpotID = SpotIDs[thisRowNr];
+		printf("%d\n",thisSpotID);
 		DoIndexing(thisSpotID,Params);
 	}
 	double time = omp_get_wtime() - start_time;
