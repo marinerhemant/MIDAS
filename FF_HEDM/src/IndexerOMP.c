@@ -1596,8 +1596,8 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	bestnTspotsIsp = 0;
 	isp = 0;
 	int bestMatchFound = 0;
-	printf("%d %d\n",SpotIDs,nPlaneNormals);
-	fflush(stdout);
+	//~ printf("%d %d\n",SpotIDs,nPlaneNormals);
+	//~ fflush(stdout);
 	while (isp < nPlaneNormals) {
 		y0 = y0_vector[isp];
 		z0 = z0_vector[isp];
@@ -1611,8 +1611,8 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		bestnTspotsRot = 0;
 		or = 0;
 		orDelta = 1;
-		printf("%d\n",nOrient);
-		fflush(stdout);
+		//~ printf("%d\n",nOrient);
+		//~ fflush(stdout);
 		while (or < nOrient) {
 			int t;
 			CalcDiffrSpots_Furnace(OrMat[or], Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii,
@@ -1696,7 +1696,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	}
 
 	fracMatches = (RealType) bestnMatchesIsp/bestnTspotsIsp;
-	printf("%lf\n",fracMatches);
+	//~ printf("%lf\n",fracMatches);
 	if (fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 || (int)bestnMatchesIsp == -1 || bestMatchFound == 0){
 		FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 		FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
@@ -1945,8 +1945,8 @@ main(int argc, char *argv[])
 	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
 	for (thisRowNr = 0; thisRowNr < nSpotIDs; thisRowNr++){
 		int thisSpotID = SpotIDs[thisRowNr];
-		printf("%d %d\n",thisSpotID,thisRowNr);
-		fflush(stdout);
+		//~ printf("%d %d\n",thisSpotID,thisRowNr);
+		//~ fflush(stdout);
 		DoIndexing(thisSpotID,Params);
 	}
 	double time = omp_get_wtime() - start_time;
