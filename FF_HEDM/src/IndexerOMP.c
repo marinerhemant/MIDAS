@@ -1939,7 +1939,7 @@ main(int argc, char *argv[])
 		sscanf(aline,"%d",&SpotIDs[i]);
 	}
 	fclose(spotsFile);
-	printf("Read spots info, nSpots = %d, %d\n",nSpotIDs, numProcs);
+	printf("Read spots info, nSpots = %d, %d %d\n",nSpotIDs, numProcs,omp_get_max_threads());
 	fflush(stdout);
 	printf("%d\n",omp_get_max_threads());
 	int thisRowNr;
