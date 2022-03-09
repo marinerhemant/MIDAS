@@ -1948,7 +1948,7 @@ main(int argc, char *argv[])
 		int thisSpotID = SpotIDs[thisRowNr];
 		printf("%d %d\n",thisSpotID,thisRowNr);
 		fflush(stdout);
-		//~ DoIndexing(thisSpotID,Params);
+		DoIndexing(thisSpotID,Params);
 	}
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);
