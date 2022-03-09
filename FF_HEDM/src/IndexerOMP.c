@@ -1941,7 +1941,7 @@ main(int argc, char *argv[])
 	fclose(spotsFile);
 	printf("Read spots info, nSpots = %d, %d\n",nSpotIDs, numProcs);
 	fflush(stdout);
-	print("%d\n",omp_get_max_threads());
+	printf("%d\n",omp_get_max_threads());
 	int thisRowNr;
 	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
 	for (thisRowNr = 0; thisRowNr < nSpotIDs; thisRowNr++){
