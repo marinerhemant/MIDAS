@@ -1598,7 +1598,6 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	int bestMatchFound = 0;
 	//~ printf("%d %d\n",SpotIDs,nPlaneNormals);
 	//~ fflush(stdout);
-	return 1;
 	while (isp < nPlaneNormals) {
 		y0 = y0_vector[isp];
 		z0 = z0_vector[isp];
@@ -1695,6 +1694,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		}
 		isp = isp + ispDelta;
 	}
+	return 1;
 
 	fracMatches = (RealType) bestnMatchesIsp/bestnTspotsIsp;
 	//~ printf("%lf\n",fracMatches);
