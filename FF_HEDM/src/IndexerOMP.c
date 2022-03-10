@@ -1682,16 +1682,16 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 				bestnTspotsRot = bestnTspotsPos;
 			}
 			or = or + orDelta;
-		}*/
+		}
 		if (bestnMatchesRot > bestnMatchesIsp) {
 			bestnMatchesIsp = bestnMatchesRot;
 			bestnTspotsIsp = bestnTspotsRot;
-		}
+		}*/
 		ispDelta = 1;
-		if ((!usingFriedelPair) && (bestnTspotsRot != 0)) {
-			fracMatches = (RealType) bestnMatchesRot/bestnTspotsRot;
-			if (fracMatches < 0.5) ispDelta = 5 - round(fracMatches * (5-1) / 0.5);
-		}
+		//~ if ((!usingFriedelPair) && (bestnTspotsRot != 0)) {
+			//~ fracMatches = (RealType) bestnMatchesRot/bestnTspotsRot;
+			//~ if (fracMatches < 0.5) ispDelta = 5 - round(fracMatches * (5-1) / 0.5);
+		//~ }
 		isp = isp + ispDelta;
 	}
 	return 1;
