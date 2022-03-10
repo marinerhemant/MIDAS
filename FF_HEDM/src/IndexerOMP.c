@@ -1640,6 +1640,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 				CompareSpots(TheorSpots, nTspots, ObsSpotsLab, RefRad,
 				Params.MarginRad, Params.MarginRadial, etamargins, omemargins,
 				&nMatches, GrainSpots);
+				continue;
 				if (nMatches > bestnMatchesPos) {
 					bestnMatchesPos = nMatches;
 					bestnTspotsPos = nTspots;
@@ -1694,7 +1695,6 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		}
 		isp = isp + ispDelta;
 	}
-	return 1;
 
 	fracMatches = (RealType) bestnMatchesIsp/bestnTspotsIsp;
 	//~ printf("%lf\n",fracMatches);
