@@ -48,7 +48,7 @@ check (int test, const char * message, ...)
 // max array sizes
 #define MAX_N_SPOTS 6000000
 #define MAX_N_STEPS 1000
-#define MAX_N_OR 36000
+#define MAX_N_OR 3600
 #define MAX_N_MATCHES 1
 #define MAX_N_RINGS 500
 #define MAX_N_HKLS 5000
@@ -1567,6 +1567,8 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	int   ringnr = (int) ObsSpotsLab[SpotRowNo*9+5];
 	// To store the orientation matrices
 	RealType OrMat[MAX_N_OR][3][3];
+	// Lets allocate OrMat
+	
 	hkl[0] = RingHKL[ringnr][0];
 	hkl[1] = RingHKL[ringnr][1];
 	hkl[2] = RingHKL[ringnr][2];
@@ -1606,7 +1608,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		hklnormal[0] = g1;
 		hklnormal[1] = g2;
 		hklnormal[2] = g3;
-		//~ GenerateCandidateOrientationsF(hkl, hklnormal, Params.StepsizeOrient, OrMat, &nOrient,ringnr);
+		GenerateCandidateOrientationsF(hkl, hklnormal, Params.StepsizeOrient, OrMat, &nOrient,ringnr);
 		//~ bestnMatchesRot = -1;
 		//~ bestnTspotsRot = 0;
 		//~ or = 0;
