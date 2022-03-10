@@ -584,7 +584,7 @@ double CalcRotationAngle (int RingNr){
 	else return 0;
 }
 
-int GenerateCandidateOrientationsF(double hkl[3],RealType hklnormal[3],RealType stepsize,RealType OrMat[][3][3],int * nOrient,int RingNr)
+int GenerateCandidateOrientationsF(double hkl[3],RealType hklnormal[3],RealType stepsize,RealType *OrMat,int * nOrient,int RingNr)
 {
 	RealType v[3];
 	RealType MaxAngle = 0;
@@ -609,7 +609,7 @@ int GenerateCandidateOrientationsF(double hkl[3],RealType hklnormal[3],RealType 
 		MatrixMultF33(RotMat2, RotMat, RotMat3);
 		for (row = 0 ; row < 3 ; row++) {
 			for (col = 0 ; col < 3 ; col++) {
-				OrMat[or][row][col] = RotMat3[row][col];
+				OrMat[or*9+row*3+col] = RotMat3[row][col];
 			}
 		}
 	}
@@ -1478,7 +1478,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	int   or;
 	int   sp;
 	int   nMatches;
-	int   r,c, i;
+	int   r,c, i, j, k;
 	RealType y0_vector[MAX_N_STEPS];
 	RealType z0_vector[MAX_N_STEPS];
 	int   nPlaneNormals;
@@ -1566,9 +1566,9 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	RealType ttheta = ObsSpotsLab[SpotRowNo*9+7];
 	int   ringnr = (int) ObsSpotsLab[SpotRowNo*9+5];
 	// To store the orientation matrices
-	RealType OrMat[MAX_N_OR][3][3];
+	RealType *OrMat;
 	// Lets allocate OrMat
-	
+	OrMat = calloc(MAX_N_OR*3*3,sizeof(*OrMat));
 	hkl[0] = RingHKL[ringnr][0];
 	hkl[1] = RingHKL[ringnr][1];
 	hkl[2] = RingHKL[ringnr][2];
@@ -1617,7 +1617,9 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		//~ fflush(stdout);
 		while (or < nOrient) {
 			int t;
-			CalcDiffrSpots_Furnace(OrMat[or], Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii,
+			RealType orThis[3][3];
+			for (i=0;i<3;i++) for (j=0;j<3;j++) orThis[i][j] = OrMat[or*9+i*3+j];
+			CalcDiffrSpots_Furnace(orThis, Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii,
 				Params.OmegaRanges, Params.BoxSizes, Params.NoOfOmegaRanges, Params.ExcludePoleAngle, TheorSpots, &nTspots);
 			MinMatchesToAccept = nTspots * Params.MinMatchesToAcceptFrac;
 			bestnMatchesPos = -1;
@@ -1651,7 +1653,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 					 (matchNr < 100) &&
 					 (nMatches >= MinMatchesToAccept) ) {
 					bestMatchFound = 1;
-					for (i = 0 ;  i < 9 ; i ++) GrainMatchesT[0][i] = OrMat[or][i/3][i%3];
+					for (i = 0 ;  i < 9 ; i ++) GrainMatchesT[0][i] = orThis[i/3][i%3];
 					GrainMatchesT[0][9]  = ga;
 					GrainMatchesT[0][10] = gb;
 					GrainMatchesT[0][11] = gc;
