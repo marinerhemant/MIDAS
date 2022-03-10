@@ -1462,6 +1462,7 @@ void MakeFullFileName(char* fullFileName, char* aPath, char* aFileName)
 
 int DoIndexing(int SpotIDs,struct TParams Params )
 {
+	return 1;
 	//~ clock_t start, end;
 	double dif;
 	RealType HalfBeam = Params.Hbeam /2 ;
