@@ -1615,10 +1615,10 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		//~ fflush(stdout);
 		while (or < nOrient) {
 			int t;
-			CalcDiffrSpots_Furnace(OrMat[or], Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii,
-				Params.OmegaRanges, Params.BoxSizes, Params.NoOfOmegaRanges, Params.ExcludePoleAngle, TheorSpots, &nTspots);
 			or++;
 			continue;
+			CalcDiffrSpots_Furnace(OrMat[or], Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii,
+				Params.OmegaRanges, Params.BoxSizes, Params.NoOfOmegaRanges, Params.ExcludePoleAngle, TheorSpots, &nTspots);
 			MinMatchesToAccept = nTspots * Params.MinMatchesToAcceptFrac;
 			bestnMatchesPos = -1;
 			bestnTspotsPos =  0;
