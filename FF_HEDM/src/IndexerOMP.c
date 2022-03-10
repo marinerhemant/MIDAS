@@ -1599,12 +1599,12 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	//~ printf("%d %d\n",SpotIDs,nPlaneNormals);
 	//~ fflush(stdout);
 	while (isp < nPlaneNormals) {
-		isp++;
-		continue;
 		y0 = y0_vector[isp];
 		z0 = z0_vector[isp];
 		MakeUnitLength(Params.Distance, y0, z0, &xi, &yi, &zi );
 		spot_to_gv(xi, yi, zi, omega,  &g1, &g2, &g3);
+		isp++;
+		continue;
 		hklnormal[0] = g1;
 		hklnormal[1] = g2;
 		hklnormal[2] = g3;
