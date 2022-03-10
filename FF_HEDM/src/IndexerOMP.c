@@ -1462,7 +1462,6 @@ void MakeFullFileName(char* fullFileName, char* aPath, char* aFileName)
 
 int DoIndexing(int SpotIDs,struct TParams Params )
 {
-	return 1;
 	//~ clock_t start, end;
 	double dif;
 	RealType HalfBeam = Params.Hbeam /2 ;
@@ -1599,6 +1598,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	int bestMatchFound = 0;
 	//~ printf("%d %d\n",SpotIDs,nPlaneNormals);
 	//~ fflush(stdout);
+	return 1;
 	while (isp < nPlaneNormals) {
 		y0 = y0_vector[isp];
 		z0 = z0_vector[isp];
