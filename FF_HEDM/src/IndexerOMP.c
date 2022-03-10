@@ -1606,11 +1606,11 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		hklnormal[0] = g1;
 		hklnormal[1] = g2;
 		hklnormal[2] = g3;
-		GenerateCandidateOrientationsF(hkl, hklnormal, Params.StepsizeOrient, OrMat, &nOrient,ringnr);
-		bestnMatchesRot = -1;
-		bestnTspotsRot = 0;
-		or = 0;
-		orDelta = 1;
+		//~ GenerateCandidateOrientationsF(hkl, hklnormal, Params.StepsizeOrient, OrMat, &nOrient,ringnr);
+		//~ bestnMatchesRot = -1;
+		//~ bestnTspotsRot = 0;
+		//~ or = 0;
+		//~ orDelta = 1;
 		//~ printf("%d\n",nOrient);
 		//~ fflush(stdout);
 		/*while (or < nOrient) {
