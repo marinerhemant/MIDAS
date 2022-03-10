@@ -1603,8 +1603,6 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		z0 = z0_vector[isp];
 		MakeUnitLength(Params.Distance, y0, z0, &xi, &yi, &zi );
 		spot_to_gv(xi, yi, zi, omega,  &g1, &g2, &g3);
-		isp++;
-		continue;
 		hklnormal[0] = g1;
 		hklnormal[1] = g2;
 		hklnormal[2] = g3;
@@ -1615,6 +1613,8 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		orDelta = 1;
 		//~ printf("%d\n",nOrient);
 		//~ fflush(stdout);
+		isp++;
+		continue;
 		while (or < nOrient) {
 			int t;
 			CalcDiffrSpots_Furnace(OrMat[or], Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii,
