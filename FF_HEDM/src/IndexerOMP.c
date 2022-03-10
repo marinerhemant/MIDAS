@@ -1609,13 +1609,13 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		hklnormal[1] = g2;
 		hklnormal[2] = g3;
 		GenerateCandidateOrientationsF(hkl, hklnormal, Params.StepsizeOrient, OrMat, &nOrient,ringnr);
-		//~ bestnMatchesRot = -1;
-		//~ bestnTspotsRot = 0;
-		//~ or = 0;
-		//~ orDelta = 1;
+		bestnMatchesRot = -1;
+		bestnTspotsRot = 0;
+		or = 0;
+		orDelta = 1;
 		//~ printf("%d\n",nOrient);
 		//~ fflush(stdout);
-		/*while (or < nOrient) {
+		while (or < nOrient) {
 			int t;
 			CalcDiffrSpots_Furnace(OrMat[or], Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii,
 				Params.OmegaRanges, Params.BoxSizes, Params.NoOfOmegaRanges, Params.ExcludePoleAngle, TheorSpots, &nTspots);
@@ -1688,15 +1688,14 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 		if (bestnMatchesRot > bestnMatchesIsp) {
 			bestnMatchesIsp = bestnMatchesRot;
 			bestnTspotsIsp = bestnTspotsRot;
-		}*/
+		}
 		ispDelta = 1;
-		//~ if ((!usingFriedelPair) && (bestnTspotsRot != 0)) {
-			//~ fracMatches = (RealType) bestnMatchesRot/bestnTspotsRot;
-			//~ if (fracMatches < 0.5) ispDelta = 5 - round(fracMatches * (5-1) / 0.5);
-		//~ }
+		if ((!usingFriedelPair) && (bestnTspotsRot != 0)) {
+			fracMatches = (RealType) bestnMatchesRot/bestnTspotsRot;
+			if (fracMatches < 0.5) ispDelta = 5 - round(fracMatches * (5-1) / 0.5);
+		}
 		isp = isp + ispDelta;
 	}
-	return 1;
 
 	fracMatches = (RealType) bestnMatchesIsp/bestnTspotsIsp;
 	//~ printf("%lf\n",fracMatches);
