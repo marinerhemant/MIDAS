@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import h5py
 import warnings
+from pathlib import Path
 
 warnings.filterwarnings('ignore')
 
@@ -130,6 +131,8 @@ for counter,grain in enumerate(Grains):
 	spd = grg.create_dataset('SpotMatrix_Radius',data=RadiusInfo)
 	spd.attrs['header'] = headSpots
 
+
+Path('remoe_data').mkdir(parents=True,exist_ok=True)
 # Make and save plots
 plt.scatter(Grains[:,10],Grains[:,11]);  plt.xlabel('X [\mu m]'); plt.ylabel('Y [\mu m]'); plt.savefig('remote_data/XY.png'); plt.clf()
 plt.scatter(Grains[:,11],Grains[:,12]);  plt.xlabel('Y [\mu m]'); plt.ylabel('Z [\mu m]'); plt.savefig('remote_data/YZ.png'); plt.clf()
