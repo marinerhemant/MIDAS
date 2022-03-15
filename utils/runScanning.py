@@ -8,7 +8,7 @@ from calcMiso import *
 nScans = 21
 sgnum = 225
 nCPUs = 64
-folder = '/home/hemantmariner/Desktop/analysis/hpldrd_dec21/'
+folder = '/data/tomo1/sharma_internal_hedm/hpldrd_dec21/L2/'
 maxAng = 0.5
 
 
