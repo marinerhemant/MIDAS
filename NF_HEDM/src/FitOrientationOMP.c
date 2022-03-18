@@ -709,13 +709,18 @@ main(int argc, char *argv[])
 		}
 		n_hkls = totalHKLs;
 	}
+	double RotMatTilts[3][3];
+	RotationTilts(tx,ty,tz,RotMatTilts);
+	double *OrientMatrixAll;
+	OrientMatrixAll = calloc(MAX_POINTS_GRID_GOOD*10*numProcs,sizeof(*OrientMatrixAll));
 	//~ printf("Number of individual diffracting planes: %d\n",n_hkls);
 	// DO OMP HERE??????
 	#pragma omp parallel for num_threads(numProcs) private(rown) schedule(dynamic)
 	for (rown=startRowNr; rown<=endRowNr; rown++){
-		clock_t start, end;
-		double diftotal;
-		start = clock();
+		//~ clock_t start, end;
+		//~ double diftotal;
+		//~ start = clock();
+		int procNum = omp_get_thread_num();
 		int i,j,k,m;
 	    if (rown > TotalNrSpots){
 	        printf("Error: Grid point number greater than total number of grid points.\n");
@@ -723,8 +728,6 @@ main(int argc, char *argv[])
 	    }
 	    double y1,y2,xs,ys,gs;
 		// Alloc array and clear it.
-	    double **OrientMatrix;
-	    OrientMatrix = allocMatrixF(MAX_POINTS_GRID_GOOD,10);
 	    double **XY;
 	    XY = allocMatrixF(3,3);
 	    sscanf(lines[rown-startRowNr],"%lf %lf %lf %lf %lf",&y1,&y2,&xs,&ys,&gs);
@@ -752,8 +755,7 @@ main(int argc, char *argv[])
 	    int NrPixelsGrid=2*(ceil((gs*2)/px))*(ceil((gs*2)/px));
 	    int NrSpotsThis,StartingRowNr;
 	    double FracOverT;
-	    double RotMatTilts[3][3], OrientationMatThis[9], OrientationMatThisUnNorm[9];
-	    RotationTilts(tx,ty,tz,RotMatTilts);
+	    double OrientationMatThis[9], OrientationMatThisUnNorm[9];
 	    int OrientationGoodID=0;
 	    double MatIn[3],P0[nLayers][3],P0T[3];
 	    double OrientMatIn[3][3],XG[3],YG[3];
@@ -773,6 +775,8 @@ main(int argc, char *argv[])
 	        XG[j] = XY[j][0];
 	        YG[j] = XY[j][1];
 	    }
+	    double *OrientMatrix;
+	    OrientMatrix = &OrientMatrixAll[MAX_POINTS_GRID_GOOD*10*procNum];
 	    //~ printf("Checking orientation grid.\n");
 	    for (i=0;i<NrOrientations;i++){
 	        NrSpotsThis = NrSpots[i][0];
@@ -798,9 +802,9 @@ main(int argc, char *argv[])
 				gs,P0,NrPixelsGrid,ObsSpotsInfo,OrientMatIn,&FracOverT);
 	        if (FracOverT >= minFracOverlap){
 	            for (j=0;j<9;j++){
-	                OrientMatrix[OrientationGoodID][j] = OrientationMatThis[j];
+	                OrientMatrix[OrientationGoodID*10+j] = OrientationMatThis[j];
 	            }
-	            OrientMatrix[OrientationGoodID][9] = (double)i; // Store the row nr in OrientationsList for grainID determination
+	            OrientMatrix[OrientationGoodID*10+9] = (double)i; // Store the row nr in OrientationsList for grainID determination
 	            OrientationGoodID++;
 	        }
 	    }
@@ -813,7 +817,7 @@ main(int argc, char *argv[])
 			BestFrac = -1;
 			ResultMatr[0] = (double)atoi(argv[2]);
 			ResultMatr[1] = (double)OrientationGoodID;
-			ResultMatr[2] = diftotal;
+			ResultMatr[2] = 0;
 			ResultMatr[3] = xs;
 			ResultMatr[4] = ys;
 			ResultMatr[5] = GridSize;
@@ -829,7 +833,7 @@ main(int argc, char *argv[])
 			int firstSol = 0, UpdSol = 0;
 			double bestMiso = 180, thisMiso, thMiso, axis[3];
 			for (i=0;i<OrientationGoodID;i++){
-				for (j=0;j<9;j++) OMTemp[j] = OrientMatrix[i][j];
+				for (j=0;j<9;j++) OMTemp[j] = OrientMatrix[i*10+j];
 				Convert9To3x3(OMTemp,OrientIn);
 				OrientMat2Euler(OrientIn,EulerIn);
 				FitOrientation(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,
@@ -839,7 +843,7 @@ main(int argc, char *argv[])
 					&EulerOutC,&FracOut,hkls,Thetas,n_hkls);
 				Fractions = 1-FracOut;
 				if (Fractions >= BestFrac){
-					bestRowNr = OrientMatrix[i][9]; // Save best RowNr
+					bestRowNr = OrientMatrix[i*10+9]; // Save best RowNr
 					BestFrac = Fractions;
 					BestEuler[0] = EulerOutA;
 					BestEuler[1] = EulerOutB;
@@ -876,10 +880,10 @@ main(int argc, char *argv[])
 			printf("No good ID found.\n");
 			continue;
 		}
-		end = clock();
-	    diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
+		//~ end = clock();
+	    //~ diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
 	    double outresult[11] = {bestRowNr,(double)OrientationGoodID,
-			diftotal,xs,ys,GridSize,(double)UD,BestEuler[0],BestEuler[1],
+			0,xs,ys,GridSize,(double)UD,BestEuler[0],BestEuler[1],
 			BestEuler[2],BestFrac};
 		int SizeWritten = 11*sizeof(double);
 		size_t OffsetHere = (rown-startRowNr);
@@ -921,8 +925,7 @@ main(int argc, char *argv[])
 	    //~ printf("Time elapsed in comparing diffraction spots: %f [s]\n",diftotal);
 		for(i=0;i<3;i++) free(XY[i]);
 		free(XY);
-		for (i=0;i<MAX_POINTS_GRID_GOOD;i++) free(OrientMatrix[i]);
-		free(OrientMatrix);
+		//~ for (i=0;i<MAX_POINTS_GRID_GOOD*10;i++) OrientMatrix[i] = 0; // Maybe not needed.
 	}
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);
