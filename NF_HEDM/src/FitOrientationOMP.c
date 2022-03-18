@@ -882,10 +882,10 @@ main(int argc, char *argv[])
 			diftotal,xs,ys,GridSize,(double)UD,BestEuler[0],BestEuler[1],
 			BestEuler[2],BestFrac};
 		int SizeWritten = 11*sizeof(double);
-		size_t OffsetHere = (rown-1);
+		size_t OffsetHere = (rown-startRowNr);
 		OffsetHere *= SizeWritten;
 		int SizeWritten2 = (7+(nSaves*4))*sizeof(double);
-		size_t OffsetThis = (rown-1);
+		size_t OffsetThis = (rown-startRowNr);
 		OffsetThis *= SizeWritten2;
 		#pragma omp critical
 		{
@@ -903,7 +903,7 @@ main(int argc, char *argv[])
 			// Write files
 		    int rc4 = pwrite(result,outresult,SizeWritten,OffsetHere);
 		    if (rc4 < 0){
-				printf("Could not write to output file %d %d %d.\n",OffsetHere,rown,startRowNr,endRowNr);
+				printf("Could not write to output file %d %d %d %d.\n",OffsetHere,rown,startRowNr,endRowNr);
 			}else{
 				printf("%zu %d ",OffsetHere,rown);
 				for (i=0;i<11;i++){
@@ -913,7 +913,7 @@ main(int argc, char *argv[])
 			}
 			int rc5 = pwrite(result2,ResultMatr,SizeWritten2,OffsetThis);
 			if (rc5 < 0){
-				printf("Could not write all matches %d %d %d.\n",OffsetThis,rown,startRowNr,endRowNr);
+				printf("Could not write all matches %d %d %d %d.\n",OffsetThis,rown,startRowNr,endRowNr);
 			}
 			close(result);
 			close(result2);
