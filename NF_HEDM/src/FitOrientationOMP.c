@@ -274,6 +274,7 @@ FitOrientation(
 	double minf=1;
 	nlopt_optimize(opt, x, &minf);
 	nlopt_destroy(opt);
+	free(f_data.P0);
     *ResultFracOverlap = minf;
     *EulerOutA = x[0];
     *EulerOutB = x[1];
