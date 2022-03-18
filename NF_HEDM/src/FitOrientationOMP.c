@@ -783,6 +783,7 @@ main(int argc, char *argv[])
 					&hkls[n_hkls][2],&Thetas[n_hkls],dummy,dummy);
 				n_hkls++;
 			}
+			fclose(hklf);
 			if (nRingsToUse > 0){
 				double hklTemps[n_hkls][4],thetaTemps[n_hkls];
 				int totalHKLs=0;
@@ -829,45 +830,21 @@ main(int argc, char *argv[])
 			double bestMiso = 180, thisMiso, thMiso, axis[3];
 			for (i=0;i<OrientationGoodID;i++){
 				for (j=0;j<9;j++) OMTemp[j] = OrientMatrix[i][j];
-				//Convert9To3x3(OMTemp,OrientIn);
-				OrientMat2Quat(OMTemp,QuatIn);
-				BringDownToFundamentalRegion(QuatIn,QuatOut,SpaceGroup);
-				QuatToOrientMat(QuatOut,OrientIn);
-				for (j=0;j<4;j++) QuatIn[j] = QuatOut[j];
+				Convert9To3x3(OMTemp,OrientIn);
 				OrientMat2Euler(OrientIn,EulerIn);
 				FitOrientation(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,
 					XG,YG,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,
 					OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,
 					ObsSpotsInfo,EulerIn,tol,&EulerOutA,&EulerOutB,
 					&EulerOutC,&FracOut,hkls,Thetas,n_hkls);
-				double EulOut[3] = {EulerOutA, EulerOutB, EulerOutC};
-				Euler2OrientMat(EulOut,OrientIn);
-				Convert3x3To9(OrientIn,OMTemp);
-				OrientMat2Quat(OMTemp,QuatOut);
-				thMiso = GetMisOrientation(QuatIn,QuatOut,axis,&thisMiso,SpaceGroup);
 				Fractions = 1-FracOut;
 				if (Fractions >= BestFrac){
-					//~ printf("%f %d of %d, EulerAngles: %f %f %f\n",Fractions,i,OrientationGoodID,EulerOutA,EulerOutB,EulerOutC,thisMiso);
-					if (MinMiso == 1 && firstSol == 1 && Fractions == BestFrac){ // We will now calculate if the solution is farther away or not
-						if (thisMiso < bestMiso){
-							//~ printf("Original misorientation from starting orientation: %lf, OrientationRowNr: %lf, New better misorientation: %lf, OrientationRowNr: %lf\n",bestMiso,bestRowNr,thisMiso,OrientMatrix[i][9]);
-							UpdSol = 1;
-							bestMiso = thisMiso;
-						} else UpdSol = 0;
-					} else {
-						bestMiso = thisMiso;
-						UpdSol = 1;
-						firstSol = 1;
-					}
-					if (UpdSol ==1){
-						bestRowNr = OrientMatrix[i][9]; // Save best RowNr
-						//~ printf("%lf\n",bestRowNr);
-						BestFrac = Fractions;
-						BestEuler[0] = EulerOutA;
-						BestEuler[1] = EulerOutB;
-						BestEuler[2] = EulerOutC;
-						if (1-BestFrac < 0.0001 && nSaves == 1) break;
-					}
+					bestRowNr = OrientMatrix[i][9]; // Save best RowNr
+					BestFrac = Fractions;
+					BestEuler[0] = EulerOutA;
+					BestEuler[1] = EulerOutB;
+					BestEuler[2] = EulerOutC;
+					if (1-BestFrac < 0.0001 && nSaves == 1) break;
 				}
 				if (nSaves > 1){
 					if (firstSol == 0){ // Put initial first solution in!!!

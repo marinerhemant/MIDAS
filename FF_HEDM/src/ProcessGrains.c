@@ -31,7 +31,7 @@
 
 #define MAX_N_IDS 6000000
 #define MAX_ID_IA_MAT 5000000
-#define NR_MAX_IDS_PER_GRAIN 5000
+#define NR_MAX_IDS_PER_GRAIN 5000 // Nr spots per grain max.
 #define IAColNr 20 // 20 for Internal Angle, 18 for position, 19 for omega
 
 #define EPS 1E-12
@@ -247,11 +247,6 @@ int main(int argc, char *argv[])
 	clock_t start, end;
     double diftotal;
     start = clock();
-    char IDsFileName[1024], BestFileName[1024], ResultFileName[1024];
-    FILE *IDsFile, *BestFile, *ResultFile;
-    sprintf(IDsFileName,"SpotsToIndex.csv");
-    printf("Reading IDs file: %s\n",IDsFileName);
-    IDsFile = fopen(IDsFileName,"r");
     char line[5024];
     char *ParamFN;
     FILE *fileParam;
@@ -334,12 +329,17 @@ int main(int argc, char *argv[])
             continue;
 		}
 	}
-
+	fclose(fileParam);
 	int i,j,k,ThisID,counter;
 	int *IDs;
 	IDs = malloc(MAX_N_IDS*sizeof(*IDs));
 	for (i=0;i<MAX_N_IDS;i++) IDs[i] = 0;
 	int nrIDs=0;
+    char IDsFileName[1024];
+    FILE *IDsFile;
+    sprintf(IDsFileName,"SpotsToIndex.csv");
+    printf("Reading IDs file: %s\n",IDsFileName);
+    IDsFile = fopen(IDsFileName,"r");
 	if (IDsFile == NULL)printf("Could not open spots file.\n");
 	while (fgets(line,5024,IDsFile) != NULL){
 		sscanf(line,"%d",&IDs[nrIDs]);
@@ -395,6 +395,7 @@ int main(int argc, char *argv[])
 	keyID = malloc(2*sizeof(*keyID));
 	size_t readKey, readOP, readProcess;
 	readProcess = fread(IDsPerGrain,NR_MAX_IDS_PER_GRAIN*nrIDs*sizeof(int),1,fileProcessKey);
+	fclose(fileProcessKey);
 	for (i=0;i<nrIDs;i++){
 		readKey = fread(keyID,2*sizeof(int),1,fileKey);
 		IDsToKeep[i] = true;
@@ -413,6 +414,8 @@ int main(int argc, char *argv[])
 		}
 		Radiuses[i] = OPThis[25];
 	}
+	fclose(fileKey);
+	fclose(fileOPFit);
 	int StartingID,ThisID1,ThisID2;
 	int nGrainPositions = 0,BestGrainPos, bestGrainID;
 	int *GrainPositions,*nGrainsMatched;
@@ -421,8 +424,8 @@ int main(int argc, char *argv[])
 	double minIA,maxRadThis;
 	printf("Read all grain files.\n");
 	bool *IDsChecked;
-	IDsChecked = malloc(MAX_N_IDS*sizeof(*IDsChecked));
-	for (i=0;i<MAX_N_IDS;i++) IDsChecked[i] = false;
+	IDsChecked = malloc(nrIDs*sizeof(*IDsChecked));
+	for (i=0;i<nrIDs;i++) IDsChecked[i] = false;
 	for (i=0;i<nrIDs;i++){
 		GrainPositions[i] = 0;
 		nGrainsMatched[i] = 0;
@@ -452,7 +455,7 @@ int main(int argc, char *argv[])
 			}
 			totcount+=counten;
 			nGrainsMatched[i] = counten;
-			//printf("%d %d\n",i,counten);
+			//~ printf("%d %d\n",i,counten);
 			if (counten < MinNrSpots){
 				continue;
 			}
@@ -480,32 +483,30 @@ int main(int argc, char *argv[])
 	}
 	fclose(fIDs);
 	//Write out
-	char GrainsFileName[1024];
-	sprintf(GrainsFileName,"Grains.csv");
-	FILE *GrainsFile;
-	GrainsFile = fopen(GrainsFileName,"w");
 	int nGrains=0;
 	int *IDsDone;
-	IDsDone = malloc(nGrainPositions*sizeof(*IDsDone));
+	IDsDone = malloc((nGrainPositions*2)*sizeof(*IDsDone)); // Fix for now.
 	int cres=0;
 	int DoneAlready = 0;
 	double StrainTensorSampleKen[3][3];
 	double StrainTensorSampleFab[3][3];
 	double *dummySampleInfo;
 	dummySampleInfo = malloc(22*NR_MAX_IDS_PER_GRAIN*sizeof(*dummySampleInfo));
-	double LatticeParameterFit[6],Orient[3][3],SpotsInfo[NR_MAX_IDS_PER_GRAIN][8];
+	double LatticeParameterFit[6],Orient[3][3];
+	double **SpotsInfo;
+	SpotsInfo = allocMatrix(NR_MAX_IDS_PER_GRAIN,8);
 	int nspots, rown;
 	// Calculate Strains Now
 	int fullInfoFile = open("Output/FitBest.bin",O_RDONLY);
 	size_t OffSt;
 	size_t ReadSize;
 	double MultR=1000000.0;
-	double **FinalMatrix;
 	double BeamCenter = 0, FullVol = 0,VNorm;
-	FinalMatrix = allocMatrix(nGrainPositions,47);
 	int rown2;
-	int IDHash[NR_MAX_IDS_PER_GRAIN][3];
-	double dspacings[NR_MAX_IDS_PER_GRAIN];
+	int **IDHash;
+	IDHash = allocMatrixInt(NR_MAX_IDS_PER_GRAIN,3);
+	double *dspacings;
+	dspacings = malloc(NR_MAX_IDS_PER_GRAIN*sizeof(*dspacings));
 	int nRings=0;
 	char *hashfn = "IDsHash.csv";
 	FILE *hashfile = fopen(hashfn,"r");
@@ -518,14 +519,14 @@ int main(int argc, char *argv[])
 	}else{
 		MakeHash = 1;
 	}
+	fclose(hashfile);
 	double **SpotMatrix, **InputMatrix;
 	SpotMatrix = allocMatrix(NR_MAX_IDS_PER_GRAIN,12);
 	InputMatrix = allocMatrix(MAX_N_IDS,10);
-	int counterSpotMatrix = 0, nRowsSpotMatrix = NR_MAX_IDS_PER_GRAIN*nGrainPositions;
+	int counterSpotMatrix = 0;
 	char *inputallfn = "InputAllExtraInfoFittingAll.csv";
 	FILE *inpfile = fopen(inputallfn,"r");
 	int counterIF=0;
-	FILE *spotsfile = fopen("SpotMatrix.csv","w");
 	fgets(aline,2000,inpfile);
 	int currentRing;
 	while (fgets(aline,2000,inpfile)!=NULL){
@@ -555,6 +556,7 @@ int main(int argc, char *argv[])
 		}
 		counterIF++;
 	}
+	fclose(inpfile);
 	IDHash[nRings-1][2] = counterIF; // Write the max for last ring last ID.
 	if (MakeHash == 1){ // Get dspacings from hkls.csv file
 		FILE *hklf = fopen("hkls.csv","r");
@@ -570,13 +572,21 @@ int main(int argc, char *argv[])
 				}
 			}
 		}
+		fclose(hklf);
 	}
 	for (j=0;j<NR_MAX_IDS_PER_GRAIN;j++) for (k=0;k<12;k++) SpotMatrix[j][k] = 0;
 	int rowSpotID, startSpotMatrix;
 	double RetVal, Eul[3];
+	FILE *spotsfile = fopen("SpotMatrix.csv","w");
 	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
+	double **FinalMatrix;
+	FinalMatrix = allocMatrix(nGrainPositions,47);
 	for (i=0;i<nGrainPositions;i++){
 		rown = GrainPositions[i];
+		if (rown >= nrIDs){
+			printf("Something is wrong. Please check.\n");
+			return 1;
+		}
 		DoneAlready = 0;
 		for (j=0;j<cres;j++){
 			if (IDsDone[j] == IDs[rown]){
@@ -588,6 +598,10 @@ int main(int argc, char *argv[])
 		}else{
 			IDsDone[cres] = IDs[rown];
 			cres++;
+			if (cres >= (nGrainPositions*2)){
+				printf("Something went wrong with cres %d out of %d alloc at %d. nGrains: %d Please check the ProcessGrains code.\n",cres,nGrainPositions, i,nGrains);
+				return 1;
+			}
 		}
 		for (k=0;k<9;k++){
 			OR1[k] = OPs[rown][k];
@@ -595,6 +609,15 @@ int main(int argc, char *argv[])
 		OrientMat2Quat(OR1,q1);
 		for (j=i+1;j<nGrainPositions;j++){
 			rown2 = GrainPositions[j];
+			int DA = 0;
+			for (k=0;k<cres;k++){
+				if (IDsDone[k] == IDs[rown2]){
+					DA = 1;
+				}
+			}
+			if (DA == 1) {
+				continue;
+			}
 			for (k=0;k<9;k++){
 				OR2[k] = OPs[rown2][k];
 			}
@@ -606,6 +629,10 @@ int main(int argc, char *argv[])
 			if (ang < 0.1 && DiffPos < 5){
 				IDsDone[cres] = IDs[rown2];
 				cres++;
+				if (cres >= (nGrainPositions*2)){
+					printf("Something went wrong with cres %d out of %d allocated at %d. nGrains: %d Please check the ProcessGrains code.\n",cres,nGrainPositions, i,nGrains);
+					return 1;
+				}
 			}
 		}
 		if (OPs[rown][22] < 0.05){
@@ -622,6 +649,7 @@ int main(int argc, char *argv[])
 		int rc = pread(fullInfoFile,dummySampleInfo,ReadSize,OffSt);
 		counterSpotMatrix = 0;
 		startSpotMatrix = counterSpotMatrix;
+		double GrainIDThis = (double)IDs[rown];
 		for (j=0;j<nspots;j++){
 			SpotsInfo[j][0] = dummySampleInfo[j*22+4];
 			SpotsInfo[j][1] = dummySampleInfo[j*22+5];
@@ -632,7 +660,11 @@ int main(int argc, char *argv[])
 			SpotsInfo[j][6] = dummySampleInfo[j*22+8];
 			SpotsInfo[j][7] = dummySampleInfo[j*22+0]; // SpotID
 			rowSpotID = (int) dummySampleInfo[j*22+0] - 1;
-			SpotMatrix[counterSpotMatrix][0] = (double)IDs[rown]; // GrainID
+			if (rowSpotID >= counterIF){
+				printf("Looking at the wrong info. Please check.\n");
+				return 1;
+			}
+			SpotMatrix[counterSpotMatrix][0] = GrainIDThis; // GrainID
 			SpotMatrix[counterSpotMatrix][1] = dummySampleInfo[j*22+0]; //SpotID
 			SpotMatrix[counterSpotMatrix][2] = InputMatrix[rowSpotID][0]; //Omega
 			SpotMatrix[counterSpotMatrix][3] = InputMatrix[rowSpotID][2]; //YRaw
@@ -667,7 +699,7 @@ int main(int argc, char *argv[])
 			printf("Did not read correct hash table for IDs. Exiting\n");
 			return;
 		}
-		FinalMatrix[nGrains][0] = (double)IDs[rown];
+		FinalMatrix[nGrains][0] = GrainIDThis;
 		// Take orientation and bring down to FR
 		BringDownToFundamentalRegion(q1,q2,SGNr);
 		QuatToOrientMat(q2,OR1);
@@ -702,6 +734,7 @@ int main(int argc, char *argv[])
 		FinalMatrix[i][46] = Eul[2];
 		VNorm = FinalMatrix[nGrains][22]*FinalMatrix[nGrains][22]*FinalMatrix[nGrains][22];
 		BeamCenter += (FinalMatrix[nGrains][12])*(VNorm);
+		//~ printf("%d\n",nGrains);
 		FullVol += VNorm;
 		nGrains++;
 		for (j=0;j<counterSpotMatrix;j++){
@@ -716,6 +749,14 @@ int main(int argc, char *argv[])
 	BeamCenter /= FullVol;
 	// Write file
 	fclose(spotsfile);
+	char GrainsFileName[1024];
+	sprintf(GrainsFileName,"Grains.csv");
+	FILE *GrainsFile;
+	GrainsFile = fopen(GrainsFileName,"w");
+	if (GrainsFile == NULL) {
+		printf("Could not write to Grains.csv. Please check.\n");
+		return 1;
+	}
 	fprintf(GrainsFile,"%%NumGrains %d\n",nGrains);
 	fprintf(GrainsFile, "%%BeamCenter %f\n",BeamCenter);
 	fprintf(GrainsFile, "%%BeamThickness %f\n",BeamThickness);
@@ -729,12 +770,15 @@ int main(int argc, char *argv[])
 	fprintf(GrainsFile,"eFab11\teFab12\teFab13\teFab21\teFab22\teFab23\teFab31\teFab32\teFab33\t");
 	fprintf(GrainsFile,"eKen11\teKen12\teKen13\teKen21\teKen22\teKen23\teKen31\teKen32\teKen33\tRMSErrorStrain\tPhaseNr\tEul0\tEul1\tEul2\n");
 	for (i=0;i<nGrains;i++){
+		//~ printf("%d\n",i);
+		//~ fflush(stdout);
 		fprintf(GrainsFile,"%d\t",(int)FinalMatrix[i][0]);
 		for (j=1;j<47;j++){
 			fprintf(GrainsFile,"%lf\t",FinalMatrix[i][j]);
 		}
 		fprintf(GrainsFile,"\n");
 	}
+	fclose(GrainsFile);
     end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
     printf("Time elapsed: %f s.\n",diftotal);

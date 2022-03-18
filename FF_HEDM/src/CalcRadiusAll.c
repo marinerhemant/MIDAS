@@ -33,7 +33,7 @@
 #define CalcNorm2(x,y)   sqrt((x)*(x) + (y)*(y))
 #define MAXNRINGS 500
 
-#define MAX_N_SPOTS 1000000
+#define MAX_N_SPOTS 2000000
 
 static inline
 double**
