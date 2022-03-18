@@ -670,7 +670,7 @@ main(int argc, char *argv[])
 	}
 	//~ for (it=0;it<nrows;it++) fgets(lines[it],1000,fp);
 	fclose(fp);
-	int n_hkls = 0;
+	int n_hkls = 0, iter_i, iter_j;
 	double hkls[5000][4];
 	double Thetas[5000];
 	char aliner[1000];
@@ -688,24 +688,24 @@ main(int argc, char *argv[])
 	if (nRingsToUse > 0){
 		double hklTemps[n_hkls][4],thetaTemps[n_hkls];
 		int totalHKLs=0;
-		for (i=0;i<nRingsToUse;i++){
-			for (j=0;j<n_hkls;j++){
-				if ((int)hkls[j][3] == RingsToUse[i]){
-					hklTemps[totalHKLs][0] = hkls[j][0];
-					hklTemps[totalHKLs][1] = hkls[j][1];
-					hklTemps[totalHKLs][2] = hkls[j][2];
-					hklTemps[totalHKLs][3] = hkls[j][3];
-					thetaTemps[totalHKLs] = Thetas[j];
+		for (iter_i=0;iter_i<nRingsToUse;iter_i++){
+			for (iter_j=0;iter_j<n_hkls;iter_j++){
+				if ((int)hkls[iter_j][3] == RingsToUse[iter_i]){
+					hklTemps[totalHKLs][0] = hkls[iter_j][0];
+					hklTemps[totalHKLs][1] = hkls[iter_j][1];
+					hklTemps[totalHKLs][2] = hkls[iter_j][2];
+					hklTemps[totalHKLs][3] = hkls[iter_j][3];
+					thetaTemps[totalHKLs] = Thetas[iter_j];
 					totalHKLs++;
 				}
 			}
 		}
-		for (i=0;i<totalHKLs;i++){
-			hkls[i][0] = hklTemps[i][0];
-			hkls[i][1] = hklTemps[i][1];
-			hkls[i][2] = hklTemps[i][2];
-			hkls[i][3] = hklTemps[i][3];
-			Thetas[i] = thetaTemps[i];
+		for (iter_i=0;iter_i<totalHKLs;iter_i++){
+			hkls[iter_i][0] = hklTemps[iter_i][0];
+			hkls[iter_i][1] = hklTemps[iter_i][1];
+			hkls[iter_i][2] = hklTemps[iter_i][2];
+			hkls[iter_i][3] = hklTemps[iter_i][3];
+			Thetas[iter_i] = thetaTemps[iter_i];
 		}
 		n_hkls = totalHKLs;
 	}
