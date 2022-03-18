@@ -731,8 +731,7 @@ main(int argc, char *argv[])
 	    }
 	    double y1,y2,xs,ys,gs;
 		// Alloc array and clear it.
-	    double **XY;
-	    XY = allocMatrixF(3,3);
+	    double XY[3][3];
 	    sscanf(lines[rown-startRowNr],"%lf %lf %lf %lf %lf",&y1,&y2,&xs,&ys,&gs);
 	    int UD;
 	    if (y1>y2){
@@ -834,7 +833,6 @@ main(int argc, char *argv[])
 				ResultMatr[7+i*4+3] = 0;
 			}
 			int firstSol = 0, UpdSol = 0;
-			double bestMiso = 180, thisMiso, thMiso, axis[3];
 			for (i=0;i<OrientationGoodID;i++){
 				for (j=0;j<9;j++) OMTemp[j] = OrientMatrix[i*10+j];
 				Convert9To3x3(OMTemp,OrientIn);
@@ -926,8 +924,6 @@ main(int argc, char *argv[])
 			close(result2);
 		}
 	    //~ printf("Time elapsed in comparing diffraction spots: %f [s]\n",diftotal);
-		for(i=0;i<3;i++) free(XY[i]);
-		free(XY);
 		//~ for (i=0;i<MAX_POINTS_GRID_GOOD*10;i++) OrientMatrix[i] = 0; // Maybe not needed.
 	}
 	double time = omp_get_wtime() - start_time;
