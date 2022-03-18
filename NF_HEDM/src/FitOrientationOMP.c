@@ -584,26 +584,6 @@ main(int argc, char *argv[])
 	ObsSpotsInfo = mmap (0, size, PROT_READ, MAP_SHARED, descp, 0);
 	check (ObsSpotsInfo == MAP_FAILED, "mmap %s failed: %s",file_name, strerror (errno));
 
-	//Read Key
-	char line[1024];
-	clock_t startthis;
-	startthis = clock();
-	FILE *fk;
-	int NrOrientations,TotalDiffrSpots;
-	fk = fopen(fnKey,"r");
-	fgets(line,1000,fk);
-	sscanf(line,"%d",&NrOrientations);
-	int **NrSpots;
-	NrSpots = allocMatrixIntF(NrOrientations,2);
-	TotalDiffrSpots=0;
-	for (it=0;it<NrOrientations;it++){
-		fgets(line,1000,fk);
-		sscanf(line,"%d",&NrSpots[it][0]);
-		TotalDiffrSpots+=NrSpots[it][0];
-		NrSpots[it][1] = TotalDiffrSpots - NrSpots[it][0];
-	}
-	fclose(fk);
-
 	// Read DiffractionSpots
 	double *SpotsMat;
 	char *spfn = "/dev/shm/DiffractionSpots.bin";
@@ -635,6 +615,26 @@ main(int argc, char *argv[])
 	size3 = s3.st_size;
 	OrientationMatrix = mmap (0, size3, PROT_READ, MAP_SHARED, omf, 0);
 	check (OrientationMatrix == MAP_FAILED, "mmap %s failed: %s",omfn, strerror (errno));
+
+	//Read Key
+	char line[1024];
+	clock_t startthis;
+	startthis = clock();
+	FILE *fk;
+	int NrOrientations,TotalDiffrSpots;
+	fk = fopen(fnKey,"r");
+	fgets(line,1000,fk);
+	sscanf(line,"%d",&NrOrientations);
+	int **NrSpots;
+	NrSpots = allocMatrixIntF(NrOrientations,2);
+	TotalDiffrSpots=0;
+	for (it=0;it<NrOrientations;it++){
+		fgets(line,1000,fk);
+		sscanf(line,"%d",&NrSpots[it][0]);
+		TotalDiffrSpots+=NrSpots[it][0];
+		NrSpots[it][1] = TotalDiffrSpots - NrSpots[it][0];
+	}
+	fclose(fk);
 
 	//Read position.
 	FILE *fp;
@@ -671,6 +671,7 @@ main(int argc, char *argv[])
 	}
 	//~ for (it=0;it<nrows;it++) fgets(lines[it],1000,fp);
 	fclose(fp);
+
 	int n_hkls = 0, iter_i, iter_j;
 	double hkls[5000][4];
 	double Thetas[5000];
@@ -710,13 +711,15 @@ main(int argc, char *argv[])
 		}
 		n_hkls = totalHKLs;
 	}
+
 	double RotMatTilts[3][3];
 	RotationTilts(tx,ty,tz,RotMatTilts);
 	double *OrientMatrixAll;
 	OrientMatrixAll = calloc(MAX_POINTS_GRID_GOOD*10*numProcs,sizeof(*OrientMatrixAll));
 	double *ThrSpsAll;
 	ThrSpsAll = calloc(numProcs*MAX_N_SPOTS*3,sizeof(*ThrSpsAll));
-	//~ printf("Number of individual diffracting planes: %d\n",n_hkls);
+	printf("Number of individual diffracting planes: %d\n",n_hkls);
+
 	// DO OMP HERE??????
 	#pragma omp parallel for num_threads(numProcs) private(rown) schedule(dynamic)
 	for (rown=startRowNr; rown<=endRowNr; rown++){

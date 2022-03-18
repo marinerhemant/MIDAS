@@ -127,8 +127,10 @@ int CalcMedian(char fn[1000],
 	sprintf(MaxIntFileName,"%s_MaximumIntensity_Distance_%d.%s",fn,LayerNr-1,extReduced);
 	int fld = 0;
 	sprintf(MaxIntMedianCorrFileName,"%s_MaximumIntensityMedianCorrected_Distance_%d.%s",fn,LayerNr-1,extReduced);
-	#pragma omp parallel for num_threads(numProcs) private(j)
+	printf("Reading files.\n");
+	#pragma omp parallel for num_threads(numProcs) private(j) schedule(dynamic)
 	for (j=0;j<NrFilesPerLayer;j++){
+		printf("File Number: %d out of %d\n",j,NrFilesPerLayer);
 		TIFFErrorHandler oldhandler;
 		oldhandler = TIFFSetWarningHandler(NULL);
 		int FileNr = ((LayerNr - 1) * NrFilesPerLayer) + StartNr + j;
@@ -163,8 +165,9 @@ int CalcMedian(char fn[1000],
 	pixelvalue *MaxIntArr, *MaxIntMedianArr;
 	MaxIntArr = malloc(NrPixels*NrPixels*sizeof(*MaxIntArr));
 	MaxIntMedianArr = malloc(NrPixels*NrPixels*sizeof(*MaxIntMedianArr));
-	#pragma omp parallel for num_threads(numProcs) private(k)
+	#pragma omp parallel for num_threads(numProcs) private(k) schedule(dynamic)
 	for (k=0;k<NrPixels;k++){
+		printf("Pixel Nr %d of %d\n",k,NrPixels);
 		pixelvalue SubArr[NrFilesPerLayer];
 		int tempVal;
 		int t;
