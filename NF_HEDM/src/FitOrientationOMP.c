@@ -670,6 +670,46 @@ main(int argc, char *argv[])
 	}
 	//~ for (it=0;it<nrows;it++) fgets(lines[it],1000,fp);
 	fclose(fp);
+	int n_hkls = 0;
+	double hkls[5000][4];
+	double Thetas[5000];
+	char aliner[1000];
+	char hklfn[1024];
+	sprintf(hklfn,"%s/hkls.csv",direct);
+	FILE *hklf = fopen(hklfn,"r");
+	fgets(aliner,1000,hklf);
+	while (fgets(aliner,1000,hklf)!=NULL){
+		sscanf(aliner, "%s %s %s %s %lf %lf %lf %lf %lf %s %s",dummy,dummy,dummy,
+			dummy,&hkls[n_hkls][3],&hkls[n_hkls][0],&hkls[n_hkls][1],
+			&hkls[n_hkls][2],&Thetas[n_hkls],dummy,dummy);
+		n_hkls++;
+	}
+	fclose(hklf);
+	if (nRingsToUse > 0){
+		double hklTemps[n_hkls][4],thetaTemps[n_hkls];
+		int totalHKLs=0;
+		for (i=0;i<nRingsToUse;i++){
+			for (j=0;j<n_hkls;j++){
+				if ((int)hkls[j][3] == RingsToUse[i]){
+					hklTemps[totalHKLs][0] = hkls[j][0];
+					hklTemps[totalHKLs][1] = hkls[j][1];
+					hklTemps[totalHKLs][2] = hkls[j][2];
+					hklTemps[totalHKLs][3] = hkls[j][3];
+					thetaTemps[totalHKLs] = Thetas[j];
+					totalHKLs++;
+				}
+			}
+		}
+		for (i=0;i<totalHKLs;i++){
+			hkls[i][0] = hklTemps[i][0];
+			hkls[i][1] = hklTemps[i][1];
+			hkls[i][2] = hklTemps[i][2];
+			hkls[i][3] = hklTemps[i][3];
+			Thetas[i] = thetaTemps[i];
+		}
+		n_hkls = totalHKLs;
+	}
+	//~ printf("Number of individual diffracting planes: %d\n",n_hkls);
 	// DO OMP HERE??????
 	#pragma omp parallel for num_threads(numProcs) private(rown) schedule(dynamic)
 	for (rown=startRowNr; rown<=endRowNr; rown++){
@@ -769,46 +809,6 @@ main(int argc, char *argv[])
 		double ResultMatr[7+(nSaves*4)], QuatIn[4], QuatOut[4];
 		double bestRowNr=0;
 	    if (OrientationGoodID>0){
-			int n_hkls = 0;
-			double hkls[5000][4];
-			double Thetas[5000];
-			char aliner[1000];
-			char hklfn[1024];
-			sprintf(hklfn,"%s/hkls.csv",direct);
-			FILE *hklf = fopen(hklfn,"r");
-			fgets(aliner,1000,hklf);
-			while (fgets(aliner,1000,hklf)!=NULL){
-				sscanf(aliner, "%s %s %s %s %lf %lf %lf %lf %lf %s %s",dummy,dummy,dummy,
-					dummy,&hkls[n_hkls][3],&hkls[n_hkls][0],&hkls[n_hkls][1],
-					&hkls[n_hkls][2],&Thetas[n_hkls],dummy,dummy);
-				n_hkls++;
-			}
-			fclose(hklf);
-			if (nRingsToUse > 0){
-				double hklTemps[n_hkls][4],thetaTemps[n_hkls];
-				int totalHKLs=0;
-				for (i=0;i<nRingsToUse;i++){
-					for (j=0;j<n_hkls;j++){
-						if ((int)hkls[j][3] == RingsToUse[i]){
-							hklTemps[totalHKLs][0] = hkls[j][0];
-							hklTemps[totalHKLs][1] = hkls[j][1];
-							hklTemps[totalHKLs][2] = hkls[j][2];
-							hklTemps[totalHKLs][3] = hkls[j][3];
-							thetaTemps[totalHKLs] = Thetas[j];
-							totalHKLs++;
-						}
-					}
-				}
-				for (i=0;i<totalHKLs;i++){
-					hkls[i][0] = hklTemps[i][0];
-					hkls[i][1] = hklTemps[i][1];
-					hkls[i][2] = hklTemps[i][2];
-					hkls[i][3] = hklTemps[i][3];
-					Thetas[i] = thetaTemps[i];
-				}
-				n_hkls = totalHKLs;
-			}
-			//~ printf("Number of individual diffracting planes: %d\n",n_hkls);
 			double Fractions, EulerIn[3], OrientIn[3][3], FracOut, EulerOutA, EulerOutB,EulerOutC,OMTemp[9];
 			BestFrac = -1;
 			ResultMatr[0] = (double)atoi(argv[2]);
