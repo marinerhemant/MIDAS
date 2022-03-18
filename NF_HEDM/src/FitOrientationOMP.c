@@ -713,6 +713,8 @@ main(int argc, char *argv[])
 	RotationTilts(tx,ty,tz,RotMatTilts);
 	double *OrientMatrixAll;
 	OrientMatrixAll = calloc(MAX_POINTS_GRID_GOOD*10*numProcs,sizeof(*OrientMatrixAll));
+	double *ThrSpsAll;
+	ThrSpsAll = calloc(numProcs*MAX_N_SPOTS*3,sizeof(*ThrSpsAll));
 	//~ printf("Number of individual diffracting planes: %d\n",n_hkls);
 	// DO OMP HERE??????
 	#pragma omp parallel for num_threads(numProcs) private(rown) schedule(dynamic)
@@ -760,7 +762,7 @@ main(int argc, char *argv[])
 	    double MatIn[3],P0[nLayers][3],P0T[3];
 	    double OrientMatIn[3][3],XG[3],YG[3];
 	    double *ThrSps;
-	    ThrSps = malloc(MAX_N_SPOTS*3*sizeof(*ThrSps));
+	    ThrSps = &ThrSps[procNum*MAX_N_SPOTS*3];
 	    MatIn[0]=0;
 	    MatIn[1]=0;
 	    MatIn[2]=0;
