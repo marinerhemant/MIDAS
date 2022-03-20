@@ -197,7 +197,7 @@ void BringDownToFundamentalRegionSym(double QuatIn[4], double QuatOut[4], int Nr
 inline
 void BringDownToFundamentalRegion(double QuatIn[4], double QuatOut[4],int SGNr)
 {
-	int i, j, maxCosRowNr, NrSymmetries;
+	int i, j, maxCosRowNr=0, NrSymmetries;
 	double Sym[24][4];
 	if (SGNr <= 2){ // Triclinic
 		NrSymmetries = 1;

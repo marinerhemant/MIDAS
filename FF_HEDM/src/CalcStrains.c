@@ -164,13 +164,14 @@ double problem_function(
 		Diff = InterDiff - f_data->B[i];
 		TotDiff += Diff*Diff;
 	}
+	//~ printf("%lf\n",TotDiff);
 	return 1000000*TotDiff;
 }
 
 inline int
-StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double Distance, double wavelength,
-		double StrainTensorSample[3][3], int IDHash[NR_MAX_IDS_PER_GRAIN][3],
-		double dspacings[NR_MAX_IDS_PER_GRAIN], int nRings, int startSpotMatrix, double **SpotMatrix, double *RetVal,
+StrainTensorKenesei(int nspots,double **SpotsInfo, double Distance, double wavelength,
+		double StrainTensorSample[3][3], int **IDHash,
+		double *dspacings, int nRings, int startSpotMatrix, double **SpotMatrix, double *RetVal,
 		double StrainTensorInput[3][3])
 		/*SpotsInfo: 0,1,2 - Gobs, 3,4 - Y,Z spot, 5,6 - Y,Z sim, 7 - ID, G Vec should be normalized or not????*/
 {
@@ -180,7 +181,7 @@ StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double
 	mydata.nspots = nspots;
 	int id;
 	int ringNr;
-	double ds0, dsObs;
+	double ds0=0, dsObs;
 	for (i=0;i<nspots;i++){
 		lenGobs = CalcNorm3(SpotsInfo[i][0],SpotsInfo[i][1],SpotsInfo[i][2]);
 		dsObs = wavelength/(2*sin(atan((CalcNorm2(SpotsInfo[i][3],SpotsInfo[i][4]))/Distance)/2));
@@ -229,7 +230,7 @@ StrainTensorKenesei(int nspots,double SpotsInfo[NR_MAX_IDS_PER_GRAIN][8], double
 	double minf=1;
 	nlopt_optimize(opt, x, &minf);
 	nlopt_destroy(opt);
-	*RetVal = minf/(nspots*1000000);
+	*RetVal = problem_function(n,x,NULL,trp)/(nspots*1000000);
 	*RetVal = sqrt(*RetVal);
 	StrainTensorSample[0][0] = x[0];
 	StrainTensorSample[0][1] = x[3];
