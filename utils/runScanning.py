@@ -95,5 +95,6 @@ for voxNr in range(nVoxels):
 # ~ outarr = np.array(list(zip(finXpos,finYpos,confs,finOr[:,0],finOr[:,1],finOr[:,2],finOr[:,3])))
 # ~ np.savetxt('microstr.csv',outarr,fmt='%.6f',delimiter=',',header='xPos,yPos,confidence,Quat0,Quat1,Quat2,Quat3')
 uniqueArr = uniqueArr[uniqueArr[:,2] > 0,:]
+totalGrains = np.sum(uniqueArr[:,2])
 plt.scatter(uniqueArr[:,0],uniqueArr[:,1],s=300,c=uniqueArr[:,2],cmap=plt.get_cmap('jet')); plt.gca().set_aspect('equal'); plt.colorbar(); plt.show()
 # ~ plt.scatter(outarr[:,0],outarr[:,1],s=300,c=outarr[:,2],cmap=plt.get_cmap('jet')); plt.gca().set_aspect('equal'); plt.colorbar(); plt.show()
