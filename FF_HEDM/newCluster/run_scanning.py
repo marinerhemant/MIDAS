@@ -26,10 +26,12 @@ parser.add_argument('-paramFile', type=str, required=True, help='ParameterFileNa
 parser.add_argument('-nNodes', type=str, required=True, help='Number of Nodes')
 parser.add_argument('-machineName', type=str, required=True, help='Machine Name')
 parser.add_argument('-doPeakSearch',type=int,required=True,help='0 if PeakSearch is already done. InputAllExtra...0..n.csv should exist in the folder')
+parser.add_argument('-oneSolPerVox',type=int,required=True,help='0 if want to allow multiple solutions per voxel. 1 if want to have only 1 solution per voxel.')
 args, unparsed = parser.parse_known_args()
 paramFN = args.paramFile
 machineName = args.machineName
 doPeakSearch = args.doPeakSearch
+oneSolPerVox = args.oneSolPerVox
 numProcs = args.nCPUs
 nNodes = args.nNodes
 os.environ["nNODES"] = str(nNodes)
@@ -199,10 +201,16 @@ for voxNr in range(nVoxels):
 				if ang*rad2deg < maxAng:
 					marked[idx2] = 1
 	print(['VoxelNr:',voxNr,'nSols:',len(fns),'nUniqueSols:',len(uniqueOrients)])
-	uniqueArr[voxNr][0] = xpositions[voxNr]
-	uniqueArr[voxNr][1] = ypositions[voxNr]
-	uniqueArr[voxNr][2] = len(uniqueOrients)
-	uniqueOrientArr.append(uniqueOrients)
+	if oneSolPerVox == 0:
+		uniqueArr[voxNr][0] = xpositions[voxNr]
+		uniqueArr[voxNr][1] = ypositions[voxNr]
+		uniqueArr[voxNr][2] = len(uniqueOrients)
+		uniqueOrientArr.append(uniqueOrients)
+	elif oneSolPerVox == 1:
+		uniqueArr[voxNr][0] = xpositions[voxNr]
+		uniqueArr[voxNr][1] = ypositions[voxNr]
+		uniqueArr[voxNr][2] = 1
+		uniqueOrientArr.append(uniqueOrients[0])
 
 # ~ uniqueArr = uniqueArr[uniqueArr[:,2] > 0,:]
 # ~ totalGrains = np.sum(uniqueArr[:,2])
