@@ -1923,8 +1923,10 @@ int main(int argc, char *argv[])
 			for (i=0;i<nSpotsComp;i++){
 				for (j=0;j<24;j++){
 					fprintf(outF,"%lf\t",SpotsOut[i][j]);
+					printf("%lf\t",SpotsOut[i][j]);
 				}
 				fprintf(outF,"\n");
+				printf("\n");
 			}
 		}
 		free(spotIDS);
