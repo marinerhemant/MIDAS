@@ -1627,7 +1627,7 @@ int main(int argc, char *argv[])
 		double OrientsOrig[nrSpIds][10],PositionsOrig[nrSpIds][4],ErrorsOrig[nrSpIds][4],
 			 OrientsFit[nrSpIds][10],PositionsFit[nrSpIds][4],StrainsFit[nrSpIds][7],ErrorsFin[nrSpIds][4];
 		char *h1 = "SpotID\tYObsCorrPos\tZObsCorrPos\tOmegaObsCorrPos\tG1Obs\tG2Obs\tG3Obs\tYExp\tZExp\tOmegaExp\tG1Exp\tG2Exp\tG3Exp\t";
-		char *h2 = "YObsCorrWedge\tZObsCorrWedge\tOmegaObsCorrWedge\tOmegaObs\tYObs\tZObs\tInternalAngle\tDiffLen\tDiffOmega\tRingNr\tStrainError\n";
+		char *h2 = "YObsCorrWedge\tZObsCorrWedge\tOmegaObsCorrWedge\tOmegaObs\tYObs\tZObs\tInternalAngle\tDiffLen\tDiffOmega\tRingNr\n";
 		char header[2048];
 		sprintf(header,"%s%s",h1,h2);
 		int i, j, k;
@@ -1919,7 +1919,7 @@ int main(int argc, char *argv[])
 			fprintf(outF,"\n");
 			fprintf(outF,"%s",header);
 			for (i=0;i<nSpotsComp;i++){
-				for (j=0;j<24;j++){
+				for (j=0;j<23;j++){
 					fprintf(outF,"%lf\t",SpotsOut[i][j]);
 				}
 				fprintf(outF,"\n");
