@@ -31,7 +31,7 @@ all: help bindircheck calibrant imagemax \
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking\
 	mapmultdetectors matchgrains detectormapper mergemultiplescans \
 	fitposorstrainsscanning indexscanning processgrainsscanning mapbnd fitscanninggrain \
-	fitgrainhydra forwardsimulation integrator \
+	fitgrainhydra forwardsimulation integrator fitorstrainsscanningomp \
 	peaksfittingomp indexeromp fitsetup fitposorstrainsomp mergeoverlapsall calcradiusall
 
 local: predep all runsetup
@@ -113,6 +113,10 @@ fitposorstrains: $(SRCDIR)FitPosOrStrains.c
 
 fitposorstrainsomp: $(SRCDIR)FitPosOrStrainsOMP.c
 	$(CC) $(SRCDIR)FitPosOrStrainsOMP.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitPosOrStrainsOMP -fopenmp $(CFLAGS) \
+	$(CFLAGSNLOPT)
+
+fitorstrainsscanningomp: $(SRCDIR)FitOrStrainsScanningOMP.c
+	$(CC) $(SRCDIR)FitOrStrainsScanningOMP.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitOrStrainsScanningOMP -fopenmp $(CFLAGS) \
 	$(CFLAGSNLOPT)
 
 fitposorstrainsscanning: $(SRCDIR)FitPosOrStrainsScanningHEDM.c
