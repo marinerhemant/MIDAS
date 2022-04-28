@@ -10,6 +10,7 @@ from pathlib import Path
 import shutil
 from math import acos,sqrt, atan
 from calcMiso import *
+import glob
 
 def CalcEtaAngle(y, z):
 	alpha = 57.2957795130823*acos(z/sqrt(y*y+z*z))
@@ -66,7 +67,7 @@ for line in paramContents:
 	if line.startswith('px'):
 		px = float(line.split()[1])
 
-positions = open('positions.csv').readlines()
+positions = open(topdir+'/positions.csv').readlines()
 
 nFrames = endNr - startNr + 1
 if doPeakSearch == 1:
@@ -154,15 +155,21 @@ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning"
 # Parallel after this
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP")+' paramstest.txt 0 1 '+ str(nScans)+' '+str(numProcs),shell=True)
 
+xpos, ypos = np.meshgrid(positions,positions)
+xpositions = np.transpose(np.transpose(xpos).reshape((nScans*nScans)))
+ypositions = np.transpose(np.transpose(ypos).reshape((nScans*nScans)))
 nVoxels = nScans*nScans
 bestCoordsList = []
-files = glob.glob(folder+'Output/*.csv')
+files = glob.glob(folder+'/Output/*.csv')
 uniqueArr = np.zeros((nVoxels,3))
 uniqueOrientArr = []
 for voxNr in range(nVoxels):
 	# find all files with that blurb
 	blurb = '_'+str.zfill(str(voxNr),6)+'_'
 	fns = [fn for fn in files if blurb in fn]
+	print(blurb,len(fns))
+	if len(fns) == 0:
+		continue
 	PropList = []
 	highestConf = -1
 	for fn in fns:
@@ -215,11 +222,16 @@ for voxNr in range(nVoxels):
 # ~ uniqueArr = uniqueArr[uniqueArr[:,2] > 0,:]
 # ~ totalGrains = np.sum(uniqueArr[:,2])
 # Generate SpotsToIndex.csv file with all jobs to do.
-IDsToDo = [orient2[3],orient2[4] for orient in uniqueOrientArr for orient2 in orient]
+if oneSolPerVox == 0:
+	IDsToDo = [orient2[3] for orient in uniqueOrientArr for orient2 in orient]
+	IDsToDo2 = [orient2[4] for orient in uniqueOrientArr for orient2 in orient]
+elif oneSolPerVox == 1:
+	IDsToDo = [orient[3] for orient in uniqueOrientArr]
+	IDsToDo2 = [orient[4] for orient in uniqueOrientArr]
 nIDs = len(IDsToDo)
-with open('SpotsToIndex.csv','w') as SpotsF:
-	for IDThis in IDsToDo:
-		SpotsF.write(str(ID[0])+' '+str(ID[1])'\n')
+with open(folder+'/SpotsToIndex.csv','w') as SpotsF:
+	for nr in range(nIDs):
+		SpotsF.write(str(IDsToDo[nr])+' '+str(IDsToDo2[nr])+'\n')
 
 # Run FitOrStrainsScanning
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FirOrStrainsScanningOMP")+' paramstest.txt 0 1 '+ str(nIDs)+' '+str(numProcs),shell=True)
