@@ -1587,7 +1587,6 @@ int main(int argc, char *argv[])
 		fgets(aline,1000,spotsFile);
 		sscanf(aline,"%d %d",&SptIDs[it], &VoxNrs[it]);
 	}
-	printf("%d %d %d %lf %lf %lf %lf %lf %lf\n",startRowNr,endRowNr,nSptIDs,LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
 	fclose(spotsFile);
 	double **hkls;
 	hkls = allocMatrix(MaxNHKLS,7);
@@ -1618,10 +1617,8 @@ int main(int argc, char *argv[])
 		}
 	}
 	fclose(hklf);
-	printf("%lf %lf %lf %lf %lf %lf\n",LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
 	if (nOmeRanges != nBoxSizes){printf("Number of omega ranges and number of box sizes don't match. Exiting!\n");return;}
 	double MargOme=0.01,MargPos=Rsample,MargPos2=Rsample/2,MargOme2=2,chi=0;
-	printf("%lf %lf %lf %lf %lf %lf\n",LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
 	int thisRowNr;
 	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
 	for (thisRowNr = 0; thisRowNr < nSptIDs; thisRowNr++){
