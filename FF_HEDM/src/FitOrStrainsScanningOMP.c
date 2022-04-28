@@ -509,7 +509,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 			SpotsComp[nMatched][19]=minAngle;
 			SpotsComp[nMatched][20]=diffLenM;
 			SpotsComp[nMatched][21]=diffOmeM;
-			SpotsComp[nMatched][22]=SpotsYZOGCorr[sp][7];
+			SpotsComp[nMatched][22]=SpotsYZOGCorr[sp][6];
 			for (i=0;i<8;i++){SpList[nMatched][i]=spotsYZO[sp][i];}
 			SpList[nMatched][8]=TheorSpotsYZWER[RowBest][8];
 			nMatched++;
