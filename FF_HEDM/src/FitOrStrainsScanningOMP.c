@@ -1581,6 +1581,7 @@ int main(int argc, char *argv[])
 	char *FNs[nSptIDs];
 	SptIDs = malloc(nSptIDs*sizeof(*SptIDs));
 	// Read spotIDs
+	printf("%lf %lf %lf %lf %lf %lf\n",LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
 	int it;
 	FILE *spotsFile = fopen("SpotsToIndex.csv","r");
 	for (it=0;it<startRowNr;it++){ 
@@ -1591,6 +1592,7 @@ int main(int argc, char *argv[])
 		sscanf(aline,"%d %s",&SptIDs[it], FNs[it]);
 	}
 	fclose(spotsFile);
+	printf("%lf %lf %lf %lf %lf %lf\n",LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
 	double **hkls;
 	hkls = allocMatrix(MaxNHKLS,7);
 	char *hklfn = "hkls.csv";
@@ -1600,7 +1602,6 @@ int main(int argc, char *argv[])
 		return;
 	}
 	fgets(aline,1000,hklf);
-	printf("%lf %lf %lf %lf %lf %lf\n",LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
 	int h,kt,l,Rnr, nhkls=0;
 	double ds,tht;
 	double MaxTtheta = rad2deg*atan(MaxRingRad/Lsd);
