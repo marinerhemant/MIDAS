@@ -1350,7 +1350,7 @@ StrainTensorKenesei(int nspots,double **SpotsInfo, double Distance, double wavel
 		}
 		SpotMatrix[i][23] = (mydata.B[i] - (mydata.A[i][0]*x[0] + // No fabs, to get feeling of sign.
 			   mydata.A[i][1]*x[1] + mydata.A[i][2]*x[2] + mydata.A[i][3]*x[3] +
-			   mydata.A[i][4]*x[4] + mydata.A[i][5]*x[5]));
+			   mydata.A[i][4]*x[4] + mydata.A[i][5]*x[5]))*1000000;
 	}
 	return 1;
 }
@@ -1915,7 +1915,7 @@ int main(int argc, char *argv[])
 			FILE *outF = fopen(outFN,"w");
 			fprintf(outF,"SpotID\tO11\tO12\tO13\tO21\tO22\tO23\tO31\tO32\tO33\tSpotID\tx\ty\tz\tSpotID\ta\tb\tc\talpha\tbeta\tgamma\tSpotID\tPosErr\tOmeErr\tInternalAngle\tE11\tE12\tE13\tE21\tE22\tE23\tE31\tE32\tE33\n");
 			for (i=0;i<27;i++) fprintf(outF,"%lf\t",OutMatr[i]);
-			for (i=0;i<3;i++) for (j=0;j<3;j++) fprintf(outF,"%lf\t",StrainTensorSample[i][j]);
+			for (i=0;i<3;i++) for (j=0;j<3;j++) fprintf(outF,"%lf\t",StrainTensorSample[i][j]*1000000);
 			fprintf(outF,"\n");
 			fprintf(outF,"%s",header);
 			for (i=0;i<nSpotsComp;i++){
