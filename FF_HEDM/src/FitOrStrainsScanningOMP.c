@@ -1896,7 +1896,7 @@ int main(int argc, char *argv[])
 		// Start Writing FitBest+FNs[thisRowNr]
 		// What to write: Orientation, Position, LatticeParameter, Errors
 		char outFN[2048];
-		sprintf(outFN,"%s/FitBest_%0*d_%0*d.csv",ResultFolder,,6,VoxNrs[thisRowNr],9,SpId);
+		sprintf(outFN,"%s/FitBest_%0*d_%0*d.csv",ResultFolder,6,VoxNrs[thisRowNr],9,SpId);
 		double OutMatr[27];
 		for (i=0;i<10;i++){
 			OutMatr[i] = OrientsFit[nSpID][i];
