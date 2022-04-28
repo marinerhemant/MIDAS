@@ -1585,8 +1585,11 @@ int main(int argc, char *argv[])
 	FILE *spotsFile = fopen("SpotsToIndex.csv","r");
 	printf("%d %d %d %lf %lf %lf %lf %lf %lf\n",startRowNr,endRowNr,nSptIDs,LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
 	for (it=0;it<nSptIDs;it++){
+	printf("%d %d %d %lf %lf %lf %lf %lf %lf\n",startRowNr,endRowNr,nSptIDs,LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
 		fgets(aline,1000,spotsFile);
+	printf("%d %d %d %lf %lf %lf %lf %lf %lf\n",startRowNr,endRowNr,nSptIDs,LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
 		sscanf(aline,"%d %s",&SptIDs[it], FNs[it]);
+	printf("%d %d %d %lf %lf %lf %lf %lf %lf\n",startRowNr,endRowNr,nSptIDs,LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
 	}
 	printf("%d %d %d %lf %lf %lf %lf %lf %lf\n",startRowNr,endRowNr,nSptIDs,LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
 	fclose(spotsFile);
