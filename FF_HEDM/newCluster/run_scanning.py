@@ -236,4 +236,18 @@ with open(folder+'/SpotsToIndex.csv','w') as SpotsF:
 # Run FitOrStrainsScanning
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FirOrStrainsScanningOMP")+' paramstest.txt 0 1 '+ str(nIDs)+' '+str(numProcs),shell=True)
 
+# go through the output
+files2 = glob.glob(topdir+'Results/*.csv')
+filesdata = np.zeros((len(files2),39))
+i=0;
+for fileN in files2:
+	f = open(fileN)
+	str1 = f.readline()
+	data = f.readline().split()
+	for j in range(len(data)):
+		filesdata[i][j] = float(data[j])
+	i+=1
+	f.close()
+
+
 print("Time Elapsed: "+str(time.time()-startTime)+" seconds.")
