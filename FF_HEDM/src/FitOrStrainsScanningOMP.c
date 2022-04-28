@@ -1535,7 +1535,6 @@ int main(int argc, char *argv[])
 	}
 	fclose(fileParam);
 	printf("%lf %lf %lf %lf %lf %lf\n",LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
-	int thisRowNr;
 	double *AllSpots;
 	int fd;
 	struct stat s;
@@ -1626,7 +1625,8 @@ int main(int argc, char *argv[])
 	printf("%lf %lf %lf %lf %lf %lf\n",LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
 	if (nOmeRanges != nBoxSizes){printf("Number of omega ranges and number of box sizes don't match. Exiting!\n");return;}
 	double MargOme=0.01,MargPos=Rsample,MargPos2=Rsample/2,MargOme2=2,chi=0;
-	printf("%lf %lf %lf %lf %lf %lf\n",LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);	int thisRowNr;
+	printf("%lf %lf %lf %lf %lf %lf\n",LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
+	int thisRowNr;
 	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
 	for (thisRowNr = 0; thisRowNr < nSptIDs; thisRowNr++){
 		int nrSpIds=1;
