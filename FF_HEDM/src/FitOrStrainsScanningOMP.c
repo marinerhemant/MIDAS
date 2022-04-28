@@ -1347,6 +1347,7 @@ StrainTensorKenesei(int nspots,double **SpotsInfo, double Distance, double wavel
 	for (i=0;i<nspots;i++){
 		for (j=0;j<23;j++){
 			SpotMatrix[i][j] = SpotsInfo[i][j];
+			printf("%lf %lf\n",SpotMatrix[i][j],SpotsInfo[i][j]);
 		}
 		SpotMatrix[i][23] = (mydata.B[i] - (mydata.A[i][0]*x[0] + // No fabs, to get feeling of sign.
 			   mydata.A[i][1]*x[1] + mydata.A[i][2]*x[2] + mydata.A[i][3]*x[3] +
@@ -1923,10 +1924,10 @@ int main(int argc, char *argv[])
 			for (i=0;i<nSpotsComp;i++){
 				for (j=0;j<24;j++){
 					fprintf(outF,"%lf\t",SpotsOut[i][j]);
-					printf("%lf\t",SpotsOut[i][j]);
+					//~ printf("%lf\t",SpotsOut[i][j]);
 				}
 				fprintf(outF,"\n");
-				printf("\n");
+				//~ printf("\n");
 			}
 		}
 		free(spotIDS);
