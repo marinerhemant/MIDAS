@@ -1566,7 +1566,7 @@ int main(int argc, char *argv[])
 	}
 
 	//////////////////////////// OPENMP
-	int *SptIDs;
+	int *SptIDs, *VoxNrs;
 	int nSptIDs;
 	int nBlocks = atoi(argv[3]);
 	int blockNr = atoi(argv[2]);
@@ -1578,18 +1578,14 @@ int main(int argc, char *argv[])
 	int tmp = (int)(ceil((double)nSpotsToIndex / (double)nBlocks)) * (blockNr+1);
 	endRowNr = tmp < (nSpotsToIndex-1) ? tmp : (nSpotsToIndex-1);
 	nSptIDs = endRowNr-startRowNr+1;
-	char *FNs[nSptIDs];
 	SptIDs = malloc(nSptIDs*sizeof(*SptIDs));
+	VoxNrs = malloc(nSptIDs*sizeof(*VoxNrs));
 	// Read spotIDs
 	int it;
 	FILE *spotsFile = fopen("SpotsToIndex.csv","r");
-	printf("%d %d %d %lf %lf %lf %lf %lf %lf\n",startRowNr,endRowNr,nSptIDs,LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
 	for (it=0;it<nSptIDs;it++){
-	printf("%d %d %d %lf %lf %lf %lf %lf %lf\n",startRowNr,endRowNr,nSptIDs,LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
 		fgets(aline,1000,spotsFile);
-	printf("%d %d %d %lf %lf %lf %lf %lf %lf\n",startRowNr,endRowNr,nSptIDs,LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
-		sscanf(aline,"%d %s",&SptIDs[it], FNs[it]);
-	printf("%d %d %d %lf %lf %lf %lf %lf %lf\n",startRowNr,endRowNr,nSptIDs,LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
+		sscanf(aline,"%d %d",&SptIDs[it], &VoxNrs[it]);
 	}
 	printf("%d %d %d %lf %lf %lf %lf %lf %lf\n",startRowNr,endRowNr,nSptIDs,LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
 	fclose(spotsFile);
@@ -1644,7 +1640,7 @@ int main(int argc, char *argv[])
 		for (i=0;i<6;i++) LatCin[i] = LatCinT[i];
 		int nSpID = 0;
 		char FileName[2048],SpotsCompFN[2048];
-		sprintf(FileName,"%s/%s",OutputFolder,FNs[thisRowNr]);
+		sprintf(FileName,"%s/BestPos_%0*d_%0*d.csv",OutputFolder,6,VoxNrs[thisRowNr],9,SpId);
 		int nSpotsBest=0,*spotIDS;
 		spotIDS = malloc(MaxNSpotsBest*sizeof(*spotIDS));
 		FILE *BestFile;
@@ -1900,7 +1896,7 @@ int main(int argc, char *argv[])
 		// Start Writing FitBest+FNs[thisRowNr]
 		// What to write: Orientation, Position, LatticeParameter, Errors
 		char outFN[2048];
-		sprintf(outFN,"%s/FitBest_%s",ResultFolder,FNs[thisRowNr]);
+		sprintf(outFN,"%s/FitBest_%0*d_%0*d.csv",ResultFolder,,6,VoxNrs[thisRowNr],9,SpId);
 		double OutMatr[27];
 		for (i=0;i<10;i++){
 			OutMatr[i] = OrientsFit[nSpID][i];

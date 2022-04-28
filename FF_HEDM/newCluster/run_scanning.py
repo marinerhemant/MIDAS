@@ -211,7 +211,7 @@ IDsToDo = [orient2[3],orient2[4] for orient in uniqueOrientArr for orient2 in or
 nIDs = len(IDsToDo)
 with open('SpotsToIndex.csv','w') as SpotsF:
 	for IDThis in IDsToDo:
-		SpotsF.write(str(ID[0])+' BestPos_'+str(ID[1]).zfill(6)+'_'+str(ID[0]).zfill(9)+'\n')
+		SpotsF.write(str(ID[0])+' '+str(ID[1])'\n')
 
 # Run FitOrStrainsScanning
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FirOrStrainsScanningOMP")+' paramstest.txt 0 1 '+ str(nIDs)+' '+str(numProcs),shell=True)
