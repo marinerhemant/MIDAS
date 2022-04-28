@@ -1636,29 +1636,12 @@ int main(int argc, char *argv[])
 		int i, j, k;
 		int SpId = SptIDs[thisRowNr];
 		double LatCin[6];
-		//~ char *SpFN = "SpotsToIndex.csv";
-		//~ FILE *SpFile = fopen(SpFN,"r");
-		//~ if (SpFile == NULL){
-			//~ printf("Could not read the SpotsToIndex.csv file. Exiting.\n");
-			//~ continue;;
-		//~ }
-		//~ int rowNr = 0;
-		//~ int ThisID;
-		//~ int count = 0;
 		char line[5024];
-		//~ while (fgets(line,5000,SpFile)!=NULL){
-			//~ sscanf(line,"%d",&ThisID);
-			//~ if (ThisID == SpId){
-				//~ rowNr = count;
-				//~ break;
-			//~ }
-			//~ count++;
-		//~ }
 		for (i=0;i<6;i++) LatCin[i] = LatCinT[i];
 
 		int nSpID = 0;
 		char FileName[2048],SpotsCompFN[2048];
-		sprintf(FileName,"%s",FNs[thisRowNr]);
+		sprintf(FileName,"%s/%s",OutputFolder,FNs[thisRowNr]);
 		int nSpotsBest=0,*spotIDS;
 		spotIDS = malloc(MaxNSpotsBest*sizeof(*spotIDS));
 		FILE *BestFile;
