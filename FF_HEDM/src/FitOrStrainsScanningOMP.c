@@ -1584,9 +1584,6 @@ int main(int argc, char *argv[])
 	printf("%lf %lf %lf %lf %lf %lf\n",LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
 	int it;
 	FILE *spotsFile = fopen("SpotsToIndex.csv","r");
-	for (it=0;it<startRowNr;it++){ 
-		fgets(aline,1000,spotsFile);
-	}
 	for (it=0;it<nSptIDs;it++){
 		fgets(aline,1000,spotsFile);
 		sscanf(aline,"%d %s",&SptIDs[it], FNs[it]);
