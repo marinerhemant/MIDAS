@@ -1534,6 +1534,8 @@ int main(int argc, char *argv[])
         }
 	}
 	fclose(fileParam);
+	printf("%lf %lf %lf %lf %lf %lf\n",LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
+	int thisRowNr;
 	double *AllSpots;
 	int fd;
 	struct stat s;
@@ -1581,6 +1583,7 @@ int main(int argc, char *argv[])
 	char *FNs[nSptIDs];
 	SptIDs = malloc(nSptIDs*sizeof(*SptIDs));
 	// Read spotIDs
+	printf("%lf %lf %lf %lf %lf %lf\n",LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
 	int it;
 	FILE *spotsFile = fopen("SpotsToIndex.csv","r");
 	for (it=0;it<startRowNr;it++){ 
@@ -1620,6 +1623,7 @@ int main(int argc, char *argv[])
 		}
 	}
 	fclose(hklf);
+	printf("%lf %lf %lf %lf %lf %lf\n",LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
 	if (nOmeRanges != nBoxSizes){printf("Number of omega ranges and number of box sizes don't match. Exiting!\n");return;}
 	double MargOme=0.01,MargPos=Rsample,MargPos2=Rsample/2,MargOme2=2,chi=0;
 	printf("%lf %lf %lf %lf %lf %lf\n",LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);	int thisRowNr;
@@ -1638,7 +1642,6 @@ int main(int argc, char *argv[])
 		double LatCin[6];
 		char line[5024];
 		for (i=0;i<6;i++) LatCin[i] = LatCinT[i];
-		printf("%lf %lf %lf %lf %lf %lf\n",LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5]);
 		int nSpID = 0;
 		char FileName[2048],SpotsCompFN[2048];
 		sprintf(FileName,"%s/%s",OutputFolder,FNs[thisRowNr]);
