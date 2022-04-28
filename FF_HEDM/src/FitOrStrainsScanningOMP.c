@@ -1347,7 +1347,6 @@ StrainTensorKenesei(int nspots,double **SpotsInfo, double Distance, double wavel
 	for (i=0;i<nspots;i++){
 		for (j=0;j<23;j++){
 			SpotMatrix[i][j] = SpotsInfo[i][j];
-			printf("%lf %lf\n",SpotMatrix[i][j],SpotsInfo[i][j]);
 		}
 		SpotMatrix[i][23] = (mydata.B[i] - (mydata.A[i][0]*x[0] + // No fabs, to get feeling of sign.
 			   mydata.A[i][1]*x[1] + mydata.A[i][2]*x[2] + mydata.A[i][3]*x[3] +
@@ -1868,9 +1867,9 @@ int main(int argc, char *argv[])
 						SpotsComp,Splist,ErrorFin,&nSpotsComp,1);
 	    printf("SpotID %6d, %6d out of %6d, Errors: %7.2f %6.4f %6.4f, ",SpId,thisRowNr,nSptIDs,ErrorFin[0],ErrorFin[1],ErrorFin[2]);
 	    for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
-	    printf("Fitvals: Pos: %7.2f %7.2f %7.2f, Orient: %7.2f %7.2f %7.2f, LatC: %6.4f %6.4f %6.4f %7.3f %7.3f %7.3f\n%lf %lf %lf %lf %lf %lf\n%lf %lf %lf %lf %lf %lf\n%lf %lf %lf\n",
+	    printf("Fitvals: Pos: %7.2f %7.2f %7.2f, Orient: %7.2f %7.2f %7.2f, LatC: %6.4f %6.4f %6.4f %7.3f %7.3f %7.3f\n",
 					FinalResult[0],FinalResult[1],FinalResult[2],FinalResult[3],FinalResult[4],FinalResult[5],FinalResult[6],FinalResult[7],FinalResult[8],
-					FinalResult[9],FinalResult[10],FinalResult[11],a,b,c,alph,bet,gamm,LatCinT[0],LatCinT[1],LatCinT[2],LatCinT[3],LatCinT[4],LatCinT[5],ErrorInt1[0],ErrorInt1[1],ErrorInt1[2]);
+					FinalResult[9],FinalResult[10],FinalResult[11]);
 		double OF[3][3],OrientFit[9],EulerFit[3],PositionFit[3],LatticeParameterFit[6];for (i=0;i<3;i++) EulerFit[i] = FinalResult[i+3];
 		for (i=0;i<3;i++) PositionFit[i] = FinalResult[i]; for (i=0;i<6;i++) LatticeParameterFit[i] = FinalResult[i+6];
 		Euler2OrientMat(EulerFit,OF);Convert3x3To9(OF,OrientFit);
@@ -1925,10 +1924,8 @@ int main(int argc, char *argv[])
 			for (i=0;i<nSpotsComp;i++){
 				for (j=0;j<24;j++){
 					fprintf(outF,"%lf\t",SpotsOut[i][j]);
-					//~ printf("%lf\t",SpotsOut[i][j]);
 				}
 				fprintf(outF,"\n");
-				//~ printf("\n");
 			}
 		}
 		free(spotIDS);
