@@ -1889,7 +1889,8 @@ int main(int argc, char *argv[])
 		//~ startSpotMatrix --> 0
 		//~ SpotMatrix --> 2d with location to store output in 11th column
 		//~ RetVal --> 0 on failure, 1 on success
-		double StrainTensorSample[3][3],SpotsOut[nSpotsComp][24];
+		double StrainTensorSample[3][3],**SpotsOut;
+		SpotsOut = allocMatrix(nSpotsComp,24);
 		int RetVal;
 		StrainTensorKenesei(nSpotsComp,SpotsComp,Lsd,Wavelength,nhkls,hkls,StrainTensorSample,SpotsOut,&RetVal);
 
