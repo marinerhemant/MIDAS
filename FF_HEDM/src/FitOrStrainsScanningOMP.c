@@ -1879,13 +1879,6 @@ int main(int argc, char *argv[])
 		for (i=0;i<3;i++) ErrorsFin[nSpID][i+1] = ErrorFin[i];
 
 		// Calculate Strains here.
-		//~ StrainTensorSample --> output [3][3]
-		//~ StrainTensorInput --> zeros [3][3]
-		//~ SpotsInfo --> 0,1,2 - Gobs, 3,4 - Y,Z spot, 5,6 - Y,Z sim, 7 - ID, G Vec should be normalized or not????
-		//~ IDHash, dspacings -->
-		//~ startSpotMatrix --> 0
-		//~ SpotMatrix --> 2d with location to store output in 11th column
-		//~ RetVal --> 0 on failure, 1 on success
 		double StrainTensorSample[3][3],**SpotsOut;
 		SpotsOut = allocMatrix(nSpotsComp,24);
 		int RetVal;
@@ -1913,7 +1906,7 @@ int main(int argc, char *argv[])
 		# pragma omp critical
 		{
 			FILE *outF = fopen(outFN,"w");
-			fprintf(outF,"SpotID\tO11\tO12\tO13\tO21\tO22\tO23\tO31\tO32\tO33\tSpotID\tx\ty\tz\tSpotID\ta\tb\tc\talpha\tbeta\tgamma\tSpotID\tPosErr\tOmeErr\tInternalAngle\tE11\tE12\tE13\tE21\tE22\tE23\tE31\tE32\tE33\tEul1\tEul2\tEul3\n");
+			fprintf(outF,"SpotID\tO11\tO12\tO13\tO21\tO22\tO23\tO31\tO32\tO33\tSpotID\tx\ty\tz\tSpotID\ta\tb\tc\talpha\tbeta\tgamma\tSpotID\tPosErr\tOmeErr\tInternalAngle\tRadius\tCompleteness\tE11\tE12\tE13\tE21\tE22\tE23\tE31\tE32\tE33\tEul1\tEul2\tEul3\n");
 			for (i=0;i<27;i++) fprintf(outF,"%lf\t",OutMatr[i]);
 			for (i=0;i<3;i++) for (j=0;j<3;j++) fprintf(outF,"%lf\t",StrainTensorSample[i][j]*1000000);
 			for (i=0;i<3;i++) fprintf(outF,"%lf\t",EulerFit[i]);

@@ -155,6 +155,7 @@ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning"
 # Parallel after this
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP")+' paramstest.txt 0 1 '+ str(nScans)+' '+str(numProcs),shell=True)
 
+folder = topdir
 xpos, ypos = np.meshgrid(positions,positions)
 xpositions = np.transpose(np.transpose(xpos).reshape((nScans*nScans)))
 ypositions = np.transpose(np.transpose(ypos).reshape((nScans*nScans)))
@@ -188,7 +189,14 @@ for voxNr in range(nVoxels):
 		if ConfThis > highestConf:
 			highestConf = ConfThis
 		PropList.append([ConfThis,IAthis,OMthis,idnr,voxNr])
-	sortedPropList = sorted(PropList,key=lambda x: x[0],reverse=True)
+	sortedPropList = sorted(PropList,key=lambda x: (x[0],x[1]),reverse=True)
+	uniqueArr[voxNr][0] = xpositions[voxNr]
+	uniqueArr[voxNr][1] = ypositions[voxNr]
+	if oneSolPerVox == 1:
+		uniqueArr[voxNr][1] = 1
+		uniqueOrientArr.append(sortedPropList[0])
+		continue
+	# If more solutions are wanted
 	# sortedPropList now has all the orientations, we can try to find the unique ones
 	# starting with best orientation, compute miso with all next (unmarked) orientations, if angle is smaller than maxAng, mark the orientation.
 	marked = np.zeros(len(sortedPropList))
@@ -208,16 +216,8 @@ for voxNr in range(nVoxels):
 				if ang*rad2deg < maxAng:
 					marked[idx2] = 1
 	print(['VoxelNr:',voxNr,'nSols:',len(fns),'nUniqueSols:',len(uniqueOrients)])
-	if oneSolPerVox == 0:
-		uniqueArr[voxNr][0] = xpositions[voxNr]
-		uniqueArr[voxNr][1] = ypositions[voxNr]
-		uniqueArr[voxNr][2] = len(uniqueOrients)
-		uniqueOrientArr.append(uniqueOrients)
-	elif oneSolPerVox == 1:
-		uniqueArr[voxNr][0] = xpositions[voxNr]
-		uniqueArr[voxNr][1] = ypositions[voxNr]
-		uniqueArr[voxNr][2] = 1
-		uniqueOrientArr.append(uniqueOrients[0])
+	uniqueArr[voxNr][2] = len(uniqueOrients)
+	uniqueOrientArr.append(uniqueOrients)
 
 # ~ uniqueArr = uniqueArr[uniqueArr[:,2] > 0,:]
 # ~ totalGrains = np.sum(uniqueArr[:,2])
@@ -237,7 +237,7 @@ with open(folder+'/SpotsToIndex.csv','w') as SpotsF:
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FirOrStrainsScanningOMP")+' paramstest.txt 0 1 '+ str(nIDs)+' '+str(numProcs),shell=True)
 
 # go through the output
-files2 = glob.glob(topdir+'Results/*.csv')
+files2 = glob.glob(folder+'Results/*.csv')
 filesdata = np.zeros((len(files2),39))
 i=0;
 for fileN in files2:
