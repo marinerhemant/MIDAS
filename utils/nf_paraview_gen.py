@@ -55,6 +55,7 @@ minConfidence = 0.3
 orientTol = 10.0 # In degrees, used to define grains
 zspacing = -2 # Must always be positive for Dream3D
 xyspacing = 2  # X and Y spacing are equal, should be equal to the grid_size used during reconstruction
+GridSize = 5 # Grid size used during analysis. MUST NOT BE THE EDGE LENGTH
 startZ = 0 # Starting Z position
 xExtent = 1400 # Maximum Extent of xValues in um
 			   # (this should be larger than 2x the sample radius or 2x the distance between the farther edge of the sample and the rotation axis)
@@ -498,10 +499,10 @@ def writeXMLXdmf(dims,deltas,fn,h5fn,sample_name):
 
 @jit('void(float64[:,:],int64[:],float64[:,:,:])',nopython=True,nogil=True)
 def mapData(data,dims,outArr):
-	spacing = dims[2]
+	spacing = dims[2] # This is the number of elements
 	nrRows,nrCols = data.shape
 	outArr.fill(fillVal)
-	gridSpacing = data[0,5]
+	gridSpacing = GridSize # This is the GridSize used during analysis.
 	extent = int(math.ceil(5*gridSpacing/spacing))
 	outArr[:,:,6] = 10000
 	for i in range(nrRows):

@@ -3,13 +3,15 @@ import glob
 from math import sqrt
 import numpy as np
 import matplotlib.pyplot as plt
-from calcMiso import *
+# ~ from calcMiso import *
 
-nScans = 21
-sgnum = 225
-nCPUs = 64
-folder = '/data/tomo1/sharma_internal_hedm/hpldrd_dec21/L2/'
-maxAng = 0.5
+# ~ nScans = 21
+nScans = 105
+# ~ sgnum = 225
+# ~ nCPUs = 64
+# ~ folder = '/data/tomo1/sharma_internal_hedm/hpldrd_dec21/L2/'
+folder = '/data/tomo1/kenesei_nov20_midas/buscek/all_layers/'
+# ~ maxAng = 0.5
 
 
 positions = np.genfromtxt(folder+'positions.csv')
@@ -52,49 +54,49 @@ for voxNr in range(nVoxels):
 			highestConf = ConfThis
 		PropList.append([ConfThis,IAthis,OMthis,idnr])
 	sortedPropList = sorted(PropList,key=lambda x: x[0],reverse=True)
-	# sortedPropList now has all the orientations, we can try to find the unique ones
-	# starting with first orientation, compute miso with all next (unmarked) orientations, if angle is smaller than maxAng, mark the orientation.
-	marked = np.zeros(len(sortedPropList))
-	uniqueOrients = []
-	for idx in range(len(sortedPropList)):
-		if marked[idx] == 1:
-			continue
-		else:
-			val1 = sortedPropList[idx]
-			uniqueOrients.append(val1)
-			orient1 = val1[2]
-			for idx2 in range(idx+1,len(sortedPropList)):
-				if marked[idx2] == 1:
-					continue
-				orient2 = sortedPropList[idx2][2]
-				ang = GetMisOrientationAngleOM(orient1,orient2,sgnum)
-				if ang*rad2deg < maxAng:
-					marked[idx2] = 1
-	print(['VoxelNr:',voxNr,'nSols:',len(fns),'nUniqueSols:',len(uniqueOrients)])
-	uniqueArr[voxNr][0] = xpositions[voxNr]
-	uniqueArr[voxNr][1] = ypositions[voxNr]
-	uniqueArr[voxNr][2] = len(uniqueOrients)
-	uniqueOrientArr.append(uniqueOrients)
-	# ~ minIA = 1000
-	# ~ bestVal = []
-	# ~ for val in sortedPropList:
-		# ~ if val[0] < highestConf:
-			# ~ break
-		# ~ if val[1] < minIA:
-			# ~ minIA = val[1]
-			# ~ bestVal = val
-	# ~ if len(bestVal) > 0:
-		# ~ bestCoordsList.append([xpositions[voxNr],ypositions[voxNr],bestVal])
+	# ~ # sortedPropList now has all the orientations, we can try to find the unique ones
+	# ~ # starting with first orientation, compute miso with all next (unmarked) orientations, if angle is smaller than maxAng, mark the orientation.
+	# ~ marked = np.zeros(len(sortedPropList))
+	# ~ uniqueOrients = []
+	# ~ for idx in range(len(sortedPropList)):
+		# ~ if marked[idx] == 1:
+			# ~ continue
+		# ~ else:
+			# ~ val1 = sortedPropList[idx]
+			# ~ uniqueOrients.append(val1)
+			# ~ orient1 = val1[2]
+			# ~ for idx2 in range(idx+1,len(sortedPropList)):
+				# ~ if marked[idx2] == 1:
+					# ~ continue
+				# ~ orient2 = sortedPropList[idx2][2]
+				# ~ ang = GetMisOrientationAngleOM(orient1,orient2,sgnum)
+				# ~ if ang*rad2deg < maxAng:
+					# ~ marked[idx2] = 1
+	# ~ print(['VoxelNr:',voxNr,'nSols:',len(fns),'nUniqueSols:',len(uniqueOrients)])
+	# ~ uniqueArr[voxNr][0] = xpositions[voxNr]
+	# ~ uniqueArr[voxNr][1] = ypositions[voxNr]
+	# ~ uniqueArr[voxNr][2] = len(uniqueOrients)
+	# ~ uniqueOrientArr.append(uniqueOrients)
+	minIA = 1000
+	bestVal = []
+	for val in sortedPropList:
+		if val[0] < highestConf:
+			break
+		if val[1] < minIA:
+			minIA = val[1]
+			bestVal = val
+	if len(bestVal) > 0:
+		bestCoordsList.append([xpositions[voxNr],ypositions[voxNr],bestVal])
 	# ~ if len(bestVal) > 0:
 		# ~ print(BringDownToFundamentalRegionSym(OrientMat2Quat(bestVal[2]),12,HexSym),highestConf)
 
-# ~ finXpos = [ i[0] for i in bestCoordsList]
-# ~ finYpos = [ i[1] for i in bestCoordsList]
-# ~ confs = [ i[2][0] for i in bestCoordsList]
-# ~ finOr = np.array([ BringDownToFundamentalRegionSym(OrientMat2Quat(i[2][2]),12,HexSym) for i in bestCoordsList ])
-# ~ outarr = np.array(list(zip(finXpos,finYpos,confs,finOr[:,0],finOr[:,1],finOr[:,2],finOr[:,3])))
-# ~ np.savetxt('microstr.csv',outarr,fmt='%.6f',delimiter=',',header='xPos,yPos,confidence,Quat0,Quat1,Quat2,Quat3')
-uniqueArr = uniqueArr[uniqueArr[:,2] > 0,:]
-totalGrains = np.sum(uniqueArr[:,2])
-plt.scatter(uniqueArr[:,0],uniqueArr[:,1],s=300,c=uniqueArr[:,2],cmap=plt.get_cmap('jet')); plt.gca().set_aspect('equal'); plt.colorbar(); plt.show()
-# ~ plt.scatter(outarr[:,0],outarr[:,1],s=300,c=outarr[:,2],cmap=plt.get_cmap('jet')); plt.gca().set_aspect('equal'); plt.colorbar(); plt.show()
+finXpos = [ i[0] for i in bestCoordsList]
+finYpos = [ i[1] for i in bestCoordsList]
+confs = [ i[2][0] for i in bestCoordsList]
+finOr = np.array([ BringDownToFundamentalRegionSym(OrientMat2Quat(i[2][2]),12,HexSym) for i in bestCoordsList ])
+outarr = np.array(list(zip(finXpos,finYpos,confs,finOr[:,0],finOr[:,1],finOr[:,2],finOr[:,3])))
+np.savetxt('microstrTr.csv',outarr,fmt='%.6f',delimiter=',',header='xPos,yPos,confidence,Quat0,Quat1,Quat2,Quat3')
+# ~ uniqueArr = uniqueArr[uniqueArr[:,2] > 0,:]
+# ~ totalGrains = np.sum(uniqueArr[:,2])
+# ~ plt.scatter(uniqueArr[:,0],uniqueArr[:,1],s=300,c=uniqueArr[:,2],cmap=plt.get_cmap('jet')); plt.gca().set_aspect('equal'); plt.colorbar(); plt.show()
+plt.scatter(outarr[:,0],outarr[:,1],s=300,c=outarr[:,2],cmap=plt.get_cmap('jet')); plt.gca().set_aspect('equal'); plt.colorbar(); plt.show()
