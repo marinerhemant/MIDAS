@@ -21,9 +21,9 @@ def CalcEtaAngle(y, z):
 startTime = time.time()
 
 warnings.filterwarnings('ignore')
-parser = argparse.ArgumentParser(description='''MIDAS_FF, contact hsharma@anl.gov Parameter file must be in the same folder as the desired output folder(SeedFolder)''', formatter_class=RawTextHelpFormatter)
+parser = argparse.ArgumentParser(description='''MIDAS_FF, contact hsharma@anl.gov Parameter file must be in the same folder as the desired output folder(SeedFolder).\nMUST BE RUN FROM MIDAS DIRECTORY.''', formatter_class=RawTextHelpFormatter)
 parser.add_argument('-nCPUs',    type=int, required=True, help='Number of CPUs to use')
-parser.add_argument('-paramFile', type=str, required=True, help='ParameterFileName')
+parser.add_argument('-paramFile', type=str, required=True, help='ParameterFileName: Use the full path.')
 parser.add_argument('-nNodes', type=str, required=True, help='Number of Nodes')
 parser.add_argument('-machineName', type=str, required=True, help='Machine Name')
 parser.add_argument('-doPeakSearch',type=int,required=True,help='0 if PeakSearch is already done. InputAllExtra...0..n.csv should exist in the folder')
@@ -234,7 +234,7 @@ with open(folder+'/SpotsToIndex.csv','w') as SpotsF:
 		SpotsF.write(str(IDsToDo[nr])+' '+str(IDsToDo2[nr])+'\n')
 
 # Run FitOrStrainsScanning
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FirOrStrainsScanningOMP")+' paramstest.txt 0 1 '+ str(nIDs)+' '+str(numProcs),shell=True)
+subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitOrStrainsScanningOMP")+' paramstest.txt 0 1 '+ str(nIDs)+' '+str(numProcs),shell=True)
 
 # go through the output
 files2 = glob.glob(folder+'/Results/*.csv')
