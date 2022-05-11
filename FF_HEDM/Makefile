@@ -32,7 +32,8 @@ all: help bindircheck calibrant imagemax \
 	mapmultdetectors matchgrains detectormapper mergemultiplescans \
 	fitposorstrainsscanning indexscanning processgrainsscanning mapbnd fitscanninggrain \
 	fitgrainhydra forwardsimulation integrator fitorstrainsscanningomp \
-	peaksfittingomp indexeromp fitsetup fitposorstrainsomp mergeoverlapsall calcradiusall
+	peaksfittingomp indexeromp fitsetup fitposorstrainsomp mergeoverlapsall calcradiusall \
+	bindatascanning
 
 local: predep all runsetup
 
