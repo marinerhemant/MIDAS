@@ -159,7 +159,7 @@ int CalcMedian(char fn[1000],
 		}
 		TIFFClose(tif);
 	}
-	if (fld == 0) return 0;
+	if (fld == 1) return 0;
 	printf("Calculating median.\n");
 	MedianArray = malloc(NrPixels*NrPixels*sizeof(*MedianArray));
 	pixelvalue *MaxIntArr, *MaxIntMedianArr;
