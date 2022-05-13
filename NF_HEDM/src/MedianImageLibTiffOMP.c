@@ -128,7 +128,7 @@ int CalcMedian(char fn[1000],
 	int fld = 0;
 	sprintf(MaxIntMedianCorrFileName,"%s_MaximumIntensityMedianCorrected_Distance_%d.%s",fn,LayerNr-1,extReduced);
 	printf("Reading files.\n");
-	#pragma omp parallel for num_threads(numProcs) private(j) schedule(dynamic)
+	//#pragma omp parallel for num_threads(numProcs) private(j) schedule(dynamic)
 	for (j=0;j<NrFilesPerLayer;j++){
 		printf("File Number: %d out of %d\n",j,NrFilesPerLayer);
 		TIFFErrorHandler oldhandler;
