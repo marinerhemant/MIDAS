@@ -80,6 +80,8 @@ for rnr in RingNrs:
 			rads.append(hkl[-1])
 
 rads = [hkl[-1] for rnr in RingNrs for hkl in hkls if hkl[4] == rnr]
+print(RingNrs)
+print(rads)
 
 positions = open(topdir+'/positions.csv').readlines()
 
