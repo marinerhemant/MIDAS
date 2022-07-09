@@ -43,6 +43,7 @@ maxAng = 0.5
 baseNameParamFN = paramFN.split('/')[-1]
 homedir = os.path.expanduser('~')
 paramContents = open(paramFN).readlines()
+RingNrs = []
 for line in paramContents:
 	if line.startswith('StartFileNrFirstLayer'):
 		startNrFirstLayer = int(line.split()[1])
@@ -66,6 +67,19 @@ for line in paramContents:
 		BeamSize = float(line.split()[1])
 	if line.startswith('px'):
 		px = float(line.split()[1])
+	if line.startswith('RingThresh'):
+		RingNrs.append(int(line.split()[1]))
+
+hkls = np.genfromtxt('hkls.csv',skip_header=1)
+_rnr,idx = np.unique(hkls[:,4],return_index=True)
+hkls = hkls[idx,:]
+rads = []
+for rnr in RingNrs:
+	for hkl in hkls:
+		if hkl[4] == rnr:
+			rads.append(hkl[-1])
+
+rads = [hkl[-1] for rnr in RingNrs for hkl in hkls if hkl[4] == rnr]
 
 positions = open(topdir+'/positions.csv').readlines()
 
@@ -141,12 +155,19 @@ lines = paramsf.readlines()
 paramsf.close()
 paramsf = open('paramstest.txt','w')
 for line in lines:
+	if line.startswith('RingNumbers'):
+		continue
+	if line.startswith('RingRadii'):
+		continue
 	if line.startswith('OutputFolder'):
 		paramsf.write('OutputFolder '+topdir+'/Output\n')
 	elif line.startswith('ResultFolder'):
 		paramsf.write('ResultFolder '+topdir+'/Results\n')
 	else:
 		paramsf.write(line)
+for idx in range(len(RingNrs)):
+	paramsf.write('RingNumbers '+str(RingNrs[idx])+'\n')
+	paramsf.write('RingRadii '+str(rads[idx])+'\n')
 paramsf.write('BeamSize '+str(BeamSize)+'\n')
 paramsf.write('px '+str(px)+'\n')
 paramsf.write('RingToIndex '+str(RingToIndex)+'\n')
