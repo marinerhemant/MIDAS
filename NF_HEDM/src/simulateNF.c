@@ -315,14 +315,15 @@ main(int argc, char *argv[])
     fclose(fileParam);
     MaxTtheta = rad2deg*atan(MaxRingRad/Lsd[0]);
     char *ext="bin";
-    uint16_t *ObsSpotsInfo, *binArr;
+    int *ObsSpotsInfo;
+    uint16_t *binArr;
     nrFiles = EndNr - StartNr + 1;
     nrPixels = 2048*2048;
     long long int SizeObsSpots;
     SizeObsSpots = (nLayers);
     SizeObsSpots*=nrPixels;
     SizeObsSpots*=nrFiles;
-    SizeObsSpots/=32;
+    SizeObsSpots;
     printf("%lld\n",SizeObsSpots);
     ObsSpotsInfo = calloc(SizeObsSpots,sizeof(*ObsSpotsInfo));
     binArr = calloc(SizeObsSpots,sizeof(*binArr)); // This is assuming we have quarter of data with signal, not unreasonable.
