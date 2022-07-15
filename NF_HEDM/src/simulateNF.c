@@ -315,7 +315,7 @@ main(int argc, char *argv[])
     fclose(fileParam);
     MaxTtheta = rad2deg*atan(MaxRingRad/Lsd[0]);
     char *ext="bin";
-    int *ObsSpotsInfo;
+    uint16_t *ObsSpotsInfo;
     uint16_t *binArr;
     nrFiles = EndNr - StartNr + 1;
     nrPixels = 2048*2048;
