@@ -195,7 +195,7 @@ main(int argc, char *argv[])
 	char fn[1000];
 	char fn2[1000];
 	char direct[1000];
-    int StartNr,EndNr;
+    int StartNr,EndNr, skipBin=0;
     while (fgets(aline,1000,fileParam)!=NULL){
 		str = "ReducedFileName ";
         LowNr = strncmp(aline,str,strlen(str));
@@ -225,6 +225,12 @@ main(int argc, char *argv[])
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             Flag = 1;
+            continue;
+        }
+        str = "SkipImageBinning ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            skipBin = 1;
             continue;
         }
     }
@@ -257,7 +263,7 @@ main(int argc, char *argv[])
         printf("Could not allocate ObsSpotsInfo.\n");
         return 0;
     }
-    ReadCode = ReadBinFiles(fn,ext,StartNr,EndNr,ObsSpotsInfo,nLayers,SizeObsSpots);
+    if (skipBin==0) ReadCode = ReadBinFiles(fn,ext,StartNr,EndNr,ObsSpotsInfo,nLayers,SizeObsSpots);
     if (ReadCode == 0){
         printf("Reading bin files did not go well. Please check.\n");
         return 1;
@@ -316,7 +322,7 @@ main(int argc, char *argv[])
 	char OM[1024];
 	sprintf(OM,"%s/OrientMat.bin",direct);
 	FILE *fSI, *fDS, *fKEY, *fOM;
-	fSI = fopen(SI,"wb");
+	if (skipBin==0) fSI = fopen(SI,"wb");
 	fDS = fopen(DS,"wb");
 	fKEY = fopen(KEY,"wb");
 	fOM = fopen(OM,"wb");
@@ -324,7 +330,7 @@ main(int argc, char *argv[])
     if (checkFOPEN(fDS,DS)) return 1;
     if (checkFOPEN(fKEY,KEY)) return 1;
     if (checkFOPEN(fOM,OM)) return 1;
-  	fwrite(ObsSpotsInfo,SizeObsSpots*sizeof(*ObsSpotsInfo),1,fSI);
+  	if (skipBin==0) fwrite(ObsSpotsInfo,SizeObsSpots*sizeof(*ObsSpotsInfo),1,fSI);
   	fwrite(SpotsMat,TotalDiffrSpots*3*sizeof(*SpotsMat),1,fDS);
   	fwrite(NrSpots,NrOrientations*2*sizeof(*NrSpots),1,fKEY);
   	fwrite(OrientationMatrix,NrOrientations*9*sizeof(*OrientationMatrix),1,fOM);
