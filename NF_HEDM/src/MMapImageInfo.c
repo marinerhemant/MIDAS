@@ -264,6 +264,7 @@ main(int argc, char *argv[])
         return 0;
     }
     if (skipBin==0) ReadCode = ReadBinFiles(fn,ext,StartNr,EndNr,ObsSpotsInfo,nLayers,SizeObsSpots);
+    else ReadCode = 1;
     if (ReadCode == 0){
         printf("Reading bin files did not go well. Please check.\n");
         return 1;
