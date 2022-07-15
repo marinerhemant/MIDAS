@@ -327,7 +327,7 @@ main(int argc, char *argv[])
 	fDS = fopen(DS,"wb");
 	fKEY = fopen(KEY,"wb");
 	fOM = fopen(OM,"wb");
-    if (checkFOPEN(fSI,SI)) return 1;
+    if (skipBin==0) if (checkFOPEN(fSI,SI)) return 1;
     if (checkFOPEN(fDS,DS)) return 1;
     if (checkFOPEN(fKEY,KEY)) return 1;
     if (checkFOPEN(fOM,OM)) return 1;
