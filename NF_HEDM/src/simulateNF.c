@@ -435,6 +435,8 @@ main(int argc, char *argv[])
 	}
 	printf("Done with full file\n");
 	size_t idxpos,tmpcntr,nrF=0;
+	int *bitArr;
+	bitArr = calloc(SizeObsSpots/32,sizeof(*bitArr));
 	// Sequential read.
 	idxpos = 0;
 	for (l=0;l<nLayers;l++){
@@ -456,6 +458,7 @@ main(int argc, char *argv[])
 						binArr[nrF*5+2] = k;
 						binArr[nrF*5+3] = l;
 						binArr[nrF*5+4] = ObsSpotsInfo[idxpos];
+						SetBit(bitArr,idxpos);
 						nrF ++;
 					}
 					idxpos ++;
@@ -471,5 +474,12 @@ main(int argc, char *argv[])
 	}
 	fwrite(binArr,nrF*5*sizeof(*binArr),1,OutputF);
 	fclose(OutputF);
+	FILE *outputSpotsInfo = fopen("SpotsInfo.bin","wb");
+	if (outputSpotsInfo == NULL){
+		printf("Could not write output file\n");
+		return 1;
+	}
+	fwrite(bitArr,SizeObsSpots*sizeof(*bitArr)/32,1,outputSpotsInfo);
+	fclose(outputSpotsInfo);
 	return 0;
 }
