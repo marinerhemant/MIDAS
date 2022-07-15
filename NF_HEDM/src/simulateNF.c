@@ -323,7 +323,7 @@ main(int argc, char *argv[])
     SizeObsSpots = (nLayers);
     SizeObsSpots*=nrPixels;
     SizeObsSpots*=nrFiles;
-    SizeObsSpots;
+    //~ SizeObsSpots;
     printf("%lld\n",SizeObsSpots);
     ObsSpotsInfo = calloc(SizeObsSpots,sizeof(*ObsSpotsInfo));
     binArr = calloc(SizeObsSpots,sizeof(*binArr)); // This is assuming we have quarter of data with signal, not unreasonable.
