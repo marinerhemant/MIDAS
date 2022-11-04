@@ -570,6 +570,9 @@ main(int argc, char *argv[])
 	//printf("%lld\n",SizeObsSpots*32);
 
 	// Read spots info
+	char cmmd[4096];
+	sprintf(cmmd,"cp SpotsInfo.bin /dev/shm/");
+	system(cmmd);
 	char *file_name = "/dev/shm/SpotsInfo.bin";
 	int descp;
 	struct stat s;
@@ -586,6 +589,8 @@ main(int argc, char *argv[])
 
 	// Read DiffractionSpots
 	double *SpotsMat;
+	sprintf(cmmd,"cp DiffractionSpots.bin /dev/shm/");
+	system(cmmd);
 	char *spfn = "/dev/shm/DiffractionSpots.bin";
 	int spf;
 	struct stat s2;
@@ -602,6 +607,8 @@ main(int argc, char *argv[])
 
 	// Read OrientationMatrix
 	double *OrientationMatrix;
+	sprintf(cmmd,"cp OrientMat.bin /dev/shm/");
+	system(cmmd);
 	char *omfn = "/dev/shm/OrientMat.bin";
 	int omf;
 	struct stat s3;
