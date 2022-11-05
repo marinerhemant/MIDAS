@@ -124,6 +124,12 @@ def getImageMax(fn):
 	print("Time taken to calculate max: " + str(t2-t1))
 	dataMax = np.reshape(dataMax,(NrPixelsY,NrPixelsZ))
 	dataMax = dataMax.astype(float)
+	if transpose.get() == 1:
+		dataMax = np.transpose(dataMax)
+	if hflip.get() == 1:
+		dataMax = np.flip(dataMax,0)
+	if vflip.get() == 1:
+		dataMax = np.flip(dataMax,1)
 	return dataMax
 
 def getData(geNum,bytesToSkip):

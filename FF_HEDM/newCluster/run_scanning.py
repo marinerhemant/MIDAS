@@ -70,6 +70,7 @@ for line in paramContents:
 	if line.startswith('RingThresh'):
 		RingNrs.append(int(line.split()[1]))
 
+subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHLKList")+' ' + paramFN,shell=True)
 hkls = np.genfromtxt('hkls.csv',skip_header=1)
 _rnr,idx = np.unique(hkls[:,4],return_index=True)
 hkls = hkls[idx,:]
@@ -137,12 +138,12 @@ if doPeakSearch == 1:
 				yDet = float(line2sp[11])
 				zDet = float(line2sp[12])
 				omegaDet = float(line2sp[13])
-				y = y - ypos
+				y = y - ypos # Confirm this...
 				if (y*y+z*z) < np.finfo(np.float32).eps:
 					continue
 				Eta = CalcEtaAngle(y,z)
 				Ttheta = 57.2957795130823*atan(sqrt(y*y+z*z)/Lsd)
-				yOrigNoW = yOrigNoW - ypos
+				yOrigNoW = yOrigNoW - ypos # Confirm this
 				outstr = '{:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f}\n'.format(y,z,ome,grR,ID,RNr,Eta,Ttheta,omeIniNoW,yOrigNoW,zOrigNoW,yDet,zDet,omegaDet)
 				AllF.write(outstr)
 		AllF.close()

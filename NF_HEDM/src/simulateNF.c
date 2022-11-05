@@ -13,7 +13,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <ctype.h>
-#include <nlopt.h>
+//~ #include <nlopt.h>
 #include <stdint.h>
 #include <sys/mman.h>
 #include <errno.h>
@@ -411,12 +411,15 @@ main(int argc, char *argv[])
 			dy2 *= -1;
 		}
 		int NrPixelsGrid=2*(ceil((gs*2)/px))*(ceil((gs*2)/px));
+		if (gs*2 < px)
+			NrPixelsGrid = 1;
 		XG[0] = xs;
 		XG[1] = xs-gs;
 		XG[2] = xs+gs;
 		YG[0] = ys+dy1;
 		YG[1] = ys+dy2;
 		YG[2] = ys+dy2;
+		//~ printf("%lf %lf %lf %d %lf\n",eulThis[0],eulThis[1],eulThis[2],NrPixelsGrid,gs);
 		Euler2OrientMat(eulThis,OMIn);
 		SimulateAccOrient(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XG,YG,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,Thetas,OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,ObsSpotsInfo,OMIn,TheorSpots);
 	}
@@ -453,13 +456,15 @@ main(int argc, char *argv[])
 					//~ idxpos += 2048*j;
 					//~ idxpos += i;
 					if (ObsSpotsInfo[idxpos] != 0){
-						binArr[nrF*5+0] = j;
-						binArr[nrF*5+1] = i;
-						binArr[nrF*5+2] = k;
-						binArr[nrF*5+3] = l;
-						binArr[nrF*5+4] = ObsSpotsInfo[idxpos];
+						for (m=0;m<ObsSpotsInfo[idxpos];m++){
+							binArr[nrF*5+0] = j;
+							binArr[nrF*5+1] = i;
+							binArr[nrF*5+2] = k;
+							binArr[nrF*5+3] = l;
+							binArr[nrF*5+4] = ObsSpotsInfo[idxpos];
+							nrF++;
+						}
 						SetBit(bitArr,idxpos);
-						nrF ++;
 					}
 					idxpos ++;
 				}

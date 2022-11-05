@@ -874,8 +874,10 @@ main(int argc, char *argv[])
 			}
 		}
 	}else{
-		printf("Wrong MedFiltRadius!!! Exiting.\n");
-		return 0;
+	printf("Wrong MedFiltRadius!!! Not doing median.\n");
+		for (i=0;i<NrPixels*NrPixels;i++){
+			Image2[i] = Image[i];
+		}	
 	}
 	pixelvalue *Image3;
 	Image3 = malloc(NrPixels*NrPixels*sizeof(*Image3)); // Median filtered image.

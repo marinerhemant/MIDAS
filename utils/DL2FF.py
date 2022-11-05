@@ -222,4 +222,4 @@ f.write('FolderName '+folder[:-1]+'\n')
 f.write('SeedFolder '+thisFolder+'\n')
 f.close()
 
-check_call(expanduser('~')+'/.MIDAS/MIDAS_V5_FarField_Layers '+pFile+'.New.txt 1 1 0 '+ str(nCPUs) + ' local sd',shell=True)
+# ~ check_call(expanduser('~')+'/.MIDAS/MIDAS_V5_FarField_Layers '+pFile+'.New.txt 1 1 0 '+ str(nCPUs) + ' local sd',shell=True)

@@ -99,9 +99,6 @@ makediffrspotsff2nf: $(SRCDIR)MakeDiffrSpotsFF2NF.c
 medianimage: $(SRCDIR)MedianImageLibTiff.c
 	$(CC) $(SRCDIR)MedianImageLibTiff.c -o $(BINDIR)MedianImageLibTiff $(CFLAGS) $(CFLAGSTIFF)
 
-medianimageomp: $(SRCDIR)MedianImageLibTiffOMP.c
-	$(CC) $(SRCDIR)MedianImageLibTiffOMP.c -o $(BINDIR)MedianImageLibTiffOMP -fopenmp $(CFLAGS) $(CFLAGSTIFF)
-
 medianimagehdf: $(SRCDIR)MedianImageHDF.c
 	$(H5CC) $(SRCDIR)MedianImageHDF.c -o $(BINDIR)MedianImageHDF $(CFLAGS) $(CFLAGSHDF) -fopenmp
 
@@ -130,7 +127,7 @@ comparenf: $(SRCDIR)compareNF.c
 
 simulatenf: $(SRCDIR)simulateNF.c
 	$(CC) $(SRCDIR)simulateNF.c $(SRCDIR)CalcDiffractionSpots.c $(SRCDIR)SharedFuncsFit.c \
-	-o $(BINDIR)simulateNF $(CFLAGS) $(CFLAGSNLOPT)
+	-o $(BINDIR)simulateNF $(CFLAGS) #$(CFLAGSNLOPT)
 
 fitorientationomp: $(SRCDIR)FitOrientationOMP.c
 	$(CC) $(SRCDIR)FitOrientationOMP.c $(SRCDIR)GetMisorientation.c $(SRCDIR)CalcDiffractionSpots.c $(SRCDIR)SharedFuncsFit.c \

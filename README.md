@@ -1,4 +1,4 @@
-# MIDAS.X
+# MIDAS
 
 **** V5 Released ****
 

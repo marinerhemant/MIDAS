@@ -11,7 +11,7 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <ctype.h>
-#include <nlopt.h>
+//~ #include <nlopt.h>
 #include <stdint.h>
 
 #define RealType double
@@ -770,6 +770,7 @@ SimulateDiffractionImage(
     InPixels = allocMatrixInt(NrPixelsGrid,2);
 	OverlapPixels = 0;
 	TotalPixels=0;
+	int NrSpots = 0;
     for (j=0;j<nTspots;j++){
 		ythis = TheorSpots[j*3+0];
 		zthis = TheorSpots[j*3+1];
@@ -875,9 +876,11 @@ SimulateDiffractionImage(
 				BinNr += TempCntr;
 				BinNr += MultZ;
 				ObsSpotsInfo[BinNr] += 1;
+				if (Layer == 0) NrSpots ++;
 			}
 		}
 	}
+	//~ printf("%d\n",NrSpots);
     FreeMemMatrixInt(InPixels,NrPixelsGrid);
 }
 
@@ -953,6 +956,7 @@ SimulateAccOrient(
     double Lsd0=Lsd[0];
     CalcDiffractionSpots(Lsd0, ExcludePoleAngle, OmegaRanges, NoOfOmegaRanges,
 		hkls, n_hkls, Thetas, BoxSizes, &nTspots, OrientMatIn,TheorSpots);
+	//~ printf("#Spots: %d\n",nTspots);
     double XG[3],YG[3];
     for (i=0;i<3;i++){
         XG[i] = XGrain[i];

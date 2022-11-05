@@ -917,8 +917,10 @@ main(int argc, char *argv[])
 				}
 			}
 		}else{
-			printf("Wrong MedFiltRadius!!! Exiting.\n");
-			continue;
+			printf("Wrong MedFiltRadius!!! Not doing median.\n");
+			for (i=0;i<NrPixels*NrPixels;i++){
+				Image2[i] = Image[i];
+			}
 		}
 		pixelvalue *FinalImage;
 		FinalImage = &FinalImages[offsetPos];

@@ -116,6 +116,7 @@ CalcOmega(
     RealType ome;
     RealType len= sqrt(x*x + y*y + z*z);
     RealType v=sin(theta*deg2rad)*len;
+    //~ printf("%lf %lf\n",len,v);
     
     RealType almostzero = 1e-4;
     if ( fabs(y) < almostzero ) {
@@ -136,6 +137,7 @@ CalcOmega(
         RealType b = (2*v*x) / y2;
         RealType c = ((v*v) / y2) - 1;
         RealType discr = b*b - 4*a*c;
+        //~ printf("discr %lf\n",discr);
         
         RealType ome1a;
         RealType ome1b;
@@ -184,6 +186,7 @@ CalcOmega(
                     *nsol = *nsol + 1;
                 }
             }
+            //~ printf("COSOME %lf %lf %lf %lf %lf\n",cosome1,cosome2,b,a,discr);
         }
     }
     RealType gw[3];
@@ -194,6 +197,7 @@ CalcOmega(
         RotateAroundZ(gv, omegas[indexOme], gw);
         CalcEtaAngle(gw[1],gw[2], &eta);
         etas[indexOme] = eta;
+        //~ printf("%lf %lf indexome: %d Eta %lf\n",gw[1],gw[2],indexOme,eta);
     }
 }
 
@@ -211,7 +215,7 @@ CalcDiffrSpots_Furnace(
                        RealType *spots,
                        int *nspots)
 {
-    int i, OmegaRangeNo;
+    int i,j, OmegaRangeNo;
     RealType theta;
     int KeepSpot = 0;
     double Ghkl[3];
@@ -224,12 +228,14 @@ CalcDiffrSpots_Furnace(
     int nspotsPlane;
     int spotnr = 0;
     int spotid = 0;
+    //~ for (i =0;i<3;i++) for (j=0;j<3;j++) printf("%lf ",OrientMatrix[i][j]); printf("\n");
     for (indexhkl=0; indexhkl < n_hkls ; indexhkl++)  {
         Ghkl[0] = hkls[indexhkl][0];
         Ghkl[1] = hkls[indexhkl][1];
         Ghkl[2] = hkls[indexhkl][2];
         RealType RingRadius = distance * tan(2*deg2rad*Thetas[indexhkl]);
         MatrixMultF(OrientMatrix,Ghkl, Gc);
+        //~ printf("GC %lf %lf %lf\n",Gc[0],Gc[1],Gc[2]);
         theta = Thetas[indexhkl];
         CalcOmega(Gc[0], Gc[1], Gc[2], theta, omegas, etas, &nspotsPlane);
         for (i=0 ; i<nspotsPlane ; i++) {
@@ -251,6 +257,7 @@ CalcDiffrSpots_Furnace(
                 }
             }
             if (KeepSpot==1) {
+				//~ printf("%lf %lf %lf %lf %lf %lf %lf\n",omegas[i],yl,zl,etas[i],Ghkl[0],Ghkl[1],Ghkl[2]);
                 spots[spotnr*3+0] = yl;
                 spots[spotnr*3+1] = zl;
                 spots[spotnr*3+2] = omegas[i];

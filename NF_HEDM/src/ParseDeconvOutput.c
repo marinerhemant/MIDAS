@@ -125,7 +125,7 @@ main(int argc, char *argv[])
 	}
 	free(Image);
 	// Write the result file.
-	printf("Now writing file: %s.\n",OutFN);
+	printf("Now writing file: %s.txt .\n",OutFN);
 	FILE *ft;
 	char OutFNt[4096];
 	sprintf(OutFNt,"%s.txt",OutFN);
