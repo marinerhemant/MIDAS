@@ -907,7 +907,7 @@ main(int argc, char *argv[])
 		int SizeWritten2 = (7+(nSaves*4))*sizeof(double);
 		size_t OffsetThis = (rown);
 		OffsetThis *= SizeWritten2;
-		#pragma omp atomic
+		#pragma omp critical
 		{
 			// Open files for writing
 		    int result = open(MicFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
