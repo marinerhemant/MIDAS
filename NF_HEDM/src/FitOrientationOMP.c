@@ -726,6 +726,11 @@ main(int argc, char *argv[])
 	double *ThrSpsAll;
 	ThrSpsAll = calloc(numProcs*MAX_N_SPOTS*3,sizeof(*ThrSpsAll));
 	printf("Number of individual diffracting planes: %d\n",n_hkls);
+	
+	//~ double *OutResultAll, *ResultMatrAll;
+	//~ size_t numJobs = endRowNr - startRowNr + 1;
+	//~ OutResultAll = calloc(numJobs*11,sizeof(*OutResultAll));
+	//~ ResultMatrAll = calloc(numJobs*(7+(nSaves*4)),sizeof(*ResultMatrAll));
 
 	// DO OMP HERE??????
 	#pragma omp parallel for num_threads(numProcs) private(rown) schedule(dynamic)
@@ -897,10 +902,10 @@ main(int argc, char *argv[])
 			0,xs,ys,GridSize,(double)UD,BestEuler[0],BestEuler[1],
 			BestEuler[2],BestFrac};
 		int SizeWritten = 11*sizeof(double);
-		size_t OffsetHere = (rown-startRowNr);
+		size_t OffsetHere = (rown);
 		OffsetHere *= SizeWritten;
 		int SizeWritten2 = (7+(nSaves*4))*sizeof(double);
-		size_t OffsetThis = (rown-startRowNr);
+		size_t OffsetThis = (rown);
 		OffsetThis *= SizeWritten2;
 		#pragma omp atomic
 		{
