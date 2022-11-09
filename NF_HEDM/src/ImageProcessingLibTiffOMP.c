@@ -807,7 +807,7 @@ main(int argc, char *argv[])
 	int dNr;
 	for (dNr=0;dNr<nDistances;dNr++){
 		char MedianFileName[1024];
-		sprintf(MedianFileName,"%s_Median_Background_Distance_%d.%s",fn,dNr,extReduced);
+		sprintf(MedianFileName,"%s/%s_Median_Background_Distance_%d.%s",direct,ReducedFileName,dNr,extReduced);
 		FILE *MFI = fopen(MedianFileName,"r");
 		if (MFI == NULL){
 			printf("Median file not found. Exiting\n");

@@ -110,6 +110,7 @@ FreeMemMatrix3Int(pixelvalue ***mat,int nrows, int ncols)
 
 
 int CalcMedian(char fn[1000],
+	char outFN[1000],
 	int LayerNr,
 	int StartNr,
 	int NrPixels,
@@ -133,9 +134,9 @@ int CalcMedian(char fn[1000],
     strftime(buffer, 25, "%Y:%m:%d:%H:%M:%S", tm_info);
     puts(buffer);
 	char MedianFileName[1024],MaxIntFileName[1024],MaxIntMedianCorrFileName[1024];
-	sprintf(MedianFileName,"%s_Median_Background_Distance_%d.%s",fn,LayerNr-1,extReduced);
-	sprintf(MaxIntFileName,"%s_MaximumIntensity_Distance_%d.%s",fn,LayerNr-1,extReduced);
-	sprintf(MaxIntMedianCorrFileName,"%s_MaximumIntensityMedianCorrected_Distance_%d.%s",fn,LayerNr-1,extReduced);
+	sprintf(MedianFileName,"%s_Median_Background_Distance_%d.%s",outFN,LayerNr-1,extReduced);
+	sprintf(MaxIntFileName,"%s_MaximumIntensity_Distance_%d.%s",outFN,LayerNr-1,extReduced);
+	sprintf(MaxIntMedianCorrFileName,"%s_MaximumIntensityMedianCorrected_Distance_%d.%s",outFN,LayerNr-1,extReduced);
 	int roil;
 	for (j=0;j<NrFilesPerLayer;j++){
 		TIFFErrorHandler oldhandler;
@@ -237,7 +238,7 @@ main(int argc, char *argv[])
     FILE *fileParam;
     ParamFN = argv[1];
     char aline[1000];
-	char fn2[1000],fn[1000], direct[1000], ext[1000], extReduced[1000];
+	char fn2[1000],fn[1000], outFN[1000], direct[1000], ext[1000], extReduced[1000], ReducedFileName[1000];
     fileParam = fopen(ParamFN,"r");
     char *str, dummy[1000];
     int LowNr,nLayers,StartNr,NrFilesPerLayer,NrPixels,WFImages=0;
@@ -279,6 +280,12 @@ main(int argc, char *argv[])
             sscanf(aline,"%s %s", dummy, fn2);
             continue;
         }
+		str = "ReducedFileName ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr==0){
+			sscanf(aline,"%s %s", dummy, ReducedFileName);
+			continue;
+		}
         str = "extOrig ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -294,9 +301,10 @@ main(int argc, char *argv[])
     }
 	StartNr = StartNr + (nLayers-1)*WFImages;
     sprintf(fn,"%s/%s",direct,fn2);
+    sprintf(outFN,"%s/%s",direct,ReducedFileName);
     fclose(fileParam);
 	int ReturnCode;
-	ReturnCode = CalcMedian(fn, nLayers,StartNr,NrPixels,NrFilesPerLayer,ext,extReduced);
+	ReturnCode = CalcMedian(fn,outFN,nLayers,StartNr,NrPixels,NrFilesPerLayer,ext,extReduced);
 	if (ReturnCode == 0){
 		printf("Median Calculation failed. Exiting.");
 		return 0;
