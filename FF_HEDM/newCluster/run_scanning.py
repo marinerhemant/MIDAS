@@ -162,6 +162,12 @@ for line in lines:
 		continue
 	if line.startswith('RingRadii'):
 		continue
+	if line.startswith('RingToIndex'):
+		continue
+	if line.startswith('BeamSize'):
+		continue
+	if line.startswith('px'):
+		continue
 	if line.startswith('OutputFolder'):
 		paramsf.write('OutputFolder '+topdir+'/Output\n')
 	elif line.startswith('ResultFolder'):
