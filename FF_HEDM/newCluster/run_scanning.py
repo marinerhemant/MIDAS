@@ -70,7 +70,7 @@ for line in paramContents:
 	if line.startswith('RingThresh'):
 		RingNrs.append(int(line.split()[1]))
 
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHLKList")+' ' + paramFN,shell=True)
+subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+' ' + paramFN,shell=True)
 hkls = np.genfromtxt('hkls.csv',skip_header=1)
 _rnr,idx = np.unique(hkls[:,4],return_index=True)
 hkls = hkls[idx,:]
