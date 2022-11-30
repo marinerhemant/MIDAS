@@ -1672,7 +1672,7 @@ int main(int argc, char *argv[])
 		OrientMat2Euler(Orient0_3,Euler0);
 		char rmCommand[4096];
 		sprintf(rmCommand,"rm -rf %s",FileName);
-		//~ system(rmCommand);
+		system(rmCommand);
 		double **spotsYZO;
 		spotsYZO=allocMatrix(nSpotsBest,8);
 		int nSpotsYZO=nSpotsBest;
