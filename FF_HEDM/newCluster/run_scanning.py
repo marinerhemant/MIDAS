@@ -21,7 +21,8 @@ def CalcEtaAngle(y, z):
 startTime = time.time()
 
 warnings.filterwarnings('ignore')
-parser = argparse.ArgumentParser(description='''MIDAS_FF, contact hsharma@anl.gov Parameter file must be in the same folder as the desired output folder(SeedFolder).\nMUST BE RUN FROM MIDAS DIRECTORY.''', formatter_class=RawTextHelpFormatter)
+parser = argparse.ArgumentParser(description='''MIDAS_FF, contact hsharma@anl.gov Parameter file must be in the same folder as the desired output folder(SeedFolder).
+Provide positions.csv file (negative positions with respect to actual motor position. Motor position is normally position of the rotation axis, opposite to the voxel position.''', formatter_class=RawTextHelpFormatter)
 parser.add_argument('-nCPUs',    type=int, required=True, help='Number of CPUs to use')
 parser.add_argument('-paramFile', type=str, required=True, help='ParameterFileName: Use the full path.')
 parser.add_argument('-nNodes', type=str, required=True, help='Number of Nodes')
@@ -138,12 +139,12 @@ if doPeakSearch == 1:
 				yDet = float(line2sp[11])
 				zDet = float(line2sp[12])
 				omegaDet = float(line2sp[13])
-				y = y - ypos # Confirm this...
+				y = y + ypos # If positions.csv is flipped, this should be positive.
 				if (y*y+z*z) < np.finfo(np.float32).eps:
 					continue
 				Eta = CalcEtaAngle(y,z)
 				Ttheta = 57.2957795130823*atan(sqrt(y*y+z*z)/Lsd)
-				yOrigNoW = yOrigNoW - ypos # Confirm this
+				yOrigNoW = yOrigNoW + ypos # Confirm this
 				outstr = '{:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f}\n'.format(y,z,ome,grR,ID,RNr,Eta,Ttheta,omeIniNoW,yOrigNoW,zOrigNoW,yDet,zDet,omegaDet)
 				AllF.write(outstr)
 		AllF.close()

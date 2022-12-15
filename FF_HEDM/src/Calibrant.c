@@ -479,6 +479,8 @@ double problem_function(
 void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean, double *IdealTtheta, double Lsd, double MaxRad,
 				  double ybc, double zbc, double tx, double tyin, double tzin, double p0in, double p1in, double p2in, double p3in, double *ty, double *tz, double *LsdFit, double *ybcFit, double *zbcFit, double *p0, double *p1, double *p2, double *p3, double *MeanDiff, double tolTilts, double tolLsd, double tolBC, double tolP, double tolP0, double tolP1, double tolP2, double tolP3, double px)
 {
+	// Look at the possibility of including translations for each of the small panels on a multi-panel detector in the ooptimization....
+	// Also change CorrectTiltSpatialDistortion to include translations!!!
 	unsigned n=9;
 	struct my_func_data f_data;
 	f_data.nIndices = nIndices;

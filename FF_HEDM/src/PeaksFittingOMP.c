@@ -565,13 +565,13 @@ void main(int argc, char *argv[]){
 	char *str, dummy[1000], Folder[1024], FileStem[1024], *TmpFolder, darkcurrentfilename[1024], floodfilename[1024], Ext[1024],RawFolder[1024];
 	TmpFolder = "Temp";
 	int LowNr;
-	double bc=1, Ycen, Zcen, IntSat, OmegaStep, OmegaFirstFile, Lsd, px=200, Width, Wavelength,MaxRingRad;
-	int NrPixels=2048, NrPxY=0,NrPxZ=0,Padding = 6, StartNr;
+	double bc=1, Ycen=1024, Zcen=1024, IntSat=16000, OmegaStep=0.25, OmegaFirstFile=-180, Lsd=1000000, px=200, Width=1000, Wavelength=0.189714,MaxRingRad=204800;
+	int NrPixels=2048, NrPxY=0,NrPxZ=0,Padding = 6, StartNr=1;
 	char fs[1024];
-	int LayerNr;
+	int LayerNr=1;
 	int NrTransOpt=0;
 	int TransOpt[10];
-	int StartFileNr, NrFilesPerSweep;
+	int StartFileNr=1, NrFilesPerSweep=1440;
 	int DoFullImage = 0;
 	int FrameNrOmeChange = 1, NrDarkFramesDataFile = 0;
 	double OmegaMissing = 0, MisDir;
@@ -580,7 +580,7 @@ void main(int argc, char *argv[]){
 	double Thresholds[100];
 	int headSize = 8192;
 	int fnr = 0;
-	double RhoD, tx, ty, tz, p0, p1, p2;
+	double RhoD=204800, tx=0, ty=0, tz=0, p0=0, p1=0, p2=0;
 	double OmegaRanges[2000][2];
 	int nOmeRanges = 0;
 	long long int BadPxIntensity = 0;
