@@ -1095,7 +1095,6 @@ void main(int argc, char *argv[]){
 		size_t idxoffset;
 		idxoffset = NrPixels; idxoffset *= NrPixels; idxoffset *= procNum;
 		size_t asym_idxoffset; asym_idxoffset = NrPxY; asym_idxoffset *= NrPxZ; asym_idxoffset *= procNum;
-		printf("FrameNr: %d\n",FileNr);
 		Image = &ImageAll[idxoffset];
 		ImageAsym = &ImageAsymAll[asym_idxoffset];
 		ImgCorrBC = &ImgCorrBCAll[idxoffset];
@@ -1215,6 +1214,7 @@ void main(int argc, char *argv[]){
 			}
 		}
 		NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
+		printf("FrameNr: %d, NrOfRegions: %d\n",FileNr,NrOfReg);
 		int RegNr,NrPixelsThisRegion;
 		int IsSaturated;
 		int SpotIDStart = 1;
