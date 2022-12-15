@@ -852,8 +852,13 @@ void main(int argc, char *argv[]){
 			nRings++;
 			continue;
 		}
-		//~ str = "IsEDF";
-		//~ LowNr = strncmp()
+		str = "Threshold ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr==0){
+			sscanf(aline,"%s %lf", dummy, &Thresholds[0]);
+			nRings++;
+			continue;
+		}
 	}
 	if (NrPxY !=0){
 		if (NrPxY > NrPxZ){
@@ -955,23 +960,25 @@ void main(int argc, char *argv[]){
 	// Get coordinates to process.
 	int thisRingNr;
 	double RingRads[nRings];
-	char hklfn[2040];
-	sprintf(hklfn,"%s/hkls.csv",Folder);
-	FILE *hklf = fopen(hklfn,"r");
-	if (hklf == NULL){
-		printf("HKL file could not be read. Exiting\n");
-		return 1;
-	}
 	char aliner[1000];
-	fgets(aliner,1000,hklf);
 	int Rnr;
 	double RRd;
-	while (fgets(aliner,1000,hklf)!=NULL){
-		sscanf(aliner, "%s %s %s %s %d %s %s %s %s %s %lf",dummy,dummy,dummy,dummy,&Rnr,dummy,dummy,dummy,dummy,dummy,&RRd);
-		for (thisRingNr=0;thisRingNr<nRings;thisRingNr++){
-			if (Rnr == RingNrs[thisRingNr]){
-				RingRads[thisRingNr] = RRd/px;
-				break;
+	if (DoFullImage == 0){
+		char hklfn[2040];
+		sprintf(hklfn,"%s/hkls.csv",Folder);
+		FILE *hklf = fopen(hklfn,"r");
+		if (hklf == NULL){
+			printf("HKL file could not be read. Exiting\n");
+			return 1;
+		}
+		fgets(aliner,1000,hklf);
+		while (fgets(aliner,1000,hklf)!=NULL){
+			sscanf(aliner, "%s %s %s %s %d %s %s %s %s %s %lf",dummy,dummy,dummy,dummy,&Rnr,dummy,dummy,dummy,dummy,dummy,&RRd);
+			for (thisRingNr=0;thisRingNr<nRings;thisRingNr++){
+				if (Rnr == RingNrs[thisRingNr]){
+					RingRads[thisRingNr] = RRd/px;
+					break;
+				}
 			}
 		}
 	}
