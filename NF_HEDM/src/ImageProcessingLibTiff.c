@@ -797,7 +797,7 @@ main(int argc, char *argv[])
 	int SizeFile = sizeof(pixelvalue) * NrPixels * NrPixels;
 	MedFltImg = malloc(NrPixels*NrPixels*sizeof(*MedFltImg));
 	char MedianFileName[1024];
-	sprintf(MedianFileName,"%s_Median_Background_Distance_%d.%s",fn,nLayers-1,extReduced);
+	sprintf(MedianFileName,"%s/%s_Median_Background_Distance_%d.%s",direct,ReducedFileName,nLayers-1,extReduced);
 	FILE *MFI = fopen(MedianFileName,"r");
 	int rc = fread(MedFltImg,SizeFile,1,MFI);
 

@@ -1237,7 +1237,7 @@ void main(int argc, char *argv[]){
 			Thresh = GoodCoords[((UsefulPixels[0*2+0])*NrPixels) + (UsefulPixels[0*2+1])];
 			unsigned nPeaks;
 			nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,MaximaPositions,MaximaValues,&IsSaturated,IntSat,NrPixels);
-			printf("%d\n",nPeaks);
+			printf("RegionNr: %d, NPeaks: %d\n",RegNr,nPeaks);
 			if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
 				TotNrRegions--;
 				continue;

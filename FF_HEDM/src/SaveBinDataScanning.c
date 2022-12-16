@@ -172,7 +172,8 @@ int main(int argc, char* argv[]){
 				,&MyData[nSpots].Values[8],&MyData[nSpots].Values[9],&MyData[nSpots].Values[10]
 				,&MyData[nSpots].Values[11],&MyData[nSpots].Values[12],&MyData[nSpots].Values[13]);
 			MyData[nSpots].Values[14] = scanNr;
-			nSpots++;
+			if (fabs(MyData[nSpots].Values[3]) > 0.0001)
+				nSpots++;
 		}
 		printf("%d\n",nSpots);
 		fclose(AllSpotsFile);
