@@ -1643,13 +1643,13 @@ int main(int argc, char *argv[])
 		FILE *BestFile;
 		BestFile = fopen(FileName,"r");
 		if (BestFile == NULL){
-			printf("The BestPos file did not exist for SpotID %d. Continuing to next ID.\n",SpId);
+			printf("The BestPos file did not exist for SpotID %d, FN: %s. Continuing to next ID.\n",SpId,FileName);
 			continue;
 		}
 		fseek(BestFile,0L,SEEK_END);
 		int sz = ftell(BestFile);
 		if (sz == 0){
-			printf("The BestPos file was empty for SpotID %d. Continuing to next ID.\n",SpId);
+			printf("The BestPos file was empty for SpotID %d, FN: %s. Continuing to next ID.\n",SpId,FileName);
 			continue;
 		}
 		rewind(BestFile);

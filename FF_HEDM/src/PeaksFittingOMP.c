@@ -39,6 +39,7 @@
 #define CalcNorm3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
 #define CalcNorm2(x,y) sqrt((x)*(x) + (y)*(y))
 typedef uint16_t pixelvalue;
+double zDiffThresh;
 
 long double diff(struct timespec start, struct timespec end)
 {
@@ -568,6 +569,7 @@ void main(int argc, char *argv[]){
 	double bc=1, Ycen=1024, Zcen=1024, IntSat=16000, OmegaStep=0.25, OmegaFirstFile=-180, Lsd=1000000, px=200, Width=1000, Wavelength=0.189714,MaxRingRad=204800;
 	int NrPixels=2048, NrPxY=0,NrPxZ=0,Padding = 6, StartNr=1;
 	char fs[1024];
+	zDiffThresh = 0;
 	int LayerNr=1;
 	int NrTransOpt=0;
 	int TransOpt[10];
@@ -592,6 +594,12 @@ void main(int argc, char *argv[]){
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr==0){
 			sscanf(aline,"%s %d", dummy, &maxNPeaks);
+			continue;
+		}
+		str = "zDiffThresh ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr==0){
+			sscanf(aline,"%s %lf", dummy, &zDiffThresh);
 			continue;
 		}
 		str = "tx ";
