@@ -1910,35 +1910,19 @@ int main(int argc, char *argv[])
 			FILE *outF = fopen(outFN,"w");
 			if (outF == NULL){
 				printf("Could not open output file for writing: %s\n",outFN);
-				free(spotIDS);
-				FreeMemMatrix(spotsYZO,nSpotsBest);
-				FreeMemMatrix(SpotsOut,nSpotsComp);
-				free(Ini);
-				FreeMemMatrix(SpotsComp,MaxNSpotsBest);
-				FreeMemMatrix(Splist,MaxNSpotsBest);
-				free(ErrorIni);
-				FreeMemMatrix(spotsYZONew,nSpotsComp);
-				free(XFit);
-				free(ErrorInt1);
-				free(XFit2);
-				free(ErrorInt2);
-				free(XFit3);
-				free(ErrorInt3);
-				free(XFit4);
-				free(ErrorFin);
-				continue;
-			}
-			fprintf(outF,"SpotID\tO11\tO12\tO13\tO21\tO22\tO23\tO31\tO32\tO33\tSpotID\tx\ty\tz\tSpotID\ta\tb\tc\talpha\tbeta\tgamma\tSpotID\tPosErr\tOmeErr\tInternalAngle\tRadius\tCompleteness\tE11\tE12\tE13\tE21\tE22\tE23\tE31\tE32\tE33\tEul1\tEul2\tEul3\n");
-			for (i=0;i<27;i++) fprintf(outF,"%lf\t",OutMatr[i]);
-			for (i=0;i<3;i++) for (j=0;j<3;j++) fprintf(outF,"%lf\t",StrainTensorSample[i][j]*1000000);
-			for (i=0;i<3;i++) fprintf(outF,"%lf\t",EulerFit[i]);
-			fprintf(outF,"\n");
-			fprintf(outF,"%s",header);
-			for (i=0;i<nSpotsComp;i++){
-				for (j=0;j<23;j++){
-					fprintf(outF,"%lf\t",SpotsOut[i][j]);
-				}
+			} else{
+				fprintf(outF,"SpotID\tO11\tO12\tO13\tO21\tO22\tO23\tO31\tO32\tO33\tSpotID\tx\ty\tz\tSpotID\ta\tb\tc\talpha\tbeta\tgamma\tSpotID\tPosErr\tOmeErr\tInternalAngle\tRadius\tCompleteness\tE11\tE12\tE13\tE21\tE22\tE23\tE31\tE32\tE33\tEul1\tEul2\tEul3\n");
+				for (i=0;i<27;i++) fprintf(outF,"%lf\t",OutMatr[i]);
+				for (i=0;i<3;i++) for (j=0;j<3;j++) fprintf(outF,"%lf\t",StrainTensorSample[i][j]*1000000);
+				for (i=0;i<3;i++) fprintf(outF,"%lf\t",EulerFit[i]);
 				fprintf(outF,"\n");
+				fprintf(outF,"%s",header);
+				for (i=0;i<nSpotsComp;i++){
+					for (j=0;j<23;j++){
+						fprintf(outF,"%lf\t",SpotsOut[i][j]);
+					}
+					fprintf(outF,"\n");
+				}
 			}
 		}
 		free(spotIDS);
