@@ -1577,12 +1577,14 @@ int main(int argc, char *argv[])
 	startRowNr = (int) (ceil((double)nSpotsToIndex / (double)nBlocks)) * blockNr;
 	int tmp = (int)(ceil((double)nSpotsToIndex / (double)nBlocks)) * (blockNr+1);
 	endRowNr = tmp < (nSpotsToIndex-1) ? tmp : (nSpotsToIndex-1);
+	printf("%d %d %d\n",startRowNr,tmp,endRowNr);
 	nSptIDs = endRowNr-startRowNr+1;
 	SptIDs = malloc(nSptIDs*sizeof(*SptIDs));
 	VoxNrs = malloc(nSptIDs*sizeof(*VoxNrs));
 	// Read spotIDs
 	int it;
 	FILE *spotsFile = fopen("SpotsToIndex.csv","r");
+	for (it=0;it<startRowNr-1;it++) fgets(aline,1000,spotsFile); // skip first startRowNr-1 lines
 	for (it=0;it<nSptIDs;it++){
 		fgets(aline,1000,spotsFile);
 		sscanf(aline,"%d %d",&SptIDs[it], &VoxNrs[it]);
