@@ -1645,21 +1645,6 @@ int main(int argc, char *argv[])
 		if (BestFile == NULL){
 			printf("The BestPos file did not exist for SpotID %d, FN: %s. Continuing to next ID.\n",SpId,FileName);
 			free(spotIDS);
-			FreeMemMatrix(spotsYZO,nSpotsBest);
-			FreeMemMatrix(SpotsOut,nSpotsComp);
-			free(Ini);
-			FreeMemMatrix(SpotsComp,MaxNSpotsBest);
-			FreeMemMatrix(Splist,MaxNSpotsBest);
-			free(ErrorIni);
-			FreeMemMatrix(spotsYZONew,nSpotsComp);
-			free(XFit);
-			free(ErrorInt1);
-			free(XFit2);
-			free(ErrorInt2);
-			free(XFit3);
-			free(ErrorInt3);
-			free(XFit4);
-			free(ErrorFin);
 			continue;
 		}
 		fseek(BestFile,0L,SEEK_END);
@@ -1667,21 +1652,6 @@ int main(int argc, char *argv[])
 		if (sz == 0){
 			printf("The BestPos file was empty for SpotID %d, FN: %s. Continuing to next ID.\n",SpId,FileName);
 			free(spotIDS);
-			FreeMemMatrix(spotsYZO,nSpotsBest);
-			FreeMemMatrix(SpotsOut,nSpotsComp);
-			free(Ini);
-			FreeMemMatrix(SpotsComp,MaxNSpotsBest);
-			FreeMemMatrix(Splist,MaxNSpotsBest);
-			free(ErrorIni);
-			FreeMemMatrix(spotsYZONew,nSpotsComp);
-			free(XFit);
-			free(ErrorInt1);
-			free(XFit2);
-			free(ErrorInt2);
-			free(XFit3);
-			free(ErrorInt3);
-			free(XFit4);
-			free(ErrorFin);
 			continue;
 		}
 		rewind(BestFile);
@@ -1939,7 +1909,7 @@ int main(int argc, char *argv[])
 		{
 			FILE *outF = fopen(outFN,"w");
 			if (outF == NULL){
-				printf("Could not open output file for writing: %s\n",optFN);
+				printf("Could not open output file for writing: %s\n",outFN);
 				free(spotIDS);
 				FreeMemMatrix(spotsYZO,nSpotsBest);
 				FreeMemMatrix(SpotsOut,nSpotsComp);
