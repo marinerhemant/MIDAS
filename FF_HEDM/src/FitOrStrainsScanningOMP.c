@@ -1644,12 +1644,44 @@ int main(int argc, char *argv[])
 		BestFile = fopen(FileName,"r");
 		if (BestFile == NULL){
 			printf("The BestPos file did not exist for SpotID %d, FN: %s. Continuing to next ID.\n",SpId,FileName);
+			free(spotIDS);
+			FreeMemMatrix(spotsYZO,nSpotsBest);
+			FreeMemMatrix(SpotsOut,nSpotsComp);
+			free(Ini);
+			FreeMemMatrix(SpotsComp,MaxNSpotsBest);
+			FreeMemMatrix(Splist,MaxNSpotsBest);
+			free(ErrorIni);
+			FreeMemMatrix(spotsYZONew,nSpotsComp);
+			free(XFit);
+			free(ErrorInt1);
+			free(XFit2);
+			free(ErrorInt2);
+			free(XFit3);
+			free(ErrorInt3);
+			free(XFit4);
+			free(ErrorFin);
 			continue;
 		}
 		fseek(BestFile,0L,SEEK_END);
 		int sz = ftell(BestFile);
 		if (sz == 0){
 			printf("The BestPos file was empty for SpotID %d, FN: %s. Continuing to next ID.\n",SpId,FileName);
+			free(spotIDS);
+			FreeMemMatrix(spotsYZO,nSpotsBest);
+			FreeMemMatrix(SpotsOut,nSpotsComp);
+			free(Ini);
+			FreeMemMatrix(SpotsComp,MaxNSpotsBest);
+			FreeMemMatrix(Splist,MaxNSpotsBest);
+			free(ErrorIni);
+			FreeMemMatrix(spotsYZONew,nSpotsComp);
+			free(XFit);
+			free(ErrorInt1);
+			free(XFit2);
+			free(ErrorInt2);
+			free(XFit3);
+			free(ErrorInt3);
+			free(XFit4);
+			free(ErrorFin);
 			continue;
 		}
 		rewind(BestFile);
@@ -1906,6 +1938,26 @@ int main(int argc, char *argv[])
 		# pragma omp critical
 		{
 			FILE *outF = fopen(outFN,"w");
+			if (outF == NULL){
+				printf("Could not open output file for writing: %s\n",optFN);
+				free(spotIDS);
+				FreeMemMatrix(spotsYZO,nSpotsBest);
+				FreeMemMatrix(SpotsOut,nSpotsComp);
+				free(Ini);
+				FreeMemMatrix(SpotsComp,MaxNSpotsBest);
+				FreeMemMatrix(Splist,MaxNSpotsBest);
+				free(ErrorIni);
+				FreeMemMatrix(spotsYZONew,nSpotsComp);
+				free(XFit);
+				free(ErrorInt1);
+				free(XFit2);
+				free(ErrorInt2);
+				free(XFit3);
+				free(ErrorInt3);
+				free(XFit4);
+				free(ErrorFin);
+				continue;
+			}
 			fprintf(outF,"SpotID\tO11\tO12\tO13\tO21\tO22\tO23\tO31\tO32\tO33\tSpotID\tx\ty\tz\tSpotID\ta\tb\tc\talpha\tbeta\tgamma\tSpotID\tPosErr\tOmeErr\tInternalAngle\tRadius\tCompleteness\tE11\tE12\tE13\tE21\tE22\tE23\tE31\tE32\tE33\tEul1\tEul2\tEul3\n");
 			for (i=0;i<27;i++) fprintf(outF,"%lf\t",OutMatr[i]);
 			for (i=0;i<3;i++) for (j=0;j<3;j++) fprintf(outF,"%lf\t",StrainTensorSample[i][j]*1000000);
