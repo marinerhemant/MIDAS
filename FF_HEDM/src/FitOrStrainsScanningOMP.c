@@ -1864,7 +1864,7 @@ int main(int argc, char *argv[])
 	    ErrorFin = malloc(3*sizeof(*ErrorFin));
 	    CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,FinalResult,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
 						SpotsComp,Splist,ErrorFin,&nSpotsComp,1);
-	    printf("VoxNr %6d, SpID %6d, SpotID %6d, %6d out of %6d, Errors: %7.2f %6.4f %6.4f, ",VoxNrs[thisRowNr],SpId,thisRowNr,nSptIDs,ErrorFin[0],ErrorFin[1],ErrorFin[2]);
+	    printf("VoxNr %6d, SpotID %6d, %6d out of %6d, Errors: %7.2f %6.4f %6.4f, ",VoxNrs[thisRowNr],SpId,thisRowNr,nSptIDs,ErrorFin[0],ErrorFin[1],ErrorFin[2]);
 	    for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
 	    printf("Fitvals: Pos: %7.2f %7.2f %7.2f, Orient: %7.2f %7.2f %7.2f, LatC: %6.4f %6.4f %6.4f %7.3f %7.3f %7.3f\n",
 					FinalResult[0],FinalResult[1],FinalResult[2],FinalResult[3],FinalResult[4],FinalResult[5],FinalResult[6],FinalResult[7],FinalResult[8],
