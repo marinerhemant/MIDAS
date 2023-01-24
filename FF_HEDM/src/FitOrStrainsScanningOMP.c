@@ -1642,6 +1642,7 @@ int main(int argc, char *argv[])
 		sprintf(FileName,"%s/BestPos_%0*d_%0*d.csv",OutputFolder,6,VoxNrs[thisRowNr],9,SpId);
 		int nSpotsBest=0,*spotIDS;
 		spotIDS = malloc(MaxNSpotsBest*sizeof(*spotIDS));
+		// Should we do this in critical mode???
 		FILE *BestFile;
 		BestFile = fopen(FileName,"r");
 		if (BestFile == NULL){
@@ -1926,6 +1927,7 @@ int main(int argc, char *argv[])
 					fprintf(outF,"\n");
 				}
 			}
+			fclose(outF);
 		}
 		free(spotIDS);
 		FreeMemMatrix(spotsYZO,nSpotsBest);
