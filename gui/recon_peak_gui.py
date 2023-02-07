@@ -197,12 +197,6 @@ Tk.Checkbutton(master=firstRowFrame,text="Hann",variable=,command=).grid(row=1,c
 Tk.Checkbutton(master=firstRowFrame,text="Hamming",variable=,command=).grid(row=1,column=15,sticky=Tk.W)
 Tk.Checkbutton(master=firstRowFrame,text="Ramp",variable=,command=).grid(row=1,column=16,sticky=Tk.W)
 
-Tk.Label(master=firstRowFrame, text="selectFitResult, )
-FittingResultType = Tk.StringVar()
-FittingResultType.set(("RMEAN", "MixFactor", "SigmaG", "SigmaL", "MaxInt", "BGFit",
-           "BGSimple", "MeanError", "FitIntegratedIntensity", "TotalIntensity", "TotalIntensityBackgroundCorr", "MaxIntensityObs")
-Tk.Listbox(Tk, listvariable=FittingResultType)
-
 cbox = ttk.Combobox(Tk)
 cbox.grid(row = 1, sticky="NW")
 cbox['value'] = ("RMEAN", "MixFactor", "SigmaG", "SigmaL", "MaxInt", "BGFit",
