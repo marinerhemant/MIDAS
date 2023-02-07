@@ -26,3 +26,6 @@ detectormapper: $(SRCDIR)DetectorMapper.c
 
 integratorpeakfitomp: $(SRCDIR)IntegratorPeakFitOMP.c
 	$(CC) $(SRCDIR)IntegratorPeakFitOMP.c -o $(BINDIR)IntegratorPeakFitOMP -fopenmp $(CFLAGS) $(CFLAGSNLOPT) $(CFLAGSTIFF)
+
+peakfit:$(SRCDIR)PeakFit.c
+	$(CC) $(SRCDIR)PeakFit.c -o $(BINDIR)PeakFit -fopenmp $(CFLAGS) $(CFLAGSNLOPT) $(CFLAGSTIFF)
