@@ -165,6 +165,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 									* 4: Ramp
 			* shiftValues: start_shift end_shift shift_interval [floats] In case of 1 shift, give start_shift=end_shift, shift_interval doesn't matter
 			* ringRemovalCoefficient - If given, will do ringRemoval, otherwise comment or remove line [float] default 1.0
+			* doLog - If 1, will take Log of intensities to calculate transmission, otherwise will use intensities directly. [int] default 1
 			* slicesToProcess - -1 for all or FileName
 			* ExtraPad - 0 if half padding, 1 if one-half padding
 			* AutoCentering - 0 if don't want reconstruction shifted in one direction (rotation axis in center of recon)
@@ -179,6 +180,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 	recon_info_record->use_ring_removal = 0;
 	recon_info_record->debug = 0;
 	recon_info_record->powerIncrement=0;
+	recon_info_record->doLogProj = 1;
 	recon_info_record->auto_centering = 1;
 	while(fgets(aline,4096,fileParam)!=NULL){
 		if (strncmp(aline,"dataFileName",strlen("dataFileName"))==0){
@@ -201,6 +203,9 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 		}
 		if (strncmp(aline,"debug",strlen("debug"))==0){
 			sscanf(aline,"%s %d",dummy,&recon_info_record->debug);
+		}
+		if (strncmp(aline,"doLog",strlen("doLog"))==0){
+			sscanf(aline,"%s %d",dummy,&recon_info_record->doLogProj);
 		}
 		if (strncmp(aline,"thetaRange",strlen("thetaRange"))==0){
 			sscanf(aline,"%s %f %f %f",dummy,&recon_info_record->start_angle,&recon_info_record->end_angle,&recon_info_record->angle_interval);
@@ -668,7 +673,7 @@ void createPlanFile(GLOBAL_CONFIG_OPTS *recon_info_record){
 	recon_info_record->sizeMatrices += readStruct.sizeMatrices;
 	param.sizeMatrices = 0;
 	memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record->theta_list_size);
-	reconCentering(&information,cpy,0,1);
+	reconCentering(&information,cpy,0,recon_info_record.doLogProj);
 	// Do the same slice twice
 	setSinoAndReconBuffers(1, &information.sinograms_boundary_padding[0], &information.reconstructions_boundary_padding[0],&param);
 	setSinoAndReconBuffers(2, &information.sinograms_boundary_padding[0], &information.reconstructions_boundary_padding[0],&param);

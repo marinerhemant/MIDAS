@@ -57,6 +57,7 @@ void usage(){
 		"	* shiftValues: start_shift end_shift shift_interval [floats] In case of 1 shift, give start_shift=end_shift, shift_interval doesn't matter.\n"
 		"	*					ENSURE TO GIVE A RANGE WITH EVEN NUMBER OF SHIFTS\n"
 		"	* ringRemovalCoefficient - If given, will do ringRemoval, otherwise comment or remove line [float] default 1.0\n"
+		"   * doLog - If 1, will take Log of intensities to calculate transmission, otherwise will use intensities directly. [int] default 1.\n"
 		"	* slicesToProcess - -1 for all or FileName. ENSURE TO GIVE EVEN NUMBER OF SLICES\n"
 		"	* ExtraPad - 0 if half padding, 1 if one-half padding"
 		"	* AutoCentering - 0 if don't want reconstruction shifted in one direction (rotation axis in center of recon)\n"
@@ -176,7 +177,7 @@ int main(int argc, char *argv[])
 				memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 				offt = 0;
 				offsetRecons = 0;
-				reconCentering(&information,recon_info_record,offt,1);
+				reconCentering(&information,recon_info_record,offt,recon_info_record.doLogProj);
 				setSinoAndReconBuffers(1, &information.sinograms_boundary_padding[offt], &information.reconstructions_boundary_padding[offsetRecons],&param);
 				sliceRowNr ++;
 				sliceNr = recon_info_record.slices_to_process[sliceRowNr];
@@ -190,7 +191,7 @@ int main(int argc, char *argv[])
 				memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 				offt = information.sinogram_adjusted_size*2;
 				offsetRecons = information.reconstruction_size*4;
-				reconCentering(&information,recon_info_record,offt,1);
+				reconCentering(&information,recon_info_record,offt,recon_info_record.doLogProj);
 				setSinoAndReconBuffers(2, &information.sinograms_boundary_padding[offt], &information.reconstructions_boundary_padding[offsetRecons],&param);
 				reconstruct(&param);
 				getRecons(&information,recon_info_record,&param,0);
@@ -260,13 +261,13 @@ int main(int argc, char *argv[])
 				memcpy(information.sino_calc_buffer,readStruct[sliceNr].norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 				offt = 0;
 				offsetRecons = 0;
-				reconCentering(&information,recon_info_record,offt,1);
+				reconCentering(&information,recon_info_record,offt,recon_info_record.doLogProj);
 				setSinoAndReconBuffers(1, &information.sinograms_boundary_padding[offt], &information.reconstructions_boundary_padding[offsetRecons],&param);
 				information.shift = recon_info_record.shift_values[shiftNr+1];
 				memcpy(information.sino_calc_buffer,readStruct[sliceNr].norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 				offt = information.sinogram_adjusted_size*2;
 				offsetRecons = information.reconstruction_size*4;
-				reconCentering(&information,recon_info_record,offt,1);
+				reconCentering(&information,recon_info_record,offt,recon_info_record.doLogProj);
 				setSinoAndReconBuffers(2, &information.sinograms_boundary_padding[offt], &information.reconstructions_boundary_padding[offsetRecons],&param);
 				reconstruct(&param);
 				information.shift = recon_info_record.shift_values[shiftNr];

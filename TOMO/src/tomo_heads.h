@@ -159,6 +159,7 @@ typedef struct {
 		sinogram_adjusted_size;
 	char *wisdom_string;
 	int powerIncrement;
+	int doLogProj;
 	long sizeMatrices;
 }GLOBAL_CONFIG_OPTS;
 
