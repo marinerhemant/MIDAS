@@ -149,7 +149,7 @@ updF.write('nElsPerRad '+str(nElsPerRad)+'\n');
 updF.write('ReconSize '+str(reconSize)+'\n');
 updF.close()
 
-subprocess.call('~/opt/MIDAS/DT/bin/peakfit '+paramFN+'.upd '+str(numProcs),shell=True)
+subprocess.call('~/opt/MIDAS/DT/bin/PeakFit '+paramFN+'.upd '+str(numProcs),shell=True)
 
 fitResult = np.fromfile('PeakFitResult.bin',dtype=np.double,count=(reconSize*reconSize*nEtas*nRads*12)).reshape((reconSize,reconSize,nEtas,nRads,12)).transpose()
 fitResult[4][1].transpose().tofile('IntensityFit.bin')
