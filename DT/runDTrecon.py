@@ -124,6 +124,7 @@ f.write('thetaRange '+str(startOme)+' '+str(startOme+(nFrames-1)*omeStep)+' '+st
 f.write('slicesToProcess -1\n')
 f.write('shiftValues 0.000000 0.000000 0.500000\n')
 f.write('ringRemovalCoefficient 1.0\n')
+f.write('doLog 0\n')
 f.write('ExtraPad 1\n')
 f.close()
 
@@ -137,7 +138,7 @@ for fNr in range(nRads*nElsPerRad*nEtas):
     data = np.fromfile(f,dtype=np.float32,count=(reconSize*reconSize)).reshape((reconSize,reconSize))
     recons[fNr] = data
 
-recons_reshape = -1*np.transpose(recons.reshape((nRads*nElsPerRad,nEtas,reconSize,reconSize)))
+recons_reshape = np.transpose(recons.reshape((nRads*nElsPerRad,nEtas,reconSize,reconSize)))
 print(recons_reshape.shape)
 
 recons_reshape.astype(np.double).tofile('RawDataPeakFit.bin')
