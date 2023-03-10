@@ -24,6 +24,7 @@
 #include <nlopt.h>
 #include <stdint.h>
 #include <tiffio.h>
+#include <hdf5.h>
 
 //#define PRINTOPT
 #define deg2rad 0.0174532925199433
@@ -33,6 +34,8 @@ long long int NrCalls;
 long long int NrCallsProfiler;
 int NrPixelsGlobal = 2048;
 #define MultFactor 1
+
+int skipFrame= 0;
 
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
 extern size_t mapMaskSize;
@@ -164,7 +167,7 @@ static inline
 void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc, double px, double *R, double *Eta, double Rmins[n_hkls],
 						double Rmaxs[n_hkls], double EtaBinsLow[nEtaBins], double EtaBinsHigh[nEtaBins], int nIndices, int *NrEachIndexbin, int **Indices,
 						double tx, double ty, double tz, double p0, double p1, double p2, double p3, double RhoD, double Lsd){
-	int i, j, k, l, counter=0;
+	int i, j, k, l, counter=0,ctr=0;
 	for (i=0;i<nIndices;i++) NrEachIndexbin[i]=0;
 	double txr, tyr, tzr;
 	txr = deg2rad*tx;
@@ -178,7 +181,7 @@ void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc, dou
 	MatrixMultF33(Rx,TRint,TRs);
 	double Yc,Zc,n0=2,n1=4,n2=2;
 	double ABC[3], ABCPr[3], XYZ[3];
-	double Rt,Rad, EtaS, RNorm, DistortFunc, EtaT;
+	double Rt,Rad, EtaS, EtaST, RNorm, DistortFunc, EtaT;
 	for (i=0;i<z;i++){
 		for (j=0;j<y;j++){
 			Yc = (-j + ybc)*px;
@@ -186,6 +189,7 @@ void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc, dou
 			ABC[0] = 0;
 			ABC[1] = Yc;
 			ABC[2] = Zc;
+			EtaST = CalcEtaAngle(ABC[1],ABC[2]);
 			MatrixMult(TRs,ABC,ABCPr);
 			XYZ[0] = Lsd+ABCPr[0];
 			XYZ[1] = ABCPr[1];
@@ -194,16 +198,19 @@ void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc, dou
 			EtaS = CalcEtaAngle(XYZ[1],XYZ[2]);
 			RNorm = Rad/RhoD;
 			EtaT = 90 - EtaS;
+			// Reset Eta so that calculations later on are still good.
+			EtaS = EtaST;
 			DistortFunc = (p0*(pow(RNorm,n0))*(cos(deg2rad*(2*EtaT)))) + (p1*(pow(RNorm,n1))*(cos(deg2rad*(4*EtaT+p3)))) + (p2*(pow(RNorm,n2))) + 1;
 			Rt = Rad * DistortFunc;
 			R[counter] = Rt;
 			Eta[counter] = EtaS;
 			for (k=0;k<n_hkls;k++){
-				if (R[counter] >= (Rmins[k]-px) && R[counter] <= (Rmaxs[k] + px)){
+				if (Rt >= (Rmins[k]-px) && Rt <= (Rmaxs[k] + px)){
 					for (l=0;l<nEtaBins;l++){
-						if (Eta[counter] >= (EtaBinsLow[l] - px/R[counter]) && Eta[counter] <= (EtaBinsHigh[l] + px/R[counter])){
+						if (EtaS >= (EtaBinsLow[l] - px/R[counter]) && EtaS <= (EtaBinsHigh[l] + px/R[counter])){
 							Indices[(nEtaBins*k)+l][NrEachIndexbin[(nEtaBins*k)+l]] = (i*NrPixelsGlobal) + j;
 							NrEachIndexbin[(nEtaBins*k)+l] += 1;
+							ctr++;
 							break;
 						}
 					}
@@ -315,7 +322,7 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit], double PeakShape[NrPt
 
 void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Average,
 	double *R, double *Eta, double *RMean, double *EtaMean, int NrPtsForFit, double *IdealRmins,
-	double *IdealRmaxs,int nBinsPerRing,double ybc, double zbc, double px, int NrPixels){
+	double *IdealRmaxs,int nBinsPerRing,double ybc, double zbc, double px, int NrPixels, double EtaBinsLow[nBinsPerRing], double EtaBinsHigh[nBinsPerRing]){
 	int i,j,k,BinNr;
 	double PeakShape[NrPtsForFit], Rmin, Rmax, Rstep, Rthis, Rs[NrPtsForFit];
 	double Rfit;
@@ -327,6 +334,7 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 	for (i=0;i<NrPtsForFit;i++)Idxs[0][i]=i;
 	double AllZero;
 	double ytr, ztr;
+	double EtaTempThis,RTempThis;
 	for (i=0;i<nIndices;i++){
 		// If no pixel inside the detector, ignore this bin
 		if (NrEachIndexBin[i] == 0){
@@ -477,7 +485,10 @@ double problem_function(
 }
 
 void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean, double *IdealTtheta, double Lsd, double MaxRad,
-				  double ybc, double zbc, double tx, double tyin, double tzin, double p0in, double p1in, double p2in, double p3in, double *ty, double *tz, double *LsdFit, double *ybcFit, double *zbcFit, double *p0, double *p1, double *p2, double *p3, double *MeanDiff, double tolTilts, double tolLsd, double tolBC, double tolP, double tolP0, double tolP1, double tolP2, double tolP3, double px)
+				  double ybc, double zbc, double tx, double tyin, double tzin, double p0in, double p1in, 
+				  double p2in, double p3in, double *ty, double *tz, double *LsdFit, double *ybcFit, double *zbcFit, 
+				  double *p0, double *p1, double *p2, double *p3, double *MeanDiff, double tolTilts, double tolLsd, 
+				  double tolBC, double tolP, double tolP0, double tolP1, double tolP2, double tolP3, double px)
 {
 	// Look at the possibility of including translations for each of the small panels on a multi-panel detector in the ooptimization....
 	// Also change CorrectTiltSpatialDistortion to include translations!!!
@@ -620,7 +631,7 @@ static inline void MakeSquare (int NrPixels, int NrPixelsY, int NrPixelsZ, pixel
 	}
 }
 
-int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
+int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr, char *dname)
 {
 	int i;
 	if (dType == 1){
@@ -713,6 +724,33 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 			}
 		}
 		return 0;
+	} else if (dType == 8){  // this returns a sum of all frames.
+		char *DATASETNAME = dname;
+		int j,k;
+	    hid_t file;
+	    herr_t status, status_n;                             
+	    hid_t dataset;  
+		hid_t dataspace;
+	    hsize_t dims[3];
+	    int ndims;
+	    file = H5Fopen(fn,H5F_ACC_RDONLY, H5P_DEFAULT);
+	    dataset = H5Dopen(file, DATASETNAME,H5P_DEFAULT);
+	    dataspace = H5Dget_space(dataset);
+	    ndims  = H5Sget_simple_extent_dims(dataspace, dims, NULL);
+	    printf("ndims: %d, dimensions %lu x %lu x %lu. Allocating big array.\n",
+		   ndims, (unsigned long)(dims[0]), (unsigned long)(dims[1]), (unsigned long)(dims[2]));
+		int frame_dims[3] = {dims[0],dims[1],dims[2]};	
+		uint16_t *data = calloc(frame_dims[0]*frame_dims[1]*frame_dims[2],sizeof(uint16_t));
+		printf("Reading file: %lu bytes.\n",(unsigned long) dims[0]*dims[1]*dims[2]*2);
+		status_n = H5Dread(dataset,H5T_STD_U16LE,H5S_ALL,H5S_ALL,H5P_DEFAULT,data);
+		for (i=skipFrame;i<frame_dims[0];i++){
+			//~ printf("%d\n",i);
+			for (j=0;j<frame_dims[1];j++){
+				for (k=0;k<frame_dims[2];k++){
+					returnArr[j*frame_dims[2]+k] += ((double)data[i*(frame_dims[1]*frame_dims[2])+j*frame_dims[2]+k])/frame_dims[0];
+				}
+			}
+		}
 	} else {
 		return 127;
 	}
@@ -774,6 +812,12 @@ int main(int argc, char *argv[])
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %d", dummy, &dType);
+            continue;
+        }
+		str = "SkipFrame ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &skipFrame);
             continue;
         }
 		str = "GapIntensity ";
@@ -1104,6 +1148,9 @@ int main(int argc, char *argv[])
 	} else if (dType == 7){ // Tiff Uint8
 		pxSize = sizeof(uint8_t);
 		HeadSize = 0;
+	} else if (dType == 8){ // HDF Unit16
+		pxSize = sizeof(uint16_t);
+		HeadSize = 0;
 	}
 	size_t SizeFile = pxSize * NrPixelsY * NrPixelsZ;
 	size_t sz;
@@ -1122,26 +1169,111 @@ int main(int argc, char *argv[])
 	Average = calloc(NrPixels*NrPixels,sizeof(*Average)); // Squared.
 	fd = fopen(Dark,"rb");
 
-	uint16_t *outmatr;
-	char fnout[4096];
-	FILE *fout;
-	sprintf(fnout,"%s.square",Dark);
-	outmatr = calloc(NrPixels*NrPixels,sizeof(*outmatr));
 	int rc;
-	if (fd == NULL){
+	char *dname;
+	if (fd == NULL && dType != 8){
 		printf("Dark file %s could not be read. Making an empty array for dark.\n",Dark);
 		for (j=0;j<(NrPixels*NrPixels);j++)AverageDark[j] = 0;
 	}else{
-		fseek(fd,0L,SEEK_END);
-		sz = ftell(fd);
-		sz -= HeadSize;
-		rewind(fd);
-		nFrames = sz/(SizeFile);
-		Skip = HeadSize;
-		printf("Reading dark file:      %s, nFrames: %d, skipping first %ld bytes.\n",Dark,nFrames,Skip);
-		fseek(fd,Skip,SEEK_SET);
-		for (i=0;i<nFrames;i++){
-			rc = fileReader(fd,Dark,dType,NrPixelsY*NrPixelsZ,DarkFile);
+		if (dType != 8){
+			dname = "/";
+			fseek(fd,0L,SEEK_END);
+			sz = ftell(fd);
+			sz -= HeadSize;
+			rewind(fd);
+			nFrames = sz/(SizeFile);
+			Skip = HeadSize;
+			printf("Reading dark file:      %s, nFrames: %d, skipping first %ld bytes.\n",Dark,nFrames,Skip);
+			fseek(fd,Skip,SEEK_SET);
+			for (i=0;i<nFrames;i++){
+				rc = fileReader(fd,Dark,dType,NrPixelsY*NrPixelsZ,DarkFile,dname);
+				MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,DarkFile,DarkFile2);
+				DoImageTransformations(NrTransOpt,TransOpt,DarkFile2,NrPixels);
+				if (makeMap == 1){
+					size_t badPxCounter = 0;
+					mapMaskSize = NrPixels;
+					mapMaskSize *= NrPixels;
+					mapMaskSize /= 32;
+					mapMaskSize ++;
+					mapMask = calloc(mapMaskSize,sizeof(*mapMask));
+					for (j=0;j<NrPixels*NrPixels;j++){
+						if (DarkFile2[j] == (pixelvalue) GapIntensity || DarkFile2[j] == (pixelvalue) BadPxIntensity){
+							badPxCounter++;
+							SetBit(mapMask,j);
+						}
+					}
+					makeMap = 0;
+					printf("%lld\n",(long long int)badPxCounter);
+				}
+				for(j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]+=DarkFile2[j];
+			}
+			printf("Dark file read.\n");
+			for (j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]=AverageDark[j]/nFrames;
+			fclose(fd);
+		}
+	}
+	if (makeMap == 2){
+		mapMaskSize = NrPixels;
+		mapMaskSize *= NrPixels;
+		mapMaskSize /= 32;
+		mapMaskSize ++;
+		mapMask = calloc(mapMaskSize,sizeof(*mapMask));
+		double *mapper;
+		mapper = calloc(NrPixelsY*NrPixelsZ,sizeof(*mapper));
+		double *mapperSquare;
+		mapperSquare = calloc(NrPixels*NrPixels,sizeof(*mapperSquare));
+		fileReader(fd,GapFN,7,NrPixelsY*NrPixelsZ,mapper,dname);
+		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,mapper,mapperSquare);
+		DoImageTransformations(NrTransOpt,TransOpt,mapperSquare,NrPixels);
+		for (i=0;i<NrPixels*NrPixels;i++){
+			if (mapperSquare[i] == 1){
+				SetBit(mapMask,i);
+				mapperSquare[i] = 0;
+			}
+		}
+		fileReader(fd,BadPxFN,7,NrPixelsY*NrPixelsZ,mapper,dname);
+		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,mapper,mapperSquare);
+		DoImageTransformations(NrTransOpt,TransOpt,mapperSquare,NrPixels);
+		for (i=0;i<NrPixels*NrPixels;i++){
+			if (mapperSquare[i] == 1){
+				SetBit(mapMask,i);
+				mapperSquare[i] = 0;
+			}
+		}
+	}
+	int a;
+	double means[11];
+	for (a=0;a<11;a++) means[a] = 0;
+	for (a=StartNr;a<=EndNr;a++){
+		start = clock();
+		sprintf(FileName,"%s/%s_%0*d%s",folder,fn,Padding,a,Ext);
+		if (dType != 8){
+			fp = fopen(FileName,"rb");
+			if (fp == NULL){
+				printf("File %s could not be read. Continuing to next one.\n",FileName);
+				continue;
+			}
+			fseek(fp,0L,SEEK_END);
+			sz = ftell(fp);
+			sz = sz - HeadSize;
+			nFrames = sz/(SizeFile);
+			Skip = HeadSize;
+			printf("Reading calibrant file: %s, nFrames: %d %d %d, skipping first %ld bytes.\n",FileName,nFrames,(int)sz,(int)SizeFile,Skip);
+			rewind(fp);
+			fseek(fp,Skip,SEEK_SET);
+			for (j=0;j<nFrames;j++){
+				rc = fileReader(fp,FileName,dType,NrPixelsY*NrPixelsZ,Image,dname);
+				MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,Image,Image2);
+				DoImageTransformations(NrTransOpt,TransOpt,Image2,NrPixels);
+				for(k=0;k<(NrPixels*NrPixels);k++){
+					Average[k]+=(double)(Image2[k])-AverageDark[k]; // In reality this is sum
+				}
+			}
+			TotFrames+=nFrames;
+			fclose(fp);
+		} else{
+			dname = "exchange/dark";
+			rc = fileReader(fd,FileName,dType,NrPixelsY*NrPixelsZ,DarkFile,dname);
 			MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,DarkFile,DarkFile2);
 			DoImageTransformations(NrTransOpt,TransOpt,DarkFile2,NrPixels);
 			if (makeMap == 1){
@@ -1160,70 +1292,22 @@ int main(int argc, char *argv[])
 				makeMap = 0;
 				printf("%lld\n",(long long int)badPxCounter);
 			}
-			for(j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]+=DarkFile2[j];
-		}
-		printf("Dark file read.\n");
-		for (j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]=AverageDark[j]/nFrames;
-		fclose(fd);
-	}
-	if (makeMap == 2){
-		mapMaskSize = NrPixels;
-		mapMaskSize *= NrPixels;
-		mapMaskSize /= 32;
-		mapMaskSize ++;
-		mapMask = calloc(mapMaskSize,sizeof(*mapMask));
-		double *mapper;
-		mapper = calloc(NrPixelsY*NrPixelsZ,sizeof(*mapper));
-		double *mapperSquare;
-		mapperSquare = calloc(NrPixels*NrPixels,sizeof(*mapperSquare));
-		fileReader(fd,GapFN,7,NrPixelsY*NrPixelsZ,mapper);
-		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,mapper,mapperSquare);
-		DoImageTransformations(NrTransOpt,TransOpt,mapperSquare,NrPixels);
-		for (i=0;i<NrPixels*NrPixels;i++){
-			if (mapperSquare[i] == 1){
-				SetBit(mapMask,i);
-				mapperSquare[i] = 0;
-			}
-		}
-		fileReader(fd,BadPxFN,7,NrPixelsY*NrPixelsZ,mapper);
-		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,mapper,mapperSquare);
-		DoImageTransformations(NrTransOpt,TransOpt,mapperSquare,NrPixels);
-		for (i=0;i<NrPixels*NrPixels;i++){
-			if (mapperSquare[i] == 1){
-				SetBit(mapMask,i);
-				mapperSquare[i] = 0;
-			}
-		}
-	}
-	int a;
-	double means[11];
-	for (a=0;a<11;a++) means[a] = 0;
-	for (a=StartNr;a<=EndNr;a++){
-		start = clock();
-		sprintf(FileName,"%s/%s_%0*d%s",folder,fn,Padding,a,Ext);
-		fp = fopen(FileName,"rb");
-		if (fp == NULL){
-			printf("File %s could not be read. Continuing to next one.\n",FileName);
-			continue;
-		}
-		fseek(fp,0L,SEEK_END);
-		sz = ftell(fp);
-		sz = sz - HeadSize;
-		nFrames = sz/(SizeFile);
-		Skip = HeadSize;
-		printf("Reading calibrant file: %s, nFrames: %d %d %d, skipping first %ld bytes.\n",FileName,nFrames,(int)sz,(int)SizeFile,Skip);
-		rewind(fp);
-		fseek(fp,Skip,SEEK_SET);
-		for (j=0;j<nFrames;j++){
-			rc = fileReader(fp,FileName,dType,NrPixelsY*NrPixelsZ,Image);
+			printf("Dark file read.\n");
+			for (j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]=DarkFile2[j];
+			dname = "exchange/data";
+			rc = fileReader(fd,FileName,dType,NrPixelsY*NrPixelsZ,Image,dname);
 			MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,Image,Image2);
 			DoImageTransformations(NrTransOpt,TransOpt,Image2,NrPixels);
-			for(k=0;k<(NrPixels*NrPixels);k++){
-				Average[k]+=(double)(Image2[k])-AverageDark[k]; // In reality this is sum
-			}
+			for (j=0;j<(NrPixels*NrPixels);j++)Average[j]=Image2[j]-AverageDark[j];
+				//~ uint16_t *outMatrix;
+				//~ outMatrix = calloc(NrPixels*NrPixels,sizeof(uint16_t));
+				//~ for (j=0;j<(NrPixels*NrPixels);j++)outMatrix[j] = (uint16_t) Average[j];
+				//~ FILE *fnew;
+				//~ fnew = fopen("Data_000001.ge3","wb");
+				//~ fwrite(outMatrix,sizeof(uint16_t)*NrPixels*NrPixels,1,fnew);
+				//~ fclose(fnew);
+				//~ return;
 		}
-		TotFrames+=nFrames;
-		fclose(fp);
 		double IdealTthetas[n_hkls], TthetaMins[n_hkls], TthetaMaxs[n_hkls];
 		for (i=0;i<n_hkls;i++){IdealTthetas[i]=2*Thetas[i];TthetaMins[i]=IdealTthetas[i]-TthetaTol;TthetaMaxs[i]=IdealTthetas[i]+TthetaTol;}
 		double IdealRs[n_hkls], Rmins[n_hkls], Rmaxs[n_hkls];
@@ -1241,7 +1325,7 @@ int main(int argc, char *argv[])
 		Eta = malloc(NrPixels*NrPixels*sizeof(*Eta));
 		int **Indices, nIndices;
 		nIndices = nEtaBins * n_hkls;
-		int *NrEachIndexBin;
+		int *NrEachIndexBin, *etaBinNr;
 		NrEachIndexBin = malloc(nIndices*sizeof(*NrEachIndexBin));
 		Indices = allocMatrixInt(nIndices,20000);
 		Car2Pol(n_hkls,nEtaBins,NrPixels,NrPixels,ybc,zbc,px,R,Eta,Rmins,Rmaxs,EtaBinsLow,EtaBinsHigh,nIndices,NrEachIndexBin,Indices,tx,tyin,tzin,p0in,p1in,p2in,p3in,MaxRingRad,Lsd);
@@ -1264,7 +1348,7 @@ int main(int argc, char *argv[])
 		if (FitWeightMean == 1) {
 			CalcWeightedMean(nIndices,NrEachIndexBin,Indices,Average,R,Eta,RMean,EtaMean);
 		} else {
-			CalcFittedMean(nIndices,NrEachIndexBin,Indices,Average,R,Eta,RMean,EtaMean,NrPtsForFit,IdealRmins,IdealRmaxs,nEtaBins,ybc,zbc,px,NrPixels);
+			CalcFittedMean(nIndices,NrEachIndexBin,Indices,Average,R,Eta,RMean,EtaMean,NrPtsForFit,IdealRmins,IdealRmaxs,nEtaBins,ybc,zbc,px,NrPixels,EtaBinsLow,EtaBinsHigh);
 		}
 		// Find the RMean, which are 0 and update accordingly.
 		int countr=0;
@@ -1290,7 +1374,10 @@ int main(int argc, char *argv[])
 		IdealTtheta = IdealTtheta2;
 		end = clock();
 	    diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
-	    if (FitWeightMean != 1){printf("Number of calls to profiler function: %lld\n",NrCallsProfiler);printf("Time elapsed in fitting peak profiles:\t%f s.\n",diftotal);}
+	    if (FitWeightMean != 1){
+			printf("Number of calls to profiler function: %lld\n",NrCallsProfiler);
+			printf("Time elapsed in fitting peak profiles:\t%f s.\n",diftotal);
+		}
 	    else printf("Time elapsed in finding peak positions:\t%f s.\n",diftotal);
 		double *YMean, *ZMean;
 		YMean = malloc(nIndices*sizeof(*YMean));
@@ -1307,7 +1394,8 @@ int main(int argc, char *argv[])
 		}
 		CorrectTiltSpatialDistortion(nIndices,MaxRingRad,Yc,Zc,IdealTtheta,px,Lsd,ybc,zbc,tx,tyin,tzin,p0in,p1in,p2in,p3in,EtaIns,DiffIns,RadIns,&StdDiff);
 		NrCalls = 0;
-		FitTiltBCLsd(nIndices,Yc,Zc,IdealTtheta,Lsd,MaxRingRad,ybc,zbc,tx,tyin,tzin,p0in,p1in,p2in,p3in,&ty,&tz,&LsdFit,&ybcFit,&zbcFit,&p0,&p1,&p2,&p3,&MeanDiff,tolTilts,tolLsd,tolBC,tolP,tolP0,tolP1,tolP2,tolP3,px);
+		FitTiltBCLsd(nIndices,Yc,Zc,IdealTtheta,Lsd,MaxRingRad,ybc,zbc,tx,tyin,tzin,p0in,p1in,p2in,p3in,&ty,&tz,&LsdFit,&ybcFit,&zbcFit,
+					 &p0,&p1,&p2,&p3,&MeanDiff,tolTilts,tolLsd,tolBC,tolP,tolP0,tolP1,tolP2,tolP3,px);
 		printf("Number of function calls: %lld\n",NrCalls);
 		printf("Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 %0.12f\np2 %0.12f\np3 %0.12f\nMeanStrain %0.12lf\n",
 				LsdFit,ybcFit,zbcFit,ty,tz,p0,p1,p2,p3,MeanDiff);

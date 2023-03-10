@@ -401,6 +401,10 @@ main(int argc, char *argv[])
 		printf("Could not allocate memory\n");
 		return 1;
 	}
+	int voxNr=0;
+	FILE *spF;
+	spF = fopen("SimulatedSpots.txt","w");
+	fprintf(spF,"VoxRowNr\tDistanceNr\tFrameNr\tHorPx\tVerPx\n");
 	while (fgets(aline,4096,InpMicF)!= NULL){
 		sscanf(aline,"%s %s %s %lf %lf %lf %lf %lf %lf %lf %lf %s",dummy,dummy,dummy,&xs,&ys,&edgeLen,&ud,&eulThis[0],&eulThis[1],&eulThis[2],&origConf,dummy);
 		gs = edgeLen/2;
@@ -421,7 +425,11 @@ main(int argc, char *argv[])
 		YG[2] = ys+dy2;
 		//~ printf("%lf %lf %lf %d %lf\n",eulThis[0],eulThis[1],eulThis[2],NrPixelsGrid,gs);
 		Euler2OrientMat(eulThis,OMIn);
-		SimulateAccOrient(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XG,YG,RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,Thetas,OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,ObsSpotsInfo,OMIn,TheorSpots);
+		SimulateAccOrient(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XG,YG,
+			RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,Thetas,
+			OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,ObsSpotsInfo,
+			OMIn,TheorSpots,voxNr,spF);
+		voxNr++;
 	}
 	printf("Writing output file\n");
 	FILE *OutputF;

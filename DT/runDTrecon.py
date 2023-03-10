@@ -83,7 +83,7 @@ fn = f'{outfStem}_{str(startNr).zfill(pad)}{ext}.LineOuts.bin'
 f = open(fn)
 nEls = int(np.fromfile(f,dtype=np.ulonglong,count=(3))[0])
 nElsPerRad = int(nEls/nRads)
-reconSize=findNextPowerOf2(nElsPerRad)
+reconSize=findNextPowerOf2(nFiles)
 f.close()
 
 sino_arr = np.zeros((nFiles,nFrames,nEtas,nElsPerRad*nRads))

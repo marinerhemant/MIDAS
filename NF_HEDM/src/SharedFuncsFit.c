@@ -757,7 +757,9 @@ SimulateDiffractionImage(
     double P0All[nLayers][3],
     const int NrPixelsGrid,
     uint16_t *ObsSpotsInfo,
-    double OrientMatIn[3][3])
+    double OrientMatIn[3][3],
+    int voxNr,
+    FILE *spF)
 {
     int j,OmeBin,OutofBounds,k,l;
     double OmegaThis,ythis,zthis,XGT,YGT,Displ_Y,Displ_Z,ytemp,ztemp,
@@ -864,6 +866,8 @@ SimulateDiffractionImage(
 				if (MultY >= 2048 || MultY < 0 || MultZ >= 2048 || MultZ < 0){
 					break;
 				}
+				
+				fprintf(spF,"%d\t%d\t%d\t%d\t%d\n",voxNr,Layer,OmeBin,MultY,MultZ);
 				BinNr = Layer*NrOfFiles;
 				BinNr *= 2048;
 				BinNr *= 2048;
@@ -950,7 +954,9 @@ SimulateAccOrient(
     const int NrPixelsGrid,
     uint16_t *ObsSpotsInfo,
     double OrientMatIn[3][3],
-    double *TheorSpots)
+    double *TheorSpots,
+    int voxNr,
+    FILE *spF)
 {
     int nTspots,i;
     double Lsd0=Lsd[0];
@@ -964,7 +970,7 @@ SimulateAccOrient(
     }
     SimulateDiffractionImage(NrOfFiles,nLayers,nTspots,TheorSpots,OmegaStart,
 		OmegaStep,XG,YG,Lsd,SizeObsSpots,RotMatTilts,px,ybc,zbc,gs,
-		P0,NrPixelsGrid,ObsSpotsInfo,OrientMatIn);
+		P0,NrPixelsGrid,ObsSpotsInfo,OrientMatIn,voxNr,spF);
 }
 
 void
