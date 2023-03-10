@@ -673,7 +673,7 @@ void createPlanFile(GLOBAL_CONFIG_OPTS *recon_info_record){
 	recon_info_record->sizeMatrices += readStruct.sizeMatrices;
 	param.sizeMatrices = 0;
 	memcpy(information.sino_calc_buffer,readStruct.norm_sino,sizeof(float)*information.sinogram_adjusted_xdim*recon_info_record->theta_list_size);
-	reconCentering(&information,cpy,0,recon_info_record.doLogProj);
+	reconCentering(&information,cpy,0,recon_info_record->doLogProj);
 	// Do the same slice twice
 	setSinoAndReconBuffers(1, &information.sinograms_boundary_padding[0], &information.reconstructions_boundary_padding[0],&param);
 	setSinoAndReconBuffers(2, &information.sinograms_boundary_padding[0], &information.reconstructions_boundary_padding[0],&param);
