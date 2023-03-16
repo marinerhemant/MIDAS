@@ -8,6 +8,7 @@ MPICC=LD_LIBRARY_PATH=$${HOME}/.MIDAS/MPICH/lib:$LD_LIBRARY_PATH $${HOME}/.MIDAS
 NCFLAGS=-O3 -G -g -w -arch sm_52 -lm -rdc=true # -res-usage
 CFLAGS=-fPIC -g -ldl -lm -fgnu89-inline -O3 -w -Wall
 MPICCFLAGS=-I$${HOME}/.MIDAS/MPICH/include -L$${HOME}/.MIDAS/MPICH/lib -fopenmp -lmpi -fPIC -g -ldl -lm -fgnu89-inline -O3 -w
+CFLAGSHDF=-I$${HOME}/.MIDAS/hdf5/include -L$${HOME}/.MIDAS/hdf5/lib -lhdf5_hl -lhdf5
 CFLAGSNETCDF=-I$${HOME}/.MIDAS/netcdf/include -L$${HOME}/.MIDAS/netcdf/lib -lnetcdf -I$${HOME}/.MIDAS/hdf5/include -L$${HOME}/.MIDAS/hdf5/lib -lhdf5_hl -lhdf5 -I$${HOME}/.MIDAS/zlib/include -L$${HOME}/.MIDAS/zlib/lib -lz
 NLOPT=""
 ifneq ($(NLOPT),"")
@@ -84,6 +85,9 @@ help:
 scanningfcns: $(SRCDIR)ScanningFunctions.c
 	$(CC) $(SRCDIR)ScanningFunctions.c $(SRCDIR)CalcStrains.c -o $(BINDIR)ScanningFunctions $(CFLAGS) $(CFLAGSNLOPT) -fopenmp
 
+hdfread:
+	$(CC) $(SRCDIR)hdf5_read.c -o $(BINDIR)hdf_read $(CFLAGSHDF) $(CFLAGS)
+
 scanningfcnsso: $(SRCDIR)ScanningFunctionsSO.c
 	$(CC) $(SRCDIR)ScanningFunctionsSO.c  -shared -Wl,-soname,imageMax -o $(BINDIR)ScanningFunctionsSO.so $(CFLAGS) -fopenmp
 
@@ -97,7 +101,7 @@ imagemax: $(SRCDIR)imageMax.c
 	$(CC) $(SRCDIR)imageMax.c -shared -Wl,-soname,imageMax -o $(BINDIR)imageMax.so -fPIC -ldl -lm -fgnu89-inline -O3 -w
 
 calibrant: $(SRCDIR)Calibrant.c
-	$(CC) $(SRCDIR)Calibrant.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)Calibrant $(CFLAGS) $(CFLAGSTIFF) $(CFLAGSNLOPT)
+	$(CC) $(SRCDIR)Calibrant.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)Calibrant $(CFLAGSHDF) $(CFLAGS) $(CFLAGSTIFF) $(CFLAGSNLOPT)
 
 fitsetup: $(SRCDIR)FitSetupParamsAll.c
 	$(CC) $(SRCDIR)FitSetupParamsAll.c -o $(BINDIR)FitSetup $(CFLAGS) $(CFLAGSNLOPT)
@@ -215,7 +219,7 @@ detectormapper: $(SRCDIR)DetectorMapper.c
 	$(CC) $(SRCDIR)DetectorMapper.c -o $(BINDIR)DetectorMapper $(CFLAGS)
 
 integrator: $(SRCDIR)Integrator.c
-	$(CC) $(SRCDIR)Integrator.c -o $(BINDIR)Integrator $(CFLAGS) $(CFLAGSTIFF)
+	$(CC) $(SRCDIR)Integrator.c -o $(BINDIR)Integrator $(CFLAGS) $(CFLAGSTIFF) $(CFLAGSHDF)
 
 indexercuda: $(SRCDIR)IndexerRefineNLOPT.cu
 	$(NCC) $(SRCDIR)IndexerRefineNLOPT.cu -o $(BINDIR)Indexer $(NCFLAGS)

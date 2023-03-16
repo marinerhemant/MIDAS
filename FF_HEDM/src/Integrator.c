@@ -28,6 +28,7 @@
 #include <stdint.h>
 #include <tiffio.h>
 #include <libgen.h>
+#include <hdf5.h>
 
 typedef double pixelvalue;
 
@@ -309,7 +310,7 @@ int main(int argc, char **argv)
     int TransOpt[10];
     int makeMap = 0;
     size_t mapMaskSize = 0;
-	int *mapMask;
+	int *mapMask, skipFrame=0;
 	int dType = 1;
 	char GapFN[4096], BadPxFN[4096], outputFolder[4096];
 	int sumImages=0, separateFolder=0,newOutput=0, binOutput = 0;
@@ -389,6 +390,11 @@ int main(int argc, char **argv)
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %d", dummy, &Normalize);
 		}
+		str = "SkipFrame ";
+        if (StartsWith(aline,str) == 1){
+            sscanf(aline,"%s %d", dummy, &skipFrame);
+            continue;
+        }
 		str = "NrPixels ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %d", dummy, &NrPixelsY);
@@ -467,6 +473,9 @@ int main(int argc, char **argv)
 	} else if (dType == 7){ // Tiff Uint8
 		pxSize = sizeof(uint8_t);
 		HeadSize = 0;
+	} else if (dType == 8){ // HDF Unit16
+		pxSize = sizeof(uint16_t);
+		HeadSize = 0;
 	}
 	size_t SizeFile = pxSize * NrPixelsY * NrPixelsZ;
 	int nFrames;
@@ -475,7 +484,7 @@ int main(int argc, char **argv)
 	FILE *fp, *fd;
 	char *darkFN;
 	int nrdone = 0;
-	if (argc > 3){
+	if (argc > 3 && dType!=8){
 		darkFN = argv[3];
 		fd = fopen(darkFN,"rb");
 		fseek(fd,0L,SEEK_END);
@@ -505,6 +514,68 @@ int main(int argc, char **argv)
 			for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFrames;
 		}
 		printf("Dark file read\n");
+	}
+	char *DATASETNAME;
+    hid_t file;
+    herr_t status, status_n;                             
+    hid_t dataset;  
+	hid_t dataspace;
+    hsize_t dims[3];
+    int ndims;
+    char *fn_hdf;
+    uint16_t *all_images;
+    int frame_dims2[3];
+	if (dType == 8){
+	    fn_hdf = argv[2];
+	    file = H5Fopen(fn_hdf,H5F_ACC_RDONLY, H5P_DEFAULT);
+		// READ DARK
+		DATASETNAME = "exchange/dark";
+	    dataset = H5Dopen(file, DATASETNAME,H5P_DEFAULT);
+	    dataspace = H5Dget_space(dataset);
+	    ndims  = H5Sget_simple_extent_dims(dataspace, dims, NULL);
+	    printf("ndims: %d, dimensions %lu x %lu x %lu. Allocating big array.\n",
+		   ndims, (unsigned long)(dims[0]), (unsigned long)(dims[1]), (unsigned long)(dims[2]));
+		int frame_dims[3] = {dims[0],dims[1],dims[2]};	
+		uint16_t *data = calloc(frame_dims[0]*frame_dims[1]*frame_dims[2],sizeof(uint16_t));
+		printf("Reading file: %lu bytes from dataset: %s.\n",(unsigned long) dims[0]*dims[1]*dims[2]*2,DATASETNAME);
+		status_n = H5Dread(dataset,H5T_STD_U16LE,H5S_ALL,H5S_ALL,H5P_DEFAULT,data);
+		for (i=skipFrame;i<frame_dims[0];i++){
+			for (j=0;j<frame_dims[1];j++){
+				for (k=0;k<frame_dims[2];k++){
+					DarkInT[j*frame_dims[2]+k] = ((double)data[i*(frame_dims[1]*frame_dims[2])+j*frame_dims[2]+k])/frame_dims[0];
+				}
+			}
+		}
+		DoImageTransformations(NrTransOpt,TransOpt,DarkInT,DarkIn,NrPixelsY,NrPixelsZ);
+		if (makeMap == 1){
+			mapMaskSize = NrPixelsY;
+			mapMaskSize *= NrPixelsZ;
+			mapMaskSize /= 32;
+			mapMaskSize ++;
+			mapMask = calloc(mapMaskSize,sizeof(*mapMask));
+			for (j=0;j<NrPixelsY*NrPixelsZ;j++){
+				if (DarkIn[j] == (pixelvalue) GapIntensity || DarkIn[j] == (pixelvalue) BadPxIntensity){
+					SetBit(mapMask,j);
+					nrdone++;
+				}
+			}
+			printf("Nr mask pixels: %d\n",nrdone);
+			makeMap = 0;
+		}
+		for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFrames;
+		// READ DATA, STORED IN all_images array
+		DATASETNAME = "exchange/data";
+	    dataset = H5Dopen(file, DATASETNAME,H5P_DEFAULT);
+	    dataspace = H5Dget_space(dataset);
+	    ndims  = H5Sget_simple_extent_dims(dataspace, dims, NULL);
+	    printf("ndims: %d, dimensions %lu x %lu x %lu. Allocating big array.\n",
+		   ndims, (unsigned long)(dims[0]), (unsigned long)(dims[1]), (unsigned long)(dims[2]));
+		frame_dims2[0] = dims[0];
+		frame_dims2[1] = dims[1];
+		frame_dims2[2] = dims[2];
+		all_images = calloc(frame_dims2[0]*frame_dims2[1]*frame_dims2[2],sizeof(uint16_t));
+		printf("Reading file: %lu bytes from dataset: %s.\n",(unsigned long) dims[0]*dims[1]*dims[2]*2,DATASETNAME);
+		status_n = H5Dread(dataset,H5T_STD_U16LE,H5S_ALL,H5S_ALL,H5P_DEFAULT,all_images);
 	}
 	if (makeMap == 2){
 		mapMaskSize = NrPixelsY;
@@ -580,10 +651,18 @@ int main(int argc, char **argv)
 		printf("%s\n",outfnAll);
 		out3 = fopen(outfnAll,"wb");
 	}
-	// Add OMP here to do frames in parallel.
+	// TODO: Add OMP here to do frames in parallel.
 	for (i=0;i<nFrames;i++){
 		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
-		rc = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
+		if (dType!=8){
+			rc = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
+		} else {
+			for (j=0;j<frame_dims2[1];j++){
+				for (k=0;k<frame_dims2[2];k++){
+					ImageInT[j*frame_dims2[2]+k] = ((double)all_images[(i+skipFrame)*(frame_dims2[1]*frame_dims2[2])+j*frame_dims2[2]+k]);
+				}
+			}
+		}
 		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 			Image[j] = (double)ImageIn[j] - AverageDark[j];
