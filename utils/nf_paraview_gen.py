@@ -39,21 +39,22 @@ fillVal = -15 # this value can be used to filter out nonsense values.
 ### Only modify the following arguments:
 ### Also look at where variable FileName is defined to see if the file arrangement is different (Line 554)
 ####
-sampleName = 'park_sam_cx5b_s0_nf'
+sampleName = 'sam1_nf'
 filestem = 'MicrostructureText_Layer' #### CHECK LINE 554
-outfn = 'MicHeatHTNS9'
-formula = 'NiTi7'
-materialName = 'NS9'
-sample = 'HeatHTNS9'
+outfn = 'sam1_before_loading'
+formula = 'sam1'
+materialName = 'sam1'
+sample = 'sam1'
 scanN = 'Begin'
 spaceGroup = 194 # This is used for misorientation calculation
-startnr = 1
-endnr = 18
+startnr = 44
+endnr = 1
+step = -1
 thisPhaseNr = 1
-LatC = np.array([2.9243, 2.9243, 4.6726 ,90.0, 90.0, 120.0],dtype=np.float32)
-minConfidence = 0.3
+LatC = np.array([3.2094, 3.2094, 5.2108, 90, 90, 120],dtype=np.float32)
+minConfidence = 0.4
 orientTol = 10.0 # In degrees, used to define grains
-zspacing = -2 # Must always be positive for Dream3D
+zspacing = 10 # Must always be positive for Dream3D
 xyspacing = 2  # X and Y spacing are equal, should be equal to the grid_size used during reconstruction
 GridSize = 5 # Grid size used during analysis. MUST NOT BE THE EDGE LENGTH
 startZ = 0 # Starting Z position
@@ -67,7 +68,7 @@ Dims = np.array([0,0,0])
 Dims = Dims.astype(int)
 Dims[1] = int(xExtent/abs(xyspacing))
 Dims[2] = int(yExtent/abs(xyspacing))
-Dims[0] = (endnr - startnr + 1)
+Dims[0] = np.fabs((endnr - startnr + 1*np.sign(step)))
 print('Dimensions of final array:')
 print(Dims)
 startPos = 0
@@ -547,7 +548,7 @@ y = np.linspace(-dimarr[0]*dimarr[2]/2,(Dims[1]-1-dimarr[0]/2)*dimarr[2],Dims[1]
 x = np.linspace(-dimarr[1]*dimarr[2]/2,(Dims[2]-1-dimarr[1]/2)*dimarr[2],Dims[2])
 xx,yy = np.meshgrid(x,y)
 
-for fnr in range(startnr,endnr+1):
+for fnr in range(startnr,endnr+1*np.sign(step),step):
 	print('LayerNr: '+ str(fnr))
 	xVals[dataNr,:,:] = xx
 	yVals[dataNr,:,:] = yy

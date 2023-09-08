@@ -25,7 +25,7 @@
 #define RealType double
 #define MAX_N_HKLS 5000
 #define EPS 0.00001
-#define MAX_NR_POINTS 2000000
+#define MAX_NR_POINTS 20000000
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -1378,6 +1378,7 @@ main(int argc, char *argv[])
 			omeBin = (size_t)floor(-(OmegaStart-omeThis)/OmegaStep);
 			omeBin *= NrPixels;
 			omeBin *= NrPixels;
+			/////////////// Change this to exact position, not rounded off....
 			yBin = (size_t)yDet;
 			zBin = (size_t)zDet;
 			imageBin = zBin*NrPixels + yBin; // We do a transpose here to generate the correctly oriented GE files.
