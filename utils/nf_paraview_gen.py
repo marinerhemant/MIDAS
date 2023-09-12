@@ -47,6 +47,7 @@ materialName = 'sam1'
 sample = 'sam1'
 scanN = 'Begin'
 spaceGroup = 194 # This is used for misorientation calculation
+# In case of DREAM3D and moving sample up during acquisition, go from last layer to first layer, must use zspacing positive always.
 startnr = 44
 endnr = 1
 step = -1
