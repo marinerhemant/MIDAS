@@ -497,12 +497,15 @@ int readRaw(int sliceNr,GLOBAL_CONFIG_OPTS recon_info_record,SINO_READ_OPTS *rea
 	readStruct->sizeMatrices += SizeNormSino;
 	//~ printf("norm_sino %ld\n",(long)SizeNormSino);
 	Normalize(readStruct,recon_info_record);
-	if (recon_info_record.debug == 1){
-		char outfn[4096];
-		sprintf(outfn,"norm_sino_%s",recon_info_record.DataFileName);
-		FILE *out = fopen(outfn,"wb");
-		fwrite(readStruct->norm_sino,SizeNormSino,1,out);
-		fclose(out);
+	#pragma omp critical
+	{
+		if (recon_info_record.debug > 0){
+			char outfn[4096];
+			sprintf(outfn,"norm_sino_%s",recon_info_record.DataFileName);
+			FILE *out = fopen(outfn,"ab");
+			fwrite(readStruct->norm_sino,SizeNormSino,1,out);
+			fclose(out);
+		}
 	}
 	free(readStruct->short_sinogram);
 	free(readStruct->white_field_sino);

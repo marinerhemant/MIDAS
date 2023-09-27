@@ -1573,6 +1573,7 @@ int main(int argc, char *argv[])
 			    if (rc < 0){
 					printf("Could not write to output file.\n");
 				}
+				close(KeyFN);
 			}
 			continue;
 		}
@@ -1596,6 +1597,7 @@ int main(int argc, char *argv[])
 			    if (rc < 0){
 					printf("Could not write to output file.\n");
 				}
+				close(KeyFN);
 			}
 			continue;
 		}
