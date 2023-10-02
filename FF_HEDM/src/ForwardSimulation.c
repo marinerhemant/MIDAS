@@ -697,7 +697,7 @@ main(int argc, char *argv[])
 	int RingsToUse[500], nRings=0;
 	double LatC[6],Wavelength,Wedge=0, p0, p1, p2, RhoD,GaussWidth,PeakIntensity=2000;
 	int writeSpots, isBin=0;
-	int LoadNr = 0, UpdatedOrientations = 1, nfOutput = 0;
+	int LoadNr = 0, UpdatedOrientations = 1, nfOutput = 0, geOutput=1;
 	double eRes = 0, minConfidence = 0;
 	while (fgets(aline,4096,fileParam)!=NULL){
 		str="RingsToUse ";
@@ -882,6 +882,12 @@ main(int argc, char *argv[])
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr == 0){
 			sscanf(aline,"%s %d",dummy,&nfOutput);
+			continue;
+		}
+		str="GEOutput ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr == 0){
+			sscanf(aline,"%s %d",dummy,&geOutput);
 			continue;
 		}
 		str="EResolution "; // todo
@@ -1395,15 +1401,17 @@ main(int argc, char *argv[])
 		}
 	}
 	printf("Maximum intensity: %lf\n",maxInt);
-	for (i=0;i<ImageArrSize;i++) outArr[i] = (uint16_t) (ImageArr[i]*15000/maxInt);
-	printf("Diffraction spots done, now writing the GE file.\n");
-	int *header;
-	header = malloc(8192);
-	FILE *outfile = fopen(OutFileName,"w");
-	fwrite(header,8192,1,outfile);
-	free(header);
-	fwrite(outArr,ImageArrSize*sizeof(*outArr),1,outfile);
-	fclose(outfile);
+	if (geOutput == 1){
+		for (i=0;i<ImageArrSize;i++) outArr[i] = (uint16_t) (ImageArr[i]*15000/maxInt);
+		printf("Diffraction spots done, now writing the GE file.\n");
+		int *header;
+		header = malloc(8192);
+		FILE *outfile = fopen(OutFileName,"w");
+		fwrite(header,8192,1,outfile);
+		free(header);
+		fwrite(outArr,ImageArrSize*sizeof(*outArr),1,outfile);
+		fclose(outfile);
+	}
 	end = clock();
 	diftotal = ((double)(end-start0))/CLOCKS_PER_SEC;
 	printf("Time elapsed in making diffraction spots: %f [s]\n",diftotal);
