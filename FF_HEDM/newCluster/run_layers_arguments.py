@@ -61,7 +61,7 @@ wavelength = float(args.wavelength)
 head = int(args.headerSize)
 pad = int(args.padding)
 ext = args.ext
-tansformations = args.imageTransformations
+transformations = args.imageTransformations
 if len(transformations) == 1:
 	imTransOpt = int(transformations)
 else:
