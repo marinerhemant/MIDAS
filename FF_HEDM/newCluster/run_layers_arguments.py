@@ -20,7 +20,7 @@ parser.add_argument('-paramFile', type=str, required=True, help='ParameterFileNa
 parser.add_argument('-nNodes', type=str, required=True, help='Number of Nodes')
 parser.add_argument('-machineName', type=str, required=True, help='Machine Name')
 parser.add_argument('-startFileNrFirstLayer', type=str, required=True, help='Starting file number for first layer')
-parser.add_argument('-numberOfFilerPerLayer', type=str, required=True, help='Difference between start file number for succssive layers')
+parser.add_argument('-numberOfFilesPerLayer', type=str, required=True, help='Difference between start file number for succssive layers')
 parser.add_argument('-fileStem', type=str, required=True, help='File stem before the digits without _')
 parser.add_argument('-outputFolder', type=str, required=True, help='Folder to save the data')
 parser.add_argument('-nrFramesPerLayer', type=str, required=True, help='Number of frames in a layer')
