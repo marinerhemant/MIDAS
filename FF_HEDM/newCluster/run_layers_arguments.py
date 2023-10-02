@@ -63,8 +63,10 @@ pad = int(args.padding)
 ext = args.ext
 transformations = args.imageTransformations
 if len(transformations) == 1:
+	imTransOptA = 1
 	imTransOpt = int(transformations)
 else:
+	imTransOptA = 0
 	imTransOpt = [int(transfor) for transfor in transformations.split()]
 beamCurrent = float(args.beamCurrent)
 upperBoundThreshold = float(args.saturationIntensity)
@@ -91,8 +93,8 @@ if len(boxSize)%4 != 0:
 	sys.exit()
 ### Add arguments to the parameter file
 f = open(paramFN,'a')
-f.write('NumPhases 1')
-f.write('PhaseNr 1')
+f.write('NumPhases 1\n')
+f.write('PhaseNr 1\n')
 f.write(f'StartFileNrFirstLayer {startFileNrFirstLayer}\n')
 f.write(f'NrFilesPerSweep {numberOfFilesPerLayer}\n')
 f.write(f'FileStem {fileStem}\n')
@@ -105,8 +107,11 @@ f.write(f'Wavelength {wavelength}\n')
 f.write(f'HeadSize {head}\n')
 f.write(f'Padding {pad}\n')
 f.write(f'Ext {ext}\n')
-for i in range(len(imTransOpt)):
-	f.write(f'ImTransOpt {imTransOpt[i]}\n')
+if imTransOptA == 1:
+	f.write(f'ImTransOpt {imTransOpt}\n')
+else:
+	for i in range(len(imTransOpt)):
+		f.write(f'ImTransOpt {imTransOpt[i]}\n')
 f.write(f'BeamCurrent {beamCurrent}\n')
 f.write(f'UpperBoundThreshold {upperBoundThreshold}\n')
 f.write(f'OmegaStep {omegaStep}\n')
@@ -117,14 +122,14 @@ for i in range(int(len(omegaRange)/2)):
 	f.write(f'OmegaRange {omegaRange[i*2]} {omegaRange[i*2+1]}\n')
 for i in range(int(len(boxSize)/4)):
 	f.write(f'BoxSize {boxSize[i*4]} {boxSize[i*4+1]} {boxSize[i*4+2]} {boxSize[i*4+3]}\n')
-f.write('NewType 1')
-f.write('UseFriedelPairs 1')
-f.write('GlobalPosition 0')
-f.write('DoFit 0')
-f.write('StepSizePos 100')
-f.write('StepSizeOrient 0.1')
-f.write('OmeBinSize 0.2')
-f.write('EtaBinSize 0.2')
+f.write('NewType 1\n')
+f.write('UseFriedelPairs 1\n')
+f.write('GlobalPosition 0\n')
+f.write('DoFit 0\n')
+f.write('StepSizePos 100\n')
+f.write('StepSizeOrient 0.1\n')
+f.write('OmeBinSize 0.2\n')
+f.write('EtaBinSize 0.2\n')
 f.close()
 
 baseNameParamFN = paramFN.split('/')[-1]
