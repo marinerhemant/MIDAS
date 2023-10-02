@@ -92,7 +92,7 @@ if len(boxSize)%4 != 0:
 	print('Wrong BoxSizes. Exiting!')
 	sys.exit()
 	
-ps_template_contents = open(paramFN).readlines()
+ps_template_contents = open(paramFN).read()
 paramFN = paramFN + '.upd'
 ### Add arguments to the parameter file
 f = open(paramFN,'w')
