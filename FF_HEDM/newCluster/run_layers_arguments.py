@@ -91,10 +91,14 @@ if len(omegaRange)%2 != 0:
 if len(boxSize)%4 != 0:
 	print('Wrong BoxSizes. Exiting!')
 	sys.exit()
+	
+ps_template_contents = open(paramFN).readlines()
+paramFN = paramFN + '.upd'
 ### Add arguments to the parameter file
-f = open(paramFN,'a')
-f.write('NumPhases 1\n')
-f.write('PhaseNr 1\n')
+f = open(paramFN,'w')
+f.write(ps_template_contents)
+f.write(f'NumPhases 1\n')
+f.write(f'PhaseNr 1\n')
 f.write(f'StartFileNrFirstLayer {startFileNrFirstLayer}\n')
 f.write(f'NrFilesPerSweep {numberOfFilesPerLayer}\n')
 f.write(f'FileStem {fileStem}\n')
