@@ -182,9 +182,9 @@ paramsf.write('BeamSize '+str(BeamSize)+'\n')
 paramsf.write('px '+str(px)+'\n')
 paramsf.write('RingToIndex '+str(RingToIndex)+'\n')
 paramsf.close()
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
-# Parallel after this
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP")+' paramstest.txt 0 1 '+ str(nScans)+' '+str(numProcs),shell=True)
+# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
+# ~ # Parallel after this
+# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP")+' paramstest.txt 0 1 '+ str(nScans)+' '+str(numProcs),shell=True)
 
 folder = topdir
 xpos, ypos = np.meshgrid(positions,positions)

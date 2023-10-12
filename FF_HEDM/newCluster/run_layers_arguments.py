@@ -139,21 +139,11 @@ f.close()
 baseNameParamFN = paramFN.split('/')[-1]
 homedir = os.path.expanduser('~')
 paramContents = open(paramFN).readlines()
-for line in paramContents:
-	if line.startswith('StartFileNrFirstLayer'):
-		startNrFirstLayer = int(line.split()[1])
-	if line.startswith('NrFilesPerSweep'):
-		nrFilesPerSweep = int(line.split()[1])
-	if line.startswith('FileStem'):
-		fStem = line.split()[1]
-	if line.startswith('SeedFolder'):
-		topdir = line.split()[1]
-	if line.startswith('StartNr'):
-		startNr = int(line.split()[1])
-	if line.startswith('EndNr'):
-		endNr = int(line.split()[1])
+startNrFirstLayer = startFileNrFirstLayer
+nrFilesPerSweep = numberOfFilesPerLayer
+fStem = fileStem
+topdir = outFolder
 
-nFrames = endNr - startNr + 1
 for layerNr in range(startLayerNr,endLayerNr+1):
 	startTime = time.time()
 	thisStartNr = startNrFirstLayer + (layerNr-1)*nrFilesPerSweep

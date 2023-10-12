@@ -1229,8 +1229,8 @@ main(int argc, char *argv[])
 	for (i=0;i<nrPxMask;i++){
 		for (j=0;j<nrPxMask;j++){
 			GaussMask[i*nrPxMask+j] = exp(-0.5*(
-				((i-2*ceil(GaussWidth))*(i-2*ceil(GaussWidth))/(GaussWidth*GaussWidth)) +
-				((j-2*ceil(GaussWidth))*(j-2*ceil(GaussWidth))/(GaussWidth*GaussWidth)) ));//i is slow, j is fast
+				((i-2*ceil(GaussWidth))*(i-4*ceil(GaussWidth))/(GaussWidth*GaussWidth)) +
+				((j-2*ceil(GaussWidth))*(j-4*ceil(GaussWidth))/(GaussWidth*GaussWidth)) ));//i is slow, j is fast
 		}
 	}
 	double centVal = GaussMask[centIdxMask];
