@@ -551,7 +551,7 @@ void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double *YMean, do
 	MatrixMultF33(Rx,TRint,TRs);
 	int i,j,k;
 	double n0=2,n1=4,n2=2,Yc,Zc;
-	double Rad,Eta,RNorm,DistortFunc,Rcorr,RIdeal,EtaT,Diff,MeanDiff;
+	double Rad,Eta,RNorm,DistortFunc,Rcorr,RIdeal,EtaT,Diff,MeanDiff=0;
 	for (i=0;i<nIndices;i++){
 		Yc = -(YMean[i]-ybc)*px;
 		Zc =  (ZMean[i]-zbc)*px;
@@ -573,7 +573,7 @@ void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double *YMean, do
 		RadOuts[i] = Rcorr;
 	}
 	MeanDiff /= nIndices;
-	double StdDiff2;
+	double StdDiff2=0;
 	for (i=0;i<nIndices;i++){
 		StdDiff2 += (Diffs[i] - MeanDiff)*(Diffs[i] - MeanDiff);
 	}
