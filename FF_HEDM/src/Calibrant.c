@@ -44,6 +44,10 @@ extern int *mapMask;
 size_t mapMaskSize = 0;
 int *mapMask;
 
+inline void CalcPeakProfile(int **Indices, int *NrEachIndexBin, int idx,
+	double *Average,double Rmi,double Rma,double EtaMi,double EtaMa,
+	double ybc,double zbc,double px,int NrPixelsY, double *ReturnValue);
+
 static inline
 pixelvalue**
 allocMatrixPX(int nrows, int ncols)
@@ -1418,7 +1422,7 @@ int main(int argc, char *argv[])
 		means[10] += StdDiff;
 		FILE *Out;
 		char OutFileName[1024];
-		sprintf(OutFileName,"%s_%06d%s.%s",fn,a,Ext,"corr.csv");
+		sprintf(OutFileName,"%s_%0*d%s.%s",fn,Padding,a,Ext,"corr.csv");
 		Out = fopen(OutFileName,"w");
 		fprintf(Out,"%%Eta Strain RadFit EtaCalc DiffCalc RadCalc Ideal2Theta\n");
 		for (i=0;i<nIndices;i++){

@@ -271,10 +271,20 @@ void BringDownToFundamentalRegion(double QuatIn[4], double QuatOut[4],int SGNr)
 	QuatOut[3] = qps[maxCosRowNr][3];
 }
 
+static inline void normalizeQuat(double quat[4]){
+	double norm = sqrt(quat[0]*quat[0]+quat[1]*quat[1]+quat[2]*quat[2]+quat[3]*quat[3]);
+	quat[0] /= norm;
+	quat[1] /= norm;
+	quat[2] /= norm;
+	quat[3] /= norm;
+}
+
 inline
 double GetMisOrientation(double quat1[4], double quat2[4], double axis[3], double *Angle,int SGNr)
 {
 	double q1FR[4], q2FR[4], q1Inv[4], QP[4], MisV[4];
+	normalizeQuat(quat1);
+	normalizeQuat(quat2);
 	BringDownToFundamentalRegion(quat1,q1FR,SGNr);
 	BringDownToFundamentalRegion(quat2,q2FR,SGNr);
 	q1Inv[0] = -q1FR[0];
@@ -302,6 +312,8 @@ inline
 double GetMisOrientationAngle(double quat1[4], double quat2[4], double *Angle, int NrSymmetries, double Sym[24][4])
 {
 	double q1FR[4], q2FR[4], QP[4], MisV[4];
+	normalizeQuat(quat1);
+	normalizeQuat(quat2);
 	BringDownToFundamentalRegionSym(quat1,q1FR,NrSymmetries,Sym);
 	BringDownToFundamentalRegionSym(quat2,q2FR,NrSymmetries,Sym);
 	q1FR[0] = -q1FR[0];
