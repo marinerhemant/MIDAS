@@ -24,6 +24,14 @@
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 
+static inline void normalizeQuat(double quat[4]){
+	double norm = sqrt(quat[0]*quat[0]+quat[1]*quat[1]+quat[2]*quat[2]+quat[3]*quat[3]);
+	quat[0] /= norm;
+	quat[1] /= norm;
+	quat[2] /= norm;
+	quat[3] /= norm;
+}
+
 double TricSym[2][4] = { // This is just for house keeping to make it 2 rows
    {1.00000,   0.00000,   0.00000,   0.00000},
    {1.00000,   0.00000,   0.00000,   0.00000}};
@@ -192,6 +200,7 @@ void BringDownToFundamentalRegionSym(double QuatIn[4], double QuatOut[4], int Nr
 	QuatOut[1] = qps[maxCosRowNr][1];
 	QuatOut[2] = qps[maxCosRowNr][2];
 	QuatOut[3] = qps[maxCosRowNr][3];
+	normalizeQuat(QuatOut);
 }
 
 inline
@@ -269,14 +278,7 @@ void BringDownToFundamentalRegion(double QuatIn[4], double QuatOut[4],int SGNr)
 	QuatOut[1] = qps[maxCosRowNr][1];
 	QuatOut[2] = qps[maxCosRowNr][2];
 	QuatOut[3] = qps[maxCosRowNr][3];
-}
-
-static inline void normalizeQuat(double quat[4]){
-	double norm = sqrt(quat[0]*quat[0]+quat[1]*quat[1]+quat[2]*quat[2]+quat[3]*quat[3]);
-	quat[0] /= norm;
-	quat[1] /= norm;
-	quat[2] /= norm;
-	quat[3] /= norm;
+	normalizeQuat(QuatOut);
 }
 
 inline
@@ -287,6 +289,8 @@ double GetMisOrientation(double quat1[4], double quat2[4], double axis[3], doubl
 	normalizeQuat(quat2);
 	BringDownToFundamentalRegion(quat1,q1FR,SGNr);
 	BringDownToFundamentalRegion(quat2,q2FR,SGNr);
+	normalizeQuat(q1FR);
+	normalizeQuat(q2FR);
 	q1Inv[0] = -q1FR[0];
 	q1Inv[1] =  q1FR[1];
 	q1Inv[2] =  q1FR[2];
@@ -316,6 +320,8 @@ double GetMisOrientationAngle(double quat1[4], double quat2[4], double *Angle, i
 	normalizeQuat(quat2);
 	BringDownToFundamentalRegionSym(quat1,q1FR,NrSymmetries,Sym);
 	BringDownToFundamentalRegionSym(quat2,q2FR,NrSymmetries,Sym);
+	normalizeQuat(q1FR);
+	normalizeQuat(q2FR);
 	q1FR[0] = -q1FR[0];
 	QuaternionProduct(q1FR,q2FR,QP);
 	BringDownToFundamentalRegionSym(QP,MisV,NrSymmetries,Sym);
