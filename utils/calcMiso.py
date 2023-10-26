@@ -164,6 +164,9 @@ def eul2omMat(euler):
 	m_out[:,8] = cph
 	return m_out
 
+def normalize(quat):
+	return quat/np.linalg.norm(quat)
+
 # Euler angles must be in radians, answer in radians as well
 def GetMisOrientationAngle(euler1,euler2,SGNum):
 	quat1 = OrientMat2Quat(Euler2OrientMat(euler1))
@@ -171,8 +174,8 @@ def GetMisOrientationAngle(euler1,euler2,SGNum):
 	NrSymmetries,Sym = MakeSymmetries(SGNum)
 	q1FR = BringDownToFundamentalRegionSym(quat1,NrSymmetries,Sym)
 	q2FR = BringDownToFundamentalRegionSym(quat2,NrSymmetries,Sym)
-	q1FR = quat1
-	q2FR = quat2
+	q1FR = normalize(quat1)
+	q2FR = normalize(quat2)
 	q1FR[0] = -q1FR[0]
 	QP = QuaternionProduct(q1FR,q2FR)
 	MisV = BringDownToFundamentalRegionSym(QP,NrSymmetries,Sym)
@@ -187,8 +190,8 @@ def GetMisOrientationAngleOM(OM1,OM2,SGNum):
 	NrSymmetries,Sym = MakeSymmetries(SGNum)
 	q1FR = BringDownToFundamentalRegionSym(quat1,NrSymmetries,Sym)
 	q2FR = BringDownToFundamentalRegionSym(quat2,NrSymmetries,Sym)
-	q1FR = quat1
-	q2FR = quat2
+	q1FR = normalize(quat1)
+	q2FR = normalize(quat2)
 	q1FR[0] = -q1FR[0]
 	QP = QuaternionProduct(q1FR,q2FR)
 	MisV = BringDownToFundamentalRegionSym(QP,NrSymmetries,Sym)
