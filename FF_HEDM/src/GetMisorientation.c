@@ -117,6 +117,7 @@ void QuaternionProduct(double q[4], double r[4], double Q[4])
 		Q[2] = -Q[2];
 		Q[3] = -Q[3];
 	}
+	normalizeQuat(Q);
 }
 
 inline
@@ -367,9 +368,5 @@ void OrientMat2Quat(double OrientMat[9], double Quat[4]){
 		Quat[2] = -Quat[2];
 		Quat[3] = -Quat[3];
 	}
-	double QNorm = sqrt(Quat[0]*Quat[0] + Quat[1]*Quat[1] + Quat[2]*Quat[2] + Quat[3]*Quat[3]);
-	Quat[0] /= QNorm;
-	Quat[1] /= QNorm;
-	Quat[2] /= QNorm;
-	Quat[3] /= QNorm;
+	normalizeQuat(Quat);
 }

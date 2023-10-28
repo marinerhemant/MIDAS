@@ -1530,7 +1530,7 @@ int main(int argc, char *argv[])
 		char *SpFN = "SpotsToIndex.csv";
 		FILE *SpFile = fopen(SpFN,"r");
 		if (SpFile == NULL){
-			printf("Could not read the SpotsToIndex.csv file. Exiting.\n");
+			printf("Could not read the SpotsToIndex.csv file while trying %d. Exiting.\n",SpId);
 			continue;;
 		}
 		int rowNr = 0;
@@ -1573,7 +1573,7 @@ int main(int argc, char *argv[])
 			    if (rc < 0){
 					printf("Could not write to output file.\n");
 				}
-				close(KeyFN);
+				close(resultKeyFN);
 			}
 			continue;
 		}
@@ -1597,7 +1597,7 @@ int main(int argc, char *argv[])
 			    if (rc < 0){
 					printf("Could not write to output file.\n");
 				}
-				close(KeyFN);
+				close(resultKeyFN);
 			}
 			continue;
 		}
@@ -1896,7 +1896,7 @@ int main(int argc, char *argv[])
 		{
 			int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
 			if (resultKeyFN <= 0){
-				printf("Could not open output file.\n");
+				printf("Could not open output file. %s\n",KeyFN);
 			}
 			int rcKey = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
 		    if (rcKey < 0){
@@ -1906,7 +1906,7 @@ int main(int argc, char *argv[])
 			rcKey = close(resultKeyFN);
 			int ProcessKeyFN = open(ProcessGrainsFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
 			if (ProcessKeyFN <=0){
-				printf("Could not open output file.\n");
+				printf("Could not open output file. %s\n",ProcessGrainsFN);
 			}
 			int rcProcess = pwrite(ProcessKeyFN,ProcessInfo,SizeProcessFile,OffStProcessFile);
 			if (rcProcess < 0){
@@ -1915,7 +1915,7 @@ int main(int argc, char *argv[])
 		    rcProcess = close(ProcessKeyFN);
 			int resultOutFN = open(OutFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
 			if (resultOutFN <= 0){
-				printf("Could not open output file.\n");
+				printf("Could not open output file. %s\n",OutFN);
 			}
 			int rcOut = pwrite(resultOutFN,OutMatr,SizeOutFile,OffStSizeOutFile);
 		    if (rcOut < 0){
@@ -1924,7 +1924,7 @@ int main(int argc, char *argv[])
 			rcOut = close(resultOutFN);
 			int resultSpotsCompFN = open(SpotsCompFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
 			if (resultSpotsCompFN <= 0){
-				printf("Could not open output file.\n");
+				printf("Could not open output file. %s\n",SpotsCompFN);
 			}
 			int rcSpots = pwrite(resultSpotsCompFN,SpotsCompFNContents,SizeSpotsFile,OffStSpotsFile);
 		    if (rcSpots < 0){

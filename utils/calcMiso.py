@@ -2,6 +2,9 @@ from math import sin, cos, acos, sqrt
 import numpy as np
 rad2deg = 57.2957795130823
 
+def normalize(quat):
+	return quat/np.linalg.norm(quat)
+
 TricSym=[[1.00000,0.00000,0.00000,0.00000],[1.00000,0.00000,0.00000,0.00000]];
 MonoSym=[[1.00000,0.00000,0.00000,0.00000],[0.00000,1.00000,0.00000,0.00000]];
 OrtSym=[[1.00000,0.00000,0.00000,0.00000],[1.00000,1.00000,0.00000,0.00000],
@@ -43,7 +46,7 @@ def QuaternionProduct(q,r):
 		Q[1] = -Q[1]
 		Q[2] = -Q[2]
 		Q[3] = -Q[3]
-	return Q
+	return normalize(Q)
 
 def MakeSymmetries(SGNr):
 	if (SGNr <= 2):
@@ -81,7 +84,7 @@ def BringDownToFundamentalRegionSym(QuatIn,NrSymmetries,Sym):
 		if (maxCos < qt[0]):
 			maxCos = qt[0]
 			QuatOut = qt
-	return QuatOut
+	return normalize(QuatOut)
 
 def OrientMat2Quat(OrientMat):
 	Quat = [0,0,0,0]
@@ -116,12 +119,7 @@ def OrientMat2Quat(OrientMat):
 		Quat[1] = -Quat[1]
 		Quat[2] = -Quat[2]
 		Quat[3] = -Quat[3]
-	QNorm = sqrt(Quat[0]*Quat[0] + Quat[1]*Quat[1] + Quat[2]*Quat[2] + Quat[3]*Quat[3])
-	Quat[0] /= QNorm
-	Quat[1] /= QNorm
-	Quat[2] /= QNorm
-	Quat[3] /= QNorm
-	return Quat
+	return normalize(Quat)
 
 def Euler2OrientMat(Euler):
 	m_out = [0]*9
@@ -164,9 +162,6 @@ def eul2omMat(euler):
 	m_out[:,8] = cph
 	return m_out
 
-def normalize(quat):
-	return quat/np.linalg.norm(quat)
-
 # Euler angles must be in radians, answer in radians as well
 def GetMisOrientationAngle(euler1,euler2,SGNum):
 	quat1 = OrientMat2Quat(Euler2OrientMat(euler1))
@@ -174,8 +169,6 @@ def GetMisOrientationAngle(euler1,euler2,SGNum):
 	NrSymmetries,Sym = MakeSymmetries(SGNum)
 	q1FR = BringDownToFundamentalRegionSym(quat1,NrSymmetries,Sym)
 	q2FR = BringDownToFundamentalRegionSym(quat2,NrSymmetries,Sym)
-	q1FR = normalize(quat1)
-	q2FR = normalize(quat2)
 	q1FR[0] = -q1FR[0]
 	QP = QuaternionProduct(q1FR,q2FR)
 	MisV = BringDownToFundamentalRegionSym(QP,NrSymmetries,Sym)
@@ -190,8 +183,6 @@ def GetMisOrientationAngleOM(OM1,OM2,SGNum):
 	NrSymmetries,Sym = MakeSymmetries(SGNum)
 	q1FR = BringDownToFundamentalRegionSym(quat1,NrSymmetries,Sym)
 	q2FR = BringDownToFundamentalRegionSym(quat2,NrSymmetries,Sym)
-	q1FR = normalize(quat1)
-	q2FR = normalize(quat2)
 	q1FR[0] = -q1FR[0]
 	QP = QuaternionProduct(q1FR,q2FR)
 	MisV = BringDownToFundamentalRegionSym(QP,NrSymmetries,Sym)
