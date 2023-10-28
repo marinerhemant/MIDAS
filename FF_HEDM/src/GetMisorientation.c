@@ -117,7 +117,7 @@ void QuaternionProduct(double q[4], double r[4], double Q[4])
 		Q[2] = -Q[2];
 		Q[3] = -Q[3];
 	}
-	//~ normalizeQuat(Q);
+	normalizeQuat(Q);
 }
 
 inline
@@ -201,7 +201,7 @@ void BringDownToFundamentalRegionSym(double QuatIn[4], double QuatOut[4], int Nr
 	QuatOut[1] = qps[maxCosRowNr][1];
 	QuatOut[2] = qps[maxCosRowNr][2];
 	QuatOut[3] = qps[maxCosRowNr][3];
-	//~ normalizeQuat(QuatOut);
+	normalizeQuat(QuatOut);
 }
 
 inline
@@ -279,19 +279,19 @@ void BringDownToFundamentalRegion(double QuatIn[4], double QuatOut[4],int SGNr)
 	QuatOut[1] = qps[maxCosRowNr][1];
 	QuatOut[2] = qps[maxCosRowNr][2];
 	QuatOut[3] = qps[maxCosRowNr][3];
-	//~ normalizeQuat(QuatOut);
+	normalizeQuat(QuatOut);
 }
 
 inline
 double GetMisOrientation(double quat1[4], double quat2[4], double axis[3], double *Angle,int SGNr)
 {
 	double q1FR[4], q2FR[4], q1Inv[4], QP[4], MisV[4];
-	//~ normalizeQuat(quat1);
-	//~ normalizeQuat(quat2);
+	normalizeQuat(quat1);
+	normalizeQuat(quat2);
 	BringDownToFundamentalRegion(quat1,q1FR,SGNr);
 	BringDownToFundamentalRegion(quat2,q2FR,SGNr);
-	//~ normalizeQuat(q1FR);
-	//~ normalizeQuat(q2FR);
+	normalizeQuat(q1FR);
+	normalizeQuat(q2FR);
 	q1Inv[0] = -q1FR[0];
 	q1Inv[1] =  q1FR[1];
 	q1Inv[2] =  q1FR[2];
@@ -317,12 +317,12 @@ inline
 double GetMisOrientationAngle(double quat1[4], double quat2[4], double *Angle, int NrSymmetries, double Sym[24][4])
 {
 	double q1FR[4], q2FR[4], QP[4], MisV[4];
-	//~ normalizeQuat(quat1);
-	//~ normalizeQuat(quat2);
+	normalizeQuat(quat1);
+	normalizeQuat(quat2);
 	BringDownToFundamentalRegionSym(quat1,q1FR,NrSymmetries,Sym);
 	BringDownToFundamentalRegionSym(quat2,q2FR,NrSymmetries,Sym);
-	//~ normalizeQuat(q1FR);
-	//~ normalizeQuat(q2FR);
+	normalizeQuat(q1FR);
+	normalizeQuat(q2FR);
 	q1FR[0] = -q1FR[0];
 	QuaternionProduct(q1FR,q2FR,QP);
 	BringDownToFundamentalRegionSym(QP,MisV,NrSymmetries,Sym);
@@ -368,5 +368,5 @@ void OrientMat2Quat(double OrientMat[9], double Quat[4]){
 		Quat[2] = -Quat[2];
 		Quat[3] = -Quat[3];
 	}
-	//~ normalizeQuat(Quat);
+	normalizeQuat(Quat);
 }
