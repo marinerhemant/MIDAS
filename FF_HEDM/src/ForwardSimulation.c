@@ -486,6 +486,7 @@ static inline void CorrectHKLsLatCEpsilon(double LatC[6], double eps[6], double 
 	Binv[0][1] = (2*eps[1]-B0[0][1]*Binv[1][1])/B0[0][0];
 	Binv[1][2] = (2*eps[4]-B0[1][2]*Binv[2][2])/B0[1][1];
 	Binv[0][2] = (2*eps[2]-B0[0][1]*Binv[1][2]-B0[0][2]*Binv[2][2])/B0[0][0];
+	Binv[1][0] = Binv[0][1];
 	Binv[2][1] = Binv[1][2];
 	Binv[2][0] = Binv[0][2];
 	int i, j;
