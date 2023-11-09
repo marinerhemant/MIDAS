@@ -12,8 +12,12 @@
 
 #include <stdio.h>
 #include <math.h>
+#ifdef __linux__
 #include <malloc.h>
-
+#endif
+#ifdef __MACH__
+#include <stdlib.h>
+#endif
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 
