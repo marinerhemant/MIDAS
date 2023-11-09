@@ -13,7 +13,7 @@ def write_ge(data,fn):
 
 fn = 'silicon_attrz-10.h5'
 hf = h5py.File(fn,'r')
-for key in hf.keys:
+for key in hf.keys():
 	data = np.array(hf[key]['instrument']['eiger']['data'])
 	high_dim = np.max(data.shape[1:])
 	low_dim = np.min(data.shape[1:])
