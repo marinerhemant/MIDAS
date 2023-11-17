@@ -3,7 +3,7 @@ from math import pow
 import subprocess
 
 def run_tomo(data,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering,numCPUs):
-	# data (one dark, 2 whites and data floats, tilt corrected projections)
+	# data (one dark, 2 whites and data floats, tilt corrected projections) (shape: xDim,yDim,nrThetas)
 	# workingdir
 	# thetas (array)
 	# filterNr: [2-default] 0 (nothing),1(shepp/logan),2(hann),3(hamming),4(ramp)
