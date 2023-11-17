@@ -36,6 +36,7 @@ void usage(){
 		"Input file is a text file name with a data link: sino data is a !!!single!!! binary file with darks, whites and tomo data in that order.\n"
 		"* The rest of the file consists of the parameters required.\n"
 		"* Parameters to be supplied:\n"
+		"	* saveReconSeparate (optional): [int] 0 if want to save in recon in single file, 1 if want to save in individual files.\n"
 		"	* dataFileName: [char*] name of the file with the raw data or sino data\n"
 		"	* reconFileName: [char*] Name of the file for saving the reconstruction\n"
 		"	* areSinos: If the input is a sinogram instead of raw (cleaned) images [0 or 1]\n"
@@ -195,10 +196,10 @@ int main(int argc, char *argv[])
 				setSinoAndReconBuffers(2, &information.sinograms_boundary_padding[offt], &information.reconstructions_boundary_padding[offsetRecons],&param);
 				reconstruct(&param);
 				getRecons(&information,recon_info_record,&param,0);
-				int rw = writeRecon(oldSliceNr,&information,recon_info_record,recon_info_record.n_shifts);
+				int rw = writeRecon(oldSliceNr,&information,recon_info_record,0);
 				if (rw == 1) continue;
 				getRecons(&information,recon_info_record,&param,offsetRecons);
-				rw = writeRecon(sliceNr,&information,recon_info_record,recon_info_record.n_shifts);
+				rw = writeRecon(sliceNr,&information,recon_info_record,0);
 				if (rw == 1) continue;
 			}
 			destroyFFTMemoryStructures(&param);

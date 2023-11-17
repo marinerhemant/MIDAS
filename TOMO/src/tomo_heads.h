@@ -158,6 +158,7 @@ typedef struct {
 		reconstruction_size,
 		sinogram_adjusted_size;
 	char *wisdom_string;
+	int saveReconSeparate;
 	int powerIncrement;
 	int doLogProj;
 	long sizeMatrices;

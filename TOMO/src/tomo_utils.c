@@ -182,7 +182,14 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 	recon_info_record->powerIncrement=0;
 	recon_info_record->doLogProj = 1;
 	recon_info_record->auto_centering = 1;
+	recon_info_record->saveReconSeparate = 1;
 	while(fgets(aline,4096,fileParam)!=NULL){
+		if (strncmp(aline,"saveReconSeparate",strlen("saveReconSeparate"))==0){
+			int val;
+			sscanf(aline,"%s %s",dummy,&val);
+			if (val == 0) recon_info_record->saveReconSeparate = 0;
+			else recon_info_record->saveReconSeparate = 1;
+		}
 		if (strncmp(aline,"dataFileName",strlen("dataFileName"))==0){
 			sscanf(aline,"%s %s",dummy,recon_info_record->DataFileName);
 		}
@@ -613,27 +620,47 @@ void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_reco
 int writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,int shiftNr){
 	// The results are in information.recon_calc_buffer
 	// Output file: float with reconstruction_xdim*reconstruction_xdim size
-	// OutputFileName: {recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_reconstruction_xdim_float_4byte.bin
-	char outFileName[4096];
-	if (information->shift > -0.0001){
-		sprintf(outFileName,"%s_%05d_%03d_p%06.1f_%d_%d_float32.bin",recon_info_record.ReconFileName,sliceNr,shiftNr,information->shift,recon_info_record.reconstruction_xdim,recon_info_record.reconstruction_xdim);
-	} else {
-		sprintf(outFileName,"%s_%05d_%03d_m%06.1f_%d_%d_float32.bin",recon_info_record.ReconFileName,sliceNr,shiftNr,-information->shift,recon_info_record.reconstruction_xdim,recon_info_record.reconstruction_xdim);
-	}
-	FILE *outfile;
-	#pragma omp critical
-	{
-		//printf("Saving output to : %s.\n",outFileName);
-		outfile = fopen(outFileName,"wb");
-	}
-	if (outfile == NULL){
-		printf("We could not open the file for writing %s.\n",outFileName);
-		return 1;
-	}
-	#pragma omp critical
-	{
-		fwrite(information->recon_calc_buffer,sizeof(float)*information->reconstruction_size,1,outfile);
-		fclose(outfile);
+	if (information->saveReconSeparate == 1){
+		// OutputFileName: {recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_reconstruction_xdim_float32.bin
+		char outFileName[4096];
+		if (information->shift > -0.0001){
+			sprintf(outFileName,"%s_%05d_%03d_p%06.1f_%d_%d_float32.bin",recon_info_record.ReconFileName,sliceNr,shiftNr,information->shift,recon_info_record.reconstruction_xdim,recon_info_record.reconstruction_xdim);
+		} else {
+			sprintf(outFileName,"%s_%05d_%03d_m%06.1f_%d_%d_float32.bin",recon_info_record.ReconFileName,sliceNr,shiftNr,-information->shift,recon_info_record.reconstruction_xdim,recon_info_record.reconstruction_xdim);
+		}
+		FILE *outfile;
+		#pragma omp critical
+		{
+			//printf("Saving output to : %s.\n",outFileName);
+			outfile = fopen(outFileName,"wb");
+		}
+		if (outfile == NULL){
+			printf("We could not open the file for writing %s.\n",outFileName);
+			return 1;
+		}
+		#pragma omp critical
+		{
+			fwrite(information->recon_calc_buffer,sizeof(float)*information->reconstruction_size,1,outfile);
+			fclose(outfile);
+		}
+	else{
+		// OutputFileName: {recon_info_record.ReconFileName}_NrSlices_05d_NrShifts_03d_XDim_06d_YDim_06d_float32.bin
+		// How to save: For each shiftNr: sliceNr
+		char outFileName[4096];
+		sprintf(outFileName,"%s_NrSlices_%05d_NrShifts_%03d_XDim_%06d_YDim_%06d_float32.bin",recon_info_record.ReconFileName,recon_info_record->n_slices,recon_info_record->n_shifts,
+																						 recon_info_record.reconstruction_xdim,recon_info_record.reconstruction_xdim);
+		#pragma omp critical
+		{
+			int result = open(outFileName, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+			if (result <= 0){
+				printf("Could not open output file.\n");
+			}
+			size_t OffsetHere = sizeof(float)*information->reconstruction_size;
+			OffsetHere *= shiftNr*(recon_info_record->n_slices)+sliceNr;
+			int rc = pwrite(result,information->recon_calc_buffer,sizeof(float)*information->reconstruction_size,OffsetHere);
+			if (rc < 0) printf("Could not write to output file.\n");
+			close(result);
+		}
 	}
 	return 0;
 }
