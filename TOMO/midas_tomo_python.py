@@ -19,10 +19,13 @@ doLog = 0
 extraPad = 0
 autoCentering = 1
 numCPUs = 40
-recon = run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering,numCPUs)
+doCleanup = 1
+recon = run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering,numCPUs,doCleanup)
+import matplotlib.pyplot as plt
+plt.imshow(recon[:,0,512,:]);plt.show()
 '''
 
-def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering,numCPUs):
+def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering,numCPUs,doCleanup):
 	# Return format: [nrSlices, nrShifts, xDimNew, xDimNew]
 	# data (one dark, 2 whites and data floats, tilt corrected projections) [shape: nrThetas,nrSlices,xDim]
 	# workingdir
@@ -89,11 +92,12 @@ def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,a
 	# Read result
 	outfn = outfnstr+'_NrSlices_'+str(nrSlices).zfill(5)+'_NrShifts_'+str(nrShifts).zfill(3)+'_XDim_'+str(xDimNew).zfill(6)+'_YDim_'+str(xDimNew).zfill(6)+'_float32.bin'
 	recon = np.fromfile(outfn,dtype=np.float32,count=(nrSlices*nrShifts*xDimNew*xDimNew)).reshape((nrSlices,nrShifts,xDimNew,xDimNew))
-	os.remove(outfn)
-	os.remove(workingdir+'/midastomo.par')
-	os.remove(workingdir+'/midastomo_thetas.txt')
-	os.remove(infn)
-	os.remove(workingdir+'/fftwf_wisdom_1d_'+str(int(2*xDimNew))+'.txt')
-	os.remove(workingdir+'/fftwf_wisdom_2d_'+str(int(2*xDimNew))+'.txt')
+	if doCleanup:
+		os.remove(outfn)
+		os.remove(workingdir+'/midastomo.par')
+		os.remove(workingdir+'/midastomo_thetas.txt')
+		os.remove(infn)
+		os.remove(workingdir+'/fftwf_wisdom_1d_'+str(int(2*xDimNew))+'.txt')
+		os.remove(workingdir+'/fftwf_wisdom_2d_'+str(int(2*xDimNew))+'.txt')
 	return recon
 
