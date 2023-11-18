@@ -188,7 +188,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record){
 	while(fgets(aline,4096,fileParam)!=NULL){
 		if (strncmp(aline,"saveReconSeparate",strlen("saveReconSeparate"))==0){
 			int val;
-			sscanf(aline,"%s %s",dummy,&val);
+			sscanf(aline,"%s %d",dummy,&val);
 			if (val == 0) recon_info_record->saveReconSeparate = 0;
 			else recon_info_record->saveReconSeparate = 1;
 		}
