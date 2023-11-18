@@ -44,6 +44,7 @@ def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,a
 		xDimNew = int(pow(2,power))
 	thetasFile = open(workingdir+'/midastomo_thetas.txt','w')
 	for theta in thetas: thetasFile.write(str(theta)+'\n')
+	thetasFile.close()
 	# Write the config to a config file
 	configFile = open(workingdir+'/midastomo.par','w')
 	configFile.write('saveReconSeparate 0\n')
