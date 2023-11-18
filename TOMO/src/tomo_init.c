@@ -128,7 +128,7 @@ int main(int argc, char *argv[])
 		printf("Number of shifts must be even. Exiting\n");
 		return 1;
 	} else {
-		printf("Total number of shifts: %d",recon_info_record.n_shifts);
+		printf("Total number of shifts: %d, total number of  slices: %d",recon_info_record.n_shifts,recon_info_record.n_slices);
 	}
 	if (recon_info_record.n_shifts == 1 && recon_info_record.n_slices %2 !=0){
 		printf("Number of slices must be even. Exiting\n");
