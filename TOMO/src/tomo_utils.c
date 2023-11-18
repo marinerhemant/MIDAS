@@ -622,6 +622,7 @@ void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_reco
 int writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,int shiftNr){
 	// The results are in information.recon_calc_buffer
 	// Output file: float with reconstruction_xdim*reconstruction_xdim size
+	printf("%d\n",recon_info_record.saveReconSeparate);
 	if (recon_info_record.saveReconSeparate == 1){
 		// OutputFileName: {recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_reconstruction_xdim_float32.bin
 		char outFileName[4096];

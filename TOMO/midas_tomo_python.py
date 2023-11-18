@@ -2,6 +2,7 @@ import numpy as np
 from math import pow
 import collections.abc
 import subprocess
+import os
 
 def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering,numCPUs):
 	# data (one dark, 2 whites and data floats, tilt corrected projections) (shape: xDim,yDim,nrThetas)
@@ -47,12 +48,12 @@ def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,a
 	configFile.write('saveReconSeparate 0\n')
 	configFile.write('dataFileName '+infn+'\n')
 	configFile.write('reconFileName '+outfnstr+'\n')
-	configFile.write('areSinos 1\n')
+	configFile.write('areSinos 0\n')
 	configFile.write('detXdim '+str(xDim)+'\n')
 	configFile.write('detYdim '+str(nrSlices)+'\n')
 	configFile.write('thetaFileName '+workingdir+'/midastomo_thetas.txt\n')
 	if not isinstance(shifts,collections.abc.Sequence):
-		configFile.write('shiftValues '+str(shifts)+'\n')
+		configFile.write('shiftValues '+str(shifts)+' '+str(shifts)+' 1\n')
 		nrShifts = 1
 	else:
 		nrShifts = round(abs((shifts[1]-shifts[0]))/shifts[2])+1
@@ -64,7 +65,7 @@ def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,a
 	configFile.write('AutoCentering '+str(autoCentering)+'\n')
 	configFile.close()
 	# Run tomo
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/TOMO/bin/MIDASTOMO")+" "+workingdir+'/midastomo.par '+str(numCPUs),shell=True)
+	subprocess.call(os.path.expanduser("~/opt/MIDAS/TOMO/bin/MIDAS_TOMO")+" "+workingdir+'/midastomo.par '+str(numCPUs),shell=True)
 	# Read result
 	outfn = outfnstr+'_NrSlices_'+str(nrSlices).zfill(5)+'_NrShifts_'+str(nrShifts).zfill(3)+'_XDim_'+str(xDimNew).zfill(6)+'_YDim_'+str(xDimNew).zfill(6)+'_float32.bin'
 	return np.fromfile(outfn,dtype=np.float32,count=(nrSlices*nrShifts*xDimNew*xDimNew)).reshape((nrSlices,nrShifts,xDimNew,xDimNew))
