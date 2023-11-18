@@ -122,7 +122,7 @@ int main(int argc, char *argv[])
 	long long int maxNProcs = (long long int) avRAM / (long long int) recon_info_record.sizeMatrices;
 	int numProcs = (atoi(argv[2]) < maxNProcs-2) ? atoi(argv[2]) : maxNProcs - 2;
 	printf("Memory needed per process: %lld, Total available RAM: %lld, MaxNProcs: %lld.\nWe can run up to %lld processes.\nWe will use %lld GB RAM.\n",
-			(long long int) recon_info_record.sizeMatrices,avRAM, maxNProcs, maxNProcs-2, (long long int)numProcs*recon_info_record.sizeMatrices/(1e9));
+			(long long int) recon_info_record.sizeMatrices,avRAM, maxNProcs, maxNProcs-2, (long long int)numProcs*recon_info_record.sizeMatrices/(10e9));
 	// Check if sizes are okay.
 	if (recon_info_record.n_shifts > 1 && recon_info_record.n_shifts %2 !=0){
 		printf("Number of shifts must be even. Exiting\n");
