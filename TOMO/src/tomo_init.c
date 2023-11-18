@@ -118,6 +118,7 @@ int main(int argc, char *argv[])
 		}
 	}
 	avRAM *= 1024; // Get in bytes
+	recon_info_record.sizeMatrices*= 2;
 	long long int maxNProcs = (long long int) avRAM / (long long int) recon_info_record.sizeMatrices;
 	printf("Memory needed per process: %lld, Total available RAM: %lld, MaxNProcs: %lld.\nWe can run up to %lld processes.\n",
 			(long long int) recon_info_record.sizeMatrices,avRAM, maxNProcs, maxNProcs-2);
