@@ -205,7 +205,8 @@ int main(int argc, char *argv[])
 			destroyFFTMemoryStructures(&param);
 		}
 	} else { // We have multiple shifts, (possibly multiple slices_to_process)
-		SINO_READ_OPTS readStruct[recon_info_record.n_slices];
+		SINO_READ_OPTS *readStruct;
+		readStruct = malloc(recon_info_record.n_slices*sizeof(*readStruct));
 		int i;
 		for (i = 0; i < recon_info_record.n_slices; i ++)
 			readStruct[i].norm_sino = (float *) malloc(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
