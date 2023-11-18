@@ -210,10 +210,12 @@ int main(int argc, char *argv[])
 		for (i = 0; i < recon_info_record.n_slices; i ++)
 			readStruct[i].norm_sino = (float *) malloc(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size);
 		// ReadStruct is now ready.
-		int nJobs = (numProcs < recon_info_record.n_slices) ? numProcs : recon_info_record.n_slices;
+		//~ int nJobs = (numProcs < recon_info_record.n_slices) ? numProcs : recon_info_record.n_slices;
+		int nJobs = recon_info_record.n_slices;
 		int badRead = 0;
 		# pragma omp parallel num_threads(nJobs)
 		{
+			// This will only read up to nJobs slices. TODO: Fix this!!!
 			int procNr = omp_get_thread_num();
 			int sliceNr;
 			sliceNr = recon_info_record.slices_to_process[procNr];
