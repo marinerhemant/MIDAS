@@ -73,6 +73,9 @@ def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,a
 	recon = np.fromfile(outfn,dtype=np.float32,count=(nrSlices*nrShifts*xDimNew*xDimNew)).reshape((nrSlices,nrShifts,xDimNew,xDimNew))
 	os.remove(outfn)
 	os.remove(workingdir+'/midastomo.par')
+	os.remove(workingdir+'/midastomo_thetas.txt')
 	os.remove(infn)
+	os.remove(workingdir+'/fftwf_wisdom_1d_'+str(int(2*xDimNew))+'.txt')
+	os.remove(workingdir+'/fftwf_wisdom_2d_'+str(int(2*xDimNew))+'.txt')
 	return recon
 
