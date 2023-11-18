@@ -6,7 +6,7 @@ import os
 
 def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering,numCPUs):
 	# Return format: [nrSlices, nrShifts, xDimNew, xDimNew]
-	# data (one dark, 2 whites and data floats, tilt corrected projections) (shape: xDim,yDim,nrThetas)
+	# data (one dark, 2 whites and data floats, tilt corrected projections) [shape: nrThetas,nrSlices,xDim]
 	# workingdir
 	# thetas (array)
 	# filterNr: [2-default] 0 (nothing),1(shepp/logan),2(hann),3(hamming),4(ramp)
@@ -70,5 +70,9 @@ def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,a
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/TOMO/bin/MIDAS_TOMO")+" "+workingdir+'/midastomo.par '+str(numCPUs),shell=True)
 	# Read result
 	outfn = outfnstr+'_NrSlices_'+str(nrSlices).zfill(5)+'_NrShifts_'+str(nrShifts).zfill(3)+'_XDim_'+str(xDimNew).zfill(6)+'_YDim_'+str(xDimNew).zfill(6)+'_float32.bin'
-	return np.fromfile(outfn,dtype=np.float32,count=(nrSlices*nrShifts*xDimNew*xDimNew)).reshape((nrSlices,nrShifts,xDimNew,xDimNew))
+	recon = np.fromfile(outfn,dtype=np.float32,count=(nrSlices*nrShifts*xDimNew*xDimNew)).reshape((nrSlices,nrShifts,xDimNew,xDimNew))
+	os.remove(outfn)
+	os.remove(workingdir+'/midastomo.par')
+	os.remove(infn)
+	return recon
 
