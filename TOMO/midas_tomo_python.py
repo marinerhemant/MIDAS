@@ -45,7 +45,7 @@ def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,a
 	inF.close()
 	inF = open(infn,'a')
 	whites.astype(np.float32).tofile(inF)
-	data.astype(np.uint16).flatten().tofile(inF)
+	data.astype(np.uint16).tofile(inF)
 	inF.close()
 	# We have tilt corrected projections, one dark and two whites in the beginning.
 	nrThetas -= 2
