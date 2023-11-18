@@ -12,6 +12,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <stdbool.h>
 #include <unistd.h>
 
@@ -620,7 +621,7 @@ void getRecons(LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_reco
 int writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS recon_info_record,int shiftNr){
 	// The results are in information.recon_calc_buffer
 	// Output file: float with reconstruction_xdim*reconstruction_xdim size
-	if (information->saveReconSeparate == 1){
+	if (recon_info_record.saveReconSeparate == 1){
 		// OutputFileName: {recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_reconstruction_xdim_float32.bin
 		char outFileName[4096];
 		if (information->shift > -0.0001){
@@ -643,11 +644,11 @@ int writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS rec
 			fwrite(information->recon_calc_buffer,sizeof(float)*information->reconstruction_size,1,outfile);
 			fclose(outfile);
 		}
-	else{
+	}else{
 		// OutputFileName: {recon_info_record.ReconFileName}_NrSlices_05d_NrShifts_03d_XDim_06d_YDim_06d_float32.bin
 		// How to save: For each shiftNr: sliceNr
 		char outFileName[4096];
-		sprintf(outFileName,"%s_NrSlices_%05d_NrShifts_%03d_XDim_%06d_YDim_%06d_float32.bin",recon_info_record.ReconFileName,recon_info_record->n_slices,recon_info_record->n_shifts,
+		sprintf(outFileName,"%s_NrSlices_%05d_NrShifts_%03d_XDim_%06d_YDim_%06d_float32.bin",recon_info_record.ReconFileName,recon_info_record.n_slices,recon_info_record.n_shifts,
 																						 recon_info_record.reconstruction_xdim,recon_info_record.reconstruction_xdim);
 		#pragma omp critical
 		{
@@ -656,7 +657,7 @@ int writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS rec
 				printf("Could not open output file.\n");
 			}
 			size_t OffsetHere = sizeof(float)*information->reconstruction_size;
-			OffsetHere *= shiftNr*(recon_info_record->n_slices)+sliceNr;
+			OffsetHere *= shiftNr*(recon_info_record.n_slices)+sliceNr;
 			int rc = pwrite(result,information->recon_calc_buffer,sizeof(float)*information->reconstruction_size,OffsetHere);
 			if (rc < 0) printf("Could not write to output file.\n");
 			close(result);
