@@ -220,7 +220,7 @@ int main(int argc, char *argv[])
 			int procNr = omp_get_thread_num();
 			int sliceNr;
 			sliceNr = recon_info_record.slices_to_process[procNr];
-			printf("Reading SliceNr: %d.\n",sliceNr);
+			//~ printf("Reading SliceNr: %d.\n",sliceNr);
 			if (recon_info_record.are_sinos){
 				int rc = readSino(sliceNr,recon_info_record,&readStruct[procNr]);
 				if (rc == 1) badRead = 1;
