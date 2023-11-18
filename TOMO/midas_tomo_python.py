@@ -1,5 +1,6 @@
 import numpy as np
 from math import pow
+import collections.abc
 import subprocess
 
 def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering,numCPUs):
@@ -50,7 +51,7 @@ def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,a
 	configFile.write('detXdim '+str(xDim)+'\n')
 	configFile.write('detYdim '+str(nrSlices)+'\n')
 	configFile.write('thetaFileName '+workingdir+'/midastomo_thetas.txt\n')
-	if len(shifts) == 1:
+	if not isinstance(shifts,collections.abc.Sequence):
 		configFile.write('shiftValues '+str(shifts)+'\n')
 		nrShifts = 1
 	else:
