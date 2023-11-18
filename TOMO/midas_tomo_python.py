@@ -2,7 +2,7 @@ import numpy as np
 from math import pow
 import subprocess
 
-def run_tomo(data,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering,numCPUs):
+def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering,numCPUs):
 	# data (one dark, 2 whites and data floats, tilt corrected projections) (shape: xDim,yDim,nrThetas)
 	# workingdir
 	# thetas (array)
@@ -13,7 +13,13 @@ def run_tomo(data,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering
 	# autocentering (1,0)
 	infn = workingdir+'/input.bin'
 	data = data.astype(np.float32)
-	data.tofile(infn)
+	inF = open(infn,'w')
+	dark.astype(np.float32).tofile(inF)
+	inF.close()
+	inF = open(infn,'a')
+	whites.astype(np.float32).tofile(inF)
+	data.astype(np.uint16).tofile(inF)
+	inF.close()
 	# We have tilt corrected projections, one dark and two whites in the beginning.
 	xDim,nrSlices,nrThetas = data.shape
 	nrThetas -= 2
