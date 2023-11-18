@@ -35,6 +35,7 @@ def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,a
 	# doLog (1,0)
 	# extraPad (1,0)
 	# autocentering (1,0)
+	start_time = time.time()
 	infn = workingdir+'/input.bin'
 	data = data.astype(np.float32)
 	inF = open(infn,'w')
@@ -87,9 +88,11 @@ def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,a
 	configFile.write('ExtraPad '+str(extraPad)+'\n')
 	configFile.write('AutoCentering '+str(autoCentering)+'\n')
 	configFile.close()
+	print("Time elapsed in preprocessing: "+str(time.time()-start_time))
 	# Run tomo
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/TOMO/bin/MIDAS_TOMO")+" "+workingdir+'/midastomo.par '+str(numCPUs),shell=True)
 	# Read result
+	start_time = time.time()
 	outfn = outfnstr+'_NrSlices_'+str(nrSlices).zfill(5)+'_NrShifts_'+str(nrShifts).zfill(3)+'_XDim_'+str(xDimNew).zfill(6)+'_YDim_'+str(xDimNew).zfill(6)+'_float32.bin'
 	recon = np.fromfile(outfn,dtype=np.float32,count=(nrSlices*nrShifts*xDimNew*xDimNew)).reshape((nrSlices,nrShifts,xDimNew,xDimNew))
 	if doCleanup:
@@ -99,5 +102,6 @@ def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,a
 		os.remove(infn)
 		os.remove(workingdir+'/fftwf_wisdom_1d_'+str(int(2*xDimNew))+'.txt')
 		os.remove(workingdir+'/fftwf_wisdom_2d_'+str(int(2*xDimNew))+'.txt')
+	print("Time elapsed in postprocessing: "+str(time.time()-start_time))
 	return recon
 
