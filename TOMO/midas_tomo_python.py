@@ -37,6 +37,7 @@ def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,a
 	# extraPad (1,0)
 	# autocentering (1,0)
 	start_time = time.time()
+	nrThetas,nrSlices,xDim = data.shape
 	infn = workingdir+'/input.bin'
 	data = data.astype(np.float32)
 	inF = open(infn,'w')
@@ -44,10 +45,9 @@ def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,a
 	inF.close()
 	inF = open(infn,'a')
 	whites.astype(np.float32).tofile(inF)
-	data.astype(np.uint16).tofile(inF)
+	data.astype(np.uint16).flatten().tofile(inF)
 	inF.close()
 	# We have tilt corrected projections, one dark and two whites in the beginning.
-	nrThetas,nrSlices,xDim = data.shape
 	nrThetas -= 2
 	outfnstr = workingdir+'/output'
 	still_smaller = True
