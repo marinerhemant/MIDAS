@@ -59,7 +59,6 @@ def run_tomo(data,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering
 	# Run tomo
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/TOMO/bin/MIDASTOMO")+" "+workingdir+'/midastomo.par '+str(numCPUs),shell=True)
 	# Read result
-	outfn = outfnstr+'_NrSlices_'+str(nrSlices).zfill(5)+'_NrShifts_'+str(nrShifts).zfill(3)+
-			'_XDim_'+str(xDimNew).zfill(6)+'_YDim_'+str(xDimNew).zfill(6)+'_float32.bin'
+	outfn = outfnstr+'_NrSlices_'+str(nrSlices).zfill(5)+'_NrShifts_'+str(nrShifts).zfill(3)+'_XDim_'+str(xDimNew).zfill(6)+'_YDim_'+str(xDimNew).zfill(6)+'_float32.bin'
 	return np.fromfile(outfn,dtype=np.float32,count=(nrSlices*nrShifts*xDimNew*xDimNew)).reshape((nrSlices,nrShifts,xDimNew,xDimNew))
 
