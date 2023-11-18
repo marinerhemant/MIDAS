@@ -4,6 +4,24 @@ import collections.abc
 import subprocess
 import os
 
+'''
+# Test folder: /scratch/s1iduser/sharma_tomo_test
+# ln -s ~/opt/MIDAS/TOMO/midas_tomo_python.py midas_tomo_python.py
+from midas_tomo_python import *
+data = np.fromfile('data.raw',dtype=np.uint16,count=(1773*1024*1801),offset=(12*1773*1024)).reshape((1801,1024,1773))
+whites = np.fromfile('data.raw',dtype=np.float32,count=(1773*1024*2),offset=(4*1773*1024)).reshape((2,1024,1773))
+dark = np.fromfile('data.raw',dtype=np.float32,count=(1773*1024)).reshape((1024,1773))
+workingdir = '/scratch/s1iduser/sharma_tomo_test'
+thetas = np.arange(-180,180.1,0.2)
+filterNr = 2
+shifts = -7.0
+doLog = 0
+extraPad = 0
+autoCentering = 1
+numCPUs = 40
+recon = run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering,numCPUs)
+'''
+
 def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering,numCPUs):
 	# Return format: [nrSlices, nrShifts, xDimNew, xDimNew]
 	# data (one dark, 2 whites and data floats, tilt corrected projections) [shape: nrThetas,nrSlices,xDim]
