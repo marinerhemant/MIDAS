@@ -21,7 +21,7 @@ def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,a
 	data.astype(np.uint16).tofile(inF)
 	inF.close()
 	# We have tilt corrected projections, one dark and two whites in the beginning.
-	xDim,nrSlices,nrThetas = data.shape
+	nrThetas,nrSlices,xDim = data.shape
 	nrThetas -= 2
 	outfnstr = workingdir+'/output'
 	still_smaller = True
