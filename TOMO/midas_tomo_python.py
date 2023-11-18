@@ -5,6 +5,7 @@ import subprocess
 import os
 
 def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering,numCPUs):
+	# Return format: [nrSlices, nrShifts, xDimNew, xDimNew]
 	# data (one dark, 2 whites and data floats, tilt corrected projections) (shape: xDim,yDim,nrThetas)
 	# workingdir
 	# thetas (array)
