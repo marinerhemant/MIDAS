@@ -120,8 +120,9 @@ int main(int argc, char *argv[])
 	avRAM *= 1024; // Get in bytes
 	recon_info_record.sizeMatrices*= 2;
 	long long int maxNProcs = (long long int) avRAM / (long long int) recon_info_record.sizeMatrices;
-	printf("Memory needed per process: %lld, Total available RAM: %lld, MaxNProcs: %lld.\nWe can run up to %lld processes.\n",
-			(long long int) recon_info_record.sizeMatrices,avRAM, maxNProcs, maxNProcs-2);
+	int numProcs = (atoi(argv[2]) < maxNProcs-2) ? atoi(argv[2]) : maxNProcs - 2;
+	printf("Memory needed per process: %lld, Total available RAM: %lld, MaxNProcs: %lld.\nWe can run up to %lld processes.\nWe will use %lld MB RAM\n",
+			(long long int) recon_info_record.sizeMatrices,avRAM, maxNProcs, maxNProcs-2, (long long int)numProcs*recon_info_record.sizeMatrices/(1024*1024*1024);
 	// Check if sizes are okay.
 	if (recon_info_record.n_shifts > 1 && recon_info_record.n_shifts %2 !=0){
 		printf("Number of shifts must be even. Exiting\n");
@@ -131,7 +132,6 @@ int main(int argc, char *argv[])
 		printf("Number of slices must be even. Exiting\n");
 		return 1;
 	}
-	int numProcs = (atoi(argv[2]) < maxNProcs) ? atoi(argv[2]) : maxNProcs - 2;
 	int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_1d.txt");
 	double start_time = omp_get_wtime();
 	if (recon_info_record.n_shifts==1){
