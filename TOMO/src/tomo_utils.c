@@ -649,7 +649,7 @@ int writeRecon(int sliceNr,LOCAL_CONFIG_OPTS *information,GLOBAL_CONFIG_OPTS rec
 		// OutputFileName: {recon_info_record.ReconFileName}_NrSlices_05d_NrShifts_03d_XDim_06d_YDim_06d_float32.bin
 		// How to save: For each shiftNr: sliceNr
 		char outFileName[4096];
-		sprintf(outFileName,"%s_NrSlices_%05d_NrShifts_%03d_XDim_%06d_YDim_%06d_float32.bin",recon_info_record.ReconFileName,recon_info_record.n_slices,recon_info_record.n_shifts,
+		sprintf(outFileName,"%s_NrShifts_%03d_NrSlices_%05d_XDim_%06d_YDim_%06d_float32.bin",recon_info_record.ReconFileName,recon_info_record.n_shifts,recon_info_record.n_slices,
 																						 recon_info_record.reconstruction_xdim,recon_info_record.reconstruction_xdim);
 		#pragma omp critical
 		{

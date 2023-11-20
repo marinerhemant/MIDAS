@@ -6,24 +6,28 @@ import os
 import time
 
 '''
-# Test folder: /scratch/s1iduser/sharma_tomo_test
-# ln -s ~/opt/MIDAS/TOMO/midas_tomo_python.py midas_tomo_python.py
+import matplotlib.pyplot as plt
 from midas_tomo_python import *
-data = np.fromfile('data.raw',dtype=np.uint16,count=(1773*1024*1801),offset=(12*1773*1024)).reshape((1801,1024,1773))
-whites = np.fromfile('data.raw',dtype=np.float32,count=(1773*1024*2),offset=(4*1773*1024)).reshape((2,1024,1773))
-dark = np.fromfile('data.raw',dtype=np.float32,count=(1773*1024)).reshape((1024,1773))
-workingdir = '/scratch/s1iduser/sharma_tomo_test'
+fn = 'data.raw'
+yDim = 1024
 thetas = np.arange(-180,180.1,0.2)
+size = os.path.getsize(fn)
+nThetas = len(thetas)
+xDim = int(size/(2*yDim*(nThetas+6)))
+workingdir = '/scratch/s1iduser/sharma_tomo_test/'
 filterNr = 2
-shifts = -7.0
+shifts = [0.0, 3.0, 1.0]
+shifts = 1.0
 doLog = 0
 extraPad = 0
 autoCentering = 1
 numCPUs = 40
 doCleanup = 1
+data = np.fromfile('data.raw',dtype=np.uint16,count=(xDim*yDim*nThetas),offset=(12*xDim*yDim)).reshape((nThetas,yDim,xDim))
+whites = np.fromfile('data.raw',dtype=np.float32,count=(xDim*yDim*2),offset=(4*xDim*yDim)).reshape((2,yDim,xDim))
+dark = np.fromfile('data.raw',dtype=np.float32,count=(xDim*yDim)).reshape((yDim,xDim))
 recon = run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering,numCPUs,doCleanup)
-import matplotlib.pyplot as plt
-plt.imshow(recon[:,0,512,:]);plt.show()
+plt.imshow(recon[0,400,:,:]);plt.show()
 '''
 
 def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering,numCPUs,doCleanup):
