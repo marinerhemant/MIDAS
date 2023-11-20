@@ -30,7 +30,7 @@ recon = run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraP
 plt.imshow(recon[0,400,:,:]);plt.show()
 '''
 
-def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering,numCPUs,doCleanup):
+def run_tomo(data,dark,whites,workingdir,thetas,filterNr=2,shifts,doLog=1,extraPad=0,autoCentering=1,numCPUs=40,doCleanup=1):
 	# Return format: [nrShifts, nrSlices, xDimNew, xDimNew]
 	# data (one dark, 2 whites and data floats, tilt corrected projections) [shape: nrThetas,nrSlices,xDim]
 	# workingdir
