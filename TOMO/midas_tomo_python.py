@@ -26,11 +26,11 @@ doCleanup = 1
 data = np.fromfile('data.raw',dtype=np.uint16,count=(xDim*yDim*nThetas),offset=(12*xDim*yDim)).reshape((nThetas,yDim,xDim))
 whites = np.fromfile('data.raw',dtype=np.float32,count=(xDim*yDim*2),offset=(4*xDim*yDim)).reshape((2,yDim,xDim))
 dark = np.fromfile('data.raw',dtype=np.float32,count=(xDim*yDim)).reshape((yDim,xDim))
-recon = run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering,numCPUs,doCleanup)
+recon = run_tomo(data,dark,whites,workingdir,thetas,shifts,filterNr,doLog,extraPad,autoCentering,numCPUs,doCleanup)
 plt.imshow(recon[0,400,:,:]);plt.show()
 '''
 
-def run_tomo(data,dark,whites,workingdir,thetas,filterNr=2,shifts,doLog=1,extraPad=0,autoCentering=1,numCPUs=40,doCleanup=1):
+def run_tomo(data,dark,whites,workingdir,thetas,shifts,filterNr=2,doLog=1,extraPad=0,autoCentering=1,numCPUs=40,doCleanup=1):
 	# Return format: [nrShifts, nrSlices, xDimNew, xDimNew]
 	# data (one dark, 2 whites and data floats, tilt corrected projections) [shape: nrThetas,nrSlices,xDim]
 	# workingdir
