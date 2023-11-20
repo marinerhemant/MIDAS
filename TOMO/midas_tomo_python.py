@@ -27,7 +27,7 @@ plt.imshow(recon[:,0,512,:]);plt.show()
 '''
 
 def run_tomo(data,dark,whites,workingdir,thetas,filterNr,shifts,doLog,extraPad,autoCentering,numCPUs,doCleanup):
-	# Return format: [nrSlices, nrShifts, xDimNew, xDimNew]
+	# Return format: [nrShifts, nrSlices, xDimNew, xDimNew]
 	# data (one dark, 2 whites and data floats, tilt corrected projections) [shape: nrThetas,nrSlices,xDim]
 	# workingdir
 	# thetas (array)
