@@ -30,7 +30,7 @@ recon = run_tomo(data,dark,whites,workingdir,thetas,shifts,filterNr,doLog,extraP
 plt.imshow(recon[0,400,:,:]);plt.show()
 '''
 
-def run_tomo(data,dark,whites,workingdir,thetas,shifts,filterNr=2,doLog=1,extraPad=0,autoCentering=1,numCPUs=40,doCleanup=1):
+def run_tomo(data,dark,whites,workingdir,thetas,shifts,filterNr=2,doLog=1,extraPad=0,autoCentering=1,numCPUs=40,doCleanup=1,ringRemoval=0):
 	# Return format: [nrShifts, nrSlices, xDimNew, xDimNew]
 	# data (one dark, 2 whites and data floats, tilt corrected projections) [shape: nrThetas,nrSlices,xDim]
 	# workingdir
@@ -87,7 +87,7 @@ def run_tomo(data,dark,whites,workingdir,thetas,shifts,filterNr=2,doLog=1,extraP
 	else:
 		nrShifts = round(abs((shifts[1]-shifts[0]))/shifts[2])+1
 		configFile.write('shiftValues '+str(shifts[0])+' '+str(shifts[1])+' '+str(shifts[2])+'\n')
-	configFile.write('ringRemovalCoefficient 0\n')
+	configFile.write('ringRemovalCoefficient '+str(ringRemoval)+'\n')
 	configFile.write('doLog '+str(doLog)+'\n')
 	configFile.write('slicesToProcess -1\n')
 	configFile.write('ExtraPad '+str(extraPad)+'\n')
