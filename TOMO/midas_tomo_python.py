@@ -11,6 +11,7 @@ from midas_tomo_python import *
 fn = 'data.raw'
 yDim = 1024
 thetas = np.arange(-180,180.1,0.2)
+
 size = os.path.getsize(fn)
 nThetas = len(thetas)
 xDim = int(size/(2*yDim*(nThetas+6)))
@@ -18,7 +19,7 @@ workingdir = '/scratch/s1iduser/sharma_tomo_test/'
 filterNr = 2
 shifts = [0.0, 3.0, 1.0]
 shifts = 1.0
-doLog = 0
+doLog = 1
 extraPad = 0
 autoCentering = 1
 numCPUs = 40
@@ -40,6 +41,9 @@ def run_tomo(data,dark,whites,workingdir,thetas,shifts,filterNr=2,doLog=1,extraP
 	# doLog (1,0)
 	# extraPad (1,0)
 	# autocentering (1,0)
+	# numCPUs [int]
+	# doCleanup (1,0) want to remove temporary storage files
+	# ringRemoval (default 0)
 	start_time = time.time()
 	nrThetas,nrSlices,xDim = data.shape
 	infn = workingdir+'/input.bin'
