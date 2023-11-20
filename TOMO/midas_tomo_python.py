@@ -98,7 +98,7 @@ def run_tomo(data,dark,whites,workingdir,thetas,shifts,filterNr=2,doLog=1,extraP
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/TOMO/bin/MIDAS_TOMO")+" "+workingdir+'/midastomo.par '+str(numCPUs),shell=True)
 	# Read result
 	start_time = time.time()
-	outfn = outfnstr+'_NrSlices_'+str(nrSlices).zfill(5)+'_NrShifts_'+str(nrShifts).zfill(3)+'_XDim_'+str(xDimNew).zfill(6)+'_YDim_'+str(xDimNew).zfill(6)+'_float32.bin'
+	outfn = outfnstr+'_NrShifts_'+str(nrShifts).zfill(3)+'_NrSlices_'+str(nrSlices).zfill(5)+'_XDim_'+str(xDimNew).zfill(6)+'_YDim_'+str(xDimNew).zfill(6)+'_float32.bin'
 	recon = np.fromfile(outfn,dtype=np.float32,count=(nrSlices*nrShifts*xDimNew*xDimNew)).reshape((nrShifts,nrSlices,xDimNew,xDimNew))
 	if doCleanup:
 		os.remove(outfn)
