@@ -46,7 +46,7 @@ check (int test, const char * message, ...)
 #define rad2deg 57.2957795130823
 
 // max array sizes
-#define MAX_N_SPOTS 6000000
+#define MAX_N_SPOTS 60000000
 #define MAX_N_STEPS 1000
 #define MAX_N_OR 7200
 #define MAX_N_MATCHES 1
