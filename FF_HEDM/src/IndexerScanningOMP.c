@@ -1289,6 +1289,7 @@ int ReadSpots(char *cwd)
 	status = fstat (fd , &s);
 	check (status < 0, "stat %s failed: %s", filename, strerror(errno));
 	size = s.st_size;
+	printf("%lld\n",(long long int) size);
 	ObsSpotsLab = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 	check (ObsSpotsLab == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
 	return (int) size/(10*sizeof(double));
@@ -1437,10 +1438,6 @@ main(int argc, char *argv[])
 			angle = ObsSpotsLab[idnr*10+2];
 			thisID = (int)ObsSpotsLab[idnr*10+4];
 			newY = xThis * sin(deg2rad*angle) + yThis * cos(deg2rad*angle);
-			//~ if ((idnr - startRowNrSp)%100 == 0) {
-				//~ printf("%d %d %d %d %d %d\n",idnr,startRowNrSp,endRowNrSp,thisRowNr,startRowNr,endRowNr);
-				//~ fflush(stdout);
-			//~ }
 			if (fabs(newY - ypos[(int)ObsSpotsLab[idnr*10+9]]) <= BeamSize/2){
 				DoIndexing(thisID,thisRowNr,xThis,yThis,0,Params,idnr);
 			}
