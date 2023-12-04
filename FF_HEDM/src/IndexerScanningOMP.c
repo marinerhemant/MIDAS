@@ -1291,7 +1291,7 @@ int ReadSpots(char *cwd)
 	size = s.st_size;
 	ObsSpotsLab = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 	check (ObsSpotsLab == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
-	printf("%lld %d\n",(long long int) size,(int) size/((size_t)(sizeof(double))));
+	printf("%lld %lld\n",(long long int) size,(long long int) size/((size_t)(sizeof(double))));
 	return (int) size/((size_t)(10*sizeof(double)));
 	//~ return (int) size/(10*8);
 }
