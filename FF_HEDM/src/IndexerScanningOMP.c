@@ -60,7 +60,7 @@ check (int test, const char * message, ...)
 
 // Globals
 RealType *ObsSpotsLab;
-int n_spots = 0;
+long long int n_spots = 0;
 
 
 // hkls to use
@@ -1291,8 +1291,12 @@ int ReadSpots(char *cwd)
 	size = s.st_size;
 	ObsSpotsLab = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 	check (ObsSpotsLab == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
-	printf("%lld %lld\n",(long long int) size,(long long int) size/((size_t)(sizeof(double))));
-	return (int) size/((size_t)(10*sizeof(double)));
+	size_t nrsps;
+	nrsps = size;
+	nrsps /= sizeof(double);
+	nrsps /= 10;
+	printf("%lld %lld\n",(long long int) size,(long long int) nrsps);
+	return nrsps;
 	//~ return (int) size/(10*8);
 }
 
