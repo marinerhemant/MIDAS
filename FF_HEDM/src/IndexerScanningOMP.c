@@ -1289,10 +1289,10 @@ int ReadSpots(char *cwd)
 	status = fstat (fd , &s);
 	check (status < 0, "stat %s failed: %s", filename, strerror(errno));
 	size = s.st_size;
-	printf("%lld %lld\n",(long long int) size,(long long int)sizeof(double));
 	ObsSpotsLab = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 	check (ObsSpotsLab == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
-	return (int) size/((size_t)(10*sizeof(double)));
+	printf("%lld %d\n",(long long int) size,(int) size/((size_t)(10*sizeof(double)));
+		return (int) size/((size_t)(10*sizeof(double)));
 	//~ return (int) size/(10*8);
 }
 
