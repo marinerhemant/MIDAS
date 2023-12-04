@@ -60,7 +60,7 @@ check (int test, const char * message, ...)
 
 // Globals
 RealType *ObsSpotsLab;
-long long int n_spots = 0;
+size_t n_spots = 0;
 
 
 // hkls to use
@@ -84,8 +84,8 @@ int numScans;
 RealType omemargins[181];
 RealType etamargins[MAX_N_RINGS];
 
-int *data;
-int *ndata;
+size_t *data;
+size_t *ndata;
 int SGNum;
 double *grid;
 double *ypos;
@@ -402,13 +402,13 @@ void CompareSpots(RealType **TheorSpots, int nTheorSpots,
 	int sp;
 	int RingNr;
 	int iOme, iEta;
-	int spotRow, spotRowBest;
+	size_t spotRow, spotRowBest;
 	int MatchFound;
 	RealType diffOme;
 	RealType diffOmeBest;
-	int iRing, iPos;
-	long long int iSpot;
-	int scannrobs, scannrtheor;
+	size_t iRing, iPos;
+	size_t iSpot;
+	size_t scannrobs, scannrtheor;
 	RealType etamargin, omemargin, yRot, ySpot;
 	for ( sp = 0 ; sp < nTheorSpots ; sp++ )  {
 		RingNr = (int) TheorSpots[sp][9];
@@ -422,11 +422,15 @@ void CompareSpots(RealType **TheorSpots, int nTheorSpots,
 		omemargin = omemargins[(int) floor(fabs(TheorSpots[sp][12]))];
 		MatchFound = 0;
 		diffOmeBest = 100000;
-		long long int Pos = iRing*n_eta_bins*n_ome_bins + iEta*n_ome_bins + iOme;
-		long long int nspots = ndata[Pos*2];
-		long long int DataPos = ndata[Pos*2+1];
+		size_t Pos = iRing;
+		Pos *= n_eta_bins;
+		Pos *= n_ome_bins;
+		Pos += iEta*n_ome_bins;
+		Pos += iOme;
+		size_t nspots = ndata[Pos*2];
+		size_t DataPos = ndata[Pos*2+1];
 		for ( iSpot = 0 ; iSpot < nspots; iSpot++ ) {
-			printf(" %d %d %d %lf %lf %lf %lf %d %d %d %lf %lf\n",DataPos,iSpot,(DataPos + iSpot)*2+0,ySpot,yRot,fabs(yRot-ySpot), BeamSize/2,scannrobs,spotRow,spotRow*10+8,TheorSpots[sp][13],ObsSpotsLab[spotRow*10+8]);
+			printf(" %zu %d %d %lf %lf %lf %lf %d %d %d %lf %lf\n",DataPos,iSpot,(DataPos + iSpot)*2+0,ySpot,yRot,fabs(yRot-ySpot), BeamSize/2,scannrobs,spotRow,spotRow*10+8,TheorSpots[sp][13],ObsSpotsLab[spotRow*10+8]);
 			spotRow = data[(DataPos + iSpot)*2+0];
 			scannrobs = data[(DataPos + iSpot)*2+1];
 			ySpot = ypos[scannrobs];
@@ -1296,9 +1300,7 @@ int ReadSpots(char *cwd)
 	nrsps = size;
 	nrsps /= sizeof(double);
 	nrsps /= 10;
-	printf("%lld %lld\n",(long long int) size,(long long int) nrsps);
 	return nrsps;
-	//~ return (int) size/(10*8);
 }
 
 int

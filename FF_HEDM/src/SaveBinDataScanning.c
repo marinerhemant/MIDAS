@@ -236,16 +236,16 @@ int main(int argc, char* argv[]){
 	}
 
 	// data will save id, scanNr for each spot, everything else remains the same. Twice the size now.
-	int ****data;
-	int ***ndata;
-	int ***maxndata;
+	size_t ****data;
+	size_t ***ndata;
+	size_t ***maxndata;
 	int n_ring_bins;
 	int n_eta_bins;
 	int n_ome_bins;
-	int *newarray;
-	int *oldarray;
+	size_t *newarray;
+	size_t *oldarray;
 	int iEta, iOme, iEta0, iOme0;
-	int rowno;
+	size_t rowno;
 	double EtaBinSize = etabinsize;
 	double OmeBinSize = omebinsize;
 	int HighestRingNo = 0;
@@ -255,8 +255,8 @@ int main(int argc, char* argv[]){
 	n_ring_bins = HighestRingNo;
 	n_eta_bins = ceil(360.0 / etabinsize);
 	n_ome_bins = ceil(360.0 / omebinsize);
-	printf("nRings: %d, nEtas: %d, nOmes: %d\n",n_ring_bins,n_eta_bins,n_ome_bins);
-	printf("Total bins: %d\n",n_ring_bins*n_eta_bins*n_ome_bins);
+	printf("nRings: %zu, nEtas: %zu, nOmes: %zu\n",n_ring_bins,n_eta_bins,n_ome_bins);
+	printf("Total bins: %zu\n",n_ring_bins*n_eta_bins*n_ome_bins);
 	int i1, i2, i3;
 	data = malloc(n_ring_bins * sizeof(data));
 	if (data == NULL ) {
@@ -324,7 +324,7 @@ int main(int argc, char* argv[]){
 			}
 		}
 	}
-	long long int TotNumberOfBins = 0;
+	size_t TotNumberOfBins = 0;
 	for (rowno = 0 ; rowno < nSpots ; rowno++ ) {
 		int ringnr = (int) ObsSpots[rowno][5];
 		int scanno = (int) ObsSpots[rowno][14];
@@ -349,8 +349,8 @@ int main(int argc, char* argv[]){
 			for ( iOme0 = iOmeMin ; iOme0 <= iOmeMax ; iOme0++) {
 				iOme = iOme0 % n_ome_bins;
 				if ( iOme < 0 ) iOme = iOme + n_ome_bins;
-				int iSpot = ndata[iRing][iEta][iOme];
-				int maxnspot = maxndata[iRing][iEta][iOme];
+				size_t iSpot = ndata[iRing][iEta][iOme];
+				size_t maxnspot = maxndata[iRing][iEta][iOme];
 				if ( iSpot >= maxnspot ) {
 					maxnspot = maxnspot + 2;
 					oldarray = data[iRing][iEta][iOme];
@@ -372,12 +372,12 @@ int main(int argc, char* argv[]){
 	end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
     printf("Time elapsed in making DataArray: %fs  %lld.\n",diftotal,TotNumberOfBins);
-	long long int LengthNDataStore = n_ring_bins*n_eta_bins*n_ome_bins;
-	int *nDataStore, *DataStore;
+	size_t LengthNDataStore = n_ring_bins*n_eta_bins*n_ome_bins;
+	size_t *nDataStore, *DataStore;
 	nDataStore = malloc(LengthNDataStore*2*sizeof(*nDataStore));
 	DataStore = malloc(TotNumberOfBins*2*sizeof(*DataStore));
-	long long int localCounter = 0, localNDataVal;
-	long long int Pos, tnr;
+	size_t localCounter = 0, localNDataVal;
+	size_t Pos, tnr;
 	for (i=0;i<n_ring_bins;i++){
 		for (j=0;j<n_eta_bins;j++){
 			for (k=0;k<n_ome_bins;k++){
@@ -395,7 +395,7 @@ int main(int argc, char* argv[]){
 			}
 		}
 	}
-	printf("%lld %lld\n",localCounter,TotNumberOfBins);
+	printf("%zu %zu\n",localCounter,TotNumberOfBins);
 	//~ for (tnr=0;tnr<TotNumberOfBins;tnr++){
 		//~ printf("%d %d\n",DataStore[tnr*2+0],DataStore[tnr*2+1]);
 	//~ }
