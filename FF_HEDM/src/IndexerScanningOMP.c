@@ -429,7 +429,7 @@ void CompareSpots(RealType **TheorSpots, int nTheorSpots,
 			spotRow = data[(DataPos + iSpot)*2+0];
 			scannrobs = data[(DataPos + iSpot)*2+1];
 			ySpot = ypos[scannrobs];
-			printf("%lf %lf %lf %lf %d %d %d\n",ySpot,yRot,fabs(yRot-ySpot), BeamSize/2,scannrobs,spotRow,spotRow*10+8);
+			printf("%lf %lf %lf %lf %d %d %d %lf %lf\n",ySpot,yRot,fabs(yRot-ySpot), BeamSize/2,scannrobs,spotRow,spotRow*10+8,TheorSpots[sp][13],ObsSpotsLab[spotRow*10+8]);
 			fflush(stdout);
 			if ( fabs(yRot - ySpot) < BeamSize/2){
 				if ( fabs(TheorSpots[sp][13] - ObsSpotsLab[spotRow*10+8]) < MarginRadial )  {
