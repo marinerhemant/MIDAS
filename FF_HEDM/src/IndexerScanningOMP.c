@@ -430,7 +430,7 @@ void CompareSpots(RealType **TheorSpots, int nTheorSpots,
 		size_t nspots = ndata[Pos*2];
 		size_t DataPos = ndata[Pos*2+1];
 		for ( iSpot = 0 ; iSpot < nspots; iSpot++ ) {
-			printf(" %zu %d %d %lf %lf %lf %lf %d %d %d %lf %lf\n",DataPos,iSpot,(DataPos + iSpot)*2+0,ySpot,yRot,fabs(yRot-ySpot), BeamSize/2,scannrobs,spotRow,spotRow*10+8,TheorSpots[sp][13],ObsSpotsLab[spotRow*10+8]);
+			printf(" %zu %zu %zu %lf %lf %lf %lf %d %d %d %lf %lf\n",DataPos,iSpot,(DataPos + iSpot)*2+0,ySpot,yRot,fabs(yRot-ySpot), BeamSize/2,scannrobs,spotRow,spotRow*10+8,TheorSpots[sp][13],ObsSpotsLab[spotRow*10+8]);
 			spotRow = data[(DataPos + iSpot)*2+0];
 			scannrobs = data[(DataPos + iSpot)*2+1];
 			ySpot = ypos[scannrobs];
