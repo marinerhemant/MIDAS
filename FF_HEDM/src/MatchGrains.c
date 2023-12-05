@@ -25,6 +25,16 @@
 
 #define MAX_N_GRAINS 100000
 
+inline
+double GetMisOrientationAngle(double quat1[4], double quat2[4], double *Angle, int NrSymmetries, double Sym[24][4]);
+
+inline 
+void OrientMat2Quat(double OrientMat[9], double Quat[4]);
+
+inline
+int MakeSymmetries(int SGNr, double Sym[24][4]);
+
+
 static inline
 double Len3d(double x, double y, double z)
 {
@@ -80,16 +90,6 @@ allocMatrix(int nrows, int ncols)
     return arr;
 }
 
-//~ static inline
-//~ void
-//~ FreeMemMatrix(double **mat,int nrows)
-//~ {
-    //~ int r;
-    //~ for ( r = 0 ; r < nrows ; r++) {
-        //~ free(mat[r]);
-    //~ }
-    //~ free(mat);
-//~ }
 
 struct sortArrayType{
 	double angle;
@@ -127,8 +127,8 @@ int main(int argc, char* argv[])
 		printf("stateN.txt: \n\tA file containing a list of Grains.csv files or a Grains.csv file directly.\n");
 		printf("removeDuplicates: \n"
 			"\t0: will not remove any matched grains from database while matching. This is faster\n"
-			"\t   and desirable if multiple grains can be matched to the same grains. eg. if a \n\t   grain breaks up into 2.\n");
-		printf("\t1: will remove any matched grains from database while matching. This is slower.\n");
+			"\t   and desirable if multiple grains can be matched to the same grain, eg. if a \n\t   grain breaks up into 2.\n");
+		printf("\t1: will remove any matched grains from database while matching. Only one grain each will be matched. This is slower.\n");
 		printf("\t   sizeFilter: 0 will not make filter based on grain size, value [float] will only match grains within value\% of the grain size.\n");
 		return 1;
 	}
