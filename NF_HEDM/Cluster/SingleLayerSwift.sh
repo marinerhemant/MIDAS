@@ -109,7 +109,7 @@ then
 		${BINFOLDER}/ParseMic ${NEW_PARAM_FILE}
 		# Try to find the new orientations, then add them to the original Grains.csv, run everything again.
 		export PYTHONPATH=${HOME}/opt/MIDAS/utils/
-		python ${HOME}/opt/MIDAS/utils/findUniqueOrientationsNF ${MicfT}_AllOrientations ${sg} ${grFile}
+		python ${HOME}/opt/MIDAS/utils/findUniqueOrientationsNF.py ${MicfT}_AllOrientations ${sg} ${grFile}
 		echo "paramfn datadir" > ${tmpfn}
 		echo "${TOP_PARAM_FILE} ${DataDirectory}" >> ${tmpfn}
 		sed -i "/GridSize/c\GridSize ${FINALGRIDSIZE}" ${TOP_PARAM_FILE}
