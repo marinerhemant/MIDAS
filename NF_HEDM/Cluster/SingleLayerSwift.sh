@@ -101,12 +101,11 @@ then
 		echo "paramfn datadir" > ${tmpfn}
 		echo "${NEW_PARAM_FILE} ${DataDirectory}" >> ${tmpfn}
 		# Do Processing
-		export JAVA_HOME=$HOME/.MIDAS/jre1.8.0_181/
-		export PATH="$JAVA_HOME/bin:$PATH"
 		${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
 			-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
 			-DoPeakSearch=0 -FFSeedOrientations=0 -DoFullLayer=1 -DoGrid=0 -MachineName=${MACHINE_NAME}
 		${BINFOLDER}/ParseMic ${NEW_PARAM_FILE}
+
 		# Try to find the new orientations, then add them to the original Grains.csv, run everything again.
 		export PYTHONPATH=${HOME}/opt/MIDAS/utils/
 		python ${HOME}/opt/MIDAS/utils/findUniqueOrientationsNF.py ${MicfT}_AllOrientations ${sg} ${grFile}
@@ -116,7 +115,6 @@ then
 		echo "${NEWPF2} ${DataDirectory}" >> ${tmpfn}
 		sed -i "/GridSize/c\GridSize ${FINALGRIDSIZE}" ${NEWPF2}
 		sed -i "/EdgeLength/c\EdgeLength ${FINALEDGELENGTH}" ${NEWPF2}
-
 		${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
 			-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
 			-DoPeakSearch=0 -FFSeedOrientations=1 -DoFullLayer=1 -DoGrid=1 -MachineName=${MACHINE_NAME}
