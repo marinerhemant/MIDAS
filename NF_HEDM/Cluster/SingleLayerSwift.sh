@@ -115,6 +115,8 @@ then
 		echo "${NEWPF2} ${DataDirectory}" >> ${tmpfn}
 		sed -i "/GridSize/c\GridSize ${FINALGRIDSIZE}" ${NEWPF2}
 		sed -i "/EdgeLength/c\EdgeLength ${FINALEDGELENGTH}" ${NEWPF2}
+		sed -i "/MicFileBinary/c\MicFileBinary ${Micf}_FinResult" ${NEW_PARAM_FILE}
+		sed -i "/MicFileText/c\MicFileText ${MicfT}_FinResult" ${NEW_PARAM_FILE}
 		${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
 			-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
 			-DoPeakSearch=0 -FFSeedOrientations=1 -DoFullLayer=1 -DoGrid=1 -MachineName=${MACHINE_NAME}
