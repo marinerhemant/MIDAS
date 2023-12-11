@@ -39,7 +39,7 @@ startNr = int(getValueFromParamFile(paramFile,'StartNr')[0][0])
 endNr = int(getValueFromParamFile(paramFile,'EndNr')[0][0])
 fStem = getValueFromParamFile(paramFile,'FileStem')[0][0]
 pad = int(getValueFromParamFile(paramFile,'Padding')[0][0])
-layerNr = os.path.basename(os.getcwd()).split('Layer')[1].split('_')[0]
+layerNr = int(os.path.basename(os.getcwd()).split('Layer')[1].split('_')[1])
 Grains = np.genfromtxt('Grains.csv',skip_header=9)
 SpotMatrix = np.genfromtxt('SpotMatrix.csv',skip_header=1)
 IDRings = np.genfromtxt('IDRings.csv',skip_header=1)
