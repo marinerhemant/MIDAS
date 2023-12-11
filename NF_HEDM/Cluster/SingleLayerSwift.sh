@@ -14,13 +14,14 @@ then
   echo "Eg. ${cmdname} ParametersFile.txt 1(or 0) 1(or 0) 6 orthros hsharma@anl.gov"
   echo "This will produce the output in the run folder, called Microstructure.mic."
   echo "FFSeedOrientations is when either Orientations exist already (0) or when you provide a FF Orientation file (1)."
-  echo "If FFSeedOrientations is 1, please add 2 lines to your analysis: FullSeedFile and MinConfidence to redo the analysis"
-  echo "using all orientations and minconfidence." 
+  echo "If FFSeedOrientations is 1, please add 4 lines to your analysis:"
+  echo "				FinalGridSize, FinalEdgeLength, FullSeedFile, MinConfidenceLowerBound and MinConfidence to redo the analysis"
+  echo "				using all orientations and minconfidence." 
   echo "ProcessImages is whether you want to process the diffraction images (1) or if they were processed earlier (0)."
   echo "NOTE: run from the folder with the Key.txt, DiffractionSpots.txt, OrientMat.txt and ParametersFile.txt"
   echo "At least the parameters file should be in the folder from where the command is executed."
-  echo "For FF Seeding, add parameters MinConfidence and MinConfidenceLowerBound and FullSeedFile, this will"
-  echo "take the result and repeat analysis with all orientations." 
+  echo "For FF Seeding, add parameters FinalGridSize, FinalEdgeLength, FullSeedFile, MinConfidenceLowerBound and MinConfidence"
+  echo "this will take the result and repeat analysis with all orientations." 
   echo "**********NOTE: For local runs, nNodes should be nCPUs.**********"
   exit 1
 fi
@@ -85,6 +86,8 @@ then
 		NEW_PARAM_FILE=${TOP_PARAM_FILE}_AllOrientations.txt
 		cp ${TOP_PARAM_FILE} ${NEW_PARAM_FILE}
 		MINCONFIDENCE=$(awk '$1 ~ /^MinConfidence/ { print $2 }' ${NEW_PARAM_FILE})
+		FINALGRIDSIZE=$(awk '$1 ~ /^FinalGridSize/ { print $2 }' ${NEW_PARAM_FILE})
+		FINALEDGELENGTH=$(awk '$1 ~ /^FinalEdgeLength/ { print $2 }' ${NEW_PARAM_FILE})
 		LOWMINCONFIDENCE=$(awk '$1 ~ /^MinConfidenceLowerBound/ { print $2 }' ${NEW_PARAM_FILE})
 		echo "Now checking all orientations for all voxels with low confidence."
 		Micf=$(awk '$1 ~ /^MicFileBinary/ { print $2 }' ${NEW_PARAM_FILE})
@@ -107,15 +110,17 @@ then
 		# Try to find the new orientations, then add them to the original Grains.csv, run everything again.
 		export PYTHONPATH=${HOME}/opt/MIDAS/utils/
 		python ${HOME}/opt/MIDAS/utils/findUniqueOrientationsNF ${MicfT}_AllOrientations ${sg} ${grFile}
+		echo "paramfn datadir" > ${tmpfn}
+		echo "${TOP_PARAM_FILE} ${DataDirectory}" >> ${tmpfn}
+		sed -i "/GridSize/c\GridSize ${FINALGRIDSIZE}" ${TOP_PARAM_FILE}
+		sed -i "/EdgeLength/c\EdgeLength ${FINALEDGELENGTH}" ${TOP_PARAM_FILE}
+
+		${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
+			-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
+			-DoPeakSearch=0 -FFSeedOrientations=1 -DoFullLayer=1 -DoGrid=1 -MachineName=${MACHINE_NAME}
 	fi
 fi
 
-echo "paramfn datadir" > ${tmpfn}
-echo "${TOP_PARAM_FILE} ${DataDirectory}" >> ${tmpfn}
-
-${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
-	-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
-	-DoPeakSearch=0 -FFSeedOrientations=1 -DoFullLayer=1 -DoGrid=1 -MachineName=${MACHINE_NAME}
 
 
 EmailAdd=$6
