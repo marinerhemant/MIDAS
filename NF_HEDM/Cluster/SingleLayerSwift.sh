@@ -57,10 +57,12 @@ NRFILESPERDISTANCE=$( awk '$1 ~ /^NrFilesPerDistance/ { print $2 }' ${TOP_PARAM_
 DataDirectory=$( awk '$1 ~ /^DataDirectory/ { print $2 }' ${TOP_PARAM_FILE} )
 cd ${DataDirectory}
 outFldr=$( awk '$1 ~ /^ReducedFileName/ { print $2 }' ${TOP_PARAM_FILE} )
+grFile=$( awk '$1 ~ /^GrainsFile/ { print $2 }' ${TOP_PARAM_FILE} )
 outdir=$( dirname ${outFldr} )
 mkdir -p ${outdir}
 rm -rf output
 BinFN=$( awk '$1 ~ /^MicFileBinary/ { print $2 }' ${TOP_PARAM_FILE} )
+sg=$( awk '$1 ~ /^SpaceGroup/ { print $2 }' ${TOP_PARAM_FILE} )
 tmpfn=${DataDirectory}/fns.txt
 echo "paramfn datadir" > ${tmpfn}
 echo "${TOP_PARAM_FILE} ${DataDirectory}" >> ${tmpfn}
@@ -102,8 +104,19 @@ then
 			-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
 			-DoPeakSearch=0 -FFSeedOrientations=0 -DoFullLayer=1 -DoGrid=0 -MachineName=${MACHINE_NAME}
 		${BINFOLDER}/ParseMic ${NEW_PARAM_FILE}
+		# Try to find the new orientations, then add them to the original Grains.csv, run everything again.
+		export PYTHONPATH=${HOME}/opt/MIDAS/utils/
+		python ${HOME}/opt/MIDAS/utils/findUniqueOrientationsNF ${MicfT}_AllOrientations ${sg} ${grFile}
 	fi
 fi
+
+echo "paramfn datadir" > ${tmpfn}
+echo "${TOP_PARAM_FILE} ${DataDirectory}" >> ${tmpfn}
+
+${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
+	-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
+	-DoPeakSearch=0 -FFSeedOrientations=1 -DoFullLayer=1 -DoGrid=1 -MachineName=${MACHINE_NAME}
+
 
 EmailAdd=$6
 echo "The run started with ${cmdname} $@ has finished, please check." | mail -s "MIDAS run finished" ${EmailAdd}

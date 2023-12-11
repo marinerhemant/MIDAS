@@ -188,4 +188,4 @@ def GetMisOrientationAngleOM(OM1,OM2,SGNum):
 	MisV = BringDownToFundamentalRegionSym(QP,NrSymmetries,Sym)
 	if (MisV[0] > 1):
 		MisV[0] = 1
-	return 2*acos(MisV[0])
+	return 2*acos(MisV[0]),MisV[1:]
