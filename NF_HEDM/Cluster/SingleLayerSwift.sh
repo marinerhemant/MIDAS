@@ -108,7 +108,7 @@ then
 
 		# Try to find the new orientations, then add them to the original Grains.csv, run everything again.
 		export PYTHONPATH=${HOME}/opt/MIDAS/utils/
-		python ${HOME}/opt/MIDAS/utils/findUniqueOrientationsNF.py ${MicfT}_AllOrientations ${sg} ${grFile}
+		python ${HOME}/opt/MIDAS/utils/findUniqueOrientationsNF.py ${MicfT}_AllOrientations ${sg} ${grFile} 2
 		echo "paramfn datadir" > ${tmpfn}
 		NEWPF2=${TOP_PARAM_FILE}_FinConfig.txt
 		cp ${TOP_PARAM_FILE} ${NEWPF2}
