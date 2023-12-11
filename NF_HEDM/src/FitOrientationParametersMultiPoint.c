@@ -183,6 +183,7 @@ double problem_function(
 	}
 	free(TheorSpots);
 	netResult /= nSpots;
+    // printf("%.40lf\n",netResult);
     return (1 - netResult);
 }
 
@@ -317,14 +318,66 @@ FitOrientation(
 	f_datat = &f_data;
 	void* trp = (struct my_func_data *) f_datat;
 	double tole = 1e-3;
-	nlopt_opt opt;
-	opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
+
+    // Try global optimization?
+    
+    double val0 = problem_function(n,&x,NULL,trp);
+    
+    // nlopt_opt opt = nlopt_create(NLOPT_GN_ESCH,n);nlopt_set_population(opt, n+2);
+    // nlopt_opt opt = nlopt_create(NLOPT_GN_ISRES,n); // 0.807
+    // nlopt_opt opt = nlopt_create(NLOPT_GN_DIRECT,n); // 0.7948
+    // nlopt_opt opt = nlopt_create(NLOPT_GN_DIRECT_L_RAND,n); // 0.7966
+
+    /*
+    nlopt_opt opt = nlopt_create(NLOPT_GN_MLSL_LDS,n);
+    nlopt_opt local_opt = nlopt_create(NLOPT_LN_NELDERMEAD, n); 
+    nlopt_set_min_objective(local_opt, problem_function, trp); 
+    nlopt_set_local_optimizer(opt,local_opt); 
+    nlopt_set_ftol_rel(local_opt, 0.01);
+    */
+
+    printf("Original val: %.40lf, running global optimization followed by local optimization.\n",1-val0);
+    nlopt_opt opt = nlopt_create(NLOPT_GN_CRS2_LM,n); nlopt_set_population(opt, 500*(n+2)); // 0.816894
+    nlopt_set_min_objective(opt, problem_function, trp);
+    nlopt_set_ftol_rel(opt, 0.001);
 	nlopt_set_lower_bounds(opt, xl);
 	nlopt_set_upper_bounds(opt, xu);
-	nlopt_set_min_objective(opt, problem_function, trp);
-	double minf=1;
+	double minf;
 	nlopt_optimize(opt, x, &minf);
 	nlopt_destroy(opt);
+    printf("Refined  val: %.40lf, finished global optimization. Now doing local optimization.\n",1-minf);
+
+    // Local optimization
+	nlopt_opt opt2;
+	opt2 = nlopt_create(NLOPT_LN_NELDERMEAD, n); // 0.7945
+	nlopt_set_lower_bounds(opt2, xl);
+	nlopt_set_upper_bounds(opt2, xu);
+	nlopt_set_min_objective(opt2, problem_function, trp);
+	double minf2;
+	nlopt_optimize(opt2, x, &minf2);
+	nlopt_destroy(opt2);
+    printf("Refined  val: %.40lf, finished global optimization followed by local optimization.\n",1-minf2);
+
+    nlopt_opt opt3 = nlopt_create(NLOPT_GN_ISRES,n); nlopt_set_population(opt, 50*(n+2));
+    nlopt_set_min_objective(opt3, problem_function, trp);
+    nlopt_set_ftol_rel(opt3, 0.01);
+	nlopt_set_lower_bounds(opt3, xl);
+	nlopt_set_upper_bounds(opt3, xu);
+	double minf3;
+	nlopt_optimize(opt3, x, &minf3);
+	nlopt_destroy(opt3);
+
+    printf("Refined  val: %.40lf, finished global optimization followed by local optimization.\n",1-minf3);
+
+	nlopt_opt opt4 = nlopt_create(NLOPT_LN_NELDERMEAD, n);
+	nlopt_set_lower_bounds(opt4, xl);
+	nlopt_set_upper_bounds(opt4, xu);
+	nlopt_set_min_objective(opt4, problem_function, trp);
+	double minf4;
+	nlopt_optimize(opt4, x, &minf4);
+	nlopt_destroy(opt4);
+    printf("Final value:  %.40lf, finished global optimization followed by local optimization.\n",1-minf4);
+
     TiltsFit[0] = x[0];
     TiltsFit[1] = x[1];
     TiltsFit[2] = x[2];
