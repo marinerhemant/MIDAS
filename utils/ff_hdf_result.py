@@ -91,11 +91,8 @@ hk.attrs['head'] = np.string_(open('hkls.csv').readline())
 group2 = group1.create_group('Temp')
 for fNr in range(startNr,endNr+1):
 	fileName = f'{os.getcwd()}/Temp/{fStem}_{layerNr}_{str(fNr).zfill(pad)}_PS.csv'
-	print(fileName)
 	if os.path.exists(fileName):
 		arr = np.genfromtxt(fileName,skip_header=1)
-		print(arr.shape)
-		print(os.path.basename(fileName))
 		if arr.shape[0] > 0:
 			tmpd = group2.create_dataset(os.path.basename(fileName),data=arr)
 			tmpd.attrs['head'] = np.string_(open(fileName).readline())
