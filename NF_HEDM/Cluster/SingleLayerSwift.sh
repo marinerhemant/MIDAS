@@ -111,9 +111,11 @@ then
 		export PYTHONPATH=${HOME}/opt/MIDAS/utils/
 		python ${HOME}/opt/MIDAS/utils/findUniqueOrientationsNF.py ${MicfT}_AllOrientations ${sg} ${grFile}
 		echo "paramfn datadir" > ${tmpfn}
-		echo "${TOP_PARAM_FILE} ${DataDirectory}" >> ${tmpfn}
-		sed -i "/GridSize/c\GridSize ${FINALGRIDSIZE}" ${TOP_PARAM_FILE}
-		sed -i "/EdgeLength/c\EdgeLength ${FINALEDGELENGTH}" ${TOP_PARAM_FILE}
+		NEWPF2=${TOP_PARAM_FILE}_FinConfig.txt
+		cp ${TOP_PARAM_FILE} ${NEWPF2}
+		echo "${NEWPF2} ${DataDirectory}" >> ${tmpfn}
+		sed -i "/GridSize/c\GridSize ${FINALGRIDSIZE}" ${NEWPF2}
+		sed -i "/EdgeLength/c\EdgeLength ${FINALEDGELENGTH}" ${NEWPF2}
 
 		${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
 			-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
