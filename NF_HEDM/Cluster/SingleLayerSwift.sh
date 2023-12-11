@@ -86,8 +86,8 @@ then
 		NEW_PARAM_FILE=${TOP_PARAM_FILE}_AllOrientations.txt
 		cp ${TOP_PARAM_FILE} ${NEW_PARAM_FILE}
 		MINCONFIDENCE=$(awk '$1 ~ /^MinConfidence/ { print $2 }' ${NEW_PARAM_FILE})
-		FINALGRIDSIZE=$(awk '$1 ~ /^FinalGridSize/ { print $2 }' ${NEW_PARAM_FILE})
-		FINALEDGELENGTH=$(awk '$1 ~ /^FinalEdgeLength/ { print $2 }' ${NEW_PARAM_FILE})
+		FINALGRIDSIZE=$(awk '$1 ~ /^FinGS/ { print $2 }' ${NEW_PARAM_FILE})
+		FINALEDGELENGTH=$(awk '$1 ~ /^FinEL/ { print $2 }' ${NEW_PARAM_FILE})
 		LOWMINCONFIDENCE=$(awk '$1 ~ /^MinConfidenceLowerBound/ { print $2 }' ${NEW_PARAM_FILE})
 		echo "Now checking all orientations for all voxels with low confidence."
 		Micf=$(awk '$1 ~ /^MicFileBinary/ { print $2 }' ${NEW_PARAM_FILE})
