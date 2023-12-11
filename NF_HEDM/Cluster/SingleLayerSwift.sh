@@ -120,6 +120,7 @@ then
 		${SWIFTDIR}/swift -config ${PFDIR}/sites.conf -sites ${MACHINE_NAME} ${PFDIR}/processLayer.swift \
 			-FileData=${tmpfn} -NrDistances=${NDISTANCES} -NrFilesPerDistance=${NRFILESPERDISTANCE} \
 			-DoPeakSearch=0 -FFSeedOrientations=1 -DoFullLayer=1 -DoGrid=1 -MachineName=${MACHINE_NAME}
+		${BINFOLDER}/ParseMic ${NEWPF2}
 	fi
 fi
 
