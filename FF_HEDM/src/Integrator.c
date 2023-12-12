@@ -8,7 +8,6 @@
 // Hemant Sharma
 // Dt: 2017/07/26
 //
-// TODO: Add option to give QbinSize instead of RbinSize
 
 #include <stdio.h>
 #include <math.h>
@@ -29,6 +28,8 @@
 #include <tiffio.h>
 #include <libgen.h>
 #include <hdf5.h>
+#include <hdf5_hl.h>
+#include <assert.h>
 
 typedef double pixelvalue;
 
@@ -106,7 +107,8 @@ int ReadBins(){
     check (status2 < 0, "stat %s failed: %s", file_name2, strerror (errno));
     size_t size2 = s2.st_size;
     nPxList = mmap (0, size2, PROT_READ, MAP_SHARED, fd2, 0);
-    printf("nMap size in bytes: %lld, each element size: %d, total elements: %lld. \n",(long long int)size2,2*(int)sizeof(int),2*(long long int)(size2/sizeof(int)));
+    printf("nMap size in bytes: %lld, each element size: %d, total elements: %lld. \n",
+		(long long int)size2,2*(int)sizeof(int),2*(long long int)(size2/sizeof(int)));
     fflush(stdout);
     check (nPxList == MAP_FAILED, "mmap %s failed: %s",file_name, strerror (errno));
 	return 1;
@@ -313,7 +315,8 @@ int main(int argc, char **argv)
 	int *mapMask, skipFrame=0;
 	int dType = 1;
 	char GapFN[4096], BadPxFN[4096], outputFolder[4096];
-	int sumImages=0, separateFolder=0,newOutput=0, binOutput = 0;
+	int sumImages=0, separateFolder=0,newOutput=0;
+	// newOutput ==2 means we want to write an hdf output.
 	while (fgets(aline,4096,paramFile) != NULL){
 		str = "GapFile ";
 		if (StartsWith(aline,str) == 1){
@@ -337,10 +340,6 @@ int main(int argc, char **argv)
 		str = "NewOutput ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %d", dummy, &newOutput);
-		}
-		str = "BinOutput ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %d", dummy, &binOutput);
 		}
 		str = "RBinSize ";
 		if (StartsWith(aline,str) == 1){
@@ -622,6 +621,9 @@ int main(int argc, char **argv)
 	char outfn[4096];
 	char outfn2[4096];
 	FILE *out,*out2;
+	hid_t file_id;
+	herr_t status_f;
+	double *PerFrameArr;
 	char outFN1d[4096];
 	char dmyt[10000];
 	FILE *out1d;
@@ -695,6 +697,17 @@ int main(int argc, char **argv)
 			}
 			out2 = fopen(outfn2,"w");
 			fprintf(out2,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tBinArea\n",nEtaBins,nRBins);
+		} else if (i==0 && newOutput==2){
+			if (separateFolder==0) sprintf(outfn2,"%s.Result.hdf",imageFN);
+			else{
+				char fn2[4096];
+				sprintf(fn2,"%s",imageFN);
+				char *bnname;
+				bnname = basename(fn2);
+				sprintf(outfn2,"%s/%s.Result.hdf",outputFolder,bnname);
+			}
+			file_id = H5Fcreate(outfn2, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+			PerFrameArr = malloc(nEtaBins*nRBins*4*sizeof(*PerFrameArr));
 		}
 		memset(IntArrPerFrame,0,bigArrSize*sizeof(double));
 		for (j=0;j<nRBins;j++){
@@ -732,8 +745,17 @@ int main(int argc, char **argv)
 				if (newOutput == 0){
 					fprintf(out,"%lf\t%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,Intensity,totArea);
 				}else{
-					if (i==0){
-						fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
+					if (newOutput == 1){
+						if (i==0){
+							fprintf(out2,"%lf\t%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),EtaMean,totArea);
+						}
+					} else if (newOutput==2){
+						if (i==0){
+							PerFrameArr[4*(j*nEtaBins+k)+0] = RMean;
+							PerFrameArr[4*(j*nEtaBins+k)+1] = atand(RMean*px/Lsd);
+							PerFrameArr[4*(j*nEtaBins+k)+2] = EtaMean;
+							PerFrameArr[4*(j*nEtaBins+k)+3] = totArea;
+						}
 					}
 					IntArrPerFrame[j*nEtaBins+k] = Intensity;
 				}
@@ -751,11 +773,27 @@ int main(int argc, char **argv)
 			if (newOutput == 0)
 				fprintf(out1d,"%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),Int1d);
 		}
-		if (newOutput == 1){
-			fwrite(IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),1,out3);
-			if (i==0){
-				fclose(out2);
+		if (newOutput==2 && i==0){
+			hsize_t dims[2] = {nEtaBins*nRBins,4};
+			status_f = H5LTmake_dataset(file_id, "/REtaMap", 2, dims,
+                            H5T_NATIVE_DOUBLE, PerFrameArr);
+			H5LTset_attribute_int(file_id, "/REtaMap", "nEtaBins", &nEtaBins, 1);
+			H5LTset_attribute_int(file_id, "/REtaMap", "nRBins", &nRBins, 1);
+			H5LTset_attribute_string(file_id, "/REtaMap", "Header", "Radius,2Theta,Eta,BinArea");
+		}
+		if (newOutput > 0){
+			if (newOutput==1) fwrite(IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),1,out3);
+			else if (newOutput==2){
+				hsize_t dim[2] = {nRBins,nEtaBins};
+				char dsetName[1024];
+				sprintf(dsetName,"/IntegrationResult_FrameNr_%d",i);
+				H5LTmake_dataset(file_id, dsetName, 2, dim,
+                            H5T_NATIVE_DOUBLE, IntArrPerFrame);
+				H5LTset_attribute_string(file_id, dsetName, "Header", "Radius,Eta");
 			}
+			if (i==0 && newOutput==1){
+				fclose(out2);
+			} 
 		} else{
 			fclose(out);
 			fclose(out1d);
@@ -782,12 +820,26 @@ int main(int argc, char **argv)
 					fprintf(sumFile,"%lf\t",sumMatrix[i*5+k]);
 				fprintf(sumFile,"\n");
 			}
-		} else {
+		} else if (newOutput==1) {
 			fprintf(sumFile,"%%Intensity(counts)\n");
 			for (i=0;i<nRBins*nEtaBins;i++){
 				fprintf(sumFile,"%lf\n",sumMatrix[i*5+3]);
 			}
+		} else if (newOutput==2){
+			double *sumArr;
+			sumArr = malloc(nRBins*nEtaBins*sizeof(*sumArr));
+			for (i=0;i<nRBins*nEtaBins;i++){
+				sumArr[i] = sumMatrix[i*5+3];
+			}
+			hsize_t dimsum[2] = {nRBins,nEtaBins};
+			H5LTmake_dataset(file_id, "/sumFrames", 2, dimsum,
+                            H5T_NATIVE_DOUBLE, sumArr);
+			H5LTset_attribute_string(file_id, "/sumFrames", "Header", "Radius,Eta");
+			free(sumArr);
 		}
+	}
+	if (newOutput==2){
+		status_f = H5Fclose (file_id);
 	}
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
