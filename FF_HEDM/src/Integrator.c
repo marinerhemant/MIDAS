@@ -19,6 +19,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <unistd.h>
 #include <fcntl.h>
 #include <ctype.h>
 #include <sys/ipc.h>
@@ -437,7 +438,13 @@ int main(int argc, char **argv)
 			continue;
         }
 	}
-	printf("%d %s\n",separateFolder,outputFolder);
+	if (separateFolder!=0){
+		struct stat st = {0};
+		if (stat(outputFolder,&st)==-1){
+			printf("Output folder '%s' did not exit. Making now.\n",outputFolder);
+			mkdir(outputFolder,0700);
+		}
+	}
 	nRBins = (int) ceil((RMax-RMin)/RBinSize);
 	nEtaBins = (int)ceil((EtaMax - EtaMin)/EtaBinSize);
 	double *EtaBinsLow, *EtaBinsHigh;
@@ -527,7 +534,6 @@ int main(int argc, char **argv)
 			}
 			for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFrames;
 		}
-		printf("Dark file read\n");
 	}
 	char *DATASETNAME;
     hid_t file;
