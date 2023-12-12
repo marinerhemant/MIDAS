@@ -788,10 +788,10 @@ int main(int argc, char **argv)
 						}
 					} else if (newOutput==2){
 						if (i==0){
-							PerFrameArr[4*(j*nEtaBins+k)+0] = RMean;
-							PerFrameArr[4*(j*nEtaBins+k)+1] = atand(RMean*px/Lsd);
-							PerFrameArr[4*(j*nEtaBins+k)+2] = EtaMean;
-							PerFrameArr[4*(j*nEtaBins+k)+3] = totArea;
+							PerFrameArr[0*(j*nEtaBins+k)+0] = RMean;
+							PerFrameArr[1*(j*nEtaBins+k)+1] = atand(RMean*px/Lsd);
+							PerFrameArr[2*(j*nEtaBins+k)+2] = EtaMean;
+							PerFrameArr[3*(j*nEtaBins+k)+3] = totArea;
 						}
 					}
 					IntArrPerFrame[j*nEtaBins+k] = Intensity;
@@ -811,11 +811,11 @@ int main(int argc, char **argv)
 				fprintf(out1d,"%lf\t%lf\t%lf\n",RMean,atand(RMean*px/Lsd),Int1d);
 		}
 		if (newOutput==2 && i==0){
-			hsize_t dims[2] = {nEtaBins*nRBins,4};
-			status_f = H5LTmake_dataset_double(file_id, "/REtaMap", 2, dims, PerFrameArr);
+			hsize_t dims[3] = {nEtaBins,nRBins,4};
+			status_f = H5LTmake_dataset_double(file_id, "/REtaMap", 3, dims, PerFrameArr);
 			H5LTset_attribute_int(file_id, "/REtaMap", "nEtaBins", &nEtaBins, 1);
 			H5LTset_attribute_int(file_id, "/REtaMap", "nRBins", &nRBins, 1);
-			H5LTset_attribute_string(file_id, "/REtaMap", "Header", "Radius,2Theta,Eta,BinArea");
+			H5LTset_attribute_string(file_id, "/REtaMap", "Dimensions", "Radius,2Theta,Eta,BinArea");
 		}
 		if (newOutput > 0){
 			if (newOutput==1) fwrite(IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),1,out3);
