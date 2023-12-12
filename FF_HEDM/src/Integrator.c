@@ -647,11 +647,11 @@ int main(int argc, char **argv)
 	double RMean, EtaMean;
 	double Int1d;
 	int n1ds;
+	size_t bigArrSize = nEtaBins*nRBins;
 	double *chunkArr;
 	if (chunkFiles>0){
-		chunkArr = calloc(nRBins*nEtaBins,sizeof(*chunkArr));
+		chunkArr = calloc(bigArrSize,sizeof(*chunkArr));
 	}
-	size_t bigArrSize = nEtaBins*nRBins;
 	double *sumMatrix;
 	if (sumImages == 1){
 		sumMatrix = calloc(bigArrSize*5,sizeof(*sumMatrix));
@@ -682,7 +682,7 @@ int main(int argc, char **argv)
 	for (i=0;i<nFrames;i++){
 		if (chunkFiles>0){
 			if ((i%chunkFiles) == 0){
-				memset(chunkArr,0,nRBins*nEtaBins*sizeof(*chunkArr));
+				memset(chunkArr,0,bigArrSize*sizeof(*chunkArr));
 				firstOme = omeArr[i];
 			}
 		}
@@ -788,10 +788,10 @@ int main(int argc, char **argv)
 						}
 					} else if (newOutput==2){
 						if (i==0){
-							PerFrameArr[0*nRBins*nEtaBins+(j*nEtaBins+k)] = RMean;
-							PerFrameArr[1*nRBins*nEtaBins+(j*nEtaBins+k)] = atand(RMean*px/Lsd);
-							PerFrameArr[2*nRBins*nEtaBins+(j*nEtaBins+k)] = EtaMean;
-							PerFrameArr[3*nRBins*nEtaBins+(j*nEtaBins+k)] = totArea;
+							PerFrameArr[0*bigArrSize+(j*nEtaBins+k)] = RMean;
+							PerFrameArr[1*bigArrSize+(j*nEtaBins+k)] = atand(RMean*px/Lsd);
+							PerFrameArr[2*bigArrSize+(j*nEtaBins+k)] = EtaMean;
+							PerFrameArr[3*bigArrSize+(j*nEtaBins+k)] = totArea;
 						}
 					}
 					IntArrPerFrame[j*nEtaBins+k] = Intensity;
@@ -823,7 +823,7 @@ int main(int argc, char **argv)
 				hsize_t dim[2] = {nRBins,nEtaBins};
 				char dsetName[1024];
 				sprintf(dsetName,"/IntegrationResult/FrameNr_%d",i);
-				if (chunkFiles>0) for (p=0;p<nRBins*nEtaBins;p++) chunkArr[p] += IntArrPerFrame[i];
+				if (chunkFiles>0) for (p=0;p<bigArrSize;p++) chunkArr[p] += IntArrPerFrame[i];
 				H5LTmake_dataset_double(file_id, dsetName, 2, dim, IntArrPerFrame);
 				H5LTset_attribute_double(file_id, dsetName, "omega", &omeArr[i], 1);
 				H5LTset_attribute_string(file_id, dsetName, "Header", "Radius,Eta");
@@ -869,21 +869,21 @@ int main(int argc, char **argv)
 			sumFile = fopen(sumFN,"w");
 			if (newOutput == 0){
 				fprintf(sumFile,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tIntensity(counts)\tBinArea\n");
-				for (i=0;i<nRBins*nEtaBins;i++){
+				for (i=0;i<bigArrSize;i++){
 					for (k=0;k<5;k++)
 						fprintf(sumFile,"%lf\t",sumMatrix[i*5+k]);
 					fprintf(sumFile,"\n");
 				}
 			} else if (newOutput==1) {
 				fprintf(sumFile,"%%Intensity(counts)\n");
-				for (i=0;i<nRBins*nEtaBins;i++){
+				for (i=0;i<bigArrSize;i++){
 					fprintf(sumFile,"%lf\n",sumMatrix[i*5+3]);
 				}
 			}
 		} else if (newOutput==2){
 			double *sumArr;
-			sumArr = malloc(nRBins*nEtaBins*sizeof(*sumArr));
-			for (i=0;i<nRBins*nEtaBins;i++){
+			sumArr = malloc(bigArrSize*sizeof(*sumArr));
+			for (i=0;i<bigArrSize;i++){
 				sumArr[i] = sumMatrix[i*5+3];
 			}
 			hsize_t dimsum[2] = {nRBins,nEtaBins};
