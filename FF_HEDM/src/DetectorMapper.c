@@ -118,6 +118,7 @@ REta4MYZ(
 	double p0,
 	double p1,
 	double p2,
+	double p3,
 	double n0,
 	double n1,
 	double n2,
@@ -138,7 +139,7 @@ REta4MYZ(
 	Eta = CalcEtaAngle(XYZ[1],XYZ[2]);
 	RNorm = Rad/RhoD;
 	EtaT = 90 - Eta;
-	DistortFunc = (p0*(pow(RNorm,n0))*(cos(deg2rad*(2*EtaT)))) + (p1*(pow(RNorm,n1))*(cos(deg2rad*(4*EtaT)))) + (p2*(pow(RNorm,n2))) + 1;
+	DistortFunc = (p0*(pow(RNorm,n0))*(cos(deg2rad*(2*EtaT)))) + (p1*(pow(RNorm,n1))*(cos(deg2rad*(4*EtaT+p3)))) + (p2*(pow(RNorm,n2))) + 1;
 	Rt = Rad * DistortFunc / px; // in pixels
 	RetVals[0] = Eta;
 	RetVals[1] = Rt;
@@ -318,6 +319,7 @@ mapperfcn(
 	double p0,
 	double p1,
 	double p2,
+	double p3,
 	double *EtaBinsLow,
 	double *EtaBinsHigh,
 	double *RBinsLow,
@@ -384,7 +386,7 @@ mapperfcn(
 				for (l = 0; l < 2; l++){
 					Y = ypr + dy[k];
 					Z = zpr + dz[l];
-					REta4MYZ(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, n0, n1, n2, pxY, RetVals);
+					REta4MYZ(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, n0, n1, n2, pxY, RetVals);
 					Eta = RetVals[0];
 					Rt = RetVals[1]; // in pixels
 					if (Eta < EtaMi) EtaMi = Eta;
@@ -394,7 +396,7 @@ mapperfcn(
 				}
 			}
 			// Get corrected Y, Z for this position.
-			REta4MYZ(ypr, zpr, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, n0, n1, n2, pxY, RetVals);
+			REta4MYZ(ypr, zpr, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, n0, n1, n2, pxY, RetVals);
 			Eta = RetVals[0];
 			Rt = RetVals[1]; // in pixels
 			YZ4mREta(Rt,Eta,RetVals2);
@@ -710,7 +712,7 @@ int main(int argc, char *argv[])
 		return(1);
 	}
 	double tx=0.0, ty=0.0, tz=0.0, pxY=200.0, pxZ=200.0, yCen=1024.0, zCen=1024.0, Lsd=1000000.0, RhoD=200000.0,
-		p0=0.0, p1=0.0, p2=0.0, EtaBinSize=5, RBinSize=0.25, RMax=1524.0, RMin=10.0, EtaMax=180.0, EtaMin=-180.0;
+		p0=0.0, p1=0.0, p2=0.0, p3=0.0, EtaBinSize=5, RBinSize=0.25, RMax=1524.0, RMin=10.0, EtaMax=180.0, EtaMin=-180.0;
 	int NrPixelsY=2048, NrPixelsZ=2048;
 	char aline[4096], dummy[4096], *str;
 	distortionFile = 0;
@@ -767,6 +769,10 @@ int main(int argc, char *argv[])
 		str = "p2 ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &p2);
+		}
+		str = "p3 ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %lf", dummy, &p3);
 		}
 		str = "EtaBinSize ";
 		if (StartsWith(aline,str) == 1){
@@ -861,7 +867,7 @@ int main(int argc, char *argv[])
 	}
     // Parameters needed: tx, ty, tz, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen, zCen, Lsd, RhoD, p0, p1, p2
     long long int TotNrOfBins = mapperfcn(tx, ty, tz, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen,
-								zCen, Lsd, RhoD, p0, p1, p2, EtaBinsLow,
+								zCen, Lsd, RhoD, p0, p1, p2, p3, EtaBinsLow,
 								EtaBinsHigh, RBinsLow, RBinsHigh, nRBins,
 								nEtaBins, pxList, nPxList, maxnPx);
 	printf("Total Number of bins %lld\n",TotNrOfBins); fflush(stdout);
