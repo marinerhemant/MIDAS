@@ -322,7 +322,8 @@ FitOrientation(
     double val0 = problem_function(n,&x,NULL,trp);
     printf("Original val: %.40lf, running optimization.\n",1-val0);
 
-    nlopt_opt opt = nlopt_create(NLOPT_GN_CRS2_LM,n); nlopt_set_population(opt, 500*(n+2)); // 0.816894
+    nlopt_opt opt = nlopt_create(NLOPT_GN_CRS2_LM,n);
+    nlopt_set_population(opt, 500*(n+2));
     nlopt_set_min_objective(opt, problem_function, trp);
     nlopt_set_ftol_rel(opt, 0.001);
 	nlopt_set_lower_bounds(opt, xl);
@@ -332,9 +333,8 @@ FitOrientation(
 	nlopt_destroy(opt);
     printf("Refined  val: %.40lf, finished first global optimization. Now doing first local optimization.\n",1-minf);
 
-    // Local optimization
 	nlopt_opt opt2;
-	opt2 = nlopt_create(NLOPT_LN_NELDERMEAD, n); // 0.7945
+	opt2 = nlopt_create(NLOPT_LN_NELDERMEAD, n);
 	nlopt_set_lower_bounds(opt2, xl);
 	nlopt_set_upper_bounds(opt2, xu);
 	nlopt_set_min_objective(opt2, problem_function, trp);
@@ -343,7 +343,8 @@ FitOrientation(
 	nlopt_destroy(opt2);
     printf("Refined  val: %.40lf, finished first local optimization. Now doing second global optimization.\n",1-minf2);
 
-    nlopt_opt opt3 = nlopt_create(NLOPT_GN_ISRES,n); nlopt_set_population(opt, 50*(n+2));
+    nlopt_opt opt3 = nlopt_create(NLOPT_GN_ISRES,n);
+    nlopt_set_population(opt, 50*(n+2));
     nlopt_set_min_objective(opt3, problem_function, trp);
     nlopt_set_ftol_rel(opt3, 0.01);
 	nlopt_set_lower_bounds(opt3, xl);
