@@ -651,14 +651,14 @@ int main(int argc, char **argv)
 	if (chunkFiles>0){
 		chunkArr = calloc(nRBins*nEtaBins,sizeof(*chunkArr));
 	}
+	size_t bigArrSize = nEtaBins*nRBins;
 	double *sumMatrix;
 	if (sumImages == 1){
-		sumMatrix = calloc(nEtaBins*nRBins*5,sizeof(*sumMatrix));
+		sumMatrix = calloc(bigArrSize*5,sizeof(*sumMatrix));
 	}
 	double *outArr, *outThisArr, *out1dArr;
 	char *outext;
 	outext = ".csv";
-	size_t bigArrSize = nEtaBins*nRBins;
 	double *IntArrPerFrame;
 	double firstOme, lastOme;
 	IntArrPerFrame = calloc(bigArrSize,sizeof(*IntArrPerFrame));
@@ -744,7 +744,7 @@ int main(int argc, char **argv)
 				sprintf(gName,"/Omega_Chunks_nrChunk_%d",chunkFiles);
 				H5Gcreate(file_id,gName, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 			}
-			PerFrameArr = malloc(nEtaBins*nRBins*4*sizeof(*PerFrameArr));
+			PerFrameArr = malloc(bigArrSize*4*sizeof(*PerFrameArr));
 		}
 		memset(IntArrPerFrame,0,bigArrSize*sizeof(double));
 		for (j=0;j<nRBins;j++){
