@@ -1423,7 +1423,6 @@ main(int argc, char *argv[])
 			grid[(i*numScans+j)*2+1] = ypos[j];
 		}
 	}
-	return 1;
 
 	int RingToIndex = Params.RingToIndex;
 	int startRowNrSp=MAX_N_SPOTS, endRowNrSp=0;
