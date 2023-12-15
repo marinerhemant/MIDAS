@@ -1421,7 +1421,7 @@ main(int argc, char *argv[])
 		for (j=0;j<numScans;j++){
 			grid[(i*numScans+j)*2+0] = ypos[i];
 			grid[(i*numScans+j)*2+1] = ypos[j];
-			printf("%lf %lf\n");
+			printf("%lf %lf\n",grid[(i*numScans+j)*2+0],grid[(i*numScans+j)*2+1]);
 		}
 		printf("\n");
 	}
