@@ -738,6 +738,8 @@ int main(int argc, char **argv)
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	printf("Starting frames now, time elapsed:\t%f s.\n",diftotal);
+	clock_t t1, t2;
+	double diffT=0;
 	for (i=0;i<nFrames;i++){
 		if (chunkFiles>0){
 			if ((i%chunkFiles) == 0){
@@ -776,14 +778,17 @@ int main(int argc, char **argv)
 				H5Gcreate(file_id,gName, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 			}
 		}
+		t1 = clock();
 		cudaMemcpy(devImage,Image,NrPixelsY*NrPixelsZ*sizeof(double),cudaMemcpyHostToDevice);
 		cudaMemset(devIntArrPerFrame,0,bigArrSize*sizeof(double));
-		integrate <<<((bigArrSize+2047)/2048),2048>>> (px,Lsd,bigArrSize,Normalize,sumImages,i,NrPixelsY, 
+		integrate <<<((bigArrSize+4095)/4096),4096>>> (px,Lsd,bigArrSize,Normalize,sumImages,i,NrPixelsY, 
 													mapMaskSize,devMapMask,nRBins,nEtaBins,devPxList, 
 													devNPxList,devRBinsLow,devRBinsHigh,devEtaBinsLow,devEtaBinsHigh, 
 													devImage,devIntArrPerFrame,devPerFrameArr,devSumMatrix);
 		cudaDeviceSynchronize();
 		cudaMemcpy(IntArrPerFrame,devIntArrPerFrame,bigArrSize*sizeof(double),cudaMemcpyDeviceToHost);
+		t2 = clock();
+		diffT += ((double)(t2-t1))/CLOCKS_PER_SEC;
 		if (i==0) cudaMemcpy(PerFrameArr,devPerFrameArr,bigArrSize*4*sizeof(double),cudaMemcpyDeviceToHost);
 		if (newOutput==2 && i==0){
 			hsize_t dims[3] = {(unsigned long long)4,(unsigned long long)nRBins,(unsigned long long)nEtaBins};
@@ -840,6 +845,6 @@ int main(int argc, char **argv)
 	}
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
-	printf("Total time elapsed:\t%f s.\n",diftotal);
+	printf("Time elapsed in integration:\t%fs, total time elapsed:\t%f s.\n",diffT,diftotal);
 	return 0;
 }
