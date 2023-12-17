@@ -803,7 +803,7 @@ int main(int argc, char **argv)
 		} else {
 			for (j=0;j<frame_dims2[1];j++){
 				for (k=0;k<frame_dims2[2];k++){
-					ImageInT[j*frame_dims2[2]+k] = ((double)all_images[(i+skipFrame)*(frame_dims2[1]*frame_dims2[2])+j*frame_dims2[2]+k]);
+					ImageInT[j*frame_dims2[2]+k] = ((pixelvalue)all_images[(i+skipFrame)*(frame_dims2[1]*frame_dims2[2])+j*frame_dims2[2]+k]);
 				}
 			}
 		}
