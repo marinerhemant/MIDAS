@@ -60,12 +60,12 @@ void usage(){
 		"	* ringRemovalCoefficient - If given, will do ringRemoval, otherwise comment or remove line [float] default 1.0\n"
 		"   * doLog - If 1, will take Log of intensities to calculate transmission, otherwise will use intensities directly. [int] default 1.\n"
 		"	* slicesToProcess - -1 for all or FileName. ENSURE TO GIVE EVEN NUMBER OF SLICES\n"
-		"	* ExtraPad - 0 if half padding, 1 if one-half padding"
+		"	* ExtraPad - 0 if half padding, 1 if one-half padding\n"
 		"	* AutoCentering - 0 if don't want reconstruction shifted in one direction (rotation axis in center of recon)\n"
 		"	* 				- 1 if want shift (rotation axis is offset) [default]\n"
 		"Output file: float with reconstruction_xdim*reconstruction_xdim size\n"
 		"OutputFileName: {recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_reconstruction_xdim_float_4byte.bin\n"
-		"The code will generate two text files: fftwf_wisdom_{1,2}d.txt. "
+		"The code will generate two text files: fftwf_wisdom_{1,2}d.txt.\n"
 		"These files are ways to speed up the fft calculation.\n"
 		"First run on a dataset generates these files which can be used to speed up subsequent runs.\n");
 }
