@@ -800,7 +800,7 @@ int main(int argc, char **argv)
 		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 			Image[j] = (double)ImageIn[j] - AverageDark[j];
 		}
-		if (i==0 && newOutput==2){
+		if (i==0){
 			if (separateFolder==0) sprintf(outfn2,"%s.caked.hdf",imageFN);
 			else{
 				char fn2[4096];
@@ -834,8 +834,8 @@ int main(int argc, char **argv)
 		cudaMemcpy(IntArrPerFrame,devIntArrPerFrame,bigArrSize*sizeof(double),cudaMemcpyDeviceToHost);
 		t2 = clock();
 		diffT += ((double)(t2-t1))/CLOCKS_PER_SEC;
-		if (i==0) cudaMemcpy(PerFrameArr,devPerFrameArr,bigArrSize*4*sizeof(double),cudaMemcpyDeviceToHost);
-		if (newOutput==2 && i==0){
+		if (i==0){
+			cudaMemcpy(PerFrameArr,devPerFrameArr,bigArrSize*4*sizeof(double),cudaMemcpyDeviceToHost);
 			hsize_t dims[3] = {(unsigned long long)4,(unsigned long long)nRBins,(unsigned long long)nEtaBins};
 			herr_t status_f = H5LTmake_dataset_double(file_id, "/REtaMap", 3, dims, PerFrameArr);
 			H5LTset_attribute_int(file_id, "/REtaMap", "nEtaBins", &nEtaBins, 1);
@@ -852,8 +852,8 @@ int main(int argc, char **argv)
 			H5LTset_attribute_string(file_id, dsetName, "Header", "Radius,Eta");
 			H5LTset_attribute_string(file_id, dsetName, "Units", "Pixels,Degrees");
 		}
-		if (chunkFiles>0) for (p=0;p<bigArrSize;p++) chunkArr[p] += IntArrPerFrame[p];
-		if (chunkFiles>0 && newOutput==2){
+		if (chunkFiles>0){
+			for (p=0;p<bigArrSize;p++) chunkArr[p] += IntArrPerFrame[p];
 			if (((i+1)%chunkFiles) == 0 || i==(nFrames-1)) {
 				hsize_t dim_chunk[2] = {(unsigned long long)nRBins,(unsigned long long)nEtaBins};
 				char chunkSetName[1024];
@@ -867,12 +867,10 @@ int main(int argc, char **argv)
 			}
 		}
 	}
-	if (newOutput==2){
-		if (haveOmegas==1){
-			hsize_t dimome[1] = {(unsigned long long)nFrames};
-			H5LTmake_dataset_double(file_id, "/Omegas", 1, dimome,omeArr);
-			H5LTset_attribute_string(file_id, "/Omegas", "Units", "Degrees");
-		}
+	if (haveOmegas==1){
+		hsize_t dimome[1] = {(unsigned long long)nFrames};
+		H5LTmake_dataset_double(file_id, "/Omegas", 1, dimome,omeArr);
+		H5LTset_attribute_string(file_id, "/Omegas", "Units", "Degrees");
 	}
 	if (sumImages == 1){
 		double *sumArr;
@@ -885,9 +883,7 @@ int main(int argc, char **argv)
 		H5LTset_attribute_int(file_id, "/SumFrames", "nFrames", &nFrames,1);
 		free(sumArr);
 	}
-	if (newOutput==2){
-		herr_t status_f2 = H5Fclose (file_id);
-	}
+	herr_t status_f2 = H5Fclose (file_id);
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	printf("Time elapsed in integration:\t%fs, total time elapsed:\t%f s.\n",diffT,diftotal);
