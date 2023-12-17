@@ -317,7 +317,7 @@ int main(int argc, char **argv)
 	int dType = 1;
 	char GapFN[4096], BadPxFN[4096], outputFolder[4096];
 	int sumImages=0, separateFolder=0,newOutput=0;
-	int haveOmegas = 0, chunkFiles=0;
+	int haveOmegas = 0, chunkFiles=0, individualSave=1;
 	double omeStart, omeStep;
 	while (fgets(aline,4096,paramFile) != NULL){
 		str = "GapFile ";
@@ -348,9 +348,13 @@ int main(int argc, char **argv)
 			sscanf(aline,"%s %lf", dummy, &omeStep);
 			haveOmegas = 1;
 		}
-		str = "ChunkSize ";
+		str = "OmegaSumFrames ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %d", dummy, &chunkFiles);
+		}
+		str = "SaveIndividualFrames ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %d", dummy, &individualSave);
 		}
 		str = "NewOutput ";
 		if (StartsWith(aline,str) == 1){
@@ -434,7 +438,7 @@ int main(int argc, char **argv)
         }
         str = "SumImages ";
         if (StartsWith(aline,str) == 1){
-			sumImages=1;
+			sscanf(aline,"%s %d", dummy, &sumImages);
 			continue;
         }
 	}
@@ -735,19 +739,19 @@ int main(int argc, char **argv)
 			out2 = fopen(outfn2,"w");
 			fprintf(out2,"%%nEtaBins:\t%d\tnRBins:\t%d\n%%Radius(px)\t2Theta(degrees)\tEta(degrees)\tBinArea\n",nEtaBins,nRBins);
 		} else if (i==0 && newOutput==2){
-			if (separateFolder==0) sprintf(outfn2,"%s.Result.hdf",imageFN);
+			if (separateFolder==0) sprintf(outfn2,"%s.caked.hdf",imageFN);
 			else{
 				char fn2[4096];
 				sprintf(fn2,"%s",imageFN);
 				char *bnname;
 				bnname = basename(fn2);
-				sprintf(outfn2,"%s/%s.Result.hdf",outputFolder,bnname);
+				sprintf(outfn2,"%s/%s.caked.hdf",outputFolder,bnname);
 			}
 			file_id = H5Fcreate(outfn2, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
-			H5Gcreate(file_id,"/IntegrationResult", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+			if (individualSave==1) H5Gcreate(file_id,"/IntegrationResult", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 			if (chunkFiles>0) {
 				char gName [2048];
-				sprintf(gName,"/Omega_Chunks_nrChunk_%d",chunkFiles);
+				sprintf(gName,"/OmegaSumFrame",chunkFiles);
 				H5Gcreate(file_id,gName, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 			}
 			PerFrameArr = malloc(bigArrSize*4*sizeof(*PerFrameArr));
@@ -821,18 +825,22 @@ int main(int argc, char **argv)
 			status_f = H5LTmake_dataset_double(file_id, "/REtaMap", 3, dims, PerFrameArr);
 			H5LTset_attribute_int(file_id, "/REtaMap", "nEtaBins", &nEtaBins, 1);
 			H5LTset_attribute_int(file_id, "/REtaMap", "nRBins", &nRBins, 1);
-			H5LTset_attribute_string(file_id, "/REtaMap", "Values", "Radius,2Theta,Eta,BinArea");
+			H5LTset_attribute_string(file_id, "/REtaMap", "Header", "Radius,2Theta,Eta,BinArea");
+			H5LTset_attribute_string(file_id, "/REtaMap", "Units", "Pixels,Degrees,Degrees,Pixels");
 		}
 		if (newOutput > 0){
 			if (newOutput==1) fwrite(IntArrPerFrame,bigArrSize*sizeof(*IntArrPerFrame),1,out3);
 			else if (newOutput==2){
 				hsize_t dim[2] = {nRBins,nEtaBins};
 				char dsetName[1024];
-				sprintf(dsetName,"/IntegrationResult/FrameNr_%d",i);
-				if (chunkFiles>0) for (p=0;p<bigArrSize;p++) chunkArr[p] += IntArrPerFrame[i];
-				H5LTmake_dataset_double(file_id, dsetName, 2, dim, IntArrPerFrame);
-				H5LTset_attribute_double(file_id, dsetName, "omega", &omeArr[i], 1);
-				H5LTset_attribute_string(file_id, dsetName, "Header", "Radius,Eta");
+				if (individualSave==1) {
+					sprintf(dsetName,"/IntegrationResult/FrameNr_%d",i);
+					H5LTmake_dataset_double(file_id, dsetName, 2, dim, IntArrPerFrame);
+					H5LTset_attribute_double(file_id, dsetName, "omega", &omeArr[i], 1);
+					H5LTset_attribute_string(file_id, dsetName, "Header", "Radius,Eta");
+					H5LTset_attribute_string(file_id, dsetName, "Units", "Pixels,Degrees");
+				}
+				if (chunkFiles>0) for (p=0;p<bigArrSize;p++) chunkArr[p] += IntArrPerFrame[p];
 			}
 			if (i==0 && newOutput==1){
 				fclose(out2);
@@ -845,10 +853,13 @@ int main(int argc, char **argv)
 			if (((i+1)%chunkFiles) == 0 || i==(nFrames-1)) {
 				hsize_t dim_chunk[2] = {nRBins,nEtaBins};
 				char chunkSetName[1024];
-				sprintf(chunkSetName,"/Omega_Chunks_nrChunk_%d/LastFrameNr_%d",chunkFiles,i);
+				sprintf(chunkSetName,"/OmegaSumFrame/LastFrameNumber_%d",i);
 				H5LTmake_dataset_double(file_id, chunkSetName, 2, dim_chunk, chunkArr);
-				H5LTset_attribute_double(file_id, chunkSetName, "firstOme", &firstOme, 1);
-				H5LTset_attribute_double(file_id, chunkSetName, "lastOme", &omeArr[i], 1);
+				H5LTset_attribute_int(file_id, chunkSetName, "LastFrameNumber", &i, 1);
+				int nSum = (int)((omeArr[i] - firstOme)/omeStep)  + 1;
+				H5LTset_attribute_int(file_id, chunkSetName, "Number Of Frames Summed", &nSum, 1);
+				H5LTset_attribute_double(file_id, chunkSetName, "FirstOme", &firstOme, 1);
+				H5LTset_attribute_double(file_id, chunkSetName, "LastOme", &omeArr[i], 1);
 			}
 		}
 	}
@@ -856,6 +867,7 @@ int main(int argc, char **argv)
 		if (haveOmegas==1){
 			hsize_t dimome[1] = {nFrames};
 			H5LTmake_dataset_double(file_id, "/Omegas", 1, dimome,omeArr);
+			H5LTset_attribute_string(file_id, "/Omegas", "Units", "Degrees");
 		}
 	}
 	if (newOutput == 1) fclose(out3);
@@ -895,6 +907,7 @@ int main(int argc, char **argv)
 			hsize_t dimsum[2] = {nRBins,nEtaBins};
 			H5LTmake_dataset_double(file_id, "/SumFrames", 2, dimsum,sumArr);
 			H5LTset_attribute_string(file_id, "/SumFrames", "Header", "Radius,Eta");
+			H5LTset_attribute_string(file_id, "/SumFrames", "Units", "Pixels,Degrees");
 			H5LTset_attribute_int(file_id, "/SumFrames", "nFrames", &nFrames,1);
 			free(sumArr);
 		}
