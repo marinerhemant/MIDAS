@@ -101,54 +101,92 @@ int ReadBins(){
 }
 
 __global__
-void integrate (double px, double Lsd, int bigArrSize, int Normalize, int sumImages, int i, int NrPixelsY, 
+void integrate_noMapMask (double px, double Lsd, int bigArrSize, int Normalize, int sumImages, int i, int NrPixelsY, 
 		int mapMaskSize, int *MapMask, int nRBins, int nEtaBins, struct data * dPxList, 
 		int *dNPxList, double *RBinsLow, double *RBinsHigh, double *EtaBinsLow, double *EtaBinsHigh, 
 		double *dImage, double *IntArrPerFrame, double *PerFrameArr, double *SumMatrix)
 {
 	size_t idx = blockIdx.x*blockDim.x + threadIdx.x;
 	if (idx < bigArrSize){
-		int j = idx/nEtaBins;
-		int k = idx%nEtaBins;
 		int l;
-		double EtaMean, RMean, Intensity, totArea, ThisInt;
+		double Intensity=0, totArea=0;
 		struct data ThisVal;
-		long long int Pos, nPixels,dataPos, testPos;
-		RMean = (RBinsLow[j]+RBinsHigh[j])/2;
-		Pos = j*nEtaBins + k;
-		nPixels = dNPxList[2*Pos + 0];
-		dataPos = dNPxList[2*Pos + 1];
-		Intensity = 0;
-		totArea = 0;
+		long long int nPixels, dataPos, testPos;
+		nPixels = dNPxList[2*idx + 0];
+		dataPos = dNPxList[2*idx + 1];
 		for (l=0;l<nPixels;l++){
 			ThisVal = dPxList[dataPos + l];
 			testPos = ThisVal.z;
 			testPos *= NrPixelsY;
 			testPos += ThisVal.y;
-			if (mapMaskSize!=0){
-				if (TestBit(MapMask,testPos)){
-					continue;
-				}
-			}
-			ThisInt = dImage[testPos]; // The data is arranged as y(fast) and then z(slow)
-			Intensity += ThisInt*ThisVal.frac;
+			Intensity += dImage[testPos]*ThisVal.frac;
 			totArea += ThisVal.frac;
 		}
 		if (Intensity != 0){
 			if (Normalize == 1){
 				Intensity /= totArea;
 			}
+			IntArrPerFrame[idx] = Intensity;
+			if (sumImages==1){
+				SumMatrix[idx] += Intensity;
+			}
 		}
-		EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
 		if (i==0){
+			int j = idx/nEtaBins;
+			int k = idx%nEtaBins;
+			double RMean = (RBinsLow[j]+RBinsHigh[j])/2;
+			double EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
 			PerFrameArr[0*bigArrSize+(j*nEtaBins+k)] = RMean;
 			PerFrameArr[1*bigArrSize+(j*nEtaBins+k)] = 57.2957795130823*atan(RMean*px/Lsd);
 			PerFrameArr[2*bigArrSize+(j*nEtaBins+k)] = EtaMean;
 			PerFrameArr[3*bigArrSize+(j*nEtaBins+k)] = totArea;
 		}
-		IntArrPerFrame[j*nEtaBins+k] = Intensity;
-		if (sumImages==1){
-			SumMatrix[j*nEtaBins+k] += Intensity;
+	}
+}
+
+__global__
+void integrate_MapMask (double px, double Lsd, int bigArrSize, int Normalize, int sumImages, int i, int NrPixelsY, 
+		int mapMaskSize, int *MapMask, int nRBins, int nEtaBins, struct data * dPxList, 
+		int *dNPxList, double *RBinsLow, double *RBinsHigh, double *EtaBinsLow, double *EtaBinsHigh, 
+		double *dImage, double *IntArrPerFrame, double *PerFrameArr, double *SumMatrix)
+{
+	size_t idx = blockIdx.x*blockDim.x + threadIdx.x;
+	if (idx < bigArrSize){
+		int l;
+		double Intensity=0, totArea=0;
+		struct data ThisVal;
+		long long int nPixels, dataPos, testPos;
+		nPixels = dNPxList[2*idx + 0];
+		dataPos = dNPxList[2*idx + 1];
+		for (l=0;l<nPixels;l++){
+			ThisVal = dPxList[dataPos + l];
+			testPos = ThisVal.z;
+			testPos *= NrPixelsY;
+			testPos += ThisVal.y;
+			if (TestBit(MapMask,testPos)){
+				continue;
+			}
+			Intensity += dImage[testPos]*ThisVal.frac;
+			totArea += ThisVal.frac;
+		}
+		if (Intensity != 0){
+			if (Normalize == 1){
+				Intensity /= totArea;
+			}
+			IntArrPerFrame[idx] = Intensity;
+			if (sumImages==1){
+				SumMatrix[idx] += Intensity;
+			}
+		}
+		if (i==0){
+			int j = idx/nEtaBins;
+			int k = idx%nEtaBins;
+			double RMean = (RBinsLow[j]+RBinsHigh[j])/2;
+			double EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
+			PerFrameArr[0*bigArrSize+(j*nEtaBins+k)] = RMean;
+			PerFrameArr[1*bigArrSize+(j*nEtaBins+k)] = 57.2957795130823*atan(RMean*px/Lsd);
+			PerFrameArr[2*bigArrSize+(j*nEtaBins+k)] = EtaMean;
+			PerFrameArr[3*bigArrSize+(j*nEtaBins+k)] = totArea;
 		}
 	}
 }
@@ -333,7 +371,8 @@ int main(int argc, char **argv)
     char *ParamFN;
     FILE *paramFile;
     ParamFN = argv[1];
-	char aline[4096], dummy[4096], *str;
+	char aline[4096], dummy[4096];
+	const char *str;
 	paramFile = fopen(ParamFN,"r");
 	int HeadSize = 8192;
     int NrTransOpt=0;
@@ -344,7 +383,7 @@ int main(int argc, char **argv)
 	int *mapMask, skipFrame=0;
 	int dType = 1;
 	char GapFN[4096], BadPxFN[4096], outputFolder[4096];
-	int sumImages=0, separateFolder=0,newOutput=0;
+	int sumImages=0, separateFolder=0, newOutput=0;
 	int haveOmegas = 0, chunkFiles=0, individualSave=1;
 	double omeStart, omeStep;
 	while (fgets(aline,4096,paramFile) != NULL){
@@ -574,7 +613,7 @@ int main(int argc, char **argv)
 			for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFrames;
 		}
 	}
-	char *DATASETNAME;
+	const char *DATASETNAME;
     hid_t file;
     hid_t dataset;  
 	hid_t dataspace;
@@ -781,7 +820,13 @@ int main(int argc, char **argv)
 		t1 = clock();
 		cudaMemcpy(devImage,Image,NrPixelsY*NrPixelsZ*sizeof(double),cudaMemcpyHostToDevice);
 		cudaMemset(devIntArrPerFrame,0,bigArrSize*sizeof(double));
-		integrate <<<((bigArrSize+4095)/4096),4096>>> (px,Lsd,bigArrSize,Normalize,sumImages,i,NrPixelsY, 
+		if (mapMaskSize==0)
+			integrate_noMapMask <<<((bigArrSize+2047)/2048),2048>>> (px,Lsd,bigArrSize,Normalize,sumImages,i,NrPixelsY, 
+													mapMaskSize,devMapMask,nRBins,nEtaBins,devPxList, 
+													devNPxList,devRBinsLow,devRBinsHigh,devEtaBinsLow,devEtaBinsHigh, 
+													devImage,devIntArrPerFrame,devPerFrameArr,devSumMatrix);
+		else 
+			integrate_MapMask <<<((bigArrSize+2047)/2048),2048>>> (px,Lsd,bigArrSize,Normalize,sumImages,i,NrPixelsY, 
 													mapMaskSize,devMapMask,nRBins,nEtaBins,devPxList, 
 													devNPxList,devRBinsLow,devRBinsHigh,devEtaBinsLow,devEtaBinsHigh, 
 													devImage,devIntArrPerFrame,devPerFrameArr,devSumMatrix);
