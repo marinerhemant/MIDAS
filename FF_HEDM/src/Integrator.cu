@@ -2,9 +2,13 @@
 // Copyright (c) 2014, UChicago Argonne, LLC
 // See LICENSE file.
 //
-// ~/opt/midascuda/cuda/bin/nvcc integrator.cu -o integrator -Xcompiler -g -arch sm_90 -gencode=arch=compute_90,code=sm_90 -I/scratch/s1iduser/sharma_tests/HDF5/include -L/scratch/s1iduser/sharma_tests/HDF5/lib -lhdf5_hl -lhdf5 -I/scratch/s1iduser/sharma_tests/LIBTIFF/include -L/scratch/s1iduser/sharma_tests/LIBTIFF/lib -ltiff
+// ~/opt/midascuda/cuda/bin/nvcc integrator.cu -o integrator -Xcompiler -g -arch sm_90 -gencode=arch=compute_90,code=sm_90 -I/scratch/s1iduser/sharma_tests/HDF5/include -L/scratch/s1iduser/sharma_tests/HDF5/lib -lhdf5_hl -lhdf5 -I/scratch/s1iduser/sharma_tests/LIBTIFF/include -L/scratch/s1iduser/sharma_tests/LIBTIFF/lib -ltiff -O3
 // export LD_LIBRARY_PATH=/scratch/s1iduser/sharma_tests/HDF5/lib:/scratch/s1iduser/sharma_tests/LIBTIFF/lib:$LD_LIBRARY_PATH
 
+// Benchmarks: 
+// 11.8s using H100, 38.2s using CPU. 
+// Overhead (I/O, prepare): 10.5s, 1.19s using H100, 27.7s using CPU, 23x speedup. 
+// 1469MPx/s using H100, 208MPx/s using CPU
 // Integrator.cu
 //
 // Hemant Sharma
@@ -354,6 +358,8 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 
 int main(int argc, char **argv)
 {
+	cudaSetDevice(0);
+	printf("[%s] - Starting...\n", argv[0]);
 	clock_t start0, end0;
 	start0 = clock();
     double diftotal;
@@ -553,7 +559,8 @@ int main(int argc, char **argv)
 	AverageDark = (pixelvalue *) calloc(NrPixelsY*NrPixelsZ,sizeof(*AverageDark));
 	ImageIn = (pixelvalue *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageIn));
 	ImageInT = (pixelvalue *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageInT));
-	Image = (double *) malloc(NrPixelsY*NrPixelsZ*sizeof(*Image));
+	cudaMallocHost((void **) &Image,NrPixelsY*NrPixelsZ*sizeof(*Image));
+	// Image = (double *) malloc(NrPixelsY*NrPixelsZ*sizeof(*Image));
 	size_t pxSize;
 	if (dType == 1){ // Uint16
 		pxSize = sizeof(uint16_t);
@@ -704,6 +711,9 @@ int main(int argc, char **argv)
 		}
 		printf("Nr mask pixels: %d\n",nrdone);
 	}
+	end0 = clock();
+	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
+	printf("Looking at data file, time elapsed till now:\t%f s.\n",diftotal);
 	char *imageFN;
 	imageFN = argv[2];
 	fp = fopen(imageFN,"rb");
@@ -777,8 +787,8 @@ int main(int argc, char **argv)
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	printf("Starting frames now, time elapsed:\t%f s.\n",diftotal);
-	clock_t t1, t2;
-	double diffT=0;
+	clock_t t1, t2,t3,t4,t5,t6;
+	double diffT=0, diffT2=0,diffT3=0;
 	for (i=0;i<nFrames;i++){
 		if (chunkFiles>0){
 			if ((i%chunkFiles) == 0){
@@ -787,6 +797,7 @@ int main(int argc, char **argv)
 			}
 		}
 		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
+		t3 = clock();
 		if (dType!=8){
 			rc = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
 		} else {
@@ -796,9 +807,21 @@ int main(int argc, char **argv)
 				}
 			}
 		}
-		DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
-		for (j=0;j<NrPixelsY*NrPixelsZ;j++){
-			Image[j] = (double)ImageIn[j] - AverageDark[j];
+		if ((NrTransOpt==0) || (NrTransOpt==1 && TransOpt[0]==0)){
+			if (argc > 3 && dType!=8){
+				for (j=0;j<NrPixelsY*NrPixelsZ;j++){
+					Image[j] = (double)ImageInT[j] - AverageDark[j];
+				}
+			} else {
+				for (j=0;j<NrPixelsY*NrPixelsZ;j++){
+					Image[j] = (double)ImageInT[j];
+				}
+			}
+		} else {
+			DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
+			for (j=0;j<NrPixelsY*NrPixelsZ;j++){
+				Image[j] = (double)ImageIn[j] - AverageDark[j];
+			}
 		}
 		if (i==0){
 			if (separateFolder==0) sprintf(outfn2,"%s.caked.hdf",imageFN);
@@ -817,9 +840,12 @@ int main(int argc, char **argv)
 				H5Gcreate(file_id,gName, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 			}
 		}
+		t4 = clock();
+		diffT2 += ((double)(t4-t3))/CLOCKS_PER_SEC;
 		t1 = clock();
-		cudaMemcpy(devImage,Image,NrPixelsY*NrPixelsZ*sizeof(double),cudaMemcpyHostToDevice);
 		cudaMemset(devIntArrPerFrame,0,bigArrSize*sizeof(double));
+		cudaMemcpy(devImage,Image,NrPixelsY*NrPixelsZ*sizeof(double),cudaMemcpyHostToDevice);
+		cudaDeviceSynchronize();
 		if (mapMaskSize==0)
 			integrate_noMapMask <<<((bigArrSize+2047)/2048),2048>>> (px,Lsd,bigArrSize,Normalize,sumImages,i,NrPixelsY, 
 													mapMaskSize,devMapMask,nRBins,nEtaBins,devPxList, 
@@ -834,6 +860,7 @@ int main(int argc, char **argv)
 		cudaMemcpy(IntArrPerFrame,devIntArrPerFrame,bigArrSize*sizeof(double),cudaMemcpyDeviceToHost);
 		t2 = clock();
 		diffT += ((double)(t2-t1))/CLOCKS_PER_SEC;
+		t5 = clock();
 		if (i==0){
 			cudaMemcpy(PerFrameArr,devPerFrameArr,bigArrSize*4*sizeof(double),cudaMemcpyDeviceToHost);
 			hsize_t dims[3] = {(unsigned long long)4,(unsigned long long)nRBins,(unsigned long long)nEtaBins};
@@ -843,6 +870,7 @@ int main(int argc, char **argv)
 			H5LTset_attribute_string(file_id, "/REtaMap", "Header", "Radius,2Theta,Eta,BinArea");
 			H5LTset_attribute_string(file_id, "/REtaMap", "Units", "Pixels,Degrees,Degrees,Pixels");
 		}
+		cudaDeviceSynchronize();
 		hsize_t dim[2] = {(unsigned long long)nRBins,(unsigned long long)nEtaBins};
 		char dsetName[1024];
 		if (individualSave==1) {
@@ -866,7 +894,9 @@ int main(int argc, char **argv)
 				H5LTset_attribute_double(file_id, chunkSetName, "LastOme", &omeArr[i], 1);
 			}
 		}
-	}
+		t6 = clock();
+		diffT3 += ((double)(t6-t5))/CLOCKS_PER_SEC;
+}
 	if (haveOmegas==1){
 		hsize_t dimome[1] = {(unsigned long long)nFrames};
 		H5LTmake_dataset_double(file_id, "/Omegas", 1, dimome,omeArr);
@@ -886,6 +916,10 @@ int main(int argc, char **argv)
 	herr_t status_f2 = H5Fclose (file_id);
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
-	printf("Time elapsed in integration:\t%fs, total time elapsed:\t%f s.\n",diffT,diftotal);
+	double TP = NrPixelsY*NrPixelsZ*nFrames;
+	TP /= 1000000;
+	TP /= diffT;
+	printf("Time taken in reading and preparing files:\t%lfs, time taken in writing files:\t%lfs.\n",diffT2,diffT3);
+	printf("Integration throughput:\t%zu MPixels/s, time taken for integration:\t%lfs, total time elapsed:\t%f s.\n",(size_t) TP,diffT,diftotal);
 	return 0;
 }
