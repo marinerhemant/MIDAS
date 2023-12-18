@@ -1335,12 +1335,12 @@ int main(int argc, char *argv[])
 		double IdealRs[n_hkls], Rmins[n_hkls], Rmaxs[n_hkls];
 		for (i=0;i<n_hkls;i++){IdealRs[i]=R4mTtheta(IdealTthetas[i],Lsd);Rmins[i]=R4mTtheta(TthetaMins[i],Lsd);Rmaxs[i]=R4mTtheta(TthetaMaxs[i],Lsd);}
 		int nEtaBins;
-		nEtaBins = (int)ceil(360.0/EtaBinSize);
+		nEtaBins = (int)ceil(359.99/EtaBinSize);
 		printf("Number of eta bins: %d.\n",nEtaBins);
 		double EtaBinsLow[nEtaBins], EtaBinsHigh[nEtaBins];
 		for (i=0;i<nEtaBins;i++){
-			EtaBinsLow[i] = EtaBinSize*i - 180;
-			EtaBinsHigh[i] = EtaBinSize*(i+1) - 180;
+			EtaBinsLow[i] = EtaBinSize*i - 179.995;
+			EtaBinsHigh[i] = EtaBinSize*(i+1) - 179.995;
 		}
 		double *R,*Eta;
 		R = malloc(NrPixels*NrPixels*sizeof(*R));
