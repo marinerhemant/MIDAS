@@ -403,6 +403,124 @@ inline void CalcPeakProfile(int **Indices, int *NrEachIndexBin, int idx,
 		SumIntensity += Average[Indices[idx][i]] * ThisArea;
 	}
 	SumIntensity /= TotArea;
+	if (idx==0) printf("%d %lf %lf ",NrEachIndexBin[idx],SumIntensity,TotArea);
+	if (TotArea == 0){
+		SumIntensity = 0;
+	}
+	free(Pos);
+	FreeMemMatrix(EdgesIn,10);
+	FreeMemMatrix(EdgesOut,10);
+	free(RMs);
+	free(EtaMs);
+	FreeMemMatrix(BoxEdges,5);
+	*ReturnValue = SumIntensity;
+}
+
+static int cmpfunc2 (const void * ia, const void *ib){
+	struct Point *a = (struct Point *)ia;
+	struct Point *b = (struct Point *)ib;
+	if (a->x >= 0 && b->x < 0) return 1;
+	if (a->x < 0 && b->x >= 0) return -1;
+	if (a->x == 0 && b->x == 0) {
+		if (a->y  >= 0 || b->y  >= 0){
+			return a->y > b->y ? 1 : -1;
+		}
+        return b->y > a->y ? 1 : -1;
+    }
+	double det = (a->x) * (b->y ) - (b->x) * (a->y );
+	if (det < 0) return 1;
+    if (det > 0) return -1;
+    int d1 = (a->x) * (a->x) + (a->y ) * (a->y );
+    int d2 = (b->x) * (b->x) + (b->y ) * (b->y );
+    return d1 > d2 ? 1 : -1;
+}
+
+static inline
+double CalcAreaPolygonParallel(double **Edges, int nEdges){
+	int i;
+	struct Point *MyData;
+	struct Point cen;
+	MyData = malloc(nEdges*sizeof(*MyData));
+	cen.x = 0;
+	cen.y = 0;
+	for (i=0;i<nEdges;i++){
+		cen.x += Edges[i][0];
+		cen.y += Edges[i][1];
+		MyData[i].x = Edges[i][0];
+		MyData[i].y = Edges[i][1];
+	}
+	cen.x /= nEdges;
+	cen.y /= nEdges;
+	for (i=0;i<nEdges;i++){
+		MyData[i].x -= cen.x;
+		MyData[i].y -= cen.y;
+	}
+	
+	qsort(MyData, nEdges, sizeof(struct Point), cmpfunc2);
+	double **SortedEdges;
+	SortedEdges = allocMatrix(nEdges+1,2);
+	for (i=0;i<nEdges;i++){
+		SortedEdges[i][0] = MyData[i].x;
+		SortedEdges[i][1] = MyData[i].y;
+	}
+	SortedEdges[nEdges][0] = MyData[0].x;
+	SortedEdges[nEdges][1] = MyData[0].y;
+	
+	double Area=0;
+	for (i=0;i<nEdges;i++){
+		Area += 0.5*((SortedEdges[i][0]*SortedEdges[i+1][1])-(SortedEdges[i+1][0]*SortedEdges[i][1]));
+	}
+	free(MyData);
+	FreeMemMatrix(SortedEdges,nEdges+1);
+	return Area;
+}
+
+inline void CalcPeakProfileParallel(int *Indices, int NrEachIndexBin, int idx,
+	double *Average,double Rmi,double Rma,double EtaMi,double EtaMa,
+	double ybc,double zbc,double px,int NrPixelsY, double *ReturnValue)
+{
+	double **BoxEdges,*RMs, *EtaMs, **EdgesIn, **EdgesOut;
+	double SumIntensity=0;
+	BoxEdges = allocMatrix(5,2);
+	EdgesIn = allocMatrix(10,2);
+	EdgesOut = allocMatrix(10,2);
+	RMs = malloc(5*sizeof(*RMs));
+	EtaMs = malloc(5*sizeof(*EtaMs));
+	RMs[0] = Rmi; EtaMs[0] = EtaMi;
+	RMs[1] = Rma; EtaMs[1] = EtaMi;
+	RMs[2] = Rma; EtaMs[2] = EtaMa;
+	RMs[3] = Rmi; EtaMs[3] = EtaMa;
+	RMs[4] = Rmi; EtaMs[4] = EtaMi;
+	YZMat4mREta(5,RMs,EtaMs,BoxEdges,ybc,zbc,px);
+	int i,j;
+	int *Pos,nEdges=0;
+	Pos = malloc(2*sizeof(*Pos));
+	double ThisArea, TotArea=0;
+	for (i=0;i<NrEachIndexBin;i++){
+		nEdges = 0;
+		if (mapMaskSize !=0){ // Skip this point if it was on the badPx, gap mask
+			if (TestBit(mapMask,Indices[i])){
+				*ReturnValue = 0;
+				return;
+			}
+		}
+		Pos[0] = Indices[i] % NrPixelsY; // This is Y
+		Pos[1] = Indices[i] / NrPixelsY; // This is Z
+		nEdges = CalcNEdges(BoxEdges,Pos,EdgesIn);
+		if (nEdges == 0){
+			continue;
+		}
+		if (nEdges > 10) {
+			printf("Messed up calculating nEdges.\n");
+			*ReturnValue = 0;
+			return;
+		}
+		nEdges = FindUniques(EdgesIn,EdgesOut,nEdges,Rmi,Rma,EtaMi,EtaMa,px,ybc,zbc,BoxEdges);
+		ThisArea = CalcAreaPolygonParallel(EdgesOut,nEdges);
+		TotArea += ThisArea;
+		SumIntensity += Average[Indices[i]] * ThisArea;
+	}
+	SumIntensity /= TotArea;
 	if (TotArea == 0){
 		SumIntensity = 0;
 	}

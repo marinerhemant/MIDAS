@@ -334,14 +334,16 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 	double *IdealRmaxs,int nBinsPerRing,double ybc, double zbc, double px, int NrPixels, double EtaBinsLow[nBinsPerRing], double EtaBinsHigh[nBinsPerRing])
 {
 	int idxThis;
-	printf("%d\n",nIndices);
-	fflush(stdout);
 	#pragma omp parallel for num_threads(numProcs) private(idxThis) schedule(dynamic)
 	for (idxThis=0;idxThis<nIndices;idxThis++)
 	{
 		int j,k,BinNr;
-		double PeakShape[NrPtsForFit], Rmin, Rmax, Rstep, Rthis, Rs[NrPtsForFit];
+		double *PeakShape, Rmin, Rmax, Rstep, Rthis, *Rs;
+		PeakShape = calloc(NrPtsForFit,sizeof(*PeakShape));
+		Rs = calloc(NrPtsForFit,sizeof(*Rs));
 		double Rfit=0;
+		int *IndicesThis;
+		int NrIndicesThis = NrEachIndexBin[idxThis];
 		int **Idxs;
 		Idxs = allocMatrixInt(1,NrPtsForFit);
 		double Etas[NrPtsForFit];
@@ -352,11 +354,13 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 		double ytr, ztr;
 		double EtaTempThis,RTempThis;
 		// If no pixel inside the detector, ignore this bin
-		if (NrEachIndexBin[idxThis] == 0){
+		if (NrIndicesThis == 0){
 			Rfit = 0;
 			RMean[idxThis] = Rfit;
 			continue;
 		}
+		IndicesThis = malloc(NrIndicesThis*sizeof(*IndicesThis));
+		for (j=0;j<NrIndicesThis;j++) IndicesThis[j] = Indices[idxThis][j];
 		Rmin = IdealRmins[idxThis];
 		Rmax = IdealRmaxs[idxThis];
 		AllZero=1;
@@ -395,7 +399,7 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 			Rs[j]=(Rmin+(j*Rstep)+Rstep/2);
 			Rmi = Rs[j] - Rstep/2;
 			Rma = Rs[j] + Rstep/2;
-			CalcPeakProfile(Indices,NrEachIndexBin,idxThis,Average,Rmi,Rma,EtaMi,EtaMa,ybc,zbc,px,NrPixels, &RetVal);
+			CalcPeakProfileParallel(IndicesThis,NrIndicesThis,idxThis,Average,Rmi,Rma,EtaMi,EtaMa,ybc,zbc,px,NrPixels, &RetVal);
 			PeakShape[j] = RetVal;
 			if (RetVal != 0){
 				AllZero = 0;
@@ -421,6 +425,9 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 		free(NrPts);
 		free(Rm);
 		free(Etam);
+		free(IndicesThis);
+		free(PeakShape);
+		free(Rs);
 		FreeMemMatrixInt(Idxs,1);
 	}
 }
