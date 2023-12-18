@@ -358,7 +358,7 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPi
 	double RMin=1e8, RMax=0, EtaMin=190, EtaMax=-190;
 	for (i=0;i<NrPixelsThisRegion;i++){
 		Rs[i] = CalcNorm2(UsefulPixels[i*2+0]-Ycen,UsefulPixels[i*2+1]-Zcen);
-		Etas[i] = CalcEtaAngle(UsefulPixels[i*2+0]-Ycen,UsefulPixels[i*2+1]-Zcen);
+		Etas[i] = CalcEtaAngle(-UsefulPixels[i*2+0]+Ycen,UsefulPixels[i*2+1]-Zcen);
 		if (Rs[i] > RMax) RMax = Rs[i];
 		if (Rs[i] < RMin) RMin = Rs[i];
 		if (Etas[i] > EtaMax) EtaMax = Etas[i];
@@ -374,7 +374,7 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPi
 	for (i=0;i<nPeaks;i++){
 		x[(8*i)+1] = MaximaValues[i]; // Imax
 		x[(8*i)+2] = CalcNorm2(MaximaPositions[i*2+0]-Ycen,MaximaPositions[i*2+1]-Zcen); //Radius
-		x[(8*i)+3] = CalcEtaAngle(MaximaPositions[i*2+0]-Ycen,MaximaPositions[i*2+1]-Zcen); // Eta
+		x[(8*i)+3] = CalcEtaAngle(-MaximaPositions[i*2+0]+Ycen,MaximaPositions[i*2+1]-Zcen); // Eta
 		x[(8*i)+4] = 0.5; // Mu
 		x[(8*i)+5] = Width; //SigmaGR
 		x[(8*i)+6] = Width; //SigmaLR
