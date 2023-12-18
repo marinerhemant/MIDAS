@@ -36,6 +36,7 @@ long long int NrCallsProfiler;
 int NrPixelsGlobal = 2048;
 #define MultFactor 1
 
+int numProcs;
 int skipFrame= 0;
 
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
@@ -279,7 +280,10 @@ double problem_function_profile(
 		CalcIntensity = BG + Imax*((Mu*L)+((1-Mu)*G));
 		TotalDifferenceIntensity += (CalcIntensity - PeakShape[i])*(CalcIntensity - PeakShape[i]);
 	}
-	NrCallsProfiler++;
+	#pragma omp critical
+	{
+		NrCallsProfiler++;
+	}
 #ifdef PRINTOPT
 	printf("Peak profiler intensity difference: %f\n",TotalDifferenceIntensity);
 #endif
@@ -329,95 +333,94 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 	double *R, double *Eta, double *RMean, double *EtaMean, int NrPtsForFit, double *IdealRmins,
 	double *IdealRmaxs,int nBinsPerRing,double ybc, double zbc, double px, int NrPixels, double EtaBinsLow[nBinsPerRing], double EtaBinsHigh[nBinsPerRing])
 {
-	int i;
-	#pragma omp parallel for num_threads(numProcs) private(i) schedule(dynamic)
-	for (i=0;i<nIndices;i++)
+	int idxThis;
+	printf("%d\n",nIndices);
+	fflush(stdout);
+	#pragma omp parallel for num_threads(numProcs) private(idxThis) schedule(dynamic)
+	for (idxThis=0;idxThis<nIndices;idxThis++)
 	{
 		int j,k,BinNr;
 		double PeakShape[NrPtsForFit], Rmin, Rmax, Rstep, Rthis, Rs[NrPtsForFit];
-		double Rfit;
+		double Rfit=0;
 		int **Idxs;
 		Idxs = allocMatrixInt(1,NrPtsForFit);
 		double Etas[NrPtsForFit];
 		double EtaMi,EtaMa,Rmi,Rma;
 		double RetVal;
-		for (i=0;i<NrPtsForFit;i++)Idxs[0][i]=i;
+		for (j=0;j<NrPtsForFit;j++)Idxs[0][j]=j;
 		double AllZero;
 		double ytr, ztr;
 		double EtaTempThis,RTempThis;
-		for (i=0;i<nIndices;i++){
-			// If no pixel inside the detector, ignore this bin
-			if (NrEachIndexBin[i] == 0){
-				Rfit = 0;
-				RMean[i] = Rfit;
-				continue;
-			}
-			Rmin = IdealRmins[i];
-			Rmax = IdealRmaxs[i];
-			AllZero=1;
-			Rstep = (Rmax-Rmin)/NrPtsForFit;
-			BinNr = i % nBinsPerRing;
-			EtaMi = -180 + BinNr*(360/nBinsPerRing);
-			EtaMa = -180 + (BinNr+1)*(360/nBinsPerRing);
-			//Find if either etamin or etamax result in outside the detector, then ignore this bin
-			ytr = ybc - (-Rmax *sin(EtaMa*deg2rad))/px;
-			ztr = zbc + (Rmax*cos(EtaMa*deg2rad))/px;
-			if (((int)ytr > NrPixels - 2) || ((int)ytr < 2) ){
-				Rfit = 0;
-				RMean[i] = Rfit;
-				continue;
-			}
-			if (((int)ztr > NrPixels - 2) || ((int)ztr < 2) ){
-				Rfit = 0;
-				RMean[i] = Rfit;
-				continue;
-			}
-			ytr = ybc - (-Rmax *sin(EtaMi*deg2rad))/px;
-			ztr = zbc + (Rmax*cos(EtaMi*deg2rad))/px;
-			if (((int)ytr > NrPixels - 2) || ((int)ytr < 2) ){
-				Rfit = 0;
-				RMean[i] = Rfit;
-				continue;
-			}
-			if (((int)ztr > NrPixels - 2) || ((int)ztr < 2) ){
-				Rfit = 0;
-				RMean[i] = Rfit;
-				continue;
-			}
-			EtaMean[i] = (EtaMi+EtaMa)/2;
-			for (j=0;j<NrPtsForFit;j++){
-				PeakShape[j]=0;
-				Rs[j]=(Rmin+(j*Rstep)+Rstep/2);
-				Rmi = Rs[j] - Rstep/2;
-				Rma = Rs[j] + Rstep/2;
-				CalcPeakProfile(Indices,NrEachIndexBin,i,Average,Rmi,Rma,EtaMi,EtaMa,ybc,zbc,px,NrPixels, &RetVal);
-				PeakShape[j] = RetVal;
-				if (RetVal != 0){
-					AllZero = 0;
-				}
-			}
-			for (j=0;j<NrPtsForFit;j++){
-				Etas[j]=EtaMean[i];
-			}
-			double *Rm, *Etam;
-			int *NrPts;
-			NrPts = malloc(sizeof(*NrPts));
-			Rm = malloc(sizeof(*Rm));
-			Etam = malloc(sizeof(*Etam));
-			NrPts[0] = NrPtsForFit;
-			if (AllZero != 1){
-				CalcWeightedMean(1, NrPts, Idxs, PeakShape, Rs, Etas, Rm, Etam);
-				double Rmean=Rm[0];
-				FitPeakShape(NrPtsForFit,Rs,PeakShape,&Rfit,Rstep,Rmean);
-			}else{
-				printf("All intensities were 0. i=%d of %d, %f %f %lf %lf\n",i,nIndices,IdealRmins[i],IdealRmaxs[i],EtaMi,EtaMa);
-				Rfit = 0;
-			}
-			RMean[i] = Rfit;
-			free(NrPts);
-			free(Rm);
-			free(Etam);
+		// If no pixel inside the detector, ignore this bin
+		if (NrEachIndexBin[idxThis] == 0){
+			Rfit = 0;
+			RMean[idxThis] = Rfit;
+			continue;
 		}
+		Rmin = IdealRmins[idxThis];
+		Rmax = IdealRmaxs[idxThis];
+		AllZero=1;
+		Rstep = (Rmax-Rmin)/NrPtsForFit;
+		BinNr = idxThis % nBinsPerRing;
+		EtaMi = -180 + BinNr*(360/nBinsPerRing);
+		EtaMa = -180 + (BinNr+1)*(360/nBinsPerRing);
+		//Find if either etamin or etamax result in outside the detector, then ignore this bin
+		ytr = ybc - (-Rmax *sin(EtaMa*deg2rad))/px;
+		ztr = zbc + (Rmax*cos(EtaMa*deg2rad))/px;
+		if (((int)ytr > NrPixels - 2) || ((int)ytr < 2) ){
+			Rfit = 0;
+			RMean[idxThis] = Rfit;
+			continue;
+		}
+		if (((int)ztr > NrPixels - 2) || ((int)ztr < 2) ){
+			Rfit = 0;
+			RMean[idxThis] = Rfit;
+			continue;
+		}
+		ytr = ybc - (-Rmax *sin(EtaMi*deg2rad))/px;
+		ztr = zbc + (Rmax*cos(EtaMi*deg2rad))/px;
+		if (((int)ytr > NrPixels - 2) || ((int)ytr < 2) ){
+			Rfit = 0;
+			RMean[idxThis] = Rfit;
+			continue;
+		}
+		if (((int)ztr > NrPixels - 2) || ((int)ztr < 2) ){
+			Rfit = 0;
+			RMean[idxThis] = Rfit;
+			continue;
+		}
+		EtaMean[idxThis] = (EtaMi+EtaMa)/2;
+		for (j=0;j<NrPtsForFit;j++){
+			PeakShape[j]=0;
+			Rs[j]=(Rmin+(j*Rstep)+Rstep/2);
+			Rmi = Rs[j] - Rstep/2;
+			Rma = Rs[j] + Rstep/2;
+			CalcPeakProfile(Indices,NrEachIndexBin,idxThis,Average,Rmi,Rma,EtaMi,EtaMa,ybc,zbc,px,NrPixels, &RetVal);
+			PeakShape[j] = RetVal;
+			if (RetVal != 0){
+				AllZero = 0;
+			}
+		}
+		for (j=0;j<NrPtsForFit;j++){
+			Etas[j]=EtaMean[idxThis];
+		}
+		double *Rm, *Etam;
+		int *NrPts;
+		NrPts = malloc(sizeof(*NrPts));
+		Rm = malloc(sizeof(*Rm));
+		Etam = malloc(sizeof(*Etam));
+		NrPts[0] = NrPtsForFit;
+		if (AllZero != 1){
+			CalcWeightedMean(1, NrPts, Idxs, PeakShape, Rs, Etas, Rm, Etam);
+			double Rmean=Rm[0];
+			FitPeakShape(NrPtsForFit,Rs,PeakShape,&Rfit,Rstep,Rmean);
+		}else{
+			Rfit = 0;
+		}
+		RMean[idxThis] = Rfit;
+		free(NrPts);
+		free(Rm);
+		free(Etam);
 		FreeMemMatrixInt(Idxs,1);
 	}
 }
@@ -776,6 +779,7 @@ int main(int argc, char *argv[])
     char *ParamFN;
     FILE *fileParam;
     ParamFN = argv[1];
+    numProcs = atoi(argv[2]);
     char aline[1000];
     fileParam = fopen(ParamFN,"r");
     char *str, dummy[1000];
@@ -1387,7 +1391,7 @@ int main(int argc, char *argv[])
 	    diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
 	    if (FitWeightMean != 1){
 			printf("Number of calls to profiler function: %lld\n",NrCallsProfiler);
-			printf("Time elapsed in fitting peak profiles:\t%f s.\n",diftotal);
+			printf("Time elapsed in fitting peak profiles:\t%f s.\n",diftotal/numProcs);
 		}
 	    else printf("Time elapsed in finding peak positions:\t%f s.\n",diftotal);
 		double *YMean, *ZMean;
