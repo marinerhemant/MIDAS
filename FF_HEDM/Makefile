@@ -34,7 +34,7 @@ all: help bindircheck calibrant imagemax \
 	fitposorstrainsscanning indexscanning processgrainsscanning mapbnd fitscanninggrain \
 	fitgrainhydra forwardsimulation integrator fitorstrainsscanningomp \
 	peaksfittingomp indexeromp fitsetup fitposorstrainsomp mergeoverlapsall calcradiusall \
-	bindatascanning indexerscanningomp
+	bindatascanning indexerscanningomp calibrantomp
 
 local: predep all runsetup
 
@@ -102,6 +102,9 @@ imagemax: $(SRCDIR)imageMax.c
 
 calibrant: $(SRCDIR)Calibrant.c
 	$(CC) $(SRCDIR)Calibrant.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)Calibrant $(CFLAGSHDF) $(CFLAGS) $(CFLAGSTIFF) $(CFLAGSNLOPT)
+
+calibrantomp: $(SRCDIR)CalibrantOMP.c
+	$(CC) $(SRCDIR)CalibrantOMP.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)CalibrantOMP $(CFLAGSHDF) $(CFLAGS) $(CFLAGSTIFF) $(CFLAGSNLOPT) -fopenmp
 
 fitsetup: $(SRCDIR)FitSetupParamsAll.c
 	$(CC) $(SRCDIR)FitSetupParamsAll.c -o $(BINDIR)FitSetup $(CFLAGS) $(CFLAGSNLOPT)
