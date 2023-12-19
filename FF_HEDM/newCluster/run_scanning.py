@@ -49,8 +49,6 @@ nNodes = args.nNodes
 os.environ["nNODES"] = str(nNodes)
 os.environ["nCPUs"] = str(numProcs)
 
-maxAng = 1
-
 baseNameParamFN = paramFN.split('/')[-1]
 homedir = os.path.expanduser('~')
 paramContents = open(paramFN).readlines()
@@ -200,7 +198,7 @@ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning"
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP")+' paramstest.txt 0 1 '+ str(nScans)+' '+str(numProcs),shell=True)
 
 if oneSolPerVox==1:
-	runRecon(topdir,startNrFirstLayer,nScans,endNr,sgnum,numProcs,maxAng)
+	runRecon(topdir,startNrFirstLayer,nScans,endNr,sgnum,numProcs)
 else:
 	runReconMulti(topdir,nScans,positions,sgnum,numProcs)
 print("Time Elapsed: "+str(time.time()-startTime)+" seconds.")
