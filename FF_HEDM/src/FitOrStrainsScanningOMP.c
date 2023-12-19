@@ -42,7 +42,7 @@
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
-#define MaxNSpots 6000000
+#define MaxNSpots 60000000
 #define MaxNSpotsBest 5000
 #define MaxNHKLS 5000
 #define EPS 1E-12
