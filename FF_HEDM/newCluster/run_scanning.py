@@ -31,7 +31,7 @@ def CalcEtaAngle(y, z):
 startTime = time.time()
 
 warnings.filterwarnings('ignore')
-parser = argparse.ArgumentParser(description='''MIDAS_FF, contact hsharma@anl.gov Parameter file must be in the same folder as the desired output folder(SeedFolder).
+parser = argparse.ArgumentParser(description='''MIDAS_PF, contact hsharma@anl.gov Parameter file must be in the same folder as the desired output folder(SeedFolder).
 Provide positions.csv file (negative positions with respect to actual motor position. Motor position is normally position of the rotation axis, opposite to the voxel position.''', formatter_class=RawTextHelpFormatter)
 parser.add_argument('-nCPUs',    type=int, required=True, help='Number of CPUs to use')
 parser.add_argument('-paramFile', type=str, required=True, help='ParameterFileName: Use the full path.')
