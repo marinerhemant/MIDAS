@@ -56,7 +56,7 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,maxang=1,tol_ome=1,to
 		for orientNr in range(len(uniqueOrients)):
 			orient = uniqueOrients[orientNr]
 			conf = bestConfs[orientNr]
-			ang = rad2deg*GetMisOrientationAngleOM(orient,sortedPropList[0][2],sgnum)
+			ang = rad2deg*GetMisOrientationAngleOM(orient,sortedPropList[0][2],sgnum)[0]
 			if ang < maxang:
 				isFound = 1
 				if sortedPropList[0][0] > conf:
@@ -206,7 +206,7 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,maxang=1,tol_ome=1,to
 				nExp = float(line[-2][:-1])
 				nObs = float(line[-1][:-1])
 				ConfThis = nObs/nExp
-				ang = rad2deg*GetMisOrientationAngleOM(orient,OMthis,sgnum)
+				ang = rad2deg*GetMisOrientationAngleOM(orient,OMthis,sgnum)[0]
 				if ang < maxang and ConfThis > bestConf:
 					bestConf = ConfThis
 					bestID = int((fn.split('.')[-2]).split('_')[-1])

@@ -58,8 +58,8 @@ def runReconMulti(folder,nScans,positions,sgnum,numProcs,maxang=1):
 					if marked[idx2] == 1:
 						continue
 					orient2 = sortedPropList[idx2][2]
-					ang = GetMisOrientationAngleOM(orient1,orient2,sgnum)
-					if ang*rad2deg < maxang:
+					ang = rad2deg*GetMisOrientationAngleOM(orient1,orient2,sgnum)[0]
+					if ang < maxang:
 						marked[idx2] = 1
 		print(['VoxelNr:',voxNr,'nSols:',len(fns),'nUniqueSols:',len(uniqueOrients)])
 		uniqueArr[voxNr][2] = len(uniqueOrients)
