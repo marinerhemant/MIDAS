@@ -1,3 +1,4 @@
+# anapy3 run_scanning.py -nCPUs 64 -paramFile ps_sample_d_dt_L2.txt -nNodes 1 -machineName orthrosregular -doPeakSearch 0 -oneSolPerVox 0
 import subprocess
 import numpy as np
 from argparse import RawTextHelpFormatter
@@ -11,6 +12,15 @@ import shutil
 from math import acos,sqrt, atan
 from calcMiso import *
 import glob
+from calcMiso import *
+import sys
+import matplotlib.pyplot as plt
+from skimage.transform import iradon
+from PIL import Image
+import warnings
+warnings.filterwarnings('ignore')
+from oneSolPerVoxTomoFilter import runRecon
+from multSolPerVox import runReconMulti
 
 def CalcEtaAngle(y, z):
 	alpha = 57.2957795130823*acos(z/sqrt(y*y+z*z))
@@ -39,7 +49,7 @@ nNodes = args.nNodes
 os.environ["nNODES"] = str(nNodes)
 os.environ["nCPUs"] = str(numProcs)
 
-maxAng = 0.5
+maxAng = 1
 
 baseNameParamFN = paramFN.split('/')[-1]
 homedir = os.path.expanduser('~')
@@ -58,6 +68,8 @@ for line in paramContents:
 		startNr = int(line.split()[1])
 	if line.startswith('EndNr'):
 		endNr = int(line.split()[1])
+	if line.startswith('SpaceGroup'):
+		sgnum = int(line.split()[1])
 	if line.startswith('nScans'):
 		nScans = int(line.split()[1])
 	if line.startswith('Lsd'):
@@ -141,7 +153,7 @@ if doPeakSearch == 1:
 				omegaDet = float(line2sp[13])
 				y = y + ypos # If positions.csv is flipped, this should be positive.
 				if (y*y+z*z) < np.finfo(np.float32).eps:
-					continue
+					continue # We are skipping the 0 lines, but does this ruin the ordering of the peaks?
 				Eta = CalcEtaAngle(y,z)
 				Ttheta = 57.2957795130823*atan(sqrt(y*y+z*z)/Lsd)
 				yOrigNoW = yOrigNoW + ypos # Confirm this
@@ -182,109 +194,13 @@ paramsf.write('BeamSize '+str(BeamSize)+'\n')
 paramsf.write('px '+str(px)+'\n')
 paramsf.write('RingToIndex '+str(RingToIndex)+'\n')
 paramsf.close()
-# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
-# ~ # Parallel after this
-# ~ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP")+' paramstest.txt 0 1 '+ str(nScans)+' '+str(numProcs),shell=True)
 
-folder = topdir
-xpos, ypos = np.meshgrid(positions,positions)
-xpositions = np.transpose(np.transpose(xpos).reshape((nScans*nScans)))
-ypositions = np.transpose(np.transpose(ypos).reshape((nScans*nScans)))
-nVoxels = nScans*nScans
-bestCoordsList = []
-files = glob.glob(folder+'/Output/*.csv')
-uniqueArr = np.zeros((nVoxels,3))
-uniqueOrientArr = []
-for voxNr in range(nVoxels):
-	# find all files with that blurb
-	blurb = '_'+str.zfill(str(voxNr),6)+'_'
-	fns = [fn for fn in files if blurb in fn]
-	print(blurb,len(fns))
-	if len(fns) == 0:
-		continue
-	PropList = []
-	highestConf = -1
-	for fn in fns:
-		f = open(fn)
-		str1= f.readline()
-		str1= f.readline()
-		line = f.readline().split()
-		f.close()
-		IAthis = float(line[0][:-1])
-		OMthis = [float(a[:-1]) for a in line[1:10]]
-		nExp = float(line[-2][:-1])
-		nObs = float(line[-1][:-1])
-		ConfThis = nObs/nExp
-		idnr = int((fn.split('.')[-2]).split('_')[-1])
-		# ~ print(idnr)
-		if ConfThis > highestConf:
-			highestConf = ConfThis
-		PropList.append([ConfThis,IAthis,OMthis,idnr,voxNr])
-	sortedPropList = sorted(PropList,key=lambda x: (x[0],x[1]),reverse=True)
-	uniqueArr[voxNr][0] = xpositions[voxNr]
-	uniqueArr[voxNr][1] = ypositions[voxNr]
-	if oneSolPerVox == 1:
-		uniqueArr[voxNr][1] = 1
-		uniqueOrientArr.append(sortedPropList[0])
-		continue
-	# If more solutions are wanted
-	# sortedPropList now has all the orientations, we can try to find the unique ones
-	# starting with best orientation, compute miso with all next (unmarked) orientations, if angle is smaller than maxAng, mark the orientation.
-	marked = np.zeros(len(sortedPropList))
-	uniqueOrients = []
-	for idx in range(len(sortedPropList)):
-		if marked[idx] == 1:
-			continue
-		else:
-			val1 = sortedPropList[idx]
-			uniqueOrients.append(val1)
-			orient1 = val1[2]
-			for idx2 in range(idx+1,len(sortedPropList)):
-				if marked[idx2] == 1:
-					continue
-				orient2 = sortedPropList[idx2][2]
-				ang = GetMisOrientationAngleOM(orient1,orient2,sgnum)
-				if ang*rad2deg < maxAng:
-					marked[idx2] = 1
-	print(['VoxelNr:',voxNr,'nSols:',len(fns),'nUniqueSols:',len(uniqueOrients)])
-	uniqueArr[voxNr][2] = len(uniqueOrients)
-	uniqueOrientArr.append(uniqueOrients)
+subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
+# Parallel after this
+subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP")+' paramstest.txt 0 1 '+ str(nScans)+' '+str(numProcs),shell=True)
 
-# ~ uniqueArr = uniqueArr[uniqueArr[:,2] > 0,:]
-# ~ totalGrains = np.sum(uniqueArr[:,2])
-# Generate SpotsToIndex.csv file with all jobs to do.
-if oneSolPerVox == 0:
-	IDsToDo = [orient2[3] for orient in uniqueOrientArr for orient2 in orient]
-	IDsToDo2 = [orient2[4] for orient in uniqueOrientArr for orient2 in orient]
-elif oneSolPerVox == 1:
-	IDsToDo = [orient[3] for orient in uniqueOrientArr]
-	IDsToDo2 = [orient[4] for orient in uniqueOrientArr]
-nIDs = len(IDsToDo)
-with open(folder+'/SpotsToIndex.csv','w') as SpotsF:
-	for nr in range(nIDs):
-		SpotsF.write(str(IDsToDo[nr])+' '+str(IDsToDo2[nr])+'\n')
-
-# Run FitOrStrainsScanning
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitOrStrainsScanningOMP")+' paramstest.txt 0 1 '+ str(nIDs)+' '+str(numProcs),shell=True)
-
-# go through the output
-files2 = glob.glob(folder+'/Results/*.csv')
-filesdata = np.zeros((len(files2),43))
-i=0;
-for fileN in files2:
-	f = open(fileN)
-	str1 = f.readline()
-	data = f.readline().split()
-	for j in range(len(data)):
-		filesdata[i][j] = float(data[j])
-	OM = filesdata[i][1:10]
-	quat = BringDownToFundamentalRegionSym(OrientMat2Quat(OM),12,HexSym)
-	filesdata[i][39:43] = quat
-	i+=1
-	f.close()
-
-plt.scatter(filesdata[:,11],filesdata[:,12],s=300,c=filesdata[:,42],cmap='jet');plt.colorbar(); plt.show()
-
-np.savetxt('microstrFull.csv',filesdata,fmt='%.6f',delimiter=',',header='SpotID,O11,O12,O13,O21,O22,O23,O31,O32,O33,SpotID,x,y,z,SpotID,a,b,c,alpha,beta,gamma,SpotID,PosErr,OmeErr,InternalAngle,Radius,Completeness,E11,E12,E13,E21,E22,E23,E31,E32,E33,Eul1,Eul2,Eul3,Quat1,Quat2,Quat3,Quat4')
-
+if oneSolPerVox==1:
+	runRecon(topdir,startNrFirstLayer,nScans,endNr,sgnum,numProcs,maxAng)
+else:
+	runReconMulti(topdir,nScans,positions,sgnum,numProcs)
 print("Time Elapsed: "+str(time.time()-startTime)+" seconds.")
