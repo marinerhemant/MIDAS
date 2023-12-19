@@ -1,4 +1,5 @@
-# anapy3 run_scanning.py -nCPUs 64 -paramFile ps_sample_d_dt_L2.txt -nNodes 1 -machineName orthrosregular -doPeakSearch 0 -oneSolPerVox 0
+# anapy3 runPF.py -nCPUs 64 -paramFile ps.txt -doPeakSearch 1 -oneSolPerVox 1
+# Single node only.
 import subprocess
 import numpy as np
 from argparse import RawTextHelpFormatter
@@ -35,18 +36,18 @@ parser = argparse.ArgumentParser(description='''MIDAS_PF, contact hsharma@anl.go
 Provide positions.csv file (negative positions with respect to actual motor position. Motor position is normally position of the rotation axis, opposite to the voxel position.''', formatter_class=RawTextHelpFormatter)
 parser.add_argument('-nCPUs',    type=int, required=True, help='Number of CPUs to use')
 parser.add_argument('-paramFile', type=str, required=True, help='ParameterFileName: Use the full path.')
-parser.add_argument('-nNodes', type=str, required=True, help='Number of Nodes')
-parser.add_argument('-machineName', type=str, required=True, help='Machine Name')
+# parser.add_argument('-nNodes', type=str, required=True, help='Number of Nodes')
+# parser.add_argument('-machineName', type=str, required=True, help='Machine Name')
 parser.add_argument('-doPeakSearch',type=int,required=True,help='0 if PeakSearch is already done. InputAllExtra...0..n.csv should exist in the folder')
 parser.add_argument('-oneSolPerVox',type=int,required=True,help='0 if want to allow multiple solutions per voxel. 1 if want to have only 1 solution per voxel.')
 args, unparsed = parser.parse_known_args()
 paramFN = args.paramFile
-machineName = args.machineName
+# machineName = args.machineName
 doPeakSearch = args.doPeakSearch
 oneSolPerVox = args.oneSolPerVox
 numProcs = args.nCPUs
-nNodes = args.nNodes
-os.environ["nNODES"] = str(nNodes)
+# nNodes = args.nNodes
+# os.environ["nNODES"] = str(nNodes)
 os.environ["nCPUs"] = str(numProcs)
 
 baseNameParamFN = paramFN.split('/')[-1]
