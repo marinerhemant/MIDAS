@@ -779,6 +779,10 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr, c
 
 int main(int argc, char *argv[])
 {
+	if (argc != 3){
+		printf("Usage: CalibrantOMP ps.txt nCPUs");
+		return 1;
+	}
     clock_t start, end, start0, end0;
     start0 = clock();
     double diftotal;
