@@ -199,7 +199,7 @@ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning"
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP")+' paramstest.txt 0 1 '+ str(nScans)+' '+str(numProcs),shell=True)
 
 if oneSolPerVox==1:
-	runRecon(topdir,startNrFirstLayer,nScans,endNr,sgnum,numProcs)
+	runRecon(topdir,startNrFirstLayer,nScans,endNr,sgnum,numProcs,nrFilesPerSweep=nrFilesPerSweep)
 else:
 	runReconMulti(topdir,nScans,positions,sgnum,numProcs)
 print("Time Elapsed: "+str(time.time()-startTime)+" seconds.")

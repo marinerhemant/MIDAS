@@ -10,7 +10,7 @@ import subprocess
 import warnings
 warnings.filterwarnings('ignore')
 
-def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,maxang=1,tol_ome=1,tol_eta=1):
+def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,removeDuplicates=0,maxang=1,tol_ome=1,tol_eta=1):
 	uniqueOrients = []
 	bestConfs = []
 	uniqueFNames = []
@@ -85,7 +85,7 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,maxang=1,tol_ome=1,to
 	IDsMergedScanning = np.genfromtxt('IDsMergedScanning.csv',skip_header=1,delimiter=',')
 	nrhkls = 2 * (np.genfromtxt('hkls.csv',skip_header=1)).shape[0]
 	nGrs = len(lines)
-	pos_arr = np.zeros((nGrs*nrhkls,5))
+	pos_arr = np.zeros((nGrs*nrhkls,6))
 	nrSps = np.zeros(nGrs)
 	spDone = 0
 	for lineNr in range(nGrs):
@@ -99,7 +99,7 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,maxang=1,tol_ome=1,to
 			id = int(IDsThis[idNr])
 			origIDThis = IDsMergedScanning[IDsMergedScanning[:,0]==id,1]
 			scanNrThis = IDsMergedScanning[IDsMergedScanning[:,0]==id,2]
-			fNr = startFNr+scanNrThis
+			fNr = startFNr+scanNrThis*nrFilesPerSweep
 			if (len(scanNrThis) == 0): 
 				continue
 			fNr = int(fNr)
@@ -116,19 +116,41 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,maxang=1,tol_ome=1,to
 			pos_arr[spDone][2] = ringNr[0]
 			pos_arr[spDone][3] = lineNr
 			pos_arr[spDone][4] = hklnr
+			pos_arr[spDone][5] = spDone
 			hklnr += 1
 			spDone += 1
 		nrSps[lineNr] = hklnr
 
 	pos_arr = pos_arr[:spDone,:]
-	# idx = np.lexsort((pos_arr[:,0],pos_arr[:,3]))
-	# pos_arr = pos_arr[idx]
+	if removeDuplicates == 1:
+		dupArr = np.zeros(spDone)
+		# Find duplicate and remove spots
+		for sp in range(spDone):
+			if dupArr[sp] == 1: continue
+			pa = pos_arr[dupArr==0,:]
+			pa2 = pa[sp+1:,:]
+			sub_arr = pa2[pa2[:,2]==pos_arr[sp,2],:] # same ring
+			sub_arr2 = sub_arr[np.fabs(sub_arr[:,0]-pos_arr[sp,0])<tol_ome,:]
+			if (len(sub_arr2) ==0): continue
+			sub_arr2 = sub_arr2[np.fabs(sub_arr2[:,1]-pos_arr[sp,1])<tol_eta,:]
+			if (len(sub_arr2)==0): continue
+			sub_arr2 = sub_arr2[0]
+			dupArr[sp] = 1
+			dupArr[int(sub_arr2[5])] = 1
+		pos_arr = pos_arr[dupArr==0,:]
+		spDone = pos_arr.shape[0]
+		# We need to change hklnrs appropriately
+		for grNr in range(nGrs):
+			idxs = pos_arr[:,3].astype(np.int32) == grNr
+			nSpsThisGr = np.sum(idxs)
+			pos_arr[idxs,4] = np.arange(nSpsThisGr)
+			nrSps[grNr] = nSpsThisGr
 	# Now go through each Radius*.csv file, find matching spots and save them in the sinogram for each grain
 	Sinos = np.zeros((nGrs,nrhkls,nScans))
 	omegas = np.zeros((nGrs,nrhkls))
 	grainSpots = nrSps.astype(np.int32)
 	for scanNr in range(nScans):
-		fNr = startFNr + scanNr
+		fNr = startFNr + scanNr*nrFilesPerSweep
 		radius_info = np.genfromtxt(str(fNr)+'/Radius_StartNr_1_EndNr_'+str(nFrames)+'.csv',skip_header=1)
 		if len(radius_info)==0: continue
 		# print(radius_info.shape)
