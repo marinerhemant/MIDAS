@@ -232,6 +232,7 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 				if ang < maxang and ConfThis > bestConf:
 					bestConf = ConfThis
 					bestID = int((fn.split('.')[-2]).split('_')[-1])
+				if bestConf == 1.0: break
 			if bestID != -1:
 				nrVox+=1
 				IDArr.append([bestID,voxNr])
