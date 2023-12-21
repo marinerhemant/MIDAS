@@ -281,8 +281,8 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 			fns = [fn for fn in files if blurb in fn]
 			for fn in fns:
 				f = open(fn)
-				str1= f.readline()
-				str1= f.readline()
+				_ = f.readline()
+				_ = f.readline()
 				line = f.readline().split()
 				f.close()
 				OMthis = [float(a[:-1]) for a in line[1:10]]
@@ -320,7 +320,7 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 	for fileN in files2:
 		f = open(fileN)
 		voxNr = int(fileN.split('.')[-2].split('_')[-2])
-		str1 = f.readline()
+		_ = f.readline()
 		data = f.readline().split()
 		for j in range(len(data)):
 			filesdata[i][j] = float(data[j])
