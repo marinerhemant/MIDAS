@@ -10,10 +10,11 @@ import subprocess
 import warnings
 from skimage.filters import threshold_otsu
 from skimage.morphology import reconstruction
+import h5py
 warnings.filterwarnings('ignore')
 # np.set_printoptions(suppress=True,precision=3,threshold=sys.maxsize)
 
-def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,removeDuplicates=0,maxang=1,tol_ome=1,tol_eta=1,findUniques=1,thresh_reqd=0,draw_sinos=0):
+def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,removeDuplicates=0,maxang=1,tol_ome=1,tol_eta=1,findUniques=1,thresh_reqd=0,draw_sinos=0,normalize=1):
 	uniqueOrients = []
 	bestConfs = []
 	uniqueFNames = []
@@ -160,20 +161,23 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 
 	np.savetxt('spot_position_arr_unique_grains.txt',pos_arr,fmt="%.6f %.6f %d %d %d %d")
 	# Generate a normalization array
-	print("Generating a normalization array for sinogram intensities.")
-	hkls = np.genfromtxt('hkls.csv',skip_header=1)
-	nRings = int(np.max(hkls[:,4])) + 1
-	norm_arr = np.zeros((nScans,nRings))
-	for scanNr in range(nScans):
-		fNr = startFNr + scanNr*nrFilesPerSweep
-		radius_info = np.genfromtxt(str(fNr)+'/Radius_StartNr_1_EndNr_'+str(nFrames)+'.csv',skip_header=1)
-		if len(radius_info) == 0: continue
-		for ringNr in range(nRings):
-			spotsThisRing = radius_info[radius_info[:,13]==ringNr,:]
-			if len(spotsThisRing) == 0: continue
-			norm_arr[scanNr,ringNr] = spotsThisRing[0,16]
-	norm_arr = np.where(np.max(norm_arr, axis=0)==0, norm_arr, norm_arr*1./np.max(norm_arr, axis=0))
-	np.savetxt('intensity_normalization_array.txt',norm_arr,fmt="%.6f")
+	if normalize==1:
+		print("Generating a normalization array for sinogram intensities.")
+		hkls = np.genfromtxt('hkls.csv',skip_header=1)
+		nRings = int(np.max(hkls[:,4])) + 1
+		norm_arr = np.zeros((nScans,nRings))
+		for scanNr in range(nScans):
+			fNr = startFNr + scanNr*nrFilesPerSweep
+			radius_info = np.genfromtxt(str(fNr)+'/Radius_StartNr_1_EndNr_'+str(nFrames)+'.csv',skip_header=1)
+			if len(radius_info) == 0: continue
+			for ringNr in range(nRings):
+				spotsThisRing = radius_info[radius_info[:,13]==ringNr,:]
+				if len(spotsThisRing) == 0: continue
+				norm_arr[scanNr,ringNr] = spotsThisRing[0,16]
+		norm_arr = np.where(np.max(norm_arr, axis=0)==0, norm_arr, norm_arr*1./np.max(norm_arr, axis=0))
+		np.savetxt('intensity_normalization_array.txt',norm_arr,fmt="%.6f")
+	else:
+		norm_arr = np.ones((nScans,nScans))
 
 	# Now go through each Radius*.csv file, find matching spots and save them in the sinogram for each grain
 	print("Generating sinograms, doing a tomo recon for each grain.")
@@ -304,14 +308,18 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 	nIDs = len(IDArr)
 	os.makedirs('Results',exist_ok=True)
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitOrStrainsScanningOMP")+' paramstest.txt 0 1 '+ str(nIDs)+' '+str(numProcs),shell=True)
+	
 	NrSym,Sym = MakeSymmetries(sgnum)
-	print(f"Filtering the final output. Will be saved to {folder}/Recons/microstrFull.csv")
+	print(f"Filtering the final output. Will be saved to {folder}/Recons/microstrFull.csv and {folder}/Recons/microstructure.hdf")
 	# go through the output
 	files2 = glob.glob(folder+'/Results/*.csv')
 	filesdata = np.zeros((len(files2),43))
 	i=0
+	info_arr = np.zeros((23,nScans*nScans))
+	info_arr[:,:] = np.nan
 	for fileN in files2:
 		f = open(fileN)
+		voxNr = int(fileN.split('.')[-2].split('_')[-2])
 		str1 = f.readline()
 		data = f.readline().split()
 		for j in range(len(data)):
@@ -319,12 +327,21 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 		OM = filesdata[i][1:10]
 		quat = BringDownToFundamentalRegionSym(OrientMat2Quat(OM),NrSym,Sym)
 		filesdata[i][39:43] = quat
+		info_arr[:,voxNr] = filesdata[i][[0,-4,-3,-2,-1,11,12,15,16,17,18,19,20,22,23,24,26,27,28,29,31,32,35]]
 		i+=1
 		f.close()
 	head = 'SpotID,O11,O12,O13,O21,O22,O23,O31,O32,O33,SpotID,x,y,z,SpotID,a,b,c,alpha,beta,gamma,SpotID,PosErr,OmeErr,InternalAngle,'
 	head += 'Radius,Completeness,E11,E12,E13,E21,E22,E23,E31,E32,E33,Eul1,Eul2,Eul3,Quat1,Quat2,Quat3,Quat4'
 	np.savetxt('Recons/microstrFull.csv',filesdata,fmt='%.6f',delimiter=',',header=head)
-	# Also save other things such as Quats, 
+	f = h5py.File('Recons/microstructure.hdf','w')
+	micstr = f.create_dataset(name='microstr',dtype=np.double,data=filesdata)
+	micstr.attrs['Header'] = np.string_(head)
+	info_arr = info_arr.reshape((23,nScans,nScans))
+	info_arr = np.flip(info_arr,axis=(1,2))
+	info_arr = info_arr.transpose(0,2,1)
+	imgs = f.create_dataset(name='images',dtype=np.double,data=info_arr)
+	imgs.attrs['Header'] = np.string_('ID,Quat1,Quat2,Quat3,Quat4,x,y,a,b,c,alpha,beta,gamma,posErr,omeErr,InternalAngle,Completeness,E11,E12,E13,E22,E23,E33')
+	f.close()
 
-# runRecon('/local/s1iduser/borbely_apr17_midas',66,163,1440,225,96,nrFilesPerSweep=8,removeDuplicates=1,maxang=3,tol_ome=3,tol_eta=3,findUniques=0,draw_sinos=0,thresh_reqd=1)
-# runRecon('/local/s1iduser/bucsek_jul22_midas/L1_new',584,117,1800,194,96,nrFilesPerSweep=1,removeDuplicates=0,maxang=3,tol_ome=3,tol_eta=3,findUniques=0,draw_sinos=0,thresh_reqd=0)
+# runRecon('/local/s1iduser/borbely_apr17_midas',66,163,1440,225,96,nrFilesPerSweep=8,removeDuplicates=1,maxang=3,tol_ome=3,tol_eta=3,findUniques=0,draw_sinos=0,thresh_reqd=1,normalize=0)
+# runRecon('/local/s1iduser/bucsek_jul22_midas/L1_new',584,117,1800,194,96,nrFilesPerSweep=1,removeDuplicates=0,maxang=3,tol_ome=3,tol_eta=3,findUniques=0,draw_sinos=0,thresh_reqd=0,normalize=1)
