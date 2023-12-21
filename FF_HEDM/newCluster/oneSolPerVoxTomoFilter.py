@@ -8,9 +8,12 @@ from skimage.transform import iradon
 from PIL import Image
 import subprocess
 import warnings
+from skimage.filters import threshold_otsu
+from skimage.morphology import reconstruction
 warnings.filterwarnings('ignore')
+# np.set_printoptions(suppress=True,precision=3,threshold=sys.maxsize)
 
-def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,removeDuplicates=0,maxang=1,tol_ome=1,tol_eta=1):
+def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,removeDuplicates=0,maxang=1,tol_ome=1,tol_eta=1,findUniques=1,thresh_reqd=0,draw_sinos=0):
 	uniqueOrients = []
 	bestConfs = []
 	uniqueFNames = []
@@ -18,68 +21,74 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 	files = glob.glob(folder+'/Output/*.csv')
 	nVoxels = nScans*nScans
 
-	for voxNr in range(nVoxels):
-		blurb = '_'+str.zfill(str(voxNr),6)+'_'
-		fns = [fn for fn in files if blurb in fn]
-		if len(fns) == 0:
-			continue
-		PropList = []
-		highestConf = -1
-		for fn in fns:
-			f = open(fn)
-			str1= f.readline()
-			str1= f.readline()
-			line = f.readline().split()
-			f.close()
-			IAthis = float(line[0][:-1])
-			OMthis = [float(a[:-1]) for a in line[1:10]]
-			nExp = float(line[-2][:-1])
-			nObs = float(line[-1][:-1])
-			ConfThis = nObs/nExp
-			idnr = int((fn.split('.')[-2]).split('_')[-1])
-			# ~ print(idnr)
-			if ConfThis > highestConf:
-				highestConf = ConfThis
-			PropList.append([ConfThis,IAthis,OMthis,idnr,voxNr])
-		sortedPropList = sorted(PropList,key=lambda x: (x[0],x[1]),reverse=True)
-		id_this = sortedPropList[0][3]
-		fnBest = folder + '/Output/BestPos_'+str.zfill(str(voxNr),6)+'_'+str.zfill(str(id_this),9)+'.csv'
-		if len(uniqueOrients) == 0:
-			uniqueOrients.append(sortedPropList[0][2])
-			bestConfs.append(sortedPropList[0][0])
-			uniqueFNames.append(fnBest)
-			print(sortedPropList[0][2],sortedPropList[0][0],fnBest)
-			continue
-		isFound = 0
-		isBest = 0
-		isBestLoc = 0
-		for orientNr in range(len(uniqueOrients)):
-			orient = uniqueOrients[orientNr]
-			conf = bestConfs[orientNr]
-			ang = rad2deg*GetMisOrientationAngleOM(orient,sortedPropList[0][2],sgnum)[0]
-			if ang < maxang:
-				isFound = 1
-				if sortedPropList[0][0] > conf:
-					isBest = 1
-					isBestLoc = orientNr
-		if isBest == 1:
-			uniqueOrients[isBestLoc] = sortedPropList[0][2]
-			bestConfs[isBestLoc] = sortedPropList[0][0]
-			uniqueFNames[isBestLoc] = fnBest
-			print(sortedPropList[0][2],sortedPropList[0][0],fnBest)
-		if isFound == 0:
-			uniqueOrients.append(sortedPropList[0][2])
-			bestConfs.append(sortedPropList[0][0])
-			uniqueFNames.append(fnBest)
-			print(sortedPropList[0][2],sortedPropList[0][0],fnBest)
-	f = open('fNamesUniqueOrients.csv','w')
-	for lineNr in range(len(uniqueFNames)):
-		line = uniqueFNames[lineNr]
-		orient = uniqueOrients[lineNr]
-		f.write(line+' '+str(bestConfs[lineNr])+' '+str(orient[0])+' '+str(orient[1])+
-			' '+str(orient[2])+' '+str(orient[3])+' '+str(orient[4])+' '+str(orient[5])+
-			' '+str(orient[6])+' '+str(orient[7])+' '+str(orient[8])+'\n')
-	f.close()
+	if findUniques==1:
+		print("Finding unique grains, will print Orientation, Confidence, fileName for each unique grain.")
+		print("As a better solution for that grain is found, it will be printed again.")
+		for voxNr in range(nVoxels):
+			blurb = '_'+str.zfill(str(voxNr),6)+'_'
+			fns = [fn for fn in files if blurb in fn]
+			if len(fns) == 0:
+				continue
+			PropList = []
+			highestConf = -1
+			for fn in fns:
+				f = open(fn)
+				str1= f.readline()
+				str1= f.readline()
+				line = f.readline().split()
+				f.close()
+				IAthis = float(line[0][:-1])
+				OMthis = [float(a[:-1]) for a in line[1:10]]
+				nExp = float(line[-2][:-1])
+				nObs = float(line[-1][:-1])
+				ConfThis = nObs/nExp
+				idnr = int((fn.split('.')[-2]).split('_')[-1])
+				if ConfThis > highestConf:
+					highestConf = ConfThis
+				PropList.append([ConfThis,IAthis,OMthis,idnr,voxNr])
+			sortedPropList = sorted(PropList,key=lambda x: (x[0],x[1]),reverse=True)
+			id_this = sortedPropList[0][3]
+			fnBest = folder + '/Output/BestPos_'+str.zfill(str(voxNr),6)+'_'+str.zfill(str(id_this),9)+'.csv'
+			if len(uniqueOrients) == 0:
+				uniqueOrients.append(sortedPropList[0][2])
+				bestConfs.append(sortedPropList[0][0])
+				uniqueFNames.append(fnBest)
+				print(sortedPropList[0][2],sortedPropList[0][0],fnBest)
+				continue
+			isFound = 0
+			isBest = 0
+			isBestLoc = 0
+			for orientNr in range(len(uniqueOrients)):
+				orient = uniqueOrients[orientNr]
+				conf = bestConfs[orientNr]
+				ang = rad2deg*GetMisOrientationAngleOM(orient,sortedPropList[0][2],sgnum)[0]
+				if ang < maxang:
+					isFound = 1
+					if sortedPropList[0][0] > conf:
+						isBest = 1
+						isBestLoc = orientNr
+			if isBest == 1:
+				uniqueOrients[isBestLoc] = sortedPropList[0][2]
+				bestConfs[isBestLoc] = sortedPropList[0][0]
+				uniqueFNames[isBestLoc] = fnBest
+				print(sortedPropList[0][2],sortedPropList[0][0],fnBest)
+			if isFound == 0:
+				uniqueOrients.append(sortedPropList[0][2])
+				bestConfs.append(sortedPropList[0][0])
+				uniqueFNames.append(fnBest)
+				print(sortedPropList[0][2],sortedPropList[0][0],fnBest)
+		f = open('fNamesUniqueOrients.csv','w')
+		print("Final best unique grain list: ")
+		print("FileName\t\t\tBestConfidence\t\t\tOrientationMatrix")
+		for lineNr in range(len(uniqueFNames)):
+			line = uniqueFNames[lineNr]
+			orient = uniqueOrients[lineNr]
+			printVal = line+' '+str(bestConfs[lineNr])+' '+str(orient[0])+' '+str(orient[1])
+			printVal += ' '+str(orient[2])+' '+str(orient[3])+' '+str(orient[4])+' '+str(orient[5])
+			printVal += ' '+str(orient[6])+' '+str(orient[7])+' '+str(orient[8])
+			print(printVal)
+			f.write(printVal+'\n')
+		f.close()
 
 	lines = open('fNamesUniqueOrients.csv','r').readlines()
 	IDsMergedScanning = np.genfromtxt('IDsMergedScanning.csv',skip_header=1,delimiter=',')
@@ -88,6 +97,7 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 	pos_arr = np.zeros((nGrs*nrhkls,6))
 	nrSps = np.zeros(nGrs)
 	spDone = 0
+	print("Now finding spots for each unique grain.")
 	for lineNr in range(nGrs):
 		line = lines[lineNr]
 		fname = line.split()[0]
@@ -106,7 +116,6 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 			idsKey = np.genfromtxt(str(fNr)+'/IDRings.csv',skip_header=1)
 			orig_ID = idsKey[idsKey[:,2]==origIDThis,1]
 			radius_info = np.genfromtxt(str(fNr)+'/Radius_StartNr_1_EndNr_'+str(nFrames)+'.csv',skip_header=1)
-			integ_intensity = radius_info[radius_info[:,0]==orig_ID,1]
 			omega = radius_info[radius_info[:,0]==orig_ID,2]
 			# Take uncorrected position, this will be easier to match.
 			ringNr = radius_info[radius_info[:,0]==orig_ID,13]
@@ -120,9 +129,11 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 			hklnr += 1
 			spDone += 1
 		nrSps[lineNr] = hklnr
+	print(f"Total unique spots: {spDone}")
 
 	pos_arr = pos_arr[:spDone,:]
 	if removeDuplicates == 1:
+		print("We were requested to remove duplicate spots.")
 		dupArr = np.zeros(spDone)
 		# Find duplicate and remove spots
 		for sp in range(spDone):
@@ -139,13 +150,33 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 			dupArr[int(sub_arr2[5])] = 1
 		pos_arr = pos_arr[dupArr==0,:]
 		spDone = pos_arr.shape[0]
+		print(f"Total unique spots after removing duplicates: {spDone}")
 		# We need to change hklnrs appropriately
 		for grNr in range(nGrs):
 			idxs = pos_arr[:,3].astype(np.int32) == grNr
 			nSpsThisGr = np.sum(idxs)
 			pos_arr[idxs,4] = np.arange(nSpsThisGr)
 			nrSps[grNr] = nSpsThisGr
+
+	np.savetxt('spot_position_arr_unique_grains.txt',pos_arr,fmt="%.6f %.6f %d %d %d %d")
+	# Generate a normalization array
+	print("Generating a normalization array for sinogram intensities.")
+	hkls = np.genfromtxt('hkls.csv',skip_header=1)
+	nRings = int(np.max(hkls[:,4])) + 1
+	norm_arr = np.zeros((nScans,nRings))
+	for scanNr in range(nScans):
+		fNr = startFNr + scanNr*nrFilesPerSweep
+		radius_info = np.genfromtxt(str(fNr)+'/Radius_StartNr_1_EndNr_'+str(nFrames)+'.csv',skip_header=1)
+		if len(radius_info) == 0: continue
+		for ringNr in range(nRings):
+			spotsThisRing = radius_info[radius_info[:,13]==ringNr,:]
+			if len(spotsThisRing) == 0: continue
+			norm_arr[scanNr,ringNr] = spotsThisRing[0,16]
+	norm_arr = np.where(np.max(norm_arr, axis=0)==0, norm_arr, norm_arr*1./np.max(norm_arr, axis=0))
+	np.savetxt('intensity_normalization_array.txt',norm_arr,fmt="%.6f")
+
 	# Now go through each Radius*.csv file, find matching spots and save them in the sinogram for each grain
+	print("Generating sinograms, doing a tomo recon for each grain.")
 	Sinos = np.zeros((nGrs,nrhkls,nScans))
 	omegas = np.zeros((nGrs,nrhkls))
 	grainSpots = nrSps.astype(np.int32)
@@ -153,7 +184,6 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 		fNr = startFNr + scanNr*nrFilesPerSweep
 		radius_info = np.genfromtxt(str(fNr)+'/Radius_StartNr_1_EndNr_'+str(nFrames)+'.csv',skip_header=1)
 		if len(radius_info)==0: continue
-		# print(radius_info.shape)
 		# Find all spots matching the spots that interest us.
 		for spotNr in range(spDone):
 			omega = pos_arr[spotNr][0]
@@ -170,12 +200,13 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 			if len(spots_filtered_eta.shape) == 1:
 				intensity = spots_filtered_eta[15]
 				omega_f = spots_filtered_eta[2]
-				eta_f = spots_filtered_eta[10]
+				# eta_f = spots_filtered_eta[10]
 			else:
-				bestRow = np.argmax(spots_filtered_eta[:,1])
+				bestRow = np.argmax(spots_filtered_eta[:,15])
 				intensity = spots_filtered_eta[bestRow,15]
 				omega_f = spots_filtered_eta[bestRow,2]
-				eta_f = spots_filtered_eta[bestRow,10]
+				# eta_f = spots_filtered_eta[bestRow,10]
+			intensity *= norm_arr[scanNr,int(ringNr)]
 			Sinos[grNr,grSp,scanNr] = intensity
 			omegas[grNr,grSp] = omega_f
 
@@ -192,12 +223,36 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 		Image.fromarray(sino).save('Sinos/sino_grNr_'+str.zfill(str(grNr),4)+'.tif')
 		np.savetxt('Thetas/thetas_grNr_'+str.zfill(str(grNr),4)+'.txt',thetas,fmt='%.6f')
 		recon = iradon(sino,theta=thetas)
+		if thresh_reqd == 1:
+			#Thresholding
+			thresh = threshold_otsu(recon)
+			binary = recon <= thresh
+			_,axs = plt.subplots(ncols=4, figsize=(10, 2))
+			if draw_sinos==1:
+				axs[0].imshow(np.transpose(recon),cmap=plt.cm.gray)
+				axs[1].hist(recon.ravel(),bins=256);
+				axs[1].axvline(thresh,color='r')
+			recon[binary] = 0
+			seed = np.copy(recon)
+			seed[1:-1, 1:-1] = recon.max()
+			mask = recon
+			filled = reconstruction(seed, mask, method='erosion')
+			if draw_sinos==1:
+				axs[2].imshow(np.transpose(recon),cmap=plt.cm.gray)
+				axs[3].imshow(np.transpose(filled),cmap=plt.cm.gray)
+				plt.show()
+			recon = filled
 		all_recons[grNr,:,:] = recon
 		im_list.append(Image.fromarray(recon))
 		Image.fromarray(recon).save('Recons/recon_grNr_'+str.zfill(str(grNr),4)+'.tif')
 
 	full_recon = np.max(all_recons,axis=0)
+	print("Done with tomo recon, now running the optimization.")
 	max_id = np.argmax(all_recons,axis=0).astype(np.int32)
+	max_id[full_recon==0] = -1
+	if draw_sinos == 1:
+		plt.imshow(np.transpose(full_recon),cmap='gray'); plt.title('Final reconstruction.'); plt.show()
+		plt.imshow(np.transpose(max_id),cmap='gray'); plt.title('GrainID.'); plt.show()
 	Image.fromarray(max_id).save('Recons/Full_recon_max_project_grID.tif')
 	Image.fromarray(full_recon).save('Recons/Full_recon_max_project.tif')
 	im_list[0].save('Recons/all_recons_together.tif',compression="tiff_deflate",save_all=True,append_images=im_list[1:])
@@ -207,6 +262,8 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 	max_id2 = np.flipud(max_id)
 	max_id2 = max_id2.flatten()
 	IDArr = []
+	print('Filtering voxels to generate reconstruction map.')
+	print('OrigNVoxels\tFilteredNVoxels')
 	for grNr in range(nGrs):
 		grVoxels = (max_id2==grNr).nonzero()[0]
 		line = lines[grNr].split('\n')[0]
@@ -233,17 +290,22 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 					bestConf = ConfThis
 					bestID = int((fn.split('.')[-2]).split('_')[-1])
 				if bestConf == 1.0: break
+			if bestID == -1: max_id2[voxNr] = -1
 			if bestID != -1:
 				nrVox+=1
 				IDArr.append([bestID,voxNr])
 		print(grVoxels.shape[0],nrVox)
+	# _,ax = plt.subplots(ncols=2)
+	# ax[0].imshow(np.flipud(max_id))
+	# ax[1].imshow(max_id2.reshape((nScans,nScans)))
+	# plt.show()
 
-	print(len(IDArr))
 	np.savetxt('SpotsToIndex.csv',IDArr,fmt="%d %d")
 	nIDs = len(IDArr)
 	os.makedirs('Results',exist_ok=True)
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitOrStrainsScanningOMP")+' paramstest.txt 0 1 '+ str(nIDs)+' '+str(numProcs),shell=True)
 	NrSym,Sym = MakeSymmetries(sgnum)
+	print(f"Filtering the final output. Will be saved to {folder}/Recons/microstrFull.csv")
 	# go through the output
 	files2 = glob.glob(folder+'/Results/*.csv')
 	filesdata = np.zeros((len(files2),43))
@@ -259,4 +321,10 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 		filesdata[i][39:43] = quat
 		i+=1
 		f.close()
-	np.savetxt('microstrFull.csv',filesdata,fmt='%.6f',delimiter=',',header='SpotID,O11,O12,O13,O21,O22,O23,O31,O32,O33,SpotID,x,y,z,SpotID,a,b,c,alpha,beta,gamma,SpotID,PosErr,OmeErr,InternalAngle,Radius,Completeness,E11,E12,E13,E21,E22,E23,E31,E32,E33,Eul1,Eul2,Eul3,Quat1,Quat2,Quat3,Quat4')
+	head = 'SpotID,O11,O12,O13,O21,O22,O23,O31,O32,O33,SpotID,x,y,z,SpotID,a,b,c,alpha,beta,gamma,SpotID,PosErr,OmeErr,InternalAngle,'
+	head += 'Radius,Completeness,E11,E12,E13,E21,E22,E23,E31,E32,E33,Eul1,Eul2,Eul3,Quat1,Quat2,Quat3,Quat4'
+	np.savetxt('Recons/microstrFull.csv',filesdata,fmt='%.6f',delimiter=',',header=head)
+	# Also save other things such as Quats, 
+
+# runRecon('/local/s1iduser/borbely_apr17_midas',66,163,1440,225,96,nrFilesPerSweep=8,removeDuplicates=1,maxang=3,tol_ome=3,tol_eta=3,findUniques=0,draw_sinos=0,thresh_reqd=1)
+# runRecon('/local/s1iduser/bucsek_jul22_midas/L1_new',584,117,1800,194,96,nrFilesPerSweep=1,removeDuplicates=0,maxang=3,tol_ome=3,tol_eta=3,findUniques=0,draw_sinos=0,thresh_reqd=0)
