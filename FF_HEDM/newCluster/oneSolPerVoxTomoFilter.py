@@ -170,6 +170,7 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 			fNr = startFNr + scanNr*nrFilesPerSweep
 			radius_info = np.genfromtxt(str(fNr)+'/Radius_StartNr_1_EndNr_'+str(nFrames)+'.csv',skip_header=1)
 			if len(radius_info) == 0: continue
+			if len(radius_info.shape) == 1: continue
 			for ringNr in range(nRings):
 				spotsThisRing = radius_info[radius_info[:,13]==ringNr,:]
 				if len(spotsThisRing) == 0: continue
