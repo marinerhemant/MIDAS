@@ -29,7 +29,6 @@
 #include <stdarg.h>
 #include <fcntl.h>
 #include <omp.h>
-#include <sys/sysinfo.h>
 #include <sys/resource.h>
 
 #define deg2rad 0.0174532925199433

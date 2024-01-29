@@ -800,7 +800,7 @@ int main(int argc, char *argv[])
     double LatticeConstant[6], Wavelength, MaxRingRad, Lsd, MaxTtheta, TthetaTol, ybc, zbc, EtaBinSize, px,Width;
     double tx = 0,tolTilts,tolLsd,tolBC,tolP,tolP0=0,tolP1=0,tolP2=0,tolP3=0,tyin=0,tzin=0,p0in=0,p1in=0,p2in=0,p3in=0, padY=0, padZ=0;
     int Padding = 6, NrPixelsY,NrPixelsZ,NrPixels;
-    int NrTransOpt=0;
+    int NrTransOpt=0, RBinWidth = 4;
     long long int GapIntensity=0, BadPxIntensity=0;
     int TransOpt[10], nRingsExclude=0, RingsExclude[50];
     int makeMap = 0;
@@ -838,6 +838,12 @@ int main(int argc, char *argv[])
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %d", dummy, &dType);
+            continue;
+        }
+		str = "RBinDivisions ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %d", dummy, &RBinWidth);
             continue;
         }
 		str = "SkipFrame ";
@@ -1363,12 +1369,12 @@ int main(int argc, char *argv[])
 		RMean = malloc(nIndices*sizeof(*RMean));
 		EtaMean = malloc(nIndices*sizeof(*EtaMean));
 		int NrPtsForFit;
-		NrPtsForFit = (int)((floor)((Rmaxs[0]-Rmins[0])/px))*4;
+		NrPtsForFit = (int)((floor)((Rmaxs[0]-Rmins[0])/px))*RBinWidth;
 		for (i=0;i<nIndices;i++){
 			IdealR[i] = IdealRs[(int)(floor(i/nEtaBins))];
 			IdealRmins[i] = Rmins[(int)(floor(i/nEtaBins))];
 			IdealRmaxs[i] = Rmaxs[(int)(floor(i/nEtaBins))];
-			IdealTtheta[i]=rad2deg*atan(IdealR[i]/Lsd);
+			IdealTtheta[i]= rad2deg*atan(IdealR[i]/Lsd);
 		}
 		NrCallsProfiler = 0;
 		if (FitWeightMean == 1) {
