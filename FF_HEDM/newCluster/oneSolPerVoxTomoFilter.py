@@ -189,6 +189,7 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 		fNr = startFNr + scanNr*nrFilesPerSweep
 		radius_info = np.genfromtxt(str(fNr)+'/Radius_StartNr_1_EndNr_'+str(nFrames)+'.csv',skip_header=1)
 		if len(radius_info)==0: continue
+		if len(radius_info.shape) == 1: continue
 		# Find all spots matching the spots that interest us.
 		for spotNr in range(spDone):
 			omega = pos_arr[spotNr][0]
