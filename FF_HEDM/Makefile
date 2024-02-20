@@ -2,6 +2,7 @@
 # Copyright (c) 2014, UChicago Argonne, LLC
 # See LICENSE file.
 #
+# make CC=/Users/hsharma/opt/homebrew/opt/gcc/bin/gcc-13 integrator
 CC=gcc
 NCC=nvcc
 MPICC=LD_LIBRARY_PATH=$${HOME}/.MIDAS/MPICH/lib:$LD_LIBRARY_PATH $${HOME}/.MIDAS/MPICH/bin/mpicc
