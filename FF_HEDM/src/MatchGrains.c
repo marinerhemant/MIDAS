@@ -115,10 +115,10 @@ int main(int argc, char* argv[])
 	if (argc < 13){
 		printf("Usage: MatchGrains   OutFileName   state1.txt state2.txt"
 		"     SGNr      offset[3]"
-		"     matchMode    beamThickness1 beamThickness2    removeDuplicates       sizeFilter     (optional)weights\n");
+		"     matchMode    beamThickness1 beamThickness2    removeDuplicates       sizeFilter     (optional)weights     (optional)referenceMisorientation\n");
 		printf("                                (list of Grains.csv files)"
 		"   [int] [microns][3vals]"
-		" (next line)      [microns]     [microns]        binary[0 or 1]      %[0 or value]  [degrees and microns]\n");
+		" (next line)      [microns]     [microns]        binary[0 or 1]      %%[0 or value]  [degrees and microns]     [degrees]\n");
 		printf("MatchMode: \n\t0: Match orientations only\n\t1: Match "
 		"positions only\n\t2: Match according to both orientation and "
 		"position using supplied weights\n");
@@ -129,7 +129,8 @@ int main(int argc, char* argv[])
 			"\t0: will not remove any matched grains from database while matching. This is faster\n"
 			"\t   and desirable if multiple grains can be matched to the same grain, eg. if a \n\t   grain breaks up into 2.\n");
 		printf("\t1: will remove any matched grains from database while matching. Only one grain each will be matched. This is slower.\n");
-		printf("\t   sizeFilter: 0 will not make filter based on grain size, value [float] will only match grains within value\% of the grain size.\n");
+		printf("\t   sizeFilter: 0 will not make filter based on grain size, value [float] will only match grains within value%% of the grain size.\n");
+		printf("referenceMisorientation: If provided, in degrees, it will look for misorientation angle around this value.\n");
 		return 1;
 	}
 	clock_t start, end;
@@ -158,9 +159,15 @@ int main(int argc, char* argv[])
 	double sizeFilter;
 	sizeFilter = atof(argv[12]);
 	double weights[2];
+	double referenceMisorientation=0;
 	if (matchMode == 2){
 		weights[0] = atof(argv[13]);
 		weights[1] = atof(argv[14]);
+	}
+	if (matchMode!=2 && argc==14){
+		referenceMisorientation = atof(argv[13]);
+	} else if (matchMode==2 && argc==16){
+		referenceMisorientation = atof(argv[15]);
 	}
 	char aline[4096],bline[4096];
 	FILE *grainsF;
@@ -327,6 +334,7 @@ int main(int argc, char* argv[])
 				Q1[2] = Quats1[j][2];
 				Q1[3] = Quats1[j][3];
 				Angle = GetMisOrientationAngle(Q1,Q2,&ang,NrSymmetries,Sym);
+				ang = fabs(ang-referenceMisorientation);
 				if (sizeFilter !=0){
 					if (abs(GrSize1[i] - GrSize2[j]) > GrSize1[i]*0.01*sizeFilter){
 						Angle = 100000; // This will make it a bad match automatically.
@@ -397,6 +405,7 @@ int main(int argc, char* argv[])
 				posT1[1] = Pos1[j][1];
 				posT1[2] = Pos1[j][2];
 				Angle = GetMisOrientationAngle(Q1,Q2,&ang,NrSymmetries,Sym);
+				ang = fabs(ang-referenceMisorientation);
 				difflen = Len3d(posT2[0]-posT1[0],posT2[1]-posT1[1],posT2[2]-posT1[2]);
 				wt = ang/weights[0] + difflen/weights[1];
 				if (sizeFilter !=0){
@@ -541,10 +550,19 @@ int main(int argc, char* argv[])
 		for (j=0;j<6;j++) fprintf(outfile,"%d\t",(int)Matches[i*28+j]);
 		for (j=6;j<27;j++) fprintf(outfile,"%lf\t",Matches[i*28+j]);
 		fprintf(outfile,"%lf\n",Matches[i*28+27]);
-		//~ for (j=0;j<6;j++) printf("%d\t",(int)Matches[i*28+j]);
-		//~ for (j=6;j<28;j++) printf("%lf\t",Matches[i*28+j]);
-		//~ printf("\n");
-		//~ printf("%lf\n",Matches[i*28+13]);
+	}
+	int thisID1, thisID2,found;
+	for (i=0;i<totIDs1;i++){
+		// Check which IDs1 were not written out, write those.
+		thisID1 = IDs1[i][2];
+		found = 0;
+		for (j=0;j<totIDs2;j++){
+			thisID2 = Matches[j*28+5];
+			if (thisID1 == thisID2) found = 1;
+		}
+		if (found ==0){
+			fprintf(outfile,"0\t0\t0\t%d\t%d\t%d\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n",IDs1[i][0],IDs1[i][1],IDs1[i][2]);
+		}
 	}
 	end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
