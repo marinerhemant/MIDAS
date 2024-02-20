@@ -563,7 +563,9 @@ int main(int argc, char* argv[])
 				if (thisID1 == thisID2) found = 1;
 			}
 			if (found ==0){
-				fprintf(outfile,"0\t0\t0\t%d\t%d\t%d\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n",IDs1[i][0],IDs1[i][1],IDs1[i][2]);
+				fprintf(outfile,
+					"0\t0\t0\t%d\t%d\t%d\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n",
+					IDs1[i][0],IDs1[i][1],IDs1[i][2]);
 			}
 		}
 	}else{
@@ -576,7 +578,9 @@ int main(int argc, char* argv[])
 				if (thisID1 == thisID2) found = 1;
 			}
 			if (found ==0){
-				fprintf(outfile,"%d\t%d\t%d\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n",IDs2[i][0],IDs2[i][1],IDs2[i][2]);
+				fprintf(outfile,
+					"%d\t%d\t%d\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n",
+					IDs2[i][0],IDs2[i][1],IDs2[i][2]);
 			}
 		}
 	}
