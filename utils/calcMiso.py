@@ -1,6 +1,7 @@
 from math import sin, cos, acos, sqrt
 import numpy as np
 rad2deg = 57.2957795130823
+deg2rad = 0.0174532925199433
 
 def normalize(quat):
 	return quat/np.linalg.norm(quat)
@@ -143,6 +144,34 @@ def Euler2OrientMat(Euler):
 	m_out[8] = cph
 	return m_out
 
+def AxisAngleToOrientMat(axis,angle):
+	R = np.zeros((3,3))
+	lenInv = 1/np.linalg.norm(axis)
+	u = axis[0]/lenInv
+	v = axis[1]/lenInv
+	w = axis[2]/lenInv
+	angleRad = deg2rad*angle
+	rcos = cos(angleRad)
+	rsin = sin(angleRad)
+	R[0][0] =      rcos + u*u*(1-rcos)
+	R[1][0] =  w * rsin + v*u*(1-rcos)
+	R[2][0] = -v * rsin + w*u*(1-rcos)
+	R[0][1] = -w * rsin + u*v*(1-rcos)
+	R[1][1] =      rcos + v*v*(1-rcos)
+	R[2][1] =  u * rsin + w*v*(1-rcos)
+	R[0][2] =  v * rsin + u*w*(1-rcos)
+	R[1][2] = -u * rsin + v*w*(1-rcos)
+	R[2][2] =      rcos + w*w*(1-rcos)
+	return R
+
+def MatrixMultF33(m,n):
+	res = np.zeros((3,3))
+	for r in range(3):
+		res[r][0] = m[r][0]*n[0][0] + m[r][1]*n[1][0] + m[r][2]*n[2][0]
+		res[r][1] = m[r][0]*n[0][1] + m[r][1]*n[1][1] + m[r][2]*n[2][1]
+		res[r][2] = m[r][0]*n[0][2] + m[r][1]*n[1][2] + m[r][2]*n[2][2]
+	return res
+
 def eul2omMat(euler):
 	m_out = np.zeros((euler.shape[0],9))
 	cps = np.cos(euler[:,0])
@@ -174,7 +203,7 @@ def GetMisOrientationAngle(euler1,euler2,SGNum):
 	MisV = BringDownToFundamentalRegionSym(QP,NrSymmetries,Sym)
 	if (MisV[0] > 1):
 		MisV[0] = 1
-	return 2*acos(MisV[0])
+	return 2*acos(MisV[0]),MisV[1:]/sin(acos(MisV[0]))
 
 # OM is 9 length vector
 def GetMisOrientationAngleOM(OM1,OM2,SGNum):
@@ -188,4 +217,4 @@ def GetMisOrientationAngleOM(OM1,OM2,SGNum):
 	MisV = BringDownToFundamentalRegionSym(QP,NrSymmetries,Sym)
 	if (MisV[0] > 1):
 		MisV[0] = 1
-	return 2*acos(MisV[0]),MisV[1:]
+	return 2*acos(MisV[0]),MisV[1:]/sin(acos(MisV[0]))

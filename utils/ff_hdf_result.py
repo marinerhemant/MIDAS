@@ -1,5 +1,6 @@
-import os
-import sys
+import sys,os
+utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
+sys.path.insert(0,utilsDir)
 import numpy as np
 import matplotlib.pyplot as plt
 import h5py

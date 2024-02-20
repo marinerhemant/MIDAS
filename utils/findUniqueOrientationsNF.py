@@ -1,5 +1,7 @@
+import os,sys
+utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
+sys.path.insert(0,utilsDir)
 from calcMiso import *
-import sys
 
 fn = sys.argv[1]
 sg = int(sys.argv[2])
