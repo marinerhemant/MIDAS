@@ -547,21 +547,37 @@ int main(int argc, char* argv[])
 	"Pos0State2\tPos1State2\tPos2State2\tPos0State1\tPos1State1\tPos2State1\t"
 	"GrainSize1\tGrainSize2\tselectionCriteriaVal\tminAngle\tdiffPosX\tdiffPosY\tdiffPosZ\tEuclideanDistt\n");
 	for (i=0;i<totIDs2;i++){
+		if ((int)Matches[i*28+2] == 0) continue;
 		for (j=0;j<6;j++) fprintf(outfile,"%d\t",(int)Matches[i*28+j]);
 		for (j=6;j<27;j++) fprintf(outfile,"%lf\t",Matches[i*28+j]);
 		fprintf(outfile,"%lf\n",Matches[i*28+27]);
 	}
 	int thisID1, thisID2,found;
-	for (i=0;i<totIDs1;i++){
-		// Check which IDs1 were not written out, write those.
-		thisID1 = IDs1[i][2];
-		found = 0;
-		for (j=0;j<totIDs2;j++){
-			thisID2 = Matches[j*28+5];
-			if (thisID1 == thisID2) found = 1;
+	if (totIDs1>totIDs2){
+		for (i=0;i<totIDs1;i++){
+			// Check which IDs1 were not written out, write those.
+			thisID1 = IDs1[i][2];
+			found = 0;
+			for (j=0;j<totIDs2;j++){
+				thisID2 = Matches[j*28+5];
+				if (thisID1 == thisID2) found = 1;
+			}
+			if (found ==0){
+				fprintf(outfile,"0\t0\t0\t%d\t%d\t%d\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n",IDs1[i][0],IDs1[i][1],IDs1[i][2]);
+			}
 		}
-		if (found ==0){
-			fprintf(outfile,"0\t0\t0\t%d\t%d\t%d\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n",IDs1[i][0],IDs1[i][1],IDs1[i][2]);
+	}else{
+		for (i=0;i<totIDs2;i++){
+			// Check which IDs1 were not written out, write those.
+			thisID2 = IDs2[i][2];
+			found = 0;
+			for (j=0;j<totIDs1;j++){
+				thisID1 = Matches[j*28+2];
+				if (thisID1 == thisID2) found = 1;
+			}
+			if (found ==0){
+				fprintf(outfile,"%d\t%d\t%d\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n",IDs2[i][0],IDs2[i][1],IDs2[i][2]);
+			}
 		}
 	}
 	end = clock();
