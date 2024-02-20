@@ -1,4 +1,7 @@
 import glob
+import os,sys
+utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
+sys.path.insert(0,utilsDir)
 from calcMiso import *
 import sys
 import numpy as np
