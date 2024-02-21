@@ -6,15 +6,14 @@ from argparse import RawTextHelpFormatter
 import argparse
 import warnings
 import time
-import os
+import os,sys,glob
 import datetime
 from pathlib import Path
 import shutil
 from math import acos,sqrt,atan,floor
+utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
+sys.path.insert(0,utilsDir)
 from calcMiso import *
-import glob
-from calcMiso import *
-import sys
 import matplotlib.pyplot as plt
 from skimage.transform import iradon
 from PIL import Image
@@ -55,6 +54,7 @@ homedir = os.path.expanduser('~')
 paramContents = open(paramFN).readlines()
 RingNrs = []
 nMerges = 0
+omegaOffset = 0
 for line in paramContents:
 	if line.startswith('StartFileNrFirstLayer'):
 		startNrFirstLayer = int(line.split()[1])
@@ -72,6 +72,8 @@ for line in paramContents:
 		sgnum = int(line.split()[1])
 	if line.startswith('nStepsToMerge'):
 		nMerges = int(line.split()[1])
+	if line.startswith('omegaOffsetBetweenScans'):
+		omegaOffset = float(line.split()[1])
 	if line.startswith('nScans'):
 		nScans = int(line.split()[1])
 	if line.startswith('Lsd'):
@@ -128,6 +130,23 @@ if doPeakSearch == 1:
 		# TODO: call the PeaksFittingOMP code using swift to run PeakSearch on all the scans in parallel
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMP")+' '+baseNameParamFN+' 0 1 '+str(nFrames)+' '+str(numProcs),shell=True)
 		# These need to be done sequentially
+		if omegaOffset != 0:
+			# We need to open each Temp/* file and modify its omega, write back
+			fns = glob.glob('Temp/*PS.csv')
+			for fn in fns:
+				with open(fn,'r') as f:
+					lines = fn.readlines()
+					head_this = lines[0]
+				with open(fn,'w') as f:
+					f.write(head_this)
+					omega_this = float(lines[1].split()[2])
+					omegaOffsetThis = omegaOffset*layerNr
+					omegaOffsetThis = omegaOffsetThis%360.0
+					omega_new = omega_this + omegaOffsetThis
+					for line in lines[1:]:
+						line_new = line.split()
+						line_new[2] = f"{omega_new:.6f}"
+						f.write(' '.join(line_new))
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAll")+' '+baseNameParamFN,shell=True)
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAll")+' '+baseNameParamFN,shell=True)
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetup")+' '+baseNameParamFN,shell=True)
