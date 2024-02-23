@@ -142,7 +142,7 @@ if doPeakSearch == 1:
 					omega_this = float(lines[1].split()[2])
 					omegaOffsetThis = omegaOffset*layerNr
 					omegaOffsetThis = omegaOffsetThis%360.0
-					omega_new = omega_this + omegaOffsetThis
+					omega_new = omega_this - omegaOffsetThis
 					for line in lines[1:]:
 						line_new = line.split()
 						line_new[2] = f"{omega_new:.6f}"
