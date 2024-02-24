@@ -212,7 +212,7 @@ if nMerges != 0:
 		shutil.move(f'InputAllExtraInfoFittingAll{startScanNr}.csv',f'original_InputAllExtraInfoFittingAll{startScanNr}.csv')
 		for scan in range(1,nMerges):
 			thisScanNr = startScanNr + scan
-			thisPosition += positions[thisScanNr]
+			thisPosition += float(positions[thisScanNr])
 			spots2 = np.genfromtxt(f'InputAllExtraInfoFittingAll{thisScanNr}.csv',skip_header=1)
 			if (len(spots2.shape)<2): continue
 			shutil.move(f'InputAllExtraInfoFittingAll{thisScanNr}.csv',f'original_InputAllExtraInfoFittingAll{thisScanNr}.csv')
