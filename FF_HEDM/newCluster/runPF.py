@@ -213,6 +213,7 @@ if nMerges != 0:
 			thisScanNr = startScanNr + scan
 			thisPosition += positions[thisScanNr]
 			spots2 = np.genfromtxt(f'InputAllExtraInfoFittingAll{thisScanNr}.csv',skip_header=1)
+			if (len(spots2.shape)<2): continue
 			shutil.move(f'InputAllExtraInfoFittingAll{thisScanNr}.csv',f'original_InputAllExtraInfoFittingAll{thisScanNr}.csv')
 			for spot in spots2:
 				# Check for all spots which are close to this spot
