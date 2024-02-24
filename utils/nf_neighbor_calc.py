@@ -1,6 +1,8 @@
 import numpy as np
 import calcMiso
-import sys
+import os,sys
+utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
+sys.path.insert(0,utilsDir)
 import matplotlib.pyplot as plt
 from scipy import ndimage
 from math import sqrt, pi
