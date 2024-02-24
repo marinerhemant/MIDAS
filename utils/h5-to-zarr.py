@@ -11,8 +11,6 @@ import sys
 from pprint import pprint as print
 from numcodecs import Blosc #Default compression
 
-chunks_meta_key = '.zchunkstore'
-
 lggr = logging.getLogger('h5-to-zarr')
 lggr.addHandler(logging.NullHandler())
 
@@ -62,9 +60,6 @@ class Hdf5ToZarr:
             attributes.
         """
         for n, v in h5obj.attrs.items():
-            if n in ('REFERENCE_LIST', 'DIMENSION_LIST'):
-                    continue
-
             # Fix some attribute values to avoid JSON encoding exceptions...
             if isinstance(v, bytes):
                 v = v.decode('utf-8')
@@ -75,8 +70,7 @@ class Hdf5ToZarr:
                     v = v.flatten()[0].tolist()
                 else:
                     v = v.tolist()
-            if self._xr and v == 'DIMENSION_SCALE':
-                continue
+
             try:
                 zobj.attrs[n] = v
             except TypeError:
