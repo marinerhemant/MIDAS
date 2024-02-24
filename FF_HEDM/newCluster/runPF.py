@@ -247,7 +247,7 @@ if nMerges != 0:
 		positionsNew[scanNr] = thisPosition/nMerges
 		outFAll = open(f'InputAllExtraInfoFittingAll{scanNr}.csv','w')
 		outFAll.write('%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)')
-		np.savetxt(outFAll,spots[:,:-1],fmt="%12.5f",delimiter="  ")
+		if (len(spots.shape)>1): np.savetxt(outFAll,spots[:,:-1],fmt="%12.5f",delimiter="  ")
 	np.savetxt('positions.csv',positionsNew,fmt='%.1f',delimiter=' ')
 	positions = positionsNew
 	nScans = nFinScans
