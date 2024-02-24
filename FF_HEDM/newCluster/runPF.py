@@ -206,7 +206,7 @@ if nMerges != 0:
 	positionsNew = np.zeros(nFinScans)
 	for scanNr in range(nFinScans):
 		startScanNr = scanNr*nMerges
-		thisPosition = positions[scanNr]
+		thisPosition = float(positions[scanNr])
 		spots = np.genfromtxt(f'InputAllExtraInfoFittingAll{startScanNr}.csv',skip_header=1)
 		if len(spots.shape) < 2: continue
 		shutil.move(f'InputAllExtraInfoFittingAll{startScanNr}.csv',f'original_InputAllExtraInfoFittingAll{startScanNr}.csv')
