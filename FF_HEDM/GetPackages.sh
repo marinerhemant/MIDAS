@@ -45,7 +45,7 @@ fi
 if [ ! -d ${dirThis}/LIBTIFF ]; then # TIFF
 	cd $dirThis
 	echo $(pwd)
-	wget -O libtiff.tar.gz https://download.osgeo.org/libtiff/tiff-4.6.0.tar.gz #http://download.osgeo.org/libtiff/tiff-4.0.6.tar.gz
+	wget -O libtiff.tar.gz https://download.osgeo.org/libtiff/tiff-4.6.0.tar.gz
 	tar -xzf libtiff.tar.gz
 	cd tiff-4.6.0
 	./configure --prefix=${dirThis}/LIBTIFF --enable-shared
@@ -56,7 +56,7 @@ fi
 if [ ! -d ${dirThis}/ZLIB ]; then # ZLIB
 	cd $dirThis
 	echo $(pwd)
-	wget -O zlib.tar.gz https://www.zlib.net/zlib-1.3.tar.gz #https://www.dropbox.com/s/v44annn9lvx84e2/zlib-1.2.11.tar.gz?dl=0
+	wget -O zlib.tar.gz https://www.zlib.net/zlib-1.3.tar.gz
 	tar -xzf zlib.tar.gz
 	cd zlib-1.3
 	./configure --prefix=${dirThis}/ZLIB
@@ -66,10 +66,10 @@ fi
 if [ ! -d ${dirThis}/HDF5 ]; then # HDF5
 	cd $dirThis
 	echo $(pwd)
-	wget -O hdf5.tar.gz https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.14/hdf5-1.14.2/src/hdf5-1.14.2.tar.gz #https://www.dropbox.com/s/bv4b36qhsilprzf/hdf5-1.8.13.tar.gz?dl=0
+	wget -O hdf5.tar.gz https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.14/hdf5-1.14.2/src/hdf5-1.14.2.tar.gz
 	tar -xzf hdf5.tar.gz
 	cd hdf5-1.14.2
-	./configure --prefix=${dirThis}/HDF5 --with-zlib=${dirThis}/ZLIB #--enable-shared
+	./configure --prefix=${dirThis}/HDF5 --with-zlib=${dirThis}/ZLIB
 	make -j8 install
 fi
 
@@ -81,9 +81,21 @@ fi
 
 if [ ! -d ${dirThis}/FFTW ]; then # fftw
 	cd $dirThis
-	wget -O fftw.tar.gz https://www.fftw.org/fftw-3.3.10.tar.gz #https://www.dropbox.com/s/dug1mpsr10rvlqi/fftw-3.3.8.tar.gz?dl=0
+	wget -O fftw.tar.gz https://www.fftw.org/fftw-3.3.10.tar.gz
 	tar -xzf fftw.tar.gz
 	cd fftw-3.3.10
 	./configure --prefix=${dirThis}/FFTW --enable-float --disable-fortran --enable-sse --enable-sse2 --enable-avx --enable-avx2 --enable-avx-128-fma --enable-generic-simd128 --enable-generic-simd256 #--enable-avx512
 	make -j8 install
 fi
+
+if [ ! -d ${dirThis}/BLOSC ]; then # blosc
+	cd $dirThis
+	git clone https://github.com/Blosc/c-blosc2
+	cd c-blosc2
+	mkdir build
+	cd build
+	cmake -DCMAKE_INSTALL_PREFIX=${dirThis}/BLOSC ..
+	cmake --build . -j 8
+	cmake --build . -j 8 --target install
+fi
+

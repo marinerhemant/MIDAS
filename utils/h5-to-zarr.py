@@ -183,7 +183,6 @@ class Hdf5ToZarr:
                                'size': blob.size}
             return stinfo
 
-
 if __name__ == '__main__':
     lggr.setLevel(logging.DEBUG)
     lggr_handler = logging.StreamHandler()
@@ -198,7 +197,6 @@ if __name__ == '__main__':
         store = zarr.DirectoryStore(outfn)
         h5chunks = Hdf5ToZarr(f, store, xarray=True)
         h5chunks.translate()
-    
 
 # Consolidate Zarr metadata...
 lggr.info('Consolidating Zarr dataset metadata')
