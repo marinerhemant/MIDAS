@@ -197,7 +197,7 @@ if doPeakSearch == 1:
 if nMerges != 0:
 	# We want to merge every nMerges datasets
 	# We will update nScans, positions and positions.csv
-	# We will move the InputallExtraInfoFittingAll*.csv files to a folder named origPeakSearch, then generate merged files
+	# We will move the InputallExtraInfoFittingAll*.csv files to original_InputAllExtraInfoFittingAll*.csv, then generate merged files
 	# To merge peaks, we will use the following reasoning: peak position should be within +/- 2 pixels, 2*omegaStep
 	nFinScans = int(floor(nScans / nMerges))
 	shutil.move('positions.csv','original_positions.csv')
@@ -209,17 +209,17 @@ if nMerges != 0:
 		outFAll = open(f'InputAllExtraInfoFittingAll{scanNr}.csv','w')
 		outFAll.write('%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)')
 		startScanNr = scanNr*nMerges
-		spots = np.genfromtxt(f'InputAllExtraInfoFittingAll{startScanNr}.csv',skip_header=1)
 		shutil.move(f'InputAllExtraInfoFittingAll{startScanNr}.csv',f'original_InputAllExtraInfoFittingAll{startScanNr}.csv')
+		spots = np.genfromtxt(f'original_InputAllExtraInfoFittingAll{startScanNr}.csv',skip_header=1)
 		if len(spots.shape) < 2:
 			spots = np.zeros((2,14))
 			spots[:,2] = -360 # Hook to keep sanity
 		for scan in range(1,nMerges):
 			thisScanNr = startScanNr + scan
 			thisPosition += float(positions[thisScanNr])
-			spots2 = np.genfromtxt(f'InputAllExtraInfoFittingAll{thisScanNr}.csv',skip_header=1)
-			if (len(spots2.shape)<2): continue
 			shutil.move(f'InputAllExtraInfoFittingAll{thisScanNr}.csv',f'original_InputAllExtraInfoFittingAll{thisScanNr}.csv')
+			spots2 = np.genfromtxt(f'original_InputAllExtraInfoFittingAll{thisScanNr}.csv',skip_header=1)
+			if (len(spots2.shape)<2): continue
 			for spot in spots2:
 				# Check for all spots which are close to this spot
 				filteredSpots = spots[np.fabs(spots[:,0]-spot[0])<2*px,:]
