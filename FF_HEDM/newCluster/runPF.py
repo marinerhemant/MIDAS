@@ -35,18 +35,18 @@ parser = argparse.ArgumentParser(description='''MIDAS_PF, contact hsharma@anl.go
 Provide positions.csv file (negative positions with respect to actual motor position. Motor position is normally position of the rotation axis, opposite to the voxel position.''', formatter_class=RawTextHelpFormatter)
 parser.add_argument('-nCPUs',    type=int, required=True, help='Number of CPUs to use')
 parser.add_argument('-paramFile', type=str, required=True, help='ParameterFileName: Use the full path.')
-# parser.add_argument('-nNodes', type=str, required=True, help='Number of Nodes')
-# parser.add_argument('-machineName', type=str, required=True, help='Machine Name')
+parser.add_argument('-nNodes', type=str, required=True, help='Number of Nodes')
+parser.add_argument('-machineName', type=str, required=True, help='Machine Name')
 parser.add_argument('-doPeakSearch',type=int,required=True,help='0 if PeakSearch is already done. InputAllExtra...0..n.csv should exist in the folder')
 parser.add_argument('-oneSolPerVox',type=int,required=True,help='0 if want to allow multiple solutions per voxel. 1 if want to have only 1 solution per voxel.')
 args, unparsed = parser.parse_known_args()
 paramFN = args.paramFile
-# machineName = args.machineName
+machineName = args.machineName
 doPeakSearch = args.doPeakSearch
 oneSolPerVox = args.oneSolPerVox
 numProcs = args.nCPUs
-# nNodes = args.nNodes
-# os.environ["nNODES"] = str(nNodes)
+nNodes = args.nNodes
+os.environ["nNODES"] = str(nNodes)
 os.environ["nCPUs"] = str(numProcs)
 
 baseNameParamFN = paramFN.split('/')[-1]
@@ -128,7 +128,10 @@ if doPeakSearch == 1:
 		Path(thisDir+'Results').mkdir(parents=True,exist_ok=True)
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" "+thisParamFN,shell=True)
 		# TODO: call the PeaksFittingOMP code using swift to run PeakSearch on all the scans in parallel
-		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMP")+' '+baseNameParamFN+' 0 1 '+str(nFrames)+' '+str(numProcs),shell=True)
+		swiftcmd = os.path.expanduser('~/.MIDAS/swift/bin/swift') + ' -config ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/sites.conf') + ' -sites ' + machineName + ' ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/runPeakSearchOnly.swift') + ' -folder=' + thisDir + ' -paramfn='+ baseNameParamFN + ' -nrNodes=' + str(nNodes) + ' -nFrames=' + str(nFrames) + ' -numProcs='+ str(numProcs)
+		print(swiftcmd)
+		subprocess.call(swiftcmd,shell=True)
+		# subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMP")+' '+baseNameParamFN+' 0 1 '+str(nFrames)+' '+str(numProcs),shell=True)
 		# These need to be done sequentially
 		if omegaOffset != 0:
 			# We need to open each Temp/* file and modify its omega, write back
@@ -205,11 +208,11 @@ if nMerges != 0:
 	headOut = '%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)'
 	positionsNew = np.zeros(nFinScans)
 	for scanNr in range(nFinScans):
+		thisPosition = float(positions[scanNr])
 		positionsNew[scanNr] = thisPosition/nMerges
 		outFAll = open(f'InputAllExtraInfoFittingAll{scanNr}.csv','w')
 		outFAll.write('%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)')
 		startScanNr = scanNr*nMerges
-		thisPosition = float(positions[scanNr])
 		spots = np.genfromtxt(f'InputAllExtraInfoFittingAll{startScanNr}.csv',skip_header=1)
 		if len(spots.shape) < 2: continue
 		shutil.move(f'InputAllExtraInfoFittingAll{startScanNr}.csv',f'original_InputAllExtraInfoFittingAll{startScanNr}.csv')
@@ -286,6 +289,7 @@ paramsf.close()
 
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
 # Parallel after this
+
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP")+' paramstest.txt 0 1 '+ str(nScans)+' '+str(numProcs),shell=True)
 
 if oneSolPerVox==1:
