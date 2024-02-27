@@ -139,7 +139,7 @@ if doPeakSearch == 1:
 					head_this = lines[0]
 				with open(fn,'w') as f:
 					f.write(head_this)
-					if len(lines==1): continue
+					if len(lines)==1: continue
 					omega_this = float(lines[1].split()[2])
 					omegaOffsetThis = omegaOffset*layerNr
 					omegaOffsetThis = omegaOffsetThis%360.0
