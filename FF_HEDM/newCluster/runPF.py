@@ -185,6 +185,7 @@ if doPeakSearch == 1:
 				yOrigNoW = yOrigNoW + ypos # Confirm this
 				# Get intensity from Radius... file
 				if nMerges!=0:
+					intensitySpot = 0
 					if len(IDRings.shape) == 1:
 						if len(Result.shape) == 2:
 							intensitySpot = Result[0,1]
