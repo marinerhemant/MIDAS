@@ -202,52 +202,55 @@ if nMerges != 0:
 	# We will move the InputallExtraInfoFittingAll*.csv files to a folder named origPeakSearch, then generate merged files
 	# To merge peaks, we will use the following reasoning: peak position should be within +/- 2 pixels, 2*omegaStep
 	nFinScans = int(floor(nScans / nMerges))
-	shutil.move('positions.csv','poisitions_original.csv')
+	shutil.move('positions.csv','original_positions.csv')
 	posF = open('positions.csv','w')
 	headOut = '%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)'
 	positionsNew = np.zeros(nFinScans)
 	for scanNr in range(nFinScans):
 		thisPosition = float(positions[scanNr])
-		positionsNew[scanNr] = thisPosition/nMerges
 		outFAll = open(f'InputAllExtraInfoFittingAll{scanNr}.csv','w')
 		outFAll.write('%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)')
 		startScanNr = scanNr*nMerges
 		spots = np.genfromtxt(f'InputAllExtraInfoFittingAll{startScanNr}.csv',skip_header=1)
 		shutil.move(f'InputAllExtraInfoFittingAll{startScanNr}.csv',f'original_InputAllExtraInfoFittingAll{startScanNr}.csv')
-		if len(spots.shape) > 1:
-			for scan in range(1,nMerges):
-				thisScanNr = startScanNr + scan
-				thisPosition += float(positions[thisScanNr])
-				spots2 = np.genfromtxt(f'InputAllExtraInfoFittingAll{thisScanNr}.csv',skip_header=1)
-				if (len(spots2.shape)<2): continue
-				shutil.move(f'InputAllExtraInfoFittingAll{thisScanNr}.csv',f'original_InputAllExtraInfoFittingAll{thisScanNr}.csv')
-				for spot in spots2:
-					# Check for all spots which are close to this spot
-					filteredSpots = spots[np.fabs(spots[:,0]-spot[0])<2*px,:]
-					found = 1
+		if len(spots.shape) < 2:
+			spots = np.zeros((2,14))
+			spots[:,2] = -360 # Hook to keep sanity
+		for scan in range(1,nMerges):
+			thisScanNr = startScanNr + scan
+			thisPosition += float(positions[thisScanNr])
+			spots2 = np.genfromtxt(f'InputAllExtraInfoFittingAll{thisScanNr}.csv',skip_header=1)
+			if (len(spots2.shape)<2): continue
+			shutil.move(f'InputAllExtraInfoFittingAll{thisScanNr}.csv',f'original_InputAllExtraInfoFittingAll{thisScanNr}.csv')
+			for spot in spots2:
+				# Check for all spots which are close to this spot
+				filteredSpots = spots[np.fabs(spots[:,0]-spot[0])<2*px,:]
+				found = 1
+				if (len(filteredSpots) == 0): found = 0
+				else:
+					if (len(filteredSpots.shape) > 1):
+						filteredSpots = filteredSpots[np.fabs(filteredSpots[:,1]-spot[1])<2*px,:]
+					else:
+						filteredSpots = filteredSpots[np.fabs(filteredSpots[1]-spot[1])<2*px,:]
 					if (len(filteredSpots) == 0): found = 0
 					else:
 						if (len(filteredSpots.shape) > 1):
-							filteredSpots = filteredSpots[np.fabs(filteredSpots[:,1]-spot[1])<2*px,:]
+							filteredSpots = filteredSpots[np.fabs(filteredSpots[:,2]-spot[2])<2*omegaStep,:]
 						else:
-							filteredSpots = filteredSpots[np.fabs(filteredSpots[1]-spot[1])<2*px,:]
+							filteredSpots = filteredSpots[np.fabs(filteredSpots[2]-spot[2])<2*omegaStep,:]
 						if (len(filteredSpots) == 0): found = 0
-						else:
-							if (len(filteredSpots.shape) > 1):
-								filteredSpots = filteredSpots[np.fabs(filteredSpots[:,2]-spot[2])<2*omegaStep,:]
-							else:
-								filteredSpots = filteredSpots[np.fabs(filteredSpots[2]-spot[2])<2*omegaStep,:]
-							if (len(filteredSpots) == 0): found = 0
-							elif len(filteredSpots.shape) == 1:
-								# Generate mean values weighted by spot integrated intensity
-								rowNr = np.argwhere(spots[:,4]==filteredSpots[4]).item()
-								weightedValSpots = spots[rowNr,:]*spots[rowNr,-1]
-								weightedValSpot = spot[:]*spot[-1]
-								totalWts = spots[rowNr,-1] + spot[-1]
-								newVals = (weightedValSpot+weightedValSpots)/(totalWts)
-								spots[rowNr,:] = newVals
-					if found == 0:
-						spots = np.vstack((spots,spot))
+						elif len(filteredSpots.shape) == 1:
+							# Generate mean values weighted by spot integrated intensity
+							rowNr = np.argwhere(spots[:,4]==filteredSpots[4]).item()
+							weightedValSpots = spots[rowNr,:]*spots[rowNr,-1]
+							weightedValSpot = spot[:]*spot[-1]
+							totalWts = spots[rowNr,-1] + spot[-1]
+							newVals = (weightedValSpot+weightedValSpots)/(totalWts)
+							spots[rowNr,:] = newVals
+				if found == 0:
+					spots = np.vstack((spots,spot))
+		positionsNew[scanNr] = thisPosition/nMerges
+		spots = spots[spots[:,2]!=-360,:]
 		print(f'ScanNr: {scanNr}, position: {positionsNew[scanNr]}, nSpots: {spots.shape[0]}')
 		# Update the new positions array
 		if (len(spots.shape)>1): np.savetxt(outFAll,spots[:,:-1],fmt="%12.5f",delimiter="  ")
