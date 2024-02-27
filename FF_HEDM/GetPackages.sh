@@ -99,3 +99,15 @@ if [ ! -d ${dirThis}/BLOSC ]; then # blosc
 	cmake --build . -j 8 --target install
 fi
 
+if [ ! -d ${dirThis}/LIBZIP ]; then # libzip
+	cd $dirThis
+	wget -O libzip.tar.gz https://libzip.org/download/libzip-1.10.1.tar.gz
+	tar -xzf libzip.tar.gz
+	cd libzip-1.10.1
+	mkdir build
+	cd build
+	cmake -DCMAKE_INSTALL_PREFIX=${dirThis}/LIBZIP ..
+	cmake --build . -j 8
+	cmake --build . -j 8 --target install
+fi
+

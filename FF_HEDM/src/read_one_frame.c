@@ -1,26 +1,50 @@
 // gcc src/read_one_frame.c -o bin/read_one_frame -L${HOME}/.MIDAS/BLOSC/lib -I${HOME}/.MIDAS/BLOSC/include -lblosc2
 // install_name_tool -id '${HOME}/.MIDAS/BLOSC/lib/libblosc2.2.dylib' ${HOME}/.MIDAS/BLOSC/lib/libblosc2.2.dylib
+// install_name_tool -id '${HOME}/.MIDAS/LIBZIP/lib/libzip.5.dylib' ${HOME}/.MIDAS/LIBZIP/lib/libzip.5.dylib
 #include <stdio.h>
 #include <blosc2.h>
+#include <stdlib.h> 
+#include <zip.h> 
+
 
 int main(int argc, char* argv[]) {
   if (argc != 4) {
-    fprintf(stderr, "Usage: read_one_frame zarr_folder_with_data frameNr output_file\n");
+    fprintf(stderr, "Usage: read_one_frame zarr_zip_file frameNr output_file\n");
     return -1;
   }
   blosc2_init();
-  static char* data;
+  char* data = NULL;
   // Read zarr config
-  char *folder = argv[1];
-  char *s, fn[2048], fnJSON[2048];
-  sprintf(fnJSON,"%s/.zarray",folder);
-  FILE *fjson = fopen(fnJSON,"rb");
-  fseek(fjson,0L,SEEK_END);
-  size_t szJSON = ftell(fjson);
-  fseek(fjson,0L,SEEK_SET);
-  s = (char *)malloc(szJSON);
-  fread(s,szJSON,1,fjson);
-  fclose(fjson);
+  char *zipFN = argv[1];
+  char *folder;
+  int errorp = 0;
+  zip_t* arch = NULL;
+  arch = zip_open(zipFN,0,&errorp);
+  struct zip_stat* finfo = NULL; 
+  finfo = calloc(2048, sizeof(int)); 
+  zip_stat_init(finfo); 
+  zip_file_t* fd = NULL; 
+  char* txt = NULL; 
+  int count = 0; 
+  char* s = NULL;
+  char fnStr[4096];
+  int frameNr = atoi(argv[2]);
+  sprintf(fnStr,"exchange/data/%d.0.0",frameNr);
+  char *arr = NULL;
+  while ((zip_stat_index(arch, count, 0, finfo)) == 0) { 
+    if (strstr(finfo->name,"exchange/data/.zarray")!=NULL){
+        s = calloc(finfo->size + 1, sizeof(char)); 
+        fd = zip_fopen_index(arch, count, 0);
+        zip_fread(fd, s, finfo->size); 
+    }
+    if (strstr(finfo->name,fnStr)!=NULL){
+        arr = calloc(finfo->size + 1, sizeof(char)); 
+        fd = zip_fopen_index(arch, count, 0);
+        zip_fread(fd, arr, finfo->size); 
+    }
+    count++; 
+  }
+  if (arr == NULL) return 1;
   char *ptr = strstr(s,"shape");
   int nFrames,NrPixelsZ,NrPixelsY,bytesPerPx;
   if (ptr!=NULL){
@@ -35,29 +59,8 @@ int main(int argc, char* argv[]) {
         bytesPerPx=2;
     } else return 1;
   } else return 1;
-
   int32_t dsize = bytesPerPx*NrPixelsZ*NrPixelsY;
-  int frameNr = atoi(argv[2]);
-  if (frameNr > nFrames-1) return 1;
-  sprintf(fn,"%s/%d.0.0",folder,frameNr);
-  int64_t nbytes, cbytes;
-  blosc_timestamp_t last, current;
-  double ttotal;
-
-  printf("Blosc version info: %s (%s)\n",
-         BLOSC2_VERSION_STRING, BLOSC2_VERSION_DATE);
-  
-  char *arr;
-  FILE *f = fopen(fn,"rb");
-  fseek(f,0L,SEEK_END);
-  size_t sz = ftell(f);
-  fseek(f,0L,SEEK_SET);
-  arr = (char *)malloc(sz);
-  fread(arr,sz,1,f);
-  fclose(f);
-
   data = (char*)malloc((size_t)dsize);
-  blosc_set_timestamp(&last);
   dsize = blosc1_decompress(arr,data,dsize);
   FILE* foutput = fopen(argv[3], "wb");
   fwrite(data, dsize, 1, foutput);
