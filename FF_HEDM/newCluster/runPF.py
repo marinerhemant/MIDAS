@@ -213,41 +213,41 @@ if nMerges != 0:
 		outFAll.write('%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)')
 		startScanNr = scanNr*nMerges
 		spots = np.genfromtxt(f'InputAllExtraInfoFittingAll{startScanNr}.csv',skip_header=1)
-		if len(spots.shape) < 2: continue
 		shutil.move(f'InputAllExtraInfoFittingAll{startScanNr}.csv',f'original_InputAllExtraInfoFittingAll{startScanNr}.csv')
-		for scan in range(1,nMerges):
-			thisScanNr = startScanNr + scan
-			thisPosition += float(positions[thisScanNr])
-			spots2 = np.genfromtxt(f'InputAllExtraInfoFittingAll{thisScanNr}.csv',skip_header=1)
-			if (len(spots2.shape)<2): continue
-			shutil.move(f'InputAllExtraInfoFittingAll{thisScanNr}.csv',f'original_InputAllExtraInfoFittingAll{thisScanNr}.csv')
-			for spot in spots2:
-				# Check for all spots which are close to this spot
-				filteredSpots = spots[np.fabs(spots[:,0]-spot[0])<2*px,:]
-				found = 1
-				if (len(filteredSpots) == 0): found = 0
-				else:
-					if (len(filteredSpots.shape) > 1):
-						filteredSpots = filteredSpots[np.fabs(filteredSpots[:,1]-spot[1])<2*px,:]
-					else:
-						filteredSpots = filteredSpots[np.fabs(filteredSpots[1]-spot[1])<2*px,:]
+		if len(spots.shape) > 1:
+			for scan in range(1,nMerges):
+				thisScanNr = startScanNr + scan
+				thisPosition += float(positions[thisScanNr])
+				spots2 = np.genfromtxt(f'InputAllExtraInfoFittingAll{thisScanNr}.csv',skip_header=1)
+				if (len(spots2.shape)<2): continue
+				shutil.move(f'InputAllExtraInfoFittingAll{thisScanNr}.csv',f'original_InputAllExtraInfoFittingAll{thisScanNr}.csv')
+				for spot in spots2:
+					# Check for all spots which are close to this spot
+					filteredSpots = spots[np.fabs(spots[:,0]-spot[0])<2*px,:]
+					found = 1
 					if (len(filteredSpots) == 0): found = 0
 					else:
 						if (len(filteredSpots.shape) > 1):
-							filteredSpots = filteredSpots[np.fabs(filteredSpots[:,2]-spot[2])<2*omegaStep,:]
+							filteredSpots = filteredSpots[np.fabs(filteredSpots[:,1]-spot[1])<2*px,:]
 						else:
-							filteredSpots = filteredSpots[np.fabs(filteredSpots[2]-spot[2])<2*omegaStep,:]
+							filteredSpots = filteredSpots[np.fabs(filteredSpots[1]-spot[1])<2*px,:]
 						if (len(filteredSpots) == 0): found = 0
-						elif len(filteredSpots.shape) == 1:
-							# Generate mean values weighted by spot integrated intensity
-							rowNr = np.argwhere(spots[:,4]==filteredSpots[4]).item()
-							weightedValSpots = spots[rowNr,:]*spots[rowNr,-1]
-							weightedValSpot = spot[:]*spot[-1]
-							totalWts = spots[rowNr,-1] + spot[-1]
-							newVals = (weightedValSpot+weightedValSpots)/(totalWts)
-							spots[rowNr,:] = newVals
-				if found == 0:
-					spots = np.vstack((spots,spot))
+						else:
+							if (len(filteredSpots.shape) > 1):
+								filteredSpots = filteredSpots[np.fabs(filteredSpots[:,2]-spot[2])<2*omegaStep,:]
+							else:
+								filteredSpots = filteredSpots[np.fabs(filteredSpots[2]-spot[2])<2*omegaStep,:]
+							if (len(filteredSpots) == 0): found = 0
+							elif len(filteredSpots.shape) == 1:
+								# Generate mean values weighted by spot integrated intensity
+								rowNr = np.argwhere(spots[:,4]==filteredSpots[4]).item()
+								weightedValSpots = spots[rowNr,:]*spots[rowNr,-1]
+								weightedValSpot = spot[:]*spot[-1]
+								totalWts = spots[rowNr,-1] + spot[-1]
+								newVals = (weightedValSpot+weightedValSpots)/(totalWts)
+								spots[rowNr,:] = newVals
+					if found == 0:
+						spots = np.vstack((spots,spot))
 		print(f'ScanNr: {scanNr}, position: {positionsNew[scanNr]}, nSpots: {spots.shape[0]}')
 		# Update the new positions array
 		if (len(spots.shape)>1): np.savetxt(outFAll,spots[:,:-1],fmt="%12.5f",delimiter="  ")
