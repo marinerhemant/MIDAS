@@ -185,9 +185,16 @@ if doPeakSearch == 1:
 				yOrigNoW = yOrigNoW + ypos # Confirm this
 				# Get intensity from Radius... file
 				if nMerges!=0:
-					origID = IDRings[IDRings[:,2] == int(ID),1]
-					intensitySpot = Result[Result[:,0]==origID,1]
-					outstr = '{:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f}\n'.format(y,z,ome,grR,ID,RNr,Eta,Ttheta,omeIniNoW,yOrigNoW,zOrigNoW,yDet,zDet,omegaDet,intensitySpot)
+					if len(IDRings.shape) == 1:
+						if len(Result.shape) == 2:
+							intensitySpot = Result[0,1]
+						else:
+							intensitySpot = Result[1]
+						outstr = '{:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f}\n'.format(y,z,ome,grR,ID,RNr,Eta,Ttheta,omeIniNoW,yOrigNoW,zOrigNoW,yDet,zDet,omegaDet,intensitySpot)
+					else:
+						origID = IDRings[IDRings[:,2] == int(ID),1]
+						intensitySpot = Result[Result[:,0]==origID,1]
+						outstr = '{:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f}\n'.format(y,z,ome,grR,ID,RNr,Eta,Ttheta,omeIniNoW,yOrigNoW,zOrigNoW,yDet,zDet,omegaDet,intensitySpot)
 				else:
 					outstr = '{:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f}\n'.format(y,z,ome,grR,ID,RNr,Eta,Ttheta,omeIniNoW,yOrigNoW,zOrigNoW,yDet,zDet,omegaDet)
 				AllF.write(outstr)
