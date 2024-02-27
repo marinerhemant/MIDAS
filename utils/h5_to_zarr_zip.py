@@ -12,6 +12,8 @@ import shutil
 from pathlib import Path
 from pprint import pprint as print
 from numcodecs import Blosc #Default compression
+import warnings
+warnings.filterwarnings("ignore")
 
 lggr = logging.getLogger('h5-to-zarr')
 lggr.addHandler(logging.NullHandler())
@@ -34,9 +36,6 @@ class Hdf5ToZarr:
 
     def __init__(self, h5f, store, xarray=False):
         # Open HDF5 file in read mode...
-        lggr.debug(f'HDF5 file: {h5f}')
-        lggr.debug(f'Zarr store: {store}')
-        lggr.debug(f'xarray: {xarray}')
         self._h5f = h5py.File(h5f, mode='r')
         self._xr = xarray
 
@@ -47,7 +46,6 @@ class Hdf5ToZarr:
         """Translate content of one HDF5 file into Zarr storage format.
         All data is copied out of the HDF5 file as Blosc compressed arrays.
         """
-        lggr.debug('Translation begins')
         self.transfer_attrs(self._h5f, self._zroot)
         self._h5f.visititems(self.translator)
 
@@ -82,7 +80,6 @@ class Hdf5ToZarr:
         """Produce Zarr metadata for all groups and datasets in the HDF5 file.
         """
         if isinstance(h5obj, h5py.Dataset):
-            lggr.debug(f'Dataset: {h5obj.name}')
             compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
 
             # Create a Zarr array equivalent to this HDF5 dataset...
@@ -92,19 +89,16 @@ class Hdf5ToZarr:
                                             fill_value=h5obj.fillvalue,
                                             compression=compressor,
                                             overwrite=True)
-            lggr.debug(f'Created Zarr array: {za}')
             self.transfer_attrs(h5obj, za)
 
             if self._xr:
                 # Do this for xarray...
                 adims = self._get_array_dims(h5obj)
                 za.attrs['_ARRAY_DIMENSIONS'] = adims
-                lggr.debug(f'_ARRAY_DIMENSIONS = {adims}')
 
             za[:] = h5obj[()]
 
         elif isinstance(h5obj, h5py.Group):
-            lggr.debug(f'Group: {h5obj.name}')
             zgrp = self._zroot.create_group(h5obj.name)
             self.transfer_attrs(h5obj, zgrp)
 
@@ -201,11 +195,7 @@ if __name__ == '__main__':
         storeZip = zarr.ZipStore(outzip)
         h5chunkszip = Hdf5ToZarr(f, storeZip, xarray=True)
         h5chunkszip.translate()
+        storeZip.close()
 
-# Consolidate Zarr metadata...
-lggr.info('Consolidating Zarr dataset metadata')
-zarr.convenience.consolidate_metadata(storeZip)
-lggr.info('Done')
-lggr.info('Written file tree-structure:')
-storeZip.close()
+lggr.info(f'Ouput file {outzip} tree structure:')
 print(zarr.open(outzip).tree())
