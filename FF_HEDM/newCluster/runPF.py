@@ -193,6 +193,8 @@ if doPeakSearch == 1:
 					else:
 						origID = IDRings[IDRings[:,2] == int(ID),1]
 						intensitySpot = Result[Result[:,0]==origID,1]
+						if len(intensitySpot.shape)>1: intensitySpot=intensitySpot[0,:]
+						intensitySpot = intensitySpot.item()
 					outstr = '{:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f}\n'.format(y,z,ome,grR,ID,RNr,Eta,Ttheta,omeIniNoW,yOrigNoW,zOrigNoW,yDet,zDet,omegaDet,intensitySpot)
 				else:
 					outstr = '{:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f}\n'.format(y,z,ome,grR,ID,RNr,Eta,Ttheta,omeIniNoW,yOrigNoW,zOrigNoW,yDet,zDet,omegaDet)
