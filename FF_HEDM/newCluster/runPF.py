@@ -127,11 +127,10 @@ if doPeakSearch == 1:
 		Path(thisDir+'Output').mkdir(parents=True,exist_ok=True)
 		Path(thisDir+'Results').mkdir(parents=True,exist_ok=True)
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" "+thisParamFN,shell=True)
-		# TODO: call the PeaksFittingOMP code using swift to run PeakSearch on all the scans in parallel
+		# Call the PeaksFittingOMP code using swift to run PeakSearch on each scan in parallel
 		swiftcmd = os.path.expanduser('~/.MIDAS/swift/bin/swift') + ' -config ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/sites.conf') + ' -sites ' + machineName + ' ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/runPeakSearchOnly.swift') + ' -folder=' + thisDir + ' -paramfn='+ baseNameParamFN + ' -nrNodes=' + str(nNodes) + ' -nFrames=' + str(nFrames) + ' -numProcs='+ str(numProcs)
 		print(swiftcmd)
 		subprocess.call(swiftcmd,shell=True)
-		# subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMP")+' '+baseNameParamFN+' 0 1 '+str(nFrames)+' '+str(numProcs),shell=True)
 		# These need to be done sequentially
 		if omegaOffset != 0:
 			# We need to open each Temp/* file and modify its omega, write back
@@ -249,6 +248,7 @@ if nMerges != 0:
 							spots[rowNr,:] = newVals
 				if found == 0:
 					spots = np.vstack((spots,spot))
+		print(f'ScanNr: {scanNr}, position: {positionsNew[scanNr]}, nSpots: {spots.shape[0]}')
 		# Update the new positions array
 		if (len(spots.shape)>1): np.savetxt(outFAll,spots[:,:-1],fmt="%12.5f",delimiter="  ")
 	np.savetxt('positions.csv',positionsNew,fmt='%.5f',delimiter=' ')
@@ -289,8 +289,10 @@ paramsf.close()
 
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
 # Parallel after this
-
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP")+' paramstest.txt 0 1 '+ str(nScans)+' '+str(numProcs),shell=True)
+swiftcmdIdx = os.path.expanduser('~/.MIDAS/swift/bin/swift') + ' -config ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/sites.conf') + ' -sites ' + machineName + ' ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/runIndexingScanning.swift') + ' -folder=' + thisDir + ' -paramfn=paramstest.txt' + ' -nrNodes=' + str(nNodes) + ' -nScans=' + str(nScans) + ' -numProcs='+ str(numProcs)
+print(swiftcmdIdx)
+subprocess.call(swiftcmdIdx,shell=True)
+# subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP")+' paramstest.txt 0 1 '+ str(nScans)+' '+str(numProcs),shell=True)
 
 if oneSolPerVox==1:
 	runRecon(topdir,startNrFirstLayer,nScans,endNr,sgnum,numProcs,nrFilesPerSweep=nrFilesPerSweep,removeDuplicates=1,maxang=3,tol_eta=2,tol_ome=2,findUniques=1,thresh_reqd=1)

@@ -1,0 +1,25 @@
+#
+# Copyright (c) 2014, UChicago Argonne, LLC
+# See LICENSE file.
+#
+
+type file;
+
+app (file out) runIndexingScanning (string folder, string paramfn, int blockNr, int numBlocks, int numScans, int numProcs){
+	indexScanning folder paramfn blockNr numBlocks numScans numProcs stdout=filename(out);
+}
+
+# Parameters to be supplied ###
+string folder = arg("folder","");
+string paramfn = arg("paramfn","");
+int nrNodes = toInt(arg("nrNodes","11"));
+int nScans = toInt(arg("nScans","117"));
+int numProcs = toInt(arg("numProcs","32"));
+# End Parameters ##############
+
+file indexings[];
+foreach nodeNr in [0:nrNodes-1] {
+	file indexing<simple_mapper;location=strcat(folder,"/output"),prefix=strcat("Indexing_",nodeNr,"_"),suffix=".out">;
+	indexing = runIndexingScanning(folder,paramfn,nodeNr,nrNodes,nScans,numProcs);
+	indexings[nodeNr] = indexing;
+}
