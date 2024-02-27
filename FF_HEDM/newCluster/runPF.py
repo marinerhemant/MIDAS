@@ -205,6 +205,9 @@ if nMerges != 0:
 	headOut = '%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)'
 	positionsNew = np.zeros(nFinScans)
 	for scanNr in range(nFinScans):
+		positionsNew[scanNr] = thisPosition/nMerges
+		outFAll = open(f'InputAllExtraInfoFittingAll{scanNr}.csv','w')
+		outFAll.write('%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)')
 		startScanNr = scanNr*nMerges
 		thisPosition = float(positions[scanNr])
 		spots = np.genfromtxt(f'InputAllExtraInfoFittingAll{startScanNr}.csv',skip_header=1)
@@ -244,9 +247,6 @@ if nMerges != 0:
 				if found == 0:
 					spots = np.vstack((spots,spot))
 		# Update the new positions array
-		positionsNew[scanNr] = thisPosition/nMerges
-		outFAll = open(f'InputAllExtraInfoFittingAll{scanNr}.csv','w')
-		outFAll.write('%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)')
 		if (len(spots.shape)>1): np.savetxt(outFAll,spots[:,:-1],fmt="%12.5f",delimiter="  ")
 	np.savetxt('positions.csv',positionsNew,fmt='%.5f',delimiter=' ')
 	positions = positionsNew
