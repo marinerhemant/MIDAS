@@ -135,7 +135,7 @@ if doPeakSearch == 1:
 			fns = glob.glob('Temp/*PS.csv')
 			for fn in fns:
 				with open(fn,'r') as f:
-					lines = fn.readlines()
+					lines = f.readlines()
 					head_this = lines[0]
 				with open(fn,'w') as f:
 					f.write(head_this)
