@@ -246,7 +246,7 @@ if nMerges != 0:
 		spots = spots[spots[:,2]!=-360,:]
 		print(f'ScanNr: {scanNr}, position: {positionsNew[scanNr]}, nSpots: {spots.shape[0]}')
 		# Update the new positions array
-		if (len(spots.shape)>1): np.savetxt(outFAll,spots[:,:-1],fmt="%12.5f",delimiter="  ")
+		if (len(spots.shape)>1): np.savetxt(outFAll,spots,fmt="%12.5f",delimiter="  ")
 	np.savetxt('positions.csv',positionsNew,fmt='%.5f',delimiter=' ')
 	positions = positionsNew
 	nScans = nFinScans
