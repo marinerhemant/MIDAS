@@ -48,14 +48,24 @@ int main(int argc, char* argv[]) {
   char *ptr = strstr(s,"shape");
   int nFrames,NrPixelsZ,NrPixelsY,bytesPerPx;
   if (ptr!=NULL){
-    if (3 == sscanf(ptr, "%*[^0123456789]%d%*[^0123456789]%d%*[^0123456789]%d", &nFrames, &NrPixelsZ, &NrPixelsY)){
+    char *ptrt = strstr(ptr,"[");
+    char *ptr2 = strstr(ptrt,"]");
+    int loc = (int)(ptr2 - ptrt);
+    char ptr3[2048];
+    strncpy(ptr3,ptrt,loc+1);
+    printf("%s\n",ptr3);
+    if (3 == sscanf(ptr3, "%*[^0123456789]%d%*[^0123456789]%d%*[^0123456789]%d", &nFrames, &NrPixelsZ, &NrPixelsY)){
             printf("nFrames: %d nrPixelsZ: %d nrPixelsY: %d\n", nFrames, NrPixelsZ, NrPixelsY);
         } else return 1;
   } else return 1;
   ptr = strstr(s,"dtype");
   if (ptr!=NULL){
-    char *ptr2 = ptr + 9;
-    if (strncmp(ptr2,"<u2",3) == 0){
+    char *ptrt = strstr(ptr,":");
+    char *ptr2 = strstr(ptrt,",");
+    int loc = (int)(ptr2 - ptrt);
+    char ptr3[2048];
+    strncpy(ptr3,ptrt+3,loc-4);
+    if (strncmp(ptr3,"<u2",3) == 0){
         bytesPerPx=2;
     } else return 1;
   } else return 1;
