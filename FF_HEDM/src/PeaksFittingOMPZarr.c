@@ -570,7 +570,7 @@ void main(int argc, char *argv[]){
     int nFrames,NrPixelsZ,NrPixelsY,bytesPerPx,darkLoc=-1,dataLoc=-1,floodLoc=-1;
     int nDarks=0, nFloods=0;
     int locImTransOpt,locRingThresh,nRingsThresh=0,locOmegaRanges,nOmegaRanges=0;
-    double omegaStart, omegaStep, omegaEnd;
+    double omegaStart, omegaStep;
     int32_t dsize;
     char* data = NULL;
 	double bc=1, Ycen=1024, Zcen=1024, IntSat=14000, Lsd=1000000, px=200, Width=1000;
@@ -661,17 +661,6 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             omegaStart = *(double *)&data[0];
-            free(arr);
-            free(data);
-        }
-        if (strstr(finfo->name,"measurement/process/scan_parameters/end/0")!=NULL){
-            arr = calloc(finfo->size + 1, sizeof(char)); 
-            fd = zip_fopen_index(arch, count, 0);
-            zip_fread(fd, arr, finfo->size);
-            dsize = sizeof(double);
-            data = (char*)malloc((size_t)dsize);
-            dsize = blosc1_decompress(arr,data,dsize);
-            omegaEnd = *(double *)&data[0];
             free(arr);
             free(data);
         }

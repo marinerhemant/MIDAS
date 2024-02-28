@@ -53,7 +53,6 @@ int main(int argc, char* argv[]) {
     int loc = (int)(ptr2 - ptrt);
     char ptr3[2048];
     strncpy(ptr3,ptrt,loc+1);
-    printf("%s\n",ptr3);
     if (3 == sscanf(ptr3, "%*[^0123456789]%d%*[^0123456789]%d%*[^0123456789]%d", &nFrames, &NrPixelsZ, &NrPixelsY)){
             printf("nFrames: %d nrPixelsZ: %d nrPixelsY: %d\n", nFrames, NrPixelsZ, NrPixelsY);
         } else return 1;
