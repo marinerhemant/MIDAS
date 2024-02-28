@@ -183,22 +183,7 @@ if doPeakSearch == 1:
 				Eta = CalcEtaAngle(y,z)
 				Ttheta = 57.2957795130823*atan(sqrt(y*y+z*z)/Lsd)
 				yOrigNoW = yOrigNoW + ypos # Confirm this
-				# Get intensity from Radius... file
-				if nMerges!=0:
-					intensitySpot = 0
-					if len(IDRings.shape) == 1:
-						if len(Result.shape) == 2:
-							intensitySpot = Result[0,1]
-						else:
-							intensitySpot = Result[1]
-					else:
-						origID = IDRings[IDRings[:,2] == int(ID),1]
-						intensitySpot = Result[Result[:,0]==origID,1]
-						if len(intensitySpot.shape)>1: intensitySpot=intensitySpot[0,:]
-						intensitySpot = intensitySpot.item()
-					outstr = '{:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f}\n'.format(y,z,ome,grR,ID,RNr,Eta,Ttheta,omeIniNoW,yOrigNoW,zOrigNoW,yDet,zDet,omegaDet,intensitySpot)
-				else:
-					outstr = '{:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f}\n'.format(y,z,ome,grR,ID,RNr,Eta,Ttheta,omeIniNoW,yOrigNoW,zOrigNoW,yDet,zDet,omegaDet)
+				outstr = '{:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f}\n'.format(y,z,ome,grR,ID,RNr,Eta,Ttheta,omeIniNoW,yOrigNoW,zOrigNoW,yDet,zDet,omegaDet)
 				AllF.write(outstr)
 		AllF.close()
 		shutil.copy2(thisDir+'/paramstest.txt',topdir+'/paramstest.txt')
@@ -250,9 +235,9 @@ if nMerges != 0:
 						elif len(filteredSpots.shape) == 1:
 							# Generate mean values weighted by spot integrated intensity
 							rowNr = np.argwhere(spots[:,4]==filteredSpots[4]).item()
-							weightedValSpots = spots[rowNr,:]*spots[rowNr,-1]
-							weightedValSpot = spot[:]*spot[-1]
-							totalWts = spots[rowNr,-1] + spot[-1]
+							weightedValSpots = spots[rowNr,:]*spots[rowNr,3]
+							weightedValSpot = spot[:]*spot[3]
+							totalWts = spots[rowNr,3] + spot[3]
 							newVals = (weightedValSpot+weightedValSpots)/(totalWts)
 							spots[rowNr,:] = newVals
 				if found == 0:
