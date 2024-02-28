@@ -233,7 +233,7 @@ if nMerges != 0:
 							filteredSpots = filteredSpots[np.fabs(filteredSpots[2]-spot[2])<2*omegaStep,:]
 						if (len(filteredSpots) == 0): found = 0
 						elif len(filteredSpots.shape) == 1:
-							# Generate mean values weighted by spot integrated intensity
+							# Generate mean values weighted by radius
 							rowNr = np.argwhere(spots[:,4]==filteredSpots[4]).item()
 							weightedValSpots = spots[rowNr,:]*spots[rowNr,3]
 							weightedValSpot = spot[:]*spot[3]
