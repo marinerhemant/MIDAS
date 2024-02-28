@@ -189,6 +189,26 @@ hkls: $(SRCDIR)GetHKLList.c
 	$(CC) $(SRCDIR)GetHKLList.c $(SRCDIR)sgclib.c $(SRCDIR)sgfind.c $(SRCDIR)sghkl.c $(SRCDIR)sgsi.c \
 	$(SRCDIR)sgio.c -o $(BINDIR)GetHKLList $(CFLAGS)
 
+peaksfittingompzarr: $(SRCDIR)PeaksFittingOMPZarr.c
+	$(CC) $(SRCDIR)PeaksFittingOMPZarr.c -o $(BINDIR)PeaksFittingOMPZarr -fopenmp $(CFLAGSNLOPT) $(CFLAGS) $(BLOSCFLAGS) $(ZIPFLAGS)
+
+hklszarr: $(SRCDIR)GetHKLListZarr.c
+	$(CC) $(SRCDIR)GetHKLListZarr.c $(SRCDIR)sgclib.c $(SRCDIR)sgfind.c $(SRCDIR)sghkl.c $(SRCDIR)sgsi.c \
+	$(SRCDIR)sgio.c -o $(BINDIR)GetHKLListZarr $(CFLAGS) $(BLOSCFLAGS) $(ZIPFLAGS)
+
+mergeoverlapsallzarr: $(SRCDIR)MergeOverlappingPeaksAllZarr.c
+	$(CC) $(SRCDIR)MergeOverlappingPeaksAllZarr.c -o $(BINDIR)MergeOverlappingPeaksAllZarr $(CFLAGS) $(BLOSCFLAGS) $(ZIPFLAGS)
+
+calcradiusallzarr: $(SRCDIR)CalcRadiusAllZarr.c
+	$(CC) $(SRCDIR)CalcRadiusAllZarr.c -o $(BINDIR)CalcRadiusAllZarr $(CFLAGS) $(BLOSCFLAGS) $(ZIPFLAGS)
+
+fitsetupzarr: $(SRCDIR)FitSetupParamsAllZarr.c
+	$(CC) $(SRCDIR)FitSetupParamsAllZarr.c -o $(BINDIR)FitSetupZarr $(CFLAGS) $(CFLAGSNLOPT) $(BLOSCFLAGS) $(ZIPFLAGS)
+
+processgrainszarr: $(SRCDIR)ProcessGrainsZarr.c
+	$(CC) $(SRCDIR)ProcessGrainsZarr.c $(SRCDIR)GetMisorientation.c $(SRCDIR)CalcStrains.c -o \
+	$(BINDIR)ProcessGrainsZarr $(CFLAGS) $(CFLAGSNLOPT) $(BLOSCFLAGS) $(ZIPFLAGS)
+
 indexer: $(SRCDIR)IndexerLinuxArgsOptimizedShm.c
 	$(CC) $(SRCDIR)IndexerLinuxArgsOptimizedShm.c -o $(BINDIR)IndexerLinuxArgsShm $(CFLAGS)
 
