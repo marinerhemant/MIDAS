@@ -1165,7 +1165,6 @@ int main(int argc, char *argv[])
         BoxSizes[iter][2]    = *(double *)&data[(iter*4+2)*sizeof(double)];
         BoxSizes[iter][3]    = *(double *)&data[(iter*4+3)*sizeof(double)];
     }
-	for (i=0;i<cs;i++) printf("%d ",RingNumbers[i]); printf("\n");
     free(s);
     free(data);
 
@@ -1182,7 +1181,6 @@ int main(int argc, char *argv[])
     }
     free(s);
     free(data);
-	for (i=0;i<cs;i++) printf("%d \n",RingNumbers[i]); printf("\n");
 
     sprintf(folder,"%s",Folder);
     int nOmeRanges = nOmegaRanges;
@@ -1200,7 +1198,6 @@ int main(int argc, char *argv[])
 	//sprintf(FileName,"%s/%s",folder,fn);
 	sprintf(folder,"%s/",Folder);
 	sprintf(FileName,"%s/Radius_StartNr_%d_EndNr_%d.csv",Folder,StartNr,EndNr);
-    printf("%s %lf %lf %d\n",FileName,MinOmeSpotIDsToIndex,MaxOmeSpotIDsToIndex,RingToIndex);
 	char line[5024];
 	char hklfn[2048];
     sprintf(hklfn,"%s/hkls.csv",resultFolder);
@@ -1213,7 +1210,6 @@ int main(int argc, char *argv[])
 	double RingRadsIdeal[cs], ds[cs], rrdideal, dsthis;
 	int n_hkls = cs,nhkls = 0;
 	for (i=0;i<cs;i++) donePlanes[i] = 0;
-	for (i=0;i<cs;i++) printf("%d\n",RingNumbers[i]);
 	while (fgets(aline,1000,hklf)!=NULL){
 		sscanf(aline, "%s %s %s %lf %d %s %s %s %lf %s %lf",dummy,dummy,dummy,&dsthis,&Rnr,dummy,dummy,dummy,&tht,dummy,&rrdideal);
 		if (tht > MaxTtheta/2) break;
