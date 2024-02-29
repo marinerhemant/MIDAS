@@ -25,6 +25,7 @@
 #include <blosc2.h>
 #include <stdlib.h> 
 #include <zip.h> 
+#include <sys/stat.h>
 
 //~ #define PRINTOPT
 #define deg2rad 0.0174532925199433

@@ -15,6 +15,7 @@
 #include <blosc2.h>
 #include <stdlib.h> 
 #include <zip.h> 
+#include <sys/stat.h>
 
 static inline
 double**
