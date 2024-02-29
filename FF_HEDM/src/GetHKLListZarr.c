@@ -139,6 +139,21 @@ static inline void SortFunc(int nRows, int nCols, double **TotInfo, int ColToSor
 	free(MyData);
 }
 
+static inline int CheckDirectoryCreation(char Folder[1024])
+{
+	int e;
+    struct stat sb;
+	char totOutDir[1024];
+	sprintf(totOutDir,"%s/",Folder);
+    e = stat(totOutDir,&sb);
+    if (e!=0 && errno == ENOENT){
+		printf("Output directory did not exist, creating %s\n",totOutDir);
+		e = mkdir(totOutDir,S_IRWXU);
+		if (e !=0) {printf("Could not make the directory. Exiting\n");return 0;}
+	}
+	return 1;
+}
+
 int main (int argc, char *argv[]){
 	if (argc != 2){
 		printf("Give a data ZarrZip file.\n");
@@ -230,6 +245,8 @@ int main (int argc, char *argv[]){
         }
         count++;
     }
+	int e = CheckDirectoryCreation(resultFolder);
+	if (e == 0){ return 1;}
 
 	printf("%f %f %f %d %f %f %f %f %f %f\n",wl,Lsd,MaxRingRad,SpaceGrp,LatC[0],LatC[1],LatC[2],LatC[3],LatC[4],LatC[5]);
 	int h, k, l, iList, restriction, M, i, j;

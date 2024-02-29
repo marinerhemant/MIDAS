@@ -479,6 +479,21 @@ static inline void SortSpots(int nIndices, double **SpotsInfo){
 	free(MyData);
 }
 
+static inline int CheckDirectoryCreation(char Folder[1024])
+{
+	int e;
+    struct stat sb;
+	char totOutDir[1024];
+	sprintf(totOutDir,"%s/",Folder);
+    e = stat(totOutDir,&sb);
+    if (e!=0 && errno == ENOENT){
+		printf("Output directory did not exist, creating %s\n",totOutDir);
+		e = mkdir(totOutDir,S_IRWXU);
+		if (e !=0) {printf("Could not make the directory. Exiting\n");return 0;}
+	}
+	return 1;
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc != 2) {
@@ -1404,6 +1419,11 @@ int main(int argc, char *argv[])
 	sprintf(fnIndexAll,"%s/InputAll.csv",folder);
 	sprintf(outfolder,"%s/Output",folder);
 	sprintf(resultfolder,"%s/Results",folder);
+	int e = CheckDirectoryCreation(outfolder);
+	if (e == 0){ return 1;}
+	int e = CheckDirectoryCreation(resultfolder);
+	if (e == 0){ return 1;}
+
 	sprintf(fnIndexAllNoHeader,"%s/InputAllNoHeader.csv",folder);
 	sprintf(fnExtraInfo,"%s/InputAllExtraInfoFittingAll.csv",folder);
 	sprintf(fnSpIds,"%s/%s",folder,idfn);
