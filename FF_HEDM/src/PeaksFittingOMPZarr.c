@@ -1093,7 +1093,6 @@ void main(int argc, char *argv[]){
         fd = zip_fopen_index(arch, darkLoc, 0);
         zip_fread(fd, arr, finfo->size);
         dsize = blosc1_decompress(arr,data,dsize);
-        printf("%d %d\n",(int)dsize,(int)finfo->size);
         free(arr);
         memcpy(darkAsym,(pixelvalue *)data,(size_t)dsize);
         MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,darkAsym,darkcontents);
@@ -1247,6 +1246,7 @@ void main(int argc, char *argv[]){
 	for (FileNr = startFileNr; FileNr < endFileNr; FileNr++)
 	{
 		int procNum = omp_get_thread_num();
+        printf("%d\n",FileNr);
         double beamcurr = 1;
 		pixelvalue *Image, *ImageAsym;
 		double *ImgCorrBCTemp, *ImgCorrBC, *MaximaValues, *z;
