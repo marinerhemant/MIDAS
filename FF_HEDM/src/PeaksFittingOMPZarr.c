@@ -1245,7 +1245,7 @@ void main(int argc, char *argv[]){
 	for (FileNr = startFileNr; FileNr < endFileNr; FileNr++)
 	{
 		int procNum = omp_get_thread_num();
-        printf("%d\n",FileNr);
+        // printf("%d\n",FileNr);
         double beamcurr = 1;
 		pixelvalue *Image, *ImageAsym;
 		double *ImgCorrBCTemp, *ImgCorrBC, *MaximaValues, *z;
@@ -1309,7 +1309,7 @@ void main(int argc, char *argv[]){
         fLoc = zip_fopen_index(arch,dataLocThis,0);
         zip_fread(fLoc,locArr,fifo->size);
         dsz = blosc1_decompress(locArr,locData,dsz);
-        printf("%d %d\n",(int)dsz,(int)fifo->size);
+        // printf("%d %d\n",(int)dsz,(int)fifo->size);
         memcpy(ImageAsym,locData,dsz);
 		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,ImageAsym,Image);
 		if (makeMap == 1){
@@ -1356,7 +1356,7 @@ void main(int argc, char *argv[]){
 			}
 		}
 		NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
-		printf("FrameNr: %d, NrOfRegions: %d\n",FileNr,NrOfReg);
+		// printf("FrameNr: %d, NrOfRegions: %d\n",FileNr,NrOfReg);
 		int RegNr,NrPixelsThisRegion;
 		int IsSaturated;
 		int SpotIDStart = 1;
@@ -1379,7 +1379,7 @@ void main(int argc, char *argv[]){
 			Thresh = GoodCoords[((UsefulPixels[0*2+0])*NrPixels) + (UsefulPixels[0*2+1])];
 			unsigned nPeaks;
 			nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,MaximaPositions,MaximaValues,&IsSaturated,IntSat,NrPixels);
-			printf("RegionNr: %d, NPeaks: %d\n",RegNr,nPeaks);
+			// printf("RegionNr: %d, NPeaks: %d\n",RegNr,nPeaks);
 			if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
 				TotNrRegions--;
 				continue;
