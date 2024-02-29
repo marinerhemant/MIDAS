@@ -1168,6 +1168,7 @@ int main(int argc, char *argv[])
     }
     free(s);
     free(data);
+	for (i=0;i<cs;i++) printf("%d\n",RingNumbers[i]);
 
     zip_stat_index(arch, locOmegaRanges, 0, finfo);
     s = calloc(finfo->size + 1, sizeof(char));
