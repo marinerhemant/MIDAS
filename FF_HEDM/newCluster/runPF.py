@@ -210,8 +210,7 @@ if nMerges != 0:
 		startScanNr = scanNr*nMerges
 		shutil.move(f'InputAllExtraInfoFittingAll{startScanNr}.csv',f'original_InputAllExtraInfoFittingAll{startScanNr}.csv')
 		spots = np.genfromtxt(f'original_InputAllExtraInfoFittingAll{startScanNr}.csv',skip_header=1)
-		outFAll = open(f'InputAllExtraInfoFittingAll{scanNr}.csv','w')
-		outFAll.write('%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)')
+		
 		if len(spots.shape) < 2:
 			spots = np.zeros((2,14))
 			spots[:,2] = -360 # Hook to keep sanity
@@ -252,7 +251,18 @@ if nMerges != 0:
 		spots = spots[spots[:,2]!=-360,:]
 		print(f'ScanNr: {scanNr}, position: {positionsNew[scanNr]}, nSpots: {spots.shape[0]}, Output written to: InputAllExtraInfoFittingAll{scanNr}.csv')
 		# Update the new positions array
-		if (len(spots.shape)>1): np.savetxt(outFAll,spots,fmt="%12.5f",delimiter="  ")
+		if (len(spots.shape)>1): 
+			outFAll = open(f'InputAllExtraInfoFittingAll{scanNr}.csv','w')
+			np.savetxt(outFAll,spots,fmt="%12.5f",delimiter=" ",header=headOut,comments='')
+			outFAll.close()
+			outFAll = open(f'InputAllExtraInfoFittingAll{scanNr}.csv','r')
+			data_read = np.genfromtxt(outFAll,delimiter=" ")
+			if spots.shape[0]!=data_read.shape[0]:
+				print(f"Something went wrong while saving the file: InputAllExtraInfoFittingAll{scanNr}.csv. Wanted to write {spots.shape[0]} spots, but wrote {data_read.shape[0]} spots. Exiting.")
+				sys.exit()
+		else:
+			outFAll = open(f'InputAllExtraInfoFittingAll{scanNr}.csv','w')
+			outFAll.write(headOut)
 	np.savetxt('positions.csv',positionsNew,fmt='%.5f',delimiter=' ')
 	positions = positionsNew
 	nScans = nFinScans
