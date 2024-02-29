@@ -1,5 +1,4 @@
 import subprocess
-import numpy as np
 from argparse import RawTextHelpFormatter
 import argparse
 import warnings
@@ -7,7 +6,6 @@ import time
 import os
 import datetime
 from pathlib import Path
-import shutil
 
 warnings.filterwarnings('ignore')
 parser = argparse.ArgumentParser(description='''MIDAS_FF, contact hsharma@anl.gov Parameter file must be in the same folder as the desired output folder(SeedFolder)''', formatter_class=RawTextHelpFormatter)

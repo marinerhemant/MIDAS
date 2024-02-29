@@ -3,7 +3,6 @@ warnings.filterwarnings("ignore")
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-import sys
 import subprocess
 from skimage import measure
 import skimage

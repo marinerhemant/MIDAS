@@ -357,6 +357,7 @@ for line in lines:
     if line.startswith(f'{str} '):
         outArr = np.array(float(line.split()[1])).astype(np.double)
         sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1),data=outArr)
+
 sp_pro_analysis.create_dataset('RingThresh',dtype=np.double,data=RingThreshArr)
 sp_pro_analysis.create_dataset('OmegaRanges',dtype=np.double,data=OmegaRanges)
 sp_pro_analysis.create_dataset('BoxSizes',dtype=np.double,data=BoxSizes)
