@@ -1217,7 +1217,6 @@ int main(int argc, char *argv[])
 	for (i=0;i<cs;i++) printf("%d\n",RingNumbers[i]);
 	while (fgets(aline,1000,hklf)!=NULL){
 		sscanf(aline, "%s %s %s %lf %d %s %s %s %lf %s %lf",dummy,dummy,dummy,&dsthis,&Rnr,dummy,dummy,dummy,&tht,dummy,&rrdideal);
-        printf("%s",aline);
 		if (tht > MaxTtheta/2) break;
 		for (i=0;i<cs;i++){
 			if(Rnr == RingNumbers[i] && donePlanes[i] == 0){
@@ -1233,9 +1232,9 @@ int main(int argc, char *argv[])
 	}
 	TthetaTol = Ttheta4mR((MaxRingRad+Width),Lsd) - Ttheta4mR((MaxRingRad-Width),Lsd);
 	double IdealTthetas[n_hkls], TthetaMins[n_hkls], TthetaMaxs[n_hkls];
-	for (i=0;i<n_hkls;i++){IdealTthetas[i]=2*Thetas[i];TthetaMins[i]=IdealTthetas[i]-TthetaTol;TthetaMaxs[i]=IdealTthetas[i]+TthetaTol; printf("%lf\n",IdealTthetas[i]);}
+	for (i=0;i<n_hkls;i++){IdealTthetas[i]=2*Thetas[i];TthetaMins[i]=IdealTthetas[i]-TthetaTol;TthetaMaxs[i]=IdealTthetas[i]+TthetaTol;}
 	double IdealRs[n_hkls], Rmins[n_hkls], Rmaxs[n_hkls];
-	for (i=0;i<n_hkls;i++){IdealRs[i]=R4mTtheta(IdealTthetas[i],Lsd);Rmins[i]=R4mTtheta(TthetaMins[i],Lsd);Rmaxs[i]=R4mTtheta(TthetaMaxs[i],Lsd);printf("%lf\n",IdealRs[i]);}
+	for (i=0;i<n_hkls;i++){IdealRs[i]=R4mTtheta(IdealTthetas[i],Lsd);Rmins[i]=R4mTtheta(TthetaMins[i],Lsd);Rmaxs[i]=R4mTtheta(TthetaMaxs[i],Lsd);}
 	int counter = 0;
 	double nFramesThis;
 	int nSpotsEachRing[n_hkls];
