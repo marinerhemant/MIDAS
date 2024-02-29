@@ -1143,6 +1143,7 @@ int main(int argc, char *argv[])
 	//sprintf(FileName,"%s/%s",folder,fn);
 	sprintf(folder,"%s/",Folder);
 	sprintf(FileName,"%s/Radius_StartNr_%d_EndNr_%d.csv",Folder,StartNr,EndNr);
+    printf("%s\n",FileName);
 	char line[5024];
 	char hklfn[2048];
     sprintf(hklfn,"%s/hkls.csv",resultFolder);
