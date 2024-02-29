@@ -1212,6 +1212,7 @@ int main(int argc, char *argv[])
 	double RingRadsIdeal[cs], ds[cs], rrdideal, dsthis;
 	int n_hkls = cs,nhkls = 0;
 	for (i=0;i<cs;i++) donePlanes[i] = 0;
+	for (i=0;i<cs;i++) printf("%d\n",RingNumbers[i]);
 	while (fgets(aline,1000,hklf)!=NULL){
 		sscanf(aline, "%s %s %s %lf %d %s %s %s %lf %s %lf",dummy,dummy,dummy,&dsthis,&Rnr,dummy,dummy,dummy,&tht,dummy,&rrdideal);
         printf("%s",aline);
