@@ -2,19 +2,34 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import sys
 
 def geReader(geFN,header=8192,numPxY=2048,numPxZ=2048,bytesPerPx=2):
     sz = os.path.getsize(geFN)
     nFrames = (sz-header) // (bytesPerPx*numPxY*numPxZ)
     return np.fromfile(geFN,dtype=np.uint16,offset=header,count=(sz-header)).reshape((nFrames,numPxY,numPxZ))
 
-geFN = '/scratch/hsharma/park_ss_ff_0MPa_000315.edf.ge5'
-darkFN = '/scratch/hsharma/dark_before_000314.edf.ge5'
-outfn = '/scratch/hsharma/park_ss_ff_0MPa_000315'
-psFN = '/scratch/hsharma/ps_ss_0MPa.txt'
-resultDir = '/scratch/hsharma/recon'
-os.makedirs(resultDir,exist_ok=True)
+psFN = sys.argv[1]
 lines = open(psFN).readlines()
+for line in lines:
+    if line.startswith('SeedFolder '):
+        resultDir = line.split()[1]
+    if line.startswith('RawFolder '):
+        rawFolder = line.split()[1]
+    if line.startswith('Dark '):
+        darkFN = line.split()[1]
+    if line.startswith('FileStem '):
+        fStem = line.split()[1]
+    if line.startswith('StartFileNrFirstLayer '):
+        fNr = line.split()[1]
+    if line.startswith('Padding '):
+        pad = line.split()[1]
+    if line.startswith('Ext '):
+        ext = line.split()[1]
+    
+geFN = rawFolder + '/' + fStem + '_' + fNr.zfill(pad) + ext
+outfn = rawFolder + '/' + fStem + '_' + fNr.zfill(pad)
+os.makedirs(resultDir,exist_ok=True)
 geData = geReader(geFN)
 darkData = geReader(darkFN)
 hf = h5py.File(outfn+'.h5','w')
