@@ -17,7 +17,7 @@ import h5py
 warnings.filterwarnings('ignore')
 # np.set_printoptions(suppress=True,precision=3,threshold=sys.maxsize)
 
-def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,removeDuplicates=0,maxang=1,tol_ome=1,tol_eta=1,findUniques=1,thresh_reqd=0,draw_sinos=0,normalize=1):
+def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,removeDuplicates=0,maxang=1,tol_ome=1,tol_eta=1,findUniques=1,thresh_reqd=0,draw_sinos=0,normalize=1,nNodes=1,machineName='local'):
 	uniqueOrients = []
 	bestConfs = []
 	uniqueFNames = []
@@ -312,7 +312,10 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 	np.savetxt('SpotsToIndex.csv',IDArr,fmt="%d %d")
 	nIDs = len(IDArr)
 	os.makedirs('Results',exist_ok=True)
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitOrStrainsScanningOMP")+' paramstest.txt 0 1 '+ str(nIDs)+' '+str(numProcs),shell=True)
+	swiftcmdIdx = os.path.expanduser('~/.MIDAS/swift/bin/swift') + ' -config ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/sites.conf') + ' -sites ' + machineName + ' ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/runRefiningScanning.swift') + ' -folder=' + folder + ' -nrNodes=' + str(nNodes) + ' -nScans=' + str(nScans) + ' -numProcs='+ str(numProcs)
+	print(swiftcmdIdx)
+	subprocess.call(swiftcmdIdx,shell=True)
+	# subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitOrStrainsScanningOMP")+' paramstest.txt 0 1 '+ str(nIDs)+' '+str(numProcs),shell=True)
 	
 	NrSym,Sym = MakeSymmetries(sgnum)
 	print(f"Filtering the final output. Will be saved to {folder}/Recons/microstrFull.csv and {folder}/Recons/microstructure.hdf")
