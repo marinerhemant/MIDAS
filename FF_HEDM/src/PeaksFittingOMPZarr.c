@@ -25,6 +25,7 @@
 #include <sys/types.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <unistd.h>
 #include <fcntl.h>
 #include <omp.h>
 #include <sys/resource.h>
