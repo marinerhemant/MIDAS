@@ -299,6 +299,7 @@ int main(int argc, char *argv[]){
             dsize = blosc1_decompress(s,data,dsize);
             UseMaximaPositions = *(int *)&data[0];
         }
+        count++;
     }
     // Read params file.
 	int i,j,k;

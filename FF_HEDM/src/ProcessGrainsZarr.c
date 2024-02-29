@@ -387,6 +387,7 @@ int main(int argc, char *argv[])
             free(arr);
             free(data);
         }
+        count++;
     }
 
 

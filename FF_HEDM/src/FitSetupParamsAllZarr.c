@@ -1080,6 +1080,7 @@ int main(int argc, char *argv[])
             free(arr);
             free(data);
         }
+        count++;
     }
 	double BoxSizes[nBoxSizes][2];
 	double OmegaRanges[nOmegaRanges][4];

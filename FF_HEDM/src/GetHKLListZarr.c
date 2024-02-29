@@ -217,6 +217,7 @@ int main (int argc, char *argv[]){
             dsize = blosc1_decompress(s,data,dsize);
             SpaceGrp = *(int *)&data[0];
         }
+        count++;
     }
 
 	printf("%f %f %f %d %f %f %f %f %f %f\n",wl,Lsd,MaxRingRad,SpaceGrp,LatC[0],LatC[1],LatC[2],LatC[3],LatC[4],LatC[5]);
