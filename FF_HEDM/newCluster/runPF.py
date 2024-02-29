@@ -244,7 +244,7 @@ if nMerges != 0:
 					spots = np.vstack((spots,spot))
 		positionsNew[scanNr] = thisPosition/nMerges
 		spots = spots[spots[:,2]!=-360,:]
-		print(f'ScanNr: {scanNr}, position: {positionsNew[scanNr]}, nSpots: {spots.shape[0]}')
+		print(f'ScanNr: {scanNr}, position: {positionsNew[scanNr]}, nSpots: {spots.shape[0]}, Output written to: InputAllExtraInfoFittingAll{scanNr}.csv')
 		# Update the new positions array
 		if (len(spots.shape)>1): np.savetxt(outFAll,spots,fmt="%12.5f",delimiter="  ")
 	np.savetxt('positions.csv',positionsNew,fmt='%.5f',delimiter=' ')
