@@ -160,7 +160,18 @@ int main (int argc, char *argv[]){
     int count = 0;
     char* data = NULL;
     char* s = NULL;
+    char *resultFolder;
     while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
+        if (strstr(finfo->name,"analysis/process/analysis_parameters/ResultFolder/0")!=NULL){
+            arr = calloc(finfo->size + 1, sizeof(char)); 
+            fd = zip_fopen_index(arch, count, 0);
+            zip_fread(fd, arr, finfo->size);
+            dsize = 4096;
+            resultFolder = (char*)malloc((size_t)dsize);
+            dsize = blosc1_decompress(arr,resultFolder,dsize);
+            free(arr);
+            free(data);
+        }
         printf("%s\n",finfo->name);
         if (strstr(finfo->name,"analysis/process/analysis_parameters/LatticeParameter/0")!=NULL){
             s = calloc(finfo->size + 1, sizeof(char));
@@ -371,7 +382,8 @@ int main (int argc, char *argv[]){
 		hkls[i][9] = hkls[i][8]*2;
 		hkls[i][10] = Lsd*tand(hkls[i][9]);
 	}
-	char *fn = "hkls.csv";
+	char fn[4096];
+    sprintf(fn,"%s/hkls.csv",resultFolder);
 	FILE *fp;
 	fp = fopen(fn,"w");
 	fprintf(fp,"h k l D-spacing RingNr g1 g2 g3 Theta 2Theta Radius\n");
