@@ -504,6 +504,7 @@ int main(int argc, char *argv[])
     char* s = NULL;
     char* arr;
     int32_t dsize;
+    char *resultFolder;
 
     char aline[1000];
     char *str, dummy[1000];
@@ -524,6 +525,16 @@ int main(int argc, char *argv[])
     int locOmegaRanges, nOmegaRanges=0;
     int locBoxSizes, nBoxSizes=0;
     while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
+        if (strstr(finfo->name,"analysis/process/analysis_parameters/ResultFolder/0")!=NULL){
+            arr = calloc(finfo->size + 1, sizeof(char)); 
+            fd = zip_fopen_index(arch, count, 0);
+            zip_fread(fd, arr, finfo->size);
+            dsize = 4096;
+            resultFolder = (char*)malloc((size_t)dsize);
+            dsize = blosc1_decompress(arr,resultFolder,dsize);
+            free(arr);
+            free(data);
+        }
         if (strstr(finfo->name,"analysis/process/analysis_parameters/p3/0")!=NULL){
             arr = calloc(finfo->size + 1, sizeof(char)); 
             fd = zip_fopen_index(arch, count, 0);
@@ -1133,7 +1144,8 @@ int main(int argc, char *argv[])
 	sprintf(folder,"%s/",Folder);
 	sprintf(FileName,"%s/Radius_StartNr_%d_EndNr_%d.csv",Folder,StartNr,EndNr);
 	char line[5024];
-	char *hklfn = "hkls.csv";
+	char hklfn[2048];
+    sprintf(hklfn,"%s/hkls.csv",resultFolder);
 	FILE *hklf = fopen(hklfn,"r");
 	fgets(aline,1000,hklf);
 	int Rnr;
