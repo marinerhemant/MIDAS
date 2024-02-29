@@ -38,8 +38,8 @@ os.chdir(resultDir)
 f = open('binning_out.csv','w')
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinData")+' paramstest.txt',shell=True,stdout=f)
 f.close()
-with open("SpotsToIndex.csv", "rbU") as f:
-    num_lines = sum(1 for _ in f)
+with open("SpotsToIndex.csv", "r") as f:
+    num_lines = len(f.readlines())
 f = open('indexing_out.csv','w')
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerOMP")+' paramstest.txt 0 1 '+str(num_lines)+' '+str(numProcs),shell=True,stdout=f)
 f.close()
