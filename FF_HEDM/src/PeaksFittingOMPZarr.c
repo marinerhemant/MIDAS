@@ -1084,6 +1084,7 @@ void main(int argc, char *argv[]){
 	darkAsym = calloc(NrPixelsY*NrPixelsZ,sizeof(*darkAsym));
     int darkIter;
     dsize = bytesPerPx*NrPixelsZ*NrPixelsY;
+    printf("%d\n",(int)dsize);
     data = (char*)malloc((size_t)dsize);
     for (darkIter=0;darkIter<nDarks;darkIter++){
         zip_stat_index(arch, darkLoc, 0, finfo);
