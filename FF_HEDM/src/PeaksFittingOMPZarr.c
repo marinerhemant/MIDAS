@@ -1245,7 +1245,7 @@ void main(int argc, char *argv[]){
 	for (FileNr = startFileNr; FileNr < endFileNr; FileNr++)
 	{
 		int procNum = omp_get_thread_num();
-        // printf("%d\n",FileNr);
+        printf("FrameNr: %d\n",FileNr);
         double beamcurr = 1;
 		pixelvalue *Image, *ImageAsym;
 		double *ImgCorrBCTemp, *ImgCorrBC, *MaximaValues, *z;
