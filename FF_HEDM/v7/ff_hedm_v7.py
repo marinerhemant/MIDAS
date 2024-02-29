@@ -6,7 +6,7 @@ numProcs = sys.argv[2]
 f_ge2h5 = open('ge2h5_out.csv','w')
 subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/ge2h5.py")+' '+psFN,shell=True,stdout=f_ge2h5)
 f_ge2h5.close()
-f_ge2h5 = open('ge2h5_out.csv','w')
+f_ge2h5 = open('ge2h5_out.csv','r')
 lines = f_ge2h5.readlines()
 f_ge2h5.close()
 for line in lines:
