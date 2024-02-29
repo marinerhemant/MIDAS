@@ -1162,6 +1162,7 @@ int main(int argc, char *argv[])
     dsize = nBoxSizes*4*sizeof(double);
     data = (char*)malloc((size_t)dsize);
     dsize = blosc1_decompress(s,data,dsize);
+	for (i=0;i<cs;i++) printf("%d ",RingNumbers[i]); printf("\n");
     for (iter=0;iter<nBoxSizes;iter++){
         BoxSizes[iter][0]    = *(double *)&data[(iter*4+0)*sizeof(double)];
         BoxSizes[iter][1]    = *(double *)&data[(iter*4+1)*sizeof(double)];
