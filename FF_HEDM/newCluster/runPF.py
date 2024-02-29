@@ -260,6 +260,8 @@ if nMerges != 0:
 			if spots.shape[0]!=data_read.shape[0]:
 				print(f"Something went wrong while saving the file: InputAllExtraInfoFittingAll{scanNr}.csv. Wanted to write {spots.shape[0]} spots, but wrote {data_read.shape[0]} spots. Exiting.")
 				sys.exit()
+			else:
+				print(f'Successfully wrote {spots.shape[0]} spots to InputAllExtraInfoFittingAll{scanNr}.csv')
 		else:
 			outFAll = open(f'InputAllExtraInfoFittingAll{scanNr}.csv','w')
 			outFAll.write(headOut)
