@@ -188,13 +188,13 @@ if doPeakSearch == 1:
 		AllF.close()
 		shutil.copy2(thisDir+'/paramstest.txt',topdir+'/paramstest.txt')
 		shutil.copy2(thisDir+'/hkls.csv',topdir+'/hkls.csv')
-else:
-	if nMerges!=0:
-		os.chdir(topdir)
-		shutil.move('original_positions.csv','positions.csv')
-		positions = open(topdir+'/positions.csv').readlines()
-		for layerNr in range(0,nScans):
-			shutil.move(f'original_InputAllExtraInfoFittingAll{layerNr}.csv',f'InputAllExtraInfoFittingAll{layerNr}.csv')
+# else:
+# 	if nMerges!=0:
+# 		os.chdir(topdir)
+# 		shutil.move('original_positions.csv','positions.csv')
+# 		positions = open(topdir+'/positions.csv').readlines()
+# 		for layerNr in range(0,nMerges*(nScans//nMerges)):
+# 			shutil.move(f'original_InputAllExtraInfoFittingAll{layerNr}.csv',f'InputAllExtraInfoFittingAll{layerNr}.csv')
 
 if nMerges != 0:
 	# We want to merge every nMerges datasets
