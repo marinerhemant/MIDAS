@@ -533,6 +533,7 @@ int main(int argc, char *argv[])
             dsize = 4096;
             resultFolder = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,resultFolder,dsize);
+            printf("%s\n",resultFolder);
             free(arr);
             free(data);
         }
@@ -544,6 +545,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             p3 = *(double *)&data[0];
+            printf("p3 %lf\n",p3);
             free(arr);
             free(data);
         }
@@ -555,6 +557,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             p2 = *(double *)&data[0];
+            printf("p2 %lf\n",p2);
             free(arr);
             free(data);
         }
@@ -566,6 +569,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             p1 = *(double *)&data[0];
+            printf("p1 %lf\n",p1);
             free(arr);
             free(data);
         }
@@ -577,6 +581,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             p0 = *(double *)&data[0];
+            printf("p0 %lf\n",p0);
             free(arr);
             free(data);
         }
@@ -588,6 +593,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             wedge = *(double *)&data[0];
+            printf("wedge %lf\n",wedge);
             free(arr);
             free(data);
         }
@@ -599,6 +605,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             tzIn = *(double *)&data[0];
+            printf("tz %lf\n",tzIn);
             free(arr);
             free(data);
         }
@@ -610,6 +617,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             tyIn = *(double *)&data[0];
+            printf("ty %lf\n",tyIn);
             free(arr);
             free(data);
         }
@@ -621,6 +629,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             tx = *(double *)&data[0];
+            printf("tx %lf\n",tx);
             free(arr);
             free(data);
         }
@@ -632,6 +641,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             SpaceGroup = *(int *)&data[0];
+            printf("SG %d\n",SpaceGroup);
             free(arr);
             free(data);
         }
