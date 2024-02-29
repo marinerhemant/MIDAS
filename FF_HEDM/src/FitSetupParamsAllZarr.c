@@ -1145,7 +1145,6 @@ int main(int argc, char *argv[])
     int iter;
     for (iter=0;iter<cs;iter++){
         RingNumbers[iter]    = (int) *(double *)&data[(iter*2+0)*sizeof(double)];
-        printf("%d\n",RingNumbers[iter]);
     }
     free(s);
     free(data);
@@ -1164,6 +1163,7 @@ int main(int argc, char *argv[])
         BoxSizes[iter][1]    = *(double *)&data[(iter*4+1)*sizeof(double)];
         BoxSizes[iter][2]    = *(double *)&data[(iter*4+2)*sizeof(double)];
         BoxSizes[iter][3]    = *(double *)&data[(iter*4+3)*sizeof(double)];
+        printf("%lf %lf %lf %lf\n",BoxSizes[iter][0],BoxSizes[iter][1],BoxSizes[iter][2],BoxSizes[iter][3]);
     }
     free(s);
     free(data);
