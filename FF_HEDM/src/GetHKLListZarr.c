@@ -161,6 +161,7 @@ int main (int argc, char *argv[]){
     char* data = NULL;
     char* s = NULL;
     char *resultFolder, *arr;
+    int32_t dsize;
     while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
         if (strstr(finfo->name,"analysis/process/analysis_parameters/ResultFolder/0")!=NULL){
             arr = calloc(finfo->size + 1, sizeof(char)); 
