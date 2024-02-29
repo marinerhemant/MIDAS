@@ -1048,6 +1048,7 @@ void main(int argc, char *argv[]){
     nFrames = nFrames - skipFrame; // This ensures we don't over-read.
     dataLoc += skipFrame;
     omegaStart += skipFrame*omegaStep;
+    printf("%lf %d %lf\n",omegaStart,skipFrame,omegaStep);
 	if (NrPixelsY != NrPixelsZ){
 		if (NrPixelsY > NrPixelsZ){
 			NrPixels = NrPixelsY;
