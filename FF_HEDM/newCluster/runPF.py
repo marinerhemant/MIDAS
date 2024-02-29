@@ -5,6 +5,7 @@ import argparse
 import warnings
 import time
 import os,sys,glob
+import os.path
 from pathlib import Path
 import shutil
 from math import acos,sqrt,atan,floor
@@ -187,10 +188,12 @@ if doPeakSearch == 1:
 else:
 	if nMerges!=0:
 		os.chdir(topdir)
-		shutil.move('original_positions.csv','positions.csv')
+		if os.path.exists('original_positions.csv'):
+			shutil.move('original_positions.csv','positions.csv')
 		positions = open(topdir+'/positions.csv').readlines()
 		for layerNr in range(0,nMerges*(nScans//nMerges)):
-			shutil.move(f'original_InputAllExtraInfoFittingAll{layerNr}.csv',f'InputAllExtraInfoFittingAll{layerNr}.csv')
+			if os.path.exists(f'original_InputAllExtraInfoFittingAll{layerNr}.csv'):
+				shutil.move(f'original_InputAllExtraInfoFittingAll{layerNr}.csv',f'InputAllExtraInfoFittingAll{layerNr}.csv')
 
 if nMerges != 0:
 	# We want to merge every nMerges datasets
@@ -204,11 +207,11 @@ if nMerges != 0:
 	positionsNew = np.zeros(nFinScans)
 	for scanNr in range(nFinScans):
 		thisPosition = float(positions[scanNr])
+		shutil.move(f'InputAllExtraInfoFittingAll{startScanNr}.csv',f'original_InputAllExtraInfoFittingAll{startScanNr}.csv')
+		spots = np.genfromtxt(f'original_InputAllExtraInfoFittingAll{startScanNr}.csv',skip_header=1)
 		outFAll = open(f'InputAllExtraInfoFittingAll{scanNr}.csv','w')
 		outFAll.write('%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)')
 		startScanNr = scanNr*nMerges
-		shutil.move(f'InputAllExtraInfoFittingAll{startScanNr}.csv',f'original_InputAllExtraInfoFittingAll{startScanNr}.csv')
-		spots = np.genfromtxt(f'original_InputAllExtraInfoFittingAll{startScanNr}.csv',skip_header=1)
 		if len(spots.shape) < 2:
 			spots = np.zeros((2,14))
 			spots[:,2] = -360 # Hook to keep sanity
