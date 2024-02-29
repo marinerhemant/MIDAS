@@ -18,8 +18,7 @@ if [ ! -d ${dirThis}/NLOPT ]; then # NLOPT INSTALL
 	tar -xzf nlopt.tar.gz
 	cd nlopt-2.4.2
 	./configure --prefix=${dirThis}/NLOPT
-	make all
-	make install
+	make -j8 install
 fi
 
 if [ ! -d ${dirThis}/NLOPTShared ]; then # NLOPT SHARED INSTALL
@@ -30,8 +29,7 @@ if [ ! -d ${dirThis}/NLOPTShared ]; then # NLOPT SHARED INSTALL
 	tar -xzf nlopt.tar.gz
 	cd nlopt-2.4.2
 	./configure --prefix=${dirThis}/NLOPTShared --enable-shared
-	make all
-	make install
+	make -j8 install
 fi
 
 if [ ! -d ${dirThis}/swift ]; then # SWIFT
@@ -49,8 +47,7 @@ if [ ! -d ${dirThis}/LIBTIFF ]; then # TIFF
 	tar -xzf libtiff.tar.gz
 	cd tiff-4.6.0
 	./configure --prefix=${dirThis}/LIBTIFF --enable-shared
-	make all
-	make install
+	make -j8 install
 fi
 
 if [ ! -d ${dirThis}/ZLIB ]; then # ZLIB
