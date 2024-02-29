@@ -207,11 +207,11 @@ if nMerges != 0:
 	positionsNew = np.zeros(nFinScans)
 	for scanNr in range(nFinScans):
 		thisPosition = float(positions[scanNr])
+		startScanNr = scanNr*nMerges
 		shutil.move(f'InputAllExtraInfoFittingAll{startScanNr}.csv',f'original_InputAllExtraInfoFittingAll{startScanNr}.csv')
 		spots = np.genfromtxt(f'original_InputAllExtraInfoFittingAll{startScanNr}.csv',skip_header=1)
 		outFAll = open(f'InputAllExtraInfoFittingAll{scanNr}.csv','w')
 		outFAll.write('%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)')
-		startScanNr = scanNr*nMerges
 		if len(spots.shape) < 2:
 			spots = np.zeros((2,14))
 			spots[:,2] = -360 # Hook to keep sanity
