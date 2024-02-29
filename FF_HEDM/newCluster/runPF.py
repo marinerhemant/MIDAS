@@ -256,7 +256,7 @@ if nMerges != 0:
 			np.savetxt(outFAll,spots,fmt="%12.5f",delimiter=" ",header=headOut,comments='')
 			outFAll.close()
 			outFAll = open(f'InputAllExtraInfoFittingAll{scanNr}.csv','r')
-			data_read = np.genfromtxt(outFAll,delimiter=" ")
+			data_read = np.genfromtxt(outFAll,delimiter=" ",skip_header=1)
 			if spots.shape[0]!=data_read.shape[0]:
 				print(f"Something went wrong while saving the file: InputAllExtraInfoFittingAll{scanNr}.csv. Wanted to write {spots.shape[0]} spots, but wrote {data_read.shape[0]} spots. Exiting.")
 				sys.exit()
