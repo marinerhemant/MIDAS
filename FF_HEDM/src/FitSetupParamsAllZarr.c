@@ -513,7 +513,7 @@ int main(int argc, char *argv[])
     int SpaceGroup;
     double LatticeConstant[6],Wavelength,MaxRingRad,Lsd,MaxTtheta,TthetaTol,ybc,zbc,px,tyIn,tzIn, BeamSize = 0;
     double tx,tolTilts=1,tolLsd=5000,tolBC=1,p0,p1,p2,p3,RhoD,wedge,MinEta;
-    int RingNumbers[200],cs=0,DoFit=0,RingToIndex;
+    int cs=0,DoFit=0,RingToIndex;
     double Rsample, Hbeam,MinMatchesToAcceptFrac,MinOmeSpotIDsToIndex,MaxOmeSpotIDsToIndex,Width;
     int UseFriedelPairs=1;
 	double t_int=1, t_gap=0;
@@ -525,7 +525,26 @@ int main(int argc, char *argv[])
     int skipFrame=0;
     int locOmegaRanges, nOmegaRanges=0;
     int locBoxSizes, nBoxSizes=0;
+    int locRingThres, nRings=0;
     while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
+        if (strstr(finfo->name,"analysis/process/analysis_parameters/RingThresh/0.0")!=NULL){
+            locRingThresh = count;
+        }
+        if (strstr(finfo->name,"analysis/process/analysis_parameters/RingThresh/.zarray")!=NULL){
+            s = calloc(finfo->size + 1, sizeof(char));
+            fd = zip_fopen_index(arch, count, 0);
+            zip_fread(fd, s, finfo->size);
+            char *ptr = strstr(s,"shape");
+            if (ptr != NULL){
+                char *ptrt = strstr(ptr,"[");
+                char *ptr2 = strstr(ptrt,"]");
+                int loc = (int)(ptr2 - ptrt);
+                char ptr3[2048];
+                strncpy(ptr3,ptrt,loc+1);
+                sscanf(ptr3,"%*[^0123456789]%d",&cs);
+            } else return 1;
+            free(s);
+        }
         if (strstr(finfo->name,"analysis/process/analysis_parameters/ResultFolder/0")!=NULL){
             arr = calloc(finfo->size + 1, sizeof(char)); 
             fd = zip_fopen_index(arch, count, 0);
@@ -1115,6 +1134,20 @@ int main(int argc, char *argv[])
         }
         count++;
     }
+    int RingNumbers[cs];
+    zip_stat_index(arch, locRingThresh, 0, finfo);
+    s = calloc(finfo->size + 1, sizeof(char));
+    fd = zip_fopen_index(arch, locRingThresh, 0);
+    zip_fread(fd, s, finfo->size); 
+    dsize = cs*2*sizeof(double);
+    data = (char*)malloc((size_t)dsize);
+    dsize = blosc1_decompress(s,data,dsize);
+    int iter;
+    for (iter=0;iter<cs;iter++){
+        RingNumbers[iter]    = (int) *(double *)&data[(iter*2+0)*sizeof(double)];
+    }
+    free(s);
+    free(data);
     EndNr = EndNr - skipFrame; // This ensures we don't over-read.
 	double BoxSizes[nBoxSizes][2];
 	double OmegaRanges[nOmegaRanges][4];
@@ -1125,7 +1158,6 @@ int main(int argc, char *argv[])
     dsize = nBoxSizes*4*sizeof(double);
     data = (char*)malloc((size_t)dsize);
     dsize = blosc1_decompress(s,data,dsize);
-    int iter;
     for (iter=0;iter<nBoxSizes;iter++){
         BoxSizes[iter][0]    = *(double *)&data[(iter*4+0)*sizeof(double)];
         BoxSizes[iter][1]    = *(double *)&data[(iter*4+1)*sizeof(double)];
@@ -1148,6 +1180,7 @@ int main(int argc, char *argv[])
     }
     free(s);
     free(data);
+    printf("nRings: %d\n",nRings)
 
     sprintf(folder,"%s",Folder);
     int nOmeRanges = nOmegaRanges;
