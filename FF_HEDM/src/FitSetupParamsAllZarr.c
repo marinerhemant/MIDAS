@@ -1145,6 +1145,7 @@ int main(int argc, char *argv[])
     int iter;
     for (iter=0;iter<cs;iter++){
         RingNumbers[iter]    = (int) *(double *)&data[(iter*2+0)*sizeof(double)];
+        printf("%d\n",RingNumbers[iter]);
     }
     free(s);
     free(data);
