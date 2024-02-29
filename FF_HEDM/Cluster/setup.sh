@@ -22,7 +22,7 @@ NLOPTDIR=${configdir}/NLOPT/lib
 ZLIBDIR=${configdir}/ZLIB/lib
 LD_LIBRARY_PATH=${LD_LIBRARY_PATH}
 echo "export LD_LIBRARY_PATH=${BLOSCDIR}:${FFTWDIR}:${HDFDIR}:${LIBTIFFDIR}:${LIBZIPDIR}:${NLOPTDIR}:${ZLIBDIR}:${LD_LIBRARY_PATH}" > ${configfile}
-echo "BINFOLDER=${BINFOLDER}" > ${configfile}
+echo "BINFOLDER=${BINFOLDER}" >> ${configfile}
 echo "PFDIR=${LOCAL_DIR}" >> ${configfile}
 echo "SWIFTDIR=${HOME}/.MIDAS/swift/bin" >> ${configfile}
 ln -s ${LOCAL_DIR}/RealTimeMultipleLayersSingleSwiftJob.sh ${configdir}/MIDAS_V5_FarField_Layers
