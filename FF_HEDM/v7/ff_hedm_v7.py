@@ -20,7 +20,7 @@ for line in lines:
         outFStem = line.split()[1]
     if line.startswith('ResultDir: '):
         resultDir = line.split()[1]
-
+startdir = os.getcwd()
 print("Generating ZarrZip file.")
 f_h52zarr = open('h5_to_zarr_zip.csv','w')
 subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/h5_to_zarr_zip.py")+' '+outFStem+'.h5',shell=True,stdout=f_h52zarr)
@@ -48,21 +48,21 @@ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr")+' '+o
 f.close()
 os.chdir(resultDir)
 print("Binning data.")
-f = open('binning_out.csv','w')
+f = open(f'{startdir}/binning_out.csv','w')
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinData")+' paramstest.txt',shell=True,env=env,stdout=f)
 f.close()
 with open("SpotsToIndex.csv", "r") as f:
     num_lines = len(f.readlines())
 
 print("Indexing.")
-f = open('indexing_out.csv','w')
+f = open(f'{startdir}/indexing_out.csv','w')
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerOMP")+' paramstest.txt 0 1 '+str(num_lines)+' '+str(numProcs),shell=True,env=env,stdout=f)
 f.close()
 print("Refining.")
-f = open('refinement_out.csv','w')
+f = open(f'{startdir}/refinement_out.csv','w')
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitPosOrStrainsOMP")+' paramstest.txt 0 1 '+str(num_lines)+' '+str(numProcs),shell=True,env=env,stdout=f)
 f.close()
 print("Making grains list.")
-f = open('process_grains_out.csv','w')
+f = open(f'{startdir}/process_grains_out.csv','w')
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/ProcessGrainsZarr")+' '+outFStem+'.zip',shell=True,env=env,stdout=f)
 f.close()
