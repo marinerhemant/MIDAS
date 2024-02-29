@@ -86,6 +86,10 @@ class Hdf5ToZarr:
             locData = h5obj[()]
             if ('data' in h5obj.name):
                 chunksize = (1,h5obj.shape[1],h5obj.shape[2])
+            elif ('dark' in h5obj.name):
+                chunksize = (1,h5obj.shape[1],h5obj.shape[2])
+            elif ('bright' in h5obj.name):
+                chunksize = (1,h5obj.shape[1],h5obj.shape[2])
             else:
                 chunksize = h5obj.chunks
 
