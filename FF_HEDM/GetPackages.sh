@@ -56,9 +56,9 @@ fi
 if [ ! -d ${dirThis}/ZLIB ]; then # ZLIB
 	cd $dirThis
 	echo $(pwd)
-	wget -O zlib.tar.gz https://www.zlib.net/zlib-1.3.tar.gz
+	wget -O zlib.tar.gz https://www.zlib.net/zlib-1.3.1.tar.gz
 	tar -xzf zlib.tar.gz
-	cd zlib-1.3
+	cd zlib-1.3.1
 	./configure --prefix=${dirThis}/ZLIB
 	make -j8 install
 fi
