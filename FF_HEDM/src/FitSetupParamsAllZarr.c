@@ -1158,6 +1158,7 @@ int main(int argc, char *argv[])
     s = calloc(finfo->size + 1, sizeof(char));
     fd = zip_fopen_index(arch, locBoxSizes, 0);
     zip_fread(fd, s, finfo->size); 
+	for (i=0;i<cs;i++) printf("%d ",RingNumbers[i]); printf("\n");
     dsize = nBoxSizes*4*sizeof(double);
     data = (char*)malloc((size_t)dsize);
     dsize = blosc1_decompress(s,data,dsize);
@@ -1166,7 +1167,6 @@ int main(int argc, char *argv[])
         BoxSizes[iter][1]    = *(double *)&data[(iter*4+1)*sizeof(double)];
         BoxSizes[iter][2]    = *(double *)&data[(iter*4+2)*sizeof(double)];
         BoxSizes[iter][3]    = *(double *)&data[(iter*4+3)*sizeof(double)];
-        printf("%lf %lf %lf %lf\n",BoxSizes[iter][0],BoxSizes[iter][1],BoxSizes[iter][2],BoxSizes[iter][3]);
     }
     free(s);
     free(data);
