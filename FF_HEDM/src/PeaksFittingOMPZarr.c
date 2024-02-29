@@ -1093,6 +1093,7 @@ void main(int argc, char *argv[]){
         fd = zip_fopen_index(arch, darkLoc, 0);
         zip_fread(fd, arr, finfo->size);
         dsize = blosc1_decompress(arr,data,dsize);
+        printf("%d\n",(int)dsize);
         free(arr);
         memcpy(darkAsym,(pixelvalue *)data,(size_t)dsize);
         MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,darkAsym,darkcontents);
