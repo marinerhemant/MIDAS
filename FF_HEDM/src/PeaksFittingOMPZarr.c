@@ -1094,7 +1094,7 @@ void main(int argc, char *argv[]){
         zip_fread(fd, arr, finfo->size);
         dsize = blosc1_decompress(arr,data,dsize);
         free(arr);
-        memcpy(darkAsym,data,(size_t)dsize);
+        memcpy(darkAsym,(pixelvalue *)data,(size_t)dsize);
         MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,darkAsym,darkcontents);
         DoImageTransformations(nImTransOpt,TransOpt,darkcontents,NrPixels);
         for (b=0;b<(NrPixels*NrPixels);b++){
