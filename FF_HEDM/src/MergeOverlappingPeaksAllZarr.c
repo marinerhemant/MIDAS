@@ -25,7 +25,7 @@
 #include <sys/types.h>
 #include <errno.h>
 #include <blosc2.h>
-#include <stdlib.h> 
+#include <libgen.h> 
 #include <zip.h> 
 
 #define deg2rad 0.0174532925199433
@@ -239,7 +239,7 @@ int main(int argc, char *argv[]){
     char* arr;
     int32_t dsize;
     char *Folder = NULL, FileStem[1024],*TmpFolder;
-    sprintf(FileStem,"%s",DataFN);
+    sprintf(FileStem,"%s",basename(DataFN));
     int LayerNr;
     int StartNr=1, EndNr, Padding=6;
     TmpFolder = "Temp";
