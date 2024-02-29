@@ -1297,7 +1297,7 @@ void main(int argc, char *argv[]){
 		sprintf(OutFile,"%s/%s_%06d_PS.csv",OutFolderName,DataFN,FileNr+1);
 		FILE *outfilewrite;
 		outfilewrite = fopen(OutFile,"w");
-        if (outfilewrite==NULL) printf("Cannot open %s for writing. Undefined behavior.\n"),OutFile;
+        if (outfilewrite==NULL) printf("Cannot open %s for writing. Undefined behavior.\n",OutFile);
 		fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode\n");
 
         int32_t dsz = NrPixelsY*NrPixelsZ*bytesPerPx;
