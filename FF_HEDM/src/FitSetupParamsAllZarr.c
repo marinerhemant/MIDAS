@@ -1148,12 +1148,12 @@ int main(int argc, char *argv[])
         RingNumbers[iter]    = (int) *(double *)&data[(iter*2+0)*sizeof(double)];
         printf("%d\n",RingNumbers[iter]);
     }
-	for (i=0;i<cs;i++) printf("%d\n",RingNumbers[i]);
     free(s);
     free(data);
     EndNr = EndNr - skipFrame; // This ensures we don't over-read.
 	double BoxSizes[nBoxSizes][2];
 	double OmegaRanges[nOmegaRanges][4];
+	for (i=0;i<cs;i++) printf("%d \n",RingNumbers[i]); printf("\n");
     zip_stat_index(arch, locBoxSizes, 0, finfo);
     s = calloc(finfo->size + 1, sizeof(char));
     fd = zip_fopen_index(arch, locBoxSizes, 0);
@@ -1170,6 +1170,7 @@ int main(int argc, char *argv[])
     }
     free(s);
     free(data);
+	for (i=0;i<cs;i++) printf("%d \n",RingNumbers[i]); printf("\n");
 
     zip_stat_index(arch, locOmegaRanges, 0, finfo);
     s = calloc(finfo->size + 1, sizeof(char));
@@ -1184,6 +1185,7 @@ int main(int argc, char *argv[])
     }
     free(s);
     free(data);
+	for (i=0;i<cs;i++) printf("%d \n",RingNumbers[i]); printf("\n");
 
     sprintf(folder,"%s",Folder);
     int nOmeRanges = nOmegaRanges;
