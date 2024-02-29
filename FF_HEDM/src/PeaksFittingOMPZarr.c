@@ -1297,6 +1297,7 @@ void main(int argc, char *argv[]){
 		char OutFile[1024];
         char *bn;
         bn = basename(DataFN);
+        printf("%s\n",bn);
 		sprintf(OutFile,"%s/%s_%06d_PS.csv",OutFolderName,bn,FileNr+1);
 		FILE *outfilewrite;
 		outfilewrite = fopen(OutFile,"w");
