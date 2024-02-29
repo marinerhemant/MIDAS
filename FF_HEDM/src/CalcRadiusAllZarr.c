@@ -106,6 +106,7 @@ int main(int argc, char *argv[]){
     char* s = NULL;
     char* arr;
     int32_t dsize;
+    char *resultFolder;
 
     // Read params file.
     char aline[1000], *str, dummy[1000];
@@ -134,6 +135,16 @@ int main(int argc, char *argv[]){
                 sscanf(ptr3,"%*[^0123456789]%d",&nRings);
             } else return 1;
             free(s);
+        }
+        if (strstr(finfo->name,"analysis/process/analysis_parameters/ResultFolder/0")!=NULL){
+            arr = calloc(finfo->size + 1, sizeof(char)); 
+            fd = zip_fopen_index(arch, count, 0);
+            zip_fread(fd, arr, finfo->size);
+            dsize = 4096;
+            resultFolder = (char*)malloc((size_t)dsize);
+            dsize = blosc1_decompress(arr,resultFolder,dsize);
+            free(arr);
+            free(data);
         }
         if (strstr(finfo->name,"analysis/process/analysis_parameters/DiscModel/0")!=NULL){
             arr = calloc(finfo->size + 1, sizeof(char)); 
@@ -336,7 +347,8 @@ int main(int argc, char *argv[]){
 	SpotsMat = allocMatrix(MAX_N_SPOTS,16);
 	double PowderInt[nRings];
 	int i;
-	char *hklfn = "hkls.csv";
+	char hklfn[2048];
+    sprintf(hklfn,"%s/hkls.csv",resultFolder);
 	FILE *hklf = fopen(hklfn,"r");
 	int mhkl[nRings];
 	for (i=0;i<nRings;i++){
