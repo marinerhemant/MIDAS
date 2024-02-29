@@ -1423,7 +1423,7 @@ int main(int argc, char *argv[])
 	sprintf(resultfolder,"%s/Results",folder);
 	int e = CheckDirectoryCreation(outfolder);
 	if (e == 0){ return 1;}
-	int e = CheckDirectoryCreation(resultfolder);
+	e = CheckDirectoryCreation(resultfolder);
 	if (e == 0){ return 1;}
 
 	sprintf(fnIndexAllNoHeader,"%s/InputAllNoHeader.csv",folder);
