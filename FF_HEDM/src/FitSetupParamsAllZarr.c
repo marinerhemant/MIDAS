@@ -1150,8 +1150,8 @@ int main(int argc, char *argv[])
     free(s);
     free(data);
     EndNr = EndNr - skipFrame; // This ensures we don't over-read.
-	double BoxSizes[nBoxSizes][2];
-	double OmegaRanges[nOmegaRanges][4];
+	double BoxSizes[nBoxSizes][4];
+	double OmegaRanges[nOmegaRanges][2];
     zip_stat_index(arch, locBoxSizes, 0, finfo);
     s = calloc(finfo->size + 1, sizeof(char));
     fd = zip_fopen_index(arch, locBoxSizes, 0);
@@ -1159,7 +1159,6 @@ int main(int argc, char *argv[])
     dsize = nBoxSizes*4*sizeof(double);
     data = (char*)malloc((size_t)dsize);
     dsize = blosc1_decompress(s,data,dsize);
-	for (i=0;i<cs;i++) printf("%d ",RingNumbers[i]); printf("\n");
     for (iter=0;iter<nBoxSizes;iter++){
         BoxSizes[iter][0]    = *(double *)&data[(iter*4+0)*sizeof(double)];
         BoxSizes[iter][1]    = *(double *)&data[(iter*4+1)*sizeof(double)];
