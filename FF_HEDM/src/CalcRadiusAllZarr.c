@@ -107,6 +107,7 @@ int main(int argc, char *argv[]){
     char* arr;
     int32_t dsize;
     char *resultFolder;
+    int skipFrame=0;
 
     // Read params file.
     char aline[1000], *str, dummy[1000];
@@ -313,8 +314,20 @@ int main(int argc, char *argv[]){
             free(arr);
             free(data);
         }
+        if (strstr(finfo->name,"analysis/process/analysis_parameters/SkipFrame/0")!=NULL){
+            arr = calloc(finfo->size + 1, sizeof(char)); 
+            fd = zip_fopen_index(arch, count, 0);
+            zip_fread(fd, arr, finfo->size);
+            dsize = sizeof(int);
+            data = (char*)malloc((size_t)dsize);
+            dsize = blosc1_decompress(arr,data,dsize);
+            skipFrame = *(int *)&data[0];
+            free(arr);
+            free(data);
+        }
         count++;
     }
+    EndNr = EndNr - skipFrame; // This ensures we don't over-read.
 	int RingNrs[nRings];
     double Thresholds[nRings];
     zip_stat_index(arch, locRingThresh, 0, finfo);

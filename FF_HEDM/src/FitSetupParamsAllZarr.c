@@ -522,6 +522,7 @@ int main(int argc, char *argv[])
     spotsfn = "InputAll.csv";
     idfn = "SpotsToIndex.csv";
     double StepSizePos=5,StepSizeOrient=0.2,MarginRadius=500,MarginRadial=500,OmeBinSize=0.1,EtaBinSize=0.1,MarginEta=500,MarginOme=0.5,OmegaStep,MargABC=2.0,MargABG=2.0;
+    int skipFrame=0;
     int locOmegaRanges, nOmegaRanges=0;
     int locBoxSizes, nBoxSizes=0;
     while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
@@ -1091,8 +1092,20 @@ int main(int argc, char *argv[])
             free(arr);
             free(data);
         }
+        if (strstr(finfo->name,"analysis/process/analysis_parameters/SkipFrame/0")!=NULL){
+            arr = calloc(finfo->size + 1, sizeof(char)); 
+            fd = zip_fopen_index(arch, count, 0);
+            zip_fread(fd, arr, finfo->size);
+            dsize = sizeof(int);
+            data = (char*)malloc((size_t)dsize);
+            dsize = blosc1_decompress(arr,data,dsize);
+            skipFrame = *(int *)&data[0];
+            free(arr);
+            free(data);
+        }
         count++;
     }
+    EndNr = EndNr - skipFrame; // This ensures we don't over-read.
 	double BoxSizes[nBoxSizes][2];
 	double OmegaRanges[nOmegaRanges][4];
     zip_stat_index(arch, locBoxSizes, 0, finfo);

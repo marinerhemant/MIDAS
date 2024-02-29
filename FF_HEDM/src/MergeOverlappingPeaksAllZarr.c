@@ -245,6 +245,7 @@ int main(int argc, char *argv[]){
     TmpFolder = "Temp";
 	double MarginOmegaOverlap = sqrt(4);
 	UseMaximaPositions = 0;
+    int skipFrame=0;
     while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
         if (strstr(finfo->name,"analysis/process/analysis_parameters/ResultFolder/0")!=NULL){
             arr = calloc(finfo->size + 1, sizeof(char)); 
@@ -299,8 +300,20 @@ int main(int argc, char *argv[]){
             dsize = blosc1_decompress(s,data,dsize);
             UseMaximaPositions = *(int *)&data[0];
         }
+        if (strstr(finfo->name,"analysis/process/analysis_parameters/SkipFrame/0")!=NULL){
+            arr = calloc(finfo->size + 1, sizeof(char)); 
+            fd = zip_fopen_index(arch, count, 0);
+            zip_fread(fd, arr, finfo->size);
+            dsize = sizeof(int);
+            data = (char*)malloc((size_t)dsize);
+            dsize = blosc1_decompress(arr,data,dsize);
+            skipFrame = *(int *)&data[0];
+            free(arr);
+            free(data);
+        }
         count++;
     }
+    EndNr = EndNr - skipFrame; // This ensures we don't over-read.
     // Read params file.
 	int i,j,k;
     char OutFolderName[1024];
