@@ -1298,15 +1298,19 @@ void main(int argc, char *argv[]){
 
         int32_t dsz = NrPixelsY*NrPixelsZ*bytesPerPx;
         char *locData = (char*)malloc((size_t)dsz);
+        int errorpLoc = 0;
+        zip_t* archLoc = NULL;
+        archLoc = zip_open(DataFN,0,&errorpLoc);
+        if (errorpLoc!=NULL) return 1;
         struct zip_stat* fifo = NULL;
         fifo = calloc(16384, sizeof(int));
         zip_stat_init(fifo);
         zip_file_t* fLoc = NULL;
         int dataLocThis = dataLoc + FileNr;
-        zip_stat_index(arch,dataLocThis,0,fifo);
+        zip_stat_index(archLoc,dataLocThis,0,fifo);
         char *locArr;
         locArr = calloc(fifo->size+1,sizeof(char));
-        fLoc = zip_fopen_index(arch,dataLocThis,0);
+        fLoc = zip_fopen_index(archLoc,dataLocThis,0);
         zip_fread(fLoc,locArr,fifo->size);
         dsz = blosc1_decompress(locArr,locData,dsz);
         // printf("%d %d\n",(int)dsz,(int)fifo->size);
