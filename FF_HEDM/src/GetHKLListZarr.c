@@ -173,7 +173,6 @@ int main (int argc, char *argv[]){
             free(arr);
             free(data);
         }
-        printf("%s\n",finfo->name);
         if (strstr(finfo->name,"analysis/process/analysis_parameters/LatticeParameter/0")!=NULL){
             s = calloc(finfo->size + 1, sizeof(char));
             fd = zip_fopen_index(arch, count, 0);
