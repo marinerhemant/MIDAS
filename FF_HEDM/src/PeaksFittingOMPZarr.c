@@ -1310,7 +1310,7 @@ void main(int argc, char *argv[]){
         zip_fread(fLoc,locArr,fifo->size);
         dsz = blosc1_decompress(locArr,locData,dsz);
         printf("%d %d\n",(int)dsz,(int)fifo->size);
-        memcpy(ImageAsym,locArr,dsz);
+        memcpy(ImageAsym,locData,dsz);
 		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,ImageAsym,Image);
 		if (makeMap == 1){
 			int badPxCounter = 0;
