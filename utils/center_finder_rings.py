@@ -6,56 +6,34 @@ import os
 import subprocess
 from skimage import measure
 import skimage
-# from skimage.morphology import disk
 import matplotlib.patches as mpatches
 plt.rcParams['figure.figsize'] = [10, 10]
+import argparse
+import sys
 
-# rawFN = 'CeO2_1s_65pt35keV_1860mm_000007.edf.ge1'
-# darkFN = 'dark_1s_000009.edf.ge1'
-# Wavelength = 0.189729
-# rawFN = 'CeO2_1s_65pt35keV_1860mm_000007.edf.ge2'
-# darkFN = 'dark_1s_000009.edf.ge2'
-# Wavelength = 0.189729
-# rawFN = 'CeO2_1s_65pt35keV_1860mm_000007.edf.ge3'
-# darkFN = 'dark_1s_000009.edf.ge3'
-# Wavelength = 0.189729
-# rawFN = 'CeO2_1s_65pt35keV_1860mm_000007.edf.ge4'
-# darkFN = 'dark_1s_000009.edf.ge4'
-# Wavelength = 0.189729
+class MyParser(argparse.ArgumentParser):
+	def error(self, message):
+		sys.stderr.write('error: %s\n' % message)
+		self.print_help()
+		sys.exit(2)
 
-rawFN = 'okasinski_CeO2_4s_100x100_att000_1470mm_000146.edf.ge5'
-darkFN = 'okasinski_CeO2_4s_100x100_att000_1470mm_000143.edf.ge5'
-# darkFN = 'dark_okasinski_CeO2_4s_100x100_att000_1470mm_000145.edf.ge5'
-Wavelength = 0.172973
 
-# rawFN = 'CeO2_6s_91keV_2700mm_000013.ge1'
-# darkFN = 'dark_6s_000010.ge1'
-# Wavelength = 0.136958
-
-# rawFN = 'CeO2_1s_100x100_att000_800mm_71p676keV_000077.edf.ge5'
-# darkFN = 'dark_CeO2_1s_100x100_att000_800mm_71p676keV_000078.edf.ge5'
-# Wavelength = 0.172979
-
-# rawFN = 'CeO2_00075.ge3'
-# darkFN = 'dark_1s_00077.ge3'
-# Wavelength = 0.242157
-
-# rawFN = 'CeO2_1s_100x100_att000_880mm_80p725keV_ge5_000002.edf.ge5'
-# darkFN = 'dark_CeO2_1s_100x100_att000_880mm_80p725keV_ge5_000004.edf.ge5'
-# Wavelength = 0.153588
-
-# rawFN = 'CeO2_2s_000007.ge5'
-# darkFN = 'dark_1s_000010.ge5'
-# Wavelength = 0.22291
-
-# rawFN = 'CeO2_1s_phi0_000008.ge5'
-# darkFN = 'dark_1s_000010.ge5'
-# Wavelength = 0.22291
-
-firstRing = 1 # Which ring of the calibration sample corresponds to the first ring on the detector.
-DrawPlots = 1 # If you want to plot the outputs at different stages. 0 if not wanting to plot.
-multFactor = 2.5 # How to choose which rings are "bad". Any ring with multFactor times meadian strain will be excluded from analysis.
-needed_strain = 0.00004 # When do you think is a good point to stop. It will continue past this if there are "bad" rings.
+parser = MyParser(description='''Automated Calibration for WAXS using continuous rings-like signal''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('-dataFN', type=str, required=True, help='DataFileName')
+parser.add_argument('-darkFN', type=str, required=True, help='DarkFileName')
+parser.add_argument('-Wavelength', type=float, required=True, help='Wavelength')
+parser.add_argument('-MakePlots', type=int, required=False, default=0, help='MakePlots: to draw, use 1.')
+parser.add_argument('-FirstRingNr', type=int, required=False, default=1, help='FirstRingNumber on data.')
+parser.add_argument('-MultFactor', type=float, required=False, default=2.5, help='If set, any ring MultFactor times average would be thrown away.')
+parser.add_argument('-StoppingStrain', type=float, required=False, default=0.00004, help='If refined pseudo-strain is below this value and all rings are "good", we would have converged.')
+args, unparsed = parser.parse_known_args()
+rawFN = args.rawFN
+darkFN = args.darkFN
+Wavelength = float(args.Wavelength)
+DrawPlots = int(args.MakePlots)
+firstRing = int(args.FirstRingNr)
+multFactor = float(args.MultFactor)
+needed_strain = float(args.StoppingStrain)
 
 space_group = 225 # 225 for CeO2
 latc = [5.4116,5.4116,5.4116,90,90,90] # CeO2
