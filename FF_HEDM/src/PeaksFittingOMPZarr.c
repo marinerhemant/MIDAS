@@ -1309,6 +1309,7 @@ void main(int argc, char *argv[]){
         fLoc = zip_fopen_index(arch,dataLocThis,0);
         zip_fread(fLoc,locArr,fifo->size);
         dsz = blosc1_decompress(locArr,locData,dsz);
+        printf("%d %d\n",(int)dsz,(int)fifo->size);
         memcpy(ImageAsym,locArr,dsz);
 		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,ImageAsym,Image);
 		if (makeMap == 1){
