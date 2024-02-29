@@ -1294,7 +1294,7 @@ void main(int argc, char *argv[]){
 		int Nadditions;
         Omega = omegaStart + FileNr*omegaStep;
 		char OutFile[1024];
-		sprintf(OutFile,"%s/%s_%06d_PS.csv",OutFolderName,DataFN,FileNr+1);
+		sprintf(OutFile,"%s/%s_%06d_PS.csv",OutFolderName,basename(DataFN),FileNr+1);
 		FILE *outfilewrite;
 		outfilewrite = fopen(OutFile,"w");
         if (outfilewrite==NULL) printf("Cannot open %s for writing. Undefined behavior.\n",OutFile);
