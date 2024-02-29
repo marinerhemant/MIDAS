@@ -1134,6 +1134,7 @@ int main(int argc, char *argv[])
         }
         count++;
     }
+	int i,j,k;
     int RingNumbers[cs];
     zip_stat_index(arch, locRingThresh, 0, finfo);
     s = calloc(finfo->size + 1, sizeof(char));
@@ -1191,7 +1192,6 @@ int main(int argc, char *argv[])
 	double **SpotsInfo;
 	SpotsInfo = allocMatrix(MaxNSpots,6);
 	char FileName[1024];
-	int i,j,k;
 	if (TopLayer == 1){
 		for (i=0;i<nBoxSizes;i++){
 			BoxSizes[i][3] = 0;
