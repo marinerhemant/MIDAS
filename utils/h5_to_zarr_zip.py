@@ -207,5 +207,5 @@ if __name__ == '__main__':
         h5chunkszip.translate()
         storeZip.close()
 
-lggr.info(f'Ouput file {outzip} tree structure:')
+print(f'Ouput file {outzip} tree structure:')
 print(zarr.open(outzip).tree())
