@@ -20,11 +20,11 @@ for line in lines:
         resultDir = line.split()[1]
 
 f_h52zarr = open('h5_to_zarr_zip.csv','w')
-subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/h5_to_zarr_zip.py")+' '+outFStem+'.h5',shell=True,stdout=f_h52zarr)
+# subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/h5_to_zarr_zip.py")+' '+outFStem+'.h5',shell=True,stdout=f_h52zarr)
 f_h52zarr.close()
 
 f_hkls = open('hkls_out.csv','w')
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+' '+outFStem+'.zip',shell=True,env=env,stdout=f_hkls)
+# subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+' '+outFStem+'.zip',shell=True,env=env,stdout=f_hkls)
 f_hkls.close()
 f = open('peaksearch_out.csv','w')
 print(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPZarr")+' '+outFStem+'.zip 0 1 '+str(numProcs))
