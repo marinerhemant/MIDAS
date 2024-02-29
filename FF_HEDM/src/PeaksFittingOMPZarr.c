@@ -1117,6 +1117,7 @@ void main(int argc, char *argv[]){
         free(arr);
         memcpy(flood,data,dsize);
     } else for(a=0;a<(NrPixels*NrPixels);a++) flood[a]=1;
+    zip_close(arch);
 
 	char OutFolderName[2048];
 	sprintf(OutFolderName,"%s/%s",resultFolder,TmpFolder);
@@ -1327,9 +1328,9 @@ void main(int argc, char *argv[]){
 		}
         free(locData);
         free(fifo);
-        close(fLoc);
+        zip_fclose(fLoc);
         free(locArr);
-        free(archLoc);
+        zip_close(archLoc);
 
 		DoImageTransformations(nImTransOpt,TransOpt,Image,NrPixels);
 		for (i=0;i<(NrPixels*NrPixels);i++) ImgCorrBCTemp[i]=Image[i];
