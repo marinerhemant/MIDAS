@@ -23,7 +23,7 @@ for line in lines:
     if line.startswith('StartFileNrFirstLayer '):
         fNr = line.split()[1]
     if line.startswith('Padding '):
-        pad = line.split()[1]
+        pad = int(line.split()[1])
     if line.startswith('Ext '):
         ext = line.split()[1]
     
