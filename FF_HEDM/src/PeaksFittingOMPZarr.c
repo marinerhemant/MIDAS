@@ -1301,7 +1301,7 @@ void main(int argc, char *argv[]){
         int errorpLoc = 0;
         zip_t* archLoc = NULL;
         archLoc = zip_open(DataFN,0,&errorpLoc);
-        if (errorpLoc!=NULL) return 1;
+        if (errorpLoc!=NULL) printf("File opening in parallel did not work. Undefined behavior now.\n");
         struct zip_stat* fifo = NULL;
         fifo = calloc(16384, sizeof(int));
         zip_stat_init(fifo);
