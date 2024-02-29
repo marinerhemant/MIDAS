@@ -1,6 +1,6 @@
 import subprocess
 import sys, os
-from pprint import print as print
+from pprint import pprint as print
 
 env = dict(os.environ)
 midas_path = os.path.expanduser("~/.MIDAS")
