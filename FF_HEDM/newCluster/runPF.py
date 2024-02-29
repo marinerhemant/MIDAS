@@ -210,7 +210,6 @@ if nMerges != 0:
 		startScanNr = scanNr*nMerges
 		shutil.move(f'InputAllExtraInfoFittingAll{startScanNr}.csv',f'original_InputAllExtraInfoFittingAll{startScanNr}.csv')
 		spots = np.genfromtxt(f'original_InputAllExtraInfoFittingAll{startScanNr}.csv',skip_header=1)
-		
 		if len(spots.shape) < 2:
 			spots = np.zeros((2,14))
 			spots[:,2] = -360 # Hook to keep sanity
