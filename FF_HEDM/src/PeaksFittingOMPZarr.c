@@ -1329,6 +1329,7 @@ void main(int argc, char *argv[]){
         free(fifo);
         close(fLoc);
         free(locArr);
+        free(archLoc);
 
 		DoImageTransformations(nImTransOpt,TransOpt,Image,NrPixels);
 		for (i=0;i<(NrPixels*NrPixels);i++) ImgCorrBCTemp[i]=Image[i];
