@@ -525,7 +525,7 @@ int main(int argc, char *argv[])
     int skipFrame=0;
     int locOmegaRanges, nOmegaRanges=0;
     int locBoxSizes, nBoxSizes=0;
-    int locRingThres, nRings=0;
+    int locRingThresh, nRings=0;
     while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
         if (strstr(finfo->name,"analysis/process/analysis_parameters/RingThresh/0.0")!=NULL){
             locRingThresh = count;
@@ -1180,7 +1180,6 @@ int main(int argc, char *argv[])
     }
     free(s);
     free(data);
-    printf("nRings: %d\n",nRings)
 
     sprintf(folder,"%s",Folder);
     int nOmeRanges = nOmegaRanges;
