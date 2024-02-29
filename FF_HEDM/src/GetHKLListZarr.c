@@ -16,6 +16,7 @@
 #include <stdlib.h> 
 #include <zip.h> 
 #include <sys/stat.h>
+#include <errno.h>
 
 static inline
 double**
