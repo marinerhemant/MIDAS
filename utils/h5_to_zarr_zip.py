@@ -1,7 +1,6 @@
 # Modified code from https://gist.github.com/rsignell-usgs/49c214c9aaab4935e15a83bf3e228d03/revisions
 # Adapted by Hemant Sharma to copy over all HDF5 datasets, no linking.
 
-import logging
 import numpy as np
 import h5py
 import zarr
@@ -15,9 +14,6 @@ from numcodecs import Blosc #Default compression
 import warnings
 warnings.filterwarnings("ignore")
 
-lggr = logging.getLogger('h5-to-zarr')
-lggr.addHandler(logging.NullHandler())
-
 class Hdf5ToZarr:
     """Translate the content of one HDF5 file into Zarr metadata.
     HDF5 groups become Zarr groups. HDF5 datasets become Zarr arrays. Zarr array
@@ -28,16 +24,11 @@ class Hdf5ToZarr:
         Input HDF5 file as a string or file-like Python object.
     store : MutableMapping
         Zarr store.
-    xarray : bool, optional
-        Produce atributes required by the `xarray <http://xarray.pydata.org>`_
-        package to correctly identify dimensions (HDF5 dimension scales) of a
-        Zarr array. Default is ``False``.
     """
 
-    def __init__(self, h5f, store, xarray=False):
+    def __init__(self, h5f, store):
         # Open HDF5 file in read mode...
         self._h5f = h5py.File(h5f, mode='r')
-        self._xr = xarray
 
         # Create Zarr store's root group...
         self._zroot = zarr.group(store=store, overwrite=True)
@@ -83,7 +74,6 @@ class Hdf5ToZarr:
             compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
             print(f'Processing dataset: {h5obj.name}')
             # Create a Zarr array equivalent to this HDF5 dataset...
-            locData = h5obj[()]
             if ('data' in h5obj.name):
                 chunksize = (1,h5obj.shape[1],h5obj.shape[2])
             elif ('dark' in h5obj.name):
@@ -100,11 +90,6 @@ class Hdf5ToZarr:
                                             compression=compressor,
                                             overwrite=True)
             self.transfer_attrs(h5obj, za)
-
-            if self._xr:
-                # Do this for xarray...
-                adims = self._get_array_dims(h5obj)
-                za.attrs['_ARRAY_DIMENSIONS'] = adims
 
             za[:] = h5obj[()]
 
@@ -190,11 +175,6 @@ class Hdf5ToZarr:
             return stinfo
 
 if __name__ == '__main__':
-    lggr.setLevel(logging.DEBUG)
-    lggr_handler = logging.StreamHandler()
-    lggr_handler.setFormatter(logging.Formatter(
-        '%(levelname)s:%(name)s:%(funcName)s:%(message)s'))
-    lggr.addHandler(lggr_handler)
     fn = sys.argv[1]
     outzip = '.'.join(fn.split('h5')[:-1])+'zip'
     zipF = Path(outzip)
@@ -203,7 +183,7 @@ if __name__ == '__main__':
 
     with fsspec.open(fn,mode='rb', anon=False, requester_pays=True,default_fill_cache=False) as f:
         storeZip = zarr.ZipStore(outzip)
-        h5chunkszip = Hdf5ToZarr(f, storeZip, xarray=True)
+        h5chunkszip = Hdf5ToZarr(f, storeZip)
         h5chunkszip.translate()
         storeZip.close()
 
