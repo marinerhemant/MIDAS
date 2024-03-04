@@ -1723,7 +1723,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	CreateNumberedFilenameW("BestPos_", (int) SpotID, 9, ".csv", fn2);
 	MakeFullFileName(ffn2, Params.OutputFolder, fn2);
 	WriteBestMatch(ffn, GrainMatches, matchNr, AllGrainSpots, rownr, ffn2);
-	printf("ID: %d, Confidence: %lf\n",SpotIDs,fracMatches);
+	printf("ID: %d, Confidence: %lf, nPlanes: %d, nOrients: %d\n",SpotIDs,fracMatches,nPlaneNormals,nOrient);
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 	FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
 	FreeMemMatrix( TheorSpots, nRowsPerGrain);
