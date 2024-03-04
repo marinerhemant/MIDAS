@@ -526,6 +526,7 @@ int main(int argc, char *argv[])
 			totcount+=counten;
 			nGrainsMatched[i] = counten;
 			if (counten < MinNrSpots){
+				printf("%d\n",counten);
 				continue;
 			}
 			for (j=0;j<counten;j++){
