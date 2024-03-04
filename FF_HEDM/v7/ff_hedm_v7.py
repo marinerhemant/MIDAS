@@ -32,7 +32,6 @@ subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/midas2zip.py")+'
 f_h52zarr.close()
 
 print(f'Cleanup of: {outFStem}')
-# Delete the intermediate h5 file
 shutil.remove(f'{outFStem}')
 
 print("Generating HKLs.")
