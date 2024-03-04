@@ -650,6 +650,7 @@ int main(int argc, char *argv[])
 	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
 	double **FinalMatrix;
 	FinalMatrix = allocMatrix(nGrainPositions,47);
+	printf("%d\n",nGrainPositions);
 	for (i=0;i<nGrainPositions;i++){
 		rown = GrainPositions[i];
 		if (rown >= nrIDs){
