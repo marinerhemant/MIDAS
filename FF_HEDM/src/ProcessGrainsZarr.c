@@ -286,6 +286,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             SGNr = *(int *)&data[0];
+			printf("%d\n",SGNr);
             free(arr);
             free(data);
         }
@@ -297,6 +298,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             Twin = *(int *)&data[0];
+			printf("%d\n",Twin);
             free(arr);
             free(data);
         }
@@ -308,6 +310,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             MinNrSpots = *(int *)&data[0];
+			printf("%d\n",MinNrSpots);
             free(arr);
             free(data);
         }
@@ -457,13 +460,11 @@ int main(int argc, char *argv[])
 	size_t readKey, readOP, readProcess;
 	readProcess = fread(IDsPerGrain,NR_MAX_IDS_PER_GRAIN*nrIDs*sizeof(int),1,fileProcessKey);
 	fclose(fileProcessKey);
-	int bad = 0;
 	for (i=0;i<nrIDs;i++){
 		readKey = fread(keyID,2*sizeof(int),1,fileKey);
 		IDsToKeep[i] = true;
 		if (keyID[0] == 0){
 			IDsToKeep[i] = false;
-			bad++;
 		}
 		NrIDsPerID[i] = keyID[1];
 		readOP = fread(OPThis,27*sizeof(double),1,fileOPFit);
@@ -477,7 +478,6 @@ int main(int argc, char *argv[])
 		}
 		Radiuses[i] = OPThis[25];
 	}
-	printf("%d\n",bad);
 	fclose(fileKey);
 	fclose(fileOPFit);
 	int StartingID,ThisID1,ThisID2;
