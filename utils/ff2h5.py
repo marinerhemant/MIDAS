@@ -9,8 +9,13 @@ def geReader(geFN,header=8192,numPxY=2048,numPxZ=2048,bytesPerPx=2):
     nFrames = (sz-header) // (bytesPerPx*numPxY*numPxZ)
     return np.fromfile(geFN,dtype=np.uint16,offset=header,count=(sz-header)).reshape((nFrames,numPxY,numPxZ))
 
+def h5Reader(h5FN,field):
+    with h5py.File(h5FN,'r') as hf:
+        return hf[field][()]
+
 psFN = sys.argv[1]
 lines = open(psFN).readlines()
+InputFN = ''
 for line in lines:
     if line.startswith('SeedFolder '):
         resultDir = line.split()[1]
@@ -26,14 +31,27 @@ for line in lines:
         pad = int(line.split()[1])
     if line.startswith('Ext '):
         ext = line.split()[1]
-    
-geFN = rawFolder + '/' + fStem + '_' + fNr.zfill(pad) + ext
-outfn = rawFolder + '/' + fStem + '_' + fNr.zfill(pad)
+    if line.startswith('InputFile '):
+        InputFN = line.split()[1]
+
+
+if len(InputFN)==0:
+    geFN = rawFolder + '/' + fStem + '_' + fNr.zfill(pad) + ext
+    outfn = rawFolder + '/' + fStem + '_' + fNr.zfill(pad)
+    geData = geReader(geFN)
+    darkData = geReader(darkFN)
+    print(f'Input: {geFN}')
+    print(f'Dark: {darkFN}')
+else:
+    h5FN = rawFolder+'/'+InputFN
+    outfn = rawFolder+'/'+InputFN+'.analysis'
+    geData = h5Reader(h5FN,field="/exchange/data")
+    darkData = h5Reader(h5FN,field="/exchange/dark")
+    print(f'Input: {h5FN}')
+    print(f'Dark: {h5FN}')
+
 os.makedirs(resultDir,exist_ok=True)
-geData = geReader(geFN)
-darkData = geReader(darkFN)
-print(f'Input: {geFN}')
-print(f'Dark: {darkFN}')
+
 print(f'ResultDir: {resultDir}')
 print(f'Out: {outfn}')
 hf = h5py.File(outfn+'.h5','w')

@@ -1,5 +1,5 @@
 import subprocess
-import sys, os
+import sys, os, shutil
 from pprint import pprint as print
 
 env = dict(os.environ)
@@ -9,10 +9,10 @@ env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas
 psFN = sys.argv[1]
 numProcs = sys.argv[2]
 print("Generating hdf5.")
-f_ge2h5 = open('ge2h5_out.csv','w')
-subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/ge2h5.py")+' '+psFN,shell=True,stdout=f_ge2h5)
+f_ge2h5 = open('ff2h5_out.csv','w')
+subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/ff2h5.py")+' '+psFN,shell=True,stdout=f_ge2h5)
 f_ge2h5.close()
-f_ge2h5 = open('ge2h5_out.csv','r')
+f_ge2h5 = open('ff2h5_out.csv','r')
 lines = f_ge2h5.readlines()
 f_ge2h5.close()
 for line in lines:
@@ -25,6 +25,9 @@ print("Generating ZarrZip file.")
 f_h52zarr = open('h5_to_zarr_zip.csv','w')
 subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/h5_to_zarr_zip.py")+' '+outFStem+'.h5',shell=True,stdout=f_h52zarr)
 f_h52zarr.close()
+
+# Delete the intermediate h5 file
+shutil.remove(f'{outFStem}.h5')
 
 print("Generating HKLs.")
 f_hkls = open('hkls_out.csv','w')
