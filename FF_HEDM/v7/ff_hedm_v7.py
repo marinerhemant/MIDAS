@@ -12,15 +12,16 @@ if len(sys.argv)<3:
 elif len(sys.argv)==4:
     psFN = sys.argv[1]
     dataFN = sys.argv[2]
-    numProcs = sys.argv[3]
+    numProcs = int(sys.argv[3])
     strRun = f' {psFN} {dataFN}'
     print("Generating combined MIDAS file from HDF and ps files.")
-else:
+elif len(sys.argv)==3:
     psFN = sys.argv[1]
-    numProcs = sys.argv[2]
+    numProcs = int(sys.argv[2])
     strRun = f' {psFN}'
     print("Generating combined MIDAS file from GE and ps files.")
 f_ge2h5 = open('ff2midas_out.csv','w')
+print('python '+os.path.expanduser("~/opt/MIDAS/utils/ff2midas.py")+strRun)
 subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/ff2midas.py")+strRun,shell=True,stdout=f_ge2h5)
 f_ge2h5.close()
 f_ge2h5 = open('ff2midas_out.csv','r')
