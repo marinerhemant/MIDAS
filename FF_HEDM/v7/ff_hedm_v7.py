@@ -6,16 +6,22 @@ env = dict(os.environ)
 midas_path = os.path.expanduser("~/.MIDAS")
 env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
 
-if len(sys.argv)< 4:
+if len(sys.argv)<3:
     print("Provide a parameter file, data file and numProcs to use.")
     sys.exit()
-else:
+elif len(sys.argv)==4:
     psFN = sys.argv[1]
     dataFN = sys.argv[2]
     numProcs = sys.argv[3]
-print("Generating combined MIDAS file.")
+    strRun = f' {psFN} {dataFN}'
+    print("Generating combined MIDAS file from HDF and ps files.")
+else:
+    psFN = sys.argv[1]
+    numProcs = sys.argv[2]
+    strRun = f' {psFN}'
+    print("Generating combined MIDAS file from GE and ps files.")
 f_ge2h5 = open('ff2midas_out.csv','w')
-subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/ff2midas.py")+' '+psFN+ ' '+dataFN,shell=True,stdout=f_ge2h5)
+subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/ff2midas.py")+strRun,shell=True,stdout=f_ge2h5)
 f_ge2h5.close()
 f_ge2h5 = open('ff2midas_out.csv','r')
 lines = f_ge2h5.readlines()
