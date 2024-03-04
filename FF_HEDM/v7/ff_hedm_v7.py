@@ -7,7 +7,7 @@ midas_path = os.path.expanduser("~/.MIDAS")
 env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
 
 if len(sys.argv)<3:
-    print("Provide a parameter file, data file and numProcs to use.")
+    print("Provide a (required)parameter file, (optional)data file and (required)numProcs to use.")
     sys.exit()
 elif len(sys.argv)==4:
     psFN = sys.argv[1]
