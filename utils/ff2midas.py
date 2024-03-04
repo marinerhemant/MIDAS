@@ -31,8 +31,6 @@ def h5Reader(h5FN,field):
 
 lines = open(psFN).readlines()
 for line in lines:
-    if line.startswith('SeedFolder '):
-        resultDir = line.split()[1]
     if line.startswith('RawFolder '):
         rawFolder = line.split()[1]
     if line.startswith('Dark '):
