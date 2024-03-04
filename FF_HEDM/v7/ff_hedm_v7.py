@@ -27,7 +27,7 @@ subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/h5_to_zarr_zip.p
 f_h52zarr.close()
 
 # Delete the intermediate h5 file
-shutil.remove(f'{outFStem}.MIDAS')
+shutil.remove(f'{outFStem}')
 
 print("Generating HKLs.")
 f_hkls = open('hkls_out.csv','w')
