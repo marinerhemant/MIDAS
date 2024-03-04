@@ -13,9 +13,16 @@ def h5Reader(h5FN,field):
     with h5py.File(h5FN,'r') as hf:
         return hf[field][()]
 
+if len(sys.argv)<2:
+    print("Must provide a parameter file. Optionally a data file.")
+    sys.exit()
 psFN = sys.argv[1]
+if len(sys.argv)==3:
+    InputFN = sys.argv[2]
+else:
+    InputFN = ''
+
 lines = open(psFN).readlines()
-InputFN = ''
 for line in lines:
     if line.startswith('SeedFolder '):
         resultDir = line.split()[1]
