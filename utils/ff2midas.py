@@ -62,8 +62,6 @@ else:
     print(f'Input: {h5FN}')
     print(f'Dark: {h5FN}')
 
-os.makedirs(resultDir,exist_ok=True)
-
 print(f'ResultDir: {resultDir}')
 print(f'Out: {outfn}.MIDAS')
 hf = h5py.File(outfn+'.MIDAS','w')
