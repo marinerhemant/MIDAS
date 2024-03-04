@@ -54,7 +54,7 @@ os.makedirs(resultDir,exist_ok=True)
 
 print(f'ResultDir: {resultDir}')
 print(f'Out: {outfn}')
-hf = h5py.File(outfn+'.h5','w')
+hf = h5py.File(outfn+'.MIDAS','w')
 exc = hf.create_group('exchange')
 data = exc.create_dataset('data',shape=geData.shape,dtype=np.uint16,data=geData)
 dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,data=darkData)

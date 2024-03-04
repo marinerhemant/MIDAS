@@ -99,7 +99,7 @@ class Hdf5ToZarr:
 
 if __name__ == '__main__':
     fn = sys.argv[1]
-    outzip = '.'.join(fn.split('h5')[:-1])+'zip'
+    outzip = fn+'.zip'
     zipF = Path(outzip)
     if zipF.exists():
         shutil.move(outzip,outzip+'.old')
