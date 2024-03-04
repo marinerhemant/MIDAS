@@ -21,7 +21,6 @@ elif len(sys.argv)==3:
     strRun = f' {psFN}'
     print("Generating combined MIDAS file from GE and ps files.")
 f_ge2h5 = open('ff2midas_out.csv','w')
-print('python '+os.path.expanduser("~/opt/MIDAS/utils/ff2midas.py")+strRun)
 subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/ff2midas.py")+strRun,shell=True,stdout=f_ge2h5)
 f_ge2h5.close()
 f_ge2h5 = open('ff2midas_out.csv','r')
