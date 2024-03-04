@@ -50,10 +50,7 @@ print(f"Generating ZarrZip file. Time till now: {time.time()-t0}")
 f_h52zarr = open('midas2zip_out.csv','w')
 subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/midas2zip.py")+' '+outFStem,shell=True,stdout=f_h52zarr)
 f_h52zarr.close()
-
-print(f'Cleanup of: {outFStem}')
 os.remove(f'{outFStem}')
-
 print(f"Generating HKLs. Time till now: {time.time()-t0}")
 f_hkls = open('hkls_out.csv','w')
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+' '+outFStem+'.zip',shell=True,env=env,stdout=f_hkls)
