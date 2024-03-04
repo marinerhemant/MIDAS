@@ -43,8 +43,6 @@ for line in lines:
         pad = int(line.split()[1])
     if line.startswith('Ext '):
         ext = line.split()[1]
-    if line.startswith('InputFile '):
-        InputFN = line.split()[1]
 
 
 if len(InputFN)==0:
