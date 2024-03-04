@@ -6,13 +6,18 @@ env = dict(os.environ)
 midas_path = os.path.expanduser("~/.MIDAS")
 env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
 
-psFN = sys.argv[1]
-numProcs = sys.argv[2]
-print("Generating hdf5.")
-f_ge2h5 = open('ff2h5_out.csv','w')
-subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/ff2h5.py")+' '+psFN,shell=True,stdout=f_ge2h5)
+if len(sys.argv)< 4:
+    print("Provide a parameter file, data file and numProcs to use.")
+    sys.exit()
+else:
+    psFN = sys.argv[1]
+    dataFN = sys.argv[2]
+    numProcs = sys.argv[3]
+print("Generating combined .MIDAS file.")
+f_ge2h5 = open('ff2midas_out.csv','w')
+subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/ff2midas.py")+' '+psFN+ ' '+dataFN,shell=True,stdout=f_ge2h5)
 f_ge2h5.close()
-f_ge2h5 = open('ff2h5_out.csv','r')
+f_ge2h5 = open('ff2midas_out.csv','r')
 lines = f_ge2h5.readlines()
 f_ge2h5.close()
 for line in lines:
@@ -22,10 +27,12 @@ for line in lines:
         resultDir = line.split()[1]
 startdir = os.getcwd()
 print("Generating ZarrZip file.")
-f_h52zarr = open('h5_to_zarr_zip.csv','w')
-subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/h5_to_zarr_zip.py")+' '+outFStem,shell=True,stdout=f_h52zarr)
+f_h52zarr = open('midas2zip_out.csv','w')
+subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/midas2zip.py")+' '+outFStem,shell=True,stdout=f_h52zarr)
 f_h52zarr.close()
 
+print(outFStem)
+sys.exit()
 # Delete the intermediate h5 file
 shutil.remove(f'{outFStem}')
 
