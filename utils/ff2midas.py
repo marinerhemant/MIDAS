@@ -51,14 +51,14 @@ for line in lines:
 
 if len(InputFN)==0:
     geFN = rawFolder + '/' + fStem + '_' + fNr.zfill(pad) + ext
-    outfn = rawFolder + '/' + fStem + '_' + fNr.zfill(pad)
+    outfn = resultDir + '/' + fStem + '_' + fNr.zfill(pad)
     geData = geReader(geFN)
     darkData = geReader(darkFN)
     print(f'Input: {geFN}')
     print(f'Dark: {darkFN}')
 else:
     h5FN = rawFolder+'/'+InputFN
-    outfn = rawFolder+'/'+InputFN+'.analysis'
+    outfn = resultDir+'/'+InputFN+'.analysis'
     geData = h5Reader(h5FN,field="/exchange/data")
     darkData = h5Reader(h5FN,field="/exchange/dark")
     print(f'Input: {h5FN}')
