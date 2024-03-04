@@ -1,5 +1,5 @@
 import subprocess
-import sys, os, shutil
+import sys, os
 from pprint import pprint as print
 
 env = dict(os.environ)
@@ -38,7 +38,7 @@ subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/midas2zip.py")+'
 f_h52zarr.close()
 
 print(f'Cleanup of: {outFStem}')
-shutil.remove(f'{outFStem}')
+os.remove(f'{outFStem}')
 
 print("Generating HKLs.")
 f_hkls = open('hkls_out.csv','w')
