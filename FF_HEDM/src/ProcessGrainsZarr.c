@@ -322,6 +322,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             NumPhases = *(int *)&data[0];
+			printf("%d\n",NumPhases);
             free(arr);
             free(data);
         }
@@ -333,6 +334,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             PhaseNr = *(int *)&data[0];
+			printf("%d\n",PhaseNr);
             free(arr);
             free(data);
         }
@@ -344,6 +346,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             GlobalPosition = *(double *)&data[0];
+			printf("%lf\n",GlobalPosition);
             free(arr);
             free(data);
         }
@@ -355,6 +358,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             BeamThickness = *(double *)&data[0];
+			printf("%lf\n",BeamThickness);
             free(arr);
             free(data);
         }
@@ -366,7 +370,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(s,data,dsize);
             int iter;
-            for (iter=0;iter<6;iter++) LatCin[iter] = *(double *)&data[iter*sizeof(double)];
+            for (iter=0;iter<6;iter++) {LatCin[iter] = *(double *)&data[iter*sizeof(double)]; printf("%lf\n",LatCin[iter]);}
         }
         if (strstr(finfo->name,"analysis/process/analysis_parameters/Lsd/0")!=NULL){
             arr = calloc(finfo->size + 1, sizeof(char)); 
@@ -376,6 +380,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             Distance = *(double *)&data[0];
+			printf("%lf\n",Distance);
             free(arr);
             free(data);
         }
@@ -387,6 +392,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             wavelength = *(double *)&data[0];
+			printf("%lf\n",wavelength);
             free(arr);
             free(data);
         }
