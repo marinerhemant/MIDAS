@@ -2,6 +2,24 @@ import subprocess
 import sys, os
 from pprint import pprint as print
 import time
+import argparse
+
+class MyParser(argparse.ArgumentParser):
+	def error(self, message):
+		sys.stderr.write('error: %s\n' % message)
+		self.print_help()
+		sys.exit(2)
+
+parser = MyParser(description='''Far-field HEDM analysis using MIDAS. V7.0.0, contact hsharma@anl.gov''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('-resultFolder', type=str, required=True, help='Folder where you want to save results')
+parser.add_argument('-paramFN', type=str, required=True, help='Parameter file name')
+parser.add_argument('-dataFN', type=str, required=False, default='', help='DataFileName')
+parser.add_argument('-nCPUs', type=int, required=True, help='Number of CPU cores to use')
+args, unparsed = parser.parse_known_args()
+resultDir = args.resultFolder
+psFN = args.paramFN
+dataFN = args.dataFN
+numProcs = int(args.nCPUs)
 
 t0 = time.time()
 
@@ -9,20 +27,13 @@ env = dict(os.environ)
 midas_path = os.path.expanduser("~/.MIDAS")
 env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
 
-if len(sys.argv)<3:
-    print("Provide a (required)parameter file, (optional)data file and (required)numProcs to use.")
-    sys.exit()
-elif len(sys.argv)==4:
-    psFN = sys.argv[1]
-    dataFN = sys.argv[2]
-    numProcs = int(sys.argv[3])
-    strRun = f' {psFN} {dataFN}'
+if len(dataFN)>0:
+    strRun = f' -paramFN={psFN} -dataFN={dataFN} -resultFolder={resultDir}'
     print("Generating combined MIDAS file from HDF and ps files.")
-elif len(sys.argv)==3:
-    psFN = sys.argv[1]
-    numProcs = int(sys.argv[2])
-    strRun = f' {psFN}'
+else:
+    strRun = f' -paramFN={psFN} -resultFolder={resultDir}'
     print("Generating combined MIDAS file from GE and ps files.")
+
 f_ge2h5 = open('ff2midas_out.csv','w')
 subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/ff2midas.py")+strRun,shell=True,stdout=f_ge2h5)
 f_ge2h5.close()

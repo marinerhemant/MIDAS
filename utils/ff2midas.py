@@ -3,6 +3,22 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import sys
+import argparse
+
+class MyParser(argparse.ArgumentParser):
+	def error(self, message):
+		sys.stderr.write('error: %s\n' % message)
+		self.print_help()
+		sys.exit(2)
+
+parser = MyParser(description='''ff2midas.py''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('-resultFolder', type=str, required=True, help='Folder where you want to save results')
+parser.add_argument('-paramFN', type=str, required=True, help='Parameter file name')
+parser.add_argument('-dataFN', type=str, required=False, default='', help='DataFileName')
+args, unparsed = parser.parse_known_args()
+resultDir = args.resultFolder
+psFN = args.paramFN
+InputFN = args.dataFN
 
 def geReader(geFN,header=8192,numPxY=2048,numPxZ=2048,bytesPerPx=2):
     sz = os.path.getsize(geFN)
@@ -12,15 +28,6 @@ def geReader(geFN,header=8192,numPxY=2048,numPxZ=2048,bytesPerPx=2):
 def h5Reader(h5FN,field):
     with h5py.File(h5FN,'r') as hf:
         return hf[field][()]
-
-if len(sys.argv)<2:
-    print("Must provide a parameter file. Optionally a data file.")
-    sys.exit()
-psFN = sys.argv[1]
-if len(sys.argv)==3:
-    InputFN = sys.argv[2]
-else:
-    InputFN = ''
 
 lines = open(psFN).readlines()
 for line in lines:
