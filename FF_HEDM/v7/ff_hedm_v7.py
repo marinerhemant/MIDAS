@@ -23,11 +23,11 @@ for line in lines:
 startdir = os.getcwd()
 print("Generating ZarrZip file.")
 f_h52zarr = open('h5_to_zarr_zip.csv','w')
-subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/h5_to_zarr_zip.py")+' '+outFStem+'.h5',shell=True,stdout=f_h52zarr)
+subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/h5_to_zarr_zip.py")+' '+outFStem,shell=True,stdout=f_h52zarr)
 f_h52zarr.close()
 
 # Delete the intermediate h5 file
-shutil.remove(f'{outFStem}.h5')
+shutil.remove(f'{outFStem}.MIDAS')
 
 print("Generating HKLs.")
 f_hkls = open('hkls_out.csv','w')
