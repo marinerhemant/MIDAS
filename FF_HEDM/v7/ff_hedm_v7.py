@@ -13,7 +13,7 @@ else:
     psFN = sys.argv[1]
     dataFN = sys.argv[2]
     numProcs = sys.argv[3]
-print("Generating combined .MIDAS file.")
+print("Generating combined MIDAS file.")
 f_ge2h5 = open('ff2midas_out.csv','w')
 subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/ff2midas.py")+' '+psFN+ ' '+dataFN,shell=True,stdout=f_ge2h5)
 f_ge2h5.close()
@@ -31,8 +31,7 @@ f_h52zarr = open('midas2zip_out.csv','w')
 subprocess.call('python '+os.path.expanduser("~/opt/MIDAS/utils/midas2zip.py")+' '+outFStem,shell=True,stdout=f_h52zarr)
 f_h52zarr.close()
 
-print(outFStem)
-sys.exit()
+print(f'Cleanup of: {outFStem}')
 # Delete the intermediate h5 file
 shutil.remove(f'{outFStem}')
 
