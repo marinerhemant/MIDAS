@@ -286,7 +286,6 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             SGNr = *(int *)&data[0];
-			printf("%d\n",SGNr);
             free(arr);
             free(data);
         }
@@ -298,7 +297,6 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             Twin = *(int *)&data[0];
-			printf("%d\n",Twin);
             free(arr);
             free(data);
         }
@@ -310,7 +308,6 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             MinNrSpots = *(int *)&data[0];
-			printf("%d\n",MinNrSpots);
             free(arr);
             free(data);
         }
@@ -322,7 +319,6 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             NumPhases = *(int *)&data[0];
-			printf("%d\n",NumPhases);
             free(arr);
             free(data);
         }
@@ -334,7 +330,6 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             PhaseNr = *(int *)&data[0];
-			printf("%d\n",PhaseNr);
             free(arr);
             free(data);
         }
@@ -346,7 +341,6 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             GlobalPosition = *(double *)&data[0];
-			printf("%lf\n",GlobalPosition);
             free(arr);
             free(data);
         }
@@ -358,7 +352,6 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             BeamThickness = *(double *)&data[0];
-			printf("%lf\n",BeamThickness);
             free(arr);
             free(data);
         }
@@ -370,7 +363,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(s,data,dsize);
             int iter;
-            for (iter=0;iter<6;iter++) {LatCin[iter] = *(double *)&data[iter*sizeof(double)]; printf("%lf\n",LatCin[iter]);}
+            for (iter=0;iter<6;iter++) LatCin[iter] = *(double *)&data[iter*sizeof(double)];
         }
         if (strstr(finfo->name,"analysis/process/analysis_parameters/Lsd/0")!=NULL){
             arr = calloc(finfo->size + 1, sizeof(char)); 
@@ -380,7 +373,6 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             Distance = *(double *)&data[0];
-			printf("%lf\n",Distance);
             free(arr);
             free(data);
         }
@@ -392,7 +384,6 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             wavelength = *(double *)&data[0];
-			printf("%lf\n",wavelength);
             free(arr);
             free(data);
         }
@@ -526,7 +517,6 @@ int main(int argc, char *argv[])
 			totcount+=counten;
 			nGrainsMatched[i] = counten;
 			if (counten < MinNrSpots){
-				printf("%d\n",counten);
 				continue;
 			}
 			for (j=0;j<counten;j++){
@@ -651,7 +641,6 @@ int main(int argc, char *argv[])
 	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
 	double **FinalMatrix;
 	FinalMatrix = allocMatrix(nGrainPositions,47);
-	printf("%d\n",nGrainPositions);
 	for (i=0;i<nGrainPositions;i++){
 		rown = GrainPositions[i];
 		if (rown >= nrIDs){
