@@ -1447,7 +1447,7 @@ WriteBestMatchBin(RealType **GrainMatches,int ngrains,RealType **AllGrainSpots,i
 		if (AllGrainSpots[r][15] == 1.0 ) {
 			int idxx = 0;
 			for (c = 0; c < N_COL_GRAINSPOTS; c++) {
-				if (c!=1) {outArr[r*N_COL_GRAINSPOTS + idxx] = AllGrainSpots[r][c]; idxx++;}
+				if (c!=1) {outArr[r*16 + idxx] = AllGrainSpots[r][c]; idxx++;}
 			}
 		}
 	}
