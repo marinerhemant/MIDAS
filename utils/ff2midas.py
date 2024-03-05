@@ -53,7 +53,7 @@ if len(InputFN)==0:
     print(f'Input: {geFN}')
     print(f'Dark: {darkFN}')
 else:
-    h5FN = rawFolder+'/'+InputFN
+    h5FN = InputFN
     outfn = resultDir+'/'+InputFN+'.analysis'
     geData = h5Reader(h5FN,field="/exchange/data")
     darkData = h5Reader(h5FN,field="/exchange/dark")
