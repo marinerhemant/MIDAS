@@ -1766,7 +1766,6 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
 		return 1;
 	}
 	double enTm = omp_get_wtime() - sttm;
-	printf("Finished, time elapsed: %lf seconds.\n",enTm);
 	BestMatches[SpotIDIdx][0] = SpotIDIdx+1;
 	BestMatches[SpotIDIdx][1] = SpotID;
 	BestMatches[SpotIDIdx][2] = bestnTspotsIsp;
@@ -1778,7 +1777,7 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
 	// MakeFullFileName(ffn2, Params.OutputFolder, fn2);
 	// WriteBestMatch(ffn, GrainMatches, matchNr, AllGrainSpots, rownr, ffn2);
 	WriteBestMatchBin(GrainMatches, matchNr, AllGrainSpots, rownr, Params.OutputFolder, offsetLoc);
-	printf("ID: %d, Confidence: %lf, nExp: %lf, nObs: %lf, nPlanes: %d\n",SpotIDs,fracMatches,GrainMatches[0][12],GrainMatches[0][13],nPlaneNormals);
+	printf("ID: %d, Confidence: %lf, nExp: %lf, nObs: %lf, nPlanes: %d, time: %lfs.\n",SpotIDs,fracMatches,GrainMatches[0][12],GrainMatches[0][13],nPlaneNormals,enTm);
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 	FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
 	FreeMemMatrix( TheorSpots, nRowsPerGrain);
