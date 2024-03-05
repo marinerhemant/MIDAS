@@ -591,6 +591,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             MinMatchesToAcceptFrac = *(double *)&data[0];
+            printf('MinMatches %lf\n',MinMatchesToAcceptFrac);
             free(arr);
             free(data);
         }
