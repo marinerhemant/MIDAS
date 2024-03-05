@@ -1644,6 +1644,7 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc, int idNr, int t
 	}
 	if ( nPlaneNormals == 0 ) {
 		if (usingFriedelPair == 1){
+			return 1;
 		}
 		usingFriedelPair = 0;
 		GenerateIdealSpots(ys, zs, RingTtheta[ringnr], eta, Params.RingRadii[ringnr], Params.Rsample, Params.Hbeam,
