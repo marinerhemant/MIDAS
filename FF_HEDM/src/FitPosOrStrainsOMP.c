@@ -1555,8 +1555,7 @@ int main(int argc, char *argv[])
 		FILE *inpF;
 		inpF = fopen(InpFN,"rb");
 		size_t offst1 = rowNr;
-		offst1 *= 15;
-		offst1 *= sizeof(double);
+		offst1 *= 15*sizeof(double);
 		double *locArr;
 		locArr = malloc(15*sizeof(*locArr));
 		fread(locArr,15*sizeof(double),1,inpF);
@@ -1586,6 +1585,7 @@ int main(int argc, char *argv[])
 		IA0 = locArr[0];
 		for (i=0;i<9;i++) Orient0[i] = locArr[i+1];
 		for (i=0;i<3;i++) Pos0[i] = locArr[i+10];
+		printf("%lf %lf %lf\n",Pos0[0],Pos0[1],Pos0[2]);
 		NrExpected = locArr[13];
 		NrObserved = locArr[14];
 		completeness = NrObserved/NrExpected;
@@ -1596,8 +1596,7 @@ int main(int argc, char *argv[])
 		locArr2 = malloc((int)NrObserved*16*sizeof(*locArr2));
 		size_t offst2 = rowNr;
 		offst2 *= MaxNHKLS;
-		offst2 *= 16;
-		offst2 *= sizeof(double);
+		offst2 *= 16*sizeof(double);
 		FILE *inpF2;
 		inpF2 = fopen(InpFN2,"rb");
 		fread(locArr2,(int)NrObserved*16*sizeof(double),1,inpF2);
