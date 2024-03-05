@@ -1699,10 +1699,9 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
 					bestnTspotsPos = nTspots;
 				}
 				double fracMatchesThis = (RealType) ((RealType)nMatches)/((RealType)nTspots);
-				//~ printf("Reached here 3, %lf %lf\n",bestnMatchesPos,bestnTspotsPos); fflush(stdout);
 				// We should be choosing the best one here!!!!
 				if ( nMatches >= MinMatchesToAccept &&
-					 fracMatchesThis > bestFracTillNow) {
+					 fracMatchesThis >= bestFracTillNow) {
 					bestMatchFound = 1;
 					for (i = 0 ;  i < 9 ; i ++) GrainMatchesT[0][i] = orThis[i/3][i%3];
 					GrainMatchesT[0][9]  = ga;
@@ -1716,7 +1715,7 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
 						AllGrainSpotsT[r][15] = 1;
 					}
 					CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance );
-					if (GrainMatchesT[0][15] < MinInternalAngle){
+					if (fracMatchesThis > bestFracTillNow || GrainMatchesT[0][15] < MinInternalAngle){
 						bestFracTillNow = fracMatchesThis;
 						MinInternalAngle = GrainMatchesT[0][15];
 						rownr = nTspots;
