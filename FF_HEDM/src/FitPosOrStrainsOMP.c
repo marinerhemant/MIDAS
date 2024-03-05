@@ -1585,7 +1585,7 @@ int main(int argc, char *argv[])
 		IA0 = locArr[0];
 		for (i=0;i<9;i++) Orient0[i] = locArr[i+1];
 		for (i=0;i<3;i++) Pos0[i] = locArr[i+10];
-		printf("%lf %lf %lf\n",Pos0[0],Pos0[1],Pos0[2]);
+		printf("%d %lf %lf %lf\n",rowNr,Pos0[0],Pos0[1],Pos0[2]);
 		NrExpected = locArr[13];
 		NrObserved = locArr[14];
 		completeness = NrObserved/NrExpected;
