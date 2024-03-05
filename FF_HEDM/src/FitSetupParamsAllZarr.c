@@ -531,7 +531,7 @@ int main(int argc, char *argv[])
     double LatticeConstant[6],Wavelength,MaxRingRad,Lsd,MaxTtheta,TthetaTol,ybc,zbc,px,tyIn,tzIn, BeamSize = 0;
     double tx,tolTilts=1,tolLsd=5000,tolBC=1,p0,p1,p2,p3,RhoD,wedge,MinEta;
     int cs=0,DoFit=0,RingToIndex;
-    double Rsample, Hbeam,MinMatchesToAcceptFrac,MinOmeSpotIDsToIndex,MaxOmeSpotIDsToIndex,Width;
+    double Rsample, Hbeam,MinMatchesToAcceptFrac=0,MinOmeSpotIDsToIndex,MaxOmeSpotIDsToIndex,Width;
     int UseFriedelPairs=1;
 	double t_int=1, t_gap=0;
     int NewType = 1, TopLayer = 0;
@@ -591,7 +591,7 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             MinMatchesToAcceptFrac = *(double *)&data[0];
-            printf('MinMatches %lf\n',MinMatchesToAcceptFrac);
+            printf("MinMatches %lf\n",MinMatchesToAcceptFrac);
             free(arr);
             free(data);
         }
