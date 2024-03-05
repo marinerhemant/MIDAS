@@ -1652,6 +1652,7 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
 	isp = 0;
 	RealType bestFracTillNow=-1;
 	int bestMatchFound = 0, bestNMatches = -1000;
+	double sttm = omp_get_wtime();
 	while (isp < nPlaneNormals) {
 		y0 = y0_vector[isp];
 		z0 = z0_vector[isp];
@@ -1764,6 +1765,8 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
 		fflush(stdout);
 		return 1;
 	}
+	double enTm = omp_get_wtime() - sttm;
+	printf("Finished, time elapsed: %lf seconds.\n",enTm);
 	BestMatches[SpotIDIdx][0] = SpotIDIdx+1;
 	BestMatches[SpotIDIdx][1] = SpotID;
 	BestMatches[SpotIDIdx][2] = bestnTspotsIsp;
