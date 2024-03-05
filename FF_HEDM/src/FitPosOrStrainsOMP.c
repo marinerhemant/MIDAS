@@ -1602,8 +1602,8 @@ int main(int argc, char *argv[])
 		close(inpF2);
 		for (i=0;i<NrObserved;i++) {
 			spotIDS[i] = (int)locArr2[i*16+13];
-			printf("%d\n",spotIDS[i]);
-			fflush(stdout);
+			for (j=0;j<16;j++) printf("%lf ",locArr[i*16+j]);
+			printf("\n");fflush(stdout);
 			thisRadius = locArr2[i*16+11];
 			meanRadius += thisRadius;
 			nSpotsRad++;
