@@ -5,13 +5,10 @@
 # See LICENSE file.
 #
 
-###### Provide a machine name as argument to check for package
-
 dirThis=${HOME}/.MIDAS
 mkdir -p ${dirThis}
 
 if [ ! -d ${dirThis}/NLOPT ]; then # NLOPT INSTALL
-	mkdir -p $dirThis
 	cd $dirThis
 	echo $(pwd)
 	wget -O nlopt.tar.gz https://www.dropbox.com/scl/fi/ux4ccf23z7rotkgbqbrmk/nlopt-2.4.2.tar.gz?rlkey=afq6l6yyu9fnw1hpe62l4gwqq&dl=0 
@@ -23,7 +20,6 @@ if [ ! -d ${dirThis}/NLOPT ]; then # NLOPT INSTALL
 fi
 
 if [ ! -d ${dirThis}/NLOPTShared ]; then # NLOPT SHARED INSTALL
-	mkdir -p $dirThis
 	cd $dirThis
 	echo $(pwd)
 	rm -rf nlopt-2.4.2
