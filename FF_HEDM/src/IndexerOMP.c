@@ -1715,7 +1715,7 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
 						AllGrainSpotsT[r][15] = 1;
 					}
 					CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance );
-					if (fracMatchesThis > bestFracTillNow || GrainMatchesT[0][15] < MinInternalAngle){
+					if (fracMatchesThis > bestFracTillNow || (fracMatchesThis == bestFracTillNow && GrainMatchesT[0][15] < MinInternalAngle)){
 						bestFracTillNow = fracMatchesThis;
 						MinInternalAngle = GrainMatchesT[0][15];
 						rownr = nTspots;
@@ -1750,7 +1750,7 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
 		isp = isp + ispDelta;
 	}
 
-	fracMatches = (RealType) bestnMatchesIsp/bestnTspotsIsp;
+	fracMatches = bestFracTillNow;
 	// printf("%lf\n",fracMatches);
 	if (fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 || (int)bestnMatchesIsp == -1 || bestMatchFound == 0){
 		FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
