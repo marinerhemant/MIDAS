@@ -49,7 +49,7 @@ check (int test, const char * message, ...)
 #define MAX_N_SPOTS 6000000
 #define MAX_N_STEPS 1000
 #define MAX_N_OR 36000
-#define MAX_N_MATCHES 2
+#define MAX_N_MATCHES 1
 #define MAX_N_RINGS 500
 #define MAX_N_HKLS 5000
 #define MAX_N_OMEGARANGES 2000
@@ -1703,7 +1703,6 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
 				// We should be choosing the best one here!!!!
 				if ( nMatches >= MinMatchesToAccept &&
 					 fracMatchesThis > bestFracTillNow) {
-					bestFracTillNow = fracMatchesThis;
 					bestMatchFound = 1;
 					for (i = 0 ;  i < 9 ; i ++) GrainMatchesT[0][i] = orThis[i/3][i%3];
 					GrainMatchesT[0][9]  = ga;
@@ -1718,6 +1717,7 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
 					}
 					CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance );
 					if (GrainMatchesT[0][15] < MinInternalAngle){
+						bestFracTillNow = fracMatchesThis;
 						MinInternalAngle = GrainMatchesT[0][15];
 						rownr = nTspots;
 						matchNr = 1;
