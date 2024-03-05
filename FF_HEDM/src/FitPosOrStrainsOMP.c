@@ -1560,6 +1560,7 @@ int main(int argc, char *argv[])
 		int rcA = pread(inpF,locArr,15*sizeof(double),offst1);
 		close(inpF);
 		if (locArr[14]==0){
+			printf("Good result not found. Skipping this rowNr: %d\n",rowNr);
 			char KeyFN[1024];
 			sprintf(KeyFN,"%s/Key.bin",ResultFolder);
 			int SizeKeyFile 		= 2  * sizeof(int);
