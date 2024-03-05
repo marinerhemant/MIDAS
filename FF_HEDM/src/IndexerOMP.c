@@ -1771,11 +1771,11 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
 	BestMatches[SpotIDIdx][2] = bestnTspotsIsp;
 	BestMatches[SpotIDIdx][3] = bestnMatchesIsp;
 	BestMatches[SpotIDIdx][4] = fracMatches;
-	CreateNumberedFilenameW("BestGrain_", (int) SpotID, 9, ".txt", fn);
-	MakeFullFileName(ffn, Params.OutputFolder, fn);
-	CreateNumberedFilenameW("BestPos_", (int) SpotID, 9, ".csv", fn2);
-	MakeFullFileName(ffn2, Params.OutputFolder, fn2);
-	WriteBestMatch(ffn, GrainMatches, matchNr, AllGrainSpots, rownr, ffn2);
+	// CreateNumberedFilenameW("BestGrain_", (int) SpotID, 9, ".txt", fn);
+	// MakeFullFileName(ffn, Params.OutputFolder, fn);
+	// CreateNumberedFilenameW("BestPos_", (int) SpotID, 9, ".csv", fn2);
+	// MakeFullFileName(ffn2, Params.OutputFolder, fn2);
+	// WriteBestMatch(ffn, GrainMatches, matchNr, AllGrainSpots, rownr, ffn2);
 	WriteBestMatchBin(GrainMatches, matchNr, AllGrainSpots, rownr, Params.OutputFolder, offsetLoc);
 	printf("ID: %d, Confidence: %lf, nPlanes: %d, nOrients: %d\n",SpotIDs,fracMatches,nPlaneNormals,nOrient);
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
