@@ -49,7 +49,7 @@ check (int test, const char * message, ...)
 #define MAX_N_SPOTS 6000000
 #define MAX_N_STEPS 1000
 #define MAX_N_OR 36000
-#define MAX_N_MATCHES 1
+#define MAX_N_MATCHES 2
 #define MAX_N_RINGS 500
 #define MAX_N_HKLS 5000
 #define MAX_N_OMEGARANGES 2000
