@@ -228,7 +228,6 @@ for line in lines:
     str = 'Completeness'
     if line.startswith(f'{str} '):
         outArr = np.array(float(line.split()[1])).astype(np.double)
-        print(line, outArr)
         sp_pro_analysis.create_dataset('MinMatchesToAcceptFrac',dtype=np.double,shape=(1),data=outArr)
     str = 'zDiffThresh'
     if line.startswith(f'{str} '):
