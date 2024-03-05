@@ -1445,8 +1445,9 @@ WriteBestMatchBin(RealType **GrainMatches,int ngrains,RealType **AllGrainSpots,i
 	outArr = malloc(MAX_N_HKLS*16*sizeof(*outArr));
 	for (r = 0 ; r < nrows ; r++ ) {
 		if (AllGrainSpots[r][15] == 1.0 ) {
+			int idxx = 0;
 			for (c = 0; c < N_COL_GRAINSPOTS; c++) {
-				if (c!=1) outArr[r*N_COL_GRAINSPOTS + c] = AllGrainSpots[r][c];
+				if (c!=1) {outArr[r*N_COL_GRAINSPOTS + idxx] = AllGrainSpots[r][c]; idxx++;}
 			}
 		}
 	}
