@@ -1588,6 +1588,7 @@ int main(int argc, char *argv[])
 		printf("%d %lf %lf %lf\n",rowNr,Pos0[0],Pos0[1],Pos0[2]);
 		NrExpected = locArr[13];
 		NrObserved = locArr[14];
+		free(locArr);
 		completeness = NrObserved/NrExpected;
 		char SpotsCompFN[2048];
 		int nSpotsBest=(int)NrObserved,*spotIDS,nSpotsRad=0;
@@ -1611,6 +1612,7 @@ int main(int argc, char *argv[])
 				}
 			}			
 		}
+		free(locArr2);
 		meanRadius /= nSpotsRad;
 		if (TakeGrainMax == 1){
 			meanRadius = MaxRadTot;
