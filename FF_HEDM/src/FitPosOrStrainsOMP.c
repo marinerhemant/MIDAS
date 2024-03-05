@@ -1552,13 +1552,13 @@ int main(int argc, char *argv[])
 		char InpFN[2048],InpFN2[2048];
 		sprintf(InpFN,"%s/IndexBest.bin",OutputFolder);
 		sprintf(InpFN2,"%s/IndexBestFull.bin",OutputFolder);
-		FILE *inpF;
-		inpF = fopen(InpFN,"rb");
+		int inpF = open(InpFN,O_RDONLY);
 		size_t offst1 = rowNr;
 		offst1 *= 15*sizeof(double);
 		double *locArr;
 		locArr = malloc(15*sizeof(*locArr));
-		fread(locArr,15*sizeof(double),1,inpF);
+		int rcA = pread(inpF,locArr,15*sizeof(double),offst1);
+		close(inpF);
 		if (locArr[14]==0){
 			char KeyFN[1024];
 			sprintf(KeyFN,"%s/Key.bin",ResultFolder);
@@ -1578,7 +1578,6 @@ int main(int argc, char *argv[])
 				}
 				close(resultKeyFN);
 			}
-			fclose(inpF);
 			continue;
 		}
 		double Orient0[9], Pos0[3], IA0, Euler0[3], Orient0_3[3][3],NrExpected,NrObserved,meanRadius=0,thisRadius,completeness,MaxRadTot=-100;
@@ -1598,9 +1597,9 @@ int main(int argc, char *argv[])
 		size_t offst2 = rowNr;
 		offst2 *= MaxNHKLS;
 		offst2 *= 16*sizeof(double);
-		FILE *inpF2;
-		inpF2 = fopen(InpFN2,"rb");
-		fread(locArr2,(int)NrObserved*16*sizeof(double),1,inpF2);
+		int inpF2 = open(InpFN2,O_RDONLY);
+		int rcB = pread(inpF2,locArr2,(int)NrObserved*16*sizeof(double),offst2);
+		close(inpF2);
 		for (i=0;i<NrObserved;i++) {
 			spotIDS[i] = (int)locArr2[i*16+13];
 			thisRadius = locArr2[i*16+11];
