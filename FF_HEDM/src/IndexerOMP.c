@@ -1650,9 +1650,8 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
 	bestnMatchesIsp = -1;
 	bestnTspotsIsp = 0;
 	isp = 0;
-	int bestMatchFound = 0;
-	//~ printf("%d %d\n",SpotIDs,nPlaneNormals);
-	//~ fflush(stdout);
+	RealType bestFracTillNow=-1;
+	int bestMatchFound = 0, bestNMatches = -1000;
 	while (isp < nPlaneNormals) {
 		y0 = y0_vector[isp];
 		z0 = z0_vector[isp];
@@ -1666,8 +1665,6 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
 		bestnTspotsRot = 0;
 		or = 0;
 		orDelta = 1;
-		//~ printf("%d\n",nOrient);
-		//~ fflush(stdout);
 		while (or < nOrient) {
 			int t;
 			RealType orThis[3][3];
@@ -1701,10 +1698,12 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
 					bestnMatchesPos = nMatches;
 					bestnTspotsPos = nTspots;
 				}
+				double fracMatchesThis = (RealType) ((RealType)nMatches)/((RealType)nTspots);
 				//~ printf("Reached here 3, %lf %lf\n",bestnMatchesPos,bestnTspotsPos); fflush(stdout);
-				if ( (nMatches > 0) &&
-					 (matchNr < 100) &&
-					 (nMatches >= MinMatchesToAccept) ) {
+				// We should be choosing the best one here!!!!
+				if ( nMatches >= MinMatchesToAccept &&
+					 fracMatchesThis > bestFracTillNow) {
+					bestFracTillNow = fracMatchesThis;
 					bestMatchFound = 1;
 					for (i = 0 ;  i < 9 ; i ++) GrainMatchesT[0][i] = orThis[i/3][i%3];
 					GrainMatchesT[0][9]  = ga;
@@ -1712,7 +1711,6 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
 					GrainMatchesT[0][11] = gc;
 					GrainMatchesT[0][12] = (double)nTspots;
 					GrainMatchesT[0][13] = (double)nMatches;
-					printf("%lf %lf\n",(double)nTspots,(double)nMatches);
 					GrainMatchesT[0][14] = 1;
 					for (r = 0 ; r < nTspots ; r++) {
 						for (c = 0 ; c < 15 ; c++) AllGrainSpotsT[r][c] = GrainSpots[r][c];
@@ -1754,7 +1752,7 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
 	}
 
 	fracMatches = (RealType) bestnMatchesIsp/bestnTspotsIsp;
-	//~ printf("%lf\n",fracMatches);
+	// printf("%lf\n",fracMatches);
 	if (fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 || (int)bestnMatchesIsp == -1 || bestMatchFound == 0){
 		FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 		FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
