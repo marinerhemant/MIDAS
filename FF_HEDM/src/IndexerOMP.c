@@ -1455,6 +1455,7 @@ WriteBestMatchBin(RealType **GrainMatches,int ngrains,RealType **AllGrainSpots,i
 	offst2 *= 16;
 	offst2 *= sizeof(double);
 	int rc2 = pwrite(Ib2,outArr,MAX_N_HKLS*16*sizeof(double),offst2);
+	free(outArr);
 	if (rc2 < 0){
 		printf("Could not write to output file %s.\n",outFN2);
 	}
