@@ -583,6 +583,17 @@ int main(int argc, char *argv[])
             free(arr);
             free(data);
         }
+        if (strstr(finfo->name,"analysis/process/analysis_parameters/MinMatchesToAcceptFrac/0")!=NULL){
+            arr = calloc(finfo->size + 1, sizeof(char)); 
+            fd = zip_fopen_index(arch, count, 0);
+            zip_fread(fd, arr, finfo->size);
+            dsize = sizeof(double);
+            data = (char*)malloc((size_t)dsize);
+            dsize = blosc1_decompress(arr,data,dsize);
+            MinMatchesToAcceptFrac = *(double *)&data[0];
+            free(arr);
+            free(data);
+        }
         if (strstr(finfo->name,"analysis/process/analysis_parameters/p2/0")!=NULL){
             arr = calloc(finfo->size + 1, sizeof(char)); 
             fd = zip_fopen_index(arch, count, 0);
