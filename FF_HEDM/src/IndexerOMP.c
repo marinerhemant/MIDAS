@@ -1731,7 +1731,7 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc, int idNr, int t
 				nDelta = 1;
 				if (nTspots != 0) {
 					fracMatches = (RealType)nMatches/nTspots;
-					if (fracMatches < 0.5) { nDelta = 10 - round(fracMatches * (10-1) / 0.5); }
+					if (fracMatches < 0.5) { nDelta = 5 - round(fracMatches * (5-1) / 0.5); }
 				}
 				n = n + nDelta;
 			}
@@ -1748,7 +1748,7 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc, int idNr, int t
 		ispDelta = 1;
 		if ((!usingFriedelPair) && (bestnTspotsRot != 0)) {
 			fracMatches = (RealType) bestnMatchesRot/bestnTspotsRot;
-			if (fracMatches < 0.5) ispDelta = 5 - round(fracMatches * (5-1) / 0.5);
+			if (fracMatches < 0.5) ispDelta = 3 - round(fracMatches * (3-1) / 0.5);
 		}
 		isp = isp + ispDelta;
 	}
