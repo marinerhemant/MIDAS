@@ -1710,8 +1710,9 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
 					GrainMatchesT[0][9]  = ga;
 					GrainMatchesT[0][10] = gb;
 					GrainMatchesT[0][11] = gc;
-					GrainMatchesT[0][12] = nTspots;
-					GrainMatchesT[0][13] = nMatches;
+					GrainMatchesT[0][12] = (double)nTspots;
+					GrainMatchesT[0][13] = (double)nMatches;
+					printf("%lf %lf\n",(double)nTspots.(double)nMatches);
 					GrainMatchesT[0][14] = 1;
 					for (r = 0 ; r < nTspots ; r++) {
 						for (c = 0 ; c < 15 ; c++) AllGrainSpotsT[r][c] = GrainSpots[r][c];
