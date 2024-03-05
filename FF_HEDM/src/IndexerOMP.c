@@ -1409,6 +1409,59 @@ WriteBestMatch(char *FileName,RealType **GrainMatches,int ngrains,RealType **All
 	return (0);
 }
 
+int
+WriteBestMatchBin(RealType **GrainMatches,int ngrains,RealType **AllGrainSpots,int nrows,char *FolderName, int offsetLoc)
+{
+	int r, g, c;
+	int bestGrainIdx = 0;
+	char outFN[2048];
+	sprintf(outFN,"%s/IndexBest.bin",FolderName);
+	int Ib = open(outFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+	char outFN2[2048];
+	sprintf(outFN2,"%s/IndexBestFull.bin",FolderName);
+	int Ib2 = open(outFN2, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+	if (Ib<=0) {
+		printf("Cannot open file: %s\n", outFN);
+		return(1);
+	}
+	if (Ib2<=0) {
+		printf("Cannot open file: %s\n", outFN2);
+		return(1);
+	}
+	size_t offst1 = offsetLoc;
+	offst1 *= 15;
+	offst1 *= sizeof(double);
+	double res[15] = {GrainMatches[bestGrainIdx][15], GrainMatches[bestGrainIdx][0], GrainMatches[bestGrainIdx][1],
+	GrainMatches[bestGrainIdx][2], GrainMatches[bestGrainIdx][3], GrainMatches[bestGrainIdx][4],
+	GrainMatches[bestGrainIdx][5], GrainMatches[bestGrainIdx][6], GrainMatches[bestGrainIdx][7],
+	GrainMatches[bestGrainIdx][8], GrainMatches[bestGrainIdx][9], GrainMatches[bestGrainIdx][10],
+	GrainMatches[bestGrainIdx][11], GrainMatches[bestGrainIdx][12], GrainMatches[bestGrainIdx][13]};
+	int rc1 = pwrite(Ib,res,15*sizeof(double),offst1);
+	if (rc1 < 0){
+		printf("Could not write to output file %s.\n",outFN);
+	}
+	rc1 = close(Ib);
+	double *outArr;
+	outArr = malloc(MAX_N_HKLS*16*sizeof(*outArr));
+	for (r = 0 ; r < nrows ; r++ ) {
+		if (AllGrainSpots[r][15] == 1.0 ) {
+			for (c = 0; c < N_COL_GRAINSPOTS; c++) {
+				if (c!=1) outArr[r*N_COL_GRAINSPOTS + c] = AllGrainSpots[r][c];
+			}
+		}
+	}
+	size_t offst2 = offsetLoc;
+	offst2 *= MAX_N_HKLS;
+	offst2 *= 16;
+	offst2 *= sizeof(double);
+	int rc2 = pwrite(Ib2,outArr,MAX_N_HKLS*16*sizeof(double),offst2);
+	if (rc2 < 0){
+		printf("Could not write to output file %s.\n",outFN2);
+	}
+	rc2 = close(Ib2);
+	return (0);
+}
+
 void CalcIA(RealType **GrainMatches,int ngrains,RealType **AllGrainSpots,RealType distance)
 {
 	RealType *IAgrainspots;
@@ -1460,7 +1513,7 @@ void MakeFullFileName(char* fullFileName, char* aPath, char* aFileName)
 	}
 }
 
-int DoIndexing(int SpotIDs,struct TParams Params )
+int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
 {
 	//~ clock_t start, end;
 	double dif;
@@ -1723,6 +1776,7 @@ int DoIndexing(int SpotIDs,struct TParams Params )
 	CreateNumberedFilenameW("BestPos_", (int) SpotID, 9, ".csv", fn2);
 	MakeFullFileName(ffn2, Params.OutputFolder, fn2);
 	WriteBestMatch(ffn, GrainMatches, matchNr, AllGrainSpots, rownr, ffn2);
+	WriteBestMatchBin(GrainMatches, matchNr, AllGrainSpots, rownr, Params.OutputFolder, offsetLoc);
 	printf("ID: %d, Confidence: %lf, nPlanes: %d, nOrients: %d\n",SpotIDs,fracMatches,nPlaneNormals,nOrient);
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 	FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
@@ -1952,7 +2006,8 @@ main(int argc, char *argv[])
 		int thisSpotID = SpotIDs[thisRowNr];
 		printf("%d %d %d\n",thisSpotID,thisRowNr, nSpotIDs);
 		fflush(stdout);
-		DoIndexing(thisSpotID,Params);
+		int idRow = thisRowNr+startRowNr;
+		DoIndexing(thisSpotID,Params,idRow);
 	}
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);
