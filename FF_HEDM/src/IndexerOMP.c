@@ -1513,7 +1513,7 @@ void MakeFullFileName(char* fullFileName, char* aPath, char* aFileName)
 	}
 }
 
-int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
+int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc, int idNr, int totalIDs )
 {
 	//~ clock_t start, end;
 	double dif;
@@ -1777,7 +1777,7 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc )
 	// MakeFullFileName(ffn2, Params.OutputFolder, fn2);
 	// WriteBestMatch(ffn, GrainMatches, matchNr, AllGrainSpots, rownr, ffn2);
 	WriteBestMatchBin(GrainMatches, matchNr, AllGrainSpots, rownr, Params.OutputFolder, offsetLoc);
-	printf("ID: %d, Confidence: %lf, nExp: %lf, nObs: %lf, nPlanes: %d, time: %lfs.\n",SpotIDs,fracMatches,GrainMatches[0][12],GrainMatches[0][13],nPlaneNormals,enTm);
+	printf("IDNr: %d, Total: %d, ID: %d, Confidence: %lf, nExp: %lf, nObs: %lf, nPlanes: %d, time: %lfs.\n",idNr,totalIDs,fracMatches,GrainMatches[0][12],GrainMatches[0][13],nPlaneNormals,enTm);
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 	FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
 	FreeMemMatrix( TheorSpots, nRowsPerGrain);
@@ -2007,7 +2007,7 @@ main(int argc, char *argv[])
 		// printf("%d %d %d\n",thisSpotID,thisRowNr, nSpotIDs);
 		// fflush(stdout);
 		int idRow = thisRowNr+startRowNr;
-		DoIndexing(thisSpotID,Params,idRow);
+		DoIndexing(thisSpotID,Params,idRow,thisRowNr,nSpotIDs);
 	}
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);
