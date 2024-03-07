@@ -18,6 +18,7 @@ data = {
     'GrainSize': [],
     'Confidence': [],
     'ID':[],
+    'IDColor':[],
     'Eulers':[],
     'Error':[],
     'Completeness':[]
@@ -45,6 +46,7 @@ for i in range(grains.shape[0]):
 	data['GrainSize'].append(20*grains[i][sizeRowNr]/largestSize)
 	data['Confidence'].append(grains[i][completenessRowNr])
 	data['ID'].append(f'ID: {int(grains[i][0])}')
+	data['IDColor'].append(f'ID: {int(grains[i][0])}')
 	data['Eulers'].append(f'Eul1: {grains[i][-3]}, Eul2: {grains[i][-2]}, Eul3: {grains[i][-1]}')
 	data['Error'].append(f'Error: {grains[i][19]}')
 	data['Completeness'].append(f'Completeness: {grains[i][completenessRowNr]}')
@@ -64,3 +66,17 @@ fig = px.scatter_3d(df,
 fig.update_layout(margin=dict(l=0, r=0, b=0, t=50))
 
 fig.write_html('grains3DConfidence.html')
+
+fig2 = px.scatter_3d(df,
+                    x='x',
+                    y='y',
+                    z='z',
+                    color='IDColor',
+                    size='GrainSize',
+                    title='Grains in 3D',
+                    color_continuous_scale='jet',
+                    )
+
+fig2.update_layout(margin=dict(l=0, r=0, b=0, t=50))
+
+fig2.write_html('grains3DID.html')
