@@ -1263,35 +1263,6 @@ int main(int argc, char *argv[])
 		if ((int)nFramesThis > maxNFrames) continue; // Overwrite the spot if nFrames is greater than maxNFrames
 		counter++;
 	}
-	//~ }else if (NewType == 2){ // Fable system
-		//~ char *fltfn = argv[2];
-		//~ FILE *fltfile = fopen(fltfn,"r");
-		//~ fgets(line,5000,fltfile); // Skip header.
-		//~ printf("Reading file: %s.\n",fltfn);
-		//~ double y,z,ome,Rtemp,sumInt;
-		//~ int IDtemp;
-		//~ while (fgets(line,5000,fltfile) != NULL){
-			//~ sscanf(line,"%lf %lf %lf %s %s %s %s %s %s %s %s %s %s %lf %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %d %s %s %s %s %s %s %s %s %s %s %s %s",
-				//~ &z,&y,&ome,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,
-				//~ dummy,dummy,&sumInt,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,
-				//~ dummy,dummy,dummy,dummy,dummy,dummy,dummy,&IDtemp,dummy,dummy,dummy,
-				//~ dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy);
-			//~ //y = 2048.0 - y;
-			//~ //z = 2048.0 - z;
-			//~ Rtemp = sqrt((y-ybc)*(y-ybc) + (z-zbc)*(z-zbc)) * px;
-			//~ //printf("%d %lf %lf %lf %lf %f %f %f %d\n",IDtemp,y,z,ome,Rtemp,Rmins[0],Rmaxs[0],IdealRs[0],n_hkls);
-			//~ if (Rtemp > Rmins[0] && Rtemp < Rmaxs[0]){
-				//~ SpotsInfo[counter][0] = IDtemp;
-				//~ SpotsInfo[counter][1] = ome;
-				//~ SpotsInfo[counter][2] = y;
-				//~ SpotsInfo[counter][3] = z;
-				//~ SpotsInfo[counter][4] = (int)PlaneNumbers[0];
-				//~ //printf("%f\n",SpotsInfo[counter][4]);
-				//~ SpotsInfo[counter][5] = sumInt;
-				//~ counter++;
-			//~ }
-		//~ }
-	//~ }
 	printf("Number spots per ring: ");
 	for (i=0;i<n_hkls;i++) printf("%d ",nSpotsEachRing[i]); printf("\n");
 	int nIndices = counter;
@@ -1328,6 +1299,7 @@ int main(int argc, char *argv[])
 		}
 		SortSpots(nSpotsThis,spotsTemp);
 		for (j=0;j<nSpotsThis;j++){
+            printf("%d %d %d",nIndices,j,startrowN);
 			spotsall[j+startrowN][0] = j+startrowN+1;
 			for (colN=1;colN<6;colN++){
 				spotsall[j+startrowN][colN] = spotsTemp[j][colN];
