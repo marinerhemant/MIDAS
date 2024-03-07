@@ -45,13 +45,14 @@ for i in range(grains.shape[0]):
 	data['z'].append(grains[i][zRowNr])
 	data['GrainSize'].append(20*grains[i][sizeRowNr]/largestSize)
 	data['Confidence'].append(grains[i][completenessRowNr])
-	data['ID'].append(f'ID: {int(grains[i][0])}')
+	data['ID'].append(grains[i][0])
 	data['IDColor'].append(f'{int(grains[i][0])}')
 	data['Eulers'].append(f'Eul1: {grains[i][-3]}, Eul2: {grains[i][-2]}, Eul3: {grains[i][-1]}')
 	data['Error'].append(f'Error: {grains[i][19]}')
 	data['Completeness'].append(f'Completeness: {grains[i][completenessRowNr]}')
 
 df = pd.DataFrame(data)
+df = df.sort_values(by=['ID'])
 
 fig = px.scatter_3d(df,
                     x='x',
