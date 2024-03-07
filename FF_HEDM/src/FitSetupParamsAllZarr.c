@@ -1299,7 +1299,7 @@ int main(int argc, char *argv[])
 		}
 		SortSpots(nSpotsThis,spotsTemp);
 		for (j=0;j<nSpotsThis;j++){
-            printf("%d %d %d %d %d %d %d\n",i,n_hkls,nIndices,nSpotsThis,j,startrowN,j+startrowN);
+            // printf("%d %d %d %d %d %d %d\n",i,n_hkls,nIndices,nSpotsThis,j,startrowN,j+startrowN);
 			spotsall[j+startrowN][0] = j+startrowN+1;
 			for (colN=1;colN<6;colN++){
 				spotsall[j+startrowN][colN] = spotsTemp[j][colN];
