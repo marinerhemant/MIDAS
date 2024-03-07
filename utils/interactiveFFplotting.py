@@ -1,0 +1,277 @@
+# Import packages
+from dash import Dash, html, dash_table, dcc, callback, Output, Input
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import dash_bootstrap_components as dbc
+import argparse
+import os,sys
+from math import cos, sin, tan
+
+deg2rad = np.pi/180
+rad2deg = 180/np.pi
+
+id_first = 0
+
+class MyParser(argparse.ArgumentParser):
+	def error(self, message):
+		sys.stderr.write('error: %s\n' % message)
+		self.print_help()
+		sys.exit(2)
+
+def rotateAroundZ(v,ome):
+    m = [[cos(ome),-sin(ome),0],[sin(ome),cos(ome),0],[0,0,1]]
+    r0 = m[0][0]*v[0] + m[0][1]*v[1] + m[0][2]*v[2]
+    r1 = m[1][0]*v[0] + m[1][1]*v[1] + m[1][2]*v[2]
+    r2 = m[2][0]*v[0] + m[2][1]*v[1] + m[2][2]*v[2]
+    return r0,r1,r2
+
+def spot2gv(x,y,z,ome):
+    v = np.array([x,y,z])
+    vn = v/np.linalg.norm(v)
+    g1r = -1 + vn[0]
+    g2r = vn[1]
+    g3r = vn[2]
+    g = [g1r,g2r,g3r]
+    omeRad = -ome*deg2rad
+    return rotateAroundZ(g,omeRad)
+
+data = {
+    'omega': [],
+    'y': [],
+    'z': [],
+	'g1':[],
+	'g2':[],
+	'g3':[],
+    'ringNr': [],
+    'strain': [],
+    'ds': [],
+    'grainID': [],
+    'grainIDColor': [],
+    }
+
+data2 = {
+    'x': [],
+    'y': [],
+    'z': [],
+    'GrainSize': [],
+    'Confidence': [],
+    'ID':[],
+    'IDColor':[],
+    'Eulers':[],
+    'Euler0':[],
+    'Euler1':[],
+    'Euler2':[],
+    'Error':[],
+    'StrainError':[],
+    'Completeness':[]
+    }
+
+# Initialize the app - incorporate a Dash Bootstrap theme
+external_stylesheets = [dbc.themes.CYBORG]
+app = Dash(__name__, external_stylesheets=external_stylesheets)
+
+# App layout
+app.layout = dbc.Container([
+    dbc.Row([
+        html.Div('MIDAS FF-HEDM Interactive viewer', className="text-primary text-center fs-3")
+    ]),
+    dbc.Row([
+        dbc.Col([
+        dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain']],
+                       value='grainIDColor',
+                       inline=True,
+                       id='radio-buttons-spots')
+        ], width=6),
+        dbc.Col([
+        dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain']],
+                       value='grainIDColor',
+                       inline=True,
+                       id='radio-buttons-spots_polar')
+        ], width=6),
+    ]),
+
+    dbc.Row([
+        dbc.Col([
+            dcc.Graph(figure={}, id='spots')
+        ], width=6),
+        dbc.Col([
+            dcc.Graph(figure={}, id='spots_polar')
+        ], width=6),
+    ]),
+
+    dbc.Row([
+        dbc.Col([
+        dbc.RadioItems(options=[{"label": x, "value": x} for x in ['Confidence', 'IDColor', 'Error','Euler0','Euler1','Euler2','StrainError']],
+                       value='IDColor',
+                       inline=True,
+                       id='radio-buttons-grains')
+        ], width=6),
+        dbc.Col([
+        dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain']],
+                       value='strain',
+                       inline=True,
+                       id='radio-buttons-spots_filtered')
+        ], width=6),
+    ]),
+
+    dbc.Row([
+        dbc.Col([
+            dcc.Graph(figure={}, id='grains',clickData={'points':[{'customdata':id_first}]})
+        ], width=6),
+        dbc.Col([
+            dcc.Graph(figure={}, id='filtered_spots')
+        ], width=6),
+    ]),
+
+], fluid=True)
+
+# Add controls to build the interaction
+@callback(
+    Output(component_id='grains', component_property='figure'),
+    Input(component_id='radio-buttons-grains', component_property='value')
+)
+def update_graph(col_chosen):
+    fig = px.scatter_3d(df2,
+                    x='x',
+                    y='y',
+                    z='z',
+                    color=col_chosen,
+                    size='GrainSize',
+                    title='Grains in 3D',
+                    color_continuous_scale='jet',
+                    hover_name='ID',
+                    )
+    fig.update_traces(customdata=df2['Eulers'])
+    fig.update_layout(margin=dict(l=0, r=0, b=0, t=50),height=700)
+    return fig
+
+@callback(
+    Output(component_id='filtered_spots',component_property='figure'),
+    Input('grains','clickData'),
+    Input(component_id='radio-buttons-spots_filtered', component_property='value')
+)
+def newFilteredSpots(clickData,col_chosen):
+    ID = df2[df2['ID']== clickData['points'][0]['hovertext'] ]['ID'].item()
+    dff = df[df['grainID']==ID]
+    meanStrain = np.mean(np.abs(dff['strain']))
+    fig = px.scatter_3d(dff,
+                    x='omega',
+                    y='y',
+                    z='z',
+                    color=col_chosen,
+                    size='ds',
+                    title=f'Filtered Spots in 3D\nMeanStrain for {ID} grain: {meanStrain}',
+                    color_continuous_scale='jet',
+                    )
+    fig.update_layout(margin=dict(l=0, r=0, b=0, t=50),height=700)
+    return fig
+
+@callback(
+    Output(component_id='spots', component_property='figure'),
+    Input(component_id='radio-buttons-spots', component_property='value')
+)
+def update_graph2(col_chosen2):
+    fig = px.scatter_3d(df,
+                    x='omega',
+                    y='y',
+                    z='z',
+                    color=col_chosen2,
+                    size='ds',
+                    title='Spots in 3D',
+                    )
+    fig.update_layout(margin=dict(l=0, r=0, b=0, t=50),height=700)
+    return fig
+
+@callback(
+    Output(component_id='spots_polar', component_property='figure'),
+    Input(component_id='radio-buttons-spots_polar', component_property='value')
+)
+def update_graph3(col_chosen3):
+    fig = px.scatter_3d(df,
+                        x='g1',
+                        y='g2',
+                        z='g3',
+                        color=col_chosen3,
+                        size='ds',
+                        title='G-vectors in 3D',
+                        color_continuous_scale='jet',
+                        )
+    fig.update_layout(
+        scene = dict(xaxis=dict(range=[-dsMax,dsMax]),yaxis=dict(range=[-dsMax,dsMax]),zaxis=dict(range=[-dsMax,dsMax])),
+        margin=dict(l=0, r=0, b=0, t=50),hovermode='closest',height=700)
+    return fig
+
+
+df = []
+df2 = []
+dsMax = 0
+# Run the app
+if __name__ == '__main__':
+    parser = MyParser(description='''Plot Spots in 3D.py''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('-resultFolder', type=str, required=True, help='Folder where the reconstruction exists')
+    parser.add_argument('-pixelSize', type=float, required=False, default=200, help='pixelSize')
+    parser.add_argument('-Wavelength', type=float, required=False, default=0.172979, help='Wavelength')
+    parser.add_argument('-Distance', type=float, required=False, default=801322, help='Sample-to-detector distance')
+    args, unparsed = parser.parse_known_args()
+    resultDir = args.resultFolder
+    pixSz = args.pixelSize
+    wl = args.Wavelength
+    Lsd = args.Distance
+    spots = np.genfromtxt(resultDir+'/SpotMatrix.csv',skip_header=1)
+    grains = np.genfromtxt(resultDir+'/Grains.csv',skip_header=9)
+    for i in range(spots.shape[0]):
+        if spots[i][5]==0.0:
+            continue
+        data['omega'].append(spots[i][2]) # This is rotation direction
+        data['y'].append(spots[i][8]/pixSz)
+        data['z'].append(spots[i][9]/pixSz)
+        data['ringNr'].append(str(int(spots[i][7])))
+        data['grainID'].append(spots[i][0])
+        data['strain'].append(1000000*np.abs(spots[i][11]))
+        data['grainIDColor'].append(str(int(spots[i][0])))
+        x,y,z = spot2gv(Lsd,spots[i][8],spots[i][9],spots[i][2])
+        length = np.linalg.norm(np.array([x,y,z]))
+        x = x/length
+        y = y/length
+        z = z/length
+        ds = wl / (2*sin(spots[i][10]*deg2rad))
+        x *=ds
+        y *=ds
+        z *=ds
+        if ds > dsMax:
+            dsMax = ds
+        data['g1'].append(x) # This is rotation direction
+        data['g2'].append(y)
+        data['g3'].append(z)
+        data['ds'].append(ds)
+    df = pd.DataFrame(data)
+    xRowNr = 10
+    yRowNr = 11
+    zRowNr = 12
+    sizeRowNr = 22
+    completenessRowNr = 23
+
+    largestSize = np.max(grains[:,sizeRowNr])
+
+    for i in range(grains.shape[0]):
+        data2['x'].append(grains[i][xRowNr]) # This is rotation direction
+        data2['y'].append(grains[i][yRowNr])
+        data2['z'].append(grains[i][zRowNr])
+        data2['GrainSize'].append(20*grains[i][sizeRowNr]/largestSize)
+        data2['Confidence'].append(grains[i][completenessRowNr])
+        data2['ID'].append(grains[i][0])
+        data2['Euler0'].append(grains[i][-3])
+        data2['Euler1'].append(grains[i][-2])
+        data2['Euler2'].append(grains[i][-1])
+        data2['StrainError'].append(grains[i][-5])
+        data2['IDColor'].append(f'{int(grains[i][0])}')
+        data2['Eulers'].append(f'Eul1: {grains[i][-3]}, Eul2: {grains[i][-2]}, Eul3: {grains[i][-1]}')
+        data2['Error'].append(grains[i][19])
+        data2['Completeness'].append(f'Completeness: {grains[i][completenessRowNr]}')
+
+    df2 = pd.DataFrame(data2)
+    df = df.sort_values(by=['grainID'])
+    df2 = df2.sort_values(by=['ID'])
+    id_first = df2['ID'][0]
+    app.run(debug=True)

@@ -38,8 +38,6 @@ completenessRowNr = 23
 largestSize = np.max(grains[:,sizeRowNr])
 
 for i in range(grains.shape[0]):
-	if grains[i][5]==0.0:
-		continue
 	data['x'].append(grains[i][xRowNr]) # This is rotation direction
 	data['y'].append(grains[i][yRowNr])
 	data['z'].append(grains[i][zRowNr])
