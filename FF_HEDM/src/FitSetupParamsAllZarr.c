@@ -954,7 +954,7 @@ int main(int argc, char *argv[])
             dsize = sizeof(double);
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
-            maxNFrames = *(double *)&data[0];
+            StepSizePos = *(double *)&data[0];
             free(arr);
             free(data);
         }
