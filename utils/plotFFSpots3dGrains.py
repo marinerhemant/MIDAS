@@ -33,7 +33,7 @@ for i in range(spots.shape[0]):
 	data['y'].append(spots[i][8])
 	data['z'].append(spots[i][9])
 	data['ringNr'].append(spots[i][7])
-	data['grainID'].append(spots[i][0])
+	data['grainID'].append(str(int(spots[i][0])))
 
 df = pd.DataFrame(data)
 
