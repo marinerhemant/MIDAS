@@ -16,6 +16,13 @@ from skimage.morphology import reconstruction
 import h5py
 warnings.filterwarnings('ignore')
 # np.set_printoptions(suppress=True,precision=3,threshold=sys.maxsize)
+import argparse
+
+class MyParser(argparse.ArgumentParser):
+	def error(self, message):
+		sys.stderr.write('error: %s\n' % message)
+		self.print_help()
+		sys.exit(2)
 
 def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,removeDuplicates=0,maxang=1,tol_ome=1,tol_eta=1,findUniques=1,thresh_reqd=0,draw_sinos=0,normalize=1,nNodes=1,machineName='local'):
 	uniqueOrients = []
@@ -350,6 +357,49 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 	imgs = f.create_dataset(name='images',dtype=np.double,data=info_arr)
 	imgs.attrs['Header'] = np.string_('ID,Quat1,Quat2,Quat3,Quat4,x,y,a,b,c,alpha,beta,gamma,posErr,omeErr,InternalAngle,Completeness,E11,E12,E13,E22,E23,E33')
 	f.close()
+
+if __name__ == "__main__":
+	parser = MyParser(description='''Find one solution per voxel, then refine''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+	parser.add_argument('-resultFolder', type=str, required=True, help='Working folder.')
+	parser.add_argument('-nScans', type=int, required=True, help='Number of scans.')
+	parser.add_argument('-positionsFile', type=str, required=False, default='positions.csv', help='Positions file.')
+	parser.add_argument('-machineName', type=str, required=False, default='local', help='Machine to run analysis on.')
+	parser.add_argument('-sgNum', type=int, required=True, help='SpaceGroup number.')
+	parser.add_argument('-nCPUs', type=int, required=True, help='Number of CPU cores to use.')
+	parser.add_argument('-startFNr', type=int, required=True, help='Start file number for the first scan. This is used to compare peaksearch results.')
+	parser.add_argument('-nFrames', type=int, required=True, help='Number of frames per scan.')
+	parser.add_argument('-nrFilesPerSweep', type=int, required=False, default=1, help='Difference in fileNr between scans.')
+	parser.add_argument('-removeDuplicates', type=int, required=False, default=0, help='If you want to remove duplicate spots or not. This is useful for removing shared spots for eg. twins.')
+	parser.add_argument('-findUniques', type=int, required=False, default=1, help='If you want to skip finding unique grains again, if already done, put to 0.')
+	parser.add_argument('-threshReqd', type=int, required=False, default=0, help="If you want to do thresholding in sinograms using Otsu's method.")
+	parser.add_argument('-drawSinos', type=int, required=False, default=0, help='If you want to plot the Sinos to check interactively.')
+	parser.add_argument('-normalize', type=int, required=False, default=1, help='If you want to normalize the intensity of sinograms using powder intensity for rings.')
+	parser.add_argument('-nNodes', type=int, required=False, default=1, help='Number of nodes to use, if not using local.')
+	parser.add_argument('-maxAng', type=float, required=False, default=1.0, help='Maximum angle in degrees to qualify as a different orientation.')
+	parser.add_argument('-tolOme', type=float, required=False, default=1.0, help='Maximum tolerance in omega when looking for spots to make sinograms.')
+	parser.add_argument('-tolEta', type=float, required=False, default=1.0, help='Maximum tolerance in eta when looking for spots to make sinograms.')
+	args, unparsed = parser.parse_known_args()
+	resultDir = args.resultFolder
+	nScans = args.nScans
+	pos = args.positionsFile
+	positions = np.genfromtxt(pos)
+	sgnum = args.sgNum
+	numProcs = args.nCPUs
+	maxang = args.maxAng
+	startFNr = args.startFNr
+	nFrames = args.nFrames
+	nrFilesPerSweep = args.nrFilesPerSweep
+	removeDuplicates = args.removeDuplicates
+	tol_ome = args.tolOme
+	tol_eta = args.tolEta
+	findUniques = args.findUniques
+	thresh_reqd = args.threshReqd
+	draw_sinos = args.drawSinos
+	normalize = args.normalize
+	nNodes = args.nNodes
+	machineName = args.machineName
+	runRecon(resultDir,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep,removeDuplicates,maxang,tol_ome,tol_eta,findUniques,thresh_reqd,draw_sinos,normalize,nNodes,machineName)
+
 
 # runRecon('/local/s1iduser/borbely_apr17_midas',66,163,1440,225,96,nrFilesPerSweep=8,removeDuplicates=1,maxang=3,tol_ome=3,tol_eta=3,findUniques=0,draw_sinos=0,thresh_reqd=1,normalize=0)
 # runRecon('/local/s1iduser/bucsek_jul22_midas/L1_new',584,117,1800,194,96,nrFilesPerSweep=1,removeDuplicates=0,maxang=3,tol_ome=3,tol_eta=3,findUniques=0,draw_sinos=0,thresh_reqd=0,normalize=1)
