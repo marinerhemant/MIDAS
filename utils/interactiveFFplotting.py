@@ -19,7 +19,7 @@ id_spot_first = 0
 values = []
 options = []
 window = 10
-windowFrame = 3
+windowFrame = 7
 selectedID = 0
 
 class MyParser(argparse.ArgumentParser):
@@ -61,6 +61,7 @@ data = {
     'spotID':[],
     'detY':[],
     'detZ':[],
+    'spotSize':[],
     }
 
 data2 = {
@@ -91,13 +92,13 @@ app.layout = dbc.Container([
     ]),
     dbc.Row([
         dbc.Col([
-            dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain']],
+            dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain','spotSize']],
                         value='grainIDColor',
                         inline=True,
                         id='radio-buttons-spots')
         ], width=6),
         dbc.Col([
-            dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain']],
+            dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain','spotSize']],
                         value='grainIDColor',
                         inline=True,
                         id='radio-buttons-spots_polar')
@@ -157,7 +158,7 @@ app.layout = dbc.Container([
                        id='radio-buttons-grains')
         ], width=6),
         dbc.Col([
-        dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain']],
+        dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain','spotSize']],
                        value='strain',
                        inline=True,
                        id='radio-buttons-spots_filtered')
@@ -307,7 +308,7 @@ def imageData(clickData):
             isomin=1,
             isomax=np.max(extracted_data),
             opacity=0.1,
-            surface_count=150,
+            surface_count=100,
             ))
         fig.update_layout(margin=dict(l=0, r=0, b=0, t=50),height=700,title=f'Selected Spot ID {spotID} in 3D')
         return fig
@@ -378,6 +379,7 @@ dark = zf['exchange/dark'][:]
 darkMean = np.mean(dark,axis=0).astype(np.double)
 nFrames,nPxY,nPxZ = rawDataLink.shape
 spots = np.genfromtxt(resultDir+'/SpotMatrix.csv',skip_header=1)
+spotsOrig = np.genfromtxt(resultDir+'/InputAll.csv',skip_header=1)
 grains = np.genfromtxt(resultDir+'/Grains.csv',skip_header=9)
 for i in range(spots.shape[0]):
     if spots[i][5]==0.0:
@@ -389,6 +391,7 @@ for i in range(spots.shape[0]):
     data['ringNrInt'].append(int(spots[i][7]))
     data['grainID'].append(spots[i][0])
     data['spotID'].append(spots[i][1])
+    data['spotSize'].append(spotsOrig[int(spots[i][1])-1,3])
     data['detY'].append(spots[i][3])
     data['detZ'].append(spots[i][4])
     data['strain'].append(1000000*np.abs(spots[i][11]))
