@@ -298,7 +298,7 @@ def imageData(clickData):
         extracted_data -= darkMean[zMin:zMax,yMin:yMax]
         extracted_data[extracted_data<thresh] = 0
         extracted_data = extracted_data.astype(np.uint16)
-        X,Y,Z = np.mgrid[-windowFrame:windowFrame+1,-window:window+1,-window:window+1]
+        X,Y,Z = np.mgrid[frameMin:frameMax,zMin:zMax,yMin:yMax]
         fig = go.Figure(data=go.Volume(
             x=X.flatten(),
             y=Y.flatten(),
