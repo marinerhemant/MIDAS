@@ -161,7 +161,7 @@ def newFilteredSpots(clickData,col_chosen):
                     z='z',
                     color=col_chosen,
                     size='ds',
-                    title=f'Filtered Spots in 3D\nMeanStrain for {ID} grain: {meanStrain}',
+                    title=f'Filtered Spots in 3D\nMeanStrain for {int(ID)} grain: {meanStrain}',
                     color_continuous_scale='jet',
                     )
     fig.update_layout(margin=dict(l=0, r=0, b=0, t=50),height=700)
