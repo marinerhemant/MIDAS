@@ -84,6 +84,7 @@ data2 = {
 # Initialize the app - incorporate a Dash Bootstrap theme
 external_stylesheets = [dbc.themes.CYBORG]
 app = Dash(__name__, external_stylesheets=external_stylesheets)
+app.title = "MIDAS FF-HEDM Interactive Viewer"
 
 # App layout
 app.layout = dbc.Container([
