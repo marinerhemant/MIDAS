@@ -53,6 +53,7 @@ dark = fileReader(dataF,'/exchange/dark')
 
 rawFN = dataFN.split('zip')[0]+'.ge5'
 darkFN = 'dark_' +rawFN
+print(NrPixelsY,NrPixelsZ)
 raw.tofile(rawFN)
 dark.tofile(darkFN)
 darkName = darkFN
