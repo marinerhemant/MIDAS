@@ -442,4 +442,4 @@ values = df['ringNrInt'].unique().tolist()
 values.sort()
 options = [{"label":ringNr,"value":ringNr} for ringNr in values]
 
-app.run(debug=True)
+app.run(port=8000,host="0.0.0.0",debug=True)
