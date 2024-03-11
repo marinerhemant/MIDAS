@@ -12,6 +12,10 @@ plt.rcParams['figure.figsize'] = [10, 10]
 import argparse
 import sys
 
+env = dict(os.environ)
+midas_path = os.path.expanduser("~/.MIDAS")
+env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
+
 class MyParser(argparse.ArgumentParser):
 	def error(self, message):
 		sys.stderr.write('error: %s\n' % message)
@@ -110,7 +114,7 @@ def runMIDAS(fn):
 		pf.write('RhoD '+str(RhoDThis)+'\n')
 		pf.write('BC '+bc_refined+'\n')
 		pf.write('LatticeConstant '+str(latc[0])+' '+str(latc[1])+' '+str(latc[2])+' '+str(latc[3])+' '+str(latc[4])+' '+str(latc[5])+'\n')
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalibrantOMP")+' '+fn+"ps.txt 10",shell=True,stdout=open('calibrant_screen_out.csv','w'))
+	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalibrantOMP")+' '+fn+"ps.txt 10",shell=True,env=env,stdout=open('calibrant_screen_out.csv','w'))
 	output = open('calibrant_screen_out.csv').readlines()
 	useful = 0
 	for line in output:
@@ -175,7 +179,7 @@ with open('ps.txt','w') as pf:
     pf.write('MaxRingRad '+str(mrr)+'\n')
     pf.write('LatticeConstant '+str(latc[0])+' '+str(latc[1])+' '+str(latc[2])+' '+str(latc[3])+' '+str(latc[4])+' '+str(latc[5])+'\n')
 
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" ps.txt",shell=True,stdout=open('hkls_screen_out.csv','w'))
+subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" ps.txt",shell=True,env=env,stdout=open('hkls_screen_out.csv','w'))
 hkls = np.genfromtxt('hkls.csv',skip_header=1)
 sim_rads = np.unique(hkls[:,-1])/px
 sim_rad_ratios = sim_rads / sim_rads[0]
@@ -278,7 +282,7 @@ with open('ps.txt','w') as pf:
     pf.write('MaxRingRad '+str(mrr)+'\n')
     pf.write('LatticeConstant '+str(latc[0])+' '+str(latc[1])+' '+str(latc[2])+' '+str(latc[3])+' '+str(latc[4])+' '+str(latc[5])+'\n')
 
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" ps.txt",shell=True,stdout=open('hkls_screen_out.csv','w'))
+subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" ps.txt",shell=True,env=env,stdout=open('hkls_screen_out.csv','w'))
 hkls = np.genfromtxt('hkls.csv',skip_header=1)
 sim_rads = np.unique(hkls[:,-1])/px
 sim_rad_ratios = sim_rads / sim_rads[0]
