@@ -44,8 +44,8 @@ px = dataF['/analysis/process/analysis_parameters/PixelSize'][0]
 latc = dataF['/analysis/process/analysis_parameters/LatticeParameter'][:]
 Wavelength = dataF['/analysis/process/analysis_parameters/Wavelength'][:]
 
-raw = fileReader(dataF,'/echange/data')
-dark = fileReader(dataF,'/echange/dark')
+raw = fileReader(dataF,'/exchange/data')
+dark = fileReader(dataF,'/exchange/dark')
 
 rawFN = dataFN.split('zip')[0]+'.ge5'
 darkFN = 'dark_' +rawFN
