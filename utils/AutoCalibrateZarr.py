@@ -190,11 +190,17 @@ if DrawPlots==1:
 	plt.show()
 neighborhood = skimage.morphology.disk(radius=50)
 data = raw.astype(np.uint16)
+print('Starting Median')
 data2 = skimage.filters.rank.median(data, neighborhood)
+print('Starting Median')
 data2 = skimage.filters.rank.median(data2, neighborhood)
+print('Starting Median')
 data2 = skimage.filters.rank.median(data2, neighborhood)
+print('Starting Median')
 data2 = skimage.filters.rank.median(data2, neighborhood)
+print('Starting Median')
 data2 = skimage.filters.rank.median(data2, neighborhood)
+print('Starting Median')
 data = data.astype(float)
 data_corr = data - data2
 data_corr[data_corr<threshold] = 0
