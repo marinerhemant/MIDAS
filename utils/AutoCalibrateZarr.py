@@ -42,11 +42,13 @@ dataF = zarr.open(dataFN,'r')
 NrPixelsY = 0
 NrPixelsZ = 0
 
-space_group = dataF['/analysis/process/analysis_parameters/SpaceGroup'][0]
-skipFrame = dataF['/analysis/process/analysis_parameters/SkipFrame'][0]
-px = dataF['/analysis/process/analysis_parameters/PixelSize'][0]
+space_group = dataF['/analysis/process/analysis_parameters/SpaceGroup'][0].item()
+skipFrame = dataF['/analysis/process/analysis_parameters/SkipFrame'][0].item()
+px = dataF['/analysis/process/analysis_parameters/PixelSize'][0].item()
 latc = dataF['/analysis/process/analysis_parameters/LatticeParameter'][:]
-Wavelength = dataF['/analysis/process/analysis_parameters/Wavelength'][:]
+Wavelength = dataF['/analysis/process/analysis_parameters/Wavelength'][:].item()
+print(Wavelength,space_group,skipFrame,px)
+sys.exit()
 
 raw = fileReader(dataF,'/exchange/data')
 dark = fileReader(dataF,'/exchange/dark')
