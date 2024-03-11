@@ -1410,7 +1410,7 @@ WriteBestMatch(char *FileName,RealType **GrainMatches,int ngrains,RealType **All
 }
 
 int
-WriteBestMatchBin(RealType **GrainMatches,int ngrains,RealType **AllGrainSpots,int nrows,char *FolderName, int offsetLoc)
+WriteBestMatchBin(RealType **GrainMatches,RealType **AllGrainSpots,int nrows,char *FolderName, int offsetLoc)
 {
 	int r, g, c;
 	int bestGrainIdx = 0;
@@ -1442,20 +1442,19 @@ WriteBestMatchBin(RealType **GrainMatches,int ngrains,RealType **AllGrainSpots,i
 	}
 	rc1 = close(Ib);
 	double *outArr;
-	outArr = malloc(MAX_N_HKLS*16*sizeof(*outArr));
+	outArr = malloc(MAX_N_HKLS*2*sizeof(*outArr));
 	for (r = 0 ; r < nrows ; r++ ) {
 		if (AllGrainSpots[r][15] == 1.0 ) {
 			int idxx = 0;
-			for (c = 0; c < N_COL_GRAINSPOTS; c++) {
-				if (c!=1) {outArr[r*16 + idxx] = AllGrainSpots[r][c]; idxx++;}
-			}
+			outArr[r*2+0] = AllGrainSpots[r][14];
+			outArr[r*2+1] = AllGrainSpots[r][12];
 		}
 	}
 	size_t offst2 = offsetLoc;
 	offst2 *= MAX_N_HKLS;
-	offst2 *= 16;
+	offst2 *=2;
 	offst2 *= sizeof(double);
-	int rc2 = pwrite(Ib2,outArr,MAX_N_HKLS*16*sizeof(double),offst2);
+	int rc2 = pwrite(Ib2,outArr,MAX_N_HKLS*2*sizeof(double),offst2);
 	free(outArr);
 	if (rc2 < 0){
 		printf("Could not write to output file %s.\n",outFN2);
@@ -1517,7 +1516,6 @@ void MakeFullFileName(char* fullFileName, char* aPath, char* aFileName)
 
 int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc, int idNr, int totalIDs )
 {
-	//~ clock_t start, end;
 	double dif;
 	RealType HalfBeam = Params.Hbeam /2 ;
 	RealType MinMatchesToAccept;
@@ -1620,9 +1618,7 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc, int idNr, int t
 	RealType eta    = ObsSpotsLab[SpotRowNo*9+6];
 	RealType ttheta = ObsSpotsLab[SpotRowNo*9+7];
 	int   ringnr = (int) ObsSpotsLab[SpotRowNo*9+5];
-	// To store the orientation matrices
 	RealType *OrMat;
-	// Lets allocate OrMat
 	OrMat = calloc(MAX_N_OR*3*3,sizeof(*OrMat));
 	hkl[0] = RingHKL[ringnr][0];
 	hkl[1] = RingHKL[ringnr][1];
@@ -1703,7 +1699,6 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc, int idNr, int t
 					bestnTspotsPos = nTspots;
 				}
 				double fracMatchesThis = (RealType) ((RealType)nMatches)/((RealType)nTspots);
-				// We should be choosing the best one here!!!!
 				if ( nMatches >= MinMatchesToAccept &&
 					 fracMatchesThis >= bestFracTillNow) {
 					bestMatchFound = 1;
@@ -1755,7 +1750,6 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc, int idNr, int t
 	}
 
 	fracMatches = bestFracTillNow;
-	// printf("%lf\n",fracMatches);
 	if (fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 || (int)bestnMatchesIsp == -1 || bestMatchFound == 0){
 		FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 		FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
@@ -1774,12 +1768,7 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc, int idNr, int t
 	BestMatches[SpotIDIdx][2] = bestnTspotsIsp;
 	BestMatches[SpotIDIdx][3] = bestnMatchesIsp;
 	BestMatches[SpotIDIdx][4] = fracMatches;
-	// CreateNumberedFilenameW("BestGrain_", (int) SpotID, 9, ".txt", fn);
-	// MakeFullFileName(ffn, Params.OutputFolder, fn);
-	// CreateNumberedFilenameW("BestPos_", (int) SpotID, 9, ".csv", fn2);
-	// MakeFullFileName(ffn2, Params.OutputFolder, fn2);
-	// WriteBestMatch(ffn, GrainMatches, matchNr, AllGrainSpots, rownr, ffn2);
-	WriteBestMatchBin(GrainMatches, matchNr, AllGrainSpots, rownr, Params.OutputFolder, offsetLoc);
+	WriteBestMatchBin(GrainMatches, AllGrainSpots, rownr, Params.OutputFolder, offsetLoc);
 	printf("IDNr: %d, Total: %d, ID: %d, Confidence: %lf, nExp: %lf, nObs: %lf, nPlanes: %d, time: %lfs.\n",idNr,totalIDs,SpotIDs,fracMatches,GrainMatches[0][12],GrainMatches[0][13],nPlaneNormals,enTm);
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 	FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
@@ -1990,7 +1979,6 @@ main(int argc, char *argv[])
 	endRowNr = tmp < (nSpotsToIndex-1) ? tmp : (nSpotsToIndex-1);
 	nSpotIDs = endRowNr-startRowNr+1;
 	SpotIDs = malloc(nSpotIDs*sizeof(*SpotIDs));
-	// Read spotIDs
 	FILE *spotsFile = fopen("SpotsToIndex.csv","r");
 	for (i=0;i<startRowNr;i++){
 		fgets(aline,1000,spotsFile);
@@ -2007,8 +1995,6 @@ main(int argc, char *argv[])
 	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
 	for (thisRowNr = 0; thisRowNr < nSpotIDs; thisRowNr++){
 		int thisSpotID = SpotIDs[thisRowNr];
-		// printf("%d %d %d\n",thisSpotID,thisRowNr, nSpotIDs);
-		// fflush(stdout);
 		int idRow = thisRowNr+startRowNr;
 		DoIndexing(thisSpotID,Params,idRow,thisRowNr,nSpotIDs);
 	}
