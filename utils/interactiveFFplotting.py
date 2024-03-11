@@ -181,9 +181,6 @@ app.layout = dbc.Container([
         dbc.Col([
             dcc.Graph(figure={}, id='image_data')
         ], width=6),
-        # dbc.Col([
-        #     dcc.Graph(figure={}, id='filtered_spots',clickData={'points':[{'customdata':id_spot_first}]})
-        # ], width=6),
     ]),
 
 ], fluid=True)
@@ -362,7 +359,7 @@ dsMax = 0
 # Run the app
 
 
-parser = MyParser(description='''Plot Spots in 3D.py''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser = MyParser(description='''MIDAS FF Interactive Plotter''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-resultFolder', type=str, required=True, help='Folder where the reconstruction exists')
 parser.add_argument('-dataFileName', type=str, required=True, help='Name of the input datafile')
 args, unparsed = parser.parse_known_args()
