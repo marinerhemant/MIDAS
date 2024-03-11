@@ -47,8 +47,6 @@ skipFrame = dataF['/analysis/process/analysis_parameters/SkipFrame'][0].item()
 px = dataF['/analysis/process/analysis_parameters/PixelSize'][0].item()
 latc = dataF['/analysis/process/analysis_parameters/LatticeParameter'][:]
 Wavelength = dataF['/analysis/process/analysis_parameters/Wavelength'][:].item()
-print(Wavelength,space_group,skipFrame,px)
-sys.exit()
 
 raw = fileReader(dataF,'/exchange/data')
 dark = fileReader(dataF,'/exchange/dark')
