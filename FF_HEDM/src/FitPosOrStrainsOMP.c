@@ -1593,16 +1593,16 @@ int main(int argc, char *argv[])
 		int nSpotsBest=(int)NrObserved,*spotIDS,nSpotsRad=0;
 		double *locArr2;
 		spotIDS = malloc(nSpotsBest*sizeof(*spotIDS));
-		locArr2 = malloc((int)NrObserved*16*sizeof(*locArr2));
+		locArr2 = malloc((int)NrObserved*2*sizeof(*locArr2));
 		size_t offst2 = rowNr;
 		offst2 *= MaxNHKLS;
-		offst2 *= 16*sizeof(double);
+		offst2 *= 2*sizeof(double);
 		int inpF2 = open(InpFN2,O_RDONLY);
-		int rcB = pread(inpF2,locArr2,(int)NrObserved*16*sizeof(double),offst2);
+		int rcB = pread(inpF2,locArr2,(int)NrObserved*2*sizeof(double),offst2);
 		close(inpF2);
 		for (i=0;i<NrObserved;i++) {
-			spotIDS[i] = (int)locArr2[i*16+13];
-			thisRadius = locArr2[i*16+11];
+			spotIDS[i] = (int)locArr2[i*2+0];
+			thisRadius = locArr2[i*2+1];
 			meanRadius += thisRadius;
 			nSpotsRad++;
 			if (TakeGrainMax == 1){
