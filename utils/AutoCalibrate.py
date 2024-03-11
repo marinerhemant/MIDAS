@@ -17,7 +17,6 @@ class MyParser(argparse.ArgumentParser):
 		self.print_help()
 		sys.exit(2)
 
-
 parser = MyParser(description='''Automated Calibration for WAXS using continuous rings-like signal''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-dataFN', type=str, required=True, help='DataFileName')
 parser.add_argument('-darkFN', type=str, required=True, help='DarkFileName')
@@ -27,7 +26,7 @@ parser.add_argument('-FirstRingNr', type=int, required=False, default=1, help='F
 parser.add_argument('-MultFactor', type=float, required=False, default=2.5, help='If set, any ring MultFactor times average would be thrown away.')
 parser.add_argument('-StoppingStrain', type=float, required=False, default=0.00004, help='If refined pseudo-strain is below this value and all rings are "good", we would have converged.')
 args, unparsed = parser.parse_known_args()
-rawFN = args.rawFN
+rawFN = args.dataFN
 darkFN = args.darkFN
 Wavelength = float(args.Wavelength)
 DrawPlots = int(args.MakePlots)
@@ -97,7 +96,6 @@ def runMIDAS(fn):
 		pf.write('SpaceGroup '+str(space_group)+'\n')
 		pf.write('Lsd '+lsd_refined+'\n')
 		pf.write('RhoD '+str(RhoDThis)+'\n')
-		# pf.write('RhoD '+str(NrPixelsY*px*np.sqrt(2))+'\n')
 		pf.write('BC '+bc_refined+'\n')
 		pf.write('LatticeConstant '+str(latc[0])+' '+str(latc[1])+' '+str(latc[2])+' '+str(latc[3])+' '+str(latc[4])+' '+str(latc[5])+'\n')
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalibrantOMP")+' '+fn+"ps.txt 10",shell=True,stdout=open('calibrant_screen_out.csv','w'))
@@ -139,8 +137,6 @@ def runMIDAS(fn):
 		mean_strains_per_ring[ringNr] = np.mean(subarr[:,1])
 	ringsToExcludenew = np.argwhere(mean_strains_per_ring > multFactor*np.median(mean_strains_per_ring)) + 1
 	rNew = []
-	# plt.scatter(float(bc_refined.split()[0]),float(bc_refined.split()[1]))
-	# redraw_figure()
 	for ring in ringsToExcludenew:
 		rNew.append(ring[0])
 	if DrawPlots==1:
