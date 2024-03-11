@@ -23,6 +23,7 @@
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
+#define EPS 1e-9
 
 static inline void normalizeQuat(double quat[4]){
 	double norm = sqrt(quat[0]*quat[0]+quat[1]*quat[1]+quat[2]*quat[2]+quat[3]*quat[3]);
@@ -369,4 +370,49 @@ void OrientMat2Quat(double OrientMat[9], double Quat[4]){
 		Quat[3] = -Quat[3];
 	}
 	normalizeQuat(Quat);
+}
+
+static inline
+void OrientMat2Euler(double m[3][3],double Euler[3])
+{
+    double psi, phi, theta, sph;
+	if (fabs(m[2][2] - 1.0) < EPS){
+		phi = 0;
+	}else{
+	    phi = acos(m[2][2]);
+	}
+    sph = sin(phi);
+    if (fabs(sph) < EPS)
+    {
+        psi = 0.0;
+        theta = (fabs(m[2][2] - 1.0) < EPS) ? sin_cos_to_angle(m[1][0], m[0][0]) : sin_cos_to_angle(-m[1][0], m[0][0]);
+    } else{
+        psi = (fabs(-m[1][2] / sph) <= 1.0) ? sin_cos_to_angle(m[0][2] / sph, -m[1][2] / sph) : sin_cos_to_angle(m[0][2] / sph,1);
+        theta = (fabs(m[2][1] / sph) <= 1.0) ? sin_cos_to_angle(m[2][0] / sph, m[2][1] / sph) : sin_cos_to_angle(m[2][0] / sph,1);
+    }
+    Euler[0] = psi;
+    Euler[1] = phi;
+    Euler[2] = theta;
+}
+
+static inline
+void Euler2OrientMat(
+    double Euler[3],
+    double m_out[3][3])
+{
+    double psi, phi, theta, cps, cph, cth, sps, sph, sth;
+    psi = Euler[0];
+    phi = Euler[1];
+    theta = Euler[2];
+    cps = cosd(psi) ; cph = cosd(phi); cth = cosd(theta);
+    sps = sind(psi); sph = sind(phi); sth = sind(theta);
+    m_out[0][0] = cth * cps - sth * cph * sps;
+    m_out[0][1] = -cth * cph * sps - sth * cps;
+    m_out[0][2] = sph * sps;
+    m_out[1][0] = cth * sps + sth * cph * cps;
+    m_out[1][1] = cth * cph * cps - sth * sps;
+    m_out[1][2] = -sph * cps;
+    m_out[2][0] = sth * sph;
+    m_out[2][1] = cth * sph;
+    m_out[2][2] = cph;
 }
