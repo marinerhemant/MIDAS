@@ -27,6 +27,7 @@ def fileReader(f,dset):
 	data = f[dset][:]
 	data = data[skipFrame:,:,:]
 	_, NrPixelsZ, NrPixelsY = data.shape
+	data[data<1] = 1
 	return np.mean(data,axis=0).astype(np.uint16)
 
 parser = MyParser(description='''Automated Calibration for WAXS using continuous rings-like signal''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -51,7 +52,7 @@ Wavelength = dataF['/analysis/process/analysis_parameters/Wavelength'][:].item()
 raw = fileReader(dataF,'/exchange/data')
 dark = fileReader(dataF,'/exchange/dark')
 
-rawFN = dataFN.split('zip')[0]+'.ge5'
+rawFN = dataFN.split('.zip')[0]+'.ge5'
 darkFN = 'dark_' +rawFN
 print(NrPixelsY,NrPixelsZ)
 raw.tofile(rawFN)
@@ -186,21 +187,22 @@ sim_rads = np.unique(hkls[:,-1])/px
 sim_rad_ratios = sim_rads / sim_rads[0]
 
 if DrawPlots==1:
-	plt.imshow(np.log(raw))
+	plt.imshow(np.log(raw),clim=[np.median(np.log(raw)),np.median(np.log(raw))+np.std(np.log(raw))])
+	plt.colorbar()
 	plt.show()
 neighborhood = skimage.morphology.disk(radius=50)
 data = raw.astype(np.uint16)
 print('Starting Median')
 data2 = skimage.filters.rank.median(data, neighborhood)
-print('Starting Median')
+print('Starting Median2')
 data2 = skimage.filters.rank.median(data2, neighborhood)
-print('Starting Median')
+print('Starting Median3')
 data2 = skimage.filters.rank.median(data2, neighborhood)
-print('Starting Median')
+print('Starting Median4')
 data2 = skimage.filters.rank.median(data2, neighborhood)
-print('Starting Median')
+print('Starting Median5')
 data2 = skimage.filters.rank.median(data2, neighborhood)
-print('Starting Median')
+print('Finished with median, now processing data.')
 data = data.astype(float)
 data_corr = data - data2
 data_corr[data_corr<threshold] = 0
@@ -296,7 +298,7 @@ sim_rad_ratios = sim_rads / sim_rads[0]
 
 if DrawPlots==1:
 	fig,ax = plt.subplots()
-	plt.imshow(raw,clim=[1800,2500],cmap='gray'); plt.colorbar(); 
+	plt.imshow(np.log(raw),clim=[np.median(np.log(raw)),np.median(np.log(raw))+np.std(np.log(raw))])
 	for rad in sim_rads:
 		e1 = mpatches.Arc((bc_new[1],bc_new[0]),2*rad,2*rad,angle = 0,theta1=-180,theta2=180,color='blue')
 		ax.add_patch(e1)
@@ -358,3 +360,9 @@ print('p2 '+p2_refined)
 print('p3 '+p3_refined)
 print('Mean Strain: '+mean_strain)
 print('Std Strain:  '+std_strain)
+if (os.path.exists(rawFN)):
+	os.remove(rawFN)
+if (os.path.exists(darkFN)):
+	os.remove(darkFN)
+if (os.path.exists('ps.txt')):
+	os.remove('ps.txt')
