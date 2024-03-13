@@ -89,6 +89,15 @@ help:
 scanningfcns: $(SRCDIR)ScanningFunctions.c
 	$(CC) $(SRCDIR)ScanningFunctions.c $(SRCDIR)CalcStrains.c -o $(BINDIR)ScanningFunctions $(CFLAGS) $(CFLAGSNLOPT) -fopenmp
 
+findsinglesolutionspf: $(SRCDIR)findSingleSolutionPF.c
+	$(CC) $(SRCDIR)findSingleSolutionPF.c $(SRCDIR)GetMisorientation.c -o $(BINDIR)findSingleSolutionPF $(CFLAGS) -fopenmp
+
+findmultiplesolutionspf: $(SRCDIR)findMultipleSolutionsPF.c
+	$(CC) $(SRCDIR)findMultipleSolutionsPF.c $(SRCDIR)GetMisorientation.c -o $(BINDIR)findMultipleSolutionsPF $(CFLAGS) -fopenmp
+
+mergescansscanning: $(SRCDIR)mergeScansScanning.c
+	$(CC) $(SRCDIR)mergeScansScanning.c -o $(BINDIR)mergeScansScanning $(CFLAGS) -fopenmp
+
 hdfread:
 	$(CC) $(SRCDIR)hdf5_read.c -o $(BINDIR)hdf_read $(CFLAGSHDF) $(CFLAGS)
 
