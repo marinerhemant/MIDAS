@@ -57,6 +57,8 @@ check (int test, const char * message, ...)
 #define N_COL_OBSSPOTS 10
 #define N_COL_GRAINSPOTS 17
 #define N_COL_GRAINMATCHES 16
+#define MAX_MIC_ROWS 50000000
+#define EPS 1e-9
 
 // Globals
 RealType *ObsSpotsLab;
@@ -124,6 +126,60 @@ void FindInMatrix(RealType *aMatrixp,int nrows,int ncols,int SearchColumn,RealTy
 		}
 	}
 }
+
+static inline double sind(double x){return sin(deg2rad*x);}
+static inline double cosd(double x){return cos(deg2rad*x);}
+static inline double tand(double x){return tan(deg2rad*x);}
+static inline double asind(double x){return rad2deg*(asin(x));}
+static inline double acosd(double x){return rad2deg*(acos(x));}
+static inline double atand(double x){return rad2deg*(atan(x));}
+static inline double sin_cos_to_angle (double s, double c){return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);}
+
+static inline
+void OrientMat2Euler(double m[3][3],double Euler[3])
+{
+    double psi, phi, theta, sph;
+	if (fabs(m[2][2] - 1.0) < EPS){
+		phi = 0;
+	}else{
+	    phi = acos(m[2][2]);
+	}
+    sph = sin(phi);
+    if (fabs(sph) < EPS)
+    {
+        psi = 0.0;
+        theta = (fabs(m[2][2] - 1.0) < EPS) ? sin_cos_to_angle(m[1][0], m[0][0]) : sin_cos_to_angle(-m[1][0], m[0][0]);
+    } else{
+        psi = (fabs(-m[1][2] / sph) <= 1.0) ? sin_cos_to_angle(m[0][2] / sph, -m[1][2] / sph) : sin_cos_to_angle(m[0][2] / sph,1);
+        theta = (fabs(m[2][1] / sph) <= 1.0) ? sin_cos_to_angle(m[2][0] / sph, m[2][1] / sph) : sin_cos_to_angle(m[2][0] / sph,1);
+    }
+    Euler[0] = psi;
+    Euler[1] = phi;
+    Euler[2] = theta;
+}
+
+static inline
+void Euler2OrientMat(
+    double Euler[3],
+    double m_out[3][3])
+{
+    double psi, phi, theta, cps, cph, cth, sps, sph, sth;
+    psi = Euler[0];
+    phi = Euler[1];
+    theta = Euler[2];
+    cps = cosd(psi) ; cph = cosd(phi); cth = cosd(theta);
+    sps = sind(psi); sph = sind(phi); sth = sind(theta);
+    m_out[0][0] = cth * cps - sth * cph * sps;
+    m_out[0][1] = -cth * cph * sps - sth * cps;
+    m_out[0][2] = sph * sps;
+    m_out[1][0] = cth * sps + sth * cph * cps;
+    m_out[1][1] = cth * cph * cps - sth * sps;
+    m_out[1][2] = -sph * cps;
+    m_out[2][0] = sth * sph;
+    m_out[2][1] = cth * sph;
+    m_out[2][2] = cph;
+}
+
 
 RealType** allocMatrix(int nrows, int ncols)
 {
@@ -979,52 +1035,6 @@ RealType CalcAvgIA(RealType *Arr, int n)
 	else return total / nnum;
 }
 
-int
-WriteBestMatch(RealType **GrainMatches,int ngrains,RealType **AllGrainSpots,int nrows,char *FileName2)
-{
-	int r, g, c;
-	RealType smallestIA = 99999;
-	int bestGrainIdx = -1;
-	for ( g = 0 ; g < ngrains ; g++ ) {
-		if ( GrainMatches[g][15] < smallestIA ) {
-			smallestIA = GrainMatches[g][15];
-			bestGrainIdx = g;
-		}
-	}
-	#pragma omp critical
-	{
-		if (bestGrainIdx != -1) {
-			FILE *fp2;
-			fp2 = fopen(FileName2,"w");
-			if (fp2==NULL) {
-				printf("Cannot open file: %s\n", FileName2);
-			} else{
-				RealType bestGrainID =  GrainMatches[bestGrainIdx][14];
-				fprintf(fp2, "%lf\n%lf\n",bestGrainID,bestGrainID);
-				fprintf(fp2,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf\n",
-				GrainMatches[bestGrainIdx][15], GrainMatches[bestGrainIdx][0], GrainMatches[bestGrainIdx][1],
-				GrainMatches[bestGrainIdx][2], GrainMatches[bestGrainIdx][3], GrainMatches[bestGrainIdx][4],
-				GrainMatches[bestGrainIdx][5], GrainMatches[bestGrainIdx][6], GrainMatches[bestGrainIdx][7],
-				GrainMatches[bestGrainIdx][8], GrainMatches[bestGrainIdx][9], GrainMatches[bestGrainIdx][10],
-				GrainMatches[bestGrainIdx][11], GrainMatches[bestGrainIdx][12], GrainMatches[bestGrainIdx][13]);
-				for (r = 0 ; r < nrows ; r++ ) {
-					if (AllGrainSpots[r][15] == bestGrainID ) {
-						for (c = 0; c < N_COL_GRAINSPOTS; c++) {
-							if (c!=1) fprintf(fp2,"%14lf, ", AllGrainSpots[r][c]);
-						}
-						fprintf(fp2, "\n");
-					}
-				}
-			}
-			fclose(fp2);
-		}
-		else {
-			FILE *fp2;
-			fp2 = fopen(FileName2,"w");
-			fclose(fp2);
-		}
-	}
-}
 
 void CalcIA(RealType **GrainMatches,int ngrains,RealType **AllGrainSpots,RealType distance)
 {
@@ -1077,12 +1087,116 @@ void MakeFullFileName(char* fullFileName, char* aPath, char* aFileName)
 	}
 }
 
-int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, struct TParams Params, int SpotRowNo )
+int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis, struct TParams Params, FILE *valsF, FILE *allF, FILE *keyF){
+	RealType ga = xThis, gb = yThis, gc = 0;
+	RealType **TheorSpots;
+	RealType **GrainSpots;
+	RealType **GrainMatches;
+	RealType **AllGrainSpots;
+	RealType **GrainMatchesT;
+	RealType **AllGrainSpotsT;
+	int nRowsOutput = MAX_N_MATCHES * 2 * n_hkls;
+	int nRowsPerGrain = 2 * n_hkls, nTspots;
+	GrainMatches = allocMatrix(MAX_N_MATCHES, N_COL_GRAINMATCHES);
+	GrainMatchesT = allocMatrix(MAX_N_MATCHES, N_COL_GRAINMATCHES);
+	AllGrainSpots = allocMatrix(nRowsOutput, N_COL_GRAINSPOTS);
+	AllGrainSpotsT = allocMatrix(nRowsOutput, N_COL_GRAINSPOTS);
+	GrainSpots = allocMatrix(nRowsPerGrain, N_COL_GRAINSPOTS );
+	TheorSpots = allocMatrix(nRowsPerGrain, N_COL_THEORSPOTS);
+	RealType MinMatchesToAccept;
+	int   bestnMatchesIsp = -1;
+	int   bestnTspotsIsp;
+	int nMatches, bestMatchFound=0;
+	int r,c,i, SpotID;
+	int   rownr = 0;
+	int   matchNr=0, sp;
+	RealType MinInternalAngle=1000;
+	RealType Displ_y, Displ_z;
+	RealType fracMatches = 0;
+	RealType bestConfidence=0;
+	RealType FracThis;
+	RealType RefRad = 100;
+	// Calc spotID inside
+	CalcDiffrSpots_Furnace(OM, Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii,
+		Params.OmegaRanges, Params.BoxSizes, Params.NoOfOmegaRanges, Params.ExcludePoleAngle, TheorSpots, &nTspots);
+	MinMatchesToAccept = nTspots * Params.MinMatchesToAcceptFrac;
+	for (sp = 0 ; sp < nTspots ; sp++) {
+		displacement_spot_needed_COM(ga, gb, gc, TheorSpots[sp][3], TheorSpots[sp][4],
+		TheorSpots[sp][5], TheorSpots[sp][6], &Displ_y, &Displ_z );
+		TheorSpots[sp][10] = TheorSpots[sp][4] +  Displ_y;
+		TheorSpots[sp][11] = TheorSpots[sp][5] +  Displ_z;
+		CalcEtaAngle( TheorSpots[sp][10], TheorSpots[sp][11], &TheorSpots[sp][12] );
+		TheorSpots[sp][13] = sqrt(TheorSpots[sp][10] * TheorSpots[sp][10] + TheorSpots[sp][11] * TheorSpots[sp][11]) - Params.RingRadii[(int)TheorSpots[sp][9]];
+	}
+	CompareSpots(TheorSpots, nTspots, RefRad, Params.MarginRad, Params.MarginRadial, etamargins, omemargins, &nMatches, GrainSpots, xThis, yThis);
+	FracThis = (double)nMatches / (double)nTspots;
+	if (FracThis > Params.MinMatchesToAcceptFrac){
+		if (FracThis >= bestConfidence){
+			bestConfidence = FracThis;
+			bestMatchFound = 1;
+			for (i = 0 ;  i < 9 ; i ++) GrainMatchesT[0][i] = OM[i/3][i%3];
+			GrainMatchesT[0][9]  = ga;
+			GrainMatchesT[0][10] = gb;
+			GrainMatchesT[0][11] = gc;
+			GrainMatchesT[0][12] = nTspots;
+			GrainMatchesT[0][13] = nMatches;
+			GrainMatchesT[0][14] = 1;
+			for (r = 0 ; r < nTspots ; r++) {
+				for (c = 0 ; c < 15 ; c++) AllGrainSpotsT[r][c] = GrainSpots[r][c];
+				AllGrainSpotsT[r][15] = 1;
+			}
+			CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance );
+			if (FracThis == bestConfidence && GrainMatchesT[0][15] > MinInternalAngle){
+				
+			} else{
+				MinInternalAngle = GrainMatchesT[0][15];
+				bestnMatchesIsp = nMatches;
+				bestnTspotsIsp = nTspots;
+				rownr = nTspots;
+				matchNr = 1;
+				for (i=0;i<17;i++) GrainMatches[0][i] = GrainMatchesT[0][i];
+				for (r = 0 ; r < nTspots ; r++) for (c = 0 ; c < 17 ; c++) AllGrainSpots[r][c] = AllGrainSpotsT[r][c];
+				for (r = nTspots; r < nRowsOutput; r++) for (c=0;c<17;c++) AllGrainSpots[r][c] = 0;
+			}
+		}
+	}
+	if (bestnMatchesIsp < 0 || (fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 || (int)bestnMatchesIsp == -1 || bestMatchFound == 0) || fracMatches < Params.MinMatchesToAcceptFrac){
+		FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
+		FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
+		FreeMemMatrix( TheorSpots, nRowsPerGrain);
+		FreeMemMatrix( GrainSpots, nRowsPerGrain);
+		FreeMemMatrix( AllGrainSpots, nRowsOutput);
+		FreeMemMatrix( AllGrainSpotsT, nRowsOutput);
+		return;
+	}
+	SpotID = AllGrainSpots[0][13];
+	double outArr[16] = {(double)SpotID,GrainMatches[0][15], GrainMatches[0][0], GrainMatches[0][1],
+						  GrainMatches[0][2], GrainMatches[0][3], GrainMatches[0][4],
+						  GrainMatches[0][5], GrainMatches[0][6], GrainMatches[0][7],
+						  GrainMatches[0][8], GrainMatches[0][9], GrainMatches[0][10],
+						  GrainMatches[0][11], GrainMatches[0][12], GrainMatches[0][13]};
+	size_t locVals, locAll;
+	locVals = ftell(valsF);
+	locAll = ftell(allF);
+	fwrite(outArr,16*sizeof(double),1,valsF);
+	int *outArr2;
+	outArr2 = malloc(rownr*sizeof(*outArr2));
+	for (i=0;i<rownr;i++) outArr2[i] = (int)AllGrainSpots[i][13];
+	fwrite(outArr2,rownr*sizeof(int),1,allF);
+	fprintf(keyF,"%zu %zu %zu %zu\n",(size_t)SpotID,(size_t)rownr,locVals,locAll);
+	printf("ID: %d, voxNr: %d, Confidence: %lf\n",SpotID,voxNr,fracMatches);
+	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
+	FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
+	FreeMemMatrix( TheorSpots, nRowsPerGrain);
+	FreeMemMatrix( GrainSpots, nRowsPerGrain);
+	FreeMemMatrix( AllGrainSpots, nRowsOutput);
+	FreeMemMatrix( AllGrainSpotsT, nRowsOutput);
+}
+
+int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, struct TParams Params, int SpotRowNo, FILE *valsF, FILE *allF, FILE *keyF)
 {
 	int i;
 	RealType ga = xThis, gb = yThis, gc = zThis;
-	//~ int   SpotRowNo;
-	//~ FindInMatrix(&ObsSpotsLab[0*10+0], n_spots, N_COL_OBSSPOTS, 4, SpotID, &SpotRowNo);
 	RealType y0 = ObsSpotsLab[SpotRowNo*10+0];
 	RealType z0 = ObsSpotsLab[SpotRowNo*10+1];
 	RealType omega = ObsSpotsLab[SpotRowNo*10+2];
@@ -1100,14 +1214,12 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 	hkl[1] = RingHKL[ringnr][1];
 	hkl[2] = RingHKL[ringnr][2];
 	GenerateCandidateOrientationsF(hkl, hklnormal, Params.StepsizeOrient, OrMat, &nOrient,ringnr);
-	//~ printf("%d %d %lf %lf %lf %d\n",SpotID,nOrient,y0,z0,omega,(int)ObsSpotsLab[SpotRowNo*10+9]);
 	RealType **TheorSpots;
 	RealType **GrainSpots;
 	RealType **GrainMatches;
 	RealType **AllGrainSpots;
 	RealType **GrainMatchesT;
 	RealType **AllGrainSpotsT;
-	//~ RealType **BestMatches;
 	int nRowsOutput = MAX_N_MATCHES * 2 * n_hkls;
 	int nRowsPerGrain = 2 * n_hkls, nTspots;
 	GrainMatches = allocMatrix(MAX_N_MATCHES, N_COL_GRAINMATCHES);
@@ -1116,8 +1228,6 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 	AllGrainSpotsT = allocMatrix(nRowsOutput, N_COL_GRAINSPOTS);
 	GrainSpots = allocMatrix(nRowsPerGrain, N_COL_GRAINSPOTS );
 	TheorSpots = allocMatrix(nRowsPerGrain, N_COL_THEORSPOTS);
-	//~ BestMatches = allocMatrix(2, 5);
-
 	RealType MinMatchesToAccept;
 	int   bestnMatchesIsp = -1, bestnMatchesRot = -1, bestnMatchesPos;
 	int   bestnTspotsIsp, bestnTspotsRot, bestnTspotsPos;
@@ -1131,7 +1241,6 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 	RealType bestConfidence=0;
 	RealType FracThis;
 	while (or < nOrient) {
-		//~ printf("%d %d\n",or,nOrient);
 		CalcDiffrSpots_Furnace(OrMat[or], Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii,
 			Params.OmegaRanges, Params.BoxSizes, Params.NoOfOmegaRanges, Params.ExcludePoleAngle, TheorSpots, &nTspots);
 		MinMatchesToAccept = nTspots * Params.MinMatchesToAcceptFrac;
@@ -1146,14 +1255,11 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 			TheorSpots[sp][13] = sqrt(TheorSpots[sp][10] * TheorSpots[sp][10] + TheorSpots[sp][11] * TheorSpots[sp][11]) - Params.RingRadii[(int)TheorSpots[sp][9]];
 		}
 		CompareSpots(TheorSpots, nTspots, RefRad, Params.MarginRad, Params.MarginRadial, etamargins, omemargins, &nMatches, GrainSpots, xThis, yThis);
-		// We now have nMatches, check if this is best, then we can save these.
 		FracThis = (double)nMatches / (double)nTspots;
 		if (FracThis > Params.MinMatchesToAcceptFrac){
 			if (FracThis >= bestConfidence){
-				// This is the best match till now, let's save this.
 				bestConfidence = FracThis;
 				bestMatchFound = 1;
-				// Make the array
 				for (i = 0 ;  i < 9 ; i ++) GrainMatchesT[0][i] = OrMat[or][i/3][i%3];
 				GrainMatchesT[0][9]  = ga;
 				GrainMatchesT[0][10] = gb;
@@ -1180,52 +1286,35 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 				}
 			}
 		}
+		if (FracThis != 0) {
+			if (FracThis < 0.5) { orDelta = 3 - round(FracThis * (3-1) / 0.5); }
+		}
 		or += orDelta;
 	}
-	//~ printf("Here2\n");
-	if (bestnMatchesIsp < 0){
-		FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
-		FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
-		FreeMemMatrix( TheorSpots, nRowsPerGrain);
-		FreeMemMatrix( GrainSpots, nRowsPerGrain);
-		FreeMemMatrix( AllGrainSpots, nRowsOutput);
-		FreeMemMatrix( AllGrainSpotsT, nRowsOutput);
-		//~ FreeMemMatrix( BestMatches, 2);
-		return;
-	}
 	fracMatches = (RealType) bestnMatchesIsp/bestnTspotsIsp;
-	if (fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 || (int)bestnMatchesIsp == -1 || bestMatchFound == 0){
+	if (bestnMatchesIsp < 0 || (fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 || (int)bestnMatchesIsp == -1 || bestMatchFound == 0) || fracMatches < Params.MinMatchesToAcceptFrac){
 		FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 		FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
 		FreeMemMatrix( TheorSpots, nRowsPerGrain);
 		FreeMemMatrix( GrainSpots, nRowsPerGrain);
 		FreeMemMatrix( AllGrainSpots, nRowsOutput);
 		FreeMemMatrix( AllGrainSpotsT, nRowsOutput);
-		//~ FreeMemMatrix( BestMatches, 2);
 		return;
 	}
-	if (fracMatches < Params.MinMatchesToAcceptFrac){
-		FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
-		FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
-		FreeMemMatrix( TheorSpots, nRowsPerGrain);
-		FreeMemMatrix( GrainSpots, nRowsPerGrain);
-		FreeMemMatrix( AllGrainSpots, nRowsOutput);
-		FreeMemMatrix( AllGrainSpotsT, nRowsOutput);
-		//~ FreeMemMatrix( BestMatches, 2);
-		return;
-	}
-	int SpotIDIdx = 0;
-	//~ BestMatches[SpotIDIdx][0] = SpotIDIdx+1;
-	//~ BestMatches[SpotIDIdx][1] = SpotID;
-	//~ BestMatches[SpotIDIdx][2] = bestnTspotsIsp;
-	//~ BestMatches[SpotIDIdx][3] = bestnMatchesIsp;
-	//~ BestMatches[SpotIDIdx][4] = fracMatches;
-	char fn2[1000];
-	char ffn2[1000];
-	sprintf(fn2, "%s%0*d_%0*d%s", "BestPos_", 6,voxNr, 9, SpotID, ".csv");
-	MakeFullFileName(ffn2, Params.OutputFolder, fn2);
-	printf("%s\n",ffn2);
-	WriteBestMatch(GrainMatches, matchNr, AllGrainSpots, rownr, ffn2);
+	double outArr[16] = {(double)SpotID,GrainMatches[0][15], GrainMatches[0][0], GrainMatches[0][1],
+						  GrainMatches[0][2], GrainMatches[0][3], GrainMatches[0][4],
+						  GrainMatches[0][5], GrainMatches[0][6], GrainMatches[0][7],
+						  GrainMatches[0][8], GrainMatches[0][9], GrainMatches[0][10],
+						  GrainMatches[0][11], GrainMatches[0][12], GrainMatches[0][13]};
+	size_t locVals, locAll;
+	locVals = ftell(valsF);
+	locAll = ftell(allF);
+	fwrite(outArr,16*sizeof(double),1,valsF);
+	int *outArr2;
+	outArr2 = malloc(rownr*sizeof(*outArr2));
+	for (i=0;i<rownr;i++) outArr2[i] = (int)AllGrainSpots[i][13];
+	fwrite(outArr2,rownr*sizeof(int),1,allF);
+	fprintf(keyF,"%zu %zu %zu %zu\n",(size_t)SpotID,(size_t)rownr,locVals,locAll);
 	printf("ID: %d, voxNr: %d, Confidence: %lf\n",SpotID,voxNr,fracMatches);
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 	FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
@@ -1233,7 +1322,6 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 	FreeMemMatrix( GrainSpots, nRowsPerGrain);
 	FreeMemMatrix( AllGrainSpots, nRowsOutput);
 	FreeMemMatrix( AllGrainSpotsT, nRowsOutput);
-	//~ FreeMemMatrix( BestMatches, 2);
 }
 
 int ReadBins(char *cwd)
@@ -1312,8 +1400,8 @@ main(int argc, char *argv[])
 	struct TParams Params;
 	char *ParamFN;
 	char fn[1024];
-	if (argc != 6) {
-		printf("Supply a parameter file, blockNr, nBlocks, numScans, numProcs as arguments: ie %s param.txt blockNr nBlocks numScans numProcs\n\n", argv[0]);
+	if (argc < 6) {
+		printf("Supply a parameter file, blockNr, nBlocks, numScans, numProcs, nfMic(optional) as arguments: ie %s param.txt blockNr nBlocks numScans numProcs nfMic\n\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
 	ParamFN = argv[1];
@@ -1392,6 +1480,30 @@ main(int argc, char *argv[])
 	int blockNr = atoi(argv[2]);
 	numScans = atoi(argv[4]);
 	int numProcs = atoi(argv[5]);
+	int hasMic = 0, nrMic = 0;
+	double *mic;
+	if (argc==7){
+		hasMic = 1;
+		char *nfMic = argv[6];
+		mic = calloc(MAX_MIC_ROWS*5,sizeof(*mic));
+		FILE *micF;
+		micF = fopen(nfMic,"r");
+		if (micF==NULL){
+			printf("Mic File could not be read, but a filename was provided. Exiting.\n");
+			return 1;
+		}
+		fgets(aline,1000,micF);
+		fgets(aline,1000,micF);
+		fgets(aline,1000,micF);
+		fgets(aline,1000,micF);
+		while (fgets(aline,1000,micF)!=NULL){
+			sscanf("%s %s %s %lf %lf %s %s %lf %lf %lf %s %s",dummy,dummy,dummy,
+					&mic[nrMic*5+0],&mic[nrMic*5+1],dummy,dummy,&mic[nrMic*5+2],
+					&mic[nrMic*5+3],&mic[nrMic*5+4],dummy,dummy);
+			nrMic++;
+		}
+		realloc(mic,nrMic*5*sizeof(*mic));
+	}
 	int startRowNr;
 	int endRowNr;
 
@@ -1434,23 +1546,56 @@ main(int argc, char *argv[])
 	int thisRowNr;
 	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
 	for (thisRowNr = startRowNr; thisRowNr < endRowNr; thisRowNr++){
-		// Find which spotIDs are in this voxel to be indexed.
+		FILE *valsF, *allF, *keyF;
+		char valsFN[2048], allFN[2048], keyFN[2048]; 
+		sprintf(valsFN,"%s/IndexBest_voxNr_%0*d.bin",Params.OutputFolder,6,thisRowNr);
+		valsF = fopen(valsFN,"wb");
+		sprintf(allFN,"%s/IndexBest_IDs_voxNr_%0*d.bin",Params.OutputFolder,6,thisRowNr);
+		allF = fopen(allFN,"wb");
+		sprintf(keyFN,"%s/IndexKey_voxNr_%0*d.txt",Params.OutputFolder,6,thisRowNr);
+		keyF = fopen(keyFN,"w");
 		double xThis=0, yThis=0;
 		xThis = grid[thisRowNr*2+0];
 		yThis = grid[thisRowNr*2+1];
-		double angle, newY;
-		int idnr;
-		int thisID;
-		int nrRows = endRowNrSp-startRowNrSp+1;
-		printf("%d %lf %lf %d %d %d\n", thisRowNr,xThis,yThis,startRowNrSp,endRowNrSp,nrRows);
-		for (idnr = startRowNrSp; idnr<=endRowNrSp; idnr++){
-			angle = ObsSpotsLab[idnr*10+2];
-			thisID = (int)ObsSpotsLab[idnr*10+4];
-			newY = xThis * sin(deg2rad*angle) + yThis * cos(deg2rad*angle);
-			if (fabs(newY - ypos[(int)ObsSpotsLab[idnr*10+9]]) <= BeamSize/2){
-				DoIndexing(thisID,thisRowNr,xThis,yThis,0,Params,idnr);
+		// In case we supply a NF recon, we need to figure out the orientation and just try that one
+		if (hasMic==1){
+			int iter;
+			int bestRow = -1;
+			double bestLen = 100000, lenThis;
+			for (iter=0;iter<nrMic;iter++){
+				lenThis = sqrt((xThis-mic[iter*5+0])*(xThis-mic[iter*5+0])+(yThis-mic[iter*5+1])*(yThis-mic[iter*5+1]));
+				if (lenThis < bestLen){
+					bestLen = lenThis;
+					bestRow = iter;
+				}
+			}
+			double eulerThis[3], OMThis[3][3];
+			if (bestRow != -1){
+				eulerThis[0] = mic[bestRow*5+2];
+				eulerThis[1] = mic[bestRow*5+3];
+				eulerThis[2] = mic[bestRow*5+4];
+				Euler2OrientMat(eulerThis,OMThis);
+			}
+			// Now we will only run this orientation.
+			DoIndexingSingle(thisRowNr,OMThis,xThis,yThis,Params,valsF,allF,keyF);
+		}else {
+			double angle, newY;
+			int idnr;
+			int thisID;
+			int nrRows = endRowNrSp-startRowNrSp+1;
+			printf("%d %lf %lf %d %d %d\n", thisRowNr,xThis,yThis,startRowNrSp,endRowNrSp,nrRows);
+			for (idnr = startRowNrSp; idnr<=endRowNrSp; idnr++){
+				angle = ObsSpotsLab[idnr*10+2];
+				thisID = (int)ObsSpotsLab[idnr*10+4];
+				newY = xThis * sin(deg2rad*angle) + yThis * cos(deg2rad*angle);
+				if (fabs(newY - ypos[(int)ObsSpotsLab[idnr*10+9]]) <= BeamSize/2){
+					DoIndexing(thisID,thisRowNr,xThis,yThis,0,Params,idnr,valsF,allF,keyF);
+				}
 			}
 		}
+		fclose(valsF);
+		fclose(allF);
+		fclose(keyF);
 	}
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);
