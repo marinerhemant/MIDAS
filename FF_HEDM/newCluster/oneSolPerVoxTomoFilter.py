@@ -15,7 +15,6 @@ from skimage.filters import threshold_otsu
 from skimage.morphology import reconstruction
 import h5py
 warnings.filterwarnings('ignore')
-# np.set_printoptions(suppress=True,precision=3,threshold=sys.maxsize)
 import argparse
 
 class MyParser(argparse.ArgumentParser):
@@ -24,207 +23,16 @@ class MyParser(argparse.ArgumentParser):
 		self.print_help()
 		sys.exit(2)
 
-def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,removeDuplicates=0,maxang=1,tol_ome=1,tol_eta=1,findUniques=1,thresh_reqd=0,draw_sinos=0,normalize=1,nNodes=1,machineName='local'):
-	uniqueOrients = []
-	bestConfs = []
-	uniqueFNames = []
-	os.chdir(folder)
-	files = glob.glob(folder+'/Output/*.csv')
-	nVoxels = nScans*nScans
+def runRecon(folder,nScans,sgnum,numProcs,numProcsLocal,maxang=1,tol_ome=1,tol_eta=1,thresh_reqd=0,draw_sinos=0,nNodes=1,machineName='local'):
 
-	if findUniques==1:
-		print("Finding unique grains, will print Orientation, Confidence, fileName for each unique grain.")
-		print("As a better solution for that grain is found, it will be printed again.")
-		for voxNr in range(nVoxels):
-			blurb = '_'+str.zfill(str(voxNr),6)+'_'
-			fns = [fn for fn in files if blurb in fn]
-			if len(fns) == 0:
-				continue
-			PropList = []
-			highestConf = -1
-			for fn in fns:
-				f = open(fn)
-				str1= f.readline()
-				str1= f.readline()
-				line = f.readline().split()
-				f.close()
-				IAthis = float(line[0][:-1])
-				OMthis = [float(a[:-1]) for a in line[1:10]]
-				nExp = float(line[-2][:-1])
-				nObs = float(line[-1][:-1])
-				ConfThis = nObs/nExp
-				idnr = int((fn.split('.')[-2]).split('_')[-1])
-				if ConfThis > highestConf:
-					highestConf = ConfThis
-				PropList.append([ConfThis,IAthis,OMthis,idnr,voxNr])
-			sortedPropList = sorted(PropList,key=lambda x: (x[0],x[1]),reverse=True)
-			id_this = sortedPropList[0][3]
-			fnBest = folder + '/Output/BestPos_'+str.zfill(str(voxNr),6)+'_'+str.zfill(str(id_this),9)+'.csv'
-			if len(uniqueOrients) == 0:
-				uniqueOrients.append(sortedPropList[0][2])
-				bestConfs.append(sortedPropList[0][0])
-				uniqueFNames.append(fnBest)
-				print(sortedPropList[0][2],sortedPropList[0][0],fnBest)
-				continue
-			isFound = 0
-			isBest = 0
-			isBestLoc = 0
-			for orientNr in range(len(uniqueOrients)):
-				orient = uniqueOrients[orientNr]
-				conf = bestConfs[orientNr]
-				ang = rad2deg*GetMisOrientationAngleOM(orient,sortedPropList[0][2],sgnum)[0]
-				if ang < maxang:
-					isFound = 1
-					if sortedPropList[0][0] > conf:
-						isBest = 1
-						isBestLoc = orientNr
-			if isBest == 1:
-				uniqueOrients[isBestLoc] = sortedPropList[0][2]
-				bestConfs[isBestLoc] = sortedPropList[0][0]
-				uniqueFNames[isBestLoc] = fnBest
-				print(sortedPropList[0][2],sortedPropList[0][0],fnBest)
-			if isFound == 0:
-				uniqueOrients.append(sortedPropList[0][2])
-				bestConfs.append(sortedPropList[0][0])
-				uniqueFNames.append(fnBest)
-				print(sortedPropList[0][2],sortedPropList[0][0],fnBest)
-		f = open('fNamesUniqueOrients.csv','w')
-		print("Final best unique grain list: ")
-		print("FileName\t\t\tBestConfidence\t\t\tOrientationMatrix")
-		for lineNr in range(len(uniqueFNames)):
-			line = uniqueFNames[lineNr]
-			orient = uniqueOrients[lineNr]
-			printVal = line+' '+str(bestConfs[lineNr])+' '+str(orient[0])+' '+str(orient[1])
-			printVal += ' '+str(orient[2])+' '+str(orient[3])+' '+str(orient[4])+' '+str(orient[5])
-			printVal += ' '+str(orient[6])+' '+str(orient[7])+' '+str(orient[8])
-			print(printVal)
-			f.write(printVal+'\n')
-		f.close()
+	subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')+f' {sgnum} {maxang} {folder} {nScans} {numProcsLocal} {tol_ome} {tol_eta}',cwd=folder,shell=True)
 
-	lines = open('fNamesUniqueOrients.csv','r').readlines()
-	IDsMergedScanning = np.genfromtxt('IDsMergedScanning.csv',skip_header=1,delimiter=',')
-	nrhkls = 2 * (np.genfromtxt('hkls.csv',skip_header=1)).shape[0]
-	nGrs = len(lines)
-	pos_arr = np.zeros((nGrs*nrhkls,6))
-	nrSps = np.zeros(nGrs)
-	spDone = 0
-	print("Now finding spots for each unique grain.")
-	for lineNr in range(nGrs):
-		line = lines[lineNr]
-		fname = line.split()[0]
-		info = np.genfromtxt(fname,skip_header=3,delimiter=',')
-		info = info[info[:,7].argsort()]
-		IDsThis = info[:,13]
-		hklnr = 0
-		for idNr in range(len(IDsThis)):
-			id = int(IDsThis[idNr])
-			origIDThis = IDsMergedScanning[IDsMergedScanning[:,0]==id,1]
-			scanNrThis = IDsMergedScanning[IDsMergedScanning[:,0]==id,2]
-			fNr = startFNr+scanNrThis*nrFilesPerSweep
-			if (len(scanNrThis) == 0): 
-				continue
-			fNr = int(fNr)
-			idsKey = np.genfromtxt(str(fNr)+'/IDRings.csv',skip_header=1)
-			orig_ID = idsKey[idsKey[:,2]==origIDThis,1]
-			radius_info = np.genfromtxt(str(fNr)+'/Radius_StartNr_1_EndNr_'+str(nFrames)+'.csv',skip_header=1)
-			omega = radius_info[radius_info[:,0]==orig_ID,2]
-			# Take uncorrected position, this will be easier to match.
-			ringNr = radius_info[radius_info[:,0]==orig_ID,13]
-			eta = radius_info[radius_info[:,0]==orig_ID,10]
-			pos_arr[spDone][0] = omega[0]
-			pos_arr[spDone][1] = eta[0]
-			pos_arr[spDone][2] = ringNr[0]
-			pos_arr[spDone][3] = lineNr
-			pos_arr[spDone][4] = hklnr
-			pos_arr[spDone][5] = spDone
-			hklnr += 1
-			spDone += 1
-		nrSps[lineNr] = hklnr
-	print(f"Total unique spots: {spDone}")
-
-	pos_arr = pos_arr[:spDone,:]
-	if removeDuplicates == 1:
-		print("We were requested to remove duplicate spots.")
-		dupArr = np.zeros(spDone)
-		# Find duplicate and remove spots
-		for sp in range(spDone):
-			if dupArr[sp] == 1: continue
-			pa = pos_arr[dupArr==0,:]
-			pa2 = pa[sp+1:,:]
-			sub_arr = pa2[pa2[:,2]==pos_arr[sp,2],:] # same ring
-			sub_arr2 = sub_arr[np.fabs(sub_arr[:,0]-pos_arr[sp,0])<tol_ome,:]
-			if (len(sub_arr2) ==0): continue
-			sub_arr2 = sub_arr2[np.fabs(sub_arr2[:,1]-pos_arr[sp,1])<tol_eta,:]
-			if (len(sub_arr2)==0): continue
-			sub_arr2 = sub_arr2[0]
-			dupArr[sp] = 1
-			dupArr[int(sub_arr2[5])] = 1
-		pos_arr = pos_arr[dupArr==0,:]
-		spDone = pos_arr.shape[0]
-		print(f"Total unique spots after removing duplicates: {spDone}")
-		# We need to change hklnrs appropriately
-		for grNr in range(nGrs):
-			idxs = pos_arr[:,3].astype(np.int32) == grNr
-			nSpsThisGr = np.sum(idxs)
-			pos_arr[idxs,4] = np.arange(nSpsThisGr)
-			nrSps[grNr] = nSpsThisGr
-
-	np.savetxt('spot_position_arr_unique_grains.txt',pos_arr,fmt="%.6f %.6f %d %d %d %d")
-	# Generate a normalization array
-	if normalize==1:
-		print("Generating a normalization array for sinogram intensities.")
-		hkls = np.genfromtxt('hkls.csv',skip_header=1)
-		nRings = int(np.max(hkls[:,4])) + 1
-		norm_arr = np.zeros((nScans,nRings))
-		for scanNr in range(nScans):
-			fNr = startFNr + scanNr*nrFilesPerSweep
-			radius_info = np.genfromtxt(str(fNr)+'/Radius_StartNr_1_EndNr_'+str(nFrames)+'.csv',skip_header=1)
-			if len(radius_info) == 0: continue
-			if len(radius_info.shape) == 1: continue
-			for ringNr in range(nRings):
-				spotsThisRing = radius_info[radius_info[:,13]==ringNr,:]
-				if len(spotsThisRing) == 0: continue
-				norm_arr[scanNr,ringNr] = spotsThisRing[0,16]
-		norm_arr = np.where(np.max(norm_arr, axis=0)==0, norm_arr, norm_arr*1./np.max(norm_arr, axis=0))
-		np.savetxt('intensity_normalization_array.txt',norm_arr,fmt="%.6f")
-	else:
-		norm_arr = np.ones((nScans,nScans))
-
-	# Now go through each Radius*.csv file, find matching spots and save them in the sinogram for each grain
-	print("Generating sinograms, doing a tomo recon for each grain.")
-	Sinos = np.zeros((nGrs,nrhkls,nScans))
-	omegas = np.zeros((nGrs,nrhkls))
-	grainSpots = nrSps.astype(np.int32)
-	for scanNr in range(nScans):
-		fNr = startFNr + scanNr*nrFilesPerSweep
-		radius_info = np.genfromtxt(str(fNr)+'/Radius_StartNr_1_EndNr_'+str(nFrames)+'.csv',skip_header=1)
-		if len(radius_info)==0: continue
-		if len(radius_info.shape) == 1: continue
-		# Find all spots matching the spots that interest us.
-		for spotNr in range(spDone):
-			omega = pos_arr[spotNr][0]
-			eta = pos_arr[spotNr][1]
-			ringNr = pos_arr[spotNr][2]
-			grNr = int(pos_arr[spotNr][3])
-			grSp = int(pos_arr[spotNr][4])
-			spots_filtered = radius_info[radius_info[:,13]==ringNr,:]
-			if len(spots_filtered) == 0: continue
-			spots_filtered_omega = spots_filtered[np.abs(spots_filtered[:,2]-omega)<=tol_ome,:]
-			if len(spots_filtered_omega) == 0: continue
-			spots_filtered_eta = spots_filtered_omega[np.abs(spots_filtered_omega[:,10]-eta)<=tol_eta,:]
-			if len(spots_filtered_eta) == 0: continue
-			if len(spots_filtered_eta.shape) == 1:
-				intensity = spots_filtered_eta[15]
-				omega_f = spots_filtered_eta[2]
-				# eta_f = spots_filtered_eta[10]
-			else:
-				bestRow = np.argmax(spots_filtered_eta[:,15])
-				intensity = spots_filtered_eta[bestRow,15]
-				omega_f = spots_filtered_eta[bestRow,2]
-				# eta_f = spots_filtered_eta[bestRow,10]
-			intensity *= norm_arr[scanNr,int(ringNr)]
-			Sinos[grNr,grSp,scanNr] = intensity
-			omegas[grNr,grSp] = omega_f
+	sinoFN = glob.glob(f"{folder}/sino_*.bin")[0]
+	nGrs = int(sinoFN.split('_')[1])
+	maxNHKLs = int(sinoFN.split('_')[2])
+	Sinos = np.fromfile(sinoFN,dtype=np.double,count=nGrs*maxNHKLs*nScans).reshape((nGrs,maxNHKLs,nScans))
+	omegas = np.fromfile(f"omegas_{nGrs}_{maxNHKLs}.bin",dtype=np.double,count=nGrs*maxNHKLs).reshape((nGrs,maxNHKLs))
+	grainSpots = np.fromfile(f"nrHKLs_{nGrs}.bin",dtype=np.int32,count=nGrs)
 
 	os.makedirs('Sinos',exist_ok=True)
 	os.makedirs('Thetas',exist_ok=True)
@@ -246,7 +54,7 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 			_,axs = plt.subplots(ncols=4, figsize=(10, 2))
 			if draw_sinos==1:
 				axs[0].imshow(np.transpose(recon),cmap=plt.cm.gray)
-				axs[1].hist(recon.ravel(),bins=256);
+				axs[1].hist(recon.ravel(),bins=256)
 				axs[1].axvline(thresh,color='r')
 			recon[binary] = 0
 			seed = np.copy(recon)
@@ -273,56 +81,35 @@ def runRecon(folder,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep=1,rem
 	Image.fromarray(full_recon).save('Recons/Full_recon_max_project.tif')
 	im_list[0].save('Recons/all_recons_together.tif',compression="tiff_deflate",save_all=True,append_images=im_list[1:])
 
-	# Now we use max_id to compare with the results that we had to see which orientations were found
-	max_id = np.array(Image.open('Recons/Full_recon_max_project_grID.tif'))
+	# Now we have the IDs for each grain, let's find out the orientations, generate info for refinement
+	# Tahe max_id, go through each voxel and find the ones that should be done for each voxel
+	# write a SpotsToIndex.csv with the full info
+	uniqueOrientations = np.genfromtxt(f'{folder}/UniqueOrientations.csv',delimiter=' ')
 	max_id2 = np.flipud(max_id)
-	max_id2 = max_id2.flatten()
-	IDArr = []
-	print('Filtering voxels to generate reconstruction map.')
-	print('OrigNVoxels\tFilteredNVoxels')
-	for grNr in range(nGrs):
-		grVoxels = (max_id2==grNr).nonzero()[0]
-		line = lines[grNr].split('\n')[0]
-		orient = np.array([float(val) for val in line.split()[-9:]])
-		nrVox = 0
-		# Now we know the voxels belonging to this grain, go through the files list, read the BestPos_voxNr_*.csv and get the correct orientation files
-		for voxNr in grVoxels:
-			bestConf = -1
-			bestID = -1
-			blurb = '_'+str.zfill(str(voxNr),6)+'_'
-			fns = [fn for fn in files if blurb in fn]
-			for fn in fns:
-				f = open(fn)
-				_ = f.readline()
-				_ = f.readline()
-				line = f.readline().split()
-				f.close()
-				OMthis = [float(a[:-1]) for a in line[1:10]]
-				nExp = float(line[-2][:-1])
-				nObs = float(line[-1][:-1])
-				ConfThis = nObs/nExp
-				ang = rad2deg*GetMisOrientationAngleOM(orient,OMthis,sgnum)[0]
-				if ang < maxang and ConfThis > bestConf:
-					bestConf = ConfThis
-					bestID = int((fn.split('.')[-2]).split('_')[-1])
-				if bestConf == 1.0: break
-			if bestID == -1: max_id2[voxNr] = -1
-			if bestID != -1:
-				nrVox+=1
-				IDArr.append([bestID,voxNr])
-		print(grVoxels.shape[0],nrVox)
-	# _,ax = plt.subplots(ncols=2)
-	# ax[0].imshow(np.flipud(max_id))
-	# ax[1].imshow(max_id2.reshape((nScans,nScans)))
-	# plt.show()
+	max_id2 = max_id2.flatten() # max_id2 has the rowNr, starting from 0. TODO: confirm this
+	f = open(f'{folder}/SpotsToIndex.csv','w')
+	for voxNr in range(nScans*nScans):
+		if max_id2[voxNr] == -1:
+			continue
+		orientThis = uniqueOrientations[max_id2[voxNr],]
+		with open(f'{folder}/Output/UniqueIndexKeyOrientAll_voxNr_{voxNr}.txt','r') as f:
+			lines = f.readlines()
+		for line in lines:
+			orientInside = [float(val) for val in line.split()[5:14]]
+			ang = rad2deg*GetMisOrientationAngleOM(orientThis,orientInside,sgnum)[0]
+			if ang < maxang:
+				f.write(line)
+				break
+	f.close()
 
-	np.savetxt('SpotsToIndex.csv',IDArr,fmt="%d %d")
-	nIDs = len(IDArr)
+	IDs = np.genfromtxt(f"{folder}/SpotsToIndex.csv")
+	nIDs = IDs.shape[0]
 	os.makedirs('Results',exist_ok=True)
-	swiftcmdIdx = os.path.expanduser('~/.MIDAS/swift/bin/swift') + ' -config ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/sites.conf') + ' -sites ' + machineName + ' ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/runRefiningScanning.swift') + ' -folder=' + folder + ' -nrNodes=' + str(nNodes) + ' -nScans=' + str(nScans) + ' -numProcs='+ str(numProcs)
+	swiftcmdIdx = os.path.expanduser('~/.MIDAS/swift/bin/swift') + ' -config ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/sites.conf') 
+	swiftcmdIdx += ' -sites ' + machineName + ' ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/runRefiningScanning.swift') + ' -folder=' 
+	swiftcmdIdx += folder + ' -nrNodes=' + str(nNodes) + ' -nIDs=' + str(nIDs) + ' -numProcs='+ str(numProcs)
 	print(swiftcmdIdx)
 	subprocess.call(swiftcmdIdx,shell=True)
-	# subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitOrStrainsScanningOMP")+' paramstest.txt 0 1 '+ str(nIDs)+' '+str(numProcs),shell=True)
 	
 	NrSym,Sym = MakeSymmetries(sgnum)
 	print(f"Filtering the final output. Will be saved to {folder}/Recons/microstrFull.csv and {folder}/Recons/microstructure.hdf")
@@ -381,24 +168,17 @@ if __name__ == "__main__":
 	args, unparsed = parser.parse_known_args()
 	resultDir = args.resultFolder
 	nScans = args.nScans
-	pos = args.positionsFile
-	positions = np.genfromtxt(pos)
 	sgnum = args.sgNum
 	numProcs = args.nCPUs
 	maxang = args.maxAng
-	startFNr = args.startFNr
-	nFrames = args.nFrames
-	nrFilesPerSweep = args.nrFilesPerSweep
-	removeDuplicates = args.removeDuplicates
 	tol_ome = args.tolOme
 	tol_eta = args.tolEta
-	findUniques = args.findUniques
 	thresh_reqd = args.threshReqd
 	draw_sinos = args.drawSinos
-	normalize = args.normalize
 	nNodes = args.nNodes
 	machineName = args.machineName
-	runRecon(resultDir,startFNr,nScans,nFrames,sgnum,numProcs,nrFilesPerSweep,removeDuplicates,maxang,tol_ome,tol_eta,findUniques,thresh_reqd,draw_sinos,normalize,nNodes,machineName)
+	numProcsLocal = 3
+	runRecon(resultDir,nScans,sgnum,numProcs,numProcsLocal,maxang,tol_ome,tol_eta,thresh_reqd,draw_sinos,nNodes,machineName)
 
 
 # runRecon('/local/s1iduser/borbely_apr17_midas',66,163,1440,225,96,nrFilesPerSweep=8,removeDuplicates=1,maxang=3,tol_ome=3,tol_eta=3,findUniques=0,draw_sinos=0,thresh_reqd=1,normalize=0)
