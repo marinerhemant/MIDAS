@@ -8,7 +8,7 @@ import os,sys,glob
 import os.path
 from pathlib import Path
 import shutil
-from math import acos,sqrt,atan,floor
+from math import floor
 utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 sys.path.insert(0,utilsDir)
 from calcMiso import *
@@ -16,19 +16,31 @@ import warnings
 warnings.filterwarnings('ignore')
 from oneSolPerVoxTomoFilter import runRecon
 from multSolPerVox import runReconMulti
+import pandas as pd
 
-def CalcEtaAngle(y, z):
-	alpha = 57.2957795130823*acos(z/sqrt(y*y+z*z))
-	if (y>0):
-		alpha = -alpha
+class MyParser(argparse.ArgumentParser):
+	def error(self, message):
+		sys.stderr.write('error: %s\n' % message)
+		self.print_help()
+		sys.exit(2)
+
+rad2deg = 57.2957795130823
+
+def CalcEtaAngleAll(y, z):
+	alpha = 57.2957795130823*np.arccos(z/np.linalg.norm(np.array([y,z]),axis=0))
+	alpha[y>0] *= -1
 	return alpha
 
 startTime = time.time()
 
 warnings.filterwarnings('ignore')
-parser = argparse.ArgumentParser(description='''MIDAS_PF, contact hsharma@anl.gov Parameter file must be in the same folder as the desired output folder(SeedFolder).
-Provide positions.csv file (negative positions with respect to actual motor position. Motor position is normally position of the rotation axis, opposite to the voxel position.''', formatter_class=RawTextHelpFormatter)
-parser.add_argument('-nCPUs',    type=int, required=True, help='Number of CPUs to use')
+parser = MyParser(description='''
+MIDAS_PF, contact hsharma@anl.gov Parameter file must be in the same folder as the desired output folder(SeedFolder).
+Provide positions.csv file (negative positions with respect to actual motor position. 
+Motor position is normally position of the rotation axis, opposite to the voxel position.
+''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('-nCPUs', type=int, required=True, help='Number of CPUs to use')
+parser.add_argument('-nCPUsLocal', type=int, required=False, default=3, help='Local Number of CPUs to use')
 parser.add_argument('-paramFile', type=str, required=True, help='ParameterFileName: Use the full path.')
 parser.add_argument('-nNodes', type=str, required=True, help='Number of Nodes')
 parser.add_argument('-machineName', type=str, required=True, help='Machine Name')
@@ -40,6 +52,7 @@ machineName = args.machineName
 doPeakSearch = args.doPeakSearch
 oneSolPerVox = args.oneSolPerVox
 numProcs = args.nCPUs
+numProcsLocal = args.nCPUsLocal
 nNodes = args.nNodes
 os.environ["nNODES"] = str(nNodes)
 os.environ["nCPUs"] = str(numProcs)
@@ -122,67 +135,46 @@ if doPeakSearch == 1:
 		Path(thisDir+'Output').mkdir(parents=True,exist_ok=True)
 		Path(thisDir+'Results').mkdir(parents=True,exist_ok=True)
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" "+thisParamFN,shell=True)
-		# Call the PeaksFittingOMP code using swift to run PeakSearch on each scan in parallel
-		swiftcmd = os.path.expanduser('~/.MIDAS/swift/bin/swift') + ' -config ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/sites.conf') + ' -sites ' + machineName + ' ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/runPeakSearchOnly.swift') + ' -folder=' + thisDir + ' -paramfn='+ baseNameParamFN + ' -nrNodes=' + str(nNodes) + ' -nFrames=' + str(nFrames) + ' -numProcs='+ str(numProcs)
+		# Call the PeaksFittingOMP code using swift to run PeakSearch on each scan in parallel on multiple nodes.
+		swiftcmd  = os.path.expanduser('~/.MIDAS/swift/bin/swift') + ' -config ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/sites.conf') 
+		swiftcmd += ' -sites ' + machineName + ' ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/runPeakSearchOnly.swift') + ' -folder=' 
+		swiftcmd += thisDir + ' -paramfn='+ baseNameParamFN + ' -nrNodes=' + str(nNodes) + ' -nFrames=' + str(nFrames) + ' -numProcs='+ str(numProcs)
 		print(swiftcmd)
 		subprocess.call(swiftcmd,shell=True)
-		# These need to be done sequentially
 		if omegaOffset != 0:
-			# We need to open each Temp/* file and modify its omega, write back
 			fns = glob.glob('Temp/*PS.csv')
 			for fn in fns:
-				with open(fn,'r') as f:
-					lines = f.readlines()
-					head_this = lines[0]
-				with open(fn,'w') as f:
-					f.write(head_this)
-					if len(lines)==1: continue
-					omega_this = float(lines[1].split()[2])
-					omegaOffsetThis = omegaOffset*layerNr
-					omegaOffsetThis = omegaOffsetThis%360.0
-					omega_new = omega_this - omegaOffsetThis
-					for line in lines[1:]:
-						line_new = line.split()
-						line_new[2] = f"{omega_new:.6f}"
-						f.write(' '.join(line_new))
+				df = pd.read_csv(fn,delimiter=' ')
+				if df.shape[0] == 0:
+					continue
+				omega_this = df['Omega(degrees)'][0]
+				omegaOffsetThis = omegaOffset*layerNr
+				omegaOffsetThis = omegaOffsetThis%360.0
+				omega_new = omega_this - omegaOffsetThis
+				df['Omega(degrees)'] = omega_new
+				df.to_csv(fn,sep=' ',header=True,float_format='%.6f',index=False)
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAll")+' '+baseNameParamFN,shell=True)
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAll")+' '+baseNameParamFN,shell=True)
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetup")+' '+baseNameParamFN,shell=True)
-		# Now do the position correction
-		AllF = open('InputAllExtraInfoFittingAll.csv','r')
-		allcontents = AllF.readlines()
-		AllF.close()
-		AllF = open(topdir+'/InputAllExtraInfoFittingAll'+str(layerNr-1)+'.csv','w')
-		IDRings = np.genfromtxt('IDRings.csv',skip_header=1,delimiter=' ')
 		Result = np.genfromtxt(f'Radius_StartNr_{startNr}_EndNr_{endNr}.csv',skip_header=1,delimiter=' ')
-		for line2 in allcontents:
-			if line2[0] == '%':
-				AllF.write(line2)
-			else:
-				line2sp = line2.split()
-				y = float(line2sp[0])
-				z = float(line2sp[1])
-				ome = float(line2sp[2])
-				grR = float(line2sp[3])
-				ID = float(line2sp[4])
-				RNr = float(line2sp[5])
-				Eta = float(line2sp[6])
-				Ttheta = float(line2sp[7])
-				omeIniNoW = float(line2sp[8])
-				yOrigNoW = float(line2sp[9])
-				zOrigNoW = float(line2sp[10])
-				yDet = float(line2sp[11])
-				zDet = float(line2sp[12])
-				omegaDet = float(line2sp[13])
-				y = y + ypos # If positions.csv is flipped, this should be positive.
-				if (y*y+z*z) < np.finfo(np.float32).eps:
-					continue # We are skipping the 0 lines, but does this ruin the ordering of the peaks?
-				Eta = CalcEtaAngle(y,z)
-				Ttheta = 57.2957795130823*atan(sqrt(y*y+z*z)/Lsd)
-				yOrigNoW = yOrigNoW + ypos # Confirm this
-				outstr = '{:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f} {:12.5f}\n'.format(y,z,ome,grR,ID,RNr,Eta,Ttheta,omeIniNoW,yOrigNoW,zOrigNoW,yDet,zDet,omegaDet)
-				AllF.write(outstr)
-		AllF.close()
+		if Result.shape[0]==0:
+			continue
+		uniqueRings,uniqueIndices = np.unique(Result[:,13],return_index=True)
+		ringPowderIntensity = []
+		for iter in range(len(uniqueIndices)):
+			ringPowderIntensity.append([uniqueRings[iter],Result[uniqueIndices[iter],16]])
+		ringPowderIntensity = np.array(ringPowderIntensity)
+		dfAllF = pd.read_csv('InputAllExtraInfoFittingAll.csv',delimiter=' ',skipinitialspace=True)
+		dfAllF.loc[dfAllF['GrainRadius']>0.001,'%YLab'] += ypos
+		dfAllF.loc[dfAllF['GrainRadius']>0.001,'YOrig(NoWedgeCorr)'] += ypos
+		dfAllF['Eta'] = CalcEtaAngleAll(df['%YLab'],df['ZLab'])
+		dfAllF['Ttheta'] = rad2deg*np.arctan(np.linalg.norm(np.array([dfAllF['%YLab'],dfAllF['ZLab']]),axis=0)/Lsd)
+		for iter in range(len(ringPowderIntensity)):
+			ringNr = ringPowderIntensity[iter,0]
+			powInt = ringPowderIntensity[iter,1]
+			dfAllF.loc[dfAllF['RingNumber']==ringNr,'GrainRadius'] *= powInt**(1/3)
+		outFN2 = topdir+'/InputAllExtraInfoFittingAll'+str(layerNr-1)+'.csv'
+		dfAllF.to_csv(outFN2,sep=' ',header=True,float_format='%.6f',index=False)
 		shutil.copy2(thisDir+'/paramstest.txt',topdir+'/paramstest.txt')
 		shutil.copy2(thisDir+'/hkls.csv',topdir+'/hkls.csv')
 else:
@@ -196,77 +188,13 @@ else:
 				shutil.move(f'original_InputAllExtraInfoFittingAll{layerNr}.csv',f'InputAllExtraInfoFittingAll{layerNr}.csv')
 
 if nMerges != 0:
-	# We want to merge every nMerges datasets
-	# We will update nScans, positions and positions.csv
-	# We will move the InputallExtraInfoFittingAll*.csv files to original_InputAllExtraInfoFittingAll*.csv, then generate merged files
-	# To merge peaks, we will use the following reasoning: peak position should be within +/- 2 pixels, 2*omegaStep
-	nFinScans = int(floor(nScans / nMerges))
 	shutil.move('positions.csv','original_positions.csv')
-	posF = open('positions.csv','w')
-	headOut = '%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)'
-	positionsNew = np.zeros(nFinScans)
-	for scanNr in range(nFinScans):
-		thisPosition = float(positions[scanNr])
-		startScanNr = scanNr*nMerges
-		shutil.move(f'InputAllExtraInfoFittingAll{startScanNr}.csv',f'original_InputAllExtraInfoFittingAll{startScanNr}.csv')
-		spots = np.genfromtxt(f'original_InputAllExtraInfoFittingAll{startScanNr}.csv',skip_header=1)
-		if len(spots.shape) < 2:
-			spots = np.zeros((2,14))
-			spots[:,2] = -360 # Hook to keep sanity
-		for scan in range(1,nMerges):
-			thisScanNr = startScanNr + scan
-			thisPosition += float(positions[thisScanNr])
-			shutil.move(f'InputAllExtraInfoFittingAll{thisScanNr}.csv',f'original_InputAllExtraInfoFittingAll{thisScanNr}.csv')
-			spots2 = np.genfromtxt(f'original_InputAllExtraInfoFittingAll{thisScanNr}.csv',skip_header=1)
-			if (len(spots2.shape)<2): continue
-			for spot in spots2:
-				# Check for all spots which are close to this spot
-				filteredSpots = spots[np.fabs(spots[:,0]-spot[0])<2*px,:]
-				found = 1
-				if (len(filteredSpots) == 0): found = 0
-				else:
-					if (len(filteredSpots.shape) > 1):
-						filteredSpots = filteredSpots[np.fabs(filteredSpots[:,1]-spot[1])<2*px,:]
-					else:
-						filteredSpots = filteredSpots[np.fabs(filteredSpots[1]-spot[1])<2*px,:]
-					if (len(filteredSpots) == 0): found = 0
-					else:
-						if (len(filteredSpots.shape) > 1):
-							filteredSpots = filteredSpots[np.fabs(filteredSpots[:,2]-spot[2])<2*omegaStep,:]
-						else:
-							filteredSpots = filteredSpots[np.fabs(filteredSpots[2]-spot[2])<2*omegaStep,:]
-						if (len(filteredSpots) == 0): found = 0
-						elif len(filteredSpots.shape) == 1:
-							# Generate mean values weighted by radius
-							rowNr = np.argwhere(spots[:,4]==filteredSpots[4]).item()
-							weightedValSpots = spots[rowNr,:]*spots[rowNr,3]
-							weightedValSpot = spot[:]*spot[3]
-							totalWts = spots[rowNr,3] + spot[3]
-							newVals = (weightedValSpot+weightedValSpots)/(totalWts)
-							spots[rowNr,:] = newVals
-				if found == 0:
-					spots = np.vstack((spots,spot))
-		positionsNew[scanNr] = thisPosition/nMerges
-		spots = spots[spots[:,2]!=-360,:]
-		print(f'ScanNr: {scanNr}, position: {positionsNew[scanNr]}, nSpots: {spots.shape[0]}, Output written to: InputAllExtraInfoFittingAll{scanNr}.csv')
-		# Update the new positions array
-		if (len(spots.shape)>1): 
-			outFAll = open(f'InputAllExtraInfoFittingAll{scanNr}.csv','w')
-			np.savetxt(outFAll,spots,fmt="%12.5f",delimiter=" ",header=headOut,comments='')
-			outFAll.close()
-			data_read = np.genfromtxt(f'InputAllExtraInfoFittingAll{scanNr}.csv',skip_header=1)
-			if spots.shape[0]!=data_read.shape[0]:
-				print(f"Something went wrong while saving the file: InputAllExtraInfoFittingAll{scanNr}.csv. Wanted to write {spots.shape[0]} spots, but wrote {data_read.shape[0]} spots. Exiting.")
-				sys.exit()
-			else:
-				print(f'Successfully wrote {spots.shape[0]} spots to InputAllExtraInfoFittingAll{scanNr}.csv')
-		else:
-			outFAll = open(f'InputAllExtraInfoFittingAll{scanNr}.csv','w')
-			outFAll.write(headOut)
-			outFAll.close()
-	np.savetxt('positions.csv',positionsNew,fmt='%.5f',delimiter=' ')
-	positions = positionsNew
-	nScans = nFinScans
+	for layerNr in range(0,nMerges*(nScans//nMerges)):
+		if os.path.exists(f'InputAllExtraInfoFittingAll{layerNr}.csv'):
+			shutil.move(f'InputAllExtraInfoFittingAll{layerNr}.csv',f'original_InputAllExtraInfoFittingAll{layerNr}.csv')
+	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/mergeScansScanning")+f" {nMerges*(nScans//nMerges)} {nMerges} {2*px} {2*omegaStep} {numProcsLocal}",shell=True)
+	positions = open(topdir+'/positions.csv').readlines()
+	nScans = int(floor(nScans / nMerges))
 
 os.chdir(topdir)
 Path(topdir+'Output').mkdir(parents=True,exist_ok=True)
@@ -301,13 +229,14 @@ paramsf.write('RingToIndex '+str(RingToIndex)+'\n')
 paramsf.close()
 
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
-# Parallel after this
-swiftcmdIdx = os.path.expanduser('~/.MIDAS/swift/bin/swift') + ' -config ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/sites.conf') + ' -sites ' + machineName + ' ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/runIndexingScanning.swift') + ' -folder=' + topdir + ' -nrNodes=' + str(nNodes) + ' -nScans=' + str(nScans) + ' -numProcs='+ str(numProcs)
+swiftcmdIdx = os.path.expanduser('~/.MIDAS/swift/bin/swift') + ' -config ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/sites.conf')
+swiftcmdIdx += ' -sites ' + machineName + ' ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/runIndexingScanning.swift') + ' -folder=' 
+swiftcmdIdx += topdir + ' -nrNodes=' + str(nNodes) + ' -nScans=' + str(nScans) + ' -numProcs='+ str(numProcs)
 print(swiftcmdIdx)
 subprocess.call(swiftcmdIdx,shell=True)
 
 if oneSolPerVox==1:
-	runRecon(topdir,startNrFirstLayer,nScans,endNr,sgnum,numProcs,nrFilesPerSweep=nrFilesPerSweep,removeDuplicates=1,maxang=3,tol_eta=2,tol_ome=2,findUniques=1,thresh_reqd=1,nNodes=nNodes,machineName=machineName)
+	runRecon(topdir,nScans,sgnum,numProcs,numProcsLocal,maxang=3,tol_eta=2,tol_ome=2,thresh_reqd=1,nNodes=nNodes,machineName=machineName)
 else:
-	runReconMulti(topdir,nScans,positions,sgnum,numProcs,nNodes=nNodes,machineName=machineName)
+	runReconMulti(topdir,nScans,positions,sgnum,numProcs,numProcsLocal,nNodes=nNodes,machineName=machineName)
 print("Time Elapsed: "+str(time.time()-startTime)+" seconds.")
