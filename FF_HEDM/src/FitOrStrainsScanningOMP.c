@@ -1566,7 +1566,7 @@ int main(int argc, char *argv[])
 	}
 
 	//////////////////////////// OPENMP
-	int *SptIDs, *VoxNrs;
+	size_t *infoArr;
 	int nSptIDs;
 	int nBlocks = atoi(argv[3]);
 	int blockNr = atoi(argv[2]);
@@ -1579,15 +1579,14 @@ int main(int argc, char *argv[])
 	endRowNr = tmp < (nSpotsToIndex-1) ? tmp : (nSpotsToIndex-1);
 	printf("%d %d %d\n",startRowNr,tmp,endRowNr);
 	nSptIDs = endRowNr-startRowNr+1;
-	SptIDs = malloc(nSptIDs*sizeof(*SptIDs));
-	VoxNrs = malloc(nSptIDs*sizeof(*VoxNrs));
+	infoArr = malloc(nSptIDs*5*sizeof(*infoArr));
 	// Read spotIDs
 	int it;
 	FILE *spotsFile = fopen("SpotsToIndex.csv","r");
 	for (it=0;it<startRowNr-1;it++) fgets(aline,1000,spotsFile); // skip first startRowNr-1 lines
 	for (it=0;it<nSptIDs;it++){
 		fgets(aline,1000,spotsFile);
-		sscanf(aline,"%d %d",&SptIDs[it], &VoxNrs[it]);
+		sscanf(aline,"%zu %zu %zu %zu %zu",&infoArr[it*5+0],&infoArr[it*5+1],&infoArr[it*5+2],&infoArr[it*5+3],&infoArr[it*5+4]);
 	}
 	fclose(spotsFile);
 	double **hkls;
@@ -1633,86 +1632,46 @@ int main(int argc, char *argv[])
 		char header[2048];
 		sprintf(header,"%s%s",h1,h2);
 		int i, j, k;
-		int SpId = SptIDs[thisRowNr];
 		double LatCin[6];
 		char line[5024];
 		for (i=0;i<6;i++) LatCin[i] = LatCinT[i];
 		int nSpID = 0;
-		char FileName[2048],SpotsCompFN[2048];
-		sprintf(FileName,"%s/BestPos_%0*d_%0*d.csv",OutputFolder,6,VoxNrs[thisRowNr],9,SpId);
-		int nSpotsBest=0,*spotIDS;
-		spotIDS = malloc(MaxNSpotsBest*sizeof(*spotIDS));
-		// Should we do this in critical mode???
-		FILE *BestFile;
-		BestFile = fopen(FileName,"r");
-		if (BestFile == NULL){
-			printf("The BestPos file did not exist for SpotID %d, FN: %s. Continuing to next ID.\n",SpId,FileName);
-			free(spotIDS);
-			continue;
-		}
-		fseek(BestFile,0L,SEEK_END);
-		int sz = ftell(BestFile);
-		if (sz == 0){
-			printf("The BestPos file was empty for SpotID %d, FN: %s. Continuing to next ID.\n",SpId,FileName);
-			free(spotIDS);
-			continue;
-		}
-		rewind(BestFile);
+		// char FileName[2048],SpotsCompFN[2048];
+		// sprintf(FileName,"%s/BestPos_%0*d_%0*d.csv",OutputFolder,6,VoxNrs[thisRowNr],9,SpId);
+		// use the infoArr 
+		int SpId = infoArr[thisRowNr*5+1];
+		int voxNr = (int)infoArr[thisRowNr*5+0];
+		int nSpotsBest = (int)infoArr[thisRowNr*5+2];
+		int *spotIDS;
+		spotIDS = malloc(nSpotsBest*sizeof(*spotIDS));
+		size_t locOffsetVals=infoArr[thisRowNr*5+3], locOffsetIDs=infoArr[thisRowNr*5+4];
+		char fnVals[2048], fnIDs[2048];
+		sprintf(fnVals,"Output/IndexBest_voxNr_%0*d.bin",6,thisRowNr);
+		sprintf(fnIDs,"Output/IndexBest_IDs_voxNr_%0*d.bin",6,thisRowNr);
+		FILE *fVals, *fIDs;
+		fVals = fopen(fnVals,"rb");
+		fIDs = fopen(fnIDs,"rb");
+		fseek(fVals,locOffsetVals,SEEK_SET);
+		double tmpArr[16];
+		fread(tmpArr,16*sizeof(double),1,fVals);
+		fclose(fVals);
+		fseek(fIDs,locOffsetIDs,SEEK_SET);
+		fread(spotIDS,nSpotsBest*sizeof(int),1,fIDs);
+		fclose(fIDs);
 		double Orient0[9], Pos0[3], IA0, Euler0[3], Orient0_3[3][3],NrExpected,NrObserved,meanRadius=0,thisRadius,completeness;
-
-		fgets(line,5000,BestFile);
-		fgets(line,5000,BestFile);
-		fgets(line,5000,BestFile);
-		sscanf(line,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf",
-				&IA0,&Orient0[0],&Orient0[1],&Orient0[2],&Orient0[3],&Orient0[4],&Orient0[5],
-				&Orient0[6],&Orient0[7],&Orient0[8],&Pos0[0],&Pos0[1],&Pos0[2],&NrExpected,&NrObserved);
+		IA0 = tmpArr[1];
+		for (i=0;i<9;i++) Orient0[i] = tmpArr[i+2];
+		for (i=0;i<3;i++) Pos0[i] = tmpArr[i+11];
+		NrExpected = tmpArr[14];
+		NrObserved = tmpArr[15];
 		completeness = NrObserved/NrExpected;
-		double dummy1,dummy2,dummy3,dummy4,dummy5,dummy6,dummy7,dummy8,dummy9,dummy10,dummy11,dummy12,dummy13,dummy14,dummy15,TempID;
-		double Ytempr, Ztempr, EtaTempr, MaxRadTot=-100;
-		int nSpotsRad = 0;
-		while (fgets(line,5000,BestFile) != NULL){
-			sscanf(line,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf,",&dummy1,&Ytempr,
-				&dummy3,&dummy4,&Ztempr,&dummy6,&dummy7,&dummy8,&dummy9,&dummy10,&dummy11,&thisRadius,&dummy13,&TempID,
-				&dummy14,&dummy15);
-			if (dummy1 >= 0){
-				if (TopLayer == 1){
-					EtaTempr = CalcEtaAngle(Ytempr,Ztempr);
-					if (EtaTempr > 90){
-						meanRadius += thisRadius;
-						nSpotsRad++;
-						if (TakeGrainMax == 1){
-							if (thisRadius > MaxRadTot){
-								MaxRadTot = thisRadius;
-							}
-						}
-					}
-				}else{
-					meanRadius += thisRadius;
-					nSpotsRad++;
-					if (TakeGrainMax == 1){
-						if (thisRadius > MaxRadTot){
-							MaxRadTot = thisRadius;
-						}
-					}
-				}
-				spotIDS[nSpotsBest] = (int)TempID;
-				nSpotsBest++;
-			}
-		}
-		meanRadius /= nSpotsRad;
-		if (TakeGrainMax == 1){
-			meanRadius = MaxRadTot;
-		}
-		fclose(BestFile);
+		meanRadius = 1;
 
 		double a=LatCin[0],b=LatCin[1],c=LatCin[2],alph=LatCin[3],bet=LatCin[4],gamm=LatCin[5];
 		for (i=0;i<3;i++) for (j=0;j<3;j++) Orient0_3[i][j] = Orient0[i*3+j];
 		OrientMat2Euler(Orient0_3,Euler0);
 		Euler2OrientMat(Euler0,Orient0_3);Convert3x3To9(Orient0_3,Orient0);
 		OrientMat2Euler(Orient0_3,Euler0);
-		//~ char rmCommand[4096];
-		//~ sprintf(rmCommand,"rm -rf %s",FileName);
-		//~ system(rmCommand);
 		double **spotsYZO;
 		spotsYZO=allocMatrix(nSpotsBest,8);
 		int nSpotsYZO=nSpotsBest;
@@ -1787,7 +1746,6 @@ int main(int argc, char *argv[])
 	    XFit = malloc(12*sizeof(*XFit));
 	    double *ErrorInt1;
 	    ErrorInt1 = malloc(3*sizeof(*ErrorInt1));
-	    //~ FitPositionIni(X0,nSpotsComp,spotsYZONew,nhkls,hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,XFit,lb,ub);
 	    for (i=0;i<12;i++) XFit[i] = X0[i];
 	    CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,XFit,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
 						SpotsComp,Splist,ErrorInt1,&nSpotsComp,1);
@@ -1861,13 +1819,12 @@ int main(int argc, char *argv[])
 	    for (i=0;i<3;i++) {lb4[i]=XLow2[i];ub4[i]=XHigh2[i];}
 	    double StrainsFitIn[6];for (i=0;i<6;i++) StrainsFitIn[i]=XFit3[i];
 	    double *XFit4;XFit4 = malloc(3*sizeof(*XFit4));
-	    //~ FitPosSec(X0_4,nSpotsComp,spotsYZONew,nhkls,hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,XFit4,lb4,ub4,OrientFitIn,StrainsFitIn);
 	    double FinalResult[12];for (i=0;i<3;i++) FinalResult[i] = X0_4[i]; for (i=0;i<3;i++) FinalResult[i+3] = XFit2[i]; for (i=0;i<6;i++) FinalResult[i+6] = XFit3[i];
 		double *ErrorFin;
 	    ErrorFin = malloc(3*sizeof(*ErrorFin));
 	    CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,FinalResult,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
 						SpotsComp,Splist,ErrorFin,&nSpotsComp,1);
-	    printf("VoxNr %6d, SpotID %6d, %6d out of %6d, Errors: %7.2f %6.4f %6.4f, ",VoxNrs[thisRowNr],SpId,thisRowNr,nSptIDs,ErrorFin[0],ErrorFin[1],ErrorFin[2]);
+	    printf("VoxNr %6d, SpotID %6d, %6d out of %6d, Errors: %7.2f %6.4f %6.4f, ",voxNr,SpId,thisRowNr,nSptIDs,ErrorFin[0],ErrorFin[1],ErrorFin[2]);
 	    for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
 	    printf("Fitvals: Pos: %7.2f %7.2f %7.2f, Orient: %7.2f %7.2f %7.2f, LatC: %6.4f %6.4f %6.4f %7.3f %7.3f %7.3f\n",
 					FinalResult[0],FinalResult[1],FinalResult[2],FinalResult[3],FinalResult[4],FinalResult[5],FinalResult[6],FinalResult[7],FinalResult[8],
@@ -1892,7 +1849,7 @@ int main(int argc, char *argv[])
 		// Start Writing FitBest+FNs[thisRowNr]
 		// What to write: Orientation, Position, LatticeParameter, Errors
 		char outFN[2048];
-		sprintf(outFN,"%s/FitBest_%0*d_%0*d.csv",ResultFolder,6,VoxNrs[thisRowNr],9,SpId);
+		sprintf(outFN,"%s/FitBest_%0*d_%0*d.csv",ResultFolder,6,voxNr,9,SpId);
 		double OutMatr[27];
 		for (i=0;i<10;i++){
 			OutMatr[i] = OrientsFit[nSpID][i];
@@ -1948,7 +1905,7 @@ int main(int argc, char *argv[])
 	}
 
 	FreeMemMatrix(hkls,MaxNHKLS);
-	free(SptIDs);
+	free(infoArr);
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);
 	return 0;
