@@ -38,7 +38,8 @@ all: help bindircheck calibrant imagemax \
 	fitgrainhydra forwardsimulation integrator fitorstrainsscanningomp \
 	peaksfittingomp indexeromp fitsetup fitposorstrainsomp mergeoverlapsall calcradiusall \
 	bindatascanning indexerscanningomp calibrantomp \
-	peaksfittingompzarr hklszarr mergeoverlapsallzarr calcradiusallzarr fitsetupzarr processgrainszarr
+	peaksfittingompzarr hklszarr mergeoverlapsallzarr calcradiusallzarr fitsetupzarr processgrainszarr \
+	findsinglesolutionspf findmultiplesolutionspf mergescansscanning
 
 local: predep all runsetup
 
