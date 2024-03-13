@@ -20,78 +20,20 @@ class MyParser(argparse.ArgumentParser):
 		self.print_help()
 		sys.exit(2)
 
-def runReconMulti(folder,nScans,positions,sgnum,numProcs,maxang=1,nNodes=1,machineName='local'):
-	nVoxels = nScans*nScans
-	files = glob.glob(folder+'/Output/*.csv')
-	xpos, ypos = np.meshgrid(positions,positions)
-	xpositions = np.transpose(np.transpose(xpos).reshape((nScans*nScans)))
-	ypositions = np.transpose(np.transpose(ypos).reshape((nScans*nScans)))
-	uniqueArr = np.zeros((nVoxels,3))
-	uniqueOrientArr = []
-	for voxNr in range(nVoxels):
-		# find all files with that blurb
-		blurb = '_'+str.zfill(str(voxNr),6)+'_'
-		fns = [fn for fn in files if blurb in fn]
-		print(blurb,len(fns))
-		if len(fns) == 0:
-			continue
-		PropList = []
-		highestConf = -1
-		for fn in fns:
-			f = open(fn)
-			str1= f.readline()
-			str1= f.readline()
-			line = f.readline().split()
-			f.close()
-			IAthis = float(line[0][:-1])
-			OMthis = [float(a[:-1]) for a in line[1:10]]
-			nExp = float(line[-2][:-1])
-			nObs = float(line[-1][:-1])
-			ConfThis = nObs/nExp
-			idnr = int((fn.split('.')[-2]).split('_')[-1])
-			if ConfThis > highestConf:
-				highestConf = ConfThis
-			PropList.append([ConfThis,IAthis,OMthis,idnr,voxNr])
-		sortedPropList = sorted(PropList,key=lambda x: (x[0],x[1]),reverse=True)
-		uniqueArr[voxNr][0] = xpositions[voxNr]
-		uniqueArr[voxNr][1] = ypositions[voxNr]
-		marked = np.zeros(len(sortedPropList))
-		uniqueOrients = []
-		for idx in range(len(sortedPropList)):
-			if marked[idx] == 1:
-				continue
-			else:
-				val1 = sortedPropList[idx]
-				uniqueOrients.append(val1)
-				orient1 = val1[2]
-				for idx2 in range(idx+1,len(sortedPropList)):
-					if marked[idx2] == 1:
-						continue
-					orient2 = sortedPropList[idx2][2]
-					ang = rad2deg*GetMisOrientationAngleOM(orient1,orient2,sgnum)[0]
-					if ang < maxang:
-						marked[idx2] = 1
-		print(['VoxelNr:',voxNr,'nSols:',len(fns),'nUniqueSols:',len(uniqueOrients)])
-		uniqueArr[voxNr][2] = len(uniqueOrients)
-		uniqueOrientArr.append(uniqueOrients)
+def runReconMulti(folder,nScans,positions,sgnum,numProcs,numProcsLocal,maxang=1,nNodes=1,machineName='local'):
 
-	# Generate SpotsToIndex.csv file with all jobs to do.
-	IDsToDo = [orient2[3] for orient in uniqueOrientArr for orient2 in orient]
-	IDsToDo2 = [orient2[4] for orient in uniqueOrientArr for orient2 in orient]
-	nIDs = len(IDsToDo)
-	with open(folder+'/SpotsToIndex.csv','w') as SpotsF:
-		for nr in range(nIDs):
-			SpotsF.write(str(IDsToDo[nr])+' '+str(IDsToDo2[nr])+'\n')
-
+	subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findMultipleSolutionsPF')+f' {folder} {sgnum} {maxang} {nScans} {numProcsLocal}',shell=True,cwd=folder)
 	# Run FitOrStrainsScanning
+	IDs = np.genfromtxt(f"{folder}/SpotsToIndex.csv")
+	nIDs = IDs.shape[0]
 	os.makedirs('Results',exist_ok=True)
-	swiftcmdIdx = os.path.expanduser('~/.MIDAS/swift/bin/swift') + ' -config ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/sites.conf') + ' -sites ' + machineName + ' ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/runRefiningScanning.swift') + ' -folder=' + folder + ' -nrNodes=' + str(nNodes) + ' -nScans=' + str(nScans) + ' -numProcs='+ str(numProcs)
+	swiftcmdIdx = os.path.expanduser('~/.MIDAS/swift/bin/swift') + ' -config ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/sites.conf') 
+	swiftcmdIdx += ' -sites ' + machineName + ' ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/runRefiningScanning.swift') + ' -folder=' 
+	swiftcmdIdx += folder + ' -nrNodes=' + str(nNodes) + ' -nIDs=' + str(nIDs) + ' -numProcs='+ str(numProcs)
 	print(swiftcmdIdx)
 	subprocess.call(swiftcmdIdx,shell=True)
-	# subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitOrStrainsScanningOMP")+' paramstest.txt 0 1 '+ str(nIDs)+' '+str(numProcs),shell=True)
 
 	NrSym,Sym = MakeSymmetries(sgnum)
-	# go through the output
 	files2 = glob.glob(folder+'/Results/*.csv')
 	filesdata = np.zeros((len(files2),43))
 	i=0
@@ -128,6 +70,6 @@ if __name__ == "__main__":
 	maxang = args.maxAng
 	nNodes = args.nNodes
 	machineName = args.machineName
-	runReconMulti(resultDir,nScans,positions,sgnum,numProcs,maxang=maxang,nNodes=nNodes,machineName=machineName)
+	runReconMulti(resultDir,nScans,positions,sgnum,numProcs,numProcsLocal=3,maxang=maxang,nNodes=nNodes,machineName=machineName)
 
 
