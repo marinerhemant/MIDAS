@@ -66,6 +66,7 @@ main(int argc, char *argv[])
                 &allSpots[nAll*14+6],&allSpots[nAll*14+7],&allSpots[nAll*14+8],
                 &allSpots[nAll*14+9],&allSpots[nAll*14+10],&allSpots[nAll*14+11],
                 &allSpots[nAll*14+12],&allSpots[nAll*14+13]);
+            if (allSpots[nAll*14+3]<0.01) continue;
             nAll++;
         }
         fclose(thisF);
@@ -86,6 +87,7 @@ main(int argc, char *argv[])
                     &thisSpots[nThis*14+6],&thisSpots[nThis*14+7],&thisSpots[nThis*14+8],
                     &thisSpots[nThis*14+9],&thisSpots[nThis*14+10],&thisSpots[nThis*14+11],
                     &thisSpots[nThis*14+12],&thisSpots[nThis*14+13]);
+                if (thisSpots[nThis*14+3]<0.01) continue;
                 nThis++;
             }
             fclose(thisF);
