@@ -1083,7 +1083,7 @@ int main(int argc, char *argv[])
 	IndexAllNoHeader = fopen(fnIndexAllNoHeader,"w");
 	ExtraInfo = fopen(fnExtraInfo,"w");
 	fprintf(IndexAll,"%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta\n");
-	fprintf(ExtraInfo,"%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)\n");
+	fprintf(ExtraInfo,"%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor) IntegratedIntensity(counts)\n");
 	for (i=0;i<nIndices;i++){
 		if (goodRows[i] == 1){
 			fprintf(IndexAll,"%12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f\n",YCorrWedge[i],ZCorrWedge[i],OmegaCorrWedge[i],
