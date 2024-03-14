@@ -197,9 +197,6 @@ main(int argc, char *argv[])
         uniqueKeyArr[nUniques*5+0] = i;
         for (j=0;j<4;j++) uniqueKeyArr[nUniques*5+1+j] = allKeyArr[i*4+j];
         for (j=0;j<9;j++) uniqueOrientArr[nUniques*9+j] = OMThis[j];
-        printf("%d %d %d ",nUniques,i,(int)markArr2[i]);
-        for (j=0;j<5;j++) printf("%zu ",uniqueKeyArr[nUniques*5+j]);
-        printf("\n");
         nUniques++;
     }
     free(markArr2);
@@ -216,6 +213,7 @@ main(int argc, char *argv[])
         for (j=0;j<9;j++) fprintf(uniqueOrientationsF,"%lf ",uniqueOrientArr[i*9+j]);
         fprintf(uniqueOrientationsF,"\n");
     }
+    fclose(uniqueOrientationsF);
     sprintf(mergedIDsFN,"%s/IDsMergedScanning.csv",originalFolder);
     FILE *fIDsMerged;
     fIDsMerged = fopen(mergedIDsFN,"r");
