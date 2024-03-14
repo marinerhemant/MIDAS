@@ -137,6 +137,7 @@ main(int argc, char *argv[])
                 for (k=0;k<9;k++) OMInside[k] = OMArr[j*9+k];
                 OrientMat2Quat(OMInside,Quat2);
                 Angle = GetMisOrientation(Quat1,Quat2,Axis,&ang,sgNr);
+                print("%lf\n",ang);
                 if (ang<maxAng) markArr[j] = true;
             }
             for (j=0;j<4;j++) uniqueArrThis[nUniquesThis*4+j] = keys[i*4+j];
