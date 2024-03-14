@@ -27,9 +27,9 @@ main(int argc, char *argv[])
 	}
     int nScans = atoi(argv[1]);
     int nMerges = atoi(argv[2]);
-    int tolPx = atof(argv[3]);
-    int tolOme = atof(argv[4]);
-    int numProcs = atof(argv[5]);
+    double tolPx = atof(argv[3]);
+    double tolOme = atof(argv[4]);
+    int numProcs = atoi(argv[5]);
     int nFinScans = (int)floor((double)nScans / (double)nMerges);
     double *positions, *positionsNew;
     positions = calloc(nScans,sizeof(*positions));
