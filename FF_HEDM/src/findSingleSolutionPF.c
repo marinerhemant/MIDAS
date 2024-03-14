@@ -284,6 +284,9 @@ main(int argc, char *argv[])
     int nDuplicates = 0;
     bool *dupArr;
     dupArr = malloc(nAllSpots*sizeof(*dupArr));
+    double *allSpotsFin;
+    allSpotsFin = calloc((nAllSpots)*5,sizeof(*allSpotsFin)); // Omega, RingNr, Eta, grainNr
+    int nAllSpotsFin=0;
     for (i=0;i<nAllSpots;i++) dupArr[i] = false;
     for (i=0;i<nAllSpots;i++){
         if (dupArr[i] == true) continue;
@@ -293,12 +296,6 @@ main(int argc, char *argv[])
                 dupArr[i] = true;
                 }
         }
-    }
-    int nAllSpotsFin=0;
-    double *allSpotsFin;
-    allSpotsFin = calloc((nAllSpots)*5,sizeof(*allSpotsFin)); // Omega, RingNr, Eta, grainNr
-    for (i=0;i<nAllSpots;i++){
-        if (dupArr[i]==true) continue;
         for (j=0;j<4;j++) allSpotsFin[nAllSpotsFin*5+j] = allSpots[i*5+j]; 
         nAllSpotsFin++;
     }
@@ -320,7 +317,6 @@ main(int argc, char *argv[])
     size_t szSino = nUniques;
     szSino *= maxNHKLs;
     szSino *= nScans;
-    printf("%zu %d %d %d %d %d %d %d\n",szSino,nAllSpots, nDuplicates, nUniques,nAllSpotsFin, maxNHKLs,nScans,nUniques*maxNHKLs*nScans);
     sinoArr = malloc(szSino*sizeof(double));
     for (i=0;i<szSino;i++) sinoArr[i] = 0;
     omeArr = calloc(nUniques*maxNHKLs,sizeof(*omeArr));
