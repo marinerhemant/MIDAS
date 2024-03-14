@@ -100,6 +100,7 @@ def runRecon(folder,nScans,sgnum,numProcs,numProcsLocal,maxang=1,tol_ome=1,tol_e
 				orientInside = [float(val) for val in line.split()[5:14]]
 				ang = rad2deg*GetMisOrientationAngleOM(orientThis,orientInside,sgnum)[0]
 				if ang < maxang:
+					print(line)
 					f.write(line)
 					break
 	f.close()

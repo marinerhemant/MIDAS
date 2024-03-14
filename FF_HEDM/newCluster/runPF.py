@@ -237,7 +237,7 @@ print(swiftcmdIdx)
 subprocess.call(swiftcmdIdx,shell=True)
 
 if oneSolPerVox==1:
-	runRecon(topdir,nScans,sgnum,numProcs,numProcsLocal,maxang=3,tol_eta=2,tol_ome=2,thresh_reqd=1,nNodes=nNodes,machineName=machineName)
+	runRecon(topdir,nScans,sgnum,numProcs,numProcsLocal,maxang=2,tol_eta=1,tol_ome=1,thresh_reqd=1,nNodes=nNodes,machineName=machineName)
 else:
 	runReconMulti(topdir,nScans,positions,sgnum,numProcs,numProcsLocal,nNodes=nNodes,machineName=machineName)
 print("Time Elapsed: "+str(time.time()-startTime)+" seconds.")
