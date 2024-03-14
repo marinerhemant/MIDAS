@@ -175,7 +175,7 @@ int main(int argc, char* argv[]){
 			if (fabs(MyData[nSpots].Values[3]) > 0.0001)
 				nSpots++;
 		}
-		printf("%d\n",nSpots);
+		// printf("%d\n",nSpots);
 		fclose(AllSpotsFile);
 	}
 
