@@ -311,6 +311,7 @@ main(int argc, char *argv[])
             if (allSpotsFin[j*5+3]==i){
                 allSpotsFin[j+8+4] = nrHKLsFilled[j];
                 nrHKLsFilled[j]++;
+                printf("%d\n",nrHKLsFilled[j]);
                 if (nrHKLsFilled[j]>maxNHKLs) maxNHKLs=nrHKLsFilled[j];
             }
         }
