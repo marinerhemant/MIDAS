@@ -109,7 +109,7 @@ main(int argc, char *argv[])
         for (i=0;i<nIDs;i++){
             if (markArr[i]==true) continue;
             if (confIAArr[i*2+0] < bestConf) continue;
-            if (confIAArr[i*2+0] == bestConf && confIAArr[i*2+1] < bestIA) continue;
+            if (confIAArr[i*2+0] == bestConf && confIAArr[i*2+1] > bestIA) continue;
             printf("%lf %lf\n",confIAArr[i*2+0],confIAArr[i*2+1]);
             bestConf = confIAArr[i*2+0];
             bestIA = confIAArr[i*2+1];
