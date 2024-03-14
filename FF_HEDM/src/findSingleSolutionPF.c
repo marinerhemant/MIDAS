@@ -315,7 +315,7 @@ main(int argc, char *argv[])
             }
         }
     }
-    printf("%d %d %d %d %d\n",nUniques,nAllSpotsFin, maxNHKLs,nScans,nUniques*maxNHKLs*nScans);
+    printf("%d %d %d %d %d %d %d\n",nAllSpots, nDuplicates, nUniques,nAllSpotsFin, maxNHKLs,nScans,nUniques*maxNHKLs*nScans);
     double *sinoArr, *omeArr;
     sinoArr = calloc((int)nUniques*maxNHKLs*nScans,sizeof(*sinoArr));
     omeArr = calloc(nUniques*maxNHKLs,sizeof(*omeArr));
