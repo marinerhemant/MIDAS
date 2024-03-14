@@ -75,11 +75,12 @@ main(int argc, char *argv[])
             fclose(valsF);
             continue;
         }
+        printf("%zu\n",szt);
         size_t *keys;
         keys = calloc(MAX_N_SOLUTIONS_PER_VOX*4,sizeof(*keys));
         char aline[2048];
         int nIDs = 0;
-        while(fgets(aline,2048,keyF)!=NULL){
+        while(fgets(aline,1000,keyF)!=NULL){
             printf("%s\n",aline);
             sscanf(aline,"%zu %zu %zu %zu",&keys[nIDs*4+0],&keys[nIDs*4+1],&keys[nIDs*4+2],&keys[nIDs*4+3]);
             nIDs++;
