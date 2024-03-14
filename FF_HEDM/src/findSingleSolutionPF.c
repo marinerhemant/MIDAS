@@ -103,6 +103,7 @@ main(int argc, char *argv[])
         int bestRow=-1;
         double bestConf = -1, bestIA = 100;
         for (i=0;i<nIDs;i++){
+            printf("%lf %lf\n",confIAArr[i*2+0],confIAArr[i*2+1]);
             if (markArr[i]==true) continue;
             if (confIAArr[i*2+0] < bestConf) continue;
             if (confIAArr[i*2+0] == bestConf && confIAArr[i*2+1] < bestIA) continue;
