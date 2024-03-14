@@ -140,7 +140,7 @@ if doPeakSearch == 1:
 		swiftcmd += ' -sites ' + machineName + ' ' + os.path.expanduser('~/opt/MIDAS/FF_HEDM/newCluster/runPeakSearchOnly.swift') + ' -folder=' 
 		swiftcmd += thisDir + ' -paramfn='+ baseNameParamFN + ' -nrNodes=' + str(nNodes) + ' -nFrames=' + str(nFrames) + ' -numProcs='+ str(numProcs)
 		print(swiftcmd)
-		subprocess.call(swiftcmd,shell=True)
+		# subprocess.call(swiftcmd,shell=True)
 		if omegaOffset != 0:
 			fns = glob.glob('Temp/*PS.csv')
 			for fn in fns:
