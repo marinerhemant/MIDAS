@@ -281,7 +281,6 @@ main(int argc, char *argv[])
         fclose(inpExtraF);
     }
     free(allSpotIDs);
-    int nDuplicates = 0;
     bool *dupArr;
     dupArr = malloc(nAllSpots*sizeof(*dupArr));
     double *allSpotsFin;
@@ -292,14 +291,12 @@ main(int argc, char *argv[])
         if (dupArr[i] == true) continue;
         for (j=i+1;j<nAllSpots;j++){
             if (fabs(allSpots[i*5+0]-allSpots[j*5+0]) < tolOme && fabs(allSpots[i*5+2]-allSpots[j*5+2]) < tolOme && fabs(allSpots[i*5+1]-allSpots[j*5+1]) < 0.01){
-                nDuplicates++;
                 dupArr[i] = true;
                 }
         }
         for (j=0;j<4;j++) allSpotsFin[nAllSpotsFin*5+j] = allSpots[i*5+j]; 
         nAllSpotsFin++;
     }
-    printf("%d %d %d\n",nAllSpots,nDuplicates,nAllSpotsFin);
     free(dupArr);
     free(allSpots);
     int *nrHKLsFilled, maxNHKLs=-1;
