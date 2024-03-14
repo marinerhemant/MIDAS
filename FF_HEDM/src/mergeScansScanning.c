@@ -93,14 +93,16 @@ main(int argc, char *argv[])
             for (i=0;i<nThis;i++){
                 found = 0;
                 for (j=0;j<nAll;j++){
-                    if (fabs(thisSpots[i*14+0] - allSpots[j*14+0])<tolPx){
-                        if (fabs(thisSpots[i*14+1] - allSpots[j*14+1])<tolPx){
-                            if (fabs(thisSpots[i*14+2] - allSpots[j*14+2])<tolOme){
-                                found = 1;
-                                origWeight = allSpots[j*14+3];
-                                newWeight = thisSpots[i*14+3];
-                                for (k=0;k<14;k++) {
-                                    allSpots[j*14+k] = (allSpots[j*14+k]*origWeight + thisSpots[i*14+k]*newWeight)/(origWeight+newWeight);
+                    if (fabs(thisSpots[i*14+5] - allSpots[j*14+5])<0.01){
+                        if (fabs(thisSpots[i*14+0] - allSpots[j*14+0])<tolPx){
+                            if (fabs(thisSpots[i*14+1] - allSpots[j*14+1])<tolPx){
+                                if (fabs(thisSpots[i*14+2] - allSpots[j*14+2])<tolOme){
+                                    found = 1;
+                                    origWeight = allSpots[j*14+3];
+                                    newWeight = thisSpots[i*14+3];
+                                    for (k=0;k<14;k++) {
+                                        allSpots[j*14+k] = (allSpots[j*14+k]*origWeight + thisSpots[i*14+k]*newWeight)/(origWeight+newWeight);
+                                    }
                                 }
                             }
                         }
