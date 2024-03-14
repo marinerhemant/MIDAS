@@ -174,7 +174,10 @@ main(int argc, char *argv[])
     bool *markArr2;
     markArr2 = malloc(nScans*nScans*sizeof(*markArr2));
     for (i=0;i<nScans*nScans;i++){
-        if (allKeyArr[i*4+0]==-1) markArr2[i] = true;
+        if (allKeyArr[i*4+0]==-1) {
+            markArr2[i] = true;
+            continue;
+        }
         markArr2[i] = false;
     }
     double OMThis[9], OMInside[9], Quat1[4],Quat2[4], Angle, Axis[3],ang;
