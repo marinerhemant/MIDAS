@@ -137,13 +137,10 @@ main(int argc, char *argv[])
                 for (k=0;k<9;k++) OMInside[k] = OMArr[j*9+k];
                 OrientMat2Quat(OMInside,Quat2);
                 Angle = GetMisOrientation(Quat1,Quat2,Axis,&ang,sgNr);
-                if (voxNr==10102) printf("%lf\n",ang);
                 if (ang<maxAng) markArr[j] = true;
             }
             for (j=0;j<4;j++) uniqueArrThis[nUniquesThis*4+j] = keys[i*4+j];
             for (j=0;j<9;j++) uniqueOrientArrThis[nUniquesThis*9+j] = OMThis[j];
-            if (voxNr==10102) for (j=0;j<4;j++) printf("%zu ",uniqueArrThis[nUniquesThis*4+j]);
-            if (voxNr==10102) for (j=0;j<9;j++) printf("%lf ",uniqueOrientArrThis[nUniquesThis*9+j]);
             nUniquesThis++;
         }
         FILE *outKeyF;
