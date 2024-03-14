@@ -315,9 +315,12 @@ main(int argc, char *argv[])
             }
         }
     }
-    printf("%d %d %d %d %d %d %d\n",nAllSpots, nDuplicates, nUniques,nAllSpotsFin, maxNHKLs,nScans,nUniques*maxNHKLs*nScans);
     double *sinoArr, *omeArr;
-    sinoArr = calloc((int)nUniques*maxNHKLs*nScans,sizeof(*sinoArr));
+    size_t szSino = nUniques;
+    szSino *= maxNHKLs;
+    szSino *= nScans;
+    printf("%zu %d %d %d %d %d %d %d\n",szSino,nAllSpots, nDuplicates, nUniques,nAllSpotsFin, maxNHKLs,nScans,nUniques*maxNHKLs*nScans);
+    sinoArr = calloc(szSino,sizeof(*sinoArr));
     omeArr = calloc(nUniques*maxNHKLs,sizeof(*omeArr));
     # pragma omp parallel for num_threads(numProcs) private(i) schedule(dynamic)
     for (i=0;i<nScans;i++){
