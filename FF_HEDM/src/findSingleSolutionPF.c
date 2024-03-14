@@ -309,7 +309,7 @@ main(int argc, char *argv[])
     for (i=0;i<nUniques;i++){
         for (j=0;j<nAllSpotsFin;j++){
             if (allSpotsFin[j*5+3]==i){
-                allSpotsFin[j*5+4] = nrHKLsFilled[j];
+                allSpotsFin[j*5+4] = nrHKLsFilled[i];
                 nrHKLsFilled[i]++;
                 if (nrHKLsFilled[i]>maxNHKLs) maxNHKLs=nrHKLsFilled[i];
             }
