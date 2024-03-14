@@ -334,7 +334,7 @@ main(int argc, char *argv[])
             sscanf("%s %s %lf %lf %lf %lf %lf %s",dThis,dThis,&ArrThis[nSptsThis*5+0],
                         &ArrThis[nSptsThis*5+1],&ArrThis[nSptsThis*5+2],&ArrThis[nSptsThis*5+3],
                         &ArrThis[nSptsThis*5+4],dThis);
-            printf("%d %d %lf %lf %lf %lf %lf\n",i,nSptsThis,ArrThis[nSptsThis*5+0],ArrThis[nSptsThis*5+1],ArrThis[nSptsThis*5+2],ArrThis[nSptsThis*5+3],ArrThis[nSptsThis*5+4]);
+            printf("%s, %d %d %lf %lf %lf %lf %lf\n",line,i,nSptsThis,ArrThis[nSptsThis*5+0],ArrThis[nSptsThis*5+1],ArrThis[nSptsThis*5+2],ArrThis[nSptsThis*5+3],ArrThis[nSptsThis*5+4]);
             nSptsThis++;
         }
         if (nSptsThis==0) {
