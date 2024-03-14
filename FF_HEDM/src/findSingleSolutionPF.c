@@ -246,6 +246,7 @@ main(int argc, char *argv[])
         IDArrThis = malloc(nSpots*sizeof(*IDArrThis));
         fread(IDArrThis,nSpots*sizeof(int),1,IDF);
         fclose(IDF);
+        printf("%zu ",startPos);
         for (j=0;j<nSpots;j++) printf("%d ",IDArrThis[j]);
         printf("\n");
         for (j=0;j<nSpots;j++){
