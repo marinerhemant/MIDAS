@@ -118,7 +118,6 @@ main(int argc, char *argv[])
             free(OMArr);
             continue;
         }
-        free(confIAArr);
         for (i=0;i<nIDs;i++) markArr[i] = false;
         double OMThis[9], OMInside[9], Quat1[4],Quat2[4], Angle, Axis[3],ang;
         size_t *uniqueArrThis;
@@ -163,6 +162,7 @@ main(int argc, char *argv[])
         free(tmpArr);
         free(markArr);
         free(keys);
+        free(confIAArr);
     }
     int nUniques = 0;
     int i,j,k;
