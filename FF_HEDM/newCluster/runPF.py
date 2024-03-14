@@ -111,10 +111,10 @@ rads = [hkl[-1] for rnr in RingNrs for hkl in hkls if hkl[4] == rnr]
 print(RingNrs)
 print(rads)
 
-positions = open(topdir+'/positions.csv').readlines()
 
 nFrames = endNr - startNr + 1
 if doPeakSearch == 1:
+	positions = open(topdir+'/positions.csv').readlines()
 	for layerNr in range(1,nScans+1):
 		print(layerNr)
 		ypos = float(positions[layerNr-1])
@@ -196,6 +196,7 @@ if nMerges != 0:
 	positions = open(topdir+'/positions.csv').readlines()
 	nScans = int(floor(nScans / nMerges))
 
+positions = open(topdir+'/positions.csv').readlines()
 os.chdir(topdir)
 Path(topdir+'Output').mkdir(parents=True,exist_ok=True)
 Path(topdir+'Results').mkdir(parents=True,exist_ok=True)
