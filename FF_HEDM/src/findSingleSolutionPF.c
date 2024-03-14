@@ -66,6 +66,13 @@ main(int argc, char *argv[])
         sprintf(keyFN,"%s/IndexKey_voxNr_%0*d.txt",folderName,6,voxNr);
         valsF = fopen(valsFN,"rb");
         keyF = fopen(keyFN,"r");
+        fseek(keyF,0L,SEEK_END);
+	    size_t szt = ftell(keyF);
+        if (szt==0){
+            fclose(keyF);
+            fclose(valsF);
+            continue;
+        }
         size_t *keys;
         keys = calloc(MAX_N_SOLUTIONS_PER_VOX*4,sizeof(*keys));
         char aline[2048];
