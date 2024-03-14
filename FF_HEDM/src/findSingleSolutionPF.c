@@ -142,7 +142,7 @@ main(int argc, char *argv[])
             }
             for (j=0;j<4;j++) uniqueArrThis[nUniquesThis*4+j] = keys[i*4+j];
             for (j=0;j<9;j++) uniqueOrientArrThis[nUniquesThis*9+j] = OMArr[j];
-            if (voxNr==10102) for (j=0;j<4;j++) printf("%lf ",uniqueArrThis[nUniquesThis*4+j]);
+            if (voxNr==10102) for (j=0;j<4;j++) printf("%zu ",uniqueArrThis[nUniquesThis*4+j]);
             if (voxNr==10102) for (j=0;j<9;j++) printf("%lf ",uniqueOrientArrThis[nUniquesThis*9+j]);
             nUniquesThis++;
         }
