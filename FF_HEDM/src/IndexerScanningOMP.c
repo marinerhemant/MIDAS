@@ -1313,7 +1313,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 	int *outArr2;
 	outArr2 = malloc(rownr*sizeof(*outArr2));
 	for (i=0;i<rownr;i++) outArr2[i] = (int)AllGrainSpots[i][14];
-	printf("%d %d ",rownr,bestnMatchesIsp);
+	printf("%d %d %d ",rownr,bestnMatchesIsp,bestnTspotsIsp);
 	for (i=0;i<rownr;i++) printf("%d ",outArr2[i]);
 	printf("\n");
 	fwrite(outArr2,rownr*sizeof(int),1,allF);
