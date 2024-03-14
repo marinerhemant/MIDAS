@@ -100,10 +100,10 @@ main(int argc, char *argv[])
                                     found = 1;
                                     origWeight = allSpots[j*14+3];
                                     newWeight = thisSpots[i*14+3];
+                                    printf("%lf %lf \n",origWeight,newWeight);
                                     for (k=0;k<14;k++) {
                                         allSpots[j*14+k] = (allSpots[j*14+k]*origWeight + thisSpots[i*14+k]*newWeight)/(origWeight+newWeight);
                                     }
-                                    printf("%lf %lf \n",origWeight,newWeight);
                                 }
                             }
                         }
