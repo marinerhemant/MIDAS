@@ -331,9 +331,9 @@ main(int argc, char *argv[])
         ArrThis = calloc(MAX_N_SPOTS_TOTAL*5,sizeof(*ArrThis));
         int nSptsThis=0;
         while (fgets(line,2048,inpExtraF)!=NULL){
-            sscanf(line,"%s %s %lf %lf %lf %lf %lf",dThis,dThis,&ArrThis[nSptsThis*5+0],
-                        &ArrThis[nSptsThis*5+1],&ArrThis[nSptsThis*5+2],&ArrThis[nSptsThis*5+3],
-                        &ArrThis[nSptsThis*5+4]);
+            sscanf(line,"%s %s %lf %lf %lf %lf %lf %s %s %s %s %s %s %s %lf",dThis,dThis,&ArrThis[nSptsThis*5+0],
+                        dThis,&ArrThis[nSptsThis*5+2],&ArrThis[nSptsThis*5+3],&ArrThis[nSptsThis*5+4],dThis,dThis,
+                        dThis,dThis,dThis,dThis,dThis,&ArrThis[nSptsThis*5+1]);
             nSptsThis++;
         }
         if (nSptsThis==0) {
