@@ -37,7 +37,7 @@ int
 main(int argc, char *argv[])
 {
 	double start_time = omp_get_wtime();
-	printf("\n\n\t\tFinding Multiple Solutions in PF-HEDM.\n\n");
+	printf("\n\n\t\tFinding Single Solution in PF-HEDM.\n\n");
 	int returncode;
 	if (argc != 8) {
 		printf("Supply spaceGroup, maxAng, FolderName, NumberScans, nCPUs, tolOme, tolEta as arguments: ie %s sgNum maxAngle folderName nScans nCPUs tolOme tolEta\n"
