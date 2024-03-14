@@ -302,6 +302,7 @@ main(int argc, char *argv[])
         for (j=0;j<4;j++) allSpotsFin[nAllSpotsFin*5+j] = allSpots[i*5+j]; 
         nAllSpotsFin++;
     }
+    printf("%d %d %d\n",nAllSpots,nDuplicates,nAllSpotsFin);
     free(dupArr);
     free(allSpots);
     int *nrHKLsFilled, maxNHKLs=-1;
