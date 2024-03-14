@@ -296,7 +296,7 @@ main(int argc, char *argv[])
     }
     int nAllSpotsFin=0;
     double *allSpotsFin;
-    allSpotsFin = calloc((nAllSpots-nDuplicates)*5,sizeof(*allSpotsFin)); // Omega, RingNr, Eta, grainNr
+    allSpotsFin = calloc((nAllSpots)*5,sizeof(*allSpotsFin)); // Omega, RingNr, Eta, grainNr
     for (i=0;i<nAllSpots;i++){
         if (dupArr[i]==true) continue;
         for (j=0;j<4;j++) allSpotsFin[nAllSpotsFin*5+j] = allSpots[i*5+j]; 
