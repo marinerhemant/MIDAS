@@ -20,7 +20,7 @@ class MyParser(argparse.ArgumentParser):
 parser = MyParser(description='''Automated Calibration for WAXS using continuous rings-like signal''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-dataFN', type=str, required=True, help='DataFileName')
 parser.add_argument('-darkFN', type=str, required=True, help='DarkFileName')
-parser.add_argument('-Wavelength', type=float, required=True, help='Wavelength')
+parser.add_argument('-Wavelength', type=float, required=False, default=0.172979, help='Wavelength')
 parser.add_argument('-MakePlots', type=int, required=False, default=0, help='MakePlots: to draw, use 1.')
 parser.add_argument('-FirstRingNr', type=int, required=False, default=1, help='FirstRingNumber on data.')
 parser.add_argument('-MultFactor', type=float, required=False, default=2.5, help='If set, any ring MultFactor times average would be thrown away.')

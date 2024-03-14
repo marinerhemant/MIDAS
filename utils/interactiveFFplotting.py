@@ -236,7 +236,7 @@ def newFilteredSpots(clickData,col_chosen):
                     z='z',
                     color=col_chosen,
                     size='ds',
-                    title=f'FilteredSpots for ID:{int(ID)}, MeanStrain: {meanStrain}, MedianStrain: {medianStrain}',
+                    title=f'FilteredSpots for ID:{int(ID)}, MeanStrainErr: {int(meanStrain)}, MedianStrainErr: {int(medianStrain)}',
                     color_continuous_scale='jet',
                     hover_name='spotID',
                     )
@@ -259,7 +259,7 @@ def newFilteredSpots(clickData,col_chosen):
                     y='z',
                     color=col_chosen,
                     size='ds',
-                    title=f'2D FilteredSpots for ID:{int(ID)}, MeanStrain: {meanStrain}, MedianStrain: {medianStrain}',
+                    title=f'2D FilteredSpots for ID:{int(ID)}, MeanStrainErr: {int(meanStrain)}, MedianStrainErr: {int(medianStrain)}',
                     color_continuous_scale='jet',
                     hover_name='spotID',
                     )
