@@ -94,7 +94,6 @@ main(int argc, char *argv[])
         fclose(valsF);
         int i,j,k;
         for (i=0;i<nIDs;i++){
-            printf("%d %d %lf\n",nIDs,i,tmpArr[i*16+14]);
             confIAArr[i*2+0] = tmpArr[i*16+15]/tmpArr[i*16+14];
             confIAArr[i*2+1] = tmpArr[i*16+1];
             for (j=0;j<nIDs;j++) 
@@ -110,12 +109,10 @@ main(int argc, char *argv[])
             if (markArr[i]==true) continue;
             if (confIAArr[i*2+0] < bestConf) continue;
             if (confIAArr[i*2+0] == bestConf && confIAArr[i*2+1] > bestIA) continue;
-            printf("%lf %lf\n",confIAArr[i*2+0],confIAArr[i*2+1]);
             bestConf = confIAArr[i*2+0];
             bestIA = confIAArr[i*2+1];
             bestRow = i;
         }
-        printf("N: %d %d\n",nIDs,bestRow);
         if (bestRow==-1) {
             allKeyArr[voxNr*4+0] = -1;
             free(confIAArr);
