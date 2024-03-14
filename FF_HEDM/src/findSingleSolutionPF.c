@@ -40,7 +40,7 @@ main(int argc, char *argv[])
 	printf("\n\n\t\tFinding Single Solution in PF-HEDM.\n\n");
 	int returncode;
 	if (argc != 8) {
-		printf("Supply spaceGroup, maxAng, FolderName, NumberScans, nCPUs, tolOme, tolEta as arguments: ie %s sgNum maxAngle folderName nScans nCPUs tolOme tolEta\n"
+		printf("Supply foldername spaceGroup, maxAng, NumberScans, nCPUs, tolOme, tolEta as arguments: ie %s foldername sgNum maxAngle nScans nCPUs tolOme tolEta\n"
                 "\nThe indexing results need to be in folderName/Output\n", argv[0]);
 		return 1;
 	}
