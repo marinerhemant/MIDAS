@@ -167,7 +167,7 @@ if doPeakSearch == 1:
 		dfAllF = pd.read_csv('InputAllExtraInfoFittingAll.csv',delimiter=' ',skipinitialspace=True)
 		dfAllF.loc[dfAllF['GrainRadius']>0.001,'%YLab'] += ypos
 		dfAllF.loc[dfAllF['GrainRadius']>0.001,'YOrig(NoWedgeCorr)'] += ypos
-		dfAllF['Eta'] = CalcEtaAngleAll(df['%YLab'],df['ZLab'])
+		dfAllF['Eta'] = CalcEtaAngleAll(dfAllF['%YLab'],dfAllF['ZLab'])
 		dfAllF['Ttheta'] = rad2deg*np.arctan(np.linalg.norm(np.array([dfAllF['%YLab'],dfAllF['ZLab']]),axis=0)/Lsd)
 		for iter in range(len(ringPowderIntensity)):
 			ringNr = ringPowderIntensity[iter,0]
