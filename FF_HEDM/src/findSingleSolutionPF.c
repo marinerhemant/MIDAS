@@ -69,19 +69,18 @@ main(int argc, char *argv[])
         keyF = fopen(keyFN,"r");
         fseek(keyF,0L,SEEK_END);
 	    size_t szt = ftell(keyF);
+        rewind(keyF);
         if (szt==0){
             allKeyArr[voxNr*4+0] = -1;
             fclose(keyF);
             fclose(valsF);
             continue;
         }
-        printf("%zu\n",szt);
         size_t *keys;
         keys = calloc(MAX_N_SOLUTIONS_PER_VOX*4,sizeof(*keys));
         char aline[2048];
         int nIDs = 0;
         while(fgets(aline,1000,keyF)!=NULL){
-            printf("%s\n",aline);
             sscanf(aline,"%zu %zu %zu %zu",&keys[nIDs*4+0],&keys[nIDs*4+1],&keys[nIDs*4+2],&keys[nIDs*4+3]);
             nIDs++;
         }
