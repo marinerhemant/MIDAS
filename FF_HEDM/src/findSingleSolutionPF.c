@@ -174,6 +174,7 @@ main(int argc, char *argv[])
     bool *markArr2;
     markArr2 = malloc(nScans*nScans*sizeof(*markArr2));
     for (i=0;i<nScans*nScans;i++){
+        if (i==0) printf("%d\n",allKeyArr[i*4+0]);
         if (allKeyArr[i*4+0]==-1) markArr2[i] = true;
         markArr2[i] = false;
     }
