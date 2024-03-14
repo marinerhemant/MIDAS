@@ -320,7 +320,8 @@ main(int argc, char *argv[])
     szSino *= maxNHKLs;
     szSino *= nScans;
     printf("%zu %d %d %d %d %d %d %d\n",szSino,nAllSpots, nDuplicates, nUniques,nAllSpotsFin, maxNHKLs,nScans,nUniques*maxNHKLs*nScans);
-    sinoArr = calloc(szSino,sizeof(*sinoArr));
+    sinoArr = malloc(szSino*sizeof(double));
+    for (i=0;i<szSino;i++) sinoArr[i] = 0;
     omeArr = calloc(nUniques*maxNHKLs,sizeof(*omeArr));
     # pragma omp parallel for num_threads(numProcs) private(i) schedule(dynamic)
     for (i=0;i<nScans;i++){
