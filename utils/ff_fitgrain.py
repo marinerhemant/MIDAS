@@ -5,6 +5,13 @@ import matplotlib.pyplot as plt
 utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 sys.path.insert(0,utilsDir)
 from multiprocessing import Pool
+import argparse
+
+class MyParser(argparse.ArgumentParser):
+	def error(self, message):
+		sys.stderr.write('error: %s\n' % message)
+		self.print_help()
+		sys.exit(2)
 
 IDs = []
 
@@ -21,9 +28,15 @@ def runFitGrainOne(WD):
 
 def main():
     global IDs
-    Folder = '/Users/hsharma/Desktop/analysis/erdeniz_jul22/'
+    parser = MyParser(description='''Fit Grains to find tx, contact hsharma@anl.gov''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('-resultFolder', type=str, required=True, help='Folder where the results live')
+    parser.add_argument('-psFN', type=str, required=True, help='ps file that will be used. This is temporary. Will be replaced by zarr soon.')
+    parser.add_argument('-fractionGrains', type=int, required=True, help='1/fractionGrains will be used optimized. Typically ~20.')
+    args, unparsed = parser.parse_known_args()
+    Folder = args.resultFolder
+    psFN = args.psFN
+    frac = args.fractionGrains
     os.makedirs(f'{Folder}/fitGrain/',exist_ok=True)
-    psFN = 'ps.txt' # Relative inside the folder
     GrainsFN = Folder + '/Grains.csv'
     os.chdir(Folder)
     subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/GetHKLList')+f' {psFN}',shell=True,stdout=open('hklsout.csv','w'))
@@ -31,7 +44,7 @@ def main():
     grs = np.genfromtxt(GrainsFN,skip_header=9)
     grsSort = grs[grs[:,20].argsort()]
     nGrs = grsSort.shape[0]
-    nSpotsToRefine = nGrs // 200 # We will take 1/10th of grains and refine them
+    nSpotsToRefine = nGrs // frac # We will take 1/nth of grains and refine them
     IDs = list(tuple(grsSort[:nSpotsToRefine,0]))
     WD = []
     txVals = []
