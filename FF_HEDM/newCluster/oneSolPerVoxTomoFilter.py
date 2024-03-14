@@ -25,7 +25,7 @@ class MyParser(argparse.ArgumentParser):
 
 def runRecon(folder,nScans,sgnum,numProcs,numProcsLocal,maxang=1,tol_ome=1,tol_eta=1,thresh_reqd=0,draw_sinos=0,nNodes=1,machineName='local'):
 
-	subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')+f' {sgnum} {maxang} {folder} {nScans} {numProcsLocal} {tol_ome} {tol_eta}',cwd=folder,shell=True)
+	subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')+f' {folder} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}',cwd=folder,shell=True)
 
 	sinoFN = glob.glob(f"{folder}/sino_*.bin")[0]
 	nGrs = int(sinoFN.split('_')[1])
