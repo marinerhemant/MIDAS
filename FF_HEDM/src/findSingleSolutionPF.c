@@ -352,7 +352,7 @@ main(int argc, char *argv[])
                                 locThis += ((size_t)allSpotsFin[k*5+4])*nScans;
                                 locThis += i;
                                 printf("%zu\n",locThis);
-                                sinoArr[locThis] = ArrThis[j*5+1];
+                                // sinoArr[locThis] = ArrThis[j*5+1];
                                 locThis = ((size_t)allSpotsFin[k*5+3])*maxNHKLs + ((size_t)allSpotsFin[k*5+4]);
                                 if (omeArr[locThis]==0) {
                                     omeArr[locThis] = allSpotsFin[k*5+0];
