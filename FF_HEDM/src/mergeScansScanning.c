@@ -114,7 +114,7 @@ main(int argc, char *argv[])
             }
         }
         for (i=0;i<nAll;i++) allSpots[i*14+4] = i+1;
-        sprintf(thisFN,"original_InputAllExtraInfoFittingAll%d.csv",finScanNr);
+        sprintf(thisFN,"InputAllExtraInfoFittingAll%d.csv",finScanNr);
         thisF = fopen(thisFN,"w");
         fprintf(thisF,"%s",headThis);
         for (i=0;i<nAll;i++){
