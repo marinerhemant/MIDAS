@@ -91,15 +91,17 @@ def runRecon(folder,nScans,sgnum,numProcs,numProcsLocal,maxang=1,tol_ome=1,tol_e
 	for voxNr in range(nScans*nScans):
 		if max_id2[voxNr] == -1:
 			continue
-		orientThis = uniqueOrientations[max_id2[voxNr],]
-		with open(f'{folder}/Output/UniqueIndexKeyOrientAll_voxNr_{voxNr}.txt','r') as f:
-			lines = f.readlines()
-		for line in lines:
-			orientInside = [float(val) for val in line.split()[5:14]]
-			ang = rad2deg*GetMisOrientationAngleOM(orientThis,orientInside,sgnum)[0]
-			if ang < maxang:
-				f.write(line)
-				break
+		orientThis = uniqueOrientations[max_id2[voxNr],5:14]
+		if os.path.isfile(f'{folder}/Output/UniqueIndexKeyOrientAll_voxNr_{voxNr}.txt'):
+			print()
+			with open(f'{folder}/Output/UniqueIndexKeyOrientAll_voxNr_{voxNr}.txt','r') as f:
+				lines = f.readlines()
+			for line in lines:
+				orientInside = [float(val) for val in line.split()[5:14]]
+				ang = rad2deg*GetMisOrientationAngleOM(orientThis,orientInside,sgnum)[0]
+				if ang < maxang:
+					f.write(line)
+					break
 	f.close()
 
 	IDs = np.genfromtxt(f"{folder}/SpotsToIndex.csv")
