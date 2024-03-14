@@ -310,13 +310,14 @@ main(int argc, char *argv[])
         for (j=0;j<nAllSpotsFin;j++){
             if (allSpotsFin[j*5+3]==i){
                 allSpotsFin[j+8+4] = nrHKLsFilled[j];
-                nrHKLsFilled[j]++;
-                printf("%d\n",nrHKLsFilled[j]);
-                if (nrHKLsFilled[j]>maxNHKLs) maxNHKLs=nrHKLsFilled[j];
+                nrHKLsFilled[i]++;
+                printf("%d\n",nrHKLsFilled[i]);
+                if (nrHKLsFilled[i]>maxNHKLs) maxNHKLs=nrHKLsFilled[i];
             }
         }
     }
     printf("%d %d %d %d\n",nUniques,nAllSpotsFin, maxNHKLs,nScans);
+    return;
     double *sinoArr, *omeArr;
     sinoArr = calloc(nUniques*maxNHKLs*nScans,sizeof(*sinoArr));
     omeArr = calloc(nUniques*maxNHKLs,sizeof(*omeArr));
