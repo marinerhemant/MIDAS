@@ -246,9 +246,6 @@ main(int argc, char *argv[])
         IDArrThis = malloc(nSpots*sizeof(*IDArrThis));
         fread(IDArrThis,nSpots*sizeof(int),1,IDF);
         fclose(IDF);
-        printf("%s %zu ",IDsFNThis,startPos);
-        for (j=0;j<nSpots;j++) printf("%d ",IDArrThis[j]);
-        printf("\n");
         for (j=0;j<nSpots;j++){
             allSpotIDs[nAllSpots+j].mergedID = IDArrThis[j];
             allSpotIDs[nAllSpots+j].originalID = mergeMap[(IDArrThis[j]-1)*3+1];
