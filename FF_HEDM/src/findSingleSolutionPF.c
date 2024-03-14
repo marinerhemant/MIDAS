@@ -296,7 +296,7 @@ main(int argc, char *argv[])
     }
     int nAllSpotsFin=0;
     double *allSpotsFin;
-    allSpotsFin = calloc((nAllSpots-nDuplicates)*5,sizeof(*allSpotsFin)); // Omega, RingNr, Eta
+    allSpotsFin = calloc((nAllSpots-nDuplicates)*5,sizeof(*allSpotsFin)); // Omega, RingNr, Eta, grainNr
     for (i=0;i<nAllSpots;i++){
         if (dupArr[i]==true) continue;
         for (j=0;j<4;j++) allSpotsFin[nAllSpotsFin*5+j] = allSpots[i*5+j]; 
@@ -309,15 +309,12 @@ main(int argc, char *argv[])
     for (i=0;i<nUniques;i++){
         for (j=0;j<nAllSpotsFin;j++){
             if (allSpotsFin[j*5+3]==i){
-                allSpotsFin[j+8+4] = nrHKLsFilled[j];
+                allSpotsFin[j*5+4] = nrHKLsFilled[j];
                 nrHKLsFilled[i]++;
-                printf("%d\n",nrHKLsFilled[i]);
                 if (nrHKLsFilled[i]>maxNHKLs) maxNHKLs=nrHKLsFilled[i];
             }
         }
     }
-    printf("%d %d %d %d\n",nUniques,nAllSpotsFin, maxNHKLs,nScans);
-    return;
     double *sinoArr, *omeArr;
     sinoArr = calloc(nUniques*maxNHKLs*nScans,sizeof(*sinoArr));
     omeArr = calloc(nUniques*maxNHKLs,sizeof(*omeArr));
