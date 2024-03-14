@@ -64,7 +64,6 @@ main(int argc, char *argv[])
         char valsFN[2048], keyFN[2048];
         sprintf(valsFN,"%s/IndexBest_voxNr_%0*d.bin",folderName,6,voxNr);
         sprintf(keyFN,"%s/IndexKey_voxNr_%0*d.txt",folderName,6,voxNr);
-        printf("%s\n",keyFN);
         valsF = fopen(valsFN,"rb");
         keyF = fopen(keyFN,"r");
         fseek(keyF,0L,SEEK_END);
