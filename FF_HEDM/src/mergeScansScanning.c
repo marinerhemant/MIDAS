@@ -69,6 +69,7 @@ main(int argc, char *argv[])
             nAll++;
         }
         fclose(thisF);
+        printf("%d\n",nAll);
         int scanNr, thisScanNr;
         int i,j,k, found;
         double origWeight, newWeight;
