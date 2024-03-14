@@ -27,7 +27,7 @@ def runRecon(folder,nScans,sgnum,numProcs,numProcsLocal,maxang=1,tol_ome=1,tol_e
 
 	subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')+f' {folder} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}',cwd=folder,shell=True)
 
-	sinoFN = glob.glob(f"{folder}/sinos_*.bin")[0]
+	sinoFN = glob.glob("sinos_*.bin")[0]
 	nGrs = int(sinoFN.split('_')[1])
 	maxNHKLs = int(sinoFN.split('_')[2])
 	Sinos = np.fromfile(sinoFN,dtype=np.double,count=nGrs*maxNHKLs*nScans).reshape((nGrs,maxNHKLs,nScans))
