@@ -194,6 +194,7 @@ main(int argc, char *argv[])
         uniqueKeyArr[nUniques*5+0] = i;
         for (j=0;j<4;j++) uniqueKeyArr[nUniques*5+1+j] = allKeyArr[i*4+j];
         for (j=0;j<9;j++) uniqueOrientArr[nUniques*9+j] = OMThis[j];
+        printf("%d ",nUniques);
         for (j=0;j<5;j++) printf("%zu ",uniqueKeyArr[nUniques*5+j]);
         printf("\n");
         nUniques++;
