@@ -70,6 +70,7 @@ main(int argc, char *argv[])
         fseek(keyF,0L,SEEK_END);
 	    size_t szt = ftell(keyF);
         if (szt==0){
+            allKeyArr[voxNr*4+0] = -1;
             fclose(keyF);
             fclose(valsF);
             continue;
