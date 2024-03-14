@@ -107,7 +107,7 @@ main(int argc, char *argv[])
                     }
                 }
                 if (found == 0){
-                    for (j=0;j<14;j++) allSpots[nAll*14+j] = thisSpots[i*14+k];
+                    for (j=0;j<14;j++) allSpots[nAll*14+j] = thisSpots[i*14+j];
                     nAll++;
                 }
             }
