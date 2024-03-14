@@ -343,6 +343,10 @@ main(int argc, char *argv[])
                         &ArrThis[nSptsThis*5+4],dThis);
             nSptsThis++;
         }
+        if (nSptsThis==0) {
+            free(ArrThis);
+            continue;
+        }
         realloc(ArrThis,nSptsThis*5*sizeof(*ArrThis));
         for (j=0;j<nSptsThis;j++){
             for (k=0;k<nAllSpotsFin;k++){
