@@ -174,7 +174,6 @@ main(int argc, char *argv[])
     bool *markArr2;
     markArr2 = malloc(nScans*nScans*sizeof(*markArr2));
     for (i=0;i<nScans*nScans;i++){
-        if (i==0) printf("%d\n",allKeyArr[i*4+0]);
         if (allKeyArr[i*4+0]==-1) markArr2[i] = true;
         markArr2[i] = false;
     }
@@ -195,7 +194,7 @@ main(int argc, char *argv[])
         uniqueKeyArr[nUniques*5+0] = i;
         for (j=0;j<4;j++) uniqueKeyArr[nUniques*5+1+j] = allKeyArr[i*4+j];
         for (j=0;j<9;j++) uniqueOrientArr[nUniques*9+j] = OMThis[j];
-        printf("%d %d ",nUniques,i);
+        printf("%d %d %d ",nUniques,i,(int)markArr2[i]);
         for (j=0;j<5;j++) printf("%zu ",uniqueKeyArr[nUniques*5+j]);
         printf("\n");
         nUniques++;
