@@ -112,7 +112,7 @@ main(int argc, char *argv[])
             bestIA = confIAArr[i*2+1];
             bestRow = i;
         }
-        printf("N: %d %d\n",nIDs,bestRow);
+        printf("N: %zu %d\n",nIDs,bestRow);
         if (bestRow==-1) {
             allKeyArr[voxNr*4+0] = -1;
             free(confIAArr);
