@@ -343,7 +343,6 @@ main(int argc, char *argv[])
         realloc(ArrThis,nSptsThis*5*sizeof(*ArrThis));
         for (j=0;j<nSptsThis;j++){
             for (k=0;k<nAllSpotsFin;k++){
-                // if (allSpotsFin[k*5+3]==(double)i){
                 if (fabs(allSpotsFin[k*5+0]-ArrThis[j*5+0])<tolOme){
                     if (fabs(allSpotsFin[k*5+1]-ArrThis[j*5+3])<0.01){
                         if (fabs(allSpotsFin[k*5+2]-ArrThis[j*5+4])<tolEta){
@@ -351,7 +350,6 @@ main(int argc, char *argv[])
                             locThis = ((size_t)allSpotsFin[k*5+3])*maxNHKLs*nScans;
                             locThis += ((size_t)allSpotsFin[k*5+4])*nScans;
                             locThis += i;
-                            // printf("%zu\n",locThis);
                             sinoArr[locThis] = ArrThis[j*5+1];
                             locThis = ((size_t)allSpotsFin[k*5+3])*maxNHKLs + ((size_t)allSpotsFin[k*5+4]);
                             if (omeArr[locThis]==0) {
@@ -360,7 +358,6 @@ main(int argc, char *argv[])
                         }
                     }
                 }
-                // }
             }
         }
         free(ArrThis);
