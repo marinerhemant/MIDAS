@@ -11,6 +11,10 @@ import matplotlib.patches as mpatches
 plt.rcParams['figure.figsize'] = [10, 10]
 import argparse
 import sys
+import plotly.express as plotlyx
+import plotly.graph_objects as go
+import pandas as pd
+from plotly.subplots import make_subplots
 
 env = dict(os.environ)
 midas_path = os.path.expanduser("~/.MIDAS")
@@ -34,8 +38,11 @@ parser = MyParser(description='''Automated Calibration for WAXS using continuous
 parser.add_argument('-dataFN', type=str, required=True, help='DataFileName.zip')
 parser.add_argument('-MakePlots', type=int, required=False, default=0, help='MakePlots: to draw, use 1.')
 parser.add_argument('-FirstRingNr', type=int, required=False, default=1, help='FirstRingNumber on data.')
+parser.add_argument('-EtaBinSize', type=float, required=False, default=5, help='EtaBinSize in degrees.')
 parser.add_argument('-MultFactor', type=float, required=False, default=2.5, help='If set, any ring MultFactor times average would be thrown away.')
+parser.add_argument('-Threshold', type=float, required=False, default=0, help='If you want to give a manual threshold, typically 500, otherwise, it will calculate automatically.')
 parser.add_argument('-StoppingStrain', type=float, required=False, default=0.00004, help='If refined pseudo-strain is below this value and all rings are "good", we would have converged.')
+parser.add_argument('-ImTransOpt', type=int, required=False, default=[0],nargs='*', help="If you want to do any transformations to the data: \n0: nothing, 1: flip LR, 2: flip UD, 3: transpose. Give as many as needed in the right order.")
 args, unparsed = parser.parse_known_args()
 
 dataFN = args.dataFN
@@ -58,18 +65,27 @@ print(NrPixelsY,NrPixelsZ)
 raw.tofile(rawFN)
 dark.tofile(darkFN)
 darkName = darkFN
-
 DrawPlots = int(args.MakePlots)
 firstRing = int(args.FirstRingNr)
 multFactor = float(args.MultFactor)
 needed_strain = float(args.StoppingStrain)
+imTransOpt = args.ImTransOpt
+etaBinSize = args.EtaBinSize # Degrees
+threshold = args.Threshold # Threshold to use for some initial pre-processing. It will clean up the image and then apply the threshold. No dark correction is used here.
 
+for transOpt in imTransOpt:
+	if (transOpt == 1):
+		raw = np.fliplr(raw)
+		dark = np.fliplr(dark)
+	if (transOpt == 2):
+		raw = np.flipud(raw)
+		dark = np.flipud(dark)
+	if (transOpt == 3):
+		raw = np.transpose(raw)
+		dark = np.transpose(dark)
 
 mrr = 2000000 # maximum radius to simulate rings. This, combined with initialLsd should give enough coverage.
 initialLsd = 1000000 # Only used for simulation, real Lsd can be anything.
-header = 0
-etaBinSize = 1 # Degrees
-threshold = 500 # Threshold to use for some initial pre-processing. It will clean up the image and then apply the threshold. No dark correction is used here.
 minArea = 300 # Minimum number of pixels that constitutes signal. For powder calibrants, 300 is typically used. Partial rings are okay, as long as they are at least 300 pixels big.
 
 
@@ -87,7 +103,8 @@ def runMIDAS(fn):
 		pf.write('Folder '+folder+'\n')
 		pf.write('FileStem '+fstem+'\n')
 		pf.write('Ext '+ext+'\n')
-		pf.write('ImTransOpt 0\n')
+		for transOpt in imTransOpt:
+			pf.write(f'ImTransOpt {transOpt}\n')
 		pf.write('Width 2000\n')
 		pf.write('tolTilts 3\n')
 		pf.write('tolBC 20\n')
@@ -102,7 +119,7 @@ def runMIDAS(fn):
 		pf.write('p2 '+p2_refined+'\n')
 		pf.write('p3 '+p3_refined+'\n')
 		pf.write(f'EtaBinSize {etaBinSize}\n')
-		pf.write('HeadSize '+str(header)+'\n')
+		pf.write('HeadSize 0\n')
 		pf.write('Dark '+darkName+'\n')
 		pf.write('StartNr '+str(fnumber)+'\n')
 		pf.write('EndNr '+str(fnumber)+'\n')
@@ -192,7 +209,7 @@ if DrawPlots==1:
 	plt.show()
 neighborhood = skimage.morphology.disk(radius=50)
 data = raw.astype(np.uint16)
-print('Starting Median')
+print('Starting Median1')
 data2 = skimage.filters.rank.median(data, neighborhood)
 print('Starting Median2')
 data2 = skimage.filters.rank.median(data2, neighborhood)
@@ -205,9 +222,9 @@ data2 = skimage.filters.rank.median(data2, neighborhood)
 print('Finished with median, now processing data.')
 data = data.astype(float)
 data_corr = data - data2
+if threshold == 0:
+	threshold = 100*(1+np.std(data_corr)//100)
 data_corr[data_corr<threshold] = 0
-corr_img = data - data2
-corr_img[corr_img<1] = 1
 thresh = data_corr
 thresh[thresh>0] = 255
 labels,nlabels = measure.label(thresh,return_num=True)
@@ -242,8 +259,10 @@ for label in range(1,nlabels):
 		y4 = edgecoordb[1]
 		y5 = midpointa[1]
 		y6 = midpointb[1]
+		if (y4==y3 or y2==y1): continue
 		m1 = (x1-x2)/(y2-y1)
 		m2 = (x3-x4)/(y4-y3)
+		if m1==m2: continue
 		x = (y6-y5+m1*x5-m2*x6)/(m1-m2)
 		y = m1*(x-x5)+y5
 		bc.append([x,y])
@@ -283,7 +302,6 @@ for i in range(rads.shape[0]):
 initialLsd = np.median(lsds)
 bc_new = bc_computed
 print("FN:",rawFN,"Beam Center guess: ",np.flip(bc_new),' Lsd guess: ',initialLsd)
-
 with open('ps.txt','w') as pf:
     pf.write('Wavelength '+str(Wavelength)+'\n')
     pf.write('SpaceGroup '+str(space_group)+'\n')
@@ -349,6 +367,22 @@ while (len(rNew) > 0 or float(mean_strain) > needed_strain):
         if currentRingNr in rNew:
             ringListExcluded[i] = 1
             ringsToExclude.append(i)
+
+df = pd.read_csv(rawFN+'.corr.csv',delimiter=' ')
+fig = make_subplots(rows=1,cols=2,specs=[[{"type":"scatter"} , {"type":"scatterpolar"}]])
+fig.add_trace(go.Scatter(mode='markers',x=df['RadFit'],y=df['Strain'],marker=dict(color=df['Ideal2Theta']),showlegend=True),row=1,col=1)
+fig.add_trace(
+	go.Scatterpolar(
+	r=df['Strain'],
+	theta=df['EtaCalc'],
+	mode='markers',
+	marker=dict(color=df['Ideal2Theta']),
+	showlegend=True,
+	),
+	row=1,col=2)
+fig.write_html(rawFN+'.html')
+
+print(f"Interactive plots written to : {rawFN}.html")
 print("Converged to a good set of parameters.\nBest values: ")
 print('Lsd '+lsd_refined)
 print('BC '+bc_refined)
@@ -360,9 +394,3 @@ print('p2 '+p2_refined)
 print('p3 '+p3_refined)
 print('Mean Strain: '+mean_strain)
 print('Std Strain:  '+std_strain)
-if (os.path.exists(rawFN)):
-	os.remove(rawFN)
-if (os.path.exists(darkFN)):
-	os.remove(darkFN)
-if (os.path.exists('ps.txt')):
-	os.remove('ps.txt')
