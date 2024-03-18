@@ -21,6 +21,11 @@ options = []
 window = 10
 windowFrame = 7
 selectedID = 0
+xRowNr = 10
+yRowNr = 11
+zRowNr = 12
+sizeRowNr = 22
+completenessRowNr = 23
 
 class MyParser(argparse.ArgumentParser):
 	def error(self, message):
@@ -131,16 +136,6 @@ app.layout = dbc.Container([
             ),
          ],width=4),
     ]),
-
-
-    # dbc.Row([
-    #     dbc.Col([
-    #         dcc.RangeSlider(0, 20, 1, value=[5, 15], id='spots_range_slider'),
-    #     ], width=6),
-    #     dbc.Col([
-    #         dcc.RangeSlider(0, 20, 1, value=[5, 15], id='spots_range_slider_polar'),
-    #     ], width=6),
-    # ]),
 
     dbc.Row([
         dbc.Col([
@@ -405,21 +400,16 @@ for i in range(spots.shape[0]):
     z *=ds
     if ds > dsMax:
         dsMax = ds
-    data['g1'].append(x) # This is rotation direction
+    data['g1'].append(x)
     data['g2'].append(y)
     data['g3'].append(z)
     data['ds'].append(ds)
 df = pd.DataFrame(data)
-xRowNr = 10
-yRowNr = 11
-zRowNr = 12
-sizeRowNr = 22
-completenessRowNr = 23
 
 largestSize = np.max(grains[:,sizeRowNr])
 
 for i in range(grains.shape[0]):
-    data2['x'].append(grains[i][xRowNr]) # This is rotation direction
+    data2['x'].append(grains[i][xRowNr])
     data2['y'].append(grains[i][yRowNr])
     data2['z'].append(grains[i][zRowNr])
     data2['GrainSize'].append(20*grains[i][sizeRowNr]/largestSize)
