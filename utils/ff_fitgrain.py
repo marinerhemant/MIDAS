@@ -37,6 +37,7 @@ def main():
     Folder = args.resultFolder
     psFN = args.psFN
     frac = args.fractionGrains
+    numProcs = args.numProcs
     os.makedirs(f'{Folder}/fitGrain/',exist_ok=True)
     GrainsFN = Folder + '/Grains.csv'
     os.chdir(Folder)
@@ -51,7 +52,7 @@ def main():
     txVals = []
     for ID in IDs:
         WD.append([int(ID),Folder,psFN])
-    with Pool() as pool:
+    with Pool(processes=numProcs) as pool:
         for result in pool.map(runFitGrainOne,WD):
             txVals.append(result)
     txVals = np.array(txVals)
