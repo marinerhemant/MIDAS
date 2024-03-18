@@ -31,7 +31,8 @@ def main():
     parser = MyParser(description='''Fit Grains to find tx, contact hsharma@anl.gov''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-resultFolder', type=str, required=True, help='Folder where the results live')
     parser.add_argument('-psFN', type=str, required=True, help='ps file that will be used. This is temporary. Will be replaced by zarr soon.')
-    parser.add_argument('-fractionGrains', type=int, required=True, help='1/fractionGrains will be used optimized. Typically ~20.')
+    parser.add_argument('-fractionGrains', type=int, required=False, default=20, help='1/fractionGrains will be used optimized. Typically ~20.')
+    parser.add_argument('-numProcs', type=int, required=False, default=8, help='Number of processors to use.')
     args, unparsed = parser.parse_known_args()
     Folder = args.resultFolder
     psFN = args.psFN
