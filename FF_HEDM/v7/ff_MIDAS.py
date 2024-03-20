@@ -162,10 +162,6 @@ elif machineName == 'orthrosall':
     f2.close()
     f_err2.close()
     print(f"Indexing. Time till now: {time.time()-t0}")
-    res = []
-    for nodeNr in range(nNodes):
-        res.append(peaks(resultDir,outFStem,numProcs,f_hkls_err,blockNr=nodeNr,nBlocks=nNodes))
-    outputs = [i.result() for i in res]
     resIndex = []
     for nodeNr in range(nNodes):
         resIndex.append(index(resultDir,numProcs,f_err2,blockNr=nodeNr,nBlocks=nNodes))
