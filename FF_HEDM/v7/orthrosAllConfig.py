@@ -18,7 +18,6 @@ user_opts = {'adhoc':
               }
              }
 
-print(SCRIPTDIR)
 orthrosAllConfig = Config(
     executors=[
         HighThroughputExecutor(
