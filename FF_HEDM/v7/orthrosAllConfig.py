@@ -10,9 +10,9 @@ orthrosAllConfig = Config(
             max_workers_per_node=1,
             provider=GridEngineProvider(
                 channel=LocalChannel(),
-                nodes_per_block=11,
-                init_blocks=1,
-                max_blocks=1,
+                nodes_per_block=1,
+                init_blocks=11,
+                max_blocks=11,
                 # walltime="150:00:00",
                 scheduler_options='''#$ -q sec1new7.q
 #$ -pe sec1new7 11
