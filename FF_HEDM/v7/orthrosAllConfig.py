@@ -3,8 +3,6 @@ from parsl.channels import SSHChannel
 from parsl.executors import HighThroughputExecutor
 from parsl.config import Config
 from typing import Any, Dict
-from parsl.channels import LocalChannel
-from parsl.providers import GridEngineProvider
 from parsl.executors import HighThroughputExecutor
 import os
 
