@@ -8,7 +8,7 @@ NCC=nvcc
 MPICC=LD_LIBRARY_PATH=$${HOME}/.MIDAS/MPICH/lib:$LD_LIBRARY_PATH $${HOME}/.MIDAS/MPICH/bin/mpicc
 NCFLAGS=-O3 -G -g -w -arch sm_52 -lm -rdc=true # -res-usage
 CFLAGS=-fPIC -g -ldl -lm -fgnu89-inline -O3 -w -Wall
-BLOSCFLAGS=-I$${HOME}/.MIDAS/BLOSC/include -L$${HOME}/.MIDAS/BLOSC/lib64 -lblosc2
+BLOSCFLAGS=-I$${HOME}/.MIDAS/BLOSC/include -L$${HOME}/.MIDAS/BLOSC/lib64 -lblosc2 -std=gnu99
 ZIPFLAGS=-I$${HOME}/.MIDAS/LIBZIP/include -L$${HOME}/.MIDAS/LIBZIP/lib64 -lzip
 MPICCFLAGS=-I$${HOME}/.MIDAS/MPICH/include -L$${HOME}/.MIDAS/MPICH/lib -fopenmp -lmpi -fPIC -g -ldl -lm -fgnu89-inline -O3 -w
 CFLAGSHDF=-I$${HOME}/.MIDAS/HDF5/include -L$${HOME}/.MIDAS/HDF5/lib -lhdf5_hl -lhdf5
