@@ -16,7 +16,7 @@ user_opts = {'adhoc':
              }
 
 
-config = Config(
+orthrosAllConfig = Config(
     executors=[
         HighThroughputExecutor(
             label='orthrosall',
