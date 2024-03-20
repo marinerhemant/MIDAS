@@ -5,13 +5,13 @@ from parsl.config import Config
 from typing import Any, Dict
 import os
 
-SCRIPTDIR = os.environ["MIDAS_SCRIPT_DIR"]
+SCRIPTDIR = os.environ.get("MIDAS_SCRIPT_DIR")
 
 user_opts: Dict[str, Dict[str, Any]]
 user_opts = {'adhoc':
              {'username': 's1iduser',
               'script_dir': SCRIPTDIR,
-              'remote_hostnames': ['califone.xray.aps.anl.gov', 'copland.xray.aps.anl.gov']
+              'remote_hostnames': ['califone.xray.aps.anl.gov', 'sekami.xray.aps.anl.gov']
               }
              }
 
