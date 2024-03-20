@@ -772,6 +772,7 @@ struct TParams {
    RealType BoxSizes[MAX_N_OMEGARANGES][4];
    RealType OmegaRanges[MAX_N_OMEGARANGES][2];
    char OutputFolder[4096];
+   char MicFN[4096];
    int NoOfOmegaRanges;
    char SpotsFileName[4096];
    char IDsFileName [4096];
@@ -801,6 +802,7 @@ size_t ReadBigDet(char *cwd)
 int ReadParams(char FileName[],struct TParams * Params)
 {
 	#define MAX_LINE_LENGTH 4096
+	sprintf(Params->MicFN,"0");
 	FILE *fp;
 	char line[MAX_LINE_LENGTH];
 	char dummy[MAX_LINE_LENGTH];
@@ -982,6 +984,12 @@ int ReadParams(char FileName[],struct TParams * Params)
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
 			sscanf(line, "%s %s", dummy, Params->IDsFileName  );
+			continue;
+		}
+		str = "MicFile ";
+		cmpres = strncmp(line, str, strlen(str));
+		if (cmpres == 0) {
+			sscanf(line, "%s %s", dummy, Params->MicFN  );
 			continue;
 		}
 		str = "MarginEta ";
@@ -1402,7 +1410,7 @@ main(int argc, char *argv[])
 	char *ParamFN;
 	char fn[1024];
 	if (argc < 6) {
-		printf("Supply a parameter file, blockNr, nBlocks, numScans, numProcs, nfMic(optional) as arguments: ie %s param.txt blockNr nBlocks numScans numProcs nfMic\n\n", argv[0]);
+		printf("Supply a parameter file, blockNr, nBlocks, numScans, numProcs as arguments: ie %s param.txt blockNr nBlocks numScans numProcs\n\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
 	ParamFN = argv[1];
@@ -1483,12 +1491,11 @@ main(int argc, char *argv[])
 	int numProcs = atoi(argv[5]);
 	int hasMic = 0, nrMic = 0;
 	double *mic;
-	if (argc==7){
+	if (strncmp(Params.MicFN, "0", strlen("0"))){
 		hasMic = 1;
-		char *nfMic = argv[6];
 		mic = calloc(MAX_MIC_ROWS*5,sizeof(*mic));
 		FILE *micF;
-		micF = fopen(nfMic,"r");
+		micF = fopen(Params.MicFN,"r");
 		if (micF==NULL){
 			printf("Mic File could not be read, but a filename was provided. Exiting.\n");
 			return 1;

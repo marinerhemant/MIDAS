@@ -232,6 +232,8 @@ for idx in range(len(RingNrs)):
 paramsf.write('BeamSize '+str(BeamSize)+'\n')
 paramsf.write('px '+str(px)+'\n')
 paramsf.write('RingToIndex '+str(RingToIndex)+'\n')
+if len(micFN) > 0:
+	paramsf.write(f'MicFile {micFN}\n')
 paramsf.close()
 
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)

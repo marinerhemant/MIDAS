@@ -3,6 +3,7 @@
 
 import numpy as np
 import h5py
+import hdf5plugin
 import zarr
 from zarr.meta import encode_fill_value
 import fsspec
@@ -97,13 +98,46 @@ class Hdf5ToZarr:
             zgrp = self._zroot.create_group(h5obj.name)
             self.transfer_attrs(h5obj, zgrp)
 
-if __name__ == '__main__':
-    fn = sys.argv[1]
+fn = sys.argv[1]
+if len(sys.argv) > 2:
+    isESRF = 1
+else:
+    isESRF = 0
+
+if isESRF==1:
+    nChunks = int(sys.argv[2])
+    dataF = h5py.File(fn)
+    dataPath = dataF.keys()
+    dSetNames = []
+    for dPath in dataPath:
+        if dPath[-2:] == '.1':
+            dSetNames.append(dPath)
+    
+    for dsetID in dSetNames:
+        dSetName = dataF[dsetID]['measurement/eiger']
+        nFrames,nPxY,nPxZ = dSetName.shape
+        outzip = f'{fn}_{dsetID}.zip'
+        zipF = Path(outzip)
+        if zipF.exists():
+            shutil.move(outzip,outzip+'.old')
+        storeZip = zarr.ZipStore(outzip)
+        root = zarr.group(store=storeZip, overwrite=True)
+        ex = root.create_group('exchange')
+        dset = ex.create_dataset('data',shape=(nFrames,nPxY,nPxZ),
+                                    dtype=dSetName.dtype,chunks=(1,nPxY,nPxZ),
+                                    compression=Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE),
+                                    overwrite=True)
+        for chunk in range(nChunks):
+            startFrameNr = chunk*(nFrames//nChunks)
+            endFrameNr = (chunk+1)*(nFrames//nChunks)
+            print([chunk,startFrameNr,endFrameNr])
+            dset[startFrameNr:endFrameNr,:,:] = dSetName[startFrameNr:endFrameNr,:,:]
+        storeZip.close()
+else:
     outzip = fn+'.zip'
     zipF = Path(outzip)
     if zipF.exists():
         shutil.move(outzip,outzip+'.old')
-
     with fsspec.open(fn,mode='rb', anon=False, requester_pays=True,default_fill_cache=False) as f:
         storeZip = zarr.ZipStore(outzip)
         h5chunkszip = Hdf5ToZarr(f, storeZip)
