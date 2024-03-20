@@ -9,7 +9,7 @@ SCRIPTDIR = os.environ.get("MIDAS_SCRIPT_DIR")
 
 user_opts: Dict[str, Dict[str, Any]]
 user_opts = {'adhoc':
-             {'username': 's1iduser',
+             {'username': 'tomo1',
               'script_dir': SCRIPTDIR,
               'remote_hostnames': ['puppy80','puppy81','puppy82','puppy83','puppy84','puppy85','puppy86','puppy87','puppy88','puppy89','puppy90']
               }
