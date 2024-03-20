@@ -30,7 +30,7 @@ def generateZip(resFol,pfn,layerNr,dfn='',dloc='',nchunks=-1,preproc=-1,outf='Zi
         return lines[-1].split()[1]
 
 @python_app
-def peaks(resultDir,zipFN,numProcs,hkls_err,blockNr=0,numBlocks=1):
+def peaks(resultDir,zipFN,numProcs,blockNr=0,numBlocks=1):
     import subprocess
     import os
     env = dict(os.environ)
@@ -43,7 +43,7 @@ def peaks(resultDir,zipFN,numProcs,hkls_err,blockNr=0,numBlocks=1):
     f_err.close()
 
 @python_app
-def index(resultDir,numProcs,bin_err,blockNr=0,numBlocks=1):
+def index(resultDir,numProcs,blockNr=0,numBlocks=1):
     import subprocess
     import os
     os.chdir(resultDir)
@@ -59,7 +59,7 @@ def index(resultDir,numProcs,bin_err,blockNr=0,numBlocks=1):
     f_err.close()
 
 @python_app
-def refine(resultDir,numProcs,bin_err,blockNr=0,numBlocks=1):
+def refine(resultDir,numProcs,blockNr=0,numBlocks=1):
     import subprocess
     import os
     os.chdir(resultDir)
@@ -147,7 +147,7 @@ f_hkls_err.close()
 print(f"Doing PeakSearch. Time till now: {time.time()-t0} seconds.")
 res = []
 for nodeNr in range(nNodes):
-    res.append(peaks(resultDir,outFStem,numProcs,f_hkls_err,blockNr=nodeNr,numBlocks=nNodes))
+    res.append(peaks(resultDir,outFStem,numProcs,blockNr=nodeNr,numBlocks=nNodes))
 outputs = [i.result() for i in res]
 print(f"Merging peaks. Time till now: {time.time()-t0}")
 f = open(f'{logDir}/merge_overlaps_out.csv','w')
@@ -177,11 +177,11 @@ f_err2.close()
 print(f"Indexing. Time till now: {time.time()-t0}")
 resIndex = []
 for nodeNr in range(nNodes):
-    resIndex.append(index(resultDir,numProcs,f_err2,blockNr=nodeNr,numBlocks=nNodes))
+    resIndex.append(index(resultDir,numProcs,blockNr=nodeNr,numBlocks=nNodes))
 outputIndex = [i.result() for i in resIndex]
 print(f"Refining. Time till now: {time.time()-t0}")
 resRefine = []
-resRefine.append(refine(resultDir,numProcs,outputIndex,blockNr=nodeNr,numBlocks=nNodes))
+resRefine.append(refine(resultDir,numProcs,blockNr=nodeNr,numBlocks=nNodes))
 outputRefine = [i.result() for i in resRefine]
 subprocess.call("rm -rf /dev/shm/*.bin",shell=True)
 print(f"Making grains list. Time till now: {time.time()-t0}")
