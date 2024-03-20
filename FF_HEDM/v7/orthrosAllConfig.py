@@ -2,7 +2,7 @@ from parsl.config import Config
 from parsl.channels import LocalChannel
 from parsl.providers import GridEngineProvider
 from parsl.executors import HighThroughputExecutor
-import os
+import os,sys
 utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 sys.path.insert(0,utilsDir)
 v7Dir = os.path.expanduser('~/opt/MIDAS/FF_HEDM/v7/')
