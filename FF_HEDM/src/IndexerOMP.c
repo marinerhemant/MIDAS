@@ -1073,6 +1073,7 @@ GenerateIdealSpotsFriedelMixed(RealType ys,RealType zs,RealType Ttheta,RealType 
 					}
 				}
 			}
+			free(spotRows);
 		}
 	}
 	int i;
@@ -1748,7 +1749,7 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc, int idNr, int t
 		}
 		isp = isp + ispDelta;
 	}
-
+	free(OrMat);
 	fracMatches = bestFracTillNow;
 	if (fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 || (int)bestnMatchesIsp == -1 || bestMatchFound == 0){
 		FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
