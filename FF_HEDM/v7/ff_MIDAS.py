@@ -120,10 +120,12 @@ if machineName == 'local':
     subprocess.call('python '+os.path.expanduser('~/opt/MIDAS/utils/plotFFSpots3dGrains.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
     subprocess.call('python '+os.path.expanduser('~/opt/MIDAS/utils/plotGrains3d.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
     print(f"Done. Total time elapsed: {time.time()-t0}")
-elif machineName == 'orthrosall':
-    nNodes = 11
-    from orthrosAllConfig import *
-    parsl.load(config=orthrosAllConfig)
+else:
+    if machineName == 'orthrosall':
+        nNodes = 11
+        numProcs = 32
+        from orthrosAllConfig import *
+        parsl.load(config=orthrosAllConfig)
     outFStem = generateZip(resultDir,psFN,layerNr,dfn=dataFN,nchunks=nchunks,preproc=preproc)
     print(f"Generating HKLs. Time till now: {time.time()-t0} seconds.")
     f_hkls = open(f'{resultDir}/hkls_out.csv','w')
@@ -182,3 +184,5 @@ elif machineName == 'orthrosall':
     subprocess.call('python '+os.path.expanduser('~/opt/MIDAS/utils/plotFFSpots3dGrains.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
     subprocess.call('python '+os.path.expanduser('~/opt/MIDAS/utils/plotGrains3d.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
     print(f"Done. Total time elapsed: {time.time()-t0}")
+
+# python ~/opt/MIDAS/FF_HEDM/v7/ff_MIDAS.py -resultFolder /data/tomo1/krause_mar23_midas/ff/recon -paramFN ps_dmi.txt -nCPUs 32 -machineName orthrosall -LayerNr 1
