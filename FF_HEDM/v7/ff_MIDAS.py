@@ -9,12 +9,8 @@ utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 sys.path.insert(0,utilsDir)
 v7Dir = os.path.expanduser('~/opt/MIDAS/FF_HEDM/v7/')
 sys.path.insert(0,v7Dir)
-
 from parsl.app.app import python_app
 import subprocess
-import os, sys
-utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
-sys.path.insert(0,utilsDir)
 
 def generateZip(resFol,pfn,layerNr,dfn='',dloc='',nchunks=-1,preproc=-1,outf='ZipOut.txt',errf='ZipErr.txt'):
     cmd = 'python '+os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZip.py')+' -resultFolder '+ resFol +' -paramFN ' + pfn + ' -LayerNr ' + str(layerNr)
@@ -41,7 +37,7 @@ def peaks(resultDir,zipFN,numProcs,hkls_err,blockNr=0,numBlocks=1):
     midas_path = os.path.expanduser("~/.MIDAS")
     env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
     f = open(f'{resultDir}/peaksearch_out{blockNr}.csv','w')
-    f_err = open(f'{resultDir}/peaksearch_err.csv','w')
+    f_err = open(f'{resultDir}/peaksearch_err{blockNr}.csv','w')
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPZarr")+f' {zipFN} {blockNr} {numBlocks} {numProcs}',shell=True,env=env,stdout=f,stderr=f_err)
     f.close()
     f_err.close()
@@ -56,8 +52,8 @@ def index(resultDir,numProcs,bin_err,blockNr=0,numBlocks=1):
     env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
     with open("SpotsToIndex.csv", "r") as f:
         num_lines = len(f.readlines())
-    f = open(f'{resultDir}/indexing_out.csv','w')
-    f_err = open(f'{resultDir}/indexing_err.csv','w')
+    f = open(f'{resultDir}/indexing_out{blockNr}.csv','w')
+    f_err = open(f'{resultDir}/indexing_err{blockNr}.csv','w')
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerOMP")+f' paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}',shell=True,env=env,stdout=f,stderr=f_err)
     f.close()
     f_err.close()
@@ -72,8 +68,8 @@ def refine(resultDir,numProcs,bin_err,blockNr=0,numBlocks=1):
     env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
     with open("SpotsToIndex.csv", "r") as f:
         num_lines = len(f.readlines())
-    f = open(f'{resultDir}/refining_out.csv','w')
-    f_err = open(f'{resultDir}/refining_err.csv','w')
+    f = open(f'{resultDir}/refining_out{blockNr}.csv','w')
+    f_err = open(f'{resultDir}/refining_err{blockNr}.csv','w')
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitPosOrStrainsOMP")+f' paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}',shell=True,env=env,stdout=f,stderr=f_err)
     f.close()
     f_err.close()
@@ -153,6 +149,7 @@ res = []
 for nodeNr in range(nNodes):
     res.append(peaks(resultDir,outFStem,numProcs,f_hkls_err,blockNr=nodeNr,nBlocks=nNodes))
 outputs = [i.result() for i in res]
+sys.exit()
 print(f"Merging peaks. Time till now: {time.time()-t0}")
 f = open(f'{resultDir}/merge_overlaps_out.csv','w')
 f_err = open(f'{resultDir}/merge_overlaps_err.csv','w')
