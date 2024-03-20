@@ -36,8 +36,8 @@ def peaks(resultDir,zipFN,numProcs,hkls_err,blockNr=0,numBlocks=1):
     env = dict(os.environ)
     midas_path = os.path.expanduser("~/.MIDAS")
     env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
-    f = open(f'{resultDir}/peaksearch_out{blockNr}.csv','w')
-    f_err = open(f'{resultDir}/peaksearch_err{blockNr}.csv','w')
+    f = open(f'{resultDir}/output/peaksearch_out{blockNr}.csv','w')
+    f_err = open(f'{resultDir}/output/peaksearch_err{blockNr}.csv','w')
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPZarr")+f' {zipFN} {blockNr} {numBlocks} {numProcs}',shell=True,env=env,stdout=f,stderr=f_err)
     f.close()
     f_err.close()
@@ -52,8 +52,8 @@ def index(resultDir,numProcs,bin_err,blockNr=0,numBlocks=1):
     env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
     with open("SpotsToIndex.csv", "r") as f:
         num_lines = len(f.readlines())
-    f = open(f'{resultDir}/indexing_out{blockNr}.csv','w')
-    f_err = open(f'{resultDir}/indexing_err{blockNr}.csv','w')
+    f = open(f'{resultDir}/output/indexing_out{blockNr}.csv','w')
+    f_err = open(f'{resultDir}/output/indexing_err{blockNr}.csv','w')
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerOMP")+f' paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}',shell=True,env=env,stdout=f,stderr=f_err)
     f.close()
     f_err.close()
@@ -68,8 +68,8 @@ def refine(resultDir,numProcs,bin_err,blockNr=0,numBlocks=1):
     env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
     with open("SpotsToIndex.csv", "r") as f:
         num_lines = len(f.readlines())
-    f = open(f'{resultDir}/refining_out{blockNr}.csv','w')
-    f_err = open(f'{resultDir}/refining_err{blockNr}.csv','w')
+    f = open(f'{resultDir}/output/refining_out{blockNr}.csv','w')
+    f_err = open(f'{resultDir}/output/refining_err{blockNr}.csv','w')
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitPosOrStrainsOMP")+f' paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}',shell=True,env=env,stdout=f,stderr=f_err)
     f.close()
     f_err.close()
@@ -111,9 +111,10 @@ preproc = args.preProcThresh
 layerNr = args.LayerNr
 
 resultDir += f'/LayerNr_{layerNr}'
+logDir = resultDir + '/output'
 
 os.makedirs(resultDir,exist_ok=True)
-
+os.makedirs(logDir)
 t0 = time.time()
 
 env = dict(os.environ)
@@ -121,10 +122,8 @@ midas_path = os.path.expanduser("~/.MIDAS")
 env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
 
 if len(dataFN)>0:
-    strRun = f' -paramFN={psFN} -dataFN={dataFN} -resultFolder={resultDir}'
     print("Generating combined MIDAS file from HDF and ps files.")
 else:
-    strRun = f' -paramFN={psFN} -resultFolder={resultDir}'
     print("Generating combined MIDAS file from GE and ps files.")
 
 if machineName == 'local':
@@ -132,7 +131,7 @@ if machineName == 'local':
     from localConfig import *
     parsl.load(config=localConfig)
 elif machineName == 'orthrosall':
-    os.environ['MIDAS_SCRIPT_DIR'] = resultDir
+    os.environ['MIDAS_SCRIPT_DIR'] = logDir
     nNodes = 11
     numProcs = 32
     from orthrosAllConfig import *
@@ -140,8 +139,8 @@ elif machineName == 'orthrosall':
 
 outFStem = generateZip(resultDir,psFN,layerNr,dfn=dataFN,nchunks=nchunks,preproc=preproc)
 print(f"Generating HKLs. Time till now: {time.time()-t0} seconds.")
-f_hkls = open(f'{resultDir}/hkls_out.csv','w')
-f_hkls_err = open(f'{resultDir}/hkls_err.csv','w')
+f_hkls = open(f'{logDir}/hkls_out.csv','w')
+f_hkls_err = open(f'{logDir}/hkls_err.csv','w')
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+' '+outFStem,shell=True,env=env,stdout=f_hkls,stderr=f_hkls_err)
 f_hkls.close()
 f_hkls_err.close()
@@ -150,22 +149,21 @@ res = []
 for nodeNr in range(nNodes):
     res.append(peaks(resultDir,outFStem,numProcs,f_hkls_err,blockNr=nodeNr,numBlocks=nNodes))
 outputs = [i.result() for i in res]
-sys.exit()
 print(f"Merging peaks. Time till now: {time.time()-t0}")
-f = open(f'{resultDir}/merge_overlaps_out.csv','w')
-f_err = open(f'{resultDir}/merge_overlaps_err.csv','w')
+f = open(f'{logDir}/merge_overlaps_out.csv','w')
+f_err = open(f'{logDir}/merge_overlaps_err.csv','w')
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
 f.close()
 f_err.close()
 print(f"Calculating Radii. Time till now: {time.time()-t0}")
-f = open(f'{resultDir}/calc_radius_out.csv','w')
-f_err = open(f'{resultDir}/calc_radius_err.csv','w')
+f = open(f'{logDir}/calc_radius_out.csv','w')
+f_err = open(f'{logDir}/calc_radius_err.csv','w')
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
 f.close()
 f_err.close()
 print(f"Transforming data. Time till now: {time.time()-t0}")
-f = open(f'{resultDir}/fit_setup_out.csv','w')
-f_err = open(f'{resultDir}/fit_setup_err.csv','w')
+f = open(f'{logDir}/fit_setup_out.csv','w')
+f_err = open(f'{logDir}/fit_setup_err.csv','w')
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
 f.close()
 f_err.close()
@@ -187,8 +185,8 @@ resRefine.append(refine(resultDir,numProcs,outputIndex,blockNr=nodeNr,numBlocks=
 outputRefine = [i.result() for i in resRefine]
 subprocess.call("rm -rf /dev/shm/*.bin",shell=True)
 print(f"Making grains list. Time till now: {time.time()-t0}")
-f = open(f'process_grains_out.csv','w')
-f_err = open(f'process_grains_err.csv','w')
+f = open(f'{logDir}/process_grains_out.csv','w')
+f_err = open(f'{logDir}/process_grains_err.csv','w')
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/ProcessGrainsZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
 f.close()
 f_err.close()
