@@ -9,7 +9,6 @@ utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 sys.path.insert(0,utilsDir)
 v7Dir = os.path.expanduser('~/opt/MIDAS/FF_HEDM/v7/')
 sys.path.insert(0,v7Dir)
-# from ff_apps import *
 
 from parsl.app.app import python_app
 import subprocess
@@ -41,7 +40,7 @@ def peaks(resultDir,zipFN,numProcs,hkls_err,blockNr=0,numBlocks=1):
     env = dict(os.environ)
     midas_path = os.path.expanduser("~/.MIDAS")
     env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
-    f = open(f'{resultDir}/peaksearch_out.csv','w')
+    f = open(f'{resultDir}/peaksearch_out{blockNr}.csv','w')
     f_err = open(f'{resultDir}/peaksearch_err.csv','w')
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPZarr")+f' {zipFN} {blockNr} {numBlocks} {numProcs}',shell=True,env=env,stdout=f,stderr=f_err)
     f.close()
