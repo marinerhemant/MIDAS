@@ -181,7 +181,8 @@ for nodeNr in range(nNodes):
 outputIndex = [i.result() for i in resIndex]
 print(f"Refining. Time till now: {time.time()-t0}")
 resRefine = []
-resRefine.append(refine(resultDir,numProcs,blockNr=nodeNr,numBlocks=nNodes))
+for nodeNr in range(nNodes):
+    resRefine.append(refine(resultDir,numProcs,blockNr=nodeNr,numBlocks=nNodes))
 outputRefine = [i.result() for i in resRefine]
 subprocess.call("rm -rf /dev/shm/*.bin",shell=True)
 print(f"Making grains list. Time till now: {time.time()-t0}")
