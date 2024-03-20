@@ -136,6 +136,16 @@ elif machineName == 'orthrosall':
     numProcs = 32
     from orthrosAllConfig import *
     parsl.load(config=orthrosAllConfig)
+elif machineName == 'umich':
+    os.environ['MIDAS_SCRIPT_DIR'] = logDir
+    os.environ['nNodes'] = nNodes
+    from uMichConfig import *
+    parsl.load(config=uMichConfig)
+elif machineName == 'marquette':
+    os.environ['MIDAS_SCRIPT_DIR'] = logDir
+    os.environ['nNodes'] = nNodes
+    from marquetteConfig import *
+    parsl.load(config=marquetteConfig)
 
 outFStem = generateZip(resultDir,psFN,layerNr,dfn=dataFN,nchunks=nchunks,preproc=preproc)
 print(f"Generating HKLs. Time till now: {time.time()-t0} seconds.")

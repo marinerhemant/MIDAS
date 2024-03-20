@@ -6,10 +6,10 @@ import os
 SCRIPTDIR = os.environ.get("MIDAS_SCRIPT_DIR")
 nNodes = int(os.environ.get("nNodes"))
 
-uMichConfig = Config(
+marquetteConfig = Config(
     executors=[
         HighThroughputExecutor(
-            label='UMGreatLakes',
+            label='Marquette',
             cores_per_worker=36,
             max_workers_per_node=1,
             provider=SlurmProvider(
@@ -17,8 +17,7 @@ uMichConfig = Config(
                 init_blocks=1,
                 min_blocks=1,
                 max_blocks=1,
-                partition='standard',
-                scheduler_options='#SBATCH -A abucsek1',
+                partition='defq',
                 worker_init='module load python; source activate parsl',
                 walltime='90:00:00',
                 cmd_timeout=120,
