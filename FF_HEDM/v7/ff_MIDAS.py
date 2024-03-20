@@ -206,5 +206,3 @@ subprocess.call('python '+os.path.expanduser('~/opt/MIDAS/utils/plotFFSpots3d.py
 subprocess.call('python '+os.path.expanduser('~/opt/MIDAS/utils/plotFFSpots3dGrains.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
 subprocess.call('python '+os.path.expanduser('~/opt/MIDAS/utils/plotGrains3d.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
 print(f"Done. Total time elapsed: {time.time()-t0}")
-
-# python ~/opt/MIDAS/FF_HEDM/v7/ff_MIDAS.py -resultFolder /data/tomo1/krause_mar23_midas/ff/recon -paramFN ps_dmi.txt -nCPUs 32 -machineName orthrosall -LayerNr 1
