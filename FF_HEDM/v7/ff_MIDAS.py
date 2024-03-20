@@ -22,8 +22,8 @@ def generateZip(resFol,pfn,layerNr,dfn='',dloc='',nchunks=-1,preproc=-1,outf='Zi
         cmd+= ' -numFrameChunks '+str(nchunks)
     if preproc!=-1:
         cmd+= ' -preProcThresh '+str(preproc)
-    outf = resFol+'/'+outf
-    errf = resFol+'/'+errf
+    outf = resFol+'/output/'+outf
+    errf = resFol+'/output/'+errf
     subprocess.call(cmd,shell=True,stdout=open(outf,'w'),stderr=open(errf,'w'))
     lines = open(outf,'r').readlines()
     if lines[-1].startswith('OutputZipName'):
