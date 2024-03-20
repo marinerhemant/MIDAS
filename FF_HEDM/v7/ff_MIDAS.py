@@ -93,7 +93,7 @@ parser = MyParser(description='''Far-field HEDM analysis using MIDAS. V7.0.0, co
 parser.add_argument('-resultFolder', type=str, required=True, help='Folder where you want to save results')
 parser.add_argument('-paramFN', type=str, required=True, help='Parameter file name')
 parser.add_argument('-dataFN', type=str, required=False, default='', help='DataFileName')
-parser.add_argument('-nCPUs', type=int, required=True, help='Number of CPU cores to use')
+parser.add_argument('-nCPUs', type=int, required=False, default=10, help='Number of CPU cores to use')
 parser.add_argument('-machineName', type=str, required=False, default='local', help='Machine name for execution')
 parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='If low on RAM, it can process parts of the dataset at the time. -1 will disable.')
 parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
