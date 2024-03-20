@@ -1,11 +1,5 @@
-# Config file for parsl
 from parsl.config import Config
-from parsl.channels import LocalChannel
-from parsl.providers import SlurmProvider
-from parsl.executors import HighThroughputExecutor
 from parsl.executors import ThreadPoolExecutor
-from parsl.launchers import SrunLauncher
-from parsl.addresses import address_by_interface
 
 localConfig = Config(
     app_cache=True, 

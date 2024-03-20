@@ -16,7 +16,7 @@ user_opts = {'adhoc':
               }
              }
 
-orthrosAllConfig = Config(
+orthrosNewConfig = Config(
     executors=[
         HighThroughputExecutor(
             label='orthrosall',
@@ -28,6 +28,32 @@ orthrosAllConfig = Config(
                                      username=user_opts['adhoc']['username'],
                                      script_dir=user_opts['adhoc']['script_dir'],
                                      ) for m in user_opts['adhoc']['remote_hostnames']]
+            )
+        )
+    ],
+    strategy='none',
+)
+
+user_optsAll: Dict[str, Dict[str, Any]]
+user_optsAll = {'adhoc':
+             {'username': 'tomo1',
+              'script_dir': SCRIPTDIR,
+              'remote_hostnames': ['pup0100','pup0101','pup0102','pup0103','pup0105']
+              }
+             }
+
+orthrosAllConfig = Config(
+    executors=[
+        HighThroughputExecutor(
+            label='orthrosall',
+            max_workers_per_node=1,
+            worker_logdir_root=user_optsAll['adhoc']['script_dir'],
+            provider=AdHocProvider(
+                worker_init='source /clhome/TOMO1/opt/midasconda3/bin/activate',
+                channels=[SSHChannel(hostname=m,
+                                     username=user_optsAll['adhoc']['username'],
+                                     script_dir=user_optsAll['adhoc']['script_dir'],
+                                     ) for m in user_optsAll['adhoc']['remote_hostnames']]
             )
         )
     ],
