@@ -3,7 +3,7 @@ from parsl.channels import LocalChannel
 from parsl.providers import GridEngineProvider
 from parsl.executors import HighThroughputExecutor
 
-config = Config(
+orthrosAllConfig = Config(
     executors=[
         HighThroughputExecutor(
             label='orthros_new',
