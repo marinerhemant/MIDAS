@@ -147,7 +147,7 @@ f_hkls_err.close()
 print(f"Doing PeakSearch. Time till now: {time.time()-t0} seconds.")
 res = []
 for nodeNr in range(nNodes):
-    res.append(peaks(resultDir,outFStem,numProcs,f_hkls_err,blockNr=nodeNr,nBlocks=nNodes))
+    res.append(peaks(resultDir,outFStem,numProcs,f_hkls_err,blockNr=nodeNr,numBlocks=nNodes))
 outputs = [i.result() for i in res]
 sys.exit()
 print(f"Merging peaks. Time till now: {time.time()-t0}")
@@ -178,11 +178,11 @@ f_err2.close()
 print(f"Indexing. Time till now: {time.time()-t0}")
 resIndex = []
 for nodeNr in range(nNodes):
-    resIndex.append(index(resultDir,numProcs,f_err2,blockNr=nodeNr,nBlocks=nNodes))
+    resIndex.append(index(resultDir,numProcs,f_err2,blockNr=nodeNr,numBlocks=nNodes))
 outputIndex = [i.result() for i in resIndex]
 print(f"Refining. Time till now: {time.time()-t0}")
 resRefine = []
-resRefine.append(refine(resultDir,numProcs,outputIndex,blockNr=nodeNr,nBlocks=nNodes))
+resRefine.append(refine(resultDir,numProcs,outputIndex,blockNr=nodeNr,numBlocks=nNodes))
 outputRefine = [i.result() for i in resRefine]
 subprocess.call("rm -rf /dev/shm/*.bin",shell=True)
 print(f"Making grains list. Time till now: {time.time()-t0}")
