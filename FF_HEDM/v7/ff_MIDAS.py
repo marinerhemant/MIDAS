@@ -132,6 +132,7 @@ if machineName == 'local':
     from localConfig import *
     parsl.load(config=localConfig)
 elif machineName == 'orthrosall':
+    os.environ['MIDAS_SCRIPT_DIR'] = resultDir
     nNodes = 11
     numProcs = 32
     from orthrosAllConfig import *
