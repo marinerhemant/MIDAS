@@ -15,7 +15,7 @@ folder = args.folder
 LastScanNr = args.LastScanNr
 OutputFStem = args.OutputFStem
 
-for fileNr in range(75,LastScanNr+1):
+for fileNr in range(1,LastScanNr+1):
     fn = f'{folder}/scan{str(fileNr).zfill(4)}/eiger_0000.h5'
     hf = h5py.File(fn,'r')
     print(f"Processing dset: {fileNr}")
