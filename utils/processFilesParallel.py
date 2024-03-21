@@ -17,8 +17,7 @@ def runSingle(workData):
     binloc = os.path.expanduser('~/opt/MIDAS/utils/ffGenerate.py')
     cmd = f'/nfs/turbo/meche-abucsek/Wenxi/ESRF_Ti_v7/.venv/bin/python {binloc} -resultFolder {rf} -paramFN {pf} -LayerNr {lN} -numFrameChunks {nc}'
     print(cmd)
-    # subprocess.call(cmd,cwd=cwd,shell=True)
-    return cmd
+    subprocess.call(cmd,cwd=cwd,shell=True)
 
 parser = MyParser(description='''esrf2hf.py''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-resultFolder', type=str, required=True, help='Folder where you want to save results')
@@ -41,6 +40,5 @@ else:
 work_data = []
 for i in range(1,LastScanNr+1):
     work_data.append([resultFolder,paramFN,i,numFrameChunks])
-print(work_data)
-data = p.map(runSingle,work_data)
-print(data)
+
+p.map(runSingle,work_data)
