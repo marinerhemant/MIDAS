@@ -9,7 +9,6 @@ import zarr
 from numcodecs import Blosc
 from pathlib import Path
 import shutil
-from zarr.meta import encode_fill_value
 
 compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
 
