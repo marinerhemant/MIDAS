@@ -221,7 +221,6 @@ rads = [hkl[-1] for rnr in RingNrs for hkl in hkls if hkl[4] == rnr]
 print(RingNrs)
 print(rads)
 
-# nFrames = endNr - startNr + 1
 if doPeakSearch == 1:
 	positions = open(topdir+'/positions.csv').readlines()
 	for layerNr in range(1,nScans+1):
