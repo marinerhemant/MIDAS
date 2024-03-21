@@ -38,7 +38,7 @@ def addData (name,node):
             else:
                 if arr.size == 1:
                     arr = np.array([arr])
-                za = zRoot.create_dataset(node.name, shape=arr.shape,dtype=arr.dtype,chunks=1,compression=compressor)
+                za = zRoot.create_dataset(node.name, shape=arr.shape,dtype=arr.dtype,chunks=arr.shape,compression=compressor)
                 za[:] = arr
         else:
             print(f"Creating group: {node.name}")

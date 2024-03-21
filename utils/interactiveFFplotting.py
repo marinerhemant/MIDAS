@@ -1,15 +1,13 @@
-# Import packages
-from dash import Dash, html, dash_table, dcc, callback, Output, Input
+from dash import Dash, html, dcc, callback, Output, Input
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import argparse
-import os,sys
+import sys
 import zarr
-from math import cos, sin, tan
-import json
+from math import cos, sin
 
 deg2rad = np.pi/180
 rad2deg = 180/np.pi
