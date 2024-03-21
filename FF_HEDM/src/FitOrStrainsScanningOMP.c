@@ -1359,7 +1359,7 @@ StrainTensorKenesei(int nspots,double **SpotsInfo, double Distance, double wavel
 int main(int argc, char *argv[])
 {
 	if (argc != 6){
-		printf("Supply a parameter file, blockNr, nBlocks, nSpotsToIndex, numProcs as arguments: ie %s param.txt nBlocks blockNr nSpotsToIndex numProcs\n\n", argv[0]);
+		printf("Supply a parameter file, blockNr, nBlocks, nSpotsToIndex, numProcs as arguments.\n");
 		exit(EXIT_FAILURE);
 	}
 	double start_time = omp_get_wtime();

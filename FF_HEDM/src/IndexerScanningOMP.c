@@ -1410,7 +1410,7 @@ main(int argc, char *argv[])
 	char *ParamFN;
 	char fn[1024];
 	if (argc < 6) {
-		printf("Supply a parameter file, blockNr, nBlocks, numScans, numProcs as arguments: ie %s param.txt blockNr nBlocks numScans numProcs\n\n", argv[0]);
+		printf("Usage: %s paramtest.txt blockNr nBlocks numScans numProcs\n\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
 	ParamFN = argv[1];
