@@ -39,5 +39,8 @@ else:
     p = Pool(nCPUs)
 
 work_data = []
+for i in range(1,LastScanNr+1):
+    work_data.append([resultFolder,paramFN,i,numFrameChunks])
+print(work_data)
 data = p.map(runSingle,work_data)
 print(data)
