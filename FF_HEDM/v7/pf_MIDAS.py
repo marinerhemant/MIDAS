@@ -131,6 +131,9 @@ draw_sinos = args.DrawSinos
 thresh_reqd = args.DoThresholdingTomo
 doTomo = args.DoTomo
 
+if len(topdir) == 0:
+	topdir = os.getcwd()
+
 logDir = topdir + '/output'
 
 os.makedirs(topdir,exist_ok=True)
