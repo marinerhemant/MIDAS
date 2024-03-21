@@ -19,6 +19,7 @@ fn = f'{folder}/{InputFN}'
 hf = h5py.File(fn,'r')
 print(hf.keys())
 for key in hf.keys():
+    print(f"Processing dset: {key}")
     dsetpath = f'{key}/instrument/eiger/image'
     strKey = key.split('.')[0]
     dset_shape = hf[dsetpath].shape
