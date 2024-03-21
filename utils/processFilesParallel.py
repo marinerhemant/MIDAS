@@ -17,7 +17,7 @@ def runSingle(workData):
     binloc = os.path.expanduser('~/opt/MIDAS/utils/ffGenerate.py')
     cmd = f'/nfs/turbo/meche-abucsek/Wenxi/ESRF_Ti_v7/.venv/bin/python {binloc} -resultFolder {rf} -paramFN {pf} -LayerNr {lN} -numFrameChunks {nc}'
     print(cmd)
-    subprocess.call(cmd,cwd=cwd,shell=True)
+    # subprocess.call(cmd,cwd=cwd,shell=True)
     return cmd
 
 parser = MyParser(description='''esrf2hf.py''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
