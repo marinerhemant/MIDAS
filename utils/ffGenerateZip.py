@@ -142,7 +142,7 @@ else:
         if enFrame > nFrames: enFrame=nFrames
         print(f"StartFrame: {stFrame}, EndFrame: {enFrame-1}, nFrames: {nFrames}")
         delFrames = enFrame - stFrame
-        dataThis = np.fromfile(InputFN,dtype=np.uint16,count=delFrames*numPxY*numPxZ*bytesPerPx,offset=stFrame*numPxY*numPxZ*bytesPerPx).reshape((delFrames*numPxZ*numPxY))
+        dataThis = np.fromfile(InputFN,dtype=np.uint16,count=delFrames*numPxY*numPxZ,offset=stFrame*numPxY*numPxZ*bytesPerPx).reshape((delFrames*numPxZ*numPxY))
         if preProc!=-1:
             dataT = dataThis - darkMean
             dataT[dataT<preProc] = 0
