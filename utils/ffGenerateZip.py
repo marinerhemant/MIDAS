@@ -64,6 +64,7 @@ layerNr = args.LayerNr
 darkLoc = 'exchange/dark'
 brightLoc = 'exchange/bright'
 lines = open(psFN).readlines()
+darkFN = ''
 for line in lines:
     if line.startswith('RawFolder '):
         rawFolder = line.split()[1]
