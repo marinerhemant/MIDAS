@@ -116,6 +116,7 @@ parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help
 parser.add_argument('-DrawSinos', type=int, required=False, default=0, help='If want to see sinograms, put to 1. Only for OneSolPerVox.')
 parser.add_argument('-DoThresholdingTomo', type=int, required=False, default=0, help='If want to apply otsu thresholding to tomo reconstructions, put to 1. Only for OneSolPerVox.')
 parser.add_argument('-DoTomo', type=int, required=False, default=0, help='If want to do tomography, put to 1. Only for OneSolPerVox.')
+parser.add_argument('-ConvertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
 args, unparsed = parser.parse_known_args()
 baseNameParamFN = args.paramFile
 machineName = args.machineName
@@ -130,6 +131,7 @@ preproc = args.preProcThresh
 draw_sinos = args.DrawSinos
 thresh_reqd = args.DoThresholdingTomo
 doTomo = args.DoTomo
+ConvertFiles = args.ConvertFiles
 
 if len(topdir) == 0:
 	topdir = os.getcwd()
@@ -188,6 +190,10 @@ for line in paramContents:
 		nrFilesPerSweep = int(line.split()[1])
 	if line.startswith('MicFile'):
 		micFN = line.split()[1]
+	if line.startswith('FileStem'):
+		fStem = line.split()[1]
+	if line.startswith('Ext'):
+		Ext = line.split()[1]
 	if line.startswith('StartNr'):
 		startNr = int(line.split()[1])
 	if line.startswith('EndNr'):
@@ -239,7 +245,10 @@ if doPeakSearch == 1:
 		Path(thisDir+'/Temp').mkdir(parents=True,exist_ok=True)
 		Path(thisDir+'/output').mkdir(parents=True,exist_ok=True)
 		sub_logDir = thisDir + '/output'
-		outFStem = generateZip(thisDir,baseNameParamFN,layerNr,nchunks=nchunks,preproc=preproc)
+		if ConvertFiles==1:
+			outFStem = generateZip(thisDir,baseNameParamFN,layerNr,nchunks=nchunks,preproc=preproc)
+		else:
+			outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(6)}{Ext}'
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+" "+outFStem,shell=True)
 		res = []
 		for nodeNr in range(nNodes):
