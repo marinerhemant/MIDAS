@@ -93,7 +93,6 @@ def runRecon(folder,nScans,sgnum,numProcs,numProcsLocal,maxang=1,tol_ome=1,tol_e
 			continue
 		orientThis = uniqueOrientations[max_id2[voxNr],5:14]
 		if os.path.isfile(f'{folder}/Output/UniqueIndexKeyOrientAll_voxNr_{voxNr}.txt'):
-			print()
 			with open(f'{folder}/Output/UniqueIndexKeyOrientAll_voxNr_{voxNr}.txt','r') as f:
 				lines = f.readlines()
 			for line in lines:
