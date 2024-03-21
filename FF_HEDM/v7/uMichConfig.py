@@ -19,7 +19,7 @@ uMichConfig = Config(
                 max_blocks=1,
                 partition='standard',
                 scheduler_options='#SBATCH -A abucsek1',
-                worker_init='module load python; source activate parsl',
+                worker_init='source /home/wenxli/anaconda3/bin/activate',
                 walltime='90:00:00',
                 cmd_timeout=120,
             ),
