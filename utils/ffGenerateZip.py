@@ -111,22 +111,44 @@ if h5py.is_hdf5(InputFN):
         enFrame = (i+1)*numFrameChunks
         if enFrame > nFrames: enFrame=nFrames
         print(f"StartFrame: {stFrame}, EndFrame: {enFrame-1}, nFrames: {nFrames}")
+        dataThis = hf2[dataLoc][stFrame:enFrame,:,:].astype(np.double)
         if preProc!=-1:
-            dataT = hf2[dataLoc][stFrame:enFrame,:,:].astype(np.double) - darkMean
+            dataT = dataThis - darkMean
             dataT[dataT<preProc] = 0
-            data[stFrame:enFrame,:,:] = dataT.astype(np.uint16)
         else:
-            data[stFrame:enFrame,:,:] = hf2[dataLoc][stFrame:enFrame,:,:]
+            dataT = dataThis
+        data[stFrame:enFrame,:,:] = dataT.astype(np.uint16)
     hf2.close()
 else:
-    geData = geReader(InputFN)
+    sz = os.path.getsize(InputFN)
+    header = 8192
+    bytesPerPx = 2
+    numPxY = 2048
+    numPxZ = 2048
+    nFrames = (sz-header) // (bytesPerPx*numPxY*numPxZ)
     darkData = geReader(darkFN)
-    data = exc.create_dataset('data',shape=geData.shape,dtype=np.uint16,chunks=(1,geData.shape[1],geData.shape[2]),compression=compressor)
-    data[:]=geData
     dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
     dark[:]=darkData
     bright = exc.create_dataset('bright',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
     bright[:]=darkData
+    darkMean = np.mean(darkData,axis=0).astype(np.uint16)
+    data = exc.create_dataset('data',shape=(nFrames,numPxZ,numPxY),dtype=np.uint16,chunks=(1,numPxZ,numPxY),compression=compressor)
+    if numFrameChunks == -1:
+        numFrameChunks = nFrames
+    numChunks = int(ceil(nFrames/numFrameChunks))
+    for i in range(numChunks):
+        stFrame = i*numFrameChunks
+        enFrame = (i+1)*numFrameChunks
+        if enFrame > nFrames: enFrame=nFrames
+        print(f"StartFrame: {stFrame}, EndFrame: {enFrame-1}, nFrames: {nFrames}")
+        delFrames = enFrame - stFrame
+        dataThis = np.fromfile(InputFN,dtype=np.uint16,count=delFrames*numPxY*numPxZ*bytesPerPx,offset=stFrame*numPxY*numPxZ*bytesPerPx).reshape((delFrames*numPxZ*numPxY))
+        if preProc!=-1:
+            dataT = dataThis - darkMean
+            dataT[dataT<preProc] = 0
+        else:
+            dataT = dataThis
+        data[stFrame:enFrame,:,:] = dataT.astype(np.uint16)
 
 data.attrs['_ARRAY_DIMENSIONS'] = data.shape
 dark.attrs['_ARRAY_DIMENSIONS'] = bright.shape
