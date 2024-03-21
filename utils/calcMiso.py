@@ -218,3 +218,8 @@ def GetMisOrientationAngleOM(OM1,OM2,SGNum):
 	if (MisV[0] > 1):
 		MisV[0] = 1
 	return 2*acos(MisV[0]),MisV[1:]/sin(acos(MisV[0]))
+
+def CalcEtaAngleAll(y, z):
+	alpha = rad2deg*np.arccos(z/np.linalg.norm(np.array([y,z]),axis=0))
+	alpha[y>0] *= -1
+	return alpha
