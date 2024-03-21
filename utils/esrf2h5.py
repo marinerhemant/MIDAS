@@ -21,7 +21,6 @@ for fileNr in range(1,LastScanNr+1):
     print(f"Processing dset: {fileNr}")
     dsetpath = f'/entry_0000/ESRF-ID11/eiger/data'
     dset_shape = hf[dsetpath].shape
-    print(dset_shape)
     f = h5py.File(f'{folder}/{OutputFStem}_{str(fileNr).zfill(6)}.h5', 'w')
     grp = f.create_group('exchange')
     link = h5py.ExternalLink(fn, dsetpath)
