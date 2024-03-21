@@ -8,16 +8,14 @@ class MyParser(argparse.ArgumentParser):
 
 parser = MyParser(description='''esrf2hf.py''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-folder', type=str, required=True, help='Folder where data exists')
-parser.add_argument('-LastScanNr', type=int, required=True, help='Last scanNr.')
-parser.add_argument('-StartScanNr', type=int, required=False, default=1, help='Start scanNr, default is 1')
+parser.add_argument('-LastScanNr', type=int, required=True, help='Last scanNr, it will always start from 1')
 parser.add_argument('-OutputFStem', type=str, required=True, help='Output filestem, the resulting files will be OutputFStem_XXXXXX.h5 etc in folder')
 args, unparsed = parser.parse_known_args()
 folder = args.folder
 LastScanNr = args.LastScanNr
-StartScanNr = args.StartScanNr
 OutputFStem = args.OutputFStem
 
-for fileNr in range(StartScanNr,LastScanNr+1):
+for fileNr in range(1,LastScanNr+1):
     fn = f'{folder}/scan{str(fileNr).zfill(4)}/eiger_0000.h5'
     hf = h5py.File(fn,'r')
     print(f"Processing dset: {fileNr}")

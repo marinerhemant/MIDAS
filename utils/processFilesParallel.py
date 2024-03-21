@@ -21,13 +21,15 @@ def runSingle(workData):
 
 parser = MyParser(description='''esrf2hf.py''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-resultFolder', type=str, required=True, help='Folder where you want to save results')
-parser.add_argument('-LastScanNr', type=int, required=True, help='Last scanNr, it will always start from 0')
+parser.add_argument('-LastScanNr', type=int, required=True, help='Last scanNr')
+parser.add_argument('-StartScanNr', type=int, required=False, default=1, help='Start scanNr')
 parser.add_argument('-paramFN', type=str, required=True, help='Parameter filename')
 parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='Number of chunks to use when reading the data file if RAM is smaller than expanded data. -1 will disable.')
 parser.add_argument('-nCPUs', type=int, required=False, default=-1, help='Number of parallel jobs to start. If -1, will use the default.')
 args, unparsed = parser.parse_known_args()
 resultFolder = args.resultFolder
 LastScanNr = args.LastScanNr
+StartScanNr = args.StartScanNr
 paramFN = args.paramFN
 numFrameChunks = args.numFrameChunks
 nCPUs = args.nCPUs
@@ -38,7 +40,7 @@ else:
     p = Pool(nCPUs)
 
 work_data = []
-for i in range(1,LastScanNr+1):
+for i in range(StartScanNr,LastScanNr+1):
     work_data.append([resultFolder,paramFN,i,numFrameChunks])
 
 p.map(runSingle,work_data)
