@@ -14,7 +14,8 @@ def runSingle(workData):
     lN = workData[2]
     nc = workData[3]
     cwd = os.getcwd()
-    subprocess.call(f'/nfs/turbo/meche-abucsek/Wenxi/ESRF_Ti_v7/.venv/bin/python {os.path.expanduser('~/opt/MIDAS/utils/ffGenerate.py')} -resultFolder {rf} -paramFN {pf} -LayerNr {lN} -numFrameChunks {nc}',cwd=cwd,shell=True)
+    cmd = f'/nfs/turbo/meche-abucsek/Wenxi/ESRF_Ti_v7/.venv/bin/python {os.path.expanduser('~/opt/MIDAS/utils/ffGenerate.py')} -resultFolder {rf} -paramFN {pf} -LayerNr {lN} -numFrameChunks {nc}'
+    subprocess.call(cmd,cwd=cwd,shell=True)
 
 parser = MyParser(description='''esrf2hf.py''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-resultFolder', type=str, required=True, help='Folder where you want to save results')
