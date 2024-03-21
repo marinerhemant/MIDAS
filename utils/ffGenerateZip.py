@@ -23,6 +23,27 @@ class MyParser(argparse.ArgumentParser):
 		self.print_help()
 		sys.exit(2)
 
+def addData (name,node):
+    if node.name not in zRoot.keys():
+        if isinstance(node,h5py.Dataset):
+            print(f"Creating dataset: {node.name}")
+            if node.shape==data.shape:
+                print("Skipping writing data again.")
+                return
+            arr = node[()]
+            if isinstance(arr,bytes):
+                arr = np.string_(arr.decode('UTF-8'))
+                za = zRoot.create_dataset(node.name,shape=(1,),dtype=arr.dtype,chunks=(1,),compression=compressor)
+                za[:] = arr
+            else:
+                if arr.size == 1:
+                    arr = np.array([arr])
+                za = zRoot.create_dataset(node.name, shape=arr.shape,dtype=arr.dtype,chunks=1,compression=compressor)
+                za[:] = arr
+        else:
+            print(f"Creating group: {node.name}")
+            zRoot.create_group(node.name)
+
 parser = MyParser(description='''ffGenerateZip.py''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-resultFolder', type=str, required=True, help='Folder where you want to save results')
 parser.add_argument('-paramFN', type=str, required=True, help='Parameter file name')
@@ -91,7 +112,7 @@ if h5py.is_hdf5(InputFN):
     if darkLoc in hf2:
         darkData = hf2[darkLoc][()]
     else:
-        darkData = np.zeros((5,numZ,numY)) # 5 frames in case we are skipping some initial frames.
+        darkData = np.zeros((10,numZ,numY))
     dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
     dark[:] = darkData
     darkMean = np.mean(darkData,axis=0).astype(np.uint16)
@@ -557,28 +578,6 @@ spImT[:] = ImTransOpts
 OmeFF -= skipF*omeStp
 spSt = sp_pro_meas.create_dataset('start',dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
 spSt[:] = np.array([OmeFF])
-
-def addData (name,node):
-    if node.name not in zRoot.keys():
-        if isinstance(node,h5py.Dataset):
-            print(f"Creating dataset: {node.name}")
-            if node.shape==data.shape:
-                print("Skipping writing data again.")
-                return
-            arr = node[()]
-            if isinstance(arr,bytes):
-                arr = np.string_(arr.decode('UTF-8'))
-                za = zRoot.create_dataset(node.name,shape=(1,),dtype=arr.dtype,chunks=(1,),compression=compressor)
-                za[:] = arr
-            else:
-                if arr.size == 1:
-                    arr = np.array([arr])
-                za = zRoot.create_dataset(node.name, shape=arr.shape,dtype=arr.dtype,chunks=1,compression=compressor)
-                za[:] = arr
-        else:
-            print(f"Creating group: {node.name}")
-            zRoot.create_group(node.name)
-
 
 if h5py.is_hdf5(InputFN):
     with h5py.File(InputFN,'r') as hf2:
