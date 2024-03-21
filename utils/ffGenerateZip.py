@@ -60,7 +60,6 @@ numFrameChunks = args.numFrameChunks
 dataLoc = args.dataLoc
 preProc = args.preProcThresh
 layerNr = args.LayerNr
-print(layerNr)
 
 darkLoc = 'exchange/dark'
 brightLoc = 'exchange/bright'

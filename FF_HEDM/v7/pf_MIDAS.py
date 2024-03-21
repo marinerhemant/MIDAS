@@ -283,7 +283,6 @@ if doPeakSearch == 1:
 		dfAllF.loc[dfAllF['GrainRadius']>0.001,'YOrig(NoWedgeCorr)'] += ypos
 		dfAllF['Eta'] = CalcEtaAngleAll(dfAllF['%YLab'],dfAllF['ZLab'])
 		dfAllF['Ttheta'] = rad2deg*np.arctan(np.linalg.norm(np.array([dfAllF['%YLab'],dfAllF['ZLab']]),axis=0)/Lsd)
-		
 		for iter in range(len(ringPowderIntensity)):
 			ringNr = ringPowderIntensity[iter,0]
 			powInt = ringPowderIntensity[iter,1]
