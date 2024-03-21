@@ -140,7 +140,7 @@ else:
         stFrame = i*numFrameChunks
         enFrame = (i+1)*numFrameChunks
         if enFrame > nFrames: enFrame=nFrames
-        print(f"StartFrame: {stFrame}, EndFrame: {enFrame-1}, nFrames: {nFrames}")
+        print(f"StartFrame: {stFrame}, EndFrame: {enFrame}, nFrames: {nFrames}")
         delFrames = enFrame - stFrame
         dataThis = np.fromfile(InputFN,dtype=np.uint16,count=delFrames*numPxY*numPxZ,offset=stFrame*numPxY*numPxZ*bytesPerPx).reshape((delFrames,numPxZ,numPxY))
         if preProc!=-1:
