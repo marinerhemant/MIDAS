@@ -97,7 +97,7 @@ main(int argc, char *argv[])
     }
     // Now generate a spotsToIndex.csv with all the info from all the voxels
     char *originalFolder = argv[1], outFN[2048];
-    sprintf(outFN,"%s/SpotsToIndex.csv");
+    sprintf(outFN,"%s/SpotsToIndex.csv",originalFolder);
     FILE *outF;
     outF = fopen(outFN,"w");
     for (voxNr=0;voxNr<nScans*nScans;voxNr++){
