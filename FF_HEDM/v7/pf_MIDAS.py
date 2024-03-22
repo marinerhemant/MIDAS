@@ -234,7 +234,7 @@ print(rads)
 if doPeakSearch == 1:
 	positions = open(topdir+'/positions.csv').readlines()
 	for layerNr in range(1,nScans+1):
-		print(layerNr)
+		print(f'LayerNr: {layerNr}')
 		ypos = float(positions[layerNr-1])
 		thisStartNr = startNrFirstLayer + (layerNr-1)*nrFilesPerSweep
 		folderName = str(thisStartNr)
@@ -253,6 +253,7 @@ if doPeakSearch == 1:
 			outFStem = generateZip(thisDir,baseNameParamFN,layerNr,nchunks=nchunks,preproc=preproc)
 		else:
 			outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(6)}{Ext}'
+		print(outFStem)
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+" "+outFStem,env=env,shell=True)
 		res = []
 		for nodeNr in range(nNodes):
