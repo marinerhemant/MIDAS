@@ -144,6 +144,7 @@ int main(int argc, char *argv[]){
             dsize = 4096;
             resultFolder = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,resultFolder,dsize);
+            resultFolder[dsize] = '\0';
             free(arr);
             free(data);
         }
@@ -286,6 +287,7 @@ int main(int argc, char *argv[]){
             dsize = 4096;
             Folder = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,Folder,dsize);
+            Folder[dsize] = '\0';
             free(arr);
             free(data);
         }

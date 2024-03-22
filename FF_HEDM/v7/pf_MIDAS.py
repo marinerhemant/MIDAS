@@ -41,8 +41,6 @@ def generateZip(resFol,pfn,layerNr,dfn='',dloc='',nchunks=-1,preproc=-1,outf='Zi
 		cmd+= ' -preProcThresh '+str(preproc)
 	outf = resFol+'/output/'+outf
 	errf = resFol+'/output/'+errf
-	print(cmd)
-	print(f'{resFol}aaa')
 	subprocess.call(cmd,shell=True,stdout=open(outf,'w'),stderr=open(errf,'w'))
 	lines = open(outf,'r').readlines()
 	if lines[-1].startswith('OutputZipName'):

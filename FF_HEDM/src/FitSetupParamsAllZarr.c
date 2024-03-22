@@ -1115,6 +1115,7 @@ int main(int argc, char *argv[])
             dsize = 4096;
             Folder = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,Folder,dsize);
+            Folder[dsize] = '\0';
             free(arr);
             free(data);
         }
