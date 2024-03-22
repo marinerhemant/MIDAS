@@ -1278,7 +1278,6 @@ void main(int argc, char *argv[]){
 
 	int startFileNr = (int)(ceil((double)nFrames / (double)nBlocks)) * blockNr;
 	int endFileNr = (int)(ceil((double)nFrames / (double)nBlocks)) * (blockNr+1) < nFrames ? (int)(ceil((double)nFrames / (double)nBlocks)) * (blockNr+1) : nFrames;
-	endFileNr = 1;
 	int nrJobs = (int)(ceil((double)(endFileNr - startFileNr)/(double)(numProcs)));
 	printf("StartFileNr: %d EndFileNr: %d numProcs: %d nrJobs/proc: %d blockNr: %d nrBlocks: %d\n",startFileNr,endFileNr,numProcs,nrJobs,blockNr,nBlocks);
 	int nrFilesDone=0;
