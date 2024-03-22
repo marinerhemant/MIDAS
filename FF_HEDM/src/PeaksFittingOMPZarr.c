@@ -1421,6 +1421,10 @@ void main(int argc, char *argv[]){
 		}
 		for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 			NrPixelsThisRegion = PositionTrackers[RegNr];
+			if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
+				TotNrRegions--;
+				continue;
+			}
 			printf("%d\n",NrPixelsThisRegion);
 			for (i=0;i<NrPixelsThisRegion;i++){
 				UsefulPixels[i*2+0] = (int)(Positions[RegNr*NrPixels*4+i]/NrPixels);
@@ -1430,11 +1434,7 @@ void main(int argc, char *argv[]){
 			Thresh = GoodCoords[((UsefulPixels[0*2+0])*NrPixels) + (UsefulPixels[0*2+1])];
 			unsigned nPeaks;
 			nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,MaximaPositions,MaximaValues,&IsSaturated,IntSat,NrPixels);
-			// printf("RegionNr: %d, NPeaks: %d\n",RegNr,nPeaks);
-			if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
-				TotNrRegions--;
-				continue;
-			}
+			printf("RegionNr: %d, NPeaks: %d\n",RegNr,nPeaks);
 			if (IsSaturated == 1){ //Saturated peaks removed
 				TotNrRegions--;
 				continue;
