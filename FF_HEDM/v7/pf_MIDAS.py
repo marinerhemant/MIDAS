@@ -317,8 +317,8 @@ if nMerges != 0:
 
 positions = open(topdir+'/positions.csv').readlines()
 os.chdir(topdir)
-Path(topdir+'Output').mkdir(parents=True,exist_ok=True)
-Path(topdir+'Results').mkdir(parents=True,exist_ok=True)
+Path(topdir+'/Output').mkdir(parents=True,exist_ok=True)
+Path(topdir+'/Results').mkdir(parents=True,exist_ok=True)
 paramsf = open('paramstest.txt','r')
 lines = paramsf.readlines()
 paramsf.close()
