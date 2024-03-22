@@ -1178,12 +1178,8 @@ void main(int argc, char *argv[]){
 		Sk += headSize;
 		double beamcurr=1;
 		fseek(ImageFile,Sk,SEEK_SET);
-		printf("%d\n",Sk);
 		//~ fread(Image,SizeFile,1,ImageFile);
 		fread(ImageAsym,SizeFile,1,ImageFile);
-		FILE * tmpF = fopen("readImg.bin","w");
-		fwrite(ImageAsym,2048*2048*sizeof(pixelvalue),1,tmpF);
-		printf("%d %d\n",(int)ImageAsym[0],(int)ImageAsym[1]);
 		MakeSquare(NrPixels,NrPxY,NrPxZ,ImageAsym,Image);
 		if (makeMap == 1){
 			int badPxCounter = 0;
