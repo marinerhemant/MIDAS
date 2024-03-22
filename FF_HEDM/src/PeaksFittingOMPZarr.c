@@ -1421,6 +1421,7 @@ void main(int argc, char *argv[]){
 		}
 		for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 			NrPixelsThisRegion = PositionTrackers[RegNr];
+			printf("%d\n",NrPixelsThisRegion);
 			for (i=0;i<NrPixelsThisRegion;i++){
 				UsefulPixels[i*2+0] = (int)(Positions[RegNr*NrPixels*4+i]/NrPixels);
 				UsefulPixels[i*2+1] = (int)(Positions[RegNr*NrPixels*4+i]%NrPixels);
