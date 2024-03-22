@@ -1646,8 +1646,8 @@ int main(int argc, char *argv[])
 		spotIDS = malloc(nSpotsBest*sizeof(*spotIDS));
 		size_t locOffsetVals=infoArr[thisRowNr*5+3], locOffsetIDs=infoArr[thisRowNr*5+4];
 		char fnVals[2048], fnIDs[2048];
-		sprintf(fnVals,"Output/IndexBest_voxNr_%0*d.bin",6,thisRowNr);
-		sprintf(fnIDs,"Output/IndexBest_IDs_voxNr_%0*d.bin",6,thisRowNr);
+		sprintf(fnVals,"Output/IndexBest_voxNr_%0*d.bin",6,voxNr);
+		sprintf(fnIDs,"Output/IndexBest_IDs_voxNr_%0*d.bin",6,voxNr);
 		FILE *fVals, *fIDs;
 		fVals = fopen(fnVals,"rb");
 		fIDs = fopen(fnIDs,"rb");
