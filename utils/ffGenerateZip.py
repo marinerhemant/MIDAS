@@ -185,7 +185,6 @@ pro_analysis = analysis.create_group('process')
 sp_pro_analysis = pro_analysis.create_group('analysis_parameters')
 
 resultOut = np.string_(resultDir)
-print(f'{resultOut}aaa')
 rf = zRoot.create_dataset('analysis/process/analysis_parameters/ResultFolder',shape=(1,),chunks=(1,),compressor=compressor,dtype=resultOut.dtype)
 rf[:]=resultOut
 
