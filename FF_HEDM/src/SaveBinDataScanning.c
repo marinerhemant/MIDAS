@@ -175,7 +175,6 @@ int main(int argc, char* argv[]){
 			if (fabs(MyData[nSpots].Values[3]) > 0.0001)
 				nSpots++;
 		}
-		// printf("%d\n",nSpots);
 		fclose(AllSpotsFile);
 	}
 
@@ -210,7 +209,6 @@ int main(int argc, char* argv[]){
 		}
 		SpotsMat[i*10+8] = ObsSpots[i][15];
 		SpotsMat[i*10+9] = ObsSpots[i][14];
-		//~ printf("%d\n",(int)SpotsMat[i*10+4]);
 	}
 	// Make ExtraInfoSpotMatrix
 	double *ExtraMat;
@@ -395,11 +393,6 @@ int main(int argc, char* argv[]){
 			}
 		}
 	}
-	printf("%zu %zu\n",localCounter,TotNumberOfBins);
-	//~ for (tnr=0;tnr<TotNumberOfBins;tnr++){
-		//~ printf("%d %d\n",DataStore[tnr*2+0],DataStore[tnr*2+1]);
-	//~ }
-
 	char *DataFN = "Data.bin";
 	char *nDataFN = "nData.bin";
 	FILE *DataFile = fopen(DataFN,"wb");

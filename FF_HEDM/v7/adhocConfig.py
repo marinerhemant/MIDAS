@@ -11,7 +11,7 @@ user_opts: Dict[str, Dict[str, Any]]
 user_opts = {'adhoc':
              {'username': 's1iduser',
               'script_dir': SCRIPTDIR,
-              'remote_hostnames': ['califone.xray.aps.anl.gov', 'sekami.xray.aps.anl.gov']
+              'remote_hostnames': ['califone.xray.aps.anl.gov', 'sekami.xray.aps.anl.gov', 'chiltepin.xray.aps.anl.gov']
               }
              }
 
