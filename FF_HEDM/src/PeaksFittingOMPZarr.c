@@ -1356,13 +1356,7 @@ void main(int argc, char *argv[]){
         fLoc = zip_fopen_index(archLoc,dataLocThis,0);
         zip_fread(fLoc,locArr,fifo->size);
         dsz = blosc1_decompress(locArr,locData,dsz);
-        printf("%d %d\n",(int)dsz,(int)fifo->size);
         memcpy(ImageAsym,locData,dsz);
-		if (FileNr == 1){
-			FILE * tmpF = fopen("readImg.bin","w");
-			fwrite(ImageAsym,2048*2048*sizeof(pixelvalue),1,tmpF);
-		}
-		continue;
 		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,ImageAsym,Image);
 		if (makeMap == 1){
 			int badPxCounter = 0;
@@ -1428,7 +1422,7 @@ void main(int argc, char *argv[]){
 				TotNrRegions--;
 				continue;
 			}
-			printf("%d\n",NrPixelsThisRegion);
+			// printf("%d\n",NrPixelsThisRegion);
 			for (i=0;i<NrPixelsThisRegion;i++){
 				UsefulPixels[i*2+0] = (int)(Positions[RegNr*NrPixels*4+i]/NrPixels);
 				UsefulPixels[i*2+1] = (int)(Positions[RegNr*NrPixels*4+i]%NrPixels);
@@ -1441,7 +1435,7 @@ void main(int argc, char *argv[]){
 				TotNrRegions--;
 				continue;
 			}
-			printf("RegionNr: %d, NPeaks: %d\n",RegNr,nPeaks);
+			// printf("RegionNr: %d, NPeaks: %d\n",RegNr,nPeaks);
 			if (nPeaks > maxNPeaks){
 				// Sort peaks by MaxIntensity, remove the smallest peaks until maxNPeaks, arrays needed MaximaPositions, MaximaValues.
 				int MaximaPositionsT[nPeaks*2];
