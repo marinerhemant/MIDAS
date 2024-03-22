@@ -1122,7 +1122,6 @@ void main(int argc, char *argv[]){
 	darkcontents = calloc(NrPixels*NrPixels,sizeof(*darkcontents));
 	darkAsym = calloc(NrPixelsY*NrPixelsZ,sizeof(*darkAsym));
     int darkIter;
-	pixelvalue darkMax=0;
     dsize = bytesPerPx*NrPixelsZ*NrPixelsY;
     data = (char*)malloc((size_t)dsize);
     for (darkIter=skipFrame;darkIter<nDarks;darkIter++){
@@ -1138,11 +1137,9 @@ void main(int argc, char *argv[]){
         DoImageTransformations(nImTransOpt,TransOpt,darkcontents,NrPixels);
         for (b=0;b<(NrPixels*NrPixels);b++){
             darkTemp[b] += darkcontents[b];
-			if (darkMax<darkcontents[b]) darkMax = darkcontents[b];
         }
     }
-	printf("%d\n",(int)darkMax);
-    if (nDarks > 0) for (a=0;a<(NrPixels*NrPixels);a++) darkTemp[a] /= nDarks;
+    if (nDarks > 0) for (a=0;a<(NrPixels*NrPixels);a++) darkTemp[a] /= (nDarks-skipFrame);
 	Transposer(darkTemp,NrPixels,dark);
     free(data);
 	free(darkTemp);
