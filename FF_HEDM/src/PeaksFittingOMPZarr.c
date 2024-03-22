@@ -1403,7 +1403,7 @@ void main(int argc, char *argv[]){
 			}
 		}
 		NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
-		// printf("FrameNr: %d, NrOfRegions: %d\n",FileNr,NrOfReg);
+		printf("FrameNr: %d, NrOfRegions: %d\n",FileNr,NrOfReg);
 		int RegNr,NrPixelsThisRegion;
 		int IsSaturated;
 		int SpotIDStart = 1;
