@@ -247,7 +247,6 @@ int main (int argc, char *argv[]){
         }
         count++;
     }
-	printf("Folder: %s\n",resultFolder);
 	int e = CheckDirectoryCreation(resultFolder);
 	if (e == 0){ return 1;}
 
