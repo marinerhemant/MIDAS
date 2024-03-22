@@ -1065,7 +1065,7 @@ void main(int argc, char *argv[]){
     dsize = blosc1_decompress(s,data,dsize);
     int iter;
     for (iter=0;iter<nImTransOpt;iter++) TransOpt[iter] = *(int *)&data[iter*sizeof(int)];
-    for (iter=0;iter<nImTransOpt;iter++) printf("Transopt: %d",TransOpt[iter]);
+    for (iter=0;iter<nImTransOpt;iter++) printf("Transopt: %d\n",TransOpt[iter]);
     free(s);
     free(data);
     // Read RingNrs and Thresholds
