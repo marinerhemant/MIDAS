@@ -609,6 +609,7 @@ void main(int argc, char *argv[]){
                 if (strncmp(ptr3,"<u2",3)==0) bytesPerPx = 2;
                 if (strncmp(ptr3,"<u4",3)==0) bytesPerPx = 4;
             } else return 1;
+			printf("%d %d %d %d\n",bytesPerPx,nFrames,NrPixelsZ,NrPixelsY);
             free(s);
         }
         if (strstr(finfo->name,"exchange/dark/.zarray")!=NULL){
@@ -626,6 +627,7 @@ void main(int argc, char *argv[]){
                             printf("nDarks: %d nrPixelsZ: %d nrPixelsY: %d\n", nDarks, NrPixelsZ, NrPixelsY);
                         } else return 1;
             } else return 1;
+			printf("%d %d %d %d\n",bytesPerPx,nFrames,NrPixelsZ,NrPixelsY);
             free(s);
         }
         if (strstr(finfo->name,"exchange/flood/.zarray")!=NULL){
@@ -643,6 +645,7 @@ void main(int argc, char *argv[]){
                             printf("nFloods: %d nrPixelsZ: %d nrPixelsY: %d\n", nFloods, NrPixelsZ, NrPixelsY);
                         } else return 1;
             } else return 1;
+			printf("%d %d %d %d\n",bytesPerPx,nFrames,NrPixelsZ,NrPixelsY);
             free(s);
         }
         if (strstr(finfo->name,"exchange/data/0.0.0")!=NULL){
@@ -662,6 +665,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             omegaStart = *(double *)&data[0];
+			printf("OmeStart: %lf\n",omegaStart);
             free(arr);
             free(data);
         }
@@ -673,6 +677,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             omegaStep = *(double *)&data[0];
+			printf("OmeStep: %lf\n",omegaStep);
             free(arr);
             free(data);
         }
@@ -684,6 +689,7 @@ void main(int argc, char *argv[]){
             resultFolder = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,resultFolder,dsize);
 			resultFolder[dsize] = '\0';
+			printf("resultFolder: %s\n",resultFolder);
             free(arr);
             free(data);
         }
@@ -695,6 +701,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             maxNPeaks = *(int *)&data[0];
+			printf("maxNPeaks: %d\n",maxNPeaks);
             free(arr);
             free(data);
         }
@@ -706,6 +713,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             skipFrame = *(int *)&data[0];
+			printf("skipFrame: %d\n",skipFrame);
             free(arr);
             free(data);
         }
@@ -717,6 +725,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             zDiffThresh = *(double *)&data[0];
+			printf("zDiffThresh: %d\n",zDiffThresh);
             free(arr);
             free(data);
         }
@@ -728,6 +737,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             tx = *(double *)&data[0];
+			printf("tx: %lf\n",tx);
             free(arr);
             free(data);
         }
@@ -739,6 +749,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             ty = *(double *)&data[0];
+			printf("ty: %lf\n",ty);
             free(arr);
             free(data);
         }
@@ -750,6 +761,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             tz = *(double *)&data[0];
+			printf("tz: %lf\n",tz);
             free(arr);
             free(data);
         }
@@ -761,6 +773,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             p0 = *(double *)&data[0];
+			printf("p0: %lf\n",p0);
             free(arr);
             free(data);
         }
@@ -772,6 +785,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             p1 = *(double *)&data[0];
+			printf("p1: %lf\n",p1);
             free(arr);
             free(data);
         }
@@ -783,6 +797,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             p2 = *(double *)&data[0];
+			printf("p2: %lf\n",p2);
             free(arr);
             free(data);
         }
@@ -794,6 +809,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             p3 = *(double *)&data[0];
+			printf("p3: %lf\n",p3);
             free(arr);
             free(data);
         }
@@ -805,6 +821,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             minNrPx = *(int *)&data[0];
+			printf("minNrPx: %d\n",minNrPx);
             free(arr);
             free(data);
         }
@@ -816,6 +833,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             maxNrPx = *(int *)&data[0];
+			printf("maxNrPx: %d\n",maxNrPx);
             free(arr);
             free(data);
         }
@@ -827,6 +845,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             DoFullImage = *(int *)&data[0];
+			printf("DoFullImage: %d\n",DoFullImage);
             free(arr);
             free(data);
         }
@@ -838,6 +857,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             bc = *(double *)&data[0];
+			printf("bc: %lf\n",bc);
             free(arr);
             free(data);
         }
@@ -849,6 +869,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             Ycen = *(double *)&data[0];
+			printf("Ycen: %lf\n",Ycen);
             free(arr);
             free(data);
         }
@@ -860,6 +881,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             Zcen = *(double *)&data[0];
+			printf("Zcen: %lf\n",Zcen);
             free(arr);
             free(data);
         }
@@ -871,6 +893,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             IntSat = *(double *)&data[0];
+			printf("IntSat: %lf\n",IntSat);
             free(arr);
             free(data);
         }
@@ -882,6 +905,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             px = *(double *)&data[0];
+			printf("px: %lf\n",px);
             free(arr);
             free(data);
         }
@@ -893,6 +917,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             Width = *(double *)&data[0];
+			printf("Width: %lf\n",Width);
             free(arr);
             free(data);
         }
@@ -904,6 +929,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             LayerNr = *(int *)&data[0];
+			printf("LayerNr: %lf\n",LayerNr);
             free(arr);
             free(data);
         }
@@ -915,6 +941,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             Wavelength = *(double *)&data[0];
+			printf("Wavelength: %lf\n",Wavelength);
             free(arr);
             free(data);
         }
@@ -926,6 +953,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             Lsd = *(double *)&data[0];
+			printf("Lsd: %lf\n",Lsd);
             free(arr);
             free(data);
         }
@@ -938,6 +966,7 @@ void main(int argc, char *argv[]){
             dsize = blosc1_decompress(arr,data,dsize);
             BadPxIntensity = *(double *)&data[0];
             makeMap = 1;
+			printf("BadPxIntensity: %lf %d\n",BadPxIntensity,makeMap);
             free(arr);
             free(data);
         }
@@ -949,6 +978,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             RhoD = *(double *)&data[0];
+			printf("RhoD: %lf\n",RhoD);
             free(arr);
             free(data);
         }
@@ -960,6 +990,7 @@ void main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             RhoD = *(double *)&data[0];
+			printf("RhoD: %lf\n",RhoD);
             free(arr);
             free(data);
         }
@@ -982,6 +1013,7 @@ void main(int argc, char *argv[]){
                 strncpy(ptr3,ptrt,loc+1);
                 sscanf(ptr3,"%*[^0123456789]%d",&nRingsThresh);
             } else return 1;
+			printf("nRingsThresh: %d\n",nRingsThresh);
             free(s);
         }
         if (strstr(finfo->name,"analysis/process/analysis_parameters/OmegaRanges/0.0")!=NULL){
@@ -1000,6 +1032,7 @@ void main(int argc, char *argv[]){
                 strncpy(ptr3,ptrt,loc+1);
                 sscanf(ptr3,"%*[^0123456789]%d",&nOmegaRanges);
             } else return 1;
+			printf("nOmegaRanges: %d\n",nOmegaRanges);
             free(s);
         }
         if (strstr(finfo->name,"analysis/process/analysis_parameters/ImTransOpt/.zarray")!=NULL){
@@ -1015,6 +1048,7 @@ void main(int argc, char *argv[]){
                 strncpy(ptr3,ptrt,loc+1);
                 sscanf(ptr3,"%*[^0123456789]%d",&nImTransOpt);
             } else return 1;
+			printf("nImTransOpt: %d\n",nImTransOpt);
             free(s);
         }
         count++;
@@ -1031,6 +1065,7 @@ void main(int argc, char *argv[]){
     dsize = blosc1_decompress(s,data,dsize);
     int iter;
     for (iter=0;iter<nImTransOpt;iter++) TransOpt[iter] = *(int *)&data[iter*sizeof(int)];
+    for (iter=0;iter<nImTransOpt;iter++) printf("Transopt: %d",TransOpt[iter]);
     free(s);
     free(data);
     // Read RingNrs and Thresholds
@@ -1044,6 +1079,7 @@ void main(int argc, char *argv[]){
     for (iter=0;iter<nRingsThresh;iter++){
         RingNrs[iter]    = (int) *(double *)&data[(iter*2+0)*sizeof(double)];
         Thresholds[iter] =       *(double *)&data[(iter*2+1)*sizeof(double)];
+		printf("%d %lf\n",RingNrs[iter],Thresholds[iter]);
     }
     free(s);
     free(data);
@@ -1088,7 +1124,7 @@ void main(int argc, char *argv[]){
     int darkIter;
     dsize = bytesPerPx*NrPixelsZ*NrPixelsY;
     data = (char*)malloc((size_t)dsize);
-    for (darkIter=0;darkIter<nDarks;darkIter++){
+    for (darkIter=skipFrame;darkIter<nDarks;darkIter++){
         zip_stat_index(arch, darkLoc, 0, finfo);
         // Go to the right location in the zip file and read frames.
         arr = calloc(finfo->size + 1, sizeof(char));
