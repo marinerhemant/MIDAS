@@ -105,6 +105,7 @@ main(int argc, char *argv[])
         FILE *outKeyF;
         sprintf(outKeyFN,"%s/UniqueIndexKey_voxNr_%0*d.txt",folderName,6,voxNr);
         outKeyF = fopen(outKeyFN,"r");
+        printf("%s\n",outKeyFN); fflush(stdout);
         while (fgets(aline,2048,outKeyF)!=NULL){
             printf("%d %s",voxNr,aline);
             fprintf(outF,"%d %s",voxNr,aline);
