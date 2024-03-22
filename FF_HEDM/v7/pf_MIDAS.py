@@ -118,6 +118,7 @@ parser.add_argument('-DrawSinos', type=int, required=False, default=0, help='If 
 parser.add_argument('-DoThresholdingTomo', type=int, required=False, default=0, help='If want to apply otsu thresholding to tomo reconstructions, put to 1. Only for OneSolPerVox.')
 parser.add_argument('-DoTomo', type=int, required=False, default=0, help='If want to do tomography, put to 1. Only for OneSolPerVox.')
 parser.add_argument('-ConvertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
+parser.add_argument('-runIndexing', type=int, required=False, default=1, help='If want to skip Indexing, put to 0.')
 args, unparsed = parser.parse_known_args()
 baseNameParamFN = args.paramFile
 machineName = args.machineName
@@ -133,6 +134,7 @@ draw_sinos = args.DrawSinos
 thresh_reqd = args.DoThresholdingTomo
 doTomo = args.DoTomo
 ConvertFiles = args.ConvertFiles
+runIndexing = args.runIndexing
 
 if len(topdir) == 0:
 	topdir = os.getcwd()
@@ -350,11 +352,12 @@ if len(micFN) > 0:
 	paramsf.write(f'MicFile {micFN}\n')
 paramsf.close()
 
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
-resIndex = []
-for nodeNr in range(nNodes):
-    resIndex.append(indexscanning(topdir,numProcs,nScans,blockNr=nodeNr,numBlocks=nNodes))
-outputIndex = [i.result() for i in resIndex]
+if (runIndexing == 1):
+	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
+	resIndex = []
+	for nodeNr in range(nNodes):
+		resIndex.append(indexscanning(topdir,numProcs,nScans,blockNr=nodeNr,numBlocks=nNodes))
+	outputIndex = [i.result() for i in resIndex]
 
 if oneSolPerVox==1:
 	subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')+f' {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}',cwd=topdir,shell=True)
