@@ -1681,6 +1681,8 @@ int main(int argc, char *argv[])
 		size_t spotPosAllSpots;
 		for (i=0;i<nSpotsBest;i++){
 			spotPosAllSpots = (int)spotIDS[i]-1;
+			printf("%zu\n",spotPosAllSpots);
+			fflush(stdout);
 			spotsYZO[i][0] = AllSpots[spotPosAllSpots*14+0];
 			spotsYZO[i][1] = AllSpots[spotPosAllSpots*14+1];
 			spotsYZO[i][2] = AllSpots[spotPosAllSpots*14+2];
