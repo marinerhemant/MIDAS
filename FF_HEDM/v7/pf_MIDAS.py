@@ -88,7 +88,7 @@ def refinescanning(resultDir,numProcs,blockNr=0,numBlocks=1):
     print(cmd)
     f = open(f'{resultDir}/output/refining_out{blockNr}.csv','w')
     f_err = open(f'{resultDir}/output/refining_err{blockNr}.csv','w')
-    subprocess.call(cmd,shell=True,env=env,stdout=f,stderr=f_err)
+    subprocess.call(cmd,shell=True,env=env,cwd=resultDir,stdout=f,stderr=f_err)
     f.close()
     f_err.close()
 
@@ -489,7 +489,7 @@ else:
 	resRefine = []
 	for nodeNr in range(nNodes):
 		resRefine.append(refinescanning(topdir,numProcs,blockNr=nodeNr,numBlocks=nNodes))
-	outputRefine = [i.result() for i in resRefine]
+	outputRefine = [inter.result() for inter in resRefine]
 
 	NrSym,Sym = MakeSymmetries(sgnum)
 	files2 = glob.glob(topdir+'/Results/*.csv')
