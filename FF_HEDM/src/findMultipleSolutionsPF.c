@@ -49,6 +49,10 @@ main(int argc, char *argv[])
             sscanf(aline,"%zu %zu %zu %zu",&keys[nIDs*4+0],&keys[nIDs*4+1],&keys[nIDs*4+2],&keys[nIDs*4+3]);
             nIDs++;
         }
+        if (nIDs == 0){
+            free(keys);
+            continue;
+        }
         realloc(keys,nIDs*4*sizeof(*keys));
         fclose(keyF);
         double *OMArr, *tmpArr;
