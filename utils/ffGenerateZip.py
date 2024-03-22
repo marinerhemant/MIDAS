@@ -115,7 +115,6 @@ if h5py.is_hdf5(InputFN):
     else:
         darkData = np.zeros((10,numZ,numY))
     dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
-    dark[:] = darkData
     darkMean = np.mean(darkData,axis=0).astype(np.uint16)
     if brightLoc in hf2:
         brightData = hf2[brightLoc][()]
@@ -149,9 +148,7 @@ else:
     nFrames = (sz-header) // (bytesPerPx*numPxY*numPxZ)
     darkData = geReader(darkFN)
     dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
-    dark[:]=darkData
     bright = exc.create_dataset('bright',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
-    bright[:]=darkData
     darkMean = np.mean(darkData,axis=0).astype(np.uint16)
     data = exc.create_dataset('data',shape=(nFrames,numPxZ,numPxY),dtype=np.uint16,chunks=(1,numPxZ,numPxY),compression=compressor)
     if numFrameChunks == -1:
@@ -170,6 +167,11 @@ else:
         else:
             dataT = dataThis
         data[stFrame:enFrame,:,:] = dataT.astype(np.uint16)
+if preProc !=-1:
+    darkData *= 0
+    brightData *= 0
+dark[:] = darkData
+bright[:]=darkData
 
 data.attrs['_ARRAY_DIMENSIONS'] = data.shape
 dark.attrs['_ARRAY_DIMENSIONS'] = bright.shape
