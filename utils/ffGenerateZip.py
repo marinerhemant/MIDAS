@@ -157,7 +157,6 @@ else:
     dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
     bright = exc.create_dataset('bright',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
     darkMean = np.mean(darkData[skipF:,:,:],axis=0).astype(np.uint16)
-    print(np.mean(darkMean))
     data = exc.create_dataset('data',shape=(nFrames,numPxZ,numPxY),dtype=np.uint16,chunks=(1,numPxZ,numPxY),compression=compressor)
     if numFrameChunks == -1:
         numFrameChunks = nFrames
