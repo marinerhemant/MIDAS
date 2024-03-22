@@ -29,7 +29,7 @@ midas_path = os.path.expanduser("~/.MIDAS")
 env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
 
 def generateZip(resFol,pfn,layerNr,dfn='',dloc='',nchunks=-1,preproc=-1,outf='ZipOut.txt',errf='ZipErr.txt'):
-	cmd = 'python '+os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZip.py')+' -resultFolder '+ resFol[:-1] +' -paramFN ' + pfn + ' -LayerNr ' + str(layerNr)
+	cmd = pytpath+os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZip.py')+' -resultFolder '+ resFol[:-1] +' -paramFN ' + pfn + ' -LayerNr ' + str(layerNr)
 	if dfn!='':
 		cmd+= ' -dataFN ' + dfn
 	if dloc!='':
@@ -148,12 +148,14 @@ if machineName == 'local':
 	from localConfig import *
 	parsl.load(config=localConfig)
 elif machineName == 'orthrosnew':
+	pytpath = os.path.expanduser("~/opt/midasconda3/bin/python")
 	os.environ['MIDAS_SCRIPT_DIR'] = logDir
 	nNodes = 11
 	numProcs = 32
 	from orthrosAllConfig import *
 	parsl.load(config=orthrosNewConfig)
 elif machineName == 'orthrosall':
+	pytpath = os.path.expanduser("~/opt/midasconda3/bin/python")
 	os.environ['MIDAS_SCRIPT_DIR'] = logDir
 	nNodes = 5
 	numProcs = 64

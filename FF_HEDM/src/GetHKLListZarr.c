@@ -187,9 +187,6 @@ int main (int argc, char *argv[]){
             dsize = 4096;
             resultFolder = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,resultFolder,dsize);
-			printf("%d %s\n",dsize,resultFolder);
-			resultFolder[dsize] = '\0';
-			printf("%d %s\n",dsize,resultFolder);
             free(arr);
             free(data);
         }
