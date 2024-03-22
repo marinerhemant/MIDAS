@@ -1658,6 +1658,8 @@ int main(int argc, char *argv[])
 		fseek(fIDs,locOffsetIDs,SEEK_SET);
 		fread(spotIDS,nSpotsBest*sizeof(int),1,fIDs);
 		fclose(fIDs);
+		printf("%s %s \n",fnIDs,fnVals);
+		for (i=0;i<nSpotsBest;i++) printf("%d\n",spotIDS[i]);
 		double Orient0[9], Pos0[3], IA0, Euler0[3], Orient0_3[3][3],NrExpected,NrObserved,meanRadius=0,thisRadius,completeness;
 		IA0 = tmpArr[1];
 		for (i=0;i<9;i++) Orient0[i] = tmpArr[i+2];
