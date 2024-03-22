@@ -1389,7 +1389,7 @@ void main(int argc, char *argv[]){
 			}
 		}
 		FILE * tmpF = fopen("readImg.bin","w");
-		fwrite(ImgCorrBC,2048*2048*sizeof(double),1,tmpF);
+		fwrite(ImageAsym,2048*2048*sizeof(pixelvalue),1,tmpF);
 		// Do Connected components
 		int NrOfReg;
 		for (i=0;i<NrPixels*NrPixels;i++){
@@ -1438,6 +1438,7 @@ void main(int argc, char *argv[]){
 				TotNrRegions--;
 				continue;
 			}
+			printf("RegionNr: %d, NPeaks: %d\n",RegNr,nPeaks);
 			if (nPeaks > maxNPeaks){
 				// Sort peaks by MaxIntensity, remove the smallest peaks until maxNPeaks, arrays needed MaximaPositions, MaximaValues.
 				int MaximaPositionsT[nPeaks*2];
@@ -1465,7 +1466,6 @@ void main(int argc, char *argv[]){
 					MaximaPositions[i*2+1] = MaximaPositionsT[i*2+1];
 				}
 			}
-			printf("RegionNr: %d, NPeaks: %d\n",RegNr,nPeaks);
 			int rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo,NrPixels);
 			for (i=0;i<nPeaks;i++){
 				fprintf(outfilewrite,"%d %f %f %f %f %f %f %f ",(SpotIDStart+i),IntegratedIntensity[i],Omega,-YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
