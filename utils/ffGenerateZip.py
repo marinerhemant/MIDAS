@@ -172,7 +172,7 @@ if preProc !=-1:
     darkData *= 0
     brightData *= 0
 dark[:] = darkData
-bright[:]=darkData
+bright[:]=brightData
 
 data.attrs['_ARRAY_DIMENSIONS'] = data.shape
 dark.attrs['_ARRAY_DIMENSIONS'] = bright.shape
