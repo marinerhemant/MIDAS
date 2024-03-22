@@ -83,9 +83,12 @@ def refinescanning(resultDir,numProcs,blockNr=0,numBlocks=1):
     env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
     with open("SpotsToIndex.csv", "r") as f:
         num_lines = len(f.readlines())
+    print(num_lines)
+    cmd = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitOrStrainsScanningOMP")+f' paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}'
+    print(cmd)
     f = open(f'{resultDir}/output/refining_out{blockNr}.csv','w')
     f_err = open(f'{resultDir}/output/refining_err{blockNr}.csv','w')
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitOrStrainsScanningOMP")+f' paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}',shell=True,env=env,stdout=f,stderr=f_err)
+    subprocess.call(cmd,shell=True,env=env,stdout=f,stderr=f_err)
     f.close()
     f_err.close()
 
