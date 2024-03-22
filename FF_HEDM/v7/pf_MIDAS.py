@@ -280,7 +280,7 @@ if doPeakSearch == 1:
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr")+' '+outFStem,env=env,shell=True)
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr")+' '+outFStem,env=env,shell=True)
 		Result = np.genfromtxt(f'Radius_StartNr_{startNr}_EndNr_{endNr}.csv',skip_header=1,delimiter=' ')
-		if Result.shape[0]==0:
+		if len(Result.shape)<2:
 			shutil.copy2('InputAllExtraInfoFittingAll.csv',topdir+'/InputAllExtraInfoFittingAll'+str(layerNr-1)+'.csv')
 			continue
 		uniqueRings,uniqueIndices = np.unique(Result[:,13],return_index=True)
