@@ -103,7 +103,7 @@ Provide positions.csv file (negative positions with respect to actual motor posi
 				  motor position is normally position of the rotation axis, opposite to the voxel position).
 Parameter file and positions.csv file must be in the same folder.
 ''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('-nCPUs', type=int, required=True, help='Number of CPUs to use')
+parser.add_argument('-nCPUs', type=int, required=False, default=32, help='Number of CPUs to use')
 parser.add_argument('-nCPUsLocal', type=int, required=False, default=4, help='Local Number of CPUs to use')
 parser.add_argument('-paramFile', type=str, required=True, help='ParameterFileName: Do not use the full path.')
 parser.add_argument('-nNodes', type=str, required=False, default=1, help='Number of Nodes')
