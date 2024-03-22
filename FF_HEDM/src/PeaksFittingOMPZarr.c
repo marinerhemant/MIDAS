@@ -1356,10 +1356,13 @@ void main(int argc, char *argv[]){
         fLoc = zip_fopen_index(archLoc,dataLocThis,0);
         zip_fread(fLoc,locArr,fifo->size);
         dsz = blosc1_decompress(locArr,locData,dsz);
-        // printf("%d %d\n",(int)dsz,(int)fifo->size);
+        printf("%d %d\n",(int)dsz,(int)fifo->size);
         memcpy(ImageAsym,locData,dsz);
-		FILE * tmpF = fopen("readImg.bin","w");
-		fwrite(ImageAsym,2048*2048*sizeof(pixelvalue),1,tmpF);
+		if (FileNr == 1){
+			FILE * tmpF = fopen("readImg.bin","w");
+			fwrite(ImageAsym,2048*2048*sizeof(pixelvalue),1,tmpF);
+		}
+		continue;
 		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,ImageAsym,Image);
 		if (makeMap == 1){
 			int badPxCounter = 0;
