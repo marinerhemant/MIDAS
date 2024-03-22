@@ -1358,6 +1358,8 @@ void main(int argc, char *argv[]){
         dsz = blosc1_decompress(locArr,locData,dsz);
         // printf("%d %d\n",(int)dsz,(int)fifo->size);
         memcpy(ImageAsym,locData,dsz);
+		FILE * tmpF = fopen("readImg.bin","w");
+		fwrite(ImageAsym,2048*2048*sizeof(pixelvalue),1,tmpF);
 		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,ImageAsym,Image);
 		if (makeMap == 1){
 			int badPxCounter = 0;
@@ -1388,8 +1390,6 @@ void main(int argc, char *argv[]){
 				}
 			}
 		}
-		FILE * tmpF = fopen("readImg.bin","w");
-		fwrite(ImageAsym,2048*2048*sizeof(pixelvalue),1,tmpF);
 		// Do Connected components
 		int NrOfReg;
 		for (i=0;i<NrPixels*NrPixels;i++){

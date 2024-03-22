@@ -1180,6 +1180,8 @@ void main(int argc, char *argv[]){
 		fseek(ImageFile,Sk,SEEK_SET);
 		//~ fread(Image,SizeFile,1,ImageFile);
 		fread(ImageAsym,SizeFile,1,ImageFile);
+		FILE * tmpF = fopen("readImg.bin","w");
+		fwrite(ImageAsym,2048*2048*sizeof(pixelvalue),1,tmpF);
 		MakeSquare(NrPixels,NrPxY,NrPxZ,ImageAsym,Image);
 		if (makeMap == 1){
 			int badPxCounter = 0;
@@ -1205,8 +1207,6 @@ void main(int argc, char *argv[]){
 				}
 			}
 		}
-		FILE * tmpF = fopen("readImg.bin","w");
-		fwrite(ImageAsym,2048*2048*sizeof(pixelvalue),1,tmpF);
 		// Do Connected components
 		int NrOfReg;
 		for (i=0;i<NrPixels*NrPixels;i++){
