@@ -1206,8 +1206,7 @@ void main(int argc, char *argv[]){
 			}
 		}
 		FILE * tmpF = fopen("readImg.bin","w");
-		fwrite(ImgCorrBC,2048*2048*2,1,tmpF);
-		*sizeof(double)
+		fwrite(ImgCorrBC,2048*2048*sizeof(double),1,tmpF);
 		// Do Connected components
 		int NrOfReg;
 		for (i=0;i<NrPixels*NrPixels;i++){
