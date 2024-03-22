@@ -1445,7 +1445,7 @@ void main(int argc, char *argv[]){
 				for (i=0;i<maxNPeaks;i++){
 					maxIntMax = 0;
 					for (j=0;j<nPeaks;j++){
-						printf("%lf\n",(double)MaximaValues[j]);
+						// printf("%lf\n",(double)MaximaValues[j]);
 						if (MaximaValues[j] > maxIntMax){
 							maxPos = j;
 							maxIntMax = MaximaValues[j];
