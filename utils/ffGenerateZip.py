@@ -9,6 +9,7 @@ import zarr
 from numcodecs import Blosc
 from pathlib import Path
 import shutil
+import dask.array as da
 
 compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
 
@@ -169,8 +170,10 @@ else:
         delFrames = enFrame - stFrame
         dataThis = np.fromfile(InputFN,dtype=np.uint16,count=delFrames*numPxY*numPxZ,offset=stFrame*numPxY*numPxZ*bytesPerPx+8192).reshape((delFrames,numPxZ,numPxY))
         if preProc!=-1:
+            dataThis = da.from_array(dataThis,chunks=(numPxZ,numPxY))
             dataT = dataThis.astype(np.double) - darkMean
             dataT[dataT<preProc] = 0
+            dataT.compute()
         else:
             dataT = dataThis
         data[stFrame:enFrame,:,:] = dataT.astype(np.uint16)
