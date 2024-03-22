@@ -170,7 +170,7 @@ else:
         delFrames = enFrame - stFrame
         dataThis = np.fromfile(InputFN,dtype=np.uint16,count=delFrames*numPxY*numPxZ,offset=stFrame*numPxY*numPxZ*bytesPerPx).reshape((delFrames,numPxZ,numPxY))
         if preProc!=-1:
-            dataT = dataThis - darkMean
+            dataT = dataThis.astype(np.double) - darkMean
             dataT[dataT<preProc] = 0
         else:
             dataT = dataThis
