@@ -65,6 +65,7 @@ darkLoc = 'exchange/dark'
 brightLoc = 'exchange/bright'
 lines = open(psFN).readlines()
 darkFN = ''
+skipF = 0
 for line in lines:
     if line.startswith('RawFolder '):
         rawFolder = line.split()[1]
@@ -86,6 +87,11 @@ for line in lines:
         pad = int(line.split()[1])
     if line.startswith('Ext '):
         ext = line.split()[1]
+    if line.startswith('HeadSize '):
+        if skipF==0:
+            skipF = (int(line.split()[1])-8192) // (2*2048*2048)
+    if line.startswith('SkipFrame '):
+        skipF = int(line.split()[1])
 
 if len(InputFN)==0:
     fNr += (layerNr-1)*NrFilesPerSweep
@@ -98,6 +104,7 @@ else:
     outfn = resultDir+'/'+InputFN+'.analysis'
     print(f'Input: {InputFN}')
     print(f'Dark: {InputFN}')
+
 
 print(f'ResultDir: {resultDir}')
 print(f'Out: {outfn}.MIDAS.zip')
@@ -115,7 +122,7 @@ if h5py.is_hdf5(InputFN):
     else:
         darkData = np.zeros((10,numZ,numY))
     dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
-    darkMean = np.mean(darkData,axis=0).astype(np.uint16)
+    darkMean = np.mean(darkData[skipF:,:,:],axis=0).astype(np.uint16)
     if brightLoc in hf2:
         brightData = hf2[brightLoc][()]
     else:
@@ -150,7 +157,7 @@ else:
     brightData = np.copy(darkData)
     dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
     bright = exc.create_dataset('bright',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
-    darkMean = np.mean(darkData,axis=0).astype(np.uint16)
+    darkMean = np.mean(darkData[skipF:,:,:],axis=0).astype(np.uint16)
     data = exc.create_dataset('data',shape=(nFrames,numPxZ,numPxY),dtype=np.uint16,chunks=(1,numPxZ,numPxY),compression=compressor)
     if numFrameChunks == -1:
         numFrameChunks = nFrames
