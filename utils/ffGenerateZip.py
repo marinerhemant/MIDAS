@@ -105,7 +105,6 @@ else:
     print(f'Input: {InputFN}')
     print(f'Dark: {InputFN}')
 
-
 print(f'ResultDir: {resultDir}')
 print(f'Out: {outfn}.MIDAS.zip')
 outfZip = f'{outfn}.MIDAS.zip'
