@@ -1322,7 +1322,6 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 						  GrainMatches[0][8]};
 	CalcDiffrSpots_Furnace(OMLoc, Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii,
 			Params.OmegaRanges, Params.BoxSizes, Params.NoOfOmegaRanges, Params.ExcludePoleAngle, TheorSpots, &nTspots);
-	for (i=0;i<nTspots;i++) printf("%lf %lf %lf\n",TheorSpots[i][6],TheorSpots[i][7],TheorSpots[i][9]);
 	locVals = ftell(valsF);
 	locAll = ftell(allF);
 	fwrite(outArr,16*sizeof(double),1,valsF);
@@ -1330,7 +1329,6 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 	int matchedNrSpots = GrainMatches[0][13];
 	outArr2 = malloc(matchedNrSpots*sizeof(*outArr2));
 	for (i=0;i<matchedNrSpots;i++) outArr2[i] = (int)AllGrainSpots[i][14];
-	for (i=0;i<matchedNrSpots;i++) printf("%d %lf %lf %lf %d\n",outArr2[i],AllGrainSpots[i][9],ObsSpotsLab[(outArr2[i]-1)*10+2],ObsSpotsLab[(outArr2[i]-1)*10+6],(int)ObsSpotsLab[(outArr2[i]-1)*10+4]);
 	fwrite(outArr2,matchedNrSpots*sizeof(int),1,allF);
 	fprintf(keyF,"%zu %zu %zu %zu\n",(size_t)SpotID,(size_t)matchedNrSpots,locVals,locAll);
 	printf("ID: %d, voxNr: %d, Confidence: %lf\n",SpotID,voxNr,fracMatches);
