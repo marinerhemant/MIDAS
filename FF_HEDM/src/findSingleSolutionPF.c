@@ -322,6 +322,10 @@ main(int argc, char *argv[])
     szSino *= maxNHKLs;
     szSino *= nScans;
     sinoArr = calloc(szSino,sizeof(*sinoArr));
+    if (sinoArr==NULL) {
+        printf("Could not allocate sinoArr with %zu bytes. Exiting.",szSino*sizeof(double));
+        return 1;
+    }
     for (i=0;i<szSino;i++) sinoArr[i] = 0;
     omeArr = calloc(nUniques*maxNHKLs,sizeof(*omeArr));
     for (i=0;i<nUniques*maxNHKLs;i++) omeArr[i]=-10000.0;
