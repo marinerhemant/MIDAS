@@ -1521,7 +1521,7 @@ main(int argc, char *argv[])
 		}
 		realloc(mic,nrMic*5*sizeof(*mic));
 	}
-	// return 0;
+	return 0;
 	int startRowNr;
 	int endRowNr;
 
