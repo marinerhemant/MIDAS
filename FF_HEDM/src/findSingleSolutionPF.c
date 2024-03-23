@@ -73,6 +73,8 @@ main(int argc, char *argv[])
             allKeyArr[voxNr*4+0] = -1;
             fclose(keyF);
             fclose(valsF);
+            size_t outarr[5] = {0,0,0,0,0};
+            int rc = pwrite(ib,outarr,5*sizeof(size_t),5*sizeof(size_t)*voxNr);
             continue;
         }
         size_t *keys;
@@ -119,6 +121,8 @@ main(int argc, char *argv[])
             free(markArr);
             free(tmpArr);
             free(OMArr);
+            size_t outarr[5] = {0,0,0,0,0};
+            int rc = pwrite(ib,outarr,5*sizeof(size_t),5*sizeof(size_t)*voxNr);
             continue;
         }
         for (i=0;i<nIDs;i++) markArr[i] = false;
@@ -147,7 +151,8 @@ main(int argc, char *argv[])
         char outKeyFN[2048];
         sprintf(outKeyFN,"%s/UniqueIndexSingleKey.bin",folderName);
         int ib = open(outKeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-        int rc = pwrite(ib,&keys[bestRow*4+0],4*sizeof(size_t),4*sizeof(size_t)*voxNr);
+        size_t outarr[5] = {voxNr,keys[bestRow*4+0],keys[bestRow*4+1],keys[bestRow*4+2],keys[bestRow*4+3]};
+        int rc = pwrite(ib,outarr,5*sizeof(size_t),5*sizeof(size_t)*voxNr);
         rc = close(ib);
         sprintf(outKeyFN,"%s/UniqueIndexKeyOrientAll_voxNr_%0*d.txt",folderName,6,voxNr);
         outKeyF = fopen(outKeyFN,"w");
