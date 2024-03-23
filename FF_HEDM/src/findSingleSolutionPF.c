@@ -102,7 +102,7 @@ main(int argc, char *argv[])
             allKeyArr[voxNr*4+0] = -1;
             fclose(keyF);
             fclose(valsF);
-            size_t outarr[5] = {voxNr,0,0,0,0};
+            size_t outarr[5] = {0,0,0,0,0};
             int rc = pwrite(ib,outarr,5*sizeof(size_t),5*sizeof(size_t)*voxNr);
             continue;
         }
@@ -150,7 +150,7 @@ main(int argc, char *argv[])
             free(markArr);
             free(tmpArr);
             free(OMArr);
-            size_t outarr[5] = {voxNr,0,0,0,0};
+            size_t outarr[5] = {0,0,0,0,0};
             int rc = pwrite(ib,outarr,5*sizeof(size_t),5*sizeof(size_t)*voxNr);
             continue;
         }
