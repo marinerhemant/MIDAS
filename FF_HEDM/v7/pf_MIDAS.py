@@ -409,7 +409,7 @@ if oneSolPerVox==1:
 					if ang < maxang:
 						lineSplit = line.split()
 						outStr = f'{voxNr} {lineSplit[0]} {lineSplit[1]} {lineSplit[2]} {lineSplit[3]}\n'
-						print(outStr)
+						# print(outStr)
 						fSp.write(outStr)
 						break
 		fSp.close()
