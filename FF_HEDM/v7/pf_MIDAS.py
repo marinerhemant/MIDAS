@@ -6,7 +6,7 @@ import time
 import os,sys,glob
 from pathlib import Path
 import shutil
-from math import floor
+from math import floor, isnan
 import pandas as pd
 from parsl.app.app import python_app
 import parsl
@@ -468,7 +468,7 @@ if oneSolPerVox==1:
 		OM = filesdata[i][1:10]
 		quat = BringDownToFundamentalRegionSym(OrientMat2Quat(OM),NrSym,Sym)
 		print(filesdata[i][26])
-		if filesdata[i][26] == np.nan:
+		if isnan(filesdata[i][26]):
 			continue
 		filesdata[i][39:43] = quat
 		info_arr[:,voxNr] = filesdata[i][[0,-4,-3,-2,-1,11,12,15,16,17,18,19,20,22,23,24,26,27,28,29,31,32,35]]
