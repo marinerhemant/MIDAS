@@ -397,7 +397,7 @@ if oneSolPerVox==1:
 		for voxNr in range(nScans*nScans):
 			locX = voxNr % nScans
 			locY = nScans - (voxNr//nScans + 1)
-			print(locX,locY,voxNr)
+			# print(locX,locY,voxNr)
 			if max_id[locX,locY] == -1:
 				continue
 			orientThis = uniqueOrientations[max_id[locX,locY],5:]
