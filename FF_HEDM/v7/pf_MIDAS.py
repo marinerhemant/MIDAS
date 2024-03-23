@@ -440,6 +440,8 @@ if oneSolPerVox==1:
 			paramsf.close()
 			shutil.move(f'{topdir}/Output',f'{topdir}/fullOutput')
 			shutil.move(f'{topdir}/Results',f'{topdir}/fullResults')
+			Path(topdir+'/Output').mkdir(parents=True,exist_ok=True)
+			Path(topdir+'/Results').mkdir(parents=True,exist_ok=True)
 			print("Running indexing again.")
 			resIndex = []
 			for nodeNr in range(nNodes):
