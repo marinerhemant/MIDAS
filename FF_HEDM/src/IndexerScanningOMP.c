@@ -1513,7 +1513,7 @@ main(int argc, char *argv[])
 		fgets(aline,1000,micF);
 		printf("%s\n",aline);
 		while (fgets(aline,5000,micF)!=NULL){
-			sscanf("%s %s %s %lf %lf %s %s %lf %lf %lf %s %s",dummy,dummy,dummy,
+			sscanf(aline,"%s %s %s %lf %lf %s %s %lf %lf %lf %s %s",dummy,dummy,dummy,
 					&mic[nrMic*5+0],&mic[nrMic*5+1],dummy,dummy,&mic[nrMic*5+2],
 					&mic[nrMic*5+3],&mic[nrMic*5+4],dummy,dummy);
 			nrMic++;
