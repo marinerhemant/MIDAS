@@ -408,9 +408,11 @@ if oneSolPerVox==1:
 					ang = rad2deg*GetMisOrientationAngleOM(orientThis,orientInside,sgnum)[0]
 					if ang < maxang:
 						lineSplit = line.split()
-						fSp.write(f'{voxNr} {lineSplit[0]} {lineSplit[1]} {lineSplit[2]} {lineSplit[3]}')
+						outStr = f'{voxNr} {lineSplit[0]} {lineSplit[1]} {lineSplit[2]} {lineSplit[3]}'
+						print(outStr)
+						fSp.write(outStr)
 						break
-		f.close()
+		fSp.close()
 	else:
 		f = open(f'{topdir}/SpotsToIndex.csv','w')
 		idData = np.fromfile(f'{topdir}/Output/UniqueIndexSingleKey.bin',dtype=np.uintp,count=nScans*nScans*5).reshape((-1,5))
