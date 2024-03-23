@@ -402,12 +402,12 @@ if oneSolPerVox==1:
 			locY = nScans - voxNr//nScans
 			if max_id[locX,locY] == -1:
 				continue
-			orientThis = uniqueOrientations[max_id[locX,locY],5:14]
+			orientThis = uniqueOrientations[max_id[locX,locY],5:]
 			if os.path.isfile(f'{topdir}/Output/UniqueIndexKeyOrientAll_voxNr_{voxNr}.txt'):
 				with open(f'{topdir}/Output/UniqueIndexKeyOrientAll_voxNr_{voxNr}.txt','r') as f:
 					lines = f.readlines()
 				for line in lines:
-					orientInside = [float(val) for val in line.split()[5:14]]
+					orientInside = [float(val) for val in line.split()[4:]]
 					ang = rad2deg*GetMisOrientationAngleOM(orientThis,orientInside,sgnum)[0]
 					if ang < maxang:
 						print(line)
