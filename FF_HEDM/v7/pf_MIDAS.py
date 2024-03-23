@@ -404,8 +404,8 @@ if oneSolPerVox==1:
 			if max_id[locY,locX] == -1:
 				continue
 			orientThis = uniqueOrientations[max_id[locY,locX],5:]
-			if os.path.isfile(f'{topdir}/Output/UniqueIndexKeyOrientAll_voxNr_{voxNr}.txt'):
-				with open(f'{topdir}/Output/UniqueIndexKeyOrientAll_voxNr_{voxNr}.txt','r') as f:
+			if os.path.isfile(f'{topdir}/Output/UniqueIndexKeyOrientAll_voxNr_{str(voxNr).zfill(6)}.txt'):
+				with open(f'{topdir}/Output/UniqueIndexKeyOrientAll_voxNr_{str(voxNr).zfill(6)}.txt','r') as f:
 					lines = f.readlines()
 				for line in lines:
 					orientInside = [float(val) for val in line.split()[4:]]
