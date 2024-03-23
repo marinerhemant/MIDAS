@@ -1294,10 +1294,10 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 				}
 			}
 		}
-		orDelta = 1;
-		if (FracThis != 0) {
-			if (FracThis < 0.5) { orDelta = 3 - round(FracThis * (3-1) / 0.5); }
-		}
+		// orDelta = 1;
+		// if (FracThis != 0) {
+		// 	if (FracThis < 0.5) { orDelta = 3 - round(FracThis * (3-1) / 0.5); }
+		// }
 		or += orDelta;
 	}
 	fracMatches = (RealType) bestnMatchesIsp/bestnTspotsIsp;
