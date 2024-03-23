@@ -418,7 +418,8 @@ if oneSolPerVox==1:
 		Image.fromarray(full_recon).save('Recons/Full_recon_max_project.tif')
 		im_list[0].save('Recons/all_recons_together.tif',compression="tiff_deflate",save_all=True,append_images=im_list[1:])
 		uniqueOrientations = np.genfromtxt(f'{topdir}/UniqueOrientations.csv',delimiter=' ')
-		max_id2 = np.flipud(max_id)
+		# max_id2 = np.flipud(max_id)
+		max_id2 = np.copy(max_id)
 		max_id2 = max_id2.flatten() # max_id2 has the rowNr, starting from 0. TODO: confirm this
 		f = open(f'{topdir}/SpotsToIndex.csv','w')
 		for voxNr in range(nScans*nScans):
