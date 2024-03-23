@@ -1138,6 +1138,7 @@ int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis, str
 	}
 	CompareSpots(TheorSpots, nTspots, RefRad, Params.MarginRad, Params.MarginRadial, etamargins, omemargins, &nMatches, GrainSpots, xThis, yThis);
 	FracThis = (double)nMatches / (double)nTspots;
+	printf("%lf\n",FracThis);
 	if (FracThis > Params.MinMatchesToAcceptFrac){
 		if (FracThis >= bestConfidence){
 			bestConfidence = FracThis;
@@ -1594,7 +1595,6 @@ main(int argc, char *argv[])
 				eulerThis[2] = mic[bestRow*5+4];
 				Euler2OrientMat(eulerThis,OMThis);
 			}
-			continue;
 			// Now we will only run this orientation.
 			DoIndexingSingle(thisRowNr,OMThis,xThis,yThis,Params,valsF,allF,keyF);
 		}else {
