@@ -354,10 +354,10 @@ main(int argc, char *argv[])
                             locThis = ((size_t)allSpotIDs[iterAllSpIDs].grainNr)*maxNHKLs*nScans;
                             locThis += ((size_t)allSpotIDs[iterAllSpIDs].spotNr)*nScans;
                             locThis += i;
-                            sinoArr[locThis] = AllSpots[k*5+3];
+                            sinoArr[locThis] = AllSpots[10*iterAllSps+3];
                             locThis = ((size_t)allSpotIDs[iterAllSpIDs].grainNr)*maxNHKLs + ((size_t)allSpotIDs[iterAllSpIDs].spotNr);
                             if (omeArr[locThis]==-10000.0) {
-                                omeArr[locThis] = AllSpots[k*5+5];
+                                omeArr[locThis] = AllSpots[10*iterAllSps+2];
                             }
                         }
                     }
