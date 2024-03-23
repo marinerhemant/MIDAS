@@ -1580,6 +1580,7 @@ main(int argc, char *argv[])
 			double bestLen = 100000, lenThis;
 			for (iter=0;iter<nrMic;iter++){
 				lenThis = sqrt((xThis-mic[iter*5+0])*(xThis-mic[iter*5+0])+(yThis-mic[iter*5+1])*(yThis-mic[iter*5+1]));
+				printf("%lf %lf %lf %lf\n",xThis,mic[iter*5+0],yThis,mic[iter*5+1]);
 				if (lenThis < bestLen){
 					bestLen = lenThis;
 					bestRow = iter;
