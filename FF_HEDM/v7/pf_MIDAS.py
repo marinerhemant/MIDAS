@@ -470,6 +470,8 @@ if oneSolPerVox==1:
 		print(filesdata[i][26])
 		if isnan(filesdata[i][26]):
 			continue
+		if filesdata[i][26] < 0 or filesdata[i][26] > 1.0000000001:
+			continue
 		filesdata[i][39:43] = quat
 		info_arr[:,voxNr] = filesdata[i][[0,-4,-3,-2,-1,11,12,15,16,17,18,19,20,22,23,24,26,27,28,29,31,32,35]]
 		i+=1
