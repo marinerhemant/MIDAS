@@ -408,6 +408,8 @@ if oneSolPerVox==1:
 				with open(f'{topdir}/Output/UniqueIndexKeyOrientAll_voxNr_{voxNr}.txt','r') as f:
 					lines = f.readlines()
 				for line in lines:
+					if (voxNr == 2398):
+						print(orientThis,orientInside)
 					orientInside = [float(val) for val in line.split()[4:]]
 					ang = rad2deg*GetMisOrientationAngleOM(orientThis,orientInside,sgnum)[0]
 					if ang < maxang:
