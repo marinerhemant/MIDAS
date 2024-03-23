@@ -433,7 +433,7 @@ if oneSolPerVox==1:
 				yThis = data[12]
 				omThis = data[2:11]
 				Euler = OrientMat2Euler(omThis)
-				micF.write(f"0.0 0.0 0.0 {xThis} {yThis} 0.0 0.0 {Euler[0]} {Euler[1]} {Euler[2]} 0.0 0.0\n")
+				micF.write(f"0.0 0.0 0.0 {xThis:.6f} {yThis:.6f} 0.0 0.0 {Euler[0]:.6f} {Euler[1]:.6f} {Euler[2]:.6f} {omThis[0]:.6f} {omThis[1]:.6f} {omThis[2]:.6f} {omThis[3]:.6f} {omThis[4]:.6f} {omThis[5]:.6f} {omThis[6]:.6f} {omThis[7]:.6f} {omThis[8]:.6f}\n")
 			micF.close()
 			paramsf = open(f'{topdir}/paramstest.txt','a')
 			paramsf.write(f'MicFile {topdir}/singleSolution.mic\n')
