@@ -1517,10 +1517,11 @@ main(int argc, char *argv[])
 					&mic[nrMic*5+0],&mic[nrMic*5+1],dummy,dummy,&mic[nrMic*5+2],
 					&mic[nrMic*5+3],&mic[nrMic*5+4],dummy,dummy);
 			nrMic++;
-			printf("%d %s",nrMic,aline);
+			printf("%lf %lf",mic[nrMic*5+0],mic[nrMic*5+1]);
 		}
 		realloc(mic,nrMic*5*sizeof(*mic));
 	}
+	return 0;
 	int startRowNr;
 	int endRowNr;
 
