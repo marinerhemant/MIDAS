@@ -398,7 +398,7 @@ if oneSolPerVox==1:
 			locX = voxNr % nScans - 1
 			locY = nScans - (voxNr//nScans + 1)
 			if (voxNr == 2398):
-				print(max_id[locX,locY])
+				print(max_id[locY,locX])
 				print(locX,locY)
 			# print(locX,locY,voxNr)
 			if max_id[locX,locY] == -1:
