@@ -359,7 +359,7 @@ if (runIndexing == 1):
 	outputIndex = [i.result() for i in resIndex]
 
 if oneSolPerVox==1:
-	subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')+f' {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}',cwd=topdir,shell=True)
+	# subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')+f' {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}',cwd=topdir,shell=True)
 	if doTomo == 1:
 		sinoFN = glob.glob("sinos_*.bin")[0]
 		nGrs = int(sinoFN.split('_')[1])
