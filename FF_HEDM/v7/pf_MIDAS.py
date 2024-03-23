@@ -117,8 +117,6 @@ parser.add_argument('-oneSolPerVox',type=int,required=True,help='0 if want to al
 parser.add_argument('-resultDir',type=str,required=False,default='',help='Directory where you want to save the results. If ommitted, the current directory will be used.')
 parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='If low on RAM, it can process parts of the dataset at the time. -1 will disable.')
 parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
-parser.add_argument('-DrawSinos', type=int, required=False, default=0, help='If want to see sinograms, put to 1. Only for OneSolPerVox.')
-parser.add_argument('-DoThresholdingTomo', type=int, required=False, default=0, help='If want to apply otsu thresholding to tomo reconstructions, put to 1. Only for OneSolPerVox.')
 parser.add_argument('-DoTomo', type=int, required=False, default=0, help='If want to do tomography, put to 1. Only for OneSolPerVox.')
 parser.add_argument('-ConvertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
 parser.add_argument('-runIndexing', type=int, required=False, default=1, help='If want to skip Indexing, put to 0.')
@@ -133,8 +131,6 @@ nNodes = args.nNodes
 topdir = args.resultDir
 nchunks = args.numFrameChunks
 preproc = args.preProcThresh
-draw_sinos = args.DrawSinos
-thresh_reqd = args.DoThresholdingTomo
 doTomo = args.DoTomo
 ConvertFiles = args.ConvertFiles
 runIndexing = args.runIndexing
@@ -385,24 +381,6 @@ if oneSolPerVox==1:
 			Image.fromarray(sino).save('Sinos/sino_grNr_'+str.zfill(str(grNr),4)+'.tif')
 			np.savetxt('Thetas/thetas_grNr_'+str.zfill(str(grNr),4)+'.txt',thetas,fmt='%.6f')
 			recon = iradon(sino,theta=thetas)
-			if thresh_reqd == 1:
-				thresh = threshold_otsu(recon)
-				binary = recon <= thresh
-				_,axs = plt.subplots(ncols=4, figsize=(10, 2))
-				if draw_sinos==1:
-					axs[0].imshow(np.transpose(recon),cmap=plt.cm.gray)
-					axs[1].hist(recon.ravel(),bins=256)
-					axs[1].axvline(thresh,color='r')
-				recon[binary] = 0
-				seed = np.copy(recon)
-				seed[1:-1, 1:-1] = recon.max()
-				mask = recon
-				filled = reconstruction(seed, mask, method='erosion')
-				if draw_sinos==1:
-					axs[2].imshow(np.transpose(recon),cmap=plt.cm.gray)
-					axs[3].imshow(np.transpose(filled),cmap=plt.cm.gray)
-					plt.show()
-				recon = filled
 			all_recons[grNr,:,:] = recon
 			im_list.append(Image.fromarray(recon))
 			Image.fromarray(recon).save('Recons/recon_grNr_'+str.zfill(str(grNr),4)+'.tif')
@@ -411,21 +389,20 @@ if oneSolPerVox==1:
 		print("Done with tomo recon, now running the optimization.")
 		max_id = np.argmax(all_recons,axis=0).astype(np.int32)
 		max_id[full_recon==0] = -1
-		if draw_sinos == 1:
-			plt.imshow(np.transpose(full_recon),cmap='gray'); plt.title('Final reconstruction.'); plt.show()
-			plt.imshow(np.transpose(max_id),cmap='gray'); plt.title('GrainID.'); plt.show()
 		Image.fromarray(max_id).save('Recons/Full_recon_max_project_grID.tif')
 		Image.fromarray(full_recon).save('Recons/Full_recon_max_project.tif')
 		im_list[0].save('Recons/all_recons_together.tif',compression="tiff_deflate",save_all=True,append_images=im_list[1:])
 		uniqueOrientations = np.genfromtxt(f'{topdir}/UniqueOrientations.csv',delimiter=' ')
 		# max_id2 = np.flipud(max_id)
-		max_id2 = np.copy(max_id)
-		max_id2 = max_id2.flatten() # max_id2 has the rowNr, starting from 0. TODO: confirm this
+		# max_id2 = np.copy(max_id)
+		# max_id2 = max_id2.flatten() # max_id2 has the rowNr, starting from 0. TODO: confirm this
 		f = open(f'{topdir}/SpotsToIndex.csv','w')
 		for voxNr in range(nScans*nScans):
-			if max_id2[voxNr] == -1:
+			locX = voxNr % nScans
+			locY = nScans - voxNr//nScans
+			if max_id[locX,locY] == -1:
 				continue
-			orientThis = uniqueOrientations[max_id2[voxNr],5:14]
+			orientThis = uniqueOrientations[max_id[locX,locY],5:14]
 			if os.path.isfile(f'{topdir}/Output/UniqueIndexKeyOrientAll_voxNr_{voxNr}.txt'):
 				with open(f'{topdir}/Output/UniqueIndexKeyOrientAll_voxNr_{voxNr}.txt','r') as f:
 					lines = f.readlines()
