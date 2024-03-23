@@ -1316,6 +1316,13 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 						  GrainMatches[0][8], GrainMatches[0][9], GrainMatches[0][10],
 						  GrainMatches[0][11], GrainMatches[0][12], GrainMatches[0][13]};
 	size_t locVals, locAll;
+	double OMLoc[9] = {GrainMatches[0][0], GrainMatches[0][1],
+						  GrainMatches[0][2], GrainMatches[0][3], GrainMatches[0][4],
+						  GrainMatches[0][5], GrainMatches[0][6], GrainMatches[0][7],
+						  GrainMatches[0][8]};
+	CalcDiffrSpots_Furnace(OMLoc, Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii,
+			Params.OmegaRanges, Params.BoxSizes, Params.NoOfOmegaRanges, Params.ExcludePoleAngle, TheorSpots, &nTspots);
+	for (i=0;i<nTspots;i++) printf("%lf %lf %lf\n",TheorSpots[i][6],TheorSpots[i][7],TheorSpots[i][9]);
 	locVals = ftell(valsF);
 	locAll = ftell(allF);
 	fwrite(outArr,16*sizeof(double),1,valsF);
