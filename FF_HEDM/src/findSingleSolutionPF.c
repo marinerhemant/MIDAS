@@ -288,7 +288,8 @@ main(int argc, char *argv[])
         thisVoxNr = uniqueKeyArr[i*5+0];
         nSpots = uniqueKeyArr[i*5+2];
         nrHKLsFilled[i] = nSpots;
-        if (nSpots>maxNHKLs) maxNHKLs = nSpots;
+        printf("%zu %d",nSpots,maxNHKLs);
+        if ((int)nSpots>maxNHKLs) maxNHKLs = nSpots;
         startPos = uniqueKeyArr[i*5+4];
         char IDsFNThis[2048];
         sprintf(IDsFNThis,"%s/IndexBest_IDs_voxNr_%0*d.bin",folderName,6,thisVoxNr);
