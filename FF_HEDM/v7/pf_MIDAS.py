@@ -438,8 +438,8 @@ if oneSolPerVox==1:
 			paramsf = open(f'{topdir}/paramstest.txt','a')
 			paramsf.write(f'MicFile {topdir}/singleSolution.mic\n')
 			paramsf.close()
-			shutil.rmtree(f'{topdir}/Output')
-			shutil.rmtree(f'{topdir}/Results')
+			shutil.move(f'{topdir}/Output',f'{topdir}/fullOutput')
+			shutil.move(f'{topdir}/Results',f'{topdir}/fullResults')
 			print("Running indexing again.")
 			resIndex = []
 			for nodeNr in range(nNodes):
