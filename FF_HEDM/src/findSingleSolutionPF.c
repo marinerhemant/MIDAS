@@ -316,6 +316,7 @@ main(int argc, char *argv[])
     }
     free(uniqueKeyArr);
     realloc(allSpotIDs,nAllSpots*sizeof(*allSpotIDs));
+    printf("%d\n",maxNHKLs);
 
     double *sinoArr, *omeArr;
     size_t szSino = nUniques;
