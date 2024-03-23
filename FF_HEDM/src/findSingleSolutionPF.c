@@ -323,7 +323,7 @@ main(int argc, char *argv[])
     FILE *fUniqueSpots;
     fUniqueSpots = fopen(fnUniqueSpots,"w");
     fprintf(fUniqueSpots,"ID GrainNr SpotNr RingNr Omega Eta\n");
-    for (i=0;i<nAllSpots;i++) fprintf("%d %d %d %d %lf %lf\n",allSpotIDs[i].mergedID,allSpotIDs[i].grainNr,
+    for (i=0;i<nAllSpots;i++) fprintf(fUniqueSpots,"%d %d %d %d %lf %lf\n",allSpotIDs[i].mergedID,allSpotIDs[i].grainNr,
             allSpotIDs[i].spotNr,allSpotIDs[i].ringNr,allSpotIDs[i].omega,allSpotIDs[i].eta);
     fclose(fUniqueSpots);
 
