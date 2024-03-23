@@ -1586,7 +1586,7 @@ main(int argc, char *argv[])
 					bestRow = iter;
 				}
 			}
-			printf("%d %d %lf %lf %lf %lf\n",thisRowNr,bestRow,xThis,mic[bestRow*5+0],yThis,mic[bestRow*5+1]);
+			printf("%d %d %lf %lf %lf %lf %lf\n",thisRowNr,bestRow,xThis,mic[bestRow*5+0],yThis,mic[bestRow*5+1],bestLen);
 			double eulerThis[3], OMThis[3][3];
 			if (bestRow != -1){
 				eulerThis[0] = mic[bestRow*5+2];
@@ -1594,6 +1594,7 @@ main(int argc, char *argv[])
 				eulerThis[2] = mic[bestRow*5+4];
 				Euler2OrientMat(eulerThis,OMThis);
 			}
+			continue;
 			// Now we will only run this orientation.
 			DoIndexingSingle(thisRowNr,OMThis,xThis,yThis,Params,valsF,allF,keyF);
 		}else {
