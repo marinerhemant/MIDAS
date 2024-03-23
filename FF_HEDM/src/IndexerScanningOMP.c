@@ -1441,7 +1441,7 @@ main(int argc, char *argv[])
 	printf("Finished reading parameters.\n");
 	char *hklfn = "hkls.csv";
 	FILE *hklf = fopen(hklfn,"r");
-	char aline[1024],dummy[1024];
+	char aline[5024],dummy[1024];
 	fgets(aline,1000,hklf);
 	int Rnr;
 	int hi,ki,li;
@@ -1512,11 +1512,12 @@ main(int argc, char *argv[])
 		fgets(aline,1000,micF);
 		fgets(aline,1000,micF);
 		printf("%s\n",aline);
-		while (fgets(aline,1000,micF)!=NULL){
+		while (fgets(aline,5000,micF)!=NULL){
 			sscanf("%s %s %s %lf %lf %s %s %lf %lf %lf %s %s",dummy,dummy,dummy,
 					&mic[nrMic*5+0],&mic[nrMic*5+1],dummy,dummy,&mic[nrMic*5+2],
 					&mic[nrMic*5+3],&mic[nrMic*5+4],dummy,dummy);
 			nrMic++;
+			printf("%d\n",nrMic);
 		}
 		realloc(mic,nrMic*5*sizeof(*mic));
 	}
