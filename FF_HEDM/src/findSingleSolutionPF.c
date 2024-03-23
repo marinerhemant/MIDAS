@@ -190,7 +190,7 @@ main(int argc, char *argv[])
         fclose(outKeyF);
         for (i=0;i<4;i++) allKeyArr[voxNr*4+i] = keys[bestRow*4+i];
         for (i=0;i<9;i++) allOrientationsArr[voxNr*10+i] = tmpArr[bestRow*16+2+i];
-        allOrientationsArr[voxNr*10+9] = tmpArr[bestRow*16+15]/tmpArr[bestRow*16+14];
+        allOrientationsArr[voxNr*10+9] = confIAArr[bestRow*2+0];
         free(uniqueArrThis);
         free(uniqueOrientArrThis);
         free(OMArr);
@@ -240,6 +240,7 @@ main(int argc, char *argv[])
         for (j=0;j<9;j++) uniqueOrientArr[nUniques*9+j] = allOrientationsArr[bestOrientationRowNr*10+j];
         nUniques++;
     }
+    nUniques = 1;
     free(markArr2);
     free(allKeyArr);
     free(allOrientationsArr);
@@ -309,6 +310,7 @@ main(int argc, char *argv[])
                 printf("Data is not aligned. Please check. Exiting.\n");
                 return 1;
             }
+            printf("%d\n",IDArrThis[j]);
             allSpotIDs[nAllSpots+j].mergedID = IDArrThis[j];
             allSpotIDs[nAllSpots+j].omega = AllSpots[10*(IDArrThis[j]-1)+2];
             allSpotIDs[nAllSpots+j].eta = AllSpots[10*(IDArrThis[j]-1)+6];
@@ -371,8 +373,7 @@ main(int argc, char *argv[])
     }
 
     // Sort based on omegas???
-    // for (i=0;i<nUniques;i++){
-    for (i=0;i<1;i++){
+    for (i=0;i<nUniques;i++){
         struct SinoSortData *st;
         st = malloc(maxNHKLs*sizeof(*st));
         int nSpThis=0;
