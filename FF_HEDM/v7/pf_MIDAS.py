@@ -352,8 +352,8 @@ if len(micFN) > 0:
 paramsf.close()
 
 if (runIndexing == 1):
-	print("Running indexing.")
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
+	print("Running indexing.")
 	resIndex = []
 	for nodeNr in range(nNodes):
 		resIndex.append(indexscanning(topdir,numProcs,nScans,blockNr=nodeNr,numBlocks=nNodes))
