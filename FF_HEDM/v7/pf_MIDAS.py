@@ -408,7 +408,7 @@ if oneSolPerVox==1:
 					ang = rad2deg*GetMisOrientationAngleOM(orientThis,orientInside,sgnum)[0]
 					if ang < maxang:
 						lineSplit = line.split()
-						outStr = f'{voxNr} {lineSplit[0]} {lineSplit[1]} {lineSplit[2]} {lineSplit[3]}'
+						outStr = f'{voxNr} {lineSplit[0]} {lineSplit[1]} {lineSplit[2]} {lineSplit[3]}\n'
 						print(outStr)
 						fSp.write(outStr)
 						break
@@ -421,6 +421,7 @@ if oneSolPerVox==1:
 				f.write(f"{idData[voxNr,0]} {idData[voxNr,1]} {idData[voxNr,2]} {idData[voxNr,3]} {idData[voxNr,4]}\n")
 		f.close()
 
+	print("Running refinement now")
 	os.makedirs('Results',exist_ok=True)
 	resRefine = []
 	for nodeNr in range(nNodes):
