@@ -429,6 +429,7 @@ if oneSolPerVox==1:
 				voxNr = int(spot[0])
 				loc = int(spot[3])
 				data = np.fromfile(f'{topdir}/Output/IndexBest_voxNr_{str(voxNr).zfill(6)}.bin',dtype=np.double,count=16,offset=loc)
+				print(voxNr,data)
 				xThis = data[9]
 				yThis = data[10]
 				omThis = data[2:11]
