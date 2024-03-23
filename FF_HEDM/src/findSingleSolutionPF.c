@@ -275,6 +275,7 @@ main(int argc, char *argv[])
 	AllSpots = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 	check (AllSpots == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
 	int nSpotsAll =  (int) size/(10*sizeof(double));
+    printf("nSpotsAll: %d\n",nSpotsAll);
 
     // Now we read each spot for each grain and get its information.
     struct InputData *allSpotIDs;
@@ -316,6 +317,14 @@ main(int argc, char *argv[])
     }
     free(uniqueKeyArr);
     realloc(allSpotIDs,nAllSpots*sizeof(*allSpotIDs));
+    char fnUniqueSpots[2048];
+    sprintf(fnUniqueSpots,"%s/UniqueOrientationSpots.csv",originalFolder);
+    FILE *fUniqueSpots;
+    fUniqueSpots = fopen(fnUniqueSpots,"w");
+    fprintf(fUniqueSpots,"ID GrainNr SpotNr RingNr Omega Eta\n");
+    for (i=0;i<nAllSpots;i++) fprintf("%d %d %d %d %lf %lf\n",allSpotIDs[i].mergedID,allSpotIDs[i].grainNr,
+            allSpotIDs[i].spotNr,allSpotIDs[i].ringNr,allSpotIDs[i].omega,allSpotIDs[i].eta);
+    fclose(fUniqueSpots);
 
     double *sinoArr, *omeArr;
     size_t szSino = nUniques;
