@@ -47,12 +47,16 @@ struct InputData{
     int spotNr;
 };
 
+struct SinoSortData{
+    double *intensities;
+    double angle;
+};
+
 static int cmpfunc (const void * a, const void *b){
-	struct InputData *ia = (struct InputData *)a;
-	struct InputData *ib = (struct InputData *)b;
-    if (ia->scanNr > ib->scanNr) return 1;
-    if (ia->scanNr < ib->scanNr) return -1;
-	return (int)(ia->originalID - ib->originalID);
+	struct SinoSortData *ia = (struct SinoSortData *)a;
+	struct SinoSortData *ib = (struct SinoSortData *)b;
+    if (ia->angle >= ib->angle) return 1;
+    else return -1;
 }
 
 int
@@ -364,6 +368,27 @@ main(int argc, char *argv[])
                 }
             }
         }
+    }
+
+    // Sort based on omegas???
+    for (i=0;i<nUniques;i++){
+        struct SinoSortData *st;
+        st = malloc(maxNHKLs*sizeof(*st));
+        int nSpThis=0;
+        for (j=0;j<maxNHKLs;j++){
+            if (omeArr[i*maxNHKLs+j]==-10000.0) break;
+            st[j].angle = omeArr[i*maxNHKLs+j];
+            st[j].intensities = calloc(nScans,sizeof(st[j].intensities));
+            for (k=0;k<nScans;k++) st[j].intensities[k] = sinoArr[i*maxNHKLs*nScans+j*nScans+k];
+            nSpThis ++;
+        }
+        qsort(st,nSpThis,sizeof(struct SinoSortData),cmpfunc);
+        for (j=0;j<nSpThis;j++){
+            omeArr[i*maxNHKLs+j] = st[j].angle;
+            for (k=0;k<nScans;k++) sinoArr[i*maxNHKLs*nScans+j*nScans+k] = st[j].intensities[k];
+            free(st[j].intensities);
+        }
+        free(st);
     }
 
     char sinoFN[2048], omeFN[2048], HKLsFN[2048];
