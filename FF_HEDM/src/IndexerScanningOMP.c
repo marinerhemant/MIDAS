@@ -1590,9 +1590,9 @@ main(int argc, char *argv[])
 			// printf("%d %d %lf %lf %lf %lf %lf\n",thisRowNr,bestRow,xThis,mic[bestRow*5+0],yThis,mic[bestRow*5+1],bestLen);
 			double eulerThis[3], OMThis[3][3];
 			if (bestRow != -1){
-				eulerThis[0] = mic[bestRow*5+2];
-				eulerThis[1] = mic[bestRow*5+3];
-				eulerThis[2] = mic[bestRow*5+4];
+				eulerThis[0] = mic[bestRow*5+2]*rad2deg;
+				eulerThis[1] = mic[bestRow*5+3]*rad2deg;
+				eulerThis[2] = mic[bestRow*5+4]*rad2deg;
 				Euler2OrientMat(eulerThis,OMThis);
 			}
 			// Now we will only run this orientation.
