@@ -317,6 +317,8 @@ main(int argc, char *argv[])
             allSpotIDs[nAllSpots+j].ringNr = (int)AllSpots[10*(IDArrThis[j]-1)+5];
             allSpotIDs[nAllSpots+j].grainNr = i;
             allSpotIDs[nAllSpots+j].spotNr = j;
+            printf("%d %d %d %d %lf %lf\n",allSpotIDs[nAllSpots+j].mergedID,allSpotIDs[nAllSpots+j].grainNr,
+            allSpotIDs[nAllSpots+j].spotNr,allSpotIDs[nAllSpots+j].ringNr,allSpotIDs[nAllSpots+j].omega,allSpotIDs[nAllSpots+j].eta);
         }
         free(IDArrThis);
         nAllSpots+=nSpots;
