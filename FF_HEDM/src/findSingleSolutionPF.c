@@ -378,6 +378,7 @@ main(int argc, char *argv[])
         for (j=0;j<maxNHKLs;j++){
             if (omeArr[i*maxNHKLs+j]==-10000.0) break;
             st[j].angle = omeArr[i*maxNHKLs+j];
+            printf("%lf ",omeArr[i*maxNHKLs+j]);
             st[j].intensities = calloc(nScans,sizeof(st[j].intensities));
             for (k=0;k<nScans;k++) st[j].intensities[k] = sinoArr[i*maxNHKLs*nScans+j*nScans+k];
             nSpThis ++;
@@ -385,6 +386,7 @@ main(int argc, char *argv[])
         qsort(st,nSpThis,sizeof(struct SinoSortData),cmpfunc);
         for (j=0;j<nSpThis;j++){
             omeArr[i*maxNHKLs+j] = st[j].angle;
+            printf("%lf ",omeArr[i*maxNHKLs+j]);
             for (k=0;k<nScans;k++) sinoArr[i*maxNHKLs*nScans+j*nScans+k] = st[j].intensities[k];
             free(st[j].intensities);
         }
