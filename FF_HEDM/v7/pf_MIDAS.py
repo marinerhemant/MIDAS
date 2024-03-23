@@ -444,6 +444,7 @@ if oneSolPerVox==1:
 			Path(topdir+'/Results').mkdir(parents=True,exist_ok=True)
 			print("Running indexing again.")
 			sys.exit()
+			
 			resIndex = []
 			for nodeNr in range(nNodes):
 				resIndex.append(indexscanning(topdir,numProcs,nScans,blockNr=nodeNr,numBlocks=nNodes))
