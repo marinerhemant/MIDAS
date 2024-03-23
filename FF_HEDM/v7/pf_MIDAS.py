@@ -393,7 +393,7 @@ if oneSolPerVox==1:
 		Image.fromarray(full_recon).save('Recons/Full_recon_max_project.tif')
 		im_list[0].save('Recons/all_recons_together.tif',compression="tiff_deflate",save_all=True,append_images=im_list[1:])
 		uniqueOrientations = np.genfromtxt(f'{topdir}/UniqueOrientations.csv',delimiter=' ')
-		f = open(f'{topdir}/SpotsToIndex.csv','w')
+		fSp = open(f'{topdir}/SpotsToIndex.csv','w')
 		for voxNr in range(nScans*nScans):
 			locX = voxNr % nScans - 1
 			locY = nScans - (voxNr//nScans + 1)
@@ -414,7 +414,7 @@ if oneSolPerVox==1:
 						print(orientThis,orientInside,ang)
 					if ang < maxang:
 						print(line)
-						f.write(line)
+						fSp.write(line)
 						break
 		f.close()
 	else:
