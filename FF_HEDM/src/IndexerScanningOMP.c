@@ -1138,7 +1138,7 @@ int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis, str
 	}
 	CompareSpots(TheorSpots, nTspots, RefRad, Params.MarginRad, Params.MarginRadial, etamargins, omemargins, &nMatches, GrainSpots, xThis, yThis);
 	FracThis = (double)nMatches / (double)nTspots;
-	printf("%lf %lf %lf %lf\n",FracThis,OM[0][0],OM[1][1],OM[2][2]);
+	printf("%lf %lf %lf %lf %lf %lf\n",FracThis,OM[0][0],OM[1][1],OM[2][2],xThis,yThis);
 	if (FracThis > Params.MinMatchesToAcceptFrac){
 		if (FracThis >= bestConfidence){
 			bestConfidence = FracThis;
