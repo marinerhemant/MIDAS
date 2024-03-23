@@ -1330,7 +1330,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 	int matchedNrSpots = GrainMatches[0][13];
 	outArr2 = malloc(matchedNrSpots*sizeof(*outArr2));
 	for (i=0;i<matchedNrSpots;i++) outArr2[i] = (int)AllGrainSpots[i][14];
-	for (i=0;i<matchedNrSpots;i++) printf("%d %lf %lf\n",outArr2[i],AllGrainSpots[i][8],ObsSpotsLab[outArr2[i]*10+2]);
+	for (i=0;i<matchedNrSpots;i++) printf("%d %lf %lf %lf\n",outArr2[i],AllGrainSpots[i][9],ObsSpotsLab[outArr2[i]*10+2],ObsSpotsLab[outArr2[i]*10+6]);
 	fwrite(outArr2,matchedNrSpots*sizeof(int),1,allF);
 	fprintf(keyF,"%zu %zu %zu %zu\n",(size_t)SpotID,(size_t)matchedNrSpots,locVals,locAll);
 	printf("ID: %d, voxNr: %d, Confidence: %lf\n",SpotID,voxNr,fracMatches);
