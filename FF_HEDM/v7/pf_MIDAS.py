@@ -417,7 +417,7 @@ if oneSolPerVox==1:
 		####### Then run Indexing again by supplying the micFile to do Indexing......
 		if len(micFN) == 0:
 			print("Writing a dummy mic file to run indexing again.")
-			fnSp = f'{topdir}/SpotsToIndex.csv','r'
+			fnSp = f'{topdir}/SpotsToIndex.csv'
 			spotsToIndex = np.genfromtxt(fnSp,delimiter=' ')
 			micFN = 'singleSolution.mic'
 			micF = open(micFN,'w')
@@ -426,7 +426,6 @@ if oneSolPerVox==1:
 			micF.write("header\n")
 			micF.write("header\n")
 			for spot in spotsToIndex:
-				print(spot)
 				voxNr = spot[0]
 				loc = spot[3]
 				data = np.fromfile(f'{topdir}/Output/IndexBest_voxNr_{str(voxNr).zfill(6)}.bin',dtype=np.double,count=16,offset=loc)
