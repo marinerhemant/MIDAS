@@ -55,13 +55,18 @@ main(int argc, char *argv[])
         }
         realloc(keys,nIDs*4*sizeof(*keys));
         fclose(keyF);
-        double *OMArr, *tmpArr;
+        double *OMArr, *tmpArr, *confIAArr;
         OMArr = calloc(nIDs*9,sizeof(double));
+        confIAArr = calloc(nIDs*2,sizeof(double));
         tmpArr = calloc(nIDs*16,sizeof(double));
         fread(tmpArr,nIDs*16*sizeof(double),1,valsF);
         fclose(valsF);
         int i,j,k;
-        for (i=0;i<nIDs;i++) for (j=0;j<9;j++) OMArr[i*9+j] = tmpArr[i*16+2+j];
+        for (i=0;i<nIDs;i++){
+            confIAArr[i*2+0] = tmpArr[i*16+15]/tmpArr[i*16+14];
+            confIAArr[i*2+1] = tmpArr[i*16+1];
+            for (j=0;j<9;j++) OMArr[i*9+j] = tmpArr[i*16+2+j];
+        }
         free(tmpArr);
         bool *markArr;
         markArr = malloc(nIDs*sizeof(*markArr));
@@ -70,18 +75,37 @@ main(int argc, char *argv[])
         size_t *uniqueArr;
         uniqueArr = calloc(nIDs*4,sizeof(*uniqueArr));
         int nUniques = 0;
+        int bRN;
+        double bCon, bIA, conIn, iaIn;
         for (i=0;i<nIDs;i++){
             if (markArr[i]==true) continue;
             for (j=0;j<9;j++) OMThis[j] = OMArr[i*9+j];
             OrientMat2Quat(OMThis,Quat1);
+            bCon = confIAArr[i*2+0];
+            bIA = confIAArr[i*2+1];
+            bRN = i;
             for (j=i+1;j<nIDs;j++){
                 if (markArr[j]==true) continue;
                 for (k=0;k<9;k++) OMInside[k] = OMArr[j*9+k];
                 OrientMat2Quat(OMInside,Quat2);
                 Angle = GetMisOrientation(Quat1,Quat2,Axis,&ang,sgNr);
-                if (ang<maxAng) markArr[j] = true;
+                conIn = confIAArr[j*2+0];
+                iaIn = confIAArr[j*2+1];
+                if (ang<maxAng){
+                    if (bCon < conIn){
+                        bCon = conIn;
+                        bIA = iaIn;
+                        bRN = j;
+                    } else if (bCon == conIn){
+                        if (bIA > iaIn){
+                            bCon = conIn;
+                            bIA = iaIn;
+                            bRN = j;
+                        }
+                    }
+                    markArr[j] = true;
             }
-            for (j=0;j<4;j++) uniqueArr[nUniques*4+j] = keys[i*4+j];
+            for (j=0;j<4;j++) uniqueArr[nUniques*4+j] = keys[bRN*4+j];
             nUniques++;
         }
         char outKeyFN[2048];

@@ -169,6 +169,7 @@ main(int argc, char *argv[])
             OrientMat2Quat(OMThis,Quat1);
             bCon = confIAArr[i*2+0];
             bIA = confIAArr[i*2+1];
+            bRN = i;
             for (j=i+1;j<nIDs;j++){
                 if (markArr[j]==true) continue;
                 for (k=0;k<9;k++) OMInside[k] = OMArr[j*9+k];
