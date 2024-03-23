@@ -1585,6 +1585,7 @@ main(int argc, char *argv[])
 					bestRow = iter;
 				}
 			}
+			printf("%d\n",bestRow);
 			double eulerThis[3], OMThis[3][3];
 			if (bestRow != -1){
 				eulerThis[0] = mic[bestRow*5+2];
