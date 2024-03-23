@@ -489,7 +489,7 @@ if oneSolPerVox==1:
 	f.close()
 else:
 	subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findMultipleSolutionsPF')+f' {topdir} {sgnum} {maxang} {nScans} {numProcsLocal}',shell=True,cwd=topdir)
-
+	print("Now running refinement for all solutions found.")
 	resRefine = []
 	for nodeNr in range(nNodes):
 		resRefine.append(refinescanning(topdir,numProcs,blockNr=nodeNr,numBlocks=nNodes))
@@ -514,4 +514,4 @@ else:
 	head += 'E11,E12,E13,E21,E22,E23,E31,E32,E33,Eul1,Eul2,Eul3,Quat1,Quat2,Quat3,Quat4'
 	np.savetxt('microstrFull.csv',filesdata,fmt='%.6f',delimiter=',',header=head)
 
-print("Time Elapsed: "+str(time.time()-startTime)+" seconds.")
+print("Done. Time Elapsed: "+str(time.time()-startTime)+" seconds.")

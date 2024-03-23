@@ -12,12 +12,34 @@
 #include <ctype.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <errno.h>
+#include <stdarg.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 
 #define MAX_N_SOLUTIONS_PER_VOX 1000000
 #define MAX_N_SPOTS_PER_GRAIN 5000
 #define MAX_N_SPOTS_TOTAL 100000000
 
+static void
+check (int test, const char * message, ...)
+{
+	if (test) {
+		va_list args;
+		va_start (args, message);
+		vfprintf (stderr, message, args);
+		va_end (args);
+		fprintf (stderr, "\n");
+		exit (EXIT_FAILURE);
+	}
+}
+
 struct InputData{
+	double omega;
+	double eta;
+	int ringNr;
 	int mergedID;
 	int originalID;
 	int scanNr;
@@ -56,7 +78,7 @@ main(int argc, char *argv[])
     allKeyArr = calloc(nScans*nScans*4,sizeof(*allKeyArr));
     uniqueKeyArr = calloc(nScans*nScans*5,sizeof(*uniqueKeyArr));
     double *allOrientationsArr;
-    allOrientationsArr = calloc(nScans*nScans*9,sizeof(*allOrientationsArr));
+    allOrientationsArr = calloc(nScans*nScans*10,sizeof(*allOrientationsArr));
     int voxNr;
     # pragma omp parallel for num_threads(numProcs) private(voxNr) schedule(dynamic)
     for (voxNr=0;voxNr<nScans*nScans;voxNr++){
@@ -163,7 +185,8 @@ main(int argc, char *argv[])
         }
         fclose(outKeyF);
         for (i=0;i<4;i++) allKeyArr[voxNr*4+i] = keys[bestRow*4+i];
-        for (i=0;i<9;i++) allOrientationsArr[voxNr*9+i] = tmpArr[bestRow*16+2+i];
+        for (i=0;i<9;i++) allOrientationsArr[voxNr*10+i] = tmpArr[bestRow*16+2+i];
+        allOrientationsArr[voxNr*10+9] = tmpArr[bestRow*16+15]/tmpArr[bestRow*16+14];
         free(uniqueArrThis);
         free(uniqueOrientArrThis);
         free(OMArr);
@@ -184,29 +207,39 @@ main(int argc, char *argv[])
         }
         markArr2[i] = false;
     }
-    double OMThis[9], OMInside[9], Quat1[4],Quat2[4], Angle, Axis[3],ang;
+    double OMThis[9], OMInside[9], Quat1[4],Quat2[4], Angle, Axis[3],ang,fracInside,bestFrac;
+    int bestOrientationRowNr;
     double *uniqueOrientArr;
     uniqueOrientArr = calloc(nScans*nScans*9,sizeof(*uniqueOrientArr));
     for (i=0;i<nScans*nScans;i++){
         if (markArr2[i]==true) continue;
-        for (j=0;j<9;j++) OMThis[j] = allOrientationsArr[i*9+j];
+        for (j=0;j<9;j++) OMThis[j] = allOrientationsArr[i*10+j];
+        bestFrac = allOrientationsArr[i*10+9];
         OrientMat2Quat(OMThis,Quat1);
+        bestOrientationRowNr = i;
         for (j=i+1;j<nScans*nScans;j++){
             if (markArr2[j]==true) continue;
-            for (k=0;k<9;k++) OMInside[k] = allOrientationsArr[j*9+k];
+            fracInside = allOrientationsArr[j*10+9];
+            for (k=0;k<9;k++) OMInside[k] = allOrientationsArr[j*10+k];
             OrientMat2Quat(OMInside,Quat2);
             Angle = GetMisOrientation(Quat1,Quat2,Axis,&ang,sgNr);
-            if (ang<maxAng) markArr2[j] = true;
+            if (ang<maxAng){
+                if (bestFrac < fracInside){
+                    bestFrac = fracInside;
+                    bestOrientationRowNr = j;
+                }
+                markArr2[j] = true;
+            }
         }
-        uniqueKeyArr[nUniques*5+0] = i;
-        for (j=0;j<4;j++) uniqueKeyArr[nUniques*5+1+j] = allKeyArr[i*4+j];
-        for (j=0;j<9;j++) uniqueOrientArr[nUniques*9+j] = OMThis[j];
+        uniqueKeyArr[nUniques*5+0] = bestOrientationRowNr;
+        for (j=0;j<4;j++) uniqueKeyArr[nUniques*5+1+j] = allKeyArr[bestOrientationRowNr*4+j];
+        for (j=0;j<9;j++) uniqueOrientArr[nUniques*9+j] = allOrientationsArr[bestOrientationRowNr*10+j];
         nUniques++;
     }
     free(markArr2);
     free(allKeyArr);
     free(allOrientationsArr);
-    char *originalFolder = argv[1], mergedIDsFN[2048];
+    char *originalFolder = argv[1];
     // Write out
     FILE *uniqueOrientationsF;
     char uniqueOrientsFN[2048];
@@ -218,28 +251,44 @@ main(int argc, char *argv[])
         fprintf(uniqueOrientationsF,"\n");
     }
     fclose(uniqueOrientationsF);
-    sprintf(mergedIDsFN,"%s/IDsMergedScanning.csv",originalFolder);
-    FILE *fIDsMerged;
-    fIDsMerged = fopen(mergedIDsFN,"r");
-    char aline[2048], dummy[1000];
-    int nIDsTot = 0;
-    int *mergeMap;
-    mergeMap = calloc(MAX_N_SPOTS_TOTAL*3,sizeof(*mergeMap));
-    fgets(aline,2048,fIDsMerged);
-    while(fgets(aline,2048,fIDsMerged)!=NULL){
-        sscanf(aline,"%d,%d,%d",&mergeMap[nIDsTot*3+0],&mergeMap[nIDsTot*3+1],&mergeMap[nIDsTot*3+2]);
-        nIDsTot++;
-    }
-    realloc(mergeMap,nIDsTot*3*sizeof(*mergeMap));
-    fclose(fIDsMerged);
+
+	double *AllSpots;
+	int fd;
+	struct stat s;
+	int status;
+	size_t size;
+	size_t size2;
+	char tmpstr[2048];
+	sprintf(tmpstr,"%s",originalFolder);
+	char filename[2048], *cwd=dirname(tmpstr);
+	sprintf(filename,"%s/Spots.bin",cwd);
+	char cmmd[4096];
+	sprintf(cmmd,"cp %s /dev/shm/",filename);
+	system(cmmd);
+	sprintf(filename,"/dev/shm/Spots.bin");
+	int rc;
+	fd = open(filename,O_RDONLY);
+	check(fd < 0, "open %s failed: %s", filename, strerror(errno));
+	status = fstat (fd , &s);
+	check (status < 0, "stat %s failed: %s", filename, strerror(errno));
+	size = s.st_size;
+	AllSpots = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
+	check (AllSpots == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
+	int nSpotsAll =  (int) size/(10*sizeof(double));
+
+    // Now we read each spot for each grain and get its information.
     struct InputData *allSpotIDs;
     double *allSpots;
     allSpotIDs = calloc(MAX_N_SPOTS_PER_GRAIN*nUniques,sizeof(*allSpotIDs));
     size_t nAllSpots=0, thisVoxNr;
+    int maxNHKLs=-1, *nrHKLsFilled;
+    nrHKLsFilled = calloc(nUniques,sizeof(*nrHKLsFilled));
     size_t startPos, nSpots;
     for (i=0;i<nUniques;i++){
         thisVoxNr = uniqueKeyArr[i*5+0];
         nSpots = uniqueKeyArr[i*5+2];
+        nrHKLsFilled[i] = nSpots;
+        if (nSpots>maxNHKLs) maxNHKLs = nSpots;
         startPos = uniqueKeyArr[i*5+4];
         char IDsFNThis[2048];
         sprintf(IDsFNThis,"%s/IndexBest_IDs_voxNr_%0*d.bin",folderName,6,thisVoxNr);
@@ -251,9 +300,14 @@ main(int argc, char *argv[])
         fread(IDArrThis,nSpots*sizeof(int),1,IDF);
         fclose(IDF);
         for (j=0;j<nSpots;j++){
+            if (AllSpots[10*(IDArrThis[j]-1)+4] != (double)IDArrThis[j]) {
+                printf("Data is not aligned. Please check. Exiting.\n");
+                return 1;
+            }
             allSpotIDs[nAllSpots+j].mergedID = IDArrThis[j];
-            allSpotIDs[nAllSpots+j].originalID = mergeMap[(IDArrThis[j]-1)*3+1];
-            allSpotIDs[nAllSpots+j].scanNr = mergeMap[(IDArrThis[j]-1)*3+2];
+            allSpotIDs[nAllSpots+j].omega = AllSpots[10*(IDArrThis[j]-1)+2];
+            allSpotIDs[nAllSpots+j].eta = AllSpots[10*(IDArrThis[j]-1)+6];
+            allSpotIDs[nAllSpots+j].ringNr = (int)AllSpots[10*(IDArrThis[j]-1)+5];
             allSpotIDs[nAllSpots+j].grainNr = i;
             allSpotIDs[nAllSpots+j].spotNr = j;
         }
@@ -261,114 +315,43 @@ main(int argc, char *argv[])
         nAllSpots+=nSpots;
     }
     free(uniqueKeyArr);
-    free(mergeMap);
     realloc(allSpotIDs,nAllSpots*sizeof(*allSpotIDs));
-    qsort(allSpotIDs,nAllSpots,sizeof(struct InputData),cmpfunc);
-    allSpots = calloc(nAllSpots*5,sizeof(*allSpots));
-    int rowNrThis, rowNrPrevious, rowsToSkip;
-    for (i=0;i<nScans;i++){
-        rowNrPrevious = 0;
-        char fnInpThis[2048];
-        sprintf(fnInpThis,"%s/InputAllExtraInfoFittingAll%d.csv",originalFolder,i);
-        FILE *inpExtraF;
-        inpExtraF = fopen(fnInpThis,"r");
-        fgets(aline,2048,inpExtraF);
-        for (j=0;j<nAllSpots;j++){
-            if (allSpotIDs[j].scanNr != i) continue;
-            rowNrThis = allSpotIDs[j].originalID - 1;
-            rowsToSkip = rowNrThis-rowNrPrevious;
-            rowNrPrevious = rowNrThis;
-            for (k=0;k<rowsToSkip;k++) fgets(aline,2048,inpExtraF);
-            sscanf(aline,"%s %s %lf %s %s %lf %lf %s",dummy,dummy,&allSpots[j*5+0],dummy,dummy,&allSpots[j*5+1],&allSpots[j*5+2],dummy);
-            allSpots[j*5+3] = allSpotIDs[j].grainNr;
-            allSpots[j*5+4] = allSpotIDs[j].spotNr;
-        }
-        fclose(inpExtraF);
-    }
-    free(allSpotIDs);
-    bool *dupArr;
-    dupArr = malloc(nAllSpots*sizeof(*dupArr));
-    double *allSpotsFin;
-    allSpotsFin = calloc((nAllSpots)*5,sizeof(*allSpotsFin)); // Omega, RingNr, Eta, grainNr
-    int nAllSpotsFin=0;
-    for (i=0;i<nAllSpots;i++) dupArr[i] = false;
-    for (i=0;i<nAllSpots;i++){
-        if (dupArr[i] == true) continue;
-        for (j=i+1;j<nAllSpots;j++){
-            if (fabs(allSpots[i*5+0]-allSpots[j*5+0]) < tolOme && fabs(allSpots[i*5+2]-allSpots[j*5+2]) < tolEta && fabs(allSpots[i*5+1]-allSpots[j*5+1]) < 0.01){
-                dupArr[i] = true;
-                }
-        }
-        for (j=0;j<4;j++) allSpotsFin[nAllSpotsFin*5+j] = allSpots[i*5+j]; 
-        nAllSpotsFin++;
-    }
-    free(dupArr);
-    free(allSpots);
-    int *nrHKLsFilled, maxNHKLs=-1;
-    nrHKLsFilled = calloc(nUniques,sizeof(*nrHKLsFilled));
-    for (i=0;i<nUniques;i++){
-        for (j=0;j<nAllSpotsFin;j++){
-            if (allSpotsFin[j*5+3]==i){
-                allSpotsFin[j*5+4] = nrHKLsFilled[i];
-                nrHKLsFilled[i]++;
-                if (nrHKLsFilled[i]>maxNHKLs) maxNHKLs=nrHKLsFilled[i];
-            }
-        }
-    }
+
     double *sinoArr, *omeArr;
     size_t szSino = nUniques;
     szSino *= maxNHKLs;
     szSino *= nScans;
-    sinoArr = malloc(szSino*sizeof(double));
+    sinoArr = calloc(szSino,sizeof(*sinoArr));
     for (i=0;i<szSino;i++) sinoArr[i] = 0;
     omeArr = calloc(nUniques*maxNHKLs,sizeof(*omeArr));
+    for (i=0;i<nUniques*maxNHKLs;i++) omeArr[i]=-10000.0;
+
     # pragma omp parallel for num_threads(numProcs) private(i) schedule(dynamic)
     for (i=0;i<nScans;i++){
-        char fnInpThis[2048];
-        sprintf(fnInpThis,"%s/InputAllExtraInfoFittingAll%d.csv",originalFolder,i);
-        FILE *inpExtraF;
-        inpExtraF = fopen(fnInpThis,"r");
-        char line[2048];
-        fgets(line,2048,inpExtraF);
-        int nSpotsThisScan=0;
-        double *ArrThis;
-        char dThis[1000];
-        ArrThis = calloc(MAX_N_SPOTS_TOTAL*5,sizeof(*ArrThis));
-        int nSptsThis=0;
-        while (fgets(line,2048,inpExtraF)!=NULL){
-            sscanf(line,"%s %s %lf %lf %lf %lf %lf %s %s %s %s %s %s %s %lf",dThis,dThis,&ArrThis[nSptsThis*5+0],
-                        dThis,&ArrThis[nSptsThis*5+2],&ArrThis[nSptsThis*5+3],&ArrThis[nSptsThis*5+4],dThis,dThis,
-                        dThis,dThis,dThis,dThis,dThis,&ArrThis[nSptsThis*5+1]);
-            nSptsThis++;
-        }
-        if (nSptsThis==0) {
-            free(ArrThis);
-            continue;
-        }
-        realloc(ArrThis,nSptsThis*5*sizeof(*ArrThis));
-        for (j=0;j<nSptsThis;j++){
-            for (k=0;k<nAllSpotsFin;k++){
-                if (fabs(allSpotsFin[k*5+0]-ArrThis[j*5+0])<tolOme){
-                    if (fabs(allSpotsFin[k*5+1]-ArrThis[j*5+3])<0.01){
-                        if (fabs(allSpotsFin[k*5+2]-ArrThis[j*5+4])<tolEta){
+        int iterAllSps;
+        for (iterAllSps=0;iterAllSps<nSpotsAll;iterAllSps++){
+            if ((int)AllSpots[10*iterAllSps+9] != i) continue;
+            int iterAllSpIDs;
+            for (iterAllSpIDs=0;iterAllSpIDs<nAllSpots;iterAllSpIDs++){
+                if ((int)AllSpots[k*5+5] == (int)allSpotIDs[iterAllSpIDs].ringNr){
+                    if (fabs(AllSpots[k*5+2]-allSpotIDs[iterAllSpIDs].omega)<tolOme){
+                        if (fabs(AllSpots[k*5+6]-allSpotIDs[iterAllSpIDs].eta)<tolEta){
                             size_t locThis;
-                            locThis = ((size_t)allSpotsFin[k*5+3])*maxNHKLs*nScans;
-                            locThis += ((size_t)allSpotsFin[k*5+4])*nScans;
+                            locThis = ((size_t)allSpotIDs[iterAllSpIDs].grainNr)*maxNHKLs*nScans;
+                            locThis += ((size_t)allSpotIDs[iterAllSpIDs].spotNr)*nScans;
                             locThis += i;
-                            sinoArr[locThis] = ArrThis[j*5+1];
-                            locThis = ((size_t)allSpotsFin[k*5+3])*maxNHKLs + ((size_t)allSpotsFin[k*5+4]);
-                            if (omeArr[locThis]==0) {
-                                omeArr[locThis] = allSpotsFin[k*5+0];
+                            sinoArr[locThis] = AllSpots[k*5+3];
+                            locThis = ((size_t)allSpotIDs[iterAllSpIDs].grainNr)*maxNHKLs + ((size_t)allSpotIDs[iterAllSpIDs].spotNr);
+                            if (omeArr[locThis]==-10000.0) {
+                                omeArr[locThis] = AllSpots[k*5+5];
                             }
                         }
                     }
                 }
             }
         }
-        free(ArrThis);
-        fclose(inpExtraF);
     }
-    free(allSpotsFin);
+
     char sinoFN[2048], omeFN[2048], HKLsFN[2048];
     sprintf(sinoFN,"%s/sinos_%d_%d_%d.bin",originalFolder,nUniques,maxNHKLs,nScans);
     sprintf(omeFN,"%s/omegas_%d_%d.bin",originalFolder,nUniques,maxNHKLs);
