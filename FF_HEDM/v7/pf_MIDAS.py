@@ -407,7 +407,8 @@ if oneSolPerVox==1:
 					orientInside = [float(val) for val in line.split()[4:]]
 					ang = rad2deg*GetMisOrientationAngleOM(orientThis,orientInside,sgnum)[0]
 					if ang < maxang:
-						fSp.write(line)
+						lineSplit = line.split()
+						fSp.write(f'{voxNr} {lineSplit[0]} {lineSplit[1]} {lineSplit[2]} {lineSplit[3]}')
 						break
 		f.close()
 	else:
