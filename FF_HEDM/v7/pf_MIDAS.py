@@ -359,7 +359,7 @@ if (runIndexing == 1):
 	outputIndex = [i.result() for i in resIndex]
 
 if oneSolPerVox==1:
-	# subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')+f' {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}',cwd=topdir,shell=True)
+	subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')+f' {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}',cwd=topdir,shell=True)
 	if doTomo == 1:
 		sinoFN = glob.glob("sinos_*.bin")[0]
 		nGrs = int(sinoFN.split('_')[1])
@@ -397,10 +397,6 @@ if oneSolPerVox==1:
 		for voxNr in range(nScans*nScans):
 			locX = voxNr % nScans - 1
 			locY = nScans - (voxNr//nScans + 1)
-			if (voxNr == 2398):
-				print(max_id[locY,locX])
-				print(locX,locY)
-			# print(locX,locY,voxNr)
 			if max_id[locY,locX] == -1:
 				continue
 			orientThis = uniqueOrientations[max_id[locY,locX],5:]
@@ -410,10 +406,7 @@ if oneSolPerVox==1:
 				for line in lines:
 					orientInside = [float(val) for val in line.split()[4:]]
 					ang = rad2deg*GetMisOrientationAngleOM(orientThis,orientInside,sgnum)[0]
-					if (voxNr == 2398):
-						print(orientThis,orientInside,ang)
 					if ang < maxang:
-						print(line)
 						fSp.write(line)
 						break
 		f.close()
