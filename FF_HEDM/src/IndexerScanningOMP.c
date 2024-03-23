@@ -1559,7 +1559,7 @@ main(int argc, char *argv[])
 	}
 
 	int thisRowNr;
-	printf("%s\n",Params.MicFN);
+	printf("%s %d\n",Params.MicFN,nrMic);
 	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
 	for (thisRowNr = startRowNr; thisRowNr < endRowNr; thisRowNr++){
 		FILE *valsF, *allF, *keyF;
