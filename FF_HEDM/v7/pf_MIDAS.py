@@ -426,8 +426,8 @@ if oneSolPerVox==1:
 			micF.write("header\n")
 			micF.write("header\n")
 			for spot in spotsToIndex:
-				voxNr = spot[0]
-				loc = spot[3]
+				voxNr = int(spot[0])
+				loc = int(spot[3])
 				data = np.fromfile(f'{topdir}/Output/IndexBest_voxNr_{str(voxNr).zfill(6)}.bin',dtype=np.double,count=16,offset=loc)
 				xThis = data[9]
 				yThis = data[10]
