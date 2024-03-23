@@ -493,7 +493,7 @@ void CompareSpots(RealType **TheorSpots, int nTheorSpots,
 			// fflush(stdout);
 			if ( fabs(yRot - ySpot) < BeamSize/2){
 				if ( fabs(TheorSpots[sp][13] - ObsSpotsLab[spotRow*10+8]) < MarginRadial )  {
-					if ( fabs(RefRad - ObsSpotsLab[spotRow*10+3]) < MarginRad ) {
+					if ( fabs(RefRad - ObsSpotsLab[spotRow*10+3]) < MarginRad || RefRad < 0 ) {
 						if ( fabs(TheorSpots[sp][12] - ObsSpotsLab[spotRow*10+6]) < etamargin ) {
 							diffOme = fabs(TheorSpots[sp][6] - ObsSpotsLab[spotRow*10+2]);
 							if ( diffOme < diffOmeBest ) {
@@ -1111,23 +1111,16 @@ int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis, str
 	AllGrainSpotsT = allocMatrix(nRowsOutput, N_COL_GRAINSPOTS);
 	GrainSpots = allocMatrix(nRowsPerGrain, N_COL_GRAINSPOTS );
 	TheorSpots = allocMatrix(nRowsPerGrain, N_COL_THEORSPOTS);
-	RealType MinMatchesToAccept;
-	int   bestnMatchesIsp = -1;
-	int   bestnTspotsIsp;
-	int nMatches, bestMatchFound=0;
+	int nMatches;
 	int r,c,i, SpotID;
 	int   rownr = 0;
-	int   matchNr=0, sp;
-	RealType MinInternalAngle=1000;
+	int   sp;
 	RealType Displ_y, Displ_z;
-	RealType fracMatches = 0;
-	RealType bestConfidence=0;
 	RealType FracThis;
-	RealType RefRad = 100;
+	RealType RefRad = -1;
 	// Calc spotID inside
 	CalcDiffrSpots_Furnace(OM, Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii,
 		Params.OmegaRanges, Params.BoxSizes, Params.NoOfOmegaRanges, Params.ExcludePoleAngle, TheorSpots, &nTspots);
-	MinMatchesToAccept = nTspots * Params.MinMatchesToAcceptFrac;
 	for (sp = 0 ; sp < nTspots ; sp++) {
 		displacement_spot_needed_COM(ga, gb, gc, TheorSpots[sp][3], TheorSpots[sp][4],
 		TheorSpots[sp][5], TheorSpots[sp][6], &Displ_y, &Displ_z );
@@ -1156,8 +1149,7 @@ int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis, str
 		for (i=0;i<17;i++) GrainMatches[0][i] = GrainMatchesT[0][i];
 		for (r = 0 ; r < nTspots ; r++) for (c = 0 ; c < 17 ; c++) AllGrainSpots[r][c] = AllGrainSpotsT[r][c];
 		for (r = nTspots; r < nRowsOutput; r++) for (c=0;c<17;c++) AllGrainSpots[r][c] = 0;
-	}
-	if (FracThis < Params.MinMatchesToAcceptFrac){
+	} else{
 		FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 		FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
 		FreeMemMatrix( TheorSpots, nRowsPerGrain);
@@ -1181,7 +1173,7 @@ int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis, str
 	for (i=0;i<rownr;i++) outArr2[i] = (int)AllGrainSpots[i][14];
 	fwrite(outArr2,rownr*sizeof(int),1,allF);
 	fprintf(keyF,"%zu %zu %zu %zu\n",(size_t)SpotID,(size_t)rownr,locVals,locAll);
-	printf("ID: %d, voxNr: %d, Confidence: %lf\n",SpotID,voxNr,fracMatches);
+	printf("ID: %d, voxNr: %d, Confidence: %lf\n",SpotID,voxNr,FracThis);
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 	FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
 	FreeMemMatrix( TheorSpots, nRowsPerGrain);
