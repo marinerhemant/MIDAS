@@ -347,9 +347,9 @@ main(int argc, char *argv[])
             if ((int)AllSpots[10*iterAllSps+9] != i) continue;
             int iterAllSpIDs;
             for (iterAllSpIDs=0;iterAllSpIDs<nAllSpots;iterAllSpIDs++){
-                if ((int)AllSpots[k*5+5] == (int)allSpotIDs[iterAllSpIDs].ringNr){
-                    if (fabs(AllSpots[k*5+2]-allSpotIDs[iterAllSpIDs].omega)<tolOme){
-                        if (fabs(AllSpots[k*5+6]-allSpotIDs[iterAllSpIDs].eta)<tolEta){
+                if ((int)AllSpots[10*iterAllSps+5] == allSpotIDs[iterAllSpIDs].ringNr){
+                    if (fabs(AllSpots[10*iterAllSps+2]-allSpotIDs[iterAllSpIDs].omega)<tolOme){
+                        if (fabs(AllSpots[10*iterAllSps+6]-allSpotIDs[iterAllSpIDs].eta)<tolEta){
                             size_t locThis;
                             locThis = ((size_t)allSpotIDs[iterAllSpIDs].grainNr)*maxNHKLs*nScans;
                             locThis += ((size_t)allSpotIDs[iterAllSpIDs].spotNr)*nScans;
