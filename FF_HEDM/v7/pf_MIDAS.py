@@ -405,6 +405,7 @@ if oneSolPerVox==1:
 					lines = f.readlines()
 				for line in lines:
 					orientInside = [float(val) for val in line.split()[4:]]
+					print(orientThis,orientInside)
 					ang = rad2deg*GetMisOrientationAngleOM(orientThis,orientInside,sgnum)[0]
 					if ang < maxang:
 						lineSplit = line.split()
