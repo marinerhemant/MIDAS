@@ -401,7 +401,7 @@ if oneSolPerVox==1:
 				print(max_id[locY,locX])
 				print(locX,locY)
 			# print(locX,locY,voxNr)
-			if max_id[locX,locY] == -1:
+			if max_id[locY,locX] == -1:
 				continue
 			orientThis = uniqueOrientations[max_id[locY,locX],5:]
 			if os.path.isfile(f'{topdir}/Output/UniqueIndexKeyOrientAll_voxNr_{voxNr}.txt'):
