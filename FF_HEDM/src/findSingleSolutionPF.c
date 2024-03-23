@@ -60,6 +60,9 @@ main(int argc, char *argv[])
     int voxNr;
     # pragma omp parallel for num_threads(numProcs) private(voxNr) schedule(dynamic)
     for (voxNr=0;voxNr<nScans*nScans;voxNr++){
+        char outKeyFN[2048];
+        sprintf(outKeyFN,"%s/UniqueIndexSingleKey.bin",folderName);
+        int ib = open(outKeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
         FILE *valsF, *keyF;
         char valsFN[2048], keyFN[2048];
         sprintf(valsFN,"%s/IndexBest_voxNr_%0*d.bin",folderName,6,voxNr);
@@ -148,9 +151,6 @@ main(int argc, char *argv[])
             nUniquesThis++;
         }
         FILE *outKeyF;
-        char outKeyFN[2048];
-        sprintf(outKeyFN,"%s/UniqueIndexSingleKey.bin",folderName);
-        int ib = open(outKeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
         size_t outarr[5] = {voxNr,keys[bestRow*4+0],keys[bestRow*4+1],keys[bestRow*4+2],keys[bestRow*4+3]};
         int rc = pwrite(ib,outarr,5*sizeof(size_t),5*sizeof(size_t)*voxNr);
         rc = close(ib);
