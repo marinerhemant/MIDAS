@@ -431,8 +431,8 @@ if oneSolPerVox==1:
 				print(voxNr,loc)
 				data = np.fromfile(f'{topdir}/Output/IndexBest_voxNr_{str(voxNr).zfill(6)}.bin',dtype=np.double,count=16,offset=loc)
 				print(voxNr,data)
-				xThis = data[9]
-				yThis = data[10]
+				xThis = data[11]
+				yThis = data[12]
 				omThis = data[2:11]
 				Euler = OrientMat2Euler(omThis)
 				micF.write(f"0.0 0.0 0.0 {xThis} {yThis} 0.0 0.0 {Euler[0]} {Euler[1]} {Euler[2]} 0.0 0.0\n")

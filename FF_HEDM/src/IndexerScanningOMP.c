@@ -1516,12 +1516,10 @@ main(int argc, char *argv[])
 			sscanf(aline,"%s %s %s %lf %lf %s %s %lf %lf %lf %s %s",dummy,dummy,dummy,
 					&mic[nrMic*5+0],&mic[nrMic*5+1],dummy,dummy,&mic[nrMic*5+2],
 					&mic[nrMic*5+3],&mic[nrMic*5+4],dummy,dummy);
-			printf("%lf %lf %lf %lf %lf %s",mic[nrMic*5+0],mic[nrMic*5+1],mic[nrMic*5+2],mic[nrMic*5+3],mic[nrMic*5+4],aline);
 			nrMic++;
 		}
 		realloc(mic,nrMic*5*sizeof(*mic));
 	}
-	return 0;
 	int startRowNr;
 	int endRowNr;
 
@@ -1589,7 +1587,7 @@ main(int argc, char *argv[])
 					bestRow = iter;
 				}
 			}
-			printf("%d\n",bestRow);
+			printf("%d %d\n",thisRowNr,bestRow);
 			double eulerThis[3], OMThis[3][3];
 			if (bestRow != -1){
 				eulerThis[0] = mic[bestRow*5+2];
