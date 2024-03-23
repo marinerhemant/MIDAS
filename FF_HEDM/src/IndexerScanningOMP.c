@@ -1516,8 +1516,8 @@ main(int argc, char *argv[])
 			sscanf(aline,"%s %s %s %lf %lf %s %s %lf %lf %lf %s %s",dummy,dummy,dummy,
 					&mic[nrMic*5+0],&mic[nrMic*5+1],dummy,dummy,&mic[nrMic*5+2],
 					&mic[nrMic*5+3],&mic[nrMic*5+4],dummy,dummy);
-			nrMic++;
 			printf("%lf %lf %lf %lf %lf %s",mic[nrMic*5+0],mic[nrMic*5+1],mic[nrMic*5+2],mic[nrMic*5+3],mic[nrMic*5+4],aline);
+			nrMic++;
 		}
 		realloc(mic,nrMic*5*sizeof(*mic));
 	}
