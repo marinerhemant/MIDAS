@@ -192,7 +192,7 @@ main(int argc, char *argv[])
                     markArr[j] = true;
                 }
             }
-            printf("%d %d %d %lf %lf\n",voxNr,i,bRN,bCon,bIA);
+            printf("%d %d %d %d %lf %lf %lf %lf\n",voxNr,i,bRN,bestRow,bCon,bestConf,bIA,bestIA);
             for (j=0;j<4;j++) uniqueArrThis[nUniquesThis*4+j] = keys[bRN*4+j];
             for (j=0;j<9;j++) uniqueOrientArrThis[nUniquesThis*9+j] = OMArr[bRN*9+j];
             nUniquesThis++;
