@@ -371,7 +371,8 @@ main(int argc, char *argv[])
     }
 
     // Sort based on omegas???
-    for (i=0;i<nUniques;i++){
+    // for (i=0;i<nUniques;i++){
+    for (i=0;i<1;i++){
         struct SinoSortData *st;
         st = malloc(maxNHKLs*sizeof(*st));
         int nSpThis=0;
@@ -383,6 +384,7 @@ main(int argc, char *argv[])
             for (k=0;k<nScans;k++) st[j].intensities[k] = sinoArr[i*maxNHKLs*nScans+j*nScans+k];
             nSpThis ++;
         }
+        printf("\n");
         qsort(st,nSpThis,sizeof(struct SinoSortData),cmpfunc);
         for (j=0;j<nSpThis;j++){
             omeArr[i*maxNHKLs+j] = st[j].angle;
@@ -390,6 +392,7 @@ main(int argc, char *argv[])
             for (k=0;k<nScans;k++) sinoArr[i*maxNHKLs*nScans+j*nScans+k] = st[j].intensities[k];
             free(st[j].intensities);
         }
+        printf("\n");
         free(st);
     }
 
