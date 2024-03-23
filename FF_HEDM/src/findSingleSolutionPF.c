@@ -161,19 +161,38 @@ main(int argc, char *argv[])
         double *uniqueOrientArrThis;
         uniqueOrientArrThis = calloc(nIDs*9,sizeof(*uniqueOrientArrThis));
         int nUniquesThis = 0;
+        int bRN;
+        double bCon, bIA, conIn, iaIn;
         for (i=0;i<nIDs;i++){
             if (markArr[i]==true) continue;
             for (j=0;j<9;j++) OMThis[j] = OMArr[i*9+j];
             OrientMat2Quat(OMThis,Quat1);
+            bCon = confIAArr[i*2+0];
+            bIA = confIAArr[i*2+1];
             for (j=i+1;j<nIDs;j++){
                 if (markArr[j]==true) continue;
                 for (k=0;k<9;k++) OMInside[k] = OMArr[j*9+k];
                 OrientMat2Quat(OMInside,Quat2);
                 Angle = GetMisOrientation(Quat1,Quat2,Axis,&ang,sgNr);
-                if (ang<maxAng) markArr[j] = true;
+                conIn = confIAArr[j*2+0];
+                iaIn = confIAArr[j*2+1];
+                if (ang<maxAng){
+                    if (bCon < conIn){
+                        bCon = conIn;
+                        bIA = iaIn;
+                        bRN = j;
+                    } else if (bCon == conIn){
+                        if (bIA > iaIn){
+                            bCon = conIn;
+                            bIA = iaIn;
+                            bRN = j;
+                        }
+                    }
+                    markArr[j] = true;
+                }
             }
-            for (j=0;j<4;j++) uniqueArrThis[nUniquesThis*4+j] = keys[i*4+j];
-            for (j=0;j<9;j++) uniqueOrientArrThis[nUniquesThis*9+j] = OMThis[j];
+            for (j=0;j<4;j++) uniqueArrThis[nUniquesThis*4+j] = keys[bRN*4+j];
+            for (j=0;j<9;j++) uniqueOrientArrThis[nUniquesThis*9+j] = OMArr[bRN*9+j];
             nUniquesThis++;
         }
         FILE *outKeyF;
