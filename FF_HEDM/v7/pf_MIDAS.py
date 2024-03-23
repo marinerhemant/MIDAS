@@ -467,6 +467,7 @@ if oneSolPerVox==1:
 			filesdata[i][j] = float(data[j])
 		OM = filesdata[i][1:10]
 		quat = BringDownToFundamentalRegionSym(OrientMat2Quat(OM),NrSym,Sym)
+		print(filesdata[i][26])
 		if filesdata[i][26] == np.nan:
 			continue
 		filesdata[i][39:43] = quat
