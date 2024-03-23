@@ -395,7 +395,7 @@ if oneSolPerVox==1:
 		uniqueOrientations = np.genfromtxt(f'{topdir}/UniqueOrientations.csv',delimiter=' ')
 		f = open(f'{topdir}/SpotsToIndex.csv','w')
 		for voxNr in range(nScans*nScans):
-			locX = voxNr % nScans
+			locX = voxNr % nScans - 1
 			locY = nScans - (voxNr//nScans + 1)
 			if (voxNr == 2398):
 				print(max_id[locX,locY])
