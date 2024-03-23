@@ -352,6 +352,7 @@ if len(micFN) > 0:
 paramsf.close()
 
 if (runIndexing == 1):
+	print("Running indexing.")
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
 	resIndex = []
 	for nodeNr in range(nNodes):
@@ -386,7 +387,7 @@ if oneSolPerVox==1:
 			Image.fromarray(recon).save('Recons/recon_grNr_'+str.zfill(str(grNr),4)+'.tif')
 
 		full_recon = np.max(all_recons,axis=0)
-		print("Done with tomo recon, now running the optimization.")
+		print("Done with tomo recon, now finding the orientation candidate at each location.")
 		max_id = np.argmax(all_recons,axis=0).astype(np.int32)
 		max_id[full_recon==0] = -1
 		Image.fromarray(max_id).save('Recons/Full_recon_max_project_grID.tif')
@@ -415,6 +416,7 @@ if oneSolPerVox==1:
 		####### We will take the SpotsToIndex.csv file, get orientations for each position, generate a micFile
 		####### Then run Indexing again by supplying the micFile to do Indexing......
 		if len(micFN) == 0:
+			print("Writing a dummy mic file to run indexing again.")
 			fnSp = f'{topdir}/SpotsToIndex.csv','r'
 			spotsToIndex = np.genfromtxt(fnSp,delimiter=' ')
 			micFN = 'singleSolution.mic'
@@ -436,7 +438,9 @@ if oneSolPerVox==1:
 			paramsf = open(f'{topdir}/paramstest.txt','a')
 			paramsf.write(f'MicFile {topdir}/singleSolution.mic\n')
 			paramsf.close()
-			subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
+			shutil.rmtree(f'{topdir}/Output')
+			shutil.rmtree(f'{topdir}/Results')
+			print("Running indexing again.")
 			resIndex = []
 			for nodeNr in range(nNodes):
 				resIndex.append(indexscanning(topdir,numProcs,nScans,blockNr=nodeNr,numBlocks=nNodes))
