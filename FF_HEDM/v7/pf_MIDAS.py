@@ -467,7 +467,6 @@ if oneSolPerVox==1:
 			filesdata[i][j] = float(data[j])
 		OM = filesdata[i][1:10]
 		quat = BringDownToFundamentalRegionSym(OrientMat2Quat(OM),NrSym,Sym)
-		print(filesdata[i][26])
 		if isnan(filesdata[i][26]):
 			continue
 		if filesdata[i][26] < 0 or filesdata[i][26] > 1.0000000001:
