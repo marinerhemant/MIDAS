@@ -315,6 +315,7 @@ main(int argc, char *argv[])
         free(IDArrThis);
         nAllSpots+=nSpots;
     }
+    printf("nAllSpotsGrains: %zu\n",nAllSpots);
     free(uniqueKeyArr);
     realloc(allSpotIDs,nAllSpots*sizeof(*allSpotIDs));
     char fnUniqueSpots[2048];
