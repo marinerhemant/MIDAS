@@ -262,10 +262,7 @@ main(int argc, char *argv[])
 	struct stat s;
 	int status;
 	size_t size;
-	size_t size2;
-	char tmpstr[2048];
-	sprintf(tmpstr,"%s",originalFolder);
-	char filename[2048], *cwd=dirname(tmpstr);
+	char filename[2048];
 	sprintf(filename,"%s/Spots.bin",cwd);
 	char cmmd[4096];
 	sprintf(cmmd,"cp %s /dev/shm/",filename);
@@ -279,7 +276,10 @@ main(int argc, char *argv[])
 	size = s.st_size;
 	AllSpots = mmap(0,size,PROT_READ,MAP_SHARED,fd,0);
 	check (AllSpots == MAP_FAILED,"mmap %s failed: %s", filename, strerror(errno));
-	int nSpotsAll =  (int) size/(10*sizeof(double));
+	size_t nSpotsAll;
+	nSpotsAll = size;
+	nSpotsAll /= sizeof(double);
+	nSpotsAll /= 10;
     printf("nSpotsAll: %d\n",nSpotsAll);
 
     // Now we read each spot for each grain and get its information.
