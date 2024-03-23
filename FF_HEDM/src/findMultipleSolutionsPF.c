@@ -104,6 +104,7 @@ main(int argc, char *argv[])
                         }
                     }
                     markArr[j] = true;
+                }
             }
             for (j=0;j<4;j++) uniqueArr[nUniques*4+j] = keys[bRN*4+j];
             nUniques++;
