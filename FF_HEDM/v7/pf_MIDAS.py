@@ -440,7 +440,6 @@ if oneSolPerVox==1:
 		f = open(f'{topdir}/SpotsToIndex.csv','w')
 		idData = np.fromfile(f'{topdir}/Output/UniqueIndexSingleKey.bin',dtype=np.uintp,count=nScans*nScans*5).reshape((-1,5))
 		for voxNr in range(nScans*nScans):
-			print(f"{idData[voxNr,0]} {idData[voxNr,1]} {idData[voxNr,2]} {idData[voxNr,3]} {idData[voxNr,4]}")
 			if idData[voxNr,1] !=0:
 				f.write(f"{idData[voxNr,0]} {idData[voxNr,1]} {idData[voxNr,2]} {idData[voxNr,3]} {idData[voxNr,4]}\n")
 		f.close()
@@ -468,6 +467,8 @@ if oneSolPerVox==1:
 			filesdata[i][j] = float(data[j])
 		OM = filesdata[i][1:10]
 		quat = BringDownToFundamentalRegionSym(OrientMat2Quat(OM),NrSym,Sym)
+		if filesdata[i][26] == np.nan:
+			continue
 		filesdata[i][39:43] = quat
 		info_arr[:,voxNr] = filesdata[i][[0,-4,-3,-2,-1,11,12,15,16,17,18,19,20,22,23,24,26,27,28,29,31,32,35]]
 		i+=1
