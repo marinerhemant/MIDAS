@@ -1511,6 +1511,7 @@ main(int argc, char *argv[])
 		fgets(aline,1000,micF);
 		fgets(aline,1000,micF);
 		fgets(aline,1000,micF);
+		printf("%s\n",aline);
 		while (fgets(aline,1000,micF)!=NULL){
 			sscanf("%s %s %s %lf %lf %s %s %lf %lf %lf %s %s",dummy,dummy,dummy,
 					&mic[nrMic*5+0],&mic[nrMic*5+1],dummy,dummy,&mic[nrMic*5+2],
