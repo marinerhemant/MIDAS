@@ -1140,36 +1140,24 @@ int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis, str
 	FracThis = (double)nMatches / (double)nTspots;
 	printf("%d %d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",nTspots,nMatches,FracThis,OM[0][0],OM[0][1],OM[0][2],OM[1][0],OM[1][1],OM[1][2],OM[2][0],OM[2][1],OM[2][2],xThis,yThis);
 	if (FracThis > Params.MinMatchesToAcceptFrac){
-		if (FracThis >= bestConfidence){
-			bestConfidence = FracThis;
-			bestMatchFound = 1;
-			for (i = 0 ;  i < 9 ; i ++) GrainMatchesT[0][i] = OM[i/3][i%3];
-			GrainMatchesT[0][9]  = ga;
-			GrainMatchesT[0][10] = gb;
-			GrainMatchesT[0][11] = gc;
-			GrainMatchesT[0][12] = nTspots;
-			GrainMatchesT[0][13] = nMatches;
-			GrainMatchesT[0][14] = 1;
-			for (r = 0 ; r < nTspots ; r++) {
-				for (c = 0 ; c < 15 ; c++) AllGrainSpotsT[r][c] = GrainSpots[r][c];
-				AllGrainSpotsT[r][15] = 1;
-			}
-			CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance );
-			if (FracThis == bestConfidence && GrainMatchesT[0][15] > MinInternalAngle){
-				
-			} else{
-				MinInternalAngle = GrainMatchesT[0][15];
-				bestnMatchesIsp = nMatches;
-				bestnTspotsIsp = nTspots;
-				rownr = nTspots;
-				matchNr = 1;
-				for (i=0;i<17;i++) GrainMatches[0][i] = GrainMatchesT[0][i];
-				for (r = 0 ; r < nTspots ; r++) for (c = 0 ; c < 17 ; c++) AllGrainSpots[r][c] = AllGrainSpotsT[r][c];
-				for (r = nTspots; r < nRowsOutput; r++) for (c=0;c<17;c++) AllGrainSpots[r][c] = 0;
-			}
+		for (i = 0 ;  i < 9 ; i ++) GrainMatchesT[0][i] = OM[i/3][i%3];
+		GrainMatchesT[0][9]  = ga;
+		GrainMatchesT[0][10] = gb;
+		GrainMatchesT[0][11] = gc;
+		GrainMatchesT[0][12] = nTspots;
+		GrainMatchesT[0][13] = nMatches;
+		GrainMatchesT[0][14] = 1;
+		for (r = 0 ; r < nTspots ; r++) {
+			for (c = 0 ; c < 15 ; c++) AllGrainSpotsT[r][c] = GrainSpots[r][c];
+			AllGrainSpotsT[r][15] = 1;
 		}
+		CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance );
+		rownr = nTspots;
+		for (i=0;i<17;i++) GrainMatches[0][i] = GrainMatchesT[0][i];
+		for (r = 0 ; r < nTspots ; r++) for (c = 0 ; c < 17 ; c++) AllGrainSpots[r][c] = AllGrainSpotsT[r][c];
+		for (r = nTspots; r < nRowsOutput; r++) for (c=0;c<17;c++) AllGrainSpots[r][c] = 0;
 	}
-	if (bestnMatchesIsp < 0 || (fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 || (int)bestnMatchesIsp == -1 || bestMatchFound == 0) || fracMatches < Params.MinMatchesToAcceptFrac){
+	if (FracThis < Params.MinMatchesToAcceptFrac){
 		FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 		FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
 		FreeMemMatrix( TheorSpots, nRowsPerGrain);
@@ -1317,10 +1305,6 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 						  GrainMatches[0][8], GrainMatches[0][9], GrainMatches[0][10],
 						  GrainMatches[0][11], GrainMatches[0][12], GrainMatches[0][13]};
 	size_t locVals, locAll;
-	printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf\n",GrainMatches[0][0], GrainMatches[0][1],
-						  GrainMatches[0][2], GrainMatches[0][3], GrainMatches[0][4],
-						  GrainMatches[0][5], GrainMatches[0][6], GrainMatches[0][7],
-						  GrainMatches[0][8]);
 	locVals = ftell(valsF);
 	locAll = ftell(allF);
 	fwrite(outArr,16*sizeof(double),1,valsF);
