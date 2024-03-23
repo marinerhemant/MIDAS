@@ -41,7 +41,6 @@ struct InputData{
 	double eta;
 	int ringNr;
 	int mergedID;
-	int originalID;
 	int scanNr;
 	int grainNr;
     int spotNr;
@@ -192,7 +191,6 @@ main(int argc, char *argv[])
                     markArr[j] = true;
                 }
             }
-            // printf("%d %d %d %d %lf %lf %lf %lf\n",voxNr,i,bRN,bestRow,bCon,bestConf,bIA,bestIA);
             for (j=0;j<4;j++) uniqueArrThis[nUniquesThis*4+j] = keys[bRN*4+j];
             for (j=0;j<9;j++) uniqueOrientArrThis[nUniquesThis*9+j] = OMArr[bRN*9+j];
             nUniquesThis++;
@@ -261,12 +259,10 @@ main(int argc, char *argv[])
         for (j=0;j<9;j++) uniqueOrientArr[nUniques*9+j] = allOrientationsArr[bestOrientationRowNr*10+j];
         nUniques++;
     }
-    // nUniques = 1;
     free(markArr2);
     free(allKeyArr);
     free(allOrientationsArr);
     char *originalFolder = argv[1];
-    // Write out
     FILE *uniqueOrientationsF;
     char uniqueOrientsFN[2048];
     sprintf(uniqueOrientsFN,"%s/UniqueOrientations.csv",originalFolder);
@@ -303,7 +299,6 @@ main(int argc, char *argv[])
 	nSpotsAll /= 10;
     printf("nSpotsAll: %d\n",nSpotsAll);
 
-    // Now we read each spot for each grain and get its information.
     struct InputData *allSpotIDs;
     double *allSpots;
     allSpotIDs = calloc(MAX_N_SPOTS_PER_GRAIN*nUniques,sizeof(*allSpotIDs));
@@ -331,15 +326,12 @@ main(int argc, char *argv[])
                 printf("Data is not aligned. Please check. Exiting.\n");
                 return 1;
             }
-            // printf("%d\n",IDArrThis[j]);
             allSpotIDs[nAllSpots+j].mergedID = IDArrThis[j];
             allSpotIDs[nAllSpots+j].omega = AllSpots[10*(IDArrThis[j]-1)+2];
             allSpotIDs[nAllSpots+j].eta = AllSpots[10*(IDArrThis[j]-1)+6];
             allSpotIDs[nAllSpots+j].ringNr = (int)AllSpots[10*(IDArrThis[j]-1)+5];
             allSpotIDs[nAllSpots+j].grainNr = i;
             allSpotIDs[nAllSpots+j].spotNr = j;
-            // printf("%d %d %d %d %lf %lf\n",allSpotIDs[nAllSpots+j].mergedID,allSpotIDs[nAllSpots+j].grainNr,
-            // allSpotIDs[nAllSpots+j].spotNr,allSpotIDs[nAllSpots+j].ringNr,allSpotIDs[nAllSpots+j].omega,allSpotIDs[nAllSpots+j].eta);
         }
         free(IDArrThis);
         nAllSpots+=nSpots;
@@ -395,7 +387,6 @@ main(int argc, char *argv[])
         }
     }
 
-    // Sort based on omegas???
     for (i=0;i<nUniques;i++){
         struct SinoSortData *st;
         st = malloc(maxNHKLs*sizeof(*st));
@@ -403,20 +394,16 @@ main(int argc, char *argv[])
         for (j=0;j<maxNHKLs;j++){
             if (omeArr[i*maxNHKLs+j]==-10000.0) break;
             st[j].angle = omeArr[i*maxNHKLs+j];
-            // printf("%lf ",omeArr[i*maxNHKLs+j]);
             st[j].intensities = calloc(nScans,sizeof(st[j].intensities));
             for (k=0;k<nScans;k++) st[j].intensities[k] = sinoArr[i*maxNHKLs*nScans+j*nScans+k];
             nSpThis ++;
         }
-        // printf("\n");
         qsort(st,nSpThis,sizeof(struct SinoSortData),cmpfunc);
         for (j=0;j<nSpThis;j++){
             omeArr[i*maxNHKLs+j] = st[j].angle;
-            // printf("%lf ",omeArr[i*maxNHKLs+j]);
             for (k=0;k<nScans;k++) sinoArr[i*maxNHKLs*nScans+j*nScans+k] = st[j].intensities[k];
             free(st[j].intensities);
         }
-        // printf("\n");
         free(st);
     }
 

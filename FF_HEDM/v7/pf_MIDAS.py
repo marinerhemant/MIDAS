@@ -409,10 +409,45 @@ if oneSolPerVox==1:
 					if ang < maxang:
 						lineSplit = line.split()
 						outStr = f'{voxNr} {lineSplit[0]} {lineSplit[1]} {lineSplit[2]} {lineSplit[3]}\n'
-						# print(outStr)
 						fSp.write(outStr)
 						break
 		fSp.close()
+		####### We will take the SpotsToIndex.csv file, get orientations for each position, generate a micFile
+		####### Then run Indexing again by supplying the micFile to do Indexing......
+		if len(micFN) == 0:
+			fnSp = f'{topdir}/SpotsToIndex.csv','r'
+			spotsToIndex = np.genfromtxt(fnSp,delimiter=' ')
+			micFN = 'singleSolution.mic'
+			micF = open(micFN,'w')
+			micF.write("header\n")
+			micF.write("header\n")
+			micF.write("header\n")
+			micF.write("header\n")
+			for spot in spotsToIndex:
+				voxNr = spot[0]
+				loc = spot[3]
+				data = np.fromfile(f'{topdir}/Output/IndexBest_voxNr_{str(voxNr).zfill(6)}.bin',dtype=np.double,count=16,offset=loc)
+				xThis = data[9]
+				yThis = data[10]
+				omThis = data[2:11]
+				Euler = OrientMat2Euler(omThis)
+				micF.write(f"0.0 0.0 0.0 {xThis} {yThis} 0.0 0.0 {Euler[0]} {Euler[1]} {Euler[2]} 0.0 0.0\n")
+			micF.close()
+			paramsf = open(f'{topdir}/paramstest.txt','a')
+			paramsf.write(f'MicFile {topdir}/singleSolution.mic\n')
+			paramsf.close()
+			subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
+			resIndex = []
+			for nodeNr in range(nNodes):
+				resIndex.append(indexscanning(topdir,numProcs,nScans,blockNr=nodeNr,numBlocks=nNodes))
+			outputIndex = [i.result() for i in resIndex]
+			subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')+f' {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}',cwd=topdir,shell=True)
+			f = open(f'{topdir}/SpotsToIndex.csv','w')
+			idData = np.fromfile(f'{topdir}/Output/UniqueIndexSingleKey.bin',dtype=np.uintp,count=nScans*nScans*5).reshape((-1,5))
+			for voxNr in range(nScans*nScans):
+				if idData[voxNr,1] !=0:
+					f.write(f"{idData[voxNr,0]} {idData[voxNr,1]} {idData[voxNr,2]} {idData[voxNr,3]} {idData[voxNr,4]}\n")
+			f.close()
 	else:
 		f = open(f'{topdir}/SpotsToIndex.csv','w')
 		idData = np.fromfile(f'{topdir}/Output/UniqueIndexSingleKey.bin',dtype=np.uintp,count=nScans*nScans*5).reshape((-1,5))

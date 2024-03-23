@@ -1,7 +1,8 @@
-from math import sin, cos, acos, sqrt
+from math import sin, cos, acos, sqrt, fabs
 import numpy as np
 rad2deg = 57.2957795130823
 deg2rad = 0.0174532925199433
+EPS = 0.000000000001
 
 def normalize(quat):
 	return quat/np.linalg.norm(quat)
@@ -223,3 +224,39 @@ def CalcEtaAngleAll(y, z):
 	alpha = rad2deg*np.arccos(z/np.linalg.norm(np.array([y,z]),axis=0))
 	alpha[y>0] *= -1
 	return alpha
+
+def sin_cos_to_angle(s,c):
+	if s>=0:
+		return acos(c)
+	else:
+		return 2.0 * np.pi - acos(c)
+
+def OrientMat2Euler(m):
+	if len(m.shape)==1:
+		m = m.reshape((3,3))
+	determinant = np.linalg.det(m)
+	if (fabs(m[2][2] - 1.0) < EPS):
+		phi = 0
+	else:
+		phi = acos(m[2][2])
+	sph = sin(phi)
+	if (fabs(sph) < EPS):
+		psi = 0.0
+		if fabs(m[2][2] - 1.0) < EPS:
+			theta = sin_cos_to_angle(m[1][0], m[0][0])
+		else: 
+			theta = sin_cos_to_angle(-m[1][0], m[0][0])
+	else:
+		if fabs(-m[1][2] / sph) <= 1.0:
+			psi = sin_cos_to_angle(m[0][2] / sph, -m[1][2] / sph)
+		else:
+			psi = sin_cos_to_angle(m[0][2] / sph,1)
+		if fabs(m[2][1] / sph) <= 1.0:
+			theta = sin_cos_to_angle(m[2][0] / sph, m[2][1] / sph)
+		else: 
+			sin_cos_to_angle(m[2][0] / sph,1)
+	Euler = np.zeros(3)
+	Euler[0] = psi
+	Euler[1] = phi
+	Euler[2] = theta
+	return Euler
