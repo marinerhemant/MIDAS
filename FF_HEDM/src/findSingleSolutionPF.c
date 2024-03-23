@@ -263,7 +263,7 @@ main(int argc, char *argv[])
 	int status;
 	size_t size;
 	char filename[2048];
-	sprintf(filename,"%s/Spots.bin",cwd);
+	sprintf(filename,"%s/Spots.bin",originalFolder);
 	char cmmd[4096];
 	sprintf(cmmd,"cp %s /dev/shm/",filename);
 	system(cmmd);
