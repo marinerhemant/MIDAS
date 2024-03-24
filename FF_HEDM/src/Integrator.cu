@@ -128,13 +128,13 @@ void integrate_noMapMask (double px, double Lsd, int bigArrSize, int Normalize, 
 			testPos += ThisVal.y;
 			Intensity += dImage[testPos]*ThisVal.frac;
 			totArea += ThisVal.frac;
+			print(totArea);
 		}
 		if (Intensity != 0){
 			if (Normalize == 1){
 				Intensity /= totArea;
 			}
 			IntArrPerFrame[idx] = Intensity;
-			IntArrPerFrame[idx]+= 1;
 			if (sumImages==1){
 				SumMatrix[idx] += Intensity;
 			}
