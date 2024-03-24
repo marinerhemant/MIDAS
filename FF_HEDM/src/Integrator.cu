@@ -794,7 +794,7 @@ int main(int argc, char **argv)
 	gpuErrchk(cudaMemcpy(devPxList,pxList,szPxList,cudaMemcpyHostToDevice));
 	gpuErrchk(cudaMemcpy(devNPxList,nPxList,szNPxList,cudaMemcpyHostToDevice));
 	double *devImage;
-	cudaMalloc(&devImage,NrPixelsY*NrPixelsZ*sizeof(double)));
+	cudaMalloc(&devImage,NrPixelsY*NrPixelsZ*sizeof(double));
 	int *devMapMask;
 	if (mapMaskSize !=0){
 		gpuErrchk(cudaMalloc(&devMapMask,mapMaskSize*sizeof(int)));
