@@ -867,7 +867,7 @@ int main(int argc, char **argv)
 		t4 = clock();
 		diffT2 += ((double)(t4-t3))/CLOCKS_PER_SEC;
 		t1 = clock();
-		// gpuErrchk(cudaMemset(devIntArrPerFrame,0,bigArrSize*sizeof(double)));
+		gpuErrchk(cudaMemset(devIntArrPerFrame,0,bigArrSize*sizeof(double)));
 		gpuErrchk(cudaMemcpy(devImage,Image,NrPixelsY*NrPixelsZ*sizeof(double),cudaMemcpyHostToDevice));
 		gpuErrchk(cudaDeviceSynchronize());
 		if (mapMaskSize==0)
