@@ -114,6 +114,7 @@ void integrate_noMapMask (double px, double Lsd, int bigArrSize, int Normalize, 
 		double *dImage, double *IntArrPerFrame, double *PerFrameArr, double *SumMatrix)
 {
 	size_t idx = blockIdx.x*blockDim.x + threadIdx.x;
+	printf("%zu\n",idx);
 	if (idx < bigArrSize){
 		int l;
 		double Intensity=0, totArea=0;
