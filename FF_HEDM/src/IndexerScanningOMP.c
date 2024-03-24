@@ -1575,7 +1575,7 @@ main(int argc, char *argv[])
 			int idnr;
 			int thisID;
 			int nrRows = endRowNrSp-startRowNrSp+1;
-			printf("%d %lf %lf %d %d %d\n", thisRowNr,xThis,yThis,startRowNr,endRowNr,nrRows);
+			printf("%d %lf %lf %d %d %d\n", thisRowNr,xThis,yThis,startRowNr,endRowNr,endRowNr-startRowNr);
 			for (idnr = startRowNrSp; idnr<=endRowNrSp; idnr++){
 				angle = ObsSpotsLab[idnr*10+2];
 				thisID = (int)ObsSpotsLab[idnr*10+4];
