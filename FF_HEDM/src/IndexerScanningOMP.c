@@ -1497,7 +1497,6 @@ main(int argc, char *argv[])
 	int startRowNr;
 	int endRowNr;
 
-	// Get nVoxels
 	int nVoxels = numScans * numScans;
 	startRowNr = (int) (ceil((double)nVoxels / (double)nBlocks)) * blockNr;
 	int tmp = (int)(ceil((double)nVoxels / (double)nBlocks)) * (blockNr+1);
@@ -1506,7 +1505,6 @@ main(int argc, char *argv[])
 	SpotIDs = malloc(nSpotIDs*sizeof(*SpotIDs));
 	printf("%d %d %d %d %d %d %d\n",numScans,nVoxels,nBlocks,blockNr,startRowNr,endRowNr,numProcs);
 
-	// Make the grid (read positions from the positions.csv file).
 	FILE *positionsF = fopen("positions.csv","r");
 	if (positionsF == NULL){
 		printf("positions.csv file not found.\n");
@@ -1548,7 +1546,6 @@ main(int argc, char *argv[])
 		double xThis=0, yThis=0;
 		xThis = grid[thisRowNr*2+0];
 		yThis = grid[thisRowNr*2+1];
-		// In case we supply a NF recon, we need to figure out the orientation and just try that one
 		if (hasMic==1){
 			int iter;
 			int bestRow = -1;
@@ -1567,7 +1564,6 @@ main(int argc, char *argv[])
 				eulerThis[2] = mic[bestRow*5+4]*rad2deg;
 				Euler2OrientMat(eulerThis,OMThis);
 			}
-			// Now we will only run this orientation.
 			DoIndexingSingle(thisRowNr,OMThis,xThis,yThis,Params,valsF,allF,keyF);
 		}else {
 			double angle, newY;
