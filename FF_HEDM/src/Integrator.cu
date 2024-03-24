@@ -123,6 +123,9 @@ void integrate_noMapMask (double px, double Lsd, int bigArrSize, int Normalize, 
 		int *dNPxList, double *RBinsLow, double *RBinsHigh, double *EtaBinsLow, double *EtaBinsHigh, 
 		double *dImage, double *IntArrPerFrame, double *PerFrameArr, double *SumMatrix)
 {
+	IntArrPerFrame[0] = 1000;
+	IntArrPerFrame[200] = 1000;
+	IntArrPerFrame[2000] = 1000;
 	size_t idx = blockIdx.x*blockDim.x + threadIdx.x;
 	printf("%zu %d %d %d \n",idx,(int)blockIdx.x,(int)blockDim.x,(int)threadIdx.x);
 	if (idx < bigArrSize){
