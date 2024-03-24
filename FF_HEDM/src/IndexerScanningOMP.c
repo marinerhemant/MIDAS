@@ -1560,7 +1560,6 @@ main(int argc, char *argv[])
 					bestRow = iter;
 				}
 			}
-			// printf("%d %d %lf %lf %lf %lf %lf\n",thisRowNr,bestRow,xThis,mic[bestRow*5+0],yThis,mic[bestRow*5+1],bestLen);
 			double eulerThis[3], OMThis[3][3];
 			if (bestRow != -1){
 				eulerThis[0] = mic[bestRow*5+2]*rad2deg;
