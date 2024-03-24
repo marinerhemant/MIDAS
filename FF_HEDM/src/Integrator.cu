@@ -884,6 +884,7 @@ int main(int argc, char **argv)
 		if (i==0){
 			gpuErrchk(cudaMemcpy(PerFrameArr,devPerFrameArr,bigArrSize*4*sizeof(double),cudaMemcpyDeviceToHost));
 			gpuErrchk(cudaDeviceSynchronize());
+			for (j=0;j<bigArrSize;j++) PerFrameArr[j] = -1;
 			hsize_t dims[3] = {(unsigned long long)4,(unsigned long long)nRBins,(unsigned long long)nEtaBins};
 			herr_t status_f = H5LTmake_dataset_double(file_id, "/REtaMap", 3, dims, PerFrameArr);
 			H5LTset_attribute_int(file_id, "/REtaMap", "nEtaBins", &nEtaBins, 1);
