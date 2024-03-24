@@ -806,7 +806,7 @@ int main(int argc, char **argv)
 	clock_t t1, t2,t3,t4,t5,t6;
 	double diffT=0, diffT2=0,diffT3=0;
 	for (i=0;i<nFrames;i++){
-		for (i=0;j<bigArrSize;j++) IntArrPerFrame[j] = -1;
+		// for (i=0;j<bigArrSize;j++) IntArrPerFrame[j] = -1;
 		if (chunkFiles>0){
 			if ((i%chunkFiles) == 0){
 				memset(chunkArr,0,bigArrSize*sizeof(*chunkArr));
