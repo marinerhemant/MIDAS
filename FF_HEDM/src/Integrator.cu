@@ -123,11 +123,7 @@ void integrate_noMapMask (double px, double Lsd, int bigArrSize, int Normalize, 
 		int *dNPxList, double *RBinsLow, double *RBinsHigh, double *EtaBinsLow, double *EtaBinsHigh, 
 		double *dImage, double *IntArrPerFrame, double *PerFrameArr, double *SumMatrix)
 {
-	IntArrPerFrame[0] = 1000;
-	IntArrPerFrame[200] = 1000;
-	IntArrPerFrame[2000] = 1000;
 	size_t idx = blockIdx.x*blockDim.x + threadIdx.x;
-	printf("%zu %d %d %d \n",idx,(int)blockIdx.x,(int)blockDim.x,(int)threadIdx.x);
 	if (idx < bigArrSize){
 		int l;
 		double Intensity=0, totArea=0;
@@ -135,7 +131,6 @@ void integrate_noMapMask (double px, double Lsd, int bigArrSize, int Normalize, 
 		long long int nPixels, dataPos, testPos;
 		nPixels = dNPxList[2*idx + 0];
 		dataPos = dNPxList[2*idx + 1];
-		printf("%lld\n",nPixels);
 		for (l=0;l<nPixels;l++){
 			ThisVal = dPxList[dataPos + l];
 			testPos = ThisVal.z;
@@ -173,11 +168,7 @@ void integrate_MapMask (double px, double Lsd, int bigArrSize, int Normalize, in
 		int *dNPxList, double *RBinsLow, double *RBinsHigh, double *EtaBinsLow, double *EtaBinsHigh, 
 		double *dImage, double *IntArrPerFrame, double *PerFrameArr, double *SumMatrix)
 {
-	IntArrPerFrame[0] = 1000;
-	IntArrPerFrame[200] = 1000;
-	IntArrPerFrame[2000] = 1000;
 	size_t idx = blockIdx.x*blockDim.x + threadIdx.x;
-	printf("%zu %d %d %d \n",idx,(int)blockIdx.x,(int)blockDim.x,(int)threadIdx.x);
 	if (idx < bigArrSize){
 		int l;
 		double Intensity=0, totArea=0;
@@ -813,7 +804,6 @@ int main(int argc, char **argv)
 	clock_t t1, t2,t3,t4,t5,t6;
 	double diffT=0, diffT2=0,diffT3=0;
 	for (i=0;i<nFrames;i++){
-		for (j=0;j<bigArrSize;j++) IntArrPerFrame[j] = -1;
 		if (chunkFiles>0){
 			if ((i%chunkFiles) == 0){
 				memset(chunkArr,0,bigArrSize*sizeof(*chunkArr));
