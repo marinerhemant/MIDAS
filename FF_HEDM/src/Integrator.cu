@@ -125,43 +125,43 @@ void integrate_noMapMask (double px, double Lsd, int bigArrSize, int Normalize, 
 {
 	size_t idx = blockIdx.x*blockDim.x + threadIdx.x;
 	printf("%zu\n",idx);
-	if (idx < bigArrSize){
-		int l;
-		double Intensity=0, totArea=0;
-		struct data ThisVal;
-		long long int nPixels, dataPos, testPos;
-		nPixels = dNPxList[2*idx + 0];
-		dataPos = dNPxList[2*idx + 1];
-		printf("%lld\n",nPixels);
-		for (l=0;l<nPixels;l++){
-			ThisVal = dPxList[dataPos + l];
-			testPos = ThisVal.z;
-			testPos *= NrPixelsY;
-			testPos += ThisVal.y;
-			Intensity += dImage[testPos]*ThisVal.frac;
-			totArea += ThisVal.frac;
-			printf("%lf\n",totArea);
-		}
-		if (Intensity != 0){
-			if (Normalize == 1){
-				Intensity /= totArea;
-			}
-			IntArrPerFrame[idx] = Intensity;
-			if (sumImages==1){
-				SumMatrix[idx] += Intensity;
-			}
-		}
-		if (i==0){
-			int j = idx/nEtaBins;
-			int k = idx%nEtaBins;
-			double RMean = (RBinsLow[j]+RBinsHigh[j])/2;
-			double EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
-			PerFrameArr[0*bigArrSize+(j*nEtaBins+k)] = RMean;
-			PerFrameArr[1*bigArrSize+(j*nEtaBins+k)] = 57.2957795130823*atan(RMean*px/Lsd);
-			PerFrameArr[2*bigArrSize+(j*nEtaBins+k)] = EtaMean;
-			PerFrameArr[3*bigArrSize+(j*nEtaBins+k)] = totArea;
-		}
-	}
+	// if (idx < bigArrSize){
+	// 	int l;
+	// 	double Intensity=0, totArea=0;
+	// 	struct data ThisVal;
+	// 	long long int nPixels, dataPos, testPos;
+	// 	nPixels = dNPxList[2*idx + 0];
+	// 	dataPos = dNPxList[2*idx + 1];
+	// 	printf("%lld\n",nPixels);
+	// 	for (l=0;l<nPixels;l++){
+	// 		ThisVal = dPxList[dataPos + l];
+	// 		testPos = ThisVal.z;
+	// 		testPos *= NrPixelsY;
+	// 		testPos += ThisVal.y;
+	// 		Intensity += dImage[testPos]*ThisVal.frac;
+	// 		totArea += ThisVal.frac;
+	// 		printf("%lf\n",totArea);
+	// 	}
+	// 	if (Intensity != 0){
+	// 		if (Normalize == 1){
+	// 			Intensity /= totArea;
+	// 		}
+	// 		IntArrPerFrame[idx] = Intensity;
+	// 		if (sumImages==1){
+	// 			SumMatrix[idx] += Intensity;
+	// 		}
+	// 	}
+	// 	if (i==0){
+	// 		int j = idx/nEtaBins;
+	// 		int k = idx%nEtaBins;
+	// 		double RMean = (RBinsLow[j]+RBinsHigh[j])/2;
+	// 		double EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
+	// 		PerFrameArr[0*bigArrSize+(j*nEtaBins+k)] = RMean;
+	// 		PerFrameArr[1*bigArrSize+(j*nEtaBins+k)] = 57.2957795130823*atan(RMean*px/Lsd);
+	// 		PerFrameArr[2*bigArrSize+(j*nEtaBins+k)] = EtaMean;
+	// 		PerFrameArr[3*bigArrSize+(j*nEtaBins+k)] = totArea;
+	// 	}
+	// }
 }
 
 __global__
@@ -859,10 +859,9 @@ int main(int argc, char **argv)
 		t4 = clock();
 		diffT2 += ((double)(t4-t3))/CLOCKS_PER_SEC;
 		t1 = clock();
-		gpuErrchk(cudaMemset(devIntArrPerFrame,-1,bigArrSize*sizeof(double)));
+		gpuErrchk(cudaMemset(devIntArrPerFrame,0,bigArrSize*sizeof(double)));
 		gpuErrchk(cudaMemcpy(devImage,Image,NrPixelsY*NrPixelsZ*sizeof(double),cudaMemcpyHostToDevice));
 		gpuErrchk(cudaDeviceSynchronize());
-		printf("%zu\n",bigArrSize);
 		if (mapMaskSize==0)
 			integrate_noMapMask <<<((bigArrSize+2047)/2048),2048>>> (px,Lsd,bigArrSize,Normalize,sumImages,i,NrPixelsY, 
 													mapMaskSize,devMapMask,nRBins,nEtaBins,devPxList, 
