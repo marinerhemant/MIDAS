@@ -861,11 +861,13 @@ int main(int argc, char **argv)
 													devImage,devIntArrPerFrame,devPerFrameArr,devSumMatrix);
 		cudaDeviceSynchronize();
 		cudaMemcpy(IntArrPerFrame,devIntArrPerFrame,bigArrSize*sizeof(double),cudaMemcpyDeviceToHost);
+		cudaDeviceSynchronize();
 		t2 = clock();
 		diffT += ((double)(t2-t1))/CLOCKS_PER_SEC;
 		t5 = clock();
 		if (i==0){
 			cudaMemcpy(PerFrameArr,devPerFrameArr,bigArrSize*4*sizeof(double),cudaMemcpyDeviceToHost);
+			cudaDeviceSynchronize();
 			hsize_t dims[3] = {(unsigned long long)4,(unsigned long long)nRBins,(unsigned long long)nEtaBins};
 			herr_t status_f = H5LTmake_dataset_double(file_id, "/REtaMap", 3, dims, PerFrameArr);
 			H5LTset_attribute_int(file_id, "/REtaMap", "nEtaBins", &nEtaBins, 1);
@@ -909,6 +911,7 @@ int main(int argc, char **argv)
 		double *sumArr;
 		sumArr = (double *) malloc(bigArrSize*sizeof(*sumArr));
 		cudaMemcpy(sumArr,devSumMatrix,bigArrSize*sizeof(double),cudaMemcpyDeviceToHost);
+		cudaDeviceSynchronize();
 		hsize_t dimsum[2] = {(unsigned long long)nRBins,(unsigned long long)nEtaBins};
 		H5LTmake_dataset_double(file_id, "/SumFrames", 2, dimsum,sumArr);
 		H5LTset_attribute_string(file_id, "/SumFrames", "Header", "Radius,Eta");
