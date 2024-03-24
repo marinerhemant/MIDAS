@@ -48,6 +48,16 @@ typedef double pixelvalue;
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
 #define rad2deg 57.2957795130823
 
+#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
+{
+   if (code != cudaSuccess) 
+   {
+      fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+      if (abort) exit(code);
+   }
+}
+
 static void
 check (int test, const char * message, ...)
 {
@@ -744,26 +754,26 @@ int main(int argc, char **argv)
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	printf("Initializing device, getting allocation, time elapsed till now:\t%f s.\n",diftotal);
 	if (sumImages == 1){
-		cudaMalloc(&devSumMatrix,bigArrSize*sizeof(double));
-		cudaMemset(devSumMatrix,0,bigArrSize*sizeof(double));
+		gpuErrchk(cudaMalloc(&devSumMatrix,bigArrSize*sizeof(double)));
+		gpuErrchk(cudaMemset(devSumMatrix,0,bigArrSize*sizeof(double)));
 	}
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	printf("Starting to allocate small arrays, time elapsed till now:\t%f s.\n",diftotal);
 	IntArrPerFrame = (double *) calloc(bigArrSize,sizeof(*IntArrPerFrame));
-	cudaMalloc(&devIntArrPerFrame,bigArrSize*sizeof(double));
+	gpuErrchk(cudaMalloc(&devIntArrPerFrame,bigArrSize*sizeof(double)));
 	PerFrameArr = (double *) malloc(bigArrSize*4*sizeof(*PerFrameArr));
-	cudaMalloc(&devPerFrameArr,bigArrSize*4*sizeof(double));
+	gpuErrchk(cudaMalloc(&devPerFrameArr,bigArrSize*4*sizeof(double)));
 	double *devEtaBinsLow, *devEtaBinsHigh;
 	double *devRBinsLow, *devRBinsHigh;
-	cudaMalloc(&devEtaBinsLow,nEtaBins*sizeof(double));
-	cudaMalloc(&devEtaBinsHigh,nEtaBins*sizeof(double));
-	cudaMalloc(&devRBinsLow,nRBins*sizeof(double));
-	cudaMalloc(&devRBinsHigh,nRBins*sizeof(double));
-	cudaMemcpy(devEtaBinsLow,EtaBinsLow,nEtaBins*sizeof(double),cudaMemcpyHostToDevice);
-	cudaMemcpy(devEtaBinsHigh,EtaBinsHigh,nEtaBins*sizeof(double),cudaMemcpyHostToDevice);
-	cudaMemcpy(devRBinsLow,RBinsLow,nRBins*sizeof(double),cudaMemcpyHostToDevice);
-	cudaMemcpy(devRBinsHigh,RBinsHigh,nRBins*sizeof(double),cudaMemcpyHostToDevice);
+	gpuErrchk(cudaMalloc(&devEtaBinsLow,nEtaBins*sizeof(double)));
+	gpuErrchk(cudaMalloc(&devEtaBinsHigh,nEtaBins*sizeof(double)));
+	gpuErrchk(cudaMalloc(&devRBinsLow,nRBins*sizeof(double)));
+	gpuErrchk(cudaMalloc(&devRBinsHigh,nRBins*sizeof(double)));
+	gpuErrchk(cudaMemcpy(devEtaBinsLow,EtaBinsLow,nEtaBins*sizeof(double),cudaMemcpyHostToDevice));
+	gpuErrchk(cudaMemcpy(devEtaBinsHigh,EtaBinsHigh,nEtaBins*sizeof(double),cudaMemcpyHostToDevice));
+	gpuErrchk(cudaMemcpy(devRBinsLow,RBinsLow,nRBins*sizeof(double),cudaMemcpyHostToDevice));
+	gpuErrchk(cudaMemcpy(devRBinsHigh,RBinsHigh,nRBins*sizeof(double),cudaMemcpyHostToDevice));
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	printf("Allocated small arrays on device, will move the mapping information to device, time elapsed:\t%f s.\n",diftotal);
@@ -779,16 +789,16 @@ int main(int argc, char **argv)
 	// Move pxList and nPxList over to device.
 	struct data *devPxList;
 	int *devNPxList;
-	cudaMalloc(&devPxList,szPxList);
-	cudaMalloc(&devNPxList,szNPxList);
-	cudaMemcpy(devPxList,pxList,szPxList,cudaMemcpyHostToDevice);
-	cudaMemcpy(devNPxList,nPxList,szNPxList,cudaMemcpyHostToDevice);
+	gpuErrchk(cudaMalloc(&devPxList,szPxList));
+	gpuErrchk(cudaMalloc(&devNPxList,szNPxList));
+	gpuErrchk(cudaMemcpy(devPxList,pxList,szPxList,cudaMemcpyHostToDevice));
+	gpuErrchk(cudaMemcpy(devNPxList,nPxList,szNPxList,cudaMemcpyHostToDevice));
 	double *devImage;
-	cudaMalloc(&devImage,NrPixelsY*NrPixelsZ*sizeof(double));
+	cudaMalloc(&devImage,NrPixelsY*NrPixelsZ*sizeof(double)));
 	int *devMapMask;
 	if (mapMaskSize !=0){
-		cudaMalloc(&devMapMask,mapMaskSize*sizeof(int));
-		cudaMemcpy(devMapMask,mapMask,mapMaskSize*sizeof(int),cudaMemcpyHostToDevice);
+		gpuErrchk(cudaMalloc(&devMapMask,mapMaskSize*sizeof(int)));
+		gpuErrchk(cudaMemcpy(devMapMask,mapMask,mapMaskSize*sizeof(int),cudaMemcpyHostToDevice));
 	}
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
@@ -849,9 +859,9 @@ int main(int argc, char **argv)
 		t4 = clock();
 		diffT2 += ((double)(t4-t3))/CLOCKS_PER_SEC;
 		t1 = clock();
-		cudaMemset(devIntArrPerFrame,0,bigArrSize*sizeof(double));
-		cudaMemcpy(devImage,Image,NrPixelsY*NrPixelsZ*sizeof(double),cudaMemcpyHostToDevice);
-		cudaDeviceSynchronize();
+		gpuErrchk(cudaMemset(devIntArrPerFrame,0,bigArrSize*sizeof(double)));
+		gpuErrchk(cudaMemcpy(devImage,Image,NrPixelsY*NrPixelsZ*sizeof(double),cudaMemcpyHostToDevice));
+		gpuErrchk(cudaDeviceSynchronize());
 		printf("%zu\n",bigArrSize);
 		if (mapMaskSize==0)
 			integrate_noMapMask <<<((bigArrSize+2047)/2048),2048>>> (px,Lsd,bigArrSize,Normalize,sumImages,i,NrPixelsY, 
@@ -863,15 +873,15 @@ int main(int argc, char **argv)
 													mapMaskSize,devMapMask,nRBins,nEtaBins,devPxList, 
 													devNPxList,devRBinsLow,devRBinsHigh,devEtaBinsLow,devEtaBinsHigh, 
 													devImage,devIntArrPerFrame,devPerFrameArr,devSumMatrix);
-		cudaDeviceSynchronize();
-		cudaMemcpy(IntArrPerFrame,devIntArrPerFrame,bigArrSize*sizeof(double),cudaMemcpyDeviceToHost);
-		cudaDeviceSynchronize();
+		gpuErrchk(cudaDeviceSynchronize());
+		gpuErrchk(cudaMemcpy(IntArrPerFrame,devIntArrPerFrame,bigArrSize*sizeof(double),cudaMemcpyDeviceToHost));
+		gpuErrchk(cudaDeviceSynchronize());
 		t2 = clock();
 		diffT += ((double)(t2-t1))/CLOCKS_PER_SEC;
 		t5 = clock();
 		if (i==0){
-			cudaMemcpy(PerFrameArr,devPerFrameArr,bigArrSize*4*sizeof(double),cudaMemcpyDeviceToHost);
-			cudaDeviceSynchronize();
+			gpuErrchk(cudaMemcpy(PerFrameArr,devPerFrameArr,bigArrSize*4*sizeof(double),cudaMemcpyDeviceToHost));
+			gpuErrchk(cudaDeviceSynchronize());
 			hsize_t dims[3] = {(unsigned long long)4,(unsigned long long)nRBins,(unsigned long long)nEtaBins};
 			herr_t status_f = H5LTmake_dataset_double(file_id, "/REtaMap", 3, dims, PerFrameArr);
 			H5LTset_attribute_int(file_id, "/REtaMap", "nEtaBins", &nEtaBins, 1);
@@ -879,7 +889,7 @@ int main(int argc, char **argv)
 			H5LTset_attribute_string(file_id, "/REtaMap", "Header", "Radius,2Theta,Eta,BinArea");
 			H5LTset_attribute_string(file_id, "/REtaMap", "Units", "Pixels,Degrees,Degrees,Pixels");
 		}
-		cudaDeviceSynchronize();
+		gpuErrchk(cudaDeviceSynchronize());
 		hsize_t dim[2] = {(unsigned long long)nRBins,(unsigned long long)nEtaBins};
 		char dsetName[1024];
 		if (individualSave==1) {
@@ -914,8 +924,8 @@ int main(int argc, char **argv)
 	if (sumImages == 1){
 		double *sumArr;
 		sumArr = (double *) malloc(bigArrSize*sizeof(*sumArr));
-		cudaMemcpy(sumArr,devSumMatrix,bigArrSize*sizeof(double),cudaMemcpyDeviceToHost);
-		cudaDeviceSynchronize();
+		gpuErrchk(cudaMemcpy(sumArr,devSumMatrix,bigArrSize*sizeof(double),cudaMemcpyDeviceToHost));
+		gpuErrchk(cudaDeviceSynchronize());
 		hsize_t dimsum[2] = {(unsigned long long)nRBins,(unsigned long long)nEtaBins};
 		H5LTmake_dataset_double(file_id, "/SumFrames", 2, dimsum,sumArr);
 		H5LTset_attribute_string(file_id, "/SumFrames", "Header", "Radius,Eta");
