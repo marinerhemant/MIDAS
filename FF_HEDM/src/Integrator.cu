@@ -121,6 +121,7 @@ void integrate_noMapMask (double px, double Lsd, int bigArrSize, int Normalize, 
 		long long int nPixels, dataPos, testPos;
 		nPixels = dNPxList[2*idx + 0];
 		dataPos = dNPxList[2*idx + 1];
+		printf("%lld\n",nPixels);
 		for (l=0;l<nPixels;l++){
 			ThisVal = dPxList[dataPos + l];
 			testPos = ThisVal.z;
