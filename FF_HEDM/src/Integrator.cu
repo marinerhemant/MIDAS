@@ -406,7 +406,53 @@ int main(int argc, char **argv)
 	int sumImages=0, separateFolder=0, newOutput=0;
 	int haveOmegas = 0, chunkFiles=0, individualSave=1;
 	double omeStart, omeStep;
+	double Lam=0.172978, Polariz=0.99, SHpL=0.002, U=1.163, V=-0.126, W=0.063, X=0.0, Y=0.0, Z=0.0;
 	while (fgets(aline,4096,paramFile) != NULL){
+		str = "Z ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %lf", dummy, &Z);
+			makeMap = 2;
+		}
+		str = "Y ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %lf", dummy, &Y);
+			makeMap = 2;
+		}
+		str = "X ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %lf", dummy, &X);
+			makeMap = 2;
+		}
+		str = "W ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %lf", dummy, &W);
+			makeMap = 2;
+		}
+		str = "V ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %lf", dummy, &V);
+			makeMap = 2;
+		}
+		str = "U ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %lf", dummy, &U);
+			makeMap = 2;
+		}
+		str = "SH/L ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %lf", dummy, &SHpL);
+			makeMap = 2;
+		}
+		str = "Polariz ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %lf", dummy, &Polariz);
+			makeMap = 2;
+		}
+		str = "Wavelength ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %lf", dummy, &Lam);
+			makeMap = 2;
+		}
 		str = "GapFile ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %s", dummy, GapFN);
@@ -930,6 +976,17 @@ int main(int argc, char **argv)
 		H5LTset_attribute_int(file_id, "/SumFrames", "nFrames", &nFrames,1);
 		free(sumArr);
 	}
+	H5Gcreate(file_id,"InstrumentParameters", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+	hsize_t dimval[1] = {1};
+	H5LTmake_dataset_double(file_id, "/InstrumentParameters/Polariz", 1, dimval, &Polariz);
+	H5LTmake_dataset_double(file_id, "/InstrumentParameters/Lam", 1, dimval, &Lam);
+	H5LTmake_dataset_double(file_id, "/InstrumentParameters/SH_L", 1, dimval, &SHpL);
+	H5LTmake_dataset_double(file_id, "/InstrumentParameters/U", 1, dimval, &U);
+	H5LTmake_dataset_double(file_id, "/InstrumentParameters/V", 1, dimval, &V);
+	H5LTmake_dataset_double(file_id, "/InstrumentParameters/W", 1, dimval, &W);
+	H5LTmake_dataset_double(file_id, "/InstrumentParameters/X", 1, dimval, &X);
+	H5LTmake_dataset_double(file_id, "/InstrumentParameters/Y", 1, dimval, &Y);
+	H5LTmake_dataset_double(file_id, "/InstrumentParameters/Z", 1, dimval, &Z);
 	herr_t status_f2 = H5Fclose (file_id);
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
