@@ -134,6 +134,7 @@ void integrate_noMapMask (double px, double Lsd, int bigArrSize, int Normalize, 
 				Intensity /= totArea;
 			}
 			IntArrPerFrame[idx] = Intensity;
+			IntArrPerFrame[idx]+= 1;
 			if (sumImages==1){
 				SumMatrix[idx] += Intensity;
 			}
