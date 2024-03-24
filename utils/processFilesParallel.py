@@ -19,7 +19,7 @@ def runSingle(workData):
     print(cmd)
     subprocess.call(cmd,cwd=cwd,shell=True)
 
-parser = MyParser(description='''esrf2hf.py''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser = MyParser(description='''processFilesParallel.py''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-resultFolder', type=str, required=True, help='Folder where you want to save results')
 parser.add_argument('-LastScanNr', type=int, required=True, help='Last scanNr')
 parser.add_argument('-StartScanNr', type=int, required=False, default=1, help='Start scanNr')

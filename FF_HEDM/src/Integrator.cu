@@ -4,6 +4,7 @@
 //
 // ~/opt/midascuda/cuda/bin/nvcc integrator.cu -o integrator -Xcompiler -g -arch sm_90 -gencode=arch=compute_90,code=sm_90 -I/scratch/s1iduser/sharma_tests/HDF5/include -L/scratch/s1iduser/sharma_tests/HDF5/lib -lhdf5_hl -lhdf5 -I/scratch/s1iduser/sharma_tests/LIBTIFF/include -L/scratch/s1iduser/sharma_tests/LIBTIFF/lib -ltiff -O3
 // ~/opt/midascuda/cuda/bin/nvcc src/Integrator.cu -o bin/IntegratorGPU -Xcompiler -g -arch sm_90 -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/.MIDAS/HDF5/include -L/home/beams/S1IDUSER/.MIDAS/HDF5/lib -lhdf5_hl -lhdf5 -I/home/beams/S1IDUSER/.MIDAS/LIBTIFF/include -L/home/beams/S1IDUSER/.MIDAS/LIBTIFF/lib -ltiff -O3
+// ~/opt/midascuda/cuda_RHEL8/bin/nvcc src/Integrator.cu -o bin/IntegratorGPU -Xcompiler -g -arch sm_90 -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/.MIDAS/HDF5/include -L/home/beams/S1IDUSER/.MIDAS/HDF5/lib -lhdf5_hl -lhdf5 -I/home/beams/S1IDUSER/.MIDAS/LIBTIFF/include -L/home/beams/S1IDUSER/.MIDAS/LIBTIFF/lib -ltiff -O3
 // export LD_LIBRARY_PATH=/scratch/s1iduser/sharma_tests/HDF5/lib:/scratch/s1iduser/sharma_tests/LIBTIFF/lib:$LD_LIBRARY_PATH
 // export LD_LIBRARY_PATH=/home/beams/S1IDUSER/.MIDAS/HDF5/lib:/home/beams/S1IDUSER/.MIDAS/LIBTIFF/lib:$LD_LIBRARY_PATH
 
@@ -898,7 +899,7 @@ int main(int argc, char **argv)
 		}
 		t6 = clock();
 		diffT3 += ((double)(t6-t5))/CLOCKS_PER_SEC;
-}
+	}
 	if (haveOmegas==1){
 		hsize_t dimome[1] = {(unsigned long long)nFrames};
 		H5LTmake_dataset_double(file_id, "/Omegas", 1, dimome,omeArr);
