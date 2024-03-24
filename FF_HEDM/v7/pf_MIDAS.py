@@ -12,9 +12,6 @@ from parsl.app.app import python_app
 import parsl
 from skimage.transform import iradon
 from PIL import Image
-from skimage.filters import threshold_otsu
-from skimage.morphology import reconstruction
-import matplotlib.pyplot as plt
 import h5py
 utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 sys.path.insert(0,utilsDir)
