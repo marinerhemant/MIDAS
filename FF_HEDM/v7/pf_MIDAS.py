@@ -335,6 +335,8 @@ for line in lines:
 		continue
 	if line.startswith('px'):
 		continue
+	if line.startswith('MicFile') and len(micFN)==0:
+		continue
 	if line.startswith('OutputFolder'):
 		paramsf.write('OutputFolder '+topdir+'/Output\n')
 	elif line.startswith('ResultFolder'):
