@@ -852,7 +852,7 @@ int main(int argc, char **argv)
 		cudaMemset(devIntArrPerFrame,0,bigArrSize*sizeof(double));
 		cudaMemcpy(devImage,Image,NrPixelsY*NrPixelsZ*sizeof(double),cudaMemcpyHostToDevice);
 		cudaDeviceSynchronize();
-		printf("%zu\n",mapMaskSize);
+		printf("mapMask %zu\n",mapMaskSize);
 		if (mapMaskSize==0)
 			integrate_noMapMask <<<((bigArrSize+2047)/2048),2048>>> (px,Lsd,bigArrSize,Normalize,sumImages,i,NrPixelsY, 
 													mapMaskSize,devMapMask,nRBins,nEtaBins,devPxList, 
