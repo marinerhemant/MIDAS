@@ -1287,7 +1287,6 @@ void main(int argc, char *argv[]){
 	for (FileNr = startFileNr; FileNr < endFileNr; FileNr++)
 	{
 		int procNum = omp_get_thread_num();
-        printf("FrameNr: %d\n",FileNr);
         double beamcurr = 1;
 		pixelvalue *Image, *ImageAsym;
 		double *ImgCorrBCTemp, *ImgCorrBC, *MaximaValues, *z;
@@ -1389,7 +1388,7 @@ void main(int argc, char *argv[]){
 			}
 		}
 		double t2 = omp_get_wtime();
-		printf("%d\n",t2-t1);
+        printf("FrameNr: %d time to preprocess: %lf\n",FileNr,t2-t1);
 		// Do Connected components
 		int NrOfReg;
 		for (i=0;i<NrPixels*NrPixels;i++){
