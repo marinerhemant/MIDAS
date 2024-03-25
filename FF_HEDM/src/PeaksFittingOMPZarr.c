@@ -1351,10 +1351,10 @@ void main(int argc, char *argv[]){
         zip_file_t* fLoc = NULL;
         int dataLocThis = dataLoc + FileNr;
         zip_stat_index(archLoc,dataLocThis,0,fifo);
+		double t2 = omp_get_wtime();
         char *locArr;
         locArr = calloc(fifo->size+1,sizeof(char));
         fLoc = zip_fopen_index(archLoc,dataLocThis,0);
-		double t2 = omp_get_wtime();
         zip_fread(fLoc,locArr,fifo->size);
         dsz = blosc1_decompress(locArr,locData,dsz);
         memcpy(ImageAsym,locData,dsz);
