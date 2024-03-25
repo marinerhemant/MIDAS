@@ -501,8 +501,8 @@ static inline int CheckDirectoryCreation(char Folder[1024])
 
 int main(int argc, char *argv[])
 {
-	if (argc != 2) {
-		printf("Usage: %s ZarrZip\n", argv[0]);
+	if (argc < 2) {
+		printf("Usage: %s ZarrZip (optional)ResultFolder\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
     clock_t start, end;
@@ -1157,6 +1157,8 @@ int main(int argc, char *argv[])
         }
         count++;
     }
+	if (argc==3) Folder = argv[2];
+	if (argc==3) resultFolder = argv[2];
 	int i,j,k;
     int RingNumbers[cs];
     zip_stat_index(arch, locRingThresh, 0, finfo);

@@ -545,8 +545,8 @@ check (int test, const char * message, ...)
 
 void main(int argc, char *argv[]){
     double start_time = omp_get_wtime();
-	if (argc != 5){
-		printf("Usage: %s DataFile blockNr nBlocks numProcs\n",argv[0]);
+	if (argc < 5){
+		printf("Usage: %s DataFile blockNr nBlocks numProcs (optional)ResultFolder\n",argv[0]);
 		return;
 	}
 	char *DataFN = argv[1];
@@ -1053,6 +1053,7 @@ void main(int argc, char *argv[]){
         }
         count++;
     }
+	if (argc==6) resultFolder = argv[5];
 	int TransOpt[nImTransOpt], RingNrs[nRingsThresh];
     double Thresholds[nRingsThresh];
     // Read TransOpt

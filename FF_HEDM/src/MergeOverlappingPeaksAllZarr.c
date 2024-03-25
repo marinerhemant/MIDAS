@@ -215,8 +215,8 @@ static inline int ReadSortFiles (char OutFolderName[1024], char FileStem[1024], 
 }
 
 int main(int argc, char *argv[]){
-	if (argc != 2){
-		printf("Usage:\n MergeOverlappingPeaks ZarrZip\n");
+	if (argc < 2){
+		printf("Usage:\n MergeOverlappingPeaks ZarrZip (optional)ResultFolder\n");
 		return 1;
 	}
 	clock_t start, end;
@@ -314,6 +314,7 @@ int main(int argc, char *argv[]){
         }
         count++;
     }
+	if (argc==3) Folder = argv[2];
     EndNr = EndNr - skipFrame; // This ensures we don't over-read.
     // Read params file.
 	int i,j,k;

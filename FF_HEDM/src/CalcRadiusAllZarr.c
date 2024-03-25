@@ -83,8 +83,8 @@ static inline double acosd(double x){return rad2deg*(acos(x));}
 static inline double atand(double x){return rad2deg*(atan(x));}
 
 int main(int argc, char *argv[]){
-	if (argc != 2){
-		printf("Usage:\n %s ZarrZip\n",argv[0]);
+	if (argc < 2){
+		printf("Usage:\n %s ZarrZip (optional)ResultFolder\n",argv[0]);
 		return 1;
 	}
 	clock_t start, end;
@@ -329,6 +329,8 @@ int main(int argc, char *argv[]){
         }
         count++;
     }
+	if (argc==3) Folder = argv[2];
+	if (argc==3) resultFolder = argv[2];
     EndNr = EndNr - skipFrame; // This ensures we don't over-read.
 	int RingNrs[nRings];
     double Thresholds[nRings];
