@@ -107,7 +107,7 @@ Parameter file and positions.csv file must be in the same folder.
 parser.add_argument('-nCPUs', type=int, required=False, default=32, help='Number of CPUs to use')
 parser.add_argument('-nCPUsLocal', type=int, required=False, default=4, help='Local Number of CPUs to use')
 parser.add_argument('-paramFile', type=str, required=True, help='ParameterFileName: Do not use the full path.')
-parser.add_argument('-nNodes', type=str, required=False, default=1, help='Number of Nodes')
+parser.add_argument('-nNodes', type=int, required=False, default=1, help='Number of Nodes')
 parser.add_argument('-machineName', type=str, required=False, default='local', help='Machine Name: local,orthrosall,orthrosnew,umich')
 parser.add_argument('-doPeakSearch',type=int,required=True,help='0 if PeakSearch is already done. InputAllExtra...0..n.csv should exist in the folder')
 parser.add_argument('-oneSolPerVox',type=int,required=True,help='0 if want to allow multiple solutions per voxel. 1 if want to have only 1 solution per voxel.')
@@ -141,7 +141,7 @@ os.makedirs(topdir,exist_ok=True)
 os.makedirs(logDir,exist_ok=True)
 
 if machineName == 'local':
-	numNodes = 1
+	nNodes = 1
 	from localConfig import *
 	parsl.load(config=localConfig)
 elif machineName == 'orthrosnew':
