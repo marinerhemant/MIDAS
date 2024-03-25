@@ -1338,6 +1338,7 @@ void main(int argc, char *argv[]){
         if (outfilewrite==NULL) printf("Cannot open %s for writing. Undefined behavior.\n",OutFile);
 		fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode\n");
 
+		double t1 = omp_get_wtime();
         int32_t dsz = NrPixelsY*NrPixelsZ*bytesPerPx;
         char *locData = (char*)malloc((size_t)dsz);
         int errorpLoc = 0;
@@ -1353,7 +1354,6 @@ void main(int argc, char *argv[]){
         char *locArr;
         locArr = calloc(fifo->size+1,sizeof(char));
         fLoc = zip_fopen_index(archLoc,dataLocThis,0);
-		double t1 = omp_get_wtime();
         zip_fread(fLoc,locArr,fifo->size);
         dsz = blosc1_decompress(locArr,locData,dsz);
         memcpy(ImageAsym,locData,dsz);
