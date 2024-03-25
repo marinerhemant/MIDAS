@@ -157,8 +157,8 @@ static inline int CheckDirectoryCreation(char Folder[1024])
 }
 
 int main (int argc, char *argv[]){
-	if (argc != 2){
-		printf("Give a data ZarrZip file.\n");
+	if (argc < 2) {
+		printf("Give a data ZarrZip file. Optionally resultFolder\n");
 		exit(1);
 	}
 	int SpaceGrp;
@@ -248,6 +248,7 @@ int main (int argc, char *argv[]){
         }
         count++;
     }
+	if (argc==3) resultFolder = argv[2];
 	int e = CheckDirectoryCreation(resultFolder);
 	if (e == 0){ return 1;}
 
