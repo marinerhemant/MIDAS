@@ -1338,9 +1338,9 @@ void main(int argc, char *argv[]){
         if (outfilewrite==NULL) printf("Cannot open %s for writing. Undefined behavior.\n",OutFile);
 		fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode\n");
 
-		double t1 = omp_get_wtime();
         int32_t dsz = NrPixelsY*NrPixelsZ*bytesPerPx;
         char *locData = (char*)malloc((size_t)dsz);
+		double t1 = omp_get_wtime();
         int errorpLoc = 0;
         zip_t* archLoc = NULL;
         archLoc = zip_open(DataFN,0,&errorpLoc);
