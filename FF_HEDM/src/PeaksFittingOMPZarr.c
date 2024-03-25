@@ -1354,6 +1354,7 @@ void main(int argc, char *argv[]){
         char *locArr;
         locArr = calloc(fifo->size+1,sizeof(char));
         fLoc = zip_fopen_index(archLoc,dataLocThis,0);
+		double t1 = omp_get_wtime();
         zip_fread(fLoc,locArr,fifo->size);
         dsz = blosc1_decompress(locArr,locData,dsz);
         memcpy(ImageAsym,locData,dsz);
@@ -1387,6 +1388,8 @@ void main(int argc, char *argv[]){
 				}
 			}
 		}
+		double t2 = omp_get_wtime();
+		printf("%d\n",t2-t1);
 		// Do Connected components
 		int NrOfReg;
 		for (i=0;i<NrPixels*NrPixels;i++){
