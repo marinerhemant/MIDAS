@@ -1344,6 +1344,7 @@ void main(int argc, char *argv[]){
         int errorpLoc = 0;
         zip_t* archLoc = NULL;
         archLoc = zip_open(DataFN,0,&errorpLoc);
+		double t2 = omp_get_wtime();
         if (errorpLoc!=NULL) printf("File opening in parallel did not work. Undefined behavior now.\n");
         struct zip_stat* fifo = NULL;
         fifo = calloc(16384, sizeof(int));
@@ -1351,7 +1352,6 @@ void main(int argc, char *argv[]){
         zip_file_t* fLoc = NULL;
         int dataLocThis = dataLoc + FileNr;
         zip_stat_index(archLoc,dataLocThis,0,fifo);
-		double t2 = omp_get_wtime();
         char *locArr;
         locArr = calloc(fifo->size+1,sizeof(char));
         fLoc = zip_fopen_index(archLoc,dataLocThis,0);
