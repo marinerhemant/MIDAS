@@ -51,6 +51,7 @@ class Hdf5ToZarr:
             An equivalent Zarr group or array to the HDF5 group or dataset with
             attributes.
         """
+        d1 = {}
         for n, v in h5obj.attrs.items():
             # Fix some attribute values to avoid JSON encoding exceptions...
             if isinstance(v, bytes):
@@ -62,11 +63,11 @@ class Hdf5ToZarr:
                     v = v.flatten()[0].tolist()
                 else:
                     v = v.tolist()
-
-            try:
-                zobj.attrs[n] = v
-            except TypeError:
-                print(f'Caught TypeError: {n}@{h5obj.name} = {v} ({type(v)})')
+            d1[n] = v
+        try:
+            zobj.attrs.put(d1)
+        except TypeError:
+            print(f'Caught TypeError: {n}@{h5obj.name} = {v} ({type(v)})')
 
     def translator(self, name, h5obj):
         """Produce Zarr metadata for all groups and datasets in the HDF5 file.
