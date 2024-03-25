@@ -1437,7 +1437,7 @@ void main(int argc, char *argv[]){
 				TotNrRegions--;
 				continue;
 			}
-			// printf("RegionNr: %d, NPeaks: %d\n",RegNr,nPeaks);
+			printf("RegionNr: %d, NPeaks: %d, NPx: %lf\n",RegNr,nPeaks,NrPixelsThisRegion);
 			if (nPeaks > maxNPeaks){
 				// Sort peaks by MaxIntensity, remove the smallest peaks until maxNPeaks, arrays needed MaximaPositions, MaximaValues.
 				int MaximaPositionsT[nPeaks*2];
