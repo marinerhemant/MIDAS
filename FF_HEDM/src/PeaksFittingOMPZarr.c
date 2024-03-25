@@ -1420,7 +1420,7 @@ void main(int argc, char *argv[]){
 		}
 		for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 			NrPixelsThisRegion = PositionTrackers[RegNr];
-			printf("Initial RegionNr: %d, NPeaks: %d, NPx: %lf\n",RegNr,nPeaks,NrPixelsThisRegion);
+			printf("Initial RegionNr: %d, NPx: %lf\n",RegNr,NrPixelsThisRegion);
 			if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
 				TotNrRegions--;
 				continue;
