@@ -1157,7 +1157,7 @@ void main(int argc, char *argv[]){
         free(arr);
         memcpy(flood,data,dsize);
     } else for(a=0;a<(NrPixels*NrPixels);a++) flood[a]=1;
-    zip_close(arch);
+    // zip_close(arch);
 
 	char OutFolderName[2048];
 	sprintf(OutFolderName,"%s/%s",resultFolder,TmpFolder);
@@ -1343,7 +1343,8 @@ void main(int argc, char *argv[]){
         char *locData = (char*)malloc((size_t)dsz);
         int errorpLoc = 0;
         zip_t* archLoc = NULL;
-        archLoc = zip_open(DataFN,0,&errorpLoc);
+		archLoc = arch;
+        // archLoc = zip_open(DataFN,0,&errorpLoc);
         if (errorpLoc!=NULL) printf("File opening in parallel did not work. Undefined behavior now.\n");
         struct zip_stat* fifo = NULL;
         fifo = calloc(16384, sizeof(int));
@@ -1372,7 +1373,7 @@ void main(int argc, char *argv[]){
         free(fifo);
         zip_fclose(fLoc);
         free(locArr);
-        zip_close(archLoc);
+        // zip_close(archLoc);
 
 		DoImageTransformations(nImTransOpt,TransOpt,Image,NrPixels);
 		for (i=0;i<(NrPixels*NrPixels);i++) ImgCorrBCTemp[i]=Image[i];
