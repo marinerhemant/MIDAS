@@ -1090,7 +1090,7 @@ void main(int argc, char *argv[]){
 	// Now we read the size of data for each file pointer.
 	sizeArr = calloc(nFrames*2,sizeof(*sizeArr)); // Number StartLoc
 	size_t cntr = 0;
-	for (i=0;i<nFrames;i++){
+	for (iter=0;iter<nFrames;iter++){
 		zip_stat_index(arch,dataLoc+i,0,finfo);
 		sizeArr[i*2+0] = finfo->size;
 		sizeArr[i*2+1] = cntr;
@@ -1099,7 +1099,7 @@ void main(int argc, char *argv[]){
 	// allocate arr
 	char * allData;
 	allData = calloc(cntr+1,sizeof(*allData));
-	for (i=0;i<nFrames;i++){
+	for (iter=0;iter<nFrames;iter++){
 		zip_file_t *fLoc = NULL;
 		fLoc = zip_fopen_index(arch,dataLoc+i,0);
 		zip_fread(fLoc,&allData[sizeArr[i*2+1]],sizeArr[i*2+0]);
@@ -1366,6 +1366,7 @@ void main(int argc, char *argv[]){
 		compData = calloc(szThsArr,sizeof(*compData));
 		memcpy(compData,&allData[sizeArr[FileNr*2+1]],szThsArr);
 		dsz = blosc1_decompress(compData,locData,dsz);
+		free(compData);
 		double t2 = omp_get_wtime();
         memcpy(ImageAsym,locData,dsz);
 		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,ImageAsym,Image);
@@ -1379,8 +1380,6 @@ void main(int argc, char *argv[]){
 			}
 		}
         free(locData);
-        zip_fclose(fLoc);
-        free(locArr);
 
 		DoImageTransformations(nImTransOpt,TransOpt,Image,NrPixels);
 		for (i=0;i<(NrPixels*NrPixels);i++) ImgCorrBCTemp[i]=Image[i];
