@@ -1088,10 +1088,21 @@ void main(int argc, char *argv[]){
     nFrames = nFrames - skipFrame; // This ensures we don't over-read.
     dataLoc += skipFrame;
 	// Now we read the size of data for each file pointer.
-	sizeArr = calloc(nFrames,sizeof(*sizeArr));
+	sizeArr = calloc(nFrames*2,sizeof(*sizeArr)); // Number StartLoc
+	size_t cntr = 0;
 	for (i=0;i<nFrames;i++){
 		zip_stat_index(arch,dataLoc+i,0,finfo);
-		sizeArr[i] = finfo->size;
+		sizeArr[i*2+0] = finfo->size;
+		sizeArr[i*2+1] = cntr;
+		cntr += finfo->size;
+	}
+	// allocate arr
+	char * allData;
+	allData = calloc(cntr+1,sizeof(*allData));
+	for (i=0;i<nFrames;i++){
+		zip_file_t *fLoc = NULL;
+		fLoc = zip_fopen_index(arch,dataLoc+i,0);
+		zip_fread(fLoc,&allData[sizeArr[i*2+1]],sizeArr[i*2+0]);
 	}
     omegaStart += skipFrame*omegaStep;
     printf("%lf %d %lf\n",omegaStart,skipFrame,omegaStep);
@@ -1350,15 +1361,12 @@ void main(int argc, char *argv[]){
 
         char *locData = &locDataAll[asym_idxoffset];
 		double t1 = omp_get_wtime();
-		size_t szThsArr = sizeArr[FileNr];
-        int dataLocThis = dataLoc + FileNr;
-        char *locArr;
-        locArr = calloc(szThsArr+1,sizeof(char));
-		// Now we can directly read the data from the file.
-		zip_file_t* fLoc = NULL;
-		fLoc = zip_fopen_index(arch,dataLocThis,0);
-		zip_fread(fLoc,locArr,szThsArr);
-        dsz = blosc1_decompress(locArr,locData,dsz);
+		size_t szThsArr = sizeArr[FileNr*2+0];
+		char *compData;
+		compData = calloc(szThsArr,sizeof(*compData));
+		memcpy(compData,&allData[sizeArr[FileNr*2+1]],szThsArr);
+		dsz = blosc1_decompress(compData,locData,dsz);
+		double t2 = omp_get_wtime();
         memcpy(ImageAsym,locData,dsz);
 		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,ImageAsym,Image);
 		if (makeMap == 1){
@@ -1371,10 +1379,8 @@ void main(int argc, char *argv[]){
 			}
 		}
         free(locData);
-        free(fifo);
         zip_fclose(fLoc);
         free(locArr);
-        zip_close(archLoc);
 
 		DoImageTransformations(nImTransOpt,TransOpt,Image,NrPixels);
 		for (i=0;i<(NrPixels*NrPixels);i++) ImgCorrBCTemp[i]=Image[i];
