@@ -1103,7 +1103,7 @@ void main(int argc, char *argv[]){
 		zip_file_t *fLoc = NULL;
 		fLoc = zip_fopen_index(arch,dataLoc+iter,0);
 		zip_fread(fLoc,&allData[sizeArr[iter*2+1]],sizeArr[iter*2+0]);
-		zip_close(fLoc);
+		zip_fclose(fLoc);
 	}
     omegaStart += skipFrame*omegaStep;
     printf("%lf %d %lf %zu\n",omegaStart,skipFrame,omegaStep,cntr);
