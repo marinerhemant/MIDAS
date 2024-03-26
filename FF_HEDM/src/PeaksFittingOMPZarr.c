@@ -1361,13 +1361,13 @@ void main(int argc, char *argv[]){
 		fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode\n");
 
         char *locData = &locDataAll[asym_idxoffset];
-		double t1 = omp_get_wtime();
-		size_t szThsArr = sizeArr[FileNr*2+0];
-		char *compData;
-		compData = calloc(szThsArr,sizeof(*compData));
-		memcpy(compData,&allData[sizeArr[FileNr*2+1]],szThsArr);
-		dsz = blosc1_decompress(compData,locData,dsz);
-		free(compData);
+		// double t1 = omp_get_wtime();
+		// size_t szThsArr = sizeArr[FileNr*2+0];
+		// char *compData;
+		// compData = calloc(szThsArr,sizeof(*compData));
+		// memcpy(compData,&allData[sizeArr[FileNr*2+1]],szThsArr);
+		// dsz = blosc1_decompress(compData,locData,dsz);
+		// free(compData);
 		double t2 = omp_get_wtime();
         memcpy(ImageAsym,locData,dsz);
 		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,ImageAsym,Image);
