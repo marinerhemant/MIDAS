@@ -1362,9 +1362,9 @@ void main(int argc, char *argv[]){
 
         char *locData = &locDataAll[asym_idxoffset];
 		double t1 = omp_get_wtime();
-		// size_t szThsArr = sizeArr[FileNr*2+0];
-		// char *compData;
-		// compData = calloc(szThsArr,sizeof(*compData));
+		size_t szThsArr = sizeArr[FileNr*2+0];
+		char *compData;
+		compData = calloc(szThsArr,sizeof(*compData));
 		// memcpy(compData,&allData[sizeArr[FileNr*2+1]],szThsArr);
 		// dsz = blosc1_decompress(compData,locData,dsz);
 		// free(compData);
