@@ -1366,7 +1366,7 @@ void main(int argc, char *argv[]){
 		size_t szThsArr = sizeArr[FileNr*2+0];
 		dsz = blosc1_decompress(&allData[sizeArr[FileNr*2+1]],locData,dsz);
 		double t2 = omp_get_wtime();
-        memcpy(ImageAsym,locData,dsz);
+        // memcpy(ImageAsym,locData,dsz);
 		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,ImageAsym,Image);
 		if (makeMap == 1){
 			int badPxCounter = 0;
