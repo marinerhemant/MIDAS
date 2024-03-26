@@ -1367,7 +1367,6 @@ void main(int argc, char *argv[]){
 		compData = calloc(szThsArr,sizeof(*compData));
 		memcpy(compData,&allData[sizeArr[FileNr*2+1]],szThsArr);
 		dsz = blosc1_decompress(compData,locData,dsz);
-		printf("%zu ",dsz);
 		// free(compData);
 		double t2 = omp_get_wtime();
         memcpy(ImageAsym,locData,dsz);
