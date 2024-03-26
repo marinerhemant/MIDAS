@@ -1360,7 +1360,8 @@ void main(int argc, char *argv[]){
         if (outfilewrite==NULL) printf("Cannot open %s for writing. Undefined behavior.\n",OutFile);
 		fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode\n");
 
-        char *locData = &locDataAll[asym_idxoffset];
+        char *locData;
+		locData = &locDataAll[asym_idxoffset];
 		double t1 = omp_get_wtime();
 		size_t szThsArr = sizeArr[FileNr*2+0];
 		dsz = blosc1_decompress(&allData[sizeArr[FileNr*2+1]],locData,dsz);
