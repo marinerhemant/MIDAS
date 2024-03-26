@@ -1397,7 +1397,6 @@ void main(int argc, char *argv[]){
 				}
 			}
 		}
-        printf("FrameNr: %d time to preprocess: %lf\n",FileNr,t2-t1);
 		// Do Connected components
 		int NrOfReg;
 		for (i=0;i<NrPixels*NrPixels;i++){
@@ -1414,7 +1413,7 @@ void main(int argc, char *argv[]){
 			}
 		}
 		NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
-		printf("FrameNr: %d, NrOfRegions: %d\n",FileNr,NrOfReg);
+        printf("FrameNr: %d time to preprocess: %lf\n",FileNr,t2-t1);
 		int RegNr,NrPixelsThisRegion;
 		int IsSaturated;
 		int SpotIDStart = 1;
@@ -1483,6 +1482,8 @@ void main(int argc, char *argv[]){
 			SpotIDStart += nPeaks;
 		}
 		fclose(outfilewrite);
+		double t3 = omp_get_wtime();
+		printf("FrameNr: %d, NrOfRegions: %d, Filtered regions: %d, Number of peaks: %d, time for preprocessing: %lf, Total time: %lf\n",FileNr,NrOfReg,TotNrRegions,SpotIDStart,t3-t1,t2-t1);
 	}
 
 	free(ImageAll);
