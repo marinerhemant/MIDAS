@@ -581,6 +581,7 @@ void main(int argc, char *argv[]){
 	char *TmpFolder;
 	TmpFolder = "Temp";
 	zDiffThresh = 0;
+	size_t *sizeArr; 
 	double BadPxIntensity = 0;
     char *resultFolder=NULL, dummy[2048];
     while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
@@ -1086,6 +1087,12 @@ void main(int argc, char *argv[]){
     free(data);
     nFrames = nFrames - skipFrame; // This ensures we don't over-read.
     dataLoc += skipFrame;
+	// Now we read the size of data for each file pointer.
+	sizeArr = calloc(nFrames,sizeof(*sizeArr));
+	for (i=0;i<nFrames;i++){
+		zip_stat_index(arch,dataLoc+i,0,finfo);
+		sizeArr[i] = finfo->size;
+	}
     omegaStart += skipFrame*omegaStep;
     printf("%lf %d %lf\n",omegaStart,skipFrame,omegaStep);
 	if (NrPixelsY != NrPixelsZ){
@@ -1157,7 +1164,7 @@ void main(int argc, char *argv[]){
         free(arr);
         memcpy(flood,data,dsize);
     } else for(a=0;a<(NrPixels*NrPixels);a++) flood[a]=1;
-    zip_close(arch);
+    // zip_close(arch);
 
 	char OutFolderName[2048];
 	sprintf(OutFolderName,"%s/%s",resultFolder,TmpFolder);
@@ -1250,10 +1257,13 @@ void main(int argc, char *argv[]){
 	asymBigArrSize *= NrPixelsZ;
 	asymBigArrSize *= numProcs;
 	pixelvalue *ImageAll, *ImageAsymAll;
+	int32_t dsz = NrPixelsY*NrPixelsZ*bytesPerPx;
 	double *ImgCorrBCAll, *ImgCorrBCTempAll, *MaxValAll, *zAll, *IntIntAll, *ImaxAll, *YcenAll, *ZcenAll, *RAll, *EtaAll, *OIAll;
 	int *BoolImageAll, *ConnCompAll, *PosAll, *PosTrackersAll, *MaxPosAll, *UsefulPxAll, *NrPxAll;
+	char *locDataAll;
 	ImageAll = calloc(bigArrSize,sizeof(*ImageAll));
 	ImageAsymAll = calloc(asymBigArrSize,sizeof(*ImageAsymAll));
+	locDataAll = calloc(asymBigArrSize,sizeof(*locDataAll));
 	ImgCorrBCAll = calloc(bigArrSize,sizeof(*ImgCorrBCAll));
 	ImgCorrBCTempAll = calloc(bigArrSize,sizeof(*ImgCorrBCTempAll));
 	BoolImageAll = calloc(bigArrSize,sizeof(*BoolImageAll));
@@ -1338,24 +1348,16 @@ void main(int argc, char *argv[]){
         if (outfilewrite==NULL) printf("Cannot open %s for writing. Undefined behavior.\n",OutFile);
 		fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode\n");
 
-        int32_t dsz = NrPixelsY*NrPixelsZ*bytesPerPx;
-        char *locData = (char*)malloc((size_t)dsz);
+        char *locData = &locDataAll[asym_idxoffset];
 		double t1 = omp_get_wtime();
-        int errorpLoc = 0;
-        zip_t* archLoc = NULL;
-        archLoc = zip_open(DataFN,0,&errorpLoc);
-		double t2 = omp_get_wtime();
-        if (errorpLoc!=NULL) printf("File opening in parallel did not work. Undefined behavior now.\n");
-        struct zip_stat* fifo = NULL;
-        fifo = calloc(16384, sizeof(int));
-        zip_stat_init(fifo);
-        zip_file_t* fLoc = NULL;
+		size_t szThsArr = sizeArr[FileNr];
         int dataLocThis = dataLoc + FileNr;
-        zip_stat_index(archLoc,dataLocThis,0,fifo);
         char *locArr;
-        locArr = calloc(fifo->size+1,sizeof(char));
-        fLoc = zip_fopen_index(archLoc,dataLocThis,0);
-        zip_fread(fLoc,locArr,fifo->size);
+        locArr = calloc(szThsArr+1,sizeof(char));
+		// Now we can directly read the data from the file.
+		zip_file_t* fLoc = NULL;
+		fLoc = zip_fopen_index(arch,dataLocThis,0);
+		zip_fread(fLoc,locArr,szThsArr);
         dsz = blosc1_decompress(locArr,locData,dsz);
         memcpy(ImageAsym,locData,dsz);
 		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,ImageAsym,Image);
