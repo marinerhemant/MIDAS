@@ -1363,8 +1363,6 @@ void main(int argc, char *argv[]){
         char *locData = &locDataAll[asym_idxoffset];
 		double t1 = omp_get_wtime();
 		size_t szThsArr = sizeArr[FileNr*2+0];
-		char *compData;
-		compData = calloc(szThsArr,sizeof(*compData));
 		dsz = blosc1_decompress(&allData[sizeArr[FileNr*2+1]],locData,dsz);
 		double t2 = omp_get_wtime();
         memcpy(ImageAsym,locData,dsz);
