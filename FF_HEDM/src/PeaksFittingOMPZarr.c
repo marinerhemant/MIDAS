@@ -1091,9 +1091,9 @@ void main(int argc, char *argv[]){
 	sizeArr = calloc(nFrames*2,sizeof(*sizeArr)); // Number StartLoc
 	size_t cntr = 0;
 	for (iter=0;iter<nFrames;iter++){
-		zip_stat_index(arch,dataLoc+i,0,finfo);
-		sizeArr[i*2+0] = finfo->size;
-		sizeArr[i*2+1] = cntr;
+		zip_stat_index(arch,dataLoc+iter,0,finfo);
+		sizeArr[iter*2+0] = finfo->size;
+		sizeArr[iter*2+1] = cntr;
 		cntr += finfo->size;
 	}
 	// allocate arr
@@ -1101,8 +1101,8 @@ void main(int argc, char *argv[]){
 	allData = calloc(cntr+1,sizeof(*allData));
 	for (iter=0;iter<nFrames;iter++){
 		zip_file_t *fLoc = NULL;
-		fLoc = zip_fopen_index(arch,dataLoc+i,0);
-		zip_fread(fLoc,&allData[sizeArr[i*2+1]],sizeArr[i*2+0]);
+		fLoc = zip_fopen_index(arch,dataLoc+iter,0);
+		zip_fread(fLoc,&allData[sizeArr[iter*2+1]],sizeArr[iter*2+0]);
 	}
     omegaStart += skipFrame*omegaStep;
     printf("%lf %d %lf\n",omegaStart,skipFrame,omegaStep);
