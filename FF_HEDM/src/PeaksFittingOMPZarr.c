@@ -568,7 +568,8 @@ void main(int argc, char *argv[]){
     int count = 0;
     char* s = NULL;
     char* arr = NULL;
-    int nFrames,NrPixelsZ,NrPixelsY,bytesPerPx,darkLoc=-1,dataLoc=-1,floodLoc=-1;
+    int nFrames,NrPixelsZ,NrPixelsY,darkLoc=-1,dataLoc=-1,floodLoc=-1;
+	size_t bytesPerPx;
     int nDarks=0, nFloods=0;
     int locImTransOpt,locRingThresh,nRingsThresh=0,locOmegaRanges,nOmegaRanges=0;
     double omegaStart, omegaStep;
@@ -610,7 +611,7 @@ void main(int argc, char *argv[]){
                 if (strncmp(ptr3,"<u2",3)==0) bytesPerPx = 2;
                 if (strncmp(ptr3,"<u4",3)==0) bytesPerPx = 4;
             } else return 1;
-			printf("%d %d %d %d\n",bytesPerPx,nFrames,NrPixelsZ,NrPixelsY);
+			printf("%zu %d %d %d\n",bytesPerPx,nFrames,NrPixelsZ,NrPixelsY);
             free(s);
         }
         if (strstr(finfo->name,"exchange/dark/.zarray")!=NULL){
@@ -628,7 +629,7 @@ void main(int argc, char *argv[]){
                             printf("nDarks: %d nrPixelsZ: %d nrPixelsY: %d\n", nDarks, NrPixelsZ, NrPixelsY);
                         } else return 1;
             } else return 1;
-			printf("%d %d %d %d\n",bytesPerPx,nFrames,NrPixelsZ,NrPixelsY);
+			printf("%zu %d %d %d\n",bytesPerPx,nFrames,NrPixelsZ,NrPixelsY);
             free(s);
         }
         if (strstr(finfo->name,"exchange/flood/.zarray")!=NULL){
@@ -646,7 +647,7 @@ void main(int argc, char *argv[]){
                             printf("nFloods: %d nrPixelsZ: %d nrPixelsY: %d\n", nFloods, NrPixelsZ, NrPixelsY);
                         } else return 1;
             } else return 1;
-			printf("%d %d %d %d\n",bytesPerPx,nFrames,NrPixelsZ,NrPixelsY);
+			printf("%zu %d %d %d\n",bytesPerPx,nFrames,NrPixelsZ,NrPixelsY);
             free(s);
         }
         if (strstr(finfo->name,"exchange/data/0.0.0")!=NULL){
@@ -1268,6 +1269,9 @@ void main(int argc, char *argv[]){
 	size_t asymBigArrSize = NrPixelsY;
 	asymBigArrSize *= NrPixelsZ;
 	asymBigArrSize *= numProcs;
+	size_t locDataArrSize;
+	locDataArrSize = asymBigArrSize;
+	locDataArrSize *= bytesPerPx;
 	pixelvalue *ImageAll, *ImageAsymAll;
 	int32_t dsz = NrPixelsY*NrPixelsZ*bytesPerPx;
 	double *ImgCorrBCAll, *ImgCorrBCTempAll, *MaxValAll, *zAll, *IntIntAll, *ImaxAll, *YcenAll, *ZcenAll, *RAll, *EtaAll, *OIAll;
@@ -1275,7 +1279,7 @@ void main(int argc, char *argv[]){
 	char *locDataAll;
 	ImageAll = calloc(bigArrSize,sizeof(*ImageAll));
 	ImageAsymAll = calloc(asymBigArrSize,sizeof(*ImageAsymAll));
-	locDataAll = calloc(asymBigArrSize,sizeof(*locDataAll));
+	locDataAll = calloc(locDataArrSize,sizeof(*locDataAll));
 	ImgCorrBCAll = calloc(bigArrSize,sizeof(*ImgCorrBCAll));
 	ImgCorrBCTempAll = calloc(bigArrSize,sizeof(*ImgCorrBCTempAll));
 	BoolImageAll = calloc(bigArrSize,sizeof(*BoolImageAll));
@@ -1361,10 +1365,10 @@ void main(int argc, char *argv[]){
 		fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode\n");
 
         char *locData;
-		locData = &locDataAll[asym_idxoffset];
+		locData = &locDataAll[asym_idxoffset*bytesPerPx];
 		double t1 = omp_get_wtime();
 		size_t szThsArr = sizeArr[FileNr*2+0];
-		// dsz = blosc1_decompress(&allData[sizeArr[FileNr*2+1]],locData,dsz);
+		dsz = blosc1_decompress(&allData[sizeArr[FileNr*2+1]],locData,dsz);
 		double t2 = omp_get_wtime();
         memcpy(ImageAsym,locData,dsz);
 		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,ImageAsym,Image);
