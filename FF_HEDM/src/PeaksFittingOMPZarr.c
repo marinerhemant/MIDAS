@@ -1105,7 +1105,7 @@ void main(int argc, char *argv[]){
 		zip_fread(fLoc,&allData[sizeArr[iter*2+1]],sizeArr[iter*2+0]);
 	}
     omegaStart += skipFrame*omegaStep;
-    printf("%lf %d %lf\n",omegaStart,skipFrame,omegaStep);
+    printf("%lf %d %lf %zu\n",omegaStart,skipFrame,omegaStep,cntr);
 	if (NrPixelsY != NrPixelsZ){
 		if (NrPixelsY > NrPixelsZ){
 			NrPixels = NrPixelsY;
@@ -1484,6 +1484,7 @@ void main(int argc, char *argv[]){
 
 	free(ImageAll);
 	free(ImageAsymAll);
+	free(locDataAll);
 	free(ImgCorrBCAll);
 	free(ImgCorrBCTempAll);
 	free(BoolImageAll);
@@ -1505,6 +1506,7 @@ void main(int argc, char *argv[]){
 	free(GoodCoords);
 	free(dark);
 	free(flood);
+	free(allData);
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds, nrFramesDone: %d.\n",time,nrFilesDone);
     blosc2_destroy();
