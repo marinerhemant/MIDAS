@@ -1413,7 +1413,6 @@ void main(int argc, char *argv[]){
 			}
 		}
 		NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
-        printf("FrameNr: %d time to preprocess: %lf\n",FileNr,t2-t1);
 		int RegNr,NrPixelsThisRegion;
 		int IsSaturated;
 		int SpotIDStart = 1;
