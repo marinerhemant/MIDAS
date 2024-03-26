@@ -1367,10 +1367,10 @@ void main(int argc, char *argv[]){
 		compData = calloc(szThsArr,sizeof(*compData));
 		memcpy(compData,&allData[sizeArr[FileNr*2+1]],szThsArr);
 		size_t szIn,szOut,blkSz;
-		// blosc1_cbuffer_sizes(&allData[sizeArr[FileNr*2+1]],szIn,szOut,blkSz);
-		// printf("%zu %zu %zu\n",szIn,szOut,blkSz);
-		blosc1_cbuffer_sizes(compData,&szIn,&szOut,&blkSz);
+		blosc1_cbuffer_sizes(&allData[sizeArr[FileNr*2+1]],&szIn,&szOut,&blkSz);
 		printf("%zu %zu %zu\n",szIn,szOut,blkSz);
+		// blosc1_cbuffer_sizes(compData,&szIn,&szOut,&blkSz);
+		// printf("%zu %zu %zu\n",szIn,szOut,blkSz);
 		dsz = blosc1_decompress(compData,locData,dsz);
 		// free(compData);
 		double t2 = omp_get_wtime();
