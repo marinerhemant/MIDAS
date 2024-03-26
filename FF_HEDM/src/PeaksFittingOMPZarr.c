@@ -1482,7 +1482,7 @@ void main(int argc, char *argv[]){
 		}
 		fclose(outfilewrite);
 		double t3 = omp_get_wtime();
-		printf("FrameNr: %d, NrOfRegions: %d, Filtered regions: %d, Number of peaks: %d, time for preprocessing: %lf, Total time: %lf\n",FileNr,NrOfReg,TotNrRegions,SpotIDStart,t3-t1,t2-t1);
+		printf("FrameNr: %d, NrOfRegions: %d, Filtered regions: %d, Number of peaks: %d, time for preprocessing: %lf, Total time: %lf\n",FileNr,NrOfReg,TotNrRegions,SpotIDStart,t2-t1,t3-t1);
 	}
 
 	free(ImageAll);
