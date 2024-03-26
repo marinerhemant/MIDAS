@@ -1365,7 +1365,7 @@ void main(int argc, char *argv[]){
 		size_t szThsArr = sizeArr[FileNr*2+0];
 		char *compData;
 		compData = calloc(szThsArr,sizeof(*compData));
-		// memcpy(compData,&allData[sizeArr[FileNr*2+1]],szThsArr);
+		memcpy(compData,&allData[sizeArr[FileNr*2+1]],szThsArr);
 		// dsz = blosc1_decompress(compData,locData,dsz);
 		// free(compData);
 		double t2 = omp_get_wtime();
