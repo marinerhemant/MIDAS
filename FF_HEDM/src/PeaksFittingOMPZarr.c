@@ -1091,6 +1091,7 @@ void main(int argc, char *argv[]){
 	// Now we read the size of data for each file pointer.
 	sizeArr = calloc(nFrames*2,sizeof(*sizeArr)); // Number StartLoc
 	size_t cntr = 0;
+	printf("Reading compressed image data.\n");
 	for (iter=0;iter<nFrames;iter++){
 		zip_stat_index(arch,dataLoc+iter,0,finfo);
 		sizeArr[iter*2+0] = finfo->size;
@@ -1107,7 +1108,7 @@ void main(int argc, char *argv[]){
 		zip_fclose(fLoc);
 	}
     omegaStart += skipFrame*omegaStep;
-    printf("%lf %d %lf %zu\n",omegaStart,skipFrame,omegaStep,cntr);
+    printf("Data read completely.\n%lf %d %lf %zu\n",omegaStart,skipFrame,omegaStep,cntr);
 	if (NrPixelsY != NrPixelsZ){
 		if (NrPixelsY > NrPixelsZ){
 			NrPixels = NrPixelsY;
@@ -1177,7 +1178,7 @@ void main(int argc, char *argv[]){
         free(arr);
         memcpy(flood,data,dsize);
     } else for(a=0;a<(NrPixels*NrPixels);a++) flood[a]=1;
-    // zip_close(arch);
+    zip_close(arch);
 
 	char OutFolderName[2048];
 	sprintf(OutFolderName,"%s/%s",resultFolder,TmpFolder);
