@@ -38,7 +38,6 @@ check (int test, const char * message, ...)
 	}
 }
 
-
 #define RealType double
 
 // conversions constants
@@ -400,7 +399,7 @@ void CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3],RealType LatticeConstant
 		ringnr = (int)(hkls[indexhkl][3]);
 		RealType RingRadius = RingRadii[ringnr];
 		MatrixMultF(OrientMatrix,Ghkl, Gc);
-		ds    = hkls[indexhkl][4];
+		// ds    = hkls[indexhkl][4];
 		theta = hkls[indexhkl][5];
 		CalcOmega(Gc[0], Gc[1], Gc[2], theta, omegas, etas, &nspotsPlane);
 		for (i=0 ; i<nspotsPlane ; i++) {
@@ -421,7 +420,7 @@ void CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3],RealType LatticeConstant
 					break;
 				}
 			}
-			if (BigDetSize != 0){
+			if (BigDetSize != 0 && KeepSpot==1){
 				YCInt = (int)floor((BigDetSize/2) - (-yl/pixelsize));
 				ZCInt = (int)floor(((zl/pixelsize + (BigDetSize/2))));
 				idx = (long long int)(YCInt + BigDetSize*ZCInt);
@@ -1118,7 +1117,6 @@ int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis, str
 	RealType Displ_y, Displ_z;
 	RealType FracThis;
 	RealType RefRad = -1;
-	// Calc spotID inside
 	CalcDiffrSpots_Furnace(OM, Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii,
 		Params.OmegaRanges, Params.BoxSizes, Params.NoOfOmegaRanges, Params.ExcludePoleAngle, TheorSpots, &nTspots);
 	for (sp = 0 ; sp < nTspots ; sp++) {
@@ -1171,6 +1169,7 @@ int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis, str
 	outArr2 = malloc(rownr*sizeof(*outArr2));
 	for (i=0;i<rownr;i++) outArr2[i] = (int)AllGrainSpots[i][14];
 	fwrite(outArr2,rownr*sizeof(int),1,allF);
+	free(outArr2);
 	fprintf(keyF,"%zu %zu %zu %zu\n",(size_t)SpotID,(size_t)rownr,locVals,locAll);
 	printf("ID: %d, voxNr: %d, Confidence: %lf\n",SpotID,voxNr,FracThis);
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
@@ -1274,10 +1273,6 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 				}
 			}
 		}
-		// orDelta = 1;
-		// if (FracThis != 0) {
-		// 	if (FracThis < 0.5) { orDelta = 3 - round(FracThis * (3-1) / 0.5); }
-		// }
 		or += orDelta;
 	}
 	fracMatches = (RealType) bestnMatchesIsp/bestnTspotsIsp;
@@ -1304,6 +1299,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 	outArr2 = malloc(matchedNrSpots*sizeof(*outArr2));
 	for (i=0;i<matchedNrSpots;i++) outArr2[i] = (int)AllGrainSpots[i][14];
 	fwrite(outArr2,matchedNrSpots*sizeof(int),1,allF);
+	free(outArr2);
 	fprintf(keyF,"%zu %zu %zu %zu\n",(size_t)SpotID,(size_t)matchedNrSpots,locVals,locAll);
 	printf("ID: %d, voxNr: %d, Confidence: %lf\n",SpotID,voxNr,fracMatches);
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
@@ -1570,7 +1566,7 @@ main(int argc, char *argv[])
 			int idnr;
 			int thisID;
 			int nrRows = endRowNrSp-startRowNrSp+1;
-			printf("%d %lf %lf %d %d %d\n", thisRowNr,xThis,yThis,startRowNr,endRowNr,endRowNr-startRowNr);
+			printf("%d %lf %lf %d %d %d %d\n", thisRowNr,xThis,yThis,startRowNr,endRowNr,endRowNr-startRowNr,nrRows);
 			for (idnr = startRowNrSp; idnr<=endRowNrSp; idnr++){
 				angle = ObsSpotsLab[idnr*10+2];
 				thisID = (int)ObsSpotsLab[idnr*10+4];
