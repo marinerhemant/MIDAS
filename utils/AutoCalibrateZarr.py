@@ -14,6 +14,7 @@ import sys
 import plotly.express as plotlyx
 import plotly.graph_objects as go
 import pandas as pd
+import diplib as dip
 from plotly.subplots import make_subplots
 
 env = dict(os.environ)
@@ -207,18 +208,12 @@ if DrawPlots==1:
 	plt.imshow(np.log(raw),clim=[np.median(np.log(raw)),np.median(np.log(raw))+np.std(np.log(raw))])
 	plt.colorbar()
 	plt.show()
-neighborhood = skimage.morphology.disk(radius=50)
 data = raw.astype(np.uint16)
-print('Starting Median1')
-data2 = skimage.filters.rank.median(data, neighborhood)
-print('Starting Median2')
-data2 = skimage.filters.rank.median(data2, neighborhood)
-print('Starting Median3')
-data2 = skimage.filters.rank.median(data2, neighborhood)
-print('Starting Median4')
-data2 = skimage.filters.rank.median(data2, neighborhood)
-print('Starting Median5')
-data2 = skimage.filters.rank.median(data2, neighborhood)
+data2 = dip.MedianFilter(data,101)
+data2 = dip.MedianFilter(data,101)
+data2 = dip.MedianFilter(data,101)
+data2 = dip.MedianFilter(data,101)
+data2 = dip.MedianFilter(data,101)
 print('Finished with median, now processing data.')
 data = data.astype(float)
 data_corr = data - data2
