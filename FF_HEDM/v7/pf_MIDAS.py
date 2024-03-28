@@ -360,6 +360,7 @@ if (runIndexing == 1):
 
 if oneSolPerVox==1:
 	subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')+f' {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}',cwd=topdir,shell=True)
+	os.makedirs('Recons',exist_ok=True)
 	if doTomo == 1:
 		sinoFN = glob.glob("sinos_*.bin")[0]
 		nGrs = int(sinoFN.split('_')[1])
@@ -495,8 +496,8 @@ if oneSolPerVox==1:
 		f.close()
 	head = 'SpotID,O11,O12,O13,O21,O22,O23,O31,O32,O33,SpotID,x,y,z,SpotID,a,b,c,alpha,beta,gamma,SpotID,PosErr,OmeErr,InternalAngle,'
 	head += 'Radius,Completeness,E11,E12,E13,E21,E22,E23,E31,E32,E33,Eul1,Eul2,Eul3,Quat1,Quat2,Quat3,Quat4'
-	np.savetxt('Recons/microstrFull.csv',filesdata,fmt='%.6f',delimiter=',',header=head)
-	f = h5py.File('Recons/microstructure.hdf','w')
+	np.savetxt(f'{topdir}/Recons/microstrFull.csv',filesdata,fmt='%.6f',delimiter=',',header=head)
+	f = h5py.File(f'{topdir}/Recons/microstructure.hdf','w')
 	micstr = f.create_dataset(name='microstr',dtype=np.double,data=filesdata)
 	micstr.attrs['Header'] = np.string_(head)
 	info_arr = info_arr.reshape((23,nScans,nScans))
