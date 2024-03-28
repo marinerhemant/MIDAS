@@ -90,7 +90,7 @@ class MyParser(argparse.ArgumentParser):
 default_handler = signal.getsignal(signal.SIGINT)
 signal.signal(signal.SIGINT, handler)
 parser = MyParser(description='''Far-field HEDM analysis using MIDAS. V7.0.0, contact hsharma@anl.gov''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('-resultFolder', type=str, required=True, help='Folder where you want to save results')
+parser.add_argument('-resultFolder', type=str, required=False, default='', help='Folder where you want to save results. If nothing is provided, it will default to the current folder.')
 parser.add_argument('-paramFN', type=str, required=True, help='Parameter file name')
 parser.add_argument('-dataFN', type=str, required=False, default='', help='DataFileName')
 parser.add_argument('-nCPUs', type=int, required=False, default=10, help='Number of CPU cores to use if running locally.')
@@ -111,6 +111,9 @@ nchunks = args.numFrameChunks
 preproc = args.preProcThresh
 layerNr = args.LayerNr
 ConvertFiles = args.ConvertFiles
+
+if len(resultDir) == 0:
+	resultDir = os.getcwd()
 
 resultDir += f'/LayerNr_{layerNr}'
 logDir = resultDir + '/output'
@@ -202,8 +205,8 @@ f.close()
 f_err.close()
 os.chdir(resultDir)
 print(f"Binning data. Time till now: {time.time()-t0}")
-f2 = open(f'binning_out.csv','w')
-f_err2 = open(f'binning_err.csv','w')
+f2 = open(f'{logDir}/binning_out.csv','w')
+f_err2 = open(f'{logDir}/binning_err.csv','w')
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinData")+' paramstest.txt',shell=True,env=env,stdout=f2,stderr=f_err2)
 f2.close()
 f_err2.close()
