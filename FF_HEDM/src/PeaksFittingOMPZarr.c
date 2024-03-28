@@ -1101,12 +1101,14 @@ void main(int argc, char *argv[]){
 	// allocate arr
 	char * allData;
 	allData = calloc(cntr+1,sizeof(*allData));
+	#pragma omp parallel for num_threads(numProcs) private(iter) schedule(dynamic)
 	for (iter=0;iter<nFrames;iter++){
 		zip_file_t *fLoc = NULL;
 		fLoc = zip_fopen_index(arch,dataLoc+iter,0);
 		zip_fread(fLoc,&allData[sizeArr[iter*2+1]],sizeArr[iter*2+0]);
 		zip_fclose(fLoc);
 	}
+	return 1;
     omegaStart += skipFrame*omegaStep;
     printf("Data read completely.\n%lf %d %lf %zu\n",omegaStart,skipFrame,omegaStep,cntr);
 	if (NrPixelsY != NrPixelsZ){
