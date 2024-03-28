@@ -1105,6 +1105,7 @@ void main(int argc, char *argv[]){
 	for (iter=0;iter<nFrames;iter++){
 		zip_file_t *fLoc = NULL;
 		fLoc = zip_fopen_index(arch,dataLoc+iter,0);
+		if (fLoc==NULL) printf("Something went wrong.\n")
 		zip_fread(fLoc,&allData[sizeArr[iter*2+1]],sizeArr[iter*2+0]);
 		zip_fclose(fLoc);
 	}
