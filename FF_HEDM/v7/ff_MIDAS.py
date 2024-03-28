@@ -168,7 +168,7 @@ else:
             startFN = int(line.split()[1])
         if line.startswith('NrFilesPerSweep '):
             NrFilerPerLayer = int(line.split()[1])
-    thisFileNr = startFN + layerNr*NrFilerPerLayer
+    thisFileNr = startFN + (layerNr-1)*NrFilerPerLayer
     outFStem = f'{resultDir}/{fStem}_{str(thisFileNr).zfill(6)}.MIDAS.zip'
     print(outFStem)
 print(f"Generating HKLs. Time till now: {time.time()-t0} seconds.")
