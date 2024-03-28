@@ -1110,7 +1110,7 @@ void main(int argc, char *argv[]){
 	}
     omegaStart += skipFrame*omegaStep;
 	double t_0 = omp_get_wtime();
-    printf("Data read completely. Total size: %zu bytes, total time taken: %lfseconds.\n%lf %d %lf %zu\n",cntr,t_1-t_0,omegaStart,skipFrame,omegaStep,cntr);
+    printf("Data read completely. Total size: %zu bytes, total time taken: %lfseconds.\n%lf %d %lf %zu\n",cntr,t_0-t_1,omegaStart,skipFrame,omegaStep,cntr);
 	if (NrPixelsY != NrPixelsZ){
 		if (NrPixelsY > NrPixelsZ){
 			NrPixels = NrPixelsY;
