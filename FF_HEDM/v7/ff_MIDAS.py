@@ -99,6 +99,7 @@ parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, hel
 parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
 parser.add_argument('-nNodes', type=int, required=False, default=1, help='Number of nodes for execution')
 parser.add_argument('-LayerNr', type=int, required=False, default=1, help='LayerNr to process')
+parser.add_argument('-ConvertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
 args, unparsed = parser.parse_known_args()
 resultDir = args.resultFolder
 psFN = args.paramFN
@@ -109,6 +110,7 @@ nNodes = args.nNodes
 nchunks = args.numFrameChunks
 preproc = args.preProcThresh
 layerNr = args.LayerNr
+ConvertFiles = args.ConvertFiles
 
 resultDir += f'/LayerNr_{layerNr}'
 logDir = resultDir + '/output'
@@ -155,7 +157,20 @@ elif machineName == 'marquette':
     from marquetteConfig import *
     parsl.load(config=marquetteConfig)
 
-outFStem = generateZip(resultDir,psFN,layerNr,dfn=dataFN,nchunks=nchunks,preproc=preproc)
+if ConvertFiles==1:
+    outFStem = generateZip(resultDir,psFN,layerNr,dfn=dataFN,nchunks=nchunks,preproc=preproc)
+else:
+    psContents = open(psFN).readlines()
+    for line in psContents:
+        if line.startswith('FileStem '):
+            fStem = line.split()[1]
+        if line.startswith('StartFileNrFirstLayer '):
+            startFN = int(line.split()[1])
+        if line.startswith('NrFilesPerSweep '):
+            NrFilerPerLayer = int(line.split()[1])
+    thisFileNr = startFN + layerNr*NrFilerPerLayer
+    outFStem = f'{resultDir}/{fStem}_{str(thisFileNr).zfill(6)}.MIDAS.zip'
+    print(outFStem)
 print(f"Generating HKLs. Time till now: {time.time()-t0} seconds.")
 f_hkls = open(f'{logDir}/hkls_out.csv','w')
 f_hkls_err = open(f'{logDir}/hkls_err.csv','w')
