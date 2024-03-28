@@ -1091,7 +1091,7 @@ void main(int argc, char *argv[]){
 	// Now we read the size of data for each file pointer.
 	sizeArr = calloc(nFrames*2,sizeof(*sizeArr)); // Number StartLoc
 	size_t cntr = 0;
-	double t_1 = omg_get_wtime();
+	double t_1 = omp_get_wtime();
 	printf("Reading compressed image data.\n");
 	for (iter=0;iter<nFrames;iter++){
 		zip_stat_index(arch,dataLoc+iter,0,finfo);
