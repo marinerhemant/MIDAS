@@ -193,7 +193,9 @@ else:
             print(time.time()-t1)
             print(dataT[20,1023,2023])
             print(dataT2[20,1023,2023])
-            plt.imshow(np.log(dataT.astype(np.double)-dataT2.astype(np.double)))
+            plt.imshow(np.log(np.max(dataT.astype(np.double)-dataT2.astype(np.double))))
+            plt.colorbar()
+            plt.show()
             assert np.array_equal(dataT,dataT2)
             break
         else:
