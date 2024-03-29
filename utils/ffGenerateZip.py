@@ -111,7 +111,6 @@ else:
 @jit
 def applyCorrectionNumba(img,dark,preproc):
     result = np.empty(img.shape,dtype=np.uint16)
-    print(img.shape)
     for i in range(img.shape[0]):
         for j in range(img.shape[1]):
             for k in range(img.shape[2]):
