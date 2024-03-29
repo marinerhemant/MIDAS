@@ -127,7 +127,6 @@ if h5py.is_hdf5(InputFN):
     else:
         brightData = np.copy(darkData)
     bright = exc.create_dataset('bright',shape=brightData.shape,dtype=np.uint16,chunks=(1,brightData.shape[1],brightData.shape[2]),compression=compressor)
-    bright[:]=brightData
     if numFrameChunks == -1:
         numFrameChunks = nFrames
     numChunks = int(ceil(nFrames/numFrameChunks))

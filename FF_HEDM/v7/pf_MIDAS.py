@@ -484,12 +484,12 @@ if oneSolPerVox==1:
 		data = f.readline().split()
 		for j in range(len(data)):
 			filesdata[i][j] = float(data[j])
-		OM = filesdata[i][1:10]
-		quat = BringDownToFundamentalRegionSym(OrientMat2Quat(OM),NrSym,Sym)
 		if isnan(filesdata[i][26]):
 			continue
 		if filesdata[i][26] < 0 or filesdata[i][26] > 1.0000000001:
 			continue
+		OM = filesdata[i][1:10]
+		quat = BringDownToFundamentalRegionSym(OrientMat2Quat(OM),NrSym,Sym)
 		filesdata[i][39:43] = quat
 		info_arr[:,voxNr] = filesdata[i][[0,-4,-3,-2,-1,11,12,15,16,17,18,19,20,22,23,24,26,27,28,29,31,32,35]]
 		i+=1
