@@ -9,7 +9,7 @@ import zarr
 from numcodecs import Blosc
 from pathlib import Path
 import shutil
-from numba import njit,prange
+from numba import jit
 import time
 import matplotlib.pyplot as plt
 
@@ -108,12 +108,12 @@ else:
     print(f'Input: {InputFN}')
     print(f'Dark: {InputFN}')
 
-@njit(nopython=True,parallel=True)
+@jit(nopython=True)
 def applyCorrectionNumba(img,dark,preproc):
     result = np.empty(img.shape,dtype=np.uint16)
     for i in range(img.shape[0]):
         for j in range(img.shape[1]):
-            for k in prange(img.shape[2]):
+            for k in range(img.shape[2]):
                 if (img[i,j,k] < dark[j,k]+preproc): result[i,j,k] = 0
                 else: result[i,j,k] = img[i,j,k] - dark[j,k]
     return result
