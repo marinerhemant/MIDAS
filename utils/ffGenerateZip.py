@@ -191,6 +191,8 @@ else:
             print(time.time()-t1)
             dataT2 = applyCorrectionNumpy(dataThis,darkMean,preProc)
             print(time.time()-t1)
+            print(dataT[20,1023,2023])
+            print(dataT2[20,1023,2023])
             assert np.array_equal(dataT,dataT2)
             break
         else:
