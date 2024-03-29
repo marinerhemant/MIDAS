@@ -108,7 +108,7 @@ else:
     print(f'Input: {InputFN}')
     print(f'Dark: {InputFN}')
 
-@jit
+@jit(nopython=True)
 def applyCorrectionNumba(img,dark,preproc):
     result = np.empty(img.shape,dtype=np.uint16)
     for i in range(img.shape[0]):
