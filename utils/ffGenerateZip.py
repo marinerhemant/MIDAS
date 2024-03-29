@@ -9,6 +9,7 @@ import zarr
 from numcodecs import Blosc
 from pathlib import Path
 import shutil
+from numba import jit
 
 compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
 
@@ -105,6 +106,22 @@ else:
     print(f'Input: {InputFN}')
     print(f'Dark: {InputFN}')
 
+@jit
+def applyCorrectionNumba(img,dark,preproc):
+    result = np.empty(img.shape,dtype=np.uint16)
+    for i in range(img.shape[0]):
+        for j in range(img.shape[1]):
+            for k in range(img.shape[2]):
+                result[i,j,k] = float(img[i,j,k]) - dark[j,k]
+                if (result[i,j,k]<preproc): result[i,j,k] = 0
+    return result
+
+def applyCorrectionNumpy(img,dark,preproc):
+    img2 = img.astype(np.double)
+    imgT = img2 - dark
+    imgT[imgT<preproc] = 0
+    return imgT.astye(np.uint16)
+
 print(f'ResultDir: {resultDir}')
 print(f'Out: {outfn}.MIDAS.zip')
 outfZip = f'{outfn}.MIDAS.zip'
@@ -136,13 +153,12 @@ if h5py.is_hdf5(InputFN):
         enFrame = (i+1)*numFrameChunks
         if enFrame > nFrames: enFrame=nFrames
         print(f"StartFrame: {stFrame}, EndFrame: {enFrame-1}, nFrames: {nFrames}")
-        dataThis = hf2[dataLoc][stFrame:enFrame,:,:].astype(np.double)
+        dataThis = hf2[dataLoc][stFrame:enFrame,:,:]
         if preProc!=-1:
-            dataT = dataThis - darkMean
-            dataT[dataT<preProc] = 0
+            dataT = applyCorrectionNumba(dataThis,darkMean,preProc)
         else:
             dataT = dataThis
-        data[stFrame:enFrame,:,:] = dataT.astype(np.uint16)
+        data[stFrame:enFrame,:,:] = dataT
     hf2.close()
 else:
     sz = os.path.getsize(InputFN)
@@ -168,11 +184,10 @@ else:
         delFrames = enFrame - stFrame
         dataThis = np.fromfile(InputFN,dtype=np.uint16,count=delFrames*numPxY*numPxZ,offset=stFrame*numPxY*numPxZ*bytesPerPx+8192).reshape((delFrames,numPxZ,numPxY))
         if preProc!=-1:
-            dataT = dataThis.astype(np.double) - darkMean
-            dataT[dataT<preProc] = 0
+            dataT = applyCorrectionNumba(dataThis,darkMean,preProc)
         else:
             dataT = dataThis
-        data[stFrame:enFrame,:,:] = dataT.astype(np.uint16)
+        data[stFrame:enFrame,:,:] = dataT
 if preProc !=-1:
     darkData *= 0
     brightData *= 0
