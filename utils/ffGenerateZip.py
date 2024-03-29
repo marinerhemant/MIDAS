@@ -121,7 +121,7 @@ def applyCorrectionNumpy(img,dark,preproc):
     img2 = img.astype(np.double)
     imgT = img2 - dark
     imgT[imgT<preproc] = 0
-    return imgT.astye(np.uint16)
+    return imgT.astype(np.uint16)
 
 print(f'ResultDir: {resultDir}')
 print(f'Out: {outfn}.MIDAS.zip')
