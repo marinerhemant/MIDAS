@@ -10,6 +10,7 @@ from numcodecs import Blosc
 from pathlib import Path
 import shutil
 from numba import jit
+import time
 
 compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
 
@@ -156,6 +157,8 @@ if h5py.is_hdf5(InputFN):
         dataThis = hf2[dataLoc][stFrame:enFrame,:,:]
         if preProc!=-1:
             dataT = applyCorrectionNumba(dataThis,darkMean,preProc)
+            dataT2 = applyCorrectionNumpy(dataThis,darkMean,preProc)
+            assert np.array_equal(dataT,dataT2)
         else:
             dataT = dataThis
         data[stFrame:enFrame,:,:] = dataT
@@ -184,7 +187,13 @@ else:
         delFrames = enFrame - stFrame
         dataThis = np.fromfile(InputFN,dtype=np.uint16,count=delFrames*numPxY*numPxZ,offset=stFrame*numPxY*numPxZ*bytesPerPx+8192).reshape((delFrames,numPxZ,numPxY))
         if preProc!=-1:
+            t1 = time.time()
             dataT = applyCorrectionNumba(dataThis,darkMean,preProc)
+            print(time.time()-t1)
+            dataT2 = applyCorrectionNumpy(dataThis,darkMean,preProc)
+            print(time.time()-t1)
+            assert np.array_equal(dataT,dataT2)
+            break
         else:
             dataT = dataThis
         data[stFrame:enFrame,:,:] = dataT
