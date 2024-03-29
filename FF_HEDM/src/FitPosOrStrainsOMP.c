@@ -1553,6 +1553,10 @@ int main(int argc, char *argv[])
 		sprintf(InpFN,"%s/IndexBest.bin",OutputFolder);
 		sprintf(InpFN2,"%s/IndexBestFull.bin",OutputFolder);
 		int inpF = open(InpFN,O_RDONLY);
+		if (inpF == -1) {
+			printf("Nothing was found during indexing, nothing to do.\n");
+			continue;
+		}
 		size_t offst1 = rowNr;
 		offst1 *= 15*sizeof(double);
 		double *locArr;
