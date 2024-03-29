@@ -186,18 +186,7 @@ else:
         delFrames = enFrame - stFrame
         dataThis = np.fromfile(InputFN,dtype=np.uint16,count=delFrames*numPxY*numPxZ,offset=stFrame*numPxY*numPxZ*bytesPerPx+8192).reshape((delFrames,numPxZ,numPxY))
         if preProc!=-1:
-            t1 = time.time()
             dataT = applyCorrectionNumba(dataThis,darkMean,preProc)
-            print(time.time()-t1)
-            dataT2 = applyCorrectionNumpy(dataThis,darkMean,preProc)
-            print(time.time()-t1)
-            print(dataT[20,1023,2023])
-            print(dataT2[20,1023,2023])
-            plt.imshow(np.log(np.max(dataT.astype(np.double)-dataT2.astype(np.double),axis=0)))
-            plt.colorbar()
-            plt.show()
-            assert np.array_equal(dataT,dataT2)
-            break
         else:
             dataT = dataThis
         data[stFrame:enFrame,:,:] = dataT
