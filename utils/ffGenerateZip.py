@@ -115,8 +115,8 @@ def applyCorrectionNumba(img,dark,preproc):
     for i in range(img.shape[0]):
         for j in range(img.shape[1]):
             for k in range(img.shape[2]):
-                result[i,j,k] = float(img[i,j,k]) - dark[j,k]
-                if (result[i,j,k]<preproc): result[i,j,k] = 0
+                if (img[i,j,k] < dark[j,k]+preproc): result[i,j,k] = 0
+                else: result[i,j,k] = img[i,j,k] - dark[j,k]
     return result
 
 def applyCorrectionNumpy(img,dark,preproc):

@@ -598,8 +598,8 @@ grainSizes = grainSizes.reshape((Dims))
 KamArr = np.fromfile('KAMArr.bin',dtype=np.float64)
 KamArr = KamArr.reshape((Dims))
 
-# ~ # write files
-# writeHDF5File(grainIDs.astype(np.int32),Euler1.astype(np.float32),Euler2.astype(np.float32),Euler3.astype(np.float32),Confidence.astype(np.float32),PhaseNr.astype(np.float32),KamArr.astype(np.float32),grains.astype(np.int32),grainSizes.astype(np.int32),xVals.astype(np.float32),yVals.astype(np.float32),zVals.astype(np.float32),outfn+'.h5')
-# writeXMLXdmf(Dims,[xyspacing,xyspacing,zspacing],outfn+'.xmf',outfn,sampleName)
-# writeH5EBSDFile(Euler1,Euler2,Euler3,Confidence,PhaseNr,grainIDs,outfn+'.h5ebsd')
+# write files
+writeHDF5File(grainIDs.astype(np.int32),Euler1.astype(np.float32),Euler2.astype(np.float32),Euler3.astype(np.float32),Confidence.astype(np.float32),PhaseNr.astype(np.float32),KamArr.astype(np.float32),grains.astype(np.int32),grainSizes.astype(np.int32),xVals.astype(np.float32),yVals.astype(np.float32),zVals.astype(np.float32),outfn+'.h5')
+writeXMLXdmf(Dims,[xyspacing,xyspacing,zspacing],outfn+'.xmf',outfn,sampleName)
+writeH5EBSDFile(Euler1,Euler2,Euler3,Confidence,PhaseNr,grainIDs,outfn+'.h5ebsd')
 writeDREAM3DFile(Euler1,Euler2,Euler3,Confidence,PhaseNr,grainIDs,outfn+'.dream3d')
