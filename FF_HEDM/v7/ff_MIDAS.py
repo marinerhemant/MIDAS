@@ -5,6 +5,7 @@ from pprint import pprint as print
 import time
 import argparse
 import signal
+import shutil
 utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 sys.path.insert(0,utilsDir)
 v7Dir = os.path.expanduser('~/opt/MIDAS/FF_HEDM/v7/')
@@ -91,8 +92,8 @@ default_handler = signal.getsignal(signal.SIGINT)
 signal.signal(signal.SIGINT, handler)
 parser = MyParser(description='''Far-field HEDM analysis using MIDAS. V7.0.0, contact hsharma@anl.gov''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-resultFolder', type=str, required=False, default='', help='Folder where you want to save results. If nothing is provided, it will default to the current folder.')
-parser.add_argument('-paramFN', type=str, required=True, help='Parameter file name')
-parser.add_argument('-dataFN', type=str, required=False, default='', help='DataFileName')
+parser.add_argument('-paramFN', type=str, required=False, default='', help='Parameter file name. Provide either paramFN and/or dataFN.')
+parser.add_argument('-dataFN', type=str, required=False, default='', help='Data file name. This is if you have either h5 or zip files.  Provide either paramFN and/or dataFN (in case zip exists).')
 parser.add_argument('-nCPUs', type=int, required=False, default=10, help='Number of CPU cores to use if running locally.')
 parser.add_argument('-machineName', type=str, required=False, default='local', help='Machine name for execution')
 parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='If low on RAM, it can process parts of the dataset at the time. -1 will disable.')
@@ -100,6 +101,10 @@ parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help
 parser.add_argument('-nNodes', type=int, required=False, default=1, help='Number of nodes for execution')
 parser.add_argument('-LayerNr', type=int, required=False, default=1, help='LayerNr to process')
 parser.add_argument('-ConvertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
+if len(sys.argv) == 1:
+    parser.print_help(sys.stderr)
+    print("MUST PROVIDE EITHER paramFN or dataFN")
+    sys.exit(1)
 args, unparsed = parser.parse_known_args()
 resultDir = args.resultFolder
 psFN = args.paramFN
@@ -149,7 +154,7 @@ elif machineName == 'orthrosall':
     from orthrosAllConfig import *
     parsl.load(config=orthrosAllConfig)
 elif machineName == 'umich':
-    pytpath = '/nfs/turbo/meche-abucsek/Wenxi/ESRF_Ti_v7/.venf/bin'
+    pytpath = '/nfs/turbo/meche-abucsek/Wenxi/ESRF_Ti_v7/.venv/bin'
     os.environ['MIDAS_SCRIPT_DIR'] = logDir
     numProcs = 36
     from uMichConfig import *
@@ -163,16 +168,21 @@ elif machineName == 'marquette':
 if ConvertFiles==1:
     outFStem = generateZip(resultDir,psFN,layerNr,dfn=dataFN,nchunks=nchunks,preproc=preproc)
 else:
-    psContents = open(psFN).readlines()
-    for line in psContents:
-        if line.startswith('FileStem '):
-            fStem = line.split()[1]
-        if line.startswith('StartFileNrFirstLayer '):
-            startFN = int(line.split()[1])
-        if line.startswith('NrFilesPerSweep '):
-            NrFilerPerLayer = int(line.split()[1])
-    thisFileNr = startFN + (layerNr-1)*NrFilerPerLayer
-    outFStem = f'{resultDir}/{fStem}_{str(thisFileNr).zfill(6)}.MIDAS.zip'
+    if len(dataFN) > 0:
+        outFStem = f'{resultDir}/{dataFN}'
+        if not os.path.exists(outFStem):
+            shutil.copy2(dataFN,resultDir)
+    else:
+        psContents = open(psFN).readlines()
+        for line in psContents:
+            if line.startswith('FileStem '):
+                fStem = line.split()[1]
+            if line.startswith('StartFileNrFirstLayer '):
+                startFN = int(line.split()[1])
+            if line.startswith('NrFilesPerSweep '):
+                NrFilerPerLayer = int(line.split()[1])
+        thisFileNr = startFN + (layerNr-1)*NrFilerPerLayer
+        outFStem = f'{resultDir}/{fStem}_{str(thisFileNr).zfill(6)}.MIDAS.zip'
     print(outFStem)
 print(f"Generating HKLs. Time till now: {time.time()-t0} seconds.")
 f_hkls = open(f'{logDir}/hkls_out.csv','w')
