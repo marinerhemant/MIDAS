@@ -2,10 +2,8 @@ import sys,os
 utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 sys.path.insert(0,utilsDir)
 import numpy as np
-import matplotlib.pyplot as plt
 import h5py
 import warnings
-from pathlib import Path
 
 warnings.filterwarnings('ignore')
 
@@ -51,7 +49,7 @@ SpotsToIndex = np.genfromtxt('SpotsToIndex.csv',skip_header=1)
 HKLs = np.genfromtxt('hkls.csv',skip_header=1)
 outFile = h5py.File(outFN,'w')
 
-headSpots = 'GrainID SpotID Omega DetectorHor DetectorVert OmeRaw Eta RingNr YLab ZLab Theta StrainError OriginalRadiusFileSpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax MinOme(degrees) MaxOme(degress) Radius(px) Theta(degrees) Eta(degrees) DeltaOmega NImgs RingNr GrainVolume GrainRadius PowderIntensity SigmaR SigmaEta NrPx'
+headSpots = 'GrainID SpotID Omega DetectorHor DetectorVert OmeRaw Eta RingNr YLab ZLab Theta StrainError OriginalRadiusFileSpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax MinOme(degrees) MaxOme(degress) Radius(px) Theta(degrees) Eta(degrees) DeltaOmega NImgs RingNr GrainVolume GrainRadius PowderIntensity SigmaR SigmaEta NrPx NrPxTot'
 
 f = open('Grains.csv','r')
 nGrains = int(f.readline().split()[1])
@@ -62,7 +60,7 @@ f.readline()
 f.readline()
 f.readline()
 f.readline()
-hGr = f.readline()
+hGr = ' '.join((f.readline()[1:].split("\t")))
 f.close()
 
 outFile.attrs['Software'] = np.string_("MIDAS")
@@ -133,13 +131,15 @@ for counter,grain in enumerate(Grains):
 	spd.attrs['header'] = headSpots
 
 
-Path('remote_data').mkdir(parents=True,exist_ok=True)
-# Make and save plots
-plt.scatter(Grains[:,10],Grains[:,11]);  plt.xlabel('X [\mu m]'); plt.ylabel('Y [\mu m]'); plt.savefig('remote_data/XY.png'); plt.clf()
-plt.scatter(Grains[:,11],Grains[:,12]);  plt.xlabel('Y [\mu m]'); plt.ylabel('Z [\mu m]'); plt.savefig('remote_data/YZ.png'); plt.clf()
-plt.scatter(Grains[:,10],Grains[:,12]);  plt.xlabel('X [\mu m]'); plt.ylabel('Z [\mu m]'); plt.savefig('remote_data/XZ.png'); plt.clf()
-plt.scatter(Grains[:,19],Grains[:,22]);  plt.xlabel('Grain Radius [\mu m]'); plt.ylabel('PosErr [\mu m]'); plt.savefig('remote_data/PosvsRad.png'); plt.clf()
-plt.scatter(Grains[:,21],Grains[:,22]);  plt.xlabel('Grain Radius [\mu m]'); plt.ylabel('InternalAngle [Degrees]'); plt.savefig('remote_data/IAvsRad.png'); plt.clf()
-plt.scatter(Grains[:,33],Grains[:,22]);  plt.xlabel('Grain Radius [\mu m]'); plt.ylabel('E_XX'); plt.savefig('remote_data/eXXvsRad.png'); plt.clf()
-plt.scatter(Grains[:,37],Grains[:,22]);  plt.xlabel('Grain Radius [\mu m]'); plt.ylabel('E_YY'); plt.savefig('remote_data/eYYvsRad.png'); plt.clf()
-plt.scatter(Grains[:,41],Grains[:,22]);  plt.xlabel('Grain Radius [\mu m]'); plt.ylabel('E_ZZ'); plt.savefig('remote_data/eZZvsRad.png'); plt.clf()
+# from pathlib import Path
+# import matplotlib.pyplot as plt
+# Path('remote_data').mkdir(parents=True,exist_ok=True)
+# # Make and save plots
+# plt.scatter(Grains[:,10],Grains[:,11]);  plt.xlabel('X [\mu m]'); plt.ylabel('Y [\mu m]'); plt.savefig('remote_data/XY.png'); plt.clf()
+# plt.scatter(Grains[:,11],Grains[:,12]);  plt.xlabel('Y [\mu m]'); plt.ylabel('Z [\mu m]'); plt.savefig('remote_data/YZ.png'); plt.clf()
+# plt.scatter(Grains[:,10],Grains[:,12]);  plt.xlabel('X [\mu m]'); plt.ylabel('Z [\mu m]'); plt.savefig('remote_data/XZ.png'); plt.clf()
+# plt.scatter(Grains[:,19],Grains[:,22]);  plt.xlabel('Grain Radius [\mu m]'); plt.ylabel('PosErr [\mu m]'); plt.savefig('remote_data/PosvsRad.png'); plt.clf()
+# plt.scatter(Grains[:,21],Grains[:,22]);  plt.xlabel('Grain Radius [\mu m]'); plt.ylabel('InternalAngle [Degrees]'); plt.savefig('remote_data/IAvsRad.png'); plt.clf()
+# plt.scatter(Grains[:,33],Grains[:,22]);  plt.xlabel('Grain Radius [\mu m]'); plt.ylabel('E_XX'); plt.savefig('remote_data/eXXvsRad.png'); plt.clf()
+# plt.scatter(Grains[:,37],Grains[:,22]);  plt.xlabel('Grain Radius [\mu m]'); plt.ylabel('E_YY'); plt.savefig('remote_data/eYYvsRad.png'); plt.clf()
+# plt.scatter(Grains[:,41],Grains[:,22]);  plt.xlabel('Grain Radius [\mu m]'); plt.ylabel('E_ZZ'); plt.savefig('remote_data/eZZvsRad.png'); plt.clf()
