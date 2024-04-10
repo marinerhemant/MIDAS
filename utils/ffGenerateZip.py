@@ -128,7 +128,7 @@ if Path(outfZip).exists():
 zipStore = zarr.ZipStore(outfZip)
 zRoot = zarr.group(store=zipStore, overwrite=True)
 exc = zRoot.create_group('exchange')
-fNrLoc = int(fNr)
+fNrLoc = int(fNr) - 1
 if h5py.is_hdf5(InputFN):
     hf2 = h5py.File(InputFN,'r')
     nFrames,numZ,numY = hf2[dataLoc].shape
