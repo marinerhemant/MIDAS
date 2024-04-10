@@ -234,7 +234,7 @@ print(rads)
 
 @jit(nopython=True)
 def normalizeIntensitiesNumba(input,radius,hashArr):
-	nrSps = input.shape
+	nrSps = input.shape[0]
 	for i in range(nrSps):
 		if input[i,3] > 0.001:
 			input[i,3] = radius[hashArr[i,2]-1,1]
