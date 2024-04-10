@@ -294,6 +294,7 @@ if doPeakSearch == 1:
 		dfAllF.to_csv(outFN2,sep=' ',header=True,float_format='%.6f',index=False)
 		shutil.copy2(thisDir+'/paramstest.txt',topdir+'/paramstest.txt')
 		shutil.copy2(thisDir+'/hkls.csv',topdir+'/hkls.csv')
+		os.chdir(topdir)
 else:
 	if nMerges!=0:
 		os.chdir(topdir)
