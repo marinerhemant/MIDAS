@@ -251,7 +251,7 @@ if doPeakSearch == 1:
 			outFStem = generateZip(thisDir,baseNameParamFN,layerNr,nchunks=nchunks,preproc=preproc)
 		else:
 			outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(6)}{Ext}'
-		print(outFStem)
+		print(f'FileStem: {outFStem}')
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+f' {outFStem} {thisDir}',env=env,shell=True)
 		res = []
 		for nodeNr in range(nNodes):
