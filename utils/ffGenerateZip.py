@@ -54,6 +54,7 @@ parser.add_argument('-dataFN', type=str, required=False, default='', help='DataF
 parser.add_argument('-dataLoc', type=str, required=False, default='exchange/data', help='Location of data in the hdf file')
 parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='Number of chunks to use when reading the data file if RAM is smaller than expanded data. -1 will disable.')
 parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
+parser.add_argument('-numFilesPerScan', type=int, required=False, default=1, help='Number of files that constitute a single scan. This will combine multiple ge files into one dataset. 1 will disable.')
 parser.add_argument('-LayerNr', type=int, required=False, default=1, help='LayerNr')
 args, unparsed = parser.parse_known_args()
 resultDir = args.resultFolder
@@ -63,6 +64,7 @@ numFrameChunks = args.numFrameChunks
 dataLoc = args.dataLoc
 preProc = args.preProcThresh
 layerNr = args.LayerNr
+numFilesPerScan = args.numFilesPerScan
 
 darkLoc = 'exchange/dark'
 brightLoc = 'exchange/bright'
@@ -118,11 +120,6 @@ def applyCorrectionNumba(img,dark,preproc):
                 else: result[i,j,k] = img[i,j,k] - dark[j,k]
     return result
 
-def applyCorrectionNumpy(img,dark,preproc):
-    imgT = img.astype(np.double) - dark
-    imgT[imgT<preproc] = 0
-    return imgT.astype(np.uint16)
-
 print(f'ResultDir: {resultDir}')
 print(f'Out: {outfn}.MIDAS.zip')
 outfZip = f'{outfn}.MIDAS.zip'
@@ -168,27 +165,33 @@ else:
     numPxY = 2048
     numPxZ = 2048
     nFrames = (sz-header) // (bytesPerPx*numPxY*numPxZ)
+    nFramesAll = nFrames*numFilesPerScan
     darkData = geReader(darkFN)
     brightData = np.copy(darkData)
     dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
     bright = exc.create_dataset('bright',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
     darkMean = np.mean(darkData[skipF:,:,:],axis=0).astype(np.uint16)
-    data = exc.create_dataset('data',shape=(nFrames,numPxZ,numPxY),dtype=np.uint16,chunks=(1,numPxZ,numPxY),compression=compressor)
+    data = exc.create_dataset('data',shape=(nFramesAll,numPxZ,numPxY),dtype=np.uint16,chunks=(1,numPxZ,numPxY),compression=compressor)
     if numFrameChunks == -1:
         numFrameChunks = nFrames
     numChunks = int(ceil(nFrames/numFrameChunks))
-    for i in range(numChunks):
-        stFrame = i*numFrameChunks
-        enFrame = (i+1)*numFrameChunks
-        if enFrame > nFrames: enFrame=nFrames
-        print(f"StartFrame: {stFrame}, EndFrame: {enFrame}, nFrames: {nFrames}")
-        delFrames = enFrame - stFrame
-        dataThis = np.fromfile(InputFN,dtype=np.uint16,count=delFrames*numPxY*numPxZ,offset=stFrame*numPxY*numPxZ*bytesPerPx+8192).reshape((delFrames,numPxZ,numPxY))
-        if preProc!=-1:
-            dataT = applyCorrectionNumba(dataThis,darkMean,preProc)
-        else:
-            dataT = dataThis
-        data[stFrame:enFrame,:,:] = dataT
+    for fileNrIter in range(numFilesPerScan):
+        fNr += fileNrIter
+        fNr = str(fNr)
+        InputFN = rawFolder + '/' + fStem + '_' + fNr.zfill(pad) + ext
+        stNr = nFrames*fileNrIter
+        for i in range(numChunks):
+            stFrame = i*numFrameChunks
+            enFrame = (i+1)*numFrameChunks
+            if enFrame > nFrames: enFrame=nFrames
+            print(f"StartFrame: {stFrame+stNr}, EndFrame: {enFrame+stNr}, nFrames: {nFrames}, nFramesAll: {nFramesAll}")
+            delFrames = enFrame - stFrame
+            dataThis = np.fromfile(InputFN,dtype=np.uint16,count=delFrames*numPxY*numPxZ,offset=stFrame*numPxY*numPxZ*bytesPerPx+8192).reshape((delFrames,numPxZ,numPxY))
+            if preProc!=-1:
+                dataT = applyCorrectionNumba(dataThis,darkMean,preProc)
+            else:
+                dataT = dataThis
+            data[stFrame+stNr:enFrame+stNr,:,:] = dataT
 if preProc !=-1:
     darkData *= 0
     brightData *= 0

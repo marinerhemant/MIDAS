@@ -16,6 +16,8 @@ def runSingle(workData):
     cwd = os.getcwd()
     binloc = os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZip.py')
     cmd = f'{sys.executable} {binloc} -resultFolder {rf} -paramFN {pf} -LayerNr {lN} -numFrameChunks {nc}'
+    if (numFilesPerScan!=1):
+        cmd += f' -numFilesPerScan {numFilesPerScan}'
     print(cmd)
     subprocess.call(cmd,cwd=cwd,shell=True)
 
@@ -25,6 +27,7 @@ parser.add_argument('-LastScanNr', type=int, required=True, help='Last scanNr')
 parser.add_argument('-StartScanNr', type=int, required=False, default=1, help='Start scanNr')
 parser.add_argument('-paramFN', type=str, required=True, help='Parameter filename')
 parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='Number of chunks to use when reading the data file if RAM is smaller than expanded data. -1 will disable.')
+parser.add_argument('-numFilesPerScan', type=int, required=False, default=1, help='Number of files that constitute a single scan. This will combine multiple ge files into one dataset. 1 will disable.')
 parser.add_argument('-nCPUs', type=int, required=False, default=-1, help='Number of parallel jobs to start. If -1, will use the default.')
 args, unparsed = parser.parse_known_args()
 resultFolder = args.resultFolder
@@ -32,6 +35,7 @@ LastScanNr = args.LastScanNr
 StartScanNr = args.StartScanNr
 paramFN = args.paramFN
 numFrameChunks = args.numFrameChunks
+numFilesPerScan = args.numFilesPerScan
 nCPUs = args.nCPUs
 
 if nCPUs == -1:
