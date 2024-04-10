@@ -6,12 +6,10 @@ import os
 import zarr
 import subprocess
 from skimage import measure
-import skimage
 import matplotlib.patches as mpatches
 plt.rcParams['figure.figsize'] = [10, 10]
 import argparse
 import sys
-import plotly.express as plotlyx
 import plotly.graph_objects as go
 import pandas as pd
 import diplib as dip

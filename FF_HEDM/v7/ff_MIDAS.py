@@ -98,7 +98,7 @@ parser.add_argument('-nCPUs', type=int, required=False, default=10, help='Number
 parser.add_argument('-machineName', type=str, required=False, default='local', help='Machine name for execution')
 parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='If low on RAM, it can process parts of the dataset at the time. -1 will disable.')
 parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
-parser.add_argument('-nNodes', type=int, required=False, default=1, help='Number of nodes for execution')
+parser.add_argument('-nNodes', type=int, required=False, default=-1, help='Number of nodes for execution, omit if want to automatically select.')
 parser.add_argument('-LayerNr', type=int, required=False, default=1, help='LayerNr to process')
 parser.add_argument('-ConvertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
 if len(sys.argv) == 1:
@@ -131,35 +131,47 @@ env = dict(os.environ)
 midas_path = os.path.expanduser("~/.MIDAS")
 env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
 
-if len(dataFN)>0:
-    print("Generating combined MIDAS file from HDF and ps files.")
-else:
-    print("Generating combined MIDAS file from GE and ps files.")
+if ConvertFiles == 1:
+    if len(dataFN)>0:
+        print("Generating combined MIDAS file from HDF and ps files.")
+    else:
+        print("Generating combined MIDAS file from GE and ps files.")
 
 if machineName == 'local':
     from localConfig import *
     parsl.load(config=localConfig)
+    nNodes = 1
 elif machineName == 'orthrosnew':
     pytpath = os.path.expanduser("~/opt/midasconda3/bin/python")
     os.environ['MIDAS_SCRIPT_DIR'] = logDir
-    nNodes = 11
+    if nNodes == -1:
+        nNodes = 11
+    if nNodes > 11:
+        nNodes = 11
     numProcs = 32
     from orthrosAllConfig import *
     parsl.load(config=orthrosNewConfig)
 elif machineName == 'orthrosall':
     pytpath = os.path.expanduser("~/opt/midasconda3/bin/python")
     os.environ['MIDAS_SCRIPT_DIR'] = logDir
-    nNodes = 5
+    if nNodes == -1:
+        nNodes = 5
+    if nNodes > 5:
+        nNodes = 5
     numProcs = 64
     from orthrosAllConfig import *
     parsl.load(config=orthrosAllConfig)
 elif machineName == 'umich':
     pytpath = '/nfs/turbo/meche-abucsek/Wenxi/ESRF_Ti_v7/.venv/bin'
     os.environ['MIDAS_SCRIPT_DIR'] = logDir
+    if nNodes == -1:
+        nNodes = 1
     numProcs = 36
     from uMichConfig import *
     parsl.load(config=uMichConfig)
 elif machineName == 'marquette':
+    if nNodes == -1:
+        nNodes = 1
     numProcs = 36
     os.environ['MIDAS_SCRIPT_DIR'] = logDir
     from marquetteConfig import *
@@ -183,13 +195,19 @@ else:
                 NrFilerPerLayer = int(line.split()[1])
         thisFileNr = startFN + (layerNr-1)*NrFilerPerLayer
         outFStem = f'{resultDir}/{fStem}_{str(thisFileNr).zfill(6)}.MIDAS.zip'
+        if not os.path.exists(outFStem):
+            shutil.copy2(dataFN,resultDir)
+    cmdUpd = f'python ' + os.path.expanduser('~/opt/MIDAS/utils/updateZarrDset.py')
+    cmdUpd += f' -fn {os.path.basename(outFStem)} -folder {resultDir} -keyToUpdate ResultFolder -updatedValue {resultDir}/'
+    subprocess.call(cmdUpd,shell=True)
     print(outFStem)
 print(f"Generating HKLs. Time till now: {time.time()-t0} seconds.")
 f_hkls = open(f'{logDir}/hkls_out.csv','w')
 f_hkls_err = open(f'{logDir}/hkls_err.csv','w')
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+' '+outFStem,shell=True,env=env,stdout=f_hkls,stderr=f_hkls_err)
 f_hkls.close()
-f_hkls_err.close()
+f_hkls_err.close()https;//icsd.nist.gov/page/logou
+t
 print(f"Doing PeakSearch. Time till now: {time.time()-t0} seconds.")
 res = []
 for nodeNr in range(nNodes):

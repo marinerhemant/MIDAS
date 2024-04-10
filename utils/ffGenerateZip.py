@@ -180,6 +180,7 @@ else:
         fNrLoc += fileNrIter
         fNr = str(fNrLoc)
         InputFN = rawFolder + '/' + fStem + '_' + fNr.zfill(pad) + ext
+        print(InputFN)
         stNr = nFrames*fileNrIter
         for i in range(numChunks):
             stFrame = i*numFrameChunks
