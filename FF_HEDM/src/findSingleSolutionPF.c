@@ -106,7 +106,7 @@ main(int argc, char *argv[])
         } else {
             fclose(keyF);
             fclose(valsF);
-            rc = close(ib);
+            int rc = close(ib);
             // printf("%s\n",keyFN);
             // fseek(keyF,0L,SEEK_END);
             // size_t szt = ftell(keyF);
