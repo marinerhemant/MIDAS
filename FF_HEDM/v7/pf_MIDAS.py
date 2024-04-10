@@ -109,12 +109,13 @@ parser.add_argument('-nCPUsLocal', type=int, required=False, default=4, help='Lo
 parser.add_argument('-paramFile', type=str, required=True, help='ParameterFileName: Do not use the full path.')
 parser.add_argument('-nNodes', type=int, required=False, default=1, help='Number of Nodes')
 parser.add_argument('-machineName', type=str, required=False, default='local', help='Machine Name: local,orthrosall,orthrosnew,umich')
-parser.add_argument('-doPeakSearch',type=int,required=True,help='0 if PeakSearch is already done. InputAllExtra...0..n.csv should exist in the folder')
+parser.add_argument('-doPeakSearch',type=int,required=True,help='0 if PeakSearch is already done. InputAllExtra...0..n.csv should exist in the folder. -1 if you want to reprocess the peaksearch output, without doing peaksearch again.')
 parser.add_argument('-oneSolPerVox',type=int,required=True,help='0 if want to allow multiple solutions per voxel. 1 if want to have only 1 solution per voxel.')
 parser.add_argument('-resultDir',type=str,required=False,default='',help='Directory where you want to save the results. If ommitted, the current directory will be used.')
 parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='If low on RAM, it can process parts of the dataset at the time. -1 will disable.')
 parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
 parser.add_argument('-DoTomo', type=int, required=False, default=0, help='If want to do tomography, put to 1. Only for OneSolPerVox.')
+parser.add_argument('-NormalizeIntensities', type=int, required=False, default=1, help='If want to do tomography and normalize intensities, put to 1, if not, put to 0. Only for OneSolPerVox.')
 parser.add_argument('-ConvertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
 parser.add_argument('-runIndexing', type=int, required=False, default=1, help='If want to skip Indexing, put to 0.')
 args, unparsed = parser.parse_known_args()
@@ -131,6 +132,7 @@ preproc = args.preProcThresh
 doTomo = args.DoTomo
 ConvertFiles = args.ConvertFiles
 runIndexing = args.runIndexing
+NormalizeIntensities = args.NormalizeIntensities
 
 if len(topdir) == 0:
 	topdir = os.getcwd()
@@ -229,7 +231,7 @@ rads = [hkl[-1] for rnr in RingNrs for hkl in hkls if hkl[4] == rnr]
 print(RingNrs)
 print(rads)
 
-if doPeakSearch == 1:
+if doPeakSearch == 1 or doPeakSearch==-1:
 	positions = open(topdir+'/positions.csv').readlines()
 	for layerNr in range(1,nScans+1):
 		print(f'LayerNr: {layerNr}')
@@ -253,12 +255,13 @@ if doPeakSearch == 1:
 			outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(6)}.MIDAS.zip'
 		print(f'FileStem: {outFStem}')
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+f' {outFStem} {thisDir}',env=env,shell=True)
-		print(f'Doing PeakSearch.')
-		res = []
-		for nodeNr in range(nNodes):
-			res.append(peaks(thisDir,outFStem,numProcs,blockNr=nodeNr,numBlocks=nNodes))
-		outputs = [i.result() for i in res]
-		print(f'PeakSearch Done.')
+		if doPeakSearch==1:
+			print(f'Doing PeakSearch.')
+			res = []
+			for nodeNr in range(nNodes):
+				res.append(peaks(thisDir,outFStem,numProcs,blockNr=nodeNr,numBlocks=nNodes))
+			outputs = [i.result() for i in res]
+			print(f'PeakSearch Done.')
 		if omegaOffset != 0:
 			fns = glob.glob('Temp/*PS.csv')
 			for fn in fns:
@@ -278,20 +281,21 @@ if doPeakSearch == 1:
 		if len(Result.shape)<2:
 			shutil.copy2('InputAllExtraInfoFittingAll.csv',topdir+'/InputAllExtraInfoFittingAll'+str(layerNr-1)+'.csv')
 			continue
-		uniqueRings,uniqueIndices = np.unique(Result[:,13],return_index=True)
-		ringPowderIntensity = []
-		for iter in range(len(uniqueIndices)):
-			ringPowderIntensity.append([uniqueRings[iter],Result[uniqueIndices[iter],16]])
-		ringPowderIntensity = np.array(ringPowderIntensity)
 		dfAllF = pd.read_csv('InputAllExtraInfoFittingAll.csv',delimiter=' ',skipinitialspace=True)
 		dfAllF.loc[dfAllF['GrainRadius']>0.001,'%YLab'] += ypos
 		dfAllF.loc[dfAllF['GrainRadius']>0.001,'YOrig(NoWedgeCorr)'] += ypos
 		dfAllF['Eta'] = CalcEtaAngleAll(dfAllF['%YLab'],dfAllF['ZLab'])
 		dfAllF['Ttheta'] = rad2deg*np.arctan(np.linalg.norm(np.array([dfAllF['%YLab'],dfAllF['ZLab']]),axis=0)/Lsd)
-		for iter in range(len(ringPowderIntensity)):
-			ringNr = ringPowderIntensity[iter,0]
-			powInt = ringPowderIntensity[iter,1]
-			dfAllF.loc[dfAllF['RingNumber']==ringNr,'GrainRadius'] *= powInt**(1/3)
+		if NormalizeIntensities == 1:
+			uniqueRings,uniqueIndices = np.unique(Result[:,13],return_index=True)
+			ringPowderIntensity = []
+			for iter in range(len(uniqueIndices)):
+				ringPowderIntensity.append([uniqueRings[iter],Result[uniqueIndices[iter],16]])
+			ringPowderIntensity = np.array(ringPowderIntensity)
+			for iter in range(len(ringPowderIntensity)):
+				ringNr = ringPowderIntensity[iter,0]
+				powInt = ringPowderIntensity[iter,1]
+				dfAllF.loc[dfAllF['RingNumber']==ringNr,'GrainRadius'] *= powInt**(1/3)
 		outFN2 = topdir+'/InputAllExtraInfoFittingAll'+str(layerNr-1)+'.csv'
 		dfAllF.to_csv(outFN2,sep=' ',header=True,float_format='%.6f',index=False)
 		shutil.copy2(thisDir+'/paramstest.txt',topdir+'/paramstest.txt')
