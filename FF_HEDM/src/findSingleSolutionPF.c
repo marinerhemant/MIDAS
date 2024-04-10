@@ -103,6 +103,8 @@ main(int argc, char *argv[])
             size_t outarr[5] = {0,0,0,0,0};
             int rc = pwrite(ib,outarr,5*sizeof(size_t),5*sizeof(size_t)*voxNr);
         } else {
+        fclose(keyF);
+        fclose(valsF);
             // printf("%s\n",keyFN);
             // fseek(keyF,0L,SEEK_END);
             // size_t szt = ftell(keyF);
@@ -351,8 +353,6 @@ main(int argc, char *argv[])
             //     }
             // }
         }
-        fclose(keyF);
-        fclose(valsF);
     }
     
     int nUniques = 0;
