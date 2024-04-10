@@ -313,7 +313,8 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 		elif NormalizeIntensities == 2:
 			inpArr = dfAllF.to_numpy(copy=True)
 			hashArr = np.genfromtxt(f'IDRings.csv',skip_header=1)
-			headerThis = list(dfAllF)
+			headerThis = ' '.join(list(dfAllF))
+			print(headerThis)
 			outArr = normalizeIntensitiesNumba(inpArr,Result,hashArr)
 			np.savetxt(outFN2,outArr,header=headerThis,delimiter=' ',fmt='%.6f')
 			sys.exit()
