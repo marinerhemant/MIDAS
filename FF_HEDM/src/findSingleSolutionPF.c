@@ -95,138 +95,138 @@ main(int argc, char *argv[])
         valsF = fopen(valsFN,"rb");
         keyF = fopen(keyFN,"r");
         if (keyF==NULL){
-            printf("Could not read key file %s. Behavior undefined.\n",keyFN);
+            printf("Could not open key file %s. Behavior undefined.\n",keyFN);
             allKeyArr[voxNr*4+0] = -1;
             fclose(keyF);
             fclose(valsF);
             size_t outarr[5] = {0,0,0,0,0};
             int rc = pwrite(ib,outarr,5*sizeof(size_t),5*sizeof(size_t)*voxNr);
-            continue;
-        }
-        printf("%s\n",keyFN);
-        fseek(keyF,0L,SEEK_END);
-	    size_t szt = ftell(keyF);
-        rewind(keyF);
-        if (szt==0){
-            allKeyArr[voxNr*4+0] = -1;
+        } else {
+            printf("%s\n",keyFN);
+            fseek(keyF,0L,SEEK_END);
+            size_t szt = ftell(keyF);
+            rewind(keyF);
+            if (szt==0){
+                allKeyArr[voxNr*4+0] = -1;
+                fclose(keyF);
+                fclose(valsF);
+                size_t outarr[5] = {0,0,0,0,0};
+                int rc = pwrite(ib,outarr,5*sizeof(size_t),5*sizeof(size_t)*voxNr);
+                continue;
+            }
+            size_t *keys;
+            keys = calloc(MAX_N_SOLUTIONS_PER_VOX*4,sizeof(*keys));
+            char aline[2048];
+            int nIDs = 0;
+            while(fgets(aline,1000,keyF)!=NULL){
+                sscanf(aline,"%zu %zu %zu %zu",&keys[nIDs*4+0],&keys[nIDs*4+1],&keys[nIDs*4+2],&keys[nIDs*4+3]);
+                nIDs++;
+            }
+            realloc(keys,nIDs*4*sizeof(*keys));
             fclose(keyF);
+            double *OMArr, *tmpArr, *confIAArr;
+            OMArr = calloc(nIDs*9,sizeof(double));
+            confIAArr = calloc(nIDs*2,sizeof(double));
+            tmpArr = calloc(nIDs*16,sizeof(double));
+            fread(tmpArr,nIDs*16*sizeof(double),1,valsF);
             fclose(valsF);
-            size_t outarr[5] = {0,0,0,0,0};
-            int rc = pwrite(ib,outarr,5*sizeof(size_t),5*sizeof(size_t)*voxNr);
-            continue;
-        }
-        size_t *keys;
-        keys = calloc(MAX_N_SOLUTIONS_PER_VOX*4,sizeof(*keys));
-        char aline[2048];
-        int nIDs = 0;
-        while(fgets(aline,1000,keyF)!=NULL){
-            sscanf(aline,"%zu %zu %zu %zu",&keys[nIDs*4+0],&keys[nIDs*4+1],&keys[nIDs*4+2],&keys[nIDs*4+3]);
-            nIDs++;
-        }
-        realloc(keys,nIDs*4*sizeof(*keys));
-        fclose(keyF);
-        double *OMArr, *tmpArr, *confIAArr;
-        OMArr = calloc(nIDs*9,sizeof(double));
-        confIAArr = calloc(nIDs*2,sizeof(double));
-        tmpArr = calloc(nIDs*16,sizeof(double));
-        fread(tmpArr,nIDs*16*sizeof(double),1,valsF);
-        fclose(valsF);
-        int i,j,k;
-        for (i=0;i<nIDs;i++){
-            confIAArr[i*2+0] = tmpArr[i*16+15]/tmpArr[i*16+14];
-            confIAArr[i*2+1] = tmpArr[i*16+1];
-            for (j=0;j<nIDs;j++) 
-                for (k=0;k<9;k++) 
-                    OMArr[j*9+k] = tmpArr[j*16+2+k];
-        }
-        bool *markArr;
-        markArr = malloc(nIDs*sizeof(*markArr));
-        for (i=0;i<nIDs;i++) markArr[i] = false;
-        int bestRow=-1;
-        double bestConf = -1, bestIA = 100;
-        for (i=0;i<nIDs;i++){
-            if (markArr[i]==true) continue;
-            if (confIAArr[i*2+0] < bestConf) continue;
-            if (confIAArr[i*2+0] == bestConf && confIAArr[i*2+1] > bestIA) continue;
-            bestConf = confIAArr[i*2+0];
-            bestIA = confIAArr[i*2+1];
-            bestRow = i;
-        }
-        if (bestRow==-1) {
-            allKeyArr[voxNr*4+0] = -1;
-            free(confIAArr);
-            free(keys);
-            free(markArr);
-            free(tmpArr);
-            free(OMArr);
-            size_t outarr[5] = {0,0,0,0,0};
-            int rc = pwrite(ib,outarr,5*sizeof(size_t),5*sizeof(size_t)*voxNr);
-            continue;
-        }
-        for (i=0;i<nIDs;i++) markArr[i] = false;
-        double OMThis[9], OMInside[9], Quat1[4],Quat2[4], Angle, Axis[3],ang;
-        size_t *uniqueArrThis;
-        uniqueArrThis = calloc(nIDs*4,sizeof(*uniqueArrThis));
-        double *uniqueOrientArrThis;
-        uniqueOrientArrThis = calloc(nIDs*9,sizeof(*uniqueOrientArrThis));
-        int nUniquesThis = 0;
-        int bRN;
-        double bCon, bIA, conIn, iaIn;
-        for (i=0;i<nIDs;i++){
-            if (markArr[i]==true) continue;
-            for (j=0;j<9;j++) OMThis[j] = OMArr[i*9+j];
-            OrientMat2Quat(OMThis,Quat1);
-            bCon = confIAArr[i*2+0];
-            bIA = confIAArr[i*2+1];
-            bRN = i;
-            for (j=i+1;j<nIDs;j++){
-                if (markArr[j]==true) continue;
-                for (k=0;k<9;k++) OMInside[k] = OMArr[j*9+k];
-                OrientMat2Quat(OMInside,Quat2);
-                Angle = GetMisOrientation(Quat1,Quat2,Axis,&ang,sgNr);
-                conIn = confIAArr[j*2+0];
-                iaIn = confIAArr[j*2+1];
-                if (ang<maxAng){
-                    if (bCon < conIn){
-                        bCon = conIn;
-                        bIA = iaIn;
-                        bRN = j;
-                    } else if (bCon == conIn){
-                        if (bIA > iaIn){
+            int i,j,k;
+            for (i=0;i<nIDs;i++){
+                confIAArr[i*2+0] = tmpArr[i*16+15]/tmpArr[i*16+14];
+                confIAArr[i*2+1] = tmpArr[i*16+1];
+                for (j=0;j<nIDs;j++) 
+                    for (k=0;k<9;k++) 
+                        OMArr[j*9+k] = tmpArr[j*16+2+k];
+            }
+            bool *markArr;
+            markArr = malloc(nIDs*sizeof(*markArr));
+            for (i=0;i<nIDs;i++) markArr[i] = false;
+            int bestRow=-1;
+            double bestConf = -1, bestIA = 100;
+            for (i=0;i<nIDs;i++){
+                if (markArr[i]==true) continue;
+                if (confIAArr[i*2+0] < bestConf) continue;
+                if (confIAArr[i*2+0] == bestConf && confIAArr[i*2+1] > bestIA) continue;
+                bestConf = confIAArr[i*2+0];
+                bestIA = confIAArr[i*2+1];
+                bestRow = i;
+            }
+            if (bestRow==-1) {
+                allKeyArr[voxNr*4+0] = -1;
+                free(confIAArr);
+                free(keys);
+                free(markArr);
+                free(tmpArr);
+                free(OMArr);
+                size_t outarr[5] = {0,0,0,0,0};
+                int rc = pwrite(ib,outarr,5*sizeof(size_t),5*sizeof(size_t)*voxNr);
+                continue;
+            }
+            for (i=0;i<nIDs;i++) markArr[i] = false;
+            double OMThis[9], OMInside[9], Quat1[4],Quat2[4], Angle, Axis[3],ang;
+            size_t *uniqueArrThis;
+            uniqueArrThis = calloc(nIDs*4,sizeof(*uniqueArrThis));
+            double *uniqueOrientArrThis;
+            uniqueOrientArrThis = calloc(nIDs*9,sizeof(*uniqueOrientArrThis));
+            int nUniquesThis = 0;
+            int bRN;
+            double bCon, bIA, conIn, iaIn;
+            for (i=0;i<nIDs;i++){
+                if (markArr[i]==true) continue;
+                for (j=0;j<9;j++) OMThis[j] = OMArr[i*9+j];
+                OrientMat2Quat(OMThis,Quat1);
+                bCon = confIAArr[i*2+0];
+                bIA = confIAArr[i*2+1];
+                bRN = i;
+                for (j=i+1;j<nIDs;j++){
+                    if (markArr[j]==true) continue;
+                    for (k=0;k<9;k++) OMInside[k] = OMArr[j*9+k];
+                    OrientMat2Quat(OMInside,Quat2);
+                    Angle = GetMisOrientation(Quat1,Quat2,Axis,&ang,sgNr);
+                    conIn = confIAArr[j*2+0];
+                    iaIn = confIAArr[j*2+1];
+                    if (ang<maxAng){
+                        if (bCon < conIn){
                             bCon = conIn;
                             bIA = iaIn;
                             bRN = j;
+                        } else if (bCon == conIn){
+                            if (bIA > iaIn){
+                                bCon = conIn;
+                                bIA = iaIn;
+                                bRN = j;
+                            }
                         }
+                        markArr[j] = true;
                     }
-                    markArr[j] = true;
                 }
+                for (j=0;j<4;j++) uniqueArrThis[nUniquesThis*4+j] = keys[bRN*4+j];
+                for (j=0;j<9;j++) uniqueOrientArrThis[nUniquesThis*9+j] = OMArr[bRN*9+j];
+                nUniquesThis++;
             }
-            for (j=0;j<4;j++) uniqueArrThis[nUniquesThis*4+j] = keys[bRN*4+j];
-            for (j=0;j<9;j++) uniqueOrientArrThis[nUniquesThis*9+j] = OMArr[bRN*9+j];
-            nUniquesThis++;
+            FILE *outKeyF;
+            size_t outarr[5] = {voxNr,keys[bestRow*4+0],keys[bestRow*4+1],keys[bestRow*4+2],keys[bestRow*4+3]};
+            int rc = pwrite(ib,outarr,5*sizeof(size_t),5*sizeof(size_t)*voxNr);
+            rc = close(ib);
+            sprintf(outKeyFN,"%s/UniqueIndexKeyOrientAll_voxNr_%0*d.txt",folderName,6,voxNr);
+            outKeyF = fopen(outKeyFN,"w");
+            for (i=0;i<nUniquesThis;i++) {
+                for (j=0;j<4;j++) fprintf(outKeyF,"%zu ",uniqueArrThis[i*4+j]);
+                for (j=0;j<9;j++) fprintf(outKeyF,"%lf ",uniqueOrientArrThis[i*9+j]);
+                fprintf(outKeyF,"\n");
+            }
+            fclose(outKeyF);
+            for (i=0;i<4;i++) allKeyArr[voxNr*4+i] = keys[bestRow*4+i];
+            for (i=0;i<9;i++) allOrientationsArr[voxNr*10+i] = tmpArr[bestRow*16+2+i];
+            allOrientationsArr[voxNr*10+9] = confIAArr[bestRow*2+0];
+            free(uniqueArrThis);
+            free(uniqueOrientArrThis);
+            free(OMArr);
+            free(tmpArr);
+            free(markArr);
+            free(keys);
+            free(confIAArr);
         }
-        FILE *outKeyF;
-        size_t outarr[5] = {voxNr,keys[bestRow*4+0],keys[bestRow*4+1],keys[bestRow*4+2],keys[bestRow*4+3]};
-        int rc = pwrite(ib,outarr,5*sizeof(size_t),5*sizeof(size_t)*voxNr);
-        rc = close(ib);
-        sprintf(outKeyFN,"%s/UniqueIndexKeyOrientAll_voxNr_%0*d.txt",folderName,6,voxNr);
-        outKeyF = fopen(outKeyFN,"w");
-        for (i=0;i<nUniquesThis;i++) {
-            for (j=0;j<4;j++) fprintf(outKeyF,"%zu ",uniqueArrThis[i*4+j]);
-            for (j=0;j<9;j++) fprintf(outKeyF,"%lf ",uniqueOrientArrThis[i*9+j]);
-            fprintf(outKeyF,"\n");
-        }
-        fclose(outKeyF);
-        for (i=0;i<4;i++) allKeyArr[voxNr*4+i] = keys[bestRow*4+i];
-        for (i=0;i<9;i++) allOrientationsArr[voxNr*10+i] = tmpArr[bestRow*16+2+i];
-        allOrientationsArr[voxNr*10+9] = confIAArr[bestRow*2+0];
-        free(uniqueArrThis);
-        free(uniqueOrientArrThis);
-        free(OMArr);
-        free(tmpArr);
-        free(markArr);
-        free(keys);
-        free(confIAArr);
     }
     
     int nUniques = 0;
