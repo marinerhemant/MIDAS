@@ -96,7 +96,7 @@ main(int argc, char *argv[])
         keyF = fopen(keyFN,"r");
         if (keyF==NULL || valsF==NULL){
             if (keyF==NULL) printf("Could not open key file %s. Behavior undefined.\n",keyFN);
-            else if (valsF==NULL) printf("Could not open vals file %s. Behavior undefined.\n",valsFN);
+            if (valsF==NULL) printf("Could not open vals file %s. Behavior undefined.\n",valsFN);
             allKeyArr[voxNr*4+0] = -1;
             // fclose(keyF);
             // fclose(valsF);
