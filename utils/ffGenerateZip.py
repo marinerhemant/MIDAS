@@ -177,7 +177,7 @@ else:
         numFrameChunks = nFrames
     numChunks = int(ceil(nFrames/numFrameChunks))
     for fileNrIter in range(numFilesPerScan):
-        fNrLoc += fileNrIter
+        fNrLoc += 1
         fNr = str(fNrLoc)
         InputFN = rawFolder + '/' + fStem + '_' + fNr.zfill(pad) + ext
         print(InputFN)
