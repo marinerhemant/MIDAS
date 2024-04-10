@@ -228,6 +228,7 @@ for line in lines:
     str = 'ImTransOpt'
     if line.startswith(f'{str} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
+        print(outArr)
         if (ImTransOpts[0] == -1):
             ImTransOpts[0] = outArr
         else:
