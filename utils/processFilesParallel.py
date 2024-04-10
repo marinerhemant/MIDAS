@@ -15,7 +15,7 @@ def runSingle(workData):
     nc = workData[3]
     cwd = os.getcwd()
     binloc = os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZip.py')
-    cmd = f'/nfs/turbo/meche-abucsek/Wenxi/ESRF_Ti_v7/.venv/bin/python {binloc} -resultFolder {rf} -paramFN {pf} -LayerNr {lN} -numFrameChunks {nc}'
+    cmd = f'{sys.executable} {binloc} -resultFolder {rf} -paramFN {pf} -LayerNr {lN} -numFrameChunks {nc}'
     print(cmd)
     subprocess.call(cmd,cwd=cwd,shell=True)
 
