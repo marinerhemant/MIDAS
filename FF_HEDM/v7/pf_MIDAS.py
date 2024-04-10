@@ -297,6 +297,7 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 		dfAllF['Eta'] = CalcEtaAngleAll(dfAllF['%YLab'],dfAllF['ZLab'])
 		dfAllF['Ttheta'] = rad2deg*np.arctan(np.linalg.norm(np.array([dfAllF['%YLab'],dfAllF['ZLab']]),axis=0)/Lsd)
 		outFN2 = topdir+'/InputAllExtraInfoFittingAll'+str(layerNr-1)+'.csv'
+		t_st = time.time()
 		if NormalizeIntensities == 0:
 			dfAllF.to_csv(outFN2,sep=' ',header=True,float_format='%.6f',index=False)
 		elif NormalizeIntensities == 1:
@@ -318,6 +319,7 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 			np.savetxt(outFN2,outArr,header=headerThis,delimiter=' ',fmt='%.6f')
 		shutil.copy2(thisDir+'/paramstest.txt',topdir+'/paramstest.txt')
 		shutil.copy2(thisDir+'/hkls.csv',topdir+'/hkls.csv')
+		print(f'Normalization and writing done. Time taken: {time.time()-t_st}')
 		os.chdir(topdir)
 else:
 	if nMerges!=0:
