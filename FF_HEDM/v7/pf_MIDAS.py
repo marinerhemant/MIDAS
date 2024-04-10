@@ -18,6 +18,7 @@ sys.path.insert(0,utilsDir)
 v7Dir = os.path.expanduser('~/opt/MIDAS/FF_HEDM/v7/')
 sys.path.insert(0,v7Dir)
 from calcMiso import *
+from numba import jit
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -115,7 +116,7 @@ parser.add_argument('-resultDir',type=str,required=False,default='',help='Direct
 parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='If low on RAM, it can process parts of the dataset at the time. -1 will disable.')
 parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
 parser.add_argument('-DoTomo', type=int, required=False, default=0, help='If want to do tomography, put to 1. Only for OneSolPerVox.')
-parser.add_argument('-NormalizeIntensities', type=int, required=False, default=1, help='If want to do tomography and normalize intensities, put to 1, if not, put to 0. Only for OneSolPerVox.')
+parser.add_argument('-NormalizeIntensities', type=int, required=False, default=2, help='If want to do tomography and normalize intensities wrt grSize, put to 1, if want to take integrated intensity, put to 2, if want to take equivalent grain size, put to 0. Only for OneSolPerVox. Default is 2.')
 parser.add_argument('-ConvertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
 parser.add_argument('-runIndexing', type=int, required=False, default=1, help='If want to skip Indexing, put to 0.')
 args, unparsed = parser.parse_known_args()
@@ -231,6 +232,14 @@ rads = [hkl[-1] for rnr in RingNrs for hkl in hkls if hkl[4] == rnr]
 print(RingNrs)
 print(rads)
 
+@jit(nopython=True)
+def normalizeIntensitiesNumba(input,radius,hashArr):
+	nrSps = input.shape
+	for i in range(nrSps):
+		if input[i,3] > 0.001:
+			input[i,3] = radius[hashArr[i,2]-1,1]
+	return input
+
 if doPeakSearch == 1 or doPeakSearch==-1:
 	positions = open(topdir+'/positions.csv').readlines()
 	for layerNr in range(1,nScans+1):
@@ -287,7 +296,10 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 		dfAllF.loc[dfAllF['GrainRadius']>0.001,'YOrig(NoWedgeCorr)'] += ypos
 		dfAllF['Eta'] = CalcEtaAngleAll(dfAllF['%YLab'],dfAllF['ZLab'])
 		dfAllF['Ttheta'] = rad2deg*np.arctan(np.linalg.norm(np.array([dfAllF['%YLab'],dfAllF['ZLab']]),axis=0)/Lsd)
-		if NormalizeIntensities == 1:
+		outFN2 = topdir+'/InputAllExtraInfoFittingAll'+str(layerNr-1)+'.csv'
+		if NormalizeIntensities == 0:
+			dfAllF.to_csv(outFN2,sep=' ',header=True,float_format='%.6f',index=False)
+		elif NormalizeIntensities == 1:
 			uniqueRings,uniqueIndices = np.unique(Result[:,13],return_index=True)
 			ringPowderIntensity = []
 			for iter in range(len(uniqueIndices)):
@@ -297,8 +309,14 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 				ringNr = ringPowderIntensity[iter,0]
 				powInt = ringPowderIntensity[iter,1]
 				dfAllF.loc[dfAllF['RingNumber']==ringNr,'GrainRadius'] *= powInt**(1/3)
-		outFN2 = topdir+'/InputAllExtraInfoFittingAll'+str(layerNr-1)+'.csv'
-		dfAllF.to_csv(outFN2,sep=' ',header=True,float_format='%.6f',index=False)
+			dfAllF.to_csv(outFN2,sep=' ',header=True,float_format='%.6f',index=False)
+		elif NormalizeIntensities == 2:
+			inpArr = dfAllF.to_numpy(copy=True)
+			hashArr = np.genfromtxt(f'IDRings.csv',skip_header=1)
+			headerThis = list(dfAllF)
+			outArr = normalizeIntensitiesNumba(inpArr,Result,hashArr)
+			np.savetxt(outFN2,outArr,header=headerThis,delimiter=' ',fmt='%.6f')
+			sys.exit()
 		shutil.copy2(thisDir+'/paramstest.txt',topdir+'/paramstest.txt')
 		shutil.copy2(thisDir+'/hkls.csv',topdir+'/hkls.csv')
 		os.chdir(topdir)
