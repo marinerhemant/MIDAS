@@ -94,6 +94,15 @@ main(int argc, char *argv[])
         sprintf(keyFN,"%s/IndexKey_voxNr_%0*d.txt",folderName,6,voxNr);
         valsF = fopen(valsFN,"rb");
         keyF = fopen(keyFN,"r");
+        if (keyF==NULL){
+            printf("Could not read key file %s. Behavior undefined.\n",keyFN);
+            allKeyArr[voxNr*4+0] = -1;
+            fclose(keyF);
+            fclose(valsF);
+            size_t outarr[5] = {0,0,0,0,0};
+            int rc = pwrite(ib,outarr,5*sizeof(size_t),5*sizeof(size_t)*voxNr);
+            continue;
+        }
         printf("%s\n",keyFN);
         fseek(keyF,0L,SEEK_END);
 	    size_t szt = ftell(keyF);
