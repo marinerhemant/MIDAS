@@ -1244,7 +1244,6 @@ void main(int argc, char *argv[]){
 			Thresh = GoodCoords[((UsefulPixels[0*2+0])*NrPixels) + (UsefulPixels[0*2+1])];
 			unsigned nPeaks;
 			nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,MaximaPositions,MaximaValues,&IsSaturated,IntSat,NrPixels);
-			//~ printf("RegionNr: %d, NPeaks: %d\n",RegNr,nPeaks);
 			if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
 				TotNrRegions--;
 				continue;
@@ -1279,6 +1278,7 @@ void main(int argc, char *argv[]){
 					MaximaPositions[i*2+1] = MaximaPositionsT[i*2+1];
 				}
 			}
+			printf("RegionNr: %d, NPeaks: %d\n",RegNr,nPeaks);
 			int rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo,NrPixels);
 			for (i=0;i<nPeaks;i++){
 				fprintf(outfilewrite,"%d %f %f %f %f %f %f %f ",(SpotIDStart+i),IntegratedIntensity[i],Omega,-YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
