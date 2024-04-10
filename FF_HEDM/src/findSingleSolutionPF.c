@@ -102,9 +102,11 @@ main(int argc, char *argv[])
             // fclose(valsF);
             size_t outarr[5] = {0,0,0,0,0};
             int rc = pwrite(ib,outarr,5*sizeof(size_t),5*sizeof(size_t)*voxNr);
+            rc = close(ib);
         } else {
-        fclose(keyF);
-        fclose(valsF);
+            fclose(keyF);
+            fclose(valsF);
+            rc = close(ib);
             // printf("%s\n",keyFN);
             // fseek(keyF,0L,SEEK_END);
             // size_t szt = ftell(keyF);
