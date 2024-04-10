@@ -94,6 +94,7 @@ main(int argc, char *argv[])
         sprintf(keyFN,"%s/IndexKey_voxNr_%0*d.txt",folderName,6,voxNr);
         valsF = fopen(valsFN,"rb");
         keyF = fopen(keyFN,"r");
+        printf("%s\n",keyFN);
         fseek(keyF,0L,SEEK_END);
 	    size_t szt = ftell(keyF);
         rewind(keyF);
