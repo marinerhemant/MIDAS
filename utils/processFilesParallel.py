@@ -13,6 +13,8 @@ def runSingle(workData):
     pf = workData[1]
     lN = workData[2]
     nc = workData[3]
+    fNr = overAllFNr + (lN-1)*numFilesPerScan
+    rf += f'/{fNr}'
     cwd = os.getcwd()
     binloc = os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZip.py')
     cmd = f'{sys.executable} {binloc} -resultFolder {rf} -paramFN {pf} -LayerNr {lN} -numFrameChunks {nc}'
@@ -41,6 +43,11 @@ numFrameChunks = args.numFrameChunks
 numFilesPerScan = args.numFilesPerScan
 nCPUs = args.nCPUs
 preProc = args.preProcThresh
+
+psContents = open(paramFN).readlines()
+for line in psContents:
+    if line.startswith('StartFileNrFirstLayer '):
+        overAllFNr = int(line.split()[1])
 
 if nCPUs == -1:
     p = Pool()
