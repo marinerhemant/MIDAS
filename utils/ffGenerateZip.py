@@ -128,6 +128,7 @@ if Path(outfZip).exists():
 zipStore = zarr.ZipStore(outfZip)
 zRoot = zarr.group(store=zipStore, overwrite=True)
 exc = zRoot.create_group('exchange')
+fNrLoc = int(fNr)
 if h5py.is_hdf5(InputFN):
     hf2 = h5py.File(InputFN,'r')
     nFrames,numZ,numY = hf2[dataLoc].shape
@@ -176,8 +177,8 @@ else:
         numFrameChunks = nFrames
     numChunks = int(ceil(nFrames/numFrameChunks))
     for fileNrIter in range(numFilesPerScan):
-        fNr += fileNrIter
-        fNr = str(fNr)
+        fNrLoc += fileNrIter
+        fNr = str(fNrLoc)
         InputFN = rawFolder + '/' + fStem + '_' + fNr.zfill(pad) + ext
         stNr = nFrames*fileNrIter
         for i in range(numChunks):
