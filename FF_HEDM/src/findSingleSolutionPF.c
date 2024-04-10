@@ -351,6 +351,8 @@ main(int argc, char *argv[])
             //     }
             // }
         }
+        fclose(keyF);
+        fclose(valsF);
     }
     
     int nUniques = 0;
