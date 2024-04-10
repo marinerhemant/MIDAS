@@ -382,6 +382,7 @@ if oneSolPerVox==1:
 			nSp = grainSpots[grNr]
 			thetas = omegas[grNr,:nSp]
 			sino = np.transpose(Sinos[grNr,:nSp,:])
+			print(sino.shape)
 			Image.fromarray(sino).save('Sinos/sino_grNr_'+str.zfill(str(grNr),4)+'.tif')
 			np.savetxt('Thetas/thetas_grNr_'+str.zfill(str(grNr),4)+'.txt',thetas,fmt='%.6f')
 			recon = iradon(sino,theta=thetas)
