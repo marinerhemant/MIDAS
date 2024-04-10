@@ -97,7 +97,7 @@ main(int argc, char *argv[])
         if (keyF==NULL){
             printf("Could not open key file %s. Behavior undefined.\n",keyFN);
             allKeyArr[voxNr*4+0] = -1;
-            fclose(keyF);
+            // fclose(keyF);
             fclose(valsF);
             size_t outarr[5] = {0,0,0,0,0};
             int rc = pwrite(ib,outarr,5*sizeof(size_t),5*sizeof(size_t)*voxNr);
