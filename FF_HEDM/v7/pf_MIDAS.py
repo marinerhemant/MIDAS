@@ -237,7 +237,7 @@ def normalizeIntensitiesNumba(input,radius,hashArr):
 	nrSps = input.shape[0]
 	for i in range(nrSps):
 		if input[i,3] > 0.001:
-			input[i,3] = radius[hashArr[i,2]-1,1]
+			input[i,3] = radius[int(hashArr[i,2])-1,1]
 	return input
 
 if doPeakSearch == 1 or doPeakSearch==-1:
