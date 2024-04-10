@@ -250,7 +250,7 @@ if doPeakSearch == 1:
 		if ConvertFiles==1:
 			outFStem = generateZip(thisDir,baseNameParamFN,layerNr,nchunks=nchunks,preproc=preproc)
 		else:
-			outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(6)}{Ext}'
+			outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(6)}.MIDAS.zip'
 		print(f'FileStem: {outFStem}')
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+f' {outFStem} {thisDir}',env=env,shell=True)
 		print(f'Doing PeakSearch.')
