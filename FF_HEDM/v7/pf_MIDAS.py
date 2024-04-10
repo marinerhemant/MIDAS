@@ -253,10 +253,12 @@ if doPeakSearch == 1:
 			outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(6)}{Ext}'
 		print(f'FileStem: {outFStem}')
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+f' {outFStem} {thisDir}',env=env,shell=True)
+		print(f'Doing PeakSearch.')
 		res = []
 		for nodeNr in range(nNodes):
 			res.append(peaks(thisDir,outFStem,numProcs,blockNr=nodeNr,numBlocks=nNodes))
 		outputs = [i.result() for i in res]
+		print(f'PeakSearch Done.')
 		if omegaOffset != 0:
 			fns = glob.glob('Temp/*PS.csv')
 			for fn in fns:
