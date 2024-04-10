@@ -98,13 +98,10 @@ main(int argc, char *argv[])
             if (keyF==NULL) printf("Could not open key file %s. Behavior undefined.\n",keyFN);
             if (valsF==NULL) printf("Could not open vals file %s. Behavior undefined.\n",valsFN);
             allKeyArr[voxNr*4+0] = -1;
-            // fclose(keyF);
-            // fclose(valsF);
             size_t outarr[5] = {0,0,0,0,0};
             int rc = pwrite(ib,outarr,5*sizeof(size_t),5*sizeof(size_t)*voxNr);
             rc = close(ib);
         } else {
-            printf("%s\n",keyFN);
             fseek(keyF,0L,SEEK_END);
             size_t szt = ftell(keyF);
             rewind(keyF);
