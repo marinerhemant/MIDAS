@@ -18,6 +18,8 @@ def runSingle(workData):
     cmd = f'{sys.executable} {binloc} -resultFolder {rf} -paramFN {pf} -LayerNr {lN} -numFrameChunks {nc}'
     if (numFilesPerScan!=1):
         cmd += f' -numFilesPerScan {numFilesPerScan}'
+    if (preProc!=-1):
+        cmd += f' -preProcThresh {preProc}'
     print(cmd)
     subprocess.call(cmd,cwd=cwd,shell=True)
 
@@ -29,6 +31,7 @@ parser.add_argument('-paramFN', type=str, required=True, help='Parameter filenam
 parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='Number of chunks to use when reading the data file if RAM is smaller than expanded data. -1 will disable.')
 parser.add_argument('-numFilesPerScan', type=int, required=False, default=1, help='Number of files that constitute a single scan. This will combine multiple ge files into one dataset. 1 will disable.')
 parser.add_argument('-nCPUs', type=int, required=False, default=-1, help='Number of parallel jobs to start. If -1, will use the default.')
+parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
 args, unparsed = parser.parse_known_args()
 resultFolder = args.resultFolder
 LastScanNr = args.LastScanNr
@@ -37,6 +40,7 @@ paramFN = args.paramFN
 numFrameChunks = args.numFrameChunks
 numFilesPerScan = args.numFilesPerScan
 nCPUs = args.nCPUs
+preProc = args.preProcThresh
 
 if nCPUs == -1:
     p = Pool()
