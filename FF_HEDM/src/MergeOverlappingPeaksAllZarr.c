@@ -283,7 +283,7 @@ int main(int argc, char *argv[]){
             free(arr);
             free(data);
         }
-        if (strstr(finfo->name,"analysis/process/analysis_parameters/OlverlapLength/0")!=NULL){
+        if (strstr(finfo->name,"analysis/process/analysis_parameters/OverlapLength/0")!=NULL){
             s = calloc(finfo->size + 1, sizeof(char));
             fd = zip_fopen_index(arch, count, 0);
             zip_fread(fd, s, finfo->size); 
