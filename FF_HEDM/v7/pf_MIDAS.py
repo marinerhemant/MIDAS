@@ -277,7 +277,7 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 		if omegaOffset != 0:
 			signOmegaOffset = omegaOffset / fabs(omegaOffset)
 			omegaOffsetThis = omegaOffset*(layerNr-1)
-			omegaOffsetThis = signOmegaOffset * fabs(omegaOffsetThis)%360.0
+			omegaOffsetThis = signOmegaOffset * (fabs(omegaOffsetThis)%360.0)
 			print(f"Offsetting omega: {omegaOffsetThis}.")
 			tOme = time.time()
 			fns = glob.glob('Temp/*PS.csv')
