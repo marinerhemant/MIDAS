@@ -363,7 +363,7 @@ main(int argc, char *argv[])
     }
     // We are now going to copy over to the other array
     realloc(allSpotIDsT,nAllSpots*sizeof(*allSpotIDsT));
-    printf("nAllSpotsGrains: %zu\n",nAllSpots);
+    printf("nAllSpotsGrains: %zu ",nAllSpots);
     allSpotIDs = calloc(nAllSpots,sizeof(*allSpotIDs));
     size_t nDone = 0;
     for (i=0;i<nAllSpots;i++){
@@ -374,7 +374,7 @@ main(int argc, char *argv[])
     }
     nAllSpots = nDone;
     realloc(allSpotIDs,nAllSpots*sizeof(*allSpotIDsT));
-    printf("nAllSpotsGrains: %zu\n",nAllSpots);
+    printf("nAllSpotsGrainsUnique: %zu\n",nAllSpots);
     free(uniqueKeyArr);
     char fnUniqueSpots[2048];
     sprintf(fnUniqueSpots,"%s/UniqueOrientationSpots.csv",originalFolder);
