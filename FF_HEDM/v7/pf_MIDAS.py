@@ -275,7 +275,7 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 			outputs = [i.result() for i in res]
 			print(f'PeakSearch Done. Time taken: {time.time()-t_st} seconds.')
 		if omegaOffset != 0:
-			signOmegaOffset = omegaOffsetThis / fabs(omegaOffsetThis)
+			signOmegaOffset = omegaOffset / fabs(omegaOffset)
 			omegaOffsetThis = omegaOffset*(layerNr-1)
 			omegaOffsetThis = signOmegaOffset * fabs(omegaOffsetThis)%360.0
 			print(f"Offsetting omega: {omegaOffsetThis}.")
