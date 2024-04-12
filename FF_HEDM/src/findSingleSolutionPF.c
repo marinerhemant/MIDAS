@@ -359,17 +359,19 @@ main(int argc, char *argv[])
             allSpotIDs[i].spotNr,allSpotIDs[i].ringNr,allSpotIDs[i].omega,allSpotIDs[i].eta);
     fclose(fUniqueSpots);
 
-    double *sinoArr, *omeArr;
+    double *sinoArr, *omeArr, *allOmeArr, *maxIntArr;
     size_t szSino = nUniques;
     szSino *= maxNHKLs;
     szSino *= nScans;
     sinoArr = calloc(szSino,sizeof(*sinoArr));
+    allOmeArr = calloc(szSino,sizeof(*allOmeArr));
     if (sinoArr==NULL) {
         printf("Could not allocate sinoArr with %zu bytes. Exiting.",szSino*sizeof(double));
         return 1;
     }
     for (i=0;i<szSino;i++) sinoArr[i] = 0;
     omeArr = calloc(nUniques*maxNHKLs,sizeof(*omeArr));
+    maxIntArr = calloc(nUniques*maxNHKLs,sizeof(*maxIntArr)); // For each hkl, we calculate the normalization!!!!
     for (i=0;i<nUniques*maxNHKLs;i++) omeArr[i]=-10000.0;
 
     # pragma omp parallel for num_threads(numProcs) private(i) schedule(dynamic)
@@ -387,14 +389,36 @@ main(int argc, char *argv[])
                             locThis += ((size_t)allSpotIDs[iterAllSpIDs].spotNr)*nScans;
                             locThis += i;
                             sinoArr[locThis] = AllSpots[10*iterAllSps+3];
+                            allOmeArr[locThis] = AllSpots[10*iterAllSps+2];
                             locThis = ((size_t)allSpotIDs[iterAllSpIDs].grainNr)*maxNHKLs + ((size_t)allSpotIDs[iterAllSpIDs].spotNr);
-                            if (omeArr[locThis]==-10000.0) {
-                                omeArr[locThis] = AllSpots[10*iterAllSps+2];
-                            }
+                            if (maxIntArr[locThis] < AllSpots[10*iterAllSps+3]) maxIntArr[locThis] = AllSpots[10*iterAllSps+3];
                         }
                     }
                 }
             }
+        }
+    }
+
+    double AvAngle, maxIntThis;
+    int nAngles;
+    size_t locThis;
+    for (i=0;i<nUniques;i++){
+        for (j=0;j<maxNHKLs;j++){
+            AvAngle = 0;
+            maxIntThis = maxIntArr[i*maxNHKLs+j];
+            nAngles = 0;
+            for (k=0;k<nScans;k++){
+                // Normalize each sino to the maxInt, take -ve and then exp
+                locThis = i*maxNHKLs*nScans+j*nScans+k;
+                if (sinoArr[locThis] > 0){
+                    sinoArr[locThis] /= maxIntThis;
+                    sinoArr[locThis] *= -1;
+                    sinoArr[locThis] = exp(sinoArr[locThis]);
+                    AvAngle += allOmeArr[i*maxNHKLs*nScans+j*nScans+k];
+                    nAngles++;
+                }
+            }
+            if (nAngles>0) omeArr[i*maxNHKLs+j] = AvAngle / nAngles;
         }
     }
 
@@ -434,5 +458,7 @@ main(int argc, char *argv[])
     fclose(HKLsF);
     free(sinoArr);
     free(omeArr);
+    free(allOmeArr);
+    free(maxIntArr);
     free(nrHKLsFilled);
 }

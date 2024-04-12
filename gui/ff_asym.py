@@ -3,30 +3,24 @@
 # See LICENSE file.
 #
 
-import PIL
 import matplotlib
 matplotlib.use('TkAgg')
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
-import sys
 import tkinter as Tk
 import numpy as np
 import time
 import matplotlib.pyplot as plt
 import os
-from scipy import stats
 import tkinter.filedialog as tkFileDialog
 import math
-import scipy
-import scipy.ndimage as ndimage
-from math import sin, cos, acos, sqrt, tan, atan, atan2, fabs
+from math import sin, cos, sqrt
 from numpy import linalg as LA
 import math
 from subprocess import Popen, PIPE, STDOUT
 from multiprocessing.dummy import Pool
 import time
 import ctypes
-import re
 
 # Helpers
 deg2rad = 0.0174532925199433
@@ -189,31 +183,31 @@ def transforms(idx):
 def bcoord():
 	numrows, numcols = bdata.shape
 	def format_coord(x, y):
-	    col = int(x+0.5)
-	    row = int(y+0.5)
-	    bcx = float(bclocalvar1.get())
-	    bcy = float(bclocalvar2.get())
-	    [eta, rr] = CalcEtaAngleRad(-x+bcx,y-bcy)
-	    if col>=0 and col<numcols and row>=0 and row<numrows:
-	        z = bdata[row,col]
-	        return 'x=%1.4f, y=%1.4f, Intensity=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,z,rr,eta)
-	    else:
-	        return 'x=%1.4f, y=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,rr,eta)
+		col = int(x+0.5)
+		row = int(y+0.5)
+		bcx = float(bclocalvar1.get())
+		bcy = float(bclocalvar2.get())
+		[eta, rr] = CalcEtaAngleRad(-x+bcx,y-bcy)
+		if col>=0 and col<numcols and row>=0 and row<numrows:
+			z = bdata[row,col]
+			return 'x=%1.4f, y=%1.4f, Intensity=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,z,rr,eta)
+		else:
+			return 'x=%1.4f, y=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,rr,eta)
 	b.format_coord = format_coord
 
 def acoord():
 	numrows, numcols = mask2.shape
 	def format_coord(x, y):
-	    col = int(x+0.5)
-	    row = int(y+0.5)
-	    xD = x - bigdetsize/2
-	    yD = y - bigdetsize/2
-	    [eta,R] = CalcEtaAngleRad(-xD,yD)
-	    if col>=0 and col<numcols and row>=0 and row<numrows:
-	        z = mask2[row,col]
-	        return 'x=%1.4f, y=%1.4f, Intensity=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,z,R,eta)
-	    else:
-	        return 'x=%1.4f, y=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,R,eta)
+		col = int(x+0.5)
+		row = int(y+0.5)
+		xD = x - bigdetsize/2
+		yD = y - bigdetsize/2
+		[eta,R] = CalcEtaAngleRad(-xD,yD)
+		if col>=0 and col<numcols and row>=0 and row<numrows:
+			z = mask2[row,col]
+			return 'x=%1.4f, y=%1.4f, Intensity=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,z,R,eta)
+		else:
+			return 'x=%1.4f, y=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,R,eta)
 	a.format_coord = format_coord
 
 def plotRingsOffset():
