@@ -320,7 +320,6 @@ main(int argc, char *argv[])
     bool *IsNotUniqueSpot;
     IsNotUniqueSpot = calloc(MAX_N_SPOTS_PER_GRAIN*nUniques,sizeof(*IsNotUniqueSpot));
     for (i=0;i<MAX_N_SPOTS_PER_GRAIN*nUniques;i++) IsNotUniqueSpot[i] = false; 
-    size_t nNonUnique = 0;
     for (i=0;i<nUniques;i++){
         thisVoxNr = uniqueKeyArr[i*5+0];
         nSpots = uniqueKeyArr[i*5+2];
@@ -347,14 +346,13 @@ main(int argc, char *argv[])
             allSpotIDsT[nAllSpots+j].ringNr = (int)AllSpots[10*(IDArrThis[j]-1)+5];
             allSpotIDsT[nAllSpots+j].grainNr = i;
             allSpotIDsT[nAllSpots+j].spotNr = j;
-            for (k=0;k<j;k++){
+            for (k=0;k<nAllSpots+j;k++){
                 if (allSpotIDsT[k].ringNr == allSpotIDsT[nAllSpots+j].ringNr){
                     if (fabs(allSpotIDsT[nAllSpots+j].omega - allSpotIDsT[k].omega) < tolOme){
                         if (fabs(allSpotIDsT[nAllSpots+j].eta - allSpotIDsT[k].eta) < tolEta){
                             IsNotUniqueSpot[k] = true;
-                            IsNotUniqueSpot[j] = true;
+                            IsNotUniqueSpot[nAllSpots+j] = true;
                             printf("Not unique\n");
-                            nNonUnique ++;
                         }
                     }
                 }
