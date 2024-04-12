@@ -273,10 +273,13 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 			for nodeNr in range(nNodes):
 				res.append(peaks(thisDir,outFStem,numProcs,blockNr=nodeNr,numBlocks=nNodes))
 			outputs = [i.result() for i in res]
-			print(f'PeakSearch Done. Time taken: {time.time()-t_st}')
+			print(f'PeakSearch Done. Time taken: {time.time()-t_st} seconds.')
 		if omegaOffset != 0:
+			print("Offsetting omega.")
+			tOme = time.time()
 			fns = glob.glob('Temp/*PS.csv')
 			for fn in fns:
+				shutil.copy2(fn,f'{fn}.old')
 				df = pd.read_csv(fn,delimiter=' ')
 				if df.shape[0] == 0:
 					continue
@@ -286,6 +289,7 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 				omega_new = omega_this - omegaOffsetThis
 				df['Omega(degrees)'] = omega_new
 				df.to_csv(fn,sep=' ',header=True,float_format='%.6f',index=False)
+			print(f"Omega offset done. Time taken: {time.time()-tOme} seconds.")
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True)
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True)
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr")+f' {outFStem} {thisDir}',env=env,shell=True)
