@@ -375,7 +375,6 @@ main(int argc, char *argv[])
         }
     }
     for (i=0;i<nUniques;i++){
-        printf("%d\n",nrHKLsFilled[i]);
         if (nrHKLsFilled[i] > maxNHKLs) maxNHKLs = nrHKLsFilled[i];
     }
     nAllSpots = nDone;
