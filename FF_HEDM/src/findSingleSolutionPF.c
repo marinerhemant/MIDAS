@@ -359,7 +359,7 @@ main(int argc, char *argv[])
         }
         nrHKLsFilled[i] = nSpotsUnique;
         if ((int)nSpotsUnique>maxNHKLs) maxNHKLs = (int)nSpotsUnique;
-        printf("%zu\n",nSpotsUnique);
+        printf("%zu %zu\n",nSpotsUnique,nSpots);
         free(IDArrThis);
         nAllSpots+=nSpots;
     }
