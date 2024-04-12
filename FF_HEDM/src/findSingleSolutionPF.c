@@ -352,6 +352,8 @@ main(int argc, char *argv[])
                     if (fabs(allSpotIDsT[nAllSpots+j].omega - allSpotIDsT[k].omega) < tolOme)
                         if (fabs(allSpotIDsT[nAllSpots+j].eta - allSpotIDsT[k].eta) < tolEta){
                             IsNotUniqueSpot[k] = true;
+                            IsNotUniqueSpot[j] = true;
+                            printf("Not unique\n");
                             nNonUnique ++;
                         }
             }
@@ -362,7 +364,7 @@ main(int argc, char *argv[])
     // We are now going to copy over to the other array
     realloc(allSpotIDsT,nAllSpots*sizeof(*allSpotIDsT));
     printf("nAllSpotsGrains: %zu\n",nAllSpots);
-    allSpotIDs = calloc(nAllSpots-nNonUnique,sizeof(*allSpotIDs));
+    allSpotIDs = calloc(nAllSpots,sizeof(*allSpotIDs));
     size_t nDone = 0;
     for (i=0;i<nAllSpots;i++)
         if (IsNotUniqueSpot[i] == false){
@@ -370,6 +372,7 @@ main(int argc, char *argv[])
             nDone ++;
         }
     nAllSpots = nDone;
+    realloc(allSpotIDs,nAllSpots*sizeof(*allSpotIDsT));
     printf("nAllSpotsGrains: %zu\n",nAllSpots);
     free(uniqueKeyArr);
     char fnUniqueSpots[2048];
