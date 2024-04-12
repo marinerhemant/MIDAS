@@ -6,7 +6,7 @@ import time
 import os,sys,glob
 from pathlib import Path
 import shutil
-from math import floor, isnan
+from math import floor, isnan, fabs
 import pandas as pd
 from parsl.app.app import python_app
 import parsl
@@ -275,8 +275,9 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 			outputs = [i.result() for i in res]
 			print(f'PeakSearch Done. Time taken: {time.time()-t_st} seconds.')
 		if omegaOffset != 0:
+			signOmegaOffset = omegaOffsetThis / fabs(omegaOffsetThis)
 			omegaOffsetThis = omegaOffset*(layerNr-1)
-			omegaOffsetThis = omegaOffsetThis%360.0
+			omegaOffsetThis = signOmegaOffset * fabs(omegaOffsetThis)%360.0
 			print(f"Offsetting omega: {omegaOffsetThis}.")
 			tOme = time.time()
 			fns = glob.glob('Temp/*PS.csv')
