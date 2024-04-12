@@ -352,7 +352,6 @@ main(int argc, char *argv[])
                         if (fabs(allSpotIDsT[nAllSpots+j].eta - allSpotIDsT[k].eta) < tolEta){
                             IsNotUniqueSpot[k] = true;
                             IsNotUniqueSpot[nAllSpots+j] = true;
-                            // printf("Not unique\n");
                         }
                     }
                 }
@@ -361,14 +360,18 @@ main(int argc, char *argv[])
         free(IDArrThis);
         nAllSpots+=nSpots;
     }
-    // We are now going to copy over to the other array
     realloc(allSpotIDsT,nAllSpots*sizeof(*allSpotIDsT));
     printf("nAllSpotsGrains: %zu ",nAllSpots);
     allSpotIDs = calloc(nAllSpots,sizeof(*allSpotIDs));
     size_t nDone = 0;
     for (i=0;i<nAllSpots;i++){
         if (IsNotUniqueSpot[i] == false){
-            allSpotIDs[i] = allSpotIDsT[i];
+            allSpotIDs[nDone].mergedID = allSpotIDsT[i].mergedID;
+            allSpotIDs[nDone].omega = allSpotIDsT[i].omega;
+            allSpotIDs[nDone].eta = allSpotIDsT[i].eta;
+            allSpotIDs[nDone].ringNr = allSpotIDsT[i].ringNr;
+            allSpotIDs[nDone].grainNr = allSpotIDsT[i].grainNr;
+            allSpotIDs[nDone].spotNr = allSpotIDsT[i].spotNr;
             nDone ++;
         }
     }
