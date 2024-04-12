@@ -316,14 +316,13 @@ main(int argc, char *argv[])
     size_t nAllSpots=0, thisVoxNr;
     int maxNHKLs=-1, *nrHKLsFilled;
     nrHKLsFilled = calloc(nUniques,sizeof(*nrHKLsFilled));
-    size_t startPos, nSpots,nSpotsUnique;
+    size_t startPos, nSpots;
     bool *IsNotUniqueSpot;
     IsNotUniqueSpot = calloc(MAX_N_SPOTS_PER_GRAIN*nUniques,sizeof(*IsNotUniqueSpot));
     for (i=0;i<MAX_N_SPOTS_PER_GRAIN*nUniques;i++) IsNotUniqueSpot[i] = false; 
     for (i=0;i<nUniques;i++){
         thisVoxNr = uniqueKeyArr[i*5+0];
         nSpots = uniqueKeyArr[i*5+2];
-        nSpotsUnique = nSpots;
         startPos = uniqueKeyArr[i*5+4];
         char IDsFNThis[2048];
         sprintf(IDsFNThis,"%s/IndexBest_IDs_voxNr_%0*d.bin",folderName,6,thisVoxNr);
@@ -351,15 +350,11 @@ main(int argc, char *argv[])
                         if (fabs(allSpotIDsT[nAllSpots+j].eta - allSpotIDsT[k].eta) < tolEta){
                             IsNotUniqueSpot[k] = true;
                             IsNotUniqueSpot[nAllSpots+j] = true;
-                            nSpotsUnique--;
                         }
                     }
                 }
             }
         }
-        nrHKLsFilled[i] = nSpotsUnique;
-        if ((int)nSpotsUnique>maxNHKLs) maxNHKLs = (int)nSpotsUnique;
-        printf("%zu %zu\n",nSpotsUnique,nSpots);
         free(IDArrThis);
         nAllSpots+=nSpots;
     }
@@ -375,8 +370,13 @@ main(int argc, char *argv[])
             allSpotIDs[nDone].ringNr = allSpotIDsT[i].ringNr;
             allSpotIDs[nDone].grainNr = allSpotIDsT[i].grainNr;
             allSpotIDs[nDone].spotNr = allSpotIDsT[i].spotNr;
+            nrHKLsFilled[allSpotIDs[nDone].grainNr]++;
             nDone ++;
         }
+    }
+    for (i=0;i<nUniques;i++){
+        printf("%d\n",nrHKLsFilled[i]);
+        if (nrHKLsFilled[i] > maxNHKLs) maxNHKLs = nrHKLsFilled[i];
     }
     nAllSpots = nDone;
     realloc(allSpotIDs,nAllSpots*sizeof(*allSpotIDsT));
