@@ -291,6 +291,8 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 					continue
 				omega_this = df['Omega(degrees)'][0]
 				omega_new = omega_this - omegaOffsetThis
+				if omega_new > 180: omega_new -= 360
+				if omega_new < -180: omega_new += 360
 				df['Omega(degrees)'] = omega_new
 				df.to_csv(fn,sep=' ',header=True,float_format='%.6f',index=False)
 			print(f"Omega offset done. Time taken: {time.time()-tOme} seconds.")
