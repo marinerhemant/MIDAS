@@ -369,7 +369,7 @@ main(int argc, char *argv[])
             allSpotIDs[nDone].eta = allSpotIDsT[i].eta;
             allSpotIDs[nDone].ringNr = allSpotIDsT[i].ringNr;
             allSpotIDs[nDone].grainNr = allSpotIDsT[i].grainNr;
-            allSpotIDs[nDone].spotNr = allSpotIDsT[i].spotNr;
+            allSpotIDs[nDone].spotNr = nrHKLsFilled[allSpotIDs[nDone].grainNr];
             nrHKLsFilled[allSpotIDs[nDone].grainNr]++;
             nDone ++;
         }
