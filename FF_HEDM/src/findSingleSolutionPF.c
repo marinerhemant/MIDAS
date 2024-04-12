@@ -348,14 +348,16 @@ main(int argc, char *argv[])
             allSpotIDsT[nAllSpots+j].grainNr = i;
             allSpotIDsT[nAllSpots+j].spotNr = j;
             for (k=0;k<j;k++){
-                if (allSpotIDsT[k].ringNr == allSpotIDsT[nAllSpots+j].ringNr)
-                    if (fabs(allSpotIDsT[nAllSpots+j].omega - allSpotIDsT[k].omega) < tolOme)
+                if (allSpotIDsT[k].ringNr == allSpotIDsT[nAllSpots+j].ringNr){
+                    if (fabs(allSpotIDsT[nAllSpots+j].omega - allSpotIDsT[k].omega) < tolOme){
                         if (fabs(allSpotIDsT[nAllSpots+j].eta - allSpotIDsT[k].eta) < tolEta){
                             IsNotUniqueSpot[k] = true;
                             IsNotUniqueSpot[j] = true;
                             printf("Not unique\n");
                             nNonUnique ++;
                         }
+                    }
+                }
             }
         }
         free(IDArrThis);
@@ -366,11 +368,12 @@ main(int argc, char *argv[])
     printf("nAllSpotsGrains: %zu\n",nAllSpots);
     allSpotIDs = calloc(nAllSpots,sizeof(*allSpotIDs));
     size_t nDone = 0;
-    for (i=0;i<nAllSpots;i++)
+    for (i=0;i<nAllSpots;i++){
         if (IsNotUniqueSpot[i] == false){
             allSpotIDs[i] = allSpotIDsT[i];
             nDone ++;
         }
+    }
     nAllSpots = nDone;
     realloc(allSpotIDs,nAllSpots*sizeof(*allSpotIDsT));
     printf("nAllSpotsGrains: %zu\n",nAllSpots);
