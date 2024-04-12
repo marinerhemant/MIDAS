@@ -11,7 +11,11 @@ user_opts: Dict[str, Dict[str, Any]]
 user_opts = {'adhoc':
              {'username': 's1iduser',
               'script_dir': SCRIPTDIR,
-              'remote_hostnames': ['califone.xray.aps.anl.gov', 'sekami.xray.aps.anl.gov', 'chiltepin.xray.aps.anl.gov']
+              'remote_hostnames': ['califone.xray.aps.anl.gov', 'sekami.xray.aps.anl.gov', 
+                                   'chiltepin.xray.aps.anl.gov', 'toro.xray.aps.anl.gov', 
+                                   'chutoro.xray.aps.anl.gov', 'copland.xray.aps.anl.gov',
+                                   'pinback.xray.aps.anl.gov'
+                                   ]
               }
              }
 
@@ -23,9 +27,7 @@ config = Config(
             max_workers_per_node=1,
             worker_logdir_root=user_opts['adhoc']['script_dir'],
             provider=AdHocProvider(
-                # Command to be run before starting a worker, such as:
-                # 'module load Anaconda; source activate parsl_env'.
-                worker_init='',
+                worker_init='source /home/beams/S1IDUSER/opt/midasconda3/midasconda/bin/activate',
                 channels=[SSHChannel(hostname=m,
                                      username=user_opts['adhoc']['username'],
                                      script_dir=user_opts['adhoc']['script_dir'],

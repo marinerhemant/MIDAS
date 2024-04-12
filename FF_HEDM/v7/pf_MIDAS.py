@@ -274,29 +274,28 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 				res.append(peaks(thisDir,outFStem,numProcs,blockNr=nodeNr,numBlocks=nNodes))
 			outputs = [i.result() for i in res]
 			print(f'PeakSearch Done. Time taken: {time.time()-t_st} seconds.')
+		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True)
 		if omegaOffset != 0:
 			signOmegaOffset = omegaOffset / fabs(omegaOffset)
 			omegaOffsetThis = omegaOffset*(layerNr-1)
 			omegaOffsetThis = signOmegaOffset * (fabs(omegaOffsetThis)%360.0)
 			print(f"Offsetting omega: {omegaOffsetThis}.")
 			tOme = time.time()
-			fns = glob.glob('Temp/*PS.csv')
-			for fn in fns:
-				if os.path.exists(f'{fn}.old'):
-					shutil.copy2(f'{fn}.old',fn)
-				else:
-					shutil.copy2(fn,f'{fn}.old')
-				df = pd.read_csv(fn,delimiter=' ')
-				if df.shape[0] == 0:
-					continue
-				omega_this = df['Omega(degrees)'][0]
-				omega_new = omega_this - omegaOffsetThis
-				if omega_new > 180: omega_new -= 360
-				if omega_new < -180: omega_new += 360
-				df['Omega(degrees)'] = omega_new
-				df.to_csv(fn,sep=' ',header=True,float_format='%.6f',index=False)
+			if os.path.exists(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old'):
+				shutil.copy2(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old',f'Result_StartNr_{startNr}_EndNr_{endNr}.csv')
+			else:
+				shutil.copy2(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old')
+			Result = np.genfromtxt(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',skip_header=1,delimiter=' ')
+			headRes = open(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv').readline()
+			Result[:,2] -= omegaOffsetThis
+			Result[Result[:,2]<-180,6] += 360
+			Result[Result[:,2]<-180,7] += 360
+			Result[Result[:,2]<-180,2] += 360
+			Result[Result[:,2]> 180,6] -= 360
+			Result[Result[:,2]> 180,7] -= 360
+			Result[Result[:,2]> 180,2] -= 360
+			np.savetxt(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',Result,fmt="%.6f",delimiter=' ',header=headRes.split('\n')[0],comments='')
 			print(f"Omega offset done. Time taken: {time.time()-tOme} seconds.")
-		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True)
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True)
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr")+f' {outFStem} {thisDir}',env=env,shell=True)
 		Result = np.genfromtxt(f'Radius_StartNr_{startNr}_EndNr_{endNr}.csv',skip_header=1,delimiter=' ')

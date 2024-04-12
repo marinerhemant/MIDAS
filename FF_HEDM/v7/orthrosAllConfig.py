@@ -19,7 +19,7 @@ user_opts = {'adhoc':
 orthrosNewConfig = Config(
     executors=[
         HighThroughputExecutor(
-            label='orthrosall',
+            label='orthrosnew',
             max_workers_per_node=1,
             worker_logdir_root=user_opts['adhoc']['script_dir'],
             provider=AdHocProvider(
@@ -54,6 +54,33 @@ orthrosAllConfig = Config(
                                      username=user_optsAll['adhoc']['username'],
                                      script_dir=user_optsAll['adhoc']['script_dir'],
                                      ) for m in user_optsAll['adhoc']['remote_hostnames']]
+            )
+        )
+    ],
+    strategy='none',
+)
+
+user_optsCombined: Dict[str, Dict[str, Any]]
+user_optsCombined = {'adhoc':
+             {'username': 'tomo1',
+              'script_dir': SCRIPTDIR,
+              'remote_hostnames': ['puppy80','puppy81','puppy82','puppy83','puppy84','puppy85','puppy86','puppy87','puppy88','puppy89','puppy90',
+                                   'pup0100','pup0101','pup0102','pup0103','pup0105']
+              }
+             }
+
+orthrosCombinedConfig = Config(
+    executors=[
+        HighThroughputExecutor(
+            label='orthroscombined',
+            max_workers_per_node=1,
+            worker_logdir_root=user_optsCombined['adhoc']['script_dir'],
+            provider=AdHocProvider(
+                worker_init='source /clhome/TOMO1/opt/midasconda3/bin/activate',
+                channels=[SSHChannel(hostname=m,
+                                     username=user_optsCombined['adhoc']['username'],
+                                     script_dir=user_optsCombined['adhoc']['script_dir'],
+                                     ) for m in user_optsCombined['adhoc']['remote_hostnames']]
             )
         )
     ],
