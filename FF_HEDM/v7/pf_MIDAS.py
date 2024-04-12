@@ -275,17 +275,20 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 			outputs = [i.result() for i in res]
 			print(f'PeakSearch Done. Time taken: {time.time()-t_st} seconds.')
 		if omegaOffset != 0:
-			print("Offsetting omega.")
+			omegaOffsetThis = omegaOffset*(layerNr-1)
+			omegaOffsetThis = omegaOffsetThis%360.0
+			print(f"Offsetting omega: {omegaOffsetThis}.")
 			tOme = time.time()
 			fns = glob.glob('Temp/*PS.csv')
 			for fn in fns:
-				shutil.copy2(fn,f'{fn}.old')
+				if os.path.exists(f'{fn}.old'):
+					shutil.copy2(f'{fn}.old',fn)
+				else:
+					shutil.copy2(fn,f'{fn}.old')
 				df = pd.read_csv(fn,delimiter=' ')
 				if df.shape[0] == 0:
 					continue
 				omega_this = df['Omega(degrees)'][0]
-				omegaOffsetThis = omegaOffset*layerNr
-				omegaOffsetThis = omegaOffsetThis%360.0
 				omega_new = omega_this - omegaOffsetThis
 				df['Omega(degrees)'] = omega_new
 				df.to_csv(fn,sep=' ',header=True,float_format='%.6f',index=False)
