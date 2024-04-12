@@ -352,7 +352,7 @@ main(int argc, char *argv[])
                         if (fabs(allSpotIDsT[nAllSpots+j].eta - allSpotIDsT[k].eta) < tolEta){
                             IsNotUniqueSpot[k] = true;
                             IsNotUniqueSpot[nAllSpots+j] = true;
-                            printf("Not unique\n");
+                            // printf("Not unique\n");
                         }
                     }
                 }
