@@ -310,13 +310,17 @@ main(int argc, char *argv[])
 	nSpotsAll /= 10;
     printf("nSpotsAll: %d\n",nSpotsAll);
 
-    struct InputData *allSpotIDs;
-    double *allSpots;
-    allSpotIDs = calloc(MAX_N_SPOTS_PER_GRAIN*nUniques,sizeof(*allSpotIDs));
+    struct InputData *allSpotIDs, *allSpotIDsT;
+    // double *allSpots;
+    allSpotIDsT = calloc(MAX_N_SPOTS_PER_GRAIN*nUniques,sizeof(*allSpotIDsT));
     size_t nAllSpots=0, thisVoxNr;
     int maxNHKLs=-1, *nrHKLsFilled;
     nrHKLsFilled = calloc(nUniques,sizeof(*nrHKLsFilled));
     size_t startPos, nSpots;
+    bool *IsNotUniqueSpot;
+    IsNotUniqueSpot = calloc(MAX_N_SPOTS_PER_GRAIN*nUniques,sizeof(*IsNotUniqueSpot));
+    for (i=0;i<MAX_N_SPOTS_PER_GRAIN*nUniques;i++) IsNotUniqueSpot[i] = false; 
+    size_t nNonUnique = 0;
     for (i=0;i<nUniques;i++){
         thisVoxNr = uniqueKeyArr[i*5+0];
         nSpots = uniqueKeyArr[i*5+2];
@@ -337,19 +341,36 @@ main(int argc, char *argv[])
                 printf("Data is not aligned. Please check. Exiting.\n");
                 return 1;
             }
-            allSpotIDs[nAllSpots+j].mergedID = IDArrThis[j];
-            allSpotIDs[nAllSpots+j].omega = AllSpots[10*(IDArrThis[j]-1)+2];
-            allSpotIDs[nAllSpots+j].eta = AllSpots[10*(IDArrThis[j]-1)+6];
-            allSpotIDs[nAllSpots+j].ringNr = (int)AllSpots[10*(IDArrThis[j]-1)+5];
-            allSpotIDs[nAllSpots+j].grainNr = i;
-            allSpotIDs[nAllSpots+j].spotNr = j;
+            allSpotIDsT[nAllSpots+j].mergedID = IDArrThis[j];
+            allSpotIDsT[nAllSpots+j].omega = AllSpots[10*(IDArrThis[j]-1)+2];
+            allSpotIDsT[nAllSpots+j].eta = AllSpots[10*(IDArrThis[j]-1)+6];
+            allSpotIDsT[nAllSpots+j].ringNr = (int)AllSpots[10*(IDArrThis[j]-1)+5];
+            allSpotIDsT[nAllSpots+j].grainNr = i;
+            allSpotIDsT[nAllSpots+j].spotNr = j;
+            for (k=0;k<j;k++){
+                if (allSpotIDsT[k].ringNr == allSpotIDsT[nAllSpots+j].ringNr)
+                    if (fabs(allSpotIDsT[nAllSpots+j].omega - allSpotIDsT[k].omega) < tolOme)
+                        if (fabs(allSpotIDsT[nAllSpots+j].eta - allSpotIDsT[k].eta) < tolEta){
+                            IsNotUniqueSpot[k] = true;
+                            nNonUnique ++;
+                        }
+            }
         }
         free(IDArrThis);
         nAllSpots+=nSpots;
     }
+    // We are now going to copy over to the other array
+    realloc(allSpotIDsT,nAllSpots*sizeof(*allSpotIDsT));
+    allSpotIDs = calloc(nAllSpots-nNonUnique,sizeof(*allSpotIDs));
+    size_t nDone = 0;
+    for (i=0;i<nAllSpots;i++)
+        if (IsNotUniqueSpot[i] == false){
+            allSpotIDs[i] = allSpotIDsT[i];
+            nDone ++;
+        }
+    nAllSpots = nDone;
     printf("nAllSpotsGrains: %zu\n",nAllSpots);
     free(uniqueKeyArr);
-    realloc(allSpotIDs,nAllSpots*sizeof(*allSpotIDs));
     char fnUniqueSpots[2048];
     sprintf(fnUniqueSpots,"%s/UniqueOrientationSpots.csv",originalFolder);
     FILE *fUniqueSpots;
