@@ -286,6 +286,8 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 			else:
 				shutil.copy2(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old')
 			Result = np.genfromtxt(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',skip_header=1,delimiter=' ')
+			print(Result.shape)
+			if len(Result.shape) < 2: continue
 			headRes = open(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv').readline()
 			Result[:,2] -= omegaOffsetThis
 			Result[Result[:,2]<-180,6] += 360
