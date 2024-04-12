@@ -316,15 +316,14 @@ main(int argc, char *argv[])
     size_t nAllSpots=0, thisVoxNr;
     int maxNHKLs=-1, *nrHKLsFilled;
     nrHKLsFilled = calloc(nUniques,sizeof(*nrHKLsFilled));
-    size_t startPos, nSpots;
+    size_t startPos, nSpots,nSpotsUnique;
     bool *IsNotUniqueSpot;
     IsNotUniqueSpot = calloc(MAX_N_SPOTS_PER_GRAIN*nUniques,sizeof(*IsNotUniqueSpot));
     for (i=0;i<MAX_N_SPOTS_PER_GRAIN*nUniques;i++) IsNotUniqueSpot[i] = false; 
     for (i=0;i<nUniques;i++){
         thisVoxNr = uniqueKeyArr[i*5+0];
         nSpots = uniqueKeyArr[i*5+2];
-        nrHKLsFilled[i] = nSpots;
-        if ((int)nSpots>maxNHKLs) maxNHKLs = (int)nSpots;
+        nSpotsUnique = nSpots;
         startPos = uniqueKeyArr[i*5+4];
         char IDsFNThis[2048];
         sprintf(IDsFNThis,"%s/IndexBest_IDs_voxNr_%0*d.bin",folderName,6,thisVoxNr);
@@ -352,11 +351,14 @@ main(int argc, char *argv[])
                         if (fabs(allSpotIDsT[nAllSpots+j].eta - allSpotIDsT[k].eta) < tolEta){
                             IsNotUniqueSpot[k] = true;
                             IsNotUniqueSpot[nAllSpots+j] = true;
+                            nSpotsUnique--;
                         }
                     }
                 }
             }
         }
+        nrHKLsFilled[i] = nSpotsUnique;
+        if ((int)nSpotsUnique>maxNHKLs) maxNHKLs = (int)nSpotsUnique;
         free(IDArrThis);
         nAllSpots+=nSpots;
     }
