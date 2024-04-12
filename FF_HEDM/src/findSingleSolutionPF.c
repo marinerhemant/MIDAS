@@ -361,6 +361,7 @@ main(int argc, char *argv[])
     }
     // We are now going to copy over to the other array
     realloc(allSpotIDsT,nAllSpots*sizeof(*allSpotIDsT));
+    printf("nAllSpotsGrains: %zu\n",nAllSpots);
     allSpotIDs = calloc(nAllSpots-nNonUnique,sizeof(*allSpotIDs));
     size_t nDone = 0;
     for (i=0;i<nAllSpots;i++)
@@ -392,7 +393,7 @@ main(int argc, char *argv[])
     }
     for (i=0;i<szSino;i++) sinoArr[i] = 0;
     omeArr = calloc(nUniques*maxNHKLs,sizeof(*omeArr));
-    maxIntArr = calloc(nUniques*maxNHKLs,sizeof(*maxIntArr)); // For each hkl, we calculate the normalization!!!!
+    maxIntArr = calloc(nUniques*maxNHKLs,sizeof(*maxIntArr));
     for (i=0;i<nUniques*maxNHKLs;i++) omeArr[i]=-10000.0;
 
     # pragma omp parallel for num_threads(numProcs) private(i) schedule(dynamic)
@@ -419,6 +420,8 @@ main(int argc, char *argv[])
             }
         }
     }
+    free(allSpotIDs);
+    free(allSpotIDsT);
 
     double AvAngle, maxIntThis;
     int nAngles;
