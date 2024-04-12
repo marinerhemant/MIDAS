@@ -119,6 +119,7 @@ parser.add_argument('-DoTomo', type=int, required=False, default=0, help='If wan
 parser.add_argument('-NormalizeIntensities', type=int, required=False, default=2, help='If want to do tomography and normalize intensities wrt grSize, put to 1, if want to take integrated intensity, put to 2, if want to take equivalent grain size, put to 0. Only for OneSolPerVox. Default is 2.')
 parser.add_argument('-ConvertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
 parser.add_argument('-runIndexing', type=int, required=False, default=1, help='If want to skip Indexing, put to 0.')
+parser.add_argument('-startScanNr', type=int, required=False, default=1, help='If you want to do partial peaksearch. Default: 1')
 args, unparsed = parser.parse_known_args()
 baseNameParamFN = args.paramFile
 machineName = args.machineName
@@ -134,6 +135,7 @@ doTomo = args.DoTomo
 ConvertFiles = args.ConvertFiles
 runIndexing = args.runIndexing
 NormalizeIntensities = args.NormalizeIntensities
+startScanNr = args.startScanNr
 
 if len(topdir) == 0:
 	topdir = os.getcwd()
@@ -242,7 +244,7 @@ def normalizeIntensitiesNumba(input,radius,hashArr):
 
 if doPeakSearch == 1 or doPeakSearch==-1:
 	positions = open(topdir+'/positions.csv').readlines()
-	for layerNr in range(1,nScans+1):
+	for layerNr in range(startScanNr,nScans+1):
 		print(f'LayerNr: {layerNr}')
 		ypos = float(positions[layerNr-1])
 		thisStartNr = startNrFirstLayer + (layerNr-1)*nrFilesPerSweep
