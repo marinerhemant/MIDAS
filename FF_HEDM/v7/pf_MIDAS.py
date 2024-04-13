@@ -242,8 +242,13 @@ def normalizeIntensitiesNumba(input,radius,hashArr):
 			input[i,3] = radius[int(hashArr[i,1])-1,1]
 	return input
 
+if nMerges!=0:
+	os.chdir(topdir)
+	if os.path.exists('original_positions.csv'):
+		shutil.move('original_positions.csv','positions.csv')
+positions = open(topdir+'/positions.csv').readlines()
+
 if doPeakSearch == 1 or doPeakSearch==-1:
-	positions = open(topdir+'/positions.csv').readlines()
 	for layerNr in range(startScanNr,nScans+1):
 		print(f'LayerNr: {layerNr}')
 		ypos = float(positions[layerNr-1])
@@ -336,10 +341,6 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 		os.chdir(topdir)
 else:
 	if nMerges!=0:
-		os.chdir(topdir)
-		if os.path.exists('original_positions.csv'):
-			shutil.move('original_positions.csv','positions.csv')
-		positions = open(topdir+'/positions.csv').readlines()
 		for layerNr in range(0,nMerges*(nScans//nMerges)):
 			if os.path.exists(f'original_InputAllExtraInfoFittingAll{layerNr}.csv'):
 				shutil.move(f'original_InputAllExtraInfoFittingAll{layerNr}.csv',f'InputAllExtraInfoFittingAll{layerNr}.csv')
