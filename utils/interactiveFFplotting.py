@@ -286,6 +286,22 @@ def imageData(clickData):
         if zMin < 0: zMin = 0
         zMax = detZ + window + 1
         if zMax > nPxZ: zMax = nPxZ
+        # Let's do the transformations here:::::
+        for transOpt in ImTransOpt:
+            if transOpt == 1:
+                yT = yMin
+                yMin = nPxY - yMax
+                yMax = nPxY - yT
+            if transOpt == 2:
+                zT = zMin
+                zMin = nPxZ - zMax
+                zMax = nPxZ - zT
+            if transOpt ==3:
+                T = [yMin,yMax]
+                yMin = zMin
+                yMax = zMax
+                zMin = T[0]
+                zMax = T[1]
         extracted_data = rawDataLink[frameMin:frameMax,zMin:zMax,yMin:yMax].astype(np.double)
         extracted_data -= darkMean[zMin:zMax,yMin:yMax]
         extracted_data[extracted_data<thresh] = 0
@@ -355,9 +371,11 @@ dsMax = 0
 parser = MyParser(description='''MIDAS FF Interactive Plotter''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-resultFolder', type=str, required=True, help='Folder where the reconstruction exists')
 parser.add_argument('-dataFileName', type=str, required=True, help='Name of the input datafile')
+parser.add_argument('-HostName', type=str, required=False, default="0.0.0.0", help='HostName IP')
 args, unparsed = parser.parse_known_args()
 resultDir = args.resultFolder
 dataFile = args.dataFileName
+hn = args.HostName
 zf = zarr.open(dataFile,'r')
 pixSz = zf['/analysis/process/analysis_parameters/PixelSize'][0]
 wl = zf['/analysis/process/analysis_parameters/Wavelength'][0]
@@ -366,6 +384,7 @@ thresh = zf['/analysis/process/analysis_parameters/RingThresh'][0][1]
 omegaStep = zf['/measurement/process/scan_parameters/step'][0]
 omegaStart = zf['/measurement/process/scan_parameters/start'][0]
 rawDataLink = zf['exchange/data']
+ImTransOpt = zf['/analysis/process/analysis_parameters/ImTransOpt'][:]
 dark = zf['exchange/dark'][:]
 darkMean = np.mean(dark,axis=0).astype(np.double)
 nFrames,nPxY,nPxZ = rawDataLink.shape
@@ -430,4 +449,4 @@ values = df['ringNrInt'].unique().tolist()
 values.sort()
 options = [{"label":ringNr,"value":ringNr} for ringNr in values]
 
-app.run(port=8000,host="0.0.0.0",debug=True)
+app.run(port=8000,host=hn,debug=True)

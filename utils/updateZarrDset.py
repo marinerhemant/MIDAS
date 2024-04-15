@@ -21,7 +21,7 @@ def checkType(s):
         except:
             return 2
     except:
-        return 0
+        return -1
 
 parser = MyParser(description='''Far-field HEDM analysis using MIDAS. V7.0.0, contact hsharma@anl.gov''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-fn', type=str, required=True, help='FileName to update.')
@@ -39,12 +39,16 @@ if len(folder) == 0 or folder == '.':
 os.chdir(folder)
 keyTop = key.split('/')[0]
 zf = zarr.open(fnIn,'r')
-rf = zf[key][:]
-print(f'Initial value: {rf}')
+try:
+    rf = zf[key][:]
+    print(f'Initial value: {rf}')
+except:
+    print("Key did not exist, will add to the dataset.")
 fnTemp = fnIn+'.tmp'
 bnFNTemp = fnTemp
 
 # check if one value was given, find what we have:
+tp = 0
 if len(upd) == 1:
     tp = checkType(upd[0])
     if tp == 1:
@@ -78,7 +82,12 @@ else:
         newVal = np.array(newArr).astype(np.double)
 
 zf2 = zarr.open(fnTemp,'w')
-ds = zf2.create_dataset(key,shape=(newVal.shape),dtype=newVal.dtype,chunks=(1,),
+if tp!=-1:
+    ds = zf2.create_dataset(key,shape=(newVal.shape),dtype=newVal.dtype,chunks=(1,),
+                        compressor=Blosc(cname='zstd', clevel=3,
+                                         shuffle=Blosc.BITSHUFFLE))
+else:
+    ds = zf2.create_dataset(key,shape=(1,),dtype=newVal.dtype,chunks=(1,),
                         compressor=Blosc(cname='zstd', clevel=3,
                                          shuffle=Blosc.BITSHUFFLE))
 ds[:] = newVal
@@ -89,4 +98,4 @@ shutil.rmtree(keyTop)
 shutil.rmtree(fnTemp)
 zf = zarr.open(fnIn,'r')
 rf = zf[key][:]
-print(f'Updated value: {rf}')
+print(f'Updated value: {key}:{rf}')
