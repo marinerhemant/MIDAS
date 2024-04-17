@@ -47,7 +47,7 @@ def addData (name,node):
             print(f"Creating group: {node.name}")
             zRoot.create_group(node.name)
 
-parser = MyParser(description='''ffGenerateZip.py''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser = MyParser(description='''Code to generate ZarrZip dataset from GE or HDF5 files.''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-resultFolder', type=str, required=True, help='Folder where you want to save results')
 parser.add_argument('-paramFN', type=str, required=True, help='Parameter file name')
 parser.add_argument('-dataFN', type=str, required=False, default='', help='DataFileName')

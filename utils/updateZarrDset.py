@@ -23,7 +23,7 @@ def checkType(s):
     except:
         return -1
 
-parser = MyParser(description='''Far-field HEDM analysis using MIDAS. V7.0.0, contact hsharma@anl.gov''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser = MyParser(description='''Code to update ZarrZip Dataset, contact hsharma@anl.gov''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-fn', type=str, required=True, help='FileName to update.')
 parser.add_argument('-keyToUpdate', type=str, required=True, help='Key inside filename to update.')
 parser.add_argument('-folder', type=str, required=False, default='', help='Folder with the file. If nothing is provided, it will default to the current folder.')
@@ -43,7 +43,7 @@ try:
     rf = zf[key][:]
     print(f'Initial value: {rf}')
 except:
-    print("Key did not exist, will add to the dataset.")
+    print("Key did not exist, will add to the file.")
 fnTemp = fnIn+'.tmp'
 bnFNTemp = fnTemp
 
