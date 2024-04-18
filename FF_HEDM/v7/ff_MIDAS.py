@@ -206,8 +206,7 @@ f_hkls = open(f'{logDir}/hkls_out.csv','w')
 f_hkls_err = open(f'{logDir}/hkls_err.csv','w')
 subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+' '+outFStem,shell=True,env=env,stdout=f_hkls,stderr=f_hkls_err)
 f_hkls.close()
-f_hkls_err.close()https;//icsd.nist.gov/page/logou
-t
+f_hkls_err.close()
 print(f"Doing PeakSearch. Time till now: {time.time()-t0} seconds.")
 res = []
 for nodeNr in range(nNodes):
