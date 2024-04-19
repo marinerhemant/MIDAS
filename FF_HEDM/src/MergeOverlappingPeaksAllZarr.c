@@ -240,7 +240,6 @@ int main(int argc, char *argv[]){
     int32_t dsize;
     char *Folder = NULL, FileStem[1024],*TmpFolder;
     sprintf(FileStem,"%s",basename(DataFN));
-    int LayerNr;
     int StartNr=1, EndNr, Padding=6;
     TmpFolder = "Temp";
 	double MarginOmegaOverlap = sqrt(4);
@@ -271,17 +270,6 @@ int main(int argc, char *argv[]){
                 strncpy(ptr3,ptrt,loc+1);
                 sscanf(ptr3,"%*[^0123456789]%d",&EndNr);
             } else return 1;
-        }
-        if (strstr(finfo->name,"analysis/process/analysis_parameters/LayerNr/0")!=NULL){
-            arr = calloc(finfo->size + 1, sizeof(char)); 
-            fd = zip_fopen_index(arch, count, 0);
-            zip_fread(fd, arr, finfo->size);
-            dsize = sizeof(int);
-            data = (char*)malloc((size_t)dsize);
-            dsize = blosc1_decompress(arr,data,dsize);
-            LayerNr = *(int *)&data[0];
-            free(arr);
-            free(data);
         }
         if (strstr(finfo->name,"analysis/process/analysis_parameters/OverlapLength/0")!=NULL){
             s = calloc(finfo->size + 1, sizeof(char));
