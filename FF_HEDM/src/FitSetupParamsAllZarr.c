@@ -529,14 +529,14 @@ int main(int argc, char *argv[])
     char aline[1000];
     char *str, dummy[1000];
     char folder[1024],*Folder=NULL,*spotsfn,outfolder[1024],resultfolder[1024],*idfn;
-    int StartNr=1, EndNr, LowNr, NrPixels,LayerNr;
+    int StartNr=1, EndNr, NrPixels, NrPixelsZ, NrPixelsY,LayerNr;
     double LatticeConstant[6],Wavelength,MaxRingRad,Lsd,MaxTtheta,TthetaTol,ybc,zbc,px,tyIn,tzIn, BeamSize = 0;
     double tx,tolTilts=1,tolLsd=5000,tolBC=1,p0,p1,p2,p3,RhoD,wedge,MinEta;
     int cs=0,DoFit=0,RingToIndex;
     double Rsample, Hbeam,MinMatchesToAcceptFrac=0,MinOmeSpotIDsToIndex,MaxOmeSpotIDsToIndex,Width;
     int UseFriedelPairs=1;
 	double t_int=1, t_gap=0;
-    int NewType = 1, TopLayer = 0;
+    int TopLayer = 0;
     int maxNFrames = 100000, SGnum = 225;
     spotsfn = "InputAll.csv";
     idfn = "SpotsToIndex.csv";
@@ -544,7 +544,7 @@ int main(int argc, char *argv[])
     int skipFrame=0;
     int locOmegaRanges, nOmegaRanges=0;
     int locBoxSizes, nBoxSizes=0;
-    int locRingThresh, nRings=0;
+    int locRingThresh;
     while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
         if (strstr(finfo->name,"analysis/process/analysis_parameters/RingThresh/0.0")!=NULL){
             locRingThresh = count;
@@ -1129,7 +1129,7 @@ int main(int argc, char *argv[])
                 int loc = (int)(ptr2 - ptrt);
                 char ptr3[2048];
                 strncpy(ptr3,ptrt,loc+1);
-                sscanf(ptr3,"%*[^0123456789]%d%*[^0123456789]%d",&EndNr,&NrPixels);
+                sscanf(ptr3, "%*[^0123456789]%d%*[^0123456789]%d%*[^0123456789]%d", &EndNr, &NrPixelsZ, &NrPixelsY);
             } else return 1;
         }
         if (strstr(finfo->name,"analysis/process/analysis_parameters/LayerNr/0")!=NULL){
@@ -1156,6 +1156,15 @@ int main(int argc, char *argv[])
         }
         count++;
     }
+	if (NrPixelsY != NrPixelsZ){
+		if (NrPixelsY > NrPixelsZ){
+			NrPixels = NrPixelsY;
+		} else {
+			NrPixels = NrPixelsZ;
+		}
+	} else {
+        NrPixels = NrPixelsY;
+	}
 	if (argc==3) Folder = argv[2];
 	if (argc==3) resultFolder = argv[2];
 	int i,j,k;
@@ -1173,7 +1182,7 @@ int main(int argc, char *argv[])
     }
     free(s);
     free(data);
-    EndNr = EndNr - skipFrame; // This ensures we don't over-read.
+    EndNr -= skipFrame; // This ensures we don't over-read.
 	double BoxSizes[nBoxSizes][4];
 	double OmegaRanges[nOmegaRanges][2];
     zip_stat_index(arch, locBoxSizes, 0, finfo);
@@ -1452,7 +1461,7 @@ int main(int argc, char *argv[])
 	fprintf(PF,"LatticeParameter %f %f %f %f %f %f;\n",LatticeConstant[0],LatticeConstant[1],LatticeConstant[2],LatticeConstant[3],LatticeConstant[4],LatticeConstant[5]);
 	//~ fprintf(PF,"CellStruct %d;\n",2);
 	fprintf(PF,"MaxRingRad %f;\n",MaxRingRad);
-	fprintf(PF,"SpaceGroup %d\n",SGnum);
+	fprintf(PF,"SpaceGroup %d;\n",SGnum);
 	fprintf(PF,"Wavelength %f;\n",Wavelength);
 	fprintf(PF,"Distance %f;\n",LsdFit);
 	fprintf(PF,"Rsample %f;\n",Rsample);

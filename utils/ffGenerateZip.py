@@ -56,7 +56,7 @@ parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, hel
 parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
 parser.add_argument('-numFilesPerScan', type=int, required=False, default=1, help='Number of files that constitute a single scan. This will combine multiple ge files into one dataset. 1 will disable.')
 parser.add_argument('-LayerNr', type=int, required=False, default=1, help='LayerNr')
-parser.add_argument('-correctSD', type=int, required=False, default=0, help='If you want to do use an automatically computed threshold, put to 1. It will compute the standard deviation in the image, apply a threshold of 1.1*sigma')
+parser.add_argument('-correctSD', type=int, required=False, default=0, help='If you want to use an automatically computed threshold, put to 1. It will compute the standard deviation in the image, apply a threshold of 1.1*sigma. ***** WILL APPLY THIS ABOVE PREPROCTHRESH. USE WITH CAUTION *****')
 args, unparsed = parser.parse_known_args()
 resultDir = args.resultFolder
 psFN = args.paramFN
