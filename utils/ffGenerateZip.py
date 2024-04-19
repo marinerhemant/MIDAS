@@ -66,7 +66,7 @@ dataLoc = args.dataLoc
 preProc = args.preProcThresh
 layerNr = args.LayerNr
 numFilesPerScan = args.numFilesPerScan
-doStd = args.doStd
+doStd = args.correctSD
 
 darkLoc = 'exchange/dark'
 brightLoc = 'exchange/bright'
