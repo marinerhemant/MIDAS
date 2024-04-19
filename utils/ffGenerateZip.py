@@ -56,6 +56,7 @@ parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, hel
 parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
 parser.add_argument('-numFilesPerScan', type=int, required=False, default=1, help='Number of files that constitute a single scan. This will combine multiple ge files into one dataset. 1 will disable.')
 parser.add_argument('-LayerNr', type=int, required=False, default=1, help='LayerNr')
+parser.add_argument('-correctSD', type=int, required=False, default=0, help='If you want to do use an automatically computed threshold, put to 1. It will compute the standard deviation in the image, apply a threshold of 1.1*sigma')
 args, unparsed = parser.parse_known_args()
 resultDir = args.resultFolder
 psFN = args.paramFN
@@ -65,6 +66,7 @@ dataLoc = args.dataLoc
 preProc = args.preProcThresh
 layerNr = args.LayerNr
 numFilesPerScan = args.numFilesPerScan
+doStd = args.doStd
 
 darkLoc = 'exchange/dark'
 brightLoc = 'exchange/bright'
@@ -111,18 +113,19 @@ else:
     print(f'Dark: {InputFN}')
 
 @jit(nopython=True)
-def applyCorrectionNumba(img,dark,darkpreproc):
+def applyCorrectionNumba(img,dark,darkpreproc,doStd):
     result = np.empty(img.shape,dtype=np.uint16)
     for i in range(img.shape[0]):
         for j in range(img.shape[1]):
             for k in range(img.shape[2]):
                 if (img[i,j,k] < darkpreproc[j,k]): result[i,j,k] = 0
                 else: result[i,j,k] = img[i,j,k] - dark[j,k]
-    for i in range(img.shape[0]):
-        stdVal = np.std(result[i])
-        for j in range(img.shape[1]):
-            for k in range(img.shape[2]):
-                if (img[i,j,k] < int(1.1*stdVal)): result[i,j,k] = 0
+    if doStd == 1:
+        for i in range(img.shape[0]):
+            stdVal = np.std(result[i])
+            for j in range(img.shape[1]):
+                for k in range(img.shape[2]):
+                    if (img[i,j,k] < int(1.1*stdVal)): result[i,j,k] = 0
     return result
 
 print(f'ResultDir: {resultDir}')
@@ -161,7 +164,7 @@ if h5py.is_hdf5(InputFN):
         print(f"StartFrame: {stFrame}, EndFrame: {enFrame-1}, nFrames: {nFrames}")
         dataThis = hf2[dataLoc][stFrame:enFrame,:,:]
         if preProc!=-1:
-            dataT = applyCorrectionNumba(dataThis,darkMean,darkpreProc)
+            dataT = applyCorrectionNumba(dataThis,darkMean,darkpreProc,doStd)
         else:
             dataT = dataThis
         data[stFrame:enFrame,:,:] = dataT
@@ -198,7 +201,7 @@ else:
             delFrames = enFrame - stFrame
             dataThis = np.fromfile(InputFN,dtype=np.uint16,count=delFrames*numPxY*numPxZ,offset=stFrame*numPxY*numPxZ*bytesPerPx+8192).reshape((delFrames,numPxZ,numPxY))
             if preProc!=-1:
-                dataT = applyCorrectionNumba(dataThis,darkMean,darkpreProc)
+                dataT = applyCorrectionNumba(dataThis,darkMean,darkpreProc,doStd)
             else:
                 dataT = dataThis
             data[stFrame+stNr:enFrame+stNr,:,:] = dataT
