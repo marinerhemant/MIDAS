@@ -111,12 +111,12 @@ else:
     print(f'Dark: {InputFN}')
 
 @jit(nopython=True)
-def applyCorrectionNumba(img,dark,preproc):
+def applyCorrectionNumba(img,dark,darkpreproc):
     result = np.empty(img.shape,dtype=np.uint16)
     for i in range(img.shape[0]):
         for j in range(img.shape[1]):
             for k in range(img.shape[2]):
-                if (img[i,j,k] < dark[j,k]+preproc): result[i,j,k] = 0
+                if (img[i,j,k] < darkpreproc[j,k]): result[i,j,k] = 0
                 else: result[i,j,k] = img[i,j,k] - dark[j,k]
     return result
 
@@ -138,6 +138,8 @@ if h5py.is_hdf5(InputFN):
         darkData = np.zeros((10,numZ,numY))
     dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
     darkMean = np.mean(darkData[skipF:,:,:],axis=0).astype(np.uint16)
+    if preProc!=-1:
+        darkpreProc = darkMean + preProc
     if brightLoc in hf2:
         brightData = hf2[brightLoc][()]
     else:
@@ -154,7 +156,7 @@ if h5py.is_hdf5(InputFN):
         print(f"StartFrame: {stFrame}, EndFrame: {enFrame-1}, nFrames: {nFrames}")
         dataThis = hf2[dataLoc][stFrame:enFrame,:,:]
         if preProc!=-1:
-            dataT = applyCorrectionNumba(dataThis,darkMean,preProc)
+            dataT = applyCorrectionNumba(dataThis,darkMean,darkpreProc)
         else:
             dataT = dataThis
         data[stFrame:enFrame,:,:] = dataT
@@ -172,6 +174,8 @@ else:
     dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
     bright = exc.create_dataset('bright',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
     darkMean = np.mean(darkData[skipF:,:,:],axis=0).astype(np.uint16)
+    if preProc!=-1:
+        darkpreProc = darkMean + preProc
     data = exc.create_dataset('data',shape=(nFramesAll,numPxZ,numPxY),dtype=np.uint16,chunks=(1,numPxZ,numPxY),compression=compressor)
     if numFrameChunks == -1:
         numFrameChunks = nFrames
@@ -189,7 +193,7 @@ else:
             delFrames = enFrame - stFrame
             dataThis = np.fromfile(InputFN,dtype=np.uint16,count=delFrames*numPxY*numPxZ,offset=stFrame*numPxY*numPxZ*bytesPerPx+8192).reshape((delFrames,numPxZ,numPxY))
             if preProc!=-1:
-                dataT = applyCorrectionNumba(dataThis,darkMean,preProc)
+                dataT = applyCorrectionNumba(dataThis,darkMean,darkpreProc)
             else:
                 dataT = dataThis
             data[stFrame+stNr:enFrame+stNr,:,:] = dataT
