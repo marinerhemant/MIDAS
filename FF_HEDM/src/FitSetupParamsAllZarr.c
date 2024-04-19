@@ -530,7 +530,6 @@ int main(int argc, char *argv[])
     char *str, dummy[1000];
     char folder[1024],*Folder=NULL,*spotsfn,outfolder[1024],resultfolder[1024],*idfn;
     int StartNr=1, EndNr, LowNr, NrPixels,LayerNr;
-    int SpaceGroup;
     double LatticeConstant[6],Wavelength,MaxRingRad,Lsd,MaxTtheta,TthetaTol,ybc,zbc,px,tyIn,tzIn, BeamSize = 0;
     double tx,tolTilts=1,tolLsd=5000,tolBC=1,p0,p1,p2,p3,RhoD,wedge,MinEta;
     int cs=0,DoFit=0,RingToIndex;
@@ -682,7 +681,7 @@ int main(int argc, char *argv[])
             dsize = sizeof(int);
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
-            SpaceGroup = *(int *)&data[0];
+            SGnum = *(int *)&data[0];
             free(arr);
             free(data);
         }
