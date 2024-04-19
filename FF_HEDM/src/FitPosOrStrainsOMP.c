@@ -1637,7 +1637,7 @@ int main(int argc, char *argv[])
 		for (i=0;i<nSpotsBest;i++){
 			spotPosAllSpots = (int)spotIDS[i]-1;
 			if (spotPosAllSpots+1 != (size_t)AllSpots[spotPosAllSpots*14+3]){
-				printf("Data mismatch! Behavior undefined. Looked for %zu, found %zu\n", spotPosAllSpots+1, (size_t)AllSpots[spotPosAllSpots*14+3]);
+				printf("Data mismatch! Behavior undefined. Looked for %zu, found %zu\n", (int)spotIDS[i], spotPosAllSpots+1, (size_t)AllSpots[spotPosAllSpots*14+3]);
 			}
 			spotsYZO[i][0] = AllSpots[spotPosAllSpots*14+0];
 			spotsYZO[i][1] = AllSpots[spotPosAllSpots*14+1];
