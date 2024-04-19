@@ -1531,7 +1531,7 @@ int main(int argc, char *argv[])
 		FILE *SpFile = fopen(SpFN,"r");
 		if (SpFile == NULL){
 			printf("Could not read the SpotsToIndex.csv file while trying %d. Exiting.\n",SpId);
-			continue;;
+			continue;
 		}
 		int rowNr = 0;
 		int ThisID;
@@ -1637,7 +1637,7 @@ int main(int argc, char *argv[])
 		for (i=0;i<nSpotsBest;i++){
 			spotPosAllSpots = (int)spotIDS[i]-1;
 			if (spotPosAllSpots+1 != (size_t)AllSpots[spotPosAllSpots*14+3]){
-				printf("Data mismatch! Behavior undefined.\n");
+				printf("Data mismatch! Behavior undefined. Looked for %zu, found %zu\n", spotPosAllSpots+1, (size_t)AllSpots[spotPosAllSpots*14+3]);
 			}
 			spotsYZO[i][0] = AllSpots[spotPosAllSpots*14+0];
 			spotsYZO[i][1] = AllSpots[spotPosAllSpots*14+1];
