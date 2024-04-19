@@ -118,7 +118,8 @@ def applyCorrectionNumba(img,dark,darkpreproc):
             for k in range(img.shape[2]):
                 if (img[i,j,k] < darkpreproc[j,k]): result[i,j,k] = 0
                 else: result[i,j,k] = img[i,j,k] - dark[j,k]
-    print(np.std(result,axis=0))
+    for i in range(img.shape[0]):
+        print(np.std(result[i]))
     return result
 
 print(f'ResultDir: {resultDir}')
