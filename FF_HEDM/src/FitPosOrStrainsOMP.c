@@ -1624,7 +1624,8 @@ int main(int argc, char *argv[])
 		double a=LatCin[0],b=LatCin[1],c=LatCin[2],alph=LatCin[3],bet=LatCin[4],gamm=LatCin[5];
 		for (i=0;i<3;i++) for (j=0;j<3;j++) Orient0_3[i][j] = Orient0[i*3+j];
 		OrientMat2Euler(Orient0_3,Euler0);
-		Euler2OrientMat(Euler0,Orient0_3);Convert3x3To9(Orient0_3,Orient0);
+		Euler2OrientMat(Euler0,Orient0_3);
+		Convert3x3To9(Orient0_3,Orient0);
 		OrientMat2Euler(Orient0_3,Euler0);
 		double **spotsYZO;
 		spotsYZO=allocMatrix(nSpotsBest,8);
@@ -1635,6 +1636,9 @@ int main(int argc, char *argv[])
 		size_t spotPosAllSpots;
 		for (i=0;i<nSpotsBest;i++){
 			spotPosAllSpots = (int)spotIDS[i]-1;
+			if (spotPosAllSpots+1 != (size_t)AllSpots[spotPosAllSpots*14+3]){
+				printf("Data mismatch! Behavior undefined.\n");
+			}
 			spotsYZO[i][0] = AllSpots[spotPosAllSpots*14+0];
 			spotsYZO[i][1] = AllSpots[spotPosAllSpots*14+1];
 			spotsYZO[i][2] = AllSpots[spotPosAllSpots*14+2];

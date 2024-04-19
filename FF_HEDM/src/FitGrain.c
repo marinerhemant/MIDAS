@@ -860,7 +860,7 @@ int main(int argc, char *argv[])
 	// Arguments: Ini(12), OptP(6), NonOptP, RingNumbers,  SpotInfoAll, OmegaRanges,
 	//			  BoxSizes, hkls
 	// CalcAngleErrors would need Y,Z,Ome before wedge correction.
-	// Everythin till CorrectTiltSpatialDistortion function in FitTiltBCLsd
+	// Everything till CorrectTiltSpatialDistortion function in FitTiltBCLsd
 	double *Out;
 	double *Error;
 	Error = malloc(3*sizeof(*Error));
