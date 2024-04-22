@@ -73,6 +73,7 @@ brightLoc = 'exchange/bright'
 lines = open(psFN).readlines()
 darkFN = ''
 skipF = 0
+NrFilesPerSweep = 1
 for line in lines:
     if line.startswith('RawFolder '):
         rawFolder = line.split()[1]
@@ -177,7 +178,10 @@ else:
     numPxZ = 2048
     nFrames = (sz-header) // (bytesPerPx*numPxY*numPxZ)
     nFramesAll = nFrames*numFilesPerScan
-    darkData = geReader(darkFN)
+    if darkFN != '':
+        darkData = geReader(darkFN)
+    else:
+        darkData = np.zeros((10,numPxZ,numPxY))
     brightData = np.copy(darkData)
     dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
     bright = exc.create_dataset('bright',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
