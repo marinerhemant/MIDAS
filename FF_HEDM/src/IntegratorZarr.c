@@ -825,7 +825,7 @@ int main(int argc, char **argv)
 		zip_stat_index(arch,dataLoc+iter,0,finfo);
 		sizeArr[iter*2+0] = finfo->size;
 		sizeArr[iter*2+1] = cntr;
-        printf("%zu %zu\n",finfo->size,cntr);
+        // printf("%zu %zu\n",finfo->size,cntr);
 		cntr += finfo->size;
 	}
 	// allocate arr
