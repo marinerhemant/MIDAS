@@ -1031,6 +1031,8 @@ int main(int argc, char *argv[])
         }
         count++;
     }
+    printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %d %d",tx,ty,tz,
+        pxY,pxZ,yCen,zCen,Lsd,RhoD,p0,p1,p2,p3,EtaBinSize,RBinSize,RMax,RMin,EtaMax,EtaMin,NrPixelsY,NrPixelsZ);
     zip_stat_index(arch, locImTransOpt, 0, finfo);
     s = calloc(finfo->size + 1, sizeof(char));
     fd = zip_fopen_index(arch, locImTransOpt, 0);
