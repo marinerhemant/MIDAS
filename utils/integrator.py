@@ -1,11 +1,8 @@
 #!/usr/bin/env python
 
 import subprocess
-import numpy as np
 import argparse
-import warnings
-import time
-import os,sys,glob
+import os,sys
 from pathlib import Path
 import shutil
 import re
@@ -13,7 +10,6 @@ import zarr
 import fsspec
 utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 sys.path.insert(0,utilsDir)
-from numba import jit
 from midas2zip import Hdf5ToZarr
 import warnings
 warnings.filterwarnings('ignore')
@@ -103,7 +99,6 @@ for fileNr in range(nrFiles):
         f = open(f'{resultDir}/{logdir}/map_out.csv','w')
         f_err = open(f'{resultDir}/{logdir}/map_err.csv','w')
         subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/DetectorMapperZarr")+f' {zipFN}',shell=True,env=env,stdout=f,stderr=f_err)
-    # Now we run things
     f = open(f'{resultDir}/{logdir}/{os.path.basename(zipFN)}_integrator_out.csv','w')
     f_err = open(f'{resultDir}/{logdir}/{os.path.basename(zipFN)}_integrator_err.csv','w')
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IntegratorZarr")+f' {zipFN}',shell=True,env=env,stdout=f,stderr=f_err)
