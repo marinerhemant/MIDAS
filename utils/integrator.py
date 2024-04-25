@@ -95,6 +95,8 @@ for fileNr in range(nrFiles):
     if convertFiles == 1:
         zipFN = generateZip(resultDir,psFN,dfn=thisFN,nchunks=numFrameChunks,preproc=preProc)
     else:
+        if thisFN[-3:] != 'zip':
+            thisFN += '.analysis.MIDAS.zip'
         zipFN = thisFN
     if fileNr == 0 and mapDetector == 1:
         f = open(f'{resultDir}/{logdir}/map_out.csv','w')
