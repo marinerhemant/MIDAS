@@ -97,7 +97,7 @@ for fileNr in range(nrFiles):
     else:
         if thisFN[-3:] != 'zip':
             thisFN += '.analysis.MIDAS.zip'
-        zipFN = thisFN
+        zipFN = resultDir + thisFN
         print(zipFN)
     if fileNr == 0 and mapDetector == 1:
         f = open(f'{resultDir}/{logdir}/map_out.csv','w')
