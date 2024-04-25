@@ -53,7 +53,6 @@ def runOneFile(fileNr):
         if thisFN[-3:] != 'zip':
             thisFN += '.analysis.MIDAS.zip'
         zipFN = resultDir + thisFN
-        print(f'Processing file: {zipFN}')
     f = open(f'{resultDir}/{logdir}/{os.path.basename(zipFN)}_integrator_out.csv','w')
     f_err = open(f'{resultDir}/{logdir}/{os.path.basename(zipFN)}_integrator_err.csv','w')
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IntegratorZarr")+f' {zipFN}',shell=True,env=env,stdout=f,stderr=f_err)
