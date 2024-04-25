@@ -1088,6 +1088,7 @@ void main(int argc, char *argv[]){
     free(data);
     nFrames = nFrames - skipFrame; // This ensures we don't over-read.
     dataLoc += skipFrame;
+    darkLoc += skipFrame;
 	// Now we read the size of data for each file pointer.
 	sizeArr = calloc(nFrames*2,sizeof(*sizeArr)); // Number StartLoc
 	size_t cntr = 0;

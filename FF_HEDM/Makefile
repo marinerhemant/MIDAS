@@ -255,8 +255,14 @@ matchgrains: $(SRCDIR)MatchGrains.c
 detectormapper: $(SRCDIR)DetectorMapper.c
 	$(CC) $(SRCDIR)DetectorMapper.c -o $(BINDIR)DetectorMapper $(CFLAGS)
 
+detectormapperzarr: $(SRCDIR)DetectorMapperZarr.c
+	$(CC) $(SRCDIR)DetectorMapperZarr.c -o $(BINDIR)DetectorMapperZarr $(CFLAGS) $(BLOSCFLAGS) $(ZIPFLAGS)
+
 integrator: $(SRCDIR)Integrator.c
 	$(CC) $(SRCDIR)Integrator.c -o $(BINDIR)Integrator $(CFLAGS) $(CFLAGSTIFF) $(CFLAGSHDF)
+
+integratorzarr: $(SRCDIR)IntegratorZarr.c
+	$(CC) $(SRCDIR)IntegratorZarr.c -o $(BINDIR)IntegratorZarr $(CFLAGS) $(CFLAGSTIFF) $(CFLAGSHDF) $(BLOSCFLAGS) $(ZIPFLAGS)
 
 indexercuda: $(SRCDIR)IndexerRefineNLOPT.cu
 	$(NCC) $(SRCDIR)IndexerRefineNLOPT.cu -o $(BINDIR)Indexer $(NCFLAGS)

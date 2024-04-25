@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from dash import Dash, html, dcc, callback, Output, Input
 import pandas as pd
 import numpy as np

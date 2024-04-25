@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import subprocess
 import numpy as np
 import argparse
@@ -21,8 +23,8 @@ from calcMiso import *
 from numba import jit
 import warnings
 warnings.filterwarnings('ignore')
+pytpath = sys.executable
 
-pytpath = 'python '
 env = dict(os.environ)
 midas_path = os.path.expanduser("~/.MIDAS")
 env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'

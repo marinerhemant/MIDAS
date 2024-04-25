@@ -12,10 +12,11 @@ user_opts = {'adhoc':
              {'username': 's1iduser',
               'script_dir': SCRIPTDIR,
               'remote_hostnames': ['califone.xray.aps.anl.gov', 'sekami.xray.aps.anl.gov', 
-                                   'chiltepin.xray.aps.anl.gov', 'toro.xray.aps.anl.gov', 
-                                   'chutoro.xray.aps.anl.gov', 'copland.xray.aps.anl.gov',
-                                   'pinback.xray.aps.anl.gov'
-                                   ]
+                                   'chiltepin.xray.aps.anl.gov']
+                                #    , 'toro.xray.aps.anl.gov', 
+                                #    'chutoro.xray.aps.anl.gov', 'copland.xray.aps.anl.gov',
+                                #    'pinback.xray.aps.anl.gov'
+                                #    ]
               }
              }
 

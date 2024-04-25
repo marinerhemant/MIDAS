@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 #
 # Copyright (c) 2014, UChicago Argonne, LLC
 # See LICENSE file.
@@ -18,6 +20,7 @@ import matplotlib.pyplot as plt
 import os
 import tkinter.filedialog as tkFileDialog
 import math
+from math import sin, cos
 from subprocess import Popen, PIPE, STDOUT
 from multiprocessing.dummy import Pool
 
@@ -107,13 +110,13 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 		a.set_ylim([lims[1][0],lims[1][1]])
 	numrows, numcols = imarr2.shape
 	def format_coord(x, y):
-	    col = int(x+0.5)
-	    row = int(y+0.5)
-	    if col>=0 and col<numcols and row>=0 and row<numrows:
-	        z = imarr2[row,col]
-	        return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x,y,z)
-	    else:
-	        return 'x=%1.4f, y=%1.4f'%(x,y)
+		col = int(x+0.5)
+		row = int(y+0.5)
+		if col>=0 and col<numcols and row>=0 and row<numrows:
+			z = imarr2[row,col]
+			return 'x=%1.4f, y=%1.4f, z=%1.4f'%(x,y,z)
+		else:
+			return 'x=%1.4f, y=%1.4f'%(x,y)
 	a.format_coord = format_coord
 	a.title.set_text("Image: " + fnprint)
 	canvas.draw()

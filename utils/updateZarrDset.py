@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from numcodecs import Blosc
 import zarr
 import subprocess

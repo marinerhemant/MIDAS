@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import h5py
 import numpy as np
 import os
@@ -12,6 +14,7 @@ import shutil
 from numba import jit
 import time
 import matplotlib.pyplot as plt
+import re
 
 compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
 
@@ -51,6 +54,7 @@ parser = MyParser(description='''Code to generate ZarrZip dataset from GE or HDF
 parser.add_argument('-resultFolder', type=str, required=True, help='Folder where you want to save results')
 parser.add_argument('-paramFN', type=str, required=True, help='Parameter file name')
 parser.add_argument('-dataFN', type=str, required=False, default='', help='DataFileName')
+parser.add_argument('-darkFN', type=str, required=False, default='', help='DarkFileName')
 parser.add_argument('-dataLoc', type=str, required=False, default='exchange/data', help='Location of data in the hdf file')
 parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='Number of chunks to use when reading the data file if RAM is smaller than expanded data. -1 will disable.')
 parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
@@ -61,6 +65,7 @@ args, unparsed = parser.parse_known_args()
 resultDir = args.resultFolder
 psFN = args.paramFN
 InputFN = args.dataFN
+darkFN = args.darkFN
 numFrameChunks = args.numFrameChunks
 dataLoc = args.dataLoc
 preProc = args.preProcThresh
@@ -71,9 +76,12 @@ doStd = args.correctSD
 darkLoc = 'exchange/dark'
 brightLoc = 'exchange/bright'
 lines = open(psFN).readlines()
-darkFN = ''
 skipF = 0
 NrFilesPerSweep = 1
+numPxY = 2048
+numPxZ = 2048
+HZ = 8192
+pad = 6
 for line in lines:
     if line.startswith('RawFolder '):
         rawFolder = line.split()[1]
@@ -91,27 +99,37 @@ for line in lines:
         fNr = int(line.split()[1])
     if line.startswith('NrFilesPerSweep '):
         NrFilesPerSweep = int(line.split()[1])
+    if line.startswith('NrPixelsY '):
+        numPxY = int(line.split()[1])
+    if line.startswith('NrPixelsZ '):
+        numPxZ = int(line.split()[1])
+    if line.startswith('NrPixels '):
+        numPxZ = int(line.split()[1])
+        numPxY = numPxZ
     if line.startswith('Padding '):
         pad = int(line.split()[1])
     if line.startswith('Ext '):
         ext = line.split()[1]
     if line.startswith('HeadSize '):
-        if skipF==0:
-            skipF = (int(line.split()[1])-8192) // (2*2048*2048)
+        HZ = int(line.split()[1])
     if line.startswith('SkipFrame '):
         skipF = int(line.split()[1])
 
+if skipF==0 and HZ > 8192:
+    skipF = (HZ-8192) // (2*numPxY*numPxZ)
+
+origInputFN = InputFN
 if len(InputFN)==0:
     fNr += (layerNr-1)*NrFilesPerSweep
     fNr = str(fNr)
     InputFN = rawFolder + '/' + fStem + '_' + fNr.zfill(pad) + ext
     outfn = resultDir + '/' + fStem + '_' + fNr.zfill(pad)
-    print(f'Input: {InputFN}')
-    print(f'Dark: {darkFN}')
 else:
     outfn = resultDir+'/'+InputFN+'.analysis'
-    print(f'Input: {InputFN}')
-    print(f'Dark: {InputFN}')
+    if len(darkFN) == 0:
+        darkFN = InputFN
+print(f'Input: {InputFN}')
+print(f'Dark: {darkFN}')
 
 @jit(nopython=True)
 def applyCorrectionNumba(img,dark,darkpreproc,doStd):
@@ -137,7 +155,6 @@ if Path(outfZip).exists():
 zipStore = zarr.ZipStore(outfZip)
 zRoot = zarr.group(store=zipStore, overwrite=True)
 exc = zRoot.create_group('exchange')
-fNrLoc = int(fNr)
 if h5py.is_hdf5(InputFN):
     hf2 = h5py.File(InputFN,'r')
     nFrames,numZ,numY = hf2[dataLoc].shape
@@ -172,14 +189,12 @@ if h5py.is_hdf5(InputFN):
     hf2.close()
 else:
     sz = os.path.getsize(InputFN)
-    header = 8192
+    header = HZ
     bytesPerPx = 2
-    numPxY = 2048
-    numPxZ = 2048
     nFrames = (sz-header) // (bytesPerPx*numPxY*numPxZ)
     nFramesAll = nFrames*numFilesPerScan
     if darkFN != '':
-        darkData = geReader(darkFN)
+        darkData = geReader(darkFN,header=HZ,numPxY=numPxY,numPxZ=numPxZ)
     else:
         darkData = np.zeros((10,numPxZ,numPxY))
     brightData = np.copy(darkData)
@@ -192,9 +207,15 @@ else:
     if numFrameChunks == -1:
         numFrameChunks = nFrames
     numChunks = int(ceil(nFrames/numFrameChunks))
+    fNr = re.search('\d{% s}' % pad, InputFN).group(0)
+    fNrOrig = fNr
+    fNrLoc = int(fNr)
     for fileNrIter in range(numFilesPerScan):
         fNr = str(fNrLoc)
-        InputFN = rawFolder + '/' + fStem + '_' + fNr.zfill(pad) + ext
+        if len(origInputFN) == 0:
+            InputFN = rawFolder + '/' + fStem + '_' + fNr.zfill(pad) + ext
+        else:
+            InputFN = origInputFN.replace(fNrOrig,str(fNr).zfill(pad))
         print(InputFN)
         stNr = nFrames*fileNrIter
         for i in range(numChunks):
@@ -203,7 +224,7 @@ else:
             if enFrame > nFrames: enFrame=nFrames
             print(f"StartFrame: {stFrame+stNr}, EndFrame: {enFrame+stNr}, nFrames: {nFrames}, nFramesAll: {nFramesAll}")
             delFrames = enFrame - stFrame
-            dataThis = np.fromfile(InputFN,dtype=np.uint16,count=delFrames*numPxY*numPxZ,offset=stFrame*numPxY*numPxZ*bytesPerPx+8192).reshape((delFrames,numPxZ,numPxY))
+            dataThis = np.fromfile(InputFN,dtype=np.uint16,count=delFrames*numPxY*numPxZ,offset=stFrame*numPxY*numPxZ*bytesPerPx+HZ).reshape((delFrames,numPxZ,numPxY))
             if preProc!=-1:
                 dataT = applyCorrectionNumba(dataThis,darkMean,darkpreProc,doStd)
             else:
@@ -241,10 +262,19 @@ skipF = 0
 omeStp = 0
 OmeFF = 0
 for line in lines:
+    str = 'GapFile'
+    if line.startswith(str):
+        gf = np.string_(line.split()[1])
+        rf = sp_pro_analysis.create_dataset(str,shape=(1,),chunks=(1,),compressor=compressor,dtype=gf.dtype)
+        rf[:]=gf
+    str = 'BadPxFile'
+    if line.startswith(str):
+        gf = np.string_(line.split()[1])
+        rf = sp_pro_analysis.create_dataset(str,shape=(1,),chunks=(1,),compressor=compressor,dtype=gf.dtype)
+        rf[:]=gf
     str = 'ImTransOpt'
     if line.startswith(f'{str} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        print(outArr)
         if (ImTransOpts[0] == -1):
             ImTransOpts[0] = outArr[0]
         else:
@@ -276,10 +306,11 @@ for line in lines:
     str = 'HeadSize'
     if line.startswith(f'{str} '):
         head = int(line.split()[1])
-        if skipF==0:
-            skipF = (head-8192) // (2*2048*2048)
-            spsf = sp_pro_analysis.create_dataset('SkipFrame',dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
-            spsf[:]=np.array([skipF]).astype(np.int32)
+        if head > 8192:
+            if skipF==0:
+                skipF = (head-8192) // (2*numPxY*numPxZ)
+                spsf = sp_pro_analysis.create_dataset('SkipFrame',dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+                spsf[:]=np.array([skipF]).astype(np.int32)
     str = 'Twins'
     if line.startswith(f'{str} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
@@ -369,6 +400,9 @@ for line in lines:
     str = 'OmegaFirstFile'
     if line.startswith(f'{str} '):
         OmeFF = float(line.split()[1])
+    str = 'OmegaStart'
+    if line.startswith(f'{str} '):
+        OmeFF = float(line.split()[1])
     str = 'OmegaStep'
     if line.startswith(f'{str} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
@@ -379,6 +413,31 @@ for line in lines:
     if line.startswith(f'{str} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
         spBPI = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spBPI[:] = outArr
+    str = 'GapIntensity'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spBPI = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spBPI[:] = outArr
+    str = 'SumImages'
+    if line.startswith(f'{str} '):
+        outArr = np.array([int(line.split()[1])]).astype(np.int32)
+        spBPI = sp_pro_analysis.create_dataset(str,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spBPI[:] = outArr
+    str = 'Normalize'
+    if line.startswith(f'{str} '):
+        outArr = np.array([int(line.split()[1])]).astype(np.int32)
+        spBPI = sp_pro_analysis.create_dataset(str,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spBPI[:] = outArr
+    str = 'SaveIndividualFrames'
+    if line.startswith(f'{str} '):
+        outArr = np.array([int(line.split()[1])]).astype(np.int32)
+        spBPI = sp_pro_analysis.create_dataset(str,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spBPI[:] = outArr
+    str = 'OmegaSumFrames'
+    if line.startswith(f'{str} '):
+        outArr = np.array([int(line.split()[1])]).astype(np.int32)
+        spBPI = sp_pro_analysis.create_dataset(str,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
         spBPI[:] = outArr
     str = 'tolTilts'
     if line.startswith(f'{str} '):
@@ -485,7 +544,67 @@ for line in lines:
         outArr = np.array([float(line.split()[1])]).astype(np.double)
         spEBS = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
         spEBS[:] = outArr
-    str = 'MinEta'
+    str = 'RBinSize'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spEBS = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS[:] = outArr
+    str = 'RMin'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spEBS = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS[:] = outArr
+    str = 'RMax'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spEBS = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS[:] = outArr
+    str = 'EtaMin'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spEBS = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS[:] = outArr
+    str = 'EtaMax'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spEBS = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS[:] = outArr
+    str = 'X'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spEBS = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS[:] = outArr
+    str = 'Y'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spEBS = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS[:] = outArr
+    str = 'Z'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spEBS = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS[:] = outArr
+    str = 'U'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spEBS = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS[:] = outArr
+    str = 'V'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spEBS = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS[:] = outArr
+    str = 'W'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spEBS = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS[:] = outArr
+    str = 'SHpL'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spEBS = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS[:] = outArr
+    str = 'Polariz'
     if line.startswith(f'{str} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
         spMEta = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)

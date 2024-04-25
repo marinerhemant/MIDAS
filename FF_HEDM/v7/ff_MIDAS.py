@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import parsl
 import subprocess
 import sys, os
@@ -11,8 +13,7 @@ sys.path.insert(0,utilsDir)
 v7Dir = os.path.expanduser('~/opt/MIDAS/FF_HEDM/v7/')
 sys.path.insert(0,v7Dir)
 from parsl.app.app import python_app
-pytpath = 'python'
-###### ADD PYTPATH AS THE EXECUTABLE PATH
+pytpath = sys.executable
 
 def generateZip(resFol,pfn,layerNr,dfn='',dloc='',nchunks=-1,preproc=-1,outf='ZipOut.txt',errf='ZipErr.txt'):
     cmd = pytpath+' '+os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZip.py')+' -resultFolder '+ resFol +' -paramFN ' + pfn + ' -LayerNr ' + str(layerNr)
@@ -118,7 +119,7 @@ preproc = args.preProcThresh
 layerNr = args.LayerNr
 ConvertFiles = args.ConvertFiles
 
-if len(resultDir) == 0:
+if len(resultDir) == 0 or resultDir=='.':
 	resultDir = os.getcwd()
 
 resultDir += f'/LayerNr_{layerNr}'
@@ -198,7 +199,7 @@ else:
         outFStem = f'{resultDir}/{fStem}_{str(thisFileNr).zfill(6)}.MIDAS.zip'
         if not os.path.exists(outFStem):
             shutil.copy2(dataFN,resultDir)
-    cmdUpd = f'python ' + os.path.expanduser('~/opt/MIDAS/utils/updateZarrDset.py')
+    cmdUpd = f'{pytpath} ' + os.path.expanduser('~/opt/MIDAS/utils/updateZarrDset.py')
     cmdUpd += f' -fn {os.path.basename(outFStem)} -folder {resultDir} -keyToUpdate ResultFolder -updatedValue {resultDir}/'
     subprocess.call(cmdUpd,shell=True)
     print(outFStem)
@@ -256,7 +257,7 @@ subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/ProcessGrainsZarr")+
 f.close()
 f_err.close()
 print(f"Making plots, condensing output. Time till now: {time.time()-t0}")
-subprocess.call('python '+os.path.expanduser('~/opt/MIDAS/utils/plotFFSpots3d.py')+' -resultFolder '+resultDir,cwd=resultDir, shell=True)
-subprocess.call('python '+os.path.expanduser('~/opt/MIDAS/utils/plotFFSpots3dGrains.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
-subprocess.call('python '+os.path.expanduser('~/opt/MIDAS/utils/plotGrains3d.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
+subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotFFSpots3d.py')+' -resultFolder '+resultDir,cwd=resultDir, shell=True)
+subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotFFSpots3dGrains.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
+subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotGrains3d.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
 print(f"Done. Total time elapsed: {time.time()-t0}")
