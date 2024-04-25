@@ -73,6 +73,8 @@ mapDetector = args.mapDetector
 
 if len(resultDir) == 0 or resultDir == '.':
     resultDir = os.getcwd()
+if resultDir[0] != '/':
+    resultDir = os.getcwd()+'/'+resultDir
 resultDir += '/'
 logdir = 'stdout'
 os.makedirs(resultDir,exist_ok=True)
@@ -95,12 +97,12 @@ for fileNr in range(nrFiles):
     else:
         zipFN = thisFN
     if fileNr == 0 and mapDetector == 1:
-        f = open(f'{logdir}/map_out.csv','w')
-        f_err = open(f'{logdir}/map_err.csv','w')
+        f = open(f'{resultDir}/{logdir}/map_out.csv','w')
+        f_err = open(f'{resultDir}/{logdir}/map_err.csv','w')
         subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/DetectorMapperZarr")+f' {zipFN}',shell=True,env=env,stdout=f,stderr=f_err)
     # Now we run things
-    f = open(f'{logdir}/{os.path.basename(zipFN)}_integrator_out.csv','w')
-    f_err = open(f'{logdir}/{os.path.basename(zipFN)}_integrator_err.csv','w')
+    f = open(f'{resultDir}/{logdir}/{os.path.basename(zipFN)}_integrator_out.csv','w')
+    f_err = open(f'{resultDir}/{logdir}/{os.path.basename(zipFN)}_integrator_err.csv','w')
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IntegratorZarr")+f' {zipFN}',shell=True,env=env,stdout=f,stderr=f_err)
     finFN = f'{zipFN}.caked.hdf'
     outzip = finFN+'.zip'

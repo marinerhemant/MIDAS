@@ -737,7 +737,7 @@ int main(int argc, char *argv[])
 	distortionFile = 0;
 	char *distortionFN;
 	int NrTransOpt=0;
-	int TransOpt[10];
+	int TransOpt[10]={0,0,0,0,0,0,0,0,0,0};
     char *resultFolder;
     int locImTransOpt, nFrames;
     while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
@@ -1031,7 +1031,7 @@ int main(int argc, char *argv[])
         }
         count++;
     }
-    printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %d %d",tx,ty,tz,
+    printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %d %d\n",tx,ty,tz,
         pxY,pxZ,yCen,zCen,Lsd,RhoD,p0,p1,p2,p3,EtaBinSize,RBinSize,RMax,RMin,EtaMax,EtaMin,NrPixelsY,NrPixelsZ);
     zip_stat_index(arch, locImTransOpt, 0, finfo);
     s = calloc(finfo->size + 1, sizeof(char));
