@@ -106,6 +106,7 @@ logdir = 'stdout'
 os.makedirs(resultDir,exist_ok=True)
 os.makedirs(f'{resultDir}/{logdir}',exist_ok=True)
 
+startFileNrStr = str(startFileNr).zfill(6)
 if startFileNr == -1:
     startFileNrStr = re.search('\d{% s}' % 6, InputFN)
     if not startFileNrStr:
