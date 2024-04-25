@@ -90,7 +90,7 @@ int ReadBins(char *resultFolder){
     int status;
     size_t size;
     char file_name[4096];
-    sprintf(file_name,"%s/Map.bin");
+    sprintf(file_name,"%s/Map.bin",resultFolder);
     int rc;
     fd = open (file_name, O_RDONLY);
     check (fd < 0, "open %s failed: %s", file_name, strerror (errno));
@@ -106,7 +106,7 @@ int ReadBins(char *resultFolder){
     struct stat s2;
     int status2;
     char file_name2[4096];
-    sprintf(file_name2,"%s/nMap.bin");
+    sprintf(file_name2,"%s/nMap.bin",resultFolder);
     fd2 = open (file_name2, O_RDONLY);
     check (fd2 < 0, "open %s failed: %s", file_name2, strerror (errno));
     status2 = fstat (fd2, & s2);
