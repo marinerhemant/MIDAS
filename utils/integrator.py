@@ -47,7 +47,7 @@ def generateZip(resFol,pfn,dfn='',dloc='',nchunks=-1,preproc=-1,outf='ZipOut.txt
 
 def runOneFile(fileNr):
     thisFN = InputFN.replace(startFileNrStr,str(startFileNr+fileNr).zfill(6))
-    if convertFiles == 1:
+    if fileNr > 0 and convertFiles == 1:
         zipFN = generateZip(resultDir,psFN,dfn=thisFN,nchunks=numFrameChunks,preproc=preProc)
     else:
         if thisFN[-3:] != 'zip':
@@ -114,26 +114,25 @@ if startFileNr == -1:
 if endFileNr == -1:
     endFileNr = startFileNr
 nrFiles = endFileNr - startFileNr + 1
+fileNr = 0
+thisFN = InputFN.replace(startFileNrStr,str(startFileNr+fileNr).zfill(6))
+if convertFiles == 1:
+    zipFN = generateZip(resultDir,psFN,dfn=thisFN,nchunks=numFrameChunks,preproc=preProc)
+else:
+    if thisFN[-3:] != 'zip':
+        thisFN += '.analysis.MIDAS.zip'
+    zipFN = resultDir + thisFN
+    print(f'Processing file: {zipFN}')
 if mapDetector == 1:
-    fileNr = 0
-    thisFN = InputFN.replace(startFileNrStr,str(startFileNr+fileNr).zfill(6))
-    if convertFiles == 1:
-        zipFN = generateZip(resultDir,psFN,dfn=thisFN,nchunks=numFrameChunks,preproc=preProc)
-    else:
-        if thisFN[-3:] != 'zip':
-            thisFN += '.analysis.MIDAS.zip'
-        zipFN = resultDir + thisFN
-        print(f'Processing file: {zipFN}')
-    if fileNr == 0 and mapDetector == 1:
-        f = open(f'{resultDir}/{logdir}/map_out.csv','w')
-        f_err = open(f'{resultDir}/{logdir}/map_err.csv','w')
-        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/DetectorMapperZarr")+f' {zipFN}',shell=True,env=env,stdout=f,stderr=f_err)
+    f = open(f'{resultDir}/{logdir}/map_out.csv','w')
+    f_err = open(f'{resultDir}/{logdir}/map_err.csv','w')
+    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/DetectorMapperZarr")+f' {zipFN}',shell=True,env=env,stdout=f,stderr=f_err)
 
 # RUN THIS IN PARALLEL
 if nCPUs == 1:
-    for fileNr in range(1,nrFiles):
+    for fileNr in range(0,nrFiles):
         thisFN = InputFN.replace(startFileNrStr,str(startFileNr+fileNr).zfill(6))
-        if convertFiles == 1:
+        if fileNr > 0 and convertFiles == 1:
             zipFN = generateZip(resultDir,psFN,dfn=thisFN,nchunks=numFrameChunks,preproc=preProc)
         else:
             if thisFN[-3:] != 'zip':
@@ -156,7 +155,7 @@ if nCPUs == 1:
         print(f'Ouput file {outzip} tree structure:')
         print(zarr.open(outzip).tree())
 else:
-    work_data = [fileNr for fileNr in range(1,nrFiles)]
+    work_data = [fileNr for fileNr in range(0,nrFiles)]
     p = Pool(nCPUs)
     res = p.map(runOneFile,work_data)
     for outzip in res:
