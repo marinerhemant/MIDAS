@@ -41,8 +41,8 @@ def generateZip(resFol,pfn,dfn='',dloc='',nchunks=-1,preproc=-1,outf='ZipOut.txt
         cmd+= ' -numFrameChunks '+str(nchunks)
     if preproc!=-1:
         cmd+= ' -preProcThresh '+str(preproc)
-    outf = resFol+outf
-    errf = resFol+errf
+    outf = f'{resFol}/{logdir}/{outf}'
+    errf = f'{resFol}/{logdir}/{errf}'
     subprocess.call(cmd,shell=True,stdout=open(outf,'w'),stderr=open(errf,'w'))
     lines = open(outf,'r').readlines()
     if lines[-1].startswith('OutputZipName'):
@@ -74,7 +74,9 @@ mapDetector = args.mapDetector
 if len(resultDir) == 0 or resultDir == '.':
     resultDir = os.getcwd()
 resultDir += '/'
+logdir = 'stdout'
 os.makedirs(resultDir,exist_ok=True)
+os.makedirs(f'{resultDir}/{logdir}',exist_ok=True)
 
 if startFileNr == -1:
     startFileNrStr = re.search('\d{% s}' % 6, InputFN)
@@ -93,12 +95,12 @@ for fileNr in range(nrFiles):
     else:
         zipFN = thisFN
     if fileNr == 0 and mapDetector == 1:
-        f = open(f'{resultDir}/map_out.csv','w')
-        f_err = open(f'{resultDir}/map_err.csv','w')
+        f = open(f'{logdir}/map_out.csv','w')
+        f_err = open(f'{logdir}/map_err.csv','w')
         subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/DetectorMapperZarr")+f' {zipFN}',shell=True,env=env,stdout=f,stderr=f_err)
     # Now we run things
-    f = open(f'{resultDir}/{os.path.basename(zipFN)}_integrator_out.csv','w')
-    f_err = open(f'{resultDir}/{os.path.basename(zipFN)}_integrator_err.csv','w')
+    f = open(f'{logdir}/{os.path.basename(zipFN)}_integrator_out.csv','w')
+    f_err = open(f'{logdir}/{os.path.basename(zipFN)}_integrator_err.csv','w')
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IntegratorZarr")+f' {zipFN}',shell=True,env=env,stdout=f,stderr=f_err)
     finFN = f'{zipFN}.caked.hdf'
     outzip = finFN+'.zip'
