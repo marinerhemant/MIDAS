@@ -74,7 +74,7 @@ class Hdf5ToZarr:
         """
         if isinstance(h5obj, h5py.Dataset):
             compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
-            print(f'Processing dataset: {h5obj.name}')
+            # print(f'Processing dataset: {h5obj.name}')
             # Create a Zarr array equivalent to this HDF5 dataset...
             if ('data' in h5obj.name):
                 chunksize = (1,h5obj.shape[1],h5obj.shape[2])
