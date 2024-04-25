@@ -22,7 +22,7 @@ def geReader(geFN,header=8192,numPxY=2048,numPxZ=2048,bytesPerPx=2):
     sz = os.path.getsize(geFN)
     nFrames = (sz-header) // (bytesPerPx*numPxY*numPxZ)
     print(sz,nFrames,header)
-    return np.fromfile(geFN,dtype=np.uint16,offset=header,count=(sz-header)//bytesPerPx).reshape((nFrames,numPxY,numPxZ))
+    return np.fromfile(geFN,dtype=np.uint16,offset=header,count=nFrames*numPxY*numPxZ).reshape((nFrames,numPxY,numPxZ))
 
 class MyParser(argparse.ArgumentParser):
 	def error(self, message):
