@@ -39,7 +39,7 @@ all: help bindircheck calibrant imagemax \
 	peaksfittingomp indexeromp fitsetup fitposorstrainsomp mergeoverlapsall calcradiusall \
 	bindatascanning indexerscanningomp calibrantomp \
 	peaksfittingompzarr hklszarr mergeoverlapsallzarr calcradiusallzarr fitsetupzarr processgrainszarr \
-	findsinglesolutionspf findmultiplesolutionspf mergescansscanning
+	findsinglesolutionspf findmultiplesolutionspf mergescansscanning integratorzarr detectormapperzarr
 
 local: predep all runsetup
 
