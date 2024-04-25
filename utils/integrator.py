@@ -156,6 +156,7 @@ if nCPUs == 1:
         print(zarr.open(outzip).tree())
 else:
     work_data = [fileNr for fileNr in range(0,nrFiles)]
+    print(f"Starting {nCPUs} parallel jobs.")
     p = Pool(nCPUs)
     res = p.map(runOneFile,work_data)
     for outzip in res:
