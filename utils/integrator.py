@@ -57,6 +57,8 @@ def runOneFile(fileNr):
     f = open(f'{resultDir}/{logdir}/{os.path.basename(zipFN)}_integrator_out.csv','w')
     f_err = open(f'{resultDir}/{logdir}/{os.path.basename(zipFN)}_integrator_err.csv','w')
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IntegratorZarr")+f' {zipFN}',shell=True,env=env,stdout=f,stderr=f_err)
+    f.close()
+    f_err.close()
     finFN = f'{zipFN}.caked.hdf'
     outzip = finFN+'.zip'
     zipF = Path(outzip)
@@ -127,6 +129,8 @@ if mapDetector == 1:
     f = open(f'{resultDir}/{logdir}/map_out.csv','w')
     f_err = open(f'{resultDir}/{logdir}/map_err.csv','w')
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/DetectorMapperZarr")+f' {zipFN}',shell=True,env=env,stdout=f,stderr=f_err)
+    f.close()
+    f_err.close()
 
 # RUN THIS IN PARALLEL
 if nCPUs == 1:
@@ -142,6 +146,8 @@ if nCPUs == 1:
         f = open(f'{resultDir}/{logdir}/{os.path.basename(zipFN)}_integrator_out.csv','w')
         f_err = open(f'{resultDir}/{logdir}/{os.path.basename(zipFN)}_integrator_err.csv','w')
         subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IntegratorZarr")+f' {zipFN}',shell=True,env=env,stdout=f,stderr=f_err)
+        f.close()
+        f_err.close()
         finFN = f'{zipFN}.caked.hdf'
         outzip = finFN+'.zip'
         zipF = Path(outzip)
