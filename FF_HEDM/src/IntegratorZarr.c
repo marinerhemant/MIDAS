@@ -84,12 +84,13 @@ struct data {
 struct data *pxList;
 int *nPxList;
 
-int ReadBins(){
+int ReadBins(char *resultFolder){
 	int fd;
     struct stat s;
     int status;
     size_t size;
-    const char * file_name = "Map.bin";
+    char file_name[4096];
+    sprintf(file_name,"%s/Map.bin");
     int rc;
     fd = open (file_name, O_RDONLY);
     check (fd < 0, "open %s failed: %s", file_name, strerror (errno));
@@ -104,7 +105,8 @@ int ReadBins(){
     int fd2;
     struct stat s2;
     int status2;
-    const char* file_name2 = "nMap.bin";
+    char file_name2[4096];
+    sprintf(file_name2,"%s/nMap.bin");
     fd2 = open (file_name2, O_RDONLY);
     check (fd2 < 0, "open %s failed: %s", file_name2, strerror (errno));
     status2 = fstat (fd2, & s2);
@@ -315,7 +317,6 @@ int main(int argc, char **argv)
 		printf("Usage: %s ZarrName.zip\n",argv[0]);
 		return(1);
 	}
-	int rc = ReadBins();
 	double RMax, RMin, RBinSize, EtaMax, EtaMin, EtaBinSize, Lsd, px;
 	int NrPixelsY = 2048, NrPixelsZ = 2048, Normalize = 1;
 	int nEtaBins, nRBins;
@@ -775,6 +776,7 @@ int main(int argc, char **argv)
         }
         count++;
     }
+	int rc = ReadBins(resultFolder);
     zip_stat_index(arch, locImTransOpt, 0, finfo);
     s = calloc(finfo->size + 1, sizeof(char));
     fd = zip_fopen_index(arch, locImTransOpt, 0);

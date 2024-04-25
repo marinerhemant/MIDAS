@@ -1117,8 +1117,10 @@ int main(int argc, char *argv[])
 	}
 
 	// Write out
-	char *mapfn = "Map.bin";
-	char *nmapfn = "nMap.bin";
+	char mapfn[4096];
+    sprintf(mapfn,"%s/Map.bin",resultFolder);
+	char nmapfn[4096];
+    sprintf(nmapfn,"%s/nMap.bin",resultFolder);
 	FILE *mapfile = fopen(mapfn,"wb");
 	FILE *nmapfile = fopen(nmapfn,"wb");
 	fwrite(pxListStore,TotNrOfBins*sizeof(*pxListStore),1,mapfile);

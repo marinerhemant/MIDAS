@@ -49,7 +49,7 @@ def generateZip(resFol,pfn,dfn='',dloc='',nchunks=-1,preproc=-1,outf='ZipOut.txt
         return lines[-1].split()[1]
 
 parser = MyParser(description='''Code to integrate files. Contact: hsharma@anl.gov''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('-resultFolder', type=str, required=True, help='Folder where you want to save results. Full path only.')
+parser.add_argument('-resultFolder', type=str, required=False, default ='.', help='Folder where you want to save results.')
 parser.add_argument('-paramFN', type=str, required=True, help='Parameter file name.')
 parser.add_argument('-dataFN', type=str, required=True, default='', help='DataFileName for first file, this should have the full path if not in the current folder.')
 parser.add_argument('-darkFN', type=str, required=False, default='', help='DarkFileName, full path.')
