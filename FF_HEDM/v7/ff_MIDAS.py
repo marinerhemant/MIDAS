@@ -120,6 +120,8 @@ preproc = args.preProcThresh
 startLayerNr = args.startLayerNr
 endLayerNr = args.endLayerNr
 ConvertFiles = args.convertFiles
+if nNodes == -1:
+    nNodes = 1
 
 env = dict(os.environ)
 midas_path = os.path.expanduser("~/.MIDAS")
@@ -135,42 +137,31 @@ if machineName == 'local':
     from localConfig import *
     parsl.load(config=localConfig)
 elif machineName == 'orthrosnew':
-    if nNodes == -1:
-        nNodes = 11
-    if nNodes > 11:
-        nNodes = 11
     numProcs = 32
+    nNodes = 11
     from orthrosAllConfig import *
     parsl.load(config=orthrosNewConfig)
 elif machineName == 'orthrosall':
-    if nNodes == -1:
-        nNodes = 5
-    if nNodes > 5:
-        nNodes = 5
     numProcs = 64
+    nNodes = 5
     from orthrosAllConfig import *
     parsl.load(config=orthrosAllConfig)
 elif machineName == 'umich':
-    if nNodes == -1:
-        nNodes = 1
     numProcs = 36
     os.environ['nNodes'] = str(nNodes)
     from uMichConfig import *
     parsl.load(config=uMichConfig)
 elif machineName == 'marquette':
-    if nNodes == -1:
-        nNodes = 1
     numProcs = 36
     os.environ['nNodes'] = str(nNodes)
     from marquetteConfig import *
     parsl.load(config=marquetteConfig)
 elif machineName == 'purdue':
-    if nNodes == -1:
-        nNodes = 1
     numProcs = 128
     os.environ['nNodes'] = str(nNodes)
     from purdueConfig import *
     parsl.load(config=purdueConfig)
+
 # Run for each layer.
 for layerNr in range(startLayerNr,endLayerNr+1):
     resultDir += f'/LayerNr_{layerNr}'
