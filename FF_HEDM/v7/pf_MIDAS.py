@@ -152,21 +152,21 @@ if machineName == 'local':
 	from localConfig import *
 	parsl.load(config=localConfig)
 elif machineName == 'orthrosnew':
-	pytpath = os.path.expanduser("~/opt/midasconda3/bin/python")
+	# pytpath = os.path.expanduser("~/opt/midasconda3/bin/python")
 	os.environ['MIDAS_SCRIPT_DIR'] = logDir
 	nNodes = 11
 	numProcs = 32
 	from orthrosAllConfig import *
 	parsl.load(config=orthrosNewConfig)
 elif machineName == 'orthrosall':
-	pytpath = os.path.expanduser("~/opt/midasconda3/bin/python")
+	# pytpath = os.path.expanduser("~/opt/midasconda3/bin/python")
 	os.environ['MIDAS_SCRIPT_DIR'] = logDir
 	nNodes = 5
 	numProcs = 64
 	from orthrosAllConfig import *
 	parsl.load(config=orthrosAllConfig)
 elif machineName == 'umich':
-	pytpath = '/nfs/turbo/meche-abucsek/Wenxi/ESRF_Ti_v7/.venv/bin'
+	# pytpath = '/nfs/turbo/meche-abucsek/Wenxi/ESRF_Ti_v7/.venv/bin'
 	os.environ['MIDAS_SCRIPT_DIR'] = logDir
 	os.environ['nNodes'] = nNodes
 	numProcs = 36
