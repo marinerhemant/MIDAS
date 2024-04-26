@@ -1435,7 +1435,7 @@ main(int argc, char *argv[])
             }
             data_out = calloc(NrPixels*NrPixels,sizeof(*data_out));
             compressedSize = blosc2_compress_ctx(cctx,outArr,NrPixels*NrPixels*sizeof(uint16_t),data_out,NrPixels*NrPixels*sizeof(uint16_t));
-            sprintf(outfn,"%d.0.0",frameNr);
+            sprintf(outfn,"%d.blosc",frameNr);
             zip_error_t *errp;
             const void * dataT;
             dataT = (const void *) data_out;
