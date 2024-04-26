@@ -324,47 +324,38 @@ int main(int argc, char **argv)
 		str = "Z ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &Z);
-			makeMap = 2;
 		}
 		str = "Y ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &Y);
-			makeMap = 2;
 		}
 		str = "X ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &X);
-			makeMap = 2;
 		}
 		str = "W ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &W);
-			makeMap = 2;
 		}
 		str = "V ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &V);
-			makeMap = 2;
 		}
 		str = "U ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &U);
-			makeMap = 2;
 		}
 		str = "SH/L ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &SHpL);
-			makeMap = 2;
 		}
 		str = "Polariz ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &Polariz);
-			makeMap = 2;
 		}
 		str = "Wavelength ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &Lam);
-			makeMap = 2;
 		}
 		str = "GapFile ";
 		if (StartsWith(aline,str) == 1){
