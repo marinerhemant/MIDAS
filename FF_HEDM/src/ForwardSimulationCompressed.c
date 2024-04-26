@@ -1448,7 +1448,7 @@ main(int argc, char *argv[])
                 loc++;
             }
             compressedSize = blosc2_compress_ctx(cctx,outArr,NrPixels*NrPixels*sizeof(uint16_t),data_out,NrPixels*NrPixels*sizeof(uint16_t));
-            printf("Compressed size: %d\n",compressedSize);
+            // printf("Compressed size: %d\n",compressedSize);
             sprintf(outfn,"%s/%d.0.0",OutFileName,frameNr);
             outfile = fopen(outfn,"w");
             fwrite(data_out,compressedSize,1,outfile);
