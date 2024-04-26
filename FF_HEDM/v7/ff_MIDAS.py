@@ -163,8 +163,9 @@ elif machineName == 'purdue':
     parsl.load(config=purdueConfig)
 
 # Run for each layer.
+topResDir = resultDir
 for layerNr in range(startLayerNr,endLayerNr+1):
-    resultDir += f'/LayerNr_{layerNr}'
+    resultDir = f'{topResDir}/LayerNr_{layerNr}'
     logDir = resultDir + '/output'
     os.makedirs(resultDir,exist_ok=True)
     os.makedirs(logDir,exist_ok=True)
@@ -250,8 +251,8 @@ for layerNr in range(startLayerNr,endLayerNr+1):
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/ProcessGrainsZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
     f.close()
     f_err.close()
-    print(f"Making plots, condensing output. Time till now: {time.time()-t0}")
-    subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotFFSpots3d.py')+' -resultFolder '+resultDir,cwd=resultDir, shell=True)
-    subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotFFSpots3dGrains.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
-    subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotGrains3d.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
+    # print(f"Making plots, condensing output. Time till now: {time.time()-t0}")
+    # subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotFFSpots3d.py')+' -resultFolder '+resultDir,cwd=resultDir, shell=True)
+    # subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotFFSpots3dGrains.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
+    # subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotGrains3d.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
     print(f"Done Layer {layerNr}. Total time elapsed: {time.time()-t0}")
