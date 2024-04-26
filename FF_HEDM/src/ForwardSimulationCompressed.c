@@ -1458,5 +1458,4 @@ main(int argc, char *argv[])
 	end = clock();
 	diftotal = ((double)(end-start0))/CLOCKS_PER_SEC;
 	printf("Time elapsed in making diffraction spots: %f [s]\n",diftotal);
-	//~ FreeMemMatrix(InputInfo,MAX_NR_POINTS);
 }
