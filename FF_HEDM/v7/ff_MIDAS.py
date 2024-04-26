@@ -101,8 +101,9 @@ parser.add_argument('-machineName', type=str, required=False, default='local', h
 parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='If low on RAM, it can process parts of the dataset at the time. -1 will disable.')
 parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
 parser.add_argument('-nNodes', type=int, required=False, default=-1, help='Number of nodes for execution, omit if want to automatically select.')
-parser.add_argument('-LayerNr', type=int, required=False, default=1, help='LayerNr to process')
-parser.add_argument('-ConvertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
+parser.add_argument('-startLayerNr', type=int, required=False, default=1, help='Start LayerNr to process')
+parser.add_argument('-endLayerNr', type=int, required=False, default=1, help='End LayerNr to process')
+parser.add_argument('-convertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
 if len(sys.argv) == 1:
     parser.print_help(sys.stderr)
     print("MUST PROVIDE EITHER paramFN or dataFN")
@@ -116,148 +117,148 @@ machineName = args.machineName
 nNodes = args.nNodes
 nchunks = args.numFrameChunks
 preproc = args.preProcThresh
-layerNr = args.LayerNr
-ConvertFiles = args.ConvertFiles
-
-if len(resultDir) == 0 or resultDir=='.':
-	resultDir = os.getcwd()
-
-resultDir += f'/LayerNr_{layerNr}'
-logDir = resultDir + '/output'
-
-os.makedirs(resultDir,exist_ok=True)
-os.makedirs(logDir,exist_ok=True)
-t0 = time.time()
+startLayerNr = args.startLayerNr
+endLayerNr = args.endLayerNr
+ConvertFiles = args.convertFiles
 
 env = dict(os.environ)
 midas_path = os.path.expanduser("~/.MIDAS")
 env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
 
-if ConvertFiles == 1:
-    if len(dataFN)>0:
-        print("Generating combined MIDAS file from HDF and ps files.")
-    else:
-        print("Generating combined MIDAS file from GE and ps files.")
-
-if machineName == 'local':
-    from localConfig import *
-    parsl.load(config=localConfig)
-    nNodes = 1
-elif machineName == 'orthrosnew':
-    pytpath = os.path.expanduser("~/opt/midasconda3/bin/python")
+for layerNr in range(startLayerNr,endLayerNr+1):
+    if len(resultDir) == 0 or resultDir=='.':
+        resultDir = os.getcwd()
+    resultDir += f'/LayerNr_{layerNr}'
+    logDir = resultDir + '/output'
     os.environ['MIDAS_SCRIPT_DIR'] = logDir
-    if nNodes == -1:
-        nNodes = 11
-    if nNodes > 11:
-        nNodes = 11
-    numProcs = 32
-    from orthrosAllConfig import *
-    parsl.load(config=orthrosNewConfig)
-elif machineName == 'orthrosall':
-    pytpath = os.path.expanduser("~/opt/midasconda3/bin/python")
-    os.environ['MIDAS_SCRIPT_DIR'] = logDir
-    if nNodes == -1:
-        nNodes = 5
-    if nNodes > 5:
-        nNodes = 5
-    numProcs = 64
-    from orthrosAllConfig import *
-    parsl.load(config=orthrosAllConfig)
-elif machineName == 'umich':
-    pytpath = '/nfs/turbo/meche-abucsek/Wenxi/ESRF_Ti_v7/.venv/bin'
-    os.environ['MIDAS_SCRIPT_DIR'] = logDir
-    if nNodes == -1:
+    os.makedirs(resultDir,exist_ok=True)
+    os.makedirs(logDir,exist_ok=True)
+    t0 = time.time()
+    if ConvertFiles == 1:
+        if len(dataFN)>0:
+            print("Generating combined MIDAS file from HDF and ps files.")
+        else:
+            print("Generating combined MIDAS file from GE and ps files.")
+    if machineName == 'local':
+        from localConfig import *
+        parsl.load(config=localConfig)
         nNodes = 1
-    numProcs = 36
-    from uMichConfig import *
-    parsl.load(config=uMichConfig)
-elif machineName == 'marquette':
-    if nNodes == -1:
-        nNodes = 1
-    numProcs = 36
-    os.environ['MIDAS_SCRIPT_DIR'] = logDir
-    from marquetteConfig import *
-    parsl.load(config=marquetteConfig)
-
-if ConvertFiles==1:
-    outFStem = generateZip(resultDir,psFN,layerNr,dfn=dataFN,nchunks=nchunks,preproc=preproc)
-else:
-    if len(dataFN) > 0:
-        outFStem = f'{resultDir}/{dataFN}'
-        if not os.path.exists(outFStem):
-            shutil.copy2(dataFN,resultDir)
+    elif machineName == 'orthrosnew':
+        pytpath = os.path.expanduser("~/opt/midasconda3/bin/python")
+        if nNodes == -1:
+            nNodes = 11
+        if nNodes > 11:
+            nNodes = 11
+        numProcs = 32
+        from orthrosAllConfig import *
+        parsl.load(config=orthrosNewConfig)
+    elif machineName == 'orthrosall':
+        pytpath = os.path.expanduser("~/opt/midasconda3/bin/python")
+        if nNodes == -1:
+            nNodes = 5
+        if nNodes > 5:
+            nNodes = 5
+        numProcs = 64
+        from orthrosAllConfig import *
+        parsl.load(config=orthrosAllConfig)
+    elif machineName == 'umich':
+        pytpath = '/nfs/turbo/meche-abucsek/Wenxi/ESRF_Ti_v7/.venv/bin'
+        if nNodes == -1:
+            nNodes = 1
+        numProcs = 36
+        from uMichConfig import *
+        parsl.load(config=uMichConfig)
+    elif machineName == 'marquette':
+        if nNodes == -1:
+            nNodes = 1
+        numProcs = 36
+        from marquetteConfig import *
+        parsl.load(config=marquetteConfig)
+    elif machineName == 'purdue':
+        if nNodes == -1:
+            nNodes = 1
+        numProcs = 128
+        from purdueConfig import *
+        parsl.load(config=purdueConfig)
+    if ConvertFiles==1:
+        outFStem = generateZip(resultDir,psFN,layerNr,dfn=dataFN,nchunks=nchunks,preproc=preproc)
     else:
-        psContents = open(psFN).readlines()
-        for line in psContents:
-            if line.startswith('FileStem '):
-                fStem = line.split()[1]
-            if line.startswith('StartFileNrFirstLayer '):
-                startFN = int(line.split()[1])
-            if line.startswith('NrFilesPerSweep '):
-                NrFilerPerLayer = int(line.split()[1])
-        thisFileNr = startFN + (layerNr-1)*NrFilerPerLayer
-        outFStem = f'{resultDir}/{fStem}_{str(thisFileNr).zfill(6)}.MIDAS.zip'
-        if not os.path.exists(outFStem):
-            shutil.copy2(dataFN,resultDir)
-    cmdUpd = f'{pytpath} ' + os.path.expanduser('~/opt/MIDAS/utils/updateZarrDset.py')
-    cmdUpd += f' -fn {os.path.basename(outFStem)} -folder {resultDir} -keyToUpdate ResultFolder -updatedValue {resultDir}/'
-    subprocess.call(cmdUpd,shell=True)
-    print(outFStem)
-print(f"Generating HKLs. Time till now: {time.time()-t0} seconds.")
-f_hkls = open(f'{logDir}/hkls_out.csv','w')
-f_hkls_err = open(f'{logDir}/hkls_err.csv','w')
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+' '+outFStem,shell=True,env=env,stdout=f_hkls,stderr=f_hkls_err)
-f_hkls.close()
-f_hkls_err.close()
-print(f"Doing PeakSearch. Time till now: {time.time()-t0} seconds.")
-res = []
-for nodeNr in range(nNodes):
-    res.append(peaks(resultDir,outFStem,numProcs,blockNr=nodeNr,numBlocks=nNodes))
-outputs = [i.result() for i in res]
-print(f"Merging peaks. Time till now: {time.time()-t0}")
-f = open(f'{logDir}/merge_overlaps_out.csv','w')
-f_err = open(f'{logDir}/merge_overlaps_err.csv','w')
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
-f.close()
-f_err.close()
-print(f"Calculating Radii. Time till now: {time.time()-t0}")
-f = open(f'{logDir}/calc_radius_out.csv','w')
-f_err = open(f'{logDir}/calc_radius_err.csv','w')
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
-f.close()
-f_err.close()
-print(f"Transforming data. Time till now: {time.time()-t0}")
-f = open(f'{logDir}/fit_setup_out.csv','w')
-f_err = open(f'{logDir}/fit_setup_err.csv','w')
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
-f.close()
-f_err.close()
-os.chdir(resultDir)
-print(f"Binning data. Time till now: {time.time()-t0}")
-f2 = open(f'{logDir}/binning_out.csv','w')
-f_err2 = open(f'{logDir}/binning_err.csv','w')
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinData")+' paramstest.txt',shell=True,env=env,stdout=f2,stderr=f_err2)
-f2.close()
-f_err2.close()
-print(f"Indexing. Time till now: {time.time()-t0}")
-resIndex = []
-for nodeNr in range(nNodes):
-    resIndex.append(index(resultDir,numProcs,blockNr=nodeNr,numBlocks=nNodes))
-outputIndex = [i.result() for i in resIndex]
-print(f"Refining. Time till now: {time.time()-t0}")
-resRefine = []
-for nodeNr in range(nNodes):
-    resRefine.append(refine(resultDir,numProcs,blockNr=nodeNr,numBlocks=nNodes))
-outputRefine = [i.result() for i in resRefine]
-subprocess.call("rm -rf /dev/shm/*.bin",shell=True)
-print(f"Making grains list. Time till now: {time.time()-t0}")
-f = open(f'{logDir}/process_grains_out.csv','w')
-f_err = open(f'{logDir}/process_grains_err.csv','w')
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/ProcessGrainsZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
-f.close()
-f_err.close()
-print(f"Making plots, condensing output. Time till now: {time.time()-t0}")
-subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotFFSpots3d.py')+' -resultFolder '+resultDir,cwd=resultDir, shell=True)
-subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotFFSpots3dGrains.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
-subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotGrains3d.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
-print(f"Done. Total time elapsed: {time.time()-t0}")
+        if len(dataFN) > 0:
+            outFStem = f'{resultDir}/{dataFN}'
+            if not os.path.exists(outFStem):
+                shutil.copy2(dataFN,resultDir)
+        else:
+            psContents = open(psFN).readlines()
+            for line in psContents:
+                if line.startswith('FileStem '):
+                    fStem = line.split()[1]
+                if line.startswith('StartFileNrFirstLayer '):
+                    startFN = int(line.split()[1])
+                if line.startswith('NrFilesPerSweep '):
+                    NrFilerPerLayer = int(line.split()[1])
+            thisFileNr = startFN + (layerNr-1)*NrFilerPerLayer
+            outFStem = f'{resultDir}/{fStem}_{str(thisFileNr).zfill(6)}.MIDAS.zip'
+            if not os.path.exists(outFStem):
+                shutil.copy2(dataFN,resultDir)
+        cmdUpd = f'{pytpath} ' + os.path.expanduser('~/opt/MIDAS/utils/updateZarrDset.py')
+        cmdUpd += f' -fn {os.path.basename(outFStem)} -folder {resultDir} -keyToUpdate ResultFolder -updatedValue {resultDir}/'
+        subprocess.call(cmdUpd,shell=True)
+        print(outFStem)
+    print(f"Generating HKLs. Time till now: {time.time()-t0} seconds.")
+    f_hkls = open(f'{logDir}/hkls_out.csv','w')
+    f_hkls_err = open(f'{logDir}/hkls_err.csv','w')
+    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+' '+outFStem,shell=True,env=env,stdout=f_hkls,stderr=f_hkls_err)
+    f_hkls.close()
+    f_hkls_err.close()
+    print(f"Doing PeakSearch. Time till now: {time.time()-t0} seconds.")
+    res = []
+    for nodeNr in range(nNodes):
+        res.append(peaks(resultDir,outFStem,numProcs,blockNr=nodeNr,numBlocks=nNodes))
+    outputs = [i.result() for i in res]
+    print(f"Merging peaks. Time till now: {time.time()-t0}")
+    f = open(f'{logDir}/merge_overlaps_out.csv','w')
+    f_err = open(f'{logDir}/merge_overlaps_err.csv','w')
+    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
+    f.close()
+    f_err.close()
+    print(f"Calculating Radii. Time till now: {time.time()-t0}")
+    f = open(f'{logDir}/calc_radius_out.csv','w')
+    f_err = open(f'{logDir}/calc_radius_err.csv','w')
+    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
+    f.close()
+    f_err.close()
+    print(f"Transforming data. Time till now: {time.time()-t0}")
+    f = open(f'{logDir}/fit_setup_out.csv','w')
+    f_err = open(f'{logDir}/fit_setup_err.csv','w')
+    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
+    f.close()
+    f_err.close()
+    os.chdir(resultDir)
+    print(f"Binning data. Time till now: {time.time()-t0}")
+    f2 = open(f'{logDir}/binning_out.csv','w')
+    f_err2 = open(f'{logDir}/binning_err.csv','w')
+    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinData")+' paramstest.txt',shell=True,env=env,stdout=f2,stderr=f_err2)
+    f2.close()
+    f_err2.close()
+    print(f"Indexing. Time till now: {time.time()-t0}")
+    resIndex = []
+    for nodeNr in range(nNodes):
+        resIndex.append(index(resultDir,numProcs,blockNr=nodeNr,numBlocks=nNodes))
+    outputIndex = [i.result() for i in resIndex]
+    print(f"Refining. Time till now: {time.time()-t0}")
+    resRefine = []
+    for nodeNr in range(nNodes):
+        resRefine.append(refine(resultDir,numProcs,blockNr=nodeNr,numBlocks=nNodes))
+    outputRefine = [i.result() for i in resRefine]
+    subprocess.call("rm -rf /dev/shm/*.bin",shell=True)
+    print(f"Making grains list. Time till now: {time.time()-t0}")
+    f = open(f'{logDir}/process_grains_out.csv','w')
+    f_err = open(f'{logDir}/process_grains_err.csv','w')
+    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/ProcessGrainsZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
+    f.close()
+    f_err.close()
+    print(f"Making plots, condensing output. Time till now: {time.time()-t0}")
+    subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotFFSpots3d.py')+' -resultFolder '+resultDir,cwd=resultDir, shell=True)
+    subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotFFSpots3dGrains.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
+    subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotGrains3d.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
+    print(f"Done Layer {layerNr}. Total time elapsed: {time.time()-t0}")

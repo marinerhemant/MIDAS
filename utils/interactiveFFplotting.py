@@ -374,10 +374,12 @@ parser = MyParser(description='''MIDAS FF Interactive Plotter''', formatter_clas
 parser.add_argument('-resultFolder', type=str, required=True, help='Folder where the reconstruction exists')
 parser.add_argument('-dataFileName', type=str, required=True, help='Name of the input datafile')
 parser.add_argument('-HostName', type=str, required=False, default="0.0.0.0", help='HostName IP')
+parser.add_argument('-portNr', type=int, required=False, default=8000, help='HostName IP')
 args, unparsed = parser.parse_known_args()
 resultDir = args.resultFolder
 dataFile = args.dataFileName
 hn = args.HostName
+portNr = args.portNr
 zf = zarr.open(dataFile,'r')
 pixSz = zf['/analysis/process/analysis_parameters/PixelSize'][0]
 wl = zf['/analysis/process/analysis_parameters/Wavelength'][0]
@@ -451,4 +453,4 @@ values = df['ringNrInt'].unique().tolist()
 values.sort()
 options = [{"label":ringNr,"value":ringNr} for ringNr in values]
 
-app.run(port=8000,host=hn,debug=True)
+app.run(port=portNr,host=hn,debug=True)
