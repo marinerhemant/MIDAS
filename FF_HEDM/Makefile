@@ -131,7 +131,7 @@ forwardsimulation: $(SRCDIR)ForwardSimulation.c
 	$(CC) $(SRCDIR)ForwardSimulation.c -o $(BINDIR)ForwardSimulation $(CFLAGS)
 
 forwardsimulationcompressed: $(SRCDIR)ForwardSimulationCompressed.c
-	$(CC) $(SRCDIR)ForwardSimulationCompressed.c -o $(BINDIR)ForwardSimulationCompressed $(CFLAGS) $(BLOSCFLAGS)
+	$(CC) $(SRCDIR)ForwardSimulationCompressed.c -o $(BINDIR)ForwardSimulationCompressed $(CFLAGS) $(BLOSCFLAGS) $(ZIPFLAGS)
 
 fitposorstrains: $(SRCDIR)FitPosOrStrains.c
 	$(CC) $(SRCDIR)FitPosOrStrains.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitPosOrStrains $(CFLAGS) \

@@ -13,6 +13,7 @@
 //
 
 #include <stdio.h>
+#include <unistd.h>
 #include <math.h>
 #include <stdlib.h>
 #include <time.h>
@@ -21,6 +22,8 @@
 #include <stdint.h>
 #include <blosc2.h>
 #include <sys/stat.h>
+#include <stdlib.h> 
+#include <zip.h> 
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -900,12 +903,7 @@ main(int argc, char *argv[])
 			continue;
 		}
 	}
-	printf("Output will be saved to: %s folder\n",OutFileName);
-    struct stat st = {0};
-    if (stat(OutFileName,&st)==-1){
-        printf("Output folder '%s' did not exit. Making now.\n",OutFileName);
-        mkdir(OutFileName,0700);
-    }
+	printf("Output will be saved to: %s.zip\n",OutFileName);
 
 	char inpFN[4096];
 	sprintf(inpFN,"%s",InFileName);
@@ -1403,36 +1401,14 @@ main(int argc, char *argv[])
 	}
 	printf("Maximum intensity: %lf\n",maxInt);
 	if (geOutput == 1){
-        printf("Diffraction spots done, now writing the compressed GE file.\n");
         blosc2_init();
         blosc2_set_nthreads(10);
-        printf("Blosc version info: %s (%s)\n",BLOSC2_VERSION_STRING, BLOSC2_VERSION_DATE);
-        char outstr[8192];
         int nFrames = (int)ceil(fabs((OmegaEnd-OmegaStart)/OmegaStep));
-        sprintf(outstr,"{\n    \"chunks\": [\n        1,\n        %d,\n        %d\n    ],\n    "
-            "\"compressor\": {\n        \"blocksize\": 0,\n        \"clevel\": 3,\n        \"cname\":"
-            " \"zstd\",\n        \"id\": \"blosc\",\n        \"shuffle\": 2\n    },\n    \"dtype\": \"<u2\","
-            "\n    \"fill_value\": 0,\n    \"filters\": null,\n    \"order\": \"C\",\n    \"shape\": [\n    "
-            "    %d,\n        %d,\n        %d\n    ],\n    \"zarr_format\": 2\n}",NrPixels,NrPixels,nFrames,NrPixels,NrPixels);
-        // printf("%s\n",outstr);
-        FILE *zvalsF;
-        char zvalsfn[4096];
-        sprintf(zvalsfn,"%s/.zarray",OutFileName);
-        zvalsF = fopen(zvalsfn,"w");
-        fprintf(zvalsF,"%s\n",outstr);
-        fclose(zvalsF);
-        sprintf(outstr,"{\n    \"_ARRAY_DIMENSIONS\": [\n        %d,\n        %d,\n        %d\n    ]\n}",nFrames,NrPixels,NrPixels);
-        sprintf(zvalsfn,"%s/.zattrs",OutFileName);
-        zvalsF = fopen(zvalsfn,"w");
-        fprintf(zvalsF,"%s\n",outstr);
-        fclose(zvalsF);
         int frameNr;
         uint16_t *data_out, *outArr;
-        data_out = calloc(NrPixels*NrPixels,sizeof(*data_out));
         outArr = calloc(NrPixels*NrPixels,sizeof(*outArr));
         size_t loc = 0;
         int compressedSize;
-        FILE *outfile;
         char outfn[4096];
         blosc2_cparams cparams = BLOSC2_CPARAMS_DEFAULTS;
         blosc2_context *cctx;
@@ -1442,18 +1418,35 @@ main(int argc, char *argv[])
         cparams.clevel = 3;
         cparams.nthreads = 10;
         cctx = blosc2_create_cctx(cparams);
+        int errorp;
+        char outZipFN[4096];
+        sprintf(outZipFN,"%s.zip",OutFileName);
+        printf("Diffraction spots done, now writing zip file: %s\n",outZipFN);
+        zip_t *zipper = zip_open(outZipFN,ZIP_CREATE,&errorp);
+        if (zipper == NULL){
+            printf("Could not open the zip file %s for writing. Exiting.\n",outZipFN);
+            return 1;
+        }
+        int rc;
         for (frameNr=0;frameNr<nFrames;frameNr++){
             for (i=0;i<NrPixels*NrPixels;i++){
                 outArr[i] = (uint16_t) (ImageArr[loc]*15000/maxInt);
                 loc++;
             }
+            data_out = calloc(NrPixels*NrPixels,sizeof(*data_out));
             compressedSize = blosc2_compress_ctx(cctx,outArr,NrPixels*NrPixels*sizeof(uint16_t),data_out,NrPixels*NrPixels*sizeof(uint16_t));
-            // printf("Compressed size: %d\n",compressedSize);
-            sprintf(outfn,"%s/%d.0.0",OutFileName,frameNr);
-            outfile = fopen(outfn,"w");
-            fwrite(data_out,compressedSize,1,outfile);
-            fclose(outfile);
+            sprintf(outfn,"%d.0.0",frameNr);
+            zip_error_t *errp;
+            const void * dataT;
+            dataT = (const void *) data_out;
+            zip_source_t *source = zip_source_buffer(zipper,dataT,compressedSize,1);
+            rc = zip_file_add(zipper,outfn,source,ZIP_FL_OVERWRITE | ZIP_FL_ENC_UTF_8);
+            if (rc < 0){
+                printf("Could not add the file %s to zip. Exiting.\n",outfn);
+                return 1;
+            }
         }
+        zip_close(zipper);
 	}
 	end = clock();
 	diftotal = ((double)(end-start0))/CLOCKS_PER_SEC;
