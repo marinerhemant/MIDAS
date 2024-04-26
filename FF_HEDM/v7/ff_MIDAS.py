@@ -124,13 +124,57 @@ ConvertFiles = args.convertFiles
 env = dict(os.environ)
 midas_path = os.path.expanduser("~/.MIDAS")
 env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
-
+if len(resultDir) == 0 or resultDir=='.':
+    resultDir = os.getcwd()
+logDir = resultDir + '/output'
+os.makedirs(resultDir,exist_ok=True)
+os.makedirs(logDir,exist_ok=True)
+os.environ['MIDAS_SCRIPT_DIR'] = logDir
+if machineName == 'local':
+    nNodes = 1
+    from localConfig import *
+    parsl.load(config=localConfig)
+elif machineName == 'orthrosnew':
+    pytpath = os.path.expanduser("~/opt/midasconda3/bin/python")
+    if nNodes == -1:
+        nNodes = 11
+    if nNodes > 11:
+        nNodes = 11
+    numProcs = 32
+    from orthrosAllConfig import *
+    parsl.load(config=orthrosNewConfig)
+elif machineName == 'orthrosall':
+    pytpath = os.path.expanduser("~/opt/midasconda3/bin/python")
+    if nNodes == -1:
+        nNodes = 5
+    if nNodes > 5:
+        nNodes = 5
+    numProcs = 64
+    from orthrosAllConfig import *
+    parsl.load(config=orthrosAllConfig)
+elif machineName == 'umich':
+    pytpath = '/nfs/turbo/meche-abucsek/Wenxi/ESRF_Ti_v7/.venv/bin'
+    if nNodes == -1:
+        nNodes = 1
+    numProcs = 36
+    from uMichConfig import *
+    parsl.load(config=uMichConfig)
+elif machineName == 'marquette':
+    if nNodes == -1:
+        nNodes = 1
+    numProcs = 36
+    from marquetteConfig import *
+    parsl.load(config=marquetteConfig)
+elif machineName == 'purdue':
+    if nNodes == -1:
+        nNodes = 1
+    numProcs = 128
+    from purdueConfig import *
+    parsl.load(config=purdueConfig)
+# Run for each layer.
 for layerNr in range(startLayerNr,endLayerNr+1):
-    if len(resultDir) == 0 or resultDir=='.':
-        resultDir = os.getcwd()
     resultDir += f'/LayerNr_{layerNr}'
     logDir = resultDir + '/output'
-    os.environ['MIDAS_SCRIPT_DIR'] = logDir
     os.makedirs(resultDir,exist_ok=True)
     os.makedirs(logDir,exist_ok=True)
     t0 = time.time()
@@ -139,48 +183,6 @@ for layerNr in range(startLayerNr,endLayerNr+1):
             print("Generating combined MIDAS file from HDF and ps files.")
         else:
             print("Generating combined MIDAS file from GE and ps files.")
-    if machineName == 'local':
-        from localConfig import *
-        parsl.load(config=localConfig)
-        nNodes = 1
-    elif machineName == 'orthrosnew':
-        pytpath = os.path.expanduser("~/opt/midasconda3/bin/python")
-        if nNodes == -1:
-            nNodes = 11
-        if nNodes > 11:
-            nNodes = 11
-        numProcs = 32
-        from orthrosAllConfig import *
-        parsl.load(config=orthrosNewConfig)
-    elif machineName == 'orthrosall':
-        pytpath = os.path.expanduser("~/opt/midasconda3/bin/python")
-        if nNodes == -1:
-            nNodes = 5
-        if nNodes > 5:
-            nNodes = 5
-        numProcs = 64
-        from orthrosAllConfig import *
-        parsl.load(config=orthrosAllConfig)
-    elif machineName == 'umich':
-        pytpath = '/nfs/turbo/meche-abucsek/Wenxi/ESRF_Ti_v7/.venv/bin'
-        if nNodes == -1:
-            nNodes = 1
-        numProcs = 36
-        from uMichConfig import *
-        parsl.load(config=uMichConfig)
-    elif machineName == 'marquette':
-        if nNodes == -1:
-            nNodes = 1
-        numProcs = 36
-        from marquetteConfig import *
-        parsl.load(config=marquetteConfig)
-    elif machineName == 'purdue':
-        if nNodes == -1:
-            nNodes = 1
-        numProcs = 128
-        from purdueConfig import *
-        parsl.load(config=purdueConfig)
-    if ConvertFiles==1:
         outFStem = generateZip(resultDir,psFN,layerNr,dfn=dataFN,nchunks=nchunks,preproc=preproc)
     else:
         if len(dataFN) > 0:
