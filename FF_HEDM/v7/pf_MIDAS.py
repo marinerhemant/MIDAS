@@ -166,7 +166,7 @@ elif machineName == 'orthrosall':
 	from orthrosAllConfig import *
 	parsl.load(config=orthrosAllConfig)
 elif machineName == 'umich':
-	pytpath = '/nfs/turbo/meche-abucsek/Wenxi/ESRF_Ti_v7/.venf/bin'
+	pytpath = '/nfs/turbo/meche-abucsek/Wenxi/ESRF_Ti_v7/.venv/bin'
 	os.environ['MIDAS_SCRIPT_DIR'] = logDir
 	os.environ['nNodes'] = nNodes
 	numProcs = 36
