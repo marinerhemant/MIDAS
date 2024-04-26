@@ -97,7 +97,7 @@ parser.add_argument('-resultFolder', type=str, required=False, default='', help=
 parser.add_argument('-paramFN', type=str, required=False, default='', help='Parameter file name. Provide either paramFN and/or dataFN.')
 parser.add_argument('-dataFN', type=str, required=False, default='', help='Data file name. This is if you have either h5 or zip files.  Provide either paramFN and/or dataFN (in case zip exists).')
 parser.add_argument('-nCPUs', type=int, required=False, default=10, help='Number of CPU cores to use if running locally.')
-parser.add_argument('-machineName', type=str, required=False, default='local', help='Machine name for execution')
+parser.add_argument('-machineName', type=str, required=False, default='local', help='Machine name for execution, local, orthrosnew, orthrosall, umich, marquette, purdue.')
 parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='If low on RAM, it can process parts of the dataset at the time. -1 will disable.')
 parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
 parser.add_argument('-nNodes', type=int, required=False, default=-1, help='Number of nodes for execution, omit if want to automatically select.')
