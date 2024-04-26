@@ -923,7 +923,6 @@ main(int argc, char *argv[])
 		printf("Number of elements: %ld, Size: %ld\n",nrPoints,(long int)sz);
 		double *holdArr;
 		holdArr = calloc(nrPoints*18,sizeof(double));
-		//~ InputInfo = allocMatrix(nrPoints,18);
 		fread(holdArr,sz,1,inpF);
 		for (i=0;i<nrPoints;i++){
 			OrientTemp[0][0] = holdArr[i*18+3];
@@ -972,7 +971,6 @@ main(int argc, char *argv[])
 			fprintf(foutGrains,"%s",aline);
 			NrOrientations++;
 			NrOrientations++;
-			//~ InputInfo = allocMatrix(NrOrientations,18); // Save OrientationMatrix, Position, LatC
 			fgets(aline,4096,inpF);
 			fprintf(foutGrains,"%s",aline);
 			fgets(aline,4096,inpF);
@@ -1006,7 +1004,6 @@ main(int argc, char *argv[])
 		}else if (strncmp(aline,"%TriEdgeSize ",strlen("%TriEdgeSize ")) == 0){
 			dataType = 1;
 			NrOrientations = 2000000;
-			//~ InputInfo = allocMatrix(NrOrientations,18); // Save OrientationMatrix, Position, LatC
 			fgets(aline,4096,inpF);
 			fgets(aline,4096,inpF);
 			sscanf(aline,"%s %lf",dummy,&zThis);
@@ -1040,7 +1037,6 @@ main(int argc, char *argv[])
 			fgets(aline,4096,inpF);
 			fgets(aline,4096,inpF);
 			sscanf(aline,"%s %lld",dummy,&totalElements);
-			//~ InputInfo = allocMatrix(totalElements,21);
 			for (i=0;i<totalElements+1;i++) fgets(aline,4096,inpF);
 			for (i=0;i<totalElements+5;i++) fgets(aline,4096,inpF);
 			for (i=0;i<totalElements;i++){
@@ -1103,7 +1099,6 @@ main(int argc, char *argv[])
 			}
 			for (i=0;i<3;i++) fgets(aline,4096,inpF);
 			sscanf(aline,"%s %s",dummy,strLine);
-			// Now read until the Orientations
 			if (UpdatedOrientations == 1){
 				while(strncmp(strLine,"Orientation",strlen("Orientation"))!=0){
 					for (i=0;i<totalElements+4;i++) fgets(aline,4096,inpF);
@@ -1126,7 +1121,6 @@ main(int argc, char *argv[])
 					for (i=0;i<totalElements;i++){
 						fgets(aline,4096,inpF);
 						sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf",&OrientTemp[0][0],&OrientTemp[1][0],&OrientTemp[2][0],&OrientTemp[0][1],&OrientTemp[1][1],&OrientTemp[2][1],&OrientTemp[0][2],&OrientTemp[1][2],&OrientTemp[2][2]);
-						//~ sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf",&OrientTemp[0][0],&OrientTemp[0][1],&OrientTemp[0][2],&OrientTemp[1][0],&OrientTemp[1][1],&OrientTemp[1][2],&OrientTemp[2][0],&OrientTemp[2][1],&OrientTemp[2][2]);
 						OrientMat2Euler(OrientTemp,EulerThis);
 						Euler2OrientMat(EulerThis,OrientThis);
 						for (j=0;j<9;j++){
