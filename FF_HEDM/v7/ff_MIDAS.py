@@ -166,6 +166,7 @@ elif machineName == 'purdue':
 topResDir = resultDir
 for layerNr in range(startLayerNr,endLayerNr+1):
     resultDir = f'{topResDir}/LayerNr_{layerNr}'
+    print(f"Doing Layer Nr: {layerNr}, results will be saved in {resultDir}")
     logDir = resultDir + '/output'
     os.makedirs(resultDir,exist_ok=True)
     os.makedirs(logDir,exist_ok=True)
