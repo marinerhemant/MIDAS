@@ -3,7 +3,6 @@
 import parsl
 import subprocess
 import sys, os
-from pprint import pprint as print
 import time
 import argparse
 import signal
