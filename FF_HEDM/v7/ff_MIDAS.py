@@ -162,6 +162,7 @@ elif machineName == 'purdue':
     parsl.load(config=purdueConfig)
 
 # Run for each layer.
+origDir = os.getcwd()
 topResDir = resultDir
 for layerNr in range(startLayerNr,endLayerNr+1):
     resultDir = f'{topResDir}/LayerNr_{layerNr}'
@@ -256,3 +257,4 @@ for layerNr in range(startLayerNr,endLayerNr+1):
     # subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotFFSpots3dGrains.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
     # subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotGrains3d.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
     print(f"Done Layer {layerNr}. Total time elapsed: {time.time()-t0}")
+    os.chdir(origDir)
