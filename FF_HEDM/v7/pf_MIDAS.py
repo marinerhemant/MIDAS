@@ -55,6 +55,7 @@ def peaks(resultDir,zipFN,numProcs,blockNr=0,numBlocks=1):
     env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
     f = open(f'{resultDir}/output/peaksearch_out{blockNr}.csv','w')
     f_err = open(f'{resultDir}/output/peaksearch_err{blockNr}.csv','w')
+    f_err.write("I was able to do someting.")
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPZarr")+f' {zipFN} {blockNr} {numBlocks} {numProcs} {resultDir}',shell=True,env=env,stdout=f,stderr=f_err)
     f.close()
     f_err.close()
