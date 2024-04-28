@@ -165,13 +165,13 @@ elif machineName == 'orthrosall':
 	parsl.load(config=orthrosAllConfig)
 elif machineName == 'umich':
 	os.environ['MIDAS_SCRIPT_DIR'] = logDir
-	os.environ['nNodes'] = nNodes
+	os.environ['nNodes'] = str(nNodes)
 	numProcs = 36
 	from uMichConfig import *
 	parsl.load(config=uMichConfig)
 elif machineName == 'marquette':
 	os.environ['MIDAS_SCRIPT_DIR'] = logDir
-	os.environ['nNodes'] = nNodes
+	os.environ['nNodes'] = str(nNodes)
 	from marquetteConfig import *
 	parsl.load(config=marquetteConfig)
 
