@@ -140,7 +140,7 @@ preproc = args.preProcThresh
 doTomo = args.doTomo
 ConvertFiles = args.convertFiles
 runIndexing = args.runIndexing
-NormalizeIntensities = args.NormalizeIntensities
+NormalizeIntensities = args.normalizeIntensities
 startScanNr = args.startScanNr
 
 if len(topdir) == 0:
