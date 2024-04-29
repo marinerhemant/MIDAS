@@ -209,7 +209,7 @@ static inline int FindConnectedComponents(int *BoolImage, int NrPixels, int *Con
 
 static inline unsigned FindRegionalMaxima(double *z,int *PixelPositions,
 		int NrPixelsThisRegion,int *MaximaPositions,double *MaximaValues,
-		int *IsSaturated, double IntSat,int NrPixels)
+		double IntSat,int NrPixels)
 {
 	unsigned nPeaks = 0;
 	int i,j,k,l;
@@ -221,10 +221,7 @@ static inline unsigned FindRegionalMaxima(double *z,int *PixelPositions,
 		isRegionalMax = 1;
 		zThis = z[i];
 		if (zThis > IntSat) {
-			*IsSaturated = 1;
-            return 1;
-		} else {
-			*IsSaturated = 0;
+            return 0; // Saturated peak removed.
 		}
 		xThis = PixelPositions[i*2+0];
 		yThis = PixelPositions[i*2+1];
@@ -1371,7 +1368,6 @@ void main(int argc, char *argv[]){
         char *locData;
 		locData = &locDataAll[asym_idxoffset*bytesPerPx];
 		double t1 = omp_get_wtime();
-		size_t szThsArr = sizeArr[FileNr*2+0];
 		dsz = blosc1_decompress(&allData[sizeArr[FileNr*2+1]],locData,dsz);
 		double t2 = omp_get_wtime();
         memcpy(ImageAsym,locData,dsz);
@@ -1417,7 +1413,6 @@ void main(int argc, char *argv[]){
 		}
 		NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
 		int RegNr,NrPixelsThisRegion;
-		int IsSaturated;
 		int SpotIDStart = 1;
 		int TotNrRegions = NrOfReg;
 		for (i=0;i<NrPixels*10;i++){
@@ -1442,8 +1437,8 @@ void main(int argc, char *argv[]){
 			}
 			Thresh = GoodCoords[((UsefulPixels[0*2+0])*NrPixels) + (UsefulPixels[0*2+1])];
 			unsigned nPeaks;
-			nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,MaximaPositions,MaximaValues,&IsSaturated,IntSat,NrPixels);
-			if (IsSaturated == 1){ //Saturated peaks removed
+			nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,MaximaPositions,MaximaValues,IntSat,NrPixels);
+			if (nPeaks == 0){ //Saturated peaks removed
 				TotNrRegions--;
 				continue;
 			}
