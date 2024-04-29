@@ -146,6 +146,7 @@ startScanNr = args.startScanNr
 if len(topdir) == 0:
 	topdir = os.getcwd()
 
+print(f'Folder is {topdir}')
 logDir = topdir + '/output'
 
 os.makedirs(topdir,exist_ok=True)
@@ -294,17 +295,16 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 			else:
 				shutil.copy2(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old')
 			Result = np.genfromtxt(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',skip_header=1,delimiter=' ')
-			print(Result.shape)
-			if len(Result.shape) < 2: continue
-			headRes = open(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv').readline()
-			Result[:,2] -= omegaOffsetThis
-			Result[Result[:,2]<-180,6] += 360
-			Result[Result[:,2]<-180,7] += 360
-			Result[Result[:,2]<-180,2] += 360
-			Result[Result[:,2]> 180,6] -= 360
-			Result[Result[:,2]> 180,7] -= 360
-			Result[Result[:,2]> 180,2] -= 360
-			np.savetxt(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',Result,fmt="%.6f",delimiter=' ',header=headRes.split('\n')[0],comments='')
+			if len(Result.shape) > 1:
+				headRes = open(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv').readline()
+				Result[:,2] -= omegaOffsetThis
+				Result[Result[:,2]<-180,6] += 360
+				Result[Result[:,2]<-180,7] += 360
+				Result[Result[:,2]<-180,2] += 360
+				Result[Result[:,2]> 180,6] -= 360
+				Result[Result[:,2]> 180,7] -= 360
+				Result[Result[:,2]> 180,2] -= 360
+				np.savetxt(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',Result,fmt="%.6f",delimiter=' ',header=headRes.split('\n')[0],comments='')
 			print(f"Omega offset done. Time taken: {time.time()-tOme} seconds.")
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True)
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr")+f' {outFStem} {thisDir}',env=env,shell=True)

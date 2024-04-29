@@ -302,7 +302,7 @@ int main(int argc, char *argv[]){
         }
         count++;
     }
-	printf("%lf\n",MarginOmegaOverlap);
+	// printf("%lf\n",MarginOmegaOverlap);
 	if (argc==3) Folder = argv[2];
     EndNr = EndNr - skipFrame; // This ensures we don't over-read.
     // Read params file.
