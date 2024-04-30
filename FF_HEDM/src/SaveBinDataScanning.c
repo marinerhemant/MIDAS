@@ -178,7 +178,7 @@ int main(int argc, char* argv[]){
 		fclose(AllSpotsFile);
 	}
 	realloc(MyData,nSpots*sizeof(*MyData));
-	printf("%d\n",nSpots);
+	printf("Number of Spots: %d\n",nSpots);
 
 	// Now sort the spots, depending on the ring numbers, then omega value, then on the eta-value.
 	qsort(MyData,nSpots,sizeof(struct InpData),cmpfunc);
