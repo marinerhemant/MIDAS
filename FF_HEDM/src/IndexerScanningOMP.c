@@ -492,7 +492,7 @@ void CompareSpots(RealType **TheorSpots, int nTheorSpots,
 					if ( fabs(TheorSpots[sp][12] - ObsSpotsLab[spotRow*10+6]) < etamargin ) {
 						diffOme = fabs(TheorSpots[sp][6] - ObsSpotsLab[spotRow*10+2]);
 						if ( diffOme < diffOmeBest ) {
-							printf(" %zu %zu %zu %lf %lf %lf %lf %d %d %d %lf %lf\n",DataPos,iSpot,(DataPos + iSpot)*2+0,ySpot,yRot,fabs(yRot-ySpot), BeamSize/2,scannrobs,spotRow,spotRow*10+8,TheorSpots[sp][13],ObsSpotsLab[spotRow*10+8]);
+							printf("%lf %zu %zu %zu %lf %lf %lf %lf %d %d %d %lf %lf\n",diffOme,DataPos,iSpot,(DataPos + iSpot)*2+0,ySpot,yRot,fabs(yRot-ySpot), BeamSize/2,scannrobs,spotRow,spotRow*10+8,TheorSpots[sp][13],ObsSpotsLab[spotRow*10+8]);
 							fflush(stdout);
 							diffOmeBest = diffOme;
 							spotRowBest = spotRow;
