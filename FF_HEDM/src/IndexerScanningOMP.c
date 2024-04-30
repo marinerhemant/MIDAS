@@ -46,7 +46,6 @@ check (int test, const char * message, ...)
 
 // max array sizes
 #define MAX_N_SPOTS 60000000
-#define MAX_N_STEPS 1000
 #define MAX_N_OR 7200
 #define MAX_N_MATCHES 1
 #define MAX_N_RINGS 500
@@ -1572,6 +1571,7 @@ main(int argc, char *argv[])
 				thisID = (int)ObsSpotsLab[idnr*10+4];
 				newY = xThis * sin(deg2rad*angle) + yThis * cos(deg2rad*angle);
 				if (fabs(newY - ypos[(int)ObsSpotsLab[idnr*10+9]]) <= BeamSize/2){
+					printf("%d %lf %lf\n",idnr,newY,angle);
 					DoIndexing(thisID,thisRowNr,xThis,yThis,0,Params,idnr,valsF,allF,keyF);
 				}
 			}
