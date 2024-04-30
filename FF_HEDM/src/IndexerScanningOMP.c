@@ -488,19 +488,17 @@ void CompareSpots(RealType **TheorSpots, int nTheorSpots,
 			scannrobs = data[(DataPos + iSpot)*2+1];
 			ySpot = ypos[scannrobs];
 			if ( fabs(yRot - ySpot) < BeamSize/2){
-			printf(" %zu %zu %zu %lf %lf %lf %lf %d %d %d %lf %lf\n",DataPos,iSpot,(DataPos + iSpot)*2+0,ySpot,yRot,fabs(yRot-ySpot), BeamSize/2,scannrobs,spotRow,spotRow*10+8,TheorSpots[sp][13],ObsSpotsLab[spotRow*10+8]);
-			fflush(stdout);
 				if ( fabs(TheorSpots[sp][13] - ObsSpotsLab[spotRow*10+8]) < MarginRadial )  {
-					// if ( fabs(RefRad - ObsSpotsLab[spotRow*10+3]) < MarginRad || RefRad < 0 ) {
-						if ( fabs(TheorSpots[sp][12] - ObsSpotsLab[spotRow*10+6]) < etamargin ) {
-							diffOme = fabs(TheorSpots[sp][6] - ObsSpotsLab[spotRow*10+2]);
-							if ( diffOme < diffOmeBest ) {
-								diffOmeBest = diffOme;
-								spotRowBest = spotRow;
-								MatchFound = 1;
-							}
+					if ( fabs(TheorSpots[sp][12] - ObsSpotsLab[spotRow*10+6]) < etamargin ) {
+						diffOme = fabs(TheorSpots[sp][6] - ObsSpotsLab[spotRow*10+2]);
+						if ( diffOme < diffOmeBest ) {
+							printf(" %zu %zu %zu %lf %lf %lf %lf %d %d %d %lf %lf\n",DataPos,iSpot,(DataPos + iSpot)*2+0,ySpot,yRot,fabs(yRot-ySpot), BeamSize/2,scannrobs,spotRow,spotRow*10+8,TheorSpots[sp][13],ObsSpotsLab[spotRow*10+8]);
+							fflush(stdout);
+							diffOmeBest = diffOme;
+							spotRowBest = spotRow;
+							MatchFound = 1;
 						}
-					// }
+					}
 				}
 			}
 		}
