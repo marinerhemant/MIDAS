@@ -406,7 +406,7 @@ int main(int argc, char* argv[]){
 	fwrite(nDataStore,LengthNDataStore*2*sizeof(*nDataStore),1,nDataFile);
 	end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
-	printf("nData: %zu, Data: %zu",LengthNDataStore,TotNumberOfBins);
+	printf("nData: %zu, Data: %zu\n",LengthNDataStore*2,TotNumberOfBins*2);
     printf("Total Time elapsed: %f s.\n",diftotal);
     return 0;
 }
