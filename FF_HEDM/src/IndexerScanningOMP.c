@@ -447,7 +447,7 @@ void CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3],RealType LatticeConstant
 }
 
 void CompareSpots(RealType **TheorSpots, int nTheorSpots,
-				  RealType RefRad, RealType MarginRad, RealType MarginRadial,
+				  RealType RefRad, RealType MarginOme, RealType MarginRad, RealType MarginRadial,
 				  RealType etamargins[], RealType omemargins[], int *nMatch,
 				  RealType **GrainSpots, RealType xThis, RealType yThis)
 {
@@ -475,7 +475,7 @@ void CompareSpots(RealType **TheorSpots, int nTheorSpots,
 		etamargin = etamargins[RingNr];
 		omemargin = omemargins[(int) floor(fabs(TheorSpots[sp][12]))];
 		MatchFound = 0;
-		diffOmeBest = 100000;
+		diffOmeBest = MarginOme;
 		size_t Pos = iRing;
 		Pos *= n_eta_bins;
 		Pos *= n_ome_bins;
@@ -1128,7 +1128,7 @@ int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis, str
 		CalcEtaAngle( TheorSpots[sp][10], TheorSpots[sp][11], &TheorSpots[sp][12] );
 		TheorSpots[sp][13] = sqrt(TheorSpots[sp][10] * TheorSpots[sp][10] + TheorSpots[sp][11] * TheorSpots[sp][11]) - Params.RingRadii[(int)TheorSpots[sp][9]];
 	}
-	CompareSpots(TheorSpots, nTspots, RefRad, Params.MarginRad, Params.MarginRadial, etamargins, omemargins, &nMatches, GrainSpots, xThis, yThis);
+	CompareSpots(TheorSpots, nTspots, RefRad, Params.MarginOme, Params.MarginRad, Params.MarginRadial, etamargins, omemargins, &nMatches, GrainSpots, xThis, yThis);
 	FracThis = (double)nMatches / (double)nTspots;
 	if (FracThis > Params.MinMatchesToAcceptFrac){
 		for (i = 0 ;  i < 9 ; i ++) GrainMatchesT[0][i] = OM[i/3][i%3];
@@ -1242,7 +1242,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 			CalcEtaAngle( TheorSpots[sp][10], TheorSpots[sp][11], &TheorSpots[sp][12] );
 			TheorSpots[sp][13] = sqrt(TheorSpots[sp][10] * TheorSpots[sp][10] + TheorSpots[sp][11] * TheorSpots[sp][11]) - Params.RingRadii[(int)TheorSpots[sp][9]];
 		}
-		CompareSpots(TheorSpots, nTspots, RefRad, Params.MarginRad, Params.MarginRadial, etamargins, omemargins, &nMatches, GrainSpots, xThis, yThis);
+		CompareSpots(TheorSpots, nTspots, RefRad, Params.MarginOme, Params.MarginRad, Params.MarginRadial, etamargins, omemargins, &nMatches, GrainSpots, xThis, yThis);
 		FracThis = (double)nMatches / (double)nTspots;
 		if (FracThis > Params.MinMatchesToAcceptFrac){
 			if (FracThis >= bestConfidence){
