@@ -1216,7 +1216,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 	TheorSpots = allocMatrix(nRowsPerGrain, N_COL_THEORSPOTS);
 	RealType MinMatchesToAccept;
 	int   bestnMatchesIsp = -1, bestnMatchesRot = -1, bestnMatchesPos;
-	int   bestnTspotsIsp, bestnTspotsRot, bestnTspotsPos;
+	int   bestnTspotsIsp= -1, bestnTspotsRot, bestnTspotsPos;
 	int nMatches, bestMatchFound=0;
 	int r,c;
 	int   rownr = 0;
