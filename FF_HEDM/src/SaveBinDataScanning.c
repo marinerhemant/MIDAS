@@ -245,7 +245,7 @@ int main(int argc, char* argv[]){
 	fprintf(IDMatFile,"NewID,OrigID,ScanNr\n");
 	for (i=0;i<nSpots;i++) fprintf(IDMatFile,"%d,%d,%d\n",(int)IDMat[i][0],(int)IDMat[i][1],(int)IDMat[i][2]);
 	fclose(IDMatFile);
-	FreeMemMatrix(SpotsMat,nSpots);
+	free(SpotsMat);
 	FreeMemMatrix(IDMat,nSpots);
 	if (nosaveall == 1){
 		return 0;
