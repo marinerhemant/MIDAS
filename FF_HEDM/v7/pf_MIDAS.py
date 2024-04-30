@@ -311,6 +311,7 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 		Result = np.genfromtxt(f'Radius_StartNr_{startNr}_EndNr_{endNr}.csv',skip_header=1,delimiter=' ')
 		if len(Result.shape)<2:
 			shutil.copy2('InputAllExtraInfoFittingAll.csv',topdir+'/InputAllExtraInfoFittingAll'+str(layerNr-1)+'.csv')
+			os.chdir(topdir)
 			continue
 		dfAllF = pd.read_csv('InputAllExtraInfoFittingAll.csv',delimiter=' ',skipinitialspace=True)
 		dfAllF.loc[dfAllF['GrainRadius']>0.001,'%YLab'] += ypos
