@@ -475,7 +475,7 @@ void CompareSpots(RealType **TheorSpots, int nTheorSpots,
 		etamargin = etamargins[RingNr];
 		omemargin = omemargins[(int) floor(fabs(TheorSpots[sp][12]))];
 		MatchFound = 0;
-		diffOmeBest = MarginOme;
+		diffOmeBest = MarginOme+0.00001;
 		size_t Pos = iRing;
 		Pos *= n_eta_bins;
 		Pos *= n_ome_bins;
