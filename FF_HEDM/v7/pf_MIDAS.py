@@ -349,6 +349,7 @@ else:
 				shutil.move(f'original_InputAllExtraInfoFittingAll{layerNr}.csv',f'InputAllExtraInfoFittingAll{layerNr}.csv')
 
 if nMerges != 0:
+	print(os.getcwd())
 	shutil.move('positions.csv','original_positions.csv')
 	for layerNr in range(0,nMerges*(nScans//nMerges)):
 		if os.path.exists(f'InputAllExtraInfoFittingAll{layerNr}.csv'):
