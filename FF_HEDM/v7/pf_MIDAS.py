@@ -394,7 +394,7 @@ for idx in range(len(RingNrs)):
 	paramsf.write('RingNumbers '+str(RingNrs[idx])+'\n')
 	paramsf.write('RingRadii '+str(rads[idx])+'\n')
 paramsf.write('BeamSize '+str(BeamSize)+'\n')
-paramsf.write('MarginRadius 100000;\n')
+paramsf.write('MarginRadius 10000000;\n')
 paramsf.write('px '+str(px)+'\n')
 paramsf.write('RingToIndex '+str(RingToIndex)+'\n')
 if len(micFN) > 0:

@@ -23,7 +23,7 @@
 #define rad2deg 57.2957795130823
 
 #define N_COL_OBSSPOTS 10      // This is one less number of columns
-#define MAX_N_SPOTS 60000000   // max nr of observed spots that can be stored
+#define MAX_N_SPOTS 100000000   // max nr of observed spots that can be stored
 #define MAX_N_RINGS 500       // max nr of rings that can be stored (applies to the arrays ringttheta, ringhkl, etc)
 
 static inline

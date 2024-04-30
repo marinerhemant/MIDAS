@@ -45,7 +45,7 @@ check (int test, const char * message, ...)
 #define rad2deg 57.2957795130823
 
 // max array sizes
-#define MAX_N_SPOTS 60000000
+#define MAX_N_SPOTS 100000000
 #define MAX_N_OR 7200
 #define MAX_N_MATCHES 1
 #define MAX_N_RINGS 500
@@ -487,8 +487,8 @@ void CompareSpots(RealType **TheorSpots, int nTheorSpots,
 			spotRow = data[(DataPos + iSpot)*2+0];
 			scannrobs = data[(DataPos + iSpot)*2+1];
 			ySpot = ypos[scannrobs];
-			// printf(" %zu %zu %zu %lf %lf %lf %lf %d %d %d %lf %lf\n",DataPos,iSpot,(DataPos + iSpot)*2+0,ySpot,yRot,fabs(yRot-ySpot), BeamSize/2,scannrobs,spotRow,spotRow*10+8,TheorSpots[sp][13],ObsSpotsLab[spotRow*10+8]);
-			// fflush(stdout);
+			printf(" %zu %zu %zu %lf %lf %lf %lf %d %d %d %lf %lf\n",DataPos,iSpot,(DataPos + iSpot)*2+0,ySpot,yRot,fabs(yRot-ySpot), BeamSize/2,scannrobs,spotRow,spotRow*10+8,TheorSpots[sp][13],ObsSpotsLab[spotRow*10+8]);
+			fflush(stdout);
 			if ( fabs(yRot - ySpot) < BeamSize/2){
 				if ( fabs(TheorSpots[sp][13] - ObsSpotsLab[spotRow*10+8]) < MarginRadial )  {
 					// if ( fabs(RefRad - ObsSpotsLab[spotRow*10+3]) < MarginRad || RefRad < 0 ) {
@@ -1460,8 +1460,8 @@ main(int argc, char *argv[])
 	printf("No of bins for omega : %d\n", n_ome_bins);
 	printf("Total no of bins     : %d\n\n", n_ring_bins * n_eta_bins * n_ome_bins);
 	printf("Finished binning.\n\n");
-	int *SpotIDs;
-	int nSpotIDs;
+	// int *SpotIDs;
+	// int nSpotIDs;
 	int nBlocks = atoi(argv[3]);
 	int blockNr = atoi(argv[2]);
 	numScans = atoi(argv[4]);
@@ -1497,8 +1497,8 @@ main(int argc, char *argv[])
 	startRowNr = (int) (ceil((double)nVoxels / (double)nBlocks)) * blockNr;
 	int tmp = (int)(ceil((double)nVoxels / (double)nBlocks)) * (blockNr+1);
 	endRowNr = tmp < (nVoxels) ? tmp : (nVoxels);
-	nSpotIDs = endRowNr-startRowNr+1;
-	SpotIDs = malloc(nSpotIDs*sizeof(*SpotIDs));
+	// nSpotIDs = endRowNr-startRowNr+1;
+	// SpotIDs = malloc(nSpotIDs*sizeof(*SpotIDs));
 	printf("%d %d %d %d %d %d %d\n",numScans,nVoxels,nBlocks,blockNr,startRowNr,endRowNr,numProcs);
 
 	FILE *positionsF = fopen("positions.csv","r");
@@ -1521,7 +1521,7 @@ main(int argc, char *argv[])
 	}
 
 	int RingToIndex = Params.RingToIndex;
-	int startRowNrSp=MAX_N_SPOTS, endRowNrSp=0;
+	size_t startRowNrSp=MAX_N_SPOTS, endRowNrSp=0;
 	for (i=0;i<n_spots;i++){
 		// TODO::::::: ADD A RANGE OF OMEGA FILTERING
 		if (ObsSpotsLab[i*10+5] == RingToIndex && startRowNrSp > i) startRowNrSp = i;
