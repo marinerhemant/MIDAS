@@ -1346,7 +1346,8 @@ int ReadBins(char *cwd)
 	check (status2 < 0, "stat %s failed: %s", file_name2, strerror (errno));
 	size_t size2 = s2.st_size;
 	ndata = mmap (0, size2, PROT_READ, MAP_SHARED, fd2, 0);
-	printf("%lld %d %lld \n",(long long int)size2,(int)sizeof(*ndata),(long long int)(size2/sizeof(*ndata)));
+	printf("DataSize: %lld %d Nelems: %lld \n",(long long int)size,(int)sizeof(*data),(long long int)(size/sizeof(*data)));
+	printf("nDataSize: %lld %d Nelems: %lld \n",(long long int)size2,(int)sizeof(*ndata),(long long int)(size2/sizeof(*ndata)));
 	fflush(stdout);
 	check (ndata == MAP_FAILED, "mmap %s failed: %s",file_name, strerror (errno));
 	return 1;
