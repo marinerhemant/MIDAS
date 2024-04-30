@@ -491,7 +491,7 @@ void CompareSpots(RealType **TheorSpots, int nTheorSpots,
 			// fflush(stdout);
 			if ( fabs(yRot - ySpot) < BeamSize/2){
 				if ( fabs(TheorSpots[sp][13] - ObsSpotsLab[spotRow*10+8]) < MarginRadial )  {
-					if ( fabs(RefRad - ObsSpotsLab[spotRow*10+3]) < MarginRad || RefRad < 0 ) {
+					// if ( fabs(RefRad - ObsSpotsLab[spotRow*10+3]) < MarginRad || RefRad < 0 ) {
 						if ( fabs(TheorSpots[sp][12] - ObsSpotsLab[spotRow*10+6]) < etamargin ) {
 							diffOme = fabs(TheorSpots[sp][6] - ObsSpotsLab[spotRow*10+2]);
 							if ( diffOme < diffOmeBest ) {
@@ -500,7 +500,7 @@ void CompareSpots(RealType **TheorSpots, int nTheorSpots,
 								MatchFound = 1;
 							}
 						}
-					}
+					// }
 				}
 			}
 		}
