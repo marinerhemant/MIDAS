@@ -166,11 +166,12 @@ int main(int argc, char* argv[]){
 		AllSpotsFile = fopen(AllSpotsFN,"r");
 		rc = fgets(aline,4096,AllSpotsFile);
 		while (fgets(aline,4096,AllSpotsFile) != NULL){
-			sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&MyData[nSpots].Values[0],&MyData[nSpots].Values[1]
-				,&MyData[nSpots].Values[2],&MyData[nSpots].Values[3],&MyData[nSpots].Values[4]
-				,&MyData[nSpots].Values[5],&MyData[nSpots].Values[6],&MyData[nSpots].Values[7]
-				,&MyData[nSpots].Values[8],&MyData[nSpots].Values[9],&MyData[nSpots].Values[10]
-				,&MyData[nSpots].Values[11],&MyData[nSpots].Values[12],&MyData[nSpots].Values[13]);
+			sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+				&MyData[nSpots].Values[0],&MyData[nSpots].Values[1],
+				&MyData[nSpots].Values[2],&MyData[nSpots].Values[3],&MyData[nSpots].Values[4],
+				&MyData[nSpots].Values[5],&MyData[nSpots].Values[6],&MyData[nSpots].Values[7],
+				&MyData[nSpots].Values[8],&MyData[nSpots].Values[9],&MyData[nSpots].Values[10],
+				&MyData[nSpots].Values[11],&MyData[nSpots].Values[12],&MyData[nSpots].Values[13]);
 			MyData[nSpots].Values[14] = scanNr;
 			if (fabs(MyData[nSpots].Values[3]) > 0.0001)
 				nSpots++;
@@ -182,6 +183,7 @@ int main(int argc, char* argv[]){
 
 	// Now sort the spots, depending on the ring numbers, then omega value, then on the eta-value.
 	qsort(MyData,nSpots,sizeof(struct InpData),cmpfunc);
+	printf("Data sorted.\n");
 	double **ObsSpots, **IDMat;
 	ObsSpots = allocMatrix(nSpots,16);
 	IDMat = allocMatrix(nSpots,3);
@@ -234,6 +236,7 @@ int main(int argc, char* argv[]){
 	if (nosaveall == 1){
 		return 0;
 	}
+	printf("Files written. Now generating map.\n");
 
 	// data will save id, scanNr for each spot, everything else remains the same. Twice the size now.
 	size_t ****data;
@@ -371,7 +374,7 @@ int main(int argc, char* argv[]){
 	}
 	end = clock();
 	diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
-    printf("Time elapsed in making DataArray: %fs  %lld.\n",diftotal,TotNumberOfBins);
+    printf("Time elapsed in making DataArray: %fs Nbins: %lld. Now converting to a 1d array.\n",diftotal,TotNumberOfBins);
 	size_t LengthNDataStore = n_ring_bins*n_eta_bins*n_ome_bins;
 	size_t *nDataStore, *DataStore;
 	nDataStore = malloc(LengthNDataStore*2*sizeof(*nDataStore));
