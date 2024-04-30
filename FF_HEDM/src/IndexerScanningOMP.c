@@ -1320,8 +1320,8 @@ int ReadBins(char *cwd)
 	sprintf(file_name,"%s/Data.bin",cwd);
 	char cmmd[4096];
 	sprintf(cmmd,"cp %s /dev/shm/",file_name);
-	system(cmmd);
-	sprintf(file_name,"/dev/shm/Data.bin");
+	// system(cmmd);
+	// sprintf(file_name,"/dev/shm/Data.bin");
 	int rc;
 	fd = open (file_name, O_RDONLY);
 	check (fd < 0, "open %s failed: %s", file_name, strerror (errno));
@@ -1336,8 +1336,8 @@ int ReadBins(char *cwd)
 	char file_name2[2048];
 	sprintf(file_name2,"%s/nData.bin",cwd);
 	sprintf(cmmd,"cp %s /dev/shm/",file_name2);
-	system(cmmd);
-	sprintf(file_name2,"/dev/shm/nData.bin");
+	// system(cmmd);
+	// sprintf(file_name2,"/dev/shm/nData.bin");
 	fd2 = open (file_name2, O_RDONLY);
 	check (fd2 < 0, "open %s failed: %s", file_name2, strerror (errno));
 	status2 = fstat (fd2, & s2);

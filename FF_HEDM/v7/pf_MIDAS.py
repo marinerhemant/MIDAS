@@ -358,6 +358,7 @@ if nMerges != 0:
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/mergeScansScanning")+f" {nMerges*(nScans//nMerges)} {nMerges} {2*px} {2*omegaStep} {numProcsLocal}",shell=True)
 	positions = open(topdir+'/positions.csv').readlines()
 	nScans = int(floor(nScans / nMerges))
+	BeamSize *= nMerges
 
 positions = open(topdir+'/positions.csv').readlines()
 os.chdir(topdir)
@@ -368,6 +369,7 @@ lines = paramsf.readlines()
 paramsf.close()
 paramsf = open('paramstest.txt','w')
 for line in lines:
+	# We also need to update paramstest.txt
 	if line.startswith('RingNumbers'):
 		continue
 	if line.startswith('RingRadii'):
