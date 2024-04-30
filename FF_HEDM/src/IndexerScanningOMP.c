@@ -1301,7 +1301,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 	fwrite(outArr2,matchedNrSpots*sizeof(int),1,allF);
 	free(outArr2);
 	fprintf(keyF,"%zu %zu %zu %zu\n",(size_t)SpotID,(size_t)matchedNrSpots,locVals,locAll);
-	printf("ID: %d, voxNr: %d, Confidence: %lf\n",SpotID,voxNr,fracMatches);
+	printf("ID: %d, voxNr: %d, Confidence: %lf, IA: %lf\n",SpotID,voxNr,fracMatches,GrainMatches[0][15]);
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 	FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
 	FreeMemMatrix( TheorSpots, nRowsPerGrain);
@@ -1523,6 +1523,7 @@ main(int argc, char *argv[])
 	int RingToIndex = Params.RingToIndex;
 	int startRowNrSp=MAX_N_SPOTS, endRowNrSp=0;
 	for (i=0;i<n_spots;i++){
+		// TODO::::::: ADD A RANGE OF OMEGA FILTERING
 		if (ObsSpotsLab[i*10+5] == RingToIndex && startRowNrSp > i) startRowNrSp = i;
 		if (ObsSpotsLab[i*10+5] == RingToIndex && endRowNrSp < i) endRowNrSp = i;
 	}
