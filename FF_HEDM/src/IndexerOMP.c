@@ -1770,7 +1770,7 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc, int idNr, int t
 	BestMatches[SpotIDIdx][3] = bestnMatchesIsp;
 	BestMatches[SpotIDIdx][4] = fracMatches;
 	WriteBestMatchBin(GrainMatches, AllGrainSpots, rownr, Params.OutputFolder, offsetLoc);
-	printf("IDNr: %d, Total: %d, ID: %d, Confidence: %lf, nExp: %lf, nObs: %lf, nPlanes: %d, time: %lfs.\n",idNr,totalIDs,SpotIDs,fracMatches,GrainMatches[0][12],GrainMatches[0][13],nPlaneNormals,enTm);
+	printf("IDNr: %d, Total: %d, ID: %d, Confidence: %lf, nExp: %lf, nObs: %lf, nPlanes: %d, omega: %lf, time: %lfs.\n",idNr,totalIDs,SpotIDs,fracMatches,GrainMatches[0][12],GrainMatches[0][13],nPlaneNormals,omega,enTm);
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 	FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
 	FreeMemMatrix( TheorSpots, nRowsPerGrain);
