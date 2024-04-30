@@ -45,6 +45,15 @@ allocMatrix(int nrows, int ncols)
     return arr;
 }
 
+static inline void FreeMemMatrix(double **mat,int nrows)
+{
+	int r;
+	for ( r = 0 ; r < nrows ; r++) {
+		free(mat[r]);
+	}
+	free(mat);
+}
+
 void
 CalcDistanceIdealRing(double **ObsSpotsLab, int nspots, double RingRadii[]  )
 {
@@ -196,6 +205,7 @@ int main(int argc, char* argv[]){
 		IDMat[i][2] = ObsSpots[i][14];
 		ObsSpots[i][4] = i+1;
 	}
+	free(MyData);
 
 	for(i=0;i<MAX_N_RINGS;i++){
 		RingRadii[i]=0;
@@ -222,17 +232,21 @@ int main(int argc, char* argv[]){
 			ExtraMat[i*14+j] = ObsSpots[i][j];
 		}
 	}
+	FreeMemMatrix(ObsSpots,nSpots);
 	char *SpotsFN = "Spots.bin";
 	char *ExtraFN = "ExtraInfo.bin";
 	char *IDMatFN = "IDsMergedScanning.csv";
 	FILE *SpotsFile = fopen(SpotsFN,"wb");
 	fwrite(SpotsMat,nSpots*10*sizeof(*SpotsMat),1,SpotsFile);
+	fclose(SpotsFile);
 	FILE *ExtraFile = fopen(ExtraFN,"wb");
 	fwrite(ExtraMat,nSpots*14*sizeof(*ExtraMat),1,ExtraFile);
+	fclose(ExtraFile);
 	FILE *IDMatFile = fopen(IDMatFN,"w");
 	fprintf(IDMatFile,"NewID,OrigID,ScanNr\n");
 	for (i=0;i<nSpots;i++) fprintf(IDMatFile,"%d,%d,%d\n",(int)IDMat[i][0],(int)IDMat[i][1],(int)IDMat[i][2]);
 	fclose(IDMatFile);
+	FreeMemMatrix(IDMat,nSpots);
 	if (nosaveall == 1){
 		return 0;
 	}
