@@ -1833,9 +1833,9 @@ int ReadSpots(char *cwd)
 	char filename[2048];
 	sprintf(filename,"%s/Spots.bin",cwd);
 	char cmmd[4096];
-	sprintf(cmmd,"cp %s /dev/shm/",filename);
-	system(cmmd);
-	sprintf(filename,"/dev/shm/Spots.bin");
+	// sprintf(cmmd,"cp %s /dev/shm/",filename);
+	// system(cmmd);
+	// sprintf(filename,"/dev/shm/Spots.bin");
 	int rc;
 	fd = open(filename,O_RDONLY);
 	check(fd < 0, "open %s failed: %s", filename, strerror(errno));
