@@ -1569,7 +1569,7 @@ main(int argc, char *argv[])
 			printf("%d %lf %lf %d %d %d %d\n", thisRowNr,xThis,yThis,startRowNr,endRowNr,endRowNr-startRowNr,nrRows);
 			for (idnr = startRowNrSp; idnr<=endRowNrSp; idnr++){
 				angle = ObsSpotsLab[idnr*10+2];
-				if (fbas(angle - 167.433850) < 0.1) printf("%d %lf %lf\n",idnr,yThis,angle);
+				if (fabs(angle - 167.433850) < 0.1) printf("%d %lf %lf\n",idnr,yThis,angle);
 				thisID = (int)ObsSpotsLab[idnr*10+4];
 				newY = xThis * sin(deg2rad*angle) + yThis * cos(deg2rad*angle);
 				if (fabs(newY - ypos[(int)ObsSpotsLab[idnr*10+9]]) <= BeamSize/2){
