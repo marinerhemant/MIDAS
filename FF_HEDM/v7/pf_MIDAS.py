@@ -215,6 +215,7 @@ for line in paramContents:
 		nMerges = int(line.split()[1])
 	if line.startswith('omegaOffsetBetweenScans'):
 		omegaOffset = float(line.split()[1])
+		nRestarts = float(line.split()[2])
 	if line.startswith('nScans'):
 		nScans = int(line.split()[1])
 	if line.startswith('Lsd'):
@@ -286,7 +287,7 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True)
 		if omegaOffset != 0:
 			signOmegaOffset = omegaOffset / fabs(omegaOffset)
-			omegaOffsetThis = omegaOffset*(layerNr-1)
+			omegaOffsetThis = omegaOffset*((layerNr-1)%nRestarts)
 			omegaOffsetThis = signOmegaOffset * (fabs(omegaOffsetThis)%360.0)
 			print(f"Offsetting omega: {omegaOffsetThis}.")
 			tOme = time.time()
