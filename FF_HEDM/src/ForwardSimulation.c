@@ -1262,6 +1262,7 @@ main(int argc, char *argv[])
 	int idxNrY,idxNrZ;
 	long long int idx;
 	size_t omeBin, yBin, zBin, imageBin, centIdx, currentPos;
+	int displ;
 	hklsOut = allocMatrix(n_hkls,5);
 	hklsTemp = allocMatrix(n_hkls,5);
 	printf("Total number of orientations: %d\n",nrPoints);
@@ -1356,8 +1357,8 @@ main(int argc, char *argv[])
 				zTemp = zThis + DisplZ;
 				yDet = yBC - yTemp/px;
 				zDet = zBC + zTemp/px + 0.5;
-				if (yDet < 0) continue;
-				if (zDet < 0) continue;
+				if (yDet < 0 || yDet >= NrPixels) continue;
+				if (zDet < 0 || zDet >= NrPixels) continue;
 				Info[3] = 0.5*atand(sqrt(yThis*yThis+zThis*zThis)/Lsd); // New Theta
 				CalcEtaAngle(yThis,zThis,&etaThis);
 				// Save to SpotMatrix.csv
@@ -1385,10 +1386,12 @@ main(int argc, char *argv[])
 			imageBin = zBin*NrPixels + yBin; // We do a transpose here to generate the correctly oriented GE files.
 			centIdx = omeBin + imageBin;
 			for (idxNrY=-4*ceil(GaussWidth);idxNrY<=4*ceil(GaussWidth);idxNrY++){
+				if ((int)yBin+idxNrY < 0 || (int)yBin+idxNrY >= NrPixels) continue;
 				for (idxNrZ=-4*ceil(GaussWidth);idxNrZ<=4*ceil(GaussWidth);idxNrZ++){
-					currentPos = centIdx + idxNrY*NrPixels + idxNrZ;
-					if (currentPos < 0) continue;
-					if (currentPos >= ImageArrSize) continue;
+					if ((int)zBin+idxNrZ < 0 || (int)zBin+idxNrZ >= NrPixels) continue;
+					displ = idxNrY*NrPixels + idxNrZ;
+					currentPos = (size_t)((int) centIdx + displ);
+					if (currentPos < 0 || currentPos >= ImageArrSize) continue;
 					ImageArr[currentPos] += (double) (GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask] * PeakIntensity);
 					if (maxInt < ImageArr[currentPos]) maxInt = ImageArr[currentPos];
 				}
