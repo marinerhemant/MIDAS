@@ -205,7 +205,7 @@ for layerNr in range(startLayerNr,endLayerNr+1):
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+' '+outFStem,shell=True,env=env,stdout=f_hkls,stderr=f_hkls_err)
     f_hkls.close()
     f_hkls_err.close()
-    os.makedirs(f'{resultDir}/Temp')
+    os.makedirs(f'{resultDir}/Temp',exist_ok=True)
     print(f"Doing PeakSearch. Time till now: {time.time()-t0} seconds.")
     res = []
     for nodeNr in range(nNodes):
