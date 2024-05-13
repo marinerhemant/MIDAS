@@ -59,7 +59,7 @@ def runOneFile(fileNr):
     f.close()
     f_err.close()
     finFN = f'{zipFN}.caked.hdf'
-    outzip = finFN+'.zip'
+    outzip = finFN+'zarr.zip'
     zipF = Path(outzip)
     if zipF.exists():
         shutil.move(outzip,outzip+'.old')
