@@ -13,25 +13,19 @@
 #include <fcntl.h>
 #include <string.h>
 #include <ctype.h>
-//~ #include <nlopt.h>
 #include <stdint.h>
 #include <sys/mman.h>
 #include <errno.h>
 #include <stdarg.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include "nf_headers.h"
 
 #define RealType double
 #define float32_t float
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
 #define ClearBit(A,k) (A[(k/32)] &= ~(1 << (k%32)))
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
-#define deg2rad 0.0174532925199433
-#define rad2deg 57.2957795130823
-#define EPS 1E-5
-#define MAX_N_SPOTS 500
-#define MAX_N_OMEGA_RANGES 20
-#define MAX_POINTS_GRID_GOOD 300000
 
 int Flag = 0;
 double Wedge;
@@ -112,9 +106,9 @@ main(int argc, char *argv[])
     }
     rewind(fileParam);
     double Lsd[nLayers],ybc[nLayers],zbc[nLayers],ExcludePoleAngle,
-		LatticeConstant[6], minFracOverlap,doubledummy,
+		LatticeConstant[6],doubledummy,
 		MaxRingRad,MaxTtheta;
-    double px, OmegaStart,OmegaStep,tol;
+    double px, OmegaStart,OmegaStep;
 	char fn[1000];
 	char fn2[1000];
 	char direct[1000];
@@ -128,31 +122,6 @@ main(int argc, char *argv[])
     int MinMiso = 0;
     int skipBin = 0;
     while (fgets(aline,1000,fileParam)!=NULL){
-		//~ str = "ReducedFileName ";
-        //~ LowNr = strncmp(aline,str,strlen(str));
-        //~ if (LowNr==0){
-            //~ sscanf(aline,"%s %s", dummy, fn2);
-            //~ continue;
-        //~ }
-		//~ str = "GridFileName ";
-        //~ LowNr = strncmp(aline,str,strlen(str));
-        //~ if (LowNr==0){
-            //~ sscanf(aline,"%s %s", dummy, gridfn);
-            //~ gridfnfound = 1;
-            //~ continue;
-        //~ }
-		//~ str = "SaveNSolutions ";
-        //~ LowNr = strncmp(aline,str,strlen(str));
-        //~ if (LowNr==0){
-            //~ sscanf(aline,"%s %d", dummy, &nSaves);
-            //~ continue;
-        //~ }
-		//~ str = "DataDirectory ";
-        //~ LowNr = strncmp(aline,str,strlen(str));
-        //~ if (LowNr==0){
-            //~ sscanf(aline,"%s %s", dummy, direct);
-            //~ continue;
-        //~ }
         str = "Lsd ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -230,18 +199,6 @@ main(int argc, char *argv[])
             sscanf(aline,"%s %lf", dummy, &tz);
             continue;
         }
-        str = "OrientTol ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %lf", dummy, &tol);
-            continue;
-        }
-        str = "MinFracAccept ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %lf", dummy, &minFracOverlap);
-            continue;
-        }
         str = "OmegaStart ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -293,18 +250,6 @@ main(int argc, char *argv[])
             countr++;
             continue;
         }
-        str = "Ice9Input ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            Flag = 1;
-            continue;
-        }
-        str = "NearestMisorientation ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-			sscanf(aline,"%s %d",dummy,&MinMiso);
-            continue;
-        }
     }
     int i,j,k,l,m,nrFiles,nrPixels;
     for (i=0;i<NoOfOmegaRanges;i++){
@@ -314,7 +259,6 @@ main(int argc, char *argv[])
     nOmeRang = NoOfOmegaRanges;
     fclose(fileParam);
     MaxTtheta = rad2deg*atan(MaxRingRad/Lsd[0]);
-    char *ext="bin";
     uint16_t *ObsSpotsInfo;
     uint16_t *binArr;
     nrFiles = EndNr - StartNr + 1;
@@ -403,8 +347,9 @@ main(int argc, char *argv[])
 	}
 	int voxNr=0;
 	FILE *spF;
-	spF = fopen("SimulatedSpots.txt","w");
-	fprintf(spF,"VoxRowNr\tDistanceNr\tFrameNr\tHorPx\tVerPx\n");
+	spF = fopen("SimulatedSpots.csv","w");
+    char *headOutThis = "VoxRowNr\tDistanceNr\tFrameNr\tHorPx\tVerPx\tOmegaRaw\tYRaw\tZRaw";
+	fprintf(spF,"%s\n",headOutThis);
 	while (fgets(aline,4096,InpMicF)!= NULL){
 		sscanf(aline,"%s %s %s %lf %lf %lf %lf %lf %lf %lf %lf %s",dummy,dummy,dummy,&xs,&ys,&edgeLen,&ud,&eulThis[0],&eulThis[1],&eulThis[2],&origConf,dummy);
 		gs = edgeLen/2;
@@ -423,7 +368,6 @@ main(int argc, char *argv[])
 		YG[0] = ys+dy1;
 		YG[1] = ys+dy2;
 		YG[2] = ys+dy2;
-		//~ printf("%lf %lf %lf %d %lf\n",eulThis[0],eulThis[1],eulThis[2],NrPixelsGrid,gs);
 		Euler2OrientMat(eulThis,OMIn);
 		SimulateAccOrient(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XG,YG,
 			RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,Thetas,
@@ -454,15 +398,6 @@ main(int argc, char *argv[])
 		for (k=0;k<nrFiles;k++){
 			for (j=0;j<2048;j++){
 				for (i=0;i<2048;i++){
-					//~ idxpos = l*nrFiles;
-					//~ idxpos *= 2048;
-					//~ idxpos *= 2048;
-					//~ tmpcntr = 2048;
-					//~ tmpcntr *= 2048;
-					//~ tmpcntr *= k;
-					//~ idxpos += tmpcntr;
-					//~ idxpos += 2048*j;
-					//~ idxpos += i;
 					if (ObsSpotsInfo[idxpos] != 0){
 						for (m=0;m<ObsSpotsInfo[idxpos];m++){
 							binArr[nrF*5+0] = j;

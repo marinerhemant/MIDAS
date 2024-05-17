@@ -18,6 +18,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdint.h>
+#include "nf_headers.h"
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -257,7 +258,7 @@ CalcDiffrSpots_Furnace(
                 }
             }
             if (KeepSpot==1) {
-				//~ printf("%lf %lf %lf %lf %lf %lf %lf\n",omegas[i],yl,zl,etas[i],Ghkl[0],Ghkl[1],Ghkl[2]);
+				// printf("%d %lf %lf %lf %lf %lf %lf %lf\n",spotnr,omegas[i],yl,zl,etas[i],Ghkl[0],Ghkl[1],Ghkl[2]);
                 spots[spotnr*3+0] = yl;
                 spots[spotnr*3+1] = zl;
                 spots[spotnr*3+2] = omegas[i];

@@ -20,18 +20,13 @@
 #include <stdarg.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include "nf_headers.h"
 
 #define RealType double
 #define float32_t float
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
 #define ClearBit(A,k) (A[(k/32)] &= ~(1 << (k%32)))
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
-#define deg2rad 0.0174532925199433
-#define rad2deg 57.2957795130823
-#define EPS 1E-5
-#define MAX_N_SPOTS 500
-#define MAX_N_OMEGA_RANGES 20
-#define MAX_POINTS_GRID_GOOD 300000
 
 int Flag = 0;
 double Wedge;

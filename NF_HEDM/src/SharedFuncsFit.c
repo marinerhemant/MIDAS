@@ -11,20 +11,14 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <ctype.h>
-//~ #include <nlopt.h>
 #include <stdint.h>
+#include "nf_headers.h"
 
 #define RealType double
 #define float32_t float
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
 #define ClearBit(A,k) (A[(k/32)] &= ~(1 << (k%32)))
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
-#define deg2rad 0.0174532925199433
-#define rad2deg 57.2957795130823
-#define EPS 1E-5
-#define MAX_N_SPOTS 500
-#define MAX_N_OMEGA_RANGES 20
-#define MAX_POINTS_GRID_GOOD 200000
 
 extern int Flag;
 extern double Wedge;
@@ -777,6 +771,7 @@ SimulateDiffractionImage(
 		ythis = TheorSpots[j*3+0];
 		zthis = TheorSpots[j*3+1];
 		OutofBounds = 1;
+        // printf("%d %lf %lf\n",j,ythis,zthis);
 		if (Wedge != 0){
 			eta = CalcEta(ythis,zthis);
 			RingRadius = sqrt(ythis*ythis+zthis*zthis);
@@ -800,6 +795,7 @@ SimulateDiffractionImage(
 			OmegaThis = TheorSpots[j*3+2];
 			OutofBounds = 0;
 		}
+        // printf("%d %lf %lf %lf\n",j,ythis,zthis,OmegaThis);
 		OmeBin = (int) floor((-OmegaStart+OmegaThis)/OmegaStep);
 		for (k=0;k<3;k++){
 			P0[k] = P0All[0][k];
@@ -867,7 +863,7 @@ SimulateDiffractionImage(
 					break;
 				}
 				
-				fprintf(spF,"%d\t%d\t%d\t%d\t%d\n",voxNr,Layer,OmeBin,MultY,MultZ);
+				fprintf(spF,"%d\t%d\t%d\t%d\t%d\t%lf\t%lf\t%lf\n",voxNr,Layer,OmeBin,MultY,MultZ,OmegaThis,ythis,zthis);
 				BinNr = Layer*NrOfFiles;
 				BinNr *= 2048;
 				BinNr *= 2048;
@@ -884,7 +880,7 @@ SimulateDiffractionImage(
 			}
 		}
 	}
-	//~ printf("%d\n",NrSpots);
+	// printf("%d\n",NrSpots);
     FreeMemMatrixInt(InPixels,NrPixelsGrid);
 }
 
@@ -962,7 +958,7 @@ SimulateAccOrient(
     double Lsd0=Lsd[0];
     CalcDiffractionSpots(Lsd0, ExcludePoleAngle, OmegaRanges, NoOfOmegaRanges,
 		hkls, n_hkls, Thetas, BoxSizes, &nTspots, OrientMatIn,TheorSpots);
-	//~ printf("#Spots: %d\n",nTspots);
+	// printf("#Spots: %d\n",nTspots);
     double XG[3],YG[3];
     for (i=0;i<3;i++){
         XG[i] = XGrain[i];
