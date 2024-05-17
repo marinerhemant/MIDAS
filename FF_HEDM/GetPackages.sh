@@ -86,7 +86,7 @@ if [ ! -d ${dirThis}/FFTW ]; then # fftw
 	make -j8 install
 fi
 
-if [ ! -d ${dirThis}/BLOSC ]; then # blosc
+if [ ! -d ${dirThis}/BLOSC ]; then # blosc1
 	cd $dirThis
 	git clone https://github.com/Blosc/c-blosc
 	cd c-blosc
