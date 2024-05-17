@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import warnings
 warnings.filterwarnings("ignore")
 import numpy as np
@@ -42,7 +44,7 @@ initialLsd = 1000000 # Only used for simulation, real Lsd can be anything.
 header = 8192
 NrPixelsY = 2048
 NrPixelsZ = 2048
-etaBinSize = 1 # Degrees
+etaBinSize = 2 # Degrees
 threshold = 500 # Threshold to use for some initial pre-processing. It will clean up the image and then apply the threshold. No dark correction is used here.
 minArea = 300 # Minimum number of pixels that constitutes signal. For powder calibrants, 300 is typically used. Partial rings are okay, as long as they are at least 300 pixels big.
 
@@ -172,7 +174,8 @@ sim_rad_ratios = sim_rads / sim_rads[0]
 sizePerFrame = 2*NrPixelsY*NrPixelsZ
 raw = fileReader(rawFN)
 if DrawPlots==1:
-	plt.imshow(np.log(raw))
+	plt.imshow(raw,clim=[1800,2200],cmap='gray')
+	plt.axis([0, NrPixelsY, 0, NrPixelsZ])
 	plt.show()
 dark = fileReader(darkFN)
 neighborhood = skimage.morphology.disk(radius=50)
@@ -189,6 +192,7 @@ corr_img = data - data2
 corr_img[corr_img<1] = 1
 thresh = data_corr
 thresh[thresh>0] = 255
+print("Median background calculated. Now finding diffraction signal.")
 labels,nlabels = measure.label(thresh,return_num=True)
 props = measure.regionprops(labels)
 bc = []
@@ -277,7 +281,7 @@ sim_rad_ratios = sim_rads / sim_rads[0]
 
 if DrawPlots==1:
 	fig,ax = plt.subplots()
-	plt.imshow(raw,clim=[1800,2500],cmap='gray'); plt.colorbar(); 
+	plt.imshow(raw,clim=[1800,2200],cmap='gray'); plt.colorbar(); 
 	for rad in sim_rads:
 		e1 = mpatches.Arc((bc_new[1],bc_new[0]),2*rad,2*rad,angle = 0,theta1=-180,theta2=180,color='blue')
 		ax.add_patch(e1)
