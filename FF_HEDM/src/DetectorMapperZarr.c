@@ -375,6 +375,7 @@ mapperfcn(
 	long long int testPos;
 	double ypr,zpr;
 	double RT, ET;
+	// This could be done with OMP Parallel for
 	for (i=0;i<NrPixelsY;i++)
     {
 		for (j=0;j<NrPixelsZ;j++){
@@ -646,7 +647,7 @@ mapperfcn(
 						nrContinued++;
 						continue;
 					}
-					// Populate the arrays
+					// Populate the arrays, this needs to be done critical.
                     maxnVal = maxnPx[RChosen[k]][EtaChosen[l]];
                     nVal = nPxList[RChosen[k]][EtaChosen[l]];
                     if (nVal >= maxnVal){
