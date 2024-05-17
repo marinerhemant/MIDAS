@@ -209,7 +209,7 @@ static inline int FindConnectedComponents(int *BoolImage, int NrPixels, int *Con
 
 static inline unsigned FindRegionalMaxima(double *z,int *PixelPositions,
 		int NrPixelsThisRegion,int *MaximaPositions,double *MaximaValues,
-		double IntSat,int NrPixels)
+		double IntSat,int NrPixels,pixelvalue *mask)
 {
 	unsigned nPeaks = 0;
 	int i,j,k,l;
@@ -225,6 +225,9 @@ static inline unsigned FindRegionalMaxima(double *z,int *PixelPositions,
 		}
 		xThis = PixelPositions[i*2+0];
 		yThis = PixelPositions[i*2+1];
+		if (mask[xThis*NrPixels+yThis]==1){
+			return 0; // We touched the mask. Remove the peak.
+		}
 		for (j=0;j<8;j++){
 			xNext = xThis + dx[j];
 			yNext = yThis + dy[j];
@@ -582,6 +585,7 @@ void main(int argc, char *argv[]){
 	size_t *sizeArr; 
 	double BadPxIntensity = 0;
     char *resultFolder=NULL, dummy[2048];
+	int maskLoc = -1;
     while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
         if (strstr(finfo->name,"exchange/data/.zarray")!=NULL){
             s = calloc(finfo->size + 1, sizeof(char));
@@ -652,6 +656,9 @@ void main(int argc, char *argv[]){
         }
         if (strstr(finfo->name,"exchange/dark/0.0.0")!=NULL){
             darkLoc = count;
+        }
+        if (strstr(finfo->name,"exchange/mask/0.0.0")!=NULL){
+            maskLoc = count;
         }
         if (strstr(finfo->name,"exchange/flood/0.0.0")!=NULL){
             floodLoc = count;
@@ -1052,7 +1059,7 @@ void main(int argc, char *argv[]){
         }
         count++;
     }
-	if (argc==6) resultFolder = argv[5];
+	if (argc>5) resultFolder = argv[5];
 	int TransOpt[nImTransOpt], RingNrs[nRingsThresh];
     double Thresholds[nRingsThresh];
     // Read TransOpt
@@ -1137,7 +1144,10 @@ void main(int argc, char *argv[]){
 	}
     // Dark file reading from here.
 	double *dark, *flood, *darkTemp;
+	pixelvalue *maskTemp, *mask;
 	dark = calloc(NrPixels*NrPixels,sizeof(*dark));
+	mask = calloc(NrPixels*NrPixels,sizeof(*mask));
+	maskTemp = calloc(NrPixelsY*NrPixelsZ,sizeof(*maskTemp));
 	darkTemp = calloc(NrPixels*NrPixels,sizeof(*darkTemp));
 	flood = calloc(NrPixels*NrPixels,sizeof(*flood));
 	pixelvalue *darkcontents, *darkAsym;
@@ -1163,12 +1173,12 @@ void main(int argc, char *argv[]){
     }
     if (nDarks > 0) for (a=0;a<(NrPixels*NrPixels);a++) darkTemp[a] /= (nDarks-skipFrame);
 	Transposer(darkTemp,NrPixels,dark);
-    free(data);
 	free(darkTemp);
 	free(darkcontents);
 	free(darkAsym);
-    dsize = NrPixels*NrPixels*sizeof(double);
+	free(data);
     if (nFloods>0){
+		dsize = NrPixels*NrPixels*sizeof(double);
         data = (char*)malloc((size_t)dsize);
         zip_stat_index(arch, floodLoc, 0, finfo);
         arr = calloc(finfo->size + 1, sizeof(char));
@@ -1177,7 +1187,23 @@ void main(int argc, char *argv[]){
         dsize = blosc1_decompress(arr,data,dsize);
         free(arr);
         memcpy(flood,data,dsize);
+		free(data);
     } else for(a=0;a<(NrPixels*NrPixels);a++) flood[a]=1;
+	// Mask will be 1 if not okay, 0 if okay. Uint16_t data type.
+	if (maskLoc >=0){
+		dsize = NrPixelsY*NrPixelsZ*sizeof(double);
+		data = (char*)malloc((size_t)dsize);
+		zip_stat_index(arch, maskLoc, 0, finfo);
+        arr = calloc(finfo->size + 1, sizeof(char));
+        fd = zip_fopen_index(arch, maskLoc, 0);
+        zip_fread(fd, arr, finfo->size);
+        dsize = blosc1_decompress(arr,data,dsize);
+        free(arr);
+        memcpy(maskTemp,data,dsize);
+		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,maskTemp,mask);
+		free(data);
+	}
+	free(maskTemp);
     zip_close(arch);
 
 	char OutFolderName[2048];
@@ -1437,7 +1463,7 @@ void main(int argc, char *argv[]){
 			}
 			Thresh = GoodCoords[((UsefulPixels[0*2+0])*NrPixels) + (UsefulPixels[0*2+1])];
 			unsigned nPeaks;
-			nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,MaximaPositions,MaximaValues,IntSat,NrPixels);
+			nPeaks = FindRegionalMaxima(z,UsefulPixels,NrPixelsThisRegion,MaximaPositions,MaximaValues,IntSat,NrPixels,mask);
 			if (nPeaks == 0){ //Saturated peaks removed
 				TotNrRegions--;
 				continue;
@@ -1508,6 +1534,7 @@ void main(int argc, char *argv[]){
 	free(dark);
 	free(flood);
 	free(allData);
+	free(mask);
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds, nrFramesDone: %d.\n",time,nrFilesDone);
     blosc2_destroy();
