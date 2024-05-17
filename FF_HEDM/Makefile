@@ -9,6 +9,7 @@ MPICC=LD_LIBRARY_PATH=$${HOME}/.MIDAS/MPICH/lib:$LD_LIBRARY_PATH $${HOME}/.MIDAS
 NCFLAGS=-O3 -G -g -w -arch sm_52 -lm -rdc=true
 CFLAGS=-fPIC -g -ldl -lm -fgnu89-inline -O3 -w -Wall
 BLOSCFLAGS=-I$${HOME}/.MIDAS/BLOSC/include -L$${HOME}/.MIDAS/BLOSC/lib64 -L$${HOME}/.MIDAS/BLOSC/lib -lblosc2 -std=gnu99
+BLOSC1FLAGS=-I$${HOME}/.MIDAS/BLOSC1/include -L$${HOME}/.MIDAS/BLOSC1/lib64 -L$${HOME}/.MIDAS/BLOSC1/lib -lblosc -std=gnu99
 ZIPFLAGS=-I$${HOME}/.MIDAS/LIBZIP/include -L$${HOME}/.MIDAS/LIBZIP/lib -L$${HOME}/.MIDAS/LIBZIP/lib64 -lzip
 MPICCFLAGS=-I$${HOME}/.MIDAS/MPICH/include -L$${HOME}/.MIDAS/MPICH/lib -fopenmp -lmpi -fPIC -g -ldl -lm -fgnu89-inline -O3 -w
 CFLAGSHDF=-I$${HOME}/.MIDAS/HDF5/include -L$${HOME}/.MIDAS/HDF5/lib -lhdf5_hl -lhdf5
@@ -131,7 +132,7 @@ forwardsimulation: $(SRCDIR)ForwardSimulation.c
 	$(CC) $(SRCDIR)ForwardSimulation.c -o $(BINDIR)ForwardSimulation $(CFLAGS)
 
 forwardsimulationcompressed: $(SRCDIR)ForwardSimulationCompressed.c
-	$(CC) $(SRCDIR)ForwardSimulationCompressed.c -o $(BINDIR)ForwardSimulationCompressed $(CFLAGS) $(BLOSCFLAGS) $(ZIPFLAGS)
+	$(CC) $(SRCDIR)ForwardSimulationCompressed.c -o $(BINDIR)ForwardSimulationCompressed $(CFLAGS) $(BLOSC1FLAGS) $(BLOSCFLAGS) $(ZIPFLAGS)
 
 fitposorstrains: $(SRCDIR)FitPosOrStrains.c
 	$(CC) $(SRCDIR)FitPosOrStrains.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitPosOrStrains $(CFLAGS) \

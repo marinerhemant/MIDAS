@@ -88,6 +88,17 @@ fi
 
 if [ ! -d ${dirThis}/BLOSC ]; then # blosc
 	cd $dirThis
+	git clone https://github.com/Blosc/c-blosc
+	cd c-blosc
+	mkdir build
+	cd build
+	cmake -DCMAKE_INSTALL_PREFIX=${dirThis}/BLOSC1 ..
+	cmake --build . -j 8
+	cmake --build . -j 8 --target install
+fi
+
+if [ ! -d ${dirThis}/BLOSC ]; then # blosc
+	cd $dirThis
 	git clone https://github.com/Blosc/c-blosc2
 	cd c-blosc2
 	mkdir build
