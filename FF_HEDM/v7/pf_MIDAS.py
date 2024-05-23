@@ -188,6 +188,7 @@ micFN = ''
 maxang = 1
 tol_ome = 1
 tol_eta = 1
+omegaFN = ''
 for line in paramContents:
 	if line.startswith('StartFileNrFirstLayer'):
 		startNrFirstLayer = int(line.split()[1])
@@ -213,6 +214,11 @@ for line in paramContents:
 		sgnum = int(line.split()[1])
 	if line.startswith('nStepsToMerge'):
 		nMerges = int(line.split()[1])
+	if line.startswith('OmegaFileName'):
+		omegaFN = line.split()[1]
+		startOmegas = open(omegaFN).readlines()
+		startOmegas = [float(omega) for omega in startOmegas]
+		omegaOffset = 1
 	if line.startswith('omegaOffsetBetweenScans'):
 		omegaOffset = float(line.split()[1])
 		nRestarts = float(line.split()[2])
@@ -226,6 +232,8 @@ for line in paramContents:
 		BeamSize = float(line.split()[1])
 	if line.startswith('OmegaStep'):
 		omegaStep = float(line.split()[1])
+	if line.startswith('OmegaFirstFile'):
+		omegaFF = float(line.split()[1])
 	if line.startswith('px'):
 		px = float(line.split()[1])
 	if line.startswith('RingThresh'):
@@ -286,9 +294,19 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 			print(f'PeakSearch Done. Time taken: {time.time()-t_st} seconds.')
 		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True)
 		if omegaOffset != 0:
-			signOmegaOffset = omegaOffset / fabs(omegaOffset)
-			omegaOffsetThis = omegaOffset*((layerNr-1)%nRestarts)
-			omegaOffsetThis = signOmegaOffset * (fabs(omegaOffsetThis)%360.0)
+			if len(omegaFN) == 0:
+				signOmegaOffset = omegaOffset / fabs(omegaOffset)
+				omegaOffsetThis = omegaOffset*((layerNr-1)%nRestarts)
+				omegaOffsetThis = signOmegaOffset * (fabs(omegaOffsetThis)%360.0)
+			else:
+				thisOmega = startOmegas[layerNr-1]
+				if thisOmega != 0:
+					signTO = thisOmega / fabs(thisOmega)
+				else:
+					signTO = 1
+				delOmega = signTO*(fabs(thisOmega)%360) - omegaFF
+				delOmega = delOmega * (fabs(delOmega)%360) / fabs(delOmega)
+				omegaOffsetThis = -delOmega # Because we subtract this
 			print(f"Offsetting omega: {omegaOffsetThis}.")
 			tOme = time.time()
 			if os.path.exists(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old'):
