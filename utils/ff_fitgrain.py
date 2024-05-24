@@ -46,7 +46,7 @@ def main():
     subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/GetHKLList')+f' {psFN}',shell=True,stdout=open('hklsout.csv','w'))
 
     grs = np.genfromtxt(GrainsFN,skip_header=9)
-    grsSort = grs[grs[:,20].argsort()]
+    grsSort = grs[grs[:,19].argsort()]
     nGrs = grsSort.shape[0]
     nSpotsToRefine = nGrs // frac # We will take 1/nth of grains and refine them
     IDs = list(tuple(grsSort[:nSpotsToRefine,0]))
