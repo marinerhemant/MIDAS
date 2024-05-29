@@ -211,7 +211,7 @@ else:
     fNr = re.search('\d{% s}' % pad, InputFN).group(0)
     fNrOrig = fNr
     fNrLoc = int(fNr)
-    HZ2 = HZ - skipF*bytesPerPx*numPxY*numPxZ
+    HZ2 = int(HZ - skipF*bytesPerPx*numPxY*numPxZ)
     for fileNrIter in range(numFilesPerScan):
         fNr = str(fNrLoc)
         if len(origInputFN) == 0:
