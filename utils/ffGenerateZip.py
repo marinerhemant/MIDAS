@@ -118,6 +118,9 @@ for line in lines:
 
 if skipF==0 and HZ > 8192:
     skipF = (HZ-8192) // (2*numPxY*numPxZ)
+    HZ = 8192
+elif skipF > 0 and HZ > 8192:
+    HZ = 8192
 
 origInputFN = InputFN
 if len(InputFN)==0:
@@ -190,9 +193,8 @@ if h5py.is_hdf5(InputFN):
     hf2.close()
 else:
     sz = os.path.getsize(InputFN)
-    header = HZ
     bytesPerPx = 2
-    nFrames = (sz-header) // (bytesPerPx*numPxY*numPxZ) + skipF
+    nFrames = (sz-HZ) // (bytesPerPx*numPxY*numPxZ)
     nFramesAll = nFrames*numFilesPerScan
     if darkFN != '':
         darkData = geReader(darkFN,header=HZ,numPxY=numPxY,numPxZ=numPxZ)
@@ -211,7 +213,6 @@ else:
     fNr = re.search('\d{% s}' % pad, InputFN).group(0)
     fNrOrig = fNr
     fNrLoc = int(fNr)
-    HZ2 = int(HZ - skipF*bytesPerPx*numPxY*numPxZ)
     for fileNrIter in range(numFilesPerScan):
         fNr = str(fNrLoc)
         if len(origInputFN) == 0:
@@ -226,7 +227,7 @@ else:
             if enFrame > nFrames: enFrame=nFrames
             print(f"StartFrame: {stFrame+stNr}, EndFrame: {enFrame+stNr}, nFrames: {nFrames}, nFramesAll: {nFramesAll}")
             delFrames = enFrame - stFrame
-            dataThis = np.fromfile(InputFN,dtype=np.uint16,count=delFrames*numPxY*numPxZ,offset=stFrame*numPxY*numPxZ*bytesPerPx+HZ2).reshape((delFrames,numPxZ,numPxY))
+            dataThis = np.fromfile(InputFN,dtype=np.uint16,count=delFrames*numPxY*numPxZ,offset=stFrame*numPxY*numPxZ*bytesPerPx+HZ).reshape((delFrames,numPxZ,numPxY))
             if preProc!=-1:
                 dataT = applyCorrectionNumba(dataThis,darkMean,darkpreProc,doStd)
             else:
