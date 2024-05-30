@@ -103,6 +103,7 @@ parser.add_argument('-nNodes', type=int, required=False, default=-1, help='Numbe
 parser.add_argument('-startLayerNr', type=int, required=False, default=1, help='Start LayerNr to process')
 parser.add_argument('-endLayerNr', type=int, required=False, default=1, help='End LayerNr to process')
 parser.add_argument('-convertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
+parser.add_argument('-peakSearchOnly', type=int, required=False, default=0, help='If want to do peakSearchOnly, nothing more, put to 1.')
 if len(sys.argv) == 1:
     parser.print_help(sys.stderr)
     print("MUST PROVIDE EITHER paramFN or dataFN")
@@ -119,6 +120,7 @@ preproc = args.preProcThresh
 startLayerNr = args.startLayerNr
 endLayerNr = args.endLayerNr
 ConvertFiles = args.convertFiles
+peakSearchOnly = args.peakSearchOnly
 if nNodes == -1:
     nNodes = 1
 
@@ -211,6 +213,8 @@ for layerNr in range(startLayerNr,endLayerNr+1):
     for nodeNr in range(nNodes):
         res.append(peaks(resultDir,outFStem,numProcs,blockNr=nodeNr,numBlocks=nNodes))
     outputs = [i.result() for i in res]
+    if peakSearchOnly == 1:
+        continue
     print(f"Merging peaks. Time till now: {time.time()-t0}")
     f = open(f'{logDir}/merge_overlaps_out.csv','w')
     f_err = open(f'{logDir}/merge_overlaps_err.csv','w')
@@ -253,9 +257,5 @@ for layerNr in range(startLayerNr,endLayerNr+1):
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/ProcessGrainsZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
     f.close()
     f_err.close()
-    # print(f"Making plots, condensing output. Time till now: {time.time()-t0}")
-    # subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotFFSpots3d.py')+' -resultFolder '+resultDir,cwd=resultDir, shell=True)
-    # subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotFFSpots3dGrains.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
-    # subprocess.call(f'{pytpath} '+os.path.expanduser('~/opt/MIDAS/utils/plotGrains3d.py')+' -resultFolder '+resultDir,cwd=resultDir,shell=True)
     print(f"Done Layer {layerNr}. Total time elapsed: {time.time()-t0}")
     os.chdir(origDir)
