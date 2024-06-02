@@ -119,12 +119,16 @@ int main(int argc, char* argv[])
 		printf("                                (list of Grains.csv files)"
 		"   [int] [microns][3vals]"
 		" (next line)      [microns]     [microns]        binary[0 or 1]      %%[0 or value]  [degrees and microns]     [degrees]\n");
+		printf("stateN.txt:\n"
+		"\t- A file containing a list of Grains.csv files or a Grains.csv file directly.\n"
+		"\t- If a list of Grains.csv files is provided, the results are merged into a single file.\n"
+		"\t  The grains are translated in Z according to the beamThickness for each state.\n"
+		"SGnr: \n\tSpaceGroup Number (eg. 225 for most FCC systems)\n");
 		printf("MatchMode: \n\t0: Match orientations only\n\t1: Match "
 		"positions only\n\t2: Match according to both orientation and "
 		"position using supplied weights\n");
 		printf("Offset: \n\tOne value each in x(along beam), y(out the door), z(up)"
 		" directions. Going from State2 to State1.\n");
-		printf("stateN.txt: \n\tA file containing a list of Grains.csv files or a Grains.csv file directly.\n");
 		printf("removeDuplicates: \n"
 			"\t0: will not remove any matched grains from database while matching. This is faster\n"
 			"\t   and desirable if multiple grains can be matched to the same grain, eg. if a \n\t   grain breaks up into 2.\n");
