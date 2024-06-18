@@ -70,11 +70,11 @@ if [ ! -d ${dirThis}/HDF5 ]; then # HDF5
 	make -j8 install
 fi
 
-if [ ! -d ${dirThis}/jre1.8.0_181 ]; then # java
-	cd $dirThis
-	wget -O jre8.tar.gz https://www.dropbox.com/s/1pawwgh9k1xpdgg/jre-8u181-linux-x64.tar.gz?dl=0
-	tar -xzf jre8.tar.gz
-fi
+# if [ ! -d ${dirThis}/jre1.8.0_181 ]; then # java
+# 	cd $dirThis
+# 	wget -O jre8.tar.gz https://www.dropbox.com/s/1pawwgh9k1xpdgg/jre-8u181-linux-x64.tar.gz?dl=0
+# 	tar -xzf jre8.tar.gz
+# fi
 
 if [ ! -d ${dirThis}/FFTW ]; then # fftw
 	cd $dirThis
@@ -86,7 +86,7 @@ if [ ! -d ${dirThis}/FFTW ]; then # fftw
 	make -j8 install
 fi
 
-if [ ! -d ${dirThis}/BLOSC ]; then # blosc1
+if [ ! -d ${dirThis}/BLOSC1 ]; then # blosc1
 	cd $dirThis
 	git clone https://github.com/Blosc/c-blosc
 	cd c-blosc
@@ -103,7 +103,7 @@ if [ ! -d ${dirThis}/BLOSC ]; then # blosc
 	cd c-blosc2
 	mkdir build
 	cd build
-	cmake -DCMAKE_INSTALL_PREFIX=${dirThis}/BLOSC ..
+	cmake -DCMAKE_INSTALL_PREFIX=${dirThis}/BLOSC -DBUILD_BENCHMARKS=OFF ..
 	cmake --build . -j 8
 	cmake --build . -j 8 --target install
 fi
