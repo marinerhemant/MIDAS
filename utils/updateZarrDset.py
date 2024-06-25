@@ -35,7 +35,7 @@ args, unparsed = parser.parse_known_args()
 folder = args.folder
 key = args.keyToUpdate
 fnIn = args.fn
-upd = args.UpdatedValue
+upd = args.updatedValue
 
 if len(folder) == 0 or folder == '.':
     folder = os.getcwd()
