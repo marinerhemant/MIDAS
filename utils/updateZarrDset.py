@@ -7,6 +7,7 @@ import shutil
 import os, sys
 import numpy as np
 import argparse
+from PIL import Image
 
 class MyParser(argparse.ArgumentParser):
     def error(self, message):
@@ -29,7 +30,7 @@ parser = MyParser(description='''Code to update ZarrZip Dataset, contact hsharma
 parser.add_argument('-fn', type=str, required=True, help='FileName to update.')
 parser.add_argument('-keyToUpdate', type=str, required=True, help='Key inside filename to update.')
 parser.add_argument('-folder', type=str, required=False, default='', help='Folder with the file. If nothing is provided, it will default to the current folder.')
-parser.add_argument('-UpdatedValue', type=str, required=True, nargs='*', help="Give as many values of things to update. OmegaRanges, give n-pairs, BoxSizes, give n-quadruplets, RingThresh, give n-pairs, ImTransOpt, give n-values.")
+parser.add_argument('-updatedValue', type=str, required=True, nargs='*', help="Give as many values of things to update. OmegaRanges, give n-pairs, BoxSizes, give n-quadruplets, RingThresh, give n-pairs, ImTransOpt, give n-values.")
 args, unparsed = parser.parse_known_args()
 folder = args.folder
 key = args.keyToUpdate
@@ -55,11 +56,17 @@ if len(upd) == 1:
     tp = checkType(upd[0])
     if tp == 1:
         newVal = np.array([int(upd[0])]).astype(np.int32)
+        keyPos = '0'
     elif tp == 2:
         newVal = np.array([float(upd[0])]).astype(np.double)
+        keyPos = '0'
     else:
-        newVal = np.string_(upd[0],'utf-8')
-    keyPos = '0'
+        if 'mask' in key:
+            newVal = np.array(Image.open(upd[0])).astype(np.uint16)[np.newaxis]
+            keyPos = '0.0.0'
+        else:
+            newVal = np.string_(upd[0],'utf-8')
+            keyPos = '0'
 else:
     keyPos = '0.0'
     if 'OmegaRanges' in key:
@@ -88,10 +95,16 @@ if tp!=-1:
     ds = zf2.create_dataset(key,shape=(newVal.shape),dtype=newVal.dtype,chunks=(1,),
                         compressor=Blosc(cname='zstd', clevel=3,
                                          shuffle=Blosc.BITSHUFFLE))
-else:
-    ds = zf2.create_dataset(key,shape=(1,),dtype=newVal.dtype,chunks=(1,),
-                        compressor=Blosc(cname='zstd', clevel=3,
-                                         shuffle=Blosc.BITSHUFFLE))
+else: # This means we are writing a string
+    if len(keyPos)==1:
+        ds = zf2.create_dataset(key,shape=(1,),dtype=newVal.dtype,chunks=(1,),
+                            compressor=Blosc(cname='zstd', clevel=3,
+                                            shuffle=Blosc.BITSHUFFLE))
+    elif 'mask' in key:
+        # WE NEED TO ADD .zarray file too!!!!!
+        ds = zf2.create_dataset(key,shape=newVal.shape,dtype=newVal.dtype,chunks=newVal.shape,
+                            compressor=Blosc(cname='zstd', clevel=3,
+                                           shuffle=Blosc.BITSHUFFLE))
 ds[:] = newVal
 shutil.move(f'{bnFNTemp}/{keyTop}',f'{keyTop}')
 subprocess.call(f'zip -u {fnIn} {key}/.zarray',shell=True)
