@@ -136,12 +136,14 @@ if len(rawDir) > 1:
         if line.startswith('RawFolder'):
             line2 = re.split(r'(\s+)',line)
             line2[2] = rawDir
+            print(line2)
             psF.write(''.join(line2))
             rd = 1
         elif line.startswith('Dark'):
             line2 = re.split(r'(\s+)',line)
             darkName = line2[2].split('/')[-1]
             line2[2] = f'{rawDir}/{darkName}'
+            print(line2)
             psF.write(''.join(line2))
             dd = 1
         else:
@@ -170,7 +172,7 @@ if len(inpFileName) > 1:
         else:
             psF.write(line)
     psF.close()
-
+sys.exit()
 env = dict(os.environ)
 midas_path = os.path.expanduser("~/.MIDAS")
 env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
