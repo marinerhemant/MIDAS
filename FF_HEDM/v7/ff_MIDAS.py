@@ -151,7 +151,7 @@ if len(rawDir) > 1:
 if len(inpFileName) > 1:
     # We will update StartFileNrFirstLayer to 1, Ext, FileStem
     # We will set startLayerNr endLayerNr
-    ext = '.'.join(inpFileName.split('_')[-1].split('.')[1:])
+    ext = '.'+'.'.join(inpFileName.split('_')[-1].split('.')[1:])
     filestem = '_'.join(inpFileName.split('_')[:-1])
     fileNr = int(inpFileName.split('_')[-1].split('.')[0])
     startLayerNr = fileNr
