@@ -7,6 +7,7 @@ import time
 import argparse
 import signal
 import shutil
+import re
 utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 sys.path.insert(0,utilsDir)
 v7Dir = os.path.expanduser('~/opt/MIDAS/FF_HEDM/v7/')
@@ -104,6 +105,7 @@ parser.add_argument('-startLayerNr', type=int, required=False, default=1, help='
 parser.add_argument('-endLayerNr', type=int, required=False, default=1, help='End LayerNr to process')
 parser.add_argument('-convertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
 parser.add_argument('-peakSearchOnly', type=int, required=False, default=0, help='If want to do peakSearchOnly, nothing more, put to 1.')
+parser.add_argument('-rawDir', type=str, required=False, default='', help='If want override the rawDir in the Parameter file.')
 if len(sys.argv) == 1:
     parser.print_help(sys.stderr)
     print("MUST PROVIDE EITHER paramFN or dataFN")
@@ -121,9 +123,25 @@ startLayerNr = args.startLayerNr
 endLayerNr = args.endLayerNr
 ConvertFiles = args.convertFiles
 peakSearchOnly = args.peakSearchOnly
+rawDir = args.rawDir
 if nNodes == -1:
     nNodes = 1
-
+if len(rawDir) > 1:
+    # we will update rawDir and Dark.
+    psContents = open(psFN,'r').readlines()
+    psF = open(psFN,'w')
+    for line in psContents:
+        if line.startswith('RawFolder'):
+            line2 = re.split(r'(\s+)',line)
+            line2[2] = rawDir
+            psF.write(''.join(line2))
+        elif line.startswith('Dark'):
+            line2 = re.split(r'(\s+)',line)
+            darkName = line2[2].split('/')[-1]
+            line2[2] = f'{rawDir}/{darkName}'
+            psF.write(''.join(line2))
+        else:
+            psF.write(line)
 env = dict(os.environ)
 midas_path = os.path.expanduser("~/.MIDAS")
 env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
