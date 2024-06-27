@@ -219,23 +219,28 @@ def update_graph(col_chosen):
     Input(component_id='radio-buttons-spots_filtered', component_property='value')
 )
 def newFilteredSpots(clickData,col_chosen):
-    ID = df2[df2['ID']== clickData['points'][0]['hovertext'] ]['ID'].item()
-    dff = df[df['grainID']==ID]
-    global selectedID
-    selectedID = ID
-    meanStrain = np.mean(np.abs(dff['strain']))
-    medianStrain = np.median(np.abs(dff['strain']))
-    fig = px.scatter_3d(dff,
-                    x='omega',
-                    y='y',
-                    z='z',
-                    color=col_chosen,
-                    size='ds',
-                    title=f'FilteredSpots for ID:{int(ID)}, MeanStrainErr: {int(meanStrain)}, MedianStrainErr: {int(medianStrain)}',
-                    color_continuous_scale='jet',
-                    hover_name='spotID',
-                    )
-    fig.update_traces(customdata=dff['spotID'])
+    if 'hovertext' not in clickData['points'][0]:
+        fig = px.scatter()
+    else:
+        print(clickData)
+        print("I'm in this loop")
+        ID = df2[df2['ID']== clickData['points'][0]['hovertext'] ]['ID'].item()
+        dff = df[df['grainID']==ID]
+        global selectedID
+        selectedID = ID
+        meanStrain = np.mean(np.abs(dff['strain']))
+        medianStrain = np.median(np.abs(dff['strain']))
+        fig = px.scatter_3d(dff,
+                        x='omega',
+                        y='y',
+                        z='z',
+                        color=col_chosen,
+                        size='ds',
+                        title=f'FilteredSpots for ID:{int(ID)}, MeanStrainErr: {int(meanStrain)}, MedianStrainErr: {int(medianStrain)}',
+                        color_continuous_scale='jet',
+                        hover_name='spotID',
+                        )
+        fig.update_traces(customdata=dff['spotID'])
     fig.update_layout(margin=dict(l=0, r=0, b=0, t=50),height=700)
     return fig
 
@@ -244,21 +249,25 @@ def newFilteredSpots(clickData,col_chosen):
     Input('grains','clickData'),
     Input(component_id='radio-buttons-spots_filtered', component_property='value')
 )
-def newFilteredSpots(clickData,col_chosen):
-    ID = df2[df2['ID']== clickData['points'][0]['hovertext'] ]['ID'].item()
-    dff = df[df['grainID']==ID]
-    meanStrain = np.mean(np.abs(dff['strain']))
-    medianStrain = np.median(np.abs(dff['strain']))
-    fig = px.scatter(dff,
-                    x='y',
-                    y='z',
-                    color=col_chosen,
-                    size='ds',
-                    title=f'2D FilteredSpots for ID:{int(ID)}, MeanStrainErr: {int(meanStrain)}, MedianStrainErr: {int(medianStrain)}',
-                    color_continuous_scale='jet',
-                    hover_name='spotID',
-                    )
-    fig.update_traces(customdata=dff['spotID'])
+def newFilteredSpots2(clickData,col_chosen):
+    if 'hovertext' not in clickData['points'][0]:
+        fig = px.scatter()
+    else:
+        print(clickData)
+        ID = df2[df2['ID']== clickData['points'][0]['hovertext'] ]['ID'].item()
+        dff = df[df['grainID']==ID]
+        meanStrain = np.mean(np.abs(dff['strain']))
+        medianStrain = np.median(np.abs(dff['strain']))
+        fig = px.scatter(dff,
+                        x='y',
+                        y='z',
+                        color=col_chosen,
+                        size='ds',
+                        title=f'2D FilteredSpots for ID:{int(ID)}, MeanStrainErr: {int(meanStrain)}, MedianStrainErr: {int(medianStrain)}',
+                        color_continuous_scale='jet',
+                        hover_name='spotID',
+                        )
+        fig.update_traces(customdata=dff['spotID'])
     fig.update_layout(margin=dict(l=0, r=0, b=0, t=50),height=700)
     return fig
 
@@ -374,7 +383,7 @@ parser = MyParser(description='''MIDAS FF Interactive Plotter''', formatter_clas
 parser.add_argument('-resultFolder', type=str, required=True, help='Folder where the reconstruction exists')
 parser.add_argument('-dataFileName', type=str, required=True, help='Name of the input datafile')
 parser.add_argument('-HostName', type=str, required=False, default="0.0.0.0", help='HostName IP')
-parser.add_argument('-portNr', type=int, required=False, default=8000, help='HostName IP')
+parser.add_argument('-portNr', type=int, required=False, default=8050, help='HostName IP')
 args, unparsed = parser.parse_known_args()
 resultDir = args.resultFolder
 dataFile = args.dataFileName
@@ -453,4 +462,4 @@ values = df['ringNrInt'].unique().tolist()
 values.sort()
 options = [{"label":ringNr,"value":ringNr} for ringNr in values]
 
-app.run(port=portNr,host=hn,debug=True)
+app.run_server(port=portNr,host=hn,debug=False)
