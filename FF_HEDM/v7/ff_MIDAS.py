@@ -136,14 +136,12 @@ if len(rawDir) > 1:
         if line.startswith('RawFolder'):
             line2 = re.split(r'(\s+)',line)
             line2[2] = rawDir
-            print(line2)
             psF.write(''.join(line2))
             rd = 1
         elif line.startswith('Dark'):
             line2 = re.split(r'(\s+)',line)
             darkName = line2[2].split('/')[-1]
             line2[2] = f'{rawDir}/{darkName}'
-            print(line2)
             psF.write(''.join(line2))
             dd = 1
         else:
