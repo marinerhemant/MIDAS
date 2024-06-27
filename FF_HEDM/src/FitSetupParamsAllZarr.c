@@ -1382,6 +1382,7 @@ int main(int argc, char *argv[])
 	int KeepSpot,nSpotIDsToIndex=0,*SpotIDsToIndex;
 	SpotIDsToIndex = malloc(nIndices*sizeof(*SpotIDsToIndex));
 	int UniqueRingNumbers[200], nrUniqueRingNumbers=0,RingNumberThis,RingNumberPresent=0,nRejects = 0;
+    printf("Indexing filters: RingNr: %d MinOme: %lf MaxOme: %lf \n",RingToIndex,MinOmeSpotIDsToIndex,MaxOmeSpotIDsToIndex);
 	for (i=0;i<nIndices;i++){
 		if (((EtaCorrWedge[i] > (-180+MinEta)) && (EtaCorrWedge[i] < -MinEta))|| ((EtaCorrWedge[i] > MinEta) && (EtaCorrWedge[i] < (180-MinEta)))){
 			KeepSpot = 0;
