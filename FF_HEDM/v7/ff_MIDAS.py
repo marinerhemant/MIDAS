@@ -168,7 +168,7 @@ if len(inpFileName) > 1:
         elif line.startswith('FileStem'):
             psF.write(f'FileStem {filestem}\n')
         elif line.startswith('StartFileNrFirstLayer'):
-            psF.write(f'StartFileNrFirstLayer 1')
+            psF.write(f'StartFileNrFirstLayer 1\n')
         else:
             psF.write(line)
     psF.close()
