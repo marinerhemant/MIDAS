@@ -101,6 +101,7 @@ parser.add_argument('-machineName', type=str, required=False, default='local', h
 parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='If low on RAM, it can process parts of the dataset at the time. -1 will disable.')
 parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
 parser.add_argument('-nNodes', type=int, required=False, default=-1, help='Number of nodes for execution, omit if want to automatically select.')
+parser.add_argument('-fileName', type=str, required=False, default='', help='If you specify a fileName, this will run just that file.')
 parser.add_argument('-startLayerNr', type=int, required=False, default=1, help='Start LayerNr to process')
 parser.add_argument('-endLayerNr', type=int, required=False, default=1, help='End LayerNr to process')
 parser.add_argument('-convertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
@@ -124,6 +125,7 @@ endLayerNr = args.endLayerNr
 ConvertFiles = args.convertFiles
 peakSearchOnly = args.peakSearchOnly
 rawDir = args.rawDir
+inpFileName = args.fileName
 if nNodes == -1:
     nNodes = 1
 if len(rawDir) > 1:
@@ -135,13 +137,40 @@ if len(rawDir) > 1:
             line2 = re.split(r'(\s+)',line)
             line2[2] = rawDir
             psF.write(''.join(line2))
+            rd = 1
         elif line.startswith('Dark'):
             line2 = re.split(r'(\s+)',line)
             darkName = line2[2].split('/')[-1]
             line2[2] = f'{rawDir}/{darkName}'
             psF.write(''.join(line2))
+            dd = 1
         else:
             psF.write(line)
+    psF.close()
+
+if len(inpFileName) > 1:
+    # We will update StartFileNrFirstLayer to 1, Ext, FileStem
+    # We will set startLayerNr endLayerNr
+    ext = '.'.join(inpFileName.split('_')[-1].split('.')[1:])
+    filestem = '_'.join(inpFileName.split('_')[:-1])
+    fileNr = int(inpFileName.split('_')[-1].split('.')[0])
+    startLayerNr = fileNr
+    endLayerNr = fileNr
+    padding = len(inpFileName.split('_')[-1].split('.')[0])
+    output_dir_stem = f'analysis_{inpFileName}'
+    psContents = open(psFN,'r').readlines()
+    psF = open(psFN,'w')
+    for line in psContents:
+        if line.startswith('Ext'):
+            psF.write(f'Ext {ext}\n')
+        elif line.startswith('FileStem'):
+            psF.write(f'FileStem {filestem}\n')
+        elif line.startswith('StartFileNrFirstLayer'):
+            psF.write(f'StartFileNrFirstLayer 1')
+        else:
+            psF.write(line)
+    psF.close()
+
 env = dict(os.environ)
 midas_path = os.path.expanduser("~/.MIDAS")
 env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
@@ -185,7 +214,9 @@ elif machineName == 'purdue':
 origDir = os.getcwd()
 topResDir = resultDir
 for layerNr in range(startLayerNr,endLayerNr+1):
-    resultDir = f'{topResDir}/LayerNr_{layerNr}'
+    if len(inpFileName) <= 1:
+        output_dir_stem = f'LayerNr_{layerNr}/'
+    resultDir = f'{topResDir}/{output_dir_stem}'
     print(f"Doing Layer Nr: {layerNr}, results will be saved in {resultDir}")
     logDir = resultDir + '/output'
     os.makedirs(resultDir,exist_ok=True)
