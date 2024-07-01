@@ -138,7 +138,6 @@ void integrate_noMapMask (double px, double Lsd, int bigArrSize, int Normalize, 
 			testPos += ThisVal.y;
 			Intensity += dImage[testPos]*ThisVal.frac;
 			totArea += ThisVal.frac;
-			printf("%lf\n",totArea);
 		}
 		if (Intensity != 0){
 			if (Normalize == 1){
@@ -411,47 +410,38 @@ int main(int argc, char **argv)
 		str = "Z ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &Z);
-			makeMap = 2;
 		}
 		str = "Y ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &Y);
-			makeMap = 2;
 		}
 		str = "X ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &X);
-			makeMap = 2;
 		}
 		str = "W ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &W);
-			makeMap = 2;
 		}
 		str = "V ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &V);
-			makeMap = 2;
 		}
 		str = "U ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &U);
-			makeMap = 2;
 		}
 		str = "SH/L ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &SHpL);
-			makeMap = 2;
 		}
 		str = "Polariz ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &Polariz);
-			makeMap = 2;
 		}
 		str = "Wavelength ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &Lam);
-			makeMap = 2;
 		}
 		str = "GapFile ";
 		if (StartsWith(aline,str) == 1){
@@ -906,13 +896,14 @@ int main(int argc, char **argv)
 		gpuErrchk(cudaMemset(devIntArrPerFrame,0,bigArrSize*sizeof(double)));
 		gpuErrchk(cudaMemcpy(devImage,Image,NrPixelsY*NrPixelsZ*sizeof(double),cudaMemcpyHostToDevice));
 		gpuErrchk(cudaDeviceSynchronize());
+		int nrVox = (bigArrSize+2047)/2048, tPB = 2048;
 		if (mapMaskSize==0)
-			integrate_noMapMask <<<((bigArrSize+2047)/2048),2048>>> (px,Lsd,bigArrSize,Normalize,sumImages,i,NrPixelsY, 
+			integrate_noMapMask <<<tPB,nrVox>>> (px,Lsd,bigArrSize,Normalize,sumImages,i,NrPixelsY, 
 													mapMaskSize,devMapMask,nRBins,nEtaBins,devPxList, 
 													devNPxList,devRBinsLow,devRBinsHigh,devEtaBinsLow,devEtaBinsHigh, 
 													devImage,devIntArrPerFrame,devPerFrameArr,devSumMatrix);
 		else 
-			integrate_MapMask <<<((bigArrSize+2047)/2048),2048>>> (px,Lsd,bigArrSize,Normalize,sumImages,i,NrPixelsY, 
+			integrate_MapMask <<<tPB,nrVox>>> (px,Lsd,bigArrSize,Normalize,sumImages,i,NrPixelsY, 
 													mapMaskSize,devMapMask,nRBins,nEtaBins,devPxList, 
 													devNPxList,devRBinsLow,devRBinsHigh,devEtaBinsLow,devEtaBinsHigh, 
 													devImage,devIntArrPerFrame,devPerFrameArr,devSumMatrix);
