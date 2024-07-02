@@ -38,7 +38,8 @@ def peaks(resultDir,zipFN,numProcs,blockNr=0,numBlocks=1):
     import os
     env = dict(os.environ)
     midas_path = os.path.expanduser("~/.MIDAS")
-    env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
+    libpth = os.environ.get('LD_LIBRARY_PATH','')
+    env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib:{libpth}'
     f = open(f'{resultDir}/output/peaksearch_out{blockNr}.csv','w')
     f_err = open(f'{resultDir}/output/peaksearch_err{blockNr}.csv','w')
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPZarr")+f' {zipFN} {blockNr} {numBlocks} {numProcs}',shell=True,env=env,stdout=f,stderr=f_err)
@@ -52,7 +53,8 @@ def index(resultDir,numProcs,blockNr=0,numBlocks=1):
     os.chdir(resultDir)
     env = dict(os.environ)
     midas_path = os.path.expanduser("~/.MIDAS")
-    env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
+    libpth = os.environ.get('LD_LIBRARY_PATH','')
+    env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib:{libpth}'
     with open("SpotsToIndex.csv", "r") as f:
         num_lines = len(f.readlines())
     f = open(f'{resultDir}/output/indexing_out{blockNr}.csv','w')
@@ -68,7 +70,8 @@ def refine(resultDir,numProcs,blockNr=0,numBlocks=1):
     os.chdir(resultDir)
     env = dict(os.environ)
     midas_path = os.path.expanduser("~/.MIDAS")
-    env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
+    libpth = os.environ.get('LD_LIBRARY_PATH','')
+    env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib:{libpth}'
     with open("SpotsToIndex.csv", "r") as f:
         num_lines = len(f.readlines())
     f = open(f'{resultDir}/output/refining_out{blockNr}.csv','w')
@@ -157,7 +160,8 @@ if len(inpFileName) > 1:
     startLayerNr = fileNr
     endLayerNr = fileNr
     padding = len(inpFileName.split('_')[-1].split('.')[0])
-    output_dir_stem = f'analysis_{inpFileName}'
+    inpFSTM = inpFileName.split('.')[0]
+    output_dir_stem = f'analysis_{inpFSTM}'
     psContents = open(psFN,'r').readlines()
     psF = open(psFN,'w')
     for line in psContents:
@@ -172,7 +176,8 @@ if len(inpFileName) > 1:
     psF.close()
 env = dict(os.environ)
 midas_path = os.path.expanduser("~/.MIDAS")
-env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
+libpth = os.environ.get('LD_LIBRARY_PATH','')
+env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib:{libpth}'
 if len(resultDir) == 0 or resultDir=='.':
     resultDir = os.getcwd()
 logDir = resultDir + '/output'
