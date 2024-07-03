@@ -135,6 +135,10 @@ int main(int argc, char* argv[])
 		printf("\t1: will remove any matched grains from database while matching. Only one grain each will be matched. This is slower.\n");
 		printf("\t   sizeFilter: 0 will not make filter based on grain size, value [float] will only match grains within value%% of the grain size.\n");
 		printf("referenceMisorientation: If provided, in degrees, it will look for misorientation angle around this value.\n");
+		printf("                         This is used in cases when it is expected that grains will have a certain misorientation:\n"
+			   "                            EG: if the sample frame was rotated between two steps.\n"
+			   "                                Or if you want to find grains with special orientation relationships, such as twins.\n"
+			   "                                   Provide the twin angle and it will find twins for you.\n");
 		return 1;
 	}
 	clock_t start, end;
