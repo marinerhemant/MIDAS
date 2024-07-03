@@ -4,12 +4,12 @@
 //
 
 //
-//  ForwardSimulation.c
+//  ForwardSimulationCompressed.c
 //
 //
-//  Created by Hemant Sharma on 2018/03/01.
+//  Created by Hemant Sharma on 2024/05/15.
+//  Full Multi-Scan forward simulation for FF.
 //
-//  TODO: Write TIFF output for NF.
 //
 
 #include <stdio.h>
@@ -20,9 +20,8 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdint.h>
-#include <blosc2.h>
+#include <blosc.h>
 #include <sys/stat.h>
-#include <stdlib.h> 
 #include <zip.h> 
 
 #define deg2rad 0.0174532925199433
@@ -671,7 +670,9 @@ static inline void
 usage(void)
 {
 	printf("Make diffraction spots: usage: ./ForwardSimulation "
-	"<ParameterFile>\n");
+	"<ParameterFile>\n"
+	"If you want to do a multi-scan simulation, there should be positions.csv file in the current folder.\n"
+	"Positions in microns.");
 }
 
 int
@@ -705,6 +706,8 @@ main(int argc, char *argv[])
 	int writeSpots, isBin=0;
 	int LoadNr = 0, UpdatedOrientations = 1, nfOutput = 0, geOutput=1;
 	double eRes = 0, minConfidence = 0;
+	int nScans = 1;
+	double *positions, beamSize=-1;
 	while (fgets(aline,4096,fileParam)!=NULL){
 		str="RingsToUse ";
 		LowNr = strncmp(aline,str,strlen(str));
@@ -842,6 +845,18 @@ main(int argc, char *argv[])
 			sscanf(aline,"%s %d",dummy,&NrPixels);
 			continue;
 		}
+		str="nScans ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr == 0){
+			sscanf(aline,"%s %d",dummy,&nScans);
+			continue;
+		}
+		str="BeamSize ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr == 0){
+			sscanf(aline,"%s %lf",dummy,&beamSize);
+			continue;
+		}
 		str="WriteSpots ";
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr == 0){
@@ -903,7 +918,18 @@ main(int argc, char *argv[])
 			continue;
 		}
 	}
-	printf("Output will be saved to: %s.zip\n",OutFileName);
+	int scanNr;
+	positions = malloc((nScans+1)*sizeof(*positions));
+	positions[0] = 0;
+	if (nScans > 1){
+		printf("Multi-scan simulation requested with %d scans.\nReading positions.csv, no error checking from here on!!!",nScans);
+		FILE *positionsF = fopen("positions.csv","r");
+		for (scanNr=0;scanNr<nScans;scanNr++){
+			fgets(aline,4096,positionsF);
+			sscanf(aline,"%d",&positions[scanNr]);
+		}
+	}
+	printf("Output will be saved to: %s_scanNr_XYZ.zip, XYZ is the scanNr\n",OutFileName);
 
 	char inpFN[4096];
 	sprintf(inpFN,"%s",InFileName);
@@ -1007,6 +1033,18 @@ main(int argc, char *argv[])
 				nrPoints++;
 			}
 			fclose(foutGrains);
+		} else if (strncmp(aline,"# SpotID",strlen("# SpotID")) == 0){ // This is a mic.csv file from pf-HEDM
+			dataType = 0;
+			while(fgets(aline,4096,inpF)!=NULL){
+				sscanf(aline,"%s,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%s,%lf,%lf,%lf,%s,%lf,%lf,%lf,%lf,%lf,%lf",
+					dummy,&InputInfo[nrPoints][0], &InputInfo[nrPoints][1], &InputInfo[nrPoints][2],
+						  &InputInfo[nrPoints][3], &InputInfo[nrPoints][4], &InputInfo[nrPoints][5],
+						  &InputInfo[nrPoints][6], &InputInfo[nrPoints][7], &InputInfo[nrPoints][8],
+					dummy,&InputInfo[nrPoints][9], &InputInfo[nrPoints][10],&InputInfo[nrPoints][11],
+					dummy,&InputInfo[nrPoints][12],&InputInfo[nrPoints][13],&InputInfo[nrPoints][14],
+						  &InputInfo[nrPoints][15],&InputInfo[nrPoints][16],&InputInfo[nrPoints][17]);
+				nrPoints++;
+			}
 		}else if (strncmp(aline,"%TriEdgeSize ",strlen("%TriEdgeSize ")) == 0){
 			dataType = 1;
 			NrOrientations = 2000000;
@@ -1242,7 +1280,8 @@ main(int argc, char *argv[])
 	char spotMatrFN[4096];
 	sprintf(spotMatrFN,"SpotMatrixGen.csv");
 	FILE *spotsfile = fopen(spotMatrFN,"w");
-	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
+	fprintf(spotsfile, "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw\tEta"
+		"\tRingNr\tYLab\tZLab\tTheta\tStrainError\tScanNr\n");
 	double spotMatr[12];
 	double **TheorSpots;
 	int nTspots, voxNr, spotNr;
@@ -1262,6 +1301,7 @@ main(int argc, char *argv[])
 	}
 	double OmeDiff, yTemp, zTemp, yThis, omeThis, etaThis;
 	double Info[5],DisplY,DisplZ,yDet,zDet,DisplY2,DisplZ2,xGrain,yGrain, xyz[3],P1[3],ABC[3],outxyz[3],YZSpotsT[2];
+	double newY,yOffset=0;
 	int yTrans, zTrans;
 	int idxNrY,idxNrZ;
 	long long int idx;
@@ -1270,62 +1310,51 @@ main(int argc, char *argv[])
 	hklsOut = allocMatrix(n_hkls,5);
 	hklsTemp = allocMatrix(n_hkls,5);
 	printf("Total number of orientations: %d\n",nrPoints);
-	// Go through each point
-	// Should we do OMP
-	for (voxNr=0;voxNr<nrPoints;voxNr++){
-		// First calculate new hkls
-		if (dataType < 2){
-			for (i=0;i<6;i++) LatCThis[i] = InputInfo[voxNr][i+12];
-			CorrectHKLsLatC(LatCThis,Wavelength,hklsOut);
-		}else if (dataType == 2){
-			if (InputInfo[voxNr][i+19] == 0) continue;
-			for (i=0;i<6;i++) EpsThis[i] = InputInfo[voxNr][i+12];
-			CorrectHKLsLatCEpsilon(LatC,EpsThis,Wavelength,hklsOut);
-		} else if (dataType == 3){ // binary file
-			for (i=0;i<6;i++) EpsThis[i] = InputInfo[voxNr][i+12];
-			CorrectHKLsLatCEpsilon(LatC,EpsThis,Wavelength,hklsOut);
-		}
-		// Get the Orientation Matrix
-		for (i=0;i<3;i++){
-			for (j=0;j<3;j++){
-				OM[i][j] = InputInfo[voxNr][i*3+j];
+	// Look at OpenMP?
+	for (scanNr=0;scanNr<nScans;scanNr++){
+		if (scanNr > 0) memset(ImageArr,0,ImageArrSize*sizeof(*ImageArr));
+		yOffset = positions[scanNr];
+		for (voxNr=0;voxNr<nrPoints;voxNr++){
+			// First calculate new hkls
+			if (dataType < 2){
+				for (i=0;i<6;i++) LatCThis[i] = InputInfo[voxNr][i+12];
+				CorrectHKLsLatC(LatCThis,Wavelength,hklsOut);
+			}else if (dataType == 2){
+				if (InputInfo[voxNr][i+19] == 0) continue;
+				for (i=0;i<6;i++) EpsThis[i] = InputInfo[voxNr][i+12];
+				CorrectHKLsLatCEpsilon(LatC,EpsThis,Wavelength,hklsOut);
+			} else if (dataType == 3){ // binary file
+				for (i=0;i<6;i++) EpsThis[i] = InputInfo[voxNr][i+12];
+				CorrectHKLsLatCEpsilon(LatC,EpsThis,Wavelength,hklsOut);
 			}
-		}
-		// Calculate the spots now.
-		CalcDiffrSpots_Furnace(hklsOut,OM,Lsd,Wavelength,TheorSpots,&nTspots);
-		// For each spot, calculate displacement, calculate tilt and wedge effect.
-		for (spotNr=0;spotNr<nTspots;spotNr++){
-			// Calculate Tilt Effect
-			for (i=0;i<5;i++) Info[i] = TheorSpots[spotNr][i]; // Info has: R,eta,ome,theta,ringnr
-			if (nfOutput == 1){
-				// What we need: yDet, zDet, omeThis
-				omeThis = Info[2];
-				xGrain = InputInfo[voxNr][9];
-				yGrain = InputInfo[voxNr][10];
-				yTemp = -Info[0]*sin(Info[1]*deg2rad);
-				zTemp =  Info[0]*cos(Info[1]*deg2rad);
-				DisplacementSpots(xGrain,yGrain,Lsd,yTemp,zTemp,omeThis,&DisplY2,&DisplZ2);
-				xyz[0] = 0; xyz[1] = DisplY2; xyz[2] = DisplZ2;
-				MatrixMultF(RotMatTilts,xyz,P1);
-				for (i=0;i<3;i++){
-					ABC[i] = P1[i]-P0[i];
+			// Get the Orientation Matrix
+			for (i=0;i<3;i++){
+				for (j=0;j<3;j++){
+					OM[i][j] = InputInfo[voxNr][i*3+j];
 				}
-				outxyz[0] = 0; outxyz[1] = P0[1] -(ABC[1]*P0[0])/(ABC[0]); outxyz[2] = P0[2] -(ABC[2]*P0[0])/(ABC[0]);
-				YZSpotsT[0] = -(outxyz[1])/px + yBC; YZSpotsT[1] = (outxyz[2])/px + zBC; // The y is calculated in negative way to match FF!
-				if (YZSpotsT[0] > NrPixels || YZSpotsT[0] < 0 || YZSpotsT[1] > NrPixels || YZSpotsT[1] < 0) continue;
-				yDet = YZSpotsT[0];
-				zDet = YZSpotsT[1];
-			} else {
+			}
+			// Calculate the spots now.
+			CalcDiffrSpots_Furnace(hklsOut,OM,Lsd,Wavelength,TheorSpots,&nTspots);
+			// For each spot, calculate displacement, calculate tilt and wedge effect.
+			for (spotNr=0;spotNr<nTspots;spotNr++){
+				// Calculate Tilt Effect
+				for (i=0;i<5;i++) Info[i] = TheorSpots[spotNr][i]; // Info has: R,eta,ome,theta,ringnr
 				OmeDiff = CorrectWedge(Info[1],Info[3],Wavelength,Wedge);
 				omeThis = Info[2] - OmeDiff;
 				if (omeThis >= OmegaEnd*OmegaStep/fabs(OmegaStep)) continue;
 				if (omeThis < OmegaStart*OmegaStep/fabs(OmegaStep)) continue;
 				// Get diplacements due to spot position
+				if (nScans>1 || beamSize>0){
+					newY = InputInfo[voxNr][9] * sin(deg2rad*omeThis) + InputInfo[voxNr][10] * cos(deg2rad*omeThis);
+					if (fabs(newY - positions[scanNr]) > beamSize/2){
+						continue;
+					}
+				}
 				yTemp = -Info[0]*sin(Info[1]*deg2rad);
 				zTemp =  Info[0]*cos(Info[1]*deg2rad);
 				DisplacementInTheSpot(InputInfo[voxNr][9],InputInfo[voxNr][10],
 					InputInfo[voxNr][11],Lsd,yTemp,zTemp,omeThis,&DisplY2,&DisplZ2);
-				yThis = yTemp+DisplY2; // These are displaced for grain position, not tilted.
+				yThis = yTemp+DisplY2 + yOffset; // These are displaced for grain position, not tilted.
 				zThis = zTemp+DisplZ2; // These should be written to SpotMatrix.csv
 				// Get tilt displacements
 				yTrans = (int) (-yThis/px + yBC);
@@ -1333,7 +1362,6 @@ main(int argc, char *argv[])
 				idx = yTrans + NrPixels*zTrans;
 				if (idx < 1) continue;
 				if (idx >= NrPixels*NrPixels) continue;
-				//~ printf("%lf %lf %lf %lf %d %d %lf %lf %lf %lld\n",yTemp, zTemp, yThis, zThis, yTrans, zTrans, px, yBC, zBC, (long long int) idx); fflush(stdout);
 				DisplY = yDispl[idx];
 				DisplZ = zDispl[idx];
 				if (DisplY == -32100){ // Was not set, check neighbor
@@ -1352,8 +1380,6 @@ main(int argc, char *argv[])
 						DisplY = yDispl[idx+NrPixels];
 						DisplZ = zDispl[idx+NrPixels];
 					}else{
-						//~ printf("No neighbor was set for tilts. Please check. idx = %lld\n",(long long int)idx);
-						//~ return 1;
 						continue;
 					}
 				}
@@ -1378,78 +1404,98 @@ main(int argc, char *argv[])
 				spotMatr[9]  = zThis;
 				spotMatr[10] = Info[3]; // Theta
 				spotMatr[11] = 0.0;
-				if (writeSpots ==1)	fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\n",(int)spotMatr[0],(int)spotMatr[1],spotMatr[2],spotMatr[3],spotMatr[4],spotMatr[5],spotMatr[6],(int)spotMatr[7],spotMatr[8],spotMatr[9],spotMatr[10],spotMatr[11]);
-			}
-			// Map yDet,zDet,omeThis to frames.
-			omeBin = (size_t)floor(-(OmegaStart-omeThis)/OmegaStep);
-			omeBin *= NrPixels;
-			omeBin *= NrPixels;
-			/////////////// Change this to exact position, not rounded off....
-			yBin = (size_t)yDet;
-			zBin = (size_t)zDet;
-			imageBin = zBin*NrPixels + yBin; // We do a transpose here to generate the correctly oriented GE files.
-			centIdx = omeBin + imageBin;
-			for (idxNrY=-4*ceil(GaussWidth);idxNrY<=4*ceil(GaussWidth);idxNrY++){
-				if ((int)yBin+idxNrY < 0 || (int)yBin+idxNrY >= NrPixels) continue;
-				for (idxNrZ=-4*ceil(GaussWidth);idxNrZ<=4*ceil(GaussWidth);idxNrZ++){
-					if ((int)zBin+idxNrZ < 0 || (int)zBin+idxNrZ >= NrPixels) continue;
-					displ = idxNrY*NrPixels + idxNrZ;
-					currentPos = (size_t)((int) centIdx + displ);
-					if (currentPos < 0 || currentPos >= ImageArrSize) continue;
-					ImageArr[currentPos] += (double) (GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask] * PeakIntensity);
-					if (maxInt < ImageArr[currentPos]) maxInt = ImageArr[currentPos];
+				if (writeSpots ==1)	
+					fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\t%d\n",
+						(int)spotMatr[0],(int)spotMatr[1],spotMatr[2],spotMatr[3],spotMatr[4],spotMatr[5],
+						spotMatr[6],(int)spotMatr[7],spotMatr[8],spotMatr[9],spotMatr[10],spotMatr[11],scanNr);
+				// Map yDet,zDet,omeThis to frames.
+				omeBin = (size_t)floor(-(OmegaStart-omeThis)/OmegaStep);
+				omeBin *= NrPixels;
+				omeBin *= NrPixels;
+				/////////////// Change this to exact position, not rounded off....
+				yBin = (size_t)yDet;
+				zBin = (size_t)zDet;
+				imageBin = zBin*NrPixels + yBin; // We do a transpose here to generate the correctly oriented GE files.
+				centIdx = omeBin + imageBin;
+				for (idxNrY=-4*ceil(GaussWidth);idxNrY<=4*ceil(GaussWidth);idxNrY++){
+					if ((int)yBin+idxNrY < 0 || (int)yBin+idxNrY >= NrPixels) continue;
+					for (idxNrZ=-4*ceil(GaussWidth);idxNrZ<=4*ceil(GaussWidth);idxNrZ++){
+						if ((int)zBin+idxNrZ < 0 || (int)zBin+idxNrZ >= NrPixels) continue;
+						displ = idxNrY*NrPixels + idxNrZ;
+						currentPos = (size_t)((int) centIdx + displ);
+						if (currentPos < 0 || currentPos >= ImageArrSize) continue;
+						ImageArr[currentPos] += (double) (GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask] * PeakIntensity);
+						if (maxInt < ImageArr[currentPos]) maxInt = ImageArr[currentPos];
+					}
 				}
 			}
 		}
-	}
-	printf("Maximum intensity: %lf\n",maxInt);
-	if (geOutput == 1){
-        blosc2_init();
-        blosc2_set_nthreads(10);
-        int nFrames = (int)ceil(fabs((OmegaEnd-OmegaStart)/OmegaStep));
-        int frameNr;
-        uint16_t *data_out, *outArr;
-        outArr = calloc(NrPixels*NrPixels,sizeof(*outArr));
-        size_t loc = 0;
-        int compressedSize;
-        char outfn[4096];
-        blosc2_cparams cparams = BLOSC2_CPARAMS_DEFAULTS;
-        blosc2_context *cctx;
-        cparams.typesize = sizeof(uint16_t);
-        cparams.compcode = BLOSC_ZSTD;
-        cparams.filters[BLOSC2_MAX_FILTERS - 1] = BLOSC_BITSHUFFLE;
-        cparams.clevel = 3;
-        cparams.nthreads = 10;
-        cctx = blosc2_create_cctx(cparams);
-        int errorp;
-        char outZipFN[4096];
-        sprintf(outZipFN,"%s.zip",OutFileName);
-        printf("Diffraction spots done, now writing zip file: %s\n",outZipFN);
-        zip_t *zipper = zip_open(outZipFN,ZIP_CREATE,&errorp);
-        if (zipper == NULL){
-            printf("Could not open the zip file %s for writing. Exiting.\n",outZipFN);
-            return 1;
-        }
-        int rc;
-        for (frameNr=0;frameNr<nFrames;frameNr++){
-            for (i=0;i<NrPixels*NrPixels;i++){
-                outArr[i] = (uint16_t) (ImageArr[loc]*15000/maxInt);
-                loc++;
-            }
-            data_out = calloc(NrPixels*NrPixels,sizeof(*data_out));
-            compressedSize = blosc2_compress_ctx(cctx,outArr,NrPixels*NrPixels*sizeof(uint16_t),data_out,NrPixels*NrPixels*sizeof(uint16_t));
-            sprintf(outfn,"%d.blosc",frameNr);
-            zip_error_t *errp;
-            const void * dataT;
-            dataT = (const void *) data_out;
-            zip_source_t *source = zip_source_buffer(zipper,dataT,compressedSize,1);
-            rc = zip_file_add(zipper,outfn,source,ZIP_FL_OVERWRITE | ZIP_FL_ENC_UTF_8);
-            if (rc < 0){
-                printf("Could not add the file %s to zip. Exiting.\n",outfn);
-                return 1;
-            }
-        }
-        zip_close(zipper);
+		printf("Maximum intensity: %lf, scanNr: %d\n",maxInt,scanNr);
+		if (geOutput == 1){
+			blosc_init();
+			blosc_set_nthreads(10);
+			int nFrames = (int)ceil(fabs((OmegaEnd-OmegaStart)/OmegaStep));
+			int frameNr;
+			uint16_t *data_out, *outArr;
+			outArr = calloc(NrPixels*NrPixels,sizeof(*outArr));
+			size_t loc = 0;
+			int compressedSize;
+			char outfn[4096];
+			int errorp;
+			char outZipFN[4096];
+			sprintf(outZipFN,"%s_scanNr_%d.zip",OutFileName,scanNr);
+			printf("Diffraction spots done, now writing zip file: %s\n",outZipFN);
+			zip_t *zipper = zip_open(outZipFN,ZIP_CREATE | ZIP_TRUNCATE,&errorp);
+			if (zipper == NULL){
+				printf("Could not open the zip file %s for writing. Exiting.\n",outZipFN);
+				return 1;
+			}
+			int rc;
+			char outstr[8192];
+			sprintf(outstr,"{\n    \"chunks\": [\n        1,\n        %d,\n        %d\n"
+			"    ],\n    \"compressor\": {\n        \"blocksize\": 0,\n        \"clevel\": 3,\n"
+			"\n        \"cname\": \"zstd\",\n        \"id\": \"blosc\",\n        \"shuffle\": 2\n"
+			"    },\n    \"dtype\": \"<u2\",\n    \"fill_value\": 0,\n    \"filters\": null,\n"
+			"    \"order\": \"C\",\n    \"shape\": [\n        %d,\n        %d,\n        %d\n    ],\n"
+			"    \"zarr_format\": 2\n}",NrPixels,NrPixels,nFrames,NrPixels,NrPixels);
+			char *zarrfn = ".zarray";
+			zip_source_t *sourc1 = zip_source_buffer(zipper,(const void *)outstr,strlen(outstr),0);
+			zip_int64_t rcv = zip_file_add(zipper,zarrfn,sourc1,ZIP_FL_OVERWRITE | ZIP_FL_ENC_UTF_8);
+			if (rcv < 0){
+				printf("Could not add the file %s to zip. Exiting.\n",zarrfn);
+				return 1;
+			}
+			rc = zip_set_file_compression(zipper,rcv,ZIP_CM_STORE,0);
+			if (rc != 0){
+				printf("Could not change compression type of the file %s to zip. Exiting.\n",zarrfn);
+				return 1;
+			}
+			for (frameNr=0;frameNr<nFrames;frameNr++){
+				for (i=0;i<NrPixels*NrPixels;i++){
+					outArr[i] = (uint16_t) (ImageArr[loc]*15000/maxInt);
+					loc++;
+				}
+				data_out = calloc(NrPixels*NrPixels,sizeof(*data_out));
+				blosc_set_compressor("zstd");
+				compressedSize = blosc_compress(3,2,2,NrPixels*NrPixels*sizeof(uint16_t),outArr,data_out,NrPixels*NrPixels*sizeof(uint16_t));
+				sprintf(outfn,"%d.0.0",frameNr);
+				zip_error_t *errp;
+				const void * dataT;
+				dataT = (const void *) data_out;
+				zip_source_t *source = zip_source_buffer(zipper,dataT,compressedSize,1);
+				zip_int64_t rct = zip_file_add(zipper,outfn,source,ZIP_FL_OVERWRITE | ZIP_FL_ENC_UTF_8);
+				if (rct < 0){
+					printf("Could not add the file %s to zip. Exiting.\n",outfn);
+					return 1;
+				}
+				rc = zip_set_file_compression(zipper,rct,ZIP_CM_STORE,0);
+				if (rc != 0){
+					printf("Could not change compression type of the file %s to zip. Exiting.\n",outfn);
+					return 1;
+				}
+			}
+			int zc = zip_close(zipper);
+		}
 	}
 	end = clock();
 	diftotal = ((double)(end-start0))/CLOCKS_PER_SEC;
