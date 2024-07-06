@@ -658,7 +658,7 @@ void main(int argc, char *argv[]){
             darkLoc = count;
         }
         if (strstr(finfo->name,"exchange/mask/0.0.0")!=NULL){
-			printf("Mask is found, we will separate mask and saturated intensity. Please ensure saturated intensity is different from mask pixels\n");a
+			printf("Mask is found, we will separate mask and saturated intensity. Please ensure saturated intensity is different from mask pixels\n");
             maskLoc = count;
         }
         if (strstr(finfo->name,"exchange/flood/0.0.0")!=NULL){
