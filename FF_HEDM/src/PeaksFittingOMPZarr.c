@@ -225,7 +225,7 @@ static inline unsigned FindRegionalMaxima(double *z,int *PixelPositions,
 		}
 		xThis = PixelPositions[i*2+0];
 		yThis = PixelPositions[i*2+1];
-		if (mask[xThis*NrPixels+yThis]==1){
+		if (mask[xThis+NrPixels*yThis]==1){
 			return 0; // We touched the mask. Remove the peak.
 		}
 		for (j=0;j<8;j++){
@@ -658,6 +658,7 @@ void main(int argc, char *argv[]){
             darkLoc = count;
         }
         if (strstr(finfo->name,"exchange/mask/0.0.0")!=NULL){
+			printf("Mask is found, we will separate mask and saturated intensity. Please ensure saturated intensity is different from mask pixels\n");a
             maskLoc = count;
         }
         if (strstr(finfo->name,"exchange/flood/0.0.0")!=NULL){
@@ -1202,6 +1203,9 @@ void main(int argc, char *argv[]){
         memcpy(maskTemp,data,dsize);
 		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,maskTemp,mask);
 		free(data);
+		int nrMask=0;
+		for (a=0;a<NrPixels*NrPixels;a++) if (mask[a]>0) nrMask++;
+		printf("Number of mask pixels: %d\n",nrMask);
 	}
 	free(maskTemp);
     zip_close(arch);
