@@ -148,7 +148,7 @@ app.layout = dbc.Container([
 
     dbc.Row([
         dbc.Col([
-        dbc.RadioItems(options=[{"label": x, "value": x} for x in ['Confidence', 'IDColor', 'Error','Euler0','Euler1','Euler2','StrainError']],
+        dbc.RadioItems(options=[{"label": x, "value": x} for x in ['Confidence', 'GrainSize', 'IDColor', 'Error','Euler0','Euler1','Euler2','StrainError']],
                        value='IDColor',
                        inline=True,
                        id='radio-buttons-grains')
