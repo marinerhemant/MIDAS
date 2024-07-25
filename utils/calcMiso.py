@@ -1,5 +1,6 @@
-from math import sin, cos, acos, sqrt, fabs
+from math import sin, cos, acos, sqrt, fabs, atan
 import numpy as np
+from scipy.linalg import expm
 rad2deg = 57.2957795130823
 deg2rad = 0.0174532925199433
 EPS = 0.000000000001
@@ -235,6 +236,8 @@ def OrientMat2Euler(m):
 	if len(m.shape)==1:
 		m = m.reshape((3,3))
 	determinant = np.linalg.det(m)
+	if m[2][2]>1:
+		m[2][2] = 1
 	if (fabs(m[2][2] - 1.0) < EPS):
 		phi = 0
 	else:
@@ -254,9 +257,23 @@ def OrientMat2Euler(m):
 		if fabs(m[2][1] / sph) <= 1.0:
 			theta = sin_cos_to_angle(m[2][0] / sph, m[2][1] / sph)
 		else: 
-			sin_cos_to_angle(m[2][0] / sph,1)
+			theta = sin_cos_to_angle(m[2][0] / sph,1)
 	Euler = np.zeros(3)
 	Euler[0] = psi
 	Euler[1] = phi
 	Euler[2] = theta
 	return Euler
+
+def rod2om(rod):
+	cThOver2 = cos(atan(np.linalg.norm(rod)))
+	th = 2*atan(np.linalg.norm(rod))
+	quat = np.array([cThOver2, rod[0]/cThOver2, rod[1]/cThOver2, rod[2]/cThOver2])
+	if th > EPS:
+		w = quat[1:]*th/sin(th/2)
+	else:
+		w = np.array([0,0,0])
+	wskew = np.array([[   0, -w[2],  w[1]],
+				   	 [ w[2],     0, -w[0]],
+					 [-w[1],  w[0],     0]])
+	OM = expm(wskew)
+	return OM

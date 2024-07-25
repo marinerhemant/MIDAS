@@ -22,7 +22,8 @@ rad2deg = 180/np.pi
 
 env = dict(os.environ)
 midas_path = os.path.expanduser("~/.MIDAS")
-env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
+libpth = os.environ.get('LD_LIBRARY_PATH','')
+env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib:{libpth}'
 
 class MyParser(argparse.ArgumentParser):
     def error(self, message):
@@ -403,7 +404,7 @@ def update_2d(nclk,xbc,ybc,frameNr,nFramesSum,showRings,mult,seq):
             hkls = hkls[:,:3].astype(int)
             unique_rads = np.unique(rads)
             fig = go.Figure()
-            fig.add_trace(go.Heatmap(z=frame,x0=-int(xbc*0.2), y0=-int(ybc*0.2),dx=0.2,dy=0.2,zmin=0,zmax=10000,zauto=False,colorscale='gray_r'))
+            fig.add_trace(go.Heatmap(z=frame,x0=-int(xbc*0.2), y0=-int(ybc*0.2),dx=0.2,dy=0.2,zmin=0,zmax=8000,zauto=False,colorscale='gray_r'))
             if showRings:
                 for rad in unique_rads:
                     found = 0
@@ -452,6 +453,8 @@ def show_mic(eulerVal,multipleData,selLoadNr):
                 eulers = np.zeros((mic.shape[0],3))
                 for rowNr in range(orients.shape[0]):
                     orient = orients[rowNr]
+                    det = np.linalg.det(orient.reshape(3,3))
+                    orient = orient / det
                     eulers[rowNr] = rad2deg * OrientMat2Euler(orient)
                 plotType = 3
             elif mic_h.startswith('%TriEdgeSize'):
