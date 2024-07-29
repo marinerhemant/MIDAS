@@ -196,9 +196,9 @@ elif 'zip' in InputFN[-5:]:
     zf = zarr.open(InputFN,'r')
     data_orig = zf[dataLoc]
     nFrames,numZ,numY = data_orig.shape
-    data = exc.create_dataset('data',shape=(nFrames,numZ,numY),dtype=np.uint16,chunks=(1,numZ,numY),compression=compressor)
-    zarr.copy(data,data_orig)
+    # data = exc.create_dataset('data',shape=(nFrames,numZ,numY),dtype=np.uint16,chunks=(1,numZ,numY),compression=compressor)
     # data[:] = data_orig[:]
+    zarr.copy(data_orig, exc, log=sys.stdout, if_exists='skip', dry_run=True)
     darkData = np.zeros((10,numPxZ,numPxY))
     brightData = np.copy(darkData)
     dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
