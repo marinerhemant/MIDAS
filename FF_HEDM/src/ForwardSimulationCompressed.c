@@ -1430,6 +1430,7 @@ main(int argc, char *argv[])
 						spotMatr[6],(int)spotMatr[7],spotMatr[8],spotMatr[9],spotMatr[10],spotMatr[11],scanNr);
 				// Map yDet,zDet,omeThis to frames.
 				omeBin = (size_t)floor(-(OmegaStart-omeThis)/OmegaStep);
+				printf("%zu %lf %lf %lf\n",omeBin,OmegaStart,omeThis,OmegaStep);
 				omeBin *= NrPixels;
 				omeBin *= NrPixels;
 				/////////////// Change this to exact position, not rounded off....
