@@ -1512,15 +1512,17 @@ main(int argc, char *argv[])
 				return 1;
 			}
 			for (frameNr=0;frameNr<nFrames;frameNr++){
+				int locCounter=0;
 				for (i=0;i<NrPixels*NrPixels;i++){
 					outArr[i] = (uint16_t) (ImageArr[loc]*15000/maxInt);
+					if (outArr[i]>0) locCounter++;
 					loc++;
 				}
 				data_out = calloc(NrPixels*NrPixels,sizeof(*data_out));
 				blosc_set_compressor("zstd");
 				compressedSize = blosc_compress(3,2,2,NrPixels*NrPixels*sizeof(uint16_t),outArr,data_out,NrPixels*NrPixels*sizeof(uint16_t));
 				sprintf(outfn,"exchange/data/%d.0.0",frameNr);
-				printf("%zu %s %d\n",loc,outfn,compressedSize);
+				printf("%zu %s %d %d\n",loc,outfn,compressedSize,locCounter);
 				zip_error_t *errp;
 				const void * dataT;
 				dataT = (const void *) data_out;
