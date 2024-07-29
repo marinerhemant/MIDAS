@@ -1323,7 +1323,7 @@ main(int argc, char *argv[])
 	int idxNrY,idxNrZ;
 	long long int idx;
 	size_t omeBin, yBin, zBin, imageBin, centIdx, currentPos;
-	int displ;
+	size_t displ;
 	hklsOut = allocMatrix(n_hkls,5);
 	hklsTemp = allocMatrix(n_hkls,5);
 	printf("Total number of orientations: %d\n",nrPoints);
@@ -1443,7 +1443,7 @@ main(int argc, char *argv[])
 					for (idxNrZ=-4*ceil(GaussWidth);idxNrZ<=4*ceil(GaussWidth);idxNrZ++){
 						if ((int)zBin+idxNrZ < 0 || (int)zBin+idxNrZ >= NrPixels) continue;
 						displ = idxNrY*NrPixels + idxNrZ;
-						currentPos = (size_t)((int) centIdx + displ);
+						currentPos = (size_t)( centIdx + displ);
 						if (currentPos < 0 || currentPos >= ImageArrSize) continue;
 						ImageArr[currentPos] += (double) (GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask] * PeakIntensity);
 						if (maxInt < ImageArr[currentPos]) maxInt = ImageArr[currentPos];
