@@ -1431,7 +1431,7 @@ main(int argc, char *argv[])
 						spotMatr[6],(int)spotMatr[7],spotMatr[8],spotMatr[9],spotMatr[10],spotMatr[11],scanNr);
 				// Map yDet,zDet,omeThis to frames.
 				omeBin = (size_t)floor(-(OmegaStart-omeThis)/OmegaStep);
-				printf("%zu %lf %lf %lf\n",omeBin,OmegaStart,omeThis,OmegaStep);
+				// printf("%zu %lf %lf %lf\n",omeBin,OmegaStart,omeThis,OmegaStep);
 				omeBin *= NrPixels;
 				omeBin *= NrPixels;
 				/////////////// Change this to exact position, not rounded off....
@@ -1523,7 +1523,7 @@ main(int argc, char *argv[])
 				blosc_set_compressor("zstd");
 				compressedSize = blosc_compress(3,2,2,NrPixels*NrPixels*sizeof(uint16_t),outArr,data_out,NrPixels*NrPixels*sizeof(uint16_t));
 				sprintf(outfn,"exchange/data/%d.0.0",frameNr);
-				printf("%zu %s %d %d\n",loc,outfn,compressedSize,locCounter);
+				// printf("%zu %s %d %d\n",loc,outfn,compressedSize,locCounter);
 				zip_error_t *errp;
 				const void * dataT;
 				dataT = (const void *) data_out;
