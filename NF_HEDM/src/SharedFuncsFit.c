@@ -862,7 +862,7 @@ SimulateDiffractionImage(
 				if (MultY >= 2048 || MultY < 0 || MultZ >= 2048 || MultZ < 0){
 					break;
 				}
-				
+				// printf("%lf\n",OmegaThis);
 				fprintf(spF,"%d\t%d\t%d\t%d\t%d\t%lf\t%lf\t%lf\n",voxNr,Layer,OmeBin,MultY,MultZ,OmegaThis,ythis,zthis);
 				BinNr = Layer*NrOfFiles;
 				BinNr *= 2048;

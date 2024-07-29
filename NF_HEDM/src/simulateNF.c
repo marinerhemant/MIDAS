@@ -86,9 +86,9 @@ main(int argc, char *argv[])
     char *ParamFN;
     FILE *fileParam;
     ParamFN = argv[1];
-	char cmmd[4096];
-	sprintf(cmmd,"~/opt/MIDAS/NF_HEDM/bin/GetHKLList %s",ParamFN);
-	system(cmmd);
+	// char cmmd[4096];
+	// sprintf(cmmd,"~/opt/MIDAS/NF_HEDM/bin/GetHKLList %s",ParamFN);
+	// system(cmmd);
     char *MicFN = argv[2];
     char *outputFN = argv[3];
     char aline[4096];
@@ -267,8 +267,7 @@ main(int argc, char *argv[])
     SizeObsSpots = (nLayers);
     SizeObsSpots*=nrPixels;
     SizeObsSpots*=nrFiles;
-    //~ SizeObsSpots;
-    printf("%lld\n",SizeObsSpots);
+    printf("SizeSimulation: %lld bytes\n",SizeObsSpots*2);
     ObsSpotsInfo = calloc(SizeObsSpots,sizeof(*ObsSpotsInfo));
     binArr = calloc(SizeObsSpots,sizeof(*binArr)); // This is assuming we have quarter of data with signal, not unreasonable.
     if (ObsSpotsInfo == NULL || binArr == NULL){
@@ -330,7 +329,7 @@ main(int argc, char *argv[])
 	double OMIn[3][3], FracCalc;
 	FILE *InpMicF;
 	InpMicF = fopen(MicFN,"r");
-	printf("%s\n",MicFN);
+	printf("Reading from the mic: %s\n",MicFN);
 	if (InpMicF == NULL) return 1;
 	char outFN[4096];
 	sprintf(outFN,"%s.bin",outputFN);
@@ -369,6 +368,7 @@ main(int argc, char *argv[])
 		YG[1] = ys+dy2;
 		YG[2] = ys+dy2;
 		Euler2OrientMat(eulThis,OMIn);
+        // printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf\n",OMIn[0][0],OMIn[0][1],OMIn[0][2],OMIn[1][0],OMIn[1][1],OMIn[1][2],OMIn[2][0],OMIn[2][1],OMIn[2][2]);
 		SimulateAccOrient(nrFiles,nLayers,ExcludePoleAngle,Lsd,SizeObsSpots,XG,YG,
 			RotMatTilts,OmegaStart,OmegaStep,px,ybc,zbc,gs,hkls,n_hkls,Thetas,
 			OmegaRanges,NoOfOmegaRanges,BoxSizes,P0,NrPixelsGrid,ObsSpotsInfo,

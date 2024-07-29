@@ -3,6 +3,7 @@
 # See LICENSE file.
 #
 # make CC=/Users/hsharma/opt/homebrew/opt/gcc/bin/gcc-13 integrator
+# install_name_tool -add_rpath /Users/hsharma/.MIDAS/BLOSC1/lib bin/ForwardSimulationCompressed
 CC=gcc
 NCC=nvcc
 MPICC=LD_LIBRARY_PATH=$${HOME}/.MIDAS/MPICH/lib:$LD_LIBRARY_PATH $${HOME}/.MIDAS/MPICH/bin/mpicc

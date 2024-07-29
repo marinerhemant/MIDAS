@@ -117,7 +117,7 @@ CalcOmega(
     RealType ome;
     RealType len= sqrt(x*x + y*y + z*z);
     RealType v=sin(theta*deg2rad)*len;
-    //~ printf("%lf %lf\n",len,v);
+    // printf("%lf %lf\n",len,v);
     
     RealType almostzero = 1e-4;
     if ( fabs(y) < almostzero ) {
@@ -138,7 +138,7 @@ CalcOmega(
         RealType b = (2*v*x) / y2;
         RealType c = ((v*v) / y2) - 1;
         RealType discr = b*b - 4*a*c;
-        //~ printf("discr %lf\n",discr);
+        // printf("discr %lf\n",discr);
         
         RealType ome1a;
         RealType ome1b;
@@ -151,25 +151,32 @@ CalcOmega(
         
         if (discr >= 0) {
             cosome1 = (-b + sqrt(discr))/(2*a);
+            // printf("%lf\n",cosome1);
             if (fabs(cosome1) <= 1) {
+                // printf("Case1\n");
                 ome1a = acos(cosome1);
                 ome1b = -ome1a;
                 eqa = -x*cos(ome1a) + y*sin(ome1a);
                 diffa = fabs(eqa - v);
                 eqb = -x*cos(ome1b) + y*sin(ome1b);
                 diffb = fabs(eqb - v);
+                // printf("%lf %lf\n",diffa,diffb);
                 if (diffa < diffb ) {
                     omegas[*nsol] = ome1a*rad2deg;
+                    // printf("1: %lf\n",omegas[*nsol]);
                     *nsol = *nsol + 1;
                 }
                 else {
                     omegas[*nsol] = ome1b*rad2deg;
+                    // printf("2: %lf\n",omegas[*nsol]);
                     *nsol = *nsol + 1;
                 }
             }
             
             cosome2 = (-b - sqrt(discr))/(2*a);
+            // printf("%lf\n",cosome1);
             if (fabs(cosome2) <= 1) {
+                // printf("Case2\n");
                 ome2a = acos(cosome2);
                 ome2b = -ome2a;
                 
@@ -177,17 +184,19 @@ CalcOmega(
                 diffa = fabs(eqa - v);
                 eqb = -x*cos(ome2b) + y*sin(ome2b);
                 diffb = fabs(eqb - v);
-                
+                // printf("%lf %lf\n",diffa,diffb);
                 if (diffa < diffb) {
                     omegas[*nsol] = ome2a*rad2deg;
+                    // printf("3: %lf\n",omegas[*nsol]);
                     *nsol = *nsol + 1;
                 }
                 else {
                     omegas[*nsol] = ome2b*rad2deg;
+                    // printf("4: %lf\n",omegas[*nsol]);
                     *nsol = *nsol + 1;
                 }
             }
-            //~ printf("COSOME %lf %lf %lf %lf %lf\n",cosome1,cosome2,b,a,discr);
+            // printf("COSOME %lf %lf %lf %lf %lf\n",cosome1,cosome2,b,a,discr);
         }
     }
     RealType gw[3];
@@ -198,7 +207,7 @@ CalcOmega(
         RotateAroundZ(gv, omegas[indexOme], gw);
         CalcEtaAngle(gw[1],gw[2], &eta);
         etas[indexOme] = eta;
-        //~ printf("%lf %lf indexome: %d Eta %lf\n",gw[1],gw[2],indexOme,eta);
+        // printf("%lf %lf indexome: %d Eta %lf\n",gw[1],gw[2],indexOme,eta);
     }
 }
 
@@ -229,20 +238,23 @@ CalcDiffrSpots_Furnace(
     int nspotsPlane;
     int spotnr = 0;
     int spotid = 0;
-    //~ for (i =0;i<3;i++) for (j=0;j<3;j++) printf("%lf ",OrientMatrix[i][j]); printf("\n");
+    // for (i =0;i<3;i++) for (j=0;j<3;j++) printf("%lf ",OrientMatrix[i][j]); printf("\n");
     for (indexhkl=0; indexhkl < n_hkls ; indexhkl++)  {
         Ghkl[0] = hkls[indexhkl][0];
         Ghkl[1] = hkls[indexhkl][1];
         Ghkl[2] = hkls[indexhkl][2];
         RealType RingRadius = distance * tan(2*deg2rad*Thetas[indexhkl]);
         MatrixMultF(OrientMatrix,Ghkl, Gc);
-        //~ printf("GC %lf %lf %lf\n",Gc[0],Gc[1],Gc[2]);
+        // printf("GC %lf %lf %lf\n",Gc[0],Gc[1],Gc[2]);
+        // printf("GHKL %lf %lf %lf\n",Ghkl[0],Ghkl[1],Ghkl[2]);
         theta = Thetas[indexhkl];
         CalcOmega(Gc[0], Gc[1], Gc[2], theta, omegas, etas, &nspotsPlane);
+        printf("GHKL %lf %lf %lf %d\n",Ghkl[0],Ghkl[1],Ghkl[2],nspotsPlane);
         for (i=0 ; i<nspotsPlane ; i++) {
             RealType Omega = omegas[i];
             RealType Eta = etas[i];
             RealType EtaAbs =  fabs(Eta);
+            printf("GHKL %lf %lf %lf %lf\n",Ghkl[0],Ghkl[1],Ghkl[2],EtaAbs);
             if ((EtaAbs < ExcludePoleAngle ) || ((180-EtaAbs) < ExcludePoleAngle)) continue;
             CalcSpotPosition(RingRadius, etas[i], &(yl), &(zl));
             for (OmegaRangeNo = 0 ; OmegaRangeNo < NOmegaRanges ; OmegaRangeNo++ ) {
@@ -258,13 +270,14 @@ CalcDiffrSpots_Furnace(
                 }
             }
             if (KeepSpot==1) {
-				// printf("%d %lf %lf %lf %lf %lf %lf %lf\n",spotnr,omegas[i],yl,zl,etas[i],Ghkl[0],Ghkl[1],Ghkl[2]);
+				printf("%d %lf %lf %lf %lf %lf %lf %lf\n",spotnr,omegas[i],yl,zl,etas[i],Ghkl[0],Ghkl[1],Ghkl[2]);
                 spots[spotnr*3+0] = yl;
                 spots[spotnr*3+1] = zl;
                 spots[spotnr*3+2] = omegas[i];
                 spotnr++;
                 spotid++;
             }
+            else printf("%lf %lf %lf\n",Ghkl[0],Ghkl[1],Ghkl[2]);
         }
     }
     *nspots = spotnr;

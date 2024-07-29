@@ -666,13 +666,29 @@ void CorrectTiltSpatialDistortion(double px, double Lsd, double ybc, double zbc,
 	}
 }
 
+static inline int writeStrZip(char outstr[8192], char zarrfn[8192], zip_t *zipper)
+{
+	zip_source_t *sourc0 = zip_source_buffer(zipper,(const void *)outstr,strlen(outstr),0);
+	zip_int64_t rcv0 = zip_file_add(zipper,zarrfn,sourc0,ZIP_FL_OVERWRITE | ZIP_FL_ENC_UTF_8);
+	if (rcv0 < 0){
+		printf("Could not add the file %s to zip. Exiting.\n",zarrfn);
+		return 1;
+	}
+	int rc = zip_set_file_compression(zipper,rcv0,ZIP_CM_STORE,0);
+	if (rc != 0){
+		printf("Could not change compression type of the file %s to zip. Exiting.\n",zarrfn);
+		return 1;
+	}
+	return 0;
+}
+
 static inline void
 usage(void)
 {
 	printf("Make diffraction spots: usage: ./ForwardSimulation "
 	"<ParameterFile>\n"
 	"If you want to do a multi-scan simulation, there should be positions.csv file in the current folder.\n"
-	"Positions in microns.");
+	"Positions in micron.\n");
 }
 
 int
@@ -926,7 +942,8 @@ main(int argc, char *argv[])
 		FILE *positionsF = fopen("positions.csv","r");
 		for (scanNr=0;scanNr<nScans;scanNr++){
 			fgets(aline,4096,positionsF);
-			sscanf(aline,"%d",&positions[scanNr]);
+			sscanf(aline,"%lf",&positions[scanNr]);
+			printf("%lf\n",positions[scanNr]);
 		}
 	}
 	printf("Output will be saved to: %s_scanNr_XYZ.zip, XYZ is the scanNr\n",OutFileName);
@@ -1301,7 +1318,7 @@ main(int argc, char *argv[])
 	}
 	double OmeDiff, yTemp, zTemp, yThis, omeThis, etaThis;
 	double Info[5],DisplY,DisplZ,yDet,zDet,DisplY2,DisplZ2,xGrain,yGrain, xyz[3],P1[3],ABC[3],outxyz[3],YZSpotsT[2];
-	double newY,yOffset=0;
+	double newY=0,yOffset=0;
 	int yTrans, zTrans;
 	int idxNrY,idxNrZ;
 	long long int idx;
@@ -1310,10 +1327,13 @@ main(int argc, char *argv[])
 	hklsOut = allocMatrix(n_hkls,5);
 	hklsTemp = allocMatrix(n_hkls,5);
 	printf("Total number of orientations: %d\n",nrPoints);
+	double omegaLarge = OmegaStart > OmegaEnd ? OmegaStart : OmegaEnd;
+	double omegaSmall = OmegaStart < OmegaEnd ? OmegaStart : OmegaEnd;
 	// Look at OpenMP?
 	for (scanNr=0;scanNr<nScans;scanNr++){
 		if (scanNr > 0) memset(ImageArr,0,ImageArrSize*sizeof(*ImageArr));
 		yOffset = positions[scanNr];
+		printf("yPosition: %lf\n",yOffset);
 		for (voxNr=0;voxNr<nrPoints;voxNr++){
 			// First calculate new hkls
 			if (dataType < 2){
@@ -1341,12 +1361,12 @@ main(int argc, char *argv[])
 				for (i=0;i<5;i++) Info[i] = TheorSpots[spotNr][i]; // Info has: R,eta,ome,theta,ringnr
 				OmeDiff = CorrectWedge(Info[1],Info[3],Wavelength,Wedge);
 				omeThis = Info[2] - OmeDiff;
-				if (omeThis >= OmegaEnd*OmegaStep/fabs(OmegaStep)) continue;
-				if (omeThis < OmegaStart*OmegaStep/fabs(OmegaStep)) continue;
+				if (omeThis >= omegaLarge) continue;
+				if (omeThis <= omegaSmall) continue;
 				// Get diplacements due to spot position
 				if (nScans>1 || beamSize>0){
 					newY = InputInfo[voxNr][9] * sin(deg2rad*omeThis) + InputInfo[voxNr][10] * cos(deg2rad*omeThis);
-					if (fabs(newY - positions[scanNr]) > beamSize/2){
+					if (fabs(newY - yOffset) > beamSize/2){
 						continue;
 					}
 				}
@@ -1451,23 +1471,43 @@ main(int argc, char *argv[])
 				return 1;
 			}
 			int rc;
-			char outstr[8192];
-			sprintf(outstr,"{\n    \"chunks\": [\n        1,\n        %d,\n        %d\n"
+			char outstr0[8192];
+			sprintf(outstr0,"{\n    \"zarr_format\": 2\n}");
+			char zarrfn0[8192];
+			sprintf(zarrfn0,".zgroup");
+			int rcv0 = writeStrZip(outstr0,zarrfn0,zipper);
+			if (rcv0 != 0){
+				printf("Did not succeed to add %s to zip. Exiting.\n",zarrfn0);
+				return 1;
+			}
+			char zarrfn1[8192];
+			sprintf(zarrfn1,"exchange/.zgroup");
+			rcv0 = writeStrZip(outstr0,zarrfn1,zipper);
+			if (rcv0 != 0){
+				printf("Did not succeed to add %s to zip. Exiting.\n",zarrfn1);
+				return 1;
+			}
+			char outstr2[8192];
+			sprintf(outstr2,"{\n    \"chunks\": [\n        1,\n        %d,\n        %d\n"
 			"    ],\n    \"compressor\": {\n        \"blocksize\": 0,\n        \"clevel\": 3,\n"
 			"\n        \"cname\": \"zstd\",\n        \"id\": \"blosc\",\n        \"shuffle\": 2\n"
 			"    },\n    \"dtype\": \"<u2\",\n    \"fill_value\": 0,\n    \"filters\": null,\n"
 			"    \"order\": \"C\",\n    \"shape\": [\n        %d,\n        %d,\n        %d\n    ],\n"
 			"    \"zarr_format\": 2\n}",NrPixels,NrPixels,nFrames,NrPixels,NrPixels);
-			char *zarrfn = ".zarray";
-			zip_source_t *sourc1 = zip_source_buffer(zipper,(const void *)outstr,strlen(outstr),0);
-			zip_int64_t rcv = zip_file_add(zipper,zarrfn,sourc1,ZIP_FL_OVERWRITE | ZIP_FL_ENC_UTF_8);
-			if (rcv < 0){
-				printf("Could not add the file %s to zip. Exiting.\n",zarrfn);
+			char zarrfn2[8192];
+			sprintf(zarrfn2,"exchange/data/.zarray");
+			rcv0 = writeStrZip(outstr2,zarrfn2,zipper);
+			if (rcv0 != 0){
+				printf("Did not succeed to add %s to zip. Exiting.\n",zarrfn2);
 				return 1;
 			}
-			rc = zip_set_file_compression(zipper,rcv,ZIP_CM_STORE,0);
-			if (rc != 0){
-				printf("Could not change compression type of the file %s to zip. Exiting.\n",zarrfn);
+			char outstr3[8192];
+			sprintf(outstr3,"{\n    \"_ARRAY_DIMENSIONS\": [\n        %d,\n        %d,\n        %d\n    ]\n}",nFrames,NrPixels,NrPixels);
+			char zarrfn3[8192];
+			sprintf(zarrfn3,"exchange/data/.zattrs");
+			rcv0 = writeStrZip(outstr3,zarrfn3,zipper);
+			if (rcv0 != 0){
+				printf("Did not succeed to add %s to zip. Exiting.\n",zarrfn3);
 				return 1;
 			}
 			for (frameNr=0;frameNr<nFrames;frameNr++){
@@ -1478,7 +1518,7 @@ main(int argc, char *argv[])
 				data_out = calloc(NrPixels*NrPixels,sizeof(*data_out));
 				blosc_set_compressor("zstd");
 				compressedSize = blosc_compress(3,2,2,NrPixels*NrPixels*sizeof(uint16_t),outArr,data_out,NrPixels*NrPixels*sizeof(uint16_t));
-				sprintf(outfn,"%d.0.0",frameNr);
+				sprintf(outfn,"exchange/data/%d.0.0",frameNr);
 				zip_error_t *errp;
 				const void * dataT;
 				dataT = (const void *) data_out;
@@ -1497,6 +1537,7 @@ main(int argc, char *argv[])
 			int zc = zip_close(zipper);
 		}
 	}
+	fclose(spotsfile);
 	end = clock();
 	diftotal = ((double)(end-start0))/CLOCKS_PER_SEC;
 	printf("Time elapsed in making diffraction spots: %f [s]\n",diftotal);
