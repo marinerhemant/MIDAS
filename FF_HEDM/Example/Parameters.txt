@@ -1,0 +1,74 @@
+##### PARAMETERS TO SIMULATE
+LatticeConstant 4.08 4.08 4.08 90 90 90									# Undeformed lattice parameter to start the optimization. (um um um deg deg deg) Please always use ideal values (eg for the angles).
+SpaceGroup 225															# Space group of the material.
+InFileName GrainsSim.csv                                                 # Input Grains.csv file to generate grains.
+OutFileName Au_FF_000001_pf                                             # FileName to be used for simulation data.
+Lsd 1000000.0000														# Distance between the rotation axis and the detector. (um)
+BC 1022 1022															# Beam center horizontal and vertical. (px px)
+tx 0																	# Rotation of the detector from ideal position about x-ray beam. (deg)
+ty 0																	# Rotation of the detector from ideal position about the horizontal axis towards the door. (deg)
+tz 0																	# Rotation of the detector from ideal position about the vertical axis up. (deg)
+p0 0																	# Detector distortion parameter.
+p1 0																	# Detector distortion parameter.
+p2 0																	# Detector distortion parameter.
+Wedge 0																	# Deviation from 90 degrees between the rotation axis and the incoming X-ray beam.
+RhoD 204800                                                             # Maximum ring radius / reach for detector distortion.
+OmegaStep -0.25                                                         # Rotation step. (deg)
+Wavelength 0.22291                                                      # Wavelength of monochromatic beam (Angstrom).
+NrPixels 2048                                                           # Number of pixels, assuming a square detector.
+px 200                                                                  # Pixel size of square shaped pixels (microns).
+RingThresh 1 10															# Ring number and threshold for the ring to be used in analysis.
+RingThresh 2 10															# Ring number and threshold for the ring to be used in analysis.
+RingThresh 3 10															# Ring number and threshold for the ring to be used in analysis.
+RingThresh 4 10															# Ring number and threshold for the ring to be used in analysis.
+RingThresh 5 10															# Ring number and threshold for the ring to be used in analysis.
+GaussWidth 1                                                            # Width of Gaussian peak in pixels for simulating a diffraction spot.
+OmegaStart 180                                                          # Omega of the first frame. (deg)
+OmegaEnd -180                                                           # Omega of the last frame. (deg)
+PeakIntensity 5000                                                      # Amplitude of the simulated peaks. This is rescaled to maximize the dynamic range of the simulation. (counts)
+WriteSpots 1                                                            # 1 if you want to write the diffraction spots associated with each orientation provided. Saved to SpotMatrixGen.csv file.
+
+##### FF-Simulation
+nScans 1                                                                # Number of scans. If 1, it will simulate a far-field experiment. If greater than 1, provide the positions.csv file with position of each beam placement. Number of rows in positions.csv must be >= nScans. Then it will simulate a point-focus experiment.
+
+##### PF-Simulation
+# nScans 9                                                                # Number of scans. If 1, it will simulate a far-field experiment. If greater than 1, provide the positions.csv file with position of each beam placement. Number of rows in positions.csv must be >= nScans. Then it will simulate a point-focus experiment.
+# BeamSize 10                                                             # Horizontal size of the beam. (microns) If smaller than the location of the grains and nScans=1, it will simulate a far-field experiment. Else, combined with nScans>1, it can be used to simulate a point-focus experiment.
+
+##### PARAMETERS FOR ANALYSIS
+OverAllRingToIndex 2													# Ring number of the ring to be used to generate candidate orientations. Preferably use a ring with low multiplicity to lower runtime.
+Twins 0																	# If you want to do twin analysis.
+TakeGrainMax 0															# This was related to twin analysis. (Redundant)
+Vsample 10000000														# Total illuminated volume. This is required for correct grain size calculation. (um3)
+BeamThickness 200														# Height of the beam. (um)
+ImTransOpt 0															# Image transformations needed to get the detector in the correct coordinate system.
+GlobalPosition 100														# Starting position of the sample (um).
+NumPhases 1																# Number of phases in the material.
+PhaseNr 1																# Phase number of the current phase being analyzed.
+tInt 0.3																# Integration time for the detector. (s)
+tGap 0.15																# Gap time for the detector. (s)
+MinNrSpots 3															# Minimum number of unique solutions before a grain is confirmed. Since we always use rings with multiplicity greater than 1, multiple solutions for each grain are found. This ensures enough same solutions were found for a grain to be identified as a grain.
+DiscModel 0																# If using focus beam, switch to 1 and provide DiscArea. This will ensure proper grain size calculation.
+DiscArea 2250000														# in case of focus beam, provide illuminated area. (um3)
+MargABC 4.8																# Tolerance (%) for a, b, c of lattice parameter during refinement.
+MargABG 4.8																# Tolerance (%) for alpha, beta, gamma of lattice parameter during refinement.
+NrFilesPerSweep 1														# Number of files in a layer. If the scan was done with wedges, input the number of wedges constituting a full layer. This is used to calculate the starting file number for each subsequent layer.
+UpperBoundThreshold 16000												# Intensity above which detector saturated. (counts) MUST BE >15000 in case of a simulated experiment.
+Rsample 2000                                                            # Horizontal radius of virtual sample during analysis. Reconstructed grain positions will be limited to +- Rsample. (microns)
+Hbeam 2000                                                              # Vertical size of virtual sample during analysis. Reconstructed grain positions will be limited to +- Hbeam/2. (microns)
+MinEta 6                                                                # Eta on the north and south poles to exclude. This is used to remove spots too close to the poles where wedge effects can ruin the omega calculation. (degrees)
+MinOmeSpotIDsToIndex -90                                                # Minimum omega for filtering spot IDs on the ring to index. (degrees)
+MaxOmeSpotIDsToIndex 90                                                 # Maximum omega for filtering spot IDs on the ring to index. (degrees)
+Width 1500                                                              # Tolerance around the ideal ring radius to associate spots with a ring. (microns)
+Completeness 0.8                                                        # Minimum fraction of spots to be found wrt simulated spots to qualify a grain. (between 0-1)
+OmegaRange -180 180                                                     # Omega range to use during analysis. (deg)
+BoxSize -1000000 1000000 -1000000 1000000                               # This creates a virtual "box" around the beam center (-y,+y,-z,+z) to define useful area of the detector. Use values larger than the detector to ignore. (microns)
+StepSizeOrient 0.2                                                      # For each of the orientation fibers calculated from the diffraction spots on the RingToIndex, the candidate orientations will be spaced with this misorientation spacing. (degrees)
+StepSizePos 100                                                         # Spacing in position used to generate candidate positions in the first pass during indexing. (microns)
+MarginOme 0.5                                                           # Tolerance around the expected position of the diffraction spots used during indexing in the omega direction. (microns)
+MarginEta 500                                                           # Tolerance around the expected position of the diffraction spots used during indexing in the eta direction. (microns)
+MarginRadial 500                                                        # Tolerance around the expected position of the diffraction spots used during indexing in the radial direction (2Theta). (microns)
+MarginRadius 500                                                        # All diffraction spots outside equivalent grain radius of this value from the candidate spots will be filtered out. (microns) Use a large value to disable filtering.
+OmeBinSize 0.1                                                          # Size of the bins used to generate the look-up table in omega direction. (degrees)
+EtaBinSize 0.1                                                          # Size of the bins used to generate the look-up table in eta direction. (degrees)
+UseFriedelPairs 1                                                       # If you use FriedelPairs, it massively speeds up the algorithm (provide 1). If disabling using 0, need to confirm with IndexerOMP to see that the switch was enabled during compilation. Contact Hemant for help with this.
