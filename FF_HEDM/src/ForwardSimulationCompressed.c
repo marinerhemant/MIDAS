@@ -1362,7 +1362,7 @@ main(int argc, char *argv[])
 				for (i=0;i<5;i++) Info[i] = TheorSpots[spotNr][i]; // Info has: R,eta,ome,theta,ringnr
 				OmeDiff = CorrectWedge(Info[1],Info[3],Wavelength,Wedge);
 				omeThis = Info[2] - OmeDiff;
-				if (omeThis >= omegaLarge) || (omeThis <= omegaSmall) continue;
+				if ((omeThis >= omegaLarge) || (omeThis <= omegaSmall)) continue;
 				// Get diplacements due to spot position
 				if (nScans>1 || beamSize>0){
 					newY = InputInfo[voxNr][9] * sin(deg2rad*omeThis) + InputInfo[voxNr][10] * cos(deg2rad*omeThis);
