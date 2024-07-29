@@ -1322,7 +1322,8 @@ main(int argc, char *argv[])
 	int yTrans, zTrans;
 	int idxNrY,idxNrZ;
 	long long int idx;
-	size_t omeBin, yBin, zBin, imageBin, centIdx, currentPos;
+	size_t omeBin, yBin, zBin, imageBin, centIdx;
+	long long int currentPos;
 	size_t displ;
 	hklsOut = allocMatrix(n_hkls,5);
 	hklsTemp = allocMatrix(n_hkls,5);
@@ -1443,7 +1444,7 @@ main(int argc, char *argv[])
 					for (idxNrZ=-4*ceil(GaussWidth);idxNrZ<=4*ceil(GaussWidth);idxNrZ++){
 						if ((int)zBin+idxNrZ < 0 || (int)zBin+idxNrZ >= NrPixels) continue;
 						displ = idxNrY*NrPixels + idxNrZ;
-						currentPos = (size_t)( centIdx + displ);
+						currentPos = (long long int)( (long long int) centIdx + (long long int) displ);
 						if (currentPos < 0 || currentPos >= ImageArrSize) continue;
 						ImageArr[currentPos] += (double) (GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask] * PeakIntensity);
 						if (maxInt < ImageArr[currentPos]) maxInt = ImageArr[currentPos];
