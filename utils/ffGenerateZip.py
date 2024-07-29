@@ -74,6 +74,9 @@ layerNr = args.LayerNr
 numFilesPerScan = args.numFilesPerScan
 doStd = args.correctSD
 
+if resultDir == '.':
+    resultDir = os.getcwd()
+
 darkLoc = 'exchange/dark'
 brightLoc = 'exchange/bright'
 lines = open(psFN).readlines()
