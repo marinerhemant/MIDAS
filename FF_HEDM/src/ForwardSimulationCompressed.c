@@ -1256,7 +1256,7 @@ main(int argc, char *argv[])
 	ImageArrSize *= NrPixels;
 	ImageArrSize *= ceil(fabs((OmegaEnd-OmegaStart)/OmegaStep));
 	ImageArr = calloc(ImageArrSize,sizeof(*ImageArr));
-	printf("%llu\n",(long long unsigned) ImageArrSize);
+	printf("Number of elements in ImageArray: %zu\n", ImageArrSize);
 	if (ImageArr == NULL){
 		printf("Could not allocate enough memory for image array. Exiting.\n");
 		return 1;
@@ -1520,7 +1520,7 @@ main(int argc, char *argv[])
 				blosc_set_compressor("zstd");
 				compressedSize = blosc_compress(3,2,2,NrPixels*NrPixels*sizeof(uint16_t),outArr,data_out,NrPixels*NrPixels*sizeof(uint16_t));
 				sprintf(outfn,"exchange/data/%d.0.0",frameNr);
-				printf("%s %d\n",outfn,compressedSize);
+				printf("%zu %s %d\n",loc,outfn,compressedSize);
 				zip_error_t *errp;
 				const void * dataT;
 				dataT = (const void *) data_out;
