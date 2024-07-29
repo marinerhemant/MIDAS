@@ -1329,6 +1329,7 @@ main(int argc, char *argv[])
 	printf("Total number of orientations: %d\n",nrPoints);
 	double omegaLarge = OmegaStart > OmegaEnd ? OmegaStart : OmegaEnd;
 	double omegaSmall = OmegaStart < OmegaEnd ? OmegaStart : OmegaEnd;
+	printf("Omega range for simulation: min: %lf, max: %lf\n",omegaSmall,omegaLarge);
 	// Look at OpenMP?
 	for (scanNr=0;scanNr<nScans;scanNr++){
 		if (scanNr > 0) memset(ImageArr,0,ImageArrSize*sizeof(*ImageArr));
@@ -1361,8 +1362,7 @@ main(int argc, char *argv[])
 				for (i=0;i<5;i++) Info[i] = TheorSpots[spotNr][i]; // Info has: R,eta,ome,theta,ringnr
 				OmeDiff = CorrectWedge(Info[1],Info[3],Wavelength,Wedge);
 				omeThis = Info[2] - OmeDiff;
-				if (omeThis >= omegaLarge) continue;
-				if (omeThis <= omegaSmall) continue;
+				if (omeThis >= omegaLarge) || (omeThis <= omegaSmall) continue;
 				// Get diplacements due to spot position
 				if (nScans>1 || beamSize>0){
 					newY = InputInfo[voxNr][9] * sin(deg2rad*omeThis) + InputInfo[voxNr][10] * cos(deg2rad*omeThis);
@@ -1519,6 +1519,7 @@ main(int argc, char *argv[])
 				blosc_set_compressor("zstd");
 				compressedSize = blosc_compress(3,2,2,NrPixels*NrPixels*sizeof(uint16_t),outArr,data_out,NrPixels*NrPixels*sizeof(uint16_t));
 				sprintf(outfn,"exchange/data/%d.0.0",frameNr);
+				printf("%s %d\n",outfn,compressedSize);
 				zip_error_t *errp;
 				const void * dataT;
 				dataT = (const void *) data_out;
