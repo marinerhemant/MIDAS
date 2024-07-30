@@ -1413,6 +1413,7 @@ void main(int argc, char *argv[]){
 			}
 		}
 
+		double t2 = omp_get_wtime();
 		DoImageTransformations(nImTransOpt,TransOpt,Image,NrPixels);
 		for (i=0;i<(NrPixels*NrPixels);i++) ImgCorrBCTemp[i]=Image[i];
 		Transposer(ImgCorrBCTemp,NrPixels,ImgCorrBC);
@@ -1442,7 +1443,6 @@ void main(int argc, char *argv[]){
 				Positions[i*NrPixels*4+j] = 0;
 			}
 		}
-		double t2 = omp_get_wtime();
 		NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
 		int RegNr,NrPixelsThisRegion;
 		int SpotIDStart = 1;
