@@ -1427,7 +1427,6 @@ void main(int argc, char *argv[]){
 			}
 		}
 		// Do Connected components
-		double t1 = omp_get_wtime();
 		int NrOfReg;
 		for (i=0;i<NrPixels*NrPixels;i++){
 			if (ImgCorrBC[i] != 0){
@@ -1436,6 +1435,7 @@ void main(int argc, char *argv[]){
 				BoolImage[i] = 0;
 			}
 		}
+		double t1 = omp_get_wtime();
 		for (i=0;i<nOverlapsMaxPerImage;i++){
 			PositionTrackers[i] = 0;
 			for (j=0;j<NrPixels*4;j++){
