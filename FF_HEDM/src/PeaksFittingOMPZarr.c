@@ -1413,8 +1413,8 @@ void main(int argc, char *argv[]){
 			}
 		}
 
-		double t2 = omp_get_wtime();
 		DoImageTransformations(nImTransOpt,TransOpt,Image,NrPixels);
+		double t2 = omp_get_wtime();
 		for (i=0;i<(NrPixels*NrPixels);i++) ImgCorrBCTemp[i]=Image[i];
 		Transposer(ImgCorrBCTemp,NrPixels,ImgCorrBC);
 		for (i=0;i<(NrPixels*NrPixels);i++){
