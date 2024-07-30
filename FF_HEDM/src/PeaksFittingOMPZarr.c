@@ -1427,7 +1427,6 @@ void main(int argc, char *argv[]){
 				}
 			}
 		}
-		double t2 = omp_get_wtime();
 		// Do Connected components
 		int NrOfReg;
 		for (i=0;i<NrPixels*NrPixels;i++){
@@ -1443,6 +1442,7 @@ void main(int argc, char *argv[]){
 				Positions[i*NrPixels*4+j] = 0;
 			}
 		}
+		double t2 = omp_get_wtime();
 		NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
 		int RegNr,NrPixelsThisRegion;
 		int SpotIDStart = 1;
