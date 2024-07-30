@@ -1399,7 +1399,6 @@ void main(int argc, char *argv[]){
 		double time_fw = t_fw_2 - t_fw;
         char *locData;
 		locData = &locDataAll[asym_idxoffset*bytesPerPx];
-		double t1 = omp_get_wtime();
 		dsz = blosc1_decompress(&allData[sizeArr[FileNr*2+1]],locData,dsz);
         memcpy(ImageAsym,locData,dsz);
 		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,ImageAsym,Image);
@@ -1428,6 +1427,7 @@ void main(int argc, char *argv[]){
 			}
 		}
 		// Do Connected components
+		double t1 = omp_get_wtime();
 		int NrOfReg;
 		for (i=0;i<NrPixels*NrPixels;i++){
 			if (ImgCorrBC[i] != 0){
