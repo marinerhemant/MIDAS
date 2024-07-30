@@ -1401,7 +1401,6 @@ void main(int argc, char *argv[]){
 		locData = &locDataAll[asym_idxoffset*bytesPerPx];
 		double t1 = omp_get_wtime();
 		dsz = blosc1_decompress(&allData[sizeArr[FileNr*2+1]],locData,dsz);
-		double t2 = omp_get_wtime();
         memcpy(ImageAsym,locData,dsz);
 		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,ImageAsym,Image);
 		if (makeMap == 1){
@@ -1455,6 +1454,7 @@ void main(int argc, char *argv[]){
 			UsefulPixels[i*2+1] = 0;
 			z[i] = 0;
 		}
+		double t2 = omp_get_wtime();
 		for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 			NrPixelsThisRegion = PositionTrackers[RegNr];
 			if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
