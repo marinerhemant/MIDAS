@@ -1438,13 +1438,7 @@ void main(int argc, char *argv[]){
 		double t1 = omp_get_wtime();
 		memset(PositionTrackers,0,nOverlapsMaxPerImage*sizeof(*PositionTrackers));
 		double t2 = omp_get_wtime();
-		memset(Positions,0,NrPixels*4*nOverlapsMaxPerImage*sizeof(*Positions));
-		// for (i=0;i<nOverlapsMaxPerImage;i++){
-		// 	PositionTrackers[i] = 0;
-		// 	for (j=0;j<NrPixels*4;j++){
-		// 		Positions[i*NrPixels*4+j] = 0;
-		// 	}
-		// }
+		// memset(Positions,0,NrPixels*4*nOverlapsMaxPerImage*sizeof(*Positions));
 		NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
 		int RegNr,NrPixelsThisRegion;
 		int SpotIDStart = 1;
@@ -1515,6 +1509,7 @@ void main(int argc, char *argv[]){
 			time_fw += t_fw_2 - t_fw;
 			SpotIDStart += nPeaks;
 		}
+		memset(Positions,0,NrPixels*4*NrOfReg*sizeof(*Positions));
 		t_fw = omp_get_wtime();
 		fclose(outfilewrite);
 		t_fw_2 = omp_get_wtime();
