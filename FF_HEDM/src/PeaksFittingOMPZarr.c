@@ -1438,12 +1438,12 @@ void main(int argc, char *argv[]){
 		double t1 = omp_get_wtime();
 		memset(Positions,0,NrPixels*4*nOverlapsMaxPerImage*sizeof(Positions));
 		memset(PositionTrackers,0,nOverlapsMaxPerImage*sizeof(PositionTrackers));
-		for (i=0;i<nOverlapsMaxPerImage;i++){
-			PositionTrackers[i] = 0;
-			for (j=0;j<NrPixels*4;j++){
-				Positions[i*NrPixels*4+j] = 0;
-			}
-		}
+		// for (i=0;i<nOverlapsMaxPerImage;i++){
+		// 	PositionTrackers[i] = 0;
+		// 	for (j=0;j<NrPixels*4;j++){
+		// 		Positions[i*NrPixels*4+j] = 0;
+		// 	}
+		// }
 		double t2 = omp_get_wtime();
 		NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
 		int RegNr,NrPixelsThisRegion;
