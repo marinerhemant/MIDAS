@@ -1399,7 +1399,9 @@ void main(int argc, char *argv[]){
 		double time_fw = t_fw_2 - t_fw;
         char *locData;
 		locData = &locDataAll[asym_idxoffset*bytesPerPx];
+		double t1 = omp_get_wtime();
 		dsz = blosc1_decompress(&allData[sizeArr[FileNr*2+1]],locData,dsz);
+		double t2 = omp_get_wtime();
         memcpy(ImageAsym,locData,dsz);
 		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,ImageAsym,Image);
 		if (makeMap == 1){
@@ -1435,10 +1437,7 @@ void main(int argc, char *argv[]){
 				BoolImage[i] = 0;
 			}
 		}
-		double t1 = omp_get_wtime();
 		memset(PositionTrackers,0,nOverlapsMaxPerImage*sizeof(*PositionTrackers));
-		double t2 = omp_get_wtime();
-		// memset(Positions,0,NrPixels*4*nOverlapsMaxPerImage*sizeof(*Positions));
 		NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
 		int RegNr,NrPixelsThisRegion;
 		int SpotIDStart = 1;
@@ -1515,7 +1514,7 @@ void main(int argc, char *argv[]){
 		t_fw_2 = omp_get_wtime();
 		time_fw += t_fw_2 - t_fw;
 		double t3 = omp_get_wtime();
-		printf("FrameNr: %d, NrOfRegions: %d, Filtered regions: %d, Number of peaks: %d, time for preprocessing: %lf, Total time: %lf, tfw: %lf\n",FileNr,NrOfReg,TotNrRegions,SpotIDStart-1,t2-t1,t3-t1,time_fw);
+		printf("FrameNr: %d, NrOfRegions: %d, Filtered regions: %d, Number of peaks: %d, time for preprocessing: %lf, Total time: %lf\n",FileNr,NrOfReg,TotNrRegions,SpotIDStart-1,t2-t1,t3-t1);
 	}
 
 	free(ImageAll);
