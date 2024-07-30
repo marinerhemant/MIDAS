@@ -1442,6 +1442,7 @@ void main(int argc, char *argv[]){
 				Positions[i*NrPixels*4+j] = 0;
 			}
 		}
+		double t2 = omp_get_wtime();
 		NrOfReg = FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
 		int RegNr,NrPixelsThisRegion;
 		int SpotIDStart = 1;
@@ -1454,7 +1455,6 @@ void main(int argc, char *argv[]){
 			UsefulPixels[i*2+1] = 0;
 			z[i] = 0;
 		}
-		double t2 = omp_get_wtime();
 		for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 			NrPixelsThisRegion = PositionTrackers[RegNr];
 			if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
