@@ -391,7 +391,7 @@ def update_2d(nclk,xbc,ybc,frameNr,nFramesSum,showRings,mult,seq):
                 norig2 = nclk
                 cmmd = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/ForwardSimulationCompressed')+f' {paramFN}'
                 subprocess.call(cmmd,shell=True,env=env)
-            zf = zarr.open(f'{micfnLoc}.sim_scanNr_0.zip','r')
+            zf = zarr.open(f'{micfnLoc}.sim_scanNr_0.zip','r')['exchange/data']
             lastFrame = frameNr+ nFramesSum
             # print(frameNr,nFramesSum,lastFrame)
             if lastFrame > nFrames:
