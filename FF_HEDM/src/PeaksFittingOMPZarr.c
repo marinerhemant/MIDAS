@@ -1414,9 +1414,9 @@ void main(int argc, char *argv[]){
 		}
 
 		DoImageTransformations(nImTransOpt,TransOpt,Image,NrPixels);
-		double t2 = omp_get_wtime();
 		for (i=0;i<(NrPixels*NrPixels);i++) ImgCorrBCTemp[i]=Image[i];
 		Transposer(ImgCorrBCTemp,NrPixels,ImgCorrBC);
+		double t2 = omp_get_wtime();
 		for (i=0;i<(NrPixels*NrPixels);i++){
 			if (GoodCoords[i] == 0){
 				ImgCorrBC[i] = 0;
