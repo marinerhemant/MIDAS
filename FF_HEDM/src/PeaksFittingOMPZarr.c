@@ -1390,13 +1390,10 @@ void main(int argc, char *argv[]){
         Omega = omegaStart + FileNr*omegaStep;
 		char OutFile[1024];
 		sprintf(OutFile,"%s/%s_%06d_PS.csv",OutFolderName,basename(DataFN),FileNr+1);
-		double t_fw = omp_get_wtime();
 		FILE *outfilewrite;
 		outfilewrite = fopen(OutFile,"w");
         if (outfilewrite==NULL) printf("Cannot open %s for writing. Undefined behavior.\n",OutFile);
 		fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode\n");
-		double t_fw_2 = omp_get_wtime();
-		double time_fw = t_fw_2 - t_fw;
         char *locData;
 		locData = &locDataAll[asym_idxoffset*bytesPerPx];
 		double t1 = omp_get_wtime();
@@ -1498,21 +1495,15 @@ void main(int argc, char *argv[]){
 				}
 			}
 			int rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo,NrPixels);
-			t_fw = omp_get_wtime();
 			for (i=0;i<nPeaks;i++){
 				fprintf(outfilewrite,"%d %f %f %f %f %f %f %f ",(SpotIDStart+i),IntegratedIntensity[i],Omega,-YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
 				for (j=0;j<2;j++) fprintf(outfilewrite, "%f ",OtherInfo[2*i+j]);
 				fprintf(outfilewrite,"%d %d %d %d %d %f %f %f %d\n",NrPx[i],NrPixelsThisRegion,nPeaks,MaximaPositions[i*2+0],MaximaPositions[i*2+1],(double)MaximaPositions[i*2+0]+YCEN[i]-Ycen,(double)MaximaPositions[i*2+1]-ZCEN[i]-Zcen,MaximaValues[i],rc);
 			}
-			t_fw_2 = omp_get_wtime();
-			time_fw += t_fw_2 - t_fw;
 			SpotIDStart += nPeaks;
 		}
 		memset(Positions,0,NrPixels*4*NrOfReg*sizeof(*Positions));
-		t_fw = omp_get_wtime();
 		fclose(outfilewrite);
-		t_fw_2 = omp_get_wtime();
-		time_fw += t_fw_2 - t_fw;
 		double t3 = omp_get_wtime();
 		printf("FrameNr: %d, NrOfRegions: %d, Filtered regions: %d, Number of peaks: %d, time for preprocessing: %lf, Total time: %lf\n",FileNr,NrOfReg,TotNrRegions,SpotIDStart-1,t2-t1,t3-t1);
 	}
