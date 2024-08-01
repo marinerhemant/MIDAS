@@ -77,7 +77,7 @@ def binData(resultDir,num_scans):
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True,env=env,stdout=f,stderr=f_err)
     f.close()
     f_err.close()
-	return "Did binning"
+    return "Did binning"
 
 @python_app
 def indexscanning(resultDir,numProcs,num_scans,blockNr=0,numBlocks=1):
