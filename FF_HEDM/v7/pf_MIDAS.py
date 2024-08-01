@@ -65,6 +65,20 @@ def peaks(resultDir,zipFN,numProcs,blockNr=0,numBlocks=1):
     f_err.close()
 
 @python_app
+def binData(resultDir,num_scans):
+    import subprocess
+    import os
+    os.chdir(resultDir)
+    env = dict(os.environ)
+    midas_path = os.path.expanduser("~/.MIDAS")
+    env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
+    f = open(f'{resultDir}/output/mapping_out.csv','w')
+    f_err = open(f'{resultDir}/output/mapping_err.csv','w')
+	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True,env=env,stdout=f,stderr=f_err)
+    f.close()
+    f_err.close()
+
+@python_app
 def indexscanning(resultDir,numProcs,num_scans,blockNr=0,numBlocks=1):
     import subprocess
     import os
@@ -422,8 +436,11 @@ if len(micFN) > 0:
 paramsf.close()
 
 if (runIndexing == 1):
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
-	print("Running indexing.")
+	bin_res = []
+	print("Binning data.")
+	bin_res.append(binData(topdir,nScans))
+	# subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
+	print("Data binning finished. Running indexing now.")
 	resIndex = []
 	for nodeNr in range(nNodes):
 		resIndex.append(indexscanning(topdir,numProcs,nScans,blockNr=nodeNr,numBlocks=nNodes))
