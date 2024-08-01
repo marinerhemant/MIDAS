@@ -266,9 +266,11 @@ for layerNr in range(startLayerNr,endLayerNr+1):
     for nodeNr in range(nNodes):
         res.append(peaks(resultDir,outFStem,numProcs,blockNr=nodeNr,numBlocks=nNodes))
     outputs = [i.result() for i in res]
+    print(f"PeakSearch done. Time till now: {time.time()-t0}")
     if peakSearchOnly == 1:
         continue
-    print(f"Merging peaks. Time till now: {time.time()-t0}")
+    else:
+        print("Merging peaks.")
     f = open(f'{logDir}/merge_overlaps_out.csv','w')
     f_err = open(f'{logDir}/merge_overlaps_err.csv','w')
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
