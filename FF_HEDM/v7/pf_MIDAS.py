@@ -441,6 +441,7 @@ if (runIndexing == 1):
 	bin_res.append(binData(topdir,nScans))
 	# subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
 	print("Data binning finished. Running indexing now.")
+	sys.exit()
 	resIndex = []
 	for nodeNr in range(nNodes):
 		resIndex.append(indexscanning(topdir,numProcs,nScans,blockNr=nodeNr,numBlocks=nNodes))
