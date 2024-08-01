@@ -590,4 +590,4 @@ def save_relayout_data(relayoutData):
         ranges = [relayoutData['xaxis.range[0]'],relayoutData['xaxis.range[1]'],relayoutData['yaxis.range[0]'],relayoutData['yaxis.range[1]'],]
 
 
-app.run(debug=False)
+app.run(debug=False,host='0.0.0.0')
