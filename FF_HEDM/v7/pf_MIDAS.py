@@ -77,6 +77,7 @@ def binData(resultDir,num_scans):
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True,env=env,stdout=f,stderr=f_err)
     f.close()
     f_err.close()
+	return "Did binning"
 
 @python_app
 def indexscanning(resultDir,numProcs,num_scans,blockNr=0,numBlocks=1):
@@ -436,9 +437,8 @@ for line in paramContents:
 # paramsf.close()
 
 if (runIndexing == 1):
-	bin_res = []
 	print("Binning data.")
-	bin_res.append(binData(topdir,nScans))
+	print(binData(topdir,nScans))
 	# subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
 	print("Data binning finished. Running indexing now.")
 	sys.exit()
