@@ -1,7 +1,7 @@
 matplotlib
 numpy
 pandas
-parsl=2024.03.18
+parsl==2024.03.18
 scikit-image
 pillow
 h5py
