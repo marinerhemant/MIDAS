@@ -438,7 +438,7 @@ for line in paramContents:
 
 if (runIndexing == 1):
 	print("Binning data.")
-	print(binData(topdir,nScans).result)
+	print(binData(topdir,nScans).result())
 	# subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+' '+str(nScans),shell=True)
 	print("Data binning finished. Running indexing now.")
 	sys.exit()
