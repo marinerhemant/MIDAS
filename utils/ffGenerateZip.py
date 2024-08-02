@@ -39,7 +39,7 @@ def addData (name,node):
                 return
             arr = node[()]
             if isinstance(arr,bytes):
-                arr = np.np.bytes_(arr.decode('UTF-8'))
+                arr = np.bytes_(arr.decode('UTF-8'))
                 za = zRoot.create_dataset(node.name,shape=(1,),dtype=arr.dtype,chunks=(1,),compression=compressor)
                 za[:] = arr
             else:
@@ -267,7 +267,7 @@ analysis = zRoot.create_group('analysis')
 pro_analysis = analysis.create_group('process')
 sp_pro_analysis = pro_analysis.create_group('analysis_parameters')
 
-resultOut = np.np.bytes_(resultDir)
+resultOut = np.bytes_(resultDir)
 rf = zRoot.create_dataset('analysis/process/analysis_parameters/ResultFolder',shape=(1,),chunks=(1,),compressor=compressor,dtype=resultOut.dtype)
 rf[:]=resultOut
 
@@ -284,12 +284,12 @@ OmeFF = 0
 for line in lines:
     str = 'GapFile'
     if line.startswith(str):
-        gf = np.np.bytes_(line.split()[1])
+        gf = np.bytes_(line.split()[1])
         rf = sp_pro_analysis.create_dataset(str,shape=(1,),chunks=(1,),compressor=compressor,dtype=gf.dtype)
         rf[:]=gf
     str = 'BadPxFile'
     if line.startswith(str):
-        gf = np.np.bytes_(line.split()[1])
+        gf = np.bytes_(line.split()[1])
         rf = sp_pro_analysis.create_dataset(str,shape=(1,),chunks=(1,),compressor=compressor,dtype=gf.dtype)
         rf[:]=gf
     str = 'ImTransOpt'
