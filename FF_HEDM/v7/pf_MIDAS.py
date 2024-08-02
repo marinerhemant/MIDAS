@@ -69,13 +69,10 @@ def binData(resultDir,num_scans):
     import subprocess
     import os
     os.chdir(resultDir)
-    env = dict(os.environ)
-    midas_path = os.path.expanduser("~/.MIDAS")
-    env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
     f = open(f'{resultDir}/output/mapping_out.csv','w')
     f_err = open(f'{resultDir}/output/mapping_err.csv','w')
-    return 'subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+" "+str(num_scans),shell=True,env=env,stdout=f,stderr=f_err)'
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+" "+str(num_scans),shell=True,env=env,stdout=f,stderr=f_err)
+    f.write( 'subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+" "+str(num_scans),shell=True,stdout=f,stderr=f_err)')
+    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+" "+str(num_scans),shell=True,stdout=f,stderr=f_err)
     f.close()
     f_err.close()
     return "Did binning"
