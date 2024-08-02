@@ -72,9 +72,9 @@ def binData(resultDir,num_scans):
     f = open(f'{resultDir}/output/mapping_out.csv','w')
     f_err = open(f'{resultDir}/output/mapping_err.csv','w')
     cmd_this = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+f" {num_scans}"
-	f_err.write(cmd_this+'\n')
+    f_err.write(cmd_this+'\n')
     subprocess.call(cmd_this,shell=True,stdout=f,stderr=f_err)
-	f_err.write(cmd_this+'\n')
+    f_err.write(cmd_this+'\n')
     f.close()
     f_err.close()
     return "Did binning"
