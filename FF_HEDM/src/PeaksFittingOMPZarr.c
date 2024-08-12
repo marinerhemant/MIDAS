@@ -396,13 +396,13 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPi
 
 		xu[(8*i)+1] = MaximaValues[i]*5;
 		xu[(8*i)+2] = x[(8*i)+2] + 1;
-		printf("%lf %lf\n",xu[8*i+1],xu[8*i+2]);
 		xu[(8*i)+3] = x[(8*i)+3] + dEta;
 		xu[(8*i)+4] = 1;
 		xu[(8*i)+5] = 2*MaxRWidth;
 		xu[(8*i)+6] = 2*MaxRWidth;
 		xu[(8*i)+7] = 2*MaxEtaWidth;
 		xu[(8*i)+8] = 2*MaxEtaWidth;
+		printf("%lf %lf\n",xu[8*i+1],xu[8*i+5],xu[8*i+6]);
 
 		//~ for (j=0;j<9;j++) printf("Args: %lf %lf %lf\n",x[8*i+j],xl[8*i+j],xu[8*i+j]);
 	}
