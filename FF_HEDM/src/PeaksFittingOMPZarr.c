@@ -379,15 +379,15 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPi
 		x[(6*i)+4] = 0.5; // Mu
 		x[(6*i)+5] = Width; //SigmaGR
 		// x[(8*i)+6] = Width; //SigmaLR
-		initSigmaEta = Width/x[(8*i)+2];
+		initSigmaEta = Width/x[(6*i)+2];
 		if (atand(initSigmaEta) > MaxEtaWidth) initSigmaEta = tand(MaxEtaWidth)-0.0001;
 		x[(6*i)+6] = atand(initSigmaEta); //SigmaGEta //0.5;
 		// x[(8*i)+8] = atand(initSigmaEta); //SigmaLEta //0.5;
 
-		double dEta = rad2deg*atan(1/x[(8*i)+2]);
+		double dEta = rad2deg*atan(1/x[(6*i)+2]);
 		xl[(6*i)+1] = MaximaValues[i]/2;
-		xl[(6*i)+2] = x[(8*i)+2] - 1;
-		xl[(6*i)+3] = x[(8*i)+3] - dEta;
+		xl[(6*i)+2] = x[(6*i)+2] - 1;
+		xl[(6*i)+3] = x[(6*i)+3] - dEta;
 		xl[(6*i)+4] = 0;
 		xl[(6*i)+5] = 0.01;
 		// xl[(6*i)+6] = 0.01;
@@ -395,8 +395,8 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPi
 		// xl[(6*i)+8] = 0.005;
 
 		xu[(6*i)+1] = MaximaValues[i]*5;
-		xu[(6*i)+2] = x[(8*i)+2] + 1;
-		xu[(6*i)+3] = x[(8*i)+3] + dEta;
+		xu[(6*i)+2] = x[(6*i)+2] + 1;
+		xu[(6*i)+3] = x[(6*i)+3] + dEta;
 		xu[(6*i)+4] = 1;
 		xu[(6*i)+5] = 2*MaxRWidth;
 		// xu[(6*i)+6] = 2*MaxRWidth;
