@@ -441,7 +441,7 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPi
 	CalcIntegratedIntensity(nPeaks,x,Rs,Etas,NrPixelsThisRegion,IntegratedIntensity,NrPx);
 	free(Rs);
 	free(Etas);
-	*retVal = minf;
+	*retVal = sqrt(minf);
 	return rc;
 }
 
