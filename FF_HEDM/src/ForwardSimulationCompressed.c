@@ -1355,6 +1355,13 @@ main(int argc, char *argv[])
 					OM[i][j] = InputInfo[voxNr][i*3+j];
 				}
 			}
+			for (i=0;i<3;i++){
+				for (j=0;j<3;j++){
+					printf("%lf ",OM[i][j]);
+				}
+				printf("\n");
+			}
+			printf("\n");
 			OrientMat2Euler(OM,EulerThis);
 			Euler2OrientMat(EulerThis,OM);
 			for (i=0;i<3;i++){
