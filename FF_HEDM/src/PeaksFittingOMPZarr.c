@@ -403,7 +403,7 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPi
 		xu[(8*i)+7] = 2*MaxEtaWidth;
 		xu[(8*i)+8] = 2*MaxEtaWidth;
 
-		//~ for (j=0;j<9;j++) printf("Args: %lf %lf %lf\n",x[8*i+j],xl[8*i+j],xu[8*i+j]);
+		for (j=0;j<9;j++) printf("Args: %lf %lf %lf\n",x[8*i+j],xl[8*i+j],xu[8*i+j]);
 	}
 	struct func_data f_data;
 	f_data.NrPixels = NrPixelsThisRegion;
@@ -436,7 +436,7 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPi
 		}else{
 			OtherInfo[2*i+1] = x[(8*i)+8];
 		}
-		printf("%lf %lf %lf\n",x[8*i+1],x[8*i+5],x[8*i+6]);
+		printf("%lf %lf %lf\n",x[(8*i)+1],x[(8*i)+5],x[(8*i)+6]);
 	}
 	YZ4mREta(nPeaks,RCens,EtaCens,YCEN,ZCEN);
 	CalcIntegratedIntensity(nPeaks,x,Rs,Etas,NrPixelsThisRegion,IntegratedIntensity,NrPx);
