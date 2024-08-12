@@ -276,16 +276,16 @@ double problem_function(
 	int nPeaks, i,j,k;
 	nPeaks = (n-1)/8;
 	double BG = x[0];
-	double IMAX[nPeaks], R[nPeaks], Eta[nPeaks], Mu[nPeaks], SigmaGR[nPeaks], SigmaGEta[nPeaks];
+	double IMAX[nPeaks], R[nPeaks], Eta[nPeaks], Mu[nPeaks], SigmaGR[nPeaks], SigmaLR[nPeaks], SigmaGEta[nPeaks],SigmaLEta[nPeaks];
 	for (i=0;i<nPeaks;i++){
-		IMAX[i] = x[(6*i)+1];
-		R[i] = x[(6*i)+2];
-		Eta[i] = x[(6*i)+3];
-		Mu[i] = x[(6*i)+4];
-		SigmaGR[i] = x[(6*i)+5];
-		// SigmaLR[i] = x[(8*i)+6];
-		SigmaGEta[i] = x[(6*i)+6];
-		// SigmaLEta[i] = x[(8*i)+8];
+		IMAX[i] = x[(8*i)+1];
+		R[i] = x[(8*i)+2];
+		Eta[i] = x[(8*i)+3];
+		Mu[i] = x[(8*i)+4];
+		SigmaGR[i] = x[(8*i)+5];
+		SigmaLR[i] = x[(8*i)+6];
+		SigmaGEta[i] = x[(8*i)+7];
+		SigmaLEta[i] = x[(8*i)+8];
 	}
 	double TotalDifferenceIntensity = 0, CalcIntensity, IntPeaks;
 	double L, G,DR,DE,R2,E2;
@@ -296,7 +296,7 @@ double problem_function(
 			R2 = DR*DR;
 			DE = Etas[i]-Eta[j];
 			E2 = DE*DE;
-			L = 1/(((R2/((SigmaGR[j])*(SigmaGR[j])))+1)*((E2/((SigmaGEta[j])*(SigmaGEta[j])))+1));
+			L = 1/(((R2/((SigmaLR[j])*(SigmaLR[j])))+1)*((E2/((SigmaLEta[j])*(SigmaLEta[j])))+1));
 			G = exp(-(0.5*(R2/(SigmaGR[j]*SigmaGR[j])))-(0.5*(E2/(SigmaGEta[j]*SigmaGEta[j]))));
 			IntPeaks += IMAX[j]*((Mu[j]*L) + ((1-Mu[j])*G));
 		}
@@ -309,16 +309,16 @@ double problem_function(
 static inline void CalcIntegratedIntensity(int nPeaks,double *x,double *Rs,double *Etas,int NrPixelsThisRegion,double *IntegratedIntensity,int *NrOfPixels){
 	double BG = x[0];
 	int i,j;
-	double IMAX[nPeaks], R[nPeaks], Eta[nPeaks], Mu[nPeaks], SigmaGR[nPeaks], SigmaGEta[nPeaks];
+	double IMAX[nPeaks], R[nPeaks], Eta[nPeaks], Mu[nPeaks], SigmaGR[nPeaks], SigmaLR[nPeaks], SigmaGEta[nPeaks],SigmaLEta[nPeaks];
 	for (i=0;i<nPeaks;i++){
-		IMAX[i] = x[(6*i)+1];
-		R[i] = x[(6*i)+2];
-		Eta[i] = x[(6*i)+3];
-		Mu[i] = x[(6*i)+4];
-		SigmaGR[i] = x[(6*i)+5];
-		// SigmaLR[i] = x[(8*i)+6];
-		SigmaGEta[i] = x[(6*i)+6];
-		// SigmaLEta[i] = x[(8*i)+8];
+		IMAX[i] = x[(8*i)+1];
+		R[i] = x[(8*i)+2];
+		Eta[i] = x[(8*i)+3];
+		Mu[i] = x[(8*i)+4];
+		SigmaGR[i] = x[(8*i)+5];
+		SigmaLR[i] = x[(8*i)+6];
+		SigmaGEta[i] = x[(8*i)+7];
+		SigmaLEta[i] = x[(8*i)+8];
 	}
 	double IntPeaks, L, G, BGToAdd,DR,DE,R2,E2;
 	for (j=0;j<nPeaks;j++){
@@ -329,7 +329,7 @@ static inline void CalcIntegratedIntensity(int nPeaks,double *x,double *Rs,doubl
 			R2 = DR*DR;
 			DE = Etas[i]-Eta[j];
 			E2 = DE*DE;
-			L = 1/(((R2/((SigmaGR[j])*(SigmaGR[j])))+1)*((E2/((SigmaGEta[j])*(SigmaGEta[j])))+1));
+			L = 1/(((R2/((SigmaLR[j])*(SigmaLR[j])))+1)*((E2/((SigmaLEta[j])*(SigmaLEta[j])))+1));
 			G = exp(-(0.5*(R2/(SigmaGR[j]*SigmaGR[j])))-(0.5*(E2/(SigmaGEta[j]*SigmaGEta[j]))));
 			IntPeaks = IMAX[j]*((Mu[j]*L) + ((1-Mu[j])*G));
 			if (IntPeaks > BG){
@@ -347,7 +347,7 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPi
 				int *MaximaPositions, double *IntegratedIntensity, double *IMAX, double *YCEN, double *ZCEN,
 				double *RCens, double *EtaCens,double Ycen, double Zcen, double Thresh, int *NrPx,double *OtherInfo,int NrPixels, double *retVal)
 {
-	unsigned n = 1 + (6*nPeaks);
+	unsigned n = 1 + (8*nPeaks);
 	double x[n],xl[n],xu[n];
 	x[0] = Thresh/2;
 	xl[0] = 0;
@@ -373,37 +373,37 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPi
 	if (Width > MaxRWidth) Width = MaxRWidth;
 	double initSigmaEta;
 	for (i=0;i<nPeaks;i++){
-		x[(6*i)+1] = MaximaValues[i]; // Imax
-		x[(6*i)+2] = CalcNorm2(MaximaPositions[i*2+0]-Ycen,MaximaPositions[i*2+1]-Zcen); //Radius
-		x[(6*i)+3] = CalcEtaAngle(-MaximaPositions[i*2+0]+Ycen,MaximaPositions[i*2+1]-Zcen); // Eta
-		x[(6*i)+4] = 0.5; // Mu
-		x[(6*i)+5] = Width; //SigmaGR
-		// x[(8*i)+6] = Width; //SigmaLR
-		initSigmaEta = Width/x[(6*i)+2];
+		x[(8*i)+1] = MaximaValues[i]; // Imax
+		x[(8*i)+2] = CalcNorm2(MaximaPositions[i*2+0]-Ycen,MaximaPositions[i*2+1]-Zcen); //Radius
+		x[(8*i)+3] = CalcEtaAngle(-MaximaPositions[i*2+0]+Ycen,MaximaPositions[i*2+1]-Zcen); // Eta
+		x[(8*i)+4] = 0.5; // Mu
+		x[(8*i)+5] = Width; //SigmaGR
+		x[(8*i)+6] = Width; //SigmaLR
+		initSigmaEta = Width/x[(8*i)+2];
 		if (atand(initSigmaEta) > MaxEtaWidth) initSigmaEta = tand(MaxEtaWidth)-0.0001;
-		x[(6*i)+6] = atand(initSigmaEta); //SigmaGEta //0.5;
-		// x[(8*i)+8] = atand(initSigmaEta); //SigmaLEta //0.5;
+		x[(8*i)+7] = atand(initSigmaEta); //SigmaGEta //0.5;
+		x[(8*i)+8] = atand(initSigmaEta); //SigmaLEta //0.5;
 
-		double dEta = rad2deg*atan(1/x[(6*i)+2]);
-		xl[(6*i)+1] = MaximaValues[i]/2;
-		xl[(6*i)+2] = x[(6*i)+2] - 1;
-		xl[(6*i)+3] = x[(6*i)+3] - dEta;
-		xl[(6*i)+4] = 0;
-		xl[(6*i)+5] = 0.01;
-		// xl[(6*i)+6] = 0.01;
-		xl[(6*i)+6] = 0.005;
-		// xl[(6*i)+8] = 0.005;
+		double dEta = rad2deg*atan(1/x[(8*i)+2]);
+		xl[(8*i)+1] = MaximaValues[i]/2;
+		xl[(8*i)+2] = x[(8*i)+2] - 1;
+		xl[(8*i)+3] = x[(8*i)+3] - dEta;
+		xl[(8*i)+4] = 0;
+		xl[(8*i)+5] = 0.01;
+		xl[(8*i)+6] = 0.01;
+		xl[(8*i)+7] = 0.005;
+		xl[(8*i)+8] = 0.005;
 
-		xu[(6*i)+1] = MaximaValues[i]*5;
-		xu[(6*i)+2] = x[(6*i)+2] + 1;
-		xu[(6*i)+3] = x[(6*i)+3] + dEta;
-		xu[(6*i)+4] = 1;
-		xu[(6*i)+5] = 2*MaxRWidth;
-		// xu[(6*i)+6] = 2*MaxRWidth;
-		xu[(6*i)+6] = 2*MaxEtaWidth;
-		// xu[(6*i)+8] = 2*MaxEtaWidth;
+		xu[(8*i)+1] = MaximaValues[i]*5;
+		xu[(8*i)+2] = x[(8*i)+2] + 1;
+		xu[(8*i)+3] = x[(8*i)+3] + dEta;
+		xu[(8*i)+4] = 1;
+		xu[(8*i)+5] = 2*MaxRWidth;
+		xu[(8*i)+6] = 2*MaxRWidth;
+		xu[(8*i)+7] = 2*MaxEtaWidth;
+		xu[(8*i)+8] = 2*MaxEtaWidth;
 
-		// for (j=0;j<9;j++) printf("Args: %lf %lf %lf\n",x[6*i+j],xl[6*i+j],xu[6*i+j]);
+		// for (j=0;j<9;j++) printf("Args: %lf %lf %lf\n",x[8*i+j],xl[8*i+j],xu[8*i+j]);
 	}
 	struct func_data f_data;
 	f_data.NrPixels = NrPixelsThisRegion;
@@ -423,20 +423,26 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPi
 	int rc = nlopt_optimize(opt, x, &minf);
 	nlopt_destroy(opt);
 	for (i=0;i<nPeaks;i++){
-		IMAX[i] = x[(6*i)+1];
-		RCens[i] = x[(6*i)+2];
-		EtaCens[i] = x[(6*i)+3];
-		// if (x[(8*i)+5] > x[(6*i)+6]){
-		OtherInfo[2*i] = x[(6*i)+5];
-		// }else{
-		// 	OtherInfo[2*i] = x[(8*i)+6];
-		// }
-		// if (x[(8*i)+7] > x[(8*i)+8]){
-		OtherInfo[2*i+1] = x[(6*i)+6];
-		// }else{
-		// 	OtherInfo[2*i+1] = x[(8*i)+8];
-		// }
-		// printf("%lf %lf %lf %lf\n",x[(8*i)+1],x[(8*i)+5],x[(8*i)+6],x[(8*i)+4]);
+		IMAX[i] = x[(8*i)+1];
+		RCens[i] = x[(8*i)+2];
+		EtaCens[i] = x[(8*i)+3];
+		OtherInfo[8*i+0] = x[0];
+		OtherInfo[8*i+1] = x[(8*i)+5];
+		OtherInfo[8*i+2] = x[(8*i)+6];
+		OtherInfo[8*i+3] = x[(8*i)+7];
+		OtherInfo[8*i+4] = x[(8*i)+8];
+		OtherInfo[8*i+5] = x[(8*i)+4];
+		if (x[(8*i)+5] > x[(8*i)+6]){
+			OtherInfo[8*i+6] = x[(8*i)+5];
+		}else{
+			OtherInfo[8*i+6] = x[(8*i)+6];
+		}
+		if (x[(8*i)+7] > x[(8*i)+8]){
+			OtherInfo[8*i+7] = x[(8*i)+7];
+		}else{
+			OtherInfo[8*i+7] = x[(8*i)+8];
+		}
+		// printf("%lf %lf %lf\n",x[(8*i)+1],x[(8*i)+5],x[(8*i)+6],x[(8*i)+4]);
 	}
 	YZ4mREta(nPeaks,RCens,EtaCens,YCEN,ZCEN);
 	CalcIntegratedIntensity(nPeaks,x,Rs,Etas,NrPixelsThisRegion,IntegratedIntensity,NrPx);
@@ -1405,7 +1411,7 @@ void main(int argc, char *argv[]){
 		FILE *outfilewrite;
 		outfilewrite = fopen(OutFile,"w");
         if (outfilewrite==NULL) printf("Cannot open %s for writing. Undefined behavior.\n",OutFile);
-		fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode retVal\n");
+		fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode retVal BG SigmaGR SigmaLR SigmaGEta SigmaLEta MU\n");
         char *locData;
 		locData = &locDataAll[asym_idxoffset*bytesPerPx];
 		double t1 = omp_get_wtime();
@@ -1510,8 +1516,10 @@ void main(int argc, char *argv[]){
 			int rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo,NrPixels,&retVal);
 			for (i=0;i<nPeaks;i++){
 				fprintf(outfilewrite,"%d %f %f %f %f %f %f %f ",(SpotIDStart+i),IntegratedIntensity[i],Omega,-YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
-				for (j=0;j<2;j++) fprintf(outfilewrite, "%f ",OtherInfo[2*i+j]);
-				fprintf(outfilewrite,"%d %d %d %d %d %f %f %f %d %lf\n",NrPx[i],NrPixelsThisRegion,nPeaks,MaximaPositions[i*2+0],MaximaPositions[i*2+1],(double)MaximaPositions[i*2+0]+YCEN[i]-Ycen,(double)MaximaPositions[i*2+1]-ZCEN[i]-Zcen,MaximaValues[i],rc,retVal);
+				for (j=0;j<2;j++) fprintf(outfilewrite, "%f ",OtherInfo[8*i+6+j]);
+				fprintf(outfilewrite,"%d %d %d %d %d %f %f %f %d %lf",NrPx[i],NrPixelsThisRegion,nPeaks,MaximaPositions[i*2+0],MaximaPositions[i*2+1],(double)MaximaPositions[i*2+0]+YCEN[i]-Ycen,(double)MaximaPositions[i*2+1]-ZCEN[i]-Zcen,MaximaValues[i],rc,retVal);
+				for (j=0;j<6;j++) fprintf(outfilewrite, "%f ",OtherInfo[8*i+j]);
+				fprintf(outfilewrite,"\n");
 			}
 			SpotIDStart += nPeaks;
 		}
