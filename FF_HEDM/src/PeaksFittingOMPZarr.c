@@ -396,6 +396,7 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPi
 
 		xu[(8*i)+1] = MaximaValues[i]*5;
 		xu[(8*i)+2] = x[(8*i)+2] + 1;
+		printf("%lf\n",xu[8*i+2]);
 		xu[(8*i)+3] = x[(8*i)+3] + dEta;
 		xu[(8*i)+4] = 1;
 		xu[(8*i)+5] = 2*MaxRWidth;
