@@ -209,7 +209,7 @@ static inline int FindConnectedComponents(int *BoolImage, int NrPixels, int *Con
 
 static inline unsigned FindRegionalMaxima(double *z,int *PixelPositions,
 		int NrPixelsThisRegion,int *MaximaPositions,double *MaximaValues,
-		double IntSat,int NrPixels,pixelvalue *mask)
+		double IntSat,int NrPixels,double *mask)
 {
 	unsigned nPeaks = 0;
 	int i,j,k,l;
@@ -345,7 +345,7 @@ static inline void CalcIntegratedIntensity(int nPeaks,double *x,double *Rs,doubl
 
 int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPixels, double *MaximaValues,
 				int *MaximaPositions, double *IntegratedIntensity, double *IMAX, double *YCEN, double *ZCEN,
-				double *RCens, double *EtaCens,double Ycen, double Zcen, double Thresh, int *NrPx,double *OtherInfo,int NrPixels)
+				double *RCens, double *EtaCens,double Ycen, double Zcen, double Thresh, int *NrPx,double *OtherInfo,int NrPixels, double *retVal)
 {
 	unsigned n = 1 + (8*nPeaks);
 	double x[n],xl[n],xu[n];
@@ -441,6 +441,7 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPi
 	CalcIntegratedIntensity(nPeaks,x,Rs,Etas,NrPixelsThisRegion,IntegratedIntensity,NrPx);
 	free(Rs);
 	free(Etas);
+	*retVal = minf;
 	return rc;
 }
 
@@ -1091,7 +1092,8 @@ void main(int argc, char *argv[]){
     }
     free(s);
     free(data);
-    nFrames = nFrames - skipFrame; // This ensures we don't over-read.
+    nFrames -= skipFrame; // This ensures we don't over-read.
+    nDarks -= skipFrame; // This ensures we don't over-read.
     dataLoc += skipFrame;
     darkLoc += skipFrame;
 	// Now we read the size of data for each file pointer.
@@ -1144,10 +1146,12 @@ void main(int argc, char *argv[]){
 			printf("Transpose.\n");
 	}
     // Dark file reading from here.
-	double *dark, *flood, *darkTemp;
-	pixelvalue *maskTemp, *mask;
+	double *dark, *flood, *darkTemp, *mask, *maskTT;
+	pixelvalue *maskTemp, *maskT;
 	dark = calloc(NrPixels*NrPixels,sizeof(*dark));
 	mask = calloc(NrPixels*NrPixels,sizeof(*mask));
+	maskTT = calloc(NrPixels*NrPixels,sizeof(*maskTT));
+	maskT = calloc(NrPixels*NrPixels,sizeof(*maskT));
 	maskTemp = calloc(NrPixelsY*NrPixelsZ,sizeof(*maskTemp));
 	darkTemp = calloc(NrPixels*NrPixels,sizeof(*darkTemp));
 	flood = calloc(NrPixels*NrPixels,sizeof(*flood));
@@ -1157,11 +1161,11 @@ void main(int argc, char *argv[]){
     int darkIter;
     dsize = bytesPerPx*NrPixelsZ*NrPixelsY;
     data = (char*)malloc((size_t)dsize);
-    for (darkIter=skipFrame;darkIter<nDarks;darkIter++){
-        zip_stat_index(arch, darkLoc, 0, finfo);
+    for (darkIter=0;darkIter<nDarks;darkIter++){
+        zip_stat_index(arch, darkLoc+darkIter, 0, finfo);
         // Go to the right location in the zip file and read frames.
         arr = calloc(finfo->size + 1, sizeof(char));
-        fd = zip_fopen_index(arch, darkLoc, 0);
+        fd = zip_fopen_index(arch, darkLoc+darkIter, 0);
         zip_fread(fd, arr, finfo->size);
         dsize = blosc1_decompress(arr,data,dsize);
         free(arr);
@@ -1201,10 +1205,17 @@ void main(int argc, char *argv[]){
         dsize = blosc1_decompress(arr,data,dsize);
         free(arr);
         memcpy(maskTemp,data,dsize);
-		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,maskTemp,mask);
+		MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,maskTemp,maskT);
 		free(data);
 		int nrMask=0;
-		for (a=0;a<NrPixels*NrPixels;a++) if (mask[a]>0) nrMask++;
+		for (a=0;a<NrPixels*NrPixels;a++) {
+			maskTT[a] = maskT[a];
+			if (maskTT[a]>0) nrMask++;
+		}
+		Transposer(maskTT,NrPixels,mask);
+		free(maskTemp);
+		free(maskT);
+		free(maskTT);
 		printf("Number of mask pixels: %d\n",nrMask);
 	}
 	free(maskTemp);
@@ -1393,7 +1404,7 @@ void main(int argc, char *argv[]){
 		FILE *outfilewrite;
 		outfilewrite = fopen(OutFile,"w");
         if (outfilewrite==NULL) printf("Cannot open %s for writing. Undefined behavior.\n",OutFile);
-		fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode\n");
+		fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode retVal\n");
         char *locData;
 		locData = &locDataAll[asym_idxoffset*bytesPerPx];
 		double t1 = omp_get_wtime();
@@ -1494,11 +1505,12 @@ void main(int argc, char *argv[]){
 					MaximaPositions[i*2+1] = MaximaPositionsT[i*2+1];
 				}
 			}
-			int rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo,NrPixels);
+			double retVal;
+			int rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo,NrPixels,&retVal);
 			for (i=0;i<nPeaks;i++){
 				fprintf(outfilewrite,"%d %f %f %f %f %f %f %f ",(SpotIDStart+i),IntegratedIntensity[i],Omega,-YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
 				for (j=0;j<2;j++) fprintf(outfilewrite, "%f ",OtherInfo[2*i+j]);
-				fprintf(outfilewrite,"%d %d %d %d %d %f %f %f %d\n",NrPx[i],NrPixelsThisRegion,nPeaks,MaximaPositions[i*2+0],MaximaPositions[i*2+1],(double)MaximaPositions[i*2+0]+YCEN[i]-Ycen,(double)MaximaPositions[i*2+1]-ZCEN[i]-Zcen,MaximaValues[i],rc);
+				fprintf(outfilewrite,"%d %d %d %d %d %f %f %f %d %lf\n",NrPx[i],NrPixelsThisRegion,nPeaks,MaximaPositions[i*2+0],MaximaPositions[i*2+1],(double)MaximaPositions[i*2+0]+YCEN[i]-Ycen,(double)MaximaPositions[i*2+1]-ZCEN[i]-Zcen,MaximaValues[i],rc,retVal);
 			}
 			SpotIDStart += nPeaks;
 		}
