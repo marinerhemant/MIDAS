@@ -1441,12 +1441,12 @@ main(int argc, char *argv[])
 				spotMatr[9]  = zThis;
 				spotMatr[10] = Info[3]; // Theta
 				spotMatr[11] = 0.0;
-				if (writeSpots ==1)	
-					fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\n",
-						(int)spotMatr[0],(int)spotMatr[1],spotMatr[2],spotMatr[3],spotMatr[4],spotMatr[5],
-						spotMatr[6],(int)spotMatr[7],spotMatr[8],spotMatr[9],spotMatr[10],spotMatr[11],scanNr,sqrt(yThis*yThis+zThis*zThis));
 				// Map yDet,zDet,omeThis to frames.
 				omeBin = (size_t)floor(-(OmegaStart-omeThis)/OmegaStep);
+				if (writeSpots ==1)	
+					fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%d\n",
+						(int)spotMatr[0],(int)spotMatr[1],spotMatr[2],spotMatr[3],spotMatr[4],spotMatr[5],
+						spotMatr[6],(int)spotMatr[7],spotMatr[8],spotMatr[9],spotMatr[10],spotMatr[11],scanNr,sqrt(yThis*yThis+zThis*zThis),omeBin);
 				// printf("%zu %lf %lf %lf\n",omeBin,OmegaStart,omeThis,OmegaStep);
 				omeBin *= NrPixels;
 				omeBin *= NrPixels;
