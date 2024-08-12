@@ -1353,6 +1353,8 @@ main(int argc, char *argv[])
 			for (i=0;i<3;i++){
 				for (j=0;j<3;j++){
 					OM[i][j] = InputInfo[voxNr][i*3+j];
+					OrientMat2Euler(OM,EulerThis);
+					Euler2OrientMat(EulerThis,OM);
 				}
 			}
 			// Calculate the spots now.
