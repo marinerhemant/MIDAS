@@ -1411,7 +1411,7 @@ void main(int argc, char *argv[]){
 		FILE *outfilewrite;
 		outfilewrite = fopen(OutFile,"w");
         if (outfilewrite==NULL) printf("Cannot open %s for writing. Undefined behavior.\n",OutFile);
-		fprintf(outfilewrite,"SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px) IMax Radius(px) Eta(degrees) SigmaR SigmaEta NrPixels TotalNrPixelsInPeakRegion nPeaks maxY maxZ diffY diffZ rawIMax returnCode retVal BG SigmaGR SigmaLR SigmaGEta SigmaLEta MU\n");
+		fprintf(outfilewrite,"SpotID\tIntegratedIntensity\tOmega(degrees)\tYCen(px)\tZCen(px)\tIMax\tRadius(px)\tEta(degrees)\tSigmaR\tSigmaEta\tNrPixels\tTotalNrPixelsInPeakRegion\tnPeaks\tmaxY\tmaxZ\tdiffY\tdiffZ\trawIMax\treturnCode\tretVal\tBG\tSigmaGR\tSigmaLR\tSigmaGEta\tSigmaLEta\tMU\n");
         char *locData;
 		locData = &locDataAll[asym_idxoffset*bytesPerPx];
 		double t1 = omp_get_wtime();
@@ -1515,10 +1515,10 @@ void main(int argc, char *argv[]){
 			double retVal;
 			int rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo,NrPixels,&retVal);
 			for (i=0;i<nPeaks;i++){
-				fprintf(outfilewrite,"%d %f %f %f %f %f %f %f ",(SpotIDStart+i),IntegratedIntensity[i],Omega,-YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
-				for (j=0;j<2;j++) fprintf(outfilewrite, "%f ",OtherInfo[8*i+6+j]);
-				fprintf(outfilewrite,"%d %d %d %d %d %f %f %f %d %lf",NrPx[i],NrPixelsThisRegion,nPeaks,MaximaPositions[i*2+0],MaximaPositions[i*2+1],(double)MaximaPositions[i*2+0]+YCEN[i]-Ycen,(double)MaximaPositions[i*2+1]-ZCEN[i]-Zcen,MaximaValues[i],rc,retVal);
-				for (j=0;j<6;j++) fprintf(outfilewrite, "%f ",OtherInfo[8*i+j]);
+				fprintf(outfilewrite,"%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t",(SpotIDStart+i),IntegratedIntensity[i],Omega,-YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
+				for (j=0;j<2;j++) fprintf(outfilewrite, "%f\t",OtherInfo[8*i+6+j]);
+				fprintf(outfilewrite,"%d\t%d\t%d\t%d\t%d\t%f\t%f\t%f\t%d\t%lf",NrPx[i],NrPixelsThisRegion,nPeaks,MaximaPositions[i*2+0],MaximaPositions[i*2+1],(double)MaximaPositions[i*2+0]+YCEN[i]-Ycen,(double)MaximaPositions[i*2+1]-ZCEN[i]-Zcen,MaximaValues[i],rc,retVal);
+				for (j=0;j<6;j++) fprintf(outfilewrite, "\t%f",OtherInfo[8*i+j]);
 				fprintf(outfilewrite,"\n");
 			}
 			SpotIDStart += nPeaks;
