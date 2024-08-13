@@ -1411,7 +1411,9 @@ void main(int argc, char *argv[]){
 		FILE *outfilewrite;
 		outfilewrite = fopen(OutFile,"w");
         if (outfilewrite==NULL) printf("Cannot open %s for writing. Undefined behavior.\n",OutFile);
-		fprintf(outfilewrite,"SpotID\tIntegratedIntensity\tOmega(degrees)\tYCen(px)\tZCen(px)\tIMax\tRadius(px)\tEta(degrees)\tSigmaR\tSigmaEta\tNrPixels\tTotalNrPixelsInPeakRegion\tnPeaks\tmaxY\tmaxZ\tdiffY\tdiffZ\trawIMax\treturnCode\tretVal\tBG\tSigmaGR\tSigmaLR\tSigmaGEta\tSigmaLEta\tMU\n");
+		fprintf(outfilewrite,"SpotID\tIntegratedIntensity\tOmega(degrees)\tYCen(px)\tZCen(px)\tIMax\tRadius(px)\tEta(degrees)\tSigmaR\tSigmaEta\tNrPixels\t"
+							 "TotalNrPixelsInPeakRegion\tnPeaks\tmaxY\tmaxZ\tdiffY\tdiffZ\trawIMax\treturnCode\tretVal\tBG\tSigmaGR\tSigmaLR\tSigmaGEta\t"
+							 "SigmaLEta\tMU\n");
         char *locData;
 		locData = &locDataAll[asym_idxoffset*bytesPerPx];
 		double t1 = omp_get_wtime();
