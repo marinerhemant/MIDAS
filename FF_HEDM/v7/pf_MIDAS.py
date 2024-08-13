@@ -449,6 +449,19 @@ if (runIndexing == 1):
 	outputIndex = [i.result() for i in resIndex]
 
 if oneSolPerVox==1:
+	if doTomo==1:
+		sinoFNs = glob.glob("sinos_*.bin")[0]
+		if len(sinoFNs) > 0:
+			for sinoF in sinoFNs:
+				os.remove(sinoF)
+		sinoFNs = glob.glob("omegas_*.bin")[0]
+		if len(sinoFNs) > 0:
+			for sinoF in sinoFNs:
+				os.remove(sinoF)
+		sinoFNs = glob.glob("nrHKLs_*.bin")[0]
+		if len(sinoFNs) > 0:
+			for sinoF in sinoFNs:
+				os.remove(sinoF)
 	subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')+f' {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}',cwd=topdir,shell=True)
 	os.makedirs('Recons',exist_ok=True)
 	if doTomo == 1:
