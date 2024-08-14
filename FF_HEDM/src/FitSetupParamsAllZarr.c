@@ -795,6 +795,8 @@ int main(int argc, char *argv[])
             dsize = blosc1_decompress(s,data,dsize);
             int iter;
             for (iter=0;iter<6;iter++) LatticeConstant[iter] = *(double *)&data[iter*sizeof(double)];
+            free(data);
+            free(s);
         }
         if (strstr(finfo->name,"analysis/process/analysis_parameters/OverallRingToIndex/0")!=NULL){
             arr = calloc(finfo->size + 1, sizeof(char)); 

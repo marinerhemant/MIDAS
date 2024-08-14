@@ -123,6 +123,9 @@ calibrant: $(SRCDIR)Calibrant.c
 calibrantomp: $(SRCDIR)CalibrantOMP.c
 	$(CC) $(SRCDIR)CalibrantOMP.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)CalibrantOMP $(CFLAGSHDF) $(CFLAGS) $(CFLAGSTIFF) $(CFLAGSNLOPT) -fopenmp
 
+calibrantompzarr: $(SRCDIR)CalibrantOMPZarr.c
+	$(CC) $(SRCDIR)CalibrantOMPZarr.c $(SRCDIR)CalcPeakProfile.c -o $(BINDIR)CalibrantOMPZarr $(CFLAGSHDF) $(CFLAGS) $(CFLAGSTIFF) $(CFLAGSNLOPT) -fopenmp $(BLOSCFLAGS) $(ZIPFLAGS)
+
 fitsetup: $(SRCDIR)FitSetupParamsAll.c
 	$(CC) $(SRCDIR)FitSetupParamsAll.c -o $(BINDIR)FitSetup $(CFLAGS) $(CFLAGSNLOPT)
 

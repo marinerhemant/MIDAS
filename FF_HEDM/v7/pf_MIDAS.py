@@ -450,15 +450,15 @@ if (runIndexing == 1):
 
 if oneSolPerVox==1:
 	if doTomo==1:
-		sinoFNs = glob.glob("sinos_*.bin")[0]
+		sinoFNs = glob.glob("sinos_*.bin")
 		if len(sinoFNs) > 0:
 			for sinoF in sinoFNs:
 				os.remove(sinoF)
-		sinoFNs = glob.glob("omegas_*.bin")[0]
+		sinoFNs = glob.glob("omegas_*.bin")
 		if len(sinoFNs) > 0:
 			for sinoF in sinoFNs:
 				os.remove(sinoF)
-		sinoFNs = glob.glob("nrHKLs_*.bin")[0]
+		sinoFNs = glob.glob("nrHKLs_*.bin")
 		if len(sinoFNs) > 0:
 			for sinoF in sinoFNs:
 				os.remove(sinoF)
