@@ -13,6 +13,6 @@ plotly
 dash_bootstrap_components
 diplib
 scipy
-ffspec
+fsspec
 # globus_compute_sdk
 # globus_sdk
