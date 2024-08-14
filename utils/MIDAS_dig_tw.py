@@ -98,7 +98,7 @@ app.layout = dbc.Container([
     ]),
     dbc.Row([html.Hr(style={'borderWidth': "1.3vh"})]),
     dbc.Row([
-        html.H6("Input parameters: "),
+        html.H6("Input parameters: ", className="text-primary text-left fs-3"),
     ]),
     dbc.Row([
         dbc.Col([
@@ -149,15 +149,15 @@ app.layout = dbc.Container([
                 dcc.Input(id='NrPixels',value=2048,type='number',style={'width':100}),
             ]),
             dbc.Row([
-                "Minimum Omega [degrees]: ",
+                "........................Minimum Omega [degrees]: ",
                 dcc.Input(id='MinOme',value=minOme,type='number',style={'width':100}),
             ]),
             dbc.Row([
-                "Maximum Omega [degrees]: ",
+                ".......................Maximum Omega [degrees]: ",
                 dcc.Input(id='MaxOme',value=maxOme,type='number',style={'width':100}),
             ]),
             dbc.Row([
-                "OmegaStep [degrees]: ",
+                ".................................OmegaStep [degrees]: ",
                 dcc.Input(id='OmeStep',value=omeStep,type='number',style={'width':100}),
             ]),
         ]),
@@ -166,10 +166,10 @@ app.layout = dbc.Container([
     dbc.Row([
         dbc.Row([
             html.Div([
-                html.H6('Simulation Type: ', className="text-primary text-left fs-3"),
+                html.H6('Simulation type', className="text-primary text-left fs-3"),
                 dcc.RadioItems([{
-                    'label':html.Span('Far-Field HEDM',style={'font-size': 15, 'padding-left': 10,'padding-right':20}),'value':'FF-HEDM'},
-                    {'label':html.Span('Near-Field HEDM',style={'font-size': 15, 'padding-left': 10,'padding-right':20}),'value':'NF-HEDM'}
+                    'label':html.Span('Far-Field HEDM [point-cloud maps] or Powder Diffraction',style={'font-size': 15, 'padding-left': 10,'padding-right':20}),'value':'FF-HEDM'},
+                    {'label':html.Span('Near-Field HEDM [space-filling maps]',style={'font-size': 15, 'padding-left': 10,'padding-right':20}),'value':'NF-HEDM'}
                     ], 'FF-HEDM',
                     id='SimType',
                     inline=True),
@@ -179,7 +179,7 @@ app.layout = dbc.Container([
     dbc.Row([html.Hr(style={'borderWidth': "1.3vh"})]),
     dbc.Row([
         dbc.Col([
-            html.Div(['Horizontal BeamSize [um] (click Show Setup and Run Microstructure Simulation again to update)',])
+            html.Div(['Horizontal BeamSize [um] (click Show Setup and Run Microstructure Simulation again to update) (ONLY for FF-HEDM)',])
         ]),
         dbc.Col([
             dcc.Slider(
