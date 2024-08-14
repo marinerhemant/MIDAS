@@ -226,8 +226,8 @@ ReadBinFiles(
                 BinNr += (ythis*(2048));
                 BinNr += zthis;
                 if (BinNr < 0 || BinNr > kT){
-					printf("BinNr was out of bounds.\n");
-					printf("%lld %lld %d %d %d %d %lld %d %d %lld %lld\n",BinNr, k, NrOfFiles, NrOfPixels, counter, TempCntr, ythis, zthis, ObsSpotsSize, kT);fflush(stdout);
+					// printf("BinNr was out of bounds.\n");
+					// printf("%lld %lld %d %d %d %d %lld %d %d %lld %lld\n",BinNr, k, NrOfFiles, NrOfPixels, counter, TempCntr, ythis, zthis, ObsSpotsSize, kT);fflush(stdout);
 					return 0;
 				}
                 SetBit(ObsSpotsMat,BinNr);
