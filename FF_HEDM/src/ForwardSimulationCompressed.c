@@ -1256,7 +1256,7 @@ main(int argc, char *argv[])
 	ImageArrSize *= NrPixels;
 	ImageArrSize *= ceil(fabs((OmegaEnd-OmegaStart)/OmegaStep));
 	ImageArr = calloc(ImageArrSize,sizeof(*ImageArr));
-	printf("Number of elements in ImageArray: %zu\n", ImageArrSize);
+	printf("Number of elements in ImageArray: %zu, number of frames: %zu\n", ImageArrSize, (size_t)ceil(fabs((OmegaEnd-OmegaStart)/OmegaStep)));
 	if (ImageArr == NULL){
 		printf("Could not allocate enough memory for image array. Exiting.\n");
 		return 1;
@@ -1355,22 +1355,22 @@ main(int argc, char *argv[])
 					OM[i][j] = InputInfo[voxNr][i*3+j];
 				}
 			}
-			for (i=0;i<3;i++){
-				for (j=0;j<3;j++){
-					printf("%lf ",OM[i][j]);
-				}
-				printf("\n");
-			}
-			printf("\n");
+			// for (i=0;i<3;i++){
+			// 	for (j=0;j<3;j++){
+			// 		printf("%lf ",OM[i][j]);
+			// 	}
+			// 	printf("\n");
+			// }
+			// printf("\n");
 			OrientMat2Euler(OM,EulerThis);
 			Euler2OrientMat(EulerThis,OM);
-			for (i=0;i<3;i++){
-				for (j=0;j<3;j++){
-					printf("%lf ",OM[i][j]);
-				}
-				printf("\n");
-			}
-			printf("\n");
+			// for (i=0;i<3;i++){
+			// 	for (j=0;j<3;j++){
+			// 		printf("%lf ",OM[i][j]);
+			// 	}
+			// 	printf("\n");
+			// }
+			// printf("\n");
 			// Calculate the spots now.
 			CalcDiffrSpots_Furnace(hklsOut,OM,Lsd,Wavelength,TheorSpots,&nTspots);
 			// For each spot, calculate displacement, calculate tilt and wedge effect.

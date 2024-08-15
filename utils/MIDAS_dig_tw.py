@@ -184,15 +184,15 @@ app.layout = dbc.Container([
         dbc.Col([
             dcc.Slider(
                 1.0,
-                5000.0,
+                2500.0,
                 value = 2000.0,
                 step=1,
                 marks={1:{'label':'1.0'},
+                    500:{'label':'500.0'},
                     1000:{'label':'1000.0'},
+                    1500:{'label':'1500.0'},
                     2000:{'label':'2000.0'},
-                    3000:{'label':'3000.0'},
-                    4000:{'label':'4000.0'},
-                    5000:{'label':'5000.0'},},
+                    2500:{'label':'2500.0'},},
                 tooltip={"placement": "bottom", "always_visible": True},
                 id='BeamSize'
             )
@@ -286,6 +286,8 @@ def calcLen(x,y,dx,dy):
 
 @callback(
     Output(component_id='setup', component_property='figure'),
+    Output("FrameNr","max"),
+    Output("nFramesSum","max"),
     Input("button_run_sim","n_clicks"),
     Input("lsd", "value"),
     Input("xbc", "value"),
@@ -408,7 +410,7 @@ def update_setup(nclk,lsd,xbc,ybc,energy,sg,a,b,c,alpha,beta,gamma,bsz,pixelsz,N
     fig.update_layout(
             margin=dict(l=0, r=0, b=0, t=50),width=1000,height=695,
             title_text='Setup simulation')
-    return fig
+    return fig,nFrames,nFrames
 
 @callback(
     Output(component_id='detector', component_property='figure'),
@@ -548,7 +550,7 @@ def update_2d(nclk,xbc,ybc,frameNr,nFramesSum,showRings,mult,seq,simType,minOme,
                 # print(frameNr,nFramesSum,lastFrame)
                 if lastFrame > nFrames:
                     lastFrame = int(nFrames)
-                # print(frameNr,nFramesSum,lastFrame)
+                print(frameNr,nFramesSum,lastFrame)
                 frame = zf[frameNr:lastFrame,:,:]
                 frame = np.max(frame,axis=0)
                 hkls = np.genfromtxt('hkls.csv',skip_header=1,delimiter=' ')
@@ -600,6 +602,13 @@ def update_2d(nclk,xbc,ybc,frameNr,nFramesSum,showRings,mult,seq,simType,minOme,
 @callback(
     Output(component_id='microstructure', component_property='figure'),
     Output('SequenceNr','max'),
+    Output("sg", "value"),
+    Output("a", "value"),
+    Output("b", "value"),
+    Output("c", "value"),
+    Output("alpha", "value"),
+    Output("beta", "value"),
+    Output("gamma", "value"),
     Input('EulerComponent','value'),
     Input('Multiple','value'),
     Input('SequenceNr','value')
@@ -609,6 +618,13 @@ def show_mic(eulerVal,multipleData,selLoadNr):
     mic_h = open(micfn,'r').readline()
     fig = go.Figure()
     seqMax = 0
+    a_new = a
+    sg_new = sg
+    b_new = b
+    c_new = c
+    alpha_new = alpha
+    beta_new = beta
+    gamma_new = gamma
     if not multipleData:
         if pos is None:
             if mic_h.startswith('%NumGrains'):
@@ -623,6 +639,14 @@ def show_mic(eulerVal,multipleData,selLoadNr):
                     orient = orient / det
                     eulers[rowNr] = rad2deg * OrientMat2Euler(orient)
                 plotType = 3
+                micf = open(micfn).readlines()
+                sg_new = int(micf[6].split()[1].split(':')[1])
+                a_new = float(micf[7].split()[3])
+                b_new = float(micf[7].split()[4])
+                c_new = float(micf[7].split()[5])
+                alpha_new = float(micf[7].split()[6])
+                beta_new = float(micf[7].split()[7])
+                gamma_new = float(micf[7].split()[8])
             elif mic_h.startswith('%TriEdgeSize'):
                 # NF Mic, 2D
                 mic = np.genfromtxt(micfn,skip_header=4)
@@ -666,7 +690,7 @@ def show_mic(eulerVal,multipleData,selLoadNr):
     fig.update_layout(
         margin=dict(l=0, r=0, b=0, t=50),width=700,height=700,
         title_text=titleText)
-    return fig,seqMax
+    return fig,seqMax,sg_new,a_new,b_new,c_new,alpha_new,beta_new,gamma_new
 
 @callback(
     Output(component_id='microstructure2', component_property='figure'),
