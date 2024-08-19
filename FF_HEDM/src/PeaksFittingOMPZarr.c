@@ -1234,11 +1234,10 @@ void main(int argc, char *argv[]){
 		free(data);
 		int nrMask=0;
 		for (a=0;a<NrPixels*NrPixels;a++) {
-			maskTT[a] = maskT[a];
 			mask[a] = maskT[a];
 			if (maskTT[a]>0) nrMask++;
 		}
-		// Transposer(maskTT,NrPixels,mask);
+		// Transposer(maskTT,NrPixels,mask); // Why this is not done??? We might need to revisit this later.
 		printf("Number of mask pixels: %d\n",nrMask);
 	}
 	free(maskT);
@@ -1491,7 +1490,7 @@ void main(int argc, char *argv[]){
 				TotNrRegions--;
 				continue;
 			}
-			printf("%d\n",NrPixelsThisRegion);
+			// printf("%d\n",NrPixelsThisRegion);
 			for (i=0;i<NrPixelsThisRegion;i++){
 				UsefulPixels[i*2+0] = (int)(Positions[RegNr*NrPixels*4+i]/NrPixels);
 				UsefulPixels[i*2+1] = (int)(Positions[RegNr*NrPixels*4+i]%NrPixels);
@@ -1504,7 +1503,7 @@ void main(int argc, char *argv[]){
 				TotNrRegions--;
 				continue;
 			}
-			printf("After RegionNr: %d, NPeaks: %d, NPx: %lf\n",RegNr,nPeaks,NrPixelsThisRegion);
+			// printf("After RegionNr: %d, NPeaks: %d, NPx: %lf\n",RegNr,nPeaks,NrPixelsThisRegion);
 			if (nPeaks > maxNPeaks){
 				// Sort peaks by MaxIntensity, remove the smallest peaks until maxNPeaks, arrays needed MaximaPositions, MaximaValues.
 				int MaximaPositionsT[nPeaks*2];
