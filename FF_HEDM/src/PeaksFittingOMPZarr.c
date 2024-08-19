@@ -1237,11 +1237,11 @@ void main(int argc, char *argv[]){
 			maskTT[a] = maskT[a];
 			if (maskTT[a]>0) nrMask++;
 		}
-		Transposer(maskTT,NrPixels,mask);
-		free(maskT);
-		free(maskTT);
+		// Transposer(maskTT,NrPixels,mask);
 		printf("Number of mask pixels: %d\n",nrMask);
 	}
+	free(maskT);
+	free(maskTT);
 	free(maskTemp);
     zip_close(arch);
 
