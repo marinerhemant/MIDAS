@@ -90,6 +90,7 @@ else:
             newArr.append([upd[i]])
         newVal = np.array(newArr).astype(np.double)
 
+print(newVal)
 zf2 = zarr.open(fnTemp,'w')
 if tp!=-1:
     ds = zf2.create_dataset(key,shape=(newVal.shape),dtype=newVal.dtype,chunks=(1,),
