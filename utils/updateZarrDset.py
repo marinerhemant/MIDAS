@@ -107,7 +107,7 @@ else: # This means we are writing a string
                             compressor=Blosc(cname='zstd', clevel=3,
                                            shuffle=Blosc.BITSHUFFLE))
 ds[:] = newVal
-print(ds)
+print(ds[:])
 shutil.move(f'{bnFNTemp}/{keyTop}',f'{keyTop}')
 subprocess.call(f'zip -u {fnIn} {key}/.zarray',shell=True)
 subprocess.call(f'zip -u {fnIn} {key}/{keyPos}',shell=True)
