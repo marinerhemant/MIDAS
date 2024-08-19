@@ -1235,6 +1235,7 @@ void main(int argc, char *argv[]){
 		int nrMask=0;
 		for (a=0;a<NrPixels*NrPixels;a++) {
 			maskTT[a] = maskT[a];
+			mask[a] = maskT[a];
 			if (maskTT[a]>0) nrMask++;
 		}
 		// Transposer(maskTT,NrPixels,mask);
