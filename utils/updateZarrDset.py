@@ -93,7 +93,7 @@ else:
 # print(newVal)
 zf2 = zarr.open(fnTemp,'w')
 if tp!=-1:
-    ds = zf2.create_dataset(key,shape=(newVal.shape),dtype=newVal.dtype,chunks=(1,),
+    ds = zf2.create_dataset(key,shape=(newVal.shape),dtype=newVal.dtype,chunks=(newVal.shape),
                         compressor=Blosc(cname='zstd', clevel=3,
                         shuffle=Blosc.BITSHUFFLE))
 else: # This means we are writing a string
@@ -111,8 +111,8 @@ print(ds[:])
 shutil.move(f'{bnFNTemp}/{keyTop}',f'{keyTop}')
 subprocess.call(f'zip -u {fnIn} {key}/.zarray',shell=True)
 subprocess.call(f'zip -u {fnIn} {key}/{keyPos}',shell=True)
-# shutil.rmtree(keyTop)
-# shutil.rmtree(fnTemp)
+shutil.rmtree(keyTop)
+shutil.rmtree(fnTemp)
 zf = zarr.open(fnIn,'r')
 rf = zf[key][:]
 print(f'Updated value: {key}:{rf}')
