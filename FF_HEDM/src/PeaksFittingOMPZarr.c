@@ -659,6 +659,24 @@ void main(int argc, char *argv[]){
 			printf("%zu %d %d %d\n",bytesPerPx,nFrames,NrPixelsZ,NrPixelsY);
             free(s);
         }
+        if (strstr(finfo->name,"exchange/mask/.zarray")!=NULL){
+            s = calloc(finfo->size + 1, sizeof(char));
+            fd = zip_fopen_index(arch, count, 0);
+            zip_fread(fd, s, finfo->size);
+            char *ptr = strstr(s,"shape");
+            if (ptr != NULL){
+                char *ptrt = strstr(ptr,"[");
+                char *ptr2 = strstr(ptrt,"]");
+                int loc = (int)(ptr2 - ptrt);
+                char ptr3[2048];
+                strncpy(ptr3,ptrt,loc+1);
+                if (3 == sscanf(ptr3, "%*[^0123456789]%d%*[^0123456789]%d%*[^0123456789]%d", &nFloods, &NrPixelsZ, &NrPixelsY)){
+                            printf("nMasks: %d nrPixelsZ: %d nrPixelsY: %d\n", nFloods, NrPixelsZ, NrPixelsY);
+                        } else return 1;
+            } else return 1;
+			printf("%zu %d %d %d\n",bytesPerPx,nFrames,NrPixelsZ,NrPixelsY);
+            free(s);
+        }
         if (strstr(finfo->name,"exchange/data/0.0.0")!=NULL){
             dataLoc = count;
         }
