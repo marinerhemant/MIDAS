@@ -578,7 +578,7 @@ void main(int argc, char *argv[]){
     char* arr = NULL;
     int nFrames,NrPixelsZ,NrPixelsY,darkLoc=-1,dataLoc=-1,floodLoc=-1;
 	size_t bytesPerPx;
-    int nDarks=0, nFloods=0;
+    int nDarks=0, nFloods=0,nMasks=0;
     int locImTransOpt,locRingThresh,nRingsThresh=0,locOmegaRanges,nOmegaRanges=0;
     double omegaStart, omegaStep;
     int32_t dsize;
@@ -670,8 +670,8 @@ void main(int argc, char *argv[]){
                 int loc = (int)(ptr2 - ptrt);
                 char ptr3[2048];
                 strncpy(ptr3,ptrt,loc+1);
-                if (3 == sscanf(ptr3, "%*[^0123456789]%d%*[^0123456789]%d%*[^0123456789]%d", &nFloods, &NrPixelsZ, &NrPixelsY)){
-                            printf("nMasks: %d nrPixelsZ: %d nrPixelsY: %d\n", nFloods, NrPixelsZ, NrPixelsY);
+                if (3 == sscanf(ptr3, "%*[^0123456789]%d%*[^0123456789]%d%*[^0123456789]%d", &nMasks, &NrPixelsZ, &NrPixelsY)){
+                            printf("nMasks: %d nrPixelsZ: %d nrPixelsY: %d\n", nMasks, NrPixelsZ, NrPixelsY);
                         } else return 1;
             } else return 1;
 			printf("%zu %d %d %d\n",bytesPerPx,nFrames,NrPixelsZ,NrPixelsY);
