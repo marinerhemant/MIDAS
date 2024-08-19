@@ -1238,7 +1238,6 @@ void main(int argc, char *argv[]){
 			if (maskTT[a]>0) nrMask++;
 		}
 		Transposer(maskTT,NrPixels,mask);
-		free(maskTemp);
 		free(maskT);
 		free(maskTT);
 		printf("Number of mask pixels: %d\n",nrMask);
