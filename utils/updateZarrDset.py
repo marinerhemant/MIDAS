@@ -90,12 +90,12 @@ else:
             newArr.append([upd[i]])
         newVal = np.array(newArr).astype(np.double)
 
-print(newVal)
+# print(newVal)
 zf2 = zarr.open(fnTemp,'w')
 if tp!=-1:
     ds = zf2.create_dataset(key,shape=(newVal.shape),dtype=newVal.dtype,chunks=(1,),
                         compressor=Blosc(cname='zstd', clevel=3,
-                                         shuffle=Blosc.BITSHUFFLE))
+                        shuffle=Blosc.BITSHUFFLE))
 else: # This means we are writing a string
     if len(keyPos)==1:
         ds = zf2.create_dataset(key,shape=(1,),dtype=newVal.dtype,chunks=(1,),
@@ -105,7 +105,7 @@ else: # This means we are writing a string
         # WE NEED TO ADD .zarray file too!!!!!
         ds = zf2.create_dataset(key,shape=newVal.shape,dtype=newVal.dtype,chunks=newVal.shape,
                             compressor=Blosc(cname='zstd', clevel=3,
-                                           shuffle=Blosc.BITSHUFFLE))
+                            shuffle=Blosc.BITSHUFFLE))
 ds[:] = newVal
 print(ds[:])
 shutil.move(f'{bnFNTemp}/{keyTop}',f'{keyTop}')
