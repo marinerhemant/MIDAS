@@ -79,6 +79,8 @@ if resultDir == '.':
 
 darkLoc = 'exchange/dark'
 brightLoc = 'exchange/bright'
+maskLoc = 'exchange/mask'
+panelmaskLoc = 'exchange/panelmask'
 lines = open(psFN).readlines()
 skipF = 0
 NrFilesPerSweep = 1
@@ -125,7 +127,7 @@ if skipF==0 and HZ > 8192:
 elif skipF > 0 and HZ > 8192:
     HZ = 8192
 
-origInputFN = InputFN
+origInputFN = os.path.basename(InputFN)
 if len(InputFN)==0:
     fNr += (layerNr-1)*NrFilesPerSweep
     fNr = str(fNr)
@@ -173,6 +175,14 @@ if h5py.is_hdf5(InputFN):
     darkMean = np.mean(darkData[skipF:,:,:],axis=0).astype(np.uint16)
     if preProc!=-1:
         darkpreProc = darkMean + preProc
+    if maskLoc in hf2:
+        maskData = hf2[maskLoc][()].reshape((1,numZ,numY))
+        mask = exc.create_dataset('mask',shape=maskData.shape,dtype=np.uint16,chunks=(1,numZ,numY),compressor=compressor)
+        mask[:] = maskData
+    if panelmaskLoc in hf2:
+        panelmaskData = hf2[panelmaskLoc][()].reshape((1,numZ,numY))
+        panelmask = exc.create_dataset('panelmask',shape=maskData.shape,dtype=np.uint16,chunks=(1,numZ,numY),compressor=compressor)
+        panelmask[:] = panelmaskData
     if brightLoc in hf2:
         brightData = hf2[brightLoc][()]
     else:
@@ -272,6 +282,7 @@ rf = zRoot.create_dataset('analysis/process/analysis_parameters/ResultFolder',sh
 rf[:]=resultOut
 
 RingThreshArr = np.zeros((1,2))
+RingExcludeArr = np.zeros((1,2))
 OmegaRanges = np.zeros((1,2))
 OmegaRanges[0,0] = -10000
 BoxSizes = np.zeros((1,4))
@@ -323,6 +334,14 @@ for line in lines:
             RingThreshArr = outArr
         else:
             RingThreshArr = np.vstack((RingThreshArr,outArr))
+    str = 'RingsToExclude'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(x) for x in line.split()[1:3]]).astype(np.double)
+        outArr = outArr.reshape((1,2))
+        if RingExcludeArr[0,0] == 0:
+            RingExcludeArr = outArr
+        else:
+            RingExcludeArr = np.vstack((RingExcludeArr,outArr))
     str = 'HeadSize'
     if line.startswith(f'{str} '):
         head = int(line.split()[1])
@@ -459,6 +478,16 @@ for line in lines:
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
         spBPI = sp_pro_analysis.create_dataset(str,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
         spBPI[:] = outArr
+    str = 'FitWeightMean'
+    if line.startswith(f'{str} '):
+        outArr = np.array([int(line.split()[1])]).astype(np.double)
+        spFWM = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spFWM[:] = outArr
+    str = 'PixelSplittingRBin'
+    if line.startswith(f'{str} '):
+        outArr = np.array([int(line.split()[1])]).astype(np.double)
+        spPSRB = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spPSRB[:] = outArr
     str = 'tolTilts'
     if line.startswith(f'{str} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
@@ -504,6 +533,36 @@ for line in lines:
         outArr = np.array([float(line.split()[1])]).astype(np.double)
         spGP = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
         spGP[:] = outArr
+    str = 'tolPanelFit'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spTPF = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spTPF[:] = outArr
+    str = 'tolP'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spTP = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spTP[:] = outArr
+    str = 'tolP0'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spTP0 = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spTP0[:] = outArr
+    str = 'tolP1'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spTP1 = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spTP1[:] = outArr
+    str = 'tolP2'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spTP2 = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spTP2[:] = outArr
+    str = 'tolP3'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spTP3 = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spTP3[:] = outArr
     str = 'StepSizePos'
     if line.startswith(f'{str} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
@@ -760,6 +819,8 @@ for line in lines:
 
 spRTA  = sp_pro_analysis.create_dataset('RingThresh',dtype=np.double,shape=(RingThreshArr.shape),chunks=(RingThreshArr.shape),compressor=compressor)
 spRTA[:] = RingThreshArr
+spRTE  = sp_pro_analysis.create_dataset('RingsToExclude',dtype=np.double,shape=(RingExcludeArr.shape),chunks=(RingExcludeArr.shape),compressor=compressor)
+spRTE[:] = RingExcludeArr
 spOR = sp_pro_analysis.create_dataset('OmegaRanges',dtype=np.double,shape=(OmegaRanges.shape),chunks=(OmegaRanges.shape),compressor=compressor)
 spOR[:] = OmegaRanges
 spBS = sp_pro_analysis.create_dataset('BoxSizes',dtype=np.double,shape=(BoxSizes.shape),chunks=(BoxSizes.shape),compressor=compressor)
