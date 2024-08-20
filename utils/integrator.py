@@ -144,7 +144,7 @@ if nCPUs == 1:
         else:
             if thisFN[-3:] != 'zip':
                 thisFN += '.analysis.MIDAS.zip'
-            zipFN = resultDir + thisFN
+            zipFN = resultDir + os.path.basename(thisFN)
             print(f'Processing file: {zipFN}')
         f = open(f'{resultDir}/{logdir}/{os.path.basename(zipFN)}_integrator_out.csv','w')
         f_err = open(f'{resultDir}/{logdir}/{os.path.basename(zipFN)}_integrator_err.csv','w')
