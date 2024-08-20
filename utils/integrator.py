@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+import warnings
+warnings.filterwarnings("ignore")
+
 import subprocess
 import argparse
 import os,sys
