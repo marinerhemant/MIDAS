@@ -127,14 +127,14 @@ if skipF==0 and HZ > 8192:
 elif skipF > 0 and HZ > 8192:
     HZ = 8192
 
-origInputFN = os.path.basename(InputFN)
+origInputFN = InputFN
 if len(InputFN)==0:
     fNr += (layerNr-1)*NrFilesPerSweep
     fNr = str(fNr)
     InputFN = rawFolder + '/' + fStem + '_' + fNr.zfill(pad) + ext
     outfn = resultDir + '/' + fStem + '_' + fNr.zfill(pad)
 else:
-    outfn = resultDir+'/'+InputFN+'.analysis'
+    outfn = resultDir+'/'+os.path.basename(InputFN)+'.analysis'
     if len(darkFN) == 0:
         darkFN = InputFN
 print(f'Input: {InputFN}')
