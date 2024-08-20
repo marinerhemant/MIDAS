@@ -110,7 +110,7 @@ os.makedirs(f'{resultDir}/{logdir}',exist_ok=True)
 startFileNrStr = str(startFileNr).zfill(6)
 if startFileNr == -1:
     startFileNrStr = re.search('\d{% s}' % 6, InputFN)
-    print(startFileNrStr.group(0))
+    print(f'Processing file number: {int(startFileNrStr.group(0))}')
     if not startFileNrStr:
         print("Could not find 6 padded fileNr. Exiting.")
         sys.exit()
