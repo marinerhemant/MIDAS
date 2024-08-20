@@ -39,8 +39,9 @@ def generateZip(resFol,pfn,dfn='',dloc='',nchunks=-1,preproc=-1,outf='ZipOut.txt
         cmd+= ' -numFrameChunks '+str(nchunks)
     if preproc!=-1:
         cmd+= ' -preProcThresh '+str(preproc)
-    outf = f'{resFol}/{logdir}/{dfn}_{outf}'
-    errf = f'{resFol}/{logdir}/{dfn}_{errf}'
+    dfn_base = os.path.basename(dfn)
+    outf = f'{resFol}/{logdir}/{dfn_base}_{outf}'
+    errf = f'{resFol}/{logdir}/{dfn_base}_{errf}'
     subprocess.call(cmd,shell=True,stdout=open(outf,'w'),stderr=open(errf,'w'))
     lines = open(outf,'r').readlines()
     if lines[-1].startswith('OutputZipName'):
