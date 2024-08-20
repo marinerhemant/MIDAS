@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 import warnings
-warnings.filterwarnings("ignore")
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore",SyntaxWarning)
 
 import subprocess
 import argparse
