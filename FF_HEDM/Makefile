@@ -2,7 +2,7 @@
 # Copyright (c) 2014, UChicago Argonne, LLC
 # See LICENSE file.
 #
-# make CC=/Users/hsharma/opt/homebrew/opt/gcc/bin/gcc-13 integrator
+# make CC=/Users/hsharma/opt/homebrew/opt/gcc/bin/gcc-14 integrator
 # install_name_tool -add_rpath /Users/hsharma/.MIDAS/BLOSC1/lib bin/ForwardSimulationCompressed
 CC=gcc
 NCC=nvcc

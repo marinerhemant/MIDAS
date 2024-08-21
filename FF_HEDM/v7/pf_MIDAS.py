@@ -126,7 +126,7 @@ warnings.filterwarnings('ignore')
 parser = MyParser(description='''
 PF_MIDAS, contact hsharma@anl.gov 
 Provide positions.csv file (negative positions with respect to actual motor position, 
-				  motor position is normally position of the rotation axis, opposite to the voxel position).
+				motor position is normally position of the rotation axis, opposite to the voxel position).
 Parameter file and positions.csv file must be in the same folder.
 ''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-nCPUs', type=int, required=False, default=32, help='Number of CPUs to use')

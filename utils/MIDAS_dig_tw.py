@@ -505,7 +505,7 @@ def update_2d(nclk,xbc,ybc,frameNr,nFramesSum,showRings,mult,seq,simType,minOme,
                 hkls = hkls[:,:3].astype(int)
                 unique_rads = np.unique(rads)
                 fig = go.Figure()
-                fig.add_trace(go.Heatmap(z=frame,x0=-int(xbc*pixelsz/1000), y0=-int(ybc*pixelsz/1000),dx=pixelsz/1000,dy=pixelsz/1000,zmin=0,zmax=5,zauto=False,colorscale='gray_r'))
+                fig.add_trace(go.Heatmap(z=frame,x0=-int(xbc*pixelsz/1000), y0=-int(ybc*pixelsz/1000),dx=pixelsz/1000,dy=pixelsz/1000,zmin=0,zmax=1,zauto=False,colorscale='gray_r'))
                 if showRings:
                     for rad in unique_rads:
                         found = 0

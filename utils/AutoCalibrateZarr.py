@@ -16,6 +16,7 @@ import plotly.graph_objects as go
 import pandas as pd
 import diplib as dip
 from plotly.subplots import make_subplots
+pytpath = sys.executable
 
 env = dict(os.environ)
 midas_path = os.path.expanduser("~/.MIDAS")
@@ -35,6 +36,23 @@ def fileReader(f,dset):
 	data[data<1] = 1
 	return np.mean(data,axis=0).astype(np.uint16)
 
+def generateZip(resFol,pfn,dfn='',dloc='',nchunks=-1,preproc=-1,outf='ZipOut.txt',errf='ZipErr.txt'):
+    cmd = pytpath+' '+os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZip.py')+' -resultFolder '+ resFol +' -paramFN ' + pfn
+    if dfn!='':
+        cmd+= ' -dataFN ' + dfn
+    if dloc!='':
+        cmd+= ' -dataLoc ' + dloc
+    if nchunks!=-1:
+        cmd+= ' -numFrameChunks '+str(nchunks)
+    if preproc!=-1:
+        cmd+= ' -preProcThresh '+str(preproc)
+    outf = resFol+'/output/'+outf
+    errf = resFol+'/output/'+errf
+    subprocess.call(cmd,shell=True,stdout=open(outf,'w'),stderr=open(errf,'w'))
+    lines = open(outf,'r').readlines()
+    if lines[-1].startswith('OutputZipName'):
+        return lines[-1].split()[1]
+
 parser = MyParser(description='''Automated Calibration for WAXS using continuous rings-like signal''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-dataFN', type=str, required=True, help='DataFileName.zip')
 parser.add_argument('-MakePlots', type=int, required=False, default=0, help='MakePlots: to draw, use 1.')
@@ -44,9 +62,20 @@ parser.add_argument('-MultFactor', type=float, required=False, default=2.5, help
 parser.add_argument('-Threshold', type=float, required=False, default=0, help='If you want to give a manual threshold, typically 500, otherwise, it will calculate automatically.')
 parser.add_argument('-StoppingStrain', type=float, required=False, default=0.00004, help='If refined pseudo-strain is below this value and all rings are "good", we would have converged.')
 parser.add_argument('-ImTransOpt', type=int, required=False, default=[0],nargs='*', help="If you want to do any transformations to the data: \n0: nothing, 1: flip LR, 2: flip UD, 3: transpose. Give as many as needed in the right order.")
+parser.add_argument('-ConvertFile', type=int, required=False, default=0, help="If you want to generate the zarr zip file from an HDF: \n0: input is zarr zip file, 1: HDF5 input will be used to generarte a zarr zip file.")
+parser.add_argument('-paramFN', type=str, required=False, default='', help="If you use convertFile = 1, you need to provide the parameter file consisting of all settings.")
 args, unparsed = parser.parse_known_args()
 
 dataFN = args.dataFN
+convertFile = args.convertFile
+
+if convertFile == 1:
+	psFN = args.paramFN
+	if len(psFN) == 0:
+		print("Provide the parameter file if you want to generate a zarr zip file.")
+		sys.exit()
+	dataF = generateZip('.',psFN,dfn=dataFN,nchunks=100,preproc=0)
+
 dataF = zarr.open(dataFN,'r')
 NrPixelsY = 0
 NrPixelsZ = 0

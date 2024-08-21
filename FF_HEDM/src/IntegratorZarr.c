@@ -353,7 +353,7 @@ int main(int argc, char **argv)
     char *resultFolder;
     int locImTransOpt, nFrames, nDarks, nFloods, bytesPerPx=2;
     int darkLoc=-1,dataLoc=-1,floodLoc=-1;
-    double sampleState = 0;
+    double Temperature = 0, Pressure  = 0;
     while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
         if (strstr(finfo->name,"analysis/process/analysis_parameters/ResultFolder/0")!=NULL){
             arr = calloc(finfo->size + 1, sizeof(char)); 
@@ -399,14 +399,25 @@ int main(int argc, char **argv)
             free(arr);
             free(data);
         }
-        if (strstr(finfo->name,"analysis/process/analysis_parameters/SampleState/0")!=NULL){
+        if (strstr(finfo->name,"analysis/process/analysis_parameters/Temperature/0")!=NULL){
             arr = calloc(finfo->size + 1, sizeof(char)); 
             fd = zip_fopen_index(arch, count, 0);
             zip_fread(fd, arr, finfo->size);
             dsize = sizeof(double);
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
-            sampleState = *(double *)&data[0];
+            Temperature = *(double *)&data[0];
+            free(arr);
+            free(data);
+        }
+        if (strstr(finfo->name,"analysis/process/analysis_parameters/Pressure/0")!=NULL){
+            arr = calloc(finfo->size + 1, sizeof(char)); 
+            fd = zip_fopen_index(arch, count, 0);
+            zip_fread(fd, arr, finfo->size);
+            dsize = sizeof(double);
+            data = (char*)malloc((size_t)dsize);
+            dsize = blosc1_decompress(arr,data,dsize);
+            Pressure = *(double *)&data[0];
             free(arr);
             free(data);
         }
@@ -1083,7 +1094,8 @@ int main(int argc, char **argv)
 				H5LTset_attribute_int(file_id, chunkSetName, "Number Of Frames Summed", &nSum, 1);
 				H5LTset_attribute_double(file_id, chunkSetName, "FirstOme", &firstOme, 1);
 				H5LTset_attribute_double(file_id, chunkSetName, "LastOme", &omeArr[i], 1);
-				H5LTset_attribute_double(file_id, chunkSetName, "SampleState", &sampleState, 1); // Add sample state here.
+				H5LTset_attribute_double(file_id, chunkSetName, "Temperature", &Temperature, 1);
+				H5LTset_attribute_double(file_id, chunkSetName, "Pressure", &Pressure, 1);
 			}
 		}
 	}

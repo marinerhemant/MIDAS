@@ -757,11 +757,16 @@ for line in lines:
         outArr = np.array([float(line.split()[1])]).astype(np.double)
         spWL = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
         spWL[:] = outArr
-    str = 'SampleState'
+    str = 'Temperature'
     if line.startswith(f'{str} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spWL = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
-        spWL[:] = outArr
+        spTemp = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spTemp[:] = outArr
+    str = 'Pressure'
+    if line.startswith(f'{str} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spPr = sp_pro_analysis.create_dataset(str,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spPr[:] = outArr
     str = 'Width'
     if line.startswith(f'{str} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
