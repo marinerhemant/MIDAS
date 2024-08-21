@@ -333,7 +333,7 @@ int main(int argc, char **argv)
 	int sumImages=0, separateFolder=1,newOutput=2;
 	int haveOmegas = 0, chunkFiles=0, individualSave=1;
 	double omeStart, omeStep;
-	double Lam=0.172978, Polariz=0.99, SHpL=0.002, U=1.163, V=-0.126, W=0.063, X=0.0, Y=0.0, Z=0.0;
+	double Lam=0.172978, Polariz=0.99, SHpL=0.002, U=1.163, V=-0.126, W=0.063, X=0.0, Y=0.0, Z=0.0, Lsd=1000000.0;
 	char *DataFN = argv[1];
     blosc2_init();
     // Read zarr config
@@ -363,6 +363,17 @@ int main(int argc, char **argv)
             resultFolder = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,resultFolder,dsize);
             resultFolder[dsize] = '\0';
+            free(arr);
+            free(data);
+        }
+        if (strstr(finfo->name,"analysis/process/analysis_parameters/Lsd/0")!=NULL){
+            arr = calloc(finfo->size + 1, sizeof(char)); 
+            fd = zip_fopen_index(arch, count, 0);
+            zip_fread(fd, arr, finfo->size);
+            dsize = sizeof(double);
+            data = (char*)malloc((size_t)dsize);
+            dsize = blosc1_decompress(arr,data,dsize);
+            Lsd = *(double *)&data[0];
             free(arr);
             free(data);
         }
@@ -1128,6 +1139,7 @@ int main(int argc, char **argv)
     H5LTmake_dataset_double(file_id, "/InstrumentParameters/X", 1, dimval, &X);
     H5LTmake_dataset_double(file_id, "/InstrumentParameters/Y", 1, dimval, &Y);
     H5LTmake_dataset_double(file_id, "/InstrumentParameters/Z", 1, dimval, &Z);
+    H5LTmake_dataset_double(file_id, "/InstrumentParameters/Distance", 1, dimval, &Lsd);
     status_f = H5Fclose (file_id);
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
