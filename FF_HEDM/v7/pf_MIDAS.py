@@ -462,6 +462,25 @@ if oneSolPerVox==1:
 		if len(sinoFNs) > 0:
 			for sinoF in sinoFNs:
 				os.remove(sinoF)
+		dirn = 'Sinos'
+		if os.path.isdir(dirn):
+			shutil.rmtree(dirn)
+		dirn = 'Recons'
+		if os.path.isdir(dirn):
+			shutil.rmtree(dirn)
+		dirn = 'Thetas'
+		if os.path.isdir(dirn):
+			shutil.rmtree(dirn)
+		dirn = 'fullResults'
+		if os.path.isdir(dirn):
+			if os.path.isdir(dirn[4:]):
+				shutil.rmtree(dirn)
+			shutil.move(dirn,dirn[4:])
+		dirn = 'fullOutput'
+		if os.path.isdir(dirn):
+			if os.path.isdir(dirn[4:]):
+				shutil.rmtree(dirn)
+			shutil.move(dirn,dirn[4:])
 	subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')+f' {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}',cwd=topdir,shell=True)
 	os.makedirs('Recons',exist_ok=True)
 	if doTomo == 1:
