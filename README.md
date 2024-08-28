@@ -10,6 +10,6 @@ In case of problems, contatct [Hemant Sharma](mailto:hsharma@anl.gov?subject=[MI
 
 Some misorientation functions are taken from the [ODFPF](https://anisotropy.mae.cornell.edu/onr/Matlab/matlab-functions.html) package from Cornell.
 
-Downloads [JRE](https://www.oracle.com/java/technologies/javase-jre8-downloads.html), [SWIFT](http://swift-lang.org/main/), [NLOPT](https://nlopt.readthedocs.io/en/latest/), [LIBTIFF](http://www.libtiff.org/), [FFTW](http://www.fftw.org/), [HDF5](https://www.hdfgroup.org/solutions/hdf5/), [MPICH](https://www.mpich.org/), [ZLIB](https://zlib.net/) for compilation of N(F)F-HEDM codes.
+Downloads [NLOPT](https://nlopt.readthedocs.io/en/latest/), [LIBTIFF](http://www.libtiff.org/), [FFTW](http://www.fftw.org/), [HDF5](https://www.hdfgroup.org/solutions/hdf5/), [BLOSC](https://github.com/Blosc/c-blosc), [BLOSC-2](https://github.com/Blosc/c-blosc2), [ZLIB](https://zlib.net/), [LIBZIP]() for compilation of N(F)F-HEDM codes.
 
 **More details at** [MIDAS-WIKI](https://github.com/marinerhemant/MIDAS/wiki)
