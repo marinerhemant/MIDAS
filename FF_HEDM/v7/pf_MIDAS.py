@@ -49,7 +49,7 @@ def generateZip(resFol,pfn,layerNr,dfn='',dloc='',nchunks=-1,preproc=-1,outf='Zi
 		return lines[-1].split()[1]
 
 @python_app
-def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities):
+def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities,omegaFile):
 	import numpy as np
 	import pandas as pd
 	import zarr, os, shutil, sys
@@ -92,8 +92,11 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,pa
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True,stdout=f,stderr=f_err)
 	zf = zarr.open(outFStem,'r')
 	searchStr = 'measurement/process/scan_parameters/startOmeOverride'
-	if searchStr in zf:
-		thisOmega = zf[searchStr][:][0]
+	if searchStr in zf or len(omegaFile)>0:
+		if searchStr in zf:
+			thisOmega = zf[searchStr][:][0]
+		else:
+			thisOmega = float(open(omegaFile).readlines()[layerNr-1])
 		if thisOmega != 0:
 			signTO = thisOmega / fabs(thisOmega)
 		else:
@@ -245,6 +248,7 @@ parser.add_argument('-nCPUsLocal', type=int, required=False, default=4, help='Lo
 parser.add_argument('-paramFile', type=str, required=True, help='ParameterFileName: Do not use the full path.')
 parser.add_argument('-nNodes', type=int, required=False, default=1, help='Number of Nodes')
 parser.add_argument('-machineName', type=str, required=False, default='local', help='Machine Name: local,orthrosall,orthrosnew,umich')
+parser.add_argument('-omegaFile', type=str, required=False, default='', help='If you want to override omegas')
 parser.add_argument('-doPeakSearch',type=int,required=False, default=1,help='0 if PeakSearch is already done. InputAllExtra...0..n.csv should exist in the folder. -1 if you want to reprocess the peaksearch output, without doing peaksearch again.')
 parser.add_argument('-oneSolPerVox',type=int,required=False,default=1,help='0 if want to allow multiple solutions per voxel. 1 if want to have only 1 solution per voxel.')
 parser.add_argument('-resultDir',type=str,required=False,default='',help='Directory where you want to save the results. If ommitted, the current directory will be used.')
@@ -258,6 +262,7 @@ parser.add_argument('-startScanNr', type=int, required=False, default=1, help='I
 args, unparsed = parser.parse_known_args()
 baseNameParamFN = args.paramFile
 machineName = args.machineName
+omegaFile = args.omegaFile
 doPeakSearch = args.doPeakSearch
 oneSolPerVox = args.oneSolPerVox
 numProcs = args.nCPUs
@@ -385,7 +390,7 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 	# Use parsl to run this in parallel
 	res = []
 	for layerNr in range(startScanNr,nScans+1):
-		res.append(parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities))
+		res.append(parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities,omegaFile))
 	outputs = [i.result() for i in res]
 	print(f'Peaksearch done on {nNodes} nodes.')
 else:
