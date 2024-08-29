@@ -22,6 +22,7 @@ from numba import jit
 import time
 import matplotlib.pyplot as plt
 import re
+from PIL import Image
 
 compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
 
@@ -95,6 +96,7 @@ numPxY = 2048
 numPxZ = 2048
 HZ = 8192
 pad = 6
+maskFN = ''
 for line in lines:
     if line.startswith('RawFolder '):
         rawFolder = line.split()[1]
@@ -291,6 +293,11 @@ if preProc !=-1:
     brightData *= 0
 dark[:] = darkData
 bright[:]=brightData
+if len(maskFN) > 0:
+    maskData = np.array(Image.open(maskFN)).astype(np.uint16)
+    mask = exc.create_dataset('mask',shape=maskData.shape,dtype=np.uint16,chunks=(1,numZ,numY),compressor=compressor)
+    mask[:] = maskData
+
 
 data.attrs['_ARRAY_DIMENSIONS'] = data.shape
 dark.attrs['_ARRAY_DIMENSIONS'] = bright.shape
