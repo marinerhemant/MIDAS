@@ -340,8 +340,6 @@ int main(int argc, char *argv[]){
 		CurrentIDs[i][14] = NewIDs[i][10];			  // NrPx
 		CurrentIDs[i][15] = NewIDs[i][11];			  // NrPxTot
 	}
-    //~ int e = CheckDirectoryCreation(Folder,FileStem);
-    //~ if (e ==0) return 1;
     sprintf(OutFileName,"%s/Result_StartNr_%d_EndNr_%d.csv",Folder,StartNr,EndNr);
 	FILE *OutFile;
 	OutFile = fopen(OutFileName,"w");

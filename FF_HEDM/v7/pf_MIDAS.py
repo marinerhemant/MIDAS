@@ -49,6 +49,116 @@ def generateZip(resFol,pfn,layerNr,dfn='',dloc='',nchunks=-1,preproc=-1,outf='Zi
 		return lines[-1].split()[1]
 
 @python_app
+def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities):
+	import numpy as np
+	import pandas as pd
+	import zarr, os, shutil, sys
+	from pathlib import Path
+	import time
+	utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
+	sys.path.insert(0,utilsDir)
+	# Run peaksearch using nblocks 1 and blocknr 0
+	print(f'LayerNr: {layerNr}')
+	ypos = float(positions[layerNr-1])
+	thisStartNr = startNrFirstLayer + (layerNr-1)*nrFilesPerSweep
+	folderName = str(thisStartNr)
+	thisDir = topdir + '/' + folderName + '/'
+	Path(thisDir).mkdir(parents=True,exist_ok=True)
+	os.chdir(thisDir)
+	thisParamFN = thisDir + baseNameParamFN
+	thisPF = open(thisParamFN,'w')
+	for line in paramContents:
+		thisPF.write(line)
+	thisPF.close()
+	Path(thisDir+'/Temp').mkdir(parents=True,exist_ok=True)
+	Path(thisDir+'/output').mkdir(parents=True,exist_ok=True)
+	sub_logDir = thisDir + '/output'
+	if ConvertFiles==1:
+		outFStem = generateZip(thisDir,baseNameParamFN,layerNr,nchunks=nchunks,preproc=preproc)
+	else:
+		outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(6)}.MIDAS.zip'
+	print(f'FileStem: {outFStem}')
+	f = open(f'{resultDir}/processing_out0.csv','w')
+	f_err = open(f'{resultDir}/processing_err0.csv','w')
+	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+f' {outFStem} {thisDir}',env=env,shell=True,stdout=f,stderr=f_err)
+	if doPeakSearch==1:
+		t_st = time.time()
+		print(f'Doing PeakSearch.')
+		resultDir = f'{thisDir}/output'
+		Path(resultDir).mkdir(parents=True,exist_ok=True)
+		cmd = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPZarr') + f' {outFStem} 0 1 {numProcs} {thisDir}'
+		subprocess.call(cmd,shell=True,env=env,stdout=f,stderr=f_err)
+		print(f'PeakSearch Done. Time taken: {time.time()-t_st} seconds.')
+	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True,stdout=f,stderr=f_err)
+	zf = zarr.open(outFStem,'r')
+	searchStr = 'measurement/process/scan_parameters/startOmeOverride'
+	if searchStr in zf:
+		thisOmega = zf[searchStr][:][0]
+		if thisOmega != 0:
+			signTO = thisOmega / fabs(thisOmega)
+		else:
+			signTO = 1
+		delOmega = signTO*(fabs(thisOmega)%360) - omegaFF
+		delOmega = delOmega * (fabs(delOmega)%360) / fabs(delOmega)
+		omegaOffsetThis = -delOmega # Because we subtract this
+		print(f"Offsetting omega: {omegaOffsetThis}.")
+		tOme = time.time()
+		if os.path.exists(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old'):
+			shutil.copy2(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old',f'Result_StartNr_{startNr}_EndNr_{endNr}.csv')
+		else:
+			shutil.copy2(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old')
+		Result = np.genfromtxt(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',skip_header=1,delimiter=' ')
+		if len(Result.shape) > 1:
+			headRes = open(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv').readline()
+			Result[:,2] -= omegaOffsetThis
+			Result[Result[:,2]<-180,6] += 360
+			Result[Result[:,2]<-180,7] += 360
+			Result[Result[:,2]<-180,2] += 360
+			Result[Result[:,2]> 180,6] -= 360
+			Result[Result[:,2]> 180,7] -= 360
+			Result[Result[:,2]> 180,2] -= 360
+			np.savetxt(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',Result,fmt="%.6f",delimiter=' ',header=headRes.split('\n')[0],comments='')
+		print(f"Omega offset done. Time taken: {time.time()-tOme} seconds.")
+	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True,stdout=f,stderr=f_err)
+	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr")+f' {outFStem} {thisDir}',env=env,shell=True,stdout=f,stderr=f_err)
+	f.close()
+	f_err.close()
+	Result = np.genfromtxt(f'Radius_StartNr_{startNr}_EndNr_{endNr}.csv',skip_header=1,delimiter=' ')
+	if len(Result.shape)<2:
+		shutil.copy2('InputAllExtraInfoFittingAll.csv',topdir+'/InputAllExtraInfoFittingAll'+str(layerNr-1)+'.csv')
+		os.chdir(topdir)
+		return
+	dfAllF = pd.read_csv('InputAllExtraInfoFittingAll.csv',delimiter=' ',skipinitialspace=True)
+	dfAllF.loc[dfAllF['GrainRadius']>0.001,'%YLab'] += ypos
+	dfAllF.loc[dfAllF['GrainRadius']>0.001,'YOrig(NoWedgeCorr)'] += ypos
+	dfAllF['Eta'] = CalcEtaAngleAll(dfAllF['%YLab'],dfAllF['ZLab'])
+	dfAllF['Ttheta'] = rad2deg*np.arctan(np.linalg.norm(np.array([dfAllF['%YLab'],dfAllF['ZLab']]),axis=0)/Lsd)
+	outFN2 = topdir+'/InputAllExtraInfoFittingAll'+str(layerNr-1)+'.csv'
+	t_st = time.time()
+	if NormalizeIntensities == 0:
+		dfAllF.to_csv(outFN2,sep=' ',header=True,float_format='%.6f',index=False)
+	elif NormalizeIntensities == 1:
+		uniqueRings,uniqueIndices = np.unique(Result[:,13],return_index=True)
+		ringPowderIntensity = []
+		for iter in range(len(uniqueIndices)):
+			ringPowderIntensity.append([uniqueRings[iter],Result[uniqueIndices[iter],16]])
+		ringPowderIntensity = np.array(ringPowderIntensity)
+		for iter in range(len(ringPowderIntensity)):
+			ringNr = ringPowderIntensity[iter,0]
+			powInt = ringPowderIntensity[iter,1]
+			dfAllF.loc[dfAllF['RingNumber']==ringNr,'GrainRadius'] *= powInt**(1/3)
+		dfAllF.to_csv(outFN2,sep=' ',header=True,float_format='%.6f',index=False)
+	elif NormalizeIntensities == 2:
+		inpArr = dfAllF.to_numpy(copy=True)
+		hashArr = np.genfromtxt(f'IDRings.csv',skip_header=1)
+		headerThis = ' '.join(list(dfAllF))
+		outArr = normalizeIntensitiesNumba(inpArr,Result,hashArr)
+		np.savetxt(outFN2,outArr,header=headerThis,delimiter=' ',fmt='%.6f')
+	shutil.copy2(thisDir+'/paramstest.txt',topdir+'/paramstest.txt')
+	shutil.copy2(thisDir+'/hkls.csv',topdir+'/hkls.csv')
+	print(f'Normalization and writing done. Time taken: {time.time()-t_st}')
+
+@python_app
 def peaks(resultDir,zipFN,numProcs,blockNr=0,numBlocks=1):
     import subprocess
     import os
@@ -272,103 +382,12 @@ if nMerges!=0:
 positions = open(topdir+'/positions.csv').readlines()
 
 if doPeakSearch == 1 or doPeakSearch==-1:
+	# Use parsl to run this in parallel
+	res = []
 	for layerNr in range(startScanNr,nScans+1):
-		print(f'LayerNr: {layerNr}')
-		ypos = float(positions[layerNr-1])
-		thisStartNr = startNrFirstLayer + (layerNr-1)*nrFilesPerSweep
-		folderName = str(thisStartNr)
-		thisDir = topdir + '/' + folderName + '/'
-		Path(thisDir).mkdir(parents=True,exist_ok=True)
-		os.chdir(thisDir)
-		thisParamFN = thisDir + baseNameParamFN
-		thisPF = open(thisParamFN,'w')
-		for line in paramContents:
-			thisPF.write(line)
-		thisPF.close()
-		Path(thisDir+'/Temp').mkdir(parents=True,exist_ok=True)
-		Path(thisDir+'/output').mkdir(parents=True,exist_ok=True)
-		sub_logDir = thisDir + '/output'
-		if ConvertFiles==1:
-			outFStem = generateZip(thisDir,baseNameParamFN,layerNr,nchunks=nchunks,preproc=preproc)
-		else:
-			outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(6)}.MIDAS.zip'
-		print(f'FileStem: {outFStem}')
-		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+f' {outFStem} {thisDir}',env=env,shell=True)
-		if doPeakSearch==1:
-			t_st = time.time()
-			print(f'Doing PeakSearch.')
-			res = []
-			for nodeNr in range(nNodes):
-				res.append(peaks(thisDir,outFStem,numProcs,blockNr=nodeNr,numBlocks=nNodes))
-			outputs = [i.result() for i in res]
-			print(f'PeakSearch Done. Time taken: {time.time()-t_st} seconds.')
-		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True)
-		zf = zarr.open(outFStem,'r')
-		searchStr = 'measurement/process/scan_parameters/startOmeOverride'
-		if searchStr in zf:
-			thisOmega = zf[searchStr][:][0]
-			if thisOmega != 0:
-				signTO = thisOmega / fabs(thisOmega)
-			else:
-				signTO = 1
-			delOmega = signTO*(fabs(thisOmega)%360) - omegaFF
-			delOmega = delOmega * (fabs(delOmega)%360) / fabs(delOmega)
-			omegaOffsetThis = -delOmega # Because we subtract this
-			print(f"Offsetting omega: {omegaOffsetThis}.")
-			tOme = time.time()
-			if os.path.exists(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old'):
-				shutil.copy2(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old',f'Result_StartNr_{startNr}_EndNr_{endNr}.csv')
-			else:
-				shutil.copy2(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old')
-			Result = np.genfromtxt(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',skip_header=1,delimiter=' ')
-			if len(Result.shape) > 1:
-				headRes = open(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv').readline()
-				Result[:,2] -= omegaOffsetThis
-				Result[Result[:,2]<-180,6] += 360
-				Result[Result[:,2]<-180,7] += 360
-				Result[Result[:,2]<-180,2] += 360
-				Result[Result[:,2]> 180,6] -= 360
-				Result[Result[:,2]> 180,7] -= 360
-				Result[Result[:,2]> 180,2] -= 360
-				np.savetxt(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',Result,fmt="%.6f",delimiter=' ',header=headRes.split('\n')[0],comments='')
-			print(f"Omega offset done. Time taken: {time.time()-tOme} seconds.")
-		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True)
-		subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr")+f' {outFStem} {thisDir}',env=env,shell=True)
-		Result = np.genfromtxt(f'Radius_StartNr_{startNr}_EndNr_{endNr}.csv',skip_header=1,delimiter=' ')
-		if len(Result.shape)<2:
-			shutil.copy2('InputAllExtraInfoFittingAll.csv',topdir+'/InputAllExtraInfoFittingAll'+str(layerNr-1)+'.csv')
-			os.chdir(topdir)
-			continue
-		dfAllF = pd.read_csv('InputAllExtraInfoFittingAll.csv',delimiter=' ',skipinitialspace=True)
-		dfAllF.loc[dfAllF['GrainRadius']>0.001,'%YLab'] += ypos
-		dfAllF.loc[dfAllF['GrainRadius']>0.001,'YOrig(NoWedgeCorr)'] += ypos
-		dfAllF['Eta'] = CalcEtaAngleAll(dfAllF['%YLab'],dfAllF['ZLab'])
-		dfAllF['Ttheta'] = rad2deg*np.arctan(np.linalg.norm(np.array([dfAllF['%YLab'],dfAllF['ZLab']]),axis=0)/Lsd)
-		outFN2 = topdir+'/InputAllExtraInfoFittingAll'+str(layerNr-1)+'.csv'
-		t_st = time.time()
-		if NormalizeIntensities == 0:
-			dfAllF.to_csv(outFN2,sep=' ',header=True,float_format='%.6f',index=False)
-		elif NormalizeIntensities == 1:
-			uniqueRings,uniqueIndices = np.unique(Result[:,13],return_index=True)
-			ringPowderIntensity = []
-			for iter in range(len(uniqueIndices)):
-				ringPowderIntensity.append([uniqueRings[iter],Result[uniqueIndices[iter],16]])
-			ringPowderIntensity = np.array(ringPowderIntensity)
-			for iter in range(len(ringPowderIntensity)):
-				ringNr = ringPowderIntensity[iter,0]
-				powInt = ringPowderIntensity[iter,1]
-				dfAllF.loc[dfAllF['RingNumber']==ringNr,'GrainRadius'] *= powInt**(1/3)
-			dfAllF.to_csv(outFN2,sep=' ',header=True,float_format='%.6f',index=False)
-		elif NormalizeIntensities == 2:
-			inpArr = dfAllF.to_numpy(copy=True)
-			hashArr = np.genfromtxt(f'IDRings.csv',skip_header=1)
-			headerThis = ' '.join(list(dfAllF))
-			outArr = normalizeIntensitiesNumba(inpArr,Result,hashArr)
-			np.savetxt(outFN2,outArr,header=headerThis,delimiter=' ',fmt='%.6f')
-		shutil.copy2(thisDir+'/paramstest.txt',topdir+'/paramstest.txt')
-		shutil.copy2(thisDir+'/hkls.csv',topdir+'/hkls.csv')
-		print(f'Normalization and writing done. Time taken: {time.time()-t_st}')
-		os.chdir(topdir)
+		res.append(parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities))
+	outputs = [i.result() for i in res]
+	print(f'Peaksearch done on {nNodes} nodes.')
 else:
 	if nMerges!=0:
 		for layerNr in range(0,nMerges*(nScans//nMerges)):
