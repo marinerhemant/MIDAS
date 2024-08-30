@@ -49,7 +49,7 @@ def generateZip(resFol,pfn,layerNr,dfn='',dloc='',nchunks=-1,preproc=-1,outf='Zi
 		return lines[-1].split()[1]
 
 @python_app
-def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities,omegaFile):
+def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities,omegaValues):
 	import numpy as np
 	import pandas as pd
 	import zarr, os, shutil, sys
@@ -90,11 +90,11 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,pa
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True,stdout=f,stderr=f_err)
 	zf = zarr.open(outFStem,'r')
 	searchStr = 'measurement/process/scan_parameters/startOmeOverride'
-	if searchStr in zf or len(omegaFile)>0:
+	if searchStr in zf or len(omegaValues)>0:
 		if searchStr in zf:
 			thisOmega = zf[searchStr][:][0]
 		else:
-			thisOmega = float(open(omegaFile).readlines()[layerNr-1])
+			thisOmega = float(omegaValues[layerNr-1])
 		if thisOmega != 0:
 			signTO = thisOmega / fabs(thisOmega)
 		else:
@@ -384,11 +384,15 @@ if nMerges!=0:
 		shutil.move('original_positions.csv','positions.csv')
 positions = open(topdir+'/positions.csv').readlines()
 
+omegaValues = []
+if (omegaFile)>0:
+	omegaValues = np.genfromtxt(omegaFile)
+
 if doPeakSearch == 1 or doPeakSearch==-1:
 	# Use parsl to run this in parallel
 	res = []
 	for layerNr in range(startScanNr,nScans+1):
-		res.append(parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities,omegaFile))
+		res.append(parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities,omegaValues))
 	outputs = [i.result() for i in res]
 	print(f'Peaksearch done on {nNodes} nodes.')
 else:
