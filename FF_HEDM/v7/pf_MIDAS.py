@@ -385,7 +385,7 @@ if nMerges!=0:
 positions = open(topdir+'/positions.csv').readlines()
 
 omegaValues = []
-if (omegaFile)>0:
+if len(omegaFile)>0:
 	omegaValues = np.genfromtxt(omegaFile)
 
 if doPeakSearch == 1 or doPeakSearch==-1:
