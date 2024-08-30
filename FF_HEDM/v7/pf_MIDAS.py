@@ -78,14 +78,12 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,pa
 	else:
 		outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(6)}.MIDAS.zip'
 	print(f'FileStem: {outFStem}')
-	f = open(f'{resultDir}/processing_out0.csv','w')
-	f_err = open(f'{resultDir}/processing_err0.csv','w')
+	f = open(f'{sub_logDir}/processing_out0.csv','w')
+	f_err = open(f'{sub_logDir}/processing_err0.csv','w')
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+f' {outFStem} {thisDir}',env=env,shell=True,stdout=f,stderr=f_err)
 	if doPeakSearch==1:
 		t_st = time.time()
 		print(f'Doing PeakSearch.')
-		resultDir = f'{thisDir}/output'
-		Path(resultDir).mkdir(parents=True,exist_ok=True)
 		cmd = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPZarr') + f' {outFStem} 0 1 {numProcs} {thisDir}'
 		subprocess.call(cmd,shell=True,env=env,stdout=f,stderr=f_err)
 		print(f'PeakSearch Done. Time taken: {time.time()-t_st} seconds.')
