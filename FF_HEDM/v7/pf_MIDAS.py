@@ -102,7 +102,7 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,pa
 		delOmega = signTO*(fabs(thisOmega)%360) - omegaFF
 		delOmega = delOmega * (fabs(delOmega)%360) / fabs(delOmega)
 		omegaOffsetThis = -delOmega # Because we subtract this
-		print(f"Offsetting omega: {omegaOffsetThis}.")
+		print(f"Offsetting omega: {omegaOffsetThis}, original value: {thisOmega}.")
 		tOme = time.time()
 		if os.path.exists(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old'):
 			shutil.copy2(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old',f'Result_StartNr_{startNr}_EndNr_{endNr}.csv')
