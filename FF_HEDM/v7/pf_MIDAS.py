@@ -49,7 +49,7 @@ def generateZip(resFol,pfn,layerNr,dfn='',dloc='',nchunks=-1,preproc=-1,outf='Zi
 		return lines[-1].split()[1]
 
 @python_app
-def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities,omegaValues):
+def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities,omegaValues,minThresh):
 	import numpy as np
 	import pandas as pd
 	import zarr, os, shutil, sys
@@ -108,6 +108,7 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,pa
 		Result = np.genfromtxt(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',skip_header=1,delimiter=' ')
 		if len(Result.shape) > 1:
 			headRes = open(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv').readline()
+			Result = Result[Result[:,5] > minThresh]
 			Result[:,2] -= omegaOffsetThis
 			Result[Result[:,2]<-180,6] += 360
 			Result[Result[:,2]<-180,7] += 360
@@ -254,6 +255,7 @@ parser.add_argument('-normalizeIntensities', type=int, required=False, default=2
 parser.add_argument('-convertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
 parser.add_argument('-runIndexing', type=int, required=False, default=1, help='If want to skip Indexing, put to 0.')
 parser.add_argument('-startScanNr', type=int, required=False, default=1, help='If you want to do partial peaksearch. Default: 1')
+parser.add_argument('-minThresh', type=int, required=False, default=-1, help='If you want to filter out peaks with intensity less than this number. -1 disables this. This is only used for filtering out peaksearch results for small peaks.')
 args, unparsed = parser.parse_known_args()
 baseNameParamFN = args.paramFile
 machineName = args.machineName
@@ -271,6 +273,7 @@ ConvertFiles = args.convertFiles
 runIndexing = args.runIndexing
 NormalizeIntensities = args.normalizeIntensities
 startScanNr = args.startScanNr
+minThresh = args.minThresh
 
 if len(topdir) == 0:
 	topdir = os.getcwd()
@@ -389,7 +392,7 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 	# Use parsl to run this in parallel
 	res = []
 	for layerNr in range(startScanNr,nScans+1):
-		res.append(parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities,omegaValues))
+		res.append(parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities,omegaValues,minThresh))
 	outputs = [i.result() for i in res]
 	print(f'Peaksearch done on {nNodes} nodes.')
 else:
