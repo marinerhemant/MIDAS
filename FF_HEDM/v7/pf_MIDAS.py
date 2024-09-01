@@ -106,8 +106,8 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,pa
 		tOme = time.time()
 		shutil.copy2(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old')
 		Result = np.genfromtxt(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',skip_header=1,delimiter=' ')
+		headRes = open(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv').readline()
 		if len(Result.shape) > 1:
-			headRes = open(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv').readline()
 			Result = Result[Result[:,5] > minThresh]
 			if len(Result.shape) > 1:
 				Result[:,2] -= omegaOffsetThis
@@ -118,6 +118,10 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,pa
 				Result[Result[:,2]> 180,7] -= 360
 				Result[Result[:,2]> 180,2] -= 360
 				np.savetxt(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',Result,fmt="%.6f",delimiter=' ',header=headRes.split('\n')[0],comments='')
+			else:
+				open(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv').write(headRes)
+		else:
+			open(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv').write(headRes)
 		print(f"Omega offset done. Time taken: {time.time()-tOme} seconds.")
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True,stdout=f,stderr=f_err)
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr")+f' {outFStem} {thisDir}',env=env,shell=True,stdout=f,stderr=f_err)
