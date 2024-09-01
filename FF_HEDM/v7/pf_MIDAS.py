@@ -104,10 +104,7 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,pa
 		omegaOffsetThis = -delOmega # Because we subtract this
 		print(f"Offsetting omega: {omegaOffsetThis}, original value: {thisOmega}.")
 		tOme = time.time()
-		if os.path.exists(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old'):
-			shutil.copy2(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old',f'Result_StartNr_{startNr}_EndNr_{endNr}.csv')
-		else:
-			shutil.copy2(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old')
+		shutil.copy2(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old') # Must use the new file that we just generated.
 		Result = np.genfromtxt(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',skip_header=1,delimiter=' ')
 		if len(Result.shape) > 1:
 			headRes = open(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv').readline()
