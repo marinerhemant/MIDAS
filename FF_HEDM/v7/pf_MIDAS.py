@@ -122,7 +122,7 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,pa
 				open(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv').write(headRes)
 		else:
 			open(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv').write(headRes)
-		print(f"Omega offset done. Time taken: {time.time()-tOme} seconds.")
+		print(f"Omega offset done. Time taken: {time.time()-tOme} seconds. SpotsShape {Result.shape}")
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True,stdout=f,stderr=f_err)
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr")+f' {outFStem} {thisDir}',env=env,shell=True,stdout=f,stderr=f_err)
 	f.close()
@@ -137,6 +137,7 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,pa
 	dfAllF.loc[dfAllF['GrainRadius']>0.001,'YOrig(NoWedgeCorr)'] += ypos
 	dfAllF['Eta'] = CalcEtaAngleAll(dfAllF['%YLab'],dfAllF['ZLab'])
 	dfAllF['Ttheta'] = rad2deg*np.arctan(np.linalg.norm(np.array([dfAllF['%YLab'],dfAllF['ZLab']]),axis=0)/Lsd)
+	print(f"Spots shape final: {dfAllF.shape}")
 	outFN2 = topdir+'/InputAllExtraInfoFittingAll'+str(layerNr-1)+'.csv'
 	t_st = time.time()
 	if NormalizeIntensities == 0:
@@ -260,7 +261,7 @@ parser.add_argument('-normalizeIntensities', type=int, required=False, default=2
 parser.add_argument('-convertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
 parser.add_argument('-runIndexing', type=int, required=False, default=1, help='If want to skip Indexing, put to 0.')
 parser.add_argument('-startScanNr', type=int, required=False, default=1, help='If you want to do partial peaksearch. Default: 1')
-parser.add_argument('-minThresh', type=int, required=False, default=-1, help='If you want to filter out peaks with intensity less than this number. -1 disables this. This is only used for filtering out peaksearch results for small peaks.')
+parser.add_argument('-minThresh', type=int, required=False, default=-1, help='If you want to filter out peaks with intensity less than this number. -1 disables this. This is only used for filtering out peaksearch results for small peaks, peaks with maxInt smaller than this will be filtered out.')
 args, unparsed = parser.parse_known_args()
 baseNameParamFN = args.paramFile
 machineName = args.machineName
