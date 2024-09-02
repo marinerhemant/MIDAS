@@ -63,7 +63,6 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,pa
 	thisStartNr = startNrFirstLayer + (layerNr-1)*nrFilesPerSweep
 	folderName = str(thisStartNr)
 	thisDir = topdir + '/' + folderName + '/'
-	print(topdir)
 	Path(thisDir).mkdir(parents=True,exist_ok=True)
 	os.chdir(thisDir)
 	thisParamFN = thisDir + baseNameParamFN
@@ -120,9 +119,9 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,pa
 				Result[Result[:,2]> 180,2] -= 360
 				np.savetxt(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',Result,fmt="%.6f",delimiter=' ',header=headRes.split('\n')[0],comments='')
 			else:
-				open(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv').write(headRes)
+				open(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv').write(headRes.split('\n')[0])
 		else:
-			open(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv').write(headRes)
+			open(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv').write(headRes.split('\n')[0])
 		print(f"Omega offset done. Time taken: {time.time()-tOme} seconds. SpotsShape {Result.shape}")
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True,stdout=f,stderr=f_err)
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr")+f' {outFStem} {thisDir}',env=env,shell=True,stdout=f,stderr=f_err)
