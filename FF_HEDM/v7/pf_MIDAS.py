@@ -63,6 +63,7 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,pa
 	thisStartNr = startNrFirstLayer + (layerNr-1)*nrFilesPerSweep
 	folderName = str(thisStartNr)
 	thisDir = topdir + '/' + folderName + '/'
+	print(topdir)
 	Path(thisDir).mkdir(parents=True,exist_ok=True)
 	os.chdir(thisDir)
 	thisParamFN = thisDir + baseNameParamFN
