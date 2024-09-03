@@ -232,6 +232,7 @@ if h5py.is_hdf5(InputFN):
         stOmeOver[:] = hf2[searchStr][()][0]
     searchStr = '/measurement/instrument/GSAS2_PVS/Pressure'
     if searchStr in hf2:
+        print('Pressure values were found!')
         pressureDSet = sp_pro_meas.create_dataset(searchStr.split('/')[-1],dtype=np.double,shape=(nFrames,),chunks=(nFrames,),compressor=compressor)
         pressureDSet[:] = hf2[searchStr][()]
     searchStr = '/measurement/instrument/GSAS2_PVS/Temperature'
