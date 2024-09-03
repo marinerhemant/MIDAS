@@ -19,7 +19,7 @@ uMichConfig = Config(
                 max_blocks=nNodes,
                 partition='standard',
                 scheduler_options='#SBATCH -A abucsek1',
-                worker_init='source /nfs/turbo/meche-abucsek/Wenxi/ESRF_Ti_v7/.venv/bin/activate',
+                worker_init='source /home/wenxli/miniconda3/bin/activate',
                 walltime='90:00:00',
                 cmd_timeout=120,
             ),
