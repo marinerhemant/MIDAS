@@ -189,6 +189,9 @@ pro_analysis = analysis.create_group('process')
 sp_pro_analysis = pro_analysis.create_group('analysis_parameters')
 if h5py.is_hdf5(InputFN):
     hf2 = h5py.File(InputFN,'r')
+    searchStr = '/measurement/instrument/GSAS2_PVS/Pressure'
+    print(searchStr)
+    print(hf2[searchStr])
     nFrames,numZ,numY = hf2[dataLoc].shape
     if darkLoc in hf2:
         darkData = hf2[darkLoc][()]
