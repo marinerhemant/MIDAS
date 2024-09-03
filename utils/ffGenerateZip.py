@@ -228,8 +228,24 @@ if h5py.is_hdf5(InputFN):
         data[stFrame:enFrame,:,:] = dataT
     searchStr = 'startOmeOverride'
     if searchStr in hf2:
-        stOmeOver = sp_pro_meas.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        stOmeOver = sp_pro_meas.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
         stOmeOver[:] = hf2[searchStr][()][0]
+    searchStr = '/measurement/instrument/GSAS2_PVS/Pressure'
+    if searchStr in hf2:
+        pressureDSet = sp_pro_meas.create_dataset(searchStr.split('/')[-1],dtype=np.double,shape=(nFrames,),chunks=(nFrames,),compressor=compressor)
+        pressureDSet[:] = hf2[searchStr][()]
+    searchStr = '/measurement/instrument/GSAS2_PVS/Temperature'
+    if searchStr in hf2:
+        pressureDSet = sp_pro_meas.create_dataset(searchStr.split('/')[-1],dtype=np.double,shape=(nFrames,),chunks=(nFrames,),compressor=compressor)
+        pressureDSet[:] = hf2[searchStr][()]
+    searchStr = '/measurement/instrument/GSAS2_PVS/I'
+    if searchStr in hf2:
+        pressureDSet = sp_pro_meas.create_dataset(searchStr.split('/')[-1],dtype=np.double,shape=(nFrames,),chunks=(nFrames,),compressor=compressor)
+        pressureDSet[:] = hf2[searchStr][()]
+    searchStr = '/measurement/instrument/GSAS2_PVS/I0'
+    if searchStr in hf2:
+        pressureDSet = sp_pro_meas.create_dataset(searchStr.split('/')[-1],dtype=np.double,shape=(nFrames,),chunks=(nFrames,),compressor=compressor)
+        pressureDSet[:] = hf2[searchStr][()]
     hf2.close()
 elif 'zip' in InputFN[-5:]:
     # This is a zarray dataset. Just copy over the data.
@@ -779,16 +795,6 @@ for line in lines:
         outArr = np.array([float(line.split()[1])]).astype(np.double)
         spWL = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
         spWL[:] = outArr
-    searchStr = 'Temperature'
-    if line.startswith(f'{searchStr} '):
-        outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spTemp = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
-        spTemp[:] = outArr
-    searchStr = 'Pressure'
-    if line.startswith(f'{searchStr} '):
-        outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spPr = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
-        spPr[:] = outArr
     searchStr = 'Width'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)

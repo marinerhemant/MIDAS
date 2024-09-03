@@ -351,9 +351,9 @@ int main(int argc, char **argv)
     char* arr;
     int32_t dsize;
     char *resultFolder;
-    int locImTransOpt, nFrames, nDarks, nFloods, bytesPerPx=2;
+    int locImTransOpt, locTemp=-1, locPres=-1, locI=-1, locI0=-1, nFrames, nDarks, nFloods, bytesPerPx=2;
     int darkLoc=-1,dataLoc=-1,floodLoc=-1;
-    double Temperature = 0, Pressure  = 0;
+    double *Temperature, *Pressure, *I, *I0;
     while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
         if (strstr(finfo->name,"analysis/process/analysis_parameters/ResultFolder/0")!=NULL){
             arr = calloc(finfo->size + 1, sizeof(char)); 
@@ -396,28 +396,6 @@ int main(int argc, char **argv)
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             Lam = *(double *)&data[0];
-            free(arr);
-            free(data);
-        }
-        if (strstr(finfo->name,"analysis/process/analysis_parameters/Temperature/0")!=NULL){
-            arr = calloc(finfo->size + 1, sizeof(char)); 
-            fd = zip_fopen_index(arch, count, 0);
-            zip_fread(fd, arr, finfo->size);
-            dsize = sizeof(double);
-            data = (char*)malloc((size_t)dsize);
-            dsize = blosc1_decompress(arr,data,dsize);
-            Temperature = *(double *)&data[0];
-            free(arr);
-            free(data);
-        }
-        if (strstr(finfo->name,"analysis/process/analysis_parameters/Pressure/0")!=NULL){
-            arr = calloc(finfo->size + 1, sizeof(char)); 
-            fd = zip_fopen_index(arch, count, 0);
-            zip_fread(fd, arr, finfo->size);
-            dsize = sizeof(double);
-            data = (char*)malloc((size_t)dsize);
-            dsize = blosc1_decompress(arr,data,dsize);
-            Pressure = *(double *)&data[0];
             free(arr);
             free(data);
         }
@@ -797,6 +775,18 @@ int main(int argc, char **argv)
         if (strstr(finfo->name,"analysis/process/analysis_parameters/ImTransOpt/0")!=NULL){
             locImTransOpt = count;
         }
+        if (strstr(finfo->name,"measurement/process/scan_parameters/Temperature/0")!=NULL){
+            locTemp = count;
+        }
+        if (strstr(finfo->name,"measurement/process/scan_parameters/Pressure/0")!=NULL){
+            locPres = count;
+        }
+        if (strstr(finfo->name,"measurement/process/scan_parameters/I/0")!=NULL){
+            locI = count;
+        }
+        if (strstr(finfo->name,"measurement/process/scan_parameters/I0/0")!=NULL){
+            locI0 = count;
+        }
         count++;
     }
 	int rc = ReadBins(resultFolder);
@@ -823,6 +813,34 @@ int main(int argc, char **argv)
     nFrames = nFrames - skipFrame; // This ensures we don't over-read.
     dataLoc += skipFrame;
     darkLoc += skipFrame;
+    Pressure = (double *) calloc(nFrames,sizeof(*Pressure));
+    Temperature = (double *) calloc(nFrames,sizeof(*Temperature));
+    I = (double *) calloc(nFrames,sizeof(*I));
+    I0 = (double *) calloc(nFrames,sizeof(*I0));
+    if (locPres >0){
+        zip_stat_index(arch, locPres, 0, finfo); s = calloc(finfo->size + 1, sizeof(char)); fd = zip_fopen_index(arch, locPres, 0); zip_fread(fd, s, finfo->size);
+        dsize = (nFrames+skipFrame)*sizeof(double); data = (char*)malloc((size_t)dsize); dsize = blosc1_decompress(s,data,dsize);
+        for (iter=skipFrame;iter<nFrames+skipFrame;iter++) Pressure[iter-skipFrame] = *(double *)&data[iter+sizeof(double)];
+        free(s); free(data);
+    }
+    if (locTemp > 0){
+        zip_stat_index(arch, locTemp, 0, finfo); s = calloc(finfo->size + 1, sizeof(char)); fd = zip_fopen_index(arch, locTemp, 0); zip_fread(fd, s, finfo->size);
+        dsize = (nFrames+skipFrame)*sizeof(double); data = (char*)malloc((size_t)dsize); dsize = blosc1_decompress(s,data,dsize);
+        for (iter=skipFrame;iter<nFrames+skipFrame;iter++) Temperature[iter-skipFrame] = *(double *)&data[iter+sizeof(double)];
+        free(s); free(data);
+    }
+    if (locI > 0){
+        zip_stat_index(arch, locI, 0, finfo); s = calloc(finfo->size + 1, sizeof(char)); fd = zip_fopen_index(arch, locI, 0); zip_fread(fd, s, finfo->size);
+        dsize = (nFrames+skipFrame)*sizeof(double); data = (char*)malloc((size_t)dsize); dsize = blosc1_decompress(s,data,dsize);
+        for (iter=skipFrame;iter<nFrames+skipFrame;iter++) I[iter-skipFrame] = *(double *)&data[iter+sizeof(double)];
+        free(s); free(data);
+    }
+    if (locI0 > 0){
+        zip_stat_index(arch, locI0, 0, finfo); s = calloc(finfo->size + 1, sizeof(char)); fd = zip_fopen_index(arch, locI0, 0); zip_fread(fd, s, finfo->size);
+        dsize = (nFrames+skipFrame)*sizeof(double); data = (char*)malloc((size_t)dsize); dsize = blosc1_decompress(s,data,dsize);
+        for (iter=skipFrame;iter<nFrames+skipFrame;iter++) I0[iter-skipFrame] = *(double *)&data[iter+sizeof(double)];
+        free(s); free(data);
+    }
 	double *Image;
     int a,b;
 	pixelvalue *ImageIn;
@@ -982,15 +1000,17 @@ int main(int argc, char **argv)
     char *locData;
 	locData = calloc(NrPixelsY*NrPixelsZ*bytesPerPx,sizeof(*locData));
     int32_t dsz = NrPixelsY*NrPixelsZ*bytesPerPx;
+    double presThis, tempThis, iThis, i0This;
 	for (i=0;i<nFrames;i++){
 		if (chunkFiles>0){
 			if ((i%chunkFiles) == 0){
 				memset(chunkArr,0,bigArrSize*sizeof(*chunkArr));
 				firstOme = omeArr[i];
+                presThis = 0; tempThis = 0; iThis = 0; i0This = 0;
 			}
 		}
 		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,DataFN);
-		
+		presThis += Pressure[i]; tempThis += Temperature[i]; iThis += I[i]; i0This = I0[i];
 		dsz = blosc1_decompress(&allData[sizeArr[i*2+1]],locData,dsz);
         memcpy(ImageInTU,locData,dsz);
         for (j=0;j<NrPixelsY*NrPixelsZ;j++) ImageInT[j] = (double)ImageInTU[j];
@@ -1091,11 +1111,14 @@ int main(int argc, char **argv)
 				H5LTmake_dataset_double(file_id, chunkSetName, 2, dim_chunk, chunkArr);
 				H5LTset_attribute_int(file_id, chunkSetName, "LastFrameNumber", &i, 1);
 				int nSum = (int)((omeArr[i] - firstOme)/omeStep)  + 1;
+                presThis /= nSum; tempThis /= nSum; iThis /= nSum; i0This /= nSum;
 				H5LTset_attribute_int(file_id, chunkSetName, "Number Of Frames Summed", &nSum, 1);
 				H5LTset_attribute_double(file_id, chunkSetName, "FirstOme", &firstOme, 1);
 				H5LTset_attribute_double(file_id, chunkSetName, "LastOme", &omeArr[i], 1);
-				H5LTset_attribute_double(file_id, chunkSetName, "Temperature", &Temperature, 1);
-				H5LTset_attribute_double(file_id, chunkSetName, "Pressure", &Pressure, 1);
+				H5LTset_attribute_double(file_id, chunkSetName, "Temperature", &tempThis, 1);
+				H5LTset_attribute_double(file_id, chunkSetName, "Pressure", &presThis, 1);
+				H5LTset_attribute_double(file_id, chunkSetName, "I", &iThis, 1);
+				H5LTset_attribute_double(file_id, chunkSetName, "I0", &i0This, 1);
 			}
 		}
 	}
