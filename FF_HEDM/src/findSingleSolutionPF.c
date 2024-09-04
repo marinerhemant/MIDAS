@@ -435,25 +435,25 @@ main(int argc, char *argv[])
     double AvAngle, maxIntThis;
     int nAngles;
     size_t locThis;
-    for (i=0;i<nUniques;i++){
-        for (j=0;j<maxNHKLs;j++){
-            AvAngle = 0;
-            maxIntThis = maxIntArr[i*maxNHKLs+j];
-            nAngles = 0;
-            for (k=0;k<nScans;k++){
-                // Normalize each sino to the maxInt, take -ve and then exp
-                locThis = i*maxNHKLs*nScans+j*nScans+k;
-                if (sinoArr[locThis] > 0){
-                    sinoArr[locThis] /= maxIntThis;
-                    sinoArr[locThis] *= -1;
-                    sinoArr[locThis] = exp(sinoArr[locThis]);
-                    AvAngle += allOmeArr[i*maxNHKLs*nScans+j*nScans+k];
-                    nAngles++;
-                }
-            }
-            if (nAngles>0) omeArr[i*maxNHKLs+j] = AvAngle / nAngles;
-        }
-    }
+    // for (i=0;i<nUniques;i++){
+    //     for (j=0;j<maxNHKLs;j++){
+    //         AvAngle = 0;
+    //         maxIntThis = maxIntArr[i*maxNHKLs+j];
+    //         nAngles = 0;
+    //         for (k=0;k<nScans;k++){
+    //             // Normalize each sino to the maxInt, take -ve and then exp
+    //             locThis = i*maxNHKLs*nScans+j*nScans+k;
+    //             if (sinoArr[locThis] > 0){
+    //                 sinoArr[locThis] /= maxIntThis;
+    //                 sinoArr[locThis] *= -1;
+    //                 sinoArr[locThis] = exp(sinoArr[locThis]);
+    //                 AvAngle += allOmeArr[i*maxNHKLs*nScans+j*nScans+k];
+    //                 nAngles++;
+    //             }
+    //         }
+    //         if (nAngles>0) omeArr[i*maxNHKLs+j] = AvAngle / nAngles;
+    //     }
+    // }
 
     for (i=0;i<nUniques;i++){
         struct SinoSortData *st;
