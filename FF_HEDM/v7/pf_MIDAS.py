@@ -50,12 +50,15 @@ def generateZip(resFol,pfn,layerNr,dfn='',dloc='',nchunks=-1,preproc=-1,outf='Zi
 
 @python_app
 def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities,omegaValues,minThresh,fStem):
-	import numpy as np
-	import pandas as pd
-	import zarr, os, shutil, sys
-	from pathlib import Path
-	import time
 	import subprocess
+	import numpy as np
+	import time
+	import os,sys
+	from pathlib import Path
+	import shutil
+	from math import fabs
+	import pandas as pd
+	import zarr
 	utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 	sys.path.insert(0,utilsDir)
 	# Run peaksearch using nblocks 1 and blocknr 0
