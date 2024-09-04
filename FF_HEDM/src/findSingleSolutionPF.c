@@ -444,9 +444,9 @@ main(int argc, char *argv[])
                 // Normalize each sino to the maxInt, take -ve and then exp
                 locThis = i*maxNHKLs*nScans+j*nScans+k;
                 if (sinoArr[locThis] > 0){
-                    // sinoArr[locThis] /= maxIntThis;
-                    // sinoArr[locThis] *= -1;
-                    // sinoArr[locThis] = exp(sinoArr[locThis]);
+                    sinoArr[locThis] /= maxIntThis;
+                    sinoArr[locThis] *= -1;
+                    sinoArr[locThis] = exp(sinoArr[locThis]);
                     AvAngle += allOmeArr[i*maxNHKLs*nScans+j*nScans+k];
                     nAngles++;
                 }
