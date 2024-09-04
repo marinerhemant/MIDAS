@@ -55,6 +55,7 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,pa
 	import zarr, os, shutil, sys
 	from pathlib import Path
 	import time
+	import subprocess
 	utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 	sys.path.insert(0,utilsDir)
 	# Run peaksearch using nblocks 1 and blocknr 0
