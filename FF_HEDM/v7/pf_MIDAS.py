@@ -62,9 +62,17 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,
 	from math import fabs
 	import pandas as pd
 	import zarr
+	from numba import jit
 	utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 	sys.path.insert(0,utilsDir)
 	from calcMiso import *
+	@jit(nopython=True)
+	def normalizeIntensitiesNumba(input,radius,hashArr):
+		nrSps = input.shape[0]
+		for i in range(nrSps):
+			if input[i,3] > 0.001:
+				input[i,3] = radius[int(hashArr[i,1])-1,1]
+		return input
 	# Run peaksearch using nblocks 1 and blocknr 0
 	print(f'LayerNr: {layerNr}')
 	ypos = float(positions[layerNr-1])
