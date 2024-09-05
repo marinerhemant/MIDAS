@@ -49,7 +49,10 @@ def generateZip(resFol,pfn,layerNr,dfn='',dloc='',nchunks=-1,preproc=-1,outf='Zi
 		return lines[-1].split()[1]
 
 @python_app
-def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities,omegaValues,minThresh,fStem):
+def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,
+				   paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,
+				   env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities,
+				   omegaValues,minThresh,fStem,omegaFF):
 	import subprocess
 	import numpy as np
 	import time
@@ -326,6 +329,7 @@ maxang = 1
 tol_ome = 1
 tol_eta = 1
 omegaFN = ''
+omegaFF = -1
 for line in paramContents:
 	if line.startswith('StartFileNrFirstLayer'):
 		startNrFirstLayer = int(line.split()[1])
@@ -398,7 +402,9 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 	# Use parsl to run this in parallel
 	res = []
 	for layerNr in range(startScanNr,nScans+1):
-		res.append(parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities,omegaValues,minThresh,fStem))
+		res.append(parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,
+							ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities,
+							omegaValues,minThresh,fStem,omegaFF))
 	outputs = [i.result() for i in res]
 	print(f'Peaksearch done on {nNodes} nodes.')
 else:
