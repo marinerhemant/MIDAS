@@ -65,7 +65,12 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,
 	from numba import jit
 	utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 	sys.path.insert(0,utilsDir)
-	from calcMiso import *
+	def CalcEtaAngleAll(y, z):
+		alpha = rad2deg*np.arccos(z/np.linalg.norm(np.array([y,z]),axis=0))
+		alpha[y>0] *= -1
+		return alpha
+	rad2deg = 57.2957795130823
+	deg2rad = 0.0174532925199433
 	@jit(nopython=True)
 	def normalizeIntensitiesNumba(input,radius,hashArr):
 		nrSps = input.shape[0]
