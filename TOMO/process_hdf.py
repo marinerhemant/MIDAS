@@ -45,6 +45,7 @@ os.makedirs('rec',exist_ok=True)
 
 f_out = open('mt_par.txt','w')
 f_out.write('areSinos 0\n')
+f_out.write('saveReconSeparate 0\n')
 f_out.write(f'dataFileName {dataFN}.raw\n')
 f_out.write(f'reconFileName rec/{dataFN}.raw\n')
 f_out.write(f'detXdim {dark.shape[1]}\n')
