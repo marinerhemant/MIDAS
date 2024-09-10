@@ -16,4 +16,4 @@ scipy
 fsspec
 opencv-python
 globus_compute_sdk
-globus_sdk
+globus_sdk`
