@@ -25,13 +25,12 @@ dzL = int(hf['analysis/process/analysis_parameters/CropZL'][0])
 dzR = int(hf['analysis/process/analysis_parameters/CropZR'][0])
 shift = hf['analysis/process/analysis_parameters/shift'][0]
 
-dark = hf['exchange/dark']
+dark = hf['exchange/dark'][dzL:-dzR,dxL:-dxR].astype(np.float32)
+bright = hf['exchange/bright'][:,dzL:-dzR,dxL:-dxR].astype(np.float32)
 data = hf['exchange/data']
 if not os.path.exists(f'{dataFN}.raw'):
     print('Raw file was not found. Will generate raw file.')
-    dark = hf['exchange/dark'][dzL:-dzR,dxL:-dxR].astype(np.float32)
-    bright = hf['exchange/bright'][:,dzL:-dzR,dxL:-dxR].astype(np.float32)
-    data = hf['exchange/data'][:,dzL:-dzR,dxL:-dxR].astype(np.uint16)
+    data = data[:,dzL:-dzR,dxL:-dxR].astype(np.uint16)
     outf = open(f'{dataFN}.raw','w')
     dark.tofile(outf)
     bright.tofile(outf)
@@ -54,8 +53,8 @@ f_out.write('areSinos 0\n')
 f_out.write('saveReconSeparate 0\n')
 f_out.write(f'dataFileName {dataFN}.raw\n')
 f_out.write(f'reconFileName recon_{dataFN}\n')
-f_out.write(f'detXdim {dark.shape[1]-dxL-dxR}\n')
-f_out.write(f'detYdim {dark.shape[0]-dzL-dzR}\n')
+f_out.write(f'detXdim {dark.shape[1]}\n')
+f_out.write(f'detYdim {dark.shape[0]}\n')
 f_out.write('thetaFileName mt_angles.txt\n')
 f_out.write('filter 2\n')
 f_out.write(f'shiftValues {shift} {shift} 1.000\n')
