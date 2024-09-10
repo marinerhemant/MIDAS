@@ -1,7 +1,7 @@
 matplotlib
 numpy
 pandas
-parsl==2024.03.18
+parsl
 scikit-image
 pillow
 h5py
@@ -14,5 +14,6 @@ dash_bootstrap_components
 diplib
 scipy
 fsspec
-# globus_compute_sdk
-# globus_sdk
+opencv-python
+globus_compute_sdk
+globus_sdk
