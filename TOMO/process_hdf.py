@@ -25,14 +25,18 @@ dzL = int(hf['analysis/process/analysis_parameters/CropZL'][0])
 dzR = int(hf['analysis/process/analysis_parameters/CropZR'][0])
 shift = hf['analysis/process/analysis_parameters/shift'][0]
 
-dark = hf['exchange/dark'][dzL:-dzR,dxL:-dxR].astype(np.float32)
-bright = hf['exchange/bright'][:,dzL:-dzR,dxL:-dxR].astype(np.float32)
-data = hf['exchange/data'][:,dzL:-dzR,dxL:-dxR].astype(np.uint16)
-outf = open(f'{dataFN}.raw','w')
-dark.tofile(outf)
-bright.tofile(outf)
-data.tofile(outf)
-outf.close()
+if not os.path.exists(f'{dataFN}.raw'):
+    print('Raw file was not found. Will generate raw file.')
+    dark = hf['exchange/dark'][dzL:-dzR,dxL:-dxR].astype(np.float32)
+    bright = hf['exchange/bright'][:,dzL:-dzR,dxL:-dxR].astype(np.float32)
+    data = hf['exchange/data'][:,dzL:-dzR,dxL:-dxR].astype(np.uint16)
+    outf = open(f'{dataFN}.raw','w')
+    dark.tofile(outf)
+    bright.tofile(outf)
+    data.tofile(outf)
+    outf.close()
+else:
+    print("The raw file exists. Skipping generation of raw file.")
 
 st_ome = hf['measurement/process/scan_parameters/start'][0]
 step_ome = hf['measurement/process/scan_parameters/step'][0]
