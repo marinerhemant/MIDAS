@@ -25,6 +25,8 @@ dzL = int(hf['analysis/process/analysis_parameters/CropZL'][0])
 dzR = int(hf['analysis/process/analysis_parameters/CropZR'][0])
 shift = hf['analysis/process/analysis_parameters/shift'][0]
 
+dark = hf['exchange/dark']
+data = hf['exchange/data']
 if not os.path.exists(f'{dataFN}.raw'):
     print('Raw file was not found. Will generate raw file.')
     dark = hf['exchange/dark'][dzL:-dzR,dxL:-dxR].astype(np.float32)
