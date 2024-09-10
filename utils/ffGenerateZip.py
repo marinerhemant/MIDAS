@@ -231,8 +231,6 @@ if h5py.is_hdf5(InputFN):
         stOmeOver = sp_pro_meas.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
         stOmeOver[:] = hf2[searchStr][()][0]
     searchStr = '/measurement/instrument/GSAS2_PVS/Pressure'
-    print(searchStr)
-    print(hf2[searchStr])
     if searchStr in hf2:
         print('Pressure values were found!')
         pressureDSet = sp_pro_meas.create_dataset(searchStr.split('/')[-1],dtype=np.double,shape=(nFrames,),chunks=(nFrames,),compressor=compressor)
