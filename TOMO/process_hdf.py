@@ -3,6 +3,7 @@ import h5py
 import argparse
 import sys, os
 import subprocess
+import cv2
 
 class MyParser(argparse.ArgumentParser):
     def error(self, message):
@@ -19,18 +20,35 @@ nCPUs = args.nCPUs
 
 hf = h5py.File(dataFN,'r')
 
+rot = 0
+
 dxL = int(hf['analysis/process/analysis_parameters/CropXL'][0])
 dxR = int(hf['analysis/process/analysis_parameters/CropXR'][0])
 dzL = int(hf['analysis/process/analysis_parameters/CropZL'][0])
 dzR = int(hf['analysis/process/analysis_parameters/CropZR'][0])
 shift = hf['analysis/process/analysis_parameters/shift'][0]
+if 'analysis/process/analysis_parameters/RotationAngle' in hf:
+    rot = hf['analysis/process/analysis_parameters/RotationAngle'][0]
 
 dark = hf['exchange/dark'][dzL:-dzR,dxL:-dxR].astype(np.float32)
 bright = hf['exchange/bright'][:,dzL:-dzR,dxL:-dxR].astype(np.float32)
 data = hf['exchange/data']
+nFrames = data.shape[0]
+nX = dark.shape[0]
+nY = dark.shape[1]
+M = cv2.getRotationMatrix2D((nX/2, nY/2), rot, scale=1)
 if not os.path.exists(f'{dataFN}.raw'):
     print('Raw file was not found. Will generate raw file.')
     data = data[:,dzL:-dzR,dxL:-dxR].astype(np.uint16)
+    if rot != 0:
+        data = np.copy(data)
+        dark = np.copy(dark)
+        bright = np.copy(bright)
+        for frameNr in nFrames:
+            data[frameNr] = cv2.warpAffine(data[frameNr],M,(dark.shape[0],dark.shape[1]))
+        dark = cv2.warpAffine(dark,M,(nX,nY))
+        bright[0] = cv2.warpAffine(bright[0],M,(nX,nY))
+        bright[1] = cv2.warpAffine(bright[1],M,(nX,nY))
     outf = open(f'{dataFN}.raw','w')
     dark.tofile(outf)
     bright.tofile(outf)
@@ -41,8 +59,8 @@ else:
 
 st_ome = hf['measurement/process/scan_parameters/start'][0]
 step_ome = hf['measurement/process/scan_parameters/step'][0]
-stop_ome = st_ome + step_ome*(data.shape[0]-1)
-angles = np.linspace(st_ome,num=data.shape[0],stop=stop_ome)
+stop_ome = st_ome + step_ome*(nFrames-1)
+angles = np.linspace(st_ome,num=nFrames,stop=stop_ome)
 
 np.savetxt('mt_angles.txt',angles.T,fmt='%.6f')
 
