@@ -50,6 +50,14 @@ except:
 fnTemp = fnIn+'.tmp'
 bnFNTemp = fnTemp
 
+if 'data' in key:
+    # We are going to update the data array.
+    infoStr = upd[0].split('_')[-1].split('.')[0]
+    nFrames = int(infoStr.split('x')[0])
+    nPxZ = int(infoStr.split('x')[1])
+    nPxY = int(infoStr.split('x')[2])
+    im_arr = np.fromfile(upd[0],dtype=np.uint16).reshape((nFrames,nPxZ,nPxY))
+
 # check if one value was given, find what we have:
 tp = 0
 if len(upd) == 1:
@@ -63,6 +71,9 @@ if len(upd) == 1:
     else:
         if 'mask' in key:
             newVal = np.array(Image.open(upd[0])).astype(np.uint16)[np.newaxis]
+            keyPos = '0.0.0'
+        elif 'data' in key:
+            newVal = np.copy(im_arr).astype(np.uint16)
             keyPos = '0.0.0'
         else:
             newVal = np.string_(upd[0],'utf-8')
@@ -106,12 +117,25 @@ else: # This means we are writing a string
         ds = zf2.create_dataset(key,shape=newVal.shape,dtype=newVal.dtype,chunks=newVal.shape,
                             compressor=Blosc(cname='zstd', clevel=3,
                             shuffle=Blosc.BITSHUFFLE))
+    elif 'data' in key:
+        # WE NEED TO ADD .zarray file too!!!!!
+        ds = zf2.create_dataset(key,shape=newVal.shape,dtype=newVal.dtype,chunks=(1,nPxZ,nPxY),
+                            compressor=Blosc(cname='zstd', clevel=3,
+                            shuffle=Blosc.BITSHUFFLE))
 ds[:] = newVal
 shutil.move(f'{bnFNTemp}/{keyTop}',f'{keyTop}')
 subprocess.call(f'zip -u {fnIn} {key}/.zarray',shell=True)
-subprocess.call(f'zip -u {fnIn} {key}/{keyPos}',shell=True)
+if 'data' not in key:
+    subprocess.call(f'zip -u {fnIn} {key}/{keyPos}',shell=True)
+else:
+    subprocess.call(f'zip -d {fnIn} "{key}/*"',shell=True,stdout=open('/dev/null'))
+    subprocess.call(f'zip -u {fnIn} {key}/.zarray',shell=True)
+    for frameNr in range(nFrames):
+        keyPos = f'{frameNr}.0.0'
+        subprocess.call(f'zip -u {fnIn} {key}/{keyPos}',shell=True)
 shutil.rmtree(keyTop)
 shutil.rmtree(fnTemp)
 zf = zarr.open(fnIn,'r')
 rf = zf[key][:]
 print(f'Updated value: {key}:{rf}')
+print(rf.shape)
