@@ -129,7 +129,7 @@ ConvertFiles = args.convertFiles
 peakSearchOnly = args.peakSearchOnly
 rawDir = args.rawDir
 inpFileName = args.fileName
-if len(inpFileName) > 1 and len(dataFN)<1:
+if len(inpFileName) > 1 and len(dataFN)<1 and '.h5' in inpFileName:
     dataFN = inpFileName
 if nNodes == -1:
     nNodes = 1
