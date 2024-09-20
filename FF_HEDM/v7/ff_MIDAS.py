@@ -129,6 +129,8 @@ ConvertFiles = args.convertFiles
 peakSearchOnly = args.peakSearchOnly
 rawDir = args.rawDir
 inpFileName = args.fileName
+if len(inpFileName) > 1 and len(dataFN)<1:
+    dataFN = inpFileName
 if nNodes == -1:
     nNodes = 1
 if len(rawDir) > 1:
