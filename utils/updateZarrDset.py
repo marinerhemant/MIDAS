@@ -37,6 +37,9 @@ key = args.keyToUpdate
 fnIn = args.fn
 upd = args.updatedValue
 
+if key[0] == '/':
+    key = key[1:]
+
 if len(folder) == 0 or folder == '.':
     folder = os.getcwd()
 os.chdir(folder)
