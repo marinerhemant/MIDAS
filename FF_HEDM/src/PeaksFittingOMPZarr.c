@@ -1490,7 +1490,7 @@ void main(int argc, char *argv[]){
 				TotNrRegions--;
 				continue;
 			}
-			printf("%d\n",NrPixelsThisRegion);
+			// printf("%d\n",NrPixelsThisRegion);
 			for (i=0;i<NrPixelsThisRegion;i++){
 				UsefulPixels[i*2+0] = (int)(Positions[RegNr*NrPixels*4+i]/NrPixels);
 				UsefulPixels[i*2+1] = (int)(Positions[RegNr*NrPixels*4+i]%NrPixels);
@@ -1531,6 +1531,7 @@ void main(int argc, char *argv[]){
 					MaximaPositions[i*2+1] = MaximaPositionsT[i*2+1];
 				}
 			}
+			printf("nPeaks %d\n",nPeaks);
 			double retVal;
 			int rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo,NrPixels,&retVal);
 			for (i=0;i<nPeaks;i++){
