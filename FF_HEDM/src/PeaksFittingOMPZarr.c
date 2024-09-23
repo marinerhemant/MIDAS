@@ -442,7 +442,7 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPi
 		}else{
 			OtherInfo[8*i+7] = x[(8*i)+8];
 		}
-		// printf("%lf %lf %lf\n",x[(8*i)+1],x[(8*i)+5],x[(8*i)+6],x[(8*i)+4]);
+		printf("%lf %lf %lf\n",x[(8*i)+1],x[(8*i)+5],x[(8*i)+6],x[(8*i)+4]);
 	}
 	YZ4mREta(nPeaks,RCens,EtaCens,YCEN,ZCEN);
 	CalcIntegratedIntensity(nPeaks,x,Rs,Etas,NrPixelsThisRegion,IntegratedIntensity,NrPx);
@@ -1503,7 +1503,7 @@ void main(int argc, char *argv[]){
 				TotNrRegions--;
 				continue;
 			}
-			// printf("After RegionNr: %d, NPeaks: %d, NPx: %lf\n",RegNr,nPeaks,NrPixelsThisRegion);
+			printf("After RegionNr: %d, NPeaks: %d, NPx: %lf\n",RegNr,nPeaks,NrPixelsThisRegion);
 			if (nPeaks > maxNPeaks){
 				// Sort peaks by MaxIntensity, remove the smallest peaks until maxNPeaks, arrays needed MaximaPositions, MaximaValues.
 				int MaximaPositionsT[nPeaks*2];
