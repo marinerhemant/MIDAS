@@ -1484,6 +1484,7 @@ void main(int argc, char *argv[]){
 			UsefulPixels[i*2+1] = 0;
 			z[i] = 0;
 		}
+		printf("Number of regions to start with: %d\n",NrOfReg);
 		for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 			NrPixelsThisRegion = PositionTrackers[RegNr];
 			if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
