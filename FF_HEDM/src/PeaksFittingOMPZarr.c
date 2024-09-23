@@ -442,7 +442,7 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPi
 		}else{
 			OtherInfo[8*i+7] = x[(8*i)+8];
 		}
-		printf("%lf %lf %lf\n",x[(8*i)+1],x[(8*i)+5],x[(8*i)+6],x[(8*i)+4]);
+		// printf("%lf %lf %lf\n",x[(8*i)+1],x[(8*i)+5],x[(8*i)+6],x[(8*i)+4]);
 	}
 	YZ4mREta(nPeaks,RCens,EtaCens,YCEN,ZCEN);
 	CalcIntegratedIntensity(nPeaks,x,Rs,Etas,NrPixelsThisRegion,IntegratedIntensity,NrPx);
@@ -1490,7 +1490,7 @@ void main(int argc, char *argv[]){
 				TotNrRegions--;
 				continue;
 			}
-			// printf("%d\n",NrPixelsThisRegion);
+			printf("%d\n",NrPixelsThisRegion);
 			for (i=0;i<NrPixelsThisRegion;i++){
 				UsefulPixels[i*2+0] = (int)(Positions[RegNr*NrPixels*4+i]/NrPixels);
 				UsefulPixels[i*2+1] = (int)(Positions[RegNr*NrPixels*4+i]%NrPixels);
