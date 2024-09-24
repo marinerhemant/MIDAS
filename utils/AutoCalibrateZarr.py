@@ -46,14 +46,14 @@ def generateZip(resFol,pfn,dfn='',dloc='',nchunks=-1,preproc=-1,outf='ZipOut.txt
         cmd+= ' -numFrameChunks '+str(nchunks)
     if preproc!=-1:
         cmd+= ' -preProcThresh '+str(preproc)
-    outf = resFol+'/output/'+outf
-    errf = resFol+'/output/'+errf
+    outf = resFol+'/'+outf
+    errf = resFol+'/'+errf
     subprocess.call(cmd,shell=True,stdout=open(outf,'w'),stderr=open(errf,'w'))
     lines = open(outf,'r').readlines()
     if lines[-1].startswith('OutputZipName'):
         return lines[-1].split()[1]
 
-parser = MyParser(description='''Automated Calibration for WAXS using continuous rings-like signal''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser = MyParser(description='''Automated Calibration for WAXS using continuous rings-like signal. This code takes either Zarr.Zip files or HDF5 files.''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-dataFN', type=str, required=True, help='DataFileName.zip')
 parser.add_argument('-MakePlots', type=int, required=False, default=0, help='MakePlots: to draw, use 1.')
 parser.add_argument('-FirstRingNr', type=int, required=False, default=1, help='FirstRingNumber on data.')
@@ -67,21 +67,25 @@ parser.add_argument('-paramFN', type=str, required=False, default='', help="If y
 args, unparsed = parser.parse_known_args()
 
 dataFN = args.dataFN
-convertFile = args.convertFile
+convertFile = args.ConvertFile
 
 if convertFile == 1:
 	psFN = args.paramFN
 	if len(psFN) == 0:
 		print("Provide the parameter file if you want to generate a zarr zip file.")
 		sys.exit()
-	dataF = generateZip('.',psFN,dfn=dataFN,nchunks=100,preproc=0)
+	dataFN = generateZip('.',psFN,dfn=dataFN,nchunks=100,preproc=0)
+
+dataFN = dataFN.split('/')[-1]
 
 dataF = zarr.open(dataFN,'r')
 NrPixelsY = 0
 NrPixelsZ = 0
 
+skipFrame = 0
 space_group = dataF['/analysis/process/analysis_parameters/SpaceGroup'][0].item()
-skipFrame = dataF['/analysis/process/analysis_parameters/SkipFrame'][0].item()
+if '/analysis/process/analysis_parameters/SkipFrame' in dataF:
+	skipFrame = dataF['/analysis/process/analysis_parameters/SkipFrame'][0].item()
 px = dataF['/analysis/process/analysis_parameters/PixelSize'][0].item()
 latc = dataF['/analysis/process/analysis_parameters/LatticeParameter'][:]
 Wavelength = dataF['/analysis/process/analysis_parameters/Wavelength'][:].item()
@@ -91,7 +95,6 @@ dark = fileReader(dataF,'/exchange/dark')
 
 rawFN = dataFN.split('.zip')[0]+'.ge5'
 darkFN = 'dark_' +rawFN
-print(NrPixelsY,NrPixelsZ)
 raw.tofile(rawFN)
 dark.tofile(darkFN)
 darkName = darkFN

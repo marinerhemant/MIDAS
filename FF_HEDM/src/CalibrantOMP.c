@@ -50,6 +50,11 @@ inline void CalcPeakProfile(int **Indices, int *NrEachIndexBin, int idx,
 	double *Average,double Rmi,double Rma,double EtaMi,double EtaMa,
 	double ybc,double zbc,double px,int NrPixelsY, double *ReturnValue);
 
+
+inline void CalcPeakProfileParallel(int *Indices, int NrEachIndexBin, int idx,
+	double *Average,double Rmi,double Rma,double EtaMi,double EtaMa,
+	double ybc,double zbc,double px,int NrPixelsY, double *ReturnValue);
+
 static inline
 pixelvalue**
 allocMatrixPX(int nrows, int ncols)
@@ -772,6 +777,32 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr, c
 				}
 			}
 		}
+	} else if (dType == 9){ // uint16_t
+		TIFFErrorHandler oldhandler;
+		oldhandler = TIFFSetWarningHandler(NULL);
+		printf("%s\n",fn);
+		TIFF* tif = TIFFOpen(fn, "r");
+		TIFFSetWarningHandler(oldhandler);
+		if (tif){
+			uint32 imagelength;
+			tsize_t scanline;
+			TIFFGetField(tif,TIFFTAG_IMAGELENGTH,&imagelength);
+			scanline = TIFFScanlineSize(tif);
+			tdata_t buf;
+			buf = _TIFFmalloc(scanline);
+			uint16_t *datar;
+			int rnr;
+			for (rnr=0;rnr<imagelength;rnr++){
+				TIFFReadScanline(tif,buf,rnr,1);
+				datar = (uint16_t*)buf;
+				for (i=0;i<scanline/sizeof(uint16_t);i++){
+					if (datar[i] == 1){
+						returnArr[rnr*(scanline/sizeof(uint16_t)) + i] = 1;
+					}
+				}
+			}
+		}
+		return 0;
 	} else {
 		return 127;
 	}
@@ -780,7 +811,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr, c
 int main(int argc, char *argv[])
 {
 	if (argc != 3){
-		printf("Usage: CalibrantOMP ps.txt nCPUs");
+		printf("Usage: CalibrantOMP ps.txt nCPUs\n");
 		return 1;
 	}
     clock_t start, end, start0, end0;
@@ -1181,6 +1212,9 @@ int main(int argc, char *argv[])
 		pxSize = sizeof(uint8_t);
 		HeadSize = 0;
 	} else if (dType == 8){ // HDF Unit16
+		pxSize = sizeof(uint16_t);
+		HeadSize = 0;
+	} else if (dType ==9){ // Tiff Unit16
 		pxSize = sizeof(uint16_t);
 		HeadSize = 0;
 	}

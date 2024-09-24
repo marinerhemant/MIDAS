@@ -38,7 +38,7 @@ dSetNrs = np.sort(np.array([int(i.split('_')[1]) for i in zf['OmegaSumFrame']]))
 
 app.layout = dbc.Container([
     dbc.Row([
-        html.Div('MIDAS Digital Twin', className="text-primary text-center fs-3")
+        html.Div('MIDAS CAKING VISUALIZATION', className="text-primary text-center fs-3")
     ]),
     dbc.Row([
         dbc.Col([

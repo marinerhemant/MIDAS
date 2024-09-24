@@ -27,6 +27,7 @@ dxR = int(hf['analysis/process/analysis_parameters/CropXR'][0])
 dzL = int(hf['analysis/process/analysis_parameters/CropZL'][0])
 dzR = int(hf['analysis/process/analysis_parameters/CropZR'][0])
 shift = hf['analysis/process/analysis_parameters/shift'][0]
+#### shift or position of rotation axis.
 if 'analysis/process/analysis_parameters/RotationAngle' in hf:
     rot = hf['analysis/process/analysis_parameters/RotationAngle'][0]
 
