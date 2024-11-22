@@ -24,6 +24,9 @@
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 #define EPS 1e-9
+static inline double sin_cos_to_angle (double s, double c){return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);}
+static inline double cosd(double x){return cos(deg2rad*x);}
+static inline double sind(double x){return sin(deg2rad*x);}
 
 static inline void normalizeQuat(double quat[4]){
 	double norm = sqrt(quat[0]*quat[0]+quat[1]*quat[1]+quat[2]*quat[2]+quat[3]*quat[3]);

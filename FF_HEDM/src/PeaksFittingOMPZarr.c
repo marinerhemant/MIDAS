@@ -551,11 +551,11 @@ check (int test, const char * message, ...)
     }
 }
 
-void main(int argc, char *argv[]){
+int main(int argc, char *argv[]){
     double start_time = omp_get_wtime();
 	if (argc < 5){
 		printf("Usage: %s DataFile blockNr nBlocks numProcs (optional)ResultFolder\n",argv[0]);
-		return;
+		return 1;
 	}
 	char *DataFN = argv[1];
 	int blockNr = atoi(argv[2]);
@@ -594,6 +594,7 @@ void main(int argc, char *argv[]){
 	double BadPxIntensity = 0;
     char *resultFolder=NULL, dummy[2048];
 	int maskLoc = -1;
+	int doPeakFit = 1;
     while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
         if (strstr(finfo->name,"exchange/data/.zarray")!=NULL){
             s = calloc(finfo->size + 1, sizeof(char));
@@ -711,6 +712,18 @@ void main(int argc, char *argv[]){
             dsize = blosc1_decompress(arr,data,dsize);
             omegaStep = *(double *)&data[0];
 			printf("OmeStep: %lf\n",omegaStep);
+            free(arr);
+            free(data);
+        }
+        if (strstr(finfo->name,"measurement/process/scan_parameters/doPeakFit/0")!=NULL){
+            arr = calloc(finfo->size + 1, sizeof(char)); 
+            fd = zip_fopen_index(arch, count, 0);
+            zip_fread(fd, arr, finfo->size);
+            dsize = sizeof(int);
+            data = (char*)malloc((size_t)dsize);
+            dsize = blosc1_decompress(arr,data,dsize);
+            doPeakFit = *(int *)&data[0];
+			printf("doPeakFit: %d\n",doPeakFit);
             free(arr);
             free(data);
         }
@@ -1533,12 +1546,38 @@ void main(int argc, char *argv[]){
 				}
 			}
 			printf("nPeaks %d\n",nPeaks);
-			double retVal;
-			int rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo,NrPixels,&retVal);
+			double retVal=0;
+			int rc = 0;
+			// If we don't want to fit, we can just compute weighted center of mass, but first put nPeaks =1;
+			// We need {IntegratedIntensity}, {IMAX}, {YCEN}, {ZCEN}, {Rads}, {Etass}, sigmaR (0), sigmaEta (0), {NrPx}, returnCode (0), retVal (0)
+			// \tBG\tSigmaGR\tSigmaLR\tSigmaGEta\tSigmaLEta\tMU\n" All of these will be 0
+			// OtherInfo is set already, will be 0 and will populate the other values in the line above.
+			if (doPeakFit == 0){
+				nPeaks = 1;
+				IMAX[0] = MaximaValues[0];
+				NrPx[0] = NrPixelsThisRegion;
+				YCEN[0] = 0;
+				ZCEN[0] = 0;
+				IntegratedIntensity[0] = 0;
+				for (i=0;i<NrPixelsThisRegion;i++){
+
+				}
+				IntegratedIntensity[0];
+				YCEN[0];
+				ZCEN[0];
+				Rads[0] = CalcNorm2(YCEN[0],ZCEN[0]);
+				Etass[0] = CalcEtaAngle(YCEN[0],ZCEN[0]);
+
+			} else{
+				rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo,NrPixels,&retVal);
+			}
 			for (i=0;i<nPeaks;i++){
-				fprintf(outfilewrite,"%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t",(SpotIDStart+i),IntegratedIntensity[i],Omega,-YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
+				fprintf(outfilewrite,"%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t",(SpotIDStart+i),IntegratedIntensity[i],
+					Omega,-YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
 				for (j=0;j<2;j++) fprintf(outfilewrite, "%f\t",OtherInfo[8*i+6+j]);
-				fprintf(outfilewrite,"%d\t%d\t%d\t%d\t%d\t%f\t%f\t%f\t%d\t%lf",NrPx[i],NrPixelsThisRegion,nPeaks,MaximaPositions[i*2+0],MaximaPositions[i*2+1],(double)MaximaPositions[i*2+0]+YCEN[i]-Ycen,(double)MaximaPositions[i*2+1]-ZCEN[i]-Zcen,MaximaValues[i],rc,retVal);
+				fprintf(outfilewrite,"%d\t%d\t%d\t%d\t%d\t%f\t%f\t%f\t%d\t%lf",NrPx[i],NrPixelsThisRegion,
+					nPeaks,MaximaPositions[i*2+0],MaximaPositions[i*2+1],(double)MaximaPositions[i*2+0]+YCEN[i]-Ycen,
+					(double)MaximaPositions[i*2+1]-ZCEN[i]-Zcen,MaximaValues[i],rc,retVal);
 				for (j=0;j<6;j++) fprintf(outfilewrite, "\t%f",OtherInfo[8*i+j]);
 				fprintf(outfilewrite,"\n");
 			}

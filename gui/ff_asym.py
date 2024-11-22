@@ -1040,7 +1040,7 @@ def replot():
 # Main function
 root = Tk.Tk()
 root.wm_title("FF display v0.2 Dt. 2024/02/10 hsharma@anl.gov")
-figur = Figure(figsize=(17,8),dpi=100)
+figur = Figure(figsize=(15,6),dpi=100)
 canvas = FigureCanvasTkAgg(figur,master=root)
 a = figur.add_subplot(121,aspect='equal')
 b = figur.add_subplot(122,aspect='equal')

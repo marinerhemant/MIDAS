@@ -31,7 +31,7 @@ class MyParser(argparse.ArgumentParser):
         self.print_help()
         sys.exit(2)
 
-def generateZip(resFol,pfn,dfn='',dloc='',nchunks=-1,preproc=-1,outf='ZipOut.txt',errf='ZipErr.txt'):
+def generateZip(resFol,pfn,dfn='',nchunks=-1,preproc=-1,outf='ZipOut.txt',errf='ZipErr.txt'):
     cmd = pytpath+' '+os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZip.py')+' -resultFolder '+ resFol +' -paramFN ' + pfn
     if len(darkFN) != 0:
         cmd += f' -darkFN {darkFN}'
@@ -82,6 +82,7 @@ parser.add_argument('-resultFolder', type=str, required=False, default ='.', hel
 parser.add_argument('-paramFN', type=str, required=True, help='Parameter file name.')
 parser.add_argument('-dataFN', type=str, required=True, default='', help='DataFileName for first file, this should have the full path if not in the current folder.')
 parser.add_argument('-darkFN', type=str, required=False, default='', help='DarkFileName, full path.')
+parser.add_argument('-dataLoc', type=str, required=False, default='exchange/data', help='Data location.')
 parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='Number of chunks to use when reading the data file if RAM is smaller than expanded data. -1 will disable.')
 parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
 parser.add_argument('-startFileNr', type=int, required=False, default=-1, help='Which fileNr to start from. Default is -1, which means that fileNr in dataFN is read.')
@@ -101,6 +102,7 @@ endFileNr = args.endFileNr
 convertFiles = args.convertFiles
 mapDetector = args.mapDetector
 nCPUs = args.nCPUs
+dloc = args.dataLoc
 
 if len(resultDir) == 0 or resultDir == '.':
     resultDir = os.getcwd()
@@ -113,7 +115,7 @@ os.makedirs(f'{resultDir}/{logdir}',exist_ok=True)
 
 startFileNrStr = str(startFileNr).zfill(6)
 if startFileNr == -1:
-    startFileNrStr = re.search('\d{% s}' % 6, InputFN)
+    startFileNrStr = re.search(r'\d{% s}' % 6, InputFN)
     print(f'Processing file number: {int(startFileNrStr.group(0))}')
     if not startFileNrStr:
         print("Could not find 6 padded fileNr. Exiting.")

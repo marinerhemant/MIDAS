@@ -190,10 +190,19 @@ sp_pro_analysis = pro_analysis.create_group('analysis_parameters')
 if h5py.is_hdf5(InputFN):
     hf2 = h5py.File(InputFN,'r')
     nFrames,numZ,numY = hf2[dataLoc].shape
-    if darkLoc in hf2:
-        darkData = hf2[darkLoc][()]
+    print(hf2[dataLoc].shape,dataLoc)
+    if h5py.is_hdf5(darkFN) and darkFN != InputFN:
+        print(f"We are going to read dark from a different HDF. Please make sure that the dark file contains information in {dataLoc} dataset.")
+        hfDark = h5py.File(darkFN,'r')
+        darkData = hfDark[dataLoc][()]
+        print(darkData.shape,dataLoc)
+        hfDark.close()
     else:
-        darkData = np.zeros((10,numZ,numY))
+        if darkLoc in hf2:
+            darkData = hf2[darkLoc][()]
+        else:
+            darkData = np.zeros((10,numZ,numY))
+    print(darkData.shape)
     dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
     darkMean = np.mean(darkData[skipF:,:,:],axis=0).astype(np.uint16)
     if preProc!=-1:
@@ -232,7 +241,7 @@ if h5py.is_hdf5(InputFN):
         stOmeOver[:] = hf2[searchStr][()][0]
     searchStr = '/measurement/instrument/GSAS2_PVS/Pressure'
     if searchStr in hf2:
-        print('Pressure values were found!')
+        print(f'Pressure values were found, will enter {nFrames} values!')
         pressureDSet = sp_pro_meas.create_dataset(searchStr.split('/')[-1],dtype=np.double,shape=(nFrames,),chunks=(nFrames,),compressor=compressor)
         pressureDSet[:] = hf2[searchStr][()]
     searchStr = '/measurement/instrument/GSAS2_PVS/Temperature'
@@ -281,7 +290,7 @@ else:
     if numFrameChunks == -1:
         numFrameChunks = nFrames
     numChunks = int(ceil(nFrames/numFrameChunks))
-    fNr = re.search('\d{% s}' % pad, InputFN).group(0)
+    fNr = re.search(r'\d{% s}' % pad, InputFN).group(0)
     fNrOrig = fNr
     fNrLoc = int(fNr)
     for fileNrIter in range(numFilesPerScan):
@@ -377,14 +386,15 @@ for line in lines:
             RingThreshArr = outArr
         else:
             RingThreshArr = np.vstack((RingThreshArr,outArr))
-    searchStr = 'RingsToExclude'
-    if line.startswith(f'{searchStr} '):
-        outArr = np.array([float(x) for x in line.split()[1:3]]).astype(np.double)
-        outArr = outArr.reshape((1,2))
-        if RingExcludeArr[0,0] == 0:
-            RingExcludeArr = outArr
-        else:
-            RingExcludeArr = np.vstack((RingExcludeArr,outArr))
+    # searchStr = 'RingsToExclude'
+    # if line.startswith(f'{searchStr} '):
+    #     outArr = np.array([float(x) for x in line.split()[1:3]]).astype(np.double)
+    #     print(outArr)
+    #     outArr = outArr.reshape((1,2))
+    #     if RingExcludeArr[0,0] == 0:
+    #         RingExcludeArr = outArr
+    #     else:
+    #         RingExcludeArr = np.vstack((RingExcludeArr,outArr))
     searchStr = 'HeadSize'
     if line.startswith(f'{searchStr} '):
         head = int(line.split()[1])

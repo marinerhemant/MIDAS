@@ -1363,14 +1363,13 @@ main(int argc, char *argv[])
 			// }
 			// printf("\n");
 			OrientMat2Euler(OM,EulerThis);
-			Euler2OrientMat(EulerThis,OM);
-			// for (i=0;i<3;i++){
-			// 	for (j=0;j<3;j++){
-			// 		printf("%lf ",OM[i][j]);
-			// 	}
-			// 	printf("\n");
-			// }
-			// printf("\n");
+			double OMT[9];
+			Euler2OrientMat(EulerThis,OMT);
+			for (i=0;i<3;i++){
+				for (j=0;j<3;j++){
+					OM[i][j] = OMT[i*3+j];
+				}
+			}
 			// Calculate the spots now.
 			CalcDiffrSpots_Furnace(hklsOut,OM,Lsd,Wavelength,TheorSpots,&nTspots);
 			// For each spot, calculate displacement, calculate tilt and wedge effect.

@@ -42,6 +42,9 @@
 #define rad2deg 57.2957795130823
 static inline double sin_cos_to_angle (double s, double c){return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);}
 
+inline
+double GetMisOrientation(double quat1[4], double quat2[4], double axis[3], double *Angle,int SGNr);
+
 static inline
 void OrientMat2Euler(double m[3][3],double Euler[3])
 {
@@ -124,6 +127,9 @@ FreeMemMatrix(double **mat,int nrows)
     }
     free(mat);
 }
+
+inline 
+void OrientMat2Quat(double OrientMat[9], double Quat[4]);
 
 static inline
 int
@@ -241,11 +247,22 @@ QuatToOrientMat(
     OrientMat[8] = 1 - 2*(Q1_2+Q2_2);
 }
 
+inline void
+CalcStrainTensorFableBeaudoin(double LatCin[6],double LatticeParameterFit[6],
+	double Orient[3][3], double StrainTensorSample[3][3]);
+
+inline int
+StrainTensorKenesei(int nspots,double **SpotsInfo, double Distance, double wavelength,
+		double StrainTensorSample[3][3], int **IDHash,
+		double *dspacings, int nRings, int startSpotMatrix, double **SpotMatrix, double *RetVal,
+		double StrainTensorInput[3][3]);
+
+
 int main(int argc, char *argv[])
 {
 	if (argc != 2){
 		printf("Usage: ProcessGrains ZarrZip\n");
-		return;
+		return 1;
 	}
 	clock_t start, end;
     double diftotal;
@@ -767,7 +784,7 @@ int main(int argc, char *argv[])
 		}
 		if (retval == 0){
 			printf("Did not read correct hash table for IDs. Exiting\n");
-			return;
+			return 1;
 		}
 		FinalMatrix[nGrains][0] = GrainIDThis;
 		for (j=0;j<21;j++){

@@ -405,11 +405,13 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 			Rmi = Rs[j] - Rstep/2;
 			Rma = Rs[j] + Rstep/2;
 			CalcPeakProfileParallel(IndicesThis,NrIndicesThis,idxThis,Average,Rmi,Rma,EtaMi,EtaMa,ybc,zbc,px,NrPixels, &RetVal);
+			// printf("%lf ",RetVal);
 			PeakShape[j] = RetVal;
 			if (RetVal != 0){
 				AllZero = 0;
 			}
 		}
+		// printf("\n");
 		for (j=0;j<NrPtsForFit;j++){
 			Etas[j]=EtaMean[idxThis];
 		}
@@ -426,6 +428,7 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices, double *Av
 		}else{
 			Rfit = 0;
 		}
+		// printf("\t\t%lf %lf %lf %lf %lf\n",Rmin,Rmax,Rfit,ytr,ztr);
 		RMean[idxThis] = Rfit;
 		free(NrPts);
 		free(Rm);
@@ -597,6 +600,7 @@ void CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double *YMean, do
 		Diffs[i] = Diff;
 		MeanDiff += Diff;
 		RadOuts[i] = Rcorr;
+		// printf("%lf %lf %lf %lf %lf %lf %lf\n",Rad,Lsd,XYZ[0],XYZ[1],XYZ[2],YMean[i],ZMean[i]);
 	}
 	MeanDiff /= nIndices;
 	double StdDiff2=0;
@@ -755,10 +759,11 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr, c
 		int j,k;
 	    hid_t file;
 	    herr_t status, status_n;                             
-	    hid_t dataset;  
+	    hid_t dataset;
 		hid_t dataspace;
 	    hsize_t dims[3];
 	    int ndims;
+		printf("%s\n",fn);
 	    file = H5Fopen(fn,H5F_ACC_RDONLY, H5P_DEFAULT);
 	    dataset = H5Dopen(file, DATASETNAME,H5P_DEFAULT);
 	    dataspace = H5Dget_space(dataset);
@@ -838,11 +843,26 @@ int main(int argc, char *argv[])
 	int HeadSize = 8192;
 	int dType = 1;
 	char GapFN[4096], BadPxFN[4096];
+	char darkDatasetName[4096], dataDatasetName[4096];
+	sprintf(darkDatasetName,"exchange/dark");
+	sprintf(dataDatasetName,"exchange/data");
     while (fgets(aline,1000,fileParam)!=NULL){
 		str = "FileStem ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %s", dummy, fn);
+            continue;
+        }
+		str = "darkDataset ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %s", dummy, darkDatasetName);
+            continue;
+        }
+		str = "dataDataset ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %s", dummy, dataDatasetName);
             continue;
         }
 		str = "Folder ";
@@ -1338,6 +1358,11 @@ int main(int argc, char *argv[])
 			TotFrames+=nFrames;
 			fclose(fp);
 		} else{
+			printf("Reading HDF5.\n");
+			printf("%s\n",FileName);
+			// sprintf(dname,"%s",darkDatasetName);
+			// printf("%s\n",dname);
+			// return 1;
 			dname = "exchange/dark";
 			rc = fileReader(fd,FileName,dType,NrPixelsY*NrPixelsZ,DarkFile,dname);
 			MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,DarkFile,DarkFile2);
@@ -1360,6 +1385,7 @@ int main(int argc, char *argv[])
 			}
 			printf("Dark file read.\n");
 			for (j=0;j<(NrPixels*NrPixels);j++)AverageDark[j]=DarkFile2[j];
+			// sprintf(dname,"%s",dataDatasetName);
 			dname = "exchange/data";
 			rc = fileReader(fd,FileName,dType,NrPixelsY*NrPixelsZ,Image,dname);
 			MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,Image,Image2);
@@ -1427,6 +1453,7 @@ int main(int argc, char *argv[])
 				RMean2[countr] = RMean[i];
 				EtaMean2[countr] = EtaMean[i];
 				IdealTtheta2[countr] = IdealTtheta[i];
+				// printf("%lf %lf %lf %lf\n",RMean[i],IdealR[i],EtaMean[i],IdealTtheta[i]);
 				countr++;
 			}
 		}

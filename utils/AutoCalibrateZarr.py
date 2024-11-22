@@ -36,10 +36,12 @@ def fileReader(f,dset):
 	data[data<1] = 1
 	return np.mean(data,axis=0).astype(np.uint16)
 
-def generateZip(resFol,pfn,dfn='',dloc='',nchunks=-1,preproc=-1,outf='ZipOut.txt',errf='ZipErr.txt'):
+def generateZip(resFol,pfn,dfn='',darkfn='',dloc='',nchunks=-1,preproc=-1,outf='ZipOut.txt',errf='ZipErr.txt'):
     cmd = pytpath+' '+os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZip.py')+' -resultFolder '+ resFol +' -paramFN ' + pfn
     if dfn!='':
         cmd+= ' -dataFN ' + dfn
+    if darkfn!='':
+        cmd+= ' -darkFN ' + darkfn
     if dloc!='':
         cmd+= ' -dataLoc ' + dloc
     if nchunks!=-1:
@@ -55,6 +57,8 @@ def generateZip(resFol,pfn,dfn='',dloc='',nchunks=-1,preproc=-1,outf='ZipOut.txt
 
 parser = MyParser(description='''Automated Calibration for WAXS using continuous rings-like signal. This code takes either Zarr.Zip files or HDF5 files.''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-dataFN', type=str, required=True, help='DataFileName.zip')
+parser.add_argument('-darkFN', type=str, required=False, default='', help='If separate file consists of the dark, provide this parameter.')
+parser.add_argument('-dataLoc', type=str, required=False, default='', help='If data is located in any location except /exchange/data in the hdf5 files, provide this.')
 parser.add_argument('-MakePlots', type=int, required=False, default=0, help='MakePlots: to draw, use 1.')
 parser.add_argument('-FirstRingNr', type=int, required=False, default=1, help='FirstRingNumber on data.')
 parser.add_argument('-EtaBinSize', type=float, required=False, default=5, help='EtaBinSize in degrees.')
@@ -62,11 +66,15 @@ parser.add_argument('-MultFactor', type=float, required=False, default=2.5, help
 parser.add_argument('-Threshold', type=float, required=False, default=0, help='If you want to give a manual threshold, typically 500, otherwise, it will calculate automatically.')
 parser.add_argument('-StoppingStrain', type=float, required=False, default=0.00004, help='If refined pseudo-strain is below this value and all rings are "good", we would have converged.')
 parser.add_argument('-ImTransOpt', type=int, required=False, default=[0],nargs='*', help="If you want to do any transformations to the data: \n0: nothing, 1: flip LR, 2: flip UD, 3: transpose. Give as many as needed in the right order.")
-parser.add_argument('-ConvertFile', type=int, required=False, default=0, help="If you want to generate the zarr zip file from an HDF: \n0: input is zarr zip file, 1: HDF5 input will be used to generarte a zarr zip file.")
-parser.add_argument('-paramFN', type=str, required=False, default='', help="If you use convertFile = 1, you need to provide the parameter file consisting of all settings.")
+parser.add_argument('-ConvertFile', type=int, required=False, default=0, help="If you want to generate the zarr zip file from an HDF: \n0: input is zarr zip file, 1: HDF5 input will be used to generarte a zarr zip file, 2: Binary GE-type file.")
+parser.add_argument('-paramFN', type=str, required=False, default='', help="If you use convertFile = 1, you need to provide the parameter file consisting of all settings: SpaceGroup, SkipFrame, px, LatticeParameter, Wavelength.")
+parser.add_argument('-LsdGuess', type=float, required=False, default=1000000, help="If you know a guess for the Lsd, it might be good to kickstart things.")
 args, unparsed = parser.parse_known_args()
 
 dataFN = args.dataFN
+darkFN = args.darkFN
+dataLoc = args.dataLoc
+LsdGuess = args.LsdGuess
 convertFile = args.ConvertFile
 
 if convertFile == 1:
@@ -74,7 +82,7 @@ if convertFile == 1:
 	if len(psFN) == 0:
 		print("Provide the parameter file if you want to generate a zarr zip file.")
 		sys.exit()
-	dataFN = generateZip('.',psFN,dfn=dataFN,nchunks=100,preproc=0)
+	dataFN = generateZip('.',psFN,dfn=dataFN,nchunks=100,preproc=0,darkfn=darkFN,dloc=dataLoc)
 
 dataFN = dataFN.split('/')[-1]
 
@@ -118,9 +126,9 @@ for transOpt in imTransOpt:
 		dark = np.transpose(dark)
 
 mrr = 2000000 # maximum radius to simulate rings. This, combined with initialLsd should give enough coverage.
-initialLsd = 1000000 # Only used for simulation, real Lsd can be anything.
+initialLsd = LsdGuess # Only used for simulation, real Lsd can be anything.
 minArea = 300 # Minimum number of pixels that constitutes signal. For powder calibrants, 300 is typically used. Partial rings are okay, as long as they are at least 300 pixels big.
-
+maxW = 1000 # This is the maximum width around the ideal ring that will be used to compute peak shape, and subsequently peak parameters. It might create problems if too wide peak shapes are used.
 
 def redraw_figure():
 	plt.draw()
@@ -138,7 +146,7 @@ def runMIDAS(fn):
 		pf.write('Ext '+ext+'\n')
 		for transOpt in imTransOpt:
 			pf.write(f'ImTransOpt {transOpt}\n')
-		pf.write('Width 2000\n')
+		pf.write(f'Width {maxW}\n')
 		pf.write('tolTilts 3\n')
 		pf.write('tolBC 20\n')
 		pf.write('tolLsd 15000\n')
@@ -254,6 +262,10 @@ if threshold == 0:
 data_corr[data_corr<threshold] = 0
 thresh = data_corr
 thresh[thresh>0] = 255
+if DrawPlots == 1:
+	plt.imshow(thresh)
+	plt.colorbar()
+	plt.show()
 labels,nlabels = measure.label(thresh,return_num=True)
 props = measure.regionprops(labels)
 bc = []
@@ -326,7 +338,10 @@ for i in range(rads.shape[0]):
     if bestRowNr == -1: continue
     lsds.append(initialLsd*rads[i]/sim_rads[bestRowNr])
 
-initialLsd = np.median(lsds)
+if LsdGuess == 1000000:
+	initialLsd = np.median(lsds)
+else:
+	initialLsd = LsdGuess
 bc_new = bc_computed
 print("FN:",rawFN,"Beam Center guess: ",np.flip(bc_new),' Lsd guess: ',initialLsd)
 with open('ps.txt','w') as pf:

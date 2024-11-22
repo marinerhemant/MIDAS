@@ -39,6 +39,7 @@
 #include <sys/mman.h>
 #include <omp.h>
 #include <libgen.h>
+#include <unistd.h>
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -50,6 +51,18 @@
 #define CalcNorm2(x,y) sqrt((x)*(x) + (y)*(y))
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
 #define MAXNOMEGARANGES 2000
+
+int
+CalcDiffractionSpots(double Distance,
+	double ExcludePoleAngle,
+	double OmegaRanges[MAXNOMEGARANGES][2],
+	int NoOfOmegaRanges,
+	double **hkls,
+	int n_hkls,
+	double BoxSizes[MAXNOMEGARANGES][4],
+	int *nTspots,
+	double OrientMatr[3][3],
+	double **TheorSpots);
 
 // For detector mapping!
 extern int BigDetSize;
@@ -669,7 +682,7 @@ double FitErrorsPosT(double x[12],int nSpotsComp,double spotsYZOIn[nSpotsComp][9
 }
 
 static inline
-double FitErrorsOrientStrains(double x[9],int nSpotsComp,double spotsYZO[nSpotsComp][12],int nhkls,double hklsIn[nhkls][7],
+double FitErrorsOrientStrains(double x[9],int nSpotsComp,double spotsYZO[nSpotsComp][9],int nhkls,double hklsIn[nhkls][7],
 					 double Lsd,double Wavelength,int nOmeRanges,double OmegaRanges[nOmeRanges][2],
 					 double BoxSizes[nOmeRanges][4],double MinEta,double wedge,double chi, double Pos[3])
 {
@@ -1488,7 +1501,7 @@ int main(int argc, char *argv[])
 	FILE *hklf = fopen(hklfn,"r");
 	if (hklf == NULL){
 		printf("Could not read the hkl file. Exiting.\n");
-		return;
+		return 1;
 	}
 	fgets(aline,1000,hklf);
 	int h,kt,l,Rnr, nhkls=0;
@@ -1511,7 +1524,7 @@ int main(int argc, char *argv[])
 		}
 	}
 	fclose(hklf);
-	if (nOmeRanges != nBoxSizes){printf("Number of omega ranges and number of box sizes don't match. Exiting!\n");return;}
+	if (nOmeRanges != nBoxSizes){printf("Number of omega ranges and number of box sizes don't match. Exiting!\n");return 1;}
 	double MargOme=0.01,MargPos=Rsample,MargPos2=Rsample/2,MargOme2=2,chi=0;
 	int thisRowNr;
 	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)

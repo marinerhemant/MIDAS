@@ -31,8 +31,7 @@ endif
 SRCDIR=src/
 BINDIR=bin/
 
-all: help bindircheck calibrant imagemax \
-	fittiltbclsdsample fitposorstrains peaksfitting \
+all: help bindircheck calibrant  imagemax fitposorstrains peaksfitting fittiltbclsdsample \
 	mergeoverlaps calcradius findsaturatedpx genmediandark fitgrain tiff2ge \
 	mergerings fittiltx fitwedge hkls indexer bindata processgrains graintracking\
 	mapmultdetectors matchgrains detectormapper mergemultiplescans \

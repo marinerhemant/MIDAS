@@ -24,6 +24,7 @@
 #include <sys/types.h>
 #include <omp.h>
 #include <libgen.h>
+#include <unistd.h>
 
 static void
 check (int test, const char * message, ...)
@@ -62,6 +63,17 @@ check (int test, const char * message, ...)
 RealType *ObsSpotsLab;
 int n_spots = 0;
 
+int
+CalcDiffractionSpots(double Distance,
+	double ExcludePoleAngle,
+	double OmegaRanges[MAX_N_OMEGARANGES][2],
+	int NoOfOmegaRanges,
+	double **hkls,
+	int n_hkls,
+	double BoxSizes[MAX_N_OMEGARANGES][4],
+	int *nTspots,
+	double OrientMatr[3][3],
+	double **TheorSpots);
 
 // hkls to use
 double hkls[MAX_N_HKLS][7];

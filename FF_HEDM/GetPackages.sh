@@ -19,15 +19,15 @@ if [ ! -d ${dirThis}/NLOPT ]; then # NLOPT INSTALL
 	make -j8 install
 fi
 
-if [ ! -d ${dirThis}/NLOPTShared ]; then # NLOPT SHARED INSTALL
-	cd $dirThis
-	echo $(pwd)
-	rm -rf nlopt-2.4.2
-	tar -xzf nlopt.tar.gz
-	cd nlopt-2.4.2
-	./configure --prefix=${dirThis}/NLOPTShared --enable-shared
-	make -j8 install
-fi
+# if [ ! -d ${dirThis}/NLOPTShared ]; then # NLOPT SHARED INSTALL
+# 	cd $dirThis
+# 	echo $(pwd)
+# 	rm -rf nlopt-2.4.2
+# 	tar -xzf nlopt.tar.gz
+# 	cd nlopt-2.4.2
+# 	./configure --prefix=${dirThis}/NLOPTShared --enable-shared
+# 	make -j8 install
+# fi
 
 if [ ! -d ${dirThis}/swift ]; then # SWIFT
 	cd $dirThis
