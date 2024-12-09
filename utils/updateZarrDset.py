@@ -79,7 +79,7 @@ if len(upd) == 1:
             newVal = np.copy(im_arr).astype(np.uint16)
             keyPos = '0.0.0'
         else:
-            newVal = np.string_(upd[0],'utf-8')
+            newVal = np.bytes_(upd[0],'utf-8')
             keyPos = '0'
 else:
     keyPos = '0.0'

@@ -254,6 +254,7 @@ for layerNr in range(startLayerNr,endLayerNr+1):
                 shutil.copy2(dataFN,resultDir)
         cmdUpd = f'{pytpath} ' + os.path.expanduser('~/opt/MIDAS/utils/updateZarrDset.py')
         cmdUpd += f' -fn {os.path.basename(outFStem)} -folder {resultDir} -keyToUpdate analysis/process/analysis_parameters/ResultFolder -updatedValue {resultDir}/'
+        print(cmdUpd)
         subprocess.call(cmdUpd,shell=True)
         print(outFStem)
     print(f"Generating HKLs. Time till now: {time.time()-t0} seconds.")
