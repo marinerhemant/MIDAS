@@ -151,7 +151,7 @@ def saveFastIntegrate(arr, OneDOut, outfn):
 		nElements = np.zeros(nRBins*nEtaBins,dtype=int)
 		params = np.array([float(NrPixels),RMin,RBinSize,EtaMin,EtaBinSize,float(nEtaBins),RMax,EtaMax]).astype(float)
 		calcFastIntegration2D(mapR,mapEta,Image,params,Result,nElements)
-		outfile.write("Radius(px) Eta(px) Intensity(counts)\n")
+		outfile.write("Radius(px) Eta(degrees) Intensity(counts)\n")
 		if normalizer is 0:
 			nElements.fill(1)
 		outArr = np.vstack((np.array(RArr*nEtaBins),np.array(EtaArr*nRBins)))

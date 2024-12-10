@@ -388,7 +388,7 @@ int main(int argc, char *argv[]){
 		}
 	}
     char header[2048] = "SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px)"
-					" IMax MinOme(degrees) MaxOme(degress) Radius(px) Theta(degrees) Eta(degrees) "
+					" IMax MinOme(degrees) MaxOme(degress) Radius(px) Theta(degrees) Eta(degrees)"
 					" DeltaOmega NImgs RingNr GrainVolume GrainRadius PowderIntensity SigmaR SigmaEta NrPx NrPxTot\n";
 	char OutFile[2048];
 	sprintf(OutFile,"%s/Radius_StartNr_%d_EndNr_%d.csv",Folder,StartNr,EndNr);

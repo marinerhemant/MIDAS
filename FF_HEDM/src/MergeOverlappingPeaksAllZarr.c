@@ -311,7 +311,7 @@ int main(int argc, char *argv[]){
     char OutFileName[1024];
     sprintf(OutFolderName,"%s/%s",Folder,TmpFolder);
     char header[1024] = "SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px)"
-					" IMax MinOme(degrees) MaxOme(degress) SigmaR SigmaEta NrPx NrPxTot Radius(px) Eta(px)\n";
+					" IMax MinOme(degrees) MaxOme(degress) SigmaR SigmaEta NrPx NrPxTot Radius(px) Eta(degrees)\n";
 
     // Read first file
     fflush(stdout);

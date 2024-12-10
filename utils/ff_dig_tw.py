@@ -538,7 +538,7 @@ def show_mic2(eulerVal,multipleData,selLoadNr,clicks,bsz):
                     mic = mic[rads<bsz,:]
                     pos2 = mic[:,3:6]
                     pos2[:,2] = 0
-                    eulers2 = mic[:,7:10]
+                    eulers2 = rad2deg * mic[:,7:10]
                     plotType2 = 2
                 elif mic_h.startswith('# SpotID'):
                     # pf-Mic, 2D
@@ -551,12 +551,12 @@ def show_mic2(eulerVal,multipleData,selLoadNr,clicks,bsz):
                 elif mic_h.startswith('#EBSD'):
                     # This is an EBSD CSV file written by Nicolas
                     # Which column has what....
-                    # X, Y, Z, Euler Angle1, Euler Angle2, Euler Angle3
+                    # #EBSD X, Y, Z, Euler Angle1, Euler Angle2, Euler Angle3
                     mic = np.genfromtxt(micfn,skip_header=1,delimiter=',')
                     rads = np.linalg.norm(mic[:,0:2],axis=1)
                     mic = mic[rads<bsz,:]
                     pos2 = mic[:,:2]
-                    eulers2 = mic[:,3:]
+                    eulers2 = mic[:,3:] # already in degrees
                     plotType2 = 2
             if plotType2 == 3:
                 fig.add_trace(go.Scatter3d(x=pos2[:,0],y=pos2[:,1],z=pos2[:,2],marker=dict(color=eulers2[:,eulerVal],showscale=True)))

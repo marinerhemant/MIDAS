@@ -182,6 +182,8 @@ libpth = os.environ.get('LD_LIBRARY_PATH','')
 env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib:{libpth}'
 if len(resultDir) == 0 or resultDir=='.':
     resultDir = os.getcwd()
+if resultDir[0] != '/':
+    resultDir = os.getcwd() + '/' + resultDir
 logDir = resultDir + '/output'
 os.makedirs(resultDir,exist_ok=True)
 os.makedirs(logDir,exist_ok=True)
