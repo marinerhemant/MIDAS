@@ -331,7 +331,7 @@ int main(int argc, char **argv)
 	int dType = 9;
 	char *GapFN, *BadPxFN, outputFolder[4096];
 	int sumImages=0, separateFolder=1,newOutput=2;
-	int haveOmegas = 0, chunkFiles=0, individualSave=1;
+	int haveOmegas = 0, chunkFiles=1, individualSave=1;
 	double omeStart, omeStep;
 	double Lam=0.172978, Polariz=0.99, SHpL=0.002, U=1.163, V=-0.126, W=0.063, X=0.0, Y=0.0, Z=0.0;
 	char *DataFN = argv[1];
@@ -789,6 +789,7 @@ int main(int argc, char **argv)
         }
         count++;
     }
+    if (chunkFiles == 0) chunkFiles = 1;
 	int rc = ReadBins(resultFolder);
     zip_stat_index(arch, locImTransOpt, 0, finfo);
     s = calloc(finfo->size + 1, sizeof(char));
@@ -996,7 +997,7 @@ int main(int argc, char **argv)
 		for (i=0;i<nFrames;i++){
 			omeArr[i] = omeStart + i*omeStep;
 		}
-	}
+	} else omeArr = calloc(nFrames,sizeof(*omeArr));
     char *locData;
 	locData = calloc(NrPixelsY*NrPixelsZ*bytesPerPx,sizeof(*locData));
     int32_t dsz = NrPixelsY*NrPixelsZ*bytesPerPx;
