@@ -186,10 +186,10 @@ if resultDir[0] == '~':
     resultDir = os.path.expanduser(resultDir)
 if resultDir[0] != '/':
     resultDir = os.getcwd() + '/' + resultDir
-logDir = resultDir + '/output'
+# logDir = resultDir + '/output'
 os.makedirs(resultDir,exist_ok=True)
-os.makedirs(logDir,exist_ok=True)
-os.environ['MIDAS_SCRIPT_DIR'] = logDir
+# os.makedirs(logDir,exist_ok=True)
+os.environ['MIDAS_SCRIPT_DIR'] = resultDir
 if machineName == 'local':
     nNodes = 1
     from localConfig import *

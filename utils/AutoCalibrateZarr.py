@@ -55,9 +55,9 @@ def generateZip(resFol,pfn,dfn='',darkfn='',dloc='',nchunks=-1,preproc=-1,outf='
     if lines[-1].startswith('OutputZipName'):
         return lines[-1].split()[1]
 
-parser = MyParser(description='''Automated Calibration for WAXS using continuous rings-like signal. This code takes either Zarr.Zip files or HDF5 files.''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('-dataFN', type=str, required=True, help='DataFileName.zip')
-parser.add_argument('-darkFN', type=str, required=False, default='', help='If separate file consists of the dark, provide this parameter.')
+parser = MyParser(description='''Automated Calibration for WAXS using continuous rings-like signal. This code takes either Zarr.Zip files or HDF5 files or GE binary files.''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('-dataFN', type=str, required=True, help='DataFileName.zip, DataFileName.h5 or DataFileName.geX')
+parser.add_argument('-darkFN', type=str, required=False, default='', help='If separate file consists dark signal, provide this parameter.')
 parser.add_argument('-dataLoc', type=str, required=False, default='', help='If data is located in any location except /exchange/data in the hdf5 files, provide this.')
 parser.add_argument('-MakePlots', type=int, required=False, default=0, help='MakePlots: to draw, use 1.')
 parser.add_argument('-FirstRingNr', type=int, required=False, default=1, help='FirstRingNumber on data.')
@@ -66,7 +66,7 @@ parser.add_argument('-MultFactor', type=float, required=False, default=2.5, help
 parser.add_argument('-Threshold', type=float, required=False, default=0, help='If you want to give a manual threshold, typically 500, otherwise, it will calculate automatically.')
 parser.add_argument('-StoppingStrain', type=float, required=False, default=0.00004, help='If refined pseudo-strain is below this value and all rings are "good", we would have converged.')
 parser.add_argument('-ImTransOpt', type=int, required=False, default=[0],nargs='*', help="If you want to do any transformations to the data: \n0: nothing, 1: flip LR, 2: flip UD, 3: transpose. Give as many as needed in the right order.")
-parser.add_argument('-ConvertFile', type=int, required=False, default=0, help="If you want to generate the zarr zip file from an HDF: \n0: input is zarr zip file, 1: HDF5 input will be used to generarte a zarr zip file, 2: Binary GE-type file.")
+parser.add_argument('-ConvertFile', type=int, required=False, default=0, help="If you want to generate the zarr zip file from a different format: \n0: input is zarr zip file, 1: HDF5 input will be used to generarte a zarr zip file, 2: Binary GE-type file.")
 parser.add_argument('-paramFN', type=str, required=False, default='', help="If you use convertFile = 1, you need to provide the parameter file consisting of all settings: SpaceGroup, SkipFrame, px, LatticeParameter, Wavelength.")
 parser.add_argument('-LsdGuess', type=float, required=False, default=1000000, help="If you know a guess for the Lsd, it might be good to kickstart things.")
 args, unparsed = parser.parse_known_args()
