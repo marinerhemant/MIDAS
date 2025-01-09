@@ -109,6 +109,7 @@ parser.add_argument('-startLayerNr', type=int, required=False, default=1, help='
 parser.add_argument('-endLayerNr', type=int, required=False, default=1, help='End LayerNr to process')
 parser.add_argument('-convertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
 parser.add_argument('-peakSearchOnly', type=int, required=False, default=0, help='If want to do peakSearchOnly, nothing more, put to 1.')
+parser.add_argument('-doPeakSearch', type=int, required=False, default=1, help="If don't want to do peakSearch, put to 0.")
 parser.add_argument('-rawDir', type=str, required=False, default='', help='If want override the rawDir in the Parameter file.')
 if len(sys.argv) == 1:
     parser.print_help(sys.stderr)
@@ -127,6 +128,7 @@ startLayerNr = args.startLayerNr
 endLayerNr = args.endLayerNr
 ConvertFiles = args.convertFiles
 peakSearchOnly = args.peakSearchOnly
+DoPeakSearch = args.doPeakSearch
 rawDir = args.rawDir
 inpFileName = args.fileName
 if len(inpFileName) > 1 and len(dataFN)<1 and '.h5' in inpFileName:
@@ -268,12 +270,15 @@ for layerNr in range(startLayerNr,endLayerNr+1):
     f_hkls.close()
     f_hkls_err.close()
     os.makedirs(f'{resultDir}/Temp',exist_ok=True)
-    print(f"Doing PeakSearch. Time till now: {time.time()-t0} seconds.")
-    res = []
-    for nodeNr in range(nNodes):
-        res.append(peaks(resultDir,outFStem,numProcs,blockNr=nodeNr,numBlocks=nNodes))
-    outputs = [i.result() for i in res]
-    print(f"PeakSearch done. Time till now: {time.time()-t0}")
+    if DoPeakSearch == 1:
+        print(f"Doing PeakSearch. Time till now: {time.time()-t0} seconds.")
+        res = []
+        for nodeNr in range(nNodes):
+            res.append(peaks(resultDir,outFStem,numProcs,blockNr=nodeNr,numBlocks=nNodes))
+        outputs = [i.result() for i in res]
+        print(f"PeakSearch done. Time till now: {time.time()-t0}")
+    else:
+        print("Peaksearch results were supplied. Skipping peak search.")
     if peakSearchOnly == 1:
         continue
     else:
