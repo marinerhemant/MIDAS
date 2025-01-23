@@ -261,15 +261,13 @@ StrainTensorKenesei(int nspots,double **SpotsInfo, double Distance, double wavel
 int main(int argc, char *argv[])
 {
 	if (argc != 2){
-		printf("Usage: ProcessGrains ZarrZip\n");
+		printf("Usage: ProcessGrainsZarr ZarrZip\n");
 		return 1;
 	}
 	clock_t start, end;
     double diftotal;
     start = clock();
     char line[5024];
-
-
 
     char aline[1000];
     char *str, dummy[1000];
@@ -778,7 +776,7 @@ int main(int argc, char *argv[])
 		for (j=0;j<counterSpotMatrix;j++){
 			for (k=0;k<2;k++) fprintf(spotsfile,"%d\t",(int)SpotMatrix[j][k]);
 			for (k=2;k<7;k++) fprintf(spotsfile,"%lf\t",SpotMatrix[j][k]);
-			fprintf(spotsfile,"%lf\t",SpotMatrix[j][7]);
+			fprintf(spotsfile,"%d\t",(int)SpotMatrix[j][7]);
 			for (k=8;k<12;k++) fprintf(spotsfile,"%lf\t",SpotMatrix[j][k]);
 			fprintf(spotsfile,"\n");
 		}

@@ -232,6 +232,7 @@ for layerNr in range(startLayerNr,endLayerNr+1):
     print(f"Doing Layer Nr: {layerNr}, results will be saved in {resultDir}")
     logDir = resultDir + '/output'
     os.makedirs(resultDir,exist_ok=True)
+    shutil.copy2(psFN,resultDir)
     os.makedirs(logDir,exist_ok=True)
     t0 = time.time()
     if ConvertFiles == 1:

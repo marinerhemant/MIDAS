@@ -17,6 +17,12 @@ sys.path.insert(0,utilsDir)
 from calcMiso import *
 import glob
 
+##### TODO:
+###### READ Z-values from EBSD, then plotType2 = 3....
+###### Select beam height, beam width, beam offsets, beam projection according to angle.....
+###### 
+
+
 deg2rad = np.pi/180
 rad2deg = 180/np.pi
 
@@ -470,6 +476,16 @@ def show_mic(eulerVal,multipleData,selLoadNr):
                 pos = mic[:,11:14]
                 eulers = mic[:,-7:-4]
                 plotType = 2
+            elif mic_h.startswith('#EBSD'):
+                # This is an EBSD CSV file written by Nicolas
+                # Which column has what....
+                # #EBSD X, Y, Z, Euler Angle1, Euler Angle2, Euler Angle3
+                mic = np.genfromtxt(micfn,skip_header=1,delimiter=',')
+                rads = np.linalg.norm(mic[:,0:2],axis=1)
+                # mic = mic[:,:]
+                pos = mic[:,:2]
+                eulers = mic[:,3:] # already in degrees
+                plotType2 = 2
         if plotType == 3:
             fig.add_trace(go.Scatter3d(x=pos[:,0],y=pos[:,1],z=pos[:,2],marker=dict(color=eulers[:,eulerVal],showscale=True)))
         else:
