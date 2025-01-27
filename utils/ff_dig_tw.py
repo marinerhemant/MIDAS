@@ -20,7 +20,9 @@ import glob
 ##### TODO:
 ###### READ Z-values from EBSD, then plotType2 = 3....
 ###### Select beam height, beam width, beam offsets, beam projection according to angle.....
-###### 
+###### ForwardSimulationCompressed read EBSD by detecting EBSD files.
+###### Check which simulation to do for pf-HEDM in ForwardSimulationCompressed
+
 
 
 deg2rad = np.pi/180

@@ -110,6 +110,7 @@ parser.add_argument('-endLayerNr', type=int, required=False, default=1, help='En
 parser.add_argument('-convertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
 parser.add_argument('-peakSearchOnly', type=int, required=False, default=0, help='If want to do peakSearchOnly, nothing more, put to 1.')
 parser.add_argument('-doPeakSearch', type=int, required=False, default=1, help="If don't want to do peakSearch, put to 0.")
+parser.add_argument('-ProvideInputAll', type=int, required=False, default=1, help="If want to provide InputAll.csv and InputAllExtraInfoFittingAll.csv, put to 1. It will skip all peak processing and peak transforms.")
 parser.add_argument('-rawDir', type=str, required=False, default='', help='If want override the rawDir in the Parameter file.')
 if len(sys.argv) == 1:
     parser.print_help(sys.stderr)
@@ -131,6 +132,7 @@ peakSearchOnly = args.peakSearchOnly
 DoPeakSearch = args.doPeakSearch
 rawDir = args.rawDir
 inpFileName = args.fileName
+ProvideInputAll = args.ProvideInputAll
 if len(inpFileName) > 1 and len(dataFN)<1 and '.h5' in inpFileName:
     dataFN = inpFileName
 if nNodes == -1:
@@ -271,36 +273,40 @@ for layerNr in range(startLayerNr,endLayerNr+1):
     f_hkls.close()
     f_hkls_err.close()
     os.makedirs(f'{resultDir}/Temp',exist_ok=True)
-    if DoPeakSearch == 1:
-        print(f"Doing PeakSearch. Time till now: {time.time()-t0} seconds.")
-        res = []
-        for nodeNr in range(nNodes):
-            res.append(peaks(resultDir,outFStem,numProcs,blockNr=nodeNr,numBlocks=nNodes))
-        outputs = [i.result() for i in res]
-        print(f"PeakSearch done. Time till now: {time.time()-t0}")
+    if ProvideInputAll == 0:
+        if DoPeakSearch == 1:
+            print(f"Doing PeakSearch. Time till now: {time.time()-t0} seconds.")
+            res = []
+            for nodeNr in range(nNodes):
+                res.append(peaks(resultDir,outFStem,numProcs,blockNr=nodeNr,numBlocks=nNodes))
+            outputs = [i.result() for i in res]
+            print(f"PeakSearch done. Time till now: {time.time()-t0}")
+        else:
+            print("Peaksearch results were supplied. Skipping peak search.")
+        if peakSearchOnly == 1:
+            continue
+        else:
+            print("Merging peaks.")
+        f = open(f'{logDir}/merge_overlaps_out.csv','w')
+        f_err = open(f'{logDir}/merge_overlaps_err.csv','w')
+        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
+        f.close()
+        f_err.close()
+        print(f"Calculating Radii. Time till now: {time.time()-t0}")
+        f = open(f'{logDir}/calc_radius_out.csv','w')
+        f_err = open(f'{logDir}/calc_radius_err.csv','w')
+        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
+        f.close()
+        f_err.close()
+        print(f"Transforming data. Time till now: {time.time()-t0}")
+        f = open(f'{logDir}/fit_setup_out.csv','w')
+        f_err = open(f'{logDir}/fit_setup_err.csv','w')
+        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
+        f.close()
+        f_err.close()
     else:
-        print("Peaksearch results were supplied. Skipping peak search.")
-    if peakSearchOnly == 1:
-        continue
-    else:
-        print("Merging peaks.")
-    f = open(f'{logDir}/merge_overlaps_out.csv','w')
-    f_err = open(f'{logDir}/merge_overlaps_err.csv','w')
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
-    f.close()
-    f_err.close()
-    print(f"Calculating Radii. Time till now: {time.time()-t0}")
-    f = open(f'{logDir}/calc_radius_out.csv','w')
-    f_err = open(f'{logDir}/calc_radius_err.csv','w')
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
-    f.close()
-    f_err.close()
-    print(f"Transforming data. Time till now: {time.time()-t0}")
-    f = open(f'{logDir}/fit_setup_out.csv','w')
-    f_err = open(f'{logDir}/fit_setup_err.csv','w')
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
-    f.close()
-    f_err.close()
+        shutil.copy2(f'{topResDir}InputAll.csv',f'{resultDir}/.')
+        shutil.copy2(f'{topResDir}InputAllExtraInfoFittingAll.csv',f'{resultDir}/.')
     os.chdir(resultDir)
     print(f"Binning data. Time till now: {time.time()-t0}")
     f2 = open(f'{logDir}/binning_out.csv','w')
