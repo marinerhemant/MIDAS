@@ -104,7 +104,7 @@ parser.add_argument('-machineName', type=str, required=False, default='local', h
 parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='If low on RAM, it can process parts of the dataset at the time. -1 will disable.')
 parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
 parser.add_argument('-nNodes', type=int, required=False, default=-1, help='Number of nodes for execution, omit if want to automatically select.')
-parser.add_argument('-fileName', type=str, required=False, default='', help='If you specify a fileName, this will run just that file.')
+parser.add_argument('-fileName', type=str, required=False, default='', help='If you specify a fileName, this will run just that file. If you provide this, it will override startLayerNr and endLayerNr')
 parser.add_argument('-startLayerNr', type=int, required=False, default=1, help='Start LayerNr to process')
 parser.add_argument('-endLayerNr', type=int, required=False, default=1, help='End LayerNr to process')
 parser.add_argument('-convertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
