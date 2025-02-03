@@ -41,7 +41,7 @@ class MyParser(argparse.ArgumentParser):
 parser = MyParser(description='''esrf2zip_pf.py''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-folder', type=str, required=True, help='Folder where data exists')
 parser.add_argument('-resultFolder', type=str, required=True, help='Folder where you want to save files')
-parser.add_argument('-startScanNr', type=int, required=False, help='First scanNr')
+parser.add_argument('-startScanNr', type=int, required=False, default=1, help='First scanNr. Defaults to 1')
 parser.add_argument('-lastScanNr', type=int, required=True, help='Last scanNr, it will always go from startScanNr to lastScanNr+1')
 parser.add_argument('-outputFStem', type=str, required=True, help='Output filestem, the resulting files will be OutputFStem_XXXXXX.h5 etc in folder')
 parser.add_argument('-paramFN', type=str, required=True, help='Output filestem, the resulting files will be OutputFStem_XXXXXX.h5 etc in folder')
