@@ -23,7 +23,8 @@ def singleJob(fileNr):
     os.chdir(thisResFolder)
     f = open(f'{thisResFolder}/zip_out.txt','w')
     f_err = open(f'{thisResFolder}/zip_err.txt','w')
-    cmd = f'{pytpath} {os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZip.py')} -resultFolder {thisResFolder} -paramFN {paramFN} -dataFN {fn2} -numFrameChunks {numFrameChunks} -preProcThresh {preProc}'
+    zipPath = os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZip.py')
+    cmd = f'{pytpath} {zipPath} -resultFolder {thisResFolder} -paramFN {paramFN} -dataFN {fn2} -numFrameChunks {numFrameChunks} -preProcThresh {preProc}'
     print(cmd)
     subprocess.call(cmd,env=env,shell=True,stdout=f,stderr=f_err)
     f.close()
