@@ -42,7 +42,7 @@ if resultFolder == '.':
     resultFolder = os.getcwd()
 
 zf = zarr.open(f'{resultFolder}/{dataFN}','r')
-data = zf['exchange/data'][:500]
+data = zf['exchange/data'][:]
 mask = zf['exchange/mask'][:]
 
 data2 = applymask(data,mask)
