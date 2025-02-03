@@ -1249,7 +1249,7 @@ int main(int argc, char *argv[]){
 		for (a=0;a<NrPixels*NrPixels;a++) {
 			mask[a] = maskT[a];
 			if (maskTT[a]>0) nrMask++;
-		}
+		} 
 		// Transposer(maskTT,NrPixels,mask); // Why this is not done??? We might need to revisit this later.
 		printf("Number of mask pixels: %d\n",nrMask);
 	}

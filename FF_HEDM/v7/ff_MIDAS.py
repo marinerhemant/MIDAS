@@ -305,8 +305,8 @@ for layerNr in range(startLayerNr,endLayerNr+1):
         f.close()
         f_err.close()
     else:
-        shutil.copy2(f'{topResDir}InputAll.csv',f'{resultDir}/.')
-        shutil.copy2(f'{topResDir}InputAllExtraInfoFittingAll.csv',f'{resultDir}/.')
+        shutil.copy2(f'{topResDir}/InputAll.csv',f'{resultDir}/.')
+        shutil.copy2(f'{topResDir}/InputAllExtraInfoFittingAll.csv',f'{resultDir}/.')
     os.chdir(resultDir)
     print(f"Binning data. Time till now: {time.time()-t0}")
     f2 = open(f'{logDir}/binning_out.csv','w')
