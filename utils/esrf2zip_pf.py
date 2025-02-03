@@ -40,7 +40,8 @@ class MyParser(argparse.ArgumentParser):
 parser = MyParser(description='''esrf2zip_pf.py''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-folder', type=str, required=True, help='Folder where data exists')
 parser.add_argument('-resultFolder', type=str, required=True, help='Folder where you want to save files')
-parser.add_argument('-lastScanNr', type=int, required=True, help='Last scanNr, it will always start from 1')
+parser.add_argument('-startScanNr', type=int, required=False, help='First scanNr')
+parser.add_argument('-lastScanNr', type=int, required=True, help='Last scanNr, it will always go from startScanNr to lastScanNr+1')
 parser.add_argument('-outputFStem', type=str, required=True, help='Output filestem, the resulting files will be OutputFStem_XXXXXX.h5 etc in folder')
 parser.add_argument('-paramFN', type=str, required=True, help='Output filestem, the resulting files will be OutputFStem_XXXXXX.h5 etc in folder')
 parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='Number of chunks to use when reading the data file if RAM is smaller than expanded data. -1 will disable.')
@@ -50,6 +51,7 @@ args, unparsed = parser.parse_known_args()
 folder = args.folder
 resultFolder = args.resultFolder
 LastScanNr = args.lastScanNr
+startScanNr = args.startScanNr
 OutputFStem = args.outputFStem
 paramFN = args.paramFN
 numFrameChunks = args.numFrameChunks
@@ -57,6 +59,6 @@ preProc = args.preProcThresh
 numProcs = args.nCPUs
 basedir = os.getcwd()
 
-work_data = [fileNr for fileNr in range(1,LastScanNr+1)]
+work_data = [fileNr for fileNr in range(startScanNr,LastScanNr+1)]
 p = Pool(numProcs)
 p.map(singleJob,work_data)
