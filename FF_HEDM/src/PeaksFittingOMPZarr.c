@@ -1102,7 +1102,7 @@ int main(int argc, char *argv[]){
     }
 	if (argc>5) resultFolder = argv[5];
 	int fitPeaks = 1;
-	if (argc>6) fitPeaks = int(argv[6]);
+	if (argc>6) fitPeaks = (int) argv[6];
 	int TransOpt[nImTransOpt], RingNrs[nRingsThresh];
     double Thresholds[nRingsThresh];
     // Read TransOpt
