@@ -1555,6 +1555,7 @@ int main(int argc, char *argv[]){
 			// \tBG\tSigmaGR\tSigmaLR\tSigmaGEta\tSigmaLEta\tMU\n" All of these will be 0
 			// OtherInfo is set already, will be 0 and will populate the other values in the line above.
 			if (doPeakFit == 0){
+				printf("No peak fitting was done.\n");
 				double *rMEAN, *etaMEAN;
 				rMEAN = calloc(2,sizeof(double));
 				etaMEAN = calloc(2,sizeof(double));
