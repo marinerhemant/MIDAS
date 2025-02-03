@@ -554,7 +554,8 @@ check (int test, const char * message, ...)
 int main(int argc, char *argv[]){
     double start_time = omp_get_wtime();
 	if (argc < 5){
-		printf("Usage: %s DataFile blockNr nBlocks numProcs (optional)ResultFolder\n",argv[0]);
+		printf("Usage: %s DataFile blockNr nBlocks numProcs (optional)ResultFolder (optional)fitPeaks\n
+			    If fitPeaks(0) is provided, MUST provide RESULTFOLDER!!!!!\n",argv[0]);
 		return 1;
 	}
 	char *DataFN = argv[1];
@@ -1100,6 +1101,8 @@ int main(int argc, char *argv[]){
         count++;
     }
 	if (argc>5) resultFolder = argv[5];
+	int fitPeaks = 1;
+	if (argc>6) fitPeaks = int(argv[6]);
 	int TransOpt[nImTransOpt], RingNrs[nRingsThresh];
     double Thresholds[nRingsThresh];
     // Read TransOpt
@@ -1549,10 +1552,13 @@ int main(int argc, char *argv[]){
 			double retVal=0;
 			int rc = 0;
 			// If we don't want to fit, we can just compute weighted center of mass, but first put nPeaks =1;
-			// We need {IntegratedIntensity}, {IMAX}, {YCEN}, {ZCEN}, {Rads}, {Etass}, sigmaR (0), sigmaEta (0), {NrPx}, returnCode (0), retVal (0)
+			// We need {IntegratedIntensity}, {IMAX}, {YCEN}, {ZCEN}, {Rads}, {Etass}, sigmaR (0), sigmaEta (0), {NrPx}, returnCode (4), retVal (0)
 			// \tBG\tSigmaGR\tSigmaLR\tSigmaGEta\tSigmaLEta\tMU\n" All of these will be 0
 			// OtherInfo is set already, will be 0 and will populate the other values in the line above.
 			if (doPeakFit == 0){
+				double *rMEAN, *etaMEAN;
+				rMEAN = calloc(2,sizeof(double));
+				etaMEAN = calloc(2,sizeof(double));
 				nPeaks = 1;
 				IMAX[0] = MaximaValues[0];
 				NrPx[0] = NrPixelsThisRegion;
@@ -1560,11 +1566,18 @@ int main(int argc, char *argv[]){
 				ZCEN[0] = 0;
 				IntegratedIntensity[0] = 0;
 				for (i=0;i<NrPixelsThisRegion;i++){
-
+					IntegratedIntensity[0] += z[i];
+					rMEAN += CalcNorm2(-UsefulPixels[i*2+0]+YCen,UsefulPixels[i*2+1]-Zcen)*z[i];
+					etaMEAN += CalcEtaAngle(-UsefulPixels[i*2+0]+YCen,UsefulPixels[i*2+1]-Zcen)*z[i];
 				}
+				rMEAN /= IntegratedIntensity[0];
+				etaMEAN /= IntegratedIntensity[0];
+				YZ4mREta(1,rMEAN,etaMEAN,YCEN,ZCEN);
+				Rads[0] = rMEAN[0];
+				Etass[0] = etaMEAN[0];
+				free(rMEAN);
+				free(etaMEAN);
 				IntegratedIntensity[0];
-				YCEN[0];
-				ZCEN[0];
 				Rads[0] = CalcNorm2(YCEN[0],ZCEN[0]);
 				Etass[0] = CalcEtaAngle(YCEN[0],ZCEN[0]);
 
