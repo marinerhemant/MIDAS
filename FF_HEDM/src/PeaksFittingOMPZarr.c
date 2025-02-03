@@ -554,8 +554,8 @@ check (int test, const char * message, ...)
 int main(int argc, char *argv[]){
     double start_time = omp_get_wtime();
 	if (argc < 5){
-		printf("Usage: %s DataFile blockNr nBlocks numProcs (optional)ResultFolder (optional)fitPeaks\n
-			    If fitPeaks(0) is provided, MUST provide RESULTFOLDER!!!!!\n",argv[0]);
+		printf("Usage: %s DataFile blockNr nBlocks numProcs (optional)ResultFolder (optional)fitPeaks\n"
+			    "If fitPeaks(0) is provided, MUST provide RESULTFOLDER!!!!!\n",argv[0]);
 		return 1;
 	}
 	char *DataFN = argv[1];
