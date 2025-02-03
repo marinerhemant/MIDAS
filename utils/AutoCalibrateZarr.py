@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+##### Save all the plots to an hdf5
+
 import warnings
 warnings.filterwarnings("ignore")
 import numpy as np

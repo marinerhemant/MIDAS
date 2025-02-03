@@ -110,7 +110,7 @@ parser.add_argument('-endLayerNr', type=int, required=False, default=1, help='En
 parser.add_argument('-convertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
 parser.add_argument('-peakSearchOnly', type=int, required=False, default=0, help='If want to do peakSearchOnly, nothing more, put to 1.')
 parser.add_argument('-doPeakSearch', type=int, required=False, default=1, help="If don't want to do peakSearch, put to 0.")
-parser.add_argument('-ProvideInputAll', type=int, required=False, default=1, help="If want to provide InputAll.csv and InputAllExtraInfoFittingAll.csv, put to 1. It will skip all peak processing and peak transforms.")
+parser.add_argument('-provideInputAll', type=int, required=False, default=0, help="If want to provide InputAll.csv and InputAllExtraInfoFittingAll.csv, put to 1. It will skip all peak processing and peak transforms.")
 parser.add_argument('-rawDir', type=str, required=False, default='', help='If want override the rawDir in the Parameter file.')
 if len(sys.argv) == 1:
     parser.print_help(sys.stderr)
@@ -132,7 +132,7 @@ peakSearchOnly = args.peakSearchOnly
 DoPeakSearch = args.doPeakSearch
 rawDir = args.rawDir
 inpFileName = args.fileName
-ProvideInputAll = args.ProvideInputAll
+ProvideInputAll = args.provideInputAll
 if len(inpFileName) > 1 and len(dataFN)<1 and '.h5' in inpFileName:
     dataFN = inpFileName
 if nNodes == -1:
