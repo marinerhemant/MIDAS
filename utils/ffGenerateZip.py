@@ -124,7 +124,7 @@ for line in lines:
     if line.startswith('Padding '):
         pad = int(line.split()[1])
     if line.startswith('MaskFN '):
-        maskFN = int(line.split()[1])
+        maskFN = line.split()[1]
     if line.startswith('Ext '):
         ext = line.split()[1]
     if line.startswith('HeadSize '):
