@@ -1499,7 +1499,7 @@ int main(int argc, char *argv[]){
 			UsefulPixels[i*2+1] = 0;
 			z[i] = 0;
 		}
-		printf("Number of regions to start with: %d\n",NrOfReg);
+		// printf("Number of regions to start with: %d\n",NrOfReg);
 		for (RegNr=1;RegNr<=NrOfReg;RegNr++){
 			NrPixelsThisRegion = PositionTrackers[RegNr];
 			if (NrPixelsThisRegion <= minNrPx || NrPixelsThisRegion >= maxNrPx){
@@ -1519,7 +1519,7 @@ int main(int argc, char *argv[]){
 				TotNrRegions--;
 				continue;
 			}
-			printf("After RegionNr: %d, NPeaks: %d, NPx: %d\n",RegNr,nPeaks,NrPixelsThisRegion);
+			// printf("After RegionNr: %d, NPeaks: %d, NPx: %d\n",RegNr,nPeaks,NrPixelsThisRegion);
 			if (nPeaks > maxNPeaks){
 				// Sort peaks by MaxIntensity, remove the smallest peaks until maxNPeaks, arrays needed MaximaPositions, MaximaValues.
 				int MaximaPositionsT[nPeaks*2];
@@ -1547,7 +1547,7 @@ int main(int argc, char *argv[]){
 					MaximaPositions[i*2+1] = MaximaPositionsT[i*2+1];
 				}
 			}
-			printf("nPeaks %d\n",nPeaks);
+			// printf("nPeaks %d\n",nPeaks);
 			double retVal=0;
 			int rc = 0;
 			// If we don't want to fit, we can just compute weighted center of mass, but first put nPeaks =1;
