@@ -49,8 +49,8 @@ parser.add_argument('-nCPUs', type=int, required=False, default=5, help='Number 
 args, unparsed = parser.parse_known_args()
 folder = args.folder
 resultFolder = args.resultFolder
-LastScanNr = args.LastScanNr
-OutputFStem = args.OutputFStem
+LastScanNr = args.lastScanNr
+OutputFStem = args.outputFStem
 paramFN = args.paramFN
 numFrameChunks = args.numFrameChunks
 preProc = args.preProcThresh
