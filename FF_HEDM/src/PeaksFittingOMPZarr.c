@@ -1567,11 +1567,11 @@ int main(int argc, char *argv[]){
 				IntegratedIntensity[0] = 0;
 				for (i=0;i<NrPixelsThisRegion;i++){
 					IntegratedIntensity[0] += z[i];
-					rMEAN += CalcNorm2(-UsefulPixels[i*2+0]+YCen,UsefulPixels[i*2+1]-Zcen)*z[i];
-					etaMEAN += CalcEtaAngle(-UsefulPixels[i*2+0]+YCen,UsefulPixels[i*2+1]-Zcen)*z[i];
+					rMEAN[0] += CalcNorm2(-UsefulPixels[i*2+0]+Ycen,UsefulPixels[i*2+1]-Zcen)*z[i];
+					etaMEAN[0] += CalcEtaAngle(-UsefulPixels[i*2+0]+Ycen,UsefulPixels[i*2+1]-Zcen)*z[i];
 				}
-				rMEAN /= IntegratedIntensity[0];
-				etaMEAN /= IntegratedIntensity[0];
+				rMEAN[0] /= IntegratedIntensity[0];
+				etaMEAN[0] /= IntegratedIntensity[0];
 				YZ4mREta(1,rMEAN,etaMEAN,YCEN,ZCEN);
 				Rads[0] = rMEAN[0];
 				Etass[0] = etaMEAN[0];
