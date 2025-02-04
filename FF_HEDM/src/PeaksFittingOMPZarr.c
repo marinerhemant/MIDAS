@@ -1186,11 +1186,10 @@ int main(int argc, char *argv[]){
 			printf("Transpose.\n");
 	}
     // Dark file reading from here.
-	double *dark, *flood, *darkTemp, *mask, *maskTT;
+	double *dark, *flood, *darkTemp, *mask;
 	pixelvalue *maskTemp, *maskT;
 	dark = calloc(NrPixels*NrPixels,sizeof(*dark));
 	mask = calloc(NrPixels*NrPixels,sizeof(*mask));
-	maskTT = calloc(NrPixels*NrPixels,sizeof(*maskTT));
 	maskT = calloc(NrPixels*NrPixels,sizeof(*maskT));
 	maskTemp = calloc(NrPixelsY*NrPixelsZ,sizeof(*maskTemp));
 	darkTemp = calloc(NrPixels*NrPixels,sizeof(*darkTemp));
@@ -1250,13 +1249,11 @@ int main(int argc, char *argv[]){
 		int nrMask=0;
 		for (a=0;a<NrPixels*NrPixels;a++) {
 			mask[a] = maskT[a];
-			if (maskTT[a]>0) nrMask++;
+			if (maskT[a]>0) nrMask++;
 		} 
-		// Transposer(maskTT,NrPixels,mask); // Why this is not done??? We might need to revisit this later.
 		printf("Number of mask pixels: %d\n",nrMask);
 	}
 	free(maskT);
-	free(maskTT);
 	free(maskTemp);
     zip_close(arch);
 
