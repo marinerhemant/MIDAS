@@ -58,7 +58,7 @@ main(int argc, char *argv[])
         thisF = fopen(thisFN,"r");
         fgets(thisLine,2048,thisF);
         sprintf(headThis,"%s",thisLine);
-        int nAll=0;
+        size_t nAll=0;
         while (fgets(thisLine,2048,thisF)!=NULL){
             sscanf(thisLine,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
                 &allSpots[nAll*14+0],&allSpots[nAll*14+1],&allSpots[nAll*14+2],
@@ -74,6 +74,7 @@ main(int argc, char *argv[])
         int i,j,k, found;
         double origWeight, newWeight;
         for (scanNr=1;scanNr<nMerges;scanNr++){
+            printf("ScanNr: %d, nAll: %zu\n",scanNr,nAll);
             thisScanNr = startScanNr + scanNr;
             thisPosition += positions[thisScanNr];
             int nThis = 0;
