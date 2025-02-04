@@ -105,7 +105,7 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,
 	if doPeakSearch==1:
 		t_st = time.time()
 		print(f'Doing PeakSearch.')
-		cmd = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPZarr') + f' {outFStem} 0 1 {numProcs} {thisDir}'
+		cmd = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPZarr') + f' {outFStem} 0 1 {numProcs} {thisDir} 0' ### THIS IS DOING DUMB PEAKSEARCH!!!!!!!!!
 		subprocess.call(cmd,shell=True,env=env,stdout=f,stderr=f_err)
 		print(f'PeakSearch Done. Time taken: {time.time()-t_st} seconds.')
 	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True,stdout=f,stderr=f_err)
