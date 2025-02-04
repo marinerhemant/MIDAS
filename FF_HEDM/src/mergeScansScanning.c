@@ -74,7 +74,7 @@ main(int argc, char *argv[])
         int i,j,k,l,found;
         double origWeight, newWeight;
         int nSpotsLastScan;
-        int *lastScansSpots, *thisScanSpots;
+        int *lastScansSpots, *thisScansSpots;
         lastScansSpots = calloc(MAX_N_SPOTS,sizeof(*lastScansSpots));
         thisScansSpots = calloc(MAX_N_SPOTS,sizeof(*thisScansSpots));
         for (scanNr=1;scanNr<nMerges;scanNr++){
