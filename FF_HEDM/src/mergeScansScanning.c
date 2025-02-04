@@ -74,8 +74,9 @@ main(int argc, char *argv[])
         int i,j,k,l,found;
         double origWeight, newWeight;
         int nSpotsLastScan;
-        int *lastScansSpots;
+        int *lastScansSpots, *thisScanSpots;
         lastScansSpots = calloc(MAX_N_SPOTS,sizeof(*lastScansSpots));
+        thisScansSpots = calloc(MAX_N_SPOTS,sizeof(*thisScansSpots));
         for (scanNr=1;scanNr<nMerges;scanNr++){
             printf("ScanNr: %d, nAll: %zu\n",scanNr,nAll);
             thisScanNr = startScanNr + scanNr;
@@ -108,7 +109,7 @@ main(int argc, char *argv[])
                                     found = 1;
                                     origWeight = allSpots[j*14+3];
                                     newWeight = thisSpots[i*14+3];
-                                    lastScansSpots[i] = j;
+                                    thisScansSpots[i] = j;
                                     for (k=0;k<14;k++) {
                                         allSpots[j*14+k] = (allSpots[j*14+k]*origWeight + thisSpots[i*14+k]*newWeight)/(origWeight+newWeight);
                                     }
@@ -118,11 +119,12 @@ main(int argc, char *argv[])
                     }
                 }
                 if (found == 0){
-                    lastScansSpots[i] = nAll;
+                    thisScansSpots[i] = nAll;
                     for (j=0;j<14;j++) allSpots[nAll*14+j] = thisSpots[i*14+j];
                     nAll++;
                 }
             }
+            for (i=0;i<nSpotsLastScan;i++) lastScansSpots[i] = thisScanSpots[i];
         }
         for (i=0;i<nAll;i++) allSpots[i*14+4] = i+1;
         sprintf(thisFN,"InputAllExtraInfoFittingAll%d.csv",finScanNr);
