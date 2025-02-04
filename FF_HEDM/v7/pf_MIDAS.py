@@ -52,7 +52,7 @@ def generateZip(resFol,pfn,layerNr,dfn='',dloc='',nchunks=-1,preproc=-1,outf='Zi
 def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,
 				   paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,
 				   env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities,
-				   omegaValues,minThresh,fStem,omegaFF):
+				   omegaValues,minThresh,fStem,omegaFF,Ext):
 	import subprocess
 	import numpy as np
 	import time
@@ -97,7 +97,7 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,
 	if ConvertFiles==1:
 		outFStem = generateZip(thisDir,baseNameParamFN,layerNr,nchunks=nchunks,preproc=preproc)
 	else:
-		outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(6)}.h5.analysis.MIDAS.zip'
+		outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(6)}{Ext}'
 	print(f'FileStem: {outFStem}')
 	f = open(f'{sub_logDir}/processing_out0.csv','w')
 	f_err = open(f'{sub_logDir}/processing_err0.csv','w')
@@ -418,7 +418,7 @@ if doPeakSearch == 1 or doPeakSearch==-1:
 	for layerNr in range(startScanNr,nScans+1):
 		res.append(parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,
 							ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities,
-							omegaValues,minThresh,fStem,omegaFF))
+							omegaValues,minThresh,fStem,omegaFF,Ext))
 	outputs = [i.result() for i in res]
 	print(f'Peaksearch done on {nNodes} nodes.')
 else:
