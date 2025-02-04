@@ -65,7 +65,7 @@ numProcs = args.nCPUs
 basedir = os.getcwd()
 
 hf = h5py.File(combinedH5FN,'r')
-omegaOverrides = np.array((LastScanNr-startScanNr+1))
+omegaOverrides = np.zeros((LastScanNr-startScanNr+1))
 for i in range(startScanNr,LastScanNr+1):
     dsetName = f'{i}.1/instrument/rot/data'
     omegaOverrides[i-startScanNr] = hf[dsetName][0]
