@@ -124,7 +124,7 @@ main(int argc, char *argv[])
                     nAll++;
                 }
             }
-            for (i=0;i<nSpotsLastScan;i++) lastScansSpots[i] = thisScanSpots[i];
+            for (i=0;i<nSpotsLastScan;i++) lastScansSpots[i] = thisScansSpots[i];
         }
         for (i=0;i<nAll;i++) allSpots[i*14+4] = i+1;
         sprintf(thisFN,"InputAllExtraInfoFittingAll%d.csv",finScanNr);
