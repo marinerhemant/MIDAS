@@ -69,6 +69,7 @@ omegaOverrides = np.array((LastScanNr-startScanNr+1))
 for i in range(startScanNr,LastScanNr+1):
     dsetName = f'{i}.1/instrument/rot/data'
     omegaOverrides[i-startScanNr] = hf[dsetName][0]
+hf.close()
 
 work_data = [fileNr for fileNr in range(startScanNr,LastScanNr+1)]
 p = Pool(numProcs)
