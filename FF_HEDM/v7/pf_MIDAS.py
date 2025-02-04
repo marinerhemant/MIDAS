@@ -97,7 +97,7 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,
 	if ConvertFiles==1:
 		outFStem = generateZip(thisDir,baseNameParamFN,layerNr,nchunks=nchunks,preproc=preproc)
 	else:
-		outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(6)}.MIDAS.zip'
+		outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(6)}.h5.analysis.MIDAS.zip'
 	print(f'FileStem: {outFStem}')
 	f = open(f'{sub_logDir}/processing_out0.csv','w')
 	f_err = open(f'{sub_logDir}/processing_err0.csv','w')
