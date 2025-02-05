@@ -70,7 +70,6 @@ int main(int argc, char *argv[]){
             int errorp = 0;
             zip_t* arch = NULL;
             arch = zip_open(DataFN,0,&errorp);
-            continue;
             if (errorp!=NULL){
                 printf("Input was not a zarr zip.\n");
                 continue;
@@ -83,6 +82,7 @@ int main(int argc, char *argv[]){
             char* s = NULL;
             char* arr = NULL;
             int dataLoc;
+            continue;
             while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
                 if (strstr(finfo->name,"exchange/data/0.0.0")!=NULL){
                     dataLoc = count;
