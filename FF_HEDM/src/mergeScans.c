@@ -145,7 +145,7 @@ int main(int argc, char *argv[]){
                     double currentOmega = delOmega + (frameNr)*omegaStep;
                     if (currentOmega >= 180.0) {
                         printf("%lf\n",currentOmega);
-                        currentOmega -= 360.0;
+                        currentOmega = currentOmega - 360.0;
                     }
                     double recalcFrameNr = (180.0 + currentOmega)/(omegaStep*nFramesMerge);
                     frameToPut = (int)floor(recalcFrameNr);
