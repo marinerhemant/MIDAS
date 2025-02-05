@@ -117,7 +117,7 @@ int main(int argc, char *argv[]){
             int frameNr;
             char *rawImage;
             rawImage = malloc(nPxY*nPxZ*2*sizeof(*rawImage));
-            int32_t dsz;
+            int32_t dsz = nPxY*nPxZ*2;
             for (frameNr=0;frameNr<nFrames;frameNr++){
                 dsz = blosc1_decompress(&allData[sizeArr[frameNr*2+1]],rawImage,dsz);
                 printf("%d\n",(int)dsz);
