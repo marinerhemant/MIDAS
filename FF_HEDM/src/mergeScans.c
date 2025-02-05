@@ -65,8 +65,6 @@ int main(int argc, char *argv[]){
         size_t szarr = nFramesOut;
         szarr *= nPxY;
         szarr *= nPxZ;
-        printf("%zu\n",szarr);
-        continue;
         outArr = calloc(szarr,sizeof(*outArr));
         for (fileNr=startScanNr; fileNr<endScanNr; fileNr++){
             char DataFN[2048];
