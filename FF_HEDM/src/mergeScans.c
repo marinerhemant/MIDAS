@@ -37,7 +37,7 @@
 int main(int argc, char *argv[]){
     double start_time = omp_get_wtime();
     if (argc < 11){
-        printf("Usage: %s FolderName FileStem Extension(with.) nScans nScansMerge nFramesMerge nFrames nPixelsY nPixelsZ nCPUs.\n",argv[0]);
+        printf("Usage: %s FolderName FileStem Extension(with.) nScans nScansMerge nFramesMerge nPixelsY nPixelsZ nFrames nCPUs.\n",argv[0]);
         return 1;
     }
     char *folder = argv[1];
@@ -101,7 +101,7 @@ int main(int argc, char *argv[]){
                 sizeArr[iter*2+0] = finfo->size;
                 sizeArr[iter*2+1] = cntr;
                 cntr += finfo->size;
-                printf("%d %s %d\n",(int)cntr,finfo->name);
+                printf("%d %s %d\n",(int)cntr,finfo->name,nFrames);
             }
             // allocate arr
             char * allData;
@@ -120,7 +120,7 @@ int main(int argc, char *argv[]){
             int32_t dsz;
             for (frameNr=0;frameNr<nFrames;frameNr++){
                 dsz = blosc1_decompress(&allData[sizeArr[frameNr*2+1]],rawImage,dsz);
-                // printf("%d\n",(int)dsz);
+                printf("%d\n",(int)dsz);
             }
 
         }
