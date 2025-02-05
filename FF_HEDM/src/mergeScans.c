@@ -145,6 +145,7 @@ int main(int argc, char *argv[]){
                     double delOmega = signTO * (fmod(fabs(thisOmega),360.0));
                     delOmega = delOmega *(fmod(fabs(delOmega), 360.0))/fabs(delOmega);
                     double currentOmega = delOmega + (frameNr)*omegaStep;
+                    (currentOmega > 180) ? currentOmega -= 360 : currentOmega = currentOmega;
                     double recalcFrameNr = (180.0 + currentOmega)/(omegaStep*nFramesMerge);
                     frameToPut = (int)recalcFrameNr;
                     printf("%lf %lf %lf %lf %d\n",thisOmega,delOmega,currentOmega,recalcFrameNr,frameToPut);
