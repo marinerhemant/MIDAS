@@ -34,6 +34,22 @@
 #include <stdlib.h> 
 #include <zip.h> 
 
+static inline int CheckDirectoryCreation(char Folder[1024])
+{
+	int e;
+    struct stat sb;
+	char totOutDir[1024];
+	sprintf(totOutDir,"%s/",Folder);
+    e = stat(totOutDir,&sb);
+    if (e!=0 && errno == ENOENT){
+		printf("Output directory did not exist, creating %s\n",totOutDir);
+		e = mkdir(totOutDir,S_IRWXU);
+		if (e !=0) {printf("Could not make the directory. Exiting\n");return 0;}
+	}
+	return 1;
+}
+
+
 int main(int argc, char *argv[]){
     double start_time = omp_get_wtime();
     if (argc < 11){
@@ -66,6 +82,9 @@ int main(int argc, char *argv[]){
         }
     }
     blosc2_init();
+    char outfolder[2048];
+    sprintf(outfolder,"%s/merged_scans");
+    int e = CheckDirectoryCreation(outfolder);
 
     int nJobs = nScans / nScansMerge;
     int nFramesOut = nFrames / nFramesMerge;
@@ -80,6 +99,7 @@ int main(int argc, char *argv[]){
         szarr *= nPxY;
         szarr *= nPxZ;
         outArr = calloc(szarr,sizeof(*outArr));
+        double maxVal=0;
         for (fileNr=startScanNr; fileNr<endScanNr; fileNr++){
             char DataFN[2048];
             sprintf(DataFN,"%s/%d/%s_%06d%s",folder,fileNr,fileStem,fileNr,ext);
@@ -163,19 +183,28 @@ int main(int argc, char *argv[]){
                 dsz = blosc1_decompress(&allData[sizeArr[frameNr*2+1]],rawImage,dsz);
                 memcpy(ImageAsym,rawImage,dsz);
                 size_t offset;
-                // if (frameNr%nFramesMerge == 0) printf("FrameNr: %d\n",frameNr);
                 for (cntr=0;cntr<dsz/2;cntr++){
                     offset = frameToPut;
                     offset *= nPxY;
                     offset *= nPxZ;
                     offset += cntr;
                     outArr[offset] += (double)ImageAsym[cntr];
+                    if (outArr[offset] > maxVal) maxVal = outArr[offset];
                 }
-                
             }
             t_1 = omp_get_wtime();
             printf("Frames processed, time taken: %lf seconds.\n",t_1-t_0);
         }
+        size_t iterator;
+        uint16_t *outArrWrite;
+        outArrWrite = calloc(szarr,sizeof(*outArrWrite));
+        for (iterator=0;iterator<szarr;iterator++) outArrWrite[iterator] = (uint16_t) 65536 * outArr[iterator] / maxVal;
+        // Write file out.
+        char outFN[1024];
+        sprintf(outFN,"%s/merged_scans/scanNr_%d_%dx%dx%d.bin",folder,fileNr,fileNr,nFramesOut,nPxZ,nPxY);
+        FILE *fOut = fopen(outFN,"w");
+        fwrite(outArrWrite,szarr*sizeof(outArrWrite),1,fOut);
+        fclose(fOut);
         free(outArr);
     }
 }
