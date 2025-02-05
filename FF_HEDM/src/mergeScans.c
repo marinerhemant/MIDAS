@@ -85,10 +85,12 @@ int main(int argc, char *argv[]){
             while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
                 if (strstr(finfo->name,"exchange/data/0.0.0")!=NULL){
                     dataLoc = count;
+                    break;
                 }
             }
             printf("Reading compressed image data.\n");
             fflush(stdout);
+            continue;
             double t_1 = omp_get_wtime();
             size_t *sizeArr;
             sizeArr = calloc(nFrames*2,sizeof(*sizeArr)); // Number StartLoc
