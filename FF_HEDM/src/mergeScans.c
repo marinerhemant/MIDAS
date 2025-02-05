@@ -70,6 +70,7 @@ int main(int argc, char *argv[]){
             int errorp = 0;
             zip_t* arch = NULL;
             arch = zip_open(DataFN,0,&errorp);
+            continue;
             if (errorp!=NULL){
                 printf("Input was not a zarr zip.\n");
                 continue;
