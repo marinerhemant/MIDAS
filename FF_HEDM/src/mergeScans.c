@@ -63,6 +63,7 @@ int main(int argc, char *argv[]){
         for (omegaNr=0;omegaNr<nScans;omegaNr++){
             fgets(aline,1000,omegaF);
             sscanf(aline,"%d",&omegas[omegaNr]);
+            printf("%lf\n",omegas);
         }
     }
     blosc2_init();
