@@ -81,7 +81,7 @@ int main(int argc, char *argv[]){
             char* s = NULL;
             char* arr = NULL;
             int dataLoc;
-            printf("%s\n",dataFN);
+            printf("%s\n",DataFN);
             continue;
             while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
                 if (strstr(finfo->name,"exchange/data/0.0.0")!=NULL){
