@@ -149,7 +149,7 @@ int main(int argc, char *argv[]){
                     double recalcFrameNr = (180.0 + currentOmega)/(omegaStep*nFramesMerge);
                     frameToPut = (int)floor(recalcFrameNr);
                     if (frameToPut >= nFrames/nFramesMerge || frameToPut <0) printf("%lf %lf %lf %lf %d\n",thisOmega,delOmega,currentOmega,recalcFrameNr,frameToPut);
-                    if (frameToPut == nFrames/nFramesMerge) frameToPut=0;
+                    if (frameToPut >= nFrames/nFramesMerge) frameToPut -= nFrames/nFramesMerge;
                 } else frameToPut = frameNr / nFramesMerge;
                 dsz = blosc1_decompress(&allData[sizeArr[frameNr*2+1]],rawImage,dsz);
                 memcpy(ImageAsym,rawImage,dsz);
