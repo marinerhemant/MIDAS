@@ -129,6 +129,7 @@ int main(int argc, char *argv[]){
                     offset *= nPxY;
                     offset *= nPxZ;
                     offset += cntr;
+                    printf("%zu\n",offset);fflush(stdout);
                     outArr[offset] += (double)ImageAsym[cntr];
                 }
             }
