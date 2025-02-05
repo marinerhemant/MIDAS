@@ -143,7 +143,10 @@ int main(int argc, char *argv[]){
                     double delOmega = signTO * (fmod(fabs(thisOmega),360.0));
                     delOmega = delOmega *(fmod(fabs(delOmega), 360.0))/fabs(delOmega);
                     double currentOmega = delOmega + (frameNr)*omegaStep;
-                    if (currentOmega >= 180.0) currentOmega -= 360.0;
+                    if (currentOmega >= 180.0) {
+                        printf("%lf\n",currentOmega);
+                        currentOmega -= 360.0;
+                    }
                     double recalcFrameNr = (180.0 + currentOmega)/(omegaStep*nFramesMerge);
                     frameToPut = (int)floor(recalcFrameNr);
                     if (frameToPut >= nFrames/nFramesMerge || frameToPut <0) printf("%lf %lf %lf %lf %d\n",thisOmega,delOmega,currentOmega,recalcFrameNr,frameToPut);
