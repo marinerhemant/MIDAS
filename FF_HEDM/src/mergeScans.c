@@ -62,7 +62,8 @@ int main(int argc, char *argv[]){
         int endScanNr = startScanNr + nScansMerge;
         int fileNr;
         double *outArr;
-        outArr = calloc(nFramesOut*nPxY*nPxZ,sizeof(*outArr));
+        size_t szarr = nFramesOut*nPxY*nPxZ;
+        outArr = calloc(szarr,sizeof(*outArr));
         for (fileNr=startScanNr; fileNr<endScanNr; fileNr++){
             char DataFN[2048];
             sprintf(DataFN,"%s/%d/%s_%06d%s",folder,fileNr,fileStem,fileNr,ext);
@@ -121,17 +122,19 @@ int main(int argc, char *argv[]){
             int32_t dsz = nPxY*nPxZ*2;
             uint16_t maxInt;
             for (frameNr=0;frameNr<nFrames;frameNr++){
+                int frameToPut = frameNr / nFramesMerge;
                 dsz = blosc1_decompress(&allData[sizeArr[frameNr*2+1]],rawImage,dsz);
                 memcpy(ImageAsym,rawImage,dsz);
+                size_t offset;
                 for (cntr=0;cntr<dsz/2;cntr++){
-                    int frameToPut = frameNr / nFramesMerge;
-                    size_t offset = frameToPut;
+                    offset = frameToPut;
                     offset *= nPxY;
                     offset *= nPxZ;
                     offset += cntr;
-                    printf("%zu\n",offset);fflush(stdout);
                     outArr[offset] += (double)ImageAsym[cntr];
                 }
+                printf("%zu %d %d\n",offset,frameNr,frameToPut);
+                fflush(stdout);
             }
             t_1 = omp_get_wtime();
             printf("Frames uncompressed, time taken: %lf seconds.\n",t_1-t_0);
