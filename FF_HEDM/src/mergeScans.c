@@ -127,16 +127,13 @@ int main(int argc, char *argv[]){
                 int frameToPut = frameNr / nFramesMerge;
                 dsz = blosc1_decompress(&allData[sizeArr[frameNr*2+1]],rawImage,dsz);
                 memcpy(ImageAsym,rawImage,dsz);
-                long long unsigned int offset;
+                size_t offset;
+                if (frameNr%nFramesMerge == 0) printf("FrameNr: %d\n",frameNr);
                 for (cntr=0;cntr<dsz/2;cntr++){
                     offset = frameToPut;
                     offset *= nPxY;
                     offset *= nPxZ;
                     offset += cntr;
-                    if (frameNr > 474){
-                        printf("%zu %d %d %zu %zu\n",offset,frameNr,frameToPut,szarr,cntr);
-                        fflush(stdout);
-                    }
                     outArr[offset] += (double)ImageAsym[cntr];
                 }
                 
