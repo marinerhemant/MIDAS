@@ -50,15 +50,15 @@ int main(int argc, char *argv[]){
     int nPxZ = atoi(argv[8]);
     int nFrames = atoi(argv[9]);
     int nCPUs = atoi(argv[10]);
-    double *omegas, omegaStep;
+    double *omegas, omegaStep=0;
     omegas = calloc(nScans,sizeof(*omegas));
     char *omegaFile;
+    int omegaNr;
     if (argc==13){
         printf("Omega file was provided, it will rotate scans to start at -180 degrees.\n");
         omegaFile = argv[11];
         omegaStep = atof(argv[12]);
         FILE *omegaF = fopen(omegaFile,"r");
-        int omegaNr;
         char aline[1000];
         for (omegaNr=0;omegaNr<nScans;omegaNr++){
             fgets(aline,1000,omegaF);
@@ -136,15 +136,18 @@ int main(int argc, char *argv[]){
             int32_t dsz = nPxY*nPxZ*2;
             uint16_t maxInt;
             for (frameNr=0;frameNr<nFrames;frameNr++){
-                double thisOmega = omegas[fileNr-1];
-                double signTO;
-                if (thisOmega!=0) signTO = thisOmega/fabs(thisOmega);
-                double delOmega = signTO * (fmod(fabs(thisOmega),360.0));
-                delOmega = delOmega *(fmod(fabs(delOmega), 360.0))/fabs(delOmega);
-                double currentOmega = delOmega + (frameNr)*omegaStep;
-                double recalcFrameNr = (180.0 + currentOmega)/(omegaStep*nFramesMerge);
-                int frameToPut = (int)recalcFrameNr;
-                printf("%lf %lf %lf %lf %d\n",thisOmega,delOmega,currentOmega,recalcFrameNr,frameToPut);
+                int frameToPut;
+                if (omegaNr>0){
+                    double thisOmega = omegas[fileNr-1];
+                    double signTO;
+                    if (thisOmega!=0) signTO = thisOmega/fabs(thisOmega);
+                    double delOmega = signTO * (fmod(fabs(thisOmega),360.0));
+                    delOmega = delOmega *(fmod(fabs(delOmega), 360.0))/fabs(delOmega);
+                    double currentOmega = delOmega + (frameNr)*omegaStep;
+                    double recalcFrameNr = (180.0 + currentOmega)/(omegaStep*nFramesMerge);
+                    frameToPut = (int)recalcFrameNr;
+                    printf("%lf %lf %lf %lf %d\n",thisOmega,delOmega,currentOmega,recalcFrameNr,frameToPut);
+                } else frameToPut = frameNr / nFramesMerge;
                 dsz = blosc1_decompress(&allData[sizeArr[frameNr*2+1]],rawImage,dsz);
                 memcpy(ImageAsym,rawImage,dsz);
                 size_t offset;
