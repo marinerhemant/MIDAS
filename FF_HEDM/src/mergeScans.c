@@ -82,12 +82,12 @@ int main(int argc, char *argv[]){
             char* arr = NULL;
             int dataLoc;
             printf("%s\n",DataFN);
-            continue;
             while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
                 if (strstr(finfo->name,"exchange/data/0.0.0")!=NULL){
                     dataLoc = count;
                     break;
                 }
+                count ++;
             }
             printf("Reading compressed image data.\n");
             fflush(stdout);
