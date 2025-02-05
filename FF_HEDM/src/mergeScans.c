@@ -132,7 +132,7 @@ int main(int argc, char *argv[]){
                     offset *= nPxZ;
                     offset += cntr;
                     if (frameNr > 474){
-                        printf("%zu %d %d\n",offset,frameNr,frameToPut);
+                        printf("%zu %d %d %zu %zu\n",offset,frameNr,frameToPut,szarr,cntr);
                         fflush(stdout);
                     }
                     outArr[offset] += (double)ImageAsym[cntr];
