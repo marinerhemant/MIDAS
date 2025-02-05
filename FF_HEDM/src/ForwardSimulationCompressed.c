@@ -1079,8 +1079,6 @@ main(int argc, char *argv[])
 				for (i=0;i<6;i++){
 					InputInfo[nrPoints][i+12] = LatC[i];
 				}
-				for (i=0;i<18;i++) printf("%lf ",InputInfo[nrPoints][i]);
-				printf("\n");
 				nrPoints++;
 			}
 			printf("NrPoints: %d\n",nrPoints);
