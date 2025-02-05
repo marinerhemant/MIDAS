@@ -51,6 +51,7 @@ int main(int argc, char *argv[]){
     int nFrames = atoi(argv[9]);
     int nCPUs = atoi(argv[10]);
     blosc2_init();
+    return;
 
     int nJobs = nScans / nScansMerge;
     int nFramesOut = nFrames / nFramesMerge;
