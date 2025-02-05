@@ -87,7 +87,7 @@ int main(int argc, char *argv[]){
             }
             printf("Reading compressed image data.\n");
             double t_1 = omp_get_wtime();
-            size_t sizeArr;
+            size_t *sizeArr;
             sizeArr = calloc(nFrames*2,sizeof(*sizeArr)); // Number StartLoc
             size_t cntr=0;
             int iter;
@@ -107,21 +107,9 @@ int main(int argc, char *argv[]){
                 zip_fclose(fLoc);
             }
             double t_0 = omp_get_wtime();
-            printf("Data read completely. Total size: %zu bytes, total time taken: %lf seconds.\n%lf %d %lf %zu\n",cntr,t_0-t_1,omegaStart,skipFrame,omegaStep,cntr);
+            printf("Data read completely. Total size: %zu bytes, total time taken: %lf seconds.\n",cntr,t_0-t_1);
 
         }
         free(outArr);
     }
-
-    int errorp = 0;
-    zip_t* arch = NULL;
-    arch = zip_open(DataFN,0,&errorp);
-    if (errorp!=NULL) return 1;
-    struct zip_stat* finfo = NULL;
-    finfo = calloc(16384, sizeof(int));
-    zip_stat_init(finfo);
-    zip_file_t* fd = NULL;
-    int count = 0;
-    char* s = NULL;
-    char* arr = NULL;
 }
