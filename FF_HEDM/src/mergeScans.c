@@ -63,13 +63,11 @@ int main(int argc, char *argv[]){
         for (omegaNr=0;omegaNr<nScans;omegaNr++){
             fgets(aline,1000,omegaF);
             sscanf(aline,"%lf",&omegas[omegaNr]);
-            printf("%lf\n",omegas[omegaNr]);
         }
     }
     blosc2_init();
 
     int nJobs = nScans / nScansMerge;
-    printf("%d\n",nJobs);
     int nFramesOut = nFrames / nFramesMerge;
     int jobNr;
     #pragma omp parallel for num_threads(nCPUs) private(jobNr) schedule(dynamic)
