@@ -1069,6 +1069,9 @@ main(int argc, char *argv[])
 				sscanf(aline,"%lf,%lf,%lf,%lf,%lf,%lf",
 					&InputInfo[nrPoints][9], &InputInfo[nrPoints][10],&InputInfo[nrPoints][11],
 					&EulerThis[0],&EulerThis[1],&EulerThis[2]);
+				EulerThis[0] *= deg2rad;
+				EulerThis[1] *= deg2rad;
+				EulerThis[2] *= deg2rad;
 				Euler2OrientMat(EulerThis,OrientThis);
 				for (i=0;i<9;i++){
 					InputInfo[nrPoints][i] = OrientThis[i];
@@ -1076,6 +1079,8 @@ main(int argc, char *argv[])
 				for (i=0;i<6;i++){
 					InputInfo[nrPoints][i+12] = LatC[i];
 				}
+				for (i=0;i<18;i++) printf("%lf ",InputInfo[nrPoints][i]);
+				printf("\n")
 				nrPoints++;
 			}
 			printf("NrPoints: %d\n",nrPoints);
