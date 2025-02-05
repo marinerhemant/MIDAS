@@ -718,7 +718,7 @@ main(int argc, char *argv[])
 	int Padding=6, NrPixels;
 	double Lsd, tx, ty, tz, yBC, zBC, OmegaStep, OmegaStart, OmegaEnd, px;
 	int RingsToUse[500], nRings=0;
-	double LatC[6],Wavelength,Wedge=0, p0, p1, p2, RhoD,GaussWidth,PeakIntensity=2000;
+	double LatC[6],Wavelength,Wedge=0, p0, p1, p2, RhoD,GaussWidth=1,PeakIntensity=2000;
 	int writeSpots, isBin=0;
 	int LoadNr = 0, UpdatedOrientations = 1, nfOutput = 0, geOutput=1;
 	double eRes = 0, minConfidence = 0;
@@ -1466,7 +1466,7 @@ main(int argc, char *argv[])
 					fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%d\n",
 						(int)spotMatr[0],(int)spotMatr[1],spotMatr[2],spotMatr[3],spotMatr[4],spotMatr[5],
 						spotMatr[6],(int)spotMatr[7],spotMatr[8],spotMatr[9],spotMatr[10],spotMatr[11],scanNr,sqrt(yThis*yThis+zThis*zThis),omeBin);
-				printf("%zu %lf %lf %lf\n",omeBin,OmegaStart,omeThis,OmegaStep);
+				// printf("%zu %lf %lf %lf\n",omeBin,OmegaStart,omeThis,OmegaStep);
 				omeBin *= NrPixels;
 				omeBin *= NrPixels;
 				/////////////// Change this to exact position, not rounded off....
