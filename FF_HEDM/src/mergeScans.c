@@ -91,7 +91,6 @@ int main(int argc, char *argv[]){
             }
             printf("Reading compressed image data.\n");
             fflush(stdout);
-            continue;
             double t_1 = omp_get_wtime();
             size_t *sizeArr;
             sizeArr = calloc(nFrames*2,sizeof(*sizeArr)); // Number StartLoc
