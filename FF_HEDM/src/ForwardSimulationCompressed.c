@@ -1392,6 +1392,7 @@ main(int argc, char *argv[])
 			}
 			// Calculate the spots now.
 			CalcDiffrSpots_Furnace(hklsOut,OM,Lsd,Wavelength,TheorSpots,&nTspots);
+			printf("%d\n",nTspots);
 			// For each spot, calculate displacement, calculate tilt and wedge effect.
 			for (spotNr=0;spotNr<nTspots;spotNr++){
 				// Calculate Tilt Effect
