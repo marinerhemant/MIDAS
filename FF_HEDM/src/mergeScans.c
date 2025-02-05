@@ -37,7 +37,7 @@
 int main(int argc, char *argv[]){
     double start_time = omp_get_wtime();
     if (argc < 11){
-        printf("Usage: %s FolderName FileStem Extension(with.) nScans nScansMerge nFramesMerge nPixelsY nPixelsZ nFrames nCPUs.\n",argv[0]);
+        printf("Usage: %s FolderName FileStem Extension(with.) nScans nScansMerge nFramesMerge nPixelsY nPixelsZ nFrames nCPUs (optional)omegaFileName (optional)omegaStep\n",argv[0]);
         return 1;
     }
     char *folder = argv[1];
@@ -50,6 +50,21 @@ int main(int argc, char *argv[]){
     int nPxZ = atoi(argv[8]);
     int nFrames = atoi(argv[9]);
     int nCPUs = atoi(argv[10]);
+    double *omegas, omegaStep;
+    omegas = calloc(nScans,sizeof(*omegas));
+    char *omegaFile;
+    if (argc==13){
+        printf("Omega file was provided, it will rotate scans to start at -180 degrees.\n");
+        omegaFile = argv[11];
+        omegaStep = atof(argv[12]);
+        FILE *omegaF = fopen(omegaFile,"r");
+        int omegaNr;
+        char aline[1000];
+        for (omegaNr=0;omegaNr<nScans;omegaNr++){
+            fgets(aline,1000,omegaF);
+            sscanf(aline,"%d",&omegas[omegaNr]);
+        }
+    }
     blosc2_init();
 
     int nJobs = nScans / nScansMerge;
@@ -92,8 +107,6 @@ int main(int argc, char *argv[]){
                 }
                 count ++;
             }
-            printf("Reading compressed image data.\n");
-            fflush(stdout);
             double t_1 = omp_get_wtime();
             size_t *sizeArr;
             sizeArr = calloc(nFrames*2,sizeof(*sizeArr)); // Number StartLoc
@@ -115,7 +128,6 @@ int main(int argc, char *argv[]){
                 zip_fclose(fLoc);
             }
             double t_0 = omp_get_wtime();
-            printf("Data read completely. Total size: %zu bytes, total time taken: %lf seconds.\n",cntr,t_0-t_1);
             int frameNr;
             char *rawImage;
             rawImage = malloc(nPxY*nPxZ*2*sizeof(*rawImage));
@@ -124,7 +136,15 @@ int main(int argc, char *argv[]){
             int32_t dsz = nPxY*nPxZ*2;
             uint16_t maxInt;
             for (frameNr=0;frameNr<nFrames;frameNr++){
-                int frameToPut = frameNr / nFramesMerge;
+                double thisOmega = omegas[fileNr-1];
+                double signTO;
+                if (thisOmega!=0) signTO = thisOmega/fabs(thisOmega);
+                double delOmega = signTO*(fabs(thisOmega)%360);
+                delOmega = delOmega *(fabs(delOmega)%360)/fabs(delOmega);
+                double currentOmega = delOmega + (frameNr)*omegaStep;
+                double recalcFrameNr = (180 + currentOmega)/(omegaStep*nFramesMerge);
+                int frameToPut = (int)recalcFrameNr;
+                printf("%lf %lf %lf %lf %d\n",thisOmega,delOmega,currentOmega,recalcFrameNr,frameToPut);
                 dsz = blosc1_decompress(&allData[sizeArr[frameNr*2+1]],rawImage,dsz);
                 memcpy(ImageAsym,rawImage,dsz);
                 size_t offset;
@@ -139,7 +159,7 @@ int main(int argc, char *argv[]){
                 
             }
             t_1 = omp_get_wtime();
-            printf("Frames uncompressed, time taken: %lf seconds.\n",t_1-t_0);
+            printf("Frames processed, time taken: %lf seconds.\n",t_1-t_0);
         }
         free(outArr);
     }
