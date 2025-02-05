@@ -119,10 +119,18 @@ int main(int argc, char *argv[]){
             uint16_t *ImageAsym;
             ImageAsym = malloc(nPxY*nPxZ*sizeof(*ImageAsym));
             int32_t dsz = nPxY*nPxZ*2;
+            uint16_t maxInt;
             for (frameNr=0;frameNr<nFrames;frameNr++){
                 dsz = blosc1_decompress(&allData[sizeArr[frameNr*2+1]],rawImage,dsz);
                 memcpy(ImageAsym,rawImage,dsz);
-                for (cntr=0;cntr<nPxY*nPxZ;cntr++) outArr[(frameNr/nFramesMerge)*nPxY*nPxZ + cntr] += (double)ImageAsym[cntr];
+                for (cntr=0;cntr<dsz/2;cntr++){
+                    int frameToPut = frameNr / nFramesMerge;
+                    size_t offset = frameToPut;
+                    offset *= nPxY;
+                    offset *= nPxZ;
+                    offset += cntr;
+                    outArr[offset] += (double)ImageAsym[cntr];
+                }
             }
             t_1 = omp_get_wtime();
             printf("Frames uncompressed, time taken: %lf seconds.\n",t_1-t_0);
