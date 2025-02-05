@@ -58,7 +58,6 @@ int main(int argc, char *argv[]){
     int jobNr;
     #pragma omp parallel for num_threads(nCPUs) private(jobNr) schedule(dynamic)
     for (jobNr=0;jobNr<nJobs;jobNr++){
-        printf("%d\n",jobNr);
         int startScanNr = jobNr*nScansMerge + 1;
         int endScanNr = startScanNr + nScansMerge;
         int fileNr;
@@ -82,6 +81,7 @@ int main(int argc, char *argv[]){
             char* s = NULL;
             char* arr = NULL;
             int dataLoc;
+            printf("%s\n",dataFN);
             continue;
             while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
                 if (strstr(finfo->name,"exchange/data/0.0.0")!=NULL){
