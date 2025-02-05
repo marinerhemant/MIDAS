@@ -211,6 +211,9 @@ hkls: $(SRCDIR)GetHKLList.c
 peaksfittingompzarr: $(SRCDIR)PeaksFittingOMPZarr.c
 	$(CC) $(SRCDIR)PeaksFittingOMPZarr.c -o $(BINDIR)PeaksFittingOMPZarr -fopenmp $(CFLAGSNLOPT) $(CFLAGS) $(BLOSCFLAGS) $(ZIPFLAGS)
 
+mergescans: $(SRCDIR)mergeScans.c
+	$(CC) $(SRCDIR)mergeScans.c -o $(BINDIR)mergeScans -fopenmp $(CFLAGSNLOPT) $(CFLAGS) $(BLOSCFLAGS) $(ZIPFLAGS)
+
 hklszarr: $(SRCDIR)GetHKLListZarr.c
 	$(CC) $(SRCDIR)GetHKLListZarr.c $(SRCDIR)sgclib.c $(SRCDIR)sgfind.c $(SRCDIR)sghkl.c $(SRCDIR)sgsi.c \
 	$(SRCDIR)sgio.c -o $(BINDIR)GetHKLListZarr $(CFLAGS) $(BLOSCFLAGS) $(ZIPFLAGS)
