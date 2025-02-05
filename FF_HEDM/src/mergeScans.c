@@ -51,13 +51,14 @@ int main(int argc, char *argv[]){
     int nFrames = atoi(argv[9]);
     int nCPUs = atoi(argv[10]);
     blosc2_init();
-    return;
 
     int nJobs = nScans / nScansMerge;
+    printf("%d\n",nJobs);
     int nFramesOut = nFrames / nFramesMerge;
     int jobNr;
     #pragma omp parallel for num_threads(nCPUs) private(jobNr) schedule(dynamic)
     for (jobNr=0;jobNr<nJobs;jobNr++){
+        printf("%d\n",jobNr);
         int startScanNr = jobNr*nScansMerge + 1;
         int endScanNr = startScanNr + nScansMerge;
         int fileNr;
