@@ -70,7 +70,7 @@ parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help
 parser.add_argument('-numFilesPerScan', type=int, required=False, default=1, help='Number of files that constitute a single scan. This will combine multiple ge files into one dataset. 1 will disable.')
 parser.add_argument('-LayerNr', type=int, required=False, default=1, help='LayerNr')
 parser.add_argument('-correctSD', type=int, required=False, default=0, help='If you want to use an automatically computed threshold, put to 1. It will compute the standard deviation in the image, apply a threshold of 1.1*sigma. ***** WILL APPLY THIS ABOVE PREPROCTHRESH. USE WITH CAUTION *****')
-parser.add_argument('-omegaStep', type=int, required=False, default=0, help='If you want to override the omegastep from the parameter file. This was implemented for pf-HEDM where interlacing positive-negative rotations were used!!! ***** USE WITH CAUTION *****')
+parser.add_argument('-omegaStep', type=float, required=False, default=0, help='If you want to override the omegastep from the parameter file. This was implemented for pf-HEDM where interlacing positive-negative rotations were used!!! ***** USE WITH CAUTION *****')
 args, unparsed = parser.parse_known_args()
 resultDir = args.resultFolder
 psFN = args.paramFN
