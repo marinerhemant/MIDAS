@@ -144,7 +144,6 @@ int main(int argc, char *argv[]){
                     delOmega = delOmega *(fmod(fabs(delOmega), 360.0))/fabs(delOmega);
                     double currentOmega = delOmega + (frameNr)*omegaStep;
                     if (currentOmega >= 180.0) {
-                        printf("%lf\n",currentOmega);
                         currentOmega = currentOmega - 360.0;
                     }
                     double recalcFrameNr = (180.0 + currentOmega)/(omegaStep*nFramesMerge);
