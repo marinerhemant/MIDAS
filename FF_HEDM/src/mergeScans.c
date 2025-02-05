@@ -120,7 +120,7 @@ int main(int argc, char *argv[]){
             int32_t dsz;
             for (frameNr=0;frameNr<nFrames;frameNr++){
                 dsz = blosc1_decompress(&allData[sizeArr[frameNr*2+1]],rawImage,dsz);
-                printf("%d\n",(int)dsz);
+                // printf("%d\n",(int)dsz);
             }
 
         }
