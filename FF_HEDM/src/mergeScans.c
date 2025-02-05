@@ -53,7 +53,7 @@ int main(int argc, char *argv[]){
     double *omegas, omegaStep=0;
     omegas = calloc(nScans,sizeof(*omegas));
     char *omegaFile;
-    int omegaNr;
+    int omegaNr=0;
     if (argc==13){
         printf("Omega file was provided, it will rotate scans to start at -180 degrees.\n");
         omegaFile = argv[11];
