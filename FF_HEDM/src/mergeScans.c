@@ -131,10 +131,13 @@ int main(int argc, char *argv[]){
                     offset *= nPxY;
                     offset *= nPxZ;
                     offset += cntr;
+                    if (frameNr > 474){
+                        printf("%zu %d %d\n",offset,frameNr,frameToPut);
+                        fflush(stdout);
+                    }
                     outArr[offset] += (double)ImageAsym[cntr];
                 }
-                printf("%zu %d %d\n",offset,frameNr,frameToPut);
-                fflush(stdout);
+                
             }
             t_1 = omp_get_wtime();
             printf("Frames uncompressed, time taken: %lf seconds.\n",t_1-t_0);
