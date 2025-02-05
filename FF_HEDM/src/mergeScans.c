@@ -101,7 +101,6 @@ int main(int argc, char *argv[]){
                 sizeArr[iter*2+0] = finfo->size;
                 sizeArr[iter*2+1] = cntr;
                 cntr += finfo->size;
-                printf("%d %s %d\n",(int)cntr,finfo->name,nFrames);
             }
             // allocate arr
             char * allData;
@@ -117,12 +116,16 @@ int main(int argc, char *argv[]){
             int frameNr;
             char *rawImage;
             rawImage = malloc(nPxY*nPxZ*2*sizeof(*rawImage));
+            uint16_t *ImageAsym;
+            ImageAsym = malloc(nPxY*nPxZ*sizeof(*ImageAsym));
             int32_t dsz = nPxY*nPxZ*2;
             for (frameNr=0;frameNr<nFrames;frameNr++){
                 dsz = blosc1_decompress(&allData[sizeArr[frameNr*2+1]],rawImage,dsz);
+                memcpy(ImageAsym,rawImage,dsz);
+                for (cntr=0;cntr<nPxY*nPxZ;cntr++) outArr[(frameNr/nFramesMerge)*nPxY*nPxZ + cntr] += (double)ImageAsym[cntr];
             }
             t_1 = omp_get_wtime();
-            printf("Frames uncompressed, time taken: %lf seconds.\n",cntr,t_1-t_0);
+            printf("Frames uncompressed, time taken: %lf seconds.\n",t_1-t_0);
         }
         free(outArr);
     }
