@@ -101,7 +101,7 @@ int main(int argc, char *argv[]){
                 sizeArr[iter*2+0] = finfo->size;
                 sizeArr[iter*2+1] = cntr;
                 cntr += finfo->size;
-                printf("%d %s\n",(int)cntr,finfo->name);
+                printf("%d %s %d\n",(int)cntr,finfo->name);
             }
             // allocate arr
             char * allData;
