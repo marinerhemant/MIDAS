@@ -1062,6 +1062,22 @@ main(int argc, char *argv[])
 						  &InputInfo[nrPoints][15],&InputInfo[nrPoints][16],&InputInfo[nrPoints][17]);
 				nrPoints++;
 			}
+		} else if (strncmp(aline,"#EBSD",strlen("#EBSD")) == 0){ // This is an EBSD file. X,Y,Z,Eul1,Eul2,Eul3
+			dataType = 1;
+			fgets(aline,4096,inpF);
+			while(fgets(aline,4096,inpF)!=NULL){
+				sscanf(aline,"%lf,%lf,%lf,%lf,%lf,%lf",
+					&InputInfo[nrPoints][9], &InputInfo[nrPoints][10],&InputInfo[nrPoints][11],
+					&EulerThis[0],&EulerThis[1],&EulerThis[2]);
+				Euler2OrientMat(EulerThis,OrientThis);
+				for (i=0;i<9;i++){
+					InputInfo[nrPoints][i] = OrientThis[i];
+				}
+				for (i=0;i<6;i++){
+					InputInfo[nrPoints][i+12] = LatC[i];
+				}
+				nrPoints++;
+			}
 		}else if (strncmp(aline,"%TriEdgeSize ",strlen("%TriEdgeSize ")) == 0){
 			dataType = 1;
 			NrOrientations = 2000000;
