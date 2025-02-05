@@ -139,8 +139,8 @@ int main(int argc, char *argv[]){
                 double thisOmega = omegas[fileNr-1];
                 double signTO;
                 if (thisOmega!=0) signTO = thisOmega/fabs(thisOmega);
-                double delOmega = signTO * (fabs(thisOmega) % 360.0);
-                delOmega = delOmega *(fabs(delOmega) % 360.0)/fabs(delOmega);
+                double delOmega = signTO * (fmod(fabs(thisOmega),360.0));
+                delOmega = delOmega *(fmod(fabs(delOmega), 360.0))/fabs(delOmega);
                 double currentOmega = delOmega + (frameNr)*omegaStep;
                 double recalcFrameNr = (180.0 + currentOmega)/(omegaStep*nFramesMerge);
                 int frameToPut = (int)recalcFrameNr;
