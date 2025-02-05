@@ -120,9 +120,9 @@ int main(int argc, char *argv[]){
             int32_t dsz = nPxY*nPxZ*2;
             for (frameNr=0;frameNr<nFrames;frameNr++){
                 dsz = blosc1_decompress(&allData[sizeArr[frameNr*2+1]],rawImage,dsz);
-                printf("%d\n",(int)dsz);
             }
-
+            t_1 = omp_get_wtime();
+            printf("Frames uncompressed, time taken: %lf seconds.\n",cntr,t_1-t_0);
         }
         free(outArr);
     }
