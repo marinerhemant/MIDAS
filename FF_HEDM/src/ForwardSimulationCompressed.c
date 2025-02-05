@@ -1078,6 +1078,7 @@ main(int argc, char *argv[])
 				}
 				nrPoints++;
 			}
+			printf("NrPoints: %d\n",nrPoints);
 		}else if (strncmp(aline,"%TriEdgeSize ",strlen("%TriEdgeSize ")) == 0){
 			dataType = 1;
 			NrOrientations = 2000000;
