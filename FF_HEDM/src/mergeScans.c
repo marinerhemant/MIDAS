@@ -113,6 +113,13 @@ int main(int argc, char *argv[]){
             }
             double t_0 = omp_get_wtime();
             printf("Data read completely. Total size: %zu bytes, total time taken: %lf seconds.\n",cntr,t_0-t_1);
+            int frameNr;
+            char *rawImage;
+            rawImage = malloc(nPxY*nPxZ*2*sizeof(*rawImage));
+            int32_t dsz;
+            for (frameNr=0;frameNr<nFrames;frameNr++){
+                dsz = blosc1_decompress(&allData[sizeArr[frameNr*2+1]],rawImage,dsz);
+            }
 
         }
         free(outArr);
