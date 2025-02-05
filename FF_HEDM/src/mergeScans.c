@@ -143,7 +143,7 @@ int main(int argc, char *argv[]){
                     double delOmega = signTO * (fmod(fabs(thisOmega),360.0));
                     delOmega = delOmega *(fmod(fabs(delOmega), 360.0))/fabs(delOmega);
                     double currentOmega = delOmega + (frameNr)*omegaStep;
-                    if (currentOmega >= 180.0) {
+                    if (currentOmega - 180.0 > 0.00001) {
                         currentOmega = currentOmega - 360.0;
                     }
                     double recalcFrameNr = (180.0 + currentOmega)/(omegaStep*nFramesMerge);
