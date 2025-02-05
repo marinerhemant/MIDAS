@@ -62,7 +62,9 @@ int main(int argc, char *argv[]){
         int endScanNr = startScanNr + nScansMerge;
         int fileNr;
         double *outArr;
-        size_t szarr = nFramesOut*nPxY*nPxZ;
+        size_t szarr = nFramesOut;
+        szarr *= nPxY;
+        szarr *= nPxZ;
         outArr = calloc(szarr,sizeof(*outArr));
         for (fileNr=startScanNr; fileNr<endScanNr; fileNr++){
             char DataFN[2048];
