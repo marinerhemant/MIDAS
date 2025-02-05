@@ -146,7 +146,7 @@ int main(int argc, char *argv[]){
                     if (currentOmega - 180.0 > 0.00001) currentOmega -= 360.0;
                     double recalcFrameNr = (180.0 + currentOmega)/(omegaStep*nFramesMerge);
                     frameToPut = (int)floor(recalcFrameNr);
-                    if (frameToPut >= nFrames/nFramesMerge) frameNr = 0;
+                    if (frameToPut = nFrames/nFramesMerge) frameNr = 0;
                 } else frameToPut = frameNr / nFramesMerge;
                 dsz = blosc1_decompress(&allData[sizeArr[frameNr*2+1]],rawImage,dsz);
                 memcpy(ImageAsym,rawImage,dsz);
