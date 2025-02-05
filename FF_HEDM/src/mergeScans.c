@@ -176,7 +176,7 @@ int main(int argc, char *argv[]){
                         currentOmega = currentOmega + 360.0;
                     }
                     if (currentOmega>180.0) printf("%lf\n",currentOmega);
-                    if (currentOmega<180.0) printf("%lf\n",currentOmega);
+                    if (currentOmega<-180.0) printf("%lf\n",currentOmega);
                     double recalcFrameNr = (180.0 + currentOmega)/(omegaStep*nFramesMerge);
                     frameToPut = (int)floor(recalcFrameNr);
                 } else frameToPut = frameNr / nFramesMerge;
