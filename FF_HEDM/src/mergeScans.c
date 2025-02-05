@@ -128,7 +128,7 @@ int main(int argc, char *argv[]){
                 dsz = blosc1_decompress(&allData[sizeArr[frameNr*2+1]],rawImage,dsz);
                 memcpy(ImageAsym,rawImage,dsz);
                 size_t offset;
-                if (frameNr%nFramesMerge == 0) printf("FrameNr: %d\n",frameNr);
+                // if (frameNr%nFramesMerge == 0) printf("FrameNr: %d\n",frameNr);
                 for (cntr=0;cntr<dsz/2;cntr++){
                     offset = frameToPut;
                     offset *= nPxY;
