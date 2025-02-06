@@ -58,6 +58,10 @@ main(int argc, char *argv[])
         thisF = fopen(thisFN,"r");
         fgets(thisLine,2048,thisF);
         sprintf(headThis,"%s",thisLine);
+        int *lastScansSpots, *thisScansSpots;
+        lastScansSpots = calloc(MAX_N_SPOTS,sizeof(*lastScansSpots));
+        thisScansSpots = calloc(MAX_N_SPOTS,sizeof(*thisScansSpots));
+        int nSpotsLastScan;
         size_t nAll=0;
         while (fgets(thisLine,2048,thisF)!=NULL){
             sscanf(thisLine,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
@@ -67,16 +71,14 @@ main(int argc, char *argv[])
                 &allSpots[nAll*14+9],&allSpots[nAll*14+10],&allSpots[nAll*14+11],
                 &allSpots[nAll*14+12],&allSpots[nAll*14+13]);
             if (allSpots[nAll*14+3]<0.01) continue;
+            lastScansSpots[nAll] = nAll;
             nAll++;
         }
+        nSpotsLastScan = nAll;
         fclose(thisF);
         int scanNr, thisScanNr;
         int i,j,k,l,found;
         double origWeight, newWeight;
-        int nSpotsLastScan;
-        int *lastScansSpots, *thisScansSpots;
-        lastScansSpots = calloc(MAX_N_SPOTS,sizeof(*lastScansSpots));
-        thisScansSpots = calloc(MAX_N_SPOTS,sizeof(*thisScansSpots));
         for (scanNr=1;scanNr<nMerges;scanNr++){
             printf("ScanNr: %d, nAll: %zu\n",scanNr,nAll);
             thisScanNr = startScanNr + scanNr;
@@ -96,7 +98,6 @@ main(int argc, char *argv[])
                 nThis++;
             }
             fclose(thisF);
-            nSpotsLastScan = nThis;
             // Go through each spot in both files, if found a match add weighted values, if not, add to the original array
             for (i=0;i<nThis;i++){
                 found = 0;
@@ -125,6 +126,7 @@ main(int argc, char *argv[])
                 }
             }
             for (i=0;i<nSpotsLastScan;i++) lastScansSpots[i] = thisScansSpots[i];
+            nSpotsLastScan = nThis;
         }
         for (i=0;i<nAll;i++) allSpots[i*14+4] = i+1;
         sprintf(thisFN,"InputAllExtraInfoFittingAll%d.csv",finScanNr);
