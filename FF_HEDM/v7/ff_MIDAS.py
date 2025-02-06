@@ -335,6 +335,7 @@ for layerNr in range(startLayerNr,endLayerNr+1):
         shutil.copy2(f'{topResDir}/InputAllExtraInfoFittingAll.csv',f'{resultDir}/.')
         sps = np.genfromtxt(f'{topResDir}/InputAll.csv',skip_header=1)
         sps_filt = sps[sps[:,5] == ring2Index,:]
+        print(sps_filt.shape)
         if len(sps_filt.shape) < 2:
             print("No IDs could be identified for indexing due to no spots present for ring2index. Check param file and data")
             sys.exit()
