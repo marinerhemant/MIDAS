@@ -821,10 +821,10 @@ SimulateDiffractionImage(
 			outxyz[2] = P0[2] -(ABC[2]*P0[0])/(ABC[0]);
 			YZSpotsT[k][0] = (outxyz[1])/px + ybc;
 			YZSpotsT[k][1] = (outxyz[2])/px + zbc;
-			if (YZSpotsT[k][0] > 2048 || YZSpotsT[k][0] < 0 || YZSpotsT[k][1] > 2048 || YZSpotsT[k][1] < 0){
-				OutofBounds = 1;
-				break;
-			}
+			// if (YZSpotsT[k][0] > 2048 || YZSpotsT[k][0] < 0 || YZSpotsT[k][1] > 2048 || YZSpotsT[k][1] < 0){
+			// 	OutofBounds = 1;
+			// 	break;
+			// }
 			if (k==2){
 				xyz[0] = 0;
 				xyz[1] = ythis;
