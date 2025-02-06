@@ -8,6 +8,7 @@ import argparse
 import signal
 import shutil
 import re
+import numpy as np
 utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 sys.path.insert(0,utilsDir)
 v7Dir = os.path.expanduser('~/opt/MIDAS/FF_HEDM/v7/')
@@ -142,6 +143,12 @@ if len(rawDir) > 1:
     psContents = open(psFN,'r').readlines()
     psF = open(psFN,'w')
     for line in psContents:
+        if line.startswith('OverAllRingToIndex'):
+            ring2Index = float(line.split(' ')[1])
+        if line.startswith('MinOmeSpotIDsToIndex'):
+            min2Index = float(line.split(' ')[1])
+        if line.startswith('MaxOmeSpotIDsToIndex'):
+            max2Index = float(line.split(' ')[1])
         if line.startswith('RawFolder'):
             line2 = re.split(r'(\s+)',line)
             line2[2] = rawDir
@@ -313,8 +320,26 @@ for layerNr in range(startLayerNr,endLayerNr+1):
         f.close()
         f_err.close()
     else:
+        shutil.copy2(f'{topResDir}/InputAllExtraInfoFittingAll.csv',f'{topResDir}/InputAll.csv')
         shutil.copy2(f'{topResDir}/InputAll.csv',f'{resultDir}/.')
         shutil.copy2(f'{topResDir}/InputAllExtraInfoFittingAll.csv',f'{resultDir}/.')
+        sps = np.genfromtxt(f'{topResDir}/InputAll.csv',skip_header=1)
+        sps_filt = sps[sps[:,5] == ring2Index,:]
+        if len(sps_filt.shape) < 2:
+            print("No IDs could be identified for indexing due to no spots present for ring2index. Check param file and data")
+            sys.exit()
+        sps_filt2 = sps_filt[sps_filt[:,2] >= min2Index,:]
+        if len(sps_filt2.shape) < 2:
+            print("No IDs could be identified for indexing due to no spots more than minOmeSpotsToIndex. Check param file and data")
+            sys.exit()
+        sps_filt3 = sps_filt2[sps_filt2[:,2] <= max2Index,:]
+        if len(sps_filt3.shape) < 2:
+            print("No IDs could be identified for indexing due to no spots more than minOmeSpotsToIndex. Check param file and data")
+            sys.exit()
+        IDs = sps_filt3[:,4].astype(np.int32)
+        np.savetxt(f'{resultDir}/SpotsToIndex.csv',IDs)
+        sys.exit()
+
     os.chdir(resultDir)
     print(f"Binning data. Time till now: {time.time()-t0}")
     f2 = open(f'{logDir}/binning_out.csv','w')
