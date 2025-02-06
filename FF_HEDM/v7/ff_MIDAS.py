@@ -348,7 +348,7 @@ for layerNr in range(startLayerNr,endLayerNr+1):
             print("No IDs could be identified for indexing due to no spots more than minOmeSpotsToIndex. Check param file and data")
             sys.exit()
         IDs = sps_filt3[:,4].astype(np.int32)
-        np.savetxt(f'{resultDir}/SpotsToIndex.csv',IDs)
+        np.savetxt(f'{resultDir}/SpotsToIndex.csv',IDs,fmt="%d")
         sys.exit()
 
     os.chdir(resultDir)
