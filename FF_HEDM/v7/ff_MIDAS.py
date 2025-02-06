@@ -164,6 +164,17 @@ if len(rawDir) > 1:
             psF.write(line)
     psF.close()
 
+
+psContents = open(psFN,'r').readlines()
+psF = open(psFN,'w')
+for line in psContents:
+    if line.startswith('OverAllRingToIndex'):
+        ring2Index = float(line.split(' ')[1])
+    if line.startswith('MinOmeSpotIDsToIndex'):
+        min2Index = float(line.split(' ')[1])
+    if line.startswith('MaxOmeSpotIDsToIndex'):
+        max2Index = float(line.split(' ')[1])
+
 if len(inpFileName) > 1:
     # We will update StartFileNrFirstLayer to 1, Ext, FileStem
     # We will set startLayerNr endLayerNr
