@@ -210,6 +210,7 @@ int main(int argc, char *argv[]){
         FILE *fOut = fopen(outFN,"w");
         fwrite(outArrWrite,szarr*sizeof(*outArrWrite),1,fOut);
         fclose(fOut);
+        free(outArrWrite);
         free(outArr);
     }
 }
