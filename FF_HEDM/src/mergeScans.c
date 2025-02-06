@@ -206,7 +206,7 @@ int main(int argc, char *argv[]){
         for (iterator=0;iterator<szarr;iterator++) outArrWrite[iterator] = (uint16_t) 65536 * outArr[iterator] / maxVal;
         // Write file out.
         char outFN[1024];
-        sprintf(outFN,"%s/merged_scans/scanNr_%d_%dx%dx%d.bin",folder,fileNr,fileNr,nFramesOut,nPxZ,nPxY);
+        sprintf(outFN,"%s/merged_scans/scanNr_%d_%dx%dx%d.bin",folder,fileNr,nFramesOut,nPxZ,nPxY);
         FILE *fOut = fopen(outFN,"w");
         fwrite(outArrWrite,szarr*sizeof(*outArrWrite),1,fOut);
         fclose(fOut);
