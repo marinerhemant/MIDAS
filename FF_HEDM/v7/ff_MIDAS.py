@@ -237,41 +237,49 @@ for layerNr in range(startLayerNr,endLayerNr+1):
     shutil.copy2(psFN,resultDir)
     os.makedirs(logDir,exist_ok=True)
     t0 = time.time()
-    if ConvertFiles == 1:
-        if len(dataFN)>0:
-            print("Generating combined MIDAS file from HDF and ps files.")
+    if ProvideInputAll == 0:
+        if ConvertFiles == 1:
+            if len(dataFN)>0:
+                print("Generating combined MIDAS file from HDF and ps files.")
+            else:
+                print("Generating combined MIDAS file from GE and ps files.")
+            outFStem = generateZip(resultDir,psFN,layerNr,dfn=dataFN,nchunks=nchunks,preproc=preproc)
         else:
-            print("Generating combined MIDAS file from GE and ps files.")
-        outFStem = generateZip(resultDir,psFN,layerNr,dfn=dataFN,nchunks=nchunks,preproc=preproc)
+            if len(dataFN) > 0:
+                outFStem = f'{resultDir}/{dataFN}'
+                if not os.path.exists(outFStem):
+                    shutil.copy2(dataFN,resultDir)
+            else:
+                psContents = open(psFN).readlines()
+                for line in psContents:
+                    if line.startswith('FileStem '):
+                        fStem = line.split()[1]
+                    if line.startswith('StartFileNrFirstLayer '):
+                        startFN = int(line.split()[1])
+                    if line.startswith('NrFilesPerSweep '):
+                        NrFilerPerLayer = int(line.split()[1])
+                thisFileNr = startFN + (layerNr-1)*NrFilerPerLayer
+                outFStem = f'{resultDir}/{fStem}_{str(thisFileNr).zfill(6)}.MIDAS.zip'
+                if not os.path.exists(outFStem):
+                    shutil.copy2(dataFN,resultDir)
+            cmdUpd = f'{pytpath} ' + os.path.expanduser('~/opt/MIDAS/utils/updateZarrDset.py')
+            cmdUpd += f' -fn {os.path.basename(outFStem)} -folder {resultDir} -keyToUpdate analysis/process/analysis_parameters/ResultFolder -updatedValue {resultDir}/'
+            print(cmdUpd)
+            subprocess.call(cmdUpd,shell=True)
+            print(outFStem)
+        print(f"Generating HKLs. Time till now: {time.time()-t0} seconds.")
+        f_hkls = open(f'{logDir}/hkls_out.csv','w')
+        f_hkls_err = open(f'{logDir}/hkls_err.csv','w')
+        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+' '+outFStem,shell=True,env=env,stdout=f_hkls,stderr=f_hkls_err)
+        f_hkls.close()
+        f_hkls_err.close()
     else:
-        if len(dataFN) > 0:
-            outFStem = f'{resultDir}/{dataFN}'
-            if not os.path.exists(outFStem):
-                shutil.copy2(dataFN,resultDir)
-        else:
-            psContents = open(psFN).readlines()
-            for line in psContents:
-                if line.startswith('FileStem '):
-                    fStem = line.split()[1]
-                if line.startswith('StartFileNrFirstLayer '):
-                    startFN = int(line.split()[1])
-                if line.startswith('NrFilesPerSweep '):
-                    NrFilerPerLayer = int(line.split()[1])
-            thisFileNr = startFN + (layerNr-1)*NrFilerPerLayer
-            outFStem = f'{resultDir}/{fStem}_{str(thisFileNr).zfill(6)}.MIDAS.zip'
-            if not os.path.exists(outFStem):
-                shutil.copy2(dataFN,resultDir)
-        cmdUpd = f'{pytpath} ' + os.path.expanduser('~/opt/MIDAS/utils/updateZarrDset.py')
-        cmdUpd += f' -fn {os.path.basename(outFStem)} -folder {resultDir} -keyToUpdate analysis/process/analysis_parameters/ResultFolder -updatedValue {resultDir}/'
-        print(cmdUpd)
-        subprocess.call(cmdUpd,shell=True)
-        print(outFStem)
-    print(f"Generating HKLs. Time till now: {time.time()-t0} seconds.")
-    f_hkls = open(f'{logDir}/hkls_out.csv','w')
-    f_hkls_err = open(f'{logDir}/hkls_err.csv','w')
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+' '+outFStem,shell=True,env=env,stdout=f_hkls,stderr=f_hkls_err)
-    f_hkls.close()
-    f_hkls_err.close()
+        print(f"Generating HKLs. Time till now: {time.time()-t0} seconds.")
+        f_hkls = open(f'{logDir}/hkls_out.csv','w')
+        f_hkls_err = open(f'{logDir}/hkls_err.csv','w')
+        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+f' {psFN}',shell=True,env=env,stdout=f_hkls,stderr=f_hkls_err)
+        f_hkls.close()
+        f_hkls_err.close()
     os.makedirs(f'{resultDir}/Temp',exist_ok=True)
     if ProvideInputAll == 0:
         if DoPeakSearch == 1:
