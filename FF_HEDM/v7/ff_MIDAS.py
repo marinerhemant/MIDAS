@@ -166,7 +166,6 @@ if len(rawDir) > 1:
 
 
 psContents = open(psFN,'r').readlines()
-psF = open(psFN,'w')
 for line in psContents:
     if line.startswith('OverAllRingToIndex'):
         ring2Index = float(line.split(' ')[1])
