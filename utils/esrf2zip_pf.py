@@ -69,8 +69,8 @@ omegaOverrides = np.zeros((LastScanNr-startScanNr+1))
 omegaSteps = np.zeros((LastScanNr-startScanNr+1))
 for i in range(startScanNr,LastScanNr+1):
     dsetName = f'{i}.1/instrument/rot/data'
-    dsetName = f'{i}.1/instrument/rot_delta/data'
     omegaOverrides[i-startScanNr] = hf[dsetName][0]
+    dsetName = f'{i}.1/instrument/rot_delta/data'
     omegaSteps[i-startScanNr] = hf[dsetName][0]
 hf.close()
 
