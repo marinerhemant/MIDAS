@@ -83,7 +83,7 @@ int main(int argc, char *argv[]){
     }
     blosc2_init();
     char outfolder[2048];
-    sprintf(outfolder,"%s/merged_scans");
+    sprintf(outfolder,"%s/merged_scans",folder);
     int e = CheckDirectoryCreation(outfolder);
 
     int nJobs = nScans / nScansMerge;
@@ -193,6 +193,11 @@ int main(int argc, char *argv[]){
                 }
             }
             t_1 = omp_get_wtime();
+            free(finfo);
+            free(sizeArr);
+            free(allData);
+            free(rawImage);
+            free(ImageAsym);
             printf("Frames processed, time taken: %lf seconds.\n",t_1-t_0);
         }
         size_t iterator;
