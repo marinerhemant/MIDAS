@@ -414,11 +414,13 @@ int main(int argc, char *argv[]){
 	double MinOme=100000, MaxOme=-100000;
 	int thisRings[nRings][2];
 	double tempArr[13],dummyDouble;
+    int found;
 	while (fgets(aline,1000,Infile)!=NULL){
 		sscanf(aline,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",&dummyDouble,&tempArr[0],&tempArr[1],&tempArr[2],&tempArr[3],
 			&tempArr[4],&tempArr[5],&tempArr[6],&tempArr[7],&tempArr[8],&tempArr[9],&tempArr[10],&tempArr[11],&tempArr[12]);
 		rrd = tempArr[11]*px;
         SpotsMat[counter][13] = -1;
+        found = 0;
 		for (i=0;i<nRings;i++){
 			if (fabs(rrd-RingRads[i]) < width){
 				SpotsMat[counter][0] = counter+1;
@@ -445,11 +447,12 @@ int main(int argc, char *argv[]){
 				if (TopLayer == 1 && fabs(SpotsMat[counter][10]) < 90)
 				{}
 				else {
+                    found = 1;
 					counter++;
 				}
 			}
 		}
-        if (SpotsMat[counter][13] == -1) counter--;
+        if (SpotsMat[counter][13] == -1 && found==1) counter--;
 	}
 	for (i=0;i<nRings;i++){
 		PowderInt[i] /= (EndNr-StartNr+1);
