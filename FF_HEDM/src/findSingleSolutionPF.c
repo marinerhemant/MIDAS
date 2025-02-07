@@ -284,6 +284,7 @@ main(int argc, char *argv[])
         fprintf(uniqueOrientationsF,"\n");
     }
     fclose(uniqueOrientationsF);
+    printf("Number of unique orientations: %d\n",nUniques);
 
 	double *AllSpots;
 	int fd;
@@ -345,7 +346,7 @@ main(int argc, char *argv[])
             allSpotIDsT[nAllSpots+j].ringNr = (int)AllSpots[10*(IDArrThis[j]-1)+5];
             allSpotIDsT[nAllSpots+j].grainNr = i;
             allSpotIDsT[nAllSpots+j].spotNr = j;
-            int count=0;
+            int count=1;
             for (k=0;k<nAllSpots+j;k++){
                 if (allSpotIDsT[k].ringNr == allSpotIDsT[nAllSpots+j].ringNr){
                     if (fabs(allSpotIDsT[nAllSpots+j].omega - allSpotIDsT[k].omega) < tolOme){
