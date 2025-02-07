@@ -338,7 +338,8 @@ main(int argc, char *argv[])
         IDArrThis = malloc(nSpots*sizeof(*IDArrThis));
         fread(IDArrThis,nSpots*sizeof(int),1,IDF);
         fclose(IDF);
-        printf("graiNr: %d nSpots: %d\n",i,nSpots);
+        printf("graiNr: %d nSpots: %d ",i,nSpots);
+        int count2 = 0;
         for (j=0;j<nSpots;j++){
             if (AllSpots[10*(IDArrThis[j]-1)+4] != (double)IDArrThis[j]) {
                 printf("Data is not aligned. Please check. Exiting.\n");
@@ -350,7 +351,7 @@ main(int argc, char *argv[])
             allSpotIDsT[nAllSpots+j].ringNr = (int)AllSpots[10*(IDArrThis[j]-1)+5];
             allSpotIDsT[nAllSpots+j].grainNr = i;
             allSpotIDsT[nAllSpots+j].spotNr = j;
-            int count=1;
+            int count=0;
             for (k=0;k<nAllSpots+j;k++){
                 if (allSpotIDsT[k].ringNr == allSpotIDsT[nAllSpots+j].ringNr){
                     if (fabs(allSpotIDsT[nAllSpots+j].omega - allSpotIDsT[k].omega) < tolOme){
@@ -362,9 +363,10 @@ main(int argc, char *argv[])
                     }
                 }
             }
+            if (count ==0) count2++;
             // printf("%d ",count);
         }
-        // printf("\n");
+        printf("nUniqueSpots: %d\n",count2);
         free(IDArrThis);
         nAllSpots+=nSpots;
     }
