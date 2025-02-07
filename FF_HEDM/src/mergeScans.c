@@ -93,7 +93,7 @@ int main(int argc, char *argv[]){
     #pragma omp parallel for num_threads(nCPUs) private(jobNr) schedule(dynamic)
     for (jobNr=0;jobNr<nJobs;jobNr++){
         char outFN[1024];
-        sprintf(outFN,"%s/merged_scans/scanNr_%d_%dx%dx%d.bin",folder,fileNr,nFramesOut,nPxZ,nPxY);
+        sprintf(outFN,"%s/merged_scans/scanNr_%d_%dx%dx%d.bin",folder,jobNr,nFramesOut,nPxZ,nPxY);
         if (access(outFN,F_OK)==0){
             printf("%s exists, continuing to next file.\n",outFN);
             continue;
@@ -212,8 +212,6 @@ int main(int argc, char *argv[]){
         outArrWrite = calloc(szarr,sizeof(*outArrWrite));
         for (iterator=0;iterator<szarr;iterator++) outArrWrite[iterator] = (uint16_t) 65536 * outArr[iterator] / maxVal;
         // Write file out.
-        char outFN[1024];
-        sprintf(outFN,"%s/merged_scans/scanNr_%d_%dx%dx%d.bin",folder,fileNr,nFramesOut,nPxZ,nPxY);
         FILE *fOut = fopen(outFN,"w");
         fwrite(outArrWrite,szarr*sizeof(*outArrWrite),1,fOut);
         fclose(fOut);
