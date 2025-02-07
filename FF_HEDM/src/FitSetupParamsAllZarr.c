@@ -533,7 +533,7 @@ int main(int argc, char *argv[])
     double LatticeConstant[6],Wavelength,MaxRingRad,Lsd,MaxTtheta,TthetaTol,ybc,zbc,px,tyIn,tzIn, BeamSize = 0;
     double tx,tolTilts=1,tolLsd=5000,tolBC=1,p0,p1,p2,p3,RhoD,wedge,MinEta;
     int cs=0,DoFit=0,RingToIndex;
-    double Rsample, Hbeam,MinMatchesToAcceptFrac=0,MinOmeSpotIDsToIndex,MaxOmeSpotIDsToIndex,Width;
+    double Rsample, Hbeam,MinMatchesToAcceptFrac=0,MinOmeSpotIDsToIndex,MaxOmeSpotIDsToIndex,Width=-1,WidthOrig;
     int UseFriedelPairs=1;
 	double t_int=1, t_gap=0;
     int TopLayer = 0;
@@ -1076,7 +1076,7 @@ int main(int argc, char *argv[])
             free(arr);
             free(data);
         }
-        if (strstr(finfo->name,"analysis/process/analysis_parameters/Width/0")!=NULL){
+        if (strstr(finfo->name,"analysis/process/analysis_parameters/WidthTthPx/0")!=NULL){
             arr = calloc(finfo->size + 1, sizeof(char)); 
             fd = zip_fopen_index(arch, count, 0);
             zip_fread(fd, arr, finfo->size);
@@ -1084,6 +1084,17 @@ int main(int argc, char *argv[])
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             Width = *(double *)&data[0];
+            free(arr);
+            free(data);
+        }
+        if (strstr(finfo->name,"analysis/process/analysis_parameters/Width/0")!=NULL){
+            arr = calloc(finfo->size + 1, sizeof(char)); 
+            fd = zip_fopen_index(arch, count, 0);
+            zip_fread(fd, arr, finfo->size);
+            dsize = sizeof(double);
+            data = (char*)malloc((size_t)dsize);
+            dsize = blosc1_decompress(arr,data,dsize);
+            WidthOrig = *(double *)&data[0];
             free(arr);
             free(data);
         }
@@ -1158,6 +1169,7 @@ int main(int argc, char *argv[])
         }
         count++;
     }
+    if (Width==-1) Width = WidthOrig;
 	if (NrPixelsY != NrPixelsZ){
 		if (NrPixelsY > NrPixelsZ){
 			NrPixels = NrPixelsY;

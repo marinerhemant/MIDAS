@@ -116,7 +116,7 @@ int main(int argc, char *argv[]){
     double Ycen, Zcen, OmegaStep, OmegaFirstFile, Lsd, px, Wavelength,Rsample,Hbeam;
     double PowderIntIn = 0;
     int DiscModel = 0;
-    double DiscArea = 0, Vsample = 0, width;
+    double DiscArea = 0, Vsample = 0, width=-1,widthOrig;
     int locRingThresh, nRings=0;
     while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
         if (strstr(finfo->name,"analysis/process/analysis_parameters/RingThresh/0.0")!=NULL){
@@ -247,7 +247,7 @@ int main(int argc, char *argv[]){
             free(arr);
             free(data);
         }
-        if (strstr(finfo->name,"analysis/process/analysis_parameters/Width/0")!=NULL){
+        if (strstr(finfo->name,"analysis/process/analysis_parameters/WidthTthPx/0")!=NULL){
             arr = calloc(finfo->size + 1, sizeof(char)); 
             fd = zip_fopen_index(arch, count, 0);
             zip_fread(fd, arr, finfo->size);
@@ -255,6 +255,17 @@ int main(int argc, char *argv[]){
             data = (char*)malloc((size_t)dsize);
             dsize = blosc1_decompress(arr,data,dsize);
             width = *(double *)&data[0];
+            free(arr);
+            free(data);
+        }
+        if (strstr(finfo->name,"analysis/process/analysis_parameters/Width/0")!=NULL){
+            arr = calloc(finfo->size + 1, sizeof(char)); 
+            fd = zip_fopen_index(arch, count, 0);
+            zip_fread(fd, arr, finfo->size);
+            dsize = sizeof(double);
+            data = (char*)malloc((size_t)dsize);
+            dsize = blosc1_decompress(arr,data,dsize);
+            widthOrig = *(double *)&data[0];
             free(arr);
             free(data);
         }
@@ -329,6 +340,7 @@ int main(int argc, char *argv[]){
         }
         count++;
     }
+    if (width==-1) width = widthOrig;
 	if (argc==3) Folder = argv[2];
 	if (argc==3) resultFolder = argv[2];
     EndNr = EndNr - skipFrame; // This ensures we don't over-read.

@@ -818,6 +818,11 @@ for line in lines:
         outArr = np.array([float(line.split()[1])]).astype(np.double)
         spWidth = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
         spWidth[:] = outArr
+    searchStr = 'WidthTthPx'
+    if line.startswith(f'{searchStr} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spWidthTth = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spWidthTth[:] = outArr
     searchStr = 'px'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
