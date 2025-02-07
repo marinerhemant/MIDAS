@@ -291,6 +291,7 @@ for layerNr in range(startLayerNr,endLayerNr+1):
         f_hkls.close()
         f_hkls_err.close()
     else:
+        os.chdir(resultDir)
         print(f"Generating HKLs. Time till now: {time.time()-t0} seconds.")
         f_hkls = open(f'{logDir}/hkls_out.csv','w')
         f_hkls_err = open(f'{logDir}/hkls_err.csv','w')
