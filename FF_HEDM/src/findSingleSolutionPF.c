@@ -251,7 +251,7 @@ main(int argc, char *argv[])
         bestFrac = allOrientationsArr[i*10+9];
         OrientMat2Quat(OMThis,Quat1);
         bestOrientationRowNr = i;
-        int counter = 0;
+        int counter = 1;
         for (j=i+1;j<nScans*nScans;j++){
             if (markArr2[j]==true) continue;
             fracInside = allOrientationsArr[j*10+9];
