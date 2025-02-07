@@ -359,6 +359,8 @@ for layerNr in range(startLayerNr,endLayerNr+1):
                 paramstestF.write(f'ResultFolder {resultDir}/Results\n')
             else:
                 paramstestF.write(line)
+        os.makedirs(f'{resultDir}/Output',exist_ok=True)
+        os.makedirs(f'{resultDir}/Results',exist_ok=True)
 
     os.chdir(resultDir)
     print(f"Binning data. Time till now: {time.time()-t0}, workingdir: {resultDir}")

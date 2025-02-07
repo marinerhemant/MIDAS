@@ -333,6 +333,7 @@ main(int argc, char *argv[])
         IDArrThis = malloc(nSpots*sizeof(*IDArrThis));
         fread(IDArrThis,nSpots*sizeof(int),1,IDF);
         fclose(IDF);
+        printf("graiNr: %d nSpots: %d\n",i,nSpots);
         for (j=0;j<nSpots;j++){
             if (AllSpots[10*(IDArrThis[j]-1)+4] != (double)IDArrThis[j]) {
                 printf("Data is not aligned. Please check. Exiting.\n");
