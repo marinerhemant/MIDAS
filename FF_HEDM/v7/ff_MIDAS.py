@@ -350,18 +350,18 @@ for layerNr in range(startLayerNr,endLayerNr+1):
         IDs = sps_filt3[:,4].astype(np.int32)
         np.savetxt(f'{resultDir}/SpotsToIndex.csv',IDs,fmt="%d")
         shutil.copy2(f'{topResDir}/paramstest.txt',f'{resultDir}/.')
-        lines = open(f'{topResDir}/paramstest.txt').readlines()
-        paramstestF = open(f'{topResDir}/paramstest.txt','w')
+        lines = open(f'{resultDir}/paramstest.txt').readlines()
+        paramstestF = open(f'{resultDir}/paramstest.txt','w')
         for line in lines:
             if line.startswith('OutputFolder'):
-                paramstestF.write(f'OutputFolder {topResDir}/Output\n')
+                paramstestF.write(f'OutputFolder {resultDir}/Output\n')
             elif line.startswith('ResultFolder'):
-                paramstestF.write(f'ResultFolder {topResDir}/Results\n')
+                paramstestF.write(f'ResultFolder {resultDir}/Results\n')
             else:
                 paramstestF.write(line)
 
     os.chdir(resultDir)
-    print(f"Binning data. Time till now: {time.time()-t0}")
+    print(f"Binning data. Time till now: {time.time()-t0}, workingdir: {resultDir}")
     f2 = open(f'{logDir}/binning_out.csv','w')
     f_err2 = open(f'{logDir}/binning_err.csv','w')
     subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinData")+' paramstest.txt',shell=True,env=env,stdout=f2,stderr=f_err2)
