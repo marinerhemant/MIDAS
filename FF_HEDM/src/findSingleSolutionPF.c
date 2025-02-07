@@ -267,7 +267,7 @@ main(int argc, char *argv[])
                 counter ++ ;
             }
         }
-        printf("%d %lf\n",counter,bestFrac);
+        // printf("%d %lf\n",counter,bestFrac);
         uniqueKeyArr[nUniques*5+0] = bestOrientationRowNr;
         for (j=0;j<4;j++) uniqueKeyArr[nUniques*5+1+j] = allKeyArr[bestOrientationRowNr*4+j];
         for (j=0;j<9;j++) uniqueOrientArr[nUniques*9+j] = allOrientationsArr[bestOrientationRowNr*10+j];
@@ -337,7 +337,7 @@ main(int argc, char *argv[])
         IDArrThis = malloc(nSpots*sizeof(*IDArrThis));
         fread(IDArrThis,nSpots*sizeof(int),1,IDF);
         fclose(IDF);
-        printf("graiNr: %d nSpots: %d ",i,nSpots);
+        // printf("graiNr: %d nSpots: %d ",i,nSpots);
         int count2 = 0;
         for (j=0;j<nSpots;j++){
             if (AllSpots[10*(IDArrThis[j]-1)+4] != (double)IDArrThis[j]) {
@@ -365,7 +365,7 @@ main(int argc, char *argv[])
             if (count ==0) count2++;
             // printf("%d ",count);
         }
-        printf("nUniqueSpots: %d\n",count2);
+        // printf("nUniqueSpots: %d\n",count2);
         free(IDArrThis);
         nAllSpots+=nSpots;
     }
@@ -456,8 +456,8 @@ main(int argc, char *argv[])
                 locThis = i*maxNHKLs*nScans+j*nScans+k;
                 if (sinoArr[locThis] > 0){
                     sinoArr[locThis] /= maxIntThis;
-                    sinoArr[locThis] *= -1;
-                    sinoArr[locThis] = exp(sinoArr[locThis]);
+                    // sinoArr[locThis] *= -1;
+                    // sinoArr[locThis] = exp(sinoArr[locThis]);
                     AvAngle += allOmeArr[i*maxNHKLs*nScans+j*nScans+k];
                     nAngles++;
                 }
