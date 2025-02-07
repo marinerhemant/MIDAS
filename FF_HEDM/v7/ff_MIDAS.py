@@ -350,6 +350,15 @@ for layerNr in range(startLayerNr,endLayerNr+1):
         IDs = sps_filt3[:,4].astype(np.int32)
         np.savetxt(f'{resultDir}/SpotsToIndex.csv',IDs,fmt="%d")
         shutil.copy2(f'{topResDir}/paramstest.txt',f'{resultDir}/.')
+        lines = open(f'{topResDir}/paramstest.txt').readlines()
+        paramstestF = open(f'{topResDir}/paramstest.txt','w')
+        for line in lines:
+            if line.startswith('OutputFolder'):
+                paramstestF.write(f'OutputFolder {topResDir}/Output\n')
+            elif line.startswith('ResultFolder'):
+                paramstestF.write(f'ResultFolder {topResDir}/Results\n')
+            else:
+                paramstestF.write(line)
 
     os.chdir(resultDir)
     print(f"Binning data. Time till now: {time.time()-t0}")
