@@ -348,6 +348,7 @@ for layerNr in range(startLayerNr,endLayerNr+1):
             sys.exit()
         IDs = sps_filt3[:,4].astype(np.int32)
         np.savetxt(f'{resultDir}/SpotsToIndex.csv',IDs,fmt="%d")
+        shutil.copy2(f'{topResDir}/paramstest.txt',f'{resultDir}/.')
 
     os.chdir(resultDir)
     print(f"Binning data. Time till now: {time.time()-t0}")
@@ -370,7 +371,10 @@ for layerNr in range(startLayerNr,endLayerNr+1):
     print(f"Making grains list. Time till now: {time.time()-t0}")
     f = open(f'{logDir}/process_grains_out.csv','w')
     f_err = open(f'{logDir}/process_grains_err.csv','w')
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/ProcessGrainsZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
+    if ProvideInputAll == 0:
+        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/ProcessGrainsZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
+    else:
+        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/ProcessGrains")+f' {resultDir}/{psFN}',shell=True,env=env,stdout=f,stderr=f_err)
     f.close()
     f_err.close()
     print(f"Done Layer {layerNr}. Total time elapsed: {time.time()-t0}")
