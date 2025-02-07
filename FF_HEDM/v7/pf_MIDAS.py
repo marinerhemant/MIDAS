@@ -514,12 +514,12 @@ if oneSolPerVox==1:
 		dirn = 'fullResults'
 		if os.path.isdir(dirn):
 			if os.path.isdir(dirn[4:]):
-				shutil.rmtree(dirn)
+				shutil.rmtree(dirn[4:])
 			shutil.move(dirn,dirn[4:])
 		dirn = 'fullOutput'
 		if os.path.isdir(dirn):
 			if os.path.isdir(dirn[4:]):
-				shutil.rmtree(dirn)
+				shutil.rmtree(dirn[4:])
 			shutil.move(dirn,dirn[4:])
 	subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')+f' {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}',cwd=topdir,shell=True)
 	os.makedirs('Recons',exist_ok=True)
