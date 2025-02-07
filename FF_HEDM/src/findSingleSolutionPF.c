@@ -251,6 +251,7 @@ main(int argc, char *argv[])
         bestFrac = allOrientationsArr[i*10+9];
         OrientMat2Quat(OMThis,Quat1);
         bestOrientationRowNr = i;
+        int counter = 0;
         for (j=i+1;j<nScans*nScans;j++){
             if (markArr2[j]==true) continue;
             fracInside = allOrientationsArr[j*10+9];
@@ -263,13 +264,16 @@ main(int argc, char *argv[])
                     bestOrientationRowNr = j;
                 }
                 markArr2[j] = true;
+                counter ++ ;
             }
         }
+        printf("%d ");
         uniqueKeyArr[nUniques*5+0] = bestOrientationRowNr;
         for (j=0;j<4;j++) uniqueKeyArr[nUniques*5+1+j] = allKeyArr[bestOrientationRowNr*4+j];
         for (j=0;j<9;j++) uniqueOrientArr[nUniques*9+j] = allOrientationsArr[bestOrientationRowNr*10+j];
         nUniques++;
     }
+    printf("\n");
     free(markArr2);
     free(allKeyArr);
     free(allOrientationsArr);
