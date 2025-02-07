@@ -105,7 +105,6 @@ main(int argc, char *argv[])
             fseek(keyF,0L,SEEK_END);
             size_t szt = ftell(keyF);
             rewind(keyF);
-            printf("%d\n",(int)szt);
             if (szt==0){
                 allKeyArr[voxNr*4+0] = -1;
                 fclose(keyF);
@@ -122,7 +121,6 @@ main(int argc, char *argv[])
                     sscanf(aline,"%zu %zu %zu %zu",&keys[nIDs*4+0],&keys[nIDs*4+1],&keys[nIDs*4+2],&keys[nIDs*4+3]);
                     nIDs++;
                 }
-                printf("%d\n",nIDs);
                 realloc(keys,nIDs*4*sizeof(*keys));
                 fclose(keyF);
                 double *OMArr, *tmpArr, *confIAArr;
