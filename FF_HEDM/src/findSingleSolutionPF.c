@@ -362,9 +362,9 @@ main(int argc, char *argv[])
                     }
                 }
             }
-            printf("%d ",count);
+            // printf("%d ",count);
         }
-        printf("\n");
+        // printf("\n");
         free(IDArrThis);
         nAllSpots+=nSpots;
     }
