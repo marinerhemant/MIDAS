@@ -28,7 +28,7 @@ def generateZip(resFol,pfn,layerNr,dfn='',dloc='',nchunks=-1,preproc=-1,outf='Zi
         cmd+= ' -preProcThresh '+str(preproc)
     outf = resFol+'/output/'+outf
     errf = resFol+'/output/'+errf
-    subprocess.call(cmd,shell=True,stdout=open(outf,'w'),stderr=open(errf,'w'))
+    subprocess.call(cmd,shell=True,stdout=open(outf,'w'),stderr=open(errf,'w'),cwd=resultDir)
     lines = open(outf,'r').readlines()
     if lines[-1].startswith('OutputZipName'):
         return lines[-1].split()[1]
@@ -43,7 +43,7 @@ def peaks(resultDir,zipFN,numProcs,blockNr=0,numBlocks=1):
     env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib:{libpth}'
     f = open(f'{resultDir}/output/peaksearch_out{blockNr}.csv','w')
     f_err = open(f'{resultDir}/output/peaksearch_err{blockNr}.csv','w')
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPZarr")+f' {zipFN} {blockNr} {numBlocks} {numProcs}',shell=True,env=env,stdout=f,stderr=f_err)
+    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPZarr")+f' {zipFN} {blockNr} {numBlocks} {numProcs}',shell=True,env=env,stdout=f,stderr=f_err,cwd=resultDir)
     f.close()
     f_err.close()
 
@@ -287,7 +287,7 @@ for layerNr in range(startLayerNr,endLayerNr+1):
         print(f"Generating HKLs. Time till now: {time.time()-t0} seconds.")
         f_hkls = open(f'{logDir}/hkls_out.csv','w')
         f_hkls_err = open(f'{logDir}/hkls_err.csv','w')
-        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+' '+outFStem,shell=True,env=env,stdout=f_hkls,stderr=f_hkls_err)
+        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+' '+outFStem,shell=True,env=env,stdout=f_hkls,stderr=f_hkls_err,cwd=resultDir)
         f_hkls.close()
         f_hkls_err.close()
     else:
@@ -295,7 +295,7 @@ for layerNr in range(startLayerNr,endLayerNr+1):
         print(f"Generating HKLs. Time till now: {time.time()-t0} seconds.")
         f_hkls = open(f'{logDir}/hkls_out.csv','w')
         f_hkls_err = open(f'{logDir}/hkls_err.csv','w')
-        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+f' {psFN}',shell=True,env=env,stdout=f_hkls,stderr=f_hkls_err)
+        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+f' {psFN}',shell=True,env=env,stdout=f_hkls,stderr=f_hkls_err,cwd=resultDir)
         f_hkls.close()
         f_hkls_err.close()
     os.makedirs(f'{resultDir}/Temp',exist_ok=True)
@@ -315,19 +315,19 @@ for layerNr in range(startLayerNr,endLayerNr+1):
             print("Merging peaks.")
         f = open(f'{logDir}/merge_overlaps_out.csv','w')
         f_err = open(f'{logDir}/merge_overlaps_err.csv','w')
-        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
+        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err,cwd=resultDir)
         f.close()
         f_err.close()
         print(f"Calculating Radii. Time till now: {time.time()-t0}")
         f = open(f'{logDir}/calc_radius_out.csv','w')
         f_err = open(f'{logDir}/calc_radius_err.csv','w')
-        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
+        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err,cwd=resultDir)
         f.close()
         f_err.close()
         print(f"Transforming data. Time till now: {time.time()-t0}")
         f = open(f'{logDir}/fit_setup_out.csv','w')
         f_err = open(f'{logDir}/fit_setup_err.csv','w')
-        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
+        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err,cwd=resultDir)
         f.close()
         f_err.close()
     else:
@@ -364,7 +364,7 @@ for layerNr in range(startLayerNr,endLayerNr+1):
     print(f"Binning data. Time till now: {time.time()-t0}, workingdir: {resultDir}")
     f2 = open(f'{logDir}/binning_out.csv','w')
     f_err2 = open(f'{logDir}/binning_err.csv','w')
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinData")+' paramstest.txt',shell=True,env=env,stdout=f2,stderr=f_err2)
+    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinData")+' paramstest.txt',shell=True,env=env,stdout=f2,stderr=f_err2,cwd=resultDir)
     f2.close()
     f_err2.close()
     print(f"Indexing. Time till now: {time.time()-t0}")
@@ -382,9 +382,9 @@ for layerNr in range(startLayerNr,endLayerNr+1):
     f = open(f'{logDir}/process_grains_out.csv','w')
     f_err = open(f'{logDir}/process_grains_err.csv','w')
     if ProvideInputAll == 0:
-        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/ProcessGrainsZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err)
+        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/ProcessGrainsZarr")+' '+outFStem,shell=True,env=env,stdout=f,stderr=f_err,cwd=resultDir)
     else:
-        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/ProcessGrains")+f' {resultDir}/{psFN}',shell=True,env=env,stdout=f,stderr=f_err)
+        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/ProcessGrains")+f' {resultDir}/{psFN}',shell=True,env=env,stdout=f,stderr=f_err,cwd=resultDir)
     f.close()
     f_err.close()
     print(f"Done Layer {layerNr}. Total time elapsed: {time.time()-t0}")
