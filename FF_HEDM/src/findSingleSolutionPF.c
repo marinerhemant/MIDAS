@@ -345,17 +345,21 @@ main(int argc, char *argv[])
             allSpotIDsT[nAllSpots+j].ringNr = (int)AllSpots[10*(IDArrThis[j]-1)+5];
             allSpotIDsT[nAllSpots+j].grainNr = i;
             allSpotIDsT[nAllSpots+j].spotNr = j;
+            int count=0;
             for (k=0;k<nAllSpots+j;k++){
                 if (allSpotIDsT[k].ringNr == allSpotIDsT[nAllSpots+j].ringNr){
                     if (fabs(allSpotIDsT[nAllSpots+j].omega - allSpotIDsT[k].omega) < tolOme){
                         if (fabs(allSpotIDsT[nAllSpots+j].eta - allSpotIDsT[k].eta) < tolEta){
                             IsNotUniqueSpot[k] = true;
                             IsNotUniqueSpot[nAllSpots+j] = true;
+                            count++;
                         }
                     }
                 }
             }
+            printf("%d ",count);
         }
+        printf("\n");
         free(IDArrThis);
         nAllSpots+=nSpots;
     }
