@@ -134,8 +134,7 @@ def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,
 				Result[:,2] -= omegaOffsetThis
 				Result[Result[:,2]<-180,6] += 360
 				Result[Result[:,2]<-180,7] += 360
-				Result[Result[:,2]<-18
-				0,2] += 360
+				Result[Result[:,2]<-180,2] += 360
 				Result[Result[:,2]> 180,6] -= 360
 				Result[Result[:,2]> 180,7] -= 360
 				Result[Result[:,2]> 180,2] -= 360
