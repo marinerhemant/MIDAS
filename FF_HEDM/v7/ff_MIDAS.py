@@ -364,7 +364,7 @@ for layerNr in range(startLayerNr,endLayerNr+1):
     print(f"Binning data. Time till now: {time.time()-t0}, workingdir: {resultDir}")
     f2 = open(f'{logDir}/binning_out.csv','w')
     f_err2 = open(f'{logDir}/binning_err.csv','w')
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinData")+' paramstest.txt',shell=True,env=env,stdout=f2,stderr=f_err2,cwd=os.getcwd())
+    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinData"),shell=True,env=env,stdout=f2,stderr=f_err2,cwd=os.getcwd())
     f2.close()
     f_err2.close()
     print(f"Indexing. Time till now: {time.time()-t0}")
