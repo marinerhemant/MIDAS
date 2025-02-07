@@ -33,6 +33,7 @@
 #include <blosc2.h>
 #include <stdlib.h> 
 #include <zip.h> 
+#include <unistd.h>
 
 static inline int CheckDirectoryCreation(char Folder[1024])
 {
@@ -91,6 +92,12 @@ int main(int argc, char *argv[]){
     int jobNr;
     #pragma omp parallel for num_threads(nCPUs) private(jobNr) schedule(dynamic)
     for (jobNr=0;jobNr<nJobs;jobNr++){
+        char outFN[1024];
+        sprintf(outFN,"%s/merged_scans/scanNr_%d_%dx%dx%d.bin",folder,fileNr,nFramesOut,nPxZ,nPxY);
+        if (access(outFN,F_OK)==0){
+            printf("%s exists, continuing to next file.\n",outFN);
+            continue;
+        }
         int startScanNr = jobNr*nScansMerge + 1;
         int endScanNr = startScanNr + nScansMerge;
         int fileNr;
@@ -107,7 +114,7 @@ int main(int argc, char *argv[]){
             zip_t* arch = NULL;
             arch = zip_open(DataFN,0,&errorp);
             if (errorp!=NULL){
-                printf("Input was not a zarr zip.\n");
+                printf("Input was not a zarr zip. %s\n",DataFN);
                 continue;
             }
             struct zip_stat* finfo = NULL;
