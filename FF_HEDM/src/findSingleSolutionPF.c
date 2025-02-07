@@ -267,7 +267,7 @@ main(int argc, char *argv[])
                 counter ++ ;
             }
         }
-        printf("%d ",counter);
+        printf("%d %lf\n",counter,bestFrac);
         uniqueKeyArr[nUniques*5+0] = bestOrientationRowNr;
         for (j=0;j<4;j++) uniqueKeyArr[nUniques*5+1+j] = allKeyArr[bestOrientationRowNr*4+j];
         for (j=0;j<9;j++) uniqueOrientArr[nUniques*9+j] = allOrientationsArr[bestOrientationRowNr*10+j];
