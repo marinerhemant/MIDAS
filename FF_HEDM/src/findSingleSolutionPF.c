@@ -105,6 +105,7 @@ main(int argc, char *argv[])
             fseek(keyF,0L,SEEK_END);
             size_t szt = ftell(keyF);
             rewind(keyF);
+            printf("%d\n",(int)szt);
             if (szt==0){
                 allKeyArr[voxNr*4+0] = -1;
                 fclose(keyF);
