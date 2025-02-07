@@ -60,7 +60,7 @@ def index(resultDir,numProcs,blockNr=0,numBlocks=1):
         num_lines = len(f.readlines())
     f = open(f'{resultDir}/output/indexing_out{blockNr}.csv','w')
     f_err = open(f'{resultDir}/output/indexing_err{blockNr}.csv','w')
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerOMP")+f' paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}',shell=True,env=env,stdout=f,stderr=f_err)
+    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerOMP")+f' paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}',shell=True,env=env,stdout=f,stderr=f_err,cwd=resultDir)
     f.close()
     f_err.close()
 
@@ -77,7 +77,7 @@ def refine(resultDir,numProcs,blockNr=0,numBlocks=1):
         num_lines = len(f.readlines())
     f = open(f'{resultDir}/output/refining_out{blockNr}.csv','w')
     f_err = open(f'{resultDir}/output/refining_err{blockNr}.csv','w')
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitPosOrStrainsOMP")+f' paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}',shell=True,env=env,stdout=f,stderr=f_err)
+    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitPosOrStrainsOMP")+f' paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}',shell=True,env=env,stdout=f,stderr=f_err,cwd=resultDir)
     f.close()
     f_err.close()
 
