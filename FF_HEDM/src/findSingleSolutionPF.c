@@ -94,6 +94,7 @@ main(int argc, char *argv[])
         sprintf(keyFN,"%s/IndexKey_voxNr_%0*d.txt",folderName,6,voxNr);
         valsF = fopen(valsFN,"rb");
         keyF = fopen(keyFN,"r");
+        printf("%d %d\n",keyF,valsF);
         if (keyF==NULL || valsF==NULL){
             if (keyF==NULL) printf("Could not open key file %s. Behavior undefined.\n",keyFN);
             if (valsF==NULL) printf("Could not open vals file %s. Behavior undefined.\n",valsFN);
