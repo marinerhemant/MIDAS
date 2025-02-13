@@ -90,7 +90,7 @@ tomoFN = ''
 GridMask = []
 for line in lines:
     if line.startswith('DataDirectory '):
-        resultFolder = line.split(' ')[1]
+        resultFolder = line.split(' ')[1].rstrip()
     elif line.startswith('OrigFileName '):
         origFileName = line.split(' ')[1]
     elif line.startswith('RawStartNr '):
