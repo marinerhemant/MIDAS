@@ -182,6 +182,7 @@ f.write(cmd)
 subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
 f.close()
 f_err.close()
+print(f"Time taken: {time.time()-t0} seconds.")
 
 #### SEED ####
 print("Making Seed orientations.")
@@ -198,6 +199,7 @@ nrOrientations = len(open(seedOrientations).readlines())
 f_ps = open(psFN,'a')
 f_ps.write(f'NrOrientations {nrOrientations}\n')
 f_ps.close()
+print(f"Time taken: {time.time()-t0} seconds.")
 
 #### HEXGRID ####
 print("making and filtering reconstruction space.")
@@ -230,6 +232,7 @@ elif len(GridMask) > 0:
     print(f'Filtered number of points: {nrPoints}')
     shutil.move('grid.txt','grid_old.txt')
     np.savetxt('grid.txt',gridpoints,fmt='%.6f',delimiter=' ',header=f'{nrPoints}',comments='')
+print(f"Time taken: {time.time()-t0} seconds.")
 
 #### MakeDiffrSpots
 print("Making simulated diffraction spots for input seed orientations.")
@@ -240,6 +243,7 @@ f.write(cmd)
 subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
 f.close()
 f_err.close()
+print(f"Time taken: {time.time()-t0} seconds.")
 
 #### ImageProcessing
 if doImageProcessing == 1:
@@ -259,6 +263,7 @@ if doImageProcessing == 1:
     print("Processing images")
     for nodeNr in range(nNodes):
         resImage.append(image(psFN,nodeNr,nNodes,numProcs,logDir,resultFolder))
+print(f"Time taken: {time.time()-t0} seconds.")
 
 #### MMAP
 print("Mapping image info etc.")
@@ -267,15 +272,20 @@ f_err = open(f'{logDir}/map_err.csv','w')
 cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/MMapImageInfo")+f' {psFN}'
 f.write(cmd)
 subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
+shutil.copy2('SpotsInfo.bin','/dev/shm/SpotsInfo.bin')
+shutil.copy2('DiffractionSpots.bin','/dev/shm/DiffractionSpots.bin')
+shutil.copy2('Key.bin','/dev/shm/Key.bin')
+shutil.copy2('OrientMat.bin','/dev/shm/OrientMat.bin')
 f.close()
 f_err.close()
+print(f"Time taken: {time.time()-t0} seconds.")
 
 #### FitOrientation
 print("Fitting orientations")
 resFit = []
 for nodeNr in range(nNodes):
     resFit.append(fit(psFN,nodeNr,nNodes,numProcs,logDir,resultFolder))
-
+print(f"Time taken: {time.time()-t0} seconds.")
 
 #### ParseMic
 print("Parsing mic.")
@@ -287,4 +297,4 @@ subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
 f.close()
 f_err.close()
 
-print(f"Time taken: {time.time()-t0} seconds.")
+print(f"Total time taken: {time.time()-t0} seconds.")
