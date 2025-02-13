@@ -20,14 +20,18 @@ pytpath = sys.executable
 def median(psFN,distanceNr,logDir,resultFolder):
     f = open(f'{logDir}/median{distanceNr}_out.csv','w')
     f_err = open(f'{logDir}/median{distanceNr}_err.csv','w')
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/MedianImageLibTiff")+f' {psFN} {distanceNr}',shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
+    cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/MedianImageLibTiff")+f' {psFN} {distanceNr}'
+    f_err.write(cmd)
+    subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
     f.close()
     f_err.close()
 
 def image(psFN,nodeNr,nNodes,numProcs,logDir,resultFolder):
     f = open(f'{logDir}/image{nodeNr}_out.csv','w')
     f_err = open(f'{logDir}/image{nodeNr}_err.csv','w')
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/ImageProcessingLibTiffOMP")+f' {psFN} {nodeNr} {nNodes} {numProcs}',shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
+    cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/ImageProcessingLibTiffOMP")+f' {psFN} {nodeNr} {nNodes} {numProcs}'
+    f_err.write(cmd)
+    subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
     f.close()
     f_err.close()
 
