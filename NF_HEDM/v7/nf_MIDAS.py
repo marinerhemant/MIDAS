@@ -163,6 +163,7 @@ os.makedirs(reducedFolder,exist_ok=True)
 os.makedirs(logDir,exist_ok=True)
 
 #### HKLS ####
+print("Making hkls.")
 f = open(f'{logDir}/hkls_out.csv','w')
 f_err = open(f'{logDir}/hkls_err.csv','w')
 cmd = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+f' {psFN}'
@@ -172,7 +173,9 @@ f.close()
 f_err.close()
 
 #### SEED ####
+print("Making Seed orientations.")
 if ffSeedOrientations == 1:
+    print("Using far-field seed to generate orientation list.")
     f = open(f'{logDir}/seed_out.csv','w')
     f_err = open(f'{logDir}/seed_err.csv','w')
     cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/GenSeedOrientationsFF2NFHEDM")+f' {grainsFile} {seedOrientations}'
@@ -180,13 +183,13 @@ if ffSeedOrientations == 1:
     subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
     f.close()
     f_err.close()
-
 nrOrientations = len(open(seedOrientations).readlines())
 f_ps = open(psFN,'a')
 f_ps.write(f'NrOrientations {nrOrientations}\n')
 f_ps.close()
 
 #### HEXGRID ####
+print("making and filtering reconstruction space.")
 f = open(f'{logDir}/hex_out.csv','w')
 f_err = open(f'{logDir}/hex_err.csv','w')
 cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/MakeHexGrid")+f' {psFN}'
@@ -195,6 +198,7 @@ subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
 f.close()
 f_err.close()
 if len(tomoFN) > 1:
+    print("Using tomo to filter reconstruction space.")
     f = open(f'{logDir}/tomo_out.csv','w')
     f_err = open(f'{logDir}/tomo_err.csv','w')
     cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/filterGridfromTomo")+f' {tomoFN} {tomoPx}'
@@ -205,6 +209,7 @@ if len(tomoFN) > 1:
     shutil.move('grid.txt','grid_unfilt.txt')
     shutil.move('gridNew.txt','grid.txt')
 elif len(GridMask) > 0:
+    print("Applying grid mask.")
     gridpoints = np.genfromtxt('grid.txt',skip_header=1,delimiter=' ')
     gridpoints = gridpoints[gridpoints[:,2]>=GridMask[0],:]
     gridpoints = gridpoints[gridpoints[:,2]<=GridMask[1],:]
@@ -216,6 +221,7 @@ elif len(GridMask) > 0:
     np.savetxt('grid.txt',gridpoints,fmt='%.6f',delimiter=' ',header=f'{nrPoints}',comments='')
 
 #### MakeDiffrSpots
+print("Making simulated diffraction spots for input seed orientations.")
 f = open(f'{logDir}/spots_out.csv','w')
 f_err = open(f'{logDir}/spots_err.csv','w')
 cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/MakeDiffrSpots")+f' {psFN}'
@@ -226,20 +232,25 @@ f_err.close()
 
 #### ImageProcessing
 if doImageProcessing == 1:
+    print("Processing images.")
     #### We can now do median, then peaks
     if machineName == 'local':
+        print("Computing median locallly")
         p = Pool(nDistances)
         work_data = [i for i in range(1,nDistances+1)]
         p.map(median_local,work_data)
     else:
+        print("Computing median remotely")
         resMedian = []
         for distanceNr in range(1,nDistances+1):
             resMedian.append(median(psFN,distanceNr,logDir,resultFolder))
     resImage = []
+    print("Processing images")
     for nodeNr in range(nNodes):
         resImage.append(image(psFN,nodeNr,nNodes,numProcs,logDir,resultFolder))
 
 #### MMAP
+print("Mapping image info etc.")
 f = open(f'{logDir}/map_out.csv','w')
 f_err = open(f'{logDir}/map_err.csv','w')
 cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/MMapImageInfo")+f' {psFN}'
@@ -249,12 +260,14 @@ f.close()
 f_err.close()
 
 #### FitOrientation
+print("Fitting orientations")
 resFit = []
 for nodeNr in range(nNodes):
     resFit.append(fit(psFN,nodeNr,nNodes,numProcs,logDir,resultFolder))
 
 
 #### ParseMic
+print("Parsing mic.")
 f = open(f'{logDir}/parse_out.csv','w')
 f_err = open(f'{logDir}/parse_err.csv','w')
 cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/ParseMic")+f' {psFN}'
