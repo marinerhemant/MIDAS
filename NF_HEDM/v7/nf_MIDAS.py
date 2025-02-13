@@ -61,7 +61,7 @@ parser = MyParser(description='''Near-field HEDM analysis using MIDAS. V7.0.0, c
 parser.add_argument('-paramFN', type=str, required=False, default='', help='Parameter file name. Provide either paramFN and/or dataFN.')
 parser.add_argument('-nCPUs', type=int, required=False, default=10, help='Number of CPU cores to use if running locally.')
 parser.add_argument('-machineName', type=str, required=False, default='local', help='Machine name for execution, local, orthrosnew, orthrosall, umich, marquette, purdue.')
-parser.add_argument('-nNodes', type=int, required=False, default=-1, help='Number of nodes for execution, omit if want to automatically select.')
+parser.add_argument('-nNodes', type=int, required=False, default=1, help='Number of nodes for execution, omit if want to automatically select.')
 parser.add_argument('-startLayerNr', type=int, required=False, default=1, help='NOT IMPLEMENTED YET!!! Start LayerNr to process.')
 parser.add_argument('-endLayerNr', type=int, required=False, default=1, help=f'NOT IMPLEMENTED YET!!! End LayerNr to process. If Start and End'+
                     ' LayerNrs are equal, it will only process 1 layer, else will process multiple layers.')
