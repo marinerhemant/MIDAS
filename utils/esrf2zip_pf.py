@@ -20,13 +20,14 @@ def singleJob(fileNr):
     f = h5py.File(fn2, 'w')
     link = h5py.ExternalLink(fn, dsetpath)
     f['exchange/data'] = link
-    f['measurement/process/scan_parameters/startOmeOverride'] = omegaOverrides[fileNr-startScanNr]
+    # f['measurement/process/scan_parameters/startOmeOverride'] = omegaOverrides[fileNr-startScanNr]
+    f['measurement/process/scan_parameters/omegaCenter'] = omegaValues[fileNr-startScanNr]
     f.close()
     os.chdir(thisResFolder)
     f = open(f'{thisResFolder}/zip_out.txt','w')
     f_err = open(f'{thisResFolder}/zip_err.txt','w')
     zipPath = os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZip.py')
-    cmd = f'{pytpath} {zipPath} -resultFolder {thisResFolder} -paramFN {paramFN} -dataFN {fn2} -numFrameChunks {numFrameChunks} -preProcThresh {preProc} -omegaStep {omegaSteps[fileNr-startScanNr]}'
+    cmd = f'{pytpath} {zipPath} -resultFolder {thisResFolder} -paramFN {paramFN} -dataFN {fn2} -numFrameChunks {numFrameChunks} -preProcThresh {preProc} ' #### -omegaStep {omegaSteps[fileNr-startScanNr]}'
     print(cmd)
     subprocess.call(cmd,env=env,shell=True,stdout=f,stderr=f_err)
     f.close()
@@ -67,7 +68,9 @@ basedir = os.getcwd()
 hf = h5py.File(combinedH5FN,'r')
 omegaOverrides = np.zeros((LastScanNr-startScanNr+1))
 omegaSteps = np.zeros((LastScanNr-startScanNr+1))
+omegaValues = []
 for i in range(startScanNr,LastScanNr+1):
+    omegaValues.append(hf[f'{i}.1/measurement/rot_center'][()])
     dsetName = f'{i}.1/instrument/rot/data'
     omegaOverrides[i-startScanNr] = hf[dsetName][0]
     dsetName = f'{i}.1/instrument/rot_delta/data'
