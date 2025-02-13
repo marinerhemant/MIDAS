@@ -34,7 +34,9 @@ def image(psFN,nodeNr,nNodes,numProcs,logDir,resultFolder):
 def fit(psFN,nodeNr,nNodes,numProcs,logDir,resultFolder):
     f = open(f'{logDir}/fit{nodeNr}_out.csv','w')
     f_err = open(f'{logDir}/fit{nodeNr}_err.csv','w')
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/FitOrientationOMP")+f' {psFN} {nodeNr} {nNodes} {numProcs}',shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
+    cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/FitOrientationOMP")+f' {psFN} {nodeNr} {nNodes} {numProcs}'
+    f_err.write(cmd)
+    subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
     f.close()
     f_err.close()
 
