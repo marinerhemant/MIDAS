@@ -212,6 +212,8 @@ elif len(GridMask) > 0:
     gridpoints = gridpoints[gridpoints[:,3]<=GridMask[2],:]
     gridpoints = gridpoints[gridpoints[:,3]>=GridMask[3],:]
     nrPoints = gridpoints.shape[0]
+    print(nrPoints)
+    print(gridpoints)
     shutil.move('grid.txt','grid_old.txt')
     np.savetxt('grid.txt',gridpoints,fmt='%.6f',delimiter=' ',header=f'{nrPoints}',comments='')
 
