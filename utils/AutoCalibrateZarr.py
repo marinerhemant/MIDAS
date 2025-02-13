@@ -79,7 +79,7 @@ dataLoc = args.dataLoc
 LsdGuess = args.LsdGuess
 convertFile = args.ConvertFile
 
-if convertFile == 1:
+if convertFile == 1 or convertFile == 2:
 	psFN = args.paramFN
 	if len(psFN) == 0:
 		print("Provide the parameter file if you want to generate a zarr zip file.")
