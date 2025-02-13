@@ -79,13 +79,12 @@ dataLoc = args.dataLoc
 LsdGuess = args.LsdGuess
 convertFile = args.ConvertFile
 
-print(convertFile)
 if convertFile == 1 or convertFile == 2:
-	print(convertFile)
 	psFN = args.paramFN
 	if len(psFN) == 0:
 		print("Provide the parameter file if you want to generate a zarr zip file.")
 		sys.exit()
+	print("Generating zip file.")
 	dataFN = generateZip('.',psFN,dfn=dataFN,nchunks=100,preproc=0,darkfn=darkFN,dloc=dataLoc)
 
 dataFN = dataFN.split('/')[-1]
