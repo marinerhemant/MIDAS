@@ -209,18 +209,11 @@ elif len(GridMask) > 0:
     gridpoints = np.genfromtxt('grid.txt',skip_header=1,delimiter=' ')
     print(gridpoints)
     gridpoints = gridpoints[gridpoints[:,2]>=GridMask[0],:]
-    nrPoints = gridpoints.shape[0]
-    print(nrPoints)
     gridpoints = gridpoints[gridpoints[:,2]<=GridMask[1],:]
+    gridpoints = gridpoints[gridpoints[:,3]>=GridMask[2],:]
+    gridpoints = gridpoints[gridpoints[:,3]<=GridMask[3],:]
     nrPoints = gridpoints.shape[0]
-    print(nrPoints)
-    gridpoints = gridpoints[gridpoints[:,3]<=GridMask[2],:]
-    nrPoints = gridpoints.shape[0]
-    print(nrPoints)
-    gridpoints = gridpoints[gridpoints[:,3]>=GridMask[3],:]
-    nrPoints = gridpoints.shape[0]
-    print(nrPoints)
-    print(gridpoints)
+    print(f'Filtered number of points: {nrPoints}')
     shutil.move('grid.txt','grid_old.txt')
     np.savetxt('grid.txt',gridpoints,fmt='%.6f',delimiter=' ',header=f'{nrPoints}',comments='')
 
