@@ -79,6 +79,7 @@ dataLoc = args.dataLoc
 LsdGuess = args.LsdGuess
 convertFile = args.ConvertFile
 
+print(convertFile)
 if convertFile == 1 or convertFile == 2:
 	print(convertFile)
 	psFN = args.paramFN
