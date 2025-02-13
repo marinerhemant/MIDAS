@@ -207,6 +207,7 @@ if len(tomoFN) > 1:
 elif len(GridMask) > 0:
     print(GridMask)
     gridpoints = np.genfromtxt('grid.txt',skip_header=1,delimiter=' ')
+    print(gridpoints)
     gridpoints = gridpoints[gridpoints[:,2]>=GridMask[0],:]
     gridpoints = gridpoints[gridpoints[:,2]<=GridMask[1],:]
     gridpoints = gridpoints[gridpoints[:,3]<=GridMask[2],:]
