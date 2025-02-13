@@ -155,17 +155,21 @@ os.makedirs(reducedFolder,exist_ok=True)
 os.makedirs(logDir,exist_ok=True)
 
 #### HKLS ####
-f_hkls = open(f'{logDir}/hkls_out.csv','w')
-f_hkls_err = open(f'{logDir}/hkls_err.csv','w')
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+f' {psFN}',shell=True,stdout=f_hkls,stderr=f_hkls_err,cwd=resultFolder)
-f_hkls.close()
-f_hkls_err.close()
+f = open(f'{logDir}/hkls_out.csv','w')
+f_err = open(f'{logDir}/hkls_err.csv','w')
+cmd = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+f' {psFN}'
+f_err.write(cmd)
+subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
+f.close()
+f_err.close()
 
 #### SEED ####
 if ffSeedOrientations == 1:
     f = open(f'{logDir}/seed_out.csv','w')
     f_err = open(f'{logDir}/seed_err.csv','w')
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/GenSeedOrientationsFF2NFHEDM")+f' {grainsFile} {seedOrientations}',shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
+    cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/GenSeedOrientationsFF2NFHEDM")+f' {grainsFile} {seedOrientations}'
+    f_err.write(cmd)
+    subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
     f.close()
     f_err.close()
 
@@ -177,13 +181,17 @@ f_ps.close()
 #### HEXGRID ####
 f = open(f'{logDir}/hex_out.csv','w')
 f_err = open(f'{logDir}/hex_err.csv','w')
-subprocess.call(os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/MakeHexGrid")+f' {psFN}',shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
+cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/MakeHexGrid")+f' {psFN}'
+f_err.write(cmd)
+subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
 f.close()
 f_err.close()
 if len(tomoFN) > 1:
     f = open(f'{logDir}/tomo_out.csv','w')
     f_err = open(f'{logDir}/tomo_err.csv','w')
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/filterGridfromTomo")+f' {tomoFN} {tomoPx}',shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
+    cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/filterGridfromTomo")+f' {tomoFN} {tomoPx}'
+    f_err.write(cmd)
+    subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
     f.close()
     f_err.close()
     shutil.move('grid.txt','grid_unfilt.txt')
@@ -201,7 +209,9 @@ elif len(GridMask) > 0:
 #### MakeDiffrSpots
 f = open(f'{logDir}/spots_out.csv','w')
 f_err = open(f'{logDir}/spots_err.csv','w')
-subprocess.call(os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/MakeDiffrSpots")+f' {psFN}',shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
+cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/MakeDiffrSpots")+f' {psFN}'
+f_err.write(cmd)
+subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
 f.close()
 f_err.close()
 
@@ -218,7 +228,9 @@ if doImageProcessing == 1:
 #### MMAP
 f = open(f'{logDir}/map_out.csv','w')
 f_err = open(f'{logDir}/map_err.csv','w')
-subprocess.call(os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/MMapImageInfo")+f' {psFN}',shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
+cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/MMapImageInfo")+f' {psFN}'
+f_err.write(cmd)
+subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
 f.close()
 f_err.close()
 
@@ -231,6 +243,8 @@ for nodeNr in range(nNodes):
 #### ParseMic
 f = open(f'{logDir}/parse_out.csv','w')
 f_err = open(f'{logDir}/parse_err.csv','w')
-subprocess.call(os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/ParseMic")+f' {psFN}',shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
+cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/ParseMic")+f' {psFN}'
+f_err.write(cmd)
+subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
 f.close()
 f_err.close()
