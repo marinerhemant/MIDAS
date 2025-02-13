@@ -205,6 +205,7 @@ if len(tomoFN) > 1:
     shutil.move('grid.txt','grid_unfilt.txt')
     shutil.move('gridNew.txt','grid.txt')
 elif len(GridMask) > 0:
+    print(GridMask)
     gridpoints = np.genfromtxt('grid.txt',skip_header=1,delimiter=' ')
     gridpoints = gridpoints[gridpoints[:,2]>=GridMask[0],:]
     gridpoints = gridpoints[gridpoints[:,2]<=GridMask[1],:]
