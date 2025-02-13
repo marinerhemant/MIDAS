@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import time
 import parsl
 import subprocess
 import sys, os
@@ -15,6 +16,7 @@ binDir = os.path.expanduser('~/opt/MIDAS/NF_HEDM/bin/')
 sys.path.insert(0,v7Dir)
 from parsl.app.app import python_app
 pytpath = sys.executable
+t0 = time.time()
 
 def median(psFN,distanceNr,logDir,resultFolder):
     import os
@@ -284,3 +286,5 @@ f.write(cmd)
 subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
 f.close()
 f_err.close()
+
+print(f"Time taken: {time.time()-t0} seconds.")
