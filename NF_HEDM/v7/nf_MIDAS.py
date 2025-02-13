@@ -3,12 +3,11 @@
 import parsl
 import subprocess
 import sys, os
-import time
 import argparse
 import signal
 import shutil
-import re
 import numpy as np
+from multiprocessing import Pool
 utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 sys.path.insert(0,utilsDir)
 v7Dir = os.path.expanduser('~/opt/MIDAS/NF_HEDM/v7/')
@@ -18,6 +17,15 @@ from parsl.app.app import python_app
 pytpath = sys.executable
 
 def median(psFN,distanceNr,logDir,resultFolder):
+    f = open(f'{logDir}/median{distanceNr}_out.csv','w')
+    f_err = open(f'{logDir}/median{distanceNr}_err.csv','w')
+    cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/MedianImageLibTiff")+f' {psFN} {distanceNr}'
+    f_err.write(cmd)
+    subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
+    f.close()
+    f_err.close()
+
+def median_local(distanceNr):
     f = open(f'{logDir}/median{distanceNr}_out.csv','w')
     f_err = open(f'{logDir}/median{distanceNr}_err.csv','w')
     cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/MedianImageLibTiff")+f' {psFN} {distanceNr}'
@@ -218,9 +226,14 @@ f_err.close()
 #### ImageProcessing
 if doImageProcessing == 1:
     #### We can now do median, then peaks
-    resMedian = []
-    for distanceNr in range(1,nDistances+1):
-        resMedian.append(median(psFN,distanceNr,logDir,resultFolder))
+    if machineName == 'local':
+        p = Pool(nDistances)
+        work_data = [i for i in range(1,nDistances+1)]
+        p.map(median_local,work_data)
+    else:
+        resMedian = []
+        for distanceNr in range(1,nDistances+1):
+            resMedian.append(median(psFN,distanceNr,logDir,resultFolder))
     resImage = []
     for nodeNr in range(nNodes):
         resImage.append(image(psFN,nodeNr,nNodes,numProcs,logDir,resultFolder))
