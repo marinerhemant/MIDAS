@@ -66,15 +66,15 @@ numProcs = args.nCPUs
 basedir = os.getcwd()
 
 hf = h5py.File(combinedH5FN,'r')
-omegaOverrides = np.zeros((LastScanNr-startScanNr+1))
-omegaSteps = np.zeros((LastScanNr-startScanNr+1))
+# omegaOverrides = np.zeros((LastScanNr-startScanNr+1))
+# omegaSteps = np.zeros((LastScanNr-startScanNr+1))
 omegaValues = []
 for i in range(startScanNr,LastScanNr+1):
     omegaValues.append(hf[f'{i}.1/measurement/rot_center'][()])
-    dsetName = f'{i}.1/instrument/rot/data'
-    omegaOverrides[i-startScanNr] = hf[dsetName][0]
-    dsetName = f'{i}.1/instrument/rot_delta/data'
-    omegaSteps[i-startScanNr] = hf[dsetName][0]
+    # dsetName = f'{i}.1/instrument/rot/data'
+    # omegaOverrides[i-startScanNr] = hf[dsetName][0]
+    # dsetName = f'{i}.1/instrument/rot_delta/data'
+    # omegaSteps[i-startScanNr] = hf[dsetName][0]
 hf.close()
 
 work_data = [fileNr for fileNr in range(startScanNr,LastScanNr+1)]
