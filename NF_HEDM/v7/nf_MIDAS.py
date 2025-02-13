@@ -33,6 +33,7 @@ def median_local(distanceNr):
     subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
     f.close()
     f_err.close()
+    return 1
 
 def image(psFN,nodeNr,nNodes,numProcs,logDir,resultFolder):
     f = open(f'{logDir}/image{nodeNr}_out.csv','w')
@@ -238,7 +239,7 @@ if doImageProcessing == 1:
         print("Computing median locallly")
         p = Pool(nDistances)
         work_data = [i for i in range(1,nDistances+1)]
-        p.map(median_local,work_data)
+        res = p.map(median_local,work_data)
     else:
         print("Computing median remotely")
         resMedian = []
