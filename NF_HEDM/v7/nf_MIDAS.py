@@ -17,38 +17,46 @@ from parsl.app.app import python_app
 pytpath = sys.executable
 
 def median(psFN,distanceNr,logDir,resultFolder):
+    import os
+    import subprocess
     f = open(f'{logDir}/median{distanceNr}_out.csv','w')
     f_err = open(f'{logDir}/median{distanceNr}_err.csv','w')
     cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/MedianImageLibTiff")+f' {psFN} {distanceNr}'
-    f_err.write(cmd)
+    f.write(cmd)
     subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
     f.close()
     f_err.close()
 
 def median_local(distanceNr):
+    import os
+    import subprocess
     f = open(f'{logDir}/median{distanceNr}_out.csv','w')
     f_err = open(f'{logDir}/median{distanceNr}_err.csv','w')
     cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/MedianImageLibTiff")+f' {psFN} {distanceNr}'
-    f_err.write(cmd)
+    f.write(cmd)
     subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
     f.close()
     f_err.close()
     return 1
 
 def image(psFN,nodeNr,nNodes,numProcs,logDir,resultFolder):
+    import os
+    import subprocess
     f = open(f'{logDir}/image{nodeNr}_out.csv','w')
     f_err = open(f'{logDir}/image{nodeNr}_err.csv','w')
     cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/ImageProcessingLibTiffOMP")+f' {psFN} {nodeNr} {nNodes} {numProcs}'
-    f_err.write(cmd)
+    f.write(cmd)
     subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
     f.close()
     f_err.close()
 
 def fit(psFN,nodeNr,nNodes,numProcs,logDir,resultFolder):
+    import os
+    import subprocess
     f = open(f'{logDir}/fit{nodeNr}_out.csv','w')
     f_err = open(f'{logDir}/fit{nodeNr}_err.csv','w')
     cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/FitOrientationOMP")+f' {psFN} {nodeNr} {nNodes} {numProcs}'
-    f_err.write(cmd)
+    f.write(cmd)
     subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
     f.close()
     f_err.close()
@@ -168,7 +176,7 @@ print("Making hkls.")
 f = open(f'{logDir}/hkls_out.csv','w')
 f_err = open(f'{logDir}/hkls_err.csv','w')
 cmd = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+f' {psFN}'
-f_err.write(cmd)
+f.write(cmd)
 subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
 f.close()
 f_err.close()
@@ -180,7 +188,7 @@ if ffSeedOrientations == 1:
     f = open(f'{logDir}/seed_out.csv','w')
     f_err = open(f'{logDir}/seed_err.csv','w')
     cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/GenSeedOrientationsFF2NFHEDM")+f' {grainsFile} {seedOrientations}'
-    f_err.write(cmd)
+    f.write(cmd)
     subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
     f.close()
     f_err.close()
@@ -194,7 +202,7 @@ print("making and filtering reconstruction space.")
 f = open(f'{logDir}/hex_out.csv','w')
 f_err = open(f'{logDir}/hex_err.csv','w')
 cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/MakeHexGrid")+f' {psFN}'
-f_err.write(cmd)
+f.write(cmd)
 subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
 f.close()
 f_err.close()
@@ -203,7 +211,7 @@ if len(tomoFN) > 1:
     f = open(f'{logDir}/tomo_out.csv','w')
     f_err = open(f'{logDir}/tomo_err.csv','w')
     cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/filterGridfromTomo")+f' {tomoFN} {tomoPx}'
-    f_err.write(cmd)
+    f.write(cmd)
     subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
     f.close()
     f_err.close()
@@ -226,7 +234,7 @@ print("Making simulated diffraction spots for input seed orientations.")
 f = open(f'{logDir}/spots_out.csv','w')
 f_err = open(f'{logDir}/spots_err.csv','w')
 cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/MakeDiffrSpots")+f' {psFN}'
-f_err.write(cmd)
+f.write(cmd)
 subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
 f.close()
 f_err.close()
@@ -255,7 +263,7 @@ print("Mapping image info etc.")
 f = open(f'{logDir}/map_out.csv','w')
 f_err = open(f'{logDir}/map_err.csv','w')
 cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/MMapImageInfo")+f' {psFN}'
-f_err.write(cmd)
+f.write(cmd)
 subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
 f.close()
 f_err.close()
@@ -272,7 +280,7 @@ print("Parsing mic.")
 f = open(f'{logDir}/parse_out.csv','w')
 f_err = open(f'{logDir}/parse_err.csv','w')
 cmd = os.path.expanduser("~/opt/MIDAS/NF_HEDM/bin/ParseMic")+f' {psFN}'
-f_err.write(cmd)
+f.write(cmd)
 subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
 f.close()
 f_err.close()
