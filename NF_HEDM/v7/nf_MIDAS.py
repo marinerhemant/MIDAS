@@ -92,19 +92,19 @@ for line in lines:
     if line.startswith('DataDirectory '):
         resultFolder = line.split(' ')[1].rstrip()
     elif line.startswith('OrigFileName '):
-        origFileName = line.split(' ')[1]
+        origFileName = line.split(' ')[1].rstrip()
     elif line.startswith('RawStartNr '):
         firstNr = int(line.split(' ')[1])
     elif line.startswith('nDistances '):
         nDistances = int(line.split(' ')[1])
     elif line.startswith('ReducedFileName '):
-        reducedName = line.split(' ')[1]
+        reducedName = line.split(' ')[1].rstrip()
     elif line.startswith('GrainsFile '):
-        grainsFile = line.split(' ')[1]
+        grainsFile = line.split(' ')[1].rstrip()
     elif line.startswith('SeedOrientations '):
-        seedOrientations = line.split(' ')[1]
+        seedOrientations = line.split(' ')[1].rstrip()
     elif line.startswith('TomoImage '):
-        tomoFN = line.split(' ')[1]
+        tomoFN = line.split(' ')[1].rstrip()
     elif line.startswith('TomoPixelSize '):
         tomoPx = float(line.split(' ')[1])
     elif line.startswith('GridMask '):
