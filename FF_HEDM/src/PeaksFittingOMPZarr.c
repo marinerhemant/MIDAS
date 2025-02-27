@@ -1215,7 +1215,7 @@ int main(int argc, char *argv[]){
             darkTemp[b] += darkcontents[b];
         }
     }
-    if (nDarks > 0) for (a=0;a<(NrPixels*NrPixels);a++) darkTemp[a] /= (nDarks-skipFrame);
+    if (nDarks > 0) for (a=0;a<(NrPixels*NrPixels);a++) darkTemp[a] /= (nDarks);
 	Transposer(darkTemp,NrPixels,dark);
 	free(darkTemp);
 	free(darkcontents);
