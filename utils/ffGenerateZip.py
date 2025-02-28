@@ -147,7 +147,7 @@ elif skipF > 0 and HZ > 8192:
     HZ = 8192
 
 origInputFN = InputFN
-if len(InputFN)==0:
+if len(InputFN)==0 or layerNr > 1:
     fNr += (layerNr-1)*NrFilesPerSweep
     fNr = str(fNr)
     InputFN = rawFolder + '/' + fStem + '_' + fNr.zfill(pad) + ext
