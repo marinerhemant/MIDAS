@@ -297,4 +297,10 @@ subprocess.call(cmd,shell=True,stdout=f,stderr=f_err,cwd=resultFolder)
 f.close()
 f_err.close()
 
+print("Cleaning up.")
+os.remove('/dev/shm/DiffractionSpots.bin')
+os.remove('/dev/shm/Key.bin')
+os.remove('/dev/shm/OrientMat.bin')
+os.remove('/dev/shm/SpotsInfo.bin')
+
 print(f"Total time taken: {time.time()-t0} seconds.")
