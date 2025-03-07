@@ -47,7 +47,13 @@ pip install numpy scipy matplotlib pillow numba
 For GPU acceleration (optional):
 
 ```bash
-pip install numba cudatoolkit
+conda install cudatoolkit
+```
+
+Install the package:
+
+```bash
+python setup.py install
 ```
 
 ## Usage
@@ -57,7 +63,7 @@ pip install numba cudatoolkit
 The package provides a command-line interface for easy use:
 
 ```bash
-python diffraction_cli.py image.tif --dark dark.tif --map Map.bin --nmap nMap.bin --output output.png
+python midas_integrator/cli.py image.tif --dark dark.tif --map Map.bin --nmap nMap.bin --output output.png
 ```
 
 #### Command Line Options
@@ -95,7 +101,7 @@ optional arguments:
 You can also use the package programmatically in your own Python code:
 
 ```python
-from diffraction_core import DiffractionConfig, DiffractionProcessor
+from midas_integrator import DiffractionConfig, DiffractionProcessor
 
 # Create a configuration
 config = DiffractionConfig(
@@ -129,27 +135,27 @@ radii = result[:, 0]
 intensities = result[:, 1]
 ```
 
-See `example_script.py` for a more complete example.
+See `examples/example_script.py` for a more complete example.
 
 ### Saving Integrated Data
 
-The package can now save the integrated 1D profile (radius vs. intensity) to a CSV file:
+The package can also save the integrated 1D profile (radius vs. intensity) to a CSV file:
 
 ```bash
-python diffraction_cli.py image.tif --output plot.png --save-data integrated_data.csv
+python midas_integrator/cli.py image.tif --output plot.png --save-data integrated_data.csv
 ```
 
 This creates a CSV file with headers "Radius,Intensity" containing the integrated diffraction profile.
 
 ### Controlling Azimuthal Integration Range
 
-You can control the azimuthal integration range using the eta parameters:
+You can control the azimuthal integration range using the eta parameters (which were used to generate the Map.bin and nMap.bin files):
 
 ```bash
-python diffraction_cli.py image.tif --output plot.png --etamin -90 --etamax 90 --etabin 0.5
+python midas_integrator/cli.py image.tif --output plot.png --etamin -90 --etamax 90 --etabin 0.5
 ```
 
-This integrates only over azimuthal angles from -90° to 90° with 0.5° bin size.
+This will read the .bin maps using the azimuthal angles from -90° to 90° with 0.5° bin size.
 
 ## Performance Optimization
 
@@ -170,7 +176,7 @@ For best performance:
 The package includes a set of unit tests to verify functionality:
 
 ```bash
-python -m unittest test_diffraction.py
+python -m unittest tests/test_diffraction.py
 ```
 
 ## Contributing

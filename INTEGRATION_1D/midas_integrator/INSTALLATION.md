@@ -11,25 +11,9 @@ Before installing the package, ensure you have the following prerequisites:
 
 For GPU acceleration (optional but recommended for performance):
 - NVIDIA GPU with CUDA support
-- CUDA Toolkit installed (compatible with your GPU)
+- CUDA Toolkit installed (compatible with your GPU), needs to be installed using conda, pip does not have cudatoolkit.
 
 ## Basic Installation
-
-### Installing from PyPI (Recommended)
-
-The simplest way to install the package is from PyPI using pip:
-
-```bash
-pip install midas_integrator
-```
-
-### Installing with GPU Support
-
-To install the package with GPU acceleration support:
-
-```bash
-pip install midas_integrator[gpu]
-```
 
 ### Installing from Source
 
@@ -43,12 +27,18 @@ If you want to install the latest development version from source:
 
 2. Install the package in development mode:
    ```bash
-   pip install -e .
+   pip install -r requirements.txt
    ```
 
 3. To include GPU support when installing from source:
    ```bash
-   pip install -e .[gpu]
+   pip install -r requirements.txt
+   conda install cudatoolkit
+   ```
+
+4. Install the package:
+   ```bash
+   python setup.py install
    ```
 
 ## Platform-Specific Instructions
@@ -59,8 +49,8 @@ On Windows, the installation process is generally the same as above, but there a
 
 1. It's recommended to use Anaconda or Miniconda for managing Python environments:
    ```
-   conda create -n diffraction python=3.9
-   conda activate diffraction
+   conda create -n midas python=3.9
+   conda activate midas
    pip install midas_integrator
    ```
 
@@ -68,7 +58,7 @@ On Windows, the installation process is generally the same as above, but there a
 
 ### macOS
 
-On macOS, the package can be installed using pip as described above.
+On macOS, the package can be installed using the procedure above as described above.
 
 Note: GPU acceleration is not available on macOS as CUDA is not supported on this platform.
 
@@ -88,10 +78,7 @@ On Linux, follow the basic installation instructions. For GPU support:
    sudo apt install nvidia-cuda-toolkit
    ```
 
-3. Install the package with GPU support:
-   ```bash
-   pip install midas_integrator[gpu]
-   ```
+3. Rest follow the instructions above.
 
 ## Verifying Installation
 
@@ -137,7 +124,7 @@ For developers who want to contribute to the package:
 ```bash
 git clone https://github.com/marinerhemant/MIDAS.git
 cd MIDAS/INTEGRATION_1D/midas_integrator
-pip install -e .[dev,gpu]
+python setup.py install
 ```
 
 This installs the package in development mode with additional development dependencies.
