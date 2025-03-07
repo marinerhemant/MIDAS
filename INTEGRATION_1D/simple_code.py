@@ -62,7 +62,7 @@ def integrateImage(image, pxList, nPxList, fracValues, nRBins, nEtaBins, RMin, R
                 continue
             for k in range(nPixels):
                 ThisVal = pxList[dataPos + k]
-                testPos = ThisVal[1] * nrPixelsY + ThisVal[0]
+                testPos = ThisVal[1], ThisVal[0]
                 if image[testPos] == badPxIntensity or image[testPos] == gapIntensity:
                     continue
                 ThisInt = image[testPos]
