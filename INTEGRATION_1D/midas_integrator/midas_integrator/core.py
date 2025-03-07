@@ -305,8 +305,6 @@ class BinaryUtils:
         px_list = px_list.reshape(-1, 4)
         logger.info(f"Reading area fractions in map from {map_path}")
         frac_values = np.fromfile(map_path, dtype=np.float64).reshape(-1, 2)[:,1]
-        for i in range(len(frac_values)):
-            print(frac_values[i])
                 
         # Load pixel count list
         logger.info(f"Loading pixel count map from {n_map_path}")
