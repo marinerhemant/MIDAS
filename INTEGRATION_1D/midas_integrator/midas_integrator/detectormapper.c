@@ -1565,7 +1565,44 @@ int main(int argc, char *argv[])
     int NrTransOpt = config->NrTransOpt;
     int TransOpt[10];
     for (int i=0;i<NrTransOpt;i++) TransOpt[i] = config->ImTransOpt[i];
-	distortionMapY = calloc(NrPixelsY*NrPixelsZ,sizeof(double));
+    printf("Configuration loaded:\n");
+    printf("tx: %.6f\n", config->tx);
+    printf("ty: %.6f\n", config->ty);
+    printf("tz: %.6f\n", config->tz);
+    printf("px: %.6f\n", config->px);
+    printf("pxY: %.6f\n", config->pxY);
+    printf("pxZ: %.6f\n", config->pxZ);
+    printf("yCen: %.6f\n", config->yCen);
+    printf("zCen: %.6f\n", config->zCen);
+    printf("Lsd: %.6f\n", config->Lsd);
+    printf("RhoD: %.6f\n", config->RhoD);
+    printf("p0: %.6f\n", config->p0);
+    printf("p1: %.6f\n", config->p1);
+    printf("p2: %.6f\n", config->p2);
+    printf("p3: %.6f\n", config->p3);
+    printf("EtaBinSize: %.6f\n", config->EtaBinSize);
+    printf("EtaMin: %.6f\n", config->EtaMin);
+    printf("EtaMax: %.6f\n", config->EtaMax);
+    printf("RBinSize: %.6f\n", config->RBinSize);
+    printf("RMin: %.6f\n", config->RMin);
+    printf("RMax: %.6f\n", config->RMax);
+    printf("NrPixels: %d\n", config->NrPixels);
+    printf("NrPixelsY: %d\n", config->NrPixelsY);
+    printf("NrPixelsZ: %d\n", config->NrPixelsZ);
+    
+    // Print ImTransOpt as an array
+    printf("ImTransOpt: [");
+    for (int i = 0; i < config->NrTransOpt; i++) {
+        printf("%d", config->ImTransOpt[i]);
+        if (i < config->NrTransOpt - 1) {
+            printf(", ");
+        }
+    }
+    printf("]\n");
+    printf("DistortionFile: %s\n", config->DistortionFile ? config->DistortionFile : "NULL");
+    freeConfigParams(config);
+
+    distortionMapY = calloc(NrPixelsY*NrPixelsZ,sizeof(double));
 	distortionMapZ = calloc(NrPixelsY*NrPixelsZ,sizeof(double));
 	if (distortionFile == 1){
 		FILE *distortionFileHandle = fopen(distortionFN,"rb");
