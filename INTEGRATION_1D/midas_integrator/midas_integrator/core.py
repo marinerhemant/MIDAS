@@ -170,7 +170,7 @@ class VoigtFitter:
         bounds = ([0, 0, 0, 0, 0], [y_max * 10, y_max, 1, len(y), len(y) / 4])
         
         # Initial parameter guesses
-        p0 = [y_max - y_median, y_median, 0.5, x_at_max, width_guess]
+        p0 = [y_max, y_median, 0.5, x_at_max, width_guess]
         print(p0)
         
         try:
