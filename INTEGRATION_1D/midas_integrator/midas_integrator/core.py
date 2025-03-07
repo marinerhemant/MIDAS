@@ -288,7 +288,7 @@ class BinaryUtils:
         float
             Reconstructed double-precision float
         """
-        combined_bits = (int2 << 32) | (int1 & 0xFFFFFFFF)
+        combined_bits = float((int2 << 32) | (int1 & 0xFFFFFFFF))
         return struct.unpack('d', struct.pack('Q', combined_bits))[0]
     
     @staticmethod
