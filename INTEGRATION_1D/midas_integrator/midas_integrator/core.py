@@ -69,8 +69,11 @@ class DiffractionConfig:
     
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> 'DiffractionConfig':
-        """Create configuration from dictionary."""
-        return cls(**config_dict)
+        """Create configuration from dictionary, ignoring extra entries."""
+        # Get only the fields that exist in the dataclass
+        valid_fields = cls.__dataclass_fields__.keys()
+        filtered_dict = {k: v for k, v in config_dict.items() if k in valid_fields}
+        return cls(**filtered_dict)
     
     def save(self, filepath: str) -> None:
         """Save configuration to JSON file."""
