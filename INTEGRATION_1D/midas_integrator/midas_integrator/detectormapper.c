@@ -592,6 +592,10 @@ ConfigParams* parseTextFile(const char* content, const char* original_filename) 
         params->RhoD = parseJsonNumber(&field_value);
     }
     
+    if ((field_value = findJsonField(json_str, "MaxRingRad")) != NULL) {
+        params->RhoD = parseJsonNumber(&field_value);
+    }
+
     if ((field_value = findJsonField(json_str, "p0")) != NULL) {
         params->p0 = parseJsonNumber(&field_value);
     }
@@ -782,6 +786,10 @@ ConfigParams* readConfigFile(const char* filename) {
             params->RhoD = parseJsonNumber(&field_value);
         }
         
+        if ((field_value = findJsonField(json_str, "MaxRingRad")) != NULL) {
+            params->RhoD = parseJsonNumber(&field_value);
+        }
+
         if ((field_value = findJsonField(file_content, "p0")) != NULL) {
             params->p0 = parseJsonNumber(&field_value);
         }
