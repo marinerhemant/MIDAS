@@ -114,7 +114,6 @@ class DiffractionConfig:
             abs_config_path = os.path.abspath(config_path)
             logger.info(f"Attempting to load config from: {abs_config_path}")
             logger.info(f'Converting the {abs_config_path} file to the right input if needed.')
-            @classmethod
             def remap_json_keys(filename):
                 # Define the key mapping
                 key_mapping = {
