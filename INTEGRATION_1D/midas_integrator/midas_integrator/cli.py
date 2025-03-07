@@ -266,7 +266,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     # Advanced options
     parser.add_argument("--save-config", help="Save parameters to a JSON config file")
     parser.add_argument("--no-progress", action="store_true", help="Disable progress bar")
-    parser.add_argument('--save-data', dest='save_data_file', help='Path to save the integrated data')
+    parser.add_argument('--save-data', dest='save_data', help='Path to save the integrated data')
     parser.add_argument('--gpu', dest='use_gpu', action='store_true', help='Use GPU acceleration if available')
     parser.add_argument('--cpu', dest='use_gpu', action='store_false', help='Force CPU processing')
     parser.add_argument('--peaks', dest='num_peaks', type=int, help='Number of peaks to fit')
