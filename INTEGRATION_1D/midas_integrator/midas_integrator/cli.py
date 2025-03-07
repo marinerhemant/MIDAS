@@ -111,8 +111,8 @@ def parse_args(args=None) -> argparse.Namespace:
     
     # Optional parameters with defaults
     parser.add_argument("--dark", help="Path to the dark image for background subtraction")
-    parser.add_argument("--map", default="Map.bin", help="Path to the pixel map binary file")
-    parser.add_argument("--nmap", default="nMap.bin", help="Path to the pixel count map binary file")
+    parser.add_argument("--map", help="Path to the pixel map binary file")
+    parser.add_argument("--nmap", help="Path to the pixel count map binary file")
     parser.add_argument("--rmin", type=float, help="Minimum radius for binning")
     parser.add_argument("--rmax", type=float, help="Maximum radius for binning")
     parser.add_argument("--rbin", type=float, help="Size of each radial bin")
@@ -251,16 +251,16 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     
     # Optional arguments
     parser.add_argument("--dark", help="Path to the dark image for background subtraction")
-    parser.add_argument("--map", default="Map.bin", help="Path to the pixel map binary file")
-    parser.add_argument("--nmap", default="nMap.bin", help="Path to the pixel count map binary file")
-    parser.add_argument("--rmin", type=float, default=10, help="Minimum radius for binning")
-    parser.add_argument("--rmax", type=float, default=100, help="Maximum radius for binning")
-    parser.add_argument("--rbin", type=float, default=0.25, help="Size of each radial bin")
-    parser.add_argument("--etamin", type=float, default=-180, help="Minimum azimuthal angle")
-    parser.add_argument("--etamax", type=float, default=180, help="Maximum azimuthal angle")
-    parser.add_argument("--etabin", type=float, default=1, help="Size of each azimuthal bin")
-    parser.add_argument("--badpx", type=float, default=-1, help="Value that marks bad pixels")
-    parser.add_argument("--gappx", type=float, default=-2, help="Value that marks gap pixels")
+    parser.add_argument("--map", help="Path to the pixel map binary file")
+    parser.add_argument("--nmap", help="Path to the pixel count map binary file")
+    parser.add_argument("--rmin", type=float, help="Minimum radius for binning")
+    parser.add_argument("--rmax", type=float, help="Maximum radius for binning")
+    parser.add_argument("--rbin", type=float, help="Size of each radial bin")
+    parser.add_argument("--etamin", type=float, help="Minimum azimuthal angle")
+    parser.add_argument("--etamax", type=float, help="Maximum azimuthal angle")
+    parser.add_argument("--etabin", type=float, help="Size of each azimuthal bin")
+    parser.add_argument("--badpx", type=float, help="Value that marks bad pixels")
+    parser.add_argument("--gappx", type=float, help="Value that marks gap pixels")
     parser.add_argument("--output", help="Path to save the plot, disabled if not provided")
     
     # Advanced options
