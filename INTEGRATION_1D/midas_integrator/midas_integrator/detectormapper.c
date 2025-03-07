@@ -786,7 +786,7 @@ ConfigParams* readConfigFile(const char* filename) {
             params->RhoD = parseJsonNumber(&field_value);
         }
         
-        if ((field_value = findJsonField(json_str, "MaxRingRad")) != NULL) {
+        if ((field_value = findJsonField(file_content, "MaxRingRad")) != NULL) {
             params->RhoD = parseJsonNumber(&field_value);
         }
 
