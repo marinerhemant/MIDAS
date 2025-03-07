@@ -285,7 +285,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     # parser.add_argument('--bad-px', dest='bad_px_intensity', type=float, help='Value that marks bad pixels')
     # parser.add_argument('--gap', dest='gap_intensity', type=float, help='Value that marks gap pixels')
     # parser.add_argument('--output', dest='output_file', help='Path to save the plot')
-    parser.add_argument('--save-data', dest='save_data_file', help='Path to save the integrated data')
+    # parser.add_argument('--save-data', dest='save_data_file', help='Path to save the integrated data')
     parser.add_argument('--gpu', dest='use_gpu', action='store_true', help='Use GPU acceleration if available')
     parser.add_argument('--cpu', dest='use_gpu', action='store_false', help='Force CPU processing')
     parser.add_argument('--peaks', dest='num_peaks', type=int, help='Number of peaks to fit')
