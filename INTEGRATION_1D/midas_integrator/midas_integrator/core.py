@@ -27,6 +27,7 @@ import logging
 import json
 from dataclasses import dataclass, asdict
 from functools import lru_cache
+import argparse
 
 try:
     from numba import cuda
@@ -85,6 +86,45 @@ class DiffractionConfig:
         """Load configuration from JSON file."""
         with open(filepath, 'r') as f:
             return cls.from_dict(json.load(f))
+    
+    @classmethod
+    def from_args_and_config(cls, args: argparse.Namespace, config_path: Optional[str] = None) -> 'DiffractionConfig':
+        """
+        Create configuration from command line arguments and an optional JSON config file.
+        Command line arguments take precedence over config file values.
+        
+        Parameters:
+        -----------
+        args : argparse.Namespace
+            Parsed command line arguments
+        config_path : Optional[str]
+            Path to a JSON configuration file
+            
+        Returns:
+        --------
+        DiffractionConfig
+            Configuration with values from both sources
+        """
+        # Start with default values
+        config_dict = {}
+        
+        # Load values from config file if provided
+        if config_path and os.path.exists(config_path):
+            try:
+                with open(config_path, 'r') as f:
+                    config_dict = json.load(f)
+                logger.info(f"Loaded configuration from {config_path}")
+            except Exception as e:
+                logger.warning(f"Error loading config file {config_path}: {e}")
+        
+        # Convert args to dictionary, excluding None values (unspecified args)
+        args_dict = {k: v for k, v in vars(args).items() if v is not None}
+        
+        # Update config with command line arguments (they take precedence)
+        config_dict.update(args_dict)
+        
+        # Create config, filtering out any extra entries
+        return cls.from_dict(config_dict)
 
 class VoigtFitter:
     """Class for Voigt profile fitting operations."""

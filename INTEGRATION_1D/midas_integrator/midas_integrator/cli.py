@@ -232,6 +232,45 @@ def save_integrated_data(data: np.ndarray, filepath: str) -> None:
     logger.info(f"Integrated data saved to {filepath}")
 
 
+def setup_argument_parser() -> argparse.ArgumentParser:
+    """
+    Create and configure an argument parser for diffraction processing.
+    
+    Returns:
+    --------
+    argparse.ArgumentParser
+        Configured argument parser
+    """
+    parser = argparse.ArgumentParser(description='Process diffraction images')
+    
+    # Required arguments
+    parser.add_argument('--image', dest='image_path', help='Path to the diffraction image')
+    
+    # Configuration file
+    parser.add_argument('--config', dest='config_file', help='Path to JSON configuration file')
+    
+    # Optional arguments
+    parser.add_argument('--dark', dest='dark_path', help='Path to the dark image for background subtraction')
+    parser.add_argument('--map', dest='map_path', help='Path to the pixel map binary file')
+    parser.add_argument('--nmap', dest='n_map_path', help='Path to the pixel count map binary file')
+    parser.add_argument('--r-min', dest='r_min', type=float, help='Minimum radius for integration')
+    parser.add_argument('--r-max', dest='r_max', type=float, help='Maximum radius for integration')
+    parser.add_argument('--r-bin', dest='r_bin_size', type=float, help='Size of each radial bin')
+    parser.add_argument('--eta-min', dest='eta_min', type=float, help='Minimum azimuthal angle for integration')
+    parser.add_argument('--eta-max', dest='eta_max', type=float, help='Maximum azimuthal angle for integration')
+    parser.add_argument('--eta-bin', dest='eta_bin_size', type=float, help='Size of each azimuthal bin')
+    parser.add_argument('--bad-px', dest='bad_px_intensity', type=float, help='Value that marks bad pixels')
+    parser.add_argument('--gap', dest='gap_intensity', type=float, help='Value that marks gap pixels')
+    parser.add_argument('--output', dest='output_file', help='Path to save the plot')
+    parser.add_argument('--save-data', dest='save_data_file', help='Path to save the integrated data')
+    parser.add_argument('--gpu', dest='use_gpu', action='store_true', help='Use GPU acceleration if available')
+    parser.add_argument('--cpu', dest='use_gpu', action='store_false', help='Force CPU processing')
+    parser.add_argument('--peaks', dest='num_peaks', type=int, help='Number of peaks to fit')
+    parser.add_argument('--cache', dest='cache_results', action='store_true', help='Cache integration results')
+    parser.add_argument('--benchmark', dest='benchmark', action='store_true', help='Run performance benchmark')
+    
+    return parser
+
 def main(args=None):
     """
     Main function to run the program.
@@ -248,11 +287,20 @@ def main(args=None):
     """
     start_time = time.time()
     
-    # Parse command line arguments
-    args = parse_args(args)
+    # Set up argument parser
+    parser = setup_argument_parser()
+    args = parser.parse_args()
     
-    # Create configuration
-    config = config_from_args(args)
+    # Check for config file or image path
+    if not args.config_file and not args.image_path:
+        parser.error("Either --config or --image must be specified")
+    
+    # Create configuration from arguments and config file
+    config = DiffractionConfig.from_args_and_config(args, args.config_file)
+
+    # Ensure we have an image path
+    if not config.image_path:
+        parser.error("Image path must be specified either in config file or as --image argument")
     
     # Save configuration if requested
     if args.save_config:
