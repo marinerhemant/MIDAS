@@ -163,11 +163,11 @@ class DiffractionConfig:
                 try:
                     with open(abs_config_path, 'r') as f:
                         file_content = f.read()
-                        logger.info(f"JSON content: {file_content}")
+                        logger.debug(f"JSON content: {file_content}")
                         config_dict = json.loads(file_content)
                     logger.info(f"Loaded configuration from {abs_config_path}")
                     # Debug: show what was loaded
-                    logger.info(f"Loaded config values: {config_dict}")
+                    logger.debug(f"Loaded config values: {config_dict}")
                 except json.JSONDecodeError as e:
                     logger.error(f"Invalid JSON in config file {abs_config_path}: {e}")
                 except Exception as e:
@@ -180,13 +180,13 @@ class DiffractionConfig:
                     if v is not None and k != 'config_file'}
         
         # Debug info
-        logger.info(f"Command line args: {args_dict}")
+        logger.debug(f"Command line args: {args_dict}")
         
         # Update config with command line arguments (they take precedence)
         config_dict.update(args_dict)
         
         # Debug the final merged config
-        logger.info(f"Final config dict (before filtering): {config_dict}")
+        logger.debug(f"Final config dict (before filtering): {config_dict}")
         
         # Create config, filtering out any extra entries
         result = cls.from_dict(config_dict)
