@@ -167,12 +167,10 @@ class VoigtFitter:
         x_at_max = x[np.argmax(y)]
         width_guess = len(y) / 20  # More reasonable width guess
         
-        bounds = ([0, 0, 0, 0, 0], [y_max * 10, y_max, 1, len(y), len(y) / 4])
+        bounds = ([0, 0, 0, 0, 0], [y_max * 10, y_max, 1, np.max(x), len(y) / 4])
         
         # Initial parameter guesses
         p0 = [y_max, y_median, 0.5, x_at_max, width_guess]
-        print(p0)
-        print(bounds)
         
         try:
             # Perform curve fitting with more robust settings
