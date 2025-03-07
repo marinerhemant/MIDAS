@@ -113,6 +113,52 @@ class DiffractionConfig:
             # Log absolute path to help with debugging
             abs_config_path = os.path.abspath(config_path)
             logger.info(f"Attempting to load config from: {abs_config_path}")
+            logger.info(f'Converting the {abs_config_path} file to the right input if needed.')
+            @classmethod
+            def remap_json_keys(filename):
+                # Define the key mapping
+                key_mapping = {
+                    "RMin": "r_min",
+                    "RMax": "r_max",
+                    "RBinSize": "r_bin_size",
+                    "EtaMin": "eta_min",
+                    "EtaMax": "eta_max",
+                    "EtaBinSize": "eta_bin_size",
+                    "BadPxIntensity": "bad_px_intensity",
+                    "GapIntensity": "gap_intensity"
+                }
+                
+                # Read the JSON file
+                with open(filename, 'r') as file:
+                    data = json.load(file)
+                
+                # Function to recursively update keys in nested dictionaries
+                def update_keys(obj):
+                    if isinstance(obj, dict):
+                        new_dict = {}
+                        for key, value in obj.items():
+                            # If the key is in our mapping, use the new key
+                            new_key = key_mapping.get(key, key)
+                            # Recursively process any nested structures
+                            new_dict[new_key] = update_keys(value)
+                        return new_dict
+                    elif isinstance(obj, list):
+                        # Process each item in the list
+                        return [update_keys(item) for item in obj]
+                    else:
+                        # Return non-dict, non-list values as is
+                        return obj
+                
+                # Update the keys in the loaded data
+                updated_data = update_keys(data)
+                
+                # Write the updated data back to the file
+                with open(filename, 'w') as file:
+                    json.dump(updated_data, file, indent=2)
+                
+                print(f"Successfully remapped keys in {filename}")
+
+            remap_json_keys(abs_config_path)
             
             if os.path.exists(abs_config_path):
                 try:
