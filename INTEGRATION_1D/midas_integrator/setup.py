@@ -6,7 +6,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="midas_integrator",
-    version="1.0.0",
+    version="1.0.1",
     author="Hemant Sharma",
     author_email="hsharma@anl.gov",  # Replace with actual email
     description="A package for processing diffraction images and fitting Voigt profiles",
