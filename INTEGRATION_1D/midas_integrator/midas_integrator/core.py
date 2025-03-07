@@ -811,8 +811,8 @@ class ImageIntegrator:
                 n_pixels = n_px_list[2 * pos + 0]
                 data_pos = n_px_list[2 * pos + 1]
                 
-                intensity = 0
-                tot_area = 0
+                intensity = 0.
+                tot_area = 0.
                 
                 if n_pixels == 0:
                     continue
@@ -825,8 +825,7 @@ class ImageIntegrator:
                         continue
                         
                     this_int = image[test_pos]
-                    intensity = this_int * frac_values[data_pos + k]
-                    # intensity += this_int * frac_values[data_pos + k]
+                    intensity += this_int * frac_values[data_pos + k]
                     tot_area += frac_values[data_pos + k]
                     
                 if tot_area == 0:
