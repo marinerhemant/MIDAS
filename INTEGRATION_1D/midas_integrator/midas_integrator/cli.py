@@ -321,6 +321,9 @@ def main(args=None):
     # Create configuration from arguments and config file
     config = DiffractionConfig.from_args_and_config(args, args.config_file)
 
+    for item in config:
+        print(item)
+
     # Ensure we have an image path
     if not config.image_path:
         parser.error("Image path must be specified either in config file or as --image argument")
