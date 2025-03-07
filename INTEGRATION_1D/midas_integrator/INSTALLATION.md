@@ -38,7 +38,7 @@ If you want to install the latest development version from source:
 1. Clone the repository:
    ```bash
    git clone https://github.com/marinerhemant/MIDAS.git
-   cd MIDAS/INTEGRATION/midas_integrator
+   cd MIDAS/INTEGRATION_1D/midas_integrator
    ```
 
 2. Install the package in development mode:
@@ -98,14 +98,14 @@ On Linux, follow the basic installation instructions. For GPU support:
 To verify that the package is installed correctly, run:
 
 ```python
-import diffraction_analyzer
-print(diffraction_analyzer.__version__)
+import midas_integrator
+print(midas_integrator.__version__)
 ```
 
 To verify GPU support:
 
 ```python
-from diffraction_analyzer import GPUUtils
+from midas_integrator import GPUUtils
 print(f"CUDA Available: {GPUUtils.cuda_available()}")
 if GPUUtils.cuda_available():
     GPUUtils.print_gpu_info()
@@ -136,7 +136,7 @@ For developers who want to contribute to the package:
 
 ```bash
 git clone https://github.com/marinerhemant/MIDAS.git
-cd MIDAS/INTEGRATION/midas_integrator
+cd MIDAS/INTEGRATION_1D/midas_integrator
 pip install -e .[dev,gpu]
 ```
 

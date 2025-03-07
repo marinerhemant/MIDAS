@@ -34,8 +34,8 @@ Optional:
 Clone this repository:
 
 ```bash
-git clone https://github.com/username/diffraction-processing.git
-cd diffraction-processing
+git clone https://github.com/marinerhemant/MIDAS.git
+cd MIDAS/INTEGRATION_1D/midas_integrator
 ```
 
 Install the dependencies:
