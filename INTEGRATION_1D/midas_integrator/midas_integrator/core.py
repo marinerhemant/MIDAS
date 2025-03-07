@@ -109,22 +109,48 @@ class DiffractionConfig:
         config_dict = {}
         
         # Load values from config file if provided
-        if config_path and os.path.exists(config_path):
-            try:
-                with open(config_path, 'r') as f:
-                    config_dict = json.load(f)
-                logger.info(f"Loaded configuration from {config_path}")
-            except Exception as e:
-                logger.warning(f"Error loading config file {config_path}: {e}")
+        if config_path:
+            # Log absolute path to help with debugging
+            abs_config_path = os.path.abspath(config_path)
+            logger.info(f"Attempting to load config from: {abs_config_path}")
+            
+            if os.path.exists(abs_config_path):
+                try:
+                    with open(abs_config_path, 'r') as f:
+                        file_content = f.read()
+                        logger.debug(f"JSON content: {file_content}")
+                        config_dict = json.loads(file_content)
+                    logger.info(f"Loaded configuration from {abs_config_path}")
+                    # Debug: show what was loaded
+                    logger.debug(f"Loaded config values: {config_dict}")
+                except json.JSONDecodeError as e:
+                    logger.error(f"Invalid JSON in config file {abs_config_path}: {e}")
+                except Exception as e:
+                    logger.error(f"Error loading config file {abs_config_path}: {str(e)}")
+            else:
+                logger.warning(f"Config file not found: {abs_config_path}")
         
-        # Convert args to dictionary, excluding None values (unspecified args)
-        args_dict = {k: v for k, v in vars(args).items() if v is not None}
+        # Convert args to dictionary, excluding None values and config_file itself
+        args_dict = {k: v for k, v in vars(args).items() 
+                    if v is not None and k != 'config_file'}
+        
+        # Debug info
+        logger.debug(f"Command line args: {args_dict}")
         
         # Update config with command line arguments (they take precedence)
         config_dict.update(args_dict)
         
+        # Debug the final merged config
+        logger.debug(f"Final config dict (before filtering): {config_dict}")
+        
         # Create config, filtering out any extra entries
-        return cls.from_dict(config_dict)
+        result = cls.from_dict(config_dict)
+        
+        # Debug the actual config created
+        logger.debug(f"Created config: {result.to_dict()}")
+        
+        return result
+
 
 class VoigtFitter:
     """Class for Voigt profile fitting operations."""

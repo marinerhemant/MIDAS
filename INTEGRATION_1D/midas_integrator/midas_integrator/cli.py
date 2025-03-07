@@ -264,27 +264,8 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", help="Path to save the plot, disabled if not provided")
     
     # Advanced options
-    # parser.add_argument("--peaks", type=int, default=1, help="Number of peaks to fit")
-    # parser.add_argument("--cpu", action="store_true", help="Force CPU processing (no GPU)")
-    # parser.add_argument("--benchmark", action="store_true", help="Run CPU vs GPU benchmark")
-    # parser.add_argument("--cache", action="store_true", help="Cache integration results")
     parser.add_argument("--save-config", help="Save parameters to a JSON config file")
     parser.add_argument("--no-progress", action="store_true", help="Disable progress bar")
-    
-    # New option to save integrated data
-    # parser.add_argument("--save-data", help="Path to save the integrated radius and intensity data (CSV format)")
-    # parser.add_argument('--dark', dest='dark_path', help='Path to the dark image for background subtraction')
-    # parser.add_argument('--map', dest='map_path', help='Path to the pixel map binary file')
-    # parser.add_argument('--nmap', dest='n_map_path', help='Path to the pixel count map binary file')
-    # parser.add_argument('--r-min', dest='r_min', type=float, help='Minimum radius for integration')
-    # parser.add_argument('--r-max', dest='r_max', type=float, help='Maximum radius for integration')
-    # parser.add_argument('--r-bin', dest='r_bin_size', type=float, help='Size of each radial bin')
-    # parser.add_argument('--eta-min', dest='eta_min', type=float, help='Minimum azimuthal angle for integration')
-    # parser.add_argument('--eta-max', dest='eta_max', type=float, help='Maximum azimuthal angle for integration')
-    # parser.add_argument('--eta-bin', dest='eta_bin_size', type=float, help='Size of each azimuthal bin')
-    # parser.add_argument('--bad-px', dest='bad_px_intensity', type=float, help='Value that marks bad pixels')
-    # parser.add_argument('--gap', dest='gap_intensity', type=float, help='Value that marks gap pixels')
-    # parser.add_argument('--output', dest='output_file', help='Path to save the plot')
     parser.add_argument('--save-data', dest='save_data_file', help='Path to save the integrated data')
     parser.add_argument('--gpu', dest='use_gpu', action='store_true', help='Use GPU acceleration if available')
     parser.add_argument('--cpu', dest='use_gpu', action='store_false', help='Force CPU processing')
@@ -309,7 +290,14 @@ def main(args=None):
         Exit code (0 for success, 1 for failure)
     """
     start_time = time.time()
-    
+
+    # Configure logging
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger("diffraction-cli")
+
     # Set up argument parser
     parser = setup_argument_parser()
     args = parser.parse_args()
@@ -318,27 +306,18 @@ def main(args=None):
     if not args.config_file and not args.image_path:
         parser.error("Either --config or --image must be specified")
     
-    # Create configuration from arguments and config file
-    config = DiffractionConfig.from_args_and_config(args, args.config_file)
-
-    print(config.image_path)
-    print(config.dark_path)
-    print(config.map_path)
-    print(config.n_map_path)
-    print(config.r_min)
-    print(config.r_max)
-    print(config.r_bin_size)
-    print(config.eta_min)
-    print(config.eta_max)
-    print(config.eta_bin_size)
-    print(config.bad_px_intensity)
-    print(config.gap_intensity)
-    print(config.output_file)
-    print(config.save_data_file)
-    print(config.use_gpu)
-    print(config.num_peaks)
-    print(config.cache_results)
-    print(config.benchmark)
+    # Create configuration
+    try:
+        config = DiffractionConfig.from_args_and_config(args, args.config_file)
+        logger.info("Created configuration successfully")
+    except Exception as e:
+        logger.error(f"Failed to create configuration: {e}")
+        sys.exit(1)
+    
+    # Display final configuration
+    logger.info("Final configuration:")
+    for key, value in config.to_dict().items():
+        logger.info(f"  {key}: {value}")
 
     # Ensure we have an image path
     if not config.image_path:
