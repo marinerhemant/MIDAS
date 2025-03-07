@@ -171,6 +171,7 @@ class VoigtFitter:
         
         # Initial parameter guesses
         p0 = [y_max - y_median, y_median, 0.5, x_at_max, width_guess]
+        print(p0)
         
         try:
             # Perform curve fitting with more robust settings
