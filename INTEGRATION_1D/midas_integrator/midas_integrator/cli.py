@@ -264,10 +264,10 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", help="Path to save the plot, disabled if not provided")
     
     # Advanced options
-    parser.add_argument("--peaks", type=int, default=1, help="Number of peaks to fit")
+    # parser.add_argument("--peaks", type=int, default=1, help="Number of peaks to fit")
     # parser.add_argument("--cpu", action="store_true", help="Force CPU processing (no GPU)")
-    parser.add_argument("--benchmark", action="store_true", help="Run CPU vs GPU benchmark")
-    parser.add_argument("--cache", action="store_true", help="Cache integration results")
+    # parser.add_argument("--benchmark", action="store_true", help="Run CPU vs GPU benchmark")
+    # parser.add_argument("--cache", action="store_true", help="Cache integration results")
     parser.add_argument("--save-config", help="Save parameters to a JSON config file")
     parser.add_argument("--no-progress", action="store_true", help="Disable progress bar")
     
