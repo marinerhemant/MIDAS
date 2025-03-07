@@ -539,7 +539,6 @@ ConfigParams* parseTextFile(const char* content, const char* original_filename) 
     const char* field_value;
     
     // Parse JSON for each field
-    // Numeric values
     if ((field_value = findJsonField(json_str, "tx")) != NULL) {
         params->tx = parseJsonNumber(&field_value);
     }
@@ -585,13 +584,98 @@ ConfigParams* parseTextFile(const char* content, const char* original_filename) 
         params->zCen = bc_values[1];
     }
     
-    // ... rest of the function remains the same ...
+    if ((field_value = findJsonField(json_str, "Lsd")) != NULL) {
+        params->Lsd = parseJsonNumber(&field_value);
+    }
+    
+    if ((field_value = findJsonField(json_str, "RhoD")) != NULL) {
+        params->RhoD = parseJsonNumber(&field_value);
+    }
+    
+    if ((field_value = findJsonField(json_str, "p0")) != NULL) {
+        params->p0 = parseJsonNumber(&field_value);
+    }
+    
+    if ((field_value = findJsonField(json_str, "p1")) != NULL) {
+        params->p1 = parseJsonNumber(&field_value);
+    }
+    
+    if ((field_value = findJsonField(json_str, "p2")) != NULL) {
+        params->p2 = parseJsonNumber(&field_value);
+    }
+    
+    if ((field_value = findJsonField(json_str, "p3")) != NULL) {
+        params->p3 = parseJsonNumber(&field_value);
+    }
+    
+    if ((field_value = findJsonField(json_str, "EtaBinSize")) != NULL) {
+        params->EtaBinSize = parseJsonNumber(&field_value);
+    }
+    
+    if ((field_value = findJsonField(json_str, "EtaMin")) != NULL) {
+        params->EtaMin = parseJsonNumber(&field_value);
+    }
+    
+    if ((field_value = findJsonField(json_str, "EtaMax")) != NULL) {
+        params->EtaMax = parseJsonNumber(&field_value);
+    }
+    
+    if ((field_value = findJsonField(json_str, "RBinSize")) != NULL) {
+        params->RBinSize = parseJsonNumber(&field_value);
+    }
+    
+    if ((field_value = findJsonField(json_str, "RMin")) != NULL) {
+        params->RMin = parseJsonNumber(&field_value);
+    }
+    
+    if ((field_value = findJsonField(json_str, "RMax")) != NULL) {
+        params->RMax = parseJsonNumber(&field_value);
+    }
+    
+    if ((field_value = findJsonField(json_str, "NrPixels")) != NULL) {
+        params->NrPixels = (int)parseJsonNumber(&field_value);
+        
+        // Set NrPixelsY and NrPixelsZ to the same value as NrPixels by default
+        params->NrPixelsY = params->NrPixels;
+        params->NrPixelsZ = params->NrPixels;
+    }
+    
+    // These will override the default if they exist in the JSON
+    if ((field_value = findJsonField(json_str, "NrPixelsY")) != NULL) {
+        params->NrPixelsY = (int)parseJsonNumber(&field_value);
+    }
+    
+    if ((field_value = findJsonField(json_str, "NrPixelsZ")) != NULL) {
+        params->NrPixelsZ = (int)parseJsonNumber(&field_value);
+    }
+    
+    if ((field_value = findJsonField(json_str, "ImTransOpt")) != NULL) {
+        params->NrTransOpt = parseJsonIntArray(&field_value, params->ImTransOpt, 10);
+    } else {
+        // Default - no options
+        params->NrTransOpt = 0;
+    }
+    
+    // Handle string values
+    if ((field_value = findJsonField(json_str, "DistortionFile")) != NULL) {
+        if (*field_value == '"') {
+            params->DistortionFile = parseJsonString(&field_value);
+        } else if (parseJsonNull(&field_value)) {
+            params->DistortionFile = NULL;
+        }
+    } else {
+        params->DistortionFile = NULL;
+    }
+    
+    // Print a message confirming that parsing is completed
+    printf("Successfully parsed configuration file: %s\n", original_filename);
     
     // Free the JSON string
     free(json_str);
     
     return params;
 }
+
 // Function to read and parse the config file (either JSON or text)
 ConfigParams* readConfigFile(const char* filename) {
     // Allocate memory for the struct
