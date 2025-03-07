@@ -456,7 +456,7 @@ if CUDA_AVAILABLE:
                 idx = data_pos + k
                 pixel_y = px_list[idx][0]
                 pixel_x = px_list[idx][1]
-                test_pos = pixel_x, pixel_y
+                test_pos = pixel_y, pixel_x
                 
                 # Check if pixel is valid
                 pixel_val = image[test_pos]
@@ -527,7 +527,7 @@ if CUDA_AVAILABLE:
                     idx = data_pos + k
                     pixel_y = px_list[idx][0]
                     pixel_x = px_list[idx][1]
-                    test_pos = pixel_x, pixel_y
+                    test_pos = pixel_y, pixel_x
                     
                     # Check if pixel is valid
                     pixel_val = image[test_pos]
@@ -795,7 +795,7 @@ class ImageIntegrator:
                     
                 for k in range(n_pixels):
                     this_val = px_list[data_pos + k]
-                    test_pos = this_val[1], this_val[0]
+                    test_pos = this_val[0], this_val[1]
                     
                     if image[test_pos] == bad_px_intensity or image[test_pos] == gap_intensity:
                         continue
