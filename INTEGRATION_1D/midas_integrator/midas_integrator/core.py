@@ -1049,11 +1049,12 @@ class DiffractionProcessor:
         else:
             params, _ = VoigtFitter.fit_single_voigt(result[:, 0], result[:, 1])
         
-        # if callback:
-        #     callback("Plotting results...", 0.9)
-        
-        # # Plot results
-        # PlotUtils.plot_results(result, params, self.config.num_peaks, self.config.output_file)
+        if self.config.output_file:
+            if callback:
+                callback("Plotting results...", 0.9)
+            
+            # Plot results
+            PlotUtils.plot_results(result, params, self.config.num_peaks, self.config.output_file)
         
         if callback:
             callback("Processing complete", 1.0)

@@ -121,7 +121,7 @@ def parse_args(args=None) -> argparse.Namespace:
     parser.add_argument("--etabin", type=float, default=1, help="Size of each azimuthal bin")
     parser.add_argument("--badpx", type=float, default=-1, help="Value that marks bad pixels")
     parser.add_argument("--gappx", type=float, default=-2, help="Value that marks gap pixels")
-    parser.add_argument("--output", default='', help="Path to save the plot")
+    parser.add_argument("--output", help="Path to save the plot, disabled if not provided")
     
     # Advanced options
     parser.add_argument("--peaks", type=int, default=1, help="Number of peaks to fit")
