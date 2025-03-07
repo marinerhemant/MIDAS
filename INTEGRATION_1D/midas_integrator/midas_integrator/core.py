@@ -882,7 +882,8 @@ class ImageIntegrator:
         return result
     
     @staticmethod
-    @njit(parallel=True, fastmath=True)
+    # @njit(parallel=True, fastmath=True)
+    @njit(fastmath=True)
     def integrate_image_cpu(image, px_list, n_px_list, frac_values, n_r_bins, n_eta_bins,
                             r_min, r_bin_size, bad_px_intensity, gap_intensity, nr_pixels_y):
         """
@@ -894,8 +895,9 @@ class ImageIntegrator:
         # Pre-calculate r_mean values to avoid repeated calculations
         r_means = np.array([(r_min + (i + 0.5) * r_bin_size) for i in range(n_r_bins)], dtype=np.float32)
         
+        for i in range(n_r_bins):
         # Use Numba's prange for parallelization
-        for i in prange(n_r_bins):
+        # for i in prange(n_r_bins):
             int_1d = 0.0
             n1ds = 0
             
