@@ -327,8 +327,10 @@ class BinaryUtils:
         frac_values = np.zeros(px_list.shape[0], dtype=np.float64)
         
         # Convert integer pairs to double values
+        logger.info(f"Converting to fraction values")
         for i in range(px_list.shape[0]):
             frac_values[i] = BinaryUtils.merge_int32_to_double(px_list[i, 2], px_list[i, 3])
+            print(frac_values[i])
         
         # Load pixel count list
         logger.info(f"Loading pixel count map from {n_map_path}")
