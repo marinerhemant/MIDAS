@@ -16,7 +16,7 @@ Date: 2025/03/06
 import os
 import time
 import numpy as np
-from numba import njit
+from numba import njit, prange
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 from PIL import Image
@@ -882,56 +882,57 @@ class ImageIntegrator:
         return result
     
     @staticmethod
-    @njit
-    def integrate_image_cpu(image, px_list, n_px_list, frac_values, n_r_bins, n_eta_bins,
-                           r_min, r_bin_size, bad_px_intensity, gap_intensity, nr_pixels_y):
+    @njit(parallel=True, fastmath=True)
+    def integrate_image_cpu_optimized(image, px_list, n_px_list, frac_values, n_r_bins, n_eta_bins,
+                            r_min, r_bin_size, bad_px_intensity, gap_intensity, nr_pixels_y):
         """
-        CPU version of the integrate_image function using Numba.
+        Optimized CPU version of the integrate_image function using Numba.
         Used as a fallback if CUDA is not available.
         """
         result = np.zeros((n_r_bins, 2), dtype=np.float32)
         
-        for i in range(n_r_bins):
-            int_1d = 0
+        # Pre-calculate r_mean values to avoid repeated calculations
+        r_means = np.array([(r_min + (i + 0.5) * r_bin_size) for i in range(n_r_bins)], dtype=np.float32)
+        
+        # Use Numba's prange for parallelization
+        for i in prange(n_r_bins):
+            int_1d = 0.0
             n1ds = 0
-            r_mean = (r_min + (i + 0.5) * r_bin_size)
             
             for j in range(n_eta_bins):
                 pos = i * n_eta_bins + j
-                n_pixels = n_px_list[2 * pos + 0]
+                n_pixels = n_px_list[2 * pos]
                 data_pos = n_px_list[2 * pos + 1]
                 
-                intensity = 0.
-                tot_area = 0.
-                
+                # Skip early if no pixels
                 if n_pixels == 0:
                     continue
                     
+                intensity = 0.0
+                tot_area = 0.0
+                
+                # Process pixels in batches to improve cache locality
                 for k in range(n_pixels):
                     this_val = px_list[data_pos + k]
-                    test_pos = this_val[0], this_val[1]
+                    x, y = this_val[0], this_val[1]
                     
-                    if image[test_pos] == bad_px_intensity or image[test_pos] == gap_intensity:
-                        continue
-                        
-                    this_int = image[test_pos]
-                    intensity += this_int * frac_values[data_pos + k]
-                    tot_area += frac_values[data_pos + k]
-                    
-                if tot_area == 0:
-                    continue
-                    
-                intensity /= tot_area
-                int_1d += intensity
-                n1ds += 1
+                    pixel_value = image[x, y]
+                    # Combine conditionals to reduce branch mispredictions
+                    if pixel_value != bad_px_intensity and pixel_value != gap_intensity:
+                        frac = frac_values[data_pos + k]
+                        intensity += pixel_value * frac
+                        tot_area += frac
                 
-            if n1ds == 0:
-                continue
-                
-            int_1d /= n1ds
-            result[i, 0] = r_mean
-            result[i, 1] = int_1d
+                # Skip if no valid area was found
+                if tot_area > 0:
+                    int_1d += intensity / tot_area
+                    n1ds += 1
             
+            # Only update result if we have valid data
+            if n1ds > 0:
+                result[i, 0] = r_means[i]
+                result[i, 1] = int_1d / n1ds
+        
         return result
     
     @staticmethod
