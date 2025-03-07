@@ -272,7 +272,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-progress", action="store_true", help="Disable progress bar")
     
     # New option to save integrated data
-    parser.add_argument("--save-data", help="Path to save the integrated radius and intensity data (CSV format)")
+    # parser.add_argument("--save-data", help="Path to save the integrated radius and intensity data (CSV format)")
     # parser.add_argument('--dark', dest='dark_path', help='Path to the dark image for background subtraction')
     # parser.add_argument('--map', dest='map_path', help='Path to the pixel map binary file')
     # parser.add_argument('--nmap', dest='n_map_path', help='Path to the pixel count map binary file')
@@ -285,7 +285,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     # parser.add_argument('--bad-px', dest='bad_px_intensity', type=float, help='Value that marks bad pixels')
     # parser.add_argument('--gap', dest='gap_intensity', type=float, help='Value that marks gap pixels')
     # parser.add_argument('--output', dest='output_file', help='Path to save the plot')
-    # parser.add_argument('--save-data', dest='save_data_file', help='Path to save the integrated data')
+    parser.add_argument('--save-data', dest='save_data_file', help='Path to save the integrated data')
     parser.add_argument('--gpu', dest='use_gpu', action='store_true', help='Use GPU acceleration if available')
     parser.add_argument('--cpu', dest='use_gpu', action='store_false', help='Force CPU processing')
     parser.add_argument('--peaks', dest='num_peaks', type=int, help='Number of peaks to fit')
