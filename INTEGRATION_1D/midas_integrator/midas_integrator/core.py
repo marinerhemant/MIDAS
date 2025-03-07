@@ -825,7 +825,8 @@ class ImageIntegrator:
                         continue
                         
                     this_int = image[test_pos]
-                    intensity += this_int * frac_values[data_pos + k]
+                    intensity = this_int * frac_values[data_pos + k]
+                    # intensity += this_int * frac_values[data_pos + k]
                     tot_area += frac_values[data_pos + k]
                     
                 if tot_area == 0:
