@@ -86,58 +86,6 @@ class ProgressBar:
             sys.stdout.write("\n")
             sys.stdout.flush()
 
-
-def parse_args(args=None) -> argparse.Namespace:
-    """
-    Parse command line arguments.
-    
-    Parameters:
-    -----------
-    args : list, optional
-        Command line arguments to parse. If None, sys.argv[1:] is used.
-    
-    Returns:
-    --------
-    argparse.Namespace
-        Parsed arguments
-    """
-    parser = argparse.ArgumentParser(
-        description="Process diffraction images and fit Voigt profiles.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
-    
-    # Required parameters
-    parser.add_argument("image_path", help="Path to the diffraction image")
-    
-    # Optional parameters with defaults
-    parser.add_argument("--dark", help="Path to the dark image for background subtraction")
-    parser.add_argument("--map", help="Path to the pixel map binary file")
-    parser.add_argument("--nmap", help="Path to the pixel count map binary file")
-    parser.add_argument("--rmin", type=float, help="Minimum radius for binning")
-    parser.add_argument("--rmax", type=float, help="Maximum radius for binning")
-    parser.add_argument("--rbin", type=float, help="Size of each radial bin")
-    parser.add_argument("--etamin", type=float, help="Minimum azimuthal angle")
-    parser.add_argument("--etamax", type=float, help="Maximum azimuthal angle")
-    parser.add_argument("--etabin", type=float, help="Size of each azimuthal bin")
-    parser.add_argument("--badpx", type=float, help="Value that marks bad pixels")
-    parser.add_argument("--gappx", type=float, help="Value that marks gap pixels")
-    parser.add_argument("--output", help="Path to save the plot, disabled if not provided")
-    
-    # Advanced options
-    parser.add_argument("--peaks", type=int, help="Number of peaks to fit")
-    parser.add_argument("--cpu", action="store_true", help="Force CPU processing (no GPU)")
-    parser.add_argument("--benchmark", action="store_true", help="Run CPU vs GPU benchmark")
-    parser.add_argument("--cache", action="store_true", help="Cache integration results")
-    parser.add_argument("--config", help="Load parameters from a JSON config file")
-    parser.add_argument("--save-config", help="Save parameters to a JSON config file")
-    parser.add_argument("--no-progress", action="store_true", help="Disable progress bar")
-    
-    # New option to save integrated data
-    parser.add_argument("--save-data", help="Path to save the integrated radius and intensity data (CSV format)")
-    
-    return parser.parse_args(args)
-
-
 def config_from_args(args: argparse.Namespace) -> DiffractionConfig:
     """
     Create a configuration object from parsed arguments.
@@ -261,7 +209,7 @@ def setup_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--etabin", type=float, help="Size of each azimuthal bin")
     parser.add_argument("--badpx", type=float, help="Value that marks bad pixels")
     parser.add_argument("--gappx", type=float, help="Value that marks gap pixels")
-    parser.add_argument("--output", help="Path to save the plot, disabled if not provided")
+    parser.add_argument("--output", dest='output_file', help="Path to save the plot, disabled if not provided")
     
     # Advanced options
     parser.add_argument("--save-config", help="Save parameters to a JSON config file")
