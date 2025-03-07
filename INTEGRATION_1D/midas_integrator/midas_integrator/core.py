@@ -121,6 +121,7 @@ class DiffractionConfig:
                         logger.debug(f"JSON content: {file_content}")
                         config_dict = json.loads(file_content)
                     logger.info(f"Loaded configuration from {abs_config_path}")
+                    print(f'loaded files: {config_dict}')
                     # Debug: show what was loaded
                     logger.debug(f"Loaded config values: {config_dict}")
                 except json.JSONDecodeError as e:
