@@ -315,9 +315,9 @@ def main(args=None):
         sys.exit(1)
     
     # Display final configuration
-    logger.info("Final configuration:")
+    logger.debug("Final configuration:")
     for key, value in config.to_dict().items():
-        logger.info(f"  {key}: {value}")
+        logger.debug(f"  {key}: {value}")
 
     # Ensure we have an image path
     if not config.image_path:
