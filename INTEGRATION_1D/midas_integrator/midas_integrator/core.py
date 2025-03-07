@@ -883,7 +883,7 @@ class ImageIntegrator:
     
     @staticmethod
     @njit(parallel=True, fastmath=True)
-    def integrate_image_cpu_optimized(image, px_list, n_px_list, frac_values, n_r_bins, n_eta_bins,
+    def integrate_image_cpu(image, px_list, n_px_list, frac_values, n_r_bins, n_eta_bins,
                             r_min, r_bin_size, bad_px_intensity, gap_intensity, nr_pixels_y):
         """
         Optimized CPU version of the integrate_image function using Numba.
