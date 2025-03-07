@@ -1,6 +1,6 @@
-# Diffraction Analyzer User Guide
+# MIDAS INTRGRATOR User Guide
 
-This guide provides detailed information on how to use the `diffraction-analyzer` package for processing diffraction images and fitting Voigt profiles.
+This guide provides detailed information on how to use the `midas_integrator` package for processing diffraction images and fitting Voigt profiles.
 
 ## Table of Contents
 
@@ -20,7 +20,7 @@ After [installing](INSTALLATION.md) the package, you can use it either through t
 ### Basic Example
 
 ```python
-from diffraction_analyzer import DiffractionConfig, DiffractionProcessor
+from midas_integrator import DiffractionConfig, DiffractionProcessor
 
 # Create a configuration
 config = DiffractionConfig(
@@ -45,7 +45,7 @@ print(f"Amplitude: {amp}, Background: {bg}, Center: {cen}, Width: {width}")
 The package provides a convenient command line interface for quick processing:
 
 ```bash
-diffraction-analyzer image.tif --dark dark.tif --output result.png
+midas_integrator image.tif --dark dark.tif --output result.png
 ```
 
 ### Command Line Options
@@ -82,27 +82,27 @@ optional arguments:
 
 #### Basic processing with dark correction:
 ```bash
-diffraction-analyzer image.tif --dark dark.tif --output result.png
+midas_integrator image.tif --dark dark.tif --output result.png
 ```
 
 #### Fitting multiple peaks:
 ```bash
-diffraction-analyzer image.tif --peaks 2 --output multi_peak_result.png
+midas_integrator image.tif --peaks 2 --output multi_peak_result.png
 ```
 
 #### Custom azimuthal range:
 ```bash
-diffraction-analyzer image.tif --etamin -90 --etamax 90 --etabin 0.5 --output custom_eta.png
+midas_integrator image.tif --etamin -90 --etamax 90 --etabin 0.5 --output custom_eta.png
 ```
 
 #### Saving integrated data:
 ```bash
-diffraction-analyzer image.tif --output result.png --save-data integrated_data.csv
+midas_integrator image.tif --output result.png --save-data integrated_data.csv
 ```
 
 #### Running a benchmark:
 ```bash
-diffraction-analyzer image.tif --output result.png --benchmark
+midas_integrator image.tif --output result.png --benchmark
 ```
 
 ## Python API
@@ -123,7 +123,7 @@ The Python API provides more flexibility and control over the processing pipelin
 The package includes several plotting utilities for visualizing results:
 
 ```python
-from diffraction_analyzer.utils import (
+from midas_integrator.utils import (
     plot_diffraction_profile,
     plot_log_scale_profile,
     plot_peaks,
@@ -234,7 +234,7 @@ The package includes GPU acceleration for faster processing:
 ### Checking GPU Availability
 
 ```python
-from diffraction_analyzer import GPUUtils
+from midas_integrator import GPUUtils
 
 if GPUUtils.cuda_available():
     print("GPU acceleration is available")
