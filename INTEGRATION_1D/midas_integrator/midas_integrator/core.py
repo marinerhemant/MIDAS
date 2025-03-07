@@ -693,7 +693,7 @@ class PlotUtils:
         output_file : Optional[str]
             Path to save the plot (if None, display plot instead)
         """
-        plt.figure(figsize=(10, 6))
+        plt.figure(figsize=(5, 3))
         
         # Plot data points
         plt.plot(result[:, 0], result[:, 1], 'o', markersize=3, label='Integrated Data')
