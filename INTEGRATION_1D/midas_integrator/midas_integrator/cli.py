@@ -321,8 +321,24 @@ def main(args=None):
     # Create configuration from arguments and config file
     config = DiffractionConfig.from_args_and_config(args, args.config_file)
 
-    for item in config:
-        print(item)
+    print(config.image_path)
+    print(config.dark_path)
+    print(config.map_path)
+    print(config.n_map_path)
+    print(config.r_min)
+    print(config.r_max)
+    print(config.r_bin_size)
+    print(config.eta_min)
+    print(config.eta_max)
+    print(config.eta_bin_size)
+    print(config.bad_px_intensity)
+    print(config.gap_intensity)
+    print(config.output_file)
+    print(config.save_data_file)
+    print(config.use_gpu)
+    print(config.num_peaks)
+    print(config.cache_results)
+    print(config.benchmark)
 
     # Ensure we have an image path
     if not config.image_path:
