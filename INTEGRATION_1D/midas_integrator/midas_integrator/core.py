@@ -269,28 +269,7 @@ class VoigtFitter:
 
 class BinaryUtils:
     """Utilities for handling binary data files."""
-    
-    @staticmethod
-    def merge_int32_to_double(int1: int, int2: int) -> float:
-        """
-        Merge two 32-bit integers into a double-precision floating point value.
-        This is used to decode fractional values stored in the binary data.
         
-        Parameters:
-        -----------
-        int1 : int
-            Lower 32 bits
-        int2 : int
-            Upper 32 bits
-            
-        Returns:
-        --------
-        float
-            Reconstructed double-precision float
-        """
-        combined_bits = (int2 << 32) | (np.int64(int1) & 0xFFFFFFFF)
-        return struct.unpack('d', struct.pack('Q', combined_bits))[0]
-    
     @staticmethod
     def load_pixel_maps(map_path: str, n_map_path: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -324,13 +303,9 @@ class BinaryUtils:
         
         # Reshape pixel list and create fractional values
         px_list = px_list.reshape(-1, 4)
-        frac_values = np.zeros(px_list.shape[0], dtype=np.float64)
-        
-        # Convert integer pairs to double values
-        logger.info(f"Converting to fraction values")
-        for i in range(px_list.shape[0]):
-            frac_values[i] = BinaryUtils.merge_int32_to_double(px_list[i, 2], px_list[i, 3])
-        
+        logger.info(f"Reading area fractions in map from {map_path}")
+        frac_values = np.fromfile(map_path, dtype=np.float64).reshape(-1, 2)[:, 1]
+                
         # Load pixel count list
         logger.info(f"Loading pixel count map from {n_map_path}")
         n_px_list = np.fromfile(n_map_path, dtype=np.int32)
