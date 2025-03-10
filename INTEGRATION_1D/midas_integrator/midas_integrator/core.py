@@ -748,7 +748,54 @@ class PlotUtils:
             logger.info(f"Plot saved to {output_file}")
         else:
             plt.show()
-    
+
+    @staticmethod
+    def plot_benchmark_results(cpu_time: float, basic_cuda_time: float, opt_cuda_time: float, 
+                              output_file: Optional[str] = None) -> None:
+        """
+        Plot benchmark results comparing CPU and GPU integration times.
+        
+        Parameters:
+        -----------
+        cpu_time : float
+            CPU integration time in seconds
+        basic_cuda_time : float
+            Basic CUDA integration time in seconds
+        opt_cuda_time : float
+            Optimized CUDA integration time in seconds
+        output_file : Optional[str]
+            Path to save the plot (if None, display plot instead)
+        """
+        methods = ['CPU', 'Basic CUDA', 'Optimized CUDA']
+        times = [cpu_time, basic_cuda_time, opt_cuda_time]
+        
+        plt.figure(figsize=(10, 6))
+        bars = plt.bar(methods, times, color=['blue', 'green', 'red'])
+        
+        # Add speedup labels
+        if cpu_time > 0:
+            for i, (method, time) in enumerate(zip(methods[1:], times[1:])):
+                if time > 0:
+                    speedup = cpu_time / time
+                    plt.text(i+1, time + 0.1, f'{speedup:.1f}x faster than CPU', 
+                             ha='center', va='bottom', rotation=0)
+        
+        plt.ylabel('Time (seconds)')
+        plt.title('Integration Performance Comparison')
+        plt.grid(axis='y', alpha=0.3)
+        
+        # Add time values on top of bars
+        for bar, time in zip(bars, times):
+            plt.text(bar.get_x() + bar.get_width()/2, time + 0.05, 
+                     f'{time:.3f}s', ha='center', va='bottom')
+        
+        # Save or show the plot
+        if output_file:
+            plt.savefig(output_file, dpi=300, bbox_inches='tight')
+            logger.info(f"Benchmark plot saved to {output_file}")
+        else:
+            plt.show()
+
 class ImageIntegrator:
     """Class for performing image integration."""
     
@@ -780,12 +827,7 @@ class ImageIntegrator:
         # Create stream for concurrent operations
         stream = cuda.stream()
         
-        try:
-            # # Transfer data to GPU using pinned memory for faster transfers
-            # with cuda.pinned_array(image.shape, dtype=np.float32) as pinned_image:
-            #     pinned_image[:] = image
-            #     d_image = cuda.to_device(pinned_image, stream=stream)
-            
+        try:            
             d_image = cuda.to_device(image, stream=stream)
             d_px_list = cuda.to_device(px_list, stream=stream)
             d_n_px_list = cuda.to_device(n_px_list, stream=stream)
@@ -845,12 +887,7 @@ class ImageIntegrator:
         # Create stream for concurrent operations
         stream = cuda.stream()
         
-        try:
-            # # Transfer data to GPU using pinned memory for faster transfers
-            # with cuda.pinned_array(image.shape, dtype=np.float32) as pinned_image:
-            #     pinned_image[:] = image
-            #     d_image = cuda.to_device(pinned_image, stream=stream)
-            
+        try:            
             d_image = cuda.to_device(image, stream=stream)
             d_px_list = cuda.to_device(px_list, stream=stream)
             d_n_px_list = cuda.to_device(n_px_list, stream=stream)
