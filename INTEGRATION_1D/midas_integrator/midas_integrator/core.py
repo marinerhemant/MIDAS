@@ -846,11 +846,12 @@ class ImageIntegrator:
         stream = cuda.stream()
         
         try:
-            # Transfer data to GPU using pinned memory for faster transfers
-            with cuda.pinned_array(image.shape, dtype=np.float32) as pinned_image:
-                pinned_image[:] = image
-                d_image = cuda.to_device(pinned_image, stream=stream)
+            # # Transfer data to GPU using pinned memory for faster transfers
+            # with cuda.pinned_array(image.shape, dtype=np.float32) as pinned_image:
+            #     pinned_image[:] = image
+            #     d_image = cuda.to_device(pinned_image, stream=stream)
             
+            d_image = cuda.to_device(image, stream=stream)
             d_px_list = cuda.to_device(px_list, stream=stream)
             d_n_px_list = cuda.to_device(n_px_list, stream=stream)
             d_frac_values = cuda.to_device(frac_values, stream=stream)
