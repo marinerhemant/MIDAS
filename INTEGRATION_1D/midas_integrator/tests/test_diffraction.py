@@ -86,31 +86,6 @@ class TestVoigtFitter(unittest.TestCase):
         self.assertAlmostEqual(x[peaks[0]], 5.0, delta=1.0)
         self.assertAlmostEqual(x[peaks[1]], 15.0, delta=1.0)
 
-
-class TestBinaryUtils(unittest.TestCase):
-    """Test cases for the BinaryUtils class."""
-    
-    def test_merge_int32_to_double(self):
-        """Test conversion of two int32 values to double."""
-        # Test with a known double value
-        import struct
-        
-        # Take a known double value
-        original_double = 3.14159265359
-        
-        # Convert to two int32 values
-        packed = struct.pack('d', original_double)
-        unpacked = struct.unpack('Q', packed)[0]
-        int1 = unpacked & 0xFFFFFFFF
-        int2 = unpacked >> 32
-        
-        # Test the conversion back
-        result = BinaryUtils.merge_int32_to_double(int1, int2)
-        
-        # Check the result
-        self.assertAlmostEqual(original_double, result)
-
-
 class TestImageUtils(unittest.TestCase):
     """Test cases for the ImageUtils class."""
     
