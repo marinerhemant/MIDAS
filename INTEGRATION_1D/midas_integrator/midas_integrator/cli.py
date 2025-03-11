@@ -296,31 +296,32 @@ def main(args=None):
             progress_bar.update(message, progress)
     
     # Process the diffraction image
-    try:
-        result, params = processor.process(progress_callback)
-        elapsed_time = time.time() - start_time
-        logger.info(f"Processing completed in {elapsed_time:.2f} seconds")
-        
-        # Print fitted parameters
-        if config.num_peaks == 1:
-            amp, bg, mix, cen, width = params
-            logger.info(f"Fitted parameters: Amplitude={amp:.2f}, Background={bg:.2f}, "
-                       f"Mix={mix:.2f}, Center={cen:.2f}, Width={width:.2f}")
-        else:
-            logger.info(f"Fitted {config.num_peaks} peaks:")
-            for i in range(config.num_peaks):
-                amp, bg, mix, cen, width = params[i*5:(i+1)*5]
-                logger.info(f"  Peak {i+1}: Amplitude={amp:.2f}, Background={bg:.2f}, "
-                           f"Mix={mix:.2f}, Center={cen:.2f}, Width={width:.2f}")
-        
-        # Save integrated data if requested
-        if args.save_data:
-            save_integrated_data(result, args.save_data)
-        
-        return 0
-    except Exception as e:
-        logger.error(f"Error processing diffraction image: {e}", exc_info=True)
-        return 1
+    while True:
+        try:
+            result, params = processor.process(progress_callback)
+            elapsed_time = time.time() - start_time
+            logger.info(f"Processing completed in {elapsed_time:.2f} seconds")
+            
+            # Print fitted parameters
+            if config.num_peaks == 1:
+                amp, bg, mix, cen, width = params
+                logger.info(f"Fitted parameters: Amplitude={amp:.2f}, Background={bg:.2f}, "
+                        f"Mix={mix:.2f}, Center={cen:.2f}, Width={width:.2f}")
+            else:
+                logger.info(f"Fitted {config.num_peaks} peaks:")
+                for i in range(config.num_peaks):
+                    amp, bg, mix, cen, width = params[i*5:(i+1)*5]
+                    logger.info(f"  Peak {i+1}: Amplitude={amp:.2f}, Background={bg:.2f}, "
+                            f"Mix={mix:.2f}, Center={cen:.2f}, Width={width:.2f}")
+            
+            # Save integrated data if requested
+            if args.save_data:
+                save_integrated_data(result, args.save_data)
+            
+            return 0
+        except Exception as e:
+            logger.error(f"Error processing diffraction image: {e}", exc_info=True)
+            return 1
 
 
 if __name__ == "__main__":
