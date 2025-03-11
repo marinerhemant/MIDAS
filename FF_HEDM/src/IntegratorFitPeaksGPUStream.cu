@@ -626,14 +626,14 @@ int main(int argc, char *argv[]){
 	double *Image;
 	pixelvalue *ImageIn;
 	pixelvalue *DarkIn;
-	pixelvalue *ImageInT;
+	uint16_t *ImageInT;
 	pixelvalue *DarkInT;
 	double *AverageDark;
 	DarkIn = (pixelvalue *) malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkIn));
 	DarkInT = (pixelvalue *) malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkInT));
 	AverageDark = (pixelvalue *) calloc(NrPixelsY*NrPixelsZ,sizeof(*AverageDark));
 	ImageIn = (pixelvalue *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageIn));
-	ImageInT = (pixelvalue *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageInT));
+	ImageInT = (uint16_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageInT));
 	cudaMallocHost((void **) &Image,NrPixelsY*NrPixelsZ*sizeof(*Image));
 	size_t pxSize = BYTES_PER_PIXEL;
 	size_t SizeFile = pxSize * NrPixelsY * NrPixelsZ;
