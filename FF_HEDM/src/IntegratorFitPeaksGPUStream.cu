@@ -40,8 +40,8 @@
 #include <assert.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
-//#include <blosc2.h>
-#include <zip.h> 
+#include <blosc2.h>
+//#include <zip.h> 
 #include <nlopt.h>
 
 #define PORT 5000           // Changed port to 5000
