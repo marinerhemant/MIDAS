@@ -11,17 +11,26 @@ class MyStruct(ctypes.Structure):
 def send_data_chunk(sock, dataset_num, data):
     t1 = time.time()
     
+    # Check if data is already a numpy array with correct dtype
+    if not isinstance(data, np.ndarray) or data.dtype != np.uint16:
+        # Convert data to numpy array
+        data_array = np.array(data, dtype=np.uint16)
+    else:
+        # Use the existing array
+        data_array = data
+    
     # Pack the dataset number
     header = struct.pack('H', dataset_num)
     
-    format_string = 'H' * len(data)
-    packed_data = struct.pack(format_string, *data)
-    combined_data = header + packed_data
-    sock.sendall(combined_data)
+    # Use memoryview instead of tobytes() to avoid a copy
+    data_view = memoryview(data_array).cast('B')
+    
+    # Combine and send in a single call
+    sock.sendall(header + data_view)
     
     t2 = time.time()
     print(f"Time taken to send data: {t2 - t1:.4f} sec")
-    print(f"Sent dataset #{dataset_num} with {len(data)} uint16_t values ({len(packed_data)} bytes)")
+    print(f"Sent dataset #{dataset_num} with {len(data_array)} uint16_t values ({len(data_view)} bytes)")
 
 def main():
     # Connect to C server
