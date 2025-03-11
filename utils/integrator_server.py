@@ -62,7 +62,7 @@ def main():
             if dataset_num == 1:
                 time.sleep(1)
             else:
-                time.sleep(0.001)
+                time.sleep(0.0014)
             t2 = time.time()
             print(f"Time taken: {t2 - t1:.4f} sec")
             
