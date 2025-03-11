@@ -8,19 +8,29 @@ class MyStruct(ctypes.Structure):
 
 def send_data_chunk(sock, dataset_num, data):
     t1 = time.time()
-    # 'H' format specifier is for unsigned short (uint16_t)
-    # First pack the dataset number as uint16_t
+    
+    # Pack the dataset number
     header = struct.pack('!H', dataset_num)
-    # Then pack uint16_t values into bytes
-    data1 = MyStruct()
-    data1.field1 = data[0]
-    packed_data = bytes(data1)
-    # packed_data = struct.pack(f'!{len(data)}H', *data)
-    # Send header followed by data
-    sock.sendall(header + packed_data)
+    
+    # Check if data is already a numpy array with the right type
+    if not isinstance(data, np.ndarray) or data.dtype != np.uint16:
+        np_data = np.array(data, dtype=np.uint16)
+    else:
+        np_data = data
+    
+    # Convert to network byte order (big-endian)
+    if np.little_endian:
+        np_data = np_data.byteswap()
+    
+    # Send header
+    sock.sendall(header)
+    
+    # Send data directly from numpy memory
+    sock.sendall(memoryview(np_data))
+    
     t2 = time.time()
     print(f"Time taken to send data: {t2 - t1:.4f} sec")
-    print(f"Sent dataset #{dataset_num} with {len(data)} uint16_t values ({len(packed_data)} bytes)")
+    print(f"Sent dataset #{dataset_num} with {len(data)} uint16_t values ({len(np_data) * 2} bytes)")
 
 def main():
     # Connect to C server
@@ -52,7 +62,7 @@ def main():
             if dataset_num == 1:
                 time.sleep(1)
             else:
-                time.sleep(0.1)
+                time.sleep(0.01)
             t2 = time.time()
             print(f"Time taken: {t2 - t1:.4f} sec")
             
