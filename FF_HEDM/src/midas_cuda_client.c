@@ -1,5 +1,5 @@
 // cuda_client.c
-#include "cuda_client.h"
+#include "midas_cuda_client.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
