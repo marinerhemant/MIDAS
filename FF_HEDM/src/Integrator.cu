@@ -41,6 +41,14 @@
 #include <hdf5_hl.h>
 #include <assert.h>
 #include <cuda.h>
+#include <cuda_runtime.h>
+
+// Function to check if CUDA is already initialized
+int check_cuda_ready() {
+    // Try a lightweight CUDA call - this should be fast if context exists
+    cudaError_t err = cudaGetDevice(NULL);
+    return (err == cudaSuccess);
+}
 
 typedef double pixelvalue;
 
@@ -371,12 +379,10 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 
 int main(int argc, char **argv)
 {
-	if (cuda_client_init() < 0) {
-        fprintf(stderr, "Failed to connect to CUDA server. Start the server at ~/opt/MIDAS/FF_HEDM/bin/midas_cuda_server in the background.\n");
-        return 1;
-    }
+	int device_id = 0;
+	gpuErrchk(cudaSetDevice(device_id));
 	// cudaSetDevice(0);
-	// printf("[%s] - Starting...\n", argv[0]);
+	printf("[%s] - Starting...\n", argv[0]);
 	clock_t start0, end0;
 	start0 = clock();
     double diftotal;
