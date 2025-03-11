@@ -53,10 +53,10 @@
 
 #define PORT 5000           // Changed port to 5000
 #define MAX_CONNECTIONS 10
-int CHUNK_SIZE;
+size_t CHUNK_SIZE;
 #define MAX_QUEUE_SIZE 100
 #define HEADER_SIZE sizeof(uint16_t)  // Size of dataset number
-int TOTAL_MSG_SIZE;
+size_t TOTAL_MSG_SIZE;
 
 // Structure for our data chunks
 typedef struct {
