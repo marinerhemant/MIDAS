@@ -49,7 +49,7 @@ def main():
         dataset_num = 0
         
         # Generate random uint16_t values (0-12000)
-        data = np.random.randint(0, 17000, num_values, dtype=np.uint16)
+        data = np.random.randint(0, 64000, num_values, dtype=np.uint16)
         while True:
             t1 = time.time()
             # Send the data with dataset number
