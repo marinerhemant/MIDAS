@@ -57,6 +57,7 @@ size_t CHUNK_SIZE;
 #define MAX_QUEUE_SIZE 100  // Maximum number of chunks in the queue, should not be too large, else segfaults.
 #define HEADER_SIZE sizeof(uint16_t)  // Size of dataset number
 size_t TOTAL_MSG_SIZE;
+#define BYTES_PER_PIXEL 2
 
 // Structure for our data chunks
 typedef struct {
@@ -159,7 +160,6 @@ void* handle_client(void *arg) {
             
             total_bytes_read += bytes_read;
         }
-		printf("Received %d bytes\n", total_bytes_read);
         
         // Extract dataset number from header
         uint16_t dataset_num;
@@ -172,16 +172,18 @@ void* handle_client(void *arg) {
             perror("Memory allocation failed");
             break;
         }
-        
+        int maxInt = -1;
         // Convert data from network byte order to host byte order
-        for (int i = 0; i < CHUNK_SIZE/2; i++) {
+        for (int i = 0; i < CHUNK_SIZE/BYTES_PER_PIXEL; i++) {
             // uint16_t network_value;
             // memcpy(&network_value, buffer + HEADER_SIZE + (i * sizeof(uint16_t)), sizeof(uint16_t));
             // data[i] = ntohs(network_value);
 			uint16_t value;
 			memcpy(&value, buffer + HEADER_SIZE + (i * sizeof(uint16_t)), sizeof(uint16_t));
 			data[i] = value;  // No conversion
-}
+			if (data[i] > maxInt) maxInt = data[i];
+		}
+		printf("Max intensity: %d\n",maxInt);
         
         // Add the data to the processing queue
         queue_push(&process_queue, dataset_num, data, CHUNK_SIZE);
@@ -634,7 +636,7 @@ int main(int argc, char *argv[]){
 	ImageIn = (pixelvalue *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageIn));
 	ImageInT = (pixelvalue *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageInT));
 	cudaMallocHost((void **) &Image,NrPixelsY*NrPixelsZ*sizeof(*Image));
-	size_t pxSize = sizeof(uint16_t);
+	size_t pxSize = BYTES_PER_PIXEL;
 	size_t SizeFile = pxSize * NrPixelsY * NrPixelsZ;
 	int nFrames;
 	size_t sz;
@@ -838,7 +840,7 @@ int main(int argc, char *argv[]){
 				area1D[j] += PerFrameArr[3*bigArrSize+(j*nEtaBins+i)];
 			}
 			if (area1D[j] != 0) int1D[j] /= area1D[j];
-			printf("%lf %lf\n",int1D[j],area1D[j]);
+			// printf("%lf %lf\n",int1D[j],area1D[j]);
 			if (int1D[j] > maxInt){
 				maxInt = int1D[j];
 				maxIntLoc = j;
