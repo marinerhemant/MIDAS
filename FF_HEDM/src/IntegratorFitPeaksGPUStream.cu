@@ -431,7 +431,7 @@ REtaMapper(
 	}
 }
 
-static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], pixelvalue *ImageIn, pixelvalue *ImageOut, int NrPixelsY, int NrPixelsZ)
+static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], uint16_t *ImageIn, uint16_t *ImageOut, int NrPixelsY, int NrPixelsZ)
 {
 	int i,k,l;
 	if (NrTransOpt == 0 || (NrTransOpt==1 && TransOpt[0]==0)){
@@ -624,15 +624,15 @@ int main(int argc, char *argv[]){
 
     /*Allocations!*/
 	double *Image;
-	pixelvalue *ImageIn;
-	pixelvalue *DarkIn;
+	uint16_t *ImageIn;
+	uint16_t *DarkIn;
 	uint16_t *ImageInT;
-	pixelvalue *DarkInT;
+	uint16_t *DarkInT;
 	double *AverageDark;
-	DarkIn = (pixelvalue *) malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkIn));
-	DarkInT = (pixelvalue *) malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkInT));
+	DarkIn = (uint16_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkIn));
+	DarkInT = (uint16_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkInT));
 	AverageDark = (pixelvalue *) calloc(NrPixelsY*NrPixelsZ,sizeof(*AverageDark));
-	ImageIn = (pixelvalue *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageIn));
+	ImageIn = (uint16_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageIn));
 	ImageInT = (uint16_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageInT));
 	cudaMallocHost((void **) &Image,NrPixelsY*NrPixelsZ*sizeof(*Image));
 	size_t pxSize = BYTES_PER_PIXEL;
