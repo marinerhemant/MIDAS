@@ -84,8 +84,8 @@ def integrateImage(image, pxList, nPxList, fracValues, nRBins, nEtaBins, RMin, R
 # File paths for image and dark image
 imageFN = 'test.tif'
 darkFN = 'dark.png'
-mapFN = '/dev/shm/Map.bin'
-nMapFN = '/dev/shm/nMap.bin'
+mapFN = 'Map.bin'
+nMapFN = 'nMap.bin'
 
 # Constants for bad and gap pixel intensities
 badPxIntensity = -1
