@@ -64,7 +64,6 @@ def main():
                 time.sleep(0.0014)
             t2 = time.time()
             print(f"Time taken: {t2 - t1:.4f} sec")
-            return
             
     except KeyboardInterrupt:
         print("Sending terminated by user")
