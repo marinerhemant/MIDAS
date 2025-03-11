@@ -374,7 +374,6 @@ int main(int argc, char **argv)
 {
 	int device_id = 0;
 	gpuErrchk(cudaSetDevice(device_id));
-	// cudaSetDevice(0);
 	printf("[%s] - Starting...\n", argv[0]);
 	clock_t start0, end0;
 	start0 = clock();
