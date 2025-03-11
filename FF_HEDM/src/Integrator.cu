@@ -42,6 +42,7 @@
 #include <assert.h>
 #include <cuda.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 
 int cuda_client_init();
 int cuda_execute(const char* command);
