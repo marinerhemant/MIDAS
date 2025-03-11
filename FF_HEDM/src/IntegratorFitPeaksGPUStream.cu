@@ -324,7 +324,6 @@ void integrate_noMapMask (double px, double Lsd, int bigArrSize, int Normalize, 
 		long long int nPixels, dataPos, testPos;
 		nPixels = dNPxList[2*idx + 0];
 		dataPos = dNPxList[2*idx + 1];
-		printf("nPixels: %d, dataPos: %d\n",(int)nPixels,(int)dataPos);
 		for (l=0;l<nPixels;l++){
 			ThisVal = dPxList[dataPos + l];
 			testPos = ThisVal.z;
@@ -333,7 +332,6 @@ void integrate_noMapMask (double px, double Lsd, int bigArrSize, int Normalize, 
 			Intensity += dImage[testPos]*ThisVal.frac;
 			totArea += ThisVal.frac;
 		}
-		printf("Intensity: %f, totArea: %f\n",Intensity,totArea);
 		if (Intensity != 0){
 			if (Normalize == 1){
 				Intensity /= totArea;
@@ -808,6 +806,10 @@ int main(int argc, char *argv[]){
 				Image[j] = (double)ImageIn[j] - AverageDark[j];
 			}
 		}
+		for (i=0;i<NrPixelsY*NrPixelsZ;i++){
+			printf("%lf ",Image[i]);
+		}
+		printf("\n");
 		gpuErrchk(cudaMemset(devIntArrPerFrame,0,bigArrSize*sizeof(double)));
 		gpuErrchk(cudaMemcpy(devImage,Image,NrPixelsY*NrPixelsZ*sizeof(double),cudaMemcpyHostToDevice));
 		gpuErrchk(cudaDeviceSynchronize());
