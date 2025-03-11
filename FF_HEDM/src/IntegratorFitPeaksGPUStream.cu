@@ -806,7 +806,7 @@ int main(int argc, char *argv[]){
 				Image[j] = (double)ImageIn[j] - AverageDark[j];
 			}
 		}
-		for (i=0;i<NrPixelsY*NrPixelsZ;i++){
+		for (i=0;i<NrPixelsY;i++){
 			printf("%d ",ImageInT[i]);
 		}
 		printf("\n");
