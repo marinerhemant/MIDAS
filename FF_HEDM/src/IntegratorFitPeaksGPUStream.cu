@@ -167,7 +167,7 @@ void* handle_client(void *arg) {
         // dataset_num = ntohs(dataset_num);  // Convert from network to host byte order
         
         // Allocate memory for the data
-        uint16_t *data = (uint16_t*)malloc(CHUNK_SIZE * sizeof(uint16_t));
+        uint16_t *data = (uint16_t*)malloc(CHUNK_SIZE/BYTES_PER_PIXEL * sizeof(uint16_t));
         if (!data) {
             perror("Memory allocation failed");
             break;
@@ -186,8 +186,8 @@ void* handle_client(void *arg) {
 		printf("Max intensity: %d\n",maxInt);
         
         // Add the data to the processing queue
-        queue_push(&process_queue, dataset_num, data, CHUNK_SIZE);
-        printf("Received dataset #%u with %d uint16_t values\n", dataset_num, CHUNK_SIZE);
+        queue_push(&process_queue, dataset_num, data, CHUNK_SIZE/BYTES_PER_PIXEL);
+        printf("Received dataset #%u with %d uint16_t values\n", dataset_num, CHUNK_SIZE/BYTES_PER_PIXEL);
     }
     
 connection_closed:
@@ -316,7 +316,6 @@ void integrate_noMapMask (double px, double Lsd, int bigArrSize, int Normalize, 
 		double *dImage, double *IntArrPerFrame, double *PerFrameArr, double *SumMatrix)
 {
 	size_t idx = blockIdx.x*blockDim.x + threadIdx.x;
-	printf("BigArrSize: %d Idx: %d\n",(int)idx,bigArrSize);
 	if (idx < bigArrSize){
 		int l;
 		double Intensity=0, totArea=0;
@@ -767,7 +766,7 @@ int main(int argc, char *argv[]){
     }
     
     printf("Server listening on port %d\n", PORT);
-    printf("Expecting messages with %d-byte header and %d uint16_t values (%d bytes total)\n", 
+    printf("Expecting messages with %d-byte header and %d bytes (%d bytes total)\n", 
            HEADER_SIZE, CHUNK_SIZE, TOTAL_MSG_SIZE);
     
     // Create a thread for accepting new connections
@@ -807,7 +806,7 @@ int main(int argc, char *argv[]){
 			}
 		}
 		for (i=0;i<NrPixelsY;i++){
-			printf("%d ",ImageInT[i]);
+			printf("%d ",(int)ImageInT[i]);
 		}
 		printf("\n");
 		gpuErrchk(cudaMemset(devIntArrPerFrame,0,bigArrSize*sizeof(double)));
