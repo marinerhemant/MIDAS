@@ -21,7 +21,7 @@ def send_data_chunk(sock, dataset_num, data):
     
     t2 = time.time()
     print(f"Time taken to send data: {t2 - t1:.4f} sec")
-    print(f"Sent dataset #{dataset_num} with {len(data)} uint16_t values ({len(np_data) * 2} bytes)")
+    print(f"Sent dataset #{dataset_num} with {len(data)} uint16_t values ({len(packed_data)} bytes)")
 
 def main():
     # Connect to C server
