@@ -2,6 +2,9 @@ import socket
 import time
 import numpy as np
 import struct
+import ctypes
+class MyStruct(ctypes.Structure):
+    _fields_ = [("field1", ctypes.c_uint16)]
 
 def send_data_chunk(sock, dataset_num, data):
     t1 = time.time()
@@ -9,7 +12,10 @@ def send_data_chunk(sock, dataset_num, data):
     # First pack the dataset number as uint16_t
     header = struct.pack('!H', dataset_num)
     # Then pack uint16_t values into bytes
-    packed_data = struct.pack(f'!{len(data)}H', *data)
+    data1 = MyStruct()
+    data1.field1 = data[0]
+    packed_data = bytes(data1)
+    # packed_data = struct.pack(f'!{len(data)}H', *data)
     # Send header followed by data
     sock.sendall(header + packed_data)
     t2 = time.time()
