@@ -845,15 +845,15 @@ int main(int argc, char *argv[]){
 				maxIntLoc = j;
 			}
 			R[j] = (RBinsLow[j]+RBinsHigh[j])/2;
-			printf("%lf %lf %d\n",R[j],int1D[j],nNonZeros);
+			// printf("%lf %lf %d\n",R[j],int1D[j],nNonZeros);
 		}
 		// We have the 1D array, now fit it with a peak shape.
 		double x[5] = {maxInt-(int1D[0]+int1D[nRBins-1])/2,(int1D[0]+int1D[nRBins-1])/2,0.5,R[maxIntLoc],(R[nRBins-1]-R[0])/4}; // amp, bg, mix, cen, sig
 		double lb[5] = {0.0,-1.0,0.0,R[0],0.1};
 		double ub[5] = {maxInt*2,maxInt,1.0,R[nRBins-1],(R[nRBins-1]-R[0])/2};
-		for (i=0;i<5;i++){
-			printf("x[%d]: %lf, lb[%d]: %lf, ub[%d]: %lf\n",i,x[i],i,lb[i],i,ub[i]);
-		}
+		// for (i=0;i<5;i++){
+		// 	printf("x[%d]: %lf, lb[%d]: %lf, ub[%d]: %lf\n",i,x[i],i,lb[i],i,ub[i]);
+		// }
 		struct dataFit d;
 		d.nrBins = nRBins;
 		d.R = &R[0];
