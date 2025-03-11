@@ -159,6 +159,7 @@ void* handle_client(void *arg) {
             
             total_bytes_read += bytes_read;
         }
+		printf("Received %d bytes\n", total_bytes_read);
         
         // Extract dataset number from header
         uint16_t dataset_num;
@@ -173,7 +174,7 @@ void* handle_client(void *arg) {
         }
         
         // Convert data from network byte order to host byte order
-        for (int i = 0; i < CHUNK_SIZE; i++) {
+        for (int i = 0; i < CHUNK_SIZE/2; i++) {
             // uint16_t network_value;
             // memcpy(&network_value, buffer + HEADER_SIZE + (i * sizeof(uint16_t)), sizeof(uint16_t));
             // data[i] = ntohs(network_value);
