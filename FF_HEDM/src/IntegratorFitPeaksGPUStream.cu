@@ -751,40 +751,7 @@ int main(int argc, char *argv[]){
 		t2 = clock();
 		diffT += ((double)(t2-t1))/CLOCKS_PER_SEC;
 		t5 = clock();
-		if (i==0){
-			gpuErrchk(cudaMemcpy(PerFrameArr,devPerFrameArr,bigArrSize*4*sizeof(double),cudaMemcpyDeviceToHost));
-			gpuErrchk(cudaDeviceSynchronize());
-			hsize_t dims[3] = {(unsigned long long)4,(unsigned long long)nRBins,(unsigned long long)nEtaBins};
-			herr_t status_f = H5LTmake_dataset_double(file_id, "/REtaMap", 3, dims, PerFrameArr);
-			H5LTset_attribute_int(file_id, "/REtaMap", "nEtaBins", &nEtaBins, 1);
-			H5LTset_attribute_int(file_id, "/REtaMap", "nRBins", &nRBins, 1);
-			H5LTset_attribute_string(file_id, "/REtaMap", "Header", "Radius,2Theta,Eta,BinArea");
-			H5LTset_attribute_string(file_id, "/REtaMap", "Units", "Pixels,Degrees,Degrees,Pixels");
-		}
 		gpuErrchk(cudaDeviceSynchronize());
-		hsize_t dim[2] = {(unsigned long long)nRBins,(unsigned long long)nEtaBins};
-		char dsetName[1024];
-		if (individualSave==1) {
-			sprintf(dsetName,"/IntegrationResult/FrameNr_%d",i);
-			H5LTmake_dataset_double(file_id, dsetName, 2, dim, IntArrPerFrame);
-			H5LTset_attribute_double(file_id, dsetName, "omega", &omeArr[i], 1);
-			H5LTset_attribute_string(file_id, dsetName, "Header", "Radius,Eta");
-			H5LTset_attribute_string(file_id, dsetName, "Units", "Pixels,Degrees");
-		}
-		if (chunkFiles>0){
-			for (p=0;p<bigArrSize;p++) chunkArr[p] += IntArrPerFrame[p];
-			if (((i+1)%chunkFiles) == 0 || i==(nFrames-1)) {
-				hsize_t dim_chunk[2] = {(unsigned long long)nRBins,(unsigned long long)nEtaBins};
-				char chunkSetName[1024];
-				sprintf(chunkSetName,"/OmegaSumFrame/LastFrameNumber_%d",i);
-				H5LTmake_dataset_double(file_id, chunkSetName, 2, dim_chunk, chunkArr);
-				H5LTset_attribute_int(file_id, chunkSetName, "LastFrameNumber", &i, 1);
-				int nSum = (int)((omeArr[i] - firstOme)/omeStep)  + 1;
-				H5LTset_attribute_int(file_id, chunkSetName, "Number Of Frames Summed", &nSum, 1);
-				H5LTset_attribute_double(file_id, chunkSetName, "FirstOme", &firstOme, 1);
-				H5LTset_attribute_double(file_id, chunkSetName, "LastOme", &omeArr[i], 1);
-			}
-		}
 		t6 = clock();
 		diffT3 += ((double)(t6-t5))/CLOCKS_PER_SEC;
         
