@@ -717,6 +717,7 @@ int main(int argc, char *argv[]){
 	double *int1D;
 	int1D = (double *) calloc(nRBins,sizeof(*int1D));
     while (1) {
+		t1 = clock();
         DataChunk chunk;
         queue_pop(&process_queue, &chunk);
         
@@ -738,9 +739,6 @@ int main(int argc, char *argv[]){
 				Image[j] = (double)ImageIn[j] - AverageDark[j];
 			}
 		}
-		t4 = clock();
-		diffT2 += ((double)(t4-t3))/CLOCKS_PER_SEC;
-		t1 = clock();
 		gpuErrchk(cudaMemset(devIntArrPerFrame,0,bigArrSize*sizeof(double)));
 		gpuErrchk(cudaMemcpy(devImage,Image,NrPixelsY*NrPixelsZ*sizeof(double),cudaMemcpyHostToDevice));
 		gpuErrchk(cudaDeviceSynchronize());
@@ -764,11 +762,7 @@ int main(int argc, char *argv[]){
 			gpuErrchk(cudaDeviceSynchronize());
 		}
 		// Now we have IntArrPerFrame, we need to make it into a 1D.
-		t2 = clock();
-		diffT += ((double)(t2-t1))/CLOCKS_PER_SEC;
-		t5 = clock();
 		gpuErrchk(cudaDeviceSynchronize());
-		t6 = clock();
 		diffT3 += ((double)(t6-t5))/CLOCKS_PER_SEC;
 		memset(int1D,0,nRBins*sizeof(*int1D));
 		for (j=0;j<nRBins;j++){
@@ -776,6 +770,9 @@ int main(int argc, char *argv[]){
 				int1D[j] += IntArrPerFrame[j*nEtaBins+i];
 			}
 		}
+		t2 = clock();
+		diffT += ((double)(t2-t1))/CLOCKS_PER_SEC;
+		printf("Did intigration, took %lf s till now.",diffT);
 		// We have the 1D array, now fit it with a peak shape.
         
         // Free the data
