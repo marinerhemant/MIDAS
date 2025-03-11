@@ -788,10 +788,6 @@ int main(int argc, char *argv[]){
         queue_pop(&process_queue, &chunk);
         // Process the data
         memcpy(ImageInT,chunk.data,chunk.size*BYTES_PER_PIXEL);
-		for (i=0;i<NrPixelsY;i++){
-			printf("%d %d\n",(int)ImageInT[i],chunk.data[i]);
-		}
-		printf("\n");
 		if ((NrTransOpt==0) || (NrTransOpt==1 && TransOpt[0]==0)){
 			if (argc > 3 && dType!=8){
 				for (j=0;j<NrPixelsY*NrPixelsZ;j++){
@@ -808,6 +804,10 @@ int main(int argc, char *argv[]){
 				Image[j] = (double)ImageIn[j] - AverageDark[j];
 			}
 		}
+		for (i=0;i<NrPixelsY;i++){
+			printf("%d %d\n",(int)Image[i],chunk.data[i]);
+		}
+		printf("\n");
 		gpuErrchk(cudaMemset(devIntArrPerFrame,0,bigArrSize*sizeof(double)));
 		gpuErrchk(cudaMemcpy(devImage,Image,NrPixelsY*NrPixelsZ*sizeof(double),cudaMemcpyHostToDevice));
 		gpuErrchk(cudaDeviceSynchronize());
