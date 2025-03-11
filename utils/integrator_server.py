@@ -51,9 +51,9 @@ def main():
         dataset_num = 0
         
         # Generate random uint16_t values (0-12000)
-        data = np.array(Image.open('test.tif')).astype(np.uint16).reshape(-1)
-        plt.imshow(data)
-        plt.show()
+        data = np.array(Image.open('test.tif')).astype(np.uint16).reshape((2048*2048))
+        # plt.imshow(data)
+        # plt.show()
         print(np.max(data))
         while True:
             t1 = time.time()
