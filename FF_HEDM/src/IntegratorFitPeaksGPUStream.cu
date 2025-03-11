@@ -620,7 +620,7 @@ int main(int argc, char *argv[]){
 	size_t bigArrSize = nEtaBins*nRBins;
 	double *devSumMatrix;
 	double *IntArrPerFrame, *devIntArrPerFrame;
-	double *devPerFrameArr;
+	double *PerFrameArr, *devPerFrameArr;
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	printf("Initializing device, getting allocation, time elapsed till now:\t%f s.\n",diftotal);
