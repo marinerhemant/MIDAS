@@ -787,7 +787,7 @@ int main(int argc, char *argv[]){
         DataChunk chunk;
         queue_pop(&process_queue, &chunk);
         // Process the data
-        memcpy(ImageInT,chunk.data,chunk.size);
+        memcpy(ImageInT,chunk.data,chunk.size*BYTES_PER_PIXEL);
 		for (i=0;i<NrPixelsY;i++){
 			printf("%d %d\n",(int)ImageInT[i],chunk.data[i]);
 		}
