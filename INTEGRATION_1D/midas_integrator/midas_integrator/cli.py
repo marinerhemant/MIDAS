@@ -296,7 +296,9 @@ def main(args=None):
             progress_bar.update(message, progress)
     
     # Process the diffraction image
+    trialNr = 0
     while True:
+        print(trialNr)
         try:
             result, params = processor.process(progress_callback)
             elapsed_time = time.time() - start_time
@@ -318,10 +320,11 @@ def main(args=None):
             if args.save_data:
                 save_integrated_data(result, args.save_data)
             
-            return 0
+            # return 0
         except Exception as e:
             logger.error(f"Error processing diffraction image: {e}", exc_info=True)
             return 1
+        trialNr += 1
 
 
 if __name__ == "__main__":
