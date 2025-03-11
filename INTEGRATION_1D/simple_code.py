@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 import struct
 from math import ceil
+import os
 
 # Voigt profile function
 # This function defines a Voigt profile, which is a combination of a Gaussian and a Lorentzian profile.
@@ -81,7 +82,7 @@ def integrateImage(image, pxList, nPxList, fracValues, nRBins, nEtaBins, RMin, R
     return result
 
 # File paths for image and dark image
-imageFN = 'image.png'
+imageFN = 'test.tif'
 darkFN = 'dark.png'
 mapFN = '/dev/shm/Map.bin'
 nMapFN = '/dev/shm/nMap.bin'
@@ -101,8 +102,11 @@ EtaBinSize = 1
 # Load and preprocess the image
 with Image.open(imageFN) as img:
     image = np.array(img)
-with Image.open(darkFN) as img:
-    dark = np.array(img)
+if (os.path.exists(darkFN) == False):
+    dark = np.zeros(image.shape)
+else:
+    with Image.open(darkFN) as img:
+        dark = np.array(img)
 nrPixelsY = image.shape[1]
 image = np.clip(image - dark, 0, None)
 image = image.astype(np.float32)

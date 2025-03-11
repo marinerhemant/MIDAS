@@ -839,7 +839,7 @@ int main(int argc, char *argv[]){
 				int1D[j] += IntArrPerFrame[j*nEtaBins+i];
 				if (PerFrameArr[3*bigArrSize+(j*nEtaBins+i)] != 0)	nNonZeros ++;
 			}
-			if (nNonZeros != 0) int1D[j] /= nNonZeros;
+			if (nNonZeros != 0) int1D[j] /= (double)nNonZeros;
 			if (int1D[j] > maxInt){
 				maxInt = int1D[j];
 				maxIntLoc = j;
@@ -848,9 +848,9 @@ int main(int argc, char *argv[]){
 			printf("%lf %lf %d\n",R[j],int1D[j],nNonZeros);
 		}
 		// We have the 1D array, now fit it with a peak shape.
-		double x[5] = {maxInt,(int1D[0]+int1D[nRBins-1])/2,0.5,R[maxIntLoc],0.1}; // amp, bg, mix, cen, sig
+		double x[5] = {maxInt,(int1D[0]+int1D[nRBins-1])/2,0.5,R[maxIntLoc],(R[nRBins-1]-R[0])/4}; // amp, bg, mix, cen, sig
 		double lb[5] = {0.0,-1.0,0.0,R[0],0.0};
-		double ub[5] = {maxInt*2,maxInt,1.0,R[nRBins-1],R[nRBins-1]-R[0]};
+		double ub[5] = {maxInt*2,maxInt,1.0,R[nRBins-1],(R[nRBins-1]-R[0])/2};
 		struct dataFit d;
 		d.nrBins = nRBins;
 		d.R = &R[0];
