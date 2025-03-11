@@ -51,6 +51,7 @@ def main():
         
         # Generate random uint16_t values (0-12000)
         data = np.array(Image.open('test.tif')).astype(np.uint16)
+        print(np.max(data))
         while True:
             t1 = time.time()
             # Send the data with dataset number
