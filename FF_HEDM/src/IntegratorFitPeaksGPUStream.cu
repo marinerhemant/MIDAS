@@ -450,18 +450,18 @@ static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], pix
 	}
 }
 
-struct data{
+struct dataFit{
 	int nrBins;
 	double *R;
 	double *Int;
 };
 
 static double problem_function(unsigned n,
-	const doule *x,
+	const double *x,
 	double *grad,
 	void *my_func_data)
 {
-	struct data *d = (struct data *) my_func_data;
+	struct dataFit *d = (struct dataFit *) my_func_data;
 	double amp = x[0];
 	double bg = x[1];
 	double mix = x[2];
@@ -841,7 +841,7 @@ int main(int argc, char *argv[]){
 			R[j] = (RBinsLow[j]+RBinsHigh[j])/2;
 		}
 		// We have the 1D array, now fit it with a peak shape.
-		struct data d;
+		struct dataFit d;
 		d.nrBins = nRBins;
 		d.R = R;
 		d.Int = int1D;
