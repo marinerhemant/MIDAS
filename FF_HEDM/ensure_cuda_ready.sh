@@ -4,7 +4,7 @@
 # Check if the daemon is running
 if [ ! -f /tmp/cuda_daemon_running ]; then
     # Start the daemon
-    ./bin/cuda_daemon &
+    $HOME/opt/MIDAS/FF_HEDM/bin/cuda_daemon &
     # Wait for it to initialize
     sleep 2
     echo "CUDA daemon started"
@@ -15,7 +15,7 @@ else
     else
         # Daemon crashed, restart it
         rm /tmp/cuda_daemon_running
-        ./bin/cuda_daemon &
+        $HOME/opt/MIDAS/FF_HEDM/bin/cuda_daemon &
         sleep 2
         echo "CUDA daemon restarted"
     fi
