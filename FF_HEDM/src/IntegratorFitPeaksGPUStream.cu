@@ -809,7 +809,7 @@ int main(int argc, char *argv[]){
 		gpuErrchk(cudaMemcpy(devImage,Image,NrPixelsY*NrPixelsZ*sizeof(double),cudaMemcpyHostToDevice));
 		gpuErrchk(cudaDeviceSynchronize());
 		int tPB = 512;
-		int nrVox = (bigArrSize+tPB-1))/tPB;
+		int nrVox = (bigArrSize+tPB-1)/tPB;
 		if (mapMaskSize==0)
 			integrate_noMapMask <<<tPB,nrVox>>> (px,Lsd,bigArrSize,Normalize,sumImages,i,NrPixelsY, 
 													mapMaskSize,devMapMask,nRBins,nEtaBins,devPxList, 
