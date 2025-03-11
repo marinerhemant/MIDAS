@@ -3,6 +3,7 @@ import time
 import numpy as np
 import struct
 import ctypes
+from PIL import Image
 class MyStruct(ctypes.Structure):
     _fields_ = [("field1", ctypes.c_uint16)]
 
@@ -49,7 +50,7 @@ def main():
         dataset_num = 0
         
         # Generate random uint16_t values (0-12000)
-        data = np.random.randint(0, 64000, num_values, dtype=np.uint16)
+        data = np.array(Image.open('test.tif')).astype(np.uint16)
         while True:
             t1 = time.time()
             # Send the data with dataset number
