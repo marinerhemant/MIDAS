@@ -86,7 +86,7 @@ badPxIntensity = -1
 gapIntensity = -2
 
 # Radial and angular binning parameters
-RMax = 500
+RMax = 415
 RMin = 400
 RBinSize = 1
 EtaMax = 185
