@@ -845,6 +845,9 @@ int main(int argc, char *argv[]){
 		d.nrBins = nRBins;
 		d.R = &R[0];
 		d.Int = &int1D[0];
+		struct dataFit *fitD;
+		fitD = &d;
+		void *trp = (struct dataFit *) fitD;
 		double x[5] = {maxInt,(int1D[0]+int1D[nRBins-1])/2,0.5,R[maxIntLoc],0.1}; // amp, bg, mix, cen, sig
 		double lb[5] = {0.0,-1.0,0.0,R[0],0.0};
 		double ub[5] = {maxInt*2,maxInt,1.0,R[nRBins-1],R[nRBins-1]-R[0]};
@@ -852,7 +855,7 @@ int main(int argc, char *argv[]){
 		opt = nlopt_create(NLOPT_LN_NELDERMEAD,5);
 		nlopt_set_lower_bounds(opt,lb);
 		nlopt_set_upper_bounds(opt,ub);
-		nlopt_set_min_objective(opt,problem_function,&d);
+		nlopt_set_min_objective(opt,problem_function,trp);
 		double minf;
 		if (nlopt_optimize(opt,x,&minf) < 0){
 			printf("nlopt failed!\n");
