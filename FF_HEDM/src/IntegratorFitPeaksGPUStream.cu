@@ -2,11 +2,8 @@
 // Copyright (c) 2014, UChicago Argonne, LLC
 // See LICENSE file.
 //
-// ~/opt/midascuda/cuda/bin/nvcc integrator.cu -o integrator -Xcompiler -g -arch sm_90 -gencode=arch=compute_90,code=sm_90 -I/scratch/s1iduser/sharma_tests/HDF5/include -L/scratch/s1iduser/sharma_tests/HDF5/lib -lhdf5_hl -lhdf5 -I/scratch/s1iduser/sharma_tests/LIBTIFF/include -L/scratch/s1iduser/sharma_tests/LIBTIFF/lib -ltiff -O3
-// ~/opt/midascuda/cuda/bin/nvcc src/Integrator.cu -o bin/IntegratorGPU -Xcompiler -g -arch sm_90 -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/.MIDAS/HDF5/include -L/home/beams/S1IDUSER/.MIDAS/HDF5/lib -lhdf5_hl -lhdf5 -I/home/beams/S1IDUSER/.MIDAS/LIBTIFF/include -L/home/beams/S1IDUSER/.MIDAS/LIBTIFF/lib -ltiff -O3
-// ~/opt/midascuda/cuda_RHEL8/bin/nvcc src/Integrator.cu -o bin/IntegratorGPU -Xcompiler -g -arch sm_90 -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/.MIDAS/HDF5/include -L/home/beams/S1IDUSER/.MIDAS/HDF5/lib -lhdf5_hl -lhdf5 -I/home/beams/S1IDUSER/.MIDAS/LIBTIFF/include -L/home/beams/S1IDUSER/.MIDAS/LIBTIFF/lib -ltiff -O3
-// export LD_LIBRARY_PATH=/scratch/s1iduser/sharma_tests/HDF5/lib:/scratch/s1iduser/sharma_tests/LIBTIFF/lib:$LD_LIBRARY_PATH
-// export LD_LIBRARY_PATH=/home/beams/S1IDUSER/.MIDAS/HDF5/lib:/home/beams/S1IDUSER/.MIDAS/LIBTIFF/lib:$LD_LIBRARY_PATH
+// export LD_LIBRARY_PATH=/scratch/s1iduser/sharma_tests/HDF5/lib:/scratch/s1iduser/sharma_tests/LIBTIFF/lib::$LD_LIBRARY_PATH
+// ~/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStream.cu -o bin/IntegratorFitPeaksGPUStream -Xcompiler -g -arch sm_90 -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/.MIDAS/NLOPT/include -L/home/beams/S1IDUSER/.MIDAS/NLOPT/lib -O3 -lnlopt -I/home/beams/S1IDUSER/.MIDAS/BLOSC/include -L/home/beams/S1IDUSER/.MIDAS/BLOSC/lib64 -lblosc2
 
 // Benchmarks: 
 // 11.8s using H100, 38.2s using CPU. 
@@ -19,29 +16,191 @@
 //
 
 #include <stdio.h>
-#include <math.h>
 #include <stdlib.h>
-#include <time.h>
 #include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <math.h>
+#include <time.h>
 #include <limits.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <errno.h>
 #include <stdarg.h>
-#include <unistd.h>
 #include <fcntl.h>
 #include <ctype.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/types.h>
 #include <stdint.h>
-#include <tiffio.h>
 #include <libgen.h>
-#include <hdf5.h>
-#include <hdf5_hl.h>
 #include <assert.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <blosc2.h>
+#include <zip.h> 
+#include <nlopt.h>
+
+#define PORT 5000           // Changed port to 5000
+#define MAX_CONNECTIONS 5
+int CHUNK_SIZE;
+#define MAX_QUEUE_SIZE 100
+
+// Structure for our data chunks
+typedef struct {
+    uint8_t *data;
+    size_t size;
+} DataChunk;
+
+// Thread-safe queue for data processing
+typedef struct {
+    DataChunk chunks[MAX_QUEUE_SIZE];
+    int front;
+    int rear;
+    int count;
+    pthread_mutex_t mutex;
+    pthread_cond_t not_empty;
+    pthread_cond_t not_full;
+} ProcessQueue;
+
+// Global processing queue
+ProcessQueue process_queue;
+
+// Initialize the processing queue
+void queue_init(ProcessQueue *queue) {
+    queue->front = 0;
+    queue->rear = -1;
+    queue->count = 0;
+    pthread_mutex_init(&queue->mutex, NULL);
+    pthread_cond_init(&queue->not_empty, NULL);
+    pthread_cond_init(&queue->not_full, NULL);
+}
+
+// Add a data chunk to the queue
+int queue_push(ProcessQueue *queue, uint8_t *data, size_t size) {
+    pthread_mutex_lock(&queue->mutex);
+    
+    // Wait if the queue is full
+    while (queue->count >= MAX_QUEUE_SIZE) {
+        printf("Queue full, waiting...\n");
+        pthread_cond_wait(&queue->not_full, &queue->mutex);
+    }
+    
+    // Add the chunk to the queue
+    queue->rear = (queue->rear + 1) % MAX_QUEUE_SIZE;
+    queue->chunks[queue->rear].data = data;
+    queue->chunks[queue->rear].size = size;
+    queue->count++;
+    
+    // Signal that the queue is not empty
+    pthread_cond_signal(&queue->not_empty);
+    pthread_mutex_unlock(&queue->mutex);
+    
+    return 0;
+}
+
+// Get a data chunk from the queue
+int queue_pop(ProcessQueue *queue, DataChunk *chunk) {
+    pthread_mutex_lock(&queue->mutex);
+    
+    // Wait if the queue is empty
+    while (queue->count <= 0) {
+        pthread_cond_wait(&queue->not_empty, &queue->mutex);
+    }
+    
+    // Get the chunk from the queue
+    *chunk = queue->chunks[queue->front];
+    queue->front = (queue->front + 1) % MAX_QUEUE_SIZE;
+    queue->count--;
+    
+    // Signal that the queue is not full
+    pthread_cond_signal(&queue->not_full);
+    pthread_mutex_unlock(&queue->mutex);
+    
+    return 0;
+}
+
+// Thread function to handle client connection
+void* handle_client(void *arg) {
+    int client_socket = *((int*)arg);
+    free(arg);  // Free the memory allocated for the argument
+    
+    int bytes_read;
+    uint8_t *buffer;
+    
+    // Continuously read fixed-size chunks
+    while (1) {
+        // Allocate a new buffer for this chunk
+        buffer = (uint8_t*)malloc(CHUNK_SIZE);
+        if (!buffer) {
+            perror("Memory allocation failed");
+            break;
+        }
+        
+        // Read the data
+        bytes_read = recv(client_socket, buffer, CHUNK_SIZE, 0);
+        
+        if (bytes_read <= 0) {
+            // Connection closed or error
+            free(buffer);
+            break;
+        }
+        
+        // Add the data to the processing queue
+        queue_push(&process_queue, buffer, bytes_read);
+        
+        // If we didn't receive a full chunk, that's unusual and we'll quit.
+        if (bytes_read < CHUNK_SIZE) {
+            printf("Received partial chunk (%d/%d bytes)\n", bytes_read, CHUNK_SIZE);
+            return 1;
+        }
+    }
+    
+    if (bytes_read == 0) {
+        printf("Client disconnected gracefully\n");
+    } else if (bytes_read < 0) {
+        perror("Receive error");
+    }
+    
+    close(client_socket);
+    return NULL;
+}
+
+// Thread function for accepting connections
+void* accept_connections(void *server_fd_ptr) {
+    int server_fd = *((int*)server_fd_ptr);
+    struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
+    
+    while (1) {
+        // Accept connection
+        int *client_socket = malloc(sizeof(int));
+        if ((*client_socket = accept(server_fd, (struct sockaddr *)&client_addr, &client_len)) < 0) {
+            perror("Accept failed");
+            free(client_socket);
+            continue;
+        }
+        
+        printf("Connection accepted from %s:%d\n", 
+               inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+        
+        // Create thread to handle client
+        pthread_t thread_id;
+        if (pthread_create(&thread_id, NULL, handle_client, (void*)client_socket) != 0) {
+            perror("Thread creation failed");
+            close(*client_socket);
+            free(client_socket);
+        } else {
+            // Detach thread to free resources automatically when it terminates
+            pthread_detach(thread_id);
+        }
+    }
+    
+    return NULL;
+}
 
 typedef double pixelvalue;
 
@@ -265,126 +424,22 @@ static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], pix
 	}
 }
 
-int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
-{
-	int i;
-	if (dType == 1){ // Binary with uint16
-		uint16_t *readData;
-		readData = (uint16_t *) calloc(NrPixels,sizeof(*readData));
-		fread(readData,NrPixels*sizeof(*readData),1,f);
-		for (i=0;i<NrPixels;i++){
-			returnArr[i] = (double) readData[i];
-		}
-		free(readData);
-		return 0;
-	} else if (dType == 2){ // Binary with double
-		double *readData;
-		readData = (double *) calloc(NrPixels,sizeof(*readData));
-		fread(readData,NrPixels*sizeof(*readData),1,f);
-		for (i=0;i<NrPixels;i++){
-			returnArr[i] = (double) readData[i];
-		}
-		free(readData);
-		return 0;
-	} else if (dType == 3){ // Binary with float
-		float *readData;
-		readData = (float *) calloc(NrPixels,sizeof(*readData));
-		fread(readData,NrPixels*sizeof(*readData),1,f);
-		for (i=0;i<NrPixels;i++){
-			returnArr[i] = (double) readData[i];
-		}
-		free(readData);
-		return 0;
-	} else if (dType == 4){ // Binary with uint32
-		uint32_t *readData;
-		readData = (uint32_t *) calloc(NrPixels,sizeof(*readData));
-		fread(readData,NrPixels*sizeof(*readData),1,f);
-		for (i=0;i<NrPixels;i++){
-			returnArr[i] = (double) readData[i];
-		}
-		free(readData);
-		return 0;
-	} else if (dType == 5){ // Binary with int32
-		int32_t *readData;
-		readData = (int32_t *) calloc(NrPixels,sizeof(*readData));
-		fread(readData,NrPixels*sizeof(*readData),1,f);
-		for (i=0;i<NrPixels;i++){
-			returnArr[i] = (double) readData[i];
-		}
-		free(readData);
-		return 0;
-	} else if (dType == 6){ // TIFF with uint32 format
-		TIFFErrorHandler oldhandler;
-		oldhandler = TIFFSetWarningHandler(NULL);
-		printf("%s\n",fn);
-		TIFF* tif = TIFFOpen(fn, "r");
-		TIFFSetWarningHandler(oldhandler);
-		if (tif){
-			uint32_t imagelength;
-			tsize_t scanline;
-			TIFFGetField(tif,TIFFTAG_IMAGELENGTH,&imagelength);
-			scanline = TIFFScanlineSize(tif);
-			tdata_t buf;
-			buf = _TIFFmalloc(scanline);
-			uint32_t *datar;
-			int rnr;
-			for (rnr=0;rnr<imagelength;rnr++){
-				TIFFReadScanline(tif,buf,rnr,1);
-				datar = (uint32_t*)buf;
-				for (i=0;i<scanline/sizeof(uint32_t);i++){
-					returnArr[rnr*(scanline/sizeof(uint32_t)) + i] = (double) datar[i];
-				}
-			}
-			_TIFFfree(buf);
-		}
-		return 0;
-	} else if (dType == 7){ // TIFF with uint8 format
-		TIFFErrorHandler oldhandler;
-		oldhandler = TIFFSetWarningHandler(NULL);
-		printf("%s\n",fn);
-		TIFF* tif = TIFFOpen(fn, "r");
-		TIFFSetWarningHandler(oldhandler);
-		if (tif){
-			uint32_t imagelength;
-			tsize_t scanline;
-			TIFFGetField(tif,TIFFTAG_IMAGELENGTH,&imagelength);
-			scanline = TIFFScanlineSize(tif);
-			tdata_t buf;
-			buf = _TIFFmalloc(scanline);
-			uint8_t *datar;
-			int rnr;
-			for (rnr=0;rnr<imagelength;rnr++){
-				TIFFReadScanline(tif,buf,rnr,1);
-				datar = (uint8_t*)buf;
-				for (i=0;i<scanline/sizeof(uint8_t);i++){
-					if (datar[i] == 1){
-						returnArr[rnr*(scanline/sizeof(uint8_t)) + i] = 1;
-					}
-				}
-			}
-			_TIFFfree(buf);
-		}
-		return 0;
-	} else {
-		return 127;
+int main(int argc, char *argv[]){
+    if (argc < 2){
+		printf("Usage: ./Integrator ParamFN (optional)DarkName\n"
+		"Optional:\n\tDark file: dark correction with average of all dark frames"
+		".\n\tDark must be in a binary format, with uint16 dataType."
+        "\n\nSteams data from a socket and processes it.\n");
+		return(1);
 	}
-}
-
-int main(int argc, char **argv)
-{
-	int device_id = 0;
-	gpuErrchk(cudaSetDevice(device_id));
 	printf("[%s] - Starting...\n", argv[0]);
 	clock_t start0, end0;
 	start0 = clock();
     double diftotal;
-    if (argc < 3){
-		printf("Usage: ./Integrator ParamFN ImageName (optional)DarkName\n"
-		"Optional:\n\tDark file: dark correction with average of all dark frames"
-		".\n");
-		return(1);
-	}
-    //~ system("cp Map.bin nMap.bin /dev/shm");
+	int device_id = 0;
+	gpuErrchk(cudaSetDevice(device_id));
+	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
+	printf("Initialized the GPU:\t%f s.\n",diftotal);
 	int rc = ReadBins();
 	double RMax, RMin, RBinSize, EtaMax, EtaMin, EtaBinSize, Lsd, px;
 	int NrPixelsY = 2048, NrPixelsZ = 2048, Normalize = 1;
@@ -395,107 +450,22 @@ int main(int argc, char **argv)
 	char aline[4096], dummy[4096];
 	const char *str;
 	paramFile = fopen(ParamFN,"r");
-	int HeadSize = 8192;
     int NrTransOpt=0;
     long long int GapIntensity=0, BadPxIntensity=0;
     int TransOpt[10];
     int makeMap = 0;
     size_t mapMaskSize = 0;
-	int *mapMask, skipFrame=0;
+	int *mapMask;
 	int dType = 1;
-	char GapFN[4096], BadPxFN[4096], outputFolder[4096];
-	int sumImages=0, separateFolder=0, newOutput=0;
-	int haveOmegas = 0, chunkFiles=0, individualSave=1;
-	double omeStart, omeStep;
-	double Lam=0.172978, Polariz=0.99, SHpL=0.002, U=1.163, V=-0.126, W=0.063, X=0.0, Y=0.0, Z=0.0;
+	int sumImages=0, newOutput=2;
 	while (fgets(aline,4096,paramFile) != NULL){
-		str = "Z ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &Z);
-		}
-		str = "Y ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &Y);
-		}
-		str = "X ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &X);
-		}
-		str = "W ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &W);
-		}
-		str = "V ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &V);
-		}
-		str = "U ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &U);
-		}
-		str = "SH/L ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &SHpL);
-		}
-		str = "Polariz ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &Polariz);
-		}
-		str = "Wavelength ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &Lam);
-		}
-		str = "GapFile ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %s", dummy, GapFN);
-			makeMap = 2;
-		}
-		str = "OutFolder ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %s", dummy, outputFolder);
-			separateFolder = 1;
-		}
-		str = "BadPxFile ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %s", dummy, BadPxFN);
-			makeMap = 2;
-		}
 		str = "EtaBinSize ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &EtaBinSize);
 		}
-		str = "OmegaStart ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &omeStart);
-		}
-		str = "OmegaStep ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &omeStep);
-			haveOmegas = 1;
-		}
-		str = "OmegaSumFrames ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %d", dummy, &chunkFiles);
-		}
-		str = "SaveIndividualFrames ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %d", dummy, &individualSave);
-		}
-		str = "NewOutput ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %d", dummy, &newOutput);
-		}
 		str = "RBinSize ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &RBinSize);
-		}
-		str = "DataType ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %d", dummy, &dType);
-		}
-		str = "HeadSize ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %d", dummy, &HeadSize);
 		}
 		str = "RMax ";
 		if (StartsWith(aline,str) == 1){
@@ -533,11 +503,6 @@ int main(int argc, char **argv)
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %d", dummy, &Normalize);
 		}
-		str = "SkipFrame ";
-        if (StartsWith(aline,str) == 1){
-            sscanf(aline,"%s %d", dummy, &skipFrame);
-            continue;
-        }
 		str = "NrPixels ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %d", dummy, &NrPixelsY);
@@ -567,20 +532,9 @@ int main(int argc, char **argv)
 			continue;
         }
 	}
-	if (separateFolder!=0){
-		struct stat st = {0};
-		if (stat(outputFolder,&st)==-1){
-			printf("Output folder '%s' did not exit. Making now.\n",outputFolder);
-			mkdir(outputFolder,0700);
-		}
-	}
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	printf("Read config file, time elapsed:\t%f s.\n",diftotal);
-	if (newOutput!=2){
-		printf("Only works with newOutput == 2. Will exit now.\n");
-		return 1;
-	}
 	nRBins = (int) ceil((RMax-RMin)/RBinSize);
 	nEtaBins = (int)ceil((EtaMax - EtaMin)/EtaBinSize);
 	double *EtaBinsLow, *EtaBinsHigh;
@@ -600,6 +554,8 @@ int main(int argc, char **argv)
         else if (TransOpt[i] == 1) printf("Flip Left Right.\n");
         else if (TransOpt[i] == 2) printf("Flip Top Bottom.\n");
     }
+
+    /*Allocations!*/
 	double *Image;
 	pixelvalue *ImageIn;
 	pixelvalue *DarkIn;
@@ -612,36 +568,14 @@ int main(int argc, char **argv)
 	ImageIn = (pixelvalue *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageIn));
 	ImageInT = (pixelvalue *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageInT));
 	cudaMallocHost((void **) &Image,NrPixelsY*NrPixelsZ*sizeof(*Image));
-	size_t pxSize;
-	if (dType == 1){ // Uint16
-		pxSize = sizeof(uint16_t);
-	} else if (dType == 2){ // Double
-		pxSize = sizeof(double);
-	} else if (dType == 3){ // Float
-		pxSize = sizeof(float);
-	} else if (dType == 4){ // Uint32
-		pxSize = sizeof(uint32_t);
-	} else if (dType == 5){ // Int32
-		pxSize = sizeof(int32_t);
-	} else if (dType == 6){ // Tiff Uint32
-		pxSize = sizeof(uint32_t);
-		HeadSize = 0;
-	} else if (dType == 7){ // Tiff Uint8
-		pxSize = sizeof(uint8_t);
-		HeadSize = 0;
-	} else if (dType == 8){ // HDF Unit16
-		pxSize = sizeof(uint16_t);
-		HeadSize = 0;
-	}
+	size_t pxSize = sizeof(uint16_t);
 	size_t SizeFile = pxSize * NrPixelsY * NrPixelsZ;
 	int nFrames;
 	size_t sz;
-	int Skip = HeadSize;
-	FILE *fp, *fd;
+	FILE *fd;
 	char *darkFN;
-	double *omeArr;
 	int nrdone = 0;
-	if (argc > 3 && dType!=8){
+	if (argc > 3){
 		darkFN = argv[3];
 		fd = fopen(darkFN,"rb");
 		fseek(fd,0L,SEEK_END);
@@ -649,9 +583,8 @@ int main(int argc, char **argv)
 		rewind(fd);
 		nFrames = sz / (SizeFile);
 		printf("Reading dark file:      %s, nFrames: %d, skipping first %d bytes.\n",darkFN,nFrames,Skip);
-		fseek(fd,Skip,SEEK_SET);
 		for (i=0;i<nFrames;i++){
-			rc = fileReader(fd,darkFN,dType,NrPixelsY*NrPixelsZ,DarkInT);
+            fread(DarkInT,pxSize,NrPixelsY*NrPixelsZ,fd);
 			DoImageTransformations(NrTransOpt,TransOpt,DarkInT,DarkIn,NrPixelsY,NrPixelsZ);
 			if (makeMap == 1){
 				mapMaskSize = NrPixelsY;
@@ -671,117 +604,13 @@ int main(int argc, char **argv)
 			for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFrames;
 		}
 	}
-	const char *DATASETNAME;
-    hid_t file;
-    hid_t dataset;  
-	hid_t dataspace;
-    hsize_t dims[3];
-    int ndims;
-    char *fn_hdf;
-    uint16_t *all_images;
-    int frame_dims2[3];
-	if (dType == 8){
-	    fn_hdf = argv[2];
-	    file = H5Fopen(fn_hdf,H5F_ACC_RDONLY, H5P_DEFAULT);
-		// READ DARK
-		DATASETNAME = "exchange/dark";
-	    dataset = H5Dopen(file, DATASETNAME,H5P_DEFAULT);
-	    dataspace = H5Dget_space(dataset);
-	    ndims  = H5Sget_simple_extent_dims(dataspace, dims, NULL);
-	    printf("ndims: %d, dimensions %lu x %lu x %lu. Allocating big array.\n",
-		   ndims, (unsigned long)(dims[0]), (unsigned long)(dims[1]), (unsigned long)(dims[2]));
-		int frame_dims[3] = {(int)dims[0],(int)dims[1],(int)dims[2]};	
-		uint16_t *data = (uint16_t *) calloc(frame_dims[0]*frame_dims[1]*frame_dims[2],sizeof(uint16_t));
-		printf("Reading file: %lu bytes from dataset: %s.\n",(unsigned long) dims[0]*dims[1]*dims[2]*2,DATASETNAME);
-		herr_t status_n = H5Dread(dataset,H5T_STD_U16LE,H5S_ALL,H5S_ALL,H5P_DEFAULT,data);
-		for (i=skipFrame;i<frame_dims[0];i++){
-			for (j=0;j<frame_dims[1];j++){
-				for (k=0;k<frame_dims[2];k++){
-					DarkInT[j*frame_dims[2]+k] = ((double)data[i*(frame_dims[1]*frame_dims[2])+j*frame_dims[2]+k])/frame_dims[0];
-				}
-			}
-		}
-		DoImageTransformations(NrTransOpt,TransOpt,DarkInT,DarkIn,NrPixelsY,NrPixelsZ);
-		if (makeMap == 1){
-			mapMaskSize = NrPixelsY;
-			mapMaskSize *= NrPixelsZ;
-			mapMaskSize /= 32;
-			mapMaskSize ++;
-			mapMask = (int *) calloc(mapMaskSize,sizeof(*mapMask));
-			for (j=0;j<NrPixelsY*NrPixelsZ;j++){
-				if (DarkIn[j] == (pixelvalue) GapIntensity || DarkIn[j] == (pixelvalue) BadPxIntensity){
-					SetBit(mapMask,j);
-					nrdone++;
-				}
-			}
-			printf("Nr mask pixels: %d\n",nrdone);
-			makeMap = 0;
-		}
-		for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFrames;
-		// READ DATA, STORED IN all_images array
-		DATASETNAME = "exchange/data";
-	    dataset = H5Dopen(file, DATASETNAME,H5P_DEFAULT);
-	    dataspace = H5Dget_space(dataset);
-	    ndims  = H5Sget_simple_extent_dims(dataspace, dims, NULL);
-	    printf("ndims: %d, dimensions %lu x %lu x %lu. Allocating big array.\n",
-		   ndims, (unsigned long)(dims[0]), (unsigned long)(dims[1]), (unsigned long)(dims[2]));
-		frame_dims2[0] = dims[0];
-		frame_dims2[1] = dims[1];
-		frame_dims2[2] = dims[2];
-		all_images = (uint16_t *) calloc(frame_dims2[0]*frame_dims2[1]*frame_dims2[2],sizeof(uint16_t));
-		printf("Reading file: %lu bytes from dataset: %s.\n",(unsigned long) dims[0]*dims[1]*dims[2]*2,DATASETNAME);
-		status_n = H5Dread(dataset,H5T_STD_U16LE,H5S_ALL,H5S_ALL,H5P_DEFAULT,all_images);
-	}
-	if (makeMap == 2){
-		mapMaskSize = NrPixelsY;
-		mapMaskSize *= NrPixelsZ;
-		mapMaskSize /= 32;
-		mapMaskSize ++;
-		mapMask = (int *) calloc(mapMaskSize,sizeof(*mapMask));
-		double *mapper;
-		mapper = (double *) calloc(NrPixelsY*NrPixelsZ,sizeof(*mapper));
-		double *mapperOut;
-		mapperOut = (double *) calloc(NrPixelsY*NrPixelsZ,sizeof(*mapperOut));
-		fileReader(fd,GapFN,7,NrPixelsY*NrPixelsZ,mapper);
-		DoImageTransformations(NrTransOpt,TransOpt,mapper,mapperOut,NrPixelsY,NrPixelsZ);
-		for (i=0;i<NrPixelsY*NrPixelsZ;i++){
-			if (mapperOut[i] != 0){
-				SetBit(mapMask,i);
-				mapperOut[i] = 0;
-				nrdone++;
-			}
-		}
-		fileReader(fd,BadPxFN,7,NrPixelsY*NrPixelsZ,mapper);
-		DoImageTransformations(NrTransOpt,TransOpt,mapper,mapperOut,NrPixelsY,NrPixelsZ);
-		for (i=0;i<NrPixelsY*NrPixelsZ;i++){
-			if (mapperOut[i] != 0){
-				SetBit(mapMask,i);
-				mapperOut[i] = 0;
-				nrdone++;
-			}
-		}
-		printf("Nr mask pixels: %d\n",nrdone);
-	}
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
-	printf("Looking at data file, time elapsed till now:\t%f s.\n",diftotal);
-	char *imageFN;
-	imageFN = argv[2];
-	fp = fopen(imageFN,"rb");
-	fseek(fp,0L,SEEK_END);
-	sz = ftell(fp);
-	rewind(fp);
-	fseek(fp,Skip,SEEK_SET);
-	nFrames = (sz-Skip) / SizeFile;
-	printf("Number of eta bins: %d, number of R bins: %d. Number of frames in the file: %d\n",nEtaBins,nRBins,(int)nFrames);
-	char outfn2[4096];
-	hid_t file_id;
+	printf("Done reading the dark file, time elapsed till now:\t%f s.\n",diftotal);
+	printf("Number of eta bins: %d, number of R bins: %d.\n",nEtaBins,nRBins);
+    CHUNK_SIZE = SizeFile;
+    printf("Image chunk size: %d bytes.\n",CHUNK_SIZE);
 	size_t bigArrSize = nEtaBins*nRBins;
-	double firstOme;
-	double *chunkArr;
-	if (chunkFiles>0){
-		chunkArr = (double *) calloc(bigArrSize,sizeof(*chunkArr));
-	}
 	double *devSumMatrix;
 	double *IntArrPerFrame, *devIntArrPerFrame;
 	double *PerFrameArr, *devPerFrameArr;
@@ -812,15 +641,6 @@ int main(int argc, char **argv)
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	printf("Allocated small arrays on device, will move the mapping information to device, time elapsed:\t%f s.\n",diftotal);
-
-
-	if (haveOmegas==1){
-		omeArr = (double *) malloc(nFrames*sizeof(*omeArr));
-		for (i=0;i<nFrames;i++){
-			omeArr[i] = omeStart + i*omeStep;
-		}
-	}
-
 	// Move pxList and nPxList over to device.
 	struct data *devPxList;
 	int *devNPxList;
@@ -838,26 +658,58 @@ int main(int argc, char **argv)
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	printf("Starting frames now, time elapsed:\t%f s.\n",diftotal);
-	clock_t t1, t2,t3,t4,t5,t6;
-	double diffT=0, diffT2=0,diffT3=0;
-	for (i=0;i<nFrames;i++){
-		if (chunkFiles>0){
-			if ((i%chunkFiles) == 0){
-				memset(chunkArr,0,bigArrSize*sizeof(*chunkArr));
-				firstOme = omeArr[i];
-			}
-		}
-		printf("Processing frame number: %d of %d of file %s.\n",i+1,nFrames,imageFN);
-		t3 = clock();
-		if (dType!=8){
-			rc = fileReader(fp,imageFN,dType,NrPixelsY*NrPixelsZ,ImageInT);
-		} else {
-			for (j=0;j<frame_dims2[1];j++){
-				for (k=0;k<frame_dims2[2];k++){
-					ImageInT[j*frame_dims2[2]+k] = ((pixelvalue)all_images[(i+skipFrame)*(frame_dims2[1]*frame_dims2[2])+j*frame_dims2[2]+k]);
-				}
-			}
-		}
+
+    /*Socket processing from here on.*/
+    int server_fd;
+    struct sockaddr_in server_addr;
+    
+    // Initialize the processing queue
+    queue_init(&process_queue);
+    
+    // Create socket
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+    
+    // Set socket options
+    int opt = 1;
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
+        perror("setsockopt failed");
+        exit(EXIT_FAILURE);
+    }
+    
+    // Configure server address
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(PORT);
+    
+    // Bind socket
+    if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Bind failed");
+        exit(EXIT_FAILURE);
+    }
+    
+    // Listen for connections
+    if (listen(server_fd, MAX_CONNECTIONS) < 0) {
+        perror("Listen failed");
+        exit(EXIT_FAILURE);
+    }
+    
+    printf("Server listening on port %d\n", PORT);
+    printf("Expecting data chunks of size: %d bytes\n", CHUNK_SIZE);
+    
+    // Create a thread for accepting new connections
+    pthread_t accept_thread;
+    pthread_create(&accept_thread, NULL, accept_connections, &server_fd);
+    
+    // Main thread processes data from the queue
+    while (1) {
+        DataChunk chunk;
+        queue_pop(&process_queue, &chunk);
+        
+        // Process the data
+        memcpy(ImageInT,chunk.data,chunk.size);
 		if ((NrTransOpt==0) || (NrTransOpt==1 && TransOpt[0]==0)){
 			if (argc > 3 && dType!=8){
 				for (j=0;j<NrPixelsY*NrPixelsZ;j++){
@@ -950,42 +802,14 @@ int main(int argc, char **argv)
 		}
 		t6 = clock();
 		diffT3 += ((double)(t6-t5))/CLOCKS_PER_SEC;
-	}
-	if (haveOmegas==1){
-		hsize_t dimome[1] = {(unsigned long long)nFrames};
-		H5LTmake_dataset_double(file_id, "/Omegas", 1, dimome,omeArr);
-		H5LTset_attribute_string(file_id, "/Omegas", "Units", "Degrees");
-	}
-	if (sumImages == 1){
-		double *sumArr;
-		sumArr = (double *) malloc(bigArrSize*sizeof(*sumArr));
-		gpuErrchk(cudaMemcpy(sumArr,devSumMatrix,bigArrSize*sizeof(double),cudaMemcpyDeviceToHost));
-		gpuErrchk(cudaDeviceSynchronize());
-		hsize_t dimsum[2] = {(unsigned long long)nRBins,(unsigned long long)nEtaBins};
-		H5LTmake_dataset_double(file_id, "/SumFrames", 2, dimsum,sumArr);
-		H5LTset_attribute_string(file_id, "/SumFrames", "Header", "Radius,Eta");
-		H5LTset_attribute_string(file_id, "/SumFrames", "Units", "Pixels,Degrees");
-		H5LTset_attribute_int(file_id, "/SumFrames", "nFrames", &nFrames,1);
-		free(sumArr);
-	}
-	H5Gcreate(file_id,"InstrumentParameters", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-	hsize_t dimval[1] = {1};
-	H5LTmake_dataset_double(file_id, "/InstrumentParameters/Polariz", 1, dimval, &Polariz);
-	H5LTmake_dataset_double(file_id, "/InstrumentParameters/Lam", 1, dimval, &Lam);
-	H5LTmake_dataset_double(file_id, "/InstrumentParameters/SH_L", 1, dimval, &SHpL);
-	H5LTmake_dataset_double(file_id, "/InstrumentParameters/U", 1, dimval, &U);
-	H5LTmake_dataset_double(file_id, "/InstrumentParameters/V", 1, dimval, &V);
-	H5LTmake_dataset_double(file_id, "/InstrumentParameters/W", 1, dimval, &W);
-	H5LTmake_dataset_double(file_id, "/InstrumentParameters/X", 1, dimval, &X);
-	H5LTmake_dataset_double(file_id, "/InstrumentParameters/Y", 1, dimval, &Y);
-	H5LTmake_dataset_double(file_id, "/InstrumentParameters/Z", 1, dimval, &Z);
-	herr_t status_f2 = H5Fclose (file_id);
-	end0 = clock();
-	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
-	double TP = NrPixelsY*NrPixelsZ*nFrames;
-	TP /= 1000000;
-	TP /= diffT;
-	printf("Time taken in reading and preparing files:\t%lfs, time taken in writing files:\t%lfs.\n",diffT2,diffT3);
-	printf("Integration throughput:\t%zu MPixels/s, time taken for integration:\t%lfs, total time elapsed:\t%f s.\n",(size_t) TP,diffT,diftotal);
-	return 0;
+        
+        // Free the data
+        free(chunk.data);
+    }
+    
+    // This code is not reached in this example
+    pthread_join(accept_thread, NULL);
+    close(server_fd);
+    
+    return 0;
 }
