@@ -1,5 +1,5 @@
 // MIDAS cuda_server.c
-// ~/opt/midascuda/cuda/bin/nvcc -o bin/cuda_server src/cuda_server.c -lrt # -lcudart
+// ~/opt/midascuda/cuda/bin/nvcc -o bin/midas_cuda_server src/cuda_server.c -lrt # -lcudart
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
