@@ -1,5 +1,5 @@
 // cuda_daemon.c
-// ~/opt/midascuda/cuda/bin/nvcc -o cuda_daemon cuda_daemon.c -I/usr/local/cuda/include -L/usr/local/cuda/lib64 -lcudart
+// ~/opt/midascuda/cuda/bin/nvcc -o bin/cuda_daemon src/cuda_daemon.c -I/usr/local/cuda/include -L/usr/local/cuda/lib64 -lcudart
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
