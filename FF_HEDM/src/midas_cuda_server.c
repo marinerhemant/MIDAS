@@ -21,6 +21,8 @@ int main() {
         perror("Socket creation failed");
         return 1;
     }
+    printf("Server socket created\n");
+
     
     // Setup socket
     struct sockaddr_un address;
@@ -36,12 +38,16 @@ int main() {
         perror("Bind failed");
         return 1;
     }
+    printf("Server socket bound to %s\n", SOCKET_PATH);
     
     // Listen for connections
     if (listen(server_fd, 5) < 0) {
         perror("Listen failed");
         return 1;
     }
+    printf("Server listening on socket\n");
+
+
     
     printf("CUDA server ready at %s\n", SOCKET_PATH);
     
