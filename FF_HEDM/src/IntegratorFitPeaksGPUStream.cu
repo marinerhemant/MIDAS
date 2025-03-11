@@ -40,7 +40,7 @@
 #include <assert.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include <blosc2.h>
+//#include <blosc2.h>
 #include <zip.h> 
 #include <nlopt.h>
 
