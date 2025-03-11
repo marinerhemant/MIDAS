@@ -31,9 +31,9 @@ def main():
         # Dataset counter
         dataset_num = 0
         
+        # Generate random uint16_t values (0-65535)
+        data = np.random.randint(0, 65536, num_values, dtype=np.uint16)
         while True:
-            # Generate random uint16_t values (0-65535)
-            data = np.random.randint(0, 65536, num_values, dtype=np.uint16)
             
             # Send the data with dataset number
             send_data_chunk(sock, dataset_num, data)
