@@ -843,9 +843,9 @@ int main(int argc, char *argv[]){
 		// We have the 1D array, now fit it with a peak shape.
 		struct dataFit d;
 		d.nrBins = nRBins;
-		d.R = R;
-		d.Int = int1D;
-		double x[5] = {maxInt,(int1d[0]+int1d[nRBins-1])/2,0.5,R[maxIntLoc],0.1}; // amp, bg, mix, cen, sig
+		d.R = &R[0];
+		d.Int = &int1D[0];
+		double x[5] = {maxInt,(int1D[0]+int1D[nRBins-1])/2,0.5,R[maxIntLoc],0.1}; // amp, bg, mix, cen, sig
 		double lb[5] = {0.0,-1.0,0.0,R[0],0.0};
 		double ub[5] = {maxInt*2,maxInt,1.0,R[nRBins-1],R[nRBins-1]-R[0]};
 		nlopt_opt opt;
