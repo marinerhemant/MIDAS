@@ -26,7 +26,7 @@ def main():
         
         # Number of uint16_t values to send in each chunk
         # Each uint16_t is 2 bytes, so 512 values = 1024 bytes
-        num_values = 512  
+        num_values = 2048*2048  
         
         # Dataset counter
         dataset_num = 0
