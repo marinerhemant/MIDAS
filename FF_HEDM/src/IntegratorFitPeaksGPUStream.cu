@@ -868,7 +868,7 @@ int main(int argc, char *argv[]){
 		opt = nlopt_create(NLOPT_LN_NELDERMEAD,5);
 		nlopt_set_lower_bounds(opt,lb);
 		nlopt_set_upper_bounds(opt,ub);
-		nlopt_set_maxeval(opt,10);
+		nlopt_set_maxeval(opt,1000);
 		nlopt_set_min_objective(opt,problem_function,trp);
 		double minf;
 		if (nlopt_optimize(opt,x,&minf) < 0){
