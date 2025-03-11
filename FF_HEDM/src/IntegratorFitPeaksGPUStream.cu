@@ -52,12 +52,15 @@
 #include <nlopt.h>
 
 #define PORT 5000           // Changed port to 5000
-#define MAX_CONNECTIONS 5
+#define MAX_CONNECTIONS 10
 int CHUNK_SIZE;
 #define MAX_QUEUE_SIZE 100
+#define HEADER_SIZE sizeof(uint16_t)  // Size of dataset number
+int TOTAL_MSG_SIZE;
 
 // Structure for our data chunks
 typedef struct {
+    uint16_t dataset_num;  // Dataset number
     uint16_t *data;
     size_t size;
 } DataChunk;
@@ -87,7 +90,7 @@ void queue_init(ProcessQueue *queue) {
 }
 
 // Add a data chunk to the queue
-int queue_push(ProcessQueue *queue, uint16_t *data, size_t size) {
+int queue_push(ProcessQueue *queue, uint16_t dataset_num, uint16_t *data, size_t num_values) {
     pthread_mutex_lock(&queue->mutex);
     
     // Wait if the queue is full
@@ -98,8 +101,9 @@ int queue_push(ProcessQueue *queue, uint16_t *data, size_t size) {
     
     // Add the chunk to the queue
     queue->rear = (queue->rear + 1) % MAX_QUEUE_SIZE;
+    queue->chunks[queue->rear].dataset_num = dataset_num;
     queue->chunks[queue->rear].data = data;
-    queue->chunks[queue->rear].size = size;
+    queue->chunks[queue->rear].num_values = num_values;
     queue->count++;
     
     // Signal that the queue is not empty
@@ -135,36 +139,52 @@ void* handle_client(void *arg) {
     int client_socket = *((int*)arg);
     free(arg);  // Free the memory allocated for the argument
     
+    // Buffer for receiving raw bytes (header + data)
+    uint8_t buffer[TOTAL_MSG_SIZE];
     int bytes_read;
-    uint16_t *buffer;
     
-    // Continuously read fixed-size chunks
+    // Continuously read chunks
     while (1) {
-        // Allocate a new buffer for this chunk
-        buffer = (uint16_t*)malloc(CHUNK_SIZE);
-        if (!buffer) {
+        // Reset total bytes read for this message
+        int total_bytes_read = 0;
+        
+        // Read until we get a complete message
+        while (total_bytes_read < TOTAL_MSG_SIZE) {
+            bytes_read = recv(client_socket, buffer + total_bytes_read, TOTAL_MSG_SIZE - total_bytes_read, 0);
+            
+            if (bytes_read <= 0) {
+                // Connection closed or error
+                goto connection_closed;
+            }
+            
+            total_bytes_read += bytes_read;
+        }
+        
+        // Extract dataset number from header
+        uint16_t dataset_num;
+        memcpy(&dataset_num, buffer, HEADER_SIZE);
+        dataset_num = ntohs(dataset_num);  // Convert from network to host byte order
+        
+        // Allocate memory for the data
+        uint16_t *data = (uint16_t*)malloc(NUM_VALUES * sizeof(uint16_t));
+        if (!data) {
             perror("Memory allocation failed");
             break;
         }
         
-        // Read the data
-        bytes_read = recv(client_socket, buffer, CHUNK_SIZE, 0);
-        
-        if (bytes_read <= 0) {
-            // Connection closed or error
-            free(buffer);
-            break;
+        // Convert data from network byte order to host byte order
+        for (int i = 0; i < NUM_VALUES; i++) {
+            uint16_t network_value;
+            memcpy(&network_value, buffer + HEADER_SIZE + (i * sizeof(uint16_t)), sizeof(uint16_t));
+            data[i] = ntohs(network_value);
         }
         
         // Add the data to the processing queue
-        queue_push(&process_queue, buffer, bytes_read);
-        
-        // If we didn't receive a full chunk, that's unusual and we'll quit.
-        if (bytes_read < CHUNK_SIZE) {
-            printf("Received partial chunk (%d/%d bytes)\n", bytes_read, CHUNK_SIZE);
-        }
+        queue_push(&process_queue, dataset_num, data, NUM_VALUES);
+        printf("Received dataset #%u with %d uint16_t values\n", dataset_num, NUM_VALUES);
     }
     
+connection_closed:
     if (bytes_read == 0) {
         printf("Client disconnected gracefully\n");
     } else if (bytes_read < 0) {
@@ -616,6 +636,7 @@ int main(int argc, char *argv[]){
 	printf("Done reading the dark file, time elapsed till now:\t%f s.\n",diftotal);
 	printf("Number of eta bins: %d, number of R bins: %d.\n",nEtaBins,nRBins);
     CHUNK_SIZE = SizeFile;
+	TOTAL_MSG_SIZE = HEADER_SIZE + CHUNK_SIZE;
     printf("Image chunk size: %d bytes.\n",CHUNK_SIZE);
 	size_t bigArrSize = nEtaBins*nRBins;
 	double *devSumMatrix;
@@ -704,7 +725,8 @@ int main(int argc, char *argv[]){
     }
     
     printf("Server listening on port %d\n", PORT);
-    printf("Expecting data chunks of size: %d bytes\n", CHUNK_SIZE);
+    printf("Expecting messages with %d-byte header and %d uint16_t values (%d bytes total)\n", 
+           HEADER_SIZE, NUM_VALUES, TOTAL_MSG_SIZE);
     
     // Create a thread for accepting new connections
     pthread_t accept_thread;
@@ -770,8 +792,8 @@ int main(int argc, char *argv[]){
 			}
 		}
 		t2 = clock();
-		diffT += ((double)(t2-t1))/CLOCKS_PER_SEC;
-		printf("Did intigration, took %lf s till now.\n",diffT);
+		diffT = ((double)(t2-t1))/CLOCKS_PER_SEC;
+		printf("Did intigration, took %lf s for this frame, frameNr: %d.\n",diffT,chunk.dataset_num);
 		// We have the 1D array, now fit it with a peak shape.
         
         // Free the data
