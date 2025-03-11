@@ -48,7 +48,7 @@ int cuda_client_init();
 int cuda_execute(const char* command);
 void cuda_client_close();
 
-#define SOCKET_PATH "/tmp/cuda_server_socket"
+#define SOCKET_PATH "/dev/shm/cuda_server_socket"
 
 static int client_fd = -1;
 
