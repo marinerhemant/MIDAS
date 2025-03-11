@@ -58,7 +58,7 @@ int CHUNK_SIZE;
 
 // Structure for our data chunks
 typedef struct {
-    uint8_t *data;
+    uint16_t *data;
     size_t size;
 } DataChunk;
 
@@ -87,7 +87,7 @@ void queue_init(ProcessQueue *queue) {
 }
 
 // Add a data chunk to the queue
-int queue_push(ProcessQueue *queue, uint8_t *data, size_t size) {
+int queue_push(ProcessQueue *queue, uint16_t *data, size_t size) {
     pthread_mutex_lock(&queue->mutex);
     
     // Wait if the queue is full
@@ -136,12 +136,12 @@ void* handle_client(void *arg) {
     free(arg);  // Free the memory allocated for the argument
     
     int bytes_read;
-    uint8_t *buffer;
+    uint16_t *buffer;
     
     // Continuously read fixed-size chunks
     while (1) {
         // Allocate a new buffer for this chunk
-        buffer = (uint8_t*)malloc(CHUNK_SIZE);
+        buffer = (uint16_t*)malloc(CHUNK_SIZE);
         if (!buffer) {
             perror("Memory allocation failed");
             break;
