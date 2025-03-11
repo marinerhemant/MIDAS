@@ -430,7 +430,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 int main(int argc, char **argv)
 {
 	if (cuda_client_init() < 0) {
-        fprintf(stderr, "Failed to connect to CUDA server. Start the server at ~/opt/MIDAS/FF_HEDM/bin/midaS_cuda_server \n");
+        fprintf(stderr, "Failed to connect to CUDA server. Start the server at ~/opt/MIDAS/FF_HEDM/bin/midas_cuda_server in the background.\n");
         return 1;
     }
 	// cudaSetDevice(0);
