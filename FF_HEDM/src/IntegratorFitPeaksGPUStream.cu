@@ -582,7 +582,7 @@ int main(int argc, char *argv[]){
 		sz = ftell(fd);
 		rewind(fd);
 		nFrames = sz / (SizeFile);
-		printf("Reading dark file:      %s, nFrames: %d, skipping first %d bytes.\n",darkFN,nFrames,Skip);
+		printf("Reading dark file:      %s, nFrames: %d.\n",darkFN,nFrames);
 		for (i=0;i<nFrames;i++){
             fread(DarkInT,pxSize,NrPixelsY*NrPixelsZ,fd);
 			DoImageTransformations(NrTransOpt,TransOpt,DarkInT,DarkIn,NrPixelsY,NrPixelsZ);
