@@ -31,7 +31,7 @@ def main():
             send_data_chunk(sock, data)
             
             # Add a small delay between sends
-            time.sleep(0.1)
+            time.sleep(0.15)
             
     except KeyboardInterrupt:
         print("Sending terminated by user")

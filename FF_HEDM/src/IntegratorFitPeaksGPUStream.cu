@@ -771,7 +771,7 @@ int main(int argc, char *argv[]){
 		}
 		t2 = clock();
 		diffT += ((double)(t2-t1))/CLOCKS_PER_SEC;
-		printf("Did intigration, took %lf s till now.",diffT);
+		printf("Did intigration, took %lf s till now.\n",diffT);
 		// We have the 1D array, now fit it with a peak shape.
         
         // Free the data
