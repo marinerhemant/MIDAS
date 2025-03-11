@@ -43,13 +43,6 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
-// Function to check if CUDA is already initialized
-int check_cuda_ready() {
-    // Try a lightweight CUDA call - this should be fast if context exists
-    cudaError_t err = cudaGetDevice(NULL);
-    return (err == cudaSuccess);
-}
-
 typedef double pixelvalue;
 
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
