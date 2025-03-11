@@ -54,7 +54,7 @@
 #define PORT 5000           // Changed port to 5000
 #define MAX_CONNECTIONS 10
 size_t CHUNK_SIZE;
-#define MAX_QUEUE_SIZE 100
+#define MAX_QUEUE_SIZE 100  // Maximum number of chunks in the queue, should not be too large, else segfaults.
 #define HEADER_SIZE sizeof(uint16_t)  // Size of dataset number
 size_t TOTAL_MSG_SIZE;
 
@@ -450,6 +450,41 @@ static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], pix
 	}
 }
 
+struct data{
+	int nrBins;
+	double *R;
+	double *Int;
+};
+
+static double problem_function(unsigned n,
+	const doule *x,
+	double *grad,
+	void *my_func_data)
+{
+	struct data *d = (struct data *) my_func_data;
+	double amp = x[0];
+	double bg = x[1];
+	double mix = x[2];
+	double cen = x[3];
+	double sig = x[4];
+	int nrPoints = d[0].nrBins;
+	double *Rs;
+	Rs = &(d[0].R);
+	double *Ints;
+	Ints = &(d[0].Int);
+	int i;
+	double error = 0;
+	double diff, gauss, lorentz, thisInt;
+	for (i=0;i<nrPoints;i++){
+		diff = Rs[i] - cen;
+		gauss = exp(-diff*diff/(2*sig*sig))/(sig*sqrt(2*M_PI));
+		lorentz = 1/((M_PI*sig)*(1+diff*diff/(sig*sig)));
+		thisInt = bg + amp*(mix*gauss + (1-mix)*lorentz);
+		error += (thisInt - Ints[i])*(thisInt - Ints[i]);
+	}
+	return error;
+}
+
 int main(int argc, char *argv[]){
     if (argc < 2){
 		printf("Usage: ./Integrator ParamFN (optional)DarkName\n"
@@ -738,6 +773,10 @@ int main(int argc, char *argv[]){
 	int firstFrame = 1;
 	double *int1D;
 	int1D = (double *) calloc(nRBins,sizeof(*int1D));
+	double *area1D;
+	area1D = (double *) calloc(nRBins,sizeof(*area1D));
+	double *R;
+	R = (double *) calloc(nRBins,sizeof(*R));
     while (1) {
 		t1 = clock();
         DataChunk chunk;
@@ -785,15 +824,46 @@ int main(int argc, char *argv[]){
 		// Now we have IntArrPerFrame, we need to make it into a 1D.
 		gpuErrchk(cudaDeviceSynchronize());
 		memset(int1D,0,nRBins*sizeof(*int1D));
+		memset(area1D,0,nRBins*sizeof(*area1D));
+		memset(R,0,nRBins*sizeof(*R));
+		double maxInt=-1;
+		int maxIntLoc;
 		for (j=0;j<nRBins;j++){
 			for (i=0;i<nEtaBins;i++){
 				int1D[j] += IntArrPerFrame[j*nEtaBins+i];
+				area1D[j] += PerFrameArr[3*bigArrSize+(j*nEtaBins+i)];
 			}
+			if (area1D[j] != 0) int1D[j] /= area1D[j];
+			if (int1D[j] > maxInt){
+				maxInt = int1D[j];
+				maxIntLoc = j;
+			}
+			R[j] = (RBinsLow[j]+RBinsHigh[j])/2;
 		}
+		// We have the 1D array, now fit it with a peak shape.
+		struct data d;
+		d.nrBins = nRBins;
+		d.R = R;
+		d.Int = int1D;
+		double x[5] = {maxInt,(int1d[0]+int1d[nRBins-1])/2,0.5,R[maxIntLoc],0.1}; // amp, bg, mix, cen, sig
+		double lb[5] = {0.0,-1.0,0.0,R[0],0.0};
+		double ub[5] = {maxInt*2,maxInt,1.0,R[nRBins-1],R[nRBins-1]-R[0]};
+		nlopt_opt opt;
+		opt = nlopt_create(NLOPT_LN_NELDERMEAD,5);
+		nlopt_set_lower_bounds(opt,lb);
+		nlopt_set_upper_bounds(opt,ub);
+		nlopt_set_min_objective(opt,problem_function,&d);
+		double minf;
+		if (nlopt_optimize(opt,x,&minf) < 0){
+			printf("nlopt failed!\n");
+		} else {
+			printf("found minimum at f(%g,%g,%g,%g,%g) = %0.10g\n",x[0],x[1],x[2],x[3],x[4],minf);
+		}
+		nlopt_destroy(opt);
+
 		t2 = clock();
 		diffT = ((double)(t2-t1))/CLOCKS_PER_SEC;
-		printf("Did intigration, took %lf s for this frame, frameNr: %d.\n",diffT,chunk.dataset_num);
-		// We have the 1D array, now fit it with a peak shape.
+		printf("Did integration, took %lf s for this frame, frameNr: %d.\n",diffT,chunk.dataset_num);
         
         // Free the data
         free(chunk.data);
