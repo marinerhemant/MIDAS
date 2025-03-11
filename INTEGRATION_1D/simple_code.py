@@ -38,12 +38,6 @@ def fitFunc(x, y):
     params, params_cov = curve_fit(func_voigt, x, y, p0=p0, bounds=bounds)
     return params, params_cov
 
-# Function to merge two int32 values into a double
-# This function combines two 32-bit integers into a single 64-bit double precision floating point number.
-def merge_int32_to_double(int1, int2):
-    combined_bits = (int2 << 32) | (int1 & 0xFFFFFFFF)
-    return struct.unpack('d', struct.pack('Q', combined_bits))[0]
-
 # Function to integrate image data
 # This function integrates the image data over specified radial and angular bins.
 @njit
@@ -120,9 +114,7 @@ pxList = np.fromfile(mapFN, dtype=np.int32)
 if pxList.size % 4 != 0:
     raise ValueError("The total number of elements in pxList is not divisible by 4.")
 pxList = pxList.reshape(-1, 4)
-fracValues = np.zeros((pxList.shape[0]), dtype=np.float64)
-for i in range(pxList.shape[0]):
-    fracValues[i] = merge_int32_to_double(pxList[i, 2] , pxList[i, 3])
+fracValues = np.fromfile(mapFN, dtype=np.float64).reshape(-1, 2)[:,1]
 nPxList = np.fromfile(nMapFN, dtype=np.int32)
 
 # Integrate the image and plot the results
