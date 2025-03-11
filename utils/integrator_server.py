@@ -40,7 +40,10 @@ def main():
             dataset_num = (dataset_num + 1) % 65536
             
             # Add a small delay between sends
-            time.sleep(0.01)
+            if dataset_num == 0:
+                time.sleep(0.1)
+            else:
+                time.sleep(0.001)
             t2 = time.time()
             print(f"Time taken: {t2 - t1:.4f} sec")
             
