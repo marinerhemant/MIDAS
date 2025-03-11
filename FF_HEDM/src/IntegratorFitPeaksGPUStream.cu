@@ -711,8 +711,8 @@ int main(int argc, char *argv[]){
     pthread_create(&accept_thread, NULL, accept_connections, &server_fd);
     
     // Main thread processes data from the queue
-	clock_t t1, t2,t3,t4,t5,t6;
-	double diffT=0, diffT2=0,diffT3=0;
+	clock_t t1, t2;
+	double diffT=0;
 	int firstFrame = 1;
 	double *int1D;
 	int1D = (double *) calloc(nRBins,sizeof(*int1D));
@@ -763,7 +763,6 @@ int main(int argc, char *argv[]){
 		}
 		// Now we have IntArrPerFrame, we need to make it into a 1D.
 		gpuErrchk(cudaDeviceSynchronize());
-		diffT3 += ((double)(t6-t5))/CLOCKS_PER_SEC;
 		memset(int1D,0,nRBins*sizeof(*int1D));
 		for (j=0;j<nRBins;j++){
 			for (i=0;i<nEtaBins;i++){
