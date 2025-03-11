@@ -733,7 +733,7 @@ int main(int argc, char *argv[]){
     pthread_create(&accept_thread, NULL, accept_connections, &server_fd);
     
     // Main thread processes data from the queue
-	clock_t t1, t2;
+	clock_t t1, t2, t3, t4;
 	double diffT=0;
 	int firstFrame = 1;
 	double *int1D;
@@ -742,9 +742,15 @@ int main(int argc, char *argv[]){
 		t1 = clock();
         DataChunk chunk;
         queue_pop(&process_queue, &chunk);
+		t2 = clock();
+		diffT = ((double)(t2-t1))/CLOCKS_PER_SEC;
+		printf("Got data from queue, took %lf s.\n",diffT);
         
         // Process the data
         memcpy(ImageInT,chunk.data,chunk.size);
+		t2 = clock();
+		diffT = ((double)(t2-t1))/CLOCKS_PER_SEC;
+		printf("Got data from queue, took %lf s.\n",diffT);
 		if ((NrTransOpt==0) || (NrTransOpt==1 && TransOpt[0]==0)){
 			if (argc > 3 && dType!=8){
 				for (j=0;j<NrPixelsY*NrPixelsZ;j++){
