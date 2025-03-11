@@ -807,7 +807,7 @@ int main(int argc, char *argv[]){
 			}
 		}
 		for (i=0;i<NrPixelsY*NrPixelsZ;i++){
-			printf("%lf ",Image[i]);
+			printf("%d ",ImageInT[i]);
 		}
 		printf("\n");
 		gpuErrchk(cudaMemset(devIntArrPerFrame,0,bigArrSize*sizeof(double)));
