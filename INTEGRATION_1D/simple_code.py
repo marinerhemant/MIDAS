@@ -86,12 +86,12 @@ badPxIntensity = -1
 gapIntensity = -2
 
 # Radial and angular binning parameters
-RMax = 100
-RMin = 10
-RBinSize = 0.25
-EtaMax = 180
-EtaMin = -180
-EtaBinSize = 1
+RMax = 400
+RMin = 500
+RBinSize = 1
+EtaMax = 185
+EtaMin = -185
+EtaBinSize = 5
 
 # Load and preprocess the image
 with Image.open(imageFN) as img:
