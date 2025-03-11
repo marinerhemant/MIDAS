@@ -777,7 +777,7 @@ int main(int argc, char *argv[]){
 		gpuErrchk(cudaDeviceSynchronize());
 		gpuErrchk(cudaMemcpy(IntArrPerFrame,devIntArrPerFrame,bigArrSize*sizeof(double),cudaMemcpyDeviceToHost));
 		gpuErrchk(cudaDeviceSynchronize());
-		if (firstFrame==1){
+		if (chunk.dataset_num==0 || firstFrame == 1){
 			firstFrame = 0;
 			gpuErrchk(cudaMemcpy(PerFrameArr,devPerFrameArr,bigArrSize*4*sizeof(double),cudaMemcpyDeviceToHost));
 			gpuErrchk(cudaDeviceSynchronize());
