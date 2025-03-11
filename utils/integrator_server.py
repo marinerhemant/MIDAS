@@ -14,17 +14,8 @@ def send_data_chunk(sock, dataset_num, data):
     # Pack the dataset number
     header = struct.pack('!H', dataset_num)
     
-    # Check if data is already a numpy array with the right type
-    if not isinstance(data, np.ndarray) or data.dtype != np.uint16:
-        np_data = np.array(data, dtype=np.uint16)
-    else:
-        np_data = data
-    
-    # # Convert to network byte order (big-endian)
-    # if np.little_endian:
-    #     np_data = np_data.byteswap()
-
-    packed_data = np_data.tobytes()
+    format_string = '!' + 'H' * len(data)
+    packed_data = struct.pack(format_string, *data)
     combined_data = header + packed_data
     sock.sendall(combined_data)
     
