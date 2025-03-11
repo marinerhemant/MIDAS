@@ -4,6 +4,7 @@ import numpy as np
 import struct
 
 def send_data_chunk(sock, dataset_num, data):
+    t1 = time.time()
     # 'H' format specifier is for unsigned short (uint16_t)
     # First pack the dataset number as uint16_t
     header = struct.pack('!H', dataset_num)
@@ -11,6 +12,8 @@ def send_data_chunk(sock, dataset_num, data):
     packed_data = struct.pack(f'!{len(data)}H', *data)
     # Send header followed by data
     sock.sendall(header + packed_data)
+    t2 = time.time()
+    print(f"Time taken to send data: {t2 - t1:.4f} sec")
     print(f"Sent dataset #{dataset_num} with {len(data)} uint16_t values ({len(packed_data)} bytes)")
 
 def main():
