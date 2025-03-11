@@ -8,7 +8,7 @@
 #include <sys/un.h>
 #include <cuda_runtime.h>
 
-#define SOCKET_PATH "/dev/shm/cuda_server_socket"
+#define SOCKET_PATH "/tmp/cuda_server_socket"
 
 int main() {
     // Initialize CUDA once
