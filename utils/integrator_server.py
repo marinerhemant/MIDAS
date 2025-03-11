@@ -20,9 +20,9 @@ def send_data_chunk(sock, dataset_num, data):
     else:
         np_data = data
     
-    # Convert to network byte order (big-endian)
-    if np.little_endian:
-        np_data = np_data.byteswap()
+    # # Convert to network byte order (big-endian)
+    # if np.little_endian:
+    #     np_data = np_data.byteswap()
 
     packed_data = np_data.tobytes()
     combined_data = header + packed_data
