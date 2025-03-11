@@ -150,7 +150,6 @@ void* handle_client(void *arg) {
         
         // Read until we get a complete message
         while (total_bytes_read < TOTAL_MSG_SIZE) {
-			printf("%d\n",total_bytes_read);
             bytes_read = recv(client_socket, buffer + total_bytes_read, TOTAL_MSG_SIZE - total_bytes_read, 0);
             
             if (bytes_read <= 0) {

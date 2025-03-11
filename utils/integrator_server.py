@@ -42,7 +42,7 @@ def main():
             dataset_num = (dataset_num + 1) % 65536
             
             # Add a small delay between sends
-            time.sleep(0.1)
+            time.sleep(0.01)
             
     except KeyboardInterrupt:
         print("Sending terminated by user")
