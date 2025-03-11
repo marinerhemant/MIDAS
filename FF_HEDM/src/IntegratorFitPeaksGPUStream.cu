@@ -155,7 +155,6 @@ void* handle_client(void *arg) {
         // If we didn't receive a full chunk, that's unusual and we'll quit.
         if (bytes_read < CHUNK_SIZE) {
             printf("Received partial chunk (%d/%d bytes)\n", bytes_read, CHUNK_SIZE);
-            return 1;
         }
     }
     
@@ -177,7 +176,7 @@ void* accept_connections(void *server_fd_ptr) {
     
     while (1) {
         // Accept connection
-        int *client_socket = malloc(sizeof(int));
+        int *client_socket = (int*) malloc(sizeof(int));
         if ((*client_socket = accept(server_fd, (struct sockaddr *)&client_addr, &client_len)) < 0) {
             perror("Accept failed");
             free(client_socket);
