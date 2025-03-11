@@ -778,8 +778,6 @@ int main(int argc, char *argv[]){
 	int firstFrame = 1;
 	double *int1D;
 	int1D = (double *) calloc(nRBins,sizeof(*int1D));
-	double *area1D;
-	area1D = (double *) calloc(nRBins,sizeof(*area1D));
 	double *R;
 	R = (double *) calloc(nRBins,sizeof(*R));
     while (1) {
@@ -831,23 +829,23 @@ int main(int argc, char *argv[]){
 		// Now we have IntArrPerFrame, we need to make it into a 1D.
 		gpuErrchk(cudaDeviceSynchronize());
 		memset(int1D,0,nRBins*sizeof(*int1D));
-		memset(area1D,0,nRBins*sizeof(*area1D));
 		memset(R,0,nRBins*sizeof(*R));
 		double maxInt=-1;
 		int maxIntLoc;
+		int nNonZeros;
 		for (j=0;j<nRBins;j++){
+			nNonZeros = 0;
 			for (i=0;i<nEtaBins;i++){
 				int1D[j] += IntArrPerFrame[j*nEtaBins+i];
-				area1D[j] += PerFrameArr[3*bigArrSize+(j*nEtaBins+i)];
+				if (PerFrameArr[3*bigArrSize+(j*nEtaBins+i)] != 0)	nNonZeros ++;
 			}
-			if (area1D[j] != 0) int1D[j] /= area1D[j];
-			// printf("%lf %lf\n",int1D[j],area1D[j]);
+			if (nNonZeros != 0) int1D[j] /= nNonZeros;
 			if (int1D[j] > maxInt){
 				maxInt = int1D[j];
 				maxIntLoc = j;
 			}
 			R[j] = (RBinsLow[j]+RBinsHigh[j])/2;
-			printf("%lf %lf %lf\n",R[j],int1D[j],area1D[j]);
+			printf("%lf %lf %d\n",R[j],int1D[j],nNonZeros);
 		}
 		// We have the 1D array, now fit it with a peak shape.
 		double x[5] = {maxInt,(int1D[0]+int1D[nRBins-1])/2,0.5,R[maxIntLoc],0.1}; // amp, bg, mix, cen, sig
