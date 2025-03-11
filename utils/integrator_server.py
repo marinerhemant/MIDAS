@@ -24,7 +24,6 @@ def send_data_chunk(sock, dataset_num, data):
     
     # Use memoryview instead of tobytes() to avoid a copy
     data_view = memoryview(data_array).cast('B')
-    print(data_array[:2048])
     
     # Combine and send in a single call
     sock.sendall(header + data_view)

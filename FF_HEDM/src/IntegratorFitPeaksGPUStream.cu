@@ -804,10 +804,6 @@ int main(int argc, char *argv[]){
 				Image[j] = (double)ImageIn[j] - AverageDark[j];
 			}
 		}
-		for (i=0;i<NrPixelsY;i++){
-			printf("%d %d\n",(int)Image[i],chunk.data[i]);
-		}
-		printf("\n");
 		gpuErrchk(cudaMemset(devIntArrPerFrame,0,bigArrSize*sizeof(double)));
 		gpuErrchk(cudaMemcpy(devImage,Image,NrPixelsY*NrPixelsZ*sizeof(double),cudaMemcpyHostToDevice));
 		gpuErrchk(cudaDeviceSynchronize());
@@ -851,8 +847,8 @@ int main(int argc, char *argv[]){
 				maxIntLoc = j;
 			}
 			R[j] = (RBinsLow[j]+RBinsHigh[j])/2;
+			printf("%lf %lf %lf\n",R[j],int1D[j],area1D[j]);
 		}
-		printf("Max intensity: %lf at R: %lf\n",maxInt,R[maxIntLoc]);
 		// We have the 1D array, now fit it with a peak shape.
 		double x[5] = {maxInt,(int1D[0]+int1D[nRBins-1])/2,0.5,R[maxIntLoc],0.1}; // amp, bg, mix, cen, sig
 		double lb[5] = {0.0,-1.0,0.0,R[0],0.0};
