@@ -23,12 +23,10 @@ def send_data_chunk(sock, dataset_num, data):
     # Convert to network byte order (big-endian)
     if np.little_endian:
         np_data = np_data.byteswap()
-    
-    # Send header
-    sock.sendall(header)
-    
-    # Send data directly from numpy memory
-    sock.sendall(memoryview(np_data))
+
+    packed_data = np_data.tobytes()
+    combined_data = header + packed_data
+    sock.sendall(combined_data)
     
     t2 = time.time()
     print(f"Time taken to send data: {t2 - t1:.4f} sec")
@@ -52,9 +50,6 @@ def main():
         
         # Generate random uint16_t values (0-12000)
         data = np.array(Image.open('test.tif')).astype(np.uint16).reshape((2048*2048))
-        # plt.imshow(data)
-        # plt.show()
-        print(np.max(data))
         while True:
             t1 = time.time()
             # Send the data with dataset number
