@@ -437,6 +437,7 @@ int main(int argc, char *argv[]){
     double diftotal;
 	int device_id = 0;
 	gpuErrchk(cudaSetDevice(device_id));
+	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	printf("Initialized the GPU:\t%f s.\n",diftotal);
 	int rc = ReadBins();
@@ -703,6 +704,8 @@ int main(int argc, char *argv[]){
     pthread_create(&accept_thread, NULL, accept_connections, &server_fd);
     
     // Main thread processes data from the queue
+	clock_t t1, t2,t3,t4,t5,t6;
+	double diffT=0, diffT2=0,diffT3=0;
     while (1) {
         DataChunk chunk;
         queue_pop(&process_queue, &chunk);
@@ -723,23 +726,6 @@ int main(int argc, char *argv[]){
 			DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
 			for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 				Image[j] = (double)ImageIn[j] - AverageDark[j];
-			}
-		}
-		if (i==0){
-			if (separateFolder==0) sprintf(outfn2,"%s.caked.hdf",imageFN);
-			else{
-				char fn2[4096];
-				sprintf(fn2,"%s",imageFN);
-				char *bnname;
-				bnname = basename(fn2);
-				sprintf(outfn2,"%s/%s.caked.hdf",outputFolder,bnname);
-			}
-			file_id = H5Fcreate(outfn2, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
-			if (individualSave==1) H5Gcreate(file_id,"/IntegrationResult", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-			if (chunkFiles>0) {
-				char gName [2048];
-				sprintf(gName,"/OmegaSumFrame",chunkFiles);
-				H5Gcreate(file_id,gName, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 			}
 		}
 		t4 = clock();
