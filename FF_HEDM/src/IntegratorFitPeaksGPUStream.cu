@@ -467,11 +467,11 @@ static double problem_function(unsigned n,
 	double mix = x[2];
 	double cen = x[3];
 	double sig = x[4];
-	int nrPoints = d[0].nrBins;
+	int nrPoints = d->nrBins;
 	double *Rs;
-	Rs = &(d[0].R);
+	Rs = &(d->R[0]);
 	double *Ints;
-	Ints = &(d[0].Int);
+	Ints = &(d->Int[0]);
 	int i;
 	double error = 0;
 	double diff, gauss, lorentz, thisInt;
