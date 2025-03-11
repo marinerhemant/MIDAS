@@ -3,7 +3,14 @@
 // See LICENSE file.
 //
 // export LD_LIBRARY_PATH=/scratch/s1iduser/sharma_tests/HDF5/lib:/scratch/s1iduser/sharma_tests/LIBTIFF/lib::$LD_LIBRARY_PATH
-// ~/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStream.cu -o bin/IntegratorFitPeaksGPUStream -Xcompiler -g -arch sm_90 -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/.MIDAS/NLOPT/include -L/home/beams/S1IDUSER/.MIDAS/NLOPT/lib -O3 -lnlopt -I/home/beams/S1IDUSER/.MIDAS/BLOSC/include -L/home/beams/S1IDUSER/.MIDAS/BLOSC/lib64 -lblosc2
+/* Compiling info:
+  source ~/.MIDAS/paths
+  ~/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStream.cu -o bin/IntegratorFitPeaksGPUStream -Xcompiler -g -arch sm_90 \
+  -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/.MIDAS/NLOPT/include -L/home/beams/S1IDUSER/.MIDAS/NLOPT/lib \
+  -O3 -lnlopt -I/home/beams/S1IDUSER/.MIDAS/BLOSC/include -L/home/beams/S1IDUSER/.MIDAS/BLOSC/lib64 -lblosc2 
+  -I/home/beams/S1IDUSER/.MIDAS/HDF5/include -L/home/beams/S1IDUSER/.MIDAS/HDF5/lib -lhdf5 -lhdf5_hl -lz -ldl -lm -lpthread
+  -I/home/beams/S1IDUSER/.MIDAS/LIBZIP/include -L/home/beams/S1IDUSER/.MIDAS/LIBZIP/lib64 -lzip
+  */
 
 // Benchmarks: 
 // 11.8s using H100, 38.2s using CPU. 
@@ -457,7 +464,7 @@ int main(int argc, char *argv[]){
     size_t mapMaskSize = 0;
 	int *mapMask;
 	int dType = 1;
-	int sumImages=0, newOutput=2;
+	int sumImages=0;
 	while (fgets(aline,4096,paramFile) != NULL){
 		str = "EtaBinSize ";
 		if (StartsWith(aline,str) == 1){
@@ -545,7 +552,7 @@ int main(int argc, char *argv[]){
 	RBinsHigh = (double *) malloc(nRBins*sizeof(*RBinsHigh));
 	REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh);
 
-	int i,j,k,p;
+	int i,j;
 	printf("NrTransOpt: %d\n",NrTransOpt);
     for (i=0;i<NrTransOpt;i++){
         if (TransOpt[i] < 0 || TransOpt[i] > 2){printf("TransformationOptions can only be 0, 1, 2.\nExiting.\n");return 0;}
@@ -748,6 +755,7 @@ int main(int argc, char *argv[]){
 		gpuErrchk(cudaDeviceSynchronize());
 		gpuErrchk(cudaMemcpy(IntArrPerFrame,devIntArrPerFrame,bigArrSize*sizeof(double),cudaMemcpyDeviceToHost));
 		gpuErrchk(cudaDeviceSynchronize());
+		// Now we have IntArrPerFrame, we need to make it into a 1D.
 		t2 = clock();
 		diffT += ((double)(t2-t1))/CLOCKS_PER_SEC;
 		t5 = clock();
