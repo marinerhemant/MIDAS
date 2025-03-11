@@ -620,7 +620,7 @@ int main(int argc, char *argv[]){
 	size_t bigArrSize = nEtaBins*nRBins;
 	double *devSumMatrix;
 	double *IntArrPerFrame, *devIntArrPerFrame;
-	double *PerFrameArr, *devPerFrameArr;
+	double *devPerFrameArr;
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
 	printf("Initializing device, getting allocation, time elapsed till now:\t%f s.\n",diftotal);
@@ -713,6 +713,7 @@ int main(int argc, char *argv[]){
     // Main thread processes data from the queue
 	clock_t t1, t2,t3,t4,t5,t6;
 	double diffT=0, diffT2=0,diffT3=0;
+	int firstFrame = 1;
     while (1) {
         DataChunk chunk;
         queue_pop(&process_queue, &chunk);
@@ -755,6 +756,11 @@ int main(int argc, char *argv[]){
 		gpuErrchk(cudaDeviceSynchronize());
 		gpuErrchk(cudaMemcpy(IntArrPerFrame,devIntArrPerFrame,bigArrSize*sizeof(double),cudaMemcpyDeviceToHost));
 		gpuErrchk(cudaDeviceSynchronize());
+		if (firstFrame==1){
+			firstFrame = 0;
+			gpuErrchk(cudaMemcpy(PerFrameArr,devPerFrameArr,bigArrSize*4*sizeof(double),cudaMemcpyDeviceToHost));
+			gpuErrchk(cudaDeviceSynchronize());
+		}
 		// Now we have IntArrPerFrame, we need to make it into a 1D.
 		t2 = clock();
 		diffT += ((double)(t2-t1))/CLOCKS_PER_SEC;
