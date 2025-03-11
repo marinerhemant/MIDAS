@@ -61,8 +61,8 @@ def main():
             # Add a small delay between sends
             if dataset_num == 1:
                 time.sleep(1)
-            # else:
-            #     time.sleep(0.01)
+            else:
+                time.sleep(0.002)
             t2 = time.time()
             print(f"Time taken: {t2 - t1:.4f} sec")
             
