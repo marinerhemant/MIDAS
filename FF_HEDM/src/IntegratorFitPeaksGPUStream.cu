@@ -140,7 +140,7 @@ void* handle_client(void *arg) {
     free(arg);  // Free the memory allocated for the argument
     
     // Buffer for receiving raw bytes (header + data)
-    uint8_t buffer[TOTAL_MSG_SIZE];
+    uint8_t *buffer = (uint8_t*)malloc(TOTAL_MSG_SIZE);
     int bytes_read;
     
     // Continuously read chunks
