@@ -48,8 +48,8 @@ def main():
         # Dataset counter
         dataset_num = 0
         
-        # Generate random uint16_t values (0-65535)
-        data = np.random.randint(0, 65536, num_values, dtype=np.uint16)
+        # Generate random uint16_t values (0-12000)
+        data = np.random.randint(0, 12000, num_values, dtype=np.uint16)
         while True:
             t1 = time.time()
             # Send the data with dataset number
