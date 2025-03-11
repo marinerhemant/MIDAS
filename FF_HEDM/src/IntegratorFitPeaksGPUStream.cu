@@ -316,6 +316,7 @@ void integrate_noMapMask (double px, double Lsd, int bigArrSize, int Normalize, 
 		double *dImage, double *IntArrPerFrame, double *PerFrameArr, double *SumMatrix)
 {
 	size_t idx = blockIdx.x*blockDim.x + threadIdx.x;
+	printf("BigArrSize: %d Idx: %d\n",(int)idx,bigArrSize);
 	if (idx < bigArrSize){
 		int l;
 		double Intensity=0, totArea=0;
@@ -323,6 +324,7 @@ void integrate_noMapMask (double px, double Lsd, int bigArrSize, int Normalize, 
 		long long int nPixels, dataPos, testPos;
 		nPixels = dNPxList[2*idx + 0];
 		dataPos = dNPxList[2*idx + 1];
+		printf("nPixels: %d, dataPos: %d\n",(int)nPixels,(int)dataPos);
 		for (l=0;l<nPixels;l++){
 			ThisVal = dPxList[dataPos + l];
 			testPos = ThisVal.z;
