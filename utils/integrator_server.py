@@ -4,6 +4,7 @@ import numpy as np
 import struct
 import ctypes
 from PIL import Image
+import matplotlib.pyplot as plt
 class MyStruct(ctypes.Structure):
     _fields_ = [("field1", ctypes.c_uint16)]
 
@@ -51,6 +52,8 @@ def main():
         
         # Generate random uint16_t values (0-12000)
         data = np.array(Image.open('test.tif')).astype(np.uint16)
+        plt.imshow(data)
+        plt.show()
         print(np.max(data))
         while True:
             t1 = time.time()
