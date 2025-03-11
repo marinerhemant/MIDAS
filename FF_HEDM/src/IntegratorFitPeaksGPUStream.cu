@@ -7,8 +7,8 @@
   source ~/.MIDAS/paths
   ~/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStream.cu -o bin/IntegratorFitPeaksGPUStream -Xcompiler -g -arch sm_90 \
   -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/.MIDAS/NLOPT/include -L/home/beams/S1IDUSER/.MIDAS/NLOPT/lib \
-  -O3 -lnlopt -I/home/beams/S1IDUSER/.MIDAS/BLOSC/include -L/home/beams/S1IDUSER/.MIDAS/BLOSC/lib64 -lblosc2 
-  -I/home/beams/S1IDUSER/.MIDAS/HDF5/include -L/home/beams/S1IDUSER/.MIDAS/HDF5/lib -lhdf5 -lhdf5_hl -lz -ldl -lm -lpthread
+  -O3 -lnlopt -I/home/beams/S1IDUSER/.MIDAS/BLOSC/include -L/home/beams/S1IDUSER/.MIDAS/BLOSC/lib64 -lblosc2 \
+  -I/home/beams/S1IDUSER/.MIDAS/HDF5/include -L/home/beams/S1IDUSER/.MIDAS/HDF5/lib -lhdf5 -lhdf5_hl -lz -ldl -lm -lpthread \
   -I/home/beams/S1IDUSER/.MIDAS/LIBZIP/include -L/home/beams/S1IDUSER/.MIDAS/LIBZIP/lib64 -lzip
   */
 
@@ -714,6 +714,8 @@ int main(int argc, char *argv[]){
 	clock_t t1, t2,t3,t4,t5,t6;
 	double diffT=0, diffT2=0,diffT3=0;
 	int firstFrame = 1;
+	double *int1D;
+	int1D = (double *) calloc(nRBins,sizeof(*int1D));
     while (1) {
         DataChunk chunk;
         queue_pop(&process_queue, &chunk);
@@ -768,6 +770,13 @@ int main(int argc, char *argv[]){
 		gpuErrchk(cudaDeviceSynchronize());
 		t6 = clock();
 		diffT3 += ((double)(t6-t5))/CLOCKS_PER_SEC;
+		memset(int1D,0,nRBins*sizeof(*int1D));
+		for (j=0;j<nRBins;j++){
+			for (i=0;i<nEtaBins;i++){
+				int1D[j] += IntArrPerFrame[j*nEtaBins+i];
+			}
+		}
+		// We have the 1D array, now fit it with a peak shape.
         
         // Free the data
         free(chunk.data);
