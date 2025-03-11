@@ -333,6 +333,7 @@ void integrate_noMapMask (double px, double Lsd, int bigArrSize, int Normalize, 
 			Intensity += dImage[testPos]*ThisVal.frac;
 			totArea += ThisVal.frac;
 		}
+		printf("Intensity: %f, totArea: %f\n",Intensity,totArea);
 		if (Intensity != 0){
 			if (Normalize == 1){
 				Intensity /= totArea;
