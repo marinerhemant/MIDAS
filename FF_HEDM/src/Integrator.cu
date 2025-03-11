@@ -41,7 +41,7 @@
 #include <hdf5_hl.h>
 #include <assert.h>
 #include <cuda.h>
-#include "src/cuda_client.h"
+#include "src/midas_cuda_client.h"
 
 typedef double pixelvalue;
 
