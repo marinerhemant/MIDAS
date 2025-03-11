@@ -726,7 +726,7 @@ int main(int argc, char *argv[]){
     
     printf("Server listening on port %d\n", PORT);
     printf("Expecting messages with %d-byte header and %d uint16_t values (%d bytes total)\n", 
-           HEADER_SIZE, NUM_VALUES, TOTAL_MSG_SIZE);
+           HEADER_SIZE, CHUNK_SIZE, TOTAL_MSG_SIZE);
     
     // Create a thread for accepting new connections
     pthread_t accept_thread;
