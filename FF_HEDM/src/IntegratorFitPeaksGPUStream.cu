@@ -834,14 +834,13 @@ int main(int argc, char *argv[]){
 				area1D[j] += PerFrameArr[3*bigArrSize+(j*nEtaBins+i)];
 			}
 			if (area1D[j] != 0) int1D[j] /= area1D[j];
-			printf("%lf ",int1D[j]);
+			printf("%lf %lf\n",int1D[j],area1D[j]);
 			if (int1D[j] > maxInt){
 				maxInt = int1D[j];
 				maxIntLoc = j;
 			}
 			R[j] = (RBinsLow[j]+RBinsHigh[j])/2;
 		}
-		printf("\n");
 		// We have the 1D array, now fit it with a peak shape.
 		double x[5] = {maxInt,(int1D[0]+int1D[nRBins-1])/2,0.5,R[maxIntLoc],0.1}; // amp, bg, mix, cen, sig
 		double lb[5] = {0.0,-1.0,0.0,R[0],0.0};
