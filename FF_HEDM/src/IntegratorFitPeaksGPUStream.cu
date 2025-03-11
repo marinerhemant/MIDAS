@@ -182,9 +182,7 @@ void* handle_client(void *arg) {
 			memcpy(&value, buffer + HEADER_SIZE + (i * sizeof(uint16_t)), sizeof(uint16_t));
 			data[i] = value;  // No conversion
 			if (data[i] > maxInt) maxInt = data[i];
-			if (i<2048) printf("%d ",data[i]);
 		}
-		printf("Max intensity: %d\n",maxInt);
         
         // Add the data to the processing queue
         queue_push(&process_queue, dataset_num, data, CHUNK_SIZE/BYTES_PER_PIXEL);
@@ -790,6 +788,10 @@ int main(int argc, char *argv[]){
         queue_pop(&process_queue, &chunk);
         // Process the data
         memcpy(ImageInT,chunk.data,chunk.size);
+		for (i=0;i<NrPixelsY;i++){
+			printf("%d %d\n",(int)ImageInT[i],chunk.data[i]);
+		}
+		printf("\n");
 		if ((NrTransOpt==0) || (NrTransOpt==1 && TransOpt[0]==0)){
 			if (argc > 3 && dType!=8){
 				for (j=0;j<NrPixelsY*NrPixelsZ;j++){
@@ -806,10 +808,6 @@ int main(int argc, char *argv[]){
 				Image[j] = (double)ImageIn[j] - AverageDark[j];
 			}
 		}
-		for (i=0;i<NrPixelsY;i++){
-			printf("%d ",(int)ImageInT[i]);
-		}
-		printf("\n");
 		gpuErrchk(cudaMemset(devIntArrPerFrame,0,bigArrSize*sizeof(double)));
 		gpuErrchk(cudaMemcpy(devImage,Image,NrPixelsY*NrPixelsZ*sizeof(double),cudaMemcpyHostToDevice));
 		gpuErrchk(cudaDeviceSynchronize());
