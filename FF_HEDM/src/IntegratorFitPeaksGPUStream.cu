@@ -861,7 +861,7 @@ int main(int argc, char *argv[]){
 		if (nlopt_optimize(opt,x,&minf) < 0){
 			printf("nlopt failed!\n");
 		} else {
-			printf("found minimum at f(%g,%g,%g,%g,%g) = %0.10g\n",x[0],x[1],x[2],x[3],x[4],minf);
+			printf("found minimum at f(%f,%f,%f,%f,%f) = %0.10f\n",x[0],x[1],x[2],x[3],x[4],minf);
 		}
 		nlopt_destroy(opt);
 
