@@ -182,6 +182,7 @@ void* handle_client(void *arg) {
 			memcpy(&value, buffer + HEADER_SIZE + (i * sizeof(uint16_t)), sizeof(uint16_t));
 			data[i] = value;  // No conversion
 			if (data[i] > maxInt) maxInt = data[i];
+			if (i<2048) printf("%d ",data[i]);
 		}
 		printf("Max intensity: %d\n",maxInt);
         
