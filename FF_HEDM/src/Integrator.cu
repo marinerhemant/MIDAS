@@ -3,7 +3,7 @@
 // See LICENSE file.
 //
 // ~/opt/midascuda/cuda/bin/nvcc integrator.cu -o integrator -Xcompiler -g -arch sm_90 -gencode=arch=compute_90,code=sm_90 -I/scratch/s1iduser/sharma_tests/HDF5/include -L/scratch/s1iduser/sharma_tests/HDF5/lib -lhdf5_hl -lhdf5 -I/scratch/s1iduser/sharma_tests/LIBTIFF/include -L/scratch/s1iduser/sharma_tests/LIBTIFF/lib -ltiff -O3
-// ~/opt/midascuda/cuda/bin/nvcc src/Integrator.cu -o bin/IntegratorGPU -Xcompiler -g -arch sm_90 -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/.MIDAS/HDF5/include -L/home/beams/S1IDUSER/.MIDAS/HDF5/lib -lhdf5_hl -lhdf5 -I/home/beams/S1IDUSER/.MIDAS/LIBTIFF/include -L/home/beams/S1IDUSER/.MIDAS/LIBTIFF/lib -ltiff -O3
+// ~/opt/midascuda/cuda/bin/nvcc src/Integrator.cu src/midas_cuda_client.c -o bin/IntegratorGPU -Xcompiler -g -arch sm_90 -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/.MIDAS/HDF5/include -L/home/beams/S1IDUSER/.MIDAS/HDF5/lib -lhdf5_hl -lhdf5 -I/home/beams/S1IDUSER/.MIDAS/LIBTIFF/include -L/home/beams/S1IDUSER/.MIDAS/LIBTIFF/lib -ltiff -O3
 // ~/opt/midascuda/cuda_RHEL8/bin/nvcc src/Integrator.cu -o bin/IntegratorGPU -Xcompiler -g -arch sm_90 -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/.MIDAS/HDF5/include -L/home/beams/S1IDUSER/.MIDAS/HDF5/lib -lhdf5_hl -lhdf5 -I/home/beams/S1IDUSER/.MIDAS/LIBTIFF/include -L/home/beams/S1IDUSER/.MIDAS/LIBTIFF/lib -ltiff -O3
 // export LD_LIBRARY_PATH=/scratch/s1iduser/sharma_tests/HDF5/lib:/scratch/s1iduser/sharma_tests/LIBTIFF/lib:$LD_LIBRARY_PATH
 // export LD_LIBRARY_PATH=/home/beams/S1IDUSER/.MIDAS/HDF5/lib:/home/beams/S1IDUSER/.MIDAS/LIBTIFF/lib:$LD_LIBRARY_PATH
@@ -41,6 +41,7 @@
 #include <hdf5_hl.h>
 #include <assert.h>
 #include <cuda.h>
+#include "cuda_client.h"
 
 typedef double pixelvalue;
 
@@ -371,8 +372,12 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr)
 
 int main(int argc, char **argv)
 {
-	cudaSetDevice(0);
-	printf("[%s] - Starting...\n", argv[0]);
+	if (cuda_client_init() < 0) {
+        fprintf(stderr, "Failed to connect to CUDA server. Start the server at ~/opt/MIDAS/FF_HEDM/bin/midaS_cuda_server \n");
+        return 1;
+    }
+	// cudaSetDevice(0);
+	// printf("[%s] - Starting...\n", argv[0]);
 	clock_t start0, end0;
 	start0 = clock();
     double diftotal;
