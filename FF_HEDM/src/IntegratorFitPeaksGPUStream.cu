@@ -163,7 +163,7 @@ void* handle_client(void *arg) {
         // Extract dataset number from header
         uint16_t dataset_num;
         memcpy(&dataset_num, buffer, HEADER_SIZE);
-        dataset_num = ntohs(dataset_num);  // Convert from network to host byte order
+        // dataset_num = ntohs(dataset_num);  // Convert from network to host byte order
         
         // Allocate memory for the data
         uint16_t *data = (uint16_t*)malloc(CHUNK_SIZE * sizeof(uint16_t));
@@ -174,10 +174,13 @@ void* handle_client(void *arg) {
         
         // Convert data from network byte order to host byte order
         for (int i = 0; i < CHUNK_SIZE; i++) {
-            uint16_t network_value;
-            memcpy(&network_value, buffer + HEADER_SIZE + (i * sizeof(uint16_t)), sizeof(uint16_t));
-            data[i] = ntohs(network_value);
-        }
+            // uint16_t network_value;
+            // memcpy(&network_value, buffer + HEADER_SIZE + (i * sizeof(uint16_t)), sizeof(uint16_t));
+            // data[i] = ntohs(network_value);
+			uint16_t value;
+			memcpy(&value, buffer + HEADER_SIZE + (i * sizeof(uint16_t)), sizeof(uint16_t));
+			data[i] = value;  // No conversion
+}
         
         // Add the data to the processing queue
         queue_push(&process_queue, dataset_num, data, CHUNK_SIZE);

@@ -12,9 +12,9 @@ def send_data_chunk(sock, dataset_num, data):
     t1 = time.time()
     
     # Pack the dataset number
-    header = struct.pack('!H', dataset_num)
+    header = struct.pack('H', dataset_num)
     
-    format_string = '!' + 'H' * len(data)
+    format_string = 'H' * len(data)
     packed_data = struct.pack(format_string, *data)
     combined_data = header + packed_data
     sock.sendall(combined_data)
