@@ -849,7 +849,7 @@ int main(int argc, char *argv[]){
 			}
 			R[j] = (RBinsLow[j]+RBinsHigh[j])/2;
 		}
-		print("Max intensity: %lf at R: %lf\n",maxInt,R[maxIntLoc]);
+		printf("Max intensity: %lf at R: %lf\n",maxInt,R[maxIntLoc]);
 		// We have the 1D array, now fit it with a peak shape.
 		double x[5] = {maxInt,(int1D[0]+int1D[nRBins-1])/2,0.5,R[maxIntLoc],0.1}; // amp, bg, mix, cen, sig
 		double lb[5] = {0.0,-1.0,0.0,R[0],0.0};
