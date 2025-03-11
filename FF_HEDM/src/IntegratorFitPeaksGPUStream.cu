@@ -103,7 +103,7 @@ int queue_push(ProcessQueue *queue, uint16_t dataset_num, uint16_t *data, size_t
     queue->rear = (queue->rear + 1) % MAX_QUEUE_SIZE;
     queue->chunks[queue->rear].dataset_num = dataset_num;
     queue->chunks[queue->rear].data = data;
-    queue->chunks[queue->rear].num_values = num_values;
+    queue->chunks[queue->rear].size = num_values;
     queue->count++;
     
     // Signal that the queue is not empty
@@ -166,22 +166,22 @@ void* handle_client(void *arg) {
         dataset_num = ntohs(dataset_num);  // Convert from network to host byte order
         
         // Allocate memory for the data
-        uint16_t *data = (uint16_t*)malloc(NUM_VALUES * sizeof(uint16_t));
+        uint16_t *data = (uint16_t*)malloc(CHUNK_SIZE * sizeof(uint16_t));
         if (!data) {
             perror("Memory allocation failed");
             break;
         }
         
         // Convert data from network byte order to host byte order
-        for (int i = 0; i < NUM_VALUES; i++) {
+        for (int i = 0; i < CHUNK_SIZE; i++) {
             uint16_t network_value;
             memcpy(&network_value, buffer + HEADER_SIZE + (i * sizeof(uint16_t)), sizeof(uint16_t));
             data[i] = ntohs(network_value);
         }
         
         // Add the data to the processing queue
-        queue_push(&process_queue, dataset_num, data, NUM_VALUES);
-        printf("Received dataset #%u with %d uint16_t values\n", dataset_num, NUM_VALUES);
+        queue_push(&process_queue, dataset_num, data, CHUNK_SIZE);
+        printf("Received dataset #%u with %d uint16_t values\n", dataset_num, CHUNK_SIZE);
     }
     
 connection_closed:
