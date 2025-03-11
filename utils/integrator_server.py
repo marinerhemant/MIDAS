@@ -34,7 +34,7 @@ def send_data_chunk(sock, dataset_num, data):
 def main():
     # Connect to C server
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_address = ('localhost', 5000)
+    server_address = ('127.0.0.1', 5000)
     print(f"Connecting to {server_address[0]}:{server_address[1]}")
     
     try:
