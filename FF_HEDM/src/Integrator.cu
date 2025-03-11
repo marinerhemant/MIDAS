@@ -64,13 +64,14 @@ int cuda_client_init() {
     address.sun_family = AF_UNIX;
     strncpy(address.sun_path, SOCKET_PATH, sizeof(address.sun_path) - 1);
     
-    if (connect(client_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
-        perror("Connection failed");
-        close(client_fd);
-        client_fd = -1;
-        return -1;
-    }
-    
+	if (connect(client_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
+		perror("Connection failed");
+		fprintf(stderr, "Trying to connect to: %s\n", SOCKET_PATH);
+		close(client_fd);
+		client_fd = -1;
+		return -1;
+	}
+		
     return 0;
 }
 
