@@ -555,7 +555,6 @@ int main(int argc, char *argv[]){
     int makeMap = 0;
     size_t mapMaskSize = 0;
 	int *mapMask;
-	int dType = 1;
 	int sumImages=0;
 	while (fgets(aline,4096,paramFile) != NULL){
 		str = "EtaBinSize ";
