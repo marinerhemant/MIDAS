@@ -132,7 +132,7 @@ void queue_init(ProcessQueue *queue) {
 }
 
 // Add a data chunk to the queue
-int queue_push(ProcessQueue *queue, uint16_t dataset_num, uint16_t *data, size_t num_values) {
+int queue_push(ProcessQueue *queue, uint16_t dataset_num, int32_t *data, size_t num_values) {
     pthread_mutex_lock(&queue->mutex);
     
     // Wait if the queue is full
