@@ -66,7 +66,7 @@ def main():
         # Close connection
         sock.close()
         print("Connection closed")
-        print(f'Sent {dataset_num} frames',f"Total time: {time.time() - t0:.4f} sec", f'Average time per frame: {(time.time() - t0)/dataset_num:.4f} sec')
+        print(f'Sent {dataset_num} frames',f"Total time: {time.time() - t0:.4f} sec", f'Average fps: {dataset_num/(time.time() - t0):.4f} sec')
 
 if __name__ == "__main__":
     main()
