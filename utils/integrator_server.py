@@ -36,18 +36,14 @@ def main():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_address = ('127.0.0.1', 5000)
     print(f"Connecting to {server_address[0]}:{server_address[1]}")
-    
+    t0 = time.time()
+    dataset_num = 0
     try:
         sock.connect(server_address)
         
         # Number of uint16_t values to send in each chunk
-        # Each uint16_t is 2 bytes, so 512 values = 1024 bytes
-        num_values = 2048*2048  
-        
-        # Dataset counter
-        dataset_num = 0
-        
-        # Generate random uint16_t values (0-12000)
+        # Each uint16_t is 2 bytes.
+        num_values = 2048*2048     
         data = np.array(Image.open('test.tif')).astype(np.uint16).reshape((2048*2048))
         while True:
             t1 = time.time()
@@ -70,6 +66,7 @@ def main():
         # Close connection
         sock.close()
         print("Connection closed")
+        print(f'Sent {dataset_num} frames',f"Total time: {time.time() - t0:.4f} sec")
 
 if __name__ == "__main__":
     main()
