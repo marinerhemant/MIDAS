@@ -12,6 +12,47 @@
   -I/home/beams/S1IDUSER/.MIDAS/LIBZIP/include -L/home/beams/S1IDUSER/.MIDAS/LIBZIP/lib64 -lzip
   */
 
+// Always expectes the data to be in int32_t format.
+// Expected to be run on a GPU with at least 16GB of memory.
+// Expected to be run on a machine with at least 16GB of memory.
+// Localhost:5000 port is used to get the images from a server.
+// The server is expected to send the images in int32_t format.
+// There is an imagenum in the header, which is used to keep track of the image number.
+// The images are expected to be in a binary format.
+//
+// The code expects a Map.bin and nMap.bin file to be present in the same directory.
+// The Map.bin file is expected to contain the pixel information in the following format:
+// struct data{
+//     int y;
+//     int z;
+//     double frac;
+// };
+// The nMap.bin file is expected to contain the number of pixels in each pixel.
+// The code expects a ParamFN file to be present in the same directory.
+// The ParamFN file is expected to contain the following information:
+// EtaBinSize 0.1
+// RBinSize 0.1
+// RMax 10
+// RMin 0
+// EtaMax 10
+// EtaMin 0
+// Lsd 1000
+// px 0.172
+// NrPixelsY 2048
+// NrPixelsZ 2048
+// Normalize 1
+// NrPixels 2048
+// GapIntensity 0
+// BadPxIntensity 0
+// ImTransOpt 0
+// SumImages 0
+
+// The code expects a(n optional) dark file to be present in the same directory.
+// The dark file is expected to be in the same format as the images.
+// The dark file is expected to be in a binary format.
+// The dark file is expected to contain the average of all the dark frames.
+// The dark file is expected to be in int32_t format.
+
 // Benchmarks: 
 // 11.8s using H100, 38.2s using CPU. 
 // Overhead (I/O, prepare): 10.5s, 1.19s using H100, 27.7s using CPU, 23x speedup. 
@@ -57,12 +98,12 @@ size_t CHUNK_SIZE;
 #define MAX_QUEUE_SIZE 100  // Maximum number of chunks in the queue, should not be too large, else segfaults.
 #define HEADER_SIZE sizeof(uint16_t)  // Size of dataset number
 size_t TOTAL_MSG_SIZE;
-#define BYTES_PER_PIXEL 2
+#define BYTES_PER_PIXEL 4
 
 // Structure for our data chunks
 typedef struct {
     uint16_t dataset_num;  // Dataset number
-    uint16_t *data;
+    int32_t *data; // int32 data
     size_t size;
 } DataChunk;
 
@@ -164,29 +205,22 @@ void* handle_client(void *arg) {
         // Extract dataset number from header
         uint16_t dataset_num;
         memcpy(&dataset_num, buffer, HEADER_SIZE);
-        // dataset_num = ntohs(dataset_num);  // Convert from network to host byte order
         
         // Allocate memory for the data
-        uint16_t *data = (uint16_t*)malloc(CHUNK_SIZE/BYTES_PER_PIXEL * sizeof(uint16_t));
+        int32_t *data = (int32_t*)malloc(CHUNK_SIZE/BYTES_PER_PIXEL * sizeof(int32_t));
         if (!data) {
             perror("Memory allocation failed");
             break;
         }
-        int maxInt = -1;
-        // Convert data from network byte order to host byte order
         for (int i = 0; i < CHUNK_SIZE/BYTES_PER_PIXEL; i++) {
-            // uint16_t network_value;
-            // memcpy(&network_value, buffer + HEADER_SIZE + (i * sizeof(uint16_t)), sizeof(uint16_t));
-            // data[i] = ntohs(network_value);
-			uint16_t value;
-			memcpy(&value, buffer + HEADER_SIZE + (i * sizeof(uint16_t)), sizeof(uint16_t));
-			data[i] = value;  // No conversion
-			if (data[i] > maxInt) maxInt = data[i];
+			int32_t value;
+			memcpy(&value, buffer + HEADER_SIZE + (i * sizeof(int32_t)), sizeof(int32_t));
+			data[i] = value;
 		}
         
         // Add the data to the processing queue
         queue_push(&process_queue, dataset_num, data, CHUNK_SIZE/BYTES_PER_PIXEL);
-        printf("Received dataset #%u with %d uint16_t values\n", dataset_num, CHUNK_SIZE/BYTES_PER_PIXEL);
+        printf("Received dataset #%u with %d int32_t values\n", dataset_num, CHUNK_SIZE/BYTES_PER_PIXEL);
     }
     
 connection_closed:
@@ -232,8 +266,6 @@ void* accept_connections(void *server_fd_ptr) {
     
     return NULL;
 }
-
-typedef double pixelvalue;
 
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
@@ -431,7 +463,7 @@ REtaMapper(
 	}
 }
 
-static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], uint16_t *ImageIn, uint16_t *ImageOut, int NrPixelsY, int NrPixelsZ)
+static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], int32_t *ImageIn, int32_t *ImageOut, int NrPixelsY, int NrPixelsZ)
 {
 	int i,k,l;
 	if (NrTransOpt == 0 || (NrTransOpt==1 && TransOpt[0]==0)){
@@ -494,7 +526,7 @@ int main(int argc, char *argv[]){
     if (argc < 2){
 		printf("Usage: ./Integrator ParamFN (optional)DarkName\n"
 		"Optional:\n\tDark file: dark correction with average of all dark frames"
-		".\n\tDark must be in a binary format, with uint16 dataType."
+		".\n\tDark must be in a binary format, with int32 dataType."
         "\n\nSteams data from a socket and processes it.\n");
 		return(1);
 	}
@@ -624,17 +656,17 @@ int main(int argc, char *argv[]){
 
     /*Allocations!*/
 	double *Image;
-	uint16_t *ImageIn;
-	uint16_t *DarkIn;
-	uint16_t *ImageInT;
-	uint16_t *DarkInT;
 	double *AverageDark;
-	DarkIn = (uint16_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkIn));
-	DarkInT = (uint16_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkInT));
-	AverageDark = (pixelvalue *) calloc(NrPixelsY*NrPixelsZ,sizeof(*AverageDark));
-	ImageIn = (uint16_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageIn));
-	ImageInT = (uint16_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageInT));
 	cudaMallocHost((void **) &Image,NrPixelsY*NrPixelsZ*sizeof(*Image));
+	AverageDark = (double *) calloc(NrPixelsY*NrPixelsZ,sizeof(*AverageDark));
+	int32_t *ImageIn;
+	int32_t *DarkIn;
+	int32_t *ImageInT;
+	int32_t *DarkInT;
+	DarkIn = (int32_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkIn));
+	DarkInT = (int32_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkInT));
+	ImageIn = (int32_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageIn));
+	ImageInT = (int32_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageInT));
 	size_t pxSize = BYTES_PER_PIXEL;
 	size_t SizeFile = pxSize * NrPixelsY * NrPixelsZ;
 	int nFrames;
@@ -642,8 +674,8 @@ int main(int argc, char *argv[]){
 	FILE *fd;
 	char *darkFN;
 	int nrdone = 0;
-	if (argc > 3){
-		darkFN = argv[3];
+	if (argc > 2){
+		darkFN = argv[2];
 		fd = fopen(darkFN,"rb");
 		fseek(fd,0L,SEEK_END);
 		sz = ftell(fd);
@@ -660,7 +692,7 @@ int main(int argc, char *argv[]){
 				mapMaskSize ++;
 				mapMask = (int *) calloc(mapMaskSize,sizeof(*mapMask));
 				for (j=0;j<NrPixelsY*NrPixelsZ;j++){
-					if (DarkIn[j] == (pixelvalue) GapIntensity || DarkIn[j] == (pixelvalue) BadPxIntensity){
+					if (DarkIn[j] == (int32_t) GapIntensity || DarkIn[j] == (int32_t) BadPxIntensity){
 						SetBit(mapMask,j);
 						nrdone++;
 					}
@@ -787,7 +819,7 @@ int main(int argc, char *argv[]){
         // Process the data
         memcpy(ImageInT,chunk.data,chunk.size*BYTES_PER_PIXEL);
 		if ((NrTransOpt==0) || (NrTransOpt==1 && TransOpt[0]==0)){
-			if (argc > 3 && dType!=8){
+			if (argc > 2){
 				for (j=0;j<NrPixelsY*NrPixelsZ;j++){
 					Image[j] = (double)ImageInT[j] - AverageDark[j];
 				}
@@ -845,15 +877,11 @@ int main(int argc, char *argv[]){
 				maxIntLoc = j;
 			}
 			R[j] = (RBinsLow[j]+RBinsHigh[j])/2;
-			// printf("%lf %lf %d\n",R[j],int1D[j],nNonZeros);
 		}
 		// We have the 1D array, now fit it with a peak shape.
 		double x[5] = {maxInt-(int1D[0]+int1D[nRBins-1])/2,(int1D[0]+int1D[nRBins-1])/2,0.5,R[maxIntLoc],(R[nRBins-1]-R[0])/4}; // amp, bg, mix, cen, sig
 		double lb[5] = {0.0,-1.0,0.0,R[0],0.1};
 		double ub[5] = {maxInt*2,maxInt,1.0,R[nRBins-1],(R[nRBins-1]-R[0])/2};
-		// for (i=0;i<5;i++){
-		// 	printf("x[%d]: %lf, lb[%d]: %lf, ub[%d]: %lf\n",i,x[i],i,lb[i],i,ub[i]);
-		// }
 		struct dataFit d;
 		d.nrBins = nRBins;
 		d.R = &R[0];
@@ -878,12 +906,9 @@ int main(int argc, char *argv[]){
 		t2 = clock();
 		diffT = ((double)(t2-t1))/CLOCKS_PER_SEC;
 		printf("Did integration, took %lf s for this frame, frameNr: %d.\n",diffT,chunk.dataset_num);
-        
-        // Free the data
         free(chunk.data);
     }
     
-    // This code is not reached in this example
     pthread_join(accept_thread, NULL);
     close(server_fd);
     

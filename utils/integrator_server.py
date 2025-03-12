@@ -5,16 +5,14 @@ import struct
 import ctypes
 from PIL import Image
 import matplotlib.pyplot as plt
-class MyStruct(ctypes.Structure):
-    _fields_ = [("field1", ctypes.c_uint16)]
 
 def send_data_chunk(sock, dataset_num, data):
     t1 = time.time()
     
     # Check if data is already a numpy array with correct dtype
-    if not isinstance(data, np.ndarray) or data.dtype != np.uint16:
+    if not isinstance(data, np.ndarray) or data.dtype != np.int32:
         # Convert data to numpy array
-        data_array = np.array(data, dtype=np.uint16)
+        data_array = np.array(data, dtype=np.int32)
     else:
         # Use the existing array
         data_array = data
@@ -29,7 +27,7 @@ def send_data_chunk(sock, dataset_num, data):
     sock.sendall(header + data_view)
     
     t2 = time.time()
-    print(f"Sent dataset #{dataset_num} with {len(data_array)} uint16_t values ({len(data_view)} bytes) in {t2 - t1:.4f} sec")
+    print(f"Sent dataset #{dataset_num} with {len(data_array)} int32_t values ({len(data_view)} bytes) in {t2 - t1:.4f} sec")
 
 def main():
     # Connect to C server
@@ -41,10 +39,12 @@ def main():
     try:
         sock.connect(server_address)
         
-        # Number of uint16_t values to send in each chunk
-        # Each uint16_t is 2 bytes.
-        num_values = 2048*2048     
-        data = np.array(Image.open('test.tif')).astype(np.uint16).reshape((2048*2048))
+        # Load and convert the image to int32
+        data = np.array(Image.open('test.tif')).astype(np.int32)
+        
+        # Flatten the array to 1D regardless of original dimensions
+        data = data.flatten()
+        
         while True:
             t1 = time.time()
             # Send the data with dataset number

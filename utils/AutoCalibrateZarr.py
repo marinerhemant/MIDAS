@@ -69,7 +69,7 @@ parser.add_argument('-Threshold', type=float, required=False, default=0, help='I
 parser.add_argument('-StoppingStrain', type=float, required=False, default=0.00004, help='If refined pseudo-strain is below this value and all rings are "good", we would have converged.')
 parser.add_argument('-ImTransOpt', type=int, required=False, default=[0],nargs='*', help="If you want to do any transformations to the data: \n0: nothing, 1: flip LR, 2: flip UD, 3: transpose. Give as many as needed in the right order.")
 parser.add_argument('-ConvertFile', type=int, required=False, default=0, help="If you want to generate the zarr zip file from a different format: \n0: input is zarr zip file, 1: HDF5 input will be used to generarte a zarr zip file, 2: Binary GE-type file.")
-parser.add_argument('-paramFN', type=str, required=False, default='', help="If you use convertFile = 1, you need to provide the parameter file consisting of all settings: SpaceGroup, SkipFrame, px, LatticeParameter, Wavelength.")
+parser.add_argument('-paramFN', type=str, required=False, default='', help="If you use convertFile = 1 or 2, you need to provide the parameter file consisting of all settings: SpaceGroup, SkipFrame, px, LatticeParameter, Wavelength.")
 parser.add_argument('-LsdGuess', type=float, required=False, default=1000000, help="If you know a guess for the Lsd, it might be good to kickstart things.")
 args, unparsed = parser.parse_known_args()
 

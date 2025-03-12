@@ -938,7 +938,7 @@ main(int argc, char *argv[])
 	positions = malloc((nScans+1)*sizeof(*positions));
 	positions[0] = 0;
 	if (nScans > 1){
-		printf("Multi-scan simulation requested with %d scans.\nReading positions.csv, no error checking from here on!!!",nScans);
+		printf("Multi-scan simulation requested with %d scans.\nReading positions.csv, no error checking from here on!!!\n",nScans);
 		FILE *positionsF = fopen("positions.csv","r");
 		for (scanNr=0;scanNr<nScans;scanNr++){
 			fgets(aline,4096,positionsF);
@@ -1064,6 +1064,7 @@ main(int argc, char *argv[])
 			}
 		} else if (strncmp(aline,"#EBSD",strlen("#EBSD")) == 0){ // This is an EBSD file. X,Y,Z,Eul1,Eul2,Eul3
 			dataType = 1;
+			printf("We are reading an EBSD file.\n");
 			fgets(aline,4096,inpF);
 			while(fgets(aline,4096,inpF)!=NULL){
 				sscanf(aline,"%lf,%lf,%lf,%lf,%lf,%lf",
