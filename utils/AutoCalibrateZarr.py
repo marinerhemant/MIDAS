@@ -143,7 +143,8 @@ dark = fileReader(dataF,'/exchange/dark')
 rawFN = dataFN.split('.zip')[0]+'.ge5'
 darkFN = 'dark_' +rawFN
 raw.tofile(rawFN)
-raw = np.ma.masked_array(raw,mask=badGapArr)
+if len(badGapArr) != 0:
+	raw = np.ma.masked_array(raw,mask=badGapArr)
 dark.tofile(darkFN)
 darkName = darkFN
 DrawPlots = int(args.MakePlots)
