@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 ##### Save all the plots to an hdf5
+##### python ~/opt/MIDAS/utils/AutoCalibrateZarr.py -dataFN CeO2_30keV_210mm_20sec_000001.tif -ConvertFile 3 -paramFN ps_orig.txt -BadPxIntensity -2 -GapIntensity -1 -MakePlots 1 -StoppingStrain 0.003
 
 import warnings
 warnings.filterwarnings("ignore")
