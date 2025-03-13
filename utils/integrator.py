@@ -17,6 +17,7 @@ utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 sys.path.insert(0,utilsDir)
 from midas2zip import Hdf5ToZarr
 import warnings
+import scipy
 warnings.filterwarnings('ignore')
 pytpath = sys.executable
 
@@ -39,6 +40,8 @@ def generateZip(resFol,pfn,dfn='',nchunks=-1,preproc=-1,outf='ZipOut.txt',errf='
         cmd+= ' -dataFN ' + dfn
     if dloc!='':
         cmd+= ' -dataLoc ' + dloc
+    if darkLoc!='':
+        cmd+= ' -darkLoc ' + darkLoc
     if nchunks!=-1:
         cmd+= ' -numFrameChunks '+str(nchunks)
     if preproc!=-1:
@@ -83,6 +86,7 @@ parser.add_argument('-paramFN', type=str, required=True, help='Parameter file na
 parser.add_argument('-dataFN', type=str, required=True, default='', help='DataFileName for first file, this should have the full path if not in the current folder.')
 parser.add_argument('-darkFN', type=str, required=False, default='', help='DarkFileName, full path.')
 parser.add_argument('-dataLoc', type=str, required=False, default='exchange/data', help='Data location.')
+parser.add_argument('-darkLoc', type=str, required=False, default='exchange/dark', help='Dark location.')
 parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='Number of chunks to use when reading the data file if RAM is smaller than expanded data. -1 will disable.')
 parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
 parser.add_argument('-startFileNr', type=int, required=False, default=-1, help='Which fileNr to start from. Default is -1, which means that fileNr in dataFN is read.')
@@ -90,6 +94,7 @@ parser.add_argument('-endFileNr', type=int, required=False, default=-1, help='En
 parser.add_argument('-convertFiles', type=int, required=False, default=1, help='Whether want to convert files to ZarrZip format or not.')
 parser.add_argument('-mapDetector', type=int, required=False, default=1, help='Whether want to generate map of detector or not. If unsure, put to 1. If already have the CORRECT Map.bin and nMap.bin, put it to 0.')
 parser.add_argument('-nCPUs', type=int, required=False, default=1, help='If you want to use multiple CPUs.')
+parser.add_argument('-writeMat', type=int, required=False, default=0, help='If you want to write a matlab .mat file.')
 args, unparsed = parser.parse_known_args()
 resultDir = args.resultFolder
 psFN = args.paramFN
@@ -103,6 +108,8 @@ convertFiles = args.convertFiles
 mapDetector = args.mapDetector
 nCPUs = args.nCPUs
 dloc = args.dataLoc
+darkLoc = args.darkLoc
+writeMat = args.writeMat
 
 if len(resultDir) == 0 or resultDir == '.':
     resultDir = os.getcwd()
@@ -169,6 +176,10 @@ if nCPUs == 1:
             storeZip.close()
         print(f'Ouput file {outzip} tree structure:')
         print(zarr.open(outzip).tree())
+        if writeMat:
+            zarr_file = zarr.open(outzip, mode='r')
+            data_dict = {key: zarr_file[key] for key in zarr_file.keys()}
+            scipy.io.savemat(outzip+'.mat', data_dict)
 else:
     work_data = [fileNr for fileNr in range(0,nrFiles)]
     print(f"Starting {nCPUs} parallel jobs.")
@@ -177,3 +188,7 @@ else:
     for outzip in res:
         print(f'Ouput file {outzip} tree structure:')
         print(zarr.open(outzip).tree())
+        if writeMat:
+            zarr_file = zarr.open(outzip, mode='r')
+            data_dict = {key: zarr_file[key] for key in zarr_file.keys()}
+            scipy.io.savemat(outzip+'.mat', data_dict)

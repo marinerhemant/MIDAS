@@ -32,10 +32,10 @@
 // The ParamFN file is expected to contain the following information:
 // EtaBinSize 0.1
 // RBinSize 0.1
-// RMax 10
-// RMin 0
-// EtaMax 10
-// EtaMin 0
+// RMax 100
+// RMin 10
+// EtaMax 180
+// EtaMin -180
 // Lsd 1000
 // px 0.172
 // NrPixelsY 2048

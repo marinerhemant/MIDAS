@@ -65,6 +65,7 @@ parser.add_argument('-paramFN', type=str, required=True, help='Parameter file na
 parser.add_argument('-dataFN', type=str, required=False, default='', help='DataFileName')
 parser.add_argument('-darkFN', type=str, required=False, default='', help='DarkFileName')
 parser.add_argument('-dataLoc', type=str, required=False, default='exchange/data', help='Location of data in the hdf file')
+parser.add_argument('-darkLoc', type=str, required=False, default='exchange/dark', help='Location of dark in the hdf file')
 parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='Number of chunks to use when reading the data file if RAM is smaller than expanded data. -1 will disable.')
 parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
 parser.add_argument('-numFilesPerScan', type=int, required=False, default=1, help='Number of files that constitute a single scan. This will combine multiple ge files into one dataset. 1 will disable.')
@@ -82,6 +83,7 @@ numPxY = args.numPxY
 numPxZ = args.numPxZ
 numFrameChunks = args.numFrameChunks
 dataLoc = args.dataLoc
+darkLoc = args.darkLoc
 preProc = args.preProcThresh
 layerNr = args.LayerNr
 numFilesPerScan = args.numFilesPerScan
@@ -91,7 +93,6 @@ omeStepOverride = args.omegaStep
 if resultDir == '.':
     resultDir = os.getcwd()
 
-darkLoc = 'exchange/dark'
 brightLoc = 'exchange/bright'
 maskLoc = 'exchange/mask'
 panelmaskLoc = 'exchange/panelmask'

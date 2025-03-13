@@ -126,7 +126,7 @@ if convertFile == 1 or convertFile == 2:
 	print("Generating zip file.")
 	dataFN = generateZip('.',psFN,dfn=dataFN,nchunks=100,preproc=0,darkfn=darkFN,dloc=dataLoc)
 
-dataFN = dataFN.split('/')[-1]
+# dataFN = dataFN.split('/')[-1]
 
 dataF = zarr.open(dataFN,'r')
 
