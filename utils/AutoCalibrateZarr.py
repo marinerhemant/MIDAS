@@ -18,6 +18,7 @@ import plotly.graph_objects as go
 import pandas as pd
 import diplib as dip
 from plotly.subplots import make_subplots
+from PIL import Image
 pytpath = sys.executable
 
 env = dict(os.environ)
@@ -50,6 +51,10 @@ def generateZip(resFol,pfn,dfn='',darkfn='',dloc='',nchunks=-1,preproc=-1,outf='
         cmd+= ' -numFrameChunks '+str(nchunks)
     if preproc!=-1:
         cmd+= ' -preProcThresh '+str(preproc)
+    if NrPixelsY != 0:
+        cmd+= ' -numPxY '+str(NrPixelsY)
+    if NrPixelsZ != 0:
+        cmd+= ' -numPxZ '+str(NrPixelsZ)
     outf = resFol+'/'+outf
     errf = resFol+'/'+errf
     subprocess.call(cmd,shell=True,stdout=open(outf,'w'),stderr=open(errf,'w'))
@@ -68,9 +73,11 @@ parser.add_argument('-MultFactor', type=float, required=False, default=2.5, help
 parser.add_argument('-Threshold', type=float, required=False, default=0, help='If you want to give a manual threshold, typically 500, otherwise, it will calculate automatically.')
 parser.add_argument('-StoppingStrain', type=float, required=False, default=0.00004, help='If refined pseudo-strain is below this value and all rings are "good", we would have converged.')
 parser.add_argument('-ImTransOpt', type=int, required=False, default=[0],nargs='*', help="If you want to do any transformations to the data: \n0: nothing, 1: flip LR, 2: flip UD, 3: transpose. Give as many as needed in the right order.")
-parser.add_argument('-ConvertFile', type=int, required=False, default=0, help="If you want to generate the zarr zip file from a different format: \n0: input is zarr zip file, 1: HDF5 input will be used to generarte a zarr zip file, 2: Binary GE-type file.")
-parser.add_argument('-paramFN', type=str, required=False, default='', help="If you use convertFile = 1 or 2, you need to provide the parameter file consisting of all settings: SpaceGroup, SkipFrame, px, LatticeParameter, Wavelength.")
+parser.add_argument('-ConvertFile', type=int, required=False, default=0, help="If you want to generate the zarr zip file from a different format: \n0: input is zarr zip file, 1: HDF5 input will be used to generarte a zarr zip file, 2: Binary GE-type file, 3: TIFF input.")
+parser.add_argument('-paramFN', type=str, required=False, default='', help="If you use convertFile != 0, you need to provide the parameter file consisting of all settings: SpaceGroup, SkipFrame, px, LatticeParameter, Wavelength.")
 parser.add_argument('-LsdGuess', type=float, required=False, default=1000000, help="If you know a guess for the Lsd, it might be good to kickstart things.")
+parser.add_argument('-BadPxIntensity', type=float, required=False, default=np.nan, help="If you know the bad pixel intensity, provide the value.")
+parser.add_argument('-GapIntensity', type=float, required=False, default=np.nan, help="If you know the gap intensity, provide the value. If you provide bad or gap, provide both!!!!")
 args, unparsed = parser.parse_known_args()
 
 dataFN = args.dataFN
@@ -78,6 +85,37 @@ darkFN = args.darkFN
 dataLoc = args.dataLoc
 LsdGuess = args.LsdGuess
 convertFile = args.ConvertFile
+badPxIntensity = args.BadPxIntensity
+gapIntensity = args.GapIntensity
+
+NrPixelsY = 0
+NrPixelsZ = 0
+
+badGapArr = []
+if convertFile == 3:
+	img = Image.open(dataFN)
+	print("Data was a tiff image. Will convert to a ge file with 16 bit unsigned.")
+	img = np.array(img)
+	if img.dtype == np.int32:
+		# Find the pixels that were bad or had gap, save them in an array, when we get back the data, we will label them as bad (np.nan) and run the code.
+		# If bad pixels and gap pixels are there, then we will also save those to the ps file when doing calibrantOMP.
+		if not np.isnan(badPxIntensity) and not np.isnan(gapIntensity):
+			badGapArr = img == badPxIntensity
+			badGapArr = np.logical_or(badGapArr,img == gapIntensity)
+		img = img.astype(np.double)
+		img /= 2
+		img = img.astype(np.uint16)
+		# If the image shape is not 2048*2048, we need to send the dimensions to the generateZip function.
+		if img.shape[1] != 2048:
+			NrPixelsY = img.shape[1]
+		if img.shape[0] != 2048:
+			NrPixelsZ = img.shape[0]
+	# Save the image as a GE file
+	with open(dataFN+'.ge','wb') as f:
+		f.write(b'\x00'*8192) # Header
+		img.tofile(f)
+	dataFN = dataFN+'.ge'
+	convertFile = 2
 
 if convertFile == 1 or convertFile == 2:
 	psFN = args.paramFN
@@ -90,8 +128,6 @@ if convertFile == 1 or convertFile == 2:
 dataFN = dataFN.split('/')[-1]
 
 dataF = zarr.open(dataFN,'r')
-NrPixelsY = 0
-NrPixelsZ = 0
 
 skipFrame = 0
 space_group = dataF['/analysis/process/analysis_parameters/SpaceGroup'][0].item()
@@ -107,6 +143,7 @@ dark = fileReader(dataF,'/exchange/dark')
 rawFN = dataFN.split('.zip')[0]+'.ge5'
 darkFN = 'dark_' +rawFN
 raw.tofile(rawFN)
+raw = np.ma.masked_array(raw,mask=badGapArr)
 dark.tofile(darkFN)
 darkName = darkFN
 DrawPlots = int(args.MakePlots)
@@ -139,7 +176,7 @@ def redraw_figure():
 
 def runMIDAS(fn):
 	global ringsToExclude, folder, fstem, ext, ty_refined, tz_refined, p0_refined, p1_refined
-	global p2_refined, p3_refined, darkName, fnumber, pad, wl, sg, lsd_refined, bc_refined, latc
+	global p2_refined, p3_refined, darkName, fnumber, pad, lsd_refined, bc_refined, latc
 	global nPlanes, mean_strain, std_strain
 	with open(fn+'ps.txt','w') as pf:
 		for ringNr in ringsToExclude:
@@ -164,6 +201,10 @@ def runMIDAS(fn):
 		pf.write('p3 '+p3_refined+'\n')
 		pf.write(f'EtaBinSize {etaBinSize}\n')
 		pf.write('HeadSize 0\n')
+		if badPxIntensity != np.nan:
+			pf.write(f'BadPxIntensity {badPxIntensity}\n')
+		if gapIntensity != np.nan:
+			pf.write(f'GapIntensity {gapIntensity}\n')
 		pf.write('Dark '+darkName+'\n')
 		pf.write('StartNr '+str(fnumber)+'\n')
 		pf.write('EndNr '+str(fnumber)+'\n')
@@ -235,14 +276,14 @@ def runMIDAS(fn):
 	return(rNew)
 
 
-with open('ps.txt','w') as pf:
+with open('ps_init_sim.txt','w') as pf:
     pf.write('Wavelength '+str(Wavelength)+'\n')
     pf.write('SpaceGroup '+str(space_group)+'\n')
     pf.write('Lsd '+str(initialLsd)+'\n')
     pf.write('MaxRingRad '+str(mrr)+'\n')
     pf.write('LatticeConstant '+str(latc[0])+' '+str(latc[1])+' '+str(latc[2])+' '+str(latc[3])+' '+str(latc[4])+' '+str(latc[5])+'\n')
 
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" ps.txt",shell=True,env=env,stdout=open('hkls_screen_out.csv','w'))
+subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" ps_init_sim.txt",shell=True,env=env,stdout=open('hkls_screen_out.csv','w'))
 hkls = np.genfromtxt('hkls.csv',skip_header=1)
 sim_rads = np.unique(hkls[:,-1])/px
 sim_rad_ratios = sim_rads / sim_rads[0]
@@ -443,3 +484,32 @@ print('p2 '+p2_refined)
 print('p3 '+p3_refined)
 print('Mean Strain: '+mean_strain)
 print('Std Strain:  '+std_strain)
+psName = 'refined_MIDAS_params.txt'
+print("Writing final parameters to "+psName)
+with open(psName,'w') as pf:
+	pf.write('Lsd '+lsd_refined+'\n')
+	pf.write('BC '+bc_refined+'\n')
+	pf.write('ty '+ty_refined+'\n')
+	pf.write('tz '+tz_refined+'\n')
+	pf.write('tx 0\n')
+	pf.write('p0 '+p0_refined+'\n')
+	pf.write('p1 '+p1_refined+'\n')
+	pf.write('p2 '+p2_refined+'\n')
+	pf.write('p3 '+p3_refined+'\n')
+	pf.write('RhoD '+str(RhoDThis)+'\n')
+	pf.write('Wavelength '+str(Wavelength)+'\n')
+	pf.write('px '+str(px)+'\n')
+	pf.write('RMin 10\n')
+	pf.write('RMax 1000\n')
+	pf.write('RBinSize 1\n')
+	pf.write('EtaMin -180\n')
+	pf.write('EtaMax 180\n')
+	pf.write('NrPixelsY '+str(NrPixelsY)+'\n')
+	pf.write('NrPixelsZ '+str(NrPixelsZ)+'\n')
+	pf.write('EtaBinSize 5\n')
+	for transOpt in imTransOpt:
+		pf.write(f'ImTransOpt {transOpt}\n')
+	if badPxIntensity != np.nan:
+		pf.write(f'BadPxIntensity {badPxIntensity}\n')
+	if gapIntensity != np.nan:
+		pf.write(f'GapIntensity {gapIntensity}\n')

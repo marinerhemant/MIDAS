@@ -70,12 +70,16 @@ parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help
 parser.add_argument('-numFilesPerScan', type=int, required=False, default=1, help='Number of files that constitute a single scan. This will combine multiple ge files into one dataset. 1 will disable.')
 parser.add_argument('-LayerNr', type=int, required=False, default=1, help='LayerNr')
 parser.add_argument('-correctSD', type=int, required=False, default=0, help='If you want to use an automatically computed threshold, put to 1. It will compute the standard deviation in the image, apply a threshold of 1.1*sigma. ***** WILL APPLY THIS ABOVE PREPROCTHRESH. USE WITH CAUTION *****')
+parser.add_argument('-numPxY', type=int, required=False, default=2048, help='Image Size in Y direction')
+parser.add_argument('-numPxZ', type=int, required=False, default=2048, help='Image Size in Z direction')
 parser.add_argument('-omegaStep', type=float, required=False, default=0, help='If you want to override the omegastep from the parameter file. This was implemented for pf-HEDM where interlacing positive-negative rotations were used!!! ***** USE WITH CAUTION *****')
 args, unparsed = parser.parse_known_args()
 resultDir = args.resultFolder
 psFN = args.paramFN
 InputFN = args.dataFN
 darkFN = args.darkFN
+numPxY = args.numPxY
+numPxZ = args.numPxZ
 numFrameChunks = args.numFrameChunks
 dataLoc = args.dataLoc
 preProc = args.preProcThresh
@@ -94,8 +98,6 @@ panelmaskLoc = 'exchange/panelmask'
 lines = open(psFN).readlines()
 skipF = 0
 NrFilesPerSweep = 1
-numPxY = 2048
-numPxZ = 2048
 HZ = 8192
 pad = 6
 maskFN = ''
@@ -154,7 +156,7 @@ if len(InputFN)==0 or layerNr > 1:
     outfn = resultDir + '/' + fStem + '_' + fNr.zfill(pad)
 else:
     outfn = resultDir+'/'+os.path.basename(InputFN)+'.analysis'
-    if len(darkFN) == 0:
+    if len(darkFN) == 0 and h5py.is_hdf5(InputFN):
         darkFN = InputFN
 print(f'Input: {InputFN}')
 print(f'Dark: {darkFN}')
@@ -282,6 +284,7 @@ else:
         darkData = geReader(darkFN,header=HZ,numPxY=numPxY,numPxZ=numPxZ)
     else:
         darkData = np.zeros((10,numPxZ,numPxY))
+        print("No dark file provided. Using zeros.")
     brightData = np.copy(darkData)
     dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
     bright = exc.create_dataset('bright',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
