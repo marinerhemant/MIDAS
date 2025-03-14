@@ -38,7 +38,7 @@ def send_data_chunk(sock, dataset_num, data):
 
 def processImage(x):
     global dataset_num
-    data = (x['value'][0]['floatValue']).reshape(1475,1679)
+    data = (x['value'][0]['intValue']).reshape(1475,1679)
     data = data.flatten()
     t1 = time.time()
     # Send the data with dataset number
