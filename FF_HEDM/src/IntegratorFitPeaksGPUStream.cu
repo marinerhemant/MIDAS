@@ -1233,7 +1233,7 @@ int main(int argc, char *argv[]){
 		for (int r=0;r<nRBins;r++){
 			lineout[r*2+1] = int1D[r];
 		}
-		// DSave linout to the file.
+		// Save lineout to the file.
 		fwrite(lineout,sizeof(double),nRBins*2,lineoutFile);
 		fflush(lineoutFile);
 		// // Send the lineout to the server
@@ -1349,7 +1349,7 @@ int main(int argc, char *argv[]){
 			}
 			nlopt_destroy(opt);
 			for (i = 0; i < n; i++) {
-				x[i] += random() / (double)RAND_MAX * 0.01; // Add some noise to the fit parameters
+				x[i] += random() / (double)RAND_MAX * 0.1; // Add some noise to the fit parameters
 			}
 			// Save x to the fit file.
 			fwrite(x,sizeof(double),n,fitFile);
