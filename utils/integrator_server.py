@@ -39,7 +39,7 @@ def send_data_chunk(sock, dataset_num, data):
 def processImage(x):
     global dataset_num
     data = (x['value'][0]['intValue']).reshape(1679,1475)
-    Image.fromarray(np.log(data+3)).save(f"frame_{dataset_num}.tif")  # Save the image for debugging
+    # Image.fromarray(np.log(data+3)).save(f"frame_{dataset_num}.tif")  # Save the image for debugging
     data = data.flatten()
     t1 = time.time()
     # Send the data with dataset number
