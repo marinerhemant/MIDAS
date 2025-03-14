@@ -1148,7 +1148,7 @@ int main(int argc, char *argv[]){
 	R = (double *) calloc(nRBins,sizeof(*R));
 	double *lineout;
 	lineout = (double *)malloc(nRBins*2*sizeof(*lineout));
-// Main processing loop
+	// Main processing loop
     while (1) {
 		t1 = clock();
         DataChunk chunk;
@@ -1204,7 +1204,6 @@ int main(int argc, char *argv[]){
 		// Now we have IntArrPerFrame, we need to make it into a 1D.
 		gpuErrchk(cudaDeviceSynchronize());
 		memset(int1D,0,nRBins*sizeof(*int1D));
-		memset(R,0,nRBins*sizeof(*R));
 		double maxInt=-1;
 		int maxIntLoc;
 		int nNonZeros;
