@@ -850,6 +850,8 @@ int main(int argc, char *argv[]){
 	int *mapMask;
 	int sumImages=0;
 	int doSmoothing = 0, multiplePeaks = 0, peakFit = 0;
+	int maxNPeaks = 100, nPeaks = 0;
+	double peakLocations[maxNPeaks];
 	while (fgets(aline,4096,paramFile) != NULL){
 		str = "EtaBinSize ";
 		if (StartsWith(aline,str) == 1){
@@ -874,6 +876,14 @@ int main(int argc, char *argv[]){
 		str = "EtaMin ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %lf", dummy, &EtaMin);
+		}
+		str = "PeakLocation ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %lf", dummy, &peakLocations[nPeaks]);
+			multiplePeaks = 1;
+			peakFit = 1;
+			doSmoothing = 0;
+			nPeaks++;
 		}
 		str = "Lsd ";
 		if (StartsWith(aline,str) == 1){
@@ -1109,6 +1119,15 @@ int main(int argc, char *argv[]){
     pthread_t accept_thread;
     pthread_create(&accept_thread, NULL, accept_connections, &server_fd);
     
+	// Open two files: one to save the 1D lineout and the second to save the fitted peak parameters.
+	// We want to append to both the files and they are binary.
+	FILE *lineoutFile = fopen("lineout.bin", "ab");
+	FILE *fitFile = fopen("fit.bin", "ab");
+	if (lineoutFile == NULL || fitFile == NULL) {
+		perror("Error opening output files");
+		exit(EXIT_FAILURE);
+	}
+
     // Main thread processes data from the queue
 	clock_t t1, t2;
 	double diffT=0;
@@ -1117,6 +1136,15 @@ int main(int argc, char *argv[]){
 	int1D = (double *) calloc(nRBins,sizeof(*int1D));
 	double *R;
 	R = (double *) calloc(nRBins,sizeof(*R));
+	for (i=0;i<nRBins;i++){
+		R[i] = (RBinsLow[i]+RBinsHigh[i])/2;
+	}
+	double *lineout;
+	lineout = (double *)malloc(nRBins*2*sizeof(*lineout));
+	for (int r=0;r<nRBins;r++){
+		lineout[r*2] = R[r];
+	}
+// Main processing loop
     while (1) {
 		t1 = clock();
         DataChunk chunk;
@@ -1170,47 +1198,87 @@ int main(int argc, char *argv[]){
 		double maxInt=-1;
 		int maxIntLoc;
 		int nNonZeros;
-		for (j=0;j<nRBins;j++){
-			nNonZeros = 0;
-			for (i=0;i<nEtaBins;i++){
-				int1D[j] += IntArrPerFrame[j*nEtaBins+i];
-				if (PerFrameArr[3*bigArrSize+(j*nEtaBins+i)] != 0)	nNonZeros ++;
+		if (multiplePeaks == 1){
+			for (j=0;j<nRBins;j++){
+				nNonZeros = 0;
+				for (i=0;i<nEtaBins;i++){
+					int1D[j] += IntArrPerFrame[j*nEtaBins+i];
+					if (PerFrameArr[3*bigArrSize+(j*nEtaBins+i)] != 0)	nNonZeros ++;
+				}
+				if (nNonZeros != 0) int1D[j] /= (double)nNonZeros;
+				if (int1D[j] > maxInt){
+					maxInt = int1D[j];
+					maxIntLoc = j;
+				}
 			}
-			if (nNonZeros != 0) int1D[j] /= (double)nNonZeros;
-			if (int1D[j] > maxInt){
-				maxInt = int1D[j];
-				maxIntLoc = j;
+		} else {
+			for (j=0;j<nRBins;j++){
+				nNonZeros = 0;
+				for (i=0;i<nEtaBins;i++){
+					int1D[j] += IntArrPerFrame[j*nEtaBins+i];
+					if (PerFrameArr[3*bigArrSize+(j*nEtaBins+i)] != 0)	nNonZeros ++;
+				}
+				if (nNonZeros != 0) int1D[j] /= (double)nNonZeros;
 			}
-			R[j] = (RBinsLow[j]+RBinsHigh[j])/2;
 		}
-		double *lineout;
-		lineout = (double *)malloc(nRBins*2*sizeof(*lineout));
 		for (int r=0;r<nRBins;r++){
-			lineout[r*2] = R[r];
 			lineout[r*2+1] = int1D[r];
 		}
-		// Send the lineout to the server
-		send_lineouts(chunk.dataset_num,nRBins*2,lineout);
+		// DSave linout to the file.
+		fwrite(lineout,sizeof(double),nRBins*2,lineoutFile);
+		fflush(lineoutFile);
+		// // Send the lineout to the server
+		// send_lineouts(chunk.dataset_num,nRBins*2,lineout);
 		if (peakFit == 1){
 			int peakCount;
 			Peak *peaks = NULL;
 			if (multiplePeaks ==1){
-				double *smoothedData = (double *)malloc(nRBins*sizeof(double));
-				peakCount = 0;
-				// We need to find the number of peaks.
-				if (doSmoothing == 1){
-					int windowSize = 5;
-					double minHeight = 0.0;
-					int minDistance = 10;
-					smoothData(int1D, smoothedData, nRBins, windowSize);
-					peakCount = findPeaks(smoothedData, R, nRBins, &peaks, minHeight, minDistance);
-				} else {
-					peakCount = findPeaks(int1D, R, nRBins, &peaks, 0.0, 10); // No smoothing
-				}
-				printf("Found %d peaks in the data.\n", peakCount);
-				for (int p = 0; p < peakCount; p++) {
-					printf("Peak %d: Index = %d, Radius = %f, Intensity = %f\n", 
-						p, peaks[p].index, peaks[p].radius, peaks[p].intensity);
+				if (nPeaks >0){
+					peakCount = nPeaks;
+					peaks = (Peak *)malloc(nPeaks*sizeof(Peak));
+					for (int p = 0; p < nPeaks; p++){
+						if (peakLocations[p] < R[0] || peakLocations[p] > R[nRBins-1]){
+							printf("Warning: Peak location %f is out of bounds.\n", peakLocations[p]);
+							continue;
+						}
+						// Find the closest radius value corresponding to the peak location
+						int bestLoc = -1;
+						double bestDiff = 1e6;
+						for (int r = 0; r < nRBins; r++){
+							double diff = fabs(R[r] - peakLocations[p]);
+							if (diff < bestDiff){
+								bestDiff = diff;
+								bestLoc = r;
+							}
+						}
+						if (bestLoc != -1){
+							peaks[p].index = bestLoc;
+							peaks[p].radius = R[bestLoc];
+							peaks[p].intensity = int1D[bestLoc];
+						} else {
+							printf("Warning: Peak location %f not found in radius array.\n", peakLocations[p]);
+						}
+						printf("Peak %d: Index = %d, Radius = %f, Intensity = %f\n", 
+							p, peaks[p].index, peaks[p].radius, peaks[p].intensity);
+					}
+				} else{
+					double *smoothedData = (double *)malloc(nRBins*sizeof(double));
+					peakCount = 0;
+					// We need to find the number of peaks.
+					if (doSmoothing == 1){
+						int windowSize = 5;
+						double minHeight = 0.0;
+						int minDistance = 10;
+						smoothData(int1D, smoothedData, nRBins, windowSize);
+						peakCount = findPeaks(smoothedData, R, nRBins, &peaks, minHeight, minDistance);
+					} else {
+						peakCount = findPeaks(int1D, R, nRBins, &peaks, 0.0, 10); // No smoothing
+					}
+					printf("Found %d peaks in the data.\n", peakCount);
+					for (int p = 0; p < peakCount; p++) {
+						printf("Peak %d: Index = %d, Radius = %f, Intensity = %f\n", 
+							p, peaks[p].index, peaks[p].radius, peaks[p].intensity);
+					}
 				}
 			} else {
 				// If not multiple peaks, just use the maximum intensity
@@ -1271,7 +1339,11 @@ int main(int argc, char *argv[]){
 				printf("Minimum objective function value: %f\n", minf);
 			}
 			nlopt_destroy(opt);
-			send_fit_result(chunk.dataset_num,peakCount,x);
+			// Save x to the fit file.
+			fwrite(x,sizeof(double),n,fitFile);
+			fflush(fitFile);
+			// // Send the fit result to the server
+			// send_fit_result(chunk.dataset_num,peakCount,x);
 		}
 
 		t2 = clock();
