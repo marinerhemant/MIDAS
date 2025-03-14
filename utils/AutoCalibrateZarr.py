@@ -90,6 +90,7 @@ convertFile = args.ConvertFile
 badPxIntensity = args.BadPxIntensity
 gapIntensity = args.GapIntensity
 bcg = args.BCGuess
+print(bcg)
 
 NrPixelsY = 0
 NrPixelsZ = 0
