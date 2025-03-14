@@ -292,6 +292,7 @@ sim_rad_ratios = sim_rads / sim_rads[0]
 if DrawPlots==1:
 	plt.imshow(np.log(raw),clim=[np.median(np.log(raw)),np.median(np.log(raw))+np.std(np.log(raw))])
 	plt.colorbar()
+	plt.title('Raw image')
 	plt.show()
 data = raw.astype(np.uint16)
 data2 = dip.MedianFilter(data,101)
@@ -304,6 +305,7 @@ data = data.astype(float)
 if DrawPlots==1:
 	plt.imshow(np.log(data2))
 	plt.colorbar()
+	plt.title('Computed background')
 	plt.show()
 data_corr = data - data2
 if threshold == 0:
@@ -314,6 +316,7 @@ thresh[thresh>0] = 255
 if DrawPlots == 1:
 	plt.imshow(thresh)
 	plt.colorbar()
+	plt.title('Cleaned image')
 	plt.show()
 labels,nlabels = measure.label(thresh,return_num=True)
 props = measure.regionprops(labels)
@@ -407,12 +410,14 @@ sim_rad_ratios = sim_rads / sim_rads[0]
 
 if DrawPlots==1:
 	fig,ax = plt.subplots()
-	plt.imshow(np.log(raw),clim=[np.median(np.log(raw)),np.median(np.log(raw))+np.std(np.log(raw))])
+	plt.imshow(thresh)
+	# plt.imshow(np.log(raw),clim=[np.median(np.log(raw)),np.median(np.log(raw))+np.std(np.log(raw))])
 	for rad in sim_rads:
 		e1 = mpatches.Arc((bc_new[1],bc_new[0]),2*rad,2*rad,angle = 0,theta1=-180,theta2=180,color='blue')
 		ax.add_patch(e1)
 	ax.axis([0, NrPixelsY, 0, NrPixelsZ])
 	ax.set_aspect('equal')
+	plt.title('Overlaid rings.')
 	plt.show()
 
 fnumber = int(rawFN.split('_')[-1].split('.')[0])
