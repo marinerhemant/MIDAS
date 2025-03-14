@@ -90,7 +90,6 @@ convertFile = args.ConvertFile
 badPxIntensity = args.BadPxIntensity
 gapIntensity = args.GapIntensity
 bcg = args.BCGuess
-print(bcg)
 
 NrPixelsY = 0
 NrPixelsZ = 0
@@ -394,7 +393,7 @@ if bcg[0] == 0:
 		if bestRowNr == -1: continue
 		lsds.append(initialLsd*rads[i]/sim_rads[bestRowNr])
 else:
-	bc_computed = np.array(bcg)
+	bc_computed = np.flip(np.array(bcg))
 
 if LsdGuess == 1000000:
 	initialLsd = np.median(lsds)
