@@ -1146,14 +1146,8 @@ int main(int argc, char *argv[]){
 	int1D = (double *) calloc(nRBins,sizeof(*int1D));
 	double *R;
 	R = (double *) calloc(nRBins,sizeof(*R));
-	for (i=0;i<nRBins;i++){
-		R[i] = (RBinsLow[i]+RBinsHigh[i])/2;
-	}
 	double *lineout;
 	lineout = (double *)malloc(nRBins*2*sizeof(*lineout));
-	for (int r=0;r<nRBins;r++){
-		lineout[r*2] = R[r];
-	}
 // Main processing loop
     while (1) {
 		t1 = clock();
@@ -1200,6 +1194,12 @@ int main(int argc, char *argv[]){
 			firstFrame = 0;
 			gpuErrchk(cudaMemcpy(PerFrameArr,devPerFrameArr,bigArrSize*4*sizeof(double),cudaMemcpyDeviceToHost));
 			gpuErrchk(cudaDeviceSynchronize());
+			for (i=0;i<nRBins;i++){
+				R[i] = (RBinsLow[i]+RBinsHigh[i])/2;
+			}
+			for (int r=0;r<nRBins;r++){
+				lineout[r*2] = R[r];
+			}
 		}
 		// Now we have IntArrPerFrame, we need to make it into a 1D.
 		gpuErrchk(cudaDeviceSynchronize());
