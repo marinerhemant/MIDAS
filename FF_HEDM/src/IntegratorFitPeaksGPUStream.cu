@@ -92,6 +92,9 @@
 //#include <zip.h> 
 #include <nlopt.h>
 
+#define SERVER_IP "127.0.0.1"
+#define PORTSENDFIT 5001
+#define PORTSENDLINEOUT 5002
 #define PORT 5000           // Changed port to 5000
 #define MAX_CONNECTIONS 10
 size_t CHUNK_SIZE;
@@ -265,6 +268,141 @@ void* accept_connections(void *server_fd_ptr) {
     }
     
     return NULL;
+}
+
+int send_fit_result(uint16_t frame_num, int n, double *values) {
+    int sock = 0;
+    struct sockaddr_in serv_addr;
+    
+    // Create socket
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        perror("Socket creation error");
+        return -1;
+    }
+    
+    // Set up server address
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(PORTSENDFIT);
+    
+    // Convert IPv4 address from text to binary form
+    if (inet_pton(AF_INET, SERVER_IP, &serv_addr.sin_addr) <= 0) {
+        perror("Invalid address/ Address not supported");
+        close(sock);
+        return -1;
+    }
+    
+    // Connect to server
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        perror("Connection Failed");
+        close(sock);
+        return -1;
+    }
+    
+    // Prepare headers: frame number and count, both in network byte order
+    uint16_t frame_header = htons(frame_num);
+    uint16_t count_header = htons((uint16_t)n);
+    
+    // Calculate total number of doubles (n sets of 5 doubles each)
+    int total_doubles = n * 5;
+    
+    // Send frame number header
+    if (send(sock, &frame_header, sizeof(frame_header), 0) != sizeof(frame_header)) {
+        perror("Failed to send frame number header");
+        close(sock);
+        return -1;
+    }
+    
+    // Send count header (number of sets)
+    if (send(sock, &count_header, sizeof(count_header), 0) != sizeof(count_header)) {
+        perror("Failed to send count header");
+        close(sock);
+        return -1;
+    }
+    
+    // Send doubles one by one, converting to network byte order
+    for (int i = 0; i < total_doubles; i++) {
+        // Network byte order for doubles needs manual handling
+        // For portability, we'll convert the double bits
+        uint64_t network_value;
+        memcpy(&network_value, &values[i], sizeof(double));
+        network_value = htobe64(network_value);  // Host to big-endian
+        
+        if (send(sock, &network_value, sizeof(double), 0) != sizeof(double)) {
+            perror("Failed to send value");
+            close(sock);
+            return -1;
+        }
+    }
+    
+    printf("Sent results for frameNr %d with %d peak (%d doubles) successfully\n", frame_num, n, total_doubles);
+    close(sock);
+    return 0;
+}
+
+int send_lineouts(uint16_t frame_num, int n, double *values) {
+    int sock = 0;
+    struct sockaddr_in serv_addr;
+    
+    // Create socket
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        perror("Socket creation error");
+        return -1;
+    }
+    
+    // Set up server address
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(PORT);
+    
+    // Convert IPv4 address from text to binary form
+    if (inet_pton(AF_INET, SERVER_IP, &serv_addr.sin_addr) <= 0) {
+        perror("Invalid address/ Address not supported");
+        close(sock);
+        return -1;
+    }
+    
+    // Connect to server
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        perror("Connection Failed");
+        close(sock);
+        return -1;
+    }
+    
+    // Prepare headers: frame number and count, both in network byte order
+    uint16_t frame_header = htons(frame_num);
+    uint16_t count_header = htons((uint16_t)n);
+    
+    // Send frame number header
+    if (send(sock, &frame_header, sizeof(frame_header), 0) != sizeof(frame_header)) {
+        perror("Failed to send frame number header");
+        close(sock);
+        return -1;
+    }
+    
+    // Send count header (number of sets)
+    if (send(sock, &count_header, sizeof(count_header), 0) != sizeof(count_header)) {
+        perror("Failed to send count header");
+        close(sock);
+        return -1;
+    }
+    
+    // Send doubles one by one, converting to network byte order
+    for (int i = 0; i < n; i++) {
+        // Network byte order for doubles needs manual handling
+        // For portability, we'll convert the double bits
+        uint64_t network_value;
+        memcpy(&network_value, &values[i], sizeof(double));
+        network_value = htobe64(network_value);  // Host to big-endian
+        
+        if (send(sock, &network_value, sizeof(double), 0) != sizeof(double)) {
+            perror("Failed to send value");
+            close(sock);
+            return -1;
+        }
+    }
+    
+    printf("Sent frame lineout %d with %d doubles successfully\n", frame_num, n);
+    close(sock);
+    return 0;
 }
 
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
@@ -498,28 +636,183 @@ static double problem_function(unsigned n,
 	double *grad,
 	void *my_func_data)
 {
+	int nPeaks = n/5;
 	struct dataFit *d = (struct dataFit *) my_func_data;
-	double amp = x[0];
-	double bg = x[1];
-	double mix = x[2];
-	double cen = x[3];
-	double sig = x[4];
+	double error = 0;
 	int nrPoints = d->nrBins;
 	double *Rs;
 	Rs = &(d->R[0]);
 	double *Ints;
 	Ints = &(d->Int[0]);
-	int i;
-	double error = 0;
-	double diff, gauss, lorentz, thisInt;
-	for (i=0;i<nrPoints;i++){
-		diff = Rs[i] - cen;
-		gauss = exp(-diff*diff/(2*sig*sig))/(sig*sqrt(2*M_PI));
-		lorentz = 1/((M_PI*sig)*(1+diff*diff/(sig*sig)));
-		thisInt = bg + amp*(mix*gauss + (1-mix)*lorentz);
-		error += (thisInt - Ints[i])*(thisInt - Ints[i]);
+	double *thisInt;
+	thisInt = (double *)calloc(nrPoints,sizeof(double));
+	for (int PeakNr=0;PeakNr<nPeaks;PeakNr++){
+		double amp = x[PeakNr*5+0];
+		double bg = x[PeakNr*5+1];
+		double mix = x[PeakNr*5+2];
+		double cen = x[PeakNr*5+3];
+		double sig = x[PeakNr*5+4];
+		int i;
+		double diff, gauss, lorentz;
+		for (i=0;i<nrPoints;i++){
+			diff = Rs[i] - cen;
+			gauss = exp(-diff*diff/(2*sig*sig))/(sig*sqrt(2*M_PI));
+			lorentz = 1/((M_PI*sig)*(1+diff*diff/(sig*sig)));
+			thisInt[i] += bg + amp*(mix*gauss + (1-mix)*lorentz);
+		}
 	}
+	for (int i=0;i<nrPoints;i++){
+		error += (thisInt[i] - Ints[i])*(thisInt[i] - Ints[i]);
+	}
+	free(thisInt);
 	return error;
+}
+
+// Structure to store peak information
+typedef struct {
+    int index;       // Index of the peak in the data array
+    double radius;   // Radius value corresponding to the peak
+    double intensity; // Intensity value at the peak
+} Peak;
+
+// Function to calculate factorial
+int factorial(int n) {
+    if (n <= 1) return 1;
+    return n * factorial(n - 1);
+}
+
+// Function to calculate binomial coefficient
+int binomial(int n, int k) {
+    return factorial(n) / (factorial(k) * factorial(n - k));
+}
+
+// Function to perform Savitzky-Golay smoothing
+void smoothData(const double *input, double *output, int size, int windowSize) {
+    if (windowSize % 2 == 0) windowSize++; // Ensure window size is odd
+    
+    int halfWindow = windowSize / 2;
+    int degree = 2; // Polynomial degree (quadratic by default)
+    
+    // Ensure degree is less than window size
+    if (degree >= windowSize) {
+        degree = windowSize - 1;
+        if (degree < 1) degree = 1;
+    }
+    
+    // Pre-compute Savitzky-Golay coefficients
+    // For a quadratic polynomial (degree=2), we can use simplified coefficients
+    double *coeffs = (double *)malloc(windowSize * sizeof(double));
+    
+    if (degree == 2) {
+        // For quadratic fit, we can use predefined coefficients for common window sizes
+        switch (windowSize) {
+            case 5:
+                // 5-point quadratic coefficients: [-3, 12, 17, 12, -3] / 35
+                coeffs[0] = -3.0/35.0; coeffs[1] = 12.0/35.0; coeffs[2] = 17.0/35.0;
+                coeffs[3] = 12.0/35.0; coeffs[4] = -3.0/35.0;
+                break;
+            case 7:
+                // 7-point quadratic coefficients: [-2, 3, 6, 7, 6, 3, -2] / 21
+                coeffs[0] = -2.0/21.0; coeffs[1] = 3.0/21.0; coeffs[2] = 6.0/21.0;
+                coeffs[3] = 7.0/21.0; coeffs[4] = 6.0/21.0; coeffs[5] = 3.0/21.0;
+                coeffs[6] = -2.0/21.0;
+                break;
+            case 9:
+                // 9-point quadratic coefficients: [-21, 14, 39, 54, 59, 54, 39, 14, -21] / 231
+                coeffs[0] = -21.0/231.0; coeffs[1] = 14.0/231.0; coeffs[2] = 39.0/231.0;
+                coeffs[3] = 54.0/231.0; coeffs[4] = 59.0/231.0; coeffs[5] = 54.0/231.0;
+                coeffs[6] = 39.0/231.0; coeffs[7] = 14.0/231.0; coeffs[8] = -21.0/231.0;
+                break;
+            default:
+                // For other window sizes, calculate coefficients using a general formula
+                // This is a simplified version - full implementation would use matrix operations
+                int norm = 0;
+                for (int i = -halfWindow; i <= halfWindow; i++) {
+                    coeffs[i + halfWindow] = (3 * (halfWindow*halfWindow) - i*i);
+                    norm += coeffs[i + halfWindow];
+                }
+                for (int i = 0; i < windowSize; i++) {
+                    coeffs[i] /= norm;
+                }
+        }
+    } else {
+        // For non-quadratic polynomials, we'd need a more general approach
+        // Using a simplified approach for linear fit (degree=1)
+        int norm = windowSize;
+        for (int i = 0; i < windowSize; i++) {
+            coeffs[i] = 1.0 / norm;  // Simplifies to moving average for degree=1
+        }
+    }
+    
+    // Apply Savitzky-Golay filter to the main part of the data
+    for (int i = halfWindow; i < size - halfWindow; i++) {
+        double sum = 0;
+        for (int j = 0; j < windowSize; j++) {
+            sum += coeffs[j] * input[i - halfWindow + j];
+        }
+        output[i] = sum;
+    }
+    
+    // Handle boundary cases
+    // For simplicity, use the original input values near the edges
+    for (int i = 0; i < halfWindow; i++) {
+        output[i] = input[i];
+    }
+    for (int i = size - halfWindow; i < size; i++) {
+        output[i] = input[i];
+    }
+    
+    free(coeffs);
+}
+
+// Function to find local maxima peaks
+int findPeaks(const double *data, const double *radii, int size, Peak **peaks, double minHeight, int minDistance) {
+    int maxPeaks = size / 2; // Maximum possible number of peaks
+    *peaks = (Peak *)malloc(maxPeaks * sizeof(Peak));
+    
+    int peakCount = 0;
+    
+    // Find all potential peaks
+    for (int i = 1; i < size - 1; i++) {
+        if (data[i] > data[i-1] && data[i] > data[i+1] && data[i] >= minHeight) {
+            // Found a potential peak
+            (*peaks)[peakCount].index = i;
+            (*peaks)[peakCount].intensity = data[i];
+            // Assuming radius data is available or can be calculated
+            (*peaks)[peakCount].radius = radii[i]; // Replace with actual radius calculation if available
+            peakCount++;
+            
+            if (peakCount >= maxPeaks) {
+                break;
+            }
+        }
+    }
+    
+    // Apply minimum distance filter
+    if (minDistance > 1 && peakCount > 1) {
+        int j = 0;
+        Peak *filteredPeaks = (Peak *)malloc(peakCount * sizeof(Peak));
+        
+        // Add the first peak
+        filteredPeaks[j++] = (*peaks)[0];
+        
+        for (int i = 1; i < peakCount; i++) {
+            // Check if this peak is far enough from the last added peak
+            if ((*peaks)[i].index - filteredPeaks[j-1].index >= minDistance) {
+                filteredPeaks[j++] = (*peaks)[i];
+            } else if ((*peaks)[i].intensity > filteredPeaks[j-1].intensity) {
+                // If not far enough but higher, replace the previous peak
+                filteredPeaks[j-1] = (*peaks)[i];
+            }
+        }
+        
+        // Replace the original peak array
+        free(*peaks);
+        *peaks = filteredPeaks;
+        peakCount = j;
+    }
+    
+    return peakCount;
 }
 
 int main(int argc, char *argv[]){
@@ -556,6 +849,7 @@ int main(int argc, char *argv[]){
     size_t mapMaskSize = 0;
 	int *mapMask;
 	int sumImages=0;
+	int doSmoothing = 0, multiplePeaks = 0, peakFit = 0;
 	while (fgets(aline,4096,paramFile) != NULL){
 		str = "EtaBinSize ";
 		if (StartsWith(aline,str) == 1){
@@ -596,6 +890,18 @@ int main(int argc, char *argv[]){
 		str = "NrPixelsZ ";
 		if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %d", dummy, &NrPixelsZ);
+		}
+		str = "DoSmoothing ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %d", dummy, &doSmoothing);
+		}
+		str = "MultiplePeaks ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %d", dummy, &multiplePeaks);
+		}
+		str = "DoPeakFit ";
+		if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %d", dummy, &peakFit);
 		}
 		str = "Normalize ";
 		if (StartsWith(aline,str) == 1){
@@ -877,30 +1183,95 @@ int main(int argc, char *argv[]){
 			}
 			R[j] = (RBinsLow[j]+RBinsHigh[j])/2;
 		}
-		// We have the 1D array, now fit it with a peak shape.
-		double x[5] = {maxInt-(int1D[0]+int1D[nRBins-1])/2,(int1D[0]+int1D[nRBins-1])/2,0.5,R[maxIntLoc],(R[nRBins-1]-R[0])/4}; // amp, bg, mix, cen, sig
-		double lb[5] = {0.0,-1.0,0.0,R[0],0.1};
-		double ub[5] = {maxInt*2,maxInt,1.0,R[nRBins-1],(R[nRBins-1]-R[0])/2};
-		struct dataFit d;
-		d.nrBins = nRBins;
-		d.R = &R[0];
-		d.Int = &int1D[0];
-		struct dataFit *fitD;
-		fitD = &d;
-		void *trp = (struct dataFit *) fitD;
-		nlopt_opt opt;
-		opt = nlopt_create(NLOPT_LN_NELDERMEAD,5);
-		nlopt_set_lower_bounds(opt,lb);
-		nlopt_set_upper_bounds(opt,ub);
-		nlopt_set_maxeval(opt,1000);
-		nlopt_set_min_objective(opt,problem_function,trp);
-		double minf;
-		if (nlopt_optimize(opt,x,&minf) < 0){
-			printf("nlopt failed!\n");
-		} else {
-			printf("found minimum at f(%f,%f,%f,%f,%f) = %0.10f\n",x[0],x[1],x[2],x[3],x[4],minf);
+		double *lineout;
+		lineout = (double *)malloc(nRBins*2*sizeof(*lineout));
+		for (int r=0;r<nRBins;r++){
+			lineout[r*2] = R[r];
+			lineout[r*2+1] = int1D[r];
 		}
-		nlopt_destroy(opt);
+		// Send the lineout to the server
+		send_lineouts(chunk.dataset_num,nRBins*2,lineout);
+		if (peakFit == 1){
+			if (multiplePeaks ==1){
+				double *smoothedData = (double *)malloc(nRBins*sizeof(double));
+				Peak *peaks = NULL;
+				int peakCount = 0;
+				// We need to find the number of peaks.
+				if (doSmoothing == 1){
+					int windowSize = 5;
+					double minHeight = 0.0;
+					int minDistance = 10;
+					smoothData(int1D, smoothedData, nRBins, windowSize);
+					peakCount = findPeaks(smoothedData, R, nRBins, &peaks, minHeight, minDistance);
+				} else {
+					peakCount = findPeaks(int1D, R, nRBins, &peaks, 0.0, 10); // No smoothing
+				}
+				printf("Found %d peaks in the data.\n", peakCount);
+				for (int p = 0; p < peakCount; p++) {
+					printf("Peak %d: Index = %d, Radius = %f, Intensity = %f\n", 
+						p, peaks[p].index, peaks[p].radius, peaks[p].intensity);
+				}
+			} else {
+				// If not multiple peaks, just use the maximum intensity
+				Peak *peaks = (Peak *)malloc(sizeof(Peak));
+				peaks[0].index = maxIntLoc;
+				peaks[0].radius = R[maxIntLoc];
+				peaks[0].intensity = maxInt;
+				int peakCount = 1;
+				printf("Single peak found at index %d, radius %f, intensity %f\n", 
+					peaks[0].index, peaks[0].radius, peaks[0].intensity);
+			}
+			// Now do peak fitting for each peak in the data:
+			int n = peakCount * 5;
+			double *x, *lb, *ub;
+			x = (double *)malloc(n*sizeof(double));
+			lb = (double *)malloc(n*sizeof(double));
+			ub = (double *)malloc(n*sizeof(double));
+			for (int peakNr = 0; peakNr<peakCount; peakNr++){
+				x[peakNr*5 + 0] = peaks[peakNr].intensity; // amplitude
+				x[peakNr*5 + 1] = 0.0; // background
+				x[peakNr*5 + 2] = 0.5; // mix
+				x[peakNr*5 + 3] = peaks[peakNr].radius; // center
+				x[peakNr*5 + 4] = 2; // sigma
+				lb[peakNr*5 + 0] = 0.0; // lower bound for amplitude
+				lb[peakNr*5 + 1] = -1.0; // lower bound for background
+				lb[peakNr*5 + 2] = 0.0; // lower bound for mix
+				lb[peakNr*5 + 3] = peaks[peakNr].radius - 10; // lower bound for center
+				lb[peakNr*5 + 4] = 0.1; // lower bound for sigma
+				ub[peakNr*5 + 0] = maxInt*2; // upper bound for amplitude
+				ub[peakNr*5 + 1] = maxInt; // upper bound for background
+				ub[peakNr*5 + 2] = 1.0; // upper bound for mix
+				ub[peakNr*5 + 3] = peaks[peakNr].radius + 10; // upper bound for center
+				ub[peakNr*5 + 4] = (R[nRBins-1]-R[0])/2; // upper bound for sigma
+			}
+			struct dataFit d;
+			d.nrBins = nRBins;
+			d.R = &R[0];
+			d.Int = &int1D[0];
+			struct dataFit *fitD;
+			fitD = &d;
+			void *trp = (struct dataFit *) fitD;
+			nlopt_opt opt;
+			opt = nlopt_create(NLOPT_LN_NELDERMEAD,5);
+			nlopt_set_lower_bounds(opt,lb);
+			nlopt_set_upper_bounds(opt,ub);
+			nlopt_set_maxeval(opt,1000);
+			nlopt_set_min_objective(opt,problem_function,trp);
+			double minf;
+			if (nlopt_optimize(opt,x,&minf) < 0){
+				printf("nlopt failed!\n");
+			} else {
+				// Print the results
+				for (int peakNr = 0; peakNr<peakCount; peakNr++){
+					printf("Peak %d: Optimized parameters: amplitude = %f, background = %f, mix = %f, center = %f, sigma = %f\n", 
+						peakNr, x[peakNr*5 + 0], x[peakNr*5 + 1], x[peakNr*5 + 2], x[peakNr*5 + 3], x[peakNr*5 + 4]);
+				}
+				// Print minf too.
+				printf("Minimum objective function value: %f\n", minf);
+			}
+			nlopt_destroy(opt);
+			send_fit_result(chunk.dataset_num,peakCount,x);
+		}
 
 		t2 = clock();
 		diffT = ((double)(t2-t1))/CLOCKS_PER_SEC;

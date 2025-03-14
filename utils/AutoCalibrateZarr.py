@@ -508,6 +508,9 @@ with open(psName,'w') as pf:
 	pf.write('NrPixelsY '+str(NrPixelsY)+'\n')
 	pf.write('NrPixelsZ '+str(NrPixelsZ)+'\n')
 	pf.write('EtaBinSize 5\n')
+	pf.write('DoSmoothing 1\n')
+	pf.write('DoPeakFit 1\n')
+	pf.write('MultiplePeaks 1\n')
 	for transOpt in imTransOpt:
 		pf.write(f'ImTransOpt {transOpt}\n')
 	if badPxIntensity != np.nan:
