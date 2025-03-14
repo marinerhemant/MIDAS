@@ -1192,10 +1192,11 @@ int main(int argc, char *argv[]){
 		// Send the lineout to the server
 		send_lineouts(chunk.dataset_num,nRBins*2,lineout);
 		if (peakFit == 1){
+			int peakCount;
+			Peak *peaks = NULL;
 			if (multiplePeaks ==1){
 				double *smoothedData = (double *)malloc(nRBins*sizeof(double));
-				Peak *peaks = NULL;
-				int peakCount = 0;
+				peakCount = 0;
 				// We need to find the number of peaks.
 				if (doSmoothing == 1){
 					int windowSize = 5;
@@ -1213,11 +1214,11 @@ int main(int argc, char *argv[]){
 				}
 			} else {
 				// If not multiple peaks, just use the maximum intensity
-				Peak *peaks = (Peak *)malloc(sizeof(Peak));
+				peaks = (Peak *)malloc(sizeof(Peak));
 				peaks[0].index = maxIntLoc;
 				peaks[0].radius = R[maxIntLoc];
 				peaks[0].intensity = maxInt;
-				int peakCount = 1;
+				peakCount = 1;
 				printf("Single peak found at index %d, radius %f, intensity %f\n", 
 					peaks[0].index, peaks[0].radius, peaks[0].intensity);
 			}
