@@ -1139,8 +1139,8 @@ int main(int argc, char *argv[]){
 	}
 
     // Main thread processes data from the queue
-	clock_t t1, t2;
-	double diffT=0;
+	clock_t t1, t2, tIntegration, tFit, tFWLineout, tFWFitResult;
+	double diffT=0, diffInteg, diffWriteLineout, diffTFit, diffWriteFitResult;
 	int firstFrame = 1;
 	double *int1D;
 	int1D = (double *) calloc(nRBins,sizeof(*int1D));
@@ -1150,9 +1150,9 @@ int main(int argc, char *argv[]){
 	lineout = (double *)malloc(nRBins*2*sizeof(*lineout));
 	// Main processing loop
     while (1) {
-		t1 = clock();
         DataChunk chunk;
         queue_pop(&process_queue, &chunk);
+		t1 = clock();
         // Process the data
         memcpy(ImageInT,chunk.data,chunk.size*BYTES_PER_PIXEL);
 		if ((NrTransOpt==0) || (NrTransOpt==1 && TransOpt[0]==0)){
@@ -1233,9 +1233,11 @@ int main(int argc, char *argv[]){
 		for (int r=0;r<nRBins;r++){
 			lineout[r*2+1] = int1D[r];
 		}
+		tIntegration = clock();
 		// Save lineout to the file.
 		fwrite(lineout,sizeof(double),nRBins*2,lineoutFile);
 		fflush(lineoutFile);
+		tFWLineout = clock();
 		// // Send the lineout to the server
 		// send_lineouts(chunk.dataset_num,nRBins*2,lineout);
 		if (peakFit == 1){
@@ -1267,8 +1269,8 @@ int main(int argc, char *argv[]){
 						} else {
 							printf("Warning: Peak location %f not found in radius array.\n", peakLocations[p]);
 						}
-						printf("Peak %d: Index = %d, Radius = %f, Intensity = %f\n", 
-							p, peaks[p].index, peaks[p].radius, peaks[p].intensity);
+						// printf("Peak %d: Index = %d, Radius = %f, Intensity = %f\n", 
+						// 	p, peaks[p].index, peaks[p].radius, peaks[p].intensity);
 					}
 				} else{
 					double *smoothedData = (double *)malloc(nRBins*sizeof(double));
@@ -1283,11 +1285,11 @@ int main(int argc, char *argv[]){
 					} else {
 						peakCount = findPeaks(int1D, R, nRBins, &peaks, 0.0, 10); // No smoothing
 					}
-					printf("Found %d peaks in the data.\n", peakCount);
-					for (int p = 0; p < peakCount; p++) {
-						printf("Peak %d: Index = %d, Radius = %f, Intensity = %f\n", 
-							p, peaks[p].index, peaks[p].radius, peaks[p].intensity);
-					}
+					// printf("Found %d peaks in the data.\n", peakCount);
+					// for (int p = 0; p < peakCount; p++) {
+					// 	printf("Peak %d: Index = %d, Radius = %f, Intensity = %f\n", 
+					// 		p, peaks[p].index, peaks[p].radius, peaks[p].intensity);
+					// }
 				}
 			} else {
 				// If not multiple peaks, just use the maximum intensity
@@ -1296,8 +1298,8 @@ int main(int argc, char *argv[]){
 				peaks[0].radius = R[maxIntLoc];
 				peaks[0].intensity = maxInt;
 				peakCount = 1;
-				printf("Single peak found at index %d, radius %f, intensity %f\n", 
-					peaks[0].index, peaks[0].radius, peaks[0].intensity);
+				// printf("Single peak found at index %d, radius %f, intensity %f\n", 
+				// 	peaks[0].index, peaks[0].radius, peaks[0].intensity);
 			}
 			// Now do peak fitting for each peak in the data:
 			int n = peakCount * 5;
@@ -1339,21 +1341,23 @@ int main(int argc, char *argv[]){
 			if (nlopt_optimize(opt,x,&minf) < 0){
 				printf("nlopt failed!\n");
 			} else {
-				// Print the results
-				for (int peakNr = 0; peakNr<peakCount; peakNr++){
-					printf("Peak %d: Optimized parameters: amplitude = %f, background = %f, mix = %f, center = %f, sigma = %f\n", 
-						peakNr, x[peakNr*5 + 0], x[peakNr*5 + 1], x[peakNr*5 + 2], x[peakNr*5 + 3], x[peakNr*5 + 4]);
-				}
-				// Print minf too.
-				printf("Minimum objective function value: %f\n", minf);
+				// // Print the results
+				// for (int peakNr = 0; peakNr<peakCount; peakNr++){
+				// 	printf("Peak %d: Optimized parameters: amplitude = %f, background = %f, mix = %f, center = %f, sigma = %f\n", 
+				// 		peakNr, x[peakNr*5 + 0], x[peakNr*5 + 1], x[peakNr*5 + 2], x[peakNr*5 + 3], x[peakNr*5 + 4]);
+				// }
+				// // Print minf too.
+				// printf("Minimum objective function value: %f\n", minf);
 			}
 			nlopt_destroy(opt);
+			tFit = clock();
 			for (i = 0; i < n; i++) {
 				x[i] += random() / (double)RAND_MAX * 0.1; // Add some noise to the fit parameters
 			}
 			// Save x to the fit file.
 			fwrite(x,sizeof(double),n,fitFile);
 			fflush(fitFile);
+			tFWFitResult = clock();
 			// // Send the fit result to the server
 			// send_fit_result(chunk.dataset_num,peakCount,x);
 			// Free any remaining arrays alloced in this loop
@@ -1365,7 +1369,12 @@ int main(int argc, char *argv[]){
 
 		t2 = clock();
 		diffT = ((double)(t2-t1))/CLOCKS_PER_SEC;
-		printf("Did integration, took %lf s for this frame, frameNr: %d.\n",diffT,chunk.dataset_num);
+		diffInteg = ((double)(tIntegration - t1))/CLOCKS_PER_SEC;
+		diffWriteLineout = ((double)(tFWLineout - tIntegration))/CLOCKS_PER_SEC;
+		diffTFit = ((double)(tFit - tFWLineout))/CLOCKS_PER_SEC;
+		diffWriteFitResult = ((double)(tFWFitResult - tFit))/CLOCKS_PER_SEC;
+
+		printf("Did integration, total time: %lf s for this frame, frameNr: %d. %lf %lf %lf %lf\n",diffT,chunk.dataset_num,diffInteg,diffWriteLineout,diffTFit,diffWriteFitResult);
         free(chunk.data);
     }
     
