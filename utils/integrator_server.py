@@ -5,6 +5,13 @@ import struct
 import ctypes
 from PIL import Image
 import matplotlib.pyplot as plt
+import pvaccess
+import os
+
+os.environ['EPICS_PVA_ADDR_LIST'] = '10.54.105.139'  # Enable PVA server
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+dataset_num = 0
 
 def send_data_chunk(sock, dataset_num, data):
     t1 = time.time()
@@ -29,34 +36,30 @@ def send_data_chunk(sock, dataset_num, data):
     t2 = time.time()
     print(f"Sent dataset #{dataset_num} with {len(data_array)} int32_t values ({len(data_view)} bytes) in {t2 - t1:.4f} sec")
 
+def processImage(x):
+    global dataset_num
+    data = (x['value'][0]['floatValue']).reshape(1475,1679)
+    data = data.flatten()
+    t1 = time.time()
+    # Send the data with dataset number
+    send_data_chunk(sock, dataset_num, data)
+    # Increment dataset number (wrap around at 65535)
+    dataset_num = (dataset_num + 1) % 65536
+    # Add a small delay between sends
+    time.sleep(0.003)
+    t2 = time.time()
+    print(f"Time taken: {t2 - t1:.4f} sec")
+
 def main():
     # Connect to C server
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    
     server_address = ('127.0.0.1', 5000)
     print(f"Connecting to {server_address[0]}:{server_address[1]}")
     t0 = time.time()
-    dataset_num = 0
     try:
         sock.connect(server_address)
-        
-        # Load and convert the image to int32
-        data = np.array(Image.open('test.tif')).astype(np.int32)
-        
-        # Flatten the array to 1D regardless of original dimensions
-        data = data.flatten()
-        
-        while True:
-            t1 = time.time()
-            # Send the data with dataset number
-            send_data_chunk(sock, dataset_num, data)
-            
-            # Increment dataset number (wrap around at 65535)
-            dataset_num = (dataset_num + 1) % 65536
-            
-            # Add a small delay between sends
-            time.sleep(0.003)
-            t2 = time.time()
-            print(f"Time taken: {t2 - t1:.4f} sec")
+        channel = pvaccess.Channel('16pil-idb:Pva1:Image')
+        channel.monitor(processImage,'field(uniqueId, value)')
             
     except KeyboardInterrupt:
         print("Sending terminated by user")
