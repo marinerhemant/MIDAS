@@ -1348,11 +1348,19 @@ int main(int argc, char *argv[]){
 				printf("Minimum objective function value: %f\n", minf);
 			}
 			nlopt_destroy(opt);
+			for (i = 0; i < n; i++) {
+				x[i] += random() / (double)RAND_MAX * 0.01; // Add some noise to the fit parameters
+			}
 			// Save x to the fit file.
 			fwrite(x,sizeof(double),n,fitFile);
 			fflush(fitFile);
 			// // Send the fit result to the server
 			// send_fit_result(chunk.dataset_num,peakCount,x);
+			// Free any remaining arrays alloced in this loop
+			free(peaks);
+			free(x);
+			free(lb);
+			free(ub);
 		}
 
 		t2 = clock();
