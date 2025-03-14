@@ -12,6 +12,16 @@
   -I/home/beams/S1IDUSER/.MIDAS/LIBZIP/include -L/home/beams/S1IDUSER/.MIDAS/LIBZIP/lib64 -lzip
   */
 
+/* Compiling for s16idbuser
+  source ~/.MIDAS/paths
+  /home/beams/S1IDUSER/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStream.cu -o bin/IntegratorFitPeaksGPUStream -Xcompiler -g -arch sm_90 \
+  -gencode=arch=compute_90,code=sm_90 -I/home/beams/S16IDBUSER/.MIDAS/NLOPT/include -L/home/beams/S16IDBUSER/.MIDAS/NLOPT/lib \
+  -O3 -lnlopt -I/home/beams/S16IDBUSER/.MIDAS/BLOSC/include -L/home/beams/S16IDBUSER/.MIDAS/BLOSC/lib64 -lblosc2 \
+  -I/home/beams/S16IDBUSER/.MIDAS/HDF5/include -L/home/beams/S16IDBUSER/.MIDAS/HDF5/lib -lhdf5 -lhdf5_hl -lz -ldl -lm -lpthread \
+  -I/home/beams/S16IDBUSER/.MIDAS/LIBZIP/include -L/home/beams/S16IDBUSER/.MIDAS/LIBZIP/lib64 -lzip
+
+*/
+
 // Always expectes the data to be in int32_t format.
 // Expected to be run on a GPU with at least 16GB of memory.
 // Expected to be run on a machine with at least 16GB of memory.
@@ -1238,7 +1248,7 @@ int main(int argc, char *argv[]){
 					peaks = (Peak *)malloc(nPeaks*sizeof(Peak));
 					for (int p = 0; p < nPeaks; p++){
 						if (peakLocations[p] < R[0] || peakLocations[p] > R[nRBins-1]){
-							printf("Warning: Peak location %f is out of bounds.\n", peakLocations[p]);
+							printf("Warning: Peak location %f is out of bounds, R range was: %f %f.\n", peakLocations[p],R[0],R[nRBins-1]);
 							continue;
 						}
 						// Find the closest radius value corresponding to the peak location
