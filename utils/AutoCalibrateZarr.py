@@ -77,6 +77,7 @@ parser.add_argument('-ImTransOpt', type=int, required=False, default=[0],nargs='
 parser.add_argument('-ConvertFile', type=int, required=False, default=0, help="If you want to generate the zarr zip file from a different format: \n0: input is zarr zip file, 1: HDF5 input will be used to generarte a zarr zip file, 2: Binary GE-type file, 3: TIFF input.")
 parser.add_argument('-paramFN', type=str, required=False, default='', help="If you use convertFile != 0, you need to provide the parameter file consisting of all settings: SpaceGroup, SkipFrame, px, LatticeParameter, Wavelength.")
 parser.add_argument('-LsdGuess', type=float, required=False, default=1000000, help="If you know a guess for the Lsd, it might be good to kickstart things.")
+parser.add_argument('-BCGuess', type=float, required=False, default=[0.0,0.0],nargs=2, help="If you know a guess for the BC, it might be good to kickstart things.")
 parser.add_argument('-BadPxIntensity', type=float, required=False, default=np.nan, help="If you know the bad pixel intensity, provide the value.")
 parser.add_argument('-GapIntensity', type=float, required=False, default=np.nan, help="If you know the gap intensity, provide the value. If you provide bad or gap, provide both!!!!")
 args, unparsed = parser.parse_known_args()
@@ -88,6 +89,7 @@ LsdGuess = args.LsdGuess
 convertFile = args.ConvertFile
 badPxIntensity = args.BadPxIntensity
 gapIntensity = args.GapIntensity
+bcg = args.BCGuess
 
 NrPixelsY = 0
 NrPixelsZ = 0
@@ -318,49 +320,52 @@ if DrawPlots == 1:
 	plt.colorbar()
 	plt.title('Cleaned image')
 	plt.show()
-labels,nlabels = measure.label(thresh,return_num=True)
-props = measure.regionprops(labels)
-bc = []
-for label in range(1,nlabels):
-	if np.sum(labels == label) < minArea:
-		thresh[labels==label] = 0
-	else:
-		coords = props[label-1].coords
-		bbox = props[label-1].bbox
-		edge_coords = coords[coords[:,0]==bbox[0],:]
-		edgecoorda = edge_coords[int(len(edge_coords)/2)]
-		diffs = np.transpose(coords) - edgecoorda[:,None]
-		arcLen = int(np.max(np.linalg.norm(diffs,axis=0)) / 2)
-		edgecoordb = coords[np.argmax(np.linalg.norm(diffs,axis=0))]
-		candidates = coords[np.abs(np.linalg.norm(diffs,axis=0)-arcLen)<2]
-		if candidates.size==0: continue
-		candidatea = candidates[int(candidates.shape[0]/2)]
-		midpointa = (edgecoorda + candidatea)/2
-		candidateb = candidatea
-		midpointb = (edgecoordb + candidateb)/2
-		x1 = edgecoorda[0]
-		x2 = candidatea[0]
-		x3 = candidateb[0]
-		x4 = edgecoordb[0]
-		x5 = midpointa[0]
-		x6 = midpointb[0]
-		y1 = edgecoorda[1]
-		y2 = candidatea[1]
-		y3 = candidateb[1]
-		y4 = edgecoordb[1]
-		y5 = midpointa[1]
-		y6 = midpointb[1]
-		if (y4==y3 or y2==y1): continue
-		m1 = (x1-x2)/(y2-y1)
-		m2 = (x3-x4)/(y4-y3)
-		if m1==m2: continue
-		x = (y6-y5+m1*x5-m2*x6)/(m1-m2)
-		y = m1*(x-x5)+y5
-		bc.append([x,y])
 
-bc = np.array(bc)
-bc_computed = np.array([np.median(bc[:,0]),np.median(bc[:,1])])
+if bcg[0] == 0:
+	labels,nlabels = measure.label(thresh,return_num=True)
+	props = measure.regionprops(labels)
+	bc = []
+	for label in range(1,nlabels):
+		if np.sum(labels == label) < minArea:
+			thresh[labels==label] = 0
+		else:
+			coords = props[label-1].coords
+			bbox = props[label-1].bbox
+			edge_coords = coords[coords[:,0]==bbox[0],:]
+			edgecoorda = edge_coords[int(len(edge_coords)/2)]
+			diffs = np.transpose(coords) - edgecoorda[:,None]
+			arcLen = int(np.max(np.linalg.norm(diffs,axis=0)) / 2)
+			edgecoordb = coords[np.argmax(np.linalg.norm(diffs,axis=0))]
+			candidates = coords[np.abs(np.linalg.norm(diffs,axis=0)-arcLen)<2]
+			if candidates.size==0: continue
+			candidatea = candidates[int(candidates.shape[0]/2)]
+			midpointa = (edgecoorda + candidatea)/2
+			candidateb = candidatea
+			midpointb = (edgecoordb + candidateb)/2
+			x1 = edgecoorda[0]
+			x2 = candidatea[0]
+			x3 = candidateb[0]
+			x4 = edgecoordb[0]
+			x5 = midpointa[0]
+			x6 = midpointb[0]
+			y1 = edgecoorda[1]
+			y2 = candidatea[1]
+			y3 = candidateb[1]
+			y4 = edgecoordb[1]
+			y5 = midpointa[1]
+			y6 = midpointb[1]
+			if (y4==y3 or y2==y1): continue
+			m1 = (x1-x2)/(y2-y1)
+			m2 = (x3-x4)/(y4-y3)
+			if m1==m2: continue
+			x = (y6-y5+m1*x5-m2*x6)/(m1-m2)
+			y = m1*(x-x5)+y5
+			bc.append([x,y])
 
+	bc = np.array(bc)
+	bc_computed = np.array([np.median(bc[:,0]),np.median(bc[:,1])])
+else:
+	bc_computed = np.array(bcg)
 rads = []
 nrads = 0
 for label in range(1,nlabels):
