@@ -322,6 +322,7 @@ if DrawPlots == 1:
 	plt.title('Cleaned image')
 	plt.show()
 
+lsds = []
 if bcg[0] == 0:
 	labels,nlabels = measure.label(thresh,return_num=True)
 	props = measure.regionprops(labels)
@@ -365,36 +366,35 @@ if bcg[0] == 0:
 
 	bc = np.array(bc)
 	bc_computed = np.array([np.median(bc[:,0]),np.median(bc[:,1])])
+	rads = []
+	nrads = 0
+	for label in range(1,nlabels):
+		if np.sum(labels == label) > minArea:
+			coords = props[label-1].coords
+			rad = np.mean(np.linalg.norm(np.transpose(coords) - bc_computed[:,None],axis=0))
+			toAdd = 1
+			for radNr in range(nrads):
+				if np.abs(rads[radNr]-rad) < 20:
+					toAdd = 0
+			if toAdd==1:
+				rads.append(rad)
+				nrads+=1
+
+	rads = np.sort(rads)
+	radRatios = rads/rads[0]
+	scaler = rads[0]/sim_rads[firstRing-1]
+	for i in range(rads.shape[0]):
+		bestMatch = 10000
+		bestRowNr = -1
+		for j in range(firstRing-1,len(sim_rads)):
+			if np.abs(1-(radRatios[i]/sim_rad_ratios[j])) < 0.02:
+				if np.abs(1-(radRatios[i]/sim_rad_ratios[j])) < bestMatch:
+					bestMatch = np.abs(1-(radRatios[i]/sim_rad_ratios[j]))
+					bestRowNr = j
+		if bestRowNr == -1: continue
+		lsds.append(initialLsd*rads[i]/sim_rads[bestRowNr])
 else:
 	bc_computed = np.array(bcg)
-rads = []
-nrads = 0
-for label in range(1,nlabels):
-	if np.sum(labels == label) > minArea:
-		coords = props[label-1].coords
-		rad = np.mean(np.linalg.norm(np.transpose(coords) - bc_computed[:,None],axis=0))
-		toAdd = 1
-		for radNr in range(nrads):
-			if np.abs(rads[radNr]-rad) < 20:
-				toAdd = 0
-		if toAdd==1:
-			rads.append(rad)
-			nrads+=1
-
-rads = np.sort(rads)
-radRatios = rads/rads[0]
-scaler = rads[0]/sim_rads[firstRing-1]
-lsds = []
-for i in range(rads.shape[0]):
-    bestMatch = 10000
-    bestRowNr = -1
-    for j in range(firstRing-1,len(sim_rads)):
-        if np.abs(1-(radRatios[i]/sim_rad_ratios[j])) < 0.02:
-            if np.abs(1-(radRatios[i]/sim_rad_ratios[j])) < bestMatch:
-                bestMatch = np.abs(1-(radRatios[i]/sim_rad_ratios[j]))
-                bestRowNr = j
-    if bestRowNr == -1: continue
-    lsds.append(initialLsd*rads[i]/sim_rads[bestRowNr])
 
 if LsdGuess == 1000000:
 	initialLsd = np.median(lsds)
