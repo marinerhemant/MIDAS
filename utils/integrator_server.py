@@ -60,8 +60,7 @@ def main():
     try:
         sock.connect(server_address)
         channel = pvaccess.Channel('16pil-idb:Pva1:Image')
-        while True:
-            channel.monitor(processImage,'field(uniqueId, value)')
+        channel.monitor(processImage,'field(uniqueId, value)')
             
     except KeyboardInterrupt:
         print("Sending terminated by user")
