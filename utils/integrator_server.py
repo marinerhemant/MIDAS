@@ -46,8 +46,6 @@ def processImage(x):
     send_data_chunk(sock, dataset_num, data)
     # Increment dataset number (wrap around at 65535)
     dataset_num = (dataset_num + 1) % 65536
-    # Add a small delay between sends
-    time.sleep(0.003)
     t2 = time.time()
     print(f"Time taken: {t2 - t1:.4f} sec")
 
@@ -56,7 +54,6 @@ def main():
     
     server_address = ('127.0.0.1', 5000)
     print(f"Connecting to {server_address[0]}:{server_address[1]}")
-    t0 = time.time()
     try:
         sock.connect(server_address)
         channel = pvaccess.Channel('16pil-idb:Pva1:Image')
