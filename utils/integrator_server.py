@@ -54,6 +54,7 @@ def main():
     stream = 0
     # Connect to C server
     t0 = time.time()
+    dataset_num = 0
 
     server_address = ('127.0.0.1', 5000)
     print(f"Connecting to {server_address[0]}:{server_address[1]}")
@@ -65,7 +66,7 @@ def main():
             while True:
                 pass
         else:
-            folder = '/gdata/dm/1ID/2024/AMsetup_nov24/data/pilatus/EXP030_sam4_Pos1_1ms_250Hz_line_P39p47_S0p04_StF2p5_FTppm50_Att000'
+            folder = '/gdata/dm/1ID/2024/AMsetup_nov24/data/pilatus/EXP030_sam4_Pos1_1ms_250Hz_line_P39p47_S0p04_StF2p5_FTppm50_Att000/'
             files = glob.glob(folder+'*.tif')
             print(len(files))
             for file in files:
