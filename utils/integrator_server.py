@@ -59,7 +59,7 @@ def main():
     print(f"Connecting to {server_address[0]}:{server_address[1]}")
     try:
         sock.connect(server_address)
-        if stream == 0:
+        if stream == 1:
             channel = pvaccess.Channel('16pil-idb:Pva1:Image')
             channel.monitor(processImage,'field(uniqueId, value)')
             while True:
