@@ -861,6 +861,7 @@ int main(int argc, char *argv[]){
 	int sumImages=0;
 	int doSmoothing = 0, multiplePeaks = 0, peakFit = 0;
 	int maxNPeaks = 100, nPeaks = 0;
+	int write2D = 0;
 	double peakLocations[maxNPeaks];
 	while (fgets(aline,4096,paramFile) != NULL){
 		str = "EtaBinSize ";
@@ -953,6 +954,11 @@ int main(int argc, char *argv[]){
         str = "SumImages ";
         if (StartsWith(aline,str) == 1){
 			sscanf(aline,"%s %d", dummy, &sumImages);
+			continue;
+        }
+        str = "Write2D ";
+        if (StartsWith(aline,str) == 1){
+			sscanf(aline,"%s %d", dummy, &write2D);
 			continue;
         }
 	}
@@ -1146,6 +1152,8 @@ int main(int argc, char *argv[]){
 	int1D = (double *) calloc(nRBins,sizeof(*int1D));
 	double *R;
 	R = (double *) calloc(nRBins,sizeof(*R));
+	double *Eta;
+	Eta = (double *) calloc(nEtaBins,sizeof(*Eta));
 	double *lineout;
 	lineout = (double *)malloc(nRBins*2*sizeof(*lineout));
 	// Main processing loop
@@ -1200,6 +1208,13 @@ int main(int argc, char *argv[]){
 			for (int r=0;r<nRBins;r++){
 				lineout[r*2] = R[r];
 			}
+			for (i=0;i<nEtaBins;i++){
+				Eta[i] = (EtaBinsLow[i]+EtaBinsHigh[i])/2;
+			}
+		}
+		// If we want to save the 2D array
+		if (write2D){
+			FILE *
 		}
 		// Now we have IntArrPerFrame, we need to make it into a 1D.
 		gpuErrchk(cudaDeviceSynchronize());

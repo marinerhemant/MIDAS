@@ -520,6 +520,7 @@ with open(psName,'w') as pf:
 	pf.write('EtaBinSize 5\n')
 	pf.write('DoSmoothing 1\n')
 	pf.write('DoPeakFit 1\n')
+	pf.write(f'skipFrame {skipFrame}\n')
 	pf.write('MultiplePeaks 1\n')
 	for transOpt in imTransOpt:
 		pf.write(f'ImTransOpt {transOpt}\n')

@@ -7,6 +7,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import pvaccess
 import os
+import glob
 
 os.environ['EPICS_PVA_ADDR_LIST'] = '10.54.105.139'  # Enable PVA server
 
@@ -50,17 +51,32 @@ def processImage(x):
     print(f"Time taken: {t2 - t1:.4f} sec")
 
 def main():
+    stream = 0
     # Connect to C server
-    
+    t0 = time.time()
+
     server_address = ('127.0.0.1', 5000)
     print(f"Connecting to {server_address[0]}:{server_address[1]}")
     try:
         sock.connect(server_address)
-        channel = pvaccess.Channel('16pil-idb:Pva1:Image')
-        channel.monitor(processImage,'field(uniqueId, value)')
-        while True:
-            pass
-            
+        if stream == 0:
+            channel = pvaccess.Channel('16pil-idb:Pva1:Image')
+            channel.monitor(processImage,'field(uniqueId, value)')
+            while True:
+                pass
+        else:
+            folder = '/gdata/dm/1ID/2024/AMsetup_nov24/data/pilatus/EXP030_sam4_Pos1_1ms_250Hz_line_P39p47_S0p04_StF2p5_FTppm50_Att000'
+            files = glob.glob('*.tif')
+            for file in files:
+                image = Image.open(file)
+                data = np.arra(image).flatten()
+                t1 = time.time()
+                # Send the data with dataset number
+                send_data_chunk(sock, dataset_num, data)
+                # Increment dataset number (wrap around at 65535)
+                dataset_num = (dataset_num + 1) % 65536
+                t2 = time.time()
+                print(f"Time taken: {t2 - t1:.4f} sec")
     except KeyboardInterrupt:
         print("Sending terminated by user")
     except Exception as e:
