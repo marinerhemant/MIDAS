@@ -1212,10 +1212,10 @@ int main(int argc, char *argv[]){
 				Eta[i] = (EtaBinsLow[i]+EtaBinsHigh[i])/2;
 			}
 		}
-		// If we want to save the 2D array
-		if (write2D){
-			FILE *
-		}
+		// // If we want to save the 2D array
+		// if (write2D){
+		// 	FILE *
+		// }
 		// Now we have IntArrPerFrame, we need to make it into a 1D.
 		gpuErrchk(cudaDeviceSynchronize());
 		memset(int1D,0,nRBins*sizeof(*int1D));
