@@ -66,9 +66,10 @@ def main():
             while True:
                 pass
         else:
-            folder = '/gdata/dm/1ID/2024/AMsetup_nov24/data/pilatus/EXP030_sam4_Pos1_1ms_250Hz_line_P39p47_S0p04_StF2p5_FTppm50_Att000/'
+            folder = '/gdata/dm/1ID/2024/AMsetup_nov24/data/pilatus/EXP030_sam4_Pos1_1ms_250Hz_line_P39p47_S0p04_StF2p5_FTopm50_Att000/'
             files = glob.glob(folder+'*.tif')
             print(len(files))
+            print(folder)
             for file in files:
                 image = Image.open(file)
                 print(file)
