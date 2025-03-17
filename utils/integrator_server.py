@@ -53,7 +53,6 @@ def processImage(x):
 def main():
     stream = 0
     # Connect to C server
-    t0 = time.time()
     dataset_num = 0
 
     server_address = ('127.0.0.1', 5000)
@@ -61,6 +60,7 @@ def main():
     try:
         sock.connect(server_address)
         if stream == 1:
+            t0 = time.time()
             channel = pvaccess.Channel('16pil-idb:Pva1:Image')
             channel.monitor(processImage,'field(uniqueId, value)')
             while True:
@@ -70,6 +70,7 @@ def main():
             files = glob.glob(folder+'*.tif')
             print(len(files))
             print(folder)
+            t0 = time.time()
             for file in files:
                 image = Image.open(file)
                 print(file)
