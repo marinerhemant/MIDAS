@@ -73,7 +73,7 @@ def main():
             for file in files:
                 image = Image.open(file)
                 print(file)
-                data = np.arra(image).flatten()
+                data = np.array(image).flatten()
                 t1 = time.time()
                 # Send the data with dataset number
                 send_data_chunk(sock, dataset_num, data)
