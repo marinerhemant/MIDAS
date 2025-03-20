@@ -802,7 +802,7 @@ def main():
                 if ProvideInputAll == 0:
                     cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/ProcessGrainsZarr')} {outFStem}"
                 else:
-                    cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/ProcessGrains')} {resultDir}/{psFN}"
+                    cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/ProcessGrains')} {resultDir}/paramstest.txt"
                     
                 run_command(cmd, resultDir, f_grains_out, f_grains_err)
             except Exception as e:
