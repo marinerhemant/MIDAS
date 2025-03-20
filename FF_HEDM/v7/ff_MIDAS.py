@@ -737,6 +737,9 @@ def main():
                             paramstestF.write(f'RingNumbers {int(ringRads[nr,0])}\n')
                         paramstestF.write(f'OutputFolder {resultDir}/Output\n')
                         paramstestF.write(f'ResultFolder {resultDir}/Results\n')
+                        paramstestF.write('SpotsFileName InputAll.csv')
+                        paramstestF.write('IDsFileName SpotsToIndex.csv')
+                        paramstestF.write('RefinementFileName InputAllExtraInfoFittingAll.csv')
                         for line in lines:
                             paramstestF.write(line)
                                 
