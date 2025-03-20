@@ -727,7 +727,6 @@ def main():
                     unq, locs = np.unique(hkls[:,4],return_index=True)
                     for rN in range(len(ringNrs)):
                         ringNr = ringNrs[rN]
-                        print(rN,ringNr)
                         for tp in range(len(unq)):
                             if ringNr == int(unq[tp]):
                                 ringRads[rN] = np.array([ringNr,hkls[locs[tp],-1]])
@@ -736,13 +735,10 @@ def main():
                         for nr in range(len(ringRads)):
                             paramstestF.write(f'RingRadii {ringRads[nr,1]}\n')
                             paramstestF.write(f'RingNumbers {int(ringRads[nr,0])}\n')
+                        paramstestF.write(f'OutputFolder {resultDir}/Output\n')
+                        paramstestF.write(f'ResultFolder {resultDir}/Results\n')
                         for line in lines:
-                            if line.startswith('OutputFolder'):
-                                paramstestF.write(f'OutputFolder {resultDir}/Output\n')
-                            elif line.startswith('ResultFolder'):
-                                paramstestF.write(f'ResultFolder {resultDir}/Results\n')
-                            else:
-                                paramstestF.write(line)
+                            paramstestF.write(line)
                                 
                     os.makedirs(f'{resultDir}/Output', exist_ok=True)
                     os.makedirs(f'{resultDir}/Results', exist_ok=True)
