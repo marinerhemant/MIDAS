@@ -362,6 +362,7 @@ if bcg[0] == 0:
 			x = (y6-y5+m1*x5-m2*x6)/(m1-m2)
 			y = m1*(x-x5)+y5
 			bc.append([x,y])
+			print(x,y)
 
 	bc = np.array(bc)
 	bc_computed = np.array([np.median(bc[:,0]),np.median(bc[:,1])])
