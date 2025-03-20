@@ -688,7 +688,7 @@ def main():
                     shutil.copy2(f'{topResDir}/InputAllExtraInfoFittingAll.csv', f'{resultDir}/.')
                     
                     # Process spots
-                    sps = np.genfromtxt(f'{topResDir}/InputAll.csv', skip_header=1)
+                    sps = np.genfromtxt(f'{resultDir}/InputAll.csv', skip_header=1)
                     sps_filt = sps[sps[:,5] == ring2Index,:]
                     
                     if len(sps_filt.shape) < 2:
