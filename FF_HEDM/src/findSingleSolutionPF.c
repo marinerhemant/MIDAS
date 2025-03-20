@@ -83,7 +83,7 @@ main(int argc, char *argv[])
     double *allOrientationsArr;
     allOrientationsArr = calloc(nScans*nScans*10,sizeof(*allOrientationsArr));
     int voxNr;
-    // # pragma omp parallel for num_threads(numProcs) private(voxNr) schedule(dynamic)
+    # pragma omp parallel for num_threads(numProcs) private(voxNr) schedule(dynamic)
     for (voxNr=0;voxNr<nScans*nScans;voxNr++){
         char outKeyFN[2048];
         sprintf(outKeyFN,"%s/UniqueIndexSingleKey.bin",folderName);

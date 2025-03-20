@@ -19,8 +19,18 @@
   -O3 -lnlopt -I/home/beams/S16IDBUSER/.MIDAS/BLOSC/include -L/home/beams/S16IDBUSER/.MIDAS/BLOSC/lib64 -lblosc2 \
   -I/home/beams/S16IDBUSER/.MIDAS/HDF5/include -L/home/beams/S16IDBUSER/.MIDAS/HDF5/lib -lhdf5 -lhdf5_hl -lz -ldl -lm -lpthread \
   -I/home/beams/S16IDBUSER/.MIDAS/LIBZIP/include -L/home/beams/S16IDBUSER/.MIDAS/LIBZIP/lib64 -lzip
+*/
+
+/* Compiling for hsharma
+  source ~/.MIDAS/paths
+  /home/beams/S1IDUSER/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStream.cu -o bin/IntegratorFitPeaksGPUStream -Xcompiler -g -arch sm_90 \
+  -gencode=arch=compute_90,code=sm_90 -I/home/beams/HSHARMA/.MIDAS/NLOPT/include -L/home/beams/HSHARMA/.MIDAS/NLOPT/lib \
+  -O3 -lnlopt -I/home/beams/HSHARMA/.MIDAS/BLOSC/include -L/home/beams/HSHARMA/.MIDAS/BLOSC/lib64 -lblosc2 \
+  -I/home/beams/HSHARMA/.MIDAS/HDF5/include -L/home/beams/HSHARMA/.MIDAS/HDF5/lib -lhdf5 -lhdf5_hl -lz -ldl -lm -lpthread \
+  -I/home/beams/HSHARMA/.MIDAS/LIBZIP/include -L/home/beams/HSHARMA/.MIDAS/LIBZIP/lib64 -lzip
 
 */
+
 
 // Always expectes the data to be in int32_t format.
 // Expected to be run on a GPU with at least 16GB of memory.
@@ -112,6 +122,7 @@ size_t CHUNK_SIZE;
 #define HEADER_SIZE sizeof(uint16_t)  // Size of dataset number
 size_t TOTAL_MSG_SIZE;
 #define BYTES_PER_PIXEL 4
+#define MAX_FILENAME_LENGTH 1024
 
 // Structure for our data chunks
 typedef struct {
@@ -1144,19 +1155,18 @@ int main(int argc, char *argv[]){
 		exit(EXIT_FAILURE);
 	}
 
-    // Main thread processes data from the queue
-	clock_t t1, t2, tIntegration, tFit, tFWLineout, tFWFitResult;
-	double diffT=0, diffInteg, diffWriteLineout, diffTFit, diffWriteFitResult;
-	int firstFrame = 1;
-	double *int1D;
-	int1D = (double *) calloc(nRBins,sizeof(*int1D));
-	double *R;
-	R = (double *) calloc(nRBins,sizeof(*R));
-	double *Eta;
-	Eta = (double *) calloc(nEtaBins,sizeof(*Eta));
-	double *lineout;
-	lineout = (double *)malloc(nRBins*2*sizeof(*lineout));
-	// Main processing loop
+    // Allocate arrays once before the loop
+    double *int1D = (double *)calloc(nRBins, sizeof(*int1D));
+    double *R = (double *)calloc(nRBins, sizeof(*R));
+    double *Eta = (double *)calloc(nEtaBins, sizeof(*Eta));
+    double *lineout = (double *)malloc(nRBins*2*sizeof(*lineout));
+    
+    if (!int1D || !R || !Eta || !lineout) {
+        fprintf(stderr, "Failed to allocate memory for arrays\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Main processing loop
     while (1) {
         DataChunk chunk;
         queue_pop(&process_queue, &chunk);
@@ -1212,10 +1222,21 @@ int main(int argc, char *argv[]){
 				Eta[i] = (EtaBinsLow[i]+EtaBinsHigh[i])/2;
 			}
 		}
-		// // If we want to save the 2D array
-		// if (write2D){
-		// 	FILE *
-		// }
+		// If we want to save the 2D array
+		if (write2D == 1){
+			char fn[MAX_FILENAME_LENGTH];
+			snprintf(fn, sizeof(fn), "Int2D.bin");
+			FILE *f2d = fopen(fn, "ab");
+			if (!f2d) {
+				fprintf(stderr, "Failed to open file %s\n", fn);
+				continue;
+			}
+			if (fwrite(IntArrPerFrame, sizeof(double), nRBins*nEtaBins, f2d) != nRBins*nEtaBins) {
+				fprintf(stderr, "Failed to write data to %s\n", fn);
+			}
+			fflush(f2d);
+			fclose(f2d);
+		}
 		// Now we have IntArrPerFrame, we need to make it into a 1D.
 		gpuErrchk(cudaDeviceSynchronize());
 		memset(int1D,0,nRBins*sizeof(*int1D));
@@ -1391,6 +1412,33 @@ int main(int argc, char *argv[]){
 
 		printf("Did integration, total time: %lf s for this frame, frameNr: %d. %lf %lf %lf %lf\n",diffT,chunk.dataset_num,diffInteg,diffWriteLineout,diffTFit,diffWriteFitResult);
         free(chunk.data);
+    }
+    
+    // Cleanup after the loop
+    free(int1D);
+    free(R);
+    free(Eta);
+    free(lineout);
+    
+    // Close file handles
+    fclose(lineoutFile);
+    fclose(fitFile);
+    
+    // Cleanup CUDA resources
+    cudaFree(devImage);
+    cudaFree(devIntArrPerFrame);
+    cudaFree(devPerFrameArr);
+    cudaFree(devEtaBinsLow);
+    cudaFree(devEtaBinsHigh);
+    cudaFree(devRBinsLow);
+    cudaFree(devRBinsHigh);
+    cudaFree(devPxList);
+    cudaFree(devNPxList);
+    if (mapMaskSize != 0) {
+        cudaFree(devMapMask);
+    }
+    if (sumImages == 1) {
+        cudaFree(devSumMatrix);
     }
     
     pthread_join(accept_thread, NULL);

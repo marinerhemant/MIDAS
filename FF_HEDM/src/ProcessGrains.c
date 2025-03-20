@@ -314,6 +314,12 @@ int main(int argc, char *argv[])
             sscanf(aline,"%s %lf", dummy, &Distance);
             continue;
 		}
+		str = "Distance ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf", dummy, &Distance);
+            continue;
+		}
 		str = "LsdMean ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -321,6 +327,14 @@ int main(int argc, char *argv[])
             continue;
 		}
 		str = "LatticeConstant ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+            sscanf(aline,"%s %lf %lf %lf %lf %lf %lf", dummy,
+						&LatCin[0], &LatCin[1], &LatCin[2],
+						&LatCin[3], &LatCin[4], &LatCin[5]);
+            continue;
+		}
+		str = "LatticeParameter ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
             sscanf(aline,"%s %lf %lf %lf %lf %lf %lf", dummy,

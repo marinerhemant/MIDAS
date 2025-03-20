@@ -5,9 +5,10 @@ import numpy as np
 import argparse
 import warnings
 import time
-import os,sys,glob
+import os, sys, glob
 from pathlib import Path
 import shutil
+import logging
 from math import floor, isnan, fabs
 import pandas as pd
 from parsl.app.app import python_app
@@ -16,683 +17,1432 @@ from skimage.transform import iradon
 from PIL import Image
 import h5py
 import zarr
-utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
-sys.path.insert(0,utilsDir)
-v7Dir = os.path.expanduser('~/opt/MIDAS/FF_HEDM/v7/')
-sys.path.insert(0,v7Dir)
-from calcMiso import *
 from numba import jit
-import warnings
+import traceback
+
+# Suppress warnings
 warnings.filterwarnings('ignore')
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("processing.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("MIDAS")
+
+# Setup paths
+utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
+v7Dir = os.path.expanduser('~/opt/MIDAS/FF_HEDM/v7/')
+sys.path.insert(0, utilsDir)
+sys.path.insert(0, v7Dir)
+
+# Import from MIDAS libraries
+try:
+    from calcMiso import *
+except ImportError:
+    logger.error("Failed to import calcMiso. Make sure MIDAS is properly installed.")
+    sys.exit(1)
+
+# Get Python executable
 pytpath = sys.executable
 
-env = dict(os.environ)
-midas_path = os.path.expanduser("~/.MIDAS")
-libpth = os.environ.get('LD_LIBRARY_PATH')
-env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib:{libpth}'
-
-def generateZip(resFol,pfn,layerNr,dfn='',dloc='',nchunks=-1,preproc=-1,outf='ZipOut.txt',errf='ZipErr.txt'):
-	cmd = pytpath+' '+os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZip.py')+' -resultFolder '+ resFol[:-1] +' -paramFN ' + pfn + ' -LayerNr ' + str(layerNr)
-	if dfn!='':
-		cmd+= ' -dataFN ' + dfn
-	if dloc!='':
-		cmd+= ' -dataLoc ' + dloc
-	if nchunks!=-1:
-		cmd+= ' -numFrameChunks '+str(nchunks)
-	if preproc!=-1:
-		cmd+= ' -preProcThresh '+str(preproc)
-	outf = resFol+'/output/'+outf
-	errf = resFol+'/output/'+errf
-	subprocess.call(cmd,shell=True,stdout=open(outf,'w'),stderr=open(errf,'w'))
-	lines = open(outf,'r').readlines()
-	if lines[-1].startswith('OutputZipName'):
-		return lines[-1].split()[1]
-
-@python_app
-def parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,
-				   paramContents,baseNameParamFN,ConvertFiles,nchunks,preproc,
-				   env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities,
-				   omegaValues,minThresh,fStem,omegaFF,Ext):
-	import subprocess
-	import numpy as np
-	import time
-	import os,sys
-	from pathlib import Path
-	import shutil
-	from math import fabs
-	import pandas as pd
-	import zarr
-	from numba import jit
-	utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
-	sys.path.insert(0,utilsDir)
-	def CalcEtaAngleAll(y, z):
-		alpha = rad2deg*np.arccos(z/np.linalg.norm(np.array([y,z]),axis=0))
-		alpha[y>0] *= -1
-		return alpha
-	rad2deg = 57.2957795130823
-	deg2rad = 0.0174532925199433
-	@jit(nopython=True)
-	def normalizeIntensitiesNumba(input,radius,hashArr):
-		nrSps = input.shape[0]
-		for i in range(nrSps):
-			if input[i,3] > 0.001:
-				input[i,3] = radius[int(hashArr[i,1])-1,1]
-		return input
-	# Run peaksearch using nblocks 1 and blocknr 0
-	print(f'LayerNr: {layerNr}')
-	ypos = float(positions[layerNr-1])
-	thisStartNr = startNrFirstLayer + (layerNr-1)*nrFilesPerSweep
-	folderName = str(thisStartNr)
-	thisDir = topdir + '/' + folderName + '/'
-	Path(thisDir).mkdir(parents=True,exist_ok=True)
-	os.chdir(thisDir)
-	thisParamFN = thisDir + baseNameParamFN
-	thisPF = open(thisParamFN,'w')
-	for line in paramContents:
-		thisPF.write(line)
-	thisPF.close()
-	Path(thisDir+'/Temp').mkdir(parents=True,exist_ok=True)
-	Path(thisDir+'/output').mkdir(parents=True,exist_ok=True)
-	sub_logDir = thisDir + '/output'
-	if ConvertFiles==1:
-		outFStem = generateZip(thisDir,baseNameParamFN,layerNr,nchunks=nchunks,preproc=preproc)
-	else:
-		outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(6)}{Ext}'
-	print(f'FileStem: {outFStem}')
-	f = open(f'{sub_logDir}/processing_out0.csv','w')
-	f_err = open(f'{sub_logDir}/processing_err0.csv','w')
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr")+f' {outFStem} {thisDir}',env=env,shell=True,stdout=f,stderr=f_err)
-	if doPeakSearch==1:
-		t_st = time.time()
-		print(f'Doing PeakSearch.')
-		cmd = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPZarr') + f' {outFStem} 0 1 {numProcs} {thisDir} 0' ### THIS IS DOING DUMB PEAKSEARCH!!!!!!!!!
-		subprocess.call(cmd,shell=True,env=env,stdout=f,stderr=f_err)
-		print(f'PeakSearch Done. Time taken: {time.time()-t_st} seconds.')
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True,stdout=f,stderr=f_err)
-	zf = zarr.open(outFStem,'r')
-	searchStr = 'measurement/process/scan_parameters/startOmeOverride'
-	if searchStr in zf or len(omegaValues)>0:
-		if searchStr in zf:
-			thisOmega = zf[searchStr][:][0]
-		else:
-			thisOmega = float(omegaValues[layerNr-1])
-		if thisOmega != 0:
-			signTO = thisOmega / fabs(thisOmega)
-		else:
-			signTO = 1
-		delOmega = signTO*(fabs(thisOmega)%360) - omegaFF
-		delOmega = delOmega * (fabs(delOmega)%360) / fabs(delOmega)
-		omegaOffsetThis = -delOmega # Because we subtract this
-		print(f"Offsetting omega: {omegaOffsetThis}, original value: {thisOmega}.")
-		tOme = time.time()
-		shutil.copy2(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',f'Result_StartNr_{startNr}_EndNr_{endNr}.csv.old')
-		Result = np.genfromtxt(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',skip_header=1,delimiter=' ')
-		headRes = open(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv').readline()
-		if len(Result.shape) > 1:
-			Result = Result[Result[:,5] > minThresh]
-			if len(Result.shape) > 1:
-				Result[:,2] -= omegaOffsetThis
-				Result[Result[:,2]<-180,6] += 360
-				Result[Result[:,2]<-180,7] += 360
-				Result[Result[:,2]<-180,2] += 360
-				Result[Result[:,2]> 180,6] -= 360
-				Result[Result[:,2]> 180,7] -= 360
-				Result[Result[:,2]> 180,2] -= 360
-				np.savetxt(f'Result_StartNr_{startNr}_EndNr_{endNr}.csv',Result,fmt="%.6f",delimiter=' ',header=headRes.split('\n')[0],comments='')
-		print(f"Omega offset done. Time taken: {time.time()-tOme} seconds. SpotsShape {Result.shape}")
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr")+f' {outFStem} {thisDir}',env=env,shell=True,stdout=f,stderr=f_err)
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr")+f' {outFStem} {thisDir}',env=env,shell=True,stdout=f,stderr=f_err)
-	f.close()
-	f_err.close()
-	Result = np.genfromtxt(f'Radius_StartNr_{startNr}_EndNr_{endNr}.csv',skip_header=1,delimiter=' ')
-	if len(Result.shape)<2:
-		shutil.copy2('InputAllExtraInfoFittingAll.csv',topdir+'/InputAllExtraInfoFittingAll'+str(layerNr-1)+'.csv')
-		os.chdir(topdir)
-		return
-	dfAllF = pd.read_csv('InputAllExtraInfoFittingAll.csv',delimiter=' ',skipinitialspace=True)
-	dfAllF.loc[dfAllF['GrainRadius']>0.001,'%YLab'] += ypos
-	dfAllF.loc[dfAllF['GrainRadius']>0.001,'YOrig(NoWedgeCorr)'] += ypos
-	dfAllF['Eta'] = CalcEtaAngleAll(dfAllF['%YLab'],dfAllF['ZLab'])
-	dfAllF['Ttheta'] = rad2deg*np.arctan(np.linalg.norm(np.array([dfAllF['%YLab'],dfAllF['ZLab']]),axis=0)/Lsd)
-	print(f"Spots shape final: {dfAllF.shape}")
-	outFN2 = topdir+'/InputAllExtraInfoFittingAll'+str(layerNr-1)+'.csv'
-	t_st = time.time()
-	if NormalizeIntensities == 0:
-		dfAllF.to_csv(outFN2,sep=' ',header=True,float_format='%.6f',index=False)
-	elif NormalizeIntensities == 1:
-		uniqueRings,uniqueIndices = np.unique(Result[:,13],return_index=True)
-		ringPowderIntensity = []
-		for iter in range(len(uniqueIndices)):
-			ringPowderIntensity.append([uniqueRings[iter],Result[uniqueIndices[iter],16]])
-		ringPowderIntensity = np.array(ringPowderIntensity)
-		for iter in range(len(ringPowderIntensity)):
-			ringNr = ringPowderIntensity[iter,0]
-			powInt = ringPowderIntensity[iter,1]
-			dfAllF.loc[dfAllF['RingNumber']==ringNr,'GrainRadius'] *= powInt**(1/3)
-		dfAllF.to_csv(outFN2,sep=' ',header=True,float_format='%.6f',index=False)
-	elif NormalizeIntensities == 2:
-		inpArr = dfAllF.to_numpy(copy=True)
-		hashArr = np.genfromtxt(f'IDRings.csv',skip_header=1)
-		headerThis = ' '.join(list(dfAllF))
-		outArr = normalizeIntensitiesNumba(inpArr,Result,hashArr)
-		np.savetxt(outFN2,outArr,header=headerThis,delimiter=' ',fmt='%.6f')
-	shutil.copy2(thisDir+'/paramstest.txt',topdir+'/paramstest.txt')
-	shutil.copy2(thisDir+'/hkls.csv',topdir+'/hkls.csv')
-	print(f'Normalization and writing done. Time taken: {time.time()-t_st}')
-
-@python_app
-def peaks(resultDir,zipFN,numProcs,blockNr=0,numBlocks=1):
-    import subprocess
-    import os
+# Environment setup for MIDAS
+def setup_midas_env():
+    """Set up the MIDAS environment variables for subprocess calls."""
     env = dict(os.environ)
     midas_path = os.path.expanduser("~/.MIDAS")
-    env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
-    f = open(f'{resultDir}/output/peaksearch_out{blockNr}.csv','w')
-    f_err = open(f'{resultDir}/output/peaksearch_err{blockNr}.csv','w')
-    f_err.write("I was able to do someting.\n")
-    cmd_this = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPZarr")+f' {zipFN} {blockNr} {numBlocks} {numProcs} {resultDir}'
-    f_err.write(cmd_this+'\n')
-    subprocess.call(cmd_this,shell=True,env=env,stdout=f,stderr=f_err)
-    f_err.write(cmd_this+'\n')
-    f.close()
-    f_err.close()
+    libpth = os.environ.get('LD_LIBRARY_PATH')
+    
+    # Add MIDAS library paths
+    lib_components = [
+        f'{midas_path}/BLOSC/lib64',
+        f'{midas_path}/FFTW/lib',
+        f'{midas_path}/HDF5/lib',
+        f'{midas_path}/LIBTIFF/lib',
+        f'{midas_path}/LIBZIP/lib64',
+        f'{midas_path}/NLOPT/lib',
+        f'{midas_path}/ZLIB/lib'
+    ]
+    
+    if libpth:
+        lib_components.append(libpth)
+    
+    env['LD_LIBRARY_PATH'] = ':'.join(lib_components)
+    return env
+
+env = setup_midas_env()
+
+def check_error_file(filename):
+    """
+    Check if an error file exists and has content.
+    
+    Args:
+        filename: Path to the error file
+        
+    Returns:
+        True if file exists and has content, False otherwise
+    """
+    if not os.path.exists(filename):
+        return False
+    
+    with open(filename, 'r') as f:
+        content = f.read().strip()
+        
+    if not content:
+        return False
+        
+    # Check if content is just initialization or contains actual error
+    if "I was able to do something" in content:
+        return False
+        
+    return True
+
+def check_and_exit_on_errors(error_files):
+    """
+    Check multiple error files and exit if any have content.
+    
+    Args:
+        error_files: List of error file paths to check
+    """
+    for err_file in error_files:
+        if check_error_file(err_file):
+            logger.error(f"Error detected in {err_file}:")
+            with open(err_file, 'r') as f:
+                logger.error(f.read())
+            sys.exit(1)
+    logger.info("No errors detected in error files.")
+
+def generateZip(resFol, pfn, layerNr, dfn='', dloc='', nchunks=-1, preproc=-1, outf='ZipOut.txt', errf='ZipErr.txt'):
+    """
+    Generate a zip file for the given parameters.
+    
+    Args:
+        resFol: Result folder
+        pfn: Parameter file name
+        layerNr: Layer number
+        dfn: Data file name (optional)
+        dloc: Data location (optional)
+        nchunks: Number of frame chunks (optional)
+        preproc: Pre-processing threshold (optional)
+        outf: Output file name (optional)
+        errf: Error file name (optional)
+        
+    Returns:
+        The name of the generated zip file if successful
+    """
+    cmd = f"{pytpath} {os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZip.py')} -resultFolder {resFol[:-1]} -paramFN {pfn} -LayerNr {str(layerNr)}"
+    
+    if dfn:
+        cmd += f" -dataFN {dfn}"
+    if dloc:
+        cmd += f" -dataLoc {dloc}"
+    if nchunks != -1:
+        cmd += f" -numFrameChunks {str(nchunks)}"
+    if preproc != -1:
+        cmd += f" -preProcThresh {str(preproc)}"
+        
+    outf_path = f"{resFol}/output/{outf}"
+    errf_path = f"{resFol}/output/{errf}"
+    
+    logger.info(f"Generating zip for layer {layerNr}: {cmd}")
+    
+    try:
+        subprocess.call(cmd, shell=True, stdout=open(outf_path, 'w'), stderr=open(errf_path, 'w'))
+        
+        # Check for errors
+        if check_error_file(errf_path):
+            logger.error(f"Error in generateZip for layer {layerNr}")
+            with open(errf_path, 'r') as f:
+                logger.error(f.read())
+            return None
+            
+        lines = open(outf_path, 'r').readlines()
+        if lines and lines[-1].startswith('OutputZipName'):
+            return lines[-1].split()[1]
+            
+        logger.warning(f"No output zip name found for layer {layerNr}")
+        return None
+    except Exception as e:
+        logger.error(f"Exception in generateZip for layer {layerNr}: {str(e)}")
+        return None
 
 @python_app
-def binData(resultDir,num_scans):
+def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdir,
+                  paramContents, baseNameParamFN, ConvertFiles, nchunks, preproc,
+                  env, doPeakSearch, numProcs, startNr, endNr, Lsd, NormalizeIntensities,
+                  omegaValues, minThresh, fStem, omegaFF, Ext):
+    """
+    Run peak search in parallel for a specific layer.
+    
+    Args:
+        Multiple parameters needed for peak searching
+        
+    Returns:
+        Success status message
+    """
+    import subprocess
+    import numpy as np
+    import time
+    import os, sys
+    from pathlib import Path
+    import shutil
+    from math import fabs
+    import pandas as pd
+    import zarr
+    from numba import jit
+    import logging
+    
+    # Setup logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(f"MIDAS-Layer{layerNr}")
+    
+    utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
+    sys.path.insert(0, utilsDir)
+    
+    def CalcEtaAngleAll(y, z):
+        alpha = rad2deg * np.arccos(z / np.linalg.norm(np.array([y, z]), axis=0))
+        alpha[y > 0] *= -1
+        return alpha
+        
+    rad2deg = 57.2957795130823
+    deg2rad = 0.0174532925199433
+    
+    @jit(nopython=True)
+    def normalizeIntensitiesNumba(input, radius, hashArr):
+        nrSps = input.shape[0]
+        for i in range(nrSps):
+            if input[i, 3] > 0.001:
+                input[i, 3] = radius[int(hashArr[i, 1]) - 1, 1]
+        return input
+    
+    # Initialize error tracking
+    error_files = []
+    
+    try:
+        # Run peaksearch using nblocks 1 and blocknr 0
+        logger.info(f'Processing LayerNr: {layerNr}')
+        ypos = float(positions[layerNr - 1])
+        thisStartNr = startNrFirstLayer + (layerNr - 1) * nrFilesPerSweep
+        folderName = str(thisStartNr)
+        thisDir = os.path.join(topdir, folderName)
+        Path(thisDir).mkdir(parents=True, exist_ok=True)
+        os.chdir(thisDir)
+        
+        # Create parameter file
+        thisParamFN = os.path.join(thisDir, baseNameParamFN)
+        with open(thisParamFN, 'w') as thisPF:
+            for line in paramContents:
+                thisPF.write(line)
+        
+        # Create necessary directories
+        Path(os.path.join(thisDir, 'Temp')).mkdir(parents=True, exist_ok=True)
+        Path(os.path.join(thisDir, 'output')).mkdir(parents=True, exist_ok=True)
+        sub_logDir = os.path.join(thisDir, 'output')
+        
+        # Generate zip or use existing file
+        if ConvertFiles == 1:
+            outFStem = generateZip(thisDir, baseNameParamFN, layerNr, nchunks=nchunks, preproc=preproc)
+            if not outFStem:
+                logger.error(f"Failed to generate zip for layer {layerNr}")
+                return f"Failed at generateZip for layer {layerNr}"
+        else:
+            outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(6)}{Ext}'
+        
+        logger.info(f'Using FileStem: {outFStem}')
+        
+        # Process output files
+        f_out_path = f'{sub_logDir}/processing_out0.csv'
+        f_err_path = f'{sub_logDir}/processing_err0.csv'
+        error_files.append(f_err_path)
+        
+        with open(f_out_path, 'w') as f, open(f_err_path, 'w') as f_err:
+            # Get HKL list
+            cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr')} {outFStem} {thisDir}"
+            logger.info(f"Running GetHKLListZarr: {cmd}")
+            subprocess.call(cmd, env=env, shell=True, stdout=f, stderr=f_err)
+            
+            # Check for errors
+            if check_error_file(f_err_path):
+                with open(f_err_path, 'r') as ef:
+                    logger.error(f"Error in GetHKLListZarr: {ef.read()}")
+                return f"Failed at GetHKLListZarr for layer {layerNr}"
+            
+            # Do peak search if required
+            if doPeakSearch == 1:
+                t_st = time.time()
+                logger.info(f'Starting PeakSearch for layer {layerNr}')
+                cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPZarr')} {outFStem} 0 1 {numProcs} {thisDir} 0"
+                subprocess.call(cmd, shell=True, env=env, stdout=f, stderr=f_err)
+                
+                if check_error_file(f_err_path):
+                    with open(f_err_path, 'r') as ef:
+                        logger.error(f"Error in PeaksFittingOMPZarr: {ef.read()}")
+                    return f"Failed at PeakSearch for layer {layerNr}"
+                    
+                logger.info(f'PeakSearch Done for layer {layerNr}. Time taken: {time.time() - t_st} seconds.')
+            
+            # Merge overlapping peaks
+            cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr')} {outFStem} {thisDir}"
+            logger.info(f"Running MergeOverlappingPeaksAllZarr: {cmd}")
+            subprocess.call(cmd, env=env, shell=True, stdout=f, stderr=f_err)
+            
+            if check_error_file(f_err_path):
+                with open(f_err_path, 'r') as ef:
+                    logger.error(f"Error in MergeOverlappingPeaksAllZarr: {ef.read()}")
+                return f"Failed at MergeOverlappingPeaksAllZarr for layer {layerNr}"
+        
+        # Process omega if needed
+        zf = zarr.open(outFStem, 'r')
+        searchStr = 'measurement/process/scan_parameters/startOmeOverride'
+        if searchStr in zf or len(omegaValues) > 0:
+            if searchStr in zf:
+                thisOmega = zf[searchStr][:][0]
+            else:
+                thisOmega = float(omegaValues[layerNr - 1])
+                
+            if thisOmega != 0:
+                signTO = thisOmega / fabs(thisOmega)
+            else:
+                signTO = 1
+                
+            delOmega = signTO * (fabs(thisOmega) % 360) - omegaFF
+            delOmega = delOmega * (fabs(delOmega) % 360) / fabs(delOmega)
+            omegaOffsetThis = -delOmega  # Because we subtract this
+            
+            logger.info(f"Offsetting omega: {omegaOffsetThis}, original value: {thisOmega}.")
+            
+            tOme = time.time()
+            
+            result_file = f'Result_StartNr_{startNr}_EndNr_{endNr}.csv'
+            if os.path.exists(result_file):
+                shutil.copy2(result_file, f"{result_file}.old")
+                
+                try:
+                    Result = np.genfromtxt(result_file, skip_header=1, delimiter=' ')
+                    headRes = open(result_file).readline()
+                    
+                    if len(Result.shape) > 1:
+                        Result = Result[Result[:, 5] > minThresh]
+                        
+                        if len(Result.shape) > 1:
+                            Result[:, 2] -= omegaOffsetThis
+                            
+                            # Adjust values outside range
+                            Result[Result[:, 2] < -180, 6] += 360
+                            Result[Result[:, 2] < -180, 7] += 360
+                            Result[Result[:, 2] < -180, 2] += 360
+                            Result[Result[:, 2] > 180, 6] -= 360
+                            Result[Result[:, 2] > 180, 7] -= 360
+                            Result[Result[:, 2] > 180, 2] -= 360
+                            
+                            np.savetxt(result_file, Result, fmt="%.6f", delimiter=' ', 
+                                       header=headRes.split('\n')[0], comments='')
+                            
+                    logger.info(f"Omega offset done for layer {layerNr}. Time taken: {time.time() - tOme} seconds. SpotsShape {Result.shape}")
+                except Exception as e:
+                    logger.error(f"Error processing omega for layer {layerNr}: {str(e)}")
+                    return f"Failed at omega processing for layer {layerNr}"
+        
+        # Calculate radius and fit setup
+        with open(f_out_path, 'a') as f, open(f_err_path, 'a') as f_err:
+            cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr')} {outFStem} {thisDir}"
+            logger.info(f"Running CalcRadiusAllZarr: {cmd}")
+            subprocess.call(cmd, env=env, shell=True, stdout=f, stderr=f_err)
+            
+            if check_error_file(f_err_path):
+                with open(f_err_path, 'r') as ef:
+                    logger.error(f"Error in CalcRadiusAllZarr: {ef.read()}")
+                return f"Failed at CalcRadiusAllZarr for layer {layerNr}"
+            
+            cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr')} {outFStem} {thisDir}"
+            logger.info(f"Running FitSetupZarr: {cmd}")
+            subprocess.call(cmd, env=env, shell=True, stdout=f, stderr=f_err)
+            
+            if check_error_file(f_err_path):
+                with open(f_err_path, 'r') as ef:
+                    logger.error(f"Error in FitSetupZarr: {ef.read()}")
+                return f"Failed at FitSetupZarr for layer {layerNr}"
+        
+        # Process results and normalize intensities
+        radius_file = f'Radius_StartNr_{startNr}_EndNr_{endNr}.csv'
+        if not os.path.exists(radius_file):
+            logger.error(f"Radius file not found for layer {layerNr}: {radius_file}")
+            return f"Failed: Radius file not found for layer {layerNr}"
+            
+        Result = np.genfromtxt(radius_file, skip_header=1, delimiter=' ')
+        
+        if len(Result.shape) < 2:
+            logger.warning(f"Result shape too small for layer {layerNr}, copying and continuing")
+            shutil.copy2('InputAllExtraInfoFittingAll.csv', 
+                         os.path.join(topdir, f'InputAllExtraInfoFittingAll{layerNr-1}.csv'))
+            os.chdir(topdir)
+            return f"Completed with small result shape for layer {layerNr}"
+        
+        try:
+            # Read and process fitting data
+            dfAllF = pd.read_csv('InputAllExtraInfoFittingAll.csv', delimiter=' ', skipinitialspace=True)
+            dfAllF.loc[dfAllF['GrainRadius'] > 0.001, '%YLab'] += ypos
+            dfAllF.loc[dfAllF['GrainRadius'] > 0.001, 'YOrig(NoWedgeCorr)'] += ypos
+            dfAllF['Eta'] = CalcEtaAngleAll(dfAllF['%YLab'], dfAllF['ZLab'])
+            dfAllF['Ttheta'] = rad2deg * np.arctan(np.linalg.norm(np.array([dfAllF['%YLab'], dfAllF['ZLab']]), axis=0) / Lsd)
+            
+            logger.info(f"Spots shape final for layer {layerNr}: {dfAllF.shape}")
+            
+            outFN2 = os.path.join(topdir, f'InputAllExtraInfoFittingAll{layerNr-1}.csv')
+            t_st = time.time()
+            
+            # Handle different normalization modes
+            if NormalizeIntensities == 0:
+                dfAllF.to_csv(outFN2, sep=' ', header=True, float_format='%.6f', index=False)
+                
+            elif NormalizeIntensities == 1:
+                uniqueRings, uniqueIndices = np.unique(Result[:, 13], return_index=True)
+                ringPowderIntensity = []
+                
+                for iter in range(len(uniqueIndices)):
+                    ringPowderIntensity.append([uniqueRings[iter], Result[uniqueIndices[iter], 16]])
+                    
+                ringPowderIntensity = np.array(ringPowderIntensity)
+                
+                for iter in range(len(ringPowderIntensity)):
+                    ringNr = ringPowderIntensity[iter, 0]
+                    powInt = ringPowderIntensity[iter, 1]
+                    dfAllF.loc[dfAllF['RingNumber'] == ringNr, 'GrainRadius'] *= powInt**(1/3)
+                    
+                dfAllF.to_csv(outFN2, sep=' ', header=True, float_format='%.6f', index=False)
+                
+            elif NormalizeIntensities == 2:
+                inpArr = dfAllF.to_numpy(copy=True)
+                hashArr = np.genfromtxt(f'IDRings.csv', skip_header=1)
+                headerThis = ' '.join(list(dfAllF))
+                outArr = normalizeIntensitiesNumba(inpArr, Result, hashArr)
+                np.savetxt(outFN2, outArr, header=headerThis, delimiter=' ', fmt='%.6f')
+            
+            # Copy necessary files
+            shutil.copy2(os.path.join(thisDir, 'paramstest.txt'), os.path.join(topdir, 'paramstest.txt'))
+            shutil.copy2(os.path.join(thisDir, 'hkls.csv'), os.path.join(topdir, 'hkls.csv'))
+            
+            logger.info(f'Normalization and writing done for layer {layerNr}. Time taken: {time.time() - t_st} seconds')
+            
+            return f"Successfully completed processing for layer {layerNr}"
+            
+        except Exception as e:
+            logger.error(f"Error in final processing for layer {layerNr}: {str(e)}")
+            logger.error(traceback.format_exc())
+            return f"Failed at final processing for layer {layerNr}: {str(e)}"
+            
+    except Exception as e:
+        logger.error(f"Exception in parallel_peaks for layer {layerNr}: {str(e)}")
+        logger.error(traceback.format_exc())
+        return f"Failed with exception for layer {layerNr}: {str(e)}"
+
+@python_app
+def peaks(resultDir, zipFN, numProcs, blockNr=0, numBlocks=1):
+    """
+    Run peak search on a specific block.
+    
+    Args:
+        resultDir: Directory for results
+        zipFN: Zip file name
+        numProcs: Number of processors to use
+        blockNr: Block number
+        numBlocks: Total number of blocks
+        
+    Returns:
+        Success status
+    """
     import subprocess
     import os
-    os.chdir(resultDir)
-    f = open(f'{resultDir}/output/mapping_out.csv','w')
-    f_err = open(f'{resultDir}/output/mapping_err.csv','w')
-    cmd_this = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning")+f" {num_scans}"
-    f_err.write(cmd_this+'\n')
+    import logging
+    
+    # Setup logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(f"MIDAS-Peaks-{blockNr}")
+    
+    # Setup environment
+    env = dict(os.environ)
+    midas_path = os.path.expanduser("~/.MIDAS")
+    lib_components = [
+        f'{midas_path}/BLOSC/lib64',
+        f'{midas_path}/FFTW/lib',
+        f'{midas_path}/HDF5/lib',
+        f'{midas_path}/LIBTIFF/lib',
+        f'{midas_path}/LIBZIP/lib64',
+        f'{midas_path}/NLOPT/lib',
+        f'{midas_path}/ZLIB/lib'
+    ]
+    env['LD_LIBRARY_PATH'] = ':'.join(lib_components)
+    
+    # Create output files
+    f_out_path = f'{resultDir}/output/peaksearch_out{blockNr}.csv'
+    f_err_path = f'{resultDir}/output/peaksearch_err{blockNr}.csv'
+    
+    try:
+        with open(f_out_path, 'w') as f, open(f_err_path, 'w') as f_err:
+            # Log initialization to error file to distinguish from real errors
+            f_err.write("I was able to do something.\n")
+            
+            # Build command
+            cmd_this = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPZarr')} {zipFN} {blockNr} {numBlocks} {numProcs} {resultDir}"
+            logger.info(f"Running PeaksFittingOMPZarr: {cmd_this}")
+            f_err.write(f"{cmd_this}\n")
+            
+            # Run command
+            subprocess.call(cmd_this, shell=True, env=env, stdout=f, stderr=f_err)
+            
+            # Verify completion
+            f_err.write(f"{cmd_this}\n")
+        
+        # Check for errors
+        with open(f_err_path, 'r') as f_err:
+            content = f_err.read()
+            if "Error" in content or "error" in content:
+                logger.error(f"Error in peaks for block {blockNr}: {content}")
+                return f"Failed for block {blockNr}"
+        
+        return f"Successfully completed peaks for block {blockNr}"
+        
+    except Exception as e:
+        logger.error(f"Exception in peaks for block {blockNr}: {str(e)}")
+        with open(f_err_path, 'a') as f_err:
+            f_err.write(f"Exception: {str(e)}\n")
+        return f"Failed with exception for block {blockNr}"
+
+@python_app
+def binData(resultDir, num_scans):
+    """
+    Bin data for scanning.
+    
+    Args:
+        resultDir: Directory for results
+        num_scans: Number of scans
+        
+    Returns:
+        Status message
+    """
+    import subprocess
+    import os
     import socket
-    f_err.write(socket.gethostname()+'\n')
-    subprocess.call(cmd_this,shell=True,stdout=f,stderr=f_err)
-    f_err.write(cmd_this+'\n')
-    f.close()
-    f_err.close()
-    return "Did binning"
+    import logging
+    
+    # Setup logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger("MIDAS-Binning")
+    
+    os.chdir(resultDir)
+    
+    # Create output files
+    f_out_path = f'{resultDir}/output/mapping_out.csv'
+    f_err_path = f'{resultDir}/output/mapping_err.csv'
+    
+    try:
+        with open(f_out_path, 'w') as f, open(f_err_path, 'w') as f_err:
+            # Build command
+            cmd_this = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning')} {num_scans}"
+            logger.info(f"Running SaveBinDataScanning: {cmd_this}")
+            f_err.write(f"{cmd_this}\n")
+            
+            # Log hostname for debugging
+            hostname = socket.gethostname()
+            f_err.write(f"{hostname}\n")
+            
+            # Run command
+            subprocess.call(cmd_this, shell=True, stdout=f, stderr=f_err)
+            
+            # Verify completion
+            f_err.write(f"{cmd_this}\n")
+        
+        # Check for errors
+        with open(f_err_path, 'r') as f_err:
+            content = f_err.read()
+            if "Error" in content or "error" in content:
+                logger.error(f"Error in binData: {content}")
+                return "Failed to bin data"
+        
+        return "Successfully binned data"
+        
+    except Exception as e:
+        logger.error(f"Exception in binData: {str(e)}")
+        with open(f_err_path, 'a') as f_err:
+            f_err.write(f"Exception: {str(e)}\n")
+        return f"Failed with exception: {str(e)}"
 
 @python_app
-def indexscanning(resultDir,numProcs,num_scans,blockNr=0,numBlocks=1):
+def indexscanning(resultDir, numProcs, num_scans, blockNr=0, numBlocks=1):
+    """
+    Run indexing for scanning.
+    
+    Args:
+        resultDir: Directory for results
+        numProcs: Number of processors to use
+        num_scans: Number of scans
+        blockNr: Block number
+        numBlocks: Total number of blocks
+        
+    Returns:
+        Status message
+    """
     import subprocess
     import os
+    import logging
+    
+    # Setup logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(f"MIDAS-Indexing-{blockNr}")
+    
     os.chdir(resultDir)
+    
+    # Setup environment
     env = dict(os.environ)
     midas_path = os.path.expanduser("~/.MIDAS")
-    env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
-    f = open(f'{resultDir}/output/indexing_out{blockNr}.csv','w')
-    f_err = open(f'{resultDir}/output/indexing_err{blockNr}.csv','w')
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP")+f' paramstest.txt {blockNr} {numBlocks} {num_scans} {numProcs}',shell=True,env=env,stdout=f,stderr=f_err)
-    f.close()
-    f_err.close()
+    lib_components = [
+        f'{midas_path}/BLOSC/lib64',
+        f'{midas_path}/FFTW/lib',
+        f'{midas_path}/HDF5/lib',
+        f'{midas_path}/LIBTIFF/lib',
+        f'{midas_path}/LIBZIP/lib64',
+        f'{midas_path}/NLOPT/lib',
+        f'{midas_path}/ZLIB/lib'
+    ]
+    env['LD_LIBRARY_PATH'] = ':'.join(lib_components)
+    
+    # Create output files
+    f_out_path = f'{resultDir}/output/indexing_out{blockNr}.csv'
+    f_err_path = f'{resultDir}/output/indexing_err{blockNr}.csv'
+    
+    try:
+        with open(f_out_path, 'w') as f, open(f_err_path, 'w') as f_err:
+            # Build command
+            cmd_this = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP')} paramstest.txt {blockNr} {numBlocks} {num_scans} {numProcs}"
+            logger.info(f"Running IndexerScanningOMP: {cmd_this}")
+            
+            # Run command
+            subprocess.call(cmd_this, shell=True, env=env, stdout=f, stderr=f_err)
+        
+        # Check for errors
+        with open(f_err_path, 'r') as f_err:
+            content = f_err.read()
+            if "Error" in content or "error" in content:
+                logger.error(f"Error in indexscanning for block {blockNr}: {content}")
+                return f"Failed for block {blockNr}"
+        
+        return f"Successfully completed indexing for block {blockNr}"
+        
+    except Exception as e:
+        logger.error(f"Exception in indexscanning for block {blockNr}: {str(e)}")
+        with open(f_err_path, 'a') as f_err:
+            f_err.write(f"Exception: {str(e)}\n")
+        return f"Failed with exception for block {blockNr}"
 
 @python_app
-def refinescanning(resultDir,numProcs,blockNr=0,numBlocks=1):
+def refinescanning(resultDir, numProcs, blockNr=0, numBlocks=1):
+    """
+    Run refinement for scanning.
+    
+    Args:
+        resultDir: Directory for results
+        numProcs: Number of processors to use
+        blockNr: Block number
+        numBlocks: Total number of blocks
+        
+    Returns:
+        Status message
+    """
     import subprocess
     import os
+    import logging
+    
+    # Setup logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(f"MIDAS-Refining-{blockNr}")
+    
     os.chdir(resultDir)
+    
+    # Setup environment
     env = dict(os.environ)
     midas_path = os.path.expanduser("~/.MIDAS")
-    env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
-    with open("SpotsToIndex.csv", "r") as f:
-        num_lines = len(f.readlines())
-    print(num_lines)
-    cmd = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/FitOrStrainsScanningOMP")+f' paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}'
-    print(cmd)
-    f = open(f'{resultDir}/output/refining_out{blockNr}.csv','w')
-    f_err = open(f'{resultDir}/output/refining_err{blockNr}.csv','w')
-    subprocess.call(cmd,shell=True,env=env,cwd=resultDir,stdout=f,stderr=f_err)
-    f.close()
-    f_err.close()
+    lib_components = [
+        f'{midas_path}/BLOSC/lib64',
+        f'{midas_path}/FFTW/lib',
+        f'{midas_path}/HDF5/lib',
+        f'{midas_path}/LIBTIFF/lib',
+        f'{midas_path}/LIBZIP/lib64',
+        f'{midas_path}/NLOPT/lib',
+        f'{midas_path}/ZLIB/lib'
+    ]
+    env['LD_LIBRARY_PATH'] = ':'.join(lib_components)
+    
+    # Create output files
+    f_out_path = f'{resultDir}/output/refining_out{blockNr}.csv'
+    f_err_path = f'{resultDir}/output/refining_err{blockNr}.csv'
+    
+    try:
+        # Count spots to index
+        with open("SpotsToIndex.csv", "r") as f:
+            num_lines = len(f.readlines())
+        
+        logger.info(f"Number of spots to refine: {num_lines}")
+        
+        # Build command
+        cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/FitOrStrainsScanningOMP')} paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}"
+        logger.info(f"Running refining command: {cmd}")
+        
+        with open(f_out_path, 'w') as f, open(f_err_path, 'w') as f_err:
+            # Run command
+            subprocess.call(cmd, shell=True, env=env, cwd=resultDir, stdout=f, stderr=f_err)
+        
+        # Check for errors
+        with open(f_err_path, 'r') as f_err:
+            content = f_err.read()
+            if "Error" in content or "error" in content:
+                logger.error(f"Error in refinescanning for block {blockNr}: {content}")
+                return f"Failed for block {blockNr}"
+        
+        return f"Successfully completed refinement for block {blockNr}"
+        
+    except Exception as e:
+        logger.error(f"Exception in refinescanning for block {blockNr}: {str(e)}")
+        with open(f_err_path, 'a') as f_err:
+            f_err.write(f"Exception: {str(e)}\n")
+        return f"Failed with exception for block {blockNr}"
 
 class MyParser(argparse.ArgumentParser):
-	def error(self, message):
-		sys.stderr.write('error: %s\n' % message)
-		self.print_help()
-		sys.exit(2)
+    """Custom argument parser that prints help on error."""
+    def error(self, message):
+        sys.stderr.write('error: %s\n' % message)
+        self.print_help()
+        sys.exit(2)
 
-startTime = time.time()
+def main():
+    """Main function to run the MIDAS processing workflow."""
+    startTime = time.time()
+    
+    # Parse command line arguments
+    parser = MyParser(description='''
+    PF_MIDAS, contact hsharma@anl.gov 
+    Provide positions.csv file (negative positions with respect to actual motor position, 
+                    motor position is normally position of the rotation axis, opposite to the voxel position).
+    Parameter file and positions.csv file must be in the same folder.
+    ''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    
+    parser.add_argument('-nCPUs', type=int, required=False, default=32, help='Number of CPUs to use')
+    parser.add_argument('-nCPUsLocal', type=int, required=False, default=4, help='Local Number of CPUs to use')
+    parser.add_argument('-paramFile', type=str, required=True, help='ParameterFileName: Do not use the full path.')
+    parser.add_argument('-nNodes', type=int, required=False, default=1, help='Number of Nodes')
+    parser.add_argument('-machineName', type=str, required=False, default='local', help='Machine Name: local,orthrosall,orthrosnew,umich')
+    parser.add_argument('-omegaFile', type=str, required=False, default='', help='If you want to override omegas')
+    parser.add_argument('-doPeakSearch', type=int, required=False, default=1, help='0 if PeakSearch is already done. InputAllExtra...0..n.csv should exist in the folder. -1 if you want to reprocess the peaksearch output, without doing peaksearch again.')
+    parser.add_argument('-oneSolPerVox', type=int, required=False, default=1, help='0 if want to allow multiple solutions per voxel. 1 if want to have only 1 solution per voxel.')
+    parser.add_argument('-resultDir', type=str, required=False, default='', help='Directory where you want to save the results. If omitted, the current directory will be used.')
+    parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='If low on RAM, it can process parts of the dataset at the time. -1 will disable.')
+    parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
+    parser.add_argument('-doTomo', type=int, required=False, default=1, help='If want to do tomography, put to 1. Only for OneSolPerVox.')
+    parser.add_argument('-normalizeIntensities', type=int, required=False, default=2, help='If want to do tomography and normalize intensities wrt grSize, put to 1, if want to take integrated intensity, put to 2, if want to take equivalent grain size, put to 0. Only for OneSolPerVox. Default is 2.')
+    parser.add_argument('-convertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
+    parser.add_argument('-runIndexing', type=int, required=False, default=1, help='If want to skip Indexing, put to 0.')
+    parser.add_argument('-startScanNr', type=int, required=False, default=1, help='If you want to do partial peaksearch. Default: 1')
+    parser.add_argument('-minThresh', type=int, required=False, default=-1, help='If you want to filter out peaks with intensity less than this number. -1 disables this. This is only used for filtering out peaksearch results for small peaks, peaks with maxInt smaller than this will be filtered out.')
+    
+    # Parse arguments
+    args, unparsed = parser.parse_known_args()
+    
+    # Extract arguments
+    baseNameParamFN = args.paramFile
+    machineName = args.machineName
+    omegaFile = args.omegaFile
+    doPeakSearch = args.doPeakSearch
+    oneSolPerVox = args.oneSolPerVox
+    numProcs = args.nCPUs
+    numProcsLocal = args.nCPUsLocal
+    nNodes = args.nNodes
+    topdir = args.resultDir
+    nchunks = args.numFrameChunks
+    preproc = args.preProcThresh
+    doTomo = args.doTomo
+    ConvertFiles = args.convertFiles
+    runIndexing = args.runIndexing
+    NormalizeIntensities = args.normalizeIntensities
+    startScanNr = args.startScanNr
+    minThresh = args.minThresh
+    
+    # Use current directory if no result directory specified
+    if not topdir:
+        topdir = os.getcwd()
+    
+    logger.info(f'Working directory: {topdir}')
+    logDir = os.path.join(topdir, 'output')
+    
+    # Create directories
+    os.makedirs(topdir, exist_ok=True)
+    os.makedirs(logDir, exist_ok=True)
+    
+    # Load appropriate machine configuration
+    from parsl.config import Config
+    from parsl.executors import ThreadPoolExecutor
+    
+    # Default configuration that works everywhere
+    default_config = Config(
+        executors=[ThreadPoolExecutor(max_threads=numProcsLocal)],
+        retries=2
+    )
+    
+    try:
+        if machineName == 'local':
+            nNodes = 1
+            try:
+                # Use import module instead of import *
+                import localConfig
+                parsl.load(config=localConfig.localConfig)
+                logger.info("Loaded local configuration")
+            except ImportError:
+                logger.warning("Could not import localConfig, using default configuration")
+                parsl.load(config=default_config)
+        elif machineName == 'orthrosnew':
+            os.environ['MIDAS_SCRIPT_DIR'] = logDir
+            nNodes = 11
+            numProcs = 32
+            try:
+                # Use import module instead of import *
+                import orthrosAllConfig
+                parsl.load(config=orthrosAllConfig.orthrosNewConfig)
+                logger.info("Loaded orthrosnew configuration")
+            except ImportError:
+                logger.error("Could not import orthrosAllConfig for orthrosnew machine")
+                logger.error("Using default configuration instead")
+                parsl.load(config=default_config)
+        elif machineName == 'orthrosall':
+            os.environ['MIDAS_SCRIPT_DIR'] = logDir
+            nNodes = 5
+            numProcs = 64
+            try:
+                # Use import module instead of import *
+                import orthrosAllConfig
+                parsl.load(config=orthrosAllConfig.orthrosAllConfig)
+                logger.info("Loaded orthrosall configuration")
+            except ImportError:
+                logger.error("Could not import orthrosAllConfig for orthrosall machine")
+                logger.error("Using default configuration instead")
+                parsl.load(config=default_config)
+        elif machineName == 'umich':
+            os.environ['MIDAS_SCRIPT_DIR'] = logDir
+            os.environ['nNodes'] = str(nNodes)
+            numProcs = 36
+            try:
+                # Use import module instead of import *
+                import uMichConfig
+                parsl.load(config=uMichConfig.uMichConfig)
+                logger.info("Loaded umich configuration")
+            except ImportError:
+                logger.error("Could not import uMichConfig")
+                logger.error("Using default configuration instead")
+                parsl.load(config=default_config)
+        elif machineName == 'marquette':
+            os.environ['MIDAS_SCRIPT_DIR'] = logDir
+            os.environ['nNodes'] = str(nNodes)
+            try:
+                # Use import module instead of import *
+                import marquetteConfig
+                parsl.load(config=marquetteConfig.marquetteConfig)
+                logger.info("Loaded marquette configuration")
+            except ImportError:
+                logger.error("Could not import marquetteConfig")
+                logger.error("Using default configuration instead")
+                parsl.load(config=default_config)
+        else:
+            logger.warning(f"Unknown machine name '{machineName}', using default configuration")
+            nNodes = 1
+            parsl.load(config=default_config)
+    except Exception as e:
+        logger.error(f"Error loading Parsl configuration: {str(e)}")
+        logger.error("Falling back to default configuration")
+        nNodes = 1
+        parsl.load(config=default_config)
+    
+    # Process parameter file
+    try:
+        # Read parameter file
+        with open(baseNameParamFN, 'r') as f:
+            paramContents = f.readlines()
+        
+        # Initialize variables
+        RingNrs = []
+        nMerges = 0
+        micFN = ''
+        maxang = 1
+        tol_ome = 1
+        tol_eta = 1
+        omegaFN = ''
+        omegaFF = -1
+        
+        # Parse parameters
+        for line in paramContents:
+            if line.startswith('StartFileNrFirstLayer'):
+                startNrFirstLayer = int(line.split()[1])
+            elif line.startswith('MaxAng'):
+                maxang = float(line.split()[1])
+            elif line.startswith('TolEta'):
+                tol_eta = float(line.split()[1])
+            elif line.startswith('TolOme'):
+                tol_ome = float(line.split()[1])
+            elif line.startswith('NrFilesPerSweep'):
+                nrFilesPerSweep = int(line.split()[1])
+            elif line.startswith('MicFile'):
+                micFN = line.split()[1]
+            elif line.startswith('FileStem'):
+                fStem = line.split()[1]
+            elif line.startswith('Ext'):
+                Ext = line.split()[1]
+            elif line.startswith('StartNr'):
+                startNr = int(line.split()[1])
+            elif line.startswith('EndNr'):
+                endNr = int(line.split()[1])
+            elif line.startswith('SpaceGroup'):
+                sgnum = int(line.split()[1])
+            elif line.startswith('nStepsToMerge'):
+                nMerges = int(line.split()[1])
+            elif line.startswith('nScans'):
+                nScans = int(line.split()[1])
+            elif line.startswith('Lsd'):
+                Lsd = float(line.split()[1])
+            elif line.startswith('OverAllRingToIndex'):
+                RingToIndex = int(line.split()[1])
+            elif line.startswith('BeamSize'):
+                BeamSize = float(line.split()[1])
+            elif line.startswith('OmegaStep'):
+                omegaStep = float(line.split()[1])
+            elif line.startswith('OmegaFirstFile'):
+                omegaFF = float(line.split()[1])
+            elif line.startswith('px'):
+                px = float(line.split()[1])
+            elif line.startswith('RingThresh'):
+                RingNrs.append(int(line.split()[1]))
+        
+        # Call GetHKLList to generate hkls.csv
+        cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/GetHKLList')} {baseNameParamFN}"
+        logger.info(f"Running GetHKLList: {cmd}")
+        subprocess.call(cmd, shell=True)
+        
+        # Check for hkls.csv
+        if not os.path.exists('hkls.csv'):
+            logger.error("Failed to generate hkls.csv")
+            sys.exit(1)
+        
+        # Process HKL list
+        hkls = np.genfromtxt('hkls.csv', skip_header=1)
+        _, idx = np.unique(hkls[:, 4], return_index=True)
+        hkls = hkls[idx, :]
+        rads = [hkl[-1] for rnr in RingNrs for hkl in hkls if hkl[4] == rnr]
+        
+        logger.info(f"Ring numbers: {RingNrs}")
+        logger.info(f"Ring radii: {rads}")
+        
+        # normalizeIntensitiesNumba is already defined at module level, no need to redefine it here
+        
+        # Handle merges
+        if nMerges != 0:
+            os.chdir(topdir)
+            if os.path.exists('original_positions.csv'):
+                shutil.move('original_positions.csv', 'positions.csv')
+        
+        # Read positions
+        with open(os.path.join(topdir, 'positions.csv'), 'r') as f:
+            positions = f.readlines()
+        
+        # Read omega values if provided
+        omegaValues = []
+        if omegaFile:
+            omegaValues = np.genfromtxt(omegaFile)
+        
+        # Run peak search if requested
+        if doPeakSearch == 1 or doPeakSearch == -1:
+            logger.info(f"Starting peak search for {nScans} scans starting from {startScanNr}")
+            
+            # Use parsl to run in parallel
+            res = []
+            for layerNr in range(startScanNr, nScans + 1):
+                res.append(parallel_peaks(
+                    layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdir,
+                    paramContents, baseNameParamFN, ConvertFiles, nchunks, preproc,
+                    env, doPeakSearch, numProcs, startNr, endNr, Lsd, NormalizeIntensities,
+                    omegaValues, minThresh, fStem, omegaFF, Ext
+                ))
+            
+            # Wait for all tasks to complete
+            outputs = [i.result() for i in res]
+            
+            # Check for errors in outputs
+            for i, output in enumerate(outputs):
+                if output and "Failed" in output:
+                    logger.error(f"Error in peak search for layer {startScanNr + i}: {output}")
+                    
+                    # Check error files for this layer
+                    layerNr = startScanNr + i
+                    thisStartNr = startNrFirstLayer + (layerNr - 1) * nrFilesPerSweep
+                    folderName = str(thisStartNr)
+                    thisDir = os.path.join(topdir, folderName)
+                    err_file = os.path.join(thisDir, 'output', 'processing_err0.csv')
+                    
+                    if os.path.exists(err_file):
+                        with open(err_file, 'r') as f:
+                            logger.error(f"Error file content: {f.read()}")
+                    
+                    sys.exit(1)
+            
+            logger.info(f'Peak search completed on {nNodes} nodes.')
+        else:
+            if nMerges != 0:
+                for layerNr in range(0, nMerges * (nScans // nMerges)):
+                    if os.path.exists(f'original_InputAllExtraInfoFittingAll{layerNr}.csv'):
+                        shutil.move(
+                            f'original_InputAllExtraInfoFittingAll{layerNr}.csv',
+                            f'InputAllExtraInfoFittingAll{layerNr}.csv'
+                        )
+        
+        # Handle merges
+        if nMerges != 0:
+            logger.info(f"Merging {nMerges} scans")
+            
+            os.chdir(topdir)
+            shutil.move('positions.csv', 'original_positions.csv')
+            
+            for layerNr in range(0, nMerges * (nScans // nMerges)):
+                if os.path.exists(f'InputAllExtraInfoFittingAll{layerNr}.csv'):
+                    shutil.move(
+                        f'InputAllExtraInfoFittingAll{layerNr}.csv',
+                        f'original_InputAllExtraInfoFittingAll{layerNr}.csv'
+                    )
+            
+            # Run merge command
+            merge_cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/mergeScansScanning')} {nMerges*(nScans//nMerges)} {nMerges} {2*px} {2*omegaStep} {numProcsLocal}"
+            logger.info(f"Running merge: {merge_cmd}")
+            subprocess.call(merge_cmd, shell=True)
+            
+            # Read new positions after merge
+            with open(os.path.join(topdir, 'positions.csv'), 'r') as f:
+                positions = f.readlines()
+                
+            nScans = int(floor(nScans / nMerges))
+            BeamSize *= nMerges
+        
+        # Prepare for indexing and refinement
+        os.chdir(topdir)
+        Path(os.path.join(topdir, 'Output')).mkdir(parents=True, exist_ok=True)
+        Path(os.path.join(topdir, 'Results')).mkdir(parents=True, exist_ok=True)
+        
+        # Update parameters file
+        with open('paramstest.txt', 'r') as paramsf:
+            lines = paramsf.readlines()
+            
+        with open('paramstest.txt', 'w') as paramsf:
+            for line in lines:
+                if any(line.startswith(x) for x in ['RingNumbers', 'MarginRadius', 'RingRadii', 'RingToIndex', 'BeamSize', 'px']):
+                    continue
+                if line.startswith('MicFile') and not micFN:
+                    continue
+                if line.startswith('OutputFolder'):
+                    paramsf.write(f'OutputFolder {topdir}/Output\n')
+                elif line.startswith('ResultFolder'):
+                    paramsf.write(f'ResultFolder {topdir}/Results\n')
+                else:
+                    paramsf.write(line)
+            
+            # Add ring numbers and radii
+            for idx in range(len(RingNrs)):
+                paramsf.write(f'RingNumbers {RingNrs[idx]}\n')
+                paramsf.write(f'RingRadii {rads[idx]}\n')
+                
+            paramsf.write(f'BeamSize {BeamSize}\n')
+            paramsf.write('MarginRadius 10000000;\n')
+            paramsf.write(f'px {px}\n')
+            paramsf.write(f'RingToIndex {RingToIndex}\n')
+            
+            if micFN:
+                paramsf.write(f'MicFile {micFN}\n')
+        
+        # Run indexing if requested
+        if runIndexing == 1:
+            logger.info("Starting data binning")
+            bin_result = binData(topdir, nScans).result()
+            logger.info(f"Binning result: {bin_result}")
+            
+            # Check for errors in binning
+            bin_err_file = os.path.join(topdir, 'output', 'mapping_err.csv')
+            if check_error_file(bin_err_file):
+                logger.error("Error in data binning")
+                with open(bin_err_file, 'r') as f:
+                    logger.error(f.read())
+                sys.exit(1)
+            
+            logger.info("Data binning finished. Running indexing.")
+            
+            # Run indexing in parallel
+            resIndex = []
+            for nodeNr in range(nNodes):
+                resIndex.append(indexscanning(topdir, numProcs, nScans, blockNr=nodeNr, numBlocks=nNodes))
+                
+            # Wait for all indexing tasks to complete
+            outputIndex = [i.result() for i in resIndex]
+            
+            # Check for errors in indexing
+            for i, output in enumerate(outputIndex):
+                if "Failed" in output:
+                    logger.error(f"Error in indexing for node {i}: {output}")
+                    
+                    # Check error file
+                    err_file = os.path.join(topdir, 'output', f'indexing_err{i}.csv')
+                    if os.path.exists(err_file):
+                        with open(err_file, 'r') as f:
+                            logger.error(f"Error file content: {f.read()}")
+                    
+                    sys.exit(1)
+        
+        # Handle single solution per voxel
+        if oneSolPerVox == 1:
+            # Prepare for tomography if requested
+            if doTomo == 1:
+                # Remove existing sinos
+                for pattern in ["sinos_*.bin", "omegas_*.bin", "nrHKLs_*.bin"]:
+                    sinoFNs = glob.glob(pattern)
+                    for sinoF in sinoFNs:
+                        os.remove(sinoF)
+                
+                # Remove existing directories
+                for dirn in ['Sinos', 'Recons', 'Thetas']:
+                    if os.path.isdir(dirn):
+                        shutil.rmtree(dirn)
+                
+                # Move result directories if they exist
+                for dirn in ['fullResults', 'fullOutput']:
+                    if os.path.isdir(dirn):
+                        if os.path.isdir(dirn[4:]):
+                            shutil.rmtree(dirn[4:])
+                        shutil.move(dirn, dirn[4:])
+            
+            # Run find single solution
+            cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}"
+            logger.info(f"Running findSingleSolutionPF: {cmd}")
+            result = subprocess.call(cmd, cwd=topdir, shell=True)
+            
+            if result != 0:
+                logger.error("Error in findSingleSolutionPF")
+                sys.exit(1)
+                
+            os.makedirs('Recons', exist_ok=True)
+            
+            # Run tomography if requested
+            if doTomo == 1:
+                # Find sino file
+                sinoFNs = glob.glob("sinos_*.bin")
+                if not sinoFNs:
+                    logger.error("No sino files found")
+                    sys.exit(1)
+                    
+                sinoFN = sinoFNs[0]
+                nGrs = int(sinoFN.split('_')[1])
+                maxNHKLs = int(sinoFN.split('_')[2])
+                
+                # Read sino data
+                try:
+                    Sinos = np.fromfile(sinoFN, dtype=np.double, count=nGrs*maxNHKLs*nScans).reshape((nGrs, maxNHKLs, nScans))
+                    omegas = np.fromfile(f"omegas_{nGrs}_{maxNHKLs}.bin", dtype=np.double, count=nGrs*maxNHKLs).reshape((nGrs, maxNHKLs))
+                    grainSpots = np.fromfile(f"nrHKLs_{nGrs}.bin", dtype=np.int32, count=nGrs)
+                except Exception as e:
+                    logger.error(f"Error reading sino data: {str(e)}")
+                    sys.exit(1)
+                
+                # Create directories
+                os.makedirs('Sinos', exist_ok=True)
+                os.makedirs('Thetas', exist_ok=True)
+                
+                # Reconstruct tomography
+                logger.info(f"Reconstructing tomography for {nGrs} grains")
+                all_recons = np.zeros((nGrs, nScans, nScans))
+                im_list = []
+                
+                for grNr in range(nGrs):
+                    nSp = grainSpots[grNr]
+                    thetas = omegas[grNr, :nSp]
+                    sino = np.transpose(Sinos[grNr, :nSp, :])
+                    
+                    # Save sino and thetas
+                    Image.fromarray(sino).save(f'Sinos/sino_grNr_{str.zfill(str(grNr), 4)}.tif')
+                    np.savetxt(f'Thetas/thetas_grNr_{str.zfill(str(grNr), 4)}.txt', thetas, fmt='%.6f')
+                    
+                    # Reconstruct
+                    recon = iradon(sino, theta=thetas)
+                    all_recons[grNr, :, :] = recon
+                    im_list.append(Image.fromarray(recon))
+                    Image.fromarray(recon).save(f'Recons/recon_grNr_{str.zfill(str(grNr), 4)}.tif')
+                
+                # Create full reconstruction
+                full_recon = np.max(all_recons, axis=0)
+                logger.info("Finding orientation candidate at each location")
+                
+                max_id = np.argmax(all_recons, axis=0).astype(np.int32)
+                max_id[full_recon == 0] = -1
+                
+                # Save max projection
+                Image.fromarray(max_id).save('Recons/Full_recon_max_project_grID.tif')
+                Image.fromarray(full_recon).save('Recons/Full_recon_max_project.tif')
+                im_list[0].save('Recons/all_recons_together.tif', compression="tiff_deflate", save_all=True, append_images=im_list[1:])
+                
+                # Process unique orientations
+                uniqueOrientations = np.genfromtxt(f'{topdir}/UniqueOrientations.csv', delimiter=' ')
+                
+                # Create spots to index file
+                with open(f'{topdir}/SpotsToIndex.csv', 'w') as fSp:
+                    for voxNr in range(nScans * nScans):
+                        locX = voxNr % nScans - 1
+                        locY = nScans - (voxNr // nScans + 1)
+                        
+                        if max_id[locY, locX] == -1:
+                            continue
+                            
+                        orientThis = uniqueOrientations[max_id[locY, locX], 5:]
+                        
+                        unique_index_path = f'{topdir}/Output/UniqueIndexKeyOrientAll_voxNr_{str(voxNr).zfill(6)}.txt'
+                        if os.path.isfile(unique_index_path):
+                            with open(unique_index_path, 'r') as f:
+                                lines = f.readlines()
+                                
+                            for line in lines:
+                                orientInside = [float(val) for val in line.split()[4:]]
+                                ang = rad2deg * GetMisOrientationAngleOM(orientThis, orientInside, sgnum)[0]
+                                
+                                if ang < maxang:
+                                    lineSplit = line.split()
+                                    outStr = f'{voxNr} {lineSplit[0]} {lineSplit[1]} {lineSplit[2]} {lineSplit[3]}\n'
+                                    fSp.write(outStr)
+                                    break
+                
+                # Create mic file if needed
+                if not micFN:
+                    logger.info("Creating dummy mic file for second indexing pass")
+                    
+                    fnSp = f'{topdir}/SpotsToIndex.csv'
+                    if not os.path.exists(fnSp):
+                        logger.error(f"SpotsToIndex.csv not found at {fnSp}")
+                        sys.exit(1)
+                        
+                    spotsToIndex = np.genfromtxt(fnSp, delimiter=' ')
+                    micFN = 'singleSolution.mic'
+                    
+                    with open(micFN, 'w') as micF:
+                        micF.write("header\nheader\nheader\nheader\n")
+                        
+                        for spot in spotsToIndex:
+                            voxNr = int(spot[0])
+                            loc = int(spot[3])
+                            
+                            index_file = f'{topdir}/Output/IndexBest_voxNr_{str(voxNr).zfill(6)}.bin'
+                            if not os.path.exists(index_file):
+                                logger.warning(f"Index file not found: {index_file}")
+                                continue
+                                
+                            data = np.fromfile(index_file, dtype=np.double, count=16, offset=loc)
+                            xThis = data[11]
+                            yThis = data[12]
+                            omThis = data[2:11]
+                            Euler = OrientMat2Euler(omThis)
+                            
+                            micF.write(f"0.0 0.0 0.0 {xThis:.6f} {yThis:.6f} 0.0 0.0 {Euler[0]:.6f} {Euler[1]:.6f} {Euler[2]:.6f} {omThis[0]:.6f} {omThis[1]:.6f} {omThis[2]:.6f} {omThis[3]:.6f} {omThis[4]:.6f} {omThis[5]:.6f} {omThis[6]:.6f} {omThis[7]:.6f} {omThis[8]:.6f}\n")
+                    
+                    # Update params file
+                    with open(f'{topdir}/paramstest.txt', 'a') as paramsf:
+                        paramsf.write(f'MicFile {topdir}/singleSolution.mic\n')
+                    
+                    # Move output directories
+                    shutil.move(f'{topdir}/Output', f'{topdir}/fullOutput')
+                    shutil.move(f'{topdir}/Results', f'{topdir}/fullResults')
+                    
+                    # Create new directories
+                    Path(f'{topdir}/Output').mkdir(parents=True, exist_ok=True)
+                    Path(f'{topdir}/Results').mkdir(parents=True, exist_ok=True)
+                    
+                    # Run indexing again
+                    logger.info("Running indexing again with mic file")
+                    
+                    resIndex = []
+                    for nodeNr in range(nNodes):
+                        resIndex.append(indexscanning(topdir, numProcs, nScans, blockNr=nodeNr, numBlocks=nNodes))
+                        
+                    outputIndex = [i.result() for i in resIndex]
+                    
+                    # Check for errors
+                    for i, output in enumerate(outputIndex):
+                        if output and "Failed" in output:
+                            logger.error(f"Error in second indexing for node {i}: {output}")
+                            sys.exit(1)
+                    
+                    # Run find single solution again
+                    cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}"
+                    logger.info(f"Running findSingleSolutionPF again: {cmd}")
+                    subprocess.call(cmd, cwd=topdir, shell=True)
+                    
+                    # Create spots to index file
+                    with open(f'{topdir}/SpotsToIndex.csv', 'w') as f:
+                        idData = np.fromfile(f'{topdir}/Output/UniqueIndexSingleKey.bin', dtype=np.uintp, count=nScans*nScans*5).reshape((-1, 5))
+                        
+                        for voxNr in range(nScans * nScans):
+                            if idData[voxNr, 1] != 0:
+                                f.write(f"{idData[voxNr, 0]} {idData[voxNr, 1]} {idData[voxNr, 2]} {idData[voxNr, 3]} {idData[voxNr, 4]}\n")
+            else:
+                # Create spots to index file for non-tomo case
+                with open(f'{topdir}/SpotsToIndex.csv', 'w') as f:
+                    idData = np.fromfile(f'{topdir}/Output/UniqueIndexSingleKey.bin', dtype=np.uintp, count=nScans*nScans*5).reshape((-1, 5))
+                    
+                    for voxNr in range(nScans * nScans):
+                        if idData[voxNr, 1] != 0:
+                            f.write(f"{idData[voxNr, 0]} {idData[voxNr, 1]} {idData[voxNr, 2]} {idData[voxNr, 3]} {idData[voxNr, 4]}\n")
+            
+            # Run refinement
+            logger.info("Running refinement")
+            os.makedirs('Results', exist_ok=True)
+            
+            resRefine = []
+            for nodeNr in range(nNodes):
+                resRefine.append(refinescanning(topdir, numProcs, blockNr=nodeNr, numBlocks=nNodes))
+                
+            outputRefine = [i.result() for i in resRefine]
+            
+            # Check for errors in refinement
+            for i, output in enumerate(outputRefine):
+                if output and "Failed" in output:
+                    logger.error(f"Error in refinement for node {i}: {output}")
+                    
+                    # Check error file
+                    err_file = os.path.join(topdir, 'output', f'refining_err{i}.csv')
+                    if os.path.exists(err_file):
+                        with open(err_file, 'r') as f:
+                            logger.error(f"Error file content: {f.read()}")
+                    
+                    sys.exit(1)
+            
+            # Filter final output
+            logger.info(f"Filtering final output. Will be saved to {topdir}/Recons/microstrFull.csv and {topdir}/Recons/microstructure.hdf")
+            
+            # Get symmetries
+            NrSym, Sym = MakeSymmetries(sgnum)
+            
+            # Process result files
+            files2 = glob.glob(f'{topdir}/Results/*.csv')
+            filesdata = np.zeros((len(files2), 43))
+            i = 0
+            info_arr = np.zeros((23, nScans * nScans))
+            info_arr[:, :] = np.nan
+            
+            for fileN in files2:
+                with open(fileN) as f:
+                    voxNr = int(fileN.split('.')[-2].split('_')[-2])
+                    _ = f.readline()
+                    line = f.readline()
+                    
+                    if not line:
+                        logger.warning(f"Empty result file: {fileN}")
+                        continue
+                        
+                    data = line.split()
+                    
+                    for j in range(len(data)):
+                        filesdata[i][j] = float(data[j])
+                    
+                    if isnan(filesdata[i][26]):
+                        continue
+                        
+                    if filesdata[i][26] < 0 or filesdata[i][26] > 1.0000000001:
+                        continue
+                        
+                    OM = filesdata[i][1:10]
+                    quat = BringDownToFundamentalRegionSym(OrientMat2Quat(OM), NrSym, Sym)
+                    filesdata[i][39:43] = quat
+                    
+                    # Store in info array
+                    info_arr[:, voxNr] = filesdata[i][[0, -4, -3, -2, -1, 11, 12, 15, 16, 17, 18, 19, 20, 22, 23, 24, 26, 27, 28, 29, 31, 32, 35]]
+                    
+                    i += 1
+            
+            # Create header for output
+            head = 'SpotID,O11,O12,O13,O21,O22,O23,O31,O32,O33,SpotID,x,y,z,SpotID,a,b,c,alpha,beta,gamma,SpotID,PosErr,OmeErr,InternalAngle,'
+            head += 'Radius,Completeness,E11,E12,E13,E21,E22,E23,E31,E32,E33,Eul1,Eul2,Eul3,Quat1,Quat2,Quat3,Quat4'
+            
+            # Save output files
+            np.savetxt(f'{topdir}/Recons/microstrFull.csv', filesdata, fmt='%.6f', delimiter=',', header=head)
+            
+            # Create HDF file
+            with h5py.File(f'{topdir}/Recons/microstructure.hdf', 'w') as f:
+                micstr = f.create_dataset(name='microstr', dtype=np.double, data=filesdata)
+                micstr.attrs['Header'] = np.bytes_(head)
+                
+                # Process image data
+                info_arr = info_arr.reshape((23, nScans, nScans))
+                info_arr = np.flip(info_arr, axis=(1, 2))
+                info_arr = info_arr.transpose(0, 2, 1)
+                
+                imgs = f.create_dataset(name='images', dtype=np.double, data=info_arr)
+                imgs.attrs['Header'] = np.bytes_('ID,Quat1,Quat2,Quat3,Quat4,x,y,a,b,c,alpha,beta,gamma,posErr,omeErr,InternalAngle,Completeness,E11,E12,E13,E22,E23,E33')
+        else:
+            # Multiple solutions per voxel
+            cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findMultipleSolutionsPF')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal}"
+            logger.info(f"Running findMultipleSolutionsPF: {cmd}")
+            subprocess.call(cmd, shell=True, cwd=topdir)
+            
+            logger.info("Running refinement for all solutions found")
+            
+            # Run refinement
+            resRefine = []
+            for nodeNr in range(nNodes):
+                resRefine.append(refinescanning(topdir, numProcs, blockNr=nodeNr, numBlocks=nNodes))
+                
+            outputRefine = [inter.result() for inter in resRefine]
+            
+            # Check for errors
+            for i, output in enumerate(outputRefine):
+                if output and "Failed" in output:
+                    logger.error(f"Error in refinement for node {i}: {output}")
+                    sys.exit(1)
+            
+            # Process results
+            NrSym, Sym = MakeSymmetries(sgnum)
+            files2 = glob.glob(f'{topdir}/Results/*.csv')
+            filesdata = np.zeros((len(files2), 43))
+            i = 0
+            
+            for fileN in files2:
+                with open(fileN) as f:
+                    str1 = f.readline()
+                    line = f.readline()
+                    
+                    if not line:
+                        logger.warning(f"Empty result file: {fileN}")
+                        continue
+                        
+                    data = line.split()
+                    
+                    for j in range(len(data)):
+                        filesdata[i][j] = float(data[j])
+                        
+                    OM = filesdata[i][1:10]
+                    quat = BringDownToFundamentalRegionSym(OrientMat2Quat(OM), NrSym, Sym)
+                    filesdata[i][39:43] = quat
+                    
+                    i += 1
+            
+            # Create header and save
+            head = 'SpotID,O11,O12,O13,O21,O22,O23,O31,O32,O33,SpotID,x,y,z,SpotID,a,b,c,alpha,beta,gamma,SpotID,PosErr,OmeErr,InternalAngle,Radius,Completeness,'
+            head += 'E11,E12,E13,E21,E22,E23,E31,E32,E33,Eul1,Eul2,Eul3,Quat1,Quat2,Quat3,Quat4'
+            
+            np.savetxt('microstrFull.csv', filesdata, fmt='%.6f', delimiter=',', header=head)
+        
+        logger.info(f"All processing completed successfully. Time elapsed: {time.time() - startTime:.2f} seconds.")
+        
+    except Exception as e:
+        logger.error(f"Unhandled exception in main: {str(e)}")
+        logger.error(traceback.format_exc())
+        sys.exit(1)
 
-warnings.filterwarnings('ignore')
-parser = MyParser(description='''
-PF_MIDAS, contact hsharma@anl.gov 
-Provide positions.csv file (negative positions with respect to actual motor position, 
-				motor position is normally position of the rotation axis, opposite to the voxel position).
-Parameter file and positions.csv file must be in the same folder.
-''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('-nCPUs', type=int, required=False, default=32, help='Number of CPUs to use')
-parser.add_argument('-nCPUsLocal', type=int, required=False, default=4, help='Local Number of CPUs to use')
-parser.add_argument('-paramFile', type=str, required=True, help='ParameterFileName: Do not use the full path.')
-parser.add_argument('-nNodes', type=int, required=False, default=1, help='Number of Nodes')
-parser.add_argument('-machineName', type=str, required=False, default='local', help='Machine Name: local,orthrosall,orthrosnew,umich')
-parser.add_argument('-omegaFile', type=str, required=False, default='', help='If you want to override omegas')
-parser.add_argument('-doPeakSearch',type=int,required=False, default=1,help='0 if PeakSearch is already done. InputAllExtra...0..n.csv should exist in the folder. -1 if you want to reprocess the peaksearch output, without doing peaksearch again.')
-parser.add_argument('-oneSolPerVox',type=int,required=False,default=1,help='0 if want to allow multiple solutions per voxel. 1 if want to have only 1 solution per voxel.')
-parser.add_argument('-resultDir',type=str,required=False,default='',help='Directory where you want to save the results. If ommitted, the current directory will be used.')
-parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='If low on RAM, it can process parts of the dataset at the time. -1 will disable.')
-parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
-parser.add_argument('-doTomo', type=int, required=False, default=1, help='If want to do tomography, put to 1. Only for OneSolPerVox.')
-parser.add_argument('-normalizeIntensities', type=int, required=False, default=2, help='If want to do tomography and normalize intensities wrt grSize, put to 1, if want to take integrated intensity, put to 2, if want to take equivalent grain size, put to 0. Only for OneSolPerVox. Default is 2.')
-parser.add_argument('-convertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
-parser.add_argument('-runIndexing', type=int, required=False, default=1, help='If want to skip Indexing, put to 0.')
-parser.add_argument('-startScanNr', type=int, required=False, default=1, help='If you want to do partial peaksearch. Default: 1')
-parser.add_argument('-minThresh', type=int, required=False, default=-1, help='If you want to filter out peaks with intensity less than this number. -1 disables this. This is only used for filtering out peaksearch results for small peaks, peaks with maxInt smaller than this will be filtered out.')
-args, unparsed = parser.parse_known_args()
-baseNameParamFN = args.paramFile
-machineName = args.machineName
-omegaFile = args.omegaFile
-doPeakSearch = args.doPeakSearch
-oneSolPerVox = args.oneSolPerVox
-numProcs = args.nCPUs
-numProcsLocal = args.nCPUsLocal
-nNodes = args.nNodes
-topdir = args.resultDir
-nchunks = args.numFrameChunks
-preproc = args.preProcThresh
-doTomo = args.doTomo
-ConvertFiles = args.convertFiles
-runIndexing = args.runIndexing
-NormalizeIntensities = args.normalizeIntensities
-startScanNr = args.startScanNr
-minThresh = args.minThresh
-
-if len(topdir) == 0:
-	topdir = os.getcwd()
-
-print(f'Folder is {topdir}')
-logDir = topdir + '/output'
-
-os.makedirs(topdir,exist_ok=True)
-os.makedirs(logDir,exist_ok=True)
-
-if machineName == 'local':
-	nNodes = 1
-	from localConfig import *
-	parsl.load(config=localConfig)
-elif machineName == 'orthrosnew':
-	os.environ['MIDAS_SCRIPT_DIR'] = logDir
-	nNodes = 11
-	numProcs = 32
-	from orthrosAllConfig import *
-	parsl.load(config=orthrosNewConfig)
-elif machineName == 'orthrosall':
-	os.environ['MIDAS_SCRIPT_DIR'] = logDir
-	nNodes = 5
-	numProcs = 64
-	from orthrosAllConfig import *
-	parsl.load(config=orthrosAllConfig)
-elif machineName == 'umich':
-	os.environ['MIDAS_SCRIPT_DIR'] = logDir
-	os.environ['nNodes'] = str(nNodes)
-	numProcs = 36
-	from uMichConfig import *
-	parsl.load(config=uMichConfig)
-elif machineName == 'marquette':
-	os.environ['MIDAS_SCRIPT_DIR'] = logDir
-	os.environ['nNodes'] = str(nNodes)
-	from marquetteConfig import *
-	parsl.load(config=marquetteConfig)
-
-paramContents = open(baseNameParamFN).readlines()
-RingNrs = []
-nMerges = 0
-micFN = ''
-maxang = 1
-tol_ome = 1
-tol_eta = 1
-omegaFN = ''
-omegaFF = -1
-for line in paramContents:
-	if line.startswith('StartFileNrFirstLayer'):
-		startNrFirstLayer = int(line.split()[1])
-	if line.startswith('MaxAng'):
-		maxang = float(line.split()[1])
-	if line.startswith('TolEta'):
-		tol_eta = float(line.split()[1])
-	if line.startswith('TolOme'):
-		tol_ome = float(line.split()[1])
-	if line.startswith('NrFilesPerSweep'):
-		nrFilesPerSweep = int(line.split()[1])
-	if line.startswith('MicFile'):
-		micFN = line.split()[1]
-	if line.startswith('FileStem'):
-		fStem = line.split()[1]
-	if line.startswith('Ext'):
-		Ext = line.split()[1]
-	if line.startswith('StartNr'):
-		startNr = int(line.split()[1])
-	if line.startswith('EndNr'):
-		endNr = int(line.split()[1])
-	if line.startswith('SpaceGroup'):
-		sgnum = int(line.split()[1])
-	if line.startswith('nStepsToMerge'):
-		nMerges = int(line.split()[1])
-	if line.startswith('nScans'):
-		nScans = int(line.split()[1])
-	if line.startswith('Lsd'):
-		Lsd = float(line.split()[1])
-	if line.startswith('OverAllRingToIndex'):
-		RingToIndex = int(line.split()[1])
-	if line.startswith('BeamSize'):
-		BeamSize = float(line.split()[1])
-	if line.startswith('OmegaStep'):
-		omegaStep = float(line.split()[1])
-	if line.startswith('OmegaFirstFile'):
-		omegaFF = float(line.split()[1])
-	if line.startswith('px'):
-		px = float(line.split()[1])
-	if line.startswith('RingThresh'):
-		RingNrs.append(int(line.split()[1]))
-
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+' ' + baseNameParamFN,shell=True)
-hkls = np.genfromtxt('hkls.csv',skip_header=1)
-_,idx = np.unique(hkls[:,4],return_index=True)
-hkls = hkls[idx,:]
-rads = [hkl[-1] for rnr in RingNrs for hkl in hkls if hkl[4] == rnr]
-print(RingNrs)
-print(rads)
-
-@jit(nopython=True)
-def normalizeIntensitiesNumba(input,radius,hashArr):
-	nrSps = input.shape[0]
-	for i in range(nrSps):
-		if input[i,3] > 0.001:
-			input[i,3] = radius[int(hashArr[i,1])-1,1]
-	return input
-
-if nMerges!=0:
-	os.chdir(topdir)
-	if os.path.exists('original_positions.csv'):
-		shutil.move('original_positions.csv','positions.csv')
-positions = open(topdir+'/positions.csv').readlines()
-
-omegaValues = []
-if len(omegaFile)>0:
-	omegaValues = np.genfromtxt(omegaFile)
-
-if doPeakSearch == 1 or doPeakSearch==-1:
-	# Use parsl to run this in parallel
-	res = []
-	for layerNr in range(startScanNr,nScans+1):
-		res.append(parallel_peaks(layerNr,positions,startNrFirstLayer,nrFilesPerSweep,topdir,paramContents,baseNameParamFN,
-							ConvertFiles,nchunks,preproc,env,doPeakSearch,numProcs,startNr,endNr,Lsd,NormalizeIntensities,
-							omegaValues,minThresh,fStem,omegaFF,Ext))
-	outputs = [i.result() for i in res]
-	print(f'Peaksearch done on {nNodes} nodes.')
-else:
-	if nMerges!=0:
-		for layerNr in range(0,nMerges*(nScans//nMerges)):
-			if os.path.exists(f'original_InputAllExtraInfoFittingAll{layerNr}.csv'):
-				shutil.move(f'original_InputAllExtraInfoFittingAll{layerNr}.csv',f'InputAllExtraInfoFittingAll{layerNr}.csv')
-
-if nMerges != 0:
-	print(os.getcwd())
-	shutil.move('positions.csv','original_positions.csv')
-	for layerNr in range(0,nMerges*(nScans//nMerges)):
-		if os.path.exists(f'InputAllExtraInfoFittingAll{layerNr}.csv'):
-			shutil.move(f'InputAllExtraInfoFittingAll{layerNr}.csv',f'original_InputAllExtraInfoFittingAll{layerNr}.csv')
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/mergeScansScanning")+f" {nMerges*(nScans//nMerges)} {nMerges} {2*px} {2*omegaStep} {numProcsLocal}",shell=True)
-	positions = open(topdir+'/positions.csv').readlines()
-	nScans = int(floor(nScans / nMerges))
-	BeamSize *= nMerges
-
-positions = open(topdir+'/positions.csv').readlines()
-os.chdir(topdir)
-Path(topdir+'/Output').mkdir(parents=True,exist_ok=True)
-Path(topdir+'/Results').mkdir(parents=True,exist_ok=True)
-paramsf = open('paramstest.txt','r')
-lines = paramsf.readlines()
-paramsf.close()
-paramsf = open('paramstest.txt','w')
-for line in lines:
-	# We also need to update paramstest.txt
-	if line.startswith('RingNumbers'):
-		continue
-	if line.startswith('MarginRadius'):
-		continue
-	if line.startswith('RingRadii'):
-		continue
-	if line.startswith('RingToIndex'):
-		continue
-	if line.startswith('BeamSize'):
-		continue
-	if line.startswith('px'):
-		continue
-	if line.startswith('MicFile') and len(micFN)==0:
-		continue
-	if line.startswith('OutputFolder'):
-		paramsf.write('OutputFolder '+topdir+'/Output\n')
-	elif line.startswith('ResultFolder'):
-		paramsf.write('ResultFolder '+topdir+'/Results\n')
-	else:
-		paramsf.write(line)
-for idx in range(len(RingNrs)):
-	paramsf.write('RingNumbers '+str(RingNrs[idx])+'\n')
-	paramsf.write('RingRadii '+str(rads[idx])+'\n')
-paramsf.write('BeamSize '+str(BeamSize)+'\n')
-paramsf.write('MarginRadius 10000000;\n')
-paramsf.write('px '+str(px)+'\n')
-paramsf.write('RingToIndex '+str(RingToIndex)+'\n')
-if len(micFN) > 0:
-	paramsf.write(f'MicFile {micFN}\n')
-paramsf.close()
-
-if (runIndexing == 1):
-	print("Binning data.")
-	print(binData(topdir,nScans).result()) # Bin Data
-	print("Data binning finished. Running indexing now.")
-	resIndex = []
-	for nodeNr in range(nNodes):
-		resIndex.append(indexscanning(topdir,numProcs,nScans,blockNr=nodeNr,numBlocks=nNodes))
-	outputIndex = [i.result() for i in resIndex]
-
-if oneSolPerVox==1:
-	if doTomo==1:
-		sinoFNs = glob.glob("sinos_*.bin")
-		if len(sinoFNs) > 0:
-			for sinoF in sinoFNs:
-				os.remove(sinoF)
-		sinoFNs = glob.glob("omegas_*.bin")
-		if len(sinoFNs) > 0:
-			for sinoF in sinoFNs:
-				os.remove(sinoF)
-		sinoFNs = glob.glob("nrHKLs_*.bin")
-		if len(sinoFNs) > 0:
-			for sinoF in sinoFNs:
-				os.remove(sinoF)
-		dirn = 'Sinos'
-		if os.path.isdir(dirn):
-			shutil.rmtree(dirn)
-		dirn = 'Recons'
-		if os.path.isdir(dirn):
-			shutil.rmtree(dirn)
-		dirn = 'Thetas'
-		if os.path.isdir(dirn):
-			shutil.rmtree(dirn)
-		dirn = 'fullResults'
-		if os.path.isdir(dirn):
-			if os.path.isdir(dirn[4:]):
-				shutil.rmtree(dirn[4:])
-			shutil.move(dirn,dirn[4:])
-		dirn = 'fullOutput'
-		if os.path.isdir(dirn):
-			if os.path.isdir(dirn[4:]):
-				shutil.rmtree(dirn[4:])
-			shutil.move(dirn,dirn[4:])
-	subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')+f' {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}',cwd=topdir,shell=True)
-	os.makedirs('Recons',exist_ok=True)
-	if doTomo == 1:
-		sinoFN = glob.glob("sinos_*.bin")[0]
-		nGrs = int(sinoFN.split('_')[1])
-		maxNHKLs = int(sinoFN.split('_')[2])
-		Sinos = np.fromfile(sinoFN,dtype=np.double,count=nGrs*maxNHKLs*nScans).reshape((nGrs,maxNHKLs,nScans))
-		omegas = np.fromfile(f"omegas_{nGrs}_{maxNHKLs}.bin",dtype=np.double,count=nGrs*maxNHKLs).reshape((nGrs,maxNHKLs))
-		grainSpots = np.fromfile(f"nrHKLs_{nGrs}.bin",dtype=np.int32,count=nGrs)
-
-		os.makedirs('Sinos',exist_ok=True)
-		os.makedirs('Thetas',exist_ok=True)
-
-		all_recons = np.zeros((nGrs,nScans,nScans))
-		im_list = []
-		for grNr in range(nGrs):
-			nSp = grainSpots[grNr]
-			thetas = omegas[grNr,:nSp]
-			sino = np.transpose(Sinos[grNr,:nSp,:])
-			print(sino.shape)
-			Image.fromarray(sino).save('Sinos/sino_grNr_'+str.zfill(str(grNr),4)+'.tif')
-			np.savetxt('Thetas/thetas_grNr_'+str.zfill(str(grNr),4)+'.txt',thetas,fmt='%.6f')
-			recon = iradon(sino,theta=thetas)
-			all_recons[grNr,:,:] = recon
-			im_list.append(Image.fromarray(recon))
-			Image.fromarray(recon).save('Recons/recon_grNr_'+str.zfill(str(grNr),4)+'.tif')
-
-		full_recon = np.max(all_recons,axis=0)
-		print("Done with tomo recon, now finding the orientation candidate at each location.")
-		max_id = np.argmax(all_recons,axis=0).astype(np.int32)
-		max_id[full_recon==0] = -1
-		Image.fromarray(max_id).save('Recons/Full_recon_max_project_grID.tif')
-		Image.fromarray(full_recon).save('Recons/Full_recon_max_project.tif')
-		im_list[0].save('Recons/all_recons_together.tif',compression="tiff_deflate",save_all=True,append_images=im_list[1:])
-		uniqueOrientations = np.genfromtxt(f'{topdir}/UniqueOrientations.csv',delimiter=' ')
-		fSp = open(f'{topdir}/SpotsToIndex.csv','w')
-		for voxNr in range(nScans*nScans):
-			locX = voxNr % nScans - 1
-			locY = nScans - (voxNr//nScans + 1)
-			if max_id[locY,locX] == -1:
-				continue
-			orientThis = uniqueOrientations[max_id[locY,locX],5:]
-			if os.path.isfile(f'{topdir}/Output/UniqueIndexKeyOrientAll_voxNr_{str(voxNr).zfill(6)}.txt'):
-				with open(f'{topdir}/Output/UniqueIndexKeyOrientAll_voxNr_{str(voxNr).zfill(6)}.txt','r') as f:
-					lines = f.readlines()
-				for line in lines:
-					orientInside = [float(val) for val in line.split()[4:]]
-					ang = rad2deg*GetMisOrientationAngleOM(orientThis,orientInside,sgnum)[0]
-					if ang < maxang:
-						lineSplit = line.split()
-						outStr = f'{voxNr} {lineSplit[0]} {lineSplit[1]} {lineSplit[2]} {lineSplit[3]}\n'
-						fSp.write(outStr)
-						break
-		fSp.close()
-		####### We will take the SpotsToIndex.csv file, get orientations for each position, generate a micFile
-		####### Then run Indexing again by supplying the micFile to do Indexing......
-		if len(micFN) == 0:
-			print("Writing a dummy mic file to run indexing again.")
-			fnSp = f'{topdir}/SpotsToIndex.csv'
-			spotsToIndex = np.genfromtxt(fnSp,delimiter=' ')
-			micFN = 'singleSolution.mic'
-			micF = open(micFN,'w')
-			micF.write("header\n")
-			micF.write("header\n")
-			micF.write("header\n")
-			micF.write("header\n")
-			for spot in spotsToIndex:
-				voxNr = int(spot[0])
-				loc = int(spot[3])
-				data = np.fromfile(f'{topdir}/Output/IndexBest_voxNr_{str(voxNr).zfill(6)}.bin',dtype=np.double,count=16,offset=loc)
-				xThis = data[11]
-				yThis = data[12]
-				omThis = data[2:11]
-				Euler = OrientMat2Euler(omThis)
-				micF.write(f"0.0 0.0 0.0 {xThis:.6f} {yThis:.6f} 0.0 0.0 {Euler[0]:.6f} {Euler[1]:.6f} {Euler[2]:.6f} {omThis[0]:.6f} {omThis[1]:.6f} {omThis[2]:.6f} {omThis[3]:.6f} {omThis[4]:.6f} {omThis[5]:.6f} {omThis[6]:.6f} {omThis[7]:.6f} {omThis[8]:.6f}\n")
-			micF.close()
-			paramsf = open(f'{topdir}/paramstest.txt','a')
-			paramsf.write(f'MicFile {topdir}/singleSolution.mic\n')
-			paramsf.close()
-			shutil.move(f'{topdir}/Output',f'{topdir}/fullOutput')
-			shutil.move(f'{topdir}/Results',f'{topdir}/fullResults')
-			Path(topdir+'/Output').mkdir(parents=True,exist_ok=True)
-			Path(topdir+'/Results').mkdir(parents=True,exist_ok=True)
-			print("Running indexing again.")
-			resIndex = []
-			for nodeNr in range(nNodes):
-				resIndex.append(indexscanning(topdir,numProcs,nScans,blockNr=nodeNr,numBlocks=nNodes))
-			outputIndex = [i.result() for i in resIndex]
-			subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')+f' {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}',cwd=topdir,shell=True)
-			f = open(f'{topdir}/SpotsToIndex.csv','w')
-			idData = np.fromfile(f'{topdir}/Output/UniqueIndexSingleKey.bin',dtype=np.uintp,count=nScans*nScans*5).reshape((-1,5))
-			for voxNr in range(nScans*nScans):
-				if idData[voxNr,1] !=0:
-					f.write(f"{idData[voxNr,0]} {idData[voxNr,1]} {idData[voxNr,2]} {idData[voxNr,3]} {idData[voxNr,4]}\n")
-			f.close()
-	else:
-		f = open(f'{topdir}/SpotsToIndex.csv','w')
-		idData = np.fromfile(f'{topdir}/Output/UniqueIndexSingleKey.bin',dtype=np.uintp,count=nScans*nScans*5).reshape((-1,5))
-		for voxNr in range(nScans*nScans):
-			if idData[voxNr,1] !=0:
-				f.write(f"{idData[voxNr,0]} {idData[voxNr,1]} {idData[voxNr,2]} {idData[voxNr,3]} {idData[voxNr,4]}\n")
-		f.close()
-
-	print("Running refinement now")
-	os.makedirs('Results',exist_ok=True)
-	resRefine = []
-	for nodeNr in range(nNodes):
-		resRefine.append(refinescanning(topdir,numProcs,blockNr=nodeNr,numBlocks=nNodes))
-	outputRefine = [i.result() for i in resRefine]
-	
-	NrSym,Sym = MakeSymmetries(sgnum)
-	print(f"Filtering the final output. Will be saved to {topdir}/Recons/microstrFull.csv and {topdir}/Recons/microstructure.hdf")
-
-	files2 = glob.glob(topdir+'/Results/*.csv')
-	filesdata = np.zeros((len(files2),43))
-	i=0
-	info_arr = np.zeros((23,nScans*nScans))
-	info_arr[:,:] = np.nan
-	for fileN in files2:
-		f = open(fileN)
-		voxNr = int(fileN.split('.')[-2].split('_')[-2])
-		_ = f.readline()
-		data = f.readline().split()
-		for j in range(len(data)):
-			filesdata[i][j] = float(data[j])
-		if isnan(filesdata[i][26]):
-			continue
-		if filesdata[i][26] < 0 or filesdata[i][26] > 1.0000000001:
-			continue
-		OM = filesdata[i][1:10]
-		quat = BringDownToFundamentalRegionSym(OrientMat2Quat(OM),NrSym,Sym)
-		filesdata[i][39:43] = quat
-		info_arr[:,voxNr] = filesdata[i][[0,-4,-3,-2,-1,11,12,15,16,17,18,19,20,22,23,24,26,27,28,29,31,32,35]]
-		i+=1
-		f.close()
-	head = 'SpotID,O11,O12,O13,O21,O22,O23,O31,O32,O33,SpotID,x,y,z,SpotID,a,b,c,alpha,beta,gamma,SpotID,PosErr,OmeErr,InternalAngle,'
-	head += 'Radius,Completeness,E11,E12,E13,E21,E22,E23,E31,E32,E33,Eul1,Eul2,Eul3,Quat1,Quat2,Quat3,Quat4'
-	np.savetxt(f'{topdir}/Recons/microstrFull.csv',filesdata,fmt='%.6f',delimiter=',',header=head)
-	f = h5py.File(f'{topdir}/Recons/microstructure.hdf','w')
-	micstr = f.create_dataset(name='microstr',dtype=np.double,data=filesdata)
-	micstr.attrs['Header'] = np.bytes_(head)
-	info_arr = info_arr.reshape((23,nScans,nScans))
-	info_arr = np.flip(info_arr,axis=(1,2))
-	info_arr = info_arr.transpose(0,2,1)
-	imgs = f.create_dataset(name='images',dtype=np.double,data=info_arr)
-	imgs.attrs['Header'] = np.bytes_('ID,Quat1,Quat2,Quat3,Quat4,x,y,a,b,c,alpha,beta,gamma,posErr,omeErr,InternalAngle,Completeness,E11,E12,E13,E22,E23,E33')
-	f.close()
-else:
-	subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findMultipleSolutionsPF')+f' {topdir} {sgnum} {maxang} {nScans} {numProcsLocal}',shell=True,cwd=topdir)
-	print("Now running refinement for all solutions found.")
-	resRefine = []
-	for nodeNr in range(nNodes):
-		resRefine.append(refinescanning(topdir,numProcs,blockNr=nodeNr,numBlocks=nNodes))
-	outputRefine = [inter.result() for inter in resRefine]
-
-	NrSym,Sym = MakeSymmetries(sgnum)
-	files2 = glob.glob(topdir+'/Results/*.csv')
-	filesdata = np.zeros((len(files2),43))
-	i=0
-	for fileN in files2:
-		f = open(fileN)
-		str1 = f.readline()
-		data = f.readline().split()
-		for j in range(len(data)):
-			filesdata[i][j] = float(data[j])
-		OM = filesdata[i][1:10]
-		quat = BringDownToFundamentalRegionSym(OrientMat2Quat(OM),NrSym,Sym)
-		filesdata[i][39:43] = quat
-		i+=1
-		f.close()
-	head = 'SpotID,O11,O12,O13,O21,O22,O23,O31,O32,O33,SpotID,x,y,z,SpotID,a,b,c,alpha,beta,gamma,SpotID,PosErr,OmeErr,InternalAngle,Radius,Completeness,'
-	head += 'E11,E12,E13,E21,E22,E23,E31,E32,E33,Eul1,Eul2,Eul3,Quat1,Quat2,Quat3,Quat4'
-	np.savetxt('microstrFull.csv',filesdata,fmt='%.6f',delimiter=',',header=head)
-
-print("Done. Time Elapsed: "+str(time.time()-startTime)+" seconds.")
+if __name__ == "__main__":
+    main()

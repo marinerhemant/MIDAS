@@ -1,194 +1,438 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-import warnings
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore",SyntaxWarning)
 
-import subprocess
 import argparse
-import os,sys
-from pathlib import Path
-import shutil
+import os
 import re
-import zarr
-import fsspec
-from multiprocessing import Pool
-utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
-sys.path.insert(0,utilsDir)
-from midas2zip import Hdf5ToZarr
+import shutil
+import subprocess
+import sys
 import warnings
-import scipy
+from multiprocessing import Pool
+from pathlib import Path
+
+import fsspec
+import zarr
+
+# Suppress warnings
 warnings.filterwarnings('ignore')
-pytpath = sys.executable
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", SyntaxWarning)
+import scipy
 
-env = dict(os.environ)
-midas_path = os.path.expanduser("~/.MIDAS")
-libpth = os.environ.get('LD_LIBRARY_PATH','')
-env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib:{libpth}'
+# Path configuration
+MIDAS_HOME = os.path.expanduser("~/.MIDAS")
+MIDAS_UTILS = os.path.expanduser('~/opt/MIDAS/utils/')
+MIDAS_BIN = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin")
 
-class MyParser(argparse.ArgumentParser):
+# Add MIDAS utils to path
+sys.path.insert(0, MIDAS_UTILS)
+from midas2zip import Hdf5ToZarr
+
+# Environment setup
+def setup_environment():
+    """Configure environment variables for MIDAS executables"""
+    env = dict(os.environ)
+    lib_paths = [
+        f'{MIDAS_HOME}/BLOSC/lib64',
+        f'{MIDAS_HOME}/FFTW/lib',
+        f'{MIDAS_HOME}/HDF5/lib',
+        f'{MIDAS_HOME}/LIBTIFF/lib',
+        f'{MIDAS_HOME}/LIBZIP/lib64',
+        f'{MIDAS_HOME}/NLOPT/lib',
+        f'{MIDAS_HOME}/ZLIB/lib',
+    ]
+    
+    # Preserve existing LD_LIBRARY_PATH if set
+    existing_lib_path = os.environ.get('LD_LIBRARY_PATH', '')
+    if existing_lib_path:
+        lib_paths.append(existing_lib_path)
+    
+    env['LD_LIBRARY_PATH'] = ':'.join(lib_paths)
+    return env
+
+
+class CustomArgumentParser(argparse.ArgumentParser):
+    """Custom argument parser with improved error handling"""
     def error(self, message):
-        sys.stderr.write('error: %s\n' % message)
+        sys.stderr.write(f'Error: {message}\n')
         self.print_help()
         sys.exit(2)
 
-def generateZip(resFol,pfn,dfn='',nchunks=-1,preproc=-1,outf='ZipOut.txt',errf='ZipErr.txt'):
-    cmd = pytpath+' '+os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZip.py')+' -resultFolder '+ resFol +' -paramFN ' + pfn
-    if len(darkFN) != 0:
-        cmd += f' -darkFN {darkFN}'
-    if dfn!='':
-        cmd+= ' -dataFN ' + dfn
-    if dloc!='':
-        cmd+= ' -dataLoc ' + dloc
-    if darkLoc!='':
-        cmd+= ' -darkLoc ' + darkLoc
-    if nchunks!=-1:
-        cmd+= ' -numFrameChunks '+str(nchunks)
-    if preproc!=-1:
-        cmd+= ' -preProcThresh '+str(preproc)
-    dfn_base = os.path.basename(dfn)
-    outf = f'{resFol}/{logdir}/{dfn_base}_{outf}'
-    errf = f'{resFol}/{logdir}/{dfn_base}_{errf}'
-    subprocess.call(cmd,shell=True,stdout=open(outf,'w'),stderr=open(errf,'w'))
-    lines = open(outf,'r').readlines()
-    if lines[-1].startswith('OutputZipName'):
-        return lines[-1].split()[1]
 
-def runOneFile(fileNr):
-    thisFN = InputFN.replace(startFileNrStr,str(startFileNr+fileNr).zfill(6))
-    if fileNr > 0 and convertFiles == 1:
-        zipFN = generateZip(resultDir,psFN,dfn=thisFN,nchunks=numFrameChunks,preproc=preProc)
-    else:
-        if thisFN[-3:] != 'zip':
-            thisFN += '.analysis.MIDAS.zip'
-        zipFN = resultDir + thisFN
-    f = open(f'{resultDir}/{logdir}/{os.path.basename(zipFN)}_integrator_out.csv','w')
-    f_err = open(f'{resultDir}/{logdir}/{os.path.basename(zipFN)}_integrator_err.csv','w')
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IntegratorZarr")+f' {zipFN}',shell=True,env=env,stdout=f,stderr=f_err)
-    f.close()
-    f_err.close()
-    finFN = f'{zipFN}.caked.hdf'
-    outzip = finFN+'.zarr.zip'
-    zipF = Path(outzip)
-    if zipF.exists():
-        shutil.move(outzip,outzip+'.old')
-    with fsspec.open(finFN,mode='rb', anon=False, requester_pays=True,default_fill_cache=False) as f:
-        storeZip = zarr.ZipStore(outzip)
-        h5chunkszip = Hdf5ToZarr(f, storeZip)
-        h5chunkszip.translate()
-        storeZip.close()
-    return outzip
-
-
-parser = MyParser(description='''Code to integrate files. Contact: hsharma@anl.gov''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('-resultFolder', type=str, required=False, default ='.', help='Folder where you want to save results.')
-parser.add_argument('-paramFN', type=str, required=True, help='Parameter file name.')
-parser.add_argument('-dataFN', type=str, required=True, default='', help='DataFileName for first file, this should have the full path if not in the current folder.')
-parser.add_argument('-darkFN', type=str, required=False, default='', help='DarkFileName, full path.')
-parser.add_argument('-dataLoc', type=str, required=False, default='exchange/data', help='Data location.')
-parser.add_argument('-darkLoc', type=str, required=False, default='exchange/dark', help='Dark location.')
-parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='Number of chunks to use when reading the data file if RAM is smaller than expanded data. -1 will disable.')
-parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
-parser.add_argument('-startFileNr', type=int, required=False, default=-1, help='Which fileNr to start from. Default is -1, which means that fileNr in dataFN is read.')
-parser.add_argument('-endFileNr', type=int, required=False, default=-1, help='End fileNr. Default is -1, which means a single file is processed.')
-parser.add_argument('-convertFiles', type=int, required=False, default=1, help='Whether want to convert files to ZarrZip format or not.')
-parser.add_argument('-mapDetector', type=int, required=False, default=1, help='Whether want to generate map of detector or not. If unsure, put to 1. If already have the CORRECT Map.bin and nMap.bin, put it to 0.')
-parser.add_argument('-nCPUs', type=int, required=False, default=1, help='If you want to use multiple CPUs.')
-parser.add_argument('-writeMat', type=int, required=False, default=0, help='If you want to write a matlab .mat file.')
-args, unparsed = parser.parse_known_args()
-resultDir = args.resultFolder
-psFN = args.paramFN
-InputFN = args.dataFN
-darkFN = args.darkFN
-numFrameChunks = args.numFrameChunks
-preProc = args.preProcThresh
-startFileNr = args.startFileNr
-endFileNr = args.endFileNr
-convertFiles = args.convertFiles
-mapDetector = args.mapDetector
-nCPUs = args.nCPUs
-dloc = args.dataLoc
-darkLoc = args.darkLoc
-writeMat = args.writeMat
-
-if len(resultDir) == 0 or resultDir == '.':
-    resultDir = os.getcwd()
-if resultDir[0] != '/':
-    resultDir = os.getcwd()+'/'+resultDir
-resultDir += '/'
-logdir = 'stdout'
-os.makedirs(resultDir,exist_ok=True)
-os.makedirs(f'{resultDir}/{logdir}',exist_ok=True)
-
-startFileNrStr = str(startFileNr).zfill(6)
-if startFileNr == -1:
-    startFileNrStr = re.search(r'\d{% s}' % 6, InputFN)
-    print(f'Processing file number: {int(startFileNrStr.group(0))}')
-    if not startFileNrStr:
-        print("Could not find 6 padded fileNr. Exiting.")
-        sys.exit()
-    startFileNrStr = startFileNrStr.group(0)
-    startFileNr = int(startFileNrStr)
-if endFileNr == -1:
-    endFileNr = startFileNr
-nrFiles = endFileNr - startFileNr + 1
-fileNr = 0
-thisFN = InputFN.replace(startFileNrStr,str(startFileNr+fileNr).zfill(6))
-if convertFiles == 1:
-    zipFN = generateZip(resultDir,psFN,dfn=thisFN,nchunks=numFrameChunks,preproc=preProc)
-else:
-    if thisFN[-3:] != 'zip':
-        thisFN += '.analysis.MIDAS.zip'
-    zipFN = resultDir + thisFN
-    print(f'Processing file: {zipFN}')
-if mapDetector == 1:
-    f = open(f'{resultDir}/{logdir}/map_out.csv','w')
-    f_err = open(f'{resultDir}/{logdir}/map_err.csv','w')
-    subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/DetectorMapperZarr")+f' {zipFN}',shell=True,env=env,stdout=f,stderr=f_err)
-    f.close()
-    f_err.close()
-
-# RUN THIS IN PARALLEL
-if nCPUs == 1:
-    for fileNr in range(0,nrFiles):
-        thisFN = InputFN.replace(startFileNrStr,str(startFileNr+fileNr).zfill(6))
-        if fileNr > 0 and convertFiles == 1:
-            zipFN = generateZip(resultDir,psFN,dfn=thisFN,nchunks=numFrameChunks,preproc=preProc)
+def generate_zip(result_dir, param_file, data_file='', dark_file='', 
+                data_loc='', dark_loc='', frame_chunks=-1, pre_proc=-1,
+                log_dir='stdout'):
+    """
+    Generate ZIP file from data.
+    
+    Args:
+        result_dir: Directory to store results
+        param_file: Parameter file
+        data_file: Input data file
+        dark_file: Dark field file
+        data_loc: Data location within file
+        dark_loc: Dark field location within file
+        frame_chunks: Number of frame chunks to process
+        pre_proc: Pre-processing threshold
+        log_dir: Directory for log files
+        
+    Returns:
+        Path to generated ZIP file
+    
+    Raises:
+        SystemExit: If errors are encountered during ZIP generation
+    """
+    cmd = [
+        sys.executable,
+        os.path.join(MIDAS_UTILS, 'ffGenerateZip.py'),
+        '-resultFolder', result_dir,
+        '-paramFN', param_file
+    ]
+    
+    if dark_file:
+        cmd.extend(['-darkFN', dark_file])
+    if data_file:
+        cmd.extend(['-dataFN', data_file])
+    if data_loc:
+        cmd.extend(['-dataLoc', data_loc])
+    if dark_loc:
+        cmd.extend(['-darkLoc', dark_loc])
+    if frame_chunks != -1:
+        cmd.extend(['-numFrameChunks', str(frame_chunks)])
+    if pre_proc != -1:
+        cmd.extend(['-preProcThresh', str(pre_proc)])
+    
+    # Output file paths
+    data_basename = os.path.basename(data_file)
+    out_file = f'{result_dir}/{log_dir}/{data_basename}_ZipOut.txt'
+    err_file = f'{result_dir}/{log_dir}/{data_basename}_ZipErr.txt'
+    
+    # Run command
+    with open(out_file, 'w') as out_f, open(err_file, 'w') as err_f:
+        subprocess.run(' '.join(cmd), shell=True, stdout=out_f, stderr=err_f)
+    
+    # Check for errors
+    with open(err_file, 'r') as f:
+        err_content = f.read().strip()
+        if err_content:
+            print(f"ERROR: ZIP generation failed for {data_file}")
+            print(f"Error log contents from {err_file}:")
+            print("-" * 40)
+            print(err_content)
+            print("-" * 40)
+            sys.exit(1)
+    
+    # Extract output ZIP filename
+    with open(out_file, 'r') as f:
+        lines = f.readlines()
+        if lines and lines[-1].startswith('OutputZipName'):
+            return lines[-1].split()[1]
         else:
-            if thisFN[-3:] != 'zip':
-                thisFN += '.analysis.MIDAS.zip'
-            zipFN = resultDir + os.path.basename(thisFN)
-            print(f'Processing file: {zipFN}')
-        f = open(f'{resultDir}/{logdir}/{os.path.basename(zipFN)}_integrator_out.csv','w')
-        f_err = open(f'{resultDir}/{logdir}/{os.path.basename(zipFN)}_integrator_err.csv','w')
-        subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IntegratorZarr")+f' {zipFN}',shell=True,env=env,stdout=f,stderr=f_err)
-        f.close()
-        f_err.close()
-        finFN = f'{zipFN}.caked.hdf'
-        outzip = finFN+'.zarr.zip'
-        zipF = Path(outzip)
-        if zipF.exists():
-            shutil.move(outzip,outzip+'.old')
-        with fsspec.open(finFN,mode='rb', anon=False, requester_pays=True,default_fill_cache=False) as f:
-            storeZip = zarr.ZipStore(outzip)
-            h5chunkszip = Hdf5ToZarr(f, storeZip)
-            h5chunkszip.translate()
-            storeZip.close()
-        print(f'Ouput file {outzip} tree structure:')
-        print(zarr.open(outzip).tree())
-        if writeMat:
-            zarr_file = zarr.open(outzip, mode='r')
-            data_dict = {key: zarr_file[key] for key in zarr_file.keys()}
-            scipy.io.savemat(outzip+'.mat', data_dict)
-else:
-    work_data = [fileNr for fileNr in range(0,nrFiles)]
-    print(f"Starting {nCPUs} parallel jobs.")
-    p = Pool(nCPUs)
-    res = p.map(runOneFile,work_data)
-    for outzip in res:
-        print(f'Ouput file {outzip} tree structure:')
-        print(zarr.open(outzip).tree())
-        if writeMat:
-            zarr_file = zarr.open(outzip, mode='r')
-            data_dict = {key: zarr_file[key] for key in zarr_file.keys()}
-            scipy.io.savemat(outzip+'.mat', data_dict)
+            print(f"ERROR: Could not find output ZIP filename in {out_file}")
+            sys.exit(1)
+    
+    return None
+
+
+def convert_hdf_to_zarr(hdf_file, output_zip):
+    """
+    Convert HDF5 file to Zarr ZIP format.
+    
+    Args:
+        hdf_file: Input HDF5 file
+        output_zip: Output Zarr ZIP file
+        
+    Returns:
+        Path to output Zarr ZIP file
+        
+    Raises:
+        Exception: If any error occurs during the conversion process
+    """
+    # Backup existing file if it exists
+    zip_path = Path(output_zip)
+    if zip_path.exists():
+        try:
+            shutil.move(output_zip, f"{output_zip}.old")
+        except Exception as e:
+            print(f"WARNING: Could not backup existing file {output_zip}: {str(e)}")
+    
+    try:
+        # Convert HDF5 to Zarr
+        with fsspec.open(hdf_file, mode='rb', anon=False, requester_pays=True, default_fill_cache=False) as f:
+            with zarr.ZipStore(output_zip) as store_zip:
+                h5_chunks_zip = Hdf5ToZarr(f, store_zip)
+                h5_chunks_zip.translate()
+        
+        # Verify the file was created successfully
+        if not os.path.exists(output_zip) or os.path.getsize(output_zip) == 0:
+            raise Exception(f"Failed to create valid Zarr ZIP file: {output_zip}")
+            
+        return output_zip
+    except Exception as e:
+        print(f"ERROR: Failed to convert HDF5 file {hdf_file} to Zarr ZIP {output_zip}")
+        print(f"Exception: {str(e)}")
+        raise
+
+
+def process_single_file(file_nr, input_file_pattern, start_file_nr, result_dir, 
+                       param_file, frame_chunks, pre_proc, convert_files, 
+                       env, data_loc, dark_loc, dark_file, log_dir='stdout',
+                       write_mat=False):
+    """
+    Process a single data file.
+    
+    Args:
+        file_nr: File number to process
+        input_file_pattern: Pattern for input files
+        start_file_nr: Starting file number
+        result_dir: Directory to store results
+        param_file: Parameter file
+        frame_chunks: Number of frame chunks
+        pre_proc: Pre-processing threshold
+        convert_files: Whether to convert files
+        env: Environment variables
+        data_loc: Data location
+        dark_loc: Dark location
+        dark_file: Dark field file
+        log_dir: Directory for log files
+        write_mat: Whether to write MATLAB file
+        
+    Returns:
+        Path to output Zarr ZIP file
+        
+    Raises:
+        SystemExit: If errors are encountered during processing
+    """
+    # Generate filename for this file number
+    padded_file_nr = str(start_file_nr + file_nr).zfill(6)
+    start_file_nr_str = str(start_file_nr).zfill(6)
+    this_file = input_file_pattern.replace(start_file_nr_str, padded_file_nr)
+    
+    # Generate ZIP if needed
+    if file_nr > 0 and convert_files == 1:
+        zip_file = generate_zip(result_dir, param_file, data_file=this_file, 
+                               dark_file=dark_file, data_loc=data_loc, 
+                               dark_loc=dark_loc, frame_chunks=frame_chunks, 
+                               pre_proc=pre_proc, log_dir=log_dir)
+    else:
+        if not this_file.endswith('.zip'):
+            this_file += '.analysis.MIDAS.zip'
+        zip_file = os.path.join(result_dir, os.path.basename(this_file))
+        print(f'Processing file: {zip_file}')
+    
+    # Run integrator
+    out_log = f'{result_dir}/{log_dir}/{os.path.basename(zip_file)}_integrator_out.csv'
+    err_log = f'{result_dir}/{log_dir}/{os.path.basename(zip_file)}_integrator_err.csv'
+    
+    with open(out_log, 'w') as f_out, open(err_log, 'w') as f_err:
+        integrator_cmd = f"{os.path.join(MIDAS_BIN, 'IntegratorZarr')} {zip_file}"
+        subprocess.run(integrator_cmd, shell=True, env=env, stdout=f_out, stderr=f_err)
+    
+    # Check for errors in integrator
+    with open(err_log, 'r') as f:
+        err_content = f.read().strip()
+        if err_content:
+            print(f"ERROR: IntegratorZarr failed for {zip_file}")
+            print(f"Error log contents from {err_log}:")
+            print("-" * 40)
+            print(err_content)
+            print("-" * 40)
+            sys.exit(1)
+    
+    # Convert HDF to Zarr
+    final_file = f'{zip_file}.caked.hdf'
+    
+    # Check if the HDF file was created
+    if not os.path.exists(final_file):
+        print(f"ERROR: The expected HDF file {final_file} was not created.")
+        print(f"Check the integrator output log: {out_log}")
+        sys.exit(1)
+        
+    out_zip = f'{final_file}.zarr.zip'
+    
+    try:
+        out_zip = convert_hdf_to_zarr(final_file, out_zip)
+    except Exception as e:
+        print(f"ERROR: Failed to convert HDF to Zarr for {final_file}")
+        print(f"Exception: {str(e)}")
+        sys.exit(1)
+    
+    # Save as MATLAB file if requested
+    if write_mat:
+        try:
+            zarr_file = zarr.open(out_zip, mode='r')
+            data_dict = {key: zarr_file[key][:] for key in zarr_file.keys()}
+            scipy.io.savemat(f"{out_zip}.mat", data_dict)
+        except Exception as e:
+            print(f"ERROR: Failed to create MATLAB file for {out_zip}")
+            print(f"Exception: {str(e)}")
+            sys.exit(1)
+    
+    return out_zip
+
+
+def run_detector_mapper(zip_file, env, result_dir, log_dir='stdout'):
+    """
+    Run detector mapper on ZIP file.
+    
+    Args:
+        zip_file: Input ZIP file
+        env: Environment variables
+        result_dir: Directory to store results
+        log_dir: Directory for log files
+        
+    Raises:
+        SystemExit: If errors are encountered during detector mapping
+    """
+    out_log = f'{result_dir}/{log_dir}/map_out.csv'
+    err_log = f'{result_dir}/{log_dir}/map_err.csv'
+    
+    with open(out_log, 'w') as f_out, open(err_log, 'w') as f_err:
+        mapper_cmd = f"{os.path.join(MIDAS_BIN, 'DetectorMapperZarr')} {zip_file}"
+        subprocess.run(mapper_cmd, shell=True, env=env, stdout=f_out, stderr=f_err)
+    
+    # Check for errors in detector mapper
+    with open(err_log, 'r') as f:
+        err_content = f.read().strip()
+        if err_content:
+            print(f"ERROR: DetectorMapperZarr failed for {zip_file}")
+            print(f"Error log contents from {err_log}:")
+            print("-" * 40)
+            print(err_content)
+            print("-" * 40)
+            sys.exit(1)
+
+
+def parse_arguments():
+    """Parse command line arguments"""
+    parser = CustomArgumentParser(
+        description='Code to integrate files. Contact: hsharma@anl.gov',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    
+    parser.add_argument('-resultFolder', type=str, default='.', 
+                       help='Folder where you want to save results.')
+    parser.add_argument('-paramFN', type=str, required=True, 
+                       help='Parameter file name.')
+    parser.add_argument('-dataFN', type=str, required=True, default='', 
+                       help='DataFileName for first file, this should have the full path if not in the current folder.')
+    parser.add_argument('-darkFN', type=str, default='', 
+                       help='DarkFileName, full path.')
+    parser.add_argument('-dataLoc', type=str, default='exchange/data', 
+                       help='Data location.')
+    parser.add_argument('-darkLoc', type=str, default='exchange/dark', 
+                       help='Dark location.')
+    parser.add_argument('-numFrameChunks', type=int, default=-1, 
+                       help='Number of chunks to use when reading the data file if RAM is smaller than expanded data. -1 will disable.')
+    parser.add_argument('-preProcThresh', type=int, default=-1, 
+                       help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
+    parser.add_argument('-startFileNr', type=int, default=-1, 
+                       help='Which fileNr to start from. Default is -1, which means that fileNr in dataFN is read.')
+    parser.add_argument('-endFileNr', type=int, default=-1, 
+                       help='End fileNr. Default is -1, which means a single file is processed.')
+    parser.add_argument('-convertFiles', type=int, default=1, 
+                       help='Whether want to convert files to ZarrZip format or not.')
+    parser.add_argument('-mapDetector', type=int, default=1, 
+                       help='Whether want to generate map of detector or not. If unsure, put to 1. If already have the CORRECT Map.bin and nMap.bin, put it to 0.')
+    parser.add_argument('-nCPUs', type=int, default=1, 
+                       help='If you want to use multiple CPUs.')
+    parser.add_argument('-writeMat', type=int, default=0, 
+                       help='If you want to write a matlab .mat file.')
+    
+    return parser.parse_args()
+
+
+def main():
+    """Main execution function"""
+    # Parse arguments
+    args = parse_arguments()
+    
+    # Normalize paths
+    result_dir = args.resultFolder
+    if len(result_dir) == 0 or result_dir == '.':
+        result_dir = os.getcwd()
+    if not result_dir.startswith('/'):
+        result_dir = os.path.join(os.getcwd(), result_dir)
+    result_dir = os.path.join(result_dir, '')  # Ensure trailing slash
+    
+    # Create necessary directories
+    log_dir = 'stdout'
+    os.makedirs(result_dir, exist_ok=True)
+    os.makedirs(os.path.join(result_dir, log_dir), exist_ok=True)
+    
+    # Setup environment
+    env = setup_environment()
+    
+    # Find start file number
+    start_file_nr = args.startFileNr
+    start_file_nr_str = str(start_file_nr).zfill(6)
+    
+    if start_file_nr == -1:
+        match = re.search(r'\d{6}', args.dataFN)
+        if not match:
+            print("Could not find 6 padded fileNr. Exiting.")
+            sys.exit(1)
+        start_file_nr_str = match.group(0)
+        start_file_nr = int(start_file_nr_str)
+        print(f'Processing file number: {start_file_nr}')
+    
+    # Determine end file number
+    end_file_nr = args.endFileNr
+    if end_file_nr == -1:
+        end_file_nr = start_file_nr
+    
+    # Calculate number of files to process
+    nr_files = end_file_nr - start_file_nr + 1
+    
+    # Process first file
+    file_nr = 0
+    this_file = args.dataFN.replace(start_file_nr_str, str(start_file_nr + file_nr).zfill(6))
+    
+    if args.convertFiles == 1:
+        zip_file = generate_zip(
+            result_dir, args.paramFN, data_file=this_file, dark_file=args.darkFN,
+            data_loc=args.dataLoc, dark_loc=args.darkLoc, 
+            frame_chunks=args.numFrameChunks, pre_proc=args.preProcThresh,
+            log_dir=log_dir
+        )
+    else:
+        if not this_file.endswith('.zip'):
+            this_file += '.analysis.MIDAS.zip'
+        zip_file = os.path.join(result_dir, this_file)
+        print(f'Processing file: {zip_file}')
+    
+    # Run detector mapper if requested
+    if args.mapDetector == 1:
+        run_detector_mapper(zip_file, env, result_dir, log_dir)
+    
+    # Process all files
+    if args.nCPUs == 1:
+        # Serial processing
+        for file_nr in range(nr_files):
+            out_zip = process_single_file(
+                file_nr, args.dataFN, start_file_nr, result_dir, args.paramFN,
+                args.numFrameChunks, args.preProcThresh, args.convertFiles, env,
+                args.dataLoc, args.darkLoc, args.darkFN, log_dir, args.writeMat
+            )
+            print(f'Output file {out_zip} tree structure:')
+            print(zarr.open(out_zip).tree())
+    else:
+        # Parallel processing
+        print(f"Starting {args.nCPUs} parallel jobs.")
+        with Pool(args.nCPUs) as pool:
+            process_file = lambda file_nr: process_single_file(
+                file_nr, args.dataFN, start_file_nr, result_dir, args.paramFN,
+                args.numFrameChunks, args.preProcThresh, args.convertFiles, env,
+                args.dataLoc, args.darkLoc, args.darkFN, log_dir, args.writeMat
+            )
+            
+            results = pool.map(process_file, range(nr_files))
+            
+            for out_zip in results:
+                print(f'Output file {out_zip} tree structure:')
+                print(zarr.open(out_zip).tree())
+
+
+if __name__ == "__main__":
+    main()
