@@ -366,7 +366,9 @@ mapperfcn(
 	struct data *oldarr, *newarr;
 	long long int TotNrOfBins = 0;
 	long long int sumNrBins = 0;
-	long long int nrContinued=0;
+	long long int nrContinued1=0;
+	long long int nrContinued2=0;
+	long long int nrContinued3=0;
 	long long int testPos;
 	double ypr,zpr;
 	double RT, ET;
@@ -626,18 +628,18 @@ mapperfcn(
 						}
 					}
 					if (nEdges < 3){
-						nrContinued++;
+						nrContinued1++;
 						continue;
 					}
 					nEdges = FindUniques(Edges,EdgesOut,nEdges,RMin,RMax,EtaMin,EtaMax);
 					if (nEdges < 3){
-						nrContinued++;
+						nrContinued2++;
 						continue;
 					}
 					// Now we have all the edges, let's calculate the area.
 					Area = CalcAreaPolygon(EdgesOut,nEdges);
 					if (Area < 1E-5){
-						nrContinued++;
+						nrContinued3++;
 						continue;
 					}
 					// Populate the arrays
@@ -663,7 +665,7 @@ mapperfcn(
 			}
 		}
 	}
-	printf("%lld\n",nrContinued);
+	printf("%lld %lld %lld\n",nrContinued1, nrContinued2, nrContinued3);
 	return TotNrOfBins;
 }
 
