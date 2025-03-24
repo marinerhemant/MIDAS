@@ -437,6 +437,7 @@ mapperfcn(
 					continue;
 				}
 			}
+			printf("%d\n",nrEtaChosen);
 			yMin = YZ[0] - 0.5;
 			yMax = YZ[0] + 0.5;
 			zMin = YZ[1] - 0.5;
