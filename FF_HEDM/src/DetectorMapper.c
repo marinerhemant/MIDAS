@@ -443,7 +443,6 @@ mapperfcn(
 			zMax = YZ[1] + 0.5;
 			sumNrBins += nrRChosen * nrEtaChosen;
 			double totPxArea = 0;
-			// printf("%d\n",nrEtaChosen);
 			// Line Intercepts ordering: RMin: ymin, ymax, zmin, zmax. RMax: ymin, ymax, zmin, zmax
 			//							 EtaMin: ymin, ymax, zmin, zmax. EtaMax: ymin, ymax, zmin, zmax.
 			for (k=0;k<nrRChosen;k++){
@@ -664,6 +663,7 @@ mapperfcn(
 			}
 		}
 	}
+	printf("%lld\n",nrContinued);
 	return TotNrOfBins;
 }
 
