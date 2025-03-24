@@ -847,6 +847,7 @@ int main(int argc, char *argv[])
 	RBinsLow = malloc(nRBins*sizeof(*RBinsLow));
 	RBinsHigh = malloc(nRBins*sizeof(*RBinsHigh));
 	REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh);
+	for (i=0;i<nEtaBins;i++) printf("%lf %lf \n",EtaBinsHigh[i],EtaBinsLow[i]);
 	// Initialize arrays, need fraction array
 	struct data ***pxList;
 	int **nPxList;
