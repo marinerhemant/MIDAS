@@ -1879,27 +1879,27 @@ int DoIndexingSeed(double orMat[9], double posThis[3], double RefRad, struct TPa
 		&nMatches, GrainSpots);
 	double fracMatchesThis = (RealType) ((RealType)nMatches)/((RealType)nTspots);
 	int grID = -1;
-	if (fracMatchesThis > Params.MinMatchesToAcceptFrac){
-		for (i = 0 ;  i < 9 ; i ++) GrainMatches[0][i] = orThis[i/3][i%3];
-		GrainMatches[0][9]  = ga;
-		GrainMatches[0][10] = gb;
-		GrainMatches[0][11] = gc;
-		GrainMatches[0][12] = (double)nTspots;
-		GrainMatches[0][13] = (double)nMatches;
-		GrainMatches[0][14] = 1;
-		for (r = 0 ; r < nTspots ; r++) {
-			for (c = 0 ; c < 15 ; c++) AllGrainSpots[r][c] = GrainSpots[r][c];
-			AllGrainSpots[r][15] = 1;
-		}
-		CalcIA(GrainMatches, 1, AllGrainSpots, Params.Distance );
-		rownr = nTspots;
-		double enTm = omp_get_wtime() - sttm;
-		WriteBestMatchBin(GrainMatches, AllGrainSpots, rownr, Params.OutputFolder, offsetLoc);
-		grID = (int)GrainSpots[0][14];
-		printf("IDNr: %d, Total: %d, Confidence: %lf, nExp: %lf, nObs: %lf, time: %lfs.\n",idNr,totalIDs,grID,fracMatchesThis,GrainMatches[0][12],GrainMatches[0][13],enTm);
-	} else{
-		printf("%lf\n",fracMatchesThis);
+	// if (fracMatchesThis > Params.MinMatchesToAcceptFrac){
+	for (i = 0 ;  i < 9 ; i ++) GrainMatches[0][i] = orThis[i/3][i%3];
+	GrainMatches[0][9]  = ga;
+	GrainMatches[0][10] = gb;
+	GrainMatches[0][11] = gc;
+	GrainMatches[0][12] = (double)nTspots;
+	GrainMatches[0][13] = (double)nMatches;
+	GrainMatches[0][14] = 1;
+	for (r = 0 ; r < nTspots ; r++) {
+		for (c = 0 ; c < 15 ; c++) AllGrainSpots[r][c] = GrainSpots[r][c];
+		AllGrainSpots[r][15] = 1;
 	}
+	CalcIA(GrainMatches, 1, AllGrainSpots, Params.Distance );
+	rownr = nTspots;
+	double enTm = omp_get_wtime() - sttm;
+	WriteBestMatchBin(GrainMatches, AllGrainSpots, rownr, Params.OutputFolder, offsetLoc);
+	grID = (int)GrainSpots[0][14];
+	printf("IDNr: %d, Total: %d, Confidence: %lf, nExp: %lf, nObs: %lf, time: %lfs.\n",idNr,totalIDs,grID,fracMatchesThis,GrainMatches[0][12],GrainMatches[0][13],enTm);
+	// } else{
+	// 	printf("%lf\n",fracMatchesThis);
+	// }
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 	FreeMemMatrix( TheorSpots, nRowsPerGrain);
 	FreeMemMatrix( GrainSpots, nRowsPerGrain);
