@@ -535,10 +535,10 @@ int main(int argc, char *argv[])
 				}
 			} else {
 				counten = 0;
-				ID_IA_Mat[(counten*4)] = (double) StartingID;
-				ID_IA_Mat[(counten*4)+1] = (double) i;
-				ID_IA_Mat[(counten*4)+2] = OPs[i][IAColNr];
-				ID_IA_Mat[(counten*4)+3] = Radiuses[i];
+				ID_IA_MAT[(counten*4)] = (double) StartingID;
+				ID_IA_MAT[(counten*4)+1] = (double) i;
+				ID_IA_MAT[(counten*4)+2] = OPs[i][IAColNr];
+				ID_IA_MAT[(counten*4)+3] = Radiuses[i];
 				counten = 1;
 			}
 			totcount+=counten;
