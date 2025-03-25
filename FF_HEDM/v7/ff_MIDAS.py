@@ -397,7 +397,7 @@ def main():
                         help="If want to provide InputAllExtraInfoFittingAll.csv, put to 1. MUST provide all the parameters in the paramFN. The resultFolder must exist and contain the InputAlExtraInfoFittingAll.csv")
     parser.add_argument('-rawDir', type=str, required=False, default='', 
                         help='If want override the rawDir in the Parameter file.')
-    parser.add_argument('-GrainsFile', type=str, required=False, default='', 
+    parser.add_argument('-grainsFile', type=str, required=False, default='', 
                         help='Optional input file containing seed grains to use for grain finding. If not provided, grains will be determined from scratch.')
     
     # Parse arguments
@@ -480,7 +480,7 @@ def main():
                     min2Index = float(line.split(' ')[1])
                 if line.startswith('MaxOmeSpotIDsToIndex'):
                     max2Index = float(line.split(' ')[1])
-            if args.GrainsFile:
+            if args.grainsFile:
                 with open(psFN,'w') as f:
                     for line in psContents:
                         if line.startswith('MinNrSpots'):
@@ -788,12 +788,12 @@ def main():
             logger.info(f"Binning data. Time till now: {time.time() - t0}, workingdir: {resultDir}")
 
             # If we want to seed the data
-            if args.GrainsFile:
+            if args.grainsFile:
                 try:
                     with open(f"{resultDir}/paramstest.txt", "a") as paramstestF:
                         paramstestF.write(f"GrainsFile {args.GrainsFile}\n")
                 except Exception as e:
-                    logger.error(f"Failed to add GrainsFile parameter to paramstest.txt: {e}")
+                    logger.error(f"Failed to add grainsFile parameter to paramstest.txt: {e}")
                     sys.exit(1)
 
             try:
