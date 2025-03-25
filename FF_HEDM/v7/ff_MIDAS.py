@@ -372,6 +372,8 @@ def main():
                         help="If want to provide InputAllExtraInfoFittingAll.csv, put to 1. MUST provide all the parameters in the paramFN. The resultFolder must exist and contain the InputAlExtraInfoFittingAll.csv")
     parser.add_argument('-rawDir', type=str, required=False, default='', 
                         help='If want override the rawDir in the Parameter file.')
+    parser.add_argument('-GrainsFile', type=str, required=False, default='', 
+                        help='Optional input file containing seed grains to use for grain finding. If not provided, grains will be determined from scratch.')
     
     # Parse arguments
     if len(sys.argv) == 1:
@@ -752,7 +754,16 @@ def main():
             # Change to result directory and bin data
             os.chdir(resultDir)
             logger.info(f"Binning data. Time till now: {time.time() - t0}, workingdir: {resultDir}")
-            
+
+            # If we want to seed the data
+            if args.GrainsFile:
+                try:
+                    with open(f"{resultDir}/paramstest.txt", "a") as paramstestF:
+                        paramstestF.write(f"GrainsFile {args.GrainsFile}\n")
+                except Exception as e:
+                    logger.error(f"Failed to add GrainsFile parameter to paramstest.txt: {e}")
+                    sys.exit(1)
+
             try:
                 f_bin_out = f'{logDir}/binning_out.csv'
                 f_bin_err = f'{logDir}/binning_err.csv'

@@ -1126,6 +1126,8 @@ struct TParams {
    RealType OmegaRanges[MAX_N_OMEGARANGES][2];
    char OutputFolder[4096];
    int NoOfOmegaRanges;
+   int isGrainsInput;
+   char GrainsFileName[4096];
    char SpotsFileName[4096];
    char IDsFileName [4096];
    int UseFriedelPairs;
@@ -1162,6 +1164,7 @@ int ReadParams(char FileName[],struct TParams * Params)
 	int NoRingNumbers = 0;
 	Params->NrOfRings = 0;
 	Params->NoOfOmegaRanges = 0;
+	Params->isGrainsInput = 0;
 	fp = fopen(FileName, "r");
 	if (fp==NULL) {
 		printf("Cannot open file: %s.\n", FileName);
@@ -1328,6 +1331,13 @@ int ReadParams(char FileName[],struct TParams * Params)
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
 			sscanf(line, "%s %s", dummy, Params->SpotsFileName );
+			continue;
+		}
+		str = "GrainsFile ";
+		cmpres = strncmp(line, str, strlen(str));
+		if (cmpres == 0) {
+			Params->isGrainsInput = 1;
+			sscanf(line, "%s %s", dummy, Params->GrainsFileName );
 			continue;
 		}
 		str = "IDsFileName ";
@@ -1806,6 +1816,95 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc, int idNr, int t
 	FreeMemMatrix( BestMatches, 2);
 }
 
+int DoIndexingSeed(double orMat[9], double posThis[3], double RefRad, struct TParams Params, int offsetLoc,int idNr, int totalIDs )
+// We want to provide the orientation matrix as input, then compute the spots and do the rest.
+{
+	double sttm = omp_get_wtime();
+	int nRowsPerGrain = 2 * n_hkls;
+	int nRowsOutput = MAX_N_MATCHES * 2 * n_hkls;
+	RealType orThis[3][3];
+	int i,j, r,c;
+	for (i=0;i<3;i++) for (j=0;j<3;j++) orThis[i][j] = orMat[i*3+j];
+	int nTspots = 0;
+	RealType **GrainSpots;
+	GrainSpots = allocMatrix(nRowsPerGrain, N_COL_GRAINSPOTS );
+	RealType **TheorSpots;
+	TheorSpots = allocMatrix(nRowsPerGrain, N_COL_THEORSPOTS);
+	RealType **GrainMatches;
+	GrainMatches = allocMatrix(MAX_N_MATCHES, N_COL_GRAINMATCHES);
+	RealType **AllGrainSpots;
+	AllGrainSpots = allocMatrix(nRowsOutput, N_COL_GRAINSPOTS);
+	if (AllGrainSpots == NULL ) {
+		printf("Memory error: could not allocate memory for output matrix. Memory full?\n");
+		return -1;
+	}
+	if (GrainMatches == NULL ) {
+		printf("Memory error: could not allocate memory for output matrix. Memory full?\n");
+		return -1;
+	}
+
+	if (TheorSpots == NULL ) {
+		printf("Memory error: could not allocate memory for output matrix. Memory full?\n");
+		return -1;
+	}
+	RealType omemargins[181];
+	RealType etamargins[MAX_N_RINGS];
+	for ( i = 1 ; i < 180 ; i++) omemargins[i] = Params.MarginOme + ( 0.5 * Params.StepsizeOrient / fabs(sin(i * deg2rad)));
+	omemargins[0] = omemargins[1];
+	omemargins[180] = omemargins[1];
+	for ( i = 0 ; i < MAX_N_RINGS ; i++) {
+		if ( Params.RingRadii[i] == 0) etamargins[i] = 0;
+		else etamargins[i] = rad2deg * atan(Params.MarginEta/Params.RingRadii[i]) + 0.5 * Params.StepsizeOrient;
+	}
+	double ga = posThis[0], gb = posThis[1], gc = posThis[2];
+	double Displ_y, Displ_z;
+	int sp;
+	int nMatches = 0;
+	int rownr = 0;
+	// Calculate diffraction spots
+	CalcDiffrSpots_Furnace(orThis, Params.LatticeConstant, Params.Wavelength , Params.Distance, Params.RingRadii,
+		Params.OmegaRanges, Params.BoxSizes, Params.NoOfOmegaRanges, Params.ExcludePoleAngle, TheorSpots, &nTspots);
+	for (sp = 0 ; sp < nTspots ; sp++) {
+		displacement_spot_needed_COM(ga, gb, gc, TheorSpots[sp][3], TheorSpots[sp][4],
+		TheorSpots[sp][5], TheorSpots[sp][6], &Displ_y, &Displ_z );
+		TheorSpots[sp][10] = TheorSpots[sp][4] +  Displ_y;
+		TheorSpots[sp][11] = TheorSpots[sp][5] +  Displ_z;
+		CalcEtaAngle( TheorSpots[sp][10], TheorSpots[sp][11], &TheorSpots[sp][12] );
+		TheorSpots[sp][13] = sqrt(TheorSpots[sp][10] * TheorSpots[sp][10] + TheorSpots[sp][11] * TheorSpots[sp][11]) -
+								Params.RingRadii[(int)TheorSpots[sp][9]];
+	}
+	// Compare with observed diffraction spots.
+	CompareSpots(TheorSpots, nTspots, ObsSpotsLab, RefRad,
+		Params.MarginRad, Params.MarginRadial, etamargins, omemargins,
+		&nMatches, GrainSpots);
+	double fracMatchesThis = (RealType) ((RealType)nMatches)/((RealType)nTspots);
+	if (fracMatchesThis > Params.MinMatchesToAcceptFrac){
+		for (i = 0 ;  i < 9 ; i ++) GrainMatches[0][i] = orThis[i/3][i%3];
+		GrainMatches[0][9]  = ga;
+		GrainMatches[0][10] = gb;
+		GrainMatches[0][11] = gc;
+		GrainMatches[0][12] = (double)nTspots;
+		GrainMatches[0][13] = (double)nMatches;
+		GrainMatches[0][14] = 1;
+		for (r = 0 ; r < nTspots ; r++) {
+			for (c = 0 ; c < 15 ; c++) AllGrainSpots[r][c] = GrainSpots[r][c];
+			AllGrainSpots[r][15] = 1;
+		}
+		CalcIA(GrainMatches, 1, AllGrainSpots, Params.Distance );
+		rownr = nTspots;
+		double enTm = omp_get_wtime() - sttm;
+		WriteBestMatchBin(GrainMatches, AllGrainSpots, rownr, Params.OutputFolder, offsetLoc);
+	} else {
+		return -1;
+	}
+	int grID = (int)GrainSpots[0][14];
+	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
+	FreeMemMatrix( TheorSpots, nRowsPerGrain);
+	FreeMemMatrix( GrainSpots, nRowsPerGrain);
+	FreeMemMatrix( AllGrainSpots, nRowsOutput);
+	return grID;
+}
+
 int ReadBins(char *cwd)
 {
 	int fd;
@@ -1814,12 +1913,6 @@ int ReadBins(char *cwd)
 	size_t size;
 	char file_name[2048];
 	sprintf(file_name,"%s/Data.bin",cwd);
-	char cmmd[4096];
-	sprintf(cmmd,"cp %s /dev/shm/",file_name);
-	// printf("Copying Data.bin\n");
-	// system(cmmd);
-	// printf("Copied Data.bin\n");
-	// sprintf(file_name,"/dev/shm/Data.bin");
 	int rc;
 	fd = open (file_name, O_RDONLY);
 	check (fd < 0, "open %s failed: %s", file_name, strerror (errno));
@@ -1834,11 +1927,6 @@ int ReadBins(char *cwd)
 	int status2;
 	char file_name2[2048];
 	sprintf(file_name2,"%s/nData.bin",cwd);
-	sprintf(cmmd,"cp %s /dev/shm/",file_name2);
-	// printf("Copying nData.bin\n");
-	// system(cmmd);
-	// printf("Copied nData.bin\n");
-	// sprintf(file_name2,"/dev/shm/nData.bin");
 	fd2 = open (file_name2, O_RDONLY);
 	check (fd2 < 0, "open %s failed: %s", file_name2, strerror (errno));
 	status2 = fstat (fd2, & s2);
@@ -1858,10 +1946,6 @@ int ReadSpots(char *cwd)
 	size_t size;
 	char filename[2048];
 	sprintf(filename,"%s/Spots.bin",cwd);
-	char cmmd[4096];
-	// sprintf(cmmd,"cp %s /dev/shm/",filename);
-	// system(cmmd);
-	// sprintf(filename,"/dev/shm/Spots.bin");
 	int rc;
 	fd = open(filename,O_RDONLY);
 	check(fd < 0, "open %s failed: %s", filename, strerror(errno));
@@ -1873,48 +1957,6 @@ int ReadSpots(char *cwd)
 	return (int) size/(9*sizeof(double));
 }
 
-int UnMap(char *cwd)
-{
-	int fd;
-	struct stat s;
-	int status;
-	size_t size;
-	char file_name[2048];
-	sprintf(file_name,"/dev/shm/Data.bin");
-	int rc;
-	fd = open (file_name, O_RDONLY);
-	check (fd < 0, "open %s failed: %s", file_name, strerror (errno));
-	status = fstat (fd, & s);
-	check (status < 0, "stat %s failed: %s", file_name, strerror (errno));
-	size = s.st_size;
-	rc = munmap (data,size);
-	int fd2;
-	struct stat s2;
-	int status2;
-	char file_name2[2048];
-	sprintf(file_name2,"/dev/shm/nData.bin");
-	fd2 = open (file_name2, O_RDONLY);
-	check (fd2 < 0, "open %s failed: %s", file_name2, strerror (errno));
-	status2 = fstat (fd2, & s2);
-	check (status2 < 0, "stat %s failed: %s", file_name2, strerror (errno));
-	size_t size2 = s2.st_size;
-	rc = munmap (ndata,size2);
-	int fd3;
-	struct stat s3;
-	int status3;
-	char filename3[2048];
-	sprintf(filename3,"/dev/shm/Spots.bin");
-	fd3 = open(filename3,O_RDONLY);
-	check(fd3 < 0, "open %s failed: %s", filename3, strerror(errno));
-	status3 = fstat (fd3 , &s3);
-	check (status3 < 0, "stat %s failed: %s", filename3, strerror(errno));
-	size_t size3 = s3.st_size;
-	rc = munmap(ObsSpotsLab,size3);
-	system("rm /dev/shm/Spots.bin");
-	system("rm /dev/shm/Data.bin");
-	system("rm /dev/shm/nData.bin");
-	return 1;
-}
 
 int
 main(int argc, char *argv[])
@@ -1940,7 +1982,7 @@ main(int argc, char *argv[])
 	printf("Finished reading parameters.\n");
 	char *hklfn = "hkls.csv";
 	FILE *hklf = fopen(hklfn,"r");
-	char aline[1024],dummy[1024];
+	char aline[4096],dummy[1024];
 	fgets(aline,1000,hklf);
 	int Rnr,i;
 	int hi,ki,li;
@@ -1993,40 +2035,89 @@ main(int argc, char *argv[])
 	printf("Total no of bins     : %d\n\n", n_ring_bins * n_eta_bins * n_ome_bins);
 	printf("Finished binning.\n\n");
 	fflush(stdout);
-	int *SpotIDs;
-	int nSpotIDs;
-	int nBlocks = atoi(argv[3]);
-	int blockNr = atoi(argv[2]);
-	int nSpotsToIndex = atoi(argv[4]);
 	int numProcs = atoi(argv[5]);
-	int startRowNr;
-	int endRowNr;
-	startRowNr = (int) (ceil((double)nSpotsToIndex / (double)nBlocks)) * blockNr;
-	int tmp = (int)(ceil((double)nSpotsToIndex / (double)nBlocks)) * (blockNr+1);
-	endRowNr = tmp < (nSpotsToIndex-1) ? tmp : (nSpotsToIndex-1);
-	nSpotIDs = endRowNr-startRowNr+1;
-	SpotIDs = malloc(nSpotIDs*sizeof(*SpotIDs));
-	FILE *spotsFile = fopen("SpotsToIndex.csv","r");
-	for (i=0;i<startRowNr;i++){
-		fgets(aline,1000,spotsFile);
-	}
-	for (i=0;i<nSpotIDs;i++){
-		fgets(aline,1000,spotsFile);
-		sscanf(aline,"%d",&SpotIDs[i]);
-	}
-	fclose(spotsFile);
-	printf("Read spots info, nSpots = %d, %d %d\n",nSpotIDs, numProcs,omp_get_max_threads());
-	fflush(stdout);
-	printf("%d\n",omp_get_max_threads());
-	int thisRowNr;
-	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
-	for (thisRowNr = 0; thisRowNr < nSpotIDs; thisRowNr++){
-		int thisSpotID = SpotIDs[thisRowNr];
-		int idRow = thisRowNr+startRowNr;
-		DoIndexing(thisSpotID,Params,idRow,thisRowNr,nSpotIDs);
+	if (Params.isGrainsInput == 0){
+		int *SpotIDs;
+		int nSpotIDs;
+		int nBlocks = atoi(argv[3]);
+		int blockNr = atoi(argv[2]);
+		int nSpotsToIndex = atoi(argv[4]);
+		int startRowNr;
+		int endRowNr;
+		startRowNr = (int) (ceil((double)nSpotsToIndex / (double)nBlocks)) * blockNr;
+		int tmp = (int)(ceil((double)nSpotsToIndex / (double)nBlocks)) * (blockNr+1);
+		endRowNr = tmp < (nSpotsToIndex-1) ? tmp : (nSpotsToIndex-1);
+		nSpotIDs = endRowNr-startRowNr+1;
+		SpotIDs = malloc(nSpotIDs*sizeof(*SpotIDs));
+		FILE *spotsFile = fopen("SpotsToIndex.csv","r");
+		for (i=0;i<startRowNr;i++){
+			fgets(aline,1000,spotsFile);
+		}
+		for (i=0;i<nSpotIDs;i++){
+			fgets(aline,1000,spotsFile);
+			sscanf(aline,"%d",&SpotIDs[i]);
+		}
+		fclose(spotsFile);
+		printf("Read spots info, nSpots = %d, %d %d\n",nSpotIDs, numProcs,omp_get_max_threads());
+		fflush(stdout);
+		printf("%d\n",omp_get_max_threads());
+		int thisRowNr;
+		# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
+		for (thisRowNr = 0; thisRowNr < nSpotIDs; thisRowNr++){
+			int thisSpotID = SpotIDs[thisRowNr];
+			int idRow = thisRowNr+startRowNr;
+			DoIndexing(thisSpotID,Params,idRow,thisRowNr,nSpotIDs);
+		}
+	} else{
+		// Read the orientations from the grains.csv file, then do forward simulation and match.
+		// Assuming we will only use one node!!!!! Also we need to write out the SpotsToIndex.csv file!!!
+		int nGrains = 0, grainNr = 0;
+		FILE *inpF;
+		inpF = fopen(Params.GrainsFileName,"r");
+		fgets(aline,4096,inpF);
+		sscanf(aline,"%s %d",dummy,&nGrains);
+		RealType **orients;
+		RealType **positions;
+		RealType *radii;
+		orients = allocMatrix(nGrains,9);
+		positions = allocMatrix(nGrains,3);
+		radii = calloc(nGrains,sizeof(*radii));
+		for (i=0;i<8;i++) fgets(aline,4096,inpF);
+		while(fgets(aline,4096,inpF)!=NULL){
+			sscanf(aline,"%s %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %s %s %s %s %s %s %s %lf ",
+				dummy,
+				&orients[grainNr][0], &orients[grainNr][1], &orients[grainNr][2],
+				&orients[grainNr][3], &orients[grainNr][4], &orients[grainNr][5],
+				&orients[grainNr][6], &orients[grainNr][7], &orients[grainNr][8],
+				&positions[grainNr][0], &positions[grainNr][1], &positions[grainNr][2],
+				dummy, dummy, dummy, dummy, dummy, dummy, dummy, dummy, dummy,
+				&radii[grainNr]);
+				grainNr ++;
+		}
+		// We have all the info, get back the results.
+		int *spotsIndexed;
+		spotsIndexed = malloc(nGrains * sizeof(*spotsIndexed));
+		if (spotsIndexed == NULL) {
+			printf("Memory error: could not allocate memory for spotsIndexed array. Memory full?\n");
+			exit(EXIT_FAILURE);
+		}
+		# pragma omp parallel for num_threads(numProcs) schedule(dynamic)
+		for (grainNr = 0; grainNr < nGrains; grainNr++) {
+			// get the corresponding orient and position, feed to DoIndexingSeed
+			spotsIndexed[grainNr] = DoIndexingSeed(orients[grainNr], positions[grainNr], radii[grainNr], Params, grainNr, grainNr, nGrains);
+		}
+		// Write the SpotsToIndex.csv file
+		FILE *spotsFile = fopen("SpotsToIndex.csv", "w");
+		if (spotsFile == NULL) {
+			printf("Error: Could not open SpotsToIndex.csv for writing.\n");
+			exit(EXIT_FAILURE);
+		}
+		for (grainNr = 0; grainNr < nGrains; grainNr++) {
+			fprintf(spotsFile, "%d\n", spotsIndexed[grainNr]);
+		}
+		fclose(spotsFile);
 	}
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);
-	// int tc = UnMap(cwdstr);
 	return(0);
 }

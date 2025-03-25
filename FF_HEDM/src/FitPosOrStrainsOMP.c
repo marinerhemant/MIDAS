@@ -1282,7 +1282,8 @@ int main(int argc, char *argv[])
     double Rsample, Hbeam,RingRadii[200],MargABC=0.3,MargABG=0.3;
   	char OutputFolder[1024],ResultFolder[1024];
   	int DiscModel = 0, TopLayer = 0, TakeGrainMax = 0;
-  	int GrainTracking = 0;
+  	int isGrainsInput = 0;
+	char GrainsFileName[4096];
   	int cntrdet=0;
     while (fgets(aline,1000,fileParam)!=NULL){
         str = "LatticeParameter ";
@@ -1299,12 +1300,6 @@ int main(int argc, char *argv[])
             sscanf(aline,"%s %lf %lf %lf %lf %lf %lf", dummy,
 					&LatCinT[0], &LatCinT[1], &LatCinT[2],
 					&LatCinT[3], &LatCinT[4], &LatCinT[5]);
-            continue;
-        }
-        str = "GrainTracking ";
-        LowNr = strncmp(aline,str,strlen(str));
-        if (LowNr==0){
-            sscanf(aline,"%s %d", dummy, &GrainTracking);
             continue;
         }
         str = "px ";
@@ -1421,6 +1416,13 @@ int main(int argc, char *argv[])
             sscanf(aline,"%s %s", dummy, OutputFolder);
             continue;
         }
+		str = "GrainsFile ";
+        LowNr = strncmp(aline,str,strlen(str));
+        if (LowNr==0){
+			isGrainsInput = 1;
+            sscanf(aline,"%s %s", dummy, GrainsFileName);
+            continue;
+        }
 		str = "ResultFolder ";
         LowNr = strncmp(aline,str,strlen(str));
         if (LowNr==0){
@@ -1483,32 +1485,7 @@ int main(int argc, char *argv[])
 		totNrPixelsBigDetector /= 32;
 		totNrPixelsBigDetector ++;
 	}
-
-	//////////////////////////// OPENMP
-	int *SptIDs;
-	int nSptIDs;
-	int nBlocks = atoi(argv[3]);
-	int blockNr = atoi(argv[2]);
-	int nSpotsToIndex = atoi(argv[4]);
 	int numProcs = atoi(argv[5]);
-	int startRowNr;
-	int endRowNr;
-	startRowNr = (int) (ceil((double)nSpotsToIndex / (double)nBlocks)) * blockNr;
-	int tmp = (int)(ceil((double)nSpotsToIndex / (double)nBlocks)) * (blockNr+1);
-	endRowNr = tmp < (nSpotsToIndex-1) ? tmp : (nSpotsToIndex-1);
-	nSptIDs = endRowNr-startRowNr+1;
-	SptIDs = malloc(nSptIDs*sizeof(*SptIDs));
-	// Read spotIDs
-	int it;
-	FILE *spotsFile = fopen("SpotsToIndex.csv","r");
-	for (it=0;it<startRowNr;it++){
-		fgets(aline,1000,spotsFile);
-	}
-	for (it=0;it<nSptIDs;it++){
-		fgets(aline,1000,spotsFile);
-		sscanf(aline,"%d",&SptIDs[it]);
-	}
-	fclose(spotsFile);
 	double **hkls;
 	hkls = allocMatrix(MaxNHKLS,7);
 	char *hklfn = "hkls.csv";
@@ -1520,19 +1497,20 @@ int main(int argc, char *argv[])
 	fgets(aline,1000,hklf);
 	int h,kt,l,Rnr, nhkls=0;
 	double ds,tht;
+	int iter;
 	double MaxTtheta = rad2deg*atan(MaxRingRad/Lsd);
 	while (fgets(aline,1000,hklf)!=NULL){
 		sscanf(aline, "%d %d %d %lf %d %s %s %s %lf %s %s",&h,&kt,&l,&ds,&Rnr,dummy,dummy,dummy,&tht,dummy,dummy);
 		if (tht > MaxTtheta/2) break;
-		for (it=0;it<cs;it++){
-			if(Rnr == RingNumbers[it]){
+		for (iter=0;iter<cs;iter++){
+			if(Rnr == RingNumbers[iter]){
 				hkls[nhkls][0] = h;
 				hkls[nhkls][1] = kt;
 				hkls[nhkls][2] = l;
 				hkls[nhkls][3] = ds;
 				hkls[nhkls][4] = tht;
-				hkls[nhkls][5] = RingRadii[it];
-				hkls[nhkls][6] = RingNumbers[it];
+				hkls[nhkls][5] = RingRadii[iter];
+				hkls[nhkls][6] = RingNumbers[iter];
 				nhkls++;
 			}
 		}
@@ -1540,400 +1518,738 @@ int main(int argc, char *argv[])
 	fclose(hklf);
 	if (nOmeRanges != nBoxSizes){printf("Number of omega ranges and number of box sizes don't match. Exiting!\n");return 1;}
 	double MargOme=0.01,MargPos=Rsample,MargPos2=Rsample/2,MargOme2=2,chi=0;
-	int thisRowNr;
-	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
-	for (thisRowNr = 0; thisRowNr < nSptIDs; thisRowNr++){
-		int nrSpIds=1;
-		char OutFN[1024],OrigOutFN[1024];
-		double OrientsOrig[nrSpIds][10],PositionsOrig[nrSpIds][4],ErrorsOrig[nrSpIds][4],
-			 OrientsFit[nrSpIds][10],PositionsFit[nrSpIds][4],StrainsFit[nrSpIds][7],ErrorsFin[nrSpIds][4];
-		char *h1 = "SpotID,YObsCorrPos,ZObsCorrPos,OmegaObsCorrPos,G1Obs,G2Obs,G3Obs,YExp,ZExp,OmegaExp,G1Exp,G2Exp,G3Exp,";
-		char *h2 = "YObsCorrWedge,ZObsCorrWedge,OmegaObsCorrWedge,OmegaObs,YObs,ZObs,InternalAngle,DiffLen,DiffOmega\n";
-		char header[2048];
-		sprintf(header,"%s%s",h1,h2);
-		int i, j, k;
-		int SpId = SptIDs[thisRowNr];
-		double LatCin[6];
-		char *SpFN = "SpotsToIndex.csv";
-		FILE *SpFile = fopen(SpFN,"r");
-		if (SpFile == NULL){
-			printf("Could not read the SpotsToIndex.csv file while trying %d. Exiting.\n",SpId);
-			continue;
-		}
-		int rowNr = 0;
-		int ThisID;
-		int count = 0;
-		char line[5024];
-		while (fgets(line,5000,SpFile)!=NULL){
-			sscanf(line,"%d",&ThisID);
-			if (ThisID == SpId){
-				rowNr = count;
-				break;
-			}
-			count++;
-		}
-		fclose(SpFile);
-		for (i=0;i<6;i++) LatCin[i] = LatCinT[i];
+	char *h1 = "SpotID,YObsCorrPos,ZObsCorrPos,OmegaObsCorrPos,G1Obs,G2Obs,G3Obs,YExp,ZExp,OmegaExp,G1Exp,G2Exp,G3Exp,";
+	char *h2 = "YObsCorrWedge,ZObsCorrWedge,OmegaObsCorrWedge,OmegaObs,YObs,ZObs,InternalAngle,DiffLen,DiffOmega\n";
+	char header[2048];
+	sprintf(header,"%s%s",h1,h2);
 
-		int nSpID = 0;
-		char InpFN[2048],InpFN2[2048];
-		sprintf(InpFN,"%s/IndexBest.bin",OutputFolder);
-		sprintf(InpFN2,"%s/IndexBestFull.bin",OutputFolder);
-		int inpF = open(InpFN,O_RDONLY);
-		if (inpF == -1) {
-			printf("Nothing was found during indexing, nothing to do.\n");
-			continue;
+	if (isGrainsInput ==0){
+		//////////////////////////// OPENMP
+		int *SptIDs;
+		int nSptIDs;
+		int nBlocks = atoi(argv[3]);
+		int blockNr = atoi(argv[2]);
+		int nSpotsToIndex = atoi(argv[4]);
+		int startRowNr;
+		int endRowNr;
+		startRowNr = (int) (ceil((double)nSpotsToIndex / (double)nBlocks)) * blockNr;
+		int tmp = (int)(ceil((double)nSpotsToIndex / (double)nBlocks)) * (blockNr+1);
+		endRowNr = tmp < (nSpotsToIndex-1) ? tmp : (nSpotsToIndex-1);
+		nSptIDs = endRowNr-startRowNr+1;
+		SptIDs = malloc(nSptIDs*sizeof(*SptIDs));
+		// Read spotIDs
+		FILE *spotsFile = fopen("SpotsToIndex.csv","r");
+		int it;
+		for (it=0;it<startRowNr;it++){
+			fgets(aline,1000,spotsFile);
 		}
-		size_t offst1 = rowNr;
-		offst1 *= 15*sizeof(double);
-		double *locArr;
-		locArr = malloc(15*sizeof(*locArr));
-		int rcA = pread(inpF,locArr,15*sizeof(double),offst1);
-		close(inpF);
-		if (locArr[14]==0){
-			printf("Good result not found. Skipping this rowNr: %d\n",rowNr);
+		for (it=0;it<nSptIDs;it++){
+			fgets(aline,1000,spotsFile);
+			sscanf(aline,"%d",&SptIDs[it]);
+		}
+		fclose(spotsFile);
+		int thisRowNr;
+		# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
+		for (thisRowNr = 0; thisRowNr < nSptIDs; thisRowNr++){
+			int nrSpIds=1;
+			char OutFN[1024],OrigOutFN[1024];
+			double OrientsOrig[nrSpIds][10],PositionsOrig[nrSpIds][4],ErrorsOrig[nrSpIds][4],
+				OrientsFit[nrSpIds][10],PositionsFit[nrSpIds][4],StrainsFit[nrSpIds][7],ErrorsFin[nrSpIds][4];
+			int i, j, k;
+			int SpId = SptIDs[thisRowNr];
+			double LatCin[6];
+			char *SpFN = "SpotsToIndex.csv";
+			FILE *SpFile = fopen(SpFN,"r");
+			if (SpFile == NULL){
+				printf("Could not read the SpotsToIndex.csv file while trying %d. Exiting.\n",SpId);
+				continue;
+			}
+			int rowNr = 0;
+			int ThisID;
+			int count = 0;
+			char line[5024];
+			while (fgets(line,5000,SpFile)!=NULL){
+				sscanf(line,"%d",&ThisID);
+				if (ThisID == SpId){
+					rowNr = count;
+					break;
+				}
+				count++;
+			}
+			fclose(SpFile);
+			for (i=0;i<6;i++) LatCin[i] = LatCinT[i];
+
+			int nSpID = 0;
+			char InpFN[2048],InpFN2[2048];
+			sprintf(InpFN,"%s/IndexBest.bin",OutputFolder);
+			sprintf(InpFN2,"%s/IndexBestFull.bin",OutputFolder);
+			int inpF = open(InpFN,O_RDONLY);
+			if (inpF == -1) {
+				printf("Nothing was found during indexing, nothing to do.\n");
+				continue;
+			}
+			size_t offst1 = rowNr;
+			offst1 *= 15*sizeof(double);
+			double *locArr;
+			locArr = malloc(15*sizeof(*locArr));
+			int rcA = pread(inpF,locArr,15*sizeof(double),offst1);
+			close(inpF);
+			if (locArr[14]==0){
+				printf("Good result not found. Skipping this rowNr: %d\n",rowNr);
+				char KeyFN[1024];
+				sprintf(KeyFN,"%s/Key.bin",ResultFolder);
+				int SizeKeyFile 		= 2  * sizeof(int);
+				size_t OffStKeyFile = SizeKeyFile;
+				OffStKeyFile *= rowNr;
+				int KeyInfo[2] = {0, 0};
+				#pragma omp critical
+				{
+					int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+					if (resultKeyFN <= 0){
+						printf("Could not open output file.\n");
+					}
+					int rc = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
+					if (rc < 0){
+						printf("Could not write to output file.\n");
+					}
+					close(resultKeyFN);
+				}
+				continue;
+			}
+			double Orient0[9], Pos0[3], IA0, Euler0[3], Orient0_3[3][3],NrExpected,NrObserved,meanRadius=0,thisRadius,completeness,MaxRadTot=-100;
+			IA0 = locArr[0];
+			for (i=0;i<9;i++) Orient0[i] = locArr[i+1];
+			for (i=0;i<3;i++) Pos0[i] = locArr[i+10];
+			NrExpected = locArr[13];
+			NrObserved = locArr[14];
+			free(locArr);
+			completeness = NrObserved/NrExpected;
+			char SpotsCompFN[2048];
+			int nSpotsBest=(int)NrObserved,*spotIDS,nSpotsRad=0;
+			double *locArr2;
+			spotIDS = malloc(nSpotsBest*sizeof(*spotIDS));
+			locArr2 = malloc((int)NrObserved*2*sizeof(*locArr2));
+			size_t offst2 = rowNr;
+			offst2 *= MaxNHKLS;
+			offst2 *= 2*sizeof(double);
+			int inpF2 = open(InpFN2,O_RDONLY);
+			int rcB = pread(inpF2,locArr2,(int)NrObserved*2*sizeof(double),offst2);
+			close(inpF2);
+			for (i=0;i<NrObserved;i++) {
+				spotIDS[i] = (int)locArr2[i*2+0];
+				thisRadius = locArr2[i*2+1];
+				meanRadius += thisRadius;
+				nSpotsRad++;
+				if (TakeGrainMax == 1){
+					if (thisRadius > MaxRadTot){
+						MaxRadTot = thisRadius;
+					}
+				}			
+			}
+			free(locArr2);
+			meanRadius /= nSpotsRad;
+			if (TakeGrainMax == 1){
+				meanRadius = MaxRadTot;
+			}
+
+			double a=LatCin[0],b=LatCin[1],c=LatCin[2],alph=LatCin[3],bet=LatCin[4],gamm=LatCin[5];
+			for (i=0;i<3;i++) for (j=0;j<3;j++) Orient0_3[i][j] = Orient0[i*3+j];
+			OrientMat2Euler(Orient0_3,Euler0);
+			Euler2OrientMat(Euler0,Orient0_3);
+			Convert3x3To9(Orient0_3,Orient0);
+			OrientMat2Euler(Orient0_3,Euler0);
+			double **spotsYZO;
+			spotsYZO=allocMatrix(nSpotsBest,8);
+			int nSpotsYZO=nSpotsBest;
+			// Idea: spotID always starts from 1 and is increasing in number, so
+			// spotIDS[i] should correspond to AllSpots[(spotIDS[i]-1)*14+...], this should
+			// reduce execution time.
+			size_t spotPosAllSpots;
+			for (i=0;i<nSpotsBest;i++){
+				spotPosAllSpots = (int)spotIDS[i]-1;
+				if (spotPosAllSpots+1 != (size_t)AllSpots[spotPosAllSpots*14+4]){
+					printf("Data mismatch! Behavior undefined. Original: %d, Looked for %zu, found %zu\n", (int)spotIDS[i], spotPosAllSpots+1, (size_t)AllSpots[spotPosAllSpots*14+4]);
+				}
+				spotsYZO[i][0] = AllSpots[spotPosAllSpots*14+0];
+				spotsYZO[i][1] = AllSpots[spotPosAllSpots*14+1];
+				spotsYZO[i][2] = AllSpots[spotPosAllSpots*14+2];
+				spotsYZO[i][3] = AllSpots[spotPosAllSpots*14+4];
+				spotsYZO[i][4] = AllSpots[spotPosAllSpots*14+8];
+				spotsYZO[i][5] = AllSpots[spotPosAllSpots*14+9];
+				spotsYZO[i][6] = AllSpots[spotPosAllSpots*14+10];
+				spotsYZO[i][7] = AllSpots[spotPosAllSpots*14+5];
+			}
+			double *Ini; Ini=malloc(12*sizeof(*Ini));
+			double **SpotsComp,**Splist,*ErrorIni;
+			SpotsComp=allocMatrix(MaxNSpotsBest,22);
+			Splist=allocMatrix(MaxNSpotsBest,9);
+			ErrorIni = malloc(3*sizeof(*ErrorIni));
+			int nSpotsComp;
+			ConcatPosEulLatc(Ini,Pos0,Euler0,LatCin);
+			CalcAngleErrors(nSpotsYZO,nhkls,nOmeRanges,Ini,spotsYZO,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,
+							MinEta,wedge,chi,SpotsComp,Splist,ErrorIni,&nSpotsComp,0);
+			double **spotsYZONew; spotsYZONew=allocMatrix(nSpotsComp,9);
+			for (i=0;i<nSpotsComp;i++){
+				for (j=0;j<9;j++){
+					spotsYZONew[i][j]=Splist[i][j];
+				}
+			}
+			OrientsOrig[nSpID][0] = (double)SpId;
+			for (i=0;i<9;i++) OrientsOrig[nSpID][i+1] = Orient0[i];
+			PositionsOrig[nSpID][0] = (double)SpId;
+			for (i=0;i<3;i++) PositionsOrig[nSpID][i+1] = Pos0[i];
+			ErrorsOrig[nSpID][0] = (double)SpId;
+			for (i=0;i<3;i++) ErrorsOrig[nSpID][i+1] = ErrorIni[i];
+			double Inp[12]; for (i=0;i<12;i++) Inp[i] = Ini[i];
+			double X[3]; for (i=0;i<3;i++) X[i] = Pos0[i];
+			double X0[12]; for (i=0;i<12;i++) X0[i] = Inp[i];
+			double XLow[3], XHigh[3], EulerLow[3], EulerHigh[3];
+			for (i=0;i<3;i++){
+				XLow[i]=X[i]-MargPos2;
+				XHigh[i]=X[i]+MargPos2;
+				EulerLow[i]=Euler0[i]-MargOme;
+				EulerHigh[i]=Euler0[i]+MargOme;
+			}
+			if (XLow[0] < -Rsample) XLow[0] = -Rsample;
+			if (XLow[1] < -Rsample) XLow[1] = -Rsample;
+			if (XLow[2] < -Hbeam/2) XLow[2] = -Hbeam/2;
+			if (XHigh[0] > Rsample) XHigh[0] = Rsample;
+			if (XHigh[1] > Rsample) XHigh[1] = Rsample;
+			if (XHigh[2] > Hbeam/2) XHigh[2] = Hbeam/2;
+			double lb[12],ub[12];
+			for (i=0;i<3;i++) {lb[i]=XLow[i];ub[i]=XHigh[i];}
+			for (i=3;i<6;i++) {lb[i]=EulerLow[i-3];ub[i]=EulerHigh[i-3];}
+			lb[6] = a*(1-(MargABC/100));
+			lb[7] = b*(1-(MargABC/100));
+			lb[8] = c*(1-(MargABC/100));
+			lb[9] = alph*(1-(MargABG/100));
+			lb[10] = bet*(1-(MargABG/100));
+			lb[11] = gamm*(1-(MargABG/100));
+			ub[6] = a*(1+(MargABC/100));
+			ub[7] = b*(1+(MargABC/100));
+			ub[8] = c*(1+(MargABC/100));
+			ub[9] = alph*(1+(MargABG/100));
+			ub[10] = bet*(1+(MargABG/100));
+			ub[11] = gamm*(1+(MargABG/100));
+			double *XFit;
+			XFit = malloc(12*sizeof(*XFit));
+			double *ErrorInt1;
+			ErrorInt1 = malloc(3*sizeof(*ErrorInt1));
+			FitPositionIni(X0,nSpotsComp,spotsYZONew,nhkls,hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,XFit,lb,ub);
+			CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,XFit,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
+							SpotsComp,Splist,ErrorInt1,&nSpotsComp,1);
+			for (i=0;i<3;i++) XFit[i+3] = Euler0[i];
+			for (i=0;i<6;i++) XFit[i+6] = LatCin[i];
+			CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,XFit,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
+							SpotsComp,Splist,ErrorInt1,&nSpotsComp,1);
+			for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
+			double X0_2[9];X0_2[0]=Euler0[0];X0_2[1]=Euler0[1];X0_2[2]=Euler0[2];
+			for (i=0;i<6;i++) X0_2[i+3] = LatCin[i];
+			double lb2[9],ub2[9];
+			for (i=0;i<3;i++){
+				EulerLow[i]=Euler0[i]-MargOme2;
+				EulerHigh[i]=Euler0[i]+MargOme2;
+			}
+			for (i=0;i<3;i++) {lb2[i]=EulerLow[i];ub2[i]=EulerHigh[i];}
+			lb2[3] = a*(1-(MargABC/100));
+			lb2[4] = b*(1-(MargABC/100));
+			lb2[5] = c*(1-(MargABC/100));
+			lb2[6] = alph*(1-(MargABG/100));
+			lb2[7] = bet*(1-(MargABG/100));
+			lb2[8] = gamm*(1-(MargABG/100));
+			ub2[3] = a*(1+(MargABC/100));
+			ub2[4] = b*(1+(MargABC/100));
+			ub2[5] = c*(1+(MargABC/100));
+			ub2[6] = alph*(1+(MargABG/100));
+			ub2[7] = bet*(1+(MargABG/100));
+			ub2[8] = gamm*(1+(MargABG/100));
+			double *XFit2; XFit2 = malloc(9*sizeof(*XFit2));
+			double PosFitOrientIn[3]; for (i=0;i<3;i++) PosFitOrientIn[i] = XFit[i];
+			FitOrientIni(X0_2,nSpotsComp,spotsYZONew,nhkls,hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,XFit2,lb2,ub2,PosFitOrientIn);
+			double UseXFit[12];for (i=0;i<3;i++) UseXFit[i]=XFit[i];for (i=0;i<3;i++) UseXFit[i+3]=XFit2[i]; for (i=0;i<6;i++) UseXFit[i+6]=LatCin[i];
+			double *ErrorInt2;
+			ErrorInt2 = malloc(3*sizeof(*ErrorInt2));
+			CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,UseXFit,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
+							SpotsComp,Splist,ErrorInt2,&nSpotsComp,1);
+			for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
+			double X0_3[6];for (i=0;i<6;i++) X0_3[i] = LatCin[i];
+			double lb3[6],ub3[6];
+			lb3[0] = a*(1-(MargABC/100));
+			lb3[1] = b*(1-(MargABC/100));
+			lb3[2] = c*(1-(MargABC/100));
+			lb3[3] = alph*(1-(MargABG/100));
+			lb3[4] = bet*(1-(MargABG/100));
+			lb3[5] = gamm*(1-(MargABG/100));
+			ub3[0] = a*(1+(MargABC/100));
+			ub3[1] = b*(1+(MargABC/100));
+			ub3[2] = c*(1+(MargABC/100));
+			ub3[3] = alph*(1+(MargABG/100));
+			ub3[4] = bet*(1+(MargABG/100));
+			ub3[5] = gamm*(1+(MargABG/100));
+			double OrientFitIn[3];for (i=0;i<3;i++) OrientFitIn[i] = XFit2[i];
+			double *XFit3;XFit3 = malloc(6*sizeof(*XFit3));
+			FitStrainIni(X0_3,nSpotsComp,spotsYZONew,nhkls,hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,XFit3,lb3,ub3,PosFitOrientIn,OrientFitIn);
+			double UseXFit2[12];for (i=0;i<3;i++) UseXFit2[i]=XFit[i];for (i=0;i<3;i++) UseXFit2[i+3]=XFit2[i]; for (i=0;i<6;i++) UseXFit2[i+6]=XFit3[i];
+			double *ErrorInt3;
+			ErrorInt3 = malloc(3*sizeof(*ErrorInt3));
+			CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,UseXFit2,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
+							SpotsComp,Splist,ErrorInt3,&nSpotsComp,1);
+			for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
+			double X0_4[3]; for (i=0;i<3;i++) X0_4[i] = XFit[i];
+			double XLow2[3], XHigh2[3];
+			for (i=0;i<3;i++){XLow2[i]=X0_4[i]-MargPos2;XHigh2[i]=X0_4[i]+MargPos2;}
+			if (XLow2[0] < -Rsample) XLow2[0] = -Rsample;
+			if (XLow2[1] < -Rsample) XLow2[1] = -Rsample;
+			if (XLow2[2] < -Hbeam/2) XLow2[2] = -Hbeam/2;
+			if (XHigh2[0] > Rsample) XHigh2[0] = Rsample;
+			if (XHigh2[1] > Rsample) XHigh2[1] = Rsample;
+			if (XHigh2[2] > Hbeam/2) XHigh2[2] = Hbeam/2;
+			double lb4[3],ub4[3];
+			for (i=0;i<3;i++) {lb4[i]=XLow2[i];ub4[i]=XHigh2[i];}
+			double StrainsFitIn[6];for (i=0;i<6;i++) StrainsFitIn[i]=XFit3[i];
+			double *XFit4;XFit4 = malloc(3*sizeof(*XFit4));
+			FitPosSec(X0_4,nSpotsComp,spotsYZONew,nhkls,hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,XFit4,lb4,ub4,OrientFitIn,StrainsFitIn);
+			double FinalResult[12];for (i=0;i<3;i++) FinalResult[i] = XFit4[i]; for (i=0;i<3;i++) FinalResult[i+3] = XFit2[i]; for (i=0;i<6;i++) FinalResult[i+6] = XFit3[i];
+			double *ErrorFin;
+			ErrorFin = malloc(3*sizeof(*ErrorFin));
+			CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,FinalResult,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
+							SpotsComp,Splist,ErrorFin,&nSpotsComp,1);
+			printf("SpotID %6d, %6d out of %6d, Errors: %7.2f %6.4f %6.4f, ",SpId,thisRowNr,nSptIDs,ErrorFin[0],ErrorFin[1],ErrorFin[2]);
+			for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
+			printf("Fitvals: Pos: %7.2f %7.2f %7.2f, Orient: %7.2f %7.2f %7.2f, LatC: %6.4f %6.4f %6.4f %7.3f %7.3f %7.3f\n",
+						FinalResult[0],FinalResult[1],FinalResult[2],FinalResult[3],FinalResult[4],FinalResult[5],FinalResult[6],FinalResult[7],FinalResult[8],
+						FinalResult[9],FinalResult[10],FinalResult[11]);
+			double OF[3][3],OrientFit[9],EulerFit[3],PositionFit[3],LatticeParameterFit[6];for (i=0;i<3;i++) EulerFit[i] = FinalResult[i+3];
+			for (i=0;i<3;i++) PositionFit[i] = FinalResult[i]; for (i=0;i<6;i++) LatticeParameterFit[i] = FinalResult[i+6];
+			Euler2OrientMat(EulerFit,OF);Convert3x3To9(OF,OrientFit);
+			OrientsFit[nSpID][0] = SpId;PositionsFit[nSpID][0] = SpId;ErrorsFin[nSpID][0] = SpId;StrainsFit[nSpID][0] = SpId;
+			for (i=0;i<9;i++) {
+				OrientsFit[nSpID][i+1] = OrientFit[i];
+			}
+			for (i=0;i<3;i++) PositionsFit[nSpID][i+1] = PositionFit[i];
+			for (i=0;i<6;i++) StrainsFit[nSpID][i+1] = LatticeParameterFit[i];
+			for (i=0;i<3;i++) ErrorsFin[nSpID][i+1] = ErrorFin[i];
+
+			// Start Writing: SpotsCompFN, OutFN, Key, ProcessGrainsFile
 			char KeyFN[1024];
 			sprintf(KeyFN,"%s/Key.bin",ResultFolder);
 			int SizeKeyFile 		= 2  * sizeof(int);
 			size_t OffStKeyFile = SizeKeyFile;
 			OffStKeyFile *= rowNr;
-			int KeyInfo[2] = {0, 0};
+			int KeyInfo[2] = {SpId , nSpotsComp};
+			char ProcessGrainsFN[1024];
+			sprintf(ProcessGrainsFN,"%s/ProcessKey.bin",ResultFolder);
+			int SizeProcessFile 	= nSpotsComp * sizeof(int);
+			size_t OffStProcessFile = MaxNHKLS;
+			OffStProcessFile *= sizeof(int);
+			OffStProcessFile *= rowNr;
+			int ProcessInfo[nSpotsComp];
+			for (i=0;i<nSpotsComp;i++){
+				ProcessInfo[i] = SpotsComp[i][0];
+			}
+			sprintf(OutFN,"%s/OrientPosFit.bin",ResultFolder);
+			int SizeOutFile 		= 27 * sizeof(double);
+			size_t OffStSizeOutFile = SizeOutFile;
+			OffStSizeOutFile *= rowNr;
+			double OutMatr[27];
+			for (i=0;i<10;i++){
+				OutMatr[i] = OrientsFit[nSpID][i];
+			}
+			for (i=0;i<4;i++){
+				OutMatr[i+10] = PositionsFit[nSpID][i];
+			}
+			for (i=0;i<7;i++){
+				OutMatr[i+14] = StrainsFit[nSpID][i];
+			}
+			for (i=0;i<4;i++){
+				OutMatr[i+21] = ErrorsFin[nSpID][i];
+			}
+			OutMatr[25] = meanRadius;
+			OutMatr[26] = completeness;
+			sprintf(SpotsCompFN,"%s/FitBest.bin",OutputFolder);
+			int SizeSpotsFile 		= 22 * sizeof(double) * nSpotsComp;
+			size_t OffStSpotsFile = 22;
+			OffStSpotsFile *= sizeof(double);
+			OffStSpotsFile *= MaxNHKLS;
+			OffStSpotsFile *= rowNr;
+			double SpotsCompFNContents[nSpotsComp][22];
+			for (i=0;i<nSpotsComp;i++){
+				for (j=0;j<22;j++){
+					SpotsCompFNContents[i][j] = SpotsComp[i][j];
+				}
+			}
 			#pragma omp critical
 			{
 				int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
 				if (resultKeyFN <= 0){
-					printf("Could not open output file.\n");
+					printf("Could not open output file. %s\n",KeyFN);
 				}
-				int rc = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
-			    if (rc < 0){
+				int rcKey = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
+				if (rcKey < 0){
+					printf("Could not write to output file.\n");
+					rcKey = close(resultKeyFN);
+				}
+				rcKey = close(resultKeyFN);
+				int ProcessKeyFN = open(ProcessGrainsFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+				if (ProcessKeyFN <=0){
+					printf("Could not open output file. %s\n",ProcessGrainsFN);
+				}
+				int rcProcess = pwrite(ProcessKeyFN,ProcessInfo,SizeProcessFile,OffStProcessFile);
+				if (rcProcess < 0){
 					printf("Could not write to output file.\n");
 				}
-				close(resultKeyFN);
-			}
-			continue;
-		}
-		double Orient0[9], Pos0[3], IA0, Euler0[3], Orient0_3[3][3],NrExpected,NrObserved,meanRadius=0,thisRadius,completeness,MaxRadTot=-100;
-		IA0 = locArr[0];
-		for (i=0;i<9;i++) Orient0[i] = locArr[i+1];
-		for (i=0;i<3;i++) Pos0[i] = locArr[i+10];
-		NrExpected = locArr[13];
-		NrObserved = locArr[14];
-		free(locArr);
-		completeness = NrObserved/NrExpected;
-		char SpotsCompFN[2048];
-		int nSpotsBest=(int)NrObserved,*spotIDS,nSpotsRad=0;
-		double *locArr2;
-		spotIDS = malloc(nSpotsBest*sizeof(*spotIDS));
-		locArr2 = malloc((int)NrObserved*2*sizeof(*locArr2));
-		size_t offst2 = rowNr;
-		offst2 *= MaxNHKLS;
-		offst2 *= 2*sizeof(double);
-		int inpF2 = open(InpFN2,O_RDONLY);
-		int rcB = pread(inpF2,locArr2,(int)NrObserved*2*sizeof(double),offst2);
-		close(inpF2);
-		for (i=0;i<NrObserved;i++) {
-			spotIDS[i] = (int)locArr2[i*2+0];
-			thisRadius = locArr2[i*2+1];
-			meanRadius += thisRadius;
-			nSpotsRad++;
-			if (TakeGrainMax == 1){
-				if (thisRadius > MaxRadTot){
-					MaxRadTot = thisRadius;
+				rcProcess = close(ProcessKeyFN);
+				int resultOutFN = open(OutFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+				if (resultOutFN <= 0){
+					printf("Could not open output file. %s\n",OutFN);
 				}
-			}			
-		}
-		free(locArr2);
-		meanRadius /= nSpotsRad;
-		if (TakeGrainMax == 1){
-			meanRadius = MaxRadTot;
+				int rcOut = pwrite(resultOutFN,OutMatr,SizeOutFile,OffStSizeOutFile);
+				if (rcOut < 0){
+					printf("Could not write to output file.\n");
+				}
+				rcOut = close(resultOutFN);
+				int resultSpotsCompFN = open(SpotsCompFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+				if (resultSpotsCompFN <= 0){
+					printf("Could not open output file. %s\n",SpotsCompFN);
+				}
+				int rcSpots = pwrite(resultSpotsCompFN,SpotsCompFNContents,SizeSpotsFile,OffStSpotsFile);
+				if (rcSpots < 0){
+					printf("Could not write to output file.\n");
+				}
+				rcSpots = close(resultSpotsCompFN);
+			}
+			free(spotIDS);
+			FreeMemMatrix(spotsYZO,nSpotsBest);
+			free(Ini);
+			FreeMemMatrix(SpotsComp,MaxNSpotsBest);
+			FreeMemMatrix(Splist,MaxNSpotsBest);
+			free(ErrorIni);
+			FreeMemMatrix(spotsYZONew,nSpotsComp);
+			free(XFit);
+			free(ErrorInt1);
+			free(XFit2);
+			free(ErrorInt2);
+			free(XFit3);
+			free(ErrorInt3);
+			free(XFit4);
+			free(ErrorFin);
 		}
 
-		double a=LatCin[0],b=LatCin[1],c=LatCin[2],alph=LatCin[3],bet=LatCin[4],gamm=LatCin[5];
-		for (i=0;i<3;i++) for (j=0;j<3;j++) Orient0_3[i][j] = Orient0[i*3+j];
-		OrientMat2Euler(Orient0_3,Euler0);
-		Euler2OrientMat(Euler0,Orient0_3);
-		Convert3x3To9(Orient0_3,Orient0);
-		OrientMat2Euler(Orient0_3,Euler0);
-		double **spotsYZO;
-		spotsYZO=allocMatrix(nSpotsBest,8);
-		int nSpotsYZO=nSpotsBest;
-		// Idea: spotID always starts from 1 and is increasing in number, so
-		// spotIDS[i] should correspond to AllSpots[(spotIDS[i]-1)*14+...], this should
-		// reduce execution time.
-		size_t spotPosAllSpots;
-		for (i=0;i<nSpotsBest;i++){
-			spotPosAllSpots = (int)spotIDS[i]-1;
-			if (spotPosAllSpots+1 != (size_t)AllSpots[spotPosAllSpots*14+4]){
-				printf("Data mismatch! Behavior undefined. Original: %d, Looked for %zu, found %zu\n", (int)spotIDS[i], spotPosAllSpots+1, (size_t)AllSpots[spotPosAllSpots*14+4]);
-			}
-			spotsYZO[i][0] = AllSpots[spotPosAllSpots*14+0];
-			spotsYZO[i][1] = AllSpots[spotPosAllSpots*14+1];
-			spotsYZO[i][2] = AllSpots[spotPosAllSpots*14+2];
-			spotsYZO[i][3] = AllSpots[spotPosAllSpots*14+4];
-			spotsYZO[i][4] = AllSpots[spotPosAllSpots*14+8];
-			spotsYZO[i][5] = AllSpots[spotPosAllSpots*14+9];
-			spotsYZO[i][6] = AllSpots[spotPosAllSpots*14+10];
-			spotsYZO[i][7] = AllSpots[spotPosAllSpots*14+5];
+		FreeMemMatrix(hkls,MaxNHKLS);
+		free(SptIDs);
+		double time = omp_get_wtime() - start_time;
+		printf("Finished, time elapsed: %lf seconds.\n",time);
+	} else {
+		// We have the GrainsFile input, so just read the bin file, get the info and fit strain only!
+		// Read SpotsToIndex.csv
+		int *SptIDs;
+		int nSptIDs = 0;
+		FILE *spotsFile = fopen("SpotsToIndex.csv", "r");
+		if (spotsFile == NULL) {
+			printf("Could not open SpotsToIndex.csv. Exiting.\n");
+			exit(EXIT_FAILURE);
 		}
-		double *Ini; Ini=malloc(12*sizeof(*Ini));
-		double **SpotsComp,**Splist,*ErrorIni;
-		SpotsComp=allocMatrix(MaxNSpotsBest,22);
-		Splist=allocMatrix(MaxNSpotsBest,9);
-		ErrorIni = malloc(3*sizeof(*ErrorIni));
-		int nSpotsComp;
-		ConcatPosEulLatc(Ini,Pos0,Euler0,LatCin);
-		CalcAngleErrors(nSpotsYZO,nhkls,nOmeRanges,Ini,spotsYZO,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,
-						MinEta,wedge,chi,SpotsComp,Splist,ErrorIni,&nSpotsComp,0);
-		double **spotsYZONew; spotsYZONew=allocMatrix(nSpotsComp,9);
-		for (i=0;i<nSpotsComp;i++){
-			for (j=0;j<9;j++){
-				spotsYZONew[i][j]=Splist[i][j];
-			}
+		// Count the number of lines in the file
+		char line[1000];
+		while (fgets(line, sizeof(line), spotsFile)) {
+			nSptIDs++;
 		}
-		OrientsOrig[nSpID][0] = (double)SpId;
-		for (i=0;i<9;i++) OrientsOrig[nSpID][i+1] = Orient0[i];
-		PositionsOrig[nSpID][0] = (double)SpId;
-		for (i=0;i<3;i++) PositionsOrig[nSpID][i+1] = Pos0[i];
-		ErrorsOrig[nSpID][0] = (double)SpId;
-		for (i=0;i<3;i++) ErrorsOrig[nSpID][i+1] = ErrorIni[i];
-		double Inp[12]; for (i=0;i<12;i++) Inp[i] = Ini[i];
-		double X[3]; for (i=0;i<3;i++) X[i] = Pos0[i];
-		double X0[12]; for (i=0;i<12;i++) X0[i] = Inp[i];
-		double XLow[3], XHigh[3], EulerLow[3], EulerHigh[3];
-		for (i=0;i<3;i++){
-			XLow[i]=X[i]-MargPos2;
-			XHigh[i]=X[i]+MargPos2;
-			EulerLow[i]=Euler0[i]-MargOme;
-			EulerHigh[i]=Euler0[i]+MargOme;
-		}
-		if (XLow[0] < -Rsample) XLow[0] = -Rsample;
-	    if (XLow[1] < -Rsample) XLow[1] = -Rsample;
-	    if (XLow[2] < -Hbeam/2) XLow[2] = -Hbeam/2;
-	    if (XHigh[0] > Rsample) XHigh[0] = Rsample;
-	    if (XHigh[1] > Rsample) XHigh[1] = Rsample;
-	    if (XHigh[2] > Hbeam/2) XHigh[2] = Hbeam/2;
-	    double lb[12],ub[12];
-	    for (i=0;i<3;i++) {lb[i]=XLow[i];ub[i]=XHigh[i];}
-	    for (i=3;i<6;i++) {lb[i]=EulerLow[i-3];ub[i]=EulerHigh[i-3];}
-	    lb[6] = a*(1-(MargABC/100));
-	    lb[7] = b*(1-(MargABC/100));
-	    lb[8] = c*(1-(MargABC/100));
-	    lb[9] = alph*(1-(MargABG/100));
-	    lb[10] = bet*(1-(MargABG/100));
-	    lb[11] = gamm*(1-(MargABG/100));
-	    ub[6] = a*(1+(MargABC/100));
-	    ub[7] = b*(1+(MargABC/100));
-	    ub[8] = c*(1+(MargABC/100));
-	    ub[9] = alph*(1+(MargABG/100));
-	    ub[10] = bet*(1+(MargABG/100));
-	    ub[11] = gamm*(1+(MargABG/100));
-	    double *XFit;
-	    XFit = malloc(12*sizeof(*XFit));
-	    double *ErrorInt1;
-	    ErrorInt1 = malloc(3*sizeof(*ErrorInt1));
-	    FitPositionIni(X0,nSpotsComp,spotsYZONew,nhkls,hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,XFit,lb,ub);
-	    CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,XFit,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
-						SpotsComp,Splist,ErrorInt1,&nSpotsComp,1);
-		for (i=0;i<3;i++) XFit[i+3] = Euler0[i];
-	    for (i=0;i<6;i++) XFit[i+6] = LatCin[i];
-	    CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,XFit,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
-						SpotsComp,Splist,ErrorInt1,&nSpotsComp,1);
-		for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
-	    double X0_2[9];X0_2[0]=Euler0[0];X0_2[1]=Euler0[1];X0_2[2]=Euler0[2];
-	    for (i=0;i<6;i++) X0_2[i+3] = LatCin[i];
-	    double lb2[9],ub2[9];
-	    for (i=0;i<3;i++){
-			EulerLow[i]=Euler0[i]-MargOme2;
-			EulerHigh[i]=Euler0[i]+MargOme2;
-		}
-	    for (i=0;i<3;i++) {lb2[i]=EulerLow[i];ub2[i]=EulerHigh[i];}
-	    lb2[3] = a*(1-(MargABC/100));
-	    lb2[4] = b*(1-(MargABC/100));
-	    lb2[5] = c*(1-(MargABC/100));
-	    lb2[6] = alph*(1-(MargABG/100));
-	    lb2[7] = bet*(1-(MargABG/100));
-	    lb2[8] = gamm*(1-(MargABG/100));
-	    ub2[3] = a*(1+(MargABC/100));
-	    ub2[4] = b*(1+(MargABC/100));
-	    ub2[5] = c*(1+(MargABC/100));
-	    ub2[6] = alph*(1+(MargABG/100));
-	    ub2[7] = bet*(1+(MargABG/100));
-	    ub2[8] = gamm*(1+(MargABG/100));
-	    double *XFit2; XFit2 = malloc(9*sizeof(*XFit2));
-	    double PosFitOrientIn[3]; for (i=0;i<3;i++) PosFitOrientIn[i] = XFit[i];
-	    FitOrientIni(X0_2,nSpotsComp,spotsYZONew,nhkls,hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,XFit2,lb2,ub2,PosFitOrientIn);
-	    double UseXFit[12];for (i=0;i<3;i++) UseXFit[i]=XFit[i];for (i=0;i<3;i++) UseXFit[i+3]=XFit2[i]; for (i=0;i<6;i++) UseXFit[i+6]=LatCin[i];
-	    double *ErrorInt2;
-	    ErrorInt2 = malloc(3*sizeof(*ErrorInt2));
-	    CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,UseXFit,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
-						SpotsComp,Splist,ErrorInt2,&nSpotsComp,1);
-	    for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
-	    double X0_3[6];for (i=0;i<6;i++) X0_3[i] = LatCin[i];
-	    double lb3[6],ub3[6];
-	    lb3[0] = a*(1-(MargABC/100));
-	    lb3[1] = b*(1-(MargABC/100));
-	    lb3[2] = c*(1-(MargABC/100));
-	    lb3[3] = alph*(1-(MargABG/100));
-	    lb3[4] = bet*(1-(MargABG/100));
-	    lb3[5] = gamm*(1-(MargABG/100));
-	    ub3[0] = a*(1+(MargABC/100));
-	    ub3[1] = b*(1+(MargABC/100));
-	    ub3[2] = c*(1+(MargABC/100));
-	    ub3[3] = alph*(1+(MargABG/100));
-	    ub3[4] = bet*(1+(MargABG/100));
-	    ub3[5] = gamm*(1+(MargABG/100));
-	    double OrientFitIn[3];for (i=0;i<3;i++) OrientFitIn[i] = XFit2[i];
-	    double *XFit3;XFit3 = malloc(6*sizeof(*XFit3));
-	    FitStrainIni(X0_3,nSpotsComp,spotsYZONew,nhkls,hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,XFit3,lb3,ub3,PosFitOrientIn,OrientFitIn);
-	    double UseXFit2[12];for (i=0;i<3;i++) UseXFit2[i]=XFit[i];for (i=0;i<3;i++) UseXFit2[i+3]=XFit2[i]; for (i=0;i<6;i++) UseXFit2[i+6]=XFit3[i];
-	    double *ErrorInt3;
-	    ErrorInt3 = malloc(3*sizeof(*ErrorInt3));
-	    CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,UseXFit2,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
-						SpotsComp,Splist,ErrorInt3,&nSpotsComp,1);
-	    for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
-	    double X0_4[3]; for (i=0;i<3;i++) X0_4[i] = XFit[i];
-		double XLow2[3], XHigh2[3];
-		for (i=0;i<3;i++){XLow2[i]=X0_4[i]-MargPos2;XHigh2[i]=X0_4[i]+MargPos2;}
-		if (XLow2[0] < -Rsample) XLow2[0] = -Rsample;
-	    if (XLow2[1] < -Rsample) XLow2[1] = -Rsample;
-	    if (XLow2[2] < -Hbeam/2) XLow2[2] = -Hbeam/2;
-	    if (XHigh2[0] > Rsample) XHigh2[0] = Rsample;
-	    if (XHigh2[1] > Rsample) XHigh2[1] = Rsample;
-	    if (XHigh2[2] > Hbeam/2) XHigh2[2] = Hbeam/2;
-	    double lb4[3],ub4[3];
-	    for (i=0;i<3;i++) {lb4[i]=XLow2[i];ub4[i]=XHigh2[i];}
-	    double StrainsFitIn[6];for (i=0;i<6;i++) StrainsFitIn[i]=XFit3[i];
-	    double *XFit4;XFit4 = malloc(3*sizeof(*XFit4));
-	    FitPosSec(X0_4,nSpotsComp,spotsYZONew,nhkls,hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,XFit4,lb4,ub4,OrientFitIn,StrainsFitIn);
-	    double FinalResult[12];for (i=0;i<3;i++) FinalResult[i] = XFit4[i]; for (i=0;i<3;i++) FinalResult[i+3] = XFit2[i]; for (i=0;i<6;i++) FinalResult[i+6] = XFit3[i];
-		double *ErrorFin;
-	    ErrorFin = malloc(3*sizeof(*ErrorFin));
-	    CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,FinalResult,spotsYZONew,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
-						SpotsComp,Splist,ErrorFin,&nSpotsComp,1);
-	    printf("SpotID %6d, %6d out of %6d, Errors: %7.2f %6.4f %6.4f, ",SpId,thisRowNr,nSptIDs,ErrorFin[0],ErrorFin[1],ErrorFin[2]);
-	    for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
-	    printf("Fitvals: Pos: %7.2f %7.2f %7.2f, Orient: %7.2f %7.2f %7.2f, LatC: %6.4f %6.4f %6.4f %7.3f %7.3f %7.3f\n",
-					FinalResult[0],FinalResult[1],FinalResult[2],FinalResult[3],FinalResult[4],FinalResult[5],FinalResult[6],FinalResult[7],FinalResult[8],
-					FinalResult[9],FinalResult[10],FinalResult[11]);
-		double OF[3][3],OrientFit[9],EulerFit[3],PositionFit[3],LatticeParameterFit[6];for (i=0;i<3;i++) EulerFit[i] = FinalResult[i+3];
-		for (i=0;i<3;i++) PositionFit[i] = FinalResult[i]; for (i=0;i<6;i++) LatticeParameterFit[i] = FinalResult[i+6];
-		Euler2OrientMat(EulerFit,OF);Convert3x3To9(OF,OrientFit);
-		OrientsFit[nSpID][0] = SpId;PositionsFit[nSpID][0] = SpId;ErrorsFin[nSpID][0] = SpId;StrainsFit[nSpID][0] = SpId;
-		for (i=0;i<9;i++) {
-			OrientsFit[nSpID][i+1] = OrientFit[i];
-		}
-		for (i=0;i<3;i++) PositionsFit[nSpID][i+1] = PositionFit[i];
-		for (i=0;i<6;i++) StrainsFit[nSpID][i+1] = LatticeParameterFit[i];
-		for (i=0;i<3;i++) ErrorsFin[nSpID][i+1] = ErrorFin[i];
+		rewind(spotsFile);
 
-		// Start Writing: SpotsCompFN, OutFN, Key, ProcessGrainsFile
-		char KeyFN[1024];
-		sprintf(KeyFN,"%s/Key.bin",ResultFolder);
-		int SizeKeyFile 		= 2  * sizeof(int);
-		size_t OffStKeyFile = SizeKeyFile;
-		OffStKeyFile *= rowNr;
-		int KeyInfo[2] = {SpId , nSpotsComp};
-		char ProcessGrainsFN[1024];
-		sprintf(ProcessGrainsFN,"%s/ProcessKey.bin",ResultFolder);
-		int SizeProcessFile 	= nSpotsComp * sizeof(int);
-		size_t OffStProcessFile = MaxNHKLS;
-		OffStProcessFile *= sizeof(int);
-		OffStProcessFile *= rowNr;
-		int ProcessInfo[nSpotsComp];
-		for (i=0;i<nSpotsComp;i++){
-			ProcessInfo[i] = SpotsComp[i][0];
+		// Allocate memory for SptIDs and read all spot IDs
+		SptIDs = malloc(nSptIDs * sizeof(*SptIDs));
+		int it = 0;
+		while (fgets(line, sizeof(line), spotsFile)) {
+			sscanf(line, "%d", &SptIDs[it]);
+			it++;
 		}
-	    sprintf(OutFN,"%s/OrientPosFit.bin",ResultFolder);
-	    int SizeOutFile 		= 27 * sizeof(double);
-		size_t OffStSizeOutFile = SizeOutFile;
-		OffStSizeOutFile *= rowNr;
-		double OutMatr[27];
-		for (i=0;i<10;i++){
-			OutMatr[i] = OrientsFit[nSpID][i];
-		}
-		for (i=0;i<4;i++){
-			OutMatr[i+10] = PositionsFit[nSpID][i];
-		}
-		for (i=0;i<7;i++){
-			OutMatr[i+14] = StrainsFit[nSpID][i];
-		}
-		for (i=0;i<4;i++){
-			OutMatr[i+21] = ErrorsFin[nSpID][i];
-		}
-		OutMatr[25] = meanRadius;
-		OutMatr[26] = completeness;
-		sprintf(SpotsCompFN,"%s/FitBest.bin",OutputFolder);
-		int SizeSpotsFile 		= 22 * sizeof(double) * nSpotsComp;
-		size_t OffStSpotsFile = 22;
-		OffStSpotsFile *= sizeof(double);
-		OffStSpotsFile *= MaxNHKLS;
-		OffStSpotsFile *= rowNr;
-		double SpotsCompFNContents[nSpotsComp][22];
-		for (i=0;i<nSpotsComp;i++){
-			for (j=0;j<22;j++){
-				SpotsCompFNContents[i][j] = SpotsComp[i][j];
+		fclose(spotsFile);
+		// do openmp on each of these lines
+		#pragma omp parallel for num_threads(numProcs) private(it) schedule(dynamic)
+		for (it = 0; it < nSptIDs; it++) {
+			int i,j,k;
+			int SpId = SptIDs[it];
+			if (SpId == -1){
+				printf("Good result not found. Skipping this rowNr: %d\n",it);
+				char KeyFN[1024];
+				sprintf(KeyFN,"%s/Key.bin",ResultFolder);
+				int SizeKeyFile 		= 2  * sizeof(int);
+				size_t OffStKeyFile = SizeKeyFile;
+				OffStKeyFile *= it;
+				int KeyInfo[2] = {0, 0};
+				#pragma omp critical
+				{
+					int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+					if (resultKeyFN <= 0){
+						printf("Could not open output file.\n");
+					}
+					int rc = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
+					if (rc < 0){
+						printf("Could not write to output file.\n");
+					}
+					close(resultKeyFN);
+				}
+				continue;
 			}
-		}
-		#pragma omp critical
-		{
-			int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-			if (resultKeyFN <= 0){
-				printf("Could not open output file. %s\n",KeyFN);
+			char InpFN[2048],InpFN2[2048];
+			sprintf(InpFN,"%s/IndexBest.bin",OutputFolder);
+			sprintf(InpFN2,"%s/IndexBestFull.bin",OutputFolder);
+			int inpF = open(InpFN,O_RDONLY);
+			if (inpF == -1) {
+				printf("Nothing was found during indexing, nothing to do.\n");
+				continue;
 			}
-			int rcKey = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
-		    if (rcKey < 0){
-				printf("Could not write to output file.\n");
+			size_t offst1 = it;
+			offst1 *= 15*sizeof(double);
+			double *locArr;
+			locArr = malloc(15*sizeof(*locArr));
+			int rcA = pread(inpF,locArr,15*sizeof(double),offst1);
+			close(inpF);
+			if (locArr[14]==0){
+				printf("Good result not found. Skipping this rowNr: %d\n",it);
+				char KeyFN[1024];
+				sprintf(KeyFN,"%s/Key.bin",ResultFolder);
+				int SizeKeyFile 		= 2  * sizeof(int);
+				size_t OffStKeyFile = SizeKeyFile;
+				OffStKeyFile *= it;
+				int KeyInfo[2] = {0, 0};
+				#pragma omp critical
+				{
+					int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+					if (resultKeyFN <= 0){
+						printf("Could not open output file.\n");
+					}
+					int rc = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
+					if (rc < 0){
+						printf("Could not write to output file.\n");
+					}
+					close(resultKeyFN);
+				}
+				continue;
+			}
+			double Orient0[9], Pos0[3], IA0, Euler0[3], Orient0_3[3][3],NrExpected,NrObserved,completeness;
+			IA0 = locArr[0];
+			for (i=0;i<9;i++) Orient0[i] = locArr[i+1];
+			for (i=0;i<3;i++) Pos0[i] = locArr[i+10];
+			NrExpected = locArr[13];
+			NrObserved = locArr[14];
+			free(locArr);
+			completeness = NrObserved/NrExpected;
+			int nSpotsBest = (int)NrObserved,*spotIDS,nSpotsRad=0;
+			double *locArr2;
+			spotIDS = malloc(nSpotsBest*sizeof(*spotIDS));
+			locArr2 = malloc((int)NrObserved*2*sizeof(*locArr2));
+			size_t offst2 = it;
+			offst2 *= MaxNHKLS;
+			offst2 *= 2*sizeof(double);
+			int inpF2 = open(InpFN2,O_RDONLY);
+			int rcB = pread(inpF2,locArr2,(int)NrObserved*2*sizeof(double),offst2);
+			close(inpF2);
+			double thisRadius, meanRadius=0, MaxRadTot = -100;
+			for (i=0;i<NrObserved;i++) {
+				spotIDS[i] = (int)locArr2[i*2+0];
+				thisRadius = locArr2[i*2+1];
+				meanRadius += thisRadius;
+				nSpotsRad++;
+				if (TakeGrainMax == 1){
+					if (thisRadius > MaxRadTot){
+						MaxRadTot = thisRadius;
+					}
+				}			
+			}
+			free(locArr2);
+			meanRadius /= nSpotsRad;
+			if (TakeGrainMax == 1){
+				meanRadius = MaxRadTot;
+			}
+			double LatCin[6];
+			for (i=0;i<6;i++) LatCin[i] = LatCinT[i];
+			for (i=0;i<3;i++) for (j=0;j<3;j++) Orient0_3[i][j] = Orient0[i*3+j];
+			OrientMat2Euler(Orient0_3,Euler0);
+			Euler2OrientMat(Euler0,Orient0_3);
+			Convert3x3To9(Orient0_3,Orient0);
+			OrientMat2Euler(Orient0_3,Euler0);
+			double **spotsYZO;
+			spotsYZO=allocMatrix(nSpotsBest,8);
+			int nSpotsYZO=nSpotsBest;
+			size_t spotPosAllSpots;
+			for (i=0;i<nSpotsBest;i++){
+				spotPosAllSpots = (int)spotIDS[i]-1;
+				if (spotPosAllSpots+1 != (size_t)AllSpots[spotPosAllSpots*14+4]){
+					printf("Data mismatch! Behavior undefined. Original: %d, Looked for %zu, found %zu\n", (int)spotIDS[i], spotPosAllSpots+1, (size_t)AllSpots[spotPosAllSpots*14+4]);
+				}
+				spotsYZO[i][0] = AllSpots[spotPosAllSpots*14+0];
+				spotsYZO[i][1] = AllSpots[spotPosAllSpots*14+1];
+				spotsYZO[i][2] = AllSpots[spotPosAllSpots*14+2];
+				spotsYZO[i][3] = AllSpots[spotPosAllSpots*14+4];
+				spotsYZO[i][4] = AllSpots[spotPosAllSpots*14+8];
+				spotsYZO[i][5] = AllSpots[spotPosAllSpots*14+9];
+				spotsYZO[i][6] = AllSpots[spotPosAllSpots*14+10];
+				spotsYZO[i][7] = AllSpots[spotPosAllSpots*14+5];
+			}
+			double *Ini; Ini=malloc(12*sizeof(*Ini));
+			double **SpotsComp,**Splist,*ErrorIni;
+			SpotsComp=allocMatrix(MaxNSpotsBest,22);
+			Splist=allocMatrix(MaxNSpotsBest,9);
+			ErrorIni = malloc(3*sizeof(*ErrorIni));
+			int nSpotsComp;
+			ConcatPosEulLatc(Ini,Pos0,Euler0,LatCin);
+			CalcAngleErrors(nSpotsYZO,nhkls,nOmeRanges,Ini,spotsYZO,hkls,Lsd,Wavelength,OmegaRanges,BoxSizes,
+							MinEta,wedge,chi,SpotsComp,Splist,ErrorIni,&nSpotsComp,0);
+			double **spotsYZONew; spotsYZONew=allocMatrix(nSpotsComp,9);
+			for (i=0;i<nSpotsComp;i++){
+				for (j=0;j<9;j++){
+					spotsYZONew[i][j]=Splist[i][j];
+				}
+			}
+			double a=LatCin[0],b=LatCin[1],c=LatCin[2],alph=LatCin[3],bet=LatCin[4],gamm=LatCin[5];
+			double X0_3[6];for (i=0;i<6;i++) X0_3[i] = LatCin[i];
+			double lb3[6],ub3[6];
+			lb3[0] = a*(1-(MargABC/100));
+			lb3[1] = b*(1-(MargABC/100));
+			lb3[2] = c*(1-(MargABC/100));
+			lb3[3] = alph*(1-(MargABG/100));
+			lb3[4] = bet*(1-(MargABG/100));
+			lb3[5] = gamm*(1-(MargABG/100));
+			ub3[0] = a*(1+(MargABC/100));
+			ub3[1] = b*(1+(MargABC/100));
+			ub3[2] = c*(1+(MargABC/100));
+			ub3[3] = alph*(1+(MargABG/100));
+			ub3[4] = bet*(1+(MargABG/100));
+			ub3[5] = gamm*(1+(MargABG/100));
+			double *XFit3;XFit3 = malloc(6*sizeof(*XFit3));
+			FitStrainIni(X0_3,nSpotsComp,spotsYZONew,nhkls,hkls,Lsd,Wavelength,
+				nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,XFit3,lb3,ub3,Pos0,Euler0);
+			double *ErrorFin;
+			ErrorFin = malloc(3*sizeof(*ErrorFin));
+			double UseXFit2[12];
+			for (i=0;i<3;i++) UseXFit2[i]=Pos0[i];
+			for (i=0;i<3;i++) UseXFit2[i+3]=Euler0[i];
+			for (i=0;i<6;i++) UseXFit2[i+6]=XFit3[i];
+			CalcAngleErrors(nSpotsComp,nhkls,nOmeRanges,UseXFit2,spotsYZONew,hkls,Lsd,
+							Wavelength,OmegaRanges,BoxSizes,MinEta,wedge,chi,
+							SpotsComp,Splist,ErrorFin,&nSpotsComp,1);
+			for (i=0;i<nSpotsComp;i++) for (j=0;j<9;j++) spotsYZONew[i][j]=Splist[i][j];
+			double FinalResult[12];
+			for (i=0;i<3;i++) FinalResult[i] = Pos0[i]; 
+			for (i=0;i<3;i++) FinalResult[i+3] = Euler0[i]; 
+			for (i=0;i<6;i++) FinalResult[i+6] = XFit3[i];
+			printf("SpotID %6d, %6d out of %6d, Errors: %7.2f %6.4f %6.4f, ",
+				SpId,it,nSptIDs,ErrorFin[0],ErrorFin[1],ErrorFin[2]);
+			printf("Fitvals: Pos: %7.2f %7.2f %7.2f, Orient: %7.2f %7.2f %7.2f, LatC: %6.4f %6.4f %6.4f %7.3f %7.3f %7.3f\n",
+				FinalResult[0],FinalResult[1],FinalResult[2],FinalResult[3],FinalResult[4],FinalResult[5],FinalResult[6],FinalResult[7],FinalResult[8],
+				FinalResult[9],FinalResult[10],FinalResult[11]);
+			double OF[3][3],OrientFit[9],EulerFit[3],PositionFit[3],LatticeParameterFit[6];
+			for (i=0;i<3;i++) EulerFit[i] = FinalResult[i+3];
+			for (i=0;i<3;i++) PositionFit[i] = FinalResult[i]; 
+			for (i=0;i<6;i++) LatticeParameterFit[i] = FinalResult[i+6];
+			Euler2OrientMat(EulerFit,OF);
+			Convert3x3To9(OF,OrientFit);
+			// Start Writing: SpotsCompFN, OutFN, Key, ProcessGrainsFile
+			char KeyFN[1024];
+			sprintf(KeyFN,"%s/Key.bin",ResultFolder);
+			int SizeKeyFile 		= 2  * sizeof(int);
+			size_t OffStKeyFile = SizeKeyFile;
+			OffStKeyFile *= it;
+			int KeyInfo[2] = {SpId , nSpotsComp};
+			char ProcessGrainsFN[1024];
+			sprintf(ProcessGrainsFN,"%s/ProcessKey.bin",ResultFolder);
+			int SizeProcessFile 	= nSpotsComp * sizeof(int);
+			size_t OffStProcessFile = MaxNHKLS;
+			OffStProcessFile *= sizeof(int);
+			OffStProcessFile *= it;
+			int ProcessInfo[nSpotsComp];
+			for (i=0;i<nSpotsComp;i++){
+				ProcessInfo[i] = SpotsComp[i][0];
+			}
+			char OutFN[1024];
+			sprintf(OutFN,"%s/OrientPosFit.bin",ResultFolder);
+			int SizeOutFile 		= 27 * sizeof(double);
+			size_t OffStSizeOutFile = SizeOutFile;
+			OffStSizeOutFile *= it;
+			double OutMatr[27];
+			OutMatr[0] = SpId;
+			OutMatr[10] = SpId;
+			OutMatr[14] = SpId;
+			OutMatr[21] = SpId;
+			for (i=0;i<9;i++){
+				OutMatr[i+1] = OrientFit[i];
+			}
+			for (i=0;i<3;i++){
+				OutMatr[i+11] = PositionFit[i];
+			}
+			for (i=0;i<6;i++){
+				OutMatr[i+15] = LatticeParameterFit[i];
+			}
+			for (i=0;i<3;i++){
+				OutMatr[i+22] = ErrorFin[i];
+			}
+			OutMatr[25] = meanRadius;
+			OutMatr[26] = completeness;
+			char SpotsCompFN[2048];
+			sprintf(SpotsCompFN,"%s/FitBest.bin",OutputFolder);
+			int SizeSpotsFile 		= 22 * sizeof(double) * nSpotsComp;
+			size_t OffStSpotsFile = 22;
+			OffStSpotsFile *= sizeof(double);
+			OffStSpotsFile *= MaxNHKLS;
+			OffStSpotsFile *= it;
+			double SpotsCompFNContents[nSpotsComp][22];
+			for (i=0;i<nSpotsComp;i++){
+				for (j=0;j<22;j++){
+					SpotsCompFNContents[i][j] = SpotsComp[i][j];
+				}
+			}
+			#pragma omp critical
+			{
+				int resultKeyFN = open(KeyFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+				if (resultKeyFN <= 0){
+					printf("Could not open output file. %s\n",KeyFN);
+				}
+				int rcKey = pwrite(resultKeyFN,KeyInfo,SizeKeyFile,OffStKeyFile);
+				if (rcKey < 0){
+					printf("Could not write to output file.\n");
+					rcKey = close(resultKeyFN);
+				}
 				rcKey = close(resultKeyFN);
+				int ProcessKeyFN = open(ProcessGrainsFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+				if (ProcessKeyFN <=0){
+					printf("Could not open output file. %s\n",ProcessGrainsFN);
+				}
+				int rcProcess = pwrite(ProcessKeyFN,ProcessInfo,SizeProcessFile,OffStProcessFile);
+				if (rcProcess < 0){
+					printf("Could not write to output file.\n");
+				}
+				rcProcess = close(ProcessKeyFN);
+				int resultOutFN = open(OutFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+				if (resultOutFN <= 0){
+					printf("Could not open output file. %s\n",OutFN);
+				}
+				int rcOut = pwrite(resultOutFN,OutMatr,SizeOutFile,OffStSizeOutFile);
+				if (rcOut < 0){
+					printf("Could not write to output file.\n");
+				}
+				rcOut = close(resultOutFN);
+				int resultSpotsCompFN = open(SpotsCompFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
+				if (resultSpotsCompFN <= 0){
+					printf("Could not open output file. %s\n",SpotsCompFN);
+				}
+				int rcSpots = pwrite(resultSpotsCompFN,SpotsCompFNContents,SizeSpotsFile,OffStSpotsFile);
+				if (rcSpots < 0){
+					printf("Could not write to output file.\n");
+				}
+				rcSpots = close(resultSpotsCompFN);
 			}
-			rcKey = close(resultKeyFN);
-			int ProcessKeyFN = open(ProcessGrainsFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-			if (ProcessKeyFN <=0){
-				printf("Could not open output file. %s\n",ProcessGrainsFN);
-			}
-			int rcProcess = pwrite(ProcessKeyFN,ProcessInfo,SizeProcessFile,OffStProcessFile);
-			if (rcProcess < 0){
-				printf("Could not write to output file.\n");
-			}
-		    rcProcess = close(ProcessKeyFN);
-			int resultOutFN = open(OutFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-			if (resultOutFN <= 0){
-				printf("Could not open output file. %s\n",OutFN);
-			}
-			int rcOut = pwrite(resultOutFN,OutMatr,SizeOutFile,OffStSizeOutFile);
-		    if (rcOut < 0){
-				printf("Could not write to output file.\n");
-			}
-			rcOut = close(resultOutFN);
-			int resultSpotsCompFN = open(SpotsCompFN, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-			if (resultSpotsCompFN <= 0){
-				printf("Could not open output file. %s\n",SpotsCompFN);
-			}
-			int rcSpots = pwrite(resultSpotsCompFN,SpotsCompFNContents,SizeSpotsFile,OffStSpotsFile);
-		    if (rcSpots < 0){
-				printf("Could not write to output file.\n");
-			}
-			rcSpots = close(resultSpotsCompFN);
+			// Free any arrays that were malloc'ed
+			free(Ini);
+			FreeMemMatrix(spotsYZO, nSpotsBest);
+			FreeMemMatrix(SpotsComp, MaxNSpotsBest);
+			FreeMemMatrix(Splist, MaxNSpotsBest);
+			free(ErrorIni);
+			FreeMemMatrix(spotsYZONew, nSpotsComp);
+			free(XFit3);
+			free(spotIDS);
+			free(ErrorFin);
 		}
-		free(spotIDS);
-		FreeMemMatrix(spotsYZO,nSpotsBest);
-		free(Ini);
-		FreeMemMatrix(SpotsComp,MaxNSpotsBest);
-		FreeMemMatrix(Splist,MaxNSpotsBest);
-		free(ErrorIni);
-		FreeMemMatrix(spotsYZONew,nSpotsComp);
-		free(XFit);
-		free(ErrorInt1);
-		free(XFit2);
-		free(ErrorInt2);
-		free(XFit3);
-		free(ErrorInt3);
-		free(XFit4);
-		free(ErrorFin);
 	}
-
-	FreeMemMatrix(hkls,MaxNHKLS);
-	free(SptIDs);
-	double time = omp_get_wtime() - start_time;
-	printf("Finished, time elapsed: %lf seconds.\n",time);
 	return 0;
 }
