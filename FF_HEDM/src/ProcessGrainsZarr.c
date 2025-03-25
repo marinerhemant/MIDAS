@@ -260,8 +260,8 @@ StrainTensorKenesei(int nspots,double **SpotsInfo, double Distance, double wavel
 
 int main(int argc, char *argv[])
 {
-	if (argc != 2){
-		printf("Usage: ProcessGrainsZarr ZarrZip\n");
+	if (argc < 2){
+		printf("Usage: ProcessGrainsZarr ZarrZip (optionally)TrackGrains (0 or 1)\n");
 		return 1;
 	}
 	clock_t start, end;
@@ -515,6 +515,8 @@ int main(int argc, char *argv[])
 	int counte,counten,totcount=0;
 	ID_IA_MAT = calloc(MAX_ID_IA_MAT*4,sizeof(*ID_IA_MAT));
 	FILE *fIDs = fopen("GrainIDsKey.csv","w");
+	int trackGrains = 0;
+	if (argc==3) trackGrains = 1;
 	for (i=0;i<nrIDs;i++){
 		if (i%1000 == 0) printf("Processed %d of %d IDs.\n",i,nrIDs);
 		if (IDsChecked[i] == false){
@@ -523,14 +525,22 @@ int main(int argc, char *argv[])
 			maxRadThis = Radiuses[i];
 			minIA = OPs[i][IAColNr];
 			BestGrainPos = i;
-			if (Twin ==0){
-				counten = FindInternalAngles     (nrIDs,IDs,IDsPerGrain,NrIDsPerID,
-				IDsChecked,OPs,ID_IA_MAT,counte,i,StartingID,Radiuses,SGNr);
-			}else{
-				counten = FindInternalAnglesTwins(nrIDs,IDs,IDsPerGrain,NrIDsPerID,
-				IDsChecked,OPs,ID_IA_MAT,counte,i,StartingID,Radiuses,SGNr);
+			if (trackGrains == 0){
+				if (Twin ==0){
+					counten = FindInternalAngles     (nrIDs,IDs,IDsPerGrain,NrIDsPerID,
+					IDsChecked,OPs,ID_IA_MAT,counte,i,StartingID,Radiuses,SGNr);
+				}else{
+					counten = FindInternalAnglesTwins(nrIDs,IDs,IDsPerGrain,NrIDsPerID,
+					IDsChecked,OPs,ID_IA_MAT,counte,i,StartingID,Radiuses,SGNr);
+				}
+			} else {
+				counten = 0;
+				ID_IA_Mat[(counten*4)] = (double) StartingID;
+				ID_IA_Mat[(counten*4)+1] = (double) i;
+				ID_IA_Mat[(counten*4)+2] = OPs[i][IAColNr];
+				ID_IA_Mat[(counten*4)+3] = Radiuses[i];
+				counten = 1;
 			}
-			printf("%d\n",counten);
 			totcount+=counten;
 			nGrainsMatched[i] = counten;
 			if (counten < MinNrSpots){
