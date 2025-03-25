@@ -63,10 +63,10 @@ def process_tif(file_path, sock, dataset_num, frame_mapping, frame_index):
     Process a single TIF file
     Returns: Updated dataset_num and frame_index
     """
+    t1 = time.time()
     image = Image.open(file_path)
     print(f"Processing TIF file: {file_path}")
     data = np.array(image).flatten()
-    t1 = time.time()
     
     # Update frame mapping with filename
     frame_mapping[frame_index] = {
