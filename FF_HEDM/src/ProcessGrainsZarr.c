@@ -419,6 +419,7 @@ int main(int argc, char *argv[])
 	if (IDsFile == NULL)printf("Could not open spots file.\n");
 	while (fgets(line,5024,IDsFile) != NULL){
 		sscanf(line,"%d",&IDs[nrIDs]);
+		if (IDs[nrIDs]<0) continue;
 		nrIDs++;
 	}
 	if (nrIDs == 0){
