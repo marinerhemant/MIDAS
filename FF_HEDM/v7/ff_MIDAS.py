@@ -843,7 +843,10 @@ def main():
                 f_grains_err = f'{logDir}/process_grains_err.csv'
                 
                 if ProvideInputAll == 0:
-                    cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/ProcessGrainsZarr')} {outFStem}"
+                    if args.grainsFile:
+                        cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/ProcessGrainsZarr')} {outFStem} 1"
+                    else:
+                        cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/ProcessGrainsZarr')} {outFStem}"
                 else:
                     cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/ProcessGrains')} {resultDir}/paramstest.txt"
                     
