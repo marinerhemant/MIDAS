@@ -675,28 +675,27 @@ int main(int argc, char *argv[])
 			printf("Something is wrong. Please check.\n");
 			return 1;
 		}
-		DoneAlready = 0;
-		for (j=0;j<cres;j++){
-			if (IDsDone[j] == IDs[rown]){
-				DoneAlready = 1;
-			}
-		}
-		if (DoneAlready == 1){
-			printf("Here00!");
-		 	continue;
-		}else{
-			IDsDone[cres] = IDs[rown];
-			cres++;
-			if (cres >= (nGrainPositions*2)){
-				printf("Something went wrong with cres %d out of %d alloc at %d. nGrains: %d Please check the ProcessGrains code.\n",cres,nGrainPositions, i,nGrains);
-				return 1;
-			}
-		}
-		for (k=0;k<9;k++){
-			OR1[k] = OPs[rown][k];
-		}
-		OrientMat2Quat(OR1,q1);
 		if (trackGrains == 0){
+			DoneAlready = 0;
+			for (j=0;j<cres;j++){
+				if (IDsDone[j] == IDs[rown]){
+					DoneAlready = 1;
+				}
+			}
+			if (DoneAlready == 1){
+				continue;
+			}else{
+				IDsDone[cres] = IDs[rown];
+				cres++;
+				if (cres >= (nGrainPositions*2)){
+					printf("Something went wrong with cres %d out of %d alloc at %d. nGrains: %d Please check the ProcessGrains code.\n",cres,nGrainPositions, i,nGrains);
+					return 1;
+				}
+			}
+			for (k=0;k<9;k++){
+				OR1[k] = OPs[rown][k];
+			}
+			OrientMat2Quat(OR1,q1);
 			for (j=i+1;j<nGrainPositions;j++){
 				rown2 = GrainPositions[j];
 				if (rown2 >= nrIDs){
