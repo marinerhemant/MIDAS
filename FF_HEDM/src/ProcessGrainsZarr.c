@@ -517,7 +517,6 @@ int main(int argc, char *argv[])
 	FILE *fIDs = fopen("GrainIDsKey.csv","w");
 	int trackGrains = 0;
 	if (argc==3) trackGrains = atoi(argv[2]);
-	printf("TG: %d\n",trackGrains);
 	for (i=0;i<nrIDs;i++){
 		if (i%1000 == 0) printf("Processed %d of %d IDs.\n",i,nrIDs);
 		if (IDsChecked[i] == false){
@@ -542,7 +541,6 @@ int main(int argc, char *argv[])
 				ID_IA_MAT[(counten*4)+3] = Radiuses[i];
 				counten = 1;
 			}
-			printf("c = %d\n",counten);
 			totcount+=counten;
 			nGrainsMatched[i] = counten;
 			if (counten < MinNrSpots){
@@ -720,12 +718,14 @@ int main(int argc, char *argv[])
 			DiffPos = sqrt((OPs[rown][9]- OPs[rown2][9])*( OPs[rown][9]- OPs[rown2][9])
 						 + (OPs[rown][10]-OPs[rown2][10])*(OPs[rown][10]-OPs[rown2][10])
 						 + (OPs[rown][11]-OPs[rown2][11])*(OPs[rown][11]-OPs[rown2][11]));
-			if (ang < 0.1 && DiffPos < 5){
-				IDsDone[cres] = IDs[rown2];
-				cres++;
-				if (cres >= (nGrainPositions*2)){
-					printf("Something went wrong with cres %d out of %d allocated at %d. nGrains: %d Please check the ProcessGrains code.\n",cres,nGrainPositions, i,nGrains);
-					return 1;
+			if (trackGrains == 0){
+				if (ang < 0.1 && DiffPos < 5){
+					IDsDone[cres] = IDs[rown2];
+					cres++;
+					if (cres >= (nGrainPositions*2)){
+						printf("Something went wrong with cres %d out of %d allocated at %d. nGrains: %d Please check the ProcessGrains code.\n",cres,nGrainPositions, i,nGrains);
+						return 1;
+					}
 				}
 			}
 		}
