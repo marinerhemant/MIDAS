@@ -12,6 +12,7 @@ import argparse
 import re
 import json
 import atexit
+import tifffile
 
 
 def send_data_chunk(sock, dataset_num, data):
@@ -64,9 +65,10 @@ def process_tif(file_path, sock, dataset_num, frame_mapping, frame_index):
     Returns: Updated dataset_num and frame_index
     """
     t1 = time.time()
-    image = Image.open(file_path)
+    # image = Image.open(file_path)
     print(f"Processing TIF file: {file_path}")
-    data = np.array(image).flatten()
+    # data = np.array(image).flatten()
+    data = tifffile.imread(file_path)
     
     # Update frame mapping with filename
     frame_mapping[frame_index] = {
