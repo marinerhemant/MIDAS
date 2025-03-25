@@ -19,7 +19,7 @@ purdueConfig = Config(
                 max_blocks=nNodes,
                 # partition='msangid',
                 scheduler_options='#SBATCH -A msangid',
-                worker_init='module load anaconda',
+                worker_init=f"module load anaconda/2024.02-py311; conda activate MIDAS_Env ",
                 walltime='90:00:00',
                 cmd_timeout=120,
             ),
