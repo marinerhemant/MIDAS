@@ -1879,7 +1879,9 @@ int DoIndexingSeed(double orMat[9], double posThis[3], double RefRad, struct TPa
 		&nMatches, GrainSpots);
 	double fracMatchesThis = (RealType) ((RealType)nMatches)/((RealType)nTspots);
 	int grID = -1;
-	// if (fracMatchesThis > Params.MinMatchesToAcceptFrac){
+	if (fracMatchesThis > Params.MinMatchesToAcceptFrac){
+		printf("%lf %d\n",fracMatchesThis,idNr);
+	}
 	for (i = 0 ;  i < 9 ; i ++) GrainMatches[0][i] = orThis[i/3][i%3];
 	GrainMatches[0][9]  = ga;
 	GrainMatches[0][10] = gb;
