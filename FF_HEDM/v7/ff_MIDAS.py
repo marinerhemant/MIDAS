@@ -791,7 +791,7 @@ def main():
             if args.grainsFile:
                 try:
                     with open(f"{resultDir}/paramstest.txt", "a") as paramstestF:
-                        paramstestF.write(f"GrainsFile {args.GrainsFile}\n")
+                        paramstestF.write(f"GrainsFile {args.grainsFile}\n")
                 except Exception as e:
                     logger.error(f"Failed to add grainsFile parameter to paramstest.txt: {e}")
                     sys.exit(1)
