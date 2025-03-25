@@ -271,7 +271,7 @@ int main(int argc, char *argv[])
 
     char aline[1000];
     char *str, dummy[1000];
-    int Twin = 0, MinNrSpots = 1, SGNr = 225, TrackGrains = 0;
+    int Twin = 0, MinNrSpots = 1, SGNr = 225;
     double Distance, wavelength, LatCin[6];
     double BeamThickness = 0, GlobalPosition = 0;
     int NumPhases = 1, PhaseNr = 1;
@@ -516,7 +516,8 @@ int main(int argc, char *argv[])
 	ID_IA_MAT = calloc(MAX_ID_IA_MAT*4,sizeof(*ID_IA_MAT));
 	FILE *fIDs = fopen("GrainIDsKey.csv","w");
 	int trackGrains = 0;
-	if (argc==3) trackGrains = 1;
+	if (argc==3) trackGrains = atoi(arv[2]);
+	printf("TG: %d\n",trackGrains);
 	for (i=0;i<nrIDs;i++){
 		if (i%1000 == 0) printf("Processed %d of %d IDs.\n",i,nrIDs);
 		if (IDsChecked[i] == false){
@@ -541,6 +542,7 @@ int main(int argc, char *argv[])
 				ID_IA_MAT[(counten*4)+3] = Radiuses[i];
 				counten = 1;
 			}
+			printf("c = %d\n",counten);
 			totcount+=counten;
 			nGrainsMatched[i] = counten;
 			if (counten < MinNrSpots){
