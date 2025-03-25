@@ -516,7 +516,7 @@ int main(int argc, char *argv[])
 	ID_IA_MAT = calloc(MAX_ID_IA_MAT*4,sizeof(*ID_IA_MAT));
 	FILE *fIDs = fopen("GrainIDsKey.csv","w");
 	int trackGrains = 0;
-	if (argc==3) trackGrains = atoi(arv[2]);
+	if (argc==3) trackGrains = atoi(argv[2]);
 	printf("TG: %d\n",trackGrains);
 	for (i=0;i<nrIDs;i++){
 		if (i%1000 == 0) printf("Processed %d of %d IDs.\n",i,nrIDs);
