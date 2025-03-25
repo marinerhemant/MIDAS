@@ -1878,6 +1878,8 @@ int DoIndexingSeed(double orMat[9], double posThis[3], double RefRad, struct TPa
 		Params.MarginRad, Params.MarginRadial, etamargins, omemargins,
 		&nMatches, GrainSpots);
 	double fracMatchesThis = (RealType) ((RealType)nMatches)/((RealType)nTspots);
+	int grID = -1;
+	printf("%lf\n",fracMatchesThis);
 	if (fracMatchesThis > Params.MinMatchesToAcceptFrac){
 		for (i = 0 ;  i < 9 ; i ++) GrainMatches[0][i] = orThis[i/3][i%3];
 		GrainMatches[0][9]  = ga;
@@ -1894,10 +1896,9 @@ int DoIndexingSeed(double orMat[9], double posThis[3], double RefRad, struct TPa
 		rownr = nTspots;
 		double enTm = omp_get_wtime() - sttm;
 		WriteBestMatchBin(GrainMatches, AllGrainSpots, rownr, Params.OutputFolder, offsetLoc);
-	} else {
-		return -1;
+		grID = (int)GrainSpots[0][14];
+		printf("IDNr: %d, Total: %d, Confidence: %lf, nExp: %lf, nObs: %lf, time: %lfs.\n",idNr,totalIDs,grID,fracMatchesThis,GrainMatches[0][12],GrainMatches[0][13],enTm);
 	}
-	int grID = (int)GrainSpots[0][14];
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 	FreeMemMatrix( TheorSpots, nRowsPerGrain);
 	FreeMemMatrix( GrainSpots, nRowsPerGrain);

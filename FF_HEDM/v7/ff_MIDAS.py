@@ -455,6 +455,13 @@ def main():
                     min2Index = float(line.split(' ')[1])
                 if line.startswith('MaxOmeSpotIDsToIndex'):
                     max2Index = float(line.split(' ')[1])
+            if args.GrainsFile:
+                with open(psFN,'w') as f:
+                    for line in psContents:
+                        if line.startswith('MinNrSpots'):
+                            f.write('MinNrSpots 1\n')
+                        else:
+                            f.write(line)
         except Exception as e:
             logger.error(f"Failed to read parameter file: {e}")
             sys.exit(1)
@@ -828,6 +835,7 @@ def main():
             sys.exit(1)
     
     logger.info("All layers processed successfully")
+    parsl.dfk().cleanup()
 
 
 if __name__ == "__main__":
