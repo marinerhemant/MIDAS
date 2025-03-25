@@ -1524,6 +1524,7 @@ int main(int argc, char *argv[])
 	sprintf(header,"%s%s",h1,h2);
 
 	if (isGrainsInput ==0){
+		printf("Running full file!\n");
 		//////////////////////////// OPENMP
 		int *SptIDs;
 		int nSptIDs;
@@ -1942,6 +1943,7 @@ int main(int argc, char *argv[])
 	} else {
 		// We have the GrainsFile input, so just read the bin file, get the info and fit strain only!
 		// Read SpotsToIndex.csv
+		printf("We are tracking grains!\n");
 		int *SptIDs;
 		int nSptIDs = 0;
 		FILE *spotsFile = fopen("SpotsToIndex.csv", "r");
