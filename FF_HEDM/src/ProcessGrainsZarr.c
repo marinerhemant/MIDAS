@@ -682,6 +682,7 @@ int main(int argc, char *argv[])
 			}
 		}
 		if (DoneAlready == 1){
+			printf("Here00!");
 		 	continue;
 		}else{
 			IDsDone[cres] = IDs[rown];
@@ -695,30 +696,31 @@ int main(int argc, char *argv[])
 			OR1[k] = OPs[rown][k];
 		}
 		OrientMat2Quat(OR1,q1);
-		for (j=i+1;j<nGrainPositions;j++){
-			rown2 = GrainPositions[j];
-			if (rown2 >= nrIDs){
-				printf("Something is wrong. Please check.\n");
-				return 1;
-			}
-			int DA = 0;
-			for (k=0;k<cres;k++){
-				if (IDsDone[k] == IDs[rown2]){
-					DA = 1;
+		if (trackGrains == 0){
+			for (j=i+1;j<nGrainPositions;j++){
+				rown2 = GrainPositions[j];
+				if (rown2 >= nrIDs){
+					printf("Something is wrong. Please check.\n");
+					return 1;
 				}
-			}
-			if (DA == 1) {
-				continue;
-			}
-			for (k=0;k<9;k++){
-				OR2[k] = OPs[rown2][k];
-			}
-			OrientMat2Quat(OR2,q2);
-			Angle = GetMisOrientation(q1,q2,Axis,&ang,SGNr);
-			DiffPos = sqrt((OPs[rown][9]- OPs[rown2][9])*( OPs[rown][9]- OPs[rown2][9])
-						 + (OPs[rown][10]-OPs[rown2][10])*(OPs[rown][10]-OPs[rown2][10])
-						 + (OPs[rown][11]-OPs[rown2][11])*(OPs[rown][11]-OPs[rown2][11]));
-			if (trackGrains == 0){
+				int DA = 0;
+				for (k=0;k<cres;k++){
+					if (IDsDone[k] == IDs[rown2]){
+						DA = 1;
+					}
+				}
+				if (DA == 1) {
+					printf("Here11!");
+					continue;
+				}
+				for (k=0;k<9;k++){
+					OR2[k] = OPs[rown2][k];
+				}
+				OrientMat2Quat(OR2,q2);
+				Angle = GetMisOrientation(q1,q2,Axis,&ang,SGNr);
+				DiffPos = sqrt((OPs[rown][9]- OPs[rown2][9])*( OPs[rown][9]- OPs[rown2][9])
+							+ (OPs[rown][10]-OPs[rown2][10])*(OPs[rown][10]-OPs[rown2][10])
+							+ (OPs[rown][11]-OPs[rown2][11])*(OPs[rown][11]-OPs[rown2][11]));
 				if (ang < 0.1 && DiffPos < 5){
 					IDsDone[cres] = IDs[rown2];
 					cres++;
