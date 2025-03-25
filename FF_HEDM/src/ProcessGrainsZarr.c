@@ -730,7 +730,7 @@ int main(int argc, char *argv[])
 			}
 		}
 		if (OPs[rown][22] < 0.05){
-			printf("Here!")
+			printf("Here!");
 			continue;
 		}
 
