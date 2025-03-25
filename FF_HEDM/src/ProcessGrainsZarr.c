@@ -570,6 +570,7 @@ int main(int argc, char *argv[])
 			nGrainPositions ++;
 		}
 	}
+	printf("%d\n ",nGrainPositions);
 	fclose(fIDs);
 	//Write out
 	int nGrains=0;
