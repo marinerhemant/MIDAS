@@ -530,6 +530,7 @@ int main(int argc, char *argv[])
 				counten = FindInternalAnglesTwins(nrIDs,IDs,IDsPerGrain,NrIDsPerID,
 				IDsChecked,OPs,ID_IA_MAT,counte,i,StartingID,Radiuses,SGNr);
 			}
+			printf("%d\n",counten);
 			totcount+=counten;
 			nGrainsMatched[i] = counten;
 			if (counten < MinNrSpots){
