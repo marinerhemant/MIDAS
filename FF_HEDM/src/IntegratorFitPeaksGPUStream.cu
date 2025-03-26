@@ -1164,7 +1164,9 @@ int main(int argc, char *argv[]){
 		perror("Error opening output files");
 		exit(EXIT_FAILURE);
 	}
-
+	clock_t t1, t2, tIntegration, tFit, tFWLineout, tFWFitResult;
+	double diffT=0, diffInteg, diffWriteLineout, diffTFit, diffWriteFitResult;
+	int firstFrame = 1;
     // Allocate arrays once before the loop
     double *int1D = (double *)calloc(nRBins, sizeof(*int1D));
     double *R = (double *)calloc(nRBins, sizeof(*R));
