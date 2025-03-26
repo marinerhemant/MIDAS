@@ -154,8 +154,11 @@ def find_process_by_name(name):
     pids = []
     for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
         try:
-            cmdline = " ".join(proc.info['cmdline'] or [])
-            if name in cmdline:
+            if proc.info['cmdline']:
+                cmdline = " ".join(proc.info['cmdline'])
+                if name in cmdline:
+                    pids.append(proc.info['pid'])
+            elif proc.info['name'] and name in proc.info['name']:
                 pids.append(proc.info['pid'])
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             pass
@@ -273,16 +276,24 @@ def main():
     
     # Start IntegratorFitPeaksGPUStream in background
     print("Starting IntegratorFitPeaksGPUStream...")
+    
+    # Set up environment with the required LD_LIBRARY_PATH
+    midas_env = os.environ.copy()
+    midas_env["LD_LIBRARY_PATH"] = "/home/beams/S1IDUSER/.MIDAS/BLOSC1/lib64:/home/beams/S1IDUSER/.MIDAS/BLOSC/lib64:/home/beams/S1IDUSER/.MIDAS/FFTW/lib:/home/beams/S1IDUSER/.MIDAS/HDF5/lib:/home/beams/S1IDUSER/.MIDAS/LIBTIFF/lib:/home/beams/S1IDUSER/.MIDAS/LIBZIP/lib64:/home/beams/S1IDUSER/.MIDAS/NLOPT/lib:/home/beams/S1IDUSER/.MIDAS/ZLIB/lib:" + midas_env.get("LD_LIBRARY_PATH", "")
+    
+    integrator_executable = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IntegratorFitPeaksGPUStream")
+    
+    integrator_cmd = [integrator_executable, param_file]
+    if dark_file:
+        integrator_cmd.append(dark_file)
+        print(f"Using dark correction file: {dark_file}")
+    
     with open(integrator_log, 'w') as logfile:
-        integrator_cmd = [os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IntegratorFitPeaksGPUStream"), param_file]
-        if dark_file:
-            integrator_cmd.append(dark_file)
-            print(f"Using dark correction file: {dark_file}")
-        
         integrator_proc = subprocess.Popen(
             integrator_cmd,
             stdout=logfile,
-            stderr=subprocess.STDOUT
+            stderr=subprocess.STDOUT,
+            env=midas_env
         )
     
     print(f"Started IntegratorFitPeaksGPUStream with PID {integrator_proc.pid}")
