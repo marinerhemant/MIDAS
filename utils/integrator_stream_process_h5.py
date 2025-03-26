@@ -293,14 +293,14 @@ def create_hdf5_file(output_file, lineout_data, fit_data, int2d_data, mapping=No
     """
     with h5py.File(output_file, 'w') as f:
         # Create attributes to store metadata
-        f.attrs['creation_date'] = np.string_(datetime.datetime.now().isoformat())
+        f.attrs['creation_date'] = np.bytes_(datetime.datetime.now().isoformat())
         f.attrs['num_frames'] = lineout_data.shape[0] if lineout_data is not None else 0
         
         # Create groups for each data type if we have data for them
         if lineout_data is not None:
             lineout_group = f.create_group('lineout')
-            lineout_group.attrs['description'] = np.string_("Radially integrated data: R and intensity values")
-            lineout_group.attrs['dimension_labels'] = np.string_("R, I")
+            lineout_group.attrs['description'] = np.bytes_("Radially integrated data: R and intensity values")
+            lineout_group.attrs['dimension_labels'] = np.bytes_("R, I")
             
             num_frames = lineout_data.shape[0]
             for i in range(num_frames):
@@ -310,8 +310,8 @@ def create_hdf5_file(output_file, lineout_data, fit_data, int2d_data, mapping=No
         
         if fit_data is not None:
             fit_group = f.create_group('fit')
-            fit_group.attrs['description'] = np.string_("Peak fitting results: amplitude, background, mix, center, sigma")
-            fit_group.attrs['parameter_labels'] = np.string_("amplitude, background, mix, center, sigma")
+            fit_group.attrs['description'] = np.bytes_("Peak fitting results: amplitude, background, mix, center, sigma")
+            fit_group.attrs['parameter_labels'] = np.bytes_("amplitude, background, mix, center, sigma")
             
             num_frames = fit_data.shape[0]
             for i in range(min(num_frames, lineout_data.shape[0] if lineout_data is not None else num_frames)):
@@ -324,8 +324,8 @@ def create_hdf5_file(output_file, lineout_data, fit_data, int2d_data, mapping=No
         if int2d_data is not None:
             # Create OmegaSumFrame group for Int2D data
             omega_group = f.create_group('OmegaSumFrame')
-            omega_group.attrs['description'] = np.string_("2D intensity data: R vs. Eta")
-            omega_group.attrs['dimension_labels'] = np.string_("R, Eta")
+            omega_group.attrs['description'] = np.bytes_("2D intensity data: R vs. Eta")
+            omega_group.attrs['dimension_labels'] = np.bytes_("R, Eta")
             
             # Handle summing frames according to OSF
             summed_data, frame_groups, counts = sum_frames(int2d_data, osf, mapping)
@@ -353,7 +353,7 @@ def create_hdf5_file(output_file, lineout_data, fit_data, int2d_data, mapping=No
                         # Old style mapping
                         identifier = mapping.get(last_frame, last_frame)
                     
-                    ds.attrs['identifier'] = np.string_(str(identifier))
+                    ds.attrs['identifier'] = np.bytes_(str(identifier))
 
 def extract_dataset_mapping_from_server_log(log_file):
     """
