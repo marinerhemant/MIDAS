@@ -298,9 +298,9 @@ def create_hdf5_file(output_file, lineout_data, fit_data, int2d_data, mapping=No
         
         # Create groups for each data type if we have data for them
         if lineout_data is not None:
-            lineout_group = f.create_group('lineout')
+            lineout_group = f.create_group('lineouts')
             lineout_group.attrs['description'] = np.bytes_("Radially integrated data: R and intensity values")
-            lineout_group.attrs['dimension_labels'] = np.bytes_("R, I")
+            lineout_group.attrs['dimension_labels'] = np.bytes_("R[px], I[a.u.]")
             
             num_frames = lineout_data.shape[0]
             for i in range(num_frames):
