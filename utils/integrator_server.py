@@ -264,8 +264,8 @@ def main():
                         help='File extension to process (default: tif, supports tif, ge1-5, h5)')
     parser.add_argument('--frame-size', type=str, 
                         help='Frame size for binary files, format: WIDTHxHEIGHT (e.g., 2048x2048)')
-    parser.add_argument('--h5-location', type=str, default='data',
-                        help='Location within H5 file containing image data (default: data)')
+    parser.add_argument('--h5-location', type=str, default='exchange/data',
+                        help='Location within H5 file containing image data (default: exchange/data)')
     
     # Arguments for stream=1 (PVA mode)
     parser.add_argument('--pva-ip', type=str, default='10.54.105.139',

@@ -201,7 +201,8 @@ def main():
     )
     
     # Required arguments
-    parser.add_argument('param_file', help='Parameter file (e.g., calib_file.txt)')
+    parser.add_argument('--param-file', required=True, 
+                        help='Parameter file (e.g., calib_file.txt)')
     
     # Input source options - mutually exclusive group
     input_group = parser.add_mutually_exclusive_group(required=True)
@@ -221,8 +222,8 @@ def main():
                         help='Output JSON file for frame mapping (default: frame_mapping.json)')
     parser.add_argument('--save-interval', type=int, default=10,
                         help='Save mapping every N frames (default: 10)')
-    parser.add_argument('--h5-location', default='data',
-                        help='Location within H5 files containing image data (default: data)')
+    parser.add_argument('--h5-location', default='exchange/data',
+                        help='Location within H5 files containing image data (default: exchange/data)')
     
     args = parser.parse_args()
     
