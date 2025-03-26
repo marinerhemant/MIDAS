@@ -1149,8 +1149,15 @@ int main(int argc, char *argv[]){
 	// Open two files: one to save the 1D lineout and the second to save the fitted peak parameters.
 	// We want to append to both the files and they are binary.
 	FILE *lineoutFile = fopen("lineout.bin", "ab");
-	FILE *fitFile = fopen("fit.bin", "ab");
-	if (lineoutFile == NULL || fitFile == NULL) {
+	FILE *fitFile;
+	if (peakFit == 1){
+		fitFile = fopen("fit.bin", "ab");
+		if (fitFile == NULL){
+			perror("Error opening output files");
+			exit(EXIT_FAILURE);	
+		}
+	}
+	if (lineoutFile == NULL) {
 		perror("Error opening output files");
 		exit(EXIT_FAILURE);
 	}
