@@ -1099,7 +1099,10 @@ int main(int argc, char *argv[]){
 	}
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
-	printf("Starting frames now, time elapsed:\t%f s.\n",diftotal);
+	printf("Starting frames now, time elapsed:\t%f s. %d\n",diftotal,write2D);
+	if (write2D == 1){
+		printf("We will write 2D as well.\n");
+	}
 
     /*Socket processing from here on.*/
     int server_fd;
