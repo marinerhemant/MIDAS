@@ -430,6 +430,7 @@ def main():
     parser = argparse.ArgumentParser(description="Convert binary output files from IntegratorFitPeaksGPUStream to HDF5")
     parser.add_argument('--lineout', type=str, default='lineout.bin', help='Lineout binary file (default: lineout.bin)')
     parser.add_argument('--fit', type=str, default='fit.bin', help='Fit binary file (optional, default: fit.bin)')
+    parser.add_argument('--int2d', type=str, default='Int2D.bin', help='2D integrated binary file (optional, default: Int2D.bin)')
     parser.add_argument('--params', type=str, required=True, help='Parameter file used for integration')
     parser.add_argument('--mapping', type=str, help='JSON file mapping frame indices to dataset IDs')
     parser.add_argument('--server-log', type=str, help='Server log file to extract dataset IDs')
