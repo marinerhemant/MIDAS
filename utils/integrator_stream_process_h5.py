@@ -3,7 +3,7 @@
 bin2hdf5.py - Convert binary output files from IntegratorFitPeaksGPUStream to HDF5
 
 This script reads the binary output files produced by the CUDA integrator 
-(lineout.bin, fit.bin, and optionally Int2D.bin) and organizes them into a 
+(lineout.bin, and optionally fit.bin and Int2D.bin) and organizes them into a 
 single HDF5 file with appropriate groups and datasets.
 
 Each binary file contains frame-by-frame data, and this script ensures they're 
@@ -429,8 +429,7 @@ def extract_dataset_mapping_from_server_log(log_file):
 def main():
     parser = argparse.ArgumentParser(description="Convert binary output files from IntegratorFitPeaksGPUStream to HDF5")
     parser.add_argument('--lineout', type=str, default='lineout.bin', help='Lineout binary file (default: lineout.bin)')
-    parser.add_argument('--fit', type=str, default='fit.bin', help='Fit binary file (default: fit.bin)')
-    parser.add_argument('--int2d', type=str, default='Int2D.bin', help='2D intensity binary file (default: Int2D.bin)')
+    parser.add_argument('--fit', type=str, default='fit.bin', help='Fit binary file (optional, default: fit.bin)')
     parser.add_argument('--params', type=str, required=True, help='Parameter file used for integration')
     parser.add_argument('--mapping', type=str, help='JSON file mapping frame indices to dataset IDs')
     parser.add_argument('--server-log', type=str, help='Server log file to extract dataset IDs')
@@ -476,24 +475,36 @@ def main():
     # Reshape lineout data to determine number of frames
     lineout_data, lineout_frames = reshape_lineout_data(raw_lineout_data, nRBins)
     
-    # For fit data, determine the frame size
-    if args.peaks_per_frame:
-        fit_frame_size = args.peaks_per_frame * 5
+    # Check if fit.bin exists and process it if it does
+    fit_frame_size = 0
+    raw_fit_data = None
+    
+    if os.path.exists(args.fit):
+        # For fit data, determine the frame size
+        if args.peaks_per_frame:
+            fit_frame_size = args.peaks_per_frame * 5
+        else:
+            fit_frame_size = estimate_fit_frame_size(args.fit, lineout_frame_size)
+            print(f"Estimated fit frame size: {fit_frame_size} elements per frame ({fit_frame_size // 5} peaks per frame)")
+        
+        raw_fit_data = read_binary_file(
+            args.fit, 
+            offset=args.start * fit_frame_size, 
+            count=args.count * fit_frame_size if args.count and fit_frame_size else None
+        )
     else:
-        fit_frame_size = estimate_fit_frame_size(args.fit, lineout_frame_size)
-        print(f"Estimated fit frame size: {fit_frame_size} elements per frame ({fit_frame_size // 5} peaks per frame)")
+        print(f"Note: Fit file {args.fit} does not exist, continuing without fit data")
     
-    raw_fit_data = read_binary_file(
-        args.fit, 
-        offset=args.start * fit_frame_size, 
-        count=args.count * fit_frame_size if args.count and fit_frame_size else None
-    )
-    
-    raw_int2d_data = read_binary_file(
-        args.int2d, 
-        offset=args.start * int2d_frame_size, 
-        count=args.count * int2d_frame_size if args.count else None
-    )
+    # Check if Int2D.bin exists and process it if it does
+    raw_int2d_data = None
+    if os.path.exists(args.int2d):
+        raw_int2d_data = read_binary_file(
+            args.int2d, 
+            offset=args.start * int2d_frame_size, 
+            count=args.count * int2d_frame_size if args.count else None
+        )
+    else:
+        print(f"Note: Int2D file {args.int2d} does not exist, continuing without Int2D data")
     
     # Reshape data
     fit_data, _ = reshape_fit_data(raw_fit_data, lineout_frames)
@@ -504,8 +515,13 @@ def main():
         print(f"Found {fit_data.shape[0]} frames in fit data")
         if fit_data.ndim == 3:
             print(f"Each frame has {fit_data.shape[1]} peaks with {fit_data.shape[2]} parameters per peak")
+    else:
+        print("No fit data available")
+        
     if int2d_data is not None:
         print(f"Found {int2d_data.shape[0]} frames in int2d data")
+    else:
+        print("No int2d data available")
     
     # Load mapping if provided
     mapping = None
