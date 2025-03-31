@@ -3,6 +3,7 @@
 Integrator Pipeline Control Script
 
 This script orchestrates the X-ray diffraction data processing pipeline:
+0. Run DetectorMapper in case maps are not found in the current directory.
 1. Starts the IntegratorFitPeaksGPUStream executable in the background
 2. Once ready, starts the integrator_server.py to feed data to the integrator
 3. Monitors processing progress
@@ -24,6 +25,7 @@ import time
 import signal
 import subprocess
 import json
+import socket
 from pathlib import Path
 
 # Check for psutil
@@ -60,22 +62,184 @@ def read_parameters_from_file(param_file):
     
     return nx, ny, omega_sum_frames
 
-def wait_for_server_ready(logfile, timeout=60):
-    """Check logfile for indication that server is ready"""
+def check_and_create_mapping_files(param_file, midas_env):
+    """
+    Check if mapping files exist (Map.bin, nMap.bin), and run DetectorMapper if they don't
+    
+    Args:
+        param_file: Parameter file for the detector
+        midas_env: Environment dictionary with LD_LIBRARY_PATH set
+        
+    Returns:
+        Boolean indicating if mapping files exist or were successfully created
+    """
+    map_file = "Map.bin"
+    nmap_file = "nMap.bin"
+    
+    # Check if mapping files already exist
+    if os.path.exists(map_file) and os.path.exists(nmap_file):
+        print(f"Mapping files ({map_file}, {nmap_file}) found in current directory.")
+        return True
+    
+    # Files don't exist, need to run the mapper
+    print(f"Mapping files not found. Running DetectorMapper to create them...")
+    
+    detector_mapper = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/DetectorMapper")
+    mapper_cmd = [detector_mapper, param_file]
+    mapper_log = "detector_mapper.log"
+    
+    try:
+        print(f"Running command: {' '.join(mapper_cmd)}")
+        with open(mapper_log, 'w') as logfile:
+            process = subprocess.Popen(
+                mapper_cmd,
+                stdout=logfile,
+                stderr=subprocess.STDOUT,
+                env=midas_env
+            )
+            
+            # Poll for process completion with 1-second interval
+            start_time = time.time()
+            timeout = 300  # 5 minute timeout
+            
+            print("Waiting for DetectorMapper to complete...", end="", flush=True)
+            while process.poll() is None:
+                # Check if we've exceeded the timeout
+                if time.time() - start_time > timeout:
+                    print("\nERROR: DetectorMapper timed out after 300 seconds")
+                    process.kill()
+                    print(f"Check {mapper_log} for details")
+                    return False
+                
+                # Print a dot every 5 seconds to show progress
+                if int((time.time() - start_time) % 5) == 0:
+                    print(".", end="", flush=True)
+                
+                # Sleep for a short period before checking again
+                time.sleep(1)
+            
+            print("")  # New line after the progress dots
+            
+            # Check the return code
+            if process.returncode != 0:
+                print(f"ERROR: DetectorMapper exited with code {process.returncode}")
+                print(f"Check {mapper_log} for details")
+                return False
+            
+            print(f"DetectorMapper completed in {time.time() - start_time:.1f} seconds")
+        
+        # Check if files were created
+        if os.path.exists(map_file) and os.path.exists(nmap_file):
+            print(f"Successfully created mapping files.")
+            return True
+        else:
+            print(f"ERROR: DetectorMapper completed but mapping files were not created.")
+            print(f"Check {mapper_log} for details")
+            return False
+            
+    except Exception as e:
+        print(f"ERROR: Failed to run DetectorMapper: {e}")
+        return False
+
+def is_port_open(host, port, timeout=1):
+    """Check if a port is open on the specified host"""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+    result = False
+    try:
+        result = sock.connect_ex((host, port)) == 0
+    except socket.error:
+        result = False
+    finally:
+        sock.close()
+    return result
+    """
+    Check if server is ready by checking if port 5000 is open
+    Also monitors process to ensure it's still running and checks log for errors
+    
+    Args:
+        logfile: Path to the log file
+        process: Subprocess object of the running process
+        timeout: Maximum time to wait in seconds
+        
+    Returns:
+        Boolean indicating if server is ready
+    """
     start_time = time.time()
     check_interval = 0.5
+    port_check_interval = 2  # Check port every 2 seconds
+    last_port_check = 0
+    last_log_size = 0
+    last_log_check = 0
+    
+    print(f"Waiting for IntegratorFitPeaksGPUStream to initialize (timeout: {timeout}s)...")
     
     while time.time() - start_time < timeout:
+        # Check if process is still running
+        if process.poll() is not None:
+            print(f"ERROR: IntegratorFitPeaksGPUStream process exited with code {process.returncode}")
+            return False
+        
+        # Check if port is open (every port_check_interval seconds)
+        current_time = time.time()
+        if current_time - last_port_check > port_check_interval:
+            if is_port_open('127.0.0.1', 5000):
+                print(f"\nServer port 5000 is open! IntegratorFitPeaksGPUStream is ready! (took {current_time - start_time:.1f} seconds)")
+                return True
+            last_port_check = current_time
+        
+        # Still monitor log file for errors
         if os.path.exists(logfile):
-            with open(logfile, 'r') as f:
-                content = f.read()
-                if "Server listening on port 5000" in content:
-                    print(f"IntegratorFitPeaksGPUStream is ready! (took {time.time() - start_time:.1f} seconds)")
-                    return True
+            # Check for new content in log file
+            current_size = os.path.getsize(logfile)
+            
+            # Print progress dots if no new log content in last 5 seconds
+            if current_size == last_log_size and current_time - last_log_check > 5:
+                print(".", end="", flush=True)
+                last_log_check = current_time
+            
+            # Only read the file if it has changed
+            if current_size > last_log_size:
+                with open(logfile, 'r') as f:
+                    content = f.read()
+                
+                # Print any new content to help with debugging
+                if len(content) > last_log_size:
+                    new_content = content[last_log_size:]
+                    if "error" in new_content.lower() or "failed" in new_content.lower():
+                        print("\nWARNING: Possible error in integrator log:")
+                        print(new_content.strip())
+                
+                # Check for common errors that indicate the process won't succeed
+                if "CUDA driver version is insufficient" in content or "NVML: Driver Not Loaded" in content:
+                    print("\nERROR: CUDA driver issues detected. Check NVIDIA drivers are properly installed.")
+                    return False
+                
+                if "error while loading shared libraries" in content:
+                    print("\nERROR: Library loading issues detected. Check LD_LIBRARY_PATH.")
+                    return False
+                
+                last_log_size = current_size
+                last_log_check = current_time
         
         time.sleep(check_interval)
     
-    print(f"Timed out waiting for IntegratorFitPeaksGPUStream to start after {timeout} seconds")
+    print(f"\nTimed out waiting for IntegratorFitPeaksGPUStream to start after {timeout} seconds")
+    print("Checking for any output in the log file:")
+    
+    # Show log file contents to help debugging
+    if os.path.exists(logfile):
+        with open(logfile, 'r') as f:
+            content = f.read().strip()
+            if content:
+                print("\n----- Integrator Log Contents -----")
+                print(content[-2000:] if len(content) > 2000 else content)  # Show last 2000 chars
+                print("----- End of Log Contents -----")
+            else:
+                print("Log file exists but is empty.")
+    else:
+        print("No log file was created.")
+    
     return False
 
 def monitor_processing(mapping_file, expected_frames=None, check_interval=5):
@@ -281,12 +445,20 @@ def main():
     midas_env = os.environ.copy()
     midas_env["LD_LIBRARY_PATH"] = "/home/beams/S1IDUSER/.MIDAS/BLOSC1/lib64:/home/beams/S1IDUSER/.MIDAS/BLOSC/lib64:/home/beams/S1IDUSER/.MIDAS/FFTW/lib:/home/beams/S1IDUSER/.MIDAS/HDF5/lib:/home/beams/S1IDUSER/.MIDAS/LIBTIFF/lib:/home/beams/S1IDUSER/.MIDAS/LIBZIP/lib64:/home/beams/S1IDUSER/.MIDAS/NLOPT/lib:/home/beams/S1IDUSER/.MIDAS/ZLIB/lib:" + midas_env.get("LD_LIBRARY_PATH", "")
     
+    # Print the environment for debugging
+    print(f"Using LD_LIBRARY_PATH: {midas_env['LD_LIBRARY_PATH']}")
+    
+    # Add helpful environment variable that might be needed
+    midas_env["CUDA_VISIBLE_DEVICES"] = "0"  # Use the first GPU
+    
     integrator_executable = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IntegratorFitPeaksGPUStream")
     
     integrator_cmd = [integrator_executable, param_file]
     if dark_file:
         integrator_cmd.append(dark_file)
         print(f"Using dark correction file: {dark_file}")
+    
+    print(f"Running command: {' '.join(integrator_cmd)}")
     
     with open(integrator_log, 'w') as logfile:
         integrator_proc = subprocess.Popen(
@@ -298,11 +470,18 @@ def main():
     
     print(f"Started IntegratorFitPeaksGPUStream with PID {integrator_proc.pid}")
     
-    # Wait for server to be ready
-    if not wait_for_server_ready(integrator_log):
+    # Wait for server to be ready with improved monitoring
+    if not wait_for_server_ready(integrator_log, integrator_proc, timeout=180):
         print("Error: Failed to start IntegratorFitPeaksGPUStream")
+        
+        # Check if process is still running
+        if integrator_proc.poll() is None:
+            print("The process is still running. Terminating it now...")
+            kill_process(integrator_proc.pid)
+        else:
+            print(f"Process already exited with code {integrator_proc.returncode}")
+        
         print(f"Check {integrator_log} for details")
-        integrator_proc.terminate()
         sys.exit(1)
     
     # Prepare server command
