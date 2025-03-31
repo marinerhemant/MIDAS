@@ -131,6 +131,12 @@ int main(int arc, char* argv[]){
 			sscanf(aline, "%s %lf", dummy, &rotationstep);
 			continue;
 		}
+        str = "StepSizeOrient ";
+		LowNr = strncmp(aline, str, strlen(str));
+		if (LowNr == 0) {
+			sscanf(aline, "%s %lf", dummy, &rotationstep);
+			continue;
+		}
         str = "OmeBinSize ";
 		LowNr = strncmp(aline, str, strlen(str));
 		if (LowNr == 0) {
