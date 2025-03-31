@@ -11,11 +11,10 @@ This script orchestrates the X-ray diffraction data processing pipeline:
    to convert the binary output to HDF5 format
 
 Usage:
-  python integrator_control.py <param_file> <folder_to_process> [options]
+  python integrator_control.py --param-file <param_file> [--folder <folder> | --pva] [options]
 
 Options:
   --extension=<ext>     File extension to process (default: tif)
-  --pva                 Use PVA stream instead of files
   --dark=<dark_file>    Dark file for background subtraction
 """
 
@@ -62,85 +61,6 @@ def read_parameters_from_file(param_file):
     
     return nx, ny, omega_sum_frames
 
-def check_and_create_mapping_files(param_file, midas_env):
-    """
-    Check if mapping files exist (Map.bin, nMap.bin), and run DetectorMapper if they don't
-    
-    Args:
-        param_file: Parameter file for the detector
-        midas_env: Environment dictionary with LD_LIBRARY_PATH set
-        
-    Returns:
-        Boolean indicating if mapping files exist or were successfully created
-    """
-    map_file = "Map.bin"
-    nmap_file = "nMap.bin"
-    
-    # Check if mapping files already exist
-    if os.path.exists(map_file) and os.path.exists(nmap_file):
-        print(f"Mapping files ({map_file}, {nmap_file}) found in current directory.")
-        return True
-    
-    # Files don't exist, need to run the mapper
-    print(f"Mapping files not found. Running DetectorMapper to create them...")
-    
-    detector_mapper = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/DetectorMapper")
-    mapper_cmd = [detector_mapper, param_file]
-    mapper_log = "detector_mapper.log"
-    
-    try:
-        print(f"Running command: {' '.join(mapper_cmd)}")
-        with open(mapper_log, 'w') as logfile:
-            process = subprocess.Popen(
-                mapper_cmd,
-                stdout=logfile,
-                stderr=subprocess.STDOUT,
-                env=midas_env
-            )
-            
-            # Poll for process completion with 1-second interval
-            start_time = time.time()
-            timeout = 300  # 5 minute timeout
-            
-            print("Waiting for DetectorMapper to complete...", end="", flush=True)
-            while process.poll() is None:
-                # Check if we've exceeded the timeout
-                if time.time() - start_time > timeout:
-                    print("\nERROR: DetectorMapper timed out after 300 seconds")
-                    process.kill()
-                    print(f"Check {mapper_log} for details")
-                    return False
-                
-                # Print a dot every 5 seconds to show progress
-                if int((time.time() - start_time) % 5) == 0:
-                    print(".", end="", flush=True)
-                
-                # Sleep for a short period before checking again
-                time.sleep(1)
-            
-            print("")  # New line after the progress dots
-            
-            # Check the return code
-            if process.returncode != 0:
-                print(f"ERROR: DetectorMapper exited with code {process.returncode}")
-                print(f"Check {mapper_log} for details")
-                return False
-            
-            print(f"DetectorMapper completed in {time.time() - start_time:.1f} seconds")
-        
-        # Check if files were created
-        if os.path.exists(map_file) and os.path.exists(nmap_file):
-            print(f"Successfully created mapping files.")
-            return True
-        else:
-            print(f"ERROR: DetectorMapper completed but mapping files were not created.")
-            print(f"Check {mapper_log} for details")
-            return False
-            
-    except Exception as e:
-        print(f"ERROR: Failed to run DetectorMapper: {e}")
-        return False
-
 def is_port_open(host, port, timeout=1):
     """Check if a port is open on the specified host"""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -153,6 +73,8 @@ def is_port_open(host, port, timeout=1):
     finally:
         sock.close()
     return result
+
+def wait_for_server_ready(logfile, process, timeout=180):
     """
     Check if server is ready by checking if port 5000 is open
     Also monitors process to ensure it's still running and checks log for errors
@@ -242,6 +164,129 @@ def is_port_open(host, port, timeout=1):
     
     return False
 
+def check_and_create_mapping_files(param_file, midas_env):
+    """
+    Check if mapping files exist (Map.bin, nMap.bin), and run DetectorMapper if they don't
+    
+    Args:
+        param_file: Parameter file for the detector
+        midas_env: Environment dictionary with LD_LIBRARY_PATH set
+        
+    Returns:
+        Boolean indicating if mapping files exist or were successfully created
+    """
+    map_file = "Map.bin"
+    nmap_file = "nMap.bin"
+    
+    # Check if mapping files already exist
+    if os.path.exists(map_file) and os.path.exists(nmap_file):
+        print(f"Mapping files ({map_file}, {nmap_file}) found in current directory.")
+        return True
+    
+    # Files don't exist, need to run the mapper
+    print(f"Mapping files not found. Running DetectorMapper to create them...")
+    
+    detector_mapper = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/DetectorMapper")
+    mapper_cmd = [detector_mapper, param_file]
+    mapper_log = "detector_mapper.log"
+    
+    try:
+        print(f"Running command: {' '.join(mapper_cmd)}")
+        with open(mapper_log, 'w') as logfile:
+            process = subprocess.Popen(
+                mapper_cmd,
+                stdout=logfile,
+                stderr=subprocess.STDOUT,
+                env=midas_env
+            )
+            
+            # Poll for process completion with 1-second interval
+            start_time = time.time()
+            timeout = 300  # 5 minute timeout
+            
+            print("Waiting for DetectorMapper to complete...", end="", flush=True)
+            while process.poll() is None:
+                # Check if we've exceeded the timeout
+                if time.time() - start_time > timeout:
+                    print("\nERROR: DetectorMapper timed out after 300 seconds")
+                    process.kill()
+                    print(f"Check {mapper_log} for details")
+                    return False
+                
+                # Print a dot every 5 seconds to show progress
+                if int((time.time() - start_time) % 5) == 0:
+                    print(".", end="", flush=True)
+                
+                # Sleep for a short period before checking again
+                time.sleep(1)
+            
+            print("")  # New line after the progress dots
+            
+            # Check the return code
+            if process.returncode != 0:
+                print(f"ERROR: DetectorMapper exited with code {process.returncode}")
+                print(f"Check {mapper_log} for details")
+                return False
+            
+            print(f"DetectorMapper completed in {time.time() - start_time:.1f} seconds")
+        
+        # Check if files were created
+        if os.path.exists(map_file) and os.path.exists(nmap_file):
+            print(f"Successfully created mapping files.")
+            return True
+        else:
+            print(f"ERROR: DetectorMapper completed but mapping files were not created.")
+            print(f"Check {mapper_log} for details")
+            return False
+            
+    except Exception as e:
+        print(f"ERROR: Failed to run DetectorMapper: {e}")
+        return False
+
+def find_process_by_name(name):
+    """Find process IDs by name pattern"""
+    pids = []
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        try:
+            if proc.info['cmdline']:
+                cmdline = " ".join(proc.info['cmdline'])
+                if name in cmdline:
+                    pids.append(proc.info['pid'])
+            elif proc.info['name'] and name in proc.info['name']:
+                pids.append(proc.info['pid'])
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            pass
+    return pids
+
+def kill_process(pid, timeout=5):
+    """Kill a process by PID with timeout for graceful termination"""
+    try:
+        process = psutil.Process(pid)
+        process.terminate()
+        
+        try:
+            process.wait(timeout=timeout)
+            print(f"Gracefully terminated process {pid}")
+            return True
+        except psutil.TimeoutExpired:
+            print(f"Process {pid} did not terminate within {timeout} seconds, forcing...")
+            process.kill()
+            process.wait(timeout=2)
+            print(f"Forcefully terminated process {pid}")
+            return True
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        print(f"Could not terminate process {pid} - it may have already exited")
+        return False
+    except Exception as e:
+        print(f"Error terminating process {pid}: {e}")
+        return False
+
+def count_files_in_folder(folder, extension):
+    """Count files with given extension in folder"""
+    pattern = f"*.{extension}"
+    files = list(Path(folder).glob(pattern))
+    return len(files)
+
 def monitor_processing(mapping_file, expected_frames=None, check_interval=5):
     """
     Monitor the mapping file to track progress
@@ -313,50 +358,6 @@ def monitor_processing(mapping_file, expected_frames=None, check_interval=5):
         
         time.sleep(check_interval)
 
-def find_process_by_name(name):
-    """Find process IDs by name pattern"""
-    pids = []
-    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-        try:
-            if proc.info['cmdline']:
-                cmdline = " ".join(proc.info['cmdline'])
-                if name in cmdline:
-                    pids.append(proc.info['pid'])
-            elif proc.info['name'] and name in proc.info['name']:
-                pids.append(proc.info['pid'])
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            pass
-    return pids
-
-def kill_process(pid, timeout=5):
-    """Kill a process by PID with timeout for graceful termination"""
-    try:
-        process = psutil.Process(pid)
-        process.terminate()
-        
-        try:
-            process.wait(timeout=timeout)
-            print(f"Gracefully terminated process {pid}")
-            return True
-        except psutil.TimeoutExpired:
-            print(f"Process {pid} did not terminate within {timeout} seconds, forcing...")
-            process.kill()
-            process.wait(timeout=2)
-            print(f"Forcefully terminated process {pid}")
-            return True
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
-        print(f"Could not terminate process {pid} - it may have already exited")
-        return False
-    except Exception as e:
-        print(f"Error terminating process {pid}: {e}")
-        return False
-
-def count_files_in_folder(folder, extension):
-    """Count files with given extension in folder"""
-    pattern = f"*.{extension}"
-    files = list(Path(folder).glob(pattern))
-    return len(files)
-
 def main():
     # Set up argument parser
     import argparse
@@ -414,7 +415,6 @@ def main():
     # Set up file paths
     integrator_log = "integrator.log"
     server_log = "server.log"
-    mapping_file = "frame_mapping.json"
     
     # Count number of files to process for progress tracking
     expected_frames = 0
@@ -438,9 +438,6 @@ def main():
     if omega_sum_frames is not None:
         print(f"OmegaSumFrames: {omega_sum_frames}")
     
-    # Start IntegratorFitPeaksGPUStream in background
-    print("Starting IntegratorFitPeaksGPUStream...")
-    
     # Set up environment with the required LD_LIBRARY_PATH
     midas_env = os.environ.copy()
     midas_env["LD_LIBRARY_PATH"] = "/home/beams/S1IDUSER/.MIDAS/BLOSC1/lib64:/home/beams/S1IDUSER/.MIDAS/BLOSC/lib64:/home/beams/S1IDUSER/.MIDAS/FFTW/lib:/home/beams/S1IDUSER/.MIDAS/HDF5/lib:/home/beams/S1IDUSER/.MIDAS/LIBTIFF/lib:/home/beams/S1IDUSER/.MIDAS/LIBZIP/lib64:/home/beams/S1IDUSER/.MIDAS/NLOPT/lib:/home/beams/S1IDUSER/.MIDAS/ZLIB/lib:" + midas_env.get("LD_LIBRARY_PATH", "")
@@ -450,6 +447,14 @@ def main():
     
     # Add helpful environment variable that might be needed
     midas_env["CUDA_VISIBLE_DEVICES"] = "0"  # Use the first GPU
+    
+    # Check if mapping files exist and create them if needed
+    if not check_and_create_mapping_files(param_file, midas_env):
+        print("Error: Failed to create required mapping files.")
+        sys.exit(1)
+        
+    # Start IntegratorFitPeaksGPUStream in background
+    print("Starting IntegratorFitPeaksGPUStream...")
     
     integrator_executable = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IntegratorFitPeaksGPUStream")
     
