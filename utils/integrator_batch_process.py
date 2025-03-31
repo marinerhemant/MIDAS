@@ -497,7 +497,7 @@ def main():
         "--mapping-file", mapping_file,
         "--save-interval", str(args.save_interval)
     ]
-    
+
     if not use_pva:
         server_cmd.extend([
             "--folder", folder_to_process,
@@ -557,6 +557,7 @@ def main():
     # Run integrator_stream_process_h5.py
     print("\nConverting binary output to HDF5...")
     h5_cmd = [
+        sys.executable,  # Add this line to use the current Python interpreter
         os.path.expanduser("~/opt/MIDAS/utils/integrator_stream_process_h5.py"),
         "--lineout", "lineout.bin",
         "--fit", "fit.bin",
