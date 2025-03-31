@@ -1275,8 +1275,6 @@ int main(int argc, char *argv[])
 	TthetaTol = Ttheta4mR((MaxRingRad+Width),Lsd) - Ttheta4mR((MaxRingRad-Width),Lsd);
 	double IdealTthetas[n_hkls], TthetaMins[n_hkls], TthetaMaxs[n_hkls];
 	for (i=0;i<n_hkls;i++){IdealTthetas[i]=2*Thetas[i];TthetaMins[i]=IdealTthetas[i]-TthetaTol;TthetaMaxs[i]=IdealTthetas[i]+TthetaTol;}
-	double IdealRs[n_hkls], Rmins[n_hkls], Rmaxs[n_hkls];
-	for (i=0;i<n_hkls;i++){IdealRs[i]=R4mTtheta(IdealTthetas[i],Lsd);Rmins[i]=R4mTtheta(TthetaMins[i],Lsd);Rmaxs[i]=R4mTtheta(TthetaMaxs[i],Lsd);}
 	int counter = 0;
 	double nFramesThis;
 	int nSpotsEachRing[n_hkls];
@@ -1493,7 +1491,7 @@ int main(int argc, char *argv[])
 		fprintf(PF,"RingNumbers %d;\n",UniqueRingNumbers[i]);
 	}
 	for (i=0;i<nrUniqueRingNumbers;i++){
-		fprintf(PF,"RingRadii %f;\n",IdealRs[i]);
+		fprintf(PF,"RingRadii %f;\n",RingRadsIdeal[i]);
 	}
 	fprintf(PF,"UseFriedelPairs %d;\n",UseFriedelPairs);
 	fprintf(PF,"Wedge %f;\n",wedge);
