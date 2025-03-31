@@ -278,13 +278,13 @@ def refine(resultDir: str, numProcs: int, blockNr: int = 0, numBlocks: int = 1) 
         )
         returncode = process.wait()
         
-        # if returncode != 0:
-        #     f_err.flush()
-        #     with open(errfile, 'r') as err_reader:
-        #         error_content = err_reader.read()
-        #     error_msg = f"Refinement failed with return code {returncode}. Error output:\n{error_content}"
-        #     print(error_msg, file=sys.stderr)
-        #     raise RuntimeError(error_msg)
+        if returncode != 0:
+            f_err.flush()
+            with open(errfile, 'r') as err_reader:
+                error_content = err_reader.read()
+            error_msg = f"Refinement failed with return code {returncode}. Error output:\n{error_content}"
+            print(error_msg, file=sys.stderr)
+            raise RuntimeError(error_msg)
 
 # Signal handler for cleanup
 default_handler = None
