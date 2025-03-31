@@ -68,7 +68,7 @@ def process_tif(file_path, sock, dataset_num, frame_mapping, frame_index):
     print(f"Processing TIF file: {file_path}")
     # data = np.array(image).flatten()
     data = tifffile.imread(file_path)
-    
+    t_int = time.time()
     # Update frame mapping with filename
     frame_mapping[frame_index] = {
         'dataset_num': dataset_num,
@@ -79,7 +79,7 @@ def process_tif(file_path, sock, dataset_num, frame_mapping, frame_index):
     # Send the data with dataset number
     send_data_chunk(sock, dataset_num, data)
     t2 = time.time()
-    print(f"Processed TIF frame #{dataset_num}, time: {t2 - t1:.4f} sec")
+    print(f"Processed TIF frame #{dataset_num}, time: {t2 - t1:.4f} sec, {t2-t_int:.4f} sec to send data {t_int-t1:.4f} sec to read file.")
     
     # Return incremented dataset numbers
     return (dataset_num + 1) % 65536, frame_index + 1
