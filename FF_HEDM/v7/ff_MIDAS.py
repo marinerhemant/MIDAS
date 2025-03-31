@@ -263,6 +263,10 @@ def refine(resultDir: str, numProcs: int, blockNr: int = 0, numBlocks: int = 1) 
     errfile = f'{resultDir}/output/refining_err{blockNr}.csv'
     
     with open(outfile, 'w') as f, open(errfile, 'w') as f_err:
+        # At the beginning of the refine function
+        import resource
+        # Enable core dumps
+        resource.setrlimit(resource.RLIMIT_CORE, (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
         cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/FitPosOrStrainsOMP')} paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}"
         process = subprocess.Popen(
             cmd, 
