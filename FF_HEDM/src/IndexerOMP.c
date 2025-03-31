@@ -1296,7 +1296,19 @@ int ReadParams(char FileName[],struct TParams * Params)
 			sscanf(line, "%s %lf", dummy, &(Params->MinMatchesToAcceptFrac) );
 			continue;
 		}
+		str = "Completeness ";
+		cmpres = strncmp(line, str, strlen(str));
+		if (cmpres == 0) {
+			sscanf(line, "%s %lf", dummy, &(Params->MinMatchesToAcceptFrac) );
+			continue;
+		}
 		str = "ExcludePoleAngle ";
+		cmpres = strncmp(line, str, strlen(str));
+		if (cmpres == 0) {
+			sscanf(line, "%s %lf", dummy, &(Params->ExcludePoleAngle) );
+			continue;
+		}
+		str = "MinEta ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
 			sscanf(line, "%s %lf", dummy, &(Params->ExcludePoleAngle) );
