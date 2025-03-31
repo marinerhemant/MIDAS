@@ -152,6 +152,7 @@ int main(int arc, char* argv[]){
 			continue;
 		}
 	}
+	printf("%lf %lf %lf %lf %lf\n",omemargin0,etamargin0,etabinsize,rotationstep,omebinsize);
 
 
 	int i,j,k,t;
