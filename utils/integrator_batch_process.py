@@ -491,6 +491,7 @@ def main():
     
     # Prepare server command
     server_cmd = [
+        sys.executable,  # Add this line to use the current Python interpreter
         os.path.expanduser("~/opt/MIDAS/utils/integrator_server.py"),
         "--stream", "0" if not use_pva else "1",
         "--mapping-file", mapping_file,
