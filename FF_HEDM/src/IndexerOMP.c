@@ -1260,6 +1260,12 @@ int ReadParams(char FileName[],struct TParams * Params)
 			sscanf(line, "%s %lf", dummy, &(Params->StepsizeOrient) );
 			continue;
 		}
+		str = "StepSizeOrient ";
+		cmpres = strncmp(line, str, strlen(str));
+		if (cmpres == 0) {
+			sscanf(line, "%s %lf", dummy, &(Params->StepsizeOrient) );
+			continue;
+		}
 		str = "MarginOme ";
 		cmpres = strncmp(line, str, strlen(str));
 		if (cmpres == 0) {
