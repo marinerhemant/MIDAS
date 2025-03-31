@@ -287,7 +287,7 @@ def count_files_in_folder(folder, extension):
     files = list(Path(folder).glob(pattern))
     return len(files)
 
-def monitor_processing(mapping_file, expected_frames=None, check_interval=5):
+def monitor_processing(mapping_file, expected_frames=None, check_interval=1):
     """
     Monitor the mapping file to track progress
     
