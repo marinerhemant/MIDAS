@@ -603,10 +603,10 @@ int main(int argc, char *argv[])
 			sscanf(aline,"%d %d %d %lf",&IDHash[nRings][0],&IDHash[nRings][1],&IDHash[nRings][2],&dspacings[nRings]);
 			nRings++;
 		}
+		fclose(hashfile);
 	}else{
 		MakeHash = 1;
 	}
-	fclose(hashfile);
 	double **SpotMatrix, **InputMatrix;
 	SpotMatrix = allocMatrix(NR_MAX_IDS_PER_GRAIN,12);
 	InputMatrix = allocMatrix(MAX_N_IDS,10);
