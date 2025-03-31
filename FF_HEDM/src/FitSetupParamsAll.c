@@ -1125,7 +1125,7 @@ int main(int argc, char *argv[])
 		fprintf(PF,"RingNumbers %d;\n",UniqueRingNumbers[i]);
 	}
 	for (i=0;i<nrUniqueRingNumbers;i++){
-		fprintf(PF,"RingRadii %f;\n",IdealRs[i]);
+		fprintf(PF,"RingRadii %f;\n",RingRadsIdeal[i]);
 	}
 	fprintf(PF,"UseFriedelPairs %d;\n",UseFriedelPairs);
 	fprintf(PF,"Wedge %f;\n",wedge);
