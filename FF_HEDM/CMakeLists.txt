@@ -84,7 +84,16 @@ endif()
 
 # Function to handle dependencies
 function(handle_dependency NAME URL DOWNLOAD_FLAG)
-  # Check if target already exists to avoid double-processing
+    if(NAME STREQUAL "LIBTIFF")
+    if(TARGET TIFF::TIFF)
+    message(STATUS "${NAME} target already exists as TIFF::TIFF, skipping")
+    return()
+    endif()
+    elseif(TARGET ${NAME}::${NAME})
+    message(STATUS "${NAME} target already exists, skipping")
+    return()
+    endif()
+# Check if target already exists to avoid double-processing
   if(TARGET ${NAME}::${NAME})
     message(STATUS "${NAME} target already exists, skipping")
     return()
@@ -141,10 +150,14 @@ function(handle_dependency NAME URL DOWNLOAD_FLAG)
     message(STATUS "Setting up ${NAME} dependency")
     include(cmake/deps/${NAME}.cmake)
 
-    # Verify target was created
-    if(NOT TARGET ${NAME}::${NAME})
-        message(FATAL_ERROR "Failed to create ${NAME}::${NAME} target")
+  # Verify target was created
+  if(NAME STREQUAL "LIBTIFF")
+    if(NOT TARGET TIFF::TIFF)
+      message(FATAL_ERROR "Failed to create TIFF::TIFF target")
     endif()
+  elseif(NOT TARGET ${NAME}::${NAME})
+    message(FATAL_ERROR "Failed to create ${NAME}::${NAME} target")
+  endif()
   
 endfunction()
 
@@ -654,12 +667,12 @@ endfunction()
 # Now add all the executables
 add_midas_executable(Calibrant
   SOURCES src/Calibrant.c src/CalcPeakProfile.c
-  LINK_LIBRARIES NLOPT::NLOPT LIBTIFF::LIBTIFF HDF5::HDF5 HDF5::HL
+  LINK_LIBRARIES NLOPT::NLOPT TIFF:TIFF HDF5::HDF5 HDF5::HL
 )
 
 add_midas_executable(CalibrantOMP
   SOURCES src/CalibrantOMP.c src/CalcPeakProfile.c
-  LINK_LIBRARIES NLOPT::NLOPT LIBTIFF::LIBTIFF HDF5::HDF5 HDF5::HL
+  LINK_LIBRARIES NLOPT::NLOPT TIFF:TIFF HDF5::HDF5 HDF5::HL
   OMP
 )
 
@@ -865,12 +878,12 @@ add_midas_executable(DetectorMapperZarr
 
 add_midas_executable(Integrator
   SOURCES src/Integrator.c
-  LINK_LIBRARIES LIBTIFF::LIBTIFF HDF5::HDF5 HDF5::HL
+  LINK_LIBRARIES TIFF:TIFF HDF5::HDF5 HDF5::HL
 )
 
 add_midas_executable(IntegratorZarr
   SOURCES src/IntegratorZarr.c
-  LINK_LIBRARIES LIBTIFF::LIBTIFF HDF5::HDF5 HDF5::HL BLOSC::BLOSC LIBZIP::LIBZIP
+  LINK_LIBRARIES TIFF:TIFF HDF5::HDF5 HDF5::HL BLOSC::BLOSC LIBZIP::LIBZIP
 )
 
 add_midas_executable(ConvTiffToGE
