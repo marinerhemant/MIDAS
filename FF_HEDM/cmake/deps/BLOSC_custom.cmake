@@ -17,16 +17,22 @@ if(NOT blosc1_POPULATED)
   set(BUILD_BENCHMARKS OFF CACHE BOOL "Build benchmarks" FORCE)
   set(BUILD_EXAMPLES OFF CACHE BOOL "Build examples" FORCE)
   
-  # The key fix: Define BUILD_FUZZERS as a cache variable before add_subdirectory
-  # This ensures the variable exists before the c-blosc CMakeLists.txt uses it in an option() call
-  set(BUILD_FUZZERS OFF CACHE BOOL "Build fuzzer programs" FORCE)
-  
-  # Remove the zlib target check to keep internal zlib in BLOSC1
-  # Instead of checking if zlib target exists, just set DEACTIVATE_ZLIB to OFF
+  # Remove the zlib target check to always use internal zlib in BLOSC1
   set(DEACTIVATE_ZLIB OFF CACHE BOOL "Do not include support for the Zlib library." FORCE)
   
   # Avoid issues with other dependencies
   set(DEACTIVATE_SNAPPY ON CACHE BOOL "Do not include support for the Snappy library." FORCE)
+  
+  # Apply a patch to fix the CMakeLists.txt in blosc1
+  file(WRITE "${blosc1_SOURCE_DIR}/CMakeLists.txt.new" "")
+  file(STRINGS "${blosc1_SOURCE_DIR}/CMakeLists.txt" cmake_lines)
+  foreach(line ${cmake_lines})
+    # Skip any line with BUILD_FUZZERS
+    if(NOT line MATCHES "BUILD_FUZZERS")
+      file(APPEND "${blosc1_SOURCE_DIR}/CMakeLists.txt.new" "${line}\n")
+    endif()
+  endforeach()
+  file(RENAME "${blosc1_SOURCE_DIR}/CMakeLists.txt.new" "${blosc1_SOURCE_DIR}/CMakeLists.txt")
   
   add_subdirectory(${blosc1_SOURCE_DIR} ${blosc1_BINARY_DIR})
   
