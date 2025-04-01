@@ -83,6 +83,13 @@ function(handle_dependency NAME URL DOWNLOAD_FLAG)
   if(EXISTS "${CMAKE_SOURCE_DIR}/cmake/FindModules/Find${NAME}.cmake")
     list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/FindModules")
   endif()
+
+    # Check for custom dependency file
+    set(CUSTOM_DEP_FILE "${CMAKE_SOURCE_DIR}/cmake/deps/${NAME}_custom.cmake")
+    if(EXISTS "${CUSTOM_DEP_FILE}")
+      include("${CUSTOM_DEP_FILE}")
+      return()
+    endif()
   
   if(${DOWNLOAD_FLAG})
     message(STATUS "Setting up ${NAME} for download and build")
