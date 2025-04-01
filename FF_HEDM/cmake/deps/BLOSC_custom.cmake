@@ -17,15 +17,18 @@ if(NOT blosc_POPULATED)
   set(BLOSC_BUILD_BENCHMARKS OFF CACHE BOOL "Build benchmarks" FORCE)
   set(BLOSC_BUILD_EXAMPLES OFF CACHE BOOL "Build examples" FORCE)
   
-  # Enable using external zlib instead of internal one
-  set(BLOSC_PREFER_EXTERNAL_ZLIB ON CACHE BOOL "Use external ZLIB" FORCE)
-  set(BLOSC_PREFER_EXTERNAL_LZ4 ON CACHE BOOL "Use external LZ4" FORCE)
+  # Always use internal zlib in BLOSC1
+  set(DEACTIVATE_ZLIB OFF CACHE BOOL "Do not include support for the Zlib library." FORCE)
+
+  # # Enable using external zlib instead of internal one
+  # set(BLOSC_PREFER_EXTERNAL_ZLIB ON CACHE BOOL "Use external ZLIB" FORCE)
+  # set(BLOSC_PREFER_EXTERNAL_LZ4 ON CACHE BOOL "Use external LZ4" FORCE)
   
-  # Disable internal zlib building completely
-  set(DEACTIVATE_ZLIB ON CACHE BOOL "Deactivate internal zlib" FORCE)
+  # # Disable internal zlib building completely
+  # set(DEACTIVATE_ZLIB ON CACHE BOOL "Deactivate internal zlib" FORCE)
   
-  # Find system zlib
-  find_package(ZLIB REQUIRED)
+  # # Find system zlib
+  # find_package(ZLIB REQUIRED)
   
   add_subdirectory(${blosc_SOURCE_DIR} ${blosc_BINARY_DIR})
   
