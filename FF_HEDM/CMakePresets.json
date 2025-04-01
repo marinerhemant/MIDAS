@@ -1,0 +1,152 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Default Config",
+      "description": "Default build configuration",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug Build",
+      "description": "Debug build with symbols",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "macos",
+      "displayName": "macOS Build",
+      "description": "Configuration for macOS with Homebrew GCC",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-macos",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "APPLE_RPATH_FIX": "ON"
+      }
+    },
+    {
+      "name": "cuda",
+      "displayName": "CUDA Build",
+      "description": "Build with CUDA support",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-cuda",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_CUDA": "ON"
+      }
+    },
+    {
+      "name": "system-deps",
+      "displayName": "System Dependencies",
+      "description": "Use system dependencies when available",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-system",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SYSTEM_DEPENDENCIES": "ON",
+        "DOWNLOAD_DEPENDENCIES": "ON"
+      }
+    },
+    {
+      "name": "static",
+      "displayName": "Static Build",
+      "description": "Build static libraries and executables",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-static",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_SHARED_LIBS": "OFF"
+      }
+    },
+    {
+      "name": "custom-paths",
+      "displayName": "Custom Paths",
+      "description": "Use custom installation and configuration paths",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-custom",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install",
+        "MIDAS_CONFIG_DIR": "${sourceDir}/config",
+        "USE_USER_HOME": "OFF"
+      }
+    },
+    {
+      "name": "full",
+      "displayName": "Full Features",
+      "description": "Build with all features enabled",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-full",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_CUDA": "ON",
+        "BUILD_OMP": "ON",
+        "INSTALL_PYTHON_DEPS": "ON",
+        "SYSTEM_DEPENDENCIES": "ON",
+        "DOWNLOAD_DEPENDENCIES": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "jobs": 0
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "jobs": 0
+    },
+    {
+      "name": "macos",
+      "configurePreset": "macos",
+      "jobs": 0
+    },
+    {
+      "name": "cuda",
+      "configurePreset": "cuda",
+      "jobs": 0
+    },
+    {
+      "name": "system-deps",
+      "configurePreset": "system-deps",
+      "jobs": 0
+    },
+    {
+      "name": "static",
+      "configurePreset": "static",
+      "jobs": 0
+    },
+    {
+      "name": "custom-paths",
+      "configurePreset": "custom-paths",
+      "jobs": 0
+    },
+    {
+      "name": "full",
+      "configurePreset": "full",
+      "jobs": 0
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "output": {"verbosity": "verbose"}
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "output": {"verbosity": "verbose"}
+    }
+  ]
+}
