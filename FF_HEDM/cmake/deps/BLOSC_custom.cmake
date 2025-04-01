@@ -8,6 +8,18 @@ FetchContent_GetProperties(blosc)
 if(NOT blosc_POPULATED)
   FetchContent_Populate(blosc)
   
+  # Disable internal zlib by modifying its CMakeLists.txt before processing
+  if(EXISTS "${blosc_SOURCE_DIR}/internal-complibs/zlib-ng-2.0.7/CMakeLists.txt")
+    file(WRITE "${blosc_SOURCE_DIR}/internal-complibs/zlib-ng-2.0.7/CMakeLists.txt" "
+      # Disabled to avoid conflict with the project's zlib
+      message(STATUS \"Using system ZLIB instead of internal zlib-ng\")
+      
+      # Create dummy targets to satisfy blosc dependencies
+      add_library(zlib INTERFACE)
+      target_link_libraries(zlib INTERFACE ZLIB::ZLIB)
+    ")
+  endif()
+  
   # Set BLOSC options
   set(BLOSC_IS_SUBPROJECT ON CACHE BOOL "Build as subproject" FORCE)
   set(BLOSC_INSTALL OFF CACHE BOOL "Install blosc" FORCE)
@@ -17,10 +29,9 @@ if(NOT blosc_POPULATED)
   set(BLOSC_BUILD_BENCHMARKS OFF CACHE BOOL "Build benchmarks" FORCE)
   set(BLOSC_BUILD_EXAMPLES OFF CACHE BOOL "Build examples" FORCE)
   
-  # Disable internal compression libraries to avoid conflicts
+  # Force external zlib
   set(BLOSC_PREFER_EXTERNAL_ZLIB ON CACHE BOOL "Use external ZLIB" FORCE)
-  set(BLOSC_PREFER_EXTERNAL_LZ4 ON CACHE BOOL "Use external LZ4" FORCE)
-  set(BLOSC_PREFER_EXTERNAL_ZSTD ON CACHE BOOL "Use external ZSTD" FORCE)
+  set(DEACTIVATE_ZLIB OFF CACHE BOOL "Deactivate zlib compression" FORCE)
   
   add_subdirectory(${blosc_SOURCE_DIR} ${blosc_BINARY_DIR})
   
