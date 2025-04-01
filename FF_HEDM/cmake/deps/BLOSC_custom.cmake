@@ -8,16 +8,42 @@ FetchContent_GetProperties(blosc)
 if(NOT blosc_POPULATED)
   FetchContent_Populate(blosc)
   
-  # Disable internal zlib by modifying its CMakeLists.txt before processing
+  # Rename the internal zlib to avoid conflict
   if(EXISTS "${blosc_SOURCE_DIR}/internal-complibs/zlib-ng-2.0.7/CMakeLists.txt")
-    file(WRITE "${blosc_SOURCE_DIR}/internal-complibs/zlib-ng-2.0.7/CMakeLists.txt" "
-      # Disabled to avoid conflict with the project's zlib
-      message(STATUS \"Using system ZLIB instead of internal zlib-ng\")
-      
-      # Create dummy targets to satisfy blosc dependencies
-      add_library(zlib INTERFACE)
-      target_link_libraries(zlib INTERFACE ZLIB::ZLIB)
-    ")
+    file(READ "${blosc_SOURCE_DIR}/internal-complibs/zlib-ng-2.0.7/CMakeLists.txt" ZLIB_CMAKE_CONTENT)
+    
+    # Replace the target name "zlib" with "blosc_internal_zlib" in all places
+    string(REPLACE "add_library(zlib" 
+                   "add_library(blosc_internal_zlib" 
+                   ZLIB_CMAKE_CONTENT "${ZLIB_CMAKE_CONTENT}")
+    
+    # Replace any references to "zlib" target with "blosc_internal_zlib"
+    string(REPLACE "TARGET zlib" 
+                   "TARGET blosc_internal_zlib" 
+                   ZLIB_CMAKE_CONTENT "${ZLIB_CMAKE_CONTENT}")
+    
+    # Update the output name to avoid filename conflicts
+    string(REPLACE "OUTPUT_NAME z" 
+                   "OUTPUT_NAME blosc_z" 
+                   ZLIB_CMAKE_CONTENT "${ZLIB_CMAKE_CONTENT}")
+    
+    file(WRITE "${blosc_SOURCE_DIR}/internal-complibs/zlib-ng-2.0.7/CMakeLists.txt" "${ZLIB_CMAKE_CONTENT}")
+  endif()
+  
+  # Also update BLOSC's main CMakeLists.txt to use the renamed zlib target
+  if(EXISTS "${blosc_SOURCE_DIR}/CMakeLists.txt")
+    file(READ "${blosc_SOURCE_DIR}/CMakeLists.txt" BLOSC_CMAKE_CONTENT)
+    
+    # Replace references to "zlib" with "blosc_internal_zlib" 
+    string(REPLACE "zlib " 
+                   "blosc_internal_zlib " 
+                   BLOSC_CMAKE_CONTENT "${BLOSC_CMAKE_CONTENT}")
+    
+    string(REPLACE "zlib;" 
+                   "blosc_internal_zlib;" 
+                   BLOSC_CMAKE_CONTENT "${BLOSC_CMAKE_CONTENT}")
+    
+    file(WRITE "${blosc_SOURCE_DIR}/CMakeLists.txt" "${BLOSC_CMAKE_CONTENT}")
   endif()
   
   # Set BLOSC options
@@ -29,9 +55,8 @@ if(NOT blosc_POPULATED)
   set(BLOSC_BUILD_BENCHMARKS OFF CACHE BOOL "Build benchmarks" FORCE)
   set(BLOSC_BUILD_EXAMPLES OFF CACHE BOOL "Build examples" FORCE)
   
-  # Force external zlib
-  set(BLOSC_PREFER_EXTERNAL_ZLIB ON CACHE BOOL "Use external ZLIB" FORCE)
-  set(DEACTIVATE_ZLIB OFF CACHE BOOL "Deactivate zlib compression" FORCE)
+  # Disable external zlib to use internal one
+  set(BLOSC_PREFER_EXTERNAL_ZLIB OFF CACHE BOOL "Use external ZLIB" FORCE)
   
   add_subdirectory(${blosc_SOURCE_DIR} ${blosc_BINARY_DIR})
   
