@@ -8,19 +8,18 @@ FetchContent_GetProperties(blosc1)
 if(NOT blosc1_POPULATED)
   FetchContent_Populate(blosc1)
   
-  # Fix the problematic BUILD_FUZZERS option in CMakeLists.txt using CMake file operations
-  file(READ "${blosc1_SOURCE_DIR}/CMakeLists.txt" cmake_content)
-  string(REPLACE 
-    "option(BUILD_FUZZERS \"Build fuzzer programs from the blosc compression library\" NOT ON)" 
-    "option(BUILD_FUZZERS \"Build fuzzer programs\" OFF)" 
-    cmake_content_fixed "${cmake_content}")
-  file(WRITE "${blosc1_SOURCE_DIR}/CMakeLists.txt" "${cmake_content_fixed}")
-  
   # Set BLOSC1 options
   set(BLOSC_IS_SUBPROJECT ON CACHE BOOL "Build as subproject" FORCE)
   set(BLOSC_INSTALL OFF CACHE BOOL "Install blosc" FORCE)
   set(BUILD_SHARED ${BUILD_SHARED_LIBS} CACHE BOOL "Build shared" FORCE)
-  set(BUILD_STATIC NOT ${BUILD_SHARED_LIBS} CACHE BOOL "Build static" FORCE)
+  
+  # This is the fixed line - properly set BUILD_STATIC based on BUILD_SHARED_LIBS
+  if(BUILD_SHARED_LIBS)
+    set(BUILD_STATIC OFF CACHE BOOL "Build static" FORCE)
+  else()
+    set(BUILD_STATIC ON CACHE BOOL "Build static" FORCE) 
+  endif()
+  
   set(BUILD_TESTS OFF CACHE BOOL "Build tests" FORCE)
   set(BUILD_BENCHMARKS OFF CACHE BOOL "Build benchmarks" FORCE)
   set(BUILD_EXAMPLES OFF CACHE BOOL "Build examples" FORCE)
