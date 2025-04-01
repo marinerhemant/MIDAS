@@ -1,4 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
+# Set the CMP0135 policy to NEW
+if(POLICY CMP0135)
+  cmake_policy(SET CMP0135 NEW)
+endif()
+
 project(MIDAS_FF_HEDM C)
 # project(MIDAS_FF_HEDM C CUDA)
 
