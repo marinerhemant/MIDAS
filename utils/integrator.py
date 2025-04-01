@@ -13,6 +13,7 @@ from pathlib import Path
 
 import fsspec
 import zarr
+import numpy as np
 
 # Suppress warnings
 warnings.filterwarnings('ignore')
@@ -175,35 +176,21 @@ def convert_hdf_to_zarr(hdf_file, output_zip):
         raise
 
 
-def process_single_file(file_nr, input_file_pattern, start_file_nr, result_dir, 
-                       param_file, frame_chunks, pre_proc, convert_files, 
-                       env, data_loc, dark_loc, dark_file, log_dir='stdout',
-                       write_mat=False):
+def process_single_file(args_tuple):
     """
-    Process a single data file.
+    Process a single data file with parameters passed as a tuple.
     
     Args:
-        file_nr: File number to process
-        input_file_pattern: Pattern for input files
-        start_file_nr: Starting file number
-        result_dir: Directory to store results
-        param_file: Parameter file
-        frame_chunks: Number of frame chunks
-        pre_proc: Pre-processing threshold
-        convert_files: Whether to convert files
-        env: Environment variables
-        data_loc: Data location
-        dark_loc: Dark location
-        dark_file: Dark field file
-        log_dir: Directory for log files
-        write_mat: Whether to write MATLAB file
+        args_tuple: Tuple containing all the arguments
         
     Returns:
         Path to output Zarr ZIP file
-        
-    Raises:
-        SystemExit: If errors are encountered during processing
     """
+    # Unpack arguments
+    (file_nr, input_file_pattern, start_file_nr, result_dir, 
+     param_file, frame_chunks, pre_proc, convert_files, 
+     env, data_loc, dark_loc, dark_file, log_dir, write_mat) = args_tuple
+    
     # Generate filename for this file number
     padded_file_nr = str(start_file_nr + file_nr).zfill(6)
     start_file_nr_str = str(start_file_nr).zfill(6)
@@ -262,12 +249,35 @@ def process_single_file(file_nr, input_file_pattern, start_file_nr, result_dir,
     if write_mat:
         try:
             zarr_file = zarr.open(out_zip, mode='r')
-            data_dict = {key: zarr_file[key][:] for key in zarr_file.keys()}
+            
+            # Create a dictionary with proper handling of zarr arrays
+            data_dict = {}
+            for key in zarr_file.keys():
+                try:
+                    # Handle different kinds of zarr arrays with appropriate slicing
+                    if isinstance(zarr_file[key], zarr.core.Array):
+                        # Get the array shape to create proper slice objects
+                        shape = zarr_file[key].shape
+                        if shape:  # Only try to slice if there's actually data
+                            data_dict[key] = zarr_file[key][...]  # Use [...] instead of [:]
+                        else:
+                            # For empty arrays, create an empty numpy array with the right shape
+                            data_dict[key] = np.array([])
+                    else:
+                        # For zarr groups, store metadata about the group
+                        data_dict[key] = f"Group: {str(zarr_file[key])}"
+                except Exception as inner_e:
+                    print(f"WARNING: Could not extract key '{key}' from zarr file: {str(inner_e)}")
+                    # Continue with other keys instead of failing
+            
+            # Save as .mat file
             scipy.io.savemat(f"{out_zip}.mat", data_dict)
+            print(f"Successfully created MATLAB file: {out_zip}.mat")
         except Exception as e:
             print(f"ERROR: Failed to create MATLAB file for {out_zip}")
             print(f"Exception: {str(e)}")
-            sys.exit(1)
+            # Don't exit on this error, just continue without the .mat file
+            print("Continuing without creating the MATLAB file.")
     
     return out_zip
 
@@ -410,24 +420,32 @@ def main():
     if args.nCPUs == 1:
         # Serial processing
         for file_nr in range(nr_files):
-            out_zip = process_single_file(
+            # Create arguments tuple for process_single_file
+            process_args = (
                 file_nr, args.dataFN, start_file_nr, result_dir, args.paramFN,
                 args.numFrameChunks, args.preProcThresh, args.convertFiles, env,
                 args.dataLoc, args.darkLoc, args.darkFN, log_dir, args.writeMat
             )
+            out_zip = process_single_file(process_args)
             print(f'Output file {out_zip} tree structure:')
             print(zarr.open(out_zip).tree())
     else:
         # Parallel processing
         print(f"Starting {args.nCPUs} parallel jobs.")
-        with Pool(args.nCPUs) as pool:
-            process_file = lambda file_nr: process_single_file(
+        
+        # Create a list of argument tuples for each file to process
+        process_args_list = []
+        for file_nr in range(nr_files):
+            process_args = (
                 file_nr, args.dataFN, start_file_nr, result_dir, args.paramFN,
                 args.numFrameChunks, args.preProcThresh, args.convertFiles, env,
                 args.dataLoc, args.darkLoc, args.darkFN, log_dir, args.writeMat
             )
-            
-            results = pool.map(process_file, range(nr_files))
+            process_args_list.append(process_args)
+        
+        # Use Pool to process files in parallel
+        with Pool(args.nCPUs) as pool:
+            results = pool.map(process_single_file, process_args_list)
             
             for out_zip in results:
                 print(f'Output file {out_zip} tree structure:')
