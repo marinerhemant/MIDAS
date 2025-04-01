@@ -182,45 +182,47 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/NLOPT_custom.cmake")
 endif()
 
 # LIBTIFF
-file(WRITE ${CMAKE_SOURCE_DIR}/cmake/deps/LIBTIFF.cmake [[
-FetchContent_Declare(
-  libtiff
-  URL https://www.dropbox.com/scl/fi/tk3axrjtjgxmjj9hzsk13/tiff-4.6.0.tar.gz?rlkey=judqzxze5g4sg0bviyul8kqvp&dl=1
-)
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/LIBTIFF_custom.cmake")
+    file(WRITE ${CMAKE_SOURCE_DIR}/cmake/deps/LIBTIFF.cmake [[
+    FetchContent_Declare(
+    libtiff
+    URL https://www.dropbox.com/scl/fi/tk3axrjtjgxmjj9hzsk13/tiff-4.6.0.tar.gz?rlkey=judqzxze5g4sg0bviyul8kqvp&dl=1
+    )
 
-FetchContent_GetProperties(libtiff)
-if(NOT libtiff_POPULATED)
-  FetchContent_Populate(libtiff)
-  
-  # Configure TIFF build options
-  set(tiff_BUILD_SHARED ${BUILD_SHARED_LIBS} CACHE BOOL "Build shared libraries" FORCE)
-  set(tiff_BUILD_STATIC NOT ${BUILD_SHARED_LIBS} CACHE BOOL "Build static libraries" FORCE)
-  
-  # Disable unnecessary components
-  set(tiff_BUILD_TOOLS OFF CACHE BOOL "Build TIFF tools" FORCE)
-  set(tiff_BUILD_DOCS OFF CACHE BOOL "Build TIFF documentation" FORCE)
-  set(tiff_BUILD_CONTRIB OFF CACHE BOOL "Build TIFF contrib" FORCE)
-  set(tiff_BUILD_TESTS OFF CACHE BOOL "Build TIFF tests" FORCE)
-  set(tiff_BUILD_ZLIB ON CACHE BOOL "Enable Zlib support" FORCE)
-  
-  add_subdirectory(${libtiff_SOURCE_DIR} ${libtiff_BINARY_DIR})
-  
-  # Export TIFF library as a target
-  add_library(TIFF::TIFF INTERFACE IMPORTED)
-  if(BUILD_SHARED_LIBS)
+    FetchContent_GetProperties(libtiff)
+    if(NOT libtiff_POPULATED)
+    FetchContent_Populate(libtiff)
+    
+    # Configure TIFF build options
+    set(tiff_BUILD_SHARED ${BUILD_SHARED_LIBS} CACHE BOOL "Build shared libraries" FORCE)
+    set(tiff_BUILD_STATIC NOT ${BUILD_SHARED_LIBS} CACHE BOOL "Build static libraries" FORCE)
+    
+    # Disable unnecessary components
+    set(tiff_BUILD_TOOLS OFF CACHE BOOL "Build TIFF tools" FORCE)
+    set(tiff_BUILD_DOCS OFF CACHE BOOL "Build TIFF documentation" FORCE)
+    set(tiff_BUILD_CONTRIB OFF CACHE BOOL "Build TIFF contrib" FORCE)
+    set(tiff_BUILD_TESTS OFF CACHE BOOL "Build TIFF tests" FORCE)
+    set(tiff_BUILD_ZLIB ON CACHE BOOL "Enable Zlib support" FORCE)
+    
+    add_subdirectory(${libtiff_SOURCE_DIR} ${libtiff_BINARY_DIR})
+    
+    # Export TIFF library as a target
+    add_library(TIFF::TIFF INTERFACE IMPORTED)
+    if(BUILD_SHARED_LIBS)
+        set_target_properties(TIFF::TIFF PROPERTIES
+        INTERFACE_LINK_LIBRARIES tiff
+        )
+    else()
+        set_target_properties(TIFF::TIFF PROPERTIES
+        INTERFACE_LINK_LIBRARIES tiff-static
+        )
+    endif()
     set_target_properties(TIFF::TIFF PROPERTIES
-      INTERFACE_LINK_LIBRARIES tiff
+        INTERFACE_INCLUDE_DIRECTORIES "${libtiff_SOURCE_DIR}/libtiff"
     )
-  else()
-    set_target_properties(TIFF::TIFF PROPERTIES
-      INTERFACE_LINK_LIBRARIES tiff-static
-    )
-  endif()
-  set_target_properties(TIFF::TIFF PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${libtiff_SOURCE_DIR}/libtiff"
-  )
+    endif()
+    ]])
 endif()
-]])
 
 # ZLIB
 if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/ZLIB_custom.cmake")
@@ -258,69 +260,71 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/ZLIB_custom.cmake")
 endif()
 
 # HDF5
-file(WRITE ${CMAKE_SOURCE_DIR}/cmake/deps/HDF5.cmake [[
-# HDF5 depends on ZLIB, so make sure we have it
-if(NOT TARGET ZLIB::ZLIB)
-  include(cmake/deps/ZLIB.cmake)
-endif()
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/HDF5_custom.cmake")
+    file(WRITE ${CMAKE_SOURCE_DIR}/cmake/deps/HDF5.cmake [[
+    # HDF5 depends on ZLIB, so make sure we have it
+    if(NOT TARGET ZLIB::ZLIB)
+    include(cmake/deps/ZLIB.cmake)
+    endif()
 
-FetchContent_Declare(
-  hdf5
-  URL https://www.dropbox.com/scl/fi/ib4wkq1s9jhm0oi9n6r7c/hdf5-1.14.2.tar.gz?rlkey=eq20hs7juecpwcn1vuumssjuf&dl=1
-)
+    FetchContent_Declare(
+    hdf5
+    URL https://www.dropbox.com/scl/fi/ib4wkq1s9jhm0oi9n6r7c/hdf5-1.14.2.tar.gz?rlkey=eq20hs7juecpwcn1vuumssjuf&dl=1
+    )
 
-FetchContent_GetProperties(hdf5)
-if(NOT hdf5_POPULATED)
-  FetchContent_Populate(hdf5)
-  
-  # Set HDF5 options
-  set(HDF5_ENABLE_Z_LIB_SUPPORT ON CACHE BOOL "Enable ZLIB support" FORCE)
-  set(HDF5_BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS} CACHE BOOL "Build shared libraries" FORCE)
-  set(HDF5_BUILD_STATIC_LIBS NOT ${BUILD_SHARED_LIBS} CACHE BOOL "Build static libraries" FORCE)
-  set(HDF5_BUILD_TOOLS OFF CACHE BOOL "Build HDF5 tools" FORCE)
-  set(HDF5_BUILD_EXAMPLES OFF CACHE BOOL "Build HDF5 examples" FORCE)
-  set(HDF5_BUILD_UTILS OFF CACHE BOOL "Build HDF5 utilities" FORCE)
-  set(HDF5_BUILD_HL_LIB ON CACHE BOOL "Build HDF5 high level APIs" FORCE)
-  set(HDF5_BUILD_FORTRAN OFF CACHE BOOL "Build Fortran support" FORCE)
-  set(HDF5_ENABLE_THREADSAFE OFF CACHE BOOL "Enable thread safety" FORCE)
-  set(HDF5_ENABLE_PARALLEL OFF CACHE BOOL "Enable parallel HDF5" FORCE)
-  
-  # Point to our ZLIB
-  if(TARGET ZLIB::ZLIB)
-    set(ZLIB_INCLUDE_DIR $<TARGET_PROPERTY:ZLIB::ZLIB,INTERFACE_INCLUDE_DIRECTORIES>)
-    set(ZLIB_LIBRARY $<TARGET_LINKER_FILE:ZLIB::ZLIB>)
-  endif()
-  
-  add_subdirectory(${hdf5_SOURCE_DIR} ${hdf5_BINARY_DIR})
-  
-  # Export HDF5 as targets
-  add_library(HDF5::HDF5 INTERFACE IMPORTED)
-  add_library(HDF5::HL INTERFACE IMPORTED)
-  
-  if(BUILD_SHARED_LIBS)
+    FetchContent_GetProperties(hdf5)
+    if(NOT hdf5_POPULATED)
+    FetchContent_Populate(hdf5)
+    
+    # Set HDF5 options
+    set(HDF5_ENABLE_Z_LIB_SUPPORT ON CACHE BOOL "Enable ZLIB support" FORCE)
+    set(HDF5_BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS} CACHE BOOL "Build shared libraries" FORCE)
+    set(HDF5_BUILD_STATIC_LIBS NOT ${BUILD_SHARED_LIBS} CACHE BOOL "Build static libraries" FORCE)
+    set(HDF5_BUILD_TOOLS OFF CACHE BOOL "Build HDF5 tools" FORCE)
+    set(HDF5_BUILD_EXAMPLES OFF CACHE BOOL "Build HDF5 examples" FORCE)
+    set(HDF5_BUILD_UTILS OFF CACHE BOOL "Build HDF5 utilities" FORCE)
+    set(HDF5_BUILD_HL_LIB ON CACHE BOOL "Build HDF5 high level APIs" FORCE)
+    set(HDF5_BUILD_FORTRAN OFF CACHE BOOL "Build Fortran support" FORCE)
+    set(HDF5_ENABLE_THREADSAFE OFF CACHE BOOL "Enable thread safety" FORCE)
+    set(HDF5_ENABLE_PARALLEL OFF CACHE BOOL "Enable parallel HDF5" FORCE)
+    
+    # Point to our ZLIB
+    if(TARGET ZLIB::ZLIB)
+        set(ZLIB_INCLUDE_DIR $<TARGET_PROPERTY:ZLIB::ZLIB,INTERFACE_INCLUDE_DIRECTORIES>)
+        set(ZLIB_LIBRARY $<TARGET_LINKER_FILE:ZLIB::ZLIB>)
+    endif()
+    
+    add_subdirectory(${hdf5_SOURCE_DIR} ${hdf5_BINARY_DIR})
+    
+    # Export HDF5 as targets
+    add_library(HDF5::HDF5 INTERFACE IMPORTED)
+    add_library(HDF5::HL INTERFACE IMPORTED)
+    
+    if(BUILD_SHARED_LIBS)
+        set_target_properties(HDF5::HDF5 PROPERTIES
+        INTERFACE_LINK_LIBRARIES hdf5-shared
+        )
+        set_target_properties(HDF5::HL PROPERTIES
+        INTERFACE_LINK_LIBRARIES hdf5_hl-shared
+        )
+    else()
+        set_target_properties(HDF5::HDF5 PROPERTIES
+        INTERFACE_LINK_LIBRARIES hdf5-static
+        )
+        set_target_properties(HDF5::HL PROPERTIES
+        INTERFACE_LINK_LIBRARIES hdf5_hl-static
+        )
+    endif()
+    
     set_target_properties(HDF5::HDF5 PROPERTIES
-      INTERFACE_LINK_LIBRARIES hdf5-shared
+        INTERFACE_INCLUDE_DIRECTORIES "${hdf5_SOURCE_DIR}/src;${hdf5_BINARY_DIR}"
     )
     set_target_properties(HDF5::HL PROPERTIES
-      INTERFACE_LINK_LIBRARIES hdf5_hl-shared
+        INTERFACE_INCLUDE_DIRECTORIES "${hdf5_SOURCE_DIR}/hl/src;${hdf5_BINARY_DIR}/hl"
     )
-  else()
-    set_target_properties(HDF5::HDF5 PROPERTIES
-      INTERFACE_LINK_LIBRARIES hdf5-static
-    )
-    set_target_properties(HDF5::HL PROPERTIES
-      INTERFACE_LINK_LIBRARIES hdf5_hl-static
-    )
-  endif()
-  
-  set_target_properties(HDF5::HDF5 PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${hdf5_SOURCE_DIR}/src;${hdf5_BINARY_DIR}"
-  )
-  set_target_properties(HDF5::HL PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${hdf5_SOURCE_DIR}/hl/src;${hdf5_BINARY_DIR}/hl"
-  )
+    endif()
+    ]])
 endif()
-]])
 
 # BLOSC
 if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/BLOSC_custom.cmake")
@@ -407,89 +411,93 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/BLOSC1_custom.cmake")
 endif()
 
 # LIBZIP
-file(WRITE ${CMAKE_SOURCE_DIR}/cmake/deps/LIBZIP.cmake [[
-FetchContent_Declare(
-  libzip
-  URL https://www.dropbox.com/scl/fi/2mo9gzxi8ms3pp10pu6ad/libzip-1.10.1.tar.gz?rlkey=w7ph5tzczb2tfjatul31bs6x4&dl=1
-)
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/LIBZIP_custom.cmake")
+    file(WRITE ${CMAKE_SOURCE_DIR}/cmake/deps/LIBZIP.cmake [[
+    FetchContent_Declare(
+    libzip
+    URL https://www.dropbox.com/scl/fi/2mo9gzxi8ms3pp10pu6ad/libzip-1.10.1.tar.gz?rlkey=w7ph5tzczb2tfjatul31bs6x4&dl=1
+    )
 
-FetchContent_GetProperties(libzip)
-if(NOT libzip_POPULATED)
-  FetchContent_Populate(libzip)
-  
-  # Set LIBZIP options
-  set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS} CACHE BOOL "Build shared libraries" FORCE)
-  set(BUILD_TOOLS OFF CACHE BOOL "Build tools" FORCE)
-  set(BUILD_REGRESS OFF CACHE BOOL "Build regression tests" FORCE)
-  set(BUILD_EXAMPLES OFF CACHE BOOL "Build examples" FORCE)
-  set(BUILD_DOC OFF CACHE BOOL "Build documentation" FORCE)
-  
-  add_subdirectory(${libzip_SOURCE_DIR} ${libzip_BINARY_DIR})
-  
-  # Export LIBZIP as a target
-  add_library(LIBZIP::LIBZIP INTERFACE IMPORTED)
-  set_target_properties(LIBZIP::LIBZIP PROPERTIES
-    INTERFACE_LINK_LIBRARIES zip
-    INTERFACE_INCLUDE_DIRECTORIES "${libzip_SOURCE_DIR}/lib;${libzip_BINARY_DIR}"
-  )
+    FetchContent_GetProperties(libzip)
+    if(NOT libzip_POPULATED)
+    FetchContent_Populate(libzip)
+    
+    # Set LIBZIP options
+    set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS} CACHE BOOL "Build shared libraries" FORCE)
+    set(BUILD_TOOLS OFF CACHE BOOL "Build tools" FORCE)
+    set(BUILD_REGRESS OFF CACHE BOOL "Build regression tests" FORCE)
+    set(BUILD_EXAMPLES OFF CACHE BOOL "Build examples" FORCE)
+    set(BUILD_DOC OFF CACHE BOOL "Build documentation" FORCE)
+    
+    add_subdirectory(${libzip_SOURCE_DIR} ${libzip_BINARY_DIR})
+    
+    # Export LIBZIP as a target
+    add_library(LIBZIP::LIBZIP INTERFACE IMPORTED)
+    set_target_properties(LIBZIP::LIBZIP PROPERTIES
+        INTERFACE_LINK_LIBRARIES zip
+        INTERFACE_INCLUDE_DIRECTORIES "${libzip_SOURCE_DIR}/lib;${libzip_BINARY_DIR}"
+    )
+    endif()
+    ]])
 endif()
-]])
 
 # FFTW
-file(WRITE ${CMAKE_SOURCE_DIR}/cmake/deps/FFTW.cmake [[
-FetchContent_Declare(
-  fftw
-  URL https://www.dropbox.com/scl/fi/yugsuwobadxt5gvfsdz46/fftw-3.3.10.tar.gz?rlkey=cfo1rwazrr4gbm2k043np8skj&dl=1
-)
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/FFTW_custom.cmake")
+    file(WRITE ${CMAKE_SOURCE_DIR}/cmake/deps/FFTW.cmake [[
+    FetchContent_Declare(
+    fftw
+    URL https://www.dropbox.com/scl/fi/yugsuwobadxt5gvfsdz46/fftw-3.3.10.tar.gz?rlkey=cfo1rwazrr4gbm2k043np8skj&dl=1
+    )
 
-FetchContent_GetProperties(fftw)
-if(NOT fftw_POPULATED)
-  FetchContent_Populate(fftw)
-  
-  # FFTW is a bit tricky, we'll use ExternalProject
-  # because FFTW doesn't have a CMakeLists.txt
-  
-  set(FFTW_SHARED_ARG)
-  if(BUILD_SHARED_LIBS)
-    set(FFTW_SHARED_ARG --enable-shared --disable-static)
-  else()
-    set(FFTW_SHARED_ARG --disable-shared --enable-static)
-  endif()
-  
-  set(FFTW_OPTIONS --enable-float --disable-fortran --enable-sse --enable-sse2 --enable-avx --enable-avx2 --enable-avx-128-fma --enable-generic-simd128 --enable-generic-simd256)
-  
-  ExternalProject_Add(fftw_external
-    SOURCE_DIR ${fftw_SOURCE_DIR}
-    BINARY_DIR ${fftw_BINARY_DIR}
-    CONFIGURE_COMMAND ${fftw_SOURCE_DIR}/configure 
-                      --prefix=${CMAKE_BINARY_DIR}/deps
-                      ${FFTW_SHARED_ARG}
-                      ${FFTW_OPTIONS}
-    BUILD_COMMAND make -j8
-    INSTALL_COMMAND make install
-    BUILD_ALWAYS OFF
-  )
-  
-  # Create interface library
-  add_library(FFTW::FFTW INTERFACE IMPORTED)
-  set_target_properties(FFTW::FFTW PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/deps/include"
-  )
-  
-  if(BUILD_SHARED_LIBS)
-    set_target_properties(FFTW::FFTW PROPERTIES
-      INTERFACE_LINK_LIBRARIES "${CMAKE_BINARY_DIR}/deps/lib/libfftw3f${CMAKE_SHARED_LIBRARY_SUFFIX}"
+    FetchContent_GetProperties(fftw)
+    if(NOT fftw_POPULATED)
+    FetchContent_Populate(fftw)
+    
+    # FFTW is a bit tricky, we'll use ExternalProject
+    # because FFTW doesn't have a CMakeLists.txt
+    
+    set(FFTW_SHARED_ARG)
+    if(BUILD_SHARED_LIBS)
+        set(FFTW_SHARED_ARG --enable-shared --disable-static)
+    else()
+        set(FFTW_SHARED_ARG --disable-shared --enable-static)
+    endif()
+    
+    set(FFTW_OPTIONS --enable-float --disable-fortran --enable-sse --enable-sse2 --enable-avx --enable-avx2 --enable-avx-128-fma --enable-generic-simd128 --enable-generic-simd256)
+    
+    ExternalProject_Add(fftw_external
+        SOURCE_DIR ${fftw_SOURCE_DIR}
+        BINARY_DIR ${fftw_BINARY_DIR}
+        CONFIGURE_COMMAND ${fftw_SOURCE_DIR}/configure 
+                        --prefix=${CMAKE_BINARY_DIR}/deps
+                        ${FFTW_SHARED_ARG}
+                        ${FFTW_OPTIONS}
+        BUILD_COMMAND make -j8
+        INSTALL_COMMAND make install
+        BUILD_ALWAYS OFF
     )
-  else()
+    
+    # Create interface library
+    add_library(FFTW::FFTW INTERFACE IMPORTED)
     set_target_properties(FFTW::FFTW PROPERTIES
-      INTERFACE_LINK_LIBRARIES "${CMAKE_BINARY_DIR}/deps/lib/libfftw3f${CMAKE_STATIC_LIBRARY_SUFFIX}"
+        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/deps/include"
     )
-  endif()
-  
-  # Add dependency
-  add_dependencies(FFTW::FFTW fftw_external)
+    
+    if(BUILD_SHARED_LIBS)
+        set_target_properties(FFTW::FFTW PROPERTIES
+        INTERFACE_LINK_LIBRARIES "${CMAKE_BINARY_DIR}/deps/lib/libfftw3f${CMAKE_SHARED_LIBRARY_SUFFIX}"
+        )
+    else()
+        set_target_properties(FFTW::FFTW PROPERTIES
+        INTERFACE_LINK_LIBRARIES "${CMAKE_BINARY_DIR}/deps/lib/libfftw3f${CMAKE_STATIC_LIBRARY_SUFFIX}"
+        )
+    endif()
+    
+    # Add dependency
+    add_dependencies(FFTW::FFTW fftw_external)
+    endif()
+    ]])
 endif()
-]])
 
 # Handle all dependencies
 handle_dependency(NLOPT "https://www.dropbox.com/scl/fi/ux4ccf23z7rotkgbqbrmk/nlopt-2.4.2.tar.gz?rlkey=afq6l6yyu9fnw1hpe62l4gwqq&dl=0" DOWNLOAD_DEPENDENCIES)
