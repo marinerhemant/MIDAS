@@ -8,32 +8,20 @@ FetchContent_GetProperties(nlopt)
 if(NOT nlopt_POPULATED)
   FetchContent_Populate(nlopt)
   
-  # Set up NLOPT build with CMake
-  set(NLOPT_CXX OFF CACHE BOOL "disable C++ routines")
-  set(NLOPT_PYTHON OFF CACHE BOOL "disable Python bindings")
-  set(NLOPT_OCTAVE OFF CACHE BOOL "disable Octave bindings")
-  set(NLOPT_MATLAB OFF CACHE BOOL "disable Matlab bindings")
-  set(NLOPT_GUILE OFF CACHE BOOL "disable Guile bindings")
-  set(NLOPT_SWIG OFF CACHE BOOL "disable SWIG bindings")
-  set(NLOPT_TESTS OFF CACHE BOOL "disable tests")
-  set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS})
+  # Set up NLOPT build options with CMake
+  option(NLOPT_CXX "enable C++ routines" OFF)
+  option(NLOPT_PYTHON "enable Python bindings" OFF)
+  option(NLOPT_OCTAVE "enable Octave bindings" OFF)
+  option(NLOPT_MATLAB "enable Matlab bindings" OFF)
+  option(NLOPT_GUILE "enable Guile bindings" OFF)
+  option(NLOPT_SWIG "enable SWIG bindings" OFF)
+  option(NLOPT_TESTS "enable tests" OFF)
   
-  # Use CMake for building instead of autotools
+  # Add nlopt subdirectory to build it using CMake
   add_subdirectory(${nlopt_SOURCE_DIR} ${nlopt_BINARY_DIR})
   
-  # Create interface library
-  add_library(NLOPT::NLOPT INTERFACE IMPORTED GLOBAL)
-  
-  # Set up include directories
-  set_target_properties(NLOPT::NLOPT PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${nlopt_SOURCE_DIR}/src/api;${nlopt_BINARY_DIR}/src/api"
-  )
-  
-  # NLOpt now provides its own target we can link to
-  set_target_properties(NLOPT::NLOPT PROPERTIES
-    INTERFACE_LINK_LIBRARIES "nlopt"
-  )
-  
-  # Add dependency
-  add_dependencies(NLOPT::NLOPT nlopt)
+  # Create alias target to match expected naming convention
+  if(NOT TARGET NLOPT::NLOPT)
+    add_library(NLOPT::NLOPT ALIAS nlopt)
+  endif()
 endif()
