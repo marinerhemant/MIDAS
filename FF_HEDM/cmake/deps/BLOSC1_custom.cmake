@@ -13,6 +13,9 @@ if(NOT blosc1_POPULATED)
   set(BLOSC_INSTALL OFF CACHE BOOL "Install blosc" FORCE)
   set(BUILD_SHARED ${BUILD_SHARED_LIBS} CACHE BOOL "Build shared" FORCE)
   
+  # Explicitly disable BUILD_FUZZERS
+  set(BUILD_FUZZERS OFF CACHE BOOL "Build fuzzer programs" FORCE)
+
   # This is the fixed line - properly set BUILD_STATIC based on BUILD_SHARED_LIBS
   if(BUILD_SHARED_LIBS)
     set(BUILD_STATIC OFF CACHE BOOL "Build static" FORCE)
