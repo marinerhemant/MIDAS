@@ -34,15 +34,34 @@ from midas2zip import Hdf5ToZarr
 def setup_environment():
     """Configure environment variables for MIDAS executables"""
     env = dict(os.environ)
-    lib_paths = [
-        f'{MIDAS_HOME}/BLOSC/lib64',
-        f'{MIDAS_HOME}/FFTW/lib',
-        f'{MIDAS_HOME}/HDF5/lib',
-        f'{MIDAS_HOME}/LIBTIFF/lib',
-        f'{MIDAS_HOME}/LIBZIP/lib64',
-        f'{MIDAS_HOME}/NLOPT/lib',
-        f'{MIDAS_HOME}/ZLIB/lib',
+    
+    # Base library paths to check
+    base_libs = [
+        f'{MIDAS_HOME}/BLOSC',
+        f'{MIDAS_HOME}/FFTW',
+        f'{MIDAS_HOME}/HDF5',
+        f'{MIDAS_HOME}/LIBTIFF',
+        f'{MIDAS_HOME}/LIBZIP',
+        f'{MIDAS_HOME}/NLOPT',
+        f'{MIDAS_HOME}/ZLIB',
     ]
+    
+    # Valid lib paths
+    lib_paths = []
+    
+    # Check for both lib and lib64 directories
+    for base_lib in base_libs:
+        lib_dir = f'{base_lib}/lib'
+        lib64_dir = f'{base_lib}/lib64'
+        
+        if os.path.isdir(lib64_dir):
+            lib_paths.append(lib64_dir)
+            print(f"Found library directory: {lib64_dir}")
+        elif os.path.isdir(lib_dir):
+            lib_paths.append(lib_dir)
+            print(f"Found library directory: {lib_dir}")
+        else:
+            print(f"WARNING: Could not find library directory for {base_lib}")
     
     # Preserve existing LD_LIBRARY_PATH if set
     existing_lib_path = os.environ.get('LD_LIBRARY_PATH', '')
@@ -50,6 +69,8 @@ def setup_environment():
         lib_paths.append(existing_lib_path)
     
     env['LD_LIBRARY_PATH'] = ':'.join(lib_paths)
+    print(f"LD_LIBRARY_PATH set to: {env['LD_LIBRARY_PATH']}")
+    
     return env
 
 
