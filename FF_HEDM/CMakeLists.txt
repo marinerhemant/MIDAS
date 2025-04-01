@@ -85,7 +85,7 @@ function(handle_dependency NAME URL DOWNLOAD_FLAG)
   endif()
 
     # Check for custom dependency file
-    set(CUSTOM_DEP_FILE "${CMAKE_SOURCE_DIR}/cmake/deps/${NAME}.cmake")
+    set(CUSTOM_DEP_FILE "${CMAKE_SOURCE_DIR}/cmake/deps/${NAME}_custom.cmake")
     if(EXISTS "${CUSTOM_DEP_FILE}")
       include("${CUSTOM_DEP_FILE}")
       return()
