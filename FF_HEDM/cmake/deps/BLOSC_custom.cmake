@@ -16,14 +16,14 @@ if(NOT blosc1_POPULATED)
   set(BUILD_TESTS OFF CACHE BOOL "Build tests" FORCE)
   set(BUILD_BENCHMARKS OFF CACHE BOOL "Build benchmarks" FORCE)
   set(BUILD_EXAMPLES OFF CACHE BOOL "Build examples" FORCE)
-  # The simple fix is to set BUILD_FUZZERS without the description
-  set(BUILD_FUZZERS OFF CACHE BOOL "Build fuzzers" FORCE)
   
-  # Don't disable zlib - comment out or remove this check
-  # if(TARGET zlib)
-  #   message(STATUS "zlib target already exists, disabling internal zlib in BLOSC1")
-  #   set(DEACTIVATE_ZLIB ON CACHE BOOL "Do not include support for the Zlib library." FORCE)
-  # endif()
+  # The key fix: Define BUILD_FUZZERS as a cache variable before add_subdirectory
+  # This ensures the variable exists before the c-blosc CMakeLists.txt uses it in an option() call
+  set(BUILD_FUZZERS OFF CACHE BOOL "Build fuzzer programs" FORCE)
+  
+  # Remove the zlib target check to keep internal zlib in BLOSC1
+  # Instead of checking if zlib target exists, just set DEACTIVATE_ZLIB to OFF
+  set(DEACTIVATE_ZLIB OFF CACHE BOOL "Do not include support for the Zlib library." FORCE)
   
   # Avoid issues with other dependencies
   set(DEACTIVATE_SNAPPY ON CACHE BOOL "Do not include support for the Snappy library." FORCE)
