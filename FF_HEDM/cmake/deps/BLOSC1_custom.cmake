@@ -11,17 +11,15 @@ if(NOT blosc1_POPULATED)
   # Set BLOSC1 options
   set(BLOSC_IS_SUBPROJECT ON CACHE BOOL "Build as subproject" FORCE)
   set(BLOSC_INSTALL OFF CACHE BOOL "Install blosc" FORCE)
+  
+  # Set BUILD_SHARED based on BUILD_SHARED_LIBS
   set(BUILD_SHARED ${BUILD_SHARED_LIBS} CACHE BOOL "Build shared" FORCE)
+  
+  # Explicitly set BUILD_STATIC to ON to satisfy BUILD_FUZZERS requirement
+  set(BUILD_STATIC ON CACHE BOOL "Build static" FORCE)
   
   # Explicitly disable BUILD_FUZZERS
   set(BUILD_FUZZERS OFF CACHE BOOL "Build fuzzer programs" FORCE)
-
-  # This is the fixed line - properly set BUILD_STATIC based on BUILD_SHARED_LIBS
-  if(BUILD_SHARED_LIBS)
-    set(BUILD_STATIC OFF CACHE BOOL "Build static" FORCE)
-  else()
-    set(BUILD_STATIC ON CACHE BOOL "Build static" FORCE) 
-  endif()
   
   set(BUILD_TESTS OFF CACHE BOOL "Build tests" FORCE)
   set(BUILD_BENCHMARKS OFF CACHE BOOL "Build benchmarks" FORCE)
