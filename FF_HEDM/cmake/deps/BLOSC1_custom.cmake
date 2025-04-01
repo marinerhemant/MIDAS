@@ -8,6 +8,14 @@ FetchContent_GetProperties(blosc1)
 if(NOT blosc1_POPULATED)
   FetchContent_Populate(blosc1)
   
+  # Fix the problematic BUILD_FUZZERS option in CMakeLists.txt using CMake file operations
+  file(READ "${blosc1_SOURCE_DIR}/CMakeLists.txt" cmake_content)
+  string(REPLACE 
+    "option(BUILD_FUZZERS \"Build fuzzer programs from the blosc compression library\" NOT ON)" 
+    "option(BUILD_FUZZERS \"Build fuzzer programs\" OFF)" 
+    cmake_content_fixed "${cmake_content}")
+  file(WRITE "${blosc1_SOURCE_DIR}/CMakeLists.txt" "${cmake_content_fixed}")
+  
   # Set BLOSC1 options
   set(BLOSC_IS_SUBPROJECT ON CACHE BOOL "Build as subproject" FORCE)
   set(BLOSC_INSTALL OFF CACHE BOOL "Install blosc" FORCE)
@@ -17,22 +25,11 @@ if(NOT blosc1_POPULATED)
   set(BUILD_BENCHMARKS OFF CACHE BOOL "Build benchmarks" FORCE)
   set(BUILD_EXAMPLES OFF CACHE BOOL "Build examples" FORCE)
   
-  # Remove the zlib target check to always use internal zlib in BLOSC1
+  # Always use internal zlib in BLOSC1
   set(DEACTIVATE_ZLIB OFF CACHE BOOL "Do not include support for the Zlib library." FORCE)
   
   # Avoid issues with other dependencies
   set(DEACTIVATE_SNAPPY ON CACHE BOOL "Do not include support for the Snappy library." FORCE)
-  
-  # Apply a patch to fix the CMakeLists.txt in blosc1
-  file(WRITE "${blosc1_SOURCE_DIR}/CMakeLists.txt.new" "")
-  file(STRINGS "${blosc1_SOURCE_DIR}/CMakeLists.txt" cmake_lines)
-  foreach(line ${cmake_lines})
-    # Skip any line with BUILD_FUZZERS
-    if(NOT line MATCHES "BUILD_FUZZERS")
-      file(APPEND "${blosc1_SOURCE_DIR}/CMakeLists.txt.new" "${line}\n")
-    endif()
-  endforeach()
-  file(RENAME "${blosc1_SOURCE_DIR}/CMakeLists.txt.new" "${blosc1_SOURCE_DIR}/CMakeLists.txt")
   
   add_subdirectory(${blosc1_SOURCE_DIR} ${blosc1_BINARY_DIR})
   
