@@ -84,6 +84,11 @@ endif()
 
 # Function to handle dependencies
 function(handle_dependency NAME URL DOWNLOAD_FLAG)
+  # Check if target already exists to avoid double-processing
+  if(TARGET ${NAME}::${NAME})
+    message(STATUS "${NAME} target already exists, skipping")
+    return()
+  endif()
   # Check for custom find module
   if(EXISTS "${CMAKE_SOURCE_DIR}/cmake/FindModules/Find${NAME}.cmake")
     list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/FindModules")
@@ -132,6 +137,15 @@ function(handle_dependency NAME URL DOWNLOAD_FLAG)
       include(cmake/deps/${NAME}.cmake)
     endif()
   endif()
+    # Ensure the cmake file was actually included
+    message(STATUS "Setting up ${NAME} dependency")
+    include(cmake/deps/${NAME}.cmake)
+
+    # Verify target was created
+    if(NOT TARGET ${NAME}::${NAME})
+        message(FATAL_ERROR "Failed to create ${NAME}::${NAME} target")
+    endif()
+  
 endfunction()
 
 # Create dependency directory structure
