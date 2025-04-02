@@ -28,5 +28,5 @@ jobs:
           mkdir -p ~/.ssh
           echo "Host github.com" > ~/.ssh/config
           echo "  StrictHostKeyChecking no" >> ~/.ssh/config
-          git remote add organization git@github.com/AdvancedPhotonSource/MIDAS.git
+          git remote add organization git@github.com:AdvancedPhotonSource/MIDAS.git
           git push organization --mirror
