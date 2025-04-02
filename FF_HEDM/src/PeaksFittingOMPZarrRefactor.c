@@ -1532,8 +1532,6 @@ static ErrorCode processImageFrame(
     free(z);
     free(integratedIntensity);
     free(imax);
-    free(yCen);
-    free(zCen);
     free(rads);
     free(etas);
     free(nrPx);
