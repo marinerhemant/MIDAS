@@ -125,6 +125,7 @@ typedef struct {
     int nRingsThresh;
     int *RingNrs;
     double *Thresholds;
+    int doPeakFit;
 } AnalysisParams;
 
 // Structure for peak info
@@ -1292,14 +1293,14 @@ static ErrorCode processImageFrame(
     // Arrays for peak fitting results
     double *integratedIntensity = calloc(maxNPeaks * 2, sizeof(*integratedIntensity));
     double *imax = calloc(maxNPeaks * 2, sizeof(*imax));
-    double *yCen = calloc(maxNPeaks * 2, sizeof(*yCen));
-    double *zCen = calloc(maxNPeaks * 2, sizeof(*zCen));
+    double *yCenArray = calloc(maxNPeaks * 2, sizeof(*yCenArray));
+    double *zCenArray = calloc(maxNPeaks * 2, sizeof(*zCenArray));
     double *rads = calloc(maxNPeaks * 2, sizeof(*rads));
     double *etas = calloc(maxNPeaks * 2, sizeof(*etas));
     int *nrPx = calloc(maxNPeaks * 2, sizeof(*nrPx));
     double *otherInfo = calloc(maxNPeaks * 10, sizeof(*otherInfo));
     
-    if (!integratedIntensity || !imax || !yCen || !zCen || !rads || !etas || !nrPx || !otherInfo) {
+    if (!integratedIntensity || !imax || !yCenArray || !zCenArray || !rads || !etas || !nrPx || !otherInfo) {
         printf("Memory allocation error in processImageFrame\n");
         if (imageAsym) free(imageAsym);
         if (imgCorrBCTemp) free(imgCorrBCTemp);
@@ -1313,8 +1314,8 @@ static ErrorCode processImageFrame(
         if (z) free(z);
         if (integratedIntensity) free(integratedIntensity);
         if (imax) free(imax);
-        if (yCen) free(yCen);
-        if (zCen) free(zCen);
+        if (yCenArray) free(yCenArray);
+        if (zCenArray) free(zCenArray);
         if (rads) free(rads);
         if (etas) free(etas);
         if (nrPx) free(nrPx);
@@ -1341,8 +1342,8 @@ static ErrorCode processImageFrame(
         if (z) free(z);
         if (integratedIntensity) free(integratedIntensity);
         if (imax) free(imax);
-        if (yCen) free(yCen);
-        if (zCen) free(zCen);
+        if (yCenArray) free(yCenArray);
+        if (zCenArray) free(zCenArray);
         if (rads) free(rads);
         if (etas) free(etas);
         if (nrPx) free(nrPx);
@@ -1452,8 +1453,8 @@ static ErrorCode processImageFrame(
             nPeaks = 1;
             imax[0] = maximaValues[0];
             nrPx[0] = nrPixelsThisRegion;
-            yCen[0] = 0;
-            zCen[0] = 0;
+            yCenArray[0] = 0;
+            zCenArray[0] = 0;
             integratedIntensity[0] = 0;
             
             // Calculate weighted center of mass
@@ -1467,7 +1468,7 @@ static ErrorCode processImageFrame(
             etaMean[0] /= integratedIntensity[0];
             
             // Convert R,Eta to Y,Z
-            yzFromREta(1, rMean, etaMean, yCen, zCen);
+            yzFromREta(1, rMean, etaMean, yCenArray, zCenArray);
             rads[0] = rMean[0];
             etas[0] = etaMean[0];
             
@@ -1476,7 +1477,7 @@ static ErrorCode processImageFrame(
         } else {
             // Perform 2D peak fitting
             rc = fit2DPeaks(nPeaks, nrPixelsThisRegion, z, usefulPixels, maximaValues,
-                          maximaPositions, integratedIntensity, imax, yCen, zCen,
+                          maximaPositions, integratedIntensity, imax, yCenArray, zCenArray,
                           rads, etas, yCen, zCen, thresh, nrPx, otherInfo, nrPixels, &retVal);
         }
         
@@ -1484,7 +1485,7 @@ static ErrorCode processImageFrame(
         for (int i = 0; i < nPeaks; i++) {
             fprintf(outfilewrite, "%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t",
                    (spotIdStart + i), integratedIntensity[i], omega,
-                   -yCen[i] + yCen, zCen[i] + zCen, imax[i], rads[i], etas[i]);
+                   -yCenArray[i] + yCen, zCenArray[i] + zCen, imax[i], rads[i], etas[i]);
             
             // Write sigma values
             for (int j = 0; j < 2; j++) {
@@ -1495,8 +1496,8 @@ static ErrorCode processImageFrame(
             fprintf(outfilewrite, "%d\t%d\t%d\t%d\t%d\t%f\t%f\t%f\t%d\t%lf",
                    nrPx[i], nrPixelsThisRegion, nPeaks,
                    maximaPositions[i*2+0], maximaPositions[i*2+1],
-                   (double)maximaPositions[i*2+0] + yCen[i] - yCen,
-                   (double)maximaPositions[i*2+1] - zCen[i] - zCen,
+                   (double)maximaPositions[i*2+0] + yCenArray[i] - yCen,
+                   (double)maximaPositions[i*2+1] - zCenArray[i] - zCen,
                    maximaValues[i], rc, retVal);
             
             // Write additional fit parameters
@@ -1510,6 +1511,8 @@ static ErrorCode processImageFrame(
         spotIdStart += nPeaks;
     }
     
+    free(yCenArray);
+    free(zCenArray);
     fclose(outfilewrite);
     
     double t3 = omp_get_wtime();
