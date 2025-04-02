@@ -289,11 +289,7 @@ endif()
 # HDF5
 if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/HDF5_custom.cmake")
     file(WRITE ${CMAKE_SOURCE_DIR}/cmake/deps/HDF5.cmake [[
-    # HDF5 depends on ZLIB, so make sure we have it
-    if(NOT TARGET ZLIB::ZLIB)
-    include(cmake/deps/ZLIB.cmake)
-    endif()
-
+    # HDF5 configuration
     FetchContent_Declare(
     hdf5
     URL https://www.dropbox.com/scl/fi/ib4wkq1s9jhm0oi9n6r7c/hdf5-1.14.2.tar.gz?rlkey=eq20hs7juecpwcn1vuumssjuf&dl=1
@@ -302,7 +298,7 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/HDF5_custom.cmake")
     FetchContent_GetProperties(hdf5)
     if(NOT hdf5_POPULATED)
     FetchContent_Populate(hdf5)
-    
+
     # Set HDF5 options
     set(HDF5_ENABLE_Z_LIB_SUPPORT ON CACHE BOOL "Enable ZLIB support" FORCE)
     set(HDF5_BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS} CACHE BOOL "Build shared libraries" FORCE)
@@ -314,19 +310,20 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/HDF5_custom.cmake")
     set(HDF5_BUILD_FORTRAN OFF CACHE BOOL "Build Fortran support" FORCE)
     set(HDF5_ENABLE_THREADSAFE OFF CACHE BOOL "Enable thread safety" FORCE)
     set(HDF5_ENABLE_PARALLEL OFF CACHE BOOL "Enable parallel HDF5" FORCE)
-    
-    # Point to our ZLIB
-    if(TARGET ZLIB::ZLIB)
-        set(ZLIB_INCLUDE_DIR $<TARGET_PROPERTY:ZLIB::ZLIB,INTERFACE_INCLUDE_DIRECTORIES>)
-        set(ZLIB_LIBRARY $<TARGET_LINKER_FILE:ZLIB::ZLIB>)
+
+    # Find system zlib or one installed by blosc
+    find_package(ZLIB)
+    if(ZLIB_FOUND)
+        set(ZLIB_INCLUDE_DIR ${ZLIB_INCLUDE_DIRS})
+        set(ZLIB_LIBRARY ${ZLIB_LIBRARIES})
     endif()
-    
+
     add_subdirectory(${hdf5_SOURCE_DIR} ${hdf5_BINARY_DIR})
-    
+
     # Export HDF5 as targets
     add_library(HDF5::HDF5 INTERFACE IMPORTED)
     add_library(HDF5::HL INTERFACE IMPORTED)
-    
+
     if(BUILD_SHARED_LIBS)
         set_target_properties(HDF5::HDF5 PROPERTIES
         INTERFACE_LINK_LIBRARIES hdf5-shared
@@ -342,7 +339,7 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/HDF5_custom.cmake")
         INTERFACE_LINK_LIBRARIES hdf5_hl-static
         )
     endif()
-    
+
     set_target_properties(HDF5::HDF5 PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${hdf5_SOURCE_DIR}/src;${hdf5_BINARY_DIR}"
     )
@@ -527,12 +524,12 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/FFTW_custom.cmake")
 endif()
 
 # Handle all dependencies
-handle_dependency(NLOPT "https://www.dropbox.com/scl/fi/ux4ccf23z7rotkgbqbrmk/nlopt-2.4.2.tar.gz?rlkey=afq6l6yyu9fnw1hpe62l4gwqq&dl=0" DOWNLOAD_DEPENDENCIES)
-handle_dependency(ZLIB "https://www.dropbox.com/scl/fi/vrgb8i9755eojx5eh1a2r/zlib-1.3.1.tar.gz?rlkey=9jwwjc1aqmflin5b75r2lc2yw&dl=0" DOWNLOAD_DEPENDENCIES)
+# handle_dependency(ZLIB "https://www.dropbox.com/scl/fi/vrgb8i9755eojx5eh1a2r/zlib-1.3.1.tar.gz?rlkey=9jwwjc1aqmflin5b75r2lc2yw&dl=0" DOWNLOAD_DEPENDENCIES)
+handle_dependency(BLOSC "https://github.com/Blosc/c-blosc2" DOWNLOAD_DEPENDENCIES)
 handle_dependency(LIBTIFF "https://www.dropbox.com/scl/fi/tk3axrjtjgxmjj9hzsk13/tiff-4.6.0.tar.gz?rlkey=judqzxze5g4sg0bviyul8kqvp&dl=0" DOWNLOAD_DEPENDENCIES)
 handle_dependency(HDF5 "https://www.dropbox.com/scl/fi/ib4wkq1s9jhm0oi9n6r7c/hdf5-1.14.2.tar.gz?rlkey=eq20hs7juecpwcn1vuumssjuf&dl=0" DOWNLOAD_DEPENDENCIES)
-handle_dependency(BLOSC "https://github.com/Blosc/c-blosc2" DOWNLOAD_DEPENDENCIES)
 handle_dependency(BLOSC1 "https://github.com/Blosc/c-blosc" DOWNLOAD_DEPENDENCIES)
+handle_dependency(NLOPT "https://www.dropbox.com/scl/fi/ux4ccf23z7rotkgbqbrmk/nlopt-2.4.2.tar.gz?rlkey=afq6l6yyu9fnw1hpe62l4gwqq&dl=0" DOWNLOAD_DEPENDENCIES)
 handle_dependency(LIBZIP "https://www.dropbox.com/scl/fi/2mo9gzxi8ms3pp10pu6ad/libzip-1.10.1.tar.gz?rlkey=w7ph5tzczb2tfjatul31bs6x4&dl=0" DOWNLOAD_DEPENDENCIES)
 handle_dependency(FFTW "https://www.dropbox.com/scl/fi/yugsuwobadxt5gvfsdz46/fftw-3.3.10.tar.gz?rlkey=cfo1rwazrr4gbm2k043np8skj&dl=0" DOWNLOAD_DEPENDENCIES)
 
