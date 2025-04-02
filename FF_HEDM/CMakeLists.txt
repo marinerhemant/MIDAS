@@ -671,12 +671,12 @@ endfunction()
 # Now add all the executables
 add_midas_executable(Calibrant
   SOURCES src/Calibrant.c src/CalcPeakProfile.c
-  LINK_LIBRARIES NLOPT::NLOPT TIFF:TIFF HDF5::HDF5 HDF5::HL
+  LINK_LIBRARIES NLOPT::NLOPT TIFF::TIFF HDF5::HDF5 HDF5::HL
 )
 
 add_midas_executable(CalibrantOMP
   SOURCES src/CalibrantOMP.c src/CalcPeakProfile.c
-  LINK_LIBRARIES NLOPT::NLOPT TIFF:TIFF HDF5::HDF5 HDF5::HL
+  LINK_LIBRARIES NLOPT::NLOPT TIFF::TIFF HDF5::HDF5 HDF5::HL
   OMP
 )
 
@@ -882,12 +882,12 @@ add_midas_executable(DetectorMapperZarr
 
 add_midas_executable(Integrator
   SOURCES src/Integrator.c
-  LINK_LIBRARIES TIFF:TIFF HDF5::HDF5 HDF5::HL
+  LINK_LIBRARIES TIFF::TIFF HDF5::HDF5 HDF5::HL
 )
 
 add_midas_executable(IntegratorZarr
   SOURCES src/IntegratorZarr.c
-  LINK_LIBRARIES TIFF:TIFF HDF5::HDF5 HDF5::HL BLOSC::BLOSC LIBZIP::LIBZIP
+  LINK_LIBRARIES TIFF::TIFF HDF5::HDF5 HDF5::HL BLOSC::BLOSC LIBZIP::LIBZIP
 )
 
 add_midas_executable(ConvTiffToGE
