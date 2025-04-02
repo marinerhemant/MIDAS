@@ -486,7 +486,6 @@ main(int argc, char *argv[])
         free(st);
     }
 
-    
     char sinoFN[2048], omeFN[2048], HKLsFN[2048];
     sprintf(sinoFN,"%s/sinos_%d_%d_%d.bin",originalFolder,nUniques,maxNHKLs,nScans);
     sprintf(omeFN,"%s/omegas_%d_%d.bin",originalFolder,nUniques,maxNHKLs);
