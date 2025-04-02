@@ -48,8 +48,6 @@ cmake --install .
 # Update after doing git pull and if you have MIDAS already installled
 cmake --build . --target midas_executables -j $(nproc)
 
-# Set up environment
-source install/bin/setup.sh
 ```
 
 ## Configuration Options
@@ -66,22 +64,6 @@ source install/bin/setup.sh
 | SYSTEM_DEPENDENCIES    | OFF       | Use system dependencies if available          |
 | APPLE_RPATH_FIX        | OFF       | Apply rpath fix for macOS                     |
 | INSTALL_PYTHON_DEPS    | ON        | Install Python dependencies                   |
-
-## Getting Started
-
-After installation, you can run the following commands to verify your setup:
-
-```bash
-# Check if the environment is set up correctly
-$HOME/.MIDAS/MIDAS_FarField_Calibration -h
-```
-
-<!-- ## Documentation
-
-Detailed documentation is available in the following locations:
-
-- `docs/`: Documentation directory
-- Example configuration files and scripts in the repository -->
 
 ## License
 
