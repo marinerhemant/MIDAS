@@ -938,6 +938,63 @@ if(BUILD_CUDA)
   )
 endif()
 
+# Add a custom target for building all non-CUDA MIDAS executables
+add_custom_target(midas_executables DEPENDS 
+    Calibrant
+    CalibrantOMP
+    FitSetup
+    FitTiltBCLsdSample
+    ForwardSimulation
+    ForwardSimulationCompressed
+    FitPosOrStrains
+    FitPosOrStrainsOMP
+    FitOrStrainsScanningOMP
+    FitPosOrStrainsScanningHEDM
+    PeaksFittingPerFile
+    PeaksFittingOMP
+    MapMultipleDetectors
+    MergeOverlappingPeaks
+    MergeOverlappingPeaksAll
+    CalcRadius
+    CalcRadiusAll
+    FindSaturatedPixels
+    GrainTracking
+    MergeMultipleRings
+    GenMedianDark
+    FitGrain
+    FitGrainHydra
+    FitScanningGrain
+    FitTiltX
+    FitWedge
+    GetHKLList
+    PeaksFittingOMPZarr
+    PeaksFittingOMPZarrRefactor
+    GetHKLListZarr
+    MergeOverlappingPeaksAllZarr
+    CalcRadiusAllZarr
+    FitSetupZarr
+    ProcessGrainsZarr
+    IndexerLinuxArgsShm
+    IndexerOMP
+    IndexerScanningOMP
+    IndexScanningHEDM
+    SaveBinData
+    SaveBinDataScanning
+    MergeMultipleScans
+    ProcessGrains
+    ProcessGrainsScanningHEDM
+    MatchGrains
+    DetectorMapper
+    DetectorMapperZarr
+    Integrator
+    IntegratorZarr
+    ConvTiffToGE
+    MapBND
+    findSingleSolutionPF
+    findMultipleSolutionsPF
+    mergeScansScanning
+)
+
 # Handle Python dependencies
 if(INSTALL_PYTHON_DEPS)
   # Find Python
