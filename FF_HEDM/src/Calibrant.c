@@ -25,6 +25,7 @@
 #include <stdint.h>
 #include <tiffio.h>
 #include <hdf5.h>
+#include "midas_paths.h"
 
 //#define PRINTOPT
 #define deg2rad 0.0174532925199433
@@ -1099,9 +1100,10 @@ int main(int argc, char *argv[])
     for (i=0;i<100;i++) Thetas[i] = 0;
     int n_hkls = 0;
 
-	char cmmd[4096];
-	sprintf(cmmd,"~/opt/MIDAS/FF_HEDM/bin/GetHKLList %s",ParamFN);
-	system(cmmd);
+	run_midas_binary("GetHKLList",ParamFN);
+	// char cmmd[4096];
+	// sprintf(cmmd,"~/opt/MIDAS/FF_HEDM/bin/GetHKLList %s",ParamFN);
+	// system(cmmd);
 	// Read hkls.csv
 	char *hklfn = "hkls.csv";
 	FILE *hklf = fopen(hklfn,"r");

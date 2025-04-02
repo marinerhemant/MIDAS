@@ -23,6 +23,7 @@
 #include <blosc.h>
 #include <sys/stat.h>
 #include <zip.h> 
+#include "midas_paths.h"
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -708,9 +709,10 @@ main(int argc, char *argv[])
 	char *ParamFN;
 	FILE *fileParam;
 	ParamFN = argv[1];
-	char cmD[4096];
-	sprintf(cmD,"~/opt/MIDAS/FF_HEDM/bin/GetHKLList %s",ParamFN);
-	system(cmD);
+	run_midas_binary("GetHKLList",ParamFN);
+	// char cmD[4096];
+	// sprintf(cmD,"~/opt/MIDAS/FF_HEDM/bin/GetHKLList %s",ParamFN);
+	// system(cmD);
 	int LowNr;
 	char *str, dummy[4096], aline[4096];
 	fileParam = fopen(ParamFN,"r");
