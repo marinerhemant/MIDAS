@@ -85,80 +85,74 @@ endif()
 # Function to handle dependencies
 function(handle_dependency NAME URL DOWNLOAD_FLAG)
     if(NAME STREQUAL "LIBTIFF")
-    if(TARGET TIFF::TIFF)
-    message(STATUS "${NAME} target already exists as TIFF::TIFF, skipping")
-    return()
-    endif()
+      if(TARGET TIFF::TIFF)
+        message(STATUS "${NAME} target already exists as TIFF::TIFF, skipping")
+        return()
+      endif()
     elseif(TARGET ${NAME}::${NAME})
-    message(STATUS "${NAME} target already exists, skipping")
-    return()
+      message(STATUS "${NAME} target already exists, skipping")
+      return()
     endif()
-# Check if target already exists to avoid double-processing
-  if(TARGET ${NAME}::${NAME})
-    message(STATUS "${NAME} target already exists, skipping")
-    return()
-  endif()
-  # Check for custom find module
-  if(EXISTS "${CMAKE_SOURCE_DIR}/cmake/FindModules/Find${NAME}.cmake")
-    list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/FindModules")
-  endif()
-  
-  # Check for custom dependency file
-  set(CUSTOM_DEP_FILE "${CMAKE_SOURCE_DIR}/cmake/deps/${NAME}_custom.cmake")
-  if(EXISTS "${CUSTOM_DEP_FILE}")
-    message(STATUS "Using custom dependency file for ${NAME}")
-    include("${CUSTOM_DEP_FILE}")
-    return()
-  endif()
-  
-  if(${DOWNLOAD_FLAG})
-    message(STATUS "Setting up ${NAME} for download and build")
-    include(cmake/deps/${NAME}.cmake)
-  else()
+
+    # Check for custom find module
+    if(EXISTS "${CMAKE_SOURCE_DIR}/cmake/FindModules/Find${NAME}.cmake")
+      list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/FindModules")
+    endif()
+    
+    # Check for custom dependency file
+    set(CUSTOM_DEP_FILE "${CMAKE_SOURCE_DIR}/cmake/deps/${NAME}_custom.cmake")
+    if(EXISTS "${CUSTOM_DEP_FILE}")
+      message(STATUS "Using custom dependency file for ${NAME}")
+      include("${CUSTOM_DEP_FILE}")
+      return()
+    endif()
+    
     if(SYSTEM_DEPENDENCIES)
       # Try to find the package in the system
       find_package(${NAME} QUIET)
-      if(NOT ${NAME}_FOUND)
-        # Also try with PkgConfig for better system library discovery
-        find_package(PkgConfig QUIET)
-        if(PkgConfig_FOUND)
-          string(TOLOWER "${NAME}" NAME_LOWER)
-          pkg_check_modules(${NAME}_PC QUIET ${NAME_LOWER} lib${NAME_LOWER})
-          if(${NAME}_PC_FOUND)
-            message(STATUS "Found ${NAME} using PkgConfig")
-            set(${NAME}_FOUND TRUE PARENT_SCOPE)
-            # Create an imported target for consistent interface
-            add_library(${NAME}::${NAME} INTERFACE IMPORTED)
-            set_target_properties(${NAME}::${NAME} PROPERTIES
-              INTERFACE_INCLUDE_DIRECTORIES "${${NAME}_PC_INCLUDE_DIRS}"
-              INTERFACE_LINK_LIBRARIES "${${NAME}_PC_LIBRARIES}"
-            )
-          else()
-            message(STATUS "${NAME} not found in system. Will download and build.")
-            include(cmake/deps/${NAME}.cmake)
-          endif()
+      if(${NAME}_FOUND)
+        message(STATUS "Found system ${NAME}")
+        return()
+      endif()
+      
+      # Also try with PkgConfig for better system library discovery
+      find_package(PkgConfig QUIET)
+      if(PkgConfig_FOUND)
+        string(TOLOWER "${NAME}" NAME_LOWER)
+        pkg_check_modules(${NAME}_PC QUIET ${NAME_LOWER} lib${NAME_LOWER})
+        if(${NAME}_PC_FOUND)
+          message(STATUS "Found ${NAME} using PkgConfig")
+          set(${NAME}_FOUND TRUE PARENT_SCOPE)
+          # Create an imported target for consistent interface
+          add_library(${NAME}::${NAME} INTERFACE IMPORTED)
+          set_target_properties(${NAME}::${NAME} PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${${NAME}_PC_INCLUDE_DIRS}"
+            INTERFACE_LINK_LIBRARIES "${${NAME}_PC_LIBRARIES}"
+          )
+          return()
         else()
-          message(STATUS "${NAME} not found in system. Will download and build.")
-          include(cmake/deps/${NAME}.cmake)
+          message(STATUS "${NAME} not found in system.")
         endif()
       endif()
-    else()
+    endif()
+    
+    # If we get here, we need to download and build
+    if(${DOWNLOAD_FLAG})
+      message(STATUS "Setting up ${NAME} for download and build")
       include(cmake/deps/${NAME}.cmake)
+    else()
+      message(STATUS "Skipping download for ${NAME} as DOWNLOAD_DEPENDENCIES is OFF")
+      message(FATAL_ERROR "Could not find system ${NAME} and downloading is disabled")
     endif()
-  endif()
-    # Ensure the cmake file was actually included
-    message(STATUS "Setting up ${NAME} dependency")
-    include(cmake/deps/${NAME}.cmake)
-
-  # Verify target was created
-  if(NAME STREQUAL "LIBTIFF")
-    if(NOT TARGET TIFF::TIFF)
-      message(FATAL_ERROR "Failed to create TIFF::TIFF target")
+    
+    # Verify target was created
+    if(NAME STREQUAL "LIBTIFF")
+      if(NOT TARGET TIFF::TIFF)
+        message(FATAL_ERROR "Failed to create TIFF::TIFF target")
+      endif()
+    elseif(NOT TARGET ${NAME}::${NAME})
+      message(FATAL_ERROR "Failed to create ${NAME}::${NAME} target")
     endif()
-  elseif(NOT TARGET ${NAME}::${NAME})
-    message(FATAL_ERROR "Failed to create ${NAME}::${NAME} target")
-  endif()
-  
 endfunction()
 
 # Create dependency directory structure
