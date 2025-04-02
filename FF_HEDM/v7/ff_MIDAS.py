@@ -20,11 +20,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger('MIDAS')
 
-# Set paths
-utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
-v7Dir = os.path.expanduser('~/opt/MIDAS/FF_HEDM/v7/')
-sys.path.insert(0, utilsDir)
-sys.path.insert(0, v7Dir)
+# Set paths dynamically using script location
+def get_installation_dir():
+    """Get the installation directory from the script's location."""
+    # This script is in install_dir/FF_HEDM/v7
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Go up two levels to get to the installation directory
+    install_dir = os.path.abspath(os.path.join(script_dir, '..', '..'))
+    return install_dir
+
+# Get paths
+install_dir = get_installation_dir()
+utils_dir = os.path.join(install_dir, "utils")
+v7_dir = os.path.join(install_dir, "FF_HEDM/v7")
+bin_dir = os.path.join(install_dir, "bin")
+
+# Add paths to sys.path
+sys.path.insert(0, utils_dir)
+sys.path.insert(0, v7_dir)
+
 from parsl.app.app import python_app
 pytpath = sys.executable
 
@@ -69,9 +83,11 @@ def run_command(cmd: str, working_dir: str, out_file: str, err_file: str) -> int
 def get_midas_env() -> Dict[str, str]:
     """Get the environment variables for MIDAS."""
     env = dict(os.environ)
-    midas_path = os.path.expanduser("~/.MIDAS")
-    libpth = os.environ.get('LD_LIBRARY_PATH', '')
-    env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib:{libpth}'
+    
+    # Set MIDAS_INSTALL_DIR environment variable if not already set
+    if 'MIDAS_INSTALL_DIR' not in env:
+        env['MIDAS_INSTALL_DIR'] = get_installation_dir()
+    
     return env
 
 def generateZip(
@@ -101,7 +117,7 @@ def generateZip(
     Returns:
         ZIP file name if successful, None otherwise
     """
-    cmd = f"{pytpath} {os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZip.py')} -resultFolder {resFol} -paramFN {pfn} -LayerNr {layerNr}"
+    cmd = f"{pytpath} {os.path.join(utils_dir, 'ffGenerateZip.py')} -resultFolder {resFol} -paramFN {pfn} -LayerNr {layerNr}"
     
     if dfn:
         cmd += f' -dataFN {dfn}'
@@ -131,31 +147,54 @@ def generateZip(
         return None
 
 @python_app
-def peaks(resultDir: str, zipFN: str, numProcs: int, blockNr: int = 0, numBlocks: int = 1) -> None:
+def peaks(resultDir: str, zipFN: str, numProcs: int, bin_dir: str, blockNr: int = 0, numBlocks: int = 1) -> None:
     """Run peak search.
     
     Args:
         resultDir: Result directory
         zipFN: ZIP file name
         numProcs: Number of processors
+        bin_dir: Path to the bin directory
         blockNr: Block number
         numBlocks: Number of blocks
     """
     import subprocess
     import os
     import sys
+    import logging
     
-    # Set up environment
-    env = dict(os.environ)
-    midas_path = os.path.expanduser("~/.MIDAS")
-    libpth = os.environ.get('LD_LIBRARY_PATH', '')
-    env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib:{libpth}'
+    # Setup logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    logger = logging.getLogger('MIDAS_peaks')
+    
+    # Make sure output directory exists
+    os.makedirs(f'{resultDir}/output', exist_ok=True)
     
     outfile = f'{resultDir}/output/peaksearch_out{blockNr}.csv'
     errfile = f'{resultDir}/output/peaksearch_err{blockNr}.csv'
     
+    # Copy all environment variables
+    env = dict(os.environ)
+    
+    # If MIDAS_INSTALL_DIR is not set, try to get from script location
+    if 'MIDAS_INSTALL_DIR' not in env:
+        # Best effort to set MIDAS_INSTALL_DIR inside the app
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        if os.path.exists(script_dir):
+            # Go up two levels to get to the installation directory
+            install_dir = os.path.abspath(os.path.join(script_dir, '..', '..'))
+            env['MIDAS_INSTALL_DIR'] = install_dir
+    
+    logger.info(f"Running PeaksFittingOMPZarr in {resultDir} for block {blockNr}/{numBlocks}")
+    
     with open(outfile, 'w') as f, open(errfile, 'w') as f_err:
-        cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPZarr')} {zipFN} {blockNr} {numBlocks} {numProcs}"
+        cmd = f"{os.path.join(bin_dir, 'PeaksFittingOMPZarr')} {zipFN} {blockNr} {numBlocks} {numProcs}"
+        logger.info(f"Executing command: {cmd}")
+        
         process = subprocess.Popen(
             cmd, 
             shell=True, 
@@ -171,45 +210,72 @@ def peaks(resultDir: str, zipFN: str, numProcs: int, blockNr: int = 0, numBlocks
             with open(errfile, 'r') as err_reader:
                 error_content = err_reader.read()
             error_msg = f"Peak search failed with return code {returncode}. Error output:\n{error_content}"
-            print(error_msg, file=sys.stderr)
+            logger.error(error_msg)
             raise RuntimeError(error_msg)
+        
+        logger.info(f"PeaksFittingOMPZarr completed successfully for block {blockNr}/{numBlocks}")
 
 @python_app
-def index(resultDir: str, numProcs: int, blockNr: int = 0, numBlocks: int = 1) -> None:
+def index(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0, numBlocks: int = 1) -> None:
     """Run indexing.
     
     Args:
         resultDir: Result directory
         numProcs: Number of processors
+        bin_dir: Path to the bin directory
         blockNr: Block number
         numBlocks: Number of blocks
     """
     import subprocess
     import os
     import sys
+    import logging
     
+    # Setup logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    logger = logging.getLogger('MIDAS_index')
+    
+    # Ensure we're in the correct directory
     os.chdir(resultDir)
     
-    # Set up environment
+    # Make sure output directory exists
+    os.makedirs(f'{resultDir}/output', exist_ok=True)
+    
+    # Copy all environment variables
     env = dict(os.environ)
-    midas_path = os.path.expanduser("~/.MIDAS")
-    libpth = os.environ.get('LD_LIBRARY_PATH', '')
-    env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib:{libpth}'
+    
+    # If MIDAS_INSTALL_DIR is not set, try to get from script location
+    if 'MIDAS_INSTALL_DIR' not in env:
+        # Best effort to set MIDAS_INSTALL_DIR inside the app
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        if os.path.exists(script_dir):
+            # Go up two levels to get to the installation directory
+            install_dir = os.path.abspath(os.path.join(script_dir, '..', '..'))
+            env['MIDAS_INSTALL_DIR'] = install_dir
     
     # Count lines in SpotsToIndex.csv
     try:
-        with open("SpotsToIndex.csv", "r") as f:
+        with open(os.path.join(resultDir, "SpotsToIndex.csv"), "r") as f:
             num_lines = len(f.readlines())
+            logger.info(f"Found {num_lines} spots to index")
     except Exception as e:
         error_msg = f"Failed to read SpotsToIndex.csv: {e}"
-        print(error_msg, file=sys.stderr)
+        logger.error(error_msg)
         raise RuntimeError(error_msg)
     
     outfile = f'{resultDir}/output/indexing_out{blockNr}.csv'
     errfile = f'{resultDir}/output/indexing_err{blockNr}.csv'
     
+    logger.info(f"Running IndexerOMP in {resultDir} for block {blockNr}/{numBlocks}")
+    
     with open(outfile, 'w') as f, open(errfile, 'w') as f_err:
-        cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/IndexerOMP')} paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}"
+        cmd = f"{os.path.join(bin_dir, 'IndexerOMP')} paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}"
+        logger.info(f"Executing command: {cmd}")
+        
         process = subprocess.Popen(
             cmd, 
             shell=True, 
@@ -225,49 +291,76 @@ def index(resultDir: str, numProcs: int, blockNr: int = 0, numBlocks: int = 1) -
             with open(errfile, 'r') as err_reader:
                 error_content = err_reader.read()
             error_msg = f"Indexing failed with return code {returncode}. Error output:\n{error_content}"
-            print(error_msg, file=sys.stderr)
+            logger.error(error_msg)
             raise RuntimeError(error_msg)
+        
+        logger.info(f"IndexerOMP completed successfully for block {blockNr}/{numBlocks}")
 
 @python_app
-def refine(resultDir: str, numProcs: int, blockNr: int = 0, numBlocks: int = 1) -> None:
+def refine(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0, numBlocks: int = 1) -> None:
     """Run refinement.
     
     Args:
         resultDir: Result directory
         numProcs: Number of processors
+        bin_dir: Path to the bin directory
         blockNr: Block number
         numBlocks: Number of blocks
     """
     import subprocess
     import os
     import sys
+    import resource
+    import logging
     
+    # Setup logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    logger = logging.getLogger('MIDAS_refine')
+    
+    # Ensure we're in the correct directory
     os.chdir(resultDir)
     
-    # Set up environment
+    # Make sure output directory exists
+    os.makedirs(f'{resultDir}/output', exist_ok=True)
+    
+    # Copy all environment variables
     env = dict(os.environ)
-    midas_path = os.path.expanduser("~/.MIDAS")
-    libpth = os.environ.get('LD_LIBRARY_PATH', '')
-    env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib:{libpth}'
+    
+    # If MIDAS_INSTALL_DIR is not set, try to get from script location
+    if 'MIDAS_INSTALL_DIR' not in env:
+        # Best effort to set MIDAS_INSTALL_DIR inside the app
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        if os.path.exists(script_dir):
+            # Go up two levels to get to the installation directory
+            install_dir = os.path.abspath(os.path.join(script_dir, '..', '..'))
+            env['MIDAS_INSTALL_DIR'] = install_dir
     
     # Count lines in SpotsToIndex.csv
     try:
-        with open("SpotsToIndex.csv", "r") as f:
+        with open(os.path.join(resultDir, "SpotsToIndex.csv"), "r") as f:
             num_lines = len(f.readlines())
+            logger.info(f"Found {num_lines} spots to refine")
     except Exception as e:
         error_msg = f"Failed to read SpotsToIndex.csv: {e}"
-        print(error_msg, file=sys.stderr)
+        logger.error(error_msg)
         raise RuntimeError(error_msg)
     
     outfile = f'{resultDir}/output/refining_out{blockNr}.csv'
     errfile = f'{resultDir}/output/refining_err{blockNr}.csv'
     
+    logger.info(f"Running FitPosOrStrainsOMP in {resultDir} for block {blockNr}/{numBlocks}")
+    
+    # Enable core dumps
+    resource.setrlimit(resource.RLIMIT_CORE, (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
+    
     with open(outfile, 'w') as f, open(errfile, 'w') as f_err:
-        # At the beginning of the refine function
-        import resource
-        # Enable core dumps
-        resource.setrlimit(resource.RLIMIT_CORE, (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
-        cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/FitPosOrStrainsOMP')} paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}"
+        cmd = f"{os.path.join(bin_dir, 'FitPosOrStrainsOMP')} paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}"
+        logger.info(f"Executing command: {cmd}")
+        
         process = subprocess.Popen(
             cmd, 
             shell=True, 
@@ -283,8 +376,10 @@ def refine(resultDir: str, numProcs: int, blockNr: int = 0, numBlocks: int = 1) 
             with open(errfile, 'r') as err_reader:
                 error_content = err_reader.read()
             error_msg = f"Refinement failed with return code {returncode}. Error output:\n{error_content}"
-            print(error_msg, file=sys.stderr)
+            logger.error(error_msg)
             raise RuntimeError(error_msg)
+        
+        logger.info(f"FitPosOrStrainsOMP completed successfully for block {blockNr}/{numBlocks}")
 
 # Signal handler for cleanup
 default_handler = None
@@ -631,7 +726,7 @@ def main():
                             shutil.copy2(dataFN, resultDir)
                             
                     # Update zarr dataset
-                    cmdUpd = f'{pytpath} {os.path.expanduser("~/opt/MIDAS/utils/updateZarrDset.py")} -fn {os.path.basename(outFStem)} -folder {resultDir} -keyToUpdate analysis/process/analysis_parameters/ResultFolder -updatedValue {resultDir}/'
+                    cmdUpd = f'{pytpath} {os.path.join(utils_dir, "updateZarrDset.py")} -fn {os.path.basename(outFStem)} -folder {resultDir} -keyToUpdate analysis/process/analysis_parameters/ResultFolder -updatedValue {resultDir}/'
                     logger.info(cmdUpd)
                     
                     try:
@@ -645,7 +740,7 @@ def main():
                 try:
                     f_hkls_out = f'{logDir}/hkls_out.csv'
                     f_hkls_err = f'{logDir}/hkls_err.csv'
-                    cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr')} {outFStem}"
+                    cmd = f"{os.path.join(bin_dir, 'GetHKLListZarr')} {outFStem}"
                     run_command(cmd, resultDir, f_hkls_out, f_hkls_err)
                 except Exception as e:
                     logger.error(f"Failed to generate HKLs: {e}")
@@ -657,7 +752,7 @@ def main():
                 try:
                     f_hkls_out = f'{logDir}/hkls_out.csv'
                     f_hkls_err = f'{logDir}/hkls_err.csv'
-                    cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/GetHKLList')} {psFN}"
+                    cmd = f"{os.path.join(bin_dir, 'GetHKLList')} {psFN}"
                     run_command(cmd, resultDir, f_hkls_out, f_hkls_err)
                 except Exception as e:
                     logger.error(f"Failed to generate HKLs: {e}")
@@ -674,7 +769,7 @@ def main():
                     try:
                         res = []
                         for nodeNr in range(nNodes):
-                            res.append(peaks(resultDir, outFStem, numProcs, blockNr=nodeNr, numBlocks=nNodes))
+                            res.append(peaks(resultDir, outFStem, numProcs, bin_dir, blockNr=nodeNr, numBlocks=nNodes))
                         outputs = [i.result() for i in res]
                         logger.info(f"PeakSearch done. Time till now: {time.time() - t0}")
                     except Exception as e:
@@ -691,7 +786,7 @@ def main():
                 try:
                     f_merge_out = f'{logDir}/merge_overlaps_out.csv'
                     f_merge_err = f'{logDir}/merge_overlaps_err.csv'
-                    cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr')} {outFStem}"
+                    cmd = f"{os.path.join(bin_dir, 'MergeOverlappingPeaksAllZarr')} {outFStem}"
                     run_command(cmd, resultDir, f_merge_out, f_merge_err)
                 except Exception as e:
                     logger.error(f"Failed to merge peaks: {e}")
@@ -702,7 +797,7 @@ def main():
                 try:
                     f_radius_out = f'{logDir}/calc_radius_out.csv'
                     f_radius_err = f'{logDir}/calc_radius_err.csv'
-                    cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr')} {outFStem}"
+                    cmd = f"{os.path.join(bin_dir, 'CalcRadiusAllZarr')} {outFStem}"
                     run_command(cmd, resultDir, f_radius_out, f_radius_err)
                 except Exception as e:
                     logger.error(f"Failed to calculate radii: {e}")
@@ -713,7 +808,7 @@ def main():
                 try:
                     f_setup_out = f'{logDir}/fit_setup_out.csv'
                     f_setup_err = f'{logDir}/fit_setup_err.csv'
-                    cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr')} {outFStem}"
+                    cmd = f"{os.path.join(bin_dir, 'FitSetupZarr')} {outFStem}"
                     run_command(cmd, resultDir, f_setup_out, f_setup_err)
                 except Exception as e:
                     logger.error(f"Failed to transform data: {e}")
@@ -803,7 +898,7 @@ def main():
             try:
                 f_bin_out = f'{logDir}/binning_out.csv'
                 f_bin_err = f'{logDir}/binning_err.csv'
-                cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/SaveBinData')}"
+                cmd = f"{os.path.join(bin_dir, 'SaveBinData')}"
                 run_command(cmd, resultDir, f_bin_out, f_bin_err)
             except Exception as e:
                 logger.error(f"Failed to bin data: {e}")
@@ -815,7 +910,7 @@ def main():
             try:
                 resIndex = []
                 for nodeNr in range(nNodes):
-                    resIndex.append(index(resultDir, numProcs, blockNr=nodeNr, numBlocks=nNodes))
+                    resIndex.append(index(resultDir, numProcs, bin_dir, blockNr=nodeNr, numBlocks=nNodes))
                 outputIndex = [i.result() for i in resIndex]
             except Exception as e:
                 logger.error(f"Failed during indexing: {e}")
@@ -827,7 +922,7 @@ def main():
             try:
                 resRefine = []
                 for nodeNr in range(nNodes):
-                    resRefine.append(refine(resultDir, numProcs, blockNr=nodeNr, numBlocks=nNodes))
+                    resRefine.append(refine(resultDir, numProcs, bin_dir, blockNr=nodeNr, numBlocks=nNodes))
                 outputRefine = [i.result() for i in resRefine]
             except Exception as e:
                 logger.error(f"Failed during refinement: {e}")
@@ -848,11 +943,11 @@ def main():
                 
                 if ProvideInputAll == 0:
                     if args.grainsFile:
-                        cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/ProcessGrainsZarr')} {outFStem} 1"
+                        cmd = f"{os.path.join(bin_dir, 'ProcessGrainsZarr')} {outFStem} 1"
                     else:
-                        cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/ProcessGrainsZarr')} {outFStem}"
+                        cmd = f"{os.path.join(bin_dir, 'ProcessGrainsZarr')} {outFStem}"
                 else:
-                    cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/ProcessGrains')} {resultDir}/paramstest.txt"
+                    cmd = f"{os.path.join(bin_dir, 'ProcessGrains')} {resultDir}/paramstest.txt"
                     
                 run_command(cmd, resultDir, f_grains_out, f_grains_err)
             except Exception as e:

@@ -20,6 +20,14 @@ import zarr
 from numba import jit
 import traceback
 
+# Set paths dynamically using script location
+def get_installation_dir():
+    """Get the installation directory from the script's location."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # We assume the script is in the root of the MIDAS installation
+    install_dir = script_dir
+    return install_dir
+
 # Suppress warnings
 warnings.filterwarnings('ignore')
 
@@ -34,73 +42,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("MIDAS")
 
-# Setup paths
-utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
-v7Dir = os.path.expanduser('~/opt/MIDAS/FF_HEDM/v7/')
-sys.path.insert(0, utilsDir)
-sys.path.insert(0, v7Dir)
-
-# Import from MIDAS libraries
-try:
-    from calcMiso import *
-except ImportError:
-    logger.error("Failed to import calcMiso. Make sure MIDAS is properly installed.")
-    sys.exit(1)
-
-# Get Python executable
-pytpath = sys.executable
-
-# Environment setup for MIDAS
-def setup_midas_env():
-    """Set up the MIDAS environment variables for subprocess calls."""
-    env = dict(os.environ)
-    midas_path = os.path.expanduser("~/.MIDAS")
-    libpth = os.environ.get('LD_LIBRARY_PATH')
-    
-    # Add MIDAS library paths
-    lib_components = [
-        f'{midas_path}/BLOSC/lib64',
-        f'{midas_path}/FFTW/lib',
-        f'{midas_path}/HDF5/lib',
-        f'{midas_path}/LIBTIFF/lib',
-        f'{midas_path}/LIBZIP/lib64',
-        f'{midas_path}/NLOPT/lib',
-        f'{midas_path}/ZLIB/lib'
-    ]
-    
-    if libpth:
-        lib_components.append(libpth)
-    
-    env['LD_LIBRARY_PATH'] = ':'.join(lib_components)
-    return env
-
-env = setup_midas_env()
-
-def check_error_file(filename):
-    """
-    Check if an error file exists and has content.
-    
-    Args:
-        filename: Path to the error file
-        
-    Returns:
-        True if file exists and has content, False otherwise
-    """
-    if not os.path.exists(filename):
-        return False
-    
-    with open(filename, 'r') as f:
-        content = f.read().strip()
-        
-    if not content:
-        return False
-        
-    # Check if content is just initialization or contains actual error
-    if "I was able to do something" in content:
-        return False
-        
-    return True
-
 def check_and_exit_on_errors(error_files):
     """
     Check multiple error files and exit if any have content.
@@ -108,6 +49,31 @@ def check_and_exit_on_errors(error_files):
     Args:
         error_files: List of error file paths to check
     """
+    def check_error_file(filename):
+        """
+        Check if an error file exists and has content.
+        
+        Args:
+            filename: Path to the error file
+            
+        Returns:
+            True if file exists and has content, False otherwise
+        """
+        if not os.path.exists(filename):
+            return False
+        
+        with open(filename, 'r') as f:
+            content = f.read().strip()
+            
+        if not content:
+            return False
+            
+        # Check if content is just initialization or contains actual error
+        if "I was able to do something" in content:
+            return False
+            
+        return True
+        
     for err_file in error_files:
         if check_error_file(err_file):
             logger.error(f"Error detected in {err_file}:")
@@ -116,70 +82,17 @@ def check_and_exit_on_errors(error_files):
             sys.exit(1)
     logger.info("No errors detected in error files.")
 
-def generateZip(resFol, pfn, layerNr, dfn='', dloc='', nchunks=-1, preproc=-1, outf='ZipOut.txt', errf='ZipErr.txt'):
-    """
-    Generate a zip file for the given parameters.
-    
-    Args:
-        resFol: Result folder
-        pfn: Parameter file name
-        layerNr: Layer number
-        dfn: Data file name (optional)
-        dloc: Data location (optional)
-        nchunks: Number of frame chunks (optional)
-        preproc: Pre-processing threshold (optional)
-        outf: Output file name (optional)
-        errf: Error file name (optional)
-        
-    Returns:
-        The name of the generated zip file if successful
-    """
-    cmd = f"{pytpath} {os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZip.py')} -resultFolder {resFol[:-1]} -paramFN {pfn} -LayerNr {str(layerNr)}"
-    
-    if dfn:
-        cmd += f" -dataFN {dfn}"
-    if dloc:
-        cmd += f" -dataLoc {dloc}"
-    if nchunks != -1:
-        cmd += f" -numFrameChunks {str(nchunks)}"
-    if preproc != -1:
-        cmd += f" -preProcThresh {str(preproc)}"
-        
-    outf_path = f"{resFol}/output/{outf}"
-    errf_path = f"{resFol}/output/{errf}"
-    
-    logger.info(f"Generating zip for layer {layerNr}: {cmd}")
-    
-    try:
-        subprocess.call(cmd, shell=True, stdout=open(outf_path, 'w'), stderr=open(errf_path, 'w'))
-        
-        # Check for errors
-        if check_error_file(errf_path):
-            logger.error(f"Error in generateZip for layer {layerNr}")
-            with open(errf_path, 'r') as f:
-                logger.error(f.read())
-            return None
-            
-        lines = open(outf_path, 'r').readlines()
-        if lines and lines[-1].startswith('OutputZipName'):
-            return lines[-1].split()[1]
-            
-        logger.warning(f"No output zip name found for layer {layerNr}")
-        return None
-    except Exception as e:
-        logger.error(f"Exception in generateZip for layer {layerNr}: {str(e)}")
-        return None
-
 @python_app
 def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdir,
                   paramContents, baseNameParamFN, ConvertFiles, nchunks, preproc,
-                  env, doPeakSearch, numProcs, startNr, endNr, Lsd, NormalizeIntensities,
+                  midas_path, doPeakSearch, numProcs, startNr, endNr, Lsd, NormalizeIntensities,
                   omegaValues, minThresh, fStem, omegaFF, Ext):
     """
     Run peak search in parallel for a specific layer.
     
     Args:
         Multiple parameters needed for peak searching
+        midas_path: Path to MIDAS installation
         
     Returns:
         Success status message
@@ -200,8 +113,94 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(f"MIDAS-Layer{layerNr}")
     
-    utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
-    sys.path.insert(0, utilsDir)
+    # Import required modules using midas_path
+    utils_dir = os.path.join(midas_path, 'utils')
+    v7_dir = os.path.join(midas_path, 'FF_HEDM/v7')
+    sys.path.insert(0, utils_dir)
+    sys.path.insert(0, v7_dir)
+    
+    # Get Python executable
+    pytpath = sys.executable
+    
+    def check_error_file(filename):
+        """
+        Check if an error file exists and has content.
+        
+        Args:
+            filename: Path to the error file
+            
+        Returns:
+            True if file exists and has content, False otherwise
+        """
+        if not os.path.exists(filename):
+            return False
+        
+        with open(filename, 'r') as f:
+            content = f.read().strip()
+            
+        if not content:
+            return False
+            
+        # Check if content is just initialization or contains actual error
+        if "I was able to do something" in content:
+            return False
+            
+        return True
+    
+    def generate_zip(resFol, pfn, layerNr, midas_path, dfn='', dloc='', nchunks=-1, preproc=-1, outf='ZipOut.txt', errf='ZipErr.txt'):
+        """
+        Generate a zip file for the given parameters.
+        
+        Args:
+            resFol: Result folder
+            pfn: Parameter file name
+            layerNr: Layer number
+            midas_path: Path to MIDAS installation
+            dfn: Data file name (optional)
+            dloc: Data location (optional)
+            nchunks: Number of frame chunks (optional)
+            preproc: Pre-processing threshold (optional)
+            outf: Output file name (optional)
+            errf: Error file name (optional)
+            
+        Returns:
+            The name of the generated zip file if successful
+        """
+        cmd = f"{pytpath} {os.path.join(midas_path, 'utils/ffGenerateZip.py')} -resultFolder {resFol[:-1]} -paramFN {pfn} -LayerNr {str(layerNr)}"
+        
+        if dfn:
+            cmd += f" -dataFN {dfn}"
+        if dloc:
+            cmd += f" -dataLoc {dloc}"
+        if nchunks != -1:
+            cmd += f" -numFrameChunks {str(nchunks)}"
+        if preproc != -1:
+            cmd += f" -preProcThresh {str(preproc)}"
+            
+        outf_path = f"{resFol}/output/{outf}"
+        errf_path = f"{resFol}/output/{errf}"
+        
+        logger.info(f"Generating zip for layer {layerNr}: {cmd}")
+        
+        try:
+            subprocess.call(cmd, shell=True, stdout=open(outf_path, 'w'), stderr=open(errf_path, 'w'))
+            
+            # Check for errors
+            if check_error_file(errf_path):
+                logger.error(f"Error in generate_zip for layer {layerNr}")
+                with open(errf_path, 'r') as f:
+                    logger.error(f.read())
+                return None
+                
+            lines = open(outf_path, 'r').readlines()
+            if lines and lines[-1].startswith('OutputZipName'):
+                return lines[-1].split()[1]
+                
+            logger.warning(f"No output zip name found for layer {layerNr}")
+            return None
+        except Exception as e:
+            logger.error(f"Exception in generate_zip for layer {layerNr}: {str(e)}")
+            return None
     
     def CalcEtaAngleAll(y, z):
         alpha = rad2deg * np.arccos(z / np.linalg.norm(np.array([y, z]), axis=0))
@@ -245,7 +244,7 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
         
         # Generate zip or use existing file
         if ConvertFiles == 1:
-            outFStem = generateZip(thisDir, baseNameParamFN, layerNr, nchunks=nchunks, preproc=preproc)
+            outFStem = generate_zip(thisDir, baseNameParamFN, layerNr, midas_path, nchunks=nchunks, preproc=preproc)
             if not outFStem:
                 logger.error(f"Failed to generate zip for layer {layerNr}")
                 return f"Failed at generateZip for layer {layerNr}"
@@ -261,9 +260,9 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
         
         with open(f_out_path, 'w') as f, open(f_err_path, 'w') as f_err:
             # Get HKL list
-            cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr')} {outFStem} {thisDir}"
+            cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/GetHKLListZarr')} {outFStem} {thisDir}"
             logger.info(f"Running GetHKLListZarr: {cmd}")
-            subprocess.call(cmd, env=env, shell=True, stdout=f, stderr=f_err)
+            subprocess.call(cmd, shell=True, stdout=f, stderr=f_err)
             
             # Check for errors
             if check_error_file(f_err_path):
@@ -275,8 +274,8 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
             if doPeakSearch == 1:
                 t_st = time.time()
                 logger.info(f'Starting PeakSearch for layer {layerNr}')
-                cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPZarr')} {outFStem} 0 1 {numProcs} {thisDir} 0"
-                subprocess.call(cmd, shell=True, env=env, stdout=f, stderr=f_err)
+                cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/PeaksFittingOMPZarr')} {outFStem} 0 1 {numProcs} {thisDir} 0"
+                subprocess.call(cmd, shell=True, stdout=f, stderr=f_err)
                 
                 if check_error_file(f_err_path):
                     with open(f_err_path, 'r') as ef:
@@ -286,9 +285,9 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
                 logger.info(f'PeakSearch Done for layer {layerNr}. Time taken: {time.time() - t_st} seconds.')
             
             # Merge overlapping peaks
-            cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/MergeOverlappingPeaksAllZarr')} {outFStem} {thisDir}"
+            cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/MergeOverlappingPeaksAllZarr')} {outFStem} {thisDir}"
             logger.info(f"Running MergeOverlappingPeaksAllZarr: {cmd}")
-            subprocess.call(cmd, env=env, shell=True, stdout=f, stderr=f_err)
+            subprocess.call(cmd, shell=True, stdout=f, stderr=f_err)
             
             if check_error_file(f_err_path):
                 with open(f_err_path, 'r') as ef:
@@ -349,18 +348,18 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
         
         # Calculate radius and fit setup
         with open(f_out_path, 'a') as f, open(f_err_path, 'a') as f_err:
-            cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/CalcRadiusAllZarr')} {outFStem} {thisDir}"
+            cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/CalcRadiusAllZarr')} {outFStem} {thisDir}"
             logger.info(f"Running CalcRadiusAllZarr: {cmd}")
-            subprocess.call(cmd, env=env, shell=True, stdout=f, stderr=f_err)
+            subprocess.call(cmd, shell=True, stdout=f, stderr=f_err)
             
             if check_error_file(f_err_path):
                 with open(f_err_path, 'r') as ef:
                     logger.error(f"Error in CalcRadiusAllZarr: {ef.read()}")
                 return f"Failed at CalcRadiusAllZarr for layer {layerNr}"
             
-            cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/FitSetupZarr')} {outFStem} {thisDir}"
+            cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/FitSetupZarr')} {outFStem} {thisDir}"
             logger.info(f"Running FitSetupZarr: {cmd}")
-            subprocess.call(cmd, env=env, shell=True, stdout=f, stderr=f_err)
+            subprocess.call(cmd, shell=True, stdout=f, stderr=f_err)
             
             if check_error_file(f_err_path):
                 with open(f_err_path, 'r') as ef:
@@ -428,11 +427,13 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
             
             logger.info(f'Normalization and writing done for layer {layerNr}. Time taken: {time.time() - t_st} seconds')
             
+            os.chdir(topdir)
             return f"Successfully completed processing for layer {layerNr}"
             
         except Exception as e:
             logger.error(f"Error in final processing for layer {layerNr}: {str(e)}")
             logger.error(traceback.format_exc())
+            os.chdir(topdir)
             return f"Failed at final processing for layer {layerNr}: {str(e)}"
             
     except Exception as e:
@@ -441,7 +442,7 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
         return f"Failed with exception for layer {layerNr}: {str(e)}"
 
 @python_app
-def peaks(resultDir, zipFN, numProcs, blockNr=0, numBlocks=1):
+def peaks(resultDir, zipFN, numProcs, midas_path, blockNr=0, numBlocks=1):
     """
     Run peak search on a specific block.
     
@@ -449,6 +450,7 @@ def peaks(resultDir, zipFN, numProcs, blockNr=0, numBlocks=1):
         resultDir: Directory for results
         zipFN: Zip file name
         numProcs: Number of processors to use
+        midas_path: Path to MIDAS installation
         blockNr: Block number
         numBlocks: Total number of blocks
         
@@ -463,19 +465,30 @@ def peaks(resultDir, zipFN, numProcs, blockNr=0, numBlocks=1):
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(f"MIDAS-Peaks-{blockNr}")
     
-    # Setup environment
-    env = dict(os.environ)
-    midas_path = os.path.expanduser("~/.MIDAS")
-    lib_components = [
-        f'{midas_path}/BLOSC/lib64',
-        f'{midas_path}/FFTW/lib',
-        f'{midas_path}/HDF5/lib',
-        f'{midas_path}/LIBTIFF/lib',
-        f'{midas_path}/LIBZIP/lib64',
-        f'{midas_path}/NLOPT/lib',
-        f'{midas_path}/ZLIB/lib'
-    ]
-    env['LD_LIBRARY_PATH'] = ':'.join(lib_components)
+    def check_error_file(filename):
+        """
+        Check if an error file exists and has content.
+        
+        Args:
+            filename: Path to the error file
+            
+        Returns:
+            True if file exists and has content, False otherwise
+        """
+        if not os.path.exists(filename):
+            return False
+        
+        with open(filename, 'r') as f:
+            content = f.read().strip()
+            
+        if not content:
+            return False
+            
+        # Check if content is just initialization or contains actual error
+        if "I was able to do something" in content:
+            return False
+            
+        return True
     
     # Create output files
     f_out_path = f'{resultDir}/output/peaksearch_out{blockNr}.csv'
@@ -487,12 +500,12 @@ def peaks(resultDir, zipFN, numProcs, blockNr=0, numBlocks=1):
             f_err.write("I was able to do something.\n")
             
             # Build command
-            cmd_this = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/PeaksFittingOMPZarr')} {zipFN} {blockNr} {numBlocks} {numProcs} {resultDir}"
+            cmd_this = f"{os.path.join(midas_path, 'FF_HEDM/bin/PeaksFittingOMPZarr')} {zipFN} {blockNr} {numBlocks} {numProcs} {resultDir}"
             logger.info(f"Running PeaksFittingOMPZarr: {cmd_this}")
             f_err.write(f"{cmd_this}\n")
             
             # Run command
-            subprocess.call(cmd_this, shell=True, env=env, stdout=f, stderr=f_err)
+            subprocess.call(cmd_this, shell=True, stdout=f, stderr=f_err)
             
             # Verify completion
             f_err.write(f"{cmd_this}\n")
@@ -513,13 +526,14 @@ def peaks(resultDir, zipFN, numProcs, blockNr=0, numBlocks=1):
         return f"Failed with exception for block {blockNr}"
 
 @python_app
-def binData(resultDir, num_scans):
+def binData(resultDir, num_scans, midas_path):
     """
     Bin data for scanning.
     
     Args:
         resultDir: Directory for results
         num_scans: Number of scans
+        midas_path: Path to MIDAS installation
         
     Returns:
         Status message
@@ -533,6 +547,31 @@ def binData(resultDir, num_scans):
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger("MIDAS-Binning")
     
+    def check_error_file(filename):
+        """
+        Check if an error file exists and has content.
+        
+        Args:
+            filename: Path to the error file
+            
+        Returns:
+            True if file exists and has content, False otherwise
+        """
+        if not os.path.exists(filename):
+            return False
+        
+        with open(filename, 'r') as f:
+            content = f.read().strip()
+            
+        if not content:
+            return False
+            
+        # Check if content is just initialization or contains actual error
+        if "I was able to do something" in content:
+            return False
+            
+        return True
+    
     os.chdir(resultDir)
     
     # Create output files
@@ -542,7 +581,7 @@ def binData(resultDir, num_scans):
     try:
         with open(f_out_path, 'w') as f, open(f_err_path, 'w') as f_err:
             # Build command
-            cmd_this = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/SaveBinDataScanning')} {num_scans}"
+            cmd_this = f"{os.path.join(midas_path, 'FF_HEDM/bin/SaveBinDataScanning')} {num_scans}"
             logger.info(f"Running SaveBinDataScanning: {cmd_this}")
             f_err.write(f"{cmd_this}\n")
             
@@ -572,7 +611,7 @@ def binData(resultDir, num_scans):
         return f"Failed with exception: {str(e)}"
 
 @python_app
-def indexscanning(resultDir, numProcs, num_scans, blockNr=0, numBlocks=1):
+def indexscanning(resultDir, numProcs, num_scans, midas_path, blockNr=0, numBlocks=1):
     """
     Run indexing for scanning.
     
@@ -580,6 +619,7 @@ def indexscanning(resultDir, numProcs, num_scans, blockNr=0, numBlocks=1):
         resultDir: Directory for results
         numProcs: Number of processors to use
         num_scans: Number of scans
+        midas_path: Path to MIDAS installation
         blockNr: Block number
         numBlocks: Total number of blocks
         
@@ -594,21 +634,32 @@ def indexscanning(resultDir, numProcs, num_scans, blockNr=0, numBlocks=1):
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(f"MIDAS-Indexing-{blockNr}")
     
-    os.chdir(resultDir)
+    def check_error_file(filename):
+        """
+        Check if an error file exists and has content.
+        
+        Args:
+            filename: Path to the error file
+            
+        Returns:
+            True if file exists and has content, False otherwise
+        """
+        if not os.path.exists(filename):
+            return False
+        
+        with open(filename, 'r') as f:
+            content = f.read().strip()
+            
+        if not content:
+            return False
+            
+        # Check if content is just initialization or contains actual error
+        if "I was able to do something" in content:
+            return False
+            
+        return True
     
-    # Setup environment
-    env = dict(os.environ)
-    midas_path = os.path.expanduser("~/.MIDAS")
-    lib_components = [
-        f'{midas_path}/BLOSC/lib64',
-        f'{midas_path}/FFTW/lib',
-        f'{midas_path}/HDF5/lib',
-        f'{midas_path}/LIBTIFF/lib',
-        f'{midas_path}/LIBZIP/lib64',
-        f'{midas_path}/NLOPT/lib',
-        f'{midas_path}/ZLIB/lib'
-    ]
-    env['LD_LIBRARY_PATH'] = ':'.join(lib_components)
+    os.chdir(resultDir)
     
     # Create output files
     f_out_path = f'{resultDir}/output/indexing_out{blockNr}.csv'
@@ -617,11 +668,11 @@ def indexscanning(resultDir, numProcs, num_scans, blockNr=0, numBlocks=1):
     try:
         with open(f_out_path, 'w') as f, open(f_err_path, 'w') as f_err:
             # Build command
-            cmd_this = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/IndexerScanningOMP')} paramstest.txt {blockNr} {numBlocks} {num_scans} {numProcs}"
+            cmd_this = f"{os.path.join(midas_path, 'FF_HEDM/bin/IndexerScanningOMP')} paramstest.txt {blockNr} {numBlocks} {num_scans} {numProcs}"
             logger.info(f"Running IndexerScanningOMP: {cmd_this}")
             
             # Run command
-            subprocess.call(cmd_this, shell=True, env=env, stdout=f, stderr=f_err)
+            subprocess.call(cmd_this, shell=True, stdout=f, stderr=f_err)
         
         # Check for errors
         with open(f_err_path, 'r') as f_err:
@@ -639,13 +690,14 @@ def indexscanning(resultDir, numProcs, num_scans, blockNr=0, numBlocks=1):
         return f"Failed with exception for block {blockNr}"
 
 @python_app
-def refinescanning(resultDir, numProcs, blockNr=0, numBlocks=1):
+def refinescanning(resultDir, numProcs, midas_path, blockNr=0, numBlocks=1):
     """
     Run refinement for scanning.
     
     Args:
         resultDir: Directory for results
         numProcs: Number of processors to use
+        midas_path: Path to MIDAS installation
         blockNr: Block number
         numBlocks: Total number of blocks
         
@@ -660,21 +712,32 @@ def refinescanning(resultDir, numProcs, blockNr=0, numBlocks=1):
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(f"MIDAS-Refining-{blockNr}")
     
-    os.chdir(resultDir)
+    def check_error_file(filename):
+        """
+        Check if an error file exists and has content.
+        
+        Args:
+            filename: Path to the error file
+            
+        Returns:
+            True if file exists and has content, False otherwise
+        """
+        if not os.path.exists(filename):
+            return False
+        
+        with open(filename, 'r') as f:
+            content = f.read().strip()
+            
+        if not content:
+            return False
+            
+        # Check if content is just initialization or contains actual error
+        if "I was able to do something" in content:
+            return False
+            
+        return True
     
-    # Setup environment
-    env = dict(os.environ)
-    midas_path = os.path.expanduser("~/.MIDAS")
-    lib_components = [
-        f'{midas_path}/BLOSC/lib64',
-        f'{midas_path}/FFTW/lib',
-        f'{midas_path}/HDF5/lib',
-        f'{midas_path}/LIBTIFF/lib',
-        f'{midas_path}/LIBZIP/lib64',
-        f'{midas_path}/NLOPT/lib',
-        f'{midas_path}/ZLIB/lib'
-    ]
-    env['LD_LIBRARY_PATH'] = ':'.join(lib_components)
+    os.chdir(resultDir)
     
     # Create output files
     f_out_path = f'{resultDir}/output/refining_out{blockNr}.csv'
@@ -688,12 +751,12 @@ def refinescanning(resultDir, numProcs, blockNr=0, numBlocks=1):
         logger.info(f"Number of spots to refine: {num_lines}")
         
         # Build command
-        cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/FitOrStrainsScanningOMP')} paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}"
+        cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/FitOrStrainsScanningOMP')} paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}"
         logger.info(f"Running refining command: {cmd}")
         
         with open(f_out_path, 'w') as f, open(f_err_path, 'w') as f_err:
             # Run command
-            subprocess.call(cmd, shell=True, env=env, cwd=resultDir, stdout=f, stderr=f_err)
+            subprocess.call(cmd, shell=True, cwd=resultDir, stdout=f, stderr=f_err)
         
         # Check for errors
         with open(f_err_path, 'r') as f_err:
@@ -719,6 +782,36 @@ class MyParser(argparse.ArgumentParser):
 
 def main():
     """Main function to run the MIDAS processing workflow."""
+    # Define constants that might be needed
+    rad2deg = 57.2957795130823
+    deg2rad = 0.0174532925199433
+    
+    # Define local check_error_file function
+    def check_error_file(filename):
+        """
+        Check if an error file exists and has content.
+        
+        Args:
+            filename: Path to the error file
+            
+        Returns:
+            True if file exists and has content, False otherwise
+        """
+        if not os.path.exists(filename):
+            return False
+        
+        with open(filename, 'r') as f:
+            content = f.read().strip()
+            
+        if not content:
+            return False
+            
+        # Check if content is just initialization or contains actual error
+        if "I was able to do something" in content:
+            return False
+            
+        return True
+    
     # Check for existing /dev/shm/*.bin files from other users
     try:
         # Get current user
@@ -802,6 +895,23 @@ def main():
     # Create directories
     os.makedirs(topdir, exist_ok=True)
     os.makedirs(logDir, exist_ok=True)
+    
+    # Get MIDAS installation directory dynamically
+    midas_path = get_installation_dir()
+    logger.info(f"Using MIDAS installation directory: {midas_path}")
+    
+    # Import required modules using midas_path
+    utils_dir = os.path.join(midas_path, 'utils')
+    v7_dir = os.path.join(midas_path, 'FF_HEDM/v7')
+    sys.path.insert(0, utils_dir)
+    sys.path.insert(0, v7_dir)
+    
+    # Import from MIDAS libraries
+    try:
+        from calcMiso import MakeSymmetries, GetMisOrientationAngleOM, OrientMat2Euler, OrientMat2Quat, BringDownToFundamentalRegionSym
+    except ImportError:
+        logger.error(f"Failed to import calcMiso. Make sure MIDAS is properly installed at {midas_path}")
+        sys.exit(1)
     
     # Load appropriate machine configuration
     from parsl.config import Config
@@ -945,7 +1055,7 @@ def main():
                 RingNrs.append(int(line.split()[1]))
         
         # Call GetHKLList to generate hkls.csv
-        cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/GetHKLList')} {baseNameParamFN}"
+        cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/GetHKLList')} {baseNameParamFN}"
         logger.info(f"Running GetHKLList: {cmd}")
         subprocess.call(cmd, shell=True)
         
@@ -962,8 +1072,6 @@ def main():
         
         logger.info(f"Ring numbers: {RingNrs}")
         logger.info(f"Ring radii: {rads}")
-        
-        # normalizeIntensitiesNumba is already defined at module level, no need to redefine it here
         
         # Handle merges
         if nMerges != 0:
@@ -990,7 +1098,7 @@ def main():
                 res.append(parallel_peaks(
                     layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdir,
                     paramContents, baseNameParamFN, ConvertFiles, nchunks, preproc,
-                    env, doPeakSearch, numProcs, startNr, endNr, Lsd, NormalizeIntensities,
+                    midas_path, doPeakSearch, numProcs, startNr, endNr, Lsd, NormalizeIntensities,
                     omegaValues, minThresh, fStem, omegaFF, Ext
                 ))
             
@@ -1040,7 +1148,7 @@ def main():
                     )
             
             # Run merge command
-            merge_cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/mergeScansScanning')} {nMerges*(nScans//nMerges)} {nMerges} {2*px} {2*omegaStep} {numProcsLocal}"
+            merge_cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/mergeScansScanning')} {nMerges*(nScans//nMerges)} {nMerges} {2*px} {2*omegaStep} {numProcsLocal}"
             logger.info(f"Running merge: {merge_cmd}")
             subprocess.call(merge_cmd, shell=True)
             
@@ -1089,7 +1197,7 @@ def main():
         # Run indexing if requested
         if runIndexing == 1:
             logger.info("Starting data binning")
-            bin_result = binData(topdir, nScans).result()
+            bin_result = binData(topdir, nScans, midas_path).result()
             logger.info(f"Binning result: {bin_result}")
             
             # Check for errors in binning
@@ -1105,7 +1213,7 @@ def main():
             # Run indexing in parallel
             resIndex = []
             for nodeNr in range(nNodes):
-                resIndex.append(indexscanning(topdir, numProcs, nScans, blockNr=nodeNr, numBlocks=nNodes))
+                resIndex.append(indexscanning(topdir, numProcs, nScans, midas_path, blockNr=nodeNr, numBlocks=nNodes))
                 
             # Wait for all indexing tasks to complete
             outputIndex = [i.result() for i in resIndex]
@@ -1146,7 +1254,7 @@ def main():
                         shutil.move(dirn, dirn[4:])
             
             # Run find single solution
-            cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}"
+            cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findSingleSolutionPF')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}"
             logger.info(f"Running findSingleSolutionPF: {cmd}")
             result = subprocess.call(cmd, cwd=topdir, shell=True)
             
@@ -1291,7 +1399,7 @@ def main():
                     
                     resIndex = []
                     for nodeNr in range(nNodes):
-                        resIndex.append(indexscanning(topdir, numProcs, nScans, blockNr=nodeNr, numBlocks=nNodes))
+                        resIndex.append(indexscanning(topdir, numProcs, nScans, midas_path, blockNr=nodeNr, numBlocks=nNodes))
                         
                     outputIndex = [i.result() for i in resIndex]
                     
@@ -1302,7 +1410,7 @@ def main():
                             sys.exit(1)
                     
                     # Run find single solution again
-                    cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findSingleSolutionPF')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}"
+                    cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findSingleSolutionPF')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}"
                     logger.info(f"Running findSingleSolutionPF again: {cmd}")
                     subprocess.call(cmd, cwd=topdir, shell=True)
                     
@@ -1328,7 +1436,7 @@ def main():
             
             resRefine = []
             for nodeNr in range(nNodes):
-                resRefine.append(refinescanning(topdir, numProcs, blockNr=nodeNr, numBlocks=nNodes))
+                resRefine.append(refinescanning(topdir, numProcs, midas_path, blockNr=nodeNr, numBlocks=nNodes))
                 
             outputRefine = [i.result() for i in resRefine]
             
@@ -1409,7 +1517,7 @@ def main():
                 imgs.attrs['Header'] = np.bytes_('ID,Quat1,Quat2,Quat3,Quat4,x,y,a,b,c,alpha,beta,gamma,posErr,omeErr,InternalAngle,Completeness,E11,E12,E13,E22,E23,E33')
         else:
             # Multiple solutions per voxel
-            cmd = f"{os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/findMultipleSolutionsPF')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal}"
+            cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findMultipleSolutionsPF')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal}"
             logger.info(f"Running findMultipleSolutionsPF: {cmd}")
             subprocess.call(cmd, shell=True, cwd=topdir)
             
@@ -1418,7 +1526,7 @@ def main():
             # Run refinement
             resRefine = []
             for nodeNr in range(nNodes):
-                resRefine.append(refinescanning(topdir, numProcs, blockNr=nodeNr, numBlocks=nNodes))
+                resRefine.append(refinescanning(topdir, numProcs, midas_path, blockNr=nodeNr, numBlocks=nNodes))
                 
             outputRefine = [inter.result() for inter in resRefine]
             
