@@ -101,6 +101,9 @@ For macOS, we recommend using GCC from Homebrew rather than Apple Clang:
 # Install GCC from Homebrew
 brew install gcc
 
+# HIGHLY SUGGESTED TO USE SYSTEM DEPENDENCIES ON MAC AND USE HOMEBREW
+brew install hdf5 libtiff fftw libzip nlopt
+
 # Configure with GCC and macOS-specific options
 cmake .. \
   -DCMAKE_C_COMPILER=$(brew --prefix gcc)/bin/gcc-14 \
