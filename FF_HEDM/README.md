@@ -46,7 +46,7 @@ cmake --build . -j $(nproc)
 cmake --install .
 
 # Update after doing git pull and if you have MIDAS already installled
-cmake --build . --target midas_executables
+cmake --build . --target midas_executables -j $(nproc)
 
 # Set up environment
 source install/bin/setup.sh
