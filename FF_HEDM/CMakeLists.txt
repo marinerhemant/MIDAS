@@ -494,8 +494,12 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/FFTW_custom.cmake")
         set(FFTW_SHARED_ARG --disable-shared --enable-static)
     endif()
     
-    set(FFTW_OPTIONS --enable-float --disable-fortran --enable-sse --enable-sse2 --enable-avx --enable-avx2 --enable-avx-128-fma --enable-generic-simd128 --enable-generic-simd256)
-    
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
+        set(FFTW_OPTIONS --enable-float --disable-fortran)
+    else()
+        set(FFTW_OPTIONS --enable-float --disable-fortran --enable-sse --enable-sse2 --enable-avx --enable-avx2 --enable-avx-128-fma --enable-generic-simd128 --enable-generic-simd256)
+    endif()
+        
     ExternalProject_Add(fftw_external
         SOURCE_DIR ${fftw_SOURCE_DIR}
         BINARY_DIR ${fftw_BINARY_DIR}

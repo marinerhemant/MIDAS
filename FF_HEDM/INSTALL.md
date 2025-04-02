@@ -131,6 +131,10 @@ cmake .. -DDOWNLOAD_DEPENDENCIES=ON
 
 # Using system dependencies where available
 cmake .. -DSYSTEM_DEPENDENCIES=ON
+
+# HIGHLY SUGGESTED TO USE SYSTEM DEPENDENCIES ON MAC AND USE HOMEBREW
+brew install hdf5 libtiff fftw libzip nlopt
+
 ```
 
 ## Python Dependencies
