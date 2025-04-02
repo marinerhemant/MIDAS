@@ -802,6 +802,12 @@ add_midas_executable(PeaksFittingOMPZarr
   OMP
 )
 
+add_midas_executable(PeaksFittingOMPZarrRefactor
+  SOURCES src/PeaksFittingOMPZarrRefactor.c
+  LINK_LIBRARIES NLOPT::NLOPT BLOSC::BLOSC LIBZIP::LIBZIP
+  OMP
+)
+
 add_midas_executable(GetHKLListZarr
   SOURCES src/GetHKLListZarr.c src/sgclib.c src/sgfind.c src/sghkl.c src/sgsi.c src/sgio.c
   LINK_LIBRARIES BLOSC::BLOSC LIBZIP::LIBZIP
