@@ -962,18 +962,6 @@ if(INSTALL_PYTHON_DEPS)
   endif()
 endif()
 
-# Install scripts and example files
-install(FILES
-  CalibrationParametersExample.txt
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/MIDAS
-)
-
-install(PROGRAMS
-  Cluster/RealTimeMultipleLayersSingleSwiftJob.sh
-  Cluster/TrackGrains.py
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/MIDAS
-)
-
 # Generate environment setup script
 configure_file(
   ${CMAKE_SOURCE_DIR}/cmake/templates/setup.sh.in
