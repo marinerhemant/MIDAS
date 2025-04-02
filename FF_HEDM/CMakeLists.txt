@@ -666,6 +666,13 @@ function(add_midas_executable TARGET_NAME)
   install(TARGETS ${TARGET_NAME}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   )
+
+  # Also copy to FF_HEDM/bin in the source directory
+  add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/FF_HEDM/bin"
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${TARGET_NAME}> "${CMAKE_SOURCE_DIR}/FF_HEDM/bin/"
+    COMMENT "Copying ${TARGET_NAME} to ${CMAKE_SOURCE_DIR}/FF_HEDM/bin/"
+  )
 endfunction()
 
 # Now add all the executables
