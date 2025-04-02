@@ -4,7 +4,7 @@ on:
   push:
     branches: [ master ]  # Change this to match your default branch name (main, master, etc.)
   schedule:
-    - cron: '0 */1 * * *'  # Backup sync every 12 hours
+    - cron: '0 */12 * * *'  # Backup sync every 12 hours
 
 jobs:
   mirror:
