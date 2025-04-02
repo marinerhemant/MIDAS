@@ -1,0 +1,23 @@
+name: Mirror Repository
+
+on:
+  push:
+    branches: [ master ]  # Change this to match your default branch name (main, master, etc.)
+  schedule:
+    - cron: '0 */1 * * *'  # Backup sync every 12 hours
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Get all history, branches and tags
+      
+      - name: Push to organization repository
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          git remote add organization https://${{ secrets.PAT_TOKEN }}@github.com/AdvancedPhotonSource/MIDAS.git
+          git push organization --mirror
