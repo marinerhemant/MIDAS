@@ -64,7 +64,13 @@ def change_directory(new_dir: str) -> None:
         
     Yields:
         None
+        
+    Raises:
+        FileNotFoundError: If the directory doesn't exist
     """
+    if not os.path.exists(new_dir):
+        raise FileNotFoundError(f"Directory does not exist: {new_dir}")
+        
     old_dir = os.getcwd()
     try:
         os.chdir(new_dir)

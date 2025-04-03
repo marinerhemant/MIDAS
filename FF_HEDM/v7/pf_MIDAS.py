@@ -588,18 +588,9 @@ def binData(resultDir, num_scans, midas_path):
             # Build command
             cmd_this = f"{os.path.join(midas_path, 'FF_HEDM/bin/SaveBinDataScanning')} {num_scans}"
             logger.info(f"Running SaveBinDataScanning: {cmd_this}")
-            f_err.write(f"{cmd_this}\n")
-            
             # Log hostname for debugging
-            hostname = socket.gethostname()
-            f_err.write(f"{hostname}\n")
-            
-            # Run command
             subprocess.call(cmd_this, shell=True, stdout=f, stderr=f_err)
-            
-            # Verify completion
-            f_err.write(f"{cmd_this}\n")
-        
+       
         # Check for errors
         with open(f_err_path, 'r') as f_err:
             content = f_err.read()
