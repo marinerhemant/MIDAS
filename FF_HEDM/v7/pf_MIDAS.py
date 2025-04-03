@@ -44,7 +44,7 @@ logger = logging.getLogger("MIDAS")
 # Silence all Parsl loggers completely
 logging.getLogger("parsl").setLevel(logging.CRITICAL)  # Only show critical errors
 # Also silence these specific Parsl sub-loggers
-for logger_name in ["parsl.dataflow.dflow", "parsl.dataflow.memoization", "parsl.process_loggers"]:
+for logger_name in ["parsl.dataflow.dflow", "parsl.dataflow.memoization", "parsl.process_loggers", "parsl.jobs.strategy"]:
     logging.getLogger(logger_name).setLevel(logging.CRITICAL)
 
 def check_and_exit_on_errors(error_files):
