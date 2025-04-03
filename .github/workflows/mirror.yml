@@ -2,70 +2,50 @@ name: Mirror Repository
 
 on:
   push:
-    branches: [ master ]  # Change this to match your default branch name
+    branches: [ master ]  # Change this to match your default branch name (main, master, etc.)
   schedule:
     - cron: '0 */12 * * *'  # Backup sync every 12 hours
 
-
 jobs:
+  check_repository:
+    runs-on: ubuntu-latest
+    outputs:
+      is_mirror: ${{ steps.check.outputs.is_mirror }}
+    steps:
+      - name: Check if mirror repository
+        id: check
+        run: |
+          REPO_NAME="${GITHUB_REPOSITORY}"
+          if [[ "$REPO_NAME" == "AdvancedPhotonSource/MIDAS" ]]; then
+            echo "is_mirror=true" >> $GITHUB_OUTPUT
+            echo "This is the mirror repository. Skipping the mirror action."
+          else
+            echo "is_mirror=false" >> $GITHUB_OUTPUT
+            echo "This is the source repository. Proceeding with mirroring."
+          fi
+
   mirror:
+    needs: check_repository
+    if: needs.check_repository.outputs.is_mirror != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Get all history, branches and tags
-          lfs: true       # Enable Git LFS
+          fetch-depth: 0  # Get all history, branches and tags 
           
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
     
-      - name: Mirror and add workflow_dispatch
+      - name: Push to organization repository
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
-          
-          # Set up SSH config
+          # Making sure we disable strict host key checking
           mkdir -p ~/.ssh
           echo "Host github.com" > ~/.ssh/config
           echo "  StrictHostKeyChecking no" >> ~/.ssh/config
-          
-          # Add and push to mirror
           git remote add organization git@github.com:AdvancedPhotonSource/MIDAS.git
           git push organization --mirror
-          
-          # Now create a workflow_dispatch.yml in the mirror repo to disable actions
-          TEMP_DIR=$(mktemp -d)
-          cd $TEMP_DIR
-          git clone git@github.com:AdvancedPhotonSource/MIDAS.git mirror-repo
-          cd mirror-repo
-          
-          # Create directory if it doesn't exist
-          mkdir -p .github
-          
-          # Create a workflow_dispatch.yml that disables all workflows
-          echo 'name: Disable Workflows' > .github/workflow_dispatch.yml
-          echo 'on: workflow_dispatch' >> .github/workflow_dispatch.yml
-          echo 'jobs:' >> .github/workflow_dispatch.yml
-          echo '  disable:' >> .github/workflow_dispatch.yml
-          echo '    runs-on: ubuntu-latest' >> .github/workflow_dispatch.yml
-          echo '    steps:' >> .github/workflow_dispatch.yml
-          echo '      - run: echo "This repository is a mirror. No actions should run here."' >> .github/workflow_dispatch.yml
-          
-          # Also disable the mirror.yml action specifically
-          # Create directory if it doesn't exist
-          mkdir -p .github/workflows
-          echo 'name: Disabled Mirror Action' > .github/workflows/mirror.yml
-          echo 'on: workflow_dispatch' >> .github/workflows/mirror.yml
-          echo 'jobs:' >> .github/workflows/mirror.yml
-          echo '  disable:' >> .github/workflows/mirror.yml
-          echo '    runs-on: ubuntu-latest' >> .github/workflows/mirror.yml
-          echo '    steps:' >> .github/workflows/mirror.yml
-          echo '      - run: echo "This is a mirror repository. Mirroring is disabled."' >> .github/workflows/mirror.yml
-          
-          # Commit and push
-          git add .github/
-          git commit -m "Disable workflows in mirror repository" || echo "No changes to commit"
-          git push
