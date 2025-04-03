@@ -21,7 +21,7 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
     
-      - name: Push to mirror and clean workflows
+      - name: Mirror and add workflow_dispatch
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
@@ -31,30 +31,40 @@ jobs:
           echo "Host github.com" > ~/.ssh/config
           echo "  StrictHostKeyChecking no" >> ~/.ssh/config
           
-          # Step 1: Push to mirror repository
+          # Add and push to mirror
           git remote add organization git@github.com:AdvancedPhotonSource/MIDAS.git
           git push organization --mirror
           
-          # Step 2: Delete workflow files from mirror repo
-          # Create a temporary directory
+          # Now create a workflow_dispatch.yml in the mirror repo to disable actions
           TEMP_DIR=$(mktemp -d)
           cd $TEMP_DIR
+          git clone git@github.com:AdvancedPhotonSource/MIDAS.git mirror-repo
+          cd mirror-repo
           
-          # Clone just the target branch from the mirror
-          git clone --depth 1 git@github.com:AdvancedPhotonSource/MIDAS.git mirror-clone
-          cd mirror-clone
+          # Create directory if it doesn't exist
+          mkdir -p .github
           
-          # Check if workflows directory exists before trying to remove it
-          if [ -d ".github/workflows" ]; then
-            # Remove workflow files
-            rm -rf .github/workflows
-            
-            # Commit and push the change
-            git config user.name "GitHub Actions Bot"
-            git config user.email "actions@github.com"
-            git add -A
-            git commit -m "Remove workflow files from mirror repository"
-            git push
-          else
-            echo "No workflow files found to remove"
-          fi
+          # Create a workflow_dispatch.yml that disables all workflows
+          echo 'name: Disable Workflows' > .github/workflow_dispatch.yml
+          echo 'on: workflow_dispatch' >> .github/workflow_dispatch.yml
+          echo 'jobs:' >> .github/workflow_dispatch.yml
+          echo '  disable:' >> .github/workflow_dispatch.yml
+          echo '    runs-on: ubuntu-latest' >> .github/workflow_dispatch.yml
+          echo '    steps:' >> .github/workflow_dispatch.yml
+          echo '      - run: echo "This repository is a mirror. No actions should run here."' >> .github/workflow_dispatch.yml
+          
+          # Also disable the mirror.yml action specifically
+          # Create directory if it doesn't exist
+          mkdir -p .github/workflows
+          echo 'name: Disabled Mirror Action' > .github/workflows/mirror.yml
+          echo 'on: workflow_dispatch' >> .github/workflows/mirror.yml
+          echo 'jobs:' >> .github/workflows/mirror.yml
+          echo '  disable:' >> .github/workflows/mirror.yml
+          echo '    runs-on: ubuntu-latest' >> .github/workflows/mirror.yml
+          echo '    steps:' >> .github/workflows/mirror.yml
+          echo '      - run: echo "This is a mirror repository. Mirroring is disabled."' >> .github/workflows/mirror.yml
+          
+          # Commit and push
+          git add .github/
+          git commit -m "Disable workflows in mirror repository" || echo "No changes to commit"
+          git push
