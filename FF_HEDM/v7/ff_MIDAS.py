@@ -19,6 +19,11 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger('MIDAS')
+# Silence all Parsl loggers completely
+logging.getLogger("parsl").setLevel(logging.CRITICAL)  # Only show critical errors
+# Also silence these specific Parsl sub-loggers
+for logger_name in ["parsl.dataflow.dflow", "parsl.dataflow.memoization", "parsl.process_loggers", "parsl.jobs.strategy"]:
+    logging.getLogger(logger_name).setLevel(logging.CRITICAL)
 
 # Set paths dynamically using script location
 def get_installation_dir():
