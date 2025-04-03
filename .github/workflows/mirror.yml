@@ -28,5 +28,10 @@ jobs:
           mkdir -p ~/.ssh
           echo "Host github.com" > ~/.ssh/config
           echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+          # Clone a fresh copy without .github directory
+          git clone --mirror . temp_mirror
+          cd temp_mirror
+          # Remove workflow files from the mirror before pushing
+          git filter-branch --prune-empty --tree-filter 'rm -rf .github/workflows' HEAD
           git remote add organization git@github.com:AdvancedPhotonSource/MIDAS.git
           git push organization --mirror
