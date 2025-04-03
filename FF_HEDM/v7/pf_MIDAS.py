@@ -24,8 +24,8 @@ import traceback
 def get_installation_dir():
     """Get the installation directory from the script's location."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    # We assume the script is in the root of the MIDAS installation
-    install_dir = script_dir
+    # Go up two levels to get to the installation directory
+    install_dir = os.path.abspath(os.path.join(script_dir, '..', '..'))
     return install_dir
 
 # Suppress warnings
@@ -905,6 +905,7 @@ def main():
     v7_dir = os.path.join(midas_path, 'FF_HEDM/v7')
     sys.path.insert(0, utils_dir)
     sys.path.insert(0, v7_dir)
+    print
     
     # Import from MIDAS libraries
     try:
