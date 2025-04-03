@@ -31,14 +31,16 @@ jobs:
           echo "Host github.com" > ~/.ssh/config
           echo "  StrictHostKeyChecking no" >> ~/.ssh/config
           
-          # Add remote
-          git remote add organization git@github.com:AdvancedPhotonSource/MIDAS.git
+          # Clone mirror repository
+          git clone --mirror git@github.com:AdvancedPhotonSource/MIDAS.git mirror-repo
+          cd mirror-repo
           
-          # Create a .gitattributes file to ignore .github/workflows directory during push
-          echo ".github/workflows/** export-ignore" > .gitattributes
-          git add .gitattributes
-          git commit -m "Add .gitattributes to ignore workflows during push"
+          # Fetch from source repository
+          git fetch --all --tags --prune --prune-tags --force "file://$GITHUB_WORKSPACE"
           
-          # Push everything to the mirror repository
-          git push organization --all --force
-          git push organization --tags
+          # Reset .github/workflows directory
+          # This will delete the workflows directory in the mirror repo
+          git update-ref -d refs/heads/master:.github/workflows
+          
+          # Push to mirror repository excluding workflows
+          git push --mirror
