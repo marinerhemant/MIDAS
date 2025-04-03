@@ -21,7 +21,7 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
     
-      - name: Push to organization repository with workflow exclusion
+      - name: Push to organization repository excluding workflows
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
@@ -34,18 +34,11 @@ jobs:
           # Add remote
           git remote add organization git@github.com:AdvancedPhotonSource/MIDAS.git
           
-          # Push all branches and tags, but exclude workflows directory
-          git push organization 'refs/heads/*:refs/heads/*' 'refs/tags/*:refs/tags/*'
+          # Create a .gitattributes file to ignore .github/workflows directory during push
+          echo ".github/workflows/** export-ignore" > .gitattributes
+          git add .gitattributes
+          git commit -m "Add .gitattributes to ignore workflows during push"
           
-          # Clone workflows directory and create an empty commit to push to the .github/workflows directory
-          # This effectively removes workflows in the mirror
-          mkdir -p empty_dir/.github/
-          cd empty_dir
-          git init
-          git config --local user.name "GitHub Actions Bot"
-          git config --local user.email "actions@github.com"
-          git remote add origin git@github.com:AdvancedPhotonSource/MIDAS.git
-          git checkout --orphan empty-branch
-          git commit --allow-empty -m "Empty .github/workflows directory"
-          # Push an empty tree to the .github/workflows directory
-          git push origin empty-branch:refs/heads/master:.github/workflows --force
+          # Push everything to the mirror repository
+          git push organization --all --force
+          git push organization --tags
