@@ -21,26 +21,40 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
     
-      - name: Push to organization repository excluding workflows
+      - name: Push to mirror and clean workflows
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
           
-          # Making sure we disable strict host key checking
+          # Set up SSH config
           mkdir -p ~/.ssh
           echo "Host github.com" > ~/.ssh/config
           echo "  StrictHostKeyChecking no" >> ~/.ssh/config
           
-          # Clone mirror repository
-          git clone --mirror git@github.com:AdvancedPhotonSource/MIDAS.git mirror-repo
-          cd mirror-repo
+          # Step 1: Push to mirror repository
+          git remote add organization git@github.com:AdvancedPhotonSource/MIDAS.git
+          git push organization --mirror
           
-          # Fetch from source repository
-          git fetch --all --tags --prune --prune-tags --force "file://$GITHUB_WORKSPACE"
+          # Step 2: Delete workflow files from mirror repo
+          # Create a temporary directory
+          TEMP_DIR=$(mktemp -d)
+          cd $TEMP_DIR
           
-          # Reset .github/workflows directory
-          # This will delete the workflows directory in the mirror repo
-          git update-ref -d refs/heads/master:.github/workflows
+          # Clone just the target branch from the mirror
+          git clone --depth 1 git@github.com:AdvancedPhotonSource/MIDAS.git mirror-clone
+          cd mirror-clone
           
-          # Push to mirror repository excluding workflows
-          git push --mirror
+          # Check if workflows directory exists before trying to remove it
+          if [ -d ".github/workflows" ]; then
+            # Remove workflow files
+            rm -rf .github/workflows
+            
+            # Commit and push the change
+            git config user.name "GitHub Actions Bot"
+            git config user.email "actions@github.com"
+            git add -A
+            git commit -m "Remove workflow files from mirror repository"
+            git push
+          else
+            echo "No workflow files found to remove"
+          fi
