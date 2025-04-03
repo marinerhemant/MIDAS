@@ -798,6 +798,7 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
         ext = '.' + '.'.join(inp_file_name.split('_')[-1].split('.')[1:])
         filestem = '_'.join(inp_file_name.split('_')[:-1])
         file_nr = int(inp_file_name.split('_')[-1].split('.')[0])
+        layer_nr = file_nr
         padding = len(inp_file_name.split('_')[-1].split('.')[0])
         inp_fstm = inp_file_name.split('.')[0]
         output_dir_stem = f'analysis_{inp_fstm}'
