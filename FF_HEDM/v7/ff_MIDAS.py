@@ -715,7 +715,7 @@ def check_bin_files_ownership():
     
     return True
 
-def load_machine_config(machine_name: str, n_nodes: int) -> Tuple[int, int]:
+def load_machine_config(machine_name: str, n_nodes: int, num_procs: int) -> Tuple[int, int]:
     """Load machine configuration and set up Parsl.
     
     Args:
@@ -731,7 +731,7 @@ def load_machine_config(machine_name: str, n_nodes: int) -> Tuple[int, int]:
     if machine_name == 'local':
         import localConfig
         parsl.load(config=localConfig.localConfig)
-        return 10, 1  # Default for local
+        return num_procs, 1  # Default for local
     elif machine_name == 'orthrosnew':
         import orthrosAllConfig
         parsl.load(config=orthrosAllConfig.orthrosNewConfig)
@@ -1231,7 +1231,7 @@ def main():
     
     # Load configuration based on machine name
     try:
-        num_procs, n_nodes = load_machine_config(machine_name, n_nodes)
+        num_procs, n_nodes = load_machine_config(machine_name, n_nodes, num_procs)
     except Exception as e:
         logger.error(f"Failed to load configuration: {e}")
         sys.exit(1)
