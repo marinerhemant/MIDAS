@@ -41,6 +41,7 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("MIDAS")
+logging.getLogger("parsl").setLevel(logging.WARNING)
 
 def check_and_exit_on_errors(error_files):
     """
