@@ -2,9 +2,9 @@ name: Mirror Repository
 
 on:
   push:
-    branches: [ master ]  # Change this to match your default branch name (main, master, etc.)
+    branches: [ main ]  # Branch to trigger on
   schedule:
-    - cron: '0 */12 * * *'  # Backup sync every 12 hours
+    - cron: '0 */12 * * *'  # Also run every 12 hours
 
 jobs:
   mirror:
@@ -13,20 +13,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Get all history, branches and tags 
-          
+          fetch-depth: 0
+      
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-    
+      
       - name: Push to organization repository
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
-          # Making sure we disable strict host key checking
-          mkdir -p ~/.ssh
-          echo "Host github.com" > ~/.ssh/config
-          echo "  StrictHostKeyChecking no" >> ~/.ssh/config
-          git remote add organization git@github.com:AdvancedPhotonSource/MIDAS.git
-          git push organization --mirror
+          
+          # Clone the target repository
+          git clone git@github.com:AdvancedPhotonSource/MIDAS.git org_repo_clone
+          
+          # Copy all files except .github directory
+          rsync -av --exclude='.git' --exclude='.github' ./ org_repo_clone/
+          
+          # Commit and push changes
+          cd org_repo_clone
+          git add --all
+          git commit -m "Mirror update from source repository" || echo "No changes to commit"
+          git push
