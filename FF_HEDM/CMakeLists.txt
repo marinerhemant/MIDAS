@@ -914,6 +914,11 @@ add_midas_executable(findSingleSolutionPF
   OMP
 )
 
+add_midas_executable(findSingleSolutionPFRefactored
+  SOURCES src/findSingleSolutionPFRefactored.c src/GetMisorientation.c
+  OMP
+)
+
 add_midas_executable(findMultipleSolutionsPF
   SOURCES src/findMultipleSolutionsPF.c src/GetMisorientation.c
   OMP
@@ -989,6 +994,7 @@ add_custom_target(midas_executables DEPENDS
     ConvTiffToGE
     MapBND
     findSingleSolutionPF
+    findSingleSolutionPFRefactored
     findMultipleSolutionsPF
     mergeScansScanning
 )
