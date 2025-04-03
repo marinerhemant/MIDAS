@@ -11,7 +11,7 @@ import shutil
 import re
 import logging
 import numpy as np
-from typing import Optional, Dict, List, Tuple, Any, Union
+from typing import Optional, Dict, List, Tuple, Any, Union, Generator
 from functools import lru_cache
 from contextlib import contextmanager
 
@@ -56,7 +56,7 @@ from parsl.app.app import python_app
 pytpath = sys.executable
 
 @contextmanager
-def change_directory(new_dir: str) -> None:
+def change_directory(new_dir: str) -> Generator[None, None, None]:
     """Context manager for changing directory.
     
     Args:
@@ -76,7 +76,15 @@ def change_directory(new_dir: str) -> None:
         os.chdir(new_dir)
         yield
     finally:
-        os.chdir(old_dir)
+        try:
+            os.chdir(old_dir)
+        except Exception as e:
+            logger.error(f"Failed to change back to original directory {old_dir}: {e}")
+            # Try to change to home directory as fallback
+            try:
+                os.chdir(os.path.expanduser("~"))
+            except:
+                pass
 
 @contextmanager
 def cleanup_context():
