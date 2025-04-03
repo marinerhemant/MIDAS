@@ -26,7 +26,8 @@ logger = logging.getLogger('MIDAS')
 logging.getLogger("parsl").setLevel(logging.CRITICAL)  # Only show critical errors
 # Also silence these specific Parsl sub-loggers
 for logger_name in ["parsl.dataflow.dflow", "parsl.dataflow.memoization", 
-                    "parsl.process_loggers", "parsl.jobs.strategy"]:
+                    "parsl.process_loggers", "parsl.jobs.strategy",
+                    "parsl.executors.threads"]:
     logging.getLogger(logger_name).setLevel(logging.CRITICAL)
 
 # Set paths dynamically using script location
