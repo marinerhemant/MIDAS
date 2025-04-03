@@ -1002,8 +1002,38 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
             safely_run_command(cmd, result_dir, f_grains_out, f_grains_err, task_name="Grain processing")
         except Exception as e:
             raise RuntimeError(f"Failed to process grains: {e}")
+        get_grains_info(result_dir)
             
         logger.info(f"Done Layer {layer_nr}. Total time elapsed: {time.time() - t0}")
+
+def get_grains_info(result_dir: str) -> None:
+    """Read and print the first line of the Grains.csv file.
+    
+    Args:
+        result_dir: Result directory containing the Grains.csv file
+    """
+    grains_file = os.path.join(result_dir, "Grains.csv")
+    
+    logger.info(f"Attempting to read Grains.csv from {result_dir}")
+    
+    if not os.path.exists(grains_file):
+        logger.warning(f"No Grains.csv file could be read from {result_dir}")
+        print(f"No Grains.csv file could be read from {result_dir}")
+        return
+    
+    try:
+        with open(grains_file, 'r') as f:
+            first_line = f.readline().strip()
+            
+        if first_line:
+            logger.info(f"First line of Grains.csv: {first_line}")
+            print(f"First line of Grains.csv: {first_line}")
+        else:
+            logger.warning(f"Grains.csv exists but is empty in {result_dir}")
+            print(f"Grains.csv exists but is empty in {result_dir}")
+    except Exception as e:
+        logger.error(f"Error reading Grains.csv: {e}")
+        print(f"Error reading Grains.csv: {e}")
 
 def process_inputall_data(result_dir: str, top_res_dir: str, ps_fn: str) -> None:
     """Process InputAll data.
