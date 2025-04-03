@@ -46,7 +46,7 @@ def get_installation_dir() -> str:
 install_dir = get_installation_dir()
 utils_dir = os.path.join(install_dir, "utils")
 v7_dir = os.path.join(install_dir, "FF_HEDM/v7")
-bin_dir = os.path.join(v7_dir, "bin")
+bin_dir = os.path.join(install_dir, "FF_HEDM/bin")
 
 # Add paths to sys.path
 sys.path.insert(0, utils_dir)
