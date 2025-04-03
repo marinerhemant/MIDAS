@@ -2,7 +2,7 @@ name: Mirror Repository
 
 on:
   push:
-    branches: [ master ]  # Change this to match your default branch name (main, master, etc.)
+    branches: [ master ]  # Change this to match your default branch name
   schedule:
     - cron: '0 */12 * * *'  # Backup sync every 12 hours
 
@@ -13,25 +13,39 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Get all history, branches and tags 
+          fetch-depth: 0  # Get all history, branches and tags
+          lfs: true       # Enable Git LFS
           
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.7.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
     
-      - name: Push to organization repository
+      - name: Push to organization repository with workflow exclusion
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
+          
           # Making sure we disable strict host key checking
           mkdir -p ~/.ssh
           echo "Host github.com" > ~/.ssh/config
           echo "  StrictHostKeyChecking no" >> ~/.ssh/config
-          # Clone a fresh copy without .github directory
-          git clone --mirror . temp_mirror
-          cd temp_mirror
-          # Remove workflow files from the mirror before pushing
-          git filter-branch --prune-empty --tree-filter 'rm -rf .github/workflows' HEAD
+          
+          # Add remote
           git remote add organization git@github.com:AdvancedPhotonSource/MIDAS.git
-          git push organization --mirror
+          
+          # Push all branches and tags, but exclude workflows directory
+          git push organization 'refs/heads/*:refs/heads/*' 'refs/tags/*:refs/tags/*'
+          
+          # Clone workflows directory and create an empty commit to push to the .github/workflows directory
+          # This effectively removes workflows in the mirror
+          mkdir -p empty_dir/.github/
+          cd empty_dir
+          git init
+          git config --local user.name "GitHub Actions Bot"
+          git config --local user.email "actions@github.com"
+          git remote add origin git@github.com:AdvancedPhotonSource/MIDAS.git
+          git checkout --orphan empty-branch
+          git commit --allow-empty -m "Empty .github/workflows directory"
+          # Push an empty tree to the .github/workflows directory
+          git push origin empty-branch:refs/heads/master:.github/workflows --force
