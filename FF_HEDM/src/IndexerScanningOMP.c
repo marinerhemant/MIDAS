@@ -1526,7 +1526,7 @@ main(int argc, char *argv[])
 	int RingToIndex = Params.RingToIndex;
 	size_t startRowNrSp=MAX_N_SPOTS, endRowNrSp=0;
 	for (i=0;i<n_spots;i++){
-		printf("%d\n",(int)ObsSpotsLab[i*10+5]);
+		// printf("%d\n",(int)ObsSpotsLab[i*10+5]);
 		// TODO::::::: ADD A RANGE OF OMEGA FILTERING
 		if ((int)ObsSpotsLab[i*10+5] == RingToIndex && startRowNrSp > i) startRowNrSp = i;
 		if ((int)ObsSpotsLab[i*10+5] == RingToIndex && endRowNrSp < i) endRowNrSp = i;
