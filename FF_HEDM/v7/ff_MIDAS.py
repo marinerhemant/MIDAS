@@ -2,7 +2,8 @@
 
 import parsl
 import subprocess
-import sys, os
+import sys
+import os
 import time
 import argparse
 import signal
@@ -11,6 +12,8 @@ import re
 import logging
 import numpy as np
 from typing import Optional, Dict, List, Tuple, Any, Union
+from functools import lru_cache
+from contextlib import contextmanager
 
 # Setup logging
 logging.basicConfig(
@@ -22,15 +25,20 @@ logger = logging.getLogger('MIDAS')
 # Silence all Parsl loggers completely
 logging.getLogger("parsl").setLevel(logging.CRITICAL)  # Only show critical errors
 # Also silence these specific Parsl sub-loggers
-for logger_name in ["parsl.dataflow.dflow", "parsl.dataflow.memoization", "parsl.process_loggers", "parsl.jobs.strategy"]:
+for logger_name in ["parsl.dataflow.dflow", "parsl.dataflow.memoization", 
+                    "parsl.process_loggers", "parsl.jobs.strategy"]:
     logging.getLogger(logger_name).setLevel(logging.CRITICAL)
 
 # Set paths dynamically using script location
-def get_installation_dir():
-    """Get the installation directory from the script's location."""
-    # This script is in install_dir/FF_HEDM/v7
+@lru_cache(maxsize=1)
+def get_installation_dir() -> str:
+    """Get the installation directory from the script's location.
+    Cached for performance.
+    
+    Returns:
+        Installation directory path
+    """
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    # Go up two levels to get to the installation directory
     install_dir = os.path.abspath(os.path.join(script_dir, '..', '..'))
     return install_dir
 
@@ -38,7 +46,7 @@ def get_installation_dir():
 install_dir = get_installation_dir()
 utils_dir = os.path.join(install_dir, "utils")
 v7_dir = os.path.join(install_dir, "FF_HEDM/v7")
-bin_dir = os.path.join(install_dir, "bin")
+bin_dir = os.path.join(v7_dir, "bin")
 
 # Add paths to sys.path
 sys.path.insert(0, utils_dir)
@@ -47,43 +55,86 @@ sys.path.insert(0, v7_dir)
 from parsl.app.app import python_app
 pytpath = sys.executable
 
-def run_command(cmd: str, working_dir: str, out_file: str, err_file: str) -> int:
-    """Run a shell command and check for errors.
+@contextmanager
+def change_directory(new_dir: str) -> None:
+    """Context manager for changing directory.
+    
+    Args:
+        new_dir: Directory to change to
+        
+    Yields:
+        None
+    """
+    old_dir = os.getcwd()
+    try:
+        os.chdir(new_dir)
+        yield
+    finally:
+        os.chdir(old_dir)
+
+@contextmanager
+def cleanup_context():
+    """Context manager for cleanup on exit."""
+    try:
+        yield
+    finally:
+        # Clean up shared memory
+        try:
+            subprocess.call("rm -rf /dev/shm/*.bin", shell=True)
+        except Exception as e:
+            logger.error(f"Failed to clean up shared memory: {e}")
+        
+        # Clean up Parsl
+        try:
+            parsl.dfk().cleanup()
+        except Exception as e:
+            logger.error(f"Failed to clean up Parsl: {e}")
+
+def safely_run_command(cmd: str, working_dir: str, out_file: str, err_file: str, 
+                       task_name: str = "Command") -> int:
+    """Run a shell command with improved error handling.
     
     Args:
         cmd: Command to run
         working_dir: Directory to run command in
         out_file: Path to save stdout
         err_file: Path to save stderr
+        task_name: Description of the task for error messages
         
     Returns:
         Return code from the command
     
     Raises:
-        RuntimeError: If command fails
+        RuntimeError: If command fails with error details
     """
     logger.info(f"Running: {cmd}")
     
-    with open(out_file, 'w') as f_out, open(err_file, 'w') as f_err:
-        process = subprocess.Popen(
-            cmd, 
-            shell=True, 
-            stdout=f_out, 
-            stderr=f_err, 
-            cwd=working_dir,
-            env=get_midas_env()
-        )
-        returncode = process.wait()
-        
-    # Check if command failed
-    if returncode != 0:
-        with open(err_file, 'r') as f:
-            error_content = f.read()
-        error_msg = f"Command failed with return code {returncode}:\n{cmd}\nError output:\n{error_content}"
-        logger.error(error_msg)
-        raise RuntimeError(error_msg)
-        
-    return returncode
+    try:
+        with open(out_file, 'w') as f_out, open(err_file, 'w') as f_err:
+            process = subprocess.Popen(
+                cmd, 
+                shell=True, 
+                stdout=f_out, 
+                stderr=f_err, 
+                cwd=working_dir,
+                env=get_midas_env()
+            )
+            returncode = process.wait()
+            
+        # Check if command failed
+        if returncode != 0:
+            with open(err_file, 'r') as f:
+                error_content = f.read()
+            error_msg = f"{task_name} failed with return code {returncode}:\n{cmd}\nError output:\n{error_content}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+            
+        return returncode
+    except Exception as e:
+        if not isinstance(e, RuntimeError):
+            logger.error(f"Exception during {task_name}: {e}")
+            raise RuntimeError(f"{task_name} failed: {str(e)}")
+        raise
 
 def get_midas_env() -> Dict[str, str]:
     """Get the environment variables for MIDAS."""
@@ -94,6 +145,187 @@ def get_midas_env() -> Dict[str, str]:
         env['MIDAS_INSTALL_DIR'] = get_installation_dir()
     
     return env
+
+def read_parameter_file(psFN: str) -> Dict[str, str]:
+    """Read parameters from file into a dictionary.
+    
+    Args:
+        psFN: Parameter file name
+        
+    Returns:
+        Dictionary of parameters
+        
+    Raises:
+        FileNotFoundError: If parameter file doesn't exist
+    """
+    if not os.path.exists(psFN):
+        raise FileNotFoundError(f"Parameter file not found: {psFN}")
+        
+    params = {}
+    with open(psFN, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+                
+            parts = line.split(' ', 1)
+            if len(parts) == 2:
+                params[parts[0]] = parts[1].strip()
+                
+    return params
+
+def update_parameter_file(psFN: str, updates: Dict[str, str]) -> None:
+    """Update parameter file with new values. More robust implementation.
+    
+    Args:
+        psFN: Parameter file name
+        updates: Dictionary of parameter names and values to update
+        
+    Raises:
+        FileNotFoundError: If parameter file doesn't exist
+    """
+    if not os.path.exists(psFN):
+        raise FileNotFoundError(f"Parameter file not found: {psFN}")
+        
+    # Read current content
+    with open(psFN, 'r') as f:
+        lines = f.readlines()
+        
+    # Track parameters that have been updated
+    updated_params = set()
+    
+    # Update existing parameters
+    with open(psFN, 'w') as f:
+        for line in lines:
+            line_stripped = line.strip()
+            if not line_stripped or line_stripped.startswith('#'):
+                f.write(line)
+                continue
+                
+            parts = line_stripped.split(' ', 1)
+            if len(parts) == 2 and parts[0] in updates:
+                f.write(f"{parts[0]} {updates[parts[0]]}\n")
+                updated_params.add(parts[0])
+            else:
+                f.write(line)
+                
+        # Add parameters that weren't in the file
+        for param, value in updates.items():
+            if param not in updated_params:
+                f.write(f"{param} {value}\n")
+
+def parse_float_param(param_dict: Dict[str, str], name: str, default: float = 0.0) -> float:
+    """Parse a float parameter from the parameter dictionary.
+    
+    Args:
+        param_dict: Parameter dictionary
+        name: Parameter name
+        default: Default value
+        
+    Returns:
+        Parsed float value
+    """
+    if name not in param_dict:
+        return default
+        
+    try:
+        return float(param_dict[name])
+    except ValueError:
+        logger.warning(f"Invalid float value for {name}: {param_dict[name]}, using default {default}")
+        return default
+
+def parse_int_param(param_dict: Dict[str, str], name: str, default: int = 0) -> int:
+    """Parse an integer parameter from the parameter dictionary.
+    
+    Args:
+        param_dict: Parameter dictionary
+        name: Parameter name
+        default: Default value
+        
+    Returns:
+        Parsed integer value
+    """
+    if name not in param_dict:
+        return default
+        
+    try:
+        return int(param_dict[name])
+    except ValueError:
+        logger.warning(f"Invalid integer value for {name}: {param_dict[name]}, using default {default}")
+        return default
+
+def validate_paths(paths: List[str]) -> bool:
+    """Validate that all paths exist.
+    
+    Args:
+        paths: List of paths to validate
+        
+    Returns:
+        True if all paths exist, False otherwise
+    """
+    for path in paths:
+        if not os.path.exists(path):
+            logger.error(f"Path does not exist: {path}")
+            return False
+    return True
+
+def validate_layer_range(start: int, end: int) -> bool:
+    """Validate layer range.
+    
+    Args:
+        start: Start layer number
+        end: End layer number
+        
+    Returns:
+        True if valid, False otherwise
+    """
+    if start < 1:
+        logger.error(f"Start layer number must be >= 1, got {start}")
+        return False
+        
+    if end < start:
+        logger.error(f"End layer number must be >= start layer number, got {end} < {start}")
+        return False
+        
+    return True
+
+class ProgressTracker:
+    """Track progress of a multi-step operation."""
+    
+    def __init__(self, total_steps: int, description: str = "Processing"):
+        """Initialize the progress tracker.
+        
+        Args:
+            total_steps: Total number of steps
+            description: Description of the operation
+        """
+        self.total_steps = total_steps
+        self.current_step = 0
+        self.description = description
+        self.start_time = time.time()
+        
+    def update(self, step: int = None, message: str = None):
+        """Update progress.
+        
+        Args:
+            step: Current step (increments by 1 if None)
+            message: Additional message to log
+        """
+        if step is not None:
+            self.current_step = step
+        else:
+            self.current_step += 1
+            
+        elapsed = time.time() - self.start_time
+        percent = (self.current_step / self.total_steps) * 100
+        
+        log_msg = f"{self.description}: {self.current_step}/{self.total_steps} ({percent:.1f}%), "
+        log_msg += f"elapsed: {elapsed:.1f}s"
+        
+        if message:
+            log_msg += f" - {message}"
+            
+        logger.info(log_msg)
 
 def generateZip(
     resFol: str,
@@ -137,7 +369,7 @@ def generateZip(
     errf_path = f"{resFol}/output/{errf}"
     
     try:
-        run_command(cmd, resFol, outf_path, errf_path)
+        safely_run_command(cmd, resFol, outf_path, errf_path, task_name="ZIP generation")
         
         with open(outf_path, 'r') as f:
             lines = f.readlines()
@@ -151,9 +383,49 @@ def generateZip(
         logger.error(f"Failed to generate ZIP: {e}")
         return None
 
-@python_app
-def peaks(resultDir: str, zipFN: str, numProcs: int, bin_dir: str, blockNr: int = 0, numBlocks: int = 1) -> None:
-    """Run peak search.
+def create_app_with_retry(app_func):
+    """Decorator to create a Parsl app with retry logic.
+    
+    Args:
+        app_func: Function to decorate
+        
+    Returns:
+        Decorated function
+    """
+    @python_app
+    def wrapped_app(*args, **kwargs):
+        import logging
+        import time
+        import os
+        
+        # Setup logging
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        logger = logging.getLogger(f'MIDAS_{app_func.__name__}')
+        
+        max_retries = 3
+        retry_delay = 5  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                return app_func(*args, **kwargs, logger=logger)
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Attempt {attempt+1} failed: {str(e)}. Retrying in {retry_delay}s...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    logger.error(f"All {max_retries} attempts failed. Last error: {str(e)}")
+                    raise
+    
+    return wrapped_app
+
+def _peaks_impl(resultDir: str, zipFN: str, numProcs: int, bin_dir: str, blockNr: int = 0, 
+               numBlocks: int = 1, logger=None):
+    """Implementation of peak search function.
     
     Args:
         resultDir: Result directory
@@ -162,19 +434,15 @@ def peaks(resultDir: str, zipFN: str, numProcs: int, bin_dir: str, blockNr: int 
         bin_dir: Path to the bin directory
         blockNr: Block number
         numBlocks: Number of blocks
+        logger: Logger instance
     """
     import subprocess
     import os
     import sys
-    import logging
     
-    # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    logger = logging.getLogger('MIDAS_peaks')
+    if logger is None:
+        import logging
+        logger = logging.getLogger('MIDAS_peaks')
     
     # Make sure output directory exists
     os.makedirs(f'{resultDir}/output', exist_ok=True)
@@ -220,9 +488,12 @@ def peaks(resultDir: str, zipFN: str, numProcs: int, bin_dir: str, blockNr: int 
         
         logger.info(f"PeaksFittingOMPZarr completed successfully for block {blockNr}/{numBlocks}")
 
-@python_app
-def index(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0, numBlocks: int = 1) -> None:
-    """Run indexing.
+# Create retry-capable app
+peaks = create_app_with_retry(_peaks_impl)
+
+def _index_impl(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0, 
+               numBlocks: int = 1, logger=None):
+    """Implementation of indexing function.
     
     Args:
         resultDir: Result directory
@@ -230,19 +501,15 @@ def index(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0, numBloc
         bin_dir: Path to the bin directory
         blockNr: Block number
         numBlocks: Number of blocks
+        logger: Logger instance
     """
     import subprocess
     import os
     import sys
-    import logging
     
-    # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    logger = logging.getLogger('MIDAS_index')
+    if logger is None:
+        import logging
+        logger = logging.getLogger('MIDAS_index')
     
     # Ensure we're in the correct directory
     os.chdir(resultDir)
@@ -301,9 +568,12 @@ def index(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0, numBloc
         
         logger.info(f"IndexerOMP completed successfully for block {blockNr}/{numBlocks}")
 
-@python_app
-def refine(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0, numBlocks: int = 1) -> None:
-    """Run refinement.
+# Create retry-capable app
+index = create_app_with_retry(_index_impl)
+
+def _refine_impl(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0, 
+                numBlocks: int = 1, logger=None):
+    """Implementation of refinement function.
     
     Args:
         resultDir: Result directory
@@ -311,20 +581,16 @@ def refine(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0, numBlo
         bin_dir: Path to the bin directory
         blockNr: Block number
         numBlocks: Number of blocks
+        logger: Logger instance
     """
     import subprocess
     import os
     import sys
     import resource
-    import logging
     
-    # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    logger = logging.getLogger('MIDAS_refine')
+    if logger is None:
+        import logging
+        logger = logging.getLogger('MIDAS_refine')
     
     # Ensure we're in the correct directory
     os.chdir(resultDir)
@@ -386,6 +652,9 @@ def refine(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0, numBlo
         
         logger.info(f"FitPosOrStrainsOMP completed successfully for block {blockNr}/{numBlocks}")
 
+# Create retry-capable app
+refine = create_app_with_retry(_refine_impl)
+
 # Signal handler for cleanup
 default_handler = None
 
@@ -401,7 +670,6 @@ def handler(num, frame):
     finally:
         return default_handler(num, frame)
 
-
 class MyParser(argparse.ArgumentParser):
     """Custom argument parser with better error handling."""
     def error(self, message):
@@ -410,31 +678,12 @@ class MyParser(argparse.ArgumentParser):
         self.print_help()
         sys.exit(2)
 
-
-def update_parameter_file(psFN: str, updates: Dict[str, str]) -> None:
-    """Update parameter file with new values.
+def check_bin_files_ownership():
+    """Check for existing /dev/shm/*.bin files from other users.
     
-    Args:
-        psFN: Parameter file name
-        updates: Dictionary of parameter names and values to update
+    Returns:
+        True if safe to proceed, False otherwise
     """
-    try:
-        psContents = open(psFN, 'r').readlines()
-        with open(psFN, 'w') as psF:
-            for line in psContents:
-                parameter = line.strip().split(' ')[0] if ' ' in line else ''
-                if parameter in updates:
-                    psF.write(f"{parameter} {updates[parameter]}\n")
-                else:
-                    psF.write(line)
-    except Exception as e:
-        logger.error(f"Failed to update parameter file: {e}")
-        raise
-
-
-def main():
-    """Main function to process data."""
-    # Check for existing /dev/shm/*.bin files from other users
     try:
         # Get current user
         current_user = os.environ.get('USER', subprocess.check_output("whoami", shell=True).decode().strip())
@@ -454,9 +703,383 @@ def main():
                 logger.error("Detected /dev/shm/*.bin files created by another user.")
                 logger.error("These files may cause conflicts with the current process.")
                 logger.error("Please have the other user clean up their /dev/shm/*.bin files or restart the system.")
-                sys.exit(1)
+                return False
     except Exception as e:
         logger.warning(f"Could not check for existing bin files: {e}")
+    
+    return True
+
+def load_machine_config(machine_name: str, n_nodes: int) -> Tuple[int, int]:
+    """Load machine configuration and set up Parsl.
+    
+    Args:
+        machine_name: Name of the machine to use
+        n_nodes: Number of nodes to use
+        
+    Returns:
+        Tuple of (num_processors, num_nodes)
+        
+    Raises:
+        ValueError: If machine_name is unknown
+    """
+    if machine_name == 'local':
+        import localConfig
+        parsl.load(config=localConfig.localConfig)
+        return 10, 1  # Default for local
+    elif machine_name == 'orthrosnew':
+        import orthrosAllConfig
+        parsl.load(config=orthrosAllConfig.orthrosNewConfig)
+        return 32, 11
+    elif machine_name == 'orthrosall':
+        import orthrosAllConfig
+        parsl.load(config=orthrosAllConfig.orthrosAllConfig)
+        return 64, 5
+    elif machine_name == 'umich':
+        import uMichConfig
+        os.environ['nNodes'] = str(n_nodes)
+        parsl.load(config=uMichConfig.uMichConfig)
+        return 36, n_nodes
+    elif machine_name == 'marquette':
+        import marquetteConfig
+        os.environ['nNodes'] = str(n_nodes)
+        parsl.load(config=marquetteConfig.marquetteConfig)
+        return 36, n_nodes
+    elif machine_name == 'purdue':
+        import purdueConfig
+        os.environ['nNodes'] = str(n_nodes)
+        parsl.load(config=purdueConfig.purdueConfig)
+        return 128, n_nodes
+    else:
+        raise ValueError(f"Unknown machine name: {machine_name}")
+
+def setup_output_directories(result_dir: str) -> None:
+    """Set up output directories.
+    
+    Args:
+        result_dir: Result directory path
+    """
+    os.makedirs(result_dir, exist_ok=True)
+    os.makedirs(f"{result_dir}/output", exist_ok=True)
+    os.makedirs(f"{result_dir}/Temp", exist_ok=True)
+
+def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num_procs: int, 
+                 n_nodes: int, n_chunks: int, preproc: int, inp_file_name: str, 
+                 provide_input_all: int, convert_files: int, do_peak_search: int, 
+                 peak_search_only: int, bin_directory: str, grains_file: str = '') -> None:
+    """Process a single layer.
+    
+    Args:
+        layer_nr: Layer number
+        top_res_dir: Top result directory
+        ps_fn: Parameter file name
+        data_fn: Data file name
+        num_procs: Number of processors
+        n_nodes: Number of nodes
+        n_chunks: Number of frame chunks
+        preproc: Pre-processing threshold
+        inp_file_name: Input file name
+        provide_input_all: Whether to provide input all
+        convert_files: Whether to convert files
+        do_peak_search: Whether to do peak search
+        peak_search_only: Whether to do peak search only
+        bin_directory: Directory containing binaries
+        grains_file: Optional grains file
+    """
+    # Determine output directory name
+    if len(inp_file_name) <= 1:
+        output_dir_stem = f'LayerNr_{layer_nr}/'
+    else:
+        ext = '.' + '.'.join(inp_file_name.split('_')[-1].split('.')[1:])
+        filestem = '_'.join(inp_file_name.split('_')[:-1])
+        file_nr = int(inp_file_name.split('_')[-1].split('.')[0])
+        padding = len(inp_file_name.split('_')[-1].split('.')[0])
+        inp_fstm = inp_file_name.split('.')[0]
+        output_dir_stem = f'analysis_{inp_fstm}'
+        
+        # If param file exists, update parameters for specific input file
+        if os.path.exists(ps_fn):
+            updates = {
+                'Ext': ext,
+                'FileStem': filestem,
+                'StartFileNrFirstLayer': '1'
+            }
+            update_parameter_file(ps_fn, updates)
+
+    result_dir = f'{top_res_dir}/{output_dir_stem}'
+    logger.info(f"Processing Layer Nr: {layer_nr}, results will be saved in {result_dir}")
+    
+    # Set up directories and copy parameter file
+    setup_output_directories(result_dir)
+    if os.path.exists(ps_fn):
+        shutil.copy2(ps_fn, result_dir)
+    
+    t0 = time.time()
+    
+    # Process based on input type
+    outFStem = None
+    if provide_input_all == 0:
+        if convert_files == 1:
+            if len(data_fn) > 0:
+                logger.info("Generating combined MIDAS file from HDF and ps files.")
+            else:
+                logger.info("Generating combined MIDAS file from GE and ps files.")
+            outFStem = generateZip(result_dir, ps_fn, layer_nr, dfn=data_fn, nchunks=n_chunks, preproc=preproc)
+            if not outFStem:
+                raise RuntimeError("Failed to generate ZIP file")
+        else:
+            if len(data_fn) > 0:
+                outFStem = f'{result_dir}/{data_fn}'
+                if not os.path.exists(outFStem):
+                    shutil.copy2(data_fn, result_dir)
+            else:
+                # Extract file information from parameter file
+                params = read_parameter_file(ps_fn)
+                fStem = params.get('FileStem')
+                startFN = parse_int_param(params, 'StartFileNrFirstLayer')
+                NrFilesPerLayer = parse_int_param(params, 'NrFilesPerSweep')
+                
+                if not all([fStem, startFN is not None, NrFilesPerLayer is not None]):
+                    raise ValueError("Missing required parameters in parameter file")
+                    
+                thisFileNr = startFN + (layer_nr - 1) * NrFilesPerLayer
+                outFStem = f'{result_dir}/{fStem}_{str(thisFileNr).zfill(6)}.MIDAS.zip'
+                
+                if not os.path.exists(outFStem) and data_fn:
+                    shutil.copy2(data_fn, result_dir)
+                    
+            # Update zarr dataset
+            cmdUpd = f'{pytpath} {os.path.join(utils_dir, "updateZarrDset.py")} -fn {os.path.basename(outFStem)} -folder {result_dir} -keyToUpdate analysis/process/analysis_parameters/ResultFolder -updatedValue {result_dir}/'
+            logger.info(cmdUpd)
+            
+            try:
+                subprocess.check_call(cmdUpd, shell=True)
+            except subprocess.CalledProcessError as e:
+                raise RuntimeError(f"Failed to update zarr dataset: {e}")
+                
+        logger.info(f"Generating HKLs. Time till now: {time.time() - t0} seconds.")
+        
+        try:
+            f_hkls_out = f'{result_dir}/output/hkls_out.csv'
+            f_hkls_err = f'{result_dir}/output/hkls_err.csv'
+            cmd = f"{os.path.join(bin_directory, 'GetHKLListZarr')} {outFStem}"
+            safely_run_command(cmd, result_dir, f_hkls_out, f_hkls_err, task_name="HKL generation")
+        except Exception as e:
+            raise RuntimeError(f"Failed to generate HKLs: {e}")
+    else:
+        # Handle InputAll case
+        with change_directory(result_dir):
+            logger.info(f"Generating HKLs. Time till now: {time.time() - t0} seconds.")
+            
+            try:
+                f_hkls_out = f'{result_dir}/output/hkls_out.csv'
+                f_hkls_err = f'{result_dir}/output/hkls_err.csv'
+                cmd = f"{os.path.join(bin_directory, 'GetHKLList')} {ps_fn}"
+                safely_run_command(cmd, result_dir, f_hkls_out, f_hkls_err, task_name="HKL generation")
+            except Exception as e:
+                raise RuntimeError(f"Failed to generate HKLs: {e}")
+        
+        # Handle InputAll data - this part from the original function
+        process_inputall_data(result_dir, top_res_dir, ps_fn)
+                    
+    # Process peaks if required
+    if provide_input_all == 0:
+        if do_peak_search == 1:
+            logger.info(f"Doing PeakSearch. Time till now: {time.time() - t0} seconds.")
+            
+            try:
+                res = []
+                for nodeNr in range(n_nodes):
+                    res.append(peaks(result_dir, outFStem, num_procs, bin_directory, blockNr=nodeNr, numBlocks=n_nodes))
+                outputs = [i.result() for i in res]
+                logger.info(f"PeakSearch done. Time till now: {time.time() - t0}")
+            except Exception as e:
+                raise RuntimeError(f"Failed during peak search: {e}")
+        else:
+            logger.info("Peaksearch results were supplied. Skipping peak search.")
+            
+        if peak_search_only == 1:
+            return
+            
+        logger.info("Merging peaks.")
+        
+        try:
+            f_merge_out = f'{result_dir}/output/merge_overlaps_out.csv'
+            f_merge_err = f'{result_dir}/output/merge_overlaps_err.csv'
+            cmd = f"{os.path.join(bin_directory, 'MergeOverlappingPeaksAllZarr')} {outFStem}"
+            safely_run_command(cmd, result_dir, f_merge_out, f_merge_err, task_name="Peak merging")
+        except Exception as e:
+            raise RuntimeError(f"Failed to merge peaks: {e}")
+        
+        logger.info(f"Calculating Radii. Time till now: {time.time() - t0}")
+        
+        try:
+            f_radius_out = f'{result_dir}/output/calc_radius_out.csv'
+            f_radius_err = f'{result_dir}/output/calc_radius_err.csv'
+            cmd = f"{os.path.join(bin_directory, 'CalcRadiusAllZarr')} {outFStem}"
+            safely_run_command(cmd, result_dir, f_radius_out, f_radius_err, task_name="Radius calculation")
+        except Exception as e:
+            raise RuntimeError(f"Failed to calculate radii: {e}")
+        
+        logger.info(f"Transforming data. Time till now: {time.time() - t0}")
+        
+        try:
+            f_setup_out = f'{result_dir}/output/fit_setup_out.csv'
+            f_setup_err = f'{result_dir}/output/fit_setup_err.csv'
+            cmd = f"{os.path.join(bin_directory, 'FitSetupZarr')} {outFStem}"
+            safely_run_command(cmd, result_dir, f_setup_out, f_setup_err, task_name="Data transformation")
+        except Exception as e:
+            raise RuntimeError(f"Failed to transform data: {e}")
+
+    # Add grains file to parameters if needed
+    with change_directory(result_dir):
+        if grains_file:
+            try:
+                with open(f"{result_dir}/paramstest.txt", "a") as paramstestF:
+                    paramstestF.write(f"GrainsFile {grains_file}\n")
+            except Exception as e:
+                raise RuntimeError(f"Failed to add grainsFile parameter to paramstest.txt: {e}")
+
+        # Bin data
+        logger.info(f"Binning data. Time till now: {time.time() - t0}, workingdir: {result_dir}")
+        try:
+            f_bin_out = f'{result_dir}/output/binning_out.csv'
+            f_bin_err = f'{result_dir}/output/binning_err.csv'
+            cmd = f"{os.path.join(bin_directory, 'SaveBinData')}"
+            safely_run_command(cmd, result_dir, f_bin_out, f_bin_err, task_name="Data binning")
+        except Exception as e:
+            raise RuntimeError(f"Failed to bin data: {e}")
+            
+        # Run indexing
+        logger.info(f"Indexing. Time till now: {time.time() - t0}")
+        
+        try:
+            res_index = []
+            for nodeNr in range(n_nodes):
+                res_index.append(index(result_dir, num_procs, bin_directory, blockNr=nodeNr, numBlocks=n_nodes))
+            output_index = [i.result() for i in res_index]
+        except Exception as e:
+            raise RuntimeError(f"Failed during indexing: {e}")
+            
+        # Run refinement
+        logger.info(f"Refining. Time till now: {time.time() - t0}")
+        
+        try:
+            res_refine = []
+            for nodeNr in range(n_nodes):
+                res_refine.append(refine(result_dir, num_procs, bin_directory, blockNr=nodeNr, numBlocks=n_nodes))
+            output_refine = [i.result() for i in res_refine]
+        except Exception as e:
+            raise RuntimeError(f"Failed during refinement: {e}")
+            
+        # Clean up shared memory
+        try:
+            subprocess.call("rm -rf /dev/shm/*.bin", shell=True)
+        except Exception as e:
+            logger.warning(f"Failed to clean up shared memory: {e}")
+            
+        # Process grains
+        logger.info(f"Making grains list. Time till now: {time.time() - t0}")
+        
+        try:
+            f_grains_out = f'{result_dir}/output/process_grains_out.csv'
+            f_grains_err = f'{result_dir}/output/process_grains_err.csv'
+            
+            if provide_input_all == 0:
+                if grains_file:
+                    cmd = f"{os.path.join(bin_directory, 'ProcessGrainsZarr')} {outFStem} 1"
+                else:
+                    cmd = f"{os.path.join(bin_directory, 'ProcessGrainsZarr')} {outFStem}"
+            else:
+                cmd = f"{os.path.join(bin_directory, 'ProcessGrains')} {result_dir}/paramstest.txt"
+                
+            safely_run_command(cmd, result_dir, f_grains_out, f_grains_err, task_name="Grain processing")
+        except Exception as e:
+            raise RuntimeError(f"Failed to process grains: {e}")
+            
+        logger.info(f"Done Layer {layer_nr}. Total time elapsed: {time.time() - t0}")
+
+def process_inputall_data(result_dir: str, top_res_dir: str, ps_fn: str) -> None:
+    """Process InputAll data.
+    
+    Args:
+        result_dir: Result directory
+        top_res_dir: Top level result directory
+        ps_fn: Parameter file name
+    """
+    try:
+        os.chdir(result_dir)
+        shutil.copy2(f'{top_res_dir}/InputAllExtraInfoFittingAll.csv', f'{result_dir}/InputAll.csv')
+        shutil.copy2(f'{top_res_dir}/InputAllExtraInfoFittingAll.csv', f'{result_dir}/.')
+        
+        # Read parameter file to get rings to index
+        params = read_parameter_file(ps_fn)
+        ring2Index = parse_float_param(params, 'OverAllRingToIndex')
+        min2Index = parse_float_param(params, 'MinOmeSpotIDsToIndex')
+        max2Index = parse_float_param(params, 'MaxOmeSpotIDsToIndex')
+        
+        # Process spots
+        sps = np.genfromtxt(f'{result_dir}/InputAll.csv', skip_header=1)
+        sps_filt = sps[sps[:,5] == ring2Index,:]
+        
+        if len(sps_filt.shape) < 2:
+            raise ValueError("No IDs for indexing due to no spots for ring2index")
+            
+        sps_filt2 = sps_filt[sps_filt[:,2] >= min2Index,:]
+        
+        if len(sps_filt2.shape) < 2:
+            raise ValueError("No IDs for indexing due to no spots above minOmeSpotsToIndex")
+            
+        sps_filt3 = sps_filt2[sps_filt2[:,2] <= max2Index,:]
+        
+        if len(sps_filt3.shape) < 2:
+            raise ValueError("No IDs for indexing due to no spots below maxOmeSpotsToIndex")
+            
+        IDs = sps_filt3[:,4].astype(np.int32)
+        np.savetxt(f'{result_dir}/SpotsToIndex.csv', IDs, fmt="%d")
+        
+        # Copy and update paramstest.txt
+        shutil.copy2(f'{top_res_dir}/{ps_fn}', f'{result_dir}/paramstest.txt')                    
+        ringNrs = []
+        with open(f'{result_dir}/paramstest.txt', 'r') as f:
+            lines = f.readlines()
+        for line in lines:
+            if line.startswith('RingThresh '):
+                ringNrs.append(int(line.split(' ')[1]))
+        
+        # What we need extra: RingRadii and RingNumbers, first read hkls.csv
+        ringRads = np.zeros((len(ringNrs),2))
+        hkls = np.genfromtxt(f'{result_dir}/hkls.csv',skip_header=1)
+        unq, locs = np.unique(hkls[:,4],return_index=True)
+        for rN in range(len(ringNrs)):
+            ringNr = ringNrs[rN]
+            for tp in range(len(unq)):
+                if ringNr == int(unq[tp]):
+                    ringRads[rN] = np.array([ringNr,hkls[locs[tp],-1]])
+        
+        # Write updated parameter file
+        with open(f'{result_dir}/paramstest.txt', 'w') as paramstestF:
+            for nr in range(len(ringRads)):
+                paramstestF.write(f'RingRadii {ringRads[nr,1]}\n')
+                paramstestF.write(f'RingNumbers {int(ringRads[nr,0])}\n')
+            paramstestF.write(f'OutputFolder {result_dir}/Output\n')
+            paramstestF.write(f'ResultFolder {result_dir}/Results\n')
+            paramstestF.write('SpotsFileName InputAll.csv\n')
+            paramstestF.write('IDsFileName SpotsToIndex.csv\n')
+            paramstestF.write('RefinementFileName InputAllExtraInfoFittingAll.csv\n')
+            for line in lines:
+                paramstestF.write(line)
+                    
+        os.makedirs(f'{result_dir}/Output', exist_ok=True)
+        os.makedirs(f'{result_dir}/Results', exist_ok=True)
+    except Exception as e:
+        raise RuntimeError(f"Failed to process InputAll data: {e}")
+
+def main():
+    """Main function to process data."""
+    # Check for existing bin files from other users
+    if not check_bin_files_ownership():
+        sys.exit(1)
+        
     # Set up signal handler
     global default_handler
     default_handler = signal.getsignal(signal.SIGINT)
@@ -513,461 +1136,137 @@ def main():
     args, unparsed = parser.parse_known_args()
     
     # Set variables from arguments
-    resultDir = args.resultFolder
-    psFN = args.paramFN
-    dataFN = args.dataFN
-    numProcs = args.nCPUs
-    machineName = args.machineName
-    nNodes = args.nNodes
-    nchunks = args.numFrameChunks
+    result_dir = args.resultFolder
+    ps_fn = args.paramFN
+    data_fn = args.dataFN
+    num_procs = args.nCPUs
+    machine_name = args.machineName
+    n_nodes = args.nNodes
+    n_chunks = args.numFrameChunks
     preproc = args.preProcThresh
-    startLayerNr = args.startLayerNr
-    endLayerNr = args.endLayerNr
-    ConvertFiles = args.convertFiles
-    peakSearchOnly = args.peakSearchOnly
-    DoPeakSearch = args.doPeakSearch
-    rawDir = args.rawDir
-    inpFileName = args.fileName
-    ProvideInputAll = args.provideInputAll
+    start_layer_nr = args.startLayerNr
+    end_layer_nr = args.endLayerNr
+    convert_files = args.convertFiles
+    peak_search_only = args.peakSearchOnly
+    do_peak_search = args.doPeakSearch
+    raw_dir = args.rawDir
+    inp_file_name = args.fileName
+    provide_input_all = args.provideInputAll
+    grains_file = args.grainsFile
     
+    # Basic validation
+    if not validate_layer_range(start_layer_nr, end_layer_nr):
+        sys.exit(1)
+        
     # Handle input file name
-    if len(inpFileName) > 1 and len(dataFN) < 1 and '.h5' in inpFileName:
-        dataFN = inpFileName
+    if len(inp_file_name) > 1 and len(data_fn) < 1 and '.h5' in inp_file_name:
+        data_fn = inp_file_name
         
     # Set number of nodes
-    if nNodes == -1:
-        nNodes = 1
+    if n_nodes == -1:
+        n_nodes = 1
         
     # Set defaults if neither paramFN nor dataFN is provided
-    if not psFN and not dataFN:
+    if not ps_fn and not data_fn:
         logger.error("Either paramFN or dataFN must be provided")
         sys.exit(1)
         
     # Update raw directory if provided
-    if len(rawDir) > 1 and psFN:
+    if len(raw_dir) > 1 and ps_fn:
         try:
-            psContents = open(psFN, 'r').readlines()
-            updates = {}
+            # Read parameter file
+            params = read_parameter_file(ps_fn)
             
-            for line in psContents:
-                if line.startswith('OverAllRingToIndex'):
-                    ring2Index = float(line.split(' ')[1])
-                if line.startswith('MinOmeSpotIDsToIndex'):
-                    min2Index = float(line.split(' ')[1])
-                if line.startswith('MaxOmeSpotIDsToIndex'):
-                    max2Index = float(line.split(' ')[1])
+            # Extract required parameters
+            ring2Index = parse_float_param(params, 'OverAllRingToIndex')
+            min2Index = parse_float_param(params, 'MinOmeSpotIDsToIndex')
+            max2Index = parse_float_param(params, 'MaxOmeSpotIDsToIndex')
                     
             # Update RawFolder and Dark
-            updates['RawFolder'] = rawDir
+            updates = {'RawFolder': raw_dir}
             
             # Find the dark file name and update its path
-            for line in psContents:
-                if line.startswith('Dark'):
-                    darkName = line.strip().split(' ')[1].split('/')[-1]
-                    updates['Dark'] = f'{rawDir}/{darkName}'
-                    break
+            if 'Dark' in params:
+                dark_name = params['Dark'].split('/')[-1]
+                updates['Dark'] = f'{raw_dir}/{dark_name}'
                     
-            update_parameter_file(psFN, updates)
+            update_parameter_file(ps_fn, updates)
             
         except Exception as e:
             logger.error(f"Failed to update raw directory: {e}")
             sys.exit(1)
     
-    # Read parameter file parameters
-    if psFN:
+    # Handle grains file
+    if grains_file and ps_fn and os.path.exists(ps_fn):
         try:
-            psContents = open(psFN, 'r').readlines()
-            for line in psContents:
-                if line.startswith('OverAllRingToIndex'):
-                    ring2Index = float(line.split(' ')[1])
-                if line.startswith('MinOmeSpotIDsToIndex'):
-                    min2Index = float(line.split(' ')[1])
-                if line.startswith('MaxOmeSpotIDsToIndex'):
-                    max2Index = float(line.split(' ')[1])
-            if args.grainsFile:
-                with open(psFN,'w') as f:
-                    for line in psContents:
-                        if line.startswith('MinNrSpots'):
-                            f.write('MinNrSpots 1\n')
-                        else:
-                            f.write(line)
+            params = read_parameter_file(ps_fn)
+            
+            # Update MinNrSpots to 1 if grains_file is provided
+            updates = {'MinNrSpots': '1'}
+            update_parameter_file(ps_fn, updates)
         except Exception as e:
-            logger.error(f"Failed to read parameter file: {e}")
-            sys.exit(1)
-    
-    # Update parameters for specific input file
-    if len(inpFileName) > 1:
-        try:
-            ext = '.' + '.'.join(inpFileName.split('_')[-1].split('.')[1:])
-            filestem = '_'.join(inpFileName.split('_')[:-1])
-            fileNr = int(inpFileName.split('_')[-1].split('.')[0])
-            startLayerNr = fileNr
-            endLayerNr = fileNr
-            padding = len(inpFileName.split('_')[-1].split('.')[0])
-            inpFSTM = inpFileName.split('.')[0]
-            output_dir_stem = f'analysis_{inpFSTM}'
-            
-            updates = {
-                'Ext': ext,
-                'FileStem': filestem,
-                'StartFileNrFirstLayer': '1'
-            }
-            
-            update_parameter_file(psFN, updates)
-            
-        except Exception as e:
-            logger.error(f"Failed to update parameters for input file: {e}")
+            logger.error(f"Failed to update parameters for grains file: {e}")
             sys.exit(1)
     
     # Set up environment
     env = get_midas_env()
     
     # Set up result directory
-    if len(resultDir) == 0 or resultDir == '.':
-        resultDir = os.getcwd()
-    if resultDir[0] == '~':
-        resultDir = os.path.expanduser(resultDir)
-    if resultDir[0] != '/':
-        resultDir = os.getcwd() + '/' + resultDir
+    if len(result_dir) == 0 or result_dir == '.':
+        result_dir = os.getcwd()
+    if result_dir[0] == '~':
+        result_dir = os.path.expanduser(result_dir)
+    if result_dir[0] != '/':
+        result_dir = os.getcwd() + '/' + result_dir
         
-    os.makedirs(resultDir, exist_ok=True)
-    os.environ['MIDAS_SCRIPT_DIR'] = resultDir
+    os.makedirs(result_dir, exist_ok=True)
+    os.environ['MIDAS_SCRIPT_DIR'] = result_dir
     
     # Load configuration based on machine name
     try:
-        if machineName == 'local':
-            nNodes = 1
-            import localConfig
-            parsl.load(config=localConfig.localConfig)
-        elif machineName == 'orthrosnew':
-            numProcs = 32
-            nNodes = 11
-            import orthrosAllConfig
-            parsl.load(config=orthrosAllConfig.orthrosNewConfig)
-        elif machineName == 'orthrosall':
-            numProcs = 64
-            nNodes = 5
-            import orthrosAllConfig
-            parsl.load(config=orthrosAllConfig.orthrosAllConfig)
-        elif machineName == 'umich':
-            numProcs = 36
-            os.environ['nNodes'] = str(nNodes)
-            import uMichConfig
-            parsl.load(config=uMichConfig.uMichConfig)
-        elif machineName == 'marquette':
-            numProcs = 36
-            os.environ['nNodes'] = str(nNodes)
-            import marquetteConfig
-            parsl.load(config=marquetteConfig.marquetteConfig)
-        elif machineName == 'purdue':
-            numProcs = 128
-            os.environ['nNodes'] = str(nNodes)
-            import purdueConfig
-            parsl.load(config=purdueConfig.purdueConfig)
-        else:
-            logger.error(f"Unknown machine name: {machineName}")
-            sys.exit(1)
+        num_procs, n_nodes = load_machine_config(machine_name, n_nodes)
     except Exception as e:
         logger.error(f"Failed to load configuration: {e}")
         sys.exit(1)
     
     # Run for each layer
-    origDir = os.getcwd()
-    topResDir = resultDir
+    orig_dir = os.getcwd()
+    top_res_dir = result_dir
     
-    for layerNr in range(startLayerNr, endLayerNr + 1):
-        try:
-            if len(inpFileName) <= 1:
-                output_dir_stem = f'LayerNr_{layerNr}/'
-            resultDir = f'{topResDir}/{output_dir_stem}'
-            logger.info(f"Processing Layer Nr: {layerNr}, results will be saved in {resultDir}")
-            
-            logDir = resultDir + '/output'
-            os.makedirs(resultDir, exist_ok=True)
-            shutil.copy2(psFN, resultDir)
-            os.makedirs(logDir, exist_ok=True)
-            
-            t0 = time.time()
-            
-            # Process based on input type
-            if ProvideInputAll == 0:
-                if ConvertFiles == 1:
-                    if len(dataFN) > 0:
-                        logger.info("Generating combined MIDAS file from HDF and ps files.")
-                    else:
-                        logger.info("Generating combined MIDAS file from GE and ps files.")
-                    outFStem = generateZip(resultDir, psFN, layerNr, dfn=dataFN, nchunks=nchunks, preproc=preproc)
-                    if not outFStem:
-                        logger.error("Failed to generate ZIP file")
-                        sys.exit(1)
-                else:
-                    if len(dataFN) > 0:
-                        outFStem = f'{resultDir}/{dataFN}'
-                        if not os.path.exists(outFStem):
-                            shutil.copy2(dataFN, resultDir)
-                    else:
-                        # Extract file information from parameter file
-                        psContents = open(psFN).readlines()
-                        fStem = None
-                        startFN = None
-                        NrFilerPerLayer = None
-                        
-                        for line in psContents:
-                            if line.startswith('FileStem '):
-                                fStem = line.split()[1]
-                            if line.startswith('StartFileNrFirstLayer '):
-                                startFN = int(line.split()[1])
-                            if line.startswith('NrFilesPerSweep '):
-                                NrFilerPerLayer = int(line.split()[1])
-                                
-                        if not all([fStem, startFN, NrFilerPerLayer]):
-                            logger.error("Missing required parameters in parameter file")
-                            sys.exit(1)
-                            
-                        thisFileNr = startFN + (layerNr - 1) * NrFilerPerLayer
-                        outFStem = f'{resultDir}/{fStem}_{str(thisFileNr).zfill(6)}.MIDAS.zip'
-                        
-                        if not os.path.exists(outFStem) and dataFN:
-                            shutil.copy2(dataFN, resultDir)
-                            
-                    # Update zarr dataset
-                    cmdUpd = f'{pytpath} {os.path.join(utils_dir, "updateZarrDset.py")} -fn {os.path.basename(outFStem)} -folder {resultDir} -keyToUpdate analysis/process/analysis_parameters/ResultFolder -updatedValue {resultDir}/'
-                    logger.info(cmdUpd)
-                    
-                    try:
-                        subprocess.check_call(cmdUpd, shell=True)
-                    except subprocess.CalledProcessError as e:
-                        logger.error(f"Failed to update zarr dataset: {e}")
-                        sys.exit(1)
-                        
-                logger.info(f"Generating HKLs. Time till now: {time.time() - t0} seconds.")
-                
-                try:
-                    f_hkls_out = f'{logDir}/hkls_out.csv'
-                    f_hkls_err = f'{logDir}/hkls_err.csv'
-                    cmd = f"{os.path.join(bin_dir, 'GetHKLListZarr')} {outFStem}"
-                    run_command(cmd, resultDir, f_hkls_out, f_hkls_err)
-                except Exception as e:
-                    logger.error(f"Failed to generate HKLs: {e}")
-                    sys.exit(1)
-            else:
-                os.chdir(resultDir)
-                logger.info(f"Generating HKLs. Time till now: {time.time() - t0} seconds.")
-                
-                try:
-                    f_hkls_out = f'{logDir}/hkls_out.csv'
-                    f_hkls_err = f'{logDir}/hkls_err.csv'
-                    cmd = f"{os.path.join(bin_dir, 'GetHKLList')} {psFN}"
-                    run_command(cmd, resultDir, f_hkls_out, f_hkls_err)
-                except Exception as e:
-                    logger.error(f"Failed to generate HKLs: {e}")
-                    sys.exit(1)
-                    
-            # Create temporary directory
-            os.makedirs(f'{resultDir}/Temp', exist_ok=True)
-            
-            # Process peaks if required
-            if ProvideInputAll == 0:
-                if DoPeakSearch == 1:
-                    logger.info(f"Doing PeakSearch. Time till now: {time.time() - t0} seconds.")
-                    
-                    try:
-                        res = []
-                        for nodeNr in range(nNodes):
-                            res.append(peaks(resultDir, outFStem, numProcs, bin_dir, blockNr=nodeNr, numBlocks=nNodes))
-                        outputs = [i.result() for i in res]
-                        logger.info(f"PeakSearch done. Time till now: {time.time() - t0}")
-                    except Exception as e:
-                        logger.error(f"Failed during peak search: {e}")
-                        sys.exit(1)
-                else:
-                    logger.info("Peaksearch results were supplied. Skipping peak search.")
-                    
-                if peakSearchOnly == 1:
-                    continue
-                    
-                logger.info("Merging peaks.")
-                
-                try:
-                    f_merge_out = f'{logDir}/merge_overlaps_out.csv'
-                    f_merge_err = f'{logDir}/merge_overlaps_err.csv'
-                    cmd = f"{os.path.join(bin_dir, 'MergeOverlappingPeaksAllZarr')} {outFStem}"
-                    run_command(cmd, resultDir, f_merge_out, f_merge_err)
-                except Exception as e:
-                    logger.error(f"Failed to merge peaks: {e}")
-                    sys.exit(1)
-                
-                logger.info(f"Calculating Radii. Time till now: {time.time() - t0}")
-                
-                try:
-                    f_radius_out = f'{logDir}/calc_radius_out.csv'
-                    f_radius_err = f'{logDir}/calc_radius_err.csv'
-                    cmd = f"{os.path.join(bin_dir, 'CalcRadiusAllZarr')} {outFStem}"
-                    run_command(cmd, resultDir, f_radius_out, f_radius_err)
-                except Exception as e:
-                    logger.error(f"Failed to calculate radii: {e}")
-                    sys.exit(1)
-                
-                logger.info(f"Transforming data. Time till now: {time.time() - t0}")
-                
-                try:
-                    f_setup_out = f'{logDir}/fit_setup_out.csv'
-                    f_setup_err = f'{logDir}/fit_setup_err.csv'
-                    cmd = f"{os.path.join(bin_dir, 'FitSetupZarr')} {outFStem}"
-                    run_command(cmd, resultDir, f_setup_out, f_setup_err)
-                except Exception as e:
-                    logger.error(f"Failed to transform data: {e}")
-                    sys.exit(1)
-            else:
-                # Handle InputAll data
-                try:
-                    os.chdir(resultDir)
-                    shutil.copy2(f'{topResDir}/InputAllExtraInfoFittingAll.csv', f'{resultDir}/InputAll.csv')
-                    shutil.copy2(f'{topResDir}/InputAllExtraInfoFittingAll.csv', f'{resultDir}/.')
-                    
-                    # Process spots
-                    sps = np.genfromtxt(f'{resultDir}/InputAll.csv', skip_header=1)
-                    sps_filt = sps[sps[:,5] == ring2Index,:]
-                    
-                    if len(sps_filt.shape) < 2:
-                        error_msg = "No IDs could be identified for indexing due to no spots present for ring2index. Check param file and data"
-                        logger.error(error_msg)
-                        sys.exit(1)
-                        
-                    sps_filt2 = sps_filt[sps_filt[:,2] >= min2Index,:]
-                    
-                    if len(sps_filt2.shape) < 2:
-                        error_msg = "No IDs could be identified for indexing due to no spots more than minOmeSpotsToIndex. Check param file and data"
-                        logger.error(error_msg)
-                        sys.exit(1)
-                        
-                    sps_filt3 = sps_filt2[sps_filt2[:,2] <= max2Index,:]
-                    
-                    if len(sps_filt3.shape) < 2:
-                        error_msg = "No IDs could be identified for indexing due to no spots more than minOmeSpotsToIndex. Check param file and data"
-                        logger.error(error_msg)
-                        sys.exit(1)
-                        
-                    IDs = sps_filt3[:,4].astype(np.int32)
-                    np.savetxt(f'{resultDir}/SpotsToIndex.csv', IDs, fmt="%d")
-                    
-                    # Copy and update paramstest.txt
-                    shutil.copy2(f'{topResDir}/{psFN}', f'{resultDir}/paramstest.txt')                    
-                    ringNrs = []
-                    with open(f'{resultDir}/paramstest.txt', 'r') as f:
-                        lines = f.readlines()
-                    for line in lines:
-                        if line.startswith('RingThresh '):
-                            ringNrs.append(int(line.split(' ')[1]))
-                    # What we need extra: RingRadii and RingNumbers, first read hkls.csv
-                    ringRads = np.zeros((len(ringNrs),2))
-                    hkls = np.genfromtxt(f'{resultDir}/hkls.csv',skip_header=1)
-                    unq, locs = np.unique(hkls[:,4],return_index=True)
-                    for rN in range(len(ringNrs)):
-                        ringNr = ringNrs[rN]
-                        for tp in range(len(unq)):
-                            if ringNr == int(unq[tp]):
-                                ringRads[rN] = np.array([ringNr,hkls[locs[tp],-1]])
-                        
-                    with open(f'{resultDir}/paramstest.txt', 'w') as paramstestF:
-                        for nr in range(len(ringRads)):
-                            paramstestF.write(f'RingRadii {ringRads[nr,1]}\n')
-                            paramstestF.write(f'RingNumbers {int(ringRads[nr,0])}\n')
-                        paramstestF.write(f'OutputFolder {resultDir}/Output\n')
-                        paramstestF.write(f'ResultFolder {resultDir}/Results\n')
-                        paramstestF.write('SpotsFileName InputAll.csv\n')
-                        paramstestF.write('IDsFileName SpotsToIndex.csv\n')
-                        paramstestF.write('RefinementFileName InputAllExtraInfoFittingAll.csv\n')
-                        for line in lines:
-                            paramstestF.write(line)
-                                
-                    os.makedirs(f'{resultDir}/Output', exist_ok=True)
-                    os.makedirs(f'{resultDir}/Results', exist_ok=True)
-                except Exception as e:
-                    logger.error(f"Failed to process InputAll data: {e}")
-                    sys.exit(1)
-
-            # Change to result directory and bin data
-            os.chdir(resultDir)
-            logger.info(f"Binning data. Time till now: {time.time() - t0}, workingdir: {resultDir}")
-
-            # If we want to seed the data
-            if args.grainsFile:
-                try:
-                    with open(f"{resultDir}/paramstest.txt", "a") as paramstestF:
-                        paramstestF.write(f"GrainsFile {args.grainsFile}\n")
-                except Exception as e:
-                    logger.error(f"Failed to add grainsFile parameter to paramstest.txt: {e}")
-                    sys.exit(1)
-
+    # Use cleanup context manager
+    with cleanup_context():
+        progress = ProgressTracker(end_layer_nr - start_layer_nr + 1, "Layer processing")
+        
+        for layer_nr in range(start_layer_nr, end_layer_nr + 1):
             try:
-                f_bin_out = f'{logDir}/binning_out.csv'
-                f_bin_err = f'{logDir}/binning_err.csv'
-                cmd = f"{os.path.join(bin_dir, 'SaveBinData')}"
-                run_command(cmd, resultDir, f_bin_out, f_bin_err)
+                process_layer(
+                    layer_nr=layer_nr, 
+                    top_res_dir=top_res_dir, 
+                    ps_fn=ps_fn, 
+                    data_fn=data_fn, 
+                    num_procs=num_procs, 
+                    n_nodes=n_nodes, 
+                    n_chunks=n_chunks, 
+                    preproc=preproc, 
+                    inp_file_name=inp_file_name, 
+                    provide_input_all=provide_input_all, 
+                    convert_files=convert_files, 
+                    do_peak_search=do_peak_search, 
+                    peak_search_only=peak_search_only,
+                    bin_directory=bin_dir,
+                    grains_file=grains_file
+                )
+                
+                progress.update(message=f"Layer {layer_nr} completed successfully")
+                
             except Exception as e:
-                logger.error(f"Failed to bin data: {e}")
+                logger.error(f"Failed to process layer {layer_nr}: {e}")
                 sys.exit(1)
-                
-            # Run indexing
-            logger.info(f"Indexing. Time till now: {time.time() - t0}")
-            
-            try:
-                resIndex = []
-                for nodeNr in range(nNodes):
-                    resIndex.append(index(resultDir, numProcs, bin_dir, blockNr=nodeNr, numBlocks=nNodes))
-                outputIndex = [i.result() for i in resIndex]
-            except Exception as e:
-                logger.error(f"Failed during indexing: {e}")
-                sys.exit(1)
-                
-            # Run refinement
-            logger.info(f"Refining. Time till now: {time.time() - t0}")
-            
-            try:
-                resRefine = []
-                for nodeNr in range(nNodes):
-                    resRefine.append(refine(resultDir, numProcs, bin_dir, blockNr=nodeNr, numBlocks=nNodes))
-                outputRefine = [i.result() for i in resRefine]
-            except Exception as e:
-                logger.error(f"Failed during refinement: {e}")
-                sys.exit(1)
-                
-            # Clean up shared memory
-            try:
-                subprocess.call("rm -rf /dev/shm/*.bin", shell=True)
-            except Exception as e:
-                logger.error(f"Failed to clean up shared memory: {e}")
-                
-            # Process grains
-            logger.info(f"Making grains list. Time till now: {time.time() - t0}")
-            
-            try:
-                f_grains_out = f'{logDir}/process_grains_out.csv'
-                f_grains_err = f'{logDir}/process_grains_err.csv'
-                
-                if ProvideInputAll == 0:
-                    if args.grainsFile:
-                        cmd = f"{os.path.join(bin_dir, 'ProcessGrainsZarr')} {outFStem} 1"
-                    else:
-                        cmd = f"{os.path.join(bin_dir, 'ProcessGrainsZarr')} {outFStem}"
-                else:
-                    cmd = f"{os.path.join(bin_dir, 'ProcessGrains')} {resultDir}/paramstest.txt"
-                    
-                run_command(cmd, resultDir, f_grains_out, f_grains_err)
-            except Exception as e:
-                logger.error(f"Failed to process grains: {e}")
-                sys.exit(1)
-                
-            logger.info(f"Done Layer {layerNr}. Total time elapsed: {time.time() - t0}")
-            os.chdir(origDir)
-            
-        except Exception as e:
-            logger.error(f"Failed to process layer {layerNr}: {e}")
-            sys.exit(1)
+            finally:
+                # Return to original directory after each layer
+                os.chdir(orig_dir)
     
     logger.info("All layers processed successfully")
-    parsl.dfk().cleanup()
 
 
 if __name__ == "__main__":
