@@ -2630,6 +2630,9 @@ static ErrorCode parseZarrMetadata(
     dataLoc += metadata->skipFrame;
     darkLoc += metadata->skipFrame;
     
+    // params->Width should be divided by the px
+    params->Width /= params->px;
+
     // Clean up
     free(fileInfo);
     zip_close(archive);
