@@ -695,12 +695,12 @@ class MidasIntegrator:
             
             # Print summary of results
             logger.info(f"Successfully processed {len(results)} of {len(files_to_process)} files")
-            for out_zip in results:
-                try:
-                    logger.info(f'Output file {out_zip} tree structure:')
-                    logger.info(zarr.open(str(out_zip)).tree())
-                except Exception as e:
-                    logger.error(f"Error displaying tree structure for {out_zip}: {str(e)}")
+            # for out_zip in results:
+            #     try:
+            #         logger.info(f'Output file {out_zip} tree structure:')
+            #         logger.info(zarr.open(str(out_zip)).tree())
+            #     except Exception as e:
+            #         logger.error(f"Error displaying tree structure for {out_zip}: {str(e)}")
                     
         except Exception as e:
             logger.error(f"An error occurred during processing: {str(e)}")
