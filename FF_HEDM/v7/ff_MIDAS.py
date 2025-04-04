@@ -477,10 +477,10 @@ def _peaks_impl(resultDir: str, zipFN: str, numProcs: int, bin_dir: str, blockNr
             install_dir = os.path.abspath(os.path.join(script_dir, '..', '..'))
             env['MIDAS_INSTALL_DIR'] = install_dir
     
-    logger.info(f"Running PeaksFittingOMPZarr in {resultDir} for block {blockNr}/{numBlocks}")
+    logger.info(f"Running PeaksFittingOMPZarrRefactor in {resultDir} for block {blockNr}/{numBlocks}")
     
     with open(outfile, 'w') as f, open(errfile, 'w') as f_err:
-        cmd = f"{os.path.join(bin_dir, 'PeaksFittingOMPZarr')} {zipFN} {blockNr} {numBlocks} {numProcs}"
+        cmd = f"{os.path.join(bin_dir, 'PeaksFittingOMPZarrRefactor')} {zipFN} {blockNr} {numBlocks} {numProcs}"
         logger.info(f"Executing command: {cmd}")
         
         process = subprocess.Popen(
@@ -501,7 +501,7 @@ def _peaks_impl(resultDir: str, zipFN: str, numProcs: int, bin_dir: str, blockNr
             logger.error(error_msg)
             raise RuntimeError(error_msg)
         
-        logger.info(f"PeaksFittingOMPZarr completed successfully for block {blockNr}/{numBlocks}")
+        logger.info(f"PeaksFittingOMPZarrRefactor completed successfully for block {blockNr}/{numBlocks}")
 
 # Create retry-capable app
 peaks = create_app_with_retry(_peaks_impl)

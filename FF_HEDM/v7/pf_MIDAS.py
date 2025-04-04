@@ -281,12 +281,12 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
             if doPeakSearch == 1:
                 t_st = time.time()
                 logger.info(f'Starting PeakSearch for layer {layerNr}')
-                cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/PeaksFittingOMPZarr')} {outFStem} 0 1 {numProcs} {thisDir}"
+                cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/PeaksFittingOMPZarrRefactor')} {outFStem} 0 1 {numProcs} {thisDir}"
                 subprocess.call(cmd, shell=True, stdout=f, stderr=f_err)
                 
                 if check_error_file(f_err_path):
                     with open(f_err_path, 'r') as ef:
-                        logger.error(f"Error in PeaksFittingOMPZarr: {ef.read()}")
+                        logger.error(f"Error in PeaksFittingOMPZarrRefactor: {ef.read()}")
                     return f"Failed at PeakSearch for layer {layerNr}"
                     
                 logger.info(f'PeakSearch Done for layer {layerNr}. Time taken: {time.time() - t_st} seconds.')
@@ -507,8 +507,8 @@ def peaks(resultDir, zipFN, numProcs, midas_path, blockNr=0, numBlocks=1):
             f_err.write("I was able to do something.\n")
             
             # Build command
-            cmd_this = f"{os.path.join(midas_path, 'FF_HEDM/bin/PeaksFittingOMPZarr')} {zipFN} {blockNr} {numBlocks} {numProcs} {resultDir}"
-            logger.info(f"Running PeaksFittingOMPZarr: {cmd_this}")
+            cmd_this = f"{os.path.join(midas_path, 'FF_HEDM/bin/PeaksFittingOMPZarrRefactor')} {zipFN} {blockNr} {numBlocks} {numProcs} {resultDir}"
+            logger.info(f"Running PeaksFittingOMPZarrRefactor: {cmd_this}")
             f_err.write(f"{cmd_this}\n")
             
             # Run command
