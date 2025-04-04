@@ -1121,10 +1121,10 @@ int main(int argc, char *argv[])
 	fprintf(PF,"OmeBinSize %f;\n",OmeBinSize);
 	fprintf(PF,"EtaBinSize %f;\n",EtaBinSize);
 	fprintf(PF,"ExcludePoleAngle %f;\n",MinEta);
-	for (i=0;i<nhkls;i++){
-		fprintf(PF,"RingNumbers %d;\n",RingNumbers[i]);
+	for (i=0;i<nrUniqueRingNumbers;i++){
+		fprintf(PF,"RingNumbers %d;\n",UniqueRingNumbers[i]);
 	}
-	for (i=0;i<nhkls;i++){
+	for (i=0;i<nrUniqueRingNumbers;i++){
 		fprintf(PF,"RingRadii %f;\n",RingRadsIdeal[i]);
 	}
 	fprintf(PF,"UseFriedelPairs %d;\n",UseFriedelPairs);
