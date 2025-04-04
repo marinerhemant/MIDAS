@@ -903,7 +903,6 @@ def main():
     v7_dir = os.path.join(midas_path, 'FF_HEDM/v7')
     sys.path.insert(0, utils_dir)
     sys.path.insert(0, v7_dir)
-    print
     
     # Import from MIDAS libraries
     try:
