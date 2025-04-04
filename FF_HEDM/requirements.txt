@@ -18,3 +18,4 @@ opencv-python
 globus_compute_sdk
 globus_sdk
 scipy
+tqdm
