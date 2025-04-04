@@ -449,7 +449,6 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPi
 	free(Rs);
 	free(Etas);
 	*retVal = sqrt(minf);
-	printf("%lf %lf ",*retVal,minf);
 	return rc;
 }
 
@@ -1582,7 +1581,6 @@ int main(int argc, char *argv[]){
 			} else{
 				rc = Fit2DPeaks(nPeaks,NrPixelsThisRegion,z,UsefulPixels,MaximaValues,MaximaPositions,IntegratedIntensity,IMAX,YCEN,ZCEN,Rads,Etass,Ycen,Zcen,Thresh,NrPx,OtherInfo,NrPixels,&retVal);
 			}
-			printf("%lf\n",retVal);
 			for (i=0;i<nPeaks;i++){
 				fprintf(outfilewrite,"%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t",(SpotIDStart+i),IntegratedIntensity[i],
 					Omega,-YCEN[i]+Ycen,ZCEN[i]+Zcen,IMAX[i],Rads[i],Etass[i]);
