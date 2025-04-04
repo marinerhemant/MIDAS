@@ -1339,6 +1339,12 @@ int main(int argc, char *argv[]){
 			}
 		}
 	}
+	// Print RingRads, Width, NrPixels
+	for (thisRingNr=0;thisRingNr<nRingsThresh;thisRingNr++){
+		printf("RingRads[%d]: %lf Width: %lf\n",thisRingNr,RingRads[thisRingNr],Width);
+	}
+	printf("Width: %lf\n",Width);
+	printf("NrPixels: %d\n",NrPixels);
 	printf("Number of coordinates: %d\n",nrCoords);
 
 	// Allocate Arrays to hold other arrays

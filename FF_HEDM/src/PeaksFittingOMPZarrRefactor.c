@@ -2913,7 +2913,11 @@ int main(int argc, char *argv[])
             }
         }
     }
-    
+    // Print the ringRads, params.Width, metadata.NrPixels
+    for (int i = 0; i < params.nRingsThresh; i++) {
+        printf("RingNr[%d]: %d, RingRad: %lf, Width: %lf\n", i, params.RingNrs[i], ringRads[i], params.Width);
+    }
+    printf("Width: %lf, NrPixels: %d\n", params.Width, metadata.NrPixels);
     printf("Number of coordinates to process: %d\n", nrCoords);
     
     // Calculate job distribution
