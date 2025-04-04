@@ -281,7 +281,7 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
             if doPeakSearch == 1:
                 t_st = time.time()
                 logger.info(f'Starting PeakSearch for layer {layerNr}')
-                cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/PeaksFittingOMPZarr')} {outFStem} 0 1 {numProcs} {thisDir} 0"
+                cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/PeaksFittingOMPZarr')} {outFStem} 0 1 {numProcs} {thisDir}"
                 subprocess.call(cmd, shell=True, stdout=f, stderr=f_err)
                 
                 if check_error_file(f_err_path):
