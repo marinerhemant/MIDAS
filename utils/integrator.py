@@ -571,9 +571,24 @@ class MidasIntegrator:
                 zip_file = self.params.result_dir / file_path.name
                 logger.info(f'Using existing zip file: {zip_file}')
             
-            # Run detector mapper if requested
-            if self.args.mapDetector:
-                self.processor.run_detector_mapper(zip_file)
+            # Check if Map.bin and nMap.bin already exist in the result folder
+            map_file = self.params.result_dir / "Map.bin"
+            nmap_file = self.params.result_dir / "nMap.bin"
+            
+            # Determine if we need to run detector mapper
+            map_files_exist = map_file.exists() and nmap_file.exists()
+            
+            # Run detector mapper if requested or if map files don't exist (but skip if files exist)
+            if self.args.mapDetector or not map_files_exist:
+                if map_files_exist:
+                    logger.info("Map.bin and nMap.bin already exist in result folder. Skipping detector mapping.")
+                elif not self.args.mapDetector:
+                    logger.warning("Map.bin and nMap.bin do not exist in result folder but are required. Running detector mapper despite mapDetector=0.")
+                else:
+                    logger.info("Running detector mapper...")
+                
+                if not map_files_exist:
+                    self.processor.run_detector_mapper(zip_file)
             
             # Create list of files to process (excluding completed files if skip_existing is enabled)
             files_to_process = []
