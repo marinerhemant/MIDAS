@@ -53,7 +53,7 @@ def get_installation_dir() -> Path:
         Installation directory path
     """
     script_dir = Path(__file__).resolve().parent
-    install_dir = script_dir.parent.parent
+    install_dir = script_dir.parent
     return install_dir
 
 # Path configuration
