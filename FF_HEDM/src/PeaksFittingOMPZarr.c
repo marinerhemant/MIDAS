@@ -1217,7 +1217,7 @@ int main(int argc, char *argv[]){
     }
     if (nDarks > 0) for (a=0;a<(NrPixels*NrPixels);a++) darkTemp[a] /= (nDarks);
 	Transposer(darkTemp,NrPixels,dark);
-	printf(%lf"\n",dark[0]);
+	printf("%lf\n",dark[0]);
 	free(darkTemp);
 	free(darkcontents);
 	free(darkAsym);

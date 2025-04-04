@@ -3013,7 +3013,7 @@ int main(int argc, char *argv[])
         blosc2_destroy();
         return error;
     }
-    
+    printf("%lf\n",dark[0]);
     // Read frame data
     size_t *sizeArr = NULL;
     char *allData = NULL;
