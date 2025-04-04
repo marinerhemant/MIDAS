@@ -2810,7 +2810,9 @@ int main(int argc, char *argv[])
         blosc2_destroy();
         return error;
     }
-    
+
+    // Override result folder if specified in command line
+    if (argc > 5) resultFolder = strdup(argv[5]);
     // Override doPeakFit if specified in command line
     if (argc > 6) {
         params.doPeakFit = doPeakFit;
