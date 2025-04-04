@@ -20,6 +20,7 @@ import pandas as pd
 import diplib as dip
 from plotly.subplots import make_subplots
 from PIL import Image
+import math
 pytpath = sys.executable
 
 env = dict(os.environ)
@@ -525,7 +526,7 @@ with open(psName,'w') as pf:
 	pf.write('MultiplePeaks 1\n')
 	for transOpt in imTransOpt:
 		pf.write(f'ImTransOpt {transOpt}\n')
-	if badPxIntensity != np.nan:
+	if not math.isnan(badPxIntensity):
 		pf.write(f'BadPxIntensity {badPxIntensity}\n')
-	if gapIntensity != np.nan:
+	if not math.isnan(gapIntensity):
 		pf.write(f'GapIntensity {gapIntensity}\n')
