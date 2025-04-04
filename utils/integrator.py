@@ -106,6 +106,22 @@ class FileProcessor:
         log_path = self.params.result_dir / self.params.log_dir
         log_path.mkdir(exist_ok=True)
     
+    def _get_file_path(self, file_nr: int, start_file_nr: int) -> Path:
+        """
+        Generate full file path for a given file number.
+        
+        Args:
+            file_nr: File number offset
+            start_file_nr: Starting file number
+            
+        Returns:
+            Path to the file
+        """
+        padded_file_nr = str(start_file_nr + file_nr).zfill(6)
+        start_file_nr_str = str(start_file_nr).zfill(6)
+        file_path = Path(self.params.input_file_pattern.replace(start_file_nr_str, padded_file_nr))
+        return file_path
+    
     def generate_zip(self, data_file: Path) -> Path:
         """
         Generate ZIP file from data.
@@ -318,7 +334,7 @@ class FileProcessor:
             logger.error(error_msg)
             raise IntegrationError(error_msg)
     
-    def process_file(self, file_nr: int, start_file_nr: int) -> Path:
+    def process_file(self, file_nr: int, start_file_nr: int) -> Optional[Path]:
         """
         Process a single data file.
         
@@ -327,12 +343,15 @@ class FileProcessor:
             start_file_nr: Starting file number
             
         Returns:
-            Path to output Zarr ZIP file
+            Path to output Zarr ZIP file or None if file doesn't exist
         """
         # Generate filename for this file number
-        padded_file_nr = str(start_file_nr + file_nr).zfill(6)
-        start_file_nr_str = str(start_file_nr).zfill(6)
-        file_path = Path(self.params.input_file_pattern.replace(start_file_nr_str, padded_file_nr))
+        file_path = self._get_file_path(file_nr, start_file_nr)
+        
+        # Check if the file exists
+        if not file_path.exists():
+            logger.warning(f"File does not exist: {file_path}. Skipping.")
+            return None
         
         logger.info(f"Processing file {file_path}")
         
@@ -455,8 +474,8 @@ class MidasIntegrator:
         # Pattern to match 6-digit file numbers in filenames
         file_nr_pattern = re.compile(r'(\d{6})')
         
-        # Look for all zarr.zip files in the result directory
-        zarr_files = list(self.params.result_dir.glob("*.zarr.zip"))
+        # Look for all .caked.hdf.zarr.zip files in the result directory
+        zarr_files = list(self.params.result_dir.glob("*.caked.hdf.zarr.zip"))
         
         # Get the base names of the files we're processing
         start_file_nr_str = str(start_file_nr).zfill(6)
@@ -509,19 +528,35 @@ class MidasIntegrator:
             # Process first file separately to generate detector map if needed
             file_nr = 0
             file_num = start_file_nr + file_nr
-            start_file_nr_str = str(start_file_nr).zfill(6)
-            file_path_str = self.args.dataFN.replace(start_file_nr_str, str(file_num).zfill(6))
-            file_path = Path(file_path_str)
+            
+            # Get the first file path
+            file_path = self.processor._get_file_path(file_nr, start_file_nr)
+            
+            # Check if first file exists
+            if not file_path.exists():
+                logger.error(f"First file does not exist: {file_path}")
+                # Find the first file that exists
+                for i in range(nr_files):
+                    test_file_path = self.processor._get_file_path(i, start_file_nr)
+                    if test_file_path.exists() and (not self.params.skip_existing or start_file_nr + i not in self.completed_files):
+                        file_nr = i
+                        file_num = start_file_nr + file_nr
+                        file_path = test_file_path
+                        logger.info(f"Found first existing file at index {file_nr}: {file_path}")
+                        break
+                else:
+                    logger.error("No existing files found to process!")
+                    return
             
             # If first file is in completed files and skip_existing is enabled, find the first non-completed file
             if self.params.skip_existing and file_num in self.completed_files:
                 logger.info(f"First file {file_num} already processed, finding first non-processed file...")
                 for i in range(nr_files):
-                    if start_file_nr + i not in self.completed_files:
+                    test_file_path = self.processor._get_file_path(i, start_file_nr)
+                    if test_file_path.exists() and start_file_nr + i not in self.completed_files:
                         file_nr = i
                         file_num = start_file_nr + file_nr
-                        file_path_str = self.args.dataFN.replace(start_file_nr_str, str(file_num).zfill(6))
-                        file_path = Path(file_path_str)
+                        file_path = test_file_path
                         logger.info(f"Found non-processed file at index {file_nr}: {file_path}")
                         break
                 else:
@@ -544,11 +579,15 @@ class MidasIntegrator:
             files_to_process = []
             for file_nr in range(nr_files):
                 file_num = start_file_nr + file_nr
-                if not self.params.skip_existing or file_num not in self.completed_files:
+                # Check if file exists before adding to processing list
+                test_file_path = self.processor._get_file_path(file_nr, start_file_nr)
+                if test_file_path.exists() and (not self.params.skip_existing or file_num not in self.completed_files):
                     files_to_process.append(file_nr)
+                elif not test_file_path.exists():
+                    logger.warning(f"File does not exist: {test_file_path}. Skipping.")
             
             if len(files_to_process) == 0:
-                logger.info("No files to process after skipping existing files.")
+                logger.info("No files to process after checking existence and skipping existing files.")
                 return
                 
             logger.info(f"Will process {len(files_to_process)} of {nr_files} total files")
@@ -578,12 +617,13 @@ class MidasIntegrator:
                             logger.info(f"Processing file {i+1}/{len(files_to_process)} (file number: {file_num})")
                         
                         out_zip = self.processor.process_file(file_nr, start_file_nr)
-                        results.append(out_zip)
+                        if out_zip:
+                            results.append(out_zip)
                         
                         # Update progress bar if using tqdm
                         if TQDM_AVAILABLE:
                             progress_bar.update(1)
-                        else:
+                        elif out_zip:
                             logger.info(f'Successfully processed: {out_zip}')
                             
                     except IntegrationError as e:
@@ -615,7 +655,8 @@ class MidasIntegrator:
                                 file_num = start_file_nr + file_nr
                                 try:
                                     out_zip = future.result()
-                                    results.append(out_zip)
+                                    if out_zip:
+                                        results.append(out_zip)
                                     progress_bar.update(1)
                                 except Exception as e:
                                     logger.error(f"Error processing file {file_num}: {str(e)}")
@@ -629,8 +670,11 @@ class MidasIntegrator:
                             processed_count += 1
                             try:
                                 out_zip = future.result()
-                                results.append(out_zip)
-                                logger.info(f'[{processed_count}/{len(futures)}] Successfully processed file {file_num}: {out_zip}')
+                                if out_zip:
+                                    results.append(out_zip)
+                                    logger.info(f'[{processed_count}/{len(futures)}] Successfully processed file {file_num}: {out_zip}')
+                                else:
+                                    logger.info(f'[{processed_count}/{len(futures)}] File {file_num} was skipped (doesn\'t exist)')
                             except Exception as e:
                                 logger.error(f'[{processed_count}/{len(futures)}] Error processing file {file_num}: {str(e)}')
             
