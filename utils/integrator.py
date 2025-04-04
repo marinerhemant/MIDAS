@@ -564,6 +564,7 @@ class MidasIntegrator:
                     return
             
             if self.args.convertFiles:
+                logger.info("Converting first file to the zarr zip...")
                 zip_file = self.processor.generate_zip(file_path)
             else:
                 if not str(file_path).endswith('.zip'):
