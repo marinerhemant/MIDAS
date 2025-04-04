@@ -449,7 +449,7 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z, int *UsefulPi
 	free(Rs);
 	free(Etas);
 	*retVal = sqrt(minf);
-	printf("%lf\n",*retVal);
+	printf("%lf %lf ",*retVal,minf);
 	return rc;
 }
 
