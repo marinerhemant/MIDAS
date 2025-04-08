@@ -19,9 +19,9 @@ def send_data_chunk(sock, dataset_num, data):
     t1 = time.time()
     
     # Check if data is already a numpy array with correct dtype
-    if not isinstance(data, np.ndarray) or data.dtype != np.int32:
+    if not isinstance(data, np.ndarray) or data.dtype != np.int64:
         # Convert data to numpy array
-        data_array = np.array(data, dtype=np.int32)
+        data_array = np.array(data, dtype=np.int64)
     else:
         # Use the existing array
         data_array = data
@@ -36,7 +36,7 @@ def send_data_chunk(sock, dataset_num, data):
     sock.sendall(header + data_view)
     
     t2 = time.time()
-    print(f"Sent dataset #{dataset_num} with {len(data_array)} int32_t values ({len(data_view)} bytes) in {t2 - t1:.4f} sec")
+    print(f"Sent dataset #{dataset_num} with {len(data_array)} int64_t values ({len(data_view)} bytes) in {t2 - t1:.4f} sec")
 
 
 def process_image(x, sock, dataset_num, frame_mapping, frame_index):
@@ -122,8 +122,8 @@ def process_binary_ge(file_path, sock, dataset_num, frame_mapping, frame_index, 
             # Reshape to the specified frame size
             frame_data = frame_data.reshape(frame_size)
             
-            # Convert to int32 for sending
-            frame_data = frame_data.astype(np.int32).flatten()
+            # Convert to int64 for sending
+            frame_data = frame_data.astype(np.int64).flatten()
             
             # Update frame mapping
             frame_mapping[frame_index] = {
@@ -172,7 +172,7 @@ def process_h5(file_path, sock, dataset_num, frame_mapping, frame_index, h5_loca
                     num_frames = dataset.shape[0]
                     print(f"Dataset contains {num_frames} frames")
                     for i in range(num_frames):
-                        frame_data = dataset[i].astype(np.int32).flatten()
+                        frame_data = dataset[i].astype(np.int64).flatten()
                         
                         # Update frame mapping
                         frame_mapping[frame_index] = {
@@ -187,7 +187,7 @@ def process_h5(file_path, sock, dataset_num, frame_mapping, frame_index, h5_loca
                         frames_processed += 1
                 else:
                     # Single frame
-                    frame_data = dataset[:].astype(np.int32).flatten()
+                    frame_data = dataset[:].astype(np.int64).flatten()
                     
                     # Update frame mapping
                     frame_mapping[frame_index] = {
@@ -205,7 +205,7 @@ def process_h5(file_path, sock, dataset_num, frame_mapping, frame_index, h5_loca
                 print(f"Processing group with keys: {list(dataset.keys())}")
                 for key in dataset.keys():
                     if isinstance(dataset[key], h5py.Dataset):
-                        frame_data = dataset[key][:].astype(np.int32).flatten()
+                        frame_data = dataset[key][:].astype(np.int64).flatten()
                         
                         # Update frame mapping
                         frame_mapping[frame_index] = {

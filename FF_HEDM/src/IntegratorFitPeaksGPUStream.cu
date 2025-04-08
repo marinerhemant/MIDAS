@@ -121,7 +121,7 @@ size_t CHUNK_SIZE;
 #define MAX_QUEUE_SIZE 100  // Maximum number of chunks in the queue, should not be too large, else segfaults.
 #define HEADER_SIZE sizeof(uint16_t)  // Size of dataset number
 size_t TOTAL_MSG_SIZE;
-#define BYTES_PER_PIXEL 4
+#define BYTES_PER_PIXEL 8 // Size of each pixel in bytes
 #define MAX_FILENAME_LENGTH 1024
 
 // Structure for our data chunks
