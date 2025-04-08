@@ -231,14 +231,14 @@ void* handle_client(void *arg) {
         memcpy(&dataset_num, buffer, HEADER_SIZE);
         
         // Allocate memory for the data
-        int32_t *data = (int32_t*)malloc(CHUNK_SIZE/BYTES_PER_PIXEL * sizeof(int32_t));
+        int64_t *data = (int64_t*)malloc(CHUNK_SIZE/BYTES_PER_PIXEL * sizeof(int64_t));
         if (!data) {
             perror("Memory allocation failed");
             break;
         }
         for (int i = 0; i < CHUNK_SIZE/BYTES_PER_PIXEL; i++) {
-			int32_t value;
-			memcpy(&value, buffer + HEADER_SIZE + (i * sizeof(int32_t)), sizeof(int32_t));
+			int64_t value;
+			memcpy(&value, buffer + HEADER_SIZE + (i * sizeof(int64_t)), sizeof(int64_t));
 			data[i] = value;
 		}
         
