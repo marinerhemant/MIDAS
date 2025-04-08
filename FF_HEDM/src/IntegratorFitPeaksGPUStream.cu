@@ -32,11 +32,11 @@
 */
 
 
-// Always expectes the data to be in int32_t format.
+// Always expectes the data to be in int64_t format.
 // Expected to be run on a GPU with at least 16GB of memory.
 // Expected to be run on a machine with at least 16GB of memory.
 // Localhost:5000 port is used to get the images from a server.
-// The server is expected to send the images in int32_t format.
+// The server is expected to send the images in int64_t format.
 // There is an imagenum in the header, which is used to keep track of the image number.
 // The images are expected to be in a binary format.
 //
@@ -71,7 +71,7 @@
 // The dark file is expected to be in the same format as the images.
 // The dark file is expected to be in a binary format.
 // The dark file is expected to contain the average of all the dark frames.
-// The dark file is expected to be in int32_t format.
+// The dark file is expected to be in int64_t format.
 
 // Benchmarks: 
 // 11.8s using H100, 38.2s using CPU. 
@@ -127,7 +127,7 @@ size_t TOTAL_MSG_SIZE;
 // Structure for our data chunks
 typedef struct {
     uint16_t dataset_num;  // Dataset number
-    int32_t *data; // int32 data
+    int64_t *data; // int64 data
     size_t size;
 } DataChunk;
 
@@ -156,7 +156,7 @@ void queue_init(ProcessQueue *queue) {
 }
 
 // Add a data chunk to the queue
-int queue_push(ProcessQueue *queue, uint16_t dataset_num, int32_t *data, size_t num_values) {
+int queue_push(ProcessQueue *queue, uint16_t dataset_num, int64_t *data, size_t num_values) {
     pthread_mutex_lock(&queue->mutex);
     
     // Wait if the queue is full
@@ -244,7 +244,7 @@ void* handle_client(void *arg) {
         
         // Add the data to the processing queue
         queue_push(&process_queue, dataset_num, data, CHUNK_SIZE/BYTES_PER_PIXEL);
-        printf("Received dataset #%u with %d int32_t values\n", dataset_num, CHUNK_SIZE/BYTES_PER_PIXEL);
+        printf("Received dataset #%u with %d int64_t values\n", dataset_num, CHUNK_SIZE/BYTES_PER_PIXEL);
     }
     
 connection_closed:
@@ -622,7 +622,7 @@ REtaMapper(
 	}
 }
 
-static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], int32_t *ImageIn, int32_t *ImageOut, int NrPixelsY, int NrPixelsZ)
+static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], int64_t *ImageIn, int64_t *ImageOut, int NrPixelsY, int NrPixelsZ)
 {
 	int i,k,l;
 	if (NrTransOpt == 0 || (NrTransOpt==1 && TransOpt[0]==0)){
@@ -840,7 +840,7 @@ int main(int argc, char *argv[]){
     if (argc < 2){
 		printf("Usage: ./Integrator ParamFN (optional)DarkName\n"
 		"Optional:\n\tDark file: dark correction with average of all dark frames"
-		".\n\tDark must be in a binary format, with int32 dataType."
+		".\n\tDark must be in a binary format, with int64 dataType."
         "\n\nSteams data from a socket and processes it.\n");
 		return(1);
 	}
@@ -1001,14 +1001,14 @@ int main(int argc, char *argv[]){
 	double *AverageDark;
 	cudaMallocHost((void **) &Image,NrPixelsY*NrPixelsZ*sizeof(*Image));
 	AverageDark = (double *) calloc(NrPixelsY*NrPixelsZ,sizeof(*AverageDark));
-	int32_t *ImageIn;
-	int32_t *DarkIn;
-	int32_t *ImageInT;
-	int32_t *DarkInT;
-	DarkIn = (int32_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkIn));
-	DarkInT = (int32_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkInT));
-	ImageIn = (int32_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageIn));
-	ImageInT = (int32_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageInT));
+	int64_t *ImageIn;
+	int64_t *DarkIn;
+	int64_t *ImageInT;
+	int64_t *DarkInT;
+	DarkIn = (int64_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkIn));
+	DarkInT = (int64_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkInT));
+	ImageIn = (int64_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageIn));
+	ImageInT = (int64_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageInT));
 	size_t pxSize = BYTES_PER_PIXEL;
 	size_t SizeFile = pxSize * NrPixelsY * NrPixelsZ;
 	int nFrames;
@@ -1034,7 +1034,7 @@ int main(int argc, char *argv[]){
 				mapMaskSize ++;
 				mapMask = (int *) calloc(mapMaskSize,sizeof(*mapMask));
 				for (j=0;j<NrPixelsY*NrPixelsZ;j++){
-					if (DarkIn[j] == (int32_t) GapIntensity || DarkIn[j] == (int32_t) BadPxIntensity){
+					if (DarkIn[j] == (int64_t) GapIntensity || DarkIn[j] == (int64_t) BadPxIntensity){
 						SetBit(mapMask,j);
 						nrdone++;
 					}
