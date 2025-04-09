@@ -274,6 +274,15 @@ def main():
     os.chdir(folder)
     logging.info(f"Changed working directory to: {folder}")
     
+    # Determine which column to use for sorting
+    if sort_property == 'DiffOme':
+        col_val = 20
+    elif sort_property == 'DiffPos':
+        col_val = 19
+    else:  # Default to DiffOme
+        col_val = 20
+        logging.warning(f"Unknown property '{sort_property}', defaulting to DiffOme (column {col_val})")
+
     # Generate HKL list
     try:
         get_hkl_bin = os.path.join(INSTALL_DIR, 'FF_HEDM/bin/GetHKLList')
@@ -360,15 +369,6 @@ def main():
         logging.error(f"Error reading or processing grain file: {str(e)}")
         os.chdir(original_dir)
         sys.exit(1)
-    
-    # Determine which column to use for sorting
-    if sort_property == 'DiffOme':
-        col_val = 20
-    elif sort_property == 'DiffPos':
-        col_val = 19
-    else:  # Default to DiffOme
-        col_val = 20
-        logging.warning(f"Unknown property '{sort_property}', defaulting to DiffOme (column {col_val})")
     
     # Prepare work data for multiprocessing
     IDs = [int(grain_id) for grain_id in grains_sorted[:n_spots_to_refine, 0]]
