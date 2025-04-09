@@ -496,7 +496,7 @@ def main():
             except Exception as e:
                 logging.error(f"Could not create plot: {str(e)}")
         else:
-            logging.info("Plot generation skipped (--noplot option)")
+            logging.info("Plot generation skipped (-noplot option)")
     else:
         logging.error("No valid tx values were found. Check the FitGrain execution outputs.")
     
