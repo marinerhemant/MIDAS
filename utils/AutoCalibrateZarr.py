@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 ##### Save all the plots to an hdf5
-##### python AutoCalibrateZarr.py -dataFN CeO2_30keV_210mm_20sec_000001.tif -ConvertFile 3 -paramFN ps_orig.txt -BadPxIntensity -2 -GapIntensity -1 -MakePlots 1 -StoppingStrain 0.003
+##### python AutoCalibrateZarr.py -dataFN CeO2_30keV_210mm_20sec_000001.tif -ConvertFile 3 -paramFN ps_orig.txt -BadPxIntensity -2 -GapIntensity -1 -MakePlots 1 -StoppingStrain 0.003 -SavePlotsHDF plots.h5
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -24,6 +24,8 @@ import math
 import logging
 from pathlib import Path
 import traceback
+import h5py
+import io
 
 # Set up logging
 logging.basicConfig(
@@ -38,6 +40,10 @@ logger = logging.getLogger(__name__)
 
 # Get Python executable path
 pytpath = sys.executable
+
+# Global variables
+h5_file = None
+badGapArr = []
 
 # Determine the installation path from the script's location
 def get_install_path():
@@ -56,6 +62,26 @@ class MyParser(argparse.ArgumentParser):
         sys.stderr.write(f'Error: {message}\n')
         self.print_help()
         sys.exit(2)
+
+def save_figure_to_hdf5(fig, h5file, dataset_name):
+    """
+    Save a matplotlib figure to an HDF5 file
+    
+    Parameters:
+    -----------
+    fig : matplotlib.figure.Figure
+        The figure to save
+    h5file : h5py.File
+        Open HDF5 file object
+    dataset_name : str
+        Name for the dataset in the HDF5 file
+    """
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png')
+    buf.seek(0)
+    img_data = np.asarray(Image.open(buf))
+    h5file.create_dataset(dataset_name, data=img_data)
+    buf.close()
 
 def fileReader(f, dset):
     """Read data from Zarr file with handling for skipFrames"""
@@ -146,11 +172,109 @@ def generateZip(resFol, pfn, dfn='', darkfn='', dloc='', nchunks=-1, preproc=-1,
     print("Could not find output zip name in generateZip output")
     sys.exit(1)
 
+def process_calibrant_output(output_file):
+    """Process the output from CalibrantOMP"""
+    global nPlanes, lsd_refined, bc_refined, ty_refined, tz_refined
+    global p0_refined, p1_refined, p2_refined, p3_refined, mean_strain, std_strain
+    
+    try:
+        with open(output_file) as f:
+            output = f.readlines()
+        
+        useful = 0
+        for line in output:
+            if 'Number of planes being considered' in line and nPlanes == 0:
+                nPlanes = int(line.rstrip().split()[-1][:-1])
+            if useful == 1:
+                if 'Copy to par' in line:
+                    continue
+                if 'Lsd ' in line:
+                    lsd_refined = line.split()[1]
+                if 'BC ' in line:
+                    bc_refined = line.split()[1] + ' ' + line.split()[2]
+                if 'ty ' in line:
+                    ty_refined = line.split()[1]
+                if 'tz ' in line:
+                    tz_refined = line.split()[1]
+                if 'p0 ' in line:
+                    p0_refined = line.split()[1]
+                if 'p1 ' in line:
+                    p1_refined = line.split()[1]
+                if 'p2 ' in line:
+                    p2_refined = line.split()[1]
+                if 'p3 ' in line:
+                    p3_refined = line.split()[1]
+                if 'MeanStrain ' in line:
+                    mean_strain = line.split()[1]
+                if 'StdStrain ' in line:
+                    std_strain = line.split()[1]
+            if 'Mean Values' in line:
+                useful = 1
+    except Exception as e:
+        logger.error(f"Error processing calibrant output: {e}")
+
+def process_calibrant_results(results_file):
+    """Process the results from the calibration to find outlier rings"""
+    try:
+        global h5_file, iterNr  # Access the global h5_file
+        
+        results = np.genfromtxt(results_file, skip_header=1)
+        unique_tth = np.unique(results[:, -1])
+        mean_strains_per_ring = np.zeros(len(unique_tth))
+        
+        for ringNr in range(len(unique_tth)):
+            subarr = results[results[:, -1] == unique_tth[ringNr], :]
+            mean_strains_per_ring[ringNr] = np.mean(subarr[:, 1])
+        
+        threshold = multFactor * np.median(mean_strains_per_ring)
+        ringsToExcludenew = np.argwhere(mean_strains_per_ring > threshold) + 1
+        
+        rNew = [ring[0] for ring in ringsToExcludenew]
+        
+        if DrawPlots == 1 or h5_file:
+            fig = plt.figure()
+            plt.scatter(unique_tth, mean_strains_per_ring)
+            plt.axhline(threshold, color='black')
+            plt.xlabel('2theta [degrees]')
+            plt.ylabel('Average strain')
+            
+            # Save to HDF5 if requested
+            if h5_file:
+                save_figure_to_hdf5(fig, h5_file, f'strain_vs_tth_iter{iterNr}')
+                
+            if DrawPlots == 1:
+                plt.show()
+            else:
+                plt.close(fig)
+            
+            if len(rNew) == 0 and float(mean_strain) < needed_strain:
+                fig = plt.figure()
+                plt.scatter(results[:, -1], results[:, 1])
+                plt.scatter(unique_tth, mean_strains_per_ring, c='red')
+                plt.axhline(threshold, color='black')
+                plt.xlabel('2theta [degrees]')
+                plt.ylabel('Computed strain')
+                plt.title(f'Best fit results for {results_file.split(".corr")[0]}')
+                
+                # Save to HDF5 if requested
+                if h5_file:
+                    save_figure_to_hdf5(fig, h5_file, 'final_strain_results')
+                    
+                if DrawPlots == 1:
+                    plt.show()
+                else:
+                    plt.close(fig)
+        
+        return rNew
+    except Exception as e:
+        logger.error(f"Error processing calibrant results: {e}")
+        return []
+
 def runMIDAS(fn):
     """Run MIDAS calibration and process results"""
     global ringsToExclude, folder, fstem, ext, ty_refined, tz_refined, p0_refined, p1_refined
     global p2_refined, p3_refined, darkName, fnumber, pad, lsd_refined, bc_refined, latc
-    global nPlanes, mean_strain, std_strain
+    global nPlanes, mean_strain, std_strain, iterNr, h5_file
     
     ps_file = f"{fn}ps.txt"
     
@@ -209,86 +333,6 @@ def runMIDAS(fn):
         
     except Exception as e:
         logger.error(f"Error running MIDAS: {traceback.format_exc()}")
-        return []
-
-def process_calibrant_output(output_file):
-    """Process the output from CalibrantOMP"""
-    global nPlanes, lsd_refined, bc_refined, ty_refined, tz_refined
-    global p0_refined, p1_refined, p2_refined, p3_refined, mean_strain, std_strain
-    
-    try:
-        with open(output_file) as f:
-            output = f.readlines()
-        
-        useful = 0
-        for line in output:
-            if 'Number of planes being considered' in line and nPlanes == 0:
-                nPlanes = int(line.rstrip().split()[-1][:-1])
-            if useful == 1:
-                if 'Copy to par' in line:
-                    continue
-                if 'Lsd ' in line:
-                    lsd_refined = line.split()[1]
-                if 'BC ' in line:
-                    bc_refined = line.split()[1] + ' ' + line.split()[2]
-                if 'ty ' in line:
-                    ty_refined = line.split()[1]
-                if 'tz ' in line:
-                    tz_refined = line.split()[1]
-                if 'p0 ' in line:
-                    p0_refined = line.split()[1]
-                if 'p1 ' in line:
-                    p1_refined = line.split()[1]
-                if 'p2 ' in line:
-                    p2_refined = line.split()[1]
-                if 'p3 ' in line:
-                    p3_refined = line.split()[1]
-                if 'MeanStrain ' in line:
-                    mean_strain = line.split()[1]
-                if 'StdStrain ' in line:
-                    std_strain = line.split()[1]
-            if 'Mean Values' in line:
-                useful = 1
-    except Exception as e:
-        logger.error(f"Error processing calibrant output: {e}")
-
-def process_calibrant_results(results_file):
-    """Process the results from the calibration to find outlier rings"""
-    try:
-        results = np.genfromtxt(results_file, skip_header=1)
-        unique_tth = np.unique(results[:, -1])
-        mean_strains_per_ring = np.zeros(len(unique_tth))
-        
-        for ringNr in range(len(unique_tth)):
-            subarr = results[results[:, -1] == unique_tth[ringNr], :]
-            mean_strains_per_ring[ringNr] = np.mean(subarr[:, 1])
-        
-        threshold = multFactor * np.median(mean_strains_per_ring)
-        ringsToExcludenew = np.argwhere(mean_strains_per_ring > threshold) + 1
-        
-        rNew = [ring[0] for ring in ringsToExcludenew]
-        
-        if DrawPlots == 1:
-            plt.figure()
-            plt.scatter(unique_tth, mean_strains_per_ring)
-            plt.axhline(threshold, color='black')
-            plt.xlabel('2theta [degrees]')
-            plt.ylabel('Average strain')
-            plt.show()
-            
-            if len(rNew) == 0 and float(mean_strain) < needed_strain:
-                plt.figure()
-                plt.scatter(results[:, -1], results[:, 1])
-                plt.scatter(unique_tth, mean_strains_per_ring, c='red')
-                plt.axhline(threshold, color='black')
-                plt.xlabel('2theta [degrees]')
-                plt.ylabel('Computed strain')
-                plt.title(f'Best fit results for {results_file.split(".corr")[0]}')
-                plt.show()
-        
-        return rNew
-    except Exception as e:
-        logger.error(f"Error processing calibrant results: {e}")
         return []
 
 def run_get_hkl_list(param_file):
@@ -447,6 +491,43 @@ def create_param_file(output_file, params):
     except Exception as e:
         logger.error(f"Error creating parameter file {output_file}: {e}")
 
+def process_tiff_input(dataFN, badPxIntensity, gapIntensity):
+    """Process TIFF input file and convert to GE format"""
+    global NrPixelsY, NrPixelsZ, badGapArr
+    
+    try:
+        img = Image.open(dataFN)
+        logger.info("Data was a tiff image. Will convert to a ge file with 16 bit unsigned.")
+        img = np.array(img)
+        
+        if img.dtype == np.int32:
+            # Find bad or gap pixels
+            if not np.isnan(badPxIntensity) and not np.isnan(gapIntensity):
+                badGapArr = img == badPxIntensity
+                badGapArr = np.logical_or(badGapArr, img == gapIntensity)
+                
+            # Scale data for 16-bit
+            img = img.astype(np.double)
+            img /= 2
+            img = img.astype(np.uint16)
+            
+            # Set dimensions if not 2048x2048
+            if img.shape[1] != 2048:
+                NrPixelsY = img.shape[1]
+            if img.shape[0] != 2048:
+                NrPixelsZ = img.shape[0]
+        
+        # Save as GE file
+        ge_file = f"{dataFN}.ge"
+        with open(ge_file, 'wb') as f:
+            f.write(b'\x00' * 8192)  # Header
+            img.tofile(f)
+            
+        return ge_file
+    except Exception as e:
+        logger.error(f"Error processing TIFF input: {e}")
+        sys.exit(1)
+
 def main():
     """Main function to run the automated calibration"""
     global NrPixelsY, NrPixelsZ, skipFrame, space_group, px, latc, Wavelength
@@ -454,7 +535,8 @@ def main():
     global imTransOpt, etaBinSize, threshold, mrr, initialLsd, minArea, maxW
     global folder, fstem, ext, ty_refined, tz_refined, p0_refined, p1_refined
     global p2_refined, p3_refined, darkName, fnumber, pad, lsd_refined, bc_refined
-    global ringsToExclude, nPlanes, mean_strain, std_strain, RhoDThis
+    global ringsToExclude, nPlanes, mean_strain, std_strain, RhoDThis, h5_file, iterNr
+    global badGapArr
     
     try:
         parser = MyParser(
@@ -462,7 +544,7 @@ def main():
             formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
         
-        # Add arguments (same as before)
+        # Add arguments
         parser.add_argument('-dataFN', type=str, required=True, help='DataFileName.zip, DataFileName.h5 or DataFileName.geX')
         parser.add_argument('-darkFN', type=str, required=False, default='', help='If separate file consists dark signal, provide this parameter.')
         parser.add_argument('-dataLoc', type=str, required=False, default='', help='If data is located in any location except /exchange/data in the hdf5 files, provide this.')
@@ -479,6 +561,7 @@ def main():
         parser.add_argument('-BCGuess', type=float, required=False, default=[0.0, 0.0], nargs=2, help="If you know a guess for the BC, it might be good to kickstart things.")
         parser.add_argument('-BadPxIntensity', type=float, required=False, default=np.nan, help="If you know the bad pixel intensity, provide the value.")
         parser.add_argument('-GapIntensity', type=float, required=False, default=np.nan, help="If you know the gap intensity, provide the value. If you provide bad or gap, provide both!!!!")
+        parser.add_argument('-SavePlotsHDF', type=str, required=False, default='', help="If provided, save all plots to this HDF5 file.")
         
         args, unparsed = parser.parse_known_args()
         
@@ -498,6 +581,16 @@ def main():
         imTransOpt = args.ImTransOpt
         etaBinSize = args.EtaBinSize
         threshold = args.Threshold
+        savePlotsHDF = args.SavePlotsHDF
+        
+        # Create HDF5 file for plots if requested
+        if savePlotsHDF:
+            logger.info(f"Will save plots to HDF5 file: {savePlotsHDF}")
+            h5_file = h5py.File(savePlotsHDF, 'w')
+            # Create a group for metadata
+            meta_group = h5_file.create_group('metadata')
+            meta_group.attrs['file_name'] = os.path.basename(dataFN)
+            meta_group.attrs['date_created'] = pd.Timestamp.now().isoformat()
         
         # Set other constants
         NrPixelsY = 0
@@ -527,8 +620,6 @@ def main():
             dataFN = generateZip('.', psFN, dfn=dataFN, nchunks=100, preproc=0, darkfn=darkFN, dloc=dataLoc)
             
             # The generateZip function now handles errors internally and will exit if it fails
-            # No need for additional error checking here
-
         
         # Read Zarr file
         logger.info(f"Reading Zarr file: {dataFN}")
@@ -569,6 +660,23 @@ def main():
                 raw = np.transpose(raw)
                 dark = np.transpose(dark)
         
+        # Display raw image if needed
+        if DrawPlots == 1 or h5_file:
+            fig = plt.figure()
+            plt.imshow(np.log(raw), clim=[np.median(np.log(raw)), np.median(np.log(raw)) + np.std(np.log(raw))], 
+                      origin='lower')  # Set origin to lower left
+            plt.colorbar()
+            plt.title('Raw image')
+            
+            # Save to HDF5 if requested
+            if h5_file:
+                save_figure_to_hdf5(fig, h5_file, 'raw_image')
+                
+            if DrawPlots == 1:
+                plt.show()
+            else:
+                plt.close(fig)
+        
         # Create simulation parameter file
         logger.info("Running initial ring simulation")
         sim_params = {
@@ -585,15 +693,6 @@ def main():
         sim_rads = np.unique(hkls[:, -1]) / px
         sim_rad_ratios = sim_rads / sim_rads[0]
         
-        # Display raw image if needed
-        if DrawPlots == 1:
-            plt.figure()
-            plt.imshow(np.log(raw), clim=[np.median(np.log(raw)), np.median(np.log(raw)) + np.std(np.log(raw))], 
-                      origin='lower')  # Set origin to lower left
-            plt.colorbar()
-            plt.title('Raw image')
-            plt.show()
-        
         # Process image for calibration
         data = raw.astype(np.uint16)
         
@@ -606,12 +705,20 @@ def main():
         logger.info('Finished with median, now processing data.')
         data = data.astype(float)
         
-        if DrawPlots == 1:
-            plt.figure()
+        if DrawPlots == 1 or h5_file:
+            fig = plt.figure()
             plt.imshow(np.log(data2), origin='lower')  # Set origin to lower left
             plt.colorbar()
             plt.title('Computed background')
-            plt.show()
+            
+            # Save to HDF5 if requested
+            if h5_file:
+                save_figure_to_hdf5(fig, h5_file, 'background_image')
+                
+            if DrawPlots == 1:
+                plt.show()
+            else:
+                plt.close(fig)
         
         # Background subtraction and thresholding
         data_corr = data - data2
@@ -621,12 +728,20 @@ def main():
         thresh = data_corr.copy()
         thresh[thresh > 0] = 255
         
-        if DrawPlots == 1:
-            plt.figure()
+        if DrawPlots == 1 or h5_file:
+            fig = plt.figure()
             plt.imshow(thresh, origin='lower')  # Set origin to lower left
             plt.colorbar()
             plt.title('Cleaned image')
-            plt.show()
+            
+            # Save to HDF5 if requested
+            if h5_file:
+                save_figure_to_hdf5(fig, h5_file, 'cleaned_image')
+                
+            if DrawPlots == 1:
+                plt.show()
+            else:
+                plt.close(fig)
         
         # Detect beam center and ring radii
         if bcg[0] == 0:
@@ -671,7 +786,7 @@ def main():
         sim_rad_ratios = sim_rads / sim_rads[0]
         
         # Display rings on image if needed
-        if DrawPlots == 1:
+        if DrawPlots == 1 or h5_file:
             fig, ax = plt.subplots()
             plt.imshow(thresh, origin='lower')  # Set origin to lower left
             for rad in sim_rads:
@@ -680,8 +795,16 @@ def main():
                 ax.add_patch(e1)
             ax.axis([0, NrPixelsY, 0, NrPixelsZ])
             ax.set_aspect('equal')
-            plt.title('Overlaid rings.')
-            plt.show()
+            plt.title('Overlaid rings')
+            
+            # Save to HDF5 if requested
+            if h5_file:
+                save_figure_to_hdf5(fig, h5_file, 'overlaid_rings')
+                
+            if DrawPlots == 1:
+                plt.show()
+            else:
+                plt.close(fig)
         
         # Prepare for MIDAS calibration
         fnumber = int(rawFN.split('_')[-1].split('.')[0])
@@ -770,10 +893,68 @@ def main():
             row=1, col=2
         )
         
-        fig.write_html(f"{rawFN}.html")
+        # Save the interactive plot to HTML
+        html_file = f"{rawFN}.html"
+        fig.write_html(html_file)
+        
+        # If we're saving to HDF5, also save a static version of this plot
+        if h5_file:
+            # Convert Plotly figure to matplotlib figure for HDF5 storage
+            static_fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+            
+            # First plot: radius vs strain
+            scatter1 = ax1.scatter(df['RadFit'], df['Strain'], c=df['Ideal2Theta'], cmap='viridis')
+            ax1.set_xlabel('Radius Fit')
+            ax1.set_ylabel('Strain')
+            plt.colorbar(scatter1, ax=ax1, label='2Theta')
+            
+            # Second plot: polar plot (simplified version of the scatterpolar)
+            scatter2 = ax2.scatter(
+                df['Strain'] * np.cos(np.radians(df['EtaCalc'])),
+                df['Strain'] * np.sin(np.radians(df['EtaCalc'])),
+                c=df['Ideal2Theta'], 
+                cmap='viridis'
+            )
+            ax2.set_aspect('equal')
+            ax2.set_xlabel('Strain × cos(η)')
+            ax2.set_ylabel('Strain × sin(η)')
+            plt.colorbar(scatter2, ax=ax2, label='2Theta')
+            
+            # Save to HDF5
+            save_figure_to_hdf5(static_fig, h5_file, 'final_interactive_plots_static')
+            plt.close(static_fig)
+            
+            # Also save the raw data to the HDF5 file
+            data_group = h5_file.create_group('results_data')
+            for column in df.columns:
+                data_group.create_dataset(column, data=df[column].values)
+                
+            # Add parameters used for the run
+            params_group = h5_file.create_group('parameters')
+            for key, value in {
+                'lsd': lsd_refined,
+                'beam_center': bc_refined,
+                'ty': ty_refined,
+                'tz': tz_refined,
+                'p0': p0_refined,
+                'p1': p1_refined,
+                'p2': p2_refined,
+                'p3': p3_refined,
+                'mean_strain': mean_strain,
+                'std_strain': std_strain,
+                'wavelength': Wavelength,
+                'pixel_size': px,
+                'space_group': space_group,
+                'rings_excluded': ','.join(map(str, ringsToExclude))
+            }.items():
+                params_group.attrs[key] = value
+                
+            # Close the HDF5 file
+            h5_file.close()
+            logger.info(f"All plots and data saved to HDF5 file")
         
         # Print final results
-        logger.info(f"Interactive plots written to: {rawFN}.html")
+        logger.info(f"Interactive plots written to: {html_file}")
         logger.info("Converged to a good set of parameters.\nBest values:")
         logger.info(f'Lsd {lsd_refined}')
         logger.info(f'BC {bc_refined}')
@@ -835,43 +1016,8 @@ def main():
         
     except Exception as e:
         logger.error(f"Error in main function: {traceback.format_exc()}")
-        sys.exit(1)
-
-def process_tiff_input(dataFN, badPxIntensity, gapIntensity):
-    """Process TIFF input file and convert to GE format"""
-    global NrPixelsY, NrPixelsZ, badGapArr
-    
-    try:
-        img = Image.open(dataFN)
-        logger.info("Data was a tiff image. Will convert to a ge file with 16 bit unsigned.")
-        img = np.array(img)
-        
-        if img.dtype == np.int32:
-            # Find bad or gap pixels
-            if not np.isnan(badPxIntensity) and not np.isnan(gapIntensity):
-                badGapArr = img == badPxIntensity
-                badGapArr = np.logical_or(badGapArr, img == gapIntensity)
-                
-            # Scale data for 16-bit
-            img = img.astype(np.double)
-            img /= 2
-            img = img.astype(np.uint16)
-            
-            # Set dimensions if not 2048x2048
-            if img.shape[1] != 2048:
-                NrPixelsY = img.shape[1]
-            if img.shape[0] != 2048:
-                NrPixelsZ = img.shape[0]
-        
-        # Save as GE file
-        ge_file = f"{dataFN}.ge"
-        with open(ge_file, 'wb') as f:
-            f.write(b'\x00' * 8192)  # Header
-            img.tofile(f)
-            
-        return ge_file
-    except Exception as e:
-        logger.error(f"Error processing TIFF input: {e}")
+        if h5_file:
+            h5_file.close()
         sys.exit(1)
 
 if __name__ == "__main__":
