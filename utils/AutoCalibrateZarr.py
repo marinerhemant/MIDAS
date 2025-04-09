@@ -102,18 +102,49 @@ def generateZip(resFol, pfn, dfn='', darkfn='', dloc='', nchunks=-1, preproc=-1,
     
     try:
         with open(outfile_path, 'w') as outfile, open(errfile_path, 'w') as errfile:
-            subprocess.call(cmd_str, shell=True, stdout=outfile, stderr=errfile)
+            return_code = subprocess.call(cmd_str, shell=True, stdout=outfile, stderr=errfile)
         
+        # Check return code for non-zero value indicating error
+        if return_code != 0:
+            with open(errfile_path, 'r') as errfile:
+                error_content = errfile.read()
+            logger.error(f"Error executing generateZip - Return code: {return_code}")
+            logger.error(f"Error content: {error_content}")
+            print(f"Error executing generateZip - Return code: {return_code}")
+            print(f"Error content: {error_content}")
+            sys.exit(1)
+        
+        # Check output file
         with open(outfile_path, 'r') as outfile:
             lines = outfile.readlines()
-            if lines and lines[-1].startswith('OutputZipName'):
-                return lines[-1].split()[1]
-            else:
-                logger.warning("No output zip file was generated")
-                return None
+            
+            # Check for error messages in output
+            for line in lines:
+                if "Error" in line or "error" in line or "ERROR" in line:
+                    logger.error(f"Error detected in generateZip output: {line.strip()}")
+                    print(f"Error detected in generateZip output: {line.strip()}")
+                    sys.exit(1)
+            
+            # Check if zip file was created
+            if not lines or not any(line.startswith('OutputZipName') for line in lines):
+                logger.error("No output zip file was generated")
+                print("No output zip file was generated")
+                sys.exit(1)
+                
+            # Return the zip file name
+            for line in lines:
+                if line.startswith('OutputZipName'):
+                    return line.split()[1]
+    
     except Exception as e:
-        logger.error(f"Error generating zip file: {e}")
-        return None
+        logger.error(f"Exception in generateZip: {e}")
+        print(f"Exception in generateZip: {e}")
+        sys.exit(1)
+    
+    # If we get here without finding the output zip name, that's an error
+    logger.error("Could not find output zip name in generateZip output")
+    print("Could not find output zip name in generateZip output")
+    sys.exit(1)
 
 def runMIDAS(fn):
     """Run MIDAS calibration and process results"""
@@ -489,13 +520,15 @@ def main():
             psFN = args.paramFN
             if not psFN:
                 logger.error("Parameter file is required for conversion")
+                print("ERROR: Parameter file is required for conversion")
                 sys.exit(1)
                 
             logger.info("Generating zip file")
             dataFN = generateZip('.', psFN, dfn=dataFN, nchunks=100, preproc=0, darkfn=darkFN, dloc=dataLoc)
-            if not dataFN:
-                logger.error("Failed to generate zip file")
-                sys.exit(1)
+            
+            # The generateZip function now handles errors internally and will exit if it fails
+            # No need for additional error checking here
+
         
         # Read Zarr file
         logger.info(f"Reading Zarr file: {dataFN}")
