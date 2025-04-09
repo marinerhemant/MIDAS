@@ -9,7 +9,6 @@ import os
 import sys
 import numpy as np
 import subprocess
-import matplotlib.pyplot as plt
 from multiprocessing import Pool
 import argparse
 import pathlib
@@ -454,6 +453,7 @@ def main():
         # Create plot
         if not no_plot:
             try:
+                import matplotlib.pyplot as plt
                 plt.figure(figsize=(12, 8))
                 plt.plot(valid_values, 'b.-', label='Valid tx values')
                 
