@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-##### Save all the plots to an hdf5
+##### Save all the data arrays to an hdf5
 ##### python AutoCalibrateZarr.py -dataFN CeO2_30keV_210mm_20sec_000001.tif -ConvertFile 3 -paramFN ps_orig.txt -BadPxIntensity -2 -GapIntensity -1 -MakePlots 1 -StoppingStrain 0.003 -SavePlotsHDF plots.h5
 
 import warnings
@@ -63,25 +63,93 @@ class MyParser(argparse.ArgumentParser):
         self.print_help()
         sys.exit(2)
 
-def save_figure_to_hdf5(fig, h5file, dataset_name):
+def save_data_to_hdf5(data, h5file, dataset_name, metadata=None):
     """
-    Save a matplotlib figure to an HDF5 file
+    Save data arrays to an HDF5 file
     
     Parameters:
     -----------
-    fig : matplotlib.figure.Figure
-        The figure to save
+    data : dict
+        Dictionary containing the data arrays to save
     h5file : h5py.File
         Open HDF5 file object
     dataset_name : str
-        Name for the dataset in the HDF5 file
+        Name for the dataset group in the HDF5 file
+    metadata : dict, optional
+        Dictionary containing metadata to save as attributes
     """
-    buf = io.BytesIO()
-    fig.savefig(buf, format='png')
-    buf.seek(0)
-    img_data = np.asarray(Image.open(buf))
-    h5file.create_dataset(dataset_name, data=img_data)
-    buf.close()
+    # Create a group for this dataset
+    group = h5file.create_group(dataset_name)
+    
+    # Save each array in the dictionary
+    for key, value in data.items():
+        group.create_dataset(key, data=value)
+    
+    # Save metadata as attributes if provided
+    if metadata:
+        for key, value in metadata.items():
+            group.attrs[key] = value
+
+# Functions for saving specific types of data
+def save_raw_image_data(raw, h5file):
+    """Save raw image data to HDF5"""
+    data = {'raw_image': raw}
+    metadata = {'description': 'Raw detector image'}
+    save_data_to_hdf5(data, h5file, 'raw_image_data', metadata)
+
+def save_background_data(background, h5file):
+    """Save background image data to HDF5"""
+    data = {'background': background}
+    metadata = {'description': 'Computed background using median filter'}
+    save_data_to_hdf5(data, h5file, 'background_data', metadata)
+
+def save_threshold_data(thresh, h5file):
+    """Save thresholded image data to HDF5"""
+    data = {'threshold': thresh}
+    metadata = {'description': 'Thresholded image after background subtraction'}
+    save_data_to_hdf5(data, h5file, 'threshold_data', metadata)
+
+def save_ring_data(thresh, bc_new, sim_rads, h5file):
+    """Save data for ring overlay visualization"""
+    data = {
+        'threshold': thresh,
+        'beam_center': np.array(bc_new),
+        'ring_radii': np.array(sim_rads)
+    }
+    metadata = {
+        'description': 'Data for ring overlay visualization',
+        'beam_center_x': bc_new[1],
+        'beam_center_y': bc_new[0]
+    }
+    save_data_to_hdf5(data, h5file, 'ring_overlay_data', metadata)
+
+def save_strain_tth_data(unique_tth, mean_strains_per_ring, threshold, h5file, iter_nr):
+    """Save strain vs 2-theta data for a specific iteration"""
+    data = {
+        'two_theta': unique_tth,
+        'mean_strain': mean_strains_per_ring,
+        'threshold': np.array([threshold])
+    }
+    metadata = {'iteration': iter_nr}
+    save_data_to_hdf5(data, h5file, f'strain_tth_data_iter{iter_nr}', metadata)
+
+def save_final_strain_data(results, unique_tth, mean_strains_per_ring, threshold, h5file):
+    """Save final strain results data"""
+    data = {
+        'results_tth': results[:, -1],
+        'results_strain': results[:, 1],
+        'unique_tth': unique_tth,
+        'mean_strain_per_ring': mean_strains_per_ring,
+        'threshold': np.array([threshold])
+    }
+    metadata = {'description': 'Final strain results after convergence'}
+    save_data_to_hdf5(data, h5file, 'final_strain_data', metadata)
+
+def save_results_dataframe(df, h5file):
+    """Save the results dataframe"""
+    data_group = h5file.create_group('results_data')
+    for column in df.columns:
+        data_group.create_dataset(column, data=df[column].values)
 
 def fileReader(f, dset):
     """Read data from Zarr file with handling for skipFrames"""
@@ -231,23 +299,24 @@ def process_calibrant_results(results_file):
         
         rNew = [ring[0] for ring in ringsToExcludenew]
         
-        if DrawPlots == 1 or h5_file:
+        # Save data instead of plots
+        if h5_file:
+            save_strain_tth_data(unique_tth, mean_strains_per_ring, threshold, h5_file, iterNr)
+                
+        if DrawPlots == 1:
             fig = plt.figure()
             plt.scatter(unique_tth, mean_strains_per_ring)
             plt.axhline(threshold, color='black')
             plt.xlabel('2theta [degrees]')
             plt.ylabel('Average strain')
-            
-            # Save to HDF5 if requested
+            plt.show()
+        
+        # Save final strain data if we've reached the convergence criteria
+        if len(rNew) == 0 and float(mean_strain) < needed_strain:
             if h5_file:
-                save_figure_to_hdf5(fig, h5_file, f'strain_vs_tth_iter{iterNr}')
+                save_final_strain_data(results, unique_tth, mean_strains_per_ring, threshold, h5_file)
                 
             if DrawPlots == 1:
-                plt.show()
-            else:
-                plt.close(fig)
-            
-            if len(rNew) == 0 and float(mean_strain) < needed_strain:
                 fig = plt.figure()
                 plt.scatter(results[:, -1], results[:, 1])
                 plt.scatter(unique_tth, mean_strains_per_ring, c='red')
@@ -255,15 +324,7 @@ def process_calibrant_results(results_file):
                 plt.xlabel('2theta [degrees]')
                 plt.ylabel('Computed strain')
                 plt.title(f'Best fit results for {results_file.split(".corr")[0]}')
-                
-                # Save to HDF5 if requested
-                if h5_file:
-                    save_figure_to_hdf5(fig, h5_file, 'final_strain_results')
-                    
-                if DrawPlots == 1:
-                    plt.show()
-                else:
-                    plt.close(fig)
+                plt.show()
         
         return rNew
     except Exception as e:
@@ -561,7 +622,7 @@ def main():
         parser.add_argument('-BCGuess', type=float, required=False, default=[0.0, 0.0], nargs=2, help="If you know a guess for the BC, it might be good to kickstart things.")
         parser.add_argument('-BadPxIntensity', type=float, required=False, default=np.nan, help="If you know the bad pixel intensity, provide the value.")
         parser.add_argument('-GapIntensity', type=float, required=False, default=np.nan, help="If you know the gap intensity, provide the value. If you provide bad or gap, provide both!!!!")
-        parser.add_argument('-SavePlotsHDF', type=str, required=False, default='', help="If provided, save all plots to this HDF5 file.")
+        parser.add_argument('-SavePlotsHDF', type=str, required=False, default='', help="If provided, save all data arrays to this HDF5 file.")
         
         args, unparsed = parser.parse_known_args()
         
@@ -583,9 +644,9 @@ def main():
         threshold = args.Threshold
         savePlotsHDF = args.SavePlotsHDF
         
-        # Create HDF5 file for plots if requested
+        # Create HDF5 file for data arrays if requested
         if savePlotsHDF:
-            logger.info(f"Will save plots to HDF5 file: {savePlotsHDF}")
+            logger.info(f"Will save data arrays to HDF5 file: {savePlotsHDF}")
             h5_file = h5py.File(savePlotsHDF, 'w')
             # Create a group for metadata
             meta_group = h5_file.create_group('metadata')
@@ -619,8 +680,6 @@ def main():
             logger.info("Generating zip file")
             dataFN = generateZip('.', psFN, dfn=dataFN, nchunks=100, preproc=0, darkfn=darkFN, dloc=dataLoc)
             
-            # The generateZip function now handles errors internally and will exit if it fails
-        
         # Read Zarr file
         logger.info(f"Reading Zarr file: {dataFN}")
         dataF = zarr.open(dataFN, mode='r')
@@ -660,22 +719,18 @@ def main():
                 raw = np.transpose(raw)
                 dark = np.transpose(dark)
         
+        # Save raw image data if needed
+        if h5_file:
+            save_raw_image_data(raw, h5_file)
+            
         # Display raw image if needed
-        if DrawPlots == 1 or h5_file:
+        if DrawPlots == 1:
             fig = plt.figure()
             plt.imshow(np.log(raw), clim=[np.median(np.log(raw)), np.median(np.log(raw)) + np.std(np.log(raw))], 
                       origin='lower')  # Set origin to lower left
             plt.colorbar()
             plt.title('Raw image')
-            
-            # Save to HDF5 if requested
-            if h5_file:
-                save_figure_to_hdf5(fig, h5_file, 'raw_image')
-                
-            if DrawPlots == 1:
-                plt.show()
-            else:
-                plt.close(fig)
+            plt.show()
         
         # Create simulation parameter file
         logger.info("Running initial ring simulation")
@@ -705,20 +760,17 @@ def main():
         logger.info('Finished with median, now processing data.')
         data = data.astype(float)
         
-        if DrawPlots == 1 or h5_file:
+        # Save background data if needed
+        if h5_file:
+            save_background_data(data2, h5_file)
+            
+        # Display background if needed
+        if DrawPlots == 1:
             fig = plt.figure()
             plt.imshow(np.log(data2), origin='lower')  # Set origin to lower left
             plt.colorbar()
             plt.title('Computed background')
-            
-            # Save to HDF5 if requested
-            if h5_file:
-                save_figure_to_hdf5(fig, h5_file, 'background_image')
-                
-            if DrawPlots == 1:
-                plt.show()
-            else:
-                plt.close(fig)
+            plt.show()
         
         # Background subtraction and thresholding
         data_corr = data - data2
@@ -728,20 +780,17 @@ def main():
         thresh = data_corr.copy()
         thresh[thresh > 0] = 255
         
-        if DrawPlots == 1 or h5_file:
+        # Save threshold data if needed
+        if h5_file:
+            save_threshold_data(thresh, h5_file)
+            
+        # Display threshold if needed
+        if DrawPlots == 1:
             fig = plt.figure()
             plt.imshow(thresh, origin='lower')  # Set origin to lower left
             plt.colorbar()
             plt.title('Cleaned image')
-            
-            # Save to HDF5 if requested
-            if h5_file:
-                save_figure_to_hdf5(fig, h5_file, 'cleaned_image')
-                
-            if DrawPlots == 1:
-                plt.show()
-            else:
-                plt.close(fig)
+            plt.show()
         
         # Detect beam center and ring radii
         if bcg[0] == 0:
@@ -785,8 +834,12 @@ def main():
         sim_rads = np.unique(hkls[:, -1]) / px
         sim_rad_ratios = sim_rads / sim_rads[0]
         
+        # Save ring overlay data if needed
+        if h5_file:
+            save_ring_data(thresh, bc_new, sim_rads, h5_file)
+            
         # Display rings on image if needed
-        if DrawPlots == 1 or h5_file:
+        if DrawPlots == 1:
             fig, ax = plt.subplots()
             plt.imshow(thresh, origin='lower')  # Set origin to lower left
             for rad in sim_rads:
@@ -796,15 +849,7 @@ def main():
             ax.axis([0, NrPixelsY, 0, NrPixelsZ])
             ax.set_aspect('equal')
             plt.title('Overlaid rings')
-            
-            # Save to HDF5 if requested
-            if h5_file:
-                save_figure_to_hdf5(fig, h5_file, 'overlaid_rings')
-                
-            if DrawPlots == 1:
-                plt.show()
-            else:
-                plt.close(fig)
+            plt.show()
         
         # Prepare for MIDAS calibration
         fnumber = int(rawFN.split('_')[-1].split('.')[0])
@@ -866,68 +911,45 @@ def main():
                     ringListExcluded[i] = 1
                     ringsToExclude.append(i)
         
-        # Generate plots
-        logger.info("Generating final plots")
+        # Generate final results
+        logger.info("Generating final results data")
         df = pd.read_csv(f"{rawFN}.corr.csv", delimiter=' ')
-        fig = make_subplots(rows=1, cols=2, specs=[[{"type": "scatter"}, {"type": "scatterpolar"}]])
         
-        fig.add_trace(
-            go.Scatter(
-                mode='markers',
-                x=df['RadFit'],
-                y=df['Strain'],
-                marker=dict(color=df['Ideal2Theta']),
-                showlegend=True
-            ),
-            row=1, col=1
-        )
-        
-        fig.add_trace(
-            go.Scatterpolar(
-                r=df['Strain'],
-                theta=df['EtaCalc'],
-                mode='markers',
-                marker=dict(color=df['Ideal2Theta']),
-                showlegend=True
-            ),
-            row=1, col=2
-        )
-        
-        # Save the interactive plot to HTML
-        html_file = f"{rawFN}.html"
-        fig.write_html(html_file)
-        
-        # If we're saving to HDF5, also save a static version of this plot
-        if h5_file:
-            # Convert Plotly figure to matplotlib figure for HDF5 storage
-            static_fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+        # Generate interactive plot for HTML export
+        if DrawPlots == 1:
+            fig = make_subplots(rows=1, cols=2, specs=[[{"type": "scatter"}, {"type": "scatterpolar"}]])
             
-            # First plot: radius vs strain
-            scatter1 = ax1.scatter(df['RadFit'], df['Strain'], c=df['Ideal2Theta'], cmap='viridis')
-            ax1.set_xlabel('Radius Fit')
-            ax1.set_ylabel('Strain')
-            plt.colorbar(scatter1, ax=ax1, label='2Theta')
-            
-            # Second plot: polar plot (simplified version of the scatterpolar)
-            scatter2 = ax2.scatter(
-                df['Strain'] * np.cos(np.radians(df['EtaCalc'])),
-                df['Strain'] * np.sin(np.radians(df['EtaCalc'])),
-                c=df['Ideal2Theta'], 
-                cmap='viridis'
+            fig.add_trace(
+                go.Scatter(
+                    mode='markers',
+                    x=df['RadFit'],
+                    y=df['Strain'],
+                    marker=dict(color=df['Ideal2Theta']),
+                    showlegend=True
+                ),
+                row=1, col=1
             )
-            ax2.set_aspect('equal')
-            ax2.set_xlabel('Strain × cos(η)')
-            ax2.set_ylabel('Strain × sin(η)')
-            plt.colorbar(scatter2, ax=ax2, label='2Theta')
             
-            # Save to HDF5
-            save_figure_to_hdf5(static_fig, h5_file, 'final_interactive_plots_static')
-            plt.close(static_fig)
+            fig.add_trace(
+                go.Scatterpolar(
+                    r=df['Strain'],
+                    theta=df['EtaCalc'],
+                    mode='markers',
+                    marker=dict(color=df['Ideal2Theta']),
+                    showlegend=True
+                ),
+                row=1, col=2
+            )
             
-            # Also save the raw data to the HDF5 file
-            data_group = h5_file.create_group('results_data')
-            for column in df.columns:
-                data_group.create_dataset(column, data=df[column].values)
+            # Save the interactive plot to HTML
+            html_file = f"{rawFN}.html"
+            fig.write_html(html_file)
+            logger.info(f"Interactive plots written to: {html_file}")
+        
+        # Save results data to HDF5 if requested
+        if h5_file:
+            # Save the dataframe with all results data
+            save_results_dataframe(df, h5_file)
                 
             # Add parameters used for the run
             params_group = h5_file.create_group('parameters')
@@ -951,10 +973,9 @@ def main():
                 
             # Close the HDF5 file
             h5_file.close()
-            logger.info(f"All plots and data saved to HDF5 file")
+            logger.info(f"All data arrays saved to HDF5 file: {savePlotsHDF}")
         
         # Print final results
-        logger.info(f"Interactive plots written to: {html_file}")
         logger.info("Converged to a good set of parameters.\nBest values:")
         logger.info(f'Lsd {lsd_refined}')
         logger.info(f'BC {bc_refined}')
