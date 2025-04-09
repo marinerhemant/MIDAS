@@ -23,9 +23,18 @@ from PIL import Image
 import math
 pytpath = sys.executable
 
+# Determine the installation path from the script's location
+# This script is assumed to be in the 'utils' directory of the installation
+def get_install_path():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Go one directory up from the script directory
+    install_dir = os.path.dirname(script_dir)
+    return install_dir
+
+INSTALL_PATH = get_install_path()
+
 env = dict(os.environ)
-midas_path = os.path.expanduser("~/.MIDAS")
-env['LD_LIBRARY_PATH'] = f'{midas_path}/BLOSC/lib64:{midas_path}/FFTW/lib:{midas_path}/HDF5/lib:{midas_path}/LIBTIFF/lib:{midas_path}/LIBZIP/lib64:{midas_path}/NLOPT/lib:{midas_path}/ZLIB/lib'
+# No longer setting LD_LIBRARY_PATH since cmake takes care of it
 
 class MyParser(argparse.ArgumentParser):
 	def error(self, message):
@@ -42,7 +51,7 @@ def fileReader(f,dset):
 	return np.mean(data,axis=0).astype(np.uint16)
 
 def generateZip(resFol,pfn,dfn='',darkfn='',dloc='',nchunks=-1,preproc=-1,outf='ZipOut.txt',errf='ZipErr.txt'):
-    cmd = pytpath+' '+os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZip.py')+' -resultFolder '+ resFol +' -paramFN ' + pfn
+    cmd = pytpath+' '+os.path.join(INSTALL_PATH, 'utils/ffGenerateZip.py')+' -resultFolder '+ resFol +' -paramFN ' + pfn
     if dfn!='':
         cmd+= ' -dataFN ' + dfn
     if darkfn!='':
@@ -222,7 +231,9 @@ def runMIDAS(fn):
 		pf.write('RhoD '+str(RhoDThis)+'\n')
 		pf.write('BC '+bc_refined+'\n')
 		pf.write('LatticeConstant '+str(latc[0])+' '+str(latc[1])+' '+str(latc[2])+' '+str(latc[3])+' '+str(latc[4])+' '+str(latc[5])+'\n')
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalibrantOMP")+' '+fn+"ps.txt 10",shell=True,env=env,stdout=open('calibrant_screen_out.csv','w'))
+	# Use the INSTALL_PATH to locate the CalibrantOMP executable
+	cmd = os.path.join(INSTALL_PATH, 'FF_HEDM/bin/CalibrantOMP') + ' ' + fn + "ps.txt 10"
+	subprocess.call(cmd, shell=True, env=env, stdout=open('calibrant_screen_out.csv','w'))
 	output = open('calibrant_screen_out.csv').readlines()
 	useful = 0
 	for line in output:
@@ -280,6 +291,7 @@ def runMIDAS(fn):
 	return(rNew)
 
 
+# Update all paths to use INSTALL_PATH
 with open('ps_init_sim.txt','w') as pf:
     pf.write('Wavelength '+str(Wavelength)+'\n')
     pf.write('SpaceGroup '+str(space_group)+'\n')
@@ -287,7 +299,9 @@ with open('ps_init_sim.txt','w') as pf:
     pf.write('MaxRingRad '+str(mrr)+'\n')
     pf.write('LatticeConstant '+str(latc[0])+' '+str(latc[1])+' '+str(latc[2])+' '+str(latc[3])+' '+str(latc[4])+' '+str(latc[5])+'\n')
 
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" ps_init_sim.txt",shell=True,env=env,stdout=open('hkls_screen_out.csv','w'))
+# Use the INSTALL_PATH to locate the GetHKLList executable
+cmd = os.path.join(INSTALL_PATH, 'FF_HEDM/bin/GetHKLList') + " ps_init_sim.txt"
+subprocess.call(cmd, shell=True, env=env, stdout=open('hkls_screen_out.csv','w'))
 hkls = np.genfromtxt('hkls.csv',skip_header=1)
 sim_rads = np.unique(hkls[:,-1])/px
 sim_rad_ratios = sim_rads / sim_rads[0]
@@ -410,7 +424,9 @@ with open('ps.txt','w') as pf:
     pf.write('MaxRingRad '+str(mrr)+'\n')
     pf.write('LatticeConstant '+str(latc[0])+' '+str(latc[1])+' '+str(latc[2])+' '+str(latc[3])+' '+str(latc[4])+' '+str(latc[5])+'\n')
 
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" ps.txt",shell=True,env=env,stdout=open('hkls_screen_out.csv','w'))
+# Use the INSTALL_PATH to locate the GetHKLList executable
+cmd = os.path.join(INSTALL_PATH, 'FF_HEDM/bin/GetHKLList') + " ps.txt"
+subprocess.call(cmd, shell=True, env=env, stdout=open('hkls_screen_out.csv','w'))
 hkls = np.genfromtxt('hkls.csv',skip_header=1)
 sim_rads = np.unique(hkls[:,-1])/px
 sim_rad_ratios = sim_rads / sim_rads[0]
