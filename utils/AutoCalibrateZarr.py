@@ -26,6 +26,11 @@ from pathlib import Path
 import traceback
 import h5py
 import io
+import numba
+from numba import jit
+from scipy import ndimage
+import multiprocessing as mp
+from functools import partial
 
 # Set up logging
 logging.basicConfig(
@@ -408,73 +413,179 @@ def run_get_hkl_list(param_file):
         logger.error(f"Error running GetHKLList: {e}")
         raise
 
-def detect_beam_center(thresh, minArea):
-    """Detect beam center from thresholded image"""
+@jit(nopython=True)
+def _compute_distances(coords, point):
+    """JIT-compiled function to compute distances between points"""
+    distances = np.zeros(len(coords))
+    for i in range(len(coords)):
+        diff = coords[i] - point
+        distances[i] = np.sqrt(diff[0]**2 + diff[1]**2)
+    return distances
+
+@jit(nopython=True)
+def _find_center_point(coords, bbox):
+    """JIT-compiled function to find a center point"""
+    # Find edge coordinates
+    edge_indices = np.where(coords[:, 0] == bbox[0])[0]
+    
+    if len(edge_indices) == 0:
+        return np.array([-1.0, -1.0])  # Invalid center
+    
+    # Select middle edge coordinate
+    edgecoorda = coords[edge_indices[len(edge_indices)//2]]
+    
+    # Calculate distances
+    distances = _compute_distances(coords, edgecoorda)
+    
+    # Find furthest point
+    furthest_idx = np.argmax(distances)
+    edgecoordb = coords[furthest_idx]
+    max_distance = distances[furthest_idx]
+    
+    # Find points at approximately half the max distance
+    arcLen = max_distance / 2
+    candidate_indices = np.where(np.abs(distances - arcLen) < 2)[0]
+    
+    if len(candidate_indices) == 0:
+        return np.array([-1.0, -1.0])  # Invalid center
+    
+    # Use the middle candidate
+    candidatea = coords[candidate_indices[len(candidate_indices)//2]]
+    candidateb = candidatea
+    
+    # Calculate midpoints
+    midpointa = (edgecoorda + candidatea) / 2
+    midpointb = (edgecoordb + candidateb) / 2
+    
+    # Extract coordinates
+    x1, y1 = edgecoorda
+    x2, y2 = candidatea
+    x3, y3 = candidateb
+    x4, y4 = edgecoordb
+    x5, y5 = midpointa
+    x6, y6 = midpointb
+    
+    # Check for division by zero
+    if (y4 == y3 or y2 == y1):
+        return np.array([-1.0, -1.0])  # Invalid center
+    
+    # Calculate slopes
+    m1 = (x1 - x2) / (y2 - y1)
+    m2 = (x3 - x4) / (y4 - y3)
+    
+    if abs(m1 - m2) < 1e-10:  # Avoid floating point issues
+        return np.array([-1.0, -1.0])  # Invalid center
+    
+    # Calculate intersection
+    x = (y6 - y5 + m1 * x5 - m2 * x6) / (m1 - m2)
+    y = m1 * (x - x5) + y5
+    
+    return np.array([x, y])
+
+def _process_single_label(label_info):
+    """Process a single labeled region using JIT compilation"""
+    label, mask, minArea = label_info
+    
+    # Check size
+    if np.sum(mask) < minArea:
+        return None
+    
+    # Get coordinates
+    coords = np.array(np.where(mask)).T
+    
+    # Get bounding box
+    rows, cols = np.where(mask)
+    if len(rows) == 0:
+        return None
+        
+    bbox = (rows.min(), cols.min(), rows.max(), cols.max())
+    
+    # Find center using the JIT-compiled function
+    center = _find_center_point(coords, bbox)
+    
+    # Check if center is valid
+    if center[0] < 0 or center[1] < 0:
+        return None
+        
+    logger.info(f"Detected center point: {center[0]}, {center[1]}")
+    return center
+
+def detect_beam_center_optimized(thresh, minArea, num_processes=None):
+    """
+    Detect beam center from thresholded image using both JIT and multiprocessing
+    
+    Parameters:
+    -----------
+    thresh : 2D numpy array
+        Thresholded binary image
+    minArea : int
+        Minimum area of regions to consider
+    num_processes : int, optional
+        Number of processes to use. If None, uses all available cores.
+    
+    Returns:
+    --------
+    np.array
+        [x, y] coordinates of the beam center, or [0, 0] if none found
+    """
     try:
-        labels, nlabels = measure.label(thresh, return_num=True)
-        props = measure.regionprops(labels)
-        bc = []
+        # First compilation run to avoid startup delay during actual processing
+        if not hasattr(detect_beam_center_optimized, "_initialized"):
+            # Warm up the JIT compiler with a small dummy array
+            dummy_coords = np.array([[0, 0], [1, 1], [2, 2]])
+            dummy_bbox = (0, 0, 2, 2)
+            _ = _find_center_point(dummy_coords, dummy_bbox)
+            detect_beam_center_optimized._initialized = True
         
-        for label in range(1, nlabels):
-            if np.sum(labels == label) < minArea:
-                thresh[labels == label] = 0
-                continue
-                
-            coords = props[label-1].coords
-            bbox = props[label-1].bbox
-            edge_coords = coords[coords[:, 0] == bbox[0], :]
-            
-            if len(edge_coords) == 0:
-                continue
-                
-            edgecoorda = edge_coords[int(len(edge_coords)/2)]
-            diffs = np.transpose(coords) - edgecoorda[:, None]
-            arcLen = int(np.max(np.linalg.norm(diffs, axis=0)) / 2)
-            edgecoordb = coords[np.argmax(np.linalg.norm(diffs, axis=0))]
-            candidates = coords[np.abs(np.linalg.norm(diffs, axis=0) - arcLen) < 2]
-            
-            if candidates.size == 0:
-                continue
-                
-            candidatea = candidates[int(candidates.shape[0]/2)]
-            midpointa = (edgecoorda + candidatea) / 2
-            candidateb = candidatea
-            midpointb = (edgecoordb + candidateb) / 2
-            
-            # Extract coordinates
-            x1, y1 = edgecoorda
-            x2, y2 = candidatea
-            x3, y3 = candidateb
-            x4, y4 = edgecoordb
-            x5, y5 = midpointa
-            x6, y6 = midpointb
-            
-            # Check for division by zero
-            if (y4 == y3 or y2 == y1):
-                continue
-                
-            m1 = (x1 - x2) / (y2 - y1)
-            m2 = (x3 - x4) / (y4 - y3)
-            
-            if m1 == m2:
-                continue
-                
-            x = (y6 - y5 + m1 * x5 - m2 * x6) / (m1 - m2)
-            y = m1 * (x - x5) + y5
-            bc.append([x, y])
-            logger.info(f"Detected center point: {x}, {y}")
+        # Use ndimage for labeling
+        labels, nlabels = ndimage.label(thresh)
         
-        if not bc:
+        if nlabels == 0:
             logger.warning("No beam centers detected!")
-            return np.array([0, 0])
+            return np.array([0.0, 0.0])
+        
+        # Prepare data for parallel processing
+        label_data = []
+        
+        for label in range(1, nlabels + 1):
+            # Create a mask for this label
+            mask = (labels == label)
             
-        bc = np.array(bc)
-        bc_computed = np.array([np.median(bc[:, 0]), np.median(bc[:, 1])])
+            # Add to processing list
+            label_data.append((label, mask, minArea))
+        
+        # Determine number of processes
+        if num_processes is None:
+            num_processes = min(mp.cpu_count(), len(label_data))
+            
+        # Only use multiprocessing if we have enough work
+        if len(label_data) > 1 and num_processes > 1:
+            # Use multiprocessing to process all labels in parallel
+            with mp.Pool(processes=num_processes) as pool:
+                results = pool.map(_process_single_label, label_data)
+            
+            # Filter out None values
+            all_centers = [r for r in results if r is not None]
+        else:
+            # Process sequentially for small workloads
+            all_centers = []
+            for data in label_data:
+                result = _process_single_label(data)
+                if result is not None:
+                    all_centers.append(result)
+        
+        if not all_centers:
+            logger.warning("No valid beam centers calculated!")
+            return np.array([0.0, 0.0])
+        
+        # Calculate the median center
+        centers_array = np.array(all_centers)
+        bc_computed = np.array([np.median(centers_array[:, 0]), np.median(centers_array[:, 1])])
         
         return bc_computed
     except Exception as e:
         logger.error(f"Error detecting beam center: {e}")
-        return np.array([0, 0])
+        return np.array([0.0, 0.0])
 
 def detect_ring_radii(labels, props, bc_computed, minArea):
     """Detect ring radii from labeled image and beam center"""
@@ -804,7 +915,7 @@ def main():
                     thresh[labels == label] = 0
             
             # Detect beam center
-            bc_computed = detect_beam_center(thresh, minArea)
+            bc_computed = detect_beam_center_optimized(thresh, minArea,6)
             
             # Detect ring radii
             rads = detect_ring_radii(labels, props, bc_computed, minArea)
