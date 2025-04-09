@@ -555,7 +555,8 @@ def main():
         # Display raw image if needed
         if DrawPlots == 1:
             plt.figure()
-            plt.imshow(np.log(raw), clim=[np.median(np.log(raw)), np.median(np.log(raw)) + np.std(np.log(raw))])
+            plt.imshow(np.log(raw), clim=[np.median(np.log(raw)), np.median(np.log(raw)) + np.std(np.log(raw))], 
+                      origin='lower')  # Set origin to lower left
             plt.colorbar()
             plt.title('Raw image')
             plt.show()
@@ -574,7 +575,7 @@ def main():
         
         if DrawPlots == 1:
             plt.figure()
-            plt.imshow(np.log(data2))
+            plt.imshow(np.log(data2), origin='lower')  # Set origin to lower left
             plt.colorbar()
             plt.title('Computed background')
             plt.show()
@@ -589,7 +590,7 @@ def main():
         
         if DrawPlots == 1:
             plt.figure()
-            plt.imshow(thresh)
+            plt.imshow(thresh, origin='lower')  # Set origin to lower left
             plt.colorbar()
             plt.title('Cleaned image')
             plt.show()
@@ -639,7 +640,7 @@ def main():
         # Display rings on image if needed
         if DrawPlots == 1:
             fig, ax = plt.subplots()
-            plt.imshow(thresh)
+            plt.imshow(thresh, origin='lower')  # Set origin to lower left
             for rad in sim_rads:
                 e1 = mpatches.Arc((bc_new[1], bc_new[0]), 2*rad, 2*rad, 
                                  angle=0, theta1=-180, theta2=180, color='blue')
