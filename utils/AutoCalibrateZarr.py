@@ -507,7 +507,7 @@ def _process_single_label(label_info):
     if center[0] < 0 or center[1] < 0:
         return None
         
-    logger.info(f"Detected center point: {center[0]}, {center[1]}")
+    logger.info(f"Detected center point: {center[1]}, {center[0]}")
     return center
 
 def detect_beam_center_optimized(thresh, minArea, num_processes=None):
