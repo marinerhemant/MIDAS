@@ -184,10 +184,10 @@ main(int argc, char *argv[])
                             Angle = GetMisOrientation(Quat1,Quat2,Axis,&ang,sgNr);
                             conIn = confIAArr[j*2+0];
                             iaIn = confIAArr[j*2+1];
-                            if ( (ang<maxAng) || 
-                            (sgNr == 167 && fabs(ang-60.0)<maxAng) || 
-                            (sgNr == 166 && fabs(ang-60.0)<maxAng)){
-                                             if (bCon < conIn){
+                            if ((ang<maxAng) || 
+                            ((sgNr == 167) && (fabs(ang-60.0)<maxAng)) || 
+                            ((sgNr == 166) && (fabs(ang-60.0)<maxAng))){
+                                if (bCon < conIn){
                                     bCon = conIn;
                                     bIA = iaIn;
                                     bRN = j;
@@ -242,7 +242,7 @@ main(int argc, char *argv[])
         else 
             markArr2[i] = false;
     }
-    double OMThis[9], OMInside[9], Quat1[4],Quat2[4], Angle, Axis[3],ang,fracInside,bestFrac;
+    double OMThis[9], OMInside[9], Quat1[4],Quat2[4], Angle, Axis[3],ang2,fracInside,bestFrac;
     int bestOrientationRowNr;
     double *uniqueOrientArr;
     uniqueOrientArr = calloc(nScans*nScans*9,sizeof(*uniqueOrientArr));
@@ -258,10 +258,12 @@ main(int argc, char *argv[])
             fracInside = allOrientationsArr[j*10+9];
             for (k=0;k<9;k++) OMInside[k] = allOrientationsArr[j*10+k];
             OrientMat2Quat(OMInside,Quat2);
-            Angle = GetMisOrientation(Quat1,Quat2,Axis,&ang,sgNr);
-            if ( (ang<maxAng) || 
-               (sgNr == 167 && fabs(ang-60.0)<maxAng) || 
-               (sgNr == 166 && fabs(ang-60.0)<maxAng)){
+            Angle = GetMisOrientation(Quat1,Quat2,Axis,&ang2,sgNr);
+            printf("%lf\n",ang2);
+            if ((ang2<maxAng) || 
+            ((sgNr == 167) && (fabs(ang2-60.0)<maxAng)) || 
+            ((sgNr == 166) && (fabs(ang2-60.0)<maxAng))){
+                printf("Found: %lf\n",ang);
                 if (bestFrac < fracInside){
                     bestFrac = fracInside;
                     bestOrientationRowNr = j;
