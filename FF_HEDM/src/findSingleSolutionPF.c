@@ -259,7 +259,7 @@ main(int argc, char *argv[])
             for (k=0;k<9;k++) OMInside[k] = allOrientationsArr[j*10+k];
             OrientMat2Quat(OMInside,Quat2);
             Angle = GetMisOrientation(Quat1,Quat2,Axis,&ang2,sgNr);
-            printf("%lf\n",ang2);
+            // printf("%lf\n",ang2);
             if ((ang2<maxAng) || 
             ((sgNr == 167) && (fabs(ang2-60.0)<maxAng)) || 
             ((sgNr == 166) && (fabs(ang2-60.0)<maxAng))){
