@@ -393,6 +393,13 @@ main(int argc, char *argv[])
     for (i=0;i<nUniques;i++){
         if (nrHKLsFilled[i] > maxNHKLs) maxNHKLs = nrHKLsFilled[i];
     }
+    // print nrHKLsFilled contents
+    for (i=0;i<nUniques;i++){
+        if (nrHKLsFilled[i] > 0) {
+            printf("%d ",nrHKLsFilled[i]);
+        }
+    }
+    printf("\n");
     nAllSpots = nDone;
     realloc(allSpotIDs,nAllSpots*sizeof(*allSpotIDsT));
     printf("nAllSpotsGrainsUnique: %zu\n",nAllSpots);
