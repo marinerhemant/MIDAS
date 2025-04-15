@@ -263,7 +263,7 @@ main(int argc, char *argv[])
             if ((ang2<maxAng) || 
             ((sgNr == 167) && (fabs(ang2-60.0)<maxAng)) || 
             ((sgNr == 166) && (fabs(ang2-60.0)<maxAng))){
-                printf("Found: %lf\n",ang);
+                printf("Found: %lf\n",ang2);
                 if (bestFrac < fracInside){
                     bestFrac = fracInside;
                     bestOrientationRowNr = j;
