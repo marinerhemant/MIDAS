@@ -256,7 +256,7 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
                 logger.error(f"Failed to generate zip for layer {layerNr}")
                 return f"Failed at generateZip for layer {layerNr}"
         else:
-            outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(6)}{Ext}'
+            outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(6)}.MIDAS.zip'
         
         logger.info(f'Using FileStem: {outFStem}')
         
