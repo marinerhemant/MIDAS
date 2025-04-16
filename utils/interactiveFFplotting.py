@@ -67,6 +67,11 @@ data = {
     'detY':[],
     'detZ':[],
     'spotSize':[],
+    'detHor':[],
+    'detVer':[],
+    'omeRaw':[],
+    'eta':[],
+    'tTheta':[],
     }
 
 data2 = {
@@ -250,25 +255,45 @@ def newFilteredSpots(clickData,col_chosen):
     Input(component_id='radio-buttons-spots_filtered', component_property='value')
 )
 def newFilteredSpots2(clickData,col_chosen):
-    if 'hovertext' not in clickData['points'][0]:
-        fig = px.scatter()
+    fig = go.Figure() # Initialize with an empty figure
+    if clickData and 'points' in clickData and clickData['points'] and 'hovertext' in clickData['points'][0]:
+        try:
+            clicked_id_str = clickData['points'][0]['hovertext']
+            clicked_id = df2['ID'].dtype.type(clicked_id_str)
+            grain_info = df2[df2['ID'] == clicked_id]
+            if not grain_info.empty:
+                ID = grain_info['ID'].iloc[0] # Get the actual ID
+                dff = df[df['grainID']==ID].copy() # Filter df, use .copy() to avoid SettingWithCopyWarning
+                meanStrain = np.mean(np.abs(dff['strain'])) if not dff.empty else 0
+                medianStrain = np.median(np.abs(dff['strain'])) if not dff.empty else 0
+                hover_cols = ['detHor', 'detVer', 'omeRaw', 'eta', 'tTheta', 'strain', 'ds', 'y', 'z']
+                hover_cols = [col for col in hover_cols if col in dff.columns]
+                fig = px.scatter(dff,
+                                x='y',
+                                y='z',
+                                color=col_chosen,
+                                size='ds',
+                                title=f'2D FilteredSpots for ID:{int(ID)}, MeanStrainErr: {int(meanStrain)}, MedianStrainErr: {int(medianStrain)}',
+                                color_continuous_scale='jet',
+                                hover_name='spotID',
+                                hover_data=hover_cols
+                                )
+                # fig.update_traces(customdata=dff['spotID'])
+                fig.update_layout(
+                    margin=dict(l=0, r=0, b=0, t=50),
+                    height=700,
+                    xaxis_autorange="reversed"
+                )
+            else:
+                 print(f"Warning: Clicked ID {clicked_id_str} not found in df2.")
+                 fig.update_layout(title=f"Grain ID {clicked_id_str} not found", margin=dict(l=0, r=0, b=0, t=50), height=700)
+        except Exception as e:
+            print(f"Error processing click data in newFilteredSpots2: {e}")
+            fig.update_layout(title="Error processing selection", margin=dict(l=0, r=0, b=0, t=50), height=700)
     else:
-        print(clickData)
-        ID = df2[df2['ID']== clickData['points'][0]['hovertext'] ]['ID'].item()
-        dff = df[df['grainID']==ID]
-        meanStrain = np.mean(np.abs(dff['strain']))
-        medianStrain = np.median(np.abs(dff['strain']))
-        fig = px.scatter(dff,
-                        x='y',
-                        y='z',
-                        color=col_chosen,
-                        size='ds',
-                        title=f'2D FilteredSpots for ID:{int(ID)}, MeanStrainErr: {int(meanStrain)}, MedianStrainErr: {int(medianStrain)}',
-                        color_continuous_scale='jet',
-                        hover_name='spotID',
-                        )
-        fig.update_traces(customdata=dff['spotID'])
-    fig.update_layout(margin=dict(l=0, r=0, b=0, t=50),height=700)
+        fig.update_layout(title="Select a grain to view 2D spots", margin=dict(l=0, r=0, b=0, t=50), height=700)
+    if not fig.layout:
+         fig.update_layout(margin=dict(l=0, r=0, b=0, t=50), height=700)
     return fig
 
 @callback(
@@ -405,35 +430,59 @@ spots = np.genfromtxt(resultDir+'/SpotMatrix.csv',skip_header=1)
 spotsOrig = np.genfromtxt(resultDir+'/InputAll.csv',skip_header=1)
 grains = np.genfromtxt(resultDir+'/Grains.csv',skip_header=9)
 for i in range(spots.shape[0]):
-    if spots[i][5]==0.0:
+    if spots[i][5]==0.0: # Assuming this checks for valid omeRaw? If not, adjust condition.
         continue
     data['omega'].append(spots[i][2]) # This is rotation direction
-    data['y'].append(spots[i][8]/pixSz)
-    data['z'].append(spots[i][9]/pixSz)
+    data['y'].append(spots[i][8]/pixSz) # Diffraction spot y position on detector (m) / pixSz -> pixels? Check units
+    data['z'].append(spots[i][9]/pixSz) # Diffraction spot z position on detector (m) / pixSz -> pixels? Check units
     data['ringNr'].append(str(int(spots[i][7])))
     data['ringNrInt'].append(int(spots[i][7]))
+
+    # --- ADD THESE LINES ---
+    data['detHor'].append(int(spots[i][3])) # Original horizontal detector pixel
+    data['detVer'].append(int(spots[i][4])) # Original vertical detector pixel
+    data['omeRaw'].append(spots[i][5])      # Original omega value where spot was detected
+    data['eta'].append(spots[i][6])         # Eta angle
+    data['tTheta'].append(spots[i][10])     # Two-Theta angle
+    # --- END OF ADDED LINES ---
+
     data['grainID'].append(spots[i][0])
     data['spotID'].append(spots[i][1])
-    data['spotSize'].append(spotsOrig[int(spots[i][1])-1,3])
-    data['detY'].append(spots[i][3])
-    data['detZ'].append(spots[i][4])
+    # Assuming spotsOrig is indexed correctly and has size info at index 3
+    # Ensure spotID is a 1-based index if spotsOrig is 0-based and accessed like this.
+    if int(spots[i][1]) > 0 and int(spots[i][1]) <= spotsOrig.shape[0]:
+         data['spotSize'].append(spotsOrig[int(spots[i][1])-1, 3])
+    else:
+         data['spotSize'].append(np.nan) # Or some default if ID is invalid/0
+    data['detY'].append(spots[i][3]) # Redundant with detHor? Or is this a different coordinate system?
+    data['detZ'].append(spots[i][4]) # Redundant with detVer? Or is this a different coordinate system?
     data['strain'].append(1000000*np.abs(spots[i][11]))
     data['grainIDColor'].append(str(int(spots[i][0])))
-    x,y,z = spot2gv(Lsd,spots[i][8],spots[i][9],spots[i][2])
-    length = np.linalg.norm(np.array([x,y,z]))
-    x = x/length
-    y = y/length
-    z = z/length
-    ds = wl / (2*sin(spots[i][10]*deg2rad))
-    x *=ds
-    y *=ds
-    z *=ds
-    if ds > dsMax:
-        dsMax = ds
-    data['g1'].append(x)
-    data['g2'].append(y)
-    data['g3'].append(z)
-    data['ds'].append(ds)
+    # g-vector calculation...
+    x_gv,y_gv,z_gv = spot2gv(Lsd,spots[i][8],spots[i][9],spots[i][2]) # Renamed variables to avoid conflict
+    length = np.linalg.norm(np.array([x_gv,y_gv,z_gv]))
+    if length > 1e-9: # Avoid division by zero
+        x_gv = x_gv/length
+        y_gv = y_gv/length
+        z_gv = z_gv/length
+    else:
+        x_gv, y_gv, z_gv = 0, 0, 0
+
+    ds_val = 0 # Initialize ds_val
+    sin_arg = sin(spots[i][10]*deg2rad)
+    if abs(sin_arg) > 1e-9: # Avoid division by zero
+        ds_val = wl / (2*sin_arg)
+
+    x_gv *=ds_val
+    y_gv *=ds_val
+    z_gv *=ds_val
+    if ds_val > dsMax:
+        dsMax = ds_val
+    data['g1'].append(x_gv)
+    data['g2'].append(y_gv)
+    data['g3'].append(z_gv)
+    data['ds'].append(ds_val)
+
 df = pd.DataFrame(data)
 
 largestSize = np.max(grains[:,sizeRowNr])
