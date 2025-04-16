@@ -4,6 +4,17 @@ if(POLICY CMP0135)
   cmake_policy(SET CMP0135 NEW)
 endif()
 
+# Define options first, before the project command
+option(USE_CUDA "Build with CUDA support" ON)
+
+# Only include CUDA language if needed
+if(USE_CUDA)
+  project(MIDAS_FF_HEDM LANGUAGES C CUDA)
+  set(CMAKE_CUDA_ARCHITECTURES 90)
+else()
+  project(MIDAS_FF_HEDM LANGUAGES C)
+endif()
+
 project(MIDAS_FF_HEDM C)
 # project(MIDAS_FF_HEDM C CUDA)
 
