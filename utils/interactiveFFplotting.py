@@ -93,6 +93,7 @@ def load_spot_data(spots_file, spots_orig_file, zarr_params):
     for i in range(spots.shape[0]):
         if spots[i][SPOT_OMEGA_RAW_COL] == 0.0 and spots[i][SPOT_OMEGA_COL] == 0.0: continue
         omega_val, tTheta_val_deg = spots[i][SPOT_OMEGA_COL], spots[i][SPOT_TTHETA_COL]
+        tTheta_val_deg *= 2
         spot_y_microns, spot_z_microns = spots[i][SPOT_Y_M_COL], spots[i][SPOT_Z_M_COL]
         data['y'].append(spot_y_microns / pixSz); data['z'].append(spot_z_microns / pixSz); data['omega'].append(omega_val)
         ring_nr_int = int(spots[i][SPOT_RING_NR_COL]); data['ringNr'].append(str(ring_nr_int)); data['ringNrInt'].append(ring_nr_int)
