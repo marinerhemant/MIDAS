@@ -184,9 +184,7 @@ main(int argc, char *argv[])
                             Angle = GetMisOrientation(Quat1,Quat2,Axis,&ang,sgNr);
                             conIn = confIAArr[j*2+0];
                             iaIn = confIAArr[j*2+1];
-                            if ((ang<maxAng) || 
-                            ((sgNr == 167) && (fabs(ang-60.0)<maxAng)) || 
-                            ((sgNr == 166) && (fabs(ang-60.0)<maxAng))){
+                            if (ang<maxAng){
                                 if (bCon < conIn){
                                     bCon = conIn;
                                     bIA = iaIn;
@@ -259,11 +257,7 @@ main(int argc, char *argv[])
             for (k=0;k<9;k++) OMInside[k] = allOrientationsArr[j*10+k];
             OrientMat2Quat(OMInside,Quat2);
             Angle = GetMisOrientation(Quat1,Quat2,Axis,&ang2,sgNr);
-            // printf("%lf\n",ang2);
-            if ((ang2<maxAng) || 
-            ((sgNr == 167) && (fabs(ang2-60.0)<maxAng)) || 
-            ((sgNr == 166) && (fabs(ang2-60.0)<maxAng))){
-                printf("Found: %lf\n",ang2);
+            if (ang2<maxAng){
                 if (bestFrac < fracInside){
                     bestFrac = fracInside;
                     bestOrientationRowNr = j;
