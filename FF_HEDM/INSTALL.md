@@ -34,7 +34,7 @@ This document provides detailed instructions for installing MIDAS/FF_HEDM using 
 
 3. **Configure the build**:
    ```bash
-   cmake ..
+   cmake -DUSE_CUDA=OFF ..
    ```
 
 4. **Build the software**:

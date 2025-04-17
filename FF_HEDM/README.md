@@ -39,7 +39,7 @@ cd MIDAS/FF_HEDM
 mkdir build && cd build
 
 # Configure and build
-cmake ..
+cmake -DUSE_CUDA=OFF ..
 cmake --build . -j $(nproc)
 
 # Install
@@ -57,7 +57,7 @@ cmake --build . --target midas_executables -j $(nproc)
 | CMAKE_INSTALL_PREFIX   | build/install | Installation directory                    |
 | MIDAS_CONFIG_DIR       | $HOME/.MIDAS | Configuration directory                    |
 | USE_USER_HOME          | ON        | Use home directory for config                 |
-| BUILD_CUDA             | OFF       | Build CUDA components                         |
+| USE_CUDA               | ON        | Build CUDA components                         |
 | BUILD_OMP              | ON        | Build OpenMP components                       |
 | BUILD_SHARED_LIBS      | ON        | Build shared libraries instead of static      |
 | DOWNLOAD_DEPENDENCIES  | ON        | Download and build dependencies automatically |
