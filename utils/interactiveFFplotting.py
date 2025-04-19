@@ -93,7 +93,7 @@ def load_spot_data(spots_file, spots_orig_file, zarr_params):
     for i in range(spots.shape[0]):
         if spots[i][SPOT_OMEGA_RAW_COL] == 0.0 and spots[i][SPOT_OMEGA_COL] == 0.0: continue
         omega_val, tTheta_val_deg = spots[i][SPOT_OMEGA_COL], spots[i][SPOT_TTHETA_COL]
-        tTheta_val_deg *= 2
+        tTheta_val_deg *= 2 # Note: Assuming input is Theta
         spot_y_microns, spot_z_microns = spots[i][SPOT_Y_M_COL], spots[i][SPOT_Z_M_COL]
         data['y'].append(spot_y_microns / pixSz); data['z'].append(spot_z_microns / pixSz); data['omega'].append(omega_val)
         ring_nr_int = int(spots[i][SPOT_RING_NR_COL]); data['ringNr'].append(str(ring_nr_int)); data['ringNrInt'].append(ring_nr_int)
@@ -150,7 +150,7 @@ def load_grain_data(grains_file):
         data2['x'].append(grains[i, GRAIN_X_COL]); data2['y'].append(grains[i, GRAIN_Y_COL]); data2['z'].append(grains[i, GRAIN_Z_COL])
         raw_size = grains[i, GRAIN_SIZE_COL] if grains.shape[1] > GRAIN_SIZE_COL and np.isfinite(grains[i, GRAIN_SIZE_COL]) else 0
         data2['RawGrainSize'].append(raw_size)
-        target_max_grain_visual_size = MAX_MARKER_SIZE_VISUAL * 2
+        target_max_grain_visual_size = MAX_MARKER_SIZE_VISUAL * 2 # Grains can be larger
         scaled_size = max(MIN_MARKER_SIZE_VISUAL, target_max_grain_visual_size * raw_size / largestSize) if raw_size > 0 and largestSize > 0 else MIN_MARKER_SIZE_VISUAL
         data2['GrainSize'].append(scaled_size) # This 'GrainSize' is the scaled visual size
         data2['Confidence'].append(grains[i, GRAIN_COMPLETENESS_COL]) # Keep raw Confidence
@@ -187,12 +187,19 @@ if __name__ == '__main__':
     if grains_df is None: sys.exit("Failed grain load.")
 
     initial_grain_id = grains_df['ID'].iloc[0] if not grains_df.empty else None
-    eta_min, eta_max, tth_min, tth_max = 0.0, 360.0, 0.0, 90.0; slider_step = 0.1
+    # Determine slider ranges from data
+    eta_min, eta_max, tth_min, tth_max, ome_min, ome_max = -180.0, 180.0, 0.0, 90.0, -180.0, 180.0
+    slider_step = 0.1 # Step for tTheta slider
+    omega_step = 1.0 # Step for omega slider
     if not spots_df.empty:
         eta_min_data = spots_df['eta'].dropna().min(); eta_max_data = spots_df['eta'].dropna().max()
         tth_min_data = spots_df['tTheta'].dropna().min(); tth_max_data = spots_df['tTheta'].dropna().max()
+        ome_min_data = spots_df['omega'].dropna().min(); ome_max_data = spots_df['omega'].dropna().max()
+
         if pd.notna(eta_min_data) and pd.notna(eta_max_data): eta_min, eta_max = np.floor(eta_min_data), np.ceil(eta_max_data); eta_max = max(eta_max, eta_min + 1)
         if pd.notna(tth_min_data) and pd.notna(tth_max_data): tth_min, tth_max = np.floor(tth_min_data * 10) / 10, np.ceil(tth_max_data * 10) / 10; tth_max = max(tth_max, tth_min + slider_step)
+        if pd.notna(ome_min_data) and pd.notna(ome_max_data): ome_min, ome_max = np.floor(ome_min_data), np.ceil(ome_max_data); ome_max = max(ome_max, ome_min + omega_step)
+
         unique_ring_nrs_int = sorted(spots_df['ringNrInt'].dropna().astype(int).unique())
         ring_nr_options = [{"label": str(nr), "value": nr} for nr in unique_ring_nrs_int]
         initial_ring_nr_values = unique_ring_nrs_int
@@ -217,15 +224,19 @@ if __name__ == '__main__':
             dbc.Col([dcc.Loading(id="loading-spots", type="circle", children=[dcc.Graph(figure=go.Figure(), id='spots')])], width=6),
             dbc.Col([dcc.Loading(id="loading-spots-polar", type="circle", children=[dcc.Graph(figure=go.Figure(), id='spots_polar')])], width=6),
         ]), html.Hr(),
+        # --- Grain Filtering Controls ---
         dbc.Row([
             dbc.Col([
                 dbc.Label("Filter Grains by Spot Properties:", className="fw-bold"),
                 dbc.Row([dbc.Col(dbc.Label("Eta Range (°):"), width=3, className="text-end"), dbc.Col(dcc.RangeSlider(id='eta-range-slider', min=eta_min, max=eta_max, step=1, value=[eta_min, eta_max], marks=None, tooltip={"placement": "bottom", "always_visible": True}), width=9)]),
                 dbc.Row([dbc.Col(dbc.Label("2θ Range (°):"), width=3, className="text-end"), dbc.Col(dcc.RangeSlider(id='tth-range-slider', min=tth_min, max=tth_max, step=slider_step, value=[tth_min, tth_max], marks=None, tooltip={"placement": "bottom", "always_visible": True}), width=9)]),
+                dbc.Row([dbc.Col(dbc.Label("Omega Range (°):"), width=3, className="text-end"), dbc.Col(dcc.RangeSlider(id='omega-range-slider', min=ome_min, max=ome_max, step=omega_step, value=[ome_min, ome_max], marks=None, tooltip={"placement": "bottom", "always_visible": True}), width=9)]), # <-- NEW Omega Slider
+                dbc.Row([dbc.Col(dbc.Label("Show Grain ID:"), width=3, className="text-end"), dbc.Col(dcc.Input(id='grain-id-input', type='number', placeholder="Enter Grain ID (optional)", debounce=True, style={'color': '#000'}), width=9)]), # <-- NEW Grain ID Input
                 html.Hr(), dbc.Label("Grain Color (3D Map):"), dbc.RadioItems(options=[{"label": x, "value": x} for x in ['Confidence', 'GrainSize', 'IDColor', 'Error','Euler0','Euler1','Euler2','StrainError']], value='IDColor', inline=True, id='radio-buttons-grains')
             ], width=6),
-            dbc.Col([html.Div(style={'height': '95px'}), html.Hr(), dbc.Label("Filtered Spot Color (per Grain):"), dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain','spotSize', 'tTheta', 'eta', 'ds']], value='strain', inline=True, id='radio-buttons-spots_filtered')], width=6),
+            dbc.Col([html.Div(style={'height': '155px'}), html.Hr(), dbc.Label("Filtered Spot Color (per Grain):"), dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain','spotSize', 'tTheta', 'eta', 'ds']], value='strain', inline=True, id='radio-buttons-spots_filtered')], width=6), # Adjusted height for alignment
         ]),
+        # --- Plots Below Filters ---
         dbc.Row([
             dbc.Col([dcc.Loading(id="loading-grains", type="circle", children=[dcc.Graph(figure=go.Figure(), id='grains', clickData={'points':[{'customdata': [initial_grain_id]}]} if initial_grain_id is not None else None)])], width=6),
             dbc.Col([dcc.Loading(id="loading-filtered-spots", type="circle", children=[dcc.Graph(figure=go.Figure(), id='filtered_spots', clickData=None)])], width=6),
@@ -250,23 +261,49 @@ if __name__ == '__main__':
 
     # --- Callbacks ---
 
-    # --- Grain Plot Callback --- Using go.Scatter3d ---
+    # --- Grain Plot Callback --- Using go.Scatter3d --- Updated with Omega and Grain ID filters
     @callback(
         Output('grains', 'figure'),
         Input('radio-buttons-grains', 'value'),
         Input('eta-range-slider', 'value'),
-        Input('tth-range-slider', 'value')
+        Input('tth-range-slider', 'value'),
+        Input('omega-range-slider', 'value'), # <-- NEW Input
+        Input('grain-id-input', 'value')      # <-- NEW Input
     )
-    def update_grains_plot(grain_color_choice, eta_range, tth_range):
+    def update_grains_plot(grain_color_choice, eta_range, tth_range, omega_range, specific_grain_id):
         fig = go.Figure()
         if grains_df is None or grains_df.empty or spots_df is None or spots_df.empty: return fig.update_layout(title="Grains/Spots data not loaded", **COMMON_LAYOUT_SETTINGS)
 
         try:
-            spots_filtered_by_range = spots_df[(spots_df['eta'] >= eta_range[0]) & (spots_df['eta'] <= eta_range[1]) & (spots_df['tTheta'] >= tth_range[0]) & (spots_df['tTheta'] <= tth_range[1])]
+            # --- Filter spots based on ALL range sliders ---
+            spots_filtered_by_range = spots_df[
+                (spots_df['eta'] >= eta_range[0]) & (spots_df['eta'] <= eta_range[1]) &
+                (spots_df['tTheta'] >= tth_range[0]) & (spots_df['tTheta'] <= tth_range[1]) &
+                (spots_df['omega'] >= omega_range[0]) & (spots_df['omega'] <= omega_range[1]) # <-- Added Omega filter
+            ]
+
             valid_grain_ids = spots_filtered_by_range['grainID'].dropna().unique()
             if len(valid_grain_ids) == 0: return fig.update_layout(title=f"No grains with spots in selected ranges", **COMMON_LAYOUT_SETTINGS)
 
             grains_to_plot = grains_df[grains_df['ID'].isin(valid_grain_ids)].copy()
+
+            # --- Apply Specific Grain ID Filter (if provided and valid) ---
+            grain_id_to_show = None
+            if specific_grain_id is not None:
+                try:
+                    grain_id_to_show = int(specific_grain_id)
+                    # Filter the already range-filtered grains
+                    grains_to_plot = grains_to_plot[grains_to_plot['ID'] == grain_id_to_show]
+                    if grains_to_plot.empty:
+                         return fig.update_layout(title=f"Grain ID {grain_id_to_show} has no spots in selected ranges", **COMMON_LAYOUT_SETTINGS)
+                except (ValueError, TypeError):
+                    print(f"Invalid Grain ID input: {specific_grain_id}. Ignoring ID filter.")
+                    grain_id_to_show = None # Reset if invalid input
+
+            # --- Proceed with plotting the filtered grains ---
+            if grains_to_plot.empty:
+                return fig.update_layout(title="No grains found matching all filters", **COMMON_LAYOUT_SETTINGS)
+
             numeric_cols_grain = ['x', 'y', 'z', 'GrainSize', 'RawGrainSize', 'Confidence', 'Euler0', 'Euler1', 'Euler2', 'Error', 'StrainError']
             for col in numeric_cols_grain:
                 if col in grains_to_plot.columns: grains_to_plot.loc[:, col] = pd.to_numeric(grains_to_plot[col], errors='coerce')
@@ -280,7 +317,13 @@ if __name__ == '__main__':
             grains_df_cleaned = grains_to_plot.dropna(subset=['x','y','z','ID','IDColor','GrainSize']).copy()
             if grains_df_cleaned.empty: return fig.update_layout(title="No valid grains to plot (filtered)", **COMMON_LAYOUT_SETTINGS)
 
-            plot_title = f'Filtered Grains ({len(grains_df_cleaned)} shown, Color: {grain_color_choice})'
+            # --- Update Title based on filters ---
+            title_prefix = "Filtered Grains"
+            if grain_id_to_show is not None:
+                title_prefix = f"Grain ID: {grain_id_to_show}"
+            plot_title = f'{title_prefix} ({len(grains_df_cleaned)} shown, Color: {grain_color_choice})'
+
+            # --- Plotting Logic (same as before) ---
             marker_props = dict(size=grains_df_cleaned['GrainSize'], sizemode='diameter', opacity=0.8) # Use pre-scaled visual size
             layout_updates = {'title': plot_title, 'scene': dict(xaxis_title='X', yaxis_title='Y', zaxis_title='Z'), 'showlegend': False, **COMMON_LAYOUT_SETTINGS}
             is_continuous_color = False # Initialize before the check
@@ -289,7 +332,6 @@ if __name__ == '__main__':
             if color_col_actual in numeric_cols_grain and color_col_actual in grains_df_cleaned.columns:
                  if not grains_df_cleaned[color_col_actual].isnull().all():
                       is_continuous_color = True; marker_props['color'] = grains_df_cleaned[color_col_actual]; marker_props['colorscale'] = DEFAULT_CONTINUOUS_COLOR_SCALE
-                      # Add colorbar directly to marker properties
                       marker_props['colorbar'] = dict(title=color_col_actual)
                  else: color_col_actual = 'IDColor' # Fallback if all NaN
             elif color_col_actual not in ['IDColor']: color_col_actual = 'IDColor' # Fallback if col missing/invalid
@@ -297,7 +339,6 @@ if __name__ == '__main__':
             if not is_continuous_color:
                  unique_cats = grains_df_cleaned[color_col_actual].astype(str).unique(); cmap = {c: px.colors.qualitative.Plotly[i%len(px.colors.qualitative.Plotly)] for i,c in enumerate(unique_cats)}; marker_props['color'] = grains_df_cleaned[color_col_actual].astype(str).map(cmap)
 
-            # --- Setup Customdata and Hovertemplate for go.Scatter3d ---
             hover_cols_go = ['ID', 'RawGrainSize', 'Confidence', 'Euler0', 'Euler1', 'Euler2', 'Error', 'StrainError']
             customdata_list = []; hovertemplate_parts = ["<b>Grain Info</b><br>"]
             for i, col in enumerate(hover_cols_go):
@@ -315,14 +356,13 @@ if __name__ == '__main__':
             trace = go.Scatter3d( x=grains_df_cleaned['x'], y=grains_df_cleaned['y'], z=grains_df_cleaned['z'], mode='markers', marker=marker_props, customdata=customdata_stacked, hovertemplate=hovertemplate_go, ids=grains_df_cleaned['ID'].astype(str), name='')
             fig.add_trace(trace)
             fig.update_layout(clickmode='event+select')
-            # Removed coloraxis logic from layout updates
             fig.update_layout(**layout_updates)
 
         except Exception as e: print(f"Error generating grains plot: {e}"); traceback.print_exc(); fig.update_layout(title='Error generating Grains plot', **COMMON_LAYOUT_SETTINGS)
         return fig
 
 
-    # --- Filtered Spots Callbacks ---
+    # --- Filtered Spots Callbacks --- (No changes needed here for grain filtering)
     @callback(
         Output('filtered_spots', 'figure'), Output('selected-grain-id-store', 'data'),
         Input('grains', 'clickData'), Input('radio-buttons-spots_filtered', 'value'),
@@ -333,9 +373,16 @@ if __name__ == '__main__':
         if not (clickData and clickData['points']): return fig.update_layout(title="Click a grain", **COMMON_LAYOUT_SETTINGS), no_update
         try:
             clicked_id = None; point_data = clickData['points'][0]
-            if 'id' in point_data: clicked_id = int(point_data['id'])
-            elif 'customdata' in point_data and isinstance(point_data['customdata'], (list, np.ndarray)) and len(point_data['customdata']) > 0: clicked_id = int(point_data['customdata'][0])
-            if clicked_id is None: return fig.update_layout(title="Could not get Grain ID", **COMMON_LAYOUT_SETTINGS), no_update
+            # Prioritize 'id' if available (set in go.Scatter3d trace)
+            if 'id' in point_data and point_data['id'] is not None:
+                 try: clicked_id = int(point_data['id'])
+                 except (ValueError, TypeError): pass
+            # Fallback to customdata if 'id' is missing or invalid
+            if clicked_id is None and 'customdata' in point_data and isinstance(point_data['customdata'], (list, np.ndarray)) and len(point_data['customdata']) > 0:
+                 try: clicked_id = int(point_data['customdata'][0])
+                 except (ValueError, TypeError): pass
+
+            if clicked_id is None: return fig.update_layout(title="Could not get Grain ID from click", **COMMON_LAYOUT_SETTINGS), no_update
 
             if grains_df['ID'].isin([clicked_id]).any():
                 selected_id = clicked_id; dff_grain = spots_df[spots_df['grainID'] == selected_id].copy()
@@ -365,7 +412,6 @@ if __name__ == '__main__':
                     if spots_color_choice == 'grainIDColor':
                          color_arg = None; grain_id_str = str(int(selected_id)); color_index = int(grain_id_str) % len(px.colors.qualitative.Plotly); manual_color = px.colors.qualitative.Plotly[color_index]
                     elif spots_color_choice == 'ringNr':
-                        # Check if only one ring number is present
                         unique_rings = dff_grain_cleaned['ringNr'].unique()
                         if len(unique_rings) == 1:
                              ring_str = unique_rings[0]; ring_int = dff_grain_cleaned['ringNrInt'].iloc[0] # Get corresponding int
@@ -386,7 +432,6 @@ if __name__ == '__main__':
                                         color_discrete_map="identity" if color_arg == 'grainIDColor' else None, # Identity only for grainIDColor if we map it
                                         color_discrete_sequence=px.colors.qualitative.Plotly if is_discrete_color else None # Sequence for multi-ringNr
                                         )
-                    # Manually apply color if needed (single grain ID or single ring Nr)
                     if manual_color:
                         fig.update_traces(marker_color=manual_color)
 
@@ -452,7 +497,7 @@ if __name__ == '__main__':
         except Exception as e: print(f"Error 2D spots plot: {e}"); traceback.print_exc(); fig.update_layout(title="Error displaying 2D spots", **COMMON_LAYOUT_SETTINGS)
         return fig
 
-
+    # --- Volume Plot Callback ---
     @callback( Output('image_data', 'figure'), Input('filtered_spots_2d', 'clickData'), State('selected-grain-id-store', 'data'), prevent_initial_call=True)
     def update_volume_plot(spot_clickData, selected_grain_id):
         fig = go.Figure()
@@ -467,6 +512,7 @@ if __name__ == '__main__':
         try: detY_px, detZ_px = int(spot_info['detY']), int(spot_info['detZ'])
         except (ValueError, TypeError): return fig.update_layout(title=f"Invalid coords Spot {clicked_spot_id}", **COMMON_LAYOUT_SETTINGS)
         omega_deg = spot_info['omeRaw']
+        if pd.isna(omega_deg): return fig.update_layout(title=f"Missing OmegaRaw for Spot {clicked_spot_id}", **COMMON_LAYOUT_SETTINGS)
         frameNrMid = int(round((omega_deg - zarr_params['omegaStart']) / zarr_params['omegaStep']))
         frameMin, frameMax = max(0, frameNrMid - VOLUME_WINDOW_FRAME), min(zarr_params['nFrames'], frameNrMid + VOLUME_WINDOW_FRAME + 1)
         yMin, yMax = max(0, detY_px - VOLUME_WINDOW_PX), min(zarr_params['nPxY'], detY_px + VOLUME_WINDOW_PX + 1)
@@ -493,6 +539,7 @@ if __name__ == '__main__':
         except Exception as e: print(f"Error Zarr processing: {e}"); traceback.print_exc(); return fig.update_layout(title=f"Error extracting data", **COMMON_LAYOUT_SETTINGS)
         return fig
 
+    # --- All Spots 3D Callback ---
     @callback( Output('spots', 'figure'), Input('radio-buttons-spots', 'value'), Input("checklist_spots", "value"))
     def update_all_spots_3d(spots_color_choice, selected_ring_nrs):
         fig = go.Figure()
@@ -526,13 +573,11 @@ if __name__ == '__main__':
                       is_cont_color = True
                       marker_props['color'] = dff_cleaned[color_col]
                       marker_props['colorscale'] = DEFAULT_CONTINUOUS_COLOR_SCALE
-                      # Add colorbar directly to marker
                       marker_props['colorbar'] = dict(title=color_col)
                  else: color_col = 'ringNr' # Fallback if all NaN
             elif color_col not in ['grainIDColor', 'ringNr']: color_col = 'ringNr' # Fallback if col missing
 
             if not is_cont_color:
-                 # Ensure the final color_col exists before trying to map
                  if color_col in dff_cleaned.columns:
                       unique_cats = dff_cleaned[color_col].astype(str).unique()
                       cmap = {c: px.colors.qualitative.Plotly[i%len(px.colors.qualitative.Plotly)] for i,c in enumerate(unique_cats)}
@@ -549,7 +594,6 @@ if __name__ == '__main__':
 
             trace = go.Scatter3d(x=dff_cleaned['omega'], y=dff_cleaned['y'], z=dff_cleaned['z'], mode='markers', marker=marker_props, customdata=customdata, hovertemplate=hovertemplate, name='')
             fig.add_trace(trace)
-            # Removed layout_updates['coloraxis'] logic
             fig.update_layout(**layout_updates)
         except Exception as e: print(f"Error generating all spots 3D: {e}"); traceback.print_exc(); fig.update_layout(title='Error generating Spots 3D plot', **COMMON_LAYOUT_SETTINGS)
         return fig
@@ -578,19 +622,23 @@ if __name__ == '__main__':
         if color_col_actual == 'grainIDColor':
             if 'grainIDColor' in dff.columns:
                  is_discrete_color = True; required_cols.append('grainIDColor')
-                 # Map colors manually based on unique IDs present in this selection
                  unique_cats = dff['grainIDColor'].dropna().astype(str).unique()
                  manual_color_map = {cat: px.colors.qualitative.Plotly[i%len(px.colors.qualitative.Plotly)] for i, cat in enumerate(unique_cats)}
-                 color_arg = None # Don't pass to px color arg, apply manually
+                 color_arg = 'grainIDColor' # Use color_discrete_map with px
             else: color_col_actual = 'ringNr' # Fallback
         elif color_col_actual == 'ringNr':
             if 'ringNr' in dff.columns:
                 is_discrete_color = True; required_cols.append('ringNr'); color_arg = 'ringNr' # Let px handle multi-ring case
                 # Check if only one ring after potential filtering/dropna
-                unique_rings = dff['ringNr'].dropna().unique()
-                if len(unique_rings) == 1:
-                    ring_int = dff['ringNrInt'].dropna().iloc[0] # Get corresponding int
-                    color_index = int(ring_int) % len(px.colors.qualitative.Plotly); manual_color_map = {unique_rings[0]: px.colors.qualitative.Plotly[color_index]}; color_arg=None; is_discrete_color = False # Treat as single manual color
+                dff_temp_clean = dff.dropna(subset=['ringNr']) # Check on potentially filtered data
+                if not dff_temp_clean.empty:
+                    unique_rings = dff_temp_clean['ringNr'].unique()
+                    if len(unique_rings) == 1:
+                        ring_int = dff_temp_clean['ringNrInt'].iloc[0] # Get corresponding int
+                        color_index = int(ring_int) % len(px.colors.qualitative.Plotly);
+                        # Use manual_color_map to force the single color
+                        manual_color_map = {unique_rings[0]: px.colors.qualitative.Plotly[color_index]}
+                        color_arg = 'ringNr' # Still use ringNr for the map key
             else: color_col_actual = 'strain' # Fallback
         # Check for continuous/numeric case AFTER categorical checks
         if color_arg is None and manual_color_map is None: # If not handled as discrete yet
@@ -601,16 +649,21 @@ if __name__ == '__main__':
             elif color_col_actual not in dff.columns: # Handle case where choice is invalid string
                  color_col_actual = 'ringNr'; color_arg = 'ringNr'; is_discrete_color=True; required_cols.append('ringNr')
 
-
         # Setup size aesthetic using 'ds'
         size_arg = None
         if color_col_actual != 'ds' and 'ds' in dff.columns and dff['ds'].notna().any():
              required_cols.append('ds'); ds_clean = dff['ds'].dropna()
              if not ds_clean.empty: max_ds, min_ds = ds_clean.max(), ds_clean.min()
+             else: max_ds, min_ds = 1, 0 # Avoid division by zero if empty
              if max_ds > min_ds: size_range = MAX_MARKER_SIZE_VISUAL - MIN_MARKER_SIZE_VISUAL; norm = (dff['ds'] - min_ds) / (max_ds - min_ds); scaled = norm*size_range+MIN_MARKER_SIZE_VISUAL; size_data = scaled.fillna(DEFAULT_MARKER_SIZE).clip(lower=MIN_MARKER_SIZE_VISUAL, upper=MAX_MARKER_SIZE_VISUAL)
+             else: size_data = DEFAULT_MARKER_SIZE # Handle case where max_ds == min_ds
              size_arg = size_data if isinstance(size_data, pd.Series) else None
 
-        dff_cleaned = dff.dropna(subset=[c for c in required_cols if c in dff.columns]).copy()
+
+        # Final check on required columns before dropna
+        final_required = [c for c in required_cols if c in dff.columns]
+        dff_cleaned = dff.dropna(subset=final_required).copy()
+
         if isinstance(size_arg, pd.Series): size_arg = size_arg.reindex(dff_cleaned.index).fillna(DEFAULT_MARKER_SIZE) # Align size series
         if dff_cleaned.empty: return fig.update_layout(title='No valid G-vectors for selection', scene=scene_settings, **COMMON_LAYOUT_SETTINGS)
 
@@ -629,16 +682,12 @@ if __name__ == '__main__':
                                 size=size_arg, size_max=MAX_MARKER_SIZE_VISUAL+2,
                                 title=plot_title, hover_name='spotID', hover_data=valid_hover, custom_data=['spotID'],
                                 color_continuous_scale=DEFAULT_CONTINUOUS_COLOR_SCALE if not is_discrete_color and manual_color_map is None else None,
-                                color_discrete_sequence=px.colors.qualitative.Plotly if (is_discrete_color and color_arg=='ringNr') else None,
-                                color_discrete_map=manual_color_map if (gvector_color_choice=='grainIDColor' or (gvector_color_choice=='ringNr' and manual_color_map)) else None
+                                color_discrete_sequence=px.colors.qualitative.Plotly if (is_discrete_color and manual_color_map is None and color_arg != 'grainIDColor') else None,
+                                color_discrete_map=manual_color_map if manual_color_map else None
                                )
 
             # Apply fixed size if size was not data-driven
             if size_arg is None: fig.update_traces(marker_size=DEFAULT_MARKER_SIZE)
-            # If color was manually mapped for a single ring, apply it
-            if gvector_color_choice=='ringNr' and manual_color_map:
-                 single_color = list(manual_color_map.values())[0]
-                 fig.update_traces(marker_color=single_color)
 
 
             fig.update_layout(scene=scene_settings, **COMMON_LAYOUT_SETTINGS)
@@ -660,17 +709,15 @@ if __name__ == '__main__':
             int_cols = dff_table_display.select_dtypes(include=['Int64']).columns
             if not int_cols.empty:
                 for col in int_cols:
-                     # Convert Int64 to object only if NaNs are present, to preserve int display otherwise
                      if dff_table_display[col].isnull().any():
                           dff_table_display.loc[:, col] = dff_table_display.loc[:, col].astype(object)
             table_columns = [{"name": i, "id": i} for i in table_cols_to_show]
             if selected_page_size == 99999: page_size = max(len(dff_table_display), DEFAULT_TABLE_PAGE_SIZE)
             else: page_size = selected_page_size
-            # Convert to dict, ensuring NaNs become None for JSON serialization
             table_data = dff_table_display.astype(object).where(pd.notnull(dff_table_display), None).to_dict('records')
             return table_data, table_columns, page_size
         except Exception as e: print(f"Error updating spot table: {e}"); traceback.print_exc(); return [], cols, DEFAULT_TABLE_PAGE_SIZE
 
     # --- Run the App ---
     print(f"Starting Dash server on http://{hn}:{portNr}")
-    app.run_server(port=portNr, host=hn, debug=False)
+    app.run_server(port=portNr, host=hn, debug=False) # Set debug=True for development if needed
