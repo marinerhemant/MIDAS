@@ -809,30 +809,7 @@ def main():
             return False
             
         return True
-    
-    # Check for existing /dev/shm/*.bin files from other users
-    try:
-        # Get current user
-        current_user = os.environ.get('USER', subprocess.check_output("whoami", shell=True).decode().strip())
-        
-        # Find all .bin files in /dev/shm
-        bin_files = subprocess.check_output("ls -l /dev/shm/*.bin 2>/dev/null || true", shell=True).decode()
-        
-        # Check if there are any bin files not owned by current user
-        if bin_files:
-            other_user_files = False
-            for line in bin_files.splitlines():
-                if line and current_user not in line:
-                    other_user_files = True
-                    break
-            
-            if other_user_files:
-                logger.error("Detected /dev/shm/*.bin files created by another user.")
-                logger.error("These files may cause conflicts with the current process.")
-                logger.error("Please have the other user clean up their /dev/shm/*.bin files or restart the system.")
-                sys.exit(1)
-    except Exception as e:
-        logger.warning(f"Could not check for existing bin files: {e}")
+
     startTime = time.time()
     
     # Parse command line arguments

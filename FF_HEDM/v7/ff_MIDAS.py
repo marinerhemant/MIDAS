@@ -92,13 +92,7 @@ def cleanup_context():
     """Context manager for cleanup on exit."""
     try:
         yield
-    finally:
-        # Clean up shared memory
-        try:
-            subprocess.call("rm -rf /dev/shm/*.bin", shell=True)
-        except Exception as e:
-            logger.error(f"Failed to clean up shared memory: {e}")
-        
+    finally:        
         # Clean up Parsl
         try:
             parsl.dfk().cleanup()
@@ -676,7 +670,6 @@ default_handler = None
 def handler(num, frame):
     """Handle Ctrl+C by cleaning up and exiting."""
     try:
-        subprocess.call("rm -rf /dev/shm/*.bin", shell=True)
         logger.info("Ctrl-C was pressed, cleaning up.")
         # Add parsl cleanup
         parsl.dfk().cleanup()
@@ -692,37 +685,6 @@ class MyParser(argparse.ArgumentParser):
         sys.stderr.write(f'error: {message}\n')
         self.print_help()
         sys.exit(2)
-
-def check_bin_files_ownership():
-    """Check for existing /dev/shm/*.bin files from other users.
-    
-    Returns:
-        True if safe to proceed, False otherwise
-    """
-    try:
-        # Get current user
-        current_user = os.environ.get('USER', subprocess.check_output("whoami", shell=True).decode().strip())
-        
-        # Find all .bin files in /dev/shm
-        bin_files = subprocess.check_output("ls -l /dev/shm/*.bin 2>/dev/null || true", shell=True).decode()
-        
-        # Check if there are any bin files not owned by current user
-        if bin_files:
-            other_user_files = False
-            for line in bin_files.splitlines():
-                if line and current_user not in line:
-                    other_user_files = True
-                    break
-            
-            if other_user_files:
-                logger.error("Detected /dev/shm/*.bin files created by another user.")
-                logger.error("These files may cause conflicts with the current process.")
-                logger.error("Please have the other user clean up their /dev/shm/*.bin files or restart the system.")
-                return False
-    except Exception as e:
-        logger.warning(f"Could not check for existing bin files: {e}")
-    
-    return True
 
 def load_machine_config(machine_name: str, n_nodes: int, num_procs: int) -> Tuple[int, int]:
     """Load machine configuration and set up Parsl.
@@ -986,13 +948,7 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
             output_refine = [i.result() for i in res_refine]
         except Exception as e:
             raise RuntimeError(f"Failed during refinement: {e}")
-            
-        # Clean up shared memory
-        try:
-            subprocess.call("rm -rf /dev/shm/*.bin", shell=True)
-        except Exception as e:
-            logger.warning(f"Failed to clean up shared memory: {e}")
-            
+                        
         # Process grains
         logger.info(f"Making grains list. Time till now: {time.time() - t0}")
         
@@ -1121,11 +1077,7 @@ def process_inputall_data(result_dir: str, top_res_dir: str, ps_fn: str) -> None
         raise RuntimeError(f"Failed to process InputAll data: {e}")
 
 def main():
-    """Main function to process data."""
-    # Check for existing bin files from other users
-    if not check_bin_files_ownership():
-        sys.exit(1)
-        
+    """Main function to process data."""        
     # Set up signal handler
     global default_handler
     default_handler = signal.getsignal(signal.SIGINT)

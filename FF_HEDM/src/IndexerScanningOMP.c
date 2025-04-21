@@ -1321,7 +1321,7 @@ int ReadBins(char *cwd)
 	char file_name[2048];
 	sprintf(file_name,"%s/Data.bin",cwd);
 	char cmmd[4096];
-	sprintf(cmmd,"cp %s /dev/shm/",file_name);
+	// sprintf(cmmd,"cp %s /dev/shm/",file_name);
 	// system(cmmd);
 	// sprintf(file_name,"/dev/shm/Data.bin");
 	int rc;
@@ -1337,7 +1337,7 @@ int ReadBins(char *cwd)
 	int status2;
 	char file_name2[2048];
 	sprintf(file_name2,"%s/nData.bin",cwd);
-	sprintf(cmmd,"cp %s /dev/shm/",file_name2);
+	// sprintf(cmmd,"cp %s /dev/shm/",file_name2);
 	// system(cmmd);
 	// sprintf(file_name2,"/dev/shm/nData.bin");
 	fd2 = open (file_name2, O_RDONLY);
