@@ -585,154 +585,98 @@ __global__ void initialize_PerFrameArr_Area_kernel(
 
 
 __global__ void integrate_noMapMask(double px, double Lsd, size_t bigArrSize, int Normalize, int sumImages, int frameIdx,
-									const struct data * dPxList, const int *dNPxList,
-									int NrPixelsY, int NrPixelsZ,
-									const double *dImage, double *dIntArrPerFrame,
-									const double *dPerFrameArr, // Now const, only reading Area
-									double *dSumMatrix)
+	const struct data * dPxList, const int *dNPxList,
+	int NrPixelsY, int NrPixelsZ,
+	const double *dImage, double *dIntArrPerFrame,
+	double *dSumMatrix)
 {
 	const size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
 	const size_t totalPixels = (size_t)NrPixelsY * NrPixelsZ;
 	if (idx >= bigArrSize) return;
 
 	double Intensity = 0.0;
+	double totArea = 0.0; // <<< RE-INTRODUCED local area calculation
+
 	long long nPixels = 0;
 	long long dataPos = 0;
 	const size_t nPxListIndex = 2 * idx;
 
-	if (nPxListIndex + 1 < 2 * bigArrSize) {
-		nPixels = dNPxList[nPxListIndex];
-		dataPos = dNPxList[nPxListIndex + 1];
-	} else {
-		dIntArrPerFrame[idx] = 0.0; // Ensure intensity is zeroed if no pixels
-		return;
+	nPixels = dNPxList[nPxListIndex];
+	dataPos = dNPxList[nPxListIndex + 1];
+
+	for (long long l = 0; l < nPixels; l++) {
+		struct data ThisVal = dPxList[dataPos + l];
+		long long testPos = (long long)ThisVal.z * NrPixelsY + ThisVal.y;
+		Intensity += dImage[testPos] * ThisVal.frac;
+		totArea += ThisVal.frac; // <<< Accumulate area locally
 	}
 
-	if (nPixels <= 0 || dataPos < 0) {
-		dIntArrPerFrame[idx] = 0.0;
-		return;
-	}
-
-	// Read pre-calculated total area for this bin
-	double totArea = 0.0;
-	// Check bounds for Area read (index starts at 3 * bigArrSize)
-	if (dPerFrameArr && (3 * bigArrSize + idx < 4 * bigArrSize)) {
-		totArea = dPerFrameArr[3 * bigArrSize + idx];
-	}
-
-	// Only proceed if the pre-calculated area is significant
+	// Use the *locally calculated* totArea for threshold and normalization
 	if (totArea > AREA_THRESHOLD) {
-		for (long long l = 0; l < nPixels; l++) {
-			struct data ThisVal = dPxList[dataPos + l];
-			if (ThisVal.y < 0 || ThisVal.y >= NrPixelsY || ThisVal.z < 0 || ThisVal.z >= NrPixelsZ) {
-				continue;
-			}
-			long long testPos = (long long)ThisVal.z * NrPixelsY + ThisVal.y;
-			if (testPos < 0 || testPos >= totalPixels) {
-				continue;
-			}
-			Intensity += dImage[testPos] * ThisVal.frac;
-		}
-
-		// Normalize using the pre-calculated area
 		if (Normalize) {
-			Intensity /= totArea;
+			Intensity /= totArea; // <<< Normalize with local area
 		}
 		dIntArrPerFrame[idx] = Intensity;
 		if (sumImages && dSumMatrix) {
 			atomicAdd(&dSumMatrix[idx], Intensity);
 		}
 	} else {
-		// Area is too small (or zero), set intensity to zero
 		dIntArrPerFrame[idx] = 0.0;
 	}
 }
 
 
 __global__ void integrate_MapMask(double px, double Lsd, size_t bigArrSize, int Normalize, int sumImages, int frameIdx,
-								size_t mapMaskWordCount, const int *dMapMask,
-								int nRBins, int nEtaBins,
-								int NrPixelsY, int NrPixelsZ,
-								const struct data * dPxList, const int *dNPxList,
-								const double *dImage, double *dIntArrPerFrame,
-								const double *dPerFrameArr, // Now const, only reading Area
-								double *dSumMatrix)
+  size_t mapMaskWordCount, const int *dMapMask,
+  int nRBins, int nEtaBins,
+  int NrPixelsY, int NrPixelsZ,
+  const struct data * dPxList, const int *dNPxList,
+  const double *dImage, double *dIntArrPerFrame,
+  double *dSumMatrix)
 {
 	const size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
 	const size_t totalPixels = (size_t)NrPixelsY * NrPixelsZ;
 	if (idx >= bigArrSize) return;
 
 	double Intensity = 0.0;
+	double totArea = 0.0; // <<< RE-INTRODUCED local area calculation
 
 	long long nPixels = 0;
 	long long dataPos = 0;
 	const size_t nPxListIndex = 2 * idx;
 
-	if (nPxListIndex + 1 < 2 * bigArrSize) {
-		nPixels = dNPxList[nPxListIndex];
-		dataPos = dNPxList[nPxListIndex + 1];
-	} else {
-		dIntArrPerFrame[idx] = 0.0;
-		return;
-	}
+	nPixels = dNPxList[nPxListIndex];
+	dataPos = dNPxList[nPxListIndex + 1];
 
-	if (nPixels <= 0 || dataPos < 0) {
-		dIntArrPerFrame[idx] = 0.0;
-		return;
-	}
-
-	// Read pre-calculated total area for this bin (takes mask into account)
-	double totArea = 0.0;
-	// Check bounds for Area read (index starts at 3 * bigArrSize)
-	if (dPerFrameArr && (3 * bigArrSize + idx < 4 * bigArrSize)) {
-		totArea = dPerFrameArr[3 * bigArrSize + idx];
-	}
-
-	// Only proceed if the pre-calculated area is significant
-	if (totArea > AREA_THRESHOLD) {
-		for (long long l = 0; l < nPixels; l++) {
-			struct data ThisVal = dPxList[dataPos + l];
-			if (ThisVal.y < 0 || ThisVal.y >= NrPixelsY || ThisVal.z < 0 || ThisVal.z >= NrPixelsZ) {
-				continue;
-			}
-			long long testPos = (long long)ThisVal.z * NrPixelsY + ThisVal.y;
-			if (testPos < 0 || testPos >= totalPixels) {
-				continue;
-			}
-
-			// --- Apply Mask Check (still needed to skip intensity accumulation) ---
-			bool isMasked = false;
-			if (dMapMask != NULL && mapMaskWordCount > 0) { // Check mask validity
-				size_t wordIndex = testPos / 32;
-				if (wordIndex < mapMaskWordCount) {
-					if (TestBit(dMapMask, testPos)) {
-						isMasked = true; // Masked pixel
-					}
-				} else {
-					isMasked = true; // Index out of mask bounds, treat as masked
-				}
-			}
-			// --- End Mask Check ---
-
-			if (!isMasked) {
-				Intensity += dImage[testPos] * ThisVal.frac;
-			}
+	// <<< RE-INTRODUCED area and intensity calculation loop (with mask) >>>
+	for (long long l = 0; l < nPixels; l++) {
+		struct data ThisVal = dPxList[dataPos + l];
+		long long testPos = (long long)ThisVal.z * NrPixelsY + ThisVal.y;
+		bool isMasked = false;
+		if (dMapMask != NULL && mapMaskWordCount > 0) {
+			size_t wordIndex = testPos / 32;
+			if (TestBit(dMapMask, testPos)) isMasked = true;
 		}
 
-		// Normalize using the pre-calculated area
+		if (!isMasked) {
+			Intensity += dImage[testPos] * ThisVal.frac;
+			totArea += ThisVal.frac; // <<< Accumulate area locally (only for non-masked)
+		}
+	}
+
+	// Use the *locally calculated* totArea for threshold and normalization
+	if (totArea > AREA_THRESHOLD) {
 		if (Normalize) {
-		Intensity /= totArea;
+			Intensity /= totArea; // <<< Normalize with local area
 		}
 		dIntArrPerFrame[idx] = Intensity;
 		if (sumImages && dSumMatrix) {
-		atomicAdd(&dSumMatrix[idx], Intensity);
+			atomicAdd(&dSumMatrix[idx], Intensity);
 		}
 	} else {
-		// Area is too small (or zero), set intensity to zero
 		dIntArrPerFrame[idx] = 0.0;
 	}
 }
-
 
 __global__ void sequential_transform_kernel(const int64_t *r, int64_t *w, int cY, int cZ, int nY, int nZ, int opt) {
     const size_t N = (size_t)nY * nZ;
@@ -1712,20 +1656,18 @@ int main(int argc, char *argv[]){
 
         gpuErrchk(cudaEventRecord(ev_integ_start, 0)); // Stream 0
         if(!dMapMask){ // Launch kernel without mask support
-            // Pass dPerFrameArr as const now
             integrate_noMapMask<<<nrVox, integTPB>>>(
                 px, Lsd, bigArrSize, Normalize, sumI, currFidx,
                 dPxList, dNPxList,
                 NrPixelsY, NrPixelsZ,
-                dProcessedImage, dIntArrFrame, dPerFrame, dSumMatrix); // Pass dPerFrame (const)
+                dProcessedImage, dIntArrFrame, dSumMatrix);
         } else { // Launch kernel with mask support
-            // Pass dPerFrameArr as const now
             integrate_MapMask<<<nrVox, integTPB>>>(
                 px, Lsd, bigArrSize, Normalize, sumI, currFidx,
                 mapMaskWC, dMapMask, nRBins, nEtaBins, // Keep nRBins/nEtaBins here if needed
                 NrPixelsY, NrPixelsZ,
                 dPxList, dNPxList,
-                dProcessedImage, dIntArrFrame, dPerFrame, dSumMatrix); // Pass dPerFrame (const)
+                dProcessedImage, dIntArrFrame, dSumMatrix);
         }
         gpuErrchk(cudaPeekAtLastError()); // Check for kernel launch errors immediately
         gpuErrchk(cudaEventRecord(ev_integ_stop, 0)); // Stream 0
