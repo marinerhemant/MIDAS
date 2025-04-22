@@ -849,7 +849,8 @@ __global__ void calculate_1D_profile_kernel(const double *d_IntArrPerFrame, cons
 
 
 // --- Host Wrapper for Full GPU Processing Pipeline ---
-void ProcessImageGPU(const int64_t *hRaw, double *dProc, const double *dAvgDark, int Nopt, const int Topt[MAX_TRANSFORM_OPS], int NY, int NZ, bool doSub) {
+void ProcessImageGPU(const int64_t *hRaw, double *dProc, const double *dAvgDark, int Nopt, const int Topt[MAX_TRANSFORM_OPS], int NY, int NZ, bool doSub,
+	int64_t* d_b1, int64_t* d_b2) {
     const size_t N = (size_t)NY * NZ;
     const size_t B64 = N * sizeof(int64_t);
     const int TPB = THREADS_PER_BLOCK_TRANSFORM;
@@ -872,10 +873,7 @@ void ProcessImageGPU(const int64_t *hRaw, double *dProc, const double *dAvgDark,
 
     // --- Case 1: No non-identity transformations ---
     if(!anyT){
-        int64_t *dTmp = NULL;
-        gpuErrchk(cudaMalloc(&dTmp, B64));
-        // Copy raw data from pinned host memory to device
-        gpuErrchk(cudaMemcpy(dTmp, hRaw, B64, cudaMemcpyHostToDevice));
+        gpuErrchk(cudaMemcpy(d_b1, hRaw, B64, cudaMemcpyHostToDevice));
 
         // Calculate grid dimensions
         unsigned long long nBUL = (N + TPB - 1) / TPB;
@@ -883,26 +881,18 @@ void ProcessImageGPU(const int64_t *hRaw, double *dProc, const double *dAvgDark,
         gpuErrchk(cudaDeviceGetAttribute(&mGDX, cudaDevAttrMaxGridDimX, 0));
         if(nBUL > (unsigned long long)mGDX){ // Cast mGDX for comparison
             fprintf(stderr, "Block count %llu exceeds max grid dim %d\n", nBUL, mGDX);
-            gpuErrchk(cudaFree(dTmp));
-            exit(1); // Or handle error differently
+            exit(1);
         }
         dim3 nB((unsigned int)nBUL); // Ensure cast to unsigned int
         dim3 th(TPB);
 
         // Launch kernel for direct processing (cast + optional dark subtract)
-        process_direct_kernel<<<nB, th>>>(dTmp, dProc, dAvgDark, N, doSub);
+        process_direct_kernel<<<nB, th>>>(d_b1, dProc, dAvgDark, N, doSub);
         gpuErrchk(cudaPeekAtLastError()); // Check for launch errors
-        //gpuErrchk(cudaDeviceSynchronize()); // Sync only if subsequent operations depend on it immediately
-        gpuErrchk(cudaFree(dTmp)); // Free temporary device buffer
         return;
     }
 
     // --- Case 2: One or more transformations needed ---
-    int64_t *d_b1 = NULL;
-    int64_t *d_b2 = NULL;
-    // Allocate two temporary int64 buffers for ping-ponging transforms
-    gpuErrchk(cudaMalloc(&d_b1, B64));
-    gpuErrchk(cudaMalloc(&d_b2, B64));
     // Copy initial raw data to the first buffer
     gpuErrchk(cudaMemcpy(d_b1, hRaw, B64, cudaMemcpyHostToDevice));
 
@@ -1010,10 +1000,6 @@ void ProcessImageGPU(const int64_t *hRaw, double *dProc, const double *dAvgDark,
     final_transform_process_kernel<<<nB, th>>>(rP, dProc, dAvgDark, cY, cZ, nY, nZ, fOpt, doSub);
     gpuErrchk(cudaPeekAtLastError());
     //gpuErrchk(cudaDeviceSynchronize()); // Sync after final kernel if needed
-
-    // --- Cleanup temporary buffers ---
-    gpuErrchk(cudaFree(d_b1));
-    gpuErrchk(cudaFree(d_b2));
 }
 
 
@@ -1426,7 +1412,9 @@ int main(int argc, char *argv[]){
     double *dIntArrFrame = NULL;     // 2D integrated pattern for the current frame on GPU
     double *dPerFrame = NULL;        // R, TTh, Eta, Area values per R-Eta bin on GPU
     double *dEtaLo = NULL, *dEtaHi = NULL, *dRLo = NULL, *dRHi = NULL; // Bin edges on GPU
-
+	int64_t *g_dTempTransformBuf1 = NULL;
+	int64_t *g_dTempTransformBuf2 = NULL;
+	
     bool darkSubEnabled = (argc > 2); // Dark subtraction is enabled if DarkAvgFN is provided
 
     // Allocate essential GPU buffers
@@ -1448,7 +1436,11 @@ int main(int argc, char *argv[]){
     gpuErrchk(cudaMemcpy(dEtaHi, hEtaHi, nEtaBins * sizeof(double), cudaMemcpyHostToDevice));
     gpuErrchk(cudaMemcpy(dRLo, hRLo, nRBins * sizeof(double), cudaMemcpyHostToDevice));
     gpuErrchk(cudaMemcpy(dRHi, hRHi, nRBins * sizeof(double), cudaMemcpyHostToDevice));
-
+	size_t tempBufferSize = totalPixels * sizeof(int64_t);
+	printf("Allocating persistent GPU transform buffers (%zu bytes each)...\n", tempBufferSize);
+	gpuErrchk(cudaMalloc(&g_dTempTransformBuf1, tempBufferSize));
+	gpuErrchk(cudaMalloc(&g_dTempTransformBuf2, tempBufferSize));
+	
     // Initialize dPerFrame (Area part) to 0 initially or handle initialization in kernel
     gpuErrchk(cudaMemset(dPerFrame, 0, bigArrSize * 4 * sizeof(double)));
 
@@ -1644,7 +1636,8 @@ int main(int argc, char *argv[]){
 
         // --- GPU Processing Stage (Transform, Cast, Subtract Dark) ---
         gpuErrchk(cudaEventRecord(ev_proc_start, 0)); // Stream 0
-        ProcessImageGPU(chunk.data, dProcessedImage, dAvgDark, Nopt, Topt, NrPixelsY, NrPixelsZ, darkSubEnabled);
+        ProcessImageGPU(chunk.data, dProcessedImage, dAvgDark, Nopt, Topt, NrPixelsY, NrPixelsZ, darkSubEnabled,
+						g_dTempTransformBuf1, g_dTempTransformBuf2);
         gpuErrchk(cudaEventRecord(ev_proc_stop, 0)); // Stream 0
 
         // --- GPU Integration Stage (2D Integration) ---
@@ -2037,7 +2030,9 @@ int main(int argc, char *argv[]){
     if(dEtaHi) gpuWarnchk(cudaFree(dEtaHi));
     if(dRLo) gpuWarnchk(cudaFree(dRLo));
     if(dRHi) gpuWarnchk(cudaFree(dRHi));
-
+	if(g_dTempTransformBuf1) gpuWarnchk(cudaFree(g_dTempTransformBuf1));
+	if(g_dTempTransformBuf2) gpuWarnchk(cudaFree(g_dTempTransformBuf2));
+	
     // Destroy CUDA events
     gpuWarnchk(cudaEventDestroy(ev_proc_start)); gpuWarnchk(cudaEventDestroy(ev_proc_stop));
     gpuWarnchk(cudaEventDestroy(ev_integ_start)); gpuWarnchk(cudaEventDestroy(ev_integ_stop));
