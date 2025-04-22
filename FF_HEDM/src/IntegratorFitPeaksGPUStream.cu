@@ -1534,21 +1534,36 @@ int main(int argc, char *argv[]){
     gpuWarnchk(cudaEventDestroy(ev_prof_start)); gpuWarnchk(cudaEventDestroy(ev_prof_stop));
     gpuWarnchk(cudaEventDestroy(ev_d2h_start)); gpuWarnchk(cudaEventDestroy(ev_d2h_stop));
 
-    // Close the server socket *before* joining the accept thread.
-    // This should cause the blocked accept() call in the thread to return an error,
-    // allowing the thread loop to check keep_running and exit.
-    printf("Closing server socket %d to unblock accept thread...\n", server_fd);
-    if (server_fd >= 0) { // Ensure socket descriptor is valid
+    // --- Shutdown Accept Thread ---
+    printf("Closing server socket %d...\n", server_fd);
+    if (server_fd >= 0) {
+         // Closing the socket first *might* help cancellation succeed faster
+         // if accept() reacts to it, though cancellation is the primary mechanism here.
+         shutdown(server_fd, SHUT_RDWR); // More forceful than just close
          close(server_fd);
-         server_fd = -1; // Mark as closed
+         server_fd = -1;
     }
 
-    // Now join the accept thread (it should exit shortly after the socket is closed)
-    printf("Joining accept thread...\n");
-    pthread_join(accept_thread, NULL);
-    printf("Accept thread joined.\n");
-    // *** MODIFICATION END ***
+    printf("Sending cancellation request to accept thread...\n");
+    int cancel_ret = pthread_cancel(accept_thread);
+    if (cancel_ret != 0) {
+        fprintf(stderr, "Warning: Failed to send cancel request to accept thread: %s\n", strerror(cancel_ret));
+    }
 
+    // Join the thread to wait for it to actually terminate and clean up resources
+    printf("Joining accept thread (waiting for cancellation)...\n");
+    void *thread_result;
+    int join_ret = pthread_join(accept_thread, &thread_result);
+    if (join_ret != 0) {
+         fprintf(stderr, "Warning: Failed to join accept thread: %s\n", strerror(join_ret));
+    } else {
+        if (thread_result == PTHREAD_CANCELED) {
+            printf("Accept thread successfully canceled and joined.\n");
+        } else {
+            printf("Accept thread joined normally (result: %p).\n", thread_result);
+        }
+    }
+    // --- End Shutdown Accept Thread ---
 
     // Destroy queue (should happen after all threads using it are joined/finished)
     queue_destroy(&process_queue);
