@@ -1244,6 +1244,7 @@ int main(int argc, char *argv[]){
     float t_proc_gpu=0, t_integ_gpu=0, t_prof_gpu=0, t_d2h_gpu=0;
 
     double t_qp_cpu=0, t_write1d_cpu=0, t_fit_cpu=0, t_writefit_cpu=0, t_write2d_cpu=0, t_loop_cpu=0;
+    double t_start_loop, t_end_loop;
 
     int firstFrame=1;
     double *hIntArrFrame=(double*)calloc(bigArrSize,sizeof(double)); check(!hIntArrFrame,"Alloc fail hIntArrFrame");
@@ -1261,6 +1262,7 @@ int main(int argc, char *argv[]){
     // =========================== Main Processing Loop ===========================
     int frameCounter = 0;
     while (keep_running) {
+        t_start_loop = get_wall_time_ms();
 
         double t_qp_start = get_wall_time_ms();
         DataChunk chunk;
@@ -1476,6 +1478,9 @@ int main(int argc, char *argv[]){
             free(sendFitParams); // Free the formatted buffer *after* using it
         }
         t_writefit_cpu = get_wall_time_ms() - t_writefit_start;
+
+        double t_end_loop = get_wall_time_ms();
+        t_loop_cpu = t_end_loop - t_start_loop; // Total wall time
 
         printf("F#%d: Ttl:%.1f| QPop:%.1f GPU(Proc:%.1f Int:%.1f Prof:%.1f D2H:%.1f) CPU(Wr2D:%.1f Wr1D:%.1f Fit:%.1f WrFit:%.1f) (ms)\n",
                currFidx, t_loop_cpu, t_qp_cpu, t_proc_gpu, t_integ_gpu, t_prof_gpu, t_d2h_gpu, t_write2d_cpu, t_write1d_cpu, t_fit_cpu, t_writefit_cpu);
