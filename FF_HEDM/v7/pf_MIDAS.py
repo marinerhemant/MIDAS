@@ -451,7 +451,7 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
 @python_app
 def peaks(resultDir, zipFN, numProcs, midas_path, blockNr=0, numBlocks=1):
     """
-    Run peak search on a specific block.
+    Run peak search on a specific block. Not used now!
     
     Args:
         resultDir: Directory for results

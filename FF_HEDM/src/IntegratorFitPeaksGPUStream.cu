@@ -1164,8 +1164,8 @@ int main(int argc, char *argv[]){
 		perror("Error opening output files");
 		exit(EXIT_FAILURE);
 	}
-	clock_t t1, t2, tIntegration, tFit, tFWLineout, tFWFitResult;
-	double diffT=0, diffInteg, diffWriteLineout, diffTFit, diffWriteFitResult;
+	clock_t t1, t2, tIntegration, tFit, tFWLineout, tFWFitResult, tinter, tfin;
+	double diffT=0, diffInteg, diffWriteLineout, diffTFit, diffWriteFitResult, diffTinter;
 	int firstFrame = 1;
     // Allocate arrays once before the loop
     double *int1D = (double *)calloc(nRBins, sizeof(*int1D));
@@ -1207,6 +1207,8 @@ int main(int argc, char *argv[]){
 		int tPB = 512;
 		int nrVox = (bigArrSize+tPB-1)/tPB;
 		i = chunk.dataset_num;
+		// time the next step
+		tinter = clock();
 		if (mapMaskSize==0)
 			integrate_noMapMask <<<tPB,nrVox>>> (px,Lsd,bigArrSize,Normalize,sumImages,i,NrPixelsY, 
 													mapMaskSize,devMapMask,nRBins,nEtaBins,devPxList, 
@@ -1218,6 +1220,8 @@ int main(int argc, char *argv[]){
 													devNPxList,devRBinsLow,devRBinsHigh,devEtaBinsLow,devEtaBinsHigh, 
 													devImage,devIntArrPerFrame,devPerFrameArr,devSumMatrix);
 		gpuErrchk(cudaDeviceSynchronize());
+		tfin = clock();
+		diffTinter = ((double)(tinter-tfin))/CLOCKS_PER_SEC;
 		gpuErrchk(cudaMemcpy(IntArrPerFrame,devIntArrPerFrame,bigArrSize*sizeof(double),cudaMemcpyDeviceToHost));
 		gpuErrchk(cudaDeviceSynchronize());
 		if (chunk.dataset_num==0 || firstFrame == 1){
@@ -1422,7 +1426,7 @@ int main(int argc, char *argv[]){
 		diffTFit = ((double)(tFit - tFWLineout))/CLOCKS_PER_SEC;
 		diffWriteFitResult = ((double)(tFWFitResult - tFit))/CLOCKS_PER_SEC;
 
-		printf("Did integration, total time: %lf s for this frame, frameNr: %d. %lf %lf %lf %lf\n",diffT,chunk.dataset_num,diffInteg,diffWriteLineout,diffTFit,diffWriteFitResult);
+		printf("Did integration, total time: %lf s for this frame, frameNr: %d. %lf %lf %lf %lf %lf\n",diffT,chunk.dataset_num,diffTinter,diffInteg,diffWriteLineout,diffTFit,diffWriteFitResult);
         free(chunk.data);
     }
     
