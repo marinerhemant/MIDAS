@@ -1285,282 +1285,282 @@ int findPeaks(const double *data, const double *r_values, int N, Peak **foundPea
 // =========================================================================
 int main(int argc, char *argv[]){
     if (argc < 2){
-        printf("Usage: %s ParamFN [DarkAvgFN]\n", argv[0]);                             ;
-        printf(" Args:\n");                                                               ;
-        printf("  ParamFN:   Path to parameter file.\n");                                 ;
-        printf("  DarkAvgFN: Optional path to dark frame file (binary int64_t, averaged if multiple frames).\n"); ;
-        return 1;                                                                         ;
+        printf("Usage: %s ParamFN [DarkAvgFN]\n", argv[0]);
+        printf(" Args:\n");
+        printf("  ParamFN:   Path to parameter file.\n");
+        printf("  DarkAvgFN: Optional path to dark frame file (binary int64_t, averaged if multiple frames).\n");
+        return 1;
     }
-    printf("[%s] - Starting...\n", argv[0]);                                              ;
-    double t_start_main = get_wall_time_ms();                                             ;
+    printf("[%s] - Starting...\n", argv[0]);
+    double t_start_main = get_wall_time_ms();
 
     // --- Setup Signal Handling ---
-    signal(SIGINT, sigint_handler);                                                       ;
-    signal(SIGTERM, sigint_handler);                                                      ;
+    signal(SIGINT, sigint_handler);
+    signal(SIGTERM, sigint_handler);
 
     // --- Initialize GPU ---
-    int dev_id = 0;                                                                       ;
-    gpuErrchk(cudaSetDevice(dev_id));                                                     ;
-    cudaDeviceProp prop;                                                                  ;
-    gpuErrchk(cudaGetDeviceProperties(&prop, dev_id));                                    ;
-    printf("GPU Device %d: %s (CC %d.%d)\n", dev_id, prop.name, prop.major, prop.minor);   ;
-    printf("Init GPU: %.3f ms\n", get_wall_time_ms() - t_start_main);                     ;
+    int dev_id = 0;
+    gpuErrchk(cudaSetDevice(dev_id));
+    cudaDeviceProp prop;
+    gpuErrchk(cudaGetDeviceProperties(&prop, dev_id));
+    printf("GPU Device %d: %s (CC %d.%d)\n", dev_id, prop.name, prop.major, prop.minor);
+    printf("Init GPU: %.3f ms\n", get_wall_time_ms() - t_start_main);
 
     // --- Read Pixel Mapping Files ---
-    double t_start_map = get_wall_time_ms();                                              ;
-    check(ReadBins() != 1, "Failed read/map Map.bin/nMap.bin");                           ;
-    printf("Read Maps: %.3f ms\n", get_wall_time_ms() - t_start_map);                     ;
+    double t_start_map = get_wall_time_ms();
+    check(ReadBins() != 1, "Failed read/map Map.bin/nMap.bin");
+    printf("Read Maps: %.3f ms\n", get_wall_time_ms() - t_start_map);
 
     // --- Read Parameters ---
-    double t_start_params = get_wall_time_ms();                                           ;
-    double RMax = 0, RMin = 0, RBinSize = 0;                                              ;
-    double EtaMax = 0, EtaMin = 0, EtaBinSize = 0;                                        ;
-    double Lsd = 0, px = 0;                                                               ;
-    int NrPixelsY = 0, NrPixelsZ = 0;                                                     ;
-    int Normalize = 1;                                                                    ;
-    int nEtaBins = 0, nRBins = 0;                                                         ;
-    char *ParamFN = argv[1];                                                              ;
-    FILE *pF = fopen(ParamFN, "r");                                                       ;
-    check(!pF, "Failed open param file: %s", ParamFN);                                    ;
+    double t_start_params = get_wall_time_ms();
+    double RMax = 0, RMin = 0, RBinSize = 0;
+    double EtaMax = 0, EtaMin = 0, EtaBinSize = 0;
+    double Lsd = 0, px = 0;
+    int NrPixelsY = 0, NrPixelsZ = 0;
+    int Normalize = 1;
+    int nEtaBins = 0, nRBins = 0;
+    char *ParamFN = argv[1];
+    FILE *pF = fopen(ParamFN, "r");
+    check(!pF, "Failed open param file: %s", ParamFN);
 
-    char line[4096], key[1024], val_str[3072]; // Buffers for parsing                      ;
-    const char *s; // Pointer for StartsWith checks                                       ;
-    int Nopt = 0; // Number of image transform operations                                 ;
-    long long GapI = 0, BadPxI = 0; // Intensity values for mask generation               ;
-    int Topt[MAX_TRANSFORM_OPS] = {0}; // Array to store transform options                ;
-    int mkMap = 0; // Flag to generate mask from dark frame                               ;
-    int sumI = 0; // Flag to sum integrated patterns                                      ;
-    int doSm = 0; // Flag to smooth 1D data before peak finding                          ;
-    int multiP = 0; // Flag for finding multiple peaks                                   ;
-    int pkFit = 0; // Flag to perform peak fitting                                        ;
-    int nSpecP = 0; // Number of specified peak locations                                 ;
-    int wr2D = 0; // Flag to write 2D integrated patterns                                 ;
-    double pkLoc[MAX_PEAK_LOCATIONS]; // Array for specified peak locations               ;
+    char line[4096], key[1024], val_str[3072]; // Buffers for parsing
+    const char *s; // Pointer for StartsWith checks
+    int Nopt = 0; // Number of image transform operations
+    long long GapI = 0, BadPxI = 0; // Intensity values for mask generation
+    int Topt[MAX_TRANSFORM_OPS] = {0}; // Array to store transform options
+    int mkMap = 0; // Flag to generate mask from dark frame
+    int sumI = 0; // Flag to sum integrated patterns
+    int doSm = 0; // Flag to smooth 1D data before peak finding
+    int multiP = 0; // Flag for finding multiple peaks
+    int pkFit = 0; // Flag to perform peak fitting
+    int nSpecP = 0; // Number of specified peak locations
+    int wr2D = 0; // Flag to write 2D integrated patterns
+    double pkLoc[MAX_PEAK_LOCATIONS]; // Array for specified peak locations
 
     // Read parameters line by line
     while(fgets(line, sizeof(line), pF)){
         // Skip comments, blank lines, and lines that are too short
         if(line[0] == '#' || isspace(line[0]) || strlen(line) < 3) {
-            continue;                                                                     ;
+            continue;
         }
 
         // Use sscanf to parse "key value" pairs, robust against extra whitespace
         if (sscanf(line, "%1023s %[^\n]", key, val_str) == 2) {
-             if (strcmp(key, "EtaBinSize") == 0) sscanf(val_str, "%lf", &EtaBinSize);     ;
-             else if (strcmp(key, "RBinSize") == 0) sscanf(val_str, "%lf", &RBinSize);    ;
-             else if (strcmp(key, "RMax") == 0) sscanf(val_str, "%lf", &RMax);            ;
-             else if (strcmp(key, "RMin") == 0) sscanf(val_str, "%lf", &RMin);            ;
-             else if (strcmp(key, "EtaMax") == 0) sscanf(val_str, "%lf", &EtaMax);        ;
-             else if (strcmp(key, "EtaMin") == 0) sscanf(val_str, "%lf", &EtaMin);        ;
-             else if (strcmp(key, "Lsd") == 0) sscanf(val_str, "%lf", &Lsd);              ;
-             else if (strcmp(key, "px") == 0) sscanf(val_str, "%lf", &px);                ;
-             else if (strcmp(key, "NrPixelsY") == 0) sscanf(val_str, "%d", &NrPixelsY);   ;
-             else if (strcmp(key, "NrPixelsZ") == 0) sscanf(val_str, "%d", &NrPixelsZ);   ;
+             if (strcmp(key, "EtaBinSize") == 0) sscanf(val_str, "%lf", &EtaBinSize);
+             else if (strcmp(key, "RBinSize") == 0) sscanf(val_str, "%lf", &RBinSize);
+             else if (strcmp(key, "RMax") == 0) sscanf(val_str, "%lf", &RMax);
+             else if (strcmp(key, "RMin") == 0) sscanf(val_str, "%lf", &RMin);
+             else if (strcmp(key, "EtaMax") == 0) sscanf(val_str, "%lf", &EtaMax);
+             else if (strcmp(key, "EtaMin") == 0) sscanf(val_str, "%lf", &EtaMin);
+             else if (strcmp(key, "Lsd") == 0) sscanf(val_str, "%lf", &Lsd);
+             else if (strcmp(key, "px") == 0) sscanf(val_str, "%lf", &px);
+             else if (strcmp(key, "NrPixelsY") == 0) sscanf(val_str, "%d", &NrPixelsY);
+             else if (strcmp(key, "NrPixelsZ") == 0) sscanf(val_str, "%d", &NrPixelsZ);
              else if (strcmp(key, "NrPixels") == 0) { sscanf(val_str, "%d", &NrPixelsY); NrPixelsZ = NrPixelsY; } // Shortcut
-             else if (strcmp(key, "Normalize") == 0) sscanf(val_str, "%d", &Normalize);   ;
-             else if (strcmp(key, "GapIntensity") == 0) { sscanf(val_str, "%lld", &GapI); mkMap = 1; } ;
-             else if (strcmp(key, "BadPxIntensity") == 0) { sscanf(val_str, "%lld", &BadPxI); mkMap = 1; } ;
+             else if (strcmp(key, "Normalize") == 0) sscanf(val_str, "%d", &Normalize);
+             else if (strcmp(key, "GapIntensity") == 0) { sscanf(val_str, "%lld", &GapI); mkMap = 1; }
+             else if (strcmp(key, "BadPxIntensity") == 0) { sscanf(val_str, "%lld", &BadPxI); mkMap = 1; }
              else if (strcmp(key, "ImTransOpt") == 0) {
-                 if(Nopt < MAX_TRANSFORM_OPS) sscanf(val_str, "%d", &Topt[Nopt++]);        ;
-                 else printf("Warn: Max %d ImTransOpt reached, ignoring further options.\n", MAX_TRANSFORM_OPS); ;
+                 if(Nopt < MAX_TRANSFORM_OPS) sscanf(val_str, "%d", &Topt[Nopt++]);
+                 else printf("Warn: Max %d ImTransOpt reached, ignoring further options.\n", MAX_TRANSFORM_OPS);
              }
-             else if (strcmp(key, "SumImages") == 0) sscanf(val_str, "%d", &sumI);        ;
-             else if (strcmp(key, "Write2D") == 0) sscanf(val_str, "%d", &wr2D);          ;
-             else if (strcmp(key, "DoSmoothing") == 0) sscanf(val_str, "%d", &doSm);      ;
-             else if (strcmp(key, "MultiplePeaks") == 0) sscanf(val_str, "%d", &multiP);  ;
-             else if (strcmp(key, "DoPeakFit") == 0) sscanf(val_str, "%d", &pkFit);       ;
+             else if (strcmp(key, "SumImages") == 0) sscanf(val_str, "%d", &sumI);
+             else if (strcmp(key, "Write2D") == 0) sscanf(val_str, "%d", &wr2D);
+             else if (strcmp(key, "DoSmoothing") == 0) sscanf(val_str, "%d", &doSm);
+             else if (strcmp(key, "MultiplePeaks") == 0) sscanf(val_str, "%d", &multiP);
+             else if (strcmp(key, "DoPeakFit") == 0) sscanf(val_str, "%d", &pkFit);
              else if (strcmp(key, "PeakLocation") == 0) {
                  if(nSpecP < MAX_PEAK_LOCATIONS) {
-                     sscanf(val_str, "%lf", &pkLoc[nSpecP++]);                             ;
-                     multiP = 1;                                                          ; // Implicitly enable multi-peak etc.
-                     pkFit = 1;                                                           ;
-                     doSm = 0;                                                            ;
+                     sscanf(val_str, "%lf", &pkLoc[nSpecP++]);
+                     multiP = 1;                                                          // Implicitly enable multi-peak etc.
+                     pkFit = 1;
+                     doSm = 0;
                  } else {
-                     printf("Warn: Max %d PeakLocation reached, ignoring further locations.\n", MAX_PEAK_LOCATIONS); ;
+                     printf("Warn: Max %d PeakLocation reached, ignoring further locations.\n", MAX_PEAK_LOCATIONS);
                  }
              }
              // Add other parameters here if needed
         }
     }
-    fclose(pF);                                                                           ;
+    fclose(pF);
 
     // Validate essential parameters
-    check(NrPixelsY <= 0 || NrPixelsZ <= 0, "NrPixelsY/Z invalid or not set in parameter file."); ;
-    check(Lsd <= 0 || px <= 0, "Lsd/px invalid or not set in parameter file.");           ;
+    check(NrPixelsY <= 0 || NrPixelsZ <= 0, "NrPixelsY/Z invalid or not set in parameter file.");
+    check(Lsd <= 0 || px <= 0, "Lsd/px invalid or not set in parameter file.");
 
     // Ensure multi-peak finding is enabled if specific peaks are given for fitting
     if(pkFit && nSpecP > 0) {
-        multiP = 1;                                                                       ;
+        multiP = 1;
         if (doSm) {
-            printf("Warn: Smoothing disabled because specific PeakLocations were provided.\n"); ;
-            doSm = 0; // Don't smooth if fitting specific locations                       ;
+            printf("Warn: Smoothing disabled because specific PeakLocations were provided.\n");
+            doSm = 0; // Don't smooth if fitting specific locations
         }
     }
 
     // Calculate number of bins
-    nRBins = (RBinSize > 1e-9) ? (int)ceil((RMax - RMin) / RBinSize) : 0;                 ;
-    nEtaBins = (EtaBinSize > 1e-9) ? (int)ceil((EtaMax - EtaMin) / EtaBinSize) : 0;        ;
-    check(nRBins <= 0 || nEtaBins <= 0, "Invalid bin parameters. R bins=%d, Eta bins=%d", nRBins, nEtaBins); ;
-    size_t bigArrSize = (size_t)nRBins * nEtaBins; // Total number of R-Eta bins          ;
+    nRBins = (RBinSize > 1e-9) ? (int)ceil((RMax - RMin) / RBinSize) : 0;
+    nEtaBins = (EtaBinSize > 1e-9) ? (int)ceil((EtaMax - EtaMin) / EtaBinSize) : 0;
+    check(nRBins <= 0 || nEtaBins <= 0, "Invalid bin parameters. R bins=%d, Eta bins=%d", nRBins, nEtaBins);
+    size_t bigArrSize = (size_t)nRBins * nEtaBins; // Total number of R-Eta bins
 
     // Print summary of parameters
-    printf("Parameters Loaded:\n");                                                       ;
-    printf(" R Bins:    [%.3f .. %.3f], %d bins (step %.4f)\n", RMin, RMax, nRBins, RBinSize); ;
-    printf(" Eta Bins:  [%.3f .. %.3f], %d bins (step %.4f)\n", EtaMin, EtaMax, nEtaBins, EtaBinSize); ;
-    printf(" Detector:  %d x %d pixels\n", NrPixelsY, NrPixelsZ);                         ;
-    printf(" Geometry:  Lsd=%.4f, px=%.6f\n", Lsd, px);                                    ;
-    printf(" Transforms(%d):", Nopt);                                                     ;
-    for(int i = 0; i < Nopt; ++i) { printf(" %d", Topt[i]); }                             ;
-    printf("\n");                                                                         ;
-    printf(" Options:   Normalize=%d, SumIntegrations=%d, Write2D=%d\n", Normalize, sumI, wr2D); ;
-    printf(" Peak Fit:  Enabled=%d, MultiPeak=%d, Smooth=%d, NumSpecifiedPeaks=%d\n", pkFit, multiP, doSm, nSpecP); ;
-    if (mkMap) printf(" Masking:   Will generate from Gap=%lld, BadPx=%lld in Dark Frame\n", GapI, BadPxI); ;
-    printf("Read Params: %.3f ms\n", get_wall_time_ms() - t_start_params);                ;
-    fflush(stdout);                                                                       ;
+    printf("Parameters Loaded:\n");
+    printf(" R Bins:    [%.3f .. %.3f], %d bins (step %.4f)\n", RMin, RMax, nRBins, RBinSize);
+    printf(" Eta Bins:  [%.3f .. %.3f], %d bins (step %.4f)\n", EtaMin, EtaMax, nEtaBins, EtaBinSize);
+    printf(" Detector:  %d x %d pixels\n", NrPixelsY, NrPixelsZ);
+    printf(" Geometry:  Lsd=%.4f, px=%.6f\n", Lsd, px);
+    printf(" Transforms(%d):", Nopt);
+    for(int i = 0; i < Nopt; ++i) { printf(" %d", Topt[i]); }
+    printf("\n");
+    printf(" Options:   Normalize=%d, SumIntegrations=%d, Write2D=%d\n", Normalize, sumI, wr2D);
+    printf(" Peak Fit:  Enabled=%d, MultiPeak=%d, Smooth=%d, NumSpecifiedPeaks=%d\n", pkFit, multiP, doSm, nSpecP);
+    if (mkMap) printf(" Masking:   Will generate from Gap=%lld, BadPx=%lld in Dark Frame\n", GapI, BadPxI);
+    printf("Read Params: %.3f ms\n", get_wall_time_ms() - t_start_params);
+    fflush(stdout);
 
     // --- Setup Bin Edges (Host) ---
-    double *hEtaLo, *hEtaHi, *hRLo, *hRHi;                                                ;
-    hEtaLo = (double*)malloc(nEtaBins * sizeof(double));                                  ;
-    hEtaHi = (double*)malloc(nEtaBins * sizeof(double));                                  ;
-    hRLo   = (double*)malloc(nRBins * sizeof(double));                                    ;
-    hRHi   = (double*)malloc(nRBins * sizeof(double));                                    ;
-    check(!hEtaLo || !hEtaHi || !hRLo || !hRHi, "Allocation failed for host bin edge arrays"); ;
-    REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, hEtaLo, hEtaHi, hRLo, hRHi); ;
+    double *hEtaLo, *hEtaHi, *hRLo, *hRHi;
+    hEtaLo = (double*)malloc(nEtaBins * sizeof(double));
+    hEtaHi = (double*)malloc(nEtaBins * sizeof(double));
+    hRLo   = (double*)malloc(nRBins * sizeof(double));
+    hRHi   = (double*)malloc(nRBins * sizeof(double));
+    check(!hEtaLo || !hEtaHi || !hRLo || !hRHi, "Allocation failed for host bin edge arrays");
+    REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, hEtaLo, hEtaHi, hRLo, hRHi);
 
     // --- Host Memory Allocations ---
-    double *hAvgDark = NULL;     // Averaged dark frame (double) on host                  ;
-    int64_t *hDarkInT = NULL;   // Temporary buffer for reading raw dark frame (int64)     ;
-    int64_t *hDarkIn = NULL;    // Buffer for transformed dark frame (int64)               ;
+    double *hAvgDark = NULL;     // Averaged dark frame (double) on host
+    int64_t *hDarkInT = NULL;   // Temporary buffer for reading raw dark frame (int64)
+    int64_t *hDarkIn = NULL;    // Buffer for transformed dark frame (int64)
 
-    size_t totalPixels = (size_t)NrPixelsY * NrPixelsZ;                                   ;
-    size_t SizeFile = totalPixels * BYTES_PER_PIXEL; // Size of one frame in bytes        ;
+    size_t totalPixels = (size_t)NrPixelsY * NrPixelsZ;
+    size_t SizeFile = totalPixels * BYTES_PER_PIXEL; // Size of one frame in bytes
 
-    hAvgDark = (double*)calloc(totalPixels, sizeof(double)); // Initialize avg dark to zeros ;
-    check(!hAvgDark, "Allocation failed for hAvgDark");                                   ;
-    hDarkInT = (int64_t*)malloc(SizeFile);                                                ;
-    check(!hDarkInT, "Allocation failed for hDarkInT");                                   ;
-    hDarkIn = (int64_t*)malloc(SizeFile);                                                 ;
-    check(!hDarkIn, "Allocation failed for hDarkIn");                                     ;
+    hAvgDark = (double*)calloc(totalPixels, sizeof(double)); // Initialize avg dark to zeros
+    check(!hAvgDark, "Allocation failed for hAvgDark");
+    hDarkInT = (int64_t*)malloc(SizeFile);
+    check(!hDarkInT, "Allocation failed for hDarkInT");
+    hDarkIn = (int64_t*)malloc(SizeFile);
+    check(!hDarkIn, "Allocation failed for hDarkIn");
 
     // --- Device Memory Allocations (Persistent) ---
-    double *dAvgDark = NULL;         // Averaged dark frame on GPU                         ;
-    double *dProcessedImage = NULL;  // Transformed, dark-subtracted image on GPU (double) ;
-    double *d_int1D = NULL;          // Final 1D integrated profile on GPU                 ;
-    int *dMapMask = NULL;            // Pixel mask on GPU (optional)                       ;
-    size_t mapMaskWC = 0;            // Word count for the mask array                      ;
-    int *dNPxList = NULL;            // nMap data (pixel counts, offsets) on GPU           ;
-    struct data *dPxList = NULL;     // Map data (pixel coords, fractions) on GPU          ;
-    double *dSumMatrix = NULL;       // Accumulated 2D integrated pattern on GPU (optional) ;
-    double *dIntArrFrame = NULL;     // 2D integrated pattern for the current frame on GPU ;
-    double *dPerFrame = NULL;        // R, TTh, Eta, Area values per R-Eta bin on GPU      ;
-    double *dEtaLo = NULL, *dEtaHi = NULL, *dRLo = NULL, *dRHi = NULL; // Bin edges on GPU ;
+    double *dAvgDark = NULL;         // Averaged dark frame on GPU
+    double *dProcessedImage = NULL;  // Transformed, dark-subtracted image on GPU (double)
+    double *d_int1D = NULL;          // Final 1D integrated profile on GPU
+    int *dMapMask = NULL;            // Pixel mask on GPU (optional)
+    size_t mapMaskWC = 0;            // Word count for the mask array
+    int *dNPxList = NULL;            // nMap data (pixel counts, offsets) on GPU
+    struct data *dPxList = NULL;     // Map data (pixel coords, fractions) on GPU
+    double *dSumMatrix = NULL;       // Accumulated 2D integrated pattern on GPU (optional)
+    double *dIntArrFrame = NULL;     // 2D integrated pattern for the current frame on GPU
+    double *dPerFrame = NULL;        // R, TTh, Eta, Area values per R-Eta bin on GPU
+    double *dEtaLo = NULL, *dEtaHi = NULL, *dRLo = NULL, *dRHi = NULL; // Bin edges on GPU
 
     // <<< ADDED: Persistent temporary buffers for transformations >>>
-    int64_t *g_dTempTransformBuf1 = NULL;                                                 ;
-    int64_t *g_dTempTransformBuf2 = NULL;                                                 ;
+    int64_t *g_dTempTransformBuf1 = NULL;
+    int64_t *g_dTempTransformBuf2 = NULL;
     // <<< END ADDED >>>
 
-    bool darkSubEnabled = (argc > 2); // Dark subtraction is enabled if DarkAvgFN is provided ;
+    bool darkSubEnabled = (argc > 2); // Dark subtraction is enabled if DarkAvgFN is provided
 
     // Allocate essential GPU buffers
-    gpuErrchk(cudaMalloc(&dProcessedImage, totalPixels * sizeof(double)));                ;
-    gpuErrchk(cudaMalloc(&dPxList, szPxList));                                            ;
-    gpuErrchk(cudaMalloc(&dNPxList, szNPxList));                                          ;
-    gpuErrchk(cudaMalloc(&dIntArrFrame, bigArrSize * sizeof(double)));                    ;
-    gpuErrchk(cudaMalloc(&dPerFrame, bigArrSize * 4 * sizeof(double))); // R, TTh, Eta, Area ;
-    gpuErrchk(cudaMalloc(&dEtaLo, nEtaBins * sizeof(double)));                            ;
-    gpuErrchk(cudaMalloc(&dEtaHi, nEtaBins * sizeof(double)));                            ;
-    gpuErrchk(cudaMalloc(&dRLo, nRBins * sizeof(double)));                                ;
-    gpuErrchk(cudaMalloc(&dRHi, nRBins * sizeof(double)));                                ;
-    gpuErrchk(cudaMalloc(&d_int1D, nRBins * sizeof(double)));                             ;
+    gpuErrchk(cudaMalloc(&dProcessedImage, totalPixels * sizeof(double)));
+    gpuErrchk(cudaMalloc(&dPxList, szPxList));
+    gpuErrchk(cudaMalloc(&dNPxList, szNPxList));
+    gpuErrchk(cudaMalloc(&dIntArrFrame, bigArrSize * sizeof(double)));
+    gpuErrchk(cudaMalloc(&dPerFrame, bigArrSize * 4 * sizeof(double))); // R, TTh, Eta, Area
+    gpuErrchk(cudaMalloc(&dEtaLo, nEtaBins * sizeof(double)));
+    gpuErrchk(cudaMalloc(&dEtaHi, nEtaBins * sizeof(double)));
+    gpuErrchk(cudaMalloc(&dRLo, nRBins * sizeof(double)));
+    gpuErrchk(cudaMalloc(&dRHi, nRBins * sizeof(double)));
+    gpuErrchk(cudaMalloc(&d_int1D, nRBins * sizeof(double)));
 
     // <<< ADDED: Allocate persistent transform buffers >>>
-    size_t tempBufferSize = totalPixels * sizeof(int64_t);                                ;
-    printf("Allocating persistent GPU transform buffers (%zu bytes each)...\n", tempBufferSize); ;
-    gpuErrchk(cudaMalloc(&g_dTempTransformBuf1, tempBufferSize));                         ;
-    gpuErrchk(cudaMalloc(&g_dTempTransformBuf2, tempBufferSize));                         ;
+    size_t tempBufferSize = totalPixels * sizeof(int64_t);
+    printf("Allocating persistent GPU transform buffers (%zu bytes each)...\n", tempBufferSize);
+    gpuErrchk(cudaMalloc(&g_dTempTransformBuf1, tempBufferSize));
+    gpuErrchk(cudaMalloc(&g_dTempTransformBuf2, tempBufferSize));
     // <<< END ADDED >>>
 
     // Copy map data and bin edges to GPU
-    gpuErrchk(cudaMemcpy(dPxList, pxList, szPxList, cudaMemcpyHostToDevice));             ;
-    gpuErrchk(cudaMemcpy(dNPxList, nPxList, szNPxList, cudaMemcpyHostToDevice));          ;
-    gpuErrchk(cudaMemcpy(dEtaLo, hEtaLo, nEtaBins * sizeof(double), cudaMemcpyHostToDevice)); ;
-    gpuErrchk(cudaMemcpy(dEtaHi, hEtaHi, nEtaBins * sizeof(double), cudaMemcpyHostToDevice)); ;
-    gpuErrchk(cudaMemcpy(dRLo, hRLo, nRBins * sizeof(double), cudaMemcpyHostToDevice));    ;
-    gpuErrchk(cudaMemcpy(dRHi, hRHi, nRBins * sizeof(double), cudaMemcpyHostToDevice));   ;
+    gpuErrchk(cudaMemcpy(dPxList, pxList, szPxList, cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(dNPxList, nPxList, szNPxList, cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(dEtaLo, hEtaLo, nEtaBins * sizeof(double), cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(dEtaHi, hEtaHi, nEtaBins * sizeof(double), cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(dRLo, hRLo, nRBins * sizeof(double), cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(dRHi, hRHi, nRBins * sizeof(double), cudaMemcpyHostToDevice));
 
     // --- Process Dark Frame (Mask generation happens here) ---
-    double t_start_dark = get_wall_time_ms();                                             ;
-    int nDarkFramesRead = 0;                                                              ;
-    int *hMapMask = NULL; // Host-side mask buffer                                        ;
+    double t_start_dark = get_wall_time_ms();
+    int nDarkFramesRead = 0;
+    int *hMapMask = NULL; // Host-side mask buffer
     // dMapMask is allocated and filled inside this block if mkMap=1
 
     if(darkSubEnabled){
-        char* darkFN = argv[2];                                                           ;
-        FILE* fD = fopen(darkFN, "rb");                                                   ;
-        check(!fD, "Failed to open dark frame file: %s", darkFN);                         ;
+        char* darkFN = argv[2];
+        FILE* fD = fopen(darkFN, "rb");
+        check(!fD, "Failed to open dark frame file: %s", darkFN);
 
         // Check file size to determine number of frames
-        fseek(fD, 0, SEEK_END);                                                           ;
-        size_t szD = ftell(fD);                                                           ;
-        rewind(fD);                                                                       ;
-        int nFD = szD / SizeFile; // Number of full frames in the file                   ;
+        fseek(fD, 0, SEEK_END);
+        size_t szD = ftell(fD);
+        rewind(fD);
+        int nFD = szD / SizeFile; // Number of full frames in the file
         check(nFD == 0 || szD % SizeFile != 0, "Dark file %s incomplete (size %zu, frame %zu). Found %d frames.",
-              darkFN, szD, SizeFile, nFD);                                                ;
-        printf("Reading dark file: %s, Found %d frames.\n", darkFN, nFD);                 ;
+              darkFN, szD, SizeFile, nFD);
+        printf("Reading dark file: %s, Found %d frames.\n", darkFN, nFD);
 
         // Process each frame in the dark file
         for(int i = 0; i < nFD; ++i){
-            check(fread(hDarkInT, 1, SizeFile, fD) != SizeFile, "Read failed for dark frame %d from %s", i, darkFN); ;
+            check(fread(hDarkInT, 1, SizeFile, fD) != SizeFile, "Read failed for dark frame %d from %s", i, darkFN);
             // Apply the same transformations to the dark frame as the data frames (using CPU version)
-            DoImageTransformationsSequential(Nopt, Topt, hDarkInT, hDarkIn, NrPixelsY, NrPixelsZ); ;
+            DoImageTransformationsSequential(Nopt, Topt, hDarkInT, hDarkIn, NrPixelsY, NrPixelsZ);
 
             // Generate mask from the first transformed dark frame if requested
             if(mkMap == 1 && i == 0){
-                mapMaskWC = (totalPixels + 31) / 32; // Calculate word count needed for bitmap ;
-                hMapMask = (int*)calloc(mapMaskWC, sizeof(int)); // Allocate and zero host mask ;
-                check(!hMapMask, "Allocation failed for host mask buffer");               ;
-                int maskedPixelCount = 0; // Local counter for this block                 ;
+                mapMaskWC = (totalPixels + 31) / 32; // Calculate word count needed for bitmap
+                hMapMask = (int*)calloc(mapMaskWC, sizeof(int)); // Allocate and zero host mask
+                check(!hMapMask, "Allocation failed for host mask buffer");
+                int maskedPixelCount = 0; // Local counter for this block
                 for(size_t j = 0; j < totalPixels; ++j){
                     // Check if pixel value matches Gap or Bad Pixel intensity
                     if(hDarkIn[j] == GapI || hDarkIn[j] == BadPxI){
-                        SetBit(hMapMask, j); // Set the corresponding bit in the mask     ;
-                        maskedPixelCount++; // Increment count of masked pixels            ;
+                        SetBit(hMapMask, j); // Set the corresponding bit in the mask
+                        maskedPixelCount++; // Increment count of masked pixels
                     }
                 }
-                printf("Mask generated from first dark frame: %d pixels masked.\n", maskedPixelCount); ;
+                printf("Mask generated from first dark frame: %d pixels masked.\n", maskedPixelCount);
                 // Allocate mask on GPU and copy from host
-                gpuErrchk(cudaMalloc(&dMapMask, mapMaskWC * sizeof(int)));                ; // dMapMask allocated here
-                gpuErrchk(cudaMemcpy(dMapMask, hMapMask, mapMaskWC * sizeof(int), cudaMemcpyHostToDevice)); ;
-                mkMap = 0; // Mask generation done                                        ;
+                gpuErrchk(cudaMalloc(&dMapMask, mapMaskWC * sizeof(int)));                // dMapMask allocated here
+                gpuErrchk(cudaMemcpy(dMapMask, hMapMask, mapMaskWC * sizeof(int), cudaMemcpyHostToDevice));
+                mkMap = 0; // Mask generation done
             }
 
             // Accumulate the transformed dark frame into the host average buffer
             for(size_t j = 0; j < totalPixels; ++j){
-                hAvgDark[j] += (double)hDarkIn[j];                                        ;
+                hAvgDark[j] += (double)hDarkIn[j];
             }
         }
-        fclose(fD);                                                                       ;
-        nDarkFramesRead = nFD; // Store the actual number of frames read                  ;
+        fclose(fD);
+        nDarkFramesRead = nFD; // Store the actual number of frames read
 
         // Calculate the average dark frame on host
         if(nDarkFramesRead > 0){
             for(size_t j = 0; j < totalPixels; ++j){
-                hAvgDark[j] /= (double)nDarkFramesRead;                                   ;
+                hAvgDark[j] /= (double)nDarkFramesRead;
             }
-            printf("Averaged %d dark frames.\n", nDarkFramesRead);                        ;
+            printf("Averaged %d dark frames.\n", nDarkFramesRead);
         }
 
         // Allocate GPU buffer for average dark and copy from host
-        gpuErrchk(cudaMalloc(&dAvgDark, totalPixels * sizeof(double)));                   ;
-        gpuErrchk(cudaMemcpy(dAvgDark, hAvgDark, totalPixels * sizeof(double), cudaMemcpyHostToDevice)); ;
-        printf("Average dark frame copied to GPU.\n");                                    ;
+        gpuErrchk(cudaMalloc(&dAvgDark, totalPixels * sizeof(double)));
+        gpuErrchk(cudaMemcpy(dAvgDark, hAvgDark, totalPixels * sizeof(double), cudaMemcpyHostToDevice));
+        printf("Average dark frame copied to GPU.\n");
 
     } else {
         // No dark frame provided, use zeros on GPU for average
-        gpuErrchk(cudaMalloc(&dAvgDark, totalPixels * sizeof(double)));                   ;
-        gpuErrchk(cudaMemset(dAvgDark, 0, totalPixels * sizeof(double)));                ;
-        printf("No dark frame provided, using zeros on GPU.\n");                          ;
+        gpuErrchk(cudaMalloc(&dAvgDark, totalPixels * sizeof(double)));
+        gpuErrchk(cudaMemset(dAvgDark, 0, totalPixels * sizeof(double)));
+        printf("No dark frame provided, using zeros on GPU.\n");
         // dMapMask remains NULL, mapMaskWC remains 0
     }
     // --- End Dark Processing ---
@@ -1568,9 +1568,9 @@ int main(int argc, char *argv[]){
     // At this point, dMapMask is either NULL or points to the mask on the GPU
     // mapMaskWC is either 0 or the word count for the mask
 
-    printf("Initializing static PerFrame array (R, TTh, Eta, Area) on GPU...\n");        ;
-    int initTPB = 256; // Choose a reasonable block size                                 ;
-    int initBlocks = (bigArrSize + initTPB - 1) / initTPB;                              ;
+    printf("Initializing static PerFrame array (R, TTh, Eta, Area) on GPU...\n");
+    int initTPB = 256; // Choose a reasonable block size
+    int initBlocks = (bigArrSize + initTPB - 1) / initTPB;
     initialize_PerFrameArr_Area_kernel<<<initBlocks, initTPB>>>(
         dPerFrame, bigArrSize,
         nRBins, nEtaBins,
@@ -1579,145 +1579,145 @@ int main(int argc, char *argv[]){
         NrPixelsY, NrPixelsZ,                   // Pass detector dimensions
         dMapMask, mapMaskWC,                    // Pass mask info (dMapMask might be NULL)
         px, Lsd
-    );                                                                                    ;
-    gpuErrchk(cudaPeekAtLastError()); // Check launch                                     ;
-    gpuErrchk(cudaDeviceSynchronize()); // Ensure initialization completes before proceeding ;
+    );
+    gpuErrchk(cudaPeekAtLastError()); // Check launch
+    gpuErrchk(cudaDeviceSynchronize()); // Ensure initialization completes before proceeding
     printf("GPU PerFrame array initialization complete (Area pre-calculated %s mask).\n",
-           (dMapMask != NULL ? "with" : "without"));                                      ;
+           (dMapMask != NULL ? "with" : "without"));
 
     // Allocate and initialize summation buffer if needed
     if(sumI){
-        gpuErrchk(cudaMalloc(&dSumMatrix, bigArrSize * sizeof(double)));                  ;
-        gpuErrchk(cudaMemset(dSumMatrix, 0, bigArrSize * sizeof(double)));               ;
+        gpuErrchk(cudaMalloc(&dSumMatrix, bigArrSize * sizeof(double)));
+        gpuErrchk(cudaMemset(dSumMatrix, 0, bigArrSize * sizeof(double)));
     }
-    printf("Processed dark/mask: %.3f ms\n", get_wall_time_ms() - t_start_dark);          ;
-    fflush(stdout);                                                                       ;
+    printf("Processed dark/mask: %.3f ms\n", get_wall_time_ms() - t_start_dark);
+    fflush(stdout);
 
     // --- Network Setup ---
-    CHUNK_SIZE = SizeFile; // Size of image data payload                                  ;
-    TOTAL_MSG_SIZE = HEADER_SIZE + CHUNK_SIZE; // Total expected message size             ;
-    printf("Network: Expecting %zu B header + %zu B data = %zu B total per message.\n", HEADER_SIZE, CHUNK_SIZE, TOTAL_MSG_SIZE); ;
+    CHUNK_SIZE = SizeFile; // Size of image data payload
+    TOTAL_MSG_SIZE = HEADER_SIZE + CHUNK_SIZE; // Total expected message size
+    printf("Network: Expecting %zu B header + %zu B data = %zu B total per message.\n", HEADER_SIZE, CHUNK_SIZE, TOTAL_MSG_SIZE);
 
-    int server_fd;                                                                        ;
-    struct sockaddr_in server_addr;                                                       ;
-    queue_init(&process_queue); // Initialize the processing queue                        ;
+    int server_fd;
+    struct sockaddr_in server_addr;
+    queue_init(&process_queue); // Initialize the processing queue
 
     // Create socket
-    check((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0, "Socket creation failed: %s", strerror(errno)); ;
+    check((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0, "Socket creation failed: %s", strerror(errno));
 
     // Set socket options (allow reuse of address/port)
-    int sock_opt = 1;                                                                     ;
-    check(setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &sock_opt, sizeof(sock_opt)), "setsockopt failed: %s", strerror(errno)); ;
+    int sock_opt = 1;
+    check(setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &sock_opt, sizeof(sock_opt)), "setsockopt failed: %s", strerror(errno));
 
     // Prepare server address structure
-    server_addr.sin_family = AF_INET;                                                     ;
-    server_addr.sin_addr.s_addr = INADDR_ANY; // Bind to any local address                ;
-    server_addr.sin_port = htons(PORT);                                                   ;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY; // Bind to any local address
+    server_addr.sin_port = htons(PORT);
 
     // Bind the socket to the address and port
-    check(bind(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0, "Bind failed for port %d: %s", PORT, strerror(errno)); ;
+    check(bind(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0, "Bind failed for port %d: %s", PORT, strerror(errno));
 
     // Start listening for incoming connections
-    check(listen(server_fd, MAX_CONNECTIONS) < 0, "Listen failed: %s", strerror(errno));  ;
-    printf("Server listening on port %d\n", PORT);                                        ;
+    check(listen(server_fd, MAX_CONNECTIONS) < 0, "Listen failed: %s", strerror(errno));
+    printf("Server listening on port %d\n", PORT);
 
     // Create and detach the thread that accepts incoming connections
-    pthread_t accept_thread;                                                              ;
-    check(pthread_create(&accept_thread, NULL, accept_connections, &server_fd) != 0, "Failed to create accept thread: %s", strerror(errno)); ;
+    pthread_t accept_thread;
+    check(pthread_create(&accept_thread, NULL, accept_connections, &server_fd) != 0, "Failed to create accept thread: %s", strerror(errno));
 
     // --- Prepare for Main Loop ---
 
     // Open output files (use append binary mode "ab" to add to existing files if run multiple times)
-    FILE *fLineout = fopen("lineout.bin", "wb"); // Overwrite lineout file each run       ;
-    check(!fLineout, "Error opening lineout.bin for writing: %s", strerror(errno));        ;
+    FILE *fLineout = fopen("lineout.bin", "wb"); // Overwrite lineout file each run
+    check(!fLineout, "Error opening lineout.bin for writing: %s", strerror(errno));
 
-    FILE *fFit = NULL; // File handle for fit results                                     ;
+    FILE *fFit = NULL; // File handle for fit results
     if(pkFit){
-        fFit = fopen("fit.bin", "wb"); // Overwrite fit file each run                     ;
-        check(!fFit, "Error opening fit.bin for writing: %s", strerror(errno));           ;
+        fFit = fopen("fit.bin", "wb"); // Overwrite fit file each run
+        check(!fFit, "Error opening fit.bin for writing: %s", strerror(errno));
     }
 
-    FILE *f2D = NULL; // File handle for the single 2D integrated data file              ;
+    FILE *f2D = NULL; // File handle for the single 2D integrated data file
     if (wr2D) {
-        printf("Will write all 2D integrated patterns to single file: Int2D.bin\n");      ;
-        f2D = fopen("Int2D.bin", "wb"); // Open in write binary mode (overwrites)        ;
-        check(!f2D, "Error opening Int2D.bin for writing: %s", strerror(errno));          ;
+        printf("Will write all 2D integrated patterns to single file: Int2D.bin\n");
+        f2D = fopen("Int2D.bin", "wb"); // Open in write binary mode (overwrites)
+        check(!f2D, "Error opening Int2D.bin for writing: %s", strerror(errno));
     }
 
     // CUDA Events for timing GPU stages
-    cudaEvent_t ev_proc_start, ev_proc_stop;   // Image processing (transform, subtract)  ;
-    cudaEvent_t ev_integ_start, ev_integ_stop; // Integration (2D)                        ;
-    cudaEvent_t ev_prof_start, ev_prof_stop;  // 1D Profile calculation                   ;
-    cudaEvent_t ev_d2h_start, ev_d2h_stop;    // Device to Host copies                    ;
-    gpuErrchk(cudaEventCreate(&ev_proc_start)); gpuErrchk(cudaEventCreate(&ev_proc_stop)); ;
-    gpuErrchk(cudaEventCreate(&ev_integ_start)); gpuErrchk(cudaEventCreate(&ev_integ_stop)); ;
-    gpuErrchk(cudaEventCreate(&ev_prof_start)); gpuErrchk(cudaEventCreate(&ev_prof_stop)); ;
-    gpuErrchk(cudaEventCreate(&ev_d2h_start)); gpuErrchk(cudaEventCreate(&ev_d2h_stop));   ;
+    cudaEvent_t ev_proc_start, ev_proc_stop;   // Image processing (transform, subtract)
+    cudaEvent_t ev_integ_start, ev_integ_stop; // Integration (2D)
+    cudaEvent_t ev_prof_start, ev_prof_stop;  // 1D Profile calculation
+    cudaEvent_t ev_d2h_start, ev_d2h_stop;    // Device to Host copies
+    gpuErrchk(cudaEventCreate(&ev_proc_start)); gpuErrchk(cudaEventCreate(&ev_proc_stop));
+    gpuErrchk(cudaEventCreate(&ev_integ_start)); gpuErrchk(cudaEventCreate(&ev_integ_stop));
+    gpuErrchk(cudaEventCreate(&ev_prof_start)); gpuErrchk(cudaEventCreate(&ev_prof_stop));
+    gpuErrchk(cudaEventCreate(&ev_d2h_start)); gpuErrchk(cudaEventCreate(&ev_d2h_stop));
 
     // Variables for timing results (milliseconds)
-    float t_proc_gpu = 0, t_integ_gpu = 0, t_prof_gpu = 0, t_d2h_gpu = 0; // GPU times    ;
-    double t_qp_cpu = 0, t_write1d_cpu = 0, t_fit_cpu = 0, t_writefit_cpu = 0, t_write2d_cpu = 0, t_loop_cpu = 0; // CPU times ;
-    double t_start_loop, t_end_loop; // Wall clock time per loop                          ;
+    float t_proc_gpu = 0, t_integ_gpu = 0, t_prof_gpu = 0, t_d2h_gpu = 0; // GPU times
+    double t_qp_cpu = 0, t_write1d_cpu = 0, t_fit_cpu = 0, t_writefit_cpu = 0, t_write2d_cpu = 0, t_loop_cpu = 0; // CPU times
+    double t_start_loop, t_end_loop; // Wall clock time per loop
 
     // Host buffers for results
-    int firstFrame = 1; // Flag to handle initialization tasks on the first frame         ;
-    double *hIntArrFrame = NULL; // Host buffer for 2D integrated frame (if wr2D)         ;
-    double *hPerFrame = NULL; // Host buffer for R, TTh, Eta, Area                        ;
-    double *h_int1D = NULL; // Pinned host buffer for 1D profile                         ;
+    int firstFrame = 1; // Flag to handle initialization tasks on the first frame
+    double *hIntArrFrame = NULL; // Host buffer for 2D integrated frame (if wr2D)
+    double *hPerFrame = NULL; // Host buffer for R, TTh, Eta, Area
+    double *h_int1D = NULL; // Pinned host buffer for 1D profile
     // Allocate pinned/regular host buffers for results
     if (wr2D) {
-        gpuErrchk(cudaMallocHost((void**)&hIntArrFrame, bigArrSize * sizeof(double)));    ; // Pinned for async copy
-        check(!hIntArrFrame, "Allocation failed for pinned hIntArrFrame");                ;
+        gpuErrchk(cudaMallocHost((void**)&hIntArrFrame, bigArrSize * sizeof(double)));    // Pinned for async copy
+        check(!hIntArrFrame, "Allocation failed for pinned hIntArrFrame");
     }
-    gpuErrchk(cudaMallocHost((void**)&hPerFrame, bigArrSize * 4 * sizeof(double)));       ; // Pinned for async copy
-    check(!hPerFrame, "Allocation failed for pinned hPerFrame");                          ;
-    gpuErrchk(cudaMallocHost((void**)&h_int1D, nRBins * sizeof(double)));                 ;
-    check(!h_int1D, "Allocation failed for pinned host buffer h_int1D");                  ;
-    double *hR = (double*)calloc(nRBins, sizeof(double)); // Host buffer for R bin centers ;
-    check(!hR, "Allocation failed for hR");                                               ;
-    double *hEta = (double*)calloc(nEtaBins, sizeof(double)); // Host buffer for Eta bin centers ;
-    check(!hEta, "Allocation failed for hEta");                                           ;
-    double *hLineout = (double*)malloc(nRBins * 2 * sizeof(double)); // Host buffer for writing lineout (R, Intensity pairs) ;
-    check(!hLineout, "Allocation failed for hLineout");                                   ;
+    gpuErrchk(cudaMallocHost((void**)&hPerFrame, bigArrSize * 4 * sizeof(double)));       // Pinned for async copy
+    check(!hPerFrame, "Allocation failed for pinned hPerFrame");
+    gpuErrchk(cudaMallocHost((void**)&h_int1D, nRBins * sizeof(double)));
+    check(!h_int1D, "Allocation failed for pinned host buffer h_int1D");
+    double *hR = (double*)calloc(nRBins, sizeof(double)); // Host buffer for R bin centers
+    check(!hR, "Allocation failed for hR");
+    double *hEta = (double*)calloc(nEtaBins, sizeof(double)); // Host buffer for Eta bin centers
+    check(!hEta, "Allocation failed for hEta");
+    double *hLineout = (double*)malloc(nRBins * 2 * sizeof(double)); // Host buffer for writing lineout (R, Intensity pairs)
+    check(!hLineout, "Allocation failed for hLineout");
 
-    printf("Setup complete. Starting main processing loop...\n");                        ;
-    double t_end_setup = get_wall_time_ms();                                              ;
-    printf("Total setup time: %.3f ms\n", t_end_setup - t_start_main);                    ;
-    fflush(stdout);                                                                       ;
+    printf("Setup complete. Starting main processing loop...\n");
+    double t_end_setup = get_wall_time_ms();
+    printf("Total setup time: %.3f ms\n", t_end_setup - t_start_main);
+    fflush(stdout);
 
     // =========================== Main Processing Loop ===========================
-    int frameCounter = 0;                                                                 ;
+    int frameCounter = 0;
     while (keep_running) {
-        t_start_loop = get_wall_time_ms(); // Start timing the loop iteration             ;
+        t_start_loop = get_wall_time_ms(); // Start timing the loop iteration
 
         // --- Get next data chunk from queue ---
-        double t_qp_start = get_wall_time_ms();                                           ;
-        DataChunk chunk;                                                                  ;
+        double t_qp_start = get_wall_time_ms();
+        DataChunk chunk;
         if(queue_pop(&process_queue, &chunk) < 0){
             // Shutdown requested while queue was empty
-            break;                                                                        ;
+            break;
         }
-        t_qp_cpu = get_wall_time_ms() - t_qp_start; // Time spent waiting for/getting data ;
+        t_qp_cpu = get_wall_time_ms() - t_qp_start; // Time spent waiting for/getting data
 
         // --- GPU Processing Stage (Transform, Cast, Subtract Dark) ---
-        gpuErrchk(cudaEventRecord(ev_proc_start, 0)); // Stream 0                         ;
+        gpuErrchk(cudaEventRecord(ev_proc_start, 0)); // Stream 0
         ProcessImageGPU(chunk.data, dProcessedImage, dAvgDark, Nopt, Topt, NrPixelsY, NrPixelsZ, darkSubEnabled,
-                        g_dTempTransformBuf1, g_dTempTransformBuf2);                      ;
-        gpuErrchk(cudaEventRecord(ev_proc_stop, 0)); // Stream 0                          ;
+                        g_dTempTransformBuf1, g_dTempTransformBuf2);
+        gpuErrchk(cudaEventRecord(ev_proc_stop, 0)); // Stream 0
 
         // --- GPU Integration Stage (2D Integration) ---
-        int currFidx = chunk.dataset_num; // Frame index/number from the data source      ;
-        int integTPB = THREADS_PER_BLOCK_INTEGRATE;                                       ;
-        int nrVox = (bigArrSize + integTPB - 1) / integTPB; // Number of blocks for integration kernel ;
+        int currFidx = chunk.dataset_num; // Frame index/number from the data source
+        int integTPB = THREADS_PER_BLOCK_INTEGRATE;
+        int nrVox = (bigArrSize + integTPB - 1) / integTPB; // Number of blocks for integration kernel
 
-        gpuErrchk(cudaEventRecord(ev_integ_start, 0)); // Stream 0                        ;
+        gpuErrchk(cudaEventRecord(ev_integ_start, 0)); // Stream 0
         if(!dMapMask){ // Launch kernel without mask support
             // Pass dPerFrameArr as const now
             integrate_noMapMask<<<nrVox, integTPB>>>(
                 px, Lsd, bigArrSize, Normalize, sumI, currFidx,
                 dPxList, dNPxList,
                 NrPixelsY, NrPixelsZ,
-                dProcessedImage, dIntArrFrame, dPerFrame, dSumMatrix); // Pass dPerFrame (const) ;
+                dProcessedImage, dIntArrFrame, dPerFrame, dSumMatrix); // Pass dPerFrame (const)
         } else { // Launch kernel with mask support
             // Pass dPerFrameArr as const now
             integrate_MapMask<<<nrVox, integTPB>>>(
@@ -1725,48 +1725,48 @@ int main(int argc, char *argv[]){
                 mapMaskWC, dMapMask, nRBins, nEtaBins, // Keep nRBins/nEtaBins here if needed
                 NrPixelsY, NrPixelsZ,
                 dPxList, dNPxList,
-                dProcessedImage, dIntArrFrame, dPerFrame, dSumMatrix); // Pass dPerFrame (const) ;
+                dProcessedImage, dIntArrFrame, dPerFrame, dSumMatrix); // Pass dPerFrame (const)
         }
-        gpuErrchk(cudaPeekAtLastError()); // Check for kernel launch errors immediately   ;
-        gpuErrchk(cudaEventRecord(ev_integ_stop, 0)); // Stream 0                         ;
+        gpuErrchk(cudaPeekAtLastError()); // Check for kernel launch errors immediately
+        gpuErrchk(cudaEventRecord(ev_integ_stop, 0)); // Stream 0
 
         // --- GPU 1D Profile Stage (Reduction from 2D integrated) ---
-        size_t profileSharedMem = (THREADS_PER_BLOCK_PROFILE / 32) * sizeof(double) * 2; // Shared mem per warp * 2 buffers ;
-        gpuErrchk(cudaEventRecord(ev_prof_start, 0)); // Stream 0                         ;
+        size_t profileSharedMem = (THREADS_PER_BLOCK_PROFILE / 32) * sizeof(double) * 2; // Shared mem per warp * 2 buffers
+        gpuErrchk(cudaEventRecord(ev_prof_start, 0)); // Stream 0
         calculate_1D_profile_kernel<<<nRBins, THREADS_PER_BLOCK_PROFILE, profileSharedMem>>>(
-            dIntArrFrame, dPerFrame, d_int1D, nRBins, nEtaBins, bigArrSize);              ;
-        gpuErrchk(cudaPeekAtLastError());                                                 ;
-        gpuErrchk(cudaEventRecord(ev_prof_stop, 0)); // Stream 0                          ;
+            dIntArrFrame, dPerFrame, d_int1D, nRBins, nEtaBins, bigArrSize);
+        gpuErrchk(cudaPeekAtLastError());
+        gpuErrchk(cudaEventRecord(ev_prof_stop, 0)); // Stream 0
 
         // --- D->H Copy Stage (Asynchronous) ---
-        gpuErrchk(cudaEventRecord(ev_d2h_start, 0)); // Stream 0                         ;
+        gpuErrchk(cudaEventRecord(ev_d2h_start, 0)); // Stream 0
         // Copy 1D profile result to pinned host memory
-        gpuErrchk(cudaMemcpyAsync(h_int1D, d_int1D, nRBins * sizeof(double), cudaMemcpyDeviceToHost, 0)); ;
+        gpuErrchk(cudaMemcpyAsync(h_int1D, d_int1D, nRBins * sizeof(double), cudaMemcpyDeviceToHost, 0));
         // On the very first frame, also copy the R, TTh, Eta, Area array (all pre-calculated now)
         if(firstFrame == 1){
              // This copy now brings R, TTh, Eta, Area (all calculated once by init kernel)
-             gpuErrchk(cudaMemcpyAsync(hPerFrame, dPerFrame, bigArrSize * 4 * sizeof(double), cudaMemcpyDeviceToHost, 0)); ;
+             gpuErrchk(cudaMemcpyAsync(hPerFrame, dPerFrame, bigArrSize * 4 * sizeof(double), cudaMemcpyDeviceToHost, 0));
         }
         // If writing 2D data, copy the 2D integrated frame to host memory (use pinned buffer)
         if(wr2D && hIntArrFrame){
-            gpuErrchk(cudaMemcpyAsync(hIntArrFrame, dIntArrFrame, bigArrSize * sizeof(double), cudaMemcpyDeviceToHost, 0)); ;
+            gpuErrchk(cudaMemcpyAsync(hIntArrFrame, dIntArrFrame, bigArrSize * sizeof(double), cudaMemcpyDeviceToHost, 0));
         }
-        gpuErrchk(cudaEventRecord(ev_d2h_stop, 0)); // Stream 0                          ;
+        gpuErrchk(cudaEventRecord(ev_d2h_stop, 0)); // Stream 0
 
         // --- Synchronize GPU Events and Get Timings ---
         // Synchronize *after* launching all GPU work for the frame
-        gpuErrchk(cudaEventSynchronize(ev_proc_stop)); // Wait for processing to finish   ;
-        gpuErrchk(cudaEventElapsedTime(&t_proc_gpu, ev_proc_start, ev_proc_stop));        ;
+        gpuErrchk(cudaEventSynchronize(ev_proc_stop)); // Wait for processing to finish
+        gpuErrchk(cudaEventElapsedTime(&t_proc_gpu, ev_proc_start, ev_proc_stop));
 
-        gpuErrchk(cudaEventSynchronize(ev_integ_stop)); // Wait for integration to finish ;
-        gpuErrchk(cudaEventElapsedTime(&t_integ_gpu, ev_integ_start, ev_integ_stop));     ;
+        gpuErrchk(cudaEventSynchronize(ev_integ_stop)); // Wait for integration to finish
+        gpuErrchk(cudaEventElapsedTime(&t_integ_gpu, ev_integ_start, ev_integ_stop));
 
-        gpuErrchk(cudaEventSynchronize(ev_prof_stop)); // Wait for 1D profile to finish   ;
-        gpuErrchk(cudaEventElapsedTime(&t_prof_gpu, ev_prof_start, ev_prof_stop));        ;
+        gpuErrchk(cudaEventSynchronize(ev_prof_stop)); // Wait for 1D profile to finish
+        gpuErrchk(cudaEventElapsedTime(&t_prof_gpu, ev_prof_start, ev_prof_stop));
 
         // *** Crucially, synchronize the D->H copy event BEFORE using the host data ***
-        gpuErrchk(cudaEventSynchronize(ev_d2h_stop));                                     ;
-        gpuErrchk(cudaEventElapsedTime(&t_d2h_gpu, ev_d2h_start, ev_d2h_stop));           ;
+        gpuErrchk(cudaEventSynchronize(ev_d2h_stop));
+        gpuErrchk(cudaEventElapsedTime(&t_d2h_gpu, ev_d2h_start, ev_d2h_stop));
 
         // --- CPU Processing Stage (using results from D->H copy) ---
 
@@ -1776,357 +1776,355 @@ int main(int argc, char *argv[]){
             // This buffer now contains the static R, TTh, Eta, Area initialized by the separate kernel
             for(int r = 0; r < nRBins; ++r){
                 // Access R using the correct offset (0 * bigArrSize)
-                hR[r] = hPerFrame[r * nEtaBins + 0 * bigArrSize];                         ;
+                hR[r] = hPerFrame[r * nEtaBins + 0 * bigArrSize];
             }
             for(int e = 0; e < nEtaBins; ++e){
                 // Access Eta using the correct offset (2 * bigArrSize)
-                 hEta[e] = hPerFrame[e + 2 * bigArrSize];                                 ;
+                 hEta[e] = hPerFrame[e + 2 * bigArrSize];
             }
             // Prepare the R values in the lineout buffer (Intensity will be filled later)
             for(int r = 0; r < nRBins; ++r){
-                hLineout[r * 2] = hR[r]; // R value                                       ;
-                hLineout[r * 2 + 1] = 0.0; // Initialize intensity                      ;
+                hLineout[r * 2] = hR[r]; // R value
+                hLineout[r * 2 + 1] = 0.0; // Initialize intensity
             }
-            printf("Initialized host R/Eta arrays from first frame D->H copy (using pre-initialized GPU data).\n"); ;
-            firstFrame = 0; // Don't run this block again                                 ;
+            printf("Initialized host R/Eta arrays from first frame D->H copy (using pre-initialized GPU data).\n");
+            firstFrame = 0; // Don't run this block again
         }
 
         // --- Write 2D Integrated Data (if enabled) ---
-        double t_write2d_start = get_wall_time_ms();                                      ;
-        if (wr2D && f2D && hIntArrFrame) { // Check flag, file handle, and buffer validity ;
+        double t_write2d_start = get_wall_time_ms();
+        if (wr2D && f2D && hIntArrFrame) { // Check flag, file handle, and buffer validity
             // Write the copied 2D data (hIntArrFrame) to the file
-            size_t written = fwrite(hIntArrFrame, sizeof(double), bigArrSize, f2D);       ;
+            size_t written = fwrite(hIntArrFrame, sizeof(double), bigArrSize, f2D);
             if (written != bigArrSize) {
                 fprintf(stderr, "Warn: Failed to write full 2D frame %d to Int2D.bin (wrote %zu/%zu): %s\n",
-                        currFidx, written, bigArrSize, strerror(errno));                  ;
+                        currFidx, written, bigArrSize, strerror(errno));
             }
             // Optional: Flush periodically to reduce data loss risk on crash
             // if (frameCounter % 100 == 0) { fflush(f2D); }
         }
-        t_write2d_cpu = get_wall_time_ms() - t_write2d_start;                             ;
-
+        t_write2d_cpu = get_wall_time_ms() - t_write2d_start;
 
         // --- Prepare 1D Lineout Data ---
-        double maxInt = -1.0;                                                             ;
-        int maxIntLoc = -1;                                                               ;
+        double maxInt = -1.0;
+        int maxIntLoc = -1;
         // Find max intensity and its location if only fitting a single peak (legacy?)
         if(!multiP){
             for(int r = 0; r < nRBins; ++r){
                 if(h_int1D[r] > maxInt){
-                    maxInt = h_int1D[r];                                                  ;
-                    maxIntLoc = r;                                                        ;
+                    maxInt = h_int1D[r];
+                    maxIntLoc = r;
                 }
             }
         }
         // Fill the intensity part of the lineout buffer
         for(int r = 0; r < nRBins; ++r){
-            hLineout[r * 2 + 1] = h_int1D[r]; // Intensity value                          ;
+            hLineout[r * 2 + 1] = h_int1D[r]; // Intensity value
         }
 
         // --- Write 1D Lineout Data ---
-        double t_write1d_start = get_wall_time_ms();                                      ;
+        double t_write1d_start = get_wall_time_ms();
         if (fLineout) {
-             size_t written = fwrite(hLineout, sizeof(double), nRBins * 2, fLineout);     ;
+             size_t written = fwrite(hLineout, sizeof(double), nRBins * 2, fLineout);
              if (written != (size_t)nRBins * 2) {
                   fprintf(stderr, "Warn: Failed to write full lineout frame %d (wrote %zu/%d): %s\n",
-                           currFidx, written, nRBins * 2, strerror(errno));               ;
+                           currFidx, written, nRBins * 2, strerror(errno));
              } else {
-                  fflush(fLineout); // Flush after each write to ensure data is saved     ;
+                  fflush(fLineout); // Flush after each write to ensure data is saved
              }
         }
-        t_write1d_cpu = get_wall_time_ms() - t_write1d_start;                             ;
+        t_write1d_cpu = get_wall_time_ms() - t_write1d_start;
 
         // --- Peak Finding and Fitting (if enabled) ---
-        double t_fit_start = get_wall_time_ms();                                          ;
-        int currentPeakCount = 0; // Number of peaks found/fitted in this frame           ;
-        double *sendFitParams = NULL; // Buffer for formatted fit parameters to be saved/sent ;
+        double t_fit_start = get_wall_time_ms();
+        int currentPeakCount = 0; // Number of peaks found/fitted in this frame
+        double *sendFitParams = NULL; // Buffer for formatted fit parameters to be saved/sent
 
         if(pkFit){
-            Peak *pks = NULL; // Array to store found/specified peaks                     ;
+            Peak *pks = NULL; // Array to store found/specified peaks
 
             // --- Step 1: Identify Peak Candidates ---
             if(multiP){ // Multi-peak mode
                 if(nSpecP > 0){ // Specific peak locations provided
                     // Allocate space for specified peaks
-                    pks = (Peak*)malloc(nSpecP * sizeof(Peak));                          ;
-                    check(!pks, "pkFit: Malloc failed for specified peaks array");        ;
-                    int validPeakCount = 0;                                               ;
+                    pks = (Peak*)malloc(nSpecP * sizeof(Peak));
+                    check(!pks, "pkFit: Malloc failed for specified peaks array");
+                    int validPeakCount = 0;
                     // Find the nearest bin index for each specified R location
                     for(int p = 0; p < nSpecP; ++p){
-                        int bestBin = -1;                                                 ;
-                        double minDiff = 1e10;                                            ;
+                        int bestBin = -1;
+                        double minDiff = 1e10;
                         for(int r = 0; r < nRBins; ++r){
-                            double diff = fabs(hR[r] - pkLoc[p]);                         ;
+                            double diff = fabs(hR[r] - pkLoc[p]);
                             if(diff < minDiff){
-                                minDiff = diff;                                           ;
-                                bestBin = r;                                              ;
+                                minDiff = diff;
+                                bestBin = r;
                             }
                         }
                         // Include peak if it's reasonably close to a bin center
-                        if(bestBin != -1 && minDiff < RBinSize * 2.0){ // Threshold: within 2 bins ;
-                            pks[validPeakCount].index = bestBin;                          ;
-                            pks[validPeakCount].radius = hR[bestBin];                     ;
-                            pks[validPeakCount].intensity = h_int1D[bestBin]; // Use actual intensity ;
-                            validPeakCount++;                                             ;
+                        if(bestBin != -1 && minDiff < RBinSize * 2.0){ // Threshold: within 2 bins
+                            pks[validPeakCount].index = bestBin;
+                            pks[validPeakCount].radius = hR[bestBin];
+                            pks[validPeakCount].intensity = h_int1D[bestBin]; // Use actual intensity
+                            validPeakCount++;
                         } else {
-                            printf("Warn: Specified peak R=%.4f ignored Frame %d (too far from bins).\n", pkLoc[p], currFidx); ;
+                            printf("Warn: Specified peak R=%.4f ignored Frame %d (too far from bins).\n", pkLoc[p], currFidx);
                         }
                     }
-                    currentPeakCount = validPeakCount;                                    ;
+                    currentPeakCount = validPeakCount;
                     if(validPeakCount == 0){ // If no specified peaks were valid, free
-                        free(pks);                                                        ;
-                        pks = NULL;                                                       ;
-                    } else if (validPeakCount < nSpecP) { // Realloc if some were ignored ;
-                        Peak * reallocPks = (Peak*)realloc(pks, validPeakCount * sizeof(Peak)); ;
-                        if(reallocPks) pks = reallocPks;                                  ;
-                        else { /* Keep original potentially larger buffer */ }             ;
+                        free(pks);
+                        pks = NULL;
+                    } else if (validPeakCount < nSpecP) { // Realloc if some were ignored
+                        Peak * reallocPks = (Peak*)realloc(pks, validPeakCount * sizeof(Peak));
+                        if(reallocPks) pks = reallocPks;
+                        else { /* Keep original potentially larger buffer */ }
                     }
                 } else { // No specific locations, find peaks automatically
-                    double *dataToFindPeaks = h_int1D; // Use raw data by default         ;
-                    double *smoothedData = NULL;                                          ;
+                    double *dataToFindPeaks = h_int1D; // Use raw data by default
+                    double *smoothedData = NULL;
                     if(doSm){ // Apply smoothing if enabled
-                        smoothedData = (double*)malloc(nRBins * sizeof(double));          ;
-                        check(!smoothedData, "pkFit: Malloc failed for smoothedData buffer"); ;
-                        smoothData(h_int1D, smoothedData, nRBins, 7); // Example: Window size 7 ;
-                        dataToFindPeaks = smoothedData; // Use smoothed data for peak finding ;
+                        smoothedData = (double*)malloc(nRBins * sizeof(double));
+                        check(!smoothedData, "pkFit: Malloc failed for smoothedData buffer");
+                        smoothData(h_int1D, smoothedData, nRBins, 7); // Example: Window size 7
+                        dataToFindPeaks = smoothedData; // Use smoothed data for peak finding
                     }
                     // Find peaks using the (potentially smoothed) data
-                    currentPeakCount = findPeaks(dataToFindPeaks, hR, nRBins, &pks, 0.0, 5); // Example params ;
+                    currentPeakCount = findPeaks(dataToFindPeaks, hR, nRBins, &pks, 0.0, 5); // Example params
                     if(smoothedData) {
-                        free(smoothedData); // Free smoothing buffer if it was used      ;
+                        free(smoothedData); // Free smoothing buffer if it was used
                     }
                 }
             } else { // Single peak mode (find highest intensity)
                 if(maxIntLoc != -1){ // If a maximum was found earlier
-                    currentPeakCount = 1;                                                 ;
-                    pks = (Peak*)malloc(sizeof(Peak));                                   ;
-                    check(!pks, "pkFit: Malloc failed for single peak");                  ;
-                    pks[0].index = maxIntLoc;                                             ;
-                    pks[0].radius = hR[maxIntLoc];                                        ;
-                    pks[0].intensity = maxInt;                                            ;
+                    currentPeakCount = 1;
+                    pks = (Peak*)malloc(sizeof(Peak));
+                    check(!pks, "pkFit: Malloc failed for single peak");
+                    pks[0].index = maxIntLoc;
+                    pks[0].radius = hR[maxIntLoc];
+                    pks[0].intensity = maxInt;
                 } else {
-                    currentPeakCount = 0; // No peak found                                ;
-                    pks = NULL;                                                           ;
+                    currentPeakCount = 0; // No peak found
+                    pks = NULL;
                 }
             }
 
             // --- Step 2: Perform Fit if Peaks were Found ---
             if (currentPeakCount > 0 && pks != NULL) {
-                int nFitParams = currentPeakCount * 4 + 1; // 4 params/peak + 1 global BG ;
-                double *fitParams = (double*)malloc(nFitParams * sizeof(double)); check(!fitParams, "pkFit: Malloc fitParams"); ;
-                double *lowerBounds = (double*)malloc(nFitParams * sizeof(double)); check(!lowerBounds, "pkFit: Malloc lowerBounds"); ;
-                double *upperBounds = (double*)malloc(nFitParams * sizeof(double)); check(!upperBounds, "pkFit: Malloc upperBounds"); ;
+                int nFitParams = currentPeakCount * 4 + 1; // 4 params/peak + 1 global BG
+                double *fitParams = (double*)malloc(nFitParams * sizeof(double)); check(!fitParams, "pkFit: Malloc fitParams");
+                double *lowerBounds = (double*)malloc(nFitParams * sizeof(double)); check(!lowerBounds, "pkFit: Malloc lowerBounds");
+                double *upperBounds = (double*)malloc(nFitParams * sizeof(double)); check(!upperBounds, "pkFit: Malloc upperBounds");
 
                 // --- Set Initial Guesses and Bounds ---
-                double maxOverallIntensity = 0.0; // Find max intensity for bounds       ;
+                double maxOverallIntensity = 0.0; // Find max intensity for bounds
                 for(int r = 0; r < nRBins; ++r) {
-                    if(h_int1D[r] > maxOverallIntensity) maxOverallIntensity = h_int1D[r]; ;
+                    if(h_int1D[r] > maxOverallIntensity) maxOverallIntensity = h_int1D[r];
                 }
-                if(maxOverallIntensity <= 0) maxOverallIntensity = 1.0; // Avoid zero bounds ;
+                if(maxOverallIntensity <= 0) maxOverallIntensity = 1.0; // Avoid zero bounds
 
                 for(int p = 0; p < currentPeakCount; ++p){
-                    int base = p * 4;                                                     ;
-                    double initialCenter = pks[p].radius;                                 ;
-                    double initialIntensity = pks[p].intensity;                           ;
-                    double initialSigma = RBinSize * 2.0; // Initial guess for width      ;
+                    int base = p * 4;
+                    double initialCenter = pks[p].radius;
+                    double initialIntensity = pks[p].intensity;
+                    double initialSigma = RBinSize * 2.0; // Initial guess for width
 
                     // Initial Guesses (x)
-                    fitParams[base + 0] = initialIntensity; // Amplitude                  ;
-                    fitParams[base + 1] = 0.5;             // Mix (50% Gaussian/Lorentzian) ;
-                    fitParams[base + 2] = initialCenter;   // Center                       ;
-                    fitParams[base + 3] = initialSigma;    // Sigma                        ;
+                    fitParams[base + 0] = initialIntensity; // Amplitude
+                    fitParams[base + 1] = 0.5;             // Mix (50% Gaussian/Lorentzian)
+                    fitParams[base + 2] = initialCenter;   // Center
+                    fitParams[base + 3] = initialSigma;    // Sigma
 
                     // Lower Bounds (lb)
-                    lowerBounds[base + 0] = 0.0;                         // Amplitude >= 0 ;
-                    lowerBounds[base + 1] = 0.0;                         // Mix >= 0       ;
-                    lowerBounds[base + 2] = initialCenter - RBinSize * 5.0; // Center +/- 5 bins ;
-                    lowerBounds[base + 3] = RBinSize * 0.5;              // Sigma >= half bin ;
+                    lowerBounds[base + 0] = 0.0;                         // Amplitude >= 0
+                    lowerBounds[base + 1] = 0.0;                         // Mix >= 0
+                    lowerBounds[base + 2] = initialCenter - RBinSize * 5.0; // Center +/- 5 bins
+                    lowerBounds[base + 3] = RBinSize * 0.5;              // Sigma >= half bin
 
                     // Upper Bounds (ub)
-                    upperBounds[base + 0] = maxOverallIntensity * 2.0;    // Amplitude <= 2*max ;
-                    upperBounds[base + 1] = 1.0;                         // Mix <= 1       ;
-                    upperBounds[base + 2] = initialCenter + RBinSize * 5.0; // Center +/- 5 bins ;
-                    upperBounds[base + 3] = (RMax - RMin) / 4.0;         // Sigma <= R range/4 ;
+                    upperBounds[base + 0] = maxOverallIntensity * 2.0;    // Amplitude <= 2*max
+                    upperBounds[base + 1] = 1.0;                         // Mix <= 1
+                    upperBounds[base + 2] = initialCenter + RBinSize * 5.0; // Center +/- 5 bins
+                    upperBounds[base + 3] = (RMax - RMin) / 4.0;         // Sigma <= R range/4
                 }
                 // Global Background (last parameter)
-                fitParams[nFitParams - 1] = 0.0;                         // Initial BG guess = 0 ;
-                lowerBounds[nFitParams - 1] = -maxOverallIntensity;      // BG lower bound ;
-                upperBounds[nFitParams - 1] = maxOverallIntensity;       // BG upper bound ;
+                fitParams[nFitParams - 1] = 0.0;                         // Initial BG guess = 0
+                lowerBounds[nFitParams - 1] = -maxOverallIntensity;      // BG lower bound
+                upperBounds[nFitParams - 1] = maxOverallIntensity;       // BG upper bound
 
                 // --- Setup NLopt ---
-                dataFit fitData;                                                          ;
-                fitData.nrBins = nRBins;                                                  ;
-                fitData.R = hR;                                                           ;
-                fitData.Int = h_int1D; // Fit against the original (unsmoothed) data      ;
+                dataFit fitData;
+                fitData.nrBins = nRBins;
+                fitData.R = hR;
+                fitData.Int = h_int1D; // Fit against the original (unsmoothed) data
 
-                nlopt_opt opt = nlopt_create(NLOPT_LN_NELDERMEAD, nFitParams);             ;
-                nlopt_set_lower_bounds(opt, lowerBounds);                                 ;
-                nlopt_set_upper_bounds(opt, upperBounds);                                 ;
-                nlopt_set_min_objective(opt, problem_function_global_bg, &fitData);       ;
-                nlopt_set_xtol_rel(opt, 1e-4); // Relative tolerance                     ;
-                nlopt_set_maxeval(opt, 500 * nFitParams); // Limit evaluations            ;
+                nlopt_opt opt = nlopt_create(NLOPT_LN_NELDERMEAD, nFitParams);
+                nlopt_set_lower_bounds(opt, lowerBounds);
+                nlopt_set_upper_bounds(opt, upperBounds);
+                nlopt_set_min_objective(opt, problem_function_global_bg, &fitData);
+                nlopt_set_xtol_rel(opt, 1e-4); // Relative tolerance
+                nlopt_set_maxeval(opt, 500 * nFitParams); // Limit evaluations
 
                 // --- Run Optimization ---
-                double minObjectiveValue; // Stores objective value at minimum            ;
-                int nlopt_rc = nlopt_optimize(opt, fitParams, &minObjectiveValue);        ;
+                double minObjectiveValue; // Stores objective value at minimum
+                int nlopt_rc = nlopt_optimize(opt, fitParams, &minObjectiveValue);
 
                 // --- Process Results ---
                 if(nlopt_rc < 0){ // Check for NLopt errors
-                    printf("F#%d: NLopt optimization failed with error code %d\n", currFidx, nlopt_rc); ;
-                    currentPeakCount = 0; // Indicate no successful fit                  ;
-                    free(fitParams); // Free buffer                                       ;
+                    printf("F#%d: NLopt optimization failed with error code %d\n", currFidx, nlopt_rc);
+                    currentPeakCount = 0; // Indicate no successful fit
+                    free(fitParams); // Free buffer
                 } else {
                     // Optimization succeeded (or stopped due to limits)
-                    sendFitParams = (double*)malloc(currentPeakCount * 5 * sizeof(double)); ; // Format: Amp, BG, Mix, Cen, Sig
-                    check(!sendFitParams, "pkFit: Malloc failed for sendFitParams buffer"); ;
-                    double globalBG = fitParams[nFitParams - 1]; // Get fitted global BG   ;
+                    sendFitParams = (double*)malloc(currentPeakCount * 5 * sizeof(double)); // Format: Amp, BG, Mix, Cen, Sig
+                    check(!sendFitParams, "pkFit: Malloc failed for sendFitParams buffer");
+                    double globalBG = fitParams[nFitParams - 1]; // Get fitted global BG
 
                     for(int p = 0; p < currentPeakCount; ++p){
-                         sendFitParams[p * 5 + 0] = fitParams[p * 4 + 0]; // Amplitude    ;
-                         sendFitParams[p * 5 + 1] = globalBG;             // Background (Global) ;
-                         sendFitParams[p * 5 + 2] = fitParams[p * 4 + 1]; // Mix factor   ;
-                         sendFitParams[p * 5 + 3] = fitParams[p * 4 + 2]; // Center       ;
-                         sendFitParams[p * 5 + 4] = fitParams[p * 4 + 3]; // Sigma        ;
+                         sendFitParams[p * 5 + 0] = fitParams[p * 4 + 0]; // Amplitude
+                         sendFitParams[p * 5 + 1] = globalBG;             // Background (Global)
+                         sendFitParams[p * 5 + 2] = fitParams[p * 4 + 1]; // Mix factor
+                         sendFitParams[p * 5 + 3] = fitParams[p * 4 + 2]; // Center
+                         sendFitParams[p * 5 + 4] = fitParams[p * 4 + 3]; // Sigma
                     }
-                    free(fitParams); // Free the raw optimization parameter buffer        ;
+                    free(fitParams); // Free the raw optimization parameter buffer
                 }
 
                 // Cleanup NLopt resources
-                nlopt_destroy(opt);                                                       ;
-                free(lowerBounds);                                                        ;
-                free(upperBounds);                                                        ;
+                nlopt_destroy(opt);
+                free(lowerBounds);
+                free(upperBounds);
             } // End if (currentPeakCount > 0 && pks != NULL)
 
             if(pks) {
-                free(pks); // Free the peak candidate array                               ;
+                free(pks); // Free the peak candidate array
             }
         } // End if(pkFit)
-        t_fit_cpu = get_wall_time_ms() - t_fit_start;                                     ;
+        t_fit_cpu = get_wall_time_ms() - t_fit_start;
 
         // --- Write Peak Fit Results ---
-        double t_writefit_start = get_wall_time_ms();                                     ;
+        double t_writefit_start = get_wall_time_ms();
         // Check if fitting was enabled, successful, parameters exist, and file open
         if(pkFit && currentPeakCount > 0 && sendFitParams != NULL && fFit){
             // Write the formatted parameters (Amp, BG, Mix, Cen, Sig per peak)
-            size_t written = fwrite(sendFitParams, sizeof(double), currentPeakCount * 5, fFit); ;
+            size_t written = fwrite(sendFitParams, sizeof(double), currentPeakCount * 5, fFit);
             if (written != (size_t)currentPeakCount * 5) {
                  fprintf(stderr, "Warn: Failed write fit frame %d (wrote %zu/%d): %s\n",
-                           currFidx, written, currentPeakCount * 5, strerror(errno));     ;
+                           currFidx, written, currentPeakCount * 5, strerror(errno));
             } else {
-                fflush(fFit); // Flush after writing fit results                          ;
+                fflush(fFit); // Flush after writing fit results
             }
         }
         // Free the formatted fit parameter buffer AFTER writing/sending it
         if (sendFitParams != NULL) {
-             free(sendFitParams);                                                         ;
-             sendFitParams = NULL; // Avoid double free if loop exits unexpectedly        ;
+             free(sendFitParams);
+             sendFitParams = NULL; // Avoid double free if loop exits unexpectedly
         }
-        t_writefit_cpu = get_wall_time_ms() - t_writefit_start;                           ;
-
+        t_writefit_cpu = get_wall_time_ms() - t_writefit_start;
 
         // --- Free received data buffer ---
         // Free the pinned host buffer for the received chunk AFTER all processing is done
-        gpuWarnchk(cudaFreeHost(chunk.data));                                             ;
+        gpuWarnchk(cudaFreeHost(chunk.data));
 
         // --- Timing and Output ---
-        t_end_loop = get_wall_time_ms();                                                  ;
-        t_loop_cpu = t_end_loop - t_start_loop; // Total wall time for the loop iteration ;
+        t_end_loop = get_wall_time_ms();
+        t_loop_cpu = t_end_loop - t_start_loop; // Total wall time for the loop iteration
 
         // Print detailed timing information for the frame
         printf("F#%d: Ttl:%.2f| QPop:%.2f GPU(Proc:%.2f Int:%.2f Prof:%.2f D2H:%.2f) CPU(Wr2D:%.2f Wr1D:%.2f Fit:%.2f WrFit:%.2f)\n",
                currFidx, t_loop_cpu, t_qp_cpu,
                t_proc_gpu, t_integ_gpu, t_prof_gpu, t_d2h_gpu,
-               t_write2d_cpu, t_write1d_cpu, t_fit_cpu, t_writefit_cpu);                  ;
-        fflush(stdout); // Ensure output is visible immediately                           ;
+               t_write2d_cpu, t_write1d_cpu, t_fit_cpu, t_writefit_cpu);
+        fflush(stdout); // Ensure output is visible immediately
 
-        frameCounter++;                                                                   ;
+        frameCounter++;
     } // ======================== End Main Processing Loop ========================
 
-    printf("Processing loop finished (keep_running=%d). Processed %d frames. Cleaning up...\n", keep_running, frameCounter); ;
+    printf("Processing loop finished (keep_running=%d). Processed %d frames. Cleaning up...\n", keep_running, frameCounter);
 
     // --- Cleanup ---
 
     // Close output files
-    if(fLineout) fclose(fLineout);                                                        ;
-    if(fFit) fclose(fFit);                                                                ;
-    if(f2D) fclose(f2D);
+    if(fLineout) fclose(fLineout);
+    if(fFit) fclose(fFit);
+    if(f2D) fclose(f2D); //
 
     // Free host memory allocations
-    if(hAvgDark) free(hAvgDark);                                                          ;
-    if(hDarkInT) free(hDarkInT);                                                          ;
-    if(hDarkIn) free(hDarkIn);                                                            ;
+    if(hAvgDark) free(hAvgDark);
+    if(hDarkInT) free(hDarkInT);
+    if(hDarkIn) free(hDarkIn);
     // chunk.data is freed inside the loop or by queue_destroy
-    if(hIntArrFrame) gpuWarnchk(cudaFreeHost(hIntArrFrame)); // Free pinned host memory   ;
-    if(hPerFrame) gpuWarnchk(cudaFreeHost(hPerFrame));       // Free pinned host memory   ;
-    if(h_int1D) gpuWarnchk(cudaFreeHost(h_int1D));           // Free pinned host memory   ;
-    if(hR) free(hR);                                                                      ;
-    if(hEta) free(hEta);                                                                  ;
-    if(hLineout) free(hLineout);                                                          ;
-    if(hEtaLo) free(hEtaLo);                                                              ;
-    if(hEtaHi) free(hEtaHi);                                                              ;
-    if(hRLo) free(hRLo);                                                                  ;
-    if(hRHi) free(hRHi);                                                                  ;
-    if(hMapMask) free(hMapMask); // Free host mask buffer if it was allocated             ;
+    if(hIntArrFrame) gpuWarnchk(cudaFreeHost(hIntArrFrame)); // Free pinned host memory
+    if(hPerFrame) gpuWarnchk(cudaFreeHost(hPerFrame));       // Free pinned host memory
+    if(h_int1D) gpuWarnchk(cudaFreeHost(h_int1D));           // Free pinned host memory
+    if(hR) free(hR);
+    if(hEta) free(hEta);
+    if(hLineout) free(hLineout);
+    if(hEtaLo) free(hEtaLo);
+    if(hEtaHi) free(hEtaHi);
+    if(hRLo) free(hRLo);
+    if(hRHi) free(hRHi);
+    if(hMapMask) free(hMapMask); // Free host mask buffer if it was allocated
 
-    UnmapBins(); // Unmap memory-mapped input files (Map.bin, nMap.bin)                    ;
+    UnmapBins(); // Unmap memory-mapped input files (Map.bin, nMap.bin)
 
     // Free GPU memory (use gpuWarnchk for cleanup)
-    if(dAvgDark) gpuWarnchk(cudaFree(dAvgDark));                                          ;
-    if(dProcessedImage) gpuWarnchk(cudaFree(dProcessedImage));                            ;
-    if(d_int1D) gpuWarnchk(cudaFree(d_int1D));                                            ;
-    if(dMapMask) gpuWarnchk(cudaFree(dMapMask));                                          ;
-    if(dPxList) gpuWarnchk(cudaFree(dPxList));                                            ;
-    if(dNPxList) gpuWarnchk(cudaFree(dNPxList));                                          ;
-    if(dSumMatrix) gpuWarnchk(cudaFree(dSumMatrix));                                      ;
-    if(dIntArrFrame) gpuWarnchk(cudaFree(dIntArrFrame));                                  ;
-    if(dPerFrame) gpuWarnchk(cudaFree(dPerFrame));                                        ;
-    if(dEtaLo) gpuWarnchk(cudaFree(dEtaLo));                                              ;
-    if(dEtaHi) gpuWarnchk(cudaFree(dEtaHi));                                              ;
-    if(dRLo) gpuWarnchk(cudaFree(dRLo));                                                  ;
-    if(dRHi) gpuWarnchk(cudaFree(dRHi));                                                  ;
+    if(dAvgDark) gpuWarnchk(cudaFree(dAvgDark));
+    if(dProcessedImage) gpuWarnchk(cudaFree(dProcessedImage));
+    if(d_int1D) gpuWarnchk(cudaFree(d_int1D));
+    if(dMapMask) gpuWarnchk(cudaFree(dMapMask));
+    if(dPxList) gpuWarnchk(cudaFree(dPxList));
+    if(dNPxList) gpuWarnchk(cudaFree(dNPxList));
+    if(dSumMatrix) gpuWarnchk(cudaFree(dSumMatrix));
+    if(dIntArrFrame) gpuWarnchk(cudaFree(dIntArrFrame));
+    if(dPerFrame) gpuWarnchk(cudaFree(dPerFrame));
+    if(dEtaLo) gpuWarnchk(cudaFree(dEtaLo));
+    if(dEtaHi) gpuWarnchk(cudaFree(dEtaHi));
+    if(dRLo) gpuWarnchk(cudaFree(dRLo));
+    if(dRHi) gpuWarnchk(cudaFree(dRHi));
     // <<< ADDED: Free persistent transform buffers >>>
-    if(g_dTempTransformBuf1) gpuWarnchk(cudaFree(g_dTempTransformBuf1));                  ;
-    if(g_dTempTransformBuf2) gpuWarnchk(cudaFree(g_dTempTransformBuf2));                  ;
+    if(g_dTempTransformBuf1) gpuWarnchk(cudaFree(g_dTempTransformBuf1));
+    if(g_dTempTransformBuf2) gpuWarnchk(cudaFree(g_dTempTransformBuf2));
     // <<< END ADDED >>>
 
     // Destroy CUDA events
-    gpuWarnchk(cudaEventDestroy(ev_proc_start)); gpuWarnchk(cudaEventDestroy(ev_proc_stop)); ;
-    gpuWarnchk(cudaEventDestroy(ev_integ_start)); gpuWarnchk(cudaEventDestroy(ev_integ_stop)); ;
-    gpuWarnchk(cudaEventDestroy(ev_prof_start)); gpuWarnchk(cudaEventDestroy(ev_prof_stop)); ;
-    gpuWarnchk(cudaEventDestroy(ev_d2h_start)); gpuWarnchk(cudaEventDestroy(ev_d2h_stop));   ;
+    gpuWarnchk(cudaEventDestroy(ev_proc_start)); gpuWarnchk(cudaEventDestroy(ev_proc_stop));
+    gpuWarnchk(cudaEventDestroy(ev_integ_start)); gpuWarnchk(cudaEventDestroy(ev_integ_stop));
+    gpuWarnchk(cudaEventDestroy(ev_prof_start)); gpuWarnchk(cudaEventDestroy(ev_prof_stop));
+    gpuWarnchk(cudaEventDestroy(ev_d2h_start)); gpuWarnchk(cudaEventDestroy(ev_d2h_stop));
 
     // --- Shutdown Accept Thread Gracefully ---
-    printf("Attempting to shut down network acceptor thread...\n");                       ;
+    printf("Attempting to shut down network acceptor thread...\n");
     if (server_fd >= 0) {
-         printf("Closing server listening socket %d...\n", server_fd);                    ;
-         shutdown(server_fd, SHUT_RDWR); // Shut down read/write ends first               ;
-         close(server_fd); // Close the socket file descriptor                            ;
-         server_fd = -1; // Mark as closed                                                ;
+         printf("Closing server listening socket %d...\n", server_fd);
+         shutdown(server_fd, SHUT_RDWR); // Shut down read/write ends first
+         close(server_fd); // Close the socket file descriptor
+         server_fd = -1; // Mark as closed
     }
 
-    printf("Sending cancellation request to accept thread...\n");                         ;
-    int cancel_ret = pthread_cancel(accept_thread);                                       ;
+    printf("Sending cancellation request to accept thread...\n");
+    int cancel_ret = pthread_cancel(accept_thread);
     if (cancel_ret != 0) {
-        fprintf(stderr, "Warning: Failed to send cancel request to accept thread: %s\n", strerror(cancel_ret)); ;
+        fprintf(stderr, "Warning: Failed to send cancel request to accept thread: %s\n", strerror(cancel_ret));
     }
 
-    printf("Joining accept thread (waiting for it to exit)...\n");                       ;
-    void *thread_result;                                                                  ;
-    int join_ret = pthread_join(accept_thread, &thread_result);                           ;
+    printf("Joining accept thread (waiting for it to exit)...\n");
+    void *thread_result;
+    int join_ret = pthread_join(accept_thread, &thread_result);
     if (join_ret != 0) {
-         fprintf(stderr, "Warning: Failed to join accept thread: %s\n", strerror(join_ret)); ;
+         fprintf(stderr, "Warning: Failed to join accept thread: %s\n", strerror(join_ret));
     } else {
         if (thread_result == PTHREAD_CANCELED) {
-            printf("Accept thread successfully canceled and joined.\n");                  ;
+            printf("Accept thread successfully canceled and joined.\n");
         } else {
-            printf("Accept thread joined normally (result: %p).\n", thread_result);       ;
+            printf("Accept thread joined normally (result: %p).\n", thread_result);
         }
     }
     // --- End Shutdown Accept Thread ---
 
     // Destroy queue
-    queue_destroy(&process_queue);                                                        ;
+    queue_destroy(&process_queue);
 
-    printf("[%s] - Exiting cleanly.\n", argv[0]);                                         ;
-    return 0;                                                                             ;
+    printf("[%s] - Exiting cleanly.\n", argv[0]);
+    return 0;
 }
