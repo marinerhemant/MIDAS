@@ -1164,8 +1164,8 @@ int main(int argc, char *argv[]){
 		perror("Error opening output files");
 		exit(EXIT_FAILURE);
 	}
-	clock_t t1, t2, tIntegration, tFit, tFWLineout, tFWFitResult, tinter, tfin;
-	double diffT=0, diffInteg, diffWriteLineout, diffTFit, diffWriteFitResult, diffTinter;
+	clock_t t1, t2, tIntegration, tFit, tFWLineout, tFWFitResult, tinter, tfin, tcopy1in, tcopy1out, tcopy2in, tcopy2out;
+	double diffT=0, diffInteg, diffWriteLineout, diffTFit, diffWriteFitResult, diffTinter, diffTcopy1, diffTcopy2;
 	int firstFrame = 1;
     // Allocate arrays once before the loop
     double *int1D = (double *)calloc(nRBins, sizeof(*int1D));
@@ -1201,9 +1201,11 @@ int main(int argc, char *argv[]){
 				Image[j] = (double)ImageIn[j] - AverageDark[j];
 			}
 		}
+		tcopy1in = clock();
 		gpuErrchk(cudaMemset(devIntArrPerFrame,0,bigArrSize*sizeof(double)));
 		gpuErrchk(cudaMemcpy(devImage,Image,NrPixelsY*NrPixelsZ*sizeof(double),cudaMemcpyHostToDevice));
 		gpuErrchk(cudaDeviceSynchronize());
+		tcopy1out = clock();
 		int tPB = 512;
 		int nrVox = (bigArrSize+tPB-1)/tPB;
 		i = chunk.dataset_num;
@@ -1221,6 +1223,7 @@ int main(int argc, char *argv[]){
 													devImage,devIntArrPerFrame,devPerFrameArr,devSumMatrix);
 		gpuErrchk(cudaDeviceSynchronize());
 		tfin = clock();
+		tcopy2in = clock();
 		gpuErrchk(cudaMemcpy(IntArrPerFrame,devIntArrPerFrame,bigArrSize*sizeof(double),cudaMemcpyDeviceToHost));
 		gpuErrchk(cudaDeviceSynchronize());
 		if (chunk.dataset_num==0 || firstFrame == 1){
@@ -1254,6 +1257,7 @@ int main(int argc, char *argv[]){
 		}
 		// Now we have IntArrPerFrame, we need to make it into a 1D.
 		gpuErrchk(cudaDeviceSynchronize());
+		tcopy2out = clock();
 		memset(int1D,0,nRBins*sizeof(*int1D));
 		double maxInt=-1;
 		int maxIntLoc;
@@ -1427,8 +1431,10 @@ int main(int argc, char *argv[]){
 		diffWriteLineout = ((double)(tFWLineout - tIntegration))/CLOCKS_PER_SEC;
 		diffTFit = ((double)(tFit - tFWLineout))/CLOCKS_PER_SEC;
 		diffWriteFitResult = ((double)(tFWFitResult - tFit))/CLOCKS_PER_SEC;
+		diffTcopy1 = ((double)(tcopy1out - tcopy1in))/CLOCKS_PER_SEC;
+		diffTcopy2 = ((double)(tcopy2out - tcopy2in))/CLOCKS_PER_SEC;
 
-		printf("Did integration, total time: %lf s for this frame, frameNr: %d. %lf %lf %lf %lf %lf\n",diffT,chunk.dataset_num,diffTinter,diffInteg,diffWriteLineout,diffTFit,diffWriteFitResult);
+		printf("Did integration, total time: %lf s for this frame, frameNr: %d. %lf %lf %lf %lf %lf %lf %lf\n",diffT,chunk.dataset_num,diffTinter,diffTcopy1,diffTcopy2,diffInteg,diffWriteLineout,diffTFit,diffWriteFitResult);
         free(chunk.data);
     }
     
