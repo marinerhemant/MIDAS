@@ -1,87 +1,36 @@
+// =========================================================================
+// IntegratorFitPeaksGPUStream.cu
 //
-// Copyright (c) 2014, UChicago Argonne, LLC
-// See LICENSE file.
+// Copyright (c) 2014, UChicago Argonne, LLC; 2025 modifications.
+// See LICENSE file 
+// Author: Hemant Sharma, UChicago Argonne, LLC
 //
-// export LD_LIBRARY_PATH=/scratch/s1iduser/sharma_tests/HDF5/lib:/scratch/s1iduser/sharma_tests/LIBTIFF/lib::$LD_LIBRARY_PATH
-/* Compiling info:
-  source ~/.MIDAS/paths
+// Purpose: Integrates 2D detector data streamed over a socket, performs
+//          image transformations, optionally fits peaks to the resulting
+//          1D lineout, and saves/sends results. Uses GPU acceleration.
+//
+// Features:
+//  - Socket data receiving (multi-threaded)
+//  - Thread-safe queue for buffering frames
+//  - Memory-mapped file reading for pixel maps
+//  - GPU pipeline: H->D Copy -> Transform -> Cast -> Dark Subtract
+//  - GPU kernel for area-weighted 1D profile calculation
+//  - Pinned host memory for H<->D transfers
+//  - NLopt peak fitting with global background parameter
+//  - Signal handling for graceful shutdown
+//  - CUDA Event API for accurate GPU timing
+//  - Optional saving/sending of results
+//
+// Example compile command (adjust paths and architecture flags):
+/*
+  source ~/.MIDAS/paths # Set up environment variables for libraries
   ~/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStream.cu -o bin/IntegratorFitPeaksGPUStream -Xcompiler -g -arch sm_90 \
   -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/.MIDAS/NLOPT/include -L/home/beams/S1IDUSER/.MIDAS/NLOPT/lib \
   -O3 -lnlopt -I/home/beams/S1IDUSER/.MIDAS/BLOSC/include -L/home/beams/S1IDUSER/.MIDAS/BLOSC/lib64 -lblosc2 \
   -I/home/beams/S1IDUSER/.MIDAS/HDF5/include -L/home/beams/S1IDUSER/.MIDAS/HDF5/lib -lhdf5 -lhdf5_hl -lz -ldl -lm -lpthread \
-  -I/home/beams/S1IDUSER/.MIDAS/LIBZIP/include -L/home/beams/S1IDUSER/.MIDAS/LIBZIP/lib64 -lzip
-  */
-
-/* Compiling for s16idbuser
-  source ~/.MIDAS/paths
-  /home/beams/S1IDUSER/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStream.cu -o bin/IntegratorFitPeaksGPUStream -Xcompiler -g -arch sm_90 \
-  -gencode=arch=compute_90,code=sm_90 -I/home/beams/S16IDBUSER/.MIDAS/NLOPT/include -L/home/beams/S16IDBUSER/.MIDAS/NLOPT/lib \
-  -O3 -lnlopt -I/home/beams/S16IDBUSER/.MIDAS/BLOSC/include -L/home/beams/S16IDBUSER/.MIDAS/BLOSC/lib64 -lblosc2 \
-  -I/home/beams/S16IDBUSER/.MIDAS/HDF5/include -L/home/beams/S16IDBUSER/.MIDAS/HDF5/lib -lhdf5 -lhdf5_hl -lz -ldl -lm -lpthread \
-  -I/home/beams/S16IDBUSER/.MIDAS/LIBZIP/include -L/home/beams/S16IDBUSER/.MIDAS/LIBZIP/lib64 -lzip
+  -I/home/beams/S1IDUSER/.MIDAS/LIBZIP/include -L/home/beams/S1IDUSER/.MIDAS/LIBZIP/lib64 -lzip -O3
 */
-
-/* Compiling for hsharma
-  source ~/.MIDAS/paths
-  /home/beams/S1IDUSER/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStream.cu -o bin/IntegratorFitPeaksGPUStream -Xcompiler -g -arch sm_90 \
-  -gencode=arch=compute_90,code=sm_90 -I/home/beams/HSHARMA/.MIDAS/NLOPT/include -L/home/beams/HSHARMA/.MIDAS/NLOPT/lib \
-  -O3 -lnlopt -I/home/beams/HSHARMA/.MIDAS/BLOSC/include -L/home/beams/HSHARMA/.MIDAS/BLOSC/lib64 -lblosc2 \
-  -I/home/beams/HSHARMA/.MIDAS/HDF5/include -L/home/beams/HSHARMA/.MIDAS/HDF5/lib -lhdf5 -lhdf5_hl -lz -ldl -lm -lpthread \
-  -I/home/beams/HSHARMA/.MIDAS/LIBZIP/include -L/home/beams/HSHARMA/.MIDAS/LIBZIP/lib64 -lzip
-
-*/
-
-
-// Always expectes the data to be in int64_t format.
-// Expected to be run on a GPU with at least 16GB of memory.
-// Expected to be run on a machine with at least 16GB of memory.
-// Localhost:5000 port is used to get the images from a server.
-// The server is expected to send the images in int64_t format.
-// There is an imagenum in the header, which is used to keep track of the image number.
-// The images are expected to be in a binary format.
-//
-// The code expects a Map.bin and nMap.bin file to be present in the same directory.
-// The Map.bin file is expected to contain the pixel information in the following format:
-// struct data{
-//     int y;
-//     int z;
-//     double frac;
-// };
-// The nMap.bin file is expected to contain the number of pixels in each pixel.
-// The code expects a ParamFN file to be present in the same directory.
-// The ParamFN file is expected to contain the following information:
-// EtaBinSize 0.1
-// RBinSize 0.1
-// RMax 100
-// RMin 10
-// EtaMax 180
-// EtaMin -180
-// Lsd 1000
-// px 0.172
-// NrPixelsY 2048
-// NrPixelsZ 2048
-// Normalize 1
-// NrPixels 2048
-// GapIntensity 0
-// BadPxIntensity 0
-// ImTransOpt 0
-// SumImages 0
-
-// The code expects a(n optional) dark file to be present in the same directory.
-// The dark file is expected to be in the same format as the images.
-// The dark file is expected to be in a binary format.
-// The dark file is expected to contain the average of all the dark frames.
-// The dark file is expected to be in int64_t format.
-
-// Benchmarks: 
-// 11.8s using H100, 38.2s using CPU. 
-// Overhead (I/O, prepare): 10.5s, 1.19s using H100, 27.7s using CPU, 23x speedup. 
-// 1469MPx/s using H100, 208MPx/s using CPU
-// Integrator.cu
-//
-// Hemant Sharma
-// Dt: 2023/12/15
-//
+// =========================================================================
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -95,43 +44,52 @@
 #include <time.h>
 #include <limits.h>
 #include <sys/stat.h>
-#include <sys/mman.h>
+#include <sys/mman.h>   // For mmap
 #include <errno.h>
 #include <stdarg.h>
 #include <fcntl.h>
 #include <ctype.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
 #include <sys/types.h>
-#include <stdint.h>
-#include <libgen.h>
+#include <libgen.h>     // For basename (optional)
 #include <assert.h>
+#include <signal.h>     // For signal handling
+#include <sys/time.h>   // For gettimeofday
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include <blosc2.h>
-//#include <zip.h> 
-#include <nlopt.h>
+#include <blosc2.h>     // Include if blosc compression is used
+#include <nlopt.h>      // For non-linear optimization
 
+// --- Constants ---
 #define SERVER_IP "127.0.0.1"
-#define PORTSENDFIT 5001
-#define PORTSENDLINEOUT 5002
-#define PORT 5000           // Changed port to 5000
-#define MAX_CONNECTIONS 10
-size_t CHUNK_SIZE;
-#define MAX_QUEUE_SIZE 100  // Maximum number of chunks in the queue, should not be too large, else segfaults.
-#define HEADER_SIZE sizeof(uint16_t)  // Size of dataset number
-size_t TOTAL_MSG_SIZE;
-#define BYTES_PER_PIXEL 8 // Size of each pixel in bytes
+#define PORT 5000               // Port for receiving image data
+#define MAX_CONNECTIONS 10      // Max simultaneous client connections
+#define MAX_QUEUE_SIZE 100      // Max image frames buffered before processing
+#define HEADER_SIZE sizeof(uint16_t) // Size of frame number header
+#define BYTES_PER_PIXEL 8       // Size of each pixel (int64_t)
 #define MAX_FILENAME_LENGTH 1024
+#define THREADS_PER_BLOCK_TRANSFORM 512 // CUDA block size for transform/processing
+#define THREADS_PER_BLOCK_INTEGRATE 512 // CUDA block size for integration
+#define THREADS_PER_BLOCK_PROFILE 256  // CUDA block size for 1D profile reduction
+#define MAX_TRANSFORM_OPS 10    // Max number of sequential transforms allowed
+#define MAX_PEAK_LOCATIONS 100  // Max peaks specifiable in param file
+#define AREA_THRESHOLD 1e-9     // Minimum area considered valid in integration/profiling
 
-// Structure for our data chunks
+// Global variables (initialized in main)
+size_t CHUNK_SIZE;
+size_t TOTAL_MSG_SIZE;
+size_t szPxList = 0;
+size_t szNPxList = 0;
+int global_NrPixelsY = 0;
+int global_NrPixelsZ = 0;
+volatile sig_atomic_t keep_running = 1;
+
+// --- Data Structures ---
 typedef struct {
-    uint16_t dataset_num;  // Dataset number
-    int64_t *data; // int64 data
+    uint16_t dataset_num;
+    int64_t *data;
     size_t size;
 } DataChunk;
 
-// Thread-safe queue for data processing
 typedef struct {
     DataChunk chunks[MAX_QUEUE_SIZE];
     int front;
@@ -142,10 +100,58 @@ typedef struct {
     pthread_cond_t not_full;
 } ProcessQueue;
 
-// Global processing queue
-ProcessQueue process_queue;
+struct data {
+    int y;
+    int z;
+    double frac;
+};
 
-// Initialize the processing queue
+// --- Global Variables ---
+ProcessQueue process_queue;
+struct data *pxList = NULL;
+int *nPxList = NULL;
+
+// --- CUDA Error Handling ---
+#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__, true); }
+#define gpuWarnchk(ans) { gpuAssert((ans), __FILE__, __LINE__, false); }
+inline void gpuAssert(cudaError_t code, const char *file, int line, bool abortflag) {
+    if (code != cudaSuccess) {
+        fprintf(stderr,"GPU Error: %s %s %d\n", cudaGetErrorString(code), file, line);
+        if (abortflag) {
+            exit(code);
+        }
+    }
+}
+
+// --- General Error Handling ---
+static void check (int test, const char * message, ...) {
+    if (test) {
+        va_list args;
+        va_start (args, message);
+        fprintf(stderr, "Fatal Error: ");
+        vfprintf(stderr, message, args);
+        va_end (args);
+        fprintf(stderr, "\n");
+        exit(EXIT_FAILURE);
+    }
+}
+
+// --- Signal Handler ---
+void sigint_handler(int signum) {
+    if (keep_running) {
+        printf("\nCaught signal %d, requesting shutdown...\n", signum);
+        keep_running = 0;
+    }
+}
+
+// --- Timing Function ---
+static inline double get_wall_time_ms() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0;
+}
+
+// --- Queue Functions ---
 void queue_init(ProcessQueue *queue) {
     queue->front = 0;
     queue->rear = -1;
@@ -155,1328 +161,1329 @@ void queue_init(ProcessQueue *queue) {
     pthread_cond_init(&queue->not_full, NULL);
 }
 
-// Add a data chunk to the queue
 int queue_push(ProcessQueue *queue, uint16_t dataset_num, int64_t *data, size_t num_values) {
     pthread_mutex_lock(&queue->mutex);
-    
-    // Wait if the queue is full
-    while (queue->count >= MAX_QUEUE_SIZE) {
+    while (queue->count >= MAX_QUEUE_SIZE && keep_running) {
         printf("Queue full, waiting...\n");
-        pthread_cond_wait(&queue->not_full, &queue->mutex);
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += 1;
+        pthread_cond_timedwait(&queue->not_full, &queue->mutex, &ts);
     }
-    
-    // Add the chunk to the queue
+    if (!keep_running) {
+        pthread_mutex_unlock(&queue->mutex);
+        return -1;
+    }
     queue->rear = (queue->rear + 1) % MAX_QUEUE_SIZE;
     queue->chunks[queue->rear].dataset_num = dataset_num;
     queue->chunks[queue->rear].data = data;
     queue->chunks[queue->rear].size = num_values;
     queue->count++;
-    
-    // Signal that the queue is not empty
     pthread_cond_signal(&queue->not_empty);
     pthread_mutex_unlock(&queue->mutex);
-    
     return 0;
 }
 
-// Get a data chunk from the queue
 int queue_pop(ProcessQueue *queue, DataChunk *chunk) {
     pthread_mutex_lock(&queue->mutex);
-    
-    // Wait if the queue is empty
-    while (queue->count <= 0) {
-        pthread_cond_wait(&queue->not_empty, &queue->mutex);
+    while (queue->count <= 0 && keep_running) {
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += 1;
+        pthread_cond_timedwait(&queue->not_empty, &queue->mutex, &ts);
     }
-    
-    // Get the chunk from the queue
+    if (!keep_running && queue->count <= 0) {
+        pthread_mutex_unlock(&queue->mutex);
+        return -1;
+    }
     *chunk = queue->chunks[queue->front];
     queue->front = (queue->front + 1) % MAX_QUEUE_SIZE;
     queue->count--;
-    
-    // Signal that the queue is not full
     pthread_cond_signal(&queue->not_full);
     pthread_mutex_unlock(&queue->mutex);
-    
     return 0;
 }
 
-// Thread function to handle client connection
+void queue_destroy(ProcessQueue *queue) {
+     pthread_mutex_destroy(&queue->mutex);
+     pthread_cond_destroy(&queue->not_empty);
+     pthread_cond_destroy(&queue->not_full);
+     printf("Cleaning up remaining %d queue entries...\n", queue->count);
+     while (queue->count > 0) {
+        DataChunk chunk;
+        chunk.data = queue->chunks[queue->front].data;
+        queue->front = (queue->front + 1) % MAX_QUEUE_SIZE;
+        queue->count--;
+        if (chunk.data) {
+            gpuWarnchk(cudaFreeHost(chunk.data)); // Free pinned memory
+        }
+     }
+}
+
+// --- Socket Handling ---
 void* handle_client(void *arg) {
     int client_socket = *((int*)arg);
-    free(arg);  // Free the memory allocated for the argument
-    
-    // Buffer for receiving raw bytes (header + data)
+    free(arg);
     uint8_t *buffer = (uint8_t*)malloc(TOTAL_MSG_SIZE);
+    check(buffer == NULL, "handle_client: Failed alloc recv buffer");
     int bytes_read;
-    
-    // Continuously read chunks
-    while (1) {
-        // Reset total bytes read for this message
+    printf("Client handler started for socket %d.\n", client_socket);
+
+    while (keep_running) {
         int total_bytes_read = 0;
-        
-        // Read until we get a complete message
         while (total_bytes_read < TOTAL_MSG_SIZE) {
             bytes_read = recv(client_socket, buffer + total_bytes_read, TOTAL_MSG_SIZE - total_bytes_read, 0);
-            
             if (bytes_read <= 0) {
-                // Connection closed or error
+                 goto connection_closed;
+            }
+            total_bytes_read += bytes_read;
+            if (!keep_running) {
                 goto connection_closed;
             }
-            
-            total_bytes_read += bytes_read;
         }
-        
-        // Extract dataset number from header
         uint16_t dataset_num;
         memcpy(&dataset_num, buffer, HEADER_SIZE);
-        
-        // Allocate memory for the data
-        int64_t *data = (int64_t*)malloc(CHUNK_SIZE/BYTES_PER_PIXEL * sizeof(int64_t));
+        size_t num_pixels = CHUNK_SIZE / BYTES_PER_PIXEL;
+        int64_t *data = NULL;
+        gpuWarnchk(cudaMallocHost((void**)&data, num_pixels * sizeof(int64_t))); // Pinned memory
         if (!data) {
-            perror("Memory allocation failed");
+            perror("handle_client: Pinned memory alloc failed");
             break;
         }
-        for (int i = 0; i < CHUNK_SIZE/BYTES_PER_PIXEL; i++) {
-			int64_t value;
-			memcpy(&value, buffer + HEADER_SIZE + (i * sizeof(int64_t)), sizeof(int64_t));
-			data[i] = value;
-		}
-        
-        // Add the data to the processing queue
-        queue_push(&process_queue, dataset_num, data, CHUNK_SIZE/BYTES_PER_PIXEL);
-        printf("Received dataset #%u with %d int64_t values\n", dataset_num, CHUNK_SIZE/BYTES_PER_PIXEL);
+        memcpy(data, buffer + HEADER_SIZE, CHUNK_SIZE);
+        if (queue_push(&process_queue, dataset_num, data, num_pixels) < 0) {
+            printf("handle_client: queue_push failed, likely shutdown. Discarding frame %d.\n", dataset_num);
+            gpuWarnchk(cudaFreeHost(data));
+            goto connection_closed;
+        }
     }
-    
 connection_closed:
-    if (bytes_read == 0) {
-        printf("Client disconnected gracefully\n");
+    if (bytes_read == 0 && keep_running) {
+        printf("Client disconnected (socket %d)\n", client_socket);
     } else if (bytes_read < 0) {
         perror("Receive error");
     }
-    
+    free(buffer);
     close(client_socket);
+    printf("Client handler finished (socket %d).\n", client_socket);
     return NULL;
 }
 
-// Thread function for accepting connections
 void* accept_connections(void *server_fd_ptr) {
     int server_fd = *((int*)server_fd_ptr);
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
-    
-    while (1) {
-        // Accept connection
-        int *client_socket = (int*) malloc(sizeof(int));
-        if ((*client_socket = accept(server_fd, (struct sockaddr *)&client_addr, &client_len)) < 0) {
+    printf("Accept thread started, listening for connections.\n");
+    while (keep_running) {
+        int *client_socket_ptr = (int*) malloc(sizeof(int));
+        check(client_socket_ptr == NULL, "accept_connections: Failed alloc client socket ptr");
+        *client_socket_ptr = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
+        if (!keep_running) {
+             if (*client_socket_ptr >= 0) {
+                 close(*client_socket_ptr);
+             }
+             free(client_socket_ptr);
+             break;
+        }
+        if (*client_socket_ptr < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
             perror("Accept failed");
-            free(client_socket);
+            free(client_socket_ptr);
+            sleep(1);
             continue;
         }
-        
-        printf("Connection accepted from %s:%d\n", 
-               inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-        
-        // Create thread to handle client
+        printf("Connection accepted from %s:%d (socket %d)\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port), *client_socket_ptr);
         pthread_t thread_id;
-        if (pthread_create(&thread_id, NULL, handle_client, (void*)client_socket) != 0) {
-            perror("Thread creation failed");
-            close(*client_socket);
-            free(client_socket);
+        int create_rc = pthread_create(&thread_id, NULL, handle_client, (void*)client_socket_ptr);
+        if (create_rc != 0) {
+            fprintf(stderr, "Thread creation failed: %s\n", strerror(create_rc));
+            close(*client_socket_ptr);
+            free(client_socket_ptr);
         } else {
-            // Detach thread to free resources automatically when it terminates
             pthread_detach(thread_id);
         }
     }
-    
+    printf("Accept thread exiting.\n");
     return NULL;
 }
 
-int send_fit_result(uint16_t frame_num, int n, double *values) {
-    int sock = 0;
-    struct sockaddr_in serv_addr;
-    
-    // Create socket
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        perror("Socket creation error");
-        return -1;
-    }
-    
-    // Set up server address
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(PORTSENDFIT);
-    
-    // Convert IPv4 address from text to binary form
-    if (inet_pton(AF_INET, SERVER_IP, &serv_addr.sin_addr) <= 0) {
-        perror("Invalid address/ Address not supported");
-        close(sock);
-        return -1;
-    }
-    
-    // Connect to server
-    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-        perror("Connection Failed");
-        close(sock);
-        return -1;
-    }
-    
-    // Prepare headers: frame number and count, both in network byte order
-    uint16_t frame_header = htons(frame_num);
-    uint16_t count_header = htons((uint16_t)n);
-    
-    // Calculate total number of doubles (n sets of 5 doubles each)
-    int total_doubles = n * 5;
-    
-    // Send frame number header
-    if (send(sock, &frame_header, sizeof(frame_header), 0) != sizeof(frame_header)) {
-        perror("Failed to send frame number header");
-        close(sock);
-        return -1;
-    }
-    
-    // Send count header (number of sets)
-    if (send(sock, &count_header, sizeof(count_header), 0) != sizeof(count_header)) {
-        perror("Failed to send count header");
-        close(sock);
-        return -1;
-    }
-    
-    // Send doubles one by one, converting to network byte order
-    for (int i = 0; i < total_doubles; i++) {
-        // Network byte order for doubles needs manual handling
-        // For portability, we'll convert the double bits
-        uint64_t network_value;
-        memcpy(&network_value, &values[i], sizeof(double));
-        network_value = htobe64(network_value);  // Host to big-endian
-        
-        if (send(sock, &network_value, sizeof(double), 0) != sizeof(double)) {
-            perror("Failed to send value");
-            close(sock);
-            return -1;
-        }
-    }
-    
-    printf("Sent results for frameNr %d with %d peak (%d doubles) successfully\n", frame_num, n, total_doubles);
-    close(sock);
-    return 0;
-}
-
-int send_lineouts(uint16_t frame_num, int n, double *values) {
-    int sock = 0;
-    struct sockaddr_in serv_addr;
-    
-    // Create socket
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        perror("Socket creation error");
-        return -1;
-    }
-    
-    // Set up server address
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(PORT);
-    
-    // Convert IPv4 address from text to binary form
-    if (inet_pton(AF_INET, SERVER_IP, &serv_addr.sin_addr) <= 0) {
-        perror("Invalid address/ Address not supported");
-        close(sock);
-        return -1;
-    }
-    
-    // Connect to server
-    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-        perror("Connection Failed");
-        close(sock);
-        return -1;
-    }
-    
-    // Prepare headers: frame number and count, both in network byte order
-    uint16_t frame_header = htons(frame_num);
-    uint16_t count_header = htons((uint16_t)n);
-    
-    // Send frame number header
-    if (send(sock, &frame_header, sizeof(frame_header), 0) != sizeof(frame_header)) {
-        perror("Failed to send frame number header");
-        close(sock);
-        return -1;
-    }
-    
-    // Send count header (number of sets)
-    if (send(sock, &count_header, sizeof(count_header), 0) != sizeof(count_header)) {
-        perror("Failed to send count header");
-        close(sock);
-        return -1;
-    }
-    
-    // Send doubles one by one, converting to network byte order
-    for (int i = 0; i < n; i++) {
-        // Network byte order for doubles needs manual handling
-        // For portability, we'll convert the double bits
-        uint64_t network_value;
-        memcpy(&network_value, &values[i], sizeof(double));
-        network_value = htobe64(network_value);  // Host to big-endian
-        
-        if (send(sock, &network_value, sizeof(double), 0) != sizeof(double)) {
-            perror("Failed to send value");
-            close(sock);
-            return -1;
-        }
-    }
-    
-    printf("Sent frame lineout %d with %d doubles successfully\n", frame_num, n);
-    close(sock);
-    return 0;
-}
-
-#define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
-#define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
+// --- Bit Manipulation Macros ---
+#define SetBit(A,k)   (A[((k)/32)] |=  (1U << ((k)%32)))
+#define TestBit(A,k)  (A[((k)/32)] &   (1U << ((k)%32)))
 #define rad2deg 57.2957795130823
 
-#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
-inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
-{
-   if (code != cudaSuccess) 
-   {
-      fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
-      if (abort) exit(code);
-   }
-}
-
-static void
-check (int test, const char * message, ...)
-{
-    if (test) {
-        va_list args;
-        va_start (args, message);
-        vfprintf (stderr, message, args);
-        va_end (args);
-        fprintf (stderr, "\n");
-        exit (EXIT_FAILURE);
-    }
-}
-
-struct data {
-	int y;
-	int z;
-	double frac;
-};
-
-struct data *pxList;
-int *nPxList;
-size_t szPxList;
-size_t szNPxList;
-
+// --- File I/O & Mapping ---
 int ReadBins(){
-	int fd;
-    struct stat s;
-    int status;
-    size_t size;
-    const char * file_name = "Map.bin";
-    fd = open (file_name, O_RDONLY);
-    check (fd < 0, "open %s failed: %s", file_name, strerror (errno));
-    status = fstat (fd, & s);
-    check (status < 0, "stat %s failed: %s", file_name, strerror (errno));
-    size = s.st_size;
-    int sizelen = 2*(int)sizeof(int) + (int)sizeof(double);
-    printf("Map size in bytes: %lld, each element size: %d, total elements: %lld. \n",(long long int)size,sizelen,(long long int)(size/sizelen));
-    pxList = (data *) mmap (0, size, PROT_READ, MAP_SHARED, fd, 0);
-	szPxList = size;
-    check (pxList == MAP_FAILED, "mmap %s failed: %s",file_name, strerror (errno));
-
-    int fd2;
-    struct stat s2;
-    int status2;
-    const char* file_name2 = "nMap.bin";
-    fd2 = open (file_name2, O_RDONLY);
-    check (fd2 < 0, "open %s failed: %s", file_name2, strerror (errno));
-    status2 = fstat (fd2, & s2);
-    check (status2 < 0, "stat %s failed: %s", file_name2, strerror (errno));
-    size_t size2 = s2.st_size;
-    nPxList = (int *) mmap (0, size2, PROT_READ, MAP_SHARED, fd2, 0);
-	szNPxList = size2;
-    printf("nMap size in bytes: %lld, each element size: %d, total elements: %lld. \n",
-		(long long int)size2,2*(int)sizeof(int),2*(long long int)(size2/sizeof(int)));
+    if(pxList||nPxList){
+        printf("Warn: Maps already loaded.\n");
+        return 1;
+    }
+    int fd_m=-1,fd_n=-1;
+    struct stat s_m,s_n;
+    const char* f_m="Map.bin";
+    const char* f_n="nMap.bin";
+    fd_m=open(f_m,O_RDONLY);
+    check(fd_m<0,"open %s fail:%s",f_m,strerror(errno));
+    check(fstat(fd_m,&s_m)<0,"stat %s fail:%s",f_m,strerror(errno));
+    szPxList=s_m.st_size;
+    check(szPxList==0,"%s empty",f_m);
+    printf("Map '%s': %lld bytes\n",f_m,(long long)szPxList);
+    pxList=(struct data*)mmap(NULL,szPxList,PROT_READ,MAP_SHARED,fd_m,0);
+    check(pxList==MAP_FAILED,"mmap %s fail:%s",f_m,strerror(errno));
+    close(fd_m);
+    fd_n=open(f_n,O_RDONLY);
+    check(fd_n<0,"open %s fail:%s",f_n,strerror(errno));
+    check(fstat(fd_n,&s_n)<0,"stat %s fail:%s",f_n,strerror(errno));
+    szNPxList=s_n.st_size;
+    check(szNPxList==0,"%s empty",f_n);
+    printf("nMap '%s': %lld bytes\n",f_n,(long long)szNPxList);
+    nPxList=(int*)mmap(NULL,szNPxList,PROT_READ,MAP_SHARED,fd_n,0);
+    check(nPxList==MAP_FAILED,"mmap %s fail:%s",f_n,strerror(errno));
+    close(fd_n);
+    printf("Mapped pixel data files.\n");
     fflush(stdout);
-    check (nPxList == MAP_FAILED, "mmap %s failed: %s",file_name, strerror (errno));
-	return 1;
+    return 1;
 }
-
-__global__
-void integrate_noMapMask (double px, double Lsd, int bigArrSize, int Normalize, int sumImages, int i, int NrPixelsY, 
-		int mapMaskSize, int *MapMask, int nRBins, int nEtaBins, struct data * dPxList, 
-		int *dNPxList, double *RBinsLow, double *RBinsHigh, double *EtaBinsLow, double *EtaBinsHigh, 
-		double *dImage, double *IntArrPerFrame, double *PerFrameArr, double *SumMatrix)
-{
-	size_t idx = blockIdx.x*blockDim.x + threadIdx.x;
-	if (idx < bigArrSize){
-		int l;
-		double Intensity=0, totArea=0;
-		struct data ThisVal;
-		long long int nPixels, dataPos, testPos;
-		nPixels = dNPxList[2*idx + 0];
-		dataPos = dNPxList[2*idx + 1];
-		for (l=0;l<nPixels;l++){
-			ThisVal = dPxList[dataPos + l];
-			testPos = ThisVal.z;
-			testPos *= NrPixelsY;
-			testPos += ThisVal.y;
-			Intensity += dImage[testPos]*ThisVal.frac;
-			totArea += ThisVal.frac;
-		}
-		if (Intensity != 0){
-			if (Normalize == 1){
-				Intensity /= totArea;
-			}
-			IntArrPerFrame[idx] = Intensity;
-			if (sumImages==1){
-				SumMatrix[idx] += Intensity;
-			}
-		}
-		if (i==0){
-			int j = idx/nEtaBins;
-			int k = idx%nEtaBins;
-			double RMean = (RBinsLow[j]+RBinsHigh[j])/2;
-			double EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
-			PerFrameArr[0*bigArrSize+(j*nEtaBins+k)] = RMean;
-			PerFrameArr[1*bigArrSize+(j*nEtaBins+k)] = 57.2957795130823*atan(RMean*px/Lsd);
-			PerFrameArr[2*bigArrSize+(j*nEtaBins+k)] = EtaMean;
-			PerFrameArr[3*bigArrSize+(j*nEtaBins+k)] = totArea;
-		}
-	}
-}
-
-__global__
-void integrate_MapMask (double px, double Lsd, int bigArrSize, int Normalize, int sumImages, int i, int NrPixelsY, 
-		int mapMaskSize, int *MapMask, int nRBins, int nEtaBins, struct data * dPxList, 
-		int *dNPxList, double *RBinsLow, double *RBinsHigh, double *EtaBinsLow, double *EtaBinsHigh, 
-		double *dImage, double *IntArrPerFrame, double *PerFrameArr, double *SumMatrix)
-{
-	size_t idx = blockIdx.x*blockDim.x + threadIdx.x;
-	if (idx < bigArrSize){
-		int l;
-		double Intensity=0, totArea=0;
-		struct data ThisVal;
-		long long int nPixels, dataPos, testPos;
-		nPixels = dNPxList[2*idx + 0];
-		dataPos = dNPxList[2*idx + 1];
-		for (l=0;l<nPixels;l++){
-			ThisVal = dPxList[dataPos + l];
-			testPos = ThisVal.z;
-			testPos *= NrPixelsY;
-			testPos += ThisVal.y;
-			if (TestBit(MapMask,testPos)){
-				continue;
-			}
-			Intensity += dImage[testPos]*ThisVal.frac;
-			totArea += ThisVal.frac;
-		}
-		if (Intensity != 0){
-			if (Normalize == 1){
-				Intensity /= totArea;
-			}
-			IntArrPerFrame[idx] = Intensity;
-			if (sumImages==1){
-				SumMatrix[idx] += Intensity;
-			}
-		}
-		if (i==0){
-			int j = idx/nEtaBins;
-			int k = idx%nEtaBins;
-			double RMean = (RBinsLow[j]+RBinsHigh[j])/2;
-			double EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
-			PerFrameArr[0*bigArrSize+(j*nEtaBins+k)] = RMean;
-			PerFrameArr[1*bigArrSize+(j*nEtaBins+k)] = 57.2957795130823*atan(RMean*px/Lsd);
-			PerFrameArr[2*bigArrSize+(j*nEtaBins+k)] = EtaMean;
-			PerFrameArr[3*bigArrSize+(j*nEtaBins+k)] = totArea;
-		}
-	}
-}
-
-static inline
-int StartsWith(const char *a, const char *b)
-{
-	if (strncmp(a,b,strlen(b)) == 0) return 1;
-	return 0;
-}
-
-static inline
-void
-REtaMapper(
-	double Rmin,
-	double EtaMin,
-	int nEtaBins,
-	int nRBins,
-	double EtaBinSize,
-	double RBinSize,
-	double *EtaBinsLow,
-	double *EtaBinsHigh,
-	double *RBinsLow,
-	double *RBinsHigh)
-{
-	int i;
-	for (i=0;i<nEtaBins;i++){
-		EtaBinsLow[i] = EtaBinSize*i      + EtaMin;
-		EtaBinsHigh[i] = EtaBinSize*(i+1) + EtaMin;
-	}
-	for (i=0;i<nRBins;i++){
-		RBinsLow[i] =  RBinSize * i     + Rmin;
-		RBinsHigh[i] = RBinSize * (i+1) + Rmin;
-	}
-}
-
-static inline void DoImageTransformations (int NrTransOpt, int TransOpt[10], int64_t *ImageIn, int64_t *ImageOut, int NrPixelsY, int NrPixelsZ)
-{
-	int i,k,l;
-	if (NrTransOpt == 0 || (NrTransOpt==1 && TransOpt[0]==0)){
-		memcpy(ImageOut,ImageIn,NrPixelsY*NrPixelsZ*sizeof(*ImageIn)); // Nothing to do
-		return;
-	}
-    for (i=0;i<NrTransOpt;i++){
-		if (TransOpt[i] == 1){
-			for (k=0;k<NrPixelsY;k++){
-				for (l=0;l<NrPixelsZ;l++){
-					ImageOut[l*NrPixelsY+k] = ImageIn[l*NrPixelsY+(NrPixelsY-k-1)]; // Invert Y
-				}
-			}
-		}else if (TransOpt[i] == 2){
-			for (k=0;k<NrPixelsY;k++){
-				for (l=0;l<NrPixelsZ;l++){
-					ImageOut[l*NrPixelsY+k] = ImageIn[(NrPixelsZ-l-1)*NrPixelsY+k]; // Invert Z
-				}
-			}
-		}
-	}
-}
-
-struct dataFit{
-	int nrBins;
-	double *R;
-	double *Int;
-};
-
-static double problem_function(unsigned n,
-	const double *x,
-	double *grad,
-	void *my_func_data)
-{
-	int nPeaks = n/5;
-	struct dataFit *d = (struct dataFit *) my_func_data;
-	double error = 0;
-	int nrPoints = d->nrBins;
-	double *Rs;
-	Rs = &(d->R[0]);
-	double *Ints;
-	Ints = &(d->Int[0]);
-	double *thisInt;
-	thisInt = (double *)calloc(nrPoints,sizeof(double));
-	for (int PeakNr=0;PeakNr<nPeaks;PeakNr++){
-		double amp = x[PeakNr*5+0];
-		double bg = x[PeakNr*5+1];
-		double mix = x[PeakNr*5+2];
-		double cen = x[PeakNr*5+3];
-		double sig = x[PeakNr*5+4];
-		int i;
-		double diff, gauss, lorentz;
-		for (i=0;i<nrPoints;i++){
-			diff = Rs[i] - cen;
-			gauss = exp(-diff*diff/(2*sig*sig))/(sig*sqrt(2*M_PI));
-			lorentz = 1/((M_PI*sig)*(1+diff*diff/(sig*sig)));
-			thisInt[i] += bg + amp*(mix*gauss + (1-mix)*lorentz);
-		}
-	}
-	for (int i=0;i<nrPoints;i++){
-		error += (thisInt[i] - Ints[i])*(thisInt[i] - Ints[i]);
-	}
-	free(thisInt);
-	return error;
-}
-
-// Structure to store peak information
-typedef struct {
-    int index;       // Index of the peak in the data array
-    double radius;   // Radius value corresponding to the peak
-    double intensity; // Intensity value at the peak
-} Peak;
-
-// Function to calculate factorial
-int factorial(int n) {
-    if (n <= 1) return 1;
-    return n * factorial(n - 1);
-}
-
-// Function to calculate binomial coefficient
-int binomial(int n, int k) {
-    return factorial(n) / (factorial(k) * factorial(n - k));
-}
-
-// Function to perform Savitzky-Golay smoothing
-void smoothData(const double *input, double *output, int size, int windowSize) {
-    if (windowSize % 2 == 0) windowSize++; // Ensure window size is odd
-    
-    int halfWindow = windowSize / 2;
-    int degree = 2; // Polynomial degree (quadratic by default)
-    
-    // Ensure degree is less than window size
-    if (degree >= windowSize) {
-        degree = windowSize - 1;
-        if (degree < 1) degree = 1;
+void UnmapBins() {
+    if(pxList&&pxList!=MAP_FAILED){
+        munmap(pxList,szPxList);
+        pxList=NULL;
+        printf("Unmapped Map.bin\n");
     }
-    
-    // Pre-compute Savitzky-Golay coefficients
-    // For a quadratic polynomial (degree=2), we can use simplified coefficients
-    double *coeffs = (double *)malloc(windowSize * sizeof(double));
-    
-    if (degree == 2) {
-        // For quadratic fit, we can use predefined coefficients for common window sizes
-        switch (windowSize) {
-            case 5:
-                // 5-point quadratic coefficients: [-3, 12, 17, 12, -3] / 35
-                coeffs[0] = -3.0/35.0; coeffs[1] = 12.0/35.0; coeffs[2] = 17.0/35.0;
-                coeffs[3] = 12.0/35.0; coeffs[4] = -3.0/35.0;
-                break;
-            case 7:
-                // 7-point quadratic coefficients: [-2, 3, 6, 7, 6, 3, -2] / 21
-                coeffs[0] = -2.0/21.0; coeffs[1] = 3.0/21.0; coeffs[2] = 6.0/21.0;
-                coeffs[3] = 7.0/21.0; coeffs[4] = 6.0/21.0; coeffs[5] = 3.0/21.0;
-                coeffs[6] = -2.0/21.0;
-                break;
-            case 9:
-                // 9-point quadratic coefficients: [-21, 14, 39, 54, 59, 54, 39, 14, -21] / 231
-                coeffs[0] = -21.0/231.0; coeffs[1] = 14.0/231.0; coeffs[2] = 39.0/231.0;
-                coeffs[3] = 54.0/231.0; coeffs[4] = 59.0/231.0; coeffs[5] = 54.0/231.0;
-                coeffs[6] = 39.0/231.0; coeffs[7] = 14.0/231.0; coeffs[8] = -21.0/231.0;
-                break;
-            default:
-                // For other window sizes, calculate coefficients using a general formula
-                // This is a simplified version - full implementation would use matrix operations
-                int norm = 0;
-                for (int i = -halfWindow; i <= halfWindow; i++) {
-                    coeffs[i + halfWindow] = (3 * (halfWindow*halfWindow) - i*i);
-                    norm += coeffs[i + halfWindow];
-                }
-                for (int i = 0; i < windowSize; i++) {
-                    coeffs[i] /= norm;
-                }
+    if(nPxList&&nPxList!=MAP_FAILED){
+        munmap(nPxList,szNPxList);
+        nPxList=NULL;
+        printf("Unmapped nMap.bin\n");
+    }
+}
+
+// --- Binning Setup ---
+static inline void REtaMapper(double Rmin,double EtaMin,int nEta,int nR,double EtaStep,double RStep,double *EtaLo,double *EtaHi,double *RLo,double *RHi) {
+    for(int i=0;i<nEta;++i){
+        EtaLo[i]=EtaStep*i+EtaMin;
+        EtaHi[i]=EtaStep*(i+1)+EtaMin;
+    }
+    for(int i=0;i<nR;++i){
+        RLo[i]=RStep*i+Rmin;
+        RHi[i]=RStep*(i+1)+Rmin;
+    }
+}
+
+// --- Sequential CPU Image Transformation (for dark processing) ---
+static inline void DoImageTransformationsSequential(int Nopt, const int Topt[MAX_TRANSFORM_OPS], const int64_t *In, int64_t *Out, int NY, int NZ) {
+    size_t N=(size_t)NY*NZ;
+    size_t B=N*sizeof(int64_t);
+    bool any=false;
+    if(Nopt>0){
+        for(int i=0;i<Nopt;++i){
+            if(Topt[i]<0||Topt[i]>3){
+                fprintf(stderr,"CPU Err: Inv opt %d\n",Topt[i]);
+                return;
+            }
+            if(Topt[i]!=0) {
+                any=true;
+            }
         }
+    }
+    if(!any){
+        if(Out!=In) {
+            memcpy(Out,In,B);
+        }
+        return;
+    }
+    int64_t *tmp=(int64_t*)malloc(B);
+    if(!tmp){
+        fprintf(stderr,"CPU Err: Alloc tmp fail\n");
+        if(Out!=In) {
+            memcpy(Out,In,B);
+        }
+        return;
+    }
+    const int64_t* rB=NULL;
+    int64_t* wB=NULL;
+    int cY=NY;
+    int cZ=NZ;
+    for(int i=0;i<Nopt;++i){
+        int opt=Topt[i];
+        size_t cB=(size_t)cY*cZ*sizeof(int64_t);
+        if(i==0){
+            rB=In;
+            wB=tmp;
+        } else if(i%2==1){
+            rB=tmp;
+            wB=Out;
+        } else {
+            rB=Out;
+            wB=tmp;
+        }
+        int nY=cY;
+        int nZ=cZ;
+        switch(opt){
+            case 0:
+                if(wB!=rB) {
+                    memcpy(wB,rB,cB);
+                }
+                break;
+            case 1:
+                for(int l=0;l<cZ;++l) {
+                    for(int k=0;k<cY;++k) {
+                        wB[l*cY+k]=rB[l*cY+(cY-1-k)];
+                    }
+                }
+                break;
+            case 2:
+                for(int l=0;l<cZ;++l) {
+                    for(int k=0;k<cY;++k) {
+                        wB[l*cY+k]=rB[(cZ-1-l)*cY+k];
+                    }
+                }
+                break;
+            case 3:
+                if(cY!=cZ){
+                    fprintf(stderr,"CPU Warn: Skip Tpose %dx%d st %d\n",cY,cZ,i);
+                    if(wB!=rB) {
+                        memcpy(wB,rB,cB);
+                    }
+                } else {
+                    nY=cZ;
+                    nZ=cY;
+                    for(int l=0;l<nZ;++l) {
+                        for(int k=0;k<nY;++k) {
+                            wB[l*nY+k]=rB[k*cY+l];
+                        }
+                    }
+                }
+                break;
+        }
+        cY=nY;
+        cZ=nZ;
+    }
+    if(Nopt%2!=0){
+        size_t fB=(size_t)cY*cZ*sizeof(int64_t);
+        if(fB>B){
+            fprintf(stderr,"CPU Err:Final>Orig\n");
+            fB=B;
+        }
+        memcpy(Out,tmp,fB);
     } else {
-        // For non-quadratic polynomials, we'd need a more general approach
-        // Using a simplified approach for linear fit (degree=1)
-        int norm = windowSize;
-        for (int i = 0; i < windowSize; i++) {
-            coeffs[i] = 1.0 / norm;  // Simplifies to moving average for degree=1
+        if((size_t)cY*cZ!=N) {
+            fprintf(stderr,"CPU Warn:Final!=Orig\n");
         }
     }
-    
-    // Apply Savitzky-Golay filter to the main part of the data
-    for (int i = halfWindow; i < size - halfWindow; i++) {
-        double sum = 0;
-        for (int j = 0; j < windowSize; j++) {
-            sum += coeffs[j] * input[i - halfWindow + j];
-        }
-        output[i] = sum;
-    }
-    
-    // Handle boundary cases
-    // For simplicity, use the original input values near the edges
-    for (int i = 0; i < halfWindow; i++) {
-        output[i] = input[i];
-    }
-    for (int i = size - halfWindow; i < size; i++) {
-        output[i] = input[i];
-    }
-    
-    free(coeffs);
+    free(tmp);
 }
 
-// Function to find local maxima peaks
-int findPeaks(const double *data, const double *radii, int size, Peak **peaks, double minHeight, int minDistance) {
-    int maxPeaks = size / 2; // Maximum possible number of peaks
-    *peaks = (Peak *)malloc(maxPeaks * sizeof(Peak));
-    
-    int peakCount = 0;
-    
-    // Find all potential peaks
-    for (int i = 1; i < size - 1; i++) {
-        if (data[i] > data[i-1] && data[i] > data[i+1] && data[i] >= minHeight) {
-            // Found a potential peak
-            (*peaks)[peakCount].index = i;
-            (*peaks)[peakCount].intensity = data[i];
-            // Assuming radius data is available or can be calculated
-            (*peaks)[peakCount].radius = radii[i]; // Replace with actual radius calculation if available
-            peakCount++;
-            
-            if (peakCount >= maxPeaks) {
+// --- GPU Kernels ---
+// Define Kernels (Implementations from previous response, formatted)
+__global__ void integrate_noMapMask(double px, double Lsd, size_t bigArrSize, int Normalize, int sumImages, int frameIdx,
+                                    const struct data * dPxList, const int *dNPxList,
+                                    const double *dRBinsLow, const double *dRBinsHigh,
+                                    const double *dEtaBinsLow, const double *dEtaBinsHigh,
+                                    const double *dImage, double *dIntArrPerFrame,
+                                    double *dPerFrameArr, double *dSumMatrix)
+{
+    const size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    const size_t totalPixels = (size_t)global_NrPixelsY * global_NrPixelsZ;
+    if (idx < bigArrSize) {
+        double Intensity = 0.0;
+        double totArea = 0.0;
+        struct data ThisVal;
+        long long nPixels = 0;
+        long long dataPos = 0;
+        const size_t nPxListIndex = 2 * idx;
+        if (nPxListIndex + 1 < 2 * bigArrSize) { // Basic bounds check
+            nPixels = dNPxList[nPxListIndex];
+            dataPos = dNPxList[nPxListIndex + 1];
+        } else {
+            return;
+        }
+        if (nPixels < 0 || dataPos < 0) {
+            return; // Invalid data
+        }
+        // Assume dataPos + nPixels is within dPxList bounds (checked during map generation ideally)
+        for (long long l = 0; l < nPixels; l++) {
+            ThisVal = dPxList[dataPos + l];
+            if (ThisVal.y < 0 || ThisVal.y >= global_NrPixelsY || ThisVal.z < 0 || ThisVal.z >= global_NrPixelsZ) {
+                continue; // Pixel coord out of detector bounds
+            }
+            long long testPos = (long long)ThisVal.z * global_NrPixelsY + ThisVal.y;
+            if (testPos < 0 || testPos >= totalPixels) { // Redundant if y/z checks pass, but safe
+                 continue;
+            }
+            Intensity += dImage[testPos] * ThisVal.frac;
+            totArea += ThisVal.frac;
+        }
+        if (totArea > AREA_THRESHOLD) {
+            if (Normalize) {
+                Intensity /= totArea;
+            }
+            dIntArrPerFrame[idx] = Intensity;
+            if (sumImages && dSumMatrix) {
+                atomicAdd(&dSumMatrix[idx], Intensity);
+            }
+        } else {
+            dIntArrPerFrame[idx] = 0.0;
+        }
+        if (frameIdx == 0 && dPerFrameArr) {
+            int nEtaBins = global_NrPixelsZ; // Assuming square bins from param reading logic
+            int nRBins = bigArrSize / nEtaBins;
+            int j = idx / nEtaBins;
+            int k = idx % nEtaBins;
+            if (j < nRBins && k < nEtaBins) {
+                double RMean = (dRBinsLow[j] + dRBinsHigh[j]) * 0.5;
+                double EtaMean = (dEtaBinsLow[k] + dEtaBinsHigh[k]) * 0.5;
+                if ((3 * bigArrSize + idx) < (bigArrSize * 4)) {
+                    dPerFrameArr[0 * bigArrSize + idx] = RMean;
+                    dPerFrameArr[1 * bigArrSize + idx] = rad2deg * atan(RMean * px / Lsd);
+                    dPerFrameArr[2 * bigArrSize + idx] = EtaMean;
+                    dPerFrameArr[3 * bigArrSize + idx] = totArea;
+                }
+            }
+        }
+    }
+}
+
+__global__ void integrate_MapMask(double px, double Lsd, size_t bigArrSize, int Normalize, int sumImages, int frameIdx,
+                                  size_t mapMaskWordCount, const int *dMapMask,
+                                  int nRBins, int nEtaBins, // Note: nRBins, nEtaBins passed but not used in current kernel logic (use global or calculate)
+                                  const struct data * dPxList, const int *dNPxList,
+                                  const double *dRBinsLow, const double *dRBinsHigh,
+                                  const double *dEtaBinsLow, const double *dEtaBinsHigh,
+                                  const double *dImage, double *dIntArrPerFrame,
+                                  double *dPerFrameArr, double *dSumMatrix)
+{
+    const size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    const size_t totalPixels = (size_t)global_NrPixelsY * global_NrPixelsZ;
+    if (idx < bigArrSize) {
+        double Intensity = 0.0;
+        double totArea = 0.0;
+        struct data ThisVal;
+        long long nPixels = 0;
+        long long dataPos = 0;
+        const size_t nPxListIndex = 2 * idx;
+        if (nPxListIndex + 1 < 2 * bigArrSize) {
+            nPixels = dNPxList[nPxListIndex];
+            dataPos = dNPxList[nPxListIndex + 1];
+        } else {
+            return;
+        }
+        if (nPixels < 0 || dataPos < 0) {
+            return;
+        }
+        for (long long l = 0; l < nPixels; l++) {
+            ThisVal = dPxList[dataPos + l];
+            if (ThisVal.y < 0 || ThisVal.y >= global_NrPixelsY || ThisVal.z < 0 || ThisVal.z >= global_NrPixelsZ) {
+                continue;
+            }
+            long long testPos = (long long)ThisVal.z * global_NrPixelsY + ThisVal.y;
+            if (testPos < 0 || testPos >= totalPixels) {
+                continue;
+            }
+            size_t wordIndex = testPos / 32;
+            if (wordIndex < mapMaskWordCount) {
+                if (TestBit(dMapMask, testPos)) {
+                    continue; // Masked pixel
+                }
+            } else {
+                 continue; // Out of mask bounds
+            }
+            Intensity += dImage[testPos] * ThisVal.frac;
+            totArea += ThisVal.frac;
+        }
+        if (totArea > AREA_THRESHOLD) {
+            if (Normalize) {
+                Intensity /= totArea;
+            }
+            dIntArrPerFrame[idx] = Intensity;
+            if (sumImages && dSumMatrix) {
+                atomicAdd(&dSumMatrix[idx], Intensity);
+            }
+        } else {
+            dIntArrPerFrame[idx] = 0.0;
+        }
+        if (frameIdx == 0 && dPerFrameArr) {
+             int currentNEtaBins = global_NrPixelsZ; // Use global
+             int currentNRBins = bigArrSize / currentNEtaBins;
+             int j = idx / currentNEtaBins;
+             int k = idx % currentNEtaBins;
+            if (j < currentNRBins && k < currentNEtaBins) {
+                double RMean = (dRBinsLow[j] + dRBinsHigh[j]) * 0.5;
+                double EtaMean = (dEtaBinsLow[k] + dEtaBinsHigh[k]) * 0.5;
+                if ((3 * bigArrSize + idx) < (bigArrSize * 4)) {
+                    dPerFrameArr[0 * bigArrSize + idx] = RMean;
+                    dPerFrameArr[1 * bigArrSize + idx] = rad2deg * atan(RMean * px / Lsd);
+                    dPerFrameArr[2 * bigArrSize + idx] = EtaMean;
+                    dPerFrameArr[3 * bigArrSize + idx] = totArea;
+                }
+            }
+        }
+    }
+}
+
+__global__ void sequential_transform_kernel(const int64_t *r, int64_t *w, int cY, int cZ, int nY, int nZ, int opt) {
+    const size_t N = (size_t)nY * nZ;
+    const size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < N) {
+        const int yo = i % nY;
+        const int zo = i / nY;
+        int ys = -1;
+        int zs = -1;
+        switch(opt){
+            case 0: ys=yo; zs=zo; break;
+            case 1: ys=cY-1-yo; zs=zo; break;
+            case 2: ys=yo; zs=cZ-1-zo; break;
+            case 3: ys=zo; zs=yo; break;
+            default: return;
+        }
+        if (ys >= 0 && ys < cY && zs >= 0 && zs < cZ) {
+            w[i] = r[(size_t)zs * cY + ys];
+        } else {
+            w[i] = 0;
+        }
+    }
+}
+
+__global__ void final_transform_process_kernel(const int64_t *r, double *o, const double *d, int cY, int cZ, int nY, int nZ, int opt, bool sub) {
+    const size_t N = (size_t)nY * nZ;
+    const size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < N) {
+        const int yo = i % nY;
+        const int zo = i / nY;
+        int ys = -1;
+        int zs = -1;
+        switch(opt){
+            case 0: ys=yo; zs=zo; break;
+            case 1: ys=cY-1-yo; zs=zo; break;
+            case 2: ys=yo; zs=cZ-1-zo; break;
+            case 3: ys=zo; zs=yo; break;
+            default: o[i]=0.0; return;
+        }
+        double pv=0.0;
+        if (ys >= 0 && ys < cY && zs >= 0 && zs < cZ) {
+            const int64_t rv = r[(size_t)zs * cY + ys];
+            pv = (double)rv;
+            if (sub && d) {
+                pv -= d[i];
+            }
+        }
+        o[i] = pv;
+    }
+}
+
+__global__ void process_direct_kernel(const int64_t *r, double *o, const double *d, size_t N, bool sub) {
+    const size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < N) {
+        const int64_t rv = r[i];
+        double pv = (double)rv;
+        if (sub && d) {
+            pv -= d[i];
+        }
+        o[i] = pv;
+    }
+}
+
+__global__ void calculate_1D_profile_kernel(const double *d_IntArrPerFrame, const double *d_PerFrameArr, double *d_int1D, int nRBins, int nEtaBins, size_t bigArrSize) {
+    // Allocate shared memory dynamically based on block size and warp size
+    extern __shared__ double sdata[];
+    double * sIntArea = sdata; // First part for Intensity * Area sum
+    double * sArea = &sdata[blockDim.x / 32]; // Second part for Area sum
+
+    const int r_bin = blockIdx.x;
+    if (r_bin >= nRBins) {
+        return;
+    }
+    const int tid = threadIdx.x;
+    const int warpSize = 32;
+    const int lane = tid % warpSize;
+    const int warpId = tid / warpSize;
+
+    // Initialize shared memory (first thread in each warp)
+    if (lane == 0) {
+         sIntArea[warpId] = 0.0;
+         sArea[warpId] = 0.0;
+    }
+    __syncthreads();
+
+    double mySumIntArea = 0.0;
+    double mySumArea = 0.0;
+
+    // Each thread sums a portion of the Eta bins
+    for (int eta_bin = tid; eta_bin < nEtaBins; eta_bin += blockDim.x) {
+        size_t idx2d = (size_t)r_bin * nEtaBins + eta_bin;
+        double area = d_PerFrameArr[3 * bigArrSize + idx2d];
+        if (area > AREA_THRESHOLD) {
+             mySumIntArea += d_IntArrPerFrame[idx2d] * area;
+             mySumArea += area;
+        }
+    }
+
+     // Intra-warp reduction using shuffle
+    #pragma unroll
+    for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+        mySumIntArea += __shfl_down_sync(0xFFFFFFFF, mySumIntArea, offset);
+        mySumArea += __shfl_down_sync(0xFFFFFFFF, mySumArea, offset);
+    }
+
+     // Warp leader writes result to shared memory using atomicAdd
+    if (lane == 0) {
+        atomicAdd(&sIntArea[warpId], mySumIntArea);
+        atomicAdd(&sArea[warpId], mySumArea);
+    }
+    __syncthreads();
+
+    // Final reduction across warps (block thread 0)
+    if (tid == 0) {
+        double finalSumIntArea = 0.0;
+        double finalSumArea = 0.0;
+        int numWarps = blockDim.x / warpSize;
+        for (int i = 0; i < numWarps; ++i) {
+             finalSumIntArea += sIntArea[i];
+             finalSumArea += sArea[i];
+        }
+        if (finalSumArea > AREA_THRESHOLD) {
+            d_int1D[r_bin] = finalSumIntArea / finalSumArea;
+        } else {
+            d_int1D[r_bin] = 0.0;
+        }
+    }
+}
+
+// --- Host Wrapper for Full GPU Processing Pipeline ---
+void ProcessImageGPU(const int64_t *hRaw, double *dProc, const double *dAvgDark, int Nopt, const int Topt[MAX_TRANSFORM_OPS], int NY, int NZ, bool doSub) {
+    const size_t N=(size_t)NY*NZ;
+    const size_t B64=N*sizeof(int64_t);
+    const int TPB=THREADS_PER_BLOCK_TRANSFORM;
+    bool anyT=false;
+    if(Nopt>0){
+        for(int i=0;i<Nopt;++i){
+            if(Topt[i]<0||Topt[i]>3){
+                fprintf(stderr,"GPU Err: Inv opt %d\n",Topt[i]);
+                gpuErrchk(cudaMemset(dProc,0,N*sizeof(double)));
+                return;
+            }
+            if(Topt[i]!=0){
+                anyT=true;
+            }
+        }
+    }
+    if(!anyT){
+        int64_t *dTmp=NULL;
+        gpuErrchk(cudaMalloc(&dTmp,B64));
+        gpuErrchk(cudaMemcpy(dTmp,hRaw,B64,cudaMemcpyHostToDevice));
+        unsigned long long nBUL=(N+TPB-1)/TPB;
+        int mGDX;
+        gpuErrchk(cudaDeviceGetAttribute(&mGDX,cudaDevAttrMaxGridDimX,0));
+        if(nBUL>(unsigned long long)mGDX){ // Cast mGDX for comparison
+            fprintf(stderr,"Blk %llu>max %d\n",nBUL,mGDX);
+            exit(1);
+        }
+        dim3 nB((unsigned)nBUL);
+        dim3 th(TPB);
+        process_direct_kernel<<<nB,th>>>(dTmp,dProc,dAvgDark,N,doSub);
+        gpuErrchk(cudaPeekAtLastError());
+        gpuErrchk(cudaDeviceSynchronize());
+        gpuErrchk(cudaFree(dTmp));
+        return;
+    }
+    int64_t *d_b1=NULL,*d_b2=NULL;
+    gpuErrchk(cudaMalloc(&d_b1,B64));
+    gpuErrchk(cudaMalloc(&d_b2,B64));
+    gpuErrchk(cudaMemcpy(d_b1,hRaw,B64,cudaMemcpyHostToDevice));
+    const int64_t* rP=NULL;
+    int64_t* wP=NULL;
+    int cY=NY;
+    int cZ=NZ;
+    for(int i=0;i<Nopt-1;++i){
+        int opt=Topt[i];
+        if(i%2==0){
+            rP=d_b1;
+            wP=d_b2;
+        } else {
+            rP=d_b2;
+            wP=d_b1;
+        }
+        int nY=cY;
+        int nZ=cZ;
+        if(opt==3){
+            if(cY!=cZ){
+                fprintf(stderr,"GPU Warn: Skip Tpose %dx%d st %d\n",cY,cZ,i);
+                opt=0;
+            } else {
+                nY=cZ;
+                nZ=cY;
+            }
+        }
+        size_t sON=(size_t)nY*nZ;
+        unsigned long long nBUL=(sON+TPB-1)/TPB;
+        int mGDX;
+        gpuErrchk(cudaDeviceGetAttribute(&mGDX,cudaDevAttrMaxGridDimX,0));
+        if(nBUL>(unsigned long long)mGDX){
+            fprintf(stderr,"Blk %llu>max %d\n",nBUL,mGDX);
+            cudaFree(d_b1);
+            cudaFree(d_b2);
+            exit(1);
+        }
+        dim3 nB((unsigned)nBUL);
+        dim3 th(TPB);
+        sequential_transform_kernel<<<nB,th>>>(rP,wP,cY,cZ,nY,nZ,opt);
+        gpuErrchk(cudaPeekAtLastError());
+        gpuErrchk(cudaDeviceSynchronize());
+        cY=nY;
+        cZ=nZ;
+    }
+    int fOpt=Topt[Nopt-1];
+    if((Nopt-1)%2==0){
+        rP=d_b1;
+    } else {
+        rP=d_b2;
+    }
+    int nY=cY;
+    int nZ=cZ;
+    if(fOpt==3){
+        if(cY!=cZ){
+            fprintf(stderr,"GPU Warn: Skip Tpose %dx%d final st %d\n",cY,cZ,Nopt-1);
+            fOpt=0;
+        } else {
+            nY=cZ;
+            nZ=cY;
+        }
+    }
+    size_t fON=(size_t)nY*nZ;
+    if(fON!=N){
+        fprintf(stderr,"GPU Warn: Final N %zu!=Orig %zu\n",fON,N);
+    }
+    unsigned long long nBUL=(fON+TPB-1)/TPB;
+    int mGDX;
+    gpuErrchk(cudaDeviceGetAttribute(&mGDX,cudaDevAttrMaxGridDimX,0));
+    if(nBUL>(unsigned long long)mGDX){
+        fprintf(stderr,"Blk %llu>max %d\n",nBUL,mGDX);
+        cudaFree(d_b1);
+        cudaFree(d_b2);
+        exit(1);
+    }
+    dim3 nB((unsigned)nBUL);
+    dim3 th(TPB);
+    final_transform_process_kernel<<<nB,th>>>(rP,dProc,dAvgDark,cY,cZ,nY,nZ,fOpt,doSub);
+    gpuErrchk(cudaPeekAtLastError());
+    gpuErrchk(cudaDeviceSynchronize());
+    gpuErrchk(cudaFree(d_b1));
+    gpuErrchk(cudaFree(d_b2));
+}
+
+// --- Peak Fitting Data Structures and Functions ---
+typedef struct { int nrBins; const double *R; const double *Int; } dataFit;
+typedef struct { int index; double radius; double intensity; } Peak;
+static double problem_function_global_bg(unsigned n, const double *x, double *grad, void *fdat) {
+    if(grad){
+        for(unsigned i=0;i<n;++i){
+            grad[i]=0.0;
+        }
+    }
+    const dataFit *d=(const dataFit*)fdat;
+    const int Np=d->nrBins;
+    const double *Rs=d->R;
+    const double *Is=d->Int;
+    const int nP=(n-1)/4;
+    if(nP<=0||(4*nP+1!=n)){
+        fprintf(stderr,"Obj Err: Inv params %u\n",n);
+        return INFINITY;
+    }
+    const double bg_g=x[n-1];
+    double t_err_sq=0.0;
+    double *cI=(double*)calloc(Np, sizeof(double)); // Use sizeof(double)
+    if(!cI){
+        fprintf(stderr,"Obj Err: Alloc fail\n");
+        return INFINITY;
+    }
+    for(int pN=0;pN<nP;++pN){
+        double a=x[pN*4+0];
+        double m=fmax(0.0,fmin(1.0,x[pN*4+1]));
+        double c=x[pN*4+2];
+        double s=fmax(1e-9,x[pN*4+3]);
+        for(int i=0;i<Np;++i){
+            double df=Rs[i]-c;
+            double df2=df*df;
+            double s2=s*s;
+            double g=exp(-df2/(2.0*s2))/(s*sqrt(2.0*M_PI));
+            double l=(1.0/(M_PI*s))/(1.0+df2/s2);
+            cI[i]+=a*(m*g+(1.0-m)*l);
+        }
+    }
+    for(int i=0;i<Np;++i){
+        cI[i]+=bg_g;
+        double err=cI[i]-Is[i];
+        t_err_sq+=err*err;
+    }
+    free(cI);
+    return t_err_sq;
+}
+void smoothData(const double *in, double *out, int N, int W) {
+    if(W<3||W%2==0){
+        memcpy(out,in,N*sizeof(double));
+        return;
+    }
+    int H=W/2;
+    double *c=(double*)malloc(W*sizeof(double));
+    check(!c,"Malloc fail smooth c");
+    double norm=0.0;
+    switch(W){
+        case 5: norm=35.0; c[0]=-3; c[1]=12; c[2]=17; c[3]=12; c[4]=-3; break;
+        case 7: norm=21.0; c[0]=-2; c[1]= 3; c[2]= 6; c[3]= 7; c[4]= 6; c[5]= 3; c[6]=-2; break;
+        case 9: norm=231.0; c[0]=-21; c[1]=14; c[2]=39; c[3]=54; c[4]=59; c[5]=54; c[6]=39; c[7]=14; c[8]=-21; break;
+        default: fprintf(stderr,"Smooth Warn: Unsup Win %d\n",W); memcpy(out,in,N*sizeof(double)); free(c); return;
+    }
+    for(int i=0;i<W;++i){
+        c[i]/=norm;
+    }
+    for(int i=0;i<N;++i){
+        if(i<H||i>=N-H){
+            out[i]=in[i];
+        }else{
+            double s=0;
+            for(int j=0;j<W;++j){
+                s+=c[j]*in[i-H+j];
+            }
+            out[i]=s;
+        }
+    }
+    free(c);
+}
+int findPeaks(const double *d, const double *r, int N, Peak **fP, double minH, int minD) {
+    if(N<3){
+        *fP=NULL;
+        return 0;
+    }
+    int maxP=N/2+1;
+    Peak*pP=(Peak*)malloc(maxP*sizeof(Peak));
+    check(!pP,"Malloc fail pP");
+    int pC=0;
+    for(int i=1;i<N-1;++i){
+        if(d[i]>d[i-1]&&d[i]>d[i+1]&&d[i]>=minH){
+            if(pC<maxP){
+                pP[pC++]=(Peak){i,r[i],d[i]};
+            } else {
+                fprintf(stderr,"Peak find warn: Exceed maxP\n");
                 break;
             }
         }
     }
-    
-    // Apply minimum distance filter
-    if (minDistance > 1 && peakCount > 1) {
-        int j = 0;
-        Peak *filteredPeaks = (Peak *)malloc(peakCount * sizeof(Peak));
-        
-        // Add the first peak
-        filteredPeaks[j++] = (*peaks)[0];
-        
-        for (int i = 1; i < peakCount; i++) {
-            // Check if this peak is far enough from the last added peak
-            if ((*peaks)[i].index - filteredPeaks[j-1].index >= minDistance) {
-                filteredPeaks[j++] = (*peaks)[i];
-            } else if ((*peaks)[i].intensity > filteredPeaks[j-1].intensity) {
-                // If not far enough but higher, replace the previous peak
-                filteredPeaks[j-1] = (*peaks)[i];
+    if(pC==0||minD<=1){
+        *fP=pP;
+        return pC;
+    }
+    Peak*filtP=(Peak*)malloc(pC*sizeof(Peak));
+    check(!filtP,"Malloc fail filtP");
+    int filtC=0;
+    bool*isS=(bool*)calloc(pC,sizeof(bool));
+    check(!isS,"Calloc fail isS");
+    for(int i=0;i<pC;++i){
+        if(isS[i]) {
+            continue;
+        }
+        filtP[filtC++]=pP[i];
+        for(int j=0;j<pC;++j){
+            if(i==j||isS[j]) {
+                continue;
+            }
+            int dist=abs(pP[i].index-pP[j].index);
+            if(dist<minD){
+                if(pP[j].intensity<=pP[i].intensity) {
+                    isS[j]=true;
+                } else {
+                    isS[i]=true;
+                    filtC--; // Decrement count as we removed the current 'i' peak
+                    break; // Exit inner loop as 'i' is suppressed
+                }
             }
         }
-        
-        // Replace the original peak array
-        free(*peaks);
-        *peaks = filteredPeaks;
-        peakCount = j;
     }
-    
-    return peakCount;
+    free(pP);
+    free(isS);
+    Peak*finalP=(Peak*)realloc(filtP,filtC*sizeof(Peak));
+    *fP=(finalP!=NULL)?finalP:filtP;
+    return filtC;
 }
 
+// =========================================================================
+// ============================ MAIN FUNCTION ============================
+// =========================================================================
 int main(int argc, char *argv[]){
     if (argc < 2){
-		printf("Usage: ./Integrator ParamFN (optional)DarkName\n"
-		"Optional:\n\tDark file: dark correction with average of all dark frames"
-		".\n\tDark must be in a binary format, with int64 dataType."
-        "\n\nSteams data from a socket and processes it.\n");
-		return(1);
-	}
-	printf("[%s] - Starting...\n", argv[0]);
-	clock_t start0, end0;
-	start0 = clock();
-    double diftotal;
-	int device_id = 0;
-	gpuErrchk(cudaSetDevice(device_id));
-	end0 = clock();
-	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
-	printf("Initialized the GPU:\t%f s.\n",diftotal);
-	int rc = ReadBins();
-	double RMax, RMin, RBinSize, EtaMax, EtaMin, EtaBinSize, Lsd, px;
-	int NrPixelsY = 2048, NrPixelsZ = 2048, Normalize = 1;
-	int nEtaBins, nRBins;
-    char *ParamFN;
-    FILE *paramFile;
-    ParamFN = argv[1];
-	char aline[4096], dummy[4096];
-	const char *str;
-	paramFile = fopen(ParamFN,"r");
-    int NrTransOpt=0;
-    long long int GapIntensity=0, BadPxIntensity=0;
-    int TransOpt[10];
-    int makeMap = 0;
-    size_t mapMaskSize = 0;
-	int *mapMask;
-	int sumImages=0;
-	int doSmoothing = 0, multiplePeaks = 0, peakFit = 0;
-	int maxNPeaks = 100, nPeaks = 0;
-	int write2D = 0;
-	double peakLocations[maxNPeaks];
-	while (fgets(aline,4096,paramFile) != NULL){
-		str = "EtaBinSize ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &EtaBinSize);
-		}
-		str = "RBinSize ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &RBinSize);
-		}
-		str = "RMax ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &RMax);
-		}
-		str = "RMin ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &RMin);
-		}
-		str = "EtaMax ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &EtaMax);
-		}
-		str = "EtaMin ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &EtaMin);
-		}
-		str = "PeakLocation ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &peakLocations[nPeaks]);
-			multiplePeaks = 1;
-			peakFit = 1;
-			doSmoothing = 0;
-			nPeaks++;
-		}
-		str = "Lsd ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &Lsd);
-		}
-		str = "px ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %lf", dummy, &px);
-		}
-		str = "NrPixelsY ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %d", dummy, &NrPixelsY);
-		}
-		str = "NrPixelsZ ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %d", dummy, &NrPixelsZ);
-		}
-		str = "DoSmoothing ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %d", dummy, &doSmoothing);
-		}
-		str = "MultiplePeaks ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %d", dummy, &multiplePeaks);
-		}
-		str = "DoPeakFit ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %d", dummy, &peakFit);
-		}
-		str = "Normalize ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %d", dummy, &Normalize);
-		}
-		str = "NrPixels ";
-		if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %d", dummy, &NrPixelsY);
-			sscanf(aline,"%s %d", dummy, &NrPixelsZ);
-		}
-		str = "GapIntensity ";
-        if (StartsWith(aline,str) == 1){
-            sscanf(aline,"%s %lld", dummy, &GapIntensity);
-            makeMap = 1;
-            continue;
-        }
-		str = "BadPxIntensity ";
-        if (StartsWith(aline,str) == 1){
-            sscanf(aline,"%s %lld", dummy, &BadPxIntensity);
-            makeMap = 1;
-            continue;
-        }
-        str = "ImTransOpt ";
-        if (StartsWith(aline,str) == 1){
-            sscanf(aline,"%s %d", dummy, &TransOpt[NrTransOpt]);
-            NrTransOpt++;
-            continue;
-        }
-        str = "SumImages ";
-        if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %d", dummy, &sumImages);
-			continue;
-        }
-        str = "Write2D ";
-        if (StartsWith(aline,str) == 1){
-			sscanf(aline,"%s %d", dummy, &write2D);
-			continue;
-        }
-	}
-	end0 = clock();
-	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
-	printf("Read config file, time elapsed:\t%f s.\n",diftotal);
-	nRBins = (int) ceil((RMax-RMin)/RBinSize);
-	nEtaBins = (int)ceil((EtaMax - EtaMin)/EtaBinSize);
-	double *EtaBinsLow, *EtaBinsHigh;
-	double *RBinsLow, *RBinsHigh;
-	EtaBinsLow = (double *) malloc(nEtaBins*sizeof(*EtaBinsLow));
-	EtaBinsHigh = (double *) malloc(nEtaBins*sizeof(*EtaBinsHigh));
-	RBinsLow = (double *) malloc(nRBins*sizeof(*RBinsLow));
-	RBinsHigh = (double *) malloc(nRBins*sizeof(*RBinsHigh));
-	REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh);
-
-	int i,j;
-	printf("NrTransOpt: %d\n",NrTransOpt);
-    for (i=0;i<NrTransOpt;i++){
-        if (TransOpt[i] < 0 || TransOpt[i] > 2){printf("TransformationOptions can only be 0, 1, 2.\nExiting.\n");return 0;}
-        printf("TransformationOptions: %d ",TransOpt[i]);
-        if (TransOpt[i] == 0) printf("No change.\n");
-        else if (TransOpt[i] == 1) printf("Flip Left Right.\n");
-        else if (TransOpt[i] == 2) printf("Flip Top Bottom.\n");
+        printf("Usage: %s ParamFN [DarkAvgFN]\n Args:\n  ParamFN: Path to parameter file.\n  DarkAvgFN: Optional path to dark frame file (binary int64_t).\n", argv[0]);
+        return 1;
     }
+    printf("[%s] - Starting...\n", argv[0]);
+    double t_start_main = get_wall_time_ms();
 
-    /*Allocations!*/
-	double *Image;
-	double *AverageDark;
-	cudaMallocHost((void **) &Image,NrPixelsY*NrPixelsZ*sizeof(*Image));
-	AverageDark = (double *) calloc(NrPixelsY*NrPixelsZ,sizeof(*AverageDark));
-	int64_t *ImageIn;
-	int64_t *DarkIn;
-	int64_t *ImageInT;
-	int64_t *DarkInT;
-	DarkIn = (int64_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkIn));
-	DarkInT = (int64_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*DarkInT));
-	ImageIn = (int64_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageIn));
-	ImageInT = (int64_t *) malloc(NrPixelsY*NrPixelsZ*sizeof(*ImageInT));
-	size_t pxSize = BYTES_PER_PIXEL;
-	size_t SizeFile = pxSize * NrPixelsY * NrPixelsZ;
-	int nFrames;
-	size_t sz;
-	FILE *fd;
-	char *darkFN;
-	int nrdone = 0;
-	if (argc > 2){
-		darkFN = argv[2];
-		fd = fopen(darkFN,"rb");
-		fseek(fd,0L,SEEK_END);
-		sz = ftell(fd);
-		rewind(fd);
-		nFrames = sz / (SizeFile);
-		printf("Reading dark file:      %s, nFrames: %d.\n",darkFN,nFrames);
-		for (i=0;i<nFrames;i++){
-            fread(DarkInT,pxSize,NrPixelsY*NrPixelsZ,fd);
-			DoImageTransformations(NrTransOpt,TransOpt,DarkInT,DarkIn,NrPixelsY,NrPixelsZ);
-			if (makeMap == 1){
-				mapMaskSize = NrPixelsY;
-				mapMaskSize *= NrPixelsZ;
-				mapMaskSize /= 32;
-				mapMaskSize ++;
-				mapMask = (int *) calloc(mapMaskSize,sizeof(*mapMask));
-				for (j=0;j<NrPixelsY*NrPixelsZ;j++){
-					if (DarkIn[j] == (int64_t) GapIntensity || DarkIn[j] == (int64_t) BadPxIntensity){
-						SetBit(mapMask,j);
-						nrdone++;
-					}
-				}
-				printf("Nr mask pixels: %d\n",nrdone);
-				makeMap = 0;
-			}
-			for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFrames;
-		}
-	}
-	end0 = clock();
-	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
-	printf("Done reading the dark file, time elapsed till now:\t%f s.\n",diftotal);
-	printf("Number of eta bins: %d, number of R bins: %d.\n",nEtaBins,nRBins);
-    CHUNK_SIZE = SizeFile;
-	TOTAL_MSG_SIZE = HEADER_SIZE + CHUNK_SIZE;
-    printf("Image chunk size: %d bytes.\n",CHUNK_SIZE);
-	size_t bigArrSize = nEtaBins*nRBins;
-	double *devSumMatrix;
-	double *IntArrPerFrame, *devIntArrPerFrame;
-	double *PerFrameArr, *devPerFrameArr;
-	end0 = clock();
-	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
-	printf("Initializing device, getting allocation, time elapsed till now:\t%f s.\n",diftotal);
-	if (sumImages == 1){
-		gpuErrchk(cudaMalloc(&devSumMatrix,bigArrSize*sizeof(double)));
-		gpuErrchk(cudaMemset(devSumMatrix,0,bigArrSize*sizeof(double)));
-	}
-	end0 = clock();
-	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
-	printf("Starting to allocate small arrays, time elapsed till now:\t%f s.\n",diftotal);
-	IntArrPerFrame = (double *) calloc(bigArrSize,sizeof(*IntArrPerFrame));
-	gpuErrchk(cudaMalloc(&devIntArrPerFrame,bigArrSize*sizeof(double)));
-	PerFrameArr = (double *) malloc(bigArrSize*4*sizeof(*PerFrameArr));
-	gpuErrchk(cudaMalloc(&devPerFrameArr,bigArrSize*4*sizeof(double)));
-	double *devEtaBinsLow, *devEtaBinsHigh;
-	double *devRBinsLow, *devRBinsHigh;
-	gpuErrchk(cudaMalloc(&devEtaBinsLow,nEtaBins*sizeof(double)));
-	gpuErrchk(cudaMalloc(&devEtaBinsHigh,nEtaBins*sizeof(double)));
-	gpuErrchk(cudaMalloc(&devRBinsLow,nRBins*sizeof(double)));
-	gpuErrchk(cudaMalloc(&devRBinsHigh,nRBins*sizeof(double)));
-	gpuErrchk(cudaMemcpy(devEtaBinsLow,EtaBinsLow,nEtaBins*sizeof(double),cudaMemcpyHostToDevice));
-	gpuErrchk(cudaMemcpy(devEtaBinsHigh,EtaBinsHigh,nEtaBins*sizeof(double),cudaMemcpyHostToDevice));
-	gpuErrchk(cudaMemcpy(devRBinsLow,RBinsLow,nRBins*sizeof(double),cudaMemcpyHostToDevice));
-	gpuErrchk(cudaMemcpy(devRBinsHigh,RBinsHigh,nRBins*sizeof(double),cudaMemcpyHostToDevice));
-	end0 = clock();
-	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
-	printf("Allocated small arrays on device, will move the mapping information to device, time elapsed:\t%f s.\n",diftotal);
-	// Move pxList and nPxList over to device.
-	struct data *devPxList;
-	int *devNPxList;
-	gpuErrchk(cudaMalloc(&devPxList,szPxList));
-	gpuErrchk(cudaMalloc(&devNPxList,szNPxList));
-	gpuErrchk(cudaMemcpy(devPxList,pxList,szPxList,cudaMemcpyHostToDevice));
-	gpuErrchk(cudaMemcpy(devNPxList,nPxList,szNPxList,cudaMemcpyHostToDevice));
-	double *devImage;
-	cudaMalloc(&devImage,NrPixelsY*NrPixelsZ*sizeof(double));
-	int *devMapMask;
-	if (mapMaskSize !=0){
-		gpuErrchk(cudaMalloc(&devMapMask,mapMaskSize*sizeof(int)));
-		gpuErrchk(cudaMemcpy(devMapMask,mapMask,mapMaskSize*sizeof(int),cudaMemcpyHostToDevice));
-	}
-	end0 = clock();
-	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
-	printf("Starting frames now, time elapsed:\t%f s. %d\n",diftotal,write2D);
-	if (write2D == 1){
-		printf("We will write 2D as well.\n");
-	}
+    // --- Setup Signal Handling ---
+    signal(SIGINT, sigint_handler);
+    signal(SIGTERM, sigint_handler);
 
-    /*Socket processing from here on.*/
+    // --- Initialize GPU ---
+    int dev_id = 0;
+    gpuErrchk(cudaSetDevice(dev_id));
+    cudaDeviceProp prop;
+    gpuErrchk(cudaGetDeviceProperties(&prop, dev_id));
+    printf("GPU Device %d: %s (CC %d.%d)\n", dev_id, prop.name, prop.major, prop.minor);
+    printf("Init GPU: %.3f ms\n", get_wall_time_ms() - t_start_main);
+
+    // --- Read Pixel Mapping Files ---
+    double t_start_map = get_wall_time_ms();
+    check(ReadBins() != 1, "Failed read/map Map.bin/nMap.bin");
+    printf("Read Maps: %.3f ms\n", get_wall_time_ms() - t_start_map);
+
+    // --- Read Parameters ---
+    double t_start_params = get_wall_time_ms();
+    double RMax=0,RMin=0,RBinSize=0,EtaMax=0,EtaMin=0,EtaBinSize=0,Lsd=0,px=0;
+    int NrPixelsY=0,NrPixelsZ=0,Normalize=1;
+    int nEtaBins=0,nRBins=0;
+    char *ParamFN=argv[1];
+    FILE *pF=fopen(ParamFN,"r");
+    check(!pF,"Failed open param file: %s",ParamFN);
+    char line[4096],dum[4096];
+    const char *s;
+    int Nopt=0;
+    long long GapI=0,BadPxI=0;
+    int Topt[MAX_TRANSFORM_OPS]={0};
+    int mkMap=0, sumI=0, doSm=0, multiP=0, pkFit=0, nSpecP=0, wr2D=0;
+    double pkLoc[MAX_PEAK_LOCATIONS];
+    while(fgets(line,4096,pF)){
+        if(line[0]=='#'||isspace(line[0])||strlen(line)<3){
+            continue;
+        }
+        s="EtaBinSize "; if(StartsWith(line,s)) sscanf(line,"%s %lf",dum,&EtaBinSize);
+        s="RBinSize ";   if(StartsWith(line,s)) sscanf(line,"%s %lf",dum,&RBinSize);
+        s="RMax ";       if(StartsWith(line,s)) sscanf(line,"%s %lf",dum,&RMax);
+        s="RMin ";       if(StartsWith(line,s)) sscanf(line,"%s %lf",dum,&RMin);
+        s="EtaMax ";     if(StartsWith(line,s)) sscanf(line,"%s %lf",dum,&EtaMax);
+        s="EtaMin ";     if(StartsWith(line,s)) sscanf(line,"%s %lf",dum,&EtaMin);
+        s="Lsd ";        if(StartsWith(line,s)) sscanf(line,"%s %lf",dum,&Lsd);
+        s="px ";         if(StartsWith(line,s)) sscanf(line,"%s %lf",dum,&px);
+        s="NrPixelsY ";  if(StartsWith(line,s)) sscanf(line,"%s %d",dum,&NrPixelsY);
+        s="NrPixelsZ ";  if(StartsWith(line,s)) sscanf(line,"%s %d",dum,&NrPixelsZ);
+        s="NrPixels ";   if(StartsWith(line,s)){ sscanf(line,"%s %d",dum,&NrPixelsY); NrPixelsZ=NrPixelsY; }
+        s="Normalize ";  if(StartsWith(line,s)) sscanf(line,"%s %d",dum,&Normalize);
+        s="GapIntensity "; if(StartsWith(line,s)){ sscanf(line,"%s %lld",dum,&GapI); mkMap=1; }
+        s="BadPxIntensity "; if(StartsWith(line,s)){ sscanf(line,"%s %lld",dum,&BadPxI); mkMap=1; }
+        s="ImTransOpt "; if(StartsWith(line,s)){ if(Nopt<MAX_TRANSFORM_OPS) sscanf(line,"%s %d",dum,&Topt[Nopt++]); else printf("Warn:Max %d ImTransOpt\n",MAX_TRANSFORM_OPS); }
+        s="SumImages ";  if(StartsWith(line,s)) sscanf(line,"%s %d",dum,&sumI);
+        s="Write2D ";    if(StartsWith(line,s)) sscanf(line,"%s %d",dum,&wr2D);
+        s="DoSmoothing ";if(StartsWith(line,s)) sscanf(line,"%s %d",dum,&doSm);
+        s="MultiplePeaks ";if(StartsWith(line,s)) sscanf(line,"%s %d",dum,&multiP);
+        s="DoPeakFit ";  if(StartsWith(line,s)) sscanf(line,"%s %d",dum,&pkFit);
+        s="PeakLocation ";if(StartsWith(line,s)){ if(nSpecP<MAX_PEAK_LOCATIONS) sscanf(line,"%s %lf",dum,&pkLoc[nSpecP++]); else printf("Warn:Max %d PeakLoc\n",MAX_PEAK_LOCATIONS); multiP=1; pkFit=1; doSm=0; }
+    }
+    fclose(pF);
+    check(NrPixelsY<=0||NrPixelsZ<=0,"NrPixelsY/Z invalid");
+    global_NrPixelsY=NrPixelsY;
+    global_NrPixelsZ=NrPixelsZ;
+    if(pkFit&&nSpecP>0) {
+        multiP=1;
+    }
+    nRBins=(RBinSize>1e-9)?(int)ceil((RMax-RMin)/RBinSize):0;
+    nEtaBins=(EtaBinSize>1e-9)?(int)ceil((EtaMax-EtaMin)/EtaBinSize):0;
+    check(nRBins<=0||nEtaBins<=0,"Invalid bin params. R=%d, Eta=%d",nRBins,nEtaBins);
+    size_t bigArrSize=(size_t)nRBins*nEtaBins;
+    printf("Params: R:[%.2f..%.2f],%d(%.3f); Eta:[%.2f..%.2f],%d(%.3f)\n",RMin,RMax,nRBins,RBinSize,EtaMin,EtaMax,nEtaBins,EtaBinSize);
+    printf(" Det:%dx%d Lsd=%.2f px=%.4f\n",NrPixelsY,NrPixelsZ,Lsd,px);
+    printf(" T(%d):",Nopt);
+    for(int i=0;i<Nopt;++i){
+        printf(" %d",Topt[i]);
+    }
+    printf("\n");
+    printf(" Norm=%d Sum=%d Wr2D=%d\n",Normalize,sumI,wr2D);
+    printf(" Fit=%d MultiP=%d Smooth=%d NSpecP=%d\n",pkFit,multiP,doSm,nSpecP);
+    printf("Read Params: %.3f ms\n", get_wall_time_ms() - t_start_params);
+
+    // --- Setup Bin Edges (Host) ---
+    double *hEtaLo,*hEtaHi,*hRLo,*hRHi;
+    hEtaLo=(double*)malloc(nEtaBins*sizeof(double)); hEtaHi=(double*)malloc(nEtaBins*sizeof(double));
+    hRLo=(double*)malloc(nRBins*sizeof(double)); hRHi=(double*)malloc(nRBins*sizeof(double));
+    check(!hEtaLo||!hEtaHi||!hRLo||!hRHi,"Alloc fail host bin edges");
+    REtaMapper(RMin,EtaMin,nEtaBins,nRBins,EtaBinSize,RBinSize,hEtaLo,hEtaHi,hRLo,hRHi);
+
+    // --- Host Memory Allocations ---
+    double *hAvgDark=NULL;
+    int64_t *hDarkInT=NULL,*hDarkIn=NULL;
+    // hImageInT is allocated in handle_client using cudaMallocHost
+    size_t totalPixels=(size_t)NrPixelsY*NrPixelsZ;
+    size_t SizeFile=totalPixels*BYTES_PER_PIXEL;
+    hAvgDark=(double*)calloc(totalPixels,sizeof(double)); check(!hAvgDark,"Alloc fail hAvgDark");
+    hDarkInT=(int64_t*)malloc(SizeFile); check(!hDarkInT,"Alloc fail hDarkInT");
+    hDarkIn=(int64_t*)malloc(SizeFile); check(!hDarkIn,"Alloc fail hDarkIn");
+
+    // --- Device Memory Allocations (Persistent) ---
+    double *dAvgDark=NULL, *dProcessedImage=NULL, *d_int1D=NULL;
+    int *dMapMask=NULL; size_t mapMaskWC=0;
+    int *dNPxList=NULL; struct data *dPxList=NULL;
+    double *dSumMatrix=NULL, *dIntArrFrame=NULL, *dPerFrame=NULL;
+    double *dEtaLo=NULL,*dEtaHi=NULL,*dRLo=NULL,*dRHi=NULL;
+    bool darkSubEnabled=(argc>2);
+    gpuErrchk(cudaMalloc(&dProcessedImage,totalPixels*sizeof(double)));
+    gpuErrchk(cudaMalloc(&dPxList,szPxList));
+    gpuErrchk(cudaMalloc(&dNPxList,szNPxList));
+    gpuErrchk(cudaMemcpy(dPxList,pxList,szPxList,cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(dNPxList,nPxList,szNPxList,cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMalloc(&dIntArrFrame,bigArrSize*sizeof(double)));
+    gpuErrchk(cudaMalloc(&dPerFrame,bigArrSize*4*sizeof(double)));
+    if(sumI){
+        gpuErrchk(cudaMalloc(&dSumMatrix,bigArrSize*sizeof(double)));
+        gpuErrchk(cudaMemset(dSumMatrix,0,bigArrSize*sizeof(double)));
+    }
+    gpuErrchk(cudaMalloc(&dEtaLo,nEtaBins*sizeof(double)));
+    gpuErrchk(cudaMalloc(&dEtaHi,nEtaBins*sizeof(double)));
+    gpuErrchk(cudaMalloc(&dRLo,nRBins*sizeof(double)));
+    gpuErrchk(cudaMalloc(&dRHi,nRBins*sizeof(double)));
+    gpuErrchk(cudaMemcpy(dEtaLo,hEtaLo,nEtaBins*sizeof(double),cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(dEtaHi,hEtaHi,nEtaBins*sizeof(double),cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(dRLo,hRLo,nRBins*sizeof(double),cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(dRHi,hRHi,nRBins*sizeof(double),cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMalloc(&d_int1D, nRBins * sizeof(double))); // Allocate buffer for GPU 1D profile
+
+    // --- Process Dark Frame ---
+    double t_start_dark = get_wall_time_ms();
+    int nrdone=0;
+    int *hMapMask=NULL;
+    if(darkSubEnabled){
+        char* darkFN=argv[2];
+        FILE* fD=fopen(darkFN,"rb");
+        check(!fD,"Failed open dark: %s",darkFN);
+        fseek(fD,0,SEEK_END);
+        size_t szD=ftell(fD);
+        rewind(fD);
+        int nFD=szD/SizeFile;
+        check(nFD==0||szD%SizeFile!=0,"Dark %s empty/bad size (%zu), %d frames",darkFN,SizeFile,nFD);
+        printf("Read dark: %s, Frames: %d.\n",darkFN,nFD);
+        for(int i=0;i<nFD;++i){
+            check(fread(hDarkInT,1,SizeFile,fD)!=SizeFile,"Read fail dark fr %d",i);
+            DoImageTransformationsSequential(Nopt,Topt,hDarkInT,hDarkIn,NrPixelsY,NrPixelsZ); // CPU transform dark
+            if(mkMap==1&&i==0){
+                mapMaskWC=totalPixels/32+1;
+                hMapMask=(int*)calloc(mapMaskWC,sizeof(int));
+                check(!hMapMask,"Alloc host mask fail");
+                nrdone=0;
+                for(size_t j=0;j<totalPixels;++j){
+                    if(hDarkIn[j]==GapI||hDarkIn[j]==BadPxI){
+                        SetBit(hMapMask,j);
+                        nrdone++;
+                    }
+                }
+                printf("Mask gen: %d masked\n",nrdone);
+                gpuErrchk(cudaMalloc(&dMapMask,mapMaskWC*sizeof(int)));
+                gpuErrchk(cudaMemcpy(dMapMask,hMapMask,mapMaskWC*sizeof(int),cudaMemcpyHostToDevice));
+                mkMap=0;
+            }
+            for(size_t j=0;j<totalPixels;++j){
+                hAvgDark[j]+=(double)hDarkIn[j]; // Accumulate transformed dark
+            }
+        }
+        fclose(fD);
+        if(nFD>0){
+            for(size_t j=0;j<totalPixels;++j){
+                hAvgDark[j]/=nFD; // Finalize average
+            }
+        }
+        gpuErrchk(cudaMalloc(&dAvgDark,totalPixels*sizeof(double)));
+        gpuErrchk(cudaMemcpy(dAvgDark,hAvgDark,totalPixels*sizeof(double),cudaMemcpyHostToDevice));
+        printf("Avg dark copied GPU\n");
+    } else {
+        gpuErrchk(cudaMalloc(&dAvgDark,totalPixels*sizeof(double)));
+        gpuErrchk(cudaMemset(dAvgDark,0,totalPixels*sizeof(double)));
+        printf("No dark, use zeros GPU\n");
+    }
+    if(!dMapMask){
+        mapMaskWC=0;
+        printf("No mask used\n");
+    }
+    printf("Processed dark/mask: %.3f ms\n", get_wall_time_ms() - t_start_dark);
+
+    // --- Network Setup ---
+    CHUNK_SIZE=SizeFile;
+    TOTAL_MSG_SIZE=HEADER_SIZE+CHUNK_SIZE;
+    printf("Net: Expect %zu H + %zu D = %zu tot bytes\n",HEADER_SIZE,CHUNK_SIZE,TOTAL_MSG_SIZE);
     int server_fd;
     struct sockaddr_in server_addr;
-    
-    // Initialize the processing queue
     queue_init(&process_queue);
-    
-    // Create socket
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
-        perror("Socket creation failed");
-        exit(EXIT_FAILURE);
-    }
-    
-    // Set socket options
-    int opt = 1;
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
-        perror("setsockopt failed");
-        exit(EXIT_FAILURE);
-    }
-    
-    // Configure server address
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = INADDR_ANY;
-    server_addr.sin_port = htons(PORT);
-    
-    // Bind socket
-    if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Bind failed");
-        exit(EXIT_FAILURE);
-    }
-    
-    // Listen for connections
-    if (listen(server_fd, MAX_CONNECTIONS) < 0) {
-        perror("Listen failed");
-        exit(EXIT_FAILURE);
-    }
-    
-    printf("Server listening on port %d\n", PORT);
-    printf("Expecting messages with %d-byte header and %d bytes (%d bytes total)\n", 
-           HEADER_SIZE, CHUNK_SIZE, TOTAL_MSG_SIZE);
-    
-    // Create a thread for accepting new connections
+    check((server_fd=socket(AF_INET,SOCK_STREAM,0))==0,"Socket fail");
+    int sock_opt=1; // Renamed variable from opt
+    check(setsockopt(server_fd,SOL_SOCKET,SO_REUSEADDR|SO_REUSEPORT,&sock_opt,sizeof(sock_opt)),"setsockopt fail");
+    server_addr.sin_family=AF_INET;
+    server_addr.sin_addr.s_addr=INADDR_ANY;
+    server_addr.sin_port=htons(PORT);
+    check(bind(server_fd,(struct sockaddr*)&server_addr,sizeof(server_addr))<0,"Bind fail port %d",PORT);
+    check(listen(server_fd,MAX_CONNECTIONS)<0,"Listen fail");
+    printf("Server listening on port %d\n",PORT);
     pthread_t accept_thread;
-    pthread_create(&accept_thread, NULL, accept_connections, &server_fd);
-    
-	// Open two files: one to save the 1D lineout and the second to save the fitted peak parameters.
-	// We want to append to both the files and they are binary.
-	FILE *lineoutFile = fopen("lineout.bin", "ab");
-	FILE *fitFile;
-	if (peakFit == 1){
-		fitFile = fopen("fit.bin", "ab");
-		if (fitFile == NULL){
-			perror("Error opening output files");
-			exit(EXIT_FAILURE);	
-		}
-	}
-	if (lineoutFile == NULL) {
-		perror("Error opening output files");
-		exit(EXIT_FAILURE);
-	}
-	clock_t t1, t1_qp, t1inter, t2, tIntegration, tFit, tFWLineout, tFWFitResult, tinter, tfin, tcopy1in, tcopy1out, tcopy2in, tcopy2out,twrite2din,twrite2dout,tmake1din,tmake1dout;
-	double diffT=0, diffQp, diffInteg, diffWriteLineout, diffTFit, diffWriteFitResult, diffTinter, diffTcopy1, diffTcopy2, diffTwrite2d, diffTmake1d, diffTsetup;
-	int firstFrame = 1;
-    // Allocate arrays once before the loop
-    double *int1D = (double *)calloc(nRBins, sizeof(*int1D));
-    double *R = (double *)calloc(nRBins, sizeof(*R));
-    double *Eta = (double *)calloc(nEtaBins, sizeof(*Eta));
-    double *lineout = (double *)malloc(nRBins*2*sizeof(*lineout));
-    
-    if (!int1D || !R || !Eta || !lineout) {
-        fprintf(stderr, "Failed to allocate memory for arrays\n");
-        exit(EXIT_FAILURE);
-    }
+    check(pthread_create(&accept_thread,NULL,accept_connections,&server_fd)!=0,"Fail create accept thread");
 
-    // Main processing loop
-    while (1) {
-		t1 = clock();
+    // --- Prepare for Main Loop ---
+    FILE *fLineout=fopen("lineout.bin","ab");
+    check(!fLineout,"Error open lineout.bin");
+    FILE *fFit=NULL;
+    if(pkFit){
+        fFit=fopen("fit.bin","ab");
+        check(!fFit,"Error open fit.bin");
+    }
+    if(wr2D){
+        printf("Will write 2D patterns\n");
+    }
+    // CUDA Events for timing
+    cudaEvent_t ev_proc_start, ev_proc_stop, ev_integ_start, ev_integ_stop;
+    cudaEvent_t ev_prof_start, ev_prof_stop, ev_d2h_start, ev_d2h_stop;
+    gpuErrchk(cudaEventCreate(&ev_proc_start)); gpuErrchk(cudaEventCreate(&ev_proc_stop)); // Use default flags
+    gpuErrchk(cudaEventCreate(&ev_integ_start)); gpuErrchk(cudaEventCreate(&ev_integ_stop));
+    gpuErrchk(cudaEventCreate(&ev_prof_start)); gpuErrchk(cudaEventCreate(&ev_prof_stop));
+    gpuErrchk(cudaEventCreate(&ev_d2h_start)); gpuErrchk(cudaEventCreate(&ev_d2h_stop));
+    float t_proc_gpu=0, t_integ_gpu=0, t_prof_gpu=0, t_d2h_gpu=0;
+
+    double t_qp_cpu=0, t_write1d_cpu=0, t_fit_cpu=0, t_writefit_cpu=0, t_write2d_cpu=0, t_loop_cpu=0;
+    double t_start_loop, t_end_loop;
+
+    int firstFrame=1;
+    double *hIntArrFrame=(double*)calloc(bigArrSize,sizeof(double)); check(!hIntArrFrame,"Alloc fail hIntArrFrame");
+    double *hPerFrame=(double*)malloc(bigArrSize*4*sizeof(double)); check(!hPerFrame,"Alloc fail hPerFrame");
+    double *h_int1D = NULL; gpuErrchk(cudaMallocHost((void**)&h_int1D, nRBins * sizeof(double))); check(!h_int1D,"Alloc fail pinned h_int1D");
+    double *hR=(double*)calloc(nRBins,sizeof(double)); check(!hR,"Alloc fail hR");
+    double *hEta=(double*)calloc(nEtaBins,sizeof(double)); check(!hEta,"Alloc fail hEta");
+    double *hLineout=(double*)malloc(nRBins*2*sizeof(double)); check(!hLineout,"Alloc fail hLineout");
+
+    printf("Setup complete. Starting main processing loop...\n");
+    double t_end_setup = get_wall_time_ms();
+    printf("Total setup time: %.3f ms\n", t_end_setup - t_start_main);
+    fflush(stdout);
+
+    // =========================== Main Processing Loop ===========================
+    int frameCounter = 0;
+    while (keep_running) {
+        t_start_loop = get_wall_time_ms();
+
+        double t_qp_start = get_wall_time_ms();
         DataChunk chunk;
-        queue_pop(&process_queue, &chunk);
-        // Process the data
-		t1_qp = clock();
-        memcpy(ImageInT,chunk.data,chunk.size*BYTES_PER_PIXEL);
-		if ((NrTransOpt==0) || (NrTransOpt==1 && TransOpt[0]==0)){
-			if (argc > 2){
-				for (j=0;j<NrPixelsY*NrPixelsZ;j++){
-					Image[j] = (double)ImageInT[j] - AverageDark[j];
-				}
-			} else {
-				for (j=0;j<NrPixelsY*NrPixelsZ;j++){
-					Image[j] = (double)ImageInT[j];
-				}
-			}
-		} else {
-			DoImageTransformations(NrTransOpt,TransOpt,ImageInT,ImageIn,NrPixelsY,NrPixelsZ);
-			for (j=0;j<NrPixelsY*NrPixelsZ;j++){
-				Image[j] = (double)ImageIn[j] - AverageDark[j];
-			}
-		}
-		t1inter = clock();
-		tcopy1in = clock();
-		gpuErrchk(cudaMemset(devIntArrPerFrame,0,bigArrSize*sizeof(double)));
-		gpuErrchk(cudaMemcpy(devImage,Image,NrPixelsY*NrPixelsZ*sizeof(double),cudaMemcpyHostToDevice));
-		gpuErrchk(cudaDeviceSynchronize());
-		tcopy1out = clock();
-		int tPB = 512;
-		int nrVox = (bigArrSize+tPB-1)/tPB;
-		i = chunk.dataset_num;
-		// time the next step
-		tinter = clock();
-		if (mapMaskSize==0)
-			integrate_noMapMask <<<tPB,nrVox>>> (px,Lsd,bigArrSize,Normalize,sumImages,i,NrPixelsY, 
-													mapMaskSize,devMapMask,nRBins,nEtaBins,devPxList, 
-													devNPxList,devRBinsLow,devRBinsHigh,devEtaBinsLow,devEtaBinsHigh, 
-													devImage,devIntArrPerFrame,devPerFrameArr,devSumMatrix);
-		else 
-			integrate_MapMask <<<tPB,nrVox>>> (px,Lsd,bigArrSize,Normalize,sumImages,i,NrPixelsY, 
-													mapMaskSize,devMapMask,nRBins,nEtaBins,devPxList, 
-													devNPxList,devRBinsLow,devRBinsHigh,devEtaBinsLow,devEtaBinsHigh, 
-													devImage,devIntArrPerFrame,devPerFrameArr,devSumMatrix);
-		gpuErrchk(cudaDeviceSynchronize());
-		tfin = clock();
-		tcopy2in = clock();
-		gpuErrchk(cudaMemcpy(IntArrPerFrame,devIntArrPerFrame,bigArrSize*sizeof(double),cudaMemcpyDeviceToHost));
-		gpuErrchk(cudaDeviceSynchronize());
-		if (chunk.dataset_num==0 || firstFrame == 1){
-			firstFrame = 0;
-			gpuErrchk(cudaMemcpy(PerFrameArr,devPerFrameArr,bigArrSize*4*sizeof(double),cudaMemcpyDeviceToHost));
-			gpuErrchk(cudaDeviceSynchronize());
-			for (i=0;i<nRBins;i++){
-				R[i] = (RBinsLow[i]+RBinsHigh[i])/2;
-			}
-			for (int r=0;r<nRBins;r++){
-				lineout[r*2] = R[r];
-			}
-			for (i=0;i<nEtaBins;i++){
-				Eta[i] = (EtaBinsLow[i]+EtaBinsHigh[i])/2;
-			}
-		}
-		tcopy2out = clock();
-		twrite2din = clock();
-		// If we want to save the 2D array
-		if (write2D == 1){
-			char fn[MAX_FILENAME_LENGTH];
-			snprintf(fn, sizeof(fn), "Int2D.bin");
-			FILE *f2d = fopen(fn, "ab");
-			if (!f2d) {
-				fprintf(stderr, "Failed to open file %s\n", fn);
-				continue;
-			}
-			if (fwrite(IntArrPerFrame, sizeof(double), nRBins*nEtaBins, f2d) != nRBins*nEtaBins) {
-				fprintf(stderr, "Failed to write data to %s\n", fn);
-			}
-			fflush(f2d);
-			fclose(f2d);
-		}
-		// Now we have IntArrPerFrame, we need to make it into a 1D.
-		twrite2dout = clock();
-		tmake1din = clock();
-		gpuErrchk(cudaDeviceSynchronize());
-		memset(int1D,0,nRBins*sizeof(*int1D));
-		double maxInt=-1;
-		int maxIntLoc;
-		int nNonZeros;
-		if (multiplePeaks == 1){
-			for (j=0;j<nRBins;j++){
-				nNonZeros = 0;
-				for (i=0;i<nEtaBins;i++){
-					int1D[j] += IntArrPerFrame[j*nEtaBins+i];
-					if (PerFrameArr[3*bigArrSize+(j*nEtaBins+i)] != 0)	nNonZeros ++;
-				}
-				if (nNonZeros != 0) int1D[j] /= (double)nNonZeros;
-				if (int1D[j] > maxInt){
-					maxInt = int1D[j];
-					maxIntLoc = j;
-				}
-			}
-		} else {
-			for (j=0;j<nRBins;j++){
-				nNonZeros = 0;
-				for (i=0;i<nEtaBins;i++){
-					int1D[j] += IntArrPerFrame[j*nEtaBins+i];
-					if (PerFrameArr[3*bigArrSize+(j*nEtaBins+i)] != 0)	nNonZeros ++;
-				}
-				if (nNonZeros != 0) int1D[j] /= (double)nNonZeros;
-			}
-		}
-		for (int r=0;r<nRBins;r++){
-			lineout[r*2+1] = int1D[r];
-		}
-		tmake1dout = clock();
-		tIntegration = clock();
-		// Save lineout to the file.
-		fwrite(lineout,sizeof(double),nRBins*2,lineoutFile);
-		fflush(lineoutFile);
-		tFWLineout = clock();
-		// // Send the lineout to the server
-		// send_lineouts(chunk.dataset_num,nRBins*2,lineout);
-		tFit = clock();
-		tFWFitResult = clock();
-		if (peakFit == 1){
-			int peakCount;
-			Peak *peaks = NULL;
-			if (multiplePeaks ==1){
-				if (nPeaks >0){
-					peakCount = nPeaks;
-					peaks = (Peak *)malloc(nPeaks*sizeof(Peak));
-					for (int p = 0; p < nPeaks; p++){
-						if (peakLocations[p] < R[0] || peakLocations[p] > R[nRBins-1]){
-							printf("Warning: Peak location %f is out of bounds, R range was: %f %f.\n", peakLocations[p],R[0],R[nRBins-1]);
-							continue;
-						}
-						// Find the closest radius value corresponding to the peak location
-						int bestLoc = -1;
-						double bestDiff = 1e6;
-						for (int r = 0; r < nRBins; r++){
-							double diff = fabs(R[r] - peakLocations[p]);
-							if (diff < bestDiff){
-								bestDiff = diff;
-								bestLoc = r;
-							}
-						}
-						if (bestLoc != -1){
-							peaks[p].index = bestLoc;
-							peaks[p].radius = R[bestLoc];
-							peaks[p].intensity = int1D[bestLoc];
-						} else {
-							printf("Warning: Peak location %f not found in radius array.\n", peakLocations[p]);
-						}
-						// printf("Peak %d: Index = %d, Radius = %f, Intensity = %f\n", 
-						// 	p, peaks[p].index, peaks[p].radius, peaks[p].intensity);
-					}
-				} else{
-					double *smoothedData = (double *)malloc(nRBins*sizeof(double));
-					peakCount = 0;
-					// We need to find the number of peaks.
-					if (doSmoothing == 1){
-						int windowSize = 5;
-						double minHeight = 0.0;
-						int minDistance = 10;
-						smoothData(int1D, smoothedData, nRBins, windowSize);
-						peakCount = findPeaks(smoothedData, R, nRBins, &peaks, minHeight, minDistance);
-					} else {
-						peakCount = findPeaks(int1D, R, nRBins, &peaks, 0.0, 10); // No smoothing
-					}
-					// printf("Found %d peaks in the data.\n", peakCount);
-					// for (int p = 0; p < peakCount; p++) {
-					// 	printf("Peak %d: Index = %d, Radius = %f, Intensity = %f\n", 
-					// 		p, peaks[p].index, peaks[p].radius, peaks[p].intensity);
-					// }
-				}
-			} else {
-				// If not multiple peaks, just use the maximum intensity
-				peaks = (Peak *)malloc(sizeof(Peak));
-				peaks[0].index = maxIntLoc;
-				peaks[0].radius = R[maxIntLoc];
-				peaks[0].intensity = maxInt;
-				peakCount = 1;
-				// printf("Single peak found at index %d, radius %f, intensity %f\n", 
-				// 	peaks[0].index, peaks[0].radius, peaks[0].intensity);
-			}
-			// Now do peak fitting for each peak in the data:
-			int n = peakCount * 5;
-			double *x, *lb, *ub;
-			x = (double *)malloc(n*sizeof(double));
-			lb = (double *)malloc(n*sizeof(double));
-			ub = (double *)malloc(n*sizeof(double));
-			for (int peakNr = 0; peakNr<peakCount; peakNr++){
-				x[peakNr*5 + 0] = peaks[peakNr].intensity; // amplitude
-				x[peakNr*5 + 1] = 0.0; // background
-				x[peakNr*5 + 2] = 0.5; // mix
-				x[peakNr*5 + 3] = peaks[peakNr].radius; // center
-				x[peakNr*5 + 4] = 2; // sigma
-				lb[peakNr*5 + 0] = 0.0; // lower bound for amplitude
-				lb[peakNr*5 + 1] = -1.0; // lower bound for background
-				lb[peakNr*5 + 2] = 0.0; // lower bound for mix
-				lb[peakNr*5 + 3] = peaks[peakNr].radius - 10; // lower bound for center
-				lb[peakNr*5 + 4] = 0.1; // lower bound for sigma
-				ub[peakNr*5 + 0] = maxInt*2; // upper bound for amplitude
-				ub[peakNr*5 + 1] = maxInt; // upper bound for background
-				ub[peakNr*5 + 2] = 1.0; // upper bound for mix
-				ub[peakNr*5 + 3] = peaks[peakNr].radius + 10; // upper bound for center
-				ub[peakNr*5 + 4] = (R[nRBins-1]-R[0])/2; // upper bound for sigma
-			}
-			struct dataFit d;
-			d.nrBins = nRBins;
-			d.R = &R[0];
-			d.Int = &int1D[0];
-			struct dataFit *fitD;
-			fitD = &d;
-			void *trp = (struct dataFit *) fitD;
-			nlopt_opt opt;
-			opt = nlopt_create(NLOPT_LN_NELDERMEAD,5);
-			nlopt_set_lower_bounds(opt,lb);
-			nlopt_set_upper_bounds(opt,ub);
-			nlopt_set_maxeval(opt,1000);
-			nlopt_set_min_objective(opt,problem_function,trp);
-			double minf;
-			if (nlopt_optimize(opt,x,&minf) < 0){
-				printf("nlopt failed!\n");
-			} else {
-				// // Print the results
-				// for (int peakNr = 0; peakNr<peakCount; peakNr++){
-				// 	printf("Peak %d: Optimized parameters: amplitude = %f, background = %f, mix = %f, center = %f, sigma = %f\n", 
-				// 		peakNr, x[peakNr*5 + 0], x[peakNr*5 + 1], x[peakNr*5 + 2], x[peakNr*5 + 3], x[peakNr*5 + 4]);
-				// }
-				// // Print minf too.
-				// printf("Minimum objective function value: %f\n", minf);
-			}
-			nlopt_destroy(opt);
-			tFit = clock();
-			for (i = 0; i < n; i++) {
-				x[i] += random() / (double)RAND_MAX * 0.1; // Add some noise to the fit parameters
-			}
-			// Save x to the fit file.
-			fwrite(x,sizeof(double),n,fitFile);
-			fflush(fitFile);
-			tFWFitResult = clock();
-			// // Send the fit result to the server
-			// send_fit_result(chunk.dataset_num,peakCount,x);
-			// Free any remaining arrays alloced in this loop
-			free(peaks);
-			free(x);
-			free(lb);
-			free(ub);
-		}
+        if(queue_pop(&process_queue,&chunk)<0){ // Check return value for shutdown
+            break;
+        }
+        t_qp_cpu = get_wall_time_ms() - t_qp_start;
 
-		t2 = clock();
-		diffT = ((double)(t2-t1))/CLOCKS_PER_SEC*1e3;
-		diffQp = ((double)(t1_qp-t1))/CLOCKS_PER_SEC*1e3;
-		diffTsetup = ((double)(t1inter-t1_qp))/CLOCKS_PER_SEC*1e3;
-		diffTinter = ((double)(tfin-tinter))/CLOCKS_PER_SEC*1e3;
-		diffInteg = ((double)(tIntegration - t1))/CLOCKS_PER_SEC*1e3;
-		diffWriteLineout = ((double)(tFWLineout - tIntegration))/CLOCKS_PER_SEC*1e3;
-		diffTFit = ((double)(tFit - tFWLineout))/CLOCKS_PER_SEC*1e3;
-		diffWriteFitResult = ((double)(tFWFitResult - tFit))/CLOCKS_PER_SEC*1e3;
-		diffTcopy1 = ((double)(tcopy1out - tcopy1in))/CLOCKS_PER_SEC*1e3;
-		diffTcopy2 = ((double)(tcopy2out - tcopy2in))/CLOCKS_PER_SEC*1e3;
-		diffTwrite2d = ((double)(twrite2dout - twrite2din))/CLOCKS_PER_SEC*1e3;
-		diffTmake1d = ((double)(tmake1dout - tmake1din))/CLOCKS_PER_SEC*1e3;
+        // --- GPU Processing Stage ---
+        gpuErrchk(cudaEventRecord(ev_proc_start, 0));
+        ProcessImageGPU(chunk.data,dProcessedImage,dAvgDark,Nopt,Topt,NrPixelsY,NrPixelsZ,darkSubEnabled);
+        gpuErrchk(cudaEventRecord(ev_proc_stop, 0));
 
-		printf("Total time: %lf s for frameNr: %d. In milliseconds: Queuepop: %lf Setup: %lf ToGPU: %lf Integration: %lf FromGPU: %lf Write2d: %lf Make1D: %lf TotalIntegrationTime: %lf Write1d: %lf FitPeak: %lf  WriteFitResult: %lf\n",diffT,chunk.dataset_num,diffQp,diffTsetup,diffTcopy1,diffTinter,diffTcopy2,diffTwrite2d,diffTmake1d,diffInteg,diffWriteLineout,diffTFit,diffWriteFitResult);
-        free(chunk.data);
-    }
-    
-    // Cleanup after the loop
-    free(int1D);
-    free(R);
-    free(Eta);
-    free(lineout);
-    
-    // Close file handles
-    fclose(lineoutFile);
-    fclose(fitFile);
-    
-    // Cleanup CUDA resources
-    cudaFree(devImage);
-    cudaFree(devIntArrPerFrame);
-    cudaFree(devPerFrameArr);
-    cudaFree(devEtaBinsLow);
-    cudaFree(devEtaBinsHigh);
-    cudaFree(devRBinsLow);
-    cudaFree(devRBinsHigh);
-    cudaFree(devPxList);
-    cudaFree(devNPxList);
-    if (mapMaskSize != 0) {
-        cudaFree(devMapMask);
-    }
-    if (sumImages == 1) {
-        cudaFree(devSumMatrix);
-    }
-    
-    pthread_join(accept_thread, NULL);
-    close(server_fd);
-    
+        // --- GPU Integration Stage ---
+        gpuErrchk(cudaMemsetAsync(dIntArrFrame,0,bigArrSize*sizeof(double),0));
+        int currFidx=chunk.dataset_num;
+        int integTPB=THREADS_PER_BLOCK_INTEGRATE;
+        int nrVox=(bigArrSize+integTPB-1)/integTPB;
+        gpuErrchk(cudaEventRecord(ev_integ_start, 0));
+        if(!dMapMask){
+            integrate_noMapMask<<<nrVox,integTPB, 0, 0>>>(px,Lsd,bigArrSize,Normalize,sumI,currFidx,dPxList,dNPxList,dRLo,dRHi,dEtaLo,dEtaHi,dProcessedImage,dIntArrFrame,dPerFrame,dSumMatrix);
+        } else {
+            integrate_MapMask<<<nrVox,integTPB, 0, 0>>>(px,Lsd,bigArrSize,Normalize,sumI,currFidx,mapMaskWC,dMapMask,nRBins,nEtaBins,dPxList,dNPxList,dRLo,dRHi,dEtaLo,dEtaHi,dProcessedImage,dIntArrFrame,dPerFrame,dSumMatrix);
+        }
+        gpuErrchk(cudaEventRecord(ev_integ_stop, 0));
+
+        // --- GPU 1D Profile Stage ---
+        size_t profileSharedMem = (THREADS_PER_BLOCK_PROFILE / 32) * sizeof(double) * 2; // Shared mem per warp * 2 buffers
+        gpuErrchk(cudaEventRecord(ev_prof_start, 0));
+        calculate_1D_profile_kernel<<<nRBins, THREADS_PER_BLOCK_PROFILE, profileSharedMem, 0>>>(dIntArrFrame, dPerFrame, d_int1D, nRBins, nEtaBins, bigArrSize);
+        gpuErrchk(cudaEventRecord(ev_prof_stop, 0));
+
+        // --- D->H Copy Stage ---
+        gpuErrchk(cudaEventRecord(ev_d2h_start, 0));
+        gpuErrchk(cudaMemcpyAsync(h_int1D, d_int1D, nRBins*sizeof(double), cudaMemcpyDeviceToHost, 0));
+        if(firstFrame==1){
+            gpuErrchk(cudaMemcpyAsync(hPerFrame,dPerFrame,bigArrSize*4*sizeof(double),cudaMemcpyDeviceToHost, 0));
+        }
+        if(wr2D){
+            gpuErrchk(cudaMemcpyAsync(hIntArrFrame, dIntArrFrame, bigArrSize*sizeof(double), cudaMemcpyDeviceToHost, 0));
+        }
+        gpuErrchk(cudaEventRecord(ev_d2h_stop, 0));
+
+        // --- Synchronize and Get GPU Timings ---
+        gpuErrchk(cudaEventSynchronize(ev_proc_stop));
+        gpuErrchk(cudaEventElapsedTime(&t_proc_gpu, ev_proc_start, ev_proc_stop));
+        gpuErrchk(cudaEventSynchronize(ev_integ_stop));
+        gpuErrchk(cudaEventElapsedTime(&t_integ_gpu, ev_integ_start, ev_integ_stop));
+        gpuErrchk(cudaEventSynchronize(ev_prof_stop));
+        gpuErrchk(cudaEventElapsedTime(&t_prof_gpu, ev_prof_start, ev_prof_stop));
+        gpuErrchk(cudaEventSynchronize(ev_d2h_stop)); // Sync D->H copies before CPU processing
+        gpuErrchk(cudaEventElapsedTime(&t_d2h_gpu, ev_d2h_start, ev_d2h_stop));
+
+        // --- CPU Processing Stage ---
+        if(firstFrame==1){
+            for(int r=0;r<nRBins;++r){
+                hR[r]=hPerFrame[r*nEtaBins]; // R stored at start of each row's data
+            }
+            for(int e=0;e<nEtaBins;++e){
+                hEta[e]=hPerFrame[e+2*bigArrSize]; // Eta stored in 3rd block
+            }
+            for(int r=0;r<nRBins;++r){
+                hLineout[r*2]=hR[r]; // Set R values for lineout buffer
+            }
+            printf("Init R/Eta arrays GPU\n");
+            firstFrame=0;
+        }
+
+        double t_write2d_start = get_wall_time_ms();
+        if(wr2D){
+            char fn[MAX_FILENAME_LENGTH];
+            snprintf(fn,MAX_FILENAME_LENGTH,"Int2D_f%05d.bin",currFidx);
+            FILE*f2d=fopen(fn,"wb");
+            if(f2d){
+                fwrite(hIntArrFrame,sizeof(double),bigArrSize,f2d);
+                fclose(f2d);
+            } else {
+                fprintf(stderr,"Warn:Fail open %s\n",fn);
+            }
+        }
+        t_write2d_cpu = get_wall_time_ms() - t_write2d_start;
+
+        double maxInt=-1.0;
+        int maxIntLoc=-1;
+        if(!multiP){
+            for(int r=0; r<nRBins; ++r){
+                if(h_int1D[r]>maxInt){
+                    maxInt=h_int1D[r];
+                    maxIntLoc=r;
+                }
+            }
+        }
+        for(int r=0; r<nRBins; ++r){
+            hLineout[r*2+1]=h_int1D[r]; // Fill intensity into lineout buffer
+        }
+
+        double t_write1d_start = get_wall_time_ms();
+        check(fwrite(hLineout,sizeof(double),nRBins*2,fLineout)!=(size_t)nRBins*2,"Err write lineout");
+        fflush(fLineout);
+        t_write1d_cpu = get_wall_time_ms() - t_write1d_start;
+
+        double t_fit_start = get_wall_time_ms();
+        int currentPeakCount=0;
+        double *sendFitParams=NULL;
+        if(pkFit){
+            Peak *pks=NULL;
+            if(multiP){
+                if(nSpecP>0){
+                    pks=(Peak*)malloc(nSpecP*sizeof(Peak)); check(!pks,"Malloc fail specP");
+                    int vPC=0;
+                    for(int p=0;p<nSpecP;++p){
+                        int bL=-1; double mD=1e10;
+                        for(int r=0;r<nRBins;++r){
+                            double df=fabs(hR[r]-pkLoc[p]);
+                            if(df<mD){ mD=df; bL=r; }
+                        }
+                        if(bL!=-1&&mD<RBinSize*2.0){
+                            pks[vPC++]=(Peak){bL,hR[bL],h_int1D[bL]};
+                        } else {
+                            printf("Warn: Peak %.2f ign F%d\n",pkLoc[p],currFidx);
+                        }
+                    }
+                    currentPeakCount=vPC;
+                    if(vPC==0){ free(pks); pks=NULL; }
+                } else {
+                    double *d2FP=h_int1D;
+                    double *smD=NULL;
+                    if(doSm){
+                        smD=(double*)malloc(nRBins*sizeof(double));
+                        check(!smD,"Malloc smD");
+                        smoothData(h_int1D,smD,nRBins,7);
+                        d2FP=smD;
+                    }
+                    currentPeakCount=findPeaks(d2FP,hR,nRBins,&pks,0.0,5); // minHeight=0, minDist=5
+                    if(smD) free(smD);
+                }
+            } else {
+                if(maxIntLoc!=-1){
+                    currentPeakCount=1;
+                    pks=(Peak*)malloc(sizeof(Peak)); check(!pks,"Malloc sglP");
+                    pks[0]=(Peak){maxIntLoc,hR[maxIntLoc],maxInt};
+                } else {
+                    currentPeakCount=0;
+                    pks=NULL;
+                }
+            }
+            if (currentPeakCount > 0 && pks != NULL) {
+                int nFP=currentPeakCount*4+1; // 4 params per peak + 1 global bg
+                double *fitP=(double*)malloc(nFP*sizeof(double)); check(!fitP,"Malloc fitP");
+                double *lb=(double*)malloc(nFP*sizeof(double)); check(!lb,"Malloc lb");
+                double *ub=(double*)malloc(nFP*sizeof(double)); check(!ub,"Malloc ub");
+                double maxOI=0.0; for(int r=0;r<nRBins;++r) if(h_int1D[r]>maxOI) maxOI=h_int1D[r]; if(maxOI<=0) maxOI=1.0;
+                for(int p=0;p<currentPeakCount;++p){
+                    int b=p*4;
+                    fitP[b+0]=pks[p].intensity; fitP[b+1]=0.5; fitP[b+2]=pks[p].radius; fitP[b+3]=RBinSize*2.0; // Initial guess
+                    lb[b+0]=0.0; lb[b+1]=0.0; lb[b+2]=pks[p].radius-RBinSize*5.0; lb[b+3]=RBinSize*0.5; // Lower bounds
+                    ub[b+0]=maxOI*2.0; ub[b+1]=1.0; ub[b+2]=pks[p].radius+RBinSize*5.0; ub[b+3]=(RMax-RMin)/4.0; // Upper bounds
+                }
+                fitP[nFP-1]=0.0; lb[nFP-1]=-maxOI; ub[nFP-1]=maxOI; // Global BG init/bounds
+                dataFit fD; fD.nrBins=nRBins; fD.R=hR; fD.Int=h_int1D;
+                nlopt_opt opt=nlopt_create(NLOPT_LN_NELDERMEAD,nFP);
+                nlopt_set_lower_bounds(opt,lb);
+                nlopt_set_upper_bounds(opt,ub);
+                nlopt_set_min_objective(opt,problem_function_global_bg,&fD);
+                nlopt_set_xtol_rel(opt,1e-4);
+                nlopt_set_maxeval(opt,500*nFP);
+                double minO;
+                int nlopt_rc=nlopt_optimize(opt,fitP,&minO);
+                if(nlopt_rc<0){
+                    printf("F#%d: NLopt fail %d\n",currFidx,nlopt_rc);
+                    currentPeakCount=0;
+                    free(fitP);
+                } else {
+                    sendFitParams=(double*)malloc(currentPeakCount*5*sizeof(double)); // Format for 5 params/peak
+                    check(!sendFitParams,"Malloc sendFP");
+                    double gBG=fitP[nFP-1];
+                    for(int p=0;p<currentPeakCount;++p){
+                         sendFitParams[p*5+0]=fitP[p*4+0]; // amp
+                         sendFitParams[p*5+1]=gBG;         // bg (global)
+                         sendFitParams[p*5+2]=fitP[p*4+1]; // mix
+                         sendFitParams[p*5+3]=fitP[p*4+2]; // cen
+                         sendFitParams[p*5+4]=fitP[p*4+3]; // sig
+                    }
+                    free(fitP);
+                }
+                nlopt_destroy(opt);
+                free(lb);
+                free(ub);
+            }
+            if(pks) free(pks);
+        }
+        t_fit_cpu = get_wall_time_ms() - t_fit_start;
+
+        double t_writefit_start = get_wall_time_ms();
+        if(pkFit&¤tPeakCount>0&&sendFitParams!=NULL){
+            check(fwrite(sendFitParams,sizeof(double),currentPeakCount*5,fFit)!=(size_t)currentPeakCount*5,"Err write fit");
+            fflush(fFit);
+            free(sendFitParams);
+        }
+        t_writefit_cpu = get_wall_time_ms() - t_writefit_start;
+
+        t_end_loop = get_wall_time_ms();
+        t_loop_cpu = t_end_loop - t_start_loop; // Total wall time
+
+        printf("F#%d: Ttl:%.1f| QPop:%.1f GPU(Proc:%.1f Int:%.1f Prof:%.1f D2H:%.1f) CPU(Wr2D:%.1f Wr1D:%.1f Fit:%.1f WrFit:%.1f) (ms)\n",
+               currFidx, t_loop_cpu, t_qp_cpu, t_proc_gpu, t_integ_gpu, t_prof_gpu, t_d2h_gpu, t_write2d_cpu, t_write1d_cpu, t_fit_cpu, t_writefit_cpu);
+        fflush(stdout);
+
+        gpuWarnchk(cudaFreeHost(chunk.data)); // Free pinned host buffer for the received chunk
+        frameCounter++;
+    } // ======================== End Main Processing Loop ========================
+
+    printf("Processing loop finished (keep_running=%d). Cleaning up...\n", keep_running);
+
+    // --- Cleanup ---
+    if(fLineout)fclose(fLineout); if(fFit)fclose(fFit); free(hAvgDark); free(hDarkInT); free(hDarkIn); /* hImageInT freed in queue_destroy/loop */ free(hIntArrFrame); free(hPerFrame); if(h_int1D)gpuWarnchk(cudaFreeHost(h_int1D)); free(hR); free(hEta); free(hLineout); free(hEtaLo); free(hEtaHi); free(hRLo); free(hRHi); if(hMapMask)free(hMapMask);
+    UnmapBins();
+    if(dAvgDark)gpuWarnchk(cudaFree(dAvgDark)); if(dProcessedImage)gpuWarnchk(cudaFree(dProcessedImage)); if(d_int1D)gpuWarnchk(cudaFree(d_int1D)); if(dMapMask)gpuWarnchk(cudaFree(dMapMask)); if(dPxList)gpuWarnchk(cudaFree(dPxList)); if(dNPxList)gpuWarnchk(cudaFree(dNPxList)); if(dSumMatrix)gpuWarnchk(cudaFree(dSumMatrix)); if(dIntArrFrame)gpuWarnchk(cudaFree(dIntArrFrame)); if(dPerFrame)gpuWarnchk(cudaFree(dPerFrame)); if(dEtaLo)gpuWarnchk(cudaFree(dEtaLo)); if(dEtaHi)gpuWarnchk(cudaFree(dEtaHi)); if(dRLo)gpuWarnchk(cudaFree(dRLo)); if(dRHi)gpuWarnchk(cudaFree(dRHi));
+    gpuWarnchk(cudaEventDestroy(ev_proc_start)); gpuWarnchk(cudaEventDestroy(ev_proc_stop)); gpuWarnchk(cudaEventDestroy(ev_integ_start)); gpuWarnchk(cudaEventDestroy(ev_integ_stop)); gpuWarnchk(cudaEventDestroy(ev_prof_start)); gpuWarnchk(cudaEventDestroy(ev_prof_stop)); gpuWarnchk(cudaEventDestroy(ev_d2h_start)); gpuWarnchk(cudaEventDestroy(ev_d2h_stop));
+
+    printf("Closing server socket %d & joining accept thread...\n", server_fd); close(server_fd);
+    // If accept_thread doesn't exit automatically due to keep_running check after accept(),
+    // more robust signaling (like pthread_kill or condition variable) might be needed.
+    pthread_join(accept_thread, NULL); // Wait for accept thread
+    queue_destroy(&process_queue);
+
+    printf("[%s] - Exiting cleanly.\n", argv[0]);
     return 0;
 }
