@@ -1442,7 +1442,7 @@ int main(int argc, char *argv[]){
 		diffTwrite2d = ((double)(twrite2dout - twrite2din))/CLOCKS_PER_SEC;
 		diffTmake1d = ((double)(tmake1dout - tmake1din))/CLOCKS_PER_SEC;
 
-		printf("Did integration, total time: %lf s for this frame, frameNr: %d. %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",diffT,chunk.dataset_num,diffTcopy1,diffTinter,diffTcopy2,diffTwrite2d,diffTmake1d,diffInteg,diffWriteLineout,diffTFit,diffWriteFitResult);
+		printf("Did integration, total time: %lf s for this frame, frameNr: %d. %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",diffT,chunk.dataset_num,diffTsetup,diffTcopy1,diffTinter,diffTcopy2,diffTwrite2d,diffTmake1d,diffInteg,diffWriteLineout,diffTFit,diffWriteFitResult);
         free(chunk.data);
     }
     
