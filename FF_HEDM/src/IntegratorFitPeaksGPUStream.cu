@@ -23,13 +23,12 @@
 // Example compile command (adjust paths and architecture flags):
 /*
   source ~/.MIDAS/paths # Set up environment variables for libraries
-  ~/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStream.cu -o bin/IntegratorFitPeaksGPUStream \
-  -Xcompiler -g -arch sm_90 -gencode=arch=compute_90,code=sm_90 \
-  -I/path/to/nlopt/include -L/path/to/nlopt/lib -lnlopt \
-  -I/path/to/blosc/include -L/path/to/blosc/lib64 -lblosc2 \
-  -I/path/to/hdf5/include -L/path/to/hdf5/lib -lhdf5 -lhdf5_hl -lz -ldl -lm -lpthread \
-  -I/path/to/libzip/include -L/path/to/libzip/lib64 -lzip \
-  -O3
+   ~/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStream.cu -o bin/IntegratorFitPeaksGPUStream \
+   -Xcompiler -g -arch sm_90   -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/.MIDAS/NLOPT/include \
+   -L/home/beams/S1IDUSER/.MIDAS/NLOPT/lib   -O3 -lnlopt -I/home/beams/S1IDUSER/.MIDAS/BLOSC/include \
+   -L/home/beams/S1IDUSER/.MIDAS/BLOSC/lib64 -lblosc2   -I/home/beams/S1IDUSER/.MIDAS/HDF5/include \
+   -L/home/beams/S1IDUSER/.MIDAS/HDF5/lib -lhdf5 -lhdf5_hl -lz -ldl -lm -lpthread  \
+   -I/home/beams/S1IDUSER/.MIDAS/LIBZIP/include -L/home/beams/S1IDUSER/.MIDAS/LIBZIP/lib64 -lzip
 */
 // =========================================================================
 
