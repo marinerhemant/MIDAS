@@ -1164,8 +1164,8 @@ int main(int argc, char *argv[]){
 		perror("Error opening output files");
 		exit(EXIT_FAILURE);
 	}
-	clock_t t1, t2, tIntegration, tFit, tFWLineout, tFWFitResult, tinter, tfin, tcopy1in, tcopy1out, tcopy2in, tcopy2out,twrite2din,twrite2dout;
-	double diffT=0, diffInteg, diffWriteLineout, diffTFit, diffWriteFitResult, diffTinter, diffTcopy1, diffTcopy2, diffTwrite2d;
+	clock_t t1, t2, tIntegration, tFit, tFWLineout, tFWFitResult, tinter, tfin, tcopy1in, tcopy1out, tcopy2in, tcopy2out,twrite2din,twrite2dout,tmake1din,tmake1dout;
+	double diffT=0, diffInteg, diffWriteLineout, diffTFit, diffWriteFitResult, diffTinter, diffTcopy1, diffTcopy2, diffTwrite2d, diffTmake1d;
 	int firstFrame = 1;
     // Allocate arrays once before the loop
     double *int1D = (double *)calloc(nRBins, sizeof(*int1D));
@@ -1257,8 +1257,9 @@ int main(int argc, char *argv[]){
 			fflush(f2d);
 			fclose(f2d);
 		}
-		twrite2dout = clock();
 		// Now we have IntArrPerFrame, we need to make it into a 1D.
+		twrite2dout = clock();
+		tmake1din = clock();
 		gpuErrchk(cudaDeviceSynchronize());
 		memset(int1D,0,nRBins*sizeof(*int1D));
 		double maxInt=-1;
@@ -1290,6 +1291,7 @@ int main(int argc, char *argv[]){
 		for (int r=0;r<nRBins;r++){
 			lineout[r*2+1] = int1D[r];
 		}
+		tmake1dout = clock();
 		tIntegration = clock();
 		// Save lineout to the file.
 		fwrite(lineout,sizeof(double),nRBins*2,lineoutFile);
@@ -1436,8 +1438,9 @@ int main(int argc, char *argv[]){
 		diffTcopy1 = ((double)(tcopy1out - tcopy1in))/CLOCKS_PER_SEC;
 		diffTcopy2 = ((double)(tcopy2out - tcopy2in))/CLOCKS_PER_SEC;
 		diffTwrite2d = ((double)(twrite2dout - twrite2din))/CLOCKS_PER_SEC;
+		diffTmake1d = ((double)(tmake1dout - tmake1din))/CLOCKS_PER_SEC;
 
-		printf("Did integration, total time: %lf s for this frame, frameNr: %d. %lf %lf %lf %lf %lf %lf %lf %lf\n",diffT,chunk.dataset_num,diffTinter,diffTcopy1,diffTcopy2,diffTwrite2d,diffInteg,diffWriteLineout,diffTFit,diffWriteFitResult);
+		printf("Did integration, total time: %lf s for this frame, frameNr: %d. %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",diffT,chunk.dataset_num,diffTinter,diffTcopy1,diffTcopy2,diffTwrite2d,diffTmake1d,diffInteg,diffWriteLineout,diffTFit,diffWriteFitResult);
         free(chunk.data);
     }
     
