@@ -1221,7 +1221,6 @@ int main(int argc, char *argv[]){
 													devImage,devIntArrPerFrame,devPerFrameArr,devSumMatrix);
 		gpuErrchk(cudaDeviceSynchronize());
 		tfin = clock();
-		diffTinter = ((double)(tinter-tfin))/CLOCKS_PER_SEC;
 		gpuErrchk(cudaMemcpy(IntArrPerFrame,devIntArrPerFrame,bigArrSize*sizeof(double),cudaMemcpyDeviceToHost));
 		gpuErrchk(cudaDeviceSynchronize());
 		if (chunk.dataset_num==0 || firstFrame == 1){
@@ -1292,6 +1291,8 @@ int main(int argc, char *argv[]){
 		tFWLineout = clock();
 		// // Send the lineout to the server
 		// send_lineouts(chunk.dataset_num,nRBins*2,lineout);
+		tFit = clock();
+		tFWFitResult = clock();
 		if (peakFit == 1){
 			int peakCount;
 			Peak *peaks = NULL;
@@ -1421,6 +1422,7 @@ int main(int argc, char *argv[]){
 
 		t2 = clock();
 		diffT = ((double)(t2-t1))/CLOCKS_PER_SEC;
+		diffTinter = ((double)(tinter-tfin))/CLOCKS_PER_SEC;
 		diffInteg = ((double)(tIntegration - t1))/CLOCKS_PER_SEC;
 		diffWriteLineout = ((double)(tFWLineout - tIntegration))/CLOCKS_PER_SEC;
 		diffTFit = ((double)(tFit - tFWLineout))/CLOCKS_PER_SEC;
