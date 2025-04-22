@@ -1164,8 +1164,8 @@ int main(int argc, char *argv[]){
 		perror("Error opening output files");
 		exit(EXIT_FAILURE);
 	}
-	clock_t t1, t1inter, t2, tIntegration, tFit, tFWLineout, tFWFitResult, tinter, tfin, tcopy1in, tcopy1out, tcopy2in, tcopy2out,twrite2din,twrite2dout,tmake1din,tmake1dout;
-	double diffT=0, diffInteg, diffWriteLineout, diffTFit, diffWriteFitResult, diffTinter, diffTcopy1, diffTcopy2, diffTwrite2d, diffTmake1d, diffTsetup;
+	clock_t t1, t1_qp, t1inter, t2, tIntegration, tFit, tFWLineout, tFWFitResult, tinter, tfin, tcopy1in, tcopy1out, tcopy2in, tcopy2out,twrite2din,twrite2dout,tmake1din,tmake1dout;
+	double diffT=0, diffQp, diffInteg, diffWriteLineout, diffTFit, diffWriteFitResult, diffTinter, diffTcopy1, diffTcopy2, diffTwrite2d, diffTmake1d, diffTsetup;
 	int firstFrame = 1;
     // Allocate arrays once before the loop
     double *int1D = (double *)calloc(nRBins, sizeof(*int1D));
@@ -1184,6 +1184,7 @@ int main(int argc, char *argv[]){
         DataChunk chunk;
         queue_pop(&process_queue, &chunk);
         // Process the data
+		t1_qp = clock();
         memcpy(ImageInT,chunk.data,chunk.size*BYTES_PER_PIXEL);
 		if ((NrTransOpt==0) || (NrTransOpt==1 && TransOpt[0]==0)){
 			if (argc > 2){
@@ -1430,19 +1431,20 @@ int main(int argc, char *argv[]){
 		}
 
 		t2 = clock();
-		diffT = ((double)(t2-t1))/CLOCKS_PER_SEC;
-		diffTsetup = ((double)(t1inter-t1))/CLOCKS_PER_SEC;
-		diffTinter = ((double)(tfin-tinter))/CLOCKS_PER_SEC;
-		diffInteg = ((double)(tIntegration - t1))/CLOCKS_PER_SEC;
-		diffWriteLineout = ((double)(tFWLineout - tIntegration))/CLOCKS_PER_SEC;
-		diffTFit = ((double)(tFit - tFWLineout))/CLOCKS_PER_SEC;
-		diffWriteFitResult = ((double)(tFWFitResult - tFit))/CLOCKS_PER_SEC;
-		diffTcopy1 = ((double)(tcopy1out - tcopy1in))/CLOCKS_PER_SEC;
-		diffTcopy2 = ((double)(tcopy2out - tcopy2in))/CLOCKS_PER_SEC;
-		diffTwrite2d = ((double)(twrite2dout - twrite2din))/CLOCKS_PER_SEC;
-		diffTmake1d = ((double)(tmake1dout - tmake1din))/CLOCKS_PER_SEC;
+		diffT = ((double)(t2-t1))/CLOCKS_PER_SEC*1e6;
+		diffQp = ((double)(t1_qp-t1))/CLOCKS_PER_SEC*1e6;
+		diffTsetup = ((double)(t1inter-t1_qp))/CLOCKS_PER_SEC*1e6;
+		diffTinter = ((double)(tfin-tinter))/CLOCKS_PER_SEC*1e6;
+		diffInteg = ((double)(tIntegration - t1))/CLOCKS_PER_SEC*1e6;
+		diffWriteLineout = ((double)(tFWLineout - tIntegration))/CLOCKS_PER_SEC*1e6;
+		diffTFit = ((double)(tFit - tFWLineout))/CLOCKS_PER_SEC*1e6;
+		diffWriteFitResult = ((double)(tFWFitResult - tFit))/CLOCKS_PER_SEC*1e6;
+		diffTcopy1 = ((double)(tcopy1out - tcopy1in))/CLOCKS_PER_SEC*1e6;
+		diffTcopy2 = ((double)(tcopy2out - tcopy2in))/CLOCKS_PER_SEC*1e6;
+		diffTwrite2d = ((double)(twrite2dout - twrite2din))/CLOCKS_PER_SEC*1e6;
+		diffTmake1d = ((double)(tmake1dout - tmake1din))/CLOCKS_PER_SEC*1e6;
 
-		printf("Did integration, total time: %lf s for this frame, frameNr: %d. %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",diffT,chunk.dataset_num,diffTsetup,diffTcopy1,diffTinter,diffTcopy2,diffTwrite2d,diffTmake1d,diffInteg,diffWriteLineout,diffTFit,diffWriteFitResult);
+		printf("Total time: %lf s for frameNr: %d. In microseconds: Queuepop: %lf Setup: %lf ToGPU: %lf Integration: %lf FromGPU: %lf Write2d: %lf Make1D: %lf TotalIntegrationTime: %lf Write1d: %lf FitPeak: %lf  WriteFitResult: %lf\n",diffT,chunk.dataset_num,diffQp,diffTsetup,diffTcopy1,diffTinter,diffTcopy2,diffTwrite2d,diffTmake1d,diffInteg,diffWriteLineout,diffTFit,diffWriteFitResult);
         free(chunk.data);
     }
     
