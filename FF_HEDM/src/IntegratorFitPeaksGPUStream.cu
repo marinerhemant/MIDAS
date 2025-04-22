@@ -1006,6 +1006,12 @@ int findPeaks(const double *d, const double *r, int N, Peak **fP, double minH, i
     return filtC;
 }
 
+// --- String Utility ---
+static inline int StartsWith(const char *a, const char *b) {
+    // Check if string 'a' starts with string 'b'
+    return (strncmp(a, b, strlen(b)) == 0);
+}
+
 // =========================================================================
 // ============================ MAIN FUNCTION ============================
 // =========================================================================
