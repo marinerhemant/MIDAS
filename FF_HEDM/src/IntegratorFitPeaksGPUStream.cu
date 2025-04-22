@@ -1471,7 +1471,7 @@ int main(int argc, char *argv[]){
         t_fit_cpu = get_wall_time_ms() - t_fit_start;
 
         double t_writefit_start = get_wall_time_ms();
-        if(pkFit&¤tPeakCount>0&&sendFitParams!=NULL){
+        if(pkFit && tPeakCount>0 && sendFitParams!=NULL){
             check(fwrite(sendFitParams,sizeof(double),currentPeakCount*5,fFit)!=(size_t)currentPeakCount*5,"Err write fit");
             fflush(fFit);
             // Optional Send: send_fit_result(currFidx,currentPeakCount,5,sendFitParams);
