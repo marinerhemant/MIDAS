@@ -1498,7 +1498,7 @@ int main(int argc, char *argv[]){
     free(hAvgDark);
     free(hDarkInT);
     free(hDarkIn);
-    // hImageInT freed in queue_destroy/loop
+    // hImageInT is freed in queue_destroy
     free(hIntArrFrame);
     free(hPerFrame);
     if(h_int1D) gpuWarnchk(cudaFreeHost(h_int1D)); // Free pinned
@@ -1510,7 +1510,10 @@ int main(int argc, char *argv[]){
     free(hRLo);
     free(hRHi);
     if(hMapMask) free(hMapMask);
+
     UnmapBins(); // Unmap mmap'd files
+
+    // Free GPU memory (use gpuWarnchk for cleanup to avoid exiting on minor errors)
     if(dAvgDark) gpuWarnchk(cudaFree(dAvgDark));
     if(dProcessedImage) gpuWarnchk(cudaFree(dProcessedImage));
     if(d_int1D) gpuWarnchk(cudaFree(d_int1D));
@@ -1524,18 +1527,31 @@ int main(int argc, char *argv[]){
     if(dEtaHi) gpuWarnchk(cudaFree(dEtaHi));
     if(dRLo) gpuWarnchk(cudaFree(dRLo));
     if(dRHi) gpuWarnchk(cudaFree(dRHi));
+
     // Destroy CUDA events
     gpuWarnchk(cudaEventDestroy(ev_proc_start)); gpuWarnchk(cudaEventDestroy(ev_proc_stop));
     gpuWarnchk(cudaEventDestroy(ev_integ_start)); gpuWarnchk(cudaEventDestroy(ev_integ_stop));
     gpuWarnchk(cudaEventDestroy(ev_prof_start)); gpuWarnchk(cudaEventDestroy(ev_prof_stop));
     gpuWarnchk(cudaEventDestroy(ev_d2h_start)); gpuWarnchk(cudaEventDestroy(ev_d2h_stop));
 
-    printf("Closing server socket %d & joining accept thread...\n", server_fd);
-    close(server_fd); // Close socket; this might help accept() unblock if it was waiting
-    // Ensure acceptor thread exits cleanly before destroying queue
-    pthread_join(accept_thread, NULL); // Wait for accept thread
+    // Close the server socket *before* joining the accept thread.
+    // This should cause the blocked accept() call in the thread to return an error,
+    // allowing the thread loop to check keep_running and exit.
+    printf("Closing server socket %d to unblock accept thread...\n", server_fd);
+    if (server_fd >= 0) { // Ensure socket descriptor is valid
+         close(server_fd);
+         server_fd = -1; // Mark as closed
+    }
 
-    queue_destroy(&process_queue); // Destroy queue AFTER threads are joined
+    // Now join the accept thread (it should exit shortly after the socket is closed)
+    printf("Joining accept thread...\n");
+    pthread_join(accept_thread, NULL);
+    printf("Accept thread joined.\n");
+    // *** MODIFICATION END ***
+
+
+    // Destroy queue (should happen after all threads using it are joined/finished)
+    queue_destroy(&process_queue);
 
     printf("[%s] - Exiting cleanly.\n", argv[0]);
     return 0;
