@@ -1422,7 +1422,7 @@ int main(int argc, char *argv[]){
 
 		t2 = clock();
 		diffT = ((double)(t2-t1))/CLOCKS_PER_SEC;
-		diffTinter = ((double)(tinter-tfin))/CLOCKS_PER_SEC;
+		diffTinter = ((double)(tfin-tinter))/CLOCKS_PER_SEC;
 		diffInteg = ((double)(tIntegration - t1))/CLOCKS_PER_SEC;
 		diffWriteLineout = ((double)(tFWLineout - tIntegration))/CLOCKS_PER_SEC;
 		diffTFit = ((double)(tFit - tFWLineout))/CLOCKS_PER_SEC;
