@@ -1244,7 +1244,6 @@ int main(int argc, char *argv[]){
     float t_proc_gpu=0, t_integ_gpu=0, t_prof_gpu=0, t_d2h_gpu=0;
 
     double t_qp_cpu=0, t_write1d_cpu=0, t_fit_cpu=0, t_writefit_cpu=0, t_write2d_cpu=0, t_loop_cpu=0;
-    double t_start_loop;
 
     int firstFrame=1;
     double *hIntArrFrame=(double*)calloc(bigArrSize,sizeof(double)); check(!hIntArrFrame,"Alloc fail hIntArrFrame");
@@ -1262,7 +1261,6 @@ int main(int argc, char *argv[]){
     // =========================== Main Processing Loop ===========================
     int frameCounter = 0;
     while (keep_running) {
-        t_start_loop = get_wall_time_ms();
 
         double t_qp_start = get_wall_time_ms();
         DataChunk chunk;
