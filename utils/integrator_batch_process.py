@@ -187,7 +187,7 @@ def check_and_create_mapping_files(param_file, midas_env,install_dir):
     # Files don't exist, need to run the mapper
     print(f"Mapping files not found. Running DetectorMapper to create them...")
     
-    detector_mapper = os.path.join(install_dir, "FF_HEDM","bin","bin","DetectorMapper")
+    detector_mapper = os.path.join(install_dir, "FF_HEDM","bin","DetectorMapper")
     mapper_cmd = [detector_mapper, param_file]
     mapper_log = "detector_mapper.log"
     
