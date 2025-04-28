@@ -46,9 +46,5 @@ if(NOT blosc_POPULATED)
   set_target_properties(BLOSC::BLOSC PROPERTIES
     INTERFACE_INCLUDE_DIRECTORIES "${blosc_SOURCE_DIR}/include"
   )
-
-  install(DIRECTORY ${blosc_SOURCE_DIR}/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-          FILES_MATCHING PATTERN "*.h"
-         )
-
 endif()
+
