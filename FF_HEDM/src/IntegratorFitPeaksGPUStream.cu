@@ -22,7 +22,6 @@
 //
 // Example compile command (adjust paths and architecture flags):
 /*
-  source ~/.MIDAS/paths # Set up environment variables for libraries
    ~/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStream.cu -o bin/IntegratorFitPeaksGPUStream \
    -Xcompiler -g -arch sm_90   -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/include \
    -L/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/lib   -O3 -lnlopt -lblosc2 -lhdf5 -lhdf5_hl -lz -ldl -lm -lpthread -lzip
