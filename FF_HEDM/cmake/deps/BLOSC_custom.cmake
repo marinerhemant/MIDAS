@@ -27,11 +27,6 @@ if(NOT blosc_POPULATED)
   # Blosc's CMakeLists.txt will be processed here
   add_subdirectory(${blosc_SOURCE_DIR} ${blosc_BINARY_DIR})
 
-  # --- Target Alias for Internal Use ---
-  # The actual target created by c-blosc2's CMake is typically 'blosc2'
-  # This target respects the BUILD_SHARED_LIBS option.
-  set(BLOSC_ACTUAL_TARGET_NAME blosc2)
-
   # Create our internal interface target linking to the actual Blosc target
   if(TARGET ${BLOSC_ACTUAL_TARGET_NAME} AND NOT TARGET BLOSC::BLOSC)
     add_library(BLOSC::BLOSC INTERFACE IMPORTED)
