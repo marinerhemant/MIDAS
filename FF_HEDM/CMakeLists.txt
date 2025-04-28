@@ -213,41 +213,6 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/NLOPT_custom.cmake")
     ]])
 endif()
 
-# ZLIB
-if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/ZLIB_custom.cmake")
-    file(WRITE ${CMAKE_SOURCE_DIR}/cmake/deps/ZLIB.cmake [[
-    FetchContent_Declare(
-    zlib
-    URL https://www.dropbox.com/scl/fi/vrgb8i9755eojx5eh1a2r/zlib-1.3.1.tar.gz?rlkey=9jwwjc1aqmflin5b75r2lc2yw&dl=1
-    )
-
-    FetchContent_GetProperties(zlib)
-    if(NOT zlib_POPULATED)
-    FetchContent_Populate(zlib)
-    
-    set(ZLIB_BUILD_SHARED ${BUILD_SHARED_LIBS} CACHE BOOL "Build shared libraries" FORCE)
-    set(ZLIB_BUILD_STATIC NOT ${BUILD_SHARED_LIBS} CACHE BOOL "Build static libraries" FORCE)
-    
-    add_subdirectory(${zlib_SOURCE_DIR} ${zlib_BINARY_DIR})
-    
-    # Export ZLIB as a target
-    add_library(ZLIB::ZLIB INTERFACE IMPORTED)
-    if(BUILD_SHARED_LIBS)
-        set_target_properties(ZLIB::ZLIB PROPERTIES
-        INTERFACE_LINK_LIBRARIES zlib
-        )
-    else()
-        set_target_properties(ZLIB::ZLIB PROPERTIES
-        INTERFACE_LINK_LIBRARIES zlibstatic
-        )
-    endif()
-    set_target_properties(ZLIB::ZLIB PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${zlib_SOURCE_DIR};${zlib_BINARY_DIR}"
-    )
-    endif()
-    ]])
-endif()
-
 # LIBTIFF
 if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/LIBTIFF_custom.cmake")
     file(WRITE ${CMAKE_SOURCE_DIR}/cmake/deps/LIBTIFF.cmake [[
@@ -540,7 +505,6 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/FFTW_custom.cmake")
 endif()
 
 # Handle all dependencies
-# handle_dependency(ZLIB "https://www.dropbox.com/scl/fi/vrgb8i9755eojx5eh1a2r/zlib-1.3.1.tar.gz?rlkey=9jwwjc1aqmflin5b75r2lc2yw&dl=0" DOWNLOAD_DEPENDENCIES)
 handle_dependency(BLOSC "https://github.com/Blosc/c-blosc2" DOWNLOAD_DEPENDENCIES)
 handle_dependency(LIBTIFF "https://www.dropbox.com/scl/fi/tk3axrjtjgxmjj9hzsk13/tiff-4.6.0.tar.gz?rlkey=judqzxze5g4sg0bviyul8kqvp&dl=0" DOWNLOAD_DEPENDENCIES)
 handle_dependency(HDF5 "https://www.dropbox.com/scl/fi/ib4wkq1s9jhm0oi9n6r7c/hdf5-1.14.2.tar.gz?rlkey=eq20hs7juecpwcn1vuumssjuf&dl=0" DOWNLOAD_DEPENDENCIES)
@@ -590,9 +554,6 @@ if(TARGET NLOPT::NLOPT)
   list(APPEND COMMON_LINK_LIBRARIES NLOPT::NLOPT)
 endif()
 
-# if(TARGET ZLIB::ZLIB)
-#   list(APPEND COMMON_LINK_LIBRARIES ZLIB::ZLIB)
-# endif()
 
 if(TARGET LIBTIFF::LIBTIFF)
   list(APPEND COMMON_LINK_LIBRARIES LIBTIFF::LIBTIFF)
