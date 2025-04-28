@@ -24,7 +24,7 @@
 /*
   source ~/.MIDAS/paths # Set up environment variables for libraries
    ~/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStream.cu -o bin/IntegratorFitPeaksGPUStream \
-   -Xcompiler -g -arch sm_90   -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/.MIDAS/NLOPT/include \
+   -Xcompiler -g -arch sm_90   -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/include \
    -L/home/beams/S1IDUSER/.MIDAS/NLOPT/lib   -O3 -lnlopt -I/home/beams/S1IDUSER/.MIDAS/BLOSC/include \
    -L/home/beams/S1IDUSER/.MIDAS/BLOSC/lib64 -lblosc2   -I/home/beams/S1IDUSER/.MIDAS/HDF5/include \
    -L/home/beams/S1IDUSER/.MIDAS/HDF5/lib -lhdf5 -lhdf5_hl -lz -ldl -lm -lpthread  \
