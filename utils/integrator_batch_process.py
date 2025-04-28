@@ -164,13 +164,14 @@ def wait_for_server_ready(logfile, process, timeout=180):
     
     return False
 
-def check_and_create_mapping_files(param_file, midas_env):
+def check_and_create_mapping_files(param_file, midas_env,install_dir):
     """
     Check if mapping files exist (Map.bin, nMap.bin), and run DetectorMapper if they don't
     
     Args:
         param_file: Parameter file for the detector
         midas_env: Environment dictionary with LD_LIBRARY_PATH set
+        install_dir: Directory where the MIDAS software is installed
         
     Returns:
         Boolean indicating if mapping files exist or were successfully created
@@ -186,7 +187,7 @@ def check_and_create_mapping_files(param_file, midas_env):
     # Files don't exist, need to run the mapper
     print(f"Mapping files not found. Running DetectorMapper to create them...")
     
-    detector_mapper = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/DetectorMapper")
+    detector_mapper = os.path.join(install_dir, "FF_HEDM","bin","bin","DetectorMapper")
     mapper_cmd = [detector_mapper, param_file]
     mapper_log = "detector_mapper.log"
     
@@ -218,7 +219,7 @@ def check_and_create_mapping_files(param_file, midas_env):
                     print(".", end="", flush=True)
                 
                 # Sleep for a short period before checking again
-                time.sleep(1)
+                time.sleep(0.2)
             
             print("")  # New line after the progress dots
             
@@ -454,14 +455,14 @@ def main():
     midas_env["CUDA_VISIBLE_DEVICES"] = "0"  # Use the first GPU
     
     # Check if mapping files exist and create them if needed
-    if not check_and_create_mapping_files(param_file, midas_env):
+    if not check_and_create_mapping_files(param_file, midas_env,install_dir):
         print("Error: Failed to create required mapping files.")
         sys.exit(1)
         
     # Start IntegratorFitPeaksGPUStream in background
     print("Starting IntegratorFitPeaksGPUStream...")
     
-    integrator_executable = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IntegratorFitPeaksGPUStream")
+    integrator_executable = os.path.join(install_dir, "FF_HEDM","bin","IntegratorFitPeaksGPUStream")
     
     integrator_cmd = [integrator_executable, param_file]
     if dark_file:
@@ -497,7 +498,7 @@ def main():
     # Prepare server command
     server_cmd = [
         sys.executable,  # Add this line to use the current Python interpreter
-        os.path.expanduser("~/opt/MIDAS/utils/integrator_server.py"),
+        os.path.join(install_dir, "FF_HEDM","bin","utils","integrator_server.py"),
         "--stream", "0" if not use_pva else "1",
         "--mapping-file", mapping_file,
         "--save-interval", str(args.save_interval)
@@ -563,7 +564,7 @@ def main():
     print("\nConverting binary output to HDF5...")
     h5_cmd = [
         sys.executable,  # Add this line to use the current Python interpreter
-        os.path.expanduser("~/opt/MIDAS/utils/integrator_stream_process_h5.py"),
+        os.path.join(install_dir, "FF_HEDM","bin","utils","integrator_stream_process_h5.py"),
         "--lineout", "lineout.bin",
         "--fit", "fit.bin",
         "--int2d", "Int2D.bin",
