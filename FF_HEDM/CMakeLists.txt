@@ -295,6 +295,10 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/cmake/deps/HDF5_custom.cmake")
         set(ZLIB_LIBRARY ${ZLIB_LIBRARIES})
     endif()
 
+    include(GNUInstallDirs) # Ensure standard paths are defined
+    set(CMAKE_INSTALL_INCLUDEDIR include CACHE PATH "Installation directory for header files" FORCE)
+    set(CMAKE_INSTALL_LIBDIR ${CMAKE_INSTALL_LIBDIR} CACHE PATH "Installation directory for libraries" FORCE)
+
     add_subdirectory(${hdf5_SOURCE_DIR} ${hdf5_BINARY_DIR})
 
     # Export HDF5 as targets
