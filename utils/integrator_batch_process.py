@@ -406,6 +406,9 @@ def main():
     extension = args.extension
     mapping_file = args.mapping_file
     
+    # Get install dir from path of executable
+    install_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
     # Validate dark file if specified
     dark_file = args.dark
     if dark_file and not os.path.exists(dark_file):
@@ -440,7 +443,9 @@ def main():
     
     # Set up environment with the required LD_LIBRARY_PATH
     midas_env = os.environ.copy()
-    midas_env["LD_LIBRARY_PATH"] = "/home/beams/S1IDUSER/.MIDAS/BLOSC1/lib64:/home/beams/S1IDUSER/.MIDAS/BLOSC/lib64:/home/beams/S1IDUSER/.MIDAS/FFTW/lib:/home/beams/S1IDUSER/.MIDAS/HDF5/lib:/home/beams/S1IDUSER/.MIDAS/LIBTIFF/lib:/home/beams/S1IDUSER/.MIDAS/LIBZIP/lib64:/home/beams/S1IDUSER/.MIDAS/NLOPT/lib:/home/beams/S1IDUSER/.MIDAS/ZLIB/lib:" + midas_env.get("LD_LIBRARY_PATH", "")
+    # path should be set to the location of the MIDAS libraries: ${install_dir}/FF_HEDM/build/lib and ${install_dir}/FF_HEDM/build/include
+    midas_env["LD_LIBRARY_PATH"] = os.path.join(install_dir, "FF_HEDM", "build", "lib") + ":" + midas_env.get("LD_LIBRARY_PATH", "")
+    midas_env["LD_LIBRARY_PATH"] = os.path.join(install_dir, "FF_HEDM", "build", "include") + ":" + midas_env.get("LD_LIBRARY_PATH", "")
     
     # Print the environment for debugging
     print(f"Using LD_LIBRARY_PATH: {midas_env['LD_LIBRARY_PATH']}")
