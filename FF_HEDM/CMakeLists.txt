@@ -969,6 +969,7 @@ set(HEADER_DIRS
     ${CMAKE_BINARY_DIR}/_deps/blosc-src/include
     ${CMAKE_BINARY_DIR}/_deps/blosc1-src/blosc
     ${CMAKE_BINARY_DIR}/_deps/libzip-src/lib
+    ${CMAKE_BINARY_DIR}/_deps/zlib-src
 )
 
 # Create target directory
