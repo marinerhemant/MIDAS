@@ -24,7 +24,7 @@
 /*
    ~/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStream.cu -o bin/IntegratorFitPeaksGPUStream \
    -Xcompiler -g -arch sm_90   -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/include \
-   -L/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/lib   -O3 -lnlopt -lblosc2 -lhdf5 -lhdf5_hl -lz -ldl -lm -lpthread -lzip
+   -L/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/lib   -O3 -lnlopt -lz -ldl -lm -lpthread
 */
 // =========================================================================
 
@@ -52,7 +52,7 @@
 #include <sys/time.h>   // For gettimeofday
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include <blosc2.h>     // Include if blosc compression is used
+// #include <blosc2.h>     // Include if blosc compression is used
 #include <nlopt.h>      // For non-linear optimization
 
 // --- Constants ---
