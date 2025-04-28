@@ -941,16 +941,69 @@ add_midas_executable(mergeScansScanning
 )
 
 if(BUILD_CUDA)
-  add_midas_executable(Indexer
-    SOURCES src/IndexerRefineNLOPT.cu
+  add_midas_executable(IntegratorCUDA
+    SOURCES src/IntegratorFitPeaksGPUStream.cu
     CUDA
-  )
+    LINK_LIBRARIES BLOSC::BLOSC LIBZIP::LIBZIP NLOPT::NLOPT HDF5::HDF5 HDF5::HL
+    OMP)
+  # add_midas_executable(Indexer
+  #   SOURCES src/IndexerRefineNLOPT.cu
+  #   CUDA
+  # )
   
-  add_midas_executable(Peaks
-    SOURCES src/PeaksNLMD.cu
-    CUDA
-  )
+  # add_midas_executable(Peaks
+  #   SOURCES src/PeaksNLMD.cu
+  #   CUDA
+  # )
 endif()
+
+# Create list of header source directories (adjust paths as needed)
+set(HEADER_DIRS
+    ${CMAKE_BINARY_DIR}/deps/include # FFTW
+    ${CMAKE_BINARY_DIR}/_deps/nlopt-src/src/api
+    ${CMAKE_BINARY_DIR}/_deps/libtiff-src/libtiff
+    ${CMAKE_BINARY_DIR}/_deps/hdf5-src/src
+    ${CMAKE_BINARY_DIR}/_deps/hdf5-src/hl/src
+    ${CMAKE_BINARY_DIR}/_deps/blosc-src/include
+    ${CMAKE_BINARY_DIR}/_deps/blosc1-src/blosc
+    ${CMAKE_BINARY_DIR}/_deps/libzip-src/lib
+)
+
+# Create target directory
+set(AGGREGATED_INCLUDE_DIR ${CMAKE_BINARY_DIR}/include)
+file(MAKE_DIRECTORY ${AGGREGATED_INCLUDE_DIR})
+
+# Add custom command/target to copy headers
+add_custom_command(
+    OUTPUT ${AGGREGATED_INCLUDE_DIR}/.copied_headers_marker
+    COMMAND ${CMAKE_COMMAND} -E echo "Copying dependency headers..."
+    )
+
+foreach(HEADER_DIR ${HEADER_DIRS})
+    if(EXISTS ${HEADER_DIR})
+        # Use copy_directory for simplicity, adjust if specific files are needed
+        add_custom_command(
+            OUTPUT ${AGGREGATED_INCLUDE_DIR}/.copied_headers_marker
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${HEADER_DIR} ${AGGREGATED_INCLUDE_DIR}
+            APPEND
+            DEPENDS ${HEADER_DIR} # Rough dependency
+            COMMENT "Copying headers from ${HEADER_DIR}"
+        )
+    endif()
+endforeach()
+
+# Add a target to trigger the copy
+add_custom_target(copy_headers ALL # Add to ALL build
+    DEPENDS ${AGGREGATED_INCLUDE_DIR}/.copied_headers_marker
+)
+
+# Ensure dependencies are built before copying (might need refinement)
+# Add dependencies from FetchContent targets and ExternalProject
+add_dependencies(copy_headers
+    # Add target names created by FetchContent/add_subdirectory if known, e.g.:
+    # nlopt tiff hdf5 blosc2_shared blosc_shared zip
+    fftw_external # For FFTW
+)
 
 # Add a custom target for building all non-CUDA MIDAS executables
 add_custom_target(midas_executables DEPENDS 
