@@ -482,12 +482,6 @@ static inline void DoImageTransformationsSequential(int Nopt, const int Topt[MAX
     free(tmp);
 }
 
-// --- String Utility ---
-static inline int StartsWith(const char *a, const char *b) {
-    // Check if string 'a' starts with string 'b'
-    return (strncmp(a, b, strlen(b)) == 0);
-}
-
 // --- GPU Kernels ---
 
 __global__ void initialize_PerFrameArr_Area_kernel(
@@ -552,14 +546,9 @@ __global__ void initialize_PerFrameArr_Area_kernel(
             // --- Apply Mask if provided ---
             bool isMasked = false;
             if (dMapMask != NULL && mapMaskWordCount > 0) {
-                size_t wordIndex = testPos / 32;
-                if (wordIndex < mapMaskWordCount) {
-                    if (TestBit(dMapMask, testPos)) {
-                        isMasked = true; // Masked pixel
-                    }
-                } else {
-                     isMasked = true; // Index out of mask bounds, treat as masked
-                }
+				if (TestBit(dMapMask, testPos)) {
+					isMasked = true; // Masked pixel
+				}
             }
             // --- End Mask Application ---
 
@@ -653,10 +642,7 @@ __global__ void integrate_MapMask(double px, double Lsd, size_t bigArrSize, int 
 		struct data ThisVal = dPxList[dataPos + l];
 		long long testPos = (long long)ThisVal.z * NrPixelsY + ThisVal.y;
 		bool isMasked = false;
-		if (dMapMask != NULL && mapMaskWordCount > 0) {
-			size_t wordIndex = testPos / 32;
-			if (TestBit(dMapMask, testPos)) isMasked = true;
-		}
+		if (TestBit(dMapMask, testPos)) isMasked = true;
 
 		if (!isMasked) {
 			Intensity += dImage[testPos] * ThisVal.frac;

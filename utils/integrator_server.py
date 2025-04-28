@@ -402,7 +402,7 @@ def main():
             
             # Final save of mapping
             save_frame_mapping(frame_mapping, args.mapping_file)
-                
+            
     except KeyboardInterrupt:
         print("Sending terminated by user")
         # Save mapping on interrupt
