@@ -64,6 +64,4 @@ if(NOT fftw_POPULATED)
   
   # Add dependency
   add_dependencies(FFTW::FFTW fftw_external)
-  install(DIRECTORY ${CMAKE_BINARY_DIR}/deps/include/ DESTINATION include)
-  install(DIRECTORY ${CMAKE_BINARY_DIR}/deps/lib/ DESTINATION ${CMAKE_INSTALL_LIBDIR})
 endif()
