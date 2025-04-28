@@ -49,7 +49,6 @@ if(NOT blosc_POPULATED)
 
   install(DIRECTORY ${blosc_SOURCE_DIR}/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
           FILES_MATCHING PATTERN "*.h"
-          COMPONENT Development # Optional component specification
          )
 
 endif()
