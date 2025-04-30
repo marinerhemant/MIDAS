@@ -1497,7 +1497,7 @@ def main():
             with open('paramstest.txt', 'r') as paramsf:
                 lines = paramsf.readlines()
                 for line in lines:
-                    if line.startswith('Completeness'):
+                    if line.startswith('MinMatchesToAcceptFrac'):
                         minConf = float(line.split()[1])
                         break
             cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findMultipleSolutionsPF')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {minConf}"
