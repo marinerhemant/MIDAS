@@ -518,6 +518,7 @@ set(COMMON_C_FLAGS_LIST
   -fPIC
   -O3
   -w
+  -g
 )
 
 # Platform-specific compiler flags
