@@ -17,7 +17,7 @@
 #define BUFFER_SIZE 2048 // Replace hardcoded buffer size with a macro
 
 // Function prototypes
-void processVoxel(int voxNr, const char *folderName, int sgNr, double maxAng, int nScans);
+void processVoxel(int voxNr, const char *folderName, int sgNr, double maxAng, int nScans, double minConf);
 void writeSpotsToIndex(const char *folderName, const char *originalFolder, int nScans);
 
 int main(int argc, char *argv[]) {
