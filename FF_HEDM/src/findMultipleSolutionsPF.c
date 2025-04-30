@@ -24,8 +24,8 @@ int main(int argc, char *argv[]) {
     double start_time = omp_get_wtime();
     printf("\n\n\t\tFinding Multiple Solutions in PF-HEDM.\n\n");
 
-    if (argc != 6) {
-        printf("Supply folder, spaceGroup, maxAng, NumberScans and nCPUs as arguments: ie %s sgNum maxAngle folderName nScans nCPUs\n\n"
+    if (argc < 6) {
+        printf("Supply folder, spaceGroup, maxAng, NumberScans and nCPUs as arguments: ie %s sgNum maxAngle folderName nScans nCPUs (optional)minConf\n\n"
                "The indexing results must be in folderName/Output\n", argv[0]);
         return 1;
     }
@@ -36,10 +36,15 @@ int main(int argc, char *argv[]) {
     double maxAng = atof(argv[3]);
     int nScans = atoi(argv[4]);
     int numProcs = atoi(argv[5]);
+    double minConf = 0.0;
+    if (argc > 6) {
+        minConf = atof(argv[6]);
+        printf("Minimum confidence: %lf\n", minConf);
+    }
 
     #pragma omp parallel for num_threads(numProcs) schedule(dynamic)
     for (int voxNr = 0; voxNr < nScans * nScans; voxNr++) {
-        processVoxel(voxNr, folderName, sgNr, maxAng, nScans);
+        processVoxel(voxNr, folderName, sgNr, maxAng, nScans,minConf);
     }
 
     writeSpotsToIndex(folderName, argv[1], nScans);
@@ -48,7 +53,7 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-void processVoxel(int voxNr, const char *folderName, int sgNr, double maxAng, int nScans) {
+void processVoxel(int voxNr, const char *folderName, int sgNr, double maxAng, int nScans, double minConf) {
     char valsFN[BUFFER_SIZE], keyFN[BUFFER_SIZE];
     sprintf(valsFN, "%s/IndexBest_voxNr_%0*d.bin", folderName, 6, voxNr);
     sprintf(keyFN, "%s/IndexKey_voxNr_%0*d.txt", folderName, 6, voxNr);
@@ -122,6 +127,10 @@ void processVoxel(int voxNr, const char *folderName, int sgNr, double maxAng, in
     double bCon, bIA, conIn, iaIn;
     for (int i = 0; i < nIDs; i++) {
         if (markArr[i] == true) continue;
+        if (confIAArr[i * 2 + 0] < minConf) {
+            markArr[i] = true;
+            continue;
+        }
         for (int j = 0; j < 9; j++) OMThis[j] = OMArr[i * 9 + j];
         OrientMat2Quat(OMThis, Quat1);
         bCon = confIAArr[i * 2 + 0];
@@ -133,6 +142,10 @@ void processVoxel(int voxNr, const char *folderName, int sgNr, double maxAng, in
             OrientMat2Quat(OMInside, Quat2);
             Angle = GetMisOrientation(Quat1, Quat2, Axis, &ang, sgNr);
             conIn = confIAArr[j * 2 + 0];
+            if (conIn < minConf) {
+                markArr[j] = true;
+                continue;
+            }
             iaIn = confIAArr[j * 2 + 1];
             if (ang < maxAng) {
                 if (bCon < conIn) {

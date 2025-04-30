@@ -1492,7 +1492,15 @@ def main():
                 imgs.attrs['Header'] = np.bytes_('ID,Quat1,Quat2,Quat3,Quat4,x,y,a,b,c,alpha,beta,gamma,posErr,omeErr,InternalAngle,Completeness,E11,E12,E13,E22,E23,E33')
         else:
             # Multiple solutions per voxel
-            cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findMultipleSolutionsPF')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal}"
+            # Read Completeness from params file
+            minConf = 0.0
+            with open('paramstest.txt', 'r') as paramsf:
+                lines = paramsf.readlines()
+                for line in lines:
+                    if line.startswith('Completeness'):
+                        minConf = float(line.split()[1])
+                        break
+            cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findMultipleSolutionsPF')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {minConf}"
             logger.info(f"Running findMultipleSolutionsPF: {cmd}")
             subprocess.call(cmd, shell=True, cwd=topdir)
             
