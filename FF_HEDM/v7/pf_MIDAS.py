@@ -19,6 +19,7 @@ import h5py
 import zarr
 from numba import jit
 import traceback
+import re
 
 # Set paths dynamically using script location
 def get_installation_dir():
@@ -1497,9 +1498,13 @@ def main():
             with open('paramstest.txt', 'r') as paramsf:
                 lines = paramsf.readlines()
                 for line in lines:
-                    if line.startswith('MinMatchesToAcceptFrac'):
-                        minConf = float(line.split()[1])
-                        break
+                    match = re.match(r"^\s*MinMatchesToAcceptFrac\s+([\d.]+)\s*;?\s*$", line)
+                    if match:
+                        try:
+                            minConf = float(match.group(1))
+                        except:
+                            if line.strip().startswith('MinMatchesToAcceptFrac'):
+                                print(f"Warning: Line starts with key but format is unexpected: {line.strip()}")
             cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findMultipleSolutionsPF')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {minConf}"
             logger.info(f"Running findMultipleSolutionsPF: {cmd}")
             subprocess.call(cmd, shell=True, cwd=topdir)
