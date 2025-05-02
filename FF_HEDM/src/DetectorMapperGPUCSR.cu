@@ -861,9 +861,28 @@ int main(int argc, char *argv[])
     gpuErrchk(cudaMalloc(&etaBinsHigh_d, nEtaBins * sizeof(float)));
     gpuErrchk(cudaMalloc(&rBinsLow_d, nRBins * sizeof(float)));
     gpuErrchk(cudaMalloc(&rBinsHigh_d, nRBins * sizeof(float)));
-    unsigned int maxOutputSize = (unsigned int)mapSize * 10; // Heuristic
+    unsigned int maxOutputSize = (unsigned int)mapSize * 50; // Heuristic
+    unsigned long long requestedBytes = (unsigned long long)maxOutputSize * sizeof(GpuOutput);
+    printf("Attempting to allocate %.2f GB for GPU output buffer (%u entries)...\n",
+           (double)requestedBytes / (1024.0*1024.0*1024.0), maxOutputSize);
+    if (requestedBytes > 4ULL * 1024 * 1024 * 1024 ) { // Example limit: 4GB, adjust as needed
+        fprintf(stderr, "Warning: Requested output buffer size is very large (%.2f GB). Clamping or consider smaller bins/detector size.\n", (double)requestedBytes / (1024.0*1024.0*1024.0) );
+        // Optionally clamp maxOutputSize here if needed based on available memory
+    }
     printf("Allocating GPU output buffer for %u potential entries...\n", maxOutputSize);
     gpuErrchk(cudaMalloc(&outputBuffer_d, maxOutputSize * sizeof(GpuOutput)));
+    if (malloc_err != cudaSuccess) {
+        fprintf(stderr, "FATAL ERROR: Failed to allocate GPU output buffer (Size: %u, Bytes: %llu). Error: %s\n",
+                maxOutputSize, requestedBytes, cudaGetErrorString(malloc_err));
+        // ... perform necessary cleanup before exiting ...
+        cudaFree(distortionMapY_d); // Example cleanup
+        cudaFree(distortionMapZ_d);
+        cudaFree(outputCounter_d);
+        cudaFree(etaBinsLow_d);
+        // ... etc for other allocations ...
+        return 1; // Exit
+   }
+   printf("GPU output buffer allocated successfully.\n");
 
     // --- Copy Data to GPU (float) ---
     gpuErrchk(cudaMemcpy(distortionMapY_d, distortionMapY_h, mapSizeBytes, cudaMemcpyHostToDevice));
