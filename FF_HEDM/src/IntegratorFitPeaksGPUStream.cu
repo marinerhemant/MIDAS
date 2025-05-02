@@ -22,9 +22,13 @@
 //
 // Example compile command (adjust paths and architecture flags):
 /*
-   ~/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStream.cu -o bin/IntegratorFitPeaksGPUStream \
-   -Xcompiler -g -arch sm_86   -gencode=arch=compute_86,code=sm_86 -arch sm_90   -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/include \
-   -L/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/lib   -O3 -lnlopt -lz -ldl -lm -lpthread
+~/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStream.cu -o bin/IntegratorFitPeaksGPUStream \
+  -gencode=arch=compute_86,code=sm_86 \
+  -gencode=arch=compute_90,code=sm_90 \
+  -Xcompiler -g \
+  -I/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/include \
+  -L/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/lib \
+  -O3 -lnlopt -lz -ldl -lm -lpthread
 
 */
 // =========================================================================
@@ -577,7 +581,6 @@ __global__ void integrate_noMapMask(double px, double Lsd, size_t bigArrSize, in
 	double *dSumMatrix)
 {
 	const size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
-	const size_t totalPixels = (size_t)NrPixelsY * NrPixelsZ;
 	if (idx >= bigArrSize) return;
 
 	double Intensity = 0.0;
@@ -621,7 +624,6 @@ __global__ void integrate_MapMask(double px, double Lsd, size_t bigArrSize, int 
   double *dSumMatrix)
 {
 	const size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
-	const size_t totalPixels = (size_t)NrPixelsY * NrPixelsZ;
 	if (idx >= bigArrSize) return;
 
 	double Intensity = 0.0;
@@ -1251,7 +1253,7 @@ int main(int argc, char *argv[]){
     check(!pF, "Failed open param file: %s", ParamFN);
 
     char line[4096], key[1024], val_str[3072]; // Buffers for parsing
-    const char *s; // Pointer for StartsWith checks
+    // const char *s; // Pointer for StartsWith checks
     int Nopt = 0; // Number of image transform operations
     long long GapI = 0, BadPxI = 0; // Intensity values for mask generation
     int Topt[MAX_TRANSFORM_OPS] = {0}; // Array to store transform options
