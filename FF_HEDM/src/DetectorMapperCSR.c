@@ -1,5 +1,5 @@
 // =========================================================================
-// DetectorMapperCSR.c (Modified for CSR Output)
+// DetectorMapper.c (Modified for CSR Output - v2 with fixes)
 //
 // Copyright (c) 2014, UChicago Argonne, LLC
 // See LICENSE file.
@@ -8,7 +8,6 @@
 //          (R, Eta) considering geometry and distortion, and saves the mapping
 //          in Compressed Sparse Row (CSR) format.
 // =========================================================================
-// gcc src/DetectorMapperCSR.c -o bin/DetectorMapperCSR -I/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/include -L/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/lib -O3 -ldl -lm
 
 #include <stdio.h>
 #include <math.h>
@@ -20,6 +19,7 @@
 #include <ctype.h>
 #include <stdint.h>
 #include <errno.h> // Required for errno
+#include <stdarg.h> // <<< Added for va_start, va_end
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -32,10 +32,10 @@ int distortionFile;
 static void check (int test, const char * message, ...) {
     if (test) {
         va_list args;
-        va_start (args, message);
+        va_start (args, message); // Correct usage requires stdarg.h
         fprintf(stderr, "Fatal Error: ");
         vfprintf(stderr, message, args);
-        va_end (args);
+        va_end (args); // Correct usage requires stdarg.h
         fprintf(stderr, "\n");
         exit(EXIT_FAILURE);
     }
@@ -136,7 +136,7 @@ REta4MYZ(
 	double n1,
 	double n2,
 	double px, // Assume pxY == pxZ for distortion correction simplicity
-	double *RetVals)
+	double *RetVals) // Expects RetVals[0] = Eta, RetVals[1] = Rt (in pixels)
 {
 	double Yc, Zc, ABC[3], ABCPr[3], XYZ[3], Rad, Eta, RNorm, DistortFunc, EtaT, Rt;
 	Yc = (-Y + Ycen)*px;
@@ -148,38 +148,32 @@ REta4MYZ(
 	XYZ[0] = Lsd+ABCPr[0];
     // Check for division by zero or near-zero
     if (fabs(XYZ[0]) < EPS) {
-        // Handle case where projection source is essentially on the detector plane
-        // This likely indicates an invalid geometry setup. Return large R or NaN?
-        // Returning large R for now.
         Rt = 1e12; // Effectively infinite R
         Eta = 0.0; // Arbitrary Eta
     } else {
-	    Rad = (Lsd/(XYZ[0]))*(sqrt(XYZ[1]*XYZ[1] + XYZ[2]*XYZ[2]));
+	    Rad = (Lsd/(XYZ[0]))*(sqrt(XYZ[1]*XYZ[1] + XYZ[2]*XYZ[2])); // Radius in metric units
 	    Eta = CalcEtaAngle(XYZ[1],XYZ[2]);
 	    // Apply distortion correction (if parameters are non-zero)
-        // Ensure RhoD is positive
         if (RhoD > EPS && (fabs(p0)>EPS || fabs(p1)>EPS || fabs(p2)>EPS)) {
             RNorm = Rad / RhoD;
             EtaT = 90.0 - Eta; // Adjust Eta for distortion function convention if needed
-            // Clamp EtaT to avoid issues with potential domain errors in trig functions if needed
             DistortFunc = (p0*(pow(RNorm,n0))*(cos(deg2rad*(2.0*EtaT))))
                         + (p1*(pow(RNorm,n1))*(cos(deg2rad*(4.0*EtaT+p3))))
                         + (p2*(pow(RNorm,n2))) + 1.0;
-            // Apply distortion, prevent negative Radius if distortion is extreme
-            Rad = fmax(0.0, Rad * DistortFunc);
+            Rad = fmax(0.0, Rad * DistortFunc); // Apply distortion
         }
-        Rt = Rad / px; // R in pixels
+        Rt = Rad / px; // Convert final metric radius to R in pixels
     }
 	RetVals[0] = Eta;
 	RetVals[1] = Rt;
 }
 
 static inline
-void YZ4mREta(double R, double Eta, double px, double *YZ){
+void YZ4mREta(double R_pixels, double Eta, double px, double *YZ_metric){
     // Convert R (in pixels) back to metric distance before calculating Y, Z
-    double R_metric = R * px;
-	YZ[0] = -R_metric*sin(Eta*deg2rad); // Y coordinate
-	YZ[1] = R_metric*cos(Eta*deg2rad);  // Z coordinate
+    double R_metric = R_pixels * px;
+	YZ_metric[0] = -R_metric*sin(Eta*deg2rad); // Y coordinate (metric)
+	YZ_metric[1] = R_metric*cos(Eta*deg2rad);  // Z coordinate (metric)
 }
 
 const double dy[4] = {-0.5, +0.5, +0.5, -0.5}; // Pixel corner y-offsets
@@ -211,8 +205,8 @@ REtaMapper(
 }
 
 struct Point {
-	double x; // Represents Y in the detector plane (after potential REta -> YZ mapping)
-	double y; // Represents Z in the detector plane
+	double x; // Represents Y in the detector plane (metric)
+	double y; // Represents Z in the detector plane (metric)
 };
 
 struct Point center;
@@ -221,60 +215,38 @@ struct Point center;
 static int cmpfunc (const void * ia, const void *ib){
 	struct Point *a = (struct Point *)ia;
 	struct Point *b = (struct Point *)ib;
-
-	// Handle vertical line cases and same angle cases carefully
     double angle_a = atan2(a->y - center.y, a->x - center.x);
     double angle_b = atan2(b->y - center.y, b->x - center.x);
-
     if (angle_a < angle_b) return -1;
     if (angle_a > angle_b) return 1;
-
-    // If angles are same, sort by distance (closer first - though order shouldn't matter for area calc)
     double dist_sq_a = (a->x - center.x)*(a->x - center.x) + (a->y - center.y)*(a->y - center.y);
     double dist_sq_b = (b->x - center.x)*(b->x - center.x) + (b->y - center.y)*(b->y - center.y);
-
     if (dist_sq_a < dist_sq_b) return -1;
     if (dist_sq_a > dist_sq_b) return 1;
     return 0;
 }
 
-
-// Position matrix for pixel corners relative to pixel center (Y, Z order)
-double PosMatrix[4][2]={{-0.5, -0.5}, // Bottom-left
-						{ 0.5, -0.5}, // Bottom-right
-						{ 0.5,  0.5}, // Top-right
-						{-0.5,  0.5}}; // Top-left
-
 // Calculate area of a polygon using Shoelace formula
-// Assumes Edges are sorted counter-clockwise
 static inline
 double CalcAreaPolygonShoelace(struct Point *SortedEdges, int nEdges){
-	if (nEdges < 3) return 0.0; // Not a polygon
-
+	if (nEdges < 3) return 0.0;
 	double Area = 0.0;
-	int j = nEdges - 1; // The last vertex is the previous vertex to the first vertex
+	int j = nEdges - 1;
 	for (int i = 0; i < nEdges; i++) {
 		Area += (SortedEdges[j].x + SortedEdges[i].x) * (SortedEdges[j].y - SortedEdges[i].y);
-		j = i; // j is previous vertex to i
+		j = i;
 	}
 	return fabs(Area / 2.0);
 }
 
 // Find unique vertices and sort them counter-clockwise for area calculation
-// EdgesIn: Array of potential vertices (Y, Z)
-// EdgesOut: Output array for sorted unique vertices
-// nEdgesIn: Number of potential vertices
-// Returns: Number of unique vertices found (nEdgesOut)
 static inline
 int SortUniqueVertices(struct Point *EdgesIn, struct Point *EdgesOut, int nEdgesIn) {
     if (nEdgesIn == 0) return 0;
-
     int nEdgesOut = 0;
     center.x = 0.0;
     center.y = 0.0;
-
-    // Calculate centroid (average position) and filter duplicates
-    double unique_threshold_sq = EPS * EPS; // Threshold for considering points identical (squared)
+    double unique_threshold_sq = EPS * EPS;
     for (int i = 0; i < nEdgesIn; i++) {
         int duplicate = 0;
         for (int j = 0; j < nEdgesOut; j++) {
@@ -292,17 +264,13 @@ int SortUniqueVertices(struct Point *EdgesIn, struct Point *EdgesOut, int nEdges
             nEdgesOut++;
         }
     }
-
     if (nEdgesOut > 0) {
         center.x /= nEdgesOut;
         center.y /= nEdgesOut;
     } else {
-        return 0; // No unique points
+        return 0;
     }
-
-    // Sort the unique vertices counter-clockwise around the centroid
     qsort(EdgesOut, nEdgesOut, sizeof(struct Point), cmpfunc);
-
     return nEdgesOut;
 }
 
@@ -314,102 +282,80 @@ struct data {
 };
 
 // Function to calculate intersection of two line segments
-// Returns 1 if they intersect, 0 otherwise. Stores intersection point in *intersection.
 static int LineSegmentIntersection(struct Point p1, struct Point p2, struct Point p3, struct Point p4, struct Point *intersection) {
     double det = (p1.x - p2.x) * (p3.y - p4.y) - (p1.y - p2.y) * (p3.x - p4.x);
-
-    if (fabs(det) < EPS) {
-        return 0; // Lines are parallel or collinear
-    }
-
+    if (fabs(det) < EPS) return 0; // Parallel or collinear
     double t = ((p1.x - p3.x) * (p3.y - p4.y) - (p1.y - p3.y) * (p3.x - p4.x)) / det;
     double u = -((p1.x - p2.x) * (p1.y - p3.y) - (p1.y - p2.y) * (p1.x - p3.x)) / det;
-
-    if (t >= 0.0 && t <= 1.0 && u >= 0.0 && u <= 1.0) {
+    if (t >= -EPS && t <= (1.0 + EPS) && u >= -EPS && u <= (1.0 + EPS)) { // Allow small tolerance
         intersection->x = p1.x + t * (p2.x - p1.x);
         intersection->y = p1.y + t * (p2.y - p1.y);
         return 1;
     }
-    return 0; // Intersection point is not on both segments
+    return 0;
 }
 
 
 // Sutherland-Hodgman polygon clipping algorithm
-// Clips the subject polygon against the clip polygon (assumed convex)
-// subjectPolygon: Array of vertices for the polygon to be clipped
-// nSubjectVertices: Number of vertices in subjectPolygon
-// clipPolygon: Array of vertices for the clipping polygon (counter-clockwise)
-// nClipVertices: Number of vertices in clipPolygon
-// resultPolygon: Output array for the clipped polygon vertices
-// maxResultVertices: Max size of resultPolygon buffer
-// Returns: Number of vertices in the clipped polygon
 static int ClipPolygon(struct Point *subjectPolygon, int nSubjectVertices,
                        struct Point *clipPolygon, int nClipVertices,
                        struct Point *resultPolygon, int maxResultVertices) {
-
     if (nClipVertices < 3 || nSubjectVertices == 0) return 0;
 
-    struct Point tempPolygon[maxResultVertices]; // Temporary buffer
+    struct Point tempPolygon[maxResultVertices];
     int nTempVertices = 0;
     int nResultVertices = nSubjectVertices;
 
-    // Initialize resultPolygon with subjectPolygon
-    memcpy(resultPolygon, subjectPolygon, nSubjectVertices * sizeof(struct Point));
+    // Initialize resultPolygon with subjectPolygon if they are different buffers
+    if (resultPolygon != subjectPolygon) {
+        memcpy(resultPolygon, subjectPolygon, nSubjectVertices * sizeof(struct Point));
+    }
 
-    // Clip against each edge of the clip polygon
     for (int i = 0; i < nClipVertices; ++i) {
         struct Point clipP1 = clipPolygon[i];
-        struct Point clipP2 = clipPolygon[(i + 1) % nClipVertices]; // Next vertex
+        struct Point clipP2 = clipPolygon[(i + 1) % nClipVertices];
 
-        nTempVertices = 0; // Reset temp buffer
-        if (nResultVertices == 0) break; // Nothing left to clip
+        nTempVertices = 0;
+        if (nResultVertices == 0) break;
 
-        struct Point s = resultPolygon[nResultVertices - 1]; // Start with the last vertex
+        struct Point s = resultPolygon[nResultVertices - 1];
 
         for (int j = 0; j < nResultVertices; ++j) {
-            struct Point e = resultPolygon[j]; // Current vertex
-
-            // Calculate positions relative to the clip edge (using cross product concept)
-            // Positive means inside, negative means outside (for CCW clip polygon)
+            struct Point e = resultPolygon[j];
             double s_pos = (clipP2.x - clipP1.x) * (s.y - clipP1.y) - (clipP2.y - clipP1.y) * (s.x - clipP1.x);
             double e_pos = (clipP2.x - clipP1.x) * (e.y - clipP1.y) - (clipP2.y - clipP1.y) * (e.x - clipP1.x);
-
             struct Point intersectionPoint;
 
-            // Case 1: Both inside -> Output E
-            if (s_pos >= -EPS && e_pos >= -EPS) {
+            if (s_pos >= -EPS && e_pos >= -EPS) { // Case 1: Both inside
                  if (nTempVertices < maxResultVertices) tempPolygon[nTempVertices++] = e;
-                 else { fprintf(stderr,"Warn: Clip buffer overflow\n"); return 0; } // Buffer overflow
+                 else { fprintf(stderr,"Warn: Clip buffer overflow (Case 1)\n"); return 0; }
             }
-            // Case 2: S inside, E outside -> Output intersection
-            else if (s_pos >= -EPS && e_pos < -EPS) {
+            else if (s_pos >= -EPS && e_pos < -EPS) { // Case 2: S inside, E outside
                 if (LineSegmentIntersection(s, e, clipP1, clipP2, &intersectionPoint)) {
                      if (nTempVertices < maxResultVertices) tempPolygon[nTempVertices++] = intersectionPoint;
-                     else { fprintf(stderr,"Warn: Clip buffer overflow\n"); return 0; }
-                }
+                     else { fprintf(stderr,"Warn: Clip buffer overflow (Case 2)\n"); return 0; }
+                } else { /* Edge case: parallel or intersection fails */ }
             }
-            // Case 3: S outside, E inside -> Output intersection, then E
-            else if (s_pos < -EPS && e_pos >= -EPS) {
+            else if (s_pos < -EPS && e_pos >= -EPS) { // Case 3: S outside, E inside
                 if (LineSegmentIntersection(s, e, clipP1, clipP2, &intersectionPoint)) {
                     if (nTempVertices < maxResultVertices) tempPolygon[nTempVertices++] = intersectionPoint;
-                    else { fprintf(stderr,"Warn: Clip buffer overflow\n"); return 0; }
-                }
+                    else { fprintf(stderr,"Warn: Clip buffer overflow (Case 3a)\n"); return 0; }
+                } else { /* Edge case: parallel or intersection fails */ }
+                // Output E
                 if (nTempVertices < maxResultVertices) tempPolygon[nTempVertices++] = e;
-                else { fprintf(stderr,"Warn: Clip buffer overflow\n"); return 0; }
+                else { fprintf(stderr,"Warn: Clip buffer overflow (Case 3b)\n"); return 0; }
             }
             // Case 4: Both outside -> No output
-
-            s = e; // Move to the next edge
+            s = e;
         }
-        // Copy temp polygon back to result polygon for next clip edge
         nResultVertices = nTempVertices;
         memcpy(resultPolygon, tempPolygon, nResultVertices * sizeof(struct Point));
     }
 
     // Final sort and unique check after all clipping
-    struct Point finalUniqueVertices[maxResultVertices];
-    int nFinalVertices = SortUniqueVertices(resultPolygon, finalUniqueVertices, nResultVertices);
-    memcpy(resultPolygon, finalUniqueVertices, nFinalVertices * sizeof(struct Point));
+    // Use a separate buffer for SortUniqueVertices output if resultPolygon is needed intact
+    // Let's sort in place for simplicity here.
+    int nFinalVertices = SortUniqueVertices(resultPolygon, resultPolygon, nResultVertices);
 
     return nFinalVertices;
 }
@@ -453,24 +399,21 @@ mapperfcn(
 	MatrixMultF33(Ry,Rz,TRint);
 	MatrixMultF33(Rx,TRint,TRs);
 	double n0=2.0, n1=4.0, n2=2.0; // Defaults for distortion exponents
-	double *RetVals;
-	RetVals = malloc(2*sizeof(*RetVals));
-    check(RetVals == NULL, "Failed to allocate RetVals");
+	double RetVals[2]; // Local buffer for REta4MYZ output {Eta, Rt}
+    double YZ_temp[2]; // Local buffer for YZ4mREta output {Y, Z} metric
 
 	double Y, Z, Eta, Rt;
 	int i,j,k,l,m;
 	double EtaMi, EtaMa, RMi, RMa;
 
-	// Buffers for polygon clipping
-    const int MAX_POLY_VERTICES = 16; // Max vertices expected for intersection polygon
-    struct Point pixelCornersMetric[4]; // Pixel corners in YZ metric space
-    struct Point binCornersMetric[4];   // Integration bin corners in YZ metric space
+	const int MAX_POLY_VERTICES = 16;
+    struct Point pixelCornersMetric[4];
+    struct Point binCornersMetric[4];
     struct Point clippedPolygon[MAX_POLY_VERTICES];
-    struct Point sortedClippedPolygon[MAX_POLY_VERTICES]; // For area calculation
 
 
 	struct data *oldarr, *newarr;
-	long long int TotNrOfBins = 0; // Total contributions added
+	long long int TotNrOfBins = 0;
 	long long int skippedAreaCount = 0;
 
 	printf("Starting pixel mapping loop (Y=%d, Z=%d)...\n", NrPixelsY, NrPixelsZ);
@@ -481,7 +424,7 @@ mapperfcn(
 	for (i=0;i<NrPixelsY;i++){
 		for (j=0;j<NrPixelsZ;j++){
             processed_pixels++;
-            if (time(NULL) - last_print_time >= 10) { // Print progress every 10 seconds
+            if (processed_pixels % 100000 == 0 || time(NULL) - last_print_time >= 10) { // Print progress
                 printf("  Processed %lld / %lld pixels (%.1f%%)\n",
                        processed_pixels, (long long)NrPixelsY * NrPixelsZ,
                        100.0 * (double)processed_pixels / (NrPixelsY * NrPixelsZ));
@@ -494,8 +437,8 @@ mapperfcn(
 			RMi = 1E10; // R in pixels
 			RMa = -1000;
 
-            // --- Calculate R, Eta range for the pixel corners ---
-			long long currentPixelIndex = (long long)j * NrPixelsY + i; // Linear index
+            // --- Calculate R, Eta range and pixel corners in metric space ---
+			long long currentPixelIndex = (long long)j * NrPixelsY + i;
 			double y_distorted = (double)i + distortionMapY[currentPixelIndex];
 			double z_distorted = (double)j + distortionMapZ[currentPixelIndex];
 
@@ -503,6 +446,7 @@ mapperfcn(
 				Y = y_distorted + dy[k]; // Corner Y in pixel units
 				Z = z_distorted + dz[k]; // Corner Z in pixel units
 
+				// Get R, Eta including distortion effects for range finding
 				REta4MYZ(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, n0, n1, n2, px, RetVals);
 				Eta = RetVals[0];
 				Rt = RetVals[1]; // R in pixels
@@ -512,38 +456,39 @@ mapperfcn(
 				if (Rt < RMi) RMi = Rt;
 				if (Rt > RMa) RMa = Rt;
 
-                // Store pixel corners in metric YZ space centered at (0,0) for clipping
-                // We use the *undistorted* R, Eta for the pixel corner geometry for clipping area calculation
-                // This assumes the clipping happens in an ideal space before distortion mapping.
-                // Alternatively, one could map bin corners to distorted space, which is more complex.
-                // Let's map pixel corners to ideal YZ space based on *their* R,Eta
-                // Calculate R,Eta without distortion for geometry
-                REta4MYZ(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, 0,0,0,0, n0, n1, n2, px, RetVals); // p=0 means no distortion
-                YZ4mREta(RetVals[1], RetVals[0], px, pixelCornersMetric[k].x, pixelCornersMetric[k].y);
+                // Get R, Eta *without* distortion for geometric calculations
+                double RetValsGeom[2];
+                REta4MYZ(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, 0,0,0,0, n0, n1, n2, px, RetValsGeom); // p=0 -> no distortion
+                // Convert ideal R,Eta to metric YZ for the pixel corner
+                YZ4mREta(RetValsGeom[1], RetValsGeom[0], px, YZ_temp);
+                pixelCornersMetric[k].x = YZ_temp[0]; // Y metric
+                pixelCornersMetric[k].y = YZ_temp[1]; // Z metric
 			}
-            // Check for angle wrapping (e.g., crossing +/- 180 degrees)
-            if (EtaMa - EtaMi > 350.0) { // Heuristic: large range implies wrapping
-                 // Adjust angles to be continuous, e.g., shift negative angles by 360
+            // Check for angle wrapping (simplified check)
+            if (EtaMa - EtaMi > 350.0) {
                  double tempEtaMi = 1800, tempEtaMa = -1800;
+                 int wraps = 0;
                  for (k=0; k<4; ++k) {
                      Y = y_distorted + dy[k]; Z = z_distorted + dz[k];
                      REta4MYZ(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, n0, n1, n2, px, RetVals);
                      Eta = RetVals[0];
-                     if (Eta < 0) Eta += 360.0; // Shift to [0, 360) range temporarily
+                     if (k>0) { // Check wrap relative to previous corner
+                         double prevEta = (k==1)?RetVals[0]:((k==2)?EtaMi:EtaMa); // Hacky way to get a reference
+                         if (fabs(Eta - prevEta) > 180.0) wraps++;
+                     }
+                     if (Eta < 0) Eta += 360.0;
                      if (Eta < tempEtaMi) tempEtaMi = Eta;
                      if (Eta > tempEtaMa) tempEtaMa = Eta;
                  }
-                 // If range is still large, something is odd, but use the adjusted range
-                 if (tempEtaMa - tempEtaMi < 350.0) {
+                 if (tempEtaMa - tempEtaMi < 350.0 && wraps > 0) { // Use adjusted range if it seems valid
                      EtaMi = tempEtaMi;
                      EtaMa = tempEtaMa;
-                     // May need to adjust bin checking logic below if target range crosses 0/360
-                 } // else: stick with original range, might miss bins near wrap-around
+                 } // else stick with original, might miss bins near wrap
             }
 
 
 			// --- Find candidate R and Eta bins ---
-			int RChosen[500], EtaChosen[500]; // Buffers for candidate bin indices
+			int RChosen[500], EtaChosen[500];
             int nrRChosen = 0, nrEtaChosen = 0;
 			for (k=0;k<nRBins;k++){
 				if (RBinsHigh[k] >= (RMi - EPS) && RBinsLow[k] <= (RMa + EPS)){
@@ -554,94 +499,77 @@ mapperfcn(
 			for (k=0;k<nEtaBins;k++){
                 double binEtaLow = EtaBinsLow[k];
                 double binEtaHigh = EtaBinsHigh[k];
-				// Check overlap considering potential 360 degree shifts
-                // Check 1: Direct overlap
-				if (binEtaHigh >= (EtaMi - EPS) && binEtaLow <= (EtaMa + EPS)) {
+                // Check overlap (consider simple cases, complex wrapping is tricky)
+				if ((binEtaHigh >= (EtaMi - EPS) && binEtaLow <= (EtaMa + EPS)) || // Direct
+                    (binEtaHigh >= (EtaMi + 360.0 - EPS) && binEtaLow <= (EtaMa + 360.0 + EPS)) || // Shifted pixel up
+                    ((binEtaHigh + 360.0) >= (EtaMi - EPS) && (binEtaLow + 360.0) <= (EtaMa + EPS))    // Shifted bin up
+                   )
+                {
                      if (nrEtaChosen < 500) EtaChosen[nrEtaChosen++] = k;
                      else { fprintf(stderr, "Warn: Exceeded EtaChosen buffer size\n"); break; }
-                     continue;
                 }
-                // Check 2: Shifted pixel range overlaps bin
-                if (binEtaHigh >= (EtaMi + 360.0 - EPS) && binEtaLow <= (EtaMa + 360.0 + EPS)) {
-                     if (nrEtaChosen < 500) EtaChosen[nrEtaChosen++] = k;
-                     else { fprintf(stderr, "Warn: Exceeded EtaChosen buffer size\n"); break; }
-                     continue;
-                }
-                // Check 3: Shifted bin range overlaps pixel
-                if ((binEtaHigh + 360.0) >= (EtaMi - EPS) && (binEtaLow + 360.0) <= (EtaMa + EPS)) {
-                     if (nrEtaChosen < 500) EtaChosen[nrEtaChosen++] = k;
-                     else { fprintf(stderr, "Warn: Exceeded EtaChosen buffer size\n"); break; }
-                     continue;
-                }
-                // Check 4: Shifted pixel range overlaps shifted bin
-                if ((binEtaHigh + 360.0) >= (EtaMi + 360.0 - EPS) && (binEtaLow + 360.0) <= (EtaMa + 360.0 + EPS)) {
-                     if (nrEtaChosen < 500) EtaChosen[nrEtaChosen++] = k;
-                     else { fprintf(stderr, "Warn: Exceeded EtaChosen buffer size\n"); break; }
-                     continue;
-                }
-                // Add checks for -360 shifts similarly if Eta can be <-180
 			}
 
-            if (nrRChosen == 0 || nrEtaChosen == 0) continue; // Pixel outside all bins
+            if (nrRChosen == 0 || nrEtaChosen == 0) continue;
 
 			// --- Calculate Area Contribution using Polygon Clipping ---
 			for (k=0;k<nrRChosen;k++){
 				int rBinIdx = RChosen[k];
-				double RMinBin = RBinsLow[rBinIdx];
-				double RMaxBin = RBinsHigh[rBinIdx];
+				double RMinBin = RBinsLow[rBinIdx]; // R in pixels
+				double RMaxBin = RBinsHigh[rBinIdx]; // R in pixels
 
 				for (l=0;l<nrEtaChosen;l++){
 					int etaBinIdx = EtaChosen[l];
 					double EtaMinBin = EtaBinsLow[etaBinIdx];
 					double EtaMaxBin = EtaBinsHigh[etaBinIdx];
 
-                    // Define the corners of the R-Eta bin in YZ space
-                    YZ4mREta(RMinBin, EtaMinBin, px, &binCornersMetric[0].x, &binCornersMetric[0].y); // BL
-                    YZ4mREta(RMaxBin, EtaMinBin, px, &binCornersMetric[1].x, &binCornersMetric[1].y); // BR
-                    YZ4mREta(RMaxBin, EtaMaxBin, px, &binCornersMetric[2].x, &binCornersMetric[2].y); // TR
-                    YZ4mREta(RMinBin, EtaMaxBin, px, &binCornersMetric[3].x, &binCornersMetric[3].y); // TL
+                    // Define the corners of the R-Eta bin in metric YZ space
+                    YZ4mREta(RMinBin, EtaMinBin, px, YZ_temp); binCornersMetric[0].x = YZ_temp[0]; binCornersMetric[0].y = YZ_temp[1]; // BL
+                    YZ4mREta(RMaxBin, EtaMinBin, px, YZ_temp); binCornersMetric[1].x = YZ_temp[0]; binCornersMetric[1].y = YZ_temp[1]; // BR
+                    YZ4mREta(RMaxBin, EtaMaxBin, px, YZ_temp); binCornersMetric[2].x = YZ_temp[0]; binCornersMetric[2].y = YZ_temp[1]; // TR
+                    YZ4mREta(RMinBin, EtaMaxBin, px, YZ_temp); binCornersMetric[3].x = YZ_temp[0]; binCornersMetric[3].y = YZ_temp[1]; // TL
 
                     // Clip the pixel (subject) against the R-Eta bin (clip)
                     int nClippedVertices = ClipPolygon(pixelCornersMetric, 4,
                                                        binCornersMetric, 4,
                                                        clippedPolygon, MAX_POLY_VERTICES);
 
-                    if (nClippedVertices < 3) continue; // No overlap or degenerate overlap
+                    if (nClippedVertices < 3) continue;
 
-                    // Calculate area of the clipped polygon
+                    // Calculate area of the clipped polygon (metric units)
                     double Area = CalcAreaPolygonShoelace(clippedPolygon, nClippedVertices);
 
-                    // Normalize area by pixel area (which is px*px) to get fraction
+                    // Normalize area by pixel area (metric units) to get fraction
                     double pixelAreaMetric = px * px;
                     double fracArea = (pixelAreaMetric > EPS) ? Area / pixelAreaMetric : 0.0;
 
-					if (fracArea < 1E-7){ // Use a smaller threshold for area fraction
+					if (fracArea < 1E-9){ // Threshold for area fraction
 						skippedAreaCount++;
 						continue;
 					}
-                    if (fracArea > 1.0 + EPS) { // Area cannot be > 1
-                        fprintf(stderr, "Warn: Pixel (%d,%d) to Bin (R:%d, Eta:%d) fracArea=%.5f > 1. Clamping.\n",
-                                i, j, rBinIdx, etaBinIdx, fracArea);
+                    if (fracArea > 1.0 + EPS) {
+                        // This might happen due to float precision or clipping issues near boundaries
+                        // fprintf(stderr, "Warn: Px(%d,%d) Bin(R:%d, E:%d) frac=%.7f > 1. Clamp.\n",
+                        //        i, j, rBinIdx, etaBinIdx, fracArea);
                         fracArea = 1.0;
                     }
-
 
 					// Populate the temporary list structure
 					int maxnVal = maxnPx[rBinIdx][etaBinIdx];
 					int nVal = nPxList[rBinIdx][etaBinIdx];
 					if (nVal >= maxnVal){
-						maxnVal = (maxnVal == 0) ? 4 : maxnVal * 2; // Dynamic resizing
+						maxnVal = (maxnVal == 0) ? 4 : maxnVal * 2;
 						oldarr = pxList[rBinIdx][etaBinIdx];
 						newarr = realloc(oldarr, maxnVal*sizeof(*newarr));
 						check(newarr == NULL, "Failed to realloc pxList[%d][%d]", rBinIdx, etaBinIdx);
 						pxList[rBinIdx][etaBinIdx] = newarr;
 						maxnPx[rBinIdx][etaBinIdx] = maxnVal;
 					}
-					pxList[rBinIdx][etaBinIdx][nVal].y = i; // Store original pixel index Y
-					pxList[rBinIdx][etaBinIdx][nVal].z = j; // Store original pixel index Z
+					pxList[rBinIdx][etaBinIdx][nVal].y = i;
+					pxList[rBinIdx][etaBinIdx][nVal].z = j;
 					pxList[rBinIdx][etaBinIdx][nVal].frac = fracArea;
 					(nPxList[rBinIdx][etaBinIdx])++;
-					TotNrOfBins++; // Count total contributions
+					TotNrOfBins++;
 				} // end eta bins loop
 			} // end R bins loop
 		} // end pixel z loop
@@ -650,7 +578,6 @@ mapperfcn(
     printf("Pixel mapping loop finished. Processed %lld pixels.\n", processed_pixels);
 	printf("Total contributions found: %lld\n", TotNrOfBins);
     printf("Contributions skipped due to tiny area: %lld\n", skippedAreaCount);
-    free(RetVals);
 	return TotNrOfBins;
 }
 
@@ -662,7 +589,7 @@ int StartsWith(const char *a, const char *b)
 	return 0;
 }
 
-// Basic image transformation - simplified for distortion map only if needed
+// Basic image transformation
 static inline void DoImageTransformations (int NrTransOpt, const int TransOpt[10], const double *ImageIn, double *ImageOut, int NrPixelsY, int NrPixelsZ)
 {
 	int i,j,k,l;
@@ -671,23 +598,19 @@ static inline void DoImageTransformations (int NrTransOpt, const int TransOpt[10
     double* tempBuffer = NULL;
     size_t N = (size_t)NrPixelsY * NrPixelsZ;
 
-    // If no transformations, just copy if buffers are different
     if (NrTransOpt == 0) {
-        if (ImageIn != ImageOut) {
-            memcpy(ImageOut, ImageIn, N * sizeof(double));
-        }
+        if (ImageIn != ImageOut) memcpy(ImageOut, ImageIn, N * sizeof(double));
         return;
     }
-
-    // Allocate temporary buffer if needed (for odd number of transforms or if Out==In)
     if (NrTransOpt % 2 != 0 || ImageIn == ImageOut) {
         tempBuffer = malloc(N * sizeof(double));
         check(tempBuffer == NULL, "Failed to allocate temporary transform buffer");
     }
 
     for (i=0; i < NrTransOpt; i++) {
-        const double* readBuffer = (i == 0) ? ImageIn : ((i % 2 == 0) ? currentOut : tempBuffer);
-        double* writeBuffer = (i % 2 == 0) ? ( (NrTransOpt % 2 != 0 || ImageIn == ImageOut) ? tempBuffer : ImageOut ) : ImageOut;
+        const double* readBuffer = (i == 0) ? ImageIn : ((i % 2 != 0) ? tempBuffer : ImageOut); // Read from previous output
+        double* writeBuffer = (i % 2 == 0) ? ((NrTransOpt == 1 || ImageIn == ImageOut || NrTransOpt % 2 != 0) ? tempBuffer : ImageOut) : ImageOut; // Write to target/temp
+
 
         if (TransOpt[i] == 1) { // Flip Horizontal (Y)
             for (l = 0; l < NrPixelsZ; ++l) {
@@ -710,23 +633,15 @@ static inline void DoImageTransformations (int NrTransOpt, const int TransOpt[10
                 }
             } else {
                 fprintf(stderr, "Warning: Skipping transpose on non-square image (%dx%d)\n", NrPixelsY, NrPixelsZ);
-                // Treat as no-op if skipping
-                if (writeBuffer != readBuffer) {
-                    memcpy(writeBuffer, readBuffer, N * sizeof(double));
-                }
+                if (writeBuffer != readBuffer) memcpy(writeBuffer, readBuffer, N * sizeof(double));
             }
         } else { // No-op or unknown
-             if (writeBuffer != readBuffer) {
-                 memcpy(writeBuffer, readBuffer, N * sizeof(double));
-             }
+             if (writeBuffer != readBuffer) memcpy(writeBuffer, readBuffer, N * sizeof(double));
         }
-        // Update pointers for next iteration (though not strictly needed with current logic)
-        currentIn = readBuffer; // Not used, but for clarity
-        currentOut = writeBuffer;
     }
 
-    // If the final result is in the temp buffer, copy it to ImageOut
-    if ((NrTransOpt % 2 != 0) && (tempBuffer != NULL) && (ImageOut != tempBuffer) ) {
+    // If odd number of transforms, the result is in tempBuffer, copy to ImageOut
+    if (NrTransOpt % 2 != 0 && tempBuffer != NULL) {
          memcpy(ImageOut, tempBuffer, N * sizeof(double));
     }
 
@@ -750,7 +665,7 @@ int main(int argc, char *argv[])
 	double tx=0.0, ty=0.0, tz=0.0, px=200.0, yCen=1024.0, zCen=1024.0, Lsd=1000000.0, RhoD=200000.0,
 		p0=0.0, p1=0.0, p2=0.0, p3=0.0, EtaBinSize=5, RBinSize=0.25, RMax=1524.0, RMin=10.0, EtaMax=180.0, EtaMin=-180.0;
 	int NrPixelsY=2048, NrPixelsZ=2048;
-	char aline[4096], key[1024], val_str[3072]; // Buffers for parsing
+	char aline[4096], key[1024], val_str[3072];
 	distortionFile = 0;
 	char distortionFN[4096] = "";
 	int NrTransOpt=0;
@@ -760,7 +675,6 @@ int main(int argc, char *argv[])
     check(paramFile == NULL, "Failed to open parameter file '%s': %s", ParamFN, strerror(errno));
 
 	printf("Reading parameters from: %s\n", ParamFN);
-    // Read parameters line by line using sscanf for robustness
     while(fgets(aline, sizeof(aline), paramFile)){
         if(aline[0] == '#' || isspace(aline[0]) || strlen(aline) < 3) continue;
         if (sscanf(aline, "%1023s %[^\n]", key, val_str) == 2) {
@@ -785,8 +699,11 @@ int main(int argc, char *argv[])
              else if (strcmp(key, "NrPixelsZ") == 0) sscanf(val_str, "%d", &NrPixelsZ);
              else if (strcmp(key, "NrPixels") == 0) { sscanf(val_str, "%d", &NrPixelsY); NrPixelsZ = NrPixelsY; }
              else if (strcmp(key, "DistortionFile") == 0) {
-                 sscanf(val_str, "%s", distortionFN);
-                 distortionFile = 1;
+                 if (sscanf(val_str, "%s", distortionFN) == 1 && strlen(distortionFN) > 0) {
+                    distortionFile = 1;
+                 } else {
+                    printf("Warn: Empty DistortionFile value ignored.\n");
+                 }
              }
              else if (strcmp(key, "ImTransOpt") == 0) {
                  if(NrTransOpt < 10) sscanf(val_str, "%d", &TransOpt[NrTransOpt++]);
@@ -796,14 +713,13 @@ int main(int argc, char *argv[])
     }
 	fclose(paramFile);
 
-    // Validate parameters
     check(NrPixelsY <= 0 || NrPixelsZ <= 0, "Invalid NrPixelsY/Z: %d x %d", NrPixelsY, NrPixelsZ);
     check(px <= EPS, "Invalid pixel size px: %f", px);
     check(Lsd <= EPS, "Invalid sample-detector distance Lsd: %f", Lsd);
     check(RBinSize <= EPS || EtaBinSize <= EPS, "Invalid R/Eta bin size: %f, %f", RBinSize, EtaBinSize);
     check(RMax <= RMin || EtaMax <= EtaMin, "Invalid R/Eta ranges");
 
-    printf("Parameters Loaded:\n");
+    printf("Parameters Loaded:\n"); // ... (parameter printing) ...
     printf(" Geometry: tx=%.2f ty=%.2f tz=%.2f px=%.3f Lsd=%.1f RhoD=%.1f\n", tx, ty, tz, px, Lsd, RhoD);
     printf(" Center:   Ycen=%.1f Zcen=%.1f\n", yCen, zCen);
     printf(" Detector: %d x %d pixels\n", NrPixelsY, NrPixelsZ);
@@ -820,39 +736,33 @@ int main(int argc, char *argv[])
 	if (distortionFile == 1){
 		FILE *distortionFileHandle = fopen(distortionFN,"rb");
         check(distortionFileHandle == NULL, "Failed to open distortion file '%s': %s", distortionFN, strerror(errno));
-
 		double *distortionMapTempY, *distortionMapTempZ;
         size_t totalPixels = (size_t)NrPixelsY * NrPixelsZ;
 		distortionMapTempY = malloc(totalPixels*sizeof(double));
 		distortionMapTempZ = malloc(totalPixels*sizeof(double));
         check(distortionMapTempY == NULL || distortionMapTempZ == NULL, "Failed to allocate temporary distortion buffers");
-
         printf("Reading Y distortion data...\n");
 		size_t readY = fread(distortionMapTempY, sizeof(double), totalPixels, distortionFileHandle);
         check(readY != totalPixels, "Failed to read full Y distortion map (%zu/%zu elements read)", readY, totalPixels);
         printf("Applying transforms to Y distortion map...\n");
 		DoImageTransformations(NrTransOpt,TransOpt, distortionMapTempY, distortionMapY, NrPixelsY, NrPixelsZ);
-
         printf("Reading Z distortion data...\n");
 		size_t readZ = fread(distortionMapTempZ, sizeof(double), totalPixels, distortionFileHandle);
         check(readZ != totalPixels, "Failed to read full Z distortion map (%zu/%zu elements read)", readZ, totalPixels);
         printf("Applying transforms to Z distortion map...\n");
 		DoImageTransformations(NrTransOpt,TransOpt, distortionMapTempZ, distortionMapZ, NrPixelsY, NrPixelsZ);
-
 		fclose(distortionFileHandle);
         free(distortionMapTempY);
         free(distortionMapTempZ);
 		printf("Distortion file %s processed successfully.\n", distortionFN);
 	}
 
-    // Calculate number of bins
-	int nEtaBins, nRBins;
+    int nEtaBins, nRBins;
 	nRBins = (int) ceil((RMax-RMin)/RBinSize);
 	nEtaBins = (int) ceil((EtaMax - EtaMin)/EtaBinSize);
     check(nRBins <= 0 || nEtaBins <= 0, "Calculated zero or negative bins (R:%d, Eta:%d)", nRBins, nEtaBins);
 	printf("Creating mapper: %d Eta bins, %d R bins.\n",nEtaBins,nRBins);
 
-    // Allocate bin edge arrays
 	double *EtaBinsLow, *EtaBinsHigh;
 	double *RBinsLow, *RBinsHigh;
 	EtaBinsLow = malloc(nEtaBins*sizeof(*EtaBinsLow));
@@ -862,11 +772,9 @@ int main(int argc, char *argv[])
     check(!EtaBinsLow || !EtaBinsHigh || !RBinsLow || !RBinsHigh, "Failed to allocate bin edge arrays");
 	REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh);
 
-	// Initialize temporary arrays for collecting pixel contributions
-	struct data ***pxList; // pxList[r_bin][eta_bin] -> array of struct data
-	int **nPxList;         // nPxList[r_bin][eta_bin] -> count of contributions
-	int **maxnPx;          // maxnPx[r_bin][eta_bin] -> allocated size for pxList[r_bin][eta_bin]
-
+	struct data ***pxList;
+	int **nPxList;
+	int **maxnPx;
 	pxList = malloc(nRBins * sizeof(*pxList));
 	nPxList = malloc(nRBins * sizeof(*nPxList));
 	maxnPx = malloc(nRBins * sizeof(*maxnPx));
@@ -875,15 +783,14 @@ int main(int argc, char *argv[])
 	int i,j;
 	for (i=0;i<nRBins;i++){
 		pxList[i] = malloc(nEtaBins*sizeof(**pxList));
-		nPxList[i] = calloc(nEtaBins, sizeof(**nPxList)); // Use calloc to initialize counts to 0
-		maxnPx[i] = calloc(nEtaBins, sizeof(**maxnPx)); // Use calloc to initialize sizes to 0
+		nPxList[i] = calloc(nEtaBins, sizeof(**nPxList));
+		maxnPx[i] = calloc(nEtaBins, sizeof(**maxnPx));
         check(!pxList[i] || !nPxList[i] || !maxnPx[i], "Failed to allocate temporary map arrays for R bin %d", i);
 		for (j=0;j<nEtaBins;j++){
-			pxList[i][j] = NULL; // Individual lists start as NULL
+			pxList[i][j] = NULL;
 		}
 	}
 
-    // --- Run the main mapping function ---
     printf("Running mapper function...\n"); fflush(stdout);
     start = clock();
     long long int TotNrOfBins = mapperfcn(tx, ty, tz, NrPixelsY, NrPixelsZ, px, yCen,
@@ -896,13 +803,13 @@ int main(int argc, char *argv[])
     fflush(stdout);
 
     if (TotNrOfBins == 0) {
-        printf("Warning: No pixel contributions found. Check parameters/geometry. Exiting without writing files.\n");
-        // Cleanup allocated memory before exiting
+        printf("Warning: No pixel contributions found. Check parameters/geometry. Exiting.\n");
+        // Perform cleanup before exiting
         free(EtaBinsLow); free(EtaBinsHigh); free(RBinsLow); free(RBinsHigh);
         free(distortionMapY); free(distortionMapZ);
         for (i=0; i<nRBins; ++i) {
             if (pxList[i]) {
-                for (j=0; j<nEtaBins; ++j) free(pxList[i][j]); // Free inner lists
+                for (j=0; j<nEtaBins; ++j) free(pxList[i][j]);
                 free(pxList[i]);
             }
             if (nPxList[i]) free(nPxList[i]);
@@ -912,92 +819,76 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-
-    // --- Convert temporary lists to CSR format ---
     printf("Converting to CSR format...\n");
     int num_rows = nRBins * nEtaBins;
     int num_cols = NrPixelsY * NrPixelsZ;
-    long long num_nonzeros = TotNrOfBins; // Should match the return value
+    long long num_nonzeros = TotNrOfBins;
 
-    // Allocate CSR arrays
     double *csr_values = malloc(num_nonzeros * sizeof(double));
-    int *csr_col_indices = malloc(num_nonzeros * sizeof(int)); // Using int for column indices
-    int *csr_row_ptr = malloc((num_rows + 1) * sizeof(int)); // Using int for row pointers
-
+    int *csr_col_indices = malloc(num_nonzeros * sizeof(int));
+    int *csr_row_ptr = malloc((num_rows + 1) * sizeof(int));
     check(!csr_values || !csr_col_indices || !csr_row_ptr, "Failed to allocate CSR arrays");
 
-    // Build CSR arrays
     long long current_nnz_idx = 0;
     csr_row_ptr[0] = 0;
-
     for (i=0; i<nRBins; i++){
         for (j=0; j<nEtaBins; j++){
-            int row_idx = i * nEtaBins + j; // Linear index for the integration bin (row)
-            int count = nPxList[i][j];     // Number of contributions for this bin
-
-            // Copy data for this row
+            int row_idx = i * nEtaBins + j;
+            int count = nPxList[i][j];
             for (int k=0; k<count; k++){
                 int pixel_y = pxList[i][j][k].y;
                 int pixel_z = pxList[i][j][k].z;
                 double frac = pxList[i][j][k].frac;
-
-                int pixel_col_idx = pixel_z * NrPixelsY + pixel_y; // Linear pixel index (column)
-
-                if (current_nnz_idx >= num_nonzeros) {
-                     check(1, "CSR index overflow! current_nnz_idx=%lld >= num_nonzeros=%lld", current_nnz_idx, num_nonzeros);
-                }
-
+                int pixel_col_idx = pixel_z * NrPixelsY + pixel_y;
+                check(current_nnz_idx >= num_nonzeros, "CSR index overflow! idx=%lld >= nnz=%lld", current_nnz_idx, num_nonzeros);
+                check(pixel_col_idx < 0 || pixel_col_idx >= num_cols, "Invalid pixel column index %d (max %d)", pixel_col_idx, num_cols-1);
                 csr_values[current_nnz_idx] = frac;
                 csr_col_indices[current_nnz_idx] = pixel_col_idx;
                 current_nnz_idx++;
             }
-            csr_row_ptr[row_idx + 1] = (int)current_nnz_idx; // Store end index (+1) as start for next row
+            // Ensure row pointers are integers
+            check(current_nnz_idx > INT_MAX, "CSR row pointer exceeds INT_MAX at row %d", row_idx);
+            csr_row_ptr[row_idx + 1] = (int)current_nnz_idx;
         }
     }
 
-    // Sanity check
     if (current_nnz_idx != num_nonzeros) {
-         printf("Warning: Mismatch in non-zero count! Expected %lld, filled %lld\n", num_nonzeros, current_nnz_idx);
-         // Adjust num_nonzeros if this happens, though it indicates a logic error earlier
-         num_nonzeros = current_nnz_idx;
+         printf("Warning: Final NNZ mismatch! Expected %lld, filled %lld\n", num_nonzeros, current_nnz_idx);
+         num_nonzeros = current_nnz_idx; // Adjust count to actual elements filled
     }
-     if (csr_row_ptr[num_rows] != num_nonzeros) {
-         printf("Warning: Mismatch in final row pointer! Expected %lld, got %d\n", num_nonzeros, csr_row_ptr[num_rows]);
+    if (csr_row_ptr[num_rows] != num_nonzeros) {
+         printf("Warning: Final row pointer mismatch! Expected %lld, got %d\n", num_nonzeros, csr_row_ptr[num_rows]);
+         // This usually indicates an error in the loop logic or counting
     }
 
-    // --- Write CSR data to files ---
     printf("Writing CSR files...\n");
     const char *hdr_fn = "MapCSR.hdr";
     const char *val_fn = "MapCSR_values.bin";
     const char *col_fn = "MapCSR_col_indices.bin";
     const char *row_fn = "MapCSR_row_ptr.bin";
 
-    // Write Header
     FILE *hdr_file = fopen(hdr_fn, "w");
     check(hdr_file == NULL, "Failed to open header file '%s': %s", hdr_fn, strerror(errno));
     fprintf(hdr_file, "%d\n", num_rows);
     fprintf(hdr_file, "%d\n", num_cols);
-    fprintf(hdr_file, "%lld\n", num_nonzeros);
+    fprintf(hdr_file, "%lld\n", num_nonzeros); // Write the potentially adjusted count
     fclose(hdr_file);
     printf(" - Wrote %s\n", hdr_fn);
 
-    // Write Values
     FILE *val_file = fopen(val_fn, "wb");
     check(val_file == NULL, "Failed to open values file '%s': %s", val_fn, strerror(errno));
-    size_t written_val = fwrite(csr_values, sizeof(double), num_nonzeros, val_file);
+    size_t written_val = fwrite(csr_values, sizeof(double), num_nonzeros, val_file); // Use adjusted count
     check(written_val != num_nonzeros, "Failed to write full values data (%zu/%lld)", written_val, num_nonzeros);
     fclose(val_file);
     printf(" - Wrote %s (%zu bytes)\n", val_fn, written_val * sizeof(double));
 
-    // Write Column Indices
     FILE *col_file = fopen(col_fn, "wb");
     check(col_file == NULL, "Failed to open col_indices file '%s': %s", col_fn, strerror(errno));
-    size_t written_col = fwrite(csr_col_indices, sizeof(int), num_nonzeros, col_file);
+    size_t written_col = fwrite(csr_col_indices, sizeof(int), num_nonzeros, col_file); // Use adjusted count
      check(written_col != num_nonzeros, "Failed to write full col_indices data (%zu/%lld)", written_col, num_nonzeros);
     fclose(col_file);
     printf(" - Wrote %s (%zu bytes)\n", col_fn, written_col * sizeof(int));
 
-    // Write Row Pointer
     FILE *row_file = fopen(row_fn, "wb");
     check(row_file == NULL, "Failed to open row_ptr file '%s': %s", row_fn, strerror(errno));
     size_t written_row = fwrite(csr_row_ptr, sizeof(int), num_rows + 1, row_file);
@@ -1005,13 +896,11 @@ int main(int argc, char *argv[])
     fclose(row_file);
     printf(" - Wrote %s (%zu bytes)\n", row_fn, written_row * sizeof(int));
 
-	// --- Cleanup ---
-    printf("Cleaning up memory...\n");
+	printf("Cleaning up memory...\n");
     free(csr_values);
     free(csr_col_indices);
     free(csr_row_ptr);
 
-    // Free temporary structures
 	for (i=0;i<nRBins;i++){
         if (pxList[i]) {
             for (j=0;j<nEtaBins;j++){
@@ -1025,16 +914,8 @@ int main(int argc, char *argv[])
 	free(pxList);
 	free(nPxList);
 	free(maxnPx);
-
-    // Free bin edge arrays
-    free(EtaBinsLow);
-    free(EtaBinsHigh);
-    free(RBinsLow);
-    free(RBinsHigh);
-
-    // Free distortion maps
-    free(distortionMapY);
-    free(distortionMapZ);
+    free(EtaBinsLow); free(EtaBinsHigh); free(RBinsLow); free(RBinsHigh);
+    free(distortionMapY); free(distortionMapZ);
 
 	end0 = clock();
 	diftotal = ((double)(end0-start0))/CLOCKS_PER_SEC;
