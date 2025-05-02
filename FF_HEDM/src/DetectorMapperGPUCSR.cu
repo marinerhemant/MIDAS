@@ -870,7 +870,8 @@ int main(int argc, char *argv[])
         // Optionally clamp maxOutputSize here if needed based on available memory
     }
     printf("Allocating GPU output buffer for %u potential entries...\n", maxOutputSize);
-    cudaError_t malloc_err = gpuErrchk(cudaMalloc(&outputBuffer_d, maxOutputSize * sizeof(GpuOutput)));
+    cudaError_t malloc_err; 
+    malloc_err = gpuErrchk(cudaMalloc(&outputBuffer_d, maxOutputSize * sizeof(GpuOutput)));
     if (malloc_err != cudaSuccess) {
         fprintf(stderr, "FATAL ERROR: Failed to allocate GPU output buffer (Size: %u, Bytes: %llu). Error: %s\n",
                 maxOutputSize, requestedBytes, cudaGetErrorString(malloc_err));
