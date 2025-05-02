@@ -23,6 +23,7 @@
 // Example compile command (adjust paths and architecture flags):
 /*
 ~/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStreamCSR.cu -o bin/IntegratorFitPeaksGPUStreamCSR \
+  -I/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/include -L/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/lib \
   -gencode=arch=compute_86,code=sm_86 \
   -gencode=arch=compute_90,code=sm_90 \
   -Xcompiler -g \
@@ -383,7 +384,7 @@ int ReadCSRMaps(int expected_rows, size_t expected_cols) {
     FILE *f_row = NULL;
     size_t read_val, read_col, read_row;
     int read_rows;
-    long long read_cols_ll; // Read potentially large number from file
+    long long read_cols_ll;
     long long read_nnz;
 
     printf("Reading CSR map files...\n");
@@ -391,7 +392,6 @@ int ReadCSRMaps(int expected_rows, size_t expected_cols) {
     // Read Header
     f_hdr = fopen(hdr_fn, "r");
     check(f_hdr == NULL, "Failed to open CSR header file '%s'", hdr_fn);
-    // Read as long long for cols, then check against size_t expected_cols
     check(fscanf(f_hdr, "%d\n%lld\n%lld\n", &read_rows, &read_cols_ll, &read_nnz) != 3,
           "Failed to parse CSR header file '%s'", hdr_fn);
     fclose(f_hdr);
@@ -406,29 +406,37 @@ int ReadCSRMaps(int expected_rows, size_t expected_cols) {
     check((size_t)read_cols_ll != expected_cols, "CSR map column count (%lld) mismatch with expected (%zu from parameters)", read_cols_ll, expected_cols);
 
     csr_num_rows = read_rows;
-    csr_num_cols = (int)expected_cols; // Store as int if it fits, validation passed
+    csr_num_cols = (int)expected_cols;
     csr_num_nonzeros = read_nnz;
 
     if (csr_num_nonzeros == 0) {
         printf("Warning: CSR map contains zero non-zero entries. Integration will yield zeros.\n");
         h_csr_values = NULL;
         h_csr_col_indices = NULL;
-        // Allocate row_ptr even if nnz=0 (pinned host memory)
         gpuErrchk(cudaMallocHost((void**)&h_csr_row_ptr, (csr_num_rows + 1) * sizeof(int)));
-        check(h_csr_row_ptr == NULL, "CSR Read: Failed cudaMallocHost for zero-NNZ row_ptr");
-        // Initialize row pointers to 0
+        check(h_csr_row_ptr == NULL, "CSR Read: Failed cudaMallocHost for zero-NNZ row_ptr"); // Check allocation even for nnz=0
+        printf("DEBUG ReadCSRMaps (nnz=0): h_csr_row_ptr allocated at %p\n", (void*)h_csr_row_ptr);
         for(int i=0; i <= csr_num_rows; ++i) {
             h_csr_row_ptr[i] = 0;
         }
-        return 1; // Success, but map is empty
+        return 1;
     }
 
-    // Allocate Pinned Host Memory for CSR data
+    // Allocate Pinned Host Memory for CSR data - CHECK EACH ONE
     printf(" Allocating pinned host memory for CSR arrays (NNZ=%lld)...\n", csr_num_nonzeros);
+
     gpuErrchk(cudaMallocHost((void**)&h_csr_values, csr_num_nonzeros * sizeof(double)));
+    check(h_csr_values == NULL, "CSR Read: Failed cudaMallocHost for h_csr_values"); // CHECK 1
+    printf("DEBUG ReadCSRMaps: h_csr_values allocated at %p\n", (void*)h_csr_values);
+
     gpuErrchk(cudaMallocHost((void**)&h_csr_col_indices, csr_num_nonzeros * sizeof(int)));
+    check(h_csr_col_indices == NULL, "CSR Read: Failed cudaMallocHost for h_csr_col_indices"); // CHECK 2
+    printf("DEBUG ReadCSRMaps: h_csr_col_indices allocated at %p\n", (void*)h_csr_col_indices);
+
     gpuErrchk(cudaMallocHost((void**)&h_csr_row_ptr, (csr_num_rows + 1) * sizeof(int)));
-    check(!h_csr_values || !h_csr_col_indices || !h_csr_row_ptr, "CSR Read: Failed cudaMallocHost for CSR arrays");
+    check(h_csr_row_ptr == NULL, "CSR Read: Failed cudaMallocHost for h_csr_row_ptr"); // CHECK 3
+    printf("DEBUG ReadCSRMaps: h_csr_row_ptr allocated at %p\n", (void*)h_csr_row_ptr);
+
 
     // Read Values
     printf(" Reading %s...\n", val_fn);
@@ -455,6 +463,7 @@ int ReadCSRMaps(int expected_rows, size_t expected_cols) {
     fclose(f_row);
 
     printf("CSR map files read successfully.\n");
+    printf("DEBUG ReadCSRMaps (Before Return, nnz>0): h_csr_row_ptr = %p\n", (void*)h_csr_row_ptr); // ADDED DEBUG
     fflush(stdout);
     return 1;
 }
@@ -471,14 +480,13 @@ void FreeCSRMaps() {
     }
     if(h_csr_row_ptr) {
         gpuWarnchk(cudaFreeHost(h_csr_row_ptr));
-        h_csr_row_ptr = NULL;
+        h_csr_row_ptr = NULL; // Set to NULL after freeing
     }
     csr_num_rows = 0;
     csr_num_cols = 0;
     csr_num_nonzeros = 0;
     printf("Host CSR buffers freed.\n");
 }
-
 
 // --- Binning Setup ---
 static inline void REtaMapper(double Rmin, double EtaMin, int nEta, int nR, double EtaStep, double RStep, double *EtaLo, double *EtaHi, double *RLo, double *RHi) {
@@ -1457,6 +1465,7 @@ int main(int argc, char *argv[]){
     // --- Read CSR Pixel Mapping Files ---
     t_start_map = get_wall_time_ms();
     check(ReadCSRMaps(bigArrSize, totalPixels) != 1, "Failed read/validate CSR map files");
+    printf("DEBUG Main (After ReadCSRMaps call): h_csr_row_ptr = %p\n", (void*)h_csr_row_ptr); // <<< ADDED DEBUG
     printf("Read CSR Maps: %.3f ms\n", get_wall_time_ms() - t_start_map);
 
     // --- Setup Bin Edges (Host) ---
@@ -1499,14 +1508,23 @@ int main(int argc, char *argv[]){
     size_t tempBufferSize = totalPixels * sizeof(int64_t);
     gpuErrchk(cudaMalloc(&g_dTempTransformBuf1, tempBufferSize));
     gpuErrchk(cudaMalloc(&g_dTempTransformBuf2, tempBufferSize));
+    printf("DEBUG Main (After GPU Alloc): d_csr_row_ptr = %p\n", (void*)d_csr_row_ptr);
 
     // Copy map data and bin edges to GPU
-    if (csr_num_nonzeros > 0 && h_csr_values && h_csr_col_indices) {
-         printf("Copying CSR arrays from host (pinned) to GPU...\n");
-         gpuErrchk(cudaMemcpy(d_csr_values, h_csr_values, csr_num_nonzeros * sizeof(double), cudaMemcpyHostToDevice));
-         gpuErrchk(cudaMemcpy(d_csr_col_indices, h_csr_col_indices, csr_num_nonzeros * sizeof(int), cudaMemcpyHostToDevice));
+    if (csr_num_nonzeros > 0) {
+        printf("DEBUG Main (Before value/col copy): h_csr_values=%p, h_csr_col_indices=%p\n", (void*)h_csr_values, (void*)h_csr_col_indices);
+        check(h_csr_values == NULL, "Host CSR values pointer is NULL before GPU copy");
+        check(h_csr_col_indices == NULL, "Host CSR col indices pointer is NULL before GPU copy");
+        printf("Copying CSR values/cols from host (pinned) to GPU...\n");
+        gpuErrchk(cudaMemcpy(d_csr_values, h_csr_values, csr_num_nonzeros * sizeof(double), cudaMemcpyHostToDevice));
+        gpuErrchk(cudaMemcpy(d_csr_col_indices, h_csr_col_indices, csr_num_nonzeros * sizeof(int), cudaMemcpyHostToDevice));
+    } else {
+        printf("Skipping value/col copy because NNZ is zero.\n");
     }
-    check(h_csr_row_ptr != NULL, "Host CSR row pointer (h_csr_row_ptr) is NULL before GPU copy");
+    // --- Copy row_ptr (always allocated host and device side) ---
+    printf("DEBUG Main (Before row_ptr copy): h_csr_row_ptr = %p\n", (void*)h_csr_row_ptr); // <<< ADDED DEBUG
+    fflush(stdout); // Ensure debug output is seen before potential crash
+    check(h_csr_row_ptr == NULL, "Host CSR row pointer (h_csr_row_ptr) is NULL before GPU copy"); // <<< THIS IS THE FAILING CHECK
     gpuErrchk(cudaMemcpy(d_csr_row_ptr, h_csr_row_ptr, (csr_num_rows + 1) * sizeof(int), cudaMemcpyHostToDevice));
     printf("CSR map copied to GPU.\n");
     gpuErrchk(cudaMemcpy(dEtaLo, hEtaLo, nEtaBins * sizeof(double), cudaMemcpyHostToDevice));
