@@ -23,8 +23,9 @@
 // Example compile command (adjust paths and architecture flags):
 /*
    ~/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStream.cu -o bin/IntegratorFitPeaksGPUStream \
-   -Xcompiler -g -arch sm_90   -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/include \
+   -Xcompiler -g -arch sm_86   -gencode=arch=compute_86,code=sm_86 -arch sm_90   -gencode=arch=compute_90,code=sm_90 -I/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/include \
    -L/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/lib   -O3 -lnlopt -lz -ldl -lm -lpthread
+
 */
 // =========================================================================
 
@@ -57,7 +58,7 @@
 
 // --- Constants ---
 #define SERVER_IP "127.0.0.1"
-#define PORT 5000               // Port for receiving image data
+#define PORT 60439               // Port for receiving image data
 #define MAX_CONNECTIONS 10      // Max simultaneous client connections
 #define MAX_QUEUE_SIZE 100      // Max image frames buffered before processing
 #define HEADER_SIZE sizeof(uint16_t) // Size of frame number header

@@ -314,7 +314,7 @@ def main():
         os.environ['EPICS_PVA_ADDR_LIST'] = args.pva_ip
     
     # Connect to C server - fixed address and port
-    server_address = ('127.0.0.1', 5000)
+    server_address = ('127.0.0.1', 60439)
     print(f"Connecting to {server_address[0]}:{server_address[1]}")
     
     try:

@@ -76,7 +76,7 @@ def is_port_open(host, port, timeout=1):
 
 def wait_for_server_ready(logfile, process, timeout=180):
     """
-    Check if server is ready by checking if port 5000 is open
+    Check if server is ready by checking if port 60439 is open
     Also monitors process to ensure it's still running and checks log for errors
     
     Args:
@@ -105,8 +105,8 @@ def wait_for_server_ready(logfile, process, timeout=180):
         # Check if port is open (every port_check_interval seconds)
         current_time = time.time()
         if current_time - last_port_check > port_check_interval:
-            if is_port_open('127.0.0.1', 5000):
-                print(f"\nServer port 5000 is open! IntegratorFitPeaksGPUStream is ready! (took {current_time - start_time:.1f} seconds)")
+            if is_port_open('127.0.0.1', 60439):
+                print(f"\nServer port 60439 is open! IntegratorFitPeaksGPUStream is ready! (took {current_time - start_time:.1f} seconds)")
                 return True
             last_port_check = current_time
         

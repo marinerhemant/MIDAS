@@ -20,3 +20,6 @@ globus_sdk
 scipy
 tqdm
 diskcache
+multiprocess
+PyQt6 
+pyqtgraph 
