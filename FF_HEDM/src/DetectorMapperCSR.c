@@ -8,6 +8,7 @@
 //          (R, Eta) considering geometry and distortion, and saves the mapping
 //          in Compressed Sparse Row (CSR) format.
 // =========================================================================
+// gcc src/DetectorMapperCSR.c -o bin/DetectorMapperCSR -I/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/include -L/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/lib -O3 -ldl -lm
 
 #include <stdio.h>
 #include <math.h>
