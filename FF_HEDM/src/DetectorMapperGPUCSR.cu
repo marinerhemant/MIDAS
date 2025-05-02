@@ -65,18 +65,6 @@ int BETWEEN_F(float val, float min, float max)
 	return ((v - EPS_F <= mx && v + EPS_F >= mn) ? 1 : 0 );
 }
 
-__host__ __device__ static inline float signValf(float x)
-{
-	if (x == 0.0f)
-    {
-        return 1.0f;
-    }
-    else
-    {
-        return x / fabsf(x);
-    }
-}
-
 __host__ __device__ static inline void MatrixMultF(const float m[3][3], const float v[3], float r[3])
 {
     r[0] = m[0][0]*v[0] + m[0][1]*v[1] + m[0][2]*v[2];
@@ -143,10 +131,6 @@ __host__ __device__ static inline void YZ4mREtaF(float R, float Eta, float YZ[2]
 __constant__ float const_dy[2];
 __constant__ float const_dz[2];
 __constant__ float const_PosMatrix[4][2];
-__constant__ float c_EtaBinsLow[MAX_BINS];
-__constant__ float c_EtaBinsHigh[MAX_BINS];
-__constant__ float c_RBinsLow[MAX_BINS];
-__constant__ float c_RBinsHigh[MAX_BINS];
 
 // --- Structs ---
 typedef struct { int r_bin; int eta_bin; int y; int z; float frac; } GpuOutput;
@@ -344,6 +328,10 @@ __global__ void mapperKernelF(
     int NrPixelsY, int NrPixelsZ, float pxY, float pxZ, float Ycen, float Zcen,
     float Lsd, float RhoD, float p0, float p1, float p2, float p3,
     int nRBins, int nEtaBins,
+    const float* __restrict__ etaBinsLow_d,
+    const float* __restrict__ etaBinsHigh_d,
+    const float* __restrict__ rBinsLow_d,
+    const float* __restrict__ rBinsHigh_d,
     const float* __restrict__ distortionMapY_d, const float* __restrict__ distortionMapZ_d,
     GpuOutput* outputBuffer, unsigned int* outputCounter, unsigned int maxOutputSize
 )
@@ -359,10 +347,12 @@ __global__ void mapperKernelF(
     float RetVals[2], RetVals2[2];
     float Y, Z, Eta, Rt;
 	float EtaMi, EtaMa, RMi, RMa;
+    // These might need adjustment if 500 is not enough for some edge cases
     int RChosen[500];
     int EtaChosen[500];
     int nrRChosen, nrEtaChosen;
     float YZ[2];
+    // These might need adjustment if 50 is not enough for some edge cases
     float Edges[50][2];
 	float EdgesOut[50][2];
     int nEdges;
@@ -381,14 +371,15 @@ __global__ void mapperKernelF(
     EtaMa = -1800.0f;
     RMi = 1E12f;
     RMa = -1E12f;
-    int k, l, m; // Declare loop variables outside loops for C99 compatibility
+    int k, l, m; // Loop variables
 
+    // Calculate pixel corner boundaries in (R, Eta) space
     for (k = 0; k < 2; k++)
     {
         for (l = 0; l < 2; l++)
         {
-            Y = ypr + const_dy[k];
-            Z = zpr + const_dz[l];
+            Y = ypr + const_dy[k]; // Use constant memory
+            Z = zpr + const_dz[l]; // Use constant memory
             REta4MYZF(Y, Z, Ycen, Zcen, TRs_arg, Lsd, RhoD, p0, p1, p2, p3, n0, n1, n2, pxY, RetVals);
             Eta = RetVals[0];
             Rt = RetVals[1];
@@ -398,124 +389,184 @@ __global__ void mapperKernelF(
             if (Rt > RMa) RMa = Rt;
         }
     }
-    if (RMa < RMi || EtaMa < EtaMi)
+    if (RMa < RMi || EtaMa < EtaMi) // Check if pixel maps to a valid range
     {
         return;
     }
+
+    // Get center point in (R, Eta) and transformed (Y, Z) space
     REta4MYZF(ypr, zpr, Ycen, Zcen, TRs_arg, Lsd, RhoD, p0, p1, p2, p3, n0, n1, n2, pxY, RetVals);
-    Eta = RetVals[0];
-    Rt = RetVals[1];
-    YZ4mREtaF(Rt,Eta,RetVals2);
+    Eta = RetVals[0]; // Center Eta
+    Rt = RetVals[1];  // Center R
+    YZ4mREtaF(Rt,Eta,RetVals2); // Convert center (R, Eta) back to ideal YZ
     YZ[0] = RetVals2[0];
     YZ[1] = RetVals2[1];
+
+    // Find potentially overlapping R bins
     nrRChosen = 0;
-    nrEtaChosen = 0;
     for (k=0; k<nRBins; k++)
     {
-        if (k >= MAX_BINS) break;
-        if (RMa >= c_RBinsLow[k] - EPS_F && RMi <= c_RBinsHigh[k] + EPS_F)
+        // Use rBinsLow_d and rBinsHigh_d passed as arguments
+        if (RMa >= rBinsLow_d[k] - EPS_F && RMi <= rBinsHigh_d[k] + EPS_F)
         {
-            if (nrRChosen < 500) RChosen[nrRChosen++] = k; else break;
+            if (nrRChosen < 500) RChosen[nrRChosen++] = k; else break; // Avoid buffer overflow
         }
     }
+
+    // Find potentially overlapping Eta bins
+	nrEtaChosen = 0;
 	for (k=0; k<nEtaBins; k++)
     {
-        if (k >= MAX_BINS) break;
-        if (checkEtaOverlapF(EtaMi, EtaMa, c_EtaBinsLow[k], c_EtaBinsHigh[k]))
+        // Use etaBinsLow_d and etaBinsHigh_d passed as arguments
+        if (checkEtaOverlapF(EtaMi, EtaMa, etaBinsLow_d[k], etaBinsHigh_d[k]))
         {
-            if (nrEtaChosen < 500) EtaChosen[nrEtaChosen++] = k; else break;
+            if (nrEtaChosen < 500) EtaChosen[nrEtaChosen++] = k; else break; // Avoid buffer overflow
         }
     }
+
+    // Define the bounding box of the pixel in the ideal (Y, Z) space
     yMin = YZ[0] - 0.5f;
     yMax = YZ[0] + 0.5f;
     zMin = YZ[1] - 0.5f;
     zMax = YZ[1] + 0.5f;
 
+    // Iterate over potentially overlapping bins
 	for (k=0; k<nrRChosen; k++)
     {
         int r_idx = RChosen[k];
-        if (r_idx >= MAX_BINS) continue;
-        RMin_bin = c_RBinsLow[r_idx];
-        RMax_bin = c_RBinsHigh[r_idx];
+        // Get bin boundaries from kernel arguments
+        RMin_bin = rBinsLow_d[r_idx];
+        RMax_bin = rBinsHigh_d[r_idx];
+
 		for (l=0; l<nrEtaChosen; l++)
         {
             int eta_idx = EtaChosen[l];
-            if (eta_idx >= MAX_BINS) continue;
-            EtaMin_bin = c_EtaBinsLow[eta_idx];
-            EtaMax_bin = c_EtaBinsHigh[eta_idx];
+            // Get bin boundaries from kernel arguments
+            EtaMin_bin = etaBinsLow_d[eta_idx];
+            EtaMax_bin = etaBinsHigh_d[eta_idx];
+
+            // --- Calculate Intersection Polygon ---
+            // (This complex intersection logic remains the same, just uses RMin_bin etc.)
             nEdges = 0;
+            // 1. Check pixel corners against bin boundaries
             for (m=0; m<4; m++)
             {
+                // Use constant memory
                 float cornerY = YZ[0] + const_PosMatrix[m][0];
                 float cornerZ = YZ[1] + const_PosMatrix[m][1];
                 RThis = sqrtf(cornerY*cornerY + cornerZ*cornerZ);
-                EtaThis = CalcEtaAngleF(cornerY, cornerZ);
+                EtaThis = CalcEtaAngleF(cornerY, cornerZ); // Note: YZ4mREta uses atan2(-y, z), CalcEtaAngle uses atan2(y, z) - ensure consistency if needed
                 if (BETWEEN_F(RThis, RMin_bin, RMax_bin) && isEtaInBinF(EtaThis, EtaMin_bin, EtaMax_bin))
                 {
-                    if (nEdges < 50)
+                    if (nEdges < 50) // Avoid buffer overflow
                     {
                          Edges[nEdges][0] = cornerY; Edges[nEdges][1] = cornerZ; nEdges++;
-                    }
+                    } else break;
                 }
             }
+             if (nEdges >= 50) continue; // Skip if already full
+
+            // 2. Check bin corners against pixel boundaries
             YZ4mREtaF(RMin_bin, EtaMin_bin, boxEdge[0]); YZ4mREtaF(RMin_bin, EtaMax_bin, boxEdge[1]); YZ4mREtaF(RMax_bin, EtaMin_bin, boxEdge[2]); YZ4mREtaF(RMax_bin, EtaMax_bin, boxEdge[3]);
             for (m=0; m<4; m++)
             {
                 if (BETWEEN_F(boxEdge[m][0], yMin, yMax) && BETWEEN_F(boxEdge[m][1], zMin, zMax))
                 {
-                    if (nEdges < 50)
+                    if (nEdges < 50) // Avoid buffer overflow
                     {
                         Edges[nEdges][0] = boxEdge[m][0]; Edges[nEdges][1] = boxEdge[m][1]; nEdges++;
-                    }
+                    } else break;
                 }
             }
+            if (nEdges >= 50) continue; // Skip if already full
 
+            // 3. Check intersections between pixel edges and bin boundaries (arcs and lines)
+            //    (This complex part calculating intersections between box and annulus sector remains the same)
             float RMin_sq = RMin_bin * RMin_bin;
             float RMax_sq = RMax_bin * RMax_bin;
-            float yMin_sq = yMin * yMin;
+            float yMin_sq = yMin * yMin; // Precompute squares
             float yMax_sq = yMax * yMax;
             float zMin_sq = zMin * zMin;
             float zMax_sq = zMax * zMax;
-            if (RMin_sq >= yMin_sq - EPS_F) { zTemp = sqrtf(fmaxf(0.0f, RMin_sq - yMin_sq)); if (BETWEEN_F(zTemp, zMin, zMax)) { if(nEdges<50) {Edges[nEdges][0]=yMin; Edges[nEdges][1]= zTemp; nEdges++;}} if (BETWEEN_F(-zTemp, zMin, zMax)) { if(nEdges<50) {Edges[nEdges][0]=yMin; Edges[nEdges][1]=-zTemp; nEdges++;}} }
-            if (RMin_sq >= yMax_sq - EPS_F) { zTemp = sqrtf(fmaxf(0.0f, RMin_sq - yMax_sq)); if (BETWEEN_F(zTemp, zMin, zMax)) { if(nEdges<50) {Edges[nEdges][0]=yMax; Edges[nEdges][1]= zTemp; nEdges++;}} if (BETWEEN_F(-zTemp, zMin, zMax)) { if(nEdges<50) {Edges[nEdges][0]=yMax; Edges[nEdges][1]=-zTemp; nEdges++;}} }
-            if (RMax_sq >= yMin_sq - EPS_F) { zTemp = sqrtf(fmaxf(0.0f, RMax_sq - yMin_sq)); if (BETWEEN_F(zTemp, zMin, zMax)) { if(nEdges<50) {Edges[nEdges][0]=yMin; Edges[nEdges][1]= zTemp; nEdges++;}} if (BETWEEN_F(-zTemp, zMin, zMax)) { if(nEdges<50) {Edges[nEdges][0]=yMin; Edges[nEdges][1]=-zTemp; nEdges++;}} }
-            if (RMax_sq >= yMax_sq - EPS_F) { zTemp = sqrtf(fmaxf(0.0f, RMax_sq - yMax_sq)); if (BETWEEN_F(zTemp, zMin, zMax)) { if(nEdges<50) {Edges[nEdges][0]=yMax; Edges[nEdges][1]= zTemp; nEdges++;}} if (BETWEEN_F(-zTemp, zMin, zMax)) { if(nEdges<50) {Edges[nEdges][0]=yMax; Edges[nEdges][1]=-zTemp; nEdges++;}} }
-            if (RMin_sq >= zMin_sq - EPS_F) { yTemp = sqrtf(fmaxf(0.0f, RMin_sq - zMin_sq)); if (BETWEEN_F(yTemp, yMin, yMax)) { if(nEdges<50) {Edges[nEdges][0]= yTemp; Edges[nEdges][1]=zMin; nEdges++;}} if (BETWEEN_F(-yTemp, yMin, yMax)) { if(nEdges<50) {Edges[nEdges][0]=-yTemp; Edges[nEdges][1]=zMin; nEdges++;}} }
-            if (RMin_sq >= zMax_sq - EPS_F) { yTemp = sqrtf(fmaxf(0.0f, RMin_sq - zMax_sq)); if (BETWEEN_F(yTemp, yMin, yMax)) { if(nEdges<50) {Edges[nEdges][0]= yTemp; Edges[nEdges][1]=zMax; nEdges++;}} if (BETWEEN_F(-yTemp, yMin, yMax)) { if(nEdges<50) {Edges[nEdges][0]=-yTemp; Edges[nEdges][1]=zMax; nEdges++;}} }
-            if (RMax_sq >= zMin_sq - EPS_F) { yTemp = sqrtf(fmaxf(0.0f, RMax_sq - zMin_sq)); if (BETWEEN_F(yTemp, yMin, yMax)) { if(nEdges<50) {Edges[nEdges][0]= yTemp; Edges[nEdges][1]=zMin; nEdges++;}} if (BETWEEN_F(-yTemp, yMin, yMax)) { if(nEdges<50) {Edges[nEdges][0]=-yTemp; Edges[nEdges][1]=zMin; nEdges++;}} }
-            if (RMax_sq >= zMax_sq - EPS_F) { yTemp = sqrtf(fmaxf(0.0f, RMax_sq - zMax_sq)); if (BETWEEN_F(yTemp, yMin, yMax)) { if(nEdges<50) {Edges[nEdges][0]= yTemp; Edges[nEdges][1]=zMax; nEdges++;}} if (BETWEEN_F(-yTemp, yMin, yMax)) { if(nEdges<50) {Edges[nEdges][0]=-yTemp; Edges[nEdges][1]=zMax; nEdges++;}} }
+
+            // Intersections R=const with y=const
+            if (RMin_sq >= yMin_sq - EPS_F) { zTemp = sqrtf(fmaxf(0.0f, RMin_sq - yMin_sq)); if (BETWEEN_F(zTemp, zMin, zMax)) { if(nEdges<50) {Edges[nEdges][0]=yMin; Edges[nEdges][1]= zTemp; nEdges++;} else continue;} if (BETWEEN_F(-zTemp, zMin, zMax)) { if(nEdges<50) {Edges[nEdges][0]=yMin; Edges[nEdges][1]=-zTemp; nEdges++;} else continue;} }
+            if (RMin_sq >= yMax_sq - EPS_F) { zTemp = sqrtf(fmaxf(0.0f, RMin_sq - yMax_sq)); if (BETWEEN_F(zTemp, zMin, zMax)) { if(nEdges<50) {Edges[nEdges][0]=yMax; Edges[nEdges][1]= zTemp; nEdges++;} else continue;} if (BETWEEN_F(-zTemp, zMin, zMax)) { if(nEdges<50) {Edges[nEdges][0]=yMax; Edges[nEdges][1]=-zTemp; nEdges++;} else continue;} }
+            if (RMax_sq >= yMin_sq - EPS_F) { zTemp = sqrtf(fmaxf(0.0f, RMax_sq - yMin_sq)); if (BETWEEN_F(zTemp, zMin, zMax)) { if(nEdges<50) {Edges[nEdges][0]=yMin; Edges[nEdges][1]= zTemp; nEdges++;} else continue;} if (BETWEEN_F(-zTemp, zMin, zMax)) { if(nEdges<50) {Edges[nEdges][0]=yMin; Edges[nEdges][1]=-zTemp; nEdges++;} else continue;} }
+            if (RMax_sq >= yMax_sq - EPS_F) { zTemp = sqrtf(fmaxf(0.0f, RMax_sq - yMax_sq)); if (BETWEEN_F(zTemp, zMin, zMax)) { if(nEdges<50) {Edges[nEdges][0]=yMax; Edges[nEdges][1]= zTemp; nEdges++;} else continue;} if (BETWEEN_F(-zTemp, zMin, zMax)) { if(nEdges<50) {Edges[nEdges][0]=yMax; Edges[nEdges][1]=-zTemp; nEdges++;} else continue;} }
+            // Intersections R=const with z=const
+            if (RMin_sq >= zMin_sq - EPS_F) { yTemp = sqrtf(fmaxf(0.0f, RMin_sq - zMin_sq)); if (BETWEEN_F(yTemp, yMin, yMax)) { if(nEdges<50) {Edges[nEdges][0]= yTemp; Edges[nEdges][1]=zMin; nEdges++;} else continue;} if (BETWEEN_F(-yTemp, yMin, yMax)) { if(nEdges<50) {Edges[nEdges][0]=-yTemp; Edges[nEdges][1]=zMin; nEdges++;} else continue;} }
+            if (RMin_sq >= zMax_sq - EPS_F) { yTemp = sqrtf(fmaxf(0.0f, RMin_sq - zMax_sq)); if (BETWEEN_F(yTemp, yMin, yMax)) { if(nEdges<50) {Edges[nEdges][0]= yTemp; Edges[nEdges][1]=zMax; nEdges++;} else continue;} if (BETWEEN_F(-yTemp, yMin, yMax)) { if(nEdges<50) {Edges[nEdges][0]=-yTemp; Edges[nEdges][1]=zMax; nEdges++;} else continue;} }
+            if (RMax_sq >= zMin_sq - EPS_F) { yTemp = sqrtf(fmaxf(0.0f, RMax_sq - zMin_sq)); if (BETWEEN_F(yTemp, yMin, yMax)) { if(nEdges<50) {Edges[nEdges][0]= yTemp; Edges[nEdges][1]=zMin; nEdges++;} else continue;} if (BETWEEN_F(-yTemp, yMin, yMax)) { if(nEdges<50) {Edges[nEdges][0]=-yTemp; Edges[nEdges][1]=zMin; nEdges++;} else continue;} }
+            if (RMax_sq >= zMax_sq - EPS_F) { yTemp = sqrtf(fmaxf(0.0f, RMax_sq - zMax_sq)); if (BETWEEN_F(yTemp, yMin, yMax)) { if(nEdges<50) {Edges[nEdges][0]= yTemp; Edges[nEdges][1]=zMax; nEdges++;} else continue;} if (BETWEEN_F(-yTemp, yMin, yMax)) { if(nEdges<50) {Edges[nEdges][0]=-yTemp; Edges[nEdges][1]=zMax; nEdges++;} else continue;} }
+
+            // Intersections Eta=const with y=const and z=const
             float cosEtaMin = cosf(EtaMin_bin * deg2radf);
             float sinEtaMin = sinf(EtaMin_bin * deg2radf);
             float cosEtaMax = cosf(EtaMax_bin * deg2radf);
             float sinEtaMax = sinf(EtaMax_bin * deg2radf);
-            if (fabsf(sinEtaMin) > EPS_F) { zTemp = -yMin * cosEtaMin / sinEtaMin; if(BETWEEN_F(zTemp, zMin, zMax)) { if(nEdges<50){Edges[nEdges][0]=yMin; Edges[nEdges][1]=zTemp; nEdges++;}} zTemp = -yMax * cosEtaMin / sinEtaMin; if(BETWEEN_F(zTemp, zMin, zMax)) { if(nEdges<50){Edges[nEdges][0]=yMax; Edges[nEdges][1]=zTemp; nEdges++;}} } else { if(BETWEEN_F(0.0f, yMin, yMax)) { if(nEdges<50){Edges[nEdges][0]=0.0f; Edges[nEdges][1]=zMin; nEdges++;} if(nEdges<50){Edges[nEdges][0]=0.0f; Edges[nEdges][1]=zMax; nEdges++;} } }
-            if (fabsf(sinEtaMax) > EPS_F) { zTemp = -yMin * cosEtaMax / sinEtaMax; if(BETWEEN_F(zTemp, zMin, zMax)) { if(nEdges<50){Edges[nEdges][0]=yMin; Edges[nEdges][1]=zTemp; nEdges++;}} zTemp = -yMax * cosEtaMax / sinEtaMax; if(BETWEEN_F(zTemp, zMin, zMax)) { if(nEdges<50){Edges[nEdges][0]=yMax; Edges[nEdges][1]=zTemp; nEdges++;}} } else { if(BETWEEN_F(0.0f, yMin, yMax)) { if(nEdges<50){Edges[nEdges][0]=0.0f; Edges[nEdges][1]=zMin; nEdges++;} if(nEdges<50){Edges[nEdges][0]=0.0f; Edges[nEdges][1]=zMax; nEdges++;} } }
-            if (fabsf(cosEtaMin) > EPS_F) { yTemp = -zMin * sinEtaMin / cosEtaMin; if(BETWEEN_F(yTemp, yMin, yMax)) { if(nEdges<50){Edges[nEdges][0]=yTemp; Edges[nEdges][1]=zMin; nEdges++;}} yTemp = -zMax * sinEtaMin / cosEtaMin; if(BETWEEN_F(yTemp, yMin, yMax)) { if(nEdges<50){Edges[nEdges][0]=yTemp; Edges[nEdges][1]=zMax; nEdges++;}} } else { if(BETWEEN_F(0.0f, zMin, zMax)) { if(nEdges<50){Edges[nEdges][0]=yMin; Edges[nEdges][1]=0.0f; nEdges++;} if(nEdges<50){Edges[nEdges][0]=yMax; Edges[nEdges][1]=0.0f; nEdges++;} } }
-            if (fabsf(cosEtaMax) > EPS_F) { yTemp = -zMin * sinEtaMax / cosEtaMax; if(BETWEEN_F(yTemp, yMin, yMax)) { if(nEdges<50){Edges[nEdges][0]=yTemp; Edges[nEdges][1]=zMin; nEdges++;}} yTemp = -zMax * sinEtaMax / cosEtaMax; if(BETWEEN_F(yTemp, yMin, yMax)) { if(nEdges<50){Edges[nEdges][0]=yTemp; Edges[nEdges][1]=zMax; nEdges++;}} } else { if(BETWEEN_F(0.0f, zMin, zMax)) { if(nEdges<50){Edges[nEdges][0]=yMin; Edges[nEdges][1]=0.0f; nEdges++;} if(nEdges<50){Edges[nEdges][0]=yMax; Edges[nEdges][1]=0.0f; nEdges++;} } }
+            // EtaMin line
+            if (fabsf(sinEtaMin) > EPS_F) { // Avoid division by zero
+                zTemp = -yMin * cosEtaMin / sinEtaMin; if(BETWEEN_F(zTemp, zMin, zMax)) { RThis = sqrtf(yMin*yMin + zTemp*zTemp); if(BETWEEN_F(RThis, RMin_bin, RMax_bin)) { if(nEdges<50){Edges[nEdges][0]=yMin; Edges[nEdges][1]=zTemp; nEdges++;} else continue;} }
+                zTemp = -yMax * cosEtaMin / sinEtaMin; if(BETWEEN_F(zTemp, zMin, zMax)) { RThis = sqrtf(yMax*yMax + zTemp*zTemp); if(BETWEEN_F(RThis, RMin_bin, RMax_bin)) { if(nEdges<50){Edges[nEdges][0]=yMax; Edges[nEdges][1]=zTemp; nEdges++;} else continue;} }
+            } else { // Line is z=0 (or close to it)
+                 if(BETWEEN_F(0.0f, zMin, zMax) && cosEtaMin > 0) { if(BETWEEN_F(yMin, RMin_bin, RMax_bin)){ if(nEdges<50){Edges[nEdges][0]=yMin; Edges[nEdges][1]=0.0f; nEdges++;} else continue;} if(BETWEEN_F(yMax, RMin_bin, RMax_bin)){ if(nEdges<50){Edges[nEdges][0]=yMax; Edges[nEdges][1]=0.0f; nEdges++;} else continue;}}
+                 if(BETWEEN_F(0.0f, zMin, zMax) && cosEtaMin < 0) { if(BETWEEN_F(-yMin, RMin_bin, RMax_bin)){ if(nEdges<50){Edges[nEdges][0]=yMin; Edges[nEdges][1]=0.0f; nEdges++;} else continue;} if(BETWEEN_F(-yMax, RMin_bin, RMax_bin)){ if(nEdges<50){Edges[nEdges][0]=yMax; Edges[nEdges][1]=0.0f; nEdges++;} else continue;}}
+            }
+            if (fabsf(cosEtaMin) > EPS_F) { // Avoid division by zero
+                yTemp = -zMin * sinEtaMin / cosEtaMin; if(BETWEEN_F(yTemp, yMin, yMax)) { RThis = sqrtf(yTemp*yTemp + zMin*zMin); if(BETWEEN_F(RThis, RMin_bin, RMax_bin)) { if(nEdges<50){Edges[nEdges][0]=yTemp; Edges[nEdges][1]=zMin; nEdges++;} else continue;} }
+                yTemp = -zMax * sinEtaMin / cosEtaMin; if(BETWEEN_F(yTemp, yMin, yMax)) { RThis = sqrtf(yTemp*yTemp + zMax*zMax); if(BETWEEN_F(RThis, RMin_bin, RMax_bin)) { if(nEdges<50){Edges[nEdges][0]=yTemp; Edges[nEdges][1]=zMax; nEdges++;} else continue;} }
+            } else { // Line is y=0 (or close to it)
+                 if(BETWEEN_F(0.0f, yMin, yMax) && sinEtaMin < 0) { if(BETWEEN_F(-zMin, RMin_bin, RMax_bin)){ if(nEdges<50){Edges[nEdges][0]=0.0f; Edges[nEdges][1]=zMin; nEdges++;} else continue;} if(BETWEEN_F(-zMax, RMin_bin, RMax_bin)){ if(nEdges<50){Edges[nEdges][0]=0.0f; Edges[nEdges][1]=zMax; nEdges++;} else continue;}}
+                 if(BETWEEN_F(0.0f, yMin, yMax) && sinEtaMin > 0) { if(BETWEEN_F( zMin, RMin_bin, RMax_bin)){ if(nEdges<50){Edges[nEdges][0]=0.0f; Edges[nEdges][1]=zMin; nEdges++;} else continue;} if(BETWEEN_F( zMax, RMin_bin, RMax_bin)){ if(nEdges<50){Edges[nEdges][0]=0.0f; Edges[nEdges][1]=zMax; nEdges++;} else continue;}}
+            }
+             // EtaMax line (similar logic)
+             if (fabsf(sinEtaMax) > EPS_F) {
+                 zTemp = -yMin * cosEtaMax / sinEtaMax; if(BETWEEN_F(zTemp, zMin, zMax)) { RThis = sqrtf(yMin*yMin + zTemp*zTemp); if(BETWEEN_F(RThis, RMin_bin, RMax_bin)) { if(nEdges<50){Edges[nEdges][0]=yMin; Edges[nEdges][1]=zTemp; nEdges++;} else continue;} }
+                 zTemp = -yMax * cosEtaMax / sinEtaMax; if(BETWEEN_F(zTemp, zMin, zMax)) { RThis = sqrtf(yMax*yMax + zTemp*zTemp); if(BETWEEN_F(RThis, RMin_bin, RMax_bin)) { if(nEdges<50){Edges[nEdges][0]=yMax; Edges[nEdges][1]=zTemp; nEdges++;} else continue;} }
+             } else {
+                  if(BETWEEN_F(0.0f, zMin, zMax) && cosEtaMax > 0) { if(BETWEEN_F(yMin, RMin_bin, RMax_bin)){ if(nEdges<50){Edges[nEdges][0]=yMin; Edges[nEdges][1]=0.0f; nEdges++;} else continue;} if(BETWEEN_F(yMax, RMin_bin, RMax_bin)){ if(nEdges<50){Edges[nEdges][0]=yMax; Edges[nEdges][1]=0.0f; nEdges++;} else continue;}}
+                  if(BETWEEN_F(0.0f, zMin, zMax) && cosEtaMax < 0) { if(BETWEEN_F(-yMin, RMin_bin, RMax_bin)){ if(nEdges<50){Edges[nEdges][0]=yMin; Edges[nEdges][1]=0.0f; nEdges++;} else continue;} if(BETWEEN_F(-yMax, RMin_bin, RMax_bin)){ if(nEdges<50){Edges[nEdges][0]=yMax; Edges[nEdges][1]=0.0f; nEdges++;} else continue;}}
+             }
+             if (fabsf(cosEtaMax) > EPS_F) {
+                 yTemp = -zMin * sinEtaMax / cosEtaMax; if(BETWEEN_F(yTemp, yMin, yMax)) { RThis = sqrtf(yTemp*yTemp + zMin*zMin); if(BETWEEN_F(RThis, RMin_bin, RMax_bin)) { if(nEdges<50){Edges[nEdges][0]=yTemp; Edges[nEdges][1]=zMin; nEdges++;} else continue;} }
+                 yTemp = -zMax * sinEtaMax / cosEtaMax; if(BETWEEN_F(yTemp, yMin, yMax)) { RThis = sqrtf(yTemp*yTemp + zMax*zMax); if(BETWEEN_F(RThis, RMin_bin, RMax_bin)) { if(nEdges<50){Edges[nEdges][0]=yTemp; Edges[nEdges][1]=zMax; nEdges++;} else continue;} }
+             } else {
+                  if(BETWEEN_F(0.0f, yMin, yMax) && sinEtaMax < 0) { if(BETWEEN_F(-zMin, RMin_bin, RMax_bin)){ if(nEdges<50){Edges[nEdges][0]=0.0f; Edges[nEdges][1]=zMin; nEdges++;} else continue;} if(BETWEEN_F(-zMax, RMin_bin, RMax_bin)){ if(nEdges<50){Edges[nEdges][0]=0.0f; Edges[nEdges][1]=zMax; nEdges++;} else continue;}}
+                  if(BETWEEN_F(0.0f, yMin, yMax) && sinEtaMax > 0) { if(BETWEEN_F( zMin, RMin_bin, RMax_bin)){ if(nEdges<50){Edges[nEdges][0]=0.0f; Edges[nEdges][1]=zMin; nEdges++;} else continue;} if(BETWEEN_F( zMax, RMin_bin, RMax_bin)){ if(nEdges<50){Edges[nEdges][0]=0.0f; Edges[nEdges][1]=zMax; nEdges++;} else continue;}}
+             }
+            // --- End Intersection Calculation ---
 
-            if (nEdges < 3)
+            if (nEdges < 3) // Need at least 3 vertices for a polygon
             {
                 continue;
             }
+
+            // Find unique vertices within the bin boundaries
             nEdges = FindUniques_device_f(Edges, EdgesOut, nEdges, RMin_bin, RMax_bin, EtaMin_bin, EtaMax_bin);
             if (nEdges < 3)
             {
                 continue;
             }
+
+            // Calculate area of the resulting intersection polygon
             Area = CalcAreaPolygon_device_f(EdgesOut, nEdges);
-            if (Area < EPS_F * EPS_F)
+            if (Area < EPS_F * EPS_F) // Ignore tiny or zero area overlaps
             {
                 continue;
             }
+
+            // Atomically increment output counter and store results
             unsigned int currentIndex = atomicAdd(outputCounter, 1);
             if (currentIndex < maxOutputSize)
             {
                 outputBuffer[currentIndex].r_bin = r_idx;
                 outputBuffer[currentIndex].eta_bin = eta_idx;
-                outputBuffer[currentIndex].y = i;
-                outputBuffer[currentIndex].z = j;
-                outputBuffer[currentIndex].frac = Area;
+                outputBuffer[currentIndex].y = i; // Original pixel y index
+                outputBuffer[currentIndex].z = j; // Original pixel z index
+                outputBuffer[currentIndex].frac = Area; // Area of overlap
             }
+            // If currentIndex >= maxOutputSize, the buffer is full (data is lost)
 		} // end loop eta bins
 	} // end loop r bins
 }
@@ -650,7 +701,8 @@ int main(int argc, char *argv[])
 	float tx=0.0f, ty=0.0f, tz=0.0f, pxY=200.0f, pxZ=200.0f, yCen=1024.0f, zCen=1024.0f, Lsd=1000000.0f, RhoD=200000.0f,
 		p0=0.0f, p1=0.0f, p2=0.0f, p3=0.0f, EtaBinSize=5.0f, RBinSize=0.25f, RMax=1524.0f, RMin=10.0f, EtaMax=180.0f, EtaMin=-180.0f;
 	int NrPixelsY=2048, NrPixelsZ=2048;
-	char aline[4096], dummy[4096], *str;
+	char aline[4096], dummy[4096];
+    const char *str;
 	int distortionFile = 0;
     char distortionFN[4096] = "";
 	int NrTransOpt=0;
@@ -667,7 +719,6 @@ int main(int argc, char *argv[])
     {
         if (aline[0] == '#' || aline[0] == '\n' || aline[0] == '\r') continue;
         double temp_d;
-        int temp_i;
 		str = "tx "; if (StartsWith(aline,str)) { sscanf(aline,"%s %lf", dummy, &temp_d); tx=(float)temp_d; }
 		str = "ty "; if (StartsWith(aline,str)) { sscanf(aline,"%s %lf", dummy, &temp_d); ty=(float)temp_d; }
 		str = "tz "; if (StartsWith(aline,str)) { sscanf(aline,"%s %lf", dummy, &temp_d); tz=(float)temp_d; }
@@ -791,25 +842,25 @@ int main(int argc, char *argv[])
     if (nRBins <= 0) nRBins = 1;
     if (nEtaBins <= 0) nEtaBins = 1;
     printf("Mapper bins: %d eta, %d R.\n",nEtaBins,nRBins);
-    if (nRBins > MAX_BINS || nEtaBins > MAX_BINS)
-    {
-        fprintf(stderr, "Error: Bin count exceeds MAX_BINS (%d)\n", MAX_BINS);
-        free(distortionMapY_h); free(distortionMapZ_h); return 1;
-    }
 	float *EtaBinsLow_h, *EtaBinsHigh_h, *RBinsLow_h, *RBinsHigh_h;
-	EtaBinsLow_h = (float*)malloc(nEtaBins*sizeof(float)); if (!EtaBinsLow_h) {/*err*/}
-	EtaBinsHigh_h = (float*)malloc(nEtaBins*sizeof(float)); if (!EtaBinsHigh_h) {/*err*/}
-	RBinsLow_h = (float*)malloc(nRBins*sizeof(float)); if (!RBinsLow_h) {/*err*/}
-	RBinsHigh_h = (float*)malloc(nRBins*sizeof(float)); if (!RBinsHigh_h) {/*err*/}
+	EtaBinsLow_h = (float*)malloc(nEtaBins*sizeof(float)); if (!EtaBinsLow_h) { fprintf(stderr,"Malloc failed EtaBinsLow_h\n"); return 1; }
+	EtaBinsHigh_h = (float*)malloc(nEtaBins*sizeof(float)); if (!EtaBinsHigh_h) { fprintf(stderr,"Malloc failed EtaBinsHigh_h\n"); free(EtaBinsLow_h); return 1; }
+	RBinsLow_h = (float*)malloc(nRBins*sizeof(float)); if (!RBinsLow_h) { fprintf(stderr,"Malloc failed RBinsLow_h\n"); free(EtaBinsLow_h); free(EtaBinsHigh_h); return 1; }
+	RBinsHigh_h = (float*)malloc(nRBins*sizeof(float)); if (!RBinsHigh_h) { fprintf(stderr,"Malloc failed RBinsHigh_h\n"); free(EtaBinsLow_h); free(EtaBinsHigh_h); free(RBinsLow_h); return 1; }
 	REtaMapperF(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, EtaBinsLow_h, EtaBinsHigh_h, RBinsLow_h, RBinsHigh_h);
 
     // --- Allocate GPU Memory (float) ---
     float *distortionMapY_d, *distortionMapZ_d;
+    float *etaBinsLow_d, *etaBinsHigh_d, *rBinsLow_d, *rBinsHigh_d;
     GpuOutput* outputBuffer_d;
     unsigned int* outputCounter_d;
     gpuErrchk(cudaMalloc(&distortionMapY_d, mapSizeBytes));
     gpuErrchk(cudaMalloc(&distortionMapZ_d, mapSizeBytes));
     gpuErrchk(cudaMalloc(&outputCounter_d, sizeof(unsigned int)));
+    gpuErrchk(cudaMalloc(&etaBinsLow_d, nEtaBins * sizeof(float)));
+    gpuErrchk(cudaMalloc(&etaBinsHigh_d, nEtaBins * sizeof(float)));
+    gpuErrchk(cudaMalloc(&rBinsLow_d, nRBins * sizeof(float)));
+    gpuErrchk(cudaMalloc(&rBinsHigh_d, nRBins * sizeof(float)));
     unsigned int maxOutputSize = (unsigned int)mapSize * 10; // Heuristic
     printf("Allocating GPU output buffer for %u potential entries...\n", maxOutputSize);
     gpuErrchk(cudaMalloc(&outputBuffer_d, maxOutputSize * sizeof(GpuOutput)));
@@ -824,10 +875,10 @@ int main(int argc, char *argv[])
     gpuErrchk(cudaMemcpyToSymbol(const_dy, h_dy, 2 * sizeof(float)));
     gpuErrchk(cudaMemcpyToSymbol(const_dz, h_dz, 2 * sizeof(float)));
     gpuErrchk(cudaMemcpyToSymbol(const_PosMatrix, h_PosMatrix, 4 * 2 * sizeof(float)));
-    gpuErrchk(cudaMemcpyToSymbol(c_EtaBinsLow, EtaBinsLow_h, nEtaBins * sizeof(float)));
-    gpuErrchk(cudaMemcpyToSymbol(c_EtaBinsHigh, EtaBinsHigh_h, nEtaBins * sizeof(float)));
-    gpuErrchk(cudaMemcpyToSymbol(c_RBinsLow, RBinsLow_h, nRBins * sizeof(float)));
-    gpuErrchk(cudaMemcpyToSymbol(c_RBinsHigh, RBinsHigh_h, nRBins * sizeof(float)));
+    gpuErrchk(cudaMemcpy(etaBinsLow_d, EtaBinsLow_h, nEtaBins * sizeof(float), cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(etaBinsHigh_d, EtaBinsHigh_h, nEtaBins * sizeof(float), cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(rBinsLow_d, RBinsLow_h, nRBins * sizeof(float), cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(rBinsHigh_d, RBinsHigh_h, nRBins * sizeof(float), cudaMemcpyHostToDevice));
 
     // --- Precompute Rotation Matrix on Host (float) ---
     float TRs[3][3];
@@ -846,7 +897,13 @@ int main(int argc, char *argv[])
     dim3 gridSize={(NrPixelsY+blockSize.x-1)/blockSize.x, (NrPixelsZ+blockSize.y-1)/blockSize.y};
     printf("Launching kernel (float) grid (%u,%u) block (%u,%u)...\n", gridSize.x, gridSize.y, blockSize.x, blockSize.y);
     start = clock();
-    mapperKernelF<<<gridSize, blockSize>>>( tx, ty, tz, TRs, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen, zCen, Lsd, RhoD, p0, p1, p2, p3, nRBins, nEtaBins, distortionMapY_d, distortionMapZ_d, outputBuffer_d, outputCounter_d, maxOutputSize );
+    mapperKernelF<<<gridSize, blockSize>>>(
+        tx, ty, tz, TRs, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen, zCen, Lsd, RhoD,
+        p0, p1, p2, p3, nRBins, nEtaBins,
+        etaBinsLow_d, etaBinsHigh_d, rBinsLow_d, rBinsHigh_d,
+        distortionMapY_d, distortionMapZ_d,
+        outputBuffer_d, outputCounter_d, maxOutputSize
+    );
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
     end = clock();
@@ -1053,6 +1110,10 @@ int main(int argc, char *argv[])
     gpuErrchk(cudaFree(distortionMapZ_d));
     gpuErrchk(cudaFree(outputBuffer_d));
     gpuErrchk(cudaFree(outputCounter_d));
+    gpuErrchk(cudaFree(etaBinsLow_d));
+    gpuErrchk(cudaFree(etaBinsHigh_d));
+    gpuErrchk(cudaFree(rBinsLow_d));
+    gpuErrchk(cudaFree(rBinsHigh_d));
 
 	end0 = clock();
     diftotal = ((float)(end0-start0))/CLOCKS_PER_SEC;
