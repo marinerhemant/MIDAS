@@ -28,6 +28,7 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include <limits.h>
 
 // Define the structure expected in Map.bin
 struct data {
