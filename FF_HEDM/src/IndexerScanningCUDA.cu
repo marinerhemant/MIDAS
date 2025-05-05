@@ -602,7 +602,7 @@ void CompareSpots_d(
 		etamargin = d_etamargins[RingNr];
         int ome_idx_margin = (int) floorf(fabsf(theorEta)); // Eta used for omega margin index? Check original. Yes, seems so.
         ome_idx_margin = max(0, min(180, ome_idx_margin)); // Clamp index 0-180
-		omemargin = d_omemargins[ome_idx_margin]; // Use fabsf(Eta) for index as per original
+		// omemargin = d_omemargins[ome_idx_margin]; // Use fabsf(Eta) for index as per original
 
 		MatchFound = 0;
 		diffOmeBest = MarginOme + 0.00001f; // Initialize best diff
@@ -1885,7 +1885,7 @@ __global__ void IndexingKernel(
     // --- Kernel Logic (Branch based on hasMic) ---
     int bestMatchFoundKernel = 0;
     int SpotID_kernel = -1; // Use a different name
-    int best_nTspots_kernel = 0;
+    // int best_nTspots_kernel = 0;
     int best_nMatches_kernel = 0;
     float best_confidence_kernel = 0.0f;
     float min_IA_kernel = 1000.0f;
@@ -1964,7 +1964,7 @@ __global__ void IndexingKernel(
                     bestMatchFoundKernel = 1;
                     SpotID_kernel = thisRowNr; // Use voxel number as SpotID for MIC mode? Or -1? Or bestRow_mic? Let's use voxel nr.
                     best_confidence_kernel = FracThis_mic;
-                    best_nTspots_kernel = nTspots_mic;
+                    // best_nTspots_kernel = nTspots_mic;
                     best_nMatches_kernel = nMatches_mic;
 
                     // Store the results (GrainMatches and AllGrainSpots) in the workspace buffers
@@ -2169,7 +2169,7 @@ __global__ void IndexingKernel(
                             SpotID_kernel = thisID_obs; // ID of the spot that seeded this best match
                             best_confidence_kernel = FracThis_or;
                             min_IA_kernel = currentIA;
-                            best_nTspots_kernel = nTspots_or;
+                            // best_nTspots_kernel = nTspots_or;
                             best_nMatches_kernel = nMatches_or;
 
                             // Save this as the best result (copy from Temp to final workspace buffers)
