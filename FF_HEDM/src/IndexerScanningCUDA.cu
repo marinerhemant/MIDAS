@@ -1832,6 +1832,7 @@ __global__ void IndexingKernel(
     }
 
     // --- Access parameters via pointer ---
+    int n_spots = n_spots_total; // Get value from argument
     int n_hkls = params->n_hkls; // Get value from device struct
     int SGNum = params->SGNum;
     int numScans = params->numScans;
