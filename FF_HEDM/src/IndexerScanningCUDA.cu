@@ -1836,19 +1836,19 @@ __global__ void IndexingKernel(
     int n_hkls = params->n_hkls; // Get value from device struct
     int SGNum = params->SGNum;
     int numScans = params->numScans;
-    float pixelsize = params->pixelsize;
-    int BigDetSize = params->BigDetSize;
-    float BeamSize = params->BeamSize;
+    // float pixelsize = params->pixelsize;
+    // int BigDetSize = params->BigDetSize;
+    // float BeamSize = params->BeamSize;
     float EtaBinSize = params->EtaBinSize;
     float OmeBinSize = params->OmeBinSize;
-    float Wavelength = params->Wavelength;
-    float Distance = params->Distance;
-    float ExcludePoleAngle = params->ExcludePoleAngle;
-    float MarginOme = params->MarginOme;
-    float MarginRadial = params->MarginRadial;
-    float MinMatchesToAcceptFrac = params->MinMatchesToAcceptFrac;
-    int RingToIndex = params->RingToIndex;
-    int NoOfOmegaRanges = params->NoOfOmegaRanges;
+    // float Wavelength = params->Wavelength;
+    // float Distance = params->Distance;
+    // float ExcludePoleAngle = params->ExcludePoleAngle;
+    // float MarginOme = params->MarginOme;
+    // float MarginRadial = params->MarginRadial;
+    // float MinMatchesToAcceptFrac = params->MinMatchesToAcceptFrac;
+    // int RingToIndex = params->RingToIndex;
+    // int NoOfOmegaRanges = params->NoOfOmegaRanges;
     int n_ring_bins = 0; // Calculate based on RingRadii in params
     for(int i=0; i<MAX_N_RINGS; ++i) if(params->RingRadii[i] > EPS) n_ring_bins = i+1;
     int n_eta_bins = (EtaBinSize < EPS) ? 0 : (int)ceilf(360.0f / EtaBinSize);
@@ -2087,7 +2087,7 @@ __global__ void IndexingKernel(
                  // Generate candidate orientations based on this spot
                  int nOrient_gen = 0;
                  GenerateCandidateOrientationsF_d(hkl_theor, hklnormal_obs, params->StepsizeOrient,
-                                                  ringnr_obs, SGNum, d_HKLints, h_ABCABG, // Pass lattice params
+                                                  ringnr_obs, SGNum, d_HKLints, params->ABCABG, // Pass lattice params
                                                   OrMat_ws, MAX_N_OR, // Use workspace slice for OrMat
                                                   &nOrient_gen);
 
@@ -2782,9 +2782,9 @@ int main(int argc, char *argv[])
     // Calculate number of blocks needed to cover all voxels in this chunk
     int numBlocks = (num_voxels_this_block + threadsPerBlock - 1) / threadsPerBlock;
 
-    int kernel_n_ring_bins = n_ring_bins_host;
-    int kernel_n_eta_bins = n_eta_bins_host;
-    int kernel_n_ome_bins = n_ome_bins_host;
+    // int kernel_n_ring_bins = n_ring_bins_host;
+    // int kernel_n_eta_bins = n_eta_bins_host;
+    // int kernel_n_ome_bins = n_ome_bins_host;
 
     // Pass necessary parameters to the kernel
     IndexingKernel<<<numBlocks, threadsPerBlock>>>(
