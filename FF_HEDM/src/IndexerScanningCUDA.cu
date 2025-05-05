@@ -1807,17 +1807,10 @@ __global__ void IndexingKernel(
     const float* d_mic, // MIC data (if used)
 
     // Parameters (Passed by value or from const memory)
-    struct TParams params, // Pass the whole struct by value
-    int n_spots, // Total number of observed spots
-    int n_hkls,
-    int SGNum,
-    int n_ring_bins,
-    int n_eta_bins,
-    int n_ome_bins,
-    int numScans,
+    const struct TParams *params, // Pass the whole struct by value
+    int n_spots_total, // Total number of spots
     int hasMic, // Flag: 1 if MIC file was provided, 0 otherwise
     int nrMic, // Number of entries in d_mic
-    double h_ABCABG[6], // Lattice constants/angles (double ok for host copy)
 
     // Voxel range for this kernel launch
     int startRowNr,
@@ -1837,6 +1830,28 @@ __global__ void IndexingKernel(
     if (thisRowNr >= endRowNr) {
         return; // Thread is outside the valid range
     }
+
+    // --- Access parameters via pointer ---
+    int n_hkls = d_params->n_hkls; // Get value from device struct
+    int SGNum = d_params->SGNum;
+    int numScans = d_params->numScans;
+    float pixelsize = d_params->pixelsize;
+    int BigDetSize = d_params->BigDetSize;
+    float BeamSize = d_params->BeamSize;
+    float EtaBinSize = d_params->EtaBinSize;
+    float OmeBinSize = d_params->OmeBinSize;
+    float Wavelength = d_params->Wavelength;
+    float Distance = d_params->Distance;
+    float ExcludePoleAngle = d_params->ExcludePoleAngle;
+    float MarginOme = d_params->MarginOme;
+    float MarginRadial = d_params->MarginRadial;
+    float MinMatchesToAcceptFrac = d_params->MinMatchesToAcceptFrac;
+    int RingToIndex = d_params->RingToIndex;
+    int NoOfOmegaRanges = d_params->NoOfOmegaRanges;
+    int n_ring_bins = 0; // Calculate based on RingRadii in d_params
+    for(int i=0; i<MAX_N_RINGS; ++i) if(d_params->RingRadii[i] > EPS) n_ring_bins = i+1;
+    int n_eta_bins = (EtaBinSize < EPS) ? 0 : (int)ceilf(360.0f / EtaBinSize);
+	int n_ome_bins = (OmeBinSize < EPS) ? 0 : (int)ceilf(360.0f / OmeBinSize);
 
     // --- Calculate Workspace Offsets for this Thread ---
     // Sizes per thread (ensure these match host allocation logic)
@@ -1917,10 +1932,10 @@ __global__ void IndexingKernel(
 
             // --- Run simulation and comparison for this single orientation ---
             int nTspots_mic = 0;
-            CalcDiffrSpots_Furnace_d(OMThis_mic, params.Wavelength, params.Distance,
-                                     params.RingRadii, params.OmegaRanges, params.BoxSizes,
-                                     params.NoOfOmegaRanges, params.ExcludePoleAngle, n_hkls,
-                                     d_hkls, d_BigDetector, params.BigDetSize, params.pixelsize,
+            CalcDiffrSpots_Furnace_d(OMThis_mic, params->Wavelength, params->Distance,
+                                     params->RingRadii, params->OmegaRanges, params->BoxSizes,
+                                     params->NoOfOmegaRanges, params->ExcludePoleAngle, n_hkls,
+                                     d_hkls, d_BigDetector, params->BigDetSize, params->pixelsize,
                                      TheorSpots_ws, NROWS_PER_GRAIN, // Use workspace slice
                                      &nTspots_mic);
 
@@ -1941,26 +1956,26 @@ __global__ void IndexingKernel(
                     CalcEtaAngle_d( TheorSpots_ws[base_idx_theor + 10], TheorSpots_ws[base_idx_theor + 11],
                                     &TheorSpots_ws[base_idx_theor + 12] ); // eta_displ
                     int ringnr_mic = (int)TheorSpots_ws[base_idx_theor + 9];
-                    if (ringnr_mic >= 0 && ringnr_mic < MAX_N_RINGS && params.RingRadii[ringnr_mic] > EPS) {
+                    if (ringnr_mic >= 0 && ringnr_mic < MAX_N_RINGS && params->RingRadii[ringnr_mic] > EPS) {
                         TheorSpots_ws[base_idx_theor + 13] = sqrtf(TheorSpots_ws[base_idx_theor + 10] * TheorSpots_ws[base_idx_theor + 10] +
                                                                 TheorSpots_ws[base_idx_theor + 11] * TheorSpots_ws[base_idx_theor + 11])
-                                                            - params.RingRadii[ringnr_mic]; // radius_diff
+                                                            - params->RingRadii[ringnr_mic]; // radius_diff
                     } else {
                          TheorSpots_ws[base_idx_theor + 13] = 0.0f; // Invalid ring
                     }
                 }
 
                 int nMatches_mic = 0;
-                CompareSpots_d(TheorSpots_ws, nTspots_mic, params.MarginOme, params.MarginRadial,
+                CompareSpots_d(TheorSpots_ws, nTspots_mic, params->MarginOme, params->MarginRadial,
                                d_etamargins, d_omemargins, n_eta_bins, n_ome_bins,
-                               params.EtaBinSize, params.OmeBinSize, params.BeamSize,
+                               params->EtaBinSize, params->OmeBinSize, params->BeamSize,
                                xThis, yThis, d_ObsSpotsLab, d_data, d_ndata, d_ypos, numScans, n_ring_bins,
                                GrainSpots_ws, nTspots_mic, // Use workspace, size=nTspots_mic
                                &nMatches_mic);
 
                 float FracThis_mic = (nTspots_mic > 0) ? ((float)nMatches_mic / (float)nTspots_mic) : 0.0f;
 
-                if (FracThis_mic > params.MinMatchesToAcceptFrac){
+                if (FracThis_mic > params->MinMatchesToAcceptFrac){
                     bestMatchFoundKernel = 1;
                     SpotID_kernel = thisRowNr; // Use voxel number as SpotID for MIC mode? Or -1? Or bestRow_mic? Let's use voxel nr.
                     best_confidence_kernel = FracThis_mic;
@@ -1985,7 +2000,7 @@ __global__ void IndexingKernel(
 
                     // Calculate IA - needs careful checking due to dependencies noted in CalcIA_d
                     // Pass the correct buffers: GrainMatches_ws and AllGrainSpots_ws
-                     CalcIA_d(GrainMatches_ws, 1, AllGrainSpots_ws, nTspots_mic, params.Distance);
+                     CalcIA_d(GrainMatches_ws, 1, AllGrainSpots_ws, nTspots_mic, params->Distance);
                      min_IA_kernel = GrainMatches_ws[gm_base + 15]; // Store calculated IA
                 }
             } // end if nTspots_mic > 0
@@ -1993,7 +2008,7 @@ __global__ void IndexingKernel(
 
     } else {
         // --- Mode 2: Indexing based on observed spots ---
-        int RingToIndex = params.RingToIndex;
+        int RingToIndex = params->RingToIndex;
         if (RingToIndex < 0) return; // Cannot proceed without RingToIndex
 
         // Find the range of observed spots matching RingToIndex
@@ -2005,10 +2020,10 @@ __global__ void IndexingKernel(
         size_t endRowNrSp_kernel = 0;         // Initialize to min
 
         // Optimization: Pass start/end indices for the target ring from host
-        // Assuming these are added to params: params.startRowNrSp, params.endRowNrSp
-        // if (params.validRingIndexRange) { // Add a flag if range is precomputed
-        //     startRowNrSp_kernel = params.startRowNrSp;
-        //     endRowNrSp_kernel = params.endRowNrSp;
+        // Assuming these are added to params: params->startRowNrSp, params->endRowNrSp
+        // if (params->validRingIndexRange) { // Add a flag if range is precomputed
+        //     startRowNrSp_kernel = params->startRowNrSp;
+        //     endRowNrSp_kernel = params->endRowNrSp;
         // } else { // Fallback: Search (slow)
              for (int i=0; i < n_spots; i++){
                 int base_idx_obs = i * N_COL_OBSSPOTS;
@@ -2037,7 +2052,7 @@ __global__ void IndexingKernel(
              float ypos_obs = d_ypos[scanNr_obs];
              float newY_check = xThis * sinf(deg2rad*angle_obs) + yThis * cosf(deg2rad*angle_obs);
 
-			 if (fabsf(newY_check - ypos_obs) <= params.BeamSize / 2.0f){
+			 if (fabsf(newY_check - ypos_obs) <= params->BeamSize / 2.0f){
                  // This spot is a candidate for seeding orientation search
 
                  // Get spot details needed for orientation generation
@@ -2050,10 +2065,10 @@ __global__ void IndexingKernel(
 
                  // Calculate measured g-vector (hklnormal)
                  float xi_obs, yi_obs, zi_obs; // Unit vector to spot
-                 float len_obs_sq = params.Distance * params.Distance + y0_obs * y0_obs + z0_obs * z0_obs;
+                 float len_obs_sq = params->Distance * params->Distance + y0_obs * y0_obs + z0_obs * z0_obs;
                  if (len_obs_sq < EPS) continue; // Invalid spot position
                  float len_obs_inv = 1.0f / sqrtf(len_obs_sq);
-                 xi_obs = params.Distance * len_obs_inv;
+                 xi_obs = params->Distance * len_obs_inv;
                  yi_obs = y0_obs * len_obs_inv;
                  zi_obs = z0_obs * len_obs_inv;
 
@@ -2070,7 +2085,7 @@ __global__ void IndexingKernel(
 
                  // Generate candidate orientations based on this spot
                  int nOrient_gen = 0;
-                 GenerateCandidateOrientationsF_d(hkl_theor, hklnormal_obs, params.StepsizeOrient,
+                 GenerateCandidateOrientationsF_d(hkl_theor, hklnormal_obs, params->StepsizeOrient,
                                                   ringnr_obs, SGNum, d_HKLints, h_ABCABG, // Pass lattice params
                                                   OrMat_ws, MAX_N_OR, // Use workspace slice for OrMat
                                                   &nOrient_gen);
@@ -2083,10 +2098,10 @@ __global__ void IndexingKernel(
 
                      int nTspots_or = 0;
                      // Calculate theoretical spots for this orientation
-                     CalcDiffrSpots_Furnace_d(currentOM, params.Wavelength, params.Distance,
-                                              params.RingRadii, params.OmegaRanges, params.BoxSizes,
-                                              params.NoOfOmegaRanges, params.ExcludePoleAngle, n_hkls,
-                                              d_hkls, d_BigDetector, params.BigDetSize, params.pixelsize,
+                     CalcDiffrSpots_Furnace_d(currentOM, params->Wavelength, params->Distance,
+                                              params->RingRadii, params->OmegaRanges, params->BoxSizes,
+                                              params->NoOfOmegaRanges, params->ExcludePoleAngle, n_hkls,
+                                              d_hkls, d_BigDetector, params->BigDetSize, params->pixelsize,
                                               TheorSpots_ws, NROWS_PER_GRAIN, // Use workspace slice
                                               &nTspots_or);
 
@@ -2107,10 +2122,10 @@ __global__ void IndexingKernel(
                         CalcEtaAngle_d( TheorSpots_ws[base_idx_theor + 10], TheorSpots_ws[base_idx_theor + 11],
                                         &TheorSpots_ws[base_idx_theor + 12] );
                         int ringnr_or = (int)TheorSpots_ws[base_idx_theor + 9];
-                        if (ringnr_or >= 0 && ringnr_or < MAX_N_RINGS && params.RingRadii[ringnr_or] > EPS) {
+                        if (ringnr_or >= 0 && ringnr_or < MAX_N_RINGS && params->RingRadii[ringnr_or] > EPS) {
                             TheorSpots_ws[base_idx_theor + 13] = sqrtf(TheorSpots_ws[base_idx_theor + 10] * TheorSpots_ws[base_idx_theor + 10] +
                                                                     TheorSpots_ws[base_idx_theor + 11] * TheorSpots_ws[base_idx_theor + 11])
-                                                                - params.RingRadii[ringnr_or];
+                                                                - params->RingRadii[ringnr_or];
                         } else {
                              TheorSpots_ws[base_idx_theor + 13] = 0.0f;
                         }
@@ -2118,9 +2133,9 @@ __global__ void IndexingKernel(
 
                     // Compare theoretical spots to *all* observed spots for this voxel
                     int nMatches_or = 0;
-                    CompareSpots_d(TheorSpots_ws, nTspots_or, params.MarginOme, params.MarginRadial,
+                    CompareSpots_d(TheorSpots_ws, nTspots_or, params->MarginOme, params->MarginRadial,
                                    d_etamargins, d_omemargins, n_eta_bins, n_ome_bins,
-                                   params.EtaBinSize, params.OmeBinSize, params.BeamSize,
+                                   params->EtaBinSize, params->OmeBinSize, params->BeamSize,
                                    xThis, yThis, d_ObsSpotsLab, d_data, d_ndata, d_ypos, numScans, n_ring_bins,
                                    GrainSpots_ws, nTspots_or, // Use workspace slice
                                    &nMatches_or);
@@ -2128,7 +2143,7 @@ __global__ void IndexingKernel(
                     float FracThis_or = (nTspots_or > 0) ? ((float)nMatches_or / (float)nTspots_or) : 0.0f;
 
                     // Check if this is a better match than current best for this voxel
-                    if (FracThis_or > params.MinMatchesToAcceptFrac){
+                    if (FracThis_or > params->MinMatchesToAcceptFrac){
                         // Need to calculate IA to break ties if confidence is equal
                         // Store temporary grain match info
                         int gm_base_T = 0; // Temp buffer index (only 1 needed)
@@ -2149,7 +2164,7 @@ __global__ void IndexingKernel(
                         // Assuming reuse: AllGrainSpotsT_ws points to same data as GrainSpots_ws
 
                         // Calculate IA for this candidate match
-                        CalcIA_d(GrainMatchesT_ws, 1, AllGrainSpotsT_ws, nTspots_or, params.Distance);
+                        CalcIA_d(GrainMatchesT_ws, 1, AllGrainSpotsT_ws, nTspots_or, params->Distance);
                         float currentIA = GrainMatchesT_ws[gm_base_T + 15];
 
                         // Update best match if:
@@ -2180,14 +2195,14 @@ __global__ void IndexingKernel(
                              // memcpy(AllGrainSpots_ws, AllGrainSpotsT_ws, nTspots_or * N_COL_GRAINSPOTS * sizeof(float));
                              // Need to handle non-matched spots correctly if CalcIA modified the buffer.
                              // Let's re-run CompareSpots to get the definitive spot list for the best match.
-                             CompareSpots_d(TheorSpots_ws, nTspots_or, params.MarginOme, params.MarginRadial,
+                             CompareSpots_d(TheorSpots_ws, nTspots_or, params->MarginOme, params->MarginRadial,
                                    d_etamargins, d_omemargins, n_eta_bins, n_ome_bins,
-                                   params.EtaBinSize, params.OmeBinSize, params.BeamSize,
+                                   params->EtaBinSize, params->OmeBinSize, params->BeamSize,
                                    xThis, yThis, d_ObsSpotsLab, d_data, d_ndata, d_ypos, numScans, n_ring_bins,
                                    AllGrainSpots_ws, nTspots_or, // Write directly to final spot buffer
                                    &nMatches_or); // nMatches_or should be same as best_nMatches_kernel
                              // Recalculate IA on the final buffer to store spot-level IAs
-                             CalcIA_d(GrainMatches_ws, 1, AllGrainSpots_ws, nTspots_or, params.Distance);
+                             CalcIA_d(GrainMatches_ws, 1, AllGrainSpots_ws, nTspots_or, params->Distance);
                              // Ensure the average IA in GrainMatches_ws is correct
                              GrainMatches_ws[0 * N_COL_GRAINMATCHES + 15] = min_IA_kernel;
 
@@ -2624,6 +2639,10 @@ int main(int argc, char *argv[])
     // CUDA_CHECK(cudaSetDevice(0));
 
     // --- Allocate Device Memory ---
+
+    struct TParams* d_params = NULL; // Device pointer for the struct
+    CUDA_CHECK(cudaMalloc(&d_params, sizeof(struct TParams)));
+
     size_t obs_spots_bytes = n_spots_host * N_COL_OBSSPOTS * sizeof(float);
     CUDA_CHECK(cudaMalloc(&d_ObsSpotsLab, obs_spots_bytes));
 
@@ -2715,6 +2734,8 @@ int main(int argc, char *argv[])
     // ================================================================
     printf("Copying data from host to device...\n");
 
+    printf("Copying TParams struct to device...\n");
+    CUDA_CHECK(cudaMemcpy(d_params, &Params, sizeof(struct TParams), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_ObsSpotsLab, h_ObsSpotsLab, obs_spots_bytes, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_hkls, h_hkls, hkls_bytes, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_HKLints, h_HKLints, hklints_bytes, cudaMemcpyHostToDevice)); // Copy max size
@@ -2760,14 +2781,16 @@ int main(int argc, char *argv[])
     // Calculate number of blocks needed to cover all voxels in this chunk
     int numBlocks = (num_voxels_this_block + threadsPerBlock - 1) / threadsPerBlock;
 
+    int kernel_n_ring_bins = n_ring_bins_host;
+    int kernel_n_eta_bins = n_eta_bins_host;
+    int kernel_n_ome_bins = n_ome_bins_host;
+
     // Pass necessary parameters to the kernel
     IndexingKernel<<<numBlocks, threadsPerBlock>>>(
         d_ObsSpotsLab, d_BigDetector, d_data, d_ndata, d_hkls, d_HKLints,
         d_RingHKL, d_omemargins, d_etamargins, d_grid, d_ypos, d_mic,
-        Params, // Pass struct by value
-        (int)n_spots_host, n_hkls_host, SGNum_host, n_ring_bins_host, n_eta_bins_host, n_ome_bins_host,
-        numScans_host, hasMic_flag, nrMic_host,
-        h_ABCABG, // Pass host double array by value (small)
+        d_params, // Pass struct by device pointer
+        (int)n_spots_host, hasMic_flag, nrMic_host,
         startRowNr_host, endRowNr_host, // Range for this kernel
         d_workspace, d_results, d_matched_ids, d_key_info
     );
