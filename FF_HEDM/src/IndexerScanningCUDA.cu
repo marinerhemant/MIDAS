@@ -37,7 +37,7 @@
 #include <sys/types.h>
 // #include <omp.h> // Remove OpenMP
 #include <libgen.h>
-
+#include <unistd.h>
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 
@@ -380,7 +380,7 @@ void CalcDiffrSpots_Furnace_d(
     float ExcludePoleAngle,
     int n_hkls,           // Pass dimension
     const float* d_hkls,        // Device pointer
-    int* d_BigDetector,   // Device pointer
+    const int* d_BigDetector,   // Device pointer
     int BigDetSize,
     float pixelsize,
     float* spots_out,     // Output buffer (flattened)
