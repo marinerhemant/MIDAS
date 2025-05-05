@@ -1832,24 +1832,24 @@ __global__ void IndexingKernel(
     }
 
     // --- Access parameters via pointer ---
-    int n_hkls = d_params->n_hkls; // Get value from device struct
-    int SGNum = d_params->SGNum;
-    int numScans = d_params->numScans;
-    float pixelsize = d_params->pixelsize;
-    int BigDetSize = d_params->BigDetSize;
-    float BeamSize = d_params->BeamSize;
-    float EtaBinSize = d_params->EtaBinSize;
-    float OmeBinSize = d_params->OmeBinSize;
-    float Wavelength = d_params->Wavelength;
-    float Distance = d_params->Distance;
-    float ExcludePoleAngle = d_params->ExcludePoleAngle;
-    float MarginOme = d_params->MarginOme;
-    float MarginRadial = d_params->MarginRadial;
-    float MinMatchesToAcceptFrac = d_params->MinMatchesToAcceptFrac;
-    int RingToIndex = d_params->RingToIndex;
-    int NoOfOmegaRanges = d_params->NoOfOmegaRanges;
-    int n_ring_bins = 0; // Calculate based on RingRadii in d_params
-    for(int i=0; i<MAX_N_RINGS; ++i) if(d_params->RingRadii[i] > EPS) n_ring_bins = i+1;
+    int n_hkls = params->n_hkls; // Get value from device struct
+    int SGNum = params->SGNum;
+    int numScans = params->numScans;
+    float pixelsize = params->pixelsize;
+    int BigDetSize = params->BigDetSize;
+    float BeamSize = params->BeamSize;
+    float EtaBinSize = params->EtaBinSize;
+    float OmeBinSize = params->OmeBinSize;
+    float Wavelength = params->Wavelength;
+    float Distance = params->Distance;
+    float ExcludePoleAngle = params->ExcludePoleAngle;
+    float MarginOme = params->MarginOme;
+    float MarginRadial = params->MarginRadial;
+    float MinMatchesToAcceptFrac = params->MinMatchesToAcceptFrac;
+    int RingToIndex = params->RingToIndex;
+    int NoOfOmegaRanges = params->NoOfOmegaRanges;
+    int n_ring_bins = 0; // Calculate based on RingRadii in params
+    for(int i=0; i<MAX_N_RINGS; ++i) if(params->RingRadii[i] > EPS) n_ring_bins = i+1;
     int n_eta_bins = (EtaBinSize < EPS) ? 0 : (int)ceilf(360.0f / EtaBinSize);
 	int n_ome_bins = (OmeBinSize < EPS) ? 0 : (int)ceilf(360.0f / OmeBinSize);
 
