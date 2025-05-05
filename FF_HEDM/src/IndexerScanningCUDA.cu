@@ -555,7 +555,7 @@ void CompareSpots_d(
 	// size_t iRing; // loop var
 	// size_t iSpot; // loop var
 	size_t scannrobs; // scan nr for observed spot
-	float etamargin, omemargin, yRot, ySpot;
+	float etamargin, yRot, ySpot;
 
     if (EtaBinSize < EPS || OmeBinSize < EPS) { // Avoid division by zero
         *nMatch = 0;
@@ -785,7 +785,7 @@ float CalcRotationAngle_d (int RingNr, int SGNum, const int* d_HKLints, const do
 
     // Using h_ABCABG directly. Convert to float internally if needed.
     float alpha = (float)h_ABCABG[3];
-    float beta = (float)h_ABCABG[4];
+    // float beta = (float)h_ABCABG[4];
     float gamma = (float)h_ABCABG[5];
     float ninety = 90.0f;
 
