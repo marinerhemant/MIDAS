@@ -8,6 +8,17 @@
 //
 // CUDA C Port
 //
+/*
+  ~/opt/midascuda/cuda/bin/nvcc src/IndexerScanningCUDA.cu -o bin/IndexerScanningCUDA \
+  -I/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/include -L/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/lib \
+  -gencode=arch=compute_86,code=sm_86 \
+  -gencode=arch=compute_90,code=sm_90 \
+  -Xcompiler -g \
+  -I/path/to/midas/includes \
+  -L/path/to/midas/libs \
+  -O3 -lnlopt -lz -ldl -lm -lpthread
+  export LD_LIBRARY_PATH=/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/lib:$LD_LIBRARY_PATH
+*/
 
 #include <stdio.h>
 #include <math.h>
@@ -1189,7 +1200,7 @@ int ReadParams(char FileName[], struct TParams * Params)
 	FILE *fp;
 	char line[MAX_LINE_LENGTH_PARAM];
 	char dummy[MAX_LINE_LENGTH_PARAM];
-	char *str;
+	const char *str;
 	int NrOfBoxSizes = 0;
 	int cmpres;
 	int NoRingNumbers = 0;
@@ -2306,7 +2317,7 @@ int main(int argc, char *argv[])
 
     // --- Read HKLs (Host) ---
     printf("Reading HKL data...\n");
-	char *hklfn = "hkls.csv"; // Should this be a parameter?
+	const char *hklfn = "hkls.csv"; // Should this be a parameter?
 	FILE *hklf = fopen(hklfn,"r");
     checkHost(hklf == NULL, "Cannot open HKL file: %s", hklfn);
 
