@@ -2876,10 +2876,12 @@ int main(int argc, char *argv[])
                      int spot_row_idx = m; // Matched spots are at the start
                      int base_idx_spot = spot_row_idx * N_COL_GRAINSPOTS;
                      if (current_id_offset < total_matched_spots) {
-                          h_matched_ids[current_id_offset++] = (int)AllGrainSpots_ws_host[base_idx_spot + 14];
+                        printf("Copying ID %d from spot %zu (voxel %d)\n", (int)AllGrainSpots_ws_host[base_idx_spot + 14], m, startRowNr_host + i);
+                        fflush(stdout); // Ensure output is flushed
+                        h_matched_ids[current_id_offset++] = (int)AllGrainSpots_ws_host[base_idx_spot + 14];
                      } else {
-                          printf("Error: Exceeded total_matched_spots while copying IDs.\n");
-                          break;
+                        printf("Error: Exceeded total_matched_spots while copying IDs.\n");
+                        break;
                      }
                  }
              }
