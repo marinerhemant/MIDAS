@@ -2637,7 +2637,7 @@ int main(int argc, char *argv[])
     printf("Initializing CUDA and allocating device memory...\n");
 
     // Select GPU (optional, use default device 0)
-    // CUDA_CHECK(cudaSetDevice(0));
+    CUDA_CHECK(cudaSetDevice(2));
 
     // --- Allocate Device Memory ---
 
