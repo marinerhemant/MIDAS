@@ -2538,9 +2538,9 @@ static ErrorCode parseZarrMetadata(
                 } else {
                     fprintf(stderr, "Failed to read omegaCenter data from zip entry '%s' (index %d), error %d. Falling back to omegaStart/Step.\n",
                            "measurement/process/scan_parameters/omegaCenter/0", locOmegaCenterData, err_oc);
-                    free(metadata.omegaCenter);
-                    metadata.omegaCenter = NULL;
-                    // metadata.nOmegaCenterEntries remains 0
+                    free(metadata->omegaCenter);
+                    metadata->omegaCenter = NULL;
+                    // metadata->nOmegaCenterEntries remains 0
                 }
             } else {
                 fprintf(stderr, "Failed to allocate memory for omegaCenter for %d entries\n", original_nFrames_for_omega);
