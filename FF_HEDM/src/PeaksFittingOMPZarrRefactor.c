@@ -1969,8 +1969,8 @@ static ErrorCode parseZarrMetadata(
     int maskLoc = -1;
     int locImTransOpt = -1;
     int locRingThresh = -1;
-    // int locOmegaRanges = -1;
-    // int nOmegaRanges = 0;
+    int locOmegaRanges = -1;
+    int nOmegaRanges = 0;
     int locOmegaCenterData = -1;        // To store zip index of omegaCenter data chunk
     int original_nFrames_for_omega = 0; // To store nFrames before skipFrame adjustment
     
@@ -3137,6 +3137,7 @@ int main(int argc, char *argv[])
             // omegaCenter not available, use old logic
             omega = metadata.omegaStart + (double)current_original_frame_idx * metadata.omegaStep;
         }
+        printf("Processing frame %d, omega: %lf, originalOmega: %lf\n", fileNr, omega,metadata.omegaStart + (double)current_original_frame_idx * metadata.omegaStep);
         
         // Process the image frame
         ErrorCode threadError = processImageFrame(
