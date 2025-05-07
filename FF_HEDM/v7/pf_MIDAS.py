@@ -303,7 +303,8 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
                 return f"Failed at MergeOverlappingPeaksAllZarr for layer {layerNr}"
         
         # Process omega if needed
-        zf = zarr.open(outFStem, 'r')
+        store = zarr.storage.ZipStore(outFStem, mode='r')
+        zf = zarr.open_group(store, mode='r')
         searchStr = 'measurement/process/scan_parameters/startOmeOverride'
         if searchStr in zf or len(omegaValues) > 0:
             if searchStr in zf:
