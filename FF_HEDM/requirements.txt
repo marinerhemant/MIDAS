@@ -6,7 +6,7 @@ scikit-image
 pillow
 h5py
 numba
-zarr==2.18.3
+zarr
 hdf5plugin
 dash
 plotly
