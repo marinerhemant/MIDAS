@@ -92,6 +92,8 @@ typedef struct {
     int skipFrame;
     int doPeakFit;
     PixelValueType pixelType; // Added field for dynamic pixel typing
+    double *omegaCenter;      // Array for per-frame omega values
+    int nOmegaCenterEntries;  // Number of entries in omegaCenter array
 } ImageMetadata;
 
 // Structure for analysis parameters
@@ -1923,6 +1925,8 @@ static ErrorCode parseZarrMetadata(
     metadata->skipFrame = 0;
     metadata->doPeakFit = 1;
     metadata->pixelType = PX_TYPE_UINT16;  // Default to uint16
+    metadata->omegaCenter = NULL;       // Initialize omegaCenter
+    metadata->nOmegaCenterEntries = 0;  // Initialize nOmegaCenterEntries
     
     params->doPeakFit = 1;
     params->bc = DEFAULT_BC;
@@ -1965,8 +1969,10 @@ static ErrorCode parseZarrMetadata(
     int maskLoc = -1;
     int locImTransOpt = -1;
     int locRingThresh = -1;
-    int locOmegaRanges = -1;
-    int nOmegaRanges = 0;
+    // int locOmegaRanges = -1;
+    // int nOmegaRanges = 0;
+    int locOmegaCenterData = -1;        // To store zip index of omegaCenter data chunk
+    int original_nFrames_for_omega = 0; // To store nFrames before skipFrame adjustment
     
     // Parse all files in the archive
     int count = 0;
@@ -1997,6 +2003,7 @@ static ErrorCode parseZarrMetadata(
                               &metadata->nFrames, &metadata->NrPixelsZ, &metadata->NrPixelsY)) {
                     printf("nFrames: %d nrPixelsZ: %d nrPixelsY: %d\n", 
                           metadata->nFrames, metadata->NrPixelsZ, metadata->NrPixelsY);
+                          original_nFrames_for_omega = metadata->nFrames; // Capture original nFrames
                 } else {
                     free(buffer);
                     zip_close(archive);
@@ -2166,6 +2173,10 @@ static ErrorCode parseZarrMetadata(
         }
         if (strstr(fileInfo->name, "exchange/flood/0.0.0") != NULL) {
             floodLoc = count;
+        }
+        const char* omegaCenterDataName = "measurement/process/scan_parameters/omegaCenter/0";
+        if (strcmp(fileInfo->name, omegaCenterDataName) == 0) {
+            locOmegaCenterData = count;
         }
 
         // Read parameters
@@ -2513,7 +2524,34 @@ static ErrorCode parseZarrMetadata(
             printf("nOmegaRanges: %d\n", nOmegaRanges);
             free(buffer);
         }
-        
+
+        if (locOmegaCenterData != -1 && original_nFrames_for_omega > 0) {
+            metadata->omegaCenter = (double*)malloc((size_t)original_nFrames_for_omega * sizeof(double));
+            if (metadata->omegaCenter) {
+                // Use existing readZarrArrayData function
+                ErrorCode err_oc = readZarrArrayData(archive, locOmegaCenterData, metadata->omegaCenter,
+                                                     (size_t)original_nFrames_for_omega * sizeof(double), "double_array_omegaCenter");
+                if (err_oc == SUCCESS) {
+                    metadata->nOmegaCenterEntries = original_nFrames_for_omega;
+                    printf("Successfully read omegaCenter array with %d entries from zip entry '%s' (index %d).\n",
+                           metadata->nOmegaCenterEntries, "measurement/process/scan_parameters/omegaCenter/0", locOmegaCenterData);
+                } else {
+                    fprintf(stderr, "Failed to read omegaCenter data from zip entry '%s' (index %d), error %d. Falling back to omegaStart/Step.\n",
+                           "measurement/process/scan_parameters/omegaCenter/0", locOmegaCenterData, err_oc);
+                    free(metadata.omegaCenter);
+                    metadata.omegaCenter = NULL;
+                    // metadata.nOmegaCenterEntries remains 0
+                }
+            } else {
+                fprintf(stderr, "Failed to allocate memory for omegaCenter for %d entries\n", original_nFrames_for_omega);
+                metadata->omegaCenter = NULL; // Ensure it's NULL if malloc failed
+                // metadata.nOmegaCenterEntries remains 0
+            }
+        } else if (locOmegaCenterData != -1 && original_nFrames_for_omega <= 0) {
+            // This case might occur if "omegaCenter/0" is found but "exchange/data/.zarray" (which sets nFrames) wasn't, or nFrames was 0.
+            fprintf(stderr, "Warning: Found omegaCenter data chunk, but original_nFrames_for_omega (%d) is not positive. Skipping omegaCenter.\n", original_nFrames_for_omega);
+        }
+            
         if (strstr(fileInfo->name, "analysis/process/analysis_parameters/ImTransOpt/.zarray") != NULL) {
             char *buffer = calloc(fileInfo->size + 1, sizeof(char));
             if (!buffer) {
@@ -2807,6 +2845,7 @@ int main(int argc, char *argv[])
     if (error != SUCCESS) {
         printf("Error parsing Zarr metadata: %d\n", error);
         if (resultFolder) free(resultFolder);
+        if (metadata.omegaCenter) free(metadata.omegaCenter); // <-- ADDED: Potential cleanup if parseZarrMetadata allocated then errored elsewhere
         blosc2_destroy();
         return error;
     }
@@ -3054,12 +3093,50 @@ int main(int argc, char *argv[])
         if (!image || !imgCorrBC) {
             if (image) free(image);
             if (imgCorrBC) free(imgCorrBC);
-            printf("Memory allocation error for thread\n");
-            continue;
+            // Using #pragma omp critical for printf is safer in parallel regions if not already done by stdio
+            #pragma omp critical
+            {
+                printf("Memory allocation error for thread processing frame %d\n", fileNr);
+            }
+            continue; // Skip this frame iteration
         }
         
         // Calculate omega angle for this frame
-        double omega = metadata.omegaStart + fileNr * metadata.omegaStep;
+        // 'fileNr' from the loop is an index relative to the start of the frames being processed *by this block*.
+        // It's effectively an index into the 'allData' array structure, which itself starts after 'skipFrame' originals.
+        // So, the original frame number for Zarr indexing (0-based) is 'fileNr + metadata.skipFrame'.
+        int original_frame_number = fileNr; // This 'fileNr' loop variable IS the original frame number for data that's loaded.
+                                            // Let's trace:
+                                            // if skipFrame = 10, nFrames = 100 (orig).
+                                            // metadata.nFrames becomes 90.
+                                            // startFileNr (for block 0/1) is 0, endFileNr is 90.
+                                            // readFrameData reads starting from dataLoc (which is orig_dataLoc + 10).
+                                            // processImageFrame receives 'fileNr' from 0 to 89.
+                                            // This 'fileNr' corresponds to the (fileNr)-th image *in the loaded set*.
+                                            // The actual original frame number is 'fileNr_in_loop + metadata.skipFrame'.
+                                            // The 'fileNr' argument to processImageFrame is 'fileNr_in_loop'.
+                                            // The 'fileNr' used in CSV output `basename_%06d_PS.csv` is this `fileNr_in_loop + 1`.
+                                            // Thus, the omega should correspond to `fileNr_in_loop + metadata.skipFrame`.
+
+        int current_original_frame_idx = fileNr + metadata.skipFrame; // fileNr is the loop variable
+        double omega;
+
+        if (metadata.omegaCenter != NULL) { // Check if omegaCenter array was populated
+            if (current_original_frame_idx >= 0 && current_original_frame_idx < metadata.nOmegaCenterEntries) {
+                omega = metadata.omegaCenter[current_original_frame_idx];
+            } else {
+                // Index out of bounds for omegaCenter, or an issue with counts. Fallback.
+                #pragma omp critical
+                {
+                fprintf(stderr, "Warning: omegaCenter index %d for fileNr %d (skipFrame %d) is out of bounds (0-%d). Falling back.\n",
+                        current_original_frame_idx, fileNr, metadata.skipFrame, metadata.nOmegaCenterEntries - 1);
+                }
+                omega = metadata.omegaStart + (double)current_original_frame_idx * metadata.omegaStep;
+            }
+        } else {
+            // omegaCenter not available, use old logic
+            omega = metadata.omegaStart + (double)current_original_frame_idx * metadata.omegaStep;
+        }
         
         // Process the image frame
         ErrorCode threadError = processImageFrame(
@@ -3094,6 +3171,10 @@ int main(int argc, char *argv[])
     if (params.RingNrs) free(params.RingNrs);
     if (params.Thresholds) free(params.Thresholds);
     if (resultFolder) free(resultFolder);
+    if (metadata.omegaCenter != NULL) { // <-- ADDED: Cleanup omegaCenter
+        free(metadata.omegaCenter);
+        metadata.omegaCenter = NULL;
+    }
     
     // Clean up Blosc
     blosc2_destroy();
