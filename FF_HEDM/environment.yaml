@@ -23,7 +23,7 @@ dependencies:
   - diplib
   - scipy
   - fsspec
-  - opencv-python
+  - opencv
   - tqdm
   - diskcache
   - multiprocess
