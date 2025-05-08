@@ -27,6 +27,6 @@ dependencies:
   - tqdm
   - diskcache
   - multiprocess
-  - PyQt6
+  - pyqt
   - pyqtgraph
   - xcb-util-cursor
