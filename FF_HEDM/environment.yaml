@@ -7,5 +7,26 @@ dependencies:
   - python>=3.5
   - anaconda
   - pip
-  - pip:
-    - -r file:requirements.txt
+  - matplotlib
+  - numpy
+  - pandas
+  - scikit-image
+  - parsl
+  - pillow
+  - h5py
+  - numba
+  - zarr
+  - hdf5plugin
+  - dash
+  - dash-bootstrap-components
+  - plotly
+  - diplib
+  - scipy
+  - fsspec
+  - opencv-python
+  - tqdm
+  - diskcache
+  - multiprocess
+  - PyQt6
+  - pyqtgraph
+  - xcb-util-cursor
