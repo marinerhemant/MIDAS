@@ -17,10 +17,8 @@ fsspec
 opencv-python
 globus_compute_sdk
 globus_sdk
-scipy
 tqdm
 diskcache
 multiprocess
-PyQt6<6.5
+PyQt6
 pyqtgraph 
-xcb-util-cursor
