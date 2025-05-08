@@ -23,3 +23,4 @@ diskcache
 multiprocess
 PyQt6<6.5
 pyqtgraph 
+xcb-util-cursor
