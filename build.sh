@@ -99,7 +99,7 @@ cd "$BUILD_DIR" || { echo "Error: Could not enter build directory $BUILD_DIR"; e
 echo "Configuring CMake with options: \${CMAKE_OPTIONS[*]}"
 cmake .. \
     -G "$CMAKE_GENERATOR" \
-    "\${CMAKE_OPTIONS[@]}"
+    "${CMAKE_OPTIONS[@]}"
 
 # Build
 echo "Building with $JOBS jobs..."
