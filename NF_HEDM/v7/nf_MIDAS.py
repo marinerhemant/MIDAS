@@ -349,7 +349,7 @@ def main():
     logger.info("Making hkls.")
     try:
         run_command(
-            cmd=os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList") + f' {psFN}',
+            cmd=os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLListNF") + f' {psFN}',
             working_dir=resultFolder,
             out_file=f'{logDir}/hkls_out.csv',
             err_file=f'{logDir}/hkls_err.csv'
