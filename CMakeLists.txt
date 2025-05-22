@@ -154,7 +154,9 @@ function(handle_dependency NAME URL DOWNLOAD_FLAG)
               INTERFACE_LINK_LIBRARIES "${${NAME}_PC_LIBRARIES}"
             )
           else()
-            if(NOT TARGET ${NAME}::${NAME}) add_library(${NAME}::${NAME} INTERFACE IMPORTED) endif()
+            if(NOT TARGET ${NAME}::${NAME}) 
+              add_library(${NAME}::${NAME} INTERFACE IMPORTED) 
+            endif()
             set_target_properties(${NAME}::${NAME} PROPERTIES
               INTERFACE_INCLUDE_DIRECTORIES "${${NAME}_PC_INCLUDE_DIRS}"
               INTERFACE_LINK_LIBRARIES "${${NAME}_PC_LIBRARIES}"
