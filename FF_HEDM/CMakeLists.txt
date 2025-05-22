@@ -57,13 +57,13 @@ function(add_ff_hedm_executable TARGET_NAME)
     RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR}
   )
 
-  # Optional: copy to a local bin directory in the FF_HEDM build subdir for convenience during development
-  # The global CMAKE_RUNTIME_OUTPUT_DIRECTORY already places it in ${CMAKE_BINARY_DIR}/bin
-  # add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
-  #   COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/bin"
-  #   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${TARGET_NAME}> "${CMAKE_CURRENT_BINARY_DIR}/bin/"
-  #   COMMENT "FF_HEDM: Copied ${TARGET_NAME} to ${CMAKE_CURRENT_BINARY_DIR}/bin/"
-  # )
+  # Copy to a local bin directory in the FF_HEDM SOURCE subdir
+  add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/bin"  # Changed to SOURCE_DIR
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${TARGET_NAME}> "${CMAKE_CURRENT_SOURCE_DIR}/bin/" # Changed to SOURCE_DIR
+    COMMENT "Copied ${TARGET_NAME} to ${CMAKE_CURRENT_SOURCE_DIR}/bin/"
+    VERBATIM
+  )
 endfunction()
 
 

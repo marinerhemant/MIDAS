@@ -9,26 +9,23 @@ set(TOMO_SOURCES
 )
 
 # --- Executable: MIDAS_TOMO ---
-# The Makefile had two targets, 'tomo' and 'tomodebug', differing mainly by CFLAGS vs CDFLAGS (-g).
-# CMake handles Debug/Release flags via CMAKE_BUILD_TYPE.
-# We will define one target and let the build type manage debug symbols.
 add_executable(MIDAS_TOMO ${TOMO_SOURCES})
-
-# Dependencies: FFTW, OpenMP, and standard libraries (like math lib 'm').
-# FFTW::FFTW, m, dl etc. should be in COMMON_LINK_LIBRARIES from the top-level.
-target_link_libraries(MIDAS_TOMO PRIVATE ${COMMON_LINK_LIBRARIES}) # For FFTW and other common dependencies
-
-# Add compile definition -DPI=M_PI
-# This ensures 'PI' macro is available, expanding to M_PI (from math.h)
+target_link_libraries(MIDAS_TOMO PRIVATE ${COMMON_LINK_LIBRARIES})
 target_compile_definitions(MIDAS_TOMO PRIVATE PI=M_PI)
 
-# Enable OpenMP if available
 if(OpenMP_C_FOUND AND BUILD_OMP)
     target_link_libraries(MIDAS_TOMO PRIVATE OpenMP::OpenMP_C)
 endif()
 
 install(TARGETS MIDAS_TOMO
     RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR}
+)
+
+add_custom_command(TARGET MIDAS_TOMO POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/bin"
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:MIDAS_TOMO> "${CMAKE_CURRENT_SOURCE_DIR}/bin/"
+  COMMENT "Copied MIDAS_TOMO to ${CMAKE_CURRENT_SOURCE_DIR}/bin/"
+  VERBATIM
 )
 
 # Optional: Add a custom target to build all executables in this subdirectory
