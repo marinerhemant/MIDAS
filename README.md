@@ -41,4 +41,5 @@ pip install -r requirements.txt
 `
 
 **More details at** [MIDAS-WIKI](https://github.com/marinerhemant/MIDAS/wiki) 
+
 Installation instructions on the WIKI are old. Please refer to the build.sh script for the latest instructions.
