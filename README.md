@@ -19,24 +19,28 @@ Downloads [NLOPT](https://nlopt.readthedocs.io/en/latest/), [LIBTIFF](http://www
 Download the source code from [GitHub](https://github.com/marinerhemant/MIDAS).
 
 `bash
+
 git clone https://github.com/marinerhemant/MIDAS.git
 `
 
 Change to the MIDAS directory.
 
 `bash
+
 cd MIDAS
 `
 
 Run the build script.
 
 `bash
+
 ./build.sh
 `
 
 Install the python requirements.
 
 `bash
+
 pip install -r requirements.txt
 `
 
