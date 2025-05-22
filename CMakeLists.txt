@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
 
+# Set the CMP0135 policy to NEW
+if(POLICY CMP0135)
+  cmake_policy(SET CMP0135 NEW)
+endif()
+
 # Define options first, before the project command
 option(USE_CUDA "Build with CUDA support" OFF) # Default to ON, can be configured
 option(BUILD_OMP "Build with OpenMP support" ON) # Default to ON
@@ -514,12 +519,6 @@ if(INSTALL_PYTHON_DEPENDENCIES)
 endif()
 
 
-# --- Top-Level setup.sh Generation ---
-# This uses the MIDAS_INSTALL_BINDIR which is set from CMAKE_INSTALL_BINDIR (GNUInstallDirs)
-# The paths in setup.sh.in are relative to CMAKE_INSTALL_PREFIX/bin
-
-set(SETUP_SH_TEMPLATE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/templates/setup.sh.in")
-set(SETUP_SH_OUTPUT "${CMAKE_BINARY_DIR}/setup.sh") # Generate in build dir first
 
 # Configure the setup script
 # Pass PYTHON_SCRIPTS_INSTALL_SUBDIR to the template if scripts are being installed.
