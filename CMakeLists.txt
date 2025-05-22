@@ -146,7 +146,9 @@ function(handle_dependency NAME URL DOWNLOAD_FLAG)
           set(${NAME}_FOUND TRUE PARENT_SCOPE) # Propagate _FOUND variable
           # Create an imported target for consistent interface
           if(NAME STREQUAL "LIBTIFF")
-            if(NOT TARGET TIFF::TIFF) add_library(TIFF::TIFF INTERFACE IMPORTED) endif()
+            if(NOT TARGET TIFF::TIFF) 
+              add_library(TIFF::TIFF INTERFACE IMPORTED) 
+            endif()
             set_target_properties(TIFF::TIFF PROPERTIES
               INTERFACE_INCLUDE_DIRECTORIES "${${NAME}_PC_INCLUDE_DIRS}"
               INTERFACE_LINK_LIBRARIES "${${NAME}_PC_LIBRARIES}"
