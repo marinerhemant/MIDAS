@@ -2,7 +2,8 @@
 
 **** V7 Released ****
 
-** Installation and Compilation Instructions:**
+**Installation and Compilation Instructions:**
+
 1. Download the source code from [GitHub](https://github.com/marinerhemant/MIDAS).
 `bash
 git clone https://github.com/marinerhemant/MIDAS.git
@@ -15,7 +16,10 @@ cd MIDAS
 `bash
 ./build.sh
 `
-4. 
+4. Install the python requirements.
+`bash
+pip install -r requirements.txt
+`
 
 Code for reduction of Near-Field and Far-Field High Energy Diffraction Microscopy (HEDM) data developed at Advanced Photon Source.
 
