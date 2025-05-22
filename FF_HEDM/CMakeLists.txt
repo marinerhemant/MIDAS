@@ -6,7 +6,7 @@
 # Paths are relative to CMAKE_CURRENT_SOURCE_DIR (which is FF_HEDM/)
 set(FF_HEDM_COMMON_SOURCES # Renamed to avoid potential conflict
   src/CalcDiffractionSpots.c
-  src/CalcPeakProfile.c
+  # src/CalcPeakProfile.c
   src/GetMisorientation.c
   src/CalcStrains.c
   src/sgclib.c
