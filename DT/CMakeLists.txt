@@ -3,12 +3,10 @@
 # Ensure sources are relative to the current directory (DT/)
 set(DT_SRCDIR src)
 
-# --- Executable: DetectorMapper ---
+# --- Executable: DetectorMapperDT ---
 add_executable(DetectorMapperDT ${DT_SRCDIR}/DetectorMapper.c)
-# No specific dependencies from Makefile other than standard CFLAGS
-# Link common libraries if any are universally needed, or keep minimal.
-# For now, assume it doesn't need the COMMON_LINK_LIBRARIES from the top-level.
-# If it needs m or dl, those are handled by CMAKE_EXE_LINKER_FLAGS from top level.
+# Link common libraries, including math library (m) and others from the top-level.
+target_link_libraries(DetectorMapperDT PRIVATE ${COMMON_LINK_LIBRARIES})
 
 install(TARGETS DetectorMapperDT
     RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR}
@@ -17,10 +15,8 @@ install(TARGETS DetectorMapperDT
 # --- Executable: IntegratorPeakFitOMP ---
 add_executable(IntegratorPeakFitOMP ${DT_SRCDIR}/IntegratorPeakFitOMP.c)
 
-# Dependencies: OpenMP, NLOPT, TIFF
-target_link_libraries(IntegratorPeakFitOMP PRIVATE
-    ${COMMON_LINK_LIBRARIES} # This includes NLOPT::NLOPT, TIFF::TIFF, etc.
-)
+# Dependencies: OpenMP, and others from COMMON_LINK_LIBRARIES (e.g., NLOPT, TIFF, m, dl)
+target_link_libraries(IntegratorPeakFitOMP PRIVATE ${COMMON_LINK_LIBRARIES})
 
 # Enable OpenMP if available
 if(OpenMP_C_FOUND AND BUILD_OMP)
@@ -34,10 +30,8 @@ install(TARGETS IntegratorPeakFitOMP
 # --- Executable: PeakFit ---
 add_executable(PeakFit ${DT_SRCDIR}/PeakFit.c)
 
-# Dependencies: OpenMP, NLOPT, TIFF
-target_link_libraries(PeakFit PRIVATE
-    ${COMMON_LINK_LIBRARIES}
-)
+# Dependencies: OpenMP, and others from COMMON_LINK_LIBRARIES
+target_link_libraries(PeakFit PRIVATE ${COMMON_LINK_LIBRARIES})
 
 # Enable OpenMP if available
 if(OpenMP_C_FOUND AND BUILD_OMP)
@@ -50,7 +44,7 @@ install(TARGETS PeakFit
 
 # Optional: Add a custom target to build all executables in this subdirectory
 add_custom_target(midas_dt_all_executables DEPENDS
-    DetectorMapper
+    DetectorMapperDT # Corrected from DetectorMapper
     IntegratorPeakFitOMP
     PeakFit
 )

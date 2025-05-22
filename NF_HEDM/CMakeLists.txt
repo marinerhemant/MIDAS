@@ -20,86 +20,97 @@ set(NF_SG_LIB_SOURCES # For GetHKLList
 # --- Executables (from 'all' rule in Makefile) ---
 
 add_executable(MakeDiffrSpots ${NF_SRCDIR}/MakeDiffrSpots.c)
+target_link_libraries(MakeDiffrSpots PRIVATE ${COMMON_LINK_LIBRARIES})
 install(TARGETS MakeDiffrSpots RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 add_executable(MakeHexGrid ${NF_SRCDIR}/MakeHexGrid.c)
+target_link_libraries(MakeHexGrid PRIVATE ${COMMON_LINK_LIBRARIES})
 install(TARGETS MakeHexGrid RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 add_executable(MedianImageLibTiff ${NF_SRCDIR}/MedianImageLibTiff.c)
-target_link_libraries(MedianImageLibTiff PRIVATE TIFF::TIFF) # From COMMON_LINK_LIBRARIES
+target_link_libraries(MedianImageLibTiff PRIVATE TIFF::TIFF ${COMMON_LINK_LIBRARIES})
 install(TARGETS MedianImageLibTiff RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 add_executable(ImageProcessingLibTiff ${NF_SRCDIR}/ImageProcessingLibTiff.c)
-target_link_libraries(ImageProcessingLibTiff PRIVATE TIFF::TIFF)
+target_link_libraries(ImageProcessingLibTiff PRIVATE TIFF::TIFF ${COMMON_LINK_LIBRARIES})
 install(TARGETS ImageProcessingLibTiff RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 add_executable(FitOrientation ${NF_SRCDIR}/FitOrientation.c ${NF_SHARED_FIT_SOURCES})
-target_link_libraries(FitOrientation PRIVATE NLOPT::NLOPT) # From COMMON_LINK_LIBRARIES
+target_link_libraries(FitOrientation PRIVATE NLOPT::NLOPT ${COMMON_LINK_LIBRARIES})
 install(TARGETS FitOrientation RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 add_executable(FitOrientationParameters ${NF_SRCDIR}/FitOrientationParameters.c ${NF_SRCDIR}/CalcDiffractionSpots.c ${NF_SRCDIR}/SharedFuncsFit.c)
-target_link_libraries(FitOrientationParameters PRIVATE NLOPT::NLOPT)
+target_link_libraries(FitOrientationParameters PRIVATE NLOPT::NLOPT ${COMMON_LINK_LIBRARIES})
 install(TARGETS FitOrientationParameters RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 add_executable(FitOrientationParametersMultiPoint ${NF_SRCDIR}/FitOrientationParametersMultiPoint.c ${NF_SRCDIR}/CalcDiffractionSpots.c ${NF_SRCDIR}/SharedFuncsFit.c)
-target_link_libraries(FitOrientationParametersMultiPoint PRIVATE NLOPT::NLOPT)
+target_link_libraries(FitOrientationParametersMultiPoint PRIVATE NLOPT::NLOPT ${COMMON_LINK_LIBRARIES})
 install(TARGETS FitOrientationParametersMultiPoint RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 add_executable(GenSeedOrientationsFF2NFHEDM ${NF_SRCDIR}/GenSeedOrientationsFF2NFHEDM.c)
+target_link_libraries(GenSeedOrientationsFF2NFHEDM PRIVATE ${COMMON_LINK_LIBRARIES})
 install(TARGETS GenSeedOrientationsFF2NFHEDM RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 add_executable(SimulateDiffractionSpots ${NF_SRCDIR}/SimulateDiffractionSpots.c)
+target_link_libraries(SimulateDiffractionSpots PRIVATE ${COMMON_LINK_LIBRARIES})
 install(TARGETS SimulateDiffractionSpots RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 add_executable(ProcessNFMicRemote ${NF_SRCDIR}/ProcessNFMicRemote.c)
+target_link_libraries(ProcessNFMicRemote PRIVATE ${COMMON_LINK_LIBRARIES})
 install(TARGETS ProcessNFMicRemote RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 add_executable(filterGridfromTomo ${NF_SRCDIR}/filterGridfromTomo.c) # Renamed from GridFilterTomo for consistency
+target_link_libraries(filterGridfromTomo PRIVATE ${COMMON_LINK_LIBRARIES})
 install(TARGETS filterGridfromTomo RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 add_executable(MMapImageInfo ${NF_SRCDIR}/MMapImageInfo.c)
+target_link_libraries(MMapImageInfo PRIVATE ${COMMON_LINK_LIBRARIES})
 install(TARGETS MMapImageInfo RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 add_executable(GetHKLListNF ${NF_SRCDIR}/GetHKLList.c ${NF_SG_LIB_SOURCES})
+target_link_libraries(GetHKLListNF PRIVATE ${COMMON_LINK_LIBRARIES})
 install(TARGETS GetHKLListNF RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 add_executable(ParseMic ${NF_SRCDIR}/ParseMic.c)
+target_link_libraries(ParseMic PRIVATE ${COMMON_LINK_LIBRARIES})
 install(TARGETS ParseMic RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 add_executable(FitOrientationSinglePoint ${NF_SRCDIR}/FitOrientationSinglePoint.c ${NF_SHARED_FIT_SOURCES})
-target_link_libraries(FitOrientationSinglePoint PRIVATE NLOPT::NLOPT)
+target_link_libraries(FitOrientationSinglePoint PRIVATE NLOPT::NLOPT ${COMMON_LINK_LIBRARIES})
 install(TARGETS FitOrientationSinglePoint RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 add_executable(ParseDeconvOutput ${NF_SRCDIR}/ParseDeconvOutput.c)
-target_link_libraries(ParseDeconvOutput PRIVATE TIFF::TIFF)
+target_link_libraries(ParseDeconvOutput PRIVATE TIFF::TIFF ${COMMON_LINK_LIBRARIES})
 install(TARGETS ParseDeconvOutput RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 add_executable(compareNF ${NF_SRCDIR}/compareNF.c ${NF_SRCDIR}/CalcDiffractionSpots.c ${NF_SRCDIR}/SharedFuncsFit.c) # Renamed from CompareNF
-target_link_libraries(compareNF PRIVATE NLOPT::NLOPT)
+target_link_libraries(compareNF PRIVATE NLOPT::NLOPT ${COMMON_LINK_LIBRARIES})
 install(TARGETS compareNF RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 add_executable(simulateNF ${NF_SRCDIR}/simulateNF.c ${NF_SRCDIR}/CalcDiffractionSpots.c ${NF_SRCDIR}/SharedFuncsFit.c) # Renamed from SimulateNF
+target_link_libraries(simulateNF PRIVATE ${COMMON_LINK_LIBRARIES})
 install(TARGETS simulateNF RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 # --- OpenMP Executables ---
 add_executable(ImageProcessingLibTiffOMP ${NF_SRCDIR}/ImageProcessingLibTiffOMP.c)
-target_link_libraries(ImageProcessingLibTiffOMP PRIVATE TIFF::TIFF)
+target_link_libraries(ImageProcessingLibTiffOMP PRIVATE TIFF::TIFF) # Specific library
 if(OpenMP_C_FOUND AND BUILD_OMP)
     target_link_libraries(ImageProcessingLibTiffOMP PRIVATE OpenMP::OpenMP_C)
 endif()
+target_link_libraries(ImageProcessingLibTiffOMP PRIVATE ${COMMON_LINK_LIBRARIES}) # Common libs including math
 install(TARGETS ImageProcessingLibTiffOMP RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 add_executable(FitOrientationOMP ${NF_SRCDIR}/FitOrientationOMP.c ${NF_SHARED_FIT_SOURCES})
-target_link_libraries(FitOrientationOMP PRIVATE NLOPT::NLOPT)
+target_link_libraries(FitOrientationOMP PRIVATE NLOPT::NLOPT) # Specific library
 if(OpenMP_C_FOUND AND BUILD_OMP)
     target_link_libraries(FitOrientationOMP PRIVATE OpenMP::OpenMP_C)
 endif()
+target_link_libraries(FitOrientationOMP PRIVATE ${COMMON_LINK_LIBRARIES}) # Common libs including math
 install(TARGETS FitOrientationOMP RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 # --- Shared Library ---
 add_library(NFGrainsCalc SHARED ${NF_SRCDIR}/NFGrainsCalc.c)
-# No specific dependencies mentioned for the .so other than CFLAGS in Makefile
-# If it needs m or dl, those are handled by CMAKE_SHARED_LINKER_FLAGS from top level or CMAKE_C_FLAGS.
+target_link_libraries(NFGrainsCalc PRIVATE ${COMMON_LINK_LIBRARIES}) # Common libs including math
 set_target_properties(NFGrainsCalc PROPERTIES POSITION_INDEPENDENT_CODE ON) # Standard for shared libs
 install(TARGETS NFGrainsCalc
     LIBRARY DESTINATION ${MIDAS_INSTALL_LIBDIR}
@@ -111,17 +122,19 @@ install(TARGETS NFGrainsCalc
 # These used H5CC. With CMake, we link against HDF5 target which provides flags.
 # Uncomment and adjust if these are to be included.
 # add_executable(MedianImageHDF ${NF_SRCDIR}/MedianImageHDF.c)
-# target_link_libraries(MedianImageHDF PRIVATE HDF5::HDF5 HDF5::HL) # From COMMON_LINK_LIBRARIES
+# target_link_libraries(MedianImageHDF PRIVATE HDF5::HDF5 HDF5::HL) # Specific libs
 # if(OpenMP_C_FOUND AND BUILD_OMP) # Makefile showed -fopenmp
 #     target_link_libraries(MedianImageHDF PRIVATE OpenMP::OpenMP_C)
 # endif()
+# target_link_libraries(MedianImageHDF PRIVATE ${COMMON_LINK_LIBRARIES}) # Common libs
 # install(TARGETS MedianImageHDF RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 # add_executable(ImageProcessingHDF ${NF_SRCDIR}/ImageProcessingHDF.c)
-# target_link_libraries(ImageProcessingHDF PRIVATE HDF5::HDF5 HDF5::HL)
+# target_link_libraries(ImageProcessingHDF PRIVATE HDF5::HDF5 HDF5::HL) # Specific libs
 # if(OpenMP_C_FOUND AND BUILD_OMP) # Makefile showed -fopenmp
 #     target_link_libraries(ImageProcessingHDF PRIVATE OpenMP::OpenMP_C)
 # endif()
+# target_link_libraries(ImageProcessingHDF PRIVATE ${COMMON_LINK_LIBRARIES}) # Common libs
 # install(TARGETS ImageProcessingHDF RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
 
 
@@ -139,7 +152,7 @@ add_custom_target(midas_nf_hedm_all DEPENDS
     ProcessNFMicRemote
     filterGridfromTomo
     MMapImageInfo
-    GetHKLList
+    GetHKLListNF # Corrected from GetHKLList
     ParseMic
     FitOrientationSinglePoint
     ParseDeconvOutput

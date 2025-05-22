@@ -14,11 +14,12 @@ set(TOMO_SOURCES
 # We will define one target and let the build type manage debug symbols.
 add_executable(MIDAS_TOMO ${TOMO_SOURCES})
 
-# Dependencies: FFTW, OpenMP
-# FFTW::FFTW should be in COMMON_LINK_LIBRARIES from the top-level.
-target_link_libraries(MIDAS_TOMO PRIVATE ${COMMON_LINK_LIBRARIES}) # For FFTW
+# Dependencies: FFTW, OpenMP, and standard libraries (like math lib 'm').
+# FFTW::FFTW, m, dl etc. should be in COMMON_LINK_LIBRARIES from the top-level.
+target_link_libraries(MIDAS_TOMO PRIVATE ${COMMON_LINK_LIBRARIES}) # For FFTW and other common dependencies
 
 # Add compile definition -DPI=M_PI
+# This ensures 'PI' macro is available, expanding to M_PI (from math.h)
 target_compile_definitions(MIDAS_TOMO PRIVATE PI=M_PI)
 
 # Enable OpenMP if available
