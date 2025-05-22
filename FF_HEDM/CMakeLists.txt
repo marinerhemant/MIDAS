@@ -78,8 +78,8 @@ add_ff_hedm_executable(FitTiltBCLsdSample SOURCES src/FitTiltBCLsdSampleOmegaCor
 add_ff_hedm_executable(ForwardSimulation SOURCES src/ForwardSimulation.c)
 add_ff_hedm_executable(ForwardSimulationCompressed SOURCES src/ForwardSimulationCompressed.c)
 
-add_ff_hedm_executable(FitPosOrStrainsOMP SOURCES src/FitPosOrStrainsOMP.c $(SRCDIR)CalcDiffractionSpots.c OMP)
-add_ff_hedm_executable(FitOrStrainsScanningOMP SOURCES src/FitOrStrainsScanningOMP.c $(SRCDIR)CalcDiffractionSpots.c OMP)
+add_ff_hedm_executable(FitPosOrStrainsOMP SOURCES src/FitPosOrStrainsOMP.c src/CalcDiffractionSpots.c OMP)
+add_ff_hedm_executable(FitOrStrainsScanningOMP SOURCES src/FitOrStrainsScanningOMP.c src/CalcDiffractionSpots.c OMP)
 
 add_ff_hedm_executable(PeaksFittingPerFile SOURCES src/PeaksFittingPerFile.c)
 add_ff_hedm_executable(PeaksFittingOMP SOURCES src/PeaksFittingOMP.c OMP)
