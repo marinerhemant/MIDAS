@@ -518,30 +518,6 @@ if(INSTALL_PYTHON_DEPENDENCIES)
   endif()
 endif()
 
-
-
-# Configure the setup script
-# Pass PYTHON_SCRIPTS_INSTALL_SUBDIR to the template if scripts are being installed.
-# The @ONLY flag means only variables like @VAR@ or ${VAR} are replaced.
-# If setup.sh.in uses shell variables like $VAR or ${VAR}, they will be preserved.
-if(INSTALL_PYTHON_SCRIPTS)
-  set(CONFIGURE_SETUP_SH_DEFINES "-DPYTHON_SCRIPTS_INSTALL_SUBDIR=\\"python_scripts\\"")
-  # The above define isn't used by configure_file directly with @ONLY unless setup.sh.in uses #cmakedefine
-  # Instead, we ensure PYTHON_SCRIPTS_INSTALL_SUBDIR is a normal CMake variable available during configure_file.
-  # It's already set if INSTALL_PYTHON_SCRIPTS is true.
-endif()
-
-configure_file(
-  "${SETUP_SH_TEMPLATE}"  # Input: cmake/templates/setup.sh.in
-  "${SETUP_SH_OUTPUT}"    # Output: ${CMAKE_BINARY_DIR}/setup.sh
-  @ONLY                   # Replace @CMAKE_INSTALL_PREFIX@, @PYTHON_SCRIPTS_INSTALL_SUBDIR@, etc.
-)
-
-# Install the configured setup.sh script to the installation's bin directory
-install(PROGRAMS "${SETUP_SH_OUTPUT}" DESTINATION "${MIDAS_INSTALL_BINDIR}")
-
-message(STATUS "Configured top-level setup.sh, will be installed to ${MIDAS_INSTALL_BINDIR}")
-
 # --- Summary Message ---
 message(STATUS "")
 message(STATUS "MIDAS Project Configuration Summary")
