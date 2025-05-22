@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Define options first, before the project command
-option(USE_CUDA "Build with CUDA support" ON) # Default to ON, can be configured
+option(USE_CUDA "Build with CUDA support" OFF) # Default to ON, can be configured
 option(BUILD_OMP "Build with OpenMP support" ON) # Default to ON
 option(DOWNLOAD_DEPENDENCIES "Download and build dependencies if not found by system" ON)
 option(USE_SYSTEM_DEPS "Prefer system-installed dependencies" OFF) # If ON, try find_package first
