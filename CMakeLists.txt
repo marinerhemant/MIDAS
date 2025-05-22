@@ -332,6 +332,14 @@ elseif(ZLIB_FOUND AND ZLIB_LIBRARIES) # Fallback if ZLIB::ZLIB target not availa
     message(STATUS "ZLIB libraries (${ZLIB_LIBRARIES}) added to COMMON_LINK_LIBRARIES.")
 endif()
 
+# Add math and dl libraries, which are commonly needed.
+# On modern CMake, 'm' and 'dl' are recognized as system library aliases.
+if(NOT APPLE)
+  list(APPEND COMMON_LINK_LIBRARIES m dl) # For Linux, link libm and libdl
+else()
+  list(APPEND COMMON_LINK_LIBRARIES m)    # For macOS, libdl is often part of system or not needed explicitly; libm might be.
+endif()
+
 # Propagate options to subdirectories
 # Variables set with `set(... CACHE ...)` are automatically available.
 # For others, or to ensure they are available for `if()` checks in subdirs:
