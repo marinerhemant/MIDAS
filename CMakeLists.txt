@@ -233,7 +233,7 @@ if(NOT ZLIB_FOUND AND DOWNLOAD_DEPENDENCIES AND NOT TARGET ZLIB::ZLIB)
         get_target_property(ZLIB_INCLUDE_DIRS ZLIB::ZLIB INTERFACE_INCLUDE_DIRECTORIES)
     endif()
   endif()
-elif(TARGET ZLIB::ZLIB)
+elseif(TARGET ZLIB::ZLIB)
     set(ZLIB_FOUND TRUE) # If find_package found it and created the target.
     message(STATUS "ZLIB found and ZLIB::ZLIB target exists.")
 else()
