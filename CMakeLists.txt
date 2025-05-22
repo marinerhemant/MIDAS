@@ -11,13 +11,15 @@ option(INSTALL_PYTHON_SCRIPTS "Install Python scripts from gui/ and utils/ subdi
 option(INSTALL_PYTHON_DEPENDENCIES "Install Python dependencies using pip (if requirements.txt found)" ON)
 set(PYTHON_EXECUTABLE "" CACHE FILEPATH "Path to Python executable for installing dependencies")
 
-if(USE_CUDA)
-  project(MIDAS LANGUAGES C CUDA)
-  # Add CUDA specific configurations if necessary, e.g., CMAKE_CUDA_ARCHITECTURES
-  # set(CMAKE_CUDA_ARCHITECTURES 75) # Example, adjust as needed
-else()
-  project(MIDAS LANGUAGES C)
-endif()
+project(MIDAS LANGUAGES C)
+
+# if(USE_CUDA)
+#   project(MIDAS LANGUAGES C CUDA)
+#   # Add CUDA specific configurations if necessary, e.g., CMAKE_CUDA_ARCHITECTURES
+#   # set(CMAKE_CUDA_ARCHITECTURES 75) # Example, adjust as needed
+# else()
+#   project(MIDAS LANGUAGES C)
+# endif()
 
 # Set C standard
 set(CMAKE_C_STANDARD 99)
