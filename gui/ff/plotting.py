@@ -45,22 +45,53 @@ class PlottingHandler:
         single_ax_exists = hasattr(self, 'ax_single') and self.ax_single and self.ax_single.get_visible()
         multi_ax_exists = hasattr(self, 'ax_multi') and self.ax_multi and self.ax_multi.get_visible()
 
-        if event.inaxes == self.ax_single and single_ax_exists: active_ax = self.ax_single; data_to_use = self.current_single_data; beam_center = self.current_single_bc_gui
+        if event.inaxes == self.ax_single and single_ax_exists:
+            active_ax = self.ax_single
+            data_to_use = self.current_single_data
+            beam_center = self.current_single_bc_gui # This is [bc_x_px, bc_y_px]
         elif event.inaxes == self.ax_multi and multi_ax_exists:
-             active_ax = self.ax_multi; data_to_use = self.current_multi_data
-             if self.current_multi_data is not None: beam_center = [self.current_multi_data.shape[1] / 2.0, self.current_multi_data.shape[0] / 2.0]
-        else: self.status_bar_update(""); return
+            active_ax = self.ax_multi
+            data_to_use = self.current_multi_data
+            if self.current_multi_data is not None:
+                # For multi-plot, BC is image center
+                # data_to_use.shape is (rows, cols)
+                # beam_center is [center_col, center_row]
+                beam_center = [self.current_multi_data.shape[1] / 2.0, self.current_multi_data.shape[0] / 2.0]
+        else:
+            self.status_bar_update("")
+            return
 
-        if event.xdata is None or event.ydata is None or data_to_use is None: self.status_bar_update(""); return
+        if event.xdata is None or event.ydata is None or data_to_use is None:
+            self.status_bar_update("")
+            return
 
-        col = int(round(event.xdata)); row = int(round(event.ydata))
-        num_rows, num_cols = data_to_use.shape
+        col = int(round(event.xdata)) # xdata is column index from left
+        row = int(round(event.ydata)) # ydata is row index from bottom (due to origin='lower')
+
+        num_rows, num_cols = data_to_use.shape # data is (rows, cols)
         status_text = f"X: {event.xdata:.2f}, Y: {event.ydata:.2f}"
-        rel_x_px = event.xdata - beam_center[0]; rel_y_px = event.ydata - beam_center[1]
+
+        # Calculate coordinates relative to beam center
+        # beam_center[0] is bc_x (column index from left)
+        # beam_center[1] is bc_y (row index from bottom)
+        # rel_x_px: positive if mouse is to the right of beam center
+        # rel_y_px: positive if mouse is above beam center
+        rel_x_px = event.xdata - beam_center[0]
+        rel_y_px = event.ydata - beam_center[1]
+
+        # CalcEtaAngleRad expects:
+        # y: horizontal offset from BC, positive is to the LEFT
+        # z: vertical offset from BC, positive is UP
+        # So, input_y for CalcEtaAngleRad should be -rel_x_px
+        # and input_z for CalcEtaAngleRad should be rel_y_px
         eta_deg, radius_px = CalcEtaAngleRad(-rel_x_px, rel_y_px)
 
-        if 0 <= row < num_rows and 0 <= col < num_cols: intensity = data_to_use[row, col]; status_text += f"  |  Intensity: {intensity:.1f}"
-        else: status_text += "  |  (Outside Image)"
+        if 0 <= row < num_rows and 0 <= col < num_cols:
+            intensity = data_to_use[row, col]
+            status_text += f"  |  Intensity: {intensity:.1f}"
+        else:
+            status_text += "  |  (Outside Image)"
+        
         status_text += f"  |  Eta: {eta_deg:.2f}\N{DEGREE SIGN}  |  Radius (px): {radius_px:.2f}"
         self.status_bar_update(status_text)
 

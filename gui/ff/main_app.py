@@ -4,7 +4,8 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
+# from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
+from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as OriginalNavigationToolbar
 from matplotlib.figure import Figure
 import time
 from pathlib import Path
@@ -13,6 +14,7 @@ import zarr
 from zarr.storage import ZipStore # Correct import
 from collections import OrderedDict
 import subprocess # For HKL generation
+import csv
 
 from PyQt6.QtWidgets import (
     QMainWindow, QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
@@ -26,8 +28,9 @@ from PyQt6.QtGui import QIntValidator, QDoubleValidator, QFont, QIcon, QAction, 
 
 # --- Determine MIDAS_DIR ---
 try:
-    # Assumes this script is in $MIDAS_DIR/gui/
-    GUI_DIR = Path(__file__).parent.resolve()
+    # Assumes this script is in $MIDAS_DIR/gui/ff/
+    FF_GUI_DIR = Path(__file__).parent.resolve()
+    GUI_DIR = FF_GUI_DIR.parent.resolve()
     MIDAS_DIR = GUI_DIR.parent.resolve()
     print(f"Determined MIDAS_DIR: {MIDAS_DIR}")
 except NameError:
@@ -43,6 +46,21 @@ from data_handler import (read_parameters, load_image_frame, get_max_projection,
                          load_big_detector_mask)
 from plotting import PlottingHandler # Now includes get_transform_matrix via utils
 
+class CustomNavigationToolbar(OriginalNavigationToolbar):
+    def __init__(self, canvas, parent, coordinates=True):
+        super().__init__(canvas, parent, coordinates)
+        self._coordinates_on = coordinates # Store the initial state
+
+    def set_message(self, msg):
+        # Override to do nothing, preventing default coordinate display
+        # Or, if you want to allow it to be toggled:
+        # if self._coordinates_on and self.parent().statusBar():
+        #    self.parent().statusBar().showMessage(msg)
+        pass # Effectively disables the toolbar's own status messages
+
+    # Optional: if you want to be able to toggle the default display later
+    def enable_default_coordinates(self, enable):
+        self._coordinates_on = enable
 
 # --- Worker Thread ---
 class Worker(QObject):
@@ -83,18 +101,19 @@ class Worker(QObject):
 
 # --- Ring Material Parameter Dialog ---
 class RingMaterialDialog(QDialog):
-    def __init__(self, current_params, parent=None):
+    def __init__(self, current_params_for_dialog, parent=None): # Renamed arg for clarity
         super().__init__(parent)
         self.setWindowTitle("Material & Ring Parameters")
         self.layout = QVBoxLayout(self)
         self.form_layout = QFormLayout()
 
-        self.le_sg = QLineEdit(str(current_params.get('sg', 225)))
+        # Use current_params_for_dialog which should have Zarr values prioritized
+        self.le_sg = QLineEdit(str(current_params_for_dialog.get('sg', 225)))
         self.le_sg.setValidator(QIntValidator(1, 230))
         self.le_sg.setToolTip("Crystallographic Space Group Number (1-230)")
 
         self.le_lat_const = [QLineEdit() for _ in range(6)]
-        lc_values = current_params.get('LatticeConstant', np.zeros(6))
+        lc_values = current_params_for_dialog.get('LatticeConstant', np.zeros(6))
         lat_labels = ["a (Å)", "b (Å)", "c (Å)", "\u03B1 (\N{DEGREE SIGN})", "\u03B2 (\N{DEGREE SIGN})", "\u03B3 (\N{DEGREE SIGN})"]
         lat_const_layout = QGridLayout()
         for i, le in enumerate(self.le_lat_const):
@@ -103,25 +122,30 @@ class RingMaterialDialog(QDialog):
              row, col = divmod(i, 3)
              lat_const_layout.addWidget(QLabel(lat_labels[i]), row, col*2)
              lat_const_layout.addWidget(le, row, col*2 + 1)
-        lat_const_layout.setColumnStretch(1, 1)
-        lat_const_layout.setColumnStretch(3, 1)
-        lat_const_layout.setColumnStretch(5, 1)
+        lat_const_layout.setColumnStretch(1, 1); lat_const_layout.setColumnStretch(3, 1); lat_const_layout.setColumnStretch(5, 1)
 
-        self.le_wl = QLineEdit(f"{try_parse_float(current_params.get('wl', 0.1729)):.6f}")
+        self.le_wl = QLineEdit(f"{try_parse_float(current_params_for_dialog.get('wl', 0.1729)):.6f}")
         self.le_wl.setValidator(QDoubleValidator(0.01, 10.0, 6))
         self.le_wl.setToolTip("X-ray Wavelength (Angstrom)")
 
-        px_val = try_parse_float(current_params.get('px', 200.0))
+        px_val = try_parse_float(current_params_for_dialog.get('px', 200.0))
         self.le_px = QLineEdit(f"{px_val:.2f}")
         self.le_px.setValidator(QDoubleValidator(0.1, 1000.0, 2))
         self.le_px.setToolTip("Detector Pixel Size (microns)")
 
-        lsd_val = try_parse_float(current_params.get('DetParams', [{}])[0].get('lsd', 1e6))
+        # For LSD in dialog, try DetParams[0] first, then general 'lsd', then default
+        lsd_val = 1e6 # Default
+        det_params_list_dialog = current_params_for_dialog.get('DetParams', [{}])
+        if det_params_list_dialog and 'lsd' in det_params_list_dialog[0]:
+            lsd_val = try_parse_float(det_params_list_dialog[0]['lsd'], lsd_val)
+        elif 'lsd' in current_params_for_dialog: # Fallback to top-level 'lsd' if in Zarr
+            lsd_val = try_parse_float(current_params_for_dialog.get('lsd'), lsd_val)
+
         self.le_lsd = QLineEdit(f"{lsd_val:.1f}")
         self.le_lsd.setValidator(QDoubleValidator(1.0, 10e7, 1))
         self.le_lsd.setToolTip("Sample-to-Detector Distance (microns)")
 
-        max_rad_val = try_parse_float(current_params.get('maxRad', 2e6))
+        max_rad_val = try_parse_float(current_params_for_dialog.get('maxRad', 2e6))
         self.le_max_rad = QLineEdit(f"{max_rad_val:.1f}")
         self.le_max_rad.setValidator(QDoubleValidator(1.0, 10e7, 1))
         self.le_max_rad.setToolTip("Maximum Ring Radius for HKL generation (microns)")
@@ -135,10 +159,8 @@ class RingMaterialDialog(QDialog):
         self.layout.addLayout(self.form_layout)
 
         self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        self.button_box.accepted.connect(self.accept)
-        self.button_box.rejected.connect(self.reject)
+        self.button_box.accepted.connect(self.accept); self.button_box.rejected.connect(self.reject)
         self.layout.addWidget(self.button_box)
-
     def get_values(self):
         try:
             lat_const = [try_parse_float(le.text()) for le in self.le_lat_const]
@@ -146,12 +168,9 @@ class RingMaterialDialog(QDialog):
                     'LatticeConstant': np.array(lat_const),
                     'wl': try_parse_float(self.le_wl.text(), 0.1729),
                     'px': try_parse_float(self.le_px.text(), 200.0),
-                    'lsd': try_parse_float(self.le_lsd.text(), 1e6),
+                    'lsd_dialog': try_parse_float(self.le_lsd.text(), 1e6), # Use a distinct key
                     'maxRad': try_parse_float(self.le_max_rad.text(), 2e6)}
-        except Exception as e:
-            print(f"Error getting values from dialog: {e}")
-            return {}
-
+        except Exception as e: print(f"Error getting values from dialog: {e}"); return {}
 
 # --- Zarr Parameter Viewer Dialog ---
 class ZarrViewerDialog(QDialog):
@@ -236,6 +255,11 @@ class ZarrViewerDialog(QDialog):
 class FFViewerApp(QMainWindow):
     ORG_NAME = "MIDAS-HEDM"
     APP_NAME = "FFViewer"
+
+    @pyqtSlot(str) # Add this import from PyQt6.QtCore if not already there
+    def do_nothing_with_toolbar_message(self, message):
+        """Dummy slot to intercept and ignore toolbar's own messages."""
+        pass
 
     def set_hydra_controls_enabled(self, enabled):
         """Enable/disable Hydra controls based on parameter loading."""
@@ -325,13 +349,15 @@ class FFViewerApp(QMainWindow):
              )
 
         # --- Default Values & Load Settings---
+        self.zarr_params_cache = {}
         self._set_default_values()
         self._load_settings() # Load AFTER UI elements are created
 
         print("Initialization complete.")
         self.update_status_bar("Ready. Select a file or parameter file to begin.")
         if self.is_zarr_mode and self.current_data_file and Path(self.current_data_file).exists():
-             self._read_params_from_zarr()
+             self._read_params_from_zarr_to_cache()
+             self._merge_zarr_cache_into_params() 
              self._update_gui_from_params() # Update GUI after potential Zarr param read
 
 
@@ -373,7 +399,9 @@ class FFViewerApp(QMainWindow):
         layout_canvas.setContentsMargins(0,0,0,0)
         layout_canvas.addWidget(self.canvas)
         # IMPORTANT: Create toolbar here
-        self.toolbar = NavigationToolbar(self.canvas, self)
+        # self.toolbar = NavigationToolbar(self.canvas, self)
+        self.toolbar = CustomNavigationToolbar(self.canvas, self) # Changed here
+        # self.toolbar.message.connect(self.do_nothing_with_toolbar_message)
         layout_canvas.addWidget(self.toolbar)
 
         # --- Tabs ---
@@ -622,6 +650,35 @@ class FFViewerApp(QMainWindow):
         self.cb_sep_folders.stateChanged.connect(lambda state: self.params.update({'sepfolderVar': bool(state)}))
         self.tab_widget.currentChanged.connect(self._on_tab_changed)
 
+    def _get_combined_ring_material_params(self):
+        """Combines params from Zarr cache, self.params, and defaults for RingMaterialDialog."""
+        # Start with a copy of general defaults or self.params
+        # Order of preference: Zarr cache -> self.params (from .txt or previous GUI) -> hardcoded defaults
+        combined = self.params.copy() # Start with current self.params
+
+        # Overlay Zarr cached values (which are top-level, not DetParams specific for material props)
+        # These zarr_params_cache keys match the keys used in RingMaterialDialog.get_values()
+        # and the keys read in _read_params_from_zarr_to_cache
+        for key in ['sg', 'LatticeConstant', 'wl', 'px', 'maxRad', 'lsd']: # 'lsd' can be top-level in Zarr
+            if key in self.zarr_params_cache and self.zarr_params_cache[key] is not None:
+                combined[key] = self.zarr_params_cache[key]
+        
+        # Ensure DetParams exists for LSD lookup if top-level 'lsd' wasn't in zarr_params_cache
+        if 'lsd' not in combined or combined['lsd'] is None: # If Zarr cache didn't have a top-level LSD
+            det_params_list = combined.get('DetParams', [{}])
+            if det_params_list and 'lsd' in det_params_list[0] and det_params_list[0]['lsd'] is not None:
+                combined['lsd'] = det_params_list[0]['lsd'] # Use from DetParams[0]
+            else:
+                combined.setdefault('lsd', 1e6) # Ultimate fallback
+
+        # Ensure other keys have defaults if not found
+        combined.setdefault('sg', 225)
+        combined.setdefault('LatticeConstant', np.array([5.41116, 5.41116, 5.41116, 90.0, 90.0, 90.0]))
+        combined.setdefault('wl', 0.172979)
+        combined.setdefault('px', 200.0)
+        combined.setdefault('maxRad', 2000000.0)
+        return combined
+
     # --- Settings ---
     def _set_default_values(self):
         self.params.setdefault('NrPixelsY', 2048)
@@ -645,6 +702,81 @@ class FFViewerApp(QMainWindow):
         self.params.setdefault('omegaStep', 0.0)
         self.params.setdefault('sepfolderVar', False)
         self.params.setdefault('HydraActive', False)
+
+    def _ensure_det_params_structure(self, det_idx=0):
+        """Ensures self.params['DetParams'] has a valid structure up to det_idx."""
+        if 'DetParams' not in self.params or not isinstance(self.params['DetParams'], list):
+            self.params['DetParams'] = []
+        
+        while len(self.params['DetParams']) <= det_idx:
+            # Add default-like structures for missing detector entries
+            self.params['DetParams'].append({'lsd': None, 'bc': [None, None], 'tx': 0.0, 'ty': 0.0, 'tz': 0.0, 'p0': 0.0, 'p1': 0.0, 'p2': 0.0, 'RhoD': 0.0})
+            
+        if not isinstance(self.params['DetParams'][det_idx], dict):
+            # If it exists but is not a dict, replace it with a default-like structure
+            self.params['DetParams'][det_idx] = {'lsd': None, 'bc': [None, None], 'tx': 0.0, 'ty': 0.0, 'tz': 0.0, 'p0': 0.0, 'p1': 0.0, 'p2': 0.0, 'RhoD': 0.0}
+
+    def _merge_zarr_cache_into_params(self):
+        if not self.is_zarr_mode or not self.zarr_params_cache:
+            # print("Debug: Not Zarr mode or Zarr cache is empty, skipping merge.")
+            return False # No Zarr mode or cache is empty
+
+        print("Merging Zarr cache into self.params...")
+        changed = False
+        # General params
+        for key in ['sg', 'LatticeConstant', 'wl', 'px', 'omegaStart', 'omegaStep']:
+            if key in self.zarr_params_cache and self.zarr_params_cache[key] is not None:
+                current_val = self.params.get(key)
+                new_val = self.zarr_params_cache[key]
+                needs_update = False
+                # Check if value is actually different before assignment
+                if isinstance(current_val, np.ndarray) or isinstance(new_val, np.ndarray):
+                    if current_val is None or not np.array_equal(current_val, new_val):
+                        needs_update = True
+                elif current_val != new_val:
+                    needs_update = True
+                
+                if needs_update:
+                    self.params[key] = new_val
+                    print(f"  Updated self.params['{key}'] from Zarr cache to: {new_val}")
+                    changed = True
+
+        # Detector specific params (Zarr cache primarily affects detector 0)
+        det_idx_for_zarr = 0 
+        self._ensure_det_params_structure(det_idx_for_zarr) # Ensure DetParams[0] exists and is a dict
+
+        # Handle LSD for DetParams[0]
+        if 'lsd' in self.zarr_params_cache and self.zarr_params_cache['lsd'] is not None:
+            if self.params['DetParams'][det_idx_for_zarr].get('lsd') != self.zarr_params_cache['lsd']:
+                self.params['DetParams'][det_idx_for_zarr]['lsd'] = self.zarr_params_cache['lsd']
+                print(f"  Updated self.params['DetParams'][{det_idx_for_zarr}]['lsd'] from Zarr cache to: {self.params['DetParams'][det_idx_for_zarr]['lsd']}")
+                changed = True
+
+        # Handle BC for DetParams[0]
+        # self.zarr_params_cache['bc'] is [plotting_horizontal, plotting_vertical]
+        if 'bc' in self.zarr_params_cache and self.zarr_params_cache['bc'] is not None:
+            current_bc_param = self.params['DetParams'][det_idx_for_zarr].get('bc')
+            zarr_bc = self.zarr_params_cache['bc']
+            
+            needs_bc_update = False
+            if current_bc_param is None:
+                needs_bc_update = True
+            elif isinstance(current_bc_param, (list, np.ndarray)) and isinstance(zarr_bc, (list, np.ndarray)):
+                if len(current_bc_param) != len(zarr_bc) or not np.array_equal(np.array(current_bc_param, dtype=float), np.array(zarr_bc, dtype=float)):
+                    needs_bc_update = True
+            elif current_bc_param != zarr_bc : # Fallback for other types
+                needs_bc_update = True
+
+            if needs_bc_update:
+                self.params['DetParams'][det_idx_for_zarr]['bc'] = list(zarr_bc) # Store as list
+                print(f"  Updated self.params['DetParams'][{det_idx_for_zarr}]['bc'] from Zarr cache to: {self.params['DetParams'][det_idx_for_zarr]['bc']}")
+                changed = True
+        
+        if changed:
+            print(f"self.params['DetParams'][{det_idx_for_zarr}] after Zarr merge: {self.params['DetParams'][det_idx_for_zarr]}")
+        else:
+            print("No changes made to self.params during Zarr merge.")
+        return changed
 
     def _save_settings(self):
         print("Saving settings...")
@@ -747,7 +879,10 @@ class FFViewerApp(QMainWindow):
 
     # --- Helper Methods & Slots ---
     def update_status_bar(self, message):
-        self.status_bar.showMessage(message, 5000)
+        if message: # If there's a message, show it
+            self.status_bar.showMessage(message) # No timeout, or a very short one like 100ms
+        else: # If the message is empty (e.g., cursor left axes), clear it
+            self.status_bar.clearMessage()
 
     def show_progress(self, visible, value=0):
         self.progress_bar.setVisible(visible)
@@ -810,10 +945,26 @@ class FFViewerApp(QMainWindow):
             self.btn_view_zarr.setEnabled(self.is_zarr_mode)
             self.params = {}
             self.dark_frame_cache = {}
+            self.zarr_params_cache = {} # Reset caches
             self._set_default_values() # Apply defaults first
             if self.is_zarr_mode:
                 print("Zarr file selected, attempting to read parameters from it...")
-                self._read_params_from_zarr() # Read from Zarr *after* defaults
+                self._read_params_from_zarr_to_cache() # Read from Zarr *after* defaults
+                self._merge_zarr_cache_into_params()
+                for key in ['sg', 'LatticeConstant', 'wl', 'px', 'omegaStart', 'omegaStep']:
+                     if key in self.zarr_params_cache and self.zarr_params_cache[key] is not None:
+                         self.params[key] = self.zarr_params_cache[key]
+                # Handle DetParams[0]['lsd'] specifically if top-level lsd was in Zarr
+                if 'lsd' in self.zarr_params_cache and self.zarr_params_cache['lsd'] is not None:
+                    if 'DetParams' not in self.params or not self.params['DetParams']: self.params['DetParams'] = [{}]
+                    self.params['DetParams'][0]['lsd'] = self.zarr_params_cache['lsd']
+                if 'bc' in self.zarr_params_cache and self.zarr_params_cache['bc'] is not None:
+                    if 'DetParams' not in self.params or not self.params['DetParams']: 
+                        self.params['DetParams'] = [{}]
+                    elif not self.params['DetParams']: # Ensure list is not empty
+                        self.params['DetParams'].append({})
+                    self.params['DetParams'][0]['bc'] = self.zarr_params_cache['bc'] # Assign the cached BC
+                    print(f"  _browse_data_file: Updated self.params['DetParams'][0]['bc'] from Zarr cache: {self.params['DetParams'][0]['bc']}")
             self._update_gui_from_params() # Update GUI based on combined params
             self.set_hydra_controls_enabled(False) # Disable hydra controls
             self.current_param_file = "" # Clear param file path
@@ -889,6 +1040,24 @@ class FFViewerApp(QMainWindow):
              return
 
         self.params = params_result
+        # Now, if a Zarr file was previously loaded and its params cached, merge/override
+        # Zarr params take precedence for material/scan properties if they exist in cache
+        if self.is_zarr_mode and self.zarr_params_cache:
+            print("Merging .txt params with cached Zarr params (Zarr values take precedence for matched keys)...")
+            self._merge_zarr_cache_into_params() 
+            for key in ['sg', 'LatticeConstant', 'wl', 'px', 'omegaStart', 'omegaStep']:
+                if key in self.zarr_params_cache and self.zarr_params_cache[key] is not None:
+                    print(f"  Overriding '{key}' with Zarr value: {self.zarr_params_cache[key]}")
+                    self.params[key] = self.zarr_params_cache[key]
+            # Handle DetParams[0]['lsd'] and ['bc'] specifically if top-level lsd/bc was in Zarr
+            if 'lsd' in self.zarr_params_cache and self.zarr_params_cache['lsd'] is not None:
+                if 'DetParams' not in self.params or not self.params['DetParams']: self.params['DetParams'] = [{}]
+                self.params['DetParams'][0]['lsd'] = self.zarr_params_cache['lsd']
+                print(f"  Overriding DetParams[0]['lsd'] with Zarr value: {self.zarr_params_cache['lsd']}")
+            if 'bc' in self.zarr_params_cache and self.zarr_params_cache['bc'] is not None: # bc from zarr is [x,y]
+                if 'DetParams' not in self.params or not self.params['DetParams']: self.params['DetParams'] = [{}]
+                self.params['DetParams'][0]['bc'] = self.zarr_params_cache['bc']
+                print(f"  Overriding DetParams[0]['bc'] with Zarr value: {self.zarr_params_cache['bc']}")
         self.update_status_bar("Parameters loaded successfully.")
         # --- Call helper to update GUI ---
         self._update_gui_from_params()
@@ -910,6 +1079,8 @@ class FFViewerApp(QMainWindow):
                     self.le_data_file.setText(file0_path)
                     self.is_zarr_mode = file0_path.lower().endswith(".zip")
                     self.btn_view_zarr.setEnabled(self.is_zarr_mode)
+                    if self.is_zarr_mode: 
+                        self._read_params_from_zarr_to_cache() # Read to cache if new file found
                     print(f"Found data file based on parameters: {file0_path}")
                     self.current_frame_nr = 0
                     self.current_frame_nr_pending = 0
@@ -960,19 +1131,19 @@ class FFViewerApp(QMainWindow):
             self.le_lsd_single.setText(lsd_val_str)
             print(f"  Setting le_lsd_single text to: {lsd_val_str}")
 
-        # Update Beam Center
-        bc = det_to_display.get('bc', [None, None])
-        bc_x_val = bc[0] if isinstance(bc, (list, np.ndarray)) and len(bc) > 0 else None
-        bc_y_val = bc[1] if isinstance(bc, (list, np.ndarray)) and len(bc) > 1 else None
-        print(f"  BC values extracted: [{bc_x_val}, {bc_y_val}]")
-        if hasattr(self, 'le_bcx_single'):
-            bc_x_text = f"{try_parse_float(bc_x_val):.2f}" if bc_x_val is not None else "N/A"
+        # Beam center from self.params is now assumed to be [plotting_horizontal, plotting_vertical]
+        bc = det_to_display.get('bc', [None, None]) 
+        bc_plotting_horizontal = bc[0] if isinstance(bc, (list, np.ndarray)) and len(bc) > 0 else None
+        bc_plotting_vertical = bc[1] if isinstance(bc, (list, np.ndarray)) and len(bc) > 1 else None
+        print(f"  BC values from self.params for GUI: [Plotting_H={bc_plotting_horizontal}, Plotting_V={bc_plotting_vertical}]")
+        if hasattr(self, 'le_bcx_single'): # This QLineEdit should display the PLOTTING HORIZONTAL
+            bc_x_text = f"{try_parse_float(bc_plotting_horizontal):.2f}" if bc_plotting_horizontal is not None else "N/A"
             self.le_bcx_single.setText(bc_x_text)
-            print(f"  Setting le_bcx_single text to: {bc_x_text}")
-        if hasattr(self, 'le_bcy_single'):
-            bc_y_text = f"{try_parse_float(bc_y_val):.2f}" if bc_y_val is not None else "N/A"
+            print(f"  Setting le_bcx_single (Plotting Horizontal) text to: {bc_x_text}")
+        if hasattr(self, 'le_bcy_single'): # This QLineEdit should display the PLOTTING VERTICAL
+            bc_y_text = f"{try_parse_float(bc_plotting_vertical):.2f}" if bc_plotting_vertical is not None else "N/A"
             self.le_bcy_single.setText(bc_y_text)
-            print(f"  Setting le_bcy_single text to: {bc_y_text}")
+            print(f"  Setting le_bcy_single (Plotting Vertical) text to: {bc_y_text}")
 
         # Update Pixel Size Display
         px_val = try_parse_float(self.params.get('px'), default=None)
@@ -993,164 +1164,88 @@ class FFViewerApp(QMainWindow):
         QApplication.processEvents() # Force GUI refresh
 
 
-    def _read_params_from_zarr(self):
-        """Reads parameters from the loaded Zarr file and updates self.params."""
-        if not self.is_zarr_mode or not self.current_data_file:
-            print("_read_params_from_zarr: Not Zarr mode or no file, skipping.")
+    def _read_params_from_zarr_to_cache(self): # Modified to update a cache
+        """Reads parameters from the loaded Zarr file and updates self.zarr_params_cache."""
+        if not self.is_zarr_mode or not self.current_data_file: 
+            print("_read_params_from_zarr_to_cache: Not Zarr mode or no file."); 
             return
-        if not Path(self.current_data_file).exists():
-             print(f"_read_params_from_zarr: Zarr file not found: {self.current_data_file}, skipping.")
-             return
+        if not Path(self.current_data_file).exists(): 
+            print(f"_read_params_from_zarr_to_cache: Zarr file not found: {self.current_data_file}"); 
+            return
 
-        print(f"Attempting to read parameters from Zarr file: {self.current_data_file}")
+        print(f"Caching parameters from Zarr file: {self.current_data_file}")
+        self.zarr_params_cache = {} # Clear previous cache
         store = None
-        params_updated = False
         try:
             store = ZipStore(self.current_data_file, mode='r')
             z_root = zarr.open_group(store=store, mode='r')
-
-            # Define potential locations and the corresponding keys in self.params['DetParams'][0] or self.params
-            # Format: {zarr_path: (param_key, type, target_dict_level)}
-            # target_dict_level: 0 for DetParams[0], 1 for self.params
             zarr_param_map = OrderedDict([
-                # Try specific analysis paths first
-                ('analysis/process/analysis_parameters/Lsd', ('lsd', float, 0)),
-                ('analysis/process/analysis_parameters/YCen', ('bc_x', float, 0)), # Temp key for x
-                ('analysis/process/analysis_parameters/ZCen', ('bc_y', float, 0)), # Temp key for y
-                ('analysis/process/analysis_parameters/PixelSize', ('px', float, 1)),
-                ('analysis/process/analysis_parameters/Wavelength', ('wl', float, 1)),
-                ('analysis/process/analysis_parameters/LatticeParameter', ('LatticeConstant', float, 1)), # Special handling needed
-                ('analysis/process/analysis_parameters/SpaceGroup', ('sg', int, 1)),
-                ('analysis/process/analysis_parameters/tx', ('tx', float, 0)),
-                ('analysis/process/analysis_parameters/ty', ('ty', float, 0)),
-                ('analysis/process/analysis_parameters/tz', ('tz', float, 0)),
-                ('analysis/process/analysis_parameters/p0', ('p0', float, 0)),
-                ('analysis/process/analysis_parameters/p1', ('p1', float, 0)),
-                ('analysis/process/analysis_parameters/p2', ('p2', float, 0)),
-                # Fallback/Alternative instrument paths
+                ('analysis/process/analysis_parameters/Lsd', ('lsd', float, 0)), # Level 0 for DetParams[0]
                 ('measurement/instrument/detector/distance', ('lsd', float, 0)),
-                ('measurement/instrument/detector/beam_center_x', ('bc_x', float, 0)), # Temp key for x
-                ('measurement/instrument/detector/beam_center_y', ('bc_y', float, 0)), # Temp key for y
-                ('measurement/instrument/detector/x_pixel_size', ('px', float, 1)), # Assume x/y are same
-                ('measurement/instrument/monochromator/energy', ('energy_kev', float, 1)), # Need to convert energy to wl
-                # Scan parameters
+                ('analysis/process/analysis_parameters/YCen', ('zarr_bc_x', float, 0)), # YCen in file
+                ('measurement/instrument/detector/beam_center_x', ('zarr_bc_x', float, 0)), # beam_center_x in file
+                ('analysis/process/analysis_parameters/ZCen', ('zarr_bc_y', float, 0)), # ZCen in file
+                ('measurement/instrument/detector/beam_center_y', ('zarr_bc_y', float, 0)), # beam_center_y in file
+                ('analysis/process/analysis_parameters/PixelSize', ('px', float, 1)), # Level 1 for self.params/cache
+                ('measurement/instrument/detector/x_pixel_size', ('px', float, 1)),
+                ('analysis/process/analysis_parameters/Wavelength', ('wl', float, 1)),
+                ('measurement/instrument/monochromator/energy', ('energy_kev', float, 1)),
+                ('analysis/process/analysis_parameters/LatticeParameter', ('LatticeConstant', float, 1)),
+                ('analysis/process/analysis_parameters/SpaceGroup', ('sg', int, 1)),
                 ('measurement/process/scan_parameters/start', ('omegaStart', float, 1)),
                 ('measurement/process/scan_parameters/step', ('omegaStep', float, 1)),
             ])
-
-            # Ensure DetParams structure exists
-            if 'DetParams' not in self.params or not isinstance(self.params['DetParams'], list):
-                 self.params['DetParams'] = [{}]
-            if not self.params['DetParams']: # Ensure it's not empty
-                 self.params['DetParams'].append({})
-            det0 = self.params['DetParams'][0] # Get ref to the first detector's params
-
-            # Store temp BC values here
-            bc_vals = {'x': None, 'y': None}
-            lattice_constant_val = None
+            temp_zarr_bc_vals = {'x': None, 'y': None} # To hold values read directly as 'zarr_bc_x' and 'zarr_bc_y'
             energy_kev_val = None
-
-            # Iterate and read values
-            for z_path, (p_key, p_type, p_level) in zarr_param_map.items():
+            for z_path, (p_key, p_type, _) in zarr_param_map.items(): # Level not used for cache directly
                 if z_path in z_root:
                     try:
-                        value = z_root[z_path][...] # Read the Zarr array/value
-                        print(f"  Read Zarr Param '{z_path}': shape={value.shape}, dtype={value.dtype}")
+                        value = z_root[z_path][...];
+                        if p_key == 'LatticeConstant' and value.shape == (6,): 
+                            self.zarr_params_cache['LatticeConstant'] = value.astype(p_type)
+                        elif p_key == 'energy_kev' and value.size == 1: 
+                            energy_kev_val = p_type(value.item())
+                        elif p_key == 'zarr_bc_x' and value.size == 1: # Read as is from Zarr
+                            if temp_zarr_bc_vals['x'] is None: # Prioritize first found
+                                temp_zarr_bc_vals['x'] = p_type(value.item())
+                        elif p_key == 'zarr_bc_y' and value.size == 1: # Read as is from Zarr
+                             if temp_zarr_bc_vals['y'] is None: # Prioritize first found
+                                temp_zarr_bc_vals['y'] = p_type(value.item())
+                        elif value.size == 1: 
+                            self.zarr_params_cache[p_key] = p_type(value.item())
+                    except Exception as read_err: 
+                        print(f"    Warning: Could not read/process Zarr param '{z_path}': {read_err}")
 
-                        # Process based on expected structure/key
-                        if p_key == 'LatticeConstant':
-                            if value.shape == (6,):
-                                lattice_constant_val = value.astype(p_type)
-                                print(f"    Stored LatticeConstant: {lattice_constant_val}")
-                                params_updated = True
-                        elif p_key == 'energy_kev':
-                             if value.size == 1:
-                                 energy_kev_val = p_type(value.item())
-                                 print(f"    Stored Energy (keV): {energy_kev_val}")
-                                 params_updated = True # Will be processed later
-                        elif p_key == 'bc_x':
-                             if value.size == 1:
-                                 bc_vals['x'] = p_type(value.item())
-                                 print(f"    Stored bc_x: {bc_vals['x']}")
-                                 params_updated = True
-                        elif p_key == 'bc_y':
-                              if value.size == 1:
-                                 bc_vals['y'] = p_type(value.item())
-                                 print(f"    Stored bc_y: {bc_vals['y']}")
-                                 params_updated = True
-                        elif value.size == 1: # Handle scalar values
-                            target_val = p_type(value.item())
-                            if p_level == 0: # Update DetParams[0]
-                                # Only update if not already set by a previous entry in the map
-                                if p_key not in det0 or det0[p_key] is None:
-                                    det0[p_key] = target_val
-                                    print(f"    Updated det0['{p_key}']: {target_val}")
-                                    params_updated = True
-                            elif p_level == 1: # Update self.params
-                                # Only update if not already set by a previous entry
-                                if p_key not in self.params or self.params[p_key] is None:
-                                    self.params[p_key] = target_val
-                                    print(f"    Updated self.params['{p_key}']: {target_val}")
-                                    params_updated = True
-                        else:
-                             print(f"    Warning: Zarr parameter '{z_path}' has unexpected size/shape {value.shape}, skipping scalar assignment.")
+            if temp_zarr_bc_vals['x'] is not None and temp_zarr_bc_vals['y'] is not None:
+                # Assuming:
+                # temp_zarr_bc_vals['x'] was read from Zarr's "beam_center_x" or "YCen"
+                # temp_zarr_bc_vals['y'] was read from Zarr's "beam_center_y" or "ZCen"
 
-                    except Exception as read_err:
-                        print(f"    Warning: Could not read or process Zarr parameter '{z_path}': {read_err}")
+                # If Zarr's "beam_center_x" (or YCen) is actually your PLOTTING VERTICAL coordinate
+                # and Zarr's "beam_center_y" (or ZCen) is actually your PLOTTING HORIZONTAL coordinate:
+                plotting_horizontal = temp_zarr_bc_vals['y'] # e.g., Zarr's 'y' is our plotting X
+                plotting_vertical = temp_zarr_bc_vals['x']   # e.g., Zarr's 'x' is our plotting Y
+                self.zarr_params_cache['bc'] = [plotting_horizontal, plotting_vertical]
+                print(f"  Zarr BC: Read zarr_x={temp_zarr_bc_vals['x']}, zarr_y={temp_zarr_bc_vals['y']}. Stored in cache as [plotting_H, plotting_V]: {self.zarr_params_cache['bc']}")
+            elif temp_zarr_bc_vals['x'] is not None or temp_zarr_bc_vals['y'] is not None:
+                 print(f"  Warning: Only one component of Zarr beam center found (x:{temp_zarr_bc_vals['x']}, y:{temp_zarr_bc_vals['y']}). BC not fully set from Zarr.")
 
-            # --- Post-processing and Final Updates ---
-            # Update Beam Center ('bc') in DetParams[0] if both x and y were found
-            if bc_vals['x'] is not None and bc_vals['y'] is not None:
-                 det0['bc'] = [bc_vals['x'], bc_vals['y']]
-                 print(f"  Updated Beam Center in params det0['bc']: {det0['bc']}")
-            elif bc_vals['x'] is not None or bc_vals['y'] is not None:
-                 print("  Warning: Found only one beam center coordinate (X or Y) from Zarr.")
-                 # Optionally try to fill with default if one is missing, e.g., from image shape?
+            if 'wl' not in self.zarr_params_cache and energy_kev_val is not None and energy_kev_val > 0: 
+                self.zarr_params_cache['wl'] = 12.3984 / energy_kev_val
+            
+            if self.zarr_params_cache: 
+                print(f"Zarr params cached: {self.zarr_params_cache}")
+            else: 
+                print("No relevant parameters found in Zarr to cache.")
 
-            # Update Lattice Constant
-            if lattice_constant_val is not None:
-                self.params['LatticeConstant'] = lattice_constant_val
-                print(f"  Updated Lattice Constant in self.params: {self.params['LatticeConstant']}")
-
-            # Calculate Wavelength from Energy if WL wasn't found directly
-            if 'wl' not in self.params and energy_kev_val is not None and energy_kev_val > 0:
-                # Planck's constant * speed of light / energy
-                # hc ≈ 12.3984 keV·Å
-                self.params['wl'] = 12.3984 / energy_kev_val
-                print(f"  Calculated Wavelength from energy: {self.params['wl']:.6f} Å")
-                params_updated = True
-
-
-            # If Zarr params were read, assume it's not a Hydra setup unless explicitly contradicted
-            # This might need adjustment based on how Hydra Zarr files are structured
-            if params_updated and not self.params.get('HydraActive', False): # Don't override if Hydra was set by .txt
-                self.params['nDetectors'] = 1
-                self.params['StartDetNr'] = 1
-                self.params['EndDetNr'] = 1
-                # Set defaults for other DetParams keys if not found in Zarr
-                det0.setdefault('lsd', 1000000.0)
-                def_bc = [self.params.get('NrPixelsZ', 2048)/2.0, self.params.get('NrPixelsY', 2048)/2.0] if 'bc' not in det0 else det0['bc']
-                det0.setdefault('bc', def_bc)
-                for k in ['tx','ty','tz','p0','p1','p2','RhoD']: det0.setdefault(k, 0.0)
-                print("  Applied single-detector defaults as Zarr params were read.")
-
-
-            if params_updated:
-                print("Finished reading parameters from Zarr. GUI will be updated.")
-                self.update_status_bar("Parameters updated from Zarr file.")
-            else:
-                print("No new parameters found in standard Zarr locations.")
-
-        except Exception as e:
-            print(f"Error reading Zarr parameters: {traceback.format_exc()}")
-            QMessageBox.warning(self, "Zarr Parameter Error", f"Could not read parameters from Zarr file.\n{e}")
+        except Exception as e: 
+            print(f"Error reading Zarr parameters to cache: {traceback.format_exc()}")
         finally:
             if store is not None and hasattr(store, 'mode') and store.mode != 'closed':
-                try:
+                try: 
                     store.close()
-                    print("Zarr store closed.")
-                except Exception as close_err:
-                    print(f"Error closing Zarr store: {close_err}")
+                except Exception: 
+                    pass
 
 
     # --- Frame Navigation and Loading ---
@@ -1212,7 +1307,8 @@ class FFViewerApp(QMainWindow):
         data_source_available = self.current_data_file or self.params.get('HydraActive', False)
         if not data_source_available: QMessageBox.warning(self, "File Error", "Please select a data file or load Hydra parameters."); return
         if self.is_zarr_mode:
-            self._read_params_from_zarr() # Read/Update params for Zarr before load
+            self._read_params_from_zarr_to_cache() # Read/Update params for Zarr before load
+            self._merge_zarr_cache_into_params()
             self._update_gui_from_params() # Update GUI immediately after reading
         load_task_id = ""; args = []; task_func = None
         params_copy = self.params.copy() # Pass copy to thread
@@ -1401,13 +1497,19 @@ class FFViewerApp(QMainWindow):
          is_checked = bool(state); self.params['plotRingsVar'] = is_checked
          active_tab_index = self.tab_widget.currentIndex(); plot_key = 'single' if active_tab_index == 0 else 'multi'
          if is_checked:
-              if not self.params.get('ringRads'): QMessageBox.information(self, "Select Rings", "Please use 'Select Rings/Material...' first."); self.cb_plot_rings.setChecked(False); self.params['plotRingsVar'] = False; return
-              print("Plotting rings...");
-              if self.plotting_handler: self.plotting_handler.draw_rings(plot_key, force_redraw=True)
+              if not self.params.get('ringRads'): # ringRads are populated after HKL selection
+                  QMessageBox.information(self, "Select Rings", "Please use 'Select Rings/Material...' first to generate and select rings.")
+                  self.cb_plot_rings.setChecked(False)
+                  self.params['plotRingsVar'] = False
+                  return
+              print("Plotting rings...")
+              if self.plotting_handler: 
+                  self.plotting_handler.draw_rings(plot_key, force_redraw=True)
          else:
-              print("Clearing rings...");
+              print("Clearing rings...")
               if self.plotting_handler:
-                  if self.plotting_handler.clear_rings(plot_key): self.canvas.draw_idle()
+                  if self.plotting_handler.clear_rings(plot_key): 
+                      self.canvas.draw_idle()
          self._update_ring_info_label()
 
     def _update_ring_info_label(self):
@@ -1419,50 +1521,219 @@ class FFViewerApp(QMainWindow):
         else: self.lbl_ring_info.setText("Selected Rings: None"); self.lbl_ring_info.setToolTip("")
 
     def _open_ring_selection(self):
-         material_dialog = RingMaterialDialog(self.params, self)
-         if not material_dialog.exec(): self.update_status_bar("Ring selection cancelled."); return
+         # Get combined parameters for the dialog (Zarr > self.params > defaults)
+         params_for_dialog = self._get_combined_ring_material_params()
+         material_dialog = RingMaterialDialog(params_for_dialog, self)
+
+         if not material_dialog.exec(): 
+            self.update_status_bar("Ring selection cancelled.")
+            return
          new_material_params = material_dialog.get_values()
-         if not new_material_params: QMessageBox.warning(self, "Input Error", "Could not retrieve valid material parameters."); return
-         self.params.update(new_material_params); self.le_lsd_single.setText(f"{new_material_params['lsd']:.1f}"); self.le_px_display.setText(f"{new_material_params['px']:.2f}")
-         self.update_status_bar("Material parameters updated. Generating HKL list...")
+         if not new_material_params: 
+            QMessageBox.warning(self, "Input Error", "Could not retrieve valid material parameters.")
+            return
+
+         # Update self.params with values from the dialog
+         self.params.update({k: v for k, v in new_material_params.items() if k != 'lsd_dialog'})
+         # Specifically update DetParams[0]['lsd'] if it was changed in dialog
+         if 'lsd_dialog' in new_material_params:
+             if 'DetParams' not in self.params or not self.params['DetParams']: 
+                 self.params['DetParams'] = [{}]
+             self.params['DetParams'][0]['lsd'] = new_material_params['lsd_dialog']
+             # Also update the GUI display for LSD directly
+             self.le_lsd_single.setText(f"{new_material_params['lsd_dialog']:.1f}")
+
+         self.le_px_display.setText(f"{self.params['px']:.2f}") # Update px display from self.params
+         self.update_status_bar("Material parameters updated. Processing HKL list...")
+
          hkl_gen_path = self.midas_dir / "bin" / "GetHKLList"
-         if not hkl_gen_path.is_file(): QMessageBox.critical(self, "Error", f"HKL Generator not found at: {hkl_gen_path}"); return
-         temp_param_fn = Path.cwd() / "temp_ring_params_for_hkl.txt"
-         try:
-              with open(temp_param_fn, 'w') as f: f.write(f"Wavelength {self.params['wl']}\n"); f.write(f"SpaceGroup {self.params['sg']}\n"); f.write(f"Lsd {self.params['lsd']}\n"); f.write(f"MaxRingRad {self.params['maxRad']}\n"); lc_str = " ".join(map(str, self.params['LatticeConstant'])); f.write(f"LatticeConstant {lc_str}\n"); f.write(f"px {self.params['px']}\n")
-              print(f"Running HKL generator: {hkl_gen_path} {temp_param_fn}"); result = subprocess.run([str(hkl_gen_path), str(temp_param_fn)], capture_output=True, text=True, encoding='utf-8')
-              print("HKL Gen Output:", result.stdout);
-              if result.stderr: print("HKL Gen Error:", result.stderr)
-              if result.returncode != 0: raise RuntimeError(f"GetHKLList failed:\n{result.stderr}")
-              hkl_csv_path = Path.cwd() / "hkls.csv"
-              if not hkl_csv_path.exists(): raise FileNotFoundError("hkls.csv not generated by GetHKLList.")
-              hkl_lines_data = []; header_line = "";
-              with open(hkl_csv_path, 'r') as f:
-                   header_line = f.readline().strip().replace(',', '  ')
-                   for line in f:
-                        parts = line.strip().split(',');
-                        if len(parts) >= 11:
-                             try: hkl = [int(parts[0]), int(parts[1]), int(parts[2])]; ring_nr = int(parts[4]); ring_rad_um = float(parts[10]); display_line = "  ".join(parts); hkl_lines_data.append((display_line, hkl, ring_nr, ring_rad_um))
-                             except (ValueError, IndexError): print(f"Warning: Skipping malformed HKL line: {line.strip()}")
-                        else: print(f"Warning: Skipping short HKL line: {line.strip()}")
-              if not hkl_lines_data: QMessageBox.warning(self, "HKL Generation", "No valid HKL lines generated or read."); return
-         except Exception as e: QMessageBox.critical(self, "HKL Generation Error", f"Failed to generate or read HKL list: {traceback.format_exc()}"); return
-         finally:
-              if temp_param_fn.exists():
-                   try: os.remove(temp_param_fn)
-                   except OSError: pass
-         dialog = QDialog(self); dialog.setWindowTitle("Select Rings to Display"); dialog_layout = QVBoxLayout(dialog); dialog_layout.addWidget(QLabel("Available Rings (Select multiple using Ctrl/Shift):")); dialog_layout.addWidget(QLabel(header_line, font=QFont("Monospace")))
-         list_widget = QListWidget(); list_widget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection); list_widget.setFont(QFont("Monospace")); list_widget_items_data = []
-         for display_line, hkl, ring_nr, ring_rad_um in hkl_lines_data: list_widget.addItem(display_line); list_widget_items_data.append({'hkl': hkl, 'nr': ring_nr, 'rad': ring_rad_um})
-         dialog_layout.addWidget(list_widget); button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel); button_box.accepted.connect(dialog.accept); button_box.rejected.connect(dialog.reject); dialog_layout.addWidget(button_box)
+         hkl_csv_path_cwd = Path.cwd() / "hkls.csv" # For fallback
+         hkl_lines_data = []; header_line = ""
+         hkl_source_message = ""
+
+         if hkl_gen_path.is_file():
+             temp_param_fn = Path.cwd() / "temp_ring_params_for_hkl.txt"
+             try:
+                 with open(temp_param_fn, 'w') as f:
+                     f.write(f"Wavelength {self.params['wl']}\n"); 
+                     f.write(f"SpaceGroup {self.params['sg']}\n")
+                     # Use LSD from DetParams[0] for GetHKLList if available, else top-level, else default
+                     lsd_for_hkl = self.params.get('DetParams', [{}])[0].get('lsd', self.params.get('lsd', 1e6))
+                     f.write(f"Lsd {lsd_for_hkl}\n")
+                     f.write(f"MaxRingRad {self.params['maxRad']}\n")
+                     lc_str = " ".join(map(str, self.params['LatticeConstant']))
+                     f.write(f"LatticeConstant {lc_str}\n")
+                     f.write(f"px {self.params['px']}\n")
+                 print(f"Running HKL generator: {hkl_gen_path} {temp_param_fn}")
+                 result = subprocess.run([str(hkl_gen_path), str(temp_param_fn)], capture_output=True, text=True, encoding='utf-8', timeout=10) # Added timeout
+                 print("HKL Gen Output:", result.stdout)
+                 if result.stderr: 
+                     print("HKL Gen Error:", result.stderr)
+                 if result.returncode != 0: 
+                     raise RuntimeError(f"GetHKLList failed (retcode {result.returncode}):\n{result.stderr}")
+                 
+                 hkl_csv_path_generated = Path.cwd() / "hkls.csv" # Standard output name
+                 if not hkl_csv_path_generated.exists(): 
+                     raise FileNotFoundError("hkls.csv not generated by GetHKLList.")
+                 
+                 with open(hkl_csv_path_cwd, 'r') as f:
+                    # Read the header line first (if it exists and you want to use it)
+                    header_content = f.readline().strip()
+                    if header_content: # Check if header is not empty
+                            # Split by one or more spaces for the header display
+                        header_line_list = header_content.split()
+                        header_line = "  ".join(header_line_list) # Rejoin with double space for display
+                    else:
+                        header_line = "" # Or your default header string
+
+                    hkl_lines_data_all = [] # Clear any previous attempt
+                    for line_num, line_content in enumerate(f): # Iterate over remaining lines
+                        line_content = line_content.strip()
+                        if not line_content or line_content.startswith('#'): # Skip empty or comment lines
+                            continue
+                        
+                        parts = line_content.split() # Split by any whitespace
+
+                        if len(parts) >= 11: # Check if we have enough parts after splitting
+                            try:
+                                hkl = [int(parts[0]), int(parts[1]), int(parts[2])]
+                                ring_nr = int(parts[4])
+                                ring_rad_um = float(parts[10])
+                                # For display_line, we can just use the parts joined by a couple of spaces
+                                display_line = "  ".join(parts) 
+                                hkl_lines_data_all.append({'display': display_line, 'hkl': hkl, 'nr': ring_nr, 'rad': ring_rad_um})
+                            except (ValueError, IndexError) as e_parse:
+                                print(f"Warning: Skipping malformed HKL line {line_num+2} from file (parsing error: {e_parse}): {parts}")
+                        else:
+                            print(f"Warning: Skipping short HKL line {line_num+2} from file (parts found: {len(parts)}): {parts}")
+                    hkl_lines_data_filtered = []
+                    seen_ring_numbers = set()
+                    if hkl_lines_data_all:
+                        # Sort by RingNr, then by original order (implicitly by radius or how they appear in file)
+                        # This ensures that if multiple entries for the same ring have slightly different radii,
+                        # we consistently pick one (though GetHKLList should give same radius for same RingNr)
+                        # Sorting is not strictly necessary if GetHKLList already groups/orders them,
+                        # but it's safer.
+                        # hkl_lines_data_all.sort(key=lambda x: (x['nr'], x['rad'])) # Optional sort
+
+                        for item in hkl_lines_data_all:
+                            if item['nr'] not in seen_ring_numbers:
+                                hkl_lines_data_filtered.append((item['display'], item['hkl'], item['nr'], item['rad']))
+                                seen_ring_numbers.add(item['nr'])
+                    
+                    hkl_lines_data = hkl_lines_data_filtered # Use the filtered list
+                 hkl_source_message = "HKLs generated successfully."
+             except subprocess.TimeoutExpired:
+                 QMessageBox.warning(self, "HKL Generation Timeout", f"GetHKLList timed out. Trying to read existing hkls.csv...")
+                 hkl_gen_path = None # Force fallback by "unfinding" the generator
+             except Exception as e_gen:
+                 QMessageBox.warning(self, "HKL Generation Error", f"Failed to generate HKL list: {e_gen}\nTrying to read existing hkls.csv...")
+                 hkl_gen_path = None # Force fallback
+             finally:
+                 if temp_param_fn.exists():
+                    try: os.remove(temp_param_fn)
+                    except OSError: pass
+         
+         if not hkl_gen_path or not hkl_lines_data: # If generator not found OR generation failed and produced no data
+            if hkl_csv_path_cwd.is_file():
+                print(f"HKL generator not found or failed. Reading from existing: {hkl_csv_path_cwd}")
+                try:
+                    with open(hkl_csv_path_cwd, 'r') as f:
+                        # Read the header line first (if it exists and you want to use it)
+                        header_content = f.readline().strip()
+                        if header_content: # Check if header is not empty
+                             # Split by one or more spaces for the header display
+                            header_line_list = header_content.split()
+                            header_line = "  ".join(header_line_list) # Rejoin with double space for display
+                        else:
+                            header_line = "" # Or your default header string
+
+                        hkl_lines_data_all = [] # Clear any previous attempt
+                        for line_num, line_content in enumerate(f): # Iterate over remaining lines
+                            line_content = line_content.strip()
+                            if not line_content or line_content.startswith('#'): # Skip empty or comment lines
+                                continue
+                            
+                            parts = line_content.split() # Split by any whitespace
+
+                            if len(parts) >= 11: # Check if we have enough parts after splitting
+                                try:
+                                    hkl = [int(parts[0]), int(parts[1]), int(parts[2])]
+                                    ring_nr = int(parts[4])
+                                    ring_rad_um = float(parts[10])
+                                    # For display_line, we can just use the parts joined by a couple of spaces
+                                    display_line = "  ".join(parts) 
+                                    hkl_lines_data_all.append({'display': display_line, 'hkl': hkl, 'nr': ring_nr, 'rad': ring_rad_um})
+                                except (ValueError, IndexError) as e_parse:
+                                    print(f"Warning: Skipping malformed HKL line {line_num+2} from file (parsing error: {e_parse}): {parts}")
+                            else:
+                                print(f"Warning: Skipping short HKL line {line_num+2} from file (parts found: {len(parts)}): {parts}")
+                        hkl_lines_data_filtered = []
+                        seen_ring_numbers = set()
+                        if hkl_lines_data_all:
+                            # Sort by RingNr, then by original order (implicitly by radius or how they appear in file)
+                            # This ensures that if multiple entries for the same ring have slightly different radii,
+                            # we consistently pick one (though GetHKLList should give same radius for same RingNr)
+                            # Sorting is not strictly necessary if GetHKLList already groups/orders them,
+                            # but it's safer.
+                            # hkl_lines_data_all.sort(key=lambda x: (x['nr'], x['rad'])) # Optional sort
+
+                            for item in hkl_lines_data_all:
+                                if item['nr'] not in seen_ring_numbers:
+                                    hkl_lines_data_filtered.append((item['display'], item['hkl'], item['nr'], item['rad']))
+                                    seen_ring_numbers.add(item['nr'])
+                        
+                        hkl_lines_data = hkl_lines_data_filtered # Use the filtered list
+
+                    if hkl_lines_data: 
+                        hkl_source_message = f"HKLs read from: {hkl_csv_path_cwd.name}"
+                    else: 
+                        hkl_source_message = f"Found {hkl_csv_path_cwd.name}, but no valid HKLs read."
+                except Exception as e_read:
+                    QMessageBox.critical(self, "HKL Read Error", f"Failed to read HKL list from {hkl_csv_path_cwd.name}: {traceback.format_exc()}")
+                    return # Critical error, cannot proceed
+            else:
+                QMessageBox.critical(self, "HKL Error", f"GetHKLList not found at {self.midas_dir / 'bin' / 'GetHKLList'}\nAND hkls.csv not found in current directory ({Path.cwd()}). Cannot proceed."); return
+
+         if not hkl_lines_data: 
+            QMessageBox.warning(self, "HKL Data", f"No valid HKL lines found from any source.\n({hkl_source_message})")
+            return
+         self.update_status_bar(hkl_source_message)
+
+         dialog = QDialog(self)
+         dialog.setWindowTitle("Select Rings to Display")
+         dialog_layout = QVBoxLayout(dialog)
+         dialog_layout.addWidget(QLabel("Available Rings (Select multiple using Ctrl/Shift):"))
+         dialog_layout.addWidget(QLabel(header_line if header_line else "H K L ?? RingNr ?? ?? ?? ?? ?? Radius_um", font=QFont("Monospace"))) # Default header if none read
+         list_widget = QListWidget()
+         list_widget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+         list_widget.setFont(QFont("Monospace"))
+         list_widget_items_data = []
+         for display_line, hkl, ring_nr, ring_rad_um in hkl_lines_data:
+             list_widget.addItem(display_line)
+             list_widget_items_data.append({'hkl': hkl, 'nr': ring_nr, 'rad': ring_rad_um})
+         dialog_layout.addWidget(list_widget)
+         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+         button_box.accepted.connect(dialog.accept)
+         button_box.rejected.connect(dialog.reject)
+         dialog_layout.addWidget(button_box)
          if dialog.exec():
-              selected_indices = [item.row() for item in list_widget.selectedIndexes()]
+              selected_indices = [item.row() for item in list_widget.selectedIndexes()] # Corrected for PyQt6
               if selected_indices:
-                   selected_rings_data = [list_widget_items_data[i] for i in selected_indices]; self.params['hkls'] = [item['hkl'] for item in selected_rings_data]; self.params['ringNrs'] = [item['nr'] for item in selected_rings_data]; self.params['ringRads'] = [item['rad'] for item in selected_rings_data]; self.params['RingsToShow'] = self.params['ringNrs']
-                   self.params['plotRingsVar'] = True; self.cb_plot_rings.setChecked(True); self._update_ring_info_label(); active_tab_index = self.tab_widget.currentIndex(); plot_key = 'single' if active_tab_index == 0 else 'multi'
-                   if self.plotting_handler: self.plotting_handler.draw_rings(plot_key, force_redraw=True)
-              else: self._clear_ring_selection()
-         else: self._clear_ring_selection()
+                   selected_rings_data = [list_widget_items_data[i] for i in selected_indices]
+                   self.params['hkls'] = [item['hkl'] for item in selected_rings_data]
+                   self.params['ringNrs'] = [item['nr'] for item in selected_rings_data]
+                   self.params['ringRads'] = [item['rad'] for item in selected_rings_data]
+                   self.params['RingsToShow'] = self.params['ringNrs'] # Legacy? Keep for now.
+                   self.params['plotRingsVar'] = True
+                   self.cb_plot_rings.setChecked(True)
+                   self._update_ring_info_label()
+                   active_tab_index = self.tab_widget.currentIndex()
+                   plot_key = 'single' if active_tab_index == 0 else 'multi'
+                   if self.plotting_handler: 
+                       self.plotting_handler.draw_rings(plot_key, force_redraw=True)
+              else: self._clear_ring_selection() # No rings selected
+         else: self._clear_ring_selection() # Dialog cancelled
 
     def _clear_ring_selection(self):
          self.params['hkls'] = []; self.params['ringNrs'] = []; self.params['ringRads'] = []; self.params['RingsToShow'] = []; self.params['plotRingsVar'] = False
@@ -1471,23 +1742,29 @@ class FFViewerApp(QMainWindow):
 
     def _update_ring_geometry(self):
         try:
-             det_num = try_parse_int(self.le_det_num_single.text()); lsd = try_parse_float(self.le_lsd_single.text()); bcx = try_parse_float(self.le_bcx_single.text()); bcy = try_parse_float(self.le_bcy_single.text())
+             det_num = try_parse_int(self.le_det_num_single.text()); 
+             lsd = try_parse_float(self.le_lsd_single.text()); 
+             gui_bc_plotting_horizontal = try_parse_float(self.le_bcx_single.text())
+             gui_bc_plotting_vertical = try_parse_float(self.le_bcy_single.text())
+             det_idx = det_num - try_parse_int(self.params.get('StartDetNr', 1))
              det_idx = det_num - try_parse_int(self.params.get('StartDetNr', 1))
              if 'DetParams' in self.params and 0 <= det_idx < len(self.params['DetParams']):
-                  print(f"Updating params from GUI for det {det_num}: LSD={lsd}, BC=[{bcx}, {bcy}]")
+                  print(f"Updating params from GUI for det {det_num}: LSD={lsd}, BC_Plotting=[{gui_bc_plotting_horizontal}, {gui_bc_plotting_vertical}]")
                   self.params['DetParams'][det_idx]['lsd'] = lsd
-                  self.params['DetParams'][det_idx]['bc'] = [bcx, bcy]
-                  self.params['current_det_nr_single'] = det_num # Store which det GUI is showing
-                  # Update PlottingHandler's knowledge immediately for status bar etc.
+                  # Store in self.params in the [plotting_horizontal, plotting_vertical] order
+                  self.params['DetParams'][det_idx]['bc'] = [gui_bc_plotting_horizontal, gui_bc_plotting_vertical]
+                  self.params['current_det_nr_single'] = det_num
+                  
                   if self.plotting_handler:
-                      self.plotting_handler.current_single_bc_gui = [bcx, bcy]
+                      # PlottingHandler.current_single_bc_gui expects [plotting_horizontal, plotting_vertical]
+                      self.plotting_handler.current_single_bc_gui = [gui_bc_plotting_horizontal, gui_bc_plotting_vertical]
                       self.plotting_handler.current_single_det_nr = det_num
-             else: QMessageBox.warning(self, "Update Error", f"Detector number {det_num} not found or invalid in current parameters."); return
+             else:
+                 QMessageBox.warning(self, "Update Error", f"Detector number {det_num} not found or invalid in current parameters."); return
 
-             # Redraw rings if they are currently plotted
              if self.cb_plot_rings.isChecked():
                  active_tab_index = self.tab_widget.currentIndex();
-                 plot_key = 'single' if active_tab_index == 0 else 'multi' # Usually 'single' here
+                 plot_key = 'single' if active_tab_index == 0 else 'multi'
                  if self.plotting_handler:
                      print(f"Redrawing rings for '{plot_key}' after geometry update.")
                      self.plotting_handler.draw_rings(plot_key, force_redraw=True)
