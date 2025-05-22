@@ -4,13 +4,13 @@
 set(DT_SRCDIR src)
 
 # --- Executable: DetectorMapper ---
-add_executable(DetectorMapper ${DT_SRCDIR}/DetectorMapper.c)
+add_executable(DetectorMapperDT ${DT_SRCDIR}/DetectorMapper.c)
 # No specific dependencies from Makefile other than standard CFLAGS
 # Link common libraries if any are universally needed, or keep minimal.
 # For now, assume it doesn't need the COMMON_LINK_LIBRARIES from the top-level.
 # If it needs m or dl, those are handled by CMAKE_EXE_LINKER_FLAGS from top level.
 
-install(TARGETS DetectorMapper
+install(TARGETS DetectorMapperDT
     RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR}
 )
 
