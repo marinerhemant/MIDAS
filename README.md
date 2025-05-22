@@ -5,18 +5,25 @@
 **Installation and Compilation Instructions:**
 
 1. Download the source code from [GitHub](https://github.com/marinerhemant/MIDAS).
+
 `bash
 git clone https://github.com/marinerhemant/MIDAS.git
 `
+
 2. Change to the MIDAS directory.
+
 `bash
 cd MIDAS
 `
+
 3. Run the build script.
+
 `bash
 ./build.sh
 `
+
 4. Install the python requirements.
+
 `bash
 pip install -r requirements.txt
 `
