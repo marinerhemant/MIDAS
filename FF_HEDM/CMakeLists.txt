@@ -2,19 +2,6 @@
 # This file relies on the top-level CMakeLists.txt for project setup,
 # options, dependency management, and global configurations.
 
-# Common source files for FF_HEDM executables
-# Paths are relative to CMAKE_CURRENT_SOURCE_DIR (which is FF_HEDM/)
-set(FF_HEDM_COMMON_SOURCES # Renamed to avoid potential conflict
-  src/CalcDiffractionSpots.c
-  # src/CalcPeakProfile.c
-  src/GetMisorientation.c
-  src/CalcStrains.c
-  src/sgclib.c
-  src/sgfind.c
-  src/sghkl.c
-  src/sgsi.c
-  src/sgio.c
-)
 
 # Function to add an FF_HEDM executable.
 # Relies on variables/options from the top-level CMakeLists.txt:
@@ -83,7 +70,6 @@ endfunction()
 # --- Define FF_HEDM Executables ---
 # Most executables link against COMMON_LINK_LIBRARIES implicitly via add_ff_hedm_executable.
 # Any libraries listed in LINK_LIBRARIES are additional, target-specific dependencies.
-# FF_HEDM_COMMON_SOURCES is used for sources shared among FF_HEDM executables.
 
 add_ff_hedm_executable(Calibrant SOURCES src/Calibrant.c src/CalcPeakProfile.c)
 add_ff_hedm_executable(CalibrantOMP SOURCES src/CalibrantOMP.c src/CalcPeakProfile.c OMP)
@@ -92,10 +78,8 @@ add_ff_hedm_executable(FitTiltBCLsdSample SOURCES src/FitTiltBCLsdSampleOmegaCor
 add_ff_hedm_executable(ForwardSimulation SOURCES src/ForwardSimulation.c)
 add_ff_hedm_executable(ForwardSimulationCompressed SOURCES src/ForwardSimulationCompressed.c)
 
-add_ff_hedm_executable(FitPosOrStrains SOURCES src/FitPosOrStrains.c ${FF_HEDM_COMMON_SOURCES})
-add_ff_hedm_executable(FitPosOrStrainsOMP SOURCES src/FitPosOrStrainsOMP.c ${FF_HEDM_COMMON_SOURCES} OMP)
-add_ff_hedm_executable(FitOrStrainsScanningOMP SOURCES src/FitOrStrainsScanningOMP.c ${FF_HEDM_COMMON_SOURCES} OMP)
-add_ff_hedm_executable(FitPosOrStrainsScanningHEDM SOURCES src/FitPosOrStrainsScanningHEDM.c ${FF_HEDM_COMMON_SOURCES})
+add_ff_hedm_executable(FitPosOrStrainsOMP SOURCES src/FitPosOrStrainsOMP.c $(SRCDIR)CalcDiffractionSpots.c OMP)
+add_ff_hedm_executable(FitOrStrainsScanningOMP SOURCES src/FitOrStrainsScanningOMP.c $(SRCDIR)CalcDiffractionSpots.c OMP)
 
 add_ff_hedm_executable(PeaksFittingPerFile SOURCES src/PeaksFittingPerFile.c)
 add_ff_hedm_executable(PeaksFittingOMP SOURCES src/PeaksFittingOMP.c OMP)
@@ -109,33 +93,31 @@ add_ff_hedm_executable(GrainTracking SOURCES src/GrainTracking.c)
 add_ff_hedm_executable(MergeMultipleRings SOURCES src/MergeMultipleRings.c)
 add_ff_hedm_executable(GenMedianDark SOURCES src/GenMedianDark.c)
 
-add_ff_hedm_executable(FitGrain SOURCES src/FitGrain.c ${FF_HEDM_COMMON_SOURCES})
-add_ff_hedm_executable(FitGrainHydra SOURCES src/FitGrainHydra.c ${FF_HEDM_COMMON_SOURCES})
+add_ff_hedm_executable(FitGrain SOURCES src/FitGrain.c src/CalcDiffractionSpots.c)
+add_ff_hedm_executable(FitGrainHydra SOURCES src/FitGrainHydra.c src/CalcDiffractionSpots.c)
 add_ff_hedm_executable(FitScanningGrain SOURCES src/FitScanningGrain.c)
 add_ff_hedm_executable(FitTiltX SOURCES src/FitTiltX.c)
 add_ff_hedm_executable(FitWedge SOURCES src/FitWedge.c)
 
-add_ff_hedm_executable(GetHKLList SOURCES src/GetHKLList.c ${FF_HEDM_COMMON_SOURCES})
+add_ff_hedm_executable(GetHKLList SOURCES src/GetHKLList.c src/sgclib.c src/sgfind.c src/sghkl.c src/sgsi.c src/sgio.c)
 add_ff_hedm_executable(PeaksFittingOMPZarr SOURCES src/PeaksFittingOMPZarr.c OMP)
 add_ff_hedm_executable(PeaksFittingOMPZarrRefactor SOURCES src/PeaksFittingOMPZarrRefactor.c OMP)
-add_ff_hedm_executable(GetHKLListZarr SOURCES src/GetHKLListZarr.c ${FF_HEDM_COMMON_SOURCES})
+add_ff_hedm_executable(GetHKLListZarr SOURCES src/GetHKLListZarr.c src/sgclib.c src/sgfind.c src/sghkl.c src/sgsi.c src/sgio.c)
 add_ff_hedm_executable(MergeOverlappingPeaksAllZarr SOURCES src/MergeOverlappingPeaksAllZarr.c)
 add_ff_hedm_executable(CalcRadiusAllZarr SOURCES src/CalcRadiusAllZarr.c)
 add_ff_hedm_executable(FitSetupZarr SOURCES src/FitSetupParamsAllZarr.c)
-add_ff_hedm_executable(ProcessGrainsZarr SOURCES src/ProcessGrainsZarr.c ${FF_HEDM_COMMON_SOURCES})
+add_ff_hedm_executable(ProcessGrainsZarr SOURCES src/ProcessGrainsZarr.c src/GetMisorientation.c src/CalcStrains.c)
 
-add_ff_hedm_executable(IndexerLinuxArgsShm SOURCES src/IndexerLinuxArgsOptimizedShm.c)
 add_ff_hedm_executable(IndexerOMP SOURCES src/IndexerOMP.c OMP)
 add_ff_hedm_executable(IndexerScanningOMP SOURCES src/IndexerScanningOMP.c OMP)
-add_ff_hedm_executable(IndexScanningHEDM SOURCES src/IndexScanningHEDM.c ${FF_HEDM_COMMON_SOURCES})
 
 add_ff_hedm_executable(SaveBinData SOURCES src/SaveBinData.c)
 add_ff_hedm_executable(SaveBinDataScanning SOURCES src/SaveBinDataScanning.c)
 add_ff_hedm_executable(MergeMultipleScans SOURCES src/MergeMultipleScans.c)
 
-add_ff_hedm_executable(ProcessGrains SOURCES src/ProcessGrains.c ${FF_HEDM_COMMON_SOURCES})
-add_ff_hedm_executable(ProcessGrainsScanningHEDM SOURCES src/ProcessGrainsScanningHEDM.c ${FF_HEDM_COMMON_SOURCES})
-add_ff_hedm_executable(MatchGrains SOURCES src/MatchGrains.c ${FF_HEDM_COMMON_SOURCES})
+add_ff_hedm_executable(ProcessGrains SOURCES src/ProcessGrains.c src/GetMisorientation.c src/CalcStrains.c)
+add_ff_hedm_executable(ProcessGrainsScanningHEDM SOURCES src/ProcessGrainsScanningHEDM.c src/GetMisorientation.c src/CalcStrains.c)
+add_ff_hedm_executable(MatchGrains SOURCES src/MatchGrains.c src/GetMisorientation.c)
 
 add_ff_hedm_executable(DetectorMapper SOURCES src/DetectorMapper.c)
 add_ff_hedm_executable(DetectorMapperZarr SOURCES src/DetectorMapperZarr.c)
@@ -144,9 +126,9 @@ add_ff_hedm_executable(IntegratorZarr SOURCES src/IntegratorZarr.c)
 add_ff_hedm_executable(ConvTiffToGE SOURCES src/ConvTiffToGE.c)
 add_ff_hedm_executable(MapBND SOURCES src/MapBND.c)
 
-add_ff_hedm_executable(findSingleSolutionPF SOURCES src/findSingleSolutionPF.c ${FF_HEDM_COMMON_SOURCES} OMP)
-add_ff_hedm_executable(findSingleSolutionPFRefactored SOURCES src/findSingleSolutionPFRefactored.c ${FF_HEDM_COMMON_SOURCES} OMP)
-add_ff_hedm_executable(findMultipleSolutionsPF SOURCES src/findMultipleSolutionsPF.c ${FF_HEDM_COMMON_SOURCES} OMP)
+add_ff_hedm_executable(findSingleSolutionPF SOURCES src/findSingleSolutionPF.c src/GetMisorientation.c OMP)
+add_ff_hedm_executable(findSingleSolutionPFRefactored SOURCES src/findSingleSolutionPFRefactored.c src/GetMisorientation.c OMP)
+add_ff_hedm_executable(findMultipleSolutionsPF SOURCES src/findMultipleSolutionsPF.c src/GetMisorientation.c OMP)
 add_ff_hedm_executable(mergeScansScanning SOURCES src/mergeScansScanning.c OMP)
 
 # CUDA specific targets
