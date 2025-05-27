@@ -27,7 +27,7 @@ Change to the MIDAS directory.
 cd MIDAS
 ```
 
-**To compile on Linux, skip to step 5.**
+**To compile on LINUX, skip to step 5.**
 
 **To compile on MACOS, please use the following steps:**
 
@@ -39,7 +39,7 @@ cd MIDAS
     Follow the on-screen instructions to complete the installation.
     Also place the Homebrew binary in your PATH by adding the following line to your `~/.zshrc` file:
     ```bash
-    echo 'export eval $(/opt/homebrew/bin/brew shellenv)'  >> ~/.zshrc
+    echo 'eval $(/opt/homebrew/bin/brew shellenv)'  >> ~/.zshrc
     ```
     Then, reload your shell configuration:
     ```bash
