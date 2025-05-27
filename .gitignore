@@ -22,3 +22,4 @@ utils/__pycache__
 */*/__pycache__
 .vscode
 .DS_Store
+build
