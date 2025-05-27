@@ -32,11 +32,24 @@ cd MIDAS
 **To compile on MACOS, please use the following steps:**
 
 1. Install Homebrew if not already installed.
+    If you don't have Homebrew installed, you can install it by running the following command in your terminal:
+    ```bash
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    ```
+    Follow the on-screen instructions to complete the installation.
+    Also place the Homebrew binary in your PATH by adding the following line to your `~/.zshrc` file:
+    ```bash
+    echo 'export eval $(/opt/homebrew/bin/brew shellenv)'  >> ~/.zshrc
+    ```
+    Then, reload your shell configuration:
+    ```bash
+    source ~/.zshrc
+    ```
 2. Install the required libraries using Homebrew:
    ```
    brew install llvm libomp gcc cmake jemalloc
    ```
-3. Set the environment variables for the compiler:
+3. Set the environment variables for the compiler (copy paste the following commands in your terminal):
    ```
     echo 'export PATH="/opt/homebrew/opt/llvm/bin:$PATH"' >> ~/.zshrc
     echo 'export LDFLAGS="-L/opt/homebrew/opt/llvm/lib $LDFLAGS"' >> ~/.zshrc
