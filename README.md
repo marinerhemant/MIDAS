@@ -13,9 +13,6 @@ Some misorientation functions are taken from the [ODFPF](https://anisotropy.mae.
 
 Downloads [NLOPT](https://nlopt.readthedocs.io/en/latest/), [LIBTIFF](http://www.libtiff.org/), [FFTW](http://www.fftw.org/), [HDF5](https://www.hdfgroup.org/solutions/hdf5/), [BLOSC](https://github.com/Blosc/c-blosc), [BLOSC-2](https://github.com/Blosc/c-blosc2), [ZLIB](https://zlib.net/), [LIBZIP](https://libzip.org/) for compilation of N(F)F-HEDM codes.
 
-
-# INSTALLATION
-
 **Installation and Compilation Instructions:**
 
 Download the source code from [GitHub](https://github.com/marinerhemant/MIDAS).
