@@ -15,9 +15,14 @@
 #include <sys/stat.h>
 #include <fftw3.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifndef PI
 #define PI 3.14159265358979323846
+#endif
+
+#ifndef uint
+	typedef unsigned int uint; // for compatibility with C++ code
 #endif
 
 //--------------------------------------------------------------------------------------------------------------------------
@@ -195,6 +200,7 @@ int setGlobalOpts(char inputFile[], GLOBAL_CONFIG_OPTS *recon_info_record);
 void setSinoSize (LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS recon_info_record);
 void setReadStructSize (GLOBAL_CONFIG_OPTS *recon_info_record);
 void memsets(LOCAL_CONFIG_OPTS *information, GLOBAL_CONFIG_OPTS recon_info_record);
+void setGridRecPSWF (gridrecParams *param);
 
 //--------------------------------------------------------------------------------------------------------------------------
 // ReadData

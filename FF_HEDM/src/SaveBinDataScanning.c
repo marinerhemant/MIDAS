@@ -167,7 +167,7 @@ int main(int argc, char* argv[]){
 	int countr=0;
 	char AllSpotsFN[4096];
 	FILE *AllSpotsFile;
-	char rc;
+	char *rc;
 	struct InpData *MyData;
 	MyData = malloc(MAX_N_SPOTS*sizeof(*MyData));
 	for (scanNr = 0;scanNr <nScans;scanNr++){

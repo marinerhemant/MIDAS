@@ -63,6 +63,11 @@ int *BigDetector;
 long long int totNrPixelsBigDetector;
 double pixelsize;
 double DetParams[4][10];
+#define MAX_N_OMEGA_RANGES 2000
+
+int
+CalcDiffractionSpots(double Distance, double ExcludePoleAngle, double OmegaRanges[MAX_N_OMEGA_RANGES][2], int NoOfOmegaRanges,
+	double **hkls, int n_hkls, double BoxSizes[MAX_N_OMEGA_RANGES][4], int *nTspots, double OrientMatr[3][3],double **TheorSpots);
 
 static void
 check (int test, const char * message, ...)
@@ -670,7 +675,7 @@ double FitErrorsPosT(double x[12],int nSpotsComp,double spotsYZOIn[nSpotsComp][9
 }
 
 static inline
-double FitErrorsOrientStrains(double x[9],int nSpotsComp,double spotsYZO[nSpotsComp][12],int nhkls,double hklsIn[nhkls][7],
+double FitErrorsOrientStrains(double x[9],int nSpotsComp,double spotsYZO[nSpotsComp][9],int nhkls,double hklsIn[nhkls][7],
 					 double Lsd,double Wavelength,int nOmeRanges,double OmegaRanges[nOmeRanges][2],
 					 double BoxSizes[nOmeRanges][4],double MinEta,double wedge,double chi, double Pos[3])
 {
@@ -1595,7 +1600,7 @@ int main(int argc, char *argv[])
 	FILE *hklf = fopen(hklfn,"r");
 	if (hklf == NULL){
 		printf("Could not read the hkl file. Exiting.\n");
-		return;
+		return 0;
 	}
 	fgets(aline,1000,hklf);
 	int h,kt,l,Rnr, nhkls=0;
@@ -1618,7 +1623,10 @@ int main(int argc, char *argv[])
 		}
 	}
 	fclose(hklf);
-	if (nOmeRanges != nBoxSizes){printf("Number of omega ranges and number of box sizes don't match. Exiting!\n");return;}
+	if (nOmeRanges != nBoxSizes){
+		printf("Number of omega ranges and number of box sizes don't match. Exiting!\n");
+		return 0;
+	}
 	double MargOme=0.01,MargPos=Rsample,MargPos2=Rsample/2,MargOme2=2,chi=0;
 	int thisRowNr;
 	# pragma omp parallel for num_threads(numProcs) private(thisRowNr) schedule(dynamic)
@@ -1843,7 +1851,7 @@ int main(int argc, char *argv[])
 		// Calculate Strains here.
 		double StrainTensorSample[3][3],**SpotsOut;
 		SpotsOut = allocMatrix(nSpotsComp,24);
-		int RetVal;
+		double RetVal;
 		StrainTensorKenesei(nSpotsComp,SpotsComp,Lsd,Wavelength,nhkls,hkls,StrainTensorSample,SpotsOut,&RetVal);
 
 		// Start Writing FitBest+FNs[thisRowNr]

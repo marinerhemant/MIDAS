@@ -314,7 +314,8 @@ FitOrientation(
 	void* trp = (struct my_func_data *) f_datat;
 	double tole = 1e-3;
     
-    double val0 = problem_function(n,&x,NULL,trp);
+    const double *x2 = x;    
+    double val0 = problem_function(n,x2,NULL,trp);
     printf("Original val: %.40lf, running optimization.\n",1-val0);
 
     nlopt_opt opt = nlopt_create(NLOPT_GN_CRS2_LM,n);

@@ -110,15 +110,6 @@ BUILD_SUCCESS=$?
 if [ $BUILD_SUCCESS -eq 0 ]; then
     echo ""
     echo "Build completed successfully!"
-    echo "To install, run: cmake --install ."
-    INSTALLED_SETUP_SH_PATH="install/bin/setup.sh" # Relative to build dir if default install prefix
-    if [ -n "$INSTALL_DIR" ]; then
-        INSTALLED_SETUP_SH_PATH="${INSTALL_DIR}/bin/setup.sh"
-    else # Default install is <build_dir>/install
-        INSTALLED_SETUP_SH_PATH="$(pwd)/install/bin/setup.sh"
-    fi
-    echo "After installation, source the setup script: source \${INSTALLED_SETUP_SH_PATH}"
-    echo "To install python dependencies (if enabled and not part of main build), run: cmake --build . --target midas_python_deps"
 else
     echo ""
     echo "Build failed."

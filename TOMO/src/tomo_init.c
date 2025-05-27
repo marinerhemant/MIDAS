@@ -16,7 +16,7 @@
 #include <omp.h>
 #include <unistd.h>
 #include "tomo_heads.h"
-#include <sys/sysinfo.h>
+// #include <sys/sysinfo.h>
 
 /*
  * The data can be one of two types:
@@ -232,7 +232,7 @@ int main(int argc, char *argv[])
 				if (rc == 1) badRead = 1;
 			}
 		}
-		if (badRead == 1) return;
+		if (badRead == 1) return 0;
 		nJobs = recon_info_record.n_slices * recon_info_record.n_shifts;
 		numProcs = (nJobs/2 < numProcs) ? nJobs/2 : numProcs;
 		int nrSlicesThread = (int)ceil((double)nJobs / (2.0*(double)numProcs));

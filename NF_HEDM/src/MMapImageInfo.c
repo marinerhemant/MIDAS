@@ -335,5 +335,5 @@ main(int argc, char *argv[])
   	fwrite(SpotsMat,TotalDiffrSpots*3*sizeof(*SpotsMat),1,fDS);
   	fwrite(NrSpots,NrOrientations*2*sizeof(*NrSpots),1,fKEY);
   	fwrite(OrientationMatrix,NrOrientations*9*sizeof(*OrientationMatrix),1,fOM);
-  	fcloseall();
+  	// fcloseall();
 }

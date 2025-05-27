@@ -189,7 +189,7 @@ int MakeSymmetries(int SGNr, double Sym[24][4])
 	return NrSymmetries;
 }
 
-static inline
+inline
 void BringDownToFundamentalRegionSym(double QuatIn[4], double QuatOut[4], int NrSymmetries, double Sym[24][4])
 {
 	int i, maxCosRowNr;

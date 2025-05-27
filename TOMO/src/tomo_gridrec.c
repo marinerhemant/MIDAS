@@ -397,7 +397,7 @@ void get_pswf (float C, pswf_struct **P, gridrecParams *param){
 		i++;
 	}
 	if (i>=NO_PSWFS){
-		printf(stderr, "Prolate parameter, C = %f not in data base\n",C);
+		fprintf(stderr, "Prolate parameter, C = %f not in data base\n",C);
 		exit(2);
 	}
 	*P = &param->pswf_db[i];
@@ -519,7 +519,7 @@ void trig_su (int geom, int n_ang, gridrecParams *param){
 			}
 		}; break;
 		default : {
-		printf (stderr, "Illegal value for angle geometry indicator.\n");
+		fprintf (stderr, "Illegal value for angle geometry indicator.\n");
 		exit(2);
 		}; break;
 	}
@@ -567,7 +567,7 @@ float legendre (  int  n, float *coefs, float  x, gridrecParams *param){
 	float penult, last, newer, y;
 	int j, k, even;
 	if (x>1||x<-1){
-		printf(stderr, "\nInvalid argument to legendre()");
+		fprintf(stderr, "\nInvalid argument to legendre()");
 		exit(2);
 	}
 	y=coefs[0];

@@ -23,7 +23,6 @@
 #include <stdint.h>
 #include <sys/types.h>
 #include <errno.h>
-#include <malloc.h>
 
 typedef uint16_t pixelvalue;
 

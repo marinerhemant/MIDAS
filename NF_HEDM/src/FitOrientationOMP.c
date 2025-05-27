@@ -20,6 +20,7 @@
 #include <stdarg.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <omp.h>
 #include "nf_headers.h"
 
 #define RealType double

@@ -87,7 +87,7 @@ add_custom_command(TARGET FitOrientationOMP POST_BUILD
 )
 
 # --- Shared Library ---
-add_library(NFGrainsCalc SHARED ${NF_SRCDIR}/NFGrainsCalc.c)
+add_library(NFGrainsCalc SHARED ${NF_SRCDIR}/NFGrainsCalc.c ${NF_SRCDIR}/GetMisorientation.c)
 target_link_libraries(NFGrainsCalc PRIVATE ${COMMON_LINK_LIBRARIES})
 set_target_properties(NFGrainsCalc PROPERTIES POSITION_INDEPENDENT_CODE ON)
 install(TARGETS NFGrainsCalc

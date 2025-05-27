@@ -34,11 +34,21 @@
 #include <sys/types.h>
 #include <sys/mman.h> 
 #include <stdbool.h>
+#include <unistd.h>
 
 #define MAX_N_IDS 6000000
 #define NR_MAX_IDS_PER_GRAIN 5000
 #define IAColNr 20 // 20 for Internal Angle, 18 for position, 19 for omega
 #define EPS 1E-12
+
+inline void OrientMat2Quat(double OrientMat[9], double Quat[4]);
+inline double GetMisOrientation(double quat1[4], double quat2[4], double axis[3], double *Angle,int SGNr);
+inline void CalcStrainTensorFableBeaudoin(double LatCin[6],double LatticeParameterFit[6], double Orient[3][3], double StrainTensorSample[3][3]);
+inline int StrainTensorKenesei(int nspots,double **SpotsInfo, double Distance, double wavelength,
+		double StrainTensorSample[3][3], int **IDHash, double *dspacings, int nRings, int startSpotMatrix, double **SpotMatrix, double *RetVal,
+		double StrainTensorInput[3][3]);
+inline void BringDownToFundamentalRegionSym(double QuatIn[4], double QuatOut[4], int NrSymmetries, double Sym[24][4]);
+inline void BringDownToFundamentalRegion(double QuatIn[4], double QuatOut[4],int SGNr);
 
 static void
 check (int test, const char * message, ...)
@@ -171,7 +181,7 @@ int main(int argc, char *argv[])
 {
 	if (argc != 3){
 		printf("Usage: ProcessGrains ParameterFile NrPoints\n");
-		return;
+		return 0;
 	}
 	clock_t start, end;
     double diftotal;
@@ -305,7 +315,8 @@ int main(int argc, char *argv[])
 	int OffSt, ReadSize;
 
 	// Read IDsHash.csv
-	int IDHash[NR_MAX_IDS_PER_GRAIN*2][3];
+	int **IDHash;
+	IDHash = allocMatrixInt(NR_MAX_IDS_PER_GRAIN*2,3);
 	double dspacings[NR_MAX_IDS_PER_GRAIN*2];
 	FILE *idsfile;
 	char idsfn[4096];
@@ -335,7 +346,9 @@ int main(int argc, char *argv[])
 	double **SpotMatrix, **InputMatrix;
 	SpotMatrix = allocMatrix(NR_MAX_IDS_PER_GRAIN,12);
 	int counterSpotMatrix = 0, startSpotMatrix, rowSpotID;
-	double RetVal, SpotsInfo[NR_MAX_IDS_PER_GRAIN][8];
+	double RetVal;
+	double **SpotsInfo;
+	SpotsInfo = allocMatrix(NR_MAX_IDS_PER_GRAIN,8);
 	int nspots;
 	double LatticeParameterFit[6], Orient[3][3];
 	double StrainTensorSampleKen[3][3];
@@ -400,9 +413,9 @@ int main(int argc, char *argv[])
 		Orient[2][0] = OPThis[7];
 		Orient[2][1] = OPThis[8];
 		Orient[2][2] = OPThis[9];
-		int retval = StrainTensorKenesei(nspots,SpotsInfo,Distance,wavelength,
-			StrainTensorSampleKen,IDHash,dspacings,nRings,0,SpotMatrix,&RetVal);
 		CalcStrainTensorFableBeaudoin(LatCin,LatticeParameterFit,Orient,StrainTensorSampleFab);
+		int retval = StrainTensorKenesei(nspots,SpotsInfo,Distance,wavelength,
+			StrainTensorSampleKen,IDHash,dspacings,nRings,0,SpotMatrix,&RetVal,StrainTensorSampleFab);
 		FinalMatrix[i][0] = (double)(i+1);
 		//for (j=0;j<9;j++) FinalMatrix[i][j+1] = OPThis[j+1];
 		// Take orientation and bring down to FR

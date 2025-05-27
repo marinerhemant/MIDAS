@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.5)
 
 # Set the CMP0135 policy to NEW
 if(POLICY CMP0135)

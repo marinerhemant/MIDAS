@@ -80,7 +80,7 @@ int main (int argc, char *argv[]){
 	fread(MicContents,sz,1,inp);
 	int NrRows = sz/(sizeof(double)*11);
 	printf("NrRows: %d\n",NrRows);
-	if (NrRows==0) return;
+	if (NrRows==0) return 0;
 	FILE *out=fopen(outputfile,"w");
 	char outfilebin[4096];
 	sprintf(outfilebin,"%s.map",outputfile);
@@ -174,7 +174,7 @@ int main (int argc, char *argv[]){
 	FILE *inp2 = fopen(inputfile2,"rb");
 	if (inp2 == NULL){
 		printf("AllMatched file not found. Exiting\n");
-		return;
+		return 0;
 	}
 	size_t sz2;
 	fseek(inp2,0L,SEEK_END);

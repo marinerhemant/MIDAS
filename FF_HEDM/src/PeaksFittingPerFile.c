@@ -1009,7 +1009,7 @@ int main(int argc, char *argv[]){
 	for (i=0;i<nOmeRanges;i++){
 		if (Omega >= OmegaRanges[i][0] && Omega <= OmegaRanges[i][1]) KeepSpots = 1;
 	}
-	if (KeepSpots == 0) return;
+	if (KeepSpots == 0) return 0;
 	sprintf(FN,"%s/%s_%0*d%s",RawFolder,fs,Padding,ReadFileNr,Ext);
 	printf("Reading file: %s\n",FN);
 	FILE *ImageFile = fopen(FN,"rb");

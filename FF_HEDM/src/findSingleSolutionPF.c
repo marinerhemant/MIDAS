@@ -18,10 +18,14 @@
 #include <stdarg.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <unistd.h>
 
 #define MAX_N_SOLUTIONS_PER_VOX 1000000
 #define MAX_N_SPOTS_PER_GRAIN 5000
 #define MAX_N_SPOTS_TOTAL 100000000
+
+inline void OrientMat2Quat(double OrientMat[9], double Quat[4]);
+inline double GetMisOrientation(double quat1[4], double quat2[4], double axis[3], double *Angle,int SGNr);
 
 static void
 check (int test, const char * message, ...)

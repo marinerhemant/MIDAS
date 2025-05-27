@@ -50,6 +50,11 @@ int BigDetSize = 0;
 int *BigDetector;
 long long int totNrPixelsBigDetector;
 double pixelsize;
+#define MAX_N_OMEGA_RANGES 2000
+
+int
+CalcDiffractionSpots(double Distance, double ExcludePoleAngle, double OmegaRanges[MAX_N_OMEGA_RANGES][2], int NoOfOmegaRanges,
+	double **hkls, int n_hkls, double BoxSizes[MAX_N_OMEGA_RANGES][4], int *nTspots, double OrientMatr[3][3],double **TheorSpots);
 
 static inline
 int**
@@ -351,7 +356,7 @@ void SpotToGv(double xi, double yi, double zi, double Omega, double theta, doubl
 
 static inline
 double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], double **spotsYZO, double **hklsIn, double Lsd,
-	double Wavelength, double OmegaRange[2000][2], double BoxSize[20][4], double MinEta, double wedge, double chi, double *Error)
+	double Wavelength, double OmegaRange[100][2], double BoxSize[100][4], double MinEta, double wedge, double chi, double *Error)
 {
 	int i,j;
 	int nrMatchedIndexer = nspots;
@@ -520,8 +525,8 @@ double problem_function(unsigned n, const double *x, double *grad, void* f_data_
 	double px = f_data->px;
 	double Wavelength = f_data->Wavelength;
 	double MinEta = f_data->MinEta;
-	double OmegaRanges[2000][2];
-	double BoxSizes[2000][2];
+	double OmegaRanges[100][2];
+	double BoxSizes[100][4];
 	for (i=0;i<nOmeRanges;i++){
 		for (j=0;j<2;j++) OmegaRanges[i][j] = f_data->OmegaRanges[i][j];
 		for (j=0;j<4;j++) BoxSizes[i][j] = f_data->BoxSizes[i][j];
@@ -615,7 +620,7 @@ int main(int argc, char *argv[])
 {
 	if (argc != 4){
 		printf("Usage: FitGrain Folder Parameters.txt GrainID\n");
-		return;
+		return 0;
 	}
     clock_t start, end;
     double diftotal;

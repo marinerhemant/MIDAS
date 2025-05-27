@@ -19,6 +19,8 @@
 // Function prototypes
 void processVoxel(int voxNr, const char *folderName, int sgNr, double maxAng, int nScans, double minConf);
 void writeSpotsToIndex(const char *folderName, const char *originalFolder, int nScans);
+inline void OrientMat2Quat(double OrientMat[9], double Quat[4]);
+inline double GetMisOrientation(double quat1[4], double quat2[4], double axis[3], double *Angle,int SGNr);
 
 int main(int argc, char *argv[]) {
     double start_time = omp_get_wtime();

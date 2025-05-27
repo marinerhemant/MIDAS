@@ -3,6 +3,8 @@
 // TODO: Do things in 2D instead of 3D.
 
 #include<stdio.h>
+#include<stdlib.h>
+#include "nf_headers.h"
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -16,267 +18,10 @@ double *Euler1, *Euler2, *Euler3;
 int *GrainNrs;
 double Sym[24][4];
 
-double TricSym[2][4] = {
-   {1.00000,   0.00000,   0.00000,   0.00000},
-   {1.00000,   0.00000,   0.00000,   0.00000}};
-
-double MonoSym[2][4] = {
-   {1.00000,   0.00000,   0.00000,   0.00000},
-   {0.00000,   1.00000,   0.00000,   0.00000}};
-
-double OrtSym[4][4] = {
-   {1.00000,   0.00000,   0.00000,   0.00000},
-   {1.00000,   1.00000,   0.00000,   0.00000},
-   {0.00000,   0.00000,   1.00000,   0.00000},
-   {0.00000,   0.00000,   0.00000,   1.00000}};
-
-double TetSym[8][4] = {
-   {1.00000,   0.00000,   0.00000,   0.00000},
-   {0.70711,   0.00000,   0.00000,   0.70711},
-   {0.00000,   0.00000,   0.00000,   1.00000},
-   {0.70711,  -0.00000,  -0.00000,  -0.70711},
-   {0.00000,   1.00000,   0.00000,   0.00000},
-   {0.00000,   0.00000,   1.00000,   0.00000},
-   {0.00000,   0.70711,   0.70711,   0.00000},
-   {0.00000,  -0.70711,   0.70711,   0.00000}};
-
-double TrigSym[6][4] = {
-   {1.00000,   0.00000,   0.00000,   0.00000},
-   {0.50000,   0.00000,   0.00000,   0.86603},
-   {0.50000,  -0.00000,  -0.00000,  -0.86603},
-   {0.00000,   0.50000,  -0.86603,   0.00000},
-   {0.00000,   1.00000,   0.00000,   0.00000},
-   {0.00000,   0.50000,   0.86603,   0.00000}};
-
-double HexSym[12][4] = {
-   {1.00000,   0.00000,   0.00000,   0.00000},
-   {0.86603,   0.00000,   0.00000,   0.50000},
-   {0.50000,   0.00000,   0.00000,   0.86603},
-   {0.00000,   0.00000,   0.00000,   1.00000},
-   {0.50000,  -0.00000,  -0.00000,  -0.86603},
-   {0.86603,  -0.00000,  -0.00000,  -0.50000},
-   {0.00000,   1.00000,   0.00000,   0.00000},
-   {0.00000,   0.86603,   0.50000,   0.00000},
-   {0.00000,   0.50000,   0.86603,   0.00000},
-   {0.00000,   0.00000,   1.00000,   0.00000},
-   {0.00000,  -0.50000,   0.86603,   0.00000},
-   {0.00000,  -0.86603,   0.50000,   0.00000}};
-
-double CubSym[24][4] = {
-   {1.00000,   0.00000,   0.00000,   0.00000},
-   {0.70711,   0.70711,   0.00000,   0.00000},
-   {0.00000,   1.00000,   0.00000,   0.00000},
-   {0.70711,  -0.70711,   0.00000,   0.00000},
-   {0.70711,   0.00000,   0.70711,   0.00000},
-   {0.00000,   0.00000,   1.00000,   0.00000},
-   {0.70711,   0.00000,  -0.70711,   0.00000},
-   {0.70711,   0.00000,   0.00000,   0.70711},
-   {0.00000,   0.00000,   0.00000,   1.00000},
-   {0.70711,   0.00000,   0.00000,  -0.70711},
-   {0.50000,   0.50000,   0.50000,   0.50000},
-   {0.50000,  -0.50000,  -0.50000,  -0.50000},
-   {0.50000,  -0.50000,   0.50000,   0.50000},
-   {0.50000,   0.50000,  -0.50000,  -0.50000},
-   {0.50000,   0.50000,  -0.50000,   0.50000},
-   {0.50000,  -0.50000,   0.50000,  -0.50000},
-   {0.50000,  -0.50000,  -0.50000,   0.50000},
-   {0.50000,   0.50000,   0.50000,  -0.50000},
-   {0.00000,   0.70711,   0.70711,   0.00000},
-   {0.00000,  -0.70711,   0.70711,   0.00000},
-   {0.00000,   0.70711,   0.00000,   0.70711},
-   {0.00000,   0.70711,   0.00000,  -0.70711},
-   {0.00000,   0.00000,   0.70711,   0.70711},
-   {0.00000,   0.00000,   0.70711,  -0.70711}};
-
-inline int MakeSymmetries(int SGNr){
-	int i, j, NrSymmetries;;
-	if (SGNr <= 2){ // Triclinic
-		NrSymmetries = 1;
-		for (i=0;i<NrSymmetries;i++){
-			for (j=0;j<4;j++){
-				Sym[i][j] = TricSym[i][j];
-			}
-		}
-	}else if (SGNr > 2 && SGNr <= 15){  // Monoclinic
-		NrSymmetries = 2;
-		for (i=0;i<NrSymmetries;i++){
-			for (j=0;j<4;j++){
-				Sym[i][j] = MonoSym[i][j];
-			}
-		}
-	}else if (SGNr >= 16 && SGNr <= 74){ // Orthorhombic
-		NrSymmetries = 4;
-		for (i=0;i<NrSymmetries;i++){
-			for (j=0;j<4;j++){
-				Sym[i][j] = OrtSym[i][j];
-			}
-		}
-	}else if (SGNr >= 75 && SGNr <= 142){  // Tetragonal
-		NrSymmetries = 8;
-		for (i=0;i<NrSymmetries;i++){
-			for (j=0;j<4;j++){
-				Sym[i][j] = TetSym[i][j];
-			}
-		}
-	}else if (SGNr >= 143 && SGNr <= 167){ // Trigonal
-		NrSymmetries = 6;
-		for (i=0;i<NrSymmetries;i++){
-			for (j=0;j<4;j++){
-				Sym[i][j] = TrigSym[i][j];
-			}
-		}
-	}else if (SGNr >= 168 && SGNr <= 194){ // Hexagonal
-		NrSymmetries = 12;
-		for (i=0;i<NrSymmetries;i++){
-			for (j=0;j<4;j++){
-				Sym[i][j] = HexSym[i][j];
-			}
-		}
-	}else if (SGNr >= 195 && SGNr <= 230){ // Cubic
-		NrSymmetries = 24;
-		for (i=0;i<NrSymmetries;i++){
-			for (j=0;j<4;j++){
-				Sym[i][j] = CubSym[i][j];
-			}
-		}
-	}
-	return NrSymmetries;
-}
 
 int diffArr[3][26] = {{-1,-1,-1,-1,-1,-1,-1,-1,-1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1},
 					  {-1,-1,-1, 0, 0, 0, 1, 1, 1,-1,-1,-1, 0, 0, 1, 1, 1,-1,-1,-1, 0, 0, 0, 1, 1, 1},
 					  {-1, 0, 1,-1, 0, 1,-1, 0, 1,-1, 0, 1,-1, 1,-1, 0, 1,-1, 0, 1,-1, 0, 1,-1, 0, 1}};
-
-static inline void QuaternionProduct(double *q, double *r, double *Q){
-	Q[0] = r[0]*q[0] - r[1]*q[1] - r[2]*q[2] - r[3]*q[3];
-	Q[1] = r[1]*q[0] + r[0]*q[1] + r[3]*q[2] - r[2]*q[3];
-	Q[2] = r[2]*q[0] + r[0]*q[2] + r[1]*q[3] - r[3]*q[1];
-	Q[3] = r[3]*q[0] + r[0]*q[3] + r[2]*q[1] - r[1]*q[2];
-	if (Q[0] < 0) {
-		Q[0] = -Q[0];
-		Q[1] = -Q[1];
-		Q[2] = -Q[2];
-		Q[3] = -Q[3];
-	}
-}
-
-static inline void BringDownToFundamentalRegionSym(double *QuatIn, double *QuatOut, int NrSymmetries){
-	int i, maxCosRowNr;
-	double *qps, *q2, *qt, maxCos=-10000;
-	qps = calloc(NrSymmetries*4,sizeof(*qps));
-	q2 = calloc(4,sizeof(*q2));
-	qt = calloc(4,sizeof(*qt));
-	for (i=0;i<NrSymmetries;i++){
-		q2[0] = Sym[i][0];
-		q2[1] = Sym[i][1];
-		q2[2] = Sym[i][2];
-		q2[3] = Sym[i][3];
-		QuaternionProduct(QuatIn,q2,qt);
-		qps[i*4+0] = qt[0];
-		qps[i*4+1] = qt[1];
-		qps[i*4+2] = qt[2];
-		qps[i*4+3] = qt[3];
-		if (maxCos < qt[0]){
-			maxCos = qt[0];
-			maxCosRowNr = i;
-		}
-	}
-	free(q2);
-	free(qt);
-	QuatOut[0] = qps[maxCosRowNr*4+0];
-	QuatOut[1] = qps[maxCosRowNr*4+1];
-	QuatOut[2] = qps[maxCosRowNr*4+2];
-	QuatOut[3] = qps[maxCosRowNr*4+3];
-	free(qps);
-}
-
-static inline void Euler2Quat(double *Euler, double *Quat){
-	double psi, phi, theta, cps, cph, cth, sps, sph, sth;
-	double *OrientMat;
-	OrientMat = calloc(9,sizeof(*OrientMat));
-	psi = Euler[0];
-	phi = Euler[1];
-	theta = Euler[2];
-	cps = cos(psi) ; cph = cos(phi); cth = cos(theta);
-	sps = sin(psi); sph = sin(phi); sth = sin(theta);
-	OrientMat[0] = cth * cps - sth * cph * sps;
-	OrientMat[1] = -cth * cph * sps - sth * cps;
-	OrientMat[2] = sph * sps;
-	OrientMat[3] = cth * sps + sth * cph * cps;
-	OrientMat[4] = cth * cph * cps - sth * sps;
-	OrientMat[5] = -sph * cps;
-	OrientMat[6] = sth * sph;
-	OrientMat[7] = cth * sph;
-	OrientMat[8] = cph;
-	double trace = OrientMat[0] + OrientMat[4] + OrientMat[8];
-	if(trace > 0){
-		double s = 0.5/sqrt(trace+1.0);
-		Quat[0] = 0.25/s;
-		Quat[1] = (OrientMat[7]-OrientMat[5])*s;
-		Quat[2] = (OrientMat[2]-OrientMat[6])*s;
-		Quat[3] = (OrientMat[3]-OrientMat[1])*s;
-	}else{
-		if (OrientMat[0]>OrientMat[4] && OrientMat[0]>OrientMat[8]){
-			double s = 2.0*sqrt(1.0+OrientMat[0]-OrientMat[4]-OrientMat[8]);
-			Quat[0] = (OrientMat[7]-OrientMat[5])/s;
-			Quat[1] = 0.25*s;
-			Quat[2] = (OrientMat[1]+OrientMat[3])/s;
-			Quat[3] = (OrientMat[2]+OrientMat[6])/s;
-		} else if (OrientMat[4] > OrientMat[8]){
-			double s = 2.0*sqrt(1.0+OrientMat[4]-OrientMat[0]-OrientMat[8]);
-			Quat[0] = (OrientMat[2]-OrientMat[6])/s;
-			Quat[1] = (OrientMat[1]+OrientMat[3])/s;
-			Quat[2] = 0.25*s;
-			Quat[3] = (OrientMat[5]+OrientMat[7])/s;
-		} else {
-			double s = 2.0*sqrt(1.0+OrientMat[8]-OrientMat[0]-OrientMat[4]);
-			Quat[0] = (OrientMat[3]-OrientMat[1])/s;
-			Quat[1] = (OrientMat[2]+OrientMat[6])/s;
-			Quat[2] = (OrientMat[5]+OrientMat[7])/s;
-			Quat[3] = 0.25*s;
-		}
-	}
-	free(OrientMat);
-	if (Quat[0] < 0){
-		Quat[0] = -Quat[0];
-		Quat[1] = -Quat[1];
-		Quat[2] = -Quat[2];
-		Quat[3] = -Quat[3];
-	}
-	double QNorm = sqrt(Quat[0]*Quat[0] + Quat[1]*Quat[1] + Quat[2]*Quat[2] + Quat[3]*Quat[3]);
-	Quat[0] /= QNorm;
-	Quat[1] /= QNorm;
-	Quat[2] /= QNorm;
-	Quat[3] /= QNorm;
-}
-
-inline double GetMisOrientationAngle(double *Eul1, double *Eul2, double *Angle, int NrSymmetries){
-	double *quat1, *quat2;
-	quat1 = calloc(4,sizeof(*quat1));
-	quat2 = calloc(4,sizeof(*quat2));
-	Euler2Quat(Eul1,quat1);
-	Euler2Quat(Eul2,quat2);
-	double *q1FR, *q2FR, *QP, *MisV;
-	q1FR = calloc(4,sizeof(*q1FR));
-	q2FR = calloc(4,sizeof(*q2FR));
-	QP = calloc(4,sizeof(*QP));
-	MisV = calloc(4,sizeof(*MisV));
-	BringDownToFundamentalRegionSym(quat1,q1FR,NrSymmetries);
-	BringDownToFundamentalRegionSym(quat2,q2FR,NrSymmetries);
-	free(quat1);
-	free(quat2);
-	q1FR[0] = -q1FR[0];
-	QuaternionProduct(q1FR,q2FR,QP);
-	free(q1FR);
-	free(q2FR);
-	BringDownToFundamentalRegionSym(QP,MisV,NrSymmetries);
-	free(QP);
-	if (MisV[0] > 1) MisV[0] = 1;
-	double angle = 2*(acos(MisV[0]))*rad2deg;
-	free(MisV);
-	*Angle = angle;
-	return angle;
-}
 
 inline long long int getIDX (int layerNr, int xpos, int ypos, int xMax, int yMax){
 	long long int retval = layerNr;
@@ -315,7 +60,7 @@ inline void DFS (int *Pos, int grainNr){
 		Eul2[0] = Euler1[Pos2];
 		Eul2[1] = Euler2[Pos2];
 		Eul2[2] = Euler3[Pos2];
-		miso = GetMisOrientationAngle(Eul1,Eul2,&ang,NSym);
+		miso = GetMisOrientationAngle(Eul1,Eul2,&ang,NSym,Sym);
 		if (miso < oT){
 			//~ printf("%d %d %d %d %d %d %d Found!\n",Pos[0],Pos[1],Pos[2],a2,b2,c2,grainNr);
 			PosNext[0] = a2;
@@ -331,7 +76,7 @@ inline void DFS (int *Pos, int grainNr){
 
 void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fillVal, int SGNum){
 	int NrSymmetries;
-	NrSymmetries = MakeSymmetries(SGNum);
+	NrSymmetries = MakeSymmetries(SGNum,Sym);
 	NSym = NrSymmetries;
 	Dims[0] = nrLayers;
 	Dims[1] = xMax;
@@ -409,7 +154,7 @@ void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fi
 							Eul2[0] = Euler1[Pos2];
 							Eul2[1] = Euler2[Pos2];
 							Eul2[2] = Euler3[Pos2];
-							miso = GetMisOrientationAngle(Eul1,Eul2,&ang,NSym);
+							miso = GetMisOrientationAngle(Eul1,Eul2,&ang,NSym,Sym);
 							nrKAM ++;
 							kamArr[Pos1] += miso;
 						}

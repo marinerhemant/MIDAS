@@ -28,6 +28,7 @@
 #include <ctype.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <unistd.h>
 
 #define MAX_N_IDS 6000000
 #define MAX_ID_IA_MAT 5000000
@@ -38,6 +39,13 @@
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 static inline double sin_cos_to_angle (double s, double c){return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);}
+
+inline void OrientMat2Quat(double OrientMat[9], double Quat[4]);
+inline double GetMisOrientation(double quat1[4], double quat2[4], double axis[3], double *Angle,int SGNr);
+inline void CalcStrainTensorFableBeaudoin(double LatCin[6],double LatticeParameterFit[6], double Orient[3][3], double StrainTensorSample[3][3]);
+inline int StrainTensorKenesei(int nspots,double **SpotsInfo, double Distance, double wavelength,
+		double StrainTensorSample[3][3], int **IDHash, double *dspacings, int nRings, int startSpotMatrix, double **SpotMatrix, double *RetVal,
+		double StrainTensorInput[3][3]);
 
 static inline
 void OrientMat2Euler(double m[3][3],double Euler[3])
@@ -242,7 +250,7 @@ int main(int argc, char *argv[])
 {
 	if (argc != 2){
 		printf("Usage: ProcessGrains ParameterFile\n");
-		return;
+		return 0;
 	}
 	clock_t start, end;
     double diftotal;
@@ -720,7 +728,7 @@ int main(int argc, char *argv[])
 		}
 		if (retval == 0){
 			printf("Did not read correct hash table for IDs. Exiting\n");
-			return;
+			return 0;
 		}
 		FinalMatrix[nGrains][0] = GrainIDThis;
 		for (j=0;j<21;j++){

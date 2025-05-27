@@ -882,7 +882,7 @@ void main(int argc, char *argv[]){
 	for (a=0;a<NrTransOpt;a++){
 		if (TransOpt[a] < 0 || TransOpt[a] > 3){
 			printf("TransformationOptions can only be 0, 1, 2 or 3.\nExiting.\n");
-			return 0;
+			return;
 		}
 		printf("TransformationOptions: %d ",TransOpt[a]);
 		if (TransOpt[a] == 0)
@@ -952,7 +952,7 @@ void main(int argc, char *argv[]){
 	char OutFolderName[1024];
 	sprintf(OutFolderName,"%s/%s",Folder,TmpFolder);
 	int e = CheckDirectoryCreation(OutFolderName);
-	if (e == 0){ return 1;}
+	if (e == 0){ return;}
 
 	double txr, tyr, tzr;
 	txr = deg2rad*tx;
@@ -976,7 +976,7 @@ void main(int argc, char *argv[]){
 		FILE *hklf = fopen(hklfn,"r");
 		if (hklf == NULL){
 			printf("HKL file could not be read. Exiting\n");
-			return 1;
+			return;
 		}
 		fgets(aliner,1000,hklf);
 		while (fgets(aliner,1000,hklf)!=NULL){
@@ -1315,5 +1315,5 @@ void main(int argc, char *argv[]){
 	free(flood);
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds, nrFramesDone: %d.\n",time,nrFilesDone);
-	return 0;
+	return;
 }

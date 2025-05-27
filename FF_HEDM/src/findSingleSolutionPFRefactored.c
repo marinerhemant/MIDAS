@@ -39,6 +39,7 @@
  #include <stdarg.h>
  #include <sys/ipc.h>
  #include <sys/shm.h>
+ #include <unistd.h>
  
  /* Error codes for better error management */
  #define SUCCESS 0

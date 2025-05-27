@@ -1154,7 +1154,7 @@ int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis, str
 		FreeMemMatrix( GrainSpots, nRowsPerGrain);
 		FreeMemMatrix( AllGrainSpots, nRowsOutput);
 		FreeMemMatrix( AllGrainSpotsT, nRowsOutput);
-		return;
+		return 0;
 	}
 	SpotID = AllGrainSpots[0][13];
 	double outArr[16] = {(double)SpotID,GrainMatches[0][15], GrainMatches[0][0], GrainMatches[0][1],
@@ -1285,7 +1285,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis, 
 		FreeMemMatrix( GrainSpots, nRowsPerGrain);
 		FreeMemMatrix( AllGrainSpots, nRowsOutput);
 		FreeMemMatrix( AllGrainSpotsT, nRowsOutput);
-		return;
+		return 0;
 	}
 	double outArr[16] = {(double)SpotID,GrainMatches[0][15], GrainMatches[0][0], GrainMatches[0][1],
 						  GrainMatches[0][2], GrainMatches[0][3], GrainMatches[0][4],
