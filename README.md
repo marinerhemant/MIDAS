@@ -15,18 +15,20 @@ Downloads [NLOPT](https://nlopt.readthedocs.io/en/latest/), [LIBTIFF](http://www
 
 
 **Installation and Compilation Instructions:**
+
 Download the source code from [GitHub](https://github.com/marinerhemant/MIDAS).
 
-`
+```
 git clone https://github.com/marinerhemant/MIDAS.git
-`
+```
 
 Change to the MIDAS directory.
 
-`cd MIDAS
-`
+```
+cd MIDAS
+```
 
-**To compile on Linux, skip to step 5:**
+**To compile on Linux, skip to step 5.**
 
 **To compile on MACOS, please use the following steps:**
 
