@@ -1,6 +1,6 @@
 # MIDAS
 
-**** V7 Released ****
+**** V8 Released ****
 
 
 Code for reduction of High Energy Diffraction Microscopy (HEDM) data developed at Advanced Photon Source.
@@ -15,7 +15,6 @@ Downloads [NLOPT](https://nlopt.readthedocs.io/en/latest/), [LIBTIFF](http://www
 
 
 **Installation and Compilation Instructions:**
-
 Download the source code from [GitHub](https://github.com/marinerhemant/MIDAS).
 
 `
@@ -27,17 +26,39 @@ Change to the MIDAS directory.
 `cd MIDAS
 `
 
-Run the build script.
+**To compile on Linux, skip to step 5:**
 
-`
-./build.sh
-`
+**To compile on MACOS, please use the following steps:**
 
-Install the python requirements.
-
-`
-pip install -r requirements.txt
-`
+1. Install Homebrew if not already installed.
+2. Install the required libraries using Homebrew:
+   ```
+   brew install llvm libomp gcc cmake jemalloc
+   ```
+3. Set the environment variables for the compiler:
+   ```
+    echo 'export PATH="/opt/homebrew/opt/llvm/bin:$PATH"' >> ~/.zshrc
+    echo 'export LDFLAGS="-L/opt/homebrew/opt/llvm/lib $LDFLAGS"' >> ~/.zshrc
+    echo 'export CPPFLAGS="-I/opt/homebrew/opt/llvm/include $CPPFLAGS"' >> ~/.zshrc
+    echo 'export LDFLAGS="-L/opt/homebrew/opt/libomp/lib $LDFLAGS"' >> ~/.zshrc
+    echo 'export CPPFLAGS="-I/opt/homebrew/opt/libomp/include $CPPFLAGS"' >> ~/.zshrc
+    echo 'CC=/opt/homebrew/opt/gcc/bin/gcc-15' >> ~/.zshrc
+    echo 'export CC' >> ~/.zshrc
+    echo 'CXX=/opt/homebrew/opt/gcc/bin/g++-15' >> ~/.zshrc
+    echo 'export CXX' >> ~/.zshrc
+   ```
+4. Reload your shell configuration:
+   ```
+   source ~/.zshrc
+   ```
+5. Run the build script:
+   ```
+   ./build.sh
+   ```
+6. Install the Python requirements:
+   ```
+   pip install -r requirements.txt
+   ```
 
 **More details at** [MIDAS-WIKI](https://github.com/marinerhemant/MIDAS/wiki) 
 
