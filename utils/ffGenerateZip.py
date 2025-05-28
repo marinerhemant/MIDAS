@@ -184,7 +184,7 @@ print(f'Out: {outfn}.MIDAS.zip')
 outfZip = f'{outfn}.MIDAS.zip'
 if Path(outfZip).exists():
     shutil.move(outfZip,outfZip+'.old')
-zipStore = ZipStore(outfZip,mode='w')
+zipStore = ZipStore(outfZip,mode='w',compression=compressor)
 zRoot = zarr.group(store=zipStore, overwrite=True)
 exc = zRoot.create_group('exchange')
 meas = zRoot.create_group('measurement')
@@ -209,7 +209,7 @@ if h5py.is_hdf5(InputFN):
         else:
             darkData = np.zeros((10,numZ,numY))
     print(darkData.shape)
-    dark = exc.create_array('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
+    dark = exc.create_array('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]))
     darkMean = np.mean(darkData[skipF:,:,:],axis=0).astype(np.uint16)
     if preProc!=-1:
         darkpreProc = darkMean + preProc
