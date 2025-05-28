@@ -184,7 +184,7 @@ print(f'Out: {outfn}.MIDAS.zip')
 outfZip = f'{outfn}.MIDAS.zip'
 if Path(outfZip).exists():
     shutil.move(outfZip,outfZip+'.old')
-zipStore = ZipStore(outfZip,mode='w',compression=compressor)
+zipStore = ZipStore(outfZip,mode='w')
 zRoot = zarr.group(store=zipStore, overwrite=True)
 exc = zRoot.create_group('exchange')
 meas = zRoot.create_group('measurement')
@@ -215,7 +215,7 @@ if h5py.is_hdf5(InputFN):
         darkpreProc = darkMean + preProc
     if maskLoc in hf2:
         maskData = hf2[maskLoc][()].reshape((1,numZ,numY))
-        mask = exc.create_dataset('mask',shape=maskData.shape,dtype=np.uint16,chunks=(1,numZ,numY),compressor=compressor)
+        mask = exc.create_dataset('mask',shape=maskData.shape,dtype=np.uint16,chunks=(1,numZ,numY),compressors=compressor)
         mask[:] = maskData
     if panelmaskLoc in hf2:
         panelmaskData = hf2[panelmaskLoc][()].reshape((1,numZ,numY))
