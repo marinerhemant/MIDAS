@@ -4,7 +4,7 @@
 import numpy as np
 import h5py
 import zarr
-from zarr.meta import encode_fill_value
+# from zarr.meta import encode_fill_value
 from numcodecs import Blosc #Default compression
 import warnings
 warnings.filterwarnings("ignore")
@@ -51,9 +51,7 @@ class Hdf5ToZarr:
             if isinstance(v, bytes):
                 v = v.decode('utf-8')
             elif isinstance(v, (np.ndarray, np.number)):
-                if n == '_FillValue':
-                    v = encode_fill_value(v, v.dtype)
-                elif v.size == 1:
+                if v.size == 1:
                     v = v.flatten()[0].tolist()
                 else:
                     v = v.tolist()
