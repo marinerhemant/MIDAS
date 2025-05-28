@@ -25,7 +25,7 @@ import re
 from PIL import Image
 from zarr.storage import ZipStore
 
-compressor = zarr.codecs.BloscCodec(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
+compressor = zarr.codecs.BloscCodec(cname='zstd', clevel=3, shuffle=zarr.codecs.BloscShuffle('bitshuffle'))
 
 def geReader(geFN,header=8192,numPxY=2048,numPxZ=2048,bytesPerPx=2):
     sz = os.path.getsize(geFN)
