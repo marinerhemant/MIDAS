@@ -1,4 +1,5 @@
 #include <unistd.h>
+#include <stdint.h>
 
 #define RealType double
 #define deg2rad 0.0174532925199433
