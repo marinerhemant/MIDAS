@@ -1,6 +1,7 @@
 FetchContent_Declare(
   fftw
-  URL https://www.dropbox.com/scl/fi/yugsuwobadxt5gvfsdz46/fftw-3.3.10.tar.gz?rlkey=cfo1rwazrr4gbm2k043np8skj&dl=1
+  URL https://www.fftw.org/fftw-3.3.10.tar.gz
+  URL_HASH SHA256=56c932549852cddcfafdab3820b0200c7742675be92179e59e6215b340e26467
 )
 
 FetchContent_GetProperties(fftw)

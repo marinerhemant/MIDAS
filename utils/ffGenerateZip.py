@@ -23,6 +23,7 @@ import time
 import matplotlib.pyplot as plt
 import re
 from PIL import Image
+from zarr.storage import ZipStore
 
 compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
 
@@ -183,7 +184,7 @@ print(f'Out: {outfn}.MIDAS.zip')
 outfZip = f'{outfn}.MIDAS.zip'
 if Path(outfZip).exists():
     shutil.move(outfZip,outfZip+'.old')
-zipStore = zarr.ZipStore(outfZip)
+zipStore = ZipStore(outfZip)
 zRoot = zarr.group(store=zipStore, overwrite=True)
 exc = zRoot.create_group('exchange')
 meas = zRoot.create_group('measurement')
