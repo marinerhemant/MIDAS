@@ -36,14 +36,27 @@ if(TARGET ZLIB::ZLIB)
     endif()
 endif()
 
+# --- Conditionally add PATCH_COMMAND for macOS ---
+set(_libtiff_fetch_extra_args) # Initialize an empty list for extra arguments
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin") # "Darwin" is the system name for macOS
+  message(STATUS "LIBTIFF_custom.cmake: macOS detected. Enabling libtiff patch.")
+  list(APPEND _libtiff_fetch_extra_args
+       PATCH_COMMAND patch -p1 -N --fuzz=0 < ${CMAKE_CURRENT_LIST_DIR}/libtiff-disable-doc.patch
+       # -N: ignore already applied patches
+       # --fuzz=0: apply only if exact match
+  )
+else()
+  message(STATUS "LIBTIFF_custom.cmake: Not macOS. Skipping libtiff patch.")
+endif()
+# --- End of conditional patch ---
+
 FetchContent_Declare(
   libtiff
   URL https://download.osgeo.org/libtiff/tiff-4.7.0.tar.gz
   URL_HASH SHA256=67160e3457365ab96c5b3286a0903aa6e78bdc44c4bc737d2e486bcecb6ba976
   CMAKE_ARGS ${LIBTIFF_CMAKE_ARGS}
-  PATCH_COMMAND patch -p1 -N --fuzz=0 < ${CMAKE_CURRENT_LIST_DIR}/libtiff-disable-doc.patch
-  # -N: ignore already applied patches
-  # --fuzz=0: apply only if exact match
+  ${_libtiff_fetch_extra_args} # This will expand to PATCH_COMMAND ... if on macOS, or nothing otherwise
 )
 
 FetchContent_MakeAvailable(libtiff)
