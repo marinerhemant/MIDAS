@@ -49,12 +49,12 @@ def addData (name,node):
             arr = node[()]
             if isinstance(arr,bytes):
                 arr = np.bytes_(arr.decode('UTF-8'))
-                za = zRoot.create_dataset(node.name,shape=(1,),dtype=arr.dtype,chunks=(1,),compression=compressor)
+                za = zRoot.create_dataset(node.name,shape=(1,),dtype=arr.dtype,chunks=(1,),compressors=compressor)
                 za[:] = arr
             else:
                 if arr.size == 1:
                     arr = np.array([arr])
-                za = zRoot.create_dataset(node.name, shape=arr.shape,dtype=arr.dtype,chunks=arr.shape,compression=compressor)
+                za = zRoot.create_dataset(node.name, shape=arr.shape,dtype=arr.dtype,chunks=arr.shape,compressors=compressor)
                 za[:] = arr
         else:
             print(f"Creating group: {node.name}")
@@ -219,17 +219,17 @@ if h5py.is_hdf5(InputFN):
         mask[:] = maskData
     if panelmaskLoc in hf2:
         panelmaskData = hf2[panelmaskLoc][()].reshape((1,numZ,numY))
-        panelmask = exc.create_dataset('panelmask',shape=maskData.shape,dtype=np.uint16,chunks=(1,numZ,numY),compressor=compressor)
+        panelmask = exc.create_dataset('panelmask',shape=maskData.shape,dtype=np.uint16,chunks=(1,numZ,numY),compressors=compressor)
         panelmask[:] = panelmaskData
     if brightLoc in hf2:
         brightData = hf2[brightLoc][()]
     else:
         brightData = np.copy(darkData)
-    bright = exc.create_dataset('bright',shape=brightData.shape,dtype=np.uint16,chunks=(1,brightData.shape[1],brightData.shape[2]),compression=compressor)
+    bright = exc.create_dataset('bright',shape=brightData.shape,dtype=np.uint16,chunks=(1,brightData.shape[1],brightData.shape[2]),compressors=compressor)
     if numFrameChunks == -1:
         numFrameChunks = nFrames
     numChunks = int(ceil(nFrames/numFrameChunks))
-    data = exc.create_dataset('data',shape=(nFrames,numZ,numY),dtype=np.uint16,chunks=(1,numZ,numY),compression=compressor)
+    data = exc.create_dataset('data',shape=(nFrames,numZ,numY),dtype=np.uint16,chunks=(1,numZ,numY),compressors=compressor)
     for i in range(numChunks):
         stFrame = i*numFrameChunks
         enFrame = (i+1)*numFrameChunks
@@ -243,24 +243,24 @@ if h5py.is_hdf5(InputFN):
         data[stFrame:enFrame,:,:] = dataT
     searchStr = 'startOmeOverride'
     if searchStr in hf2:
-        stOmeOver = sp_pro_meas.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        stOmeOver = sp_pro_meas.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         stOmeOver[:] = hf2[searchStr][()][0]
     searchStr = '/measurement/instrument/GSAS2_PVS/Pressure'
     if searchStr in hf2:
         print(f'Pressure values were found, will enter {nFrames} values!')
-        pressureDSet = sp_pro_meas.create_dataset(searchStr.split('/')[-1],dtype=np.double,shape=(nFrames,),chunks=(nFrames,),compressor=compressor)
+        pressureDSet = sp_pro_meas.create_dataset(searchStr.split('/')[-1],dtype=np.double,shape=(nFrames,),chunks=(nFrames,),compressors=compressor)
         pressureDSet[:] = hf2[searchStr][()]
     searchStr = '/measurement/instrument/GSAS2_PVS/Temperature'
     if searchStr in hf2:
-        pressureDSet = sp_pro_meas.create_dataset(searchStr.split('/')[-1],dtype=np.double,shape=(nFrames,),chunks=(nFrames,),compressor=compressor)
+        pressureDSet = sp_pro_meas.create_dataset(searchStr.split('/')[-1],dtype=np.double,shape=(nFrames,),chunks=(nFrames,),compressors=compressor)
         pressureDSet[:] = hf2[searchStr][()]
     searchStr = '/measurement/instrument/GSAS2_PVS/I'
     if searchStr in hf2:
-        pressureDSet = sp_pro_meas.create_dataset(searchStr.split('/')[-1],dtype=np.double,shape=(nFrames,),chunks=(nFrames,),compressor=compressor)
+        pressureDSet = sp_pro_meas.create_dataset(searchStr.split('/')[-1],dtype=np.double,shape=(nFrames,),chunks=(nFrames,),compressors=compressor)
         pressureDSet[:] = hf2[searchStr][()]
     searchStr = '/measurement/instrument/GSAS2_PVS/I0'
     if searchStr in hf2:
-        pressureDSet = sp_pro_meas.create_dataset(searchStr.split('/')[-1],dtype=np.double,shape=(nFrames,),chunks=(nFrames,),compressor=compressor)
+        pressureDSet = sp_pro_meas.create_dataset(searchStr.split('/')[-1],dtype=np.double,shape=(nFrames,),chunks=(nFrames,),compressors=compressor)
         pressureDSet[:] = hf2[searchStr][()]
     hf2.close()
 elif 'zip' in InputFN[-5:]:
@@ -268,15 +268,15 @@ elif 'zip' in InputFN[-5:]:
     zf = zarr.open(InputFN,'r')
     data_orig = zf[dataLoc]
     nFrames,numZ,numY = data_orig.shape
-    # data = exc.create_dataset('data',shape=(nFrames,numZ,numY),dtype=np.uint16,chunks=(1,numZ,numY),compression=compressor)
+    # data = exc.create_dataset('data',shape=(nFrames,numZ,numY),dtype=np.uint16,chunks=(1,numZ,numY),compressors=compressor)
     # data[:] = data_orig[:]
     zarr.copy(data_orig, exc, log=sys.stdout, if_exists='skip')
     data = exc['data']
     print(f'Data copied as: {exc.tree()}')
     darkData = np.zeros((10,numPxZ,numPxY))
     brightData = np.copy(darkData)
-    dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
-    bright = exc.create_dataset('bright',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
+    dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compressors=compressor)
+    bright = exc.create_dataset('bright',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compressors=compressor)
 else:
     sz = os.path.getsize(InputFN)
     bytesPerPx = 2
@@ -288,12 +288,12 @@ else:
         darkData = np.zeros((10,numPxZ,numPxY))
         print("No dark file provided. Using zeros.")
     brightData = np.copy(darkData)
-    dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
-    bright = exc.create_dataset('bright',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
+    dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compressors=compressor)
+    bright = exc.create_dataset('bright',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compressors=compressor)
     darkMean = np.mean(darkData[skipF:,:,:],axis=0).astype(np.uint16)
     if preProc!=-1:
         darkpreProc = darkMean + preProc
-    data = exc.create_dataset('data',shape=(nFramesAll,numPxZ,numPxY),dtype=np.uint16,chunks=(1,numPxZ,numPxY),compression=compressor)
+    data = exc.create_dataset('data',shape=(nFramesAll,numPxZ,numPxY),dtype=np.uint16,chunks=(1,numPxZ,numPxY),compressors=compressor)
     if numFrameChunks == -1:
         numFrameChunks = nFrames
     numChunks = int(ceil(nFrames/numFrameChunks))
@@ -330,7 +330,7 @@ if len(maskFN) > 0:
     maskData = np.array(Image.open(maskFN)).astype(np.uint16)
     maskData = maskData.reshape((1,numZ,numY))
     print(maskData.shape)
-    mask = exc.create_dataset('mask',shape=maskData.shape,dtype=np.uint16,chunks=(1,numZ,numY),compressor=compressor)
+    mask = exc.create_dataset('mask',shape=maskData.shape,dtype=np.uint16,chunks=(1,numZ,numY),compressors=compressor)
     mask[:] = maskData
 
 
@@ -339,7 +339,7 @@ dark.attrs['_ARRAY_DIMENSIONS'] = bright.shape
 bright.attrs['_ARRAY_DIMENSIONS'] = bright.shape
 
 resultOut = np.bytes_(resultDir)
-rf = zRoot.create_dataset('analysis/process/analysis_parameters/ResultFolder',shape=(1,),chunks=(1,),compressor=compressor,dtype=resultOut.dtype)
+rf = zRoot.create_dataset('analysis/process/analysis_parameters/ResultFolder',shape=(1,),chunks=(1,),compressors=compressor,dtype=resultOut.dtype)
 rf[:]=resultOut
 
 RingThreshArr = np.zeros((1,2))
@@ -357,12 +357,12 @@ for line in lines:
     searchStr = 'GapFile'
     if line.startswith(searchStr):
         gf = np.bytes_(line.split()[1])
-        rf = sp_pro_analysis.create_dataset(searchStr,shape=(1,),chunks=(1,),compressor=compressor,dtype=gf.dtype)
+        rf = sp_pro_analysis.create_dataset(searchStr,shape=(1,),chunks=(1,),compressors=compressor,dtype=gf.dtype)
         rf[:]=gf
     searchStr = 'BadPxFile'
     if line.startswith(searchStr):
         gf = np.bytes_(line.split()[1])
-        rf = sp_pro_analysis.create_dataset(searchStr,shape=(1,),chunks=(1,),compressor=compressor,dtype=gf.dtype)
+        rf = sp_pro_analysis.create_dataset(searchStr,shape=(1,),chunks=(1,),compressors=compressor,dtype=gf.dtype)
         rf[:]=gf
     searchStr = 'ImTransOpt'
     if line.startswith(f'{searchStr} '):
@@ -410,93 +410,93 @@ for line in lines:
         if head > 8192:
             if skipF==0:
                 skipF = (head-8192) // (2*numPxY*numPxZ)
-                spsf = sp_pro_analysis.create_dataset('SkipFrame',dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+                spsf = sp_pro_analysis.create_dataset('SkipFrame',dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
                 spsf[:]=np.array([skipF]).astype(np.int32)
     searchStr = 'Twins'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spT = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spT = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spT[:]=outArr
     searchStr = 'MaxNFrames'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spMNF = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spMNF = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spMNF[:] = outArr
     searchStr = 'DoFit'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spDF = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spDF = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spDF[:] = outArr
     searchStr = 'DiscModel'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spDM = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spDM = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spDM[:] = outArr
     searchStr = 'UseMaximaPositions'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spUMP = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spUMP = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spUMP[:] = outArr
     searchStr = 'MaxNrPx'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spMaxNP = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spMaxNP = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spMaxNP[:] = outArr
     searchStr = 'MinNrPx'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spMinNP = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spMinNP = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spMinNP[:] = outArr
     searchStr = 'MaxNPeaks'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spMaxNPeaks = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spMaxNPeaks = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spMaxNPeaks[:] = outArr
     searchStr = 'PhaseNr'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spPhase = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spPhase = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spPhase[:] = outArr
     searchStr = 'NumPhases'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spNumPh = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spNumPh = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spNumPh[:] = outArr
     searchStr = 'MinNrSpots'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spMinNrSp = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spMinNrSp = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spMinNrSp[:] = outArr
     searchStr = 'UseFriedelPairs'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spUseFP = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spUseFP = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spUseFP[:] = outArr
     searchStr = 'OverAllRingToIndex'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spRTI = sp_pro_analysis.create_dataset('OverallRingToIndex',dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spRTI = sp_pro_analysis.create_dataset('OverallRingToIndex',dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spRTI[:] = outArr
     searchStr = 'SpaceGroup'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spSG = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spSG = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spSG[:] = outArr
     searchStr = 'LayerNr'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spLN = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spLN = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spLN[:] = outArr
     searchStr = 'DoFullImage'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spDFI = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spDFI = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spDFI[:] = outArr
     searchStr = 'SkipFrame'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
         skipF = int(line.split()[1])
-        spSkipF = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spSkipF = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spSkipF[:] = outArr
     searchStr = 'OmegaFirstFile'
     if line.startswith(f'{searchStr} '):
@@ -511,389 +511,389 @@ for line in lines:
         if omeStepOverride != 0:
             omeStp = omeStepOverride
             outArr = np.array([omeStepOverride]).astype(np.double)
-        spStp = sp_pro_meas.create_dataset('step',dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spStp = sp_pro_meas.create_dataset('step',dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spStp[:] = outArr
     searchStr = 'BadPxIntensity'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spBPI = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spBPI = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spBPI[:] = outArr
     searchStr = 'GapIntensity'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spBPI = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spBPI = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spBPI[:] = outArr
     searchStr = 'SumImages'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spBPI = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spBPI = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spBPI[:] = outArr
     searchStr = 'Normalize'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spBPI = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spBPI = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spBPI[:] = outArr
     searchStr = 'SaveIndividualFrames'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spBPI = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spBPI = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spBPI[:] = outArr
     searchStr = 'OmegaSumFrames'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.int32)
-        spBPI = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressor=compressor)
+        spBPI = sp_pro_analysis.create_dataset(searchStr,dtype=np.int32,shape=(1,),chunks=(1,),compressors=compressor)
         spBPI[:] = outArr
     searchStr = 'FitWeightMean'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.double)
-        spFWM = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spFWM = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spFWM[:] = outArr
     searchStr = 'PixelSplittingRBin'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([int(line.split()[1])]).astype(np.double)
-        spPSRB = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spPSRB = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spPSRB[:] = outArr
     searchStr = 'tolTilts'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spTolT = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spTolT = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spTolT[:] = outArr
     searchStr = 'tolBC'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spTolBC = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spTolBC = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spTolBC[:] = outArr
     searchStr = 'tolLsd'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spTolL = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spTolL = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spTolL[:] = outArr
     searchStr = 'DiscArea'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spDA = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spDA = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spDA[:] = outArr
     searchStr = 'OverlapLength'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spOLL = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spOLL = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spOLL[:] = outArr
     searchStr = 'ReferenceRingCurrent'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spRR = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spRR = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spRR[:] = outArr
     searchStr = 'Completeness'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spCompleteness = sp_pro_analysis.create_dataset('MinMatchesToAcceptFrac',dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spCompleteness = sp_pro_analysis.create_dataset('MinMatchesToAcceptFrac',dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spCompleteness[:] = outArr
     searchStr = 'zDiffThresh'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spZDiff = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spZDiff = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spZDiff[:] = outArr
     searchStr = 'GlobalPosition'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spGP = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spGP = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spGP[:] = outArr
     searchStr = 'tolPanelFit'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spTPF = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spTPF = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spTPF[:] = outArr
     searchStr = 'tolP'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spTP = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spTP = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spTP[:] = outArr
     searchStr = 'tolP0'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spTP0 = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spTP0 = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spTP0[:] = outArr
     searchStr = 'tolP1'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spTP1 = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spTP1 = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spTP1[:] = outArr
     searchStr = 'tolP2'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spTP2 = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spTP2 = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spTP2[:] = outArr
     searchStr = 'tolP3'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spTP3 = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spTP3 = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spTP3[:] = outArr
     searchStr = 'StepSizePos'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spSSP = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spSSP = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spSSP[:] = outArr
     searchStr = 'tInt'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        sptInt = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        sptInt = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         sptInt[:] = outArr
     searchStr = 'tGap'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        sptGap = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        sptGap = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         sptGap[:] = outArr
     searchStr = 'StepSizeOrient'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spSSO = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spSSO = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spSSO[:] = outArr
     searchStr = 'MarginRadius'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spMR = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spMR = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spMR[:] = outArr
     searchStr = 'MarginRadial'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spMRad = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spMRad = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spMRad[:] = outArr
     searchStr = 'MarginEta'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spME = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spME = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spME[:] = outArr
     searchStr = 'MarginOme'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spMO = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spMO = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spMO[:] = outArr
     searchStr = 'MargABG'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spMABG = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spMABG = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spMABG[:] = outArr
     searchStr = 'MargABC'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spMABC = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spMABC = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spMABC[:] = outArr
     searchStr = 'OmeBinSize'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spOBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spOBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spOBS[:] = outArr
     searchStr = 'EtaBinSize'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spEBS[:] = outArr
     searchStr = 'RBinSize'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spEBS[:] = outArr
     searchStr = 'RMin'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spEBS[:] = outArr
     searchStr = 'RMax'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spEBS[:] = outArr
     searchStr = 'EtaMin'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spEBS[:] = outArr
     searchStr = 'EtaMax'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spEBS[:] = outArr
     searchStr = 'X'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spEBS[:] = outArr
     searchStr = 'Y'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spEBS[:] = outArr
     searchStr = 'Z'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spEBS[:] = outArr
     searchStr = 'U'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spEBS[:] = outArr
     searchStr = 'V'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spEBS[:] = outArr
     searchStr = 'W'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spEBS[:] = outArr
     searchStr = 'SHpL'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spEBS[:] = outArr
     searchStr = 'Polariz'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spMEta = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spMEta = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spMEta[:] = outArr
     searchStr = 'MaxOmeSpotIDsToIndex'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spMaxOSII = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spMaxOSII = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spMaxOSII[:] = outArr
     searchStr = 'MinOmeSpotIDsToIndex'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spMinOSII = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spMinOSII = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spMinOSII[:] = outArr
     searchStr = 'BeamThickness'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spBT = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spBT = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spBT[:] = outArr
     searchStr = 'Wedge'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spW = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spW = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spW[:] = outArr
     searchStr = 'Rsample'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spRsam = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spRsam = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spRsam[:] = outArr
     searchStr = 'Hbeam'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spHBeam = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spHBeam = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spHBeam[:] = outArr
     searchStr = 'Vsample'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spVsam = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spVsam = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spVsam[:] = outArr
     searchStr = 'LatticeConstant'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(x) for x in line.split()[1:7]]).astype(np.double)
-        spLatC = sp_pro_analysis.create_dataset('LatticeParameter',dtype=np.double,shape=(6,),chunks=(6,),compressor=compressor)
+        spLatC = sp_pro_analysis.create_dataset('LatticeParameter',dtype=np.double,shape=(6,),chunks=(6,),compressors=compressor)
         spLatC[:] = outArr
     searchStr = 'LatticeParameter'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(x) for x in line.split()[1:7]]).astype(np.double)
-        spLatC = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(6,),chunks=(6,),compressor=compressor)
+        spLatC = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(6,),chunks=(6,),compressors=compressor)
         spLatC[:] = outArr
     searchStr = 'RhoD'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spRHOD = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spRHOD = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spRHOD[:] = outArr
     searchStr = 'MaxRingRad'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spMRR = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spMRR = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spMRR[:] = outArr
     searchStr = 'Lsd'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spLSD = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spLSD = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spLSD[:] = outArr
     searchStr = 'Wavelength'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spWL = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spWL = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spWL[:] = outArr
     searchStr = 'Width'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spWidth = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spWidth = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spWidth[:] = outArr
     searchStr = 'WidthTthPx'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spWidthTth = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spWidthTth = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spWidthTth[:] = outArr
     searchStr = 'px'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spPx = sp_pro_analysis.create_dataset('PixelSize',dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spPx = sp_pro_analysis.create_dataset('PixelSize',dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spPx[:] = outArr
     searchStr = 'UpperBoundThreshold'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spUBT = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spUBT = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spUBT[:] = outArr
     searchStr = 'BC'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spYCen = sp_pro_analysis.create_dataset('YCen',dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spYCen = sp_pro_analysis.create_dataset('YCen',dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spYCen[:] = outArr
         outArr = np.array([float(line.split()[2])]).astype(np.double)
-        spZCen = sp_pro_analysis.create_dataset('ZCen',dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spZCen = sp_pro_analysis.create_dataset('ZCen',dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spZCen[:] = outArr
     searchStr = 'p3'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spP3 = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spP3 = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spP3[:] = outArr
     searchStr = 'p2'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spP2 = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spP2 = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spP2[:] = outArr
     searchStr = 'p1'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spP1 = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spP1 = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spP1[:] = outArr
     searchStr = 'p0'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spP0 = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spP0 = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spP0[:] = outArr
     searchStr = 'tz'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spTz = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spTz = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spTz[:] = outArr
     searchStr = 'ty'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spTy = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spTy = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spTy[:] = outArr
     searchStr = 'tx'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
-        spTx = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spTx = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
         spTx[:] = outArr
 
-spRTA  = sp_pro_analysis.create_dataset('RingThresh',dtype=np.double,shape=(RingThreshArr.shape),chunks=(RingThreshArr.shape),compressor=compressor)
+spRTA  = sp_pro_analysis.create_dataset('RingThresh',dtype=np.double,shape=(RingThreshArr.shape),chunks=(RingThreshArr.shape),compressors=compressor)
 spRTA[:] = RingThreshArr
-spRTE  = sp_pro_analysis.create_dataset('RingsToExclude',dtype=np.double,shape=(RingExcludeArr.shape),chunks=(RingExcludeArr.shape),compressor=compressor)
+spRTE  = sp_pro_analysis.create_dataset('RingsToExclude',dtype=np.double,shape=(RingExcludeArr.shape),chunks=(RingExcludeArr.shape),compressors=compressor)
 spRTE[:] = RingExcludeArr
-spOR = sp_pro_analysis.create_dataset('OmegaRanges',dtype=np.double,shape=(OmegaRanges.shape),chunks=(OmegaRanges.shape),compressor=compressor)
+spOR = sp_pro_analysis.create_dataset('OmegaRanges',dtype=np.double,shape=(OmegaRanges.shape),chunks=(OmegaRanges.shape),compressors=compressor)
 spOR[:] = OmegaRanges
-spBS = sp_pro_analysis.create_dataset('BoxSizes',dtype=np.double,shape=(BoxSizes.shape),chunks=(BoxSizes.shape),compressor=compressor)
+spBS = sp_pro_analysis.create_dataset('BoxSizes',dtype=np.double,shape=(BoxSizes.shape),chunks=(BoxSizes.shape),compressors=compressor)
 spBS[:] = BoxSizes
-spImT = sp_pro_analysis.create_dataset('ImTransOpt',dtype=np.int32,shape=(ImTransOpts.shape),chunks=(ImTransOpts.shape),compressor=compressor)
+spImT = sp_pro_analysis.create_dataset('ImTransOpt',dtype=np.int32,shape=(ImTransOpts.shape),chunks=(ImTransOpts.shape),compressors=compressor)
 spImT[:] = ImTransOpts
 OmeFF -= skipF*omeStp
-spSt = sp_pro_meas.create_dataset('start',dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+spSt = sp_pro_meas.create_dataset('start',dtype=np.double,shape=(1,),chunks=(1,),compressors=compressor)
 spSt[:] = np.array([OmeFF])
 
 if h5py.is_hdf5(InputFN):
