@@ -184,7 +184,7 @@ print(f'Out: {outfn}.MIDAS.zip')
 outfZip = f'{outfn}.MIDAS.zip'
 if Path(outfZip).exists():
     shutil.move(outfZip,outfZip+'.old')
-zipStore = ZipStore(outfZip,mode='w',compression=compressor)
+zipStore = ZipStore(outfZip,mode='w')
 zRoot = zarr.group(store=zipStore, overwrite=True)
 exc = zRoot.create_group('exchange')
 meas = zRoot.create_group('measurement')
