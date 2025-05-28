@@ -25,7 +25,7 @@ import re
 from PIL import Image
 from zarr.storage import ZipStore
 
-compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
+compressor = zarr.codecs.BloscCodec(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
 
 def geReader(geFN,header=8192,numPxY=2048,numPxZ=2048,bytesPerPx=2):
     sz = os.path.getsize(geFN)
@@ -209,7 +209,7 @@ if h5py.is_hdf5(InputFN):
         else:
             darkData = np.zeros((10,numZ,numY))
     print(darkData.shape)
-    dark = exc.create_array('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]))
+    dark = exc.create_array('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compressors=compressor)
     darkMean = np.mean(darkData[skipF:,:,:],axis=0).astype(np.uint16)
     if preProc!=-1:
         darkpreProc = darkMean + preProc
