@@ -339,7 +339,7 @@ dark.attrs['_ARRAY_DIMENSIONS'] = bright.shape
 bright.attrs['_ARRAY_DIMENSIONS'] = bright.shape
 
 resultOut = np.bytes_(resultDir)
-rf = zRoot.create_array('analysis/process/analysis_parameters/ResultFolder',shape=(1,),chunks=(1,),compressors=compressor,dtype=resultOut.dtype)
+rf = sp_pro_analysis.create_array('ResultFolder',shape=(1,),chunks=(1,),compressors=compressor,dtype=resultOut.dtype)
 rf[:]=resultOut
 
 RingThreshArr = np.zeros((1,2))
