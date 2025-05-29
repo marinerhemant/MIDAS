@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from dash import Dash, html, dcc, callback, Output, Input, State, no_update, dash_table
+from zarr.storage import ZipStore
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -64,7 +65,8 @@ def spot2gv(det_dist, det_y_m, det_z_m, omega_deg):
 def load_zarr_params(zarr_file):
     params = {}
     try:
-        zf = zarr.open(zarr_file, 'r')
+        store = ZipStore(zarr_file, mode='r')
+        zf = zarr.open_group(store=store, mode='r')
         params['pixSz'] = zf['/analysis/process/analysis_parameters/PixelSize'][0] # Assumed MICRONS/pixel
         params['wl'] = zf['/analysis/process/analysis_parameters/Wavelength'][0]
         params['Lsd'] = zf['/analysis/process/analysis_parameters/Lsd'][0]
@@ -720,4 +722,4 @@ if __name__ == '__main__':
 
     # --- Run the App ---
     print(f"Starting Dash server on http://{hn}:{portNr}")
-    app.run_server(port=portNr, host=hn, debug=False) # Set debug=True for development if needed
+    app.run(port=portNr, host=hn, debug=False) # Set debug=True for development if needed
