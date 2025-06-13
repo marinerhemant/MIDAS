@@ -623,7 +623,7 @@ int main(int argc, char **argv)
 			printf("Nr mask pixels: %d\n",nrdone);
 			makeMap = 0;
 		}
-		for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/nFrames;
+		for(j=0;j<NrPixelsY*NrPixelsZ;j++) AverageDark[j] += (double)DarkIn[j]/frame_dims[0];
 		// READ DATA, STORED IN all_images array
 		DATASETNAME = "exchange/data";
 	    dataset = H5Dopen(file, DATASETNAME,H5P_DEFAULT);
@@ -634,6 +634,7 @@ int main(int argc, char **argv)
 		frame_dims2[0] = dims[0];
 		frame_dims2[1] = dims[1];
 		frame_dims2[2] = dims[2];
+		nFrames = dims[0];
 		all_images = calloc(frame_dims2[0]*frame_dims2[1]*frame_dims2[2],sizeof(uint16_t));
 		printf("Reading file: %lu bytes from dataset: %s.\n",(unsigned long) dims[0]*dims[1]*dims[2]*2,DATASETNAME);
 		status_n = H5Dread(dataset,H5T_STD_U16LE,H5S_ALL,H5S_ALL,H5P_DEFAULT,all_images);
@@ -670,12 +671,14 @@ int main(int argc, char **argv)
 	}
 	char *imageFN;
 	imageFN = argv[2];
-	fp = fopen(imageFN,"rb");
-	fseek(fp,0L,SEEK_END);
-	sz = ftell(fp);
-	rewind(fp);
-	fseek(fp,Skip,SEEK_SET);
-	nFrames = (sz-Skip) / SizeFile;
+	if (dType!=8){
+		fp = fopen(imageFN,"rb");
+		fseek(fp,0L,SEEK_END);
+		sz = ftell(fp);
+		rewind(fp);
+		fseek(fp,Skip,SEEK_SET);
+		nFrames = (sz-Skip) / SizeFile;
+	}
 	printf("Number of eta bins: %d, number of R bins: %d. Number of frames in the file: %d\n",nEtaBins,nRBins,(int)nFrames);
 	long long int Pos;
 	int nPixels, dataPos;
