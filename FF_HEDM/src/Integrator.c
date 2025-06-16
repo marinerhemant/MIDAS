@@ -634,7 +634,7 @@ int main(int argc, char **argv)
 		frame_dims2[0] = dims[0];
 		frame_dims2[1] = dims[1];
 		frame_dims2[2] = dims[2];
-		nFrames = dims[0];
+		nFrames = dims[0]-skipFrame;
 		all_images = calloc(frame_dims2[0]*frame_dims2[1]*frame_dims2[2],sizeof(uint16_t));
 		printf("Reading file: %lu bytes from dataset: %s.\n",(unsigned long) dims[0]*dims[1]*dims[2]*2,DATASETNAME);
 		status_n = H5Dread(dataset,H5T_STD_U16LE,H5S_ALL,H5S_ALL,H5P_DEFAULT,all_images);
