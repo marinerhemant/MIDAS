@@ -71,7 +71,12 @@ cd MIDAS
    ```
 6. Install the Python requirements:
    ```
-   pip install -r requirements.txt
+   conda env create -f environment.yml
+   ```
+
+7. Activate the conda environment:
+   ```
+   conda activate midas_env
    ```
 
 **More details at** [MIDAS-WIKI](https://github.com/marinerhemant/MIDAS/wiki) 
