@@ -169,7 +169,7 @@ def fileReader(f, dset):
         logger.error(f"Error reading dataset {dset}: {e}")
         raise
 
-def generateZip(resFol, pfn, dfn='', darkfn='', dloc='', nchunks=-1, preproc=-1, outf='ZipOut.txt', errf='ZipErr.txt'):
+def generateZip(resFol, pfn, dfn='', darkfn='', dloc='', nchunks=-1, preproc=-1, outf='ZipOut.txt', errf='ZipErr.txt',NrPixelsY=0, NrPixelsZ=0):
     """Generate a Zarr zip file from other file formats"""
     cmd = [
         pytpath,
@@ -779,7 +779,8 @@ def main():
         if convertFile == 3:
             logger.info("Processing TIFF input")
             dataFN = process_tiff_input(dataFN, badPxIntensity, gapIntensity)
-            convertFile = 1
+            logger.info(f"Converted TIFF to GE format: {dataFN} and NrPixelsY={NrPixelsY}, NrPixelsZ={NrPixelsZ}. Now converting to Zarr zip file.")
+            dataFN = generateZip('.', psFN, dfn=dataFN, nchunks=100, preproc=0, NrPixelsY=NrPixelsY, NrPixelsZ=NrPixelsZ)
         
         # Generate Zarr zip file if needed
         if convertFile == 1 or convertFile == 2:
