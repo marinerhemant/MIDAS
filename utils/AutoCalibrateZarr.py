@@ -780,6 +780,7 @@ def main():
             logger.info("Processing TIFF input")
             dataFN = process_tiff_input(dataFN, badPxIntensity, gapIntensity)
             logger.info(f"Converted TIFF to GE format: {dataFN} and NrPixelsY={NrPixelsY}, NrPixelsZ={NrPixelsZ}. Now converting to Zarr zip file.")
+            psFN = args.paramFN
             dataFN = generateZip('.', psFN, dfn=dataFN, nchunks=100, preproc=0, NrPixelsY=NrPixelsY, NrPixelsZ=NrPixelsZ)
         
         # Generate Zarr zip file if needed
