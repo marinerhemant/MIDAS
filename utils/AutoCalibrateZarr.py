@@ -779,6 +779,7 @@ def main():
         if convertFile == 3:
             logger.info("Processing TIFF input")
             dataFN = process_tiff_input(dataFN, badPxIntensity, gapIntensity)
+            convertFile = 1
         
         # Generate Zarr zip file if needed
         if convertFile == 1 or convertFile == 2:
