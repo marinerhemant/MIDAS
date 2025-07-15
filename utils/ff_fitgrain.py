@@ -341,28 +341,40 @@ def main():
             os.chdir(original_dir)
             sys.exit(1)
             
-        # Check if column index is valid
-        if grains.ndim < 2 or col_val >= grains.shape[1]:
-            logging.error(f"Invalid column index {col_val} for sorting. File has fewer columns.")
-            os.chdir(original_dir)
-            sys.exit(1)
+        grains_sorted = None
+        if grains.ndim == 1:
+            # Case for a single grain in the file
+            logging.info("Found a single grain; sorting is not applicable.")
+            grains_sorted = grains.reshape(1, -1)
+        else:
+            # Case for multiple grains
+            if grains.ndim < 2 or col_val >= grains.shape[1]:
+                logging.error(f"Invalid column index {col_val} for sorting. File has fewer columns.")
+                os.chdir(original_dir)
+                sys.exit(1)
             
-        # Sort grains
-        logging.info(f"Sorting grains by column {col_val} ({sort_property})")
-        grains_sorted = grains[grains[:, col_val].argsort()]
+            # Sort grains by the specified property
+            logging.info(f"Sorting grains by column {col_val} ({sort_property})")
+            grains_sorted = grains[grains[:, col_val].argsort()]
+
         n_grains = grains_sorted.shape[0]
         logging.info(f"Found {n_grains} grains in total")
         
         # Calculate number of grains to refine
-        n_spots_to_refine = n_grains // frac  # We will take 1/nth of grains and refine them
+        n_spots_to_refine = n_grains // frac
+        
+        # If the fraction results in 0, but we have grains, process at least one.
+        if n_spots_to_refine == 0 and n_grains > 0:
+            logging.warning(f"Number of grains ({n_grains}) is less than fractionGrains ({frac}). Processing the single best-sorted grain.")
+            n_spots_to_refine = 1
         
         # Check if we have enough grains to process
         if n_spots_to_refine <= 0:
-            logging.error(f"Not enough grains to process with fraction {frac}")
+            logging.error(f"Not enough grains to process with fraction {frac}. Found {n_grains} grains.")
             os.chdir(original_dir)
             sys.exit(1)
             
-        logging.info(f"Will process {n_spots_to_refine} grains (1/{frac} of total)")
+        logging.info(f"Will process {n_spots_to_refine} grains")
             
     except (IOError, ValueError) as e:
         logging.error(f"Error reading or processing grain file: {str(e)}")
