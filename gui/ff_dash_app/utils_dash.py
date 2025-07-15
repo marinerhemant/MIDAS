@@ -36,7 +36,6 @@ def CalcEtaAngleRad(y_physical, z_physical):
     # If y_physical < 0 (to the right of BC), eta is positive.
     if y_physical > 0: # Left of BC
         alpha = -alpha
-    # if y_physical == 0 and z_physical < 0: alpha = 180.0 # Directly below BC, handled by acos
 
     return alpha, Rad
 
@@ -50,26 +49,18 @@ def YZ4mREta(R_physical, Eta_deg):
         Eta_deg: Eta angle in degrees (scalar or NumPy array).
     Returns:
         (y_coord, z_coord): Physical coordinates (y positive LEFT, z positive UP)
-                            in same units as R_physical. If Eta_deg was an array,
-                            y_coord and z_coord will also be arrays.
     """
-    # Use np.deg2rad for element-wise conversion if Eta_deg is an array
     eta_rad = np.deg2rad(Eta_deg)
-    
-    # Use np.sin and np.cos for element-wise operations
     y_coord = -R_physical * np.sin(eta_rad) # Physical Y (positive to the LEFT of BC)
     z_coord =  R_physical * np.cos(eta_rad) # Physical Z (positive UP from BC)
     return y_coord, z_coord
 
 def get_transform_matrix(tx_deg, ty_deg, tz_deg):
     """Computes the 3x3 rotation matrix for detector tilts."""
-    txr = tx_deg * deg2rad
-    tyr = ty_deg * deg2rad
-    tzr = tz_deg * deg2rad
+    txr, tyr, tzr = np.deg2rad([tx_deg, ty_deg, tz_deg])
     Rx = np.array([[1, 0, 0], [0, cos(txr), -sin(txr)], [0, sin(txr), cos(txr)]])
     Ry = np.array([[cos(tyr), 0, sin(tyr)], [0, 1, 0], [-sin(tyr), 0, cos(tyr)]])
     Rz = np.array([[cos(tzr), -sin(tzr), 0], [sin(tzr), cos(tzr), 0], [0, 0, 1]])
-    # Original code used Rx * Ry * Rz convention
     transform_matrix = np.dot(Rx, np.dot(Ry, Rz))
     return transform_matrix
 
