@@ -781,6 +781,10 @@ def main():
             dataFN = process_tiff_input(dataFN, badPxIntensity, gapIntensity)
             logger.info(f"Converted TIFF to GE format: {dataFN} and NrPixelsY={NrPixelsY}, NrPixelsZ={NrPixelsZ}. Now converting to Zarr zip file.")
             psFN = args.paramFN
+            if not psFN:
+                logger.error("Parameter file is required for conversion")
+                print("ERROR: Parameter file is required for conversion")
+                sys.exit(1)
             dataFN = generateZip('.', psFN, dfn=dataFN, nchunks=100, preproc=0, NrPixelsY=NrPixelsY, NrPixelsZ=NrPixelsZ)
         
         # Generate Zarr zip file if needed
