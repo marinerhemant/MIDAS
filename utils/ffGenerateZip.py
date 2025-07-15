@@ -13,16 +13,12 @@ import os
 import sys
 import argparse
 from math import ceil
-import hdf5plugin
 import zarr
 from numcodecs import Blosc
 from pathlib import Path
 import shutil
 from numba import jit
-import time
-import matplotlib.pyplot as plt
 import re
-from PIL import Image
 
 compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
 
@@ -192,9 +188,13 @@ sp_pro_meas = pro_meas.create_group('scan_parameters')
 analysis = zRoot.create_group('analysis')
 pro_analysis = analysis.create_group('process')
 sp_pro_analysis = pro_analysis.create_group('analysis_parameters')
+
 if h5py.is_hdf5(InputFN):
+    import hdf5plugin
+    # This is an HDF5 file. Can be one or multiple.
     hf2 = h5py.File(InputFN,'r')
     nFrames,numZ,numY = hf2[dataLoc].shape
+    nFramesAll = nFrames*numFilesPerScan
     print(hf2[dataLoc].shape,dataLoc)
     if h5py.is_hdf5(darkFN) and darkFN != InputFN:
         print(f"We are going to read dark from a different HDF. Please make sure that the dark file contains information in {dataLoc} dataset.")
@@ -228,18 +228,43 @@ if h5py.is_hdf5(InputFN):
     if numFrameChunks == -1:
         numFrameChunks = nFrames
     numChunks = int(ceil(nFrames/numFrameChunks))
-    data = exc.create_dataset('data',shape=(nFrames,numZ,numY),dtype=np.uint16,chunks=(1,numZ,numY),compression=compressor)
-    for i in range(numChunks):
-        stFrame = i*numFrameChunks
-        enFrame = (i+1)*numFrameChunks
-        if enFrame > nFrames: enFrame=nFrames
-        print(f"StartFrame: {stFrame}, EndFrame: {enFrame-1}, nFrames: {nFrames}")
-        dataThis = hf2[dataLoc][stFrame:enFrame,:,:]
-        if preProc!=-1:
-            dataT = applyCorrectionNumba(dataThis,darkMean,darkpreProc,doStd)
-        else:
-            dataT = dataThis
-        data[stFrame:enFrame,:,:] = dataT
+    data = exc.create_dataset('data',shape=(nFramesAll,numZ,numY),dtype=np.uint16,chunks=(1,numZ,numY),compression=compressor)
+    if numFilesPerScan == 1:
+        for i in range(numChunks):
+            stFrame = i*numFrameChunks
+            enFrame = (i+1)*numFrameChunks
+            if enFrame > nFrames: enFrame=nFrames
+            print(f"StartFrame: {stFrame}, EndFrame: {enFrame-1}, nFrames: {nFrames}")
+            dataThis = hf2[dataLoc][stFrame:enFrame,:,:]
+            if preProc!=-1:
+                dataT = applyCorrectionNumba(dataThis,darkMean,darkpreProc,doStd)
+            else:
+                dataT = dataThis
+            data[stFrame:enFrame,:,:] = dataT
+    else:
+        fNr = re.search(r'\d{% s}' % pad, InputFN).group(0)
+        fNrOrig = fNr
+        fNrLoc = int(fNr)
+        for fileNrIter in range(numFilesPerScan):
+            fNr = str(fNrLoc)
+            if len(origInputFN) == 0:
+                InputFN = rawFolder + '/' + fStem + '_' + fNr.zfill(pad) + ext
+            else:
+                InputFN = origInputFN.replace(fNrOrig,str(fNr).zfill(pad))
+            print(InputFN)
+            stNr = nFrames*fileNrIter
+            for i in range(numChunks):
+                stFrame = i*numFrameChunks
+                enFrame = (i+1)*numFrameChunks
+                if enFrame > nFrames: enFrame=nFrames
+                print(f"StartFrame: {stFrame+stNr}, EndFrame: {enFrame+stNr-1}, nFrames: {nFrames}, nFramesAll: {nFramesAll}")
+                dataThis = hf2[dataLoc][stFrame:enFrame,:,:]
+                if preProc!=-1:
+                    dataT = applyCorrectionNumba(dataThis,darkMean,darkpreProc,doStd)
+                else:
+                    dataT = dataThis
+                data[stFrame+stNr:enFrame+stNr,:,:] = dataT
+            fNrLoc += 1
     searchStr = 'startOmeOverride'
     if searchStr in hf2:
         stOmeOver = sp_pro_meas.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
@@ -262,13 +287,12 @@ if h5py.is_hdf5(InputFN):
         pressureDSet = sp_pro_meas.create_dataset(searchStr.split('/')[-1],dtype=np.double,shape=(nFrames,),chunks=(nFrames,),compressor=compressor)
         pressureDSet[:] = hf2[searchStr][()]
     hf2.close()
+
 elif 'zip' in InputFN[-5:]:
     # This is a zarray dataset. Just copy over the data.
     zf = zarr.open(InputFN,'r')
     data_orig = zf[dataLoc]
     nFrames,numZ,numY = data_orig.shape
-    # data = exc.create_dataset('data',shape=(nFrames,numZ,numY),dtype=np.uint16,chunks=(1,numZ,numY),compression=compressor)
-    # data[:] = data_orig[:]
     zarr.copy(data_orig, exc, log=sys.stdout, if_exists='skip')
     data = exc['data']
     print(f'Data copied as: {exc.tree()}')
@@ -276,7 +300,31 @@ elif 'zip' in InputFN[-5:]:
     brightData = np.copy(darkData)
     dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
     bright = exc.create_dataset('bright',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
+
+elif 'tif' in InputFN[-5:]:
+    print("Input are tiff files in individual frames. Everything is in a single folder!!! TIFF files are assumed to be 32 bit integer format. No dark or bright files are used.")
+    nFramesAll = numFilesPerScan
+    darkData = np.zeros((10,numPxZ,numPxY),dtype=np.uint16)
+    dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
+    bright = exc.create_dataset('bright',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
+    darkMean = np.mean(darkData[skipF:,:,:],axis=0).astype(np.uint16)
+    if preProc!=-1:
+        darkpreProc = darkMean + preProc
+    data = exc.create_dataset('data',shape=(nFramesAll,numPxZ,numPxY),dtype=np.uint16,chunks=(1,numPxZ,numPxY),compression=compressor)
+    fNrOrig = re.search(r'\d{% s}' % pad, InputFN).group(0)
+    for frameNr in range(numFilesPerScan):
+        fNr = frameNr + fNrOrig
+        InputFN = origInputFN.replace(fNrOrig,str(fNr).zfill(pad))
+        # tiff data can be read as binary, skipping the 8 byte header.
+        dataThis = np.fromfile(InputFN,offset=8,dtype=np.int32,count=numPxY*numPxZ).reshape((numPxZ,numPxY))
+        if preProc!=-1:
+            dataT = applyCorrectionNumba(dataThis,darkMean,darkpreProc,doStd)
+        else:
+            dataT = dataThis
+        data[frameNr,:,:] = dataT
+
 else:
+    # Default: GE type of binary data!!
     sz = os.path.getsize(InputFN)
     bytesPerPx = 2
     nFrames = (sz-HZ) // (bytesPerPx*numPxY*numPxZ)
@@ -320,12 +368,14 @@ else:
                 dataT = dataThis
             data[stFrame+stNr:enFrame+stNr,:,:] = dataT
         fNrLoc += 1
+
 if preProc !=-1:
     darkData *= 0
     brightData *= 0
 dark[:] = darkData
 bright[:]=brightData
 if len(maskFN) > 0:
+    from PIL import Image
     maskData = np.array(Image.open(maskFN)).astype(np.uint16)
     maskData = maskData.reshape((1,numZ,numY))
     print(maskData.shape)
