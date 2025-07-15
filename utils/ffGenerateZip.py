@@ -757,6 +757,11 @@ for line in lines:
         outArr = np.array([float(line.split()[1])]).astype(np.double)
         spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
         spEBS[:] = outArr
+    searchStr = 'MinEta'
+    if line.startswith(f'{searchStr} '):
+        outArr = np.array([float(line.split()[1])]).astype(np.double)
+        spEBS = sp_pro_analysis.create_dataset(searchStr,dtype=np.double,shape=(1,),chunks=(1,),compressor=compressor)
+        spEBS[:] = outArr
     searchStr = 'EtaMax'
     if line.startswith(f'{searchStr} '):
         outArr = np.array([float(line.split()[1])]).astype(np.double)
