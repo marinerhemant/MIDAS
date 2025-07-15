@@ -943,9 +943,16 @@ main(int argc, char *argv[])
 		printf("Multi-scan simulation requested with %d scans.\nReading positions.csv, no error checking from here on!!!\n",nScans);
 		FILE *positionsF = fopen("positions.csv","r");
 		for (scanNr=0;scanNr<nScans;scanNr++){
-			fgets(aline,4096,positionsF);
-			sscanf(aline,"%lf",&positions[scanNr]);
-			printf("%lf\n",positions[scanNr]);
+			if (fgets(aline, sizeof(aline), positionsF) != NULL) {
+                if (sscanf(aline, "%lf", &positions[scanNr]) == 1) {
+                    printf("Position: %d value: %lf\n", scanNr, positions[scanNr]);
+                } else {
+                    fprintf(stderr, "Warning: Could not parse a number from line %d: %s", scanNr + 1, aline);
+                }
+            } else {
+                fprintf(stderr, "Warning: Could not read line %d from positions.csv.\n", scanNr + 1);
+                break;
+            }
 		}
 	}
 	printf("Output will be saved to: %s_scanNr_XYZ.zip, XYZ is the scanNr\n",OutFileName);
@@ -1069,9 +1076,22 @@ main(int argc, char *argv[])
 			printf("We are reading an EBSD file.\n");
 			fgets(aline,4096,inpF);
 			while(fgets(aline,4096,inpF)!=NULL){
-				sscanf(aline,"%lf,%lf,%lf,%lf,%lf,%lf",
+				// Replace commas and tabs with spaces to handle any of the three delimiters
+				for (char *p = aline; *p; ++p) {
+					if (*p == ',' || *p == '\t') {
+						*p = ' ';
+					}
+				}
+				// Use sscanf with a space-based format.
+				// A space in the format string matches one or more whitespace characters (space, tab).
+				int itemsRead = sscanf(aline,"%lf %lf %lf %lf %lf %lf",
 					&InputInfo[nrPoints][9], &InputInfo[nrPoints][10],&InputInfo[nrPoints][11],
 					&EulerThis[0],&EulerThis[1],&EulerThis[2]);
+				// Check if all 6 values were successfully read
+				if (itemsRead != 6) {
+					fprintf(stderr, "Warning: Could not correctly parse EBSD data line, skipping: %s", aline);
+					continue;
+				}
 				EulerThis[0] *= deg2rad;
 				EulerThis[1] *= deg2rad;
 				EulerThis[2] *= deg2rad;
