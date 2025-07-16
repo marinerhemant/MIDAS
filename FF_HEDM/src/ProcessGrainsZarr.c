@@ -815,9 +815,9 @@ int main(int argc, char *argv[])
 		FinalMatrix[nGrains][42] = MultR * RetVal;
 		FinalMatrix[nGrains][43] = (double)PhaseNr;
 		OrientMat2Euler(Orient,Eul);
-		FinalMatrix[i][44] = Eul[0];
-		FinalMatrix[i][45] = Eul[1];
-		FinalMatrix[i][46] = Eul[2];
+		FinalMatrix[nGrains][44] = Eul[0];
+		FinalMatrix[nGrains][45] = Eul[1];
+		FinalMatrix[nGrains][46] = Eul[2];
 		VNorm = FinalMatrix[nGrains][22]*FinalMatrix[nGrains][22]*FinalMatrix[nGrains][22];
 		BeamCenter += (FinalMatrix[nGrains][12])*(VNorm);
 		FullVol += VNorm;
