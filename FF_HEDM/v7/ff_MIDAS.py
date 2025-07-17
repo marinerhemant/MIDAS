@@ -345,7 +345,8 @@ def generateZip(
     nchunks: int = -1,
     preproc: int = -1,
     outf: str = 'ZipOut.txt',
-    errf: str = 'ZipErr.txt'
+    errf: str = 'ZipErr.txt',
+    numFilesPerScan: int = 1
 ) -> Optional[str]:
     """Generate ZIP file from data.
     
@@ -359,7 +360,7 @@ def generateZip(
         preproc: Pre-processing threshold
         outf: Output file name
         errf: Error file name
-        
+        numFilesPerScan: Number of files per scan
     Returns:
         ZIP file name if successful, None otherwise
     """
@@ -373,6 +374,8 @@ def generateZip(
         cmd += f' -numFrameChunks {nchunks}'
     if preproc != -1:
         cmd += f' -preProcThresh {preproc}'
+    if numFilesPerScan > 1:
+        cmd += f' -numFilesPerScan {numFilesPerScan}'
         
     outf_path = f"{resFol}/output/{outf}"
     errf_path = f"{resFol}/output/{errf}"
@@ -797,11 +800,13 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
     outFStem = None
     if provide_input_all == 0:
         if convert_files == 1:
+            params = read_parameter_file(ps_fn)
+            NrFilesPerLayer = parse_int_param(params, 'NrFilesPerSweep')
             if len(data_fn) > 0:
                 logger.info("Generating combined MIDAS file from HDF and ps files.")
             else:
                 logger.info("Generating combined MIDAS file from GE and ps files.")
-            outFStem = generateZip(result_dir, ps_fn, layer_nr, dfn=data_fn, nchunks=n_chunks, preproc=preproc)
+            outFStem = generateZip(result_dir, ps_fn, layer_nr, dfn=data_fn, nchunks=n_chunks, preproc=preproc,numFilesPerScan=NrFilesPerLayer)
             if not outFStem:
                 raise RuntimeError("Failed to generate ZIP file")
         else:

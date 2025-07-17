@@ -155,7 +155,7 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
             
         return True
     
-    def generate_zip(resFol, pfn, layerNr, midas_path, dfn='', dloc='', nchunks=-1, preproc=-1, outf='ZipOut.txt', errf='ZipErr.txt'):
+    def generate_zip(resFol, pfn, layerNr, midas_path, dfn='', dloc='', nchunks=-1, preproc=-1, outf='ZipOut.txt', errf='ZipErr.txt',numFilesPerScan=1):
         """
         Generate a zip file for the given parameters.
         
@@ -170,6 +170,7 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
             preproc: Pre-processing threshold (optional)
             outf: Output file name (optional)
             errf: Error file name (optional)
+            numFilesPerScan: Number of files per scan (optional)
             
         Returns:
             The name of the generated zip file if successful
@@ -184,6 +185,8 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
             cmd += f" -numFrameChunks {str(nchunks)}"
         if preproc != -1:
             cmd += f" -preProcThresh {str(preproc)}"
+        if numFilesPerScan > 1:
+            cmd += f" -numFilesPerScan {str(numFilesPerScan)}"
             
         outf_path = f"{resFol}/output/{outf}"
         errf_path = f"{resFol}/output/{errf}"
@@ -252,7 +255,7 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
         
         # Generate zip or use existing file
         if ConvertFiles == 1:
-            outFStem = generate_zip(thisDir, baseNameParamFN, layerNr, midas_path, nchunks=nchunks, preproc=preproc)
+            outFStem = generate_zip(thisDir, baseNameParamFN, layerNr, midas_path, nchunks=nchunks, preproc=preproc,numFilesPerScan=nrFilesPerSweep)
             if not outFStem:
                 logger.error(f"Failed to generate zip for layer {layerNr}")
                 return f"Failed at generateZip for layer {layerNr}"
