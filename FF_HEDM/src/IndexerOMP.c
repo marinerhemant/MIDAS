@@ -1526,7 +1526,7 @@ void CalcIA(RealType **GrainMatches,int ngrains,RealType **AllGrainSpots,RealTyp
 	RealType x1, y1, z1, w1, x2, y2, z2, w2, gv1x, gv1y, gv1z, gv2x, gv2y, gv2z;
 	int nspots;
 	int rt = 0;
-	IAgrainspots = malloc(1000 * sizeof(* IAgrainspots));
+	IAgrainspots = malloc(5000 * sizeof(* IAgrainspots));
 	for ( g = 0 ; g < ngrains ; g++ ) {
 		nspots = GrainMatches[g][12];
 		for (r=0 ; r < nspots ; r++) {
@@ -1774,7 +1774,7 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc, int idNr, int t
 						MinInternalAngle = GrainMatchesT[0][15];
 						rownr = nTspots;
 						matchNr = 1;
-						for (i=0;i<17;i++) GrainMatches[0][i] = GrainMatchesT[0][i];
+						for (i=0;i<16;i++) GrainMatches[0][i] = GrainMatchesT[0][i];
 						for (r = 0 ; r < nTspots ; r++) for (c = 0 ; c < 17 ; c++) AllGrainSpots[r][c] = AllGrainSpotsT[r][c];
 						for (r = nTspots; r < nRowsOutput; r++) for (c=0;c<17;c++) AllGrainSpots[r][c] = 0;
 					}
@@ -1824,7 +1824,8 @@ int DoIndexing(int SpotIDs,struct TParams Params, int offsetLoc, int idNr, int t
 	BestMatches[SpotIDIdx][3] = bestnMatchesIsp;
 	BestMatches[SpotIDIdx][4] = fracMatches;
 	WriteBestMatchBin(GrainMatches, AllGrainSpots, rownr, Params.OutputFolder, offsetLoc);
-	printf("IDNr: %d, Total: %d, ID: %d, Confidence: %lf, nExp: %lf, nObs: %lf, nPlanes: %d, omega: %lf, time: %lfs.\n",idNr,totalIDs,SpotIDs,fracMatches,GrainMatches[0][12],GrainMatches[0][13],nPlaneNormals,omega,enTm);
+	printf("IDNr: %d, Total: %d, ID: %d, Confidence: %lf, nExp: %lf, nObs: %lf, nPlanes: %d, omega: %lf, time: %lfs.\n",
+		idNr,totalIDs,SpotIDs,fracMatches,GrainMatches[0][12],GrainMatches[0][13],nPlaneNormals,omega,enTm);
 	FreeMemMatrix( GrainMatches, MAX_N_MATCHES);
 	FreeMemMatrix( GrainMatchesT, MAX_N_MATCHES);
 	FreeMemMatrix( TheorSpots, nRowsPerGrain);
@@ -2090,6 +2091,7 @@ main(int argc, char *argv[])
 			int idRow = thisRowNr+startRowNr;
 			DoIndexing(thisSpotID,Params,idRow,thisRowNr,nSpotIDs);
 		}
+		free(SpotIDs);
 	} else{
 		// Read the orientations from the grains.csv file, then do forward simulation and match.
 		// Assuming we will only use one node!!!!! Also we need to write out the SpotsToIndex.csv file!!!
@@ -2101,13 +2103,15 @@ main(int argc, char *argv[])
 		RealType **orients;
 		RealType **positions;
 		RealType *radii;
+		int *IDsFiles;
+		IDsFiles = malloc(nGrains * sizeof(*IDsFiles));
 		orients = allocMatrix(nGrains,9);
 		positions = allocMatrix(nGrains,3);
 		radii = calloc(nGrains,sizeof(*radii));
 		for (i=0;i<8;i++) fgets(aline,4096,inpF);
 		while(fgets(aline,4096,inpF)!=NULL){
-			sscanf(aline,"%s %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %s %s %s %s %s %s %s %lf ",
-				dummy,
+			sscanf(aline,"%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %s %s %s %s %s %s %s %lf ",
+				&IDsFiles[grainNr],
 				&orients[grainNr][0], &orients[grainNr][1], &orients[grainNr][2],
 				&orients[grainNr][3], &orients[grainNr][4], &orients[grainNr][5],
 				&orients[grainNr][6], &orients[grainNr][7], &orients[grainNr][8],
@@ -2118,7 +2122,7 @@ main(int argc, char *argv[])
 		}
 		// We have all the info, get back the results.
 		int *spotsIndexed;
-		spotsIndexed = malloc(nGrains * sizeof(*spotsIndexed));
+		spotsIndexed = malloc(nGrains*2 * sizeof(*spotsIndexed));
 		if (spotsIndexed == NULL) {
 			printf("Memory error: could not allocate memory for spotsIndexed array. Memory full?\n");
 			exit(EXIT_FAILURE);
@@ -2126,18 +2130,26 @@ main(int argc, char *argv[])
 		# pragma omp parallel for num_threads(numProcs) schedule(dynamic)
 		for (grainNr = 0; grainNr < nGrains; grainNr++) {
 			// get the corresponding orient and position, feed to DoIndexingSeed
-			spotsIndexed[grainNr] = DoIndexingSeed(orients[grainNr], positions[grainNr], radii[grainNr], Params, grainNr, grainNr, nGrains);
+			spotsIndexed[grainNr*2+0] = DoIndexingSeed(orients[grainNr], positions[grainNr], radii[grainNr], Params, grainNr, grainNr, nGrains);
+			spotsIndexed[grainNr*2+1] = IDsFiles[grainNr];
 		}
-		// Write the SpotsToIndex.csv file
+		// Write the SpotsToIndex.csv file, this will have 2 IDS, first will be the newID, next is the original ID.
+		printf("Writing SpotsToIndex.csv file with %d grains.\n", nGrains);
+		fflush(stdout);
 		FILE *spotsFile = fopen("SpotsToIndex.csv", "w");
 		if (spotsFile == NULL) {
 			printf("Error: Could not open SpotsToIndex.csv for writing.\n");
 			exit(EXIT_FAILURE);
 		}
 		for (grainNr = 0; grainNr < nGrains; grainNr++) {
-			fprintf(spotsFile, "%d\n", spotsIndexed[grainNr]);
+			fprintf(spotsFile, "%d %d\n", spotsIndexed[grainNr+0], spotsIndexed[grainNr*2+1]);
 		}
 		fclose(spotsFile);
+		free(spotsIndexed);
+		FreeMemMatrix(orients, nGrains);
+		FreeMemMatrix(positions, nGrains);
+		free(radii);
+		free(IDsFiles);
 	}
 	double time = omp_get_wtime() - start_time;
 	printf("Finished, time elapsed: %lf seconds.\n",time);

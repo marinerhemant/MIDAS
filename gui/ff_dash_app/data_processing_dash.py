@@ -311,7 +311,10 @@ def load_dark_frame(params, data_file_path_str,
                      if dark_array.ndim == 2:
                          raw_dark_slice = dark_array[:]
                      elif dark_array.ndim == 3:
-                         raw_dark_slice = np.mean(dark_array[1:], axis=0)
+                         if dark_array.shape[0] > 1:
+                            raw_dark_slice = np.mean(dark_array[1:], axis=0)
+                         else:
+                            raw_dark_slice = dark_array[0, :, :]
                      if raw_dark_slice is not None:
                          dark_data_for_plot = raw_dark_slice
 
