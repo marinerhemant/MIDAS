@@ -247,7 +247,7 @@ if h5py.is_hdf5(InputFN):
         fNrOrig = fNr
         fNrLoc = int(fNr)
         for fileNrIter in range(numFilesPerScan):
-            fNr = str(fNrLoc+fileNrIter)
+            fNr = str(fNrLoc)
             if len(origInputFN) == 0:
                 InputFN = rawFolder + '/' + fStem + '_' + fNr.zfill(pad) + ext
             else:
