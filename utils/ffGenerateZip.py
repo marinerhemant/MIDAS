@@ -254,9 +254,11 @@ if h5py.is_hdf5(InputFN):
                 InputFN = origInputFN.replace(fNrOrig,str(fNr).zfill(pad))
             print(InputFN)
             stNr = nFrames*fileNrIter
+            if skipF > 0 and fileNrIter > 0:
+                FirstFrame = skipF
             for i in range(numChunks):
-                stFrame = i*numFrameChunks
-                enFrame = (i+1)*numFrameChunks
+                stFrame = i*numFrameChunks + FirstFrame
+                enFrame = (i+1)*numFrameChunks + FirstFrame
                 if enFrame > nFrames: enFrame=nFrames
                 print(f"StartFrame: {stFrame+stNr}, EndFrame: {enFrame+stNr-1}, nFrames: {nFrames}, nFramesAll: {nFramesAll}")
                 dataThis = hf2[dataLoc][stFrame:enFrame,:,:]
@@ -356,9 +358,11 @@ else:
             InputFN = origInputFN.replace(fNrOrig,str(fNr).zfill(pad))
         print(InputFN)
         stNr = nFrames*fileNrIter
+        if skipF > 0 and fileNrIter > 0:
+            FirstFrame = skipF
         for i in range(numChunks):
-            stFrame = i*numFrameChunks
-            enFrame = (i+1)*numFrameChunks
+            stFrame = i*numFrameChunks + FirstFrame
+            enFrame = (i+1)*numFrameChunks + FirstFrame
             if enFrame > nFrames: enFrame=nFrames
             print(f"StartFrame: {stFrame+stNr}, EndFrame: {enFrame+stNr}, nFrames: {nFrames}, nFramesAll: {nFramesAll}")
             delFrames = enFrame - stFrame
