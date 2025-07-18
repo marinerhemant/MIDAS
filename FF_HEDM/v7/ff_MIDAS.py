@@ -802,6 +802,7 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
         if convert_files == 1:
             params = read_parameter_file(ps_fn)
             NrFilesPerLayer = parse_int_param(params, 'NrFilesPerSweep')
+            print("NrFilesPerLayer:", NrFilesPerLayer)
             if len(data_fn) > 0:
                 logger.info("Generating combined MIDAS file from HDF and ps files.")
             else:
