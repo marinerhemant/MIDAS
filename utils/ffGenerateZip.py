@@ -228,6 +228,7 @@ if h5py.is_hdf5(InputFN):
     if numFrameChunks == -1:
         numFrameChunks = nFrames
     numChunks = int(ceil(nFrames/numFrameChunks))
+    print(numChunks)
     data = exc.create_dataset('data',shape=(nFramesAll,numZ,numY),dtype=np.uint16,chunks=(1,numZ,numY),compression=compressor)
     if numFilesPerScan == 1:
         for i in range(numChunks):
@@ -246,7 +247,7 @@ if h5py.is_hdf5(InputFN):
         fNrOrig = fNr
         fNrLoc = int(fNr)
         for fileNrIter in range(numFilesPerScan):
-            fNr = str(fNrLoc)
+            fNr = str(fNrLoc+fileNrIter)
             if len(origInputFN) == 0:
                 InputFN = rawFolder + '/' + fStem + '_' + fNr.zfill(pad) + ext
             else:

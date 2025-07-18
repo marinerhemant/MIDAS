@@ -381,6 +381,7 @@ def generateZip(
     errf_path = f"{resFol}/output/{errf}"
     
     try:
+        print(cmd)
         safely_run_command(cmd, resFol, outf_path, errf_path, task_name="ZIP generation")
         
         with open(outf_path, 'r') as f:
