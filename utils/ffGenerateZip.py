@@ -254,6 +254,7 @@ if h5py.is_hdf5(InputFN):
                 InputFN = origInputFN.replace(fNrOrig,str(fNr).zfill(pad))
             print(InputFN)
             stNr = nFrames*fileNrIter
+            FirstFrame = 0
             if skipF > 0 and fileNrIter > 0:
                 FirstFrame = skipF
             for i in range(numChunks):
@@ -358,6 +359,7 @@ else:
             InputFN = origInputFN.replace(fNrOrig,str(fNr).zfill(pad))
         print(InputFN)
         stNr = nFrames*fileNrIter
+        FirstFrame = 0
         if skipF > 0 and fileNrIter > 0:
             FirstFrame = skipF
         for i in range(numChunks):
