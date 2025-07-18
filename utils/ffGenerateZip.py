@@ -261,13 +261,13 @@ if h5py.is_hdf5(InputFN):
                 stFrame = i*numFrameChunks + FirstFrame
                 enFrame = (i+1)*numFrameChunks + FirstFrame
                 if enFrame > nFrames: enFrame=nFrames
-                print(f"StartFrame: {stFrame+stNr}, EndFrame: {enFrame+stNr-1}, nFrames: {nFrames}, nFramesAll: {nFramesAll}")
+                print(f"StartFrame: {stFrame+stNr-FirstFrame}, EndFrame: {enFrame+stNr-1-FirstFrame}, nFrames: {nFrames-FirstFrame}, nFramesAll: {nFramesAll}")
                 dataThis = hf2[dataLoc][stFrame:enFrame,:,:]
                 if preProc!=-1:
                     dataT = applyCorrectionNumba(dataThis,darkMean,darkpreProc,doStd)
                 else:
                     dataT = dataThis
-                data[stFrame+stNr:enFrame+stNr,:,:] = dataT
+                data[stFrame+stNr-FirstFrame:enFrame+stNr-FirstFrame,:,:] = dataT
             fNrLoc += 1
     searchStr = 'startOmeOverride'
     if searchStr in hf2:
@@ -366,14 +366,14 @@ else:
             stFrame = i*numFrameChunks + FirstFrame
             enFrame = (i+1)*numFrameChunks + FirstFrame
             if enFrame > nFrames: enFrame=nFrames
-            print(f"StartFrame: {stFrame+stNr}, EndFrame: {enFrame+stNr}, nFrames: {nFrames}, nFramesAll: {nFramesAll}")
+            print(f"StartFrame: {stFrame+stNr-FirstFrame}, EndFrame: {enFrame+stNr-1-FirstFrame}, nFrames: {nFrames-FirstFrame}, nFramesAll: {nFramesAll}")
             delFrames = enFrame - stFrame
             dataThis = np.fromfile(InputFN,dtype=np.uint16,count=delFrames*numPxY*numPxZ,offset=stFrame*numPxY*numPxZ*bytesPerPx+HZ).reshape((delFrames,numPxZ,numPxY))
             if preProc!=-1:
                 dataT = applyCorrectionNumba(dataThis,darkMean,darkpreProc,doStd)
             else:
                 dataT = dataThis
-            data[stFrame+stNr:enFrame+stNr,:,:] = dataT
+            data[stFrame+stNr-FirstFrame:enFrame+stNr-FirstFrame,:,:] = dataT
         fNrLoc += 1
 
 if preProc !=-1:
