@@ -76,7 +76,7 @@ add_ff_hedm_executable(CalibrantOMP SOURCES src/CalibrantOMP.c src/CalcPeakProfi
 add_ff_hedm_executable(FitSetup SOURCES src/FitSetupParamsAll.c)
 add_ff_hedm_executable(FitTiltBCLsdSample SOURCES src/FitTiltBCLsdSampleOmegaCorrection.c)
 add_ff_hedm_executable(ForwardSimulation SOURCES src/ForwardSimulation.c)
-add_ff_hedm_executable(ForwardSimulationCompressed SOURCES src/ForwardSimulationCompressed.c)
+add_ff_hedm_executable(ForwardSimulationCompressed SOURCES src/ForwardSimulationCompressed.c OMP)
 
 add_ff_hedm_executable(FitPosOrStrainsOMP SOURCES src/FitPosOrStrainsOMP.c src/CalcDiffractionSpots.c OMP)
 add_ff_hedm_executable(FitOrStrainsScanningOMP SOURCES src/FitOrStrainsScanningOMP.c src/CalcDiffractionSpots.c OMP)

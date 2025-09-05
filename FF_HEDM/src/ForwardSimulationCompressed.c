@@ -9,6 +9,11 @@
 //
 //  Created by Hemant Sharma on 2024/05/15.
 //  Full Multi-Scan forward simulation for FF.
+//  2025/09/05: 
+// 		1. Added relative intensity of peaks from a cif type of file. 
+//		2. Added the energy resolution imlementation/
+//		3. Bilinear interpolation for accurate intensity distribution.
+//		4. Openmp!!!
 //
 //
 
@@ -24,6 +29,7 @@
 #include <sys/stat.h>
 #include <zip.h> 
 #include "midas_paths.h"
+#include <omp.h>
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -31,6 +37,7 @@
 #define MAX_N_HKLS 5000
 #define EPS 0.00001
 #define MAX_NR_POINTS 20000000
+#define MAX_OUTPUT_INTENSITY 15000
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -329,8 +336,10 @@ void DisplacementInTheSpot(double a, double b, double c, double xi, double yi, d
 	double YC=YW, ZC=ZW;
 	double IK[3],NormIK; IK[0]=xi-XC; IK[1]=yi-YC; IK[2]=zi-ZC; NormIK=sqrt((IK[0]*IK[0])+(IK[1]*IK[1])+(IK[2]*IK[2]));
 	IK[0]=IK[0]/NormIK;IK[1]=IK[1]/NormIK;IK[2]=IK[2]/NormIK;
-	*Displ_y = YC - ((XC*IK[1])/(IK[0]));
-	*Displ_z = ZC - ((XC*IK[2])/(IK[0]));
+	if (fabs(IK[0]) > EPS) {
+		*Displ_y = YC - ((XC*IK[1])/(IK[0]));
+		*Displ_z = ZC - ((XC*IK[2])/(IK[0]));
+	}
 }
 
 static inline void
@@ -686,8 +695,8 @@ static inline int writeStrZip(char outstr[8192], char zarrfn[8192], zip_t *zippe
 static inline void
 usage(void)
 {
-	printf("Make diffraction spots: usage: ./ForwardSimulation "
-	"<ParameterFile>\n"
+	printf("Make diffraction spots: usage: ./ForwardSimulationCompressed "
+	"<ParameterFile> nCPUs\n"
 	"If you want to do a multi-scan simulation, there should be positions.csv file in the current folder.\n"
 	"Positions in micron.\n");
 }
@@ -695,7 +704,7 @@ usage(void)
 int
 main(int argc, char *argv[])
 {
-	if (argc != 2)
+	if (argc != 3)
 	{
 		usage();
 		return 0;
@@ -709,6 +718,7 @@ main(int argc, char *argv[])
 	char *ParamFN;
 	FILE *fileParam;
 	ParamFN = argv[1];
+	int nCPUs = atoi(argv[2]);
 	run_midas_binary("GetHKLList",ParamFN);
 	// char cmD[4096];
 	// sprintf(cmD,"~/opt/MIDAS/FF_HEDM/bin/GetHKLList %s",ParamFN);
@@ -723,10 +733,20 @@ main(int argc, char *argv[])
 	double LatC[6],Wavelength,Wedge=0, p0, p1, p2, RhoD,GaussWidth=1,PeakIntensity=2000;
 	int writeSpots, isBin=0;
 	int LoadNr = 0, UpdatedOrientations = 1, nfOutput = 0, geOutput=1;
-	double eRes = 0, minConfidence = 0;
+	double minConfidence = 0;
 	int nScans = 1;
 	double *positions, beamSize=-1;
+	double eResolution = 0.0; // Default to monochromatic (zero spread)
+	char IntensitiesFile[4096] = "";
+	double RingNrIntensity[500];
+	int num_lambda_samples = 1;
 	while (fgets(aline,4096,fileParam)!=NULL){
+		str="IntensitiesFile ";
+		LowNr = strncmp(aline,str,strlen(str));
+		if (LowNr == 0){
+			sscanf(aline,"%s %s",dummy,IntensitiesFile);
+			continue;
+		}
 		str="RingsToUse ";
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr == 0){
@@ -929,13 +949,26 @@ main(int argc, char *argv[])
 			sscanf(aline,"%s %d",dummy,&geOutput);
 			continue;
 		}
-		str="EResolution "; // todo
+		str="EResolution ";
 		LowNr = strncmp(aline,str,strlen(str));
 		if (LowNr == 0){
-			sscanf(aline,"%s %lf",dummy,&eRes);
+			sscanf(aline,"%s %lf %d",dummy,&eResolution,&num_lambda_samples);
 			continue;
 		}
 	}
+	if (OmegaStep == 0.0) {
+		fprintf(stderr, "Error: OmegaStep cannot be zero. Aborting.\n");
+		return 1;
+	}
+	if (GaussWidth <= 0.0) {
+		fprintf(stderr, "Error: GaussWidth must be a positive number. Aborting.\n");
+		return 1;
+	}
+	if (NrPixels <= 0) {
+		fprintf(stderr, "Error: NrPixels must be a positive number. Aborting.\n");
+		return 1;
+	}
+
 	int scanNr;
 	positions = malloc((nScans+1)*sizeof(*positions));
 	positions[0] = 0;
@@ -1291,6 +1324,63 @@ main(int argc, char *argv[])
 	//~ for (i=0;i<n_hkls;i++) printf("%lf ",hkls[i][3]); printf("\n");
 	printf("Number of planes: %d\n",n_hkls);
 
+	// If an IntensitiesFile is provided, read it and populate the RingNrIntensity array.
+	if (strcmp(IntensitiesFile, "") != 0) {
+		FILE *intensities_file = fopen(IntensitiesFile, "r");
+		if (intensities_file == NULL) {
+			fprintf(stderr, "Error: Could not open the specified IntensitiesFile: %s\n", IntensitiesFile);
+			return 1; // Exit if the file cannot be opened
+		}
+
+		// Initialize array with zeros
+		for (i = 0; i < 500; i++) {
+			RingNrIntensity[i] = 0.0;
+		}
+
+		char line_buffer[1024];
+		double h_val, k_val, l_val, spot_int, d_spacing;
+		int ring_nr;
+
+		// Read and discard the header line
+		if(fgets(line_buffer, sizeof(line_buffer), intensities_file) == NULL){
+            fprintf(stderr, "Error: Could not read header from IntensitiesFile: %s\n", IntensitiesFile);
+            fclose(intensities_file);
+            return 1;
+        }
+
+
+		// Read the file line by line
+		while (fgets(line_buffer, sizeof(line_buffer), intensities_file) != NULL) {
+			if (sscanf(line_buffer, "%lf %lf %lf %lf %lf %d", &h_val, &k_val, &l_val, &spot_int, &d_spacing, &ring_nr) == 6) {
+				if (ring_nr >= 0 && ring_nr < 500) {
+					// Sum intensities for hkls belonging to the same ring
+					RingNrIntensity[ring_nr] += spot_int;
+				}
+			}
+		}
+		fclose(intensities_file);
+
+		// Normalize the intensities so the maximum value is 1.0
+		double max_intensity = 0.0;
+		for (i = 0; i < 500; i++) {
+			if (RingNrIntensity[i] > max_intensity) {
+				max_intensity = RingNrIntensity[i];
+			}
+		}
+		if (max_intensity > 0) {
+			for (i = 0; i < 500; i++) {
+				RingNrIntensity[i] /= max_intensity;
+			}
+		}
+		printf("Successfully read and processed intensities from %s\n", IntensitiesFile);
+	} else {
+		// If no file is provided, default all ring intensities to 1.0
+		// so that it does not affect the final intensity calculation.
+		for (i = 0; i < 500; i++) {
+			RingNrIntensity[i] = 1.0;
+		}
+	}
+
 	// Allocate image array.
 	double maxInt;
 	double *ImageArr;
@@ -1379,6 +1469,10 @@ main(int argc, char *argv[])
 		if (scanNr > 0) memset(ImageArr,0,ImageArrSize*sizeof(*ImageArr));
 		yOffset = positions[scanNr];
 		printf("yPosition: %lf\n",yOffset);
+		#pragma omp parallel for num_threads(nCPUs) private(voxNr, i, j, LatCThis, EpsThis, OM, OMT, EulerThis, 
+			nTspots, spotNr, Info, OmeDiff, omeThis, newY, yTemp, zTemp, yThis, zThis, DisplY2, 
+			DisplZ2, yTrans, zTrans, idx, DisplY, DisplZ, yDet, zDet, etaThis, spotMatr, omeBin, 
+			yBin, zBin, imageBin, centIdx, idxNrY, idxNrZ, displ, currentPos)
 		for (voxNr=0;voxNr<nrPoints;voxNr++){
 			// First calculate new hkls
 			if (dataType < 2){
@@ -1398,13 +1492,6 @@ main(int argc, char *argv[])
 					OM[i][j] = InputInfo[voxNr][i*3+j];
 				}
 			}
-			// for (i=0;i<3;i++){
-			// 	for (j=0;j<3;j++){
-			// 		printf("%lf ",OM[i][j]);
-			// 	}
-			// 	printf("\n");
-			// }
-			// printf("\n");
 			OrientMat2Euler(OM,EulerThis);
 			double OMT[9];
 			Euler2OrientMat(EulerThis,OMT);
@@ -1417,97 +1504,143 @@ main(int argc, char *argv[])
 			CalcDiffrSpots_Furnace(hklsOut,OM,Lsd,Wavelength,TheorSpots,&nTspots);
 			// For each spot, calculate displacement, calculate tilt and wedge effect.
 			for (spotNr=0;spotNr<nTspots;spotNr++){
-				// Calculate Tilt Effect
-				for (i=0;i<5;i++) Info[i] = TheorSpots[spotNr][i]; // Info has: R,eta,ome,theta,ringnr
-				OmeDiff = CorrectWedge(Info[1],Info[3],Wavelength,Wedge);
-				omeThis = Info[2] - OmeDiff;
-				if ((omeThis >= omegaLarge) || (omeThis <= omegaSmall)) continue;
-				// Get diplacements due to spot position
-				if (nScans>1 || beamSize>0){
-					newY = InputInfo[voxNr][9] * sin(deg2rad*omeThis) + InputInfo[voxNr][10] * cos(deg2rad*omeThis);
-					if (fabs(newY - yOffset) > beamSize/2){
-						continue;
+				double sub_peak_intensity = PeakIntensity / num_lambda_samples;
+				for (int lambda_i = 0; lambda_i < num_lambda_samples; lambda_i++) {
+					// Calculate the specific wavelength for this sample
+					double sample_lambda = Wavelength;
+					if (eResolution > 0 && num_lambda_samples > 1) {
+						double delta_lambda = Wavelength * eResolution;
+						sample_lambda = (Wavelength - delta_lambda / 2.0) + lambda_i * (delta_lambda / (num_lambda_samples - 1));
+					}
+					// Recalculate theta for this new wavelength
+					// We use the original theta and wavelength to find the invariant d-spacing first.
+					double original_theta_rad = deg2rad * TheorSpots[spotNr][3];
+					double d_spacing = Wavelength / (2 * sin(original_theta_rad));
+					double sin_sample_theta = sample_lambda / (2 * d_spacing);
+					// If the sampled wavelength is too far off, the reflection is impossible. Skip it.
+					if (sin_sample_theta > 1.0 || sin_sample_theta < -1.0) {
+						continue; 
+					}
+					double sample_theta = asind(sin_sample_theta);
+					// Recalculate all parameters that depend on theta and create a temporary spot
+					double sample_ring_radius = Lsd * tan(2 * deg2rad * sample_theta);
+					double TempInfo[5];
+					for(i=0; i<5; i++) TempInfo[i] = TheorSpots[spotNr][i];
+					TempInfo[0] = sample_ring_radius;
+					TempInfo[3] = sample_theta;
+					// Run the original simulation logic for this single sub-spot
+					OmeDiff = CorrectWedge(TempInfo[1], TempInfo[3], sample_lambda, Wedge);
+					omeThis = TempInfo[2] - OmeDiff;
+					if ((omeThis >= omegaLarge) || (omeThis <= omegaSmall)) continue;
+					if (nScans>1 || beamSize>0){
+						newY = InputInfo[voxNr][9] * sin(deg2rad*omeThis) + InputInfo[voxNr][10] * cos(deg2rad*omeThis);
+						if (fabs(newY - yOffset) > beamSize/2){
+							continue;
+						}
+					}
+					yTemp = -TempInfo[0]*sin(TempInfo[1]*deg2rad);
+					zTemp =  TempInfo[0]*cos(TempInfo[1]*deg2rad);
+					DisplacementInTheSpot(InputInfo[voxNr][9],InputInfo[voxNr][10],
+						InputInfo[voxNr][11],Lsd,yTemp,zTemp,omeThis,&DisplY2,&DisplZ2);
+					yThis = yTemp+DisplY2 + yOffset;
+					zThis = zTemp+DisplZ2;
+					yTrans = (int) (-yThis/px + yBC);
+					zTrans = (int) ( zThis/px + zBC);
+					idx = yTrans + NrPixels*zTrans;
+					if (idx < 1 || idx >= NrPixels*NrPixels) continue;
+					DisplY = yDispl[idx];
+					DisplZ = zDispl[idx];
+					if (DisplY == -32100){
+						if (idx-NrPixels < 0 || idx+NrPixels > NrPixels*NrPixels-1) continue;
+						if (yDispl[idx-1] != -32100.0)      { DisplY = yDispl[idx-1]; DisplZ = zDispl[idx-1]; }
+						else if(yDispl[idx+1] != -32100.0) { DisplY = yDispl[idx+1]; DisplZ = zDispl[idx+1]; }
+						else if(yDispl[idx-NrPixels] != -32100.0){ DisplY = yDispl[idx-NrPixels]; DisplZ = zDispl[idx-NrPixels];}
+						else if(yDispl[idx+NrPixels] != -32100.0){ DisplY = yDispl[idx+NrPixels]; DisplZ = zDispl[idx+NrPixels];}
+						else { continue; }
+					}
+					yTemp = yThis + DisplY;
+					zTemp = zThis + DisplZ;
+					yDet = yBC - yTemp/px + 1;
+					zDet = zBC + zTemp/px + 1.5;
+					if (yDet < 0 || yDet >= NrPixels || zDet < 0 || zDet >= NrPixels) continue;
+					// Map the sub-spot to the detector and add its fractional intensity
+					// ========================================================================
+					// NEW: Bilinear Interpolation for Sub-Pixel Accuracy
+					// ========================================================================
+
+					// 1. Get the base integer pixel (top-left) and the fractional parts
+					size_t y_base = floor(yDet);
+					size_t z_base = floor(zDet);
+					double y_frac = yDet - y_base;
+					double z_frac = zDet - z_base;
+
+					// 2. Calculate the four pixel weights based on area
+					double w_tl = (1.0 - y_frac) * (1.0 - z_frac); // Top-Left
+					double w_tr = y_frac * (1.0 - z_frac);         // Top-Right
+					double w_bl = (1.0 - y_frac) * z_frac;         // Bottom-Left
+					double w_br = y_frac * z_frac;                 // Bottom-Right
+
+					// Create an array of the four neighboring pixel coordinates and their weights
+					size_t y_coords[4] = {y_base, y_base + 1, y_base, y_base + 1};
+					size_t z_coords[4] = {z_base, z_base, z_base + 1, z_base + 1};
+					double weights[4]  = {w_tl, w_tr, w_bl, w_br};
+
+					omeBin = (size_t)floor(-(OmegaStart-omeThis)/OmegaStep);
+
+					// 3. Loop through the 4 contributing pixels
+					for (int pixel_i = 0; pixel_i < 4; ++pixel_i) {
+						size_t current_y = y_coords[pixel_i];
+						size_t current_z = z_coords[pixel_i];
+						double current_weight = weights[pixel_i];
+
+						// Skip if the pixel is outside the detector bounds or has no weight
+						if (current_weight < EPS || current_y >= NrPixels || current_z >= NrPixels) {
+							continue;
+						}
+
+						// Calculate the central index for this pixel's Gaussian blur
+						imageBin = current_z * NrPixels + current_y;
+						centIdx = omeBin * NrPixels * NrPixels + imageBin;
+
+						// Apply the Gaussian blur, but scale the intensity by this pixel's weight
+						for (idxNrY=-4*ceil(GaussWidth);idxNrY<=4*ceil(GaussWidth);idxNrY++){
+							if ((int)current_y+idxNrY < 0 || (int)current_y+idxNrY >= NrPixels) continue;
+							for (idxNrZ=-4*ceil(GaussWidth);idxNrZ<=4*ceil(GaussWidth);idxNrZ++){
+								if ((int)current_z+idxNrZ < 0 || (int)current_z+idxNrZ >= NrPixels) continue;
+								
+								displ = idxNrY*NrPixels + idxNrZ;
+								currentPos = (long long int)(centIdx + displ);
+								if (currentPos < 0 || currentPos >= ImageArrSize) continue;
+								
+								int currentRingNr = (int)TempInfo[4];
+								double relativeIntensity = 1.0;
+								if (currentRingNr >= 0 && currentRingNr < 500) {
+									relativeIntensity = RingNrIntensity[currentRingNr];
+								}
+								
+								// The final intensity is scaled by the bilinear weight
+								double intensity_to_add = current_weight * (GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask] * sub_peak_intensity * relativeIntensity);
+
+								#pragma omp atomic
+								ImageArr[currentPos] += intensity_to_add;
+							}
+						}
 					}
 				}
-				yTemp = -Info[0]*sin(Info[1]*deg2rad);
-				zTemp =  Info[0]*cos(Info[1]*deg2rad);
-				DisplacementInTheSpot(InputInfo[voxNr][9],InputInfo[voxNr][10],
-					InputInfo[voxNr][11],Lsd,yTemp,zTemp,omeThis,&DisplY2,&DisplZ2);
-				yThis = yTemp+DisplY2 + yOffset; // These are displaced for grain position, not tilted.
-				zThis = zTemp+DisplZ2; // These should be written to SpotMatrix.csv
-				// Get tilt displacements
-				yTrans = (int) (-yThis/px + yBC);
-				zTrans = (int) ( zThis/px + zBC);
-				idx = yTrans + NrPixels*zTrans;
-				if (idx < 1) continue;
-				if (idx >= NrPixels*NrPixels) continue;
-				DisplY = yDispl[idx];
-				DisplZ = zDispl[idx];
-				if (DisplY == -32100){ // Was not set, check neighbor
-					if (idx-NrPixels < 0) continue;
-					if (idx+NrPixels > NrPixels*NrPixels-1) continue;
-					if (yDispl[idx-1] != -32100.0){
-						DisplY = yDispl[idx-1];
-						DisplZ = zDispl[idx-1];
-					}else if(yDispl[idx+1] != -32100.0){
-						DisplY = yDispl[idx+1];
-						DisplZ = zDispl[idx+1];
-					}else if(yDispl[idx-NrPixels] != -32100.0){
-						DisplY = yDispl[idx-NrPixels];
-						DisplZ = zDispl[idx-NrPixels];
-					}else if(yDispl[idx+NrPixels] != -32100.0){
-						DisplY = yDispl[idx+NrPixels];
-						DisplZ = zDispl[idx+NrPixels];
-					}else{
-						continue;
-					}
-				}
-				yTemp = yThis + DisplY;
-				zTemp = zThis + DisplZ;
-				yDet = yBC - yTemp/px + 1;
-				zDet = zBC + zTemp/px + 1.5;
-				if (yDet < 0 || yDet >= NrPixels) continue;
-				if (zDet < 0 || zDet >= NrPixels) continue;
-				Info[3] = 0.5*atand(sqrt(yThis*yThis+zThis*zThis)/Lsd); // New Theta
-				CalcEtaAngle(yThis,zThis,&etaThis);
-				// Save to SpotMatrix.csv
-				spotMatr[0]  = (double) voxNr + 1;
-				spotMatr[1]  = (double) (n_hkls*2*voxNr + spotNr + 1);
-				spotMatr[2]  = Info[2];
-				spotMatr[3]  = yDet;
-				spotMatr[4]  = zDet;
-				spotMatr[5]  = omeThis;
-				spotMatr[6]  = etaThis;
-				spotMatr[7]  = Info[4];
-				spotMatr[8]  = yThis;
-				spotMatr[9]  = zThis;
-				spotMatr[10] = Info[3]; // Theta
-				spotMatr[11] = 0.0;
-				// Map yDet,zDet,omeThis to frames.
-				omeBin = (size_t)floor(-(OmegaStart-omeThis)/OmegaStep);
-				if (writeSpots ==1)	
-					fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%d\n",
-						(int)spotMatr[0],(int)spotMatr[1],spotMatr[2],spotMatr[3],spotMatr[4],spotMatr[5],
-						spotMatr[6],(int)spotMatr[7],spotMatr[8],spotMatr[9],spotMatr[10],spotMatr[11],scanNr,sqrt(yThis*yThis+zThis*zThis),omeBin);
-				// printf("%zu %lf %lf %lf\n",omeBin,OmegaStart,omeThis,OmegaStep);
-				omeBin *= NrPixels;
-				omeBin *= NrPixels;
-				/////////////// Change this to exact position, not rounded off....
-				yBin = (size_t)yDet;
-				zBin = (size_t)zDet;
-				imageBin = zBin*NrPixels + yBin; // We do a transpose here to generate the correctly oriented GE files.
-				centIdx = omeBin + imageBin;
-				for (idxNrY=-4*ceil(GaussWidth);idxNrY<=4*ceil(GaussWidth);idxNrY++){
-					if ((int)yBin+idxNrY < 0 || (int)yBin+idxNrY >= NrPixels) continue;
-					for (idxNrZ=-4*ceil(GaussWidth);idxNrZ<=4*ceil(GaussWidth);idxNrZ++){
-						if ((int)zBin+idxNrZ < 0 || (int)zBin+idxNrZ >= NrPixels) continue;
-						displ = idxNrY*NrPixels + idxNrZ;
-						currentPos = (long long int)( (long long int) centIdx + (long long int) displ);
-						if (currentPos < 0 || currentPos >= ImageArrSize) continue;
-						ImageArr[currentPos] += (double) (GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask] * PeakIntensity);
-						if (maxInt < ImageArr[currentPos]) maxInt = ImageArr[currentPos];
-					}
-				}
+                if (writeSpots == 1) {
+                    #pragma omp critical
+                    {
+                        fprintf(spotsfile,"%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%d\n",
+                            (int)spotMatr[0],(int)spotMatr[1],spotMatr[2],spotMatr[3],spotMatr[4],spotMatr[5],
+                            spotMatr[6],(int)spotMatr[7],spotMatr[8],spotMatr[9],spotMatr[10],spotMatr[11],scanNr,sqrt(yThis*yThis+zThis*zThis),omeBin);
+                    }
+                }
+			}
+		}
+		maxInt = 0.0;
+		for(size_t i = 0; i < ImageArrSize; ++i) {
+			if (ImageArr[i] > maxInt) {
+				maxInt = ImageArr[i];
 			}
 		}
 		printf("Maximum intensity: %lf, scanNr: %d\n",maxInt,scanNr);
@@ -1573,7 +1706,11 @@ main(int argc, char *argv[])
 			for (frameNr=0;frameNr<nFrames;frameNr++){
 				int locCounter=0;
 				for (i=0;i<NrPixels*NrPixels;i++){
-					outArr[i] = (uint16_t) (ImageArr[loc]*15000/maxInt);
+					if (maxInt > 0) {
+						outArr[i] = (uint16_t) (ImageArr[loc] * MAX_OUTPUT_INTENSITY / maxInt);
+					} else {
+						outArr[i] = 0; // If maxInt is 0, the whole image is black.
+					}
 					if (outArr[i]>0) locCounter++;
 					loc++;
 				}
@@ -1598,9 +1735,23 @@ main(int argc, char *argv[])
 				}
 			}
 			int zc = zip_close(zipper);
+			free(outArr);
 		}
 	}
 	fclose(spotsfile);
+	// =========================================================================
+	// FINAL MEMORY CLEANUP
+	// =========================================================================
+	printf("Cleaning up allocated memory...\n");
+	FreeMemMatrix(InputInfo, MAX_NR_POINTS);
+	FreeMemMatrix(TheorSpots, nRowsPerGrain);
+	FreeMemMatrix(hklsOut, n_hkls);
+	FreeMemMatrix(hklsTemp, n_hkls);
+	free(positions);
+	free(ImageArr);
+	free(yDispl);
+	free(zDispl);
+	free(GaussMask);
 	end = clock();
 	diftotal = ((double)(end-start0))/CLOCKS_PER_SEC;
 	printf("Time elapsed in making diffraction spots: %f [s]\n",diftotal);
