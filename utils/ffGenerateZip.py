@@ -160,7 +160,7 @@ print(f'Dark: {darkFN}')
 
 @jit(nopython=True)
 def applyCorrectionNumba(img,dark,darkpreproc,doStd):
-    result = np.empty(img.shape,dtype=np.uint16)
+    result = np.empty(img.shape,dtype=img.dtype)
     for i in range(img.shape[0]):
         for j in range(img.shape[1]):
             for k in range(img.shape[2]):
@@ -260,6 +260,8 @@ if h5py.is_hdf5(InputFN):
             for i in range(numChunks):
                 stFrame = i*numFrameChunks + FirstFrame
                 enFrame = (i+1)*numFrameChunks + FirstFrame
+                if stFrame > nFrames:
+                    continue
                 if enFrame > nFrames: enFrame=nFrames
                 print(f"StartFrame: {stFrame+stNr-FirstFrame}, EndFrame: {enFrame+stNr-1-FirstFrame}, nFrames: {nFrames-FirstFrame}, nFramesAll: {nFramesAll}")
                 dataThis = hf2[dataLoc][stFrame:enFrame,:,:]
@@ -306,15 +308,14 @@ elif 'zip' in InputFN[-5:]:
     bright = exc.create_dataset('bright',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
 
 elif 'tif' in InputFN[-5:]:
-    print("Input are tiff files in individual frames. Everything is in a single folder!!! TIFF files are assumed to be 32 bit integer format. No dark or bright files are used.")
-    nFramesAll = numFilesPerScan
-    darkData = np.zeros((10,numPxZ,numPxY),dtype=np.uint16)
-    dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
-    bright = exc.create_dataset('bright',shape=darkData.shape,dtype=np.uint16,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
-    darkMean = np.mean(darkData[skipF:,:,:],axis=0).astype(np.uint16)
+    print("Input are tiff files in individual frames. Everything is in a single folder!!! TIFF files are assumed to be 32 bit unsigned integer format. No dark or bright files are used.")
+    darkData = np.zeros((10,numPxZ,numPxY),dtype=np.uint32)
+    dark = exc.create_dataset('dark',shape=darkData.shape,dtype=np.uint32,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
+    bright = exc.create_dataset('bright',shape=darkData.shape,dtype=np.uint32,chunks=(1,darkData.shape[1],darkData.shape[2]),compression=compressor)
+    darkMean = np.mean(darkData[skipF:,:,:],axis=0).astype(np.uint32)
     if preProc!=-1:
         darkpreProc = darkMean + preProc
-    data = exc.create_dataset('data',shape=(nFramesAll,numPxZ,numPxY),dtype=np.uint16,chunks=(1,numPxZ,numPxY),compression=compressor)
+    data = exc.create_dataset('data',shape=(numFilesPerScan,numPxZ,numPxY),dtype=np.uint32,chunks=(1,numPxZ,numPxY),compression=compressor)
     fNrOrig = re.search(r'\d{% s}' % pad, InputFN).group(0)
     for frameNr in range(numFilesPerScan):
         fNr = frameNr + fNrOrig
@@ -322,7 +323,7 @@ elif 'tif' in InputFN[-5:]:
         # tiff data can be read as binary, skipping the 8 byte header.
         dataThis = np.fromfile(InputFN,offset=8,dtype=np.int32,count=numPxY*numPxZ).reshape((numPxZ,numPxY))
         if preProc!=-1:
-            dataT = applyCorrectionNumba(dataThis,darkMean,darkpreProc,doStd)
+            dataT = applyCorrectionNumba(dataThis,darkMean,darkpreProc,doStd) # This will work.
         else:
             dataT = dataThis
         data[frameNr,:,:] = dataT
