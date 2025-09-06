@@ -1469,10 +1469,7 @@ main(int argc, char *argv[])
 		if (scanNr > 0) memset(ImageArr,0,ImageArrSize*sizeof(*ImageArr));
 		yOffset = positions[scanNr];
 		printf("yPosition: %lf\n",yOffset);
-		#pragma omp parallel for num_threads(nCPUs) private(voxNr, i, j, LatCThis, EpsThis, OM, OMT, EulerThis, 
-			nTspots, spotNr, Info, OmeDiff, omeThis, newY, yTemp, zTemp, yThis, zThis, DisplY2, 
-			DisplZ2, yTrans, zTrans, idx, DisplY, DisplZ, yDet, zDet, etaThis, spotMatr, omeBin, 
-			yBin, zBin, imageBin, centIdx, idxNrY, idxNrZ, displ, currentPos)
+		#pragma omp parallel for num_threads(nCPUs) private(voxNr, i, j, LatCThis, EpsThis, OM, EulerThis, nTspots, spotNr, Info, OmeDiff, omeThis, newY, yTemp, zTemp, yThis, zThis, DisplY2, DisplZ2, yTrans, zTrans, idx, DisplY, DisplZ, yDet, zDet, etaThis, spotMatr, omeBin, yBin, zBin, imageBin, centIdx, idxNrY, idxNrZ, displ, currentPos)
 		for (voxNr=0;voxNr<nrPoints;voxNr++){
 			// First calculate new hkls
 			if (dataType < 2){
