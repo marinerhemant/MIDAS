@@ -693,7 +693,7 @@ double FitErrorsOrientStrains(double x[9],int nSpotsComp,double spotsYZO[nSpotsC
 	double **SpotsYZOGCorr;SpotsYZOGCorr=allocMatrix(nrMatchedIndexer,4);
 	double DisplY,DisplZ,ys,zs,Omega,Radius,Theta,lenK,yt,zt;
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
-		DisplacementInTheSpot(x[0],x[1],x[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
+		DisplacementInTheSpot(Pos[0],Pos[1],Pos[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
 		yt = spotsYZO[nrSp][5]-DisplY;
 		zt = spotsYZO[nrSp][6]-DisplZ;
 		CorrectForOme(yt,zt,Lsd,spotsYZO[nrSp][4],Wavelength,wedge,&ys,&zs,&Omega);
@@ -771,7 +771,7 @@ double FitErrorsStrains(double x[6],int nSpotsComp,double spotsYZOIn[nSpotsComp]
 	double **SpotsYZOGCorr;SpotsYZOGCorr=allocMatrix(nrMatchedIndexer,3);
 	double DisplY,DisplZ,ys,zs,Omega,Radius,Theta,lenK, yt, zt;
 	for (nrSp=0;nrSp<nrMatchedIndexer;nrSp++){
-		DisplacementInTheSpot(x[0],x[1],x[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
+		DisplacementInTheSpot(Pos[0],Pos[1],Pos[2],Lsd,spotsYZO[nrSp][5],spotsYZO[nrSp][6],spotsYZO[nrSp][4],wedge,chi,&DisplY,&DisplZ);
 		yt = spotsYZO[nrSp][5]-DisplY;
 		zt = spotsYZO[nrSp][6]-DisplZ;
 		CorrectForOme(yt,zt,Lsd,spotsYZO[nrSp][4],Wavelength,wedge,&ys,&zs,&Omega);
