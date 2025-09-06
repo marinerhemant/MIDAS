@@ -54,7 +54,7 @@
 #define CALC_NORM_3(x,y,z) sqrt((x)*(x) + (y)*(y) + (z)*(z))
 #define CALC_NORM_2(x,y) sqrt((x)*(x) + (y)*(y))
 
-// Default to uint16_t for pixel values, but this can be changed dynamically
+// This typedef is now only used for legacy functions that are no longer in the main data path.
 typedef uint16_t pixelvalue;
 
 // Add a type enum to support dynamic pixel value typing
@@ -62,7 +62,8 @@ typedef enum {
     PX_TYPE_UINT16 = 0,
     PX_TYPE_INT32 = 1,
     PX_TYPE_FLOAT = 2,
-    PX_TYPE_DOUBLE = 3
+    PX_TYPE_DOUBLE = 3,
+    PX_TYPE_UINT32 = 4
 } PixelValueType;
 
 // Error handling codes
@@ -155,6 +156,28 @@ typedef struct {
     double *Etas;
 } FunctionData;
 
+// Structure to hold all temporary buffers for a single thread
+typedef struct {
+    double *imgCorrBC;
+    int *boolImage;
+    int *connectedComponents;
+    int *positions;
+    int *positionTrackers;
+    int *usefulPixels;
+    int *maximaPositions;
+    double *maximaValues;
+    double *z;
+    double *integratedIntensity;
+    double *imax;
+    double *yCenArray;
+    double *zCenArray;
+    double *rads;
+    double *etas;
+    int *nrPx;
+    double *otherInfo;
+} ThreadWorkspace;
+
+
 // Global variables
 double zDiffThresh;
 
@@ -172,13 +195,14 @@ long double diffTime(struct timespec start, struct timespec end)
     return (diff_sec * 1e6) + (diff_nsec / 1000.0);
 }
 
+
 /**
- * Allocate a 2D matrix of pixel values
+ * Allocate a 2D matrix of doubles
  */
 static inline
-pixelvalue** allocMatrixPX(int nrows, int ncols)
+double** allocMatrix(int nrows, int ncols)
 {
-    pixelvalue** arr;
+    double** arr;
     int i;
     arr = malloc(nrows * sizeof(*arr));
     if (arr == NULL) {
@@ -199,12 +223,13 @@ pixelvalue** allocMatrixPX(int nrows, int ncols)
 }
 
 /**
- * Free a 2D matrix of pixel values
+ * Free a 2D matrix of doubles
  */
 static inline
-void freeMatrixPx(pixelvalue **mat, int nrows)
+void freeMatrix(double **mat, int nrows)
 {
-    if (mat == NULL) return;
+    if (mat == NULL) 
+        return;
     
     for (int r = 0; r < nrows; r++) {
         if (mat[r] != NULL) {
@@ -214,6 +239,7 @@ void freeMatrixPx(pixelvalue **mat, int nrows)
     free(mat);
 }
 
+
 /**
  * Calculate eta angle from y, z coordinates
  */
@@ -221,8 +247,10 @@ static inline
 double calcEtaAngle(double y, double z)
 {
     double alpha = RAD2DEG * acos(z / sqrt(y*y + z*z));
-    if (y > 0) alpha = -alpha;
-    return alpha;
+    if (y > 0) 
+        return -alpha;
+    else 
+        return alpha;
 }
 
 /**
@@ -269,49 +297,8 @@ int** allocMatrixInt(int nrows, int ncols)
 static inline
 void freeMatrixInt(int **mat, int nrows)
 {
-    if (mat == NULL) return;
-    
-    for (int r = 0; r < nrows; r++) {
-        if (mat[r] != NULL) {
-            free(mat[r]);
-        }
-    }
-    free(mat);
-}
-
-/**
- * Allocate a 2D matrix of doubles
- */
-static inline
-double** allocMatrix(int nrows, int ncols)
-{
-    double** arr;
-    int i;
-    arr = malloc(nrows * sizeof(*arr));
-    if (arr == NULL) {
-        return NULL;
-    }
-    for (i = 0; i < nrows; i++) {
-        arr[i] = malloc(ncols * sizeof(*arr[i]));
-        if (arr[i] == NULL) {
-            // Free already allocated memory
-            for (int j = 0; j < i; j++) {
-                free(arr[j]);
-            }
-            free(arr);
-            return NULL;
-        }
-    }
-    return arr;
-}
-
-/**
- * Free a 2D matrix of doubles
- */
-static inline
-void freeMatrix(double **mat, int nrows)
-{
-    if (mat == NULL) return;
+    if (mat == NULL) 
+        return;
     
     for (int r = 0; r < nrows; r++) {
         if (mat[r] != NULL) {
@@ -330,7 +317,7 @@ static inline double acosd(double x) { return RAD2DEG * acos(x); }
 static inline double atand(double x) { return RAD2DEG * atan(x); }
 
 /**
- * Transpose a square matrix
+ * Transpose a square matrix of doubles
  */
 static inline void transposeMatrix(double *x, int n, double *y)
 {
@@ -405,6 +392,69 @@ static void errorCheck(int test, const char *message, ...)
     }
 }
 
+// Frees all memory in a thread's workspace
+void freeWorkspace(ThreadWorkspace *ws) {
+    if (ws) {
+        free(ws->imgCorrBC);
+        free(ws->boolImage);
+        free(ws->connectedComponents);
+        free(ws->positions);
+        free(ws->positionTrackers);
+        free(ws->usefulPixels);
+        free(ws->maximaPositions);
+        free(ws->maximaValues);
+        free(ws->z);
+        free(ws->integratedIntensity);
+        free(ws->imax);
+        free(ws->yCenArray);
+        free(ws->zCenArray);
+        free(ws->rads);
+        free(ws->etas);
+        free(ws->nrPx);
+        free(ws->otherInfo);
+    }
+}
+
+// Allocates all memory needed by a single thread's workspace.
+// Returns SUCCESS or an error code.
+ErrorCode allocateWorkspace(ThreadWorkspace *ws, const ImageMetadata *metadata, const AnalysisParams *params) {
+    size_t nrPixelsSq = (size_t)metadata->NrPixels * metadata->NrPixels;
+    
+    ws->imgCorrBC = calloc(nrPixelsSq, sizeof(double));
+    ws->boolImage = calloc(nrPixelsSq, sizeof(int));
+    ws->connectedComponents = calloc(nrPixelsSq, sizeof(int));
+    
+    // Use the constants defined in the new code
+    ws->positions = calloc((size_t)MAX_OVERLAPS_PER_IMAGE * metadata->NrPixels * 4, sizeof(int));
+    ws->positionTrackers = calloc(MAX_OVERLAPS_PER_IMAGE, sizeof(int));
+    
+    ws->usefulPixels = calloc(metadata->NrPixels * 20, sizeof(int));
+    ws->maximaPositions = calloc(metadata->NrPixels * 20, sizeof(int));
+    ws->maximaValues = calloc(metadata->NrPixels * 10, sizeof(double));
+    ws->z = calloc(metadata->NrPixels * 10, sizeof(double));
+    
+    ws->integratedIntensity = calloc(params->maxNPeaks * 2, sizeof(double));
+    ws->imax = calloc(params->maxNPeaks * 2, sizeof(double));
+    ws->yCenArray = calloc(params->maxNPeaks * 2, sizeof(double));
+    ws->zCenArray = calloc(params->maxNPeaks * 2, sizeof(double));
+    ws->rads = calloc(params->maxNPeaks * 2, sizeof(double));
+    ws->etas = calloc(params->maxNPeaks * 2, sizeof(double));
+    ws->nrPx = calloc(params->maxNPeaks * 2, sizeof(int));
+    ws->otherInfo = calloc(params->maxNPeaks * 10, sizeof(double));
+    
+    // Check if any allocation failed
+    if (!ws->imgCorrBC || !ws->boolImage || !ws->connectedComponents || !ws->positions ||
+        !ws->positionTrackers || !ws->usefulPixels || !ws->maximaPositions || !ws->maximaValues ||
+        !ws->z || !ws->integratedIntensity || !ws->imax || !ws->yCenArray || !ws->zCenArray ||
+        !ws->rads || !ws->etas || !ws->nrPx || !ws->otherInfo) {
+        // Free any successful allocations here before returning
+        freeWorkspace(ws);
+        return ERROR_MEMORY_ALLOCATION;
+    }
+    
+    return SUCCESS;
+}
+
 /*
  * CONNECTED COMPONENTS ANALYSIS
  */
@@ -428,7 +478,8 @@ static inline void depthFirstSearchIterative(
     } StackNode;
     
     StackNode *stack = malloc(nrPixels * nrPixels * sizeof(StackNode));
-    if (!stack) return;
+    if (!stack) 
+        return;
     
     int stackSize = 0;
     
@@ -443,9 +494,11 @@ static inline void depthFirstSearchIterative(
         int x = stack[stackSize].x;
         int y = stack[stackSize].y;
         
-        if (x < 0 || x >= nrPixels || y < 0 || y >= nrPixels) continue;
-        if (connectedComponents[x*nrPixels+y] != 0 || boolImage[x*nrPixels+y] == 0) continue;
-        
+        if (x < 0 || x >= nrPixels || y < 0 || y >= nrPixels) 
+            continue;
+        if (connectedComponents[x*nrPixels+y] != 0 || boolImage[x*nrPixels+y] == 0) 
+            continue;
+
         connectedComponents[x*nrPixels+y] = label;
         positions[label*nrPixels*4+positionTrackers[label]] = (x*nrPixels) + y;
         positionTrackers[label]++;
@@ -832,18 +885,18 @@ int fit2DPeaks(
 }
 
 /**
- * Apply image transformations (flip/transpose)
+ * Apply image transformations (flip/transpose) on double data
  */
-static inline void applyImageTransformations(
+static inline void applyImageTransformations_d(
     int nrTransformOptions, int transformOptions[10], 
-    pixelvalue *image, int nrPixels)
+    double *image, int nrPixels)
 {
-    pixelvalue **imageTemp1 = allocMatrixPX(nrPixels, nrPixels);
-    pixelvalue **imageTemp2 = allocMatrixPX(nrPixels, nrPixels);
+    double **imageTemp1 = allocMatrix(nrPixels, nrPixels);
+    double **imageTemp2 = allocMatrix(nrPixels, nrPixels);
     
     if (!imageTemp1 || !imageTemp2) {
-        if (imageTemp1) freeMatrixPx(imageTemp1, nrPixels);
-        if (imageTemp2) freeMatrixPx(imageTemp2, nrPixels);
+        if (imageTemp1) freeMatrix(imageTemp1, nrPixels);
+        if (imageTemp2) freeMatrix(imageTemp2, nrPixels);
         return;
     }
     
@@ -906,27 +959,27 @@ static inline void applyImageTransformations(
         }
     }
     
-    freeMatrixPx(imageTemp1, nrPixels);
-    freeMatrixPx(imageTemp2, nrPixels);
+    freeMatrix(imageTemp1, nrPixels);
+    freeMatrix(imageTemp2, nrPixels);
 }
 
 /**
- * Make a square image from rectangular data
+ * Make a square image from rectangular double data
  */
-static inline void makeSquareImage(
+static inline void makeSquareImage_d(
     int nrPixels, int nrPixelsY, int nrPixelsZ, 
-    pixelvalue *inImage, pixelvalue *outImage)
+    double *inImage, double *outImage)
 {
     if (nrPixelsY == nrPixelsZ) {
         // Already square, just copy
-        memcpy(outImage, inImage, nrPixels * nrPixels * sizeof(*inImage));
+        memcpy(outImage, inImage, (size_t)nrPixels * nrPixels * sizeof(double));
     } else if (nrPixelsY > nrPixelsZ) {
         // Fill along the slow direction
-        memcpy(outImage, inImage, nrPixelsY * nrPixelsZ * sizeof(*inImage));
+        memcpy(outImage, inImage, (size_t)nrPixelsY * nrPixelsZ * sizeof(double));
     } else {
         // Fill line by line
         for (int i = 0; i < nrPixelsZ; i++) {
-            memcpy(outImage + i * nrPixelsZ, inImage + i * nrPixelsY, nrPixelsY * sizeof(*inImage));
+            memcpy(outImage + (size_t)i * nrPixels, inImage + (size_t)i * nrPixelsY, (size_t)nrPixelsY * sizeof(double));
         }
     }
 }
@@ -1010,535 +1063,364 @@ static inline ErrorCode readZarrArrayData(
  */
 static ErrorCode readImageCorrections(
     zip_t *archive, int darkLoc, int floodLoc, int maskLoc,
-    int nDarks, int nFloods, int nrPixels, int nrPixelsY, int nrPixelsZ,
-    size_t bytesPerPx, int nImTransOpt, int *transOpt,
+    ImageMetadata *metadata, AnalysisParams *params,
     double *dark, double *flood, double *mask)
 {
     ErrorCode error;
-    pixelvalue *darkAsym, *darkContents, *maskTemp, *maskTmp;
-    double *darkTemp;
-    int32_t dataSize = bytesPerPx * nrPixelsY * nrPixelsZ;
+    double *darkTemp = NULL;
+    int32_t dataSize = metadata->bytesPerPx * metadata->NrPixelsY * metadata->NrPixelsZ;
     
     // Initialize correction arrays
-    for (int i = 0; i < nrPixels * nrPixels; i++) {
+    for (int i = 0; i < metadata->NrPixels * metadata->NrPixels; i++) {
         dark[i] = 0.0;
-        flood[i] = 1.0;  // Default to 1.0 for flood (flat field)
-        mask[i] = 0.0;   // Default to 0.0 for mask (no masked pixels)
+        flood[i] = 1.0;
+        mask[i] = 0.0;
     }
     
-    // Allocate temporary arrays
-    darkAsym = calloc(nrPixelsY * nrPixelsZ, sizeof(*darkAsym));
-    darkContents = calloc(nrPixels * nrPixels, sizeof(*darkContents));
-    darkTemp = calloc(nrPixels * nrPixels, sizeof(*darkTemp));
-    maskTemp = calloc(nrPixelsY * nrPixelsZ, sizeof(*maskTemp));
-    maskTmp = calloc(nrPixels * nrPixels, sizeof(*maskTmp));
-    
-    if (!darkAsym || !darkContents || !darkTemp || !maskTemp || !maskTmp) {
-        if (darkAsym) free(darkAsym);
-        if (darkContents) free(darkContents);
+    darkTemp = calloc((size_t)metadata->NrPixels * metadata->NrPixels, sizeof(*darkTemp));
+    char *rawData = malloc(dataSize);
+    if (!darkTemp || !rawData) {
         if (darkTemp) free(darkTemp);
-        if (maskTemp) free(maskTemp);
-        if (maskTmp) free(maskTmp);
-        return ERROR_MEMORY_ALLOCATION;
-    }
-    
-    // Read dark frames
-    char *data = malloc(dataSize);
-    if (!data) {
-        free(darkAsym);
-        free(darkContents);
-        free(darkTemp);
-        free(maskTemp);
-        free(maskTmp);
+        if (rawData) free(rawData);
         return ERROR_MEMORY_ALLOCATION;
     }
     
     // Process dark frames
-    for (int darkIter = 0; darkIter < nDarks; darkIter++) {
-        // Read dark frame
-        error = readZarrImage(archive, darkLoc + darkIter, data, dataSize);
-        if (error != SUCCESS) {
-            free(data);
-            free(darkAsym);
-            free(darkContents);
+    if (metadata->nDarks > 0) {
+        double *darkAsym_d = calloc((size_t)metadata->NrPixelsY * metadata->NrPixelsZ, sizeof(double));
+        double *darkContents_d = calloc((size_t)metadata->NrPixels * metadata->NrPixels, sizeof(double));
+        if (!darkAsym_d || !darkContents_d) {
+            if (darkAsym_d) free(darkAsym_d);
+            if (darkContents_d) free(darkContents_d);
             free(darkTemp);
-            free(maskTemp);
-            free(maskTmp);
-            return error;
+            free(rawData);
+            return ERROR_MEMORY_ALLOCATION;
+        }
+
+        for (int darkIter = 0; darkIter < metadata->nDarks; darkIter++) {
+            error = readZarrImage(archive, darkLoc + darkIter, rawData, dataSize);
+            if (error != SUCCESS) {
+                // Free all buffers and return
+                free(darkAsym_d);
+                free(darkContents_d);
+                free(darkTemp);
+                free(rawData);
+                return error;
+            }
+            
+            // Convert raw data to double based on pixel type
+            #pragma omp simd
+            for (int i = 0; i < metadata->NrPixelsY * metadata->NrPixelsZ; i++) {
+                switch(metadata->pixelType) {
+                    case PX_TYPE_UINT32:
+                        darkAsym_d[i] = (double)((uint32_t*)rawData)[i];
+                        break;
+                    case PX_TYPE_UINT16:
+                        darkAsym_d[i] = (double)((uint16_t*)rawData)[i];
+                        break;
+                    case PX_TYPE_FLOAT:
+                        darkAsym_d[i] = (double)((float*)rawData)[i];
+                        break;
+                    // Add other cases as needed
+                    default:
+                        darkAsym_d[i] = (double)((uint16_t*)rawData)[i];
+                }
+            }
+
+            makeSquareImage_d(metadata->NrPixels, metadata->NrPixelsY, metadata->NrPixelsZ, darkAsym_d, darkContents_d);
+            applyImageTransformations_d(params->nImTransOpt, params->TransOpt, darkContents_d, metadata->NrPixels);
+            
+            for (int i = 0; i < metadata->NrPixels * metadata->NrPixels; i++) {
+                darkTemp[i] += darkContents_d[i];
+            }
         }
         
-        // Copy to image array
-        memcpy(darkAsym, data, dataSize);
-        
-        // Make square and apply transformations
-        makeSquareImage(nrPixels, nrPixelsY, nrPixelsZ, darkAsym, darkContents);
-        applyImageTransformations(nImTransOpt, transOpt, darkContents, nrPixels);
-        
-        // Accumulate for averaging
-        for (int i = 0; i < nrPixels * nrPixels; i++) {
-            darkTemp[i] += darkContents[i];
-        }
-    }
-    
-    // Average dark frames
-    if (nDarks > 0) {
-        for (int i = 0; i < nrPixels * nrPixels; i++) {
-            darkTemp[i] /= nDarks;
+        free(darkAsym_d);
+        free(darkContents_d);
+
+        // Average dark frames
+        if (metadata->nDarks > 0) {
+            for (int i = 0; i < metadata->NrPixels * metadata->NrPixels; i++) {
+                darkTemp[i] /= metadata->nDarks;
+            }
         }
     }
     
     // Transpose dark frame
-    transposeMatrix(darkTemp, nrPixels, dark);
+    transposeMatrix(darkTemp, metadata->NrPixels, dark);
     
     // Read flat field (flood) frame
-    if (nFloods > 0) {
-        double *floodTemp = calloc(nrPixels * nrPixels, sizeof(*floodTemp));
-        if (!floodTemp) {
-            free(data);
-            free(darkAsym);
-            free(darkContents);
-            free(darkTemp);
-            free(maskTemp);
-            free(maskTmp);
-            return ERROR_MEMORY_ALLOCATION;
-        }
-        
-        error = readZarrArrayData(archive, floodLoc, floodTemp, nrPixels * nrPixels * sizeof(double), "float64");
+    if (metadata->nFloods > 0) {
+        error = readZarrArrayData(archive, floodLoc, flood, (size_t)metadata->NrPixels * metadata->NrPixels * sizeof(double), "float64");
         if (error != SUCCESS) {
-            free(data);
-            free(darkAsym);
-            free(darkContents);
             free(darkTemp);
-            free(maskTemp);
-            free(maskTmp);
-            free(floodTemp);
+            free(rawData);
             return error;
         }
-        
-        memcpy(flood, floodTemp, nrPixels * nrPixels * sizeof(double));
-        free(floodTemp);
     }
     
     // Read mask
-    if (maskLoc >= 0) {
-        error = readZarrImage(archive, maskLoc, data, dataSize);
-        if (error != SUCCESS) {
-            free(data);
-            free(darkAsym);
-            free(darkContents);
+    if (maskLoc >= 0 && metadata->nMasks > 0) {
+        double *maskAsym_d = calloc((size_t)metadata->NrPixelsY * metadata->NrPixelsZ, sizeof(double));
+        double *maskContents_d = calloc((size_t)metadata->NrPixels * metadata->NrPixels, sizeof(double));
+        if (!maskAsym_d || !maskContents_d) {
+            if(maskAsym_d) free(maskAsym_d);
+            if(maskContents_d) free(maskContents_d);
             free(darkTemp);
-            free(maskTemp);
-            free(maskTmp);
+            free(rawData);
+            return ERROR_MEMORY_ALLOCATION;
+        }
+
+        error = readZarrImage(archive, maskLoc, rawData, dataSize);
+        if (error != SUCCESS) {
+            free(maskAsym_d);
+            free(maskContents_d);
+            free(darkTemp);
+            free(rawData);
             return error;
         }
         
-        memcpy(maskTemp, data, dataSize);
-        makeSquareImage(nrPixels, nrPixelsY, nrPixelsZ, maskTemp, maskTmp);
+        #pragma omp simd
+        for (int i = 0; i < metadata->NrPixelsY * metadata->NrPixelsZ; i++) {
+             switch(metadata->pixelType) {
+                case PX_TYPE_UINT32:
+                    maskAsym_d[i] = (double)((uint32_t*)rawData)[i];
+                    break;
+                case PX_TYPE_UINT16:
+                    maskAsym_d[i] = (double)((uint16_t*)rawData)[i];
+                    break;
+                case PX_TYPE_FLOAT:
+                    maskAsym_d[i] = (double)((float*)rawData)[i];
+                    break;
+                default:
+                    maskAsym_d[i] = (double)((uint16_t*)rawData)[i];
+            }
+        }
+        
+        makeSquareImage_d(metadata->NrPixels, metadata->NrPixelsY, metadata->NrPixelsZ, maskAsym_d, maskContents_d);
         
         int nrMask = 0;
-        for (int i = 0; i < nrPixels * nrPixels; i++) {
-            mask[i] = maskTmp[i];
-            if (maskTmp[i] > 0) nrMask++;
+        for (int i = 0; i < metadata->NrPixels * metadata->NrPixels; i++) {
+            mask[i] = maskContents_d[i];
+            if (mask[i] > 0) nrMask++;
         }
         
         printf("Number of mask pixels: %d\n", nrMask);
+        free(maskAsym_d);
+        free(maskContents_d);
     }
     
     // Clean up
-    free(data);
-    free(darkAsym);
-    free(darkContents);
+    free(rawData);
     free(darkTemp);
-    free(maskTemp);
-    free(maskTmp);
     
     return SUCCESS;
 }
 
 /**
- * Process a single image frame
+ * Process a single image frame using a pre-allocated workspace for efficiency.
  */
 static ErrorCode processImageFrame(
     int fileNr, char *allData, size_t *sizeArr,
-    int nrPixels, int nrPixelsY, int nrPixelsZ, size_t bytesPerPx,
-    pixelvalue *image, double *imgCorrBC, double *dark, double *flood, double *mask,
-    double *goodCoords, double yCen, double zCen, double intSat, double bc,
-    int minNrPx, int maxNrPx, int maxNPeaks, int makeMap, double badPxIntensity,
-    int nImTransOpt, int *transOpt, double omega, const char *outFolderName,
-    const char *dataFN, int doPeakFit)
+    ImageMetadata *metadata, AnalysisParams *params,
+    double *dark, double *flood, double *mask,
+    double *goodCoords, double omega, const char *outFolderName,
+    const char *dataFN, ThreadWorkspace *ws)
 {
     // For timing
     double t1 = omp_get_wtime();
+
+    // The 'imgCorrBC' buffer is now part of the workspace.
+    double *imgCorrBC = ws->imgCorrBC;
     
-    // Temporary image arrays
-    pixelvalue *imageAsym = calloc(nrPixelsY * nrPixelsZ, sizeof(*imageAsym));
-    double *imgCorrBCTemp = calloc(nrPixels * nrPixels, sizeof(*imgCorrBCTemp));
-    
-    if (!imageAsym || !imgCorrBCTemp) {
-        if (imageAsym) free(imageAsym);
-        if (imgCorrBCTemp) free(imgCorrBCTemp);
-        printf("Memory allocation error in processImageFrame\n");
+    // Allocate buffer for decompressed raw data
+    int32_t dsz = metadata->NrPixelsY * metadata->NrPixelsZ * metadata->bytesPerPx;
+    char *locData = calloc(dsz, sizeof(char));
+    if (!locData) {
+        printf("Memory allocation error in processImageFrame for locData\n");
         return ERROR_MEMORY_ALLOCATION;
     }
     
     // Decompress the image data
-    int32_t dsz = nrPixelsY * nrPixelsZ * bytesPerPx;
-    char *locData = calloc(dsz, sizeof(char));
-    if (!locData) {
-        free(imageAsym);
-        free(imgCorrBCTemp);
-        return ERROR_MEMORY_ALLOCATION;
-    }
-    
-    double t2 = omp_get_wtime();
     int32_t decompressedSize = blosc1_decompress(&allData[sizeArr[fileNr*2+1]], locData, dsz);
-    
     if (decompressedSize <= 0) {
-        free(imageAsym);
-        free(imgCorrBCTemp);
         free(locData);
+        printf("Blosc decompression failed for frame %d\n", fileNr);
         return ERROR_BLOSC_OPERATION;
     }
     
-    // Copy decompressed data to image array
-    memcpy(imageAsym, locData, dsz);
-    free(locData);
-    
-    // Make square image from rectangular data
-    makeSquareImage(nrPixels, nrPixelsY, nrPixelsZ, imageAsym, image);
-    
-    // Handle bad pixels if needed
-    if (makeMap == 1) {
-        int badPxCounter = 0;
-        for (int i = 0; i < nrPixels * nrPixels; i++) {
-            if (image[i] == (pixelvalue)badPxIntensity) {
-                image[i] = 0;
-                badPxCounter++;
-            }
+    // Allocate double-precision buffers
+    double *imageAsym_d = calloc((size_t)metadata->NrPixelsY * metadata->NrPixelsZ, sizeof(double));
+    double *image_d = calloc((size_t)metadata->NrPixels * metadata->NrPixels, sizeof(double));
+    if (!imageAsym_d || !image_d) {
+        if(imageAsym_d) free(imageAsym_d);
+        if(image_d) free(image_d);
+        free(locData);
+        printf("Memory allocation error for double buffers in processImageFrame\n");
+        return ERROR_MEMORY_ALLOCATION;
+    }
+
+    // Convert raw data to double based on its type
+    #pragma omp simd
+    for (int i = 0; i < metadata->NrPixelsY * metadata->NrPixelsZ; i++) {
+        switch(metadata->pixelType) {
+            case PX_TYPE_UINT32: imageAsym_d[i] = (double)((uint32_t*)locData)[i]; break;
+            case PX_TYPE_UINT16: imageAsym_d[i] = (double)((uint16_t*)locData)[i]; break;
+            case PX_TYPE_FLOAT:  imageAsym_d[i] = (double)((float*)locData)[i];   break;
+            default:             imageAsym_d[i] = (double)((uint16_t*)locData)[i];
+        }
+    }
+    free(locData); // Raw data no longer needed
+
+    makeSquareImage_d(metadata->NrPixels, metadata->NrPixelsY, metadata->NrPixelsZ, imageAsym_d, image_d);
+    free(imageAsym_d);
+
+    if (params->makeMap == 1) {
+        for (int i = 0; i < metadata->NrPixels * metadata->NrPixels; i++) {
+            if (image_d[i] == params->BadPxIntensity) image_d[i] = 0;
         }
     }
     
-    // Apply transformations (flip/transpose)
-    applyImageTransformations(nImTransOpt, transOpt, image, nrPixels);
-    
-    // Convert to double for processing
-    for (int i = 0; i < (nrPixels * nrPixels); i++) {
-        imgCorrBCTemp[i] = image[i];
-    }
-    
-    // Transpose for processing
-    transposeMatrix(imgCorrBCTemp, nrPixels, imgCorrBC);
-    
-    // Apply thresholds, dark and flat field corrections
-    for (int i = 0; i < (nrPixels * nrPixels); i++) {
+    applyImageTransformations_d(params->nImTransOpt, params->TransOpt, image_d, metadata->NrPixels);
+    transposeMatrix(image_d, metadata->NrPixels, imgCorrBC);
+    free(image_d);
+
+    for (int i = 0; i < (metadata->NrPixels * metadata->NrPixels); i++) {
         if (goodCoords[i] == 0) {
             imgCorrBC[i] = 0;
         } else {
-            // Apply dark and flat field corrections
             imgCorrBC[i] = (imgCorrBC[i] - dark[i]) / flood[i];
-            imgCorrBC[i] = imgCorrBC[i] * bc;
-            
-            // Apply threshold
+            imgCorrBC[i] *= params->bc;
             if (imgCorrBC[i] < goodCoords[i]) {
                 imgCorrBC[i] = 0;
             }
         }
     }
     
-    // Arrays for connected components analysis
-    int *boolImage = calloc(nrPixels * nrPixels, sizeof(*boolImage));
-    int *connectedComponents = calloc(nrPixels * nrPixels, sizeof(*connectedComponents));
-    int *positions = calloc(MAX_OVERLAPS_PER_IMAGE * nrPixels * 4, sizeof(*positions));
-    int *positionTrackers = calloc(MAX_OVERLAPS_PER_IMAGE, sizeof(*positionTrackers));
-    
-    if (!boolImage || !connectedComponents || !positions || !positionTrackers) {
-        printf("Memory allocation error in processImageFrame\n");
-        if (imageAsym) free(imageAsym);
-        if (imgCorrBCTemp) free(imgCorrBCTemp);
-        if (boolImage) free(boolImage);
-        if (connectedComponents) free(connectedComponents);
-        if (positions) free(positions);
-        if (positionTrackers) free(positionTrackers);
-        return ERROR_MEMORY_ALLOCATION;
+    // NOTE: All large analysis arrays are now used from the workspace `ws`.
+    // NO ALLOCATIONS or FREES are performed in this function for these buffers.
+
+    for (int i = 0; i < metadata->NrPixels * metadata->NrPixels; i++) {
+        ws->boolImage[i] = (imgCorrBC[i] != 0) ? 1 : 0;
     }
     
-    // Create binary image for connected components
-    for (int i = 0; i < nrPixels * nrPixels; i++) {
-        boolImage[i] = (imgCorrBC[i] != 0) ? 1 : 0;
-    }
+    memset(ws->positionTrackers, 0, MAX_OVERLAPS_PER_IMAGE * sizeof(int));
+    int nrOfRegions = findConnectedComponents(ws->boolImage, metadata->NrPixels, ws->connectedComponents, ws->positions, ws->positionTrackers);
     
-    // Find connected components
-    memset(positionTrackers, 0, MAX_OVERLAPS_PER_IMAGE * sizeof(*positionTrackers));
-    int nrOfRegions = findConnectedComponents(boolImage, nrPixels, connectedComponents, positions, positionTrackers);
-    
-    // Arrays for peak detection and fitting
-    int *usefulPixels = calloc(nrPixels * 20, sizeof(*usefulPixels));
-    int *maximaPositions = calloc(nrPixels * 20, sizeof(*maximaPositions));
-    double *maximaValues = calloc(nrPixels * 10, sizeof(*maximaValues));
-    double *z = calloc(nrPixels * 10, sizeof(*z));
-    
-    if (!usefulPixels || !maximaPositions || !maximaValues || !z) {
-        printf("Memory allocation error in processImageFrame\n");
-        if (imageAsym) free(imageAsym);
-        if (imgCorrBCTemp) free(imgCorrBCTemp);
-        if (boolImage) free(boolImage);
-        if (connectedComponents) free(connectedComponents);
-        if (positions) free(positions);
-        if (positionTrackers) free(positionTrackers);
-        if (usefulPixels) free(usefulPixels);
-        if (maximaPositions) free(maximaPositions);
-        if (maximaValues) free(maximaValues);
-        if (z) free(z);
-        return ERROR_MEMORY_ALLOCATION;
-    }
-    
-    // Arrays for peak fitting results
-    double *integratedIntensity = calloc(maxNPeaks * 2, sizeof(*integratedIntensity));
-    double *imax = calloc(maxNPeaks * 2, sizeof(*imax));
-    double *yCenArray = calloc(maxNPeaks * 2, sizeof(*yCenArray));
-    double *zCenArray = calloc(maxNPeaks * 2, sizeof(*zCenArray));
-    double *rads = calloc(maxNPeaks * 2, sizeof(*rads));
-    double *etas = calloc(maxNPeaks * 2, sizeof(*etas));
-    int *nrPx = calloc(maxNPeaks * 2, sizeof(*nrPx));
-    double *otherInfo = calloc(maxNPeaks * 10, sizeof(*otherInfo));
-    
-    if (!integratedIntensity || !imax || !yCenArray || !zCenArray || !rads || !etas || !nrPx || !otherInfo) {
-        printf("Memory allocation error in processImageFrame\n");
-        if (imageAsym) free(imageAsym);
-        if (imgCorrBCTemp) free(imgCorrBCTemp);
-        if (boolImage) free(boolImage);
-        if (connectedComponents) free(connectedComponents);
-        if (positions) free(positions);
-        if (positionTrackers) free(positionTrackers);
-        if (usefulPixels) free(usefulPixels);
-        if (maximaPositions) free(maximaPositions);
-        if (maximaValues) free(maximaValues);
-        if (z) free(z);
-        if (integratedIntensity) free(integratedIntensity);
-        if (imax) free(imax);
-        if (yCenArray) free(yCenArray);
-        if (zCenArray) free(zCenArray);
-        if (rads) free(rads);
-        if (etas) free(etas);
-        if (nrPx) free(nrPx);
-        if (otherInfo) free(otherInfo);
-        return ERROR_MEMORY_ALLOCATION;
-    }
-    
-    // Create output file
     char outFile[MAX_FILENAME_LENGTH];
     snprintf(outFile, MAX_FILENAME_LENGTH, "%s/%s_%06d_PS.csv", outFolderName, basename((char*)dataFN), fileNr+1);
     FILE *outfilewrite = fopen(outFile, "w");
     
     if (!outfilewrite) {
         printf("Cannot open %s for writing.\n", outFile);
-        if (imageAsym) free(imageAsym);
-        if (imgCorrBCTemp) free(imgCorrBCTemp);
-        if (boolImage) free(boolImage);
-        if (connectedComponents) free(connectedComponents);
-        if (positions) free(positions);
-        if (positionTrackers) free(positionTrackers);
-        if (usefulPixels) free(usefulPixels);
-        if (maximaPositions) free(maximaPositions);
-        if (maximaValues) free(maximaValues);
-        if (z) free(z);
-        if (integratedIntensity) free(integratedIntensity);
-        if (imax) free(imax);
-        if (yCenArray) free(yCenArray);
-        if (zCenArray) free(zCenArray);
-        if (rads) free(rads);
-        if (etas) free(etas);
-        if (nrPx) free(nrPx);
-        if (otherInfo) free(otherInfo);
         return ERROR_FILE_OPEN;
     }
     
-    // Write CSV header
     fprintf(outfilewrite, "SpotID\tIntegratedIntensity\tOmega(degrees)\tYCen(px)\tZCen(px)\tIMax\tRadius(px)\tEta(degrees)\tSigmaR\tSigmaEta\tNrPixels\t"
                          "TotalNrPixelsInPeakRegion\tnPeaks\tmaxY\tmaxZ\tdiffY\tdiffZ\trawIMax\treturnCode\tretVal\tBG\tSigmaGR\tSigmaLR\tSigmaGEta\t"
                          "SigmaLEta\tMU\n");
     
-    // Process each connected component
     int spotIdStart = 1;
     int totalValidRegions = 0;
     
     for (int regNr = 1; regNr <= nrOfRegions; regNr++) {
-        int nrPixelsThisRegion = positionTrackers[regNr];
+        int nrPixelsThisRegion = ws->positionTrackers[regNr];
         
-        // Skip regions that are too small or too large
-        if (nrPixelsThisRegion <= minNrPx || nrPixelsThisRegion >= maxNrPx) {
+        if (nrPixelsThisRegion <= params->minNrPx || nrPixelsThisRegion >= params->maxNrPx) {
             continue;
         }
-        
         totalValidRegions++;
         
-        // Extract pixel values for this region
         for (int i = 0; i < nrPixelsThisRegion; i++) {
-            usefulPixels[i*2+0] = (int)(positions[regNr*nrPixels*4+i] / nrPixels);
-            usefulPixels[i*2+1] = (int)(positions[regNr*nrPixels*4+i] % nrPixels);
-            z[i] = imgCorrBC[((usefulPixels[i*2+0]) * nrPixels) + (usefulPixels[i*2+1])];
+            ws->usefulPixels[i*2+0] = (int)(ws->positions[regNr*metadata->NrPixels*4+i] / metadata->NrPixels);
+            ws->usefulPixels[i*2+1] = (int)(ws->positions[regNr*metadata->NrPixels*4+i] % metadata->NrPixels);
+            ws->z[i] = imgCorrBC[((ws->usefulPixels[i*2+0]) * metadata->NrPixels) + (ws->usefulPixels[i*2+1])];
         }
         
-        // Get threshold for this region
-        double thresh = goodCoords[((usefulPixels[0*2+0]) * nrPixels) + (usefulPixels[0*2+1])];
+        double thresh = goodCoords[((ws->usefulPixels[0]) * metadata->NrPixels) + (ws->usefulPixels[1])];
         
-        // Find peaks in this region
-        unsigned nPeaks = findRegionalMaxima(z, usefulPixels, nrPixelsThisRegion, 
-                                            maximaPositions, maximaValues, 
-                                            intSat, nrPixels, mask);
+        unsigned nPeaks = findRegionalMaxima(ws->z, ws->usefulPixels, nrPixelsThisRegion, 
+                                            ws->maximaPositions, ws->maximaValues, 
+                                            params->IntSat, metadata->NrPixels, mask);
         
-        if (nPeaks == 0) {
-            // Saturated peak or touched mask
-            continue;
-        }
+        if (nPeaks == 0) continue;
         
-        // Limit number of peaks if needed
-        if (nPeaks > maxNPeaks) {
-            // Sort peaks by intensity and keep the strongest ones
+        if (nPeaks > params->maxNPeaks) {
+            // Logic to limit number of peaks
+            // This small, temporary allocation is acceptable.
             int *tempPositions = calloc(nPeaks * 2, sizeof(int));
             double *tempValues = calloc(nPeaks, sizeof(double));
-            
-            if (!tempPositions || !tempValues) {
-                if (tempPositions) free(tempPositions);
-                if (tempValues) free(tempValues);
-                printf("Memory allocation error\n");
-                continue;
-            }
-            
-            // Find highest peaks
-            for (int i = 0; i < maxNPeaks; i++) {
-                double maxIntMax = 0;
-                int maxPos = 0;
-                
+            if (!tempPositions || !tempValues) { if(tempPositions) free(tempPositions); if(tempValues) free(tempValues); continue; }
+            for (int i = 0; i < params->maxNPeaks; i++) {
+                double maxIntMax = 0; int maxPos = 0;
                 for (int j = 0; j < nPeaks; j++) {
-                    if (maximaValues[j] > maxIntMax) {
-                        maxPos = j;
-                        maxIntMax = maximaValues[j];
-                    }
+                    if (ws->maximaValues[j] > maxIntMax) { maxPos = j; maxIntMax = ws->maximaValues[j]; }
                 }
-                
-                tempPositions[i*2+0] = maximaPositions[maxPos*2+0];
-                tempPositions[i*2+1] = maximaPositions[maxPos*2+1];
-                tempValues[i] = maximaValues[maxPos];
-                maximaValues[maxPos] = 0;  // Mark as used
+                tempPositions[i*2+0] = ws->maximaPositions[maxPos*2+0];
+                tempPositions[i*2+1] = ws->maximaPositions[maxPos*2+1];
+                tempValues[i] = ws->maximaValues[maxPos];
+                ws->maximaValues[maxPos] = 0;
             }
-            
-            // Update number of peaks and copy back values
-            nPeaks = maxNPeaks;
+            nPeaks = params->maxNPeaks;
             for (int i = 0; i < nPeaks; i++) {
-                maximaValues[i] = tempValues[i];
-                maximaPositions[i*2+0] = tempPositions[i*2+0];
-                maximaPositions[i*2+1] = tempPositions[i*2+1];
+                ws->maximaValues[i] = tempValues[i];
+                ws->maximaPositions[i*2+0] = tempPositions[i*2+0];
+                ws->maximaPositions[i*2+1] = tempPositions[i*2+1];
             }
-            
-            free(tempPositions);
+            free(tempPositions); 
             free(tempValues);
         }
         
         double retVal = 0;
         int rc = 0;
         
-        // Perform peak fitting or center of mass calculation
-        if (doPeakFit == 0) {
-            // Calculate center of mass if no fitting requested
-            double *rMean = calloc(2, sizeof(double));
-            double *etaMean = calloc(2, sizeof(double));
-            
-            if (!rMean || !etaMean) {
-                if (rMean) free(rMean);
-                if (etaMean) free(etaMean);
-                printf("Memory allocation error\n");
-                continue;
-            }
-            
-            // Just use the strongest peak
+        if (params->doPeakFit == 0) {
+            double rMeanVal = 0, etaMeanVal = 0;
             nPeaks = 1;
-            imax[0] = maximaValues[0];
-            nrPx[0] = nrPixelsThisRegion;
-            yCenArray[0] = 0;
-            zCenArray[0] = 0;
-            integratedIntensity[0] = 0;
-            
-            // Calculate weighted center of mass
+            ws->imax[0] = ws->maximaValues[0];
+            ws->nrPx[0] = nrPixelsThisRegion;
+            ws->yCenArray[0] = 0; ws->zCenArray[0] = 0; ws->integratedIntensity[0] = 0;
             for (int i = 0; i < nrPixelsThisRegion; i++) {
-                integratedIntensity[0] += z[i];
-                rMean[0] += CALC_NORM_2(-usefulPixels[i*2+0] + yCen, usefulPixels[i*2+1] - zCen) * z[i];
-                etaMean[0] += calcEtaAngle(-usefulPixels[i*2+0] + yCen, usefulPixels[i*2+1] - zCen) * z[i];
+                ws->integratedIntensity[0] += ws->z[i];
+                rMeanVal += CALC_NORM_2(-ws->usefulPixels[i*2+0] + params->Ycen, ws->usefulPixels[i*2+1] - params->Zcen) * ws->z[i];
+                etaMeanVal += calcEtaAngle(-ws->usefulPixels[i*2+0] + params->Ycen, ws->usefulPixels[i*2+1] - params->Zcen) * ws->z[i];
             }
-            
-            rMean[0] /= integratedIntensity[0];
-            etaMean[0] /= integratedIntensity[0];
-            
-            // Convert R,Eta to Y,Z
-            yzFromREta(1, rMean, etaMean, yCenArray, zCenArray);
-            rads[0] = rMean[0];
-            etas[0] = etaMean[0];
-            
-            free(rMean);
-            free(etaMean);
+            rMeanVal /= ws->integratedIntensity[0];
+            etaMeanVal /= ws->integratedIntensity[0];
+            yzFromREta(1, &rMeanVal, &etaMeanVal, ws->yCenArray, ws->zCenArray);
+            ws->rads[0] = rMeanVal; 
+            ws->etas[0] = etaMeanVal;
         } else {
-            // Perform 2D peak fitting
-            rc = fit2DPeaks(nPeaks, nrPixelsThisRegion, z, usefulPixels, maximaValues,
-                          maximaPositions, integratedIntensity, imax, yCenArray, zCenArray,
-                          rads, etas, yCen, zCen, thresh, nrPx, otherInfo, nrPixels, &retVal);
+            rc = fit2DPeaks(nPeaks, nrPixelsThisRegion, ws->z, ws->usefulPixels, ws->maximaValues,
+                          ws->maximaPositions, ws->integratedIntensity, ws->imax, ws->yCenArray, ws->zCenArray,
+                          ws->rads, ws->etas, params->Ycen, params->Zcen, thresh, ws->nrPx, ws->otherInfo, metadata->NrPixels, &retVal);
         }
         
-        // Write results to CSV
         for (int i = 0; i < nPeaks; i++) {
             fprintf(outfilewrite, "%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t",
-                   (spotIdStart + i), integratedIntensity[i], omega,
-                   -yCenArray[i] + yCen, zCenArray[i] + zCen, imax[i], rads[i], etas[i]);
-            
-            // Write sigma values
-            for (int j = 0; j < 2; j++) {
-                fprintf(outfilewrite, "%f\t", otherInfo[8*i+6+j]);
-            }
-            
-            // Write peak information
+                   (spotIdStart + i), ws->integratedIntensity[i], omega,
+                   -ws->yCenArray[i] + params->Ycen, ws->zCenArray[i] + params->Zcen, ws->imax[i], ws->rads[i], ws->etas[i]);
+            fprintf(outfilewrite, "%f\t%f\t", ws->otherInfo[8*i+6], ws->otherInfo[8*i+7]);
             fprintf(outfilewrite, "%d\t%d\t%d\t%d\t%d\t%f\t%f\t%f\t%d\t%lf",
-                   nrPx[i], nrPixelsThisRegion, nPeaks,
-                   maximaPositions[i*2+0], maximaPositions[i*2+1],
-                   (double)maximaPositions[i*2+0] + yCenArray[i] - yCen,
-                   (double)maximaPositions[i*2+1] - zCenArray[i] - zCen,
-                   maximaValues[i], rc, retVal);
-            
-            // Write additional fit parameters
+                   ws->nrPx[i], nrPixelsThisRegion, nPeaks,
+                   ws->maximaPositions[i*2+0], ws->maximaPositions[i*2+1],
+                   (double)ws->maximaPositions[i*2+0] + ws->yCenArray[i] - params->Ycen,
+                   (double)ws->maximaPositions[i*2+1] - ws->zCenArray[i] - params->Zcen,
+                   ws->maximaValues[i], rc, retVal);
             for (int j = 0; j < 6; j++) {
-                fprintf(outfilewrite, "\t%f", otherInfo[8*i+j]);
+                fprintf(outfilewrite, "\t%f", ws->otherInfo[8*i+j]);
             }
-            
             fprintf(outfilewrite, "\n");
         }
-        
         spotIdStart += nPeaks;
     }
     
-    free(yCenArray);
-    free(zCenArray);
     fclose(outfilewrite);
     
     double t3 = omp_get_wtime();
     printf("FrameNr: %d, NrOfRegions: %d, Filtered regions: %d, Number of peaks: %d, Total time: %lf\n",
            fileNr, nrOfRegions, totalValidRegions, spotIdStart-1, t3-t1);
-    
-    // Free all allocated memory
-    free(imageAsym);
-    free(imgCorrBCTemp);
-    free(boolImage);
-    free(connectedComponents);
-    free(positions);
-    free(positionTrackers);
-    free(usefulPixels);
-    free(maximaPositions);
-    free(maximaValues);
-    free(z);
-    free(integratedIntensity);
-    free(imax);
-    free(rads);
-    free(etas);
-    free(nrPx);
-    free(otherInfo);
-    
+
     return SUCCESS;
 }
 
@@ -1874,6 +1756,9 @@ static ErrorCode readZarrDataType(
                 } else if (strcasecmp(typeName, "int32") == 0) {
                     *pixelType = PX_TYPE_INT32;
                     printf("Setting pixel type to int32\n");
+                } else if (strcasecmp(typeName, "uint32") == 0) {
+                    *pixelType = PX_TYPE_UINT32;
+                    printf("Setting pixel type to uint32\n");
                 } else {
                     // Default to uint16
                     *pixelType = PX_TYPE_UINT16;
@@ -1905,12 +1790,11 @@ static ErrorCode parseZarrMetadata(
         return ERROR_ZIP_OPEN;
     }
     
-    struct zip_stat *fileInfo = calloc(16384, sizeof(int));
+    struct zip_stat *fileInfo = calloc(16384, sizeof(struct zip_stat));
     if (!fileInfo) {
         zip_close(archive);
         return ERROR_MEMORY_ALLOCATION;
     }
-    zip_stat_init(fileInfo);
     
     // Initialize default values
     metadata->nFrames = 0;
@@ -1919,7 +1803,7 @@ static ErrorCode parseZarrMetadata(
     metadata->nMasks = 0;
     metadata->NrPixelsY = 0;
     metadata->NrPixelsZ = 0;
-    metadata->bytesPerPx = 0;
+    metadata->bytesPerPx = sizeof(uint16_t);
     metadata->omegaStart = 0;
     metadata->omegaStep = 0;
     metadata->skipFrame = 0;
@@ -2012,19 +1896,10 @@ static ErrorCode parseZarrMetadata(
                 }
             }
             
-            // Parse data type
+            // Parse data type string from .zarray, but use our enum to set bytesPerPx
+            // This ensures consistency
             ptr = strstr(buffer, "dtype");
             if (ptr != NULL) {
-                char *ptrt = strstr(ptr, ":");
-                char *ptr2 = strstr(ptrt, ",");
-                int loc = (int)(ptr2 - ptrt);
-                char ptr3[MAX_BUFFER_SIZE];
-                strncpy(ptr3, ptrt+3, loc-4);
-                
-                if (strncmp(ptr3, "<u2", 3) == 0) metadata->bytesPerPx = 2;
-                if (strncmp(ptr3, "<u4", 3) == 0) metadata->bytesPerPx = 4;
-                
-                // Adjust bytes per pixel based on dynamic type if needed
                 switch (metadata->pixelType) {
                     case PX_TYPE_FLOAT:
                         metadata->bytesPerPx = sizeof(float);
@@ -2034,6 +1909,9 @@ static ErrorCode parseZarrMetadata(
                         break;
                     case PX_TYPE_INT32:
                         metadata->bytesPerPx = sizeof(int32_t);
+                        break;
+                    case PX_TYPE_UINT32:
+                        metadata->bytesPerPx = sizeof(uint32_t);
                         break;
                     case PX_TYPE_UINT16:
                     default:
@@ -2052,17 +1930,14 @@ static ErrorCode parseZarrMetadata(
         // Handle dark array metadata
         if (strstr(fileInfo->name, "exchange/dark/.zarray") != NULL) {
             char *buffer = calloc(fileInfo->size + 1, sizeof(char));
-            if (!buffer) {
-                zip_close(archive);
-                free(fileInfo);
-                return ERROR_MEMORY_ALLOCATION;
+            if (!buffer) { 
+                zip_close(archive); 
+                free(fileInfo); 
+                return ERROR_MEMORY_ALLOCATION; 
             }
-            
             zip_file_t *file = zip_fopen_index(archive, count, 0);
             zip_fread(file, buffer, fileInfo->size);
             zip_fclose(file);
-            
-            // Parse shape
             char *ptr = strstr(buffer, "shape");
             if (ptr != NULL) {
                 char *ptrt = strstr(ptr, "[");
@@ -2070,36 +1945,28 @@ static ErrorCode parseZarrMetadata(
                 int loc = (int)(ptr2 - ptrt);
                 char ptr3[MAX_BUFFER_SIZE];
                 strncpy(ptr3, ptrt, loc+1);
-                
-                if (3 == sscanf(ptr3, "%*[^0123456789]%d%*[^0123456789]%d%*[^0123456789]%d", 
+                if (3 != sscanf(ptr3, "%*[^0123456789]%d%*[^0123456789]%d%*[^0123456789]%d", 
                               &metadata->nDarks, &metadata->NrPixelsZ, &metadata->NrPixelsY)) {
-                    printf("nDarks: %d nrPixelsZ: %d nrPixelsY: %d\n", 
-                          metadata->nDarks, metadata->NrPixelsZ, metadata->NrPixelsY);
-                } else {
-                    free(buffer);
-                    zip_close(archive);
-                    free(fileInfo);
+                    free(buffer); 
+                    zip_close(archive); 
+                    free(fileInfo); 
                     return ERROR_INVALID_PARAMETERS;
                 }
             }
-            
             free(buffer);
         }
         
         // Handle flood array metadata
         if (strstr(fileInfo->name, "exchange/flood/.zarray") != NULL) {
             char *buffer = calloc(fileInfo->size + 1, sizeof(char));
-            if (!buffer) {
-                zip_close(archive);
-                free(fileInfo);
-                return ERROR_MEMORY_ALLOCATION;
+            if (!buffer) { 
+                zip_close(archive); 
+                free(fileInfo); 
+                return ERROR_MEMORY_ALLOCATION; 
             }
-            
             zip_file_t *file = zip_fopen_index(archive, count, 0);
             zip_fread(file, buffer, fileInfo->size);
             zip_fclose(file);
-            
-            // Parse shape
             char *ptr = strstr(buffer, "shape");
             if (ptr != NULL) {
                 char *ptrt = strstr(ptr, "[");
@@ -2107,36 +1974,28 @@ static ErrorCode parseZarrMetadata(
                 int loc = (int)(ptr2 - ptrt);
                 char ptr3[MAX_BUFFER_SIZE];
                 strncpy(ptr3, ptrt, loc+1);
-                
-                if (3 == sscanf(ptr3, "%*[^0123456789]%d%*[^0123456789]%d%*[^0123456789]%d", 
+                if (3 != sscanf(ptr3, "%*[^0123456789]%d%*[^0123456789]%d%*[^0123456789]%d", 
                               &metadata->nFloods, &metadata->NrPixelsZ, &metadata->NrPixelsY)) {
-                    printf("nFloods: %d nrPixelsZ: %d nrPixelsY: %d\n", 
-                          metadata->nFloods, metadata->NrPixelsZ, metadata->NrPixelsY);
-                } else {
-                    free(buffer);
-                    zip_close(archive);
-                    free(fileInfo);
+                    free(buffer); 
+                    zip_close(archive); 
+                    free(fileInfo); 
                     return ERROR_INVALID_PARAMETERS;
                 }
             }
-            
             free(buffer);
         }
         
         // Handle mask array metadata
         if (strstr(fileInfo->name, "exchange/mask/.zarray") != NULL) {
             char *buffer = calloc(fileInfo->size + 1, sizeof(char));
-            if (!buffer) {
-                zip_close(archive);
-                free(fileInfo);
-                return ERROR_MEMORY_ALLOCATION;
+            if (!buffer) { 
+                zip_close(archive); 
+                free(fileInfo); 
+                return ERROR_MEMORY_ALLOCATION; 
             }
-            
             zip_file_t *file = zip_fopen_index(archive, count, 0);
             zip_fread(file, buffer, fileInfo->size);
             zip_fclose(file);
-            
-            // Parse shape
             char *ptr = strstr(buffer, "shape");
             if (ptr != NULL) {
                 char *ptrt = strstr(ptr, "[");
@@ -2144,534 +2003,147 @@ static ErrorCode parseZarrMetadata(
                 int loc = (int)(ptr2 - ptrt);
                 char ptr3[MAX_BUFFER_SIZE];
                 strncpy(ptr3, ptrt, loc+1);
-                
-                if (3 == sscanf(ptr3, "%*[^0123456789]%d%*[^0123456789]%d%*[^0123456789]%d", 
+                if (3 != sscanf(ptr3, "%*[^0123456789]%d%*[^0123456789]%d%*[^0123456789]%d", 
                               &metadata->nMasks, &metadata->NrPixelsZ, &metadata->NrPixelsY)) {
-                    printf("nMasks: %d nrPixelsZ: %d nrPixelsY: %d\n", 
-                          metadata->nMasks, metadata->NrPixelsZ, metadata->NrPixelsY);
-                } else {
-                    free(buffer);
-                    zip_close(archive);
-                    free(fileInfo);
+                    free(buffer); 
+                    zip_close(archive); 
+                    free(fileInfo); 
                     return ERROR_INVALID_PARAMETERS;
                 }
             }
-            
             free(buffer);
         }
         
         // Track data locations
-        if (strstr(fileInfo->name, "exchange/data/0.0.0") != NULL) {
-            dataLoc = count;
+        if (strstr(fileInfo->name, "exchange/data/0.0.0") != NULL) dataLoc = count;
+        if (strstr(fileInfo->name, "exchange/dark/0.0.0") != NULL) darkLoc = count;
+        if (strstr(fileInfo->name, "exchange/mask/0.0.0") != NULL) { 
+            printf("Mask is found.\n"); 
+            maskLoc = count; 
         }
-        if (strstr(fileInfo->name, "exchange/dark/0.0.0") != NULL) {
-            darkLoc = count;
-        }
-        if (strstr(fileInfo->name, "exchange/mask/0.0.0") != NULL) {
-            printf("Mask is found, we will separate mask and saturated intensity. Please ensure saturated intensity is different from mask pixels\n");
-            maskLoc = count;
-        }
-        if (strstr(fileInfo->name, "exchange/flood/0.0.0") != NULL) {
-            floodLoc = count;
-        }
-        const char* omegaCenterDataName = "measurement/process/scan_parameters/omegaCenter/0";
-        if (strcmp(fileInfo->name, omegaCenterDataName) == 0) {
-            locOmegaCenterData = count;
-        }
+        if (strstr(fileInfo->name, "exchange/flood/0.0.0") != NULL) floodLoc = count;
+        if (strcmp(fileInfo->name, "measurement/process/scan_parameters/omegaCenter/0") == 0) locOmegaCenterData = count;
 
-        // Read parameters
-        if (strstr(fileInfo->name, "measurement/process/scan_parameters/start/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &metadata->omegaStart);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("OmeStart: %lf\n", metadata->omegaStart);
-        }
-        
-        if (strstr(fileInfo->name, "measurement/process/scan_parameters/step/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &metadata->omegaStep);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("OmeStep: %lf\n", metadata->omegaStep);
-        }
-        
-        if (strstr(fileInfo->name, "measurement/process/scan_parameters/doPeakFit/0") != NULL) {
-            ErrorCode error = readZarrInt(archive, count, &metadata->doPeakFit);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
+        // Read various scalar parameters
+        if (strstr(fileInfo->name, "measurement/process/scan_parameters/start/0") != NULL) readZarrDouble(archive, count, &metadata->omegaStart);
+        if (strstr(fileInfo->name, "measurement/process/scan_parameters/step/0") != NULL) readZarrDouble(archive, count, &metadata->omegaStep);
+        if (strstr(fileInfo->name, "measurement/process/scan_parameters/doPeakFit/0") != NULL) { 
+            readZarrInt(archive, count, &metadata->doPeakFit); 
             params->doPeakFit = metadata->doPeakFit;
-            printf("doPeakFit: %d\n", metadata->doPeakFit);
         }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/ResultFolder/0") != NULL) {
-            ErrorCode error = readZarrString(archive, count, resultFolder);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("resultFolder: %s\n", *resultFolder);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/ResultFolder/0") != NULL) readZarrString(archive, count, resultFolder);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/MaxNPeaks/0") != NULL) readZarrInt(archive, count, &params->maxNPeaks);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/SkipFrame/0") != NULL) readZarrInt(archive, count, &metadata->skipFrame);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/zDiffThresh/0") != NULL) readZarrDouble(archive, count, &params->zDiffThresh);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/tx/0") != NULL) readZarrDouble(archive, count, &params->tx);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/ty/0") != NULL) readZarrDouble(archive, count, &params->ty);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/tz/0") != NULL) readZarrDouble(archive, count, &params->tz);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p0/0") != NULL) readZarrDouble(archive, count, &params->p0);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p1/0") != NULL) readZarrDouble(archive, count, &params->p1);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p2/0") != NULL) readZarrDouble(archive, count, &params->p2);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p3/0") != NULL) readZarrDouble(archive, count, &params->p3);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/MinNrPx/0") != NULL) readZarrInt(archive, count, &params->minNrPx);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/MaxNrPx/0") != NULL) readZarrInt(archive, count, &params->maxNrPx);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/DoFullImage/0") != NULL) readZarrInt(archive, count, &params->DoFullImage);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/ReferenceRingCurrent/0") != NULL) readZarrDouble(archive, count, &params->bc);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/YCen/0") != NULL) readZarrDouble(archive, count, &params->Ycen);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/ZCen/0") != NULL) readZarrDouble(archive, count, &params->Zcen);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/UpperBoundThreshold/0") != NULL) readZarrDouble(archive, count, &params->IntSat);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/PixelSize/0") != NULL) readZarrDouble(archive, count, &params->px);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/Width/0") != NULL) readZarrDouble(archive, count, &params->Width);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/LayerNr/0") != NULL) readZarrInt(archive, count, &params->LayerNr);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/Wavelength/0") != NULL) readZarrDouble(archive, count, &params->Wavelength);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/Lsd/0") != NULL) readZarrDouble(archive, count, &params->Lsd);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/BadPxIntensity/0") != NULL) { 
+            readZarrDouble(archive, count, &params->BadPxIntensity); 
+            params->makeMap = 1; 
         }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/MaxNPeaks/0") != NULL) {
-            ErrorCode error = readZarrInt(archive, count, &params->maxNPeaks);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("maxNPeaks: %d\n", params->maxNPeaks);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/SkipFrame/0") != NULL) {
-            ErrorCode error = readZarrInt(archive, count, &metadata->skipFrame);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("skipFrame: %d\n", metadata->skipFrame);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/zDiffThresh/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &params->zDiffThresh);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("zDiffThresh: %lf\n", params->zDiffThresh);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/tx/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &params->tx);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("tx: %lf\n", params->tx);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/ty/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &params->ty);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("ty: %lf\n", params->ty);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/tz/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &params->tz);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("tz: %lf\n", params->tz);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p0/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &params->p0);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("p0: %lf\n", params->p0);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p1/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &params->p1);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("p1: %lf\n", params->p1);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p2/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &params->p2);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("p2: %lf\n", params->p2);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p3/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &params->p3);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("p3: %lf\n", params->p3);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/MinNrPx/0") != NULL) {
-            ErrorCode error = readZarrInt(archive, count, &params->minNrPx);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("minNrPx: %d\n", params->minNrPx);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/MaxNrPx/0") != NULL) {
-            ErrorCode error = readZarrInt(archive, count, &params->maxNrPx);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("maxNrPx: %d\n", params->maxNrPx);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/DoFullImage/0") != NULL) {
-            ErrorCode error = readZarrInt(archive, count, &params->DoFullImage);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("DoFullImage: %d\n", params->DoFullImage);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/ReferenceRingCurrent/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &params->bc);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("bc: %lf\n", params->bc);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/YCen/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &params->Ycen);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("Ycen: %lf\n", params->Ycen);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/ZCen/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &params->Zcen);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("Zcen: %lf\n", params->Zcen);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/UpperBoundThreshold/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &params->IntSat);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("IntSat: %lf\n", params->IntSat);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/PixelSize/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &params->px);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("px: %lf\n", params->px);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/Width/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &params->Width);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("Width: %lf\n", params->Width);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/LayerNr/0") != NULL) {
-            ErrorCode error = readZarrInt(archive, count, &params->LayerNr);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("LayerNr: %d\n", params->LayerNr);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/Wavelength/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &params->Wavelength);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("Wavelength: %lf\n", params->Wavelength);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/Lsd/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &params->Lsd);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("Lsd: %lf\n", params->Lsd);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/BadPxIntensity/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &params->BadPxIntensity);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            params->makeMap = 1;
-            printf("BadPxIntensity: %lf, makeMap: %d\n", params->BadPxIntensity, params->makeMap);
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/MaxRingRad/0") != NULL || 
-            strstr(fileInfo->name, "analysis/process/analysis_parameters/RhoD/0") != NULL) {
-            ErrorCode error = readZarrDouble(archive, count, &params->RhoD);
-            if (error != SUCCESS) {
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            printf("RhoD: %lf\n", params->RhoD);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/RhoD/0") != NULL ||
+                strstr(fileInfo->name, "analysis/process/analysis_parameters/MaxRingRad/0") != NULL) {
+            readZarrDouble(archive, count, &params->RhoD);
         }
         
         // Track locations for arrays to read later
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/ImTransOpt/0") != NULL) {
-            locImTransOpt = count;
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/RingThresh/0.0") != NULL) {
-            locRingThresh = count;
-        }
-        
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/OmegaRanges/0.0") != NULL) {
-            locOmegaRanges = count;
-        }
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/ImTransOpt/0") != NULL) locImTransOpt = count;
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/RingThresh/0.0") != NULL) locRingThresh = count;
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/OmegaRanges/0.0") != NULL) locOmegaRanges = count;
         
         // Read array dimensions
         if (strstr(fileInfo->name, "analysis/process/analysis_parameters/RingThresh/.zarray") != NULL) {
             char *buffer = calloc(fileInfo->size + 1, sizeof(char));
-            if (!buffer) {
-                zip_close(archive);
-                free(fileInfo);
-                return ERROR_MEMORY_ALLOCATION;
+            if(buffer) { 
+                zip_file_t *f = zip_fopen_index(archive, count, 0); 
+                zip_fread(f, buffer, fileInfo->size); 
+                zip_fclose(f); 
+                getZarrDimension(buffer, &params->nRingsThresh); 
+                free(buffer); 
             }
-            
-            zip_file_t *file = zip_fopen_index(archive, count, 0);
-            zip_fread(file, buffer, fileInfo->size);
-            zip_fclose(file);
-            
-            ErrorCode error = getZarrDimension(buffer, &params->nRingsThresh);
-            if (error != SUCCESS) {
-                free(buffer);
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            
-            printf("nRingsThresh: %d\n", params->nRingsThresh);
-            free(buffer);
         }
-        
         if (strstr(fileInfo->name, "analysis/process/analysis_parameters/OmegaRanges/.zarray") != NULL) {
             char *buffer = calloc(fileInfo->size + 1, sizeof(char));
-            if (!buffer) {
-                zip_close(archive);
-                free(fileInfo);
-                return ERROR_MEMORY_ALLOCATION;
+            if(buffer) { 
+                zip_file_t *f = zip_fopen_index(archive, count, 0); 
+                zip_fread(f, buffer, fileInfo->size); 
+                zip_fclose(f); 
+                getZarrDimension(buffer, &nOmegaRanges); 
+                free(buffer); 
             }
-            
-            zip_file_t *file = zip_fopen_index(archive, count, 0);
-            zip_fread(file, buffer, fileInfo->size);
-            zip_fclose(file);
-            
-            ErrorCode error = getZarrDimension(buffer, &nOmegaRanges);
-            if (error != SUCCESS) {
-                free(buffer);
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            
-            printf("nOmegaRanges: %d\n", nOmegaRanges);
-            free(buffer);
         }
-
-        if (locOmegaCenterData != -1 && original_nFrames_for_omega > 0) {
-            metadata->omegaCenter = (double*)malloc((size_t)original_nFrames_for_omega * sizeof(double));
-            if (metadata->omegaCenter) {
-                // Use existing readZarrArrayData function
-                ErrorCode err_oc = readZarrArrayData(archive, locOmegaCenterData, metadata->omegaCenter,
-                                                     (size_t)original_nFrames_for_omega * sizeof(double), "double_array_omegaCenter");
-                if (err_oc == SUCCESS) {
-                    metadata->nOmegaCenterEntries = original_nFrames_for_omega;
-                    printf("Successfully read omegaCenter array with %d entries from zip entry '%s' (index %d).\n",
-                           metadata->nOmegaCenterEntries, "measurement/process/scan_parameters/omegaCenter/0", locOmegaCenterData);
-                } else {
-                    fprintf(stderr, "Failed to read omegaCenter data from zip entry '%s' (index %d), error %d. Falling back to omegaStart/Step.\n",
-                           "measurement/process/scan_parameters/omegaCenter/0", locOmegaCenterData, err_oc);
-                    free(metadata->omegaCenter);
-                    metadata->omegaCenter = NULL;
-                    // metadata->nOmegaCenterEntries remains 0
-                }
-            } else {
-                fprintf(stderr, "Failed to allocate memory for omegaCenter for %d entries\n", original_nFrames_for_omega);
-                metadata->omegaCenter = NULL; // Ensure it's NULL if malloc failed
-                // metadata.nOmegaCenterEntries remains 0
-            }
-        } else if (locOmegaCenterData != -1 && original_nFrames_for_omega <= 0) {
-            // This case might occur if "omegaCenter/0" is found but "exchange/data/.zarray" (which sets nFrames) wasn't, or nFrames was 0.
-            fprintf(stderr, "Warning: Found omegaCenter data chunk, but original_nFrames_for_omega (%d) is not positive. Skipping omegaCenter.\n", original_nFrames_for_omega);
-        }
-            
         if (strstr(fileInfo->name, "analysis/process/analysis_parameters/ImTransOpt/.zarray") != NULL) {
-            char *buffer = calloc(fileInfo->size + 1, sizeof(char));
-            if (!buffer) {
-                zip_close(archive);
-                free(fileInfo);
-                return ERROR_MEMORY_ALLOCATION;
+             char *buffer = calloc(fileInfo->size + 1, sizeof(char));
+            if(buffer) { 
+                zip_file_t *f = zip_fopen_index(archive, count, 0); 
+                zip_fread(f, buffer, fileInfo->size); 
+                zip_fclose(f); 
+                getZarrDimension(buffer, &params->nImTransOpt); 
+                free(buffer); 
             }
-            
-            zip_file_t *file = zip_fopen_index(archive, count, 0);
-            zip_fread(file, buffer, fileInfo->size);
-            zip_fclose(file);
-            
-            ErrorCode error = getZarrDimension(buffer, &params->nImTransOpt);
-            if (error != SUCCESS) {
-                free(buffer);
-                zip_close(archive);
-                free(fileInfo);
-                return error;
-            }
-            
-            printf("nImTransOpt: %d\n", params->nImTransOpt);
-            free(buffer);
         }
-        
         count++;
     }
     
-    // Set NrPixels to max of Y and Z dimensions
-    if (metadata->NrPixelsY != metadata->NrPixelsZ) {
-        metadata->NrPixels = metadata->NrPixelsY > metadata->NrPixelsZ ? 
-                             metadata->NrPixelsY : metadata->NrPixelsZ;
-    } else {
-        metadata->NrPixels = metadata->NrPixelsY;
+    if (locOmegaCenterData != -1 && original_nFrames_for_omega > 0) {
+        metadata->omegaCenter = (double*)malloc((size_t)original_nFrames_for_omega * sizeof(double));
+        if (metadata->omegaCenter) {
+            ErrorCode err_oc = readZarrArrayData(archive, locOmegaCenterData, metadata->omegaCenter, (size_t)original_nFrames_for_omega * sizeof(double), "double_array_omegaCenter");
+            if (err_oc == SUCCESS) {
+                metadata->nOmegaCenterEntries = original_nFrames_for_omega;
+            } else {
+                free(metadata->omegaCenter);
+                metadata->omegaCenter = NULL;
+            }
+        }
     }
     
+    // Set NrPixels to max of Y and Z dimensions
+    metadata->NrPixels = metadata->NrPixelsY > metadata->NrPixelsZ ?  metadata->NrPixelsY : metadata->NrPixelsZ;
+    
     // Read transformation options
-    if (params->nImTransOpt > 0) {
-        params->TransOpt = calloc(params->nImTransOpt, sizeof(int));
-        if (!params->TransOpt) {
-            zip_close(archive);
-            free(fileInfo);
-            return ERROR_MEMORY_ALLOCATION;
-        }
-        
-        ErrorCode error = readZarrIntArray(archive, locImTransOpt, &params->nImTransOpt, &params->TransOpt);
-        if (error != SUCCESS) {
-            zip_close(archive);
-            free(fileInfo);
-            return error;
-        }
-        
-        for (int i = 0; i < params->nImTransOpt; i++) {
-            printf("TransOpt[%d]: %d\n", i, params->TransOpt[i]);
-            
-            if (params->TransOpt[i] < 0 || params->TransOpt[i] > 3) {
-                printf("TransformationOptions can only be 0, 1, 2 or 3.\nExiting.\n");
-                zip_close(archive);
-                free(fileInfo);
-                return ERROR_INVALID_PARAMETERS;
-            }
-            
-            printf("TransformationOptions: %d ", params->TransOpt[i]);
-            if (params->TransOpt[i] == 0)
-                printf("No change.\n");
-            else if (params->TransOpt[i] == 1)
-                printf("Flip Left Right.\n");
-            else if (params->TransOpt[i] == 2)
-                printf("Flip Top Bottom.\n");
-            else
-                printf("Transpose.\n");
-        }
+    if (params->nImTransOpt > 0 && locImTransOpt != -1) {
+        readZarrIntArray(archive, locImTransOpt, &params->nImTransOpt, &params->TransOpt);
     }
     
     // Read ring thresholds
     if (params->nRingsThresh > 0 && locRingThresh != -1) {
         params->RingNrs = calloc(params->nRingsThresh, sizeof(int));
         params->Thresholds = calloc(params->nRingsThresh, sizeof(double));
-        
-        if (!params->RingNrs || !params->Thresholds) {
-            if (params->RingNrs) free(params->RingNrs);
-            if (params->Thresholds) free(params->Thresholds);
-            if (params->TransOpt) free(params->TransOpt);
-            zip_close(archive);
-            free(fileInfo);
-            return ERROR_MEMORY_ALLOCATION;
-        }
-        
         double *ringThresholds = NULL;
-        ErrorCode error = readZarrDoubleArray(archive, locRingThresh, params->nRingsThresh, &ringThresholds);
-        if (error != SUCCESS) {
-            if (params->RingNrs) free(params->RingNrs);
-            if (params->Thresholds) free(params->Thresholds);
-            if (params->TransOpt) free(params->TransOpt);
-            zip_close(archive);
-            free(fileInfo);
-            return error;
+        if (params->RingNrs && params->Thresholds && readZarrDoubleArray(archive, locRingThresh, params->nRingsThresh, &ringThresholds) == SUCCESS) {
+            for (int i = 0; i < params->nRingsThresh; i++) {
+                params->RingNrs[i] = (int)ringThresholds[i*2+0];
+                params->Thresholds[i] = ringThresholds[i*2+1];
+            }
+            free(ringThresholds);
         }
-        
-        for (int i = 0; i < params->nRingsThresh; i++) {
-            params->RingNrs[i] = (int)ringThresholds[i*2+0];
-            params->Thresholds[i] = ringThresholds[i*2+1];
-            printf("RingNr[%d]: %d, Threshold: %lf\n", i, params->RingNrs[i], params->Thresholds[i]);
-        }
-        
-        free(ringThresholds);
     }
     
-    // Update global variable
     zDiffThresh = params->zDiffThresh;
-    
-    // Adjust frame counts for skipped frames
     metadata->nFrames -= metadata->skipFrame;
     metadata->nDarks -= metadata->skipFrame;
     dataLoc += metadata->skipFrame;
     darkLoc += metadata->skipFrame;
-    
-    // params->Width should be divided by the px
     params->Width /= params->px;
 
-    // Clean up
     free(fileInfo);
     zip_close(archive);
     
@@ -2684,50 +2156,30 @@ static ErrorCode parseZarrMetadata(
 static ErrorCode calculateRingRadii(
     AnalysisParams *params, const char *resultFolder, double **ringRads)
 {
-    // Allocate memory for ring radii
     *ringRads = calloc(params->nRingsThresh, sizeof(double));
-    if (!(*ringRads)) {
-        return ERROR_MEMORY_ALLOCATION;
-    }
+    if (!(*ringRads)) return ERROR_MEMORY_ALLOCATION;
+    if (params->DoFullImage == 1) return SUCCESS;
     
-    // If using full image, we don't need ring radii
-    if (params->DoFullImage == 1) {
-        return SUCCESS;
-    }
-    
-    // Open HKL file
     char hklFileName[MAX_FILENAME_LENGTH];
     snprintf(hklFileName, MAX_FILENAME_LENGTH, "%s/hkls.csv", resultFolder);
     
     FILE *hklFile = fopen(hklFileName, "r");
     if (!hklFile) {
-        printf("HKL file %s could not be read. Exiting\n", hklFileName);
-        free(*ringRads);
+        free(*ringRads); 
         *ringRads = NULL;
         return ERROR_FILE_OPEN;
     }
     
-    // Read header line
     char line[MAX_LINE_LENGTH];
-    if (!fgets(line, MAX_LINE_LENGTH, hklFile)) {
-        fclose(hklFile);
-        free(*ringRads);
-        *ringRads = NULL;
-        return ERROR_FILE_OPEN;
-    }
+    fgets(line, MAX_LINE_LENGTH, hklFile); // Skip header
     
-    // Read ring data
-    int ringNr;
-    double ringRad;
+    int ringNr; 
+    double ringRad; 
     char dummy[MAX_LINE_LENGTH];
-    
     while (fgets(line, MAX_LINE_LENGTH, hklFile)) {
-        // Parse line to get ring number and radius
         if (11 == sscanf(line, "%s %s %s %s %d %s %s %s %s %s %lf", 
                         dummy, dummy, dummy, dummy, &ringNr, dummy, 
                         dummy, dummy, dummy, dummy, &ringRad)) {
-            
-            // Look for matching ring number in our list
             for (int i = 0; i < params->nRingsThresh; i++) {
                 if (ringNr == params->RingNrs[i]) {
                     (*ringRads)[i] = ringRad / params->px;
@@ -2749,56 +2201,47 @@ static ErrorCode readFrameData(
 {
     int errorp = 0;
     zip_t *archive = zip_open(dataFile, 0, &errorp);
-    if (!archive) {
-        return ERROR_ZIP_OPEN;
-    }
+    if (!archive) return ERROR_ZIP_OPEN;
     
-    // Allocate array to hold offsets and sizes
-    *sizeArr = calloc(nFrames * 2, sizeof(size_t));
-    if (!(*sizeArr)) {
-        zip_close(archive);
-        return ERROR_MEMORY_ALLOCATION;
+    *sizeArr = calloc((size_t)nFrames * 2, sizeof(size_t));
+    if (!(*sizeArr)) { 
+        zip_close(archive); 
+        return ERROR_MEMORY_ALLOCATION; 
     }
-    
-    // First pass to get total size and frame sizes
+
     size_t totalSize = 0;
     for (int i = 0; i < nFrames; i++) {
         zip_stat_t fileStat;
         zip_stat_init(&fileStat);
-        
         if (zip_stat_index(archive, dataLoc + i, 0, &fileStat) != 0) {
-            free(*sizeArr);
-            *sizeArr = NULL;
-            zip_close(archive);
+            free(*sizeArr); 
+            *sizeArr = NULL; 
+            zip_close(archive); 
             return ERROR_ZIP_OPEN;
         }
-        
-        (*sizeArr)[i*2+0] = fileStat.size;     // Size of compressed data
-        (*sizeArr)[i*2+1] = totalSize;         // Offset in buffer
+        (*sizeArr)[i*2+0] = fileStat.size;
+        (*sizeArr)[i*2+1] = totalSize;
         totalSize += fileStat.size;
     }
     
-    // Allocate buffer for all compressed data
     *allData = calloc(totalSize + 1, sizeof(char));
     if (!(*allData)) {
-        free(*sizeArr);
-        *sizeArr = NULL;
-        zip_close(archive);
+        free(*sizeArr); 
+        *sizeArr = NULL; 
+        zip_close(archive); 
         return ERROR_MEMORY_ALLOCATION;
     }
     
-    // Read all frame data
     for (int i = 0; i < nFrames; i++) {
         zip_file_t *file = zip_fopen_index(archive, dataLoc + i, 0);
         if (!file) {
-            free(*sizeArr);
+            free(*sizeArr); 
             *sizeArr = NULL;
             free(*allData);
             *allData = NULL;
             zip_close(archive);
             return ERROR_FILE_OPEN;
         }
-        
         zip_fread(file, &(*allData)[(*sizeArr)[i*2+1]], (*sizeArr)[i*2+0]);
         zip_fclose(file);
     }
@@ -2814,370 +2257,188 @@ int main(int argc, char *argv[])
 {
     double startTime = omp_get_wtime();
     
-    // Check command line parameters
     if (argc < 5) {
         printf("Usage: %s DataFile blockNr nBlocks numProcs [ResultFolder] [fitPeaks]\n", argv[0]);
-        printf("If fitPeaks(0) is provided, MUST provide RESULTFOLDER!!!!!\n");
         return ERROR_INVALID_PARAMETERS;
     }
     
-    // Parse command line arguments
     char *dataFile = argv[1];
     int blockNr = atoi(argv[2]);
     int nBlocks = atoi(argv[3]);
     int numProcs = atoi(argv[4]);
     
-    // Optional arguments
     char *resultFolder = NULL;
-    int doPeakFit = 1;
     
-    if (argc > 5) resultFolder = strdup(argv[5]);
-    if (argc > 6) doPeakFit = atoi(argv[6]);
-    
-    // Initialize Blosc compression library
     blosc2_init();
     
-    // Parse the Zarr metadata and load parameters
     ImageMetadata metadata;
     AnalysisParams params;
     
     ErrorCode error = parseZarrMetadata(dataFile, &metadata, &params, &resultFolder);
     if (error != SUCCESS) {
         printf("Error parsing Zarr metadata: %d\n", error);
-        if (resultFolder) free(resultFolder);
-        if (metadata.omegaCenter) free(metadata.omegaCenter); // <-- ADDED: Potential cleanup if parseZarrMetadata allocated then errored elsewhere
+        if(resultFolder) free(resultFolder);
+        if(metadata.omegaCenter) free(metadata.omegaCenter);
         blosc2_destroy();
         return error;
     }
 
-    // Override result folder if specified in command line
-    if (argc > 5) resultFolder = strdup(argv[5]);
-    // Override doPeakFit if specified in command line
-    if (argc > 6) {
-        params.doPeakFit = doPeakFit;
+    if (argc > 5) { 
+        if(resultFolder) free(resultFolder);
+        resultFolder = strdup(argv[5]);
     }
+    if (argc > 6) params.doPeakFit = atoi(argv[6]);
     
-    // Create output directory
     char outFolderName[MAX_FILENAME_LENGTH];
     snprintf(outFolderName, MAX_FILENAME_LENGTH, "%s/Temp", resultFolder);
-    printf("Output folder: %s\n", outFolderName);
+    checkDirectoryCreation(outFolderName);
     
-    error = checkDirectoryCreation(outFolderName);
-    if (error != SUCCESS) {
-        if (params.TransOpt) free(params.TransOpt);
-        if (params.RingNrs) free(params.RingNrs);
-        if (params.Thresholds) free(params.Thresholds);
-        if (resultFolder) free(resultFolder);
-        blosc2_destroy();
-        return error;
-    }
-    
-    // Calculate ring radii
     double *ringRads = NULL;
-    error = calculateRingRadii(&params, resultFolder, &ringRads);
-    if (error != SUCCESS) {
-        if (params.TransOpt) free(params.TransOpt);
-        if (params.RingNrs) free(params.RingNrs);
-        if (params.Thresholds) free(params.Thresholds);
-        if (resultFolder) free(resultFolder);
+    if (calculateRingRadii(&params, resultFolder, &ringRads) != SUCCESS) {
+        if(resultFolder) free(resultFolder);
         blosc2_destroy();
-        return error;
+        return ERROR_FILE_OPEN;
     }
     
-    // Calculate rotation matrices for detector tilts
-    double txr = DEG2RAD * params.tx;
-    double tyr = DEG2RAD * params.ty;
-    double tzr = DEG2RAD * params.tz;
-    
+    // --- Detector geometry and coordinate calculation ---
+    double txr = DEG2RAD * params.tx, tyr = DEG2RAD * params.ty, tzr = DEG2RAD * params.tz;
     double Rx[3][3] = {{1,0,0}, {0,cos(txr),-sin(txr)}, {0,sin(txr),cos(txr)}};
     double Ry[3][3] = {{cos(tyr),0,sin(tyr)}, {0,1,0}, {-sin(tyr),0,cos(tyr)}};
     double Rz[3][3] = {{cos(tzr),-sin(tzr),0}, {sin(tzr),cos(tzr),0}, {0,0,1}};
-    
     double TRint[3][3], TRs[3][3];
     matrixMultiply33(Ry, Rz, TRint);
     matrixMultiply33(Rx, TRint, TRs);
     
-    // Determine the coordinates to process
-    double *goodCoords = calloc(metadata.NrPixels * metadata.NrPixels, sizeof(*goodCoords));
-    if (!goodCoords) {
-        if (ringRads) free(ringRads);
-        if (params.TransOpt) free(params.TransOpt);
-        if (params.RingNrs) free(params.RingNrs);
-        if (params.Thresholds) free(params.Thresholds);
-        if (resultFolder) free(resultFolder);
-        blosc2_destroy();
-        return ERROR_MEMORY_ALLOCATION;
-    }
-    
-    int nrCoords = 0;
+    double *goodCoords = calloc((size_t)metadata.NrPixels * metadata.NrPixels, sizeof(double));
+    if (!goodCoords) return ERROR_MEMORY_ALLOCATION;
     
     if (params.DoFullImage == 1) {
-        // Process entire image with first threshold
-        for (int a = 0; a < metadata.NrPixels * metadata.NrPixels; a++) {
-            goodCoords[a] = params.Thresholds[0];
-        }
-        nrCoords = metadata.NrPixels * metadata.NrPixels;
+        for (int a = 0; a < metadata.NrPixels * metadata.NrPixels; a++) goodCoords[a] = params.Thresholds[0];
     } else {
-        // Process only pixels within ring regions
-        for (int a = 1; a < metadata.NrPixels; a++) {
-            for (int b = 1; b < metadata.NrPixels; b++) {
-                // Convert detector coordinates to lab coordinates
-                double Yc = (-a + params.Ycen) * params.px;
-                double Zc = (b - params.Zcen) * params.px;
-                
-                double ABC[3] = {0, Yc, Zc};
-                double ABCPr[3];
+        #pragma omp parallel for
+        for (int a = 0; a < metadata.NrPixels; a++) {
+            for (int b = 0; b < metadata.NrPixels; b++) {
+                double Yc = (-a + params.Ycen) * params.px, Zc = (b - params.Zcen) * params.px;
+                double ABC[3] = {0, Yc, Zc}, ABCPr[3];
                 matrixVectorMultiply(TRs, ABC, ABCPr);
-                
                 double XYZ[3] = {params.Lsd + ABCPr[0], ABCPr[1], ABCPr[2]};
-                
-                // Calculate radius and angle
-                double Rad = (params.Lsd / (XYZ[0])) * sqrt(XYZ[1]*XYZ[1] + XYZ[2]*XYZ[2]);
+                double Rad = (params.Lsd / XYZ[0]) * sqrt(XYZ[1]*XYZ[1] + XYZ[2]*XYZ[2]);
                 double Eta = calcEtaAngle(XYZ[1], XYZ[2]);
-                
-                // Apply distortion correction
                 double RNorm = Rad / params.RhoD;
                 double EtaT = 90 - Eta;
-                double n0 = 2, n1 = 4, n2 = 2;
-                
-                double DistortFunc = (params.p0 * pow(RNorm, n0) * cos(DEG2RAD*(2*EtaT))) + 
-                                   (params.p1 * pow(RNorm, n1) * cos(DEG2RAD*(4*EtaT+params.p3))) + 
-                                   (params.p2 * pow(RNorm, n2)) + 1;
-                
+                double DistortFunc = (params.p0 * pow(RNorm, 2) * cosd(2*EtaT)) + 
+                                   (params.p1 * pow(RNorm, 4) * cosd(4*EtaT+params.p3)) + 
+                                   (params.p2 * pow(RNorm, 2)) + 1;
                 double Rt = Rad * DistortFunc / params.px;
-                
-                // Check if pixel is within any ring
-                for (int thisRingNr = 0; thisRingNr < params.nRingsThresh; thisRingNr++) {
-                    if (Rt > ringRads[thisRingNr] - params.Width && 
-                        Rt < ringRads[thisRingNr] + params.Width) {
-                        goodCoords[((a-1)*metadata.NrPixels)+(b-1)] = params.Thresholds[thisRingNr];
-                        nrCoords++;
+                for (int r = 0; r < params.nRingsThresh; r++) {
+                    if (Rt > ringRads[r] - params.Width && Rt < ringRads[r] + params.Width) {
+                        goodCoords[(a*metadata.NrPixels)+b] = params.Thresholds[r];
                     }
                 }
             }
         }
     }
-    // Print the ringRads, params.Width, metadata.NrPixels
-    for (int i = 0; i < params.nRingsThresh; i++) {
-        printf("RingNr[%d]: %d, RingRad: %lf, Width: %lf\n", i, params.RingNrs[i], ringRads[i], params.Width);
-    }
-    printf("Width: %lf, NrPixels: %d\n", params.Width, metadata.NrPixels);
-    printf("Number of coordinates to process: %d\n", nrCoords);
     
-    // Calculate job distribution
     int startFileNr = (int)(ceil((double)metadata.nFrames / (double)nBlocks)) * blockNr;
     int endFileNr = (int)(ceil((double)metadata.nFrames / (double)nBlocks)) * (blockNr+1);
+    if (endFileNr > metadata.nFrames) endFileNr = metadata.nFrames;
+    printf("Processing frames %d to %d\n", startFileNr, endFileNr);
     
-    if (endFileNr > metadata.nFrames) {
-        endFileNr = metadata.nFrames;
-    }
-    
-    int nrJobs = (int)(ceil((double)(endFileNr - startFileNr) / (double)(numProcs)));
-    
-    printf("StartFileNr: %d EndFileNr: %d numProcs: %d nrJobs/proc: %d blockNr: %d nrBlocks: %d\n",
-          startFileNr, endFileNr, numProcs, nrJobs, blockNr, nBlocks);
-    
-    // Open Zarr archive to read corrections (dark, flat, mask)
+    // --- Read Correction and Image Data (Shared by all threads) ---
     int errorp = 0;
     zip_t *archive = zip_open(dataFile, 0, &errorp);
-    if (!archive) {
-        if (ringRads) free(ringRads);
-        if (params.TransOpt) free(params.TransOpt);
-        if (params.RingNrs) free(params.RingNrs);
-        if (params.Thresholds) free(params.Thresholds);
-        if (resultFolder) free(resultFolder);
-        free(goodCoords);
-        blosc2_destroy();
-        return ERROR_ZIP_OPEN;
-    }
+    if (!archive) return ERROR_ZIP_OPEN;
     
-    // Allocate memory for correction images
-    double *dark = calloc(metadata.NrPixels * metadata.NrPixels, sizeof(*dark));
-    double *mask = calloc(metadata.NrPixels * metadata.NrPixels, sizeof(*mask));
-    double *flood = calloc(metadata.NrPixels * metadata.NrPixels, sizeof(*flood));
+    double *dark = calloc((size_t)metadata.NrPixels * metadata.NrPixels, sizeof(double));
+    double *mask = calloc((size_t)metadata.NrPixels * metadata.NrPixels, sizeof(double));
+    double *flood = calloc((size_t)metadata.NrPixels * metadata.NrPixels, sizeof(double));
     
-    if (!dark || !mask || !flood) {
-        if (dark) free(dark);
-        if (mask) free(mask);
-        if (flood) free(flood);
-        zip_close(archive);
-        if (ringRads) free(ringRads);
-        if (params.TransOpt) free(params.TransOpt);
-        if (params.RingNrs) free(params.RingNrs);
-        if (params.Thresholds) free(params.Thresholds);
-        if (resultFolder) free(resultFolder);
-        free(goodCoords);
-        blosc2_destroy();
-        return ERROR_MEMORY_ALLOCATION;
-    }
-    
-    // Find data locations in archive
+    int darkLoc = -1, floodLoc = -1, maskLoc = -1, count = 0;
     struct zip_stat fileInfo;
     zip_stat_init(&fileInfo);
-    
-    int darkLoc = -1, dataLoc = -1, floodLoc = -1, maskLoc = -1;
-    int count = 0;
-    
     while (zip_stat_index(archive, count, 0, &fileInfo) == 0) {
-        if (strstr(fileInfo.name, "exchange/data/0.0.0") != NULL) {
-            dataLoc = count;
-        }
-        if (strstr(fileInfo.name, "exchange/dark/0.0.0") != NULL) {
-            darkLoc = count;
-        }
-        if (strstr(fileInfo.name, "exchange/mask/0.0.0") != NULL) {
-            maskLoc = count;
-        }
-        if (strstr(fileInfo.name, "exchange/flood/0.0.0") != NULL) {
-            floodLoc = count;
-        }
+        if (strstr(fileInfo.name, "exchange/dark/0.0.0") != NULL) darkLoc = count;
+        if (strstr(fileInfo.name, "exchange/mask/0.0.0") != NULL) maskLoc = count;
+        if (strstr(fileInfo.name, "exchange/flood/0.0.0") != NULL) floodLoc = count;
         count++;
     }
-    
-    // Apply frame skipping
-    dataLoc += metadata.skipFrame;
     darkLoc += metadata.skipFrame;
     
-    // Read correction images
-    error = readImageCorrections(
-        archive, darkLoc, floodLoc, maskLoc,
-        metadata.nDarks, metadata.nFloods, metadata.NrPixels,
-        metadata.NrPixelsY, metadata.NrPixelsZ, metadata.bytesPerPx,
-        params.nImTransOpt, params.TransOpt,
-        dark, flood, mask);
-    
+    error = readImageCorrections(archive, darkLoc, floodLoc, maskLoc, &metadata, &params, dark, flood, mask);
     zip_close(archive);
-    
-    if (error != SUCCESS) {
-        free(dark);
-        free(mask);
-        free(flood);
-        if (ringRads) free(ringRads);
-        if (params.TransOpt) free(params.TransOpt);
-        if (params.RingNrs) free(params.RingNrs);
-        if (params.Thresholds) free(params.Thresholds);
-        if (resultFolder) free(resultFolder);
-        free(goodCoords);
-        blosc2_destroy();
-        return error;
+    if (error != SUCCESS) { /* cleanup and exit */ return error; }
+
+    // Re-find dataLoc as archive was closed and re-opened implicitly in other functions
+    int dataLoc = -1;
+    count = 0;
+    archive = zip_open(dataFile, 0, &errorp);
+    zip_stat_init(&fileInfo);
+    while (zip_stat_index(archive, count, 0, &fileInfo) == 0) {
+        if (strstr(fileInfo.name, "exchange/data/0.0.0") != NULL) dataLoc = count;
+        count++;
     }
-    printf("%lf\n",dark[0]);
-    // Read frame data
+    zip_close(archive);
+    dataLoc += metadata.skipFrame;
+    
     size_t *sizeArr = NULL;
     char *allData = NULL;
-    
     error = readFrameData(dataFile, dataLoc, metadata.nFrames, &sizeArr, &allData);
-    if (error != SUCCESS) {
-        free(dark);
-        free(mask);
-        free(flood);
-        if (ringRads) free(ringRads);
-        if (params.TransOpt) free(params.TransOpt);
-        if (params.RingNrs) free(params.RingNrs);
-        if (params.Thresholds) free(params.Thresholds);
-        if (resultFolder) free(resultFolder);
-        free(goodCoords);
-        blosc2_destroy();
-        return error;
-    }
+    if (error != SUCCESS) { /* cleanup and exit */ return error; }
     
-    // Process image frames in parallel
+    // --- HIGHLY EFFICIENT PARALLEL PROCESSING LOOP ---
     int nrFilesDone = 0;
-    
-    #pragma omp parallel for num_threads(numProcs) shared(nrFilesDone) schedule(dynamic)
-    for (int fileNr = startFileNr; fileNr < endFileNr; fileNr++) {
-        // Allocate memory for this thread
-        pixelvalue *image = calloc(metadata.NrPixels * metadata.NrPixels, sizeof(*image));
-        double *imgCorrBC = calloc(metadata.NrPixels * metadata.NrPixels, sizeof(*imgCorrBC));
-        
-        if (!image || !imgCorrBC) {
-            if (image) free(image);
-            if (imgCorrBC) free(imgCorrBC);
-            // Using #pragma omp critical for printf is safer in parallel regions if not already done by stdio
+    #pragma omp parallel num_threads(numProcs) shared(nrFilesDone)
+    {
+        // 1. Each thread declares its own workspace struct.
+        ThreadWorkspace ws;
+
+        // 2. Each thread allocates its workspace MEMORY ONCE.
+        ErrorCode alloc_error = allocateWorkspace(&ws, &metadata, &params);
+        if (alloc_error != SUCCESS) {
             #pragma omp critical
             {
-                printf("Memory allocation error for thread processing frame %d\n", fileNr);
-            }
-            continue; // Skip this frame iteration
-        }
-        
-        // Calculate omega angle for this frame
-        // 'fileNr' from the loop is an index relative to the start of the frames being processed *by this block*.
-        // It's effectively an index into the 'allData' array structure, which itself starts after 'skipFrame' originals.
-        // So, the original frame number for Zarr indexing (0-based) is 'fileNr + metadata.skipFrame'.
-        int original_frame_number = fileNr; // This 'fileNr' loop variable IS the original frame number for data that's loaded.
-                                            // Let's trace:
-                                            // if skipFrame = 10, nFrames = 100 (orig).
-                                            // metadata.nFrames becomes 90.
-                                            // startFileNr (for block 0/1) is 0, endFileNr is 90.
-                                            // readFrameData reads starting from dataLoc (which is orig_dataLoc + 10).
-                                            // processImageFrame receives 'fileNr' from 0 to 89.
-                                            // This 'fileNr' corresponds to the (fileNr)-th image *in the loaded set*.
-                                            // The actual original frame number is 'fileNr_in_loop + metadata.skipFrame'.
-                                            // The 'fileNr' argument to processImageFrame is 'fileNr_in_loop'.
-                                            // The 'fileNr' used in CSV output `basename_%06d_PS.csv` is this `fileNr_in_loop + 1`.
-                                            // Thus, the omega should correspond to `fileNr_in_loop + metadata.skipFrame`.
-
-        int current_original_frame_idx = fileNr + metadata.skipFrame; // fileNr is the loop variable
-        double omega;
-
-        if (metadata.omegaCenter != NULL) { // Check if omegaCenter array was populated
-            if (current_original_frame_idx >= 0 && current_original_frame_idx < metadata.nOmegaCenterEntries) {
-                omega = metadata.omegaCenter[current_original_frame_idx];
-            } else {
-                // Index out of bounds for omegaCenter, or an issue with counts. Fallback.
-                #pragma omp critical
-                {
-                fprintf(stderr, "Warning: omegaCenter index %d for fileNr %d (skipFrame %d) is out of bounds (0-%d). Falling back.\n",
-                        current_original_frame_idx, fileNr, metadata.skipFrame, metadata.nOmegaCenterEntries - 1);
-                }
-                omega = metadata.omegaStart + (double)current_original_frame_idx * metadata.omegaStep;
+                fprintf(stderr, "FATAL: Memory allocation for thread workspace failed.\n");
             }
         } else {
-            // omegaCenter not available, use old logic
-            omega = metadata.omegaStart + (double)current_original_frame_idx * metadata.omegaStep;
-        }
-        printf("Processing frame %d, omega: %lf, originalOmega: %lf\n", fileNr, omega,metadata.omegaStart + (double)current_original_frame_idx * metadata.omegaStep);
-        
-        // Process the image frame
-        ErrorCode threadError = processImageFrame(
-            fileNr, allData, sizeArr,
-            metadata.NrPixels, metadata.NrPixelsY, metadata.NrPixelsZ, metadata.bytesPerPx,
-            image, imgCorrBC, dark, flood, mask, goodCoords,
-            params.Ycen, params.Zcen, params.IntSat, params.bc,
-            params.minNrPx, params.maxNrPx, params.maxNPeaks, params.makeMap, params.BadPxIntensity,
-            params.nImTransOpt, params.TransOpt, omega, outFolderName, dataFile, params.doPeakFit);
-        
-        // Cleanup thread resources
-        free(image);
-        free(imgCorrBC);
-        
-        #pragma omp critical
-        {
-            if (threadError == SUCCESS) {
-                nrFilesDone++;
+            // 3. Begin the parallel work distribution.
+            #pragma omp for schedule(dynamic)
+            for (int fileNr = startFileNr; fileNr < endFileNr; fileNr++) {
+                int current_original_frame_idx = fileNr + metadata.skipFrame;
+                double omega;
+                if (metadata.omegaCenter && current_original_frame_idx < metadata.nOmegaCenterEntries) {
+                    omega = metadata.omegaCenter[current_original_frame_idx];
+                } else {
+                    omega = metadata.omegaStart + (double)current_original_frame_idx * metadata.omegaStep;
+                }
+                
+                ErrorCode threadError = processImageFrame(
+                    fileNr, allData, sizeArr, &metadata, &params,
+                    dark, flood, mask, goodCoords,
+                    omega, outFolderName, dataFile, &ws); // Pass workspace pointer
+                
+                #pragma omp critical
+                if (threadError == SUCCESS) nrFilesDone++;
             }
+
+            // 4. After its work is done, each thread frees its workspace.
+            freeWorkspace(&ws);
         }
-    }
+    } // --- End of parallel region ---
     
-    // Cleanup
+    // Final Cleanup
     free(dark);
     free(flood);
     free(mask);
     free(goodCoords);
     free(sizeArr);
     free(allData);
-    if (ringRads) free(ringRads);
-    if (params.TransOpt) free(params.TransOpt);
-    if (params.RingNrs) free(params.RingNrs);
-    if (params.Thresholds) free(params.Thresholds);
-    if (resultFolder) free(resultFolder);
-    if (metadata.omegaCenter != NULL) { // <-- ADDED: Cleanup omegaCenter
-        free(metadata.omegaCenter);
-        metadata.omegaCenter = NULL;
-    }
+    if(ringRads) free(ringRads);
+    if(params.TransOpt) free(params.TransOpt);
+    if(params.RingNrs) free(params.RingNrs);
+    if(params.Thresholds) free(params.Thresholds);
+    if(resultFolder) free(resultFolder);
+    if(metadata.omegaCenter) free(metadata.omegaCenter);
     
-    // Clean up Blosc
     blosc2_destroy();
     
     double totalTime = omp_get_wtime() - startTime;
