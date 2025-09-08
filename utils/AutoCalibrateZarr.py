@@ -173,7 +173,7 @@ def generateZip(resFol, pfn, dfn='', darkfn='', dloc='', nchunks=-1, preproc=-1,
     """Generate a Zarr zip file from other file formats"""
     cmd = [
         pytpath,
-        os.path.join(INSTALL_PATH, 'utils/ffGenerateZip.py'),
+        os.path.join(INSTALL_PATH, 'utils/ffGenerateZipRefactor.py'),
         '-resultFolder', resFol,
         '-paramFN', pfn
     ]
@@ -358,7 +358,7 @@ def runMIDAS(fn):
             pf.write('tolBC 20\n')
             pf.write('tolLsd 15000\n')
             pf.write('tolP 2E-3\n')
-            pf.write('tx 0\n')
+            pf.write(f'tx {tx_reference}\n')
             pf.write(f'ty {ty_refined}\n')
             pf.write(f'tz {tz_refined}\n')
             pf.write('Wedge 0\n')
@@ -708,7 +708,7 @@ def main():
     global folder, fstem, ext, ty_refined, tz_refined, p0_refined, p1_refined
     global p2_refined, p3_refined, darkName, fnumber, pad, lsd_refined, bc_refined
     global ringsToExclude, nPlanes, mean_strain, std_strain, RhoDThis, h5_file, iterNr
-    global badGapArr
+    global badGapArr, tx_reference
     
     try:
         parser = MyParser(
@@ -728,7 +728,7 @@ def main():
         parser.add_argument('-StoppingStrain', type=float, required=False, default=0.00004, help='If refined pseudo-strain is below this value and all rings are "good", we would have converged.')
         parser.add_argument('-ImTransOpt', type=int, required=False, default=[0], nargs='*', help="If you want to do any transformations to the data: \n0: nothing, 1: flip LR, 2: flip UD, 3: transpose. Give as many as needed in the right order.")
         parser.add_argument('-ConvertFile', type=int, required=False, default=0, help="If you want to generate the zarr zip file from a different format: \n0: input is zarr zip file, 1: HDF5 input will be used to generarte a zarr zip file, 2: Binary GE-type file, 3: TIFF input.")
-        parser.add_argument('-paramFN', type=str, required=False, default='', help="If you use convertFile != 0, you need to provide the parameter file consisting of all settings: SpaceGroup, SkipFrame, px, LatticeParameter, Wavelength.")
+        parser.add_argument('-paramFN', type=str, required=False, default='', help="If you use convertFile != 0, you need to provide the parameter file consisting of all settings: SpaceGroup, SkipFrame, px, LatticeParameter, Wavelength and (optionally) tx in case tx is not 0.")
         parser.add_argument('-LsdGuess', type=float, required=False, default=1000000, help="If you know a guess for the Lsd, it might be good to kickstart things.")
         parser.add_argument('-BCGuess', type=float, required=False, default=[0.0, 0.0], nargs=2, help="If you know a guess for the BC, it might be good to kickstart things.")
         parser.add_argument('-BadPxIntensity', type=float, required=False, default=np.nan, help="If you know the bad pixel intensity, provide the value.")
@@ -811,7 +811,11 @@ def main():
         px = dataF['/analysis/process/analysis_parameters/PixelSize'][0].item()
         latc = dataF['/analysis/process/analysis_parameters/LatticeParameter'][:]
         Wavelength = dataF['/analysis/process/analysis_parameters/Wavelength'][:].item()
-        
+        if '/analysis/process/analysis_parameters/tx' in dataF:
+            tx_reference = dataF['/analysis/process/analysis_parameters/tx'][:].item()
+        else:
+            tx_reference = 0.0
+
         # Read data and dark
         raw = fileReader(dataF, '/exchange/data')
         dark = fileReader(dataF, '/exchange/dark')

@@ -265,7 +265,7 @@ class FileProcessor:
             
         cmd = [
             sys.executable,
-            str(MIDAS_UTILS / 'ffGenerateZip.py'),
+            str(MIDAS_UTILS / 'ffGenerateZipRefactor.py'),
             '-resultFolder', str(self.params.result_dir),
             '-paramFN', str(self.params.param_file)
         ]

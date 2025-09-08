@@ -175,7 +175,7 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
         Returns:
             The name of the generated zip file if successful
         """
-        cmd = f"{pytpath} {os.path.join(midas_path, 'utils/ffGenerateZip.py')} -resultFolder {resFol} -paramFN {pfn} -LayerNr {str(layerNr)}"
+        cmd = f"{pytpath} {os.path.join(midas_path, 'utils/ffGenerateZipRefactor.py')} -resultFolder {resFol} -paramFN {pfn} -LayerNr {str(layerNr)}"
         
         if dfn:
             cmd += f" -dataFN {dfn}"

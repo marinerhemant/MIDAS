@@ -364,7 +364,7 @@ def generateZip(
     Returns:
         ZIP file name if successful, None otherwise
     """
-    cmd = f"{pytpath} {os.path.join(utils_dir, 'ffGenerateZip.py')} -resultFolder {resFol} -paramFN {pfn} -LayerNr {layerNr}"
+    cmd = f"{pytpath} {os.path.join(utils_dir, 'ffGenerateZipRefactor.py')} -resultFolder {resFol} -paramFN {pfn} -LayerNr {layerNr}"
     
     if dfn:
         cmd += f' -dataFN {dfn}'
