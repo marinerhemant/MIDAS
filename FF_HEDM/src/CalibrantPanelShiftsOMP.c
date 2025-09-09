@@ -490,10 +490,10 @@ double problem_function(
 	int i,j,k;
 	double n0=2,n1=4,n2=2,Yc,Zc;
 	double Rad, Eta, RNorm, DistortFunc, Rcorr, Theta, Diff, IdealTheta, TotalDiff=0, RIdeal,EtaT;
-    int zMins[6] = {0, 244, 494, 738, 988, 1232};
-    int zMaxs[6] = {243, 487, 737, 981, 1231, 1475};
-    int yMins[8] = {0, 212, 424, 636, 848, 1060, 1272, 1484};
-    int yMaxs[8] = {195, 407, 619, 831, 1043, 1255, 1467, 1679};
+    int yMins[6] = {0, 244, 494, 738, 988, 1232};
+    int yMaxs[6] = {243, 487, 737, 981, 1231, 1475};
+    int zMins[8] = {0, 212, 424, 636, 848, 1060, 1272, 1484};
+    int zMaxs[8] = {195, 407, 619, 831, 1043, 1255, 1467, 1679};
     double dY=0, dZ=0;
 	for (i=0;i<nIndices;i++){
         // Y: The 1st, 3rd and 5th panels are separated by 1 pixel from the next, while the 2nd, 4th and 6th panels are separated by 7 pixels from the next.
