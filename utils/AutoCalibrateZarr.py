@@ -1101,6 +1101,7 @@ def main():
         logger.info("Converged to a good set of parameters.\nBest values:")
         logger.info(f'Lsd {lsd_refined}')
         logger.info(f'BC {bc_refined}')
+        logger.info(f'ty {tx_reference}')
         logger.info(f'ty {ty_refined}')
         logger.info(f'tz {tz_refined}')
         logger.info(f'p0 {p0_refined}')
@@ -1117,9 +1118,9 @@ def main():
         final_params = {
             'Lsd': lsd_refined,
             'BC': bc_refined,
+            'tx': tx_reference,
             'ty': ty_refined,
             'tz': tz_refined,
-            'tx': tx_reference,
             'p0': p0_refined,
             'p1': p1_refined,
             'p2': p2_refined,
