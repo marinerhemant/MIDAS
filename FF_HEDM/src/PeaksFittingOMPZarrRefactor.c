@@ -1735,9 +1735,9 @@ static ErrorCode readZarrDataType(
     struct zip_stat fileInfo;
     zip_stat_init(&fileInfo);
     
-    // Try to find measurement/scan/datatype
+    // Try to find measurement/process/scan_parameters/datatype
     while (zip_stat_index(archive, count, 0, &fileInfo) == 0) {
-        if (strstr(fileInfo.name, "measurement/scan/datatype") != NULL) {
+        if (strstr(fileInfo.name, "measurement/process/scan_parameters/datatype") != NULL) {
             char *typeName = NULL;
             ErrorCode error = readZarrString(archive, count, &typeName);
             

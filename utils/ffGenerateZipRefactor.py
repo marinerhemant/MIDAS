@@ -67,32 +67,107 @@ def create_zarr_structure(zRoot):
     return groups
 
 def write_analysis_parameters(z_groups, config):
-    """Writes parameters from config dict to Zarr, handling all special cases."""
+    """
+    Writes parameters from the config dictionary to the Zarr file,
+    enforcing specific data types for consistency, similar to the original script.
+    """
     sp_pro_analysis, sp_pro_meas = z_groups['sp_pro_analysis'], z_groups['sp_pro_meas']
     print("\nWriting analysis parameters to Zarr file...")
-    RENAME_MAP = { "OmegaStep": "step", "Completeness": "MinMatchesToAcceptFrac", "px": "PixelSize",
-                   "LatticeConstant": "LatticeParameter", "OverallRingToIndex": "OverallRingToIndex" }
+
+    # --- TYPE ENFORCEMENT SETUP ---
+    # Based on the original script, we define which parameters belong to which type.
+    # Add any new parameters to these sets as needed.
+
+    FORCE_DOUBLE_PARAMS = {
+        "RMin", "RMax", "px", "PixelSize", "Completeness", "MinMatchesToAcceptFrac",
+        "OverArea", "IntensityThresh", "MinS_N", "YPixelSize", "ZPixelSize",
+        "BeamStopY", "BeamStopZ", "DetDist", "MaxDev", "OmegaStart", "OmegaFirstFile",
+        "OmegaStep", "step", "BadPxIntensity", "GapIntensity", "FitWeightMean",
+        "PixelSplittingRBin", "tolTilts", "tolBC", "tolLsd", "DiscArea", "OverlapLength",
+        "ReferenceRingCurrent", "zDiffThresh", "GlobalPosition", "tolPanelFit",
+        "tolP", "tolP0", "tolP1", "tolP2", "tolP3", "StepSizePos", "tInt", "tGap",
+        "StepSizeOrient", "MarginRadius", "MarginRadial", "MarginEta", "MarginOme",
+        "MargABG", "MargABC", "OmeBinSize", "EtaBinSize", "RBinSize", "EtaMin", "MinEta",
+        "EtaMax", "X", "Y", "Z", "U", "V", "W", "SHpL", "Polariz", "MaxOmeSpotIDsToIndex",
+        "MinOmeSpotIDsToIndex", "BeamThickness", "Wedge", "Rsample", "Hbeam", "Vsample",
+        "RhoD", "MaxRingRad", "Lsd", "Wavelength", "Width", "WidthTthPx",
+        "UpperBoundThreshold", "p3", "p2", "p1", "p0", "tz", "ty", "tx"
+    }
+
+    FORCE_INT_PARAMS = {
+        "Twins", "MaxNFrames", "DoFit", "DiscModel", "UseMaximaPositions", "MaxNrPx",
+        "MinNrPx", "MaxNPeaks", "PhaseNr", "NumPhases", "MinNrSpots", "UseFriedelPairs",
+        "OverallRingToIndex", "SpaceGroup", "LayerNr", "DoFullImage", "SkipFrame",
+        "SumImages", "Normalize", "SaveIndividualFrames", "OmegaSumFrames"
+    }
+
+    FORCE_STRING_PARAMS = {
+        "GapFile", "BadPxFile", "ResultFolder"
+    }
+
+    # --- RENAME MAP ---
+    RENAME_MAP = {
+        "OmegaStep": "step", "Completeness": "MinMatchesToAcceptFrac", "px": "PixelSize",
+        "LatticeConstant": "LatticeParameter", "OverallRingToIndex": "OverallRingToIndex"
+    }
+
+    # --- MAIN PARAMETER WRITING LOOP ---
     for key, value in config.items():
         try:
-            target_key, target_group = RENAME_MAP.get(key, key), sp_pro_analysis
-            if key in ["OmegaStep", "start", "datatype"]: target_group = sp_pro_meas
+            target_key = RENAME_MAP.get(key, key)
+            target_group = sp_pro_analysis
+            if key in ["OmegaStep", "start", "datatype"]:
+                target_group = sp_pro_meas
+
+            # --- HANDLE SPECIAL MULTI-VALUE OR COMPLEX PARAMETERS FIRST ---
             if key == 'BC':
-                values = value if isinstance(value, list) else [value]
+                values = value if isinstance(value, list) else [value, 0] # Default second value if missing
                 sp_pro_analysis.create_dataset('YCen', data=np.array([values[0]], dtype=np.double))
                 sp_pro_analysis.create_dataset('ZCen', data=np.array([values[1]], dtype=np.double))
+            elif key == 'LatticeConstant' or key == 'LatticeParameter':
+                values = value if isinstance(value, list) else [value]
+                # Pad with zeros if fewer than 6 values are provided, mimicking some file formats
+                padded_values = np.zeros(6, dtype=np.double)
+                padded_values[:len(values)] = values
+                target_group.create_dataset(target_key, data=padded_values.astype(np.double))
             elif key in ['RingThresh', 'RingsToExclude', 'OmegaRanges', 'BoxSizes', 'ImTransOpt']:
                 values_to_write = value if isinstance(value, list) else [value]
                 arr = np.array(values_to_write)
+                # Ensure 2D for keys that were historically multi-column
+                if key in ['RingThresh', 'RingsToExclude', 'OmegaRanges', 'BoxSizes'] and arr.ndim == 1:
+                    # This logic assumes single entries should be rows in a 2D array
+                    arr = arr.reshape(1, -1)
+
                 dtype = np.int32 if key == 'ImTransOpt' else np.double
                 target_group.create_dataset(target_key, data=arr.astype(dtype))
+
+            # --- HANDLE ALL OTHER PARAMETERS BASED ON TYPE LISTS ---
             else:
-                if isinstance(value, list): arr = np.array(value)
-                elif isinstance(value, int): arr = np.array([value], dtype=np.int32)
-                elif isinstance(value, float): arr = np.array([value], dtype=np.double)
-                else: arr = np.bytes_(str(value).encode('UTF-8'))
-                target_group.create_dataset(target_key, data=arr)
+                arr = None
+                if key in FORCE_STRING_PARAMS or target_key in FORCE_STRING_PARAMS:
+                    arr = np.bytes_(str(value).encode('UTF-8'))
+                elif key in FORCE_DOUBLE_PARAMS or target_key in FORCE_DOUBLE_PARAMS:
+                    # Coerce to a list, create array, and set type to double
+                    values_to_write = value if isinstance(value, list) else [value]
+                    arr = np.array(values_to_write, dtype=np.double)
+                elif key in FORCE_INT_PARAMS or target_key in FORCE_INT_PARAMS:
+                    values_to_write = value if isinstance(value, list) else [value]
+                    arr = np.array(values_to_write, dtype=np.int32)
+                else:
+                    # Fallback for any parameters not in the lists
+                    if isinstance(value, str):
+                        arr = np.bytes_(value.encode('UTF-8'))
+                    else:
+                        values_to_write = value if isinstance(value, list) else [value]
+                        arr = np.array(values_to_write) # Let numpy guess the type
+
+                if arr is not None:
+                    target_group.create_dataset(target_key, data=arr)
+
         except Exception as e:
             print(f"  - Warning: Could not write parameter '{key}'. Reason: {e}")
+
+    # --- FINAL DERIVED PARAMETER CALCULATION ---
     ome_ff = float(config.get('OmegaStart', config.get('OmegaFirstFile', 0)))
     ome_stp = float(config.get('OmegaStep', 0))
     skip_f = int(config.get('SkipFrame', 0))
