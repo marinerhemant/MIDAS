@@ -4,7 +4,7 @@
 //
 
 //
-//  PeaksFittingOMPZarr.c - Improved version
+//  PeaksFittingOMPZarrRefactor.c - Improved version
 //
 //  Created by Hemant Sharma on 2024/02/27.
 //  Refactored with improvements

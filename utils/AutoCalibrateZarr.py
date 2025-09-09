@@ -1119,7 +1119,7 @@ def main():
             'BC': bc_refined,
             'ty': ty_refined,
             'tz': tz_refined,
-            'tx': 0,
+            'tx': tx_reference,
             'p0': p0_refined,
             'p1': p1_refined,
             'p2': p2_refined,
