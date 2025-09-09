@@ -335,6 +335,7 @@ def main():
     print("\n--- Zarr File Structure Verification ---");
     with zarr.open(str(outfn_zip), 'r') as zf: print(zf.tree())
     print(f"\nSuccessfully created Zarr file: {outfn_zip}")
+    print(f"OutputZipName: {outfn_zip}")
 
 if __name__ == '__main__':
     main()
