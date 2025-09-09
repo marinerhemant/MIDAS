@@ -284,8 +284,9 @@ def main():
         print("Pre-processing was active. Overwriting dark/bright arrays in Zarr with zeros.")
         for key in ['dark', 'bright']:
             if key in z_groups['exc']:
-                shape = z_groups['exc'][key].shape; del z_groups['exc'][key]
-                z_groups['exc'].zeros(key, shape=shape, dtype=output_dtype)
+                z_array = z_groups['exc'][key]
+                zero_data = np.zeros(z_array.shape, dtype=z_array.dtype)
+                z_array[...] = zero_data
 
     if 'MaskFN' in config and config['MaskFN']:
         print(f"Loading final mask from {config['MaskFN']}")
