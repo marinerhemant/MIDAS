@@ -1124,6 +1124,11 @@ int main(int argc, char *argv[])
     sprintf(nmapfn,"%s/nMap.bin",resultFolder);
 	FILE *mapfile = fopen(mapfn,"wb");
 	FILE *nmapfile = fopen(nmapfn,"wb");
+	// check if it can write file, if not, give the error:
+	if (!mapfile || !nmapfile) {
+		fprintf(stderr, "Error: Could not open output files for writing %s %s.\n", mapfn, nmapfn);
+		exit(EXIT_FAILURE);
+	}
 	fwrite(pxListStore,TotNrOfBins*sizeof(*pxListStore),1,mapfile);
 	fwrite(nPxListStore,LengthNPxList*2*sizeof(*nPxListStore),1,nmapfile);
 
