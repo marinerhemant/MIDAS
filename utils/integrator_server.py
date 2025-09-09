@@ -43,11 +43,17 @@ def process_image(x, sock, dataset_num, frame_mapping, frame_index):
     data = (x['value'][0]['intValue']).reshape(1679, 1475)
     data = data.flatten()
     t1 = time.time()
+
+    # Convert the PvObject to a Python dictionary first
+    pv_data_dict = x.toDict()
+
+    # Now, safely get 'uniqueId' with a default value from the dictionary
+    unique_id = pv_data_dict.get('uniqueId', dataset_num)
     
     # Update frame mapping
     frame_mapping[frame_index] = {
         'dataset_num': dataset_num,
-        'uniqueId': x.get('uniqueId', dataset_num),
+        'uniqueId': unique_id,
         'timestamp': time.time()
     }
     

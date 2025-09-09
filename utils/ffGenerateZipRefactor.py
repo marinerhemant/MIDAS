@@ -15,7 +15,7 @@ import re
 from math import ceil
 
 # --- Global Configuration ---
-compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BIT)
+compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
 
 # --- Helper Functions ---
 
