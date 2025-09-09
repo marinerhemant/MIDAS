@@ -37,9 +37,12 @@ cd MIDAS
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     ```
     Follow the on-screen instructions to complete the installation.
-    * In case you don't have SUDO*
+    * In case you don't have SUDO access, you can install Homebrew in your home directory by following these steps:
     ```bash
     mkdir homebrew && curl -L https://github.com/Homebrew/brew/tarball/main | tar xz --strip-components 1 -C homebrew
+    eval "$(homebrew/bin/brew shellenv)"
+    brew update --force --quiet
+    chmod -R go-w "$(brew --prefix)/share/zsh"
    ```
     Also place the Homebrew binary in your PATH by adding the following line to your `~/.zshrc` file:
     ```bash
