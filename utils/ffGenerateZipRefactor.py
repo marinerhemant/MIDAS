@@ -71,6 +71,32 @@ def write_analysis_parameters(z_groups, config):
     Writes parameters from the config dictionary to the Zarr file,
     enforcing specific data types for consistency, similar to the original script.
     """
+    # --- START: PARAMETER VALIDATION ---
+    # Define the set of parameters that are explicitly allowed to have multiple values.
+    ALLOWED_MULTIVALUE_PARAMS = {
+        'RingThresh', 'RingsToExclude', 'OmegaRanges', 'BoxSizes', 'ImTransOpt',
+        'LatticeParameter', 'LatticeConstant'
+    }
+
+    # Validate all parameters in the configuration.
+    for key, value in config.items():
+        # Special check for 'BC', which must be a list of exactly two values.
+        if key == 'BC':
+            if not isinstance(value, list) or len(value) != 2:
+                print(f"\nFATAL ERROR: The 'BC' parameter must have exactly 2 values (YCen and ZCen).")
+                print(f"         Found: {value}. Please correct the parameter file.")
+                sys.exit(1)
+            # If the check passes, we can skip to the next parameter.
+            continue
+
+        # General check for all other parameters.
+        # If a parameter's value is a list, it must be in our allowed set.
+        if isinstance(value, list) and key not in ALLOWED_MULTIVALUE_PARAMS:
+            print(f"\nFATAL ERROR: The parameter '{key}' is not allowed to have multiple values.")
+            print(f"         Found values: {value}.")
+            print(f"         Please ensure this parameter has only a single value in the parameter file.")
+            sys.exit(1)
+    # --- END: PARAMETER VALIDATION ---
     sp_pro_analysis, sp_pro_meas = z_groups['sp_pro_analysis'], z_groups['sp_pro_meas']
     print("\nWriting analysis parameters to Zarr file...")
 
@@ -145,7 +171,7 @@ def write_analysis_parameters(z_groups, config):
             else:
                 arr = None
                 if key in FORCE_STRING_PARAMS or target_key in FORCE_STRING_PARAMS:
-                    arr = np.bytes_(str(value).encode('UTF-8'))
+                    arr = np.array([np.bytes_(str(value).encode('UTF-8'))])
                 elif key in FORCE_DOUBLE_PARAMS or target_key in FORCE_DOUBLE_PARAMS:
                     # Coerce to a list, create array, and set type to double
                     values_to_write = value if isinstance(value, list) else [value]
@@ -156,7 +182,7 @@ def write_analysis_parameters(z_groups, config):
                 else:
                     # Fallback for any parameters not in the lists
                     if isinstance(value, str):
-                        arr = np.bytes_(value.encode('UTF-8'))
+                        arr = np.array([np.bytes_(value.encode('UTF-8'))])
                     else:
                         values_to_write = value if isinstance(value, list) else [value]
                         arr = np.array(values_to_write) # Let numpy guess the type
@@ -355,12 +381,18 @@ def build_config(parser, args):
 # --- Main ---
 def main():
     parser = argparse.ArgumentParser(description='Generate Zarr.zip dataset.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-resultFolder', type=str, required=True); parser.add_argument('-paramFN', type=str, required=True)
-    parser.add_argument('-dataFN', type=str, default=''); parser.add_argument('-darkFN', type=str, default='')
-    parser.add_argument('-dataLoc', type=str, default='exchange/data'); parser.add_argument('-darkLoc', type=str, default='exchange/dark')
-    parser.add_argument('-numFrameChunks', type=int, default=-1); parser.add_argument('-preProcThresh', type=int, default=-1)
-    parser.add_argument('-numFilesPerScan', type=int, default=1); parser.add_argument('-LayerNr', type=int, default=1)
-    parser.add_argument('-numPxY', type=int, default=2048); parser.add_argument('-numPxZ', type=int, default=2048)
+    parser.add_argument('-resultFolder', type=str, required=True); 
+    parser.add_argument('-paramFN', type=str, required=True)
+    parser.add_argument('-dataFN', type=str, default=''); 
+    parser.add_argument('-darkFN', type=str, default='')
+    parser.add_argument('-dataLoc', type=str, default='exchange/data'); 
+    parser.add_argument('-darkLoc', type=str, default='exchange/dark')
+    parser.add_argument('-numFrameChunks', type=int, default=-1); 
+    parser.add_argument('-preProcThresh', type=int, default=-1)
+    parser.add_argument('-numFilesPerScan', type=int, default=1); 
+    parser.add_argument('-LayerNr', type=int, default=1)
+    parser.add_argument('-numPxY', type=int, default=2048); 
+    parser.add_argument('-numPxZ', type=int, default=2048)
     parser.add_argument('-omegaStep', type=float, default=0.0)
     args = parser.parse_args()
 
