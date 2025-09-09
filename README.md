@@ -37,6 +37,10 @@ cd MIDAS
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     ```
     Follow the on-screen instructions to complete the installation.
+    * In case you don't have SUDO*
+    ```bash
+    mkdir homebrew && curl -L https://github.com/Homebrew/brew/tarball/main | tar xz --strip-components 1 -C homebrew
+   ```
     Also place the Homebrew binary in your PATH by adding the following line to your `~/.zshrc` file:
     ```bash
     echo 'eval $(/opt/homebrew/bin/brew shellenv)'  >> ~/.zshrc
