@@ -73,6 +73,7 @@ endfunction()
 
 add_ff_hedm_executable(Calibrant SOURCES src/Calibrant.c src/CalcPeakProfile.c)
 add_ff_hedm_executable(CalibrantOMP SOURCES src/CalibrantOMP.c src/CalcPeakProfile.c OMP)
+add_ff_hedm_executable(CalibrantPanelShiftsOMP SOURCES src/CalibrantPanelShiftsOMP.c src/CalcPeakProfile.c OMP)
 add_ff_hedm_executable(FitSetup SOURCES src/FitSetupParamsAll.c)
 add_ff_hedm_executable(FitTiltBCLsdSample SOURCES src/FitTiltBCLsdSampleOmegaCorrection.c)
 add_ff_hedm_executable(ForwardSimulation SOURCES src/ForwardSimulation.c)
