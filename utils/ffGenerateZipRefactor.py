@@ -220,24 +220,34 @@ def build_config(parser, args):
         print("Info: 'SkipFrame' not found in parameter file. Defaulting to 0.")
         config['SkipFrame'] = 0
     for key, value in vars(args).items():
-        if value != parser.get_default(key): config[key] = value
+        if key not in config or value != parser.get_default(key): 
+            config[key] = value
     if not args.dataFN or config.get('LayerNr', 1) > 1:
         try:
-            layer = int(config['LayerNr']); fNr = int(config['StartFileNrFirstLayer']) + (layer - 1) * int(config['NrFilesPerSweep'])
+            layer = int(config['LayerNr']); 
+            fNr = int(config['StartFileNrFirstLayer']) + (layer - 1) * int(config['NrFilesPerSweep'])
             config['dataFN'] = str(Path(config['RawFolder']) / f"{config['FileStem']}_{str(fNr).zfill(int(config['Padding']))}{config['Ext']}")
-        except KeyError as e: raise KeyError(f"Missing parameter for filename construction: {e}. Provide -dataFN.")
-    else: config['dataFN'] = args.dataFN
+        except KeyError as e: 
+            raise KeyError(f"Missing parameter for filename construction: {e}. Provide -dataFN.")
+    else: 
+        config['dataFN'] = args.dataFN
     return config
 
 # --- Main ---
 def main():
     parser = argparse.ArgumentParser(description='Generate Zarr.zip dataset.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-resultFolder', type=str, required=True); parser.add_argument('-paramFN', type=str, required=True)
-    parser.add_argument('-dataFN', type=str, default=''); parser.add_argument('-darkFN', type=str, default='')
-    parser.add_argument('-dataLoc', type=str, default='exchange/data'); parser.add_argument('-darkLoc', type=str, default='exchange/dark')
-    parser.add_argument('-numFrameChunks', type=int, default=-1); parser.add_argument('-preProcThresh', type=int, default=-1)
-    parser.add_argument('-numFilesPerScan', type=int, default=1); parser.add_argument('-LayerNr', type=int, default=1)
-    parser.add_argument('-numPxY', type=int, default=2048); parser.add_argument('-numPxZ', type=int, default=2048)
+    parser.add_argument('-resultFolder', type=str, required=True); 
+    parser.add_argument('-paramFN', type=str, required=True)
+    parser.add_argument('-dataFN', type=str, default=''); 
+    parser.add_argument('-darkFN', type=str, default='')
+    parser.add_argument('-dataLoc', type=str, default='exchange/data'); 
+    parser.add_argument('-darkLoc', type=str, default='exchange/dark')
+    parser.add_argument('-numFrameChunks', type=int, default=-1); 
+    parser.add_argument('-preProcThresh', type=int, default=-1)
+    parser.add_argument('-numFilesPerScan', type=int, default=1); 
+    parser.add_argument('-LayerNr', type=int, default=1)
+    parser.add_argument('-numPxY', type=int, default=2048); 
+    parser.add_argument('-numPxZ', type=int, default=2048)
     parser.add_argument('-omegaStep', type=float, default=0.0)
     args = parser.parse_args()
 
