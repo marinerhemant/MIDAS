@@ -81,7 +81,9 @@ def write_analysis_parameters(z_groups, config):
                 sp_pro_analysis.create_dataset('YCen', data=np.array([values[0]], dtype=np.double))
                 sp_pro_analysis.create_dataset('ZCen', data=np.array([values[1]], dtype=np.double))
             elif key in ['RingThresh', 'RingsToExclude', 'OmegaRanges', 'BoxSizes', 'ImTransOpt']:
-                arr, dtype = np.array(value), np.int32 if key == 'ImTransOpt' else np.double
+                values_to_write = value if isinstance(value, list) else [value]
+                arr = np.array(values_to_write)
+                dtype = np.int32 if key == 'ImTransOpt' else np.double
                 target_group.create_dataset(target_key, data=arr.astype(dtype))
             else:
                 if isinstance(value, list): arr = np.array(value)
