@@ -132,7 +132,7 @@ def process_hdf5_scan(config, z_groups):
             if i == 0:
                 if dark_loc in hf: dark_frames = hf[dark_loc][()]
                 elif config['darkFN']:
-                    with h5py.File(config['darkFN'], 'r') as hf_dark: dark_frames = hf_dark[dark_loc][()]
+                    with h5py.File(config['darkFN'], 'r') as hf_dark: dark_frames = hf_dark[data_loc][()]
                 else: print("    Warning: No dark data. Using zeros."); dark_frames = np.zeros((10, nZ, nY), dtype=output_dtype)
                 z_groups['exc'].create_dataset('dark', data=dark_frames, dtype=output_dtype)
                 z_groups['exc'].create_dataset('bright', data=dark_frames, dtype=output_dtype) # Assuming bright is same as dark
