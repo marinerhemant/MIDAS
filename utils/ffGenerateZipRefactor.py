@@ -215,6 +215,10 @@ def process_multifile_scan(file_type, config, z_groups):
 def build_config(parser, args):
     """Builds a unified configuration dictionary with correct override priority."""
     config = parse_parameter_file(args.paramFN)
+    # If SkipFrame is not in the parameter file, add it with a default of 0
+    if 'SkipFrame' not in config:
+        print("Info: 'SkipFrame' not found in parameter file. Defaulting to 0.")
+        config['SkipFrame'] = 0
     for key, value in vars(args).items():
         if value != parser.get_default(key): config[key] = value
     if not args.dataFN or config.get('LayerNr', 1) > 1:
