@@ -100,9 +100,10 @@ def write_analysis_parameters(z_groups, config):
 def process_hdf5_scan(config, z_groups):
     """Processes a scan from one or more HDF5 files, with correct SkipFrame logic."""
     print("\n--- Processing HDF5 File(s) ---")
-    num_files, skip_frames = int(config.get('numFilesPerScan', 1)), int(config['SkipFrame'])
+    num_files, skip_frames = int(config.get('numFilesPerScan', 1)), int(config.get('SkipFrame', 0))
     data_loc, dark_loc = config['dataLoc'], config['darkLoc']
-    
+    pre_proc_active = int(config.get('preProcThresh', -1)) != -1
+
     file_list = []
     if num_files == 1: file_list.append(config['dataFN'])
     else:
@@ -117,7 +118,7 @@ def process_hdf5_scan(config, z_groups):
         if data_loc not in hf: raise KeyError(f"Data location '{data_loc}' not found in HDF5 file.")
         frames_per_file, nZ, nY = hf[data_loc].shape
         output_dtype = hf[data_loc].dtype
-    
+
     total_frames_to_write = frames_per_file + (frames_per_file - skip_frames) * (num_files - 1)
     print(f"HDF5 scan: {num_files} file(s), {frames_per_file} frames/file. Skipping {skip_frames} from files 2+. Total frames to write: {total_frames_to_write}. Dtype: {output_dtype}")
 
@@ -128,27 +129,53 @@ def process_hdf5_scan(config, z_groups):
         print(f"  - Processing file {i+1}/{num_files}: {fn}")
         with h5py.File(fn, 'r') as hf:
             if data_loc not in hf: print(f"    Warning: '{data_loc}' not in {fn}, skipping."); continue
-            
+
+            # This logic now only runs once, for the first file
             if i == 0:
-                if dark_loc in hf: dark_frames = hf[dark_loc][()]
-                elif config['darkFN']:
-                    with h5py.File(config['darkFN'], 'r') as hf_dark: dark_frames = hf_dark[data_loc][()]
-                else: print("    Warning: No dark data. Using zeros."); dark_frames = np.zeros((10, nZ, nY), dtype=output_dtype)
-                z_groups['exc'].create_dataset('dark', data=dark_frames, dtype=output_dtype)
-                z_groups['exc'].create_dataset('bright', data=dark_frames, dtype=output_dtype) # Assuming bright is same as dark
-            
+                dark_frames_found = False
+                dark_frames = None
+
+                # 1. Check for dark data in the main data file
+                if dark_loc in hf:
+                    dark_frames = hf[dark_loc][()]; dark_frames_found = True
+                # 2. If not found, check for a separate dark file
+                elif config.get('darkFN'):
+                    with h5py.File(config['darkFN'], 'r') as hf_dark:
+                        # Try the full path first
+                        if dark_loc in hf_dark:
+                            dark_frames = hf_dark[dark_loc][()]; dark_frames_found = True
+                        else:
+                            # Fallback: try just the dataset name at the root
+                            dark_dataset_name = Path(dark_loc).name
+                            if dark_dataset_name in hf_dark:
+                                dark_frames = hf_dark[dark_dataset_name][()]; dark_frames_found = True
+
+                if not dark_frames_found:
+                    print("    Warning: No dark data found. Using temporary zeros for shape info.")
+                    dark_frames = np.zeros((10, nZ, nY), dtype=output_dtype)
+
+                # Decide what to write (real data or zeros) and write it only ONCE.
+                if pre_proc_active:
+                    print("  - Pre-processing is active. Writing zero arrays for dark/bright.")
+                    z_groups['exc'].zeros('dark', shape=dark_frames.shape, dtype=output_dtype)
+                    z_groups['exc'].zeros('bright', shape=dark_frames.shape, dtype=output_dtype)
+                else:
+                    print("  - Writing actual dark and bright frame data.")
+                    z_groups['exc'].create_dataset('dark', data=dark_frames, dtype=output_dtype)
+                    z_groups['exc'].create_dataset('bright', data=dark_frames, dtype=output_dtype)
+
             dark_mean = np.mean(dark_frames[skip_frames:], axis=0)
-            pre_proc_val = (dark_mean + int(config['preProcThresh'])) if int(config['preProcThresh']) != -1 else dark_mean
-            
+            pre_proc_val = (dark_mean + int(config['preProcThresh'])) if pre_proc_active else dark_mean
+
             start_frame_in_file = skip_frames if i > 0 else 0
-            
+
             chunk_size = int(config.get('numFrameChunks', 100));
             if chunk_size == -1: chunk_size = frames_per_file
 
             for j in range(start_frame_in_file, frames_per_file, chunk_size):
                 end_frame = min(j + chunk_size, frames_per_file)
                 data_chunk = hf[data_loc][j:end_frame]
-                if int(config['preProcThresh']) != -1:
+                if pre_proc_active:
                     data_chunk = apply_correction(data_chunk, dark_mean, pre_proc_val)
                 z_data[z_offset : z_offset+len(data_chunk)] = data_chunk
                 z_offset += len(data_chunk)
@@ -157,97 +184,106 @@ def process_hdf5_scan(config, z_groups):
 def process_multifile_scan(file_type, config, z_groups):
     """Processes a scan of multiple GE/TIFF files with correct SkipFrame logic."""
     print(f"\n--- Processing {file_type.upper()} File(s) ---")
-    num_files, skip_frames = int(config.get('numFilesPerScan', 1)), int(config['SkipFrame'])
+    num_files, skip_frames = int(config.get('numFilesPerScan', 1)), int(config.get('SkipFrame', 0))
     header_size = int(config.get('HeadSize', 8192))
     numPxY, numPxZ = int(config['numPxY']), int(config['numPxZ'])
-    
+    pre_proc_active = int(config.get('preProcThresh', -1)) != -1
+
     output_dtype = np.uint32 if int(config.get('PixelValue', 2 if file_type=='ge' else 4)) == 4 else np.uint16
     bytes_per_pixel = np.dtype(output_dtype).itemsize
     print(f"Handling as {output_dtype.__name__}. Files per scan: {num_files}")
-    
+
     match = re.search(r'(\d+)', Path(config['dataFN']).stem)
     if not match: raise ValueError("Could not find numeric sequence in data filename.")
     fNr_orig_str, start_nr = match.group(1), int(match.group(1))
-    
+
     if file_type == 'ge': frames_per_file = (os.path.getsize(config['dataFN']) - header_size) // (bytes_per_pixel * numPxY * numPxZ)
     else: frames_per_file = 1
-    
+
     total_frames_to_write = frames_per_file + (frames_per_file - skip_frames) * (num_files - 1)
     print(f"Scan: {num_files} file(s), {frames_per_file} frames/file. Skipping {skip_frames} from files 2+. Total frames to write: {total_frames_to_write}.")
-    
+
     z_data = z_groups['exc'].create_dataset('data', shape=(total_frames_to_write, numPxZ, numPxY), dtype=output_dtype, chunks=(1, numPxZ, numPxY), compression=compressor)
     z_offset = 0
-    
+
     dark_mean = np.zeros((numPxZ, numPxY), dtype=output_dtype)
     dark_frames_data = np.zeros((10, numPxZ, numPxY), dtype=output_dtype)
     if file_type == 'ge' and config.get('darkFN'):
         print(f"  - Reading GE dark file: {config['darkFN']}")
         dark_frames_data = np.fromfile(config['darkFN'], dtype=output_dtype, offset=header_size).reshape((-1, numPxZ, numPxY))
         dark_mean = np.mean(dark_frames_data[skip_frames:], axis=0)
-    
-    z_groups['exc'].create_dataset('dark', data=dark_frames_data, dtype=output_dtype)
-    z_groups['exc'].create_dataset('bright', data=dark_frames_data, dtype=output_dtype)
 
-    pre_proc_val = (dark_mean + int(config['preProcThresh'])) if int(config['preProcThresh']) != -1 else dark_mean
-    
+    # Decide what to write (real data or zeros) and write it only ONCE.
+    if pre_proc_active:
+        print("  - Pre-processing is active. Writing zero arrays for dark/bright.")
+        z_groups['exc'].zeros('dark', shape=dark_frames_data.shape, dtype=output_dtype)
+        z_groups['exc'].zeros('bright', shape=dark_frames_data.shape, dtype=output_dtype)
+    else:
+        print("  - Writing actual dark and bright frame data.")
+        z_groups['exc'].create_dataset('dark', data=dark_frames_data, dtype=output_dtype)
+        z_groups['exc'].create_dataset('bright', data=dark_frames_data, dtype=output_dtype)
+
+    pre_proc_val = (dark_mean + int(config['preProcThresh'])) if pre_proc_active else dark_mean
+
     for i in range(num_files):
         current_nr_str = str(start_nr + i).zfill(len(fNr_orig_str))
         current_fn = config['dataFN'].replace(fNr_orig_str, current_nr_str, 1)
         if not Path(current_fn).exists(): print(f"Warning: File not found, stopping: {current_fn}"); z_data.resize(z_offset, numPxZ, numPxY); break
         print(f"  - Reading file {i+1}/{num_files}: {current_fn}")
-        
+
         start_frame_in_file = skip_frames if i > 0 else 0
-        
+
         if file_type == 'ge':
             offset = header_size + (start_frame_in_file * bytes_per_pixel * numPxY * numPxZ)
             frames_to_read = (os.path.getsize(current_fn) - offset) // (bytes_per_pixel * numPxY * numPxZ)
             data_chunk = np.fromfile(current_fn, dtype=output_dtype, offset=offset).reshape((frames_to_read, numPxZ, numPxY))
         else: # TIFF
             data_chunk = np.fromfile(current_fn, dtype=output_dtype, offset=8).reshape((1, numPxZ, numPxY))
-        
-        if int(config['preProcThresh']) != -1 and file_type == 'ge':
+
+        if pre_proc_active and file_type == 'ge':
             data_chunk = apply_correction(data_chunk, dark_mean, pre_proc_val)
-            
+
         z_data[z_offset : z_offset + len(data_chunk)] = data_chunk
         z_offset += len(data_chunk)
     return output_dtype
-    
+
 def build_config(parser, args):
     """Builds a unified configuration dictionary with correct override priority."""
+    # Load parameters from the file first.
     config = parse_parameter_file(args.paramFN)
+
     # If SkipFrame is not in the parameter file, add it with a default of 0
     if 'SkipFrame' not in config:
         print("Info: 'SkipFrame' not found in parameter file. Defaulting to 0.")
         config['SkipFrame'] = 0
+
+    # Overlay command-line arguments.
+    # A command-line arg overrides the param file. A default is used only if the key is not in the param file.
     for key, value in vars(args).items():
-        if key not in config or value != parser.get_default(key): 
+        if key not in config or value != parser.get_default(key):
             config[key] = value
+
+    # Handle special dataFN construction logic
     if not args.dataFN or config.get('LayerNr', 1) > 1:
         try:
-            layer = int(config['LayerNr']); 
+            layer = int(config['LayerNr'])
             fNr = int(config['StartFileNrFirstLayer']) + (layer - 1) * int(config['NrFilesPerSweep'])
             config['dataFN'] = str(Path(config['RawFolder']) / f"{config['FileStem']}_{str(fNr).zfill(int(config['Padding']))}{config['Ext']}")
-        except KeyError as e: 
+        except KeyError as e:
             raise KeyError(f"Missing parameter for filename construction: {e}. Provide -dataFN.")
-    else: 
+    else:
         config['dataFN'] = args.dataFN
     return config
 
 # --- Main ---
 def main():
     parser = argparse.ArgumentParser(description='Generate Zarr.zip dataset.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-resultFolder', type=str, required=True); 
-    parser.add_argument('-paramFN', type=str, required=True)
-    parser.add_argument('-dataFN', type=str, default=''); 
-    parser.add_argument('-darkFN', type=str, default='')
-    parser.add_argument('-dataLoc', type=str, default='exchange/data'); 
-    parser.add_argument('-darkLoc', type=str, default='exchange/dark')
-    parser.add_argument('-numFrameChunks', type=int, default=-1); 
-    parser.add_argument('-preProcThresh', type=int, default=-1)
-    parser.add_argument('-numFilesPerScan', type=int, default=1); 
-    parser.add_argument('-LayerNr', type=int, default=1)
-    parser.add_argument('-numPxY', type=int, default=2048); 
-    parser.add_argument('-numPxZ', type=int, default=2048)
+    parser.add_argument('-resultFolder', type=str, required=True); parser.add_argument('-paramFN', type=str, required=True)
+    parser.add_argument('-dataFN', type=str, default=''); parser.add_argument('-darkFN', type=str, default='')
+    parser.add_argument('-dataLoc', type=str, default='exchange/data'); parser.add_argument('-darkLoc', type=str, default='exchange/dark')
+    parser.add_argument('-numFrameChunks', type=int, default=-1); parser.add_argument('-preProcThresh', type=int, default=-1)
+    parser.add_argument('-numFilesPerScan', type=int, default=1); parser.add_argument('-LayerNr', type=int, default=1)
+    parser.add_argument('-numPxY', type=int, default=2048); parser.add_argument('-numPxZ', type=int, default=2048)
     parser.add_argument('-omegaStep', type=float, default=0.0)
     args = parser.parse_args()
 
@@ -257,9 +293,9 @@ def main():
         outfn_base = Path(args.resultFolder) / f"{config.get('FileStem', 'file')}_{str(config.get('StartFileNrFirstLayer', 0)).zfill(int(config.get('Padding',6)))}"
     else: outfn_base = Path(args.resultFolder) / f"{Path(config['dataFN']).name}.analysis"
     outfn_zip = Path(f"{outfn_base}.MIDAS.zip")
-    
+
     print(f"Input Data: {config['dataFN']}\nParameter File: {args.paramFN}\nOutput Zarr: {outfn_zip}")
-    if outfn_zip.exists(): print(f"Moving existing file to '{outfn_zip}.old'"); shutil.move(outfn_zip, str(outfn_zip) + '.old')
+    if outfn_zip.exists(): print(f"Moving existing file to '{outfn_zip}.old'"); shutil.move(str(outfn_zip), str(outfn_zip) + '.old')
 
     zip_store = zarr.ZipStore(str(outfn_zip), mode='w'); zRoot = zarr.group(store=zip_store, overwrite=True)
     z_groups = create_zarr_structure(zRoot); file_ext = Path(config['dataFN']).suffix.lower()
@@ -267,7 +303,7 @@ def main():
 
     try:
         if file_ext in ['.h5', '.hdf5']: output_dtype = process_hdf5_scan(config, z_groups)
-        elif file_ext == '.zip': 
+        elif file_ext == '.zip':
             print("\n--- Processing Existing Zarr.zip File ---")
             with zarr.open(config['dataFN'], 'r') as zf_in:
                 source_data = zf_in['exchange/data']; output_dtype = source_data.dtype
@@ -280,14 +316,6 @@ def main():
         if outfn_zip.exists(): os.remove(outfn_zip)
         sys.exit(1)
 
-    if int(config.get('preProcThresh', -1)) != -1:
-        print("Pre-processing was active. Overwriting dark/bright arrays in Zarr with zeros.")
-        for key in ['dark', 'bright']:
-            if key in z_groups['exc']:
-                z_array = z_groups['exc'][key]
-                zero_data = np.zeros(z_array.shape, dtype=z_array.dtype)
-                z_array[...] = zero_data
-
     if 'MaskFN' in config and config['MaskFN']:
         print(f"Loading final mask from {config['MaskFN']}")
         from PIL import Image
@@ -295,15 +323,15 @@ def main():
         z_groups['exc'].create_dataset('mask', data=mask_data.reshape(1, *mask_data.shape), chunks=(1, *mask_data.shape))
 
     if output_dtype is None: print("Error: Could not determine data type."); sys.exit(1)
-        
+
     dtype_map = {np.uint16: 'uint16', np.uint32: 'uint32', np.float32: 'float32', np.float64: 'float64'}
     dtype_str = dtype_map.get(np.dtype(output_dtype).type, 'unknown')
     z_groups['sp_pro_meas'].create_dataset('datatype', data=np.bytes_(dtype_str.encode('UTF-8')))
     print(f"\nWritten datatype for C-code: '{dtype_str}'")
-    
+
     write_analysis_parameters(z_groups, config)
     zip_store.close()
-    
+
     print("\n--- Zarr File Structure Verification ---");
     with zarr.open(str(outfn_zip), 'r') as zf: print(zf.tree())
     print(f"\nSuccessfully created Zarr file: {outfn_zip}")
