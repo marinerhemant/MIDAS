@@ -76,6 +76,18 @@ cd MIDAS
    ```
    ./build.sh
    ```
+   * In case of MACOS, if there is an error during build for the libtiff directory, please follow these steps:
+   '''
+   Edit the LIBTIFF_custom.cmake file to comment lines 44, 45, and 48 by adding # in the beginning. It should look like:
+      #  list(APPEND _libtiff_fetch_extra_args
+      #       PATCH_COMMAND patch -p1 -N --fuzz=0 < ${CMAKE_CURRENT_LIST_DIR}/libtiff-disable-doc.patch
+         # -N: ignore already applied patches
+         # --fuzz=0: apply only if exact match
+      #   )
+   Edit the build/_deps/libtiff-src/CMakeLists.txt to comment line number 157 by adding # in the beginning. It should look like:
+        #add_subdirectory(doc)
+   Then run build.sh again. DO NOT DELETE THE build directory after this step!!!!!
+   '''
 6. Install the Python requirements:
    ```
    conda env create -f environment.yml
