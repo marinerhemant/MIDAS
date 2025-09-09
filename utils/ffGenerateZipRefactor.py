@@ -92,7 +92,7 @@ def write_analysis_parameters(z_groups, config):
     FORCE_DOUBLE_PARAMS = { "RMin", "RMax", "px", "PixelSize", "Completeness", "MinMatchesToAcceptFrac", "OverArea", "IntensityThresh", "MinS_N", "YPixelSize", "ZPixelSize", "BeamStopY", "BeamStopZ", "DetDist", "MaxDev", "OmegaStart", "OmegaFirstFile", "OmegaStep", "step", "BadPxIntensity", "GapIntensity", "FitWeightMean", "PixelSplittingRBin", "tolTilts", "tolBC", "tolLsd", "DiscArea", "OverlapLength", "ReferenceRingCurrent", "zDiffThresh", "GlobalPosition", "tolPanelFit", "tolP", "tolP0", "tolP1", "tolP2", "tolP3", "StepSizePos", "tInt", "tGap", "StepSizeOrient", "MarginRadius", "MarginRadial", "MarginEta", "MarginOme", "MargABG", "MargABC", "OmeBinSize", "EtaBinSize", "RBinSize", "EtaMin", "MinEta", "EtaMax", "X", "Y", "Z", "U", "V", "W", "SHpL", "Polariz", "MaxOmeSpotIDsToIndex", "MinOmeSpotIDsToIndex", "BeamThickness", "Wedge", "Rsample", "Hbeam", "Vsample", "RhoD", "MaxRingRad", "Lsd", "Wavelength", "Width", "WidthTthPx", "UpperBoundThreshold", "p3", "p2", "p1", "p0", "tz", "ty", "tx" }
     FORCE_INT_PARAMS = { "Twins", "MaxNFrames", "DoFit", "DiscModel", "UseMaximaPositions", "MaxNrPx", "MinNrPx", "MaxNPeaks", "PhaseNr", "NumPhases", "MinNrSpots", "UseFriedelPairs", "OverallRingToIndex", "SpaceGroup", "LayerNr", "DoFullImage", "SkipFrame", "SumImages", "Normalize", "SaveIndividualFrames", "OmegaSumFrames" }
     FORCE_STRING_PARAMS = { "GapFile", "BadPxFile", "ResultFolder" }
-    RENAME_MAP = { "OmegaStep": "step", "Completeness": "MinMatchesToAcceptFrac", "px": "PixelSize", "LatticeConstant": "LatticeParameter", "OverallRingToIndex": "OverallRingToIndex" }
+    RENAME_MAP = { "OmegaStep": "step", "Completeness": "MinMatchesToAcceptFrac", "px": "PixelSize", "LatticeConstant": "LatticeParameter", "OverallRingToIndex": "OverallRingToIndex", "resultFolder": "ResultFolder" }
 
     for key, value in config.items():
         try:
@@ -169,6 +169,24 @@ def process_hdf5_scan(config, z_groups):
         if data_loc not in hf: raise KeyError(f"Data location '{data_loc}' not found in HDF5 file.")
         frames_per_file, nZ, nY = hf[data_loc].shape
         output_dtype = hf[data_loc].dtype
+
+        print("  - Checking for additional metadata inside HDF5 file...")
+        hdf5_metadata_paths = {
+            'startOmeOverride': 'startOmeOverride',
+            '/measurement/instrument/GSAS2_PVS/Pressure': 'Pressure',
+            '/measurement/instrument/GSAS2_PVS/Temperature': 'Temperature',
+            '/measurement/instrument/GSAS2_PVS/I': 'I',
+            '/measurement/instrument/GSAS2_PVS/I0': 'I0',
+        }
+        for h5_path, zarr_name in hdf5_metadata_paths.items():
+            if h5_path in hf:
+                try:
+                    data_to_copy = hf[h5_path][()]
+                    print(f"    - Found '{h5_path}'. Copying to measurement/process/scan_parameters/{zarr_name}.")
+                    if not isinstance(data_to_copy, np.ndarray): data_to_copy = np.array([data_to_copy])
+                    z_groups['sp_pro_meas'].create_dataset(zarr_name, data=data_to_copy)
+                except Exception as e:
+                    print(f"    - Warning: Could not copy metadata from '{h5_path}'. Reason: {e}")
 
     total_frames_to_write = frames_per_file + (frames_per_file - skip_frames) * (num_files - 1)
     print(f"HDF5 scan: {num_files} file(s), {frames_per_file} frames/file. Skipping {skip_frames} from files 2+. Total frames to write: {total_frames_to_write}. Dtype: {output_dtype}")
@@ -324,6 +342,26 @@ def build_config(parser, args):
             raise KeyError(f"Missing parameter for filename construction: {e}. Provide -dataFN.")
     else:
         config['dataFN'] = args.dataFN
+
+    # Replicate original's implicit SkipFrame calculation
+    # If HeadSize is > 8192 and SkipFrame was not explicitly set (is 0),
+    # calculate SkipFrame from the excess header size.
+    head_size = int(config.get('HeadSize', 0))
+    if head_size > 8192 and int(config.get('SkipFrame', 0)) == 0:
+        # Determine bytes per pixel from PixelValue, defaulting to 2 (for uint16)
+        bytes_per_pixel = 4 if int(config.get('PixelValue', 2)) == 4 else 2
+        num_px_y = int(config.get('numPxY', 2048))
+        num_px_z = int(config.get('numPxZ', 2048))
+        
+        # This calculation must be integer division
+        derived_skipf = (head_size - 8192) // (bytes_per_pixel * num_px_y * num_px_z)
+        
+        if derived_skipf > 0:
+            print(f"Info: 'HeadSize' is {head_size}. Implicitly setting 'SkipFrame' to {derived_skipf}.")
+            config['SkipFrame'] = derived_skipf
+            # The original also reset HeadSize for the reader, which we should honor.
+            config['HeadSize'] = 8192
+            
     return config
 
 # --- Main ---
