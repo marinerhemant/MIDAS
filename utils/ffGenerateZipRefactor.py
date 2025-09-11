@@ -25,7 +25,13 @@ def parse_parameter_file(filename):
     try:
         with open(filename, 'r') as f:
             for line in f:
-                parts = line.strip().split()
+                cleaned_line = line.strip()
+
+                # If the line is empty or starts with '#', skip it and go to the next line.
+                if not cleaned_line or cleaned_line.startswith('#'):
+                    continue
+
+                parts = cleaned_line.split()
                 if not parts: continue
                 key, values = parts[0], parts[1:]
                 processed_values = []
