@@ -363,7 +363,7 @@ def build_config(parser, args):
     if not args.dataFN or config.get('LayerNr', 1) > 1:
         try:
             layer = int(config['LayerNr'])
-            print(config['NrFilesPerSweep'])
+            print(config['StartFileNrFirstLayer'])
             fNr = int(config['StartFileNrFirstLayer']) + (layer - 1) * int(config['NrFilesPerSweep'])
             config['dataFN'] = str(Path(config['RawFolder']) / f"{config['FileStem']}_{str(fNr).zfill(int(config['Padding']))}{config['Ext']}")
         except KeyError as e:
