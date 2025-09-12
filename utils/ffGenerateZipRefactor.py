@@ -47,15 +47,12 @@ def parse_parameter_file(filename):
                 
                 # --- START OF CORRECTED LOGIC ---
                 if key not in params:
-                    # If we haven't seen this key before, just assign the value.
+                    # First time we see this key. Just assign the value.
+                    # e.g., params['RingThresh'] = [1, 80]
                     params[key] = final_value
                 else:
-                    # If the key already exists, we have a multi-value parameter.
-                    # First, check if the existing value is already a list.
-                    if not isinstance(params[key], list):
-                        # If not, convert it into a list containing the original value.
+                    if not isinstance(params[key][0], list):
                         params[key] = [params[key]]
-                    # Now, append the new value to the list.
                     params[key].append(final_value)
                 # --- END OF CORRECTED LOGIC ---
 
