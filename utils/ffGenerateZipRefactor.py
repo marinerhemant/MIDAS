@@ -54,8 +54,6 @@ def parse_parameter_file(filename):
     except FileNotFoundError:
         print(f"Error: Parameter file not found at '{filename}'")
         sys.exit(1)
-    for key, val in params.items():
-        if len(val) == 1: params[key] = val[0]
     return params
 
 @jit(nopython=True)
