@@ -173,8 +173,11 @@ def read_parameter_file(psFN: str) -> Dict[str, str]:
     params = {}
     with open(psFN, 'r') as f:
         for line in f:
+            # remove comments
+            line = line.split('#', 1)[0]
+            # strip whitespace
             line = line.strip()
-            if not line or line.startswith('#'):
+            if not line:
                 continue
                 
             parts = line.split(' ', 1)
