@@ -802,7 +802,7 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
     if provide_input_all == 0:
         if convert_files == 1:
             params = read_parameter_file(ps_fn)
-            NrFilesPerLayer = parse_int_param(params, 'NrFilesPerSweep')
+            NrFilesPerLayer = parse_int_param(params, 'NrFilesPerSweep',default=1)
             print("NrFilesPerLayer:", NrFilesPerLayer)
             if len(data_fn) > 0:
                 logger.info("Generating combined MIDAS file from HDF and ps files.")
@@ -821,7 +821,7 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
                 params = read_parameter_file(ps_fn)
                 fStem = params.get('FileStem')
                 startFN = parse_int_param(params, 'StartFileNrFirstLayer')
-                NrFilesPerLayer = parse_int_param(params, 'NrFilesPerSweep')
+                NrFilesPerLayer = parse_int_param(params, 'NrFilesPerSweep',default=1)
                 
                 if not all([fStem, startFN is not None, NrFilesPerLayer is not None]):
                     raise ValueError("Missing required parameters in parameter file")

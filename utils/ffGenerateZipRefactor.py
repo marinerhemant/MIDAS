@@ -332,6 +332,11 @@ def build_config(parser, args):
         print("Info: 'SkipFrame' not found in parameter file. Defaulting to 0.")
         config['SkipFrame'] = 0
 
+    # If NrFilesPerSweep is not in the parameter file, add it with a default of 1
+    if 'NrFilesPerSweep' not in config:
+        print("Info: 'NrFilesPerSweep' not found in parameter file. Defaulting to 1.")
+        config['NrFilesPerSweep'] = 1
+
     # Overlay command-line arguments.
     # A command-line arg overrides the param file. A default is used only if the key is not in the param file.
     for key, value in vars(args).items():
