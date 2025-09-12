@@ -43,6 +43,7 @@ def print_zarr_chunk_details(filepath):
                     print("-" * 25)
     except Exception as e:
         print(f"An error occurred while inspecting the Zarr archive: {e}")
+        print(f"Error Type: {type(e).__name__}")
 
 
 def parse_parameter_file(filename):
@@ -395,7 +396,6 @@ def build_config(parser, args):
     if not args.dataFN or config.get('LayerNr', 1) > 1:
         try:
             layer = int(config['LayerNr'])
-            print(config['StartFileNrFirstLayer'])
             fNr = int(config['StartFileNrFirstLayer']) + (layer - 1) * int(config['NrFilesPerSweep'])
             config['dataFN'] = str(Path(config['RawFolder']) / f"{config['FileStem']}_{str(fNr).zfill(int(config['Padding']))}{config['Ext']}")
         except KeyError as e:
