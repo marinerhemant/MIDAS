@@ -25,9 +25,12 @@ def parse_parameter_file(filename):
     try:
         with open(filename, 'r') as f:
             for line in f:
-                cleaned_line = line.strip()
+                line_no_comment = line.split('#', 1)[0]
+                
+                cleaned_line = line_no_comment.strip()
 
-                if not cleaned_line or cleaned_line.startswith('#'):
+                # If the line is empty now, skip it.
+                if not cleaned_line:
                     continue
 
                 parts = cleaned_line.split()
