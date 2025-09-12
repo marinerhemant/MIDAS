@@ -27,7 +27,6 @@ def parse_parameter_file(filename):
             for line in f:
                 cleaned_line = line.strip()
 
-                # If the line is empty or starts with '#', skip it and go to the next line.
                 if not cleaned_line or cleaned_line.startswith('#'):
                     continue
 
@@ -36,10 +35,14 @@ def parse_parameter_file(filename):
                 key, values = parts[0], parts[1:]
                 processed_values = []
                 for v in values:
+                    # This regex handles integers and floats correctly
                     if re.match(r"^-?\d+$", v): processed_values.append(int(v))
                     elif re.match(r"^-?\d*\.\d+$", v) or re.match(r"^-?\d+\.\d*$", v): processed_values.append(float(v))
                     else: processed_values.append(v)
+                
                 final_value = processed_values if len(processed_values) > 1 else processed_values[0]
+                
+                # --- START OF CORRECTED LOGIC ---
                 if key not in params:
                     # If we haven't seen this key before, just assign the value.
                     params[key] = final_value
@@ -51,9 +54,12 @@ def parse_parameter_file(filename):
                         params[key] = [params[key]]
                     # Now, append the new value to the list.
                     params[key].append(final_value)
+                # --- END OF CORRECTED LOGIC ---
+
     except FileNotFoundError:
         print(f"Error: Parameter file not found at '{filename}'")
         sys.exit(1)
+
     return params
 
 @jit(nopython=True)
