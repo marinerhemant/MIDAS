@@ -1788,6 +1788,80 @@ static ErrorCode readZarrDataType(
     return SUCCESS;
 }
 
+static void printAllParameters(const ImageMetadata *metadata, const AnalysisParams *params)
+{
+    printf("\n===========================================================\n");
+    printf("            Parameters Read from Zarr Archive            \n");
+    printf("===========================================================\n\n");
+
+    // --- Print ImageMetadata Struct ---
+    printf("--- Image Metadata ---\n");
+    printf("  nFrames            : %d\n", metadata->nFrames);
+    printf("  nDarks             : %d\n", metadata->nDarks);
+    printf("  nFloods            : %d\n", metadata->nFloods);
+    printf("  nMasks             : %d\n", metadata->nMasks);
+    printf("  NrPixelsY          : %d\n", metadata->NrPixelsY);
+    printf("  NrPixelsZ          : %d\n", metadata->NrPixelsZ);
+    printf("  NrPixels (Max)     : %d\n", metadata->NrPixels);
+    printf("  bytesPerPx         : %zu\n", metadata->bytesPerPx);
+    printf("  omegaStart         : %f\n", metadata->omegaStart);
+    printf("  omegaStep          : %f\n", metadata->omegaStep);
+    printf("  skipFrame          : %d\n", metadata->skipFrame);
+    printf("  doPeakFit (meta)   : %d\n", metadata->doPeakFit);
+    printf("  pixelType (enum)   : %d (0=u16, 1=i32, 2=f32, 3=f64, 4=u32)\n", metadata->pixelType);
+    printf("  nOmegaCenterEntries: %d\n", metadata->nOmegaCenterEntries);
+    if (metadata->omegaCenter != NULL && metadata->nOmegaCenterEntries > 0) {
+        printf("  omegaCenter array  : [%f, %f, ...]\n", metadata->omegaCenter[0], metadata->omegaCenter[1]);
+    } else {
+        printf("  omegaCenter array  : Not present or empty\n");
+    }
+
+    printf("\n--- Analysis Parameters ---\n");
+    // --- Print AnalysisParams Struct ---
+    printf("  bc (Beam Current)  : %f\n", params->bc);
+    printf("  Ycen               : %f\n", params->Ycen);
+    printf("  Zcen               : %f\n", params->Zcen);
+    printf("  IntSat (Saturation): %f\n", params->IntSat);
+    printf("  Lsd (Detector Dist): %f\n", params->Lsd);
+    printf("  px (Pixel Size)    : %f\n", params->px);
+    printf("  Width              : %f\n", params->Width);
+    printf("  RhoD               : %f\n", params->RhoD);
+    printf("  tx, ty, tz (tilts) : %f, %f, %f\n", params->tx, params->ty, params->tz);
+    printf("  p0, p1, p2, p3     : %g, %g, %g, %g\n", params->p0, params->p1, params->p2, params->p3);
+    printf("  Wavelength         : %f\n", params->Wavelength);
+    printf("  zDiffThresh        : %f\n", params->zDiffThresh);
+    printf("  BadPxIntensity     : %f\n", params->BadPxIntensity);
+    printf("  minNrPx            : %d\n", params->minNrPx);
+    printf("  maxNrPx            : %d\n", params->maxNrPx);
+    printf("  DoFullImage        : %d\n", params->DoFullImage);
+    printf("  LayerNr            : %d\n", params->LayerNr);
+    printf("  makeMap            : %d\n", params->makeMap);
+    printf("  maxNPeaks          : %d\n", params->maxNPeaks);
+    printf("  doPeakFit (params) : %d\n", params->doPeakFit);
+
+    printf("  nImTransOpt        : %d\n", params->nImTransOpt);
+    if (params->TransOpt != NULL && params->nImTransOpt > 0) {
+        printf("  TransOpt array     : [");
+        for (int i = 0; i < params->nImTransOpt; ++i) {
+            printf("%d%s", params->TransOpt[i], (i == params->nImTransOpt - 1) ? "" : ", ");
+        }
+        printf("]\n");
+    } else {
+        printf("  TransOpt array     : Not present or empty\n");
+    }
+
+    printf("  nRingsThresh       : %d\n", params->nRingsThresh);
+    if (params->RingNrs != NULL && params->Thresholds != NULL && params->nRingsThresh > 0) {
+        printf("  Ring Thresholds    : Ring | Threshold\n");
+        for (int i = 0; i < params->nRingsThresh; ++i) {
+            printf("                     %4d | %f\n", params->RingNrs[i], params->Thresholds[i]);
+        }
+    } else {
+        printf("  Ring Thresholds    : Not present or empty\n");
+    }
+    printf("\n===========================================================\n\n");
+}
+
 /**
  * Parse Zarr metadata and extract image parameters
  */
@@ -2157,17 +2231,6 @@ static ErrorCode parseZarrMetadata(
 
     free(fileInfo);
     zip_close(archive);
-    // print all parameters that were read
-    printf("Read parameters:\n");
-    printf("  - OmegaCenter: %p\n", metadata->omegaCenter);
-    printf("  - nOmegaCenterEntries: %d\n", metadata->nOmegaCenterEntries);
-    printf("  - NrPixels: %d\n", metadata->NrPixels);
-    printf("  - zDiffThresh: %f\n", zDiffThresh);
-    printf("  - nFrames: %d\n", metadata->nFrames);
-    printf("  - nDarks: %d\n", metadata->nDarks);
-    printf("  - Width: %f\n", params->Width);
-    printf("  - PixelSize: %f\n", params->px);
-    
 
     return SUCCESS;
 }
@@ -2304,6 +2367,8 @@ int main(int argc, char *argv[])
         blosc2_destroy();
         return error;
     }
+    printAllParameters(&metadata, &params);
+
 
     if (argc > 5) { 
         if(resultFolder) free(resultFolder);
