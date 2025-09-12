@@ -150,14 +150,14 @@ def write_analysis_parameters(z_groups, config):
                 padded_values = np.zeros(6, dtype=np.double)
                 padded_values[:len(values)] = values
                 target_group.create_dataset(target_key, data=padded_values.astype(np.double))
-            elif key in ['RingThresh', 'RingsToExclude', 'OmegaRanges', 'BoxSizes', 'ImTransOpt']:
+            elif key in ['RingThresh', 'RingsToExclude', 'OmegaRange', 'BoxSize', 'ImTransOpt']:
                 temp_value = value if isinstance(value, list) else [value]
                 if not temp_value or not isinstance(temp_value[0], list):
                     values_to_write = [temp_value]
                 else:
                     values_to_write = temp_value
                 arr = np.array(values_to_write)
-                print(key,arr,arr.ndim)
+                print(key,target_key,arr,arr.ndim)
                 if arr.ndim == 1:
                     print(f"  - Info: Reshaping 1D array for '{target_key}' to ensure 2D shape.")
                     arr = arr.reshape(1, -1)
