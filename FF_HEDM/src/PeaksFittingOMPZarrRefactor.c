@@ -2366,7 +2366,10 @@ int main(int argc, char *argv[])
     
     error = readImageCorrections(archive, darkLoc, floodLoc, maskLoc, &metadata, &params, dark, flood, mask);
     zip_close(archive);
-    if (error != SUCCESS) { /* cleanup and exit */ return error; }
+    if (error != SUCCESS) { /* cleanup and exit */ 
+        printf("Error reading image corrections: %d\n", error);
+        return error; 
+    }
 
     // Re-find dataLoc as archive was closed and re-opened implicitly in other functions
     int dataLoc = -1;
