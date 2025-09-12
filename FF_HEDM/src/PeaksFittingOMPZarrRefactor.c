@@ -994,20 +994,20 @@ static inline ErrorCode readZarrImage(
     zip_stat_init(&fileStat);
     
     if (zip_stat_index(archive, fileIndex, 0, &fileStat) != 0) {
-        printf("Error getting file stats from zip archive: %d\n", error);
+        printf("Error getting file stats from zip archive: %d\n", ERROR_ZIP_OPEN);
         return ERROR_ZIP_OPEN;
     }
     
     zip_file_t *file = zip_fopen_index(archive, fileIndex, 0);
     if (!file) {
-        printf("Error opening file in zip archive: %d\n", error);
+        printf("Error opening file in zip archive: %d\n", ERROR_FILE_OPEN);
         return ERROR_FILE_OPEN;
     }
     
     char *compressedData = calloc(fileStat.size + 1, sizeof(char));
     if (!compressedData) {
         zip_fclose(file);
-        printf("Error allocating memory for compressed data: %d\n", error);
+        printf("Error allocating memory for compressed data: %d\n", ERROR_MEMORY_ALLOCATION);
         return ERROR_MEMORY_ALLOCATION;
     }
     
@@ -1018,7 +1018,7 @@ static inline ErrorCode readZarrImage(
     free(compressedData);
     
     if (decompressedSize <= 0) {
-        printf("Error decompressing data: %d\n", error);
+        printf("Error decompressing data: %d\n", ERROR_BLOSC_OPERATION);
         return ERROR_BLOSC_OPERATION;
     }
     
