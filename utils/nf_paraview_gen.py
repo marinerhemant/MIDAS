@@ -274,7 +274,7 @@ def writeDREAM3DFile(eul1,eul2,eul3,conf,phNr,grID,fileID):
 	ced = idc.create_group('CellEnsembleData')
 	ced.attrs['AttributeMatrixType'] = np.array([11],dtype=np.uint32)
 	ced.attrs['TupleDimensions'] = np.array([2],dtype=np.uint64)
-	csd = ced.create_dataset('CrystalStructures',data=np.array([999,0]),dtype=np.uint32)
+	csd = ced.create_dataset('CrystalStructures',data=np.array([999,0]),dtype=np.uint32) # This is just a placeholder. You need your correct crystalstructure in Dream3d.
 	makeAttrs([2],[1],[2],'DataArray<uint32_t>','x=2',csd)
 	latcarr = np.tile(LatC,2)
 	lcd = ced.create_dataset('LatticeConstants',data=latcarr.reshape(2,6),dtype=np.float32)
