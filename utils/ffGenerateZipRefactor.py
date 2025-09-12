@@ -157,6 +157,7 @@ def write_analysis_parameters(z_groups, config):
                 else:
                     values_to_write = temp_value
                 arr = np.array(values_to_write)
+                print(key,arr,arr.ndim)
                 if arr.ndim == 1:
                     print(f"  - Info: Reshaping 1D array for '{target_key}' to ensure 2D shape.")
                     arr = arr.reshape(1, -1)
