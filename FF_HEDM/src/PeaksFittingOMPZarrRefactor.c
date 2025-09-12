@@ -2157,7 +2157,18 @@ static ErrorCode parseZarrMetadata(
 
     free(fileInfo);
     zip_close(archive);
+    // print all parameters that were read
+    printf("Read parameters:\n");
+    printf("  - OmegaCenter: %p\n", metadata->omegaCenter);
+    printf("  - nOmegaCenterEntries: %d\n", metadata->nOmegaCenterEntries);
+    printf("  - NrPixels: %d\n", metadata->NrPixels);
+    printf("  - zDiffThresh: %f\n", zDiffThresh);
+    printf("  - nFrames: %d\n", metadata->nFrames);
+    printf("  - nDarks: %d\n", metadata->nDarks);
+    printf("  - Width: %f\n", params->Width);
+    printf("  - PixelSize: %f\n", params->px);
     
+
     return SUCCESS;
 }
 

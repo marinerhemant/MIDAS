@@ -19,28 +19,38 @@ compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
 
 # --- Helper Functions ---
 
+def _inspect_recursive(group, path="/"):
+    """A recursive helper function to manually walk the Zarr group structure."""
+    for name, array in group.arrays():
+        full_path = f"{path}{name}"
+        print(f"Dataset: {full_path}")
+        print(f"  - Shape:   {array.shape}")
+        print(f"  - Chunks:  {array.chunks}")
+        print(f"  - Dtype:   {array.dtype}")
+        compressor_info = array.compressor.get_config() if array.compressor else 'None'
+        print(f"  - Compressor: {compressor_info}")
+        print("-" * 25)
+
+    for name, subgroup in group.groups():
+        _inspect_recursive(subgroup, path=f"{path}{name}/")
+
 def print_zarr_chunk_details(filepath):
     """
-    Opens a Zarr archive using the high-level zarr.open and prints 
-    detailed metadata for each array.
+    Opens a Zarr archive and prints detailed metadata for each array
+    by manually walking the group hierarchy. This is the most robust method.
     
     Args:
         filepath (str or Path): The path to the Zarr.zip file.
     """
     print("\n--- Zarr Array Chunk Details ---")
     try:
-        # Your method is correct. zarr.open() handles the store context.
         with zarr.open(str(filepath), mode='r') as zf:
-            # Use walk() to visit every group and array
-            for path, group, array in zf.walk():
-                if array is not None:
-                    print(f"Dataset: /{array.path}")
-                    print(f"  - Shape:   {array.shape}")
-                    print(f"  - Chunks:  {array.chunks}")
-                    print(f"  - Dtype:   {array.dtype}")
-                    compressor_info = array.compressor.get_config() if array.compressor else 'None'
-                    print(f"  - Compressor: {compressor_info}")
-                    print("-" * 25)
+            if not isinstance(zf, zarr.hierarchy.Group):
+                print("Error: The root of the Zarr archive is not a Group.")
+                return
+            
+            _inspect_recursive(zf)
+            
     except Exception as e:
         print(f"An error occurred while inspecting the Zarr archive: {e}")
         print(f"Error Type: {type(e).__name__}")
