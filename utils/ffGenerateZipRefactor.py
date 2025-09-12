@@ -333,6 +333,7 @@ def process_multifile_scan(file_type, config, z_groups):
 
             # Inner loop to process each chunk within the current file
             for chunk_idx in range(num_chunks_in_file):
+                print(f"  - Processing chunk {chunk_idx + 1}/{num_chunks_in_file} in file {i + 1}/{num_files}")
                 chunk_start_frame = chunk_idx * numFrameChunks
                 chunk_end_frame = min((chunk_idx + 1) * numFrameChunks, frames_in_this_file)
                 
