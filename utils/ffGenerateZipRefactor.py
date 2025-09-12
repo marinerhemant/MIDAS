@@ -301,7 +301,15 @@ def process_multifile_scan(file_type, config, z_groups):
     num_files, skip_frames = int(config.get('numFilesPerScan', 1)), int(config.get('SkipFrame', 0))
     header_size = int(config.get('HeadSize', 8192))
     numPxY, numPxZ = int(config['numPxY']), int(config['numPxZ'])
-    pre_proc_active = int(config.get('preProcThresh', -1)) != -1
+
+    # --- Correction Logic ---
+    # Determine if correction operations should be performed.
+    dark_file_path = config.get('darkFN')
+    dark_file_provided = dark_file_path and Path(dark_file_path).exists()
+    pre_proc_thresh_value = int(config.get('preProcThresh', -1))
+    correction_active = dark_file_provided or pre_proc_thresh_value != -1
+    if correction_active:
+        print("Info: Dark correction/processing is active.")
 
     output_dtype = np.uint32 if int(config.get('PixelValue', 2 if file_type=='ge' else 4)) == 4 else np.uint16
     bytes_per_pixel = np.dtype(output_dtype).itemsize
@@ -322,15 +330,14 @@ def process_multifile_scan(file_type, config, z_groups):
 
     dark_mean = np.zeros((numPxZ, numPxY), dtype=output_dtype)
     dark_frames_data = np.zeros((10, numPxZ, numPxY), dtype=output_dtype)
-    if file_type == 'ge' and config.get('darkFN'):
+    if file_type == 'ge' and dark_file_provided:
         print(f"  - Reading GE dark file: {config['darkFN']}")
         dark_frames_data = np.fromfile(config['darkFN'], dtype=output_dtype, offset=header_size).reshape((-1, numPxZ, numPxY))
         dark_mean = np.mean(dark_frames_data[skip_frames:], axis=0)
 
-    # Decide what to write (real data or zeros) and write it only ONCE.
     dark_shape = dark_frames_data.shape
-    if pre_proc_active:
-        print("  - Pre-processing is active. Writing zero arrays for dark/bright.")
+    if pre_proc_thresh_value != -1:
+        print("  - Pre-processing threshold is set. Writing zero arrays for dark/bright.")
         z_groups['exc'].create_dataset('dark', data=np.zeros(dark_shape, dtype=output_dtype), chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
         z_groups['exc'].create_dataset('bright', data=np.zeros(dark_shape, dtype=output_dtype), chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
     else:
@@ -338,44 +345,49 @@ def process_multifile_scan(file_type, config, z_groups):
         z_groups['exc'].create_dataset('dark', data=dark_frames_data, dtype=output_dtype, chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
         z_groups['exc'].create_dataset('bright', data=dark_frames_data, dtype=output_dtype, chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
 
-    pre_proc_val = (dark_mean + int(config['preProcThresh'])) if pre_proc_active else dark_mean
+    # The threshold for clipping is the dark mean plus the optional threshold value
+    pre_proc_threshold = dark_mean + (pre_proc_thresh_value if pre_proc_thresh_value != -1 else 0)
 
     for i in range(num_files):
         current_nr_str = str(start_nr + i).zfill(len(fNr_orig_str))
         current_fn = config['dataFN'].replace(fNr_orig_str, current_nr_str, 1)
-        if not Path(current_fn).exists(): print(f"Warning: File not found, stopping: {current_fn}"); z_data.resize(z_offset, numPxZ, numPxY); break
+        if not Path(current_fn).exists(): 
+            print(f"Warning: File not found, stopping scan: {current_fn}")
+            z_data.resize(z_offset, numPxZ, numPxY)
+            break
         print(f"  - Reading file {i+1}/{num_files}: {current_fn}")
 
         start_frame_in_file = skip_frames if i > 0 else 0
 
         if file_type == 'ge':
-            frames_in_this_file = frames_per_file - start_frame_in_file
+            frames_in_this_file = (os.path.getsize(current_fn) - header_size) // (bytes_per_pixel * numPxY * numPxZ)
+            readable_frames = frames_in_this_file - start_frame_in_file
 
             numFrameChunks = int(config.get('numFrameChunks', -1))
-            if numFrameChunks == -1: numFrameChunks = frames_in_this_file
-            num_chunks_in_file = int(ceil(frames_in_this_file / numFrameChunks))
+            if numFrameChunks == -1: numFrameChunks = readable_frames
+            if numFrameChunks <= 0: continue
+            
+            num_chunks_in_file = int(ceil(readable_frames / numFrameChunks))
 
-            # Inner loop to process each chunk within the current file
             for chunk_idx in range(num_chunks_in_file):
-                print(f"  - Processing chunk {chunk_idx + 1}/{num_chunks_in_file} in file {i + 1}/{num_files}")
                 chunk_start_frame = chunk_idx * numFrameChunks
-                chunk_end_frame = min((chunk_idx + 1) * numFrameChunks, frames_in_this_file)
-                
-                read_start_frame = start_frame_in_file + chunk_start_frame
-                frames_to_read = chunk_end_frame - chunk_start_frame
+                frames_to_read = min(numFrameChunks, readable_frames - chunk_start_frame)
                 if frames_to_read <= 0: continue
                 
-                read_offset_bytes = header_size + (read_start_frame * bytes_per_pixel * numPxY * numPxZ)
-                read_count_elements = frames_to_read * numPxY * numPxZ
-                data_chunk = np.fromfile(current_fn, dtype=output_dtype, count=read_count_elements, offset=read_offset_bytes).reshape((frames_to_read, numPxZ, numPxY))
+                read_start_offset_in_file = start_frame_in_file + chunk_start_frame
+                read_offset_bytes = header_size + (read_start_offset_in_file * bytes_per_pixel * numPxY * numPxZ)
                 
-                if pre_proc_active:
-                    data_chunk = apply_correction(data_chunk, dark_mean, pre_proc_val)
+                data_chunk = np.fromfile(current_fn, dtype=output_dtype, count=frames_to_read * numPxY * numPxZ, offset=read_offset_bytes).reshape((frames_to_read, numPxZ, numPxY))
+                
+                if correction_active:
+                    data_chunk = apply_correction(data_chunk, dark_mean, pre_proc_threshold)
                 
                 z_data[z_offset : z_offset + len(data_chunk)] = data_chunk
                 z_offset += len(data_chunk)
-        else: # TIFF logic remains simple as it's one frame per file
+        else: # TIFF logic remains simple
             data_chunk = np.fromfile(current_fn, dtype=output_dtype, offset=8).reshape((1, numPxZ, numPxY))
+            if correction_active:
+                data_chunk = apply_correction(data_chunk, dark_mean, pre_proc_threshold)
             z_data[z_offset : z_offset + len(data_chunk)] = data_chunk
             z_offset += len(data_chunk)
 
@@ -385,6 +397,12 @@ def build_config(parser, args):
     """Builds a unified configuration dictionary with correct override priority."""
     # Load parameters from the file first.
     config = parse_parameter_file(args.paramFN)
+
+    # Manually map the 'Dark' key from the param file to 'darkFN' for consistency.
+    # The command-line argument '-darkFN' will still override this later if provided.
+    if 'Dark' in config and not config.get('darkFN'):
+        print(f"Info: Found 'Dark' key in parameter file: {config['Dark']}")
+        config['darkFN'] = config['Dark']
 
     # If SkipFrame is not in the parameter file, add it with a default of 0
     if 'SkipFrame' not in config:
