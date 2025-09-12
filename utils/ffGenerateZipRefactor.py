@@ -94,19 +94,19 @@ def write_analysis_parameters(z_groups, config):
     enforcing specific data types, array shapes, and default dataset existence.
     """
 
-    ALLOWED_MULTIVALUE_PARAMS = {
-        'RingThresh', 'RingsToExclude', 'OmegaRanges', 'BoxSizes', 'ImTransOpt',
-        'LatticeParameter', 'LatticeConstant'
-    }
-    for key, value in config.items():
-        if key == 'BC':
-            if not isinstance(value, list) or len(value) != 2:
-                print(f"\nFATAL ERROR: The 'BC' parameter must have exactly 2 values. Found: {value}.")
-                sys.exit(1)
-            continue
-        if isinstance(value, list) and key not in ALLOWED_MULTIVALUE_PARAMS:
-            print(f"\nFATAL ERROR: The parameter '{key}' is not allowed to have multiple values. Found: {value}.")
-            sys.exit(1)
+    # ALLOWED_MULTIVALUE_PARAMS = {
+    #     'RingThresh', 'RingsToExclude', 'OmegaRanges', 'BoxSizes', 'ImTransOpt',
+    #     'LatticeParameter', 'LatticeConstant'
+    # }
+    # for key, value in config.items():
+    #     if key == 'BC':
+    #         if not isinstance(value, list) or len(value) != 2:
+    #             print(f"\nFATAL ERROR: The 'BC' parameter must have exactly 2 values. Found: {value}.")
+    #             sys.exit(1)
+    #         continue
+    #     if isinstance(value, list) and key not in ALLOWED_MULTIVALUE_PARAMS:
+    #         print(f"\nFATAL ERROR: The parameter '{key}' is not allowed to have multiple values. Found: {value}.")
+    #         sys.exit(1)
 
     sp_pro_analysis, sp_pro_meas = z_groups['sp_pro_analysis'], z_groups['sp_pro_meas']
     print("\nWriting analysis parameters to Zarr file...")
@@ -114,7 +114,7 @@ def write_analysis_parameters(z_groups, config):
     FORCE_DOUBLE_PARAMS = { "RMin", "RMax", "px", "PixelSize", "Completeness", "MinMatchesToAcceptFrac", "OverArea", "IntensityThresh", "MinS_N", "YPixelSize", "ZPixelSize", "BeamStopY", "BeamStopZ", "DetDist", "MaxDev", "OmegaStart", "OmegaFirstFile", "OmegaStep", "step", "BadPxIntensity", "GapIntensity", "FitWeightMean", "PixelSplittingRBin", "tolTilts", "tolBC", "tolLsd", "DiscArea", "OverlapLength", "ReferenceRingCurrent", "zDiffThresh", "GlobalPosition", "tolPanelFit", "tolP", "tolP0", "tolP1", "tolP2", "tolP3", "StepSizePos", "tInt", "tGap", "StepSizeOrient", "MarginRadius", "MarginRadial", "MarginEta", "MarginOme", "MargABG", "MargABC", "OmeBinSize", "EtaBinSize", "RBinSize", "EtaMin", "MinEta", "EtaMax", "X", "Y", "Z", "U", "V", "W", "SHpL", "Polariz", "MaxOmeSpotIDsToIndex", "MinOmeSpotIDsToIndex", "BeamThickness", "Wedge", "Rsample", "Hbeam", "Vsample", "RhoD", "MaxRingRad", "Lsd", "Wavelength", "Width", "WidthTthPx", "UpperBoundThreshold", "p3", "p2", "p1", "p0", "tz", "ty", "tx" }
     FORCE_INT_PARAMS = { "Twins", "MaxNFrames", "DoFit", "DiscModel", "UseMaximaPositions", "MaxNrPx", "MinNrPx", "MaxNPeaks", "PhaseNr", "NumPhases", "MinNrSpots", "UseFriedelPairs", "OverallRingToIndex", "SpaceGroup", "LayerNr", "DoFullImage", "SkipFrame", "SumImages", "Normalize", "SaveIndividualFrames", "OmegaSumFrames" }
     FORCE_STRING_PARAMS = { "GapFile", "BadPxFile", "ResultFolder" }
-    RENAME_MAP = { "OmegaStep": "step", "Completeness": "MinMatchesToAcceptFrac", "px": "PixelSize", "LatticeConstant": "LatticeParameter", "OverallRingToIndex": "OverallRingToIndex", "resultFolder": "ResultFolder" }
+    RENAME_MAP = { "OmegaStep": "step", "Completeness": "MinMatchesToAcceptFrac", "px": "PixelSize", "LatticeConstant": "LatticeParameter", "OverallRingToIndex": "OverallRingToIndex", "resultFolder": "ResultFolder", "OmegaRange": "OmegaRanges" }
 
     for key, value in config.items():
         try:
@@ -131,7 +131,9 @@ def write_analysis_parameters(z_groups, config):
                 padded_values[:len(values)] = values
                 target_group.create_dataset(target_key, data=padded_values.astype(np.double))
             elif key in ['RingThresh', 'RingsToExclude', 'OmegaRanges', 'BoxSizes', 'ImTransOpt']:
-                values_to_write = value if isinstance(value, list) else [value]
+                # values_to_write = value if isinstance(value, list) else [value]
+                is_single_entry = isinstance(value[0], (int, float))
+                values_to_write = [value] if is_single_entry else value
                 arr = np.array(values_to_write)
                 if key in ['RingThresh', 'RingsToExclude', 'OmegaRanges', 'BoxSizes'] and arr.ndim == 1:
                     arr = arr.reshape(1, -1)
