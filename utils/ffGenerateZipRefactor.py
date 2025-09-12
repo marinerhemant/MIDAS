@@ -40,8 +40,17 @@ def parse_parameter_file(filename):
                     elif re.match(r"^-?\d*\.\d+$", v) or re.match(r"^-?\d+\.\d*$", v): processed_values.append(float(v))
                     else: processed_values.append(v)
                 final_value = processed_values if len(processed_values) > 1 else processed_values[0]
-                if key not in params: params[key] = []
-                params[key].append(final_value)
+                if key not in params:
+                    # If we haven't seen this key before, just assign the value.
+                    params[key] = final_value
+                else:
+                    # If the key already exists, we have a multi-value parameter.
+                    # First, check if the existing value is already a list.
+                    if not isinstance(params[key], list):
+                        # If not, convert it into a list containing the original value.
+                        params[key] = [params[key]]
+                    # Now, append the new value to the list.
+                    params[key].append(final_value)
     except FileNotFoundError:
         print(f"Error: Parameter file not found at '{filename}'")
         sys.exit(1)
