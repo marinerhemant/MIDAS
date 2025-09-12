@@ -131,12 +131,20 @@ def write_analysis_parameters(z_groups, config):
                 padded_values[:len(values)] = values
                 target_group.create_dataset(target_key, data=padded_values.astype(np.double))
             elif key in ['RingThresh', 'RingsToExclude', 'OmegaRanges', 'BoxSizes', 'ImTransOpt']:
-                # values_to_write = value if isinstance(value, list) else [value]
-                is_single_entry = isinstance(value[0], (int, float))
-                values_to_write = [value] if is_single_entry else value
+                # 1. Ensure the value is a list to prevent subscripting errors on scalars.
+                temp_value = value if isinstance(value, list) else [value]
+
+                # 2. Check if it's a list of lists (like RingThresh) or a flat list (like OmegaRange or ImTransOpt).
+                # We can check this by seeing if the first element is *not* a list.
+                if not temp_value or not isinstance(temp_value[0], list):
+                    # It's a scalar (e.g., [0]) or a flat list (e.g., [-180, 180]).
+                    # Wrap it in another list so NumPy treats it as a single row.
+                    values_to_write = [temp_value]
+                else:
+                    # It's already a list of lists (e.g., [[1, 80], [2, 80]]). Use as is.
+                    values_to_write = temp_value
+                
                 arr = np.array(values_to_write)
-                if key in ['RingThresh', 'RingsToExclude', 'OmegaRanges', 'BoxSizes'] and arr.ndim == 1:
-                    arr = arr.reshape(1, -1)
                 dtype = np.int32 if key == 'ImTransOpt' else np.double
                 target_group.create_dataset(target_key, data=arr.astype(dtype))
             else:
