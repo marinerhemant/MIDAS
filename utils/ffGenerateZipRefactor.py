@@ -19,6 +19,34 @@ compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
 
 # --- Helper Functions ---
 
+def print_zarr_chunk_details(filepath):
+    """
+    Opens a Zarr archive and prints detailed metadata for each array,
+    focusing on shape, chunks, and compression.
+    
+    Args:
+        filepath (str or Path): The path to the Zarr.zip file.
+    """
+    print("\n--- Zarr Array Chunk Details ---")
+    try:
+        with zarr.ZipStore(str(filepath), mode='r') as store:
+            root_group = zarr.open(store, mode='r')
+            
+            # Use walk() to visit every group and array
+            for path, group, array in root_group.walk():
+                if array is not None:
+                    # This is a dataset (an array)
+                    print(f"Dataset: /{array.path}")
+                    print(f"  - Shape:   {array.shape}")
+                    print(f"  - Chunks:  {array.chunks}") # The crucial property to check
+                    print(f"  - Dtype:   {array.dtype}")
+                    compressor_info = array.compressor.get_config() if array.compressor else 'None'
+                    print(f"  - Compressor: {compressor_info}")
+                    print("-" * 25)
+    except Exception as e:
+        print(f"An error occurred while inspecting the Zarr archive: {e}")
+
+
 def parse_parameter_file(filename):
     """Reads the parameter file into a dictionary, handling multi-entry keys."""
     params = {}
@@ -91,20 +119,6 @@ def write_analysis_parameters(z_groups, config):
     enforcing specific data types, array shapes, and default dataset existence.
     """
 
-    # ALLOWED_MULTIVALUE_PARAMS = {
-    #     'RingThresh', 'RingsToExclude', 'OmegaRanges', 'BoxSizes', 'ImTransOpt',
-    #     'LatticeParameter', 'LatticeConstant'
-    # }
-    # for key, value in config.items():
-    #     if key == 'BC':
-    #         if not isinstance(value, list) or len(value) != 2:
-    #             print(f"\nFATAL ERROR: The 'BC' parameter must have exactly 2 values. Found: {value}.")
-    #             sys.exit(1)
-    #         continue
-    #     if isinstance(value, list) and key not in ALLOWED_MULTIVALUE_PARAMS:
-    #         print(f"\nFATAL ERROR: The parameter '{key}' is not allowed to have multiple values. Found: {value}.")
-    #         sys.exit(1)
-
     sp_pro_analysis, sp_pro_meas = z_groups['sp_pro_analysis'], z_groups['sp_pro_meas']
     print("\nWriting analysis parameters to Zarr file...")
 
@@ -128,20 +142,11 @@ def write_analysis_parameters(z_groups, config):
                 padded_values[:len(values)] = values
                 target_group.create_dataset(target_key, data=padded_values.astype(np.double))
             elif key in ['RingThresh', 'RingsToExclude', 'OmegaRanges', 'BoxSizes', 'ImTransOpt']:
-                print(key,value)
-                # 1. Ensure the value is a list to prevent subscripting errors on scalars.
                 temp_value = value if isinstance(value, list) else [value]
-
-                # 2. Check if it's a list of lists (like RingThresh) or a flat list (like OmegaRange or ImTransOpt).
-                # We can check this by seeing if the first element is *not* a list.
                 if not temp_value or not isinstance(temp_value[0], list):
-                    # It's a scalar (e.g., [0]) or a flat list (e.g., [-180, 180]).
-                    # Wrap it in another list so NumPy treats it as a single row.
                     values_to_write = [temp_value]
                 else:
-                    # It's already a list of lists (e.g., [[1, 80], [2, 80]]). Use as is.
                     values_to_write = temp_value
-                
                 arr = np.array(values_to_write)
                 dtype = np.int32 if key == 'ImTransOpt' else np.double
                 target_group.create_dataset(target_key, data=arr.astype(dtype))
@@ -257,8 +262,8 @@ def process_hdf5_scan(config, z_groups):
                 dark_shape = dark_frames.shape
                 if pre_proc_active:
                     print("  - Pre-processing is active. Writing zero arrays for dark/bright.")
-                    z_groups['exc'].zeros('dark', shape=dark_frames.shape, dtype=output_dtype,chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
-                    z_groups['exc'].zeros('bright', shape=dark_frames.shape, dtype=output_dtype,chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
+                    z_groups['exc'].create_dataset('dark', data=np.zeros(dark_frames.shape, dtype=output_dtype), chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
+                    z_groups['exc'].create_dataset('bright', data=np.zeros(dark_frames.shape, dtype=output_dtype), chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
                 else:
                     print("  - Writing actual dark and bright frame data.")
                     z_groups['exc'].create_dataset('dark', data=dark_frames, dtype=output_dtype,chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
@@ -317,8 +322,8 @@ def process_multifile_scan(file_type, config, z_groups):
     dark_shape = dark_frames_data.shape
     if pre_proc_active:
         print("  - Pre-processing is active. Writing zero arrays for dark/bright.")
-        z_groups['exc'].zeros('dark', shape=dark_shape, dtype=output_dtype, chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
-        z_groups['exc'].zeros('bright', shape=dark_shape, dtype=output_dtype, chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
+        z_groups['exc'].create_dataset('dark', data=np.zeros(dark_shape, dtype=output_dtype), chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
+        z_groups['exc'].create_dataset('bright', data=np.zeros(dark_shape, dtype=output_dtype), chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
     else:
         print("  - Writing actual dark and bright frame data.")
         z_groups['exc'].create_dataset('dark', data=dark_frames_data, dtype=output_dtype, chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
@@ -485,7 +490,10 @@ def main():
     zip_store.close()
 
     print("\n--- Zarr File Structure Verification ---");
-    with zarr.open(str(outfn_zip), 'r') as zf: print(zf.tree())
+    with zarr.open(str(outfn_zip), 'r') as zf: 
+        print(zf.tree())
+    print("\n--- Zarr Array Chunk Details ---")
+    print_zarr_chunk_details(outfn_zip)
     print(f"\nSuccessfully created Zarr file: {outfn_zip}")
     print(f"OutputZipName: {outfn_zip}")
 
