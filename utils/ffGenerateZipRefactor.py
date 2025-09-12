@@ -248,14 +248,15 @@ def process_hdf5_scan(config, z_groups):
                     dark_frames = np.zeros((10, nZ, nY), dtype=output_dtype)
 
                 # Decide what to write (real data or zeros) and write it only ONCE.
+                dark_shape = dark_frames.shape
                 if pre_proc_active:
                     print("  - Pre-processing is active. Writing zero arrays for dark/bright.")
-                    z_groups['exc'].zeros('dark', shape=dark_frames.shape, dtype=output_dtype)
-                    z_groups['exc'].zeros('bright', shape=dark_frames.shape, dtype=output_dtype)
+                    z_groups['exc'].zeros('dark', shape=dark_frames.shape, dtype=output_dtype,chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
+                    z_groups['exc'].zeros('bright', shape=dark_frames.shape, dtype=output_dtype,chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
                 else:
                     print("  - Writing actual dark and bright frame data.")
-                    z_groups['exc'].create_dataset('dark', data=dark_frames, dtype=output_dtype)
-                    z_groups['exc'].create_dataset('bright', data=dark_frames, dtype=output_dtype)
+                    z_groups['exc'].create_dataset('dark', data=dark_frames, dtype=output_dtype,chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
+                    z_groups['exc'].create_dataset('bright', data=dark_frames, dtype=output_dtype,chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
 
             dark_mean = np.mean(dark_frames[skip_frames:], axis=0)
             pre_proc_val = (dark_mean + int(config['preProcThresh'])) if pre_proc_active else dark_mean
@@ -307,14 +308,15 @@ def process_multifile_scan(file_type, config, z_groups):
         dark_mean = np.mean(dark_frames_data[skip_frames:], axis=0)
 
     # Decide what to write (real data or zeros) and write it only ONCE.
+    dark_shape = dark_frames_data.shape
     if pre_proc_active:
         print("  - Pre-processing is active. Writing zero arrays for dark/bright.")
-        z_groups['exc'].zeros('dark', shape=dark_frames_data.shape, dtype=output_dtype)
-        z_groups['exc'].zeros('bright', shape=dark_frames_data.shape, dtype=output_dtype)
+        z_groups['exc'].zeros('dark', shape=dark_shape, dtype=output_dtype, chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
+        z_groups['exc'].zeros('bright', shape=dark_shape, dtype=output_dtype, chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
     else:
         print("  - Writing actual dark and bright frame data.")
-        z_groups['exc'].create_dataset('dark', data=dark_frames_data, dtype=output_dtype)
-        z_groups['exc'].create_dataset('bright', data=dark_frames_data, dtype=output_dtype)
+        z_groups['exc'].create_dataset('dark', data=dark_frames_data, dtype=output_dtype, chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
+        z_groups['exc'].create_dataset('bright', data=dark_frames_data, dtype=output_dtype, chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
 
     pre_proc_val = (dark_mean + int(config['preProcThresh'])) if pre_proc_active else dark_mean
 
