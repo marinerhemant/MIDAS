@@ -21,24 +21,22 @@ compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
 
 def print_zarr_chunk_details(filepath):
     """
-    Opens a Zarr archive and prints detailed metadata for each array,
-    focusing on shape, chunks, and compression.
+    Opens a Zarr archive using the high-level zarr.open and prints 
+    detailed metadata for each array.
     
     Args:
         filepath (str or Path): The path to the Zarr.zip file.
     """
     print("\n--- Zarr Array Chunk Details ---")
     try:
-        with zarr.ZipStore(str(filepath), mode='r') as store:
-            root_group = zarr.open(store, mode='r')
-            
+        # Your method is correct. zarr.open() handles the store context.
+        with zarr.open(str(filepath), mode='r') as zf:
             # Use walk() to visit every group and array
-            for path, group, array in root_group.walk():
+            for path, group, array in zf.walk():
                 if array is not None:
-                    # This is a dataset (an array)
                     print(f"Dataset: /{array.path}")
                     print(f"  - Shape:   {array.shape}")
-                    print(f"  - Chunks:  {array.chunks}") # The crucial property to check
+                    print(f"  - Chunks:  {array.chunks}")
                     print(f"  - Dtype:   {array.dtype}")
                     compressor_info = array.compressor.get_config() if array.compressor else 'None'
                     print(f"  - Compressor: {compressor_info}")
@@ -492,7 +490,6 @@ def main():
     print("\n--- Zarr File Structure Verification ---");
     with zarr.open(str(outfn_zip), 'r') as zf: 
         print(zf.tree())
-    print("\n--- Zarr Array Chunk Details ---")
     print_zarr_chunk_details(outfn_zip)
     print(f"\nSuccessfully created Zarr file: {outfn_zip}")
     print(f"OutputZipName: {outfn_zip}")
