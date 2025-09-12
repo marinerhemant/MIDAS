@@ -1065,6 +1065,7 @@ static ErrorCode readImageCorrections(
     zip_t *archive, int darkLoc, int floodLoc, int maskLoc,
     ImageMetadata *metadata, AnalysisParams *params,
     double *dark, double *flood, double *mask)
+    // Add print statements each time there is an error and have to return error
 {
     ErrorCode error;
     double *darkTemp = NULL;
@@ -1082,6 +1083,7 @@ static ErrorCode readImageCorrections(
     if (!darkTemp || !rawData) {
         if (darkTemp) free(darkTemp);
         if (rawData) free(rawData);
+        printf("Error allocating memory for darkTemp or rawData\n");
         return ERROR_MEMORY_ALLOCATION;
     }
     
@@ -1094,6 +1096,7 @@ static ErrorCode readImageCorrections(
             if (darkContents_d) free(darkContents_d);
             free(darkTemp);
             free(rawData);
+            printf("Error allocating memory for darkAsym_d or darkContents_d\n");
             return ERROR_MEMORY_ALLOCATION;
         }
 
@@ -1105,6 +1108,7 @@ static ErrorCode readImageCorrections(
                 free(darkContents_d);
                 free(darkTemp);
                 free(rawData);
+                printf("Error reading dark frame %d: %d\n", darkIter, error);
                 return error;
             }
             
@@ -1155,6 +1159,7 @@ static ErrorCode readImageCorrections(
         if (error != SUCCESS) {
             free(darkTemp);
             free(rawData);
+            printf("Error reading flood frame: %d\n", error);
             return error;
         }
     }
@@ -1168,6 +1173,7 @@ static ErrorCode readImageCorrections(
             if(maskContents_d) free(maskContents_d);
             free(darkTemp);
             free(rawData);
+            printf("Error allocating memory for maskAsym_d or maskContents_d\n");
             return ERROR_MEMORY_ALLOCATION;
         }
 
@@ -1177,6 +1183,7 @@ static ErrorCode readImageCorrections(
             free(maskContents_d);
             free(darkTemp);
             free(rawData);
+            printf("Error reading mask frame: %d\n", error);
             return error;
         }
         
