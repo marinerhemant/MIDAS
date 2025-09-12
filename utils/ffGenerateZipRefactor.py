@@ -325,17 +325,35 @@ def process_multifile_scan(file_type, config, z_groups):
         start_frame_in_file = skip_frames if i > 0 else 0
 
         if file_type == 'ge':
-            offset = header_size + (start_frame_in_file * bytes_per_pixel * numPxY * numPxZ)
-            frames_to_read = (os.path.getsize(current_fn) - offset) // (bytes_per_pixel * numPxY * numPxZ)
-            data_chunk = np.fromfile(current_fn, dtype=output_dtype, offset=offset).reshape((frames_to_read, numPxZ, numPxY))
-        else: # TIFF
+            frames_in_this_file = frames_per_file - start_frame_in_file
+
+            numFrameChunks = int(config.get('numFrameChunks', -1))
+            if numFrameChunks == -1: numFrameChunks = frames_in_this_file
+            num_chunks_in_file = int(ceil(frames_in_this_file / numFrameChunks))
+
+            # Inner loop to process each chunk within the current file
+            for chunk_idx in range(num_chunks_in_file):
+                chunk_start_frame = chunk_idx * numFrameChunks
+                chunk_end_frame = min((chunk_idx + 1) * numFrameChunks, frames_in_this_file)
+                
+                read_start_frame = start_frame_in_file + chunk_start_frame
+                frames_to_read = chunk_end_frame - chunk_start_frame
+                if frames_to_read <= 0: continue
+                
+                read_offset_bytes = header_size + (read_start_frame * bytes_per_pixel * numPxY * numPxZ)
+                read_count_elements = frames_to_read * numPxY * numPxZ
+                data_chunk = np.fromfile(current_fn, dtype=output_dtype, count=read_count_elements, offset=read_offset_bytes).reshape((frames_to_read, numPxZ, numPxY))
+                
+                if pre_proc_active:
+                    data_chunk = apply_correction(data_chunk, dark_mean, pre_proc_val)
+                
+                z_data[z_offset : z_offset + len(data_chunk)] = data_chunk
+                z_offset += len(data_chunk)
+        else: # TIFF logic remains simple as it's one frame per file
             data_chunk = np.fromfile(current_fn, dtype=output_dtype, offset=8).reshape((1, numPxZ, numPxY))
+            z_data[z_offset : z_offset + len(data_chunk)] = data_chunk
+            z_offset += len(data_chunk)
 
-        if pre_proc_active and file_type == 'ge':
-            data_chunk = apply_correction(data_chunk, dark_mean, pre_proc_val)
-
-        z_data[z_offset : z_offset + len(data_chunk)] = data_chunk
-        z_offset += len(data_chunk)
     return output_dtype
 
 def build_config(parser, args):
