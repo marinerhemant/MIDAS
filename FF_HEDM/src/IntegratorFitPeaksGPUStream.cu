@@ -26,9 +26,10 @@
   -gencode=arch=compute_86,code=sm_86 \
   -gencode=arch=compute_90,code=sm_90 \
   -Xcompiler -g \
-  -I/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/include \
-  -L/home/beams/S1IDUSER/opt/MIDAS/FF_HEDM/build/lib \
-  -O3 -lnlopt -lz -ldl -lm -lpthread
+  -I/home/beams/S1IDUSER/opt/MIDAS/build/_deps/nlopt-src/src/api \
+  -L/home/beams/S1IDUSER/opt/MIDAS/build/lib \
+  -O3 -lnlopt -lz -ldl -lm -lpthread \
+  -Xlinker "-rpath=/home/beams/S1IDUSER/opt/MIDAS/build/lib"
 
 */
 // =========================================================================
