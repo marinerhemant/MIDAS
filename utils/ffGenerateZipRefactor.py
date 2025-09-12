@@ -131,6 +131,7 @@ def write_analysis_parameters(z_groups, config):
                 padded_values[:len(values)] = values
                 target_group.create_dataset(target_key, data=padded_values.astype(np.double))
             elif key in ['RingThresh', 'RingsToExclude', 'OmegaRanges', 'BoxSizes', 'ImTransOpt']:
+                print(key,value)
                 # 1. Ensure the value is a list to prevent subscripting errors on scalars.
                 temp_value = value if isinstance(value, list) else [value]
 
