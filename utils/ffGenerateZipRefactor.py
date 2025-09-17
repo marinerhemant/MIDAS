@@ -252,11 +252,8 @@ def process_hdf5_scan(config, z_groups):
                 dark_frames_found = False
                 dark_frames = None
 
-                # 1. Check for dark data in the main data file
-                if dark_loc in hf:
-                    dark_frames = hf[dark_loc][()]; dark_frames_found = True
-                # 2. If not found, check for a separate dark file
-                elif config.get('darkFN'):
+                # 1. If provided, check for a separate dark file
+                if config.get('darkFN'):
                     with h5py.File(config['darkFN'], 'r') as hf_dark:
                         # Try the full path first
                         if dark_loc in hf_dark:
@@ -266,6 +263,9 @@ def process_hdf5_scan(config, z_groups):
                             dark_dataset_name = Path(dark_loc).name
                             if dark_dataset_name in hf_dark:
                                 dark_frames = hf_dark[dark_dataset_name][()]; dark_frames_found = True
+                # 2. If not found, check for dark data in the main data file
+                elif dark_loc in hf:
+                    dark_frames = hf[dark_loc][()]; dark_frames_found = True
 
                 if not dark_frames_found:
                     print("    Warning: No dark data found. Using temporary zeros for shape info.")
