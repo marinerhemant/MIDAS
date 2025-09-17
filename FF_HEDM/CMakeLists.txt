@@ -99,6 +99,7 @@ add_ff_hedm_executable(FitGrainHydra SOURCES src/FitGrainHydra.c src/CalcDiffrac
 add_ff_hedm_executable(FitScanningGrain SOURCES src/FitScanningGrain.c)
 add_ff_hedm_executable(FitTiltX SOURCES src/FitTiltX.c)
 add_ff_hedm_executable(FitWedge SOURCES src/FitWedge.c)
+add_ff_hedm_executable(MapDatasets SOURCES src/MapDatasets.c OMP)
 
 add_ff_hedm_executable(GetHKLList SOURCES src/GetHKLList.c src/sgclib.c src/sgfind.c src/sghkl.c src/sgsi.c src/sgio.c)
 add_ff_hedm_executable(PeaksFittingOMPZarr SOURCES src/PeaksFittingOMPZarr.c OMP)

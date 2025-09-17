@@ -1311,7 +1311,7 @@ main(int argc, char *argv[])
 					hklTemps[totalHKLs][1] = hkls[j][1];
 					hklTemps[totalHKLs][2] = hkls[j][2];
 					hklTemps[totalHKLs][3] = hkls[j][3];
-					mHKLs[int(hkls[j][3])] ++;
+					mHKLs[(int)hkls[j][3]] ++;
 					totalHKLs++;
 				}
 			}
