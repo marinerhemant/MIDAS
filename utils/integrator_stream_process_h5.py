@@ -6,8 +6,8 @@ This script reads the binary output files produced by the CUDA integrator
 (lineout.bin, and optionally fit.bin and Int2D.bin) and organizes them into a 
 single HDF5 file with appropriate groups and datasets.
 
-Each binary file contains frame-by-frame data, and this script ensures they're 
-properly correlated in the output HDF5 file.
+The order of datasets and the grouping for summed frames is determined by the
+sorted filenames in the provided mapping file.
 """
 
 import numpy as np
@@ -228,20 +228,27 @@ def estimate_fit_frame_size(fit_file, lineout_frame_size, num_sample_frames=10):
     # Fallback: assume 1 peak per frame (5 parameters)
     return 5
 
-def sum_frames(int2d_data, osf, mapping=None):
+def sum_frames(int2d_data, osf, sorted_original_indices):
     """
     Sum frames according to OmegaSumFrames parameter.
     
+    This function assumes the int2d_data has already been sorted into the
+    correct order for summing. It uses the sorted_original_indices list to
+    report which original frames were part of each sum.
+    
     Args:
-        int2d_data: 3D array of 2D intensity data, shape (num_frames, nRBins, nEtaBins)
+        int2d_data: 3D array of 2D intensity data, pre-sorted into the desired
+                    summing order.
         osf: OmegaSumFrames value
-        mapping: Dictionary mapping frame indices to dataset IDs
+        sorted_original_indices: List of original frame indices, in the same
+                                 sorted order as int2d_data.
         
     Returns:
         Tuple (summed_data, frame_groups, counts) where:
             - summed_data is a list of summed frame arrays
-            - frame_groups is a list of lists, each containing the frame indices in a group
-            - counts is a list of the number of frames summed in each group
+            - frame_groups is a list of lists, each containing the *original*
+              frame indices that were summed.
+            - counts is a list of the number of frames summed in each group.
     """
     if int2d_data is None:
         return [], [], []
@@ -255,7 +262,7 @@ def sum_frames(int2d_data, osf, mapping=None):
     if osf == -1:
         summed = np.sum(int2d_data, axis=0)
         summed_data.append(summed)
-        frame_groups.append(list(range(num_frames)))
+        frame_groups.append(sorted_original_indices)
         counts.append(num_frames)
         return summed_data, frame_groups, counts
     
@@ -264,7 +271,7 @@ def sum_frames(int2d_data, osf, mapping=None):
         # If OSF not specified or invalid, treat each frame individually
         for i in range(num_frames):
             summed_data.append(int2d_data[i])
-            frame_groups.append([i])
+            frame_groups.append([sorted_original_indices[i]])
             counts.append(1)
     else:
         # Group frames by OSF
@@ -273,15 +280,15 @@ def sum_frames(int2d_data, osf, mapping=None):
             frames_to_sum = int2d_data[i:end_idx]
             summed = np.sum(frames_to_sum, axis=0)
             summed_data.append(summed)
-            frame_groups.append(list(range(i, end_idx)))
+            frame_groups.append(sorted_original_indices[i:end_idx])
             counts.append(end_idx - i)
     
     return summed_data, frame_groups, counts
 
-
 def create_hdf5_file(output_file, lineout_data, fit_data, int2d_data, mapping=None, osf=None):
     """
-    Create an HDF5 file with the organized data.
+    Create an HDF5 file with the organized data. Datasets and summed frames
+    are sorted based on the filename found in the mapping file.
     
     Args:
         output_file: Path to the output HDF5 file
@@ -294,18 +301,51 @@ def create_hdf5_file(output_file, lineout_data, fit_data, int2d_data, mapping=No
     with h5py.File(output_file, 'w') as f:
         # Create attributes to store metadata
         f.attrs['creation_date'] = np.bytes_(datetime.datetime.now().isoformat())
-        f.attrs['num_frames'] = lineout_data.shape[0] if lineout_data is not None else 0
+        num_frames = lineout_data.shape[0] if lineout_data is not None else 0
+        f.attrs['num_frames'] = num_frames
         
+        # Determine the order for creating datasets. Default is chronological.
+        frame_indices = list(range(num_frames))
+
+        if mapping:
+            # If a mapping file is provided, sort frame indices based on identifiers.
+            def get_sort_key(frame_index):
+                map_value = mapping.get(frame_index)
+                is_mapped = map_value is not None
+                if is_mapped:
+                    if isinstance(map_value, dict):
+                        sort_string = map_value.get('filename') or str(map_value.get('uniqueId', str(map_value)))
+                    else:
+                        sort_string = str(map_value)
+                    return (0, sort_string)
+                else:
+                    return (1, frame_index)
+
+            frame_indices.sort(key=get_sort_key)
+            print("Sorted output datasets and summing groups based on mapping file.")
+        
+        # Helper to get a descriptive dataset name from the mapping
+        def get_dataset_name(frame_index):
+            if not mapping: return str(frame_index)
+            map_value = mapping.get(frame_index)
+            if map_value is None: return str(frame_index)
+            
+            if isinstance(map_value, dict):
+                name = map_value.get('filename')
+                if name: return os.path.splitext(name)[0]
+                return str(map_value.get('uniqueId') or map_value.get('dataset_num', frame_index))
+            else:
+                return str(map_value)
+
         # Create groups for each data type if we have data for them
         if lineout_data is not None:
             lineout_group = f.create_group('lineouts')
             lineout_group.attrs['description'] = np.bytes_("Radially integrated data: R and intensity values")
             lineout_group.attrs['dimension_labels'] = np.bytes_("R[px], I[a.u.]")
             
-            num_frames = lineout_data.shape[0]
-            for i in range(num_frames):
-                dataset_id = mapping.get(i, i) if mapping else i
-                ds = lineout_group.create_dataset(str(dataset_id), data=lineout_data[i])
+            for i in frame_indices:
+                dataset_name = get_dataset_name(i)
+                ds = lineout_group.create_dataset(dataset_name, data=lineout_data[i])
                 ds.attrs['frame_index'] = i
         
         if fit_data is not None:
@@ -313,46 +353,42 @@ def create_hdf5_file(output_file, lineout_data, fit_data, int2d_data, mapping=No
             fit_group.attrs['description'] = np.bytes_("Peak fitting results: amplitude, background, mix, center, sigma")
             fit_group.attrs['parameter_labels'] = np.bytes_("amplitude, background, mix, center, sigma")
             
-            num_frames = fit_data.shape[0]
-            for i in range(min(num_frames, lineout_data.shape[0] if lineout_data is not None else num_frames)):
-                dataset_id = mapping.get(i, i) if mapping else i
-                ds = fit_group.create_dataset(str(dataset_id), data=fit_data[i])
-                ds.attrs['frame_index'] = i
-                if fit_data.ndim == 3:
-                    ds.attrs['num_peaks'] = fit_data.shape[1]
+            num_fit_frames = fit_data.shape[0]
+            for i in frame_indices:
+                if i < num_fit_frames:
+                    dataset_name = get_dataset_name(i)
+                    ds = fit_group.create_dataset(dataset_name, data=fit_data[i])
+                    ds.attrs['frame_index'] = i
+                    if fit_data.ndim == 3:
+                        ds.attrs['num_peaks'] = fit_data.shape[1]
         
         if int2d_data is not None:
-            # Create OmegaSumFrame group for Int2D data
             omega_group = f.create_group('OmegaSumFrame')
-            omega_group.attrs['description'] = np.bytes_("2D intensity data: R vs. Eta")
+            omega_group.attrs['description'] = np.bytes_("2D intensity data: R vs. Eta, summed by sorted filename order")
             omega_group.attrs['dimension_labels'] = np.bytes_("R, Eta")
+
+            # Reorder the int2d_data array according to the sorted frame_indices.
+            # This ensures that adjacent frames in this new array are correct for summing.
+            sorted_int2d_data = int2d_data[frame_indices]
             
-            # Handle summing frames according to OSF
-            summed_data, frame_groups, counts = sum_frames(int2d_data, osf, mapping)
+            # Handle summing frames using the reordered data
+            summed_data, frame_groups, counts = sum_frames(sorted_int2d_data, osf, frame_indices)
             
             for i, (summed, frames, count) in enumerate(zip(summed_data, frame_groups, counts)):
-                # Use the last frame number in the group for naming
                 last_frame = frames[-1]
                 dataset_name = f"LastFrameNumber_{last_frame}"
                 
-                # Create dataset with the summed data
                 ds = omega_group.create_dataset(dataset_name, data=summed)
-                
-                # Add attributes
                 ds.attrs['Number Of Frames Summed'] = count
                 ds.attrs['frame_indices'] = frames
                 
-                # Add filename or uniqueId attribute if mapping exists
                 if mapping:
-                    # Get identifier for the last frame in this group
+                    identifier = "unknown"
                     if isinstance(mapping.get(last_frame, {}), dict):
-                        # New style mapping (from updated server)
                         identifier = mapping.get(last_frame, {}).get('filename', 
                                     mapping.get(last_frame, {}).get('uniqueId', last_frame))
                     else:
-                        # Old style mapping
                         identifier = mapping.get(last_frame, last_frame)
-                    
                     ds.attrs['identifier'] = np.bytes_(str(identifier))
 
 def extract_dataset_mapping_from_server_log(log_file):
@@ -376,53 +412,33 @@ def extract_dataset_mapping_from_server_log(log_file):
     
     with open(log_file, 'r') as f:
         for line in f:
-            # Look for dataset numbers
             if "Sent dataset #" in line:
                 import re
                 match = re.search(r"#(\d+)", line)
                 if match:
                     current_dataset = int(match.group(1))
-                    
-                    # Create or update mapping entry
-                    if frame_idx not in mapping:
-                        mapping[frame_idx] = {}
-                        
+                    if frame_idx not in mapping: mapping[frame_idx] = {}
                     mapping[frame_idx]['dataset_num'] = current_dataset
-                    
-                    # Also save the filename if we have it
                     if current_filename:
                         mapping[frame_idx]['filename'] = current_filename
-                        
                     frame_idx += 1
-            
-            # Look for TIF frame processing
             elif "Processing TIF frame #" in line:
                 match = re.search(r"#(\d+)", line)
                 if match:
                     current_dataset = int(match.group(1))
-            
-            # Look for filename
             elif "Processing" in line and "file:" in line:
                 match = re.search(r"Processing .* file: (.+)", line)
                 if match:
                     current_filename = os.path.basename(match.group(1))
-                    
-            # When a frame is processed from a file (not dataset numbers)
             elif "Processed" in line and "frame" in line and not "Sent dataset" in line:
                 if current_filename is not None:
-                    if frame_idx not in mapping:
-                        mapping[frame_idx] = {}
-                    
+                    if frame_idx not in mapping: mapping[frame_idx] = {}
                     mapping[frame_idx]['filename'] = current_filename
                     frame_idx += 1
     
-    # If we have simple mapping entries (not dictionaries), convert to the new format
     for k, v in list(mapping.items()):
         if not isinstance(v, dict):
-            if isinstance(v, int):
-                mapping[k] = {'dataset_num': v}
-            else:
-                mapping[k] = {'filename': v}
+            mapping[k] = {'filename': v} if isinstance(v, str) else {'dataset_num': v}
     
     return mapping
 
@@ -442,89 +458,66 @@ def main():
     
     args = parser.parse_args()
     
-    # Get dimensions from parameter file
     nRBins, nEtaBins, osf = get_frame_dimensions(args.params)
     print(f"Frame dimensions: {nRBins} R bins, {nEtaBins} Eta bins")
     
-    # Override OSF value if provided in command line
     if args.omega_sum_frames is not None:
         osf = args.omega_sum_frames
         print(f"Overriding OmegaSumFrames with value: {osf}")
     
     if osf is not None:
         print(f"OmegaSumFrames: {osf}")
-        if osf == -1:
-            print("  All frames will be summed into a single output")
-        elif osf > 0:
-            print(f"  Every {osf} frames will be summed together")
+        if osf == -1: print("  All frames will be summed into a single output based on sorted order")
+        elif osf > 0: print(f"  Every {osf} frames will be summed together based on sorted order")
     
-    # Calculate frame sizes
     lineout_frame_size = nRBins * 2
     int2d_frame_size = nRBins * nEtaBins
     
-    # Read binary files with offset and count
-    raw_lineout_data = read_binary_file(
-        args.lineout, 
+    raw_lineout_data = read_binary_file(args.lineout, 
         offset=args.start * lineout_frame_size, 
-        count=args.count * lineout_frame_size if args.count else None
-    )
+        count=args.count * lineout_frame_size if args.count else None)
     
     if raw_lineout_data is None:
         print(f"Error: Could not read lineout file {args.lineout}")
         return
     
-    # Reshape lineout data to determine number of frames
     lineout_data, lineout_frames = reshape_lineout_data(raw_lineout_data, nRBins)
     
-    # Check if fit.bin exists and process it if it does
     fit_frame_size = 0
     raw_fit_data = None
-    
     if os.path.exists(args.fit):
-        # For fit data, determine the frame size
         if args.peaks_per_frame:
             fit_frame_size = args.peaks_per_frame * 5
         else:
             fit_frame_size = estimate_fit_frame_size(args.fit, lineout_frame_size)
             print(f"Estimated fit frame size: {fit_frame_size} elements per frame ({fit_frame_size // 5} peaks per frame)")
         
-        raw_fit_data = read_binary_file(
-            args.fit, 
+        raw_fit_data = read_binary_file(args.fit, 
             offset=args.start * fit_frame_size, 
-            count=args.count * fit_frame_size if args.count and fit_frame_size else None
-        )
+            count=args.count * fit_frame_size if args.count and fit_frame_size else None)
     else:
         print(f"Note: Fit file {args.fit} does not exist, continuing without fit data")
     
-    # Check if Int2D.bin exists and process it if it does
     raw_int2d_data = None
     if os.path.exists(args.int2d):
-        raw_int2d_data = read_binary_file(
-            args.int2d, 
+        raw_int2d_data = read_binary_file(args.int2d, 
             offset=args.start * int2d_frame_size, 
-            count=args.count * int2d_frame_size if args.count else None
-        )
+            count=args.count * int2d_frame_size if args.count else None)
     else:
         print(f"Note: Int2D file {args.int2d} does not exist, continuing without Int2D data")
     
-    # Reshape data
     fit_data, _ = reshape_fit_data(raw_fit_data, lineout_frames)
     int2d_data, _ = reshape_int2d_data(raw_int2d_data, nRBins, nEtaBins)
     
     print(f"Found {lineout_frames} frames in lineout data")
     if fit_data is not None:
         print(f"Found {fit_data.shape[0]} frames in fit data")
-        if fit_data.ndim == 3:
-            print(f"Each frame has {fit_data.shape[1]} peaks with {fit_data.shape[2]} parameters per peak")
-    else:
-        print("No fit data available")
+        if fit_data.ndim == 3: print(f"  Each frame has {fit_data.shape[1]} peaks with {fit_data.shape[2]} parameters per peak")
+    else: print("No fit data available")
         
-    if int2d_data is not None:
-        print(f"Found {int2d_data.shape[0]} frames in int2d data")
-    else:
-        print("No int2d data available")
+    if int2d_data is not None: print(f"Found {int2d_data.shape[0]} frames in int2d data")
+    else: print("No int2d data available")
     
-    # Load mapping if provided
     mapping = None
     if args.mapping:
         mapping = load_mapping_file(args.mapping, args.start)
@@ -533,7 +526,6 @@ def main():
         mapping = extract_dataset_mapping_from_server_log(args.server_log)
         print(f"Extracted mapping from server log {args.server_log}")
     
-    # Create HDF5 file
     create_hdf5_file(args.output, lineout_data, fit_data, int2d_data, mapping, osf)
     print(f"Created HDF5 file {args.output}")
 

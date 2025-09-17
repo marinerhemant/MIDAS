@@ -22,7 +22,7 @@
 //
 // Example compile command (adjust paths and architecture flags):
 /*
-~/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStream.cu -o bin/IntegratorFitPeaksGPUStream \
+/home/beams/S1IDUSER/opt/midascuda/cuda/bin/nvcc src/IntegratorFitPeaksGPUStream.cu -o bin/IntegratorFitPeaksGPUStream \
   -gencode=arch=compute_86,code=sm_86 \
   -gencode=arch=compute_90,code=sm_90 \
   -Xcompiler -g \

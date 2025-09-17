@@ -45,6 +45,7 @@
 
 int n_hkls = 0;
 double hkls[MAX_N_HKLS][4];
+int mHKLs[MAX_N_HKLS];
 
 static inline double**
 allocMatrix(int nrows, int ncols)
@@ -1299,6 +1300,7 @@ main(int argc, char *argv[])
 			return 1;
 		}
 	}
+	for (i=0;i<n_hkls;i++) mHKLs[i] = 0;
 	if (nRings > 0){
 		double hklTemps[n_hkls][4];
 		int totalHKLs=0;
@@ -1309,6 +1311,7 @@ main(int argc, char *argv[])
 					hklTemps[totalHKLs][1] = hkls[j][1];
 					hklTemps[totalHKLs][2] = hkls[j][2];
 					hklTemps[totalHKLs][3] = hkls[j][3];
+					mHKLs[int(hkls[j][3])] ++;
 					totalHKLs++;
 				}
 			}
@@ -1347,7 +1350,6 @@ main(int argc, char *argv[])
             fclose(intensities_file);
             return 1;
         }
-
 
 		// Read the file line by line
 		while (fgets(line_buffer, sizeof(line_buffer), intensities_file) != NULL) {
@@ -1604,17 +1606,17 @@ main(int argc, char *argv[])
 							if ((int)current_y+idxNrY < 0 || (int)current_y+idxNrY >= NrPixels) continue;
 							for (idxNrZ=-4*ceil(GaussWidth);idxNrZ<=4*ceil(GaussWidth);idxNrZ++){
 								if ((int)current_z+idxNrZ < 0 || (int)current_z+idxNrZ >= NrPixels) continue;
-								
+
 								displ = idxNrY*NrPixels + idxNrZ;
 								currentPos = (long long int)(centIdx + displ);
 								if (currentPos < 0 || currentPos >= ImageArrSize) continue;
-								
+
 								int currentRingNr = (int)TempInfo[4];
 								double relativeIntensity = 1.0;
 								if (currentRingNr >= 0 && currentRingNr < 500) {
 									relativeIntensity = RingNrIntensity[currentRingNr];
 								}
-								
+
 								// The final intensity is scaled by the bilinear weight
 								double intensity_to_add = current_weight * (GaussMask[idxNrY*nrPxMask+idxNrZ + centIdxMask] * sub_peak_intensity * relativeIntensity);
 
