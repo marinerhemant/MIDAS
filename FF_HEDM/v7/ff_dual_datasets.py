@@ -431,10 +431,11 @@ def main():
     parser.add_argument('-paramFN', type=str, required=True, help='Parameter file name, will be used for both datasets.')
     parser.add_argument('-dataFN', type=str, required=True, help='Data file name for the FIRST dataset (e.g., .h5 file).')
     parser.add_argument('-dataFN2', type=str, required=True, help='Data file name for the SECOND dataset (e.g., .h5 file).')
-    parser.add_argument('-offsetX', type=float, required=True, help='Offset in X to map dataset 2 to dataset 1 (micrometers).')
-    parser.add_argument('-offsetY', type=float, required=True, help='Offset in Y to map dataset 2 to dataset 1 (micrometers).')
-    parser.add_argument('-offsetZ', type=float, required=True, help='Offset in Z to map dataset 2 to dataset 1 (micrometers).')
-    
+    parser.add_argument('-offsetX', type=float, required=True, default=0.0, help='Offset in X to map dataset 2 to dataset 1 (micrometers).')
+    parser.add_argument('-offsetY', type=float, required=True, default=0.0, help='Offset in Y to map dataset 2 to dataset 1 (micrometers).')
+    parser.add_argument('-offsetZ', type=float, required=True, default=0.0, help='Offset in Z to map dataset 2 to dataset 1 (micrometers).')
+    parser.add_argument('-offsetOmega', type=float, required=True, default=0.0, help='Offset in Omega to map dataset 2 to dataset 1 (micrometers).')
+
     # --- Standard configuration arguments ---
     parser.add_argument('-nCPUs', type=int, default=10, help='Number of CPU cores to use per node.')
     parser.add_argument('-machineName', type=str, default='local', help='Machine name for execution: local, orthrosnew, orthrosall, umich, marquette, purdue.')
@@ -474,14 +475,14 @@ def main():
 
             # Step 3: Add the mapping information to the parameter file of the first dataset
             paramstest_path = os.path.join(result_dir1, "paramstest.txt")
-            dataset2_line = f"Dataset2Folder {result_dir2} {args.offsetX} {args.offsetY} {args.offsetZ}\n"
+            dataset2_line = f"Dataset2Folder {result_dir2} {args.offsetX} {args.offsetY} {args.offsetZ} {args.offsetOmega}\n"
             logger.info(f"Appending to {paramstest_path}: {dataset2_line.strip()}")
             with open(paramstest_path, "a") as f:
                 f.write(dataset2_line)
 
             # Step 4: Map the two datasets together
             logger.info(f"Mapping datasets: {result_dir1} and {result_dir2}")
-            map_cmd = f"{os.path.join(bin_dir, 'MapDatasets')} {result_dir1} {result_dir2} {num_procs}"
+            map_cmd = f"{os.path.join(bin_dir, 'MapDatasets')} {result_dir1} {result_dir2} {args.offsetOmega} {num_procs}"
             safely_run_command(
                 map_cmd, result_dir1,
                 out_file=os.path.join(result_dir1, 'output', 'map_out.txt'),

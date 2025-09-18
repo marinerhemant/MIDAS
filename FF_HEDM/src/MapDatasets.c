@@ -45,19 +45,20 @@ void convert_to_g_vector(double y, double z, double omega, double distance, doub
 
 // --- Main Program ---
 int main(int argc, char* argv[]) {
-    if (argc != 4) {
-        fprintf(stderr, "Usage: %s <source_folder> <target_folder> <num_cores>\n", argv[0]);
+    if (argc != 5) {
+        fprintf(stderr, "Usage: %s <source_folder> <target_folder> <offset_omega> <num_cores>\n", argv[0]);
         fprintf(stderr, "  - source_folder: Contains ExtraInfo.bin.\n");
         fprintf(stderr, "  - target_folder: Contains the reference dataset and its hash table.\n");
+        fprintf(stderr, "  - offset_omega: Offset in Omega to map dataset 2 to dataset 1 (micrometers).\n");
         fprintf(stderr, "  - num_cores: The number of CPU cores to use for processing.\n");
         return 1;
     }
     char* source_folder = argv[1];
     char* target_folder = argv[2];
-    
-    int num_cores = atoi(argv[3]);
+    double offset_omega = atof(argv[3]);
+    int num_cores = atoi(argv[4]);
     if (num_cores <= 0) {
-        fprintf(stderr, "Warning: Invalid number of cores '%s'. Using all available cores.\n", argv[3]);
+        fprintf(stderr, "Warning: Invalid number of cores '%s'. Using all available cores.\n", argv[4]);
     } else {
         omp_set_num_threads(num_cores);
     }
@@ -128,6 +129,9 @@ int main(int argc, char* argv[]) {
             .omega = extra_mat[i * N_COL_EXTRAINFO + 2], .ring = (int)extra_mat[i * N_COL_EXTRAINFO + 5],
             .eta = extra_mat[i * N_COL_EXTRAINFO + 6]
         };
+        query_point.omega += offset_omega;
+        if (query_point.omega < -180) query_point.omega += 360.0;
+        if (query_point.omega > 180) query_point.omega -= 360.0;
         
         if (query_point.ring == 0) {
             #pragma omp atomic update
