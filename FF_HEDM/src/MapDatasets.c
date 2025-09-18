@@ -124,9 +124,9 @@ int main(int argc, char* argv[]) {
 
         results[i] = -1;
         Point3D query_point = {
-            .y = extra_mat[i * N_COL_EXTRAINFO + 1], .z = extra_mat[i * N_COL_EXTRAINFO + 2],
-            .omega = extra_mat[i * N_COL_EXTRAINFO + 3], .ring = (int)extra_mat[i * N_COL_EXTRAINFO + 6],
-            .eta = extra_mat[i * N_COL_EXTRAINFO + 7]
+            .y = extra_mat[i * N_COL_EXTRAINFO + 0], .z = extra_mat[i * N_COL_EXTRAINFO + 1],
+            .omega = extra_mat[i * N_COL_EXTRAINFO + 2], .ring = (int)extra_mat[i * N_COL_EXTRAINFO + 5],
+            .eta = extra_mat[i * N_COL_EXTRAINFO + 6]
         };
         
         if (query_point.ring == 0) {
