@@ -177,6 +177,8 @@ int main(int argc, char* argv[]) {
                         double z_cand = spots_mat[candidate_idx * N_COL_OBSSPOTS + 1];
                         double omega_cand = spots_mat[candidate_idx * N_COL_OBSSPOTS + 2];
                         double g_cand_x, g_cand_y, g_cand_z;
+                        // print y, z, omega, distance
+                        printf("%lf %lf %lf %lf\n", y_cand, z_cand, omega_cand, params.distance);
                         convert_to_g_vector(y_cand, z_cand, omega_cand, params.distance, &g_cand_x, &g_cand_y, &g_cand_z);
                         double dot_product = g_source_x * g_cand_x + g_source_y * g_cand_y + g_source_z * g_cand_z;
                         double len_sq_cand = g_cand_x * g_cand_x + g_cand_y * g_cand_y + g_cand_z * g_cand_z;
@@ -222,10 +224,16 @@ int main(int argc, char* argv[]) {
 void convert_to_g_vector(double y, double z, double omega, double distance, double* gx, double* gy, double* gz) {
     double xi = distance, yi = y, zi = z;
     double len = sqrt(xi*xi + yi*yi + zi*zi);
-    if (len == 0) { *gx = 0; *gy = 0; *gz = 0; return; }
+    if (len == 0) { 
+        *gx = 0; 
+        *gy = 0; 
+        *gz = 0; 
+        return; 
+    }
     double xn = xi / len, yn = yi / len, zn = zi / len;
     double qr_x = xn - 1.0, qr_y = yn;
     double omega_rad = -omega * DEG_TO_RAD;
+    printf("Omega (deg): %lf, Omega (rad): %lf\n", omega, omega_rad);
     double cos_ome = cos(omega_rad), sin_ome = sin(omega_rad);
     *gx = qr_x * cos_ome - qr_y * sin_ome;
     *gy = qr_x * sin_ome + qr_y * cos_ome;
