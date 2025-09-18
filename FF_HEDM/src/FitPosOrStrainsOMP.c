@@ -1815,18 +1815,14 @@ int main(int argc, char *argv[])
 						}
 						continue;
 					}
-					spotPosAllSpots = (int)spotIDS[i]-1;
-					if (spotPosAllSpots+1 != (size_t)AllSpots2[spotPosAllSpots*14+4]){
-						printf("Data mismatch 2! Behavior undefined. Original: %d, Looked for %zu, found %zu\n", (int)spotIDS[i], spotPosAllSpots+1, (size_t)AllSpots2[spotPosAllSpots*14+4]);
-					}
-					spotsYZO2[i][0] = AllSpots2[spotPosAllSpots*14+0];
-					spotsYZO2[i][1] = AllSpots2[spotPosAllSpots*14+1];
-					spotsYZO2[i][2] = AllSpots2[spotPosAllSpots*14+2];
-					spotsYZO2[i][3] = AllSpots2[spotPosAllSpots*14+4];
-					spotsYZO2[i][4] = AllSpots2[spotPosAllSpots*14+8];
-					spotsYZO2[i][5] = AllSpots2[spotPosAllSpots*14+9];
-					spotsYZO2[i][6] = AllSpots2[spotPosAllSpots*14+10];
-					spotsYZO2[i][7] = AllSpots2[spotPosAllSpots*14+5];
+					spotsYZO2[i][0] = AllSpots2[spotPosAllSpots2*14+0];
+					spotsYZO2[i][1] = AllSpots2[spotPosAllSpots2*14+1];
+					spotsYZO2[i][2] = AllSpots2[spotPosAllSpots2*14+2];
+					spotsYZO2[i][3] = AllSpots2[spotPosAllSpots2*14+4];
+					spotsYZO2[i][4] = AllSpots2[spotPosAllSpots2*14+8];
+					spotsYZO2[i][5] = AllSpots2[spotPosAllSpots2*14+9];
+					spotsYZO2[i][6] = AllSpots2[spotPosAllSpots2*14+10];
+					spotsYZO2[i][7] = AllSpots2[spotPosAllSpots2*14+5];
 				} else{
 					// just copy over all the spot info from spotsYZO to spotsYZO2
 					for (j=0;j<8;j++){
