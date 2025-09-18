@@ -973,8 +973,8 @@ double problem_function_PosIni(unsigned n, const double *x, double *grad, void* 
 	double XIn[n];
 	for (i=0;i<n;i++) XIn[i]=x[i];
 	double error = FitErrorsPosT(XIn,nSpotsComp,spotsYZO,spotsYZO2,nhkls,f_data->hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,offsets);
-	freeMatrix(spotsYZO,nSpotsComp);
-	freeMatrix(spotsYZO2,nSpotsComp);
+	FreeMemMatrix(spotsYZO,nSpotsComp);
+	FreeMemMatrix(spotsYZO2,nSpotsComp);
 	return error;
 }
 
@@ -1012,8 +1012,8 @@ double problem_function_OrientIni(unsigned n, const double *x, double *grad, voi
 	double XIn[n];
 	for (i=0;i<n;i++) XIn[i]=x[i];
 	double error = FitErrorsOrientStrains(XIn,nSpotsComp,spotsYZO,spotsYZO2,nhkls,f_data->hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,Pos,offsets);
-	freeMatrix(spotsYZO,nSpotsComp);
-	freeMatrix(spotsYZO2,nSpotsComp);
+	FreeMemMatrix(spotsYZO,nSpotsComp);
+	FreeMemMatrix(spotsYZO2,nSpotsComp);
 	return error;
 }
 
@@ -1052,8 +1052,8 @@ double problem_function_StrainIni(unsigned n, const double *x, double *grad, voi
 	double XIn[n];
 	for (i=0;i<n;i++) XIn[i]=x[i];
 	double error = FitErrorsStrains(XIn,nSpotsComp,spotsYZO,spotsYZO2,nhkls,f_data->hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,Pos,Orient,offsets);
-	freeMatrix(spotsYZO,nSpotsComp);
-	freeMatrix(spotsYZO2,nSpotsComp);
+	FreeMemMatrix(spotsYZO,nSpotsComp);
+	FreeMemMatrix(spotsYZO2,nSpotsComp);
 	return error;
 }
 
@@ -1092,8 +1092,8 @@ double problem_function_Pos(unsigned n, const double *x, double *grad, void* f_d
 	double XIn[n];
 	for (i=0;i<n;i++) XIn[i]=x[i];
 	double error = FitErrorsPosSec(XIn,nSpotsComp,spotsYZO,spotsYZO2,nhkls,f_data->hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,Orient,Strains,offsets);
-	freeMatrix(spotsYZO,nSpotsComp);
-	freeMatrix(spotsYZO2,nSpotsComp);
+	FreeMemMatrix(spotsYZO,nSpotsComp);
+	FreeMemMatrix(spotsYZO2,nSpotsComp);
 	return error;
 }
 
