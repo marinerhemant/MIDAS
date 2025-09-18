@@ -172,7 +172,7 @@ int main(int argc, char* argv[]) {
                     int start_offset = ndata_store[pos * 2 + 1];
 
                     for (int k = 0; k < num_points_in_bin; ++k) {
-                        printf("Checking candidate %d in bin (ring=%d, eta=%d, ome=%d, offset=%d, len=%d)\n", k, current_ring, current_eta, current_ome, start_offset, data_len);
+                        printf("Checking candidate %d in bin (ring=%d, eta=%d, ome=%d, offset=%d, len=%d, pos=%lld, num_points=%d, ndata_len=%d, start_offset_loc=%d)\n", k, current_ring, current_eta, current_ome, start_offset, data_len, pos, num_points_in_bin, ndata_len, pos * 2 + 1);
                         int candidate_idx = data_store[start_offset + k];
                         double y_cand = spots_mat[candidate_idx * N_COL_OBSSPOTS + 0];
                         double z_cand = spots_mat[candidate_idx * N_COL_OBSSPOTS + 1];
