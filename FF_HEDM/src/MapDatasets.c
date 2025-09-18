@@ -191,7 +191,6 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
-        printf("New best match for query point %ld: candidate %d with cos(angle) = %lf\n", i, best_match_idx, max_cos_angle);
 
         results[i] = best_match_idx;
         #pragma omp atomic update
