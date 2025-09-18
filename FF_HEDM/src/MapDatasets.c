@@ -234,7 +234,7 @@ void convert_to_g_vector(double y, double z, double omega, double distance, doub
     double xn = xi / len, yn = yi / len, zn = zi / len;
     double qr_x = xn - 1.0, qr_y = yn;
     double omega_rad = -omega * DEG_TO_RAD;
-    printf("Omega (deg): %lf, Omega (rad): %lf\n", omega, omega_rad);
+    // printf("Omega (deg): %lf, Omega (rad): %lf\n", omega, omega_rad);
     double cos_ome = cos(omega_rad), sin_ome = sin(omega_rad);
     *gx = qr_x * cos_ome - qr_y * sin_ome;
     *gy = qr_x * sin_ome + qr_y * cos_ome;
