@@ -972,7 +972,10 @@ double problem_function_PosIni(unsigned n, const double *x, double *grad, void* 
 	double chi = f_data->chi;
 	double XIn[n];
 	for (i=0;i<n;i++) XIn[i]=x[i];
-	return FitErrorsPosT(XIn,nSpotsComp,spotsYZO,spotsYZO2,nhkls,f_data->hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,offsets);
+	double error = FitErrorsPosT(XIn,nSpotsComp,spotsYZO,spotsYZO2,nhkls,f_data->hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,offsets);
+	freeMatrix(spotsYZO,nSpotsComp);
+	freeMatrix(spotsYZO2,nSpotsComp);
+	return error;
 }
 
 static
@@ -1008,7 +1011,10 @@ double problem_function_OrientIni(unsigned n, const double *x, double *grad, voi
 	double Pos[3]; for (i=0;i<3;i++) Pos[i] = f_data->Pos[i];
 	double XIn[n];
 	for (i=0;i<n;i++) XIn[i]=x[i];
-	return FitErrorsOrientStrains(XIn,nSpotsComp,spotsYZO,spotsYZO2,nhkls,f_data->hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,Pos,offsets);
+	double error = FitErrorsOrientStrains(XIn,nSpotsComp,spotsYZO,spotsYZO2,nhkls,f_data->hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,Pos,offsets);
+	freeMatrix(spotsYZO,nSpotsComp);
+	freeMatrix(spotsYZO2,nSpotsComp);
+	return error;
 }
 
 static
@@ -1045,7 +1051,10 @@ double problem_function_StrainIni(unsigned n, const double *x, double *grad, voi
 	double Orient[3]; for (i=0;i<3;i++) Orient[i] = f_data->Orient[i];
 	double XIn[n];
 	for (i=0;i<n;i++) XIn[i]=x[i];
-	return FitErrorsStrains(XIn,nSpotsComp,spotsYZO,spotsYZO2,nhkls,f_data->hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,Pos,Orient,offsets);
+	double error = FitErrorsStrains(XIn,nSpotsComp,spotsYZO,spotsYZO2,nhkls,f_data->hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,Pos,Orient,offsets);
+	freeMatrix(spotsYZO,nSpotsComp);
+	freeMatrix(spotsYZO2,nSpotsComp);
+	return error;
 }
 
 static
@@ -1082,7 +1091,10 @@ double problem_function_Pos(unsigned n, const double *x, double *grad, void* f_d
 	double Strains[6]; for (i=0;i<6;i++) Strains[i] = f_data->Strains[i];
 	double XIn[n];
 	for (i=0;i<n;i++) XIn[i]=x[i];
-	return FitErrorsPosSec(XIn,nSpotsComp,spotsYZO,spotsYZO2,nhkls,f_data->hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,Orient,Strains,offsets);
+	double error = FitErrorsPosSec(XIn,nSpotsComp,spotsYZO,spotsYZO2,nhkls,f_data->hkls,Lsd,Wavelength,nOmeRanges,OmegaRanges,BoxSizes,MinEta,wedge,chi,Orient,Strains,offsets);
+	freeMatrix(spotsYZO,nSpotsComp);
+	freeMatrix(spotsYZO2,nSpotsComp);
+	return error;
 }
 
 void FitPositionIni(double X0[12],int nSpotsComp,double **spotsYZO, double **spotsYZO2, int nhkls,double **hkls,double Lsd,
@@ -1136,6 +1148,7 @@ void FitPositionIni(double X0[12],int nSpotsComp,double **spotsYZO, double **spo
 	//~ printf("%10.30f \n", minf);
 	for (i=0;i<n;i++) XFit[i] = x[i];
 	FreeMemMatrix(f_data.spotsYZO,nSpotsComp);
+	FreeMemMatrix(f_data.spotsYZO2,nSpotsComp);
 	FreeMemMatrix(f_data.hkls,nhkls);
 }
 
@@ -1191,6 +1204,7 @@ void FitOrientIni(double X0[9],int nSpotsComp,double **spotsYZO, double **spotsY
 	//~ printf("%10.30f \n", minf);
 	for (i=0;i<n;i++) XFit[i] = x[i];
 	FreeMemMatrix(f_data.spotsYZO,nSpotsComp);
+	FreeMemMatrix(f_data.spotsYZO2,nSpotsComp);
 	FreeMemMatrix(f_data.hkls,nhkls);
 }
 
@@ -1248,6 +1262,7 @@ void FitStrainIni(double X0[6],int nSpotsComp,double **spotsYZO, double **spotsY
 	//~ printf("%10.30f \n", minf);
 	for (i=0;i<n;i++) XFit[i] = x[i];
 	FreeMemMatrix(f_data.spotsYZO,nSpotsComp);
+	FreeMemMatrix(f_data.spotsYZO2,nSpotsComp);
 	FreeMemMatrix(f_data.hkls,nhkls);
 }
 
@@ -1305,6 +1320,7 @@ void FitPosSec(double X0[3],int nSpotsComp,double **spotsYZO, double **spotsYZO2
 	//~ printf("%10.30f \n", minf);
 	for (i=0;i<n;i++) XFit[i] = x[i];
 	FreeMemMatrix(f_data.spotsYZO,nSpotsComp);
+	FreeMemMatrix(f_data.spotsYZO2,nSpotsComp);
 	FreeMemMatrix(f_data.hkls,nhkls);
 }
 
