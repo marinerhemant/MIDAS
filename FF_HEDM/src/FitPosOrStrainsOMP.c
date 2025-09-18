@@ -1810,7 +1810,9 @@ int main(int argc, char *argv[])
 					spotPosAllSpots2 = mapDatasets[spotPosAllSpots];
 					if (spotPosAllSpots2 < 0 || spotPosAllSpots2 >= (size_t)nSpotsData2){
 						printf("SpotID %d mapped to invalid spot in dataset 2 (%zu). Skipping this spot.\n", (int)spotIDS[i], spotPosAllSpots2);
-						spotsYZO2[i][7] = 0; 
+						for (j=0;j<8;j++){
+							spotsYZO2[i][j] = spotsYZO[i][j];
+						}
 						continue;
 					}
 					spotPosAllSpots = (int)spotIDS[i]-1;
