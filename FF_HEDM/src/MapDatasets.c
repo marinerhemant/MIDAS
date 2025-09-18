@@ -70,7 +70,7 @@ int main(int argc, char* argv[]) {
     snprintf(ndata_path, sizeof(ndata_path), "%s/nData.bin", target_folder);
     snprintf(data_path, sizeof(data_path), "%s/Data.bin", target_folder);
     snprintf(extra_info_path, sizeof(extra_info_path), "%s/ExtraInfo.bin", source_folder);
-    snprintf(output_path, sizeof(output_path), "%s/mapDatasets_indexed.txt", source_folder);
+    snprintf(output_path, sizeof(output_path), "%s/mapDatasets.txt", source_folder);
 
     AppParams params = {0};
     if (read_parameters(param_path, &params) != 0) return 1;
