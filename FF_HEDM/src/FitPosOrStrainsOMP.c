@@ -2072,6 +2072,7 @@ int main(int argc, char *argv[])
 			}
 			free(spotIDS);
 			FreeMemMatrix(spotsYZO,nSpotsBest);
+			FreeMemMatrix(spotsYZO2,nSpotsBest);
 			free(Ini);
 			FreeMemMatrix(SpotsComp,MaxNSpotsBest);
 			FreeMemMatrix(Splist,MaxNSpotsBest);
@@ -2368,6 +2369,7 @@ int main(int argc, char *argv[])
 			free(spotIDS);
 			free(ErrorFin);
 		}
+		free(SptIDs);
 	}
 	return 0;
 }
