@@ -157,7 +157,7 @@ int main(int argc, char* argv[]) {
         int iEta_center = floor((query_point.eta + 180.0) / params.eta_bin_size);
         int iOme_center = floor((query_point.omega + 180.0) / params.ome_bin_size);
 
-        for (int dr = -1; dr <= 1; ++dr) {
+        for (int dr = 0; dr < 1; ++dr) { // only search this ring!!!
             for (int de = -1; de <= 1; ++de) {
                 for (int dw = -1; dw <= 1; ++dw) {
                     int current_ring = iRing + dr;
@@ -166,10 +166,11 @@ int main(int argc, char* argv[]) {
                     if (current_eta < 0) current_eta += n_eta_bins;
                     int current_ome = (iOme_center + dw) % n_ome_bins;
                     if (current_ome < 0) current_ome += n_ome_bins;
-                    
+
                     long long pos = (long long)current_ring * n_eta_bins * n_ome_bins + (long long)current_eta * n_ome_bins + current_ome;
                     int num_points_in_bin = ndata_store[pos * 2];
                     int start_offset = ndata_store[pos * 2 + 1];
+                    // printf("Debug: Query point %ld, Ring %d, Eta bin %d, Ome bin %d -> %d candidates\n", i, current_ring, current_eta, current_ome, num_points_in_bin);
 
                     for (int k = 0; k < num_points_in_bin; ++k) {
                         int candidate_idx = data_store[start_offset + k];
@@ -201,7 +202,6 @@ int main(int argc, char* argv[]) {
     FILE* out_file = fopen(output_path, "w");
     if (!out_file) {
         fprintf(stderr, "ERROR: Could not open output file '%s' for writing.\n", output_path);
-        // **FIX #2:** Free all buffers on this error path
         free(results);
         free(spots_mat);
         free(extra_mat);
@@ -232,7 +232,6 @@ void convert_to_g_vector(double y, double z, double omega, double distance, doub
     double xn = xi / len, yn = yi / len, zn = zi / len;
     double qr_x = xn - 1.0, qr_y = yn;
     double omega_rad = -omega * DEG_TO_RAD;
-    // printf("Omega (deg): %lf, Omega (rad): %lf\n", omega, omega_rad);
     double cos_ome = cos(omega_rad), sin_ome = sin(omega_rad);
     *gx = qr_x * cos_ome - qr_y * sin_ome;
     *gy = qr_x * sin_ome + qr_y * cos_ome;
