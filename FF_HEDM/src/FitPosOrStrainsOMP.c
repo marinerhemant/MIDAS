@@ -1807,11 +1807,13 @@ int main(int argc, char *argv[])
 			// spotIDS[i] should correspond to AllSpots[(spotIDS[i]-1)*14+...], this should
 			// reduce execution time.
 			size_t spotPosAllSpots, spotPosAllSpots2;
+			int badSpot = 0;
 			for (i=0;i<nSpotsBest;i++){
 				// Check if spotIDS[i] > 0
 				if (spotIDS[i] < 1){
 					printf("SpotID %d is not valid. Skipping this spot.\n",spotIDS[i]);
-					exit(EXIT_FAILURE);
+					badSpot = 1;
+					continue;
 				}
 				spotPosAllSpots = (int)spotIDS[i]-1;
 				if (spotPosAllSpots+1 != (size_t)AllSpots[spotPosAllSpots*14+4]){
@@ -1848,6 +1850,12 @@ int main(int argc, char *argv[])
 						spotsYZO2[i][j] = spotsYZO[i][j];
 					}
 				}
+			}
+			if (badSpot == 1){
+				free(spotIDS);
+				free(spotsYZO);
+				free(spotsYZO2);
+				continue;
 			}
 			double *Ini; Ini=malloc(12*sizeof(*Ini));
 			double **SpotsComp,**Splist,*ErrorIni;
