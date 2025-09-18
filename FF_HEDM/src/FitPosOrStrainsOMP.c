@@ -1543,10 +1543,10 @@ int main(int argc, char *argv[])
 	sprintf(tmpstr,"%s",ResultFolder);
 	char filename[2048], *cwd=dirname(tmpstr);
 	sprintf(filename,"%s/ExtraInfo.bin",cwd);
-	// char cmmd[4096];
-	// sprintf(cmmd,"cp %s /dev/shm/",filename);
-	// system(cmmd);
-	// sprintf(filename,"/dev/shm/ExtraInfo.bin");
+	char cmmd[4096];
+	sprintf(cmmd,"cp %s /dev/shm/",filename);
+	system(cmmd);
+	sprintf(filename,"/dev/shm/ExtraInfo.bin");
 	int rc;
 	fd = open(filename,O_RDONLY);
 	check(fd < 0, "open %s failed: %s", filename, strerror(errno));
@@ -1566,6 +1566,9 @@ int main(int argc, char *argv[])
 		int status2;
 		size_t size2;
 		sprintf(filename,"%s/ExtraInfo.bin",dataSet2Folder);
+		sprintf(cmmd,"cp %s /dev/shm/",filename);
+		system(cmmd);
+		sprintf(filename,"/dev/shm/ExtraInfo2.bin");
 		fd2 = open(filename,O_RDONLY);
 		check(fd2 < 0, "open %s failed: %s", filename, strerror(errno));
 		status2 = fstat (fd2 , &s2);
