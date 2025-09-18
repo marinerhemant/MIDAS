@@ -128,6 +128,7 @@ int main(int argc, char* argv[]) {
             .omega = extra_mat[i * N_COL_EXTRAINFO + 2], .ring = (int)extra_mat[i * N_COL_EXTRAINFO + 5],
             .eta = extra_mat[i * N_COL_EXTRAINFO + 6]
         };
+        printf("Query Point %ld: y=%lf, z=%lf, omega=%lf, ring=%d, eta=%lf\n", i, query_point.y, query_point.z, query_point.omega, query_point.ring, query_point.eta);
         
         if (query_point.ring == 0) {
             #pragma omp atomic update
