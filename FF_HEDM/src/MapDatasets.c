@@ -128,7 +128,6 @@ int main(int argc, char* argv[]) {
             .omega = extra_mat[i * N_COL_EXTRAINFO + 2], .ring = (int)extra_mat[i * N_COL_EXTRAINFO + 5],
             .eta = extra_mat[i * N_COL_EXTRAINFO + 6]
         };
-        printf("Query Point %ld: y=%lf, z=%lf, omega=%lf, ring=%d, eta=%lf\n", i, query_point.y, query_point.z, query_point.omega, query_point.ring, query_point.eta);
         
         if (query_point.ring == 0) {
             #pragma omp atomic update
@@ -173,14 +172,11 @@ int main(int argc, char* argv[]) {
                     int start_offset = ndata_store[pos * 2 + 1];
 
                     for (int k = 0; k < num_points_in_bin; ++k) {
-                        printf("Checking candidate %d in bin (query_point.ring=%d, current_ring=%d, eta=%d, ome=%d, offset=%d, len=%d, pos=%lld, num_points=%d, ndata_len=%d, start_offset_loc=%d)\n", k, query_point.ring, current_ring, current_eta, current_ome, start_offset, data_len, pos, num_points_in_bin, ndata_len, pos * 2 + 1);
                         int candidate_idx = data_store[start_offset + k];
                         double y_cand = spots_mat[candidate_idx * N_COL_OBSSPOTS + 0];
                         double z_cand = spots_mat[candidate_idx * N_COL_OBSSPOTS + 1];
                         double omega_cand = spots_mat[candidate_idx * N_COL_OBSSPOTS + 2];
                         double g_cand_x, g_cand_y, g_cand_z;
-                        // print y, z, omega, distance
-                        printf("%lf %lf %lf %lf\n", y_cand, z_cand, omega_cand, params.distance);
                         convert_to_g_vector(y_cand, z_cand, omega_cand, params.distance, &g_cand_x, &g_cand_y, &g_cand_z);
                         double dot_product = g_source_x * g_cand_x + g_source_y * g_cand_y + g_source_z * g_cand_z;
                         double len_sq_cand = g_cand_x * g_cand_x + g_cand_y * g_cand_y + g_cand_z * g_cand_z;
@@ -195,6 +191,8 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
+        printf("New best match for query point %ld: candidate %d with cos(angle) = %lf\n", i, best_match_idx, max_cos_angle);
+
         results[i] = best_match_idx;
         #pragma omp atomic update
         progress_counter++;
