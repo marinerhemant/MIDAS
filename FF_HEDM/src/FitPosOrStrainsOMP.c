@@ -750,9 +750,9 @@ double FitErrorsOrientStrains(double x[9],int nSpotsComp,double **spotsYZO, doub
 		// g-vector for the averaged spots
 		double g12,g22,g32;
 		SpotToGv(Lsd/lenK2,SpotsYZOGCorr[nrSp][0]/lenK2,SpotsYZOGCorr[nrSp][1]/lenK2,SpotsYZOGCorr[nrSp][2],Theta2,&g12,&g22,&g32);
-		SpotsYZOGCorr[nrSp][3] = g12;
-		SpotsYZOGCorr[nrSp][4] = g22;
-		SpotsYZOGCorr[nrSp][5] = g32;
+		SpotsYZOGCorr[nrSp][0] = g12;
+		SpotsYZOGCorr[nrSp][1] = g22;
+		SpotsYZOGCorr[nrSp][2] = g32;
 		SpotsYZOGCorr[nrSp][3] = spotsYZO[nrSp][8];
 	}
 	double **TheorSpotsYZWE;TheorSpotsYZWE=allocMatrix(nTspots,4);
