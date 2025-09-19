@@ -1040,46 +1040,46 @@ static inline void calculate_model_and_area(
 // =========================================================================
 static double problem_function_global_bg(unsigned n, const double *x, double *grad, void *fdat) {
     const dataFit *d = (const dataFit*)fdat;
-    const int Np = d->nrBins;    // Number of data points
-    const double *Rs = d->R;     // R values (data)
-    const double *Is = d->Int;   // Intensity values (data)
-    const int nP = (n - 1) / 4;  // Number of peaks
+    const int Np = d->nrBins;
+    const double *Rs = d->R;
+    const double *Is = d->Int;
+    const int nP = (n - 1) / 4;
 
-    // --- Calculate the model profile using the helper function ---
     double *calculated_I = (double*)malloc(Np * sizeof(double));
     if(!calculated_I) return INFINITY;
-    calculate_model_and_area(nP, x, Np, Rs, calculated_I, NULL); // Don't need areas here
+    calculate_model_and_area(nP, x, Np, Rs, calculated_I, NULL);
 
-    // --- Calculate total squared error and residuals ---
+    // --- Calculate total squared error ---
     double total_sq_error = 0.0;
-    double *residuals = (double*)malloc(Np * sizeof(double));
-    if(!residuals) { free(calculated_I); return INFINITY; }
     for(int i = 0; i < Np; ++i){
-        residuals[i] = calculated_I[i] - Is[i];
-        total_sq_error += residuals[i] * residuals[i];
+        double residual = calculated_I[i] - Is[i];
+        total_sq_error += residual * residual;
     }
 
-    // --- GRADIENT CALCULATION (no changes here) ---
+    // --- GRADIENT CALCULATION ---
     if(grad){
         memset(grad, 0, n * sizeof(double));
         for(int pN = 0; pN < nP; ++pN){
             double A = x[pN*4+0], m = fmax(0.,fmin(1.,x[pN*4+1])), c = x[pN*4+2], s = fmax(1e-9,x[pN*4+3]);
-            double *gA = &grad[pN*4+0], *gm = &grad[pN*4+1], *gc = &grad[pN*4+2], *gs = &grad[pN*4+3];
+            double *gA=&grad[pN*4+0], *gm=&grad[pN*4+1], *gc=&grad[pN*4+2], *gs=&grad[pN*4+3];
             for(int i=0; i<Np; ++i){
                 double diff=Rs[i]-c, diff_sq=diff*diff, s_sq=s*s;
                 double gaussian=exp(-diff_sq/(2.*s_sq)), lorentzian=1./(1.+diff_sq/s_sq);
-                double common=2.*residuals[i];
+                double residual = calculated_I[i] - Is[i]; // On-the-fly calculation
+                double common = 2. * residual;
                 *gA += common * (m*gaussian+(1-m)*lorentzian);
                 *gm += common * A*(gaussian-lorentzian);
                 *gc += common * A*(m*gaussian*(diff/s_sq) + (1-m)*lorentzian*lorentzian*(2*diff/s_sq));
                 *gs += common * A*(m*gaussian*(diff_sq/(s_sq*s)) + (1-m)*lorentzian*lorentzian*(2*diff_sq/(s_sq*s)));
             }
         }
-        for(int i=0; i<Np; ++i) grad[n-1] += 2.0*residuals[i];
+        //  Use the on-the-fly residual for the background gradient
+        for(int i=0; i<Np; ++i) {
+            grad[n-1] += 2.0 * (calculated_I[i] - Is[i]);
+        }
     }
 
     free(calculated_I);
-    free(residuals);
     return total_sq_error;
 }
 
@@ -1884,7 +1884,8 @@ int main(int argc, char *argv[]){
                 if (fitROIAuto) {
                     double max_fwhm = 0.0;
                     for (int i = 0; i < currentPeakCount; ++i) {
-                        int temp_start = fmax(0, pks[i].index - 50); int temp_end = fmin(nRBins - 1, pks[i].index + 50);
+                        int temp_start = fmax(0, pks[i].index - 50); 
+                        int temp_end = fmin(nRBins - 1, pks[i].index + 50);
                         if(temp_start >= temp_end) continue;
                         int peak_idx_local = pks[i].index - temp_start; double bg, amp;
                         double fwhm = estimate_initial_params(&h_int1D[temp_start], temp_end - temp_start + 1, peak_idx_local, &bg, &amp);
@@ -1901,16 +1902,23 @@ int main(int argc, char *argv[]){
                 int* job_result_indices = (int*)malloc(currentPeakCount * sizeof(int));
                 
                 if (currentPeakCount > 0) {
-                    fitJobs[0].startIndex=fmax(0,pks[0].index-roi_half_width); fitJobs[0].endIndex=fmin(nRBins-1,pks[0].index+roi_half_width);
-                    fitJobs[0].numPeaks=1; fitJobs[0].peaks=&pks[0]; job_result_indices[0]=0; numJobs=1;
+                    fitJobs[0].startIndex = fmax(0, pks[0].index - roi_half_width);
+                    fitJobs[0].endIndex   = fmin(nRBins - 1, pks[0].index + roi_half_width);
+                    fitJobs[0].numPeaks   = 1;
+                    fitJobs[0].peaks      = &pks[0];
+                    job_result_indices[0] = 0;
+                    numJobs = 1;
                     for (int i=1; i<currentPeakCount; ++i) {
                         int current_roi_start = fmax(0, pks[i].index - roi_half_width);
                         if(current_roi_start <= fitJobs[numJobs-1].endIndex){
-                            fitJobs[numJobs-1].endIndex = fmin(nRBins-1, pks[i].index+roi_half_width); fitJobs[numJobs-1].numPeaks++;
+                            fitJobs[numJobs-1].endIndex = fmin(nRBins-1, pks[i].index+roi_half_width); 
+                            fitJobs[numJobs-1].numPeaks++;
                         } else {
                             job_result_indices[numJobs]=job_result_indices[numJobs-1]+fitJobs[numJobs-1].numPeaks;
-                            fitJobs[numJobs].startIndex=current_roi_start; fitJobs[numJobs].endIndex=fmin(nRBins-1,pks[i].index+roi_half_width);
-                            fitJobs[numJobs].numPeaks=1; fitJobs[numJobs].peaks=&pks[i]; numJobs++;
+                            fitJobs[numJobs].startIndex=current_roi_start; 
+                            fitJobs[numJobs].endIndex=fmin(nRBins-1,pks[i].index+roi_half_width);
+                            fitJobs[numJobs].numPeaks=1; 
+                            fitJobs[numJobs].peaks=&pks[i]; numJobs++;
                         }
                     }
                 }
@@ -1921,21 +1929,44 @@ int main(int argc, char *argv[]){
                     FitJob* job = &fitJobs[i];
                     int nJobPeaks = job->numPeaks;
                     int nFitParams = nJobPeaks * 4 + 1;
-                    double* fitParams=(double*)malloc(nFitParams*sizeof(double)); double* lowerBounds=(double*)malloc(nFitParams*sizeof(double)); double* upperBounds=(double*)malloc(nFitParams*sizeof(double));
+                    double* fitParams=(double*)malloc(nFitParams*sizeof(double)); 
+                    double* lowerBounds=(double*)malloc(nFitParams*sizeof(double)); 
+                    double* upperBounds=(double*)malloc(nFitParams*sizeof(double));
                     double primary_amp_guess=1.0, primary_bg_guess=0.0;
 
                     for(int p=0; p<nJobPeaks; ++p){
-                        Peak* peak=&(job->peaks[p]); int p_idx_local=peak->index - job->startIndex; double bg_g, amp_g;
+                        Peak* peak=&(job->peaks[p]); 
+                        int p_idx_local=peak->index - job->startIndex; 
+                        double bg_g, amp_g;
                         double fwhm=estimate_initial_params(&h_int1D[job->startIndex], job->endIndex-job->startIndex+1,p_idx_local,&bg_g,&amp_g);
-                        double sigma_g=fwhm*RBinSize/2.355; if(sigma_g<RBinSize*0.5)sigma_g=RBinSize*2.0;
-                        if(p==0){primary_amp_guess=amp_g; primary_bg_guess=bg_g;}
-                        int b=p*4; fitParams[b+0]=amp_g; fitParams[b+1]=0.5; fitParams[b+2]=peak->radius; fitParams[b+3]=sigma_g;
-                        lowerBounds[b+0]=0; lowerBounds[b+1]=0; lowerBounds[b+2]=peak->radius-fwhm*RBinSize; lowerBounds[b+3]=RBinSize*0.5;
-                        upperBounds[b+0]=amp_g*3; upperBounds[b+1]=1; upperBounds[b+2]=peak->radius+fwhm*RBinSize; upperBounds[b+3]=(hR[job->endIndex]-hR[job->startIndex]);
+                        double sigma_g=fwhm*RBinSize/2.355; 
+                        if(sigma_g<RBinSize*0.5)sigma_g=RBinSize*2.0;
+                        if(p==0){
+                            primary_amp_guess=amp_g; 
+                            primary_bg_guess=bg_g;
+                        }
+                        int b=p*4; 
+                        fitParams[b+0]=amp_g; 
+                        fitParams[b+1]=0.5; 
+                        fitParams[b+2]=peak->radius; 
+                        fitParams[b+3]=sigma_g;
+                        lowerBounds[b+0]=0; 
+                        lowerBounds[b+1]=0; 
+                        lowerBounds[b+2]=peak->radius-fwhm*RBinSize; 
+                        lowerBounds[b+3]=RBinSize*0.5;
+                        upperBounds[b+0]=amp_g*3; 
+                        upperBounds[b+1]=1; 
+                        upperBounds[b+2]=peak->radius+fwhm*RBinSize; 
+                        upperBounds[b+3]=(hR[job->endIndex]-hR[job->startIndex]);
                     }
-                    fitParams[nFitParams-1]=primary_bg_guess; lowerBounds[nFitParams-1]=-primary_amp_guess; upperBounds[nFitParams-1]=primary_amp_guess;
+                    fitParams[nFitParams-1]=primary_bg_guess; 
+                    lowerBounds[nFitParams-1]=-primary_amp_guess; 
+                    upperBounds[nFitParams-1]=primary_amp_guess;
 
-                    dataFit fitData; fitData.nrBins=job->endIndex-job->startIndex+1; fitData.R=&hR[job->startIndex]; fitData.Int=&h_int1D[job->startIndex];
+                    dataFit fitData; 
+                    fitData.nrBins=job->endIndex-job->startIndex+1; 
+                    fitData.R=&hR[job->startIndex]; 
+                    fitData.Int=&h_int1D[job->startIndex];
                     
                     nlopt_opt opt=nlopt_create(NLOPT_LD_LBFGS,nFitParams);
                     nlopt_set_lower_bounds(opt,lowerBounds); nlopt_set_upper_bounds(opt,upperBounds);
@@ -1949,16 +1980,21 @@ int main(int argc, char *argv[]){
                     if (nlopt_rc < 0) { // Fallback optimizer
                         // printf("F#%d: L-BFGS failed (code %d) for job %d. Retrying with Nelder-Mead...\n", currFidx, nlopt_rc, i);
                         opt=nlopt_create(NLOPT_LN_NELDERMEAD, nFitParams);
-                        nlopt_set_lower_bounds(opt,lowerBounds); nlopt_set_upper_bounds(opt,upperBounds);
-                        nlopt_set_min_objective(opt,problem_function_global_bg,&fitData);
-                        nlopt_set_xtol_rel(opt, 1e-4);
+                        nlopt_set_lower_bounds(opt, lowerBounds);
+                        nlopt_set_upper_bounds(opt, upperBounds);
+                        nlopt_set_min_objective(opt, problem_function_global_bg, &fitData);
+                        nlopt_set_xtol_rel(opt, 1e-4); // A slightly looser tolerance is fine for the fallback
+                        nlopt_set_maxeval(opt, 1500 * nFitParams); // Give it a few more evaluations
                         nlopt_rc = nlopt_optimize(opt, fitParams, &minObjectiveValue);
                         nlopt_destroy(opt);
                     }
 
                     if (nlopt_rc >= 0) {
                         int dof = fitData.nrBins - nFitParams;
-                        double chi_sq_reduced = (dof > 0) ? minObjectiveValue / dof : -1.0;
+                        // Calculate the Mean Squared Error (MSE) as a goodness-of-fit metric.
+                        // This serves as a proxy for Reduced Chi-Squared when the error/variance
+                        // of each data point is not known. A lower value indicates a better fit.
+                        double goodness_of_fit = (dof > 0) ? minObjectiveValue / dof : -1.0;
                         double* peak_areas = (double*)malloc(nJobPeaks * sizeof(double));
                         double* fitted_curve = (double*)malloc(fitData.nrBins * sizeof(double));
                         calculate_model_and_area(nJobPeaks, fitParams, fitData.nrBins, fitData.R, fitted_curve, peak_areas);
@@ -1967,9 +2003,12 @@ int main(int argc, char *argv[]){
                         int result_start_idx = job_result_indices[i];
                         for (int p=0; p<nJobPeaks; ++p) {
                             int out_base=(result_start_idx+p)*7, in_base=p*4;
-                            sendFitParams[out_base+0]=fitParams[in_base+0]; sendFitParams[out_base+1]=localBG;
-                            sendFitParams[out_base+2]=fitParams[in_base+1]; sendFitParams[out_base+3]=fitParams[in_base+2];
-                            sendFitParams[out_base+4]=fitParams[in_base+3]; sendFitParams[out_base+5]=chi_sq_reduced;
+                            sendFitParams[out_base+0]=fitParams[in_base+0];
+                            sendFitParams[out_base+1]=localBG;
+                            sendFitParams[out_base+2]=fitParams[in_base+1];
+                            sendFitParams[out_base+3]=fitParams[in_base+2];
+                            sendFitParams[out_base+4]=fitParams[in_base+3]; 
+                            sendFitParams[out_base+5]=goodness_of_fit;
                             sendFitParams[out_base+6]=peak_areas[p];
                         }
                         total_successful_peaks += nJobPeaks;

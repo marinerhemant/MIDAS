@@ -567,6 +567,7 @@ def main():
         "--lineout", "lineout.bin",
         "--fit", "fit.bin",
         "--int2d", "Int2D.bin",
+        "--fit-curves", "fit_curves.bin",
         "--params", param_file,
         "--mapping", mapping_file,
         "--output", args.output_h5
