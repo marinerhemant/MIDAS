@@ -1209,6 +1209,21 @@ int findPeaks(const double *data, const double *r_values, int N, Peak **foundPea
     return filteredCount;
 }
 
+// Structure to define a fitting job (a region and the peaks within it)
+typedef struct {
+    int startIndex;
+    int endIndex;
+    int numPeaks;
+    Peak* peaks; // Pointer to the first peak in this job
+} FitJob;
+
+// Comparison function for qsort to sort peaks by their index
+static int comparePeaksByIndex(const void* a, const void* b) {
+    Peak* peakA = (Peak*)a;
+    Peak* peakB = (Peak*)b;
+    return (peakA->index - peakB->index);
+}
+
 
 // =========================================================================
 // ============================ MAIN FUNCTION ============================
@@ -1839,89 +1854,207 @@ int main(int argc, char *argv[]){
 
             // --- Step 2: Perform Fit if Peaks were Found ---
             if (currentPeakCount > 0 && pks != NULL) {
-                int nFitParams = currentPeakCount * 4 + 1; // 4 params/peak + 1 global BG
-                double *fitParams = (double*)malloc(nFitParams * sizeof(double)); check(!fitParams, "pkFit: Malloc fitParams");
-                double *lowerBounds = (double*)malloc(nFitParams * sizeof(double)); check(!lowerBounds, "pkFit: Malloc lowerBounds");
-                double *upperBounds = (double*)malloc(nFitParams * sizeof(double)); check(!upperBounds, "pkFit: Malloc upperBounds");
+                // --- NEW LOGIC: PREPARE AND EXECUTE LOCALIZED FITS ---
 
-                // --- Set Initial Guesses and Bounds ---
-                double maxOverallIntensity = 0.0; // Find max intensity for bounds
-                for(int r = 0; r < nRBins; ++r) {
-                    if(h_int1D[r] > maxOverallIntensity) maxOverallIntensity = h_int1D[r];
-                }
-                if(maxOverallIntensity <= 0) maxOverallIntensity = 1.0; // Avoid zero bounds
+                // The total number of successfully fitted parameters will be collected here.
+                sendFitParams = (double*)malloc(currentPeakCount * 5 * sizeof(double));
+                check(!sendFitParams, "pkFit: Malloc failed for sendFitParams buffer");
+                int successful_fit_count = 0; // Keep track of how many peaks were fit successfully
 
-                for(int p = 0; p < currentPeakCount; ++p){
-                    int base = p * 4;
-                    double initialCenter = pks[p].radius;
-                    double initialIntensity = pks[p].intensity;
-                    double initialSigma = RBinSize * 2.0; // Initial guess for width
+                // Only apply the new localized fitting logic if peak locations were specified.
+                // Otherwise, use the old global fit logic.
+                if (nSpecP > 0) {
+                    const int ROI_HALF_WIDTH = 20; // Define the +- pixel range
 
-                    // Initial Guesses (x)
-                    fitParams[base + 0] = initialIntensity; // Amplitude
-                    fitParams[base + 1] = 0.5;             // Mix (50% Gaussian/Lorentzian)
-                    fitParams[base + 2] = initialCenter;   // Center
-                    fitParams[base + 3] = initialSigma;    // Sigma
+                    // 1. Sort peaks by their index to make merging easy.
+                    qsort(pks, currentPeakCount, sizeof(Peak), comparePeaksByIndex);
 
-                    // Lower Bounds (lb)
-                    lowerBounds[base + 0] = 0.0;                         // Amplitude >= 0
-                    lowerBounds[base + 1] = 0.0;                         // Mix >= 0
-                    lowerBounds[base + 2] = initialCenter - RBinSize * 5.0; // Center +/- 5 bins
-                    lowerBounds[base + 3] = RBinSize * 0.5;              // Sigma >= half bin
+                    // 2. Create fit jobs by merging overlapping ROIs.
+                    FitJob* fitJobs = (FitJob*)malloc(currentPeakCount * sizeof(FitJob));
+                    check(!fitJobs, "pkFit: Malloc failed for fitJobs");
+                    int numJobs = 0;
 
-                    // Upper Bounds (ub)
-                    upperBounds[base + 0] = maxOverallIntensity * 2.0;    // Amplitude <= 2*max
-                    upperBounds[base + 1] = 1.0;                         // Mix <= 1
-                    upperBounds[base + 2] = initialCenter + RBinSize * 5.0; // Center +/- 5 bins
-                    upperBounds[base + 3] = (RMax - RMin) / 4.0;         // Sigma <= R range/4
-                }
-                // Global Background (last parameter)
-                fitParams[nFitParams - 1] = 0.0;                         // Initial BG guess = 0
-                lowerBounds[nFitParams - 1] = -maxOverallIntensity;      // BG lower bound
-                upperBounds[nFitParams - 1] = maxOverallIntensity;       // BG upper bound
+                    if (currentPeakCount > 0) {
+                        // Initialize the first job
+                        fitJobs[0].startIndex = fmax(0, pks[0].index - ROI_HALF_WIDTH);
+                        fitJobs[0].endIndex = fmin(nRBins - 1, pks[0].index + ROI_HALF_WIDTH);
+                        fitJobs[0].numPeaks = 1;
+                        fitJobs[0].peaks = &pks[0];
+                        numJobs = 1;
 
-                // --- Setup NLopt ---
-                dataFit fitData;
-                fitData.nrBins = nRBins;
-                fitData.R = hR;
-                fitData.Int = h_int1D; // Fit against the original (unsmoothed) data
+                        // Iterate through the rest of the peaks to merge or create new jobs
+                        for (int i = 1; i < currentPeakCount; ++i) {
+                            int current_roi_start = fmax(0, pks[i].index - ROI_HALF_WIDTH);
+                            int last_job_end = fitJobs[numJobs - 1].endIndex;
 
-                nlopt_opt opt = nlopt_create(NLOPT_LN_NELDERMEAD, nFitParams);
-                nlopt_set_lower_bounds(opt, lowerBounds);
-                nlopt_set_upper_bounds(opt, upperBounds);
-                nlopt_set_min_objective(opt, problem_function_global_bg, &fitData);
-                nlopt_set_xtol_rel(opt, 1e-4); // Relative tolerance
-                nlopt_set_maxeval(opt, 500 * nFitParams); // Limit evaluations
+                            if (current_roi_start <= last_job_end) { // Overlap detected
+                                // Merge this peak into the last job
+                                fitJobs[numJobs - 1].endIndex = fmin(nRBins - 1, pks[i].index + ROI_HALF_WIDTH);
+                                fitJobs[numJobs - 1].numPeaks++;
+                            } else { // No overlap, create a new job
+                                fitJobs[numJobs].startIndex = current_roi_start;
+                                fitJobs[numJobs].endIndex = fmin(nRBins - 1, pks[i].index + ROI_HALF_WIDTH);
+                                fitJobs[numJobs].numPeaks = 1;
+                                fitJobs[numJobs].peaks = &pks[i];
+                                numJobs++;
+                            }
+                        }
+                    }
 
-                // --- Run Optimization ---
-                double minObjectiveValue; // Stores objective value at minimum
-                int nlopt_rc = nlopt_optimize(opt, fitParams, &minObjectiveValue);
+                    // 3. Loop through each fit job and perform the optimization.
+                    for (int i = 0; i < numJobs; ++i) {
+                        FitJob* job = &fitJobs[i];
+                        int nJobPeaks = job->numPeaks;
+                        int nFitParams = nJobPeaks * 4 + 1;
 
-                // --- Process Results ---
-                if(nlopt_rc < 0){ // Check for NLopt errors
-                    printf("F#%d: NLopt optimization failed with error code %d\n", currFidx, nlopt_rc);
-                    currentPeakCount = 0; // Indicate no successful fit
-                    free(fitParams); // Free buffer
+                        // --- Setup NLopt for this specific job ---
+                        double* fitParams = (double*)malloc(nFitParams * sizeof(double));
+                        double* lowerBounds = (double*)malloc(nFitParams * sizeof(double));
+                        double* upperBounds = (double*)malloc(nFitParams * sizeof(double));
+                        
+                        // Set initial guesses and bounds ONLY for the peaks in this job
+                        double maxJobIntensity = 0.0;
+                        for(int r = job->startIndex; r <= job->endIndex; ++r) {
+                            if(h_int1D[r] > maxJobIntensity) maxJobIntensity = h_int1D[r];
+                        }
+                        if(maxJobIntensity <= 0) maxJobIntensity = 1.0;
+
+                        for(int p = 0; p < nJobPeaks; ++p){
+                            int base = p * 4;
+                            Peak* currentPeak = &(job->peaks[p]);
+                            double initialCenter = currentPeak->radius;
+                            // Use intensity from the actual data at the peak index
+                            double initialIntensity = h_int1D[currentPeak->index]; 
+
+                            // Guesses
+                            fitParams[base + 0] = initialIntensity;
+                            fitParams[base + 1] = 0.5;
+                            fitParams[base + 2] = initialCenter;
+                            fitParams[base + 3] = RBinSize * 2.0;
+                            // Bounds
+                            lowerBounds[base + 0] = 0.0;
+                            lowerBounds[base + 1] = 0.0;
+                            lowerBounds[base + 2] = initialCenter - RBinSize * 5.0;
+                            lowerBounds[base + 3] = RBinSize * 0.5;
+                            upperBounds[base + 0] = maxJobIntensity * 2.0;
+                            upperBounds[base + 1] = 1.0;
+                            upperBounds[base + 2] = initialCenter + RBinSize * 5.0;
+                            upperBounds[base + 3] = (hR[job->endIndex] - hR[job->startIndex]) / 2.0;
+                        }
+                        // Global Background for this local fit
+                        fitParams[nFitParams - 1] = 0.0;
+                        lowerBounds[nFitParams - 1] = -maxJobIntensity;
+                        upperBounds[nFitParams - 1] = maxJobIntensity;
+                        
+                        // Create a temporary dataFit struct pointing to the sub-region (the ROI)
+                        dataFit fitData;
+                        fitData.nrBins = job->endIndex - job->startIndex + 1;
+                        fitData.R = &hR[job->startIndex];
+                        fitData.Int = &h_int1D[job->startIndex];
+                        
+                        nlopt_opt opt = nlopt_create(NLOPT_LN_NELDERMEAD, nFitParams);
+                        nlopt_set_lower_bounds(opt, lowerBounds);
+                        nlopt_set_upper_bounds(opt, upperBounds);
+                        nlopt_set_min_objective(opt, problem_function_global_bg, &fitData);
+                        nlopt_set_xtol_rel(opt, 1e-4);
+                        nlopt_set_maxeval(opt, 500 * nFitParams);
+
+                        // --- Run Optimization for this job ---
+                        double minObjectiveValue;
+                        int nlopt_rc = nlopt_optimize(opt, fitParams, &minObjectiveValue);
+
+                        if (nlopt_rc >= 0) {
+                            // On success, collect the results
+                            double localBG = fitParams[nFitParams - 1];
+                            for (int p = 0; p < nJobPeaks; ++p) {
+                                int out_base = (successful_fit_count + p) * 5;
+                                int in_base = p * 4;
+                                sendFitParams[out_base + 0] = fitParams[in_base + 0]; // Amplitude
+                                sendFitParams[out_base + 1] = localBG;                // Background
+                                sendFitParams[out_base + 2] = fitParams[in_base + 1]; // Mix
+                                sendFitParams[out_base + 3] = fitParams[in_base + 2]; // Center
+                                sendFitParams[out_base + 4] = fitParams[in_base + 3]; // Sigma
+                            }
+                            successful_fit_count += nJobPeaks;
+                        } else {
+                            printf("F#%d: NLopt failed (code %d) for job %d/%d\n", currFidx, nlopt_rc, i+1, numJobs);
+                        }
+
+                        // Cleanup for this job
+                        nlopt_destroy(opt);
+                        free(fitParams);
+                        free(lowerBounds);
+                        free(upperBounds);
+                    }
+
+                    free(fitJobs);
+
                 } else {
-                    // Optimization succeeded (or stopped due to limits)
-                    sendFitParams = (double*)malloc(currentPeakCount * 5 * sizeof(double)); // Format: Amp, BG, Mix, Cen, Sig
-                    check(!sendFitParams, "pkFit: Malloc failed for sendFitParams buffer");
-                    double globalBG = fitParams[nFitParams - 1]; // Get fitted global BG
+                    // --- FALLBACK: Use original global fitting logic if not using specified peaks ---
+                    int nFitParams = currentPeakCount * 4 + 1;
+                    double *fitParams = (double*)malloc(nFitParams * sizeof(double)); check(!fitParams, "pkFit: Malloc fitParams");
+                    double *lowerBounds = (double*)malloc(nFitParams * sizeof(double)); check(!lowerBounds, "pkFit: Malloc lowerBounds");
+                    double *upperBounds = (double*)malloc(nFitParams * sizeof(double)); check(!upperBounds, "pkFit: Malloc upperBounds");
+
+                    double maxOverallIntensity = 0.0;
+                    for(int r = 0; r < nRBins; ++r) { if(h_int1D[r] > maxOverallIntensity) maxOverallIntensity = h_int1D[r]; }
+                    if(maxOverallIntensity <= 0) maxOverallIntensity = 1.0;
 
                     for(int p = 0; p < currentPeakCount; ++p){
-                         sendFitParams[p * 5 + 0] = fitParams[p * 4 + 0]; // Amplitude
-                         sendFitParams[p * 5 + 1] = globalBG;             // Background (Global)
-                         sendFitParams[p * 5 + 2] = fitParams[p * 4 + 1]; // Mix factor
-                         sendFitParams[p * 5 + 3] = fitParams[p * 4 + 2]; // Center
-                         sendFitParams[p * 5 + 4] = fitParams[p * 4 + 3]; // Sigma
+                        int base = p * 4;
+                        fitParams[base + 0] = pks[p].intensity; 
+                        fitParams[base + 1] = 0.5; 
+                        fitParams[base + 2] = pks[p].radius; 
+                        fitParams[base + 3] = RBinSize * 2.0;
+                        lowerBounds[base + 0] = 0.0; 
+                        lowerBounds[base + 1] = 0.0; 
+                        lowerBounds[base + 2] = pks[p].radius - RBinSize*5.0; 
+                        lowerBounds[base + 3] = RBinSize*0.5;
+                        upperBounds[base + 0] = maxOverallIntensity*2.0; 
+                        upperBounds[base + 1] = 1.0; 
+                        upperBounds[base + 2] = pks[p].radius + RBinSize*5.0; 
+                        upperBounds[base + 3] = (RMax-RMin)/4.0;
                     }
-                    free(fitParams); // Free the raw optimization parameter buffer
+                    fitParams[nFitParams - 1] = 0.0; 
+                    lowerBounds[nFitParams - 1] = -maxOverallIntensity; 
+                    upperBounds[nFitParams - 1] = maxOverallIntensity;
+
+                    dataFit fitData; 
+                    fitData.nrBins = nRBins; 
+                    fitData.R = hR; 
+                    fitData.Int = h_int1D;
+                    nlopt_opt opt = nlopt_create(NLOPT_LN_NELDERMEAD, nFitParams);
+                    nlopt_set_lower_bounds(opt, lowerBounds); 
+                    nlopt_set_upper_bounds(opt, upperBounds);
+                    nlopt_set_min_objective(opt, problem_function_global_bg, &fitData);
+                    nlopt_set_xtol_rel(opt, 1e-4); 
+                    nlopt_set_maxeval(opt, 500 * nFitParams);
+
+                    double minObjectiveValue;
+                    int nlopt_rc = nlopt_optimize(opt, fitParams, &minObjectiveValue);
+
+                    if(nlopt_rc >= 0){
+                        successful_fit_count = currentPeakCount;
+                        double globalBG = fitParams[nFitParams - 1];
+                        for(int p = 0; p < currentPeakCount; ++p){
+                             sendFitParams[p * 5 + 0] = fitParams[p * 4 + 0]; 
+                             sendFitParams[p * 5 + 1] = globalBG;
+                             sendFitParams[p * 5 + 2] = fitParams[p * 4 + 1]; 
+                             sendFitParams[p * 5 + 3] = fitParams[p * 4 + 2]; 
+                             sendFitParams[p * 5 + 4] = fitParams[p * 4 + 3];
+                        }
+                    }
+                    free(fitParams); nlopt_destroy(opt); free(lowerBounds); free(upperBounds);
                 }
 
-                // Cleanup NLopt resources
-                nlopt_destroy(opt);
-                free(lowerBounds);
-                free(upperBounds);
+                // Update the peak count to reflect only the successful fits.
+                currentPeakCount = successful_fit_count;
+                // If no peaks were successfully fit, free the buffer now. Otherwise, it will be freed after writing.
+                if (currentPeakCount == 0) {
+                    free(sendFitParams);
+                    sendFitParams = NULL;
+                }
+
             } // End if (currentPeakCount > 0 && pks != NULL)
 
             if(pks) {
