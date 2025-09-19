@@ -133,15 +133,15 @@ def reshape_fit_data(fit_data, num_frames):
         # Adjust for incomplete frames
         fit_data = fit_data[:params_per_frame * num_frames]
     
-    # Each peak has 5 parameters (amplitude, background, mix, center, sigma)
-    peaks_per_frame = params_per_frame // 5
+    # Each peak has 7 parameters (amplitude, background, mix, center, sigma, chi_squared, peak_area)
+    peaks_per_frame = params_per_frame // 7
     
-    # Check if params_per_frame is a multiple of 5
-    if params_per_frame % 5 != 0:
-        print(f"Warning: Params per frame ({params_per_frame}) is not a multiple of 5")
+    # Check if params_per_frame is a multiple of 7
+    if params_per_frame % 7 != 0:
+        print(f"Warning: Params per frame ({params_per_frame}) is not a multiple of 7")
         return fit_data.reshape(num_frames, params_per_frame), num_frames
     
-    return fit_data.reshape(num_frames, peaks_per_frame, 5), num_frames
+    return fit_data.reshape(num_frames, peaks_per_frame, 7), num_frames
 
 def reshape_int2d_data(int2d_data, nRBins, nEtaBins):
     """

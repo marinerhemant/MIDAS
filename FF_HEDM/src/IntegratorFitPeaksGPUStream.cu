@@ -991,95 +991,91 @@ typedef struct {
     double intensity;// Intensity value at the peak
 } Peak;
 
-// Objective function for NLopt: Calculates sum of squared errors for multiple Pseudo-Voigt peaks + global background
-static double problem_function_global_bg(unsigned n, const double *x, double *grad, void *fdat) {
-    const dataFit *d = (const dataFit*)fdat;
-    const int Np = d->nrBins;
-    const double *Rs = d->R;
-    const double *Is = d->Int;
-    const int nP = (n - 1) / 4;
-    const double bg_g = x[n - 1];
+// =========================================================================
+// <<< NEW HELPER FUNCTION: Calculates the model profile and peak areas >>>
+// This separates the model calculation from the optimization objective function.
+// =========================================================================
+static inline void calculate_model_and_area(
+    int n_peaks, const double *params,       // Input: Peak parameters
+    int n_points, const double *R_values,    // Input: X-axis data
+    double *out_model_curve,                 // Output: Buffer for the calculated Y-values
+    double *out_peak_areas)                  // Output: Buffer for each peak's area (can be NULL)
+{
+    const double bg = params[n_peaks * 4];
+    
+    // Initialize the model curve with just the background
+    for (int i = 0; i < n_points; ++i) {
+        out_model_curve[i] = bg;
+    }
 
-    double *calculated_I = (double*)calloc(Np, sizeof(double));
-    if(!calculated_I) return INFINITY;
+    // Add the contribution of each peak
+    for (int pN = 0; pN < n_peaks; ++pN) {
+        double A = params[pN * 4 + 0];
+        double m = fmax(0.0, fmin(1.0, params[pN * 4 + 1]));
+        double c = params[pN * 4 + 2];
+        double s = fmax(1e-9, params[pN * 4 + 3]);
 
-    // --- Calculate the model profile ---
-    for(int pN = 0; pN < nP; ++pN){
-        double A = x[pN * 4 + 0];
-        double m = fmax(0.0, fmin(1.0, x[pN * 4 + 1]));
-        double c = x[pN * 4 + 2];
-        double s = fmax(1e-9, x[pN * 4 + 3]);
-        
-        for(int i = 0; i < Np; ++i){
-            double diff = Rs[i] - c;
-            double diff_sq = diff * diff;
+        for (int i = 0; i < n_points; ++i) {
+            double diff_sq = (R_values[i] - c) * (R_values[i] - c);
             double s_sq = s * s;
             double gaussian = exp(-diff_sq / (2.0 * s_sq));
             double lorentzian = 1.0 / (1.0 + diff_sq / s_sq);
-            calculated_I[i] += A * (m * gaussian + (1.0 - m) * lorentzian); // Un-normalized for fitting
+            out_model_curve[i] += A * (m * gaussian + (1.0 - m) * lorentzian);
+        }
+
+        // Calculate the integrated area for this peak if requested
+        if (out_peak_areas != NULL) {
+            // Area = A * (m * Area_Gaussian_Shape + (1-m) * Area_Lorentzian_Shape)
+            // Area_Gaussian_Shape = s * sqrt(2 * PI)
+            // Area_Lorentzian_Shape = s * PI
+            out_peak_areas[pN] = A * s * (m * sqrt(2.0 * M_PI) + (1.0 - m) * M_PI);
         }
     }
+}
+
+
+// =========================================================================
+// <<< MODIFIED Objective Function >>>
+// Now much simpler, as it uses the helper function. The gradient logic is unchanged.
+// =========================================================================
+static double problem_function_global_bg(unsigned n, const double *x, double *grad, void *fdat) {
+    const dataFit *d = (const dataFit*)fdat;
+    const int Np = d->nrBins;    // Number of data points
+    const double *Rs = d->R;     // R values (data)
+    const double *Is = d->Int;   // Intensity values (data)
+    const int nP = (n - 1) / 4;  // Number of peaks
+
+    // --- Calculate the model profile using the helper function ---
+    double *calculated_I = (double*)malloc(Np * sizeof(double));
+    if(!calculated_I) return INFINITY;
+    calculate_model_and_area(nP, x, Np, Rs, calculated_I, NULL); // Don't need areas here
 
     // --- Calculate total squared error and residuals ---
     double total_sq_error = 0.0;
     double *residuals = (double*)malloc(Np * sizeof(double));
+    if(!residuals) { free(calculated_I); return INFINITY; }
     for(int i = 0; i < Np; ++i){
-        calculated_I[i] += bg_g;
         residuals[i] = calculated_I[i] - Is[i];
         total_sq_error += residuals[i] * residuals[i];
     }
 
-    // --- GRADIENT CALCULATION ---
+    // --- GRADIENT CALCULATION (no changes here) ---
     if(grad){
-        memset(grad, 0, n * sizeof(double)); // Initialize gradient to zero
-
-        // Partial derivatives for each peak's parameters
+        memset(grad, 0, n * sizeof(double));
         for(int pN = 0; pN < nP; ++pN){
-            double A = x[pN * 4 + 0];
-            double m = fmax(0.0, fmin(1.0, x[pN * 4 + 1]));
-            double c = x[pN * 4 + 2];
-            double s = fmax(1e-9, x[pN * 4 + 3]);
-            
-            // Pointers to the gradient components for this peak
-            double *gA = &grad[pN * 4 + 0];
-            double *gm = &grad[pN * 4 + 1];
-            double *gc = &grad[pN * 4 + 2];
-            double *gs = &grad[pN * 4 + 3];
-
-            for(int i = 0; i < Np; ++i){
-                double diff = Rs[i] - c;
-                double diff_sq = diff * diff;
-                double s_sq = s * s;
-
-                double gaussian = exp(-diff_sq / (2.0 * s_sq));
-                double lorentzian = 1.0 / (1.0 + diff_sq / s_sq);
-                
-                // Common factor: 2 * residual
-                double common_factor = 2.0 * residuals[i];
-
-                // dE/dA = sum(2 * residual * d(model)/dA)
-                *gA += common_factor * (m * gaussian + (1.0 - m) * lorentzian);
-                
-                // dE/dm = sum(2 * residual * d(model)/dm)
-                *gm += common_factor * A * (gaussian - lorentzian);
-
-                // dE/dc = sum(2 * residual * d(model)/dc)
-                double dG_dc = gaussian * (diff / s_sq);
-                double dL_dc = lorentzian * lorentzian * (2.0 * diff / s_sq);
-                *gc += common_factor * A * (m * dG_dc + (1.0 - m) * dL_dc);
-
-                // dE/ds = sum(2 * residual * d(model)/ds)
-                double dG_ds = gaussian * (diff_sq / (s_sq * s));
-                double dL_ds = lorentzian * lorentzian * (2.0 * diff_sq / (s_sq * s));
-                *gs += common_factor * A * (m * dG_ds + (1.0 - m) * dL_ds);
+            double A = x[pN*4+0], m = fmax(0.,fmin(1.,x[pN*4+1])), c = x[pN*4+2], s = fmax(1e-9,x[pN*4+3]);
+            double *gA = &grad[pN*4+0], *gm = &grad[pN*4+1], *gc = &grad[pN*4+2], *gs = &grad[pN*4+3];
+            for(int i=0; i<Np; ++i){
+                double diff=Rs[i]-c, diff_sq=diff*diff, s_sq=s*s;
+                double gaussian=exp(-diff_sq/(2.*s_sq)), lorentzian=1./(1.+diff_sq/s_sq);
+                double common=2.*residuals[i];
+                *gA += common * (m*gaussian+(1-m)*lorentzian);
+                *gm += common * A*(gaussian-lorentzian);
+                *gc += common * A*(m*gaussian*(diff/s_sq) + (1-m)*lorentzian*lorentzian*(2*diff/s_sq));
+                *gs += common * A*(m*gaussian*(diff_sq/(s_sq*s)) + (1-m)*lorentzian*lorentzian*(2*diff_sq/(s_sq*s)));
             }
         }
-        
-        // Partial derivative for global background
-        double *gBG = &grad[n - 1];
-        for(int i = 0; i < Np; ++i){
-            *gBG += 2.0 * residuals[i]; // dE/dBG = sum(2 * residual * 1)
-        }
+        for(int i=0; i<Np; ++i) grad[n-1] += 2.0*residuals[i];
     }
 
     free(calculated_I);
@@ -1644,9 +1640,12 @@ int main(int argc, char *argv[]){
     check(!fLineout, "Error opening lineout.bin for writing: %s", strerror(errno));
 
     FILE *fFit = NULL; // File handle for fit results
+    FILE *fFitCurves = NULL;
     if(pkFit){
         fFit = fopen("fit.bin", "wb"); // Overwrite fit file each run
         check(!fFit, "Error opening fit.bin for writing: %s", strerror(errno));
+        fFitCurves = fopen("fit_curves.bin", "wb");
+        check(!fFitCurves, "Error opening fit_curves.bin for writing: %s", strerror(errno));
     }
 
     FILE *f2D = NULL; // File handle for the single 2D integrated data file
@@ -1845,7 +1844,7 @@ int main(int argc, char *argv[]){
         }
         t_write1d_cpu = get_wall_time_ms() - t_write1d_start;
 
-// --- Peak Finding and Fitting (if enabled) ---
+        // --- Peak Finding and Fitting (if enabled) ---
         double t_fit_start = get_wall_time_ms();
         int currentPeakCount = 0;
         double *sendFitParams = NULL;
@@ -1854,7 +1853,7 @@ int main(int argc, char *argv[]){
             Peak *pks = NULL;
 
             // --- Step 1: Identify Peak Candidates ---
-            if(nSpecP > 0){ // Only perform fitting if specific peak locations are provided
+            if(nSpecP > 0){
                 pks = (Peak*)malloc(nSpecP * sizeof(Peak));
                 check(!pks, "pkFit: Malloc failed for specified peaks array");
                 int validPeakCount = 0;
@@ -1866,8 +1865,7 @@ int main(int argc, char *argv[]){
                         if(diff < minDiff){ minDiff = diff; bestBin = r; }
                     }
                     if(bestBin != -1 && minDiff < RBinSize * 2.0){
-                        pks[validPeakCount].index = bestBin;
-                        pks[validPeakCount].radius = hR[bestBin];
+                        pks[validPeakCount].index = bestBin; pks[validPeakCount].radius = hR[bestBin];
                         pks[validPeakCount].intensity = h_int1D[bestBin];
                         validPeakCount++;
                     }
@@ -1878,19 +1876,17 @@ int main(int argc, char *argv[]){
 
             // --- Step 2: Perform Fit if Peaks were Found ---
             if (currentPeakCount > 0 && pks != NULL) {
-                sendFitParams = (double*)malloc(currentPeakCount * 5 * sizeof(double));
+                // Allocate for 7 parameters per peak
+                sendFitParams = (double*)malloc(currentPeakCount * 7 * sizeof(double));
                 check(!sendFitParams, "pkFit: Malloc failed for sendFitParams buffer");
                 
-                // --- Determine ROI Padding ---
                 int roi_half_width = fitROIPadding;
                 if (fitROIAuto) {
                     double max_fwhm = 0.0;
                     for (int i = 0; i < currentPeakCount; ++i) {
-                        int temp_start = fmax(0, pks[i].index - 50);
-                        int temp_end = fmin(nRBins - 1, pks[i].index + 50);
-                        if (temp_start >= temp_end) continue;
-                        int peak_idx_local = pks[i].index - temp_start;
-                        double bg, amp;
+                        int temp_start = fmax(0, pks[i].index - 50); int temp_end = fmin(nRBins - 1, pks[i].index + 50);
+                        if(temp_start >= temp_end) continue;
+                        int peak_idx_local = pks[i].index - temp_start; double bg, amp;
                         double fwhm = estimate_initial_params(&h_int1D[temp_start], temp_end - temp_start + 1, peak_idx_local, &bg, &amp);
                         if (fwhm > max_fwhm) max_fwhm = fwhm;
                     }
@@ -1898,7 +1894,6 @@ int main(int argc, char *argv[]){
                     printf("F#%d: Auto ROI detected max FWHM=%.1f, using padding=%d\n", currFidx, max_fwhm, roi_half_width);
                 }
 
-                // --- Create Fit Jobs ---
                 qsort(pks, currentPeakCount, sizeof(Peak), comparePeaksByIndex);
                 FitJob* fitJobs = (FitJob*)malloc(currentPeakCount * sizeof(FitJob));
                 check(!fitJobs, "pkFit: Malloc failed for fitJobs");
@@ -1906,130 +1901,109 @@ int main(int argc, char *argv[]){
                 int* job_result_indices = (int*)malloc(currentPeakCount * sizeof(int));
                 
                 if (currentPeakCount > 0) {
-                    fitJobs[0].startIndex = fmax(0, pks[0].index - roi_half_width);
-                    fitJobs[0].endIndex = fmin(nRBins - 1, pks[0].index + roi_half_width);
-                    fitJobs[0].numPeaks = 1;
-                    fitJobs[0].peaks = &pks[0];
-                    job_result_indices[0] = 0;
-                    numJobs = 1;
-
-                    for (int i = 1; i < currentPeakCount; ++i) {
+                    fitJobs[0].startIndex=fmax(0,pks[0].index-roi_half_width); fitJobs[0].endIndex=fmin(nRBins-1,pks[0].index+roi_half_width);
+                    fitJobs[0].numPeaks=1; fitJobs[0].peaks=&pks[0]; job_result_indices[0]=0; numJobs=1;
+                    for (int i=1; i<currentPeakCount; ++i) {
                         int current_roi_start = fmax(0, pks[i].index - roi_half_width);
-                        if (current_roi_start <= fitJobs[numJobs - 1].endIndex) {
-                            fitJobs[numJobs - 1].endIndex = fmin(nRBins - 1, pks[i].index + roi_half_width);
-                            fitJobs[numJobs - 1].numPeaks++;
+                        if(current_roi_start <= fitJobs[numJobs-1].endIndex){
+                            fitJobs[numJobs-1].endIndex = fmin(nRBins-1, pks[i].index+roi_half_width); fitJobs[numJobs-1].numPeaks++;
                         } else {
-                            job_result_indices[numJobs] = job_result_indices[numJobs-1] + fitJobs[numJobs-1].numPeaks;
-                            fitJobs[numJobs].startIndex = current_roi_start;
-                            fitJobs[numJobs].endIndex = fmin(nRBins - 1, pks[i].index + roi_half_width);
-                            fitJobs[numJobs].numPeaks = 1;
-                            fitJobs[numJobs].peaks = &pks[i];
-                            numJobs++;
+                            job_result_indices[numJobs]=job_result_indices[numJobs-1]+fitJobs[numJobs-1].numPeaks;
+                            fitJobs[numJobs].startIndex=current_roi_start; fitJobs[numJobs].endIndex=fmin(nRBins-1,pks[i].index+roi_half_width);
+                            fitJobs[numJobs].numPeaks=1; fitJobs[numJobs].peaks=&pks[i]; numJobs++;
                         }
                     }
                 }
                 
-                // --- Loop through jobs in parallel using OpenMP ---
                 int total_successful_peaks = 0;
                 #pragma omp parallel for reduction(+:total_successful_peaks)
                 for (int i = 0; i < numJobs; ++i) {
                     FitJob* job = &fitJobs[i];
                     int nJobPeaks = job->numPeaks;
                     int nFitParams = nJobPeaks * 4 + 1;
-                    
-                    // CORRECTED: Allocate memory for this thread's workspace
-                    double* fitParams = (double*)malloc(nFitParams * sizeof(double));
-                    double* lowerBounds = (double*)malloc(nFitParams * sizeof(double));
-                    double* upperBounds = (double*)malloc(nFitParams * sizeof(double));
+                    double* fitParams=(double*)malloc(nFitParams*sizeof(double)); double* lowerBounds=(double*)malloc(nFitParams*sizeof(double)); double* upperBounds=(double*)malloc(nFitParams*sizeof(double));
+                    double primary_amp_guess=1.0, primary_bg_guess=0.0;
 
-                    // CORRECTED: Variable to hold primary amplitude guess, visible outside the loop
-                    double primary_amp_guess = 1.0;
-                    double primary_bg_guess = 0.0;
-
-                    // --- Set Intelligent Initial Guesses and Bounds ---
-                    for(int p = 0; p < nJobPeaks; ++p){
-                        Peak* currentPeak = &(job->peaks[p]);
-                        int peak_idx_local = currentPeak->index - job->startIndex;
-                        double bg_guess, amp_guess;
-                        double fwhm = estimate_initial_params(&h_int1D[job->startIndex], job->endIndex - job->startIndex + 1, peak_idx_local, &bg_guess, &amp_guess);
-                        
-                        // CORRECTED: Safer sigma guess calculation
-                        double sigma_guess = fwhm * RBinSize / 2.355;
-                        if (sigma_guess < RBinSize * 0.5) sigma_guess = RBinSize * 2.0;
-
-                        if (p == 0) { // Store the guesses from the first (usually main) peak
-                            primary_amp_guess = amp_guess;
-                            primary_bg_guess = bg_guess;
-                        }
-
-                        int base = p * 4;
-                        fitParams[base + 0] = amp_guess;
-                        fitParams[base + 1] = 0.5;
-                        fitParams[base + 2] = currentPeak->radius;
-                        fitParams[base + 3] = sigma_guess;
-                        lowerBounds[base + 0] = 0.0;
-                        lowerBounds[base + 1] = 0.0;
-                        lowerBounds[base + 2] = currentPeak->radius - fwhm * RBinSize;
-                        lowerBounds[base + 3] = RBinSize * 0.5;
-                        upperBounds[base + 0] = amp_guess * 3.0;
-                        upperBounds[base + 1] = 1.0;
-                        upperBounds[base + 2] = currentPeak->radius + fwhm * RBinSize;
-                        upperBounds[base + 3] = (hR[job->endIndex] - hR[job->startIndex]);
+                    for(int p=0; p<nJobPeaks; ++p){
+                        Peak* peak=&(job->peaks[p]); int p_idx_local=peak->index - job->startIndex; double bg_g, amp_g;
+                        double fwhm=estimate_initial_params(&h_int1D[job->startIndex], job->endIndex-job->startIndex+1,p_idx_local,&bg_g,&amp_g);
+                        double sigma_g=fwhm*RBinSize/2.355; if(sigma_g<RBinSize*0.5)sigma_g=RBinSize*2.0;
+                        if(p==0){primary_amp_guess=amp_g; primary_bg_guess=bg_g;}
+                        int b=p*4; fitParams[b+0]=amp_g; fitParams[b+1]=0.5; fitParams[b+2]=peak->radius; fitParams[b+3]=sigma_g;
+                        lowerBounds[b+0]=0; lowerBounds[b+1]=0; lowerBounds[b+2]=peak->radius-fwhm*RBinSize; lowerBounds[b+3]=RBinSize*0.5;
+                        upperBounds[b+0]=amp_g*3; upperBounds[b+1]=1; upperBounds[b+2]=peak->radius+fwhm*RBinSize; upperBounds[b+3]=(hR[job->endIndex]-hR[job->startIndex]);
                     }
-                    // CORRECTED: Use the stored primary guesses for the BG parameter
-                    fitParams[nFitParams - 1] = primary_bg_guess;
-                    lowerBounds[nFitParams - 1] = -primary_amp_guess;
-                    upperBounds[nFitParams - 1] = primary_amp_guess;
+                    fitParams[nFitParams-1]=primary_bg_guess; lowerBounds[nFitParams-1]=-primary_amp_guess; upperBounds[nFitParams-1]=primary_amp_guess;
 
-                    dataFit fitData;
-                    fitData.nrBins = job->endIndex - job->startIndex + 1;
-                    fitData.R = &hR[job->startIndex];
-                    fitData.Int = &h_int1D[job->startIndex];
+                    dataFit fitData; fitData.nrBins=job->endIndex-job->startIndex+1; fitData.R=&hR[job->startIndex]; fitData.Int=&h_int1D[job->startIndex];
                     
-                    nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, nFitParams);
-                    nlopt_set_lower_bounds(opt, lowerBounds);
-                    nlopt_set_upper_bounds(opt, upperBounds);
-                    nlopt_set_min_objective(opt, problem_function_global_bg, &fitData);
-                    nlopt_set_xtol_rel(opt, 1e-5);
-                    nlopt_set_maxeval(opt, 1000 * nFitParams);
+                    nlopt_opt opt=nlopt_create(NLOPT_LD_LBFGS,nFitParams);
+                    nlopt_set_lower_bounds(opt,lowerBounds); nlopt_set_upper_bounds(opt,upperBounds);
+                    nlopt_set_min_objective(opt,problem_function_global_bg,&fitData);
+                    nlopt_set_xtol_rel(opt,1e-5); nlopt_set_maxeval(opt,1000*nFitParams);
 
                     double minObjectiveValue;
-                    if (nlopt_optimize(opt, fitParams, &minObjectiveValue) >= 0) {
-                        double localBG = fitParams[nFitParams - 1];
+                    int nlopt_rc = nlopt_optimize(opt, fitParams, &minObjectiveValue);
+                    nlopt_destroy(opt);
+
+                    if (nlopt_rc < 0) { // Fallback optimizer
+                        // printf("F#%d: L-BFGS failed (code %d) for job %d. Retrying with Nelder-Mead...\n", currFidx, nlopt_rc, i);
+                        opt=nlopt_create(NLOPT_LN_NELDERMEAD, nFitParams);
+                        nlopt_set_lower_bounds(opt,lowerBounds); nlopt_set_upper_bounds(opt,upperBounds);
+                        nlopt_set_min_objective(opt,problem_function_global_bg,&fitData);
+                        nlopt_set_xtol_rel(opt, 1e-4);
+                        nlopt_rc = nlopt_optimize(opt, fitParams, &minObjectiveValue);
+                        nlopt_destroy(opt);
+                    }
+
+                    if (nlopt_rc >= 0) {
+                        int dof = fitData.nrBins - nFitParams;
+                        double chi_sq_reduced = (dof > 0) ? minObjectiveValue / dof : -1.0;
+                        double* peak_areas = (double*)malloc(nJobPeaks * sizeof(double));
+                        double* fitted_curve = (double*)malloc(fitData.nrBins * sizeof(double));
+                        calculate_model_and_area(nJobPeaks, fitParams, fitData.nrBins, fitData.R, fitted_curve, peak_areas);
+
+                        double localBG = fitParams[nFitParams-1];
                         int result_start_idx = job_result_indices[i];
-                        for (int p = 0; p < nJobPeaks; ++p) {
-                            int out_base = (result_start_idx + p) * 5;
-                            int in_base = p * 4;
-                            sendFitParams[out_base + 0] = fitParams[in_base + 0];
-                            sendFitParams[out_base + 1] = localBG;
-                            sendFitParams[out_base + 2] = fitParams[in_base + 1];
-                            sendFitParams[out_base + 3] = fitParams[in_base + 2];
-                            sendFitParams[out_base + 4] = fitParams[in_base + 3];
+                        for (int p=0; p<nJobPeaks; ++p) {
+                            int out_base=(result_start_idx+p)*7, in_base=p*4;
+                            sendFitParams[out_base+0]=fitParams[in_base+0]; sendFitParams[out_base+1]=localBG;
+                            sendFitParams[out_base+2]=fitParams[in_base+1]; sendFitParams[out_base+3]=fitParams[in_base+2];
+                            sendFitParams[out_base+4]=fitParams[in_base+3]; sendFitParams[out_base+5]=chi_sq_reduced;
+                            sendFitParams[out_base+6]=peak_areas[p];
                         }
                         total_successful_peaks += nJobPeaks;
+                        
+                        #pragma omp critical
+                        {
+                            if (fFitCurves) {
+                                fwrite(&currFidx, sizeof(int), 1, fFitCurves);
+                                fwrite(&job->startIndex, sizeof(int), 1, fFitCurves);
+                                fwrite(&fitData.nrBins, sizeof(int), 1, fFitCurves);
+                                fwrite(fitted_curve, sizeof(double), fitData.nrBins, fFitCurves);
+                            }
+                        }
+                        free(peak_areas); free(fitted_curve);
                     }
-                    nlopt_destroy(opt);
                     free(fitParams); free(lowerBounds); free(upperBounds);
-                } // End of parallel loop
-
+                }
                 currentPeakCount = total_successful_peaks;
                 if (currentPeakCount == 0) { free(sendFitParams); sendFitParams = NULL; }
-                free(fitJobs);
-                free(job_result_indices);
+                free(fitJobs); free(job_result_indices);
             }
             if(pks) { free(pks); }
         }
-        t_fit_cpu = get_wall_time_ms() - t_fit_start;        // --- End Peak Finding and Fitting ---
+        t_fit_cpu = get_wall_time_ms() - t_fit_start;
 
         // --- Write Peak Fit Results ---
         double t_writefit_start = get_wall_time_ms();
         // Check if fitting was enabled, successful, parameters exist, and file open
         if(pkFit && currentPeakCount > 0 && sendFitParams != NULL && fFit){
             // Write the formatted parameters (Amp, BG, Mix, Cen, Sig per peak)
-            size_t written = fwrite(sendFitParams, sizeof(double), currentPeakCount * 5, fFit);
-            if (written != (size_t)currentPeakCount * 5) {
+            size_t written = fwrite(sendFitParams, sizeof(double), currentPeakCount * 7, fFit);
+            if (written != (size_t)currentPeakCount * 7) {
                  fprintf(stderr, "Warn: Failed write fit frame %d (wrote %zu/%d): %s\n",
-                           currFidx, written, currentPeakCount * 5, strerror(errno));
+                           currFidx, written, currentPeakCount * 7, strerror(errno));
             } else {
                 fflush(fFit); // Flush after writing fit results
             }
@@ -2066,6 +2040,7 @@ int main(int argc, char *argv[]){
     // Close output files
     if(fLineout) fclose(fLineout);
     if(fFit) fclose(fFit);
+    if(fFitCurves) fclose(fFitCurves);
     if(f2D) fclose(f2D); //
 
     // Free host memory allocations
