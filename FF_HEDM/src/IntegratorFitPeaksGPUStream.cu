@@ -1880,21 +1880,20 @@ int main(int argc, char *argv[]){
             if (currentPeakCount > 0 && pks != NULL) {
                 sendFitParams = (double*)malloc(currentPeakCount * 5 * sizeof(double));
                 check(!sendFitParams, "pkFit: Malloc failed for sendFitParams buffer");
-                int successful_fit_count = 0;
-
+                
                 // --- Determine ROI Padding ---
                 int roi_half_width = fitROIPadding;
                 if (fitROIAuto) {
                     double max_fwhm = 0.0;
                     for (int i = 0; i < currentPeakCount; ++i) {
-                        int temp_start = fmax(0, pks[i].index - 50); // Use a wide temp window for estimation
+                        int temp_start = fmax(0, pks[i].index - 50);
                         int temp_end = fmin(nRBins - 1, pks[i].index + 50);
+                        if (temp_start >= temp_end) continue;
                         int peak_idx_local = pks[i].index - temp_start;
                         double bg, amp;
                         double fwhm = estimate_initial_params(&h_int1D[temp_start], temp_end - temp_start + 1, peak_idx_local, &bg, &amp);
                         if (fwhm > max_fwhm) max_fwhm = fwhm;
                     }
-                    // Set ROI to be 1.5x the widest peak's FWHM, with a minimum
                     roi_half_width = fmax(15, (int)(max_fwhm * 1.5));
                     printf("F#%d: Auto ROI detected max FWHM=%.1f, using padding=%d\n", currFidx, max_fwhm, roi_half_width);
                 }
@@ -1904,7 +1903,7 @@ int main(int argc, char *argv[]){
                 FitJob* fitJobs = (FitJob*)malloc(currentPeakCount * sizeof(FitJob));
                 check(!fitJobs, "pkFit: Malloc failed for fitJobs");
                 int numJobs = 0;
-                int* job_result_indices = (int*)malloc(currentPeakCount * sizeof(int)); // For thread-safe writing
+                int* job_result_indices = (int*)malloc(currentPeakCount * sizeof(int));
                 
                 if (currentPeakCount > 0) {
                     fitJobs[0].startIndex = fmax(0, pks[0].index - roi_half_width);
@@ -1930,11 +1929,6 @@ int main(int argc, char *argv[]){
                     }
                 }
                 
-                // --- Efficient Memory Management: Create a workspace for each thread ---
-                int max_peaks_per_job = 0;
-                for(int i=0; i<numJobs; ++i) if(fitJobs[i].numPeaks > max_peaks_per_job) max_peaks_per_job = fitJobs[i].numPeaks;
-                int max_params_per_job = max_peaks_per_job * 4 + 1;
-
                 // --- Loop through jobs in parallel using OpenMP ---
                 int total_successful_peaks = 0;
                 #pragma omp parallel for reduction(+:total_successful_peaks)
@@ -1943,10 +1937,14 @@ int main(int argc, char *argv[]){
                     int nJobPeaks = job->numPeaks;
                     int nFitParams = nJobPeaks * 4 + 1;
                     
-                    // Use pre-allocated workspace buffers
+                    // CORRECTED: Allocate memory for this thread's workspace
                     double* fitParams = (double*)malloc(nFitParams * sizeof(double));
                     double* lowerBounds = (double*)malloc(nFitParams * sizeof(double));
                     double* upperBounds = (double*)malloc(nFitParams * sizeof(double));
+
+                    // CORRECTED: Variable to hold primary amplitude guess, visible outside the loop
+                    double primary_amp_guess = 1.0;
+                    double primary_bg_guess = 0.0;
 
                     // --- Set Intelligent Initial Guesses and Bounds ---
                     for(int p = 0; p < nJobPeaks; ++p){
@@ -1955,9 +1953,14 @@ int main(int argc, char *argv[]){
                         double bg_guess, amp_guess;
                         double fwhm = estimate_initial_params(&h_int1D[job->startIndex], job->endIndex - job->startIndex + 1, peak_idx_local, &bg_guess, &amp_guess);
                         
-                        // FWHM to Sigma conversion (for Pseudo-Voigt, this is a good approximation)
-                        double sigma_guess = (hR[currentPeak->index + (int)(fwhm/2)] - hR[currentPeak->index - (int)(fwhm/2)]) / 2.355;
+                        // CORRECTED: Safer sigma guess calculation
+                        double sigma_guess = fwhm * RBinSize / 2.355;
                         if (sigma_guess < RBinSize * 0.5) sigma_guess = RBinSize * 2.0;
+
+                        if (p == 0) { // Store the guesses from the first (usually main) peak
+                            primary_amp_guess = amp_guess;
+                            primary_bg_guess = bg_guess;
+                        }
 
                         int base = p * 4;
                         fitParams[base + 0] = amp_guess;
@@ -1973,16 +1976,16 @@ int main(int argc, char *argv[]){
                         upperBounds[base + 2] = currentPeak->radius + fwhm * RBinSize;
                         upperBounds[base + 3] = (hR[job->endIndex] - hR[job->startIndex]);
                     }
-                    fitParams[nFitParams - 1] = h_int1D[job->startIndex]; // BG guess
-                    lowerBounds[nFitParams - 1] = -amp_guess; // BG bounds
-                    upperBounds[nFitParams - 1] = amp_guess;
+                    // CORRECTED: Use the stored primary guesses for the BG parameter
+                    fitParams[nFitParams - 1] = primary_bg_guess;
+                    lowerBounds[nFitParams - 1] = -primary_amp_guess;
+                    upperBounds[nFitParams - 1] = primary_amp_guess;
 
                     dataFit fitData;
                     fitData.nrBins = job->endIndex - job->startIndex + 1;
                     fitData.R = &hR[job->startIndex];
                     fitData.Int = &h_int1D[job->startIndex];
                     
-                    // Use a gradient-based optimizer: L-BFGS
                     nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, nFitParams);
                     nlopt_set_lower_bounds(opt, lowerBounds);
                     nlopt_set_upper_bounds(opt, upperBounds);
@@ -1997,11 +2000,11 @@ int main(int argc, char *argv[]){
                         for (int p = 0; p < nJobPeaks; ++p) {
                             int out_base = (result_start_idx + p) * 5;
                             int in_base = p * 4;
-                            sendFitParams[out_base + 0] = fitParams[in_base + 0]; // Amp
-                            sendFitParams[out_base + 1] = localBG;                // BG
-                            sendFitParams[out_base + 2] = fitParams[in_base + 1]; // Mix
-                            sendFitParams[out_base + 3] = fitParams[in_base + 2]; // Center
-                            sendFitParams[out_base + 4] = fitParams[in_base + 3]; // Sigma
+                            sendFitParams[out_base + 0] = fitParams[in_base + 0];
+                            sendFitParams[out_base + 1] = localBG;
+                            sendFitParams[out_base + 2] = fitParams[in_base + 1];
+                            sendFitParams[out_base + 3] = fitParams[in_base + 2];
+                            sendFitParams[out_base + 4] = fitParams[in_base + 3];
                         }
                         total_successful_peaks += nJobPeaks;
                     }
@@ -2016,8 +2019,7 @@ int main(int argc, char *argv[]){
             }
             if(pks) { free(pks); }
         }
-        t_fit_cpu = get_wall_time_ms() - t_fit_start;
-        // --- End Peak Finding and Fitting ---
+        t_fit_cpu = get_wall_time_ms() - t_fit_start;        // --- End Peak Finding and Fitting ---
 
         // --- Write Peak Fit Results ---
         double t_writefit_start = get_wall_time_ms();
