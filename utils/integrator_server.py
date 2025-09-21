@@ -17,51 +17,128 @@ import threading
 import queue
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-# Define a standard mapping for data types to integer codes
-DATATYPE_CODES = {
-    np.dtype('uint16'): 1,
-    np.dtype('uint32'): 2,
-    np.dtype('int32'): 3,
-    np.dtype('int64'): 4,
-}
-# Create a reverse mapping for printing/debugging if needed
-CODE_TO_DTYPE_NAME = {v: k.name for k, v in DATATYPE_CODES.items()}
-
 def send_data_chunk(sock, dataset_num, data):
     t1 = time.time()
     
-    type_code = DATATYPE_CODES.get(data.dtype, 0)
-    if type_code == 0:
-        print(f"Warning: Unsupported dtype {data.dtype}. Skipping send.")
-        return
+    # Check if data is already a numpy array with correct dtype
+    if not isinstance(data, np.ndarray) or data.dtype != np.int64:
+        # Convert data to numpy array
+        data_array = np.array(data, dtype=np.int64)
+    else:
+        # Use the existing array
+        data_array = data
     
-    # Pack the dataset number and type
-    header = struct.pack('HB', dataset_num, type_code)
+    # Pack the dataset number
+    header = struct.pack('H', dataset_num)
     
     # Use memoryview instead of tobytes() to avoid a copy
-    data_view = memoryview(data).cast('B')
+    data_view = memoryview(data_array).cast('B')
     
     # Combine and send in a single call
     sock.sendall(header)
     sock.sendall(data_view)
     
     t2 = time.time()
-    print(f"Sent dataset #{dataset_num} as {data.dtype} ({len(data_view) / 1e6:.2f} MB) in {t2 - t1:.4f} sec")
+    print(f"Sent dataset #{dataset_num} with {len(data_array)} int64_t values ({len(data_view)} bytes) in {t2 - t1:.4f} sec")
+
+def read_and_convert_file(file_path):
+    """
+    A simple function that a worker process can execute.
+    It performs the two slow steps: disk I/O and CPU conversion.
+    """
+    try:
+        # 1. Read from slow disk
+        data = tifffile.imread(file_path)
+        
+        # 2. Perform CPU-intensive conversion
+        if data.dtype != np.int64:
+            data_array = data.astype(np.int64)
+        else:
+            data_array = data
+            
+        return {'data': data_array, 'filename': os.path.basename(file_path), 'error': None}
+    except Exception as e:
+        # Return an error message if something goes wrong
+        return {'data': None, 'filename': os.path.basename(file_path), 'error': str(e)}
+
+def process_tif_files_parallel(sock, folder, frame_mapping, mapping_file, save_interval):
+    """
+    Main processing logic using a pool of processes to parallelize reading and conversion.
+    """
+    files = sorted(glob.glob(os.path.join(folder, '*.tif')))
+    if not files:
+        print("No TIF files found.")
+        return 0, 0
+
+    # Use os.cpu_count() to use all available cores.
+    # You can also set a specific number, e.g., max_workers=4.
+    # If your disk is slow, using too many workers might not help.
+    # A number like half your CPU cores is a good starting point.
+    num_workers = max(1, os.cpu_count() // 2)
+    print(f"Starting parallel processing with {num_workers} worker processes...")
+
+    dataset_num = 0
+    total_frames = 0
+    
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+        # Submit all files to the process pool for conversion.
+        # This returns a dictionary of future objects.
+        future_to_file = {executor.submit(read_and_convert_file, f): f for f in files}
+
+        # as_completed() yields futures as they finish, not in the order they were submitted.
+        # This means we send data the moment it's ready, maximizing throughput.
+        for future in as_completed(future_to_file):
+            try:
+                # Get the result from the completed future
+                item = future.result()
+
+                if item['error']:
+                    print(f"Skipping file {item['filename']} due to worker error: {item['error']}")
+                    continue
+
+                # We have a fully converted frame, now send it!
+                send_data_chunk(sock, dataset_num, item['data'])
+                
+                # Update and save the mapping
+                frame_mapping[total_frames] = {
+                    'dataset_num': dataset_num,
+                    'filename': item['filename'],
+                    'timestamp': time.time()
+                }
+                if (total_frames + 1) % save_interval == 0:
+                    save_frame_mapping(frame_mapping, mapping_file)
+                
+                # Update counters
+                dataset_num = (dataset_num + 1) % 65536
+                total_frames += 1
+
+            except Exception as e:
+                print(f"Error processing result for a file: {e}")
+
+    print(f"Finished processing {total_frames} frames.")
+    return dataset_num, total_frames
+
 
 def file_reader_worker(file_list, data_queue):
     """
     This function runs in a separate thread.
-    It reads TIF files, and puts them in a queue.
+    It reads TIF files, converts them to int64, and puts them in a queue.
     """
     for file_path in file_list:
         try:
             # 1. Read from slow disk
             data = tifffile.imread(file_path)
-
-            # 2. Put the ready-to-send data into the queue
+            
+            # 2. Perform CPU-intensive conversion
+            if data.dtype != np.int64:
+                data_array = data.astype(np.int64)
+            else:
+                data_array = data
+                
+            # 3. Put the ready-to-send data into the queue
             # The put() call will block if the queue is full, preventing
             # this thread from running too far ahead and using all the RAM.
-            data_queue.put({'data': data, 'filename': os.path.basename(file_path)})
+            data_queue.put({'data': data_array, 'filename': os.path.basename(file_path)})
             
         except Exception as e:
             print(f"Error reading file {file_path}: {e}")
@@ -215,8 +292,8 @@ def process_binary_ge(file_path, sock, dataset_num, frame_mapping, frame_index, 
             # Reshape to the specified frame size
             frame_data = frame_data.reshape(frame_size)
             
-            # Flatten
-            frame_data = frame_data.flatten()
+            # Convert to int64 for sending
+            frame_data = frame_data.astype(np.int64).flatten()
             
             # Update frame mapping
             frame_mapping[frame_index] = {
@@ -265,7 +342,7 @@ def process_h5(file_path, sock, dataset_num, frame_mapping, frame_index, h5_loca
                     num_frames = dataset.shape[0]
                     print(f"Dataset contains {num_frames} frames")
                     for i in range(num_frames):
-                        frame_data = dataset[i].flatten()
+                        frame_data = dataset[i].astype(np.int64).flatten()
                         
                         # Update frame mapping
                         frame_mapping[frame_index] = {
@@ -280,7 +357,7 @@ def process_h5(file_path, sock, dataset_num, frame_mapping, frame_index, h5_loca
                         frames_processed += 1
                 else:
                     # Single frame
-                    frame_data = dataset[:].flatten()
+                    frame_data = dataset[:].astype(np.int64).flatten()
                     
                     # Update frame mapping
                     frame_mapping[frame_index] = {
@@ -298,7 +375,7 @@ def process_h5(file_path, sock, dataset_num, frame_mapping, frame_index, h5_loca
                 print(f"Processing group with keys: {list(dataset.keys())}")
                 for key in dataset.keys():
                     if isinstance(dataset[key], h5py.Dataset):
-                        frame_data = dataset[key][:].flatten()
+                        frame_data = dataset[key][:].astype(np.int64).flatten()
                         
                         # Update frame mapping
                         frame_mapping[frame_index] = {
