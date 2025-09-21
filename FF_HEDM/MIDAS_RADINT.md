@@ -121,6 +121,9 @@ The integrator is designed as a multi-threaded pipeline to maximize throughput a
 
 ### How to Run
 
+0. **Use the provided Python script** (`integrator_batch_process.py`) to automate the entire pipeline, including running `DetectorMapper` if needed, and then starting the integrator. This is the recommended approach.
+   
+   Alternatively, you can run the integrator manually by following these steps:
 1.  **Prepare a parameter file** (e.g., `integrator.params`) describing the detector geometry and processing options. **This must match the parameters used to generate the maps.**
 2.  **Ensure `Map.bin` and `nMap.bin` are present** in the working directory.
 3.  **(Optional) Provide a dark frame** as a command-line argument. This should be a binary file of `int64_t` values.

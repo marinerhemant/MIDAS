@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Integrator Pipeline Control Script
+Integrator Pipeline Control Script integrator_batch_process.py
 
 This script orchestrates the X-ray diffraction data processing pipeline:
 0. Run DetectorMapper in case maps are not found in the current directory.
