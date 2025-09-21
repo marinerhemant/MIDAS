@@ -40,14 +40,15 @@ def get_frame_dimensions(params_file):
         params_file: Path to the parameter file
         
     Returns:
-        Tuple (nRBins, nEtaBins, OSF, num_peaks)
+        Tuple (nRBins, nEtaBins, OSF, num_peaks, do_peak_fit)
     """
     # Default values
     RMax, RMin, RBinSize = 100, 10, 0.1
     EtaMax, EtaMin, EtaBinSize = 180, -180, 0.1
     OSF = None
-    num_peaks = 0  # <<< NEW: Initialize peak counter
-    
+    num_peaks = 0
+    do_peak_fit = True  # Assume fitting is done by default
+
     with open(params_file, 'r') as f:
         for line in f:
             line = line.strip()
@@ -68,13 +69,13 @@ def get_frame_dimensions(params_file):
             elif key == 'EtaMin': EtaMin = float(value)
             elif key == 'EtaBinSize': EtaBinSize = float(value)
             elif key == 'OmegaSumFrames': OSF = int(value)
-            elif key == 'PeakLocation':
-                num_peaks += 1
-    
+            elif key == 'PeakLocation': num_peaks += 1
+            elif key == 'DoPeakFit' and value == '0': do_peak_fit = False
+
     nRBins = int(np.ceil((RMax - RMin) / RBinSize))
     nEtaBins = int(np.ceil((EtaMax - EtaMin) / EtaBinSize))
     
-    return nRBins, nEtaBins, OSF, num_peaks
+    return nRBins, nEtaBins, OSF, num_peaks, do_peak_fit
 
 def reshape_lineout_data(lineout_data, nRBins):
     if lineout_data is None:
@@ -329,11 +330,14 @@ def main():
     parser.add_argument('--omega-sum-frames', type=int, help='Override OmegaSumFrames value')
     args = parser.parse_args()
     
-    nRBins, nEtaBins, osf, num_peaks = get_frame_dimensions(args.params)
+    nRBins, nEtaBins, osf, num_peaks, do_peak_fit = get_frame_dimensions(args.params)
     print(f"Frame dimensions: {nRBins} R bins, {nEtaBins} Eta bins")
     if num_peaks > 0:
         print(f"Found {num_peaks} 'PeakLocation' entries in parameter file.")
-    
+
+    if not do_peak_fit:
+        print("Peak fitting is disabled. Skipping fit and fit_curves data.")
+
     if args.omega_sum_frames is not None:
         osf = args.omega_sum_frames
         print(f"Overriding OmegaSumFrames with value: {osf}")
@@ -350,10 +354,14 @@ def main():
     lineout_data, lineout_frames = reshape_lineout_data(raw_lineout_data, nRBins)
 
     # --- Read Fit Data (using num_peaks) ---
-    raw_fit_data = read_binary_file(args.fit)
     fit_data = None
-    if raw_fit_data is not None:
-        fit_data, _ = reshape_fit_data(raw_fit_data, lineout_frames, num_peaks)
+    fit_curves_data = None
+    if do_peak_fit:
+        raw_fit_data = read_binary_file(args.fit)
+        if raw_fit_data is not None:
+            fit_data, _ = reshape_fit_data(raw_fit_data, lineout_frames, num_peaks)
+        # --- Read Fit Curves Data ---
+        fit_curves_data = read_fit_curves(args.fit_curves)
     
     # --- Read Int2D Data ---
     raw_int2d_data = read_binary_file(args.int2d)
@@ -361,20 +369,22 @@ def main():
     if raw_int2d_data is not None:
         int2d_data, _ = reshape_int2d_data(raw_int2d_data, nRBins, nEtaBins)
         
-    # --- Read Fit Curves Data ---
-    fit_curves_data = read_fit_curves(args.fit_curves)
-
     print(f"Found {lineout_frames} frames in lineout data")
     if fit_data is not None:
         print(f"Found {fit_data.shape[0]} frames in fit data")
-        if fit_data.ndim == 3: print(f"  Each frame has {fit_data.shape[1]} peaks with {fit_data.shape[2]} parameters per peak")
-    if int2d_data is not None: print(f"Found {int2d_data.shape[0]} frames in int2d data")
-    if fit_curves_data is not None: print(f"Found {len(fit_curves_data)} fitted curves")
+        if fit_data.ndim == 3: 
+            print(f"  Each frame has {fit_data.shape[1]} peaks with {fit_data.shape[2]} parameters per peak")
+    if int2d_data is not None: 
+        print(f"Found {int2d_data.shape[0]} frames in int2d data")
+    if fit_curves_data is not None: 
+        print(f"Found {len(fit_curves_data)} fitted curves")
     
     mapping = None
-    if args.mapping: mapping = load_mapping_file(args.mapping, args.start)
-    elif args.server_log: mapping = extract_dataset_mapping_from_server_log(args.server_log)
-    
+    if args.mapping: 
+        mapping = load_mapping_file(args.mapping, args.start)
+    elif args.server_log: 
+        mapping = extract_dataset_mapping_from_server_log(args.server_log)
+
     create_hdf5_file(args.output, lineout_data, fit_data, int2d_data, fit_curves_data, mapping, osf)
     print(f"Successfully created HDF5 file: {args.output}")
 
