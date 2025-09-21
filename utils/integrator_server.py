@@ -524,8 +524,8 @@ def main():
             # Handle different file types
             if args.extension.lower() == 'tif':
                 # Process TIFF files
-                process_tif_files_parallel(sock, args.folder, frame_mapping, args.mapping_file, args.save_interval)
-                # process_tif_files_pipelined(sock, args.folder, frame_mapping, args.mapping_file, args.save_interval)
+                # process_tif_files_parallel(sock, args.folder, frame_mapping, args.mapping_file, args.save_interval)
+                process_tif_files_pipelined(sock, args.folder, frame_mapping, args.mapping_file, args.save_interval)
                 # files = glob.glob(os.path.join(args.folder, f'*.{args.extension}'))
                 # print(f"Found {len(files)} .{args.extension} files")
                 
