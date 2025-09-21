@@ -2064,12 +2064,14 @@ int main(int argc, char *argv[]){
         // --- Timing and Output ---
         t_end_loop = get_wall_time_ms();
         t_loop_cpu = t_end_loop - t_start_loop; // Total wall time for the loop iteration
+        float t_gpu_total = t_proc_gpu + t_integ_gpu + t_prof_gpu + t_d2h_gpu;
+        double t_cpu_total = t_write2d_cpu + t_write1d_cpu + t_fit_cpu + t_writefit_cpu;
 
         // Print detailed timing information for the frame
-        printf("F#%d: Ttl:%.2f| QPop:%.2f Sync:%.2f GPU(Proc:%.2f Int:%.2f Prof:%.2f D2H:%.2f) CPU(Wr2D:%.2f Wr1D:%.2f Fit:%.2f WrFit:%.2f)\n",
+printf("F#%d: Ttl:%.2f| QPop:%.2f Sync:%.2f GPU(Tot:%.2f Proc:%.2f Int:%.2f Prof:%.2f D2H:%.2f) CPU(Tot:%.2f Wr2D:%.2f Wr1D:%.2f Fit:%.2f WrFit:%.2f)\n",
                currFidx, t_loop_cpu, t_qp_cpu, t_sync_cpu,
-               t_proc_gpu, t_integ_gpu, t_prof_gpu, t_d2h_gpu,
-               t_write2d_cpu, t_write1d_cpu, t_fit_cpu, t_writefit_cpu);
+               t_gpu_total, t_proc_gpu, t_integ_gpu, t_prof_gpu, t_d2h_gpu,
+               t_cpu_total, t_write2d_cpu, t_write1d_cpu, t_fit_cpu, t_writefit_cpu);
         fflush(stdout); // Ensure output is visible immediately
 
         frameCounter++;
