@@ -13,6 +13,8 @@ import re
 import json
 import atexit
 import tifffile
+import threading
+import queue
 
 
 def send_data_chunk(sock, dataset_num, data):
@@ -33,10 +35,94 @@ def send_data_chunk(sock, dataset_num, data):
     data_view = memoryview(data_array).cast('B')
     
     # Combine and send in a single call
-    sock.sendall(header + data_view)
+    sock.sendall(header)
+    sock.sendall(data_view)
     
     t2 = time.time()
     print(f"Sent dataset #{dataset_num} with {len(data_array)} int64_t values ({len(data_view)} bytes) in {t2 - t1:.4f} sec")
+
+def file_reader_worker(file_list, data_queue):
+    """
+    This function runs in a separate thread.
+    It reads TIF files, converts them to int64, and puts them in a queue.
+    """
+    for file_path in file_list:
+        try:
+            # 1. Read from slow disk
+            data = tifffile.imread(file_path)
+            
+            # 2. Perform CPU-intensive conversion
+            if data.dtype != np.int64:
+                data_array = data.astype(np.int64)
+            else:
+                data_array = data
+                
+            # 3. Put the ready-to-send data into the queue
+            # The put() call will block if the queue is full, preventing
+            # this thread from running too far ahead and using all the RAM.
+            data_queue.put({'data': data_array, 'filename': os.path.basename(file_path)})
+            
+        except Exception as e:
+            print(f"Error reading file {file_path}: {e}")
+            
+    # Signal that the worker is done by putting a sentinel value in the queue
+    data_queue.put(None)
+
+
+def process_tif_files_pipelined(sock, folder, frame_mapping, mapping_file, save_interval):
+    """
+    Main processing logic using the producer-consumer pipeline.
+    """
+    files = sorted(glob.glob(os.path.join(folder, '*.tif')))
+    if not files:
+        print("No TIF files found.")
+        return
+
+    # A queue to hold data that is ready to be sent.
+    # maxsize=5 means the reader thread will pause after reading 5 frames ahead,
+    # which prevents excessive memory usage.
+    data_queue = queue.Queue(maxsize=5)
+
+    # Create and start the file reader worker thread
+    reader_thread = threading.Thread(target=file_reader_worker, args=(files, data_queue))
+    reader_thread.start()
+
+    dataset_num = 0
+    total_frames = 0
+    
+    print("Starting pipelined processing...")
+    
+    # This loop is the "consumer". It runs in the main thread.
+    while True:
+        # Get the next available frame from the queue.
+        # This call will block and wait if the queue is empty.
+        item = data_queue.get()
+
+        # Check for the sentinel value to know when to stop
+        if item is None:
+            break
+
+        # We have a frame, now send it! This is the only job of the main loop.
+        send_data_chunk(sock, dataset_num, item['data'])
+
+        # Use total_frames as the unique, non-repeating frame index for the mapping key
+        frame_mapping[total_frames] = {
+            'dataset_num': dataset_num,
+            'filename': item['filename'],
+            'timestamp': time.time()
+        }
+        
+        # Save the mapping file at the specified interval
+        if (total_frames + 1) % save_interval == 0:
+            save_frame_mapping(frame_mapping, mapping_file)
+
+        # Update counters
+        dataset_num = (dataset_num + 1) % 65536
+        total_frames += 1
+
+    # Wait for the reader thread to finish completely
+    reader_thread.join()
+    print(f"Finished processing {total_frames} frames.")
 
 
 def process_image(x, sock, dataset_num, frame_mapping, frame_index):
@@ -360,16 +446,17 @@ def main():
             # Handle different file types
             if args.extension.lower() == 'tif':
                 # Process TIFF files
-                files = glob.glob(os.path.join(args.folder, f'*.{args.extension}'))
-                print(f"Found {len(files)} .{args.extension} files")
+                process_tif_files_pipelined(sock, args.folder, frame_mapping, args.mapping_file, args.save_interval)
+                # files = glob.glob(os.path.join(args.folder, f'*.{args.extension}'))
+                # print(f"Found {len(files)} .{args.extension} files")
                 
-                for file in files:
-                    dataset_num, frame_index = process_tif(file, sock, dataset_num, frame_mapping, frame_index)
-                    total_frames += 1
+                # for file in files:
+                #     dataset_num, frame_index = process_tif(file, sock, dataset_num, frame_mapping, frame_index)
+                #     total_frames += 1
                     
-                    # Save mapping at regular intervals
-                    if total_frames % args.save_interval == 0:
-                        save_frame_mapping(frame_mapping, args.mapping_file)
+                #     # Save mapping at regular intervals
+                #     if total_frames % args.save_interval == 0:
+                #         save_frame_mapping(frame_mapping, args.mapping_file)
                     
             elif args.extension.lower().startswith('ge') and args.extension[2:].isdigit():
                 # Process .geX binary files
