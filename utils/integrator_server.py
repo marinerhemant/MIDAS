@@ -41,84 +41,6 @@ def send_data_chunk(sock, dataset_num, data):
     t2 = time.time()
     print(f"Sent dataset #{dataset_num} with {len(data_array)} int64_t values ({len(data_view)} bytes) in {t2 - t1:.4f} sec")
 
-def read_and_convert_file(file_path):
-    """
-    A simple function that a worker process can execute.
-    It performs the two slow steps: disk I/O and CPU conversion.
-    """
-    try:
-        # 1. Read from slow disk
-        data = tifffile.imread(file_path)
-        
-        # 2. Perform CPU-intensive conversion
-        if data.dtype != np.int64:
-            data_array = data.astype(np.int64)
-        else:
-            data_array = data
-            
-        return {'data': data_array, 'filename': os.path.basename(file_path), 'error': None}
-    except Exception as e:
-        # Return an error message if something goes wrong
-        return {'data': None, 'filename': os.path.basename(file_path), 'error': str(e)}
-
-def process_tif_files_parallel(sock, folder, frame_mapping, mapping_file, save_interval):
-    """
-    Main processing logic using a pool of processes to parallelize reading and conversion.
-    """
-    files = sorted(glob.glob(os.path.join(folder, '*.tif')))
-    if not files:
-        print("No TIF files found.")
-        return 0, 0
-
-    # Use os.cpu_count() to use all available cores.
-    # You can also set a specific number, e.g., max_workers=4.
-    # If your disk is slow, using too many workers might not help.
-    # A number like half your CPU cores is a good starting point.
-    num_workers = max(1, os.cpu_count() // 2)
-    print(f"Starting parallel processing with {num_workers} worker processes...")
-
-    dataset_num = 0
-    total_frames = 0
-    
-    with ProcessPoolExecutor(max_workers=num_workers) as executor:
-        # Submit all files to the process pool for conversion.
-        # This returns a dictionary of future objects.
-        future_to_file = {executor.submit(read_and_convert_file, f): f for f in files}
-
-        # as_completed() yields futures as they finish, not in the order they were submitted.
-        # This means we send data the moment it's ready, maximizing throughput.
-        for future in as_completed(future_to_file):
-            try:
-                # Get the result from the completed future
-                item = future.result()
-
-                if item['error']:
-                    print(f"Skipping file {item['filename']} due to worker error: {item['error']}")
-                    continue
-
-                # We have a fully converted frame, now send it!
-                send_data_chunk(sock, dataset_num, item['data'])
-                
-                # Update and save the mapping
-                frame_mapping[total_frames] = {
-                    'dataset_num': dataset_num,
-                    'filename': item['filename'],
-                    'timestamp': time.time()
-                }
-                if (total_frames + 1) % save_interval == 0:
-                    save_frame_mapping(frame_mapping, mapping_file)
-                
-                # Update counters
-                dataset_num = (dataset_num + 1) % 65536
-                total_frames += 1
-
-            except Exception as e:
-                print(f"Error processing result for a file: {e}")
-
-    print(f"Finished processing {total_frames} frames.")
-    return dataset_num, total_frames
-
-
 def file_reader_worker(file_list, data_queue):
     """
     This function runs in a separate thread.
@@ -225,33 +147,6 @@ def process_image(x, sock, dataset_num, frame_mapping, frame_index):
     send_data_chunk(sock, dataset_num, data)
     
     # Return incremented dataset number (wrap around at 65535)
-    return (dataset_num + 1) % 65536, frame_index + 1
-
-
-def process_tif(file_path, sock, dataset_num, frame_mapping, frame_index):
-    """
-    Process a single TIF file
-    Returns: Updated dataset_num and frame_index
-    """
-    t1 = time.time()
-    # image = Image.open(file_path)
-    print(f"Processing TIF file: {file_path}")
-    # data = np.array(image).flatten()
-    data = tifffile.imread(file_path)
-    t_int = time.time()
-    # Update frame mapping with filename
-    frame_mapping[frame_index] = {
-        'dataset_num': dataset_num,
-        'filename': os.path.basename(file_path),
-        'timestamp': time.time()
-    }
-    
-    # Send the data with dataset number
-    send_data_chunk(sock, dataset_num, data)
-    t2 = time.time()
-    print(f"Processed TIF frame #{dataset_num}, time: {t2 - t1:.4f} sec, {t2-t_int:.4f} sec to send data {t_int-t1:.4f} sec to read file.")
-    
-    # Return incremented dataset numbers
     return (dataset_num + 1) % 65536, frame_index + 1
 
 
@@ -524,18 +419,7 @@ def main():
             # Handle different file types
             if args.extension.lower() == 'tif':
                 # Process TIFF files
-                # process_tif_files_parallel(sock, args.folder, frame_mapping, args.mapping_file, args.save_interval)
                 process_tif_files_pipelined(sock, args.folder, frame_mapping, args.mapping_file, args.save_interval)
-                # files = glob.glob(os.path.join(args.folder, f'*.{args.extension}'))
-                # print(f"Found {len(files)} .{args.extension} files")
-                
-                # for file in files:
-                #     dataset_num, frame_index = process_tif(file, sock, dataset_num, frame_mapping, frame_index)
-                #     total_frames += 1
-                    
-                #     # Save mapping at regular intervals
-                #     if total_frames % args.save_interval == 0:
-                #         save_frame_mapping(frame_mapping, args.mapping_file)
                     
             elif args.extension.lower().startswith('ge') and args.extension[2:].isdigit():
                 # Process .geX binary files
