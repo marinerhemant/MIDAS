@@ -1668,6 +1668,7 @@ int main(int argc, char *argv[]){
     // Variables for timing results (milliseconds)
     float t_proc_gpu = 0, t_integ_gpu = 0, t_prof_gpu = 0, t_d2h_gpu = 0; // GPU times
     double t_qp_cpu = 0, t_write1d_cpu = 0, t_fit_cpu = 0, t_writefit_cpu = 0, t_write2d_cpu = 0, t_loop_cpu = 0; // CPU times
+    double t_sync_cpu = 0;
     double t_start_loop, t_end_loop; // Wall clock time per loop
 
     // Host buffers for results
@@ -1763,6 +1764,7 @@ int main(int argc, char *argv[]){
         gpuErrchk(cudaEventRecord(ev_d2h_stop, 0)); // Stream 0
 
         // --- Synchronize GPU Events and Get Timings ---
+        double t_sync_start = get_wall_time_ms();
         // Synchronize *after* launching all GPU work for the frame
         gpuErrchk(cudaEventSynchronize(ev_proc_stop)); // Wait for processing to finish
         gpuErrchk(cudaEventElapsedTime(&t_proc_gpu, ev_proc_start, ev_proc_stop));
@@ -1776,6 +1778,7 @@ int main(int argc, char *argv[]){
         // *** Crucially, synchronize the D->H copy event BEFORE using the host data ***
         gpuErrchk(cudaEventSynchronize(ev_d2h_stop));
         gpuErrchk(cudaEventElapsedTime(&t_d2h_gpu, ev_d2h_start, ev_d2h_stop));
+        t_sync_cpu = get_wall_time_ms() - t_sync_start; // Time spent waiting for GPU to finish
 
         // --- CPU Processing Stage (using results from D->H copy) ---
 
@@ -2063,8 +2066,8 @@ int main(int argc, char *argv[]){
         t_loop_cpu = t_end_loop - t_start_loop; // Total wall time for the loop iteration
 
         // Print detailed timing information for the frame
-        printf("F#%d: Ttl:%.2f| QPop:%.2f GPU(Proc:%.2f Int:%.2f Prof:%.2f D2H:%.2f) CPU(Wr2D:%.2f Wr1D:%.2f Fit:%.2f WrFit:%.2f)\n",
-               currFidx, t_loop_cpu, t_qp_cpu,
+        printf("F#%d: Ttl:%.2f| QPop:%.2f Sync:%.2f GPU(Proc:%.2f Int:%.2f Prof:%.2f D2H:%.2f) CPU(Wr2D:%.2f Wr1D:%.2f Fit:%.2f WrFit:%.2f)\n",
+               currFidx, t_loop_cpu, t_qp_cpu, t_sync_cpu,
                t_proc_gpu, t_integ_gpu, t_prof_gpu, t_d2h_gpu,
                t_write2d_cpu, t_write1d_cpu, t_fit_cpu, t_writefit_cpu);
         fflush(stdout); // Ensure output is visible immediately
