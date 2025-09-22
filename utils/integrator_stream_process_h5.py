@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-bin2hdf5.py - Convert binary output files from IntegratorFitPeaksGPUStream to HDF5
+integrator_stream_process_h5.py - Convert binary output files from IntegratorFitPeaksGPUStream to HDF5
 
 This script reads the binary output files produced by the CUDA integrator 
 (lineout.bin, and optionally fit.bin, Int2D.bin, and fit_curves.bin) and 
@@ -76,6 +76,19 @@ def get_frame_dimensions(params_file):
     nEtaBins = int(np.ceil((EtaMax - EtaMin) / EtaBinSize))
     
     return nRBins, nEtaBins, OSF, num_peaks, do_peak_fit
+
+def reshape_map_data(map_data, nRBins, nEtaBins):
+    """Reshapes the flat R, TTh, Eta, Area map data."""
+    if map_data is None:
+        return None
+    
+    expected_size = nRBins * nEtaBins * 4
+    if len(map_data) != expected_size:
+        print(f"Warning: Map data size ({len(map_data)}) does not match expected size ({expected_size}).")
+        return None
+    
+    # Reshape to (4, nRBins, nEtaBins) where the 4 maps are R, TTh, Eta, Area
+    return map_data.reshape(4, nRBins, nEtaBins)
 
 def reshape_lineout_data(lineout_data, nRBins):
     if lineout_data is None:
@@ -201,7 +214,7 @@ def sum_frames(int2d_data, osf, sorted_original_indices):
             counts.append(end_idx - i)
     return summed_data, frame_groups, counts
 
-def create_hdf5_file(output_file, lineout_data, fit_data, int2d_data, fit_curves_data, mapping=None, osf=None):
+def create_hdf5_file(output_file, lineout_data, fit_data, int2d_data, fit_curves_data, map_data=None, mapping=None, osf=None):
     """
     Create an HDF5 file with the organized data, including fit curves.
     """
@@ -229,6 +242,27 @@ def create_hdf5_file(output_file, lineout_data, fit_data, int2d_data, fit_curves
             name = map_value.get('filename')
             if name: return os.path.splitext(name)[0]
             return str(map_value.get('uniqueId') or map_value.get('dataset_num', frame_index))
+
+        if map_data is not None:
+            geom_group = f.create_group('geometry_maps')
+            geom_group.attrs['description'] = np.bytes_("Static geometry maps for each (R, Eta) bin")
+            
+            ds_r = geom_group.create_dataset('R_map', data=map_data[0])
+            ds_r.attrs['description'] = np.bytes_("R-center for each bin")
+            ds_r.attrs['units'] = np.bytes_("pixels")
+            
+            ds_tth = geom_group.create_dataset('TTh_map', data=map_data[1])
+            ds_tth.attrs['description'] = np.bytes_("TwoTheta-center for each bin")
+            ds_tth.attrs['units'] = np.bytes_("degrees")
+            
+            ds_eta = geom_group.create_dataset('Eta_map', data=map_data[2])
+            ds_eta.attrs['description'] = np.bytes_("Eta-center for each bin")
+            ds_eta.attrs['units'] = np.bytes_("degrees")
+            
+            ds_area = geom_group.create_dataset('Area_map', data=map_data[3])
+            ds_area.attrs['description'] = np.bytes_("Effective pixel area for each bin")
+            ds_area.attrs['units'] = np.bytes_("fractional pixels")
+
 
         if lineout_data is not None:
             lineout_group = f.create_group('lineouts')
@@ -322,6 +356,7 @@ def main():
     parser.add_argument('--int2d', type=str, default='Int2D.bin', help='2D integrated binary file')
     parser.add_argument('--fit-curves', type=str, default='fit_curves.bin', help='Fitted curves binary file')
     parser.add_argument('--params', type=str, required=True, help='Parameter file used for integration')
+    parser.add_argument('--map-data', type=str, default='RTthEtaAreaMap.bin', help='R, TTh, Eta, Area map binary file')
     parser.add_argument('--mapping', type=str, help='JSON file mapping frame indices to dataset IDs')
     parser.add_argument('--server-log', type=str, help='Server log file to extract dataset IDs')
     parser.add_argument('--output', type=str, default='integrator_output.h5', help='Output HDF5 file')
@@ -368,7 +403,15 @@ def main():
     int2d_data = None
     if raw_int2d_data is not None:
         int2d_data, _ = reshape_int2d_data(raw_int2d_data, nRBins, nEtaBins)
-        
+
+    # --- Read Static Map Data ---
+    raw_map_data = read_binary_file(args.map_data)
+    map_data = None
+    if raw_map_data is not None:
+        map_data = reshape_map_data(raw_map_data, nRBins, nEtaBins)
+    if map_data is not None:
+        print(f"Found and processed geometry map data with shape {map_data.shape}")
+
     print(f"Found {lineout_frames} frames in lineout data")
     if fit_data is not None:
         print(f"Found {fit_data.shape[0]} frames in fit data")
@@ -385,7 +428,7 @@ def main():
     elif args.server_log: 
         mapping = extract_dataset_mapping_from_server_log(args.server_log)
 
-    create_hdf5_file(args.output, lineout_data, fit_data, int2d_data, fit_curves_data, mapping, osf)
+    create_hdf5_file(args.output, lineout_data, fit_data, int2d_data, fit_curves_data, map_data, mapping, osf)
     print(f"Successfully created HDF5 file: {args.output}")
 
 if __name__ == "__main__":

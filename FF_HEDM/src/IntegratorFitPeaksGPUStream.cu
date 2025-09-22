@@ -1800,6 +1800,23 @@ int main(int argc, char *argv[]){
                 hLineout[r * 2 + 1] = 0.0; // Initialize intensity
             }
             printf("Initialized host R/Eta arrays from first frame D->H copy (using pre-initialized GPU data).\n");
+
+        printf("Writing R, TTh, Eta, Area map to RTthEtaAreaMap.bin...\n");
+        FILE *fMap = fopen("RTthEtaAreaMap.bin", "wb");
+        if (fMap) {
+            size_t elements_to_write = bigArrSize * 4;
+            size_t elements_written = fwrite(hPerFrame, sizeof(double), elements_to_write, fMap);
+            if (elements_written == elements_to_write) {
+                printf("Successfully wrote %zu double values to RTthEtaAreaMap.bin.\n", elements_written);
+            } else {
+                fprintf(stderr, "Warn: Failed to write full map file (wrote %zu/%zu): %s\n",
+                        elements_written, elements_to_write, strerror(errno));
+            }
+            fclose(fMap);
+        } else {
+            fprintf(stderr, "Error: Could not open RTthEtaAreaMap.bin for writing: %s\n", strerror(errno));
+        }
+
             firstFrame = 0; // Don't run this block again
         }
 
@@ -2068,7 +2085,7 @@ int main(int argc, char *argv[]){
         double t_cpu_total = t_write2d_cpu + t_write1d_cpu + t_fit_cpu + t_writefit_cpu;
 
         // Print detailed timing information for the frame
-printf("F#%d: Ttl:%.2f| QPop:%.2f Sync:%.2f GPU(Tot:%.2f Proc:%.2f Int:%.2f Prof:%.2f D2H:%.2f) CPU(Tot:%.2f Wr2D:%.2f Wr1D:%.2f Fit:%.2f WrFit:%.2f)\n",
+        printf("F#%d: Ttl:%.2f| QPop:%.2f Sync:%.2f GPU(Tot:%.2f Proc:%.2f Int:%.2f Prof:%.2f D2H:%.2f) CPU(Tot:%.2f Wr2D:%.2f Wr1D:%.2f Fit:%.2f WrFit:%.2f)\n",
                currFidx, t_loop_cpu, t_qp_cpu, t_sync_cpu,
                t_gpu_total, t_proc_gpu, t_integ_gpu, t_prof_gpu, t_d2h_gpu,
                t_cpu_total, t_write2d_cpu, t_write1d_cpu, t_fit_cpu, t_writefit_cpu);
