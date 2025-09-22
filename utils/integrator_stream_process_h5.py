@@ -214,7 +214,7 @@ def sum_frames(int2d_data, osf, sorted_original_indices):
             counts.append(end_idx - i)
     return summed_data, frame_groups, counts
 
-def create_hdf5_file(output_file, lineout_data, fit_data, int2d_data, fit_curves_data, map_data=None, mapping=None, osf=None):
+def create_hdf5_file(output_file, lineout_data, lineout_simple_mean_data, fit_data, int2d_data, fit_curves_data, map_data=None, mapping=None, osf=None):
     """
     Create an HDF5 file with the organized data, including fit curves.
     """
@@ -271,7 +271,16 @@ def create_hdf5_file(output_file, lineout_data, fit_data, int2d_data, fit_curves
             for i in frame_indices:
                 ds = lineout_group.create_dataset(get_dataset_name(i), data=lineout_data[i])
                 ds.attrs['frame_index'] = i
-        
+
+        if lineout_simple_mean_data is not None:
+            lineout_sm_group = f.create_group('lineouts_simple_mean')
+            lineout_sm_group.attrs['description'] = np.bytes_("Radially integrated data (simple mean of valid bins): R and intensity values")
+            lineout_sm_group.attrs['dimension_labels'] = np.bytes_("R[px], I[a.u.]")
+            for i in frame_indices:
+                if i < lineout_simple_mean_data.shape[0]:
+                    ds = lineout_sm_group.create_dataset(get_dataset_name(i), data=lineout_simple_mean_data[i])
+                    ds.attrs['frame_index'] = i
+
         if fit_data is not None:
             fit_group = f.create_group('fit')
             fit_group.attrs['description'] = np.bytes_("Peak fitting results")
@@ -352,6 +361,7 @@ def extract_dataset_mapping_from_server_log(log_file):
 def main():
     parser = argparse.ArgumentParser(description="Convert binary output files from IntegratorFitPeaksGPUStream to HDF5")
     parser.add_argument('--lineout', type=str, default='lineout.bin', help='Lineout binary file')
+    parser.add_argument('--lineout-simple-mean', type=str, default='lineout_simple_mean.bin', help='Lineout binary file (simple mean)')
     parser.add_argument('--fit', type=str, default='fit.bin', help='Fit binary file')
     parser.add_argument('--int2d', type=str, default='Int2D.bin', help='2D integrated binary file')
     parser.add_argument('--fit-curves', type=str, default='fit_curves.bin', help='Fitted curves binary file')
@@ -387,6 +397,14 @@ def main():
     if raw_lineout_data is None:
         print("Error: Could not read lineout file. Aborting."); return
     lineout_data, lineout_frames = reshape_lineout_data(raw_lineout_data, nRBins)
+
+    # --- Read Lineout Data (Simple Mean) ---
+    raw_lineout_simple_mean_data = read_binary_file(args.lineout_simple_mean,
+        offset=args.start * lineout_frame_size,
+        count=args.count * lineout_frame_size if args.count else None)
+    lineout_simple_mean_data = None
+    if raw_lineout_simple_mean_data is not None:
+        lineout_simple_mean_data, _ = reshape_lineout_data(raw_lineout_simple_mean_data, nRBins)
 
     # --- Read Fit Data (using num_peaks) ---
     fit_data = None
@@ -428,7 +446,7 @@ def main():
     elif args.server_log: 
         mapping = extract_dataset_mapping_from_server_log(args.server_log)
 
-    create_hdf5_file(args.output, lineout_data, fit_data, int2d_data, fit_curves_data, map_data, mapping, osf)
+    create_hdf5_file(args.output, lineout_data, lineout_simple_mean_data, fit_data, int2d_data, fit_curves_data, map_data, mapping, osf)
     print(f"Successfully created HDF5 file: {args.output}")
 
 if __name__ == "__main__":

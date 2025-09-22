@@ -822,6 +822,79 @@ __global__ void calculate_1D_profile_kernel(const double *d_IntArrPerFrame, cons
     }
 }
 
+__global__ void calculate_1D_profile_simple_mean_kernel(const double *d_IntArrPerFrame, const double *d_PerFrameArr, double *d_int1D_simple_mean, int nRBins, int nEtaBins, size_t bigArrSize) {
+    // Shared memory for reduction
+    extern __shared__ double sdata[]; // Expects size >= (blockDim.x / warpSize) * 2
+    double *sInt = sdata;              // Buffer for sum(Intensity) per warp
+    int *sCount = (int*)&sdata[blockDim.x / 32]; // Buffer for count of valid bins per warp
+
+    const int r_bin = blockIdx.x; // Each block processes one R bin
+    if (r_bin >= nRBins) {
+        return;
+    }
+
+    const int tid = threadIdx.x;
+    const int warpSize = 32;
+    const int lane = tid % warpSize;
+    const int warpId = tid / warpSize;
+
+    // Initialize shared memory for this warp
+    if (lane == 0) {
+         sInt[warpId] = 0.0;
+         sCount[warpId] = 0;
+    }
+
+    // Each thread processes a subset of Eta bins
+    double mySumInt = 0.0;
+    int myValidBins = 0;
+    for (int eta_bin = tid; eta_bin < nEtaBins; eta_bin += blockDim.x) {
+        size_t idx2d = (size_t)r_bin * nEtaBins + eta_bin;
+        if (idx2d < bigArrSize) {
+            // We still check the pre-calculated area to see if a bin is valid (i.e., not empty or fully masked)
+            double area = d_PerFrameArr[3 * bigArrSize + idx2d];
+            if (area > AREA_THRESHOLD) {
+                mySumInt += d_IntArrPerFrame[idx2d]; // Sum intensity without area weight
+                myValidBins++;                      // Count valid bins
+            }
+        }
+    }
+
+    // --- Warp Level Reduction ---
+    #pragma unroll
+    for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+        mySumInt += __shfl_down_sync(0xFFFFFFFF, mySumInt, offset);
+        myValidBins += __shfl_down_sync(0xFFFFFFFF, myValidBins, offset);
+    }
+
+    // --- Write Warp Result to Shared Memory ---
+    if (lane == 0) {
+        atomicAdd(&sInt[warpId], mySumInt);
+        atomicAdd(&sCount[warpId], myValidBins);
+    }
+
+    // --- Block Level Reduction ---
+    __syncthreads();
+
+    if (tid == 0) {
+        double finalSumInt = 0.0;
+        int finalValidBins = 0;
+        int numWarps = blockDim.x / warpSize;
+        if (blockDim.x % warpSize != 0) numWarps++;
+
+        for (int i = 0; i < numWarps; ++i) {
+             finalSumInt += sInt[i];
+             finalValidBins += sCount[i];
+        }
+
+        // Calculate simple average for this R bin
+        if (finalValidBins > 0) {
+            d_int1D_simple_mean[r_bin] = finalSumInt / finalValidBins;
+        } else {
+            d_int1D_simple_mean[r_bin] = 0.0;
+        }
+    }
+}
+
 
 // --- Host Wrapper for Full GPU Processing Pipeline ---
 void ProcessImageGPU(const int64_t *hRaw, double *dProc, const double *dAvgDark, int Nopt, const int Topt[MAX_TRANSFORM_OPS], int NY, int NZ, bool doSub,
@@ -1454,6 +1527,7 @@ int main(int argc, char *argv[]){
     double *dAvgDark = NULL;         // Averaged dark frame on GPU
     double *dProcessedImage = NULL;  // Transformed, dark-subtracted image on GPU (double)
     double *d_int1D = NULL;          // Final 1D integrated profile on GPU
+    double *d_int1D_simple_mean = NULL; // Simple mean 1D profile on GPU (optional)
     int *dMapMask = NULL;            // Pixel mask on GPU (optional)
     size_t mapMaskWC = 0;            // Word count for the mask array
     int *dNPxList = NULL;            // nMap data (pixel counts, offsets) on GPU
@@ -1481,6 +1555,7 @@ int main(int argc, char *argv[]){
     gpuErrchk(cudaMalloc(&dRLo, nRBins * sizeof(double)));
     gpuErrchk(cudaMalloc(&dRHi, nRBins * sizeof(double)));
     gpuErrchk(cudaMalloc(&d_int1D, nRBins * sizeof(double)));
+    gpuErrchk(cudaMalloc(&d_int1D_simple_mean, nRBins * sizeof(double)));
 
     // <<< ADDED: Allocate persistent transform buffers >>>
     size_t tempBufferSize = totalPixels * sizeof(int64_t);
@@ -1638,6 +1713,8 @@ int main(int argc, char *argv[]){
     // Open output files (use append binary mode "ab" to add to existing files if run multiple times)
     FILE *fLineout = fopen("lineout.bin", "wb"); // Overwrite lineout file each run
     check(!fLineout, "Error opening lineout.bin for writing: %s", strerror(errno));
+    FILE *fLineoutSimpleMean = fopen("lineout_simple_mean.bin", "wb");
+    check(!fLineoutSimpleMean, "Error opening lineout_simple_mean.bin for writing: %s", strerror(errno));
 
     FILE *fFit = NULL; // File handle for fit results
     FILE *fFitCurves = NULL;
@@ -1676,6 +1753,8 @@ int main(int argc, char *argv[]){
     double *hIntArrFrame = NULL; // Host buffer for 2D integrated frame (if wr2D)
     double *hPerFrame = NULL; // Host buffer for R, TTh, Eta, Area
     double *h_int1D = NULL; // Pinned host buffer for 1D profile
+    double *h_int1D_simple_mean = NULL;
+
     // Allocate pinned/regular host buffers for results
     if (wr2D) {
         gpuErrchk(cudaMallocHost((void**)&hIntArrFrame, bigArrSize * sizeof(double)));    // Pinned for async copy
@@ -1685,12 +1764,16 @@ int main(int argc, char *argv[]){
     check(!hPerFrame, "Allocation failed for pinned hPerFrame");
     gpuErrchk(cudaMallocHost((void**)&h_int1D, nRBins * sizeof(double)));
     check(!h_int1D, "Allocation failed for pinned host buffer h_int1D");
+    gpuErrchk(cudaMallocHost((void**)&h_int1D_simple_mean, nRBins * sizeof(double)));
+    check(!h_int1D_simple_mean, "Allocation failed for pinned host buffer h_int1D_simple_mean");
     double *hR = (double*)calloc(nRBins, sizeof(double)); // Host buffer for R bin centers
     check(!hR, "Allocation failed for hR");
     double *hEta = (double*)calloc(nEtaBins, sizeof(double)); // Host buffer for Eta bin centers
     check(!hEta, "Allocation failed for hEta");
     double *hLineout = (double*)malloc(nRBins * 2 * sizeof(double)); // Host buffer for writing lineout (R, Intensity pairs)
     check(!hLineout, "Allocation failed for hLineout");
+    double *hLineout_simple_mean = (double*)malloc(nRBins * 2 * sizeof(double));
+    check(!hLineout_simple_mean, "Allocation failed for hLineout_simple_mean");
 
     printf("Setup complete. Starting main processing loop...\n");
     double t_end_setup = get_wall_time_ms();
@@ -1742,9 +1825,13 @@ int main(int argc, char *argv[]){
 
         // --- GPU 1D Profile Stage (Reduction from 2D integrated) ---
         size_t profileSharedMem = (THREADS_PER_BLOCK_PROFILE / 32) * sizeof(double) * 2; // Shared mem per warp * 2 buffers
+        size_t profileSharedMemSimple = (THREADS_PER_BLOCK_PROFILE / 32) * (sizeof(double) + sizeof(int));
         gpuErrchk(cudaEventRecord(ev_prof_start, 0)); // Stream 0
         calculate_1D_profile_kernel<<<nRBins, THREADS_PER_BLOCK_PROFILE, profileSharedMem>>>(
             dIntArrFrame, dPerFrame, d_int1D, nRBins, nEtaBins, bigArrSize);
+        gpuErrchk(cudaPeekAtLastError());
+        calculate_1D_profile_simple_mean_kernel<<<nRBins, THREADS_PER_BLOCK_PROFILE, profileSharedMemSimple>>>(
+            dIntArrFrame, dPerFrame, d_int1D_simple_mean, nRBins, nEtaBins, bigArrSize);
         gpuErrchk(cudaPeekAtLastError());
         gpuErrchk(cudaEventRecord(ev_prof_stop, 0)); // Stream 0
 
@@ -1752,6 +1839,7 @@ int main(int argc, char *argv[]){
         gpuErrchk(cudaEventRecord(ev_d2h_start, 0)); // Stream 0
         // Copy 1D profile result to pinned host memory
         gpuErrchk(cudaMemcpyAsync(h_int1D, d_int1D, nRBins * sizeof(double), cudaMemcpyDeviceToHost, 0));
+        gpuErrchk(cudaMemcpyAsync(h_int1D_simple_mean, d_int1D_simple_mean, nRBins * sizeof(double), cudaMemcpyDeviceToHost, 0));
         // On the very first frame, also copy the R, TTh, Eta, Area array (all pre-calculated now)
         if(firstFrame == 1){
              // This copy now brings R, TTh, Eta, Area (all calculated once by init kernel)
@@ -1799,23 +1887,28 @@ int main(int argc, char *argv[]){
                 hLineout[r * 2] = hR[r]; // R value
                 hLineout[r * 2 + 1] = 0.0; // Initialize intensity
             }
+            for(int r = 0; r < nRBins; ++r){
+                hLineout_simple_mean[r * 2] = hR[r]; // R value
+                hLineout_simple_mean[r * 2 + 1] = 0.0;  // Initialize intensity
+            }
+
             printf("Initialized host R/Eta arrays from first frame D->H copy (using pre-initialized GPU data).\n");
 
-        printf("Writing R, TTh, Eta, Area map to RTthEtaAreaMap.bin...\n");
-        FILE *fMap = fopen("RTthEtaAreaMap.bin", "wb");
-        if (fMap) {
-            size_t elements_to_write = bigArrSize * 4;
-            size_t elements_written = fwrite(hPerFrame, sizeof(double), elements_to_write, fMap);
-            if (elements_written == elements_to_write) {
-                printf("Successfully wrote %zu double values to RTthEtaAreaMap.bin.\n", elements_written);
+            printf("Writing R, TTh, Eta, Area map to RTthEtaAreaMap.bin...\n");
+            FILE *fMap = fopen("RTthEtaAreaMap.bin", "wb");
+            if (fMap) {
+                size_t elements_to_write = bigArrSize * 4;
+                size_t elements_written = fwrite(hPerFrame, sizeof(double), elements_to_write, fMap);
+                if (elements_written == elements_to_write) {
+                    printf("Successfully wrote %zu double values to RTthEtaAreaMap.bin.\n", elements_written);
+                } else {
+                    fprintf(stderr, "Warn: Failed to write full map file (wrote %zu/%zu): %s\n",
+                            elements_written, elements_to_write, strerror(errno));
+                }
+                fclose(fMap);
             } else {
-                fprintf(stderr, "Warn: Failed to write full map file (wrote %zu/%zu): %s\n",
-                        elements_written, elements_to_write, strerror(errno));
+                fprintf(stderr, "Error: Could not open RTthEtaAreaMap.bin for writing: %s\n", strerror(errno));
             }
-            fclose(fMap);
-        } else {
-            fprintf(stderr, "Error: Could not open RTthEtaAreaMap.bin for writing: %s\n", strerror(errno));
-        }
 
             firstFrame = 0; // Don't run this block again
         }
@@ -1850,6 +1943,9 @@ int main(int argc, char *argv[]){
         for(int r = 0; r < nRBins; ++r){
             hLineout[r * 2 + 1] = h_int1D[r]; // Intensity value
         }
+        for(int r = 0; r < nRBins; ++r){
+            hLineout_simple_mean[r * 2 + 1] = h_int1D_simple_mean[r]; // Intensity value
+        }
 
         // --- Write 1D Lineout Data ---
         double t_write1d_start = get_wall_time_ms();
@@ -1860,6 +1956,15 @@ int main(int argc, char *argv[]){
                            currFidx, written, nRBins * 2, strerror(errno));
              } else {
                   fflush(fLineout); // Flush after each write to ensure data is saved
+             }
+        }
+        if (fLineoutSimpleMean) {
+             size_t written = fwrite(hLineout_simple_mean, sizeof(double), nRBins * 2, fLineoutSimpleMean);
+             if (written != (size_t)nRBins * 2) {
+                  fprintf(stderr, "Warn: Failed to write full simple mean lineout frame %d (wrote %zu/%d): %s\n",
+                           currFidx, written, nRBins * 2, strerror(errno));
+             } else {
+                  fflush(fLineoutSimpleMean);
              }
         }
         t_write1d_cpu = get_wall_time_ms() - t_write1d_start;
@@ -2100,6 +2205,7 @@ int main(int argc, char *argv[]){
 
     // Close output files
     if(fLineout) fclose(fLineout);
+    if(fLineoutSimpleMean) fclose(fLineoutSimpleMean);
     if(fFit) fclose(fFit);
     if(fFitCurves) fclose(fFitCurves);
     if(f2D) fclose(f2D); //
@@ -2112,9 +2218,11 @@ int main(int argc, char *argv[]){
     if(hIntArrFrame) gpuWarnchk(cudaFreeHost(hIntArrFrame)); // Free pinned host memory
     if(hPerFrame) gpuWarnchk(cudaFreeHost(hPerFrame));       // Free pinned host memory
     if(h_int1D) gpuWarnchk(cudaFreeHost(h_int1D));           // Free pinned host memory
+    if(h_int1D_simple_mean) gpuWarnchk(cudaFreeHost(h_int1D_simple_mean));
     if(hR) free(hR);
     if(hEta) free(hEta);
     if(hLineout) free(hLineout);
+    if(hLineout_simple_mean) free(hLineout_simple_mean);
     if(hEtaLo) free(hEtaLo);
     if(hEtaHi) free(hEtaHi);
     if(hRLo) free(hRLo);
@@ -2127,6 +2235,7 @@ int main(int argc, char *argv[]){
     if(dAvgDark) gpuWarnchk(cudaFree(dAvgDark));
     if(dProcessedImage) gpuWarnchk(cudaFree(dProcessedImage));
     if(d_int1D) gpuWarnchk(cudaFree(d_int1D));
+    if(d_int1D_simple_mean) gpuWarnchk(cudaFree(d_int1D_simple_mean));
     if(dMapMask) gpuWarnchk(cudaFree(dMapMask));
     if(dPxList) gpuWarnchk(cudaFree(dPxList));
     if(dNPxList) gpuWarnchk(cudaFree(dNPxList));
