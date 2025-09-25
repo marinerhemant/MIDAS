@@ -16,6 +16,7 @@ from functools import lru_cache, partial
 from contextlib import contextmanager
 import pwd
 import getpass
+from tqdm import tqdm
 
 # --- SETUP: LOGGING AND DYNAMIC PATHS ---
 
@@ -265,15 +266,16 @@ def run_image_processing(args: argparse.Namespace, params: Dict, t0: float):
             logger.info("Computing median locally using multiprocessing.")
             partial_median = partial(median_local, psFN=args.paramFN, logDir=logDir, resultFolder=resultFolder, bin_dir=bin_dir)
             with Pool(params['nDistances']) as p:
-                p.map(partial_median, range(1, params['nDistances'] + 1))
+                work_items = range(1, params['nDistances'] + 1)
+                list(tqdm(p.imap(partial_median, work_items), total=len(work_items), desc="Calculating Medians (Local)"))
         else:
             logger.info("Computing median remotely using Parsl.")
             median_futures = [median(args.paramFN, i, logDir, resultFolder, bin_dir) for i in range(1, params['nDistances'] + 1)]
-            [f.result() for f in median_futures]
+            [f.result() for f in tqdm(median_futures, desc="Calculating Medians (Parsl)")]
 
         logger.info("Processing images in parallel.")
         image_futures = [image(args.paramFN, i, args.nNodes, args.nCPUs, logDir, resultFolder, bin_dir) for i in range(args.nNodes)]
-        [f.result() for f in image_futures]
+        [f.result() for f in tqdm(image_futures, desc="Processing Images")]
         
     except Exception as e:
         logger.error("A failure occurred during the image processing stage. Aborting workflow.")
@@ -300,7 +302,7 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
         logger.info("Fitting orientations.")
         try:
             fit_futures = [fit(args.paramFN, i, args.nNodes, args.nCPUs, logDir, resultFolder, bin_dir) for i in range(args.nNodes)]
-            [f.result() for f in fit_futures]
+            [f.result() for f in tqdm(fit_futures, desc="Fitting Orientations")]
         except Exception as e:
             logger.error("A failure occurred during the orientation fitting stage. Aborting workflow.")
             logger.error(f"Details: {e}", exc_info=True)
@@ -458,6 +460,14 @@ def main():
     logDir = os.path.join(resultFolder, 'midas_log')
     params['logDir'] = logDir
     params['resultFolder'] = resultFolder
+
+    # Setup file logging to capture all output permanently
+    log_file_path = os.path.join(logDir, 'midas_nf_workflow.log')
+    file_handler = logging.FileHandler(log_file_path, mode='a') # Append mode
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    file_handler.setFormatter(formatter)
+    logging.getLogger('').addHandler(file_handler) # Add handler to the root logger
+    logger.info(f"Logging to console and to file: {log_file_path}")
 
     os.environ['MIDAS_SCRIPT_DIR'] = resultFolder
     
