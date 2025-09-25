@@ -6,7 +6,7 @@
 
 ## 1. Introduction
 
-`pf_MIDAS.py` is a comprehensive Python script for processing and analyzing scanning High-Energy Diffraction Microscopy (HEDM) data, often referred to as Pole Figure (PF) mapping. It is designed to handle multiple far-field HEDM datasets collected at various positions across a sample, automating the entire workflow from raw data to a fully reconstructed 3D microstructure.
+`pf_MIDAS.py` is a comprehensive Python script for processing and analyzing scanning High-Energy Diffraction Microscopy (HEDM) data, often referred to as Point-Focus (PF) HEDM. It is designed to handle multiple far-field HEDM datasets collected at various positions across a sample, automating the entire workflow from raw data to a fully reconstructed 3D microstructure.
 
 The script leverages the Parsl parallel programming library to efficiently distribute tasks, making it suitable for both multi-core workstations and large-scale HPC clusters. It orchestrates a complex, multi-stage analysis that includes parallel peak searching on individual scans followed by a combined indexing and refinement process on the aggregated data volume.
 
