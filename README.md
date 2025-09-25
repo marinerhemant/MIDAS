@@ -98,6 +98,8 @@ cd MIDAS
    conda activate midas_env
    ```
 
-**More details at** [MIDAS-WIKI](https://github.com/marinerhemant/MIDAS/wiki) 
+**MANUALS in the manuals directory**
+
+**Somewhat DEPRECATED! More details at** [MIDAS-WIKI](https://github.com/marinerhemant/MIDAS/wiki) 
 
 Installation instructions on the WIKI are old. Please refer to the instructions above for the latest method.
