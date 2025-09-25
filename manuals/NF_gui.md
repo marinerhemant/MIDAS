@@ -2,7 +2,7 @@
 
 This is a graphical user interface (GUI) for visualizing and analyzing near-field High-Energy Diffraction Microscopy (HEDM) data. The primary purpose of this tool is to perform a near-field calibration to determine the precise beam position and detector distances using a known calibrant sample, such as single-crystal gold.
 
-**DETAILED INSTRUCTIONS FOR CALIBRATION ARE AT:** [NF_CALIB](https://github.com/marinerhemant/MIDAS/manuals/NF_calibration.md)
+**DETAILED INSTRUCTIONS FOR CALIBRATION ARE AT:** [NF_CALIB](https://github.com/marinerhemant/MIDAS/blob/master/manuals/NF_calibration.md)
 
 ## Features
 
