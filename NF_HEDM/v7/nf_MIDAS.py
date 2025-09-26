@@ -37,6 +37,7 @@ def silence_parsl_loggers():
     # as the parent logger is usually sufficient to silence its children.
     parsl_loggers_to_silence = [
         "parsl",
+        "parsl.dataflow.memoization",
         "parsl.jobs.strategy",
         "parsl.process_loggers",
         "parsl.dataflow.dflow",
