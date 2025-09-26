@@ -26,25 +26,13 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger('MIDAS-NF')
-
-# Silence the noisy Parsl loggers to keep the output clean.
-def silence_parsl_loggers():
-    """
-    Sets the logging level for noisy Parsl loggers to WARNING.
-    This should be called *after* parsl.load().
-    """
-    # Adding the specific loggers you mentioned, though silencing "parsl"
-    # as the parent logger is usually sufficient to silence its children.
-    parsl_loggers_to_silence = [
-        "parsl",
-        "parsl.dataflow.memoization",
-        "parsl.jobs.strategy",
-        "parsl.process_loggers",
-        "parsl.dataflow.dflow",
-        "parsl.executors.threads"
-    ]
-    for logger_name in parsl_loggers_to_silence:
-        logging.getLogger(logger_name).setLevel(logging.WARNING)
+# Silence all Parsl loggers completely
+logging.getLogger("parsl").setLevel(logging.CRITICAL)  # Only show critical errors
+# Also silence these specific Parsl sub-loggers
+for logger_name in ["parsl.dataflow.dflow", "parsl.dataflow.memoization", 
+                    "parsl.process_loggers", "parsl.jobs.strategy",
+                    "parsl.executors.threads"]:
+    logging.getLogger(logger_name).setLevel(logging.CRITICAL)
 
 @lru_cache(maxsize=1)
 def get_installation_dir() -> str:
@@ -552,7 +540,6 @@ def main():
     
     try:
         args.nCPUs, args.nNodes = load_machine_config(args.machineName, args.nNodes, args.nCPUs)
-        silence_parsl_loggers() # Silence Parsl loggers after they have been configured.
     except Exception as e:
         logger.error(f"Failed to load machine configuration: {e}", exc_info=True)
         sys.exit(1)
