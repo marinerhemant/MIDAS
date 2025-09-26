@@ -898,10 +898,10 @@ main(int argc, char *argv[])
 			0,xs,ys,GridSize,(double)UD,BestEuler[0],BestEuler[1],
 			BestEuler[2],BestFrac};
 		int SizeWritten = 11*sizeof(double);
-		size_t OffsetHere = (rown-1);
+		size_t OffsetHere = (rown);
 		OffsetHere *= SizeWritten;
 		int SizeWritten2 = (7+(nSaves*4))*sizeof(double);
-		size_t OffsetThis = (rown-1);
+		size_t OffsetThis = (rown);
 		OffsetThis *= SizeWritten2;
 		#pragma omp critical
 		{
