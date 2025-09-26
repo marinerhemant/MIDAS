@@ -378,23 +378,49 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
                 grid_point_nr = closest_index + 1
                 logger.info(f"Closest grid point to ({x},{y}) is #{grid_point_nr}.")
 
+                out_file_path = f'{logDir}/fit_singlepoint_out.csv'
                 run_command(
                     cmd=os.path.join(bin_dir, "FitOrientationParameters") + f' {args.paramFN} {grid_point_nr}',
                     working_dir=resultFolder,
-                    out_file=f'{logDir}/fit_singlepoint_out.csv',
+                    out_file=out_file_path,
                     err_file=f'{logDir}/fit_singlepoint_err.csv'
                 )
+                try:
+                    with open(out_file_path, 'r') as f:
+                        results = f.read().strip()
+                    if results:
+                        print("\n" + "="*25 + " REFINEMENT RESULTS " + "="*25)
+                        print(results)
+                        print("="*70 + "\n")
+                        logger.info("Successfully displayed parameter refinement results to the console.")
+                    else:
+                        logger.warning(f"Refinement output file is empty: {out_file_path}")
+                except FileNotFoundError:
+                    logger.error(f"Could not find refinement output file to display: {out_file_path}")
             except Exception as e:
                 logger.error(f"Failed during single-point parameter refinement: {e}", exc_info=True)
                 sys.exit(1)
         else:
             logger.info("Refining parameters on multiple grid points defined in parameter file.")
+            out_file_path = f'{logDir}/fit_multipoint_out.csv'
             run_command(
-                cmd=os.path.join(bin_dir, "FitOrientationParametersMultiPoint") + f' {args.paramFN}',
+                cmd=os.path.join(bin_dir, "FitOrientationParameters") + f' {args.paramFN}',
                 working_dir=resultFolder,
-                out_file=f'{logDir}/fit_multipoint_out.csv',
+                out_file=out_file_path,
                 err_file=f'{logDir}/fit_multipoint_err.csv'
             )
+            try:
+                with open(out_file_path, 'r') as f:
+                    results = f.read().strip()
+                if results:
+                    print("\n" + "="*25 + " REFINEMENT RESULTS " + "="*25)
+                    print(results)
+                    print("="*70 + "\n")
+                    logger.info("Successfully displayed parameter refinement results to the console.")
+                else:
+                    logger.warning(f"Refinement output file is empty: {out_file_path}")
+            except FileNotFoundError:
+                logger.error(f"Could not find refinement output file to display: {out_file_path}")
     
     logger.info(f"Fitting stage finished. Time taken: {time.time() - t0:.2f} seconds.")
 
