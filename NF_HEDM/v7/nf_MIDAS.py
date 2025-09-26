@@ -207,16 +207,16 @@ def run_preprocessing(args: argparse.Namespace, params: Dict, t0: float):
             err_file=f'{logDir}/seed_err.csv'
         )
         
-        logger.info("Updating parameter file with orientation count.")
-        try:
-            nrOrientations = len(open(params['SeedOrientations']).readlines())
-            with open(args.paramFN, 'r') as f:
-                lines = [line for line in f if not line.strip().startswith('NrOrientations ')]
-            lines.append(f'NrOrientations {nrOrientations}\n')
-            with open(args.paramFN, 'w') as f:
-                f.writelines(lines)
-        except Exception as e:
-            raise RuntimeError(f"Failed to update parameter file with orientation count: {e}")
+    logger.info("Updating parameter file with orientation count.")
+    try:
+        nrOrientations = len(open(params['SeedOrientations']).readlines())
+        with open(args.paramFN, 'r') as f:
+            lines = [line for line in f if not line.strip().startswith('NrOrientations ')]
+        lines.append(f'NrOrientations {nrOrientations}\n')
+        with open(args.paramFN, 'w') as f:
+            f.writelines(lines)
+    except Exception as e:
+        raise RuntimeError(f"Failed to update parameter file with orientation count: {e}")
 
     logger.info("Making and filtering reconstruction space.")
     run_command(
