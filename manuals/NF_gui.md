@@ -28,7 +28,8 @@ Ensure you have a working Python environment with the following libraries instal
 To run the GUI, execute the following command from your terminal:
 
 ```bash
-python ~/opt/MIDAS/gui/nf.py &```
+python ~/opt/MIDAS/gui/nf.py &
+```
 
 ---
 
