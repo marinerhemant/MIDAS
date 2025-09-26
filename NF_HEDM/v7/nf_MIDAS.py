@@ -79,33 +79,69 @@ def run_command(cmd: str, working_dir: str, out_file: str, err_file: str) -> int
     return returncode
 
 def parse_parameters(param_file: str) -> Dict[str, Any]:
-    """Parses the MIDAS parameter file into a dictionary, handling different data types."""
+    """
+    Parses the MIDAS parameter file into a dictionary. It reads a specific
+    number of floats for designated multi-value keys and only the first value
+    for all other keys, ignoring trailing comments or data.
+    """
     params = {}
+    # Define parameters that are exceptions and require multiple float values.
+    # Format: { 'ParameterName': number_of_expected_floats }
+    multi_value_float_exceptions = {
+        'LatticeParameter': 6,
+        'GridMask': 4,
+        'BC': 2,
+        'OmegaRange': 2,
+        'BoxSize': 4,
+        'BCTol': 2,
+        'GridPoints': 12
+    }
+
     try:
         with open(param_file, 'r') as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith('#'):
                     continue
+
                 parts = line.split(maxsplit=1)
                 if len(parts) != 2:
                     continue
-                key, value = parts
-                # Type casting for known numeric parameters
-                if key in ['nDistances', 'RawStartNr']:
-                    params[key] = int(value)
+                
+                key, value_string = parts
+                values = value_string.split() # Splits by any whitespace (space, tab)
+
+                if not values:
+                    continue # Skip if there's a key but no value on the line
+
+                # 1. Handle the special multi-value float parameters
+                if key in multi_value_float_exceptions:
+                    count = multi_value_float_exceptions[key]
+                    if len(values) < count:
+                        raise ValueError(f"Expected {count} values for key '{key}', but found {len(values)}.")
+                    params[key] = [float(v) for v in values[:count]]
+
+                # 2. Handle known single-value numeric parameters
+                elif key in ['nDistances', 'RawStartNr']:
+                    params[key] = int(values[0]) # Take only the first value and cast to int
                 elif key in ['TomoPixelSize']:
-                    params[key] = float(value)
-                elif key == 'GridMask':
-                    params[key] = [float(v) for v in value.split()]
+                    params[key] = float(values[0]) # Take only the first value and cast to float
+
+                # 3. Handle all other parameters (the general case)
                 else:
-                    params[key] = value # Default to string
+                    params[key] = values[0] # Take only the first value and keep as string
+
     except FileNotFoundError:
         logger.error(f"Parameter file not found: {param_file}")
         sys.exit(1)
-    except Exception as e:
-        logger.error(f"Failed to parse parameter file {param_file}: {e}")
+    except (ValueError, IndexError) as e:
+        logger.error(f"Failed to parse line in {param_file}: '{line.strip()}'")
+        logger.error(f"Reason: {e}")
         sys.exit(1)
+    except Exception as e:
+        logger.error(f"An unexpected error occurred while parsing {param_file}: {e}")
+        sys.exit(1)
+        
     return params
 
 @contextmanager
