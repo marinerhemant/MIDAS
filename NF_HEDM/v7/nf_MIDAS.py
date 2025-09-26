@@ -192,7 +192,7 @@ def run_preprocessing(args: argparse.Namespace, params: Dict, t0: float):
 
     logger.info("Making HKLs.")
     run_command(
-        cmd=os.path.join(install_dir, "FF_HEDM/bin/GetHKLListNF") + f" {args.paramFN}",
+        cmd=os.path.join(install_dir, "NF_HEDM/bin/GetHKLListNF") + f" {args.paramFN}",
         working_dir=resultFolder,
         out_file=f'{logDir}/hkls_out.csv',
         err_file=f'{logDir}/hkls_err.csv'
