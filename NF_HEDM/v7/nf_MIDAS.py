@@ -379,7 +379,7 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
                 logger.info(f"Closest grid point to ({x},{y}) is #{grid_point_nr}.")
 
                 run_command(
-                    cmd=os.path.join(bin_dir, "FitOrientationParametersMultiPoint") + f' {args.paramFN} {grid_point_nr}',
+                    cmd=os.path.join(bin_dir, "FitOrientationParameters") + f' {args.paramFN} {grid_point_nr}',
                     working_dir=resultFolder,
                     out_file=f'{logDir}/fit_singlepoint_out.csv',
                     err_file=f'{logDir}/fit_singlepoint_err.csv'
@@ -390,7 +390,7 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
         else:
             logger.info("Refining parameters on multiple grid points defined in parameter file.")
             run_command(
-                cmd=os.path.join(bin_dir, "FitOrientationParameters") + f' {args.paramFN}',
+                cmd=os.path.join(bin_dir, "FitOrientationParametersMultiPoint") + f' {args.paramFN}',
                 working_dir=resultFolder,
                 out_file=f'{logDir}/fit_multipoint_out.csv',
                 err_file=f'{logDir}/fit_multipoint_err.csv'
