@@ -461,6 +461,8 @@ def main():
     params['logDir'] = logDir
     params['resultFolder'] = resultFolder
 
+    os.makedirs(logDir, exist_ok=True)
+
     # Setup file logging to capture all output permanently
     log_file_path = os.path.join(logDir, 'midas_nf_workflow.log')
     file_handler = logging.FileHandler(log_file_path, mode='a') # Append mode
