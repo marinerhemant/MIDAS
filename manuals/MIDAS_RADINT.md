@@ -233,7 +233,7 @@ These control the optional peak fitting stage. Setting `DoPeakFit` or `PeakLocat
 | `PeakLocation`| double | Specifies the approximate radial position (in pixels) of a peak to be fitted. Can be used multiple times for multiple peaks. Automatically enables `DoPeakFit` and `MultiplePeaks`. |
 | `MultiplePeaks`| int | **1**: Find and fit multiple peaks. Implied if `PeakLocation` is used. **0**: (Default) Fit only the single most intense peak. |
 | `DoSmoothing`| int | **1**: Apply a Savitzky-Golay smoothing filter to the 1D profile *before* peak finding (not recommended if fitting specific `PeakLocation`s). **0**: (Default) Do not smooth. |
-| `FitROIPadding`| int | The number of bins to include on either side of a peak's center to define its Region of Interest (ROI) for fitting. Default is 20. |
+| `FitROIPadding`| int | The number of **bins** to include on either side of a peak's center to define its Region of Interest (ROI) for fitting. Default is 20. |
 | `FitROIAuto`| int | **1**: Dynamically determine the ROI padding based on an initial estimate of the peak's Full Width at Half Maximum (FWHM). Overrides `FitROIPadding`. **0**: (Default) Use the fixed `FitROIPadding` value. |
 
 ##### **Output Control Parameters**
