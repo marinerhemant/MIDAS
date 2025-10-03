@@ -15,6 +15,157 @@ This two-stage approach moves the most computationally expensive geometric calcu
 
 ---
 
+# utils/integrator_batch_process.py User Manual
+
+---
+
+## 1. Introduction
+
+`integrator_batch_process.py` is the master orchestration script for the real-time, GPU-accelerated diffraction integration pipeline. It is not a standalone processing tool, but rather a controller that manages a series of specialized components to create a complete, automated workflow.
+
+The primary goal of this pipeline is to take raw 2D detector data, either from a folder of image files or a live PVA stream, and process it at high speed into reduced 1D lineouts, fitted peak parameters, and a final, consolidated HDF5 file.
+
+This script automates the following sequence:
+1.  **Pre-flight Check:** Automatically runs `DetectorMapper` to generate necessary pixel mapping files (`Map.bin`, `nMap.bin`) if they are not found.
+2.  **Start Backend:** Launches the `IntegratorFitPeaksGPUStream` C++/CUDA application, which starts a server and waits for data.
+3.  **Start Data Feeder:** Runs the `integrator_server.py` script, which finds the data (files or stream) and sends it frame by frame to the GPU backend.
+4.  **Monitor Progress:** Actively monitors the processing, providing real-time feedback on the number of frames completed, processing rate, and estimated time remaining.
+5.  **Shutdown:** Gracefully terminates the server and backend processes once processing is complete or if the user aborts.
+6.  **Post-process:** Calls `integrator_stream_process_h5.py` to convert the raw binary output files (`lineout.bin`, `fit.bin`, etc.) into a single, well-structured HDF5 file for analysis.
+
+---
+
+## 2. Prerequisites
+
+1.  **MIDAS Installation:** All components (`DetectorMapper`, `IntegratorFitPeaksGPUStream`, and the Python scripts) must be correctly compiled and located in their standard MIDAS directory structure (e.g., `~/opt/MIDAS/`).
+2.  **Python Environment:** A Python environment with the `psutil` library installed (`pip install psutil`).
+3.  **Input Data:**
+    *   A **Parameter File** that configures the `IntegratorFitPeaksGPUStream` backend.
+    *   Either a directory of image files or a running PVA stream.
+
+---
+
+## 3. Parameters Guide (Command-Line Arguments)
+
+The entire pipeline is configured through the command-line arguments passed to `integrator_batch_process.py`.
+
+### **Required Arguments**
+
+These arguments are essential and must be provided for the script to run.
+
+`--param-file <path>`
+:   **Function:** Specifies the path to the main parameter file.
+:   **Details:** This is the most crucial file, as it contains all the geometric, integration, and peak-fitting parameters that will be used by the `IntegratorFitPeaksGPUStream` backend. This script reads it to determine frame size and other metadata, and passes it directly to the backend.
+
+A data source must be specified using one of the following two mutually exclusive options:
+
+`--folder <path>`
+:   **Function:** Specifies the directory containing the raw image files to be processed.
+:   **Details:** The script will scan this folder for files matching the `--extension` and feed them one by one to the processing backend.
+
+`--pva`
+:   **Function:** Instructs the script to get data from a live PVA (Portable Virtual Application) stream instead of from files.
+:   **Details:** This is used for real-time, on-the-fly processing during an experiment. The specific PVA server and channel are configured with the `--pva-ip` and `--pva-channel` options.
+
+### **Optional Arguments**
+
+These arguments allow you to customize the pipeline's behavior.
+
+`--extension <ext>`
+:   **Function:** Sets the file extension for the image files to be processed when using `--folder`.
+:   **Default:** `tif`
+:   **Details:** Use this if your image files have a different extension, for example, `h5` or `geX`.
+
+`--dark <path>`
+:   **Function:** Specifies the path to a dark-field image or a binary file containing averaged dark frames.
+:   **Details:** This file is passed directly to the `IntegratorFitPeaksGPUStream` backend, which will use it for background subtraction during the GPU processing pipeline. If omitted, no dark correction is performed.
+
+`--output-h5 <filename>`
+:   **Function:** Sets the name for the final, consolidated HDF5 output file.
+:   **Default:** `integrator_output.h5`
+:   **Details:** This is the filename that will be passed to the `integrator_stream_process_h5.py` script at the end of the workflow.
+
+`--mapping-file <filename>`
+:   **Function:** Sets the name for the JSON file that maps frame numbers to their original filenames or timestamps.
+:   **Default:** `frame_mapping.json`
+:   **Details:** This file is crucial for correlating the processed data back to the source. The `integrator_server.py` script generates it during processing.
+
+`--save-interval <integer>`
+:   **Function:** Controls how often the mapping file is saved to disk.
+:   **Default:** `10`
+:   **Details:** The mapping file will be updated every N frames. A smaller number provides more frequent updates for progress monitoring but results in slightly more disk I/O.
+
+`--h5-location <path>`
+:   **Function:** Specifies the internal path within an HDF5 file where the image data is located.
+:   **Default:** `exchange/data`
+:   **Details:** This is only used when processing HDF5 files (i.e., `--extension h5`). It tells the server where to find the 2D image dataset inside each HDF5 file.
+
+#### **PVA-Specific Arguments**
+These are only used when the `--pva` flag is active.
+
+`--pva-ip <ip_address>`
+:   **Function:** The IP address of the PVA server.
+:   **Default:** `10.54.105.139`
+
+`--pva-channel <string>`
+:   **Function:** The name of the PVA channel that is broadcasting the image data.
+:   **Default:** `16pil-idb:Pva1:Image`
+
+---
+
+## 4. Execution Examples
+
+### Example 1: Processing a Folder of TIFF Files
+Process all `.tif` files in the `/data/my_scan_01` directory, using a dark file for correction.
+
+```bash
+python integrator_control.py \
+    --param-file /params/setup_30keV.txt \
+    --folder /data/my_scan_01 \
+    --dark /data/darks/dark_avg.bin \
+    --output-h5 my_scan_01_processed.h5
+```
+
+### Example 2: Processing a Live PVA Stream
+Connect to a PVA stream for real-time processing and save the output to a different HDF5 file.
+
+```bash
+python integrator_control.py \
+    --param-file /params/realtime_setup.txt \
+    --pva \
+    --pva-ip 10.54.105.150 \
+    --pva-channel "MyDetector:PvaStream" \
+    --output-h5 live_output.h5
+```
+
+### Example 3: Processing HDF5 Files
+Process a folder of HDF5 files where the data is located at a custom internal path.
+
+```bash
+python integrator_control.py \
+    --param-file /params/h5_setup.txt \
+    --folder /data/hdf_scan \
+    --extension h5 \
+    --h5-location /entry/instrument/detector/data
+```
+
+---
+
+## 5. Output Files
+
+The script coordinates the creation of several files, but the most important one is the final HDF5 file.
+
+*   **`<output-h5>` (e.g., `integrator_output.h5`):** The primary output. A structured HDF5 file containing all the processed data, including 1D lineouts, peak fit results, and metadata, generated by `integrator_stream_process_h5.py`.
+*   **`lineout.bin`, `fit.bin`, etc.:** Intermediate raw binary files created by `IntegratorFitPeaksGPUStream`. These are consumed by the HDF5 conversion script.
+*   **`<mapping-file>` (e.g., `frame_mapping.json`):** A JSON file linking each processed frame index to its source file or timestamp.
+*   **`integrator.log`:** A log file containing the stdout and stderr from the `IntegratorFitPeaksGPUStream` backend. **Check this file first for debugging GPU or core processing errors.**
+*   **`server.log`:** A log file from the `integrator_server.py` script. **Check this file for debugging data input errors (e.g., file not found, PVA connection issues).**
+*   **`detector_mapper.log`:** (If run) The log file from the `DetectorMapper` pre-flight check.
+
+---
+
+## Detailed workflow
+
 ## 1. `DetectorMapper`
 
 This command-line tool generates the essential `Map.bin` and `nMap.bin` files required by the integrator. It must be run anytime the experimental geometry (detector distance, tilts, etc.) or the desired binning scheme changes.
