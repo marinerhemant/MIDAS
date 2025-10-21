@@ -351,6 +351,8 @@ def process_multifile_scan(file_type, config, z_groups):
         frames_per_file = (os.path.getsize(file_list[0]) - header_size) // (bytes_per_pixel * numPxY * numPxZ)
     else: # tiff
         frames_per_file = 1
+    if file_type != 'ge':
+        import tifffile
 
     num_files_found = len(file_list)
     total_frames_to_write = frames_per_file
@@ -412,7 +414,7 @@ def process_multifile_scan(file_type, config, z_groups):
                 z_data[z_offset : z_offset + len(data_chunk)] = data_chunk
                 z_offset += len(data_chunk)
         else: # TIFF logic remains simple
-            data_chunk = np.fromfile(current_fn, dtype=output_dtype, offset=8).reshape((1, numPxZ, numPxY))
+            data_chunk = tifffile.imread(current_fn).reshape((1, numPxZ, numPxY))
             if correction_active:
                 data_chunk = apply_correction(data_chunk, dark_mean, pre_proc_threshold)
             z_data[z_offset : z_offset + len(data_chunk)] = data_chunk
