@@ -82,16 +82,14 @@ def parse_parameter_file(filename):
                 
                 final_value = processed_values if len(processed_values) > 1 else processed_values[0]
                 
-                # --- START OF CORRECTED LOGIC ---
                 if key not in params:
                     # First time we see this key. Just assign the value.
                     # e.g., params['RingThresh'] = [1, 80]
                     params[key] = final_value
                 else:
-                    if not isinstance(params[key][0], list):
+                    if not isinstance(params[key], list) or not any(isinstance(i, list) for i in params[key]):
                         params[key] = [params[key]]
                     params[key].append(final_value)
-                # --- END OF CORRECTED LOGIC ---
 
     except FileNotFoundError:
         print(f"Error: Parameter file not found at '{filename}'")
