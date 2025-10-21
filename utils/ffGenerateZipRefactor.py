@@ -389,7 +389,7 @@ def process_multifile_scan(file_type, config, z_groups):
                 z_data[z_offset : z_offset + len(data_chunk)] = data_chunk
                 z_offset += len(data_chunk)
         else: # TIFF logic remains simple
-            data_chunk = tifffile.imread(current_fn)
+            data_chunk = tifffile.imread(current_fn).reshape((1, numPxZ, numPxY))
             if correction_active:
                 data_chunk = apply_correction(data_chunk, dark_mean, pre_proc_threshold)
             z_data[z_offset : z_offset + len(data_chunk)] = data_chunk
