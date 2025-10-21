@@ -305,7 +305,6 @@ def process_multifile_scan(file_type, config, z_groups):
     numPxY, numPxZ = int(config['numPxY']), int(config['numPxZ'])
 
     # --- Correction Logic ---
-    # Determine if correction operations should be performed.
     dark_file_path = config.get('darkFN')
     dark_file_provided = dark_file_path and Path(dark_file_path).exists()
     pre_proc_thresh_value = int(config.get('preProcThresh', -1))
@@ -317,15 +316,48 @@ def process_multifile_scan(file_type, config, z_groups):
     bytes_per_pixel = np.dtype(output_dtype).itemsize
     print(f"Handling as {output_dtype.__name__}. Files per scan: {num_files}")
 
-    match = re.search(r'(\d+)', Path(config['dataFN']).stem)
-    if not match: raise ValueError("Could not find numeric sequence in data filename.")
-    fNr_orig_str, start_nr = match.group(1), int(match.group(1))
+    # 1. More robustly parse the filename to find the *correct* number to increment.
+    filename_stem = Path(config['dataFN']).stem
+    # This regex now specifically finds the number block at the very end of the stem.
+    match = re.search(r'(\d+)$', filename_stem)
+    if not match:
+        raise ValueError(f"Could not find a numeric sequence at the end of the data filename stem: '{filename_stem}'")
 
-    if file_type == 'ge': frames_per_file = (os.path.getsize(config['dataFN']) - header_size) // (bytes_per_pixel * numPxY * numPxZ)
-    else: frames_per_file = 1
+    fNr_orig_str = match.group(1)
+    start_nr = int(fNr_orig_str)
+    # The base part of the filename is everything *before* the matched number string
+    filename_base = filename_stem[:-len(fNr_orig_str)]
+    parent_dir = Path(config['dataFN']).parent
+    file_ext = Path(config['dataFN']).suffix
 
-    total_frames_to_write = frames_per_file + (frames_per_file - skip_frames) * (num_files - 1)
-    print(f"Scan: {num_files} file(s), {frames_per_file} frames/file. Skipping {skip_frames} from files 2+. Total frames to write: {total_frames_to_write}.")
+    # 2. Pre-scan to find all existing files and determine the exact size needed.
+    file_list = []
+    for i in range(num_files):
+        # Safely reconstruct the filename instead of using a risky replace() call
+        current_nr = start_nr + i
+        current_nr_str = str(current_nr).zfill(len(fNr_orig_str))
+        current_fn = parent_dir / f"{filename_base}{current_nr_str}{file_ext}"
+
+        if current_fn.exists():
+            file_list.append(str(current_fn))
+        else:
+            print(f"Info: File sequence ended. Could not find {current_fn}")
+            break # Stop if a file is missing in the sequence
+    
+    if not file_list:
+        raise FileNotFoundError(f"No data files found for the sequence starting with {config['dataFN']}")
+
+    if file_type == 'ge':
+        frames_per_file = (os.path.getsize(file_list[0]) - header_size) // (bytes_per_pixel * numPxY * numPxZ)
+    else: # tiff
+        frames_per_file = 1
+
+    num_files_found = len(file_list)
+    total_frames_to_write = frames_per_file
+    if num_files_found > 1:
+        total_frames_to_write += (frames_per_file - skip_frames) * (num_files_found - 1)
+
+    print(f"Scan: {num_files_found} file(s) found, {frames_per_file} frames/file. Skipping {skip_frames} from files 2+. Total frames to write: {total_frames_to_write}.")
 
     z_data = z_groups['exc'].create_dataset('data', shape=(total_frames_to_write, numPxZ, numPxY), dtype=output_dtype, chunks=(1, numPxZ, numPxY), compression=compressor)
     z_offset = 0
@@ -347,19 +379,10 @@ def process_multifile_scan(file_type, config, z_groups):
         z_groups['exc'].create_dataset('dark', data=dark_frames_data, dtype=output_dtype, chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
         z_groups['exc'].create_dataset('bright', data=dark_frames_data, dtype=output_dtype, chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
 
-    # The threshold for clipping is the dark mean plus the optional threshold value
     pre_proc_threshold = dark_mean + (pre_proc_thresh_value if pre_proc_thresh_value != -1 else 0)
-    if file_type != 'ge':
-        import tifffile
 
-    for i in range(num_files):
-        current_nr_str = str(start_nr + i).zfill(len(fNr_orig_str))
-        current_fn = config['dataFN'].replace(fNr_orig_str, current_nr_str, 1)
-        if not Path(current_fn).exists(): 
-            print(f"Warning: File not found, stopping scan: {current_fn}")
-            z_data.resize(z_offset, numPxZ, numPxY)
-            break
-        print(f"  - Reading file {i+1}/{num_files}: {current_fn}")
+    for i, current_fn in enumerate(file_list):
+        print(f"  - Reading file {i+1}/{num_files_found}: {current_fn}")
 
         start_frame_in_file = skip_frames if i > 0 else 0
 
@@ -389,14 +412,14 @@ def process_multifile_scan(file_type, config, z_groups):
                 z_data[z_offset : z_offset + len(data_chunk)] = data_chunk
                 z_offset += len(data_chunk)
         else: # TIFF logic remains simple
-            data_chunk = tifffile.imread(current_fn).reshape((1, numPxZ, numPxY))
+            data_chunk = np.fromfile(current_fn, dtype=output_dtype, offset=8).reshape((1, numPxZ, numPxY))
             if correction_active:
                 data_chunk = apply_correction(data_chunk, dark_mean, pre_proc_threshold)
             z_data[z_offset : z_offset + len(data_chunk)] = data_chunk
             z_offset += len(data_chunk)
 
     return output_dtype
-
+    
 def build_config(parser, args):
     """Builds a unified configuration dictionary with correct override priority."""
     # Load parameters from the file first.
