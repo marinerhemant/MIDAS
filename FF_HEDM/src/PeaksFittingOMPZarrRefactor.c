@@ -2147,8 +2147,10 @@ static ErrorCode parseZarrMetadata(
             readZarrInt(archive, count, &metadata->doPeakFit); 
             params->doPeakFit = metadata->doPeakFit;
         }
-        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/ResultFolder/0") != NULL) readZarrString(archive, count, resultFolder);
-        printf("ResultFolder: %s\n",resultFolder);
+        if (strstr(fileInfo->name, "analysis/process/analysis_parameters/ResultFolder/0") != NULL){ 
+            readZarrString(archive, count, resultFolder);
+            printf("%s\n",resultFolder);
+        }
         if (strstr(fileInfo->name, "analysis/process/analysis_parameters/MaxNPeaks/0") != NULL) readZarrInt(archive, count, &params->maxNPeaks);
         if (strstr(fileInfo->name, "analysis/process/analysis_parameters/SkipFrame/0") != NULL) readZarrInt(archive, count, &metadata->skipFrame);
         if (strstr(fileInfo->name, "analysis/process/analysis_parameters/zDiffThresh/0") != NULL) readZarrDouble(archive, count, &params->zDiffThresh);
