@@ -2149,7 +2149,7 @@ static ErrorCode parseZarrMetadata(
         }
         if (strstr(fileInfo->name, "analysis/process/analysis_parameters/ResultFolder/0") != NULL){ 
             readZarrString(archive, count, resultFolder);
-            printf("%s\n",resultFolder);
+            printf("ResultFolder: %s\n",&resultFolder);
         }
         if (strstr(fileInfo->name, "analysis/process/analysis_parameters/MaxNPeaks/0") != NULL) readZarrInt(archive, count, &params->maxNPeaks);
         if (strstr(fileInfo->name, "analysis/process/analysis_parameters/SkipFrame/0") != NULL) readZarrInt(archive, count, &metadata->skipFrame);
