@@ -1778,7 +1778,7 @@ static ErrorCode readZarrDataType(
     while (zip_stat_index(archive, count, 0, &fileInfo) == 0) {
         if (strstr(fileInfo.name, "measurement/process/scan_parameters/datatype") != NULL) {
             char *typeName = NULL;
-            ErrorCode error = readZarrString(archive, count, &typeName);
+            ErrorCode error = readZarrString(archive, count+1, &typeName);
             
             if (error != SUCCESS) {
                 fprintf(stderr, "Error reading Zarr data type: %s\n", getErrorMessage(error));
@@ -1848,6 +1848,8 @@ static void printAllParameters(const ImageMetadata *metadata, const AnalysisPara
 
     printf("\n--- Analysis Parameters ---\n");
     // --- Print AnalysisParams Struct ---
+    // ResultFolder
+    printf("  ResultFolder       : %s\n", params->ResultFolder);
     printf("  bc (Beam Current)  : %f\n", params->bc);
     printf("  Ycen               : %f\n", params->Ycen);
     printf("  Zcen               : %f\n", params->Zcen);
@@ -2147,6 +2149,7 @@ static ErrorCode parseZarrMetadata(
             params->doPeakFit = metadata->doPeakFit;
         }
         if (strstr(fileInfo->name, "analysis/process/analysis_parameters/ResultFolder/0") != NULL) readZarrString(archive, count, resultFolder);
+        printf("ResultFolder: %s\n",resultFolder);
         if (strstr(fileInfo->name, "analysis/process/analysis_parameters/MaxNPeaks/0") != NULL) readZarrInt(archive, count, &params->maxNPeaks);
         if (strstr(fileInfo->name, "analysis/process/analysis_parameters/SkipFrame/0") != NULL) readZarrInt(archive, count, &metadata->skipFrame);
         if (strstr(fileInfo->name, "analysis/process/analysis_parameters/zDiffThresh/0") != NULL) readZarrDouble(archive, count, &params->zDiffThresh);
