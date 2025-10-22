@@ -1591,16 +1591,28 @@ static ErrorCode readZarrString(
     }
     
     // Decompress data
-    dsize = blosc1_decompress(arr, *value, dsize);
-    if (dsize <= 0) {
-        free(arr);
-        free(*value);
-        *value = NULL;
-        return ERROR_BLOSC_OPERATION;
+    int32_t decompressedSize = blosc1_decompress(arr, *value, dsize);
+    if (decompressedSize <= 0) {
+        // DECOMPRESSION FAILED.
+        // This is likely because the data was not compressed.
+        // We will copy the raw data directly.
+        // Check that the raw data fits in our buffer.
+        if (fileStat.size < dsize) {
+            memcpy(*value, arr, fileStat.size);
+            decompressedSize = fileStat.size; // Set the size to the raw size
+        } else {
+            // The raw data is too big for our destination buffer.
+            fprintf(stderr, "Warning: Uncompressed Zarr string chunk is too large.\n");
+            free(arr);
+            free(*value);
+            *value = NULL;
+            // Return the original blosc error, as something is wrong.
+            return ERROR_BLOSC_OPERATION;
+        }
     }
     
     // Ensure null termination
-    (*value)[dsize] = '\0';
+    (*value)[decompressedSize] = '\0';
     
     free(arr);
     
