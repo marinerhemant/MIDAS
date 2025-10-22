@@ -1849,7 +1849,6 @@ static void printAllParameters(const ImageMetadata *metadata, const AnalysisPara
     printf("\n--- Analysis Parameters ---\n");
     // --- Print AnalysisParams Struct ---
     // ResultFolder
-    printf("  ResultFolder       : %s\n", params->ResultFolder);
     printf("  bc (Beam Current)  : %f\n", params->bc);
     printf("  Ycen               : %f\n", params->Ycen);
     printf("  Zcen               : %f\n", params->Zcen);
