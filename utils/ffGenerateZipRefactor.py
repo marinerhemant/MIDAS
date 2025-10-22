@@ -148,7 +148,16 @@ def write_analysis_parameters(z_groups, config):
                 padded_values = np.zeros(6, dtype=np.double)
                 padded_values[:len(values)] = values
                 target_group.create_dataset(target_key, data=padded_values.astype(np.double))
-            elif key in ['RingThresh', 'RingsToExclude', 'OmegaRange', 'BoxSize', 'ImTransOpt']:
+            elif key == 'ImTransOpt':
+                # Ensure the value from the param file is a list
+                values_to_write = value if isinstance(value, list) else [value]
+                
+                # Create a numpy array. Use flatten() to guarantee it is 1D.
+                arr = np.array(values_to_write, dtype=np.int32).flatten()
+                
+                print(f"  - Writing '{target_key}' as a 1D array with shape: {arr.shape}")
+                target_group.create_dataset(target_key, data=arr)
+            elif key in ['RingThresh', 'RingsToExclude', 'OmegaRange', 'BoxSize']:
                 temp_value = value if isinstance(value, list) else [value]
                 if not temp_value or not isinstance(temp_value[0], list):
                     values_to_write = [temp_value]
