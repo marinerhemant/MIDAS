@@ -78,6 +78,22 @@ typedef enum {
     ERROR_THREAD_CREATION
 } ErrorCode;
 
+static const char* getErrorMessage(ErrorCode code)
+{
+    switch (code) {
+        case SUCCESS:                   return "Success";
+        case ERROR_FILE_OPEN:           return "Could not open file";
+        case ERROR_MEMORY_ALLOCATION:   return "Memory allocation failed";
+        case ERROR_ZIP_OPEN:            return "Could not open zip archive";
+        case ERROR_DIRECTORY_CREATION:  return "Could not create directory";
+        case ERROR_INVALID_PARAMETERS:  return "Invalid parameters provided";
+        case ERROR_BLOSC_OPERATION:     return "Blosc compression/decompression failed";
+        case ERROR_THREAD_CREATION:     return "Could not create thread";
+        default:                        return "An unknown error occurred";
+    }
+}
+
+
 // Structure for image metadata
 typedef struct {
     int nFrames;
