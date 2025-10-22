@@ -1751,11 +1751,12 @@ static ErrorCode readZarrDataType(
         if (strstr(fileInfo.name, "measurement/process/scan_parameters/datatype") != NULL) {
             char *typeName = NULL;
             ErrorCode error = readZarrString(archive, count, &typeName);
-            printf("%s\n",typeName);
             
             if (error != SUCCESS) {
+                fprintf(stderr, "Error reading Zarr data type: %s\n", getErrorMessage(error));
                 return error;
             }
+            printf("%s\n",typeName);
             
             // Set the pixel type based on string content
             if (typeName) {
