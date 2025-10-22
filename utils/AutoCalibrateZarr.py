@@ -1101,7 +1101,7 @@ def main():
         logger.info("Converged to a good set of parameters.\nBest values:")
         logger.info(f'Lsd {lsd_refined}')
         logger.info(f'BC {bc_refined}')
-        logger.info(f'ty {tx_reference}')
+        logger.info(f'tx {tx_reference}')
         logger.info(f'ty {ty_refined}')
         logger.info(f'tz {tz_refined}')
         logger.info(f'p0 {p0_refined}')
