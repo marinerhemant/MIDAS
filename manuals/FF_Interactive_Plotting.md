@@ -23,9 +23,9 @@ Before running the application, ensure you have the necessary software libraries
 
 The application is a Python script and requires several libraries to be installed. You can install them using pip:
 
-codeCode
-
+```
 pip install dash dash-bootstrap-components pandas numpy plotly zarr
+```
 
 - **dash & dash-bootstrap-components:** The core framework for building the web application.
 - **pandas & numpy:** Used for efficient data manipulation and numerical operations.
@@ -100,9 +100,9 @@ To launch the interactive viewer, navigate to the directory containing the scrip
 
 **Command:**
 
-codeCode
-
-python &lt;script_name&gt;.py -resultFolder /path/to/your/results -dataFileName /path/to/your/data.zarr
+```
+python interactiveFFplotting.py -resultFolder /path/to/your/results -dataFileName /path/to/your/data.zarr
+```
 
 **Arguments:**
 
