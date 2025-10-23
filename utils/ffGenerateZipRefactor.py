@@ -392,12 +392,12 @@ def process_multifile_scan(file_type, config, z_groups):
 
     pre_proc_threshold = dark_mean + (pre_proc_thresh_value if pre_proc_thresh_value != -1 else 0)
 
-    for i, current_fn in enumerate(file_list):
-        print(f"  - Reading file {i+1}/{num_files_found}: {current_fn}")
+    if file_type == 'ge':
+        for i, current_fn in enumerate(file_list):
+            print(f"  - Reading file {i+1}/{num_files_found}: {current_fn}")
 
-        start_frame_in_file = skip_frames if i > 0 else 0
+            start_frame_in_file = skip_frames if i > 0 else 0
 
-        if file_type == 'ge':
             frames_in_this_file = (os.path.getsize(current_fn) - header_size) // (bytes_per_pixel * numPxY * numPxZ)
             readable_frames = frames_in_this_file - start_frame_in_file
 
@@ -422,12 +422,30 @@ def process_multifile_scan(file_type, config, z_groups):
                 
                 z_data[z_offset : z_offset + len(data_chunk)] = data_chunk
                 z_offset += len(data_chunk)
-        else: # TIFF logic remains simple
-            data_chunk = tifffile.imread(current_fn).reshape((1, numPxZ, numPxY))
+    else: # TIFF reading in parallel
+        import concurrent.futures
+        # --- Define a "worker" function for a single TIFF file ---
+        def process_single_tiff(filepath):
+            """Reads, corrects, and returns data for one TIFF file."""
+            data_chunk = tifffile.imread(filepath).reshape((1, numPxZ, numPxY))
             if correction_active:
-                data_chunk = apply_correction(data_chunk, dark_mean, pre_proc_threshold)
-            z_data[z_offset : z_offset + len(data_chunk)] = data_chunk
-            z_offset += len(data_chunk)
+                # This function can access 'dark_mean', etc. from its parent scope
+                return apply_correction(data_chunk, dark_mean, pre_proc_threshold)
+            return data_chunk
+
+        # Use a ThreadPoolExecutor to process files in parallel
+        # It defaults to a sensible number of threads (often related to core count)
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            # The map function applies 'process_single_tiff' to each file in 'file_list'
+            # and returns results as they are completed.
+            results = executor.map(process_single_tiff, file_list)
+
+            # --- Write the results to Zarr sequentially ---
+            # This loop is fast, as the heavy work is already done in parallel.
+            for processed_data in results:
+                z_data[z_offset : z_offset + len(processed_data)] = processed_data
+                z_offset += len(processed_data)
+                print(f"  - Wrote frame {z_offset}/{total_frames_to_write} to Zarr archive.")
 
     return output_dtype
     
