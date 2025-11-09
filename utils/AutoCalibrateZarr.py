@@ -1108,6 +1108,7 @@ def main():
         logger.info(f'p1 {p1_refined}')
         logger.info(f'p2 {p2_refined}')
         logger.info(f'p3 {p3_refined}')
+        logger.info(f'RhoD {RhoDThis}')
         logger.info(f'Mean Strain: {mean_strain}')
         logger.info(f'Std Strain: {std_strain}')
         
