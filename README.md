@@ -98,7 +98,7 @@ cd MIDAS
    conda activate midas_env
    ```
 
-**MANUALS in the manuals directory**
+**MANUALS in the [manuals](https://github.com/marinerhemant/MIDAS/tree/master/manuals) directory**
 
 **Somewhat DEPRECATED! More details at** [MIDAS-WIKI](https://github.com/marinerhemant/MIDAS/wiki) 
 
