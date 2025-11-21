@@ -476,9 +476,17 @@ def main():
             # Step 3: Add the mapping information to the parameter file of the first dataset
             paramstest_path = os.path.join(result_dir1, "paramstest.txt")
             dataset2_line = f"Dataset2Folder {result_dir2} {args.offsetX} {args.offsetY} {args.offsetZ} {args.offsetOmega}\n"
+            # read the minNrSpots line from paramFN
+            minLine = "MinNrSpots 2\n"
+            with open(args.paramFN, "r") as f:
+                for line in f:
+                    if line.startswith("MinNrSpots"):
+                        minLine = line
+                        break
             logger.info(f"Appending to {paramstest_path}: {dataset2_line.strip()}")
             with open(paramstest_path, "a") as f:
                 f.write(dataset2_line)
+                f.write(minLine)
 
             # Step 4: Map the two datasets together
             logger.info(f"Mapping datasets: {result_dir1} and {result_dir2}")
