@@ -13,6 +13,7 @@ import shutil
 from numba import jit
 import re
 from math import ceil
+import subprocess
 
 # --- Global Configuration ---
 compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
@@ -203,45 +204,91 @@ def write_analysis_parameters(z_groups, config):
     start_omega = ome_ff - (skip_f * ome_stp)
     sp_pro_meas.create_dataset('start', data=np.array([start_omega], dtype=np.double))
 
+class BZ2Context:
+    """
+    Context manager to handle .bz2 files.
+    - If file ends in .bz2: Decompresses it (keeping original), yields temp path, deletes temp path on exit.
+    - If file is normal: Yields original path, does nothing on exit.
+    """
+    def __init__(self, filepath):
+        self.filepath = str(filepath)
+        self.temp_path = None
+        self.is_bz2 = self.filepath.endswith('.bz2')
+
+    def __enter__(self):
+        if not self.is_bz2:
+            return self.filepath
+        
+        # Define expected uncompressed filename (remove .bz2)
+        self.temp_path = self.filepath[:-4]
+        
+        # Call shell command: bzip2 -d (decompress) -k (keep original) -f (force overwrite output)
+        try:
+            # We use check=True to raise an error if bzip2 fails
+            subprocess.run(['bzip2', '-d', '-k', '-f', self.filepath], check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"Error uncompressing {self.filepath}: {e}")
+            sys.exit(1)
+            
+        return self.temp_path
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # Delete the uncompressed file after processing
+        if self.is_bz2 and self.temp_path and os.path.exists(self.temp_path):
+            os.remove(self.temp_path)
+
 def process_hdf5_scan(config, z_groups):
-    """Processes a scan from one or more HDF5 files, with correct SkipFrame logic."""
+    """Processes a scan from one or more HDF5 files, with correct SkipFrame logic and .bz2 support."""
     print("\n--- Processing HDF5 File(s) ---")
     num_files, skip_frames = int(config.get('numFilesPerScan', 1)), int(config.get('SkipFrame', 0))
     data_loc, dark_loc = config['dataLoc'], config['darkLoc']
     pre_proc_active = int(config.get('preProcThresh', -1)) != -1
 
     file_list = []
-    if num_files == 1: file_list.append(config['dataFN'])
+    # Handle filename parsing for sequences. If .bz2, strip it temporarily to find the number.
+    is_bz2 = config['dataFN'].endswith('.bz2')
+    clean_fn_for_parsing = config['dataFN'][:-4] if is_bz2 else config['dataFN']
+
+    if num_files == 1: 
+        file_list.append(config['dataFN'])
     else:
-        match = re.search(r'(\d+)(?=\.\w+$)', config['dataFN'])
+        # Regex looks for digits before the LAST dot of the clean filename
+        match = re.search(r'(\d+)(?=\.\w+$)', clean_fn_for_parsing)
         if not match: raise ValueError("Numeric sequence not found in HDF5 filename for multi-file scan.")
         fNr_orig_str, start_nr = match.group(1), int(match.group(1))
+        
+        # Reconstruct the list, appending .bz2 only if the original had it
+        suffix_tail = ".bz2" if is_bz2 else ""
+        
         for i in range(num_files):
-            current_nr_str = str(start_nr + i).zfill(len(fNr_orig_str))
-            file_list.append(config['dataFN'].replace(fNr_orig_str, current_nr_str, 1))
+            # We replace the number in the clean version, then add the suffix back
+            current_clean_fn = clean_fn_for_parsing.replace(fNr_orig_str, str(start_nr + i).zfill(len(fNr_orig_str)), 1)
+            file_list.append(current_clean_fn + suffix_tail)
 
-    with h5py.File(file_list[0], 'r') as hf:
-        if data_loc not in hf: raise KeyError(f"Data location '{data_loc}' not found in HDF5 file.")
-        frames_per_file, nZ, nY = hf[data_loc].shape
-        output_dtype = hf[data_loc].dtype
+    # Open first file to check metadata (uncompressing if needed)
+    with BZ2Context(file_list[0]) as first_fn:
+        with h5py.File(first_fn, 'r') as hf:
+            if data_loc not in hf: raise KeyError(f"Data location '{data_loc}' not found in HDF5 file.")
+            frames_per_file, nZ, nY = hf[data_loc].shape
+            output_dtype = hf[data_loc].dtype
 
-        print("  - Checking for additional metadata inside HDF5 file...")
-        hdf5_metadata_paths = {
-            'startOmeOverride': 'startOmeOverride',
-            '/measurement/instrument/GSAS2_PVS/Pressure': 'Pressure',
-            '/measurement/instrument/GSAS2_PVS/Temperature': 'Temperature',
-            '/measurement/instrument/GSAS2_PVS/I': 'I',
-            '/measurement/instrument/GSAS2_PVS/I0': 'I0',
-        }
-        for h5_path, zarr_name in hdf5_metadata_paths.items():
-            if h5_path in hf:
-                try:
-                    data_to_copy = hf[h5_path][()]
-                    print(f"    - Found '{h5_path}'. Copying to measurement/process/scan_parameters/{zarr_name}.")
-                    if not isinstance(data_to_copy, np.ndarray): data_to_copy = np.array([data_to_copy])
-                    z_groups['sp_pro_meas'].create_dataset(zarr_name, data=data_to_copy)
-                except Exception as e:
-                    print(f"    - Warning: Could not copy metadata from '{h5_path}'. Reason: {e}")
+            print("  - Checking for additional metadata inside HDF5 file...")
+            hdf5_metadata_paths = {
+                'startOmeOverride': 'startOmeOverride',
+                '/measurement/instrument/GSAS2_PVS/Pressure': 'Pressure',
+                '/measurement/instrument/GSAS2_PVS/Temperature': 'Temperature',
+                '/measurement/instrument/GSAS2_PVS/I': 'I',
+                '/measurement/instrument/GSAS2_PVS/I0': 'I0',
+            }
+            for h5_path, zarr_name in hdf5_metadata_paths.items():
+                if h5_path in hf:
+                    try:
+                        data_to_copy = hf[h5_path][()]
+                        print(f"    - Found '{h5_path}'. Copying to measurement/process/scan_parameters/{zarr_name}.")
+                        if not isinstance(data_to_copy, np.ndarray): data_to_copy = np.array([data_to_copy])
+                        z_groups['sp_pro_meas'].create_dataset(zarr_name, data=data_to_copy)
+                    except Exception as e:
+                        print(f"    - Warning: Could not copy metadata from '{h5_path}'. Reason: {e}")
 
     total_frames_to_write = frames_per_file + (frames_per_file - skip_frames) * (num_files - 1)
     print(f"HDF5 scan: {num_files} file(s), {frames_per_file} frames/file. Skipping {skip_frames} from files 2+. Total frames to write: {total_frames_to_write}. Dtype: {output_dtype}")
@@ -251,63 +298,64 @@ def process_hdf5_scan(config, z_groups):
 
     for i, fn in enumerate(file_list):
         print(f"  - Processing file {i+1}/{num_files}: {fn}")
-        with h5py.File(fn, 'r') as hf:
-            if data_loc not in hf: print(f"    Warning: '{data_loc}' not in {fn}, skipping."); continue
+        
+        # Use BZ2Context here to unzip, read, and delete temp file automatically
+        with BZ2Context(fn) as uncompressed_fn:
+            with h5py.File(uncompressed_fn, 'r') as hf:
+                if data_loc not in hf: print(f"    Warning: '{data_loc}' not in {fn}, skipping."); continue
 
-            # This logic now only runs once, for the first file
-            if i == 0:
-                dark_frames_found = False
-                dark_frames = None
+                # Logic for the first file (Dark/Bright init)
+                if i == 0:
+                    dark_frames_found = False
+                    dark_frames = None
 
-                # 1. If provided, check for a separate dark file
-                if config.get('darkFN'):
-                    with h5py.File(config['darkFN'], 'r') as hf_dark:
-                        # Try the full path first
-                        if dark_loc in hf_dark:
-                            dark_frames = hf_dark[dark_loc][()]; dark_frames_found = True
-                        else:
-                            # Fallback: try just the dataset name at the root
-                            dark_dataset_name = Path(dark_loc).name
-                            if dark_dataset_name in hf_dark:
-                                dark_frames = hf_dark[dark_dataset_name][()]; dark_frames_found = True
-                # 2. If not found, check for dark data in the main data file
-                elif dark_loc in hf:
-                    dark_frames = hf[dark_loc][()]; dark_frames_found = True
+                    # 1. Check for separate dark file (handle .bz2 there too)
+                    if config.get('darkFN'):
+                        with BZ2Context(config['darkFN']) as uncompressed_dark:
+                            with h5py.File(uncompressed_dark, 'r') as hf_dark:
+                                if dark_loc in hf_dark:
+                                    dark_frames = hf_dark[dark_loc][()]; dark_frames_found = True
+                                else:
+                                    dark_dataset_name = Path(dark_loc).name
+                                    if dark_dataset_name in hf_dark:
+                                        dark_frames = hf_dark[dark_dataset_name][()]; dark_frames_found = True
+                    # 2. Check internal
+                    elif dark_loc in hf:
+                        dark_frames = hf[dark_loc][()]; dark_frames_found = True
 
-                if not dark_frames_found:
-                    print("    Warning: No dark data found. Using temporary zeros for shape info.")
-                    dark_frames = np.zeros((10, nZ, nY), dtype=output_dtype)
+                    if not dark_frames_found:
+                        print("    Warning: No dark data found. Using temporary zeros for shape info.")
+                        dark_frames = np.zeros((10, nZ, nY), dtype=output_dtype)
 
-                # Decide what to write (real data or zeros) and write it only ONCE.
-                dark_shape = dark_frames.shape
-                if pre_proc_active:
-                    print("  - Pre-processing is active. Writing zero arrays for dark/bright.")
-                    z_groups['exc'].create_dataset('dark', data=np.zeros(dark_frames.shape, dtype=output_dtype), chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
-                    z_groups['exc'].create_dataset('bright', data=np.zeros(dark_frames.shape, dtype=output_dtype), chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
-                else:
-                    print("  - Writing actual dark and bright frame data.")
-                    z_groups['exc'].create_dataset('dark', data=dark_frames, dtype=output_dtype,chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
-                    z_groups['exc'].create_dataset('bright', data=dark_frames, dtype=output_dtype,chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
+                    dark_shape = dark_frames.shape
+                    if pre_proc_active:
+                        print("  - Pre-processing is active. Writing zero arrays for dark/bright.")
+                        z_groups['exc'].create_dataset('dark', data=np.zeros(dark_frames.shape, dtype=output_dtype), chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
+                        z_groups['exc'].create_dataset('bright', data=np.zeros(dark_frames.shape, dtype=output_dtype), chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
+                    else:
+                        print("  - Writing actual dark and bright frame data.")
+                        z_groups['exc'].create_dataset('dark', data=dark_frames, dtype=output_dtype,chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
+                        z_groups['exc'].create_dataset('bright', data=dark_frames, dtype=output_dtype,chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
 
-            dark_mean = np.mean(dark_frames[skip_frames:], axis=0)
-            pre_proc_val = (dark_mean + int(config['preProcThresh'])) if pre_proc_active else dark_mean
+                dark_mean = np.mean(dark_frames[skip_frames:], axis=0)
+                pre_proc_val = (dark_mean + int(config['preProcThresh'])) if pre_proc_active else dark_mean
 
-            start_frame_in_file = skip_frames if i > 0 else 0
+                start_frame_in_file = skip_frames if i > 0 else 0
 
-            chunk_size = int(config.get('numFrameChunks', 100));
-            if chunk_size == -1: chunk_size = frames_per_file
+                chunk_size = int(config.get('numFrameChunks', 100));
+                if chunk_size == -1: chunk_size = frames_per_file
 
-            for j in range(start_frame_in_file, frames_per_file, chunk_size):
-                end_frame = min(j + chunk_size, frames_per_file)
-                data_chunk = hf[data_loc][j:end_frame]
-                if pre_proc_active:
-                    data_chunk = apply_correction(data_chunk, dark_mean, pre_proc_val)
-                z_data[z_offset : z_offset+len(data_chunk)] = data_chunk
-                z_offset += len(data_chunk)
+                for j in range(start_frame_in_file, frames_per_file, chunk_size):
+                    end_frame = min(j + chunk_size, frames_per_file)
+                    data_chunk = hf[data_loc][j:end_frame]
+                    if pre_proc_active:
+                        data_chunk = apply_correction(data_chunk, dark_mean, pre_proc_val)
+                    z_data[z_offset : z_offset+len(data_chunk)] = data_chunk
+                    z_offset += len(data_chunk)
     return output_dtype
 
 def process_multifile_scan(file_type, config, z_groups):
-    """Processes a scan of multiple GE/TIFF files with correct SkipFrame logic."""
+    """Processes a scan of multiple GE/TIFF files with SkipFrame logic and .bz2 support."""
     print(f"\n--- Processing {file_type.upper()} File(s) ---")
     num_files, skip_frames = int(config.get('numFilesPerScan', 1)), int(config.get('SkipFrame', 0))
     header_size = int(config.get('HeadSize', 8192))
@@ -325,41 +373,54 @@ def process_multifile_scan(file_type, config, z_groups):
     bytes_per_pixel = np.dtype(output_dtype).itemsize
     print(f"Handling as {output_dtype.__name__}. Files per scan: {num_files}")
 
-    # 1. More robustly parse the filename to find the *correct* number to increment.
-    filename_stem = Path(config['dataFN']).stem
-    # This regex now specifically finds the number block at the very end of the stem.
+    # 1. Parsing filename. 
+    # Logic Update: If .bz2, we must strip it to find the numeric sequence in the stem.
+    original_path = Path(config['dataFN'])
+    is_bz2_sequence = original_path.name.endswith('.bz2')
+    
+    # If bz2, path for parsing is 'file.tif' not 'file.tif.bz2'
+    path_for_parsing = original_path.with_suffix('') if is_bz2_sequence else original_path
+    
+    filename_stem = path_for_parsing.stem
+    # Regex finds the number block at the very end of the stem (ignoring bz2)
     match = re.search(r'(\d+)$', filename_stem)
     if not match:
-        raise ValueError(f"Could not find a numeric sequence at the end of the data filename stem: '{filename_stem}'")
+        raise ValueError(f"Could not find a numeric sequence at the end of the filename stem: '{filename_stem}'")
 
     fNr_orig_str = match.group(1)
     start_nr = int(fNr_orig_str)
-    # The base part of the filename is everything *before* the matched number string
+    
+    # Base is part before number
     filename_base = filename_stem[:-len(fNr_orig_str)]
-    parent_dir = Path(config['dataFN']).parent
-    file_ext = Path(config['dataFN']).suffix
+    parent_dir = original_path.parent
+    
+    # Determine the extension to look for (e.g. .ge or .ge.bz2)
+    raw_ext = path_for_parsing.suffix # e.g., .tif or .ge
+    full_ext = raw_ext + ".bz2" if is_bz2_sequence else raw_ext
 
-    # 2. Pre-scan to find all existing files and determine the exact size needed.
+    # 2. Pre-scan to find all existing files
     file_list = []
     for i in range(num_files):
-        # Safely reconstruct the filename instead of using a risky replace() call
         current_nr = start_nr + i
         current_nr_str = str(current_nr).zfill(len(fNr_orig_str))
-        current_fn = parent_dir / f"{filename_base}{current_nr_str}{file_ext}"
+        current_fn = parent_dir / f"{filename_base}{current_nr_str}{full_ext}"
 
         if current_fn.exists():
             file_list.append(str(current_fn))
         else:
             print(f"Info: File sequence ended. Could not find {current_fn}")
-            break # Stop if a file is missing in the sequence
+            break 
     
     if not file_list:
         raise FileNotFoundError(f"No data files found for the sequence starting with {config['dataFN']}")
 
-    if file_type == 'ge':
-        frames_per_file = (os.path.getsize(file_list[0]) - header_size) // (bytes_per_pixel * numPxY * numPxZ)
-    else: # tiff
-        frames_per_file = 1
+    # Check size of first file (uncompressing momentarily if needed)
+    with BZ2Context(file_list[0]) as first_fn_uncompressed:
+        if file_type == 'ge':
+            frames_per_file = (os.path.getsize(first_fn_uncompressed) - header_size) // (bytes_per_pixel * numPxY * numPxZ)
+        else: # tiff
+            frames_per_file = 1
+            
     if file_type != 'ge':
         import tifffile
 
@@ -375,10 +436,13 @@ def process_multifile_scan(file_type, config, z_groups):
 
     dark_mean = np.zeros((numPxZ, numPxY), dtype=output_dtype)
     dark_frames_data = np.zeros((10, numPxZ, numPxY), dtype=output_dtype)
+    
+    # Handle Dark File (supports .bz2)
     if file_type == 'ge' and dark_file_provided:
         print(f"  - Reading GE dark file: {config['darkFN']}")
-        dark_frames_data = np.fromfile(config['darkFN'], dtype=output_dtype, offset=header_size).reshape((-1, numPxZ, numPxY))
-        dark_mean = np.mean(dark_frames_data[skip_frames:], axis=0)
+        with BZ2Context(config['darkFN']) as dark_fn_uncompressed:
+            dark_frames_data = np.fromfile(dark_fn_uncompressed, dtype=output_dtype, offset=header_size).reshape((-1, numPxZ, numPxY))
+            dark_mean = np.mean(dark_frames_data[skip_frames:], axis=0)
 
     dark_shape = dark_frames_data.shape
     if pre_proc_thresh_value != -1:
@@ -395,53 +459,49 @@ def process_multifile_scan(file_type, config, z_groups):
     if file_type == 'ge':
         for i, current_fn in enumerate(file_list):
             print(f"  - Reading file {i+1}/{num_files_found}: {current_fn}")
-
-            start_frame_in_file = skip_frames if i > 0 else 0
-
-            frames_in_this_file = (os.path.getsize(current_fn) - header_size) // (bytes_per_pixel * numPxY * numPxZ)
-            readable_frames = frames_in_this_file - start_frame_in_file
-
-            numFrameChunks = int(config.get('numFrameChunks', -1))
-            if numFrameChunks == -1: numFrameChunks = readable_frames
-            if numFrameChunks <= 0: continue
             
-            num_chunks_in_file = int(ceil(readable_frames / numFrameChunks))
+            # Wrap file reading in BZ2Context
+            with BZ2Context(current_fn) as uncompressed_fn:
+                start_frame_in_file = skip_frames if i > 0 else 0
+                frames_in_this_file = (os.path.getsize(uncompressed_fn) - header_size) // (bytes_per_pixel * numPxY * numPxZ)
+                readable_frames = frames_in_this_file - start_frame_in_file
 
-            for chunk_idx in range(num_chunks_in_file):
-                chunk_start_frame = chunk_idx * numFrameChunks
-                frames_to_read = min(numFrameChunks, readable_frames - chunk_start_frame)
-                if frames_to_read <= 0: continue
+                numFrameChunks = int(config.get('numFrameChunks', -1))
+                if numFrameChunks == -1: numFrameChunks = readable_frames
+                if numFrameChunks <= 0: continue
                 
-                read_start_offset_in_file = start_frame_in_file + chunk_start_frame
-                read_offset_bytes = header_size + (read_start_offset_in_file * bytes_per_pixel * numPxY * numPxZ)
-                
-                data_chunk = np.fromfile(current_fn, dtype=output_dtype, count=frames_to_read * numPxY * numPxZ, offset=read_offset_bytes).reshape((frames_to_read, numPxZ, numPxY))
-                
-                if correction_active:
-                    data_chunk = apply_correction(data_chunk, dark_mean, pre_proc_threshold)
-                
-                z_data[z_offset : z_offset + len(data_chunk)] = data_chunk
-                z_offset += len(data_chunk)
+                num_chunks_in_file = int(ceil(readable_frames / numFrameChunks))
+
+                for chunk_idx in range(num_chunks_in_file):
+                    chunk_start_frame = chunk_idx * numFrameChunks
+                    frames_to_read = min(numFrameChunks, readable_frames - chunk_start_frame)
+                    if frames_to_read <= 0: continue
+                    
+                    read_start_offset_in_file = start_frame_in_file + chunk_start_frame
+                    read_offset_bytes = header_size + (read_start_offset_in_file * bytes_per_pixel * numPxY * numPxZ)
+                    
+                    data_chunk = np.fromfile(uncompressed_fn, dtype=output_dtype, count=frames_to_read * numPxY * numPxZ, offset=read_offset_bytes).reshape((frames_to_read, numPxZ, numPxY))
+                    
+                    if correction_active:
+                        data_chunk = apply_correction(data_chunk, dark_mean, pre_proc_threshold)
+                    
+                    z_data[z_offset : z_offset + len(data_chunk)] = data_chunk
+                    z_offset += len(data_chunk)
     else: # TIFF reading in parallel
         import concurrent.futures
-        # --- Define a "worker" function for a single TIFF file ---
+        
         def process_single_tiff(filepath):
-            """Reads, corrects, and returns data for one TIFF file."""
-            data_chunk = tifffile.imread(filepath).reshape((1, numPxZ, numPxY))
-            if correction_active:
-                # This function can access 'dark_mean', etc. from its parent scope
-                return apply_correction(data_chunk, dark_mean, pre_proc_threshold)
-            return data_chunk
+            """Reads, corrects, and returns data for one TIFF file. Handles .bz2 automatically."""
+            # We use the context manager inside the worker. 
+            with BZ2Context(filepath) as uncompressed_path:
+                data_chunk = tifffile.imread(uncompressed_path).reshape((1, numPxZ, numPxY))
+                if correction_active:
+                    return apply_correction(data_chunk, dark_mean, pre_proc_threshold)
+                return data_chunk
 
-        # Use a ThreadPoolExecutor to process files in parallel
-        # It defaults to a sensible number of threads (often related to core count)
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            # The map function applies 'process_single_tiff' to each file in 'file_list'
-            # and returns results as they are completed.
             results = executor.map(process_single_tiff, file_list)
 
-            # --- Write the results to Zarr sequentially ---
-            # This loop is fast, as the heavy work is already done in parallel.
             for processed_data in results:
                 z_data[z_offset : z_offset + len(processed_data)] = processed_data
                 z_offset += len(processed_data)
@@ -537,7 +597,16 @@ def main():
     if outfn_zip.exists(): print(f"Moving existing file to '{outfn_zip}.old'"); shutil.move(str(outfn_zip), str(outfn_zip) + '.old')
 
     zip_store = zarr.ZipStore(str(outfn_zip), mode='w'); zRoot = zarr.group(store=zip_store, overwrite=True)
-    z_groups = create_zarr_structure(zRoot); file_ext = Path(config['dataFN']).suffix.lower()
+    z_groups = create_zarr_structure(zRoot); 
+    # Check the extension. If it is .bz2, look at the extension BEFORE it (e.g., .h5.bz2 -> .h5)
+    data_path = Path(config['dataFN'])
+    file_ext = data_path.suffix.lower()
+    
+    if file_ext == '.bz2':
+        # path.stem removes .bz2, so we get the suffix of the remaining name
+        file_ext = Path(data_path.stem).suffix.lower()
+
+    # file_ext = Path(config['dataFN']).suffix.lower()
     output_dtype = None
 
     try:
