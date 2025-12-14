@@ -349,7 +349,7 @@ def process_hdf5_scan(config, z_groups):
                 else:
                     dark_mean = dark_frames[0]
                 pre_proc_val = (dark_mean + int(config['preProcThresh'])) if pre_proc_active else dark_mean
-                print(f'Mean value of pre_proc_val: {np.mean(pre_proc_val)}')
+                print(f'Mean value of pre_proc_val: {np.mean(pre_proc_val)}, darkMean: {np.mean(dark_mean)}')
 
                 start_frame_in_file = skip_frames if i > 0 else 0
 
