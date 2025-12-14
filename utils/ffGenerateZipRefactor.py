@@ -361,6 +361,10 @@ def process_multifile_scan(file_type, config, z_groups):
     header_size = int(config.get('HeadSize', 8192))
     numPxY, numPxZ = int(config['numPxY']), int(config['numPxZ'])
 
+    # Ensure tifffile is available if needed (for both data and dark files)
+    if file_type != 'ge':
+        import tifffile
+
     # --- Correction Logic ---
     dark_file_path = config.get('darkFN')
     dark_file_provided = dark_file_path and Path(dark_file_path).exists()
@@ -374,15 +378,12 @@ def process_multifile_scan(file_type, config, z_groups):
     print(f"Handling as {output_dtype.__name__}. Files per scan: {num_files}")
 
     # 1. Parsing filename. 
-    # Logic Update: If .bz2, we must strip it to find the numeric sequence in the stem.
     original_path = Path(config['dataFN'])
     is_bz2_sequence = original_path.name.endswith('.bz2')
     
-    # If bz2, path for parsing is 'file.tif' not 'file.tif.bz2'
     path_for_parsing = original_path.with_suffix('') if is_bz2_sequence else original_path
     
     filename_stem = path_for_parsing.stem
-    # Regex finds the number block at the very end of the stem (ignoring bz2)
     match = re.search(r'(\d+)$', filename_stem)
     if not match:
         raise ValueError(f"Could not find a numeric sequence at the end of the filename stem: '{filename_stem}'")
@@ -390,12 +391,10 @@ def process_multifile_scan(file_type, config, z_groups):
     fNr_orig_str = match.group(1)
     start_nr = int(fNr_orig_str)
     
-    # Base is part before number
     filename_base = filename_stem[:-len(fNr_orig_str)]
     parent_dir = original_path.parent
     
-    # Determine the extension to look for (e.g. .ge or .ge.bz2)
-    raw_ext = path_for_parsing.suffix # e.g., .tif or .ge
+    raw_ext = path_for_parsing.suffix 
     full_ext = raw_ext + ".bz2" if is_bz2_sequence else raw_ext
 
     # 2. Pre-scan to find all existing files
@@ -414,15 +413,12 @@ def process_multifile_scan(file_type, config, z_groups):
     if not file_list:
         raise FileNotFoundError(f"No data files found for the sequence starting with {config['dataFN']}")
 
-    # Check size of first file (uncompressing momentarily if needed)
+    # Check size of first file
     with BZ2Context(file_list[0]) as first_fn_uncompressed:
         if file_type == 'ge':
             frames_per_file = (os.path.getsize(first_fn_uncompressed) - header_size) // (bytes_per_pixel * numPxY * numPxZ)
         else: # tiff
             frames_per_file = 1
-            
-    if file_type != 'ge':
-        import tifffile
 
     num_files_found = len(file_list)
     total_frames_to_write = frames_per_file
@@ -435,22 +431,44 @@ def process_multifile_scan(file_type, config, z_groups):
     z_offset = 0
 
     dark_mean = np.zeros((numPxZ, numPxY), dtype=output_dtype)
-    dark_frames_data = np.zeros((10, numPxZ, numPxY), dtype=output_dtype)
+    dark_shape = (1, numPxZ, numPxY) # Default
     
-    # Handle Dark File (supports .bz2)
-    if file_type == 'ge' and dark_file_provided:
-        print(f"  - Reading GE dark file: {config['darkFN']}")
+    # --- Handle Dark File (supports .bz2 for GE and TIFF) ---
+    if dark_file_provided:
+        print(f"  - Reading Dark file: {config['darkFN']}")
         with BZ2Context(config['darkFN']) as dark_fn_uncompressed:
-            dark_frames_data = np.fromfile(dark_fn_uncompressed, dtype=output_dtype, offset=header_size).reshape((-1, numPxZ, numPxY))
-            dark_mean = np.mean(dark_frames_data[skip_frames:], axis=0)
+            if file_type == 'ge':
+                # GE Logic: Raw binary read
+                dark_frames_data = np.fromfile(dark_fn_uncompressed, dtype=output_dtype, offset=header_size).reshape((-1, numPxZ, numPxY))
+                dark_mean = np.mean(dark_frames_data[skip_frames:], axis=0)
+                dark_shape = dark_frames_data.shape
+            else:
+                # TIFF Logic: Use tifffile
+                dark_frames_data = tifffile.imread(dark_fn_uncompressed)
+                # Handle cases where TIFF might be 2D (single frame) or 3D (stack)
+                if dark_frames_data.ndim == 2:
+                    # Single frame, reshape to (1, Y, X) for consistency in shape logic
+                    dark_frames_data = dark_frames_data.reshape(1, *dark_frames_data.shape)
+                    dark_mean = dark_frames_data[0]
+                else:
+                    # Multi-frame stack, apply skip logic
+                    dark_mean = np.mean(dark_frames_data[skip_frames:], axis=0)
+                
+                dark_shape = dark_frames_data.shape
+                # Ensure dtype matches output
+                dark_mean = dark_mean.astype(output_dtype)
 
-    dark_shape = dark_frames_data.shape
     if pre_proc_thresh_value != -1:
         print("  - Pre-processing threshold is set. Writing zero arrays for dark/bright.")
         z_groups['exc'].create_dataset('dark', data=np.zeros(dark_shape, dtype=output_dtype), chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
         z_groups['exc'].create_dataset('bright', data=np.zeros(dark_shape, dtype=output_dtype), chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
     else:
+        # If we have real dark data (from GE or TIFF), write it. Otherwise it writes zeros.
         print("  - Writing actual dark and bright frame data.")
+        # If dark_frames_data wasn't loaded (no file provided), we need a placeholder
+        if not dark_file_provided:
+             dark_frames_data = np.zeros(dark_shape, dtype=output_dtype)
+
         z_groups['exc'].create_dataset('dark', data=dark_frames_data, dtype=output_dtype, chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
         z_groups['exc'].create_dataset('bright', data=dark_frames_data, dtype=output_dtype, chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
 
@@ -460,7 +478,6 @@ def process_multifile_scan(file_type, config, z_groups):
         for i, current_fn in enumerate(file_list):
             print(f"  - Reading file {i+1}/{num_files_found}: {current_fn}")
             
-            # Wrap file reading in BZ2Context
             with BZ2Context(current_fn) as uncompressed_fn:
                 start_frame_in_file = skip_frames if i > 0 else 0
                 frames_in_this_file = (os.path.getsize(uncompressed_fn) - header_size) // (bytes_per_pixel * numPxY * numPxZ)
@@ -492,7 +509,6 @@ def process_multifile_scan(file_type, config, z_groups):
         
         def process_single_tiff(filepath):
             """Reads, corrects, and returns data for one TIFF file. Handles .bz2 automatically."""
-            # We use the context manager inside the worker. 
             with BZ2Context(filepath) as uncompressed_path:
                 data_chunk = tifffile.imread(uncompressed_path).reshape((1, numPxZ, numPxY))
                 if correction_active:
