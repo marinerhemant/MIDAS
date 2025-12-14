@@ -314,18 +314,17 @@ def process_hdf5_scan(config, z_groups):
                         with BZ2Context(config['darkFN']) as uncompressed_dark:
                             with h5py.File(uncompressed_dark, 'r') as hf_dark:
                                 if dark_loc in hf_dark:
-                                    dark_frames = hf_dark[dark_loc][skip_frames:]
+                                    dark_frames = hf_dark[dark_loc][()]
                                     dark_frames_found = True
                                     print(f"Dark data was found in {dark_loc} in {config['darkFN']}.")
                                 else:
                                     dark_dataset_name = Path(dark_loc).name
                                     if dark_dataset_name in hf_dark:
-                                        dark_frames = hf_dark[dark_dataset_name][skip_frames:]
+                                        dark_frames = hf_dark[dark_dataset_name][()]
                                         dark_frames_found = True
                     # 2. Check internal
                     elif dark_loc in hf:
-                        # read from skipFrame onwards!
-                        dark_frames = hf[dark_loc][()][skip_frames:]
+                        dark_frames = hf[dark_loc][()][()]
                         # dark_frames = hf[dark_loc][()]
                         dark_frames_found = True
                         print(f"Dark data was found in {dark_loc} in {config['dataFN']}.")
@@ -335,6 +334,7 @@ def process_hdf5_scan(config, z_groups):
                         dark_frames = np.zeros((10, nZ, nY), dtype=output_dtype)
 
                     dark_shape = dark_frames.shape
+                    print(f'dark_shape: {dark_shape}')
                     if pre_proc_active:
                         print("  - Pre-processing is active. Writing zero arrays for dark/bright.")
                         z_groups['exc'].create_dataset('dark', data=np.zeros(dark_frames.shape, dtype=output_dtype), chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
@@ -344,7 +344,10 @@ def process_hdf5_scan(config, z_groups):
                         z_groups['exc'].create_dataset('dark', data=dark_frames, dtype=output_dtype,chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
                         z_groups['exc'].create_dataset('bright', data=dark_frames, dtype=output_dtype,chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
 
-                dark_mean = np.mean(dark_frames[skip_frames:], axis=0)
+                if dark_shape[0] > skip_frames:
+                    dark_mean = np.mean(dark_frames[skip_frames:], axis=0)
+                else:
+                    dark_mean = dark_frames[0]
                 pre_proc_val = (dark_mean + int(config['preProcThresh'])) if pre_proc_active else dark_mean
                 print(f'Mean value of pre_proc_val: {np.mean(pre_proc_val)}')
 
