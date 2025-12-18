@@ -462,8 +462,8 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 		zt2 = spotsYZO2[nrSp][6]-DisplZ2;
 		CorrectForOme(yt2,zt2,Lsd,spotsYZO2[nrSp][4]-offsetOmega,Wavelength,wedge,&ys2,&zs2,&Omega2);
 		// Average the spots
-		printf("%lf %lf %lf %lf %lf %lf\n",ys,zs,Omega,ys2,zs2,Omega2);
-		fflush(stdout);
+		// printf("%lf %lf %lf %lf %lf %lf\n",ys,zs,Omega,ys2,zs2,Omega2);
+		// fflush(stdout);
 		SpotsYZOGCorr[nrSp][0] = (ys+ys2)/2.0;
 		SpotsYZOGCorr[nrSp][1] = (zs+zs2)/2.0;
 		SpotsYZOGCorr[nrSp][2] = (Omega+Omega2)/2.0;
@@ -519,7 +519,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 		diffLenM = CalcNorm2((SpotsYZOGCorr[sp][0]-TheorSpotsYZWER[RowBest][0]),(SpotsYZOGCorr[sp][1]-TheorSpotsYZWER[RowBest][1]));
 		diffOmeM = fabs(SpotsYZOGCorr[sp][2]-TheorSpotsYZWER[RowBest][2]);
 		// printf("%lf\n",minAngle);
-		if (minAngle < 3){
+		// if (minAngle < 3){
 			// printf("%lf %lf %lf\n",minAngle,diffLenM,diffOmeM);
 			// fflush(stdout);
 			MatchDiff[nMatched][0] = minAngle;
@@ -542,7 +542,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 			for (i=0;i<8;i++){SpList[nMatched][i]=spotsYZO[sp][i];}
 			SpList[nMatched][8]=TheorSpotsYZWER[RowBest][8];
 			nMatched++;
-		}
+		// }
 	}
 	*nSpotsComp = nMatched;
 	// printf("nMatched %d\n",nMatched);
