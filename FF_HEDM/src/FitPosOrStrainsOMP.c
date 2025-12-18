@@ -462,6 +462,8 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 		zt2 = spotsYZO2[nrSp][6]-DisplZ2;
 		CorrectForOme(yt2,zt2,Lsd,spotsYZO2[nrSp][4]-offsetOmega,Wavelength,wedge,&ys2,&zs2,&Omega2);
 		// Average the spots
+		printf("%lf %lf %lf %lf %lf %lf\n",ys,zs,Omega,ys2,zs2,Omega2);
+		fflush(stdout);
 		SpotsYZOGCorr[nrSp][0] = (ys+ys2)/2.0;
 		SpotsYZOGCorr[nrSp][1] = (zs+zs2)/2.0;
 		SpotsYZOGCorr[nrSp][2] = (Omega+Omega2)/2.0;
