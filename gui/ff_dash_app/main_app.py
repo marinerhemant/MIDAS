@@ -593,4 +593,4 @@ def update_plot_display_only(min_thresh, max_thresh, log_scale, plot_rings_check
 
 if __name__ == '__main__':
     # No cleanup function needed as we are not creating temporary files anymore
-    app.run(debug=True, host='0.0.0.0', port=8050)
+    app.run(debug=True, host='0.0.0.0', port=1200)
