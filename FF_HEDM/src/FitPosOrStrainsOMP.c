@@ -516,7 +516,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 		}
 		diffLenM = CalcNorm2((SpotsYZOGCorr[sp][0]-TheorSpotsYZWER[RowBest][0]),(SpotsYZOGCorr[sp][1]-TheorSpotsYZWER[RowBest][1]));
 		diffOmeM = fabs(SpotsYZOGCorr[sp][2]-TheorSpotsYZWER[RowBest][2]);
-		//~ printf("%lf\n",minAngle);
+		printf("%lf\n",minAngle);
 		if (minAngle < 3){
 			printf("%lf %lf %lf\n",minAngle,diffLenM,diffOmeM);
 			fflush(stdout);
