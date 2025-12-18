@@ -517,7 +517,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 		diffLenM = CalcNorm2((SpotsYZOGCorr[sp][0]-TheorSpotsYZWER[RowBest][0]),(SpotsYZOGCorr[sp][1]-TheorSpotsYZWER[RowBest][1]));
 		diffOmeM = fabs(SpotsYZOGCorr[sp][2]-TheorSpotsYZWER[RowBest][2]);
 		//~ printf("%lf\n",minAngle);
-		if (minAngle < 1){
+		if (minAngle < 3){
 			printf("%lf %lf %lf\n",minAngle,diffLenM,diffOmeM);
 			fflush(stdout);
 			MatchDiff[nMatched][0] = minAngle;
@@ -543,7 +543,7 @@ void CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12], doub
 		}
 	}
 	*nSpotsComp = nMatched;
-	printf("%d\n",nMatched);
+	printf("nMatched %d\n",nMatched);
 	Error[0]=0;Error[1]=0;Error[2]=0;
 	for (i=0;i<nMatched;i++){
 		Error[0] += fabs(MatchDiff[i][1]/nMatched);
