@@ -13,7 +13,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 from numcodecs import Blosc
 
 # --- Constants ---
-COMPRESSOR = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BIT)
+COMPRESSOR = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
 
 def surgical_zarr_update(
     source_zip_path: Path,
