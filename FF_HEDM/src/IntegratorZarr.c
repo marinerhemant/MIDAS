@@ -1002,6 +1002,7 @@ int main(int argc, char **argv)
 	locData = calloc(NrPixelsY*NrPixelsZ*bytesPerPx,sizeof(*locData));
     int32_t dsz = NrPixelsY*NrPixelsZ*bytesPerPx;
     double presThis, tempThis, iThis, i0This;
+    double t_integration=0,t_0;
 	for (i=0;i<nFrames;i++){
 		if (chunkFiles>0){
 			if ((i%chunkFiles) == 0){
@@ -1035,6 +1036,7 @@ int main(int argc, char **argv)
 			PerFrameArr = malloc(bigArrSize*4*sizeof(*PerFrameArr));
 		}
 		memset(IntArrPerFrame,0,bigArrSize*sizeof(double));
+        t_0 = clock();
 		for (j=0;j<nRBins;j++){
 			RMean = (RBinsLow[j]+RBinsHigh[j])/2;
 			Int1d = 0;
@@ -1086,6 +1088,7 @@ int main(int argc, char **argv)
 			}
 			Int1d /= n1ds;
 		}
+        t_integration += (clock() - t_0) / CLOCKS_PER_SEC;
 		if (i==0){
 			hsize_t dims[3] = {4,nRBins,nEtaBins};
 			status_f = H5LTmake_dataset_double(file_id, "/REtaMap", 3, dims, PerFrameArr);
@@ -1123,6 +1126,7 @@ int main(int argc, char **argv)
 			}
 		}
 	}
+    printf("Time for integration: %f seconds.\n",t_integration);
     if (haveOmegas==1){
         hsize_t dimome[1] = {nFrames};
         H5LTmake_dataset_double(file_id, "/Omegas", 1, dimome,omeArr);

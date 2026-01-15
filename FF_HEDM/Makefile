@@ -145,6 +145,10 @@ fitposorstrainsomp: $(SRCDIR)FitPosOrStrainsOMP.c
 	$(CC) $(SRCDIR)FitPosOrStrainsOMP.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitPosOrStrainsOMP -fopenmp $(CFLAGS) \
 	$(CFLAGSNLOPT)
 
+fitposorstrainsdoubledataset: $(SRCDIR)FitPosOrStrainsDoubleDataset.c
+	$(CC) $(SRCDIR)FitPosOrStrainsDoubleDataset.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitPosOrStrainsDoubleDataset -fopenmp $(CFLAGS) \
+	$(CFLAGSNLOPT)
+
 fitorstrainsscanningomp: $(SRCDIR)FitOrStrainsScanningOMP.c
 	$(CC) $(SRCDIR)FitOrStrainsScanningOMP.c $(SRCDIR)CalcDiffractionSpots.c -o $(BINDIR)FitOrStrainsScanningOMP -fopenmp $(CFLAGS) \
 	$(CFLAGSNLOPT)
