@@ -25,6 +25,7 @@ import signal
 import subprocess
 import json
 import socket
+import datetime
 from pathlib import Path
 
 # Check for psutil
@@ -359,6 +360,12 @@ def monitor_processing(mapping_file, expected_frames=None, check_interval=0.5):
         time.sleep(check_interval)
 
 def main():
+    # Create timestamped directory
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = Path(f"analysis_{timestamp}").absolute()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    print(f"All outputs will be saved to: {output_dir}")
+
     # Set up argument parser
     import argparse
     
@@ -396,13 +403,13 @@ def main():
     args = parser.parse_args()
     
     # Validation
-    param_file = args.param_file
+    param_file = str(Path(args.param_file).absolute())
     if not os.path.exists(param_file):
         print(f"Error: Parameter file '{param_file}' not found")
         sys.exit(1)
-    
+
     use_pva = args.pva
-    folder_to_process = args.folder if not use_pva else None
+    folder_to_process = str(Path(args.folder).absolute()) if not use_pva else None
     extension = args.extension
     mapping_file = args.mapping_file
     
@@ -410,14 +417,14 @@ def main():
     install_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     # Validate dark file if specified
-    dark_file = args.dark
+    dark_file = str(Path(args.dark).absolute()) if args.dark else None
     if dark_file and not os.path.exists(dark_file):
         print(f"Warning: Dark file '{dark_file}' not found")
         dark_file = None
     
     # Set up file paths
-    integrator_log = "integrator.log"
-    server_log = "server.log"
+    integrator_log = output_dir / "integrator.log"
+    server_log = output_dir / "server.log"
     
     # Count number of files to process for progress tracking
     expected_frames = 0
@@ -457,7 +464,13 @@ def main():
     if not check_and_create_mapping_files(param_file, midas_env):
         print("Error: Failed to create required mapping files.")
         sys.exit(1)
-        
+    for map_file in ["Map.bin", "nMap.bin"]:
+        source = Path(map_file).absolute()
+        if source.exists():
+            target = output_dir / map_file
+            if not target.exists():
+                os.symlink(source, target)
+    
     # Start IntegratorFitPeaksGPUStream in background
     print("Starting IntegratorFitPeaksGPUStream...")
     
@@ -475,7 +488,8 @@ def main():
             integrator_cmd,
             stdout=logfile,
             stderr=subprocess.STDOUT,
-            env=midas_env
+            env=midas_env,
+            cwd=str(output_dir)
         )
     
     print(f"Started IntegratorFitPeaksGPUStream with PID {integrator_proc.pid}")
@@ -529,14 +543,16 @@ def main():
         server_proc = subprocess.Popen(
             server_cmd,
             stdout=logfile,
-            stderr=subprocess.STDOUT
+            stderr=subprocess.STDOUT,
+            env=midas_env,
+            cwd=str(output_dir)
         )
     
     print(f"Started integrator_server.py with PID {server_proc.pid}")
     
     # Monitor processing
     print("\nMonitoring processing progress...")
-    completed = monitor_processing(mapping_file, expected_frames)
+    completed = monitor_processing(output_dir / mapping_file, expected_frames)
     
     # Check if server is still running
     server_running = server_proc.poll() is None
@@ -569,7 +585,7 @@ def main():
         "--int2d", "Int2D.bin",
         "--fit-curves", "fit_curves.bin",
         "--params", param_file,
-        "--mapping", mapping_file,
+        "--mapping", args.mapping_file,
         "--output", args.output_h5
     ]
     
@@ -579,7 +595,7 @@ def main():
     
     print(f"Running: {' '.join(h5_cmd)}")
     try:
-        result = subprocess.run(h5_cmd, capture_output=True, text=True)
+        result = subprocess.run(h5_cmd, capture_output=True, text=True, cwd=str(output_dir))
         if result.returncode != 0:
             print(f"Error converting to HDF5: {result.stderr}")
         else:
@@ -593,7 +609,7 @@ def main():
     print(f"  - fit.bin (raw fit data, if peak fitting was enabled)")
     print(f"  - Int2D.bin (raw 2D integration data, if enabled)")
     print(f"  - {args.output_h5} (HDF5 formatted data)")
-    print(f"  - {mapping_file} (frame mapping JSON)")
+    print(f"  - {output_dir / mapping_file} (frame mapping JSON)")
     print(f"  - {integrator_log} (log from IntegratorFitPeaksGPUStream)")
     print(f"  - {server_log} (log from integrator_server.py)")
 
