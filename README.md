@@ -76,6 +76,10 @@ cd MIDAS
    ```
    ./build.sh
    ```
+   To disable CUDA:
+   ```
+   ./build.sh --cuda OFF
+   ```
    * In case of MACOS, if there is an error during build for the libtiff directory, please follow these steps:
    ```
    Edit the cmake/deps/LIBTIFF_custom.cmake file to comment lines 44, 45, and 48 by adding # in the beginning. It should look like:
