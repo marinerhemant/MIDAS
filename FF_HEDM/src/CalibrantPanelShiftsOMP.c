@@ -905,7 +905,7 @@ int main(int argc, char *argv[])
     int SpaceGroup,FitWeightMean=0;
     double LatticeConstant[6], Wavelength, MaxRingRad, Lsd, MaxTtheta, TthetaTol, ybc, zbc, EtaBinSize, px,Width;
     double tx = 0,tolTilts,tolLsd,tolBC,tolP,tolP0=0,tolP1=0,tolP2=0,tolP3=0,tyin=0,tzin=0,p0in=0,p1in=0,p2in=0,p3in=0, padY=0, padZ=0;
-    double tolShifts;
+    double tolShifts = 0;
     int Padding = 6, NrPixelsY,NrPixelsZ,NrPixels;
     int NrTransOpt=0, RBinWidth = 4;
     long long int GapIntensity=0, BadPxIntensity=0;
