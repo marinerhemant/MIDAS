@@ -36,6 +36,16 @@ except ImportError:
     print("pip install psutil")
     sys.exit(1)
 
+# Determine the installation path from the script's location
+def get_install_path():
+    """Determines the MIDAS installation path based on script location"""
+    script_dir = Path(__file__).resolve().parent
+    # Go one directory up from the script directory (utils)
+    install_dir = script_dir.parent
+    return install_dir
+
+INSTALL_PATH = get_install_path()
+
 def read_parameters_from_file(param_file):
     """
     Extract relevant parameters from parameter file
@@ -187,7 +197,7 @@ def check_and_create_mapping_files(param_file, midas_env):
     # Files don't exist, need to run the mapper
     print(f"Mapping files not found. Running DetectorMapper to create them...")
     
-    detector_mapper = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/DetectorMapper")
+    detector_mapper = os.path.join(INSTALL_PATH, "FF_HEDM/bin/DetectorMapper")
     mapper_cmd = [detector_mapper, param_file]
     mapper_log = "detector_mapper.log"
     
@@ -474,7 +484,7 @@ def main():
     # Start IntegratorFitPeaksGPUStream in background
     print("Starting IntegratorFitPeaksGPUStream...")
     
-    integrator_executable = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/IntegratorFitPeaksGPUStream")
+    integrator_executable = os.path.join(INSTALL_PATH, "FF_HEDM/bin/IntegratorFitPeaksGPUStream")
     
     integrator_cmd = [integrator_executable, param_file]
     if dark_file:
@@ -511,7 +521,7 @@ def main():
     # Prepare server command
     server_cmd = [
         sys.executable,  # Add this line to use the current Python interpreter
-        os.path.expanduser("~/opt/MIDAS/utils/integrator_server.py"),
+        os.path.join(INSTALL_PATH, "utils/integrator_server.py"),
         "--stream", "0" if not use_pva else "1",
         "--mapping-file", mapping_file,
         "--save-interval", str(args.save_interval)
@@ -579,7 +589,7 @@ def main():
     print("\nConverting binary output to HDF5...")
     h5_cmd = [
         sys.executable,  # Add this line to use the current Python interpreter
-        os.path.expanduser("~/opt/MIDAS/utils/integrator_stream_process_h5.py"),
+        os.path.join(INSTALL_PATH, "utils/integrator_stream_process_h5.py"),
         "--lineout", "lineout.bin",
         "--fit", "fit.bin",
         "--int2d", "Int2D.bin",
