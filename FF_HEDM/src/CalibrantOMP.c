@@ -1366,7 +1366,7 @@ int main(int argc, char *argv[])
 			// printf("%s\n",dname);
 			// return 1;
 			dname = "exchange/data";
-			rc = fileReader(fd,FileName,dType,NrPixelsY*NrPixelsZ,DarkFile,dname);
+			rc = fileReader(fd,Dark,dType,NrPixelsY*NrPixelsZ,DarkFile,dname);
 			MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,DarkFile,DarkFile2);
 			DoImageTransformations(NrTransOpt,TransOpt,DarkFile2,NrPixels);
 			if (makeMap == 1){
