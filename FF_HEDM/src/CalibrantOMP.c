@@ -508,6 +508,7 @@ double problem_function(
 	}
 	TotalDiff *= MultFactor;
 	NrCalls++;
+	printf("Mean strain: %0.40f\n",TotalDiff/(MultFactor*nIndices));
 #ifdef PRINTOPT
 	printf("Mean strain: %0.40f\n",TotalDiff/(MultFactor*nIndices));
 #endif
