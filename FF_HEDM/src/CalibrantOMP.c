@@ -764,7 +764,7 @@ int fileReader (FILE *f,char fn[], int dType, int NrPixels, double *returnArr, c
 		hid_t dataspace;
 	    hsize_t dims[3];
 	    int ndims;
-		printf("%s\n",fn);
+		printf("%s %s\n",fn,dname);
 	    file = H5Fopen(fn,H5F_ACC_RDONLY, H5P_DEFAULT);
 	    dataset = H5Dopen(file, DATASETNAME,H5P_DEFAULT);
 	    dataspace = H5Dget_space(dataset);

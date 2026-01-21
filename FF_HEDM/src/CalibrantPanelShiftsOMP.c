@@ -565,7 +565,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean, double *IdealTthet
 				  double *p0, double *p1, double *p2, double *p3, double *MeanDiff, double tolTilts, double tolLsd, 
 				  double tolBC, double tolP, double tolP0, double tolP1, double tolP2, double tolP3, double tolShifts, double px)
 {
-	// Look at the possibility of including translations for each of the small panels on a multi-panel detector in the ooptimization....
+	// Look at the possibility of including translations for each of the small panels on a multi-panel detector in the optimization....
 	// Also change CorrectTiltSpatialDistortion to include translations!!!
 	unsigned n=9;
     int nPanels;
