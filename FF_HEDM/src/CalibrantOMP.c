@@ -1365,7 +1365,7 @@ int main(int argc, char *argv[])
 			// sprintf(dname,"%s",darkDatasetName);
 			// printf("%s\n",dname);
 			// return 1;
-			dname = "exchange/dark";
+			dname = "exchange/data";
 			rc = fileReader(fd,FileName,dType,NrPixelsY*NrPixelsZ,DarkFile,dname);
 			MakeSquare(NrPixels,NrPixelsY,NrPixelsZ,DarkFile,DarkFile2);
 			DoImageTransformations(NrTransOpt,TransOpt,DarkFile2,NrPixels);
