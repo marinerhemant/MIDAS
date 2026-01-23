@@ -102,6 +102,11 @@ cd MIDAS
    conda activate midas_env
    ```
 
+8. To build only a certain code (e.g. PeaksFittingOMPZarrRefactor):
+   ```
+   cmake --build build --target PeaksFittingOMPZarrRefactor
+   ```
+
 **MANUALS in the [manuals](https://github.com/marinerhemant/MIDAS/tree/master/manuals) directory**
 
 **Somewhat DEPRECATED! More details at** [MIDAS-WIKI](https://github.com/marinerhemant/MIDAS/wiki) 
