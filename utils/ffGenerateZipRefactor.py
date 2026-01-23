@@ -252,18 +252,30 @@ def process_hdf5_scan(config, z_groups):
     if num_files == 1: 
         file_list.append(config['dataFN'])
     else:
-        # Regex looks for digits before the LAST dot of the clean filename
-        match = re.search(r'(\d+)(?=\.\w+$)', clean_fn_for_parsing)
-        if not match: raise ValueError("Numeric sequence not found in HDF5 filename for multi-file scan.")
-        fNr_orig_str, start_nr = match.group(1), int(match.group(1))
+        p_parsing = Path(clean_fn_for_parsing)
+        filename_stem = p_parsing.stem
+        final_ext = p_parsing.suffix
         
-        # Reconstruct the list, appending .bz2 only if the original had it
-        suffix_tail = ".bz2" if is_bz2 else ""
+        # Find the LAST group of digits (the sequence number)
+        all_digit_matches = list(re.finditer(r'\d+', filename_stem))
+        if not all_digit_matches:
+            raise ValueError(f"Numeric sequence not found in HDF5 filename: '{filename_stem}'")
+
+        last_match = all_digit_matches[-1]
+        fNr_orig_str = last_match.group()
+        start_nr = int(fNr_orig_str)
+        
+        filename_base = filename_stem[:last_match.start()]
+        filename_mid_ext = filename_stem[last_match.end():]
+        
+        bz2_suffix = ".bz2" if is_bz2 else ""
+        parent_dir = Path(config['dataFN']).parent
         
         for i in range(num_files):
-            # We replace the number in the clean version, then add the suffix back
-            current_clean_fn = clean_fn_for_parsing.replace(fNr_orig_str, str(start_nr + i).zfill(len(fNr_orig_str)), 1)
-            file_list.append(current_clean_fn + suffix_tail)
+            current_nr_str = str(start_nr + i).zfill(len(fNr_orig_str))
+            # Correct reconstruction: Base + Number + Mid-Ext + .h5 + .bz2
+            current_fn = parent_dir / f"{filename_base}{current_nr_str}{filename_mid_ext}{final_ext}{bz2_suffix}"
+            file_list.append(str(current_fn))
 
     # Open first file to check metadata (uncompressing if needed)
     with BZ2Context(file_list[0]) as first_fn:
@@ -391,35 +403,39 @@ def process_multifile_scan(file_type, config, z_groups):
     # 1. Parsing filename. 
     original_path = Path(config['dataFN'])
     is_bz2_sequence = original_path.name.endswith('.bz2')
-    
     path_for_parsing = original_path.with_suffix('') if is_bz2_sequence else original_path
     
-    filename_stem = path_for_parsing.stem
-    match = re.search(r'(\d+)\D*$', filename_stem)
-    if not match:
-        raise ValueError(f"Could not find a numeric sequence at the end of the filename stem: '{filename_stem}'")
+    filename_stem = path_for_parsing.stem 
+    
+    # Find the LAST group of digits
+    all_digit_matches = list(re.finditer(r'\d+', filename_stem))
+    if not all_digit_matches:
+        raise ValueError(f"Could not find a numeric sequence in the filename stem: '{filename_stem}'")
 
-    fNr_orig_str = match.group(1)
+    last_match = all_digit_matches[-1]
+    fNr_orig_str = last_match.group()
     start_nr = int(fNr_orig_str)
     
-    filename_base = filename_stem[:-len(fNr_orig_str)]
-    parent_dir = original_path.parent
+    # Identify parts: e.g. "park_0MPa_" + "000294" + ".edf"
+    filename_base = filename_stem[:last_match.start()]
+    filename_mid_ext = filename_stem[last_match.end():]
     
+    parent_dir = original_path.parent
     raw_ext = path_for_parsing.suffix 
     full_ext = raw_ext + ".bz2" if is_bz2_sequence else raw_ext
 
     # 2. Pre-scan to find all existing files
     file_list = []
     for i in range(num_files):
-        current_nr = start_nr + i
-        current_nr_str = str(current_nr).zfill(len(fNr_orig_str))
-        current_fn = parent_dir / f"{filename_base}{current_nr_str}{full_ext}"
+        current_nr_str = str(start_nr + i).zfill(len(fNr_orig_str))
+        # Reconstruct exactly: Base + Number + MiddleExt (.edf) + FinalExt (.ge5)
+        current_fn = parent_dir / f"{filename_base}{current_nr_str}{filename_mid_ext}{full_ext}"
 
         if current_fn.exists():
             file_list.append(str(current_fn))
         else:
             print(f"Info: File sequence ended. Could not find {current_fn}")
-            break 
+            break
     
     if not file_list:
         raise FileNotFoundError(f"No data files found for the sequence starting with {config['dataFN']}")
