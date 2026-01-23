@@ -395,7 +395,7 @@ def process_multifile_scan(file_type, config, z_groups):
     path_for_parsing = original_path.with_suffix('') if is_bz2_sequence else original_path
     
     filename_stem = path_for_parsing.stem
-    match = re.search(r'(\d+)$', filename_stem)
+    match = re.search(r'(\d+)\D*$', filename_stem)
     if not match:
         raise ValueError(f"Could not find a numeric sequence at the end of the filename stem: '{filename_stem}'")
 
