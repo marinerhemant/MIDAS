@@ -698,15 +698,15 @@ static double problem_function(unsigned n, const double *x, double *grad,
     printf("Fitted p0: %f\nFitted p1: %f\nFitted p2: %f\nFitted p3: %f\n",
            x[19], x[20], x[21], x[22]);
   }
-  if (tolShifts > 1E-5 && nPanels > 1) {
-    if (nIter % 500 == 0) {
-      printf("Fitted Panel Shifts:\n");
-      for (int i = 1; i < nPanels; i++) {
-        int xIdx = 23 + (i - 1) * 2;
-        printf("Panel %d: dY=%.6f, dZ=%.6f\n", i, x[xIdx], x[xIdx + 1]);
-      }
-    }
-  }
+  // if (tolShifts > 1E-5 && nPanels > 1) {
+  //   if (nIter % 500 == 0) {
+  //     printf("Fitted Panel Shifts:\n");
+  //     for (int i = 1; i < nPanels; i++) {
+  //       int xIdx = 23 + (i - 1) * 2;
+  //       printf("Panel %d: dY=%.6f, dZ=%.6f\n", i, x[xIdx], x[xIdx + 1]);
+  //     }
+  //   }
+  // }
   if (nIter % 500 == 0) {
     printf("Error: %.20lf %.20lf %.20lf\n", f_data->Error[0], f_data->Error[1],
            f_data->Error[2]);
