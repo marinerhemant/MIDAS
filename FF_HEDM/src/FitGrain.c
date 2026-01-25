@@ -531,13 +531,14 @@ static inline double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges,
   FreeMemMatrix(TheorSpotsYZWE, nTspots);
   FreeMemMatrix(TheorSpotsYZWER, MaxNSpotsBest);
   free(Angles);
-  return Error[2];
+  return Error[0];
 }
 
-static inline void CorrectTiltSpatialDistortion(
-    int nIndices, double MaxRad, double **SpotInfoAll, double px, double Lsd,
-    double ybc, double zbc, double tx, double ty, double tz, double p0,
-    double p1, double p2, double p3, double **SpotInfoCorr) {
+static inline void
+CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double **SpotInfoAll,
+                             double px, double Lsd, double ybc, double zbc,
+                             double tx, double ty, double tz, double p0,
+                             double p1, double p2, double **SpotInfoCorr) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
@@ -566,7 +567,7 @@ static inline void CorrectTiltSpatialDistortion(
     RNorm = Rad / MaxRad;
     EtaT = 90 - Eta;
     DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
-                  (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
+                  (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT)))) +
                   (p2 * (pow(RNorm, n2))) + 1;
     Rcorr = Rad * DistortFunc;
     SpotInfoCorr[i][0] = SpotInfoAll[i][0];
@@ -588,7 +589,6 @@ struct data {
   double p0;
   double p1;
   double p2;
-  double p3;
   double RhoD;
   double Lsd;
   double px;
@@ -599,9 +599,8 @@ struct data {
   double **SpotInfoAll;
   double **hkls;
   double *Error;
-  int nPanels;
-  Panel *panels;
-  double tolShifts;
+  int nPanels;   // Added for panel support
+  Panel *panels; // Added for panel support
 };
 
 int nIter = 0;
@@ -623,10 +622,6 @@ static double problem_function(unsigned n, const double *x, double *grad,
   double px = f_data->px;
   double Wavelength = f_data->Wavelength;
   double MinEta = f_data->MinEta;
-  int nPanels = f_data->nPanels;
-  Panel *panels = f_data->panels;
-  double tolShifts = f_data->tolShifts;
-
   double OmegaRanges[2000][2];
   double BoxSizes[2000][4];
   for (i = 0; i < nOmeRanges; i++) {
@@ -642,19 +637,21 @@ static double problem_function(unsigned n, const double *x, double *grad,
   double **SpotInfoCorr;
   SpotInfoCorr = allocMatrix(nSpots, 5);
   double Inp[12];
-  double tx, ty, tz, ybc, zbc, Wedge, Chi;
-  // Layout: 0-5 Pos/Euler, 6-11 LatC, 12-18 DistParams
-  // (tx,ty,tz,ybc,zbc,wedge,chi) 19-22 p0-p3
+  for (i = 0; i < 12; i++)
+    Inp[i] = x[i];
+  double tx, ty, tz, ybc, zbc, Wedge;
   tx = x[12];
   ty = x[13];
   tz = x[14];
   ybc = x[15];
   zbc = x[16];
   Wedge = x[17];
-  Chi = x[18];
+
+  int nPanels = f_data->nPanels;
+  Panel *panels = f_data->panels;
 
   if (nPanels > 1) {
-    int p_idx = 23; // Updated index for panel shifts
+    int p_idx = 18;
     for (i = 1; i < nPanels; i++) {
       panels[i].dY = x[p_idx++];
       panels[i].dZ = x[p_idx++];
@@ -684,29 +681,11 @@ static double problem_function(unsigned n, const double *x, double *grad,
   }
 
   CorrectTiltSpatialDistortion(nSpots, RhoD, SpotInfoShifted, px, Lsd, ybc, zbc,
-                               tx, ty, tz, x[19], x[20], x[21], x[22],
-                               SpotInfoCorr);
+                               tx, ty, tz, p0, p1, p2, SpotInfoCorr);
   FreeMemMatrix(SpotInfoShifted, nSpots);
-  double error = CalcAngleErrors(nSpots, nhkls, nOmeRanges, x, SpotInfoCorr,
+  double error = CalcAngleErrors(nSpots, nhkls, nOmeRanges, Inp, SpotInfoCorr,
                                  hkls, Lsd, Wavelength, OmegaRanges, BoxSizes,
-                                 MinEta, Wedge, Chi, f_data->Error);
-  // if (nIter % 500 == 0) {
-  //   printf("\n%f %f %f %f %f %f %f %f\n%f %f %f %f %f\n %f %f %f %f %f "
-  //          "%f\nDiff: %f\n",
-  //          x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9], x[10],
-  //          x[11], x[12], x[13], x[14], x[15], x[16], x[17], x[18], error);
-  //   printf("Fitted p0: %f\nFitted p1: %f\nFitted p2: %f\nFitted p3: %f\n",
-  //          x[19], x[20], x[21], x[22]);
-  // }
-  // if (tolShifts > 1E-5 && nPanels > 1) {
-  //   if (nIter % 500 == 0) {
-  //     printf("Fitted Panel Shifts:\n");
-  //     for (int i = 1; i < nPanels; i++) {
-  //       int xIdx = 23 + (i - 1) * 2;
-  //       printf("Panel %d: dY=%.6f, dZ=%.6f\n", i, x[xIdx], x[xIdx + 1]);
-  //     }
-  //   }
-  // }
+                                 MinEta, Wedge, 0.0, f_data->Error);
   if (nIter % 500 == 0) {
     printf("Error: %.20lf %.20lf %.20lf\n", f_data->Error[0], f_data->Error[1],
            f_data->Error[2]);
@@ -718,12 +697,12 @@ static double problem_function(unsigned n, const double *x, double *grad,
 
 void FitGrain(double Ini[12], double OptP[6], double NonOptP[12],
               int NonOptPInt[5], double **SpotInfoAll,
-              double OmegaRanges[2000][2], double tol[23],
+              double OmegaRanges[2000][2], double tol[18],
               double BoxSizes[2000][4], double **hklsIn, double *Out,
               double *Error, Panel *panels, int nPanels,
               double tolShifts) { // Added panels, nPanels, tolShifts
-  unsigned n = 23;
-  if (tolShifts > 1E-5 && nPanels > 1) {
+  unsigned n = 18;
+  if (nPanels > 1) {
     n += (nPanels - 1) * 2;
   }
 
@@ -738,7 +717,6 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12],
   f_data.p0 = NonOptP[0];
   f_data.p1 = NonOptP[1];
   f_data.p2 = NonOptP[2];
-  f_data.p3 = NonOptP[10]; // Assuming p3 is at index 10 in NonOptP
   f_data.RhoD = NonOptP[3];
   f_data.Lsd = NonOptP[4];
   f_data.px = NonOptP[5];
@@ -746,7 +724,6 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12],
   f_data.MinEta = NonOptP[9];
   f_data.nPanels = nPanels;
   f_data.panels = panels;
-  f_data.tolShifts = tolShifts;
 
   int nOmeRanges = NonOptPInt[1];
   for (i = 0; i < nOmeRanges; i++) {
@@ -763,95 +740,34 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12],
   void *trp = (struct data *)f_datat;
 
   // Set x, xl, xu
-  // Basic grain params (0-18)
-  // Set x, xl, xu
-  // 0-5: Pos/Euler (Ini 0-5)
-  x[0] = Ini[0];
-  xl[0] = x[0] - tol[0];
-  xu[0] = x[0] + tol[0];
-  x[1] = Ini[1];
-  xl[1] = x[1] - tol[1];
-  xu[1] = x[1] + tol[1];
-  x[2] = Ini[2];
-  xl[2] = x[2] - tol[2];
-  xu[2] = x[2] + tol[2];
-  x[3] = Ini[3];
-  xl[3] = x[3] - tol[3];
-  xu[3] = x[3] + tol[3];
-  x[4] = Ini[4];
-  xl[4] = x[4] - tol[4];
-  xu[4] = x[4] + tol[4];
-  x[5] = Ini[5];
-  xl[5] = x[5] - tol[5];
-  xu[5] = x[5] + tol[5];
+  for (i = 0; i < 12; i++)
+    x[i] = Ini[i];
+  for (i = 0; i < 6; i++)
+    x[i + 12] = OptP[i];
+  for (i = 0; i < 6; i++) { // Pos and Orient
+    xl[i] = x[i] - tol[i];
+    xu[i] = x[i] + tol[i];
+  }
+  for (i = 6; i < 12; i++) { // Strains
+    xl[i] = x[i] - (tol[i] / 100);
+    xu[i] = x[i] + (tol[i] / 100);
+  }
+  for (i = 12; i < 18; i++) { // Parameters
+    xl[i] = x[i] - tol[i];
+    xu[i] = x[i] + tol[i];
+  }
 
-  // 6-11: LatC (Ini 6-11)
-  x[6] = Ini[6];
-  xl[6] = x[6] - tol[6];
-  xu[6] = x[6] + tol[6];
-  x[7] = Ini[7];
-  xl[7] = x[7] - tol[7];
-  xu[7] = x[7] + tol[7];
-  x[8] = Ini[8];
-  xl[8] = x[8] - tol[8];
-  xu[8] = x[8] + tol[8];
-  x[9] = Ini[9];
-  xl[9] = x[9] - tol[9];
-  xu[9] = x[9] + tol[9];
-  x[10] = Ini[10];
-  xl[10] = x[10] - tol[10];
-  xu[10] = x[10] + tol[10];
-  x[11] = Ini[11];
-  xl[11] = x[11] - tol[11];
-  xu[11] = x[11] + tol[11];
-
-  // 12-18: DistParams (OptP)
-  // OptP: {tx, ty, tz, ybc, zbc, wedge}
-  x[12] = OptP[0];
-  xl[12] = x[12] - tol[12];
-  xu[12] = x[12] + tol[12]; // tx
-  x[13] = OptP[1];
-  xl[13] = x[13] - tol[13];
-  xu[13] = x[13] + tol[13]; // ty
-  x[14] = OptP[2];
-  xl[14] = x[14] - tol[14];
-  xu[14] = x[14] + tol[14]; // tz
-  x[15] = OptP[3];
-  xl[15] = x[15] - tol[14];
-  xu[15] = x[15] + tol[14]; // ybc (Using tol[14] as before)
-  x[16] = OptP[4];
-  xl[16] = x[16] - tol[15];
-  xu[16] = x[16] + tol[15]; // zbc
-  x[17] = OptP[5];
-  xl[17] = x[17] - tol[17];
-  xu[17] = x[17] + tol[17]; // Wedge
-  x[18] = 0;
-  xl[18] = x[18] - tol[16];
-  xu[18] = x[18] + tol[16]; // Chi (Not in OptP, init to 0)
-
-  // 19-22: p0-p3
-  x[19] = NonOptP[0];
-  xl[19] = x[19] - tol[18];
-  xu[19] = x[19] + tol[18]; // p0
-  x[20] = NonOptP[1];
-  xl[20] = x[20] - tol[19];
-  xu[20] = x[20] + tol[19]; // p1
-  x[21] = NonOptP[2];
-  xl[21] = x[21] - tol[20];
-  xu[21] = x[21] + tol[20]; // p2
-  x[22] = NonOptP[10];
-  xl[22] = x[22] - tol[22];
-  xu[22] = x[22] + tol[22]; // p3 (Using tol[22])
-
-  if (tolShifts > 1E-5 && nPanels > 1) {
-    for (int i = 1; i < nPanels; i++) {
-      int xIdx = 23 + (i - 1) * 2;
-      x[xIdx] = panels[i].dY;
-      xl[xIdx] = panels[i].dY - tolShifts;
-      xu[xIdx] = panels[i].dY + tolShifts;
-      x[xIdx + 1] = panels[i].dZ;
-      xl[xIdx + 1] = panels[i].dZ - tolShifts;
-      xu[xIdx + 1] = panels[i].dZ + tolShifts;
+  if (nPanels > 1) {
+    int p_idx = 18;
+    for (i = 1; i < nPanels; i++) {
+      x[p_idx] = panels[i].dY;
+      xl[p_idx] = x[p_idx] - tolShifts; // +/- tolShifts
+      xu[p_idx] = x[p_idx] + tolShifts;
+      p_idx++;
+      x[p_idx] = panels[i].dZ;
+      xl[p_idx] = x[p_idx] - tolShifts;
+      xu[p_idx] = x[p_idx] + tolShifts;
+      p_idx++;
     }
   }
 
@@ -864,11 +780,11 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12],
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
 
-  for (i = 0; i < n; i++)
+  for (i = 0; i < 18; i++)
     Out[i] = x[i];
 
   if (nPanels > 1) {
-    int p_idx = 23; // Updated index for panel shifts
+    int p_idx = 18;
     for (i = 1; i < nPanels; i++) {
       panels[i].dY = x[p_idx++];
       panels[i].dZ = x[p_idx++];
@@ -894,10 +810,9 @@ int main(int argc, char *argv[]) {
   ParamFN = argv[2];
   fileParam = fopen(ParamFN, "r");
   char *str, dummy[MAX_LINE_LENGTH];
-  double tx = 0, ty = 0, tz = 0, Lsd = 1000, p0 = 0, p1 = 0, p2 = 0, p3 = 0,
-         RhoD = 200, ybc = 1000, zbc = 1000, wedge = 0, chi = 0, px, a, b, c,
-         alpha, beta, gamma, OmegaRanges[2000][2], BoxSizes[2000][4],
-         MaxRingRad, MaxTtheta, Wavelength, MinEta, Hbeam, Rsample;
+  double tx, ty, tz, Lsd, p0, p1, p2, RhoD, yBC, zBC, wedge, px, a, b, c, alpha,
+      beta, gamma, OmegaRanges[2000][2], BoxSizes[2000][4], MaxRingRad,
+      MaxTtheta, Wavelength, MinEta, Hbeam, Rsample;
   int NrPixels, nOmeRanges = 0, nBoxSizes = 0, cs = 0, RingNumbers[200],
                 cs2 = 0;
   double tolShifts = 1.0;
@@ -955,12 +870,6 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %lf", dummy, &p2);
       continue;
     }
-    str = "p3 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &p3);
-      continue;
-    }
     str = "RhoD ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
@@ -970,7 +879,7 @@ int main(int argc, char *argv[]) {
     str = "BC ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf", dummy, &ybc, &zbc);
+      sscanf(aline, "%s %lf %lf", dummy, &yBC, &zBC);
       continue;
     }
     str = "Wedge ";
@@ -1265,33 +1174,31 @@ int main(int argc, char *argv[]) {
   // Group Setup parameters
   // Non Optimized: NonOptP: double 10 + Int 5
   // Optimized OptP[6]
-  double NonOptP[11] = {p0,         p1,    p2,      RhoD,   Lsd, px,
-                        Wavelength, Hbeam, Rsample, MinEta, p3};
+  double NonOptP[10] = {p0, p1,         p2,    RhoD,    Lsd,
+                        px, Wavelength, Hbeam, Rsample, MinEta};
   int NonOptPInt[5] = {NrPixels, nOmeRanges, nRings, nSpots, nhkls};
-  double OptP[6] = {tx, ty, tz, ybc, zbc, wedge};
-  double tols[23] = {250,
-                     250,
-                     250,
-                     deg2rad * 0.0005,
-                     deg2rad * 0.0005,
-                     deg2rad * 0.0005,
-                     1,
-                     1,
-                     1,
-                     1,
-                     1,
-                     1,
-                     1,
-                     1,
-                     1,
-                     1,
-                     1,
-                     1,
-                     0.00001,
-                     1E-3,
-                     1E-3,
-                     1E-3,
-                     45.0}; // p0, p1, p2, p3 tolerances
+  double OptP[6] = {tx, ty, tz, yBC, zBC, wedge};
+  double tols[18] = {
+      250,
+      250,
+      250,
+      deg2rad * 0.0005,
+      deg2rad * 0.0005,
+      deg2rad * 0.0005,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0.00001}; // 250 microns for position, 0.0005 degrees for orient, 1 % for
+                // latticeParameter, 1 degree for tilts, 1 pixel for yBC,
+                // 1 pixel for zBC, 0.00001 degree for wedge
 
   // Now call a function with all the info which will optimize parameters
   // Arguments: Ini(12), OptP(6), NonOptP, RingNumbers,  SpotInfoAll,
@@ -1301,7 +1208,7 @@ int main(int argc, char *argv[]) {
   // Everything till CorrectTiltSpatialDistortion function in FitTiltBCLsd
   double *Out;
   double *Error;
-  int nOptParams = 23;
+  int nOptParams = 18;
   if (nPanels > 1) {
     nOptParams += (nPanels - 1) * 2;
   }
@@ -1318,8 +1225,6 @@ int main(int argc, char *argv[]) {
   for (i = 0; i < 18; i++)
     printf("%f ", Out[i]);
   printf("\n");
-  printf("Fitted p0: %f\nFitted p1: %f\nFitted p2: %f\nFitted p3: %f\n",
-         Out[19], Out[20], Out[21], Out[22]);
   printf("Input tx: %lf, Fit tx: %lf\n", tx, Out[12]);
 
   if (nPanels > 1) {
