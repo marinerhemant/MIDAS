@@ -830,7 +830,12 @@ static inline void CorrectTiltSpatialDistortion(
       }
     }
     if (validCount > 0) {
+      double originalMean = MeanDiff;
       MeanDiff = newSum / validCount;
+      printf("StdDev Outlier Rejection (Factor %.2f): Excluded %d / %d points. "
+             "Mean Strain: %.8f -> %.8f\n",
+             outlierFactor, nIndices - validCount, nIndices, originalMean,
+             MeanDiff);
     }
   } else {
     for (i = 0; i < nIndices; i++)
