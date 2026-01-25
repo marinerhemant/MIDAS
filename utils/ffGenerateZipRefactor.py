@@ -284,13 +284,24 @@ def process_hdf5_scan(config, z_groups):
             frames_per_file, nZ, nY = hf[data_loc].shape
             output_dtype = hf[data_loc].dtype
 
+            # Update config with actual dimensions found in file
+            config['numPxY'] = nY
+            config['numPxZ'] = nZ
+            print(f"  - Inferred dimensions from HDF5: {nY} x {nZ}")
+
             print("  - Checking for additional metadata inside HDF5 file...")
+            # Allow user to override paths in param file
+            path_pressure = config.get('PressureDatasetPath', '/measurement/instrument/GSAS2_PVS/Pressure')
+            path_temp = config.get('TemperatureDatasetPath', '/measurement/instrument/GSAS2_PVS/Temperature')
+            path_I = config.get('IDatasetPath', '/measurement/instrument/GSAS2_PVS/I')
+            path_I0 = config.get('I0DatasetPath', '/measurement/instrument/GSAS2_PVS/I0')
+
             hdf5_metadata_paths = {
                 'startOmeOverride': 'startOmeOverride',
-                '/measurement/instrument/GSAS2_PVS/Pressure': 'Pressure',
-                '/measurement/instrument/GSAS2_PVS/Temperature': 'Temperature',
-                '/measurement/instrument/GSAS2_PVS/I': 'I',
-                '/measurement/instrument/GSAS2_PVS/I0': 'I0',
+                path_pressure: 'Pressure',
+                path_temp: 'Temperature',
+                path_I: 'I',
+                path_I0: 'I0',
             }
             for h5_path, zarr_name in hdf5_metadata_paths.items():
                 if h5_path in hf:
@@ -382,7 +393,7 @@ def process_multifile_scan(file_type, config, z_groups):
     print(f"\n--- Processing {file_type.upper()} File(s) ---")
     num_files, skip_frames = int(config.get('numFilesPerScan', 1)), int(config.get('SkipFrame', 0))
     header_size = int(config.get('HeadSize', 8192))
-    numPxY, numPxZ = int(config['numPxY']), int(config['numPxZ'])
+    # numPxY, numPxZ will be determined/verified from the file if possible (for TIFF) or config (for GE)
 
     # Ensure tifffile is available if needed (for both data and dark files)
     if file_type != 'ge':
@@ -443,9 +454,29 @@ def process_multifile_scan(file_type, config, z_groups):
     # Check size of first file
     with BZ2Context(file_list[0]) as first_fn_uncompressed:
         if file_type == 'ge':
+            # For GE files, we MUST have valid numPxY/numPxZ from config/defaults as they have no header info
+            numPxY = int(config.get('numPxY', 2048))
+            numPxZ = int(config.get('numPxZ', 2048))
+            
             frames_per_file = (os.path.getsize(first_fn_uncompressed) - header_size) // (bytes_per_pixel * numPxY * numPxZ)
         else: # tiff
-            frames_per_file = 1
+            # For TIFF, we ignore config dims and read from file (overwriting config)
+            test_img = tifffile.imread(first_fn_uncompressed)
+            if test_img.ndim == 2:
+                numPxZ, numPxY = test_img.shape
+                frames_per_file = 1
+            elif test_img.ndim == 3:
+                frames_per_file, numPxZ, numPxY = test_img.shape
+            else:
+                 # This might happen if it's 4D or something else, default to last 2 dims
+                 numPxZ, numPxY = test_img.shape[-2:]
+                 frames_per_file = 1
+                 if test_img.ndim > 2:
+                    frames_per_file = test_img.shape[0]
+
+            config['numPxY'] = numPxY
+            config['numPxZ'] = numPxZ
+            print(f"  - Inferred dimensions from TIFF: {numPxY} x {numPxZ}")
 
     num_files_found = len(file_list)
     total_frames_to_write = frames_per_file
@@ -562,6 +593,22 @@ def build_config(parser, args):
     if 'Dark' in config and not config.get('darkFN'):
         print(f"Info: Found 'Dark' key in parameter file: {config['Dark']}")
         config['darkFN'] = config['Dark']
+
+    # --- Dimension Mapping ---
+    # Map NrPixels family to numPxY/numPxZ if they exist in the parameter file
+    # Priority: numPxY/Z (args/explicit) > numPxY/Z (param) > NrPixelsY/Z (param) > NrPixels (param)
+    
+    if 'NrPixels' in config:
+        val = int(config['NrPixels'])
+        if 'numPxY' not in config: config['numPxY'] = val
+        if 'numPxZ' not in config: config['numPxZ'] = val
+    
+    if 'NrPixelsY' in config:
+        config['numPxY'] = int(config['NrPixelsY'])
+        
+    if 'NrPixelsZ' in config:
+        config['numPxZ'] = int(config['NrPixelsZ'])
+
 
     # If SkipFrame is not in the parameter file, add it with a default of 0
     if 'SkipFrame' not in config:
