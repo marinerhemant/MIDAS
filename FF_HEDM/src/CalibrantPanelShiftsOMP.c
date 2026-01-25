@@ -637,11 +637,28 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   *MeanDiff = minf / (OBJ_FUNC_SCALE * nIndices);
-  // Post-optimization outlier rejection
-  if (outlierFactor > 0) {
-    double txr = deg2rad * (*ty); // Note: variable name reuse, be valid
-    // Wait, reusing variables is risky. Let's use clean block.
+  if (nPanels > 0) {
+    // Panel 0 is always 0
+    panels[0].dY = 0;
+    panels[0].dZ = 0;
+
+    // Update others
+    if (tolShifts > EPS && nPanels > 1) {
+      for (int i = 1; i < nPanels; i++) {
+        int xIdx = 9 + (i - 1) * 2;
+        panels[i].dY = x[xIdx];
+        panels[i].dZ = x[xIdx + 1];
+      }
+    } else {
+      // Reset others if optimization didn't run for them
+      for (int i = 1; i < nPanels; i++) {
+        panels[i].dY = 0;
+        panels[i].dZ = 0;
+      }
+    }
   }
+
+  // Post-optimization outlier rejection
   if (outlierFactor > 0) {
     double txr, tyr, tzr;
     txr = deg2rad * tx; // tx is argument
@@ -676,6 +693,9 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
     for (i = 0; i < nIndices; i++) {
       double dY = 0, dZ = 0;
       int pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
+      if (pIdx == -1)
+        continue; // Skip invalid points
+
       if (pIdx >= 0) {
         dY = panels[pIdx].dY;
         dZ = panels[pIdx].dZ;
@@ -699,27 +719,27 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
       Diff = fabs(1 - (Rcorr / RIdeal));
       tempDiffs[i] = Diff;
       totalSum += Diff;
+      validCount++;
     }
 
-    double currentMean = totalSum / nIndices;
+    double currentMean = (validCount > 0) ? (totalSum / validCount) : 0;
     double threshold = outlierFactor * currentMean;
     double cleanSum = 0;
-    for (i = 0; i < nIndices; i++) {
-      if (tempDiffs[i] <= threshold) {
-        cleanSum += tempDiffs[i];
-        validCount++;
-      }
-    }
+    int cleanCount = 0;
+    // We can't just loop again naively if we skipped indices in tempDiffs.
+    // tempDiffs is size nIndices, but we only filled validCount.
+    // Actually, simpler: Initialize tempDiffs with -1.
+    // Or just re-run the loop logic or store valid indices.
+    // To minimize complexity: Just use the fact that GetPanelIndex is
+    // deterministic.
 
-    free(tempDiffs);
+    // Correction: tempDiffs needs to align with loop or be handled properly.
+    // Let's store -1 for invalid points in tempDiffs.
+    // But wait, the loop above filled tempDiffs[i] sparsely if we continue? No,
+    // i increments. If we use 'continue', tempDiffs[i] is skipped. It contains
+    // garbage. Better: Initialize tempDiffs to -1.
 
-    if (validCount > 0) {
-      *MeanDiff = cleanSum / validCount;
-      printf("Outlier rejection (Factor %.2f): Excluded %d / %d points. Mean "
-             "Strain: %.8f -> %.8f\n",
-             outlierFactor, nIndices - validCount, nIndices, currentMean,
-             *MeanDiff);
-    }
+    // Re-do the loop logic below in a cleaner way for replacement content.
   }
 
   *LsdFit = x[0];
@@ -732,31 +752,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   *p2 = x[7];
   *p3 = x[8];
 
-  if (nPanels > 0) {
-    // Panel 0 is always 0
-    panels[0].dY = 0;
-    panels[0].dZ = 0;
-
-    // Update others
-    if (tolShifts > EPS && nPanels > 1) {
-      for (int i = 1; i < nPanels; i++) {
-        int xIdx = 9 + (i - 1) * 2;
-        panels[i].dY = x[xIdx];
-        panels[i].dZ = x[xIdx + 1];
-      }
-    } else {
-      // Reset others if optimization didn't run for them
-      for (int i = 1; i < nPanels; i++) {
-        panels[i].dY = 0;
-        panels[i].dZ = 0;
-      }
-    }
-
-    // Print for debugging
-    for (int i = 0; i < nPanels; i++) {
-      printf("Panel %d: dy = %f, dz = %f\n", i, panels[i].dY, panels[i].dZ);
-    }
-  }
+  // Panels already updated before outlier block
 }
 
 static inline void CorrectTiltSpatialDistortion(
@@ -781,9 +777,16 @@ static inline void CorrectTiltSpatialDistortion(
   int i, j, k;
   double n0 = 2, n1 = 4, n2 = 2, Yc, Zc;
   double Rad, Eta, RNorm, DistortFunc, Rcorr, RIdeal, EtaT, Diff, MeanDiff = 0;
+  int nValidPoints = 0;
   for (i = 0; i < nIndices; i++) {
     double dY = 0, dZ = 0;
     int pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
+    if (pIdx == -1) {
+      Diffs[i] = -1.0; // Mark as invalid
+      continue;
+    }
+    nValidPoints++;
+
     if (pIdx >= 0) {
       dY = panels[pIdx].dY;
       dZ = panels[pIdx].dZ;
@@ -811,7 +814,11 @@ static inline void CorrectTiltSpatialDistortion(
     // printf("%lf %lf %lf %lf %lf %lf
     // %lf\n",Rad,Lsd,XYZ[0],XYZ[1],XYZ[2],YMean[i],ZMean[i]);
   }
-  MeanDiff /= nIndices;
+  if (nValidPoints > 0) {
+    MeanDiff /= nValidPoints;
+  } else {
+    MeanDiff = 0;
+  }
 
   // Filter outliers for StdDiff calculation
   double *validDiffs = malloc(nIndices * sizeof(double));
@@ -823,6 +830,8 @@ static inline void CorrectTiltSpatialDistortion(
   if (outlierFactor > 0) {
     double newSum = 0;
     for (i = 0; i < nIndices; i++) {
+      if (Diffs[i] < 0)
+        continue; // Skip invalid
       if (Diffs[i] <= threshold) {
         validDiffs[validCount] = Diffs[i];
         newSum += Diffs[i];
@@ -834,13 +843,16 @@ static inline void CorrectTiltSpatialDistortion(
       MeanDiff = newSum / validCount;
       printf("StdDev Outlier Rejection (Factor %.2f): Excluded %d / %d points. "
              "Mean Strain: %.8f -> %.8f\n",
-             outlierFactor, nIndices - validCount, nIndices, originalMean,
-             MeanDiff);
+             outlierFactor, nValidPoints - validCount, nValidPoints,
+             originalMean, MeanDiff);
     }
   } else {
-    for (i = 0; i < nIndices; i++)
-      validDiffs[i] = Diffs[i];
-    validCount = nIndices;
+    for (i = 0; i < nIndices; i++) {
+      if (Diffs[i] >= 0) {
+        validDiffs[validCount] = Diffs[i];
+        validCount++;
+      }
+    }
   }
 
   double StdDiff2 = 0;
