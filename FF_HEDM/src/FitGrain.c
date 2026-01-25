@@ -1195,7 +1195,7 @@ int main(int argc, char *argv[]) {
       1,
       1,
       1,
-      0.00001,
+      1,
       0.00001}; // 250 microns for position, 0.0005 degrees for orient, 1 % for
                 // latticeParameter, 1 degree for tilts, 1 pixel for yBC,
                 // 0.00001 pixel for zBC, 0.00001 degree for wedge
