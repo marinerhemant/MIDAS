@@ -642,13 +642,16 @@ static double problem_function(unsigned n, const double *x, double *grad,
   double **SpotInfoCorr;
   SpotInfoCorr = allocMatrix(nSpots, 5);
   double Inp[12];
-  double tx, ty, tz, ybc, zbc, Wedge;
+  double tx, ty, tz, ybc, zbc, Wedge, Chi;
+  // Layout: 0-5 Pos/Euler, 6-11 LatC, 12-18 DistParams
+  // (tx,ty,tz,ybc,zbc,wedge,chi) 19-22 p0-p3
   tx = x[12];
   ty = x[13];
   tz = x[14];
   ybc = x[15];
   zbc = x[16];
   Wedge = x[17];
+  Chi = x[18];
 
   if (nPanels > 1) {
     int p_idx = 23; // Updated index for panel shifts
@@ -686,7 +689,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
   FreeMemMatrix(SpotInfoShifted, nSpots);
   double error = CalcAngleErrors(nSpots, nhkls, nOmeRanges, x, SpotInfoCorr,
                                  hkls, Lsd, Wavelength, OmegaRanges, BoxSizes,
-                                 MinEta, x[6], x[7], f_data->Error);
+                                 MinEta, Wedge, Chi, f_data->Error);
   if (nIter % 500 == 0) {
     printf("\n%f %f %f %f %f %f %f %f\n%f %f %f %f %f\n %f %f %f %f %f "
            "%f\nDiff: %f\n",
@@ -761,6 +764,8 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12],
 
   // Set x, xl, xu
   // Basic grain params (0-18)
+  // Set x, xl, xu
+  // 0-5: Pos/Euler (Ini 0-5)
   x[0] = Ini[0];
   xl[0] = x[0] - tol[0];
   xu[0] = x[0] + tol[0];
@@ -779,47 +784,52 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12],
   x[5] = Ini[5];
   xl[5] = x[5] - tol[5];
   xu[5] = x[5] + tol[5];
-  x[6] = OptP[5];
-  xl[6] = x[6] - tol[17];
-  xu[6] = x[6] + tol[17]; // Wedge
-  x[7] = OptP[4];
-  xl[7] = x[7] - tol[16];
-  xu[7] = x[7] + tol[16]; // Chi
-  x[8] = OptP[3];
-  xl[8] = x[8] - tol[15];
-  xu[8] = x[8] + tol[15]; // zbc
-  x[9] = OptP[2];
-  xl[9] = x[9] - tol[14];
-  xu[9] = x[9] + tol[14]; // ybc
-  x[10] = OptP[0];
-  xl[10] = x[10] - tol[12];
-  xu[10] = x[10] + tol[12]; // tx
-  x[11] = OptP[1];
-  xl[11] = x[11] - tol[13];
-  xu[11] = x[11] + tol[13]; // ty
-  x[12] = OptP[2];
-  xl[12] = x[12] - tol[14];
-  xu[12] = x[12] + tol[14]; // tz
-  x[13] = Ini[6];
-  xl[13] = x[13] - tol[6];
-  xu[13] = x[13] + tol[6];
-  x[14] = Ini[7];
-  xl[14] = x[14] - tol[7];
-  xu[14] = x[14] + tol[7];
-  x[15] = Ini[8];
-  xl[15] = x[15] - tol[8];
-  xu[15] = x[15] + tol[8];
-  x[16] = Ini[9];
-  xl[16] = x[16] - tol[9];
-  xu[16] = x[16] + tol[9];
-  x[17] = Ini[10];
-  xl[17] = x[17] - tol[10];
-  xu[17] = x[17] + tol[10];
-  x[18] = Ini[11];
-  xl[18] = x[18] - tol[11];
-  xu[18] = x[18] + tol[11];
 
-  // New params: p0, p1, p2 (tol 1E-3), p3 (tol 45 deg)
+  // 6-11: LatC (Ini 6-11)
+  x[6] = Ini[6];
+  xl[6] = x[6] - tol[6];
+  xu[6] = x[6] + tol[6];
+  x[7] = Ini[7];
+  xl[7] = x[7] - tol[7];
+  xu[7] = x[7] + tol[7];
+  x[8] = Ini[8];
+  xl[8] = x[8] - tol[8];
+  xu[8] = x[8] + tol[8];
+  x[9] = Ini[9];
+  xl[9] = x[9] - tol[9];
+  xu[9] = x[9] + tol[9];
+  x[10] = Ini[10];
+  xl[10] = x[10] - tol[10];
+  xu[10] = x[10] + tol[10];
+  x[11] = Ini[11];
+  xl[11] = x[11] - tol[11];
+  xu[11] = x[11] + tol[11];
+
+  // 12-18: DistParams (OptP)
+  // OptP: {tx, ty, tz, ybc, zbc, wedge}
+  x[12] = OptP[0];
+  xl[12] = x[12] - tol[12];
+  xu[12] = x[12] + tol[12]; // tx
+  x[13] = OptP[1];
+  xl[13] = x[13] - tol[13];
+  xu[13] = x[13] + tol[13]; // ty
+  x[14] = OptP[2];
+  xl[14] = x[14] - tol[14];
+  xu[14] = x[14] + tol[14]; // tz
+  x[15] = OptP[3];
+  xl[15] = x[15] - tol[14];
+  xu[15] = x[15] + tol[14]; // ybc (Using tol[14] as before)
+  x[16] = OptP[4];
+  xl[16] = x[16] - tol[15];
+  xu[16] = x[16] + tol[15]; // zbc
+  x[17] = OptP[5];
+  xl[17] = x[17] - tol[17];
+  xu[17] = x[17] + tol[17]; // Wedge
+  x[18] = 0;
+  xl[18] = x[18] - tol[16];
+  xu[18] = x[18] + tol[16]; // Chi (Not in OptP, init to 0)
+
+  // 19-22: p0-p3
   x[19] = NonOptP[0];
   xl[19] = x[19] - tol[18];
   xu[19] = x[19] + tol[18]; // p0
@@ -830,8 +840,8 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12],
   xl[21] = x[21] - tol[20];
   xu[21] = x[21] + tol[20]; // p2
   x[22] = NonOptP[10];
-  xl[22] = x[22] - tol[21];
-  xu[22] = x[22] + tol[21]; // p3
+  xl[22] = x[22] - tol[22];
+  xu[22] = x[22] + tol[22]; // p3 (Using tol[22])
 
   if (tolShifts > 1E-5 && nPanels > 1) {
     for (int i = 1; i < nPanels; i++) {
