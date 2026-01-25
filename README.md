@@ -104,7 +104,8 @@ cd MIDAS
 
 8. To build only a certain code (e.g. PeaksFittingOMPZarrRefactor):
    ```
-   cmake --build build --target PeaksFittingOMPZarrRefactor
+   cd build # navigate to build directory
+   cmake --build . --target PeaksFittingOMPZarrRefactor
    ```
 
 **MANUALS in the [manuals](https://github.com/marinerhemant/MIDAS/tree/master/manuals) directory**
