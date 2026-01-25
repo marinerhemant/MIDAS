@@ -1945,6 +1945,8 @@ int main(int argc, char *argv[]) {
     Out = fopen(OutFileName, "w");
     fprintf(Out, "%%Eta Strain RadFit EtaCalc DiffCalc RadCalc Ideal2Theta\n");
     for (i = 0; i < nIndices; i++) {
+      if (Diffs[i] < 0)
+        continue;
       fprintf(Out, "%f %10.8f %10.8f %f %10.8f %10.8f %f\n", Etas[i], Diffs[i],
               RadOuts[i], EtaIns[i], DiffIns[i], RadIns[i], IdealTtheta[i]);
     }
