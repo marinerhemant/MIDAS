@@ -122,7 +122,7 @@ add_ff_hedm_executable(ProcessGrainsScanningHEDM SOURCES src/ProcessGrainsScanni
 add_ff_hedm_executable(MatchGrains SOURCES src/MatchGrains.c src/GetMisorientation.c)
 
 add_ff_hedm_executable(DetectorMapper SOURCES src/DetectorMapper.c src/Panel.c)
-add_ff_hedm_executable(DetectorMapperZarr SOURCES src/DetectorMapperZarr.c)
+add_ff_hedm_executable(DetectorMapperZarr SOURCES src/DetectorMapperZarr.c src/Panel.c)
 add_ff_hedm_executable(Integrator SOURCES src/Integrator.c)
 add_ff_hedm_executable(IntegratorZarr SOURCES src/IntegratorZarr.c)
 add_ff_hedm_executable(ConvTiffToGE SOURCES src/ConvTiffToGE.c)
