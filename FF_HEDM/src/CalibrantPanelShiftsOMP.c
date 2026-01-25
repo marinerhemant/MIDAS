@@ -509,7 +509,8 @@ static double problem_function(unsigned n, const double *x, double *grad,
   int zMaxs[8] = {195, 407, 619, 831, 1043, 1255, 1467, 1679};
   double dY = 0, dZ = 0;
   for (i = 0; i < nIndices; i++) {
-    int pIdx = GetPanelIndex((double)YMean[i], (double)ZMean[i], nPanels, panels);
+    int pIdx =
+        GetPanelIndex((double)YMean[i], (double)ZMean[i], nPanels, panels);
     if (pIdx == -1) {
       continue;
     }
@@ -610,18 +611,18 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   x[8] = p3in;
   xl[8] = p3in - tolP3;
   xu[8] = p3in + tolP3;
-  
+
   if (tolShifts > EPS && nPanels > 1) {
     for (int i = 1; i < nPanels; i++) {
-        // We map Panel i to x indices starting at 9 + (i-1)*2
-        int xIdx = 9 + (i - 1) * 2;
-        x[xIdx] = 0;
-        xl[xIdx] = -tolShifts;
-        xu[xIdx] = tolShifts;
-        
-        x[xIdx + 1] = 0;
-        xl[xIdx + 1] = -tolShifts;
-        xu[xIdx + 1] = tolShifts;
+      // We map Panel i to x indices starting at 9 + (i-1)*2
+      int xIdx = 9 + (i - 1) * 2;
+      x[xIdx] = 0;
+      xl[xIdx] = -tolShifts;
+      xu[xIdx] = tolShifts;
+
+      x[xIdx + 1] = 0;
+      xl[xIdx + 1] = -tolShifts;
+      xu[xIdx + 1] = tolShifts;
     }
   }
   struct my_func_data *f_datat;
@@ -645,31 +646,31 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   *p1 = x[6];
   *p2 = x[7];
   *p3 = x[8];
-  
+
   if (nPanels > 0) {
-      // Panel 0 is always 0
-      panels[0].dY = 0;
-      panels[0].dZ = 0;
-      
-      // Update others
-      if (tolShifts > EPS && nPanels > 1) {
-          for (int i = 1; i < nPanels; i++) {
-            int xIdx = 9 + (i - 1) * 2;
-            panels[i].dY = x[xIdx];
-            panels[i].dZ = x[xIdx+1];
-          }
-      } else {
-        // Reset others if optimization didn't run for them
-        for (int i = 1; i < nPanels; i++) {
-            panels[i].dY = 0;
-            panels[i].dZ = 0;
-        }
+    // Panel 0 is always 0
+    panels[0].dY = 0;
+    panels[0].dZ = 0;
+
+    // Update others
+    if (tolShifts > EPS && nPanels > 1) {
+      for (int i = 1; i < nPanels; i++) {
+        int xIdx = 9 + (i - 1) * 2;
+        panels[i].dY = x[xIdx];
+        panels[i].dZ = x[xIdx + 1];
       }
-      
-      // Print for debugging
-      for (int i=0; i<nPanels; i++) {
-        printf("Panel %d: dy = %f, dz = %f\n", i, panels[i].dY, panels[i].dZ);
+    } else {
+      // Reset others if optimization didn't run for them
+      for (int i = 1; i < nPanels; i++) {
+        panels[i].dY = 0;
+        panels[i].dZ = 0;
       }
+    }
+
+    // Print for debugging
+    for (int i = 0; i < nPanels; i++) {
+      printf("Panel %d: dy = %f, dz = %f\n", i, panels[i].dY, panels[i].dZ);
+    }
   }
 }
 
@@ -698,8 +699,8 @@ static inline void CorrectTiltSpatialDistortion(
     double dY = 0, dZ = 0;
     int pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
     if (pIdx >= 0) {
-        dY = panels[pIdx].dY;
-        dZ = panels[pIdx].dZ;
+      dY = panels[pIdx].dY;
+      dZ = panels[pIdx].dZ;
     }
     Yc = -(YMean[i] + dY - ybc) * px;
     Zc = (ZMean[i] + dZ - zbc) * px;
@@ -977,7 +978,7 @@ int main(int argc, char *argv[]) {
   double tx = 0, tolTilts, tolLsd, tolBC, tolP, tolP0 = 0, tolP1 = 0, tolP2 = 0,
          tolP3 = 0, tyin = 0, tzin = 0, p0in = 0, p1in = 0, p2in = 0, p3in = 0,
          padY = 0, padZ = 0;
-  double tolShifts = 0;
+  double tolShifts = 1.0;
   int Padding = 6, NrPixelsY, NrPixelsZ, NrPixels;
   int NrTransOpt = 0, RBinWidth = 4;
   long long int GapIntensity = 0, BadPxIntensity = 0;
@@ -987,14 +988,15 @@ int main(int argc, char *argv[]) {
   int dType = 1;
   char GapFN[4096], BadPxFN[4096];
   char darkDatasetName[4096], dataDatasetName[4096];
-    // Parameter defaults
-    int NPanelsY = 0;
-    int NPanelsZ = 0;
-    int PanelSizeY = 0;
-    int PanelSizeZ = 0;
-    int *PanelGapsY = NULL;
-    int *PanelGapsZ = NULL;
-    char PanelShiftsFile[1024]; PanelShiftsFile[0] = '\0';
+  // Parameter defaults
+  int NPanelsY = 0;
+  int NPanelsZ = 0;
+  int PanelSizeY = 0;
+  int PanelSizeZ = 0;
+  int *PanelGapsY = NULL;
+  int *PanelGapsZ = NULL;
+  char PanelShiftsFile[1024];
+  PanelShiftsFile[0] = '\0';
   sprintf(darkDatasetName, "exchange/dark");
   sprintf(dataDatasetName, "exchange/data");
   while (fgets(aline, 1000, fileParam) != NULL) {
@@ -1131,37 +1133,52 @@ int main(int argc, char *argv[]) {
       continue;
     }
     str = "NPanelsY ";
-    if (!strncmp(aline, str, strlen(str))) { sscanf(aline, "%s %d", dummy, &NPanelsY); continue; }
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &NPanelsY);
+      continue;
+    }
     str = "NPanelsZ ";
-    if (!strncmp(aline, str, strlen(str))) { sscanf(aline, "%s %d", dummy, &NPanelsZ); continue; }
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &NPanelsZ);
+      continue;
+    }
     str = "PanelSizeY ";
-    if (!strncmp(aline, str, strlen(str))) { sscanf(aline, "%s %d", dummy, &PanelSizeY); continue; }
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &PanelSizeY);
+      continue;
+    }
     str = "PanelSizeZ ";
-    if (!strncmp(aline, str, strlen(str))) { sscanf(aline, "%s %d", dummy, &PanelSizeZ); continue; }
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &PanelSizeZ);
+      continue;
+    }
     str = "PanelShiftsFile ";
-    if (!strncmp(aline, str, strlen(str))) { sscanf(aline, "%s %s", dummy, PanelShiftsFile); continue; }
-    
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %s", dummy, PanelShiftsFile);
+      continue;
+    }
+
     str = "PanelGapsY ";
     if (!strncmp(aline, str, strlen(str))) {
-        char *ptr = aline + strlen(str);
-        if (NPanelsY > 1) {
-            PanelGapsY = (int*)malloc((NPanelsY - 1) * sizeof(int));
-            for(int k=0; k < NPanelsY-1; k++) {
-                PanelGapsY[k] = strtol(ptr, &ptr, 10);
-            }
+      char *ptr = aline + strlen(str);
+      if (NPanelsY > 1) {
+        PanelGapsY = (int *)malloc((NPanelsY - 1) * sizeof(int));
+        for (int k = 0; k < NPanelsY - 1; k++) {
+          PanelGapsY[k] = strtol(ptr, &ptr, 10);
         }
-        continue;
+      }
+      continue;
     }
     str = "PanelGapsZ ";
     if (!strncmp(aline, str, strlen(str))) {
-        char *ptr = aline + strlen(str);
-        if (NPanelsZ > 1) {
-            PanelGapsZ = (int*)malloc((NPanelsZ - 1) * sizeof(int));
-            for(int k=0; k < NPanelsZ-1; k++) {
-                PanelGapsZ[k] = strtol(ptr, &ptr, 10);
-            }
+      char *ptr = aline + strlen(str);
+      if (NPanelsZ > 1) {
+        PanelGapsZ = (int *)malloc((NPanelsZ - 1) * sizeof(int));
+        for (int k = 0; k < NPanelsZ - 1; k++) {
+          PanelGapsZ[k] = strtol(ptr, &ptr, 10);
         }
-        continue;
+      }
+      continue;
     }
 
     str = "LatticeParameter ";
@@ -1338,14 +1355,15 @@ int main(int argc, char *argv[]) {
     }
   }
 
-    // Generate Panels
-    if (NPanelsY > 0 && NPanelsZ > 0) {
-        if (GeneratePanels(NPanelsY, NPanelsZ, PanelSizeY, PanelSizeZ, PanelGapsY, PanelGapsZ, &panels, &nPanels) != 0) {
-            fprintf(stderr, "Fast generation failed.\n");
-            return 1;
-        }
-        printf("Generated %d panels.\n", nPanels);
+  // Generate Panels
+  if (NPanelsY > 0 && NPanelsZ > 0) {
+    if (GeneratePanels(NPanelsY, NPanelsZ, PanelSizeY, PanelSizeZ, PanelGapsY,
+                       PanelGapsZ, &panels, &nPanels) != 0) {
+      fprintf(stderr, "Fast generation failed.\n");
+      return 1;
     }
+    printf("Generated %d panels.\n", nPanels);
+  }
   if (tolP0 == 0)
     tolP0 = tolP;
   if (tolP1 == 0)
@@ -1625,9 +1643,9 @@ int main(int argc, char *argv[]) {
       //~ uint16_t *outMatrix;
       //~ outMatrix = calloc(NrPixels*NrPixels,sizeof(uint16_t));
       //~ for (j=0;j<(NrPixels*NrPixels);j++)outMatrix[j] = (uint16_t)
-      //Average[j]; ~ FILE *fnew; ~ fnew = fopen("Data_000001.ge3","wb"); ~
-      //fwrite(outMatrix,sizeof(uint16_t)*NrPixels*NrPixels,1,fnew); ~
-      //fclose(fnew); ~ return;
+      // Average[j]; ~ FILE *fnew; ~ fnew = fopen("Data_000001.ge3","wb"); ~
+      // fwrite(outMatrix,sizeof(uint16_t)*NrPixels*NrPixels,1,fnew); ~
+      // fclose(fnew); ~ return;
     }
     double IdealTthetas[n_hkls], TthetaMins[n_hkls], TthetaMaxs[n_hkls];
     for (i = 0; i < n_hkls; i++) {
@@ -1808,10 +1826,10 @@ int main(int argc, char *argv[]) {
   free(Average);
   free(Image);
 
-    // Save Panel Shifts
-    if (PanelShiftsFile[0] != '\0' && nPanels > 0) {
-        SavePanelShifts(PanelShiftsFile, nPanels, panels);
-        printf("Saved panel shifts to %s\n", PanelShiftsFile);
-    }
+  // Save Panel Shifts
+  if (PanelShiftsFile[0] != '\0' && nPanels > 0) {
+    SavePanelShifts(PanelShiftsFile, nPanels, panels);
+    printf("Saved panel shifts to %s\n", PanelShiftsFile);
+  }
   return 0;
 }

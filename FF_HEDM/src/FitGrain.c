@@ -699,8 +699,8 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12],
               int NonOptPInt[5], double **SpotInfoAll,
               double OmegaRanges[2000][2], double tol[18],
               double BoxSizes[2000][4], double **hklsIn, double *Out,
-              double *Error, Panel *panels,
-              int nPanels) { // Added panels, nPanels
+              double *Error, Panel *panels, int nPanels,
+              double tolShifts) { // Added panels, nPanels, tolShifts
   unsigned n = 18;
   if (nPanels > 1) {
     n += (nPanels - 1) * 2;
@@ -761,12 +761,12 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12],
     int p_idx = 18;
     for (i = 1; i < nPanels; i++) {
       x[p_idx] = panels[i].dY;
-      xl[p_idx] = x[p_idx] - 50.0; // +/- 50 pixels
-      xu[p_idx] = x[p_idx] + 50.0;
+      xl[p_idx] = x[p_idx] - tolShifts; // +/- tolShifts
+      xu[p_idx] = x[p_idx] + tolShifts;
       p_idx++;
       x[p_idx] = panels[i].dZ;
-      xl[p_idx] = x[p_idx] - 50.0;
-      xu[p_idx] = x[p_idx] + 50.0;
+      xl[p_idx] = x[p_idx] - tolShifts;
+      xu[p_idx] = x[p_idx] + tolShifts;
       p_idx++;
     }
   }
@@ -815,6 +815,7 @@ int main(int argc, char *argv[]) {
       MaxTtheta, Wavelength, MinEta, Hbeam, Rsample;
   int NrPixels, nOmeRanges = 0, nBoxSizes = 0, cs = 0, RingNumbers[200],
                 cs2 = 0;
+  double tolShifts = 1.0;
 
   // Panel parameters
   int nPanelsY = 0;
@@ -1021,6 +1022,12 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %s", dummy, panelShiftsFile);
       continue;
     }
+    str = "tolShifts ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolShifts);
+      continue;
+    }
   }
 
   // Generate Panels
@@ -1208,7 +1215,7 @@ int main(int argc, char *argv[]) {
   Error = malloc(3 * sizeof(*Error));
   Out = malloc(nOptParams * sizeof(*Out));
   FitGrain(Ini, OptP, NonOptP, NonOptPInt, SpotInfoAll, OmegaRanges, tols,
-           BoxSizes, hkls, Out, Error, panels, nPanels);
+           BoxSizes, hkls, Out, Error, panels, nPanels, tolShifts);
   printf("\nInput:\n");
   for (i = 0; i < 12; i++)
     printf("%f ", Ini[i]);
