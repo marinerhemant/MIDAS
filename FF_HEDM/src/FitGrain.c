@@ -531,7 +531,7 @@ static inline double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges,
   FreeMemMatrix(TheorSpotsYZWE, nTspots);
   FreeMemMatrix(TheorSpotsYZWER, MaxNSpotsBest);
   free(Angles);
-  return Error[0];
+  return Error[2];
 }
 
 static inline void CorrectTiltSpatialDistortion(
