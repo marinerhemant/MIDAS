@@ -1227,7 +1227,7 @@ int main(int argc, char *argv[]) {
   printf("\n");
   printf("Input tx: %lf, Fit tx: %lf\n", tx, Out[12]);
 
-  if (nPanels > 1 && strlen(panelShiftsFile) > 0) {
+  if (nPanels > 1) {
     char fullPath[MAX_LINE_LENGTH];
     sprintf(fullPath, "%s/PanelShiftsOptimized.txt", folder);
     SavePanelShifts(fullPath, nPanels, panels);
