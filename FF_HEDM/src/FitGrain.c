@@ -15,7 +15,7 @@
 //				RhoD, BC, Wedge, NrPixels, px,
 //				Wavelength, OmegaRange, BoxSize
 //				MinEta, Hbeam, Rsample, RingNumbers (will
-//provide cs), 				RingRadii,
+// provide cs), 				RingRadii,
 
 #include <ctype.h>
 #include <errno.h>
@@ -414,8 +414,8 @@ static inline double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges,
                                      double x[12], double **spotsYZO,
                                      double **hklsIn, double Lsd,
                                      double Wavelength,
-                                     double OmegaRange[100][2],
-                                     double BoxSize[100][4], double MinEta,
+                                     double OmegaRange[2000][2],
+                                     double BoxSize[2000][4], double MinEta,
                                      double wedge, double chi, double *Error) {
   int i, j;
   int nrMatchedIndexer = nspots;
@@ -523,6 +523,7 @@ static inline double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges,
     Error[1] += fabs(MatchDiff[i][2] / nMatched); // Ome
     Error[2] += fabs(MatchDiff[i][0] / nMatched); // Angle
   }
+  extern int nIter;
   FreeMemMatrix(MatchDiff, nrMatchedIndexer);
   FreeMemMatrix(hkls, nhkls);
   FreeMemMatrix(TheorSpots, MaxNSpotsBest);
@@ -594,7 +595,7 @@ struct data {
   double Wavelength;
   double MinEta;
   double OmegaRanges[2000][2];
-  double BoxSizes[2000][2];
+  double BoxSizes[2000][4];
   double **SpotInfoAll;
   double **hkls;
   double *Error;
@@ -621,8 +622,8 @@ static double problem_function(unsigned n, const double *x, double *grad,
   double px = f_data->px;
   double Wavelength = f_data->Wavelength;
   double MinEta = f_data->MinEta;
-  double OmegaRanges[100][2];
-  double BoxSizes[100][4];
+  double OmegaRanges[2000][2];
+  double BoxSizes[2000][4];
   for (i = 0; i < nOmeRanges; i++) {
     for (j = 0; j < 2; j++)
       OmegaRanges[i][j] = f_data->OmegaRanges[i][j];
@@ -697,13 +698,14 @@ static double problem_function(unsigned n, const double *x, double *grad,
 void FitGrain(double Ini[12], double OptP[6], double NonOptP[12],
               int NonOptPInt[5], double **SpotInfoAll,
               double OmegaRanges[2000][2], double tol[18],
-              double BoxSizes[20][4], double **hklsIn, double *Out,
-              double *Error, Panel *panels, int nPanels) { // Added panels, nPanels
+              double BoxSizes[2000][4], double **hklsIn, double *Out,
+              double *Error, Panel *panels,
+              int nPanels) { // Added panels, nPanels
   unsigned n = 18;
   if (nPanels > 1) {
-      n += (nPanels - 1) * 2;
+    n += (nPanels - 1) * 2;
   }
-  
+
   double x[n], xl[n], xu[n];
   int i, j;
   struct data f_data;
@@ -754,19 +756,19 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12],
     xl[i] = x[i] - tol[i];
     xu[i] = x[i] + tol[i];
   }
-  
+
   if (nPanels > 1) {
-      int p_idx = 18;
-      for (i = 1; i < nPanels; i++) {
-          x[p_idx] = panels[i].dY;
-          xl[p_idx] = x[p_idx] - 50.0; // +/- 50 pixels
-          xu[p_idx] = x[p_idx] + 50.0;
-          p_idx++;
-          x[p_idx] = panels[i].dZ;
-          xl[p_idx] = x[p_idx] - 50.0;
-          xu[p_idx] = x[p_idx] + 50.0;
-          p_idx++;
-      }
+    int p_idx = 18;
+    for (i = 1; i < nPanels; i++) {
+      x[p_idx] = panels[i].dY;
+      xl[p_idx] = x[p_idx] - 50.0; // +/- 50 pixels
+      xu[p_idx] = x[p_idx] + 50.0;
+      p_idx++;
+      x[p_idx] = panels[i].dZ;
+      xl[p_idx] = x[p_idx] - 50.0;
+      xu[p_idx] = x[p_idx] + 50.0;
+      p_idx++;
+    }
   }
 
   nlopt_opt opt;
@@ -777,18 +779,18 @@ void FitGrain(double Ini[12], double OptP[6], double NonOptP[12],
   double minf;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
-  
+
   for (i = 0; i < 18; i++)
     Out[i] = x[i];
-    
+
   if (nPanels > 1) {
-      int p_idx = 18;
-      for (i = 1; i < nPanels; i++) {
-          panels[i].dY = x[p_idx++];
-          panels[i].dZ = x[p_idx++];
-      }
-      panels[0].dY = 0;
-      panels[0].dZ = 0;
+    int p_idx = 18;
+    for (i = 1; i < nPanels; i++) {
+      panels[i].dY = x[p_idx++];
+      panels[i].dZ = x[p_idx++];
+    }
+    panels[0].dY = 0;
+    panels[0].dZ = 0;
   }
 }
 
@@ -986,9 +988,12 @@ int main(int argc, char *argv[]) {
       while (sscanf(ptr, "%d", &gapVal) == 1) {
         panelGapsY[gapIdx++] = gapVal;
         // Advance ptr to next number
-        while (*ptr && *ptr != ' ') ptr++; // current number
-        while (*ptr && *ptr == ' ') ptr++; // whitespace
-        if (gapIdx >= 10) break; // Safety
+        while (*ptr && *ptr != ' ')
+          ptr++; // current number
+        while (*ptr && *ptr == ' ')
+          ptr++; // whitespace
+        if (gapIdx >= 10)
+          break; // Safety
       }
       continue;
     }
@@ -1001,9 +1006,12 @@ int main(int argc, char *argv[]) {
       while (sscanf(ptr, "%d", &gapVal) == 1) {
         panelGapsZ[gapIdx++] = gapVal;
         // Advance ptr to next number
-        while (*ptr && *ptr != ' ') ptr++;
-        while (*ptr && *ptr == ' ') ptr++;
-        if (gapIdx >= 10) break;
+        while (*ptr && *ptr != ' ')
+          ptr++;
+        while (*ptr && *ptr == ' ')
+          ptr++;
+        if (gapIdx >= 10)
+          break;
       }
       continue;
     }
@@ -1030,8 +1038,9 @@ int main(int argc, char *argv[]) {
       char fullPath[MAX_LINE_LENGTH];
       sprintf(fullPath, "%s/%s", argv[1], panelShiftsFile);
       if (LoadPanelShifts(fullPath, nPanels, panels) != 0) {
-        printf("Warning: Could not load panel shifts from %s. Using 0 shifts.\n",
-               fullPath);
+        printf(
+            "Warning: Could not load panel shifts from %s. Using 0 shifts.\n",
+            fullPath);
       } else {
         printf("Loaded panel shifts from %s\n", fullPath);
       }
@@ -1091,6 +1100,10 @@ int main(int argc, char *argv[]) {
   char fnSpotMatrix[MAX_LINE_LENGTH];
   sprintf(fnSpotMatrix, "%s/SpotMatrix.csv", folder);
   SpotMF = fopen(fnSpotMatrix, "r");
+  if (SpotMF == NULL) {
+    printf("Error: Could not open SpotMatrix.csv at %s\n", fnSpotMatrix);
+    return 1;
+  }
   double YZOme[3];
   int Rnr, nSpots = 0, SpID;
   fgets(aline, MAX_LINE_LENGTH, SpotMF);
@@ -1100,22 +1113,29 @@ int main(int argc, char *argv[]) {
     if (ID == GrainID) {
       SpotInfoAll[nSpots][0] = (double)SpID;
       SpotInfoAll[nSpots][1] = (double)Rnr;
-      SpotInfoAll[nSpots][2] = YZOme[0] / px;
-      SpotInfoAll[nSpots][3] = YZOme[1] / px;
+      SpotInfoAll[nSpots][2] = YZOme[0];
+      SpotInfoAll[nSpots][3] = YZOme[1];
       SpotInfoAll[nSpots][4] = YZOme[2];
-      
+
       // Undo initial panel shifts
       if (nPanels > 0) {
-          int pIdx = GetPanelIndex(SpotInfoAll[nSpots][2], SpotInfoAll[nSpots][3], nPanels, panels);
-          if (pIdx >= 0) {
-              SpotInfoAll[nSpots][2] -= panels[pIdx].dY;
-              SpotInfoAll[nSpots][3] -= panels[pIdx].dZ;
-          }
+        int pIdx = GetPanelIndex(SpotInfoAll[nSpots][2], SpotInfoAll[nSpots][3],
+                                 nPanels, panels);
+        if (pIdx >= 0) {
+          SpotInfoAll[nSpots][2] -= panels[pIdx].dY;
+          SpotInfoAll[nSpots][3] -= panels[pIdx].dZ;
+        }
       }
-      
+
       nSpots++;
+      if (nSpots >= MaxNSpotsBest) {
+        printf("Warning: Hit MaxNSpotsBest (%d), stopping read.\n",
+               MaxNSpotsBest);
+        break;
+      }
     }
   }
+  printf("Read %d spots for GrainID %d from SpotMatrix.\n", nSpots, GrainID);
 
   // Read hkls
   int nhkls = 0;
@@ -1183,7 +1203,7 @@ int main(int argc, char *argv[]) {
   double *Error;
   int nOptParams = 18;
   if (nPanels > 1) {
-      nOptParams += (nPanels - 1) * 2;
+    nOptParams += (nPanels - 1) * 2;
   }
   Error = malloc(3 * sizeof(*Error));
   Out = malloc(nOptParams * sizeof(*Out));
@@ -1199,12 +1219,12 @@ int main(int argc, char *argv[]) {
     printf("%f ", Out[i]);
   printf("\n");
   printf("Input tx: %lf, Fit tx: %lf\n", tx, Out[12]);
-  
+
   if (nPanels > 1 && strlen(panelShiftsFile) > 0) {
-      char fullPath[MAX_LINE_LENGTH];
-      sprintf(fullPath, "%s/PanelShiftsOptimized.txt", folder);
-      SavePanelShifts(fullPath, nPanels, panels);
-      printf("Saved optimized panel shifts to %s\n", fullPath);
+    char fullPath[MAX_LINE_LENGTH];
+    sprintf(fullPath, "%s/PanelShiftsOptimized.txt", folder);
+    SavePanelShifts(fullPath, nPanels, panels);
+    printf("Saved optimized panel shifts to %s\n", fullPath);
   }
   end = clock();
   diftotal = ((double)(end - start)) / CLOCKS_PER_SEC;
