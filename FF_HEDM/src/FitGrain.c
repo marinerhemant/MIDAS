@@ -1315,7 +1315,7 @@ int main(int argc, char *argv[]) {
   for (i = 0; i < 6; i++)
     printf("%f ", OptP[i]);
   printf("\nOutput:\n");
-  for (i = 0; i < nOptParams; i++)
+  for (i = 0; i < 18; i++)
     printf("%f ", Out[i]);
   printf("\n");
   printf("Fitted p0: %f\nFitted p1: %f\nFitted p2: %f\nFitted p3: %f\n",
