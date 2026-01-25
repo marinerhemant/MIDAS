@@ -645,7 +645,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
   printf("\n%f %f %f %f %f %f %f %f\n%f %f %f %f %f\n %f %f %f %f %f "
          "%f\nDiff: %f\n",
          x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9], x[10],
-         x[11], x[12], x[13], x[14], x[15], x[16], x[17], x[18], minf);
+         x[11], x[12], x[13], x[14], x[15], x[16], x[17], x[18], error);
   printf("Fitted p0: %f\nFitted p1: %f\nFitted p2: %f\nFitted p3: %f\n", x[19],
          x[20], x[21], x[22]);
   if (tolShifts > 1E-5 && nPanels > 1) {
@@ -956,7 +956,7 @@ int main(int argc, char *argv[]) {
     str = "BC ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf", dummy, &yBC, &zBC);
+      sscanf(aline, "%s %lf %lf", dummy, &ybc, &zbc);
       continue;
     }
     str = "Wedge ";
