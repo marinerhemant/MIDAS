@@ -39,7 +39,7 @@ typedef double pixelvalue;
 long long int NrCalls;
 long long int NrCallsProfiler;
 int NrPixelsGlobal = 2048;
-#define MultFactor 1
+#define OBJ_FUNC_SCALE 1
 #define EPS 1E-12
 
 int numProcs;
@@ -548,11 +548,11 @@ static double problem_function(unsigned n, const double *x, double *grad,
     // }
     TotalDiff += Diff;
   }
-  TotalDiff *= MultFactor;
+  TotalDiff *= OBJ_FUNC_SCALE;
   NrCalls++;
-  printf("Mean strain: %0.40f\n", TotalDiff / (MultFactor * nIndices));
+  printf("Mean strain: %0.40f\n", TotalDiff / (OBJ_FUNC_SCALE * nIndices));
 #ifdef PRINTOPT
-  printf("Mean strain: %0.40f\n", TotalDiff / (MultFactor * nIndices));
+  printf("Mean strain: %0.40f\n", TotalDiff / (OBJ_FUNC_SCALE * nIndices));
 #endif
   return TotalDiff;
 }
@@ -565,7 +565,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
                   double *p1, double *p2, double *p3, double *MeanDiff,
                   double tolTilts, double tolLsd, double tolBC, double tolP,
                   double tolP0, double tolP1, double tolP2, double tolP3,
-                  double tolShifts, double px) {
+                  double tolShifts, double px, double outlierFactor) {
   // Look at the possibility of including translations for each of the small
   // panels on a multi-panel detector in the optimization.... Also change
   // CorrectTiltSpatialDistortion to include translations!!!
@@ -636,7 +636,92 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   double minf;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
-  *MeanDiff = minf / (MultFactor * nIndices);
+  *MeanDiff = minf / (OBJ_FUNC_SCALE * nIndices);
+  // Post-optimization outlier rejection
+  if (outlierFactor > 0) {
+    double txr = deg2rad * (*ty); // Note: variable name reuse, be valid
+    // Wait, reusing variables is risky. Let's use clean block.
+  }
+  if (outlierFactor > 0) {
+    double txr, tyr, tzr;
+    txr = deg2rad * tx; // tx is argument
+    tyr = deg2rad * (*ty);
+    tzr = deg2rad * (*tz);
+    double Rx[3][3] = {
+        {1, 0, 0}, {0, cos(txr), -sin(txr)}, {0, sin(txr), cos(txr)}};
+    double Ry[3][3] = {
+        {cos(tyr), 0, sin(tyr)}, {0, 1, 0}, {-sin(tyr), 0, cos(tyr)}};
+    double Rz[3][3] = {
+        {cos(tzr), -sin(tzr), 0}, {sin(tzr), cos(tzr), 0}, {0, 0, 1}};
+    double TRint[3][3], TRs[3][3];
+    MatrixMultF33(Ry, Rz, TRint);
+    MatrixMultF33(Rx, TRint, TRs);
+
+    double *tempDiffs = malloc(nIndices * sizeof(double));
+    double totalSum = 0;
+    int validCount = 0;
+
+    // Parallelize loop if possible, but for simplicity/safety sequential first
+    int i;
+    double n0 = 2, n1 = 4, n2 = 2;
+    double Yc, Zc, Rad, Eta, RNorm, DistortFunc, Rcorr, RIdeal, Diff, EtaT;
+    double LsdV = *LsdFit;
+    double ybcV = *ybcFit;
+    double zbcV = *zbcFit;
+    double p0V = *p0;
+    double p1V = *p1;
+    double p2V = *p2;
+    double p3V = *p3;
+
+    for (i = 0; i < nIndices; i++) {
+      double dY = 0, dZ = 0;
+      int pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
+      if (pIdx >= 0) {
+        dY = panels[pIdx].dY;
+        dZ = panels[pIdx].dZ;
+      }
+      Yc = -(YMean[i] + dY - ybcV) * px;
+      Zc = (ZMean[i] + dZ - zbcV) * px;
+      double ABC[3] = {0, Yc, Zc};
+      double ABCPr[3];
+      MatrixMult(TRs, ABC, ABCPr);
+      double XYZ[3] = {LsdV + ABCPr[0], ABCPr[1], ABCPr[2]};
+      Rad = (LsdV / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
+      Eta = CalcEtaAngle(XYZ[1], XYZ[2]);
+      RNorm = Rad / MaxRad;
+      EtaT = 90 - Eta;
+      DistortFunc =
+          (p0V * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
+          (p1V * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3V)))) +
+          (p2V * (pow(RNorm, n2))) + 1;
+      Rcorr = Rad * DistortFunc;
+      RIdeal = LsdV * tan(deg2rad * IdealTtheta[i]);
+      Diff = fabs(1 - (Rcorr / RIdeal));
+      tempDiffs[i] = Diff;
+      totalSum += Diff;
+    }
+
+    double currentMean = totalSum / nIndices;
+    double threshold = outlierFactor * currentMean;
+    double cleanSum = 0;
+    for (i = 0; i < nIndices; i++) {
+      if (tempDiffs[i] <= threshold) {
+        cleanSum += tempDiffs[i];
+        validCount++;
+      }
+    }
+
+    free(tempDiffs);
+
+    if (validCount > 0) {
+      *MeanDiff = cleanSum / validCount;
+      printf("Outlier rejection (Factor %.2f): Excluded %d / %d points. Mean "
+             "Strain: %.8f -> %.8f\n",
+             outlierFactor, nIndices - validCount, nIndices, currentMean,
+             *MeanDiff);
+    }
+  }
+
   *LsdFit = x[0];
   *ybcFit = x[1];
   *zbcFit = x[2];
@@ -678,7 +763,8 @@ static inline void CorrectTiltSpatialDistortion(
     int nIndices, double MaxRad, double *YMean, double *ZMean,
     double *IdealTtheta, double px, double Lsd, double ybc, double zbc,
     double tx, double ty, double tz, double p0, double p1, double p2, double p3,
-    double *Etas, double *Diffs, double *RadOuts, double *StdDiff) {
+    double *Etas, double *Diffs, double *RadOuts, double *StdDiff,
+    double outlierFactor) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
@@ -726,11 +812,38 @@ static inline void CorrectTiltSpatialDistortion(
     // %lf\n",Rad,Lsd,XYZ[0],XYZ[1],XYZ[2],YMean[i],ZMean[i]);
   }
   MeanDiff /= nIndices;
-  double StdDiff2 = 0;
-  for (i = 0; i < nIndices; i++) {
-    StdDiff2 += (Diffs[i] - MeanDiff) * (Diffs[i] - MeanDiff);
+
+  // Filter outliers for StdDiff calculation
+  double *validDiffs = malloc(nIndices * sizeof(double));
+  int validCount = 0;
+  double threshold = (outlierFactor > 0)
+                         ? (outlierFactor * MeanDiff)
+                         : 1e9; // 1e9 effectively no filter if 0
+
+  if (outlierFactor > 0) {
+    double newSum = 0;
+    for (i = 0; i < nIndices; i++) {
+      if (Diffs[i] <= threshold) {
+        validDiffs[validCount] = Diffs[i];
+        newSum += Diffs[i];
+        validCount++;
+      }
+    }
+    if (validCount > 0) {
+      MeanDiff = newSum / validCount;
+    }
+  } else {
+    for (i = 0; i < nIndices; i++)
+      validDiffs[i] = Diffs[i];
+    validCount = nIndices;
   }
-  *StdDiff = sqrt(StdDiff2 / nIndices);
+
+  double StdDiff2 = 0;
+  for (i = 0; i < validCount; i++) {
+    StdDiff2 += (validDiffs[i] - MeanDiff) * (validDiffs[i] - MeanDiff);
+  }
+  *StdDiff = sqrt(StdDiff2 / validCount);
+  free(validDiffs);
 }
 
 static inline void DoImageTransformations(int NrTransOpt, int TransOpt[10],
@@ -979,6 +1092,7 @@ int main(int argc, char *argv[]) {
          tolP3 = 0, tyin = 0, tzin = 0, p0in = 0, p1in = 0, p2in = 0, p3in = 0,
          padY = 0, padZ = 0;
   double tolShifts = 1.0;
+  double outlierFactor = 0.0;
   int Padding = 6, NrPixelsY, NrPixelsZ, NrPixels;
   int NrTransOpt = 0, RBinWidth = 4;
   long long int GapIntensity = 0, BadPxIntensity = 0;
@@ -1327,6 +1441,12 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %lf", dummy, &tolShifts);
+      continue;
+    }
+    str = "MultFactor ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &outlierFactor);
       continue;
     }
     str = "tx ";
@@ -1751,12 +1871,14 @@ int main(int argc, char *argv[]) {
     }
     CorrectTiltSpatialDistortion(nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px,
                                  Lsd, ybc, zbc, tx, tyin, tzin, p0in, p1in,
-                                 p2in, p3in, EtaIns, DiffIns, RadIns, &StdDiff);
+                                 p2in, p3in, EtaIns, DiffIns, RadIns, &StdDiff,
+                                 outlierFactor);
     NrCalls = 0;
     FitTiltBCLsd(nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
                  tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit, &ybcFit,
                  &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts, tolLsd,
-                 tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts, px);
+                 tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts, px,
+                 outlierFactor);
     printf("Number of function calls: %lld\n", NrCalls);
     printf("Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 "
            "%0.12f\np2 %0.12f\np3 %0.12f\nMeanStrain %0.12lf\n",
@@ -1767,7 +1889,8 @@ int main(int argc, char *argv[]) {
     RadOuts = malloc(nIndices * sizeof(*RadOuts));
     CorrectTiltSpatialDistortion(nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px,
                                  LsdFit, ybcFit, zbcFit, tx, ty, tz, p0, p1, p2,
-                                 p3, Etas, Diffs, RadOuts, &StdDiff);
+                                 p3, Etas, Diffs, RadOuts, &StdDiff,
+                                 outlierFactor);
     printf("StdStrain %0.12lf\n", StdDiff);
     means[0] += LsdFit;
     means[1] += ybcFit;
