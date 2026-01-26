@@ -1202,6 +1202,7 @@ int main(int argc, char *argv[]) {
   FILE *GrainsF;
   char fnGrains[MAX_LINE_LENGTH];
   char *folder = argv[1];
+  int i; // Declared here
   sprintf(fnGrains, "%s/Grains.csv", folder);
   GrainsF = fopen(fnGrains, "r");
   if (GrainsF == NULL) {
@@ -1297,6 +1298,7 @@ int main(int argc, char *argv[]) {
     fclose(GrainsF);
 
     double Orient33[3][3];
+    int j; // Declared j
     for (i = 0; i < 3; i++)
       for (j = 0; j < 3; j++)
         Orient33[i][j] = Orient[i * 3 + j];
@@ -1311,6 +1313,8 @@ int main(int argc, char *argv[]) {
 
     // Load Spots
     gd->SpotInfoAll = allocMatrix(MaxNSpotsBest, 5);
+    char fnSpotMatrix[MAX_LINE_LENGTH];
+    sprintf(fnSpotMatrix, "%s/SpotMatrix.csv", folder);
     FILE *SpotMF = fopen(fnSpotMatrix, "r");
     double YZOme[3];
     int Rnr, nS = 0, SpID, id_spot;
@@ -1343,8 +1347,9 @@ int main(int argc, char *argv[]) {
     printf("Loaded %d spots for Grain %d\n", nS, GrainID);
 
     // Load HKLs
-    gd->hkls = allocMatrix(MaxNSpotsBest, 4);
     gd->nhkls = 0;
+    char hklfn[2048];
+    sprintf(hklfn, "%s/hkls.csv", folder);
     FILE *hklf = fopen(hklfn, "r");
     fgets(aline, MAX_LINE_LENGTH, hklf);
     int h, kt, l, RNr;
@@ -1384,10 +1389,11 @@ int main(int argc, char *argv[]) {
   }
 
   // Group Setup parameters
-  // Non Optimized: NonOptP: double 5 + Int 5
+  // Non Optimized: NonOptP: double 5
   // Optimized OptP[10]
   double NonOptP[5] = {RhoD, Lsd, px, Wavelength, MinEta};
-  int NonOptPInt[5] = {NrPixels, nOmeRanges, nRings, nSpots, nhkls};
+  // int NonOptPInt[5] = {NrPixels, nOmeRanges, nRings, nSpots, nhkls}; //
+  // Removed, unused and caused errors
   double OptP[10] = {tx, ty, tz, yBC, zBC, wedge, p0, p1, p2, p3};
   double tols[22] = {
       250,
@@ -1424,8 +1430,9 @@ int main(int argc, char *argv[]) {
   // Everything till CorrectTiltSpatialDistortion function in FitTiltBCLsd
   // Perform Optimization
   // Prepare Output
-
-  Out = malloc((nGrains * 22 + nPanels * 2) * sizeof(double));
+  double *Out; // Declared Out
+  Out = malloc(((nGrains * 12 + 10) + nPanels * 2) *
+               sizeof(double)); // Fixed size calc too just in case
   FitMultipleGrains(grainDataArray, nGrains, OptP, NonOptP, tols, Out, panels,
                     nPanels, tolShifts, spotsPerPanel);
 
