@@ -885,9 +885,9 @@ void FitMultipleGrains(struct GrainData *grains, int nGrains, double OptP[10],
                     IniErrs); // x has initial values here
 
   nlopt_opt opt;
-  // opt = nlopt_create(NLOPT_LN_BOBYQA, n);
+  opt = nlopt_create(NLOPT_LN_BOBYQA, n);
   // opt = nlopt_create(NLOPT_LN_SBPLX, n);
-  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
+  // opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function, trp);
