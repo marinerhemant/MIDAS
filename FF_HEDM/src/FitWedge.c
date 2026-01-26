@@ -408,6 +408,10 @@ int main(int argc, char *argv[]) {
     }
   }
   fclose(fileParam);
+  // print omegas, y, z
+  printf("Omegas: %f %f\n", Omegas[0], Omegas[1]);
+  printf("Y: %f %f\n", Y[0], Y[1]);
+  printf("Z: %f %f\n", Z[0], Z[1]);
   int i;
   double MinOme = 10000, MaxOme = -1000, Mid1 = 10000, Mid2 = -10000;
   int First, Second;
