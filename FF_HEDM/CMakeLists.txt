@@ -94,7 +94,7 @@ add_ff_hedm_executable(GrainTracking SOURCES src/GrainTracking.c)
 add_ff_hedm_executable(MergeMultipleRings SOURCES src/MergeMultipleRings.c)
 add_ff_hedm_executable(GenMedianDark SOURCES src/GenMedianDark.c)
 
-add_ff_hedm_executable(FitGrain SOURCES src/FitGrain.c src/CalcDiffractionSpots.c src/Panel.c)
+add_ff_hedm_executable(FitGrain SOURCES src/FitGrain.c src/CalcDiffractionSpots.c src/Panel.c OMP)
 add_ff_hedm_executable(FitGrainHydra SOURCES src/FitGrainHydra.c src/CalcDiffractionSpots.c)
 add_ff_hedm_executable(FitScanningGrain SOURCES src/FitScanningGrain.c)
 add_ff_hedm_executable(FitTiltX SOURCES src/FitTiltX.c)
