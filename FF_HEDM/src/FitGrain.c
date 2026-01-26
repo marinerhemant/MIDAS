@@ -1302,7 +1302,7 @@ int main(int argc, char *argv[]) {
 
   if (nPanels > 1) {
     char fullPath[MAX_LINE_LENGTH];
-    sprintf(fullPath, "%s/PanelShiftsOptimized.txt", folder);
+    sprintf(fullPath, "%s/PanelShiftsOptimizedSC.txt", folder);
     SavePanelShifts(fullPath, nPanels, panels);
     printf("Saved optimized panel shifts to %s\n", fullPath);
   }
