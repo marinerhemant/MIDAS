@@ -716,8 +716,8 @@ void FitGrain(double Ini[12], double OptP[10], double NonOptP[5],
               int NonOptPInt[5], double **SpotInfoAll,
               double OmegaRanges[2000][2], double tol[22],
               double BoxSizes[2000][4], double **hklsIn, double *Out,
-              double *Error, Panel *panels, int nPanels,
-              double tolShifts) { // Added panels, nPanels, tolShifts, p3
+              double *Error, Panel *panels, int nPanels, double tolShifts,
+              int *spotsPerPanel) { // Added spotsPerPanel
   unsigned n = 22;
   if (nPanels > 1) {
     n += (nPanels - 1) * 2;
@@ -775,12 +775,23 @@ void FitGrain(double Ini[12], double OptP[10], double NonOptP[5],
     int p_idx = 22;
     for (i = 1; i < nPanels; i++) {
       x[p_idx] = panels[i].dY;
-      xl[p_idx] = x[p_idx] - tolShifts; // +/- tolShifts
-      xu[p_idx] = x[p_idx] + tolShifts;
+      if (spotsPerPanel != NULL && spotsPerPanel[i] <= 1) {
+        xl[p_idx] = x[p_idx]; // Lock
+        xu[p_idx] = x[p_idx];
+      } else {
+        xl[p_idx] = x[p_idx] - tolShifts;
+        xu[p_idx] = x[p_idx] + tolShifts;
+      }
       p_idx++;
+
       x[p_idx] = panels[i].dZ;
-      xl[p_idx] = x[p_idx] - tolShifts;
-      xu[p_idx] = x[p_idx] + tolShifts;
+      if (spotsPerPanel != NULL && spotsPerPanel[i] <= 1) {
+        xl[p_idx] = x[p_idx]; // Lock
+        xu[p_idx] = x[p_idx];
+      } else {
+        xl[p_idx] = x[p_idx] - tolShifts;
+        xu[p_idx] = x[p_idx] + tolShifts;
+      }
       p_idx++;
     }
   }
@@ -1173,8 +1184,9 @@ int main(int argc, char *argv[]) {
   }
   printf("Read %d spots for GrainID %d from SpotMatrix.\n", nSpots, GrainID);
 
+  int *spotsPerPanel = NULL;
   if (nPanels > 0) {
-    int *spotsPerPanel = calloc(nPanels, sizeof(int));
+    spotsPerPanel = calloc(nPanels, sizeof(int));
     for (i = 0; i < nSpots; i++) {
       double y_spot =
           SpotInfoAll[i]
@@ -1210,7 +1222,7 @@ int main(int argc, char *argv[]) {
       printf("Panel %d: %d spots\n", i, spotsPerPanel[i]);
     }
     printf("\n");
-    free(spotsPerPanel);
+    // free(spotsPerPanel); // Moved to end
   }
 
   // Read hkls
@@ -1288,7 +1300,8 @@ int main(int argc, char *argv[]) {
   Error = malloc(3 * sizeof(*Error));
   Out = malloc(nOptParams * sizeof(*Out));
   FitGrain(Ini, OptP, NonOptP, NonOptPInt, SpotInfoAll, OmegaRanges, tols,
-           BoxSizes, hkls, Out, Error, panels, nPanels, tolShifts);
+           BoxSizes, hkls, Out, Error, panels, nPanels, tolShifts,
+           spotsPerPanel);
   printf("\nInput:\n");
   for (i = 0; i < 12; i++)
     printf("%f ", Ini[i]);
@@ -1306,6 +1319,8 @@ int main(int argc, char *argv[]) {
     SavePanelShifts(fullPath, nPanels, panels);
     printf("Saved optimized panel shifts to %s\n", fullPath);
   }
+  if (spotsPerPanel != NULL)
+    free(spotsPerPanel);
   end = clock();
   diftotal = ((double)(end - start)) / CLOCKS_PER_SEC;
   printf("Time elapsed: %f s.\n", diftotal);
