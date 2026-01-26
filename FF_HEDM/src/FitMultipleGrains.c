@@ -784,8 +784,6 @@ static double problem_function(unsigned n, const double *x, double *grad,
 
   int nIterLocal = nIter;
   if (nIterLocal % 500 == 0) {
-    if (nIterLocal % 5000 == 0)
-      printf("\n");
     printf("Iter %d Total: L=%.5lf O=%.5lf A=%.5lf (PerG: L=%.5lf O=%.5lf "
            "A=%.5lf)\n",
            nIterLocal, totalLen, totalOme, totalAng, totalLen / nGrains,
