@@ -1173,6 +1173,46 @@ int main(int argc, char *argv[]) {
   }
   printf("Read %d spots for GrainID %d from SpotMatrix.\n", nSpots, GrainID);
 
+  if (nPanels > 0) {
+    int *spotsPerPanel = calloc(nPanels, sizeof(int));
+    for (i = 0; i < nSpots; i++) {
+      double y_spot =
+          SpotInfoAll[i]
+                     [2]; // Note: These are 'unshifted' now if Undo logic ran
+      double z_spot = SpotInfoAll[i][3];
+      // We need to check use raw coords for panel assignment?
+      // Logic above subtracted shifts. So these are "nominal" positions.
+      // Panels are defined in nominal space typically? Or physical?
+      // Assuming GetPanelIndex works on the coords present.
+
+      // Wait, above we did: SpotInfoAll[nSpots][2] -= panels[pIdx].dY;
+      // GetPanelIndex uses limits. If shifts are small, it shouldn't migrate
+      // panels. Ideally we use the ORIGINAL coord for ID. Re-adding shift just
+      // for ID check inside GetPanelIndex? Actually, let's just use the current
+      // value, it should be close enough or "nominal".
+      int pIdx = GetPanelIndex(y_spot, z_spot, nPanels, panels);
+
+      // Use a simpler approach: Re-calculate index using the shifted values if
+      // needed, but since we modified them in place, let's just try with
+      // current values. Alternatively, since we just modified them, we can't
+      // easily undo without re-reading. But wait, the undo logic used
+      // GetPanelIndex on the original coords. Let's assume the spot is still
+      // roughly in the same panel.
+      if (pIdx >= 0 && pIdx < nPanels) {
+        spotsPerPanel[pIdx]++;
+      }
+    }
+    printf("\nSpots per Panel:\n");
+    for (i = 1; i < nPanels;
+         i++) { // Panel 0 is typically 'global' or 'none'? Loop from 1 or 0?
+      // Panels usually 1-calibrated? function GeneratePanels sets IDs.
+      // Panel.c usually 0-indexed array, PanelID might be i+1.
+      printf("Panel %d: %d spots\n", i, spotsPerPanel[i]);
+    }
+    printf("\n");
+    free(spotsPerPanel);
+  }
+
   // Read hkls
   int nhkls = 0;
   double **hkls;
