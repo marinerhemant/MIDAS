@@ -599,7 +599,7 @@ static inline void CorrectTiltSpatialDistortion(
 
 #include "Panel.h"
 
-struct data {
+struct GrainData {
   int NrPixels;
   int nOmeRanges;
   int nRings;
@@ -615,61 +615,111 @@ struct data {
   double **SpotInfoAll;
   double **hkls;
   double *Error;
-  int nPanels;   // Added for panel support
-  Panel *panels; // Added for panel support
+  // Parameters specific to this grain
+  double Ini[12];
+  double OptP[10];
+  double tol[22];
 };
+
+struct data {
+  int nGrains;
+  struct GrainData *grains;
+
+  int nPanels;
+  Panel *panels;
+};
+
+// Helper to calculate errors for reporting
+static void calc_grain_errors(int nGrains, int nPanels, Panel *panels,
+                              struct GrainData *grains, const double *x,
+                              double *errors) {
+  // Unpack global
+  int global_offset = nGrains * 12;
+  double tx = x[global_offset + 0];
+  double ty = x[global_offset + 1];
+  double tz = x[global_offset + 2];
+  double ybc = x[global_offset + 3];
+  double zbc = x[global_offset + 4];
+  double Wedge = x[global_offset + 5];
+  double p0 = x[global_offset + 6];
+  double p1 = x[global_offset + 7];
+  double p2 = x[global_offset + 8];
+  double p3 = x[global_offset + 9];
+
+  for (int g = 0; g < nGrains; g++) {
+    struct GrainData *g_data = &grains[g];
+    int grain_offset = g * 12;
+    double Inp[12];
+    for (int i = 0; i < 12; i++)
+      Inp[i] = x[grain_offset + i];
+
+    double **SpotInfoCorr = allocMatrix(g_data->nSpots, 5);
+    double **SpotInfoShifted = allocMatrix(g_data->nSpots, 5);
+
+    for (int i = 0; i < g_data->nSpots; i++) {
+      SpotInfoShifted[i][0] = g_data->SpotInfoAll[i][0];
+      SpotInfoShifted[i][1] = g_data->SpotInfoAll[i][1];
+      SpotInfoShifted[i][4] = g_data->SpotInfoAll[i][4];
+      double y_raw = g_data->SpotInfoAll[i][2];
+      double z_raw = g_data->SpotInfoAll[i][3];
+      double dy = 0, dz = 0;
+      if (nPanels > 0) {
+        int pIdx = GetPanelIndex(y_raw, z_raw, nPanels, panels);
+        if (pIdx >= 0) {
+          dy = panels[pIdx].dY;
+          dz = panels[pIdx].dZ;
+        }
+      }
+      SpotInfoShifted[i][2] = y_raw + dy;
+      SpotInfoShifted[i][3] = z_raw + dz;
+    }
+
+    CorrectTiltSpatialDistortion(g_data->nSpots, g_data->RhoD, SpotInfoShifted,
+                                 g_data->px, g_data->Lsd, ybc, zbc, tx, ty, tz,
+                                 p0, p1, p2, p3, SpotInfoCorr);
+    FreeMemMatrix(SpotInfoShifted, g_data->nSpots);
+
+    double gError[3];
+    CalcAngleErrors(g_data->nSpots, g_data->nhkls, g_data->nOmeRanges, Inp,
+                    SpotInfoCorr, g_data->hkls, g_data->Lsd, g_data->Wavelength,
+                    g_data->OmegaRanges, g_data->BoxSizes, g_data->MinEta,
+                    Wedge, 0.0, gError);
+
+    FreeMemMatrix(SpotInfoCorr, g_data->nSpots);
+
+    errors[g * 3 + 0] = gError[0]; // Len
+    errors[g * 3 + 1] = gError[1]; // Ome
+    errors[g * 3 + 2] = gError[2]; // Ang
+  }
+}
 
 int nIter = 0;
 
 static double problem_function(unsigned n, const double *x, double *grad,
                                void *f_data_trial) {
-  int i, j, k;
   struct data *f_data = (struct data *)f_data_trial;
-  int NrPixels = f_data->NrPixels;
-  int nOmeRanges = f_data->nOmeRanges;
-  int nRings = f_data->nRings;
-  int nSpots = f_data->nSpots;
-  int nhkls = f_data->nhkls;
-  double RhoD = f_data->RhoD;
-  double Lsd = f_data->Lsd;
-  double px = f_data->px;
-  double Wavelength = f_data->Wavelength;
-  double MinEta = f_data->MinEta;
-  double OmegaRanges[2000][2];
-  double BoxSizes[2000][4];
-  for (i = 0; i < nOmeRanges; i++) {
-    for (j = 0; j < 2; j++)
-      OmegaRanges[i][j] = f_data->OmegaRanges[i][j];
-    for (j = 0; j < 4; j++)
-      BoxSizes[i][j] = f_data->BoxSizes[i][j];
-  }
-  double **SpotInfoAll;
-  SpotInfoAll = f_data->SpotInfoAll;
-  double **hkls;
-  hkls = f_data->hkls;
-  double **SpotInfoCorr;
-  SpotInfoCorr = allocMatrix(nSpots, 5);
-  double Inp[12];
-  for (i = 0; i < 12; i++)
-    Inp[i] = x[i];
-  double tx, ty, tz, ybc, zbc, Wedge;
-  tx = x[12];
-  ty = x[13];
-  tz = x[14];
-  ybc = x[15];
-  zbc = x[16];
-  Wedge = x[17];
-  double p0 = x[18];
-  double p1 = x[19];
-  double p2 = x[20];
-  double p3 = x[21];
-
+  int nGrains = f_data->nGrains;
   int nPanels = f_data->nPanels;
   Panel *panels = f_data->panels;
 
+  // Unpack Global Parameters
+  // Order: [Grain1(12) ... GrainN(12)] [Global(10)] [Panels(2*NP)]
+  int global_offset = nGrains * 12;
+  double tx = x[global_offset + 0];
+  double ty = x[global_offset + 1];
+  double tz = x[global_offset + 2];
+  double ybc = x[global_offset + 3];
+  double zbc = x[global_offset + 4];
+  double Wedge = x[global_offset + 5];
+  double p0 = x[global_offset + 6];
+  double p1 = x[global_offset + 7];
+  double p2 = x[global_offset + 8];
+  double p3 = x[global_offset + 9];
+
+  // Panels are at the end of x
   if (nPanels > 1) {
-    int p_idx = 22;
-    for (i = 1; i < nPanels; i++) {
+    int p_idx = global_offset + 10;
+    for (int i = 1; i < nPanels; i++) {
       panels[i].dY = x[p_idx++];
       panels[i].dZ = x[p_idx++];
     }
@@ -677,105 +727,138 @@ static double problem_function(unsigned n, const double *x, double *grad,
     panels[0].dZ = 0;
   }
 
-  double **SpotInfoShifted;
-  SpotInfoShifted = allocMatrix(nSpots, 5);
-  for (i = 0; i < nSpots; i++) {
-    SpotInfoShifted[i][0] = SpotInfoAll[i][0];
-    SpotInfoShifted[i][1] = SpotInfoAll[i][1];
-    SpotInfoShifted[i][4] = SpotInfoAll[i][4];
-    double y_raw = SpotInfoAll[i][2];
-    double z_raw = SpotInfoAll[i][3];
-    double dy = 0, dz = 0;
-    if (nPanels > 0) {
-      int pIdx = GetPanelIndex(y_raw, z_raw, nPanels, panels);
-      if (pIdx >= 0) {
-        dy = panels[pIdx].dY;
-        dz = panels[pIdx].dZ;
+  double totalError = 0;
+  double totalLen = 0;
+  double totalOme = 0;
+  double totalAng = 0;
+
+  // Per Grain Loop
+  for (int g = 0; g < nGrains; g++) {
+    struct GrainData *g_data = &f_data->grains[g];
+    int grain_offset = g * 12;
+
+    // Grain Parameters: Pos(3), Euler(3), Strain(6)
+    double Inp[12];
+    for (int i = 0; i < 12; i++)
+      Inp[i] = x[grain_offset + i];
+
+    // Alloc temporary structures
+    double **SpotInfoCorr = allocMatrix(g_data->nSpots, 5);
+    double **SpotInfoShifted = allocMatrix(g_data->nSpots, 5);
+
+    for (int i = 0; i < g_data->nSpots; i++) {
+      SpotInfoShifted[i][0] = g_data->SpotInfoAll[i][0];
+      SpotInfoShifted[i][1] = g_data->SpotInfoAll[i][1];
+      SpotInfoShifted[i][4] = g_data->SpotInfoAll[i][4];
+      double y_raw = g_data->SpotInfoAll[i][2];
+      double z_raw = g_data->SpotInfoAll[i][3];
+      double dy = 0, dz = 0;
+      if (nPanels > 0) {
+        int pIdx = GetPanelIndex(y_raw, z_raw, nPanels, panels);
+        if (pIdx >= 0) {
+          dy = panels[pIdx].dY;
+          dz = panels[pIdx].dZ;
+        }
       }
+      SpotInfoShifted[i][2] = y_raw + dy;
+      SpotInfoShifted[i][3] = z_raw + dz;
     }
-    SpotInfoShifted[i][2] = y_raw + dy;
-    SpotInfoShifted[i][3] = z_raw + dz;
+
+    CorrectTiltSpatialDistortion(g_data->nSpots, g_data->RhoD, SpotInfoShifted,
+                                 g_data->px, g_data->Lsd, ybc, zbc, tx, ty, tz,
+                                 p0, p1, p2, p3, SpotInfoCorr);
+    FreeMemMatrix(SpotInfoShifted, g_data->nSpots);
+
+    double gError[3];
+    double err = CalcAngleErrors(
+        g_data->nSpots, g_data->nhkls, g_data->nOmeRanges, Inp, SpotInfoCorr,
+        g_data->hkls, g_data->Lsd, g_data->Wavelength, g_data->OmegaRanges,
+        g_data->BoxSizes, g_data->MinEta, Wedge, 0.0, gError);
+
+    FreeMemMatrix(SpotInfoCorr, g_data->nSpots);
+    totalError += err;
+    totalLen += gError[0];
+    totalOme += gError[1];
+    totalAng += gError[2];
   }
 
-  CorrectTiltSpatialDistortion(nSpots, RhoD, SpotInfoShifted, px, Lsd, ybc, zbc,
-                               tx, ty, tz, p0, p1, p2, p3, SpotInfoCorr);
-  FreeMemMatrix(SpotInfoShifted, nSpots);
-  double error = CalcAngleErrors(nSpots, nhkls, nOmeRanges, Inp, SpotInfoCorr,
-                                 hkls, Lsd, Wavelength, OmegaRanges, BoxSizes,
-                                 MinEta, Wedge, 0.0, f_data->Error);
-  if (nIter % 500 == 0) {
-    printf("Error: %.20lf %.20lf %.20lf\n", f_data->Error[0], f_data->Error[1],
-           f_data->Error[2]);
+  int nIterLocal = nIter;
+  if (nIterLocal % 500 == 0) {
+    if (nIterLocal % 5000 == 0)
+      printf("\n");
+    printf("Iter %d Total: L=%.5lf O=%.5lf A=%.5lf (PerG: L=%.5lf O=%.5lf "
+           "A=%.5lf)\n",
+           nIterLocal, totalLen, totalOme, totalAng, totalLen / nGrains,
+           totalOme / nGrains, totalAng / nGrains);
     fflush(stdout);
   }
   nIter++;
-  return error;
+  return totalError;
 }
 
-void FitGrain(double Ini[12], double OptP[10], double NonOptP[5],
-              int NonOptPInt[5], double **SpotInfoAll,
-              double OmegaRanges[2000][2], double tol[22],
-              double BoxSizes[2000][4], double **hklsIn, double *Out,
-              double *Error, Panel *panels, int nPanels, double tolShifts,
-              int *spotsPerPanel) { // Added spotsPerPanel
-  unsigned n = 22;
+void FitMultipleGrains(struct GrainData *grains, int nGrains, double OptP[10],
+                       double NonOptP[5], double tols[22], double *Out,
+                       Panel *panels, int nPanels, double tolShifts,
+                       int *spotsPerPanel) {
+  unsigned n = nGrains * 12 + 10; // Grains(12 each) + Global(10)
   if (nPanels > 1) {
     n += (nPanels - 1) * 2;
   }
 
-  double x[n], xl[n], xu[n];
-  int i, j;
+  double *x = malloc(n * sizeof(double));
+  double *xl = malloc(n * sizeof(double));
+  double *xu = malloc(n * sizeof(double));
+
   struct data f_data;
-  f_data.NrPixels = NonOptPInt[0];
-  f_data.nOmeRanges = NonOptPInt[1];
-  f_data.nRings = NonOptPInt[2];
-  f_data.nSpots = NonOptPInt[3];
-  f_data.nhkls = NonOptPInt[4];
-  f_data.RhoD = NonOptP[0];
-  f_data.Lsd = NonOptP[1];
-  f_data.px = NonOptP[2];
-  f_data.Wavelength = NonOptP[3];
-  f_data.MinEta = NonOptP[4];
+  f_data.nGrains = nGrains;
+  f_data.grains = grains;
   f_data.nPanels = nPanels;
   f_data.panels = panels;
 
-  int nOmeRanges = NonOptPInt[1];
-  for (i = 0; i < nOmeRanges; i++) {
-    for (j = 0; j < 2; j++)
-      f_data.OmegaRanges[i][j] = OmegaRanges[i][j];
-    for (j = 0; j < 4; j++)
-      f_data.BoxSizes[i][j] = BoxSizes[i][j];
-  }
-  f_data.hkls = hklsIn;
-  f_data.SpotInfoAll = SpotInfoAll;
-  f_data.Error = Error;
   struct data *f_datat;
   f_datat = &f_data;
   void *trp = (struct data *)f_datat;
 
-  // Set x, xl, xu
-  for (i = 0; i < 12; i++)
-    x[i] = Ini[i];
-  for (i = 0; i < 10; i++)
-    x[i + 12] = OptP[i];
-  for (i = 0; i < 6; i++) { // Pos and Orient
-    xl[i] = x[i] - tol[i];
-    xu[i] = x[i] + tol[i];
-  }
-  for (i = 6; i < 12; i++) { // Strains
-    xl[i] = x[i] - (tol[i] / 100);
-    xu[i] = x[i] + (tol[i] / 100);
-  }
-  for (i = 12; i < 22; i++) { // Parameters
-    xl[i] = x[i] - tol[i];
-    xu[i] = x[i] + tol[i];
+  // 1. Set Grain Parameters (0 to nGrains*12)
+  for (int g = 0; g < nGrains; g++) {
+    int offset = g * 12;
+    double *xi = &x[offset];
+    double *xli = &xl[offset];
+    double *xui = &xu[offset];
+
+    struct GrainData *gd = &grains[g];
+
+    for (int i = 0; i < 12; i++)
+      xi[i] = gd->Ini[i];
+
+    // Tols: First 6 are Pos/Orient, Next 6 are Strain
+    // In tols array: 0-5 (Pos/Orient), 6-11 (Strain), 12-21 (Global)
+
+    for (int i = 0; i < 6; i++) { // Pos and Orient
+      xli[i] = xi[i] - tols[i];
+      xui[i] = xi[i] + tols[i];
+    }
+    for (int i = 6; i < 12; i++) {      // Strains
+      xli[i] = xi[i] - (tols[i] / 100); // tols[6..11]
+      xui[i] = xi[i] + (tols[i] / 100);
+    }
   }
 
+  // 2. Set Global Parameters
+  int global_offset = nGrains * 12;
+  for (int i = 0; i < 10; i++) {
+    x[global_offset + i] = OptP[i];
+    // Tols for global params are at indices 12-21 in 'tols' array
+    xl[global_offset + i] = x[global_offset + i] - tols[12 + i];
+    xu[global_offset + i] = x[global_offset + i] + tols[12 + i];
+  }
+
+  // 3. Set Panel Parameters
   if (nPanels > 1) {
-    int p_idx = 22;
-    for (i = 1; i < nPanels; i++) {
+    int p_idx = global_offset + 10;
+    for (int i = 1; i < nPanels; i++) {
       x[p_idx] = panels[i].dY;
-      if (spotsPerPanel != NULL && spotsPerPanel[i] < 1) {
+      if (spotsPerPanel != NULL && (spotsPerPanel[i] <= 1)) {
         xl[p_idx] = x[p_idx]; // Lock
         xu[p_idx] = x[p_idx];
       } else {
@@ -785,7 +868,7 @@ void FitGrain(double Ini[12], double OptP[10], double NonOptP[5],
       p_idx++;
 
       x[p_idx] = panels[i].dZ;
-      if (spotsPerPanel != NULL && spotsPerPanel[i] < 1) {
+      if (spotsPerPanel != NULL && (spotsPerPanel[i] <= 1)) {
         xl[p_idx] = x[p_idx]; // Lock
         xu[p_idx] = x[p_idx];
       } else {
@@ -795,6 +878,11 @@ void FitGrain(double Ini[12], double OptP[10], double NonOptP[5],
       p_idx++;
     }
   }
+
+  // Calculate Initial Errors
+  double *IniErrs = malloc(nGrains * 3 * sizeof(double));
+  calc_grain_errors(nGrains, nPanels, panels, grains, x,
+                    IniErrs); // x has initial values here
 
   nlopt_opt opt;
   // opt = nlopt_create(NLOPT_LN_BOBYQA, n);
@@ -809,25 +897,89 @@ void FitGrain(double Ini[12], double OptP[10], double NonOptP[5],
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
 
-  for (i = 0; i < 22; i++)
+  // Calculate Final Errors
+  double *FinErrs = malloc(nGrains * 3 * sizeof(double));
+  calc_grain_errors(nGrains, nPanels, panels, grains, x, FinErrs);
+
+  // Unpack Output
+  // Global Params
+  printf("\n========================================\n");
+  printf("        Global Optimization Results       \n");
+  printf("========================================\n");
+  double *gOpt = &x[global_offset];
+  printf("Lsd %.12f (Fixed)\n", NonOptP[1]);
+  printf("BC %.12f %.12f\n", gOpt[3], gOpt[4]);
+  printf("tx %.12f\n", gOpt[0]);
+  printf("ty %.12f\n", gOpt[1]);
+  printf("tz %.12f\n", gOpt[2]);
+  printf("Wedge %.12f\n", gOpt[5]);
+  printf("p0 %.12f\n", gOpt[6]);
+  printf("p1 %.12f\n", gOpt[7]);
+  printf("p2 %.12f\n", gOpt[8]);
+  printf("p3 %.12f\n", gOpt[9]);
+
+  printf("\n-------------------------------------------------------------------"
+         "----------------------------------------------\n");
+  printf(" Grain | Initial Error (L, O, A) | Final Error (L, O, "
+         "A) | Position / Orientation / LatticeParameter\n");
+  printf("---------------------------------------------------------------------"
+         "--------------------------------------------\n");
+  for (int g = 0; g < nGrains; g++) {
+    double *xi = &x[g * 12];
+    printf(" %5d | %.4f %.4f %.4f | %.4f %.4f %.4f | Pos: %.2f %.2f %.2f | "
+           "Orientation: %.2f %.2f %.2f | LatticeParameter: %.5f %.5f %.5f "
+           "%.5f %.5f %.5f\n",
+           g, IniErrs[g * 3], IniErrs[g * 3 + 1], IniErrs[g * 3 + 2],
+           FinErrs[g * 3], FinErrs[g * 3 + 1], FinErrs[g * 3 + 2], xi[0], xi[1],
+           xi[2], xi[3], xi[4], xi[5], xi[6], xi[7], xi[8], xi[9], xi[10],
+           xi[11]);
+  }
+  printf("---------------------------------------------------------------------"
+         "--------------------------------------------\n");
+
+  free(IniErrs);
+  free(FinErrs);
+
+  for (int i = 0; i < n; i++)
     Out[i] = x[i];
 
   if (nPanels > 1) {
-    int p_idx = 22;
-    for (i = 1; i < nPanels; i++) {
+    int p_idx = global_offset + 10;
+    for (int i = 1; i < nPanels; i++) {
       panels[i].dY = x[p_idx++];
       panels[i].dZ = x[p_idx++];
     }
     panels[0].dY = 0;
     panels[0].dZ = 0;
   }
+
+  free(x);
+  free(xl);
+  free(xu);
+}
+
+// Sort helper
+struct GrainInfo {
+  int ID;
+  double FitError;
+};
+
+int compareGrains(const void *a, const void *b) {
+  struct GrainInfo *ga = (struct GrainInfo *)a;
+  struct GrainInfo *gb = (struct GrainInfo *)b;
+  if (ga->FitError < gb->FitError)
+    return -1;
+  if (ga->FitError > gb->FitError)
+    return 1;
+  return 0;
 }
 
 int main(int argc, char *argv[]) {
   if (argc < 4 || argc > 5) {
-    printf("Usage: FitGrain Folder Parameters.txt GrainID [nCPUs]\n");
+    printf("Usage: FitMultipleGrains Folder Parameters.txt nGrains [nCPUs]\n");
     return 0;
   }
+  int nGrainsReq = atoi(argv[3]);
   int nCPUs = 10;
   if (argc == 5) {
     nCPUs = atoi(argv[4]);
@@ -1140,169 +1292,205 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  pixelsize = px;
-  int nRings = cs;
-  int i, j, k;
-  // Read Grains.csv file, get Orientation, Position, Lattice Parameter
+  // Read Grains.csv to find best nGrains
   FILE *GrainsF;
   char fnGrains[MAX_LINE_LENGTH];
-  char *folder;
-  folder = argv[1];
+  char *folder = argv[1];
+  int i; // Declared here
   sprintf(fnGrains, "%s/Grains.csv", folder);
   GrainsF = fopen(fnGrains, "r");
-  double Orient[9], Pos[3], LatC[6], Euler[3];
-  double OrientTemp[9], PosTemp[3], LatCTemp[6];
-  int ID;
-  while (fgets(aline, MAX_LINE_LENGTH, GrainsF) != NULL) {
-    sscanf(aline,
-           "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf "
-           "%lf %lf",
-           &ID, &OrientTemp[0], &OrientTemp[1], &OrientTemp[2], &OrientTemp[3],
-           &OrientTemp[4], &OrientTemp[5], &OrientTemp[6], &OrientTemp[7],
-           &OrientTemp[8], &PosTemp[0], &PosTemp[1], &PosTemp[2], &LatCTemp[0],
-           &LatCTemp[1], &LatCTemp[2], &LatCTemp[3], &LatCTemp[4],
-           &LatCTemp[5]);
-    if (ID == GrainID) {
-      for (i = 0; i < 9; i++)
-        Orient[i] = OrientTemp[i];
-      for (i = 0; i < 3; i++)
-        Pos[i] = PosTemp[i];
-      for (i = 0; i < 6; i++)
-        LatC[i] = LatCTemp[i];
-      break;
-    }
-  }
-  double Orient33[3][3];
-  for (i = 0; i < 3; i++)
-    for (j = 0; j < 3; j++)
-      Orient33[i][j] = Orient[i * 3 + j];
-  OrientMat2Euler(Orient33, Euler);
-  double Ini[12];
-  for (i = 0; i < 3; i++)
-    Ini[i] = Pos[i];
-  for (i = 0; i < 3; i++)
-    Ini[i + 3] = Euler[i];
-  for (i = 0; i < 6; i++)
-    Ini[i + 6] = LatC[i];
-
-  // Read SpotMatrix.csv to get raw positions of the diffraction spots.
-  // We need, GrainID(0), SpotID(1), Y(3), Z(4), Ome(5), RingNr(7)
-  double **SpotInfoAll;
-  SpotInfoAll = allocMatrix(MaxNSpotsBest, 5);
-  FILE *SpotMF;
-  char fnSpotMatrix[MAX_LINE_LENGTH];
-  sprintf(fnSpotMatrix, "%s/SpotMatrix.csv", folder);
-  SpotMF = fopen(fnSpotMatrix, "r");
-  if (SpotMF == NULL) {
-    printf("Error: Could not open SpotMatrix.csv at %s\n", fnSpotMatrix);
+  if (GrainsF == NULL) {
+    printf("Error opening %s\n", fnGrains);
     return 1;
   }
-  double YZOme[3];
-  int Rnr, nSpots = 0, SpID;
-  fgets(aline, MAX_LINE_LENGTH, SpotMF);
-  while (fgets(aline, MAX_LINE_LENGTH, SpotMF) != NULL) {
-    sscanf(aline, "%d %d %s %lf %lf %lf %s %d", &ID, &SpID, dummy, &YZOme[0],
-           &YZOme[1], &YZOme[2], dummy, &Rnr);
-    if (ID == GrainID) {
-      SpotInfoAll[nSpots][0] = (double)SpID;
-      SpotInfoAll[nSpots][1] = (double)Rnr;
-      SpotInfoAll[nSpots][2] = YZOme[0];
-      SpotInfoAll[nSpots][3] = YZOme[1];
-      SpotInfoAll[nSpots][4] = YZOme[2];
 
-      // Undo initial panel shifts
-      if (nPanels > 0) {
-        int pIdx = GetPanelIndex(SpotInfoAll[nSpots][2], SpotInfoAll[nSpots][3],
-                                 nPanels, panels);
-        if (pIdx >= 0) {
-          SpotInfoAll[nSpots][2] -= panels[pIdx].dY;
-          SpotInfoAll[nSpots][3] -= panels[pIdx].dZ;
-        }
-      }
+  // First pass: Read all grains and sort
+  struct GrainInfo *allGrains =
+      malloc(sizeof(struct GrainInfo) * 100000); // Plenty space
+  int nTotalGrains = 0;
 
-      nSpots++;
-      if (nSpots >= MaxNSpotsBest) {
-        printf("Warning: Hit MaxNSpotsBest (%d), stopping read.\n",
-               MaxNSpotsBest);
-        break;
-      }
+  // Re-read file line by line
+  while (fgets(aline, MAX_LINE_LENGTH, GrainsF) != NULL) {
+    int id;
+    double orient[9], pos[3], lat[6], error;
+    // We need to read column 21 (0-indexed).
+    // Current sscanf reads 19 values (0-18).
+    // ID (0), Orient (1-9), Pos (10-12), Lat (13-18).
+    // Column 19, 20 are unknown. 21 is FitError.
+    // So we need to skip 2 values after Lat.
+    double d1, d2;
+    int nRead = sscanf(aline,
+                       "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf "
+                       "%lf %lf %lf %lf %lf %lf %lf %lf",
+                       &id, &orient[0], &orient[1], &orient[2], &orient[3],
+                       &orient[4], &orient[5], &orient[6], &orient[7],
+                       &orient[8], &pos[0], &pos[1], &pos[2], &lat[0], &lat[1],
+                       &lat[2], &lat[3], &lat[4], &lat[5], &d1, &d2, &error);
+
+    if (nRead >= 22) {
+      allGrains[nTotalGrains].ID = id;
+      allGrains[nTotalGrains].FitError = error;
+      nTotalGrains++;
     }
   }
-  printf("Read %d spots for GrainID %d from SpotMatrix.\n", nSpots, GrainID);
+  fclose(GrainsF);
 
+  qsort(allGrains, nTotalGrains, sizeof(struct GrainInfo), compareGrains);
+
+  int nGrains = (nTotalGrains < nGrainsReq) ? nTotalGrains : nGrainsReq;
+  printf("Selected top %d grains from %d total.\n", nGrains, nTotalGrains);
+  for (i = 0; i < nGrains; i++) {
+    printf("Grain %d: ID %d, Error %f\n", i, allGrains[i].ID,
+           allGrains[i].FitError);
+  }
+
+  // Allocate GrainData structures
+  struct GrainData *grainDataArray = malloc(sizeof(struct GrainData) * nGrains);
+
+  // Loop over selected grains to load details
+  for (int g = 0; g < nGrains; g++) {
+    int GrainID = allGrains[g].ID;
+    struct GrainData *gd = &grainDataArray[g];
+
+    // Common params copy
+    gd->NrPixels = NrPixels;
+    gd->nOmeRanges = nOmeRanges;
+    gd->nSpots = 0; // Will count later
+    // ... fill others ...
+    gd->RhoD = RhoD;
+    gd->Lsd = Lsd;
+    gd->px = px;
+    gd->Wavelength = Wavelength;
+    gd->MinEta = MinEta;
+    for (i = 0; i < nOmeRanges; i++) {
+      gd->OmegaRanges[i][0] = OmegaRanges[i][0];
+      gd->OmegaRanges[i][1] = OmegaRanges[i][1];
+    }
+    for (i = 0; i < nBoxSizes; i++) {
+      gd->BoxSizes[i][0] = BoxSizes[i][0];
+      gd->BoxSizes[i][1] = BoxSizes[i][1];
+      gd->BoxSizes[i][2] = BoxSizes[i][2];
+      gd->BoxSizes[i][3] = BoxSizes[i][3];
+    }
+
+    // Reload Grains.csv to get params for THIS grain
+    // This is inefficient but robust.
+    GrainsF = fopen(fnGrains, "r");
+    double Orient[9], Pos[3], LatC[6], Euler[3];
+    while (fgets(aline, MAX_LINE_LENGTH, GrainsF) != NULL) {
+      int id_lines;
+      sscanf(aline,
+             "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf "
+             "%lf %lf %lf",
+             &id_lines, &Orient[0], &Orient[1], &Orient[2], &Orient[3],
+             &Orient[4], &Orient[5], &Orient[6], &Orient[7], &Orient[8],
+             &Pos[0], &Pos[1], &Pos[2], &LatC[0], &LatC[1], &LatC[2], &LatC[3],
+             &LatC[4], &LatC[5]);
+      if (id_lines == GrainID)
+        break;
+    }
+    fclose(GrainsF);
+
+    double Orient33[3][3];
+    int j; // Declared j
+    for (i = 0; i < 3; i++)
+      for (j = 0; j < 3; j++)
+        Orient33[i][j] = Orient[i * 3 + j];
+    OrientMat2Euler(Orient33, Euler);
+
+    for (i = 0; i < 3; i++)
+      gd->Ini[i] = Pos[i];
+    for (i = 0; i < 3; i++)
+      gd->Ini[i + 3] = Euler[i];
+    for (i = 0; i < 6; i++)
+      gd->Ini[i + 6] = LatC[i];
+
+    // Load Spots
+    gd->SpotInfoAll = allocMatrix(MaxNSpotsBest, 5);
+    char fnSpotMatrix[MAX_LINE_LENGTH];
+    sprintf(fnSpotMatrix, "%s/SpotMatrix.csv", folder);
+    FILE *SpotMF = fopen(fnSpotMatrix, "r");
+    double YZOme[3];
+    int Rnr, nS = 0, SpID, id_spot;
+    fgets(aline, MAX_LINE_LENGTH, SpotMF); // Skip header
+    while (fgets(aline, MAX_LINE_LENGTH, SpotMF) != NULL) {
+      sscanf(aline, "%d %d %s %lf %lf %lf %s %d", &id_spot, &SpID, dummy,
+             &YZOme[0], &YZOme[1], &YZOme[2], dummy, &Rnr);
+      if (id_spot == GrainID) {
+        gd->SpotInfoAll[nS][0] = (double)SpID;
+        gd->SpotInfoAll[nS][1] = (double)Rnr;
+        gd->SpotInfoAll[nS][2] = YZOme[0];
+        gd->SpotInfoAll[nS][3] = YZOme[1];
+        gd->SpotInfoAll[nS][4] = YZOme[2];
+
+        // Undo panel shifts
+        if (nPanels > 0) {
+          int pIdx = GetPanelIndex(YZOme[0], YZOme[1], nPanels, panels);
+          if (pIdx >= 0) {
+            gd->SpotInfoAll[nS][2] -= panels[pIdx].dY;
+            gd->SpotInfoAll[nS][3] -= panels[pIdx].dZ;
+          }
+        }
+        nS++;
+        if (nS >= MaxNSpotsBest)
+          break;
+      }
+    }
+    fclose(SpotMF);
+    gd->nSpots = nS;
+    printf("Loaded %d spots for Grain %d\n", nS, GrainID);
+
+    // Load HKLs
+    gd->hkls = allocMatrix(MaxNSpotsBest, 4);
+    gd->nhkls = 0;
+    char hklfn[2048];
+    sprintf(hklfn, "%s/hkls.csv", folder);
+    FILE *hklf = fopen(hklfn, "r");
+    fgets(aline, MAX_LINE_LENGTH, hklf);
+    int h, kt, l, RNr;
+    while (fgets(aline, MAX_LINE_LENGTH, hklf) != NULL) {
+      sscanf(aline, "%d %d %d %s %d", &h, &kt, &l, dummy, &RNr);
+      for (i = 0; i < cs; i++) { // cs is nRings
+        if (RNr == RingNumbers[i]) {
+          if (gd->nhkls < MaxNSpotsBest) {
+            gd->hkls[gd->nhkls][0] = h;
+            gd->hkls[gd->nhkls][1] = kt;
+            gd->hkls[gd->nhkls][2] = l;
+            gd->hkls[gd->nhkls][3] = RingNumbers[i];
+            gd->nhkls++;
+          }
+        }
+      }
+    }
+    fclose(hklf);
+    gd->nRings = cs;
+  }
+
+  // Calculate spot counts per panel (aggregated)
   int *spotsPerPanel = NULL;
   if (nPanels > 0) {
     spotsPerPanel = calloc(nPanels, sizeof(int));
-    for (i = 0; i < nSpots; i++) {
-      double y_spot =
-          SpotInfoAll[i]
-                     [2]; // Note: These are 'unshifted' now if Undo logic ran
-      double z_spot = SpotInfoAll[i][3];
-      // We need to check use raw coords for panel assignment?
-      // Logic above subtracted shifts. So these are "nominal" positions.
-      // Panels are defined in nominal space typically? Or physical?
-      // Assuming GetPanelIndex works on the coords present.
-
-      // Wait, above we did: SpotInfoAll[nSpots][2] -= panels[pIdx].dY;
-      // GetPanelIndex uses limits. If shifts are small, it shouldn't migrate
-      // panels. Ideally we use the ORIGINAL coord for ID. Re-adding shift just
-      // for ID check inside GetPanelIndex? Actually, let's just use the current
-      // value, it should be close enough or "nominal".
-      int pIdx = GetPanelIndex(y_spot, z_spot, nPanels, panels);
-
-      // Use a simpler approach: Re-calculate index using the shifted values if
-      // needed, but since we modified them in place, let's just try with
-      // current values. Alternatively, since we just modified them, we can't
-      // easily undo without re-reading. But wait, the undo logic used
-      // GetPanelIndex on the original coords. Let's assume the spot is still
-      // roughly in the same panel.
-      if (pIdx >= 0 && pIdx < nPanels) {
-        spotsPerPanel[pIdx]++;
+    for (int g = 0; g < nGrains; g++) {
+      struct GrainData *gd = &grainDataArray[g];
+      for (i = 0; i < gd->nSpots; i++) {
+        // Using shifted back coords approx original panel location
+        int pIdx = GetPanelIndex(gd->SpotInfoAll[i][2], gd->SpotInfoAll[i][3],
+                                 nPanels, panels);
+        if (pIdx >= 0 && pIdx < nPanels)
+          spotsPerPanel[pIdx]++;
       }
     }
-    printf("\nSpots per Panel:\n");
-    for (i = 1; i < nPanels;
-         i++) { // Panel 0 is typically 'global' or 'none'? Loop from 1 or 0?
-      // Panels usually 1-calibrated? function GeneratePanels sets IDs.
-      // Panel.c usually 0-indexed array, PanelID might be i+1.
+    printf("\nSpots per Panel (Total):\n");
+    for (i = 1; i < nPanels; i++)
       printf("Panel %d: %d spots\n", i, spotsPerPanel[i]);
-    }
-    printf("\n");
-    // free(spotsPerPanel); // Moved to end
-  }
-
-  // Read hkls
-  int nhkls = 0;
-  double **hkls;
-  hkls = allocMatrix(MaxNSpotsBest, 4); // We need h,k,l and RingNr
-  char hklfn[2048];
-  sprintf(hklfn, "%s/hkls.csv", folder);
-  FILE *hklf = fopen(hklfn, "r");
-  if (hklf == NULL) {
-    printf("Could not read the hkl file. Exiting.\n");
-    return 1;
-  }
-  fgets(aline, MAX_LINE_LENGTH, hklf);
-  int h, kt, l, RNr;
-  while (fgets(aline, MAX_LINE_LENGTH, hklf) != NULL) {
-    sscanf(aline, "%d %d %d %s %d %s %s %s %s %s %s", &h, &kt, &l, dummy, &RNr,
-           dummy, dummy, dummy, dummy, dummy, dummy);
-    for (i = 0; i < nRings; i++) {
-      if (RNr == RingNumbers[i]) {
-        hkls[nhkls][0] = h;
-        hkls[nhkls][1] = kt;
-        hkls[nhkls][2] = l;
-        hkls[nhkls][3] = RingNumbers[i];
-        nhkls++;
-      }
-    }
   }
 
   // Group Setup parameters
-  // Non Optimized: NonOptP: double 5 + Int 5
+  // Non Optimized: NonOptP: double 5
   // Optimized OptP[10]
   double NonOptP[5] = {RhoD, Lsd, px, Wavelength, MinEta};
-  int NonOptPInt[5] = {NrPixels, nOmeRanges, nRings, nSpots, nhkls};
+  // int NonOptPInt[5] = {NrPixels, nOmeRanges, nRings, nSpots, nhkls}; //
+  // Removed, unused and caused errors
   double OptP[10] = {tx, ty, tz, yBC, zBC, wedge, p0, p1, p2, p3};
   double tols[22] = {
       250,
@@ -1337,44 +1525,21 @@ int main(int argc, char *argv[]) {
   //			  BoxSizes, hkls
   // CalcAngleErrors would need Y,Z,Ome before wedge correction.
   // Everything till CorrectTiltSpatialDistortion function in FitTiltBCLsd
-  double *Out;
-  double *Error;
-  int nOptParams = 18;
-  if (nPanels > 1) {
-    nOptParams += (nPanels - 1) * 2;
-  }
-  Error = malloc(3 * sizeof(*Error));
-  Out = malloc(nOptParams * sizeof(*Out));
-  FitGrain(Ini, OptP, NonOptP, NonOptPInt, SpotInfoAll, OmegaRanges, tols,
-           BoxSizes, hkls, Out, Error, panels, nPanels, tolShifts,
-           spotsPerPanel);
-  printf("\nInput:\n");
-  for (i = 0; i < 12; i++)
-    printf("%f ", Ini[i]);
-  for (i = 0; i < 10; i++)
-    printf("%f ", OptP[i]);
-  printf("\nOutput:\n");
-  for (i = 0; i < 22; i++)
-    printf("%f ", Out[i]);
-  printf("\n");
-  printf("Input tx: %lf, Fit tx: %lf\n", tx, Out[12]);
-
-  printf("\nLsd %.12f\n", Lsd);
-  printf("BC %.12f %.12f\n", Out[15], Out[16]);
-  printf("tx %.12f\n", Out[12]);
-  printf("ty %.12f\n", Out[13]);
-  printf("tz %.12f\n", Out[14]);
-  printf("p0 %.12f\n", Out[18]);
-  printf("p1 %.12f\n", Out[19]);
-  printf("p2 %.12f\n", Out[20]);
-  printf("p3 %.12f\n", Out[21]);
+  // Perform Optimization
+  // Prepare Output
+  double *Out; // Declared Out
+  Out = malloc(((nGrains * 12 + 10) + nPanels * 2) *
+               sizeof(double)); // Fixed size calc too just in case
+  FitMultipleGrains(grainDataArray, nGrains, OptP, NonOptP, tols, Out, panels,
+                    nPanels, tolShifts, spotsPerPanel);
 
   if (nPanels > 1) {
     char fullPath[MAX_LINE_LENGTH];
-    sprintf(fullPath, "%s/PanelShiftsOptimizedSC.txt", folder);
+    sprintf(fullPath, "%s/PanelShiftsOptimizedMulti.txt", folder);
     SavePanelShifts(fullPath, nPanels, panels);
     printf("Saved optimized panel shifts to %s\n", fullPath);
   }
+
   if (spotsPerPanel != NULL)
     free(spotsPerPanel);
   end = clock();

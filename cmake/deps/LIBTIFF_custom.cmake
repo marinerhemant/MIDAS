@@ -23,7 +23,7 @@ set(LIBTIFF_CMAKE_ARGS
     -DTIFF_MAN=OFF
     -DTIFF_DOCS=OFF # General flag
     # We can try removing CMAKE_POLICY_VERSION_MINIMUM if the patch prevents doc/CMakeLists.txt from being processed
-    # -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 )
 
 if(TARGET ZLIB::ZLIB)
@@ -42,9 +42,7 @@ set(_libtiff_fetch_extra_args) # Initialize an empty list for extra arguments
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin") # "Darwin" is the system name for macOS
   message(STATUS "LIBTIFF_custom.cmake: macOS detected. Enabling libtiff patch.")
   list(APPEND _libtiff_fetch_extra_args
-       PATCH_COMMAND patch -p1 -N --fuzz=0 < ${CMAKE_CURRENT_LIST_DIR}/libtiff-disable-doc.patch
-       # -N: ignore already applied patches
-       # --fuzz=0: apply only if exact match
+       PATCH_COMMAND ${CMAKE_COMMAND} -E echo "cmake_minimum_required(VERSION 3.10)" > doc/CMakeLists.txt
   )
 else()
   message(STATUS "LIBTIFF_custom.cmake: Not macOS. Skipping libtiff patch.")

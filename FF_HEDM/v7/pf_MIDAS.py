@@ -828,6 +828,9 @@ def main():
     parser.add_argument('-nCPUs', type=int, required=False, default=32, help='Number of CPUs to use')
     parser.add_argument('-nCPUsLocal', type=int, required=False, default=4, help='Local Number of CPUs to use')
     parser.add_argument('-paramFile', type=str, required=True, help='ParameterFileName: Do not use the full path.')
+    parser.add_argument('--mic_file', type=str, default="", help='Path to mic file')
+    parser.add_argument('--grains_file', type=str, default="", help='Path to grains file')
+    parser.add_argument('--do_indexing', type=int, default=1, help='Do Indexing?')
     parser.add_argument('-nNodes', type=int, required=False, default=1, help='Number of Nodes')
     parser.add_argument('-machineName', type=str, required=False, default='local', help='Machine Name: local,orthrosall,orthrosnew,umich')
     parser.add_argument('-omegaFile', type=str, required=False, default='', help='If you want to override omegas')
@@ -984,7 +987,8 @@ def main():
         # Initialize variables
         RingNrs = []
         nMerges = 0
-        micFN = ''
+        micFNInit = ''
+        grainsFNInit = ''
         maxang = 1
         tol_ome = 1
         tol_eta = 1
@@ -1004,7 +1008,9 @@ def main():
             elif line.startswith('NrFilesPerSweep'):
                 nrFilesPerSweep = int(line.split()[1])
             elif line.startswith('MicFile'):
-                micFN = line.split()[1]
+                micFNInit = line.split()[1]
+            elif line.startswith('GrainsFile'):
+                grainsFNInit = line.split()[1]
             elif line.startswith('FileStem'):
                 fStem = line.split()[1]
             elif line.startswith('Ext'):
@@ -1152,7 +1158,9 @@ def main():
             for line in lines:
                 if any(line.startswith(x) for x in ['RingNumbers', 'MarginRadius', 'RingRadii', 'RingToIndex', 'BeamSize', 'px']):
                     continue
-                if line.startswith('MicFile') and not micFN:
+                if line.startswith('MicFile') and not args.mic_file:
+                    continue
+                if line.startswith('GrainsFile') and not args.grains_file:
                     continue
                 if line.startswith('OutputFolder'):
                     paramsf.write(f'OutputFolder {topdir}/Output\n')
@@ -1173,6 +1181,8 @@ def main():
             
             if micFN:
                 paramsf.write(f'MicFile {micFN}\n')
+            if args.grains_file:
+                paramsf.write(f'GrainsFile {args.grains_file}\n')
         
         # Run indexing if requested
         if runIndexing == 1:
