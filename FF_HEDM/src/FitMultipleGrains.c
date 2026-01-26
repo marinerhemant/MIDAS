@@ -921,13 +921,14 @@ void FitMultipleGrains(struct GrainData *grains, int nGrains, double OptP[10],
   printf("\n-------------------------------------------------------------------"
          "----------------------------------------------\n");
   printf(" Grain |     Initial Error (L, O, A)      |      Final Error (L, O, "
-         "A)       | Position / Orient / Strain\n");
+         "A)       | Position / Orientation / LatticeParameter\n");
   printf("---------------------------------------------------------------------"
          "--------------------------------------------\n");
   for (int g = 0; g < nGrains; g++) {
     double *xi = &x[g * 12];
     printf(" %5d | %.4f %.4f %.4f | %.4f %.4f %.4f | Pos: %.2f %.2f %.2f | "
-           "Ori: %.2f %.2f %.2f | Strain: %.2f %.2f %.2f %.2f %.2f %.2f\n",
+           "Orientation: %.2f %.2f %.2f | LatticeParameter: %.5f %.5f %.5f "
+           "%.5f %.5f %.5f\n",
            g, IniErrs[g * 3], IniErrs[g * 3 + 1], IniErrs[g * 3 + 2],
            FinErrs[g * 3], FinErrs[g * 3 + 1], FinErrs[g * 3 + 2], xi[0], xi[1],
            xi[2], xi[3], xi[4], xi[5], xi[6], xi[7], xi[8], xi[9], xi[10],
