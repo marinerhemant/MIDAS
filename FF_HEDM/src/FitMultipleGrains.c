@@ -629,7 +629,128 @@ struct data {
   Panel *panels;
 };
 
-int nIter = 0;
+// Helper to calculate errors for reporting
+static void calc_grain_errors(int nGrains, int nPanels, Panel *panels,
+                              struct GrainData *grains, const double *x,
+                              double *errors) {
+  // Unpack global
+  int global_offset = nGrains * 12;
+  double tx = x[global_offset + 0];
+  double ty = x[global_offset + 1];
+  double tz = x[global_offset + 2];
+  double ybc = x[global_offset + 3];
+  double zbc = x[global_offset + 4];
+  double Wedge = x[global_offset + 5];
+  double p0 = x[global_offset + 6];
+  double p1 = x[global_offset + 7];
+  double p2 = x[global_offset + 8];
+  double p3 = x[global_offset + 9];
+
+  for (int g = 0; g < nGrains; g++) {
+    struct GrainData *g_data = &grains[g];
+    int grain_offset = g * 12;
+    double Inp[12];
+    for (int i = 0; i < 12; i++)
+      Inp[i] = x[grain_offset + i];
+
+    double **SpotInfoCorr = allocMatrix(g_data->nSpots, 5);
+    double **SpotInfoShifted = allocMatrix(g_data->nSpots, 5);
+
+    for (int i = 0; i < g_data->nSpots; i++) {
+      SpotInfoShifted[i][0] = g_data->SpotInfoAll[i][0];
+      SpotInfoShifted[i][1] = g_data->SpotInfoAll[i][1];
+      SpotInfoShifted[i][4] = g_data->SpotInfoAll[i][4];
+      double y_raw = g_data->SpotInfoAll[i][2];
+      double z_raw = g_data->SpotInfoAll[i][3];
+      double dy = 0, dz = 0;
+      if (nPanels > 0) {
+        int pIdx = GetPanelIndex(y_raw, z_raw, nPanels, panels);
+        if (pIdx >= 0) {
+          dy = panels[pIdx].dY;
+          dz = panels[pIdx].dZ;
+        }
+      }
+      SpotInfoShifted[i][2] = y_raw + dy;
+      SpotInfoShifted[i][3] = z_raw + dz;
+    }
+
+    CorrectTiltSpatialDistortion(g_data->nSpots, g_data->RhoD, SpotInfoShifted,
+                                 g_data->px, g_data->Lsd, ybc, zbc, tx, ty, tz,
+                                 p0, p1, p2, p3, SpotInfoCorr);
+    FreeMemMatrix(SpotInfoShifted, g_data->nSpots);
+
+    double gError[3];
+    CalcAngleErrors(g_data->nSpots, g_data->nhkls, g_data->nOmeRanges, Inp,
+                    SpotInfoCorr, g_data->hkls, g_data->Lsd, g_data->Wavelength,
+                    g_data->OmegaRanges, g_data->BoxSizes, g_data->MinEta,
+                    Wedge, 0.0, gError);
+
+    FreeMemMatrix(SpotInfoCorr, g_data->nSpots);
+
+    errors[g * 3 + 0] = gError[0]; // Len
+    errors[g * 3 + 1] = gError[1]; // Ome
+    errors[g * 3 + 2] = gError[2]; // Ang
+  }
+}
+
+// Helper to calculate errors for reporting
+static void calc_grain_errors(int nGrains, int nPanels, Panel *panels, struct GrainData *grains, const double *x, double *errors) {
+  // Unpack global
+  int global_offset = nGrains * 12;
+  double tx = x[global_offset + 0];
+  double ty = x[global_offset + 1];
+  double tz = x[global_offset + 2];
+  double ybc = x[global_offset + 3];
+  double zbc = x[global_offset + 4];
+  double Wedge = x[global_offset + 5];
+  double p0 = x[global_offset + 6];
+  double p1 = x[global_offset + 7];
+  double p2 = x[global_offset + 8];
+  double p3 = x[global_offset + 9];
+
+  for (int g = 0; g < nGrains; g++) {
+      struct GrainData *g_data = &grains[g];
+      int grain_offset = g * 12;
+      double Inp[12];
+      for (int i = 0; i < 12; i++) Inp[i] = x[grain_offset + i];
+      
+      double **SpotInfoCorr = allocMatrix(g_data->nSpots, 5);
+      double **SpotInfoShifted = allocMatrix(g_data->nSpots, 5);
+      
+      for (int i = 0; i < g_data->nSpots; i++) {
+        SpotInfoShifted[i][0] = g_data->SpotInfoAll[i][0];
+        SpotInfoShifted[i][1] = g_data->SpotInfoAll[i][1];
+        SpotInfoShifted[i][4] = g_data->SpotInfoAll[i][4];
+        double y_raw = g_data->SpotInfoAll[i][2];
+        double z_raw = g_data->SpotInfoAll[i][3];
+        double dy = 0, dz = 0;
+        if (nPanels > 0) {
+          int pIdx = GetPanelIndex(y_raw, z_raw, nPanels, panels);
+          if (pIdx >= 0) {
+            dy = panels[pIdx].dY;
+            dz = panels[pIdx].dZ;
+          }
+        }
+        SpotInfoShifted[i][2] = y_raw + dy;
+        SpotInfoShifted[i][3] = z_raw + dz;
+      }
+      
+      CorrectTiltSpatialDistortion(g_data->nSpots, g_data->RhoD, SpotInfoShifted, g_data->px, g_data->Lsd, ybc, zbc,
+                                   tx, ty, tz, p0, p1, p2, p3, SpotInfoCorr);
+      FreeMemMatrix(SpotInfoShifted, g_data->nSpots);
+      
+      double gError[3];
+      CalcAngleErrors(g_data->nSpots, g_data->nhkls, g_data->nOmeRanges, Inp, SpotInfoCorr,
+                                     g_data->hkls, g_data->Lsd, g_data->Wavelength, g_data->OmegaRanges, g_data->BoxSizes,
+                                     g_data->MinEta, Wedge, 0.0, gError);
+                                     
+      FreeMemMatrix(SpotInfoCorr, g_data->nSpots);
+      
+      errors[g*3 + 0] = gError[0]; // Len
+      errors[g*3 + 1] = gError[1]; // Ome
+      errors[g*3 + 2] = gError[2]; // Ang
+  }
+}
 
 static double problem_function(unsigned n, const double *x, double *grad,
                                void *f_data_trial) {
@@ -712,10 +833,11 @@ static double problem_function(unsigned n, const double *x, double *grad,
     totalError += err;
   }
 
-  if (nIter % 500 == 0) {
-    if (nIter % 5000 == 0)
+  int nIterLocal = nIter;
+  if (nIterLocal % 500 == 0) {
+    if (nIterLocal % 5000 == 0)
       printf("\n");
-    printf("Iter %d Total Error: %.5lf (PerGrain: %.5lf)\r", nIter, totalError,
+    printf("Iter %d Total Error: %.5lf (PerGrain: %.5lf)\n", nIterLocal, totalError,
            totalError / nGrains);
     fflush(stdout);
   }
@@ -806,6 +928,10 @@ void FitMultipleGrains(struct GrainData *grains, int nGrains, double OptP[10],
     }
   }
 
+  // Calculate Initial Errors
+  double *IniErrs = malloc(nGrains * 3 * sizeof(double));
+  calc_grain_errors(nGrains, nPanels, panels, grains, x, IniErrs); // x has initial values here
+  
   nlopt_opt opt;
   // opt = nlopt_create(NLOPT_LN_BOBYQA, n);
   // opt = nlopt_create(NLOPT_LN_SBPLX, n);
@@ -818,6 +944,10 @@ void FitMultipleGrains(struct GrainData *grains, int nGrains, double OptP[10],
   double minf;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
+  
+  // Calculate Final Errors
+  double *FinErrs = malloc(nGrains * 3 * sizeof(double));
+  calc_grain_errors(nGrains, nPanels, panels, grains, x, FinErrs);
 
   // Unpack Output
   // Global Params
@@ -836,18 +966,22 @@ void FitMultipleGrains(struct GrainData *grains, int nGrains, double OptP[10],
   printf("p2 %.12f\n", gOpt[8]);
   printf("p3 %.12f\n", gOpt[9]);
 
-  printf("\n----------------------------------------\n");
-  printf(" Grain | Position (x,y,z) | Orientation (Euler) | Strain "
-         "(a,b,c,al,be,ga)\n");
-  printf("----------------------------------------\n");
+  printf("\n-----------------------------------------------------------------------------------------------------------------\n");
+  printf(" Grain |     Initial Error (L, O, A)      |      Final Error (L, O, A)       | Position / Orient / Strain\n");
+  printf("-----------------------------------------------------------------------------------------------------------------\n");
   for (int g = 0; g < nGrains; g++) {
-    double *xi = &x[g * 12];
-    printf(" %5d | %.3f %.3f %.3f | %.4f %.4f %.4f | %.4f %.4f %.4f %.4f %.4f "
-           "%.4f\n",
-           g, xi[0], xi[1], xi[2], xi[3], xi[4], xi[5], xi[6], xi[7], xi[8],
-           xi[9], xi[10], xi[11]);
+      double *xi = &x[g*12];
+      printf(" %5d | %.4f %.4f %.4f | %.4f %.4f %.4f | Pos: %.2f %.2f %.2f\n", 
+             g, IniErrs[g*3], IniErrs[g*3+1], IniErrs[g*3+2],
+             FinErrs[g*3], FinErrs[g*3+1], FinErrs[g*3+2],
+             xi[0], xi[1], xi[2]);
   }
-  printf("----------------------------------------\n");
+  printf("-----------------------------------------------------------------------------------------------------------------\n");
+
+  free(IniErrs); free(FinErrs);
+  
+  for (int i = 0; i < n; i++)
+    Out[i] = x[i];
 
   if (nPanels > 1) {
     int p_idx = global_offset + 10;
