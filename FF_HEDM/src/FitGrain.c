@@ -678,7 +678,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
   }
 
   CorrectTiltSpatialDistortion(nSpots, RhoD, SpotInfoShifted, px, Lsd, ybc, zbc,
-                               tx, ty, tz, p0, p1, p2, SpotInfoCorr);
+                               tx, ty, tz, p0, p1, p2, p3, SpotInfoCorr);
   FreeMemMatrix(SpotInfoShifted, nSpots);
   double error = CalcAngleErrors(nSpots, nhkls, nOmeRanges, Inp, SpotInfoCorr,
                                  hkls, Lsd, Wavelength, OmegaRanges, BoxSizes,
@@ -804,8 +804,8 @@ int main(int argc, char *argv[]) {
   ParamFN = argv[2];
   fileParam = fopen(ParamFN, "r");
   char *str, dummy[MAX_LINE_LENGTH];
-  double tx, ty, tz, Lsd, p0, p1, p2, p3, RhoD, yBC, zBC, wedge, px, a, b, c, alpha,
-      beta, gamma, OmegaRanges[2000][2], BoxSizes[2000][4], MaxRingRad,
+  double tx, ty, tz, Lsd, p0, p1, p2, p3, RhoD, yBC, zBC, wedge, px, a, b, c,
+      alpha, beta, gamma, OmegaRanges[2000][2], BoxSizes[2000][4], MaxRingRad,
       MaxTtheta, Wavelength, MinEta, Hbeam, Rsample;
   int NrPixels, nOmeRanges = 0, nBoxSizes = 0, cs = 0, RingNumbers[200],
                 cs2 = 0;
