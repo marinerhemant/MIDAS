@@ -1313,6 +1313,16 @@ int main(int argc, char *argv[]) {
   printf("\n");
   printf("Input tx: %lf, Fit tx: %lf\n", tx, Out[12]);
 
+  printf("\nLsd %.12f\n", Lsd);
+  printf("BC %.12f %.12f\n", Out[15], Out[16]);
+  printf("tx %.12f\n", Out[12]);
+  printf("ty %.12f\n", Out[13]);
+  printf("tz %.12f\n", Out[14]);
+  printf("p0 %.12f\n", Out[18]);
+  printf("p1 %.12f\n", Out[19]);
+  printf("p2 %.12f\n", Out[20]);
+  printf("p3 %.12f\n", Out[21]);
+
   if (nPanels > 1) {
     char fullPath[MAX_LINE_LENGTH];
     sprintf(fullPath, "%s/PanelShiftsOptimizedSC.txt", folder);
