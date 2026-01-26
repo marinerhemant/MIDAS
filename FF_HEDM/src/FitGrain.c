@@ -775,7 +775,7 @@ void FitGrain(double Ini[12], double OptP[10], double NonOptP[5],
     int p_idx = 22;
     for (i = 1; i < nPanels; i++) {
       x[p_idx] = panels[i].dY;
-      if (spotsPerPanel != NULL && spotsPerPanel[i] <= 1) {
+      if (spotsPerPanel != NULL && spotsPerPanel[i] < 1) {
         xl[p_idx] = x[p_idx]; // Lock
         xu[p_idx] = x[p_idx];
       } else {
@@ -785,7 +785,7 @@ void FitGrain(double Ini[12], double OptP[10], double NonOptP[5],
       p_idx++;
 
       x[p_idx] = panels[i].dZ;
-      if (spotsPerPanel != NULL && spotsPerPanel[i] <= 1) {
+      if (spotsPerPanel != NULL && spotsPerPanel[i] < 1) {
         xl[p_idx] = x[p_idx]; // Lock
         xu[p_idx] = x[p_idx];
       } else {
