@@ -728,6 +728,9 @@ static double problem_function(unsigned n, const double *x, double *grad,
   }
 
   double totalError = 0;
+  double totalLen = 0;
+  double totalOme = 0;
+  double totalAng = 0;
 
   // Per Grain Loop
   for (int g = 0; g < nGrains; g++) {
@@ -774,14 +777,19 @@ static double problem_function(unsigned n, const double *x, double *grad,
 
     FreeMemMatrix(SpotInfoCorr, g_data->nSpots);
     totalError += err;
+    totalLen += gError[0];
+    totalOme += gError[1];
+    totalAng += gError[2];
   }
 
   int nIterLocal = nIter;
   if (nIterLocal % 500 == 0) {
     if (nIterLocal % 5000 == 0)
       printf("\n");
-    printf("Iter %d Total Error: %.5lf (PerGrain: %.5lf)\n", nIterLocal,
-           totalError, totalError / nGrains);
+    printf("Iter %d Total: L=%.5lf O=%.5lf A=%.5lf (PerG: L=%.5lf O=%.5lf "
+           "A=%.5lf)\n",
+           nIterLocal, totalLen, totalOme, totalAng, totalLen / nGrains,
+           totalOme / nGrains, totalAng / nGrains);
     fflush(stdout);
   }
   nIter++;
