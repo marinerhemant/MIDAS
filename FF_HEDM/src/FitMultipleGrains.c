@@ -1347,6 +1347,7 @@ int main(int argc, char *argv[]) {
     printf("Loaded %d spots for Grain %d\n", nS, GrainID);
 
     // Load HKLs
+    gd->hkls = allocMatrix(MaxNSpotsBest, 4);
     gd->nhkls = 0;
     char hklfn[2048];
     sprintf(hklfn, "%s/hkls.csv", folder);
@@ -1357,11 +1358,13 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%d %d %d %s %d", &h, &kt, &l, dummy, &RNr);
       for (i = 0; i < cs; i++) { // cs is nRings
         if (RNr == RingNumbers[i]) {
-          gd->hkls[gd->nhkls][0] = h;
-          gd->hkls[gd->nhkls][1] = kt;
-          gd->hkls[gd->nhkls][2] = l;
-          gd->hkls[gd->nhkls][3] = RingNumbers[i];
-          gd->nhkls++;
+          if (gd->nhkls < MaxNSpotsBest) {
+            gd->hkls[gd->nhkls][0] = h;
+            gd->hkls[gd->nhkls][1] = kt;
+            gd->hkls[gd->nhkls][2] = l;
+            gd->hkls[gd->nhkls][3] = RingNumbers[i];
+            gd->nhkls++;
+          }
         }
       }
     }
