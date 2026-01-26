@@ -421,6 +421,9 @@ int main(int argc, char *argv[]) {
       Second = i;
     }
   }
+  // print max and min
+  printf("Max: %f\n", MaxOme);
+  printf("Min: %f\n", MinOme);
   Ys[0] = Y[First];
   Zs[0] = Z[First];
   Ys[1] = Y[Second];
