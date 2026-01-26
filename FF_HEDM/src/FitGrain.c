@@ -766,7 +766,8 @@ void FitGrain(double Ini[12], double OptP[10], double NonOptP[5],
   }
 
   nlopt_opt opt;
-  opt = nlopt_create(NLOPT_LN_SBPLX, n);
+  opt = nlopt_create(NLOPT_LN_BOBYQA, n);
+  // opt = nlopt_create(NLOPT_LN_SBPLX, n);
   // opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
