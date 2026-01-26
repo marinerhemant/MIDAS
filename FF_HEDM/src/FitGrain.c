@@ -23,6 +23,7 @@
 #include <limits.h>
 #include <math.h>
 #include <nlopt.h>
+#include <omp.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -467,53 +468,72 @@ static inline double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges,
     }
   }
   int sp, nTheorSpotsYZWER, nMatched = 0, RowBest = 0;
-  double GObs[3], GTheors[3], NormGObs, NormGTheors, DotGs, **TheorSpotsYZWER,
-      Numers, Denoms, *Angles, minAngle;
+  double GObs[3], GTheors[3], NormGObs, NormGTheors, DotGs, Numers, Denoms,
+      minAngle;
   double diffLenM, diffOmeM;
-  TheorSpotsYZWER = allocMatrix(MaxNSpotsBest, 9);
-  Angles = malloc(MaxNSpotsBest * sizeof(*Angles));
-  for (sp = 0; sp < nrMatchedIndexer; sp++) {
-    nTheorSpotsYZWER = 0;
-    GObs[0] = SpotsYZOGCorr[sp][3];
-    GObs[1] = SpotsYZOGCorr[sp][4];
-    GObs[2] = SpotsYZOGCorr[sp][5];
-    NormGObs = CalcNorm3(GObs[0], GObs[1], GObs[2]);
-    for (i = 0; i < nTspots; i++) {
-      if (((int)TheorSpotsYZWE[i][7] == (int)SpotsYZOGCorr[sp][6]) &&
-          (fabs(SpotsYZOGCorr[sp][2] - TheorSpotsYZWE[i][2]) < 3.0)) {
-        for (j = 0; j < 9; j++) {
-          TheorSpotsYZWER[nTheorSpotsYZWER][j] = TheorSpotsYZWE[i][j];
+  // Angles = malloc(MaxNSpotsBest * sizeof(*Angles)); // Moved inside parallel
+  // region
+  nMatched = 0;
+
+#pragma omp parallel private(sp, i, j, nTheorSpotsYZWER, GObs, GTheors,        \
+                                 NormGObs, NormGTheors, DotGs, Numers, Denoms, \
+                                 minAngle, RowBest, diffLenM, diffOmeM)
+  {
+    double *Angles_Th = malloc(MaxNSpotsBest * sizeof(double));
+    double **TheorSpotsYZWER_Th = allocMatrix(MaxNSpotsBest, 9);
+
+#pragma omp for
+    for (sp = 0; sp < nrMatchedIndexer; sp++) {
+      nTheorSpotsYZWER = 0;
+      GObs[0] = SpotsYZOGCorr[sp][3];
+      GObs[1] = SpotsYZOGCorr[sp][4];
+      GObs[2] = SpotsYZOGCorr[sp][5];
+      NormGObs = CalcNorm3(GObs[0], GObs[1], GObs[2]);
+      for (i = 0; i < nTspots; i++) {
+        if (((int)TheorSpotsYZWE[i][7] == (int)SpotsYZOGCorr[sp][6]) &&
+            (fabs(SpotsYZOGCorr[sp][2] - TheorSpotsYZWE[i][2]) < 3.0)) {
+          for (j = 0; j < 9; j++) {
+            TheorSpotsYZWER_Th[nTheorSpotsYZWER][j] = TheorSpotsYZWE[i][j];
+          }
+          GTheors[0] = TheorSpotsYZWE[i][3];
+          GTheors[1] = TheorSpotsYZWE[i][4];
+          GTheors[2] = TheorSpotsYZWE[i][5];
+          DotGs = ((GTheors[0] * GObs[0]) + (GTheors[1] * GObs[1]) +
+                   (GTheors[2] * GObs[2]));
+          NormGTheors = CalcNorm3(GTheors[0], GTheors[1], GTheors[2]);
+          Numers = DotGs;
+          Denoms = NormGObs * NormGTheors;
+          Angles_Th[nTheorSpotsYZWER] = fabs(acosd(Numers / Denoms));
+          nTheorSpotsYZWER++;
         }
-        GTheors[0] = TheorSpotsYZWE[i][3];
-        GTheors[1] = TheorSpotsYZWE[i][4];
-        GTheors[2] = TheorSpotsYZWE[i][5];
-        DotGs = ((GTheors[0] * GObs[0]) + (GTheors[1] * GObs[1]) +
-                 (GTheors[2] * GObs[2]));
-        NormGTheors = CalcNorm3(GTheors[0], GTheors[1], GTheors[2]);
-        Numers = DotGs;
-        Denoms = NormGObs * NormGTheors;
-        Angles[nTheorSpotsYZWER] = fabs(acosd(Numers / Denoms));
-        nTheorSpotsYZWER++;
+      }
+      if (nTheorSpotsYZWER == 0)
+        continue;
+      minAngle = 1000000;
+      for (i = 0; i < nTheorSpotsYZWER; i++) {
+        if (Angles_Th[i] < minAngle) {
+          minAngle = Angles_Th[i];
+          RowBest = i;
+        }
+      }
+      diffLenM =
+          CalcNorm2((SpotsYZOGCorr[sp][0] - TheorSpotsYZWER_Th[RowBest][0]),
+                    (SpotsYZOGCorr[sp][1] - TheorSpotsYZWER_Th[RowBest][1]));
+      diffOmeM = fabs(SpotsYZOGCorr[sp][2] - TheorSpotsYZWER_Th[RowBest][2]);
+      if (minAngle < 1) {
+        int idx;
+#pragma omp atomic capture
+        idx = nMatched++;
+
+        if (idx < nrMatchedIndexer) {
+          MatchDiff[idx][0] = minAngle;
+          MatchDiff[idx][1] = diffLenM;
+          MatchDiff[idx][2] = diffOmeM;
+        }
       }
     }
-    if (nTheorSpotsYZWER == 0)
-      continue;
-    minAngle = 1000000;
-    for (i = 0; i < nTheorSpotsYZWER; i++) {
-      if (Angles[i] < minAngle) {
-        minAngle = Angles[i];
-        RowBest = i;
-      }
-    }
-    diffLenM = CalcNorm2((SpotsYZOGCorr[sp][0] - TheorSpotsYZWER[RowBest][0]),
-                         (SpotsYZOGCorr[sp][1] - TheorSpotsYZWER[RowBest][1]));
-    diffOmeM = fabs(SpotsYZOGCorr[sp][2] - TheorSpotsYZWER[RowBest][2]);
-    if (minAngle < 1) {
-      MatchDiff[nMatched][0] = minAngle;
-      MatchDiff[nMatched][1] = diffLenM;
-      MatchDiff[nMatched][2] = diffOmeM;
-      nMatched++;
-    }
+    free(Angles_Th);
+    FreeMemMatrix(TheorSpotsYZWER_Th, MaxNSpotsBest);
   }
   Error[0] = 0;
   Error[1] = 0;
@@ -529,8 +549,8 @@ static inline double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges,
   FreeMemMatrix(TheorSpots, MaxNSpotsBest);
   FreeMemMatrix(SpotsYZOGCorr, nrMatchedIndexer);
   FreeMemMatrix(TheorSpotsYZWE, nTspots);
-  FreeMemMatrix(TheorSpotsYZWER, MaxNSpotsBest);
-  free(Angles);
+  // FreeMemMatrix(TheorSpotsYZWER, MaxNSpotsBest); // Removed as it is now
+  // thread-local free(Angles); // Removed as it is now thread-local
   return Error[0];
 }
 
@@ -772,6 +792,8 @@ void FitGrain(double Ini[12], double OptP[10], double NonOptP[5],
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function, trp);
+  nlopt_set_xtol_rel(opt, 1e-6);
+  nlopt_set_maxeval(opt, 50000);
   double minf;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
@@ -791,10 +813,15 @@ void FitGrain(double Ini[12], double OptP[10], double NonOptP[5],
 }
 
 int main(int argc, char *argv[]) {
-  if (argc != 4) {
-    printf("Usage: FitGrain Folder Parameters.txt GrainID\n");
+  if (argc < 4 || argc > 5) {
+    printf("Usage: FitGrain Folder Parameters.txt GrainID [nCPUs]\n");
     return 0;
   }
+  int nCPUs = 10;
+  if (argc == 5) {
+    nCPUs = atoi(argv[4]);
+  }
+  omp_set_num_threads(nCPUs);
   clock_t start, end;
   double diftotal;
   start = clock();
