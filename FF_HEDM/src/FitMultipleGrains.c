@@ -920,8 +920,8 @@ void FitMultipleGrains(struct GrainData *grains, int nGrains, double OptP[10],
 
   printf("\n-------------------------------------------------------------------"
          "----------------------------------------------\n");
-  printf(" Grain |     Initial Error (L, O, A)      |      Final Error (L, O, "
-         "A)       | Position / Orientation / LatticeParameter\n");
+  printf(" Grain | Initial Error (L, O, A) | Final Error (L, O, "
+         "A) | Position / Orientation / LatticeParameter\n");
   printf("---------------------------------------------------------------------"
          "--------------------------------------------\n");
   for (int g = 0; g < nGrains; g++) {
