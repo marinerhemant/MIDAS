@@ -850,6 +850,8 @@ int main(int argc, char *argv[]) {
   int NrPixels, nOmeRanges = 0, nBoxSizes = 0, cs = 0, RingNumbers[200],
                 cs2 = 0;
   double tolShifts = 1.0;
+  double tolBC = 1.0, tolTilts = 1.0, tolP0 = 1E-3, tolP1 = 1E-3, tolP2 = 1E-3,
+         tolP3 = 45.0;
 
   // Panel parameters
   int nPanelsY = 0;
@@ -1068,6 +1070,50 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %lf", dummy, &tolShifts);
       continue;
     }
+    str = "tolBC ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolBC);
+      continue;
+    }
+    str = "tolTilts ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolTilts);
+      continue;
+    }
+    str = "tolP ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolP0);
+      tolP1 = tolP0;
+      tolP2 = tolP0;
+      continue;
+    }
+    str = "tolP0 ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolP0);
+      continue;
+    }
+    str = "tolP1 ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolP1);
+      continue;
+    }
+    str = "tolP2 ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolP2);
+      continue;
+    }
+    str = "tolP3 ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolP3);
+      continue;
+    }
   }
 
   // Generate Panels
@@ -1271,16 +1317,16 @@ int main(int argc, char *argv[]) {
       1,
       1,
       1,
-      1,
-      1,
-      1,
-      1,
-      1,
+      tolTilts,
+      tolTilts,
+      tolTilts,
+      tolBC,
+      tolBC,
       0.00001,
-      1E-3,
-      1E-3,
-      1E-3,
-      45,
+      tolP0,
+      tolP1,
+      tolP2,
+      tolP3,
   }; // 250 microns for position, 0.0005 degrees for orient, 1 % for
      // latticeParameter, 1 degree for tilts, 1 pixel for yBC,
      // 1 pixel for zBC, 0.00001 degree for wedge, 1E-3 for p0,p1,p2, 45 for p3
