@@ -776,21 +776,19 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
   double RMin = 1e8, RMax = 0, EtaMin = 190, EtaMax = -190;
 
   for (int i = 0; i < nrPixelsThisRegion; i++) {
-        double r_idx = (double)usefulPixels[i*2+0];
-        double c_idx = (double)usefulPixels[i*2+1];
-        
-        double pdY = 0, pdZ = 0;
-        int pIdx = GetPanelIndex(r_idx, c_idx, nPanels, panels);
-        if (pIdx >= 0) {
-            pdY = panels[pIdx].dY;
-            pdZ = panels[pIdx].dZ;
-        }
+    double r_idx = (double)usefulPixels[i * 2 + 0];
+    double c_idx = (double)usefulPixels[i * 2 + 1];
+
+    double pdY = 0, pdZ = 0;
+    int pIdx = GetPanelIndex(r_idx, c_idx, nPanels, panels);
+    if (pIdx >= 0) {
+      pdY = panels[pIdx].dY;
+      pdZ = panels[pIdx].dZ;
+    }
 
     // Calculate radius and angle for each pixel
-    Rs[i] = CALC_NORM_2(r_idx + pdY - yCen,
-                        c_idx + pdZ - zCen);
-    Etas[i] = calcEtaAngle(-(r_idx + pdY) + yCen,
-                           c_idx + pdZ - zCen);
+    Rs[i] = CALC_NORM_2(r_idx + pdY - yCen, c_idx + pdZ - zCen);
+    Etas[i] = calcEtaAngle(-(r_idx + pdY) + yCen, c_idx + pdZ - zCen);
 
     // Track min/max values
     if (Rs[i] > RMax)
@@ -2259,13 +2257,28 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
       locOmegaCenterData = count;
 
     // Panel parameters parsing
-    if (strstr(fileInfo->name, "analysis/process/analysis_parameters/NPanelsY/0") != NULL) readZarrInt(archive, count, &NPanelsY);
-    if (strstr(fileInfo->name, "analysis/process/analysis_parameters/NPanelsZ/0") != NULL) readZarrInt(archive, count, &NPanelsZ);
-    if (strstr(fileInfo->name, "analysis/process/analysis_parameters/PanelSizeY/0") != NULL) readZarrInt(archive, count, &PanelSizeY);
-    if (strstr(fileInfo->name, "analysis/process/analysis_parameters/PanelSizeZ/0") != NULL) readZarrInt(archive, count, &PanelSizeZ);
-    if (strstr(fileInfo->name, "analysis/process/analysis_parameters/PanelShiftsFile/0") != NULL) readZarrString(archive, count, &PanelShiftsFile);
-    if (strstr(fileInfo->name, "analysis/process/analysis_parameters/PanelGapsY/0") != NULL) locPanelGapsY = count;
-    if (strstr(fileInfo->name, "analysis/process/analysis_parameters/PanelGapsZ/0") != NULL) locPanelGapsZ = count;
+    if (strstr(fileInfo->name,
+               "analysis/process/analysis_parameters/NPanelsY/0") != NULL)
+      readZarrInt(archive, count, &NPanelsY);
+    if (strstr(fileInfo->name,
+               "analysis/process/analysis_parameters/NPanelsZ/0") != NULL)
+      readZarrInt(archive, count, &NPanelsZ);
+    if (strstr(fileInfo->name,
+               "analysis/process/analysis_parameters/PanelSizeY/0") != NULL)
+      readZarrInt(archive, count, &PanelSizeY);
+    if (strstr(fileInfo->name,
+               "analysis/process/analysis_parameters/PanelSizeZ/0") != NULL)
+      readZarrInt(archive, count, &PanelSizeZ);
+    if (strstr(fileInfo->name,
+               "analysis/process/analysis_parameters/PanelShiftsFile/0") !=
+        NULL)
+      readZarrString(archive, count, &PanelShiftsFile);
+    if (strstr(fileInfo->name,
+               "analysis/process/analysis_parameters/PanelGapsY/0") != NULL)
+      locPanelGapsY = count;
+    if (strstr(fileInfo->name,
+               "analysis/process/analysis_parameters/PanelGapsZ/0") != NULL)
+      locPanelGapsZ = count;
 
     // Read various scalar parameters
     if (strstr(fileInfo->name, "measurement/process/scan_parameters/start/0") !=
@@ -2418,27 +2431,32 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
 
   // Generate Panels
   if (NPanelsY > 0 && NPanelsZ > 0) {
-      int *PanelGapsY = NULL;
-      int *PanelGapsZ = NULL;
-      int nGapsY = 0;
-      int nGapsZ = 0;
-      
-      if (locPanelGapsY != -1) readZarrIntArray(archive, locPanelGapsY, &nGapsY, &PanelGapsY);
-      if (locPanelGapsZ != -1) readZarrIntArray(archive, locPanelGapsZ, &nGapsZ, &PanelGapsZ);
-      
-      GeneratePanels(NPanelsY, NPanelsZ, PanelSizeY, PanelSizeZ, PanelGapsY, PanelGapsZ, &panels, &nPanels);
-      
-      if (PanelShiftsFile) {
-           if (LoadPanelShifts(PanelShiftsFile, nPanels, panels) == 0) {
-               printf("Loaded panel shifts from %s\n", PanelShiftsFile);
-           } else {
-               printf("Failed to load panel shifts from %s\n", PanelShiftsFile);
-           }
-           free(PanelShiftsFile);
+    int *PanelGapsY = NULL;
+    int *PanelGapsZ = NULL;
+    int nGapsY = 0;
+    int nGapsZ = 0;
+
+    if (locPanelGapsY != -1)
+      readZarrIntArray(archive, locPanelGapsY, &nGapsY, &PanelGapsY);
+    if (locPanelGapsZ != -1)
+      readZarrIntArray(archive, locPanelGapsZ, &nGapsZ, &PanelGapsZ);
+
+    GeneratePanels(NPanelsY, NPanelsZ, PanelSizeY, PanelSizeZ, PanelGapsY,
+                   PanelGapsZ, &panels, &nPanels);
+
+    if (PanelShiftsFile) {
+      if (LoadPanelShifts(PanelShiftsFile, nPanels, panels) == 0) {
+        printf("Loaded panel shifts from %s\n", PanelShiftsFile);
+      } else {
+        printf("Failed to load panel shifts from %s\n", PanelShiftsFile);
       }
-      
-      if (PanelGapsY) free(PanelGapsY);
-      if (PanelGapsZ) free(PanelGapsZ);
+      free(PanelShiftsFile);
+    }
+
+    if (PanelGapsY)
+      free(PanelGapsY);
+    if (PanelGapsZ)
+      free(PanelGapsZ);
   }
 
   if (locOmegaCenterData != -1 && original_nFrames_for_omega > 0) {
