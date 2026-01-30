@@ -777,7 +777,7 @@ static inline void CorrectTiltSpatialDistortion(
     double *IdealTtheta, double px, double Lsd, double ybc, double zbc,
     double tx, double ty, double tz, double p0, double p1, double p2, double p3,
     double *Etas, double *Diffs, double *RadOuts, double *StdDiff,
-    double outlierFactor) {
+    double outlierFactor, int *IsOutlier) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
@@ -847,12 +847,20 @@ static inline void CorrectTiltSpatialDistortion(
   if (outlierFactor > 0) {
     double newSum = 0;
     for (i = 0; i < nIndices; i++) {
-      if (Diffs[i] < 0)
+      if (Diffs[i] < 0) {
+        if (IsOutlier)
+          IsOutlier[i] = 1;
         continue; // Skip invalid
+      }
       if (Diffs[i] <= threshold) {
+        if (IsOutlier)
+          IsOutlier[i] = 0;
         validDiffs[validCount] = Diffs[i];
         newSum += Diffs[i];
         validCount++;
+      } else {
+        if (IsOutlier)
+          IsOutlier[i] = 1;
       }
     }
     if (validCount > 0) {
@@ -867,8 +875,13 @@ static inline void CorrectTiltSpatialDistortion(
   } else {
     for (i = 0; i < nIndices; i++) {
       if (Diffs[i] >= 0) {
+        if (IsOutlier)
+          IsOutlier[i] = 0;
         validDiffs[validCount] = Diffs[i];
         validCount++;
+      } else {
+        if (IsOutlier)
+          IsOutlier[i] = 1;
       }
     }
   }
@@ -1907,7 +1920,7 @@ int main(int argc, char *argv[]) {
     CorrectTiltSpatialDistortion(nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px,
                                  Lsd, ybc, zbc, tx, tyin, tzin, p0in, p1in,
                                  p2in, p3in, EtaIns, DiffIns, RadIns, &StdDiff,
-                                 outlierFactor);
+                                 outlierFactor, NULL);
     NrCalls = 0;
     FitTiltBCLsd(nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
                  tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit, &ybcFit,
@@ -1922,10 +1935,11 @@ int main(int argc, char *argv[]) {
     Etas = malloc(nIndices * sizeof(*Etas));
     Diffs = malloc(nIndices * sizeof(*Diffs));
     RadOuts = malloc(nIndices * sizeof(*RadOuts));
+    int *IsOutlier = calloc(nIndices, sizeof(int));
     CorrectTiltSpatialDistortion(nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px,
                                  LsdFit, ybcFit, zbcFit, tx, ty, tz, p0, p1, p2,
                                  p3, Etas, Diffs, RadOuts, &StdDiff,
-                                 outlierFactor);
+                                 outlierFactor, IsOutlier);
     printf("StdStrain %0.12lf\n", StdDiff);
     means[0] += LsdFit;
     means[1] += ybcFit;
@@ -1943,12 +1957,15 @@ int main(int argc, char *argv[]) {
     sprintf(OutFileName, "%s/%s_%0*d%s.%s", folder, fn, Padding, a, Ext,
             "corr.csv");
     Out = fopen(OutFileName, "w");
-    fprintf(Out, "%%Eta Strain RadFit EtaCalc DiffCalc RadCalc Ideal2Theta\n");
+    fprintf(
+        Out,
+        "%%Eta Strain RadFit EtaCalc DiffCalc RadCalc Ideal2Theta Outlier\n");
     for (i = 0; i < nIndices; i++) {
       if (Diffs[i] < 0)
         continue;
-      fprintf(Out, "%f %10.8f %10.8f %f %10.8f %10.8f %f\n", Etas[i], Diffs[i],
-              RadOuts[i], EtaIns[i], DiffIns[i], RadIns[i], IdealTtheta[i]);
+      fprintf(Out, "%f %10.8f %10.8f %f %10.8f %10.8f %f %d\n", Etas[i],
+              Diffs[i], RadOuts[i], EtaIns[i], DiffIns[i], RadIns[i],
+              IdealTtheta[i], IsOutlier[i]);
     }
     fclose(Out);
     FreeMemMatrixInt(Indices, nIndices);
@@ -1965,6 +1982,7 @@ int main(int argc, char *argv[]) {
     free(ZMean);
     free(Diffs);
     free(Etas);
+    free(IsOutlier);
     end = clock();
     diftotal = ((double)(end - start)) / CLOCKS_PER_SEC;
     printf("Time elapsed for this file:\t%f s.\n", diftotal);
