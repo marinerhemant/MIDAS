@@ -499,12 +499,14 @@ static double problem_function(unsigned n, const double *x, double *grad,
   double TRint[3][3], TRs[3][3];
   MatrixMultF33(Ry, Rz, TRint);
   MatrixMultF33(Rx, TRint, TRs);
-  int i, j, k;
-  double n0 = 2, n1 = 4, n2 = 2, Yc, Zc;
-  double Rad, Eta, RNorm, DistortFunc, Rcorr, Theta, Diff, IdealTheta,
-      TotalDiff = 0, RIdeal, EtaT;
-  double dY = 0, dZ = 0;
+  int i;
+  double TotalDiff = 0;
+
+#pragma omp parallel for reduction(+ : TotalDiff)
   for (i = 0; i < nIndices; i++) {
+    double n0 = 2, n1 = 4, n2 = 2, Yc, Zc;
+    double Rad, Eta, RNorm, DistortFunc, Rcorr, RIdeal, EtaT;
+    double dY = 0, dZ = 0;
     int pIdx =
         GetPanelIndex((double)YMean[i], (double)ZMean[i], nPanels, panels);
     if (pIdx == -1) {
@@ -537,11 +539,9 @@ static double problem_function(unsigned n, const double *x, double *grad,
                   (p2 * (pow(RNorm, n2))) + 1;
     Rcorr = Rad * DistortFunc;
     RIdeal = Lsd * tan(deg2rad * IdealTtheta[i]);
-    Diff = fabs(1 - (Rcorr / RIdeal));
-    // // If the Diff is too large, we continue
-    // if (Diff > 1e-2) {
-    //     continue;
-    // }
+    Rcorr = Rad * DistortFunc;
+    RIdeal = Lsd * tan(deg2rad * IdealTtheta[i]);
+    double Diff = fabs(1 - (Rcorr / RIdeal));
     TotalDiff += Diff;
   }
   TotalDiff *= OBJ_FUNC_SCALE;
@@ -625,8 +625,6 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
       x[xIdx + 1] = 0;
 
       if (panelCounts[i] < minIndices) {
-        printf("Panel %d has %d indices (threshold %d). Locking shift to 0.\n",
-               i, panelCounts[i], minIndices);
         xl[xIdx] = 0;
         xu[xIdx] = 0;
         xl[xIdx + 1] = 0;
@@ -636,8 +634,6 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
         xu[xIdx] = tolShifts;
         xl[xIdx + 1] = -tolShifts;
         xu[xIdx + 1] = tolShifts;
-        printf("Panel %d has %d indices (threshold %d).\n", i, panelCounts[i],
-               minIndices);
       }
     }
     free(panelCounts);
