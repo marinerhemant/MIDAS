@@ -636,8 +636,8 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
         xu[xIdx] = tolShifts;
         xl[xIdx + 1] = -tolShifts;
         xu[xIdx + 1] = tolShifts;
-        printf("Panel %d has %d indices (threshold %d).\n", i,
-               panelCounts[i], minIndices);
+        printf("Panel %d has %d indices (threshold %d).\n", i, panelCounts[i],
+               minIndices);
       }
     }
     free(panelCounts);
@@ -1951,7 +1951,7 @@ int main(int argc, char *argv[]) {
     if (nPanels > 0) {
       int *panelCounts = calloc(nPanels, sizeof(int));
       for (int i = 0; i < nIndices; i++) {
-        int pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
+        int pIdx = GetPanelIndex(Yc[i], Zc[i], nPanels, panels);
         if (pIdx >= 0) {
           panelCounts[pIdx]++;
         }
@@ -2003,13 +2003,13 @@ int main(int argc, char *argv[]) {
       if (Diffs[i] < 0)
         continue;
       double dY = 0, dZ = 0;
-      int pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
+      int pIdx = GetPanelIndex(Yc[i], Zc[i], nPanels, panels);
       if (pIdx >= 0) {
         dY = panels[pIdx].dY;
         dZ = panels[pIdx].dZ;
       }
-      double YRawCorr = YMean[i] + dY;
-      double ZRawCorr = ZMean[i] + dZ;
+      double YRawCorr = Yc[i] + dY;
+      double ZRawCorr = Zc[i] + dZ;
       fprintf(Out, "%f %10.8f %10.8f %f %10.8f %10.8f %f %d %f %f\n", Etas[i],
               Diffs[i], RadOuts[i], EtaIns[i], DiffIns[i], RadIns[i],
               IdealTtheta[i], IsOutlier[i], YRawCorr, ZRawCorr);
