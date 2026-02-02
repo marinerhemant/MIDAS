@@ -503,10 +503,6 @@ static double problem_function(unsigned n, const double *x, double *grad,
   double n0 = 2, n1 = 4, n2 = 2, Yc, Zc;
   double Rad, Eta, RNorm, DistortFunc, Rcorr, Theta, Diff, IdealTheta,
       TotalDiff = 0, RIdeal, EtaT;
-  int yMins[6] = {0, 244, 494, 738, 988, 1232};
-  int yMaxs[6] = {243, 487, 737, 981, 1231, 1475};
-  int zMins[8] = {0, 212, 424, 636, 848, 1060, 1272, 1484};
-  int zMaxs[8] = {195, 407, 619, 831, 1043, 1255, 1467, 1679};
   double dY = 0, dZ = 0;
   for (i = 0; i < nIndices; i++) {
     int pIdx =
@@ -565,7 +561,8 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
                   double *p1, double *p2, double *p3, double *MeanDiff,
                   double tolTilts, double tolLsd, double tolBC, double tolP,
                   double tolP0, double tolP1, double tolP2, double tolP3,
-                  double tolShifts, double px, double outlierFactor) {
+                  double tolShifts, double px, double outlierFactor,
+                  int minIndices) {
   // Look at the possibility of including translations for each of the small
   // panels on a multi-panel detector in the optimization.... Also change
   // CorrectTiltSpatialDistortion to include translations!!!
@@ -613,17 +610,37 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   xu[8] = p3in + tolP3;
 
   if (tolShifts > EPS && nPanels > 1) {
+    int *panelCounts = calloc(nPanels, sizeof(int));
+    for (int i = 0; i < nIndices; i++) {
+      int pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
+      if (pIdx >= 0) {
+        panelCounts[pIdx]++;
+      }
+    }
+
     for (int i = 1; i < nPanels; i++) {
       // We map Panel i to x indices starting at 9 + (i-1)*2
       int xIdx = 9 + (i - 1) * 2;
       x[xIdx] = 0;
-      xl[xIdx] = -tolShifts;
-      xu[xIdx] = tolShifts;
-
       x[xIdx + 1] = 0;
-      xl[xIdx + 1] = -tolShifts;
-      xu[xIdx + 1] = tolShifts;
+
+      if (panelCounts[i] < minIndices) {
+        printf("Panel %d has %d indices (threshold %d). Locking shift to 0.\n",
+               i, panelCounts[i], minIndices);
+        xl[xIdx] = 0;
+        xu[xIdx] = 0;
+        xl[xIdx + 1] = 0;
+        xu[xIdx + 1] = 0;
+      } else {
+        xl[xIdx] = -tolShifts;
+        xu[xIdx] = tolShifts;
+        xl[xIdx + 1] = -tolShifts;
+        xu[xIdx + 1] = tolShifts;
+        printf("Panel %d has %d indices (threshold %d).\n", i,
+               panelCounts[i], minIndices);
+      }
     }
+    free(panelCounts);
   }
   struct my_func_data *f_datat;
   f_datat = &f_data;
@@ -1141,6 +1158,7 @@ int main(int argc, char *argv[]) {
          padY = 0, padZ = 0;
   double tolShifts = 1.0;
   double outlierFactor = 0.0;
+  int MinIndicesForFit = 1;
   int Padding = 6, NrPixelsY, NrPixelsZ, NrPixels;
   int NrTransOpt = 0, RBinWidth = 4;
   long long int GapIntensity = 0, BadPxIntensity = 0;
@@ -1495,6 +1513,12 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %lf", dummy, &outlierFactor);
+      continue;
+    }
+    str = "MinIndicesForFit ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &MinIndicesForFit);
       continue;
     }
     str = "tx ";
@@ -1922,11 +1946,27 @@ int main(int argc, char *argv[]) {
                                  p2in, p3in, EtaIns, DiffIns, RadIns, &StdDiff,
                                  outlierFactor, NULL);
     NrCalls = 0;
+    NrCalls = 0;
+    // Count and print indices per panel
+    if (nPanels > 0) {
+      int *panelCounts = calloc(nPanels, sizeof(int));
+      for (int i = 0; i < nIndices; i++) {
+        int pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
+        if (pIdx >= 0) {
+          panelCounts[pIdx]++;
+        }
+      }
+      printf("Indices per panel:\n");
+      for (int i = 0; i < nPanels; i++) {
+        printf("Panel %d: %d\n", i, panelCounts[i]);
+      }
+      free(panelCounts);
+    }
     FitTiltBCLsd(nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
                  tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit, &ybcFit,
                  &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts, tolLsd,
                  tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts, px,
-                 outlierFactor);
+                 outlierFactor, MinIndicesForFit);
     printf("Number of function calls: %lld\n", NrCalls);
     printf("Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 "
            "%0.12f\np2 %0.12f\np3 %0.12f\nMeanStrain %0.12lf\n",
@@ -1957,15 +1997,22 @@ int main(int argc, char *argv[]) {
     sprintf(OutFileName, "%s/%s_%0*d%s.%s", folder, fn, Padding, a, Ext,
             "corr.csv");
     Out = fopen(OutFileName, "w");
-    fprintf(
-        Out,
-        "%%Eta Strain RadFit EtaCalc DiffCalc RadCalc Ideal2Theta Outlier\n");
+    fprintf(Out, "%%Eta Strain RadFit EtaCalc DiffCalc RadCalc Ideal2Theta "
+                 "Outlier YRawCorr ZRawCorr\n");
     for (i = 0; i < nIndices; i++) {
       if (Diffs[i] < 0)
         continue;
-      fprintf(Out, "%f %10.8f %10.8f %f %10.8f %10.8f %f %d\n", Etas[i],
+      double dY = 0, dZ = 0;
+      int pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
+      if (pIdx >= 0) {
+        dY = panels[pIdx].dY;
+        dZ = panels[pIdx].dZ;
+      }
+      double YRawCorr = YMean[i] + dY;
+      double ZRawCorr = ZMean[i] + dZ;
+      fprintf(Out, "%f %10.8f %10.8f %f %10.8f %10.8f %f %d %f %f\n", Etas[i],
               Diffs[i], RadOuts[i], EtaIns[i], DiffIns[i], RadIns[i],
-              IdealTtheta[i], IsOutlier[i]);
+              IdealTtheta[i], IsOutlier[i], YRawCorr, ZRawCorr);
     }
     fclose(Out);
     FreeMemMatrixInt(Indices, nIndices);
