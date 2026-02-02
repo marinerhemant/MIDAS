@@ -390,24 +390,24 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
     // ignore this bin
     ytr = ybc - (-Rmax * sin(EtaMa * deg2rad)) / px;
     ztr = zbc + (Rmax * cos(EtaMa * deg2rad)) / px;
-    if (((int)ytr > NrPixels - 2) || ((int)ytr < 2)) {
+    if (((int)ytr > NrPixels - 3) || ((int)ytr < 3)) {
       Rfit = 0;
       RMean[idxThis] = Rfit;
       continue;
     }
-    if (((int)ztr > NrPixels - 2) || ((int)ztr < 2)) {
+    if (((int)ztr > NrPixels - 3) || ((int)ztr < 3)) {
       Rfit = 0;
       RMean[idxThis] = Rfit;
       continue;
     }
     ytr = ybc - (-Rmax * sin(EtaMi * deg2rad)) / px;
     ztr = zbc + (Rmax * cos(EtaMi * deg2rad)) / px;
-    if (((int)ytr > NrPixels - 2) || ((int)ytr < 2)) {
+    if (((int)ytr > NrPixels - 3) || ((int)ytr < 3)) {
       Rfit = 0;
       RMean[idxThis] = Rfit;
       continue;
     }
-    if (((int)ztr > NrPixels - 2) || ((int)ztr < 2)) {
+    if (((int)ztr > NrPixels - 3) || ((int)ztr < 3)) {
       Rfit = 0;
       RMean[idxThis] = Rfit;
       continue;
