@@ -1518,6 +1518,7 @@ static double estimate_initial_params(const double *intensity_data,
   }
 
   // Scan right from peak center
+  int right_idx = peak_idx_local;
   while (right_idx < n_points - 1 && intensity_data[right_idx] > half_max) {
     right_idx++;
   }
