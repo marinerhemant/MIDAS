@@ -1133,8 +1133,8 @@ int main(int argc, char *argv[]) {
     printf("Usage: CalibrantOMP ps.txt nCPUs\n");
     return 1;
   }
-  clock_t start, end, start0, end0;
-  start0 = clock();
+  double start, end, start0, end0;
+  start0 = omp_get_wtime();
   double diftotal;
   // Read params file.
   char *ParamFN;
@@ -1759,7 +1759,7 @@ int main(int argc, char *argv[]) {
   for (a = 0; a < 11; a++)
     means[a] = 0;
   for (a = StartNr; a <= EndNr; a++) {
-    start = clock();
+    start = omp_get_wtime();
     sprintf(FileName, "%s/%s_%0*d%s", folder, fn, Padding, a, Ext);
     if (dType != 8) {
       fp = fopen(FileName, "rb");
@@ -1914,12 +1914,11 @@ int main(int argc, char *argv[]) {
     RMean = RMean2;
     EtaMean = EtaMean2;
     IdealTtheta = IdealTtheta2;
-    end = clock();
-    diftotal = ((double)(end - start)) / CLOCKS_PER_SEC;
+    end = omp_get_wtime();
+    diftotal = end - start;
     if (FitWeightMean != 1) {
       printf("Number of calls to profiler function: %lld\n", NrCallsProfiler);
-      printf("Time elapsed in fitting peak profiles:\t%f s.\n",
-             diftotal / numProcs);
+      printf("Time elapsed in fitting peak profiles:\t%f s.\n", diftotal);
     } else
       printf("Time elapsed in finding peak positions:\t%f s.\n", diftotal);
     double *YMean, *ZMean;
@@ -2026,12 +2025,12 @@ int main(int argc, char *argv[]) {
     free(Diffs);
     free(Etas);
     free(IsOutlier);
-    end = clock();
-    diftotal = ((double)(end - start)) / CLOCKS_PER_SEC;
+    end = omp_get_wtime();
+    diftotal = end - start;
     printf("Time elapsed for this file:\t%f s.\n", diftotal);
   }
-  end0 = clock();
-  diftotal = ((double)(end0 - start0)) / CLOCKS_PER_SEC;
+  end0 = omp_get_wtime();
+  diftotal = end0 - start0;
   printf("Total time elapsed:\t%f s.\n", diftotal);
   printf("*******************Mean Values*******************\n");
   for (a = 0; a < 11; a++)
