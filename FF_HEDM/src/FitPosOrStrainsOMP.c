@@ -624,12 +624,13 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
     Error[1] += fabs(MatchDiff[i][2] / nMatched);
     Error[2] += fabs(MatchDiff[i][0] / nMatched);
   }
-  if (notIniRun == 1) {
-    printf("DEBUG OMP: nMatched=%d, Errors=%f %f %f, Pos=%f %f %f, Orient=%f "
-           "%f %f\n",
-           nMatched, Error[0], Error[1], Error[2], x[0], x[1], x[2], x[3], x[4],
-           x[5]);
-  }
+  // if (notIniRun == 1) {
+  //   printf("DEBUG OMP: nMatched=%d, Errors=%f %f %f, Pos=%f %f %f, Orient=%f
+  //   "
+  //          "%f %f\n",
+  //          nMatched, Error[0], Error[1], Error[2], x[0], x[1], x[2], x[3],
+  //          x[4], x[5]);
+  // }
   FreeMemMatrix(MatchDiff, nrMatchedIndexer);
   FreeMemMatrix(hkls, nhkls);
   FreeMemMatrix(TheorSpots, MaxNSpotsBest);
