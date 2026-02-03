@@ -1951,10 +1951,27 @@ int main(int argc, char *argv[]) {
           panelCounts[pIdx]++;
         }
       }
-      printf("Indices per panel:\n");
-      for (int i = 0; i < nPanels; i++) {
-        printf("Panel %d: %d\n", i, panelCounts[i]);
+      printf("\n******************* Indices per Panel (Visual Layout: Z^ Y>) "
+             "*******************\n");
+      for (int z = NPanelsZ - 1; z >= 0; z--) {
+        printf("Z=%-2d | ", z);
+        for (int y = 0; y < NPanelsY; y++) {
+          int pIdx = y * NPanelsZ + z;
+          // Check bounds just in case
+          if (pIdx < nPanels) {
+            printf("[%3d (%5d)]  ", pIdx, panelCounts[pIdx]);
+          }
+        }
+        printf("\n");
       }
+      printf("       ");
+      for (int y = 0; y < NPanelsY; y++) {
+        printf("   Y=%-2d       ", y);
+      }
+      printf("\n");
+      printf("*****************************************************************"
+             "****"
+             "***********\n");
       free(panelCounts);
     }
     FitTiltBCLsd(nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
