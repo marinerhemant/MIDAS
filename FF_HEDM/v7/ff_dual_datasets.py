@@ -267,7 +267,7 @@ def _refine_impl(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0, 
     logger.info(f"Running FitPosOrStrainsOMP in {resultDir} for block {blockNr}/{numBlocks}")
     resource.setrlimit(resource.RLIMIT_CORE, (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
     with open(outfile, 'w') as f, open(errfile, 'w') as f_err:
-        cmd = f"{os.path.join(bin_dir, 'FitPosOrStrainsOMP')} paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}"
+        cmd = f"{os.path.join(bin_dir, 'FitPosOrStrainsDoubleDataset')} paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}"
         logger.info(f"Executing command: {cmd}")
         process = subprocess.Popen(cmd, shell=True, env=dict(os.environ), stdout=f, stderr=f_err, cwd=resultDir)
         returncode = process.wait()

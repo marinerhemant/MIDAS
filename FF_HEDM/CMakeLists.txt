@@ -80,6 +80,7 @@ add_ff_hedm_executable(ForwardSimulation SOURCES src/ForwardSimulation.c)
 add_ff_hedm_executable(ForwardSimulationCompressed SOURCES src/ForwardSimulationCompressed.c OMP)
 
 add_ff_hedm_executable(FitPosOrStrainsOMP SOURCES src/FitPosOrStrainsOMP.c src/CalcDiffractionSpots.c OMP)
+add_ff_hedm_executable(FitPosOrStrainsDoubleDataset SOURCES src/FitPosOrStrainsDoubleDataset.c src/CalcDiffractionSpots.c OMP)
 add_ff_hedm_executable(FitOrStrainsScanningOMP SOURCES src/FitOrStrainsScanningOMP.c src/CalcDiffractionSpots.c OMP)
 
 add_ff_hedm_executable(PeaksFittingPerFile SOURCES src/PeaksFittingPerFile.c)
