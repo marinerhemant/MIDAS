@@ -507,35 +507,32 @@ static double problem_function(unsigned n, const double *x, double *grad,
   for (i = 0; i < nIndices; i++) {
     double n0 = 2, n1 = 4, n2 = 2, Yc, Zc;
     double Rad, Eta, RNorm, DistortFunc, Rcorr, RIdeal, EtaT;
+    double Y_rot = YMean[i];
+    double Z_rot = ZMean[i];
     double dY = 0, dZ = 0;
     int pIdx =
         GetPanelIndex((double)YMean[i], (double)ZMean[i], nPanels, panels);
-    if (pIdx == -1) {
-      continue;
-    }
 
-    dY = 0;
-    dZ = 0;
-    double rot = 0;
-    if (n > 9) {
-      if (pIdx != f_data->fixPanel) {
-        int logicalIndex = (pIdx < f_data->fixPanel) ? pIdx : pIdx - 1;
-        int xIdx = 9 + logicalIndex * 3;
-        dY = x[xIdx];
-        dZ = x[xIdx + 1];
-        rot = x[xIdx + 2];
+    if (pIdx >= 0) {
+      double rot = 0;
+      if (n > 9) {
+        if (pIdx != f_data->fixPanel) {
+          int logicalIndex = (pIdx < f_data->fixPanel) ? pIdx : pIdx - 1;
+          int xIdx = 9 + logicalIndex * 3;
+          dY = x[xIdx];
+          dZ = x[xIdx + 1];
+          rot = x[xIdx + 2];
+        }
       }
-    }
 
-    // Rotation Logic
-    double cy = (panels[pIdx].yMin + panels[pIdx].yMax) / 2.0;
-    double cz = (panels[pIdx].zMin + panels[pIdx].zMax) / 2.0;
-    double dy_rel = YMean[i] - cy;
-    double dz_rel = ZMean[i] - cz;
-    double Y_rot =
-        cy + dy_rel * cos(rot * deg2rad) - dz_rel * sin(rot * deg2rad);
-    double Z_rot =
-        cz + dy_rel * sin(rot * deg2rad) + dz_rel * cos(rot * deg2rad);
+      // Rotation Logic
+      double cy = (panels[pIdx].yMin + panels[pIdx].yMax) / 2.0;
+      double cz = (panels[pIdx].zMin + panels[pIdx].zMax) / 2.0;
+      double dy_rel = YMean[i] - cy;
+      double dz_rel = ZMean[i] - cz;
+      Y_rot = cy + dy_rel * cos(rot * deg2rad) - dz_rel * sin(rot * deg2rad);
+      Z_rot = cz + dy_rel * sin(rot * deg2rad) + dz_rel * cos(rot * deg2rad);
+    }
 
     Yc = -(Y_rot + dY - ybc) * px;
     Zc = (Z_rot + dZ - zbc) * px;
