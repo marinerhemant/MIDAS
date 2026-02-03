@@ -73,7 +73,7 @@ endfunction()
 
 add_ff_hedm_executable(Calibrant SOURCES src/Calibrant.c src/CalcPeakProfile.c)
 add_ff_hedm_executable(CalibrantOMP SOURCES src/CalibrantOMP.c src/CalcPeakProfile.c OMP)
-add_ff_hedm_executable(CalibrantPanelShiftsOMP SOURCES src/CalibrantPanelShiftsOMP.c src/CalcPeakProfile.c src/Panel.c OMP)
+add_ff_hedm_executable(CalibrantPanelShiftsOMP SOURCES src/CalibrantPanelShiftsOMP.c src/CalcPeakProfile.c src/Panel.c src/FileReader.c OMP)
 add_ff_hedm_executable(FitSetup SOURCES src/FitSetupParamsAll.c)
 add_ff_hedm_executable(FitTiltBCLsdSample SOURCES src/FitTiltBCLsdSampleOmegaCorrection.c)
 add_ff_hedm_executable(ForwardSimulation SOURCES src/ForwardSimulation.c)
@@ -124,7 +124,7 @@ add_ff_hedm_executable(MatchGrains SOURCES src/MatchGrains.c src/GetMisorientati
 
 add_ff_hedm_executable(DetectorMapper SOURCES src/DetectorMapper.c src/Panel.c)
 add_ff_hedm_executable(DetectorMapperZarr SOURCES src/DetectorMapperZarr.c src/Panel.c)
-add_ff_hedm_executable(Integrator SOURCES src/Integrator.c)
+add_ff_hedm_executable(Integrator SOURCES src/Integrator.c src/FileReader.c)
 add_ff_hedm_executable(IntegratorZarr SOURCES src/IntegratorZarr.c)
 add_ff_hedm_executable(ConvTiffToGE SOURCES src/ConvTiffToGE.c)
 add_ff_hedm_executable(MapBND SOURCES src/MapBND.c)

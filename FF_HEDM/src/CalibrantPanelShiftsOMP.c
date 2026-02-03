@@ -13,10 +13,10 @@
 //  Important: row major, starting with y's and going up. Bottom right is 0,0.
 //  TODO: Implement proper transformations for rectangular detectors.
 
+#include "FileReader.h"
 #include "Panel.h"
 #include "midas_paths.h"
 #include <ctype.h>
-#include <hdf5.h>
 #include <limits.h>
 #include <math.h>
 #include <nlopt.h>
@@ -26,7 +26,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <tiffio.h>
 #include <time.h>
 
 static Panel *panels = NULL;
@@ -999,164 +998,13 @@ static inline void MakeSquare(int NrPixels, int NrPixelsY, int NrPixelsZ,
   }
 }
 
-int fileReader(FILE *f, char fn[], int dType, int NrPixels, double *returnArr,
-               char *dname) {
-  int i;
-  if (dType == 1) {
-    uint16_t *readData;
-    readData = calloc(NrPixels, sizeof(*readData));
-    fread(readData, NrPixels * sizeof(*readData), 1, f);
-    for (i = 0; i < NrPixels; i++) {
-      returnArr[i] = (double)readData[i];
-    }
-    return 0;
-  } else if (dType == 2) {
-    double *readData;
-    readData = calloc(NrPixels, sizeof(*readData));
-    fread(readData, NrPixels * sizeof(*readData), 1, f);
-    for (i = 0; i < NrPixels; i++) {
-      returnArr[i] = (double)readData[i];
-    }
-    return 0;
-  } else if (dType == 3) {
-    float *readData;
-    readData = calloc(NrPixels, sizeof(*readData));
-    fread(readData, NrPixels * sizeof(*readData), 1, f);
-    for (i = 0; i < NrPixels; i++) {
-      returnArr[i] = (double)readData[i];
-    }
-    return 0;
-  } else if (dType == 4) {
-    uint32_t *readData;
-    readData = calloc(NrPixels, sizeof(*readData));
-    fread(readData, NrPixels * sizeof(*readData), 1, f);
-    for (i = 0; i < NrPixels; i++) {
-      returnArr[i] = (double)readData[i];
-    }
-    return 0;
-  } else if (dType == 5) {
-    int32_t *readData;
-    readData = calloc(NrPixels, sizeof(*readData));
-    fread(readData, NrPixels * sizeof(*readData), 1, f);
-    for (i = 0; i < NrPixels; i++) {
-      returnArr[i] = (double)readData[i];
-    }
-    return 0;
-  } else if (dType == 6) {
-    TIFFErrorHandler oldhandler;
-    oldhandler = TIFFSetWarningHandler(NULL);
-    printf("%s\n", fn);
-    TIFF *tif = TIFFOpen(fn, "r");
-    TIFFSetWarningHandler(oldhandler);
-    if (tif) {
-      uint32 imagelength;
-      tsize_t scanline;
-      TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &imagelength);
-      scanline = TIFFScanlineSize(tif);
-      tdata_t buf;
-      buf = _TIFFmalloc(scanline);
-      uint32_t *datar;
-      int rnr;
-      for (rnr = 0; rnr < imagelength; rnr++) {
-        TIFFReadScanline(tif, buf, rnr, 1);
-        datar = (uint32_t *)buf;
-        for (i = 0; i < scanline / sizeof(uint32_t); i++) {
-          returnArr[rnr * (scanline / sizeof(uint32_t)) + i] = (double)datar[i];
-        }
-      }
-    }
-    return 0;
-  } else if (dType == 7) {
-    TIFFErrorHandler oldhandler;
-    oldhandler = TIFFSetWarningHandler(NULL);
-    printf("%s\n", fn);
-    TIFF *tif = TIFFOpen(fn, "r");
-    TIFFSetWarningHandler(oldhandler);
-    if (tif) {
-      uint32 imagelength;
-      tsize_t scanline;
-      TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &imagelength);
-      scanline = TIFFScanlineSize(tif);
-      tdata_t buf;
-      buf = _TIFFmalloc(scanline);
-      uint8_t *datar;
-      int rnr;
-      for (rnr = 0; rnr < imagelength; rnr++) {
-        TIFFReadScanline(tif, buf, rnr, 1);
-        datar = (uint8_t *)buf;
-        for (i = 0; i < scanline / sizeof(uint8_t); i++) {
-          if (datar[i] == 1) {
-            returnArr[rnr * (scanline / sizeof(uint8_t)) + i] = 1;
-          }
-        }
-      }
-    }
-    return 0;
-  } else if (dType == 8) { // this returns a sum of all frames.
-    char *DATASETNAME = dname;
-    int j, k;
-    hid_t file;
-    herr_t status, status_n;
-    hid_t dataset;
-    hid_t dataspace;
-    hsize_t dims[3];
-    int ndims;
-    printf("%s\n", fn);
-    file = H5Fopen(fn, H5F_ACC_RDONLY, H5P_DEFAULT);
-    dataset = H5Dopen(file, DATASETNAME, H5P_DEFAULT);
-    dataspace = H5Dget_space(dataset);
-    ndims = H5Sget_simple_extent_dims(dataspace, dims, NULL);
-    printf("ndims: %d, dimensions %lu x %lu x %lu. Allocating big array.\n",
-           ndims, (unsigned long)(dims[0]), (unsigned long)(dims[1]),
-           (unsigned long)(dims[2]));
-    int frame_dims[3] = {dims[0], dims[1], dims[2]};
-    uint16_t *data =
-        calloc(frame_dims[0] * frame_dims[1] * frame_dims[2], sizeof(uint16_t));
-    printf("Reading file: %lu bytes.\n",
-           (unsigned long)dims[0] * dims[1] * dims[2] * 2);
-    status_n =
-        H5Dread(dataset, H5T_STD_U16LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, data);
-    for (i = skipFrame; i < frame_dims[0]; i++) {
-      //~ printf("%d\n",i);
-      for (j = 0; j < frame_dims[1]; j++) {
-        for (k = 0; k < frame_dims[2]; k++) {
-          returnArr[j * frame_dims[2] + k] +=
-              ((double)data[i * (frame_dims[1] * frame_dims[2]) +
-                            j * frame_dims[2] + k]) /
-              frame_dims[0];
-        }
-      }
-    }
-  } else if (dType == 9) { // uint16_t
-    TIFFErrorHandler oldhandler;
-    oldhandler = TIFFSetWarningHandler(NULL);
-    printf("%s\n", fn);
-    TIFF *tif = TIFFOpen(fn, "r");
-    TIFFSetWarningHandler(oldhandler);
-    if (tif) {
-      uint32 imagelength;
-      tsize_t scanline;
-      TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &imagelength);
-      scanline = TIFFScanlineSize(tif);
-      tdata_t buf;
-      buf = _TIFFmalloc(scanline);
-      uint16_t *datar;
-      int rnr;
-      for (rnr = 0; rnr < imagelength; rnr++) {
-        TIFFReadScanline(tif, buf, rnr, 1);
-        datar = (uint16_t *)buf;
-        for (i = 0; i < scanline / sizeof(uint16_t); i++) {
-          if (datar[i] == 1) {
-            returnArr[rnr * (scanline / sizeof(uint16_t)) + i] = 1;
-          }
-        }
-      }
-    }
-    return 0;
-  } else {
-    return 127;
-  }
-}
+// The fileReader function is being removed/replaced as part of the update.
+// The original fileReader function ended with:
+// } else {
+//   return 127;
+// }
+// } // End of fileReader function
+// This section is being removed.
 
 int main(int argc, char *argv[]) {
   if (argc != 3) {
@@ -1734,8 +1582,11 @@ int main(int argc, char *argv[]) {
              Dark, nFrames, Skip);
       fseek(fd, Skip, SEEK_SET);
       for (i = 0; i < nFrames; i++) {
-        rc =
-            fileReader(fd, Dark, dType, NrPixelsY * NrPixelsZ, DarkFile, dname);
+        if (dType == 6 || dType == 7 || dType == 9) {
+          rc = ReadTiffFrame(Dark, dType, NrPixelsY * NrPixelsZ, DarkFile, i);
+        } else {
+          rc = ReadBinaryFrame(fd, dType, NrPixelsY * NrPixelsZ, DarkFile);
+        }
         MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, DarkFile, DarkFile2);
         DoImageTransformations(NrTransOpt, TransOpt, DarkFile2, NrPixels);
         if (makeMap == 1) {
@@ -1774,7 +1625,7 @@ int main(int argc, char *argv[]) {
     mapper = calloc(NrPixelsY * NrPixelsZ, sizeof(*mapper));
     double *mapperSquare;
     mapperSquare = calloc(NrPixels * NrPixels, sizeof(*mapperSquare));
-    fileReader(fd, GapFN, 7, NrPixelsY * NrPixelsZ, mapper, dname);
+    ReadTiffFrame(GapFN, 7, NrPixelsY * NrPixelsZ, mapper, 0);
     MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, mapper, mapperSquare);
     DoImageTransformations(NrTransOpt, TransOpt, mapperSquare, NrPixels);
     for (i = 0; i < NrPixels * NrPixels; i++) {
@@ -1783,7 +1634,7 @@ int main(int argc, char *argv[]) {
         mapperSquare[i] = 0;
       }
     }
-    fileReader(fd, BadPxFN, 7, NrPixelsY * NrPixelsZ, mapper, dname);
+    ReadTiffFrame(BadPxFN, 7, NrPixelsY * NrPixelsZ, mapper, 0);
     MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, mapper, mapperSquare);
     DoImageTransformations(NrTransOpt, TransOpt, mapperSquare, NrPixels);
     for (i = 0; i < NrPixels * NrPixels; i++) {
@@ -1818,8 +1669,11 @@ int main(int argc, char *argv[]) {
       rewind(fp);
       fseek(fp, Skip, SEEK_SET);
       for (j = 0; j < nFrames; j++) {
-        rc = fileReader(fp, FileName, dType, NrPixelsY * NrPixelsZ, Image,
-                        dname);
+        if (dType == 6 || dType == 7 || dType == 9) {
+          rc = ReadTiffFrame(FileName, dType, NrPixelsY * NrPixelsZ, Image, j);
+        } else {
+          rc = ReadBinaryFrame(fp, dType, NrPixelsY * NrPixelsZ, Image);
+        }
         MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, Image, Image2);
         DoImageTransformations(NrTransOpt, TransOpt, Image2, NrPixels);
         for (k = 0; k < (NrPixels * NrPixels); k++) {
@@ -1836,8 +1690,8 @@ int main(int argc, char *argv[]) {
       // printf("%s\n",dname);
       // return 1;
       dname = "exchange/dark";
-      rc = fileReader(fd, FileName, dType, NrPixelsY * NrPixelsZ, DarkFile,
-                      dname);
+      rc = SumHDF5Frames(FileName, dname, NrPixelsY * NrPixelsZ, DarkFile,
+                         skipFrame);
       MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, DarkFile, DarkFile2);
       DoImageTransformations(NrTransOpt, TransOpt, DarkFile2, NrPixels);
       if (makeMap == 1) {
@@ -1862,7 +1716,8 @@ int main(int argc, char *argv[]) {
         AverageDark[j] = DarkFile2[j];
       // sprintf(dname,"%s",dataDatasetName);
       dname = "exchange/data";
-      rc = fileReader(fd, FileName, dType, NrPixelsY * NrPixelsZ, Image, dname);
+      rc = SumHDF5Frames(FileName, dname, NrPixelsY * NrPixelsZ, Image,
+                         skipFrame);
       MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, Image, Image2);
       DoImageTransformations(NrTransOpt, TransOpt, Image2, NrPixels);
       for (j = 0; j < (NrPixels * NrPixels); j++)
