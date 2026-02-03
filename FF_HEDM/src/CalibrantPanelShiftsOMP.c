@@ -611,7 +611,8 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   xu[8] = p3in + tolP3;
 
   if (tolShifts > EPS && nPanels > 1) {
-    int *panelCounts = calloc(nPanels, sizeof(int));
+    int panelCounts[nPanels];
+    memset(panelCounts, 0, nPanels * sizeof(int));
     for (int i = 0; i < nIndices; i++) {
       int pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
       if (pIdx >= 0 && pIdx < nPanels) {
@@ -623,25 +624,41 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
       if (i == fixPanel)
         continue;
       // We map Panel i to x indices
-      if (nPanels > 1) {
-        int p_idx = 9;
-        for (int i = 0; i < nPanels; i++) {
-          if (i == fixPanel)
-            continue;
-
-          x[p_idx] = panels[i].dY;
-          xl[p_idx] = x[p_idx] - tolShifts;
-          xu[p_idx] = x[p_idx] + tolShifts;
-          p_idx++;
-
-          x[p_idx] = panels[i].dZ;
-          xl[p_idx] = x[p_idx] - tolShifts;
-          xu[p_idx] = x[p_idx] + tolShifts;
-          p_idx++;
-        }
-      }
-      free(panelCounts);
+      // int logicalIndex = (i < fixPanel) ? i : i - 1; // Not needed with
+      // direct pointer, but kept for logic if derived Since we are iterating
+      // and filling linear buffer x, we can just track p_idx.
     }
+
+    if (nPanels > 1) {
+      int p_idx = 9;
+      for (int i = 0; i < nPanels; i++) {
+        if (i == fixPanel)
+          continue;
+
+        x[p_idx] = panels[i].dY;
+
+        if (panelCounts[i] < minIndices) {
+          xl[p_idx] = 0;
+          xu[p_idx] = 0;
+        } else {
+          xl[p_idx] = x[p_idx] - tolShifts;
+          xu[p_idx] = x[p_idx] + tolShifts;
+        }
+        p_idx++;
+
+        x[p_idx] = panels[i].dZ;
+
+        if (panelCounts[i] < minIndices) {
+          xl[p_idx] = 0;
+          xu[p_idx] = 0;
+        } else {
+          xl[p_idx] = x[p_idx] - tolShifts;
+          xu[p_idx] = x[p_idx] + tolShifts;
+        }
+        p_idx++;
+      }
+    }
+    // free(panelCounts); // VLA - no free needed
     struct my_func_data *f_datat;
     f_datat = &f_data;
     void *trp = (struct my_func_data *)f_datat;
