@@ -2469,9 +2469,10 @@ int main(int argc, char *argv[]) {
       double *ErrorFin;
       ErrorFin = malloc(3 * sizeof(*ErrorFin));
       CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, FinalResult, spotsYZONew,
-                      spotsYZO2New, hkls, Lsd, Wavelength, OmegaRanges, BoxSizes,
-                      MinEta, wedge, chi, SpotsComp, Splist, Splist2, ErrorFin,
-                      &nSpotsComp, 1, offsetX, offsetY, offsetZ, offsetOmega);
+                      spotsYZO2New, hkls, Lsd, Wavelength, OmegaRanges,
+                      BoxSizes, MinEta, wedge, chi, SpotsComp, Splist, Splist2,
+                      ErrorFin, &nSpotsComp, 1, offsetX, offsetY, offsetZ,
+                      offsetOmega);
       printf("SpotID %6d, %6d out of %6d, Errors: %7.2f %6.4f %6.4f, ", SpId,
              thisRowNr, nSptIDs, ErrorFin[0], ErrorFin[1], ErrorFin[2]);
       for (i = 0; i < nSpotsComp; i++)
@@ -2604,8 +2605,10 @@ int main(int argc, char *argv[]) {
       free(Ini);
       FreeMemMatrix(SpotsComp, MaxNSpotsBest);
       FreeMemMatrix(Splist, MaxNSpotsBest);
+      FreeMemMatrix(Splist2, MaxNSpotsBest);
       free(ErrorIni);
       FreeMemMatrix(spotsYZONew, nSpotsComp);
+      FreeMemMatrix(spotsYZO2New, nSpotsComp);
       free(XFit);
       free(ErrorInt1);
       free(XFit2);
@@ -2785,13 +2788,15 @@ int main(int argc, char *argv[]) {
       double **SpotsComp, **Splist, *ErrorFin;
       SpotsComp = allocMatrix(MaxNSpotsBest, 22);
       Splist = allocMatrix(MaxNSpotsBest, 9);
+      double **Splist2;
+      Splist2 = allocMatrix(MaxNSpotsBest, 9);
       ErrorFin = malloc(3 * sizeof(*ErrorFin));
       int nSpotsComp;
       ConcatPosEulLatc(Ini, Pos0, Euler0, LatCin);
       CalcAngleErrors(nSpotsYZO, nhkls, nOmeRanges, Ini, spotsYZO, spotsYZO,
                       hkls, Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta,
-                      wedge, chi, SpotsComp, Splist, ErrorFin, &nSpotsComp, 0,
-                      0.0, 0.0, 0.0, 0.0);
+                      wedge, chi, SpotsComp, Splist, Splist2, ErrorFin,
+                      &nSpotsComp, 0, 0.0, 0.0, 0.0, 0.0);
       // Now write out!
       double FinalResult[12];
       for (i = 0; i < 3; i++)
@@ -2920,6 +2925,7 @@ int main(int argc, char *argv[]) {
       FreeMemMatrix(spotsYZO, nSpotsBest);
       FreeMemMatrix(SpotsComp, MaxNSpotsBest);
       FreeMemMatrix(Splist, MaxNSpotsBest);
+      FreeMemMatrix(Splist2, MaxNSpotsBest);
       // FreeMemMatrix(spotsYZONew, nSpotsComp);
       free(spotIDS);
       free(ErrorFin);
