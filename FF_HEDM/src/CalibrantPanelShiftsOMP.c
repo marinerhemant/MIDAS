@@ -532,8 +532,17 @@ static double problem_function(unsigned n, const double *x, double *grad,
     double cz = (panels[pIdx].zMin + panels[pIdx].zMax) / 2.0;
     double dy_rel = YMean[i] - cy;
     double dz_rel = ZMean[i] - cz;
-    double Y_rot = cy + dy_rel * cos(rot) - dz_rel * sin(rot);
-    double Z_rot = cz + dy_rel * sin(rot) + dz_rel * cos(rot);
+    double Y_rot =
+        cy + dy_rel * cos(rot * deg2rad) - dz_rel * sin(rot * deg2rad);
+    double Z_rot =
+        cz + dy_rel * sin(rot * deg2rad) + dz_rel * cos(rot * deg2rad);
+
+    // Debug print for first call first index
+    if (NrCalls == 0 && i == 0) {
+      printf(
+          "DEBUG: pIdx=%d rot=%f dY=%f dZ=%f cy=%f cz=%f Y_rot=%f Z_rot=%f\n",
+          pIdx, rot, dY, dZ, cy, cz, Y_rot, Z_rot);
+    }
 
     Yc = -(Y_rot + dY - ybc) * px;
     Zc = (Z_rot + dZ - zbc) * px;
@@ -2100,8 +2109,10 @@ int main(int argc, char *argv[]) {
           double dy_rel = y_raw - cy;
           double dz_rel = z_raw - cz;
 
-          double y_rot = cy + dy_rel * cos(rot) - dz_rel * sin(rot);
-          double z_rot = cz + dy_rel * sin(rot) + dz_rel * cos(rot);
+          double y_rot =
+              cy + dy_rel * cos(rot * deg2rad) - dz_rel * sin(rot * deg2rad);
+          double z_rot =
+              cz + dy_rel * sin(rot * deg2rad) + dz_rel * cos(rot * deg2rad);
           y_raw = y_rot;
           z_raw = z_rot;
         }

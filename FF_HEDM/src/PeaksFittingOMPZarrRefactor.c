@@ -791,8 +791,10 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
       double dy_rel = r_idx - cy;
       double dz_rel = c_idx - cz;
 
-      double y_rot = cy + dy_rel * cos(rot) - dz_rel * sin(rot);
-      double z_rot = cz + dy_rel * sin(rot) + dz_rel * cos(rot);
+      double y_rot =
+          cy + dy_rel * cos(rot * DEG2RAD) - dz_rel * sin(rot * DEG2RAD);
+      double z_rot =
+          cz + dy_rel * sin(rot * DEG2RAD) + dz_rel * cos(rot * DEG2RAD);
 
       y_shifted = y_rot + panels[pIdx].dY;
       z_shifted = z_rot + panels[pIdx].dZ;

@@ -707,8 +707,10 @@ static double problem_function(unsigned n, const double *x, double *grad,
         // We want to correct the 'raw' (panel) coordinates to
         // 'shifted/canonical' coordinates. If 'rot' is panel rotation, then:
         // y_shifted = cy + (y_raw - cy)*cos(rot) - (z_raw - cz)*sin(rot) + dy
-        double y_rot = cy + dy_rel * cos(rot) - dz_rel * sin(rot);
-        double z_rot = cz + dy_rel * sin(rot) + dz_rel * cos(rot);
+        double y_rot =
+            cy + dy_rel * cos(rot * deg2rad) - dz_rel * sin(rot * deg2rad);
+        double z_rot =
+            cz + dy_rel * sin(rot * deg2rad) + dz_rel * cos(rot * deg2rad);
 
         y_raw = y_rot;
         z_raw = z_rot;
