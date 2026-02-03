@@ -2010,9 +2010,6 @@ int main(int argc, char *argv[]) {
     FitTiltBCLsd(nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
                  tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit, &ybcFit,
                  &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts, tolLsd,
-                 tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts, px, tyin,
-                 tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit, &ybcFit,
-                 &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts, tolLsd,
                  tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts, px,
                  outlierFactor, MinIndicesForFit, FixPanelID);
     printf("Number of function calls: %lld\n", NrCalls);
