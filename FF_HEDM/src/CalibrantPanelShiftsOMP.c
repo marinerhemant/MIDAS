@@ -614,7 +614,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
     int *panelCounts = calloc(nPanels, sizeof(int));
     for (int i = 0; i < nIndices; i++) {
       int pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
-      if (pIdx >= 0) {
+      if (pIdx >= 0 && pIdx < nPanels) {
         panelCounts[pIdx]++;
       }
     }
