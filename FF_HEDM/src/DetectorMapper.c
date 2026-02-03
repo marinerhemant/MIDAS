@@ -9,6 +9,7 @@
 //
 // TODO: Add option to give QbinSize instead of RbinSize, look at 0,90,180,270
 
+#include "FileReader.h"
 #include <ctype.h>
 #include <limits.h>
 #include <math.h>
@@ -272,7 +273,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
           double RhoD, double p0, double p1, double p2, double p3,
           double *EtaBinsLow, double *EtaBinsHigh, double *RBinsLow,
           double *RBinsHigh, int nRBins, int nEtaBins, struct data ***pxList,
-          int **nPxList, int **maxnPx) {
+          int **nPxList, int **maxnPx, double *mask) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
@@ -320,6 +321,13 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
   double RT, ET;
   for (i = 0; i < NrPixelsY; i++) {
     for (j = 0; j < NrPixelsZ; j++) {
+      testPos = j;
+      testPos *= NrPixelsY;
+      testPos += i;
+      if (mask != NULL) {
+        if (mask[testPos] == 1.0)
+          continue;
+      }
       EtaMi = 1800;
       EtaMa = -1800;
       RMi = 1E8; // In pixels
@@ -708,6 +716,9 @@ int main(int argc, char *argv[]) {
   int *PanelGapsZ = NULL;
   char PanelShiftsFile[1024];
   PanelShiftsFile[0] = '\0';
+  char MaskFN[4096];
+  int useMask = 0;
+  double *mask = NULL;
   paramFile = fopen(ParamFN, "r");
   while (fgets(aline, 4096, paramFile) != NULL) {
     str = "tx ";
@@ -860,6 +871,11 @@ int main(int argc, char *argv[]) {
       NrTransOpt++;
       continue;
     }
+    str = "MaskFile ";
+    if (StartsWith(aline, str) == 1) {
+      sscanf(aline, "%s %s", dummy, MaskFN);
+      useMask = 1;
+    }
   }
 
   // Generate Panels
@@ -878,6 +894,19 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Failed to load panel shifts from %s\n",
                 PanelShiftsFile);
       }
+    }
+  }
+
+  if (useMask == 1) {
+    mask = calloc(NrPixelsY * NrPixelsZ, sizeof(double));
+    if (ReadTiffFrame(MaskFN, 7, NrPixelsY * NrPixelsZ, mask, 0) == 0) {
+      printf("Encoded mask from file: %s\n", MaskFN);
+      DoImageTransformations(NrTransOpt, TransOpt, mask, mask, NrPixelsY,
+                             NrPixelsZ);
+    } else {
+      printf("Failed to read mask file: %s\n", MaskFN);
+      free(mask);
+      mask = NULL;
     }
   }
 
@@ -937,7 +966,7 @@ int main(int argc, char *argv[]) {
   long long int TotNrOfBins =
       mapperfcn(tx, ty, tz, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen, zCen, Lsd,
                 RhoD, p0, p1, p2, p3, EtaBinsLow, EtaBinsHigh, RBinsLow,
-                RBinsHigh, nRBins, nEtaBins, pxList, nPxList, maxnPx);
+                RBinsHigh, nRBins, nEtaBins, pxList, nPxList, maxnPx, mask);
   printf("Total Number of bins %lld\n", TotNrOfBins);
   fflush(stdout);
   long long int LengthNPxList = nRBins * nEtaBins;

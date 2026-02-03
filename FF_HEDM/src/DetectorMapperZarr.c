@@ -9,6 +9,7 @@
 //
 // TODO: Add option to give QbinSize instead of RbinSize, look at 0,90,180,270
 
+#include "FileReader.h"
 #include <blosc2.h>
 #include <ctype.h>
 #include <limits.h>
@@ -275,7 +276,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
           double RhoD, double p0, double p1, double p2, double p3,
           double *EtaBinsLow, double *EtaBinsHigh, double *RBinsLow,
           double *RBinsHigh, int nRBins, int nEtaBins, struct data ***pxList,
-          int **nPxList, int **maxnPx) {
+          int **nPxList, int **maxnPx, double *mask) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
@@ -322,6 +323,13 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
   // This could be done with OMP Parallel for
   for (i = 0; i < NrPixelsY; i++) {
     for (j = 0; j < NrPixelsZ; j++) {
+      testPos = j;
+      testPos *= NrPixelsY;
+      testPos += i;
+      if (mask != NULL) {
+        if (mask[testPos] == 1.0)
+          continue;
+      }
       EtaMi = 1800;
       EtaMa = -1800;
       RMi = 1E8; // In pixels
@@ -729,7 +737,21 @@ int main(int argc, char *argv[]) {
   int locPanelGapsZ = -1;
   char PanelShiftsFile[1024];
   PanelShiftsFile[0] = '\0';
+  char MaskFN[4096];
+  int useMask = 0;
+  double *mask = NULL;
   while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
+    if (strstr(finfo->name,
+               "analysis/process/analysis_parameters/MaskFile/0") != NULL) {
+      arr = calloc(finfo->size + 1, sizeof(char));
+      fd = zip_fopen_index(arch, count, 0);
+      zip_fread(fd, arr, finfo->size);
+      dsize = 4096;
+      blosc1_decompress(arr, MaskFN, dsize);
+      useMask = 1;
+      free(arr);
+      free(data);
+    }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/ResultFolder/0") != NULL) {
       arr = calloc(finfo->size + 1, sizeof(char));
@@ -1183,6 +1205,19 @@ int main(int argc, char *argv[]) {
       }
     }
   }
+  if (useMask == 1) {
+    mask = calloc(NrPixelsY * NrPixelsZ, sizeof(double));
+    if (ReadTiffFrame(MaskFN, 7, NrPixelsY * NrPixelsZ, mask, 0) == 0) {
+      printf("Encoded mask from file: %s\n", MaskFN);
+      DoImageTransformations(NrTransOpt, TransOpt, mask, mask, NrPixelsY,
+                             NrPixelsZ);
+    } else {
+      printf("Failed to read mask file: %s\n", MaskFN);
+      free(mask);
+      mask = NULL;
+    }
+  }
+
   distortionMapY = calloc(NrPixelsY * NrPixelsZ, sizeof(double));
   distortionMapZ = calloc(NrPixelsY * NrPixelsZ, sizeof(double));
   if (distortionFile == 1) {
@@ -1239,7 +1274,7 @@ int main(int argc, char *argv[]) {
   long long int TotNrOfBins =
       mapperfcn(tx, ty, tz, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen, zCen, Lsd,
                 RhoD, p0, p1, p2, p3, EtaBinsLow, EtaBinsHigh, RBinsLow,
-                RBinsHigh, nRBins, nEtaBins, pxList, nPxList, maxnPx);
+                RBinsHigh, nRBins, nEtaBins, pxList, nPxList, maxnPx, mask);
   printf("Total Number of bins %lld\n", TotNrOfBins);
   fflush(stdout);
   long long int LengthNPxList = nRBins * nEtaBins;
