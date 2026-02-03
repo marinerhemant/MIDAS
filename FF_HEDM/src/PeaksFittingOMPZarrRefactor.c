@@ -2279,6 +2279,30 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/PanelGapsZ/0") != NULL)
       locPanelGapsZ = count;
+    if (strstr(fileInfo->name,
+               "analysis/process/analysis_parameters/PanelGapsY/.zarray") !=
+        NULL) {
+      char *buffer = calloc(fileInfo->size + 1, sizeof(char));
+      if (buffer) {
+        zip_file_t *f = zip_fopen_index(archive, count, 0);
+        zip_fread(f, buffer, fileInfo->size);
+        zip_fclose(f);
+        getZarrDimension(buffer, &nGapsY);
+        free(buffer);
+      }
+    }
+    if (strstr(fileInfo->name,
+               "analysis/process/analysis_parameters/PanelGapsZ/.zarray") !=
+        NULL) {
+      char *buffer = calloc(fileInfo->size + 1, sizeof(char));
+      if (buffer) {
+        zip_file_t *f = zip_fopen_index(archive, count, 0);
+        zip_fread(f, buffer, fileInfo->size);
+        zip_fclose(f);
+        getZarrDimension(buffer, &nGapsZ);
+        free(buffer);
+      }
+    }
 
     // Read various scalar parameters
     if (strstr(fileInfo->name, "measurement/process/scan_parameters/start/0") !=
