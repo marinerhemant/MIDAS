@@ -484,8 +484,9 @@ static inline void CalcAngleErrors(
     double **spotsYZO2, double **hklsIn, double Lsd, double Wavelength,
     double OmegaRange[MAXNOMEGARANGES][2], double BoxSize[MAXNOMEGARANGES][4],
     double MinEta, double wedge, double chi, double **SpotsComp,
-    double **SpList, double *Error, int *nSpotsComp, int notIniRun,
-    double offsetX, double offsetY, double offsetZ, double offsetOmega)
+    double **SpList, double **SpList2, double *Error, int *nSpotsComp,
+    int notIniRun, double offsetX, double offsetY, double offsetZ,
+    double offsetOmega)
 // We will run through the spots two times, first using spotsYZO, then using
 // spotsYZO2
 {
@@ -631,6 +632,9 @@ static inline void CalcAngleErrors(
         SpList[nMatched][i] = spotsYZO[sp][i];
       }
       SpList[nMatched][8] = TheorSpotsYZWER[RowBest][8];
+      for (i = 0; i < 8; i++) {
+        SpList2[nMatched][i] = spotsYZO2[sp][i];
+      }
       nMatched++;
     }
   }
@@ -2218,21 +2222,24 @@ int main(int argc, char *argv[]) {
       }
       double *Ini;
       Ini = malloc(12 * sizeof(*Ini));
-      double **SpotsComp, **Splist, *ErrorIni;
+      double **SpotsComp, **Splist, **Splist2, *ErrorIni;
       SpotsComp = allocMatrix(MaxNSpotsBest, 22);
       Splist = allocMatrix(MaxNSpotsBest, 9);
+      Splist2 = allocMatrix(MaxNSpotsBest, 9);
       ErrorIni = malloc(3 * sizeof(*ErrorIni));
       int nSpotsComp;
       ConcatPosEulLatc(Ini, Pos0, Euler0, LatCin);
       CalcAngleErrors(nSpotsYZO, nhkls, nOmeRanges, Ini, spotsYZO, spotsYZO2,
                       hkls, Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta,
-                      wedge, chi, SpotsComp, Splist, ErrorIni, &nSpotsComp, 0,
-                      0.0, 0.0, 0.0, 0.0);
-      double **spotsYZONew;
+                      wedge, chi, SpotsComp, Splist, Splist2, ErrorIni,
+                      &nSpotsComp, 0, 0.0, 0.0, 0.0, 0.0);
+      double **spotsYZONew, **spotsYZO2New;
       spotsYZONew = allocMatrix(nSpotsComp, 9);
+      spotsYZO2New = allocMatrix(nSpotsComp, 9);
       for (i = 0; i < nSpotsComp; i++) {
         for (j = 0; j < 9; j++) {
           spotsYZONew[i][j] = Splist[i][j];
+          spotsYZO2New[i][j] = Splist2[i][j];
         }
       }
       OrientsOrig[nSpID][0] = (double)SpId;
@@ -2298,24 +2305,28 @@ int main(int argc, char *argv[]) {
       double *ErrorInt1;
       ErrorInt1 = malloc(3 * sizeof(*ErrorInt1));
       double offsets[4] = {offsetX, offsetY, offsetZ, offsetOmega};
-      FitPositionIni(X0, nSpotsComp, spotsYZONew, spotsYZO2, nhkls, hkls, Lsd,
-                     Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta,
+      FitPositionIni(X0, nSpotsComp, spotsYZONew, spotsYZO2New, nhkls, hkls,
+                     Lsd, Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta,
                      wedge, chi, XFit, lb, ub, offsets);
       CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, XFit, spotsYZONew,
-                      spotsYZO2, hkls, Lsd, Wavelength, OmegaRanges, BoxSizes,
-                      MinEta, wedge, chi, SpotsComp, Splist, ErrorInt1,
-                      &nSpotsComp, 1, offsetX, offsetY, offsetZ, offsetOmega);
+                      spotsYZO2New, hkls, Lsd, Wavelength, OmegaRanges,
+                      BoxSizes, MinEta, wedge, chi, SpotsComp, Splist, Splist2,
+                      ErrorInt1, &nSpotsComp, 1, offsetX, offsetY, offsetZ,
+                      offsetOmega);
       for (i = 0; i < 3; i++)
         XFit[i + 3] = Euler0[i];
       for (i = 0; i < 6; i++)
         XFit[i + 6] = LatCin[i];
       CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, XFit, spotsYZONew,
-                      spotsYZO2, hkls, Lsd, Wavelength, OmegaRanges, BoxSizes,
-                      MinEta, wedge, chi, SpotsComp, Splist, ErrorInt1,
-                      &nSpotsComp, 1, offsetX, offsetY, offsetZ, offsetOmega);
+                      spotsYZO2New, hkls, Lsd, Wavelength, OmegaRanges,
+                      BoxSizes, MinEta, wedge, chi, SpotsComp, Splist, Splist2,
+                      ErrorInt1, &nSpotsComp, 1, offsetX, offsetY, offsetZ,
+                      offsetOmega);
       for (i = 0; i < nSpotsComp; i++)
-        for (j = 0; j < 9; j++)
+        for (j = 0; j < 9; j++) {
           spotsYZONew[i][j] = Splist[i][j];
+          spotsYZO2New[i][j] = Splist2[i][j];
+        }
       double X0_2[9];
       X0_2[0] = Euler0[0];
       X0_2[1] = Euler0[1];
@@ -2348,9 +2359,9 @@ int main(int argc, char *argv[]) {
       double PosFitOrientIn[3];
       for (i = 0; i < 3; i++)
         PosFitOrientIn[i] = XFit[i];
-      FitOrientIni(X0_2, nSpotsComp, spotsYZONew, spotsYZO2, nhkls, hkls, Lsd,
-                   Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta, wedge,
-                   chi, XFit2, lb2, ub2, PosFitOrientIn, offsets);
+      FitOrientIni(X0_2, nSpotsComp, spotsYZONew, spotsYZO2New, nhkls, hkls,
+                   Lsd, Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta,
+                   wedge, chi, XFit2, lb2, ub2, PosFitOrientIn, offsets);
       double UseXFit[12];
       for (i = 0; i < 3; i++)
         UseXFit[i] = XFit[i];
@@ -2360,13 +2371,17 @@ int main(int argc, char *argv[]) {
         UseXFit[i + 6] = LatCin[i];
       double *ErrorInt2;
       ErrorInt2 = malloc(3 * sizeof(*ErrorInt2));
+      ErrorInt2 = malloc(3 * sizeof(*ErrorInt2));
       CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, UseXFit, spotsYZONew,
-                      spotsYZO2, hkls, Lsd, Wavelength, OmegaRanges, BoxSizes,
-                      MinEta, wedge, chi, SpotsComp, Splist, ErrorInt2,
-                      &nSpotsComp, 1, offsetX, offsetY, offsetZ, offsetOmega);
+                      spotsYZO2New, hkls, Lsd, Wavelength, OmegaRanges,
+                      BoxSizes, MinEta, wedge, chi, SpotsComp, Splist, Splist2,
+                      ErrorInt2, &nSpotsComp, 1, offsetX, offsetY, offsetZ,
+                      offsetOmega);
       for (i = 0; i < nSpotsComp; i++)
-        for (j = 0; j < 9; j++)
+        for (j = 0; j < 9; j++) {
           spotsYZONew[i][j] = Splist[i][j];
+          spotsYZO2New[i][j] = Splist2[i][j];
+        }
       double X0_3[6];
       for (i = 0; i < 6; i++)
         X0_3[i] = LatCin[i];
@@ -2388,9 +2403,10 @@ int main(int argc, char *argv[]) {
         OrientFitIn[i] = XFit2[i];
       double *XFit3;
       XFit3 = malloc(6 * sizeof(*XFit3));
-      FitStrainIni(X0_3, nSpotsComp, spotsYZONew, spotsYZO2, nhkls, hkls, Lsd,
-                   Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta, wedge,
-                   chi, XFit3, lb3, ub3, PosFitOrientIn, OrientFitIn, offsets);
+      FitStrainIni(X0_3, nSpotsComp, spotsYZONew, spotsYZO2New, nhkls, hkls,
+                   Lsd, Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta,
+                   wedge, chi, XFit3, lb3, ub3, PosFitOrientIn, OrientFitIn,
+                   offsets);
       double UseXFit2[12];
       for (i = 0; i < 3; i++)
         UseXFit2[i] = XFit[i];
@@ -2401,12 +2417,15 @@ int main(int argc, char *argv[]) {
       double *ErrorInt3;
       ErrorInt3 = malloc(3 * sizeof(*ErrorInt3));
       CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, UseXFit2, spotsYZONew,
-                      spotsYZO2, hkls, Lsd, Wavelength, OmegaRanges, BoxSizes,
-                      MinEta, wedge, chi, SpotsComp, Splist, ErrorInt3,
-                      &nSpotsComp, 1, offsetX, offsetY, offsetZ, offsetOmega);
+                      spotsYZO2New, hkls, Lsd, Wavelength, OmegaRanges,
+                      BoxSizes, MinEta, wedge, chi, SpotsComp, Splist, Splist2,
+                      ErrorInt3, &nSpotsComp, 1, offsetX, offsetY, offsetZ,
+                      offsetOmega);
       for (i = 0; i < nSpotsComp; i++)
-        for (j = 0; j < 9; j++)
+        for (j = 0; j < 9; j++) {
           spotsYZONew[i][j] = Splist[i][j];
+          spotsYZO2New[i][j] = Splist2[i][j];
+        }
       double X0_4[3];
       for (i = 0; i < 3; i++)
         X0_4[i] = XFit[i];
@@ -2437,7 +2456,7 @@ int main(int argc, char *argv[]) {
         StrainsFitIn[i] = XFit3[i];
       double *XFit4;
       XFit4 = malloc(3 * sizeof(*XFit4));
-      FitPosSec(X0_4, nSpotsComp, spotsYZONew, spotsYZO2, nhkls, hkls, Lsd,
+      FitPosSec(X0_4, nSpotsComp, spotsYZONew, spotsYZO2New, nhkls, hkls, Lsd,
                 Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta, wedge,
                 chi, XFit4, lb4, ub4, OrientFitIn, StrainsFitIn, offsets);
       double FinalResult[12];
@@ -2450,8 +2469,8 @@ int main(int argc, char *argv[]) {
       double *ErrorFin;
       ErrorFin = malloc(3 * sizeof(*ErrorFin));
       CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, FinalResult, spotsYZONew,
-                      spotsYZO2, hkls, Lsd, Wavelength, OmegaRanges, BoxSizes,
-                      MinEta, wedge, chi, SpotsComp, Splist, ErrorFin,
+                      spotsYZO2New, hkls, Lsd, Wavelength, OmegaRanges, BoxSizes,
+                      MinEta, wedge, chi, SpotsComp, Splist, Splist2, ErrorFin,
                       &nSpotsComp, 1, offsetX, offsetY, offsetZ, offsetOmega);
       printf("SpotID %6d, %6d out of %6d, Errors: %7.2f %6.4f %6.4f, ", SpId,
              thisRowNr, nSptIDs, ErrorFin[0], ErrorFin[1], ErrorFin[2]);
