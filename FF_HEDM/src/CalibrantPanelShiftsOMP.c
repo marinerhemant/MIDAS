@@ -1953,16 +1953,32 @@ int main(int argc, char *argv[]) {
       }
       printf("\n******************* Indices per Panel (Visual Layout: Z^ Y>) "
              "*******************\n");
+      double charAspect = 0.5;         // Width / Height
+      double textWidthPerPanel = 16.0; // "[ 12 (12345)]  " is ~15-16 chars
+      double visualWidthPoints = NPanelsY * textWidthPerPanel * charAspect;
+      double targetHeightPoints =
+          visualWidthPoints * ((double)NrPixelsZ / (double)NrPixelsY);
+      int linesPerRow = (int)(targetHeightPoints / NPanelsZ + 0.5);
+      if (linesPerRow < 1)
+        linesPerRow = 1;
+
       for (int z = NPanelsZ - 1; z >= 0; z--) {
-        printf("Z=%-2d | ", z);
-        for (int y = 0; y < NPanelsY; y++) {
-          int pIdx = y * NPanelsZ + z;
-          // Check bounds just in case
-          if (pIdx < nPanels) {
-            printf("[%3d (%5d)]  ", pIdx, panelCounts[pIdx]);
+        for (int l = 0; l < linesPerRow; l++) {
+          if (l == linesPerRow / 2)
+            printf("Z=%-2d | ", z);
+          else
+            printf("     | ");
+
+          if (l == linesPerRow / 2) {
+            for (int y = 0; y < NPanelsY; y++) {
+              int pIdx = y * NPanelsZ + z;
+              if (pIdx < nPanels) {
+                printf("[%3d (%5d)]  ", pIdx, panelCounts[pIdx]);
+              }
+            }
           }
+          printf("\n");
         }
-        printf("\n");
       }
       printf("       ");
       for (int y = 0; y < NPanelsY; y++) {
