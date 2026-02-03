@@ -567,7 +567,12 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
         NormGTheors = CalcNorm3(GTheors[0], GTheors[1], GTheors[2]);
         Numers = DotGs;
         Denoms = NormGObs * NormGTheors;
-        Angles[nTheorSpotsYZWER] = fabs(acosd(Numers / Denoms));
+        double ratio = Numers / Denoms;
+        if (ratio > 1.0)
+          ratio = 1.0;
+        if (ratio < -1.0)
+          ratio = -1.0;
+        Angles[nTheorSpotsYZWER] = fabs(acosd(ratio));
         nTheorSpotsYZWER++;
       }
     }
@@ -873,7 +878,12 @@ static inline double FitErrorsOrientStrains(
         NormGTheors = CalcNorm3(GTheors[0], GTheors[1], GTheors[2]);
         Numers = DotGs;
         Denoms = NormGObs * NormGTheors;
-        Angles[nTheorSpotsYZWER] = fabs(acosd(Numers / Denoms));
+        double ratio = Numers / Denoms;
+        if (ratio > 1.0)
+          ratio = 1.0;
+        if (ratio < -1.0)
+          ratio = -1.0;
+        Angles[nTheorSpotsYZWER] = fabs(acosd(ratio));
         nTheorSpotsYZWER++;
       }
     }
