@@ -464,6 +464,7 @@ struct my_func_data {
   double MaxRad;
   double px;
   double tx;
+  int fixPanel; // Added fixPanel
 };
 
 static double problem_function(unsigned n, const double *x, double *grad,
@@ -513,16 +514,15 @@ static double problem_function(unsigned n, const double *x, double *grad,
       continue;
     }
 
-    if (pIdx > 0 && n > 9) {
-      // Map Panel i to x indices. Panel 0 is skipped.
-      // Panel 1 -> x[9], x[10]
-      // Panel i -> x[9 + (i-1)*2], x[10 + (i-1)*2]
-      int xIdx = 9 + (pIdx - 1) * 2;
-      dY = x[xIdx];
-      dZ = x[xIdx + 1];
-    } else {
-      dY = 0;
-      dZ = 0;
+    dY = 0;
+    dZ = 0;
+    if (n > 9) {
+      if (pIdx != f_data->fixPanel) {
+        int logicalIndex = (pIdx < f_data->fixPanel) ? pIdx : pIdx - 1;
+        int xIdx = 9 + logicalIndex * 2;
+        dY = x[xIdx];
+        dZ = x[xIdx + 1];
+      }
     }
     Yc = -(YMean[i] + dY - ybc) * px;
     Zc = (ZMean[i] + dZ - zbc) * px;
@@ -562,7 +562,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
                   double tolTilts, double tolLsd, double tolBC, double tolP,
                   double tolP0, double tolP1, double tolP2, double tolP3,
                   double tolShifts, double px, double outlierFactor,
-                  int minIndices) {
+                  int minIndices, int fixPanel) {
   // Look at the possibility of including translations for each of the small
   // panels on a multi-panel detector in the optimization.... Also change
   // CorrectTiltSpatialDistortion to include translations!!!
@@ -580,6 +580,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   f_data.MaxRad = MaxRad;
   f_data.px = px;
   f_data.tx = tx;
+  f_data.fixPanel = fixPanel;
   double x[n], xl[n], xu[n];
   x[0] = Lsd;
   xl[0] = Lsd - tolLsd;
@@ -618,9 +619,12 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
       }
     }
 
-    for (int i = 1; i < nPanels; i++) {
-      // We map Panel i to x indices starting at 9 + (i-1)*2
-      int xIdx = 9 + (i - 1) * 2;
+    for (int i = 0; i < nPanels; i++) {
+      if (i == fixPanel)
+        continue;
+      // We map Panel i to x indices
+      int logicalIndex = (i < fixPanel) ? i : i - 1;
+      int xIdx = 9 + logicalIndex * 2;
       x[xIdx] = 0;
       x[xIdx + 1] = 0;
 
@@ -1155,6 +1159,7 @@ int main(int argc, char *argv[]) {
   double tolShifts = 1.0;
   double outlierFactor = 0.0;
   int MinIndicesForFit = 1;
+  int FixPanelID = 0;
   int Padding = 6, NrPixelsY, NrPixelsZ, NrPixels;
   int NrTransOpt = 0, RBinWidth = 4;
   long long int GapIntensity = 0, BadPxIntensity = 0;
@@ -1515,6 +1520,12 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %d", dummy, &MinIndicesForFit);
+      continue;
+    }
+    str = "FixPanelID ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &FixPanelID);
       continue;
     }
     str = "tx ";
@@ -1993,14 +2004,17 @@ int main(int argc, char *argv[]) {
       printf("\n");
       printf("*****************************************************************"
              "****"
-             "***********\n");
+             "***********\n\n");
       free(panelCounts);
     }
     FitTiltBCLsd(nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
                  tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit, &ybcFit,
                  &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts, tolLsd,
+                 tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts, px, tyin,
+                 tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit, &ybcFit,
+                 &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts, tolLsd,
                  tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts, px,
-                 outlierFactor, MinIndicesForFit);
+                 outlierFactor, MinIndicesForFit, FixPanelID);
     printf("Number of function calls: %lld\n", NrCalls);
     printf("Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 "
            "%0.12f\np2 %0.12f\np3 %0.12f\nMeanStrain %0.12lf\n",

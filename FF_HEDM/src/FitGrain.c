@@ -617,6 +617,7 @@ struct data {
   double *Error;
   int nPanels;   // Added for panel support
   Panel *panels; // Added for panel support
+  int fixPanel;  // Added fixPanel
 };
 
 int nIter = 0;
@@ -669,12 +670,15 @@ static double problem_function(unsigned n, const double *x, double *grad,
 
   if (nPanels > 1) {
     int p_idx = 22;
-    for (i = 1; i < nPanels; i++) {
-      panels[i].dY = x[p_idx++];
-      panels[i].dZ = x[p_idx++];
+    for (i = 0; i < nPanels; i++) {
+      if (i == f_data->fixPanel) {
+        panels[i].dY = 0;
+        panels[i].dZ = 0;
+      } else {
+        panels[i].dY = x[p_idx++];
+        panels[i].dZ = x[p_idx++];
+      }
     }
-    panels[0].dY = 0;
-    panels[0].dZ = 0;
   }
 
   double **SpotInfoShifted;
@@ -717,7 +721,7 @@ void FitGrain(double Ini[12], double OptP[10], double NonOptP[5],
               double OmegaRanges[2000][2], double tol[22],
               double BoxSizes[2000][4], double **hklsIn, double *Out,
               double *Error, Panel *panels, int nPanels, double tolShifts,
-              int *spotsPerPanel) { // Added spotsPerPanel
+              int *spotsPerPanel, int fixPanel) { // Added spotsPerPanel
   unsigned n = 22;
   if (nPanels > 1) {
     n += (nPanels - 1) * 2;
@@ -738,6 +742,7 @@ void FitGrain(double Ini[12], double OptP[10], double NonOptP[5],
   f_data.MinEta = NonOptP[4];
   f_data.nPanels = nPanels;
   f_data.panels = panels;
+  f_data.fixPanel = fixPanel;
 
   int nOmeRanges = NonOptPInt[1];
   for (i = 0; i < nOmeRanges; i++) {
@@ -773,7 +778,10 @@ void FitGrain(double Ini[12], double OptP[10], double NonOptP[5],
 
   if (nPanels > 1) {
     int p_idx = 22;
-    for (i = 1; i < nPanels; i++) {
+    for (i = 0; i < nPanels; i++) {
+      if (i == fixPanel)
+        continue;
+
       x[p_idx] = panels[i].dY;
       if (spotsPerPanel != NULL && spotsPerPanel[i] < 1) {
         xl[p_idx] = x[p_idx]; // Lock
@@ -852,6 +860,7 @@ int main(int argc, char *argv[]) {
   double tolShifts = 1.0;
   double tolBC = 1.0, tolTilts = 1.0, tolP0 = 1E-3, tolP1 = 1E-3, tolP2 = 1E-3,
          tolP3 = 45.0;
+  int FixPanelID = 0;
 
   // Panel parameters
   int nPanelsY = 0;
@@ -1114,6 +1123,12 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %lf", dummy, &tolP3);
       continue;
     }
+    str = "FixPanelID ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &FixPanelID);
+      continue;
+    }
   }
 
   // Generate Panels
@@ -1347,7 +1362,7 @@ int main(int argc, char *argv[]) {
   Out = malloc(nOptParams * sizeof(*Out));
   FitGrain(Ini, OptP, NonOptP, NonOptPInt, SpotInfoAll, OmegaRanges, tols,
            BoxSizes, hkls, Out, Error, panels, nPanels, tolShifts,
-           spotsPerPanel);
+           spotsPerPanel, FixPanelID);
   printf("\nInput:\n");
   for (i = 0; i < 12; i++)
     printf("%f ", Ini[i]);
