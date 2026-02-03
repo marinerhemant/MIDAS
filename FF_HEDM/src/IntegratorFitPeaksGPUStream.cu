@@ -2241,18 +2241,7 @@ int main(int argc, char *argv[]) {
     t_write2d_cpu = get_wall_time_ms() - t_write2d_start;
 
     // --- Prepare 1D Lineout Data ---
-    double maxInt = -1.0;
-    int maxIntLoc = -1;
-    // Find max intensity and its location if only fitting a single peak
-    // (legacy?)
-    if (!multiP) {
-      for (int r = 0; r < nRBins; ++r) {
-        if (h_int1D[r] > maxInt) {
-          maxInt = h_int1D[r];
-          maxIntLoc = r;
-        }
-      }
-    }
+    // --- Write 1D Lineout Data ---
     // Fill the intensity part of the lineout buffer
     for (int r = 0; r < nRBins; ++r) {
       hLineout[r * 2 + 1] = h_int1D[r]; // Intensity value
