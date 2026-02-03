@@ -1623,6 +1623,7 @@ int main(int argc, char *argv[]) {
   }
   MaxTtheta = rad2deg * atan(MaxRingRad / Lsd);
   double Thetas[100];
+  int RingIDs[100];
   for (i = 0; i < 100; i++)
     Thetas[i] = 0;
   int n_hkls = 0;
@@ -1651,6 +1652,7 @@ int main(int argc, char *argv[]) {
     }
     if (Exclude == 0 && tRnr > LastRingDone) {
       Thetas[n_hkls] = theta;
+      RingIDs[n_hkls] = tRnr;
       LastRingDone = tRnr;
       printf("%lf ", theta);
       n_hkls++;
@@ -1908,6 +1910,8 @@ int main(int argc, char *argv[]) {
     IdealRmins = malloc(nIndices * sizeof(*IdealRmins));
     IdealRmaxs = malloc(nIndices * sizeof(*IdealRmaxs));
     IdealTtheta = malloc(nIndices * sizeof(*IdealTtheta));
+    int *RingNumbers;
+    RingNumbers = malloc(nIndices * sizeof(*RingNumbers));
     RMean = malloc(nIndices * sizeof(*RMean));
     EtaMean = malloc(nIndices * sizeof(*EtaMean));
     int NrPtsForFit;
@@ -1917,6 +1921,7 @@ int main(int argc, char *argv[]) {
       IdealRmins[i] = Rmins[(int)(floor(i / nEtaBins))];
       IdealRmaxs[i] = Rmaxs[(int)(floor(i / nEtaBins))];
       IdealTtheta[i] = rad2deg * atan(IdealR[i] / Lsd);
+      RingNumbers[i] = RingIDs[(int)(floor(i / nEtaBins))];
     }
     NrCallsProfiler = 0;
     if (FitWeightMean == 1) {
@@ -1930,14 +1935,18 @@ int main(int argc, char *argv[]) {
     // Find the RMean, which are 0 and update accordingly.
     int countr = 0;
     double *RMean2, *EtaMean2, *IdealTtheta2;
+    int *RingNumbers2;
     RMean2 = malloc(nIndices * sizeof(*RMean2));
     EtaMean2 = malloc(nIndices * sizeof(*EtaMean2));
     IdealTtheta2 = malloc(nIndices * sizeof(*IdealTtheta2));
+    RingNumbers2 = malloc(nIndices * sizeof(*RingNumbers2));
     for (i = 0; i < nIndices; i++) {
       if (RMean[i] != 0) {
         RMean2[countr] = RMean[i];
         EtaMean2[countr] = EtaMean[i];
+        EtaMean2[countr] = EtaMean[i];
         IdealTtheta2[countr] = IdealTtheta[i];
+        RingNumbers2[countr] = RingNumbers[i];
         // printf("%lf %lf %lf
         // %lf\n",RMean[i],IdealR[i],EtaMean[i],IdealTtheta[i]);
         countr++;
@@ -1948,9 +1957,11 @@ int main(int argc, char *argv[]) {
     free(RMean);
     free(EtaMean);
     free(IdealTtheta);
+    free(RingNumbers);
     RMean = RMean2;
     EtaMean = EtaMean2;
     IdealTtheta = IdealTtheta2;
+    RingNumbers = RingNumbers2;
     end = omp_get_wtime();
     diftotal = end - start;
     if (FitWeightMean != 1) {
@@ -2082,9 +2093,9 @@ int main(int argc, char *argv[]) {
       }
       double YRawCorr = Yc[i] + dY;
       double ZRawCorr = Zc[i] + dZ;
-      fprintf(Out, "%f %10.8f %10.8f %f %10.8f %10.8f %f %d %f %f\n", Etas[i],
-              Diffs[i], RadOuts[i], EtaIns[i], DiffIns[i], RadIns[i],
-              IdealTtheta[i], IsOutlier[i], YRawCorr, ZRawCorr);
+      fprintf(Out, "%f %10.8f %10.8f %f %10.8f %10.8f %f %d %f %f %d\n",
+              Etas[i], Diffs[i], RadOuts[i], EtaIns[i], DiffIns[i], RadIns[i],
+              IdealTtheta[i], IsOutlier[i], YRawCorr, ZRawCorr, RingNumbers[i]);
     }
     fclose(Out);
     FreeMemMatrixInt(Indices, nIndices);
@@ -2102,6 +2113,7 @@ int main(int argc, char *argv[]) {
     free(Diffs);
     free(Etas);
     free(IsOutlier);
+    free(RingNumbers);
     end = omp_get_wtime();
     diftotal = end - start;
     printf("Time elapsed for this file:\t%f s.\n", diftotal);
