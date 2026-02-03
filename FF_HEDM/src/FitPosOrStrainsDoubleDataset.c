@@ -40,6 +40,20 @@
 #define MAXNOMEGARANGES 2000
 
 // Helper functions and structs
+
+int BigDetSize = 0;
+int *BigDetector;
+long long int totNrPixelsBigDetector;
+double pixelsize;
+double DetParams[4][10];
+
+// Function prototype for CalcDiffractionSpots
+int CalcDiffractionSpots(double Distance, double ExcludePoleAngle,
+                         double OmegaRanges[MAXNOMEGARANGES][2],
+                         int NoOfOmegaRanges, double **hkls, int n_hkls,
+                         double BoxSizes[MAXNOMEGARANGES][4], int *nTspots,
+                         double OrientMatr[3][3], double **TheorSpots);
+
 static void check(int test, const char *message, ...) {
   if (test) {
     va_list args;
