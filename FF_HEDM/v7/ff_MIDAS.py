@@ -719,18 +719,18 @@ def load_machine_config(machine_name: str, n_nodes: int, num_procs: int) -> Tupl
         parsl.load(config=orthrosAllConfig.orthrosAllConfig)
         return 64, 5
     elif machine_name == 'umich':
-        import uMichConfig
         os.environ['nNodes'] = str(n_nodes)
+        import uMichConfig
         parsl.load(config=uMichConfig.uMichConfig)
         return 36, n_nodes
     elif machine_name == 'marquette':
-        import marquetteConfig
         os.environ['nNodes'] = str(n_nodes)
+        import marquetteConfig
         parsl.load(config=marquetteConfig.marquetteConfig)
         return 36, n_nodes
     elif machine_name == 'purdue':
-        import purdueConfig
         os.environ['nNodes'] = str(n_nodes)
+        import purdueConfig
         parsl.load(config=purdueConfig.purdueConfig)
         return 128, n_nodes
     else:
