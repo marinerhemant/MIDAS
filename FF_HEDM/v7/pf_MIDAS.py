@@ -247,6 +247,17 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
         with open(thisParamFN, 'w') as thisPF:
             for line in paramContents:
                 thisPF.write(line)
+                
+                # Check for PanelShiftsFile and copy if exists
+                if line.strip().startswith('PanelShiftsFile'):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        psShiftFile = parts[1]
+                        if os.path.exists(psShiftFile):
+                            shutil.copy2(psShiftFile, thisDir)
+                            logger.info(f"Copied PanelShiftsFile {psShiftFile} to {thisDir}")
+                        else:
+                            logger.warning(f"PanelShiftsFile specified {psShiftFile} but does not exist.")
         
         # Create necessary directories
         Path(os.path.join(thisDir, 'Temp')).mkdir(parents=True, exist_ok=True)

@@ -797,6 +797,19 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
     setup_output_directories(result_dir)
     if os.path.exists(ps_fn):
         shutil.copy2(ps_fn, result_dir)
+        
+        # Check for PanelShiftsFile and copy if exists
+        try:
+            params = read_parameter_file(ps_fn)
+            if 'PanelShiftsFile' in params:
+                 psShiftFile = params['PanelShiftsFile']
+                 if os.path.exists(psShiftFile):
+                     shutil.copy2(psShiftFile, result_dir)
+                     logger.info(f"Copied PanelShiftsFile {psShiftFile} to {result_dir}")
+                 else:
+                     logger.warning(f"PanelShiftsFile specified {psShiftFile} but does not exist.")
+        except Exception as e:
+            logger.error(f"Failed to copy PanelShiftsFile: {e}")
     
     t0 = time.time()
     

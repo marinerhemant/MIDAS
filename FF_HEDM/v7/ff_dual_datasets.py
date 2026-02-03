@@ -348,6 +348,19 @@ def process_dataset_until_binning(
     
     setup_output_directories(result_dir)
     shutil.copy2(ps_fn, result_dir)
+
+    # Check for PanelShiftsFile and copy if exists
+    try:
+        params = read_parameter_file(ps_fn)
+        if 'PanelShiftsFile' in params:
+             psShiftFile = params['PanelShiftsFile']
+             if os.path.exists(psShiftFile):
+                 shutil.copy2(psShiftFile, result_dir)
+                 logger.info(f"[{dataset_id}] Copied PanelShiftsFile {psShiftFile} to {result_dir}")
+             else:
+                 logger.warning(f"[{dataset_id}] PanelShiftsFile specified {psShiftFile} but does not exist.")
+    except Exception as e:
+        logger.error(f"[{dataset_id}] Failed to copy PanelShiftsFile: {e}")
     
     t0 = time.time()
     
