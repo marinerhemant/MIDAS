@@ -779,34 +779,16 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
     double r_idx = (double)usefulPixels[i * 2 + 0];
     double c_idx = (double)usefulPixels[i * 2 + 1];
 
-    double y_shifted = r_idx;
-    double z_shifted = c_idx;
-
+    double pdY = 0, pdZ = 0;
     int pIdx = GetPanelIndex(r_idx, c_idx, nPanels, panels);
     if (pIdx >= 0) {
-      double cy = (panels[pIdx].yMin + panels[pIdx].yMax) / 2.0;
-      double cz = (panels[pIdx].zMin + panels[pIdx].zMax) / 2.0;
-      double rot = panels[pIdx].rot;
-
-      double dy_rel = r_idx - cy;
-      double dz_rel = c_idx - cz;
-
-      double y_rot =
-          cy + dy_rel * cos(rot * DEG2RAD) - dz_rel * sin(rot * DEG2RAD);
-      double z_rot =
-          cz + dy_rel * sin(rot * DEG2RAD) + dz_rel * cos(rot * DEG2RAD);
-
-      y_shifted = y_rot + panels[pIdx].dY;
-      z_shifted = z_rot + panels[pIdx].dZ;
-    } else {
-      // Apply simple shift if found? Original code implied simple shift was
-      // only if pIdx >= 0. Original code: pdY=0, pdZ=0 if pIdx < 0. So
-      // y_shifted = r_idx, z_shifted = c_idx.
+      pdY = panels[pIdx].dY;
+      pdZ = panels[pIdx].dZ;
     }
 
     // Calculate radius and angle for each pixel
-    Rs[i] = CALC_NORM_2(y_shifted - yCen, z_shifted - zCen);
-    Etas[i] = calcEtaAngle(-y_shifted + yCen, z_shifted - zCen);
+    Rs[i] = CALC_NORM_2(r_idx + pdY - yCen, c_idx + pdZ - zCen);
+    Etas[i] = calcEtaAngle(-(r_idx + pdY) + yCen, c_idx + pdZ - zCen);
 
     // Track min/max values
     if (Rs[i] > RMax)

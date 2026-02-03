@@ -507,35 +507,25 @@ static double problem_function(unsigned n, const double *x, double *grad,
   for (i = 0; i < nIndices; i++) {
     double n0 = 2, n1 = 4, n2 = 2, Yc, Zc;
     double Rad, Eta, RNorm, DistortFunc, Rcorr, RIdeal, EtaT;
-    double Y_rot = YMean[i];
-    double Z_rot = ZMean[i];
     double dY = 0, dZ = 0;
     int pIdx =
         GetPanelIndex((double)YMean[i], (double)ZMean[i], nPanels, panels);
-
-    if (pIdx >= 0) {
-      double rot = 0;
-      if (n > 9) {
-        if (pIdx != f_data->fixPanel) {
-          int logicalIndex = (pIdx < f_data->fixPanel) ? pIdx : pIdx - 1;
-          int xIdx = 9 + logicalIndex * 3;
-          dY = x[xIdx];
-          dZ = x[xIdx + 1];
-          rot = x[xIdx + 2];
-        }
-      }
-
-      // Rotation Logic
-      double cy = (panels[pIdx].yMin + panels[pIdx].yMax) / 2.0;
-      double cz = (panels[pIdx].zMin + panels[pIdx].zMax) / 2.0;
-      double dy_rel = YMean[i] - cy;
-      double dz_rel = ZMean[i] - cz;
-      Y_rot = cy + dy_rel * cos(rot * deg2rad) - dz_rel * sin(rot * deg2rad);
-      Z_rot = cz + dy_rel * sin(rot * deg2rad) + dz_rel * cos(rot * deg2rad);
+    if (pIdx == -1) {
+      continue;
     }
 
-    Yc = -(Y_rot + dY - ybc) * px;
-    Zc = (Z_rot + dZ - zbc) * px;
+    dY = 0;
+    dZ = 0;
+    if (n > 9) {
+      if (pIdx != f_data->fixPanel) {
+        int logicalIndex = (pIdx < f_data->fixPanel) ? pIdx : pIdx - 1;
+        int xIdx = 9 + logicalIndex * 2;
+        dY = x[xIdx];
+        dZ = x[xIdx + 1];
+      }
+    }
+    Yc = -(YMean[i] + dY - ybc) * px;
+    Zc = (ZMean[i] + dZ - zbc) * px;
     double ABC[3] = {0, Yc, Zc};
     double ABCPr[3];
     MatrixMult(TRs, ABC, ABCPr);
@@ -571,16 +561,16 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
                   double *p1, double *p2, double *p3, double *MeanDiff,
                   double tolTilts, double tolLsd, double tolBC, double tolP,
                   double tolP0, double tolP1, double tolP2, double tolP3,
-                  double tolShifts, double tolRotPanel, double px,
-                  double outlierFactor, int minIndices, int fixPanel) {
+                  double tolShifts, double px, double outlierFactor,
+                  int minIndices, int fixPanel) {
   // Look at the possibility of including translations for each of the small
   // panels on a multi-panel detector in the optimization.... Also change
   // CorrectTiltSpatialDistortion to include translations!!!
   unsigned n = 9;
   if (tolShifts > EPS && nPanels > 1) {
-    // Instead of n=9, we need n=9+(nPanels-1)*3 (dY, dZ, rot)
+    // Instead of n=9, we need n=9+(nPanels-1)*2
     // We anchor Panel 0 to (0,0) to avoid degeneracy with ybc/zbc
-    n += (nPanels - 1) * 3;
+    n += (nPanels - 1) * 2;
   }
   struct my_func_data f_data;
   f_data.nIndices = nIndices;
@@ -666,19 +656,8 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
           xu[p_idx] = x[p_idx] + tolShifts;
         }
         p_idx++;
-
-        x[p_idx] = panels[i].rot;
-        if (panelCounts[i] < minIndices) {
-          xl[p_idx] = 0;
-          xu[p_idx] = 0;
-        } else {
-          xl[p_idx] = x[p_idx] - tolRotPanel;
-          xu[p_idx] = x[p_idx] + tolRotPanel;
-        }
-        p_idx++;
       }
     }
-
     // free(panelCounts); // VLA - no free needed
     struct my_func_data *f_datat;
     f_datat = &f_data;
@@ -689,9 +668,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
     nlopt_set_upper_bounds(opt, xu);
     nlopt_set_min_objective(opt, problem_function, trp);
     double minf;
-    int res = nlopt_optimize(opt, x, &minf);
-    printf("DEBUG: nlopt_optimize returned %d, minf=%f, n=%d, tolRotPanel=%f\n",
-           res, minf, n, tolRotPanel);
+    nlopt_optimize(opt, x, &minf);
     nlopt_destroy(opt);
     *MeanDiff = minf / (OBJ_FUNC_SCALE * nIndices);
 
@@ -713,7 +690,6 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
       if (fixPanel >= 0 && fixPanel < nPanels) {
         panels[fixPanel].dY = 0;
         panels[fixPanel].dZ = 0;
-        panels[fixPanel].rot = 0;
       }
 
       // Update others
@@ -724,7 +700,6 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
             continue;
           panels[i].dY = x[xIdx++];
           panels[i].dZ = x[xIdx++];
-          panels[i].rot = x[xIdx++];
         }
       } else {
         // Reset others if optimization didn't run for them
@@ -733,7 +708,6 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
             continue;
           panels[i].dY = 0;
           panels[i].dZ = 0;
-          panels[i].rot = 0;
         }
       }
     }
@@ -1209,7 +1183,6 @@ int main(int argc, char *argv[]) {
          tolP3 = 0, tyin = 0, tzin = 0, p0in = 0, p1in = 0, p2in = 0, p3in = 0,
          padY = 0, padZ = 0;
   double tolShifts = 1.0;
-  double tolRotPanel = 0.0;
   double outlierFactor = 0.0;
   int MinIndicesForFit = 1;
   int FixPanelID = 0;
@@ -1527,13 +1500,6 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %lf", dummy, &tolLsd);
       continue;
     }
-    str = "tolRotPanel ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolRotPanel);
-      continue;
-    }
-    // str = "tolP "; is next
     str = "tolP ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
@@ -2071,11 +2037,10 @@ int main(int argc, char *argv[]) {
     FitTiltBCLsd(nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
                  tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit, &ybcFit,
                  &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts, tolLsd,
-                 tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts,
-                 tolRotPanel, px, outlierFactor, MinIndicesForFit, FixPanelID);
+                 tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts, px,
+                 outlierFactor, MinIndicesForFit, FixPanelID);
     printf("Number of function calls: %lld\n", NrCalls);
-    printf("Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 "
-           "%0.12f\np1 "
+    printf("Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 "
            "%0.12f\np2 %0.12f\np3 %0.12f\nMeanStrain %0.12lf\n",
            LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3, MeanDiff);
     double *Etas, *Diffs, *RadOuts;
@@ -2083,45 +2048,6 @@ int main(int argc, char *argv[]) {
     Diffs = malloc(nIndices * sizeof(*Diffs));
     RadOuts = malloc(nIndices * sizeof(*RadOuts));
     int *IsOutlier = calloc(nIndices, sizeof(int));
-
-    // Update Yc/Zc with optimized parameters
-    // Reset Yc/Zc to raw pixels first (using YMean/ZMean Lab)
-    for (i = 0; i < nIndices; i++) {
-      Yc[i] = (ybc - (YMean[i] / px));
-      Zc[i] = (zbc + (ZMean[i] / px));
-    }
-
-    for (i = 0; i < nIndices; i++) {
-      double y_raw = Yc[i];
-      double z_raw = Zc[i];
-      double dY = 0, dZ = 0, rot = 0;
-      if (nPanels > 0) {
-        int pIdx = GetPanelIndex(y_raw, z_raw, nPanels, panels);
-        if (pIdx >= 0) {
-          dY = panels[pIdx].dY;
-          dZ = panels[pIdx].dZ;
-          rot = panels[pIdx].rot;
-
-          double cy = (panels[pIdx].yMin + panels[pIdx].yMax) / 2.0;
-          double cz = (panels[pIdx].zMin + panels[pIdx].zMax) / 2.0;
-          double dy_rel = y_raw - cy;
-          double dz_rel = z_raw - cz;
-
-          double y_rot =
-              cy + dy_rel * cos(rot * deg2rad) - dz_rel * sin(rot * deg2rad);
-          double z_rot =
-              cz + dy_rel * sin(rot * deg2rad) + dz_rel * cos(rot * deg2rad);
-          y_raw = y_rot;
-          z_raw = z_rot;
-        }
-      }
-      // Corrected coordinate on global detector (relative to new BC)
-      // Yc is passed to CorrectTilt, which expects pixels.
-      // If we applied shifts dY/dZ, the new pixel pos is y_raw + dY.
-      Yc[i] = y_raw + dY;
-      Zc[i] = z_raw + dZ;
-    }
-
     CorrectTiltSpatialDistortion(nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px,
                                  LsdFit, ybcFit, zbcFit, tx, ty, tz, p0, p1, p2,
                                  p3, Etas, Diffs, RadOuts, &StdDiff,
@@ -2148,8 +2074,14 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < nIndices; i++) {
       if (Diffs[i] < 0)
         continue;
-      double YRawCorr = Yc[i];
-      double ZRawCorr = Zc[i];
+      double dY = 0, dZ = 0;
+      int pIdx = GetPanelIndex(Yc[i], Zc[i], nPanels, panels);
+      if (pIdx >= 0) {
+        dY = panels[pIdx].dY;
+        dZ = panels[pIdx].dZ;
+      }
+      double YRawCorr = Yc[i] + dY;
+      double ZRawCorr = Zc[i] + dZ;
       fprintf(Out, "%f %10.8f %10.8f %f %10.8f %10.8f %f %d %f %f\n", Etas[i],
               Diffs[i], RadOuts[i], EtaIns[i], DiffIns[i], RadIns[i],
               IdealTtheta[i], IsOutlier[i], YRawCorr, ZRawCorr);

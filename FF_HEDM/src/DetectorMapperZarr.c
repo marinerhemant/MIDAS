@@ -331,33 +331,14 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
       testPos *= NrPixelsY;
       testPos += i;
       testPos += i;
-      double pdY = 0, pdZ = 0, rot = 0;
+      double pdY = 0, pdZ = 0;
       int pIdx = GetPanelIndex((double)i, (double)j, nPanels, panels);
-      double y_local = (double)i + distortionMapY[testPos];
-      double z_local = (double)j + distortionMapZ[testPos];
-
       if (pIdx >= 0) {
         pdY = panels[pIdx].dY;
         pdZ = panels[pIdx].dZ;
-        rot = panels[pIdx].rot;
-
-        double cy = (panels[pIdx].yMin + panels[pIdx].yMax) / 2.0;
-        double cz = (panels[pIdx].zMin + panels[pIdx].zMax) / 2.0;
-
-        double dy_rel = y_local - cy;
-        double dz_rel = z_local - cz;
-
-        double y_rot =
-            cy + dy_rel * cos(rot * deg2rad) - dz_rel * sin(rot * deg2rad);
-        double z_rot =
-            cz + dy_rel * sin(rot * deg2rad) + dz_rel * cos(rot * deg2rad);
-
-        ypr = y_rot + pdY;
-        zpr = z_rot + pdZ;
-      } else {
-        ypr = y_local;
-        zpr = z_local;
       }
+      ypr = (double)i + distortionMapY[testPos] + pdY;
+      zpr = (double)j + distortionMapZ[testPos] + pdZ;
       for (k = 0; k < 2; k++) {
         for (l = 0; l < 2; l++) {
           Y = ypr + dy[k];

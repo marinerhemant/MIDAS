@@ -7,13 +7,12 @@
 
 typedef struct {
   int id;
-  int yMin;   // Start Pixel Y (Inclusive)
-  int yMax;   // End Pixel Y (Inclusive)
-  int zMin;   // Start Pixel Z
-  int zMax;   // End Pixel Z
-  double dY;  // Shift Y
-  double dZ;  // Shift Z
-  double rot; // Rotation (radians)
+  int yMin;  // Start Pixel Y (Inclusive)
+  int yMax;  // End Pixel Y (Inclusive)
+  int zMin;  // Start Pixel Z
+  int zMax;  // End Pixel Z
+  double dY; // Shift Y
+  double dZ; // Shift Z
 } Panel;
 
 // Generates panels from parameters.

@@ -663,27 +663,12 @@ static void calc_grain_errors(int nGrains, int nPanels, Panel *panels,
       SpotInfoShifted[i][4] = g_data->SpotInfoAll[i][4];
       double y_raw = g_data->SpotInfoAll[i][2];
       double z_raw = g_data->SpotInfoAll[i][3];
-      double dy = 0, dz = 0, rot = 0;
+      double dy = 0, dz = 0;
       if (nPanels > 0) {
         int pIdx = GetPanelIndex(y_raw, z_raw, nPanels, panels);
         if (pIdx >= 0) {
           dy = panels[pIdx].dY;
           dz = panels[pIdx].dZ;
-          rot = panels[pIdx].rot;
-
-          double cy = (panels[pIdx].yMin + panels[pIdx].yMax) / 2.0;
-          double cz = (panels[pIdx].zMin + panels[pIdx].zMax) / 2.0;
-
-          double dy_rel = y_raw - cy;
-          double dz_rel = z_raw - cz;
-
-          double y_rot =
-              cy + dy_rel * cos(rot * deg2rad) - dz_rel * sin(rot * deg2rad);
-          double z_rot =
-              cz + dy_rel * sin(rot * deg2rad) + dz_rel * cos(rot * deg2rad);
-
-          y_raw = y_rot;
-          z_raw = z_rot;
         }
       }
       SpotInfoShifted[i][2] = y_raw + dy;
@@ -816,10 +801,10 @@ static double problem_function(unsigned n, const double *x, double *grad,
 void FitMultipleGrains(struct GrainData *grains, int nGrains, double OptP[10],
                        double NonOptP[5], double tols[22], double *Out,
                        Panel *panels, int nPanels, double tolShifts,
-                       double tolRotPanel, int *spotsPerPanel, int fixPanel) {
+                       int *spotsPerPanel, int fixPanel) {
   unsigned n = nGrains * 12 + 10; // Grains(12 each) + Global(10)
   if (nPanels > 1) {
-    n += (nPanels - 1) * 3;
+    n += (nPanels - 1) * 2;
   }
 
   double *x = malloc(n * sizeof(double));
@@ -896,15 +881,6 @@ void FitMultipleGrains(struct GrainData *grains, int nGrains, double OptP[10],
         xu[p_idx] = x[p_idx];
       }
       p_idx++;
-
-      x[p_idx] = panels[i].rot;
-      xl[p_idx] = x[p_idx] - tolRotPanel;
-      xu[p_idx] = x[p_idx] + tolRotPanel;
-      if (spotsPerPanel != NULL && spotsPerPanel[i] < 1) {
-        xl[p_idx] = x[p_idx]; // Lock
-        xu[p_idx] = x[p_idx];
-      }
-      p_idx++;
     }
   }
 
@@ -977,7 +953,6 @@ void FitMultipleGrains(struct GrainData *grains, int nGrains, double OptP[10],
     for (int i = 1; i < nPanels; i++) {
       panels[i].dY = x[p_idx++];
       panels[i].dZ = x[p_idx++];
-      panels[i].rot = x[p_idx++];
     }
     panels[0].dY = 0;
     panels[0].dZ = 0;
@@ -1032,7 +1007,6 @@ int main(int argc, char *argv[]) {
   int NrPixels, nOmeRanges = 0, nBoxSizes = 0, cs = 0, RingNumbers[200],
                 cs2 = 0;
   double tolShifts = 1.0;
-  double tolRotPanel = 0.0;
   double tolBC = 1.0, tolTilts = 1.0, tolP0 = 1E-3, tolP1 = 1E-3, tolP2 = 1E-3,
          tolP3 = 45.0, tolTiltX, tolTiltY, tolTiltZ;
   int FixPanelID = 0;
@@ -1252,12 +1226,6 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %lf", dummy, &tolShifts);
-      continue;
-    }
-    str = "tolRotPanel ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolRotPanel);
       continue;
     }
     str = "tolBC ";
@@ -1593,13 +1561,10 @@ int main(int argc, char *argv[]) {
   // Perform Optimization
   // Prepare Output
   double *Out; // Declared Out
-  int nOptParams = nGrains * 12 + 10;
-  if (nPanels > 1) {
-    nOptParams += (nPanels - 1) * 3;
-  }
-  Out = malloc(nOptParams * sizeof(double));
+  Out = malloc(((nGrains * 12 + 10) + nPanels * 2) *
+               sizeof(double)); // Fixed size calc too just in case
   FitMultipleGrains(grainDataArray, nGrains, OptP, NonOptP, tols, Out, panels,
-                    nPanels, tolShifts, tolRotPanel, spotsPerPanel, FixPanelID);
+                    nPanels, tolShifts, spotsPerPanel, FixPanelID);
 
   if (nPanels > 1) {
     char fullPath[MAX_LINE_LENGTH];
