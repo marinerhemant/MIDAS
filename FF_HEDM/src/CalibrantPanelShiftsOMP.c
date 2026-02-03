@@ -532,17 +532,10 @@ static double problem_function(unsigned n, const double *x, double *grad,
     double cz = (panels[pIdx].zMin + panels[pIdx].zMax) / 2.0;
     double dy_rel = YMean[i] - cy;
     double dz_rel = ZMean[i] - cz;
-    double Y_rot =
+    double Y_rot = double Y_rot =
         cy + dy_rel * cos(rot * deg2rad) - dz_rel * sin(rot * deg2rad);
     double Z_rot =
         cz + dy_rel * sin(rot * deg2rad) + dz_rel * cos(rot * deg2rad);
-
-    // Debug print for first call first index
-    if (NrCalls == 0 && i == 0) {
-      printf(
-          "DEBUG: pIdx=%d rot=%f dY=%f dZ=%f cy=%f cz=%f Y_rot=%f Z_rot=%f\n",
-          pIdx, rot, dY, dZ, cy, cz, Y_rot, Z_rot);
-    }
 
     Yc = -(Y_rot + dY - ybc) * px;
     Zc = (Z_rot + dZ - zbc) * px;
@@ -2078,10 +2071,10 @@ int main(int argc, char *argv[]) {
              "***********\n\n");
       free(panelCounts);
     }
-    FitTiltBCLsd(nIndices, YMean, ZMean, IdealTtheta, Lsd, MaxRingRad, ybc, zbc,
-                 tx, tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit,
-                 &ybcFit, &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts,
-                 tolLsd, tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts,
+    FitTiltBCLsd(nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
+                 tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit, &ybcFit,
+                 &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts, tolLsd,
+                 tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts,
                  tolRotPanel, px, outlierFactor, MinIndicesForFit, FixPanelID);
     printf("Number of function calls: %lld\n", NrCalls);
     printf("Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 "
@@ -2095,9 +2088,15 @@ int main(int argc, char *argv[]) {
     int *IsOutlier = calloc(nIndices, sizeof(int));
 
     // Update Yc/Zc with optimized parameters
+    // Reset Yc/Zc to raw pixels first (using YMean/ZMean Lab)
     for (i = 0; i < nIndices; i++) {
-      double y_raw = YMean[i];
-      double z_raw = ZMean[i];
+      Yc[i] = (ybc - (YMean[i] / px));
+      Zc[i] = (zbc + (ZMean[i] / px));
+    }
+
+    for (i = 0; i < nIndices; i++) {
+      double y_raw = Yc[i];
+      double z_raw = Zc[i];
       double dY = 0, dZ = 0, rot = 0;
       if (nPanels > 0) {
         int pIdx = GetPanelIndex(y_raw, z_raw, nPanels, panels);
@@ -2119,8 +2118,11 @@ int main(int argc, char *argv[]) {
           z_raw = z_rot;
         }
       }
-      Yc[i] = -(y_raw + dY - ybcFit) * px;
-      Zc[i] = (z_raw + dZ - zbcFit) * px;
+      // Corrected coordinate on global detector (relative to new BC)
+      // Yc is passed to CorrectTilt, which expects pixels.
+      // If we applied shifts dY/dZ, the new pixel pos is y_raw + dY.
+      Yc[i] = y_raw + dY;
+      Zc[i] = z_raw + dZ;
     }
 
     CorrectTiltSpatialDistortion(nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px,
