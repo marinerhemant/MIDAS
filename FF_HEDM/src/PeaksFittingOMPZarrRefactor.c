@@ -2075,6 +2075,8 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
   int locOmegaCenterData = -1; // To store zip index of omegaCenter data chunk
   int original_nFrames_for_omega =
       0; // To store nFrames before skipFrame adjustment
+  int nGapsY = 0;
+  int nGapsZ = 0;
 
   // Parse all files in the archive
   int count = 0;
@@ -2460,8 +2462,6 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
   if (NPanelsY > 0 && NPanelsZ > 0) {
     int *PanelGapsY = NULL;
     int *PanelGapsZ = NULL;
-    int nGapsY = 0;
-    int nGapsZ = 0;
 
     if (locPanelGapsY != -1)
       readZarrIntArray(archive, locPanelGapsY, &nGapsY, &PanelGapsY);
