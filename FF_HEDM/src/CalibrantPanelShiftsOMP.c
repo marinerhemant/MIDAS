@@ -2151,14 +2151,8 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < nIndices; i++) {
       if (Diffs[i] < 0)
         continue;
-      double dY = 0, dZ = 0;
-      int pIdx = GetPanelIndex(Yc[i], Zc[i], nPanels, panels);
-      if (pIdx >= 0) {
-        dY = panels[pIdx].dY;
-        dZ = panels[pIdx].dZ;
-      }
-      double YRawCorr = Yc[i] + dY;
-      double ZRawCorr = Zc[i] + dZ;
+      double YRawCorr = Yc[i];
+      double ZRawCorr = Zc[i];
       fprintf(Out, "%f %10.8f %10.8f %f %10.8f %10.8f %f %d %f %f\n", Etas[i],
               Diffs[i], RadOuts[i], EtaIns[i], DiffIns[i], RadIns[i],
               IdealTtheta[i], IsOutlier[i], YRawCorr, ZRawCorr);
