@@ -18,7 +18,7 @@ uMichConfig = Config(
                 min_blocks=1,
                 max_blocks=nNodes,
                 partition='standard',
-                scheduler_options='#SBATCH --account=abucsek1',
+                scheduler_options='#SBATCH --account=abucsek0',
                 worker_init='source /home/wenxli/miniconda3/bin/activate',
                 walltime='90:00:00',
                 cmd_timeout=120,
