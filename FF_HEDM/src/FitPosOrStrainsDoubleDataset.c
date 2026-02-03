@@ -2152,7 +2152,7 @@ int main(int argc, char *argv[]) {
       Convert3x3To9(Orient0_3, Orient0);
       OrientMat2Euler(Orient0_3, Euler0);
       double **spotsYZO, **spotsYZO2 = NULL;
-      spotsYZO = allocMatrix(nSpotsBest, 8);
+      spotsYZO = allocMatrix(nSpotsBest, 9);
       spotsYZO2 = allocMatrix(nSpotsBest, 8);
       int nSpotsYZO = nSpotsBest;
       // Idea: spotID always starts from 1 and is increasing in number, so
