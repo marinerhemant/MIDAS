@@ -2430,7 +2430,7 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
   }
 
   // Generate Panels
-  // print nPanels and PanelShifts file
+  // print nPanels, panel gaps, and PanelShifts file
   printf("nPanels: %d %d\n", NPanelsY, NPanelsZ);
   printf("PanelShiftsFile: %s\n", PanelShiftsFile);
   if (NPanelsY > 0 && NPanelsZ > 0) {
@@ -2443,7 +2443,11 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
       readZarrIntArray(archive, locPanelGapsY, &nGapsY, &PanelGapsY);
     if (locPanelGapsZ != -1)
       readZarrIntArray(archive, locPanelGapsZ, &nGapsZ, &PanelGapsZ);
-
+    printf("PanelGapsY: %d %d\n", nGapsY, nGapsZ);
+    for (int i = 0; i < nGapsY; i++)
+      printf("PanelGapsY[%d]: %d\n", i, PanelGapsY[i]);
+    for (int i = 0; i < nGapsZ; i++)
+      printf("PanelGapsZ[%d]: %d\n", i, PanelGapsZ[i]);
     GeneratePanels(NPanelsY, NPanelsZ, PanelSizeY, PanelSizeZ, PanelGapsY,
                    PanelGapsZ, &panels, &nPanels);
 
