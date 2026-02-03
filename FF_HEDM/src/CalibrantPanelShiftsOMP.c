@@ -532,7 +532,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
     double cz = (panels[pIdx].zMin + panels[pIdx].zMax) / 2.0;
     double dy_rel = YMean[i] - cy;
     double dz_rel = ZMean[i] - cz;
-    double Y_rot = double Y_rot =
+    double Y_rot =
         cy + dy_rel * cos(rot * deg2rad) - dz_rel * sin(rot * deg2rad);
     double Z_rot =
         cz + dy_rel * sin(rot * deg2rad) + dz_rel * cos(rot * deg2rad);
