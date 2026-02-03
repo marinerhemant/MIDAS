@@ -699,7 +699,9 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
     nlopt_set_upper_bounds(opt, xu);
     nlopt_set_min_objective(opt, problem_function, trp);
     double minf;
-    nlopt_optimize(opt, x, &minf);
+    int res = nlopt_optimize(opt, x, &minf);
+    printf("DEBUG: nlopt_optimize returned %d, minf=%f, n=%d, tolRotPanel=%f\n",
+           res, minf, n, tolRotPanel);
     nlopt_destroy(opt);
     *MeanDiff = minf / (OBJ_FUNC_SCALE * nIndices);
 
