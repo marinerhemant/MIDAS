@@ -207,7 +207,20 @@ int main(int argc, char **argv) {
   double omeStart, omeStep;
   double Lam = 0.172978, Polariz = 0.99, SHpL = 0.002, U = 1.163, V = -0.126,
          W = 0.063, X = 0.0, Y = 0.0, Z = 0.0;
+  char darkDataset[1024];
+  char dataDataset[1024];
+  sprintf(darkDataset, "exchange/dark");
+  sprintf(dataDataset, "exchange/data");
+
   while (fgets(aline, 4096, paramFile) != NULL) {
+    str = "darkDataset ";
+    if (StartsWith(aline, str) == 1) {
+      sscanf(aline, "%s %s", dummy, darkDataset);
+    }
+    str = "dataDataset ";
+    if (StartsWith(aline, str) == 1) {
+      sscanf(aline, "%s %s", dummy, dataDataset);
+    }
     str = "Z ";
     if (StartsWith(aline, str) == 1) {
       sscanf(aline, "%s %lf", dummy, &Z);
@@ -447,7 +460,7 @@ int main(int argc, char **argv) {
     darkFN = argv[3];
     if (dType == 8) {
       hsize_t dims[3];
-      GetHDF5Dimensions(darkFN, "exchange/dark", dims);
+      GetHDF5Dimensions(darkFN, darkDataset, dims);
       nFrames = dims[0] - skipFrame;
       printf(
           "Reading dark file: %s (HDF5), nFrames: %d (dims: %llu, skip: %d)\n",
@@ -466,8 +479,8 @@ int main(int argc, char **argv) {
 
     for (i = 0; i < nFrames; i++) {
       if (dType == 8) {
-        rc = ReadHDF5Frame(darkFN, "exchange/dark", NrPixelsY * NrPixelsZ,
-                           DarkInT, i + skipFrame);
+        rc = ReadHDF5Frame(darkFN, darkDataset, NrPixelsY * NrPixelsZ, DarkInT,
+                           i + skipFrame);
       } else if (dType == 6 || dType == 7 || dType == 9) {
         rc = ReadTiffFrame(darkFN, dType, NrPixelsY * NrPixelsZ, DarkInT, i);
       } else {
@@ -501,7 +514,7 @@ int main(int argc, char **argv) {
   hsize_t dims[3];
   if (dType == 8) {
     // Read dims
-    GetHDF5Dimensions(argv[2], "exchange/data", dims);
+    GetHDF5Dimensions(argv[2], dataDataset, dims);
     printf("HDF5 Dimensions: %llu x %llu x %llu\n", (unsigned long long)dims[0],
            (unsigned long long)dims[1], (unsigned long long)dims[2]);
     nFrames = dims[0] - skipFrame;

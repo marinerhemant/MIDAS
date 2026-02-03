@@ -1689,7 +1689,7 @@ int main(int argc, char *argv[]) {
       // sprintf(dname,"%s",darkDatasetName);
       // printf("%s\n",dname);
       // return 1;
-      dname = "exchange/dark";
+      dname = darkDatasetName;
       rc = SumHDF5Frames(FileName, dname, NrPixelsY * NrPixelsZ, DarkFile,
                          skipFrame);
       MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, DarkFile, DarkFile2);
@@ -1715,7 +1715,7 @@ int main(int argc, char *argv[]) {
       for (j = 0; j < (NrPixels * NrPixels); j++)
         AverageDark[j] = DarkFile2[j];
       // sprintf(dname,"%s",dataDatasetName);
-      dname = "exchange/data";
+      dname = dataDatasetName;
       rc = SumHDF5Frames(FileName, dname, NrPixelsY * NrPixelsZ, Image,
                          skipFrame);
       MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, Image, Image2);
