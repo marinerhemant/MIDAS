@@ -859,7 +859,7 @@ int main(int argc, char *argv[]) {
                 cs2 = 0;
   double tolShifts = 1.0;
   double tolBC = 1.0, tolTilts = 1.0, tolP0 = 1E-3, tolP1 = 1E-3, tolP2 = 1E-3,
-         tolP3 = 45.0;
+         tolP3 = 45.0, tolTiltX, tolTiltY, tolTiltZ;
   int FixPanelID = 0;
 
   // Panel parameters
@@ -1089,6 +1089,27 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %lf", dummy, &tolTilts);
+      tolTiltX = tolTilts;
+      tolTiltY = tolTilts;
+      tolTiltZ = tolTilts;
+      continue;
+    }
+    str = "tolTiltX ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolTiltX);
+      continue;
+    }
+    str = "tolTiltY ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolTiltY);
+      continue;
+    }
+    str = "tolTiltZ ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolTiltZ);
       continue;
     }
     str = "tolP ";
@@ -1332,9 +1353,9 @@ int main(int argc, char *argv[]) {
       1,
       1,
       1,
-      tolTilts,
-      tolTilts,
-      tolTilts,
+      tolTiltX,
+      tolTiltY,
+      tolTiltZ,
       tolBC,
       tolBC,
       0.00001,

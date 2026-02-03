@@ -796,1031 +796,927 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
       free(tempDiffs);
     }
   }
+}
 
-  static inline void CorrectTiltSpatialDistortion(
-      int nIndices, double MaxRad, double *YMean, double *ZMean,
-      double *IdealTtheta, double px, double Lsd, double ybc, double zbc,
-      double tx, double ty, double tz, double p0, double p1, double p2,
-      double p3, double *Etas, double *Diffs, double *RadOuts, double *StdDiff,
-      double outlierFactor, int *IsOutlier) {
-    double txr, tyr, tzr;
-    txr = deg2rad * tx;
-    tyr = deg2rad * ty;
-    tzr = deg2rad * tz;
-    double Rx[3][3] = {
-        {1, 0, 0}, {0, cos(txr), -sin(txr)}, {0, sin(txr), cos(txr)}};
-    double Ry[3][3] = {
-        {cos(tyr), 0, sin(tyr)}, {0, 1, 0}, {-sin(tyr), 0, cos(tyr)}};
-    double Rz[3][3] = {
-        {cos(tzr), -sin(tzr), 0}, {sin(tzr), cos(tzr), 0}, {0, 0, 1}};
-    double TRint[3][3], TRs[3][3];
-    MatrixMultF33(Ry, Rz, TRint);
-    MatrixMultF33(Rx, TRint, TRs);
-    int i, j, k;
-    double n0 = 2, n1 = 4, n2 = 2, Yc, Zc;
-    double Rad, Eta, RNorm, DistortFunc, Rcorr, RIdeal, EtaT, Diff,
-        MeanDiff = 0;
-    int nValidPoints = 0;
-    for (i = 0; i < nIndices; i++) {
-      double dY = 0, dZ = 0;
-      int pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
-      if (pIdx == -1) {
-        Diffs[i] = -1.0; // Mark as invalid
-        continue;
-      }
-      nValidPoints++;
-
-      if (pIdx >= 0) {
-        dY = panels[pIdx].dY;
-        dZ = panels[pIdx].dZ;
-      }
-      Yc = -(YMean[i] + dY - ybc) * px;
-      Zc = (ZMean[i] + dZ - zbc) * px;
-      double ABC[3] = {0, Yc, Zc};
-      double ABCPr[3];
-      MatrixMult(TRs, ABC, ABCPr);
-      double XYZ[3] = {Lsd + ABCPr[0], ABCPr[1], ABCPr[2]};
-      Rad = (Lsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
-      Eta = CalcEtaAngle(XYZ[1], XYZ[2]);
-      RNorm = Rad / MaxRad;
-      EtaT = 90 - Eta;
-      DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
-                    (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
-                    (p2 * (pow(RNorm, n2))) + 1;
-      Rcorr = Rad * DistortFunc;
-      RIdeal = Lsd * tan(deg2rad * IdealTtheta[i]);
-      Diff = fabs(1 - (Rcorr / RIdeal));
-      Etas[i] = Eta;
-      Diffs[i] = Diff;
-      MeanDiff += Diff;
-      RadOuts[i] = Rcorr;
-      // printf("%lf %lf %lf %lf %lf %lf
-      // %lf\n",Rad,Lsd,XYZ[0],XYZ[1],XYZ[2],YMean[i],ZMean[i]);
+static inline void CorrectTiltSpatialDistortion(
+    int nIndices, double MaxRad, double *YMean, double *ZMean,
+    double *IdealTtheta, double px, double Lsd, double ybc, double zbc,
+    double tx, double ty, double tz, double p0, double p1, double p2, double p3,
+    double *Etas, double *Diffs, double *RadOuts, double *StdDiff,
+    double outlierFactor, int *IsOutlier) {
+  double txr, tyr, tzr;
+  txr = deg2rad * tx;
+  tyr = deg2rad * ty;
+  tzr = deg2rad * tz;
+  double Rx[3][3] = {
+      {1, 0, 0}, {0, cos(txr), -sin(txr)}, {0, sin(txr), cos(txr)}};
+  double Ry[3][3] = {
+      {cos(tyr), 0, sin(tyr)}, {0, 1, 0}, {-sin(tyr), 0, cos(tyr)}};
+  double Rz[3][3] = {
+      {cos(tzr), -sin(tzr), 0}, {sin(tzr), cos(tzr), 0}, {0, 0, 1}};
+  double TRint[3][3], TRs[3][3];
+  MatrixMultF33(Ry, Rz, TRint);
+  MatrixMultF33(Rx, TRint, TRs);
+  int i, j, k;
+  double n0 = 2, n1 = 4, n2 = 2, Yc, Zc;
+  double Rad, Eta, RNorm, DistortFunc, Rcorr, RIdeal, EtaT, Diff, MeanDiff = 0;
+  int nValidPoints = 0;
+  for (i = 0; i < nIndices; i++) {
+    double dY = 0, dZ = 0;
+    int pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
+    if (pIdx == -1) {
+      Diffs[i] = -1.0; // Mark as invalid
+      continue;
     }
-    if (nValidPoints > 0) {
-      MeanDiff /= nValidPoints;
-    } else {
-      MeanDiff = 0;
-    }
+    nValidPoints++;
 
-    // Filter outliers for StdDiff calculation
-    double *validDiffs = malloc(nIndices * sizeof(double));
-    int validCount = 0;
-    double threshold = (outlierFactor > 0)
-                           ? (outlierFactor * MeanDiff)
-                           : 1e9; // 1e9 effectively no filter if 0
-
-    if (outlierFactor > 0) {
-      double newSum = 0;
-      for (i = 0; i < nIndices; i++) {
-        if (Diffs[i] < 0) {
-          if (IsOutlier)
-            IsOutlier[i] = 1;
-          continue; // Skip invalid
-        }
-        if (Diffs[i] <= threshold) {
-          if (IsOutlier)
-            IsOutlier[i] = 0;
-          validDiffs[validCount] = Diffs[i];
-          newSum += Diffs[i];
-          validCount++;
-        } else {
-          if (IsOutlier)
-            IsOutlier[i] = 1;
-        }
-      }
-      if (validCount > 0) {
-        double originalMean = MeanDiff;
-        MeanDiff = newSum / validCount;
-        printf("StdDev Outlier Rejection (Factor %.2f): Excluded %d / %d "
-               "points. "
-               "Mean Strain: %.8f -> %.8f\n",
-               outlierFactor, nValidPoints - validCount, nValidPoints,
-               originalMean, MeanDiff);
-      }
-    } else {
-      for (i = 0; i < nIndices; i++) {
-        if (Diffs[i] >= 0) {
-          if (IsOutlier)
-            IsOutlier[i] = 0;
-          validDiffs[validCount] = Diffs[i];
-          validCount++;
-        } else {
-          if (IsOutlier)
-            IsOutlier[i] = 1;
-        }
-      }
+    if (pIdx >= 0) {
+      dY = panels[pIdx].dY;
+      dZ = panels[pIdx].dZ;
     }
-
-    double StdDiff2 = 0;
-    for (i = 0; i < validCount; i++) {
-      StdDiff2 += (validDiffs[i] - MeanDiff) * (validDiffs[i] - MeanDiff);
-    }
-    *StdDiff = sqrt(StdDiff2 / validCount);
-    free(validDiffs);
+    Yc = -(YMean[i] + dY - ybc) * px;
+    Zc = (ZMean[i] + dZ - zbc) * px;
+    double ABC[3] = {0, Yc, Zc};
+    double ABCPr[3];
+    MatrixMult(TRs, ABC, ABCPr);
+    double XYZ[3] = {Lsd + ABCPr[0], ABCPr[1], ABCPr[2]};
+    Rad = (Lsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
+    Eta = CalcEtaAngle(XYZ[1], XYZ[2]);
+    RNorm = Rad / MaxRad;
+    EtaT = 90 - Eta;
+    DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
+                  (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
+                  (p2 * (pow(RNorm, n2))) + 1;
+    Rcorr = Rad * DistortFunc;
+    RIdeal = Lsd * tan(deg2rad * IdealTtheta[i]);
+    Diff = fabs(1 - (Rcorr / RIdeal));
+    Etas[i] = Eta;
+    Diffs[i] = Diff;
+    MeanDiff += Diff;
+    RadOuts[i] = Rcorr;
+    // printf("%lf %lf %lf %lf %lf %lf
+    // %lf\n",Rad,Lsd,XYZ[0],XYZ[1],XYZ[2],YMean[i],ZMean[i]);
+  }
+  if (nValidPoints > 0) {
+    MeanDiff /= nValidPoints;
+  } else {
+    MeanDiff = 0;
   }
 
-  static inline void DoImageTransformations(int NrTransOpt, int TransOpt[10],
-                                            pixelvalue *Image, int NrPixels) {
-    int i, j, k, l, m;
-    pixelvalue **ImageTemp1, **ImageTemp2;
-    ImageTemp1 = allocMatrixPX(NrPixels, NrPixels);
-    ImageTemp2 = allocMatrixPX(NrPixels, NrPixels);
-    if (NrTransOpt == 0) {
-      return;
-    }
-    for (k = 0; k < NrPixels; k++) {
-      for (l = 0; l < NrPixels; l++) {
-        ImageTemp1[k][l] = Image[(NrPixels * k) + l];
+  // Filter outliers for StdDiff calculation
+  double *validDiffs = malloc(nIndices * sizeof(double));
+  int validCount = 0;
+  double threshold = (outlierFactor > 0)
+                         ? (outlierFactor * MeanDiff)
+                         : 1e9; // 1e9 effectively no filter if 0
+
+  if (outlierFactor > 0) {
+    double newSum = 0;
+    for (i = 0; i < nIndices; i++) {
+      if (Diffs[i] < 0) {
+        if (IsOutlier)
+          IsOutlier[i] = 1;
+        continue; // Skip invalid
+      }
+      if (Diffs[i] <= threshold) {
+        if (IsOutlier)
+          IsOutlier[i] = 0;
+        validDiffs[validCount] = Diffs[i];
+        newSum += Diffs[i];
+        validCount++;
+      } else {
+        if (IsOutlier)
+          IsOutlier[i] = 1;
       }
     }
-    for (k = 0; k < NrTransOpt; k++) {
-      if (TransOpt[k] == 1) {
-        for (l = 0; l < NrPixels; l++)
-          for (m = 0; m < NrPixels; m++)
-            ImageTemp2[l][m] = ImageTemp1[l][NrPixels - m - 1]; // Inverting Y.
-      } else if (TransOpt[k] == 2) {
-        for (l = 0; l < NrPixels; l++)
-          for (m = 0; m < NrPixels; m++)
-            ImageTemp2[l][m] = ImageTemp1[NrPixels - l - 1][m]; // Inverting Z.
-      } else if (TransOpt[k] == 3) {
-        for (l = 0; l < NrPixels; l++)
-          for (m = 0; m < NrPixels; m++)
-            ImageTemp2[l][m] = ImageTemp1[m][l];
-      } else if (TransOpt[k] == 0) {
-        for (l = 0; l < NrPixels; l++)
-          for (m = 0; m < NrPixels; m++)
-            ImageTemp2[l][m] = ImageTemp1[l][m];
+    if (validCount > 0) {
+      double originalMean = MeanDiff;
+      MeanDiff = newSum / validCount;
+      printf("StdDev Outlier Rejection (Factor %.2f): Excluded %d / %d "
+             "points. "
+             "Mean Strain: %.8f -> %.8f\n",
+             outlierFactor, nValidPoints - validCount, nValidPoints,
+             originalMean, MeanDiff);
+    }
+  } else {
+    for (i = 0; i < nIndices; i++) {
+      if (Diffs[i] >= 0) {
+        if (IsOutlier)
+          IsOutlier[i] = 0;
+        validDiffs[validCount] = Diffs[i];
+        validCount++;
+      } else {
+        if (IsOutlier)
+          IsOutlier[i] = 1;
       }
+    }
+  }
+
+  double StdDiff2 = 0;
+  for (i = 0; i < validCount; i++) {
+    StdDiff2 += (validDiffs[i] - MeanDiff) * (validDiffs[i] - MeanDiff);
+  }
+  *StdDiff = sqrt(StdDiff2 / validCount);
+  free(validDiffs);
+}
+
+static inline void DoImageTransformations(int NrTransOpt, int TransOpt[10],
+                                          pixelvalue *Image, int NrPixels) {
+  int i, j, k, l, m;
+  pixelvalue **ImageTemp1, **ImageTemp2;
+  ImageTemp1 = allocMatrixPX(NrPixels, NrPixels);
+  ImageTemp2 = allocMatrixPX(NrPixels, NrPixels);
+  if (NrTransOpt == 0) {
+    return;
+  }
+  for (k = 0; k < NrPixels; k++) {
+    for (l = 0; l < NrPixels; l++) {
+      ImageTemp1[k][l] = Image[(NrPixels * k) + l];
+    }
+  }
+  for (k = 0; k < NrTransOpt; k++) {
+    if (TransOpt[k] == 1) {
       for (l = 0; l < NrPixels; l++)
         for (m = 0; m < NrPixels; m++)
-          ImageTemp1[l][m] = ImageTemp2[l][m];
+          ImageTemp2[l][m] = ImageTemp1[l][NrPixels - m - 1]; // Inverting Y.
+    } else if (TransOpt[k] == 2) {
+      for (l = 0; l < NrPixels; l++)
+        for (m = 0; m < NrPixels; m++)
+          ImageTemp2[l][m] = ImageTemp1[NrPixels - l - 1][m]; // Inverting Z.
+    } else if (TransOpt[k] == 3) {
+      for (l = 0; l < NrPixels; l++)
+        for (m = 0; m < NrPixels; m++)
+          ImageTemp2[l][m] = ImageTemp1[m][l];
+    } else if (TransOpt[k] == 0) {
+      for (l = 0; l < NrPixels; l++)
+        for (m = 0; m < NrPixels; m++)
+          ImageTemp2[l][m] = ImageTemp1[l][m];
     }
-    for (k = 0; k < NrPixels; k++) {
-      for (l = 0; l < NrPixels; l++) {
-        Image[(NrPixels * k) + l] = ImageTemp2[k][l];
-      }
-    }
-    FreeMemMatrixPx(ImageTemp1, NrPixels);
-    FreeMemMatrixPx(ImageTemp2, NrPixels);
+    for (l = 0; l < NrPixels; l++)
+      for (m = 0; m < NrPixels; m++)
+        ImageTemp1[l][m] = ImageTemp2[l][m];
   }
+  for (k = 0; k < NrPixels; k++) {
+    for (l = 0; l < NrPixels; l++) {
+      Image[(NrPixels * k) + l] = ImageTemp2[k][l];
+    }
+  }
+  FreeMemMatrixPx(ImageTemp1, NrPixels);
+  FreeMemMatrixPx(ImageTemp2, NrPixels);
+}
 
-  static inline void MakeSquare(int NrPixels, int NrPixelsY, int NrPixelsZ,
-                                pixelvalue *InImage, pixelvalue *OutImage) {
-    int i, j, k;
-    if (NrPixelsY == NrPixelsZ) {
-      memcpy(OutImage, InImage, NrPixels * NrPixels * sizeof(*InImage));
+static inline void MakeSquare(int NrPixels, int NrPixelsY, int NrPixelsZ,
+                              pixelvalue *InImage, pixelvalue *OutImage) {
+  int i, j, k;
+  if (NrPixelsY == NrPixelsZ) {
+    memcpy(OutImage, InImage, NrPixels * NrPixels * sizeof(*InImage));
+  } else {
+    if (NrPixelsY > NrPixelsZ) { // Filling along the slow direction // easy
+      memcpy(OutImage, InImage, NrPixelsY * NrPixelsZ * sizeof(*InImage));
     } else {
-      if (NrPixelsY > NrPixelsZ) { // Filling along the slow direction // easy
-        memcpy(OutImage, InImage, NrPixelsY * NrPixelsZ * sizeof(*InImage));
-      } else {
-        for (i = 0; i < NrPixelsZ; i++) {
-          memcpy(OutImage + i * NrPixelsZ, InImage + i * NrPixelsY,
-                 NrPixelsY * sizeof(*InImage));
-        }
+      for (i = 0; i < NrPixelsZ; i++) {
+        memcpy(OutImage + i * NrPixelsZ, InImage + i * NrPixelsY,
+               NrPixelsY * sizeof(*InImage));
       }
     }
   }
+}
 
-  int fileReader(FILE * f, char fn[], int dType, int NrPixels,
-                 double *returnArr, char *dname) {
-    int i;
-    if (dType == 1) {
-      uint16_t *readData;
-      readData = calloc(NrPixels, sizeof(*readData));
-      fread(readData, NrPixels * sizeof(*readData), 1, f);
-      for (i = 0; i < NrPixels; i++) {
-        returnArr[i] = (double)readData[i];
+int fileReader(FILE *f, char fn[], int dType, int NrPixels, double *returnArr,
+               char *dname) {
+  int i;
+  if (dType == 1) {
+    uint16_t *readData;
+    readData = calloc(NrPixels, sizeof(*readData));
+    fread(readData, NrPixels * sizeof(*readData), 1, f);
+    for (i = 0; i < NrPixels; i++) {
+      returnArr[i] = (double)readData[i];
+    }
+    return 0;
+  } else if (dType == 2) {
+    double *readData;
+    readData = calloc(NrPixels, sizeof(*readData));
+    fread(readData, NrPixels * sizeof(*readData), 1, f);
+    for (i = 0; i < NrPixels; i++) {
+      returnArr[i] = (double)readData[i];
+    }
+    return 0;
+  } else if (dType == 3) {
+    float *readData;
+    readData = calloc(NrPixels, sizeof(*readData));
+    fread(readData, NrPixels * sizeof(*readData), 1, f);
+    for (i = 0; i < NrPixels; i++) {
+      returnArr[i] = (double)readData[i];
+    }
+    return 0;
+  } else if (dType == 4) {
+    uint32_t *readData;
+    readData = calloc(NrPixels, sizeof(*readData));
+    fread(readData, NrPixels * sizeof(*readData), 1, f);
+    for (i = 0; i < NrPixels; i++) {
+      returnArr[i] = (double)readData[i];
+    }
+    return 0;
+  } else if (dType == 5) {
+    int32_t *readData;
+    readData = calloc(NrPixels, sizeof(*readData));
+    fread(readData, NrPixels * sizeof(*readData), 1, f);
+    for (i = 0; i < NrPixels; i++) {
+      returnArr[i] = (double)readData[i];
+    }
+    return 0;
+  } else if (dType == 6) {
+    TIFFErrorHandler oldhandler;
+    oldhandler = TIFFSetWarningHandler(NULL);
+    printf("%s\n", fn);
+    TIFF *tif = TIFFOpen(fn, "r");
+    TIFFSetWarningHandler(oldhandler);
+    if (tif) {
+      uint32 imagelength;
+      tsize_t scanline;
+      TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &imagelength);
+      scanline = TIFFScanlineSize(tif);
+      tdata_t buf;
+      buf = _TIFFmalloc(scanline);
+      uint32_t *datar;
+      int rnr;
+      for (rnr = 0; rnr < imagelength; rnr++) {
+        TIFFReadScanline(tif, buf, rnr, 1);
+        datar = (uint32_t *)buf;
+        for (i = 0; i < scanline / sizeof(uint32_t); i++) {
+          returnArr[rnr * (scanline / sizeof(uint32_t)) + i] = (double)datar[i];
+        }
       }
-      return 0;
-    } else if (dType == 2) {
-      double *readData;
-      readData = calloc(NrPixels, sizeof(*readData));
-      fread(readData, NrPixels * sizeof(*readData), 1, f);
-      for (i = 0; i < NrPixels; i++) {
-        returnArr[i] = (double)readData[i];
-      }
-      return 0;
-    } else if (dType == 3) {
-      float *readData;
-      readData = calloc(NrPixels, sizeof(*readData));
-      fread(readData, NrPixels * sizeof(*readData), 1, f);
-      for (i = 0; i < NrPixels; i++) {
-        returnArr[i] = (double)readData[i];
-      }
-      return 0;
-    } else if (dType == 4) {
-      uint32_t *readData;
-      readData = calloc(NrPixels, sizeof(*readData));
-      fread(readData, NrPixels * sizeof(*readData), 1, f);
-      for (i = 0; i < NrPixels; i++) {
-        returnArr[i] = (double)readData[i];
-      }
-      return 0;
-    } else if (dType == 5) {
-      int32_t *readData;
-      readData = calloc(NrPixels, sizeof(*readData));
-      fread(readData, NrPixels * sizeof(*readData), 1, f);
-      for (i = 0; i < NrPixels; i++) {
-        returnArr[i] = (double)readData[i];
-      }
-      return 0;
-    } else if (dType == 6) {
-      TIFFErrorHandler oldhandler;
-      oldhandler = TIFFSetWarningHandler(NULL);
-      printf("%s\n", fn);
-      TIFF *tif = TIFFOpen(fn, "r");
-      TIFFSetWarningHandler(oldhandler);
-      if (tif) {
-        uint32 imagelength;
-        tsize_t scanline;
-        TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &imagelength);
-        scanline = TIFFScanlineSize(tif);
-        tdata_t buf;
-        buf = _TIFFmalloc(scanline);
-        uint32_t *datar;
-        int rnr;
-        for (rnr = 0; rnr < imagelength; rnr++) {
-          TIFFReadScanline(tif, buf, rnr, 1);
-          datar = (uint32_t *)buf;
-          for (i = 0; i < scanline / sizeof(uint32_t); i++) {
-            returnArr[rnr * (scanline / sizeof(uint32_t)) + i] =
-                (double)datar[i];
+    }
+    return 0;
+  } else if (dType == 7) {
+    TIFFErrorHandler oldhandler;
+    oldhandler = TIFFSetWarningHandler(NULL);
+    printf("%s\n", fn);
+    TIFF *tif = TIFFOpen(fn, "r");
+    TIFFSetWarningHandler(oldhandler);
+    if (tif) {
+      uint32 imagelength;
+      tsize_t scanline;
+      TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &imagelength);
+      scanline = TIFFScanlineSize(tif);
+      tdata_t buf;
+      buf = _TIFFmalloc(scanline);
+      uint8_t *datar;
+      int rnr;
+      for (rnr = 0; rnr < imagelength; rnr++) {
+        TIFFReadScanline(tif, buf, rnr, 1);
+        datar = (uint8_t *)buf;
+        for (i = 0; i < scanline / sizeof(uint8_t); i++) {
+          if (datar[i] == 1) {
+            returnArr[rnr * (scanline / sizeof(uint8_t)) + i] = 1;
           }
         }
       }
-      return 0;
-    } else if (dType == 7) {
-      TIFFErrorHandler oldhandler;
-      oldhandler = TIFFSetWarningHandler(NULL);
-      printf("%s\n", fn);
-      TIFF *tif = TIFFOpen(fn, "r");
-      TIFFSetWarningHandler(oldhandler);
-      if (tif) {
-        uint32 imagelength;
-        tsize_t scanline;
-        TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &imagelength);
-        scanline = TIFFScanlineSize(tif);
-        tdata_t buf;
-        buf = _TIFFmalloc(scanline);
-        uint8_t *datar;
-        int rnr;
-        for (rnr = 0; rnr < imagelength; rnr++) {
-          TIFFReadScanline(tif, buf, rnr, 1);
-          datar = (uint8_t *)buf;
-          for (i = 0; i < scanline / sizeof(uint8_t); i++) {
-            if (datar[i] == 1) {
-              returnArr[rnr * (scanline / sizeof(uint8_t)) + i] = 1;
-            }
+    }
+    return 0;
+  } else if (dType == 8) { // this returns a sum of all frames.
+    char *DATASETNAME = dname;
+    int j, k;
+    hid_t file;
+    herr_t status, status_n;
+    hid_t dataset;
+    hid_t dataspace;
+    hsize_t dims[3];
+    int ndims;
+    printf("%s\n", fn);
+    file = H5Fopen(fn, H5F_ACC_RDONLY, H5P_DEFAULT);
+    dataset = H5Dopen(file, DATASETNAME, H5P_DEFAULT);
+    dataspace = H5Dget_space(dataset);
+    ndims = H5Sget_simple_extent_dims(dataspace, dims, NULL);
+    printf("ndims: %d, dimensions %lu x %lu x %lu. Allocating big array.\n",
+           ndims, (unsigned long)(dims[0]), (unsigned long)(dims[1]),
+           (unsigned long)(dims[2]));
+    int frame_dims[3] = {dims[0], dims[1], dims[2]};
+    uint16_t *data =
+        calloc(frame_dims[0] * frame_dims[1] * frame_dims[2], sizeof(uint16_t));
+    printf("Reading file: %lu bytes.\n",
+           (unsigned long)dims[0] * dims[1] * dims[2] * 2);
+    status_n =
+        H5Dread(dataset, H5T_STD_U16LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, data);
+    for (i = skipFrame; i < frame_dims[0]; i++) {
+      //~ printf("%d\n",i);
+      for (j = 0; j < frame_dims[1]; j++) {
+        for (k = 0; k < frame_dims[2]; k++) {
+          returnArr[j * frame_dims[2] + k] +=
+              ((double)data[i * (frame_dims[1] * frame_dims[2]) +
+                            j * frame_dims[2] + k]) /
+              frame_dims[0];
+        }
+      }
+    }
+  } else if (dType == 9) { // uint16_t
+    TIFFErrorHandler oldhandler;
+    oldhandler = TIFFSetWarningHandler(NULL);
+    printf("%s\n", fn);
+    TIFF *tif = TIFFOpen(fn, "r");
+    TIFFSetWarningHandler(oldhandler);
+    if (tif) {
+      uint32 imagelength;
+      tsize_t scanline;
+      TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &imagelength);
+      scanline = TIFFScanlineSize(tif);
+      tdata_t buf;
+      buf = _TIFFmalloc(scanline);
+      uint16_t *datar;
+      int rnr;
+      for (rnr = 0; rnr < imagelength; rnr++) {
+        TIFFReadScanline(tif, buf, rnr, 1);
+        datar = (uint16_t *)buf;
+        for (i = 0; i < scanline / sizeof(uint16_t); i++) {
+          if (datar[i] == 1) {
+            returnArr[rnr * (scanline / sizeof(uint16_t)) + i] = 1;
           }
         }
       }
-      return 0;
-    } else if (dType == 8) { // this returns a sum of all frames.
-      char *DATASETNAME = dname;
-      int j, k;
-      hid_t file;
-      herr_t status, status_n;
-      hid_t dataset;
-      hid_t dataspace;
-      hsize_t dims[3];
-      int ndims;
-      printf("%s\n", fn);
-      file = H5Fopen(fn, H5F_ACC_RDONLY, H5P_DEFAULT);
-      dataset = H5Dopen(file, DATASETNAME, H5P_DEFAULT);
-      dataspace = H5Dget_space(dataset);
-      ndims = H5Sget_simple_extent_dims(dataspace, dims, NULL);
-      printf("ndims: %d, dimensions %lu x %lu x %lu. Allocating big array.\n",
-             ndims, (unsigned long)(dims[0]), (unsigned long)(dims[1]),
-             (unsigned long)(dims[2]));
-      int frame_dims[3] = {dims[0], dims[1], dims[2]};
-      uint16_t *data = calloc(frame_dims[0] * frame_dims[1] * frame_dims[2],
-                              sizeof(uint16_t));
-      printf("Reading file: %lu bytes.\n",
-             (unsigned long)dims[0] * dims[1] * dims[2] * 2);
-      status_n =
-          H5Dread(dataset, H5T_STD_U16LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, data);
-      for (i = skipFrame; i < frame_dims[0]; i++) {
-        //~ printf("%d\n",i);
-        for (j = 0; j < frame_dims[1]; j++) {
-          for (k = 0; k < frame_dims[2]; k++) {
-            returnArr[j * frame_dims[2] + k] +=
-                ((double)data[i * (frame_dims[1] * frame_dims[2]) +
-                              j * frame_dims[2] + k]) /
-                frame_dims[0];
-          }
+    }
+    return 0;
+  } else {
+    return 127;
+  }
+}
+
+int main(int argc, char *argv[]) {
+  if (argc != 3) {
+    printf("Usage: CalibrantOMP ps.txt nCPUs\n");
+    return 1;
+  }
+  double start, end, start0, end0;
+  start0 = omp_get_wtime();
+  double diftotal;
+  // Read params file.
+  char *ParamFN;
+  FILE *fileParam;
+  ParamFN = argv[1];
+  numProcs = atoi(argv[2]);
+  char aline[1000];
+  fileParam = fopen(ParamFN, "r");
+  char *str, dummy[1000];
+  char fn[1024], folder[1024], Ext[1024], Dark[1024];
+  int StartNr, EndNr, LowNr;
+  int SpaceGroup, FitWeightMean = 0;
+  double LatticeConstant[6], Wavelength, MaxRingRad, Lsd, MaxTtheta, TthetaTol,
+      ybc, zbc, EtaBinSize, px, Width;
+  double tx = 0, tolTilts, tolLsd, tolBC, tolP, tolP0 = 0, tolP1 = 0, tolP2 = 0,
+         tolP3 = 0, tyin = 0, tzin = 0, p0in = 0, p1in = 0, p2in = 0, p3in = 0,
+         padY = 0, padZ = 0;
+  double tolShifts = 1.0;
+  double outlierFactor = 0.0;
+  int MinIndicesForFit = 1;
+  int FixPanelID = 0;
+  int Padding = 6, NrPixelsY, NrPixelsZ, NrPixels;
+  int NrTransOpt = 0, RBinWidth = 4;
+  long long int GapIntensity = 0, BadPxIntensity = 0;
+  int TransOpt[10], nRingsExclude = 0, RingsExclude[50];
+  int makeMap = 0;
+  int HeadSize = 8192;
+  int dType = 1;
+  char GapFN[4096], BadPxFN[4096];
+  char darkDatasetName[4096], dataDatasetName[4096];
+  // Parameter defaults
+  int NPanelsY = 0;
+  int NPanelsZ = 0;
+  int PanelSizeY = 0;
+  int PanelSizeZ = 0;
+  int *PanelGapsY = NULL;
+  int *PanelGapsZ = NULL;
+  char PanelShiftsFile[1024];
+  PanelShiftsFile[0] = '\0';
+  sprintf(darkDatasetName, "exchange/dark");
+  sprintf(dataDatasetName, "exchange/data");
+  while (fgets(aline, 1000, fileParam) != NULL) {
+    str = "FileStem ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %s", dummy, fn);
+      continue;
+    }
+    str = "darkDataset ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %s", dummy, darkDatasetName);
+      continue;
+    }
+    str = "dataDataset ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %s", dummy, dataDatasetName);
+      continue;
+    }
+    str = "Folder ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %s", dummy, folder);
+      continue;
+    }
+    str = "GapFile ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %s", dummy, GapFN);
+      makeMap = 2;
+      continue;
+    }
+    str = "BadPxFile ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %s", dummy, BadPxFN);
+      makeMap = 2;
+      continue;
+    }
+    str = "DataType ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &dType);
+      continue;
+    }
+    str = "RBinDivisions ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &RBinWidth);
+      continue;
+    }
+    str = "SkipFrame ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &skipFrame);
+      continue;
+    }
+    str = "GapIntensity ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lld", dummy, &GapIntensity);
+      makeMap = 1;
+      continue;
+    }
+    str = "BadPxIntensity ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lld", dummy, &BadPxIntensity);
+      makeMap = 1;
+      continue;
+    }
+    str = "Ext ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %s", dummy, Ext);
+      continue;
+    }
+    str = "Dark ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %s", dummy, Dark);
+      continue;
+    }
+    str = "Padding ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &Padding);
+      continue;
+    }
+    str = "StartNr ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &StartNr);
+      continue;
+    }
+    str = "EndNr ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &EndNr);
+      continue;
+    }
+    str = "NrPixels ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsY);
+      NrPixelsZ = NrPixelsY;
+      continue;
+    }
+    str = "NrPixelsY ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsY);
+      continue;
+    }
+    str = "NrPixelsZ ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsZ);
+      continue;
+    }
+    str = "ImTransOpt ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &TransOpt[NrTransOpt]);
+      NrTransOpt++;
+      continue;
+    }
+    str = "SpaceGroup ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &SpaceGroup);
+      continue;
+    }
+    str = "NPanelsY ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &NPanelsY);
+      continue;
+    }
+    str = "NPanelsZ ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &NPanelsZ);
+      continue;
+    }
+    str = "PanelSizeY ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &PanelSizeY);
+      continue;
+    }
+    str = "PanelSizeZ ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &PanelSizeZ);
+      continue;
+    }
+    str = "PanelShiftsFile ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %s", dummy, PanelShiftsFile);
+      continue;
+    }
+
+    str = "PanelGapsY ";
+    if (!strncmp(aline, str, strlen(str))) {
+      char *ptr = aline + strlen(str);
+      if (NPanelsY > 1) {
+        PanelGapsY = (int *)malloc((NPanelsY - 1) * sizeof(int));
+        for (int k = 0; k < NPanelsY - 1; k++) {
+          PanelGapsY[k] = strtol(ptr, &ptr, 10);
         }
       }
-    } else if (dType == 9) { // uint16_t
-      TIFFErrorHandler oldhandler;
-      oldhandler = TIFFSetWarningHandler(NULL);
-      printf("%s\n", fn);
-      TIFF *tif = TIFFOpen(fn, "r");
-      TIFFSetWarningHandler(oldhandler);
-      if (tif) {
-        uint32 imagelength;
-        tsize_t scanline;
-        TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &imagelength);
-        scanline = TIFFScanlineSize(tif);
-        tdata_t buf;
-        buf = _TIFFmalloc(scanline);
-        uint16_t *datar;
-        int rnr;
-        for (rnr = 0; rnr < imagelength; rnr++) {
-          TIFFReadScanline(tif, buf, rnr, 1);
-          datar = (uint16_t *)buf;
-          for (i = 0; i < scanline / sizeof(uint16_t); i++) {
-            if (datar[i] == 1) {
-              returnArr[rnr * (scanline / sizeof(uint16_t)) + i] = 1;
-            }
-          }
+      continue;
+    }
+    str = "PanelGapsZ ";
+    if (!strncmp(aline, str, strlen(str))) {
+      char *ptr = aline + strlen(str);
+      if (NPanelsZ > 1) {
+        PanelGapsZ = (int *)malloc((NPanelsZ - 1) * sizeof(int));
+        for (int k = 0; k < NPanelsZ - 1; k++) {
+          PanelGapsZ[k] = strtol(ptr, &ptr, 10);
         }
       }
-      return 0;
-    } else {
-      return 127;
+      continue;
+    }
+
+    str = "LatticeParameter ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatticeConstant[0],
+             &LatticeConstant[1], &LatticeConstant[2], &LatticeConstant[3],
+             &LatticeConstant[4], &LatticeConstant[5]);
+      continue;
+    }
+    str = "LatticeConstant ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatticeConstant[0],
+             &LatticeConstant[1], &LatticeConstant[2], &LatticeConstant[3],
+             &LatticeConstant[4], &LatticeConstant[5]);
+      continue;
+    }
+    str = "Wavelength ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &Wavelength);
+      continue;
+    }
+    str = "RhoD ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &MaxRingRad);
+      continue;
+    }
+    str = "Lsd ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &Lsd);
+      continue;
+    }
+    str = "px ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &px);
+      continue;
+    }
+    str = "ty ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tyin);
+      continue;
+    }
+    str = "tz ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tzin);
+      continue;
+    }
+    str = "p0 ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &p0in);
+      continue;
+    }
+    str = "p1 ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &p1in);
+      continue;
+    }
+    str = "p2 ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &p2in);
+      continue;
+    }
+    str = "p3 ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &p3in);
+      continue;
+    }
+    str = "Width ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &Width);
+      continue;
+    }
+    str = "EtaBinSize ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &EtaBinSize);
+      continue;
+    }
+    str = "BC ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf %lf", dummy, &ybc, &zbc);
+      continue;
+    }
+    str = "tolTilts ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolTilts);
+      continue;
+    }
+    str = "tolBC ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolBC);
+      continue;
+    }
+    str = "tolLsd ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolLsd);
+      continue;
+    }
+    str = "tolP ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolP);
+      continue;
+    }
+    str = "tolP0 ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolP0);
+      continue;
+    }
+    str = "tolP1 ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolP1);
+      continue;
+    }
+    str = "tolP2 ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolP2);
+      continue;
+    }
+    str = "tolP3 ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolP3);
+      continue;
+    }
+    str = "tolShifts ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolShifts);
+      continue;
+    }
+    str = "MultFactor ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &outlierFactor);
+      continue;
+    }
+    str = "MinIndicesForFit ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &MinIndicesForFit);
+      continue;
+    }
+    str = "FixPanelID ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &FixPanelID);
+      continue;
+    }
+    str = "tx ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tx);
+      continue;
+    }
+    str = "FitOrWeightedMean ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &FitWeightMean);
+      continue;
+    }
+    str = "RingsToExclude ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &RingsExclude[nRingsExclude]);
+      nRingsExclude++;
+      continue;
+    }
+    str = "HeadSize ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &HeadSize);
     }
   }
 
-  int main(int argc, char *argv[]) {
-    if (argc != 3) {
-      printf("Usage: CalibrantOMP ps.txt nCPUs\n");
+  // Generate Panels
+  if (NPanelsY > 0 && NPanelsZ > 0) {
+    if (GeneratePanels(NPanelsY, NPanelsZ, PanelSizeY, PanelSizeZ, PanelGapsY,
+                       PanelGapsZ, &panels, &nPanels) != 0) {
+      fprintf(stderr, "Fast generation failed.\n");
       return 1;
     }
-    double start, end, start0, end0;
-    start0 = omp_get_wtime();
-    double diftotal;
-    // Read params file.
-    char *ParamFN;
-    FILE *fileParam;
-    ParamFN = argv[1];
-    numProcs = atoi(argv[2]);
-    char aline[1000];
-    fileParam = fopen(ParamFN, "r");
-    char *str, dummy[1000];
-    char fn[1024], folder[1024], Ext[1024], Dark[1024];
-    int StartNr, EndNr, LowNr;
-    int SpaceGroup, FitWeightMean = 0;
-    double LatticeConstant[6], Wavelength, MaxRingRad, Lsd, MaxTtheta,
-        TthetaTol, ybc, zbc, EtaBinSize, px, Width;
-    double tx = 0, tolTilts, tolLsd, tolBC, tolP, tolP0 = 0, tolP1 = 0,
-           tolP2 = 0, tolP3 = 0, tyin = 0, tzin = 0, p0in = 0, p1in = 0,
-           p2in = 0, p3in = 0, padY = 0, padZ = 0;
-    double tolShifts = 1.0;
-    double outlierFactor = 0.0;
-    int MinIndicesForFit = 1;
-    int FixPanelID = 0;
-    int Padding = 6, NrPixelsY, NrPixelsZ, NrPixels;
-    int NrTransOpt = 0, RBinWidth = 4;
-    long long int GapIntensity = 0, BadPxIntensity = 0;
-    int TransOpt[10], nRingsExclude = 0, RingsExclude[50];
-    int makeMap = 0;
-    int HeadSize = 8192;
-    int dType = 1;
-    char GapFN[4096], BadPxFN[4096];
-    char darkDatasetName[4096], dataDatasetName[4096];
-    // Parameter defaults
-    int NPanelsY = 0;
-    int NPanelsZ = 0;
-    int PanelSizeY = 0;
-    int PanelSizeZ = 0;
-    int *PanelGapsY = NULL;
-    int *PanelGapsZ = NULL;
-    char PanelShiftsFile[1024];
-    PanelShiftsFile[0] = '\0';
-    sprintf(darkDatasetName, "exchange/dark");
-    sprintf(dataDatasetName, "exchange/data");
-    while (fgets(aline, 1000, fileParam) != NULL) {
-      str = "FileStem ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %s", dummy, fn);
-        continue;
-      }
-      str = "darkDataset ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %s", dummy, darkDatasetName);
-        continue;
-      }
-      str = "dataDataset ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %s", dummy, dataDatasetName);
-        continue;
-      }
-      str = "Folder ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %s", dummy, folder);
-        continue;
-      }
-      str = "GapFile ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %s", dummy, GapFN);
-        makeMap = 2;
-        continue;
-      }
-      str = "BadPxFile ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %s", dummy, BadPxFN);
-        makeMap = 2;
-        continue;
-      }
-      str = "DataType ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %d", dummy, &dType);
-        continue;
-      }
-      str = "RBinDivisions ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %d", dummy, &RBinWidth);
-        continue;
-      }
-      str = "SkipFrame ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %d", dummy, &skipFrame);
-        continue;
-      }
-      str = "GapIntensity ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lld", dummy, &GapIntensity);
-        makeMap = 1;
-        continue;
-      }
-      str = "BadPxIntensity ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lld", dummy, &BadPxIntensity);
-        makeMap = 1;
-        continue;
-      }
-      str = "Ext ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %s", dummy, Ext);
-        continue;
-      }
-      str = "Dark ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %s", dummy, Dark);
-        continue;
-      }
-      str = "Padding ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %d", dummy, &Padding);
-        continue;
-      }
-      str = "StartNr ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %d", dummy, &StartNr);
-        continue;
-      }
-      str = "EndNr ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %d", dummy, &EndNr);
-        continue;
-      }
-      str = "NrPixels ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %d", dummy, &NrPixelsY);
-        NrPixelsZ = NrPixelsY;
-        continue;
-      }
-      str = "NrPixelsY ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %d", dummy, &NrPixelsY);
-        continue;
-      }
-      str = "NrPixelsZ ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %d", dummy, &NrPixelsZ);
-        continue;
-      }
-      str = "ImTransOpt ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %d", dummy, &TransOpt[NrTransOpt]);
-        NrTransOpt++;
-        continue;
-      }
-      str = "SpaceGroup ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %d", dummy, &SpaceGroup);
-        continue;
-      }
-      str = "NPanelsY ";
-      if (!strncmp(aline, str, strlen(str))) {
-        sscanf(aline, "%s %d", dummy, &NPanelsY);
-        continue;
-      }
-      str = "NPanelsZ ";
-      if (!strncmp(aline, str, strlen(str))) {
-        sscanf(aline, "%s %d", dummy, &NPanelsZ);
-        continue;
-      }
-      str = "PanelSizeY ";
-      if (!strncmp(aline, str, strlen(str))) {
-        sscanf(aline, "%s %d", dummy, &PanelSizeY);
-        continue;
-      }
-      str = "PanelSizeZ ";
-      if (!strncmp(aline, str, strlen(str))) {
-        sscanf(aline, "%s %d", dummy, &PanelSizeZ);
-        continue;
-      }
-      str = "PanelShiftsFile ";
-      if (!strncmp(aline, str, strlen(str))) {
-        sscanf(aline, "%s %s", dummy, PanelShiftsFile);
-        continue;
-      }
-
-      str = "PanelGapsY ";
-      if (!strncmp(aline, str, strlen(str))) {
-        char *ptr = aline + strlen(str);
-        if (NPanelsY > 1) {
-          PanelGapsY = (int *)malloc((NPanelsY - 1) * sizeof(int));
-          for (int k = 0; k < NPanelsY - 1; k++) {
-            PanelGapsY[k] = strtol(ptr, &ptr, 10);
-          }
-        }
-        continue;
-      }
-      str = "PanelGapsZ ";
-      if (!strncmp(aline, str, strlen(str))) {
-        char *ptr = aline + strlen(str);
-        if (NPanelsZ > 1) {
-          PanelGapsZ = (int *)malloc((NPanelsZ - 1) * sizeof(int));
-          for (int k = 0; k < NPanelsZ - 1; k++) {
-            PanelGapsZ[k] = strtol(ptr, &ptr, 10);
-          }
-        }
-        continue;
-      }
-
-      str = "LatticeParameter ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatticeConstant[0],
-               &LatticeConstant[1], &LatticeConstant[2], &LatticeConstant[3],
-               &LatticeConstant[4], &LatticeConstant[5]);
-        continue;
-      }
-      str = "LatticeConstant ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatticeConstant[0],
-               &LatticeConstant[1], &LatticeConstant[2], &LatticeConstant[3],
-               &LatticeConstant[4], &LatticeConstant[5]);
-        continue;
-      }
-      str = "Wavelength ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &Wavelength);
-        continue;
-      }
-      str = "RhoD ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &MaxRingRad);
-        continue;
-      }
-      str = "Lsd ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &Lsd);
-        continue;
-      }
-      str = "px ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &px);
-        continue;
-      }
-      str = "ty ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &tyin);
-        continue;
-      }
-      str = "tz ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &tzin);
-        continue;
-      }
-      str = "p0 ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &p0in);
-        continue;
-      }
-      str = "p1 ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &p1in);
-        continue;
-      }
-      str = "p2 ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &p2in);
-        continue;
-      }
-      str = "p3 ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &p3in);
-        continue;
-      }
-      str = "Width ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &Width);
-        continue;
-      }
-      str = "EtaBinSize ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &EtaBinSize);
-        continue;
-      }
-      str = "BC ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf %lf", dummy, &ybc, &zbc);
-        continue;
-      }
-      str = "tolTilts ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &tolTilts);
-        continue;
-      }
-      str = "tolBC ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &tolBC);
-        continue;
-      }
-      str = "tolLsd ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &tolLsd);
-        continue;
-      }
-      str = "tolP ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &tolP);
-        continue;
-      }
-      str = "tolP0 ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &tolP0);
-        continue;
-      }
-      str = "tolP1 ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &tolP1);
-        continue;
-      }
-      str = "tolP2 ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &tolP2);
-        continue;
-      }
-      str = "tolP3 ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &tolP3);
-        continue;
-      }
-      str = "tolShifts ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &tolShifts);
-        continue;
-      }
-      str = "MultFactor ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &outlierFactor);
-        continue;
-      }
-      str = "MinIndicesForFit ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %d", dummy, &MinIndicesForFit);
-        continue;
-      }
-      str = "FixPanelID ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %d", dummy, &FixPanelID);
-        continue;
-      }
-      str = "tx ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &tx);
-        continue;
-      }
-      str = "FitOrWeightedMean ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %d", dummy, &FitWeightMean);
-        continue;
-      }
-      str = "RingsToExclude ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %d", dummy, &RingsExclude[nRingsExclude]);
-        nRingsExclude++;
-        continue;
-      }
-      str = "HeadSize ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %d", dummy, &HeadSize);
-      }
+    printf("Generated %d panels.\n", nPanels);
+  }
+  if (tolP0 == 0)
+    tolP0 = tolP;
+  if (tolP1 == 0)
+    tolP1 = tolP;
+  if (tolP2 == 0)
+    tolP2 = tolP;
+  if (tolP3 == 0)
+    tolP3 = 45;
+  if (NrPixelsY > NrPixelsZ) {
+    NrPixels = NrPixelsY;
+    NrPixelsGlobal = NrPixelsY;
+  } else {
+    NrPixels = NrPixelsZ;
+    NrPixelsGlobal = NrPixelsZ;
+  }
+  int i, j, k;
+  printf("NrTransOpt: %d\n", NrTransOpt);
+  for (i = 0; i < NrTransOpt; i++) {
+    if (TransOpt[i] < 0 || TransOpt[i] > 3) {
+      printf("TransformationOptions can only be 0, 1, 2 or 3.\nExiting.\n");
+      return 0;
     }
+    printf("TransformationOptions: %d ", TransOpt[i]);
+    if (TransOpt[i] == 0)
+      printf("No change.\n");
+    else if (TransOpt[i] == 1)
+      printf("Flip Left Right.\n");
+    else if (TransOpt[i] == 2)
+      printf("Flip Top Bottom.\n");
+    else
+      printf("Transpose.\n");
+  }
+  MaxTtheta = rad2deg * atan(MaxRingRad / Lsd);
+  double Thetas[100];
+  for (i = 0; i < 100; i++)
+    Thetas[i] = 0;
+  int n_hkls = 0;
 
-    // Generate Panels
-    if (NPanelsY > 0 && NPanelsZ > 0) {
-      if (GeneratePanels(NPanelsY, NPanelsZ, PanelSizeY, PanelSizeZ, PanelGapsY,
-                         PanelGapsZ, &panels, &nPanels) != 0) {
-        fprintf(stderr, "Fast generation failed.\n");
-        return 1;
-      }
-      printf("Generated %d panels.\n", nPanels);
-    }
-    if (tolP0 == 0)
-      tolP0 = tolP;
-    if (tolP1 == 0)
-      tolP1 = tolP;
-    if (tolP2 == 0)
-      tolP2 = tolP;
-    if (tolP3 == 0)
-      tolP3 = 45;
-    if (NrPixelsY > NrPixelsZ) {
-      NrPixels = NrPixelsY;
-      NrPixelsGlobal = NrPixelsY;
-    } else {
-      NrPixels = NrPixelsZ;
-      NrPixelsGlobal = NrPixelsZ;
-    }
-    int i, j, k;
-    printf("NrTransOpt: %d\n", NrTransOpt);
-    for (i = 0; i < NrTransOpt; i++) {
-      if (TransOpt[i] < 0 || TransOpt[i] > 3) {
-        printf("TransformationOptions can only be 0, 1, 2 or 3.\nExiting.\n");
-        return 0;
-      }
-      printf("TransformationOptions: %d ", TransOpt[i]);
-      if (TransOpt[i] == 0)
-        printf("No change.\n");
-      else if (TransOpt[i] == 1)
-        printf("Flip Left Right.\n");
-      else if (TransOpt[i] == 2)
-        printf("Flip Top Bottom.\n");
-      else
-        printf("Transpose.\n");
-    }
-    MaxTtheta = rad2deg * atan(MaxRingRad / Lsd);
-    double Thetas[100];
-    for (i = 0; i < 100; i++)
-      Thetas[i] = 0;
-    int n_hkls = 0;
-
-    run_midas_binary("GetHKLList", ParamFN);
-    // char cmmd[4096];
-    // sprintf(cmmd,"~/opt/MIDAS/FF_HEDM/bin/GetHKLList %s",ParamFN);
-    // system(cmmd);
-    // Read hkls.csv
-    char *hklfn = "hkls.csv";
-    FILE *hklf = fopen(hklfn, "r");
-    fgets(aline, 1000, hklf);
-    int tRnr, Exclude, LastRingDone = 0;
-    double theta;
-    printf("Thetas: ");
-    while (fgets(aline, 1000, hklf) != NULL) {
-      sscanf(aline, "%s %s %s %s %d %s %s %s %lf %s %s", dummy, dummy, dummy,
-             dummy, &tRnr, dummy, dummy, dummy, &theta, dummy, dummy);
-      if (theta * 2 > MaxTtheta)
-        break;
-      Exclude = 0;
-      for (i = 0; i < nRingsExclude; i++) {
-        if (tRnr == RingsExclude[i]) {
-          Exclude = 1;
-        }
-      }
-      if (Exclude == 0 && tRnr > LastRingDone) {
-        Thetas[n_hkls] = theta;
-        LastRingDone = tRnr;
-        printf("%lf ", theta);
-        n_hkls++;
-      }
-    }
-    printf("\n");
-
-    printf("Number of planes being considered: %d.\n", n_hkls);
-    printf("The following rings will be excluded:");
+  run_midas_binary("GetHKLList", ParamFN);
+  // char cmmd[4096];
+  // sprintf(cmmd,"~/opt/MIDAS/FF_HEDM/bin/GetHKLList %s",ParamFN);
+  // system(cmmd);
+  // Read hkls.csv
+  char *hklfn = "hkls.csv";
+  FILE *hklf = fopen(hklfn, "r");
+  fgets(aline, 1000, hklf);
+  int tRnr, Exclude, LastRingDone = 0;
+  double theta;
+  printf("Thetas: ");
+  while (fgets(aline, 1000, hklf) != NULL) {
+    sscanf(aline, "%s %s %s %s %d %s %s %s %lf %s %s", dummy, dummy, dummy,
+           dummy, &tRnr, dummy, dummy, dummy, &theta, dummy, dummy);
+    if (theta * 2 > MaxTtheta)
+      break;
+    Exclude = 0;
     for (i = 0; i < nRingsExclude; i++) {
-      printf(" %d", RingsExclude[i]);
+      if (tRnr == RingsExclude[i]) {
+        Exclude = 1;
+      }
     }
+    if (Exclude == 0 && tRnr > LastRingDone) {
+      Thetas[n_hkls] = theta;
+      LastRingDone = tRnr;
+      printf("%lf ", theta);
+      n_hkls++;
+    }
+  }
+  printf("\n");
 
-    TthetaTol = Ttheta4mR((MaxRingRad + Width), Lsd) -
-                Ttheta4mR((MaxRingRad - Width), Lsd);
-    printf("\n2Theta Tolerance: %f \n", TthetaTol);
-    pixelvalue *DarkFile;
-    pixelvalue *DarkFile2;
-    double *AverageDark;
-    size_t pxSize;
-    if (dType == 1) { // Uint16
-      pxSize = sizeof(uint16_t);
-    } else if (dType == 2) { // Double
-      pxSize = sizeof(double);
-    } else if (dType == 3) { // Float
-      pxSize = sizeof(float);
-    } else if (dType == 4) { // Uint32
-      pxSize = sizeof(uint32_t);
-    } else if (dType == 5) { // Int32
-      pxSize = sizeof(int32_t);
-    } else if (dType == 6) { // Tiff Uint32
-      pxSize = sizeof(uint32_t);
-      HeadSize = 0;
-    } else if (dType == 7) { // Tiff Uint8
-      pxSize = sizeof(uint8_t);
-      HeadSize = 0;
-    } else if (dType == 8) { // HDF Unit16
-      pxSize = sizeof(uint16_t);
-      HeadSize = 0;
-    } else if (dType == 9) { // Tiff Unit16
-      pxSize = sizeof(uint16_t);
-      HeadSize = 0;
-    }
-    size_t SizeFile = pxSize * NrPixelsY * NrPixelsZ;
-    size_t sz;
-    char FileName[1024];
-    size_t Skip;
-    FILE *fp, *fd;
-    int nFrames, TotFrames = 0;
-    double *Average;
-    pixelvalue *Image;
-    pixelvalue *Image2;
-    DarkFile = malloc(NrPixelsY * NrPixelsZ * sizeof(*DarkFile));    // Raw.
-    Image = malloc(NrPixelsY * NrPixelsZ * sizeof(*Image));          // Raw.
-    DarkFile2 = calloc(NrPixels * NrPixels, sizeof(*DarkFile2));     // Squared.
-    Image2 = calloc(NrPixels * NrPixels, sizeof(*Image2));           // Squared.
-    AverageDark = calloc(NrPixels * NrPixels, sizeof(*AverageDark)); // Squared.
-    Average = calloc(NrPixels * NrPixels, sizeof(*Average));         // Squared.
-    fd = fopen(Dark, "rb");
+  printf("Number of planes being considered: %d.\n", n_hkls);
+  printf("The following rings will be excluded:");
+  for (i = 0; i < nRingsExclude; i++) {
+    printf(" %d", RingsExclude[i]);
+  }
 
-    int rc;
-    char *dname;
-    if (fd == NULL && dType != 8) {
-      printf(
-          "Dark file %s could not be read. Making an empty array for dark.\n",
-          Dark);
-      for (j = 0; j < (NrPixels * NrPixels); j++)
-        AverageDark[j] = 0;
-    } else {
-      if (dType != 8) {
-        dname = "/";
-        fseek(fd, 0L, SEEK_END);
-        sz = ftell(fd);
-        sz -= HeadSize;
-        rewind(fd);
-        nFrames = sz / (SizeFile);
-        Skip = HeadSize;
-        printf("Reading dark file:      %s, nFrames: %d, skipping first %ld "
-               "bytes.\n",
-               Dark, nFrames, Skip);
-        fseek(fd, Skip, SEEK_SET);
-        for (i = 0; i < nFrames; i++) {
-          rc = fileReader(fd, Dark, dType, NrPixelsY * NrPixelsZ, DarkFile,
-                          dname);
-          MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, DarkFile, DarkFile2);
-          DoImageTransformations(NrTransOpt, TransOpt, DarkFile2, NrPixels);
-          if (makeMap == 1) {
-            size_t badPxCounter = 0;
-            mapMaskSize = NrPixels;
-            mapMaskSize *= NrPixels;
-            mapMaskSize /= 32;
-            mapMaskSize++;
-            mapMask = calloc(mapMaskSize, sizeof(*mapMask));
-            for (j = 0; j < NrPixels * NrPixels; j++) {
-              if (DarkFile2[j] == (pixelvalue)GapIntensity ||
-                  DarkFile2[j] == (pixelvalue)BadPxIntensity) {
-                badPxCounter++;
-                SetBit(mapMask, j);
-              }
-            }
-            makeMap = 0;
-            printf("%lld\n", (long long int)badPxCounter);
-          }
-          for (j = 0; j < (NrPixels * NrPixels); j++)
-            AverageDark[j] += DarkFile2[j];
-        }
-        printf("Dark file read.\n");
-        for (j = 0; j < (NrPixels * NrPixels); j++)
-          AverageDark[j] = AverageDark[j] / nFrames;
-        fclose(fd);
-      }
-    }
-    if (makeMap == 2) {
-      mapMaskSize = NrPixels;
-      mapMaskSize *= NrPixels;
-      mapMaskSize /= 32;
-      mapMaskSize++;
-      mapMask = calloc(mapMaskSize, sizeof(*mapMask));
-      double *mapper;
-      mapper = calloc(NrPixelsY * NrPixelsZ, sizeof(*mapper));
-      double *mapperSquare;
-      mapperSquare = calloc(NrPixels * NrPixels, sizeof(*mapperSquare));
-      fileReader(fd, GapFN, 7, NrPixelsY * NrPixelsZ, mapper, dname);
-      MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, mapper, mapperSquare);
-      DoImageTransformations(NrTransOpt, TransOpt, mapperSquare, NrPixels);
-      for (i = 0; i < NrPixels * NrPixels; i++) {
-        if (mapperSquare[i] == 1) {
-          SetBit(mapMask, i);
-          mapperSquare[i] = 0;
-        }
-      }
-      fileReader(fd, BadPxFN, 7, NrPixelsY * NrPixelsZ, mapper, dname);
-      MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, mapper, mapperSquare);
-      DoImageTransformations(NrTransOpt, TransOpt, mapperSquare, NrPixels);
-      for (i = 0; i < NrPixels * NrPixels; i++) {
-        if (mapperSquare[i] == 1) {
-          SetBit(mapMask, i);
-          mapperSquare[i] = 0;
-        }
-      }
-    }
-    int a;
-    double means[11];
-    for (a = 0; a < 11; a++)
-      means[a] = 0;
-    for (a = StartNr; a <= EndNr; a++) {
-      start = omp_get_wtime();
-      sprintf(FileName, "%s/%s_%0*d%s", folder, fn, Padding, a, Ext);
-      if (dType != 8) {
-        fp = fopen(FileName, "rb");
-        if (fp == NULL) {
-          printf("File %s could not be read. Continuing to next one.\n",
-                 FileName);
-          continue;
-        }
-        fseek(fp, 0L, SEEK_END);
-        sz = ftell(fp);
-        sz = sz - HeadSize;
-        nFrames = sz / (SizeFile);
-        Skip = HeadSize;
-        printf("Reading calibrant file: %s, nFrames: %d %d %d, skipping first "
-               "%ld bytes.\n",
-               FileName, nFrames, (int)sz, (int)SizeFile, Skip);
-        rewind(fp);
-        fseek(fp, Skip, SEEK_SET);
-        for (j = 0; j < nFrames; j++) {
-          rc = fileReader(fp, FileName, dType, NrPixelsY * NrPixelsZ, Image,
-                          dname);
-          MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, Image, Image2);
-          DoImageTransformations(NrTransOpt, TransOpt, Image2, NrPixels);
-          for (k = 0; k < (NrPixels * NrPixels); k++) {
-            Average[k] +=
-                (double)(Image2[k]) - AverageDark[k]; // In reality this is sum
-          }
-        }
-        TotFrames += nFrames;
-        fclose(fp);
-      } else {
-        printf("Reading HDF5.\n");
-        printf("%s\n", FileName);
-        // sprintf(dname,"%s",darkDatasetName);
-        // printf("%s\n",dname);
-        // return 1;
-        dname = "exchange/dark";
-        rc = fileReader(fd, FileName, dType, NrPixelsY * NrPixelsZ, DarkFile,
-                        dname);
+  TthetaTol = Ttheta4mR((MaxRingRad + Width), Lsd) -
+              Ttheta4mR((MaxRingRad - Width), Lsd);
+  printf("\n2Theta Tolerance: %f \n", TthetaTol);
+  pixelvalue *DarkFile;
+  pixelvalue *DarkFile2;
+  double *AverageDark;
+  size_t pxSize;
+  if (dType == 1) { // Uint16
+    pxSize = sizeof(uint16_t);
+  } else if (dType == 2) { // Double
+    pxSize = sizeof(double);
+  } else if (dType == 3) { // Float
+    pxSize = sizeof(float);
+  } else if (dType == 4) { // Uint32
+    pxSize = sizeof(uint32_t);
+  } else if (dType == 5) { // Int32
+    pxSize = sizeof(int32_t);
+  } else if (dType == 6) { // Tiff Uint32
+    pxSize = sizeof(uint32_t);
+    HeadSize = 0;
+  } else if (dType == 7) { // Tiff Uint8
+    pxSize = sizeof(uint8_t);
+    HeadSize = 0;
+  } else if (dType == 8) { // HDF Unit16
+    pxSize = sizeof(uint16_t);
+    HeadSize = 0;
+  } else if (dType == 9) { // Tiff Unit16
+    pxSize = sizeof(uint16_t);
+    HeadSize = 0;
+  }
+  size_t SizeFile = pxSize * NrPixelsY * NrPixelsZ;
+  size_t sz;
+  char FileName[1024];
+  size_t Skip;
+  FILE *fp, *fd;
+  int nFrames, TotFrames = 0;
+  double *Average;
+  pixelvalue *Image;
+  pixelvalue *Image2;
+  DarkFile = malloc(NrPixelsY * NrPixelsZ * sizeof(*DarkFile));    // Raw.
+  Image = malloc(NrPixelsY * NrPixelsZ * sizeof(*Image));          // Raw.
+  DarkFile2 = calloc(NrPixels * NrPixels, sizeof(*DarkFile2));     // Squared.
+  Image2 = calloc(NrPixels * NrPixels, sizeof(*Image2));           // Squared.
+  AverageDark = calloc(NrPixels * NrPixels, sizeof(*AverageDark)); // Squared.
+  Average = calloc(NrPixels * NrPixels, sizeof(*Average));         // Squared.
+  fd = fopen(Dark, "rb");
+
+  int rc;
+  char *dname;
+  if (fd == NULL && dType != 8) {
+    printf("Dark file %s could not be read. Making an empty array for dark.\n",
+           Dark);
+    for (j = 0; j < (NrPixels * NrPixels); j++)
+      AverageDark[j] = 0;
+  } else {
+    if (dType != 8) {
+      dname = "/";
+      fseek(fd, 0L, SEEK_END);
+      sz = ftell(fd);
+      sz -= HeadSize;
+      rewind(fd);
+      nFrames = sz / (SizeFile);
+      Skip = HeadSize;
+      printf("Reading dark file:      %s, nFrames: %d, skipping first %ld "
+             "bytes.\n",
+             Dark, nFrames, Skip);
+      fseek(fd, Skip, SEEK_SET);
+      for (i = 0; i < nFrames; i++) {
+        rc =
+            fileReader(fd, Dark, dType, NrPixelsY * NrPixelsZ, DarkFile, dname);
         MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, DarkFile, DarkFile2);
         DoImageTransformations(NrTransOpt, TransOpt, DarkFile2, NrPixels);
         if (makeMap == 1) {
@@ -1840,282 +1736,380 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
           makeMap = 0;
           printf("%lld\n", (long long int)badPxCounter);
         }
-        printf("Dark file read.\n");
         for (j = 0; j < (NrPixels * NrPixels); j++)
-          AverageDark[j] = DarkFile2[j];
-        // sprintf(dname,"%s",dataDatasetName);
-        dname = "exchange/data";
-        rc = fileReader(fd, FileName, dType, NrPixelsY * NrPixelsZ, Image,
+          AverageDark[j] += DarkFile2[j];
+      }
+      printf("Dark file read.\n");
+      for (j = 0; j < (NrPixels * NrPixels); j++)
+        AverageDark[j] = AverageDark[j] / nFrames;
+      fclose(fd);
+    }
+  }
+  if (makeMap == 2) {
+    mapMaskSize = NrPixels;
+    mapMaskSize *= NrPixels;
+    mapMaskSize /= 32;
+    mapMaskSize++;
+    mapMask = calloc(mapMaskSize, sizeof(*mapMask));
+    double *mapper;
+    mapper = calloc(NrPixelsY * NrPixelsZ, sizeof(*mapper));
+    double *mapperSquare;
+    mapperSquare = calloc(NrPixels * NrPixels, sizeof(*mapperSquare));
+    fileReader(fd, GapFN, 7, NrPixelsY * NrPixelsZ, mapper, dname);
+    MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, mapper, mapperSquare);
+    DoImageTransformations(NrTransOpt, TransOpt, mapperSquare, NrPixels);
+    for (i = 0; i < NrPixels * NrPixels; i++) {
+      if (mapperSquare[i] == 1) {
+        SetBit(mapMask, i);
+        mapperSquare[i] = 0;
+      }
+    }
+    fileReader(fd, BadPxFN, 7, NrPixelsY * NrPixelsZ, mapper, dname);
+    MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, mapper, mapperSquare);
+    DoImageTransformations(NrTransOpt, TransOpt, mapperSquare, NrPixels);
+    for (i = 0; i < NrPixels * NrPixels; i++) {
+      if (mapperSquare[i] == 1) {
+        SetBit(mapMask, i);
+        mapperSquare[i] = 0;
+      }
+    }
+  }
+  int a;
+  double means[11];
+  for (a = 0; a < 11; a++)
+    means[a] = 0;
+  for (a = StartNr; a <= EndNr; a++) {
+    start = omp_get_wtime();
+    sprintf(FileName, "%s/%s_%0*d%s", folder, fn, Padding, a, Ext);
+    if (dType != 8) {
+      fp = fopen(FileName, "rb");
+      if (fp == NULL) {
+        printf("File %s could not be read. Continuing to next one.\n",
+               FileName);
+        continue;
+      }
+      fseek(fp, 0L, SEEK_END);
+      sz = ftell(fp);
+      sz = sz - HeadSize;
+      nFrames = sz / (SizeFile);
+      Skip = HeadSize;
+      printf("Reading calibrant file: %s, nFrames: %d %d %d, skipping first "
+             "%ld bytes.\n",
+             FileName, nFrames, (int)sz, (int)SizeFile, Skip);
+      rewind(fp);
+      fseek(fp, Skip, SEEK_SET);
+      for (j = 0; j < nFrames; j++) {
+        rc = fileReader(fp, FileName, dType, NrPixelsY * NrPixelsZ, Image,
                         dname);
         MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, Image, Image2);
         DoImageTransformations(NrTransOpt, TransOpt, Image2, NrPixels);
-        for (j = 0; j < (NrPixels * NrPixels); j++)
-          Average[j] = Image2[j] - AverageDark[j];
-        //~ uint16_t *outMatrix;
-        //~ outMatrix = calloc(NrPixels*NrPixels,sizeof(uint16_t));
-        //~ for (j=0;j<(NrPixels*NrPixels);j++)outMatrix[j] = (uint16_t)
-        // Average[j]; ~ FILE *fnew; ~ fnew = fopen("Data_000001.ge3","wb"); ~
-        // fwrite(outMatrix,sizeof(uint16_t)*NrPixels*NrPixels,1,fnew); ~
-        // fclose(fnew); ~ return;
-      }
-      double IdealTthetas[n_hkls], TthetaMins[n_hkls], TthetaMaxs[n_hkls];
-      for (i = 0; i < n_hkls; i++) {
-        IdealTthetas[i] = 2 * Thetas[i];
-        TthetaMins[i] = IdealTthetas[i] - TthetaTol;
-        TthetaMaxs[i] = IdealTthetas[i] + TthetaTol;
-      }
-      double IdealRs[n_hkls], Rmins[n_hkls], Rmaxs[n_hkls];
-      for (i = 0; i < n_hkls; i++) {
-        IdealRs[i] = R4mTtheta(IdealTthetas[i], Lsd);
-        Rmins[i] = R4mTtheta(TthetaMins[i], Lsd);
-        Rmaxs[i] = R4mTtheta(TthetaMaxs[i], Lsd);
-      }
-      int nEtaBins;
-      nEtaBins = (int)ceil(359.99 / EtaBinSize);
-      printf("Number of eta bins: %d.\n", nEtaBins);
-      double EtaBinsLow[nEtaBins], EtaBinsHigh[nEtaBins];
-      for (i = 0; i < nEtaBins; i++) {
-        EtaBinsLow[i] = EtaBinSize * i - 179.995;
-        EtaBinsHigh[i] = EtaBinSize * (i + 1) - 179.995;
-      }
-      double *R, *Eta;
-      R = malloc(NrPixels * NrPixels * sizeof(*R));
-      Eta = malloc(NrPixels * NrPixels * sizeof(*Eta));
-      int **Indices, nIndices;
-      nIndices = nEtaBins * n_hkls;
-      int *NrEachIndexBin, *etaBinNr;
-      NrEachIndexBin = malloc(nIndices * sizeof(*NrEachIndexBin));
-      Indices = allocMatrixInt(nIndices, 20000);
-      Car2Pol(n_hkls, nEtaBins, NrPixels, NrPixels, ybc, zbc, px, R, Eta, Rmins,
-              Rmaxs, EtaBinsLow, EtaBinsHigh, nIndices, NrEachIndexBin, Indices,
-              tx, tyin, tzin, p0in, p1in, p2in, p3in, MaxRingRad, Lsd);
-      double *RMean, *EtaMean, *IdealR, *IdealTtheta, *IdealRmins, *IdealRmaxs;
-      IdealR = malloc(nIndices * sizeof(*IdealR));
-      IdealRmins = malloc(nIndices * sizeof(*IdealRmins));
-      IdealRmaxs = malloc(nIndices * sizeof(*IdealRmaxs));
-      IdealTtheta = malloc(nIndices * sizeof(*IdealTtheta));
-      RMean = malloc(nIndices * sizeof(*RMean));
-      EtaMean = malloc(nIndices * sizeof(*EtaMean));
-      int NrPtsForFit;
-      NrPtsForFit = (int)((floor)((Rmaxs[0] - Rmins[0]) / px)) * RBinWidth;
-      for (i = 0; i < nIndices; i++) {
-        IdealR[i] = IdealRs[(int)(floor(i / nEtaBins))];
-        IdealRmins[i] = Rmins[(int)(floor(i / nEtaBins))];
-        IdealRmaxs[i] = Rmaxs[(int)(floor(i / nEtaBins))];
-        IdealTtheta[i] = rad2deg * atan(IdealR[i] / Lsd);
-      }
-      NrCallsProfiler = 0;
-      if (FitWeightMean == 1) {
-        CalcWeightedMean(nIndices, NrEachIndexBin, Indices, Average, R, Eta,
-                         RMean, EtaMean);
-      } else {
-        CalcFittedMean(nIndices, NrEachIndexBin, Indices, Average, R, Eta,
-                       RMean, EtaMean, NrPtsForFit, IdealRmins, IdealRmaxs,
-                       nEtaBins, ybc, zbc, px, NrPixels, EtaBinsLow,
-                       EtaBinsHigh);
-      }
-      // Find the RMean, which are 0 and update accordingly.
-      int countr = 0;
-      double *RMean2, *EtaMean2, *IdealTtheta2;
-      RMean2 = malloc(nIndices * sizeof(*RMean2));
-      EtaMean2 = malloc(nIndices * sizeof(*EtaMean2));
-      IdealTtheta2 = malloc(nIndices * sizeof(*IdealTtheta2));
-      for (i = 0; i < nIndices; i++) {
-        if (RMean[i] != 0) {
-          RMean2[countr] = RMean[i];
-          EtaMean2[countr] = EtaMean[i];
-          IdealTtheta2[countr] = IdealTtheta[i];
-          // printf("%lf %lf %lf
-          // %lf\n",RMean[i],IdealR[i],EtaMean[i],IdealTtheta[i]);
-          countr++;
+        for (k = 0; k < (NrPixels * NrPixels); k++) {
+          Average[k] +=
+              (double)(Image2[k]) - AverageDark[k]; // In reality this is sum
         }
       }
-      printf("Out of %d slices, %d were in the detector\n", nIndices, countr);
-      nIndices = countr;
-      free(RMean);
-      free(EtaMean);
-      free(IdealTtheta);
-      RMean = RMean2;
-      EtaMean = EtaMean2;
-      IdealTtheta = IdealTtheta2;
-      end = omp_get_wtime();
-      diftotal = end - start;
-      if (FitWeightMean != 1) {
-        printf("Number of calls to profiler function: %lld\n", NrCallsProfiler);
-        printf("Time elapsed in fitting peak profiles:\t%f s.\n", diftotal);
-      } else
-        printf("Time elapsed in finding peak positions:\t%f s.\n", diftotal);
-      double *YMean, *ZMean;
-      YMean = malloc(nIndices * sizeof(*YMean));
-      ZMean = malloc(nIndices * sizeof(*ZMean));
-      YZ4mREta(nIndices, RMean, EtaMean, YMean, ZMean);
-      double ty, tz, LsdFit, ybcFit, zbcFit, p0, p1, p2, p3, MeanDiff, *Yc, *Zc,
-          *EtaIns, *RadIns, *DiffIns, StdDiff;
-      Yc = malloc(nIndices * sizeof(*Yc));
-      Zc = malloc(nIndices * sizeof(*Zc));
-      EtaIns = malloc(nIndices * sizeof(*EtaIns));
-      RadIns = malloc(nIndices * sizeof(*RadIns));
-      DiffIns = malloc(nIndices * sizeof(*DiffIns));
-      for (i = 0; i < nIndices; i++) {
-        Yc[i] = (ybc - (YMean[i] / px));
-        Zc[i] = (zbc + (ZMean[i] / px));
-      }
-      CorrectTiltSpatialDistortion(nIndices, MaxRingRad, Yc, Zc, IdealTtheta,
-                                   px, Lsd, ybc, zbc, tx, tyin, tzin, p0in,
-                                   p1in, p2in, p3in, EtaIns, DiffIns, RadIns,
-                                   &StdDiff, outlierFactor, NULL);
-      NrCalls = 0;
-      NrCalls = 0;
-      // Count and print indices per panel
-      if (nPanels > 0) {
-        int *panelCounts = calloc(nPanels, sizeof(int));
-        for (int i = 0; i < nIndices; i++) {
-          int pIdx = GetPanelIndex(Yc[i], Zc[i], nPanels, panels);
-          if (pIdx >= 0) {
-            panelCounts[pIdx]++;
+      TotFrames += nFrames;
+      fclose(fp);
+    } else {
+      printf("Reading HDF5.\n");
+      printf("%s\n", FileName);
+      // sprintf(dname,"%s",darkDatasetName);
+      // printf("%s\n",dname);
+      // return 1;
+      dname = "exchange/dark";
+      rc = fileReader(fd, FileName, dType, NrPixelsY * NrPixelsZ, DarkFile,
+                      dname);
+      MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, DarkFile, DarkFile2);
+      DoImageTransformations(NrTransOpt, TransOpt, DarkFile2, NrPixels);
+      if (makeMap == 1) {
+        size_t badPxCounter = 0;
+        mapMaskSize = NrPixels;
+        mapMaskSize *= NrPixels;
+        mapMaskSize /= 32;
+        mapMaskSize++;
+        mapMask = calloc(mapMaskSize, sizeof(*mapMask));
+        for (j = 0; j < NrPixels * NrPixels; j++) {
+          if (DarkFile2[j] == (pixelvalue)GapIntensity ||
+              DarkFile2[j] == (pixelvalue)BadPxIntensity) {
+            badPxCounter++;
+            SetBit(mapMask, j);
           }
         }
-        printf("\n******************* Indices per Panel (Visual Layout: Z^ Y>) "
-               "*******************\n");
-        printf("                        Anchored Panel ID: %d \n", FixPanelID);
-        double charAspect = 0.5;         // Width / Height
-        double textWidthPerPanel = 14.0; // "|  12 (12345) " is 14 chars
-        double visualWidthPoints = NPanelsY * textWidthPerPanel * charAspect;
-        double targetHeightPoints =
-            visualWidthPoints * ((double)NrPixelsZ / (double)NrPixelsY);
-        // Reduce vertical spacing factor significantly (0.15 factor)
-        int linesPerRow = (int)(targetHeightPoints / NPanelsZ * 0.15 + 0.5);
-        if (linesPerRow < 1)
-          linesPerRow = 1;
-
-        for (int z = NPanelsZ - 1; z >= 0; z--) {
-          for (int l = 0; l < linesPerRow; l++) {
-            if (l == linesPerRow / 2)
-              printf("Z=%-2d | ", z);
-            else
-              printf("     | ");
-
-            if (l == linesPerRow / 2) {
-              for (int y = 0; y < NPanelsY; y++) {
-                int pIdx = y * NPanelsZ + z;
-                if (pIdx < nPanels) {
-                  printf("| %3d (%5d) ", pIdx, panelCounts[pIdx]);
-                } else {
-                  printf("|             ");
-                }
-              }
-              printf("|"); // Closing pipe
-            }
-            printf("\n");
-          }
-        }
-        printf("       ");
-        for (int y = 0; y < NPanelsY; y++) {
-          // Data block is 14 chars: "| %3d (%5d) "
-          // We want Y label centered: 5 spaces + "Y=%-2d" (4) + 5 spaces = 14
-          printf("     Y=%-2d     ", y);
-        }
-        printf("\n");
-        printf(
-            "*****************************************************************"
-            "****"
-            "***********\n\n");
-        free(panelCounts);
+        makeMap = 0;
+        printf("%lld\n", (long long int)badPxCounter);
       }
-      FitTiltBCLsd(nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
-                   tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit,
-                   &ybcFit, &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts,
-                   tolLsd, tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts,
-                   px, outlierFactor, MinIndicesForFit, FixPanelID);
-      printf("Number of function calls: %lld\n", NrCalls);
-      printf(
-          "Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 "
-          "%0.12f\np2 %0.12f\np3 %0.12f\nMeanStrain %0.12lf\n",
-          LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3, MeanDiff);
-      double *Etas, *Diffs, *RadOuts;
-      Etas = malloc(nIndices * sizeof(*Etas));
-      Diffs = malloc(nIndices * sizeof(*Diffs));
-      RadOuts = malloc(nIndices * sizeof(*RadOuts));
-      int *IsOutlier = calloc(nIndices, sizeof(int));
-      CorrectTiltSpatialDistortion(nIndices, MaxRingRad, Yc, Zc, IdealTtheta,
-                                   px, LsdFit, ybcFit, zbcFit, tx, ty, tz, p0,
-                                   p1, p2, p3, Etas, Diffs, RadOuts, &StdDiff,
-                                   outlierFactor, IsOutlier);
-      printf("StdStrain %0.12lf\n", StdDiff);
-      means[0] += LsdFit;
-      means[1] += ybcFit;
-      means[2] += zbcFit;
-      means[3] += ty;
-      means[4] += tz;
-      means[5] += p0;
-      means[6] += p1;
-      means[7] += p2;
-      means[8] += p3;
-      means[9] += MeanDiff;
-      means[10] += StdDiff;
-      FILE *Out;
-      char OutFileName[1024];
-      sprintf(OutFileName, "%s/%s_%0*d%s.%s", folder, fn, Padding, a, Ext,
-              "corr.csv");
-      Out = fopen(OutFileName, "w");
-      fprintf(Out, "%%Eta Strain RadFit EtaCalc DiffCalc RadCalc Ideal2Theta "
-                   "Outlier YRawCorr ZRawCorr\n");
-      for (i = 0; i < nIndices; i++) {
-        if (Diffs[i] < 0)
-          continue;
-        double dY = 0, dZ = 0;
+      printf("Dark file read.\n");
+      for (j = 0; j < (NrPixels * NrPixels); j++)
+        AverageDark[j] = DarkFile2[j];
+      // sprintf(dname,"%s",dataDatasetName);
+      dname = "exchange/data";
+      rc = fileReader(fd, FileName, dType, NrPixelsY * NrPixelsZ, Image, dname);
+      MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, Image, Image2);
+      DoImageTransformations(NrTransOpt, TransOpt, Image2, NrPixels);
+      for (j = 0; j < (NrPixels * NrPixels); j++)
+        Average[j] = Image2[j] - AverageDark[j];
+      //~ uint16_t *outMatrix;
+      //~ outMatrix = calloc(NrPixels*NrPixels,sizeof(uint16_t));
+      //~ for (j=0;j<(NrPixels*NrPixels);j++)outMatrix[j] = (uint16_t)
+      // Average[j]; ~ FILE *fnew; ~ fnew = fopen("Data_000001.ge3","wb"); ~
+      // fwrite(outMatrix,sizeof(uint16_t)*NrPixels*NrPixels,1,fnew); ~
+      // fclose(fnew); ~ return;
+    }
+    double IdealTthetas[n_hkls], TthetaMins[n_hkls], TthetaMaxs[n_hkls];
+    for (i = 0; i < n_hkls; i++) {
+      IdealTthetas[i] = 2 * Thetas[i];
+      TthetaMins[i] = IdealTthetas[i] - TthetaTol;
+      TthetaMaxs[i] = IdealTthetas[i] + TthetaTol;
+    }
+    double IdealRs[n_hkls], Rmins[n_hkls], Rmaxs[n_hkls];
+    for (i = 0; i < n_hkls; i++) {
+      IdealRs[i] = R4mTtheta(IdealTthetas[i], Lsd);
+      Rmins[i] = R4mTtheta(TthetaMins[i], Lsd);
+      Rmaxs[i] = R4mTtheta(TthetaMaxs[i], Lsd);
+    }
+    int nEtaBins;
+    nEtaBins = (int)ceil(359.99 / EtaBinSize);
+    printf("Number of eta bins: %d.\n", nEtaBins);
+    double EtaBinsLow[nEtaBins], EtaBinsHigh[nEtaBins];
+    for (i = 0; i < nEtaBins; i++) {
+      EtaBinsLow[i] = EtaBinSize * i - 179.995;
+      EtaBinsHigh[i] = EtaBinSize * (i + 1) - 179.995;
+    }
+    double *R, *Eta;
+    R = malloc(NrPixels * NrPixels * sizeof(*R));
+    Eta = malloc(NrPixels * NrPixels * sizeof(*Eta));
+    int **Indices, nIndices;
+    nIndices = nEtaBins * n_hkls;
+    int *NrEachIndexBin, *etaBinNr;
+    NrEachIndexBin = malloc(nIndices * sizeof(*NrEachIndexBin));
+    Indices = allocMatrixInt(nIndices, 20000);
+    Car2Pol(n_hkls, nEtaBins, NrPixels, NrPixels, ybc, zbc, px, R, Eta, Rmins,
+            Rmaxs, EtaBinsLow, EtaBinsHigh, nIndices, NrEachIndexBin, Indices,
+            tx, tyin, tzin, p0in, p1in, p2in, p3in, MaxRingRad, Lsd);
+    double *RMean, *EtaMean, *IdealR, *IdealTtheta, *IdealRmins, *IdealRmaxs;
+    IdealR = malloc(nIndices * sizeof(*IdealR));
+    IdealRmins = malloc(nIndices * sizeof(*IdealRmins));
+    IdealRmaxs = malloc(nIndices * sizeof(*IdealRmaxs));
+    IdealTtheta = malloc(nIndices * sizeof(*IdealTtheta));
+    RMean = malloc(nIndices * sizeof(*RMean));
+    EtaMean = malloc(nIndices * sizeof(*EtaMean));
+    int NrPtsForFit;
+    NrPtsForFit = (int)((floor)((Rmaxs[0] - Rmins[0]) / px)) * RBinWidth;
+    for (i = 0; i < nIndices; i++) {
+      IdealR[i] = IdealRs[(int)(floor(i / nEtaBins))];
+      IdealRmins[i] = Rmins[(int)(floor(i / nEtaBins))];
+      IdealRmaxs[i] = Rmaxs[(int)(floor(i / nEtaBins))];
+      IdealTtheta[i] = rad2deg * atan(IdealR[i] / Lsd);
+    }
+    NrCallsProfiler = 0;
+    if (FitWeightMean == 1) {
+      CalcWeightedMean(nIndices, NrEachIndexBin, Indices, Average, R, Eta,
+                       RMean, EtaMean);
+    } else {
+      CalcFittedMean(nIndices, NrEachIndexBin, Indices, Average, R, Eta, RMean,
+                     EtaMean, NrPtsForFit, IdealRmins, IdealRmaxs, nEtaBins,
+                     ybc, zbc, px, NrPixels, EtaBinsLow, EtaBinsHigh);
+    }
+    // Find the RMean, which are 0 and update accordingly.
+    int countr = 0;
+    double *RMean2, *EtaMean2, *IdealTtheta2;
+    RMean2 = malloc(nIndices * sizeof(*RMean2));
+    EtaMean2 = malloc(nIndices * sizeof(*EtaMean2));
+    IdealTtheta2 = malloc(nIndices * sizeof(*IdealTtheta2));
+    for (i = 0; i < nIndices; i++) {
+      if (RMean[i] != 0) {
+        RMean2[countr] = RMean[i];
+        EtaMean2[countr] = EtaMean[i];
+        IdealTtheta2[countr] = IdealTtheta[i];
+        // printf("%lf %lf %lf
+        // %lf\n",RMean[i],IdealR[i],EtaMean[i],IdealTtheta[i]);
+        countr++;
+      }
+    }
+    printf("Out of %d slices, %d were in the detector\n", nIndices, countr);
+    nIndices = countr;
+    free(RMean);
+    free(EtaMean);
+    free(IdealTtheta);
+    RMean = RMean2;
+    EtaMean = EtaMean2;
+    IdealTtheta = IdealTtheta2;
+    end = omp_get_wtime();
+    diftotal = end - start;
+    if (FitWeightMean != 1) {
+      printf("Number of calls to profiler function: %lld\n", NrCallsProfiler);
+      printf("Time elapsed in fitting peak profiles:\t%f s.\n", diftotal);
+    } else
+      printf("Time elapsed in finding peak positions:\t%f s.\n", diftotal);
+    double *YMean, *ZMean;
+    YMean = malloc(nIndices * sizeof(*YMean));
+    ZMean = malloc(nIndices * sizeof(*ZMean));
+    YZ4mREta(nIndices, RMean, EtaMean, YMean, ZMean);
+    double ty, tz, LsdFit, ybcFit, zbcFit, p0, p1, p2, p3, MeanDiff, *Yc, *Zc,
+        *EtaIns, *RadIns, *DiffIns, StdDiff;
+    Yc = malloc(nIndices * sizeof(*Yc));
+    Zc = malloc(nIndices * sizeof(*Zc));
+    EtaIns = malloc(nIndices * sizeof(*EtaIns));
+    RadIns = malloc(nIndices * sizeof(*RadIns));
+    DiffIns = malloc(nIndices * sizeof(*DiffIns));
+    for (i = 0; i < nIndices; i++) {
+      Yc[i] = (ybc - (YMean[i] / px));
+      Zc[i] = (zbc + (ZMean[i] / px));
+    }
+    CorrectTiltSpatialDistortion(nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px,
+                                 Lsd, ybc, zbc, tx, tyin, tzin, p0in, p1in,
+                                 p2in, p3in, EtaIns, DiffIns, RadIns, &StdDiff,
+                                 outlierFactor, NULL);
+    NrCalls = 0;
+    NrCalls = 0;
+    // Count and print indices per panel
+    if (nPanels > 0) {
+      int *panelCounts = calloc(nPanels, sizeof(int));
+      for (int i = 0; i < nIndices; i++) {
         int pIdx = GetPanelIndex(Yc[i], Zc[i], nPanels, panels);
         if (pIdx >= 0) {
-          dY = panels[pIdx].dY;
-          dZ = panels[pIdx].dZ;
+          panelCounts[pIdx]++;
         }
-        double YRawCorr = Yc[i] + dY;
-        double ZRawCorr = Zc[i] + dZ;
-        fprintf(Out, "%f %10.8f %10.8f %f %10.8f %10.8f %f %d %f %f\n", Etas[i],
-                Diffs[i], RadOuts[i], EtaIns[i], DiffIns[i], RadIns[i],
-                IdealTtheta[i], IsOutlier[i], YRawCorr, ZRawCorr);
       }
-      fclose(Out);
-      FreeMemMatrixInt(Indices, nIndices);
-      free(R);
-      free(Eta);
-      free(NrEachIndexBin);
-      free(IdealR);
-      free(IdealRmins);
-      free(IdealRmaxs);
-      free(IdealTtheta);
-      free(RMean);
-      free(EtaMean);
-      free(YMean);
-      free(ZMean);
-      free(Diffs);
-      free(Etas);
-      free(IsOutlier);
-      end = omp_get_wtime();
-      diftotal = end - start;
-      printf("Time elapsed for this file:\t%f s.\n", diftotal);
-    }
-    end0 = omp_get_wtime();
-    diftotal = end0 - start0;
-    printf("Total time elapsed:\t%f s.\n", diftotal);
-    printf("*******************Mean Values*******************\n");
-    for (a = 0; a < 11; a++)
-      means[a] /= (EndNr - StartNr + 1);
-    printf("Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 "
-           "%0.12f\np2 %0.12f\np3 %0.12f\nMeanStrain %0.12lf\nStdStrain  "
-           "%0.12lf\n",
-           means[0], means[1], means[2], means[3], means[4], means[5], means[6],
-           means[7], means[8], means[9], means[10]);
-    printf("*******************Copy to par*******************\n");
-    free(DarkFile);
-    free(AverageDark);
-    free(Average);
-    free(Image);
+      printf("\n******************* Indices per Panel (Visual Layout: Z^ Y>) "
+             "*******************\n");
+      printf("                        Anchored Panel ID: %d \n", FixPanelID);
+      double charAspect = 0.5;         // Width / Height
+      double textWidthPerPanel = 14.0; // "|  12 (12345) " is 14 chars
+      double visualWidthPoints = NPanelsY * textWidthPerPanel * charAspect;
+      double targetHeightPoints =
+          visualWidthPoints * ((double)NrPixelsZ / (double)NrPixelsY);
+      // Reduce vertical spacing factor significantly (0.15 factor)
+      int linesPerRow = (int)(targetHeightPoints / NPanelsZ * 0.15 + 0.5);
+      if (linesPerRow < 1)
+        linesPerRow = 1;
 
-    // Save Panel Shifts
-    if (PanelShiftsFile[0] != '\0' && nPanels > 0) {
-      SavePanelShifts(PanelShiftsFile, nPanels, panels);
-      printf("Saved panel shifts to %s\n", PanelShiftsFile);
+      for (int z = NPanelsZ - 1; z >= 0; z--) {
+        for (int l = 0; l < linesPerRow; l++) {
+          if (l == linesPerRow / 2)
+            printf("Z=%-2d | ", z);
+          else
+            printf("     | ");
+
+          if (l == linesPerRow / 2) {
+            for (int y = 0; y < NPanelsY; y++) {
+              int pIdx = y * NPanelsZ + z;
+              if (pIdx < nPanels) {
+                printf("| %3d (%5d) ", pIdx, panelCounts[pIdx]);
+              } else {
+                printf("|             ");
+              }
+            }
+            printf("|"); // Closing pipe
+          }
+          printf("\n");
+        }
+      }
+      printf("       ");
+      for (int y = 0; y < NPanelsY; y++) {
+        // Data block is 14 chars: "| %3d (%5d) "
+        // We want Y label centered: 5 spaces + "Y=%-2d" (4) + 5 spaces = 14
+        printf("     Y=%-2d     ", y);
+      }
+      printf("\n");
+      printf("*****************************************************************"
+             "****"
+             "***********\n\n");
+      free(panelCounts);
     }
-    return 0;
+    FitTiltBCLsd(nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
+                 tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit, &ybcFit,
+                 &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts, tolLsd,
+                 tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts, px,
+                 outlierFactor, MinIndicesForFit, FixPanelID);
+    printf("Number of function calls: %lld\n", NrCalls);
+    printf("Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 "
+           "%0.12f\np2 %0.12f\np3 %0.12f\nMeanStrain %0.12lf\n",
+           LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3, MeanDiff);
+    double *Etas, *Diffs, *RadOuts;
+    Etas = malloc(nIndices * sizeof(*Etas));
+    Diffs = malloc(nIndices * sizeof(*Diffs));
+    RadOuts = malloc(nIndices * sizeof(*RadOuts));
+    int *IsOutlier = calloc(nIndices, sizeof(int));
+    CorrectTiltSpatialDistortion(nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px,
+                                 LsdFit, ybcFit, zbcFit, tx, ty, tz, p0, p1, p2,
+                                 p3, Etas, Diffs, RadOuts, &StdDiff,
+                                 outlierFactor, IsOutlier);
+    printf("StdStrain %0.12lf\n", StdDiff);
+    means[0] += LsdFit;
+    means[1] += ybcFit;
+    means[2] += zbcFit;
+    means[3] += ty;
+    means[4] += tz;
+    means[5] += p0;
+    means[6] += p1;
+    means[7] += p2;
+    means[8] += p3;
+    means[9] += MeanDiff;
+    means[10] += StdDiff;
+    FILE *Out;
+    char OutFileName[1024];
+    sprintf(OutFileName, "%s/%s_%0*d%s.%s", folder, fn, Padding, a, Ext,
+            "corr.csv");
+    Out = fopen(OutFileName, "w");
+    fprintf(Out, "%%Eta Strain RadFit EtaCalc DiffCalc RadCalc Ideal2Theta "
+                 "Outlier YRawCorr ZRawCorr\n");
+    for (i = 0; i < nIndices; i++) {
+      if (Diffs[i] < 0)
+        continue;
+      double dY = 0, dZ = 0;
+      int pIdx = GetPanelIndex(Yc[i], Zc[i], nPanels, panels);
+      if (pIdx >= 0) {
+        dY = panels[pIdx].dY;
+        dZ = panels[pIdx].dZ;
+      }
+      double YRawCorr = Yc[i] + dY;
+      double ZRawCorr = Zc[i] + dZ;
+      fprintf(Out, "%f %10.8f %10.8f %f %10.8f %10.8f %f %d %f %f\n", Etas[i],
+              Diffs[i], RadOuts[i], EtaIns[i], DiffIns[i], RadIns[i],
+              IdealTtheta[i], IsOutlier[i], YRawCorr, ZRawCorr);
+    }
+    fclose(Out);
+    FreeMemMatrixInt(Indices, nIndices);
+    free(R);
+    free(Eta);
+    free(NrEachIndexBin);
+    free(IdealR);
+    free(IdealRmins);
+    free(IdealRmaxs);
+    free(IdealTtheta);
+    free(RMean);
+    free(EtaMean);
+    free(YMean);
+    free(ZMean);
+    free(Diffs);
+    free(Etas);
+    free(IsOutlier);
+    end = omp_get_wtime();
+    diftotal = end - start;
+    printf("Time elapsed for this file:\t%f s.\n", diftotal);
   }
+  end0 = omp_get_wtime();
+  diftotal = end0 - start0;
+  printf("Total time elapsed:\t%f s.\n", diftotal);
+  printf("*******************Mean Values*******************\n");
+  for (a = 0; a < 11; a++)
+    means[a] /= (EndNr - StartNr + 1);
+  printf("Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 "
+         "%0.12f\np2 %0.12f\np3 %0.12f\nMeanStrain %0.12lf\nStdStrain  "
+         "%0.12lf\n",
+         means[0], means[1], means[2], means[3], means[4], means[5], means[6],
+         means[7], means[8], means[9], means[10]);
+  printf("*******************Copy to par*******************\n");
+  free(DarkFile);
+  free(AverageDark);
+  free(Average);
+  free(Image);
+
+  // Save Panel Shifts
+  if (PanelShiftsFile[0] != '\0' && nPanels > 0) {
+    SavePanelShifts(PanelShiftsFile, nPanels, panels);
+    printf("Saved panel shifts to %s\n", PanelShiftsFile);
+  }
+  return 0;
+}
