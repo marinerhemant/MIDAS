@@ -20,26 +20,48 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 def send_data_chunk(sock, dataset_num, data):
     t1 = time.time()
     
-    # Check if data is already a numpy array with correct dtype
-    if not isinstance(data, np.ndarray) or data.dtype != np.int64:
-        # Convert data to numpy array
-        data_array = np.array(data, dtype=np.int64)
+    # Ensure data is a numpy array
+    if not isinstance(data, np.ndarray):
+        data_array = np.array(data)
     else:
-        # Use the existing array
         data_array = data
     
-    # Pack the dataset number
-    header = struct.pack('H', dataset_num)
+    # Map numpy dtype to our protocol type codes
+    # 0: uint8, 1: uint16, 2: uint32, 3: int64, 4: float32, 5: float64
+    dtype_code = 3 # Default to int64
     
-    # Use memoryview instead of tobytes() to avoid a copy
+    if data_array.dtype == np.uint8:
+        dtype_code = 0
+    elif data_array.dtype == np.uint16:
+        dtype_code = 1
+    elif data_array.dtype == np.uint32:
+        dtype_code = 2
+    elif data_array.dtype == np.int64:
+        dtype_code = 3
+    elif data_array.dtype == np.float32:
+        dtype_code = 4
+    elif data_array.dtype == np.float64:
+        dtype_code = 5
+    else:
+        # Fallback for other integer types (e.g. int32) -> promote to int64
+        # or just send as int64
+        print(f"Warning: converting {data_array.dtype} to int64")
+        data_array = data_array.astype(np.int64)
+        dtype_code = 3
+        
+    # Pack the dataset number (uint16) and dtype_code (uint16)
+    # Header format: HH (2 bytes + 2 bytes = 4 bytes)
+    header = struct.pack('HH', dataset_num, dtype_code)
+    
+    # Use memoryview to avoid copy
     data_view = memoryview(data_array).cast('B')
     
-    # Combine and send in a single call
+    # Send
     sock.sendall(header)
     sock.sendall(data_view)
     
     t2 = time.time()
-    print(f"Sent dataset #{dataset_num} with {len(data_array)} int64_t values ({len(data_view)} bytes) in {t2 - t1:.4f} sec")
+    # print(f"Sent dataset #{dataset_num}, type {dtype_code}, {len(data_array)} items ({len(data_view)} bytes) in {t2 - t1:.4f} sec")
 
 def file_reader_worker(file_list, data_queue):
     """
@@ -51,11 +73,12 @@ def file_reader_worker(file_list, data_queue):
             # 1. Read from slow disk
             data = tifffile.imread(file_path)
             
-            # 2. Perform CPU-intensive conversion
-            if data.dtype != np.int64:
-                data_array = data.astype(np.int64)
-            else:
+            # 2. No conversion needed here, let send_data_chunk handle it/detect it
+            # We just want to ensure it's a numpy array, which tifffile returns.
+            if isinstance(data, np.ndarray):
                 data_array = data
+            else:
+                data_array = np.array(data)
                 
             # 3. Put the ready-to-send data into the queue
             # The put() call will block if the queue is full, preventing
@@ -187,8 +210,8 @@ def process_binary_ge(file_path, sock, dataset_num, frame_mapping, frame_index, 
             # Reshape to the specified frame size
             frame_data = frame_data.reshape(frame_size)
             
-            # Convert to int64 for sending
-            frame_data = frame_data.astype(np.int64).flatten()
+            # Do NOT convert to int64, send as native
+            frame_data = frame_data.flatten()
             
             # Update frame mapping
             frame_mapping[frame_index] = {
@@ -237,7 +260,7 @@ def process_h5(file_path, sock, dataset_num, frame_mapping, frame_index, h5_loca
                     num_frames = dataset.shape[0]
                     print(f"Dataset contains {num_frames} frames")
                     for i in range(num_frames):
-                        frame_data = dataset[i].astype(np.int64).flatten()
+                        frame_data = dataset[i].flatten()
                         
                         # Update frame mapping
                         frame_mapping[frame_index] = {
@@ -252,7 +275,7 @@ def process_h5(file_path, sock, dataset_num, frame_mapping, frame_index, h5_loca
                         frames_processed += 1
                 else:
                     # Single frame
-                    frame_data = dataset[:].astype(np.int64).flatten()
+                    frame_data = dataset[:].flatten()
                     
                     # Update frame mapping
                     frame_mapping[frame_index] = {
@@ -270,7 +293,7 @@ def process_h5(file_path, sock, dataset_num, frame_mapping, frame_index, h5_loca
                 print(f"Processing group with keys: {list(dataset.keys())}")
                 for key in dataset.keys():
                     if isinstance(dataset[key], h5py.Dataset):
-                        frame_data = dataset[key][:].astype(np.int64).flatten()
+                        frame_data = dataset[key][:].flatten()
                         
                         # Update frame mapping
                         frame_mapping[frame_index] = {

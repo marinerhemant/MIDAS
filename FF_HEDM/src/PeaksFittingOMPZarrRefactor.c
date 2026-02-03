@@ -2321,7 +2321,7 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/ResultFolder/0") != NULL) {
       readZarrString(archive, count, resultFolder);
-      printf("ResultFolder: %s\n", &resultFolder);
+      printf("ResultFolder: %s\n", *resultFolder);
     }
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/MaxNPeaks/0") != NULL)
