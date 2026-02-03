@@ -1041,7 +1041,7 @@ int main(int argc, char *argv[]) {
   int makeMap = 0;
   int HeadSize = 8192;
   int dType = 1;
-  char GapFN[4096], BadPxFN[4096];
+  char GapFN[4096], BadPxFN[4096], MaskFN[4096];
   char darkDatasetName[4096], dataDatasetName[4096];
   // Parameter defaults
   int NPanelsY = 0;
@@ -1052,6 +1052,7 @@ int main(int argc, char *argv[]) {
   int *PanelGapsZ = NULL;
   char PanelShiftsFile[1024];
   PanelShiftsFile[0] = '\0';
+  MaskFN[0] = '\0';
   sprintf(darkDatasetName, "exchange/dark");
   sprintf(dataDatasetName, "exchange/data");
   while (fgets(aline, 1000, fileParam) != NULL) {
@@ -1077,6 +1078,12 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %s", dummy, folder);
+      continue;
+    }
+    str = "MaskFile ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %s", dummy, MaskFN);
       continue;
     }
     str = "GapFile ";
@@ -1641,6 +1648,17 @@ int main(int argc, char *argv[]) {
       if (mapperSquare[i] == 1) {
         SetBit(mapMask, i);
         mapperSquare[i] = 0;
+      }
+    }
+    if (MaskFN[0] != '\0') {
+      ReadTiffFrame(MaskFN, 7, NrPixelsY * NrPixelsZ, mapper, 0);
+      MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, mapper, mapperSquare);
+      DoImageTransformations(NrTransOpt, TransOpt, mapperSquare, NrPixels);
+      for (i = 0; i < NrPixels * NrPixels; i++) {
+        if (mapperSquare[i] == 1) {
+          SetBit(mapMask, i);
+          mapperSquare[i] = 0;
+        }
       }
     }
   }

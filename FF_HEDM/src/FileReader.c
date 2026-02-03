@@ -83,7 +83,7 @@ int ReadTiffFrame(const char *filename, int dType, size_t NrPixels,
     }
   }
 
-  uint32 imagelength;
+  uint32_t imagelength;
   tsize_t scanline;
   TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &imagelength); // Rows
   scanline = TIFFScanlineSize(tif);
