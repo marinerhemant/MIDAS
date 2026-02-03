@@ -832,7 +832,7 @@ static inline double FitErrorsOrientStrains(
   SpotsYZOGCorr = allocMatrix(nrMatchedIndexer, 4);
   double DisplY, DisplZ, ys, zs, Omega, Radius, Theta, lenK, yt, zt;
   for (nrSp = 0; nrSp < nrMatchedIndexer; nrSp++) {
-    DisplacementInTheSpot(x[0], x[1], x[2], Lsd, spotsYZO[nrSp][5],
+    DisplacementInTheSpot(Pos[0], Pos[1], Pos[2], Lsd, spotsYZO[nrSp][5],
                           spotsYZO[nrSp][6], spotsYZO[nrSp][4], wedge, chi,
                           &DisplY, &DisplZ);
     yt = spotsYZO[nrSp][5] - DisplY;
