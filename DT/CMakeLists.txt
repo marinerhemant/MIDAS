@@ -22,7 +22,7 @@ function(add_dt_executable TARGET_NAME)
 endfunction()
 
 # --- Executable: DetectorMapperDT ---
-add_dt_executable(DetectorMapperDT SOURCES ${DT_SRCDIR}/DetectorMapper.c src/Panel.c)
+add_dt_executable(DetectorMapperDT SOURCES ${DT_SRCDIR}/DetectorMapper.c src/Panel.c src/FileReader.c)
 
 # --- Executable: IntegratorPeakFitOMP ---
 add_executable(IntegratorPeakFitOMP ${DT_SRCDIR}/IntegratorPeakFitOMP.c)
