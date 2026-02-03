@@ -689,12 +689,29 @@ static double problem_function(unsigned n, const double *x, double *grad,
     SpotInfoShifted[i][4] = SpotInfoAll[i][4];
     double y_raw = SpotInfoAll[i][2];
     double z_raw = SpotInfoAll[i][3];
-    double dy = 0, dz = 0;
+    double dy = 0, dz = 0, rot = 0;
     if (nPanels > 0) {
       int pIdx = GetPanelIndex(y_raw, z_raw, nPanels, panels);
       if (pIdx >= 0) {
         dy = panels[pIdx].dY;
         dz = panels[pIdx].dZ;
+        rot = panels[pIdx].rot;
+
+        double cy = (panels[pIdx].yMin + panels[pIdx].yMax) / 2.0;
+        double cz = (panels[pIdx].zMin + panels[pIdx].zMax) / 2.0;
+
+        double dy_rel = y_raw - cy;
+        double dz_rel = z_raw - cz;
+
+        // Inverse Rotation:
+        // We want to correct the 'raw' (panel) coordinates to
+        // 'shifted/canonical' coordinates. If 'rot' is panel rotation, then:
+        // y_shifted = cy + (y_raw - cy)*cos(rot) - (z_raw - cz)*sin(rot) + dy
+        double y_rot = cy + dy_rel * cos(rot) - dz_rel * sin(rot);
+        double z_rot = cz + dy_rel * sin(rot) + dz_rel * cos(rot);
+
+        y_raw = y_rot;
+        z_raw = z_rot;
       }
     }
     SpotInfoShifted[i][2] = y_raw + dy;
@@ -721,10 +738,11 @@ void FitGrain(double Ini[12], double OptP[10], double NonOptP[5],
               double OmegaRanges[2000][2], double tol[22],
               double BoxSizes[2000][4], double **hklsIn, double *Out,
               double *Error, Panel *panels, int nPanels, double tolShifts,
-              int *spotsPerPanel, int fixPanel) { // Added spotsPerPanel
+              double tolRotPanel, int *spotsPerPanel,
+              int fixPanel) { // Added spotsPerPanel
   unsigned n = 22;
   if (nPanels > 1) {
-    n += (nPanels - 1) * 2;
+    n += (nPanels - 1) * 3;
   }
 
   double x[n], xl[n], xu[n];
@@ -801,6 +819,16 @@ void FitGrain(double Ini[12], double OptP[10], double NonOptP[5],
         xu[p_idx] = x[p_idx] + tolShifts;
       }
       p_idx++;
+
+      x[p_idx] = panels[i].rot;
+      if (spotsPerPanel != NULL && spotsPerPanel[i] < 1) {
+        xl[p_idx] = x[p_idx]; // Lock
+        xu[p_idx] = x[p_idx];
+      } else {
+        xl[p_idx] = x[p_idx] - tolRotPanel;
+        xu[p_idx] = x[p_idx] + tolRotPanel;
+      }
+      p_idx++;
     }
   }
 
@@ -825,6 +853,7 @@ void FitGrain(double Ini[12], double OptP[10], double NonOptP[5],
     for (i = 1; i < nPanels; i++) {
       panels[i].dY = x[p_idx++];
       panels[i].dZ = x[p_idx++];
+      panels[i].rot = x[p_idx++];
     }
     panels[0].dY = 0;
     panels[0].dZ = 0;
@@ -858,6 +887,7 @@ int main(int argc, char *argv[]) {
   int NrPixels, nOmeRanges = 0, nBoxSizes = 0, cs = 0, RingNumbers[200],
                 cs2 = 0;
   double tolShifts = 1.0;
+  double tolRotPanel = 0.0;
   double tolBC = 1.0, tolTilts = 1.0, tolP0 = 1E-3, tolP1 = 1E-3, tolP2 = 1E-3,
          tolP3 = 45.0, tolTiltX, tolTiltY, tolTiltZ;
   int FixPanelID = 0;
@@ -1077,6 +1107,12 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %lf", dummy, &tolShifts);
+      continue;
+    }
+    str = "tolRotPanel ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolRotPanel);
       continue;
     }
     str = "tolBC ";
@@ -1377,12 +1413,12 @@ int main(int argc, char *argv[]) {
   double *Error;
   int nOptParams = 18;
   if (nPanels > 1) {
-    nOptParams += (nPanels - 1) * 2;
+    nOptParams += (nPanels - 1) * 3;
   }
   Error = malloc(3 * sizeof(*Error));
   Out = malloc(nOptParams * sizeof(*Out));
   FitGrain(Ini, OptP, NonOptP, NonOptPInt, SpotInfoAll, OmegaRanges, tols,
-           BoxSizes, hkls, Out, Error, panels, nPanels, tolShifts,
+           BoxSizes, hkls, Out, Error, panels, nPanels, tolShifts, tolRotPanel,
            spotsPerPanel, FixPanelID);
   printf("\nInput:\n");
   for (i = 0; i < 12; i++)

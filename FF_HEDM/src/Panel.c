@@ -42,6 +42,7 @@ int GeneratePanels(int nPanelsY, int nPanelsZ, int panelSizeY, int panelSizeZ,
       (*panels)[idx].zMax = zEnd;
       (*panels)[idx].dY = 0.0;
       (*panels)[idx].dZ = 0.0;
+      (*panels)[idx].rot = 0.0;
 
       idx++;
     }
@@ -62,11 +63,13 @@ int LoadPanelShifts(const char *filename, int nPanels, Panel *panels) {
     if (line[0] == '#' || line[0] == '\n')
       continue;
     int id;
-    double dY, dZ;
-    if (sscanf(line, "%d %lf %lf", &id, &dY, &dZ) == 3) {
+    double dY, dZ, rot = 0.0;
+    int nRead = sscanf(line, "%d %lf %lf %lf", &id, &dY, &dZ, &rot);
+    if (nRead >= 3) {
       if (id >= 0 && id < nPanels) {
         panels[id].dY = dY;
         panels[id].dZ = dZ;
+        panels[id].rot = (nRead == 4) ? rot : 0.0;
       }
     }
   }
@@ -82,9 +85,10 @@ int SavePanelShifts(const char *filename, int nPanels, Panel *panels) {
     return 1;
   }
 
-  fprintf(fp, "# ID dY dZ\n");
+  fprintf(fp, "# ID dY dZ rot\n");
   for (int i = 0; i < nPanels; i++) {
-    fprintf(fp, "%d %.10f %.10f\n", panels[i].id, panels[i].dY, panels[i].dZ);
+    fprintf(fp, "%d %.10f %.10f %.10f\n", panels[i].id, panels[i].dY,
+            panels[i].dZ, panels[i].rot);
   }
   fclose(fp);
   return 0;
