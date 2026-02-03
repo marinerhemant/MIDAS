@@ -2430,6 +2430,9 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
   }
 
   // Generate Panels
+  // print nPanels and PanelShifts file
+  printf("nPanels: %d %d\n", NPanelsY, NPanelsZ);
+  printf("PanelShiftsFile: %s\n", PanelShiftsFile);
   if (NPanelsY > 0 && NPanelsZ > 0) {
     int *PanelGapsY = NULL;
     int *PanelGapsZ = NULL;
