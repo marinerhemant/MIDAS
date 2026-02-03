@@ -1964,6 +1964,7 @@ int main(int argc, char *argv[]) {
       }
       printf("\n******************* Indices per Panel (Visual Layout: Z^ Y>) "
              "*******************\n");
+      printf("                        Anchored Panel ID: %d \n", FixPanelID);
       double charAspect = 0.5;         // Width / Height
       double textWidthPerPanel = 14.0; // "|  12 (12345) " is 14 chars
       double visualWidthPoints = NPanelsY * textWidthPerPanel * charAspect;
