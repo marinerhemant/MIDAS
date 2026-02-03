@@ -32,10 +32,18 @@ def send_data_chunk(sock, dataset_num, data):
     
     if data_array.dtype == np.uint8:
         dtype_code = 0
+    elif data_array.dtype == np.int8:
+        dtype_code = 0
     elif data_array.dtype == np.uint16:
+        dtype_code = 1
+    elif data_array.dtype == np.int16:
         dtype_code = 1
     elif data_array.dtype == np.uint32:
         dtype_code = 2
+    elif data_array.dtype == np.int32:
+        dtype_code = 2
+    elif data_array.dtype == np.uint64:
+        dtype_code = 3
     elif data_array.dtype == np.int64:
         dtype_code = 3
     elif data_array.dtype == np.float32:
