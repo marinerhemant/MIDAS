@@ -1954,11 +1954,12 @@ int main(int argc, char *argv[]) {
       printf("\n******************* Indices per Panel (Visual Layout: Z^ Y>) "
              "*******************\n");
       double charAspect = 0.5;         // Width / Height
-      double textWidthPerPanel = 16.0; // "[ 12 (12345)]  " is ~15-16 chars
+      double textWidthPerPanel = 15.0; // "[ 12 (12345)]  " is 15 chars
       double visualWidthPoints = NPanelsY * textWidthPerPanel * charAspect;
       double targetHeightPoints =
           visualWidthPoints * ((double)NrPixelsZ / (double)NrPixelsY);
-      int linesPerRow = (int)(targetHeightPoints / NPanelsZ + 0.5);
+      // Reduce vertical spacing factor to make it more compact (0.4 factor)
+      int linesPerRow = (int)(targetHeightPoints / NPanelsZ * 0.4 + 0.5);
       if (linesPerRow < 1)
         linesPerRow = 1;
 
@@ -1982,6 +1983,8 @@ int main(int argc, char *argv[]) {
       }
       printf("       ");
       for (int y = 0; y < NPanelsY; y++) {
+        // Data block is 15 chars: "[%3d (%5d)]  "
+        // We want Y label centered. "   Y=%-2d       " -> 3+4+8 = 15 chars
         printf("   Y=%-2d       ", y);
       }
       printf("\n");
