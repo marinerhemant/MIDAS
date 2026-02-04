@@ -1992,11 +1992,8 @@ int main(int argc, char *argv[]) {
   // ===========================
   int streamId = 0;
   int frameCounter = 0;
-  double t_start_loop = 0.0;
-
   while (keep_running) {
     StreamContext *ctx = &streamPool[streamId];
-    t_start_loop = get_wall_time_ms();
 
     // 1. FINALIZE PREVIOUS WORK (if any)
     // 1. FINALIZE PREVIOUS WORK (if any)
