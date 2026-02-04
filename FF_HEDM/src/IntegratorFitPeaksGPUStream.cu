@@ -138,6 +138,8 @@ typedef struct {
   bool hasPendingWork; // True if the stream is currently processing a frame
   double t_submission; // Timestamp when work was submitted
   double t_qpop;       // Duration of queue pop
+  double
+      t_cpu_submit; // CPU time spent submitting work (check for blocking copy)
 
   // -- Timing Events --
   cudaEvent_t start_proc, stop_proc;
@@ -2280,9 +2282,11 @@ int main(int argc, char *argv[]) {
       // Wr1D:0.02". Refactoring the print:
 
       printf("F#%d: Ttl:%.2f| QPop:%.2f Sync:%.2f GPU(Tot:%.2f Proc:%.2f "
-             "Int:%.2f Prof:%.2f D2H:%.2f) CPU(Tot:%.2f Disk:%.2f Fit:%.2f)\n",
+             "Int:%.2f Prof:%.2f D2H:%.2f) CPU(Tot:%.2f Submit:%.2f Disk:%.2f "
+             "Fit:%.2f)\n",
              ctx->frameIdx, t_lat, ctx->t_qpop, (t_wait_end - t_wait_start),
-             t_gpu_tot, t_gpu_proc, t_gpu_int, t_gpu_prof, t_gpu_d2h, t_cpu_tot,
+             t_gpu_tot, t_gpu_proc, t_gpu_int, t_gpu_prof, t_gpu_d2h,
+             t_cpu_tot + ctx->t_cpu_submit, ctx->t_cpu_submit,
              (t_write_end - t_write_start), (t_fit_end - t_fit_start));
     }
 
@@ -2366,6 +2370,15 @@ int main(int argc, char *argv[]) {
                               ctx->d_int1D_simple_mean, nRBins * sizeof(double),
                               cudaMemcpyDeviceToHost, ctx->stream));
     gpuErrchk(cudaEventRecord(ctx->stop_d2h, ctx->stream));
+
+    if (wr2D && ctx->hIntArrFrame) {
+      gpuErrchk(cudaMemcpyAsync(ctx->hIntArrFrame, ctx->dIntArrFrame,
+                                bigArrSize * sizeof(double),
+                                cudaMemcpyDeviceToHost, ctx->stream));
+    }
+
+    double t_sub_end = get_wall_time_ms();
+    ctx->t_cpu_submit = t_sub_end - ctx->t_submission;
 
     if (wr2D && ctx->hIntArrFrame) {
       gpuErrchk(cudaMemcpyAsync(ctx->hIntArrFrame, ctx->dIntArrFrame,
