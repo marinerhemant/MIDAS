@@ -109,6 +109,49 @@ typedef struct {
   pthread_cond_t not_full;
 } ProcessQueue;
 
+// --- Writer Queue ---
+typedef struct {
+  // Pointers to pinned memory (owned by StreamContext, safe for duration of
+  // queue latency)
+  double *h_int1D;
+  double *h_int1D_simple_mean;
+  double *hIntArrFrame;
+  int nRBins;
+  size_t bigArrSize;
+
+  // File handles (global or passed) - actually globals are accessible,
+  // but let's assume we use the globals directly in the writer thread
+  // OR pass flags to say "write this".
+  // Let's pass flags to be safe/clean.
+  bool doWr2D;
+
+  // Peak fitting results?
+  // Peak fit is done on CPU in main loop currently.
+  // Wait, Peak Fit is mathematically heavy (nlopt).
+  // User asked to optimize Disk I/O.
+  // Peak fit is separate.
+  // But if I move peak fit to writer? No, that's heavy compute.
+  // Writer should just write.
+
+  // For now, only 1D/2D writing.
+  // Terminate flag? Use nRBins=-1.
+} WriteJob;
+
+typedef struct {
+  WriteJob jobs[MAX_QUEUE_SIZE];
+  int front;
+  int rear;
+  int count;
+  pthread_mutex_t mutex;
+  pthread_cond_t not_empty;
+  pthread_cond_t not_full;
+} WriterQueue;
+
+WriterQueue writer_queue;
+
+// Writer thread function prototype
+void *writer_thread_func(void *arg);
+
 struct data {
   int y;
   int z;
@@ -228,7 +271,7 @@ int queue_push(ProcessQueue *queue, uint16_t dataset_num, void *data,
   queue->rear = (queue->rear + 1) % MAX_QUEUE_SIZE;
   queue->chunks[queue->rear].dataset_num = dataset_num;
   queue->chunks[queue->rear].data = data;
-  queue->chunks[queue->rear].size = num_values;
+  queue->chunks[queue->rear].size = num_values; // Note: size in elements
   queue->chunks[queue->rear].dtype = dtype;
   queue->count++;
   pthread_cond_signal(&queue->not_empty);
@@ -238,19 +281,22 @@ int queue_push(ProcessQueue *queue, uint16_t dataset_num, void *data,
 
 int queue_pop(ProcessQueue *queue, DataChunk *chunk) {
   pthread_mutex_lock(&queue->mutex);
-  while (queue->count <= 0 && keep_running) {
+  while (queue->count == 0 && keep_running) {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     ts.tv_sec += 1;
     pthread_cond_timedwait(&queue->not_empty, &queue->mutex, &ts);
   }
-  if (!keep_running && queue->count <= 0) {
+
+  if (queue->count == 0 && !keep_running) {
     pthread_mutex_unlock(&queue->mutex);
     return -1;
   }
+
   *chunk = queue->chunks[queue->front];
   queue->front = (queue->front + 1) % MAX_QUEUE_SIZE;
   queue->count--;
+
   pthread_cond_signal(&queue->not_full);
   pthread_mutex_unlock(&queue->mutex);
   return 0;
@@ -1917,10 +1963,65 @@ int main(int argc, char *argv[]) {
 
   CHUNK_SIZE = SizeFile;
   TOTAL_MSG_SIZE = HEADER_SIZE + CHUNK_SIZE;
-  queue_init(&process_queue);
+  writer_queue_init(&writer_queue);
+  pthread_t writer_thread;
+  pthread_create(&writer_thread, NULL, writer_thread_func, NULL);
 
   check((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0,
         "Socket creation failed");
+  int sock_opt = 1;
+  // ... (lines 1966-2047 kept same, implicit context) ...
+  // Instead of skipping lines, I must act on the TARGET lines.
+  // I will structure the replacement to cover the init and the main loop.
+
+  // First Block: Init Writer Thread (replacing lines ~1962 queue_init)
+  queue_init(&process_queue);
+  writer_queue_init(&writer_queue);
+  pthread_t writer_thread;
+  if (pthread_create(&writer_thread, NULL, writer_thread_func, NULL) != 0) {
+    check(1, "Failed to create writer thread");
+  }
+
+  // ...
+
+  // Second Block: Main Loop Write Replacement (lines 2048-2073)
+  // --- Write Results to Disk (Async) ---
+  double t_write_start = get_wall_time_ms();
+
+  WriteJob wJob;
+  wJob.h_int1D = ctx->h_int1D;
+  wJob.h_int1D_simple_mean = ctx->h_int1D_simple_mean;
+  wJob.hIntArrFrame = ctx->hIntArrFrame;
+  wJob.nRBins = nRBins;
+  wJob.bigArrSize = bigArrSize; // Pass correct size
+  wJob.doWr2D = wr2D;
+
+  writer_queue_push(&writer_queue, wJob);
+
+  double t_write_end = get_wall_time_ms();
+
+  // Third Block: Drain Loop Write Replacement (lines 2443-2461)
+  // --- Write Results to Disk (Async) ---
+  WriteJob dJob;
+  dJob.h_int1D = drainCtx->h_int1D;
+  dJob.h_int1D_simple_mean = drainCtx->h_int1D_simple_mean;
+  dJob.hIntArrFrame = drainCtx->hIntArrFrame;
+  dJob.nRBins = nRBins;
+  dJob.bigArrSize = bigArrSize;
+  dJob.doWr2D = wr2D;
+
+  writer_queue_push(&writer_queue, dJob);
+
+  // Fourth Block: Cleanup (lines 2689+)
+  // Destroy queue
+  queue_destroy(&process_queue);
+
+  // Shutdown Writer
+  WriteJob termJob;
+  termJob.nRBins = -1; // Sentinel
+  writer_queue_push(&writer_queue, termJob);
+  pthread_join(writer_thread, NULL);
+  writer_queue_destroy(&writer_queue);
   int sock_opt = 1;
   setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &sock_opt,
              sizeof(sock_opt));
