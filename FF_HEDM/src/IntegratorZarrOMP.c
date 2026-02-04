@@ -19,6 +19,7 @@
 #include <libgen.h>
 #include <limits.h>
 #include <math.h>
+#include <omp.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -303,10 +304,16 @@ int main(int argc, char **argv) {
   clock_t start, end, start0, end0;
   start0 = clock();
   double diftotal;
-  if (argc != 2) {
-    printf("Usage: %s ZarrName.zip\n", argv[0]);
+  int nCPUs = 4;
+  if (argc == 3) {
+    nCPUs = atoi(argv[2]);
+  } else if (argc != 2) {
+    printf("Usage: %s ZarrName.zip [nCPUs]\n", argv[0]);
     return (1);
   }
+  omp_set_num_threads(nCPUs);
+  printf("Running with %d OpenMP threads.\n", nCPUs);
+
   double RMax, RMin, RBinSize, EtaMax, EtaMin, EtaBinSize, Lsd, px;
   int NrPixelsY = 2048, NrPixelsZ = 2048, Normalize = 1;
   int nEtaBins, nRBins;
@@ -1139,7 +1146,11 @@ int main(int argc, char **argv) {
       PerFrameArr = malloc(bigArrSize * 4 * sizeof(*PerFrameArr));
     }
     memset(IntArrPerFrame, 0, bigArrSize * sizeof(double));
-    t_0 = clock();
+    memset(IntArrPerFrame, 0, bigArrSize * sizeof(double));
+    t_0 = omp_get_wtime();
+#pragma omp parallel for private(j, k, l, Pos, nPixels, dataPos, Intensity,    \
+                                     totArea, ThisVal, testPos, ThisInt,       \
+                                     RMean, EtaMean)
     for (j = 0; j < nRBins; j++) {
       RMean = (RBinsLow[j] + RBinsHigh[j]) / 2;
       for (k = 0; k < nEtaBins; k++) {
@@ -1188,7 +1199,7 @@ int main(int argc, char **argv) {
         }
       }
     }
-    t_integration += (clock() - t_0) / CLOCKS_PER_SEC;
+    t_integration += (omp_get_wtime() - t_0);
     if (i == 0) {
       hsize_t dims[3] = {4, nRBins, nEtaBins};
       status_f =

@@ -427,8 +427,8 @@ class FileProcessor:
         out_log = log_path / f"{zip_file.name}_integrator_out.csv"
         err_log = log_path / f"{zip_file.name}_integrator_err.csv"
         
-        integrator_path = MIDAS_BIN / 'IntegratorZarr'
-        integrator_cmd = [str(integrator_path), str(zip_file)]
+        integrator_path = MIDAS_BIN / 'IntegratorZarrOMP'
+        integrator_cmd = [str(integrator_path), str(zip_file),str(self.params.nCPUsLocal)]
         
         with self._run_command(
             integrator_cmd, 
@@ -665,6 +665,8 @@ class MidasIntegrator:
                           help='Whether want to generate map of detector or not. If unsure, put to 1. If already have the CORRECT Map.bin and nMap.bin, put it to 0.')
         parser.add_argument('-nCPUs', type=int, default=1, 
                           help='If you want to use multiple CPUs.')
+        parser.add_argument('-nCPUsLocal', type=int, default=4, 
+                          help='If you want to use multiple CPUs locally for each integrator instance. Default is 4, so each integrator instance will use 4 CPUs.')
         parser.add_argument('-writeMat', type=int, default=0, 
                           help='If you want to write a matlab .mat file.')
         parser.add_argument('-skipExisting', action='store_true',

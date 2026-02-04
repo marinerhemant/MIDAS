@@ -2132,8 +2132,6 @@ int main(int argc, char *argv[]) {
       dPxList, dNPxList, NrPixelsY, NrPixelsZ, dMapMask, mapMaskWC, px, Lsd);
 
   // --- Precompute Offsets/Weights ---
-  int pcBlocks =
-      (nRBins * 2 + initTPB - 1) / initTPB; // nBins = 2 * bigArrSize?
   // No, nBins for dNPxList is 2 * bigArrSize (stride 2).
   // The kernel loop is: `idx < nBins`.
   // `dNPxList` index uses `2*idx` and `2*idx+1`.

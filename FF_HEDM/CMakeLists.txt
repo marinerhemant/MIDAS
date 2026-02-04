@@ -127,6 +127,7 @@ add_ff_hedm_executable(DetectorMapper SOURCES src/DetectorMapper.c src/Panel.c s
 add_ff_hedm_executable(DetectorMapperZarr SOURCES src/DetectorMapperZarr.c src/Panel.c src/FileReader.c)
 add_ff_hedm_executable(Integrator SOURCES src/Integrator.c src/FileReader.c)
 add_ff_hedm_executable(IntegratorZarr SOURCES src/IntegratorZarr.c)
+add_ff_hedm_executable(IntegratorZarrOMP SOURCES src/IntegratorZarrOMP.c OMP)
 add_ff_hedm_executable(ConvTiffToGE SOURCES src/ConvTiffToGE.c)
 add_ff_hedm_executable(MapBND SOURCES src/MapBND.c)
 
