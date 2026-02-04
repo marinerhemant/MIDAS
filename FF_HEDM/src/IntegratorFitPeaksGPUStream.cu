@@ -1357,6 +1357,12 @@ void ProcessImageGPUGeneric(const void *hRawVoid, float *dProc,
   } else {
     // Fallback to Zero-Copy for large types (double/int64) to avoid buffer
     // overflow
+    // Record empty event interval for consistency
+    if (start_copy)
+      cudaEventRecord(start_copy, stream);
+    if (stop_copy)
+      cudaEventRecord(stop_copy, stream);
+
     rP = (const T *)hRaw;
   }
 
