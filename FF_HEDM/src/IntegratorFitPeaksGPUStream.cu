@@ -1909,7 +1909,7 @@ int main(int argc, char *argv[]) {
   TOTAL_MSG_SIZE = HEADER_SIZE + CHUNK_SIZE;
   queue_init(&process_queue);
 
-  check((server_fd = socket(AF_INET, SOCK_STREAM, 0)) != 0,
+  check((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0,
         "Socket creation failed");
   int sock_opt = 1;
   setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &sock_opt,
@@ -1919,10 +1919,10 @@ int main(int argc, char *argv[]) {
   server_addr.sin_addr.s_addr = INADDR_ANY;
   server_addr.sin_port = htons(PORT);
 
-  check(bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) >=
+  check(bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
             0,
         "Bind failed");
-  check(listen(server_fd, MAX_CONNECTIONS) >= 0, "Listen failed");
+  check(listen(server_fd, MAX_CONNECTIONS) < 0, "Listen failed");
 
   pthread_t accept_thread;
   pthread_create(&accept_thread, NULL, accept_connections, &server_fd);
