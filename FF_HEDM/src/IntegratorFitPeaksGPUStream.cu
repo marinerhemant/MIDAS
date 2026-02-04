@@ -1333,14 +1333,23 @@ void ProcessImageGPUGeneric(const void *hRawVoid, float *dProc,
     }
   }
 
-  // Zero-Copy Optimization:
-  // Instead of copying to d_b1, we use the pinned host pointer directly.
-  // This assumes UVA (cudaMallocHost memory is device accessible).
-  // This eliminates the 3ms CPU blocking time for serialization/PCIe-submit.
-  // Note: d_b1 is still used as a usage buffer for Step 1 output (see below).
-  T *d_input = (T *)hRaw;
-  // gpuErrchk(cudaMemcpyAsync(d_input, hRaw, BInput, cudaMemcpyHostToDevice,
-  // stream));
+  // Staged Copy Optimization:
+  // If input fits in d_b1 (float* buffer), copy it to Device first.
+  // This utilizes Copy Engine (DMA) which is faster/more overlapping than SM
+  // Zero-Copy reads. Crucial for performance on heavy transforms
+  // (Flip/Transpose) where random access to Host is slow.
+  const T *rP = NULL;
+  T *d_input_staging = (T *)d_b1;
+
+  if (sizeof(T) <= sizeof(float)) {
+    gpuErrchk(cudaMemcpyAsync(d_input_staging, hRaw, BInput,
+                              cudaMemcpyHostToDevice, stream));
+    rP = d_input_staging;
+  } else {
+    // Fallback to Zero-Copy for large types (double/int64) to avoid buffer
+    // overflow
+    rP = (const T *)hRaw;
+  }
 
   if (!anyT) {
     // Direct process
