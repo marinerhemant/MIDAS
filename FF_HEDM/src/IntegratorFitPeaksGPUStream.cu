@@ -917,13 +917,32 @@ __global__ void initialize_PerFrameArr_Area_kernel(
   }
 }
 
+__global__ void PrecomputeOffsets_kernel(const struct data *dPxList,
+                                         const int *dNPxList, int nBins,
+                                         int NrPixelsY, int *dOffsets,
+                                         double *dWeights) {
+  const size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= nBins)
+    return;
+
+  long long nPixels = dNPxList[2 * idx];
+  long long dataPos = dNPxList[2 * idx + 1];
+
+  for (long long l = 0; l < nPixels; l++) {
+    struct data ThisVal = dPxList[dataPos + l];
+    long long offset = (long long)ThisVal.z * NrPixelsY + ThisVal.y;
+    dOffsets[dataPos + l] = (int)offset;
+    dWeights[dataPos + l] = ThisVal.frac;
+  }
+}
+
 __global__ void integrate_noMapMask(double px, double Lsd, size_t bigArrSize,
                                     int Normalize, int sumImages, int frameIdx,
-                                    const struct data *dPxList,
                                     const int *dNPxList, int NrPixelsY,
                                     int NrPixelsZ, const double *dImage,
                                     double *dIntArrPerFrame,
-                                    double *dSumMatrix) {
+                                    double *dSumMatrix, const int *dOffsets,
+                                    const double *dWeights) {
   const size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= bigArrSize)
     return;
@@ -939,10 +958,10 @@ __global__ void integrate_noMapMask(double px, double Lsd, size_t bigArrSize,
   dataPos = dNPxList[nPxListIndex + 1];
 
   for (long long l = 0; l < nPixels; l++) {
-    struct data ThisVal = dPxList[dataPos + l];
-    long long testPos = (long long)ThisVal.z * NrPixelsY + ThisVal.y;
-    Intensity += __ldg(&dImage[testPos]) * ThisVal.frac;
-    totArea += ThisVal.frac; // <<< Accumulate area locally
+    int testPos = dOffsets[dataPos + l];
+    double weight = dWeights[dataPos + l];
+    Intensity += __ldg(&dImage[testPos]) * weight;
+    totArea += weight; // <<< Accumulate area locally
   }
 
   // Use the *locally calculated* totArea for threshold and normalization
@@ -963,9 +982,10 @@ __global__ void integrate_MapMask(double px, double Lsd, size_t bigArrSize,
                                   int Normalize, int sumImages, int frameIdx,
                                   size_t mapMaskWordCount, const int *dMapMask,
                                   int nRBins, int nEtaBins, int NrPixelsY,
-                                  int NrPixelsZ, const struct data *dPxList,
-                                  const int *dNPxList, const double *dImage,
-                                  double *dIntArrPerFrame, double *dSumMatrix) {
+                                  int NrPixelsZ, const int *dNPxList,
+                                  const double *dImage, double *dIntArrPerFrame,
+                                  double *dSumMatrix, const int *dOffsets,
+                                  const double *dWeights) {
   const size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= bigArrSize)
     return;
@@ -982,16 +1002,16 @@ __global__ void integrate_MapMask(double px, double Lsd, size_t bigArrSize,
 
   // <<< RE-INTRODUCED area and intensity calculation loop (with mask) >>>
   for (long long l = 0; l < nPixels; l++) {
-    struct data ThisVal = dPxList[dataPos + l];
-    long long testPos = (long long)ThisVal.z * NrPixelsY + ThisVal.y;
+    int testPos = dOffsets[dataPos + l];
     bool isMasked = false;
     if (TestBit(dMapMask, testPos))
       isMasked = true;
 
     if (!isMasked) {
-      Intensity += __ldg(&dImage[testPos]) * ThisVal.frac;
+      double weight = dWeights[dataPos + l];
+      Intensity += __ldg(&dImage[testPos]) * weight;
       totArea +=
-          ThisVal.frac; // <<< Accumulate area locally (only for non-masked)
+          weight; // <<< Accumulate area locally (only for non-masked)
     }
   }
 
@@ -2028,6 +2048,8 @@ int main(int argc, char *argv[]) {
   double *dPerFrame = NULL; // R, TTh, Eta, Area values per R-Eta bin on GPU
   double *dEtaLo = NULL, *dEtaHi = NULL, *dRLo = NULL,
          *dRHi = NULL; // Bin edges on GPU
+  int *dPixelOffsets = NULL;
+  double *dPixelWeights = NULL;
 
   // --- Global GPU Allocations (Geometry & Maps) ---
   gpuErrchk(cudaMalloc(&dPxList, szPxList));
@@ -2037,6 +2059,17 @@ int main(int argc, char *argv[]) {
   gpuErrchk(cudaMalloc(&dEtaHi, nEtaBins * sizeof(double)));
   gpuErrchk(cudaMalloc(&dRLo, nRBins * sizeof(double)));
   gpuErrchk(cudaMalloc(&dRHi, nRBins * sizeof(double)));
+
+  // Pre-computed offsets/weights
+  gpuErrchk(cudaMalloc(
+      &dPixelOffsets,
+      szPxList *
+          sizeof(int))); // Approx size (actually szPxList is bytes, need count)
+  // Wait, szPxList is BYTES of struct data (16 bytes).
+  // Count = szPxList / sizeof(struct data).
+  size_t pxListCount = szPxList / sizeof(struct data);
+  gpuErrchk(cudaMalloc(&dPixelOffsets, pxListCount * sizeof(int)));
+  gpuErrchk(cudaMalloc(&dPixelWeights, pxListCount * sizeof(double)));
 
   if (sumI) {
     gpuErrchk(cudaMalloc(&dSumMatrix, bigArrSize * sizeof(double)));
@@ -2116,6 +2149,18 @@ int main(int argc, char *argv[]) {
   initialize_PerFrameArr_Area_kernel<<<initBlocks, initTPB>>>(
       dPerFrame, bigArrSize, nRBins, nEtaBins, dRLo, dRHi, dEtaLo, dEtaHi,
       dPxList, dNPxList, NrPixelsY, NrPixelsZ, dMapMask, mapMaskWC, px, Lsd);
+
+  // --- Precompute Offsets/Weights ---
+  int pcBlocks =
+      (nRBins * 2 + initTPB - 1) / initTPB; // nBins = 2 * bigArrSize?
+  // No, nBins for dNPxList is 2 * bigArrSize (stride 2).
+  // The kernel loop is: `idx < nBins`.
+  // `dNPxList` index uses `2*idx` and `2*idx+1`.
+  // So `idx` corresponds to `bigArrSize` (total bins).
+  int pcBlocks2 = (bigArrSize + initTPB - 1) / initTPB;
+  PrecomputeOffsets_kernel<<<pcBlocks2, initTPB>>>(
+      dPxList, dNPxList, bigArrSize, NrPixelsY, dPixelOffsets, dPixelWeights);
+
   gpuErrchk(cudaDeviceSynchronize());
 
   // --- Initialize Host R/Eta from GPU ---
@@ -2558,14 +2603,15 @@ int main(int argc, char *argv[]) {
 
     if (!dMapMask) {
       integrate_noMapMask<<<nrVox, integTPB, 0, ctx->stream>>>(
-          px, Lsd, bigArrSize, Normalize, sumI, ctx->frameIdx, dPxList,
-          dNPxList, NrPixelsY, NrPixelsZ, ctx->dProcessedImage,
-          ctx->dIntArrFrame, dSumMatrix);
+          px, Lsd, bigArrSize, Normalize, sumI, ctx->frameIdx, dNPxList,
+           NrPixelsY, NrPixelsZ, ctx->dProcessedImage,
+          ctx->dIntArrFrame, dSumMatrix, dPixelOffsets, dPixelWeights);
     } else {
       integrate_MapMask<<<nrVox, integTPB, 0, ctx->stream>>>(
           px, Lsd, bigArrSize, Normalize, sumI, ctx->frameIdx, mapMaskWC,
-          dMapMask, nRBins, nEtaBins, NrPixelsY, NrPixelsZ, dPxList, dNPxList,
-          ctx->dProcessedImage, ctx->dIntArrFrame, dSumMatrix);
+          dMapMask, nRBins, nEtaBins, NrPixelsY, NrPixelsZ, dNPxList,
+          ctx->dProcessedImage, ctx->dIntArrFrame, dSumMatrix, dPixelOffsets,
+          dPixelWeights);
     }
     double t_int_end = get_wall_time_ms();
     gpuErrchk(cudaEventRecord(ctx->stop_int, ctx->stream));
@@ -2834,6 +2880,12 @@ int main(int argc, char *argv[]) {
     if (streamPool[i].hIntArrFrame)
       cudaFreeHost(streamPool[i].hIntArrFrame);
   }
+
+  // Cleanup Precomputed
+  if (dPixelOffsets)
+    cudaFree(dPixelOffsets);
+  if (dPixelWeights)
+    cudaFree(dPixelWeights);
 
   // --- Shutdown Accept Thread Gracefully ---
   printf("Attempting to shut down network acceptor thread...\n");
