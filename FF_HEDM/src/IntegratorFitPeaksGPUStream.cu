@@ -2549,267 +2549,267 @@ int main(int argc, char *argv[]) {
     // printf("DEBUG-SUBMIT: Proc:%.3f Int:%.3f Prof:%.3f D2H:%.3f\n",
     //        (t_proc_end - t_proc_start), (t_int_end - t_int_start),
     //        (t_prof_end - t_prof_start), (t_d2h_end - t_d2h_start));
-                                bigArrSize * sizeof(double),
-                                cudaMemcpyDeviceToHost, ctx->stream));
+
+    // Advance
+    streamId = (streamId + 1) % NUM_STREAMS;
+    frameCounter++;
   }
 
-  // Advance
-  streamId = (streamId + 1) % NUM_STREAMS;
-  frameCounter++;
-}
+  // --- Drain Remaining Streams ---
+  for (int i_drain = 0; i_drain < NUM_STREAMS; ++i_drain) {
+    // Use a local pointer for the stream context to avoid shadowing issues if
+    // any
+    StreamContext *drainCtx = &streamPool[i_drain];
 
-// --- Drain Remaining Streams ---
-for (int i_drain = 0; i_drain < NUM_STREAMS; ++i_drain) {
-  // Use a local pointer for the stream context to avoid shadowing issues if
-  // any
-  StreamContext *drainCtx = &streamPool[i_drain];
+    if (drainCtx->hasPendingWork) {
+      gpuErrchk(cudaStreamSynchronize(drainCtx->stream));
 
-  if (drainCtx->hasPendingWork) {
-    gpuErrchk(cudaStreamSynchronize(drainCtx->stream));
+      // --- Write Results to Disk (Async) ---
+      WriteJob dJob;
+      dJob.h_int1D = drainCtx->h_int1D;
+      dJob.h_int1D_simple_mean = drainCtx->h_int1D_simple_mean;
+      dJob.hIntArrFrame = drainCtx->hIntArrFrame;
+      dJob.nRBins = nRBins;
+      dJob.bigArrSize = bigArrSize;
+      dJob.doWr2D = wr2D;
 
-    // --- Write Results to Disk (Async) ---
-    WriteJob dJob;
-    dJob.h_int1D = drainCtx->h_int1D;
-    dJob.h_int1D_simple_mean = drainCtx->h_int1D_simple_mean;
-    dJob.hIntArrFrame = drainCtx->hIntArrFrame;
-    dJob.nRBins = nRBins;
-    dJob.bigArrSize = bigArrSize;
-    dJob.doWr2D = wr2D;
+      writer_queue_push(&writer_queue, dJob);
 
-    writer_queue_push(&writer_queue, dJob);
+      if (pkFit) {
+        double *local_h_int1D = drainCtx->h_int1D;
+        int currentPeakCount = 0;
+        double *sendFitParams = NULL;
+        Peak *pks = NULL;
 
-    if (pkFit) {
-      double *local_h_int1D = drainCtx->h_int1D;
-      int currentPeakCount = 0;
-      double *sendFitParams = NULL;
-      Peak *pks = NULL;
-
-      if (nSpecP > 0) {
-        pks = (Peak *)malloc(nSpecP * sizeof(Peak));
-        int validPeakCount = 0;
-        for (int p = 0; p < nSpecP; ++p) {
-          int bestBin = -1;
-          double minDiff = 1e10;
-          for (int r = 0; r < nRBins; ++r) {
-            double diff = fabs(hR[r] - pkLoc[p]);
-            if (diff < minDiff) {
-              minDiff = diff;
-              bestBin = r;
+        if (nSpecP > 0) {
+          pks = (Peak *)malloc(nSpecP * sizeof(Peak));
+          int validPeakCount = 0;
+          for (int p = 0; p < nSpecP; ++p) {
+            int bestBin = -1;
+            double minDiff = 1e10;
+            for (int r = 0; r < nRBins; ++r) {
+              double diff = fabs(hR[r] - pkLoc[p]);
+              if (diff < minDiff) {
+                minDiff = diff;
+                bestBin = r;
+              }
+            }
+            if (bestBin != -1 && minDiff < RBinSize * 2.0) {
+              pks[validPeakCount].index = bestBin;
+              pks[validPeakCount].radius = hR[bestBin];
+              pks[validPeakCount].intensity = local_h_int1D[bestBin];
+              validPeakCount++;
             }
           }
-          if (bestBin != -1 && minDiff < RBinSize * 2.0) {
-            pks[validPeakCount].index = bestBin;
-            pks[validPeakCount].radius = hR[bestBin];
-            pks[validPeakCount].intensity = local_h_int1D[bestBin];
-            validPeakCount++;
+          currentPeakCount = validPeakCount;
+          if (validPeakCount == 0) {
+            free(pks);
+            pks = NULL;
           }
         }
-        currentPeakCount = validPeakCount;
-        if (validPeakCount == 0) {
-          free(pks);
-          pks = NULL;
-        }
-      }
 
-      if (currentPeakCount > 0 && pks != NULL) {
-        sendFitParams = (double *)malloc(currentPeakCount * 7 * sizeof(double));
-        int roi_half_width = fitROIPadding;
-        // (Auto ROI logic omitted for drain brevity/safety, assuming manual
-        // or padded sufficient for drain) Actually, let's keep it simple. If
-        // fitROIAuto is on, we skip or use default to avoid complexity.
+        if (currentPeakCount > 0 && pks != NULL) {
+          sendFitParams =
+              (double *)malloc(currentPeakCount * 7 * sizeof(double));
+          int roi_half_width = fitROIPadding;
+          // (Auto ROI logic omitted for drain brevity/safety, assuming manual
+          // or padded sufficient for drain) Actually, let's keep it simple. If
+          // fitROIAuto is on, we skip or use default to avoid complexity.
 
-        qsort(pks, currentPeakCount, sizeof(Peak), comparePeaksByIndex);
+          qsort(pks, currentPeakCount, sizeof(Peak), comparePeaksByIndex);
 
-        // Simplified fit for drain (sequential or simple OMP)
-        // To ensure this compiles without huge code block, we copy the OMP
-        // block
-        FitJob *fitJobs = (FitJob *)malloc(currentPeakCount * sizeof(FitJob));
-        int numJobs = 0;
-        int *job_result_indices = (int *)calloc(currentPeakCount, sizeof(int));
+          // Simplified fit for drain (sequential or simple OMP)
+          // To ensure this compiles without huge code block, we copy the OMP
+          // block
+          FitJob *fitJobs = (FitJob *)malloc(currentPeakCount * sizeof(FitJob));
+          int numJobs = 0;
+          int *job_result_indices =
+              (int *)calloc(currentPeakCount, sizeof(int));
 
-        if (currentPeakCount > 0) {
-          fitJobs[0].startIndex = fmax(0, pks[0].index - roi_half_width);
-          fitJobs[0].endIndex = fmin(nRBins - 1, pks[0].index + roi_half_width);
-          fitJobs[0].numPeaks = 1;
-          fitJobs[0].peaks = &pks[0];
-          job_result_indices[0] = 0;
-          numJobs = 1;
-          for (int i = 1; i < currentPeakCount; ++i) {
-            int current_roi_start = fmax(0, pks[i].index - roi_half_width);
-            if (current_roi_start <= fitJobs[numJobs - 1].endIndex) {
-              fitJobs[numJobs - 1].endIndex =
-                  fmin(nRBins - 1, pks[i].index + roi_half_width);
-              fitJobs[numJobs - 1].numPeaks++;
-            } else {
-              job_result_indices[numJobs] = job_result_indices[numJobs - 1] +
-                                            fitJobs[numJobs - 1].numPeaks;
-              fitJobs[numJobs].startIndex = current_roi_start;
-              fitJobs[numJobs].endIndex =
-                  fmin(nRBins - 1, pks[i].index + roi_half_width);
-              fitJobs[numJobs].numPeaks = 1;
-              fitJobs[numJobs].peaks = &pks[0] + i; // Pointer arithmetic fix
-              numJobs++;
+          if (currentPeakCount > 0) {
+            fitJobs[0].startIndex = fmax(0, pks[0].index - roi_half_width);
+            fitJobs[0].endIndex =
+                fmin(nRBins - 1, pks[0].index + roi_half_width);
+            fitJobs[0].numPeaks = 1;
+            fitJobs[0].peaks = &pks[0];
+            job_result_indices[0] = 0;
+            numJobs = 1;
+            for (int i = 1; i < currentPeakCount; ++i) {
+              int current_roi_start = fmax(0, pks[i].index - roi_half_width);
+              if (current_roi_start <= fitJobs[numJobs - 1].endIndex) {
+                fitJobs[numJobs - 1].endIndex =
+                    fmin(nRBins - 1, pks[i].index + roi_half_width);
+                fitJobs[numJobs - 1].numPeaks++;
+              } else {
+                job_result_indices[numJobs] = job_result_indices[numJobs - 1] +
+                                              fitJobs[numJobs - 1].numPeaks;
+                fitJobs[numJobs].startIndex = current_roi_start;
+                fitJobs[numJobs].endIndex =
+                    fmin(nRBins - 1, pks[i].index + roi_half_width);
+                fitJobs[numJobs].numPeaks = 1;
+                fitJobs[numJobs].peaks = &pks[0] + i; // Pointer arithmetic fix
+                numJobs++;
+              }
             }
           }
-        }
 
 #pragma omp parallel for
-        for (int i = 0; i < numJobs; ++i) {
-          FitJob *job = &fitJobs[i];
-          int nJobPeaks = job->numPeaks;
-          int nFitParams = nJobPeaks * 4 + 1;
-          double *fitParams = (double *)malloc(nFitParams * sizeof(double));
-          double *lowerBounds = (double *)malloc(nFitParams * sizeof(double));
-          double *upperBounds = (double *)malloc(nFitParams * sizeof(double));
-          // ... (Simplified parameter init for drain) ...
-          // Ideally should copy full logic, but for now we assume drain is
-          // edge case. Re-implementing full logic to ensure correctness:
+          for (int i = 0; i < numJobs; ++i) {
+            FitJob *job = &fitJobs[i];
+            int nJobPeaks = job->numPeaks;
+            int nFitParams = nJobPeaks * 4 + 1;
+            double *fitParams = (double *)malloc(nFitParams * sizeof(double));
+            double *lowerBounds = (double *)malloc(nFitParams * sizeof(double));
+            double *upperBounds = (double *)malloc(nFitParams * sizeof(double));
+            // ... (Simplified parameter init for drain) ...
+            // Ideally should copy full logic, but for now we assume drain is
+            // edge case. Re-implementing full logic to ensure correctness:
 
-          // Parameter estimation
-          double primary_amp_guess = 1.0, primary_bg_guess = 0.0;
-          for (int p = 0; p < nJobPeaks; ++p) {
-            Peak *peak = &(job->peaks[p]);
-            int p_idx_local = peak->index - job->startIndex;
-            double bg_g, amp_g;
-            double fwhm =
-                estimate_initial_params(&local_h_int1D[job->startIndex],
-                                        job->endIndex - job->startIndex + 1,
-                                        p_idx_local, &bg_g, &amp_g);
-            double sigma_g = fwhm * RBinSize / 2.355;
-            if (sigma_g < RBinSize * 0.5)
-              sigma_g = RBinSize * 2.0;
-            if (p == 0) {
-              primary_amp_guess = amp_g;
-              primary_bg_guess = bg_g;
-            }
-
-            int b = p * 4;
-            fitParams[b + 0] = amp_g;
-            fitParams[b + 1] = 0.5; // Mix
-            fitParams[b + 2] = peak->radius;
-            fitParams[b + 3] = sigma_g;
-            lowerBounds[b + 0] = 0;
-            lowerBounds[b + 1] = 0;
-            lowerBounds[b + 2] = peak->radius - fwhm * RBinSize;
-            lowerBounds[b + 3] = RBinSize * 0.5;
-            upperBounds[b + 0] = amp_g * 3.0; // Loose upper
-            upperBounds[b + 1] = 1.0;
-            upperBounds[b + 2] = peak->radius + fwhm * RBinSize;
-            upperBounds[b + 3] = (hR[job->endIndex] - hR[job->startIndex]);
-          }
-          fitParams[nFitParams - 1] = primary_bg_guess;
-          lowerBounds[nFitParams - 1] = -fabs(primary_amp_guess);
-          upperBounds[nFitParams - 1] = fabs(primary_amp_guess);
-
-          dataFit fitData;
-          fitData.nrBins = job->endIndex - job->startIndex + 1;
-          fitData.R = &hR[job->startIndex];
-          fitData.Int = &local_h_int1D[job->startIndex];
-
-          nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, nFitParams);
-          nlopt_set_lower_bounds(opt, lowerBounds);
-          nlopt_set_upper_bounds(opt, upperBounds);
-          nlopt_set_min_objective(opt, problem_function_global_bg, &fitData);
-          nlopt_set_xtol_rel(opt, 1e-4);
-          nlopt_set_maxeval(opt, 200);
-          double minObj;
-          int rc = nlopt_optimize(opt, fitParams, &minObj);
-          nlopt_destroy(opt);
-
-          if (rc >= 0) {
-            int result_start = job_result_indices[i];
+            // Parameter estimation
+            double primary_amp_guess = 1.0, primary_bg_guess = 0.0;
             for (int p = 0; p < nJobPeaks; ++p) {
-              int out_base = (result_start + p) * 7;
-              sendFitParams[out_base + 0] = fitParams[p * 4 + 0];
-              sendFitParams[out_base + 1] = fitParams[nFitParams - 1];
-              sendFitParams[out_base + 2] = fitParams[p * 4 + 1];
-              sendFitParams[out_base + 3] = fitParams[p * 4 + 2];
-              sendFitParams[out_base + 4] = fitParams[p * 4 + 3];
-              sendFitParams[out_base + 5] = minObj;
-              sendFitParams[out_base + 6] = 0;
+              Peak *peak = &(job->peaks[p]);
+              int p_idx_local = peak->index - job->startIndex;
+              double bg_g, amp_g;
+              double fwhm =
+                  estimate_initial_params(&local_h_int1D[job->startIndex],
+                                          job->endIndex - job->startIndex + 1,
+                                          p_idx_local, &bg_g, &amp_g);
+              double sigma_g = fwhm * RBinSize / 2.355;
+              if (sigma_g < RBinSize * 0.5)
+                sigma_g = RBinSize * 2.0;
+              if (p == 0) {
+                primary_amp_guess = amp_g;
+                primary_bg_guess = bg_g;
+              }
+
+              int b = p * 4;
+              fitParams[b + 0] = amp_g;
+              fitParams[b + 1] = 0.5; // Mix
+              fitParams[b + 2] = peak->radius;
+              fitParams[b + 3] = sigma_g;
+              lowerBounds[b + 0] = 0;
+              lowerBounds[b + 1] = 0;
+              lowerBounds[b + 2] = peak->radius - fwhm * RBinSize;
+              lowerBounds[b + 3] = RBinSize * 0.5;
+              upperBounds[b + 0] = amp_g * 3.0; // Loose upper
+              upperBounds[b + 1] = 1.0;
+              upperBounds[b + 2] = peak->radius + fwhm * RBinSize;
+              upperBounds[b + 3] = (hR[job->endIndex] - hR[job->startIndex]);
             }
+            fitParams[nFitParams - 1] = primary_bg_guess;
+            lowerBounds[nFitParams - 1] = -fabs(primary_amp_guess);
+            upperBounds[nFitParams - 1] = fabs(primary_amp_guess);
+
+            dataFit fitData;
+            fitData.nrBins = job->endIndex - job->startIndex + 1;
+            fitData.R = &hR[job->startIndex];
+            fitData.Int = &local_h_int1D[job->startIndex];
+
+            nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, nFitParams);
+            nlopt_set_lower_bounds(opt, lowerBounds);
+            nlopt_set_upper_bounds(opt, upperBounds);
+            nlopt_set_min_objective(opt, problem_function_global_bg, &fitData);
+            nlopt_set_xtol_rel(opt, 1e-4);
+            nlopt_set_maxeval(opt, 200);
+            double minObj;
+            int rc = nlopt_optimize(opt, fitParams, &minObj);
+            nlopt_destroy(opt);
+
+            if (rc >= 0) {
+              int result_start = job_result_indices[i];
+              for (int p = 0; p < nJobPeaks; ++p) {
+                int out_base = (result_start + p) * 7;
+                sendFitParams[out_base + 0] = fitParams[p * 4 + 0];
+                sendFitParams[out_base + 1] = fitParams[nFitParams - 1];
+                sendFitParams[out_base + 2] = fitParams[p * 4 + 1];
+                sendFitParams[out_base + 3] = fitParams[p * 4 + 2];
+                sendFitParams[out_base + 4] = fitParams[p * 4 + 3];
+                sendFitParams[out_base + 5] = minObj;
+                sendFitParams[out_base + 6] = 0;
+              }
+            }
+            free(fitParams);
+            free(lowerBounds);
+            free(upperBounds);
           }
-          free(fitParams);
-          free(lowerBounds);
-          free(upperBounds);
-        }
 
-        if (fFit) {
-          fwrite(sendFitParams, sizeof(double), currentPeakCount * 7, fFit);
-          fflush(fFit);
+          if (fFit) {
+            fwrite(sendFitParams, sizeof(double), currentPeakCount * 7, fFit);
+            fflush(fFit);
+          }
+          free(fitJobs);
+          free(job_result_indices);
+          if (sendFitParams)
+            free(sendFitParams);
         }
-        free(fitJobs);
-        free(job_result_indices);
-        if (sendFitParams)
-          free(sendFitParams);
+        if (pks)
+          free(pks);
       }
-      if (pks)
-        free(pks);
+
+      if (drainCtx->inputDataPtr)
+        gpuWarnchk(cudaFreeHost(drainCtx->inputDataPtr));
+      drainCtx->hasPendingWork = false;
     }
-
-    if (drainCtx->inputDataPtr)
-      gpuWarnchk(cudaFreeHost(drainCtx->inputDataPtr));
-    drainCtx->hasPendingWork = false;
   }
-}
 
-// --- Cleanup ---
-for (int i = 0; i < NUM_STREAMS; ++i) {
-  cudaStreamDestroy(streamPool[i].stream);
-  cudaFree(streamPool[i].dProcessedImage);
-  cudaFree(streamPool[i].dIntArrFrame);
-  cudaFree(streamPool[i].d_int1D);
-  cudaFree(streamPool[i].d_int1D_simple_mean);
-  cudaFree(streamPool[i].dTempBuf1);
-  cudaFree(streamPool[i].dTempBuf2);
-  cudaFreeHost(streamPool[i].h_int1D);
-  cudaFreeHost(streamPool[i].h_int1D_simple_mean);
-  if (streamPool[i].hIntArrFrame)
-    cudaFreeHost(streamPool[i].hIntArrFrame);
-}
+  // --- Cleanup ---
+  for (int i = 0; i < NUM_STREAMS; ++i) {
+    cudaStreamDestroy(streamPool[i].stream);
+    cudaFree(streamPool[i].dProcessedImage);
+    cudaFree(streamPool[i].dIntArrFrame);
+    cudaFree(streamPool[i].d_int1D);
+    cudaFree(streamPool[i].d_int1D_simple_mean);
+    cudaFree(streamPool[i].dTempBuf1);
+    cudaFree(streamPool[i].dTempBuf2);
+    cudaFreeHost(streamPool[i].h_int1D);
+    cudaFreeHost(streamPool[i].h_int1D_simple_mean);
+    if (streamPool[i].hIntArrFrame)
+      cudaFreeHost(streamPool[i].hIntArrFrame);
+  }
 
-// --- Shutdown Accept Thread Gracefully ---
-printf("Attempting to shut down network acceptor thread...\n");
-if (server_fd >= 0) {
-  printf("Closing server listening socket %d...\n", server_fd);
-  shutdown(server_fd, SHUT_RDWR); // Shut down read/write ends first
-  close(server_fd);               // Close the socket file descriptor
-  server_fd = -1;                 // Mark as closed
-}
+  // --- Shutdown Accept Thread Gracefully ---
+  printf("Attempting to shut down network acceptor thread...\n");
+  if (server_fd >= 0) {
+    printf("Closing server listening socket %d...\n", server_fd);
+    shutdown(server_fd, SHUT_RDWR); // Shut down read/write ends first
+    close(server_fd);               // Close the socket file descriptor
+    server_fd = -1;                 // Mark as closed
+  }
 
-printf("Sending cancellation request to accept thread...\n");
-int cancel_ret = pthread_cancel(accept_thread);
-if (cancel_ret != 0) {
-  fprintf(stderr,
-          "Warning: Failed to send cancel request to accept thread: %s\n",
-          strerror(cancel_ret));
-}
+  printf("Sending cancellation request to accept thread...\n");
+  int cancel_ret = pthread_cancel(accept_thread);
+  if (cancel_ret != 0) {
+    fprintf(stderr,
+            "Warning: Failed to send cancel request to accept thread: %s\n",
+            strerror(cancel_ret));
+  }
 
-printf("Joining accept thread (waiting for it to exit)...\n");
-void *thread_result;
-int join_ret = pthread_join(accept_thread, &thread_result);
-if (join_ret != 0) {
-  fprintf(stderr, "Warning: Failed to join accept thread: %s\n",
-          strerror(join_ret));
-} else {
-  if (thread_result == PTHREAD_CANCELED) {
-    printf("Accept thread successfully canceled and joined.\n");
+  printf("Joining accept thread (waiting for it to exit)...\n");
+  void *thread_result;
+  int join_ret = pthread_join(accept_thread, &thread_result);
+  if (join_ret != 0) {
+    fprintf(stderr, "Warning: Failed to join accept thread: %s\n",
+            strerror(join_ret));
   } else {
-    printf("Accept thread joined normally (result: %p).\n", thread_result);
+    if (thread_result == PTHREAD_CANCELED) {
+      printf("Accept thread successfully canceled and joined.\n");
+    } else {
+      printf("Accept thread joined normally (result: %p).\n", thread_result);
+    }
   }
-}
-// --- End Shutdown Accept Thread ---
+  // --- End Shutdown Accept Thread ---
 
-// Shutdown Writer Thread
-WriteJob termJob;
-termJob.nRBins = -1; // Sentinel
-writer_queue_push(&writer_queue, termJob);
-pthread_join(writer_thread, NULL);
-writer_queue_destroy(&writer_queue);
+  // Shutdown Writer Thread
+  WriteJob termJob;
+  termJob.nRBins = -1; // Sentinel
+  writer_queue_push(&writer_queue, termJob);
+  pthread_join(writer_thread, NULL);
+  writer_queue_destroy(&writer_queue);
 
-// Destroy queue
-queue_destroy(&process_queue);
+  // Destroy queue
+  queue_destroy(&process_queue);
 
-printf("[%s] - Exiting cleanly.\n", argv[0]);
-return 0;
+  printf("[%s] - Exiting cleanly.\n", argv[0]);
+  return 0;
 }
