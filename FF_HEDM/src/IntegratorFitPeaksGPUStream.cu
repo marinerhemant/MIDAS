@@ -2528,8 +2528,7 @@ int main(int argc, char *argv[]) {
     // 3. SUBMIT GPU WORK (Async)
     ctx->frameIdx = chunk.dataset_num;
     ctx->inputDataPtr = chunk.data;
-    ctx->inputDataCapacity =
-        chunk.num_pixels * get_bytes_per_pixel(chunk.dtype);
+    ctx->inputDataCapacity = chunk.size * get_bytes_per_pixel(chunk.dtype);
     ctx->t_submission = get_wall_time_ms(); // RECORD SUBMISSION TIME
     ctx->hasPendingWork = true;
 
