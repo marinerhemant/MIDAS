@@ -69,7 +69,7 @@ def send_data_chunk(sock, dataset_num, data):
     sock.sendall(data_view)
     
     t2 = time.time()
-    print(f"Sent dataset #{dataset_num}, type {dtype_code}, {len(data_array)} items ({len(data_view)} bytes) in {t2 - t1:.4f} sec")
+    print(f"Sent dataset #{dataset_num}, type {dtype_code}, {data_array.shape} items ({len(data_view)} bytes) in {t2 - t1:.4f} sec")
 
 def file_reader_worker(file_list, data_queue):
     """
