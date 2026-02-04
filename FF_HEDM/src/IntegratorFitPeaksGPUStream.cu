@@ -2094,20 +2094,6 @@ int main(int argc, char *argv[]) {
              sizeof(sock_opt));
 
   server_addr.sin_family = AF_INET;
-
-  // Removed misplaced drainCtx block
-
-  // Fourth Block: Cleanup (lines 2689+)
-  // Destroy queue
-  queue_destroy(&process_queue);
-
-  // Shutdown Writer
-  WriteJob termJob;
-  termJob.nRBins = -1; // Sentinel
-  writer_queue_push(&writer_queue, termJob);
-  pthread_join(writer_thread, NULL);
-  writer_queue_destroy(&writer_queue);
-  server_addr.sin_family = AF_INET;
   server_addr.sin_addr.s_addr = INADDR_ANY;
   server_addr.sin_port = htons(PORT);
 
@@ -2803,6 +2789,13 @@ int main(int argc, char *argv[]) {
     }
   }
   // --- End Shutdown Accept Thread ---
+
+  // Shutdown Writer Thread
+  WriteJob termJob;
+  termJob.nRBins = -1; // Sentinel
+  writer_queue_push(&writer_queue, termJob);
+  pthread_join(writer_thread, NULL);
+  writer_queue_destroy(&writer_queue);
 
   // Destroy queue
   queue_destroy(&process_queue);
