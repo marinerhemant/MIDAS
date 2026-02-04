@@ -1442,31 +1442,39 @@ void ProcessImageGPUGeneric(const void *hRawVoid, float *dProc,
 void ProcessImageGPU(void *hRaw, float *dProc, const float *dAvgDark, int Nopt,
                      const int Topt[MAX_TRANSFORM_OPS], int NY, int NZ,
                      bool doSub, float *d_b1, float *d_b2, int dtype,
-                     cudaStream_t stream) {
+                     cudaStream_t stream, cudaEvent_t start_copy,
+                     cudaEvent_t stop_copy, cudaEvent_t start_trans,
+                     cudaEvent_t stop_trans) {
   switch (dtype) {
   case 0:
     ProcessImageGPUGeneric<uint8_t>(hRaw, dProc, dAvgDark, Nopt, Topt, NY, NZ,
-                                    doSub, d_b1, d_b2, stream);
+                                    doSub, d_b1, d_b2, stream, start_copy,
+                                    stop_copy, start_trans, stop_trans);
     break;
   case 1:
     ProcessImageGPUGeneric<uint16_t>(hRaw, dProc, dAvgDark, Nopt, Topt, NY, NZ,
-                                     doSub, d_b1, d_b2, stream);
+                                     doSub, d_b1, d_b2, stream, start_copy,
+                                     stop_copy, start_trans, stop_trans);
     break;
   case 2:
     ProcessImageGPUGeneric<uint32_t>(hRaw, dProc, dAvgDark, Nopt, Topt, NY, NZ,
-                                     doSub, d_b1, d_b2, stream);
+                                     doSub, d_b1, d_b2, stream, start_copy,
+                                     stop_copy, start_trans, stop_trans);
     break;
   case 3:
     ProcessImageGPUGeneric<int64_t>(hRaw, dProc, dAvgDark, Nopt, Topt, NY, NZ,
-                                    doSub, d_b1, d_b2, stream);
+                                    doSub, d_b1, d_b2, stream, start_copy,
+                                    stop_copy, start_trans, stop_trans);
     break;
   case 4:
     ProcessImageGPUGeneric<float>(hRaw, dProc, dAvgDark, Nopt, Topt, NY, NZ,
-                                  doSub, d_b1, d_b2, stream);
+                                  doSub, d_b1, d_b2, stream, start_copy,
+                                  stop_copy, start_trans, stop_trans);
     break;
   case 5:
     ProcessImageGPUGeneric<double>(hRaw, dProc, dAvgDark, Nopt, Topt, NY, NZ,
-                                   doSub, d_b1, d_b2, stream);
+                                   doSub, d_b1, d_b2, stream, start_copy,
+                                   stop_copy, start_trans, stop_trans);
     break;
   default:
     fprintf(stderr, "Unknown dtype %d\n", dtype);
