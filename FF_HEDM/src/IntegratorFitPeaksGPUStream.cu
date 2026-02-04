@@ -224,12 +224,12 @@ typedef struct {
   cudaStream_t stream;
 
   // -- Device Buffers (Private per stream) --
-  float *dProcessedImage;      // Result of transforms/dark sub (now float)
-  double *dIntArrFrame;        // Result of 2D integration
-  double *d_int1D;             // Result of 1D profile
-  double *d_int1D_simple_mean; // Result of simple mean profile
-  int64_t *dTempBuf1;          // Transform temp buffer 1
-  int64_t *dTempBuf2;          // Transform temp buffer 2
+  float *dProcessedImage;     // Result of transforms/dark sub (now float)
+  double *dIntArrFrame;       // Result of 2D integration
+  double *d_int1D;            // Result of 1D profile
+  float *d_int1D_simple_mean; // Result of simple mean profile
+  float *dTempBuf1;           // Transform temp buffer 1 (now float)
+  float *dTempBuf2;           // Transform temp buffer 2 (now float)
 
   // -- Host Buffers (Pinned) --
   double *h_int1D;
