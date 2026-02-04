@@ -151,6 +151,10 @@ WriterQueue writer_queue;
 
 // Writer thread function prototype
 void *writer_thread_func(void *arg);
+void writer_queue_init(WriterQueue *queue);
+int writer_queue_push(WriterQueue *queue, WriteJob job);
+int writer_queue_pop(WriterQueue *queue, WriteJob *job);
+void writer_queue_destroy(WriterQueue *queue);
 
 struct data {
   int y;
@@ -1978,17 +1982,7 @@ int main(int argc, char *argv[]) {
 
   server_addr.sin_family = AF_INET;
 
-  // Third Block: Drain Loop Write Replacement (lines 2443-2461)
-  // --- Write Results to Disk (Async) ---
-  WriteJob dJob;
-  dJob.h_int1D = drainCtx->h_int1D;
-  dJob.h_int1D_simple_mean = drainCtx->h_int1D_simple_mean;
-  dJob.hIntArrFrame = drainCtx->hIntArrFrame;
-  dJob.nRBins = nRBins;
-  dJob.bigArrSize = bigArrSize;
-  dJob.doWr2D = wr2D;
-
-  writer_queue_push(&writer_queue, dJob);
+  // Removed misplaced drainCtx block
 
   // Fourth Block: Cleanup (lines 2689+)
   // Destroy queue
@@ -2081,7 +2075,6 @@ int main(int argc, char *argv[]) {
       // --- Write Results to Disk ---
       double t_write_start = get_wall_time_ms();
       // 1D Profile
-      double t_write_start = get_wall_time_ms();
 
       WriteJob wJob;
       wJob.h_int1D = ctx->h_int1D;
