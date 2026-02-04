@@ -224,7 +224,7 @@ typedef struct {
   cudaStream_t stream;
 
   // -- Device Buffers (Private per stream) --
-  float *dProcessedImage;     // Result of transforms/dark sub (now float)
+  float *dProcessedImage;      // Result of transforms/dark sub (now float)
   double *dIntArrFrame;        // Result of 2D integration
   double *d_int1D;             // Result of 1D profile
   double *d_int1D_simple_mean; // Result of simple mean profile
@@ -1318,7 +1318,7 @@ template <typename T>
 void ProcessImageGPUGeneric(const void *hRawVoid, float *dProc,
                             const float *dAvgDark, int Nopt,
                             const int Topt[MAX_TRANSFORM_OPS], int NY, int NZ,
-                            bool doSub, int64_t *d_b1, int64_t *d_b2,
+                            bool doSub, float *d_b1, float *d_b2,
                             cudaStream_t stream) {
   const T *hRaw = (const T *)hRawVoid;
   const size_t N = (size_t)NY * NZ;
@@ -1373,22 +1373,29 @@ void ProcessImageGPUGeneric(const void *hRawVoid, float *dProc,
       nY = cZ;
       nZ = cY;
     } else if (opt == 3)
-      opt = 0; // Handle Tpose
+      opt =
+          0; // Handle Tpose (if square, 3 works, else standard Tpose needed?
+             // wait, logic for Tpose opt=3 is generic transpose if cY!=cZ ?
+             // No, if cY!=cZ, opt=3 usually implies specialized kernel or check
+             // Logic here seems to reset to 0 if 3 and !square? Or maybe the
+             // kernel handles it? Actually the kernel handles generic
+             // transpose. The logic here updates dims. if (fOpt == 3) fOpt=0
+             // was likely for final step optimization check consistency.
 
     size_t sON = (size_t)nY * nZ;
     unsigned long long nBUL = (sON + TPB - 1) / TPB;
     dim3 nB((unsigned int)nBUL);
 
     if (i == 0) {
-      // T -> int64
-      sequential_transform_kernel<T, int64_t><<<nB, TPB, 0, stream>>>(
-          (const T *)rP, (int64_t *)wP, cY, cZ, nY, nZ, opt);
-      rP = wP;   // Now points to int64 data
-      wP = d_b1; // Next write to d_b1 (int64)
+      // T -> float
+      sequential_transform_kernel<T, float><<<nB, TPB, 0, stream>>>(
+          (const T *)rP, (float *)wP, cY, cZ, nY, nZ, opt);
+      rP = wP;   // Now points to float data
+      wP = d_b1; // Next write to d_b1 (float)
     } else {
-      // int64 -> int64
-      sequential_transform_kernel<int64_t, int64_t><<<nB, TPB, 0, stream>>>(
-          (const int64_t *)rP, (int64_t *)wP, cY, cZ, nY, nZ, opt);
+      // float -> float
+      sequential_transform_kernel<float, float><<<nB, TPB, 0, stream>>>(
+          (const float *)rP, (float *)wP, cY, cZ, nY, nZ, opt);
       void *tmp = (void *)rP;
       rP = wP;
       wP = tmp; // Swap
@@ -1415,18 +1422,18 @@ void ProcessImageGPUGeneric(const void *hRawVoid, float *dProc,
     final_transform_process_kernel<T><<<nB, TPB, 0, stream>>>(
         (const T *)rP, dProc, dAvgDark, cY, cZ, nY, nZ, fOpt, doSub);
   } else {
-    // int64 -> double
-    final_transform_process_kernel<int64_t><<<nB, TPB, 0, stream>>>(
-        (const int64_t *)rP, dProc, dAvgDark, cY, cZ, nY, nZ, fOpt, doSub);
+    // float -> double (now float -> float)
+    final_transform_process_kernel<float><<<nB, TPB, 0, stream>>>(
+        (const float *)rP, dProc, dAvgDark, cY, cZ, nY, nZ, fOpt, doSub);
   }
   gpuErrchk(cudaPeekAtLastError());
 }
 
 // Update wrapper to accept float pointers
-void ProcessImageGPU(void *hRaw, float *dProc, const float *dAvgDark,
-                     int Nopt, const int Topt[MAX_TRANSFORM_OPS], int NY,
-                     int NZ, bool doSub, int64_t *d_b1, int64_t *d_b2,
-                     int dtype, cudaStream_t stream) {
+void ProcessImageGPU(void *hRaw, float *dProc, const float *dAvgDark, int Nopt,
+                     const int Topt[MAX_TRANSFORM_OPS], int NY, int NZ,
+                     bool doSub, float *d_b1, float *d_b2, int dtype,
+                     cudaStream_t stream) {
   switch (dtype) {
   case 0:
     ProcessImageGPUGeneric<uint8_t>(hRaw, dProc, dAvgDark, Nopt, Topt, NY, NZ,
@@ -1948,7 +1955,7 @@ int main(int argc, char *argv[]) {
   check(!hDarkIn, "Allocation failed for hDarkIn");
 
   // --- Device Memory Allocations (Persistent) ---
-  float *dAvgDark = NULL;     // Averaged dark frame on GPU (now float)
+  float *dAvgDark = NULL;      // Averaged dark frame on GPU (now float)
   int *dMapMask = NULL;        // Pixel mask on GPU (optional)
   size_t mapMaskWC = 0;        // Word count for the mask array
   int *dNPxList = NULL;        // nMap data (pixel counts, offsets) on GPU
@@ -2082,7 +2089,8 @@ int main(int argc, char *argv[]) {
 
     gpuErrchk(cudaMalloc(&dAvgDark, totalPixels * sizeof(float)));
     float *hAvgDarkFloat = (float *)malloc(totalPixels * sizeof(float));
-    for(size_t j=0; j<totalPixels; ++j) hAvgDarkFloat[j] = (float)hAvgDark[j];
+    for (size_t j = 0; j < totalPixels; ++j)
+      hAvgDarkFloat[j] = (float)hAvgDark[j];
     gpuErrchk(cudaMemcpy(dAvgDark, hAvgDarkFloat, totalPixels * sizeof(float),
                          cudaMemcpyHostToDevice));
     free(hAvgDarkFloat);
