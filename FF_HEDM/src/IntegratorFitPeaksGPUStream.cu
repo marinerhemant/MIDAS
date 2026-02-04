@@ -2546,9 +2546,9 @@ int main(int argc, char *argv[]) {
     ctx->t_cpu_submit = t_sub_end - ctx->t_submission;
 
     // Temporary Debug Print:
-    // printf("DEBUG-SUBMIT: Proc:%.3f Int:%.3f Prof:%.3f D2H:%.3f\n",
-    //        (t_proc_end - t_proc_start), (t_int_end - t_int_start),
-    //        (t_prof_end - t_prof_start), (t_d2h_end - t_d2h_start));
+    printf("DEBUG-SUBMIT: Proc:%.3f Int:%.3f Prof:%.3f D2H:%.3f\n",
+           (t_proc_end - t_proc_start), (t_int_end - t_int_start),
+           (t_prof_end - t_prof_start), (t_d2h_end - t_d2h_start));
 
     // Advance
     streamId = (streamId + 1) % NUM_STREAMS;
