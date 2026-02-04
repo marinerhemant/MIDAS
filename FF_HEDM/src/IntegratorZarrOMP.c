@@ -37,8 +37,8 @@
 
 typedef double pixelvalue;
 
-#define SetBit(A, k) (A[(k / 32)] |= (1 << (k % 32)))
-#define TestBit(A, k) (A[(k / 32)] & (1 << (k % 32)))
+#define SetBit(A, k) (A[(k >> 5)] |= (1 << (k & 31)))
+#define TestBit(A, k) (A[(k >> 5)] & (1 << (k & 31)))
 #define rad2deg 57.2957795130823
 
 static inline double atand(double x) { return rad2deg * (atan(x)); }
@@ -1146,7 +1146,6 @@ int main(int argc, char **argv) {
       PerFrameArr = malloc(bigArrSize * 4 * sizeof(*PerFrameArr));
     }
     memset(IntArrPerFrame, 0, bigArrSize * sizeof(double));
-    memset(IntArrPerFrame, 0, bigArrSize * sizeof(double));
     t_0 = omp_get_wtime();
 #pragma omp parallel for private(j, k, l, Pos, nPixels, dataPos, Intensity,    \
                                      totArea, ThisVal, testPos, ThisInt,       \
@@ -1159,20 +1158,23 @@ int main(int argc, char **argv) {
         dataPos = nPxList[2 * Pos + 1];
         Intensity = 0;
         totArea = 0;
-        for (l = 0; l < nPixels; l++) {
-          ThisVal = pxList[dataPos + l];
-          testPos = ThisVal.z;
-          testPos *= NrPixelsY;
-          testPos += ThisVal.y;
-          if (mapMaskSize != 0) {
+        if (mapMaskSize != 0) {
+          for (l = 0; l < nPixels; l++) {
+            ThisVal = pxList[dataPos + l];
+            testPos = (size_t)ThisVal.z * NrPixelsY + ThisVal.y;
             if (TestBit(mapMask, testPos)) {
               continue;
             }
+            Intensity += Image[testPos] * ThisVal.frac;
+            totArea += ThisVal.frac;
           }
-          ThisInt = Image[testPos]; // The data is arranged as y(fast) and then
-                                    // z(slow)
-          Intensity += ThisInt * ThisVal.frac;
-          totArea += ThisVal.frac;
+        } else {
+          for (l = 0; l < nPixels; l++) {
+            ThisVal = pxList[dataPos + l];
+            Intensity +=
+                Image[(size_t)ThisVal.z * NrPixelsY + ThisVal.y] * ThisVal.frac;
+            totArea += ThisVal.frac;
+          }
         }
         if (Intensity != 0) {
           if (Normalize == 1) {
