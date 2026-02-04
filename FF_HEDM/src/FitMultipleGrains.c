@@ -950,12 +950,15 @@ void FitMultipleGrains(struct GrainData *grains, int nGrains, double OptP[10],
 
   if (nPanels > 1) {
     int p_idx = global_offset + 10;
-    for (int i = 1; i < nPanels; i++) {
-      panels[i].dY = x[p_idx++];
-      panels[i].dZ = x[p_idx++];
+    for (int i = 0; i < nPanels; i++) {
+      if (i == fixPanel) {
+        panels[i].dY = 0;
+        panels[i].dZ = 0;
+      } else {
+        panels[i].dY = x[p_idx++];
+        panels[i].dZ = x[p_idx++];
+      }
     }
-    panels[0].dY = 0;
-    panels[0].dZ = 0;
   }
 
   free(x);
