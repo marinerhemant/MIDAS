@@ -251,6 +251,9 @@ typedef struct {
   cudaEvent_t start_int, stop_int;
   cudaEvent_t start_prof, stop_prof;
   cudaEvent_t start_d2h, stop_d2h;
+  // New Profiling Events
+  cudaEvent_t start_copy, stop_copy;
+  cudaEvent_t start_trans, stop_trans;
 } StreamContext;
 
 // --- Global Variables ---
@@ -1319,7 +1322,9 @@ void ProcessImageGPUGeneric(const void *hRawVoid, float *dProc,
                             const float *dAvgDark, int Nopt,
                             const int Topt[MAX_TRANSFORM_OPS], int NY, int NZ,
                             bool doSub, float *d_b1, float *d_b2,
-                            cudaStream_t stream) {
+                            cudaStream_t stream, cudaEvent_t start_copy,
+                            cudaEvent_t stop_copy, cudaEvent_t start_trans,
+                            cudaEvent_t stop_trans) {
   const T *hRaw = (const T *)hRawVoid;
   const size_t N = (size_t)NY * NZ;
   const size_t BInput = N * sizeof(T);
@@ -1342,8 +1347,12 @@ void ProcessImageGPUGeneric(const void *hRawVoid, float *dProc,
   T *d_input_staging = (T *)d_b1;
 
   if (sizeof(T) <= sizeof(float)) {
+    if (start_copy)
+      cudaEventRecord(start_copy, stream);
     gpuErrchk(cudaMemcpyAsync(d_input_staging, hRaw, BInput,
                               cudaMemcpyHostToDevice, stream));
+    if (stop_copy)
+      cudaEventRecord(stop_copy, stream);
     rP = d_input_staging;
   } else {
     // Fallback to Zero-Copy for large types (double/int64) to avoid buffer
@@ -1355,13 +1364,19 @@ void ProcessImageGPUGeneric(const void *hRawVoid, float *dProc,
     // Direct process
     unsigned long long nBUL = (N + TPB - 1) / TPB;
     dim3 nB((unsigned int)nBUL);
+    if (start_trans)
+      cudaEventRecord(start_trans, stream);
     process_direct_kernel<T>
         <<<nB, TPB, 0, stream>>>(rP, dProc, dAvgDark, N, doSub);
+    if (stop_trans)
+      cudaEventRecord(stop_trans, stream);
     gpuErrchk(cudaPeekAtLastError());
     return;
   }
 
   // Transformations
+  if (start_trans)
+    cudaEventRecord(start_trans, stream);
   // rP already points to valid input (Staged d_b1 or Raw Host)
   const void *rP_loop = rP; // Generic pointer for loop
   void *wP = d_b2;          // Output of first step goes to d_b2 (float)
@@ -2208,6 +2223,11 @@ int main(int argc, char *argv[]) {
     gpuErrchk(cudaEventCreate(&streamPool[i].stop_prof));
     gpuErrchk(cudaEventCreate(&streamPool[i].start_d2h));
     gpuErrchk(cudaEventCreate(&streamPool[i].stop_d2h));
+    // New Profiling
+    gpuErrchk(cudaEventCreate(&streamPool[i].start_copy));
+    gpuErrchk(cudaEventCreate(&streamPool[i].stop_copy));
+    gpuErrchk(cudaEventCreate(&streamPool[i].start_trans));
+    gpuErrchk(cudaEventCreate(&streamPool[i].stop_trans));
   }
 
   // --- Allocate Shared Resources (Read-Only or Atomic) ---
@@ -2478,24 +2498,28 @@ int main(int argc, char *argv[]) {
           cudaEventElapsedTime(&t_gpu_int, ctx->start_int, ctx->stop_int));
       gpuErrchk(
           cudaEventElapsedTime(&t_gpu_prof, ctx->start_prof, ctx->stop_prof));
+      float t_gpu_d2h = 0;
       gpuErrchk(
           cudaEventElapsedTime(&t_gpu_d2h, ctx->start_d2h, ctx->stop_d2h));
-      t_gpu_tot = t_gpu_proc + t_gpu_int + t_gpu_prof + t_gpu_d2h;
 
-      double t_now = get_wall_time_ms();
-      double t_lat = t_now - ctx->t_submission;
+      // New breakdown
+      float t_gpu_copy = 0;
+      float t_gpu_trans = 0;
+      gpuErrchk(
+          cudaEventElapsedTime(&t_gpu_copy, ctx->start_copy, ctx->stop_copy));
+      gpuErrchk(cudaEventElapsedTime(&t_gpu_trans, ctx->start_trans,
+                                     ctx->stop_trans));
 
-      // Breakdown CPU times
-      double t_cpu_tot =
-          (t_write_end - t_write_start) + (t_fit_end - t_fit_start);
-
-      printf("F#%d: Ttl:%.2f| QPop:%.2f Sync:%.2f GPU(Tot:%.2f Proc:%.2f "
-             "Int:%.2f Prof:%.2f D2H:%.2f) CPU(Tot:%.2f Submit:%.2f Disk:%.2f "
-             "Fit:%.2f)\n",
-             ctx->frameIdx, t_lat, ctx->t_qpop, (t_wait_end - t_wait_start),
-             t_gpu_tot, t_gpu_proc, t_gpu_int, t_gpu_prof, t_gpu_d2h,
-             t_cpu_tot + ctx->t_cpu_submit, ctx->t_cpu_submit,
-             (t_write_end - t_write_start), (t_fit_end - t_fit_start));
+      // F#XX: Ttl:X.XX| ... GPU(Tot:X.XX Proc:X.XX(Cpy:X.XX Trn:X.XX) Int:X.XX
+      // ...
+      printf(
+          "F#%d: Ttl:%.2f| QPop:%.2f Sync:%.2f GPU(Tot:%.2f Proc:%.2f[C:%.2f "
+          "T:%.2f] Int:%.2f Prof:%.2f D2H:%.2f) CPU(Tot:%.2f Submit:%.2f "
+          "Disk:%.2f Fit:%.2f)\n",
+          ctx->frameIdx, t_lat, ctx->t_qpop, (t_wait_end - t_wait_start),
+          t_gpu_tot, t_gpu_proc, t_gpu_copy, t_gpu_trans, t_gpu_int, t_gpu_prof,
+          t_gpu_d2h, t_cpu_tot + ctx->t_cpu_submit, ctx->t_cpu_submit,
+          (t_write_end - t_write_start), (t_fit_end - t_fit_start));
 
       // Accumulate for FPS report
       accum_gpu_int += t_gpu_int;
@@ -2541,7 +2565,8 @@ int main(int argc, char *argv[]) {
     double t_proc_start = get_wall_time_ms();
     ProcessImageGPU(chunk.data, ctx->dProcessedImage, dAvgDark, Nopt, Topt,
                     NrPixelsY, NrPixelsZ, darkSubEnabled, ctx->dTempBuf1,
-                    ctx->dTempBuf2, chunk.dtype, ctx->stream);
+                    ctx->dTempBuf2, chunk.dtype, ctx->stream, ctx->start_copy,
+                    ctx->stop_copy, ctx->start_trans, ctx->stop_trans);
     double t_proc_end = get_wall_time_ms();
     gpuErrchk(cudaEventRecord(ctx->stop_proc, ctx->stream));
 
@@ -2818,6 +2843,10 @@ int main(int argc, char *argv[]) {
 
   // --- Cleanup ---
   for (int i = 0; i < NUM_STREAMS; ++i) {
+    cudaEventDestroy(streamPool[i].start_copy);
+    cudaEventDestroy(streamPool[i].stop_copy);
+    cudaEventDestroy(streamPool[i].start_trans);
+    cudaEventDestroy(streamPool[i].stop_trans);
     cudaStreamDestroy(streamPool[i].stream);
     cudaFree(streamPool[i].dProcessedImage);
     cudaFree(streamPool[i].dIntArrFrame);
