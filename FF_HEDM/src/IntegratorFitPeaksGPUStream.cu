@@ -1942,7 +1942,8 @@ int main(int argc, char *argv[]) {
   size_t tempBufferSize = totalPixels * sizeof(int64_t);
 
   for (int i = 0; i < NUM_STREAMS; ++i) {
-    gpuErrchk(cudaStreamCreate(&streamPool[i].stream));
+    gpuErrchk(cudaStreamCreateWithFlags(&streamPool[i].stream,
+                                        cudaStreamNonBlocking));
     gpuErrchk(cudaMalloc(&streamPool[i].dProcessedImage,
                          totalPixels * sizeof(double)));
     gpuErrchk(
