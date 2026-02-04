@@ -1650,20 +1650,20 @@ int main(int argc, char *argv[]) {
         mapperSquare[i] = 0;
       }
     }
-    printf("MaskFN: %s\n", MaskFN);
-    if (MaskFN[0] != '\0') {
-      ReadTiffFrame(MaskFN, 7, NrPixelsY * NrPixelsZ, mapper, 0);
-      MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, mapper, mapperSquare);
-      DoImageTransformations(NrTransOpt, TransOpt, mapperSquare, NrPixels);
-      for (i = 0; i < NrPixels * NrPixels; i++) {
-        if (mapperSquare[i] == 1) {
-          SetBit(mapMask, i);
-          mapperSquare[i] = 0;
-        }
+  }
+  printf("MaskFN: %s\n", MaskFN);
+  if (MaskFN[0] != '\0') {
+    ReadTiffFrame(MaskFN, 7, NrPixelsY * NrPixelsZ, mapper, 0);
+    MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, mapper, mapperSquare);
+    DoImageTransformations(NrTransOpt, TransOpt, mapperSquare, NrPixels);
+    for (i = 0; i < NrPixels * NrPixels; i++) {
+      if (mapperSquare[i] == 1) {
+        SetBit(mapMask, i);
+        mapperSquare[i] = 0;
       }
-      // print that we read a mask file
-      printf("Mask file read: %s\n", MaskFN);
     }
+    // print that we read a mask file
+    printf("Mask file read: %s\n", MaskFN);
   }
   int a;
   double means[11];
