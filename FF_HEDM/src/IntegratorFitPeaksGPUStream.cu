@@ -920,7 +920,7 @@ __global__ void initialize_PerFrameArr_Area_kernel(
 __global__ void PrecomputeOffsets_kernel(const struct data *dPxList,
                                          const int *dNPxList, int nBins,
                                          int NrPixelsY, int *dOffsets,
-                                         double *dWeights) {
+                                         float *dWeights) {
   const size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= nBins)
     return;
@@ -940,15 +940,18 @@ __global__ void integrate_noMapMask(double px, double Lsd, size_t bigArrSize,
                                     int Normalize, int sumImages, int frameIdx,
                                     const int *dNPxList, int NrPixelsY,
                                     int NrPixelsZ, const double *dImage,
-                                    double *dIntArrPerFrame,
-                                    double *dSumMatrix, const int *dOffsets,
-                                    const double *dWeights) {
-  const size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx >= bigArrSize)
+                                    double *dIntArrPerFrame, double *dSumMatrix,
+                                    const int *dOffsets, const float *dWeights,
+                                    const int *dSortedIndices) {
+  const size_t tid = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= bigArrSize)
     return;
 
-  double Intensity = 0.0;
-  double totArea = 0.0; // <<< RE-INTRODUCED local area calculation
+  // Map thread ID to sorted bin index
+  const int idx = dSortedIndices[tid];
+
+  float Intensity = 0.0f;
+  float totArea = 0.0f; // <<< RE-INTRODUCED local area calculation
 
   long long nPixels = 0;
   long long dataPos = 0;
@@ -959,8 +962,8 @@ __global__ void integrate_noMapMask(double px, double Lsd, size_t bigArrSize,
 
   for (long long l = 0; l < nPixels; l++) {
     int testPos = dOffsets[dataPos + l];
-    double weight = dWeights[dataPos + l];
-    Intensity += __ldg(&dImage[testPos]) * weight;
+    float weight = dWeights[dataPos + l];
+    Intensity += (float)__ldg(&dImage[testPos]) * weight;
     totArea += weight; // <<< Accumulate area locally
   }
 
@@ -978,20 +981,21 @@ __global__ void integrate_noMapMask(double px, double Lsd, size_t bigArrSize,
   }
 }
 
-__global__ void integrate_MapMask(double px, double Lsd, size_t bigArrSize,
-                                  int Normalize, int sumImages, int frameIdx,
-                                  size_t mapMaskWordCount, const int *dMapMask,
-                                  int nRBins, int nEtaBins, int NrPixelsY,
-                                  int NrPixelsZ, const int *dNPxList,
-                                  const double *dImage, double *dIntArrPerFrame,
-                                  double *dSumMatrix, const int *dOffsets,
-                                  const double *dWeights) {
-  const size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx >= bigArrSize)
+__global__ void integrate_MapMask(
+    double px, double Lsd, size_t bigArrSize, int Normalize, int sumImages,
+    int frameIdx, size_t mapMaskWordCount, const int *dMapMask, int nRBins,
+    int nEtaBins, int NrPixelsY, int NrPixelsZ, const int *dNPxList,
+    const double *dImage, double *dIntArrPerFrame, double *dSumMatrix,
+    const int *dOffsets, const float *dWeights, const int *dSortedIndices) {
+  const size_t tid = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid >= bigArrSize)
     return;
 
-  double Intensity = 0.0;
-  double totArea = 0.0; // <<< RE-INTRODUCED local area calculation
+  // Map thread ID to sorted bin index
+  const int idx = dSortedIndices[tid];
+
+  float Intensity = 0.0f;
+  float totArea = 0.0f; // <<< RE-INTRODUCED local area calculation
 
   long long nPixels = 0;
   long long dataPos = 0;
@@ -1008,10 +1012,9 @@ __global__ void integrate_MapMask(double px, double Lsd, size_t bigArrSize,
       isMasked = true;
 
     if (!isMasked) {
-      double weight = dWeights[dataPos + l];
-      Intensity += __ldg(&dImage[testPos]) * weight;
-      totArea +=
-          weight; // <<< Accumulate area locally (only for non-masked)
+      float weight = dWeights[dataPos + l];
+      Intensity += (float)__ldg(&dImage[testPos]) * weight;
+      totArea += weight; // <<< Accumulate area locally (only for non-masked)
     }
   }
 
@@ -1771,11 +1774,20 @@ typedef struct {
   Peak *peaks; // Pointer to the first peak in this job
 } FitJob;
 
-// Comparison function for qsort to sort peaks by their index
-static int comparePeaksByIndex(const void *a, const void *b) {
-  Peak *peakA = (Peak *)a;
-  Peak *peakB = (Peak *)b;
-  return (peakA->index - peakB->index);
+return (peakA->index - peakB->index);
+}
+
+// --- Bin Sorting Struct ---
+typedef struct {
+  int index;
+  int count;
+} BinSort;
+
+static int compareBinSort(const void *a, const void *b) {
+  BinSort *binA = (BinSort *)a;
+  BinSort *binB = (BinSort *)b;
+  // Sort Descending (Heaviest first)
+  return (binB->count - binA->count);
 }
 
 static double estimate_initial_params(const double *intensity_data,
@@ -2049,7 +2061,8 @@ int main(int argc, char *argv[]) {
   double *dEtaLo = NULL, *dEtaHi = NULL, *dRLo = NULL,
          *dRHi = NULL; // Bin edges on GPU
   int *dPixelOffsets = NULL;
-  double *dPixelWeights = NULL;
+  float *dPixelWeights = NULL;
+  int *dSortedIndices = NULL; // New: Sorted bin indices for load balancing
 
   // --- Global GPU Allocations (Geometry & Maps) ---
   gpuErrchk(cudaMalloc(&dPxList, szPxList));
@@ -2069,7 +2082,8 @@ int main(int argc, char *argv[]) {
   // Count = szPxList / sizeof(struct data).
   size_t pxListCount = szPxList / sizeof(struct data);
   gpuErrchk(cudaMalloc(&dPixelOffsets, pxListCount * sizeof(int)));
-  gpuErrchk(cudaMalloc(&dPixelWeights, pxListCount * sizeof(double)));
+  gpuErrchk(cudaMalloc(&dPixelWeights, pxListCount * sizeof(float)));
+  gpuErrchk(cudaMalloc(&dSortedIndices, bigArrSize * sizeof(int)));
 
   if (sumI) {
     gpuErrchk(cudaMalloc(&dSumMatrix, bigArrSize * sizeof(double)));
@@ -2079,6 +2093,27 @@ int main(int argc, char *argv[]) {
   // Copy geometry to GPU
   gpuErrchk(cudaMemcpy(dPxList, pxList, szPxList, cudaMemcpyHostToDevice));
   gpuErrchk(cudaMemcpy(dNPxList, nPxList, szNPxList, cudaMemcpyHostToDevice));
+
+  // --- Create Sorted Indices ---
+  printf("Sorting bins for load balancing...\n");
+  BinSort *hBinSort = (BinSort *)malloc(bigArrSize * sizeof(BinSort));
+  for (size_t i = 0; i < bigArrSize; ++i) {
+    hBinSort[i].index = (int)i;
+    // nPxList has stride 2: [count, offset].
+    hBinSort[i].count = nPxList[2 * i];
+  }
+  qsort(hBinSort, bigArrSize, sizeof(BinSort), compareBinSort);
+
+  int *hSortedIndices = (int *)malloc(bigArrSize * sizeof(int));
+  for (size_t i = 0; i < bigArrSize; ++i) {
+    hSortedIndices[i] = hBinSort[i].index;
+  }
+  gpuErrchk(cudaMemcpy(dSortedIndices, hSortedIndices, bigArrSize * sizeof(int),
+                       cudaMemcpyHostToDevice));
+  free(hBinSort);
+  free(hSortedIndices);
+  printf("Sorting complete.\n");
+
   gpuErrchk(cudaMemcpy(dEtaLo, hEtaLo, nEtaBins * sizeof(double),
                        cudaMemcpyHostToDevice));
   gpuErrchk(cudaMemcpy(dEtaHi, hEtaHi, nEtaBins * sizeof(double),
@@ -2604,14 +2639,14 @@ int main(int argc, char *argv[]) {
     if (!dMapMask) {
       integrate_noMapMask<<<nrVox, integTPB, 0, ctx->stream>>>(
           px, Lsd, bigArrSize, Normalize, sumI, ctx->frameIdx, dNPxList,
-           NrPixelsY, NrPixelsZ, ctx->dProcessedImage,
-          ctx->dIntArrFrame, dSumMatrix, dPixelOffsets, dPixelWeights);
+          NrPixelsY, NrPixelsZ, ctx->dProcessedImage, ctx->dIntArrFrame,
+          dSumMatrix, dPixelOffsets, dPixelWeights, dSortedIndices);
     } else {
       integrate_MapMask<<<nrVox, integTPB, 0, ctx->stream>>>(
           px, Lsd, bigArrSize, Normalize, sumI, ctx->frameIdx, mapMaskWC,
           dMapMask, nRBins, nEtaBins, NrPixelsY, NrPixelsZ, dNPxList,
           ctx->dProcessedImage, ctx->dIntArrFrame, dSumMatrix, dPixelOffsets,
-          dPixelWeights);
+          dPixelWeights, dSortedIndices);
     }
     double t_int_end = get_wall_time_ms();
     gpuErrchk(cudaEventRecord(ctx->stop_int, ctx->stream));
@@ -2886,6 +2921,8 @@ int main(int argc, char *argv[]) {
     cudaFree(dPixelOffsets);
   if (dPixelWeights)
     cudaFree(dPixelWeights);
+  if (dSortedIndices)
+    cudaFree(dSortedIndices);
 
   // --- Shutdown Accept Thread Gracefully ---
   printf("Attempting to shut down network acceptor thread...\n");
