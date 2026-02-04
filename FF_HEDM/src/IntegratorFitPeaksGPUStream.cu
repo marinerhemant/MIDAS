@@ -1382,6 +1382,7 @@ void smoothData(const double *in, double *out, int N, int W) {
   free(coeffs);
 }
 
+#if 0
 // Simple peak finding: detects local maxima above a threshold and applies
 // minimum distance constraint
 int findPeaks(const double *data, const double *r_values, int N,
@@ -1491,6 +1492,7 @@ int findPeaks(const double *data, const double *r_values, int N,
   }
   return filteredCount;
 }
+#endif
 
 // Structure to define a fitting job (a region and the peaks within it)
 typedef struct {
@@ -2353,24 +2355,36 @@ int main(int argc, char *argv[]) {
                        // Ideally should copy full logic, but for now we assume drain is edge case.
                        // Re-implementing full logic to ensure correctness:
                        
-                       double primary_amp_guess = 1.0;
+                       // Parameter estimation
+                       double primary_amp_guess = 1.0, primary_bg_guess = 0.0;
                        for(int p=0; p<nJobPeaks; ++p) {
-                           int b = p*4;
                            Peak *peak = &(job->peaks[p]);
-                           fitParams[b+0] = peak->intensity; // Simple guess
-                           fitParams[b+1] = 0.5;
-                           fitParams[b+2] = peak->radius;
-                           fitParams[b+3] = RBinSize * 5.0; // Fixed width guess
-                           // Bounds
-                           lowerBounds[b+0]=0; lowerBounds[b+1]=0; 
-                           lowerBounds[b+2]=peak->radius - 20*RBinSize; 
-                           lowerBounds[b+3]=RBinSize;
-                           upperBounds[b+0]=peak->intensity*2; upperBounds[b+1]=1;
-                           upperBounds[b+2]=peak->radius + 20*RBinSize;
-                           upperBounds[b+3]=RBinSize*50;
+                           int p_idx_local = peak->index - job->startIndex;
+                           double bg_g, amp_g;
+                           double fwhm = estimate_initial_params(&local_h_int1D[job->startIndex],
+                                                                job->endIndex - job->startIndex + 1,
+                                                                p_idx_local, &bg_g, &amp_g);
+                           double sigma_g = fwhm * RBinSize / 2.355;
+                           if (sigma_g < RBinSize * 0.5) sigma_g = RBinSize * 2.0;
+                           if (p==0) { primary_amp_guess = amp_g; primary_bg_guess = bg_g; }
+                           
+                           int b = p * 4;
+                           fitParams[b+0] = amp_g; 
+                           fitParams[b+1] = 0.5; // Mix
+                           fitParams[b+2] = peak->radius; 
+                           fitParams[b+3] = sigma_g;
+                           lowerBounds[b+0] = 0; 
+                           lowerBounds[b+1] = 0;
+                           lowerBounds[b+2] = peak->radius - fwhm*RBinSize;
+                           lowerBounds[b+3] = RBinSize*0.5;
+                           upperBounds[b+0] = amp_g * 3.0; // Loose upper
+                           upperBounds[b+1] = 1.0;
+                           upperBounds[b+2] = peak->radius + fwhm*RBinSize;
+                           upperBounds[b+3] = (hR[job->endIndex] - hR[job->startIndex]); 
                        }
-                       fitParams[nFitParams-1] = 0;
-                       lowerBounds[nFitParams-1] = -1e5; upperBounds[nFitParams-1] = 1e5;
+                       fitParams[nFitParams-1] = primary_bg_guess;
+                       lowerBounds[nFitParams-1] = -fabs(primary_amp_guess);
+                       upperBounds[nFitParams-1] = fabs(primary_amp_guess);
 
                        dataFit fitData;
                        fitData.nrBins = job->endIndex - job->startIndex + 1;
