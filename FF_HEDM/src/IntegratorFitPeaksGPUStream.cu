@@ -224,7 +224,7 @@ typedef struct {
   cudaStream_t stream;
 
   // -- Device Buffers (Private per stream) --
-  double *dProcessedImage;     // Result of transforms/dark sub
+  float *dProcessedImage;     // Result of transforms/dark sub (now float)
   double *dIntArrFrame;        // Result of 2D integration
   double *d_int1D;             // Result of 1D profile
   double *d_int1D_simple_mean; // Result of simple mean profile
@@ -939,7 +939,7 @@ __global__ void PrecomputeOffsets_kernel(const struct data *dPxList,
 __global__ void integrate_noMapMask(double px, double Lsd, size_t bigArrSize,
                                     int Normalize, int sumImages, int frameIdx,
                                     const int *dNPxList, int NrPixelsY,
-                                    int NrPixelsZ, const double *dImage,
+                                    int NrPixelsZ, const float *dImage,
                                     double *dIntArrPerFrame, double *dSumMatrix,
                                     const int *dOffsets, const float *dWeights,
                                     const int *dSortedIndices) {
@@ -963,7 +963,7 @@ __global__ void integrate_noMapMask(double px, double Lsd, size_t bigArrSize,
   for (long long l = 0; l < nPixels; l++) {
     int testPos = dOffsets[dataPos + l];
     float weight = dWeights[dataPos + l];
-    Intensity += (float)__ldg(&dImage[testPos]) * weight;
+    Intensity += __ldg(&dImage[testPos]) * weight; // Direct float read
     totArea += weight; // <<< Accumulate area locally
   }
 
@@ -985,7 +985,7 @@ __global__ void integrate_MapMask(
     double px, double Lsd, size_t bigArrSize, int Normalize, int sumImages,
     int frameIdx, size_t mapMaskWordCount, const int *dMapMask, int nRBins,
     int nEtaBins, int NrPixelsY, int NrPixelsZ, const int *dNPxList,
-    const double *dImage, double *dIntArrPerFrame, double *dSumMatrix,
+    const float *dImage, double *dIntArrPerFrame, double *dSumMatrix,
     const int *dOffsets, const float *dWeights, const int *dSortedIndices) {
   const size_t tid = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= bigArrSize)
@@ -1013,7 +1013,7 @@ __global__ void integrate_MapMask(
 
     if (!isMasked) {
       float weight = dWeights[dataPos + l];
-      Intensity += (float)__ldg(&dImage[testPos]) * weight;
+      Intensity += __ldg(&dImage[testPos]) * weight; // Direct float read
       totArea += weight; // <<< Accumulate area locally (only for non-masked)
     }
   }
@@ -1076,7 +1076,7 @@ __global__ void sequential_transform_kernel(const InT *r, OutT *w, int cY,
 
 template <typename T>
 __global__ void
-final_transform_process_kernel(const T *r, double *o, const double *d, int cY,
+final_transform_process_kernel(const T *r, float *o, const float *d, int cY,
                                int cZ, int nY, int nZ, int opt, bool sub) {
   const size_t N = (size_t)nY * nZ;
   const size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
@@ -1106,15 +1106,15 @@ final_transform_process_kernel(const T *r, double *o, const double *d, int cY,
     zs = yo;
     break; // Transpose
   default:
-    o[i] = 0.0;
+    o[i] = 0.0f;
     return; // Invalid option
   }
 
-  double pv = 0.0;
+  float pv = 0.0f;
   // Read from source location (ys, zs) in input buffer 'r' (dimensions cY, cZ)
   if (ys >= 0 && ys < cY && zs >= 0 && zs < cZ) {
     const T rv = r[(size_t)zs * cY + ys];
-    pv = (double)rv; // Cast to double
+    pv = (float)rv; // Cast to float
     // Subtract dark if enabled and dark buffer exists
     if (sub && d) {
       // Assuming dark 'd' has the same dimensions as output 'o' (nY, nZ)
@@ -1126,12 +1126,12 @@ final_transform_process_kernel(const T *r, double *o, const double *d, int cY,
 }
 
 template <typename T>
-__global__ void process_direct_kernel(const T *r, double *o, const double *d,
+__global__ void process_direct_kernel(const T *r, float *o, const float *d,
                                       size_t N, bool sub) {
   const size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
   if (i < N) {
     const T rv = r[i];
-    double pv = (double)rv; // Cast
+    float pv = (float)rv; // Cast
     if (sub && d) {
       pv -= d[i]; // Subtract dark
     }
@@ -1315,8 +1315,8 @@ __global__ void calculate_1D_profile_simple_mean_kernel(
 
 // --- Templated Host Helper ---
 template <typename T>
-void ProcessImageGPUGeneric(const void *hRawVoid, double *dProc,
-                            const double *dAvgDark, int Nopt,
+void ProcessImageGPUGeneric(const void *hRawVoid, float *dProc,
+                            const float *dAvgDark, int Nopt,
                             const int Topt[MAX_TRANSFORM_OPS], int NY, int NZ,
                             bool doSub, int64_t *d_b1, int64_t *d_b2,
                             cudaStream_t stream) {
@@ -1422,7 +1422,8 @@ void ProcessImageGPUGeneric(const void *hRawVoid, double *dProc,
   gpuErrchk(cudaPeekAtLastError());
 }
 
-void ProcessImageGPU(void *hRaw, double *dProc, const double *dAvgDark,
+// Update wrapper to accept float pointers
+void ProcessImageGPU(void *hRaw, float *dProc, const float *dAvgDark,
                      int Nopt, const int Topt[MAX_TRANSFORM_OPS], int NY,
                      int NZ, bool doSub, int64_t *d_b1, int64_t *d_b2,
                      int dtype, cudaStream_t stream) {
@@ -1947,7 +1948,7 @@ int main(int argc, char *argv[]) {
   check(!hDarkIn, "Allocation failed for hDarkIn");
 
   // --- Device Memory Allocations (Persistent) ---
-  double *dAvgDark = NULL;     // Averaged dark frame on GPU
+  float *dAvgDark = NULL;     // Averaged dark frame on GPU (now float)
   int *dMapMask = NULL;        // Pixel mask on GPU (optional)
   size_t mapMaskWC = 0;        // Word count for the mask array
   int *dNPxList = NULL;        // nMap data (pixel counts, offsets) on GPU
@@ -2079,12 +2080,15 @@ int main(int argc, char *argv[]) {
         hAvgDark[j] /= (double)nFD;
     }
 
-    gpuErrchk(cudaMalloc(&dAvgDark, totalPixels * sizeof(double)));
-    gpuErrchk(cudaMemcpy(dAvgDark, hAvgDark, totalPixels * sizeof(double),
+    gpuErrchk(cudaMalloc(&dAvgDark, totalPixels * sizeof(float)));
+    float *hAvgDarkFloat = (float *)malloc(totalPixels * sizeof(float));
+    for(size_t j=0; j<totalPixels; ++j) hAvgDarkFloat[j] = (float)hAvgDark[j];
+    gpuErrchk(cudaMemcpy(dAvgDark, hAvgDarkFloat, totalPixels * sizeof(float),
                          cudaMemcpyHostToDevice));
+    free(hAvgDarkFloat);
   } else {
-    gpuErrchk(cudaMalloc(&dAvgDark, totalPixels * sizeof(double)));
-    gpuErrchk(cudaMemset(dAvgDark, 0, totalPixels * sizeof(double)));
+    gpuErrchk(cudaMalloc(&dAvgDark, totalPixels * sizeof(float)));
+    gpuErrchk(cudaMemset(dAvgDark, 0, totalPixels * sizeof(float)));
   }
 
   // --- Initialize dPerFrame (Kernel) ---
@@ -2170,7 +2174,7 @@ int main(int argc, char *argv[]) {
     gpuErrchk(cudaStreamCreateWithFlags(&streamPool[i].stream,
                                         cudaStreamNonBlocking));
     gpuErrchk(cudaMalloc(&streamPool[i].dProcessedImage,
-                         totalPixels * sizeof(double)));
+                         totalPixels * sizeof(float)));
     gpuErrchk(
         cudaMalloc(&streamPool[i].dIntArrFrame, bigArrSize * sizeof(double)));
     gpuErrchk(cudaMalloc(&streamPool[i].d_int1D, nRBins * sizeof(double)));
