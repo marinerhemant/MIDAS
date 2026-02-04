@@ -199,6 +199,12 @@ typedef struct {
 ProcessQueue process_queue;
 struct data *pxList = NULL;
 int *nPxList = NULL;
+FILE *fLineout = NULL;
+FILE *fLineoutSimpleMean = NULL;
+FILE *f2D = NULL;
+FILE *fFit = NULL;
+FILE *fFitCurves = NULL;
+double *hR = NULL;
 
 // --- CUDA Error Handling ---
 #define gpuErrchk(ans)                                                         \
@@ -320,6 +326,124 @@ void queue_destroy(ProcessQueue *queue) {
       gpuWarnchk(cudaFreeHost(chunk.data)); // Free pinned memory
     }
   }
+}
+
+// --- Writer Queue & Thread Implementation ---
+void writer_queue_init(WriterQueue *queue) {
+  queue->front = 0;
+  queue->rear = -1;
+  queue->count = 0;
+  pthread_mutex_init(&queue->mutex, NULL);
+  pthread_cond_init(&queue->not_empty, NULL);
+  pthread_cond_init(&queue->not_full, NULL);
+}
+
+int writer_queue_push(WriterQueue *queue, WriteJob job) {
+  pthread_mutex_lock(&queue->mutex);
+  while (queue->count >= MAX_QUEUE_SIZE && keep_running) {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 1;
+    pthread_cond_timedwait(&queue->not_full, &queue->mutex, &ts);
+  }
+  if (!keep_running) {
+    pthread_mutex_unlock(&queue->mutex);
+    return -1;
+  }
+  queue->rear = (queue->rear + 1) % MAX_QUEUE_SIZE;
+  queue->jobs[queue->rear] = job;
+  queue->count++;
+  pthread_cond_signal(&queue->not_empty);
+  pthread_mutex_unlock(&queue->mutex);
+  return 0;
+}
+
+int writer_queue_pop(WriterQueue *queue, WriteJob *job) {
+  pthread_mutex_lock(&queue->mutex);
+  while (queue->count == 0 && keep_running) {
+    // If sentinel is at front, we should pick it up.
+    // If queue is empty, wait.
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 1;
+    pthread_cond_timedwait(&queue->not_empty, &queue->mutex, &ts);
+  }
+  if (queue->count == 0 && !keep_running) {
+    pthread_mutex_unlock(&queue->mutex);
+    return -1;
+  }
+  *job = queue->jobs[queue->front];
+  queue->front = (queue->front + 1) % MAX_QUEUE_SIZE;
+  queue->count--;
+  pthread_cond_signal(&queue->not_full);
+  pthread_mutex_unlock(&queue->mutex);
+  return 0;
+}
+
+void writer_queue_destroy(WriterQueue *queue) {
+  pthread_mutex_destroy(&queue->mutex);
+  pthread_cond_destroy(&queue->not_empty);
+  pthread_cond_destroy(&queue->not_full);
+}
+
+void *writer_thread_func(void *arg) {
+  printf("Writer thread started.\n");
+  double *local_hLineout = NULL;
+  double *local_hLineout_simple_mean = NULL;
+
+  while (true) {
+    WriteJob job;
+    if (writer_queue_pop(&writer_queue, &job) < 0) {
+      break;
+    }
+    // Sentinel check
+    if (job.nRBins == -1) {
+      printf("Writer thread received termination signal.\n");
+      break;
+    }
+
+    // Lazy allocation of scratch buffers
+    if (!local_hLineout && fLineout) {
+      local_hLineout = (double *)malloc(job.nRBins * 2 * sizeof(double));
+    }
+    if (!local_hLineout_simple_mean && fLineoutSimpleMean) {
+      local_hLineout_simple_mean =
+          (double *)malloc(job.nRBins * 2 * sizeof(double));
+    }
+
+    // Perform Writes
+    // 1D Profile (Lineout)
+    if (fLineout && job.h_int1D && hR && local_hLineout) {
+      for (int r = 0; r < job.nRBins; ++r) {
+        local_hLineout[r * 2] = hR[r];
+        local_hLineout[r * 2 + 1] = job.h_int1D[r];
+      }
+      fwrite(local_hLineout, sizeof(double), job.nRBins * 2, fLineout);
+      fflush(fLineout);
+    }
+
+    if (fLineoutSimpleMean && job.h_int1D_simple_mean && hR &&
+        local_hLineout_simple_mean) {
+      for (int r = 0; r < job.nRBins; ++r) {
+        local_hLineout_simple_mean[r * 2] = hR[r];
+        local_hLineout_simple_mean[r * 2 + 1] = job.h_int1D_simple_mean[r];
+      }
+      fwrite(local_hLineout_simple_mean, sizeof(double), job.nRBins * 2,
+             fLineoutSimpleMean);
+      fflush(fLineoutSimpleMean);
+    }
+
+    if (f2D && job.hIntArrFrame && job.doWr2D) {
+      fwrite(job.hIntArrFrame, sizeof(double), job.bigArrSize, f2D);
+      fflush(f2D);
+    }
+  }
+
+  if (local_hLineout)
+    free(local_hLineout);
+  if (local_hLineout_simple_mean)
+    free(local_hLineout_simple_mean);
+  return NULL;
 }
 
 // --- Socket Handling ---
@@ -1796,7 +1920,7 @@ int main(int argc, char *argv[]) {
     printf(
         " Masking:   Will generate from Gap=%lld, BadPx=%lld in Dark Frame\n",
         GapI, BadPxI);
-  printf("Read Params: %.3f ms\n", get_wall_time_ms() - t_start_params);
+  printf("Read Params: %.3f ms\n", t_start_params);
   fflush(stdout);
 
   // --- Setup Bin Edges (Host) ---
@@ -1936,7 +2060,7 @@ int main(int argc, char *argv[]) {
   gpuErrchk(cudaMemcpy(hPerFrame, dPerFrame, bigArrSize * 4 * sizeof(double),
                        cudaMemcpyDeviceToHost));
 
-  double *hR = (double *)calloc(nRBins, sizeof(double));
+  hR = (double *)calloc(nRBins, sizeof(double));
   double *hEta = (double *)calloc(nEtaBins, sizeof(double));
   for (int r = 0; r < nRBins; ++r)
     hR[r] = hPerFrame[r * nEtaBins]; // Offset 0
@@ -1944,22 +2068,11 @@ int main(int argc, char *argv[]) {
     hEta[e] = hPerFrame[e + 2 * bigArrSize]; // Offset 2*bigArrSize
 
   // --- Output Files & Host Buffers ---
-  FILE *fLineout = fopen("lineout.bin", "wb");
-  FILE *fLineoutSimpleMean = fopen("lineout_simple_mean.bin", "wb");
-  FILE *f2D = wr2D ? fopen("Int2D.bin", "wb") : NULL;
-  FILE *fFit = pkFit ? fopen("fit.bin", "wb") : NULL;
-  FILE *fFitCurves = pkFit ? fopen("fit_curves.bin", "wb") : NULL;
-
-  double *hLineout = (double *)malloc(nRBins * 2 * sizeof(double));
-  double *hLineout_simple_mean = (double *)malloc(nRBins * 2 * sizeof(double));
-
-  // Pre-fill R values
-  for (int r = 0; r < nRBins; ++r) {
-    hLineout[r * 2] = hR[r];
-    hLineout[r * 2 + 1] = 0;
-    hLineout_simple_mean[r * 2] = hR[r];
-    hLineout_simple_mean[r * 2 + 1] = 0;
-  }
+  fLineout = fopen("lineout.bin", "wb");
+  fLineoutSimpleMean = fopen("lineout_simple_mean.bin", "wb");
+  f2D = wr2D ? fopen("Int2D.bin", "wb") : NULL;
+  fFit = pkFit ? fopen("fit.bin", "wb") : NULL;
+  fFitCurves = pkFit ? fopen("fit_curves.bin", "wb") : NULL;
 
   // --- Network Setup ---
   int server_fd;
