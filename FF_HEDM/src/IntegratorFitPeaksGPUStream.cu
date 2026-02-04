@@ -2230,6 +2230,7 @@ int main(int argc, char *argv[]) {
   int streamId = 0;
   int frameCounter = 0;
   while (keep_running) {
+    static double accum_gpu_int = 0;
     StreamContext *ctx = &streamPool[streamId];
 
     // 1. FINALIZE PREVIOUS WORK (if any)
@@ -2500,6 +2501,9 @@ int main(int argc, char *argv[]) {
              t_gpu_tot, t_gpu_proc, t_gpu_int, t_gpu_prof, t_gpu_d2h,
              t_cpu_tot + ctx->t_cpu_submit, ctx->t_cpu_submit,
              (t_write_end - t_write_start), (t_fit_end - t_fit_start));
+
+      // Accumulate for FPS report
+      accum_gpu_int += t_gpu_int;
     }
 
     // FPS Tracking
@@ -2509,9 +2513,16 @@ int main(int argc, char *argv[]) {
       if (t_last_report == 0)
         t_last_report = t_start_main;
       double batch_time = current_time - t_last_report;
-      printf("processed %d frames. Recent FPS: %.2f\n", frameCounter,
-             100.0 / (batch_time / 1000.0));
+
+      // Calculate Int FPS (1000ms / Avg Int Time ms)
+      double avg_int_ms = accum_gpu_int / 100.0;
+      double int_fps = (avg_int_ms > 0) ? (1000.0 / avg_int_ms) : 0.0;
+
+      printf("processed %d frames. Recent FPS: %.2f (Int GPU FPS: %.2f)\n",
+             frameCounter, 100.0 / (batch_time / 1000.0), int_fps);
+
       t_last_report = current_time;
+      accum_gpu_int = 0;
     }
 
     // 2. ACQUIRE NEW WORK
@@ -2602,9 +2613,9 @@ int main(int argc, char *argv[]) {
     ctx->t_cpu_submit = t_sub_end - ctx->t_submission;
 
     // Temporary Debug Print:
-    printf("DEBUG-SUBMIT: Proc:%.3f Int:%.3f Prof:%.3f D2H:%.3f\n",
-           (t_proc_end - t_proc_start), (t_int_end - t_int_start),
-           (t_prof_end - t_prof_start), (t_d2h_end - t_d2h_start));
+    // printf("DEBUG-SUBMIT: Proc:%.3f Int:%.3f Prof:%.3f D2H:%.3f\n",
+    //        (t_proc_end - t_proc_start), (t_int_end - t_int_start),
+    //        (t_prof_end - t_prof_start), (t_d2h_end - t_d2h_start));
 
     // Advance
     streamId = (streamId + 1) % NUM_STREAMS;
