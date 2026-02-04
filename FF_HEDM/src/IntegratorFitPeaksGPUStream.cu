@@ -1356,23 +1356,14 @@ void ProcessImageGPUGeneric(const void *hRawVoid, float *dProc,
     unsigned long long nBUL = (N + TPB - 1) / TPB;
     dim3 nB((unsigned int)nBUL);
     process_direct_kernel<T>
-        <<<nB, TPB, 0, stream>>>(d_input, dProc, dAvgDark, N, doSub);
+        <<<nB, TPB, 0, stream>>>(rP, dProc, dAvgDark, N, doSub);
     gpuErrchk(cudaPeekAtLastError());
     return;
   }
 
   // Transformations
-  // First step: must read T from d_input, write int64 to d_b2 (assuming d_b1 is
-  // occupied by input) Actually, step 0 logic: rP = d_b1 (T), wP = d_b2
-  // (int64).
-
-  // We can't use generic loop easily because types alternate.
-  // First step is special (T -> int64).
-  // Subsequent steps are (int64 -> int64).
-  // Final step is (int64 -> double) OR (T -> double) if Nopt=1.
-
-  const void *rP = d_input; // Treated as T* initially
-  void *wP = d_b2;          // Treated as int64* initially
+  // rP already points to valid input (Staged d_b1 or Raw Host)
+  void *wP = d_b2; // Output of first step goes to d_b2 (float)
   int cY = NY, cZ = NZ;
 
   for (int i = 0; i < Nopt - 1; ++i) {
