@@ -2506,7 +2506,6 @@ int main(int argc, char *argv[]) {
           cudaEventElapsedTime(&t_gpu_int, ctx->start_int, ctx->stop_int));
       gpuErrchk(
           cudaEventElapsedTime(&t_gpu_prof, ctx->start_prof, ctx->stop_prof));
-      float t_gpu_d2h = 0;
       gpuErrchk(
           cudaEventElapsedTime(&t_gpu_d2h, ctx->start_d2h, ctx->stop_d2h));
 
@@ -2517,6 +2516,15 @@ int main(int argc, char *argv[]) {
           cudaEventElapsedTime(&t_gpu_copy, ctx->start_copy, ctx->stop_copy));
       gpuErrchk(cudaEventElapsedTime(&t_gpu_trans, ctx->start_trans,
                                      ctx->stop_trans));
+
+      t_gpu_tot = t_gpu_proc + t_gpu_int + t_gpu_prof + t_gpu_d2h;
+
+      double t_now = get_wall_time_ms();
+      double t_lat = t_now - ctx->t_submission;
+
+      // Breakdown CPU times
+      double t_cpu_tot =
+          (t_write_end - t_write_start) + (t_fit_end - t_fit_start);
 
       // F#XX: Ttl:X.XX| ... GPU(Tot:X.XX Proc:X.XX(Cpy:X.XX Trn:X.XX) Int:X.XX
       // ...
