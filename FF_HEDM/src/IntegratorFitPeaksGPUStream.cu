@@ -941,7 +941,7 @@ __global__ void integrate_noMapMask(double px, double Lsd, size_t bigArrSize,
   for (long long l = 0; l < nPixels; l++) {
     struct data ThisVal = dPxList[dataPos + l];
     long long testPos = (long long)ThisVal.z * NrPixelsY + ThisVal.y;
-    Intensity += dImage[testPos] * ThisVal.frac;
+    Intensity += __ldg(&dImage[testPos]) * ThisVal.frac;
     totArea += ThisVal.frac; // <<< Accumulate area locally
   }
 
@@ -989,7 +989,7 @@ __global__ void integrate_MapMask(double px, double Lsd, size_t bigArrSize,
       isMasked = true;
 
     if (!isMasked) {
-      Intensity += dImage[testPos] * ThisVal.frac;
+      Intensity += __ldg(&dImage[testPos]) * ThisVal.frac;
       totArea +=
           ThisVal.frac; // <<< Accumulate area locally (only for non-masked)
     }
