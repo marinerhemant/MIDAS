@@ -1961,44 +1961,22 @@ int main(int argc, char *argv[]) {
   int server_fd;
   struct sockaddr_in server_addr;
 
-  CHUNK_SIZE = SizeFile;
-  TOTAL_MSG_SIZE = HEADER_SIZE + CHUNK_SIZE;
-  writer_queue_init(&writer_queue);
-  pthread_t writer_thread;
-  pthread_create(&writer_thread, NULL, writer_thread_func, NULL);
-
-  check((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0,
-        "Socket creation failed");
-  int sock_opt = 1;
-  // ... (lines 1966-2047 kept same, implicit context) ...
-  // Instead of skipping lines, I must act on the TARGET lines.
-  // I will structure the replacement to cover the init and the main loop.
-
   // First Block: Init Writer Thread (replacing lines ~1962 queue_init)
-  queue_init(&process_queue);
   writer_queue_init(&writer_queue);
   pthread_t writer_thread;
   if (pthread_create(&writer_thread, NULL, writer_thread_func, NULL) != 0) {
     check(1, "Failed to create writer thread");
   }
 
-  // ...
+  queue_init(&process_queue);
 
-  // Second Block: Main Loop Write Replacement (lines 2048-2073)
-  // --- Write Results to Disk (Async) ---
-  double t_write_start = get_wall_time_ms();
+  check((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0,
+        "Socket creation failed");
+  int sock_opt = 1;
+  setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &sock_opt,
+             sizeof(sock_opt));
 
-  WriteJob wJob;
-  wJob.h_int1D = ctx->h_int1D;
-  wJob.h_int1D_simple_mean = ctx->h_int1D_simple_mean;
-  wJob.hIntArrFrame = ctx->hIntArrFrame;
-  wJob.nRBins = nRBins;
-  wJob.bigArrSize = bigArrSize; // Pass correct size
-  wJob.doWr2D = wr2D;
-
-  writer_queue_push(&writer_queue, wJob);
-
-  double t_write_end = get_wall_time_ms();
+  server_addr.sin_family = AF_INET;
 
   // Third Block: Drain Loop Write Replacement (lines 2443-2461)
   // --- Write Results to Disk (Async) ---
@@ -2022,10 +2000,6 @@ int main(int argc, char *argv[]) {
   writer_queue_push(&writer_queue, termJob);
   pthread_join(writer_thread, NULL);
   writer_queue_destroy(&writer_queue);
-  int sock_opt = 1;
-  setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &sock_opt,
-             sizeof(sock_opt));
-
   server_addr.sin_family = AF_INET;
   server_addr.sin_addr.s_addr = INADDR_ANY;
   server_addr.sin_port = htons(PORT);
@@ -2107,28 +2081,17 @@ int main(int argc, char *argv[]) {
       // --- Write Results to Disk ---
       double t_write_start = get_wall_time_ms();
       // 1D Profile
-      if (fLineout) {
-        // Fill lineout buffer (R is const, Integ changes)
-        for (int r = 0; r < nRBins; ++r) {
-          hLineout[r * 2 + 1] = ctx->h_int1D[r];
-        }
-        fwrite(hLineout, sizeof(double), nRBins * 2, fLineout);
-        fflush(fLineout);
-      }
-      if (fLineoutSimpleMean) {
-        for (int r = 0; r < nRBins; ++r) {
-          hLineout_simple_mean[r * 2 + 1] = ctx->h_int1D_simple_mean[r];
-        }
-        fwrite(hLineout_simple_mean, sizeof(double), nRBins * 2,
-               fLineoutSimpleMean);
-        fflush(fLineoutSimpleMean);
-      }
+      double t_write_start = get_wall_time_ms();
 
-      // 2D Frame
-      if (wr2D && f2D && ctx->hIntArrFrame) {
-        fwrite(ctx->hIntArrFrame, sizeof(double), bigArrSize, f2D);
-        // fflush?
-      }
+      WriteJob wJob;
+      wJob.h_int1D = ctx->h_int1D;
+      wJob.h_int1D_simple_mean = ctx->h_int1D_simple_mean;
+      wJob.hIntArrFrame = ctx->hIntArrFrame;
+      wJob.nRBins = nRBins;
+      wJob.bigArrSize = bigArrSize; // Pass correct size
+      wJob.doWr2D = wr2D;
+
+      writer_queue_push(&writer_queue, wJob);
       double t_write_end = get_wall_time_ms();
 
       // Peak Fit (Synchronous CPU work for now)
@@ -2499,25 +2462,16 @@ int main(int argc, char *argv[]) {
     if (drainCtx->hasPendingWork) {
       gpuErrchk(cudaStreamSynchronize(drainCtx->stream));
 
-      // --- Write Results to Disk (Duplicate of Main Loop Logic) ---
-      if (fLineout) {
-        for (int r = 0; r < nRBins; ++r) {
-          hLineout[r * 2 + 1] = drainCtx->h_int1D[r];
-        }
-        fwrite(hLineout, sizeof(double), nRBins * 2, fLineout);
-        fflush(fLineout);
-      }
-      if (fLineoutSimpleMean) {
-        for (int r = 0; r < nRBins; ++r) {
-          hLineout_simple_mean[r * 2 + 1] = drainCtx->h_int1D_simple_mean[r];
-        }
-        fwrite(hLineout_simple_mean, sizeof(double), nRBins * 2,
-               fLineoutSimpleMean);
-        fflush(fLineoutSimpleMean);
-      }
-      if (wr2D && f2D && drainCtx->hIntArrFrame) {
-        fwrite(drainCtx->hIntArrFrame, sizeof(double), bigArrSize, f2D);
-      }
+      // --- Write Results to Disk (Async) ---
+      WriteJob dJob;
+      dJob.h_int1D = drainCtx->h_int1D;
+      dJob.h_int1D_simple_mean = drainCtx->h_int1D_simple_mean;
+      dJob.hIntArrFrame = drainCtx->hIntArrFrame;
+      dJob.nRBins = nRBins;
+      dJob.bigArrSize = bigArrSize;
+      dJob.doWr2D = wr2D;
+
+      writer_queue_push(&writer_queue, dJob);
 
       if (pkFit) {
         double *local_h_int1D = drainCtx->h_int1D;
