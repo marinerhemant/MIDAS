@@ -151,6 +151,63 @@ WriterQueue writer_queue;
 
 // Writer thread function prototype
 void *writer_thread_func(void *arg);
+// --- Writer Queue Prototypes ---
+// (Forward decls if needed)
+
+// --- Input Buffer Pool ---
+typedef struct {
+  void *data;
+  size_t capacity;
+} PinnedBuffer;
+
+typedef struct {
+  PinnedBuffer buffers[MAX_QUEUE_SIZE];
+  int count;
+  pthread_mutex_t mutex;
+} InputBufferPool;
+
+InputBufferPool buffer_pool;
+
+void buffer_pool_init(InputBufferPool *pool) {
+  pool->count = 0;
+  pthread_mutex_init(&pool->mutex, NULL);
+}
+
+void *buffer_pool_pop(InputBufferPool *pool, size_t min_capacity) {
+  pthread_mutex_lock(&pool->mutex);
+  if (pool->count > 0) {
+    // Pop from end (LIFO) - better for cache locality
+    PinnedBuffer pb = pool->buffers[pool->count - 1];
+    pool->count--;
+    pthread_mutex_unlock(&pool->mutex);
+
+    if (pb.capacity >= min_capacity) {
+      return pb.data;
+    } else {
+      // Buffer too small, free it and let caller alloc new
+      cudaFreeHost(pb.data);
+      return NULL;
+    }
+  }
+  pthread_mutex_unlock(&pool->mutex);
+  return NULL;
+}
+
+void buffer_pool_push(InputBufferPool *pool, void *data, size_t capacity) {
+  pthread_mutex_lock(&pool->mutex);
+  if (pool->count < MAX_QUEUE_SIZE) {
+    pool->buffers[pool->count].data = data;
+    pool->buffers[pool->count].capacity = capacity;
+    pool->count++;
+  } else {
+    // Pool full, free the buffer
+    pthread_mutex_unlock(&pool->mutex);
+    cudaFreeHost(data);
+    return;
+  }
+  pthread_mutex_unlock(&pool->mutex);
+}
+
 void writer_queue_init(WriterQueue *queue);
 int writer_queue_push(WriterQueue *queue, WriteJob job);
 int writer_queue_pop(WriterQueue *queue, WriteJob *job);
@@ -180,8 +237,9 @@ typedef struct {
   double *hIntArrFrame; // For 2D writing
 
   // -- State --
-  uint16_t frameIdx;   // Current dataset ID
-  void *inputDataPtr;  // Pointer to input data (to free later)
+  uint16_t frameIdx;  // Current dataset ID
+  void *inputDataPtr; // Pointer to input data (to free later)
+  size_t inputDataCapacity;
   bool hasPendingWork; // True if the stream is currently processing a frame
   double t_submission; // Timestamp when work was submitted
   double t_qpop;       // Duration of queue pop
@@ -504,11 +562,13 @@ void *handle_client(void *arg) {
     size_t payload_size = num_pixels * bpp;
 
     // 2. Read Payload
-    void *data = NULL;
-    gpuWarnchk(cudaMallocHost((void **)&data, payload_size)); // Pinned
+    void *data = buffer_pool_pop(&buffer_pool, payload_size);
     if (!data) {
-      perror("Pinned alloc fail");
-      break;
+      gpuWarnchk(cudaMallocHost((void **)&data, payload_size)); // Pinned
+      if (!data) {
+        perror("Pinned alloc fail");
+        break;
+      }
     }
 
     uint8_t *data_ptr = (uint8_t *)data;
@@ -517,15 +577,18 @@ void *handle_client(void *arg) {
       bytes_read = recv(client_socket, data_ptr + total_payload_read,
                         payload_size - total_payload_read, 0);
       if (bytes_read <= 0) {
-        gpuWarnchk(cudaFreeHost(data));
+        // Return to pool or free
+        buffer_pool_push(&buffer_pool, data, payload_size);
         goto connection_closed;
       }
       total_payload_read += bytes_read;
     }
 
+    // We don't push to pool here on success; the consumer (main loop) does it
+    // when done.
     if (queue_push(&process_queue, dataset_num, data, num_pixels, dtype) < 0) {
       printf("handle_client: queue fail. Discarding %d\n", dataset_num);
-      gpuWarnchk(cudaFreeHost(data));
+      buffer_pool_push(&buffer_pool, data, payload_size);
       goto connection_closed;
     }
   }
@@ -2080,6 +2143,9 @@ int main(int argc, char *argv[]) {
   int server_fd;
   struct sockaddr_in server_addr;
 
+  // Input Buffer Pool Init
+  buffer_pool_init(&buffer_pool);
+
   // First Block: Init Writer Thread (replacing lines ~1962 queue_init)
   writer_queue_init(&writer_queue);
   pthread_t writer_thread;
@@ -2401,9 +2467,11 @@ int main(int argc, char *argv[]) {
 
       // Cleanup Input
       if (ctx->inputDataPtr) {
-        gpuWarnchk(cudaFreeHost(ctx->inputDataPtr));
+        buffer_pool_push(&buffer_pool, ctx->inputDataPtr,
+                         ctx->inputDataCapacity);
         ctx->inputDataPtr = NULL;
       }
+
       ctx->hasPendingWork = false;
 
       float t_gpu_proc = 0, t_gpu_int = 0, t_gpu_prof = 0, t_gpu_d2h = 0;
@@ -2460,6 +2528,8 @@ int main(int argc, char *argv[]) {
     // 3. SUBMIT GPU WORK (Async)
     ctx->frameIdx = chunk.dataset_num;
     ctx->inputDataPtr = chunk.data;
+    ctx->inputDataCapacity =
+        chunk.num_pixels * get_bytes_per_pixel(chunk.dtype);
     ctx->t_submission = get_wall_time_ms(); // RECORD SUBMISSION TIME
     ctx->hasPendingWork = true;
 
@@ -2791,6 +2861,16 @@ int main(int argc, char *argv[]) {
   // --- End Shutdown Accept Thread ---
 
   // Shutdown Writer Thread
+  writer_queue_destroy(&writer_queue); // Should signal thread to exit
+
+  printf("Cleaning up Input Buffer Pool...\n");
+  for (int i = 0; i < buffer_pool.count; ++i) {
+    if (buffer_pool.buffers[i].data) {
+      cudaFreeHost(buffer_pool.buffers[i].data);
+    }
+  }
+
+  pthread_join(writer_thread, NULL);
   WriteJob termJob;
   termJob.nRBins = -1; // Sentinel
   writer_queue_push(&writer_queue, termJob);
