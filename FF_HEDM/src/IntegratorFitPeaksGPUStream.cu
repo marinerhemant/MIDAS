@@ -2476,17 +2476,15 @@ int main(int argc, char *argv[]) {
 
       float t_gpu_proc = 0, t_gpu_int = 0, t_gpu_prof = 0, t_gpu_d2h = 0;
       float t_gpu_tot = 0;
-      // gpuErrchk(
-      //     cudaEventElapsedTime(&t_gpu_proc, ctx->start_proc,
-      //     ctx->stop_proc));
-      // gpuErrchk(
-      //     cudaEventElapsedTime(&t_gpu_int, ctx->start_int, ctx->stop_int));
-      // gpuErrchk(
-      //     cudaEventElapsedTime(&t_gpu_prof, ctx->start_prof,
-      //     ctx->stop_prof));
-      // gpuErrchk(
-      //     cudaEventElapsedTime(&t_gpu_d2h, ctx->start_d2h, ctx->stop_d2h));
-      // t_gpu_tot = t_gpu_proc + t_gpu_int + t_gpu_prof + t_gpu_d2h;
+      gpuErrchk(
+          cudaEventElapsedTime(&t_gpu_proc, ctx->start_proc, ctx->stop_proc));
+      gpuErrchk(
+          cudaEventElapsedTime(&t_gpu_int, ctx->start_int, ctx->stop_int));
+      gpuErrchk(
+          cudaEventElapsedTime(&t_gpu_prof, ctx->start_prof, ctx->stop_prof));
+      gpuErrchk(
+          cudaEventElapsedTime(&t_gpu_d2h, ctx->start_d2h, ctx->stop_d2h));
+      t_gpu_tot = t_gpu_proc + t_gpu_int + t_gpu_prof + t_gpu_d2h;
 
       double t_now = get_wall_time_ms();
       double t_lat = t_now - ctx->t_submission;
@@ -2533,17 +2531,16 @@ int main(int argc, char *argv[]) {
     ctx->hasPendingWork = true;
 
     // Process
-    // Process
-    // gpuErrchk(cudaEventRecord(ctx->start_proc, ctx->stream));
+    gpuErrchk(cudaEventRecord(ctx->start_proc, ctx->stream));
     double t_proc_start = get_wall_time_ms();
     ProcessImageGPU(chunk.data, ctx->dProcessedImage, dAvgDark, Nopt, Topt,
                     NrPixelsY, NrPixelsZ, darkSubEnabled, ctx->dTempBuf1,
                     ctx->dTempBuf2, chunk.dtype, ctx->stream);
     double t_proc_end = get_wall_time_ms();
-    // gpuErrchk(cudaEventRecord(ctx->stop_proc, ctx->stream));
+    gpuErrchk(cudaEventRecord(ctx->stop_proc, ctx->stream));
 
     // Integrate
-    // gpuErrchk(cudaEventRecord(ctx->start_int, ctx->stream));
+    gpuErrchk(cudaEventRecord(ctx->start_int, ctx->stream));
     double t_int_start = get_wall_time_ms();
     int integTPB = THREADS_PER_BLOCK_INTEGRATE;
     int nrVox = (bigArrSize + integTPB - 1) / integTPB;
@@ -2560,10 +2557,10 @@ int main(int argc, char *argv[]) {
           ctx->dProcessedImage, ctx->dIntArrFrame, dSumMatrix);
     }
     double t_int_end = get_wall_time_ms();
-    // gpuErrchk(cudaEventRecord(ctx->stop_int, ctx->stream));
+    gpuErrchk(cudaEventRecord(ctx->stop_int, ctx->stream));
 
     // Profile
-    // gpuErrchk(cudaEventRecord(ctx->start_prof, ctx->stream));
+    gpuErrchk(cudaEventRecord(ctx->start_prof, ctx->stream));
     double t_prof_start = get_wall_time_ms();
     size_t profileSharedMem =
         (THREADS_PER_BLOCK_PROFILE / 32) * sizeof(double) * 2;
@@ -2581,10 +2578,10 @@ int main(int argc, char *argv[]) {
         ctx->dIntArrFrame, dPerFrame, ctx->d_int1D_simple_mean, nRBins,
         nEtaBins, bigArrSize);
     double t_prof_end = get_wall_time_ms();
-    // gpuErrchk(cudaEventRecord(ctx->stop_prof, ctx->stream));
+    gpuErrchk(cudaEventRecord(ctx->stop_prof, ctx->stream));
 
     // D->H Copy
-    // gpuErrchk(cudaEventRecord(ctx->start_d2h, ctx->stream));
+    gpuErrchk(cudaEventRecord(ctx->start_d2h, ctx->stream));
     double t_d2h_start = get_wall_time_ms();
     gpuErrchk(cudaMemcpyAsync(ctx->h_int1D, ctx->d_int1D,
                               nRBins * sizeof(double), cudaMemcpyDeviceToHost,
@@ -2599,7 +2596,7 @@ int main(int argc, char *argv[]) {
                                 cudaMemcpyDeviceToHost, ctx->stream));
     }
     double t_d2h_end = get_wall_time_ms();
-    // gpuErrchk(cudaEventRecord(ctx->stop_d2h, ctx->stream));
+    gpuErrchk(cudaEventRecord(ctx->stop_d2h, ctx->stream));
 
     double t_sub_end = get_wall_time_ms();
     ctx->t_cpu_submit = t_sub_end - ctx->t_submission;
