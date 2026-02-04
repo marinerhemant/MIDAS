@@ -1660,6 +1660,8 @@ int main(int argc, char *argv[]) {
           mapperSquare[i] = 0;
         }
       }
+      // print that we read a mask file
+      printf("Mask file read: %s\n", MaskFN);
     }
   }
   int a;
