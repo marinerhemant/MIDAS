@@ -2408,15 +2408,17 @@ int main(int argc, char *argv[]) {
 
       float t_gpu_proc = 0, t_gpu_int = 0, t_gpu_prof = 0, t_gpu_d2h = 0;
       float t_gpu_tot = 0;
-      gpuErrchk(
-          cudaEventElapsedTime(&t_gpu_proc, ctx->start_proc, ctx->stop_proc));
-      gpuErrchk(
-          cudaEventElapsedTime(&t_gpu_int, ctx->start_int, ctx->stop_int));
-      gpuErrchk(
-          cudaEventElapsedTime(&t_gpu_prof, ctx->start_prof, ctx->stop_prof));
-      gpuErrchk(
-          cudaEventElapsedTime(&t_gpu_d2h, ctx->start_d2h, ctx->stop_d2h));
-      t_gpu_tot = t_gpu_proc + t_gpu_int + t_gpu_prof + t_gpu_d2h;
+      // gpuErrchk(
+      //     cudaEventElapsedTime(&t_gpu_proc, ctx->start_proc,
+      //     ctx->stop_proc));
+      // gpuErrchk(
+      //     cudaEventElapsedTime(&t_gpu_int, ctx->start_int, ctx->stop_int));
+      // gpuErrchk(
+      //     cudaEventElapsedTime(&t_gpu_prof, ctx->start_prof,
+      //     ctx->stop_prof));
+      // gpuErrchk(
+      //     cudaEventElapsedTime(&t_gpu_d2h, ctx->start_d2h, ctx->stop_d2h));
+      // t_gpu_tot = t_gpu_proc + t_gpu_int + t_gpu_prof + t_gpu_d2h;
 
       double t_now = get_wall_time_ms();
       double t_lat = t_now - ctx->t_submission;
@@ -2424,18 +2426,6 @@ int main(int argc, char *argv[]) {
       // Breakdown CPU times
       double t_cpu_tot =
           (t_write_end - t_write_start) + (t_fit_end - t_fit_start);
-      // NOTE: We don't have separate timers for Wr2D vs Wr1D anymore in the
-      // previous block I wrote... I need to be careful. The previous tool call
-      // combined them. I will instrument them inside the previous block if I
-      // can, but I can't edit that block again here easily without re-writing
-      // it. Wait, I can derive them if I had variables. Let's rely on the
-      // variables I added: t_write_start, t_write_end. Actually, I should just
-      // assume t_disk covers Wr2D + Wr1D. To strictly match "Wr2D" vs "Wr1D", I
-      // would need fine-grained timers *inside* the write block. For this step,
-      // I will report t_disk as "Wr2D+Wr1D" or just split it roughly if I can't
-      // measure? No, better to be accurate. I will label it 'Disk' for now in
-      // the CPU breakdown or just aggregate. The user asked for "Wr2D:0.16
-      // Wr1D:0.02". Refactoring the print:
 
       printf("F#%d: Ttl:%.2f| QPop:%.2f Sync:%.2f GPU(Tot:%.2f Proc:%.2f "
              "Int:%.2f Prof:%.2f D2H:%.2f) CPU(Tot:%.2f Submit:%.2f Disk:%.2f "
@@ -2475,16 +2465,16 @@ int main(int argc, char *argv[]) {
 
     // Process
     // Process
-    gpuErrchk(cudaEventRecord(ctx->start_proc, ctx->stream));
+    // gpuErrchk(cudaEventRecord(ctx->start_proc, ctx->stream));
     double t_proc_start = get_wall_time_ms();
     ProcessImageGPU(chunk.data, ctx->dProcessedImage, dAvgDark, Nopt, Topt,
                     NrPixelsY, NrPixelsZ, darkSubEnabled, ctx->dTempBuf1,
                     ctx->dTempBuf2, chunk.dtype, ctx->stream);
     double t_proc_end = get_wall_time_ms();
-    gpuErrchk(cudaEventRecord(ctx->stop_proc, ctx->stream));
+    // gpuErrchk(cudaEventRecord(ctx->stop_proc, ctx->stream));
 
     // Integrate
-    gpuErrchk(cudaEventRecord(ctx->start_int, ctx->stream));
+    // gpuErrchk(cudaEventRecord(ctx->start_int, ctx->stream));
     double t_int_start = get_wall_time_ms();
     int integTPB = THREADS_PER_BLOCK_INTEGRATE;
     int nrVox = (bigArrSize + integTPB - 1) / integTPB;
@@ -2501,10 +2491,10 @@ int main(int argc, char *argv[]) {
           ctx->dProcessedImage, ctx->dIntArrFrame, dSumMatrix);
     }
     double t_int_end = get_wall_time_ms();
-    gpuErrchk(cudaEventRecord(ctx->stop_int, ctx->stream));
+    // gpuErrchk(cudaEventRecord(ctx->stop_int, ctx->stream));
 
     // Profile
-    gpuErrchk(cudaEventRecord(ctx->start_prof, ctx->stream));
+    // gpuErrchk(cudaEventRecord(ctx->start_prof, ctx->stream));
     double t_prof_start = get_wall_time_ms();
     size_t profileSharedMem =
         (THREADS_PER_BLOCK_PROFILE / 32) * sizeof(double) * 2;
@@ -2522,10 +2512,10 @@ int main(int argc, char *argv[]) {
         ctx->dIntArrFrame, dPerFrame, ctx->d_int1D_simple_mean, nRBins,
         nEtaBins, bigArrSize);
     double t_prof_end = get_wall_time_ms();
-    gpuErrchk(cudaEventRecord(ctx->stop_prof, ctx->stream));
+    // gpuErrchk(cudaEventRecord(ctx->stop_prof, ctx->stream));
 
     // D->H Copy
-    gpuErrchk(cudaEventRecord(ctx->start_d2h, ctx->stream));
+    // gpuErrchk(cudaEventRecord(ctx->start_d2h, ctx->stream));
     double t_d2h_start = get_wall_time_ms();
     gpuErrchk(cudaMemcpyAsync(ctx->h_int1D, ctx->d_int1D,
                               nRBins * sizeof(double), cudaMemcpyDeviceToHost,
@@ -2540,7 +2530,7 @@ int main(int argc, char *argv[]) {
                                 cudaMemcpyDeviceToHost, ctx->stream));
     }
     double t_d2h_end = get_wall_time_ms();
-    gpuErrchk(cudaEventRecord(ctx->stop_d2h, ctx->stream));
+    // gpuErrchk(cudaEventRecord(ctx->stop_d2h, ctx->stream));
 
     double t_sub_end = get_wall_time_ms();
     ctx->t_cpu_submit = t_sub_end - ctx->t_submission;
