@@ -1299,12 +1299,54 @@ int main(int argc, char *argv[]) {
         spotsPerPanel[pIdx]++;
       }
     }
-    printf("\nSpots per Panel:\n");
-    for (i = 1; i < nPanels;
-         i++) { // Panel 0 is typically 'global' or 'none'? Loop from 1 or 0?
-      // Panels usually 1-calibrated? function GeneratePanels sets IDs.
-      // Panel.c usually 0-indexed array, PanelID might be i+1.
-      printf("Panel %d: %d spots\n", i, spotsPerPanel[i]);
+    if (nPanels > 0) {
+      printf("\n******************* Indices per Panel (Visual Layout: Z^ Y>) "
+             "*******************\n");
+      printf("                        Anchored Panel ID: %d \n", FixPanelID);
+      double charAspect = 0.5;         // Width / Height
+      double textWidthPerPanel = 14.0; // "|  12 (12345) " is 14 chars
+      double visualWidthPoints = nPanelsY * textWidthPerPanel * charAspect;
+      double targetHeightPoints =
+          visualWidthPoints; // Assuming aspect ratio 1:1 if NrPixels is single
+                             // value
+      if (NrPixels > 0)
+        targetHeightPoints = visualWidthPoints * 1.0;
+
+      // Reduce vertical spacing factor significantly (0.15 factor)
+      int linesPerRow = (int)(targetHeightPoints / nPanelsZ * 0.15 + 0.5);
+      if (linesPerRow < 1)
+        linesPerRow = 1;
+
+      for (int z = nPanelsZ - 1; z >= 0; z--) {
+        for (int l = 0; l < linesPerRow; l++) {
+          if (l == linesPerRow / 2)
+            printf("Z=%-2d | ", z);
+          else
+            printf("     | ");
+
+          if (l == linesPerRow / 2) {
+            for (int y = 0; y < nPanelsY; y++) {
+              int pIdx = y * nPanelsZ + z;
+              if (pIdx < nPanels) {
+                printf("| %3d (%5d) ", pIdx, spotsPerPanel[pIdx]);
+              } else {
+                printf("|             ");
+              }
+            }
+            printf("|"); // Closing pipe
+          }
+          printf("\n");
+        }
+      }
+      printf("       ");
+      for (int y = 0; y < nPanelsY; y++) {
+        // Data block is 14 chars: "| %3d (%5d) "
+        // We want Y label centered: 5 spaces + "Y=%-2d" (4) + 5 spaces = 14
+        printf("     Y=%-2d     ", y);
+      }
+      printf("\n");
+      printf("*****************************************************************"
+             "***************\n\n");
     }
     printf("\n");
     // free(spotsPerPanel); // Moved to end

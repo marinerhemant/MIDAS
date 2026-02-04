@@ -1516,9 +1516,53 @@ int main(int argc, char *argv[]) {
           spotsPerPanel[pIdx]++;
       }
     }
-    printf("\nSpots per Panel (Total):\n");
-    for (i = 1; i < nPanels; i++)
-      printf("Panel %d: %d spots\n", i, spotsPerPanel[i]);
+    printf("\n******************* Indices per Panel (Visual Layout: Z^ Y>) "
+           "*******************\n");
+    printf("                        Anchored Panel ID: %d \n", FixPanelID);
+    double charAspect = 0.5;         // Width / Height
+    double textWidthPerPanel = 14.0; // "|  12 (12345) " is 14 chars
+    double visualWidthPoints = nPanelsY * textWidthPerPanel * charAspect;
+    double targetHeightPoints =
+        visualWidthPoints; // Assuming aspect ratio 1:1 if NrPixels is single
+                           // value
+    if (NrPixels > 0)
+      targetHeightPoints = visualWidthPoints * 1.0;
+
+    // Reduce vertical spacing factor significantly (0.15 factor)
+    int linesPerRow = (int)(targetHeightPoints / nPanelsZ * 0.15 + 0.5);
+    if (linesPerRow < 1)
+      linesPerRow = 1;
+
+    for (int z = nPanelsZ - 1; z >= 0; z--) {
+      for (int l = 0; l < linesPerRow; l++) {
+        if (l == linesPerRow / 2)
+          printf("Z=%-2d | ", z);
+        else
+          printf("     | ");
+
+        if (l == linesPerRow / 2) {
+          for (int y = 0; y < nPanelsY; y++) {
+            int pIdx = y * nPanelsZ + z;
+            if (pIdx < nPanels) {
+              printf("| %3d (%5d) ", pIdx, spotsPerPanel[pIdx]);
+            } else {
+              printf("|             ");
+            }
+          }
+          printf("|"); // Closing pipe
+        }
+        printf("\n");
+      }
+    }
+    printf("       ");
+    for (int y = 0; y < nPanelsY; y++) {
+      // Data block is 14 chars: "| %3d (%5d) "
+      // We want Y label centered: 5 spaces + "Y=%-2d" (4) + 5 spaces = 14
+      printf("     Y=%-2d     ", y);
+    }
+    printf("\n");
+    printf("*******************************************************************"
+           "*************\n\n");
   }
 
   // Group Setup parameters
@@ -1553,7 +1597,8 @@ int main(int argc, char *argv[]) {
       tolP3,
   }; // 250 microns for position, 0.0005 degrees for orient, 1 % for
      // latticeParameter, 1 degree for tilts, 1 pixel for yBC,
-     // 1 pixel for zBC, 0.00001 degree for wedge, 1E-3 for p0,p1,p2, 45 for p3
+     // 1 pixel for zBC, 0.00001 degree for wedge, 1E-3 for p0,p1,p2, 45 for
+     // p3
 
   // Now call a function with all the info which will optimize parameters
   // Arguments: Ini(12), OptP(6), NonOptP, RingNumbers,  SpotInfoAll,
