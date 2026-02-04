@@ -1442,6 +1442,8 @@ void ProcessImageGPUGeneric(const void *hRawVoid, float *dProc,
         (const float *)rP_loop, dProc, dAvgDark, cY, cZ, nY, nZ, fOpt, doSub);
   }
   gpuErrchk(cudaPeekAtLastError());
+  if (stop_trans)
+    cudaEventRecord(stop_trans, stream);
 }
 
 // Update wrapper to accept float pointers
