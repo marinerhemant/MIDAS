@@ -1363,7 +1363,8 @@ void ProcessImageGPUGeneric(const void *hRawVoid, float *dProc,
 
   // Transformations
   // rP already points to valid input (Staged d_b1 or Raw Host)
-  void *wP = d_b2; // Output of first step goes to d_b2 (float)
+  const void *rP_loop = rP; // Generic pointer for loop
+  void *wP = d_b2;          // Output of first step goes to d_b2 (float)
   int cY = NY, cZ = NZ;
 
   for (int i = 0; i < Nopt - 1; ++i) {
@@ -1373,14 +1374,7 @@ void ProcessImageGPUGeneric(const void *hRawVoid, float *dProc,
       nY = cZ;
       nZ = cY;
     } else if (opt == 3)
-      opt =
-          0; // Handle Tpose (if square, 3 works, else standard Tpose needed?
-             // wait, logic for Tpose opt=3 is generic transpose if cY!=cZ ?
-             // No, if cY!=cZ, opt=3 usually implies specialized kernel or check
-             // Logic here seems to reset to 0 if 3 and !square? Or maybe the
-             // kernel handles it? Actually the kernel handles generic
-             // transpose. The logic here updates dims. if (fOpt == 3) fOpt=0
-             // was likely for final step optimization check consistency.
+      opt = 0;
 
     size_t sON = (size_t)nY * nZ;
     unsigned long long nBUL = (sON + TPB - 1) / TPB;
@@ -1389,15 +1383,15 @@ void ProcessImageGPUGeneric(const void *hRawVoid, float *dProc,
     if (i == 0) {
       // T -> float
       sequential_transform_kernel<T, float><<<nB, TPB, 0, stream>>>(
-          (const T *)rP, (float *)wP, cY, cZ, nY, nZ, opt);
-      rP = wP;   // Now points to float data
-      wP = d_b1; // Next write to d_b1 (float)
+          (const T *)rP_loop, (float *)wP, cY, cZ, nY, nZ, opt);
+      rP_loop = wP; // Now points to float data
+      wP = d_b1;    // Next write to d_b1 (float)
     } else {
       // float -> float
       sequential_transform_kernel<float, float><<<nB, TPB, 0, stream>>>(
-          (const float *)rP, (float *)wP, cY, cZ, nY, nZ, opt);
-      void *tmp = (void *)rP;
-      rP = wP;
+          (const float *)rP_loop, (float *)wP, cY, cZ, nY, nZ, opt);
+      void *tmp = (void *)rP_loop; // Logic swap
+      rP_loop = wP;
       wP = tmp; // Swap
     }
     gpuErrchk(cudaPeekAtLastError());
@@ -1418,13 +1412,13 @@ void ProcessImageGPUGeneric(const void *hRawVoid, float *dProc,
   dim3 nB((unsigned int)nBUL);
 
   if (Nopt == 1) {
-    // T -> double (Special case: first step is also last)
+    // T -> double (Special case: T -> float output)
     final_transform_process_kernel<T><<<nB, TPB, 0, stream>>>(
-        (const T *)rP, dProc, dAvgDark, cY, cZ, nY, nZ, fOpt, doSub);
+        (const T *)rP_loop, dProc, dAvgDark, cY, cZ, nY, nZ, fOpt, doSub);
   } else {
     // float -> double (now float -> float)
     final_transform_process_kernel<float><<<nB, TPB, 0, stream>>>(
-        (const float *)rP, dProc, dAvgDark, cY, cZ, nY, nZ, fOpt, doSub);
+        (const float *)rP_loop, dProc, dAvgDark, cY, cZ, nY, nZ, fOpt, doSub);
   }
   gpuErrchk(cudaPeekAtLastError());
 }
