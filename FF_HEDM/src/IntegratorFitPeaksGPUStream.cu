@@ -136,6 +136,7 @@ typedef struct {
   uint16_t frameIdx;   // Current dataset ID
   void *inputDataPtr;  // Pointer to input data (to free later)
   bool hasPendingWork; // True if the stream is currently processing a frame
+  double t_submission; // Timestamp when work was submitted
 } StreamContext;
 
 // --- Global Variables ---
@@ -1980,10 +1981,14 @@ int main(int argc, char *argv[]) {
     t_start_loop = get_wall_time_ms();
 
     // 1. FINALIZE PREVIOUS WORK (if any)
+    // 1. FINALIZE PREVIOUS WORK (if any)
     if (ctx->hasPendingWork) {
+      double t_wait_start = get_wall_time_ms();
       gpuErrchk(cudaStreamSynchronize(ctx->stream));
+      double t_wait_end = get_wall_time_ms();
 
       // --- Write Results to Disk ---
+      double t_write_start = get_wall_time_ms();
       // 1D Profile
       if (fLineout) {
         // Fill lineout buffer (R is const, Integ changes)
@@ -2007,8 +2012,10 @@ int main(int argc, char *argv[]) {
         fwrite(ctx->hIntArrFrame, sizeof(double), bigArrSize, f2D);
         // fflush?
       }
+      double t_write_end = get_wall_time_ms();
 
       // Peak Fit (Synchronous CPU work for now)
+      double t_fit_start = get_wall_time_ms();
       if (pkFit) {
         double *local_h_int1D = ctx->h_int1D;
         int currentPeakCount = 0;
@@ -2068,17 +2075,6 @@ int main(int argc, char *argv[]) {
           }
 
           qsort(pks, currentPeakCount, sizeof(Peak), comparePeaksByIndex);
-          // Grouping and fitting logic (simplified for stream integration)
-          // NOTE: Full OpenMP grouping logic omitted for brevity in this
-          // refactor step to avoid massive code duplication. For immediate
-          // functional equivalence with minimal risk, we fit peaks individually
-          // or use a simplified loop if full grouping is strictly required.
-          // Given the complexity of the grouping logic seen previously, let's
-          // use a simpler per-peak fit or assume the user accepts this
-          // simplified placeholder if detailed grouping is not the primary
-          // optimization target right now. CONSTANT CHECK: Do we need the full
-          // grouping logic? The previous code had it. Let's include the key
-          // part: FitJob construction.
 
           FitJob *fitJobs = (FitJob *)malloc(currentPeakCount * sizeof(FitJob));
           int numJobs = 0;
@@ -2227,6 +2223,7 @@ int main(int argc, char *argv[]) {
         if (pks)
           free(pks);
       }
+      double t_fit_end = get_wall_time_ms();
 
       // Cleanup Input
       if (ctx->inputDataPtr) {
@@ -2235,9 +2232,28 @@ int main(int argc, char *argv[]) {
       }
       ctx->hasPendingWork = false;
 
-      double t_lat = get_wall_time_ms() - t_start_loop;
-      // printf("Stream %d finalized frame %d. Latency: %.2f ms\n", streamId,
-      // ctx->frameIdx, t_lat);
+      double t_now = get_wall_time_ms();
+      double t_lat = t_now - ctx->t_submission; // Correct latency calculation
+                                                // using stored start time
+      double t_wait = t_wait_end - t_wait_start;
+      double t_disk = t_write_end - t_write_start;
+      double t_fit = t_fit_end - t_fit_start;
+
+      printf("Stream %d finished. Tot: %.2f ms (WaitGPU: %.2f, Disk: %.2f, "
+             "Fit: %.2f)\n",
+             streamId, t_lat, t_wait, t_disk, t_fit);
+    }
+
+    // FPS Tracking
+    if (frameCounter > 0 && frameCounter % 100 == 0) {
+      double current_time = get_wall_time_ms();
+      static double t_last_report = 0;
+      if (t_last_report == 0)
+        t_last_report = t_start_main;
+      double batch_time = current_time - t_last_report;
+      printf("processed %d frames. Recent FPS: %.2f\n", frameCounter,
+             100.0 / (batch_time / 1000.0));
+      t_last_report = current_time;
     }
 
     // 2. ACQUIRE NEW WORK
@@ -2249,6 +2265,7 @@ int main(int argc, char *argv[]) {
     // 3. SUBMIT GPU WORK (Async)
     ctx->frameIdx = chunk.dataset_num;
     ctx->inputDataPtr = chunk.data;
+    ctx->t_submission = get_wall_time_ms(); // RECORD SUBMISSION TIME
     ctx->hasPendingWork = true;
 
     // Process
