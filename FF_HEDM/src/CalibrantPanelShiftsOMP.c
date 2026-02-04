@@ -1650,6 +1650,7 @@ int main(int argc, char *argv[]) {
         mapperSquare[i] = 0;
       }
     }
+    printf("MaskFN: %s\n", MaskFN);
     if (MaskFN[0] != '\0') {
       ReadTiffFrame(MaskFN, 7, NrPixelsY * NrPixelsZ, mapper, 0);
       MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, mapper, mapperSquare);
