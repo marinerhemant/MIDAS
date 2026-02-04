@@ -1774,7 +1774,11 @@ typedef struct {
   Peak *peaks; // Pointer to the first peak in this job
 } FitJob;
 
-return (peakA->index - peakB->index);
+// Helper for qsort
+static int comparePeaksByIndex(const void *a, const void *b) {
+  Peak *peakA = (Peak *)a;
+  Peak *peakB = (Peak *)b;
+  return (peakA->index - peakB->index);
 }
 
 // --- Bin Sorting Struct ---
