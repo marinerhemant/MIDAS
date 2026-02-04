@@ -1623,6 +1623,7 @@ int main(int argc, char *argv[]) {
       fclose(fd);
     }
   }
+  printf("makeMap: %d\n", makeMap);
   if (makeMap == 2) {
     mapMaskSize = NrPixels;
     mapMaskSize *= NrPixels;
