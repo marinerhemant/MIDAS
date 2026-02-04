@@ -1778,11 +1778,12 @@ int main(int argc, char *argv[]) {
   int Topt[MAX_TRANSFORM_OPS] = {0}; // Array to store transform options
   int mkMap = 0;                     // Flag to generate mask from dark frame
   int sumI = 0;                      // Flag to sum integrated patterns
-  int doSm = 0;   // Flag to smooth 1D data before peak finding
-  int multiP = 0; // Flag for finding multiple peaks
-  int pkFit = 0;  // Flag to perform peak fitting
-  int nSpecP = 0; // Number of specified peak locations
-  int wr2D = 0;   // Flag to write 2D integrated patterns
+  int doSm = 0;      // Flag to smooth 1D data before peak finding
+  int multiP = 0;    // Flag for finding multiple peaks
+  int pkFit = 0;     // Flag to perform peak fitting
+  int nSpecP = 0;    // Number of specified peak locations
+  int wr2D = 0;      // Flag to write 2D integrated patterns
+  int doBinSort = 1; // Flag to sort bins by workload (default 1)
   double pkLoc[MAX_PEAK_LOCATIONS]; // Array for specified peak locations
   int fitROIPadding = 20;           // Default ROI padding
   int fitROIAuto = 0;               // Default to manual ROI sizing
@@ -1838,6 +1839,8 @@ int main(int argc, char *argv[]) {
         sscanf(val_str, "%d", &sumI);
       else if (strcmp(key, "Write2D") == 0)
         sscanf(val_str, "%d", &wr2D);
+      else if (strcmp(key, "DoBinSort") == 0)
+        sscanf(val_str, "%d", &doBinSort);
       else if (strcmp(key, "DoSmoothing") == 0)
         sscanf(val_str, "%d", &doSm);
       else if (strcmp(key, "MultiplePeaks") == 0)
@@ -1989,24 +1992,36 @@ int main(int argc, char *argv[]) {
   gpuErrchk(cudaMemcpy(dNPxList, nPxList, szNPxList, cudaMemcpyHostToDevice));
 
   // --- Create Sorted Indices ---
-  printf("Sorting bins for load balancing...\n");
-  BinSort *hBinSort = (BinSort *)malloc(bigArrSize * sizeof(BinSort));
-  for (size_t i = 0; i < bigArrSize; ++i) {
-    hBinSort[i].index = (int)i;
-    // nPxList has stride 2: [count, offset].
-    hBinSort[i].count = nPxList[2 * i];
-  }
-  qsort(hBinSort, bigArrSize, sizeof(BinSort), compareBinSort);
-
   int *hSortedIndices = (int *)malloc(bigArrSize * sizeof(int));
-  for (size_t i = 0; i < bigArrSize; ++i) {
-    hSortedIndices[i] = hBinSort[i].index;
+  check(!hSortedIndices, "Allocation failed for hSortedIndices");
+
+  if (doBinSort) {
+    printf("Sorting bins for load balancing (DoBinSort=1)...\n");
+    BinSort *hBinSort = (BinSort *)malloc(bigArrSize * sizeof(BinSort));
+    check(!hBinSort, "Allocation failed for hBinSort");
+
+    for (size_t i = 0; i < bigArrSize; ++i) {
+      hBinSort[i].index = (int)i;
+      // nPxList has stride 2: [count, offset].
+      hBinSort[i].count = nPxList[2 * i];
+    }
+    qsort(hBinSort, bigArrSize, sizeof(BinSort), compareBinSort);
+
+    for (size_t i = 0; i < bigArrSize; ++i) {
+      hSortedIndices[i] = hBinSort[i].index;
+    }
+    free(hBinSort);
+    printf("Sorting complete.\n");
+  } else {
+    printf("Bin Sorting DISABLED (DoBinSort=0). Using identity mapping.\n");
+    for (size_t i = 0; i < bigArrSize; ++i) {
+      hSortedIndices[i] = (int)i;
+    }
   }
+
   gpuErrchk(cudaMemcpy(dSortedIndices, hSortedIndices, bigArrSize * sizeof(int),
                        cudaMemcpyHostToDevice));
-  free(hBinSort);
   free(hSortedIndices);
-  printf("Sorting complete.\n");
 
   gpuErrchk(cudaMemcpy(dEtaLo, hEtaLo, nEtaBins * sizeof(double),
                        cudaMemcpyHostToDevice));
