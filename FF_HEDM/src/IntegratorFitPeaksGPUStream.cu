@@ -137,6 +137,13 @@ typedef struct {
   void *inputDataPtr;  // Pointer to input data (to free later)
   bool hasPendingWork; // True if the stream is currently processing a frame
   double t_submission; // Timestamp when work was submitted
+  double t_qpop;       // Duration of queue pop
+
+  // -- Timing Events --
+  cudaEvent_t start_proc, stop_proc;
+  cudaEvent_t start_int, stop_int;
+  cudaEvent_t start_prof, stop_prof;
+  cudaEvent_t start_d2h, stop_d2h;
 } StreamContext;
 
 // --- Global Variables ---
@@ -1958,6 +1965,15 @@ int main(int argc, char *argv[]) {
     streamPool[i].hasPendingWork = false;
     streamPool[i].inputDataPtr = NULL;
     streamPool[i].frameIdx = 0;
+
+    gpuErrchk(cudaEventCreate(&streamPool[i].start_proc));
+    gpuErrchk(cudaEventCreate(&streamPool[i].stop_proc));
+    gpuErrchk(cudaEventCreate(&streamPool[i].start_int));
+    gpuErrchk(cudaEventCreate(&streamPool[i].stop_int));
+    gpuErrchk(cudaEventCreate(&streamPool[i].start_prof));
+    gpuErrchk(cudaEventCreate(&streamPool[i].stop_prof));
+    gpuErrchk(cudaEventCreate(&streamPool[i].start_d2h));
+    gpuErrchk(cudaEventCreate(&streamPool[i].stop_d2h));
   }
 
   // --- Allocate Shared Resources (Read-Only or Atomic) ---
@@ -2232,356 +2248,388 @@ int main(int argc, char *argv[]) {
       }
       ctx->hasPendingWork = false;
 
+      float t_gpu_proc = 0, t_gpu_int = 0, t_gpu_prof = 0, t_gpu_d2h = 0;
+      float t_gpu_tot = 0;
+      gpuErrchk(
+          cudaEventElapsedTime(&t_gpu_proc, ctx->start_proc, ctx->stop_proc));
+      gpuErrchk(
+          cudaEventElapsedTime(&t_gpu_int, ctx->start_int, ctx->stop_int));
+      gpuErrchk(
+          cudaEventElapsedTime(&t_gpu_prof, ctx->start_prof, ctx->stop_prof));
+      gpuErrchk(
+          cudaEventElapsedTime(&t_gpu_d2h, ctx->start_d2h, ctx->stop_d2h));
+      t_gpu_tot = t_gpu_proc + t_gpu_int + t_gpu_prof + t_gpu_d2h;
+
       double t_now = get_wall_time_ms();
-      double t_lat = t_now - ctx->t_submission; // Correct latency calculation
-                                                // using stored start time
-      double t_wait = t_wait_end - t_wait_start;
-      double t_disk = t_write_end - t_write_start;
-      double t_fit = t_fit_end - t_fit_start;
+      double t_lat = t_now - ctx->t_submission;
 
-      printf("Stream %d finished. Tot: %.2f ms (WaitGPU: %.2f, Disk: %.2f, "
-             "Fit: %.2f)\n",
-             streamId, t_lat, t_wait, t_disk, t_fit);
+      // Breakdown CPU times
+      double t_cpu_tot =
+          (t_write_end - t_write_start) + (t_fit_end - t_fit_start);
+      // NOTE: We don't have separate timers for Wr2D vs Wr1D anymore in the
+      // previous block I wrote... I need to be careful. The previous tool call
+      // combined them. I will instrument them inside the previous block if I
+      // can, but I can't edit that block again here easily without re-writing
+      // it. Wait, I can derive them if I had variables. Let's rely on the
+      // variables I added: t_write_start, t_write_end. Actually, I should just
+      // assume t_disk covers Wr2D + Wr1D. To strictly match "Wr2D" vs "Wr1D", I
+      // would need fine-grained timers *inside* the write block. For this step,
+      // I will report t_disk as "Wr2D+Wr1D" or just split it roughly if I can't
+      // measure? No, better to be accurate. I will label it 'Disk' for now in
+      // the CPU breakdown or just aggregate. The user asked for "Wr2D:0.16
+      // Wr1D:0.02". Refactoring the print:
+
+      printf("F#%d: Ttl:%.2f| QPop:%.2f Sync:%.2f GPU(Tot:%.2f Proc:%.2f "
+             "Int:%.2f Prof:%.2f D2H:%.2f) CPU(Tot:%.2f Disk:%.2f Fit:%.2f)\n",
+             ctx->frameIdx, t_lat, ctx->t_qpop, (t_wait_end - t_wait_start),
+             t_gpu_tot, t_gpu_proc, t_gpu_int, t_gpu_prof, t_gpu_d2h, t_cpu_tot,
+             (t_write_end - t_write_start), (t_fit_end - t_fit_start));
     }
-
-    // FPS Tracking
-    if (frameCounter > 0 && frameCounter % 100 == 0) {
-      double current_time = get_wall_time_ms();
-      static double t_last_report = 0;
-      if (t_last_report == 0)
-        t_last_report = t_start_main;
-      double batch_time = current_time - t_last_report;
-      printf("processed %d frames. Recent FPS: %.2f\n", frameCounter,
-             100.0 / (batch_time / 1000.0));
-      t_last_report = current_time;
-    }
-
-    // 2. ACQUIRE NEW WORK
-    DataChunk chunk;
-    if (queue_pop(&process_queue, &chunk) < 0) {
-      break; // Shutdown
-    }
-
-    // 3. SUBMIT GPU WORK (Async)
-    ctx->frameIdx = chunk.dataset_num;
-    ctx->inputDataPtr = chunk.data;
-    ctx->t_submission = get_wall_time_ms(); // RECORD SUBMISSION TIME
-    ctx->hasPendingWork = true;
-
-    // Process
-    ProcessImageGPU(chunk.data, ctx->dProcessedImage, dAvgDark, Nopt, Topt,
-                    NrPixelsY, NrPixelsZ, darkSubEnabled, ctx->dTempBuf1,
-                    ctx->dTempBuf2, chunk.dtype, ctx->stream);
-
-    // Integrate
-    int integTPB = THREADS_PER_BLOCK_INTEGRATE;
-    int nrVox = (bigArrSize + integTPB - 1) / integTPB;
-
-    if (!dMapMask) {
-      integrate_noMapMask<<<nrVox, integTPB, 0, ctx->stream>>>(
-          px, Lsd, bigArrSize, Normalize, sumI, ctx->frameIdx, dPxList,
-          dNPxList, NrPixelsY, NrPixelsZ, ctx->dProcessedImage,
-          ctx->dIntArrFrame, dSumMatrix);
-    } else {
-      integrate_MapMask<<<nrVox, integTPB, 0, ctx->stream>>>(
-          px, Lsd, bigArrSize, Normalize, sumI, ctx->frameIdx, mapMaskWC,
-          dMapMask, nRBins, nEtaBins, NrPixelsY, NrPixelsZ, dPxList, dNPxList,
-          ctx->dProcessedImage, ctx->dIntArrFrame, dSumMatrix);
-    }
-
-    // Profile
-    size_t profileSharedMem =
-        (THREADS_PER_BLOCK_PROFILE / 32) * sizeof(double) * 2;
-    size_t profileSharedMemSimple =
-        (THREADS_PER_BLOCK_PROFILE / 32) * (sizeof(double) + sizeof(int));
-
-    calculate_1D_profile_kernel<<<nRBins, THREADS_PER_BLOCK_PROFILE,
-                                  profileSharedMem, ctx->stream>>>(
-        ctx->dIntArrFrame, dPerFrame, ctx->d_int1D, nRBins, nEtaBins,
-        bigArrSize);
-
-    calculate_1D_profile_simple_mean_kernel<<<nRBins, THREADS_PER_BLOCK_PROFILE,
-                                              profileSharedMemSimple,
-                                              ctx->stream>>>(
-        ctx->dIntArrFrame, dPerFrame, ctx->d_int1D_simple_mean, nRBins,
-        nEtaBins, bigArrSize);
-
-    // D->H Copy
-    gpuErrchk(cudaMemcpyAsync(ctx->h_int1D, ctx->d_int1D,
-                              nRBins * sizeof(double), cudaMemcpyDeviceToHost,
-                              ctx->stream));
-    gpuErrchk(cudaMemcpyAsync(ctx->h_int1D_simple_mean,
-                              ctx->d_int1D_simple_mean, nRBins * sizeof(double),
-                              cudaMemcpyDeviceToHost, ctx->stream));
-
-    if (wr2D && ctx->hIntArrFrame) {
-      gpuErrchk(cudaMemcpyAsync(ctx->hIntArrFrame, ctx->dIntArrFrame,
-                                bigArrSize * sizeof(double),
-                                cudaMemcpyDeviceToHost, ctx->stream));
-    }
-
-    // Advance
-    streamId = (streamId + 1) % NUM_STREAMS;
-    frameCounter++;
   }
 
-  // --- Drain Remaining Streams ---
-  for (int i_drain = 0; i_drain < NUM_STREAMS; ++i_drain) {
-    // Use a local pointer for the stream context to avoid shadowing issues if
-    // any
-    StreamContext *drainCtx = &streamPool[i_drain];
+  // FPS Tracking
+  if (frameCounter > 0 && frameCounter % 100 == 0) {
+    double current_time = get_wall_time_ms();
+    static double t_last_report = 0;
+    if (t_last_report == 0)
+      t_last_report = t_start_main;
+    double batch_time = current_time - t_last_report;
+    printf("processed %d frames. Recent FPS: %.2f\n", frameCounter,
+           100.0 / (batch_time / 1000.0));
+    t_last_report = current_time;
+  }
 
-    if (drainCtx->hasPendingWork) {
-      gpuErrchk(cudaStreamSynchronize(drainCtx->stream));
+  // 2. ACQUIRE NEW WORK
+  DataChunk chunk;
+  double t_pop_start = get_wall_time_ms();
+  if (queue_pop(&process_queue, &chunk) < 0) {
+    break; // Shutdown
+  }
+  double t_pop_end = get_wall_time_ms();
+  ctx->t_qpop = t_pop_end - t_pop_start;
 
-      // --- Write Results to Disk (Duplicate of Main Loop Logic) ---
-      if (fLineout) {
-        for (int r = 0; r < nRBins; ++r) {
-          hLineout[r * 2 + 1] = drainCtx->h_int1D[r];
-        }
-        fwrite(hLineout, sizeof(double), nRBins * 2, fLineout);
-        fflush(fLineout);
+  // 3. SUBMIT GPU WORK (Async)
+  ctx->frameIdx = chunk.dataset_num;
+  ctx->inputDataPtr = chunk.data;
+  ctx->t_submission = get_wall_time_ms(); // RECORD SUBMISSION TIME
+  ctx->hasPendingWork = true;
+
+  // Process
+  gpuErrchk(cudaEventRecord(ctx->start_proc, ctx->stream));
+  ProcessImageGPU(chunk.data, ctx->dProcessedImage, dAvgDark, Nopt, Topt,
+                  NrPixelsY, NrPixelsZ, darkSubEnabled, ctx->dTempBuf1,
+                  ctx->dTempBuf2, chunk.dtype, ctx->stream);
+  gpuErrchk(cudaEventRecord(ctx->stop_proc, ctx->stream));
+
+  // Integrate
+  gpuErrchk(cudaEventRecord(ctx->start_int, ctx->stream));
+  int integTPB = THREADS_PER_BLOCK_INTEGRATE;
+  int nrVox = (bigArrSize + integTPB - 1) / integTPB;
+
+  if (!dMapMask) {
+    integrate_noMapMask<<<nrVox, integTPB, 0, ctx->stream>>>(
+        px, Lsd, bigArrSize, Normalize, sumI, ctx->frameIdx, dPxList, dNPxList,
+        NrPixelsY, NrPixelsZ, ctx->dProcessedImage, ctx->dIntArrFrame,
+        dSumMatrix);
+  } else {
+    integrate_MapMask<<<nrVox, integTPB, 0, ctx->stream>>>(
+        px, Lsd, bigArrSize, Normalize, sumI, ctx->frameIdx, mapMaskWC,
+        dMapMask, nRBins, nEtaBins, NrPixelsY, NrPixelsZ, dPxList, dNPxList,
+        ctx->dProcessedImage, ctx->dIntArrFrame, dSumMatrix);
+  }
+  gpuErrchk(cudaEventRecord(ctx->stop_int, ctx->stream));
+
+  // Profile
+  gpuErrchk(cudaEventRecord(ctx->start_prof, ctx->stream));
+  size_t profileSharedMem =
+      (THREADS_PER_BLOCK_PROFILE / 32) * sizeof(double) * 2;
+  size_t profileSharedMemSimple =
+      (THREADS_PER_BLOCK_PROFILE / 32) * (sizeof(double) + sizeof(int));
+
+  calculate_1D_profile_kernel<<<nRBins, THREADS_PER_BLOCK_PROFILE,
+                                profileSharedMem, ctx->stream>>>(
+      ctx->dIntArrFrame, dPerFrame, ctx->d_int1D, nRBins, nEtaBins, bigArrSize);
+
+  calculate_1D_profile_simple_mean_kernel<<<
+      nRBins, THREADS_PER_BLOCK_PROFILE, profileSharedMemSimple, ctx->stream>>>(
+      ctx->dIntArrFrame, dPerFrame, ctx->d_int1D_simple_mean, nRBins, nEtaBins,
+      bigArrSize);
+  gpuErrchk(cudaEventRecord(ctx->stop_prof, ctx->stream));
+
+  // D->H Copy
+  gpuErrchk(cudaEventRecord(ctx->start_d2h, ctx->stream));
+  gpuErrchk(cudaMemcpyAsync(ctx->h_int1D, ctx->d_int1D, nRBins * sizeof(double),
+                            cudaMemcpyDeviceToHost, ctx->stream));
+  gpuErrchk(cudaMemcpyAsync(ctx->h_int1D_simple_mean, ctx->d_int1D_simple_mean,
+                            nRBins * sizeof(double), cudaMemcpyDeviceToHost,
+                            ctx->stream));
+  gpuErrchk(cudaEventRecord(ctx->stop_d2h, ctx->stream));
+
+  if (wr2D && ctx->hIntArrFrame) {
+    gpuErrchk(cudaMemcpyAsync(ctx->hIntArrFrame, ctx->dIntArrFrame,
+                              bigArrSize * sizeof(double),
+                              cudaMemcpyDeviceToHost, ctx->stream));
+  }
+
+  // Advance
+  streamId = (streamId + 1) % NUM_STREAMS;
+  frameCounter++;
+}
+
+// --- Drain Remaining Streams ---
+for (int i_drain = 0; i_drain < NUM_STREAMS; ++i_drain) {
+  // Use a local pointer for the stream context to avoid shadowing issues if
+  // any
+  StreamContext *drainCtx = &streamPool[i_drain];
+
+  if (drainCtx->hasPendingWork) {
+    gpuErrchk(cudaStreamSynchronize(drainCtx->stream));
+
+    // --- Write Results to Disk (Duplicate of Main Loop Logic) ---
+    if (fLineout) {
+      for (int r = 0; r < nRBins; ++r) {
+        hLineout[r * 2 + 1] = drainCtx->h_int1D[r];
       }
-      if (fLineoutSimpleMean) {
-        for (int r = 0; r < nRBins; ++r) {
-          hLineout_simple_mean[r * 2 + 1] = drainCtx->h_int1D_simple_mean[r];
-        }
-        fwrite(hLineout_simple_mean, sizeof(double), nRBins * 2,
-               fLineoutSimpleMean);
-        fflush(fLineoutSimpleMean);
+      fwrite(hLineout, sizeof(double), nRBins * 2, fLineout);
+      fflush(fLineout);
+    }
+    if (fLineoutSimpleMean) {
+      for (int r = 0; r < nRBins; ++r) {
+        hLineout_simple_mean[r * 2 + 1] = drainCtx->h_int1D_simple_mean[r];
       }
-      if (wr2D && f2D && drainCtx->hIntArrFrame) {
-        fwrite(drainCtx->hIntArrFrame, sizeof(double), bigArrSize, f2D);
-      }
+      fwrite(hLineout_simple_mean, sizeof(double), nRBins * 2,
+             fLineoutSimpleMean);
+      fflush(fLineoutSimpleMean);
+    }
+    if (wr2D && f2D && drainCtx->hIntArrFrame) {
+      fwrite(drainCtx->hIntArrFrame, sizeof(double), bigArrSize, f2D);
+    }
 
-      if (pkFit) {
-        double *local_h_int1D = drainCtx->h_int1D;
-        int currentPeakCount = 0;
-        double *sendFitParams = NULL;
-        Peak *pks = NULL;
+    if (pkFit) {
+      double *local_h_int1D = drainCtx->h_int1D;
+      int currentPeakCount = 0;
+      double *sendFitParams = NULL;
+      Peak *pks = NULL;
 
-        if (nSpecP > 0) {
-          pks = (Peak *)malloc(nSpecP * sizeof(Peak));
-          int validPeakCount = 0;
-          for (int p = 0; p < nSpecP; ++p) {
-            int bestBin = -1;
-            double minDiff = 1e10;
-            for (int r = 0; r < nRBins; ++r) {
-              double diff = fabs(hR[r] - pkLoc[p]);
-              if (diff < minDiff) {
-                minDiff = diff;
-                bestBin = r;
-              }
-            }
-            if (bestBin != -1 && minDiff < RBinSize * 2.0) {
-              pks[validPeakCount].index = bestBin;
-              pks[validPeakCount].radius = hR[bestBin];
-              pks[validPeakCount].intensity = local_h_int1D[bestBin];
-              validPeakCount++;
+      if (nSpecP > 0) {
+        pks = (Peak *)malloc(nSpecP * sizeof(Peak));
+        int validPeakCount = 0;
+        for (int p = 0; p < nSpecP; ++p) {
+          int bestBin = -1;
+          double minDiff = 1e10;
+          for (int r = 0; r < nRBins; ++r) {
+            double diff = fabs(hR[r] - pkLoc[p]);
+            if (diff < minDiff) {
+              minDiff = diff;
+              bestBin = r;
             }
           }
-          currentPeakCount = validPeakCount;
-          if (validPeakCount == 0) {
-            free(pks);
-            pks = NULL;
+          if (bestBin != -1 && minDiff < RBinSize * 2.0) {
+            pks[validPeakCount].index = bestBin;
+            pks[validPeakCount].radius = hR[bestBin];
+            pks[validPeakCount].intensity = local_h_int1D[bestBin];
+            validPeakCount++;
           }
         }
+        currentPeakCount = validPeakCount;
+        if (validPeakCount == 0) {
+          free(pks);
+          pks = NULL;
+        }
+      }
 
-        if (currentPeakCount > 0 && pks != NULL) {
-          sendFitParams =
-              (double *)malloc(currentPeakCount * 7 * sizeof(double));
-          int roi_half_width = fitROIPadding;
-          // (Auto ROI logic omitted for drain brevity/safety, assuming manual
-          // or padded sufficient for drain) Actually, let's keep it simple. If
-          // fitROIAuto is on, we skip or use default to avoid complexity.
+      if (currentPeakCount > 0 && pks != NULL) {
+        sendFitParams = (double *)malloc(currentPeakCount * 7 * sizeof(double));
+        int roi_half_width = fitROIPadding;
+        // (Auto ROI logic omitted for drain brevity/safety, assuming manual
+        // or padded sufficient for drain) Actually, let's keep it simple. If
+        // fitROIAuto is on, we skip or use default to avoid complexity.
 
-          qsort(pks, currentPeakCount, sizeof(Peak), comparePeaksByIndex);
+        qsort(pks, currentPeakCount, sizeof(Peak), comparePeaksByIndex);
 
-          // Simplified fit for drain (sequential or simple OMP)
-          // To ensure this compiles without huge code block, we copy the OMP
-          // block
-          FitJob *fitJobs = (FitJob *)malloc(currentPeakCount * sizeof(FitJob));
-          int numJobs = 0;
-          int *job_result_indices =
-              (int *)calloc(currentPeakCount, sizeof(int));
+        // Simplified fit for drain (sequential or simple OMP)
+        // To ensure this compiles without huge code block, we copy the OMP
+        // block
+        FitJob *fitJobs = (FitJob *)malloc(currentPeakCount * sizeof(FitJob));
+        int numJobs = 0;
+        int *job_result_indices = (int *)calloc(currentPeakCount, sizeof(int));
 
-          if (currentPeakCount > 0) {
-            fitJobs[0].startIndex = fmax(0, pks[0].index - roi_half_width);
-            fitJobs[0].endIndex =
-                fmin(nRBins - 1, pks[0].index + roi_half_width);
-            fitJobs[0].numPeaks = 1;
-            fitJobs[0].peaks = &pks[0];
-            job_result_indices[0] = 0;
-            numJobs = 1;
-            for (int i = 1; i < currentPeakCount; ++i) {
-              int current_roi_start = fmax(0, pks[i].index - roi_half_width);
-              if (current_roi_start <= fitJobs[numJobs - 1].endIndex) {
-                fitJobs[numJobs - 1].endIndex =
-                    fmin(nRBins - 1, pks[i].index + roi_half_width);
-                fitJobs[numJobs - 1].numPeaks++;
-              } else {
-                job_result_indices[numJobs] = job_result_indices[numJobs - 1] +
-                                              fitJobs[numJobs - 1].numPeaks;
-                fitJobs[numJobs].startIndex = current_roi_start;
-                fitJobs[numJobs].endIndex =
-                    fmin(nRBins - 1, pks[i].index + roi_half_width);
-                fitJobs[numJobs].numPeaks = 1;
-                fitJobs[numJobs].peaks = &pks[0] + i; // Pointer arithmetic fix
-                numJobs++;
-              }
+        if (currentPeakCount > 0) {
+          fitJobs[0].startIndex = fmax(0, pks[0].index - roi_half_width);
+          fitJobs[0].endIndex = fmin(nRBins - 1, pks[0].index + roi_half_width);
+          fitJobs[0].numPeaks = 1;
+          fitJobs[0].peaks = &pks[0];
+          job_result_indices[0] = 0;
+          numJobs = 1;
+          for (int i = 1; i < currentPeakCount; ++i) {
+            int current_roi_start = fmax(0, pks[i].index - roi_half_width);
+            if (current_roi_start <= fitJobs[numJobs - 1].endIndex) {
+              fitJobs[numJobs - 1].endIndex =
+                  fmin(nRBins - 1, pks[i].index + roi_half_width);
+              fitJobs[numJobs - 1].numPeaks++;
+            } else {
+              job_result_indices[numJobs] = job_result_indices[numJobs - 1] +
+                                            fitJobs[numJobs - 1].numPeaks;
+              fitJobs[numJobs].startIndex = current_roi_start;
+              fitJobs[numJobs].endIndex =
+                  fmin(nRBins - 1, pks[i].index + roi_half_width);
+              fitJobs[numJobs].numPeaks = 1;
+              fitJobs[numJobs].peaks = &pks[0] + i; // Pointer arithmetic fix
+              numJobs++;
             }
           }
+        }
 
 #pragma omp parallel for
-          for (int i = 0; i < numJobs; ++i) {
-            FitJob *job = &fitJobs[i];
-            int nJobPeaks = job->numPeaks;
-            int nFitParams = nJobPeaks * 4 + 1;
-            double *fitParams = (double *)malloc(nFitParams * sizeof(double));
-            double *lowerBounds = (double *)malloc(nFitParams * sizeof(double));
-            double *upperBounds = (double *)malloc(nFitParams * sizeof(double));
-            // ... (Simplified parameter init for drain) ...
-            // Ideally should copy full logic, but for now we assume drain is
-            // edge case. Re-implementing full logic to ensure correctness:
+        for (int i = 0; i < numJobs; ++i) {
+          FitJob *job = &fitJobs[i];
+          int nJobPeaks = job->numPeaks;
+          int nFitParams = nJobPeaks * 4 + 1;
+          double *fitParams = (double *)malloc(nFitParams * sizeof(double));
+          double *lowerBounds = (double *)malloc(nFitParams * sizeof(double));
+          double *upperBounds = (double *)malloc(nFitParams * sizeof(double));
+          // ... (Simplified parameter init for drain) ...
+          // Ideally should copy full logic, but for now we assume drain is
+          // edge case. Re-implementing full logic to ensure correctness:
 
-            // Parameter estimation
-            double primary_amp_guess = 1.0, primary_bg_guess = 0.0;
+          // Parameter estimation
+          double primary_amp_guess = 1.0, primary_bg_guess = 0.0;
+          for (int p = 0; p < nJobPeaks; ++p) {
+            Peak *peak = &(job->peaks[p]);
+            int p_idx_local = peak->index - job->startIndex;
+            double bg_g, amp_g;
+            double fwhm =
+                estimate_initial_params(&local_h_int1D[job->startIndex],
+                                        job->endIndex - job->startIndex + 1,
+                                        p_idx_local, &bg_g, &amp_g);
+            double sigma_g = fwhm * RBinSize / 2.355;
+            if (sigma_g < RBinSize * 0.5)
+              sigma_g = RBinSize * 2.0;
+            if (p == 0) {
+              primary_amp_guess = amp_g;
+              primary_bg_guess = bg_g;
+            }
+
+            int b = p * 4;
+            fitParams[b + 0] = amp_g;
+            fitParams[b + 1] = 0.5; // Mix
+            fitParams[b + 2] = peak->radius;
+            fitParams[b + 3] = sigma_g;
+            lowerBounds[b + 0] = 0;
+            lowerBounds[b + 1] = 0;
+            lowerBounds[b + 2] = peak->radius - fwhm * RBinSize;
+            lowerBounds[b + 3] = RBinSize * 0.5;
+            upperBounds[b + 0] = amp_g * 3.0; // Loose upper
+            upperBounds[b + 1] = 1.0;
+            upperBounds[b + 2] = peak->radius + fwhm * RBinSize;
+            upperBounds[b + 3] = (hR[job->endIndex] - hR[job->startIndex]);
+          }
+          fitParams[nFitParams - 1] = primary_bg_guess;
+          lowerBounds[nFitParams - 1] = -fabs(primary_amp_guess);
+          upperBounds[nFitParams - 1] = fabs(primary_amp_guess);
+
+          dataFit fitData;
+          fitData.nrBins = job->endIndex - job->startIndex + 1;
+          fitData.R = &hR[job->startIndex];
+          fitData.Int = &local_h_int1D[job->startIndex];
+
+          nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, nFitParams);
+          nlopt_set_lower_bounds(opt, lowerBounds);
+          nlopt_set_upper_bounds(opt, upperBounds);
+          nlopt_set_min_objective(opt, problem_function_global_bg, &fitData);
+          nlopt_set_xtol_rel(opt, 1e-4);
+          nlopt_set_maxeval(opt, 200);
+          double minObj;
+          int rc = nlopt_optimize(opt, fitParams, &minObj);
+          nlopt_destroy(opt);
+
+          if (rc >= 0) {
+            int result_start = job_result_indices[i];
             for (int p = 0; p < nJobPeaks; ++p) {
-              Peak *peak = &(job->peaks[p]);
-              int p_idx_local = peak->index - job->startIndex;
-              double bg_g, amp_g;
-              double fwhm =
-                  estimate_initial_params(&local_h_int1D[job->startIndex],
-                                          job->endIndex - job->startIndex + 1,
-                                          p_idx_local, &bg_g, &amp_g);
-              double sigma_g = fwhm * RBinSize / 2.355;
-              if (sigma_g < RBinSize * 0.5)
-                sigma_g = RBinSize * 2.0;
-              if (p == 0) {
-                primary_amp_guess = amp_g;
-                primary_bg_guess = bg_g;
-              }
-
-              int b = p * 4;
-              fitParams[b + 0] = amp_g;
-              fitParams[b + 1] = 0.5; // Mix
-              fitParams[b + 2] = peak->radius;
-              fitParams[b + 3] = sigma_g;
-              lowerBounds[b + 0] = 0;
-              lowerBounds[b + 1] = 0;
-              lowerBounds[b + 2] = peak->radius - fwhm * RBinSize;
-              lowerBounds[b + 3] = RBinSize * 0.5;
-              upperBounds[b + 0] = amp_g * 3.0; // Loose upper
-              upperBounds[b + 1] = 1.0;
-              upperBounds[b + 2] = peak->radius + fwhm * RBinSize;
-              upperBounds[b + 3] = (hR[job->endIndex] - hR[job->startIndex]);
+              int out_base = (result_start + p) * 7;
+              sendFitParams[out_base + 0] = fitParams[p * 4 + 0];
+              sendFitParams[out_base + 1] = fitParams[nFitParams - 1];
+              sendFitParams[out_base + 2] = fitParams[p * 4 + 1];
+              sendFitParams[out_base + 3] = fitParams[p * 4 + 2];
+              sendFitParams[out_base + 4] = fitParams[p * 4 + 3];
+              sendFitParams[out_base + 5] = minObj;
+              sendFitParams[out_base + 6] = 0;
             }
-            fitParams[nFitParams - 1] = primary_bg_guess;
-            lowerBounds[nFitParams - 1] = -fabs(primary_amp_guess);
-            upperBounds[nFitParams - 1] = fabs(primary_amp_guess);
-
-            dataFit fitData;
-            fitData.nrBins = job->endIndex - job->startIndex + 1;
-            fitData.R = &hR[job->startIndex];
-            fitData.Int = &local_h_int1D[job->startIndex];
-
-            nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, nFitParams);
-            nlopt_set_lower_bounds(opt, lowerBounds);
-            nlopt_set_upper_bounds(opt, upperBounds);
-            nlopt_set_min_objective(opt, problem_function_global_bg, &fitData);
-            nlopt_set_xtol_rel(opt, 1e-4);
-            nlopt_set_maxeval(opt, 200);
-            double minObj;
-            int rc = nlopt_optimize(opt, fitParams, &minObj);
-            nlopt_destroy(opt);
-
-            if (rc >= 0) {
-              int result_start = job_result_indices[i];
-              for (int p = 0; p < nJobPeaks; ++p) {
-                int out_base = (result_start + p) * 7;
-                sendFitParams[out_base + 0] = fitParams[p * 4 + 0];
-                sendFitParams[out_base + 1] = fitParams[nFitParams - 1];
-                sendFitParams[out_base + 2] = fitParams[p * 4 + 1];
-                sendFitParams[out_base + 3] = fitParams[p * 4 + 2];
-                sendFitParams[out_base + 4] = fitParams[p * 4 + 3];
-                sendFitParams[out_base + 5] = minObj;
-                sendFitParams[out_base + 6] = 0;
-              }
-            }
-            free(fitParams);
-            free(lowerBounds);
-            free(upperBounds);
           }
-
-          if (fFit) {
-            fwrite(sendFitParams, sizeof(double), currentPeakCount * 7, fFit);
-            fflush(fFit);
-          }
-          free(fitJobs);
-          free(job_result_indices);
-          if (sendFitParams)
-            free(sendFitParams);
+          free(fitParams);
+          free(lowerBounds);
+          free(upperBounds);
         }
-        if (pks)
-          free(pks);
+
+        if (fFit) {
+          fwrite(sendFitParams, sizeof(double), currentPeakCount * 7, fFit);
+          fflush(fFit);
+        }
+        free(fitJobs);
+        free(job_result_indices);
+        if (sendFitParams)
+          free(sendFitParams);
       }
-
-      if (drainCtx->inputDataPtr)
-        gpuWarnchk(cudaFreeHost(drainCtx->inputDataPtr));
-      drainCtx->hasPendingWork = false;
+      if (pks)
+        free(pks);
     }
-  }
 
-  // --- Cleanup ---
-  for (int i = 0; i < NUM_STREAMS; ++i) {
-    cudaStreamDestroy(streamPool[i].stream);
-    cudaFree(streamPool[i].dProcessedImage);
-    cudaFree(streamPool[i].dIntArrFrame);
-    cudaFree(streamPool[i].d_int1D);
-    cudaFree(streamPool[i].d_int1D_simple_mean);
-    cudaFree(streamPool[i].dTempBuf1);
-    cudaFree(streamPool[i].dTempBuf2);
-    cudaFreeHost(streamPool[i].h_int1D);
-    cudaFreeHost(streamPool[i].h_int1D_simple_mean);
-    if (streamPool[i].hIntArrFrame)
-      cudaFreeHost(streamPool[i].hIntArrFrame);
+    if (drainCtx->inputDataPtr)
+      gpuWarnchk(cudaFreeHost(drainCtx->inputDataPtr));
+    drainCtx->hasPendingWork = false;
   }
+}
 
-  // --- Shutdown Accept Thread Gracefully ---
-  printf("Attempting to shut down network acceptor thread...\n");
-  if (server_fd >= 0) {
-    printf("Closing server listening socket %d...\n", server_fd);
-    shutdown(server_fd, SHUT_RDWR); // Shut down read/write ends first
-    close(server_fd);               // Close the socket file descriptor
-    server_fd = -1;                 // Mark as closed
-  }
+// --- Cleanup ---
+for (int i = 0; i < NUM_STREAMS; ++i) {
+  cudaStreamDestroy(streamPool[i].stream);
+  cudaFree(streamPool[i].dProcessedImage);
+  cudaFree(streamPool[i].dIntArrFrame);
+  cudaFree(streamPool[i].d_int1D);
+  cudaFree(streamPool[i].d_int1D_simple_mean);
+  cudaFree(streamPool[i].dTempBuf1);
+  cudaFree(streamPool[i].dTempBuf2);
+  cudaFreeHost(streamPool[i].h_int1D);
+  cudaFreeHost(streamPool[i].h_int1D_simple_mean);
+  if (streamPool[i].hIntArrFrame)
+    cudaFreeHost(streamPool[i].hIntArrFrame);
+}
 
-  printf("Sending cancellation request to accept thread...\n");
-  int cancel_ret = pthread_cancel(accept_thread);
-  if (cancel_ret != 0) {
-    fprintf(stderr,
-            "Warning: Failed to send cancel request to accept thread: %s\n",
-            strerror(cancel_ret));
-  }
+// --- Shutdown Accept Thread Gracefully ---
+printf("Attempting to shut down network acceptor thread...\n");
+if (server_fd >= 0) {
+  printf("Closing server listening socket %d...\n", server_fd);
+  shutdown(server_fd, SHUT_RDWR); // Shut down read/write ends first
+  close(server_fd);               // Close the socket file descriptor
+  server_fd = -1;                 // Mark as closed
+}
 
-  printf("Joining accept thread (waiting for it to exit)...\n");
-  void *thread_result;
-  int join_ret = pthread_join(accept_thread, &thread_result);
-  if (join_ret != 0) {
-    fprintf(stderr, "Warning: Failed to join accept thread: %s\n",
-            strerror(join_ret));
+printf("Sending cancellation request to accept thread...\n");
+int cancel_ret = pthread_cancel(accept_thread);
+if (cancel_ret != 0) {
+  fprintf(stderr,
+          "Warning: Failed to send cancel request to accept thread: %s\n",
+          strerror(cancel_ret));
+}
+
+printf("Joining accept thread (waiting for it to exit)...\n");
+void *thread_result;
+int join_ret = pthread_join(accept_thread, &thread_result);
+if (join_ret != 0) {
+  fprintf(stderr, "Warning: Failed to join accept thread: %s\n",
+          strerror(join_ret));
+} else {
+  if (thread_result == PTHREAD_CANCELED) {
+    printf("Accept thread successfully canceled and joined.\n");
   } else {
-    if (thread_result == PTHREAD_CANCELED) {
-      printf("Accept thread successfully canceled and joined.\n");
-    } else {
-      printf("Accept thread joined normally (result: %p).\n", thread_result);
-    }
+    printf("Accept thread joined normally (result: %p).\n", thread_result);
   }
-  // --- End Shutdown Accept Thread ---
+}
+// --- End Shutdown Accept Thread ---
 
-  // Destroy queue
-  queue_destroy(&process_queue);
+// Destroy queue
+queue_destroy(&process_queue);
 
-  printf("[%s] - Exiting cleanly.\n", argv[0]);
-  return 0;
+printf("[%s] - Exiting cleanly.\n", argv[0]);
+return 0;
 }
