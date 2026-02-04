@@ -139,6 +139,7 @@ class ProcessingParameters:
     skip_existing: bool = False
     progress_callback: Optional[Callable[[ProgressInfo], None]] = None
     log_level: int = logging.INFO
+    nCPUsLocal: int = 4
 
 
 class FileProcessor:
@@ -717,6 +718,7 @@ class MidasIntegrator:
             skip_existing=bool(self.args.skipExisting),
             progress_callback=self._on_progress_update,
             log_level=log_level,
+            nCPUsLocal=self.args.nCPUsLocal,
         )
     
     def _find_start_file_number(self) -> int:
