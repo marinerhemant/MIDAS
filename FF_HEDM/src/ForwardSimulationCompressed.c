@@ -1699,6 +1699,8 @@ int main(int argc, char *argv[]) {
           double sigma = GaussWidth;
           double twoSigmaSq = 2.0 * sigma * sigma;
           int extent = (int)ceil(4.0 * sigma);
+          if (extent > 49)
+            extent = 49; // Clamp to buffer size (buffer is 100)
 
           int y_base = (int)round(yDet);
           int z_base = (int)round(zDet);
@@ -1706,23 +1708,47 @@ int main(int argc, char *argv[]) {
           omeBin = (size_t)floor(-(OmegaStart - omeThis) / OmegaStep);
           size_t frameOffset = omeBin * NrPixels * NrPixels;
 
+          // Precompute 1D Gaussian weights
+          double WeightsY[100];
+          double WeightsZ[100];
+
           for (int dy = -extent; dy <= extent; dy++) {
             int y_curr = y_base + dy;
-            if (y_curr < 0 || y_curr >= NrPixels)
+            if (y_curr < 0 || y_curr >= NrPixels) {
+              WeightsY[dy + extent] = 0.0;
+              continue;
+            }
+            double distY = (double)y_curr - yDet;
+            WeightsY[dy + extent] = exp(-(distY * distY) / twoSigmaSq);
+          }
+
+          for (int dz = -extent; dz <= extent; dz++) {
+            int z_curr = z_base + dz;
+            if (z_curr < 0 || z_curr >= NrPixels) {
+              WeightsZ[dz + extent] = 0.0;
+              continue;
+            }
+            double distZ = (double)z_curr - zDet;
+            WeightsZ[dz + extent] = exp(-(distZ * distZ) / twoSigmaSq);
+          }
+
+          // Convolve using precomputed weights
+          for (int dy = -extent; dy <= extent; dy++) {
+            double wy = WeightsY[dy + extent];
+            if (wy == 0.0)
               continue;
 
-            double distY = (double)y_curr - yDet;
+            int y_curr = y_base + dy;
 
             for (int dz = -extent; dz <= extent; dz++) {
-              int z_curr = z_base + dz;
-              if (z_curr < 0 || z_curr >= NrPixels)
+              double wz = WeightsZ[dz + extent];
+              if (wz == 0.0)
                 continue;
 
-              double distZ = (double)z_curr - zDet;
-              double r2 = distY * distY + distZ * distZ;
+              int z_curr = z_base + dz;
 
               // Gaussian weight
-              double weight = exp(-r2 / twoSigmaSq);
+              double weight = wy * wz;
 
               // Check relative intensity from rings
               int currentRingNr = (int)TempInfo[4];

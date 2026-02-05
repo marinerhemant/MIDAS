@@ -1570,12 +1570,14 @@ int main(int argc, char *argv[]) {
   fd = fopen(Dark, "rb");
 
   int rc;
+  int darkInitialized = 0;
   char *dname;
   if (fd == NULL && dType != 8) {
     printf("Dark file %s could not be read. Making an empty array for dark.\n",
            Dark);
     for (j = 0; j < (NrPixels * NrPixels); j++)
       AverageDark[j] = 0;
+    darkInitialized = 1;
   } else {
     if (dType != 8) {
       dname = "/";
@@ -1621,6 +1623,38 @@ int main(int argc, char *argv[]) {
       for (j = 0; j < (NrPixels * NrPixels); j++)
         AverageDark[j] = AverageDark[j] / nFrames;
       fclose(fd);
+      darkInitialized = 1;
+    } else {
+      // read dark from dark hdf5
+      printf("Reading dark from dark HDF5.\n");
+      printf("Dark file: %s\n", Dark);
+      dname = darkDatasetName;
+      printf("Dark dataset name: %s\n", dname);
+      rc = SumHDF5Frames(Dark, dname, NrPixelsY * NrPixelsZ, DarkFile,
+                         skipFrame);
+      MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, DarkFile, DarkFile2);
+      DoImageTransformations(NrTransOpt, TransOpt, DarkFile2, NrPixels);
+      if (makeMap == 1) {
+        size_t badPxCounter = 0;
+        mapMaskSize = NrPixels;
+        mapMaskSize *= NrPixels;
+        mapMaskSize /= 32;
+        mapMaskSize++;
+        mapMask = calloc(mapMaskSize, sizeof(*mapMask));
+        for (j = 0; j < NrPixels * NrPixels; j++) {
+          if (DarkFile2[j] == (pixelvalue)GapIntensity ||
+              DarkFile2[j] == (pixelvalue)BadPxIntensity) {
+            badPxCounter++;
+            SetBit(mapMask, j);
+          }
+        }
+        makeMap = 0;
+        printf("%lld\n", (long long int)badPxCounter);
+      }
+      printf("Dark file read from HDF5.\n");
+      for (j = 0; j < (NrPixels * NrPixels); j++)
+        AverageDark[j] = DarkFile2[j];
+      darkInitialized = 1;
     }
   }
   printf("makeMap: %d\n", makeMap);
@@ -1714,37 +1748,41 @@ int main(int argc, char *argv[]) {
       fclose(fp);
     } else {
       printf("Reading HDF5.\n");
-      printf("%s\n", FileName);
-      // sprintf(dname,"%s",darkDatasetName);
-      // printf("%s\n",dname);
-      // return 1;
-      dname = darkDatasetName;
-      rc = SumHDF5Frames(FileName, dname, NrPixelsY * NrPixelsZ, DarkFile,
-                         skipFrame);
-      MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, DarkFile, DarkFile2);
-      DoImageTransformations(NrTransOpt, TransOpt, DarkFile2, NrPixels);
-      if (makeMap == 1) {
-        size_t badPxCounter = 0;
-        mapMaskSize = NrPixels;
-        mapMaskSize *= NrPixels;
-        mapMaskSize /= 32;
-        mapMaskSize++;
-        mapMask = calloc(mapMaskSize, sizeof(*mapMask));
-        for (j = 0; j < NrPixels * NrPixels; j++) {
-          if (DarkFile2[j] == (pixelvalue)GapIntensity ||
-              DarkFile2[j] == (pixelvalue)BadPxIntensity) {
-            badPxCounter++;
-            SetBit(mapMask, j);
+      printf("Data file: %s\n", FileName);
+      // check if dark was not already initialized, the read dark.
+      if (darkInitialized == 0) {
+        printf("Reading dark from Data HDF5.\n");
+        dname = darkDatasetName;
+        printf("%s\n", dname);
+        rc = SumHDF5Frames(FileName, dname, NrPixelsY * NrPixelsZ, DarkFile,
+                           skipFrame);
+        MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, DarkFile, DarkFile2);
+        DoImageTransformations(NrTransOpt, TransOpt, DarkFile2, NrPixels);
+        if (makeMap == 1) {
+          size_t badPxCounter = 0;
+          mapMaskSize = NrPixels;
+          mapMaskSize *= NrPixels;
+          mapMaskSize /= 32;
+          mapMaskSize++;
+          mapMask = calloc(mapMaskSize, sizeof(*mapMask));
+          for (j = 0; j < NrPixels * NrPixels; j++) {
+            if (DarkFile2[j] == (pixelvalue)GapIntensity ||
+                DarkFile2[j] == (pixelvalue)BadPxIntensity) {
+              badPxCounter++;
+              SetBit(mapMask, j);
+            }
           }
+          makeMap = 0;
+          printf("%lld\n", (long long int)badPxCounter);
         }
-        makeMap = 0;
-        printf("%lld\n", (long long int)badPxCounter);
+        printf("Dark file read.\n");
+        for (j = 0; j < (NrPixels * NrPixels); j++)
+          AverageDark[j] = DarkFile2[j];
+        darkInitialized = 1;
       }
-      printf("Dark file read.\n");
-      for (j = 0; j < (NrPixels * NrPixels); j++)
-        AverageDark[j] = DarkFile2[j];
       // sprintf(dname,"%s",dataDatasetName);
       dname = dataDatasetName;
+      printf("Data dataset name: %s, data file: %s\n", dname, FileName);
       rc = SumHDF5Frames(FileName, dname, NrPixelsY * NrPixelsZ, Image,
                          skipFrame);
       MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, Image, Image2);
