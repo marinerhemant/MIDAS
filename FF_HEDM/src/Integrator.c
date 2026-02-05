@@ -456,57 +456,81 @@ int main(int argc, char **argv) {
   char *darkFN;
   double *omeArr;
   int nrdone = 0;
-  if (argc > 3) {
-    darkFN = argv[3];
-    if (dType == 8) {
+  if (argc > 3 || dType == 8) {
+    int loadDark = 0;
+    if (argc > 3) {
+      darkFN = argv[3];
+      loadDark = 1;
+    } else if (dType == 8) {
+      // Fallback: Check if dark dataset exists in data file
+      darkFN = argv[2];
       hsize_t dims[3];
-      GetHDF5Dimensions(darkFN, darkDataset, dims);
-      nFrames = dims[0] - skipFrame;
-      printf(
-          "Reading dark file: %s (HDF5), nFrames: %d (dims: %llu, skip: %d)\n",
-          darkFN, nFrames, (unsigned long long)dims[0], skipFrame);
-    } else {
-      fd = fopen(darkFN, "rb");
-      fseek(fd, 0L, SEEK_END);
-      sz = ftell(fd);
-      rewind(fd);
-      nFrames = sz / (SizeFile);
-      printf(
-          "Reading dark file:      %s, nFrames: %d, skipping first %d bytes.\n",
-          darkFN, nFrames, Skip);
-      fseek(fd, Skip, SEEK_SET);
+      // Check existence by trying to get dims
+      if (GetHDF5Dimensions(darkFN, darkDataset, dims) == FR_SUCCESS) {
+        printf(
+            "No separate dark file provided. Found dark dataset '%s' in data "
+            "file '%s'. Using it.\n",
+            darkDataset, darkFN);
+        loadDark = 1;
+      } else {
+        printf("No separate dark file provided and dark dataset '%s' not found "
+               "in data file '%s'. Processing without dark subtraction.\n",
+               darkDataset, darkFN);
+        loadDark = 0;
+      }
     }
 
-    for (i = 0; i < nFrames; i++) {
+    if (loadDark) {
       if (dType == 8) {
-        rc = ReadHDF5Frame(darkFN, darkDataset, NrPixelsY * NrPixelsZ, DarkInT,
-                           i + skipFrame);
-      } else if (dType == 6 || dType == 7 || dType == 9) {
-        rc = ReadTiffFrame(darkFN, dType, NrPixelsY * NrPixelsZ, DarkInT, i);
+        hsize_t dims[3];
+        GetHDF5Dimensions(darkFN, darkDataset, dims);
+        nFrames = dims[0] - skipFrame;
+        printf("Reading dark file: %s (HDF5), nFrames: %d (dims: %llu, skip: "
+               "%d)\n",
+               darkFN, nFrames, (unsigned long long)dims[0], skipFrame);
       } else {
-        rc = ReadBinaryFrame(fd, dType, NrPixelsY * NrPixelsZ, DarkInT);
+        fd = fopen(darkFN, "rb");
+        fseek(fd, 0L, SEEK_END);
+        sz = ftell(fd);
+        rewind(fd);
+        nFrames = sz / (SizeFile);
+        printf("Reading dark file:      %s, nFrames: %d, skipping first %d "
+               "bytes.\n",
+               darkFN, nFrames, Skip);
+        fseek(fd, Skip, SEEK_SET);
       }
 
-      DoImageTransformations(NrTransOpt, TransOpt, DarkInT, DarkIn, NrPixelsY,
-                             NrPixelsZ);
-      if (makeMap == 1) {
-        mapMaskSize = NrPixelsY;
-        mapMaskSize *= NrPixelsZ;
-        mapMaskSize /= 32;
-        mapMaskSize++;
-        mapMask = calloc(mapMaskSize, sizeof(*mapMask));
-        for (j = 0; j < NrPixelsY * NrPixelsZ; j++) {
-          if (DarkIn[j] == (pixelvalue)GapIntensity ||
-              DarkIn[j] == (pixelvalue)BadPxIntensity) {
-            SetBit(mapMask, j);
-            nrdone++;
-          }
+      for (i = 0; i < nFrames; i++) {
+        if (dType == 8) {
+          rc = ReadHDF5Frame(darkFN, darkDataset, NrPixelsY * NrPixelsZ,
+                             DarkInT, i + skipFrame);
+        } else if (dType == 6 || dType == 7 || dType == 9) {
+          rc = ReadTiffFrame(darkFN, dType, NrPixelsY * NrPixelsZ, DarkInT, i);
+        } else {
+          rc = ReadBinaryFrame(fd, dType, NrPixelsY * NrPixelsZ, DarkInT);
         }
-        printf("Nr mask pixels: %d\n", nrdone);
-        makeMap = 0;
+
+        DoImageTransformations(NrTransOpt, TransOpt, DarkInT, DarkIn, NrPixelsY,
+                               NrPixelsZ);
+        if (makeMap == 1) {
+          mapMaskSize = NrPixelsY;
+          mapMaskSize *= NrPixelsZ;
+          mapMaskSize /= 32;
+          mapMaskSize++;
+          mapMask = calloc(mapMaskSize, sizeof(*mapMask));
+          for (j = 0; j < NrPixelsY * NrPixelsZ; j++) {
+            if (DarkIn[j] == (pixelvalue)GapIntensity ||
+                DarkIn[j] == (pixelvalue)BadPxIntensity) {
+              SetBit(mapMask, j);
+              nrdone++;
+            }
+          }
+          printf("Nr mask pixels: %d\n", nrdone);
+          makeMap = 0;
+        }
+        for (j = 0; j < NrPixelsY * NrPixelsZ; j++)
+          AverageDark[j] += (double)DarkIn[j] / nFrames;
       }
-      for (j = 0; j < NrPixelsY * NrPixelsZ; j++)
-        AverageDark[j] += (double)DarkIn[j] / nFrames;
     }
   }
 
