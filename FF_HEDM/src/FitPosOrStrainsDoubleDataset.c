@@ -673,6 +673,17 @@ static inline void ConcatPosEulLatc(double *Ini, double Pos0[3],
     Ini[i + 6] = LatCin[i];
 }
 
+struct OptimizeScratch {
+  double **hkls;           // [nhkls][7]
+  double **TheorSpots;     // [MaxNSpotsBest][9]
+  double **SpotsYZOGCorr;  // [nSpotsComp][3]
+  double **TheorSpotsYZWE; // [MaxNSpotsBest][3]
+  double **hklsIn2;        // [nhkls][7]
+  double **spotsYZO;       // [nSpotsComp][9]
+  double *Angles;          // [MaxNSpotsBest]
+  int nTspots;             // Pre-calculated for FitPosSec
+};
+
 struct data_FitPosIni {
   int nSpotsComp;
   double **spotsYZO;
@@ -688,6 +699,7 @@ struct data_FitPosIni {
   double MinEta;
   double wedge;
   double chi;
+  struct OptimizeScratch *scratch;
 };
 
 struct data_FitOrientIni {
@@ -706,6 +718,7 @@ struct data_FitOrientIni {
   double wedge;
   double chi;
   double Pos[3];
+  struct OptimizeScratch *scratch;
 };
 
 struct data_FitStrainIni {
@@ -725,6 +738,7 @@ struct data_FitStrainIni {
   double chi;
   double Pos[3];
   double Orient[3];
+  struct OptimizeScratch *scratch;
 };
 
 struct data_FitPos {
@@ -744,6 +758,8 @@ struct data_FitPos {
   double chi;
   double Orient[3];
   double Strains[6];
+  struct OptimizeScratch *scratch;
+  int nTspots;
 };
 
 static inline double
@@ -751,39 +767,29 @@ FitErrorsPosT(double x[12], int nSpotsComp, double **spotsYZOIn,
               double **spotsYZO2, int nhkls, double **hklsIn, double Lsd,
               double Wavelength, int nOmeRanges,
               double OmegaRanges[nOmeRanges][2], double BoxSizes[nOmeRanges][4],
-              double MinEta, double wedge, double chi, double offsets[4]) {
+              double MinEta, double wedge, double chi, double offsets[4],
+              struct OptimizeScratch *scratch) {
   int i, j;
   int nrMatchedIndexer = nSpotsComp;
   double LatC[6];
   for (i = 0; i < 6; i++)
     LatC[i] = x[6 + i];
-  double **hklsIn2;
-  hklsIn2 = allocMatrix(nhkls, 7);
-  for (i = 0; i < nhkls; i++)
-    for (j = 0; j < 7; j++)
-      hklsIn2[i][j] = hklsIn[i][j];
-  double **spotsYZO;
-  spotsYZO = allocMatrix(nSpotsComp, 9);
-  for (i = 0; i < nSpotsComp; i++) {
-    for (j = 0; j < 9; j++) {
-      spotsYZO[i][j] = spotsYZOIn[i][j];
-    }
-  }
-  double **hkls;
-  hkls = allocMatrix(nhkls, 7);
-  CorrectHKLsLatC(LatC, hklsIn2, nhkls, Lsd, Wavelength, hkls);
+
+  // Use inputs directly or scratch buffers
+  double **spotsYZO = spotsYZOIn;
+
+  double **hkls = scratch->hkls;
+  CorrectHKLsLatC(LatC, hklsIn, nhkls, Lsd, Wavelength, hkls);
   double OrientMatrix[3][3], EulerIn[3];
   EulerIn[0] = x[3];
   EulerIn[1] = x[4];
   EulerIn[2] = x[5];
   Euler2OrientMat(EulerIn, OrientMatrix);
   int nTspots, nrSp;
-  double **TheorSpots;
-  TheorSpots = allocMatrix(MaxNSpotsBest, 9);
+  double **TheorSpots = scratch->TheorSpots;
   CalcDiffractionSpots(Lsd, MinEta, OmegaRanges, nOmeRanges, hkls, nhkls,
                        BoxSizes, &nTspots, OrientMatrix, TheorSpots);
-  double **SpotsYZOGCorr;
-  SpotsYZOGCorr = allocMatrix(nrMatchedIndexer, 3);
+  double **SpotsYZOGCorr = scratch->SpotsYZOGCorr;
   double DisplY, DisplZ, ys, zs, Omega, Radius, Theta, lenK, yt, zt;
   double DisplY2, DisplZ2, ys2, zs2, Omega2, yt2, zt2;
   for (nrSp = 0; nrSp < nrMatchedIndexer; nrSp++) {
@@ -808,8 +814,7 @@ FitErrorsPosT(double x[12], int nSpotsComp, double **spotsYZOIn,
     SpotsYZOGCorr[nrSp][1] = (zs + zs2) / 2.0;
     SpotsYZOGCorr[nrSp][2] = spotsYZO[nrSp][8];
   }
-  double **TheorSpotsYZWE;
-  TheorSpotsYZWE = allocMatrix(nTspots, 3);
+  double **TheorSpotsYZWE = scratch->TheorSpotsYZWE;
   for (i = 0; i < nTspots; i++) {
     TheorSpotsYZWE[i][0] = TheorSpots[i][0];
     TheorSpotsYZWE[i][1] = TheorSpots[i][1];
@@ -832,45 +837,36 @@ FitErrorsPosT(double x[12], int nSpotsComp, double **spotsYZOIn,
       }
     }
   }
-  FreeMemMatrix(hklsIn2, nhkls);
-  FreeMemMatrix(spotsYZO, nSpotsComp);
-  FreeMemMatrix(hkls, nhkls);
-  FreeMemMatrix(TheorSpots, MaxNSpotsBest);
-  FreeMemMatrix(SpotsYZOGCorr, nrMatchedIndexer);
-  FreeMemMatrix(TheorSpotsYZWE, nTspots);
+
   return Error;
 }
 
 static inline double FitErrorsOrientStrains(
-    double x[9], int nSpotsComp, double **spotsYZO, double **spotsYZO2,
+    double x[9], int nSpotsComp, double **spotsYZOIn, double **spotsYZO2,
     int nhkls, double **hklsIn, double Lsd, double Wavelength, int nOmeRanges,
     double OmegaRanges[nOmeRanges][2], double BoxSizes[nOmeRanges][4],
-    double MinEta, double wedge, double chi, double Pos[3], double offsets[4]) {
+    double MinEta, double wedge, double chi, double Pos[3], double offsets[4],
+    struct OptimizeScratch *scratch) {
   int i, j;
   int nrMatchedIndexer = nSpotsComp;
   double LatC[6];
   for (i = 0; i < 6; i++)
     LatC[i] = x[3 + i];
-  double **hklsIn2;
-  hklsIn2 = allocMatrix(nhkls, 7);
-  for (i = 0; i < nhkls; i++)
-    for (j = 0; j < 7; j++)
-      hklsIn2[i][j] = hklsIn[i][j];
-  double **hkls;
-  hkls = allocMatrix(nhkls, 7);
-  CorrectHKLsLatC(LatC, hklsIn2, nhkls, Lsd, Wavelength, hkls);
+  // Use inputs/scratch
+  double **spotsYZO = spotsYZOIn;
+  
+  double **hkls = scratch->hkls;
+  CorrectHKLsLatC(LatC, hklsIn, nhkls, Lsd, Wavelength, hkls);
   double OrientMatrix[3][3], EulerIn[3];
   EulerIn[0] = x[0];
   EulerIn[1] = x[1];
   EulerIn[2] = x[2];
   Euler2OrientMat(EulerIn, OrientMatrix);
   int nTspots, nrSp;
-  double **TheorSpots;
-  TheorSpots = allocMatrix(MaxNSpotsBest, 9);
+  double **TheorSpots = scratch->TheorSpots;
   CalcDiffractionSpots(Lsd, MinEta, OmegaRanges, nOmeRanges, hkls, nhkls,
                        BoxSizes, &nTspots, OrientMatrix, TheorSpots);
-  double **SpotsYZOGCorr;
-  SpotsYZOGCorr = allocMatrix(nrMatchedIndexer, 4);
+  double **SpotsYZOGCorr = scratch->SpotsYZOGCorr;
   double DisplY, DisplZ, ys, zs, Omega, yt, zt;
   double DisplY2, DisplZ2, ys2, zs2, Omega2, Radius2, Theta2, lenK2, yt2, zt2;
   for (nrSp = 0; nrSp < nrMatchedIndexer; nrSp++) {
@@ -911,8 +907,7 @@ static inline double FitErrorsOrientStrains(
     SpotsYZOGCorr[nrSp][2] = g32;
     SpotsYZOGCorr[nrSp][3] = spotsYZO[nrSp][8];
   }
-  double **TheorSpotsYZWE;
-  TheorSpotsYZWE = allocMatrix(nTspots, 4);
+  double **TheorSpotsYZWE = scratch->TheorSpotsYZWE;
   for (i = 0; i < nTspots; i++) {
     for (j = 0; j < 3; j++) {
       TheorSpotsYZWE[i][j] = TheorSpots[i][j + 3];
@@ -922,7 +917,7 @@ static inline double FitErrorsOrientStrains(
   int sp, nTheorSpotsYZWER, Spnr;
   double GObs[3], GTheors[3], NormGObs, NormGTheors, DotGs, Numers, Denoms,
       *Angles, minAngle, Error = 0;
-  Angles = malloc(MaxNSpotsBest * sizeof(*Angles));
+  Angles = scratch->Angles;
   for (sp = 0; sp < nrMatchedIndexer; sp++) {
     nTheorSpotsYZWER = 0;
     GObs[0] = SpotsYZOGCorr[sp][0];
@@ -961,12 +956,6 @@ static inline double FitErrorsOrientStrains(
       continue;
     Error += minAngle;
   }
-  FreeMemMatrix(hklsIn2, nhkls);
-  FreeMemMatrix(hkls, nhkls);
-  FreeMemMatrix(TheorSpots, MaxNSpotsBest);
-  FreeMemMatrix(SpotsYZOGCorr, nrMatchedIndexer);
-  FreeMemMatrix(TheorSpotsYZWE, nTspots);
-  free(Angles);
   return Error;
 }
 
@@ -975,36 +964,25 @@ static inline double FitErrorsStrains(
     int nhkls, double **hklsIn, double Lsd, double Wavelength, int nOmeRanges,
     double OmegaRanges[nOmeRanges][2], double BoxSizes[nOmeRanges][4],
     double MinEta, double wedge, double chi, double Pos[3], double EulerIn[3],
-    double offsets[4]) {
+    double offsets[4], struct OptimizeScratch *scratch) {
   int i, j;
   int nrMatchedIndexer = nSpotsComp;
   double LatC[6];
   for (i = 0; i < 6; i++)
     LatC[i] = x[i];
-  double **hklsIn2;
-  hklsIn2 = allocMatrix(nhkls, 7);
-  for (i = 0; i < nhkls; i++)
-    for (j = 0; j < 7; j++)
-      hklsIn2[i][j] = hklsIn[i][j];
-  double **spotsYZO;
-  spotsYZO = allocMatrix(nSpotsComp, 9);
-  for (i = 0; i < nSpotsComp; i++) {
-    for (j = 0; j < 9; j++) {
-      spotsYZO[i][j] = spotsYZOIn[i][j];
-    }
-  }
-  double **hkls;
-  hkls = allocMatrix(nhkls, 7);
-  CorrectHKLsLatC(LatC, hklsIn2, nhkls, Lsd, Wavelength, hkls);
+  
+  // Use inputs/scratch
+  double **spotsYZO = spotsYZOIn;
+  
+  double **hkls = scratch->hkls;
+  CorrectHKLsLatC(LatC, hklsIn, nhkls, Lsd, Wavelength, hkls);
   double OrientMatrix[3][3];
   Euler2OrientMat(EulerIn, OrientMatrix);
   int nTspots, nrSp;
-  double **TheorSpots;
-  TheorSpots = allocMatrix(MaxNSpotsBest, 9);
+  double **TheorSpots = scratch->TheorSpots;
   CalcDiffractionSpots(Lsd, MinEta, OmegaRanges, nOmeRanges, hkls, nhkls,
                        BoxSizes, &nTspots, OrientMatrix, TheorSpots);
-  double **SpotsYZOGCorr;
-  SpotsYZOGCorr = allocMatrix(nrMatchedIndexer, 3);
+  double **SpotsYZOGCorr = scratch->SpotsYZOGCorr;
   double DisplY, DisplZ, ys, zs, Omega, Radius, Theta, lenK, yt, zt;
   double DisplY2, DisplZ2, ys2, zs2, Omega2, yt2, zt2;
   for (nrSp = 0; nrSp < nrMatchedIndexer; nrSp++) {
@@ -1029,8 +1007,7 @@ static inline double FitErrorsStrains(
     SpotsYZOGCorr[nrSp][1] = (zs + zs2) / 2.0;
     SpotsYZOGCorr[nrSp][2] = spotsYZO[nrSp][8];
   }
-  double **TheorSpotsYZWE;
-  TheorSpotsYZWE = allocMatrix(nTspots, 3);
+  double **TheorSpotsYZWE = scratch->TheorSpotsYZWE;
   for (i = 0; i < nTspots; i++) {
     TheorSpotsYZWE[i][0] = TheorSpots[i][0];
     TheorSpotsYZWE[i][1] = TheorSpots[i][1];
@@ -1053,12 +1030,6 @@ static inline double FitErrorsStrains(
       }
     }
   }
-  FreeMemMatrix(hklsIn2, nhkls);
-  FreeMemMatrix(spotsYZO, nSpotsComp);
-  FreeMemMatrix(hkls, nhkls);
-  FreeMemMatrix(TheorSpots, MaxNSpotsBest);
-  FreeMemMatrix(SpotsYZOGCorr, nrMatchedIndexer);
-  FreeMemMatrix(TheorSpotsYZWE, nTspots);
   return Error;
 }
 
@@ -1067,36 +1038,18 @@ static inline double FitErrorsPosSec(
     int nhkls, double **hklsIn, double Lsd, double Wavelength, int nOmeRanges,
     double OmegaRanges[nOmeRanges][2], double BoxSizes[nOmeRanges][4],
     double MinEta, double wedge, double chi, double EulerIn[3],
-    double Strains[6], double offsets[4]) {
+    double Strains[6], double offsets[4], struct OptimizeScratch *scratch) {
   int i, j;
   int nrMatchedIndexer = nSpotsComp;
-  double LatC[6];
-  for (i = 0; i < 6; i++)
-    LatC[i] = Strains[i];
-  double **hklsIn2;
-  hklsIn2 = allocMatrix(nhkls, 7);
-  for (i = 0; i < nhkls; i++)
-    for (j = 0; j < 7; j++)
-      hklsIn2[i][j] = hklsIn[i][j];
-  double **spotsYZO;
-  spotsYZO = allocMatrix(nSpotsComp, 9);
-  for (i = 0; i < nSpotsComp; i++) {
-    for (j = 0; j < 9; j++) {
-      spotsYZO[i][j] = spotsYZOIn[i][j];
-    }
-  }
-  double **hkls;
-  hkls = allocMatrix(nhkls, 7);
-  CorrectHKLsLatC(LatC, hklsIn2, nhkls, Lsd, Wavelength, hkls);
-  double OrientMatrix[3][3];
-  Euler2OrientMat(EulerIn, OrientMatrix);
-  int nTspots, nrSp;
-  double **TheorSpots;
-  TheorSpots = allocMatrix(MaxNSpotsBest, 9);
-  CalcDiffractionSpots(Lsd, MinEta, OmegaRanges, nOmeRanges, hkls, nhkls,
-                       BoxSizes, &nTspots, OrientMatrix, TheorSpots);
-  double **SpotsYZOGCorr;
-  SpotsYZOGCorr = allocMatrix(nrMatchedIndexer, 3);
+  
+  // Use inputs/scratch
+  double **spotsYZO = spotsYZOIn;
+  
+  // Invariants are pre-calculated in scratch
+  int nTspots = scratch->nTspots;
+  double **SpotsYZOGCorr = scratch->SpotsYZOGCorr;
+  int nrSp;
+
   double DisplY, DisplZ, ys, zs, Omega, yt, zt;
   double DisplY2, DisplZ2, ys2, zs2, Omega2, yt2, zt2;
   for (nrSp = 0; nrSp < nrMatchedIndexer; nrSp++) {
@@ -1121,13 +1074,7 @@ static inline double FitErrorsPosSec(
     SpotsYZOGCorr[nrSp][1] = (zs + zs2) / 2.0;
     SpotsYZOGCorr[nrSp][2] = spotsYZO[nrSp][8];
   }
-  double **TheorSpotsYZWE;
-  TheorSpotsYZWE = allocMatrix(nTspots, 3);
-  for (i = 0; i < nTspots; i++) {
-    TheorSpotsYZWE[i][0] = TheorSpots[i][0];
-    TheorSpotsYZWE[i][1] = TheorSpots[i][1];
-    TheorSpotsYZWE[i][2] = TheorSpots[i][8];
-  }
+  double **TheorSpotsYZWE = scratch->TheorSpotsYZWE;
   int sp;
   double PosObs[2], PosTheor[2], Spnr;
   double Error = 0;
@@ -1145,30 +1092,16 @@ static inline double FitErrorsPosSec(
       }
     }
   }
-  FreeMemMatrix(hklsIn2, nhkls);
-  FreeMemMatrix(spotsYZO, nSpotsComp);
-  FreeMemMatrix(hkls, nhkls);
-  FreeMemMatrix(TheorSpots, MaxNSpotsBest);
-  FreeMemMatrix(SpotsYZOGCorr, nrMatchedIndexer);
-  FreeMemMatrix(TheorSpotsYZWE, nTspots);
   return Error;
 }
+
 
 static double problem_function_PosIni(unsigned n, const double *x, double *grad,
                                       void *f_data_trial) {
   int i, j;
   struct data_FitPosIni *f_data = (struct data_FitPosIni *)f_data_trial;
   int nSpotsComp = f_data->nSpotsComp;
-  double **spotsYZO, **spotsYZO2;
-  spotsYZO = allocMatrix(nSpotsComp, 9);
-  spotsYZO2 = allocMatrix(nSpotsComp, 8);
-  for (i = 0; i < nSpotsComp; i++) {
-    for (j = 0; j < 9; j++) {
-      spotsYZO[i][j] = f_data->spotsYZO[i][j];
-      if (j < 8)
-        spotsYZO2[i][j] = f_data->spotsYZO2[i][j];
-    }
-  }
+
   double offsets[4];
   for (i = 0; i < 4; i++)
     offsets[i] = f_data->offsets[i];
@@ -1191,11 +1124,9 @@ static double problem_function_PosIni(unsigned n, const double *x, double *grad,
   for (i = 0; i < n; i++)
     XIn[i] = x[i];
   double error =
-      FitErrorsPosT(XIn, nSpotsComp, spotsYZO, spotsYZO2, nhkls, f_data->hkls,
-                    Lsd, Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta,
-                    wedge, chi, offsets);
-  FreeMemMatrix(spotsYZO, nSpotsComp);
-  FreeMemMatrix(spotsYZO2, nSpotsComp);
+      FitErrorsPosT(XIn, nSpotsComp, f_data->spotsYZO, f_data->spotsYZO2, nhkls,
+                    f_data->hkls, Lsd, Wavelength, nOmeRanges, OmegaRanges,
+                    BoxSizes, MinEta, wedge, chi, offsets, f_data->scratch);
   return error;
 }
 
@@ -1204,16 +1135,7 @@ static double problem_function_OrientIni(unsigned n, const double *x,
   int i, j;
   struct data_FitOrientIni *f_data = (struct data_FitOrientIni *)f_data_trial;
   int nSpotsComp = f_data->nSpotsComp;
-  double **spotsYZO, **spotsYZO2;
-  spotsYZO = allocMatrix(nSpotsComp, 9);
-  spotsYZO2 = allocMatrix(nSpotsComp, 8);
-  for (i = 0; i < nSpotsComp; i++) {
-    for (j = 0; j < 9; j++) {
-      spotsYZO[i][j] = f_data->spotsYZO[i][j];
-      if (j < 8)
-        spotsYZO2[i][j] = f_data->spotsYZO2[i][j];
-    }
-  }
+
   double offsets[4];
   for (i = 0; i < 4; i++)
     offsets[i] = f_data->offsets[i];
@@ -1238,12 +1160,10 @@ static double problem_function_OrientIni(unsigned n, const double *x,
   double XIn[n];
   for (i = 0; i < n; i++)
     XIn[i] = x[i];
-  double error = FitErrorsOrientStrains(XIn, nSpotsComp, spotsYZO, spotsYZO2,
-                                        nhkls, f_data->hkls, Lsd, Wavelength,
-                                        nOmeRanges, OmegaRanges, BoxSizes,
-                                        MinEta, wedge, chi, Pos, offsets);
-  FreeMemMatrix(spotsYZO, nSpotsComp);
-  FreeMemMatrix(spotsYZO2, nSpotsComp);
+  double error = FitErrorsOrientStrains(
+      XIn, nSpotsComp, f_data->spotsYZO, f_data->spotsYZO2, nhkls, f_data->hkls,
+      Lsd, Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta, wedge, chi,
+      Pos, offsets, f_data->scratch);
   return error;
 }
 
@@ -1253,15 +1173,6 @@ static double problem_function_StrainIni(unsigned n, const double *x,
   struct data_FitStrainIni *f_data = (struct data_FitStrainIni *)f_data_trial;
   int nSpotsComp = f_data->nSpotsComp;
   double **spotsYZO, **spotsYZO2;
-  spotsYZO = allocMatrix(nSpotsComp, 9);
-  spotsYZO2 = allocMatrix(nSpotsComp, 8);
-  for (i = 0; i < nSpotsComp; i++) {
-    for (j = 0; j < 9; j++) {
-      spotsYZO[i][j] = f_data->spotsYZO[i][j];
-      if (j < 8)
-        spotsYZO2[i][j] = f_data->spotsYZO2[i][j];
-    }
-  }
   double offsets[4];
   for (i = 0; i < 4; i++)
     offsets[i] = f_data->offsets[i];
@@ -1290,11 +1201,9 @@ static double problem_function_StrainIni(unsigned n, const double *x,
   for (i = 0; i < n; i++)
     XIn[i] = x[i];
   double error =
-      FitErrorsStrains(XIn, nSpotsComp, spotsYZO, spotsYZO2, nhkls,
+      FitErrorsStrains(XIn, nSpotsComp, f_data->spotsYZO, f_data->spotsYZO2, nhkls,
                        f_data->hkls, Lsd, Wavelength, nOmeRanges, OmegaRanges,
-                       BoxSizes, MinEta, wedge, chi, Pos, Orient, offsets);
-  FreeMemMatrix(spotsYZO, nSpotsComp);
-  FreeMemMatrix(spotsYZO2, nSpotsComp);
+                       BoxSizes, MinEta, wedge, chi, Pos, Orient, offsets, f_data->scratch);
   return error;
 }
 
@@ -1303,16 +1212,7 @@ static double problem_function_Pos(unsigned n, const double *x, double *grad,
   int i, j;
   struct data_FitPos *f_data = (struct data_FitPos *)f_data_trial;
   int nSpotsComp = f_data->nSpotsComp;
-  double **spotsYZO, **spotsYZO2;
-  spotsYZO = allocMatrix(nSpotsComp, 9);
-  spotsYZO2 = allocMatrix(nSpotsComp, 8);
-  for (i = 0; i < nSpotsComp; i++) {
-    for (j = 0; j < 9; j++) {
-      spotsYZO[i][j] = f_data->spotsYZO[i][j];
-      if (j < 8)
-        spotsYZO2[i][j] = f_data->spotsYZO2[i][j];
-    }
-  }
+
   double offsets[4];
   for (i = 0; i < 4; i++)
     offsets[i] = f_data->offsets[i];
@@ -1341,11 +1241,9 @@ static double problem_function_Pos(unsigned n, const double *x, double *grad,
   for (i = 0; i < n; i++)
     XIn[i] = x[i];
   double error =
-      FitErrorsPosSec(XIn, nSpotsComp, spotsYZO, spotsYZO2, nhkls, f_data->hkls,
+      FitErrorsPosSec(XIn, nSpotsComp, f_data->spotsYZO, f_data->spotsYZO2, nhkls, f_data->hkls,
                       Lsd, Wavelength, nOmeRanges, OmegaRanges, BoxSizes,
-                      MinEta, wedge, chi, Orient, Strains, offsets);
-  FreeMemMatrix(spotsYZO, nSpotsComp);
-  FreeMemMatrix(spotsYZO2, nSpotsComp);
+                      MinEta, wedge, chi, Orient, Strains, offsets, f_data->scratch);
   return error;
 }
 
@@ -1394,6 +1292,16 @@ void FitPositionIni(double X0[12], int nSpotsComp, double **spotsYZO,
     xl[i] = lb[i];
     xu[i] = ub[i];
   }
+
+  // Allocate scratch memory
+  f_data.scratch = malloc(sizeof(struct OptimizeScratch));
+  f_data.scratch->hkls = allocMatrix(nhkls, 7);
+  f_data.scratch->TheorSpots = allocMatrix(MaxNSpotsBest, 9);
+  f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 3);
+  f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 3);
+  f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7);
+  f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
+  f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
   struct data_FitPosIni *f_datat;
   f_datat = &f_data;
   void *trp = (struct data_FitPosIni *)f_datat;
@@ -1420,6 +1328,16 @@ void FitPositionIni(double X0[12], int nSpotsComp, double **spotsYZO,
   FreeMemMatrix(f_data.spotsYZO, nSpotsComp);
   FreeMemMatrix(f_data.spotsYZO2, nSpotsComp);
   FreeMemMatrix(f_data.hkls, nhkls);
+
+  // Free scratch memory
+  FreeMemMatrix(f_data.scratch->hkls, nhkls);
+  FreeMemMatrix(f_data.scratch->TheorSpots, MaxNSpotsBest);
+  FreeMemMatrix(f_data.scratch->SpotsYZOGCorr, nSpotsComp);
+  FreeMemMatrix(f_data.scratch->TheorSpotsYZWE, MaxNSpotsBest);
+  FreeMemMatrix(f_data.scratch->hklsIn2, nhkls);
+  FreeMemMatrix(f_data.scratch->spotsYZO, nSpotsComp);
+  free(f_data.scratch->Angles);
+  free(f_data.scratch);
 }
 
 void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO,
@@ -1468,6 +1386,18 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO,
     xl[i] = lb[i];
     xu[i] = ub[i];
   }
+
+  // Allocate scratch memory
+  f_data.scratch = malloc(sizeof(struct OptimizeScratch));
+  f_data.scratch->hkls = allocMatrix(nhkls, 7);
+  f_data.scratch->TheorSpots = allocMatrix(MaxNSpotsBest, 9);
+  f_data.scratch->SpotsYZOGCorr =
+      allocMatrix(nSpotsComp, 4); // Note: Size 4 for Orient
+  f_data.scratch->TheorSpotsYZWE =
+      allocMatrix(MaxNSpotsBest, 4); // Note: Size 4 for Orient
+  f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7);
+  f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
+  f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
   struct data_FitOrientIni *f_datat;
   f_datat = &f_data;
   void *trp = (struct data_FitOrientIni *)f_datat;
@@ -1494,6 +1424,16 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO,
   FreeMemMatrix(f_data.spotsYZO, nSpotsComp);
   FreeMemMatrix(f_data.spotsYZO2, nSpotsComp);
   FreeMemMatrix(f_data.hkls, nhkls);
+
+  // Free scratch memory
+  FreeMemMatrix(f_data.scratch->hkls, nhkls);
+  FreeMemMatrix(f_data.scratch->TheorSpots, MaxNSpotsBest);
+  FreeMemMatrix(f_data.scratch->SpotsYZOGCorr, nSpotsComp);
+  FreeMemMatrix(f_data.scratch->TheorSpotsYZWE, MaxNSpotsBest);
+  FreeMemMatrix(f_data.scratch->hklsIn2, nhkls);
+  FreeMemMatrix(f_data.scratch->spotsYZO, nSpotsComp);
+  free(f_data.scratch->Angles);
+  free(f_data.scratch);
 }
 
 void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO,
@@ -1545,6 +1485,19 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO,
     xl[i] = lb[i];
     xu[i] = ub[i];
   }
+
+  // Allocate scratch memory
+  f_data.scratch = malloc(sizeof(struct OptimizeScratch));
+  f_data.scratch->hkls = allocMatrix(nhkls, 7);
+  f_data.scratch->TheorSpots = allocMatrix(MaxNSpotsBest, 9);
+  f_data.scratch->SpotsYZOGCorr =
+      allocMatrix(nSpotsComp, 4); // Note: Size 4 for Orient
+  f_data.scratch->TheorSpotsYZWE =
+      allocMatrix(MaxNSpotsBest, 4); // Note: Size 4 for Orient
+  f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7);
+  f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
+  f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
+
   struct data_FitStrainIni *f_datat;
   f_datat = &f_data;
   void *trp = (struct data_FitStrainIni *)f_datat;
@@ -1571,6 +1524,16 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO,
   FreeMemMatrix(f_data.spotsYZO, nSpotsComp);
   FreeMemMatrix(f_data.spotsYZO2, nSpotsComp);
   FreeMemMatrix(f_data.hkls, nhkls);
+
+  // Free scratch memory
+  FreeMemMatrix(f_data.scratch->hkls, nhkls);
+  FreeMemMatrix(f_data.scratch->TheorSpots, MaxNSpotsBest);
+  FreeMemMatrix(f_data.scratch->SpotsYZOGCorr, nSpotsComp);
+  FreeMemMatrix(f_data.scratch->TheorSpotsYZWE, MaxNSpotsBest);
+  FreeMemMatrix(f_data.scratch->hklsIn2, nhkls);
+  FreeMemMatrix(f_data.scratch->spotsYZO, nSpotsComp);
+  free(f_data.scratch->Angles);
+  free(f_data.scratch);
 }
 
 void FitPosSec(double X0[3], int nSpotsComp, double **spotsYZO,
@@ -1621,6 +1584,29 @@ void FitPosSec(double X0[3], int nSpotsComp, double **spotsYZO,
     xl[i] = lb[i];
     xu[i] = ub[i];
   }
+
+  // Allocate scratch memory
+  f_data.scratch = malloc(sizeof(struct OptimizeScratch));
+  f_data.scratch->hkls = allocMatrix(nhkls, 7);
+  f_data.scratch->TheorSpots = allocMatrix(MaxNSpotsBest, 9);
+  f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 3);
+  f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 3);
+  // Pre-calculate invariants
+  CorrectHKLsLatC(f_data.Strains, f_data.hkls, nhkls, Lsd, Wavelength, f_data.scratch->hkls);
+  double OrientMatrix[3][3];
+  Euler2OrientMat(f_data.Orient, OrientMatrix);
+  int nTspots;
+  CalcDiffractionSpots(Lsd, MinEta, OmegaRanges, nOmeRanges, f_data.scratch->hkls, nhkls,
+                       BoxSizes, &nTspots, OrientMatrix, f_data.scratch->TheorSpots);
+  f_data.scratch->nTspots = nTspots;
+  for (i = 0; i < nTspots; i++) {
+    f_data.scratch->TheorSpotsYZWE[i][0] = f_data.scratch->TheorSpots[i][0];
+    f_data.scratch->TheorSpotsYZWE[i][1] = f_data.scratch->TheorSpots[i][1];
+    f_data.scratch->TheorSpotsYZWE[i][2] = f_data.scratch->TheorSpots[i][8];
+  }
+  f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7); 
+  f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9); 
+  f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
   struct data_FitPos *f_datat;
   f_datat = &f_data;
   void *trp = (struct data_FitPos *)f_datat;
@@ -1647,6 +1633,16 @@ void FitPosSec(double X0[3], int nSpotsComp, double **spotsYZO,
   FreeMemMatrix(f_data.spotsYZO, nSpotsComp);
   FreeMemMatrix(f_data.spotsYZO2, nSpotsComp);
   FreeMemMatrix(f_data.hkls, nhkls);
+
+  // Free scratch memory
+  FreeMemMatrix(f_data.scratch->hkls, nhkls);
+  FreeMemMatrix(f_data.scratch->TheorSpots, MaxNSpotsBest);
+  FreeMemMatrix(f_data.scratch->SpotsYZOGCorr, nSpotsComp);
+  FreeMemMatrix(f_data.scratch->TheorSpotsYZWE, MaxNSpotsBest);
+  FreeMemMatrix(f_data.scratch->hklsIn2, nhkls);
+  FreeMemMatrix(f_data.scratch->spotsYZO, nSpotsComp);
+  free(f_data.scratch->Angles);
+  free(f_data.scratch);
 }
 
 long long int ReadBigDet(char *cwd) {
