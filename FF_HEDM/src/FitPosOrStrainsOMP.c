@@ -566,6 +566,7 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
     GObs[2] = SpotsYZOGCorr[sp][5];
     NormGObs = CalcNorm3(GObs[0], GObs[1], GObs[2]);
     for (i = 0; i < nTspots; i++) {
+      /*
       if (notIniRun == 1 && sp < 5 &&
           ((int)TheorSpotsYZWE[i][7] == (int)SpotsYZOGCorr[sp][6])) {
         printf("DEBUG OMP:   Ring Match with Theor Spot %d. TheorOmega=%f, "
@@ -573,6 +574,7 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
                i, TheorSpotsYZWE[i][2],
                fabs(SpotsYZOGCorr[sp][2] - TheorSpotsYZWE[i][2]));
       }
+      */
       if (((int)TheorSpotsYZWE[i][7] == (int)SpotsYZOGCorr[sp][6]) &&
           (fabs(SpotsYZOGCorr[sp][2] - TheorSpotsYZWE[i][2]) < 5.0)) {
         for (j = 0; j < 9; j++) {
@@ -2113,14 +2115,16 @@ int main(int argc, char *argv[]) {
                      XFit, lb, ub);
       CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, XFit, spotsYZONew, hkls,
                       Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta, wedge,
-                      chi, SpotsComp, Splist, ErrorInt1, &nSpotsComp, 1);
+                      chi, SpotsComp, Splist, ErrorInt1, &nSpotsComp,
+                      GlobalDebugFlag);
       for (i = 0; i < 3; i++)
         XFit[i + 3] = Euler0[i];
       for (i = 0; i < 6; i++)
         XFit[i + 6] = LatCin[i];
       CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, XFit, spotsYZONew, hkls,
                       Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta, wedge,
-                      chi, SpotsComp, Splist, ErrorInt1, &nSpotsComp, 1);
+                      chi, SpotsComp, Splist, ErrorInt1, &nSpotsComp,
+                      GlobalDebugFlag);
       for (i = 0; i < nSpotsComp; i++)
         for (j = 0; j < 9; j++)
           spotsYZONew[i][j] = Splist[i][j];
@@ -2170,7 +2174,8 @@ int main(int argc, char *argv[]) {
       ErrorInt2 = malloc(3 * sizeof(*ErrorInt2));
       CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, UseXFit, spotsYZONew, hkls,
                       Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta, wedge,
-                      chi, SpotsComp, Splist, ErrorInt2, &nSpotsComp, 1);
+                      chi, SpotsComp, Splist, ErrorInt2, &nSpotsComp,
+                      GlobalDebugFlag);
       for (i = 0; i < nSpotsComp; i++)
         for (j = 0; j < 9; j++)
           spotsYZONew[i][j] = Splist[i][j];
@@ -2209,7 +2214,8 @@ int main(int argc, char *argv[]) {
       ErrorInt3 = malloc(3 * sizeof(*ErrorInt3));
       CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, UseXFit2, spotsYZONew,
                       hkls, Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta,
-                      wedge, chi, SpotsComp, Splist, ErrorInt3, &nSpotsComp, 1);
+                      wedge, chi, SpotsComp, Splist, ErrorInt3, &nSpotsComp,
+                      GlobalDebugFlag);
       for (i = 0; i < nSpotsComp; i++)
         for (j = 0; j < 9; j++)
           spotsYZONew[i][j] = Splist[i][j];
@@ -2257,7 +2263,8 @@ int main(int argc, char *argv[]) {
       ErrorFin = malloc(3 * sizeof(*ErrorFin));
       CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, FinalResult, spotsYZONew,
                       hkls, Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta,
-                      wedge, chi, SpotsComp, Splist, ErrorFin, &nSpotsComp, 1);
+                      wedge, chi, SpotsComp, Splist, ErrorFin, &nSpotsComp,
+                      GlobalDebugFlag);
       printf("SpotID %6d, %6d out of %6d, Errors: %7.2f %6.4f %6.4f, ", SpId,
              thisRowNr, nSptIDs, ErrorFin[0], ErrorFin[1], ErrorFin[2]);
       for (i = 0; i < nSpotsComp; i++)
