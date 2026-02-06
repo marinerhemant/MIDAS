@@ -657,160 +657,159 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
         p_idx++;
       }
     }
-    // free(panelCounts); // VLA - no free needed
-    struct my_func_data *f_datat;
-    f_datat = &f_data;
-    void *trp = (struct my_func_data *)f_datat;
-    nlopt_opt opt;
-    opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-    nlopt_set_lower_bounds(opt, xl);
-    nlopt_set_upper_bounds(opt, xu);
-    nlopt_set_min_objective(opt, problem_function, trp);
-    double minf;
-    nlopt_optimize(opt, x, &minf);
-    nlopt_destroy(opt);
-    *MeanDiff = minf / (OBJ_FUNC_SCALE * nIndices);
+  }
+  // free(panelCounts); // VLA - no free needed
+  struct my_func_data *f_datat;
+  f_datat = &f_data;
+  void *trp = (struct my_func_data *)f_datat;
+  nlopt_opt opt;
+  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
+  nlopt_set_lower_bounds(opt, xl);
+  nlopt_set_upper_bounds(opt, xu);
+  nlopt_set_min_objective(opt, problem_function, trp);
+  double minf;
+  nlopt_optimize(opt, x, &minf);
+  nlopt_destroy(opt);
+  *MeanDiff = minf / (OBJ_FUNC_SCALE * nIndices);
 
-    // 1. Update output parameters with optimized values
-    *LsdFit = x[0];
-    *ybcFit = x[1];
-    *zbcFit = x[2];
-    *ty = x[3];
-    *tz = x[4];
-    *p0 = x[5];
-    *p1 = x[6];
-    *p2 = x[7];
-    *p3 = x[8];
+  // 1. Update output parameters with optimized values
+  *LsdFit = x[0];
+  *ybcFit = x[1];
+  *zbcFit = x[2];
+  *ty = x[3];
+  *tz = x[4];
+  *p0 = x[5];
+  *p1 = x[6];
+  *p2 = x[7];
+  *p3 = x[8];
 
-    // 2. Update panel shifts if applicable
-    // 2. Update panel shifts if applicable
-    if (nPanels > 0) {
-      // Reset fixed panel
-      if (fixPanel >= 0 && fixPanel < nPanels) {
-        panels[fixPanel].dY = 0;
-        panels[fixPanel].dZ = 0;
-      }
-
-      // Update others
-      if (tolShifts > EPS && nPanels > 1) {
-        int xIdx = 9;
-        for (int i = 0; i < nPanels; i++) {
-          if (i == fixPanel)
-            continue;
-          panels[i].dY = x[xIdx++];
-          panels[i].dZ = x[xIdx++];
-        }
-      } else {
-        // Reset others if optimization didn't run for them
-        for (int i = 0; i < nPanels; i++) {
-          if (i == fixPanel)
-            continue;
-          panels[i].dY = 0;
-          panels[i].dZ = 0;
-        }
-      }
+  // 2. Update panel shifts if applicable
+  // 2. Update panel shifts if applicable
+  if (nPanels > 0) {
+    // Reset fixed panel
+    if (fixPanel >= 0 && fixPanel < nPanels) {
+      panels[fixPanel].dY = 0;
+      panels[fixPanel].dZ = 0;
     }
 
-    // 3. Calculate deviations and outlier rejection (using updated params)
-    {
-      double txr, tyr, tzr;
-      txr = deg2rad * tx; // tx is argument
-      tyr = deg2rad * (*ty);
-      tzr = deg2rad * (*tz);
-      double Rx[3][3] = {
-          {1, 0, 0}, {0, cos(txr), -sin(txr)}, {0, sin(txr), cos(txr)}};
-      double Ry[3][3] = {
-          {cos(tyr), 0, sin(tyr)}, {0, 1, 0}, {-sin(tyr), 0, cos(tyr)}};
-      double Rz[3][3] = {
-          {cos(tzr), -sin(tzr), 0}, {sin(tzr), cos(tzr), 0}, {0, 0, 1}};
-      double TRint[3][3], TRs[3][3];
-      MatrixMultF33(Ry, Rz, TRint);
-      MatrixMultF33(Rx, TRint, TRs);
+    // Update others
+    if (tolShifts > EPS && nPanels > 1) {
+      int xIdx = 9;
+      for (int i = 0; i < nPanels; i++) {
+        if (i == fixPanel)
+          continue;
+        panels[i].dY = x[xIdx++];
+        panels[i].dZ = x[xIdx++];
+      }
+    } else {
+      // Reset others if optimization didn't run for them
+      for (int i = 0; i < nPanels; i++) {
+        if (i == fixPanel)
+          continue;
+        panels[i].dY = 0;
+        panels[i].dZ = 0;
+      }
+    }
+  }
 
-      double *tempDiffs = malloc(nIndices * sizeof(double));
-      for (int k = 0; k < nIndices; k++)
-        tempDiffs[k] = -1.0;
+  // 3. Calculate deviations and outlier rejection (using updated params)
+  {
+    double txr, tyr, tzr;
+    txr = deg2rad * tx; // tx is argument
+    tyr = deg2rad * (*ty);
+    tzr = deg2rad * (*tz);
+    double Rx[3][3] = {
+        {1, 0, 0}, {0, cos(txr), -sin(txr)}, {0, sin(txr), cos(txr)}};
+    double Ry[3][3] = {
+        {cos(tyr), 0, sin(tyr)}, {0, 1, 0}, {-sin(tyr), 0, cos(tyr)}};
+    double Rz[3][3] = {
+        {cos(tzr), -sin(tzr), 0}, {sin(tzr), cos(tzr), 0}, {0, 0, 1}};
+    double TRint[3][3], TRs[3][3];
+    MatrixMultF33(Ry, Rz, TRint);
+    MatrixMultF33(Rx, TRint, TRs);
 
-      double totalSum = 0;
-      int validCount = 0;
+    double *tempDiffs = malloc(nIndices * sizeof(double));
+    for (int k = 0; k < nIndices; k++)
+      tempDiffs[k] = -1.0;
 
-      int i;
-      double n0 = 2, n1 = 4, n2 = 2;
-      double Yc, Zc, Rad, Eta, RNorm, DistortFunc, Rcorr, RIdeal, Diff, EtaT;
-      double LsdV = *LsdFit;
-      double ybcV = *ybcFit;
-      double zbcV = *zbcFit;
-      double p0V = *p0;
-      double p1V = *p1;
-      double p2V = *p2;
-      double p3V = *p3;
+    double totalSum = 0;
+    int validCount = 0;
+
+    int i;
+    double n0 = 2, n1 = 4, n2 = 2;
+    double Yc, Zc, Rad, Eta, RNorm, DistortFunc, Rcorr, RIdeal, Diff, EtaT;
+    double LsdV = *LsdFit;
+    double ybcV = *ybcFit;
+    double zbcV = *zbcFit;
+    double p0V = *p0;
+    double p1V = *p1;
+    double p2V = *p2;
+    double p3V = *p3;
+
+    for (i = 0; i < nIndices; i++) {
+      double dY = 0, dZ = 0;
+      int pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
+      if (pIdx == -1)
+        continue; // Skip invalid points
+
+      if (pIdx >= 0) {
+        dY = panels[pIdx].dY;
+        dZ = panels[pIdx].dZ;
+      }
+      Yc = -(YMean[i] + dY - ybcV) * px;
+      Zc = (ZMean[i] + dZ - zbcV) * px;
+      double ABC[3] = {0, Yc, Zc};
+      double ABCPr[3];
+      MatrixMult(TRs, ABC, ABCPr);
+      double XYZ[3] = {LsdV + ABCPr[0], ABCPr[1], ABCPr[2]};
+      Rad = (LsdV / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
+      Eta = CalcEtaAngle(XYZ[1], XYZ[2]);
+      RNorm = Rad / MaxRad;
+      EtaT = 90 - Eta;
+      DistortFunc =
+          (p0V * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
+          (p1V * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3V)))) +
+          (p2V * (pow(RNorm, n2))) + 1;
+      Rcorr = Rad * DistortFunc;
+      RIdeal = LsdV * tan(deg2rad * IdealTtheta[i]);
+      Diff = fabs(1 - (Rcorr / RIdeal));
+      tempDiffs[i] = Diff;
+      totalSum += Diff;
+      validCount++;
+    }
+
+    double currentMean = (validCount > 0) ? (totalSum / validCount) : 0;
+
+    if (outlierFactor > 0) {
+      double threshold = outlierFactor * currentMean;
+      double cleanSum = 0;
+      int cleanCount = 0;
 
       for (i = 0; i < nIndices; i++) {
-        double dY = 0, dZ = 0;
-        int pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
-        if (pIdx == -1)
-          continue; // Skip invalid points
-
-        if (pIdx >= 0) {
-          dY = panels[pIdx].dY;
-          dZ = panels[pIdx].dZ;
+        if (tempDiffs[i] < 0)
+          continue;
+        if (tempDiffs[i] <= threshold) {
+          cleanSum += tempDiffs[i];
+          cleanCount++;
         }
-        Yc = -(YMean[i] + dY - ybcV) * px;
-        Zc = (ZMean[i] + dZ - zbcV) * px;
-        double ABC[3] = {0, Yc, Zc};
-        double ABCPr[3];
-        MatrixMult(TRs, ABC, ABCPr);
-        double XYZ[3] = {LsdV + ABCPr[0], ABCPr[1], ABCPr[2]};
-        Rad = (LsdV / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
-        Eta = CalcEtaAngle(XYZ[1], XYZ[2]);
-        RNorm = Rad / MaxRad;
-        EtaT = 90 - Eta;
-        DistortFunc =
-            (p0V * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
-            (p1V * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3V)))) +
-            (p2V * (pow(RNorm, n2))) + 1;
-        Rcorr = Rad * DistortFunc;
-        RIdeal = LsdV * tan(deg2rad * IdealTtheta[i]);
-        Diff = fabs(1 - (Rcorr / RIdeal));
-        tempDiffs[i] = Diff;
-        totalSum += Diff;
-        validCount++;
       }
 
-      double currentMean = (validCount > 0) ? (totalSum / validCount) : 0;
-
-      if (outlierFactor > 0) {
-        double threshold = outlierFactor * currentMean;
-        double cleanSum = 0;
-        int cleanCount = 0;
-
-        for (i = 0; i < nIndices; i++) {
-          if (tempDiffs[i] < 0)
-            continue;
-          if (tempDiffs[i] <= threshold) {
-            cleanSum += tempDiffs[i];
-            cleanCount++;
-          }
-        }
-
-        if (cleanCount > 0) {
-          *MeanDiff = cleanSum / cleanCount;
-          printf(
-              "Outlier rejection (Factor %.2f): Excluded %d / %d points. Mean "
-              "Strain: %.8f -> %.8f\n",
-              outlierFactor, validCount - cleanCount, validCount, currentMean,
-              *MeanDiff);
-        } else {
-          *MeanDiff = currentMean;
-        }
+      if (cleanCount > 0) {
+        *MeanDiff = cleanSum / cleanCount;
+        printf("Outlier rejection (Factor %.2f): Excluded %d / %d points. Mean "
+               "Strain: %.8f -> %.8f\n",
+               outlierFactor, validCount - cleanCount, validCount, currentMean,
+               *MeanDiff);
       } else {
-        // No outlier rejection, but update *MeanDiff to use the correct
-        // denominator (validCount)
         *MeanDiff = currentMean;
       }
-
-      free(tempDiffs);
+    } else {
+      // No outlier rejection, but update *MeanDiff to use the correct
+      // denominator (validCount)
+      *MeanDiff = currentMean;
     }
+
+    free(tempDiffs);
   }
 }
 
