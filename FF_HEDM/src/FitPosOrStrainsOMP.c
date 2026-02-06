@@ -64,6 +64,8 @@ extern long long int totNrPixelsBigDetector;
 extern double pixelsize;
 extern double DetParams[4][10];
 
+static int GlobalDebugFlag = 0;
+
 int BigDetSize = 0;
 int *BigDetector;
 long long int totNrPixelsBigDetector;
@@ -607,6 +609,9 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
                          (SpotsYZOGCorr[sp][1] - TheorSpotsYZWER[RowBest][1]));
     diffOmeM = fabs(SpotsYZOGCorr[sp][2] - TheorSpotsYZWER[RowBest][2]);
     //~ printf("%lf\n",minAngle);
+    if (notIniRun == 1 && sp < 5 && nTheorSpotsYZWER > 0) {
+      printf("DEBUG OMP: Spot %d best minAngle=%f (Limit 1.0)\n", sp, minAngle);
+    }
     if (minAngle < 1) {
       MatchDiff[nMatched][0] = minAngle;
       MatchDiff[nMatched][1] = diffLenM;
@@ -1321,7 +1326,8 @@ void FitPositionIni(double X0[12], int nSpotsComp, double **spotsYZO, int nhkls,
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
-  printf("DEBUG OMP FitPositionIni: %10.30f \n", minf);
+  if (GlobalDebugFlag)
+    printf("DEBUG OMP FitPositionIni: %10.30f \n", minf);
   for (i = 0; i < n; i++)
     XFit[i] = x[i];
   FreeMemMatrix(f_data.spotsYZO, nSpotsComp);
@@ -1387,7 +1393,8 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO, int nhkls,
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
-  printf("DEBUG OMP FitOrientIni: %10.30f \n", minf);
+  if (GlobalDebugFlag)
+    printf("DEBUG OMP FitOrientIni: %10.30f \n", minf);
   for (i = 0; i < n; i++)
     XFit[i] = x[i];
   FreeMemMatrix(f_data.spotsYZO, nSpotsComp);
@@ -1455,7 +1462,8 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO, int nhkls,
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
-  printf("DEBUG OMP FitStrainIni: %10.30f \n", minf);
+  if (GlobalDebugFlag)
+    printf("DEBUG OMP FitStrainIni: %10.30f \n", minf);
   for (i = 0; i < n; i++)
     XFit[i] = x[i];
   FreeMemMatrix(f_data.spotsYZO, nSpotsComp);
@@ -1523,7 +1531,8 @@ void FitPosSec(double X0[3], int nSpotsComp, double **spotsYZO, int nhkls,
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
-  printf("DEBUG OMP FitPosSec: %10.30f \n", minf);
+  if (GlobalDebugFlag)
+    printf("DEBUG OMP FitPosSec: %10.30f \n", minf);
   for (i = 0; i < n; i++)
     XFit[i] = x[i];
   FreeMemMatrix(f_data.spotsYZO, nSpotsComp);
@@ -1749,6 +1758,12 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %lf", dummy, &MargABG);
+      continue;
+    }
+    str = "DebugMode ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &GlobalDebugFlag);
       continue;
     }
   }
@@ -2014,12 +2029,16 @@ int main(int argc, char *argv[]) {
       ErrorIni = malloc(3 * sizeof(*ErrorIni));
       int nSpotsComp;
       ConcatPosEulLatc(Ini, Pos0, Euler0, LatCin);
-      printf("DEBUG OMP: Calling initial CalcAngleErrors. nSpotsYZO=%d, "
-             "nhkls=%d\n",
-             nSpotsYZO, nhkls);
+      ConcatPosEulLatc(Ini, Pos0, Euler0, LatCin);
+      if (GlobalDebugFlag) {
+        printf("DEBUG OMP: Calling initial CalcAngleErrors. nSpotsYZO=%d, "
+               "nhkls=%d\n",
+               nSpotsYZO, nhkls);
+      }
       CalcAngleErrors(nSpotsYZO, nhkls, nOmeRanges, Ini, spotsYZO, hkls, Lsd,
                       Wavelength, OmegaRanges, BoxSizes, MinEta, wedge, chi,
-                      SpotsComp, Splist, ErrorIni, &nSpotsComp, 1);
+                      SpotsComp, Splist, ErrorIni, &nSpotsComp,
+                      GlobalDebugFlag);
       double **spotsYZONew;
       spotsYZONew = allocMatrix(nSpotsComp, 9);
       for (i = 0; i < nSpotsComp; i++) {
