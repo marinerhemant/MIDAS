@@ -395,6 +395,21 @@ def process_dataset_until_binning(
     cmd_setup = f"{os.path.join(bin_directory, 'FitSetupZarr')} {outFStem}"
     safely_run_command(cmd_setup, result_dir, f'{result_dir}/output/fit_setup_out.csv', f'{result_dir}/output/fit_setup_err.csv', "Data transformation")
 
+    # Propagate RingsToExcludeFraction
+    try:
+        tgt_params = os.path.join(result_dir, "paramstest.txt")
+        # Ensure paramstest.txt exists if it doesn't already
+        if not os.path.exists(tgt_params) and os.path.exists(ps_fn):
+             shutil.copy2(ps_fn, tgt_params)
+        
+        with open(ps_fn, 'r') as pf:
+            for line in pf:
+                if line.strip().startswith('RingsToExcludeFraction'):
+                     with open(tgt_params, "a") as paramstestF:
+                         paramstestF.write(line)
+    except Exception as e:
+        logger.error(f"Failed to propagate RingsToExcludeFraction: {e}")
+
     logger.info(f"[{dataset_id}] Binning data. Time till now: {time.time() - t0:.2f} seconds.")
     cmd_bin = f"{os.path.join(bin_directory, 'SaveBinData')}"
     safely_run_command(cmd_bin, result_dir, f'{result_dir}/output/binning_out.csv', f'{result_dir}/output/binning_err.csv', "Data binning")

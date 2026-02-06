@@ -940,6 +940,16 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
             except Exception as e:
                 raise RuntimeError(f"Failed to add grainsFile parameter to paramstest.txt: {e}")
 
+        # Propagate RingsToExcludeFraction
+        try:
+            with open(ps_fn, 'r') as pf:
+                for line in pf:
+                    if line.strip().startswith('RingsToExcludeFraction'):
+                         with open(f"{result_dir}/paramstest.txt", "a") as paramstestF:
+                             paramstestF.write(line)
+        except Exception as e:
+            logger.error(f"Failed to propagate RingsToExcludeFraction: {e}")
+
         # Bin data
         logger.info(f"Binning data. Time till now: {time.time() - t0}, workingdir: {result_dir}")
         try:
