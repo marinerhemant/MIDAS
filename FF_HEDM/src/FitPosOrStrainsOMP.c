@@ -1162,7 +1162,8 @@ static double problem_function_PosIni(unsigned n, const double *x, double *grad,
   for (i = 0; i < n; i++)
     XIn[i] = x[i];
   return FitErrorsPosT(XIn, nSpotsComp, spotsYZO, nhkls, hkls, Lsd, Wavelength,
-                       nOmeRanges, OmegaRanges, BoxSizes, MinEta, wedge, chi, f_data->scratch);
+                       nOmeRanges, OmegaRanges, BoxSizes, MinEta, wedge, chi,
+                       f_data->scratch);
 }
 
 static double problem_function_OrientIni(unsigned n, const double *x,
@@ -1371,7 +1372,6 @@ void FitPositionIni(double X0[12], int nSpotsComp, double **spotsYZO, int nhkls,
     printf("DEBUG OMP FitPositionIni: %10.30f \n", minf);
   for (i = 0; i < n; i++)
     XFit[i] = x[i];
-  FreeMemMatrix(f_data.spotsYZO, nSpotsComp);
   FreeMemMatrix(f_data.spotsYZO, nSpotsComp);
   FreeMemMatrix(f_data.hkls, nhkls);
   FreeMemMatrix(f_data.scratch->hkls, nhkls);
