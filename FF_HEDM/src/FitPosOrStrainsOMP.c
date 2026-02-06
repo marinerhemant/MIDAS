@@ -1422,7 +1422,7 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch->hkls = allocMatrix(nhkls, 7);
   f_data.scratch->TheorSpots = allocMatrix(MaxNSpotsBest, 9);
   f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 4);
-  f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 3);
+  f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 4);
   f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7);
   f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
   f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
