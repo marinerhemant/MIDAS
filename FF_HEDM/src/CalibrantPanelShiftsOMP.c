@@ -502,7 +502,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
   int i;
   double TotalDiff = 0;
 
-#pragma omp parallel for reduction(+ : TotalDiff)
+#pragma omp parallel for num_threads(numProcs) reduction(+ : TotalDiff)
   for (i = 0; i < nIndices; i++) {
     double n0 = 2, n1 = 4, n2 = 2, Yc, Zc;
     double Rad, Eta, RNorm, DistortFunc, Rcorr, RIdeal, EtaT;
