@@ -625,11 +625,11 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
     Error[2] += fabs(MatchDiff[i][0] / nMatched);
   }
   // if (notIniRun == 1) {
-  //   printf("DEBUG OMP: nMatched=%d, Errors=%f %f %f, Pos=%f %f %f, Orient=%f
-  //   "
-  //          "%f %f\n",
-  //          nMatched, Error[0], Error[1], Error[2], x[0], x[1], x[2], x[3],
-  //          x[4], x[5]);
+  if (notIniRun == 1)
+    printf("DEBUG OMP: nMatched=%d, Errors=%f %f %f, Pos=%f %f %f, Orient=%f "
+           "%f %f\n",
+           nMatched, Error[0], Error[1], Error[2], x[0], x[1], x[2], x[3], x[4],
+           x[5]);
   // }
   FreeMemMatrix(MatchDiff, nrMatchedIndexer);
   FreeMemMatrix(hkls, nhkls);
@@ -1304,7 +1304,7 @@ void FitPositionIni(double X0[12], int nSpotsComp, double **spotsYZO, int nhkls,
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
-  //~ printf("%10.30f \n", minf);
+  printf("DEBUG OMP FitPositionIni: %10.30f \n", minf);
   for (i = 0; i < n; i++)
     XFit[i] = x[i];
   FreeMemMatrix(f_data.spotsYZO, nSpotsComp);
@@ -1370,7 +1370,7 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO, int nhkls,
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
-  //~ printf("%10.30f \n", minf);
+  printf("DEBUG OMP FitOrientIni: %10.30f \n", minf);
   for (i = 0; i < n; i++)
     XFit[i] = x[i];
   FreeMemMatrix(f_data.spotsYZO, nSpotsComp);
@@ -1438,7 +1438,7 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO, int nhkls,
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
-  //~ printf("%10.30f \n", minf);
+  printf("DEBUG OMP FitStrainIni: %10.30f \n", minf);
   for (i = 0; i < n; i++)
     XFit[i] = x[i];
   FreeMemMatrix(f_data.spotsYZO, nSpotsComp);
@@ -1506,7 +1506,7 @@ void FitPosSec(double X0[3], int nSpotsComp, double **spotsYZO, int nhkls,
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
-  //~ printf("%10.30f \n", minf);
+  printf("DEBUG OMP FitPosSec: %10.30f \n", minf);
   for (i = 0; i < n; i++)
     XFit[i] = x[i];
   FreeMemMatrix(f_data.spotsYZO, nSpotsComp);
