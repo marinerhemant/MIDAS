@@ -508,6 +508,10 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
   // TheorSpots are calculated according to LsdMean in case of Hydra
   CalcDiffractionSpots(Lsd, MinEta, OmegaRange, nOmegaRanges, hkls, nhkls,
                        BoxSize, &nTspots, OrientMatrix, TheorSpots);
+  if (notIniRun == 1)
+    printf(
+        "DEBUG OMP: CalcAngleErrors Entry. nspots=%d, nhkls=%d, nTspots=%d\n",
+        nspots, nhkls, nTspots);
   double **SpotsYZOGCorr;
   SpotsYZOGCorr = allocMatrix(nrMatchedIndexer, 7);
   double DisplY, DisplZ, ys, zs, Omega, Radius, Theta, lenK, yt, zt;
@@ -548,12 +552,25 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
   TheorSpotsYZWER = allocMatrix(MaxNSpotsBest, 9);
   Angles = malloc(MaxNSpotsBest * sizeof(*Angles));
   for (sp = 0; sp < nrMatchedIndexer; sp++) {
+    if (notIniRun == 1 && sp < 5) {
+      printf(
+          "DEBUG OMP: Inspecting Obs Spot %d. Ring=%f, Omega=%f, Y=%f, Z=%f\n",
+          sp, SpotsYZOGCorr[sp][6], SpotsYZOGCorr[sp][2], SpotsYZOGCorr[sp][0],
+          SpotsYZOGCorr[sp][1]);
+    }
     nTheorSpotsYZWER = 0;
     GObs[0] = SpotsYZOGCorr[sp][3];
     GObs[1] = SpotsYZOGCorr[sp][4];
     GObs[2] = SpotsYZOGCorr[sp][5];
     NormGObs = CalcNorm3(GObs[0], GObs[1], GObs[2]);
     for (i = 0; i < nTspots; i++) {
+      if (notIniRun == 1 && sp < 5 &&
+          ((int)TheorSpotsYZWE[i][7] == (int)SpotsYZOGCorr[sp][6])) {
+        printf("DEBUG OMP:   Ring Match with Theor Spot %d. TheorOmega=%f, "
+               "Diff=%f. Accept if < 5.0\n",
+               i, TheorSpotsYZWE[i][2],
+               fabs(SpotsYZOGCorr[sp][2] - TheorSpotsYZWE[i][2]));
+      }
       if (((int)TheorSpotsYZWE[i][7] == (int)SpotsYZOGCorr[sp][6]) &&
           (fabs(SpotsYZOGCorr[sp][2] - TheorSpotsYZWE[i][2]) < 5.0)) {
         for (j = 0; j < 9; j++) {
