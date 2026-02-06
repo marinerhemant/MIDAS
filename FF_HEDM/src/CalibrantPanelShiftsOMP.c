@@ -507,10 +507,12 @@ static double problem_function(unsigned n, const double *x, double *grad,
     double n0 = 2, n1 = 4, n2 = 2, Yc, Zc;
     double Rad, Eta, RNorm, DistortFunc, Rcorr, RIdeal, EtaT;
     double dY = 0, dZ = 0;
-    int pIdx =
-        GetPanelIndex((double)YMean[i], (double)ZMean[i], nPanels, panels);
-    if (pIdx == -1) {
-      continue;
+    int pIdx = -1;
+    if (nPanels > 0) {
+      pIdx = GetPanelIndex((double)YMean[i], (double)ZMean[i], nPanels, panels);
+      if (pIdx == -1) {
+        continue;
+      }
     }
 
     dY = 0;
@@ -637,6 +639,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
         x[p_idx] = panels[i].dY;
 
         if (panelCounts[i] < minIndices) {
+          x[p_idx] = 0;
           xl[p_idx] = 0;
           xu[p_idx] = 0;
         } else {
@@ -648,6 +651,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
         x[p_idx] = panels[i].dZ;
 
         if (panelCounts[i] < minIndices) {
+          x[p_idx] = 0;
           xl[p_idx] = 0;
           xu[p_idx] = 0;
         } else {
@@ -658,7 +662,6 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
       }
     }
   }
-  // free(panelCounts); // VLA - no free needed
   struct my_func_data *f_datat;
   f_datat = &f_data;
   void *trp = (struct my_func_data *)f_datat;
@@ -683,7 +686,6 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   *p2 = x[7];
   *p3 = x[8];
 
-  // 2. Update panel shifts if applicable
   // 2. Update panel shifts if applicable
   if (nPanels > 0) {
     // Reset fixed panel
@@ -748,9 +750,12 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
 
     for (i = 0; i < nIndices; i++) {
       double dY = 0, dZ = 0;
-      int pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
-      if (pIdx == -1)
-        continue; // Skip invalid points
+      int pIdx = -1;
+      if (nPanels > 0) {
+        pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
+        if (pIdx == -1)
+          continue; // Skip invalid points
+      }
 
       if (pIdx >= 0) {
         dY = panels[pIdx].dY;
@@ -838,10 +843,13 @@ static inline void CorrectTiltSpatialDistortion(
   int nValidPoints = 0;
   for (i = 0; i < nIndices; i++) {
     double dY = 0, dZ = 0;
-    int pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
-    if (pIdx == -1) {
-      Diffs[i] = -1.0; // Mark as invalid
-      continue;
+    int pIdx = -1;
+    if (nPanels > 0) {
+      pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
+      if (pIdx == -1) {
+        Diffs[i] = -1.0; // Mark as invalid
+        continue;
+      }
     }
     nValidPoints++;
 
