@@ -2014,9 +2014,12 @@ int main(int argc, char *argv[]) {
       ErrorIni = malloc(3 * sizeof(*ErrorIni));
       int nSpotsComp;
       ConcatPosEulLatc(Ini, Pos0, Euler0, LatCin);
+      printf("DEBUG OMP: Calling initial CalcAngleErrors. nSpotsYZO=%d, "
+             "nhkls=%d\n",
+             nSpotsYZO, nhkls);
       CalcAngleErrors(nSpotsYZO, nhkls, nOmeRanges, Ini, spotsYZO, hkls, Lsd,
                       Wavelength, OmegaRanges, BoxSizes, MinEta, wedge, chi,
-                      SpotsComp, Splist, ErrorIni, &nSpotsComp, 0);
+                      SpotsComp, Splist, ErrorIni, &nSpotsComp, 1);
       double **spotsYZONew;
       spotsYZONew = allocMatrix(nSpotsComp, 9);
       for (i = 0; i < nSpotsComp; i++) {
