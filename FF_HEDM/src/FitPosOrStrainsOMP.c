@@ -790,24 +790,23 @@ FitErrorsPosSec(double x[3], int nSpotsComp, double spotsYZOIn[nSpotsComp][9],
   double **TheorSpotsYZWE = scratch->TheorSpotsYZWE;
   double **SpotsYZOGCorr = scratch->SpotsYZOGCorr;
 
-  diff = 0;
+  double PosObs[2], PosTheor[2], Spnr;
+  double Error = 0;
   for (i = 0; i < nSpotsComp; i++) {
-    min_diff = 100000;
+    PosObs[0] = SpotsYZOGCorr[i][0];
+    PosObs[1] = SpotsYZOGCorr[i][1];
+    Spnr = SpotsYZOGCorr[i][2];
     for (k = 0; k < nTspots; k++) {
-      if (fabs(SpotsYZOGCorr[i][0] - TheorSpotsYZWE[k][0]) <
-          800) { // Optimization for large Y check?
-        double d = CalcNorm3(SpotsYZOGCorr[i][0] - TheorSpotsYZWE[k][0],
-                             SpotsYZOGCorr[i][1] - TheorSpotsYZWE[k][1],
-                             SpotsYZOGCorr[i][2] - TheorSpotsYZWE[k][2]);
-        if (d < min_diff) {
-          min_diff = d;
-        }
+      if ((int)TheorSpotsYZWE[k][2] == (int)Spnr) {
+        PosTheor[0] = TheorSpotsYZWE[k][0];
+        PosTheor[1] = TheorSpotsYZWE[k][1];
+        Error +=
+            CalcNorm2((PosObs[0] - PosTheor[0]), (PosObs[1] - PosTheor[1]));
+        break;
       }
     }
-    if (min_diff < 100)
-      diff += min_diff;
   }
-  return diff;
+  return Error;
 }
 
 static inline double
