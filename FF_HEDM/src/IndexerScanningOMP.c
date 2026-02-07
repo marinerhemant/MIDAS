@@ -320,7 +320,7 @@ void CalcOmega(RealType x, RealType y, RealType z, RealType v, RealType vSq,
   if (fabs(y) < almostzero) {
     if (x != 0) {
       RealType cosome1 = -v / x;
-      if (fabs(cosome1 <= 1)) {
+      if (fabs(cosome1) <= 1.0) {
         ome = acos(cosome1) * rad2deg;
         RealType sinome1 = sqrt(1 - cosome1 * cosome1);
         omegas[*nsol] = ome;
@@ -350,7 +350,7 @@ void CalcOmega(RealType x, RealType y, RealType z, RealType v, RealType vSq,
     RealType eqa, eqb, diffa, diffb;
     if (discr >= 0) {
       cosome1 = (-b + sqrt(discr)) / (2 * a);
-      if (fabs(cosome1) <= 1) {
+      if (fabs(cosome1) <= 1.0) {
         ome1a = acos(cosome1);
         ome1b = -ome1a;
         RealType sinome1 = sqrt(1 - cosome1 * cosome1);

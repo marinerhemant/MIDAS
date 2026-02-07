@@ -151,7 +151,7 @@ static inline void CalcOmega(double x, double y, double z, double theta,
   if (fabs(y) < almostzero) {
     if (x != 0) {
       double cosome1 = -v / x;
-      if (fabs(cosome1 <= 1)) {
+      if (fabs(cosome1) <= 1.0) {
         ome = acos(cosome1) * rad2deg;
         omegas[*nsol] = ome;
         *nsol = *nsol + 1;
