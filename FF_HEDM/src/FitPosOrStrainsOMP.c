@@ -2097,7 +2097,7 @@ int main(int argc, char *argv[]) {
         spotPosAllSpots = (int)spotIDS[i] - 1;
         // check if spotPosAllSpots + 1 > nSpots, then print and error and kill
         // the process
-        if (spotPosAllSpots >= nSpots) {
+        if (spotPosAllSpots >= nSpots || spotPosAllSpots < 0) {
           printf("Data mismatch! Original: %d, Looked for "
                  "spotNr %d, nSpots %d, skipping this spot.\n",
                  (int)spotIDS[i], (int)(spotPosAllSpots + 1), (int)nSpots);
