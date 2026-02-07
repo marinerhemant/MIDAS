@@ -1629,7 +1629,7 @@ void CalcIA(RealType **GrainMatches, int ngrains, RealType **AllGrainSpots,
   RealType x1, y1, z1, w1, x2, y2, z2, w2, gv1x, gv1y, gv1z, gv2x, gv2y, gv2z;
   int nspots;
   int rt = 0;
-  IAgrainspots = malloc(5000 * sizeof(*IAgrainspots));
+  IAgrainspots = malloc(2 * MAX_N_HKLS * sizeof(*IAgrainspots));
   for (g = 0; g < ngrains; g++) {
     nspots = GrainMatches[g][12];
     for (r = 0; r < nspots; r++) {
