@@ -27,7 +27,7 @@ Change to the MIDAS directory.
 cd MIDAS
 ```
 
-** To compile on Windows, please use the following steps after installing wsl UBUNTU:**
+**To compile on Windows, please use the following steps after installing wsl UBUNTU:**
 
 ```
 sudo ./build_wsl_windows.sh
