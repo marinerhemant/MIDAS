@@ -2097,7 +2097,7 @@ int main(int argc, char *argv[]) {
         spotPosAllSpots = (int)spotIDS[i] - 1;
         // check if spotPosAllSpots + 1 > nSpots, then print and error and kill
         // the process
-        if (spotPosAllSpots + 1 > nSpots) {
+        if (spotPosAllSpots >= nSpots) {
           printf("Data mismatch! Behavior undefined. Original: %d, Looked for "
                  "%zu, found %zu\n",
                  (int)spotIDS[i], spotPosAllSpots + 1, nSpots);
