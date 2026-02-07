@@ -2098,14 +2098,14 @@ int main(int argc, char *argv[]) {
         // check if spotPosAllSpots + 1 > nSpots, then print and error and kill
         // the process
         if (spotPosAllSpots + 1 >= nSpots) {
-          printf("Data mismatch! Behavior undefined. Original: %d, Looked for "
-                 "spotNr %d, nSpots %d\n",
+          printf("Data mismatch! Original: %d, Looked for "
+                 "spotNr %d, nSpots %d, skipping this spot.\n",
                  (int)spotIDS[i], (int)(spotPosAllSpots + 1), (int)nSpots);
           continue;
         }
         if (spotPosAllSpots + 1 != (size_t)AllSpots[spotPosAllSpots * 14 + 4]) {
-          printf("Data mismatch! Behavior undefined. Original: %d, Looked for "
-                 "%d, found %d\n",
+          printf("Data mismatch! Original: %d, Looked for %d, found %d, "
+                 "skipping this spot.\n",
                  (int)spotIDS[i], (int)(spotPosAllSpots + 1),
                  (int)AllSpots[spotPosAllSpots * 14 + 4]);
           continue;
