@@ -243,7 +243,7 @@ void CalcOmega(RealType x, RealType y, RealType z, RealType theta,
   if (fabs(y) < almostzero) {
     if (x != 0) {
       RealType cosome1 = -v / x;
-      if (fabs(cosome1 <= 1)) {
+      if (fabs(cosome1) <= 1.0) {
         ome = acos(cosome1) * rad2deg;
         omegas[*nsol] = ome;
         *nsol = *nsol + 1;
@@ -266,7 +266,7 @@ void CalcOmega(RealType x, RealType y, RealType z, RealType theta,
     RealType eqa, eqb, diffa, diffb;
     if (discr >= 0) {
       cosome1 = (-b + sqrt(discr)) / (2 * a);
-      if (fabs(cosome1) <= 1) {
+      if (fabs(cosome1) <= 1.0) {
         ome1a = acos(cosome1);
         ome1b = -ome1a;
         eqa = -x * cos(ome1a) + y * sin(ome1a);
@@ -477,6 +477,15 @@ void CompareSpots(RealType **TheorSpots, int nTheorSpots, RealType *ObsSpots,
       GrainSpots[nMatched][12] = ObsSpots[spotRowBest * 9 + 3];
       GrainSpots[nMatched][13] = ObsSpots[spotRowBest * 9 + 3] - RefRad;
       GrainSpots[nMatched][14] = ObsSpots[spotRowBest * 9 + 4];
+      if (GrainSpots[nMatched][14] > 1e6 || GrainSpots[nMatched][14] < -1e6) {
+        printf("IndexerOMP Debug: Suspicious value at spotRowBest=%d (File "
+               "index %d). Val=%f\n",
+               spotRowBest, spotRowBest * 9 + 4, GrainSpots[nMatched][14]);
+        if (spotRowBest >= n_spots) {
+          printf("IndexerOMP Error: spotRowBest %d >= n_spots %d!\n",
+                 spotRowBest, n_spots);
+        }
+      }
       nMatched++;
       (*nMatchesFracCalc)++;
       for (int i = 0; i < nRingsToRejectCalc; i++) {
