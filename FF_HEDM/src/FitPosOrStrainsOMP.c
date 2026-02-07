@@ -2099,15 +2099,16 @@ int main(int argc, char *argv[]) {
         // the process
         if (spotPosAllSpots + 1 >= nSpots) {
           printf("Data mismatch! Behavior undefined. Original: %d, Looked for "
-                 "row Nr %d, nSpots %zu\n",
-                 (int)spotIDS[i], spotPosAllSpots + 1, nSpots);
-          exit(1);
+                 "spotNr %d, nSpots %d\n",
+                 (int)spotIDS[i], (int)(spotPosAllSpots + 1), (int)nSpots);
+          continue;
         }
         if (spotPosAllSpots + 1 != (size_t)AllSpots[spotPosAllSpots * 14 + 4]) {
           printf("Data mismatch! Behavior undefined. Original: %d, Looked for "
-                 "%zu, found %zu\n",
-                 (int)spotIDS[i], spotPosAllSpots + 1,
-                 (size_t)AllSpots[spotPosAllSpots * 14 + 4]);
+                 "%d, found %d\n",
+                 (int)spotIDS[i], (int)(spotPosAllSpots + 1),
+                 (int)AllSpots[spotPosAllSpots * 14 + 4]);
+          continue;
         }
         spotsYZO[i][0] = AllSpots[spotPosAllSpots * 14 + 0];
         spotsYZO[i][1] = AllSpots[spotPosAllSpots * 14 + 1];
