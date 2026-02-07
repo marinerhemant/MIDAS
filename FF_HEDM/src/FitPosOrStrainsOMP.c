@@ -2101,6 +2101,7 @@ int main(int argc, char *argv[]) {
           printf("Data mismatch! Original: %d, Looked for "
                  "spotNr %d, nSpots %d, skipping this spot.\n",
                  (int)spotIDS[i], (int)(spotPosAllSpots + 1), (int)nSpots);
+          fflush(stdout);
           continue;
         }
         if (spotPosAllSpots + 1 != (size_t)AllSpots[spotPosAllSpots * 14 + 4]) {
@@ -2108,6 +2109,7 @@ int main(int argc, char *argv[]) {
                  "skipping this spot.\n",
                  (int)spotIDS[i], (int)(spotPosAllSpots + 1),
                  (int)AllSpots[spotPosAllSpots * 14 + 4]);
+          fflush(stdout);
           continue;
         }
         spotsYZO[i][0] = AllSpots[spotPosAllSpots * 14 + 0];
