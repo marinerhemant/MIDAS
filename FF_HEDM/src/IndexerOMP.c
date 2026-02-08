@@ -1606,9 +1606,9 @@ int WriteBestMatchBin(RealType **GrainMatches, RealType **AllGrainSpots,
       int idxx = 0;
       outArr[r * 2 + 0] = AllGrainSpots[r][14];
       outArr[r * 2 + 1] = AllGrainSpots[r][12];
-      // print what was written
-      printf("Wrote to file %s: GrainID: %lf, SpotNr: %d\n", outFN2,
-             AllGrainSpots[r][14], (int)AllGrainSpots[r][12]);
+      // // print what was written
+      // printf("Wrote to file %s: GrainID: %lf, SpotNr: %d\n", outFN2,
+      //        AllGrainSpots[r][14], (int)AllGrainSpots[r][12]);
     }
   }
   size_t offst2 = offsetLoc;

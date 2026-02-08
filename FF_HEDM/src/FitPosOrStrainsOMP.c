@@ -2046,6 +2046,10 @@ int main(int argc, char *argv[]) {
         Pos0[i] = locArr[i + 10];
       NrExpected = locArr[13];
       NrObserved = locArr[14];
+      if (NrObserved == 0) {
+        printf("No spots found for ID: %d.\n", thisRowNr);
+        continue;
+      }
       free(locArr);
       completeness = NrObserved / NrExpected;
       char SpotsCompFN[2048];
@@ -2093,10 +2097,6 @@ int main(int argc, char *argv[]) {
       // spotIDS[i] should correspond to AllSpots[(spotIDS[i]-1)*14+...], this
       // should reduce execution time.
       size_t spotPosAllSpots;
-      if (nSpotsBest == 0) {
-        printf("No spots found for ID: %d.\n", thisRowNr);
-        continue;
-      }
       for (i = 0; i < nSpotsBest; i++) {
         spotPosAllSpots = (int)spotIDS[i] - 1;
         // check if spotPosAllSpots + 1 > nSpots, then print and error and
