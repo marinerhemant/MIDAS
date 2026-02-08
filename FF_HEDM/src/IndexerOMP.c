@@ -1211,6 +1211,8 @@ struct TParams {
   int UseFriedelPairs;
   int RingsToReject[MAX_N_RINGS];
   int nRingsToRejectCalc;
+  int IndexBestFD;
+  int IndexBestFullFD;
 };
 
 size_t ReadBigDet(char *cwd) {
@@ -1565,23 +1567,9 @@ int WriteBestMatch(char *FileName, RealType **GrainMatches, int ngrains,
 }
 
 int WriteBestMatchBin(RealType **GrainMatches, RealType **AllGrainSpots,
-                      int nrows, char *FolderName, int offsetLoc) {
+                      int nrows, int Ib, int Ib2, int offsetLoc) {
   int r, g, c;
   int bestGrainIdx = 0;
-  char outFN[2048];
-  sprintf(outFN, "%s/IndexBest.bin", FolderName);
-  int Ib = open(outFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
-  char outFN2[2048];
-  sprintf(outFN2, "%s/IndexBestFull.bin", FolderName);
-  int Ib2 = open(outFN2, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
-  if (Ib <= 0) {
-    printf("Cannot open file: %s\n", outFN);
-    return (1);
-  }
-  if (Ib2 <= 0) {
-    printf("Cannot open file: %s\n", outFN2);
-    return (1);
-  }
   size_t offst1 = offsetLoc;
   offst1 *= 15;
   offst1 *= sizeof(double);
@@ -1596,19 +1584,15 @@ int WriteBestMatchBin(RealType **GrainMatches, RealType **AllGrainSpots,
       GrainMatches[bestGrainIdx][13]};
   int rc1 = pwrite(Ib, res, 15 * sizeof(double), offst1);
   if (rc1 < 0) {
-    printf("Could not write to output file %s.\n", outFN);
+    printf("Could not write to output file IndexBest.bin.\n");
   }
-  rc1 = close(Ib);
   double *outArr;
-  outArr = malloc(MAX_N_HKLS * 2 * sizeof(*outArr));
+  outArr = calloc(MAX_N_HKLS * 2, sizeof(*outArr));
   for (r = 0; r < nrows; r++) {
     if (AllGrainSpots[r][15] == 1.0) {
       int idxx = 0;
       outArr[r * 2 + 0] = AllGrainSpots[r][14];
       outArr[r * 2 + 1] = AllGrainSpots[r][12];
-      // // print what was written
-      // printf("Wrote to file %s: GrainID: %lf, SpotNr: %d\n", outFN2,
-      //        AllGrainSpots[r][14], (int)AllGrainSpots[r][12]);
     }
   }
   size_t offst2 = offsetLoc;
@@ -1618,9 +1602,8 @@ int WriteBestMatchBin(RealType **GrainMatches, RealType **AllGrainSpots,
   int rc2 = pwrite(Ib2, outArr, MAX_N_HKLS * 2 * sizeof(double), offst2);
   free(outArr);
   if (rc2 < 0) {
-    printf("Could not write to output file %s.\n", outFN2);
+    printf("Could not write to output file IndexBestFull.bin.\n");
   }
-  rc2 = close(Ib2);
   return (0);
 }
 
@@ -1980,8 +1963,8 @@ int DoIndexing(int SpotIDs, struct TParams Params, int offsetLoc, int idNr,
   BestMatches[SpotIDIdx][2] = bestnTspotsIsp;
   BestMatches[SpotIDIdx][3] = bestnMatchesIsp;
   BestMatches[SpotIDIdx][4] = fracMatches;
-  WriteBestMatchBin(GrainMatches, AllGrainSpots, rownr, Params.OutputFolder,
-                    offsetLoc);
+  WriteBestMatchBin(GrainMatches, AllGrainSpots, rownr, Params.IndexBestFD,
+                    Params.IndexBestFullFD, offsetLoc);
   printf("IDNr: %d, Total: %d, ID: %d, Confidence: %lf, nExp: %lf, nObs: %lf, "
          "nPlanes: %d, omega: %lf, time: %lfs.\n",
          idNr, totalIDs, SpotIDs, fracMatches, GrainMatches[0][12],
@@ -2097,8 +2080,8 @@ int DoIndexingSeed(double orMat[9], double posThis[3], double RefRad,
   CalcIA(GrainMatches, 1, AllGrainSpots, Params.Distance);
   rownr = nTspots;
   double enTm = omp_get_wtime() - sttm;
-  WriteBestMatchBin(GrainMatches, AllGrainSpots, rownr, Params.OutputFolder,
-                    offsetLoc);
+  WriteBestMatchBin(GrainMatches, AllGrainSpots, rownr, Params.IndexBestFD,
+                    Params.IndexBestFullFD, offsetLoc);
   grID = (int)GrainSpots[0][14];
   printf("IDNr: %d, Total: %d, ID: %d, Confidence: %lf, nExp: %lf, nObs: %lf, "
          "time: %lfs.\n",
@@ -2217,6 +2200,11 @@ int main(int argc, char *argv[]) {
         n_hkls++;
       }
     }
+    if (n_hkls >= MAX_N_HKLS) {
+      printf("Error: Too many HKLs in file (max %d). Increase MAX_N_HKLS.\n",
+             MAX_N_HKLS);
+      exit(EXIT_FAILURE);
+    }
   }
   fclose(hklf);
   char tmpstr[2048];
@@ -2245,6 +2233,22 @@ int main(int argc, char *argv[]) {
          n_ring_bins * n_eta_bins * n_ome_bins);
   printf("Finished binning.\n\n");
   fflush(stdout);
+
+  // Open output files once
+  char outFN[4096];
+  sprintf(outFN, "%s/IndexBest.bin", Params.OutputFolder);
+  Params.IndexBestFD = open(outFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+  if (Params.IndexBestFD <= 0) {
+    printf("Cannot open file: %s\n", outFN);
+    exit(EXIT_FAILURE);
+  }
+  sprintf(outFN, "%s/IndexBestFull.bin", Params.OutputFolder);
+  Params.IndexBestFullFD = open(outFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+  if (Params.IndexBestFullFD <= 0) {
+    printf("Cannot open file: %s\n", outFN);
+    exit(EXIT_FAILURE);
+  }
+
   int numProcs = atoi(argv[5]);
   if (Params.isGrainsInput == 0) {
     int *SpotIDs;
@@ -2351,5 +2355,8 @@ int main(int argc, char *argv[]) {
     free(IDsFiles);
   }
   double time = omp_get_wtime() - start_time;
+  close(Params.IndexBestFD);
+  close(Params.IndexBestFullFD);
+
   printf("Finished, time elapsed: %lf seconds.\n", time);
 }
