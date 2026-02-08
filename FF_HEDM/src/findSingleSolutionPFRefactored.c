@@ -1057,10 +1057,10 @@ SpotList process_spots(UniqueOrientationsResult *uniqueResult,
 
     /* Read spot IDs */
     size_t items_read = fread(IDArrThis, sizeof(int), nSpots, IDF);
-    for (size_t i = 0; i < nSpots; i++) {
-      printf("%d ", IDArrThis[i]);
-    }
-    printf("\n");
+    // for (size_t i = 0; i < nSpots; i++) {
+    //   printf("%d ", IDArrThis[i]);
+    // }
+    // printf("\n");
     fclose(IDF);
 
     /* Check if we read the expected number of IDs */

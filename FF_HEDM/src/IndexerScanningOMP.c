@@ -1237,7 +1237,7 @@ int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis,
   locAll = ftell(allF);
   fwrite(outArr, 16 * sizeof(double), 1, valsF);
   int *outArr2;
-  printf("rownr: %d\n", rownr);
+  // printf("rownr: %d\n", rownr);
   outArr2 = malloc(rownr * sizeof(*outArr2));
   for (i = 0; i < rownr; i++)
     outArr2[i] = (int)AllGrainSpots[i][14];
@@ -1378,7 +1378,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis,
   fwrite(outArr, 16 * sizeof(double), 1, valsF);
   int *outArr2;
   int matchedNrSpots = GrainMatches[0][13];
-  printf("matchedNrSpots: %d\n", matchedNrSpots);
+  // printf("matchedNrSpots: %d\n", matchedNrSpots);
   outArr2 = malloc(matchedNrSpots * sizeof(*outArr2));
   for (i = 0; i < matchedNrSpots; i++)
     outArr2[i] = (int)AllGrainSpots[i][14];
