@@ -1212,7 +1212,7 @@ int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis,
       AllGrainSpotsT[r][15] = 1;
     }
     CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance, scratch);
-    rownr = nTspots;
+    rownr = nMatches;
     for (i = 0; i < 17; i++)
       GrainMatches[0][i] = GrainMatchesT[0][i];
     for (r = 0; r < nTspots; r++)
