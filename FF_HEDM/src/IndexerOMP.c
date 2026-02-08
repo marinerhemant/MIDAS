@@ -2232,18 +2232,19 @@ int main(int argc, char *argv[]) {
   printf("Total no of bins     : %d\n\n",
          n_ring_bins * n_eta_bins * n_ome_bins);
   printf("Finished binning.\n\n");
-  fflush(stdout);
 
   // Open output files once
   char outFN[4096];
   sprintf(outFN, "%s/IndexBest.bin", Params.OutputFolder);
-  Params.IndexBestFD = open(outFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+  Params.IndexBestFD =
+      open(outFN, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
   if (Params.IndexBestFD <= 0) {
     printf("Cannot open file: %s\n", outFN);
     exit(EXIT_FAILURE);
   }
   sprintf(outFN, "%s/IndexBestFull.bin", Params.OutputFolder);
-  Params.IndexBestFullFD = open(outFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+  Params.IndexBestFullFD =
+      open(outFN, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
   if (Params.IndexBestFullFD <= 0) {
     printf("Cannot open file: %s\n", outFN);
     exit(EXIT_FAILURE);
@@ -2264,13 +2265,24 @@ int main(int argc, char *argv[]) {
     endRowNr = tmp < (nSpotsToIndex - 1) ? tmp : (nSpotsToIndex - 1);
     nSpotIDs = endRowNr - startRowNr + 1;
     SpotIDs = malloc(nSpotIDs * sizeof(*SpotIDs));
+    for (i = 0; i < nSpotIDs; i++)
+      SpotIDs[i] = -1; // Initialize to -1
+
     FILE *spotsFile = fopen("SpotsToIndex.csv", "r");
+    if (spotsFile == NULL) {
+      printf("Error: Could not open SpotsToIndex.csv\n");
+      exit(EXIT_FAILURE);
+    }
     for (i = 0; i < startRowNr; i++) {
-      fgets(aline, 1000, spotsFile);
+      if (fgets(aline, 1000, spotsFile) == NULL)
+        break;
     }
     for (i = 0; i < nSpotIDs; i++) {
-      fgets(aline, 1000, spotsFile);
-      sscanf(aline, "%d", &SpotIDs[i]);
+      if (fgets(aline, 1000, spotsFile) != NULL) {
+        sscanf(aline, "%d", &SpotIDs[i]);
+      } else {
+        break;
+      }
     }
     fclose(spotsFile);
     printf("Read spots info, nSpots = %d, %d %d\n", nSpotIDs, numProcs,
@@ -2282,6 +2294,8 @@ int main(int argc, char *argv[]) {
     schedule(dynamic)
     for (thisRowNr = 0; thisRowNr < nSpotIDs; thisRowNr++) {
       int thisSpotID = SpotIDs[thisRowNr];
+      if (thisSpotID == -1)
+        continue; // Skip invalid spots
       int idRow = thisRowNr + startRowNr;
       DoIndexing(thisSpotID, Params, idRow, thisRowNr, nSpotIDs,
                  Params.RingsToReject, Params.nRingsToRejectCalc);
