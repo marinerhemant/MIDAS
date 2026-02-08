@@ -2093,7 +2093,10 @@ int main(int argc, char *argv[]) {
       // spotIDS[i] should correspond to AllSpots[(spotIDS[i]-1)*14+...], this
       // should reduce execution time.
       size_t spotPosAllSpots;
-      printf("nSpotsBest: %d.\n", nSpotsBest);
+      if (nSpotsBest == 0) {
+        printf("No spots found for ID: %d.\n", thisRowNr);
+        continue;
+      }
       for (i = 0; i < nSpotsBest; i++) {
         spotPosAllSpots = (int)spotIDS[i] - 1;
         // check if spotPosAllSpots + 1 > nSpots, then print and error and
