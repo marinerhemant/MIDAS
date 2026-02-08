@@ -1074,7 +1074,9 @@ SpotList process_spots(UniqueOrientationsResult *uniqueResult,
     for (size_t j = 0; j < nSpots; j++) {
       /* Ensure spot ID is valid to prevent out-of-bounds access */
       if (IDArrThis[j] < 1 || IDArrThis[j] > (int)nSpotsAll) {
-        log_error("Invalid spot ID %d (range 1-%zu)", IDArrThis[j], nSpotsAll);
+        log_error("Invalid spot ID %d (range 1-%zu) at grain %zu, spot %zu, "
+                  "total spots: %zu",
+                  IDArrThis[j], nSpotsAll, i, j, nSpots);
         continue;
       }
 
