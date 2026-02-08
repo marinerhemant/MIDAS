@@ -2095,6 +2095,9 @@ int main(int argc, char *argv[]) {
       size_t spotPosAllSpots;
       for (i = 0; i < nSpotsBest; i++) {
         spotPosAllSpots = (int)spotIDS[i] - 1;
+        printf(
+            "nSpotsBest: %d, spotPosAllSpots: %d, spotIDS[i]: %d, nSpots: %d\n",
+            nSpotsBest, spotPosAllSpots, spotIDS[i], nSpots);
         // check if spotPosAllSpots + 1 > nSpots, then print and error and
         // continue to next spot
         if (spotPosAllSpots >= nSpots || spotPosAllSpots < 0) {
