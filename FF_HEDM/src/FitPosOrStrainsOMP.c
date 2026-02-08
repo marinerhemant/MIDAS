@@ -2099,17 +2099,19 @@ int main(int argc, char *argv[]) {
         // continue to next spot
         if (spotPosAllSpots >= nSpots || spotPosAllSpots < 0) {
           printf("\n\nData mismatch! Original: %d, Looked for "
-                 "spotNr %d, nSpots %d, skipping this spot, GrID: %d.\n\n\n",
+                 "spotNr %d, nSpots %d, skipping this spot, GrID: %d, "
+                 "nSpotsBest: %d.\n\n\n",
                  (int)spotIDS[i], (int)(spotPosAllSpots + 1), (int)nSpots,
-                 (int)thisRowNr);
+                 (int)thisRowNr, (int)nSpotsBest);
           fflush(stdout);
           continue;
         }
         if (spotPosAllSpots + 1 != (size_t)AllSpots[spotPosAllSpots * 14 + 4]) {
           printf("\n\nData mismatch! Original: %d, Looked for %d, found %d, "
-                 "skipping this spot, GrID: %d.\n\n\n",
+                 "skipping this spot, GrID: %d, nSpotsBest: %d.\n\n\n",
                  (int)spotIDS[i], (int)(spotPosAllSpots + 1),
-                 (int)AllSpots[spotPosAllSpots * 14 + 4], (int)thisRowNr);
+                 (int)AllSpots[spotPosAllSpots * 14 + 4], (int)thisRowNr,
+                 (int)nSpotsBest);
           fflush(stdout);
           continue;
         }
