@@ -629,7 +629,7 @@ static double problem_function_SSD(unsigned n, const double *x, double *grad,
     Rcorr = Rad * DistortFunc;
     RIdeal = Lsd * tan(deg2rad * IdealTtheta[i]);
     double Diff = (1 - (Rcorr / RIdeal));
-    TotalDiff += Diff;
+    TotalDiff += Diff * Diff;
   }
   return TotalDiff;
 }
@@ -922,7 +922,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   *MeanDiff = minf / (OBJ_FUNC_SCALE * nIndices);
 
   // Calculate and print uncertainties
-  CalculateAndPrintUncertainties(n, x, trp, nIndices);
+  // CalculateAndPrintUncertainties(n, x, trp, nIndices);
 
   // 1. Update output parameters with optimized values
   *LsdFit = x[0];
