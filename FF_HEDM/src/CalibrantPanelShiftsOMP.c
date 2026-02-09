@@ -555,8 +555,9 @@ static double problem_function(unsigned n, const double *x, double *grad,
   return TotalDiff;
 }
 
-static double ComputeSSD(unsigned n, const double *x,
-                         struct my_func_data *f_data) {
+static double problem_function_SSD(unsigned n, const double *x, double *grad,
+                                   void *f_data_trial) {
+  struct my_func_data *f_data = (struct my_func_data *)f_data_trial;
   int MaxRad = f_data->MaxRad;
   int nIndices = f_data->nIndices;
   double *YMean, *ZMean, *IdealTtheta, px;
@@ -631,43 +632,8 @@ static double ComputeSSD(unsigned n, const double *x,
     double Diff = (1 - (Rcorr / RIdeal));
     TotalDiff += Diff * Diff;
   }
-  printf("TotalDiff: %0.40f\n", TotalDiff);
+  // printf("TotalDiff: %0.40f\n", TotalDiff);
   return TotalDiff * SSD_SCALE;
-}
-
-static double problem_function_SSD(unsigned n, const double *x, double *grad,
-                                   void *f_data_trial) {
-  struct my_func_data *f_data = (struct my_func_data *)f_data_trial;
-
-  // Calculate value
-  double f_val = ComputeSSD(n, x, f_data);
-
-  // Calculate Gradient if requested
-  if (grad) {
-    double *xt = malloc(n * sizeof(double));
-    if (xt == NULL) {
-      printf("Memory allocation failed in problem_function_SSD gradient "
-             "calculation.\n");
-      return f_val;
-    }
-
-    double h_rel = 1e-4;
-
-    for (int i = 0; i < n; i++) {
-      memcpy(xt, x, n * sizeof(double));
-      double h = (fabs(x[i]) > 1e-8) ? fabs(x[i]) * h_rel : 1e-6;
-
-      xt[i] = x[i] + h;
-      double f_plus = ComputeSSD(n, xt, f_data);
-
-      xt[i] = x[i] - h;
-      double f_minus = ComputeSSD(n, xt, f_data);
-
-      grad[i] = (f_plus - f_minus) / (2.0 * h);
-    }
-    free(xt);
-  }
-  return f_val;
 }
 
 static int MatrixInvert(double **A, int n, double **AInv) {
@@ -948,8 +914,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   f_datat = &f_data;
   void *trp = (struct my_func_data *)f_datat;
   nlopt_opt opt;
-  // opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  opt = nlopt_create(NLOPT_LD_LBFGS, n);
+  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   // nlopt_set_min_objective(opt, problem_function, trp);
