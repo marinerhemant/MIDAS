@@ -39,6 +39,7 @@ long long int NrCalls;
 long long int NrCallsProfiler;
 int NrPixelsGlobal = 2048;
 #define OBJ_FUNC_SCALE 1
+#define SSD_SCALE 1e8
 #define EPS 1E-12
 
 int numProcs;
@@ -631,7 +632,7 @@ static double problem_function_SSD(unsigned n, const double *x, double *grad,
     double Diff = (1 - (Rcorr / RIdeal));
     TotalDiff += Diff * Diff;
   }
-  return TotalDiff;
+  return TotalDiff * SSD_SCALE;
 }
 
 static int MatrixInvert(double **A, int n, double **AInv) {
@@ -694,7 +695,7 @@ static int MatrixInvert(double **A, int n, double **AInv) {
 
 static void CalculateAndPrintUncertainties(unsigned n, double *x, void *f_data,
                                            int nIndices) {
-  double valSSD = problem_function_SSD(n, x, NULL, f_data);
+  double valSSD = problem_function_SSD(n, x, NULL, f_data) / SSD_SCALE;
   double sigma2 = valSSD / (double)(nIndices - n); // Variance of residuals
 
   // Hessian calculation
@@ -915,11 +916,13 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_min_objective(opt, problem_function, trp);
+  // nlopt_set_min_objective(opt, problem_function, trp);
+  nlopt_set_min_objective(opt, problem_function_SSD, trp);
   double minf;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
-  *MeanDiff = minf / (OBJ_FUNC_SCALE * nIndices);
+  // *MeanDiff = minf / (OBJ_FUNC_SCALE * nIndices);
+  *MeanDiff = minf / (SSD_SCALE * nIndices);
 
   // Calculate and print uncertainties
   CalculateAndPrintUncertainties(n, x, trp, nIndices);
