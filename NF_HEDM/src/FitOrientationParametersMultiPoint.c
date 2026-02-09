@@ -8,6 +8,7 @@
 #include <limits.h>
 #include <math.h>
 #include <nlopt.h>
+#include <omp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -80,6 +81,7 @@ struct my_func_data {
   double BoxSizes[MAX_N_OMEGA_RANGES][4];
   double **P0;
   int *ObsSpotsInfo;
+  int nCPUs;
 };
 
 double IndividualResults[200];
@@ -149,30 +151,38 @@ static double problem_function(unsigned n, const double *x, double *grad,
   }
   double netResult = 0;
   int ps;
-  double *TheorSpots;
-  TheorSpots = malloc(MAX_N_SPOTS * 3 * sizeof(*TheorSpots));
-  for (i = 0; i < nSpots; i++) {
+
+#pragma omp parallel num_threads(f_data->nCPUs)
+  {
+    int i, j, ps;
     double OrientMatIn[3][3], FracOverlap, EulIn[3];
-    // Check euler angles positions!
-    for (j = 0; j < 3; j++) {
-      ps = i * 3 + j + 3 + (nLayers * 3);
-      EulIn[j] = x[ps];
-    }
     double XGrain[3], YGrain[3];
-    for (j = 0; j < 3; j++) {
-      XGrain[j] = XGr[i][j];
-      YGrain[j] = YGr[i][j];
+    double *TheorSpotsPrivate;
+    TheorSpotsPrivate = malloc(MAX_N_SPOTS * 3 * sizeof(*TheorSpotsPrivate));
+
+#pragma omp for reduction(+ : netResult)
+    for (i = 0; i < nSpots; i++) {
+      // Check euler angles positions!
+      for (j = 0; j < 3; j++) {
+        ps = i * 3 + j + 3 + (nLayers * 3);
+        EulIn[j] = x[ps];
+      }
+      for (j = 0; j < 3; j++) {
+        XGrain[j] = XGr[i][j];
+        YGrain[j] = YGr[i][j];
+      }
+      Euler2OrientMat(EulIn, OrientMatIn);
+      CalcOverlapAccOrient(NrOfFiles, nLayers, ExcludePoleAngle, Lsd,
+                           SizeObsSpots, XGrain, YGrain, RotMatTilts,
+                           OmegaStart, OmegaStep, px, ybc, zbc, gs, hkls,
+                           n_hkls, Thetas, OmegaRanges, NoOfOmegaRanges,
+                           BoxSizes, P0, NrPixelsGrid, ObsSpotsInfo,
+                           OrientMatIn, &FracOverlap, TheorSpotsPrivate);
+      netResult += FracOverlap;
+      IndividualResults[i] = FracOverlap;
     }
-    Euler2OrientMat(EulIn, OrientMatIn);
-    CalcOverlapAccOrient(
-        NrOfFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots, XGrain, YGrain,
-        RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc, gs, hkls, n_hkls,
-        Thetas, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
-        ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots);
-    netResult += FracOverlap;
-    IndividualResults[i] = FracOverlap;
+    free(TheorSpotsPrivate);
   }
-  free(TheorSpots);
   netResult /= nSpots;
   printf("%.40lf\n", netResult);
   return (1 - netResult);
@@ -189,7 +199,8 @@ void FitOrientation(
     const int NrPixelsGrid, int *ObsSpotsInfo, double tol, double hkls[5000][4],
     double Thetas[5000], int n_hkls, double **SpotsOut, double *LsdFit,
     double *TiltsFit, double **BCsFit, double tolLsd, double tolLsdRel,
-    double tolTilts, double tolBCsa, double tolBCsb, int NumIterations) {
+    double tolTilts, double tolBCsa, double tolBCsb, int NumIterations,
+    int nCPUs) {
   unsigned n;
   long int i, j;
   n = 3 + (nLayers * 3) + (nSpots * 3);
@@ -277,6 +288,7 @@ void FitOrientation(
   f_data.nSpots = nSpots;
   f_data.NoOfOmegaRanges = NoOfOmegaRanges;
   f_data.NrPixelsGrid = NrPixelsGrid;
+  f_data.nCPUs = nCPUs;
   struct my_func_data *f_datat;
   f_datat = &f_data;
   void *trp = (struct my_func_data *)f_datat;
@@ -434,6 +446,7 @@ int main(int argc, char *argv[]) {
   double SpotsInfo[200][9];
   int nSpots = 0;
   int NumIterations = 1; // Default
+  int nCPUs = 1;         // Default
   Wedge = 0;
   double xc, yc, UD, gSze, gs, eul1, eul2, eul3, ysmall, ybig;
   while (fgets(aline, 1000, fileParam) != NULL) {
@@ -639,6 +652,9 @@ int main(int argc, char *argv[]) {
       continue;
     }
   }
+  if (argc > 2) {
+    nCPUs = atoi(argv[2]);
+  }
   int i, j, m, nrFiles, nrPixels;
   for (i = 0; i < NoOfOmegaRanges; i++) {
     OmegaRang[i][0] = OmegaRanges[i][0];
@@ -750,7 +766,7 @@ int main(int argc, char *argv[]) {
                  nSpots, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0,
                  NrPixelsGrid, ObsSpotsInfo, tol, hkls, Thetas, n_hkls,
                  SpotsOut, LsdFit, TiltsFit, BCsFit, lsdtol, lsdtolrel,
-                 tiltstol, bctola, bctolb, NumIterations);
+                 tiltstol, bctola, bctolb, NumIterations, nCPUs);
   for (i = 0; i < nLayers; i++) {
     printf("Lsd %f\n", LsdFit[i]);
   }
