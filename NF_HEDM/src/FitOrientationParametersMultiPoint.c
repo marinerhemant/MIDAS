@@ -184,7 +184,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
     free(TheorSpotsPrivate);
   }
   netResult /= nSpots;
-  printf("%.40lf\n", netResult);
+  //   printf("%.40lf\n", netResult);
   return (1 - netResult);
 }
 
@@ -298,8 +298,8 @@ void FitOrientation(
   double val0 = problem_function(n, x2, NULL, trp);
   printf("Original val: %.40lf, running optimization.\n", 1 - val0);
 
-  nlopt_opt opt, opt2, opt3, opt4;
-  double minf, minf2, minf3, minf4;
+  nlopt_opt opt, opt2, opt3, opt4, opt0;
+  double minf, minf2, minf3, minf4, minf0;
   int iter;
 
   // Array to store the best parameters found so far
@@ -318,6 +318,26 @@ void FitOrientation(
 
   for (iter = 0; iter < NumIterations; iter++) {
     printf("Starting iteration %d of %d\n", iter + 1, NumIterations);
+
+    opt0 = nlopt_create(NLOPT_LN_NELDERMEAD, n);
+    nlopt_set_lower_bounds(opt0, xl);
+    nlopt_set_upper_bounds(opt0, xu);
+    nlopt_set_min_objective(opt0, problem_function, trp);
+    nlopt_set_stopval(opt0, 1e-7);
+    nlopt_optimize(opt0, x, &minf0);
+    nlopt_destroy(opt0);
+    printf("Refined  val: %.40lf, finished initial local optimization.\n",
+           1 - minf0);
+    if (minf0 < 1e-7) {
+      if (minf0 < val_best) {
+        val_best = minf0;
+        for (i = 0; i < n; i++)
+          x_best[i] = x[i];
+      }
+      printf(
+          "Converged to perfect overlap (val < 1e-7). Stopping iterations.\n");
+      break;
+    }
 
     opt = nlopt_create(NLOPT_GN_CRS2_LM, n);
     nlopt_set_population(opt, 500 * (n + 2));
@@ -338,7 +358,7 @@ void FitOrientation(
           x_best[i] = x[i];
       }
       printf(
-          "Converged to perfect overlap (val < 1e-4). Stopping iterations.\n");
+          "Converged to perfect overlap (val < 1e-7). Stopping iterations.\n");
       break;
     }
 
@@ -359,7 +379,7 @@ void FitOrientation(
           x_best[i] = x[i];
       }
       printf(
-          "Converged to perfect overlap (val < 1e-4). Stopping iterations.\n");
+          "Converged to perfect overlap (val < 1e-7). Stopping iterations.\n");
       break;
     }
 
@@ -382,7 +402,7 @@ void FitOrientation(
           x_best[i] = x[i];
       }
       printf(
-          "Converged to perfect overlap (val < 1e-4). Stopping iterations.\n");
+          "Converged to perfect overlap (val < 1e-7). Stopping iterations.\n");
       break;
     }
 
@@ -417,9 +437,9 @@ void FitOrientation(
       // Let's stick to just saving x_best.
     }
 
-    if (minf4 < 1e-4) {
+    if (minf4 < 1e-7) {
       printf(
-          "Converged to perfect overlap (val < 1e-4). Stopping iterations.\n");
+          "Converged to perfect overlap (val < 1e-7). Stopping iterations.\n");
       break;
     }
   }
