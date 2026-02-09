@@ -39,7 +39,6 @@ long long int NrCalls;
 long long int NrCallsProfiler;
 int NrPixelsGlobal = 2048;
 #define OBJ_FUNC_SCALE 1
-#define SSD_SCALE 1e20
 #define EPS 1E-12
 
 int numProcs;
@@ -632,8 +631,7 @@ static double problem_function_SSD(unsigned n, const double *x, double *grad,
     double Diff = (1 - (Rcorr / RIdeal));
     TotalDiff += Diff * Diff;
   }
-  // printf("TotalDiff: %0.40f\n", TotalDiff);
-  return TotalDiff * SSD_SCALE;
+  return TotalDiff;
 }
 
 static int MatrixInvert(double **A, int n, double **AInv) {
@@ -696,7 +694,7 @@ static int MatrixInvert(double **A, int n, double **AInv) {
 
 static void CalculateAndPrintUncertainties(unsigned n, double *x, void *f_data,
                                            int nIndices) {
-  double valSSD = problem_function_SSD(n, x, NULL, f_data) / SSD_SCALE;
+  double valSSD = problem_function_SSD(n, x, NULL, f_data);
   double sigma2 = valSSD / (double)(nIndices - n); // Variance of residuals
 
   // Hessian calculation
@@ -917,13 +915,11 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
-  // nlopt_set_min_objective(opt, problem_function, trp);
-  nlopt_set_min_objective(opt, problem_function_SSD, trp);
+  nlopt_set_min_objective(opt, problem_function, trp);
   double minf;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
-  // *MeanDiff = minf / (OBJ_FUNC_SCALE * nIndices);
-  *MeanDiff = minf / (SSD_SCALE * nIndices);
+  *MeanDiff = minf / (OBJ_FUNC_SCALE * nIndices);
 
   // Calculate and print uncertainties
   CalculateAndPrintUncertainties(n, x, trp, nIndices);
@@ -1288,7 +1284,7 @@ int main(int argc, char *argv[]) {
   double LatticeConstant[6], Wavelength, MaxRingRad, Lsd, MaxTtheta, TthetaTol,
       ybc, zbc, EtaBinSize, px, Width;
   double tx = 0, tolTilts, tolLsd, tolBC, tolP, tolP0 = 0, tolP1 = 0, tolP2 = 0,
-         tolP3 = 45, tyin = 0, tzin = 0, p0in = 0, p1in = 0, p2in = 0, p3in = 0,
+         tolP3 = 0, tyin = 0, tzin = 0, p0in = 0, p1in = 0, p2in = 0, p3in = 0,
          padY = 0, padZ = 0;
   double tolShifts = 1.0;
   double outlierFactor = 0.0;
@@ -1711,6 +1707,8 @@ int main(int argc, char *argv[]) {
     tolP1 = tolP;
   if (tolP2 == 0)
     tolP2 = tolP;
+  if (tolP3 == 0)
+    tolP3 = 45;
   if (NrPixelsY > NrPixelsZ) {
     NrPixels = NrPixelsY;
     NrPixelsGlobal = NrPixelsY;
