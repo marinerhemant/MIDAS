@@ -184,7 +184,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
     free(TheorSpotsPrivate);
   }
   netResult /= nSpots;
-  printf("%.40lf\n", netResult);
+  //   printf("%.40lf\n", netResult);
   return (1 - netResult);
 }
 
@@ -322,6 +322,7 @@ void FitOrientation(
     opt = nlopt_create(NLOPT_GN_CRS2_LM, n);
     nlopt_set_population(opt, 500 * (n + 2));
     nlopt_set_min_objective(opt, problem_function, trp);
+    nlopt_set_stopval(opt, 1e-7);
     nlopt_set_ftol_rel(opt, 0.001);
     nlopt_set_lower_bounds(opt, xl);
     nlopt_set_upper_bounds(opt, xu);
@@ -330,20 +331,42 @@ void FitOrientation(
     printf("Refined  val: %.40lf, finished first global optimization. Now "
            "doing first local optimization.\n",
            1 - minf);
+    if (minf < 1e-7) {
+      if (minf < val_best) {
+        val_best = minf;
+        for (i = 0; i < n; i++)
+          x_best[i] = x[i];
+      }
+      printf(
+          "Converged to perfect overlap (val < 1e-4). Stopping iterations.\n");
+      break;
+    }
 
     opt2 = nlopt_create(NLOPT_LN_NELDERMEAD, n);
     nlopt_set_lower_bounds(opt2, xl);
     nlopt_set_upper_bounds(opt2, xu);
     nlopt_set_min_objective(opt2, problem_function, trp);
+    nlopt_set_stopval(opt2, 1e-7);
     nlopt_optimize(opt2, x, &minf2);
     nlopt_destroy(opt2);
     printf("Refined  val: %.40lf, finished first local optimization. Now doing "
            "second global optimization.\n",
            1 - minf2);
+    if (minf2 < 1e-7) {
+      if (minf2 < val_best) {
+        val_best = minf2;
+        for (i = 0; i < n; i++)
+          x_best[i] = x[i];
+      }
+      printf(
+          "Converged to perfect overlap (val < 1e-4). Stopping iterations.\n");
+      break;
+    }
 
     opt3 = nlopt_create(NLOPT_GN_ISRES, n);
     nlopt_set_population(opt3, 50 * (n + 2));
     nlopt_set_min_objective(opt3, problem_function, trp);
+    nlopt_set_stopval(opt3, 1e-7);
     nlopt_set_ftol_rel(opt3, 0.01);
     nlopt_set_lower_bounds(opt3, xl);
     nlopt_set_upper_bounds(opt3, xu);
@@ -352,11 +375,22 @@ void FitOrientation(
     printf("Refined  val: %.40lf, finished second global optimization. Now "
            "doing first local optimization.\n",
            1 - minf3);
+    if (minf3 < 1e-7) {
+      if (minf3 < val_best) {
+        val_best = minf3;
+        for (i = 0; i < n; i++)
+          x_best[i] = x[i];
+      }
+      printf(
+          "Converged to perfect overlap (val < 1e-4). Stopping iterations.\n");
+      break;
+    }
 
     opt4 = nlopt_create(NLOPT_LN_NELDERMEAD, n);
     nlopt_set_lower_bounds(opt4, xl);
     nlopt_set_upper_bounds(opt4, xu);
     nlopt_set_min_objective(opt4, problem_function, trp);
+    nlopt_set_stopval(opt4, 1e-7);
     nlopt_optimize(opt4, x, &minf4);
     nlopt_destroy(opt4);
     printf("Final value:  %.40lf, finished second local optimization. This is "
@@ -381,6 +415,12 @@ void FitOrientation(
       // don't lose x_best. Actually, seeding with x_best might be better to
       // refine it further? But we want global search to explore elsewehere.
       // Let's stick to just saving x_best.
+    }
+
+    if (minf4 < 1e-4) {
+      printf(
+          "Converged to perfect overlap (val < 1e-4). Stopping iterations.\n");
+      break;
     }
   }
 
