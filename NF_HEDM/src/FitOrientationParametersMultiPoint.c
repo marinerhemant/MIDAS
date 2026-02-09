@@ -290,6 +290,20 @@ void FitOrientation(
   double minf, minf2, minf3, minf4;
   int iter;
 
+  // Array to store the best parameters found so far
+  double x_best[n];
+  double val_best =
+      1.0; // Initialize with a bad value (1.0 corresponds to 0 overlap)
+
+  // Initialize x_best with initial x
+  for (i = 0; i < n; i++)
+    x_best[i] = x[i];
+  // Calculate initial score
+  val_best =
+      1.0 -
+      (1.0 -
+       val0); // problem_function returns (1 - overlap), so this is correct
+
   for (iter = 0; iter < NumIterations; iter++) {
     printf("Starting iteration %d of %d\n", iter + 1, NumIterations);
 
@@ -316,11 +330,7 @@ void FitOrientation(
            1 - minf2);
 
     opt3 = nlopt_create(NLOPT_GN_ISRES, n);
-    nlopt_set_population(
-        opt3,
-        50 * (n +
-              2)); // Note: Fixed 'opt' typo to 'opt3' in population setting if
-                   // it was intended for ISRES. Assuming purely new opt3 setup.
+    nlopt_set_population(opt3, 50 * (n + 2));
     nlopt_set_min_objective(opt3, problem_function, trp);
     nlopt_set_ftol_rel(opt3, 0.01);
     nlopt_set_lower_bounds(opt3, xl);
@@ -341,13 +351,31 @@ void FitOrientation(
            "the best average confidence.\n",
            1 - minf4);
 
-    // Update bounds centered around the new best x?
-    // Or keep original bounds?
-    // Keeping original bounds allows escaping local minima if global optimizers
-    // restart far away, but seeding with 'x' (which nlopt does by default)
-    // keeps the good result. We just loop to give stochastic global optimizers
-    // another chance.
+    // Check if this iteration found a better result
+    if (minf4 < val_best) {
+      printf("Iteration %d found better result: %.40lf (previous best: "
+             "%.40lf). Updating x_best.\n",
+             iter + 1, 1 - minf4, 1 - val_best);
+      val_best = minf4;
+      for (i = 0; i < n; i++)
+        x_best[i] = x[i];
+    } else {
+      printf(
+          "Iteration %d result (%.40lf) was not better than best (%.40lf).\n",
+          iter + 1, 1 - minf4, 1 - val_best);
+      // Optionally reset x to x_best for next iteration seeding?
+      // Let's keep x as is, allowing exploration from this "local optimum" or
+      // wherever it ended up, effectively continuing the walk. But we ensure we
+      // don't lose x_best. Actually, seeding with x_best might be better to
+      // refine it further? But we want global search to explore elsewehere.
+      // Let's stick to just saving x_best.
+    }
   }
+
+  // Restore the best parameters found
+  printf("Restoring best parameters found with value %.40lf\n", 1 - val_best);
+  for (i = 0; i < n; i++)
+    x[i] = x_best[i];
 
   TiltsFit[0] = x[0];
   TiltsFit[1] = x[1];
