@@ -543,7 +543,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
     Rcorr = Rad * DistortFunc;
     RIdeal = Lsd * tan(deg2rad * IdealTtheta[i]);
     double Diff = fabs(1 - (Rcorr / RIdeal));
-    TotalDiff += Diff * Diff;
+    TotalDiff += Diff;
   }
   TotalDiff *= OBJ_FUNC_SCALE;
   NrCalls++;
