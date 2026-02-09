@@ -184,7 +184,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
     free(TheorSpotsPrivate);
   }
   netResult /= nSpots;
-  //   printf("%.40lf\n", netResult);
+  printf("%.40lf\n", netResult);
   return (1 - netResult);
 }
 
