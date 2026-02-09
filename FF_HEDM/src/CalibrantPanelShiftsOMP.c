@@ -629,9 +629,9 @@ static double problem_function_SSD(unsigned n, const double *x, double *grad,
     Rcorr = Rad * DistortFunc;
     RIdeal = Lsd * tan(deg2rad * IdealTtheta[i]);
     double Diff = (1 - (Rcorr / RIdeal));
-    TotalDiff += Diff * Diff;
+    TotalDiff += Diff;
   }
-  return TotalDiff * 10000000000;
+  return TotalDiff;
 }
 
 static int MatrixInvert(double **A, int n, double **AInv) {
