@@ -393,7 +393,7 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
             logger.info("Refining parameters on multiple grid points defined in parameter file.")
             out_file_path = f'{logDir}/fit_multipoint_out.csv'
             run_command(
-                cmd=os.path.join(bin_dir, "FitOrientationParameters") + f' {args.paramFN}',
+                cmd=os.path.join(bin_dir, "FitOrientationParametersMultiPoint") + f' {args.paramFN}',
                 working_dir=resultFolder,
                 out_file=out_file_path,
                 err_file=f'{logDir}/fit_multipoint_err.csv'
