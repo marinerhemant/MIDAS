@@ -383,6 +383,7 @@ def runMIDAS(fn):
             pf.write(f'SpaceGroup {space_group}\n')
             pf.write(f'Lsd {lsd_refined}\n')
             pf.write(f'RhoD {RhoDThis}\n')
+            pf.write(f'MultFactor {multFactor}\n')
             pf.write(f'BC {bc_refined}\n')
             pf.write(f'LatticeConstant {" ".join(map(str, latc))}\n')
         
@@ -734,6 +735,7 @@ def main():
         parser.add_argument('-BadPxIntensity', type=float, required=False, default=np.nan, help="If you know the bad pixel intensity, provide the value.")
         parser.add_argument('-GapIntensity', type=float, required=False, default=np.nan, help="If you know the gap intensity, provide the value. If you provide bad or gap, provide both!!!!")
         parser.add_argument('-SavePlotsHDF', type=str, required=False, default='', help="If provided, save all data arrays to this HDF5 file.")
+        parser.add_argument('-NoMedian', type=int, required=False, default=0, help="If set to 1, skip waiting for median calculation.")
         
         args, unparsed = parser.parse_known_args()
         
@@ -754,6 +756,7 @@ def main():
         etaBinSize = args.EtaBinSize
         threshold = args.Threshold
         savePlotsHDF = args.SavePlotsHDF
+        noMedian = args.NoMedian
         
         # Create HDF5 file for data arrays if requested
         if savePlotsHDF:
@@ -874,10 +877,15 @@ def main():
         data = raw.astype(np.uint16)
         
         # Apply median filter for background estimation
-        logger.info("Applying median filter for background estimation")
-        data2 = dip.MedianFilter(data, 101)
-        for _ in range(4):  # Apply multiple times for better background
-            data2 = dip.MedianFilter(data2, 101)
+        # Apply median filter for background estimation
+        if noMedian == 0:
+            logger.info("Applying median filter for background estimation")
+            data2 = dip.MedianFilter(data, 101)
+            for _ in range(4):  # Apply multiple times for better background
+                data2 = dip.MedianFilter(data2, 101)
+        else:
+            logger.info("Skipping median filter for background estimation")
+            data2 = np.zeros_like(data)
             
         logger.info('Finished with median, now processing data.')
         data = data.astype(float)
@@ -991,7 +999,21 @@ def main():
         p2_refined = '0'
         p3_refined = '0'
         ringsToExclude = []
-        nPlanes = 0
+        
+        # Parse RingsToExclude from input parameter file
+        if args.paramFN:
+            try:
+                with open(args.paramFN, 'r') as pf:
+                    for line in pf:
+                        if line.startswith('RingsToExclude'):
+                            parts = line.split()
+                            if len(parts) > 1:
+                                ringsToExclude.append(int(parts[1]))
+                logger.info(f"Loaded manual exclusions: {ringsToExclude}")
+            except Exception as e:
+                logger.warning(f"Could not read RingsToExclude from {args.paramFN}: {e}")
+        
+        nPlanes = len(sim_rads)
         
         # Calculate RhoD - maximum radius to edge from beam center
         edges = np.array([[0, 0], [NrPixelsY, 0], [NrPixelsY, NrPixelsZ], [0, NrPixelsZ]])
@@ -1003,13 +1025,28 @@ def main():
         
         rOrig = runMIDAS(rawFN)
         iterNr += 1
-        ringsToExclude = rOrig
-        rNew = rOrig
         
-        # Initialize ring exclusion list
+        # Initialize ring exclusion list with manual exclusions
         ringListExcluded = np.zeros(nPlanes + 1)
         for i in ringsToExclude:
-            ringListExcluded[i] = 1
+            if i <= nPlanes:
+                ringListExcluded[i] = 1
+            
+        # Map rOrig (relative indices) to absolute indices and append to ringsToExclude
+        # rOrig contains indices relative to the set of INCLUDED rings
+        rNew = rOrig
+        currentRingNr = 0
+        
+        for i in range(1, nPlanes + 1):
+            if ringListExcluded[i] == 1:
+                continue
+            else:
+                currentRingNr += 1
+            
+            if currentRingNr in rNew:
+                ringListExcluded[i] = 1
+                ringsToExclude.append(i)
+
         
         # Iterative refinement
         while (len(rNew) > 0 or float(mean_strain) > needed_strain):
