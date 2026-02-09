@@ -39,7 +39,7 @@ long long int NrCalls;
 long long int NrCallsProfiler;
 int NrPixelsGlobal = 2048;
 #define OBJ_FUNC_SCALE 1
-#define SSD_SCALE 1e8
+#define SSD_SCALE 1e20
 #define EPS 1E-12
 
 int numProcs;
@@ -632,7 +632,7 @@ static double problem_function_SSD(unsigned n, const double *x, double *grad,
     double Diff = (1 - (Rcorr / RIdeal));
     TotalDiff += Diff * Diff;
   }
-  printf("TotalDiff: %0.40f\n", TotalDiff);
+  // printf("TotalDiff: %0.40f\n", TotalDiff);
   return TotalDiff * SSD_SCALE;
 }
 
