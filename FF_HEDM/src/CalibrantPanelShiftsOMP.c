@@ -547,7 +547,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
   }
   TotalDiff *= OBJ_FUNC_SCALE;
   NrCalls++;
-  printf("Mean strain: %0.40f\n", TotalDiff / (OBJ_FUNC_SCALE * nIndices));
+  // printf("Mean strain: %0.40f\n", TotalDiff / (OBJ_FUNC_SCALE * nIndices));
 #ifdef PRINTOPT
   printf("Mean strain: %0.40f\n", TotalDiff / (OBJ_FUNC_SCALE * nIndices));
 #endif
