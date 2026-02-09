@@ -631,6 +631,7 @@ static double ComputeSSD(unsigned n, const double *x,
     double Diff = (1 - (Rcorr / RIdeal));
     TotalDiff += Diff * Diff;
   }
+  printf("TotalDiff: %0.40f\n", TotalDiff);
   return TotalDiff * SSD_SCALE;
 }
 
