@@ -1035,7 +1035,7 @@ int main(int argc, char *argv[]) {
   double LatticeConstant[6], Wavelength, MaxRingRad, Lsd, MaxTtheta, TthetaTol,
       ybc, zbc, EtaBinSize, px, Width;
   double tx = 0, tolTilts, tolLsd, tolBC, tolP, tolP0 = 0, tolP1 = 0, tolP2 = 0,
-         tolP3 = 0, tyin = 0, tzin = 0, p0in = 0, p1in = 0, p2in = 0, p3in = 0,
+         tolP3 = 45, tyin = 0, tzin = 0, p0in = 0, p1in = 0, p2in = 0, p3in = 0,
          padY = 0, padZ = 0;
   double tolShifts = 1.0;
   double outlierFactor = 0.0;
@@ -1458,8 +1458,6 @@ int main(int argc, char *argv[]) {
     tolP1 = tolP;
   if (tolP2 == 0)
     tolP2 = tolP;
-  if (tolP3 == 0)
-    tolP3 = 45;
   if (NrPixelsY > NrPixelsZ) {
     NrPixels = NrPixelsY;
     NrPixelsGlobal = NrPixelsY;
