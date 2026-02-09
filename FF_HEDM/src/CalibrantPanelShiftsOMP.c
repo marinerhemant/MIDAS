@@ -635,8 +635,8 @@ static double problem_function_SSD(unsigned n, const double *x, double *grad,
 }
 
 static int MatrixInvert(double **A, int n, double **AInv) {
-  int i, j, k;
-  double ratio, a;
+  int i, j, k, pivot;
+  double ratio, a, temp;
 
   // Initialize AInv as Identity matrix
   for (i = 0; i < n; i++) {
@@ -648,8 +648,28 @@ static int MatrixInvert(double **A, int n, double **AInv) {
     }
   }
 
-  // Gaussian elimination
+  // Gaussian elimination with Partial Pivoting
   for (i = 0; i < n; i++) {
+    // Find pivot
+    pivot = i;
+    for (j = i + 1; j < n; j++) {
+      if (fabs(A[j][i]) > fabs(A[pivot][i])) {
+        pivot = j;
+      }
+    }
+
+    // Swap rows i and pivot
+    if (pivot != i) {
+      for (j = 0; j < n; j++) {
+        temp = A[i][j];
+        A[i][j] = A[pivot][j];
+        A[pivot][j] = temp;
+        temp = AInv[i][j];
+        AInv[i][j] = AInv[pivot][j];
+        AInv[pivot][j] = temp;
+      }
+    }
+
     a = A[i][i];
     if (fabs(a) < 1e-12)
       return -1; // Singular matrix
@@ -681,7 +701,7 @@ static void CalculateAndPrintUncertainties(unsigned n, double *x, void *f_data,
   pixelvalue **H = allocMatrixPX(n, n);
   pixelvalue **HInv = allocMatrixPX(n, n);
   double *xt = malloc(n * sizeof(double));
-  double h_rel = 1e-4; // Relative step size
+  double h_rel = 1e-3; // Relative step size - Increased for robustness
 
   if (H == NULL || HInv == NULL || xt == NULL) {
     printf("Memory allocation failed for Hessian calculation.\n");
