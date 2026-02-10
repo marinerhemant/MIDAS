@@ -706,6 +706,49 @@ int main(int argc, char *argv[]) {
     printf("Std Dev:    %f\n", stdDev);
     printf("Range:      [%f, %f]\n", minW, maxW);
     printf("------------------------\n");
+
+    // --- Histogram ---
+    int nBins = 20;
+    int *bins = (int *)calloc(nBins, sizeof(int));
+    double binWidth = (maxW - minW) / nBins;
+    if (binWidth < 1e-9)
+      binWidth = 0.001; // Avoid divide by zero if range is 0
+
+    int maxCount = 0;
+    for (int i = 0; i < nValid; i++) {
+      int binIdx = 0;
+      if (maxW > minW) {
+        binIdx = (int)((wedgeVals[i] - minW) / binWidth);
+      }
+      if (binIdx >= nBins)
+        binIdx = nBins - 1;
+      if (binIdx < 0)
+        binIdx = 0;
+
+      bins[binIdx]++;
+      if (bins[binIdx] > maxCount)
+        maxCount = bins[binIdx];
+    }
+
+    printf("\n--- Wedge Distribution ---\n");
+    for (int i = 0; i < nBins; i++) {
+      double binStart = minW + i * binWidth;
+      double binEnd = minW + (i + 1) * binWidth;
+
+      // Scale bar length (max 50 chars)
+      int barLen = 0;
+      if (maxCount > 0) {
+        barLen = (int)((double)bins[i] / maxCount * 50.0);
+      }
+
+      printf("[%8.4f - %8.4f] | ", binStart, binEnd);
+      for (int j = 0; j < barLen; j++)
+        printf("*");
+      printf(" (%d)\n", bins[i]);
+    }
+    printf("--------------------------\n");
+    free(bins);
+
     printf("Total Time: %f seconds (Wall Clock)\n", endTime - startTime);
     printf("------------------------\n");
 
