@@ -557,22 +557,79 @@ int main(int argc, char *argv[]) {
 
   double endTime = omp_get_wtime();
 
-  // Compact results options (move valid ones to front or create new list)
-  // Simple: create new list of valid results
-  int nValid = 0;
+  // --- Initial Filtering (Status 0) ---
+  int nValidInit = 0;
   for (int i = 0; i < nPairs; i++) {
     if (validResults[i])
-      nValid++;
+      nValidInit++;
   }
 
-  Result *finalResults = (Result *)malloc(nValid * sizeof(Result));
+  Result *tempResults = (Result *)malloc(nValidInit * sizeof(Result));
   int k = 0;
+  // Use a temp array to store minf values for stats
+  double *minfVals = (double *)malloc(nValidInit * sizeof(double));
+  if (!tempResults || !minfVals) {
+    // Handle allocation fail if needed, though unlikely given nPairs allocated
+  }
+
   for (int i = 0; i < nPairs; i++) {
     if (validResults[i]) {
-      finalResults[k++] = results[i];
+      tempResults[k] = results[i];
+      minfVals[k] = results[i].minf;
+      k++;
     }
   }
 
+  // --- Calculate Minf Stats for Filtering ---
+  double minfThreshold = 1e9; // Default high
+  if (nValidInit > 0) {
+    // Sort minfVals for Median
+    qsort(minfVals, nValidInit, sizeof(double), compareDoubles);
+
+    double medianMinf;
+    if (nValidInit % 2 == 0) {
+      medianMinf =
+          (minfVals[nValidInit / 2 - 1] + minfVals[nValidInit / 2]) / 2.0;
+    } else {
+      medianMinf = minfVals[nValidInit / 2];
+    }
+
+    // Calculate Mean and StdDev of minf
+    double sumMinf = 0.0;
+    for (int i = 0; i < nValidInit; i++)
+      sumMinf += minfVals[i];
+    double meanMinf = sumMinf / nValidInit;
+
+    double sumSqDiffMinf = 0.0;
+    for (int i = 0; i < nValidInit; i++) {
+      sumSqDiffMinf += (minfVals[i] - meanMinf) * (minfVals[i] - meanMinf);
+    }
+    double stdDevMinf = sqrt(sumSqDiffMinf / nValidInit);
+
+    minfThreshold = medianMinf + 2.0 * stdDevMinf;
+
+    printf("Minf Filter Stats: Median=%e, StdDev=%e, Threshold=%e\n",
+           medianMinf, stdDevMinf, minfThreshold);
+  }
+  free(minfVals);
+
+  // --- Final Filtering based on Minf Threshold ---
+  int nValid = 0;
+  for (int i = 0; i < nValidInit; i++) {
+    if (tempResults[i].minf <= minfThreshold) {
+      nValid++;
+    }
+  }
+
+  Result *finalResults = (Result *)malloc(nValid * sizeof(Result));
+  k = 0;
+  for (int i = 0; i < nValidInit; i++) {
+    if (tempResults[i].minf <= minfThreshold) {
+      finalResults[k++] = tempResults[i];
+    }
+  }
+
+  free(tempResults);
   free(results);
   free(validResults); // pairs and spots needed for indices
 
