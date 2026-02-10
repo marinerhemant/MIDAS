@@ -611,11 +611,15 @@ def main():
     
     print(f"Running: {' '.join(h5_cmd)}")
     try:
+        t0_h5 = time.time()
         result = subprocess.run(h5_cmd, capture_output=True, text=True, cwd=str(output_dir))
+        t1_h5 = time.time()
+        
         if result.returncode != 0:
             print(f"Error converting to HDF5: {result.stderr}")
         else:
-            print("HDF5 conversion completed successfully")
+            print(f"HDF5 conversion completed successfully in {t1_h5 - t0_h5:.2f} seconds")
+            
     except Exception as e:
         print(f"Error running HDF5 conversion: {e}")
     
