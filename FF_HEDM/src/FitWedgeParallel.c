@@ -28,6 +28,12 @@
 
 // --- Helper Functions from FitWedge.c ---
 
+int compareDoubles(const void *a, const void *b) {
+  double da = *(const double *)a;
+  double db = *(const double *)b;
+  return (da > db) - (da < db);
+}
+
 static inline void MatrixMultF33(double m[3][3], double n[3][3],
                                  double res[3][3]) {
   int r;
@@ -313,6 +319,8 @@ int main(int argc, char *argv[]) {
   int LowNr;
   double Ycen, Zcen, px, Lsd, ty, tz, p0, p1, p2, MaxRad, tx;
   double Wavelength, Wedge = 0.0;
+  double OmegaStart = 0.0;
+  double OmegaStep = 0.0;
 
   // Initialize defaults
   Ycen = Zcen = 1024.0;
@@ -345,6 +353,10 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %lf", dummy, &MaxRad);
     else if (strncmp(aline, "Wavelength ", 11) == 0)
       sscanf(aline, "%s %lf", dummy, &Wavelength);
+    else if (strncmp(aline, "OmegaStart ", 11) == 0)
+      sscanf(aline, "%s %lf", dummy, &OmegaStart);
+    else if (strncmp(aline, "OmegaStep ", 10) == 0)
+      sscanf(aline, "%s %lf", dummy, &OmegaStep);
   }
   fclose(fileParam);
 
@@ -425,6 +437,17 @@ int main(int argc, char *argv[]) {
         // Check if sum is close to 180 or -180.
         if (fabs(fabs(EtaSum) - 180.0) > 1.0)
           continue;
+
+        // Check Omega Filtering
+        if (OmegaStep > 1e-6) { // Only check if OmegaStep is provided/non-zero
+          double k1 = (spots[p1].Omega - OmegaStart) / OmegaStep;
+          double k2 = (spots[p2].Omega - OmegaStart) / OmegaStep;
+
+          // If close to integer, exclude
+          if (fabs(k1 - round(k1)) < 1e-4 || fabs(k2 - round(k2)) < 1e-4) {
+            continue;
+          }
+        }
 
         // Found a valid pair
         if (nPairs >= pairsCap) {
@@ -509,16 +532,64 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  fprintf(fOut, "GrainID SpotID1 SpotID2 RingNr Omega1 Omega2 Wedge\n");
+  fprintf(fOut, "GrainID SpotID1 SpotID2 RingNr Omega1 Omega2 Y1 Z1 Eta1 Y2 Z2 "
+                "Eta2 Wedge\n");
   for (int i = 0; i < nPairs; i++) {
     int idx1 = pairs[i].idx1;
     int idx2 = pairs[i].idx2;
-    fprintf(fOut, "%d %d %d %d %f %f %f\n", spots[idx1].GrainID,
-            spots[idx1].SpotID, spots[idx2].SpotID, spots[idx1].RingNr,
-            spots[idx1].Omega, spots[idx2].Omega, RefinedWedges[i]);
+    fprintf(fOut, "%d %d %d %d %f %f %f %f %f %f %f %f %f\n",
+            spots[idx1].GrainID, spots[idx1].SpotID, spots[idx2].SpotID,
+            spots[idx1].RingNr, spots[idx1].Omega, spots[idx2].Omega,
+            spots[idx1].DetectorHor, spots[idx1].DetectorVert, spots[idx1].Eta,
+            spots[idx2].DetectorHor, spots[idx2].DetectorVert, spots[idx2].Eta,
+            RefinedWedges[i]);
   }
   fclose(fOut);
   printf("Results written to WedgeResults.txt\n");
+
+  // --- Statistics ---
+  if (nPairs > 0) {
+    // Calculate Mean, StdDev, Range
+    double sum = 0.0;
+    double minW = RefinedWedges[0];
+    double maxW = RefinedWedges[0];
+
+    for (int i = 0; i < nPairs; i++) {
+      sum += RefinedWedges[i];
+      if (RefinedWedges[i] < minW)
+        minW = RefinedWedges[i];
+      if (RefinedWedges[i] > maxW)
+        maxW = RefinedWedges[i];
+    }
+    double mean = sum / nPairs;
+
+    double sumSqDiff = 0.0;
+    for (int i = 0; i < nPairs; i++) {
+      sumSqDiff += (RefinedWedges[i] - mean) * (RefinedWedges[i] - mean);
+    }
+    double stdDev = sqrt(sumSqDiff / nPairs);
+
+    // Calculate Median (sort first)
+    // Simple bubble sort or qsort. Using qsort helper.
+    qsort(RefinedWedges, nPairs, sizeof(double), compareDoubles);
+    double median;
+    if (nPairs % 2 == 0) {
+      median =
+          (RefinedWedges[nPairs / 2 - 1] + RefinedWedges[nPairs / 2]) / 2.0;
+    } else {
+      median = RefinedWedges[nPairs / 2];
+    }
+
+    printf("\n--- Wedge Statistics ---\n");
+    printf("Count:      %d\n", nPairs);
+    printf("Mean:       %f\n", mean);
+    printf("Median:     %f\n", median);
+    printf("Std Dev:    %f\n", stdDev);
+    printf("Range:      [%f, %f]\n", minW, maxW);
+    printf("------------------------\n");
+  } else {
+    printf("\nNo pairs found for statistics.\n");
+  }
 
   free(spots);
   free(pairs);
