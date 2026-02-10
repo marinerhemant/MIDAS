@@ -839,7 +839,7 @@ static long ReadInputData(char *InFileName, int isBin, double **InputInfo,
         nrPoints++;
       }
       fclose(foutGrains);
-    } else if (strncmp(aline, "# SpotID", strlen("# SpotID")) == 0) { // SpotID
+    } else if (strncmp(aline, "# SpotID", strlen("# SpotID")) == 0) { // PF_HEDM
       dataType = 0;
       while (fgets(aline, 4096, inpF) != NULL) {
         sscanf(aline,
