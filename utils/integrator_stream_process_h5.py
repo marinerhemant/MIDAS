@@ -346,7 +346,7 @@ def create_hdf5_file_streamed(output_file,
                         ds.attrs['last_frame_identifier'] = np.bytes_(str(last_name))
 
             if group_idx % 10 == 0:
-                print(f"Processed group {group_idx}/{total_groups}", end='\r')
+                print(f"Processed group {group_idx}/{total_groups}", end='\r', flush=True)
 
         print(f"\nCompleted processing {total_groups} groups.")
 
