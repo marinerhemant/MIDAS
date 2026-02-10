@@ -234,7 +234,7 @@ def send_data_chunk(sock, dataset_num, data, compress=False):
                 sock.sendall(indices_view)
                 sock.sendall(values_view)
 
-                t2 = time.time()
+                t2 = time.perf_counter()
                 orig_size = data_array.nbytes
                 sent_size = 4 + 4 + base_view.nbytes + indices_view.nbytes + values_view.nbytes
                 print(f"Sent #{dataset_num} (Hybrid): {overflow_count} overflows. Size: {sent_size/1024:.1f}KB (vs {orig_size/1024:.1f}KB). Time: {t2 - t1:.4f}s")
@@ -280,7 +280,7 @@ def send_data_chunk(sock, dataset_num, data, compress=False):
     sock.sendall(header)
     sock.sendall(data_view)
     
-    t2 = time.time()
+    t2 = time.perf_counter()
     print(f"Sent dataset #{dataset_num}, type {dtype_code}, {data_array.shape} items ({len(data_view)} bytes) in {t2 - t1:.4f} sec")
 
 def file_reader_worker(file_list, data_queue):
