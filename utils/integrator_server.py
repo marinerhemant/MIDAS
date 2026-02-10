@@ -42,21 +42,6 @@ class ThreadLocalBufferPool:
             self.base_image = np.empty(size_pixels, dtype=np.uint16)
         return self.base_image
 
-    def get_send_buffer(self, size_bytes):
-        if hasattr(self, 'send_buffer') and self.send_buffer is not None:
-            if len(self.send_buffer) >= size_bytes:
-                return self.send_buffer
-        
-        # Allocate new buffer (slightly larger to avoid frequent reallocs?)
-        # Let's align to 4KB or just exact size. exact for now.
-        self.send_buffer = bytearray(size_bytes)
-        return self.send_buffer
-
-def get_thread_pool():
-    if not hasattr(thread_local_storage, 'pool'):
-        thread_local_storage.pool = ThreadLocalBufferPool()
-    return thread_local_storage.pool
-
 @jit(nopython=True)
 def compress_hybrid_numba(data, out_base_image):
     """
@@ -103,6 +88,35 @@ def compress_hybrid_numba(data, out_base_image):
             
     return overflow_count, indices, values, True
 
+def sendmsg_all(sock, buffers):
+    """
+    Helper to send all buffers using sendmsg (scatter/gather) in a loop.
+    Handles partial writes safely without copying data.
+    """
+    # Create a list of memoryviews to track progress
+    views = [memoryview(b) for b in buffers]
+    
+    while views:
+        # sendmsg expects a list of buffers
+        sent = sock.sendmsg(views)
+        
+        if sent == 0:
+            # Should not happen on blocking socket unless disconnected
+            raise RuntimeError("Socket connection broken (sendmsg returned 0)")
+            
+        # Advance the views based on bytes sent
+        # We need to find which buffer 'sent' bytes covers
+        while sent > 0 and views:
+            current_len = len(views[0])
+            if sent >= current_len:
+                # Fully sent this buffer
+                sent -= current_len
+                views.pop(0)
+            else:
+                # Partially sent this buffer - slice it and we are done for this iteration
+                views[0] = views[0][sent:]
+                sent = 0
+
 def send_data_chunk(sock, dataset_num, data, compress=False):
     t1 = time.time()
     
@@ -136,37 +150,42 @@ def send_data_chunk(sock, dataset_num, data, compress=False):
                 dtype_code = 1
                 data_array = base_image_view
             else:
-                # Case B: Hybrid — pack into single buffer, send once
+                # Case B: Hybrid — send via safe scatter/gather
                 dtype_code = 6
                 
-                base_mv = memoryview(base_image_view).cast('B')
-                indices_mv = memoryview(overflow_indices).cast('B')
-                values_mv = memoryview(overflow_values).cast('B')
-                
-                # Pre-calculate total size
-                total_size = 4 + 4 + len(base_mv) + len(indices_mv) + len(values_mv)
-                
-                # Get pooled send buffer
-                send_buf = pool.get_send_buffer(total_size)
-                
-                # Pack header + count
-                struct.pack_into('HH', send_buf, 0, dataset_num, dtype_code)
-                struct.pack_into('I', send_buf, 4, overflow_count)
-                
-                # Copy data segments into contiguous buffer
-                off = 8
-                send_buf[off:off+len(base_mv)] = base_mv
-                off += len(base_mv)
-                send_buf[off:off+len(indices_mv)] = indices_mv
-                off += len(indices_mv)
-                send_buf[off:off+len(values_mv)] = values_mv
-                
-                # Single sendall — guaranteed full delivery
-                # Send slice of the buffer
-                sock.sendall(memoryview(send_buf)[:total_size])
+                # Check for socket.sendmsg support (Unix only, usually available)
+                if hasattr(socket.socket, 'sendmsg'):
+                     # Zero-copy scatter/gather send
+                    header = struct.pack('HH', dataset_num, dtype_code)
+                    count_bytes = struct.pack('I', overflow_count)
+                    
+                    # Create memoryviews for buffers to avoid copy
+                    base_mv = memoryview(base_image_view).cast('B')
+                    indices_mv = memoryview(overflow_indices).cast('B')
+                    values_mv = memoryview(overflow_values).cast('B')
+                    
+                    # Use helper loop to ensure full delivery
+                    sendmsg_all(sock, [header, count_bytes, base_mv, indices_mv, values_mv])
+                    
+                else:
+                    # Fallback for Windows/Non-Unix (multiple sendall calls)
+                    # We accept the syscall overhead here to avoid copy overhead
+                    header = struct.pack('HH', dataset_num, dtype_code)
+                    count_bytes = struct.pack('I', overflow_count)
+                    base_mv = memoryview(base_image_view).cast('B')
+                    indices_mv = memoryview(overflow_indices).cast('B')
+                    values_mv = memoryview(overflow_values).cast('B')
+                    
+                    sock.sendall(header)
+                    sock.sendall(count_bytes)
+                    sock.sendall(base_mv)
+                    sock.sendall(indices_mv)
+                    sock.sendall(values_mv)
 
                 t2 = time.time()
-                print(f"Sent #{dataset_num} (Hybrid-JIT): {overflow_count} overflows. Size: {total_size/1024:.1f}KB. Time: {t2 - t1:.4f}s")
+                # Calculate sent size for logging
+                sent_size = 4 + 4 + (base_image_view.nbytes) + (overflow_indices.nbytes) + (overflow_values.nbytes)
+                print(f"Sent #{dataset_num} (Hybrid-JIT-ZeroCopy): {overflow_count} overflows. Size: {sent_size/1024:.1f}KB. Time: {t2 - t1:.4f}s")
                 return
 
         else:
