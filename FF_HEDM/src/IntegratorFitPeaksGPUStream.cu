@@ -564,6 +564,26 @@ void *handle_client(void *arg) {
     }
     size_t payload_size = num_pixels * bpp;
 
+    // --- Hybrid Proto Support (dtype 6) ---
+    uint32_t overflowCount = 0;
+    if (dtype == 6) {
+      // Read OverflowCount (4 bytes)
+      int oc_read = 0;
+      while (oc_read < 4) {
+        bytes_read = recv(client_socket, (char *)&overflowCount + oc_read,
+                          4 - oc_read, 0);
+        if (bytes_read <= 0)
+          goto connection_closed;
+        oc_read += bytes_read;
+      }
+      // Recalculate payload size:
+      // Uint16 Base (N*2) + OverflowCount*4 (Indices) + OverflowCount*8
+      // (Values) + 4 (Count itself stored in buffer?) Storing Count in buffer
+      // simplifies passing to ProcessImageGPU. Payload Size = 4 (Count) + N*2 +
+      // C*4 + C*8.
+      payload_size = sizeof(uint32_t) + num_pixels * 2 + overflowCount * 12;
+    }
+
     // 2. Read Payload
     void *data = buffer_pool_pop(&buffer_pool, payload_size);
     if (!data) {
@@ -576,9 +596,19 @@ void *handle_client(void *arg) {
 
     uint8_t *data_ptr = (uint8_t *)data;
     size_t total_payload_read = 0;
-    while (total_payload_read < payload_size) {
+    size_t bytes_to_read = payload_size;
+
+    // For Hybrid (dtype 6), we already read 4 bytes (overflowCount).
+    // We place it at the start of the buffer, and read the REST from socket.
+    if (dtype == 6) {
+      memcpy(data, &overflowCount, sizeof(uint32_t));
+      data_ptr += sizeof(uint32_t);      // Advance pointer
+      bytes_to_read -= sizeof(uint32_t); // Remaining bytes
+    }
+
+    while (total_payload_read < bytes_to_read) {
       bytes_read = recv(client_socket, data_ptr + total_payload_read,
-                        payload_size - total_payload_read, 0);
+                        bytes_to_read - total_payload_read, 0);
       if (bytes_read <= 0) {
         // Return to pool or free
         buffer_pool_push(&buffer_pool, data, payload_size);
@@ -1446,6 +1476,165 @@ void ProcessImageGPUGeneric(const void *hRawVoid, float *dProc,
     cudaEventRecord(stop_trans, stream);
 }
 
+// --- Hybrid Transfer Kernels ---
+
+__global__ void expand_uint16_kernel(const uint16_t *in, float *out,
+                                     const float *dAvgDark, size_t N,
+                                     bool sub) {
+  const size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < N) {
+    float val = (float)in[i];
+    if (sub && dAvgDark) {
+      val -= dAvgDark[i];
+    }
+    out[i] = val;
+  }
+}
+
+__global__ void apply_overflow_kernel(const int32_t *indices,
+                                      const int64_t *values, float *out,
+                                      const float *dAvgDark, int count,
+                                      bool sub) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < count) {
+    int idx = indices[i];
+    float val = (float)values[i];
+    if (sub && dAvgDark) {
+      val -= dAvgDark[idx];
+    }
+    out[idx] = val;
+  }
+}
+
+// --- Hybrid Host Helper ---
+void ProcessImageGPU_Hybrid_Impl(void *hRaw, float *dProc,
+                                 const float *dAvgDark, int Nopt,
+                                 const int Topt[MAX_TRANSFORM_OPS], int NY,
+                                 int NZ, bool doSub, float *d_b1, float *d_b2,
+                                 cudaStream_t stream) {
+  uint8_t *ptr = (uint8_t *)hRaw;
+
+  uint32_t overflowCount = 0;
+  memcpy(&overflowCount, ptr, sizeof(uint32_t));
+  ptr += sizeof(uint32_t);
+
+  size_t N = (size_t)NY * NZ;
+  uint16_t *hBase = (uint16_t *)ptr;
+  ptr += N * sizeof(uint16_t);
+
+  int32_t *hIndices = (int32_t *)ptr;
+  ptr += overflowCount * sizeof(int32_t);
+  int64_t *hValues = (int64_t *)ptr;
+
+  // Use d_b1 (size N*4) for Base Image (size N*2)
+  uint16_t *dBase = (uint16_t *)d_b1;
+  gpuErrchk(cudaMemcpyAsync(dBase, hBase, N * sizeof(uint16_t),
+                            cudaMemcpyHostToDevice, stream));
+
+  // Expand Base uint16 -> float with dark subtraction
+  int TPB = 512;
+  int nB = (N + TPB - 1) / TPB;
+  expand_uint16_kernel<<<nB, TPB, 0, stream>>>(dBase, dProc, dAvgDark, N,
+                                               doSub);
+
+  if (overflowCount > 0) {
+    size_t sizeIndices = overflowCount * sizeof(int32_t);
+    size_t sizeValues = overflowCount * sizeof(int64_t);
+
+    uint8_t *d_scratch = (uint8_t *)d_b2;
+    int32_t *dIndices = (int32_t *)d_scratch;
+
+    // Alignment for int64
+    size_t indices_offset = sizeIndices;
+    if (indices_offset % 8 != 0)
+      indices_offset += 4;
+
+    int64_t *dValues = (int64_t *)(d_scratch + indices_offset);
+
+    // Check if d_b2 (N*4 bytes) is large enough
+    if (indices_offset + sizeValues > N * sizeof(float)) {
+      fprintf(stderr,
+              "GPU Error: Overflow buffer too small for %u pixels. Max: %zu, "
+              "Need: %zu\n",
+              overflowCount, N * sizeof(float), indices_offset + sizeValues);
+      return;
+    }
+
+    gpuErrchk(cudaMemcpyAsync(dIndices, hIndices, sizeIndices,
+                              cudaMemcpyHostToDevice, stream));
+    gpuErrchk(cudaMemcpyAsync(dValues, hValues, sizeValues,
+                              cudaMemcpyHostToDevice, stream));
+
+    // Apply Overflow
+    int nBlocksOv = (overflowCount + TPB - 1) / TPB;
+    apply_overflow_kernel<<<nBlocksOv, TPB, 0, stream>>>(
+        dIndices, dValues, dProc, dAvgDark, overflowCount, doSub);
+  }
+
+  // --- Apply Image Transforms (Flip/Transpose) ---
+  // At this point, dProc contains the dark-subtracted float image.
+  // d_b1 and d_b2 are free to reuse as scratch for transforms.
+  bool anyT = false;
+  if (Nopt > 0) {
+    for (int i = 0; i < Nopt; ++i) {
+      if (Topt[i] != 0) {
+        anyT = true;
+        break;
+      }
+    }
+  }
+
+  if (anyT) {
+    // Ping-pong: dProc -> d_b1 -> d_b2 -> d_b1 -> ...
+    // First transform reads from dProc, writes to d_b1.
+    // Subsequent transforms ping-pong between d_b1 and d_b2.
+    // After all transforms, copy result back to dProc if needed.
+    float *rP = dProc;
+    float *wP = d_b1;
+    int cY = NY, cZ = NZ;
+
+    for (int i = 0; i < Nopt; ++i) {
+      int opt = Topt[i];
+      int nY = cY, nZ = cZ;
+      if (opt == 3 && cY == cZ) {
+        nY = cZ;
+        nZ = cY;
+      } else if (opt == 3) {
+        opt = 0; // Non-square transpose -> no-op
+      }
+
+      size_t sON = (size_t)nY * nZ;
+      unsigned long long nBUL = (sON + TPB - 1) / TPB;
+      dim3 nBlk((unsigned int)nBUL);
+
+      sequential_transform_kernel<float, float>
+          <<<nBlk, TPB, 0, stream>>>(rP, wP, cY, cZ, nY, nZ, opt);
+      gpuErrchk(cudaPeekAtLastError());
+
+      // Advance ping-pong
+      if (i == 0) {
+        // First transform: dProc -> d_b1. Next: d_b1 -> d_b2.
+        rP = d_b1;
+        wP = d_b2;
+      } else {
+        // Swap rP and wP
+        float *tmp = rP;
+        rP = wP;
+        wP = tmp;
+      }
+      cY = nY;
+      cZ = nZ;
+    }
+
+    // Result is in rP. Copy back to dProc if not already there.
+    if (rP != dProc) {
+      size_t finalN = (size_t)cY * cZ;
+      gpuErrchk(cudaMemcpyAsync(dProc, rP, finalN * sizeof(float),
+                                cudaMemcpyDeviceToDevice, stream));
+    }
+  }
+}
+
 // Update wrapper to accept float pointers
 void ProcessImageGPU(void *hRaw, float *dProc, const float *dAvgDark, int Nopt,
                      const int Topt[MAX_TRANSFORM_OPS], int NY, int NZ,
@@ -1483,6 +1672,14 @@ void ProcessImageGPU(void *hRaw, float *dProc, const float *dAvgDark, int Nopt,
     ProcessImageGPUGeneric<double>(hRaw, dProc, dAvgDark, Nopt, Topt, NY, NZ,
                                    doSub, d_b1, d_b2, stream, start_copy,
                                    stop_copy, start_trans, stop_trans);
+    break;
+  case 6: // Hybrid Uint16 + Overflow
+    if (start_copy)
+      cudaEventRecord(start_copy, stream);
+    ProcessImageGPU_Hybrid_Impl(hRaw, dProc, dAvgDark, Nopt, Topt, NY, NZ,
+                                doSub, d_b1, d_b2, stream);
+    if (stop_copy)
+      cudaEventRecord(stop_copy, stream);
     break;
   default:
     fprintf(stderr, "Unknown dtype %d\n", dtype);
@@ -1655,10 +1852,10 @@ void smoothData(const double *in, double *out, int N, int W) {
     break;
   // Add more cases for other window sizes if needed
   default:
-    fprintf(
-        stderr,
-        "smoothData Warn: Unsupported window size %d. No smoothing applied.\n",
-        W);
+    fprintf(stderr,
+            "smoothData Warn: Unsupported window size %d. No smoothing "
+            "applied.\n",
+            W);
     memcpy(out, in, N * sizeof(double));
     free(coeffs);
     return;
@@ -1940,9 +2137,9 @@ int main(int argc, char *argv[]) {
   printf("\n");
   printf(" Options:   Normalize=%d, SumIntegrations=%d, Write2D=%d\n",
          Normalize, sumI, wr2D);
-  printf(
-      " Peak Fit:  Enabled=%d, MultiPeak=%d, Smooth=%d, NumSpecifiedPeaks=%d\n",
-      pkFit, multiP, doSm, nSpecP);
+  printf(" Peak Fit:  Enabled=%d, MultiPeak=%d, Smooth=%d, "
+         "NumSpecifiedPeaks=%d\n",
+         pkFit, multiP, doSm, nSpecP);
   if (mkMap)
     printf(
         " Masking:   Will generate from Gap=%lld, BadPx=%lld in Dark Frame\n",
@@ -2532,7 +2729,8 @@ int main(int argc, char *argv[]) {
       double t_cpu_tot =
           (t_write_end - t_write_start) + (t_fit_end - t_fit_start);
 
-      // F#XX: Ttl:X.XX| ... GPU(Tot:X.XX Proc:X.XX(Cpy:X.XX Trn:X.XX) Int:X.XX
+      // F#XX: Ttl:X.XX| ... GPU(Tot:X.XX Proc:X.XX(Cpy:X.XX Trn:X.XX)
+      // Int:X.XX
       // ...
       printf(
           "F#%d: Ttl:%.2f| QPop:%.2f Sync:%.2f GPU(Tot:%.2f Proc:%.2f[C:%.2f "
@@ -2723,8 +2921,8 @@ int main(int argc, char *argv[]) {
               (double *)malloc(currentPeakCount * 7 * sizeof(double));
           int roi_half_width = fitROIPadding;
           // (Auto ROI logic omitted for drain brevity/safety, assuming manual
-          // or padded sufficient for drain) Actually, let's keep it simple. If
-          // fitROIAuto is on, we skip or use default to avoid complexity.
+          // or padded sufficient for drain) Actually, let's keep it simple.
+          // If fitROIAuto is on, we skip or use default to avoid complexity.
 
           qsort(pks, currentPeakCount, sizeof(Peak), comparePeaksByIndex);
 

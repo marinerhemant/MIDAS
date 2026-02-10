@@ -17,7 +17,7 @@ import threading
 import queue
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-def send_data_chunk(sock, dataset_num, data):
+def send_data_chunk(sock, dataset_num, data, compress=False):
     t1 = time.time()
     
     # Ensure data is a numpy array
@@ -30,6 +30,53 @@ def send_data_chunk(sock, dataset_num, data):
     # 0: uint8, 1: uint16, 2: uint32, 3: int64, 4: float32, 5: float64
     dtype_code = 3 # Default to int64
     
+    # --- Hybrid Compression Logic ---
+    if compress:
+        max_val = data_array.max()
+        if max_val <= 65535:
+            # Case A: Fits in uint16
+            dtype_code = 1
+            data_array = data_array.astype(np.uint16)
+        else:
+            # Case B: Overflow (Hybrid)
+            dtype_code = 6
+            # Identify overflows
+            mask = data_array > 65535
+            overflow_indices = np.flatnonzero(mask).astype(np.int32)
+            overflow_values = data_array[mask].astype(np.int64) # Ensure int64
+            overflow_count = len(overflow_indices)
+            
+            # Base image (uint16) - overflows can be anything (e.g. truncated), they are overwritten
+            base_image = data_array.astype(np.uint16)
+            
+            # Pack Header: Dataset(2) + Dtype(2) = 4 bytes
+            header = struct.pack('HH', dataset_num, dtype_code)
+            
+            # Pack Parts
+            # 1. OverflowCount (4 bytes)
+            count_bytes = struct.pack('I', overflow_count)
+            # 2. Base Image
+            base_view = memoryview(base_image).cast('B')
+            # 3. Indices
+            indices_view = memoryview(overflow_indices).cast('B')
+            # 4. Values
+            values_view = memoryview(overflow_values).cast('B')
+
+            # Send All
+            sock.sendall(header)
+            sock.sendall(count_bytes)
+            sock.sendall(base_view)
+            sock.sendall(indices_view)
+            sock.sendall(values_view)
+
+            t2 = time.time()
+            orig_size = data_array.nbytes
+            sent_size = 4 + 4 + base_view.nbytes + indices_view.nbytes + values_view.nbytes
+            print(f"Sent #{dataset_num} (Hybrid): {overflow_count} overflows. Size: {sent_size/1024:.1f}KB (vs {orig_size/1024:.1f}KB). Time: {t2 - t1:.4f}s")
+            return
+            
+    # --- End Hybrid Logic ---
+
     if data_array.dtype == np.uint8:
         dtype_code = 0
     elif data_array.dtype == np.int8:
@@ -100,7 +147,7 @@ def file_reader_worker(file_list, data_queue):
     data_queue.put(None)
 
 
-def process_tif_files_pipelined(sock, folder, frame_mapping, mapping_file, save_interval):
+def process_tif_files_pipelined(sock, folder, frame_mapping, mapping_file, save_interval, compress=False):
     """
     Main processing logic using the producer-consumer pipeline.
     """
@@ -134,7 +181,7 @@ def process_tif_files_pipelined(sock, folder, frame_mapping, mapping_file, save_
             break
 
         # We have a frame, now send it! This is the only job of the main loop.
-        send_data_chunk(sock, dataset_num, item['data'])
+        send_data_chunk(sock, dataset_num, item['data'], compress=compress)
 
         # Use total_frames as the unique, non-repeating frame index for the mapping key
         frame_mapping[total_frames] = {
@@ -156,7 +203,7 @@ def process_tif_files_pipelined(sock, folder, frame_mapping, mapping_file, save_
     print(f"Finished processing {total_frames} frames.")
 
 
-def process_image(x, sock, dataset_num, frame_mapping, frame_index):
+def process_image(x, sock, dataset_num, frame_mapping, frame_index, compress=False):
     data = (x['value'][0]['intValue']).reshape(1679, 1475)
     data = data.flatten()
     t1 = time.time()
@@ -175,13 +222,13 @@ def process_image(x, sock, dataset_num, frame_mapping, frame_index):
     }
     
     # Send the data with dataset number
-    send_data_chunk(sock, dataset_num, data)
+    send_data_chunk(sock, dataset_num, data, compress=compress)
     
     # Return incremented dataset number (wrap around at 65535)
     return (dataset_num + 1) % 65536, frame_index + 1
 
 
-def process_binary_ge(file_path, sock, dataset_num, frame_mapping, frame_index, frame_size):
+def process_binary_ge(file_path, sock, dataset_num, frame_mapping, frame_index, frame_size, compress=False):
     """
     Process binary .geX files with 8192-byte header
     X is a number between 1-5
@@ -229,7 +276,7 @@ def process_binary_ge(file_path, sock, dataset_num, frame_mapping, frame_index, 
             }
             
             # Send the data
-            send_data_chunk(sock, dataset_num, frame_data)
+            send_data_chunk(sock, dataset_num, frame_data, compress=compress)
             
             # Increment counters
             dataset_num = (dataset_num + 1) % 65536
@@ -239,7 +286,7 @@ def process_binary_ge(file_path, sock, dataset_num, frame_mapping, frame_index, 
     return dataset_num, frame_index
 
 
-def process_h5(file_path, sock, dataset_num, frame_mapping, frame_index, h5_location):
+def process_h5(file_path, sock, dataset_num, frame_mapping, frame_index, h5_location, compress=False):
     """
     Process HDF5 files using h5py
     """
@@ -277,7 +324,7 @@ def process_h5(file_path, sock, dataset_num, frame_mapping, frame_index, h5_loca
                             'timestamp': time.time()
                         }
                         
-                        send_data_chunk(sock, dataset_num, frame_data)
+                        send_data_chunk(sock, dataset_num, frame_data, compress=compress)
                         dataset_num = (dataset_num + 1) % 65536
                         frame_index += 1
                         frames_processed += 1
@@ -292,7 +339,7 @@ def process_h5(file_path, sock, dataset_num, frame_mapping, frame_index, h5_loca
                         'timestamp': time.time()
                     }
                     
-                    send_data_chunk(sock, dataset_num, frame_data)
+                    send_data_chunk(sock, dataset_num, frame_data, compress=compress)
                     dataset_num = (dataset_num + 1) % 65536
                     frame_index += 1
                     frames_processed += 1
@@ -310,7 +357,7 @@ def process_h5(file_path, sock, dataset_num, frame_mapping, frame_index, h5_loca
                             'timestamp': time.time()
                         }
                         
-                        send_data_chunk(sock, dataset_num, frame_data)
+                        send_data_chunk(sock, dataset_num, frame_data, compress=compress)
                         dataset_num = (dataset_num + 1) % 65536
                         frame_index += 1
                         frames_processed += 1
@@ -374,6 +421,8 @@ def main():
                         help='Output JSON file for frame-to-dataset mapping (default: frame_mapping.json)')
     parser.add_argument('--save-interval', type=int, default=10,
                         help='Save mapping file every N frames (default: 10)')
+    parser.add_argument('--compress', action='store_true',
+                        help='Enable hybrid compression (send as uint16 + overflows)')
     
     args = parser.parse_args()
     
@@ -424,7 +473,7 @@ def main():
             # Define a monitor function that captures dataset_num and frame_index
             def pva_monitor_callback(x):
                 nonlocal dataset_num, frame_index, total_frames
-                dataset_num, frame_index = process_image(x, sock, dataset_num, frame_mapping, frame_index)
+                dataset_num, frame_index = process_image(x, sock, dataset_num, frame_mapping, frame_index, compress=args.compress)
                 total_frames += 1
                 
                 # Save mapping at regular intervals
@@ -450,7 +499,7 @@ def main():
             # Handle different file types
             if args.extension.lower() == 'tif':
                 # Process TIFF files
-                process_tif_files_pipelined(sock, args.folder, frame_mapping, args.mapping_file, args.save_interval)
+                process_tif_files_pipelined(sock, args.folder, frame_mapping, args.mapping_file, args.save_interval, compress=args.compress)
                     
             elif args.extension.lower().startswith('ge') and args.extension[2:].isdigit():
                 # Process .geX binary files
@@ -459,7 +508,7 @@ def main():
                 
                 for file in files:
                     frames_in_file_before = total_frames
-                    dataset_num, frame_index = process_binary_ge(file, sock, dataset_num, frame_mapping, frame_index, frame_size)
+                    dataset_num, frame_index = process_binary_ge(file, sock, dataset_num, frame_mapping, frame_index, frame_size, compress=args.compress)
                     # Calculate how many frames were in this file
                     frames_in_file = frame_index - total_frames
                     total_frames = frame_index
@@ -475,7 +524,7 @@ def main():
                 
                 for file in files:
                     frames_in_file_before = total_frames
-                    dataset_num, frame_index = process_h5(file, sock, dataset_num, frame_mapping, frame_index, args.h5_location)
+                    dataset_num, frame_index = process_h5(file, sock, dataset_num, frame_mapping, frame_index, args.h5_location, compress=args.compress)
                     # Calculate how many frames were in this file
                     frames_in_file = frame_index - total_frames
                     total_frames = frame_index
