@@ -448,18 +448,19 @@ void writer_queue_destroy(WriterQueue *queue) {
 }
 
 void *writer_thread_func(void *arg) {
-  printf("Writer thread started.\n");
+  printf("Writer thread started. Waiting for jobs...\n");
   double *local_hLineout = NULL;
   double *local_hLineout_simple_mean = NULL;
 
   while (true) {
     WriteJob job;
     if (writer_queue_pop(&writer_queue, &job) < 0) {
+      printf("Writer thread: queue pop failed or stopped.\n");
       break;
     }
     // Sentinel check
     if (job.nRBins == -1) {
-      printf("Writer thread received termination signal.\n");
+      printf("Writer thread received termination signal (Sentinel).\n");
       break;
     }
 
@@ -3133,8 +3134,11 @@ int main(int argc, char *argv[]) {
   // Just signal the writer thread to terminate.
   WriteJob termJob;
   termJob.nRBins = -1; // Sentinel
+  printf("Pushing sentinel to writer queue...\n");
   writer_queue_push(&writer_queue, termJob);
+  printf("Joining writer thread...\n");
   pthread_join(writer_thread, NULL);
+  printf("Writer thread joined. Destroying writer queue...\n");
   writer_queue_destroy(&writer_queue);
 
   // Destroy queue
