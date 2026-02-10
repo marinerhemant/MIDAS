@@ -25,6 +25,7 @@ import subprocess
 import json
 import socket
 import datetime
+import math
 from pathlib import Path
 
 # Check for psutil
@@ -55,21 +56,39 @@ def read_parameters_from_file(param_file):
     nx = 0
     ny = 0
     omega_sum_frames = None
+    rmax, rmin, rbin_size = 100, 10, 0.1  # Defaults match integrator_stream_process_h5.py
     
     with open(param_file, 'r') as f:
         for line in f:
             line = line.strip()
-            if line.startswith('NrPixelsY'):
-                nx = int(line.split()[1])
-            elif line.startswith('NrPixelsZ'):
-                ny = int(line.split()[1])
-            elif line.startswith('NrPixels'):
+            if not line or line.startswith('#'):
+                continue
+                
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            
+            key = parts[0]
+            val = parts[1]
+            
+            if key == 'NrPixelsY':
+                nx = int(val)
+            elif key == 'NrPixelsZ':
+                ny = int(val)
+            elif key == 'NrPixels':
                 # If NrPixels is specified, use it for both dimensions
-                nx = ny = int(line.split()[1])
-            elif line.startswith('OmegaSumFrames'):
-                omega_sum_frames = int(line.split()[1])
+                nx = ny = int(val)
+            elif key == 'OmegaSumFrames':
+                omega_sum_frames = int(val)
+            elif key == 'RMax':
+                rmax = float(val)
+            elif key == 'RMin':
+                rmin = float(val)
+            elif key == 'RBinSize':
+                rbin_size = float(val)
     
-    return nx, ny, omega_sum_frames
+    n_rbins = int(math.ceil((rmax - rmin) / rbin_size))
+    return nx, ny, omega_sum_frames, n_rbins
 
 def is_port_open(host, port, timeout=1):
     """Check if a port is open on the specified host"""
@@ -450,7 +469,7 @@ def main():
             print(f"Found {expected_frames} {extension} files to process")
     
     # Read parameters from parameter file
-    nx, ny, omega_sum_frames = read_parameters_from_file(param_file)
+    nx, ny, omega_sum_frames, n_rbins = read_parameters_from_file(param_file)
     if nx == 0 or ny == 0:
         print("Error: Could not determine frame size from parameter file")
         sys.exit(1)
@@ -581,10 +600,35 @@ def main():
         kill_process(server_proc.pid)
     
     # Give the integration server a moment to finish processing
-    print("Waiting for IntegratorFitPeaksGPUStream to finish processing...")
-    time.sleep(5)
+    # Wait for IntegratorFitPeaksGPUStream to finish writing files
+    print("Waiting for IntegratorFitPeaksGPUStream to finish writing files...")
     
-    print("Terminating IntegratorFitPeaksGPUStream...")
+    # Calculate expected size for lineout.bin
+    # nRBins * 2 (values + errors/sigma) * 8 bytes (double)
+    bytes_per_frame_lineout = n_rbins * 2 * 8
+    expected_lineout_size = expected_frames * bytes_per_frame_lineout
+    
+    lineout_file = output_dir / "lineout.bin"
+    timeout_write = 60  # Wait up to 60 seconds for writing to finish
+    start_wait = time.time()
+    
+    while time.time() - start_wait < timeout_write:
+        if lineout_file.exists():
+            current_size = lineout_file.stat().st_size
+            if current_size >= expected_lineout_size:
+                print(f"Verified lineout.bin size: {current_size} bytes (>= expected {expected_lineout_size})")
+                break
+            # Print progress every 2 seconds
+            if int(time.time() - start_wait) % 2 == 0:
+                 print(f"Waiting for write completion: {current_size}/{expected_lineout_size} bytes...", end='\r')
+        
+        time.sleep(0.5)
+    else:
+        print(f"\nWarning: Timed out waiting for lineout.bin to reach expected size.")
+        if lineout_file.exists():
+            print(f"Final size: {lineout_file.stat().st_size} (expected: {expected_lineout_size})")
+    
+    print("\nTerminating IntegratorFitPeaksGPUStream...")
     # Find all instances, sometimes the PID we have might not be correct
     pids = find_process_by_name("IntegratorFitPeaksGPUStream")
     for pid in pids:
