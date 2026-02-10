@@ -36,6 +36,7 @@ class ThreadLocalBufferPool:
     def __init__(self):
         self.base_image = None
         
+    def get_buffers(self, size_pixels):
         # Reallocate only if necessary (size changed or first call)
         if self.base_image is None or self.base_image.size < size_pixels:
             self.base_image = np.empty(size_pixels, dtype=np.uint16)
