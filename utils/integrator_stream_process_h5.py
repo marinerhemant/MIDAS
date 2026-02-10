@@ -176,10 +176,12 @@ def create_hdf5_file_streamed(output_file,
                               nRBins, nEtaBins, osf, num_peaks):
     
     # --- Open Binary Files ---
-    f_lineout = open(lineout_file, 'rb') if lineout_file and os.path.exists(lineout_file) else None
-    f_lineout_sm = open(lineout_sm_file, 'rb') if lineout_sm_file and os.path.exists(lineout_sm_file) else None
-    f_fit = open(fit_file, 'rb') if fit_file and os.path.exists(fit_file) else None
-    f_int2d = open(int2d_file, 'rb') if int2d_file and os.path.exists(int2d_file) else None
+    # --- Open Binary Files with Large Buffering ---
+    buffer_size = 10 * 1024 * 1024  # 10 MB buffer
+    f_lineout = open(lineout_file, 'rb', buffering=buffer_size) if lineout_file and os.path.exists(lineout_file) else None
+    f_lineout_sm = open(lineout_sm_file, 'rb', buffering=buffer_size) if lineout_sm_file and os.path.exists(lineout_sm_file) else None
+    f_fit = open(fit_file, 'rb', buffering=buffer_size) if fit_file and os.path.exists(fit_file) else None
+    f_int2d = open(int2d_file, 'rb', buffering=buffer_size) if int2d_file and os.path.exists(int2d_file) else None
     
     # Calculate sizes
     lineout_frame_size = nRBins * 2 * 8 # doubles
@@ -219,19 +221,19 @@ def create_hdf5_file_streamed(output_file,
             if len(raw_map) == 4 * nRBins * nEtaBins:
                 map_reshaped = raw_map.reshape(4, nRBins, nEtaBins)
                 
-                ds_r = grp_geom.create_dataset('R_map', data=map_reshaped[0])
+                ds_r = grp_geom.create_dataset('R_map', data=map_reshaped[0], track_times=False)
                 ds_r.attrs['description'] = np.bytes_("R-center for each bin")
                 ds_r.attrs['units'] = np.bytes_("pixels")
                 
-                ds_tth = grp_geom.create_dataset('TTh_map', data=map_reshaped[1])
+                ds_tth = grp_geom.create_dataset('TTh_map', data=map_reshaped[1], track_times=False)
                 ds_tth.attrs['description'] = np.bytes_("TwoTheta-center for each bin")
                 ds_tth.attrs['units'] = np.bytes_("degrees")
                 
-                ds_eta = grp_geom.create_dataset('Eta_map', data=map_reshaped[2])
+                ds_eta = grp_geom.create_dataset('Eta_map', data=map_reshaped[2], track_times=False)
                 ds_eta.attrs['description'] = np.bytes_("Eta-center for each bin")
                 ds_eta.attrs['units'] = np.bytes_("degrees")
                 
-                ds_area = grp_geom.create_dataset('Area_map', data=map_reshaped[3])
+                ds_area = grp_geom.create_dataset('Area_map', data=map_reshaped[3], track_times=False)
                 ds_area.attrs['description'] = np.bytes_("Effective pixel area for each bin")
                 ds_area.attrs['units'] = np.bytes_("fractional pixels")
                 print("Geometry maps written.")
@@ -290,13 +292,13 @@ def create_hdf5_file_streamed(output_file,
                 if grp_line:
                     data = read_frame_chunk(f_lineout, frame_idx, lineout_frame_size, shape=(nRBins, 2))
                     if data is not None:
-                        ds = grp_line.create_dataset(ds_name, data=data)
+                        ds = grp_line.create_dataset(ds_name, data=data, track_times=False)
                         ds.attrs['frame_index'] = frame_idx
                         
                         # Curves (depend on lineout for R axis)
                         if grp_curves and frame_idx in fit_curves_data:
                             start_bin, curve = fit_curves_data[frame_idx]
-                            ds_c = grp_curves.create_dataset(ds_name, data=curve)
+                            ds_c = grp_curves.create_dataset(ds_name, data=curve, track_times=False)
                             ds_c.attrs['original_frame_index'] = frame_idx
                             ds_c.attrs['start_bin_index'] = start_bin
                             # Extract R axis slice from lineout data we just read
@@ -308,14 +310,14 @@ def create_hdf5_file_streamed(output_file,
                 if grp_line_sm:
                     data = read_frame_chunk(f_lineout_sm, frame_idx, lineout_frame_size, shape=(nRBins, 2))
                     if data is not None:
-                        ds = grp_line_sm.create_dataset(ds_name, data=data) 
+                        ds = grp_line_sm.create_dataset(ds_name, data=data, track_times=False) 
                         ds.attrs['frame_index'] = frame_idx
 
                 # Fit
                 if grp_fit:
                     data = read_frame_chunk(f_fit, frame_idx, fit_frame_size, shape=(num_peaks, 7))
                     if data is not None:
-                        ds = grp_fit.create_dataset(ds_name, data=data)
+                        ds = grp_fit.create_dataset(ds_name, data=data, track_times=False)
                         ds.attrs['frame_index'] = frame_idx
 
             # --- Summed Data (Int2D Omega Sum) ---
@@ -337,7 +339,7 @@ def create_hdf5_file_streamed(output_file,
                     last_name = get_dataset_name(current_group_frames[-1])
                     ds_name_sum = f"Summed_from_{first_name}_to_{last_name}"
                     
-                    ds = grp_omega.create_dataset(ds_name_sum, data=sum_buffer)
+                    ds = grp_omega.create_dataset(ds_name_sum, data=sum_buffer, track_times=False)
                     ds.attrs['Number Of Frames Summed'] = valid_frames_count
                     ds.attrs['original_frame_indices'] = current_group_frames
                     if mapping:
