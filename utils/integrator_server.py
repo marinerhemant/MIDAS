@@ -17,6 +17,50 @@ import threading
 import queue
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
+# Try to import Numba for JIT acceleration
+try:
+    from numba import jit
+    HAS_NUMBA = True
+except ImportError:
+    HAS_NUMBA = False
+    # Dummy decorator if numba is not present
+    def jit(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
+@jit(nopython=True)
+def find_overflows_numba(data):
+    """
+    JIT-compiled function to find overflow indices and values.
+    Returns: (count, indices, values)
+    This avoids creating large boolean masks and intermediate arrays.
+    """
+    n_total = data.size
+    
+    # First pass: count overflows
+    count = 0
+    flat_data = data.ravel()
+    
+    for i in range(n_total):
+        if flat_data[i] > 65535:
+            count += 1
+            
+    # Allocate result arrays
+    indices = np.empty(count, dtype=np.int32)
+    values = np.empty(count, dtype=np.int64)
+    
+    # Second pass: fill arrays
+    valid_idx = 0
+    for i in range(n_total):
+        val = flat_data[i]
+        if val > 65535:
+            indices[valid_idx] = i
+            values[valid_idx] = val
+            valid_idx += 1
+            
+    return count, indices, values
+
 def send_data_chunk(sock, dataset_num, data, compress=False):
     t1 = time.time()
     
@@ -41,10 +85,15 @@ def send_data_chunk(sock, dataset_num, data, compress=False):
             # Case B: Overflow (Hybrid)
             dtype_code = 6
             # Identify overflows
-            mask = data_array > 65535
-            overflow_indices = np.flatnonzero(mask).astype(np.int32)
-            overflow_values = data_array[mask].astype(np.int64) # Ensure int64
-            overflow_count = len(overflow_indices)
+            if HAS_NUMBA:
+                # Optimized path
+                overflow_count, overflow_indices, overflow_values = find_overflows_numba(data_array)
+            else:
+                # NumPy path (vectorized but memory-hungry)
+                mask = data_array > 65535
+                overflow_indices = np.flatnonzero(mask).astype(np.int32)
+                overflow_values = data_array[mask].astype(np.int64) # Ensure int64
+                overflow_count = len(overflow_indices)
             
             # Base image (uint16) - overflows can be anything (e.g. truncated), they are overwritten
             base_image = data_array.astype(np.uint16)
