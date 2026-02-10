@@ -21,7 +21,6 @@ Options:
 import os
 import sys
 import time
-import signal
 import subprocess
 import json
 import socket

@@ -2,10 +2,6 @@ import socket
 import time
 import numpy as np
 import struct
-import ctypes
-from PIL import Image
-import matplotlib.pyplot as plt
-import pvaccess
 import os
 import glob
 import argparse
@@ -15,7 +11,6 @@ import atexit
 import tifffile
 import threading
 import queue
-from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # Try to import Numba for JIT acceleration
 try:
@@ -371,7 +366,6 @@ def process_tif_files_pipelined(sock, folder, frame_mapping, mapping_file, save_
 def process_image(x, sock, dataset_num, frame_mapping, frame_index, compress=False):
     data = (x['value'][0]['intValue']).reshape(1679, 1475)
     data = data.flatten()
-    t1 = time.time()
 
     # Convert the PvObject to a Python dictionary first
     pv_data_dict = x.toDict()
@@ -633,6 +627,7 @@ def main():
     
     # Set PVA server IP if in PVA mode
     if args.stream == 1:
+        import pvaccess
         os.environ['EPICS_PVA_ADDR_LIST'] = args.pva_ip
     
     # Connect to C server - fixed address and port
@@ -684,10 +679,7 @@ def main():
                 print(f"Found {len(files)} .{args.extension} files")
                 
                 for file in files:
-                    frames_in_file_before = total_frames
                     dataset_num, frame_index = process_binary_ge(file, sock, dataset_num, frame_mapping, frame_index, frame_size, compress=args.compress)
-                    # Calculate how many frames were in this file
-                    frames_in_file = frame_index - total_frames
                     total_frames = frame_index
                     
                     # Save mapping at regular intervals
@@ -700,10 +692,7 @@ def main():
                 print(f"Found {len(files)} .{args.extension} files")
                 
                 for file in files:
-                    frames_in_file_before = total_frames
                     dataset_num, frame_index = process_h5(file, sock, dataset_num, frame_mapping, frame_index, args.h5_location, compress=args.compress)
-                    # Calculate how many frames were in this file
-                    frames_in_file = frame_index - total_frames
                     total_frames = frame_index
                     
                     # Save mapping at regular intervals

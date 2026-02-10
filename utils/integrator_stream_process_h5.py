@@ -152,11 +152,12 @@ def read_frame_chunk(file_obj, frame_index, frame_size_bytes, dtype=np.float64, 
     """
     Reads a single frame's data from an already open binary file at the correct offset.
     """
+    itemsize = np.dtype(dtype).itemsize
     offset = frame_index * frame_size_bytes
     file_obj.seek(offset)
-    data = np.fromfile(file_obj, dtype=dtype, count=(frame_size_bytes // 8))
+    data = np.fromfile(file_obj, dtype=dtype, count=(frame_size_bytes // itemsize))
     
-    if len(data) * 8 != frame_size_bytes:
+    if len(data) * itemsize != frame_size_bytes:
         # End of file or partial read
         return None
         
@@ -261,12 +262,12 @@ def create_hdf5_file_streamed(output_file,
         # For OSF grouping, we group contiguous items in the SORTED list.
         
         # Determine grouping
-        if OSF is None or OSF <= 0:
+        if osf is not None and osf == -1:
+            actual_osf = num_frames  # Sum all frames
+        elif osf is None or osf <= 0:
             actual_osf = 1
-        elif OSF == -1:
-            actual_osf = num_frames # Sum all
         else:
-            actual_osf = OSF
+            actual_osf = osf
             
         # Process in chunks of 'actual_osf'
         # This ensures we have the frames needed for summation together in the loop
