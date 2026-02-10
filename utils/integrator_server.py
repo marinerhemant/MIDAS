@@ -535,17 +535,29 @@ def process_h5(file_path, sock, dataset_num, frame_mapping, frame_index, h5_loca
 
 def save_frame_mapping(frame_mapping, mapping_file):
     """
-    Save the frame mapping to a JSON file
+    Save the frame mapping to a JSON file atomically.
+    Writes to a temporary file first, then renames.
     """
     # Convert integer keys to strings for JSON compatibility
     str_mapping = {str(k): v for k, v in frame_mapping.items()}
     
+    temp_file = f"{mapping_file}.tmp"
     try:
-        with open(mapping_file, 'w') as f:
+        with open(temp_file, 'w') as f:
             json.dump(str_mapping, f, indent=2)
-        print(f"Frame mapping saved to {mapping_file}")
+            f.flush()
+            os.fsync(f.fileno()) # Ensure it hits the disk
+            
+        # Atomic rename
+        os.replace(temp_file, mapping_file)
+        # print(f"Frame mapping saved to {mapping_file}") # Remove verbose print
     except Exception as e:
         print(f"Error saving frame mapping to {mapping_file}: {e}")
+        if os.path.exists(temp_file):
+            try:
+                os.remove(temp_file)
+            except:
+                pass
 
 
 def save_mapping_at_exit(frame_mapping, mapping_file):
@@ -584,8 +596,8 @@ def main():
     # Add argument for mapping file
     parser.add_argument('--mapping-file', type=str, default='frame_mapping.json',
                         help='Output JSON file for frame-to-dataset mapping (default: frame_mapping.json)')
-    parser.add_argument('--save-interval', type=int, default=10,
-                        help='Save mapping file every N frames (default: 10)')
+    parser.add_argument('--save-interval', type=int, default=500,
+                        help='Save mapping file every N frames (default: 500)')
     parser.add_argument('--compress', action='store_true',
                         help='Enable hybrid compression (send as uint16 + overflows)')
     

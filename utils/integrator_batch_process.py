@@ -405,8 +405,8 @@ def main():
                         help='PVA channel string (default: 16pil-idb:Pva1:Image)')
     parser.add_argument('--mapping-file', default='frame_mapping.json',
                         help='Output JSON file for frame mapping (default: frame_mapping.json)')
-    parser.add_argument('--save-interval', type=int, default=10,
-                        help='Save mapping every N frames (default: 10)')
+    parser.add_argument('--save-interval', type=int, default=500,
+                        help='Save mapping every N frames (default: 500)')
     parser.add_argument('--h5-location', default='exchange/data',
                         help='Location within H5 files containing image data (default: exchange/data)')
     parser.add_argument('--compress', action='store_true',
