@@ -243,11 +243,12 @@ static inline int FindUniques(double **EdgesIn, double **EdgesOut, int nEdgesIn,
     }
     RT = sqrt(EdgesIn[i][0] * EdgesIn[i][0] + EdgesIn[i][1] * EdgesIn[i][1]);
     ET = CalcEtaAngle(EdgesIn[i][0], EdgesIn[i][1]);
-    if (fabs(ET - EtaMin) > 180 || fabs(ET - EtaMax) > 180) {
-      if (EtaMin < 0)
-        ET = ET - 360;
-      else
-        ET = 360 + ET;
+    if (!BETWEEN(ET, EtaMin, EtaMax)) {
+      if (BETWEEN(ET + 360, EtaMin, EtaMax)) {
+        ET += 360;
+      } else if (BETWEEN(ET - 360, EtaMin, EtaMax)) {
+        ET -= 360;
+      }
     }
     if (BETWEEN(RT, RMin, RMax) == 0) {
       duplicate = 1;
