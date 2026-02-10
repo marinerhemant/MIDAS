@@ -409,6 +409,8 @@ def main():
                         help='Save mapping every N frames (default: 10)')
     parser.add_argument('--h5-location', default='exchange/data',
                         help='Location within H5 files containing image data (default: exchange/data)')
+    parser.add_argument('--compress', action='store_true',
+                        help='Enable hybrid compression (send as uint16 + overflows)')
     
     args = parser.parse_args()
     
@@ -546,6 +548,10 @@ def main():
             "--pva-ip", args.pva_ip,
             "--channel", args.pva_channel
         ])
+
+    # Add compression flag if enabled
+    if args.compress:
+        server_cmd.append("--compress")
     
     # Start integrator server
     print(f"Starting integrator_server.py with command: {' '.join(server_cmd)}")
