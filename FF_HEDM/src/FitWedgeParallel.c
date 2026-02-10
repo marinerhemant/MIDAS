@@ -38,12 +38,26 @@ typedef struct {
   int pairIndex;
   double wedge;
   double minf;
+  double weight;
 } Result;
 
+// Sort by Weight DESCENDING
 int compareResults(const void *a, const void *b) {
-  double ma = ((const Result *)a)->minf;
-  double mb = ((const Result *)b)->minf;
-  return (ma > mb) - (ma < mb);
+  double wa = ((const Result *)a)->weight;
+  double wb = ((const Result *)b)->weight;
+  return (wb > wa) - (wb < wa);
+}
+
+// For weighted median calculation
+typedef struct {
+  double val;
+  double w;
+} WeightedVal;
+
+int compareWeightedVals(const void *a, const void *b) {
+  double va = ((const WeightedVal *)a)->val;
+  double vb = ((const WeightedVal *)b)->val;
+  return (va > vb) - (va < vb);
 }
 
 static inline void MatrixMultF33(double m[3][3], double n[3][3],
@@ -550,6 +564,13 @@ int main(int argc, char *argv[]) {
       results[i].pairIndex = i;
       results[i].wedge = resWedge;
       results[i].minf = resMinF;
+      // Calculate Weight: |cos(eta)|. Use avg of both spots for robustness,
+      // though typically they are symmetric.
+      // Sensitivity max at poles (0,180) -> cos=1
+      // Sensitivity min at equator (90, 270) -> cos=0
+      double w1 = fabs(cos(spots[idx1].Eta * deg2rad));
+      double w2 = fabs(cos(spots[idx2].Eta * deg2rad));
+      results[i].weight = (w1 + w2) * 0.5;
     } else {
       validResults[i] = 0;
     }
@@ -569,7 +590,7 @@ int main(int argc, char *argv[]) {
   // Use a temp array to store minf values for stats
   double *minfVals = (double *)malloc(nValidInit * sizeof(double));
   if (!tempResults || !minfVals) {
-    // Handle allocation fail if needed, though unlikely given nPairs allocated
+    // alloc check
   }
 
   for (int i = 0; i < nPairs; i++) {
@@ -580,7 +601,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  // --- Calculate Minf Stats for Filtering ---
+  // --- Calculate Minf Stats for Outlier Filtering ---
   double minfThreshold = 1e9; // Default high
   if (nValidInit > 0) {
     // Sort minfVals for Median
@@ -633,7 +654,7 @@ int main(int argc, char *argv[]) {
   free(results);
   free(validResults); // pairs and spots needed for indices
 
-  // Sort results based on minf
+  // Sort results based on WEIGHT (Descending: Most sensitive first)
   qsort(finalResults, nValid, sizeof(Result), compareResults);
 
   // --- Output Results ---
@@ -647,67 +668,85 @@ int main(int argc, char *argv[]) {
   }
 
   fprintf(fOut, "GrainID SpotID1 SpotID2 RingNr Omega1 Omega2 Y1 Z1 Eta1 Y2 Z2 "
-                "Eta2 Wedge minf\n");
+                "Eta2 Wedge minf Weight\n");
   for (int i = 0; i < nValid; i++) {
     int pairIdx = finalResults[i].pairIndex;
     int idx1 = pairs[pairIdx].idx1;
     int idx2 = pairs[pairIdx].idx2;
-    fprintf(fOut, "%d %d %d %d %f %f %f %f %f %f %f %f %f %e\n",
+    fprintf(fOut, "%d %d %d %d %f %f %f %f %f %f %f %f %f %e %f\n",
             spots[idx1].GrainID, spots[idx1].SpotID, spots[idx2].SpotID,
             spots[idx1].RingNr, spots[idx1].Omega, spots[idx2].Omega,
             spots[idx1].DetectorHor, spots[idx1].DetectorVert, spots[idx1].Eta,
             spots[idx2].DetectorHor, spots[idx2].DetectorVert, spots[idx2].Eta,
-            finalResults[i].wedge, finalResults[i].minf);
+            finalResults[i].wedge, finalResults[i].minf,
+            finalResults[i].weight);
   }
   fclose(fOut);
   printf("Results written to WedgeResults.txt\n");
 
-  // --- Statistics ---
+  // --- Statistics (Weighted) ---
   if (nValid > 0) {
-    // Calculate Mean, StdDev, Range for Wedge
-    double sum = 0.0;
+    // Collect Wedge and Weights
+    WeightedVal *wVals = (WeightedVal *)malloc(nValid * sizeof(WeightedVal));
+
     double minW = finalResults[0].wedge;
     double maxW = finalResults[0].wedge;
-
-    // We need a temp array for median calculation since 'results' is sorted by
-    // minf
-    double *wedgeVals = (double *)malloc(nValid * sizeof(double));
+    double weightedSum = 0.0;
+    double totalWeight = 0.0;
 
     for (int i = 0; i < nValid; i++) {
       double w = finalResults[i].wedge;
-      wedgeVals[i] = w;
-      sum += w;
+      double weight = finalResults[i].weight;
+
+      wVals[i].val = w;
+      wVals[i].w = weight;
+
+      weightedSum += w * weight;
+      totalWeight += weight;
+
       if (w < minW)
         minW = w;
       if (w > maxW)
         maxW = w;
     }
-    double mean = sum / nValid;
 
-    double sumSqDiff = 0.0;
+    double weightedMean = weightedSum / totalWeight;
+
+    // Weighted Median
+    qsort(wVals, nValid, sizeof(WeightedVal), compareWeightedVals);
+
+    double halfWeight = totalWeight / 2.0;
+    double currentWeight = 0.0;
+    double weightedMedian = wVals[0].val;
+
     for (int i = 0; i < nValid; i++) {
-      sumSqDiff += (wedgeVals[i] - mean) * (wedgeVals[i] - mean);
-    }
-    double stdDev = sqrt(sumSqDiff / nValid);
-
-    // Calculate Median (sort temp array)
-    qsort(wedgeVals, nValid, sizeof(double), compareDoubles);
-    double median;
-    if (nValid % 2 == 0) {
-      median = (wedgeVals[nValid / 2 - 1] + wedgeVals[nValid / 2]) / 2.0;
-    } else {
-      median = wedgeVals[nValid / 2];
+      currentWeight += wVals[i].w;
+      if (currentWeight >= halfWeight) {
+        weightedMedian = wVals[i].val;
+        break;
+      }
     }
 
-    printf("\n--- Wedge Statistics ---\n");
+    // Weighted StdDev
+    // Formula: sqrt( sum(w * (x - mean)^2) / sum(w) )
+    // Note: unbiased estimator typically uses denominator (sum(w) -
+    // sum(w^2)/sum(w)) but for large N, sum(w) is sufficient approx.
+    double weightedSumSqDiff = 0.0;
+    for (int i = 0; i < nValid; i++) {
+      double diff = wVals[i].val - weightedMean;
+      weightedSumSqDiff += wVals[i].w * diff * diff;
+    }
+    double weightedStdDev = sqrt(weightedSumSqDiff / totalWeight);
+
+    printf("\n--- Wedge Statistics (Weighted by Sensitivity) ---\n");
     printf("Count:      %d\n", nValid);
-    printf("Mean:       %f\n", mean);
-    printf("Median:     %f\n", median);
-    printf("Std Dev:    %f\n", stdDev);
+    printf("Mean:       %f\n", weightedMean);
+    printf("Median:     %f\n", weightedMedian);
+    printf("Std Dev:    %f\n", weightedStdDev);
     printf("Range:      [%f, %f]\n", minW, maxW);
     printf("------------------------\n");
 
-    // --- Histogram (Non-Linear) ---
+    // --- Histogram (Non-Linear, Zoomed on Weighted Median) ---
     // Define 3 regions: Left (min -> m-sigma), Core (m-sigma -> m+sigma), Right
     // (m+sigma -> max) Allocate bins: 4 (Left), 12 (Core), 4 (Right)
 
@@ -716,12 +755,13 @@ int main(int argc, char *argv[]) {
     int nCore = 12;
     int nRight = 4;
 
-    double sigma = stdDev;
+    double sigma = weightedStdDev;
     if (sigma < 1e-9)
-      sigma = (maxW - minW) / 10.0; // Fallback if singular
+      sigma = (maxW - minW) / 10.0;
     if (sigma < 1e-9)
       sigma = 0.1;
 
+    double median = weightedMedian;
     double coreStart = median - sigma;
     double coreEnd = median + sigma;
 
@@ -731,7 +771,7 @@ int main(int argc, char *argv[]) {
     if (coreEnd > maxW)
       coreEnd = maxW;
 
-    // Adjust bin counts if core covers range
+    // Adjust bin counts
     if (coreStart == minW) {
       nCore += nLeft;
       nLeft = 0;
@@ -765,7 +805,7 @@ int main(int argc, char *argv[]) {
       for (int i = 0; i <= nRight; i++)
         edges[eIdx++] = coreEnd + i * step;
     } else {
-      edges[eIdx++] = coreEnd; // Final edge if no right tail
+      edges[eIdx++] = coreEnd;
     }
 
     // Fill Bins
@@ -773,10 +813,8 @@ int main(int argc, char *argv[]) {
     int maxCount = 0;
 
     for (int i = 0; i < nValid; i++) {
-      double val = wedgeVals[i];
-      // Find bin index
+      double val = wVals[i].val;
       int b = 0;
-      // Simple linear scan for robustness (20 bins is small)
       for (int j = 0; j < nBinsTotal; j++) {
         if (val >= edges[j] && val < edges[j + 1]) {
           b = j;
@@ -784,16 +822,15 @@ int main(int argc, char *argv[]) {
         }
       }
       if (val >= edges[nBinsTotal])
-        b = nBinsTotal - 1; // Last bin inclusive
+        b = nBinsTotal - 1;
 
       binCounts[b]++;
       if (binCounts[b] > maxCount)
         maxCount = binCounts[b];
     }
 
-    printf("\n--- Wedge Distribution (Focus on Median) ---\n");
+    printf("\n--- Wedge Distribution (Focus on Weighted Median) ---\n");
     for (int i = 0; i < nBinsTotal; i++) {
-      // Skip empty bins if range is 0 (due to clamping logic)
       if (fabs(edges[i + 1] - edges[i]) < 1e-9 && binCounts[i] == 0)
         continue;
 
@@ -813,11 +850,11 @@ int main(int argc, char *argv[]) {
     printf("--------------------------\n");
     free(edges);
     free(binCounts);
+    free(wVals);
 
     printf("Total Time: %f seconds (Wall Clock)\n", endTime - startTime);
     printf("------------------------\n");
 
-    free(wedgeVals);
   } else {
     printf("\nNo pairs found for statistics (after filtering).\n");
     printf("Total Time: %f seconds (Wall Clock)\n", endTime - startTime);
