@@ -707,47 +707,112 @@ int main(int argc, char *argv[]) {
     printf("Range:      [%f, %f]\n", minW, maxW);
     printf("------------------------\n");
 
-    // --- Histogram ---
-    int nBins = 20;
-    int *bins = (int *)calloc(nBins, sizeof(int));
-    double binWidth = (maxW - minW) / nBins;
-    if (binWidth < 1e-9)
-      binWidth = 0.001; // Avoid divide by zero if range is 0
+    // --- Histogram (Non-Linear) ---
+    // Define 3 regions: Left (min -> m-sigma), Core (m-sigma -> m+sigma), Right
+    // (m+sigma -> max) Allocate bins: 4 (Left), 12 (Core), 4 (Right)
 
-    int maxCount = 0;
-    for (int i = 0; i < nValid; i++) {
-      int binIdx = 0;
-      if (maxW > minW) {
-        binIdx = (int)((wedgeVals[i] - minW) / binWidth);
-      }
-      if (binIdx >= nBins)
-        binIdx = nBins - 1;
-      if (binIdx < 0)
-        binIdx = 0;
+    int nBinsTotal = 20;
+    int nLeft = 4;
+    int nCore = 12;
+    int nRight = 4;
 
-      bins[binIdx]++;
-      if (bins[binIdx] > maxCount)
-        maxCount = bins[binIdx];
+    double sigma = stdDev;
+    if (sigma < 1e-9)
+      sigma = (maxW - minW) / 10.0; // Fallback if singular
+    if (sigma < 1e-9)
+      sigma = 0.1;
+
+    double coreStart = median - sigma;
+    double coreEnd = median + sigma;
+
+    // Clamp core to range
+    if (coreStart < minW)
+      coreStart = minW;
+    if (coreEnd > maxW)
+      coreEnd = maxW;
+
+    // Adjust bin counts if core covers range
+    if (coreStart == minW) {
+      nCore += nLeft;
+      nLeft = 0;
+    }
+    if (coreEnd == maxW) {
+      nCore += nRight;
+      nRight = 0;
     }
 
-    printf("\n--- Wedge Distribution ---\n");
-    for (int i = 0; i < nBins; i++) {
-      double binStart = minW + i * binWidth;
-      double binEnd = minW + (i + 1) * binWidth;
+    // Generate Bin Edges
+    double *edges = (double *)malloc((nBinsTotal + 1) * sizeof(double));
+    int eIdx = 0;
 
-      // Scale bar length (max 50 chars)
+    // Left
+    if (nLeft > 0) {
+      double step = (coreStart - minW) / nLeft;
+      for (int i = 0; i < nLeft; i++)
+        edges[eIdx++] = minW + i * step;
+    }
+
+    // Core (Should start at coreStart)
+    if (nCore > 0) {
+      double step = (coreEnd - coreStart) / nCore;
+      for (int i = 0; i < nCore; i++)
+        edges[eIdx++] = coreStart + i * step;
+    }
+
+    // Right (Should start at coreEnd)
+    if (nRight > 0) {
+      double step = (maxW - coreEnd) / nRight;
+      for (int i = 0; i <= nRight; i++)
+        edges[eIdx++] = coreEnd + i * step;
+    } else {
+      edges[eIdx++] = coreEnd; // Final edge if no right tail
+    }
+
+    // Fill Bins
+    int *binCounts = (int *)calloc(nBinsTotal, sizeof(int));
+    int maxCount = 0;
+
+    for (int i = 0; i < nValid; i++) {
+      double val = wedgeVals[i];
+      // Find bin index
+      int b = 0;
+      // Simple linear scan for robustness (20 bins is small)
+      for (int j = 0; j < nBinsTotal; j++) {
+        if (val >= edges[j] && val < edges[j + 1]) {
+          b = j;
+          break;
+        }
+      }
+      if (val >= edges[nBinsTotal])
+        b = nBinsTotal - 1; // Last bin inclusive
+
+      binCounts[b]++;
+      if (binCounts[b] > maxCount)
+        maxCount = binCounts[b];
+    }
+
+    printf("\n--- Wedge Distribution (Focus on Median) ---\n");
+    for (int i = 0; i < nBinsTotal; i++) {
+      // Skip empty bins if range is 0 (due to clamping logic)
+      if (fabs(edges[i + 1] - edges[i]) < 1e-9 && binCounts[i] == 0)
+        continue;
+
+      double binStart = edges[i];
+      double binEnd = edges[i + 1];
+
       int barLen = 0;
       if (maxCount > 0) {
-        barLen = (int)((double)bins[i] / maxCount * 50.0);
+        barLen = (int)((double)binCounts[i] / maxCount * 50.0);
       }
 
       printf("[%8.4f - %8.4f] | ", binStart, binEnd);
       for (int j = 0; j < barLen; j++)
         printf("*");
-      printf(" (%d)\n", bins[i]);
+      printf(" (%d)\n", binCounts[i]);
     }
     printf("--------------------------\n");
-    free(bins);
+    free(edges);
+    free(binCounts);
 
     printf("Total Time: %f seconds (Wall Clock)\n", endTime - startTime);
     printf("------------------------\n");
