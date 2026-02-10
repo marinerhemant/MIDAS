@@ -373,6 +373,42 @@ int queue_pop(ProcessQueue *queue, DataChunk *chunk) {
   return 0;
 }
 
+// Timeout version of queue_pop (returns 1 on timeout, -1 on shutdown, 0 on
+// success)
+int queue_pop_timeout(ProcessQueue *queue, DataChunk *chunk, int timeout_ms) {
+  pthread_mutex_lock(&queue->mutex);
+
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  ts.tv_sec += timeout_ms / 1000;
+  ts.tv_nsec += (timeout_ms % 1000) * 1000000L;
+  if (ts.tv_nsec >= 1000000000L) {
+    ts.tv_sec++;
+    ts.tv_nsec -= 1000000000L;
+  }
+
+  while (queue->count == 0 && keep_running) {
+    int rc = pthread_cond_timedwait(&queue->not_empty, &queue->mutex, &ts);
+    if (rc == ETIMEDOUT && queue->count == 0) {
+      pthread_mutex_unlock(&queue->mutex);
+      return 1; // Timeout
+    }
+  }
+
+  if (queue->count == 0 && !keep_running) {
+    pthread_mutex_unlock(&queue->mutex);
+    return -1;
+  }
+
+  *chunk = queue->chunks[queue->front];
+  queue->front = (queue->front + 1) % MAX_QUEUE_SIZE;
+  queue->count--;
+
+  pthread_cond_signal(&queue->not_full);
+  pthread_mutex_unlock(&queue->mutex);
+  return 0;
+}
+
 void queue_destroy(ProcessQueue *queue) {
   pthread_mutex_destroy(&queue->mutex);
   pthread_cond_destroy(&queue->not_empty);
