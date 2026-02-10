@@ -34,6 +34,18 @@ int compareDoubles(const void *a, const void *b) {
   return (da > db) - (da < db);
 }
 
+typedef struct {
+  int pairIndex;
+  double wedge;
+  double minf;
+} Result;
+
+int compareResults(const void *a, const void *b) {
+  double ma = ((const Result *)a)->minf;
+  double mb = ((const Result *)b)->minf;
+  return (ma > mb) - (ma < mb);
+}
+
 static inline void MatrixMultF33(double m[3][3], double n[3][3],
                                  double res[3][3]) {
   int r;
@@ -233,7 +245,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
   if (Omega_diff2 < OmegaMin) {
     OmegaMin = Omega_diff2;
   }
-  Error = OmegaMin;
+  Error = OmegaMin * OmegaMin;
   return Error;
 }
 
@@ -242,7 +254,7 @@ void FitWedgeThreadSafe(double Lsd, double Ycen, double Zcen, double p0,
                         double p1, double p2, double MaxRad, double tx,
                         double ty, double tz, double px, double Ys, double Zs,
                         double MinOme, double MaxOme, double WedgeIn,
-                        double *WedgeFit, double Wavelength) {
+                        double *WedgeFit, double *MinFOut, double Wavelength) {
   struct my_func_data f_data;
   f_data.Lsd = Lsd;
   f_data.Ome1 = MinOme;
@@ -271,6 +283,7 @@ void FitWedgeThreadSafe(double Lsd, double Ycen, double Zcen, double p0,
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   *WedgeFit = x[0];
+  *MinFOut = minf;
 }
 
 // --- Data Structures ---
@@ -475,8 +488,8 @@ int main(int argc, char *argv[]) {
   printf("Found %d pairs.\n", nPairs);
 
   // --- Parallel Fitting ---
-  double *RefinedWedges = (double *)malloc(nPairs * sizeof(double));
-  if (!RefinedWedges && nPairs > 0) {
+  Result *results = (Result *)malloc(nPairs * sizeof(Result));
+  if (!results && nPairs > 0) {
     fprintf(stderr, "Memory allocation failed for results array.\n");
     free(pairs);
     free(spots);
@@ -498,13 +511,6 @@ int main(int argc, char *argv[]) {
     double MinOme, MaxOme;
     double YsUse, ZsUse;
 
-    // Determine Min/Max Ome and corresponding Y/Z
-    // FitWedge.c logic: Ys/Zs correspond to First (MinOme) spot?
-    // In FitWedge.c lines 418-434:
-    // Finds First (index of MinOme).
-    // Sets Ys[0], Zs[0] from First.
-    // Calls FitWedge with Ys[0], Zs[0].
-
     if (Ome1 < Ome2) {
       MinOme = Ome1;
       MaxOme = Ome2;
@@ -518,66 +524,80 @@ int main(int argc, char *argv[]) {
     }
 
     double resWedge = 0;
+    double resMinF = 0;
     FitWedgeThreadSafe(Lsd, Ycen, Zcen, p0, p1, p2, MaxRad, tx, ty, tz, px,
-                       YsUse, ZsUse, MinOme, MaxOme, Wedge, &resWedge,
+                       YsUse, ZsUse, MinOme, MaxOme, Wedge, &resWedge, &resMinF,
                        Wavelength);
 
-    RefinedWedges[i] = resWedge;
+    results[i].pairIndex = i;
+    results[i].wedge = resWedge;
+    results[i].minf = resMinF;
   }
+
+  // Sort results based on minf
+  qsort(results, nPairs, sizeof(Result), compareResults);
 
   // --- Output Results ---
   FILE *fOut = fopen("WedgeResults.txt", "w");
   if (!fOut) {
     printf("Error opening output file.\n");
+    free(results);
+    free(pairs);
+    free(spots);
     return 1;
   }
 
   fprintf(fOut, "GrainID SpotID1 SpotID2 RingNr Omega1 Omega2 Y1 Z1 Eta1 Y2 Z2 "
-                "Eta2 Wedge\n");
+                "Eta2 Wedge minf\n");
   for (int i = 0; i < nPairs; i++) {
-    int idx1 = pairs[i].idx1;
-    int idx2 = pairs[i].idx2;
-    fprintf(fOut, "%d %d %d %d %f %f %f %f %f %f %f %f %f\n",
+    int pairIdx = results[i].pairIndex;
+    int idx1 = pairs[pairIdx].idx1;
+    int idx2 = pairs[pairIdx].idx2;
+    fprintf(fOut, "%d %d %d %d %f %f %f %f %f %f %f %f %f %e\n",
             spots[idx1].GrainID, spots[idx1].SpotID, spots[idx2].SpotID,
             spots[idx1].RingNr, spots[idx1].Omega, spots[idx2].Omega,
             spots[idx1].DetectorHor, spots[idx1].DetectorVert, spots[idx1].Eta,
             spots[idx2].DetectorHor, spots[idx2].DetectorVert, spots[idx2].Eta,
-            RefinedWedges[i]);
+            results[i].wedge, results[i].minf);
   }
   fclose(fOut);
   printf("Results written to WedgeResults.txt\n");
 
   // --- Statistics ---
   if (nPairs > 0) {
-    // Calculate Mean, StdDev, Range
+    // Calculate Mean, StdDev, Range for Wedge
     double sum = 0.0;
-    double minW = RefinedWedges[0];
-    double maxW = RefinedWedges[0];
+    double minW = results[0].wedge;
+    double maxW = results[0].wedge;
+
+    // We need a temp array for median calculation since 'results' is sorted by
+    // minf
+    double *wedgeVals = (double *)malloc(nPairs * sizeof(double));
 
     for (int i = 0; i < nPairs; i++) {
-      sum += RefinedWedges[i];
-      if (RefinedWedges[i] < minW)
-        minW = RefinedWedges[i];
-      if (RefinedWedges[i] > maxW)
-        maxW = RefinedWedges[i];
+      double w = results[i].wedge;
+      wedgeVals[i] = w;
+      sum += w;
+      if (w < minW)
+        minW = w;
+      if (w > maxW)
+        maxW = w;
     }
     double mean = sum / nPairs;
 
     double sumSqDiff = 0.0;
     for (int i = 0; i < nPairs; i++) {
-      sumSqDiff += (RefinedWedges[i] - mean) * (RefinedWedges[i] - mean);
+      sumSqDiff += (wedgeVals[i] - mean) * (wedgeVals[i] - mean);
     }
     double stdDev = sqrt(sumSqDiff / nPairs);
 
-    // Calculate Median (sort first)
-    // Simple bubble sort or qsort. Using qsort helper.
-    qsort(RefinedWedges, nPairs, sizeof(double), compareDoubles);
+    // Calculate Median (sort temp array)
+    qsort(wedgeVals, nPairs, sizeof(double), compareDoubles);
     double median;
     if (nPairs % 2 == 0) {
-      median =
-          (RefinedWedges[nPairs / 2 - 1] + RefinedWedges[nPairs / 2]) / 2.0;
+      median = (wedgeVals[nPairs / 2 - 1] + wedgeVals[nPairs / 2]) / 2.0;
     } else {
-      median = RefinedWedges[nPairs / 2];
+      median = wedgeVals[nPairs / 2];
     }
 
     printf("\n--- Wedge Statistics ---\n");
@@ -587,13 +607,15 @@ int main(int argc, char *argv[]) {
     printf("Std Dev:    %f\n", stdDev);
     printf("Range:      [%f, %f]\n", minW, maxW);
     printf("------------------------\n");
+
+    free(wedgeVals);
   } else {
     printf("\nNo pairs found for statistics.\n");
   }
 
   free(spots);
   free(pairs);
-  free(RefinedWedges);
+  free(results);
 
   return 0;
 }
