@@ -3129,16 +3129,8 @@ int main(int argc, char *argv[]) {
   // --- End Shutdown Accept Thread ---
 
   // Shutdown Writer Thread
-  writer_queue_destroy(&writer_queue); // Should signal thread to exit
-
-  printf("Cleaning up Input Buffer Pool...\n");
-  for (int i = 0; i < buffer_pool.count; ++i) {
-    if (buffer_pool.buffers[i].data) {
-      cudaFreeHost(buffer_pool.buffers[i].data);
-    }
-  }
-
-  pthread_join(writer_thread, NULL);
+  // No premature destroy or join here!
+  // Just signal the writer thread to terminate.
   WriteJob termJob;
   termJob.nRBins = -1; // Sentinel
   writer_queue_push(&writer_queue, termJob);
