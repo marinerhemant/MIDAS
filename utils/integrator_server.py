@@ -30,27 +30,46 @@ except ImportError:
         return decorator
 
 @jit(nopython=True)
-def find_overflows_numba(data):
+def compress_hybrid_numba(data):
     """
-    JIT-compiled function to find overflow indices and values.
-    Returns: (count, indices, values)
-    This avoids creating large boolean masks and intermediate arrays.
+    Single-pass compression kernel.
+    Returns: (base_image, overflow_count, overflow_indices, overflow_values, is_hybrid)
+    
+    1. Allocates base_image (uint16) and populates it.
+    2. Simultaneously detects maximum value to check if hybrid needed.
+    3. Counts overflows.
+    4. If hybrid needed, allocates and fills overflow buffers (2nd pass).
     """
     n_total = data.size
-    
-    # First pass: count overflows
-    count = 0
     flat_data = data.ravel()
     
-    for i in range(n_total):
-        if flat_data[i] > 65535:
-            count += 1
-            
-    # Allocate result arrays
-    indices = np.empty(count, dtype=np.int32)
-    values = np.empty(count, dtype=np.int64)
+    # Allocate base image
+    base_image = np.empty(n_total, dtype=np.uint16)
     
-    # Second pass: fill arrays
+    max_val = 0
+    overflow_count = 0
+    
+    # Pass 1: Fill base image and check/count overflows
+    for i in range(n_total):
+        val = flat_data[i]
+        if val > max_val:
+            max_val = val
+        
+        # Cast to uint16 (truncates high bits, matching np.astype(np.uint16))
+        base_image[i] = np.uint16(val)
+        
+        if val > 65535:
+            overflow_count += 1
+            
+    if max_val <= 65535:
+        # No overflows — return base image only
+        return base_image, 0, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int64), False
+
+    # Case B: Hybrid needed
+    indices = np.empty(overflow_count, dtype=np.int32)
+    values = np.empty(overflow_count, dtype=np.int64)
+    
+    # Pass 2: Fill overflow buffers
     valid_idx = 0
     for i in range(n_total):
         val = flat_data[i]
@@ -59,7 +78,7 @@ def find_overflows_numba(data):
             values[valid_idx] = val
             valid_idx += 1
             
-    return count, indices, values
+    return base_image, overflow_count, indices, values, True
 
 def send_data_chunk(sock, dataset_num, data, compress=False):
     t1 = time.time()
@@ -76,53 +95,70 @@ def send_data_chunk(sock, dataset_num, data, compress=False):
     
     # --- Hybrid Compression Logic ---
     if compress:
-        max_val = data_array.max()
-        if max_val <= 65535:
-            # Case A: Fits in uint16
-            dtype_code = 1
-            data_array = data_array.astype(np.uint16)
-        else:
-            # Case B: Overflow (Hybrid)
-            dtype_code = 6
-            # Identify overflows
-            if HAS_NUMBA:
-                # Optimized path
-                overflow_count, overflow_indices, overflow_values = find_overflows_numba(data_array)
+        if HAS_NUMBA:
+            # Optimized Path: Single kernel handles everything
+            base_image_flat, overflow_count, overflow_indices, overflow_values, is_hybrid = compress_hybrid_numba(data_array)
+            
+            if not is_hybrid:
+                # Case A: Fits in uint16 — fall through to standard send
+                dtype_code = 1
+                data_array = base_image_flat
             else:
-                # NumPy path (vectorized but memory-hungry)
+                # Case B: Hybrid
+                dtype_code = 6
+                base_image = base_image_flat
+                # Pack and send immediately
+                header = struct.pack('HH', dataset_num, dtype_code)
+                count_bytes = struct.pack('I', overflow_count)
+                base_view = memoryview(base_image).cast('B')
+                indices_view = memoryview(overflow_indices).cast('B')
+                values_view = memoryview(overflow_values).cast('B')
+
+                sock.sendall(header)
+                sock.sendall(count_bytes)
+                sock.sendall(base_view)
+                sock.sendall(indices_view)
+                sock.sendall(values_view)
+
+                t2 = time.time()
+                orig_size = data_array.nbytes
+                sent_size = 4 + 4 + base_view.nbytes + indices_view.nbytes + values_view.nbytes
+                print(f"Sent #{dataset_num} (Hybrid-JIT): {overflow_count} overflows. Size: {sent_size/1024:.1f}KB (vs {orig_size/1024:.1f}KB). Time: {t2 - t1:.4f}s")
+                return
+
+        else:
+            # Fallback NumPy Path
+            max_val = data_array.max()
+            if max_val <= 65535:
+                # Case A: Fits in uint16 — fall through to standard send
+                dtype_code = 1
+                data_array = data_array.astype(np.uint16)
+            else:
+                # Case B: Overflow (Hybrid) — send and return immediately
+                dtype_code = 6
                 mask = data_array > 65535
                 overflow_indices = np.flatnonzero(mask).astype(np.int32)
-                overflow_values = data_array[mask].astype(np.int64) # Ensure int64
+                overflow_values = data_array[mask].astype(np.int64)
                 overflow_count = len(overflow_indices)
-            
-            # Base image (uint16) - overflows can be anything (e.g. truncated), they are overwritten
-            base_image = data_array.astype(np.uint16)
-            
-            # Pack Header: Dataset(2) + Dtype(2) = 4 bytes
-            header = struct.pack('HH', dataset_num, dtype_code)
-            
-            # Pack Parts
-            # 1. OverflowCount (4 bytes)
-            count_bytes = struct.pack('I', overflow_count)
-            # 2. Base Image
-            base_view = memoryview(base_image).cast('B')
-            # 3. Indices
-            indices_view = memoryview(overflow_indices).cast('B')
-            # 4. Values
-            values_view = memoryview(overflow_values).cast('B')
+                base_image = data_array.astype(np.uint16)
 
-            # Send All
-            sock.sendall(header)
-            sock.sendall(count_bytes)
-            sock.sendall(base_view)
-            sock.sendall(indices_view)
-            sock.sendall(values_view)
+                header = struct.pack('HH', dataset_num, dtype_code)
+                count_bytes = struct.pack('I', overflow_count)
+                base_view = memoryview(base_image).cast('B')
+                indices_view = memoryview(overflow_indices).cast('B')
+                values_view = memoryview(overflow_values).cast('B')
 
-            t2 = time.time()
-            orig_size = data_array.nbytes
-            sent_size = 4 + 4 + base_view.nbytes + indices_view.nbytes + values_view.nbytes
-            print(f"Sent #{dataset_num} (Hybrid): {overflow_count} overflows. Size: {sent_size/1024:.1f}KB (vs {orig_size/1024:.1f}KB). Time: {t2 - t1:.4f}s")
-            return
+                sock.sendall(header)
+                sock.sendall(count_bytes)
+                sock.sendall(base_view)
+                sock.sendall(indices_view)
+                sock.sendall(values_view)
+
+                t2 = time.time()
+                orig_size = data_array.nbytes
+                sent_size = 4 + 4 + base_view.nbytes + indices_view.nbytes + values_view.nbytes
+                print(f"Sent #{dataset_num} (Hybrid): {overflow_count} overflows. Size: {sent_size/1024:.1f}KB (vs {orig_size/1024:.1f}KB). Time: {t2 - t1:.4f}s")
+                return
             
     # --- End Hybrid Logic ---
 
