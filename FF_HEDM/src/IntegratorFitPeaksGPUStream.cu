@@ -40,7 +40,7 @@
 #include <ctype.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include <errno.h>
+#include <errno.h> // For ETIMEDOUT
 #include <fcntl.h>
 #include <libgen.h> // For basename (optional)
 #include <limits.h>
@@ -2776,9 +2776,21 @@ int main(int argc, char *argv[]) {
     // 2. ACQUIRE NEW WORK
     DataChunk chunk;
     double t_pop_start = get_wall_time_ms();
-    if (queue_pop(&process_queue, &chunk) < 0) {
-      break; // Shutdown
+    // 2. ACQUIRE NEW WORK (with 100ms timeout to allow draining)
+
+    int pop_ret = queue_pop_timeout(&process_queue, &chunk, 100);
+    if (pop_ret < 0) {
+      break; // Shutdown -> Exit and do final drain.
+    } else if (pop_ret == 1) {
+      // Timeout: Pipeline is idle.
+      // Draining happens naturally by skipping submission and continuing loop.
+      // This causes the next iteration to process the next stream (via streamId
+      // logic at top of loop).
+
+      streamId = (streamId + 1) % NUM_STREAMS;
+      continue;
     }
+    // Success (pop_ret == 0)
     double t_pop_end = get_wall_time_ms();
     ctx->t_qpop = t_pop_end - t_pop_start;
 
