@@ -42,6 +42,16 @@ class ThreadLocalBufferPool:
             self.base_image = np.empty(size_pixels, dtype=np.uint16)
         return self.base_image
 
+    def get_send_buffer(self, size_bytes):
+        if hasattr(self, 'send_buffer') and self.send_buffer is not None:
+            if len(self.send_buffer) >= size_bytes:
+                return self.send_buffer
+        
+        # Allocate new buffer (slightly larger to avoid frequent reallocs?)
+        # Let's align to 4KB or just exact size. exact for now.
+        self.send_buffer = bytearray(size_bytes)
+        return self.send_buffer
+
 def get_thread_pool():
     if not hasattr(thread_local_storage, 'pool'):
         thread_local_storage.pool = ThreadLocalBufferPool()
@@ -135,7 +145,9 @@ def send_data_chunk(sock, dataset_num, data, compress=False):
                 
                 # Pre-calculate total size
                 total_size = 4 + 4 + len(base_mv) + len(indices_mv) + len(values_mv)
-                send_buf = bytearray(total_size)
+                
+                # Get pooled send buffer
+                send_buf = pool.get_send_buffer(total_size)
                 
                 # Pack header + count
                 struct.pack_into('HH', send_buf, 0, dataset_num, dtype_code)
@@ -150,7 +162,8 @@ def send_data_chunk(sock, dataset_num, data, compress=False):
                 send_buf[off:off+len(values_mv)] = values_mv
                 
                 # Single sendall — guaranteed full delivery
-                sock.sendall(send_buf)
+                # Send slice of the buffer
+                sock.sendall(memoryview(send_buf)[:total_size])
 
                 t2 = time.time()
                 print(f"Sent #{dataset_num} (Hybrid-JIT): {overflow_count} overflows. Size: {total_size/1024:.1f}KB. Time: {t2 - t1:.4f}s")
