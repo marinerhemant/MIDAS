@@ -438,6 +438,13 @@ void CompareSpots(RealType **TheorSpots, int nTheorSpots, RealType *ObsSpots,
     omemargin = omemargins[(int)floor(fabs(TheorSpots[sp][12]))];
     MatchFound = 0;
     diffOmeBest = 100000;
+    int skipRadialFilter = 0;
+    for (int i = 0; i < nRingsToRejectCalc; i++) {
+      if (RingNr == ringsToRejectCalc[i]) {
+        skipRadialFilter = 1;
+        break;
+      }
+    }
     long long int Pos =
         iRing * n_eta_bins * n_ome_bins + iEta * n_ome_bins + iOme;
     long long int nspots = ndata[Pos * 2];
@@ -445,7 +452,8 @@ void CompareSpots(RealType **TheorSpots, int nTheorSpots, RealType *ObsSpots,
     for (iSpot = 0; iSpot < nspots; iSpot++) {
       spotRow = data[DataPos + iSpot];
       if (fabs(TheorSpots[sp][13] - ObsSpots[spotRow * 9 + 8]) < MarginRadial) {
-        if (fabs(RefRad - ObsSpots[spotRow * 9 + 3]) < MarginRad) {
+        if (skipRadialFilter ||
+            fabs(RefRad - ObsSpots[spotRow * 9 + 3]) < MarginRad) {
           if (fabs(TheorSpots[sp][12] - ObsSpots[spotRow * 9 + 6]) <
               etamargin) {
             diffOme = fabs(TheorSpots[sp][6] - ObsSpots[spotRow * 9 + 2]);

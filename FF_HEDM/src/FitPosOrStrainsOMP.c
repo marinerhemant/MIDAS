@@ -1670,6 +1670,7 @@ int main(int argc, char *argv[]) {
       BoxSizes[MAXNOMEGARANGES][4], MaxRingRad;
   int RingNumbers[200], cs = 0, cs2 = 0, nOmeRanges = 0, nBoxSizes = 0,
                         CellStruct;
+  int RingsToReject[200], nRingsToReject = 0;
   double Rsample, Hbeam, RingRadii[200], MargABC = 0.3, MargABG = 0.3;
   char OutputFolder[1024], ResultFolder[1024];
   int DiscModel = 0, TopLayer = 0, TakeGrainMax = 0;
@@ -1780,6 +1781,13 @@ int main(int argc, char *argv[]) {
     if (LowNr == 0) {
       sscanf(aline, "%s %d", dummy, &RingNumbers[cs]);
       cs++;
+      continue;
+    }
+    str = "RingsToReject ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &RingsToReject[nRingsToReject]);
+      nRingsToReject++;
       continue;
     }
     str = "RingRadii ";
@@ -2066,6 +2074,23 @@ int main(int argc, char *argv[]) {
       close(inpF2);
       for (i = 0; i < NrObserved; i++) {
         spotIDS[i] = (int)locArr2[i * 2 + 0];
+
+        // Retrieve RingNr and Check Exclusion
+        size_t spotPos = (size_t)spotIDS[i] - 1;
+        if (spotPos >= nSpots || spotPos < 0)
+          continue;
+
+        int RingNr = (int)AllSpots[spotPos * 14 + 9];
+        int skipSpot = 0;
+        for (int k = 0; k < nRingsToReject; k++) {
+          if (RingNr == RingsToReject[k]) {
+            skipSpot = 1;
+            break;
+          }
+        }
+        if (skipSpot)
+          continue;
+
         thisRadius = locArr2[i * 2 + 1];
         meanRadius += thisRadius;
         nSpotsRad++;
@@ -2076,7 +2101,10 @@ int main(int argc, char *argv[]) {
         }
       }
       free(locArr2);
-      meanRadius /= nSpotsRad;
+      if (nSpotsRad > 0)
+        meanRadius /= nSpotsRad;
+      else
+        meanRadius = 0;
       if (TakeGrainMax == 1) {
         meanRadius = MaxRadTot;
       }
