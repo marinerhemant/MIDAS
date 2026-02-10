@@ -728,21 +728,22 @@ int main(int argc, char *argv[]) {
     }
 
     // Weighted StdDev
-    // Formula: sqrt( sum(w * (x - mean)^2) / sum(w) )
-    // Note: unbiased estimator typically uses denominator (sum(w) -
-    // sum(w^2)/sum(w)) but for large N, sum(w) is sufficient approx.
     double weightedSumSqDiff = 0.0;
+    double sumWeightsSq =
+        0.0; // For Neff calculation if needed, but simple sqrt(N) is clearer
     for (int i = 0; i < nValid; i++) {
       double diff = wVals[i].val - weightedMean;
       weightedSumSqDiff += wVals[i].w * diff * diff;
     }
     double weightedStdDev = sqrt(weightedSumSqDiff / totalWeight);
+    double weightedStdError = weightedStdDev / sqrt(nValid);
 
     printf("\n--- Wedge Statistics (Weighted by Sensitivity) ---\n");
     printf("Count:      %d\n", nValid);
     printf("Mean:       %f\n", weightedMean);
     printf("Median:     %f\n", weightedMedian);
     printf("Std Dev:    %f\n", weightedStdDev);
+    printf("Std Error:  %f (Mean uncertainty)\n", weightedStdError);
     printf("Range:      [%f, %f]\n", minW, maxW);
     printf("------------------------\n");
 
