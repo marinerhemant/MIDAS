@@ -38,7 +38,8 @@ typedef struct {
   int pairIndex;
   double wedge;
   double minf;
-  double weight;
+  double weight;         // |cos(eta)|
+  double numUncertainty; // 1/sqrt(Hessian)
 } Result;
 
 // Sort by Weight DESCENDING
@@ -263,13 +264,14 @@ static double problem_function(unsigned n, const double *x, double *grad,
   return Error;
 }
 
-// Thread-safe FitWedge function
+// Thread-safe FitWedge function with Hessian calculation
 // Returns 0 if success, 1 if hit bounds
 int FitWedgeThreadSafe(double Lsd, double Ycen, double Zcen, double p0,
                        double p1, double p2, double MaxRad, double tx,
                        double ty, double tz, double px, double Ys, double Zs,
                        double MinOme, double MaxOme, double WedgeIn,
-                       double *WedgeFit, double *MinFOut, double Wavelength) {
+                       double *WedgeFit, double *MinFOut,
+                       double *NumUncertainty, double Wavelength) {
   struct my_func_data f_data;
   f_data.Lsd = Lsd;
   f_data.Ome1 = MinOme;
@@ -299,6 +301,23 @@ int FitWedgeThreadSafe(double Lsd, double Ycen, double Zcen, double p0,
   nlopt_destroy(opt);
   *WedgeFit = x[0];
   *MinFOut = minf;
+
+  // Calculate Numerical Uncertainty (Hessian)
+  // H ~= [f(x+h) - 2f(x) + f(x-h)] / h^2
+  double h = 1e-4;
+  double x_plus = x[0] + h;
+  double x_minus = x[0] - h;
+  double f_x = minf;
+  double f_plus = problem_function(1, &x_plus, NULL, trp);
+  double f_minus = problem_function(1, &x_minus, NULL, trp);
+
+  double Hessian = (f_plus - 2 * f_x + f_minus) / (h * h);
+
+  // Avoiding singularity/negative curvature
+  if (Hessian <= 1e-12)
+    Hessian = 1e-12;
+
+  *NumUncertainty = 1.0 / sqrt(Hessian);
 
   // Check bounds
   if (fabs(x[0] - xl[0]) < 1e-4 || fabs(x[0] - xu[0]) < 1e-4) {
@@ -423,12 +442,6 @@ int main(int argc, char *argv[]) {
       continue;
 
     // Parse line
-    // Format: %multimap key not used by sscanf, so we use dummy for first few
-    // tokens if needed
-    // Example line:
-    // 74778 17224 43.781480 553.083540 656.679760 43.781480 -119.414750 1
-    // Columns: GrainID SpotID Omega DetectorHor DetectorVert OmeRaw Eta RingNr
-
     Spot s;
     int r = sscanf(aline, "%d %d %lf %lf %lf %lf %lf %d", &s.GrainID, &s.SpotID,
                    &s.Omega, &s.DetectorHor, &s.DetectorVert, &s.OmeRaw, &s.Eta,
@@ -555,15 +568,18 @@ int main(int argc, char *argv[]) {
 
     double resWedge = 0;
     double resMinF = 0;
-    int status = FitWedgeThreadSafe(Lsd, Ycen, Zcen, p0, p1, p2, MaxRad, tx, ty,
-                                    tz, px, YsUse, ZsUse, MinOme, MaxOme, Wedge,
-                                    &resWedge, &resMinF, Wavelength);
+    double resNumUncertainty = 0;
+    int status =
+        FitWedgeThreadSafe(Lsd, Ycen, Zcen, p0, p1, p2, MaxRad, tx, ty, tz, px,
+                           YsUse, ZsUse, MinOme, MaxOme, Wedge, &resWedge,
+                           &resMinF, &resNumUncertainty, Wavelength);
 
     if (status == 0) {
       validResults[i] = 1;
       results[i].pairIndex = i;
       results[i].wedge = resWedge;
       results[i].minf = resMinF;
+      results[i].numUncertainty = resNumUncertainty;
       // Calculate Weight: |cos(eta)|. Use avg of both spots for robustness,
       // though typically they are symmetric.
       // Sensitivity max at poles (0,180) -> cos=1
@@ -668,18 +684,18 @@ int main(int argc, char *argv[]) {
   }
 
   fprintf(fOut, "GrainID SpotID1 SpotID2 RingNr Omega1 Omega2 Y1 Z1 Eta1 Y2 Z2 "
-                "Eta2 Wedge minf Weight\n");
+                "Eta2 Wedge minf Weight NumUncertainty\n");
   for (int i = 0; i < nValid; i++) {
     int pairIdx = finalResults[i].pairIndex;
     int idx1 = pairs[pairIdx].idx1;
     int idx2 = pairs[pairIdx].idx2;
-    fprintf(fOut, "%d %d %d %d %f %f %f %f %f %f %f %f %f %e %f\n",
+    fprintf(fOut, "%d %d %d %d %f %f %f %f %f %f %f %f %f %e %f %f\n",
             spots[idx1].GrainID, spots[idx1].SpotID, spots[idx2].SpotID,
             spots[idx1].RingNr, spots[idx1].Omega, spots[idx2].Omega,
             spots[idx1].DetectorHor, spots[idx1].DetectorVert, spots[idx1].Eta,
             spots[idx2].DetectorHor, spots[idx2].DetectorVert, spots[idx2].Eta,
-            finalResults[i].wedge, finalResults[i].minf,
-            finalResults[i].weight);
+            finalResults[i].wedge, finalResults[i].minf, finalResults[i].weight,
+            finalResults[i].numUncertainty);
   }
   fclose(fOut);
   printf("Results written to WedgeResults.txt\n");
@@ -693,6 +709,9 @@ int main(int argc, char *argv[]) {
     double maxW = finalResults[0].wedge;
     double weightedSum = 0.0;
     double totalWeight = 0.0;
+
+    double certaintySum = 0.0;
+    double weightSum = 0.0;
 
     for (int i = 0; i < nValid; i++) {
       double w = finalResults[i].wedge;
@@ -708,6 +727,13 @@ int main(int argc, char *argv[]) {
         minW = w;
       if (w > maxW)
         maxW = w;
+
+      // Sums for comparing Assumed Weight vs Numerical Certainty
+      double certainty = (finalResults[i].numUncertainty > 1e-9)
+                             ? (1.0 / finalResults[i].numUncertainty)
+                             : 0;
+      certaintySum += certainty;
+      weightSum += weight;
     }
 
     double weightedMean = weightedSum / totalWeight;
@@ -746,6 +772,14 @@ int main(int argc, char *argv[]) {
     printf("Std Error:  %f (Mean uncertainty)\n", weightedStdError);
     printf("Range:      [%f, %f]\n", minW, maxW);
     printf("------------------------\n");
+
+    // --- Scale Comparison ---
+    // Normalize both sums to 1 to compare
+    printf("\n--- Comparison: Assumed Weight vs Numerical Certainty ---\n");
+    printf("Avg |cos(eta)|:    %f\n", weightSum / nValid);
+    printf("Avg sqrt(Hessian): %f\n", certaintySum / nValid);
+    printf("(Are they proportional? Check specific results)\n");
+    printf("---------------------------------------------------------\n");
 
     // --- Histogram (Non-Linear, Zoomed on Weighted Median) ---
     // Define 3 regions: Left (min -> m-sigma), Core (m-sigma -> m+sigma), Right
