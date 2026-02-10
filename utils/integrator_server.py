@@ -123,7 +123,10 @@ def sendmsg_all(sock, buffers):
                 sent = 0
 
 def send_data_chunk(sock, dataset_num, data, compress=False):
-    t1 = time.time()
+    t1 = time.perf_counter()
+    t_comp_s = t1
+    t_comp_e = t1
+
     
     # Ensure data is a numpy array
     if not isinstance(data, np.ndarray):
@@ -146,6 +149,8 @@ def send_data_chunk(sock, dataset_num, data, compress=False):
             
             # Call JIT kernel
             overflow_count, overflow_indices, overflow_values, is_hybrid = compress_hybrid_numba(data_array, base_image_buf)
+            
+            t_comp_e = time.perf_counter()
             
             # Use the view of the buffer that matches data size
             base_image_view = base_image_buf[:data_array.size]
@@ -187,10 +192,18 @@ def send_data_chunk(sock, dataset_num, data, compress=False):
                     sock.sendall(indices_mv)
                     sock.sendall(values_mv)
 
-                t2 = time.time()
+                t2 = time.perf_counter()
+                
+                # Report times
+                t_total_ms = (t2 - t1) * 1000
+                t_comp_ms = (t_comp_e - t_comp_s) * 1000
+                t_send_ms = (t2 - t_comp_e) * 1000
+
                 # Calculate sent size for logging
                 sent_size = 4 + 4 + (base_image_view.nbytes) + (overflow_indices.nbytes) + (overflow_values.nbytes)
-                print(f"Sent #{dataset_num} (Hybrid-JIT-ZeroCopy): {overflow_count} overflows. Size: {sent_size/1024:.1f}KB. Time: {t2 - t1:.4f}s")
+                print(f"Sent #{dataset_num} (Hybrid-JIT-ZeroCopy): {overflow_count} overflows. "
+                      f"Size: {sent_size/1024:.1f}KB. Total: {t_total_ms:.3f}ms "
+                      f"(Comp: {t_comp_ms:.3f}ms, Send: {t_send_ms:.3f}ms)")
                 return
 
         else:
