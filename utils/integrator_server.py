@@ -29,22 +29,35 @@ except ImportError:
             return func
         return decorator
 
+# Thread-local storage for buffer pooling
+thread_local_storage = threading.local()
+
+class ThreadLocalBufferPool:
+    def __init__(self):
+        self.base_image = None
+        
+    def get_buffers(self, size_pixels):
+        # Reallocate only if necessary (size changed or first call)
+        if self.base_image is None or self.base_image.size < size_pixels:
+            self.base_image = np.empty(size_pixels, dtype=np.uint16)
+        return self.base_image
+
+def get_thread_pool():
+    if not hasattr(thread_local_storage, 'pool'):
+        thread_local_storage.pool = ThreadLocalBufferPool()
+    return thread_local_storage.pool
+
 @jit(nopython=True)
-def compress_hybrid_numba(data):
+def compress_hybrid_numba(data, out_base_image):
     """
-    Single-pass compression kernel.
-    Returns: (base_image, overflow_count, overflow_indices, overflow_values, is_hybrid)
-    
-    1. Allocates base_image (uint16) and populates it.
-    2. Simultaneously detects maximum value to check if hybrid needed.
-    3. Counts overflows.
-    4. If hybrid needed, allocates and fills overflow buffers (2nd pass).
+    Single-pass compression kernel with buffer reuse.
+    Returns: (overflow_count, indices, values, is_hybrid)
     """
     n_total = data.size
     flat_data = data.ravel()
     
-    # Allocate base image
-    base_image = np.empty(n_total, dtype=np.uint16)
+    # Use provided output buffer (assumed to be large enough)
+    base_image = out_base_image[:n_total] 
     
     max_val = 0
     overflow_count = 0
@@ -55,15 +68,15 @@ def compress_hybrid_numba(data):
         if val > max_val:
             max_val = val
         
-        # Cast to uint16 (truncates high bits, matching np.astype(np.uint16))
+        # Cast to uint16
         base_image[i] = np.uint16(val)
         
         if val > 65535:
             overflow_count += 1
             
     if max_val <= 65535:
-        # No overflows — return base image only
-        return base_image, 0, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int64), False
+        # No overflows
+        return 0, np.empty(0, dtype=np.int32), np.empty(0, dtype=np.int64), False
 
     # Case B: Hybrid needed
     indices = np.empty(overflow_count, dtype=np.int32)
@@ -78,7 +91,7 @@ def compress_hybrid_numba(data):
             values[valid_idx] = val
             valid_idx += 1
             
-    return base_image, overflow_count, indices, values, True
+    return overflow_count, indices, values, True
 
 def send_data_chunk(sock, dataset_num, data, compress=False):
     t1 = time.time()
@@ -96,34 +109,51 @@ def send_data_chunk(sock, dataset_num, data, compress=False):
     # --- Hybrid Compression Logic ---
     if compress:
         if HAS_NUMBA:
-            # Optimized Path: Single kernel handles everything
-            base_image_flat, overflow_count, overflow_indices, overflow_values, is_hybrid = compress_hybrid_numba(data_array)
+            # Optimized Path: Zero-Allocation + Max Fusing
+            
+            # Get thread-local buffers
+            pool = get_thread_pool()
+            base_image_buf = pool.get_buffers(data_array.size)
+            
+            # Call JIT kernel
+            overflow_count, overflow_indices, overflow_values, is_hybrid = compress_hybrid_numba(data_array, base_image_buf)
+            
+            # Use the view of the buffer that matches data size
+            base_image_view = base_image_buf[:data_array.size]
             
             if not is_hybrid:
                 # Case A: Fits in uint16 — fall through to standard send
                 dtype_code = 1
-                data_array = base_image_flat
+                data_array = base_image_view
             else:
-                # Case B: Hybrid
+                # Case B: Hybrid — pack into single buffer, send once
                 dtype_code = 6
-                base_image = base_image_flat
-                # Pack and send immediately
-                header = struct.pack('HH', dataset_num, dtype_code)
-                count_bytes = struct.pack('I', overflow_count)
-                base_view = memoryview(base_image).cast('B')
-                indices_view = memoryview(overflow_indices).cast('B')
-                values_view = memoryview(overflow_values).cast('B')
-
-                sock.sendall(header)
-                sock.sendall(count_bytes)
-                sock.sendall(base_view)
-                sock.sendall(indices_view)
-                sock.sendall(values_view)
+                
+                base_mv = memoryview(base_image_view).cast('B')
+                indices_mv = memoryview(overflow_indices).cast('B')
+                values_mv = memoryview(overflow_values).cast('B')
+                
+                # Pre-calculate total size
+                total_size = 4 + 4 + len(base_mv) + len(indices_mv) + len(values_mv)
+                send_buf = bytearray(total_size)
+                
+                # Pack header + count
+                struct.pack_into('HH', send_buf, 0, dataset_num, dtype_code)
+                struct.pack_into('I', send_buf, 4, overflow_count)
+                
+                # Copy data segments into contiguous buffer
+                off = 8
+                send_buf[off:off+len(base_mv)] = base_mv
+                off += len(base_mv)
+                send_buf[off:off+len(indices_mv)] = indices_mv
+                off += len(indices_mv)
+                send_buf[off:off+len(values_mv)] = values_mv
+                
+                # Single sendall — guaranteed full delivery
+                sock.sendall(send_buf)
 
                 t2 = time.time()
-                orig_size = data_array.nbytes
-                sent_size = 4 + 4 + base_view.nbytes + indices_view.nbytes + values_view.nbytes
-                print(f"Sent #{dataset_num} (Hybrid-JIT): {overflow_count} overflows. Size: {sent_size/1024:.1f}KB (vs {orig_size/1024:.1f}KB). Time: {t2 - t1:.4f}s")
+                print(f"Sent #{dataset_num} (Hybrid-JIT): {overflow_count} overflows. Size: {total_size/1024:.1f}KB. Time: {t2 - t1:.4f}s")
                 return
 
         else:
