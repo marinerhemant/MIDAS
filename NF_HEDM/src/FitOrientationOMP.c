@@ -92,6 +92,7 @@ struct my_func_data {
   double RotMatTilts[3][3];
   double *ybc;
   double *zbc;
+  int **InPixels;
 };
 
 static double problem_function(unsigned n, const double *x, double *grad,
@@ -159,11 +160,11 @@ static double problem_function(unsigned n, const double *x, double *grad,
   x2[1] = x[1];
   x2[2] = x[2];
   Euler2OrientMat(x2, OrientMatIn);
-  CalcOverlapAccOrient(NrOfFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots,
-                       XGrain, YGrain, RotMatTilts, OmegaStart, OmegaStep, px,
-                       ybc, zbc, gs, hkls, n_hkls, Thetas, OmegaRanges,
-                       NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
-                       ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots);
+  CalcOverlapAccOrient(
+      NrOfFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots, XGrain, YGrain,
+      RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc, gs, hkls, n_hkls,
+      Thetas, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
+      ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots, f_data->InPixels);
   free(TheorSpots);
   return (1 - FracOverlap);
 }
@@ -233,6 +234,7 @@ void FitOrientation(const int NrOfFiles, const int nLayers,
   f_data.gs = gs;
   f_data.NoOfOmegaRanges = NoOfOmegaRanges;
   f_data.NrPixelsGrid = NrPixelsGrid;
+  f_data.InPixels = allocMatrixIntF(NrPixelsGrid, 2);
   struct my_func_data *f_datat;
   f_datat = &f_data;
   void *trp = (struct my_func_data *)f_datat;
@@ -246,6 +248,7 @@ void FitOrientation(const int NrOfFiles, const int nLayers,
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   free(f_data.P0);
+  FreeMemMatrixInt(f_data.InPixels, NrPixelsGrid);
   *ResultFracOverlap = minf;
   *EulerOutA = x[0];
   *EulerOutB = x[1];
@@ -696,10 +699,25 @@ int main(int argc, char *argv[]) {
   ThrSpsAll = calloc(numProcs * MAX_N_SPOTS * 3, sizeof(*ThrSpsAll));
   printf("Number of individual diffracting planes: %d\n", n_hkls);
 
-//~ double *OutResultAll, *ResultMatrAll;
-//~ size_t numJobs = endRowNr - startRowNr + 1;
-//~ OutResultAll = calloc(numJobs*11,sizeof(*OutResultAll));
-//~ ResultMatrAll = calloc(numJobs*(7+(nSaves*4)),sizeof(*ResultMatrAll));
+  //~ double *OutResultAll, *ResultMatrAll;
+  //~ size_t numJobs = endRowNr - startRowNr + 1;
+  //~ OutResultAll = calloc(numJobs*11,sizeof(*OutResultAll));
+  //~ ResultMatrAll = calloc(numJobs*(7+(nSaves*4)),sizeof(*ResultMatrAll));
+
+  // Open files for writing (Create/Open once)
+  int result = open(MicFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+  if (result <= 0) {
+    printf("Could not open output file %s.\n", MicFN);
+    exit(1);
+  }
+  char outfn2[4096];
+  sprintf(outfn2, "%s.AllMatches", MicFN);
+  int result2 = open(outfn2, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+  if (result2 <= 0) {
+    printf("Could not successfully open output file for all matches %s.\n",
+           outfn2);
+    exit(1);
+  }
 
 // DO OMP HERE??????
 #pragma omp parallel for num_threads(numProcs) private(rown) schedule(dynamic)
@@ -784,10 +802,13 @@ int main(int argc, char *argv[]) {
         m++;
       }
       Convert9To3x3(OrientationMatThis, OrientMatIn);
+      int **InPixels;
+      InPixels = allocMatrixIntF(NrPixelsGrid, 2);
       CalcFracOverlap(nrFiles, nLayers, NrSpotsThis, ThrSps, OmegaStart,
                       OmegaStep, XG, YG, Lsd, SizeObsSpots, RotMatTilts, px,
                       ybc, zbc, gs, P0, NrPixelsGrid, ObsSpotsInfo, OrientMatIn,
-                      &FracOverT);
+                      &FracOverT, InPixels);
+      FreeMemMatrixInt(InPixels, NrPixelsGrid);
       if (FracOverT >= minFracOverlap) {
         for (j = 0; j < 9; j++) {
           OrientMatrix[OrientationGoodID * 10 + j] = OrientationMatThis[j];
@@ -827,6 +848,12 @@ int main(int argc, char *argv[]) {
           OMTemp[j] = OrientMatrix[i * 10 + j];
         Convert9To3x3(OMTemp, OrientIn);
         OrientMat2Euler(OrientIn, EulerIn);
+        // Note: FitOrientation internally calls optimization which calls
+        // problem_function. problem_function in SharedFuncsFit.c needs to
+        // handle InPixels if called there. Wait, FitOrientation calls nlopt
+        // which calls problem_function. problem_function needs to allocate
+        // InPixels internally or be passed it? Let's check problem_function in
+        // SharedFuncsFit.c first.
         FitOrientation(nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots,
                        XG, YG, RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc,
                        gs, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0,
@@ -898,25 +925,19 @@ int main(int argc, char *argv[]) {
     int SizeWritten2 = (7 + (nSaves * 4)) * sizeof(double);
     size_t OffsetThis = (rown);
     OffsetThis *= SizeWritten2;
+
+    // Write files (Thread-safe pwrite)
+    int rc4 = pwrite(result, outresult, SizeWritten, OffsetHere);
+    if (rc4 < 0) {
 #pragma omp critical
-    {
-      // Open files for writing
-      int result = open(MicFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
-      if (result <= 0) {
-        printf("Could not open output file.\n");
-      }
-      char outfn2[4096];
-      sprintf(outfn2, "%s.AllMatches", MicFN);
-      int result2 = open(outfn2, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
-      if (result2 <= 0) {
-        printf("Could not successfully open output file for all matches.\n");
-      }
-      // Write files
-      int rc4 = pwrite(result, outresult, SizeWritten, OffsetHere);
-      if (rc4 < 0) {
-        printf("Could not write to output file %d %d %d %d.\n", OffsetHere,
-               rown, startRowNr, endRowNr);
-      } else {
+      printf("Could not write to output file %d %d %d %d.\n", OffsetHere, rown,
+             startRowNr, endRowNr);
+    } else {
+// printf is thread-safe but output might be interleaved.
+// Using critical for clean output if desired, or removing for speed.
+// Keeping critical for now as user expects feedback.
+#pragma omp critical
+      {
         printf("%zu %d ", OffsetHere, rown);
         for (i = 0; i < 11; i++) {
           printf("%.5f ", outresult[i]);
@@ -924,18 +945,22 @@ int main(int argc, char *argv[]) {
         printf("\n");
         fflush(stdout);
       }
-      int rc5 = pwrite(result2, ResultMatr, SizeWritten2, OffsetThis);
-      if (rc5 < 0) {
-        printf("Could not write all matches %d %d %d %d.\n", OffsetThis, rown,
-               startRowNr, endRowNr);
-      }
-      close(result);
-      close(result2);
     }
+    int rc5 = pwrite(result2, ResultMatr, SizeWritten2, OffsetThis);
+    if (rc5 < 0) {
+#pragma omp critical
+      printf("Could not write all matches %d %d %d %d.\n", OffsetThis, rown,
+             startRowNr, endRowNr);
+    }
+
     //~ printf("Time elapsed in comparing diffraction spots: %f
     //[s]\n",diftotal); ~ for (i=0;i<MAX_POINTS_GRID_GOOD*10;i++)
     // OrientMatrix[i] = 0; // Maybe not needed.
   }
+
+  // Close files after loop
+  close(result);
+  close(result2);
   double time = omp_get_wtime() - start_time;
   printf("Finished, time elapsed: %lf seconds.\n", time);
   return 0;

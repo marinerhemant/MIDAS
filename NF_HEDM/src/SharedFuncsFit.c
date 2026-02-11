@@ -497,17 +497,17 @@ void CalcFracOverlap(const int NrOfFiles, const int nLayers, const int nTspots,
                      const double zbcs[nLayers], const double gs,
                      double P0All[nLayers][3], const int NrPixelsGrid,
                      int *ObsSpotsInfo, double OrientMatIn[3][3],
-                     double *FracOver) {
+                     double *FracOver, int **InPixels) {
   int j, OmeBin, OutofBounds, k, l;
   double OmegaThis, ythis, zthis, XGT, YGT, Displ_Y, Displ_Z, ytemp, ztemp,
       xyz[3], P1[3], ABC[3], outxyz[3], YZSpots[3][2], Lsd, ybc, zbc, P0[3],
       YZSpotsTemp[2], YZSpotsT[3][2];
-  int **InPixels, NrInPixels, OverlapPixels, Layer, omeRangNr;
+  int NrInPixels, OverlapPixels, Layer, omeRangNr;
   double eta, RingRadius, theta, omediff;
   long long int BinNr, TempCntr;
   int MultY, MultZ, AllDistsFound, TotalPixels;
   *FracOver = 0;
-  InPixels = allocMatrixInt(NrPixelsGrid, 2);
+  // InPixels allocation hoisted to caller
   OverlapPixels = 0;
   TotalPixels = 0;
   for (j = 0; j < nTspots; j++) {
@@ -648,7 +648,7 @@ void CalcFracOverlap(const int NrOfFiles, const int nLayers, const int nTspots,
   if (TotalPixels > 0) {
     *FracOver = (double)((double)OverlapPixels) / ((double)TotalPixels);
   }
-  FreeMemMatrixInt(InPixels, NrPixelsGrid);
+  // FreeMemMatrixInt(InPixels, NrPixelsGrid); // Hoisted to caller
 }
 
 void SimulateDiffractionImage(
@@ -658,16 +658,15 @@ void SimulateDiffractionImage(
     const long long int SizeObsSpots, double RotMatTilts[3][3], const double px,
     const double ybcs[nLayers], const double zbcs[nLayers], const double gs,
     double P0All[nLayers][3], const int NrPixelsGrid, uint16_t *ObsSpotsInfo,
-    double OrientMatIn[3][3], int voxNr, FILE *spF) {
+    double OrientMatIn[3][3], int voxNr, FILE *spF, int **InPixels) {
   int j, OmeBin, OutofBounds, k, l;
   double OmegaThis, ythis, zthis, XGT, YGT, Displ_Y, Displ_Z, ytemp, ztemp,
       xyz[3], P1[3], ABC[3], outxyz[3], YZSpots[3][2], Lsd, ybc, zbc, P0[3],
       YZSpotsTemp[2], YZSpotsT[3][2];
-  int **InPixels, NrInPixels, OverlapPixels, Layer, omeRangNr;
+  int NrInPixels, OverlapPixels, Layer, omeRangNr;
   double eta, RingRadius, theta, omediff;
   long long int BinNr, TempCntr;
   int MultY, MultZ, AllDistsFound, TotalPixels;
-  InPixels = allocMatrixInt(NrPixelsGrid, 2);
   OverlapPixels = 0;
   TotalPixels = 0;
   int NrSpots = 0;
@@ -798,7 +797,6 @@ void SimulateDiffractionImage(
     }
   }
   // printf("%d\n",NrSpots);
-  FreeMemMatrixInt(InPixels, NrPixelsGrid);
 }
 
 void CalcOverlapAccOrient(
@@ -811,7 +809,7 @@ void CalcOverlapAccOrient(
     double OmegaRanges[MAX_N_OMEGA_RANGES][2], const int NoOfOmegaRanges,
     double BoxSizes[MAX_N_OMEGA_RANGES][4], double P0[nLayers][3],
     const int NrPixelsGrid, int *ObsSpotsInfo, double OrientMatIn[3][3],
-    double *FracOverlap, double *TheorSpots) {
+    double *FracOverlap, double *TheorSpots, int **InPixels) {
   int nTspots, i;
   double Lsd0 = Lsd[0];
   CalcDiffractionSpots(Lsd0, ExcludePoleAngle, OmegaRanges, NoOfOmegaRanges,
@@ -821,7 +819,7 @@ void CalcOverlapAccOrient(
   CalcFracOverlap(NrOfFiles, nLayers, nTspots, TheorSpots, OmegaStart,
                   OmegaStep, XGrain, YGrain, Lsd, SizeObsSpots, RotMatTilts, px,
                   ybc, zbc, gs, P0, NrPixelsGrid, ObsSpotsInfo, OrientMatIn,
-                  &FracOver);
+                  &FracOver, InPixels);
   *FracOverlap = FracOver;
 }
 
@@ -835,7 +833,7 @@ void SimulateAccOrient(
     double OmegaRanges[MAX_N_OMEGA_RANGES][2], const int NoOfOmegaRanges,
     double BoxSizes[MAX_N_OMEGA_RANGES][4], double P0[nLayers][3],
     const int NrPixelsGrid, uint16_t *ObsSpotsInfo, double OrientMatIn[3][3],
-    double *TheorSpots, int voxNr, FILE *spF) {
+    double *TheorSpots, int voxNr, FILE *spF, int **InPixels) {
   int nTspots, i;
   double Lsd0 = Lsd[0];
   CalcDiffractionSpots(Lsd0, ExcludePoleAngle, OmegaRanges, NoOfOmegaRanges,
@@ -850,7 +848,7 @@ void SimulateAccOrient(
   SimulateDiffractionImage(NrOfFiles, nLayers, nTspots, TheorSpots, OmegaStart,
                            OmegaStep, XG, YG, Lsd, SizeObsSpots, RotMatTilts,
                            px, ybc, zbc, gs, P0, NrPixelsGrid, ObsSpotsInfo,
-                           OrientMatIn, voxNr, spF);
+                           OrientMatIn, voxNr, spF, InPixels);
 }
 
 void NormalizeMat(double OMIn[9], double OMOut[9]) {

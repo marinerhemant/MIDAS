@@ -159,6 +159,8 @@ static double problem_function(unsigned n, const double *x, double *grad,
     double XGrain[3], YGrain[3];
     double *TheorSpotsPrivate;
     TheorSpotsPrivate = malloc(MAX_N_SPOTS * 3 * sizeof(*TheorSpotsPrivate));
+    int **InPixelsPrivate;
+    InPixelsPrivate = allocMatrixIntF(NrPixelsGrid, 2);
 
 #pragma omp for reduction(+ : netResult)
     for (i = 0; i < nSpots; i++) {
@@ -172,16 +174,17 @@ static double problem_function(unsigned n, const double *x, double *grad,
         YGrain[j] = YGr[i][j];
       }
       Euler2OrientMat(EulIn, OrientMatIn);
-      CalcOverlapAccOrient(NrOfFiles, nLayers, ExcludePoleAngle, Lsd,
-                           SizeObsSpots, XGrain, YGrain, RotMatTilts,
-                           OmegaStart, OmegaStep, px, ybc, zbc, gs, hkls,
-                           n_hkls, Thetas, OmegaRanges, NoOfOmegaRanges,
-                           BoxSizes, P0, NrPixelsGrid, ObsSpotsInfo,
-                           OrientMatIn, &FracOverlap, TheorSpotsPrivate);
+      CalcOverlapAccOrient(
+          NrOfFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots, XGrain,
+          YGrain, RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc, gs, hkls,
+          n_hkls, Thetas, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0,
+          NrPixelsGrid, ObsSpotsInfo, OrientMatIn, &FracOverlap,
+          TheorSpotsPrivate, InPixelsPrivate);
       netResult += FracOverlap;
       IndividualResults[i] = FracOverlap;
     }
     free(TheorSpotsPrivate);
+    FreeMemMatrixInt(InPixelsPrivate, NrPixelsGrid);
   }
   netResult /= nSpots;
   //   printf("%.40lf\n", netResult);
