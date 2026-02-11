@@ -298,6 +298,18 @@ void DisplacementSpots(RealType a, RealType b, RealType Lsd, RealType yi,
   *Displ_z = t * zi;
 }
 
+static inline void DisplacementSpotsPrecomp(RealType a, RealType b,
+                                            RealType Lsd, RealType yi,
+                                            RealType zi, RealType sinOme,
+                                            RealType cosOme, RealType *Displ_y,
+                                            RealType *Displ_z) {
+  RealType xa = a * cosOme - b * sinOme;
+  RealType ya = a * sinOme + b * cosOme;
+  RealType t = 1 - (xa / Lsd);
+  *Displ_y = ya + (yi * t);
+  *Displ_z = t * zi;
+}
+
 struct Point2D {
   int x, y;
 };
@@ -306,9 +318,10 @@ int orient2d(struct Point2D a, struct Point2D b, struct Point2D c) {
   return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 }
 
-double len2d(struct Point2D a, struct Point2D b, struct Point2D c) {
-  return fabs(((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x))) /
-         sqrt(((a.y - b.y) * (a.y - b.y)) + ((b.x - a.x) * (b.x - a.x)));
+double distSq2d(struct Point2D a, struct Point2D b, struct Point2D c) {
+  double num = ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
+  double denSq = ((a.y - b.y) * (a.y - b.y)) + ((b.x - a.x) * (b.x - a.x));
+  return (num * num) / denSq;
 }
 
 void CalcPixels2(double Edges[3][2], int **Pixels, int *counter) {
@@ -352,15 +365,15 @@ void CalcPixels2(double Edges[3][2], int **Pixels, int *counter) {
         Pixels[*counter][0] = p.x;
         Pixels[*counter][1] = p.y;
         *counter += 1;
-      } else if (len2d(v1, v2, p) < 0.99) {
+      } else if (distSq2d(v1, v2, p) < 0.9801) {
         Pixels[*counter][0] = p.x;
         Pixels[*counter][1] = p.y;
         *counter += 1;
-      } else if (len2d(v2, v0, p) < 0.99) {
+      } else if (distSq2d(v2, v0, p) < 0.9801) {
         Pixels[*counter][0] = p.x;
         Pixels[*counter][1] = p.y;
         *counter += 1;
-      } else if (len2d(v0, v1, p) < 0.99) {
+      } else if (distSq2d(v0, v1, p) < 0.9801) {
         Pixels[*counter][0] = p.x;
         Pixels[*counter][1] = p.y;
         *counter += 1;
@@ -510,6 +523,12 @@ void CalcFracOverlap(const int NrOfFiles, const int nLayers, const int nTspots,
   // InPixels allocation hoisted to caller
   OverlapPixels = 0;
   TotalPixels = 0;
+  for (k = 0; k < 3; k++) {
+    P0[k] = P0All[0][k];
+  }
+  Lsd = Lsds[0];
+  ybc = ybcs[0];
+  zbc = zbcs[0];
   for (j = 0; j < nTspots; j++) {
     ythis = TheorSpots[j * 3 + 0];
     zthis = TheorSpots[j * 3 + 1];
@@ -539,17 +558,14 @@ void CalcFracOverlap(const int NrOfFiles, const int nLayers, const int nTspots,
       OutofBounds = 0;
     }
     OmeBin = (int)floor((-OmegaStart + OmegaThis) / OmegaStep);
-    for (k = 0; k < 3; k++) {
-      P0[k] = P0All[0][k];
-    }
-    Lsd = Lsds[0];
-    ybc = ybcs[0];
-    zbc = zbcs[0];
+    double OmegaRad = deg2rad * OmegaThis;
+    double sinOme = sin(OmegaRad);
+    double cosOme = cos(OmegaRad);
     for (k = 0; k < 3; k++) {
       XGT = XGrain[k];
       YGT = YGrain[k];
-      DisplacementSpots(XGT, YGT, Lsd, ythis, zthis, OmegaThis, &Displ_Y,
-                        &Displ_Z);
+      DisplacementSpotsPrecomp(XGT, YGT, Lsd, ythis, zthis, sinOme, cosOme,
+                               &Displ_Y, &Displ_Z);
       ytemp = Displ_Y;
       ztemp = Displ_Z;
       xyz[0] = 0;
@@ -670,6 +686,12 @@ void SimulateDiffractionImage(
   OverlapPixels = 0;
   TotalPixels = 0;
   int NrSpots = 0;
+  for (k = 0; k < 3; k++) {
+    P0[k] = P0All[0][k];
+  }
+  Lsd = Lsds[0];
+  ybc = ybcs[0];
+  zbc = zbcs[0];
   for (j = 0; j < nTspots; j++) {
     ythis = TheorSpots[j * 3 + 0];
     zthis = TheorSpots[j * 3 + 1];
@@ -701,17 +723,14 @@ void SimulateDiffractionImage(
     }
     // printf("%d %lf %lf %lf\n",j,ythis,zthis,OmegaThis);
     OmeBin = (int)floor((-OmegaStart + OmegaThis) / OmegaStep);
-    for (k = 0; k < 3; k++) {
-      P0[k] = P0All[0][k];
-    }
-    Lsd = Lsds[0];
-    ybc = ybcs[0];
-    zbc = zbcs[0];
+    double OmegaRad = deg2rad * OmegaThis;
+    double sinOme = sin(OmegaRad);
+    double cosOme = cos(OmegaRad);
     for (k = 0; k < 3; k++) {
       XGT = XGrain[k];
       YGT = YGrain[k];
-      DisplacementSpots(XGT, YGT, Lsd, ythis, zthis, OmegaThis, &Displ_Y,
-                        &Displ_Z);
+      DisplacementSpotsPrecomp(XGT, YGT, Lsd, ythis, zthis, sinOme, cosOme,
+                               &Displ_Y, &Displ_Z);
       ytemp = Displ_Y;
       ztemp = Displ_Z;
       xyz[0] = 0;

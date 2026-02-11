@@ -73,88 +73,63 @@ struct my_func_data {
   int nLayers;
   double ExcludePoleAngle;
   long long int SizeObsSpots;
-  double XGrain[3];
-  double YGrain[3];
+  double *XGrain;
+  double *YGrain;
   double OmegaStart;
   double OmegaStep;
   double px;
   double gs;
-  double hkls[5000][4];
+  double (*hkls)[4];
   int n_hkls;
-  double Thetas[5000];
+  double *Thetas;
   int NoOfOmegaRanges;
   int NrPixelsGrid;
-  double OmegaRanges[MAX_N_OMEGA_RANGES][2];
-  double BoxSizes[MAX_N_OMEGA_RANGES][4];
+  double (*OmegaRanges)[2];
+  double (*BoxSizes)[4];
   double **P0;
   int *ObsSpotsInfo;
   double *Lsd;
-  double RotMatTilts[3][3];
+  double (*RotMatTilts)[3];
   double *ybc;
   double *zbc;
   int **InPixels;
+  double *TheorSpots;
 };
 
 static double problem_function(unsigned n, const double *x, double *grad,
                                void *f_data_trial) {
   struct my_func_data *f_data = (struct my_func_data *)f_data_trial;
-  int i, j, count = 1;
+  int i, j;
   const int NrOfFiles = f_data->NrOfFiles;
   const int nLayers = f_data->nLayers;
   const double ExcludePoleAngle = f_data->ExcludePoleAngle;
   const long long int SizeObsSpots = f_data->SizeObsSpots;
-  double XGrain[3];
-  double YGrain[3];
   const double OmegaStart = f_data->OmegaStart;
   const double OmegaStep = f_data->OmegaStep;
   const double px = f_data->px;
   const double gs = f_data->gs;
   const int NoOfOmegaRanges = f_data->NoOfOmegaRanges;
   const int NrPixelsGrid = f_data->NrPixelsGrid;
-  double P0[nLayers][3];
-  double OmegaRanges[MAX_N_OMEGA_RANGES][2];
-  double BoxSizes[MAX_N_OMEGA_RANGES][4];
-  double hkls[5000][4];
   int n_hkls = f_data->n_hkls;
-  double *TheorSpots;
-  TheorSpots = malloc(MAX_N_SPOTS * 3 * sizeof(*TheorSpots));
-  double Thetas[5000];
-  for (i = 0; i < 5000; i++) {
-    hkls[i][0] = f_data->hkls[i][0];
-    hkls[i][1] = f_data->hkls[i][1];
-    hkls[i][2] = f_data->hkls[i][2];
-    hkls[i][3] = f_data->hkls[i][3];
-    Thetas[i] = f_data->Thetas[i];
+  int *ObsSpotsInfo = f_data->ObsSpotsInfo;
+  double *Lsd = f_data->Lsd;
+  double *ybc = f_data->ybc;
+  double *zbc = f_data->zbc;
+  double *XGrain = f_data->XGrain;
+  double *YGrain = f_data->YGrain;
+  double (*P0)[3] = (double (*)[3])malloc(nLayers * 3 * sizeof(double));
+  for (j = 0; j < nLayers; j++) {
+    P0[j][0] = f_data->P0[j][0];
+    P0[j][1] = f_data->P0[j][1];
+    P0[j][2] = f_data->P0[j][2];
   }
-  int *ObsSpotsInfo;
-  ObsSpotsInfo = &(f_data->ObsSpotsInfo[0]);
-  double *Lsd;
-  Lsd = &(f_data->Lsd[0]);
-  double *ybc;
-  ybc = &(f_data->ybc[0]);
-  double *zbc;
-  zbc = &(f_data->zbc[0]);
-  for (i = 0; i < 3; i++) {
-    XGrain[i] = f_data->XGrain[i];
-    YGrain[i] = f_data->YGrain[i];
-    for (j = 0; j < nLayers; j++) {
-      P0[j][i] = f_data->P0[j][i];
-    }
-  }
-  for (i = 0; i < MAX_N_OMEGA_RANGES; i++) {
-    for (j = 0; j < 2; j++) {
-      OmegaRanges[i][j] = f_data->OmegaRanges[i][j];
-    }
-    for (j = 0; j < 4; j++) {
-      BoxSizes[i][j] = f_data->BoxSizes[i][j];
-    }
-  }
-  double RotMatTilts[3][3];
-  for (i = 0; i < 3; i++) {
-    for (j = 0; j < 3; j++) {
-      RotMatTilts[i][j] = f_data->RotMatTilts[i][j];
-    }
-  }
+  double (*OmegaRanges)[2] = f_data->OmegaRanges;
+  double (*BoxSizes)[4] = f_data->BoxSizes;
+  double (*RotMatTilts)[3] = f_data->RotMatTilts;
+  double (*hkls)[4] = f_data->hkls;
+  double *Thetas = f_data->Thetas;
+  double *TheorSpots = f_data->TheorSpots;
+
   double OrientMatIn[3][3], FracOverlap, x2[3];
   x2[0] = x[0];
   x2[1] = x[1];
@@ -165,7 +140,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
       RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc, gs, hkls, n_hkls,
       Thetas, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
       ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots, f_data->InPixels);
-  free(TheorSpots);
+  free(P0);
   return (1 - FracOverlap);
 }
 
@@ -196,34 +171,24 @@ void FitOrientation(const int NrOfFiles, const int nLayers,
   f_data.NrOfFiles = NrOfFiles;
   f_data.nLayers = nLayers;
   f_data.n_hkls = n_hkls;
-  for (i = 0; i < 5000; i++) {
-    f_data.hkls[i][0] = hkls[i][0];
-    f_data.hkls[i][1] = hkls[i][1];
-    f_data.hkls[i][2] = hkls[i][2];
-    f_data.hkls[i][3] = hkls[i][3];
-    f_data.Thetas[i] = Thetas[i];
-  }
+  f_data.hkls = hkls;
+  f_data.Thetas = Thetas;
   f_data.ExcludePoleAngle = ExcludePoleAngle;
   f_data.SizeObsSpots = SizeObsSpots;
   f_data.P0 = allocMatrixF(nLayers, 3);
   for (i = 0; i < 3; i++) {
-    f_data.XGrain[i] = XGrain[i];
-    f_data.YGrain[i] = YGrain[i];
     for (j = 0; j < nLayers; j++) {
       f_data.P0[j][i] = P0[j][i];
     }
-    for (j = 0; j < 3; j++) {
-      f_data.RotMatTilts[i][j] = RotMatTilts[i][j];
-    }
   }
-  for (i = 0; i < MAX_N_OMEGA_RANGES; i++) {
-    for (j = 0; j < 2; j++) {
-      f_data.OmegaRanges[i][j] = OmegaRanges[i][j];
-    }
-    for (j = 0; j < 4; j++) {
-      f_data.BoxSizes[i][j] = BoxSizes[i][j];
-    }
-  }
+  // Cast away const for struct assignment, we promise not to modify these in
+  // problem_function
+  f_data.XGrain = (double *)XGrain;
+  f_data.YGrain = (double *)YGrain;
+  f_data.RotMatTilts = RotMatTilts;
+  f_data.OmegaRanges = OmegaRanges;
+  f_data.BoxSizes = BoxSizes;
+
   f_data.ObsSpotsInfo = &ObsSpotsInfo[0];
   f_data.Lsd = &Lsd[0];
   f_data.ybc = &ybc[0];
@@ -235,6 +200,7 @@ void FitOrientation(const int NrOfFiles, const int nLayers,
   f_data.NoOfOmegaRanges = NoOfOmegaRanges;
   f_data.NrPixelsGrid = NrPixelsGrid;
   f_data.InPixels = allocMatrixIntF(NrPixelsGrid, 2);
+  f_data.TheorSpots = malloc(MAX_N_SPOTS * 3 * sizeof(double));
   struct my_func_data *f_datat;
   f_datat = &f_data;
   void *trp = (struct my_func_data *)f_datat;
@@ -248,6 +214,7 @@ void FitOrientation(const int NrOfFiles, const int nLayers,
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   free(f_data.P0);
+  free(f_data.TheorSpots);
   FreeMemMatrixInt(f_data.InPixels, NrPixelsGrid);
   *ResultFracOverlap = minf;
   *EulerOutA = x[0];
