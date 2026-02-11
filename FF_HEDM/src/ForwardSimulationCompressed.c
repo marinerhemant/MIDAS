@@ -820,18 +820,19 @@ static long ReadInputData(char *InFileName, int isBin, double **InputInfo,
       fprintf(foutGrains, "%s", aline);
 
       while (fgets(aline, 4096, inpF) != NULL) {
-        sscanf(aline,
-               "%s %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf "
-               "%lf %lf %lf",
-               dummy, &InputInfo[nrPoints][0], &InputInfo[nrPoints][1],
-               &InputInfo[nrPoints][2], &InputInfo[nrPoints][3],
-               &InputInfo[nrPoints][4], &InputInfo[nrPoints][5],
-               &InputInfo[nrPoints][6], &InputInfo[nrPoints][7],
-               &InputInfo[nrPoints][8], &InputInfo[nrPoints][9],
-               &InputInfo[nrPoints][10], &InputInfo[nrPoints][11],
-               &InputInfo[nrPoints][12], &InputInfo[nrPoints][13],
-               &InputInfo[nrPoints][14], &InputInfo[nrPoints][15],
-               &InputInfo[nrPoints][16], &InputInfo[nrPoints][17]);
+        int scanned = sscanf(
+            aline,
+            "%s %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf "
+            "%lf %lf %lf",
+            dummy, &InputInfo[nrPoints][0], &InputInfo[nrPoints][1],
+            &InputInfo[nrPoints][2], &InputInfo[nrPoints][3],
+            &InputInfo[nrPoints][4], &InputInfo[nrPoints][5],
+            &InputInfo[nrPoints][6], &InputInfo[nrPoints][7],
+            &InputInfo[nrPoints][8], &InputInfo[nrPoints][9],
+            &InputInfo[nrPoints][10], &InputInfo[nrPoints][11],
+            &InputInfo[nrPoints][12], &InputInfo[nrPoints][13],
+            &InputInfo[nrPoints][14], &InputInfo[nrPoints][15],
+            &InputInfo[nrPoints][16], &InputInfo[nrPoints][17]);
         fprintf(foutGrains, "%ld\t", nrPoints + 1);
         for (i = 0; i < 18; i++)
           fprintf(foutGrains, "%lf\t", InputInfo[nrPoints][i]);
@@ -843,8 +844,9 @@ static long ReadInputData(char *InFileName, int isBin, double **InputInfo,
       dataType = 0;
       while (fgets(aline, 4096, inpF) != NULL) {
         sscanf(aline,
-               "%s,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%s,%lf,%lf,%lf,%s,%lf,%"
-               "lf,%lf,%lf,%lf,%lf",
+               "%[^,],%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%[^,],%lf,%lf,%lf,%[^"
+               ",],%lf,"
+               "%lf,%lf,%lf,%lf,%lf",
                dummy, &InputInfo[nrPoints][0], &InputInfo[nrPoints][1],
                &InputInfo[nrPoints][2], &InputInfo[nrPoints][3],
                &InputInfo[nrPoints][4], &InputInfo[nrPoints][5],
@@ -1336,6 +1338,42 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  printf("==============================================================\n");
+  printf("              ForwardSimulationCompressed Parameters          \n");
+  printf("==============================================================\n");
+  printf("Input File:          %s\n", InFileName);
+  printf("Output File:         %s\n", OutFileName);
+  printf("Lattice Params:      a=%.4f, b=%.4f, c=%.4f, alpha=%.3f, beta=%.3f, "
+         "gamma=%.3f\n",
+         LatC[0], LatC[1], LatC[2], LatC[3], LatC[4], LatC[5]);
+  printf("Detector Dist (Lsd): %.4f mm\n", Lsd);
+  printf("Pixel Size (px):     %.5f mm\n", px);
+  printf("Detector Size:       %d x %d pixels\n", NrPixels, NrPixels);
+  printf("Beam Center:         y=%.4f, z=%.4f (pixels)\n", yBC, zBC);
+  printf("Tilt Angles:         tx=%.4f, ty=%.4f, tz=%.4f (deg)\n", tx, ty, tz);
+  printf("Distortion Params:   RhoD=%.4f, p0=%.5f, p1=%.5f, p2=%.5f\n", RhoD,
+         p0, p1, p2);
+  printf("Omega Range:         Start=%.4f, End=%.4f, Step=%.4f (deg)\n",
+         OmegaStart, OmegaEnd, OmegaStep);
+  printf("Wavelength:          %.5f A\n", Wavelength);
+  printf("Wedge Angle:         %.4f (deg)\n", Wedge);
+  printf("Gauss Width:         %.4f (pixels)\n", GaussWidth);
+  printf("Peak Intensity:      %.2f\n", PeakIntensity);
+  printf("Energy Res:          %.4f (Samples: %d)\n", eResolution,
+         num_lambda_samples);
+  if (strlen(IntensitiesFile) > 0)
+    printf("Intensities File:    %s\n", IntensitiesFile);
+  printf("Scans:               %d\n", nScans);
+  if (beamSize > 0)
+    printf("Beam Size:           %.4f (microns)\n", beamSize);
+  printf("Misc Options:        WriteSpots=%d, IsBinary=%d, NFOutput=%d, "
+         "GEOutput=%d\n",
+         writeSpots, isBin, nfOutput, geOutput);
+  printf(
+      "                     LoadNr=%d, UpdatedOrientations=%d, MinConf=%.4f\n",
+      LoadNr, UpdatedOrientations, minConfidence);
+  printf("==============================================================\n");
+
   int scanNr;
   positions = malloc((nScans + 1) * sizeof(*positions));
   positions[0] = 0;
@@ -1379,7 +1417,8 @@ int main(int argc, char *argv[]) {
                            UpdatedOrientations, LoadNr, &dataType, &maxVol);
   if (nrPoints == 0)
     return 1;
-  printf("Read file., total number of orientations: %d\n", nrPoints);
+  printf("Read file., total number of orientations: %ld\n", nrPoints);
+
   if (writeSpots == 1)
     printf("Will generate a SpotMatrixGen.csv file.\n");
   else
@@ -1390,8 +1429,9 @@ int main(int argc, char *argv[]) {
   fgets(aline, 1000, hklf);
   int thisRingNr;
   while (fgets(aline, 1000, hklf) != NULL) {
-    sscanf(aline, "%lf %lf %lf %s %lf", &hkls[n_hkls][0], &hkls[n_hkls][1],
-           &hkls[n_hkls][2], dummy, &hkls[n_hkls][3]);
+    int scanned =
+        sscanf(aline, "%lf %lf %lf %s %lf", &hkls[n_hkls][0], &hkls[n_hkls][1],
+               &hkls[n_hkls][2], dummy, &hkls[n_hkls][3]);
     n_hkls++;
     if (n_hkls >= MAX_N_HKLS) {
       printf("MAX_N_HKLS exceeded. Please check! Aborting.\n");
