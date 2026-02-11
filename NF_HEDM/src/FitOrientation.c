@@ -92,6 +92,7 @@ struct my_func_data {
   double *ybc;
   double *zbc;
   int **InPixels;
+  double Gs[5000];
 };
 
 static double problem_function(unsigned n, const double *x, double *grad,
@@ -159,11 +160,12 @@ static double problem_function(unsigned n, const double *x, double *grad,
   x2[1] = x[1];
   x2[2] = x[2];
   Euler2OrientMat(x2, OrientMatIn);
-  CalcOverlapAccOrient(
-      NrOfFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots, XGrain, YGrain,
-      RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc, gs, hkls, n_hkls,
-      Thetas, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
-      ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots, f_data->InPixels);
+  CalcOverlapAccOrient(NrOfFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots,
+                       XGrain, YGrain, RotMatTilts, OmegaStart, OmegaStep, px,
+                       ybc, zbc, gs, hkls, n_hkls, Thetas, OmegaRanges,
+                       NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
+                       ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots,
+                       f_data->InPixels, f_data->Gs);
   free(TheorSpots);
   return (1 - FracOverlap);
 }
@@ -201,6 +203,13 @@ void FitOrientation(const int NrOfFiles, const int nLayers,
     f_data.hkls[i][2] = hkls[i][2];
     f_data.hkls[i][3] = hkls[i][3];
     f_data.Thetas[i] = Thetas[i];
+  }
+  // Precompute Gs
+  for (i = 0; i < n_hkls; i++) {
+    double len = sqrt(f_data.hkls[i][0] * f_data.hkls[i][0] +
+                      f_data.hkls[i][1] * f_data.hkls[i][1] +
+                      f_data.hkls[i][2] * f_data.hkls[i][2]);
+    f_data.Gs[i] = sin(f_data.Thetas[i] * M_PI / 180.0) * len;
   }
   f_data.ExcludePoleAngle = ExcludePoleAngle;
   f_data.SizeObsSpots = SizeObsSpots;

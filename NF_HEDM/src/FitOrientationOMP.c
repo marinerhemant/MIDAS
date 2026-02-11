@@ -94,6 +94,7 @@ struct my_func_data {
   int **InPixels;
   double *TheorSpots;
   double *P0Flat;
+  double *Gs;
 };
 
 static double problem_function(unsigned n, const double *x, double *grad,
@@ -125,17 +126,19 @@ static double problem_function(unsigned n, const double *x, double *grad,
   double (*hkls)[4] = f_data->hkls;
   double *Thetas = f_data->Thetas;
   double *TheorSpots = f_data->TheorSpots;
+  double *Gs = f_data->Gs;
 
   double OrientMatIn[3][3], FracOverlap, x2[3];
   x2[0] = x[0];
   x2[1] = x[1];
   x2[2] = x[2];
   Euler2OrientMat(x2, OrientMatIn);
-  CalcOverlapAccOrient(
-      NrOfFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots, XGrain, YGrain,
-      RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc, gs, hkls, n_hkls,
-      Thetas, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
-      ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots, f_data->InPixels);
+  CalcOverlapAccOrient(NrOfFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots,
+                       XGrain, YGrain, RotMatTilts, OmegaStart, OmegaStep, px,
+                       ybc, zbc, gs, hkls, n_hkls, Thetas, OmegaRanges,
+                       NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
+                       ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots,
+                       f_data->InPixels, Gs);
   return (1 - FracOverlap);
 }
 
@@ -152,7 +155,7 @@ void FitOrientation(const int NrOfFiles, const int nLayers,
                     int *ObsSpotsInfo, double EulerIn[3], double tol,
                     double *EulerOutA, double *EulerOutB, double *EulerOutC,
                     double *ResultFracOverlap, double hkls[5000][4],
-                    double Thetas[5000], int n_hkls) {
+                    double Thetas[5000], int n_hkls, double *Gs) {
   unsigned n;
   long int i, j;
   n = 3;
@@ -203,6 +206,7 @@ void FitOrientation(const int NrOfFiles, const int nLayers,
   f_data.NrPixelsGrid = NrPixelsGrid;
   f_data.InPixels = allocMatrixIntF(NrPixelsGrid, 2);
   f_data.TheorSpots = malloc(MAX_N_SPOTS * 3 * sizeof(double));
+  f_data.Gs = Gs;
   struct my_func_data *f_datat;
   f_datat = &f_data;
   void *trp = (struct my_func_data *)f_datat;
@@ -609,15 +613,15 @@ int main(int argc, char *argv[]) {
     fgets(line, 1000, fp);
     counter += 1;
   }
-  char **lines;
-  lines = malloc(nrows * sizeof(*lines));
+  char **lines_raw; // Renamed to avoid conflict with parsed_lines
+  lines_raw = malloc(nrows * sizeof(*lines_raw));
   printf("%d %d %d\n", startRowNr, endRowNr, nrows);
   //~ lines = malloc(nrows*sizeof(*lines));
   //~ lines[0] = malloc(nrows*1000*sizeof(**lines));
   //~ for (it=1;it<nrows;it++) lines[it] = lines[0] + it*1000;
   for (it = 0; it < nrows; it++) {
     fgets(line, 1000, fp);
-    lines[it] = strndup(line, 1000);
+    lines_raw[it] = strndup(line, 1000);
   }
   //~ for (it=0;it<nrows;it++) fgets(lines[it],1000,fp);
   fclose(fp);
@@ -662,6 +666,49 @@ int main(int argc, char *argv[]) {
     n_hkls = totalHKLs;
   }
 
+  // Precompute Gs for CalcDiffractionSpots optimization
+  double *Gs;
+  Gs = malloc(n_hkls * sizeof(double));
+  int i;
+  for (i = 0; i < n_hkls; i++) {
+    double Ghkl[3];
+    Ghkl[0] = hkls[i][0];
+    Ghkl[1] = hkls[i][1];
+    Ghkl[2] = hkls[i][2];
+    double len =
+        sqrt(Ghkl[0] * Ghkl[0] + Ghkl[1] * Ghkl[1] + Ghkl[2] * Ghkl[2]);
+    Gs[i] =
+        sin(Thetas[i] * M_PI / 180.0) * len; // Assuming deg2rad is M_PI/180.0
+  }
+
+  // Parse input lines for sscanf hoisting
+  struct ParsedLine {
+    double y1, y2, xs, ys, gs;
+    int valid;
+  };
+  struct ParsedLine *parsed_lines =
+      malloc((endRowNr - startRowNr + 1) * sizeof(struct ParsedLine));
+  for (rown = startRowNr; rown <= endRowNr; rown++) {
+    int idx = rown - startRowNr;
+    struct ParsedLine *pl = &parsed_lines[idx];
+    if (rown > TotalNrSpots) {
+      pl->valid = 0;
+    } else {
+      int nparsed = sscanf(lines_raw[idx], "%lf %lf %lf %lf %lf", &pl->y1,
+                           &pl->y2, &pl->xs, &pl->ys, &pl->gs);
+      if (nparsed != 5) {
+        pl->valid = 0;
+      } else {
+        pl->valid = 1;
+      }
+    }
+  }
+  // Free raw lines after parsing
+  for (it = 0; it < nrows; it++) {
+    free(lines_raw[it]);
+  }
+  free(lines_raw);
+
   double RotMatTilts[3][3];
   RotationTilts(tx, ty, tz, RotMatTilts);
   double *OrientMatrixAll;
@@ -699,16 +746,21 @@ int main(int argc, char *argv[]) {
     //~ start = clock();
     int procNum = omp_get_thread_num();
     int i, j, k, m;
-    if (rown > TotalNrSpots) {
+    int idx = rown - startRowNr;
+    // Use pre-parsed data
+    if (!parsed_lines[idx].valid) {
       printf("Error: Grid point number greater than total number of grid "
-             "points.\n");
+             "points or parse error.\n");
       continue;
     }
-    double y1, y2, xs, ys, gs;
+    double y1 = parsed_lines[idx].y1;
+    double y2 = parsed_lines[idx].y2;
+    double xs = parsed_lines[idx].xs;
+    double ys = parsed_lines[idx].ys;
+    double gs = parsed_lines[idx].gs;
+
     // Alloc array and clear it.
     double XY[3][3];
-    sscanf(lines[rown - startRowNr], "%lf %lf %lf %lf %lf", &y1, &y2, &xs, &ys,
-           &gs);
     int UD;
     if (y1 > y2) {
       UD = -1;
@@ -830,9 +882,9 @@ int main(int argc, char *argv[]) {
         // SharedFuncsFit.c first.
         FitOrientation(nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots,
                        XG, YG, RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc,
-                       gs, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0,
-                       NrPixelsGrid, ObsSpotsInfo, EulerIn, tol, &EulerOutA,
-                       &EulerOutB, &EulerOutC, &FracOut, hkls, Thetas, n_hkls);
+                       gs, OmegaRanges, nOmeRang, BoxSizes, P0, NrPixelsGrid,
+                       ObsSpotsInfo, EulerIn, tol, &EulerOutA, &EulerOutB,
+                       &EulerOutC, &FracOut, hkls, Thetas, n_hkls, Gs);
         Fractions = 1 - FracOut;
         if (Fractions >= BestFrac) {
           bestRowNr = OrientMatrix[i * 10 + 9]; // Save best RowNr
@@ -933,6 +985,8 @@ int main(int argc, char *argv[]) {
   }
 
   // Close files after loop
+  free(parsed_lines);
+  free(Gs);
   close(result);
   close(result2);
   double time = omp_get_wtime() - start_time;

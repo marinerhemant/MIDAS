@@ -828,12 +828,12 @@ void CalcOverlapAccOrient(
     double OmegaRanges[MAX_N_OMEGA_RANGES][2], const int NoOfOmegaRanges,
     double BoxSizes[MAX_N_OMEGA_RANGES][4], double P0[nLayers][3],
     const int NrPixelsGrid, int *ObsSpotsInfo, double OrientMatIn[3][3],
-    double *FracOverlap, double *TheorSpots, int **InPixels) {
-  int nTspots, i;
-  double Lsd0 = Lsd[0];
-  CalcDiffractionSpots(Lsd0, ExcludePoleAngle, OmegaRanges, NoOfOmegaRanges,
+    double *FracOverlap, double *TheorSpots, int **InPixels, double *Gs) {
+  int nTspots;
+  // Compute spot positions.
+  CalcDiffractionSpots(Lsd[0], ExcludePoleAngle, OmegaRanges, NoOfOmegaRanges,
                        hkls, n_hkls, Thetas, BoxSizes, &nTspots, OrientMatIn,
-                       TheorSpots);
+                       TheorSpots, Gs);
   double FracOver;
   CalcFracOverlap(NrOfFiles, nLayers, nTspots, TheorSpots, OmegaStart,
                   OmegaStep, XGrain, YGrain, Lsd, SizeObsSpots, RotMatTilts, px,
@@ -852,12 +852,12 @@ void SimulateAccOrient(
     double OmegaRanges[MAX_N_OMEGA_RANGES][2], const int NoOfOmegaRanges,
     double BoxSizes[MAX_N_OMEGA_RANGES][4], double P0[nLayers][3],
     const int NrPixelsGrid, uint16_t *ObsSpotsInfo, double OrientMatIn[3][3],
-    double *TheorSpots, int voxNr, FILE *spF, int **InPixels) {
+    double *TheorSpots, int voxNr, FILE *spF, int **InPixels, double *Gs) {
   int nTspots, i;
-  double Lsd0 = Lsd[0];
-  CalcDiffractionSpots(Lsd0, ExcludePoleAngle, OmegaRanges, NoOfOmegaRanges,
+  // Compute spot positions.
+  CalcDiffractionSpots(Lsd[0], ExcludePoleAngle, OmegaRanges, NoOfOmegaRanges,
                        hkls, n_hkls, Thetas, BoxSizes, &nTspots, OrientMatIn,
-                       TheorSpots);
+                       TheorSpots, Gs);
   // printf("#Spots: %d\n",nTspots);
   double XG[3], YG[3];
   for (i = 0; i < 3; i++) {
