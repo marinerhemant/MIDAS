@@ -86,7 +86,6 @@ struct my_func_data {
   int NrPixelsGrid;
   double (*OmegaRanges)[2];
   double (*BoxSizes)[4];
-  double **P0;
   int *ObsSpotsInfo;
   double *Lsd;
   double (*RotMatTilts)[3];
@@ -94,6 +93,7 @@ struct my_func_data {
   double *zbc;
   int **InPixels;
   double *TheorSpots;
+  double *P0Flat;
 };
 
 static double problem_function(unsigned n, const double *x, double *grad,
@@ -117,12 +117,8 @@ static double problem_function(unsigned n, const double *x, double *grad,
   double *zbc = f_data->zbc;
   double *XGrain = f_data->XGrain;
   double *YGrain = f_data->YGrain;
-  double (*P0)[3] = (double (*)[3])malloc(nLayers * 3 * sizeof(double));
-  for (j = 0; j < nLayers; j++) {
-    P0[j][0] = f_data->P0[j][0];
-    P0[j][1] = f_data->P0[j][1];
-    P0[j][2] = f_data->P0[j][2];
-  }
+  double (*P0)[3] = (double (*)[3])f_data->P0Flat;
+
   double (*OmegaRanges)[2] = f_data->OmegaRanges;
   double (*BoxSizes)[4] = f_data->BoxSizes;
   double (*RotMatTilts)[3] = f_data->RotMatTilts;
@@ -140,7 +136,6 @@ static double problem_function(unsigned n, const double *x, double *grad,
       RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc, gs, hkls, n_hkls,
       Thetas, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
       ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots, f_data->InPixels);
-  free(P0);
   return (1 - FracOverlap);
 }
 
@@ -175,12 +170,19 @@ void FitOrientation(const int NrOfFiles, const int nLayers,
   f_data.Thetas = Thetas;
   f_data.ExcludePoleAngle = ExcludePoleAngle;
   f_data.SizeObsSpots = SizeObsSpots;
-  f_data.P0 = allocMatrixF(nLayers, 3);
-  for (i = 0; i < 3; i++) {
-    for (j = 0; j < nLayers; j++) {
-      f_data.P0[j][i] = P0[j][i];
-    }
+
+  // Allocate P0Flat for use in problem_function
+  f_data.P0Flat = malloc(nLayers * 3 * sizeof(double));
+  for (i = 0; i < nLayers; i++) {
+    // We do not strictly need f_data.P0 to point to valid memory for
+    // problem_function anymore since we use P0Flat. However, f_data.P0 was used
+    // to COPY from the input P0 argument. Let's copy directly from input P0 to
+    // P0Flat.
+    f_data.P0Flat[i * 3 + 0] = P0[i][0];
+    f_data.P0Flat[i * 3 + 1] = P0[i][1];
+    f_data.P0Flat[i * 3 + 2] = P0[i][2];
   }
+
   // Cast away const for struct assignment, we promise not to modify these in
   // problem_function
   f_data.XGrain = (double *)XGrain;
@@ -213,7 +215,10 @@ void FitOrientation(const int NrOfFiles, const int nLayers,
   double minf = 1;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
-  free(f_data.P0);
+  // f_data.P0 was allocated with malloc for the pointer array only, but we
+  // didn't alloc rows
+  free(f_data.P0Flat);
+
   free(f_data.TheorSpots);
   FreeMemMatrixInt(f_data.InPixels, NrPixelsGrid);
   *ResultFracOverlap = minf;
@@ -750,6 +755,9 @@ int main(int argc, char *argv[]) {
     double *OrientMatrix;
     OrientMatrix = &OrientMatrixAll[MAX_POINTS_GRID_GOOD * 10 * procNum];
     //~ printf("Checking orientation grid.\n");
+    // Hoisted InPixels allocation
+    int **InPixels;
+    InPixels = allocMatrixIntF(NrPixelsGrid, 2);
     for (i = 0; i < NrOrientations; i++) {
       NrSpotsThis = NrSpots[i][0];
       StartingRowNr = NrSpots[i][1];
@@ -769,13 +777,11 @@ int main(int argc, char *argv[]) {
         m++;
       }
       Convert9To3x3(OrientationMatThis, OrientMatIn);
-      int **InPixels;
-      InPixels = allocMatrixIntF(NrPixelsGrid, 2);
+      // Hoisted InPixels allocation to before loop
       CalcFracOverlap(nrFiles, nLayers, NrSpotsThis, ThrSps, OmegaStart,
                       OmegaStep, XG, YG, Lsd, SizeObsSpots, RotMatTilts, px,
                       ybc, zbc, gs, P0, NrPixelsGrid, ObsSpotsInfo, OrientMatIn,
                       &FracOverT, InPixels);
-      FreeMemMatrixInt(InPixels, NrPixelsGrid);
       if (FracOverT >= minFracOverlap) {
         for (j = 0; j < 9; j++) {
           OrientMatrix[OrientationGoodID * 10 + j] = OrientationMatThis[j];
@@ -785,6 +791,7 @@ int main(int argc, char *argv[]) {
         OrientationGoodID++;
       }
     }
+    FreeMemMatrixInt(InPixels, NrPixelsGrid);
     //~ printf("Finished checking orientation grid. Now fitting %d
     // orientations.\n",OrientationGoodID);
     double BestFrac, BestEuler[3];
@@ -897,7 +904,7 @@ int main(int argc, char *argv[]) {
     int rc4 = pwrite(result, outresult, SizeWritten, OffsetHere);
     if (rc4 < 0) {
 #pragma omp critical
-      printf("Could not write to output file %d %d %d %d.\n", OffsetHere, rown,
+      printf("Could not write to output file %zu %d %d %d.\n", OffsetHere, rown,
              startRowNr, endRowNr);
     } else {
 // printf is thread-safe but output might be interleaved.
@@ -916,7 +923,7 @@ int main(int argc, char *argv[]) {
     int rc5 = pwrite(result2, ResultMatr, SizeWritten2, OffsetThis);
     if (rc5 < 0) {
 #pragma omp critical
-      printf("Could not write all matches %d %d %d %d.\n", OffsetThis, rown,
+      printf("Could not write all matches %zu %d %d %d.\n", OffsetThis, rown,
              startRowNr, endRowNr);
     }
 
