@@ -368,8 +368,56 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
     
     logger.info("Fitting orientations.")
     try:
-        fit_futures = [fit(args.paramFN, i, args.nNodes, args.nCPUs, logDir, resultFolder, bin_dir) for i in range(args.nNodes)]
-        [f.result() for f in tqdm(fit_futures, desc="Fitting Orientations")]
+        if args.nNodes == 1:
+            # --- Single Node: Monitor progress using fit0_out.csv line count ---
+            grid_file = os.path.join(resultFolder, 'grid.txt')
+            total_points = 0
+            try:
+                with open(grid_file, 'r') as f:
+                    line = f.readline()
+                    if line:
+                        total_points = int(line.strip().split()[0])
+            except Exception as e:
+                logger.warning(f"Could not read total grid points from {grid_file}: {e}")
+                total_points = None
+
+            # Start the single fitting task (nodeNr=0)
+            fit_future = fit(args.paramFN, 0, args.nNodes, args.nCPUs, logDir, resultFolder, bin_dir)
+            
+            outfile = os.path.join(logDir, 'fit0_out.csv')
+            pbar = tqdm(total=total_points, desc="Fitting Orientations", unit="pts")
+            last_count = 0
+            
+            while not fit_future.done():
+                if os.path.exists(outfile):
+                    try:
+                        # Count lines (subtract 2 for header)
+                        with open(outfile, 'rb') as f:
+                            count = sum(1 for _ in f)
+                        current_processed = max(0, count - 2)
+                        if current_processed > last_count:
+                            pbar.update(current_processed - last_count)
+                            last_count = current_processed
+                    except Exception:
+                        pass
+                time.sleep(1.0)
+            
+            # Final update ensures 100% if completed
+            if os.path.exists(outfile):
+                try:
+                    with open(outfile, 'rb') as f:
+                        count = sum(1 for _ in f)
+                    current_processed = max(0, count - 2)
+                    if current_processed > last_count:
+                        pbar.update(current_processed - last_count)
+                except Exception: pass
+            
+            pbar.close()
+            fit_future.result() # Raise exception if task failed
+        else:
+            # --- Multi-Node: Standard Future completion tracking ---
+            fit_futures = [fit(args.paramFN, i, args.nNodes, args.nCPUs, logDir, resultFolder, bin_dir) for i in range(args.nNodes)]
+            [f.result() for f in tqdm(fit_futures, desc="Fitting Orientations")]
     except Exception as e:
         logger.error("A failure occurred during the orientation fitting stage. Aborting workflow.")
         logger.error(f"Details: {e}", exc_info=True)
