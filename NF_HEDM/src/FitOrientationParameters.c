@@ -79,8 +79,6 @@ struct my_func_data {
   double BoxSizes[MAX_N_OMEGA_RANGES][4];
   double **P0;
   int *ObsSpotsInfo;
-  int **InPixels;
-  double Gs[5000];
 };
 
 static double problem_function(unsigned n, const double *x, double *grad,
@@ -154,8 +152,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
                        XGrain, YGrain, RotMatTilts, OmegaStart, OmegaStep, px,
                        ybc, zbc, gs, hkls, n_hkls, Thetas, OmegaRanges,
                        NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
-                       ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots,
-                       f_data->InPixels, f_data->Gs);
+                       ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots);
   free(TheorSpots);
   return (1 - FracOverlap);
 }
@@ -227,13 +224,6 @@ void FitOrientation(
     f_data.hkls[i][3] = hkls[i][3];
     f_data.Thetas[i] = Thetas[i];
   }
-  // Precompute Gs
-  for (i = 0; i < n_hkls; i++) {
-    double len = sqrt(f_data.hkls[i][0] * f_data.hkls[i][0] +
-                      f_data.hkls[i][1] * f_data.hkls[i][1] +
-                      f_data.hkls[i][2] * f_data.hkls[i][2]);
-    f_data.Gs[i] = sin(f_data.Thetas[i] * M_PI / 180.0) * len;
-  }
   f_data.ExcludePoleAngle = ExcludePoleAngle;
   f_data.SizeObsSpots = SizeObsSpots;
   f_data.P0 = allocMatrixF(nLayers, 3);
@@ -258,9 +248,7 @@ void FitOrientation(
   f_data.px = px;
   f_data.gs = gs;
   f_data.NoOfOmegaRanges = NoOfOmegaRanges;
-  f_data.NoOfOmegaRanges = NoOfOmegaRanges;
   f_data.NrPixelsGrid = NrPixelsGrid;
-  f_data.InPixels = allocMatrixIntF(NrPixelsGrid, 2);
   struct my_func_data *f_datat;
   f_datat = &f_data;
   void *trp = (struct my_func_data *)f_datat;
@@ -273,8 +261,6 @@ void FitOrientation(
   double minf = 1;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
-  free(f_data.P0);
-  FreeMemMatrixInt(f_data.InPixels, NrPixelsGrid);
   *ResultFracOverlap = minf;
   *EulerOutA = x[0];
   *EulerOutB = x[1];
@@ -682,13 +668,10 @@ int main(int argc, char *argv[]) {
     }
     Convert9To3x3(OrientationMatThis, OrientMatIn);
     fflush(stdout);
-    int **InPixels;
-    InPixels = allocMatrixIntF(NrPixelsGrid, 2);
     CalcFracOverlap(nrFiles, nLayers, NrSpotsThis, ThrSps, OmegaStart,
                     OmegaStep, XG, YG, Lsd, SizeObsSpots, RotMatTilts, px, ybc,
                     zbc, gs, P0, NrPixelsGrid, ObsSpotsInfo, OrientMatIn,
-                    &FracOverT, InPixels);
-    FreeMemMatrixInt(InPixels, NrPixelsGrid);
+                    &FracOverT);
     if (FracOverT >= minFracOverlap) {
       for (j = 0; j < 9; j++) {
         OrientMatrix[OrientationGoodID][j] = OrientationMatThis[j];

@@ -323,13 +323,6 @@ int main(int argc, char *argv[]) {
     }
     n_hkls = totalHKLs;
   }
-  // Precompute Gs for CalcDiffractionSpots optimization
-  double Gs[n_hkls];
-  for (i = 0; i < n_hkls; i++) {
-    double len = sqrt(hkls[i][0] * hkls[i][0] + hkls[i][1] * hkls[i][1] +
-                      hkls[i][2] * hkls[i][2]);
-    Gs[i] = sin(Thetas[i] * deg2rad) * len;
-  }
   double OMIn[3][3], FracCalc;
   FILE *InpMicF;
   InpMicF = fopen(MicFN, "r");
@@ -378,14 +371,11 @@ int main(int argc, char *argv[]) {
     Euler2OrientMat(eulThis, OMIn);
     // printf("%lf %lf %lf %lf %lf %lf %lf %lf
     // %lf\n",OMIn[0][0],OMIn[0][1],OMIn[0][2],OMIn[1][0],OMIn[1][1],OMIn[1][2],OMIn[2][0],OMIn[2][1],OMIn[2][2]);
-    int **InPixels;
-    InPixels = allocMatrixIntF(NrPixelsGrid, 2);
     SimulateAccOrient(nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots, XG,
                       YG, RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc, gs,
                       hkls, n_hkls, Thetas, OmegaRanges, NoOfOmegaRanges,
                       BoxSizes, P0, NrPixelsGrid, ObsSpotsInfo, OMIn,
-                      TheorSpots, voxNr, spF, InPixels, Gs);
-    FreeMemMatrixInt(InPixels, NrPixelsGrid);
+                      TheorSpots, voxNr, spF);
     voxNr++;
   }
   printf("Writing output file\n");

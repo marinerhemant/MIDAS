@@ -82,7 +82,6 @@ struct my_func_data {
   double **P0;
   int *ObsSpotsInfo;
   int nCPUs;
-  double Gs[5000];
 };
 
 double IndividualResults[200];
@@ -160,8 +159,6 @@ static double problem_function(unsigned n, const double *x, double *grad,
     double XGrain[3], YGrain[3];
     double *TheorSpotsPrivate;
     TheorSpotsPrivate = malloc(MAX_N_SPOTS * 3 * sizeof(*TheorSpotsPrivate));
-    int **InPixelsPrivate;
-    InPixelsPrivate = allocMatrixIntF(NrPixelsGrid, 2);
 
 #pragma omp for reduction(+ : netResult)
     for (i = 0; i < nSpots; i++) {
@@ -175,17 +172,16 @@ static double problem_function(unsigned n, const double *x, double *grad,
         YGrain[j] = YGr[i][j];
       }
       Euler2OrientMat(EulIn, OrientMatIn);
-      CalcOverlapAccOrient(
-          NrOfFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots, XGrain,
-          YGrain, RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc, gs, hkls,
-          n_hkls, Thetas, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0,
-          NrPixelsGrid, ObsSpotsInfo, OrientMatIn, &FracOverlap,
-          TheorSpotsPrivate, InPixelsPrivate, f_data->Gs);
+      CalcOverlapAccOrient(NrOfFiles, nLayers, ExcludePoleAngle, Lsd,
+                           SizeObsSpots, XGrain, YGrain, RotMatTilts,
+                           OmegaStart, OmegaStep, px, ybc, zbc, gs, hkls,
+                           n_hkls, Thetas, OmegaRanges, NoOfOmegaRanges,
+                           BoxSizes, P0, NrPixelsGrid, ObsSpotsInfo,
+                           OrientMatIn, &FracOverlap, TheorSpotsPrivate);
       netResult += FracOverlap;
       IndividualResults[i] = FracOverlap;
     }
     free(TheorSpotsPrivate);
-    FreeMemMatrixInt(InPixelsPrivate, NrPixelsGrid);
   }
   netResult /= nSpots;
   //   printf("%.40lf\n", netResult);
@@ -263,13 +259,6 @@ void FitOrientation(
     f_data.hkls[i][2] = hkls[i][2];
     f_data.hkls[i][3] = hkls[i][3];
     f_data.Thetas[i] = Thetas[i];
-  }
-  // Precompute Gs
-  for (i = 0; i < n_hkls; i++) {
-    double len = sqrt(f_data.hkls[i][0] * f_data.hkls[i][0] +
-                      f_data.hkls[i][1] * f_data.hkls[i][1] +
-                      f_data.hkls[i][2] * f_data.hkls[i][2]);
-    f_data.Gs[i] = sin(f_data.Thetas[i] * M_PI / 180.0) * len;
   }
   f_data.ExcludePoleAngle = ExcludePoleAngle;
   f_data.SizeObsSpots = SizeObsSpots;

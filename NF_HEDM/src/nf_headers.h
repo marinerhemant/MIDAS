@@ -19,8 +19,7 @@ int CalcDiffractionSpots(double Distance, double ExcludePoleAngle,
                          int NoOfOmegaRanges, double hkls[5000][4], int n_hkls,
                          double Thetas[5000],
                          double BoxSizes[MAX_N_OMEGA_RANGES][4], int *nTspots,
-                         double OrientMatr[3][3], double *TheorSpots,
-                         double *Gs);
+                         double OrientMatr[3][3], double *TheorSpots);
 
 void RotationTilts(double tx, double ty, double tz, double RotMatOut[3][3]);
 
@@ -36,7 +35,7 @@ void SimulateAccOrient(
     double OmegaRanges[MAX_N_OMEGA_RANGES][2], const int NoOfOmegaRanges,
     double BoxSizes[MAX_N_OMEGA_RANGES][4], double P0[nLayers][3],
     const int NrPixelsGrid, uint16_t *ObsSpotsInfo, double OrientMatIn[3][3],
-    double *TheorSpots, int voxNr, FILE *spF, int **InPixels, double *Gs);
+    double *TheorSpots, int voxNr, FILE *spF);
 
 void RotateAroundZ(RealType v1[3], RealType alpha, RealType v2[3]);
 
@@ -50,7 +49,7 @@ void CalcOverlapAccOrient(
     double OmegaRanges[MAX_N_OMEGA_RANGES][2], const int NoOfOmegaRanges,
     double BoxSizes[MAX_N_OMEGA_RANGES][4], double P0[nLayers][3],
     const int NrPixelsGrid, int *ObsSpotsInfo, double OrientMatIn[3][3],
-    double *FracOverlap, double *TheorSpots, int **InPixels, double *Gs);
+    double *FracOverlap, double *TheorSpots);
 
 void NormalizeMat(double OMIn[9], double OMOut[9]);
 
@@ -65,7 +64,7 @@ void CalcFracOverlap(const int NrOfFiles, const int nLayers, const int nTspots,
                      const double zbcs[nLayers], const double gs,
                      double P0All[nLayers][3], const int NrPixelsGrid,
                      int *ObsSpotsInfo, double OrientMatIn[3][3],
-                     double *FracOver, int **InPixels);
+                     double *FracOver);
 
 void OrientMat2Euler(double m[3][3], double Euler[3]);
 
