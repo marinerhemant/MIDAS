@@ -844,8 +844,9 @@ int main(int argc, char *argv[]) {
       }
     }
     FreeMemMatrixInt(InPixels, NrPixelsGrid);
-    //~ printf("Finished checking orientation grid. Now fitting %d
-    // orientations.\n",OrientationGoodID);
+    printf("Finished checking orientation grid for point %d. Now fitting %d"
+           " orientations.\n",
+           rown, OrientationGoodID);
     double BestFrac, BestEuler[3];
     double ResultMatr[7 + (nSaves * 4)], QuatIn[4], QuatOut[4];
     double bestRowNr = 0;
