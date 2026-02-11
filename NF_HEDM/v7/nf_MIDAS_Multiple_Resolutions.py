@@ -708,11 +708,13 @@ def main():
             '  GridRefactor <ScalingFactor> <NumLoops>  # e.g. GridRefactor 2.0 3\n'
             '      - ScalingFactor: Factor by which GridSize is divided in each loop.\n'
             '      - NumLoops: Number of refinement iterations to perform.\n'
-            '  SeedOrientationsAll <path>               # Full seed orientations file (backed up internally)\n'
+            '  SeedOrientationsAll <path>               # Full seed orientations file (backed up internally as <path>_Backup)\n'
+            '                                           # NOTE: Should be distinct from SeedOrientations.\n'
             '  MinConfidence <value>                    # Confidence threshold for filtering bad solutions (default: 0.5)\n'
             '  GridSize <value>                         # Initial grid size (refined by ScalingFactor each loop)\n'
             '  MicFileText <basename>                   # Base name for mic output (suffixed with .0, .1, ... per loop)\n'
-            '  SeedOrientations <path>                  # Seed orientations file (unique copy created per loop)\n'
+            '  SeedOrientations <path>                  # Seed orientations file (unique copy created per loop: <path>.N)\n'
+            '                                           # NOTE: The workflow will generate <path>.N files, preserving original.\n'
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('-paramFN', type=str, required=True, help='Parameter file name.')
