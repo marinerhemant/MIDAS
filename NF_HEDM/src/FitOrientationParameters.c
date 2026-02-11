@@ -499,6 +499,71 @@ int main(int argc, char *argv[]) {
   }
   nOmeRang = NoOfOmegaRanges;
   fclose(fileParam);
+
+  // Print all parameters read from parameter file
+  printf("\n");
+  printf("================================================================\n");
+  printf("       FitOrientationParameters: Parsed Parameters Summary\n");
+  printf("================================================================\n");
+  printf("\n--- File Paths ---\n");
+  printf("  DataDirectory:      %s\n", direct);
+  printf("  ReducedFileName:    %s\n", fn2);
+  printf("\n--- Geometry ---\n");
+  printf("  nDistances (nLayers): %d\n", nLayers);
+  printf("  SpaceGroup:           %d\n", SpaceGroup);
+  printf("  Wavelength:           %f\n", Wavelength);
+  printf("  Wedge:                %f\n", Wedge);
+  printf("  px (pixel size):      %f\n", px);
+  printf("  MaxRingRad:           %f\n", MaxRingRad);
+  printf("\n--- Detector Distances (Lsd) ---\n");
+  for (i = 0; i < nLayers; i++) {
+    printf("  Lsd[%d]:               %f\n", i, Lsd[i]);
+  }
+  printf("\n--- Beam Centers (BC) ---\n");
+  for (i = 0; i < nLayers; i++) {
+    printf("  BC[%d]:                %f  %f\n", i, ybc[i], zbc[i]);
+  }
+  printf("\n--- Tilts ---\n");
+  printf("  tx:                   %f\n", tx);
+  printf("  ty:                   %f\n", ty);
+  printf("  tz:                   %f\n", tz);
+  printf("\n--- Scan Parameters ---\n");
+  printf("  OmegaStart:           %f\n", OmegaStart);
+  printf("  OmegaStep:            %f\n", OmegaStep);
+  printf("  StartNr:              %d\n", StartNr);
+  printf("  EndNr:                %d\n", EndNr);
+  printf("\n--- Lattice Parameters ---\n");
+  printf("  a=%f  b=%f  c=%f\n", LatticeConstant[0], LatticeConstant[1],
+         LatticeConstant[2]);
+  printf("  alpha=%f  beta=%f  gamma=%f\n", LatticeConstant[3],
+         LatticeConstant[4], LatticeConstant[5]);
+  printf("\n--- Fitting Tolerances ---\n");
+  printf("  OrientTol:            %f\n", tol);
+  printf("  LsdTol:               %f\n", lsdtol);
+  printf("  LsdRelativeTol:       %f\n", lsdtolrel);
+  printf("  TiltsTol:             %f\n", tiltstol);
+  printf("  BCTol:                %f  %f\n", bctola, bctolb);
+  printf("  MinFracAccept:        %f\n", minFracOverlap);
+  printf("  ExcludePoleAngle:     %f\n", ExcludePoleAngle);
+  printf("\n--- Omega Ranges (%d) ---\n", NoOfOmegaRanges);
+  for (i = 0; i < NoOfOmegaRanges; i++) {
+    printf("  OmegaRange[%d]:       %f  %f\n", i, OmegaRanges[i][0],
+           OmegaRanges[i][1]);
+  }
+  printf("\n--- Box Sizes ---\n");
+  for (i = 0; i < countr; i++) {
+    printf("  BoxSize[%d]:          %f  %f  %f  %f\n", i, BoxSizes[i][0],
+           BoxSizes[i][1], BoxSizes[i][2], BoxSizes[i][3]);
+  }
+  printf("\n--- Rings To Use (%d) ---\n", nRingsToUse);
+  for (i = 0; i < nRingsToUse; i++) {
+    printf("  Ring: %d\n", RingsToUse[i]);
+  }
+  printf("\n--- Flags ---\n");
+  printf("  Ice9Input:            %s\n", Flag ? "YES" : "NO");
+  printf(
+      "================================================================\n\n");
+
   MaxTtheta = rad2deg * atan(MaxRingRad / Lsd[0]);
   int x = 0;
   // Read bin files
