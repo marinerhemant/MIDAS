@@ -98,7 +98,7 @@ def parse_parameters(param_file: str) -> Dict[str, Any]:
         'BoxSize': 4,
         'BCTol': 2,
         'GridPoints': 12,
-        'GridRefactor': 2 # ScalingFactor (float), NumLoops (int/float)
+        'GridRefactor': 3 # StartingGridSize (float), ScalingFactor (float), NumLoops (int/float)
     }
 
     try:
@@ -435,9 +435,9 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
 
 def run_multi_resolution_workflow(args, params, t0):
     """Orchestrates the multi-resolution looping."""
-    scaling_factor = params['GridRefactor'][0]
-    num_loops = int(params['GridRefactor'][1])
-    original_grid_size = float(params['GridSize'])
+    starting_grid_size = params['GridRefactor'][0]
+    scaling_factor = params['GridRefactor'][1]
+    num_loops = int(params['GridRefactor'][2])
     mic_file_base = params['MicFileText']
     seed_file_base = params['SeedOrientations']
     
@@ -458,13 +458,18 @@ def run_multi_resolution_workflow(args, params, t0):
         logger.error("'SeedOrientationsAll' not found in parameter file. Required for multi-resolution workflow.")
         sys.exit(1)
     
-    logger.info(f"Starting Multi-Resolution Workflow: {num_loops} loops, Scaling: {scaling_factor}")
+    logger.info(f"Starting Multi-Resolution Workflow: {num_loops} loops, "
+                f"StartingGridSize: {starting_grid_size}, Scaling: {scaling_factor}")
 
     # --- LOOP 0: Initial Run ---
     logger.info(">>> Running Loop 0 (Initial Coarse Pass)")
     
-    # 1. Update MicFileText -> .0
-    update_param_file(args.paramFN, {'MicFileText': f"{mic_file_base}.0"})
+    # 1. Update MicFileText -> .0 and ensure GridSize is set to starting value 
+    #    (recovers from interrupted runs where GridSize was overwritten)
+    update_param_file(args.paramFN, {
+        'MicFileText': f"{mic_file_base}.0",
+        'GridSize': f"{starting_grid_size:.6f}"
+    })
     
     # 2. Run standard workflow Unseeded
     args.ffSeedOrientations = 0 # Ensure unseeded
@@ -492,7 +497,7 @@ def run_multi_resolution_workflow(args, params, t0):
             args.doImageProcessing = 0
         
         # a. Refine Grid
-        new_grid_size = original_grid_size / (scaling_factor ** loop_idx)
+        new_grid_size = starting_grid_size / (scaling_factor ** loop_idx)
         logger.info(f"Refining GridSize to {new_grid_size}")
         update_param_file(args.paramFN, {'GridSize': f"{new_grid_size:.6f}"})
         
@@ -753,13 +758,14 @@ def main():
         description=(
             'Near-field HEDM analysis using MIDAS (Multi-Resolution). V7.0.0, contact hsharma@anl.gov\n\n'
             'Additional parameter file keys for multi-resolution mode:\n'
-            '  GridRefactor <ScalingFactor> <NumLoops>  # e.g. GridRefactor 2.0 3\n'
-            '      - ScalingFactor: Factor by which GridSize is divided in each loop.\n'
+            '  GridRefactor <StartingGridSize> <ScalingFactor> <NumLoops>  # e.g. GridRefactor 5.0 2.0 3\n'
+            '      - StartingGridSize: The initial grid size value (preserved across interrupted runs).\n'
+            '      - ScalingFactor: Factor by which StartingGridSize is divided in each loop.\n'
             '      - NumLoops: Number of refinement iterations to perform.\n'
             '  SeedOrientationsAll <path>               # Full seed orientations file (backed up internally as <path>_Backup)\n'
             '                                           # NOTE: Should be distinct from SeedOrientations.\n'
             '  MinConfidence <value>                    # Confidence threshold for filtering bad solutions (default: 0.5)\n'
-            '  GridSize <value>                         # Initial grid size (refined by ScalingFactor each loop)\n'
+            '  GridSize <value>                         # Grid size (overwritten during workflow; use StartingGridSize in GridRefactor)\n'
             '  MicFileText <basename>                   # Base name for mic output (suffixed with .0, .1, ... per loop)\n'
             '  SeedOrientations <path>                  # Seed orientations file (unique copy created per loop: <path>.N)\n'
             '                                           # NOTE: The workflow will generate <path>.N files, preserving original.\n'

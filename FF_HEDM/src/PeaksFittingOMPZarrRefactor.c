@@ -198,6 +198,14 @@ typedef struct {
   double *etas;
   int *nrPx;
   double *otherInfo;
+  // --- Hoisted per-frame buffers (Items 1, 2, 6) ---
+  char *locData;       // Raw decompressed frame data
+  double *imageAsym_d; // Asymmetric double image
+  double *image_d;     // Square double image
+  double *imageTemp1;  // Transform scratch buffer 1
+  double *imageTemp2;  // Transform scratch buffer 2
+  double *fitRs;       // R-coordinates for fit2DPeaks
+  double *fitEtas;     // Eta-coordinates for fit2DPeaks
 } ThreadWorkspace;
 
 // Global variables
@@ -212,6 +220,38 @@ static int nPanels = 0;
  */
 
 /**
+ * Convert raw pixel data to double array with loop-unswitched pixel type.
+ * (Item 7, 13): Moves the type switch outside the loop so the compiler
+ * can auto-vectorize each type-specific loop.
+ */
+static inline void convertPixelsToDouble(const void *rawData, double *dest,
+                                         int nPixels,
+                                         PixelValueType pixelType) {
+  switch (pixelType) {
+  case PX_TYPE_UINT32:
+    for (int i = 0; i < nPixels; i++)
+      dest[i] = (double)((const uint32_t *)rawData)[i];
+    break;
+  case PX_TYPE_INT32:
+    for (int i = 0; i < nPixels; i++)
+      dest[i] = (double)((const int32_t *)rawData)[i];
+    break;
+  case PX_TYPE_FLOAT:
+    for (int i = 0; i < nPixels; i++)
+      dest[i] = (double)((const float *)rawData)[i];
+    break;
+  case PX_TYPE_DOUBLE:
+    memcpy(dest, rawData, (size_t)nPixels * sizeof(double));
+    break;
+  case PX_TYPE_UINT16:
+  default:
+    for (int i = 0; i < nPixels; i++)
+      dest[i] = (double)((const uint16_t *)rawData)[i];
+    break;
+  }
+}
+
+/**
  * Calculate time difference in microseconds
  */
 long double diffTime(struct timespec start, struct timespec end) {
@@ -221,42 +261,33 @@ long double diffTime(struct timespec start, struct timespec end) {
 }
 
 /**
- * Allocate a 2D matrix of doubles
+ * Allocate a 2D matrix of doubles using contiguous memory (Item 11).
+ * All row data is in a single block for better cache locality.
  */
 static inline double **allocMatrix(int nrows, int ncols) {
-  double **arr;
-  int i;
-  arr = malloc(nrows * sizeof(*arr));
-  if (arr == NULL) {
+  double **arr = malloc(nrows * sizeof(*arr));
+  if (arr == NULL)
+    return NULL;
+  double *block = malloc((size_t)nrows * ncols * sizeof(double));
+  if (block == NULL) {
+    free(arr);
     return NULL;
   }
-  for (i = 0; i < nrows; i++) {
-    arr[i] = malloc(ncols * sizeof(*arr[i]));
-    if (arr[i] == NULL) {
-      // Free already allocated memory
-      for (int j = 0; j < i; j++) {
-        free(arr[j]);
-      }
-      free(arr);
-      return NULL;
-    }
+  for (int i = 0; i < nrows; i++) {
+    arr[i] = &block[i * ncols];
   }
   return arr;
 }
 
 /**
- * Free a 2D matrix of doubles
+ * Free a contiguously-allocated 2D matrix of doubles (Item 11).
  */
 static inline void freeMatrix(double **mat, int nrows) {
-  if (mat == NULL)
-    return;
-
-  for (int r = 0; r < nrows; r++) {
-    if (mat[r] != NULL) {
-      free(mat[r]);
-    }
+  (void)nrows;
+  if (mat != NULL) {
+    free(mat[0]); // Free the contiguous data block
+    free(mat);    // Free the pointer array
   }
-  free(mat);
 }
 
 /**
@@ -417,6 +448,14 @@ void freeWorkspace(ThreadWorkspace *ws) {
     free(ws->etas);
     free(ws->nrPx);
     free(ws->otherInfo);
+    // --- Hoisted per-frame buffers ---
+    free(ws->locData);
+    free(ws->imageAsym_d);
+    free(ws->image_d);
+    free(ws->imageTemp1);
+    free(ws->imageTemp2);
+    free(ws->fitRs);
+    free(ws->fitEtas);
   }
 }
 
@@ -449,12 +488,25 @@ ErrorCode allocateWorkspace(ThreadWorkspace *ws, const ImageMetadata *metadata,
   ws->nrPx = calloc(params->maxNPeaks * 2, sizeof(int));
   ws->otherInfo = calloc(params->maxNPeaks * 10, sizeof(double));
 
+  // --- Hoisted per-frame buffers (Items 1, 2, 6) ---
+  size_t nrPixelsAsym = (size_t)metadata->NrPixelsY * metadata->NrPixelsZ;
+  size_t locDataSize = nrPixelsAsym * metadata->bytesPerPx;
+  ws->locData = malloc(locDataSize);
+  ws->imageAsym_d = calloc(nrPixelsAsym, sizeof(double));
+  ws->image_d = calloc(nrPixelsSq, sizeof(double));
+  ws->imageTemp1 = calloc(nrPixelsSq, sizeof(double));
+  ws->imageTemp2 = calloc(nrPixelsSq, sizeof(double));
+  ws->fitRs = malloc((size_t)params->maxNrPx * sizeof(double));
+  ws->fitEtas = malloc((size_t)params->maxNrPx * sizeof(double));
+
   // Check if any allocation failed
   if (!ws->imgCorrBC || !ws->boolImage || !ws->connectedComponents ||
       !ws->positions || !ws->positionTrackers || !ws->usefulPixels ||
       !ws->maximaPositions || !ws->maximaValues || !ws->z ||
       !ws->integratedIntensity || !ws->imax || !ws->yCenArray ||
-      !ws->zCenArray || !ws->rads || !ws->etas || !ws->nrPx || !ws->otherInfo) {
+      !ws->zCenArray || !ws->rads || !ws->etas || !ws->nrPx || !ws->otherInfo ||
+      !ws->locData || !ws->imageAsym_d || !ws->image_d || !ws->imageTemp1 ||
+      !ws->imageTemp2 || !ws->fitRs || !ws->fitEtas) {
     // Free any successful allocations here before returning
     freeWorkspace(ws);
     return ERROR_MEMORY_ALLOCATION;
@@ -622,6 +674,8 @@ static inline unsigned findRegionalMaxima(double *z, int *pixelPositions,
 
 /**
  * Objective function for peak fitting
+ * (Item 3): Pre-computes reciprocal sigma-squared values; replaces pow(x,2)
+ * with multiplication.
  */
 static double peakFittingObjectiveFunction(unsigned n, const double *x,
                                            double *grad, void *f_data_trial) {
@@ -636,19 +690,24 @@ static double peakFittingObjectiveFunction(unsigned n, const double *x,
   int nPeaks = (n - 1) / 8;
   double bg = x[0]; // Background intensity
 
-  // Extract peak parameters
+  // Extract peak parameters and pre-compute reciprocals (Item 3)
   double IMAX[nPeaks], R[nPeaks], Eta[nPeaks], Mu[nPeaks];
-  double SigmaGR[nPeaks], SigmaLR[nPeaks], SigmaGEta[nPeaks], SigmaLEta[nPeaks];
+  double invSigmaGR2[nPeaks], invSigmaLR2[nPeaks];
+  double invSigmaGEta2[nPeaks], invSigmaLEta2[nPeaks];
 
   for (int i = 0; i < nPeaks; i++) {
-    IMAX[i] = x[(8 * i) + 1];      // Peak intensity
-    R[i] = x[(8 * i) + 2];         // Peak radius
-    Eta[i] = x[(8 * i) + 3];       // Peak eta angle
-    Mu[i] = x[(8 * i) + 4];        // Lorentzian vs Gaussian ratio
-    SigmaGR[i] = x[(8 * i) + 5];   // Gaussian sigma in R
-    SigmaLR[i] = x[(8 * i) + 6];   // Lorentzian sigma in R
-    SigmaGEta[i] = x[(8 * i) + 7]; // Gaussian sigma in Eta
-    SigmaLEta[i] = x[(8 * i) + 8]; // Lorentzian sigma in Eta
+    IMAX[i] = x[(8 * i) + 1];
+    R[i] = x[(8 * i) + 2];
+    Eta[i] = x[(8 * i) + 3];
+    Mu[i] = x[(8 * i) + 4];
+    double sgr = x[(8 * i) + 5];
+    double slr = x[(8 * i) + 6];
+    double sge = x[(8 * i) + 7];
+    double sle = x[(8 * i) + 8];
+    invSigmaGR2[i] = 1.0 / (sgr * sgr);
+    invSigmaLR2[i] = 1.0 / (slr * slr);
+    invSigmaGEta2[i] = 1.0 / (sge * sge);
+    invSigmaLEta2[i] = 1.0 / (sle * sle);
   }
 
   // Calculate total square difference between model and actual intensity
@@ -663,20 +722,19 @@ static double peakFittingObjectiveFunction(unsigned n, const double *x,
       double DE = Etas[i] - Eta[j];
       double E2 = DE * DE;
 
-      // Lorentzian component
-      double L = 1 / (((R2 / ((SigmaLR[j]) * (SigmaLR[j]))) + 1) *
-                      ((E2 / ((SigmaLEta[j]) * (SigmaLEta[j]))) + 1));
+      // Lorentzian component (using pre-computed reciprocals)
+      double L = 1.0 / ((R2 * invSigmaLR2[j] + 1.0) *
+                         (E2 * invSigmaLEta2[j] + 1.0));
 
-      // Gaussian component
-      double G = exp(-(0.5 * (R2 / (SigmaGR[j] * SigmaGR[j]))) -
-                     (0.5 * (E2 / (SigmaGEta[j] * SigmaGEta[j]))));
+      // Gaussian component (using pre-computed reciprocals)
+      double G = exp(-0.5 * (R2 * invSigmaGR2[j] + E2 * invSigmaGEta2[j]));
 
       // Pseudo-Voigt profile (weighted sum of Lorentzian and Gaussian)
       intPeaks += IMAX[j] * ((Mu[j] * L) + ((1 - Mu[j]) * G));
     }
 
-    double calcIntensity = bg + intPeaks;
-    totalDifferenceIntensity += pow(calcIntensity - z[i], 2);
+    double diff = bg + intPeaks - z[i];
+    totalDifferenceIntensity += diff * diff; // Item 3: replaces pow(x, 2)
   }
 
   return totalDifferenceIntensity;
@@ -684,6 +742,7 @@ static double peakFittingObjectiveFunction(unsigned n, const double *x,
 
 /**
  * Calculate integrated intensity of fitted peaks
+ * (Item 3): Pre-computes reciprocal sigma-squared values.
  */
 static inline void calculateIntegratedIntensity(int nPeaks, double *x,
                                                 double *Rs, double *Etas,
@@ -692,19 +751,24 @@ static inline void calculateIntegratedIntensity(int nPeaks, double *x,
                                                 int *nrOfPixels) {
   double bg = x[0];
 
-  // Extract peak parameters
+  // Extract peak parameters and pre-compute reciprocals
   double IMAX[nPeaks], R[nPeaks], Eta[nPeaks], Mu[nPeaks];
-  double SigmaGR[nPeaks], SigmaLR[nPeaks], SigmaGEta[nPeaks], SigmaLEta[nPeaks];
+  double invSigmaGR2[nPeaks], invSigmaLR2[nPeaks];
+  double invSigmaGEta2[nPeaks], invSigmaLEta2[nPeaks];
 
   for (int i = 0; i < nPeaks; i++) {
     IMAX[i] = x[(8 * i) + 1];
     R[i] = x[(8 * i) + 2];
     Eta[i] = x[(8 * i) + 3];
     Mu[i] = x[(8 * i) + 4];
-    SigmaGR[i] = x[(8 * i) + 5];
-    SigmaLR[i] = x[(8 * i) + 6];
-    SigmaGEta[i] = x[(8 * i) + 7];
-    SigmaLEta[i] = x[(8 * i) + 8];
+    double sgr = x[(8 * i) + 5];
+    double slr = x[(8 * i) + 6];
+    double sge = x[(8 * i) + 7];
+    double sle = x[(8 * i) + 8];
+    invSigmaGR2[i] = 1.0 / (sgr * sgr);
+    invSigmaLR2[i] = 1.0 / (slr * slr);
+    invSigmaGEta2[i] = 1.0 / (sge * sge);
+    invSigmaLEta2[i] = 1.0 / (sle * sle);
 
     // Initialize counters
     nrOfPixels[i] = 0;
@@ -719,13 +783,12 @@ static inline void calculateIntegratedIntensity(int nPeaks, double *x,
       double DE = Etas[i] - Eta[j];
       double E2 = DE * DE;
 
-      // Lorentzian component
-      double L = 1 / (((R2 / ((SigmaLR[j]) * (SigmaLR[j]))) + 1) *
-                      ((E2 / ((SigmaLEta[j]) * (SigmaLEta[j]))) + 1));
+      // Lorentzian component (using pre-computed reciprocals)
+      double L = 1.0 / ((R2 * invSigmaLR2[j] + 1.0) *
+                         (E2 * invSigmaLEta2[j] + 1.0));
 
-      // Gaussian component
-      double G = exp(-(0.5 * (R2 / (SigmaGR[j] * SigmaGR[j]))) -
-                     (0.5 * (E2 / (SigmaGEta[j] * SigmaGEta[j]))));
+      // Gaussian component (using pre-computed reciprocals)
+      double G = exp(-0.5 * (R2 * invSigmaGR2[j] + E2 * invSigmaGEta2[j]));
 
       // Pseudo-Voigt profile
       double intPeaks = IMAX[j] * ((Mu[j] * L) + ((1 - Mu[j]) * G));
@@ -744,13 +807,15 @@ static inline void calculateIntegratedIntensity(int nPeaks, double *x,
 
 /**
  * Fit 2D peaks using NLopt
+ * (Item 6): Rs/Etas buffers are now passed in from the ThreadWorkspace
+ * instead of being allocated/freed per region.
  */
 int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
                int *usefulPixels, double *maximaValues, int *maximaPositions,
                double *integratedIntensity, double *IMAX, double *YCEN,
                double *ZCEN, double *RCens, double *EtaCens, double yCen,
                double zCen, double thresh, int *nrPx, double *otherInfo,
-               int nrPixels, double *retVal) {
+               int nrPixels, double *retVal, double *Rs, double *Etas) {
   // Total parameters: 1 background + 8 per peak
   unsigned n = 1 + (8 * nPeaks);
   double x[n], xl[n], xu[n];
@@ -759,18 +824,6 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
   x[0] = thresh / 2; // Initial background level
   xl[0] = 0;         // Lower bound for background
   xu[0] = thresh;    // Upper bound for background
-
-  // Calculate R and Eta coordinates for pixels in this region
-  double *Rs = malloc(nrPixelsThisRegion * sizeof(*Rs));
-  double *Etas = malloc(nrPixelsThisRegion * sizeof(*Etas));
-
-  if (!Rs || !Etas) {
-    if (Rs)
-      free(Rs);
-    if (Etas)
-      free(Etas);
-    return ERROR_MEMORY_ALLOCATION;
-  }
 
   // Find min/max values for R and Eta to determine constraints
   double RMin = 1e8, RMax = 0, EtaMin = 190, EtaMax = -190;
@@ -866,8 +919,6 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
   // Create and configure NLopt optimizer
   nlopt_opt opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
   if (!opt) {
-    free(Rs);
-    free(Etas);
     return ERROR_MEMORY_ALLOCATION;
   }
 
@@ -909,36 +960,24 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
   calculateIntegratedIntensity(nPeaks, x, Rs, Etas, nrPixelsThisRegion,
                                integratedIntensity, nrPx);
 
-  // Clean up and return
-  free(Rs);
-  free(Etas);
+  // Return (no free needed — Rs/Etas are workspace-owned)
   *retVal = sqrt(minf); // RMS error
   return rc;
 }
 
 /**
- * Apply image transformations (flip/transpose) on double data
+ * Apply image transformations (flip/transpose) on double data.
+ * (Item 2): Uses pre-allocated flat workspace buffers instead of
+ * allocating/freeing 2D matrices on each call.
  */
 static inline void applyImageTransformations_d(int nrTransformOptions,
                                                int transformOptions[10],
-                                               double *image, int nrPixels) {
-  double **imageTemp1 = allocMatrix(nrPixels, nrPixels);
-  double **imageTemp2 = allocMatrix(nrPixels, nrPixels);
+                                               double *image, int nrPixels,
+                                               double *temp1, double *temp2) {
+  size_t nSq = (size_t)nrPixels * nrPixels;
 
-  if (!imageTemp1 || !imageTemp2) {
-    if (imageTemp1)
-      freeMatrix(imageTemp1, nrPixels);
-    if (imageTemp2)
-      freeMatrix(imageTemp2, nrPixels);
-    return;
-  }
-
-  // Convert 1D array to 2D matrix
-  for (int k = 0; k < nrPixels; k++) {
-    for (int l = 0; l < nrPixels; l++) {
-      imageTemp1[k][l] = image[(nrPixels * k) + l];
-    }
-  }
+  // Copy input into temp1
+  memcpy(temp1, image, nSq * sizeof(double));
 
   // Apply each transformation in sequence
   for (int k = 0; k < nrTransformOptions; k++) {
@@ -946,7 +985,7 @@ static inline void applyImageTransformations_d(int nrTransformOptions,
     case 1: // Flip horizontal (Y)
       for (int l = 0; l < nrPixels; l++) {
         for (int m = 0; m < nrPixels; m++) {
-          imageTemp2[l][m] = imageTemp1[l][nrPixels - m - 1];
+          temp2[l * nrPixels + m] = temp1[l * nrPixels + (nrPixels - m - 1)];
         }
       }
       break;
@@ -954,7 +993,7 @@ static inline void applyImageTransformations_d(int nrTransformOptions,
     case 2: // Flip vertical (Z)
       for (int l = 0; l < nrPixels; l++) {
         for (int m = 0; m < nrPixels; m++) {
-          imageTemp2[l][m] = imageTemp1[nrPixels - l - 1][m];
+          temp2[l * nrPixels + m] = temp1[(nrPixels - l - 1) * nrPixels + m];
         }
       }
       break;
@@ -962,38 +1001,26 @@ static inline void applyImageTransformations_d(int nrTransformOptions,
     case 3: // Transpose
       for (int l = 0; l < nrPixels; l++) {
         for (int m = 0; m < nrPixels; m++) {
-          imageTemp2[l][m] = imageTemp1[m][l];
+          temp2[l * nrPixels + m] = temp1[m * nrPixels + l];
         }
       }
       break;
 
     case 0: // No change
     default:
-      for (int l = 0; l < nrPixels; l++) {
-        for (int m = 0; m < nrPixels; m++) {
-          imageTemp2[l][m] = imageTemp1[l][m];
-        }
-      }
+      memcpy(temp2, temp1, nSq * sizeof(double));
       break;
     }
 
-    // Copy result back to temp1 for next iteration
-    for (int l = 0; l < nrPixels; l++) {
-      for (int m = 0; m < nrPixels; m++) {
-        imageTemp1[l][m] = imageTemp2[l][m];
-      }
-    }
+    // Swap pointers for next iteration (pointer swap instead of copy)
+    double *swap = temp1;
+    temp1 = temp2;
+    temp2 = swap;
   }
 
-  // Convert back to 1D array
-  for (int k = 0; k < nrPixels; k++) {
-    for (int l = 0; l < nrPixels; l++) {
-      image[(nrPixels * k) + l] = imageTemp2[k][l];
-    }
-  }
-
-  freeMatrix(imageTemp1, nrPixels);
-  freeMatrix(imageTemp2, nrPixels);
+  // After the loop, result is in temp1 (due to the pointer swap pattern).
+  // If nrTransformOptions == 0, temp1 still holds the original data.
+  memcpy(image, temp1, nSq * sizeof(double));
 }
 
 /**
@@ -1157,29 +1184,28 @@ static ErrorCode readImageCorrections(zip_t *archive, int darkLoc, int floodLoc,
         return error;
       }
 
-// Convert raw data to double based on pixel type
-#pragma omp simd
-      for (int i = 0; i < metadata->NrPixelsY * metadata->NrPixelsZ; i++) {
-        switch (metadata->pixelType) {
-        case PX_TYPE_UINT32:
-          darkAsym_d[i] = (double)((uint32_t *)rawData)[i];
-          break;
-        case PX_TYPE_UINT16:
-          darkAsym_d[i] = (double)((uint16_t *)rawData)[i];
-          break;
-        case PX_TYPE_FLOAT:
-          darkAsym_d[i] = (double)((float *)rawData)[i];
-          break;
-        // Add other cases as needed
-        default:
-          darkAsym_d[i] = (double)((uint16_t *)rawData)[i];
-        }
-      }
+      // Convert raw data to double (Item 13: reuse helper)
+      convertPixelsToDouble(rawData, darkAsym_d,
+                            metadata->NrPixelsY * metadata->NrPixelsZ,
+                            metadata->pixelType);
 
       makeSquareImage_d(metadata->NrPixels, metadata->NrPixelsY,
                         metadata->NrPixelsZ, darkAsym_d, darkContents_d);
-      applyImageTransformations_d(params->nImTransOpt, params->TransOpt,
-                                  darkContents_d, metadata->NrPixels);
+      {
+        // Temporary scratch buffers for transform (one-time init path)
+        size_t nSq2 = (size_t)metadata->NrPixels * metadata->NrPixels;
+        double *tmpA = malloc(nSq2 * sizeof(double));
+        double *tmpB = malloc(nSq2 * sizeof(double));
+        if (tmpA && tmpB) {
+          applyImageTransformations_d(params->nImTransOpt, params->TransOpt,
+                                     darkContents_d, metadata->NrPixels,
+                                     tmpA, tmpB);
+        }
+        free(tmpA);
+        free(tmpB);
+      }
+
+
 
       for (int i = 0; i < metadata->NrPixels * metadata->NrPixels; i++) {
         darkTemp[i] += darkContents_d[i];
@@ -1241,22 +1267,10 @@ static ErrorCode readImageCorrections(zip_t *archive, int darkLoc, int floodLoc,
       return error;
     }
 
-#pragma omp simd
-    for (int i = 0; i < metadata->NrPixelsY * metadata->NrPixelsZ; i++) {
-      switch (metadata->pixelType) {
-      case PX_TYPE_UINT32:
-        maskAsym_d[i] = (double)((uint32_t *)rawData)[i];
-        break;
-      case PX_TYPE_UINT16:
-        maskAsym_d[i] = (double)((uint16_t *)rawData)[i];
-        break;
-      case PX_TYPE_FLOAT:
-        maskAsym_d[i] = (double)((float *)rawData)[i];
-        break;
-      default:
-        maskAsym_d[i] = (double)((uint16_t *)rawData)[i];
-      }
-    }
+    // Convert raw data to double (Item 13: reuse helper)
+    convertPixelsToDouble(rawData, maskAsym_d,
+                          metadata->NrPixelsY * metadata->NrPixelsZ,
+                          metadata->pixelType);
 
     makeSquareImage_d(metadata->NrPixels, metadata->NrPixelsY,
                       metadata->NrPixelsZ, maskAsym_d, maskContents_d);
@@ -1296,61 +1310,28 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
   // The 'imgCorrBC' buffer is now part of the workspace.
   double *imgCorrBC = ws->imgCorrBC;
 
-  // Allocate buffer for decompressed raw data
+  // --- Use workspace buffers (Item 1): no per-frame malloc/free ---
+  char *locData = ws->locData;
+  double *imageAsym_d = ws->imageAsym_d;
+  double *image_d = ws->image_d;
   int32_t dsz =
       metadata->NrPixelsY * metadata->NrPixelsZ * metadata->bytesPerPx;
-  char *locData = calloc(dsz, sizeof(char));
-  if (!locData) {
-    printf("Memory allocation error in processImageFrame for locData\n");
-    return ERROR_MEMORY_ALLOCATION;
-  }
 
   // Decompress the image data
   int32_t decompressedSize =
       blosc1_decompress(&allData[sizeArr[fileNr * 2 + 1]], locData, dsz);
   if (decompressedSize <= 0) {
-    free(locData);
     printf("Blosc decompression failed for frame %d\n", fileNr);
     return ERROR_BLOSC_OPERATION;
   }
 
-  // Allocate double-precision buffers
-  double *imageAsym_d =
-      calloc((size_t)metadata->NrPixelsY * metadata->NrPixelsZ, sizeof(double));
-  double *image_d =
-      calloc((size_t)metadata->NrPixels * metadata->NrPixels, sizeof(double));
-  if (!imageAsym_d || !image_d) {
-    if (imageAsym_d)
-      free(imageAsym_d);
-    if (image_d)
-      free(image_d);
-    free(locData);
-    printf("Memory allocation error for double buffers in processImageFrame\n");
-    return ERROR_MEMORY_ALLOCATION;
-  }
-
-// Convert raw data to double based on its type
-#pragma omp simd
-  for (int i = 0; i < metadata->NrPixelsY * metadata->NrPixelsZ; i++) {
-    switch (metadata->pixelType) {
-    case PX_TYPE_UINT32:
-      imageAsym_d[i] = (double)((uint32_t *)locData)[i];
-      break;
-    case PX_TYPE_UINT16:
-      imageAsym_d[i] = (double)((uint16_t *)locData)[i];
-      break;
-    case PX_TYPE_FLOAT:
-      imageAsym_d[i] = (double)((float *)locData)[i];
-      break;
-    default:
-      imageAsym_d[i] = (double)((uint16_t *)locData)[i];
-    }
-  }
-  free(locData); // Raw data no longer needed
+  // Convert raw data to double (Item 7: loop-unswitched helper)
+  convertPixelsToDouble(locData, imageAsym_d,
+                        metadata->NrPixelsY * metadata->NrPixelsZ,
+                        metadata->pixelType);
 
   makeSquareImage_d(metadata->NrPixels, metadata->NrPixelsY,
                     metadata->NrPixelsZ, imageAsym_d, image_d);
-  free(imageAsym_d);
 
   if (params->makeMap == 1) {
     for (int i = 0; i < metadata->NrPixels * metadata->NrPixels; i++) {
@@ -1359,10 +1340,11 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
     }
   }
 
+  // Item 2: pass workspace temp buffers
   applyImageTransformations_d(params->nImTransOpt, params->TransOpt, image_d,
-                              metadata->NrPixels);
+                              metadata->NrPixels, ws->imageTemp1,
+                              ws->imageTemp2);
   transposeMatrix(image_d, metadata->NrPixels, imgCorrBC);
-  free(image_d);
 
   for (int i = 0; i < (metadata->NrPixels * metadata->NrPixels); i++) {
     if (goodCoords[i] == 0) {
@@ -1505,7 +1487,8 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
           nPeaks, nrPixelsThisRegion, ws->z, ws->usefulPixels, ws->maximaValues,
           ws->maximaPositions, ws->integratedIntensity, ws->imax, ws->yCenArray,
           ws->zCenArray, ws->rads, ws->etas, params->Ycen, params->Zcen, thresh,
-          ws->nrPx, ws->otherInfo, metadata->NrPixels, &retVal);
+          ws->nrPx, ws->otherInfo, metadata->NrPixels, &retVal,
+          ws->fitRs, ws->fitEtas);
     }
 
     for (int i = 0; i < nPeaks; i++) {
@@ -2742,10 +2725,15 @@ int main(int argc, char *argv[]) {
         double Eta = calcEtaAngle(XYZ[1], XYZ[2]);
         double RNorm = Rad / params.RhoD;
         double EtaT = 90 - Eta;
+        // Item 4: replace pow() with multiplies
+        double RNorm2 = RNorm * RNorm;
+        double RNorm4 = RNorm2 * RNorm2;
+        // Item 5: pre-convert to radians for trig
+        double EtaT_rad = EtaT * DEG2RAD;
         double DistortFunc =
-            (params.p0 * pow(RNorm, 2) * cosd(2 * EtaT)) +
-            (params.p1 * pow(RNorm, 4) * cosd(4 * EtaT + params.p3)) +
-            (params.p2 * pow(RNorm, 2)) + 1;
+            (params.p0 * RNorm2 * cos(2.0 * EtaT_rad)) +
+            (params.p1 * RNorm4 * cos(4.0 * EtaT_rad + params.p3 * DEG2RAD)) +
+            (params.p2 * RNorm2) + 1;
         double Rt = Rad * DistortFunc / params.px;
         for (int r = 0; r < params.nRingsThresh; r++) {
           if (Rt > ringRads[r] - params.Width &&
@@ -2856,9 +2844,11 @@ int main(int argc, char *argv[]) {
             goodCoords, omega, outFolderName, dataFile,
             &ws); // Pass workspace pointer
 
-#pragma omp critical
-        if (threadError == SUCCESS)
+        // Item 10: atomic is cheaper than critical for a simple increment
+        if (threadError == SUCCESS) {
+#pragma omp atomic
           nrFilesDone++;
+        }
       }
 
       // 4. After its work is done, each thread frees its workspace.
