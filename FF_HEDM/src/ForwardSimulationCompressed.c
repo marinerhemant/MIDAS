@@ -17,6 +17,7 @@
 //
 //
 
+#include "Panel.h"
 #include "midas_paths.h"
 #include <blosc.h>
 #include <ctype.h>
@@ -30,6 +31,9 @@
 #include <time.h>
 #include <unistd.h>
 #include <zip.h>
+
+static Panel *panels = NULL;
+static int nPanels = 0;
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -626,11 +630,10 @@ static inline double CorrectWedge(double eta, double theta, double wl,
   return Omega;
 }
 
-static inline void
-CorrectTiltSpatialDistortion(double px, double Lsd, double ybc, double zbc,
-                             double tx, double ty, double tz, double RhoD,
-                             double p0, double p1, double p2, int NrPixels,
-                             double *yDispl, double *zDispl) {
+static inline void CorrectTiltSpatialDistortion(
+    double px, double Lsd, double ybc, double zbc, double tx, double ty,
+    double tz, double RhoD, double p0, double p1, double p2, double p3,
+    int NrPixels, double *yDispl, double *zDispl, int nPanels, Panel *panels) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
@@ -652,8 +655,16 @@ CorrectTiltSpatialDistortion(double px, double Lsd, double ybc, double zbc,
   long long int idx;
   for (i = 0; i < NrPixels; i++) {
     for (j = 0; j < NrPixels; j++) {
-      Yc = -(i - ybc) * px;
-      Zc = (j - zbc) * px;
+      double pdY = 0, pdZ = 0;
+      int pIdx = GetPanelIndex((double)i, (double)j, nPanels, panels);
+      if (pIdx >= 0) {
+        pdY = panels[pIdx].dY;
+        pdZ = panels[pIdx].dZ;
+      }
+      double ypr = (double)i + pdY;
+      double zpr = (double)j + pdZ;
+      Yc = -(ypr - ybc) * px;
+      Zc = (zpr - zbc) * px;
       ABC[0] = 0;
       ABC[1] = Yc;
       ABC[2] = Zc;
@@ -666,7 +677,7 @@ CorrectTiltSpatialDistortion(double px, double Lsd, double ybc, double zbc,
       RNorm = Rad / RhoD;
       EtaT = 90 - Eta;
       DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
-                    (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT)))) +
+                    (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
                     (p2 * (pow(RNorm, n2))) + 1;
       Rcorr = Rad * DistortFunc;
       YCorr = -Rcorr * sin(Eta * deg2rad);
@@ -680,9 +691,6 @@ CorrectTiltSpatialDistortion(double px, double Lsd, double ybc, double zbc,
       idx = yTrans + NrPixels * zTrans;
       if (idx < 0)
         continue;
-      //~ printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %d %d %lld %d %d\n",
-      //~ Rad,Rcorr,Eta,Yc,Zc,YCorr,ZCorr,yDiff,zDiff,yTrans,zTrans,idx,i,j);
-      //~ fflush(stdout);
       yDispl[idx] = yDiff;
       zDispl[idx] = zDiff;
     }
@@ -1098,9 +1106,12 @@ int main(int argc, char *argv[]) {
   int Padding = 6, NrPixels;
   double Lsd, tx, ty, tz, yBC, zBC, OmegaStep, OmegaStart, OmegaEnd, px;
   int RingsToUse[500], nRings = 0;
-  double LatC[6], Wavelength, Wedge = 0, p0, p1, p2, RhoD, GaussWidth = 1,
-                              PeakIntensity = 2000;
-  int writeSpots, isBin = 0;
+  double LatC[6], Wavelength, Wedge = 0, p0, p1, p2, p3 = 0, RhoD,
+                              GaussWidth = 1, PeakIntensity = 2000;
+  int NPanelsY = 0, NPanelsZ = 0, PanelSizeY = 0, PanelSizeZ = 0;
+  int *PanelGapsY = NULL, *PanelGapsZ = NULL;
+  char PanelShiftsFile[1024] = "";
+  int writeSpots = 1, isBin = 0;
   int LoadNr = 0, UpdatedOrientations = 1, nfOutput = 0, geOutput = 1;
   double minConfidence = 0;
   int nScans = 1;
@@ -1208,6 +1219,66 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %lf", dummy, &p2);
+      continue;
+    }
+    str = "p3 ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &p3);
+      continue;
+    }
+    str = "NPanelsY ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NPanelsY);
+      continue;
+    }
+    str = "NPanelsZ ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NPanelsZ);
+      continue;
+    }
+    str = "PanelSizeY ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &PanelSizeY);
+      continue;
+    }
+    str = "PanelSizeZ ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &PanelSizeZ);
+      continue;
+    }
+    str = "PanelShiftsFile ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %s", dummy, PanelShiftsFile);
+      continue;
+    }
+    str = "PanelGapsY ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      char *ptr = aline + strlen(str);
+      if (NPanelsY > 1) {
+        PanelGapsY = (int *)malloc((NPanelsY - 1) * sizeof(int));
+        for (int k = 0; k < NPanelsY - 1; k++) {
+          PanelGapsY[k] = strtol(ptr, &ptr, 10);
+        }
+      }
+      continue;
+    }
+    str = "PanelGapsZ ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      char *ptr = aline + strlen(str);
+      if (NPanelsZ > 1) {
+        PanelGapsZ = (int *)malloc((NPanelsZ - 1) * sizeof(int));
+        for (int k = 0; k < NPanelsZ - 1; k++) {
+          PanelGapsZ[k] = strtol(ptr, &ptr, 10);
+        }
+      }
       continue;
     }
     str = "BC ";
@@ -1325,6 +1396,25 @@ int main(int argc, char *argv[]) {
       continue;
     }
   }
+
+  // Generate Panels
+  if (NPanelsY > 0 && NPanelsZ > 0) {
+    if (GeneratePanels(NPanelsY, NPanelsZ, PanelSizeY, PanelSizeZ, PanelGapsY,
+                       PanelGapsZ, &panels, &nPanels) != 0) {
+      fprintf(stderr, "Panel generation failed.\n");
+      return 1;
+    }
+    printf("Generated %d panels.\n", nPanels);
+    if (PanelShiftsFile[0] != '\0') {
+      if (LoadPanelShifts(PanelShiftsFile, nPanels, panels) == 0) {
+        printf("Loaded panel shifts from %s\n", PanelShiftsFile);
+      } else {
+        fprintf(stderr, "Failed to load panel shifts from %s\n",
+                PanelShiftsFile);
+      }
+    }
+  }
+
   if (OmegaStep == 0.0) {
     fprintf(stderr, "Error: OmegaStep cannot be zero. Aborting.\n");
     return 1;
@@ -1351,8 +1441,10 @@ int main(int argc, char *argv[]) {
   printf("Detector Size:       %d x %d pixels\n", NrPixels, NrPixels);
   printf("Beam Center:         y=%.4f, z=%.4f (pixels)\n", yBC, zBC);
   printf("Tilt Angles:         tx=%.4f, ty=%.4f, tz=%.4f (deg)\n", tx, ty, tz);
-  printf("Distortion Params:   RhoD=%.4f, p0=%.5f, p1=%.5f, p2=%.5f\n", RhoD,
-         p0, p1, p2);
+  printf("Distortion Params:   RhoD=%.4f, p0=%.5f, p1=%.5f, p2=%.5f, p3=%.5f\n",
+         RhoD, p0, p1, p2, p3);
+  if (nPanels > 0)
+    printf("Panels:              %d panels loaded\n", nPanels);
   printf("Omega Range:         Start=%.4f, End=%.4f, Step=%.4f (deg)\n",
          OmegaStart, OmegaEnd, OmegaStep);
   printf("Wavelength:          %.5f A\n", Wavelength);
@@ -1553,7 +1645,7 @@ int main(int argc, char *argv[]) {
         -32100.0; // Set to a special number to check if it was set or not.
   }
   CorrectTiltSpatialDistortion(px, Lsd, yBC, zBC, tx, ty, tz, RhoD, p0, p1, p2,
-                               NrPixels, yDispl, zDispl);
+                               p3, NrPixels, yDispl, zDispl, nPanels, panels);
   end = clock();
   diftotal = ((double)(end - start0)) / CLOCKS_PER_SEC;
   printf("Distortion map done in %lf sec.\n", diftotal);
@@ -1572,8 +1664,8 @@ int main(int argc, char *argv[]) {
   double **TheorSpots;
   int nTspots, voxNr, spotNr;
   int nRowsPerGrain = 2 * n_hkls;
-  TheorSpots = allocMatrix(nRowsPerGrain, 7);
-  double OM[3][3], LatCThis[6], **hklsOut, **hklsTemp, EpsThis[6];
+  // TheorSpots = allocMatrix(nRowsPerGrain, 7); // Moved to Thread Local
+  double OM[3][3], LatCThis[6], **hklsOut, EpsThis[6];
   double RotMatTilts[3][3];
   RotationTilts(tx, ty, tz, RotMatTilts);
   double MatIn[3], P0[3], P0T[3];
@@ -1595,9 +1687,8 @@ int main(int argc, char *argv[]) {
   size_t omeBin, yBin, zBin, imageBin, centIdx;
   long long int currentPos;
   size_t displ;
-  hklsOut = allocMatrix(n_hkls, 5);
-  hklsTemp = allocMatrix(n_hkls, 5);
-  printf("Total number of orientations: %d\n", nrPoints);
+  // hklsOut = allocMatrix(n_hkls, 5); // Moved to Thread Local
+  printf("Total number of orientations: %ld\n", nrPoints);
   double omegaLarge = OmegaStart > OmegaEnd ? OmegaStart : OmegaEnd;
   double omegaSmall = OmegaStart < OmegaEnd ? OmegaStart : OmegaEnd;
   printf("Omega range for simulation: min: %lf, max: %lf\n", omegaSmall,
@@ -1608,223 +1699,248 @@ int main(int argc, char *argv[]) {
       memset(ImageArr, 0, ImageArrSize * sizeof(*ImageArr));
     yOffset = positions[scanNr];
     printf("yPosition: %lf\n", yOffset);
-#pragma omp parallel for num_threads(nCPUs)                                    \
+#pragma omp parallel num_threads(nCPUs)                                        \
     private(voxNr, i, j, LatCThis, EpsThis, OM, EulerThis, nTspots, spotNr,    \
                 Info, OmeDiff, omeThis, newY, yTemp, zTemp, yThis, zThis,      \
                 DisplY2, DisplZ2, yTrans, zTrans, idx, DisplY, DisplZ, yDet,   \
                 zDet, etaThis, spotMatr, omeBin, yBin, zBin, imageBin,         \
                 centIdx, idxNrY, idxNrZ, displ, currentPos)
-    for (voxNr = 0; voxNr < nrPoints; voxNr++) {
-      // First calculate new hkls
-      if (dataType < 2) {
-        for (i = 0; i < 6; i++)
-          LatCThis[i] = InputInfo[voxNr][i + 12];
-        CorrectHKLsLatC(LatCThis, Wavelength, hklsOut);
-      } else if (dataType == 2) {
-        if (InputInfo[voxNr][i + 19] == 0)
-          continue;
-        for (i = 0; i < 6; i++)
-          EpsThis[i] = InputInfo[voxNr][i + 12];
-        CorrectHKLsLatCEpsilon(LatC, EpsThis, Wavelength, hklsOut);
-      } else if (dataType == 3) { // binary file
-        for (i = 0; i < 6; i++)
-          EpsThis[i] = InputInfo[voxNr][i + 12];
-        CorrectHKLsLatCEpsilon(LatC, EpsThis, Wavelength, hklsOut);
-      }
-      // Get the Orientation Matrix
-      for (i = 0; i < 3; i++) {
-        for (j = 0; j < 3; j++) {
-          OM[i][j] = InputInfo[voxNr][i * 3 + j];
+    {
+      double **TheorSpots_Thread = allocMatrix(nRowsPerGrain, 7);
+      double **hklsOut_Thread = allocMatrix(n_hkls, 5);
+
+#pragma omp for
+      for (voxNr = 0; voxNr < nrPoints; voxNr++) {
+        // First calculate new hkls
+        if (dataType < 2) {
+          for (i = 0; i < 6; i++)
+            LatCThis[i] = InputInfo[voxNr][i + 12];
+          CorrectHKLsLatC(LatCThis, Wavelength, hklsOut_Thread);
+        } else if (dataType == 2) {
+          if (InputInfo[voxNr][19] == 0)
+            continue;
+          for (i = 0; i < 6; i++)
+            EpsThis[i] = InputInfo[voxNr][i + 12];
+          CorrectHKLsLatCEpsilon(LatC, EpsThis, Wavelength, hklsOut_Thread);
+        } else if (dataType == 3) { // binary file
+          for (i = 0; i < 6; i++)
+            EpsThis[i] = InputInfo[voxNr][i + 12];
+          CorrectHKLsLatCEpsilon(LatC, EpsThis, Wavelength, hklsOut_Thread);
         }
-      }
-      OrientMat2Euler(OM, EulerThis);
-      double OMT[9];
-      Euler2OrientMat(EulerThis, OMT);
-      for (i = 0; i < 3; i++) {
-        for (j = 0; j < 3; j++) {
-          OM[i][j] = OMT[i * 3 + j];
+        // Get the Orientation Matrix
+        for (i = 0; i < 3; i++) {
+          for (j = 0; j < 3; j++) {
+            OM[i][j] = InputInfo[voxNr][i * 3 + j];
+          }
         }
-      }
-      // Calculate the spots now.
-      CalcDiffrSpots_Furnace(hklsOut, OM, Lsd, Wavelength, TheorSpots,
-                             &nTspots);
-      // For each spot, calculate displacement, calculate tilt and wedge effect.
-      for (spotNr = 0; spotNr < nTspots; spotNr++) {
-        double sub_peak_intensity = PeakIntensity / num_lambda_samples;
-        double original_theta_rad = deg2rad * TheorSpots[spotNr][3];
-        double d_spacing = Wavelength / (2 * sin(original_theta_rad));
+        OrientMat2Euler(OM, EulerThis);
+        double OMT[9];
+        Euler2OrientMat(EulerThis, OMT);
+        for (i = 0; i < 3; i++) {
+          for (j = 0; j < 3; j++) {
+            OM[i][j] = OMT[i * 3 + j];
+          }
+        }
+        // Calculate the spots now.
+        CalcDiffrSpots_Furnace(hklsOut_Thread, OM, Lsd, Wavelength,
+                               TheorSpots_Thread, &nTspots);
+        // For each spot, calculate displacement, calculate tilt and wedge
+        // effect.
+        for (spotNr = 0; spotNr < nTspots; spotNr++) {
+          double sub_peak_intensity = PeakIntensity / num_lambda_samples;
+          double original_theta_rad = deg2rad * TheorSpots_Thread[spotNr][3];
+          double d_spacing = Wavelength / (2 * sin(original_theta_rad));
 
-        for (int lambda_i = 0; lambda_i < num_lambda_samples; lambda_i++) {
-          // Calculate the specific wavelength for this sample
-          double sample_lambda = Wavelength;
-          if (eResolution > 0 && num_lambda_samples > 1) {
-            double delta_lambda = Wavelength * eResolution;
-            sample_lambda =
-                (Wavelength - delta_lambda / 2.0) +
-                lambda_i * (delta_lambda / (num_lambda_samples - 1));
-          }
-          // Recalculate theta for this new wavelength
-          // We use the invariant d-spacing calculated outside
-          double sin_sample_theta = sample_lambda / (2 * d_spacing);
-          // If the sampled wavelength is too far off, the reflection is
-          // impossible. Skip it.
-          if (sin_sample_theta > 1.0 || sin_sample_theta < -1.0) {
-            continue;
-          }
-          double sample_theta = asind(sin_sample_theta);
-          // Recalculate all parameters that depend on theta and create a
-          // temporary spot
-          double sample_ring_radius = Lsd * tan(2 * deg2rad * sample_theta);
-          double TempInfo[5];
-          for (i = 0; i < 5; i++)
-            TempInfo[i] = TheorSpots[spotNr][i];
-          TempInfo[0] = sample_ring_radius;
-          TempInfo[3] = sample_theta;
-          // Run the original simulation logic for this single sub-spot
-          OmeDiff =
-              CorrectWedge(TempInfo[1], TempInfo[3], sample_lambda, Wedge);
-          omeThis = TempInfo[2] - OmeDiff;
-          if ((omeThis >= omegaLarge) || (omeThis <= omegaSmall))
-            continue;
-          if (nScans > 1 || beamSize > 0) {
-            newY = InputInfo[voxNr][9] * sin(deg2rad * omeThis) +
-                   InputInfo[voxNr][10] * cos(deg2rad * omeThis);
-            if (fabs(newY - yOffset) > beamSize / 2) {
+          for (int lambda_i = 0; lambda_i < num_lambda_samples; lambda_i++) {
+            // Calculate the specific wavelength for this sample
+            double sample_lambda = Wavelength;
+            if (eResolution > 0 && num_lambda_samples > 1) {
+              double delta_lambda = Wavelength * eResolution;
+              sample_lambda =
+                  (Wavelength - delta_lambda / 2.0) +
+                  lambda_i * (delta_lambda / (num_lambda_samples - 1));
+            }
+            // Recalculate theta for this new wavelength
+            // We use the invariant d-spacing calculated outside
+            double sin_sample_theta = sample_lambda / (2 * d_spacing);
+            // If the sampled wavelength is too far off, the reflection is
+            // impossible. Skip it.
+            if (sin_sample_theta > 1.0 || sin_sample_theta < -1.0) {
               continue;
             }
-          }
-          yTemp = -TempInfo[0] * sin(TempInfo[1] * deg2rad);
-          zTemp = TempInfo[0] * cos(TempInfo[1] * deg2rad);
-          DisplacementInTheSpot(InputInfo[voxNr][9], InputInfo[voxNr][10],
-                                InputInfo[voxNr][11], Lsd, yTemp, zTemp,
-                                omeThis, &DisplY2, &DisplZ2);
-          yThis = yTemp + DisplY2 + yOffset;
-          zThis = zTemp + DisplZ2;
-          yTrans = (int)(-yThis / px + yBC);
-          zTrans = (int)(zThis / px + zBC);
-          idx = yTrans + NrPixels * zTrans;
-          if (idx < 1 || idx >= NrPixels * NrPixels)
-            continue;
-          DisplY = yDispl[idx];
-          DisplZ = zDispl[idx];
-          if (DisplY == -32100) {
-            if (idx - NrPixels < 0 || idx + NrPixels > NrPixels * NrPixels - 1)
+            double sample_theta = asind(sin_sample_theta);
+            // Recalculate all parameters that depend on theta and create a
+            // temporary spot
+            double sample_ring_radius = Lsd * tan(2 * deg2rad * sample_theta);
+            double TempInfo[5];
+            for (i = 0; i < 5; i++)
+              TempInfo[i] = TheorSpots_Thread[spotNr][i];
+            TempInfo[0] = sample_ring_radius;
+            TempInfo[3] = sample_theta;
+            // Run the original simulation logic for this single sub-spot
+            OmeDiff =
+                CorrectWedge(TempInfo[1], TempInfo[3], sample_lambda, Wedge);
+            omeThis = TempInfo[2] - OmeDiff;
+            if ((omeThis >= omegaLarge) || (omeThis <= omegaSmall))
               continue;
-            if (yDispl[idx - 1] != -32100.0) {
-              DisplY = yDispl[idx - 1];
-              DisplZ = zDispl[idx - 1];
-            } else if (yDispl[idx + 1] != -32100.0) {
-              DisplY = yDispl[idx + 1];
-              DisplZ = zDispl[idx + 1];
-            } else if (yDispl[idx - NrPixels] != -32100.0) {
-              DisplY = yDispl[idx - NrPixels];
-              DisplZ = zDispl[idx - NrPixels];
-            } else if (yDispl[idx + NrPixels] != -32100.0) {
-              DisplY = yDispl[idx + NrPixels];
-              DisplZ = zDispl[idx + NrPixels];
-            } else {
-              continue;
+            if (nScans > 1 || beamSize > 0) {
+              newY = InputInfo[voxNr][9] * sin(deg2rad * omeThis) +
+                     InputInfo[voxNr][10] * cos(deg2rad * omeThis);
+              if (fabs(newY - yOffset) > beamSize / 2) {
+                continue;
+              }
             }
-          }
-          yTemp = yThis + DisplY;
-          zTemp = zThis + DisplZ;
-          yDet = yBC - yTemp / px + 1;
-          zDet = zBC + zTemp / px + 1.5;
-          if (yDet < 0 || yDet >= NrPixels || zDet < 0 || zDet >= NrPixels)
-            continue;
-          // ========================================================================
-          // NEW: Analytic Gaussian Integration
-          // ========================================================================
-
-          double sigma = GaussWidth;
-          double twoSigmaSq = 2.0 * sigma * sigma;
-          int extent = (int)ceil(4.0 * sigma);
-          if (extent > 49)
-            extent = 49; // Clamp to buffer size (buffer is 100)
-
-          int y_base = (int)round(yDet);
-          int z_base = (int)round(zDet);
-
-          omeBin = (size_t)floor(-(OmegaStart - omeThis) / OmegaStep);
-          size_t frameOffset = omeBin * NrPixels * NrPixels;
-
-          // Precompute 1D Gaussian weights
-          double WeightsY[100];
-          double WeightsZ[100];
-
-          for (int dy = -extent; dy <= extent; dy++) {
-            int y_curr = y_base + dy;
-            if (y_curr < 0 || y_curr >= NrPixels) {
-              WeightsY[dy + extent] = 0.0;
+            yTemp = -TempInfo[0] * sin(TempInfo[1] * deg2rad);
+            zTemp = TempInfo[0] * cos(TempInfo[1] * deg2rad);
+            DisplacementInTheSpot(InputInfo[voxNr][9], InputInfo[voxNr][10],
+                                  InputInfo[voxNr][11], Lsd, yTemp, zTemp,
+                                  omeThis, &DisplY2, &DisplZ2);
+            yThis = yTemp + DisplY2 + yOffset;
+            zThis = zTemp + DisplZ2;
+            yTrans = (int)(-yThis / px + yBC);
+            zTrans = (int)(zThis / px + zBC);
+            idx = yTrans + NrPixels * zTrans;
+            if (idx < 1 || idx >= NrPixels * NrPixels)
               continue;
+            DisplY = yDispl[idx];
+            DisplZ = zDispl[idx];
+            if (DisplY == -32100) {
+              if (idx - NrPixels < 0 ||
+                  idx + NrPixels > NrPixels * NrPixels - 1)
+                continue;
+              if (yDispl[idx - 1] != -32100.0) {
+                DisplY = yDispl[idx - 1];
+                DisplZ = zDispl[idx - 1];
+              } else if (yDispl[idx + 1] != -32100.0) {
+                DisplY = yDispl[idx + 1];
+                DisplZ = zDispl[idx + 1];
+              } else if (yDispl[idx - NrPixels] != -32100.0) {
+                DisplY = yDispl[idx - NrPixels];
+                DisplZ = zDispl[idx - NrPixels];
+              } else if (yDispl[idx + NrPixels] != -32100.0) {
+                DisplY = yDispl[idx + NrPixels];
+                DisplZ = zDispl[idx + NrPixels];
+              } else {
+                continue;
+              }
             }
-            double distY = (double)y_curr - yDet;
-            WeightsY[dy + extent] = exp(-(distY * distY) / twoSigmaSq);
-          }
-
-          for (int dz = -extent; dz <= extent; dz++) {
-            int z_curr = z_base + dz;
-            if (z_curr < 0 || z_curr >= NrPixels) {
-              WeightsZ[dz + extent] = 0.0;
+            yTemp = yThis + DisplY;
+            zTemp = zThis + DisplZ;
+            yDet = yBC - yTemp / px + 1;
+            zDet = zBC + zTemp / px + 1.5;
+            if (yDet < 0 || yDet >= NrPixels || zDet < 0 || zDet >= NrPixels)
               continue;
+            // ========================================================================
+            // NEW: Analytic Gaussian Integration
+            // ========================================================================
+
+            double sigma = GaussWidth;
+            double twoSigmaSq = 2.0 * sigma * sigma;
+            int extent = (int)ceil(4.0 * sigma);
+            if (extent > 49)
+              extent = 49; // Clamp to buffer size (buffer is 100)
+
+            int y_base = (int)round(yDet);
+            int z_base = (int)round(zDet);
+
+            omeBin = (size_t)floor(-(OmegaStart - omeThis) / OmegaStep);
+            size_t frameOffset = omeBin * NrPixels * NrPixels;
+
+            if (writeSpots == 1) {
+              spotMatr[0] = voxNr + 1;
+              spotMatr[1] = spotNr;
+              spotMatr[2] = omeThis;
+              spotMatr[3] = yThis;
+              spotMatr[4] = zThis;
+              spotMatr[5] = TempInfo[2];
+              spotMatr[6] = TempInfo[1];
+              spotMatr[7] = TempInfo[4];
+              spotMatr[8] = yTemp;
+              spotMatr[9] = zTemp;
+              spotMatr[10] = TempInfo[3];
+              spotMatr[11] = 0;
             }
-            double distZ = (double)z_curr - zDet;
-            WeightsZ[dz + extent] = exp(-(distZ * distZ) / twoSigmaSq);
-          }
 
-          // Convolve using precomputed weights
-          for (int dy = -extent; dy <= extent; dy++) {
-            double wy = WeightsY[dy + extent];
-            if (wy == 0.0)
-              continue;
+            // Precompute 1D Gaussian weights
+            double WeightsY[100];
+            double WeightsZ[100];
 
-            int y_curr = y_base + dy;
+            for (int dy = -extent; dy <= extent; dy++) {
+              int y_curr = y_base + dy;
+              if (y_curr < 0 || y_curr >= NrPixels) {
+                WeightsY[dy + extent] = 0.0;
+                continue;
+              }
+              double distY = (double)y_curr - yDet;
+              WeightsY[dy + extent] = exp(-(distY * distY) / twoSigmaSq);
+            }
 
             for (int dz = -extent; dz <= extent; dz++) {
-              double wz = WeightsZ[dz + extent];
-              if (wz == 0.0)
+              int z_curr = z_base + dz;
+              if (z_curr < 0 || z_curr >= NrPixels) {
+                WeightsZ[dz + extent] = 0.0;
+                continue;
+              }
+              double distZ = (double)z_curr - zDet;
+              WeightsZ[dz + extent] = exp(-(distZ * distZ) / twoSigmaSq);
+            }
+
+            // Convolve using precomputed weights
+            for (int dy = -extent; dy <= extent; dy++) {
+              double wy = WeightsY[dy + extent];
+              if (wy == 0.0)
                 continue;
 
-              int z_curr = z_base + dz;
+              int y_curr = y_base + dy;
 
-              // Gaussian weight
-              double weight = wy * wz;
+              for (int dz = -extent; dz <= extent; dz++) {
+                double wz = WeightsZ[dz + extent];
+                if (wz == 0.0)
+                  continue;
 
-              // Check relative intensity from rings
-              int currentRingNr = (int)TempInfo[4];
-              double relativeIntensity = 1.0;
-              if (currentRingNr >= 0 && currentRingNr < 500) {
-                relativeIntensity = RingNrIntensity[currentRingNr];
-              }
+                int z_curr = z_base + dz;
 
-              // Total intensity contribution
-              double intensity_to_add =
-                  weight * sub_peak_intensity * relativeIntensity;
+                // Gaussian weight
+                double weight = wy * wz;
 
-              long long int currentPos =
-                  (long long int)(frameOffset + y_curr * NrPixels + z_curr);
-              if (currentPos >= 0 && currentPos < ImageArrSize) {
+                // Check relative intensity from rings
+                int currentRingNr = (int)TempInfo[4];
+                double relativeIntensity = 1.0;
+                if (currentRingNr >= 0 && currentRingNr < 500) {
+                  relativeIntensity = RingNrIntensity[currentRingNr];
+                }
+
+                // Total intensity contribution
+                double intensity_to_add =
+                    weight * sub_peak_intensity * relativeIntensity;
+
+                long long int currentPos =
+                    (long long int)(frameOffset + y_curr * NrPixels + z_curr);
+                if (currentPos >= 0 && currentPos < ImageArrSize) {
 #pragma omp atomic
-                ImageArr[currentPos] += intensity_to_add;
+                  ImageArr[currentPos] += intensity_to_add;
+                }
               }
             }
           }
-        }
-        if (writeSpots == 1) {
+          if (writeSpots == 1) {
 #pragma omp critical
-          {
-            fprintf(spotsfile,
-                    "%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\t%"
-                    "d\t%lf\t%d\n",
-                    (int)spotMatr[0], (int)spotMatr[1], spotMatr[2],
-                    spotMatr[3], spotMatr[4], spotMatr[5], spotMatr[6],
-                    (int)spotMatr[7], spotMatr[8], spotMatr[9], spotMatr[10],
-                    spotMatr[11], scanNr, sqrt(yThis * yThis + zThis * zThis),
-                    omeBin);
+            {
+              fprintf(
+                  spotsfile,
+                  "%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\t%"
+                  "d\t%lf\t%d\n",
+                  (int)spotMatr[0], (int)spotMatr[1], spotMatr[2], spotMatr[3],
+                  spotMatr[4], spotMatr[5], spotMatr[6], (int)spotMatr[7],
+                  spotMatr[8], spotMatr[9], spotMatr[10], spotMatr[11], scanNr,
+                  sqrt(yThis * yThis + zThis * zThis), omeBin);
+            }
           }
         }
       }
-    }
+      FreeMemMatrix(TheorSpots_Thread, nRowsPerGrain);
+      FreeMemMatrix(hklsOut_Thread, n_hkls);
+    } // End of omp parallel block
     maxInt = 0.0;
     for (size_t i = 0; i < ImageArrSize; ++i) {
       if (ImageArr[i] > maxInt) {
@@ -1948,11 +2064,10 @@ int main(int argc, char *argv[]) {
   // =========================================================================
   // FINAL MEMORY CLEANUP
   // =========================================================================
+  // hklsOut and TheorSpots and hklsTemp are now thread local and freed inside
+  // the loop
   printf("Cleaning up allocated memory...\n");
   FreeMemMatrix(InputInfo, MAX_NR_POINTS);
-  FreeMemMatrix(TheorSpots, nRowsPerGrain);
-  FreeMemMatrix(hklsOut, n_hkls);
-  FreeMemMatrix(hklsTemp, n_hkls);
   free(positions);
   free(ImageArr);
   free(yDispl);

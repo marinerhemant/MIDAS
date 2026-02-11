@@ -11,6 +11,7 @@
 //  Parallelized and adapted for SpotMatrix.csv input
 //
 
+#include "Panel.h"
 #include <ctype.h>
 #include <limits.h>
 #include <math.h>
@@ -22,6 +23,9 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+
+static Panel *panels = NULL;
+static int nPanels = 0;
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -102,8 +106,9 @@ struct my_func_data {
 };
 
 void YsZsCalc(double Lsd, double Ycen, double Zcen, double p0, double p1,
-              double p2, double MaxRad, double tx, double ty, double tz,
-              double px, double Ys, double Zs, double *YOut, double *ZOut) {
+              double p2, double p3, double MaxRad, double tx, double ty,
+              double tz, double px, double Ys, double Zs, double *YOut,
+              double *ZOut, int nPanels, Panel *panels) {
   double txr = deg2rad * tx;
   double tyr = deg2rad * ty;
   double tzr = deg2rad * tz;
@@ -118,8 +123,16 @@ void YsZsCalc(double Lsd, double Ycen, double Zcen, double p0, double p1,
   MatrixMultF33(Rx, TRint, TRs);
   double n0 = 2, n1 = 4, n2 = 2, Yc, Zc;
   double Eta, RNorm, Rad, EtaT, DistortFunc, Rcorr;
-  Yc = -(Ys - Ycen) * px;
-  Zc = (Zs - Zcen) * px;
+  double pdY = 0, pdZ = 0;
+  int pIdx = GetPanelIndex(Ys, Zs, nPanels, panels);
+  if (pIdx >= 0) {
+    pdY = panels[pIdx].dY;
+    pdZ = panels[pIdx].dZ;
+  }
+  double ypr = Ys + pdY;
+  double zpr = Zs + pdZ;
+  Yc = -(ypr - Ycen) * px;
+  Zc = (zpr - Zcen) * px;
   double ABC[3] = {0, Yc, Zc};
   double ABCPr[3];
   MatrixMult(TRs, ABC, ABCPr);
@@ -129,7 +142,7 @@ void YsZsCalc(double Lsd, double Ycen, double Zcen, double p0, double p1,
   RNorm = Rad / MaxRad;
   EtaT = 90 - Eta;
   DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
-                (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT)))) +
+                (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
                 (p2 * (pow(RNorm, n2))) + 1;
   Rcorr = Rad * DistortFunc;
   *YOut = -Rcorr * sin(deg2rad * Eta);
@@ -267,18 +280,20 @@ static double problem_function(unsigned n, const double *x, double *grad,
 // Thread-safe FitWedge function with Hessian calculation
 // Returns 0 if success, 1 if hit bounds
 int FitWedgeThreadSafe(double Lsd, double Ycen, double Zcen, double p0,
-                       double p1, double p2, double MaxRad, double tx,
-                       double ty, double tz, double px, double Ys, double Zs,
-                       double MinOme, double MaxOme, double WedgeIn,
+                       double p1, double p2, double p3, double MaxRad,
+                       double tx, double ty, double tz, double px, double Ys,
+                       double Zs, double MinOme, double MaxOme, double WedgeIn,
                        double *WedgeFit, double *MinFOut,
-                       double *NumUncertainty, double Wavelength) {
+                       double *NumUncertainty, double Wavelength, int nPanels,
+                       Panel *panels) {
   struct my_func_data f_data;
   f_data.Lsd = Lsd;
   f_data.Ome1 = MinOme;
   f_data.Ome2 = MaxOme;
   f_data.Wavelength = Wavelength;
   double Y, Z;
-  YsZsCalc(Lsd, Ycen, Zcen, p0, p1, p2, MaxRad, tx, ty, tz, px, Ys, Zs, &Y, &Z);
+  YsZsCalc(Lsd, Ycen, Zcen, p0, p1, p2, p3, MaxRad, tx, ty, tz, px, Ys, Zs, &Y,
+           &Z, nPanels, panels);
   f_data.Ys = Y;
   f_data.Zs = Z;
   unsigned n = 1;
@@ -370,16 +385,19 @@ int main(int argc, char *argv[]) {
   char dummy[1024];
   char *str;
   int LowNr;
-  double Ycen, Zcen, px, Lsd, ty, tz, p0, p1, p2, MaxRad, tx;
+  double Ycen, Zcen, px, Lsd, ty, tz, p0, p1, p2, p3, MaxRad, tx;
   double Wavelength, Wedge = 0.0;
   double OmegaStart = 0.0;
   double OmegaStep = 0.0;
+  int NPanelsY = 0, NPanelsZ = 0, PanelSizeY = 0, PanelSizeZ = 0;
+  int *PanelGapsY = NULL, *PanelGapsZ = NULL;
+  char PanelShiftsFile[1024] = "";
 
   // Initialize defaults
   Ycen = Zcen = 1024.0;
   px = 0.1;
   Lsd = 1000.0;
-  p0 = p1 = p2 = 0.0;
+  p0 = p1 = p2 = p3 = 0.0;
 
   while (fgets(aline, 1024, fileParam) != NULL) {
     if (strncmp(aline, "BC ", 3) == 0)
@@ -402,6 +420,8 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %lf", dummy, &p1);
     else if (strncmp(aline, "p2 ", 3) == 0)
       sscanf(aline, "%s %lf", dummy, &p2);
+    else if (strncmp(aline, "p3 ", 3) == 0)
+      sscanf(aline, "%s %lf", dummy, &p3);
     else if (strncmp(aline, "RhoD ", 5) == 0)
       sscanf(aline, "%s %lf", dummy, &MaxRad);
     else if (strncmp(aline, "Wavelength ", 11) == 0)
@@ -410,8 +430,51 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %lf", dummy, &OmegaStart);
     else if (strncmp(aline, "OmegaStep ", 10) == 0)
       sscanf(aline, "%s %lf", dummy, &OmegaStep);
+    else if (strncmp(aline, "NPanelsY ", 9) == 0)
+      sscanf(aline, "%s %d", dummy, &NPanelsY);
+    else if (strncmp(aline, "NPanelsZ ", 9) == 0)
+      sscanf(aline, "%s %d", dummy, &NPanelsZ);
+    else if (strncmp(aline, "PanelSizeY ", 11) == 0)
+      sscanf(aline, "%s %d", dummy, &PanelSizeY);
+    else if (strncmp(aline, "PanelSizeZ ", 11) == 0)
+      sscanf(aline, "%s %d", dummy, &PanelSizeZ);
+    else if (strncmp(aline, "PanelShiftsFile ", 16) == 0)
+      sscanf(aline, "%s %s", dummy, PanelShiftsFile);
+    else if (strncmp(aline, "PanelGapsY ", 11) == 0) {
+      char *ptr = aline + 11;
+      if (NPanelsY > 1) {
+        PanelGapsY = (int *)malloc((NPanelsY - 1) * sizeof(int));
+        for (int k = 0; k < NPanelsY - 1; k++)
+          PanelGapsY[k] = strtol(ptr, &ptr, 10);
+      }
+    } else if (strncmp(aline, "PanelGapsZ ", 11) == 0) {
+      char *ptr = aline + 11;
+      if (NPanelsZ > 1) {
+        PanelGapsZ = (int *)malloc((NPanelsZ - 1) * sizeof(int));
+        for (int k = 0; k < NPanelsZ - 1; k++)
+          PanelGapsZ[k] = strtol(ptr, &ptr, 10);
+      }
+    }
   }
   fclose(fileParam);
+
+  // Generate Panels
+  if (NPanelsY > 0 && NPanelsZ > 0) {
+    if (GeneratePanels(NPanelsY, NPanelsZ, PanelSizeY, PanelSizeZ, PanelGapsY,
+                       PanelGapsZ, &panels, &nPanels) != 0) {
+      fprintf(stderr, "Panel generation failed.\n");
+      return 1;
+    }
+    printf("Generated %d panels.\n", nPanels);
+    if (PanelShiftsFile[0] != '\0') {
+      if (LoadPanelShifts(PanelShiftsFile, nPanels, panels) == 0) {
+        printf("Loaded panel shifts from %s\n", PanelShiftsFile);
+      } else {
+        fprintf(stderr, "Failed to load panel shifts from %s\n",
+                PanelShiftsFile);
+      }
+    }
+  }
 
   printf("Parameters read. Lsd: %f, Wavelength: %f, Wedge: %f\n", Lsd,
          Wavelength, Wedge);
@@ -569,10 +632,10 @@ int main(int argc, char *argv[]) {
     double resWedge = 0;
     double resMinF = 0;
     double resNumUncertainty = 0;
-    int status =
-        FitWedgeThreadSafe(Lsd, Ycen, Zcen, p0, p1, p2, MaxRad, tx, ty, tz, px,
-                           YsUse, ZsUse, MinOme, MaxOme, Wedge, &resWedge,
-                           &resMinF, &resNumUncertainty, Wavelength);
+    int status = FitWedgeThreadSafe(
+        Lsd, Ycen, Zcen, p0, p1, p2, p3, MaxRad, tx, ty, tz, px, YsUse, ZsUse,
+        MinOme, MaxOme, Wedge, &resWedge, &resMinF, &resNumUncertainty,
+        Wavelength, nPanels, panels);
 
     if (status == 0) {
       validResults[i] = 1;

@@ -77,7 +77,7 @@ add_ff_hedm_executable(CalibrantPanelShiftsOMP SOURCES src/CalibrantPanelShiftsO
 add_ff_hedm_executable(FitSetup SOURCES src/FitSetupParamsAll.c)
 add_ff_hedm_executable(FitTiltBCLsdSample SOURCES src/FitTiltBCLsdSampleOmegaCorrection.c)
 add_ff_hedm_executable(ForwardSimulation SOURCES src/ForwardSimulation.c)
-add_ff_hedm_executable(ForwardSimulationCompressed SOURCES src/ForwardSimulationCompressed.c OMP)
+add_ff_hedm_executable(ForwardSimulationCompressed SOURCES src/ForwardSimulationCompressed.c src/Panel.c OMP)
 
 add_ff_hedm_executable(FitPosOrStrainsOMP SOURCES src/FitPosOrStrainsOMP.c src/CalcDiffractionSpots.c OMP)
 add_ff_hedm_executable(FitPosOrStrainsDoubleDataset SOURCES src/FitPosOrStrainsDoubleDataset.c src/CalcDiffractionSpots.c OMP)
@@ -101,7 +101,7 @@ add_ff_hedm_executable(FitGrainHydra SOURCES src/FitGrainHydra.c src/CalcDiffrac
 add_ff_hedm_executable(FitScanningGrain SOURCES src/FitScanningGrain.c)
 add_ff_hedm_executable(FitTiltX SOURCES src/FitTiltX.c)
 add_ff_hedm_executable(FitWedge SOURCES src/FitWedge.c)
-add_ff_hedm_executable(FitWedgeParallel SOURCES src/FitWedgeParallel.c OMP)
+add_ff_hedm_executable(FitWedgeParallel SOURCES src/FitWedgeParallel.c src/Panel.c OMP)
 add_ff_hedm_executable(MapDatasets SOURCES src/MapDatasets.c OMP)
 
 add_ff_hedm_executable(GetHKLList SOURCES src/GetHKLList.c src/sgclib.c src/sgfind.c src/sghkl.c src/sgsi.c src/sgio.c)
