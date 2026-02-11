@@ -149,9 +149,9 @@ int main(int argc, char *argv[]) {
       grains = realloc(grains, capacity * sizeof(GrainInfo));
     }
 
-    grains[count].eul[0] = vals[7];
-    grains[count].eul[1] = vals[8];
-    grains[count].eul[2] = vals[9];
+    grains[count].eul[0] = vals[7] * rad2deg;
+    grains[count].eul[1] = vals[8] * rad2deg;
+    grains[count].eul[2] = vals[9] * rad2deg;
     grains[count].confidence = vals[10];
     grains[count].used = false;
 

@@ -73,98 +73,72 @@ struct my_func_data {
   int nLayers;
   double ExcludePoleAngle;
   long long int SizeObsSpots;
-  double XGrain[3];
-  double YGrain[3];
+  double *XGrain;
+  double *YGrain;
   double OmegaStart;
   double OmegaStep;
   double px;
   double gs;
-  double hkls[5000][4];
+  double (*hkls)[4];
   int n_hkls;
-  double Thetas[5000];
+  double *Thetas;
   int NoOfOmegaRanges;
   int NrPixelsGrid;
-  double OmegaRanges[MAX_N_OMEGA_RANGES][2];
-  double BoxSizes[MAX_N_OMEGA_RANGES][4];
-  double **P0;
+  double (*OmegaRanges)[2];
+  double (*BoxSizes)[4];
   int *ObsSpotsInfo;
   double *Lsd;
-  double RotMatTilts[3][3];
+  double (*RotMatTilts)[3];
   double *ybc;
   double *zbc;
+  int **InPixels;
+  double *TheorSpots;
+  double *P0Flat;
+  double *Gs;
 };
 
 static double problem_function(unsigned n, const double *x, double *grad,
                                void *f_data_trial) {
   struct my_func_data *f_data = (struct my_func_data *)f_data_trial;
-  int i, j, count = 1;
+  int i, j;
   const int NrOfFiles = f_data->NrOfFiles;
   const int nLayers = f_data->nLayers;
   const double ExcludePoleAngle = f_data->ExcludePoleAngle;
   const long long int SizeObsSpots = f_data->SizeObsSpots;
-  double XGrain[3];
-  double YGrain[3];
   const double OmegaStart = f_data->OmegaStart;
   const double OmegaStep = f_data->OmegaStep;
   const double px = f_data->px;
   const double gs = f_data->gs;
   const int NoOfOmegaRanges = f_data->NoOfOmegaRanges;
   const int NrPixelsGrid = f_data->NrPixelsGrid;
-  double P0[nLayers][3];
-  double OmegaRanges[MAX_N_OMEGA_RANGES][2];
-  double BoxSizes[MAX_N_OMEGA_RANGES][4];
-  double hkls[5000][4];
   int n_hkls = f_data->n_hkls;
-  double *TheorSpots;
-  TheorSpots = malloc(MAX_N_SPOTS * 3 * sizeof(*TheorSpots));
-  double Thetas[5000];
-  for (i = 0; i < 5000; i++) {
-    hkls[i][0] = f_data->hkls[i][0];
-    hkls[i][1] = f_data->hkls[i][1];
-    hkls[i][2] = f_data->hkls[i][2];
-    hkls[i][3] = f_data->hkls[i][3];
-    Thetas[i] = f_data->Thetas[i];
-  }
-  int *ObsSpotsInfo;
-  ObsSpotsInfo = &(f_data->ObsSpotsInfo[0]);
-  double *Lsd;
-  Lsd = &(f_data->Lsd[0]);
-  double *ybc;
-  ybc = &(f_data->ybc[0]);
-  double *zbc;
-  zbc = &(f_data->zbc[0]);
-  for (i = 0; i < 3; i++) {
-    XGrain[i] = f_data->XGrain[i];
-    YGrain[i] = f_data->YGrain[i];
-    for (j = 0; j < nLayers; j++) {
-      P0[j][i] = f_data->P0[j][i];
-    }
-  }
-  for (i = 0; i < MAX_N_OMEGA_RANGES; i++) {
-    for (j = 0; j < 2; j++) {
-      OmegaRanges[i][j] = f_data->OmegaRanges[i][j];
-    }
-    for (j = 0; j < 4; j++) {
-      BoxSizes[i][j] = f_data->BoxSizes[i][j];
-    }
-  }
-  double RotMatTilts[3][3];
-  for (i = 0; i < 3; i++) {
-    for (j = 0; j < 3; j++) {
-      RotMatTilts[i][j] = f_data->RotMatTilts[i][j];
-    }
-  }
+  int *ObsSpotsInfo = f_data->ObsSpotsInfo;
+  double *Lsd = f_data->Lsd;
+  double *ybc = f_data->ybc;
+  double *zbc = f_data->zbc;
+  double *XGrain = f_data->XGrain;
+  double *YGrain = f_data->YGrain;
+  double (*P0)[3] = (double (*)[3])f_data->P0Flat;
+
+  double (*OmegaRanges)[2] = f_data->OmegaRanges;
+  double (*BoxSizes)[4] = f_data->BoxSizes;
+  double (*RotMatTilts)[3] = f_data->RotMatTilts;
+  double (*hkls)[4] = f_data->hkls;
+  double *Thetas = f_data->Thetas;
+  double *TheorSpots = f_data->TheorSpots;
+  double *Gs = f_data->Gs;
+
   double OrientMatIn[3][3], FracOverlap, x2[3];
-  x2[0] = x[0];
-  x2[1] = x[1];
-  x2[2] = x[2];
+  x2[0] = x[0] * rad2deg;
+  x2[1] = x[1] * rad2deg;
+  x2[2] = x[2] * rad2deg;
   Euler2OrientMat(x2, OrientMatIn);
   CalcOverlapAccOrient(NrOfFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots,
                        XGrain, YGrain, RotMatTilts, OmegaStart, OmegaStep, px,
                        ybc, zbc, gs, hkls, n_hkls, Thetas, OmegaRanges,
                        NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
-                       ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots);
-  free(TheorSpots);
+                       ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots,
+                       f_data->InPixels, Gs);
   return (1 - FracOverlap);
 }
 
@@ -181,7 +155,7 @@ void FitOrientation(const int NrOfFiles, const int nLayers,
                     int *ObsSpotsInfo, double EulerIn[3], double tol,
                     double *EulerOutA, double *EulerOutB, double *EulerOutC,
                     double *ResultFracOverlap, double hkls[5000][4],
-                    double Thetas[5000], int n_hkls) {
+                    double Thetas[5000], int n_hkls, double *Gs) {
   unsigned n;
   long int i, j;
   n = 3;
@@ -195,34 +169,31 @@ void FitOrientation(const int NrOfFiles, const int nLayers,
   f_data.NrOfFiles = NrOfFiles;
   f_data.nLayers = nLayers;
   f_data.n_hkls = n_hkls;
-  for (i = 0; i < 5000; i++) {
-    f_data.hkls[i][0] = hkls[i][0];
-    f_data.hkls[i][1] = hkls[i][1];
-    f_data.hkls[i][2] = hkls[i][2];
-    f_data.hkls[i][3] = hkls[i][3];
-    f_data.Thetas[i] = Thetas[i];
-  }
+  f_data.hkls = hkls;
+  f_data.Thetas = Thetas;
   f_data.ExcludePoleAngle = ExcludePoleAngle;
   f_data.SizeObsSpots = SizeObsSpots;
-  f_data.P0 = allocMatrixF(nLayers, 3);
-  for (i = 0; i < 3; i++) {
-    f_data.XGrain[i] = XGrain[i];
-    f_data.YGrain[i] = YGrain[i];
-    for (j = 0; j < nLayers; j++) {
-      f_data.P0[j][i] = P0[j][i];
-    }
-    for (j = 0; j < 3; j++) {
-      f_data.RotMatTilts[i][j] = RotMatTilts[i][j];
-    }
+
+  // Allocate P0Flat for use in problem_function
+  f_data.P0Flat = malloc(nLayers * 3 * sizeof(double));
+  for (i = 0; i < nLayers; i++) {
+    // We do not strictly need f_data.P0 to point to valid memory for
+    // problem_function anymore since we use P0Flat. However, f_data.P0 was used
+    // to COPY from the input P0 argument. Let's copy directly from input P0 to
+    // P0Flat.
+    f_data.P0Flat[i * 3 + 0] = P0[i][0];
+    f_data.P0Flat[i * 3 + 1] = P0[i][1];
+    f_data.P0Flat[i * 3 + 2] = P0[i][2];
   }
-  for (i = 0; i < MAX_N_OMEGA_RANGES; i++) {
-    for (j = 0; j < 2; j++) {
-      f_data.OmegaRanges[i][j] = OmegaRanges[i][j];
-    }
-    for (j = 0; j < 4; j++) {
-      f_data.BoxSizes[i][j] = BoxSizes[i][j];
-    }
-  }
+
+  // Cast away const for struct assignment, we promise not to modify these in
+  // problem_function
+  f_data.XGrain = (double *)XGrain;
+  f_data.YGrain = (double *)YGrain;
+  f_data.RotMatTilts = RotMatTilts;
+  f_data.OmegaRanges = OmegaRanges;
+  f_data.BoxSizes = BoxSizes;
+
   f_data.ObsSpotsInfo = &ObsSpotsInfo[0];
   f_data.Lsd = &Lsd[0];
   f_data.ybc = &ybc[0];
@@ -233,6 +204,9 @@ void FitOrientation(const int NrOfFiles, const int nLayers,
   f_data.gs = gs;
   f_data.NoOfOmegaRanges = NoOfOmegaRanges;
   f_data.NrPixelsGrid = NrPixelsGrid;
+  f_data.InPixels = allocMatrixIntF(NrPixelsGrid, 2);
+  f_data.TheorSpots = malloc(MAX_N_SPOTS * 3 * sizeof(double));
+  f_data.Gs = Gs;
   struct my_func_data *f_datat;
   f_datat = &f_data;
   void *trp = (struct my_func_data *)f_datat;
@@ -245,7 +219,12 @@ void FitOrientation(const int NrOfFiles, const int nLayers,
   double minf = 1;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
-  free(f_data.P0);
+  // f_data.P0 was allocated with malloc for the pointer array only, but we
+  // didn't alloc rows
+  free(f_data.P0Flat);
+
+  free(f_data.TheorSpots);
+  FreeMemMatrixInt(f_data.InPixels, NrPixelsGrid);
   *ResultFracOverlap = minf;
   *EulerOutA = x[0];
   *EulerOutB = x[1];
@@ -634,15 +613,15 @@ int main(int argc, char *argv[]) {
     fgets(line, 1000, fp);
     counter += 1;
   }
-  char **lines;
-  lines = malloc(nrows * sizeof(*lines));
+  char **lines_raw; // Renamed to avoid conflict with parsed_lines
+  lines_raw = malloc(nrows * sizeof(*lines_raw));
   printf("%d %d %d\n", startRowNr, endRowNr, nrows);
   //~ lines = malloc(nrows*sizeof(*lines));
   //~ lines[0] = malloc(nrows*1000*sizeof(**lines));
   //~ for (it=1;it<nrows;it++) lines[it] = lines[0] + it*1000;
   for (it = 0; it < nrows; it++) {
     fgets(line, 1000, fp);
-    lines[it] = strndup(line, 1000);
+    lines_raw[it] = strndup(line, 1000);
   }
   //~ for (it=0;it<nrows;it++) fgets(lines[it],1000,fp);
   fclose(fp);
@@ -687,6 +666,49 @@ int main(int argc, char *argv[]) {
     n_hkls = totalHKLs;
   }
 
+  // Precompute Gs for CalcDiffractionSpots optimization
+  double *Gs;
+  Gs = malloc(n_hkls * sizeof(double));
+  int i;
+  for (i = 0; i < n_hkls; i++) {
+    double Ghkl[3];
+    Ghkl[0] = hkls[i][0];
+    Ghkl[1] = hkls[i][1];
+    Ghkl[2] = hkls[i][2];
+    double len =
+        sqrt(Ghkl[0] * Ghkl[0] + Ghkl[1] * Ghkl[1] + Ghkl[2] * Ghkl[2]);
+    Gs[i] =
+        sin(Thetas[i] * M_PI / 180.0) * len; // Assuming deg2rad is M_PI/180.0
+  }
+
+  // Parse input lines for sscanf hoisting
+  struct ParsedLine {
+    double y1, y2, xs, ys, gs;
+    int valid;
+  };
+  struct ParsedLine *parsed_lines =
+      malloc((endRowNr - startRowNr + 1) * sizeof(struct ParsedLine));
+  for (rown = startRowNr; rown <= endRowNr; rown++) {
+    int idx = rown - startRowNr;
+    struct ParsedLine *pl = &parsed_lines[idx];
+    if (rown > TotalNrSpots) {
+      pl->valid = 0;
+    } else {
+      int nparsed = sscanf(lines_raw[idx], "%lf %lf %lf %lf %lf", &pl->y1,
+                           &pl->y2, &pl->xs, &pl->ys, &pl->gs);
+      if (nparsed != 5) {
+        pl->valid = 0;
+      } else {
+        pl->valid = 1;
+      }
+    }
+  }
+  // Free raw lines after parsing
+  for (it = 0; it < nrows; it++) {
+    free(lines_raw[it]);
+  }
+  free(lines_raw);
+
   double RotMatTilts[3][3];
   RotationTilts(tx, ty, tz, RotMatTilts);
   double *OrientMatrixAll;
@@ -696,10 +718,25 @@ int main(int argc, char *argv[]) {
   ThrSpsAll = calloc(numProcs * MAX_N_SPOTS * 3, sizeof(*ThrSpsAll));
   printf("Number of individual diffracting planes: %d\n", n_hkls);
 
-//~ double *OutResultAll, *ResultMatrAll;
-//~ size_t numJobs = endRowNr - startRowNr + 1;
-//~ OutResultAll = calloc(numJobs*11,sizeof(*OutResultAll));
-//~ ResultMatrAll = calloc(numJobs*(7+(nSaves*4)),sizeof(*ResultMatrAll));
+  //~ double *OutResultAll, *ResultMatrAll;
+  //~ size_t numJobs = endRowNr - startRowNr + 1;
+  //~ OutResultAll = calloc(numJobs*11,sizeof(*OutResultAll));
+  //~ ResultMatrAll = calloc(numJobs*(7+(nSaves*4)),sizeof(*ResultMatrAll));
+
+  // Open files for writing (Create/Open once)
+  int result = open(MicFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+  if (result <= 0) {
+    printf("Could not open output file %s.\n", MicFN);
+    exit(1);
+  }
+  char outfn2[4096];
+  sprintf(outfn2, "%s.AllMatches", MicFN);
+  int result2 = open(outfn2, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+  if (result2 <= 0) {
+    printf("Could not successfully open output file for all matches %s.\n",
+           outfn2);
+    exit(1);
+  }
 
 // DO OMP HERE??????
 #pragma omp parallel for num_threads(numProcs) private(rown) schedule(dynamic)
@@ -709,16 +746,21 @@ int main(int argc, char *argv[]) {
     //~ start = clock();
     int procNum = omp_get_thread_num();
     int i, j, k, m;
-    if (rown > TotalNrSpots) {
+    int idx = rown - startRowNr;
+    // Use pre-parsed data
+    if (!parsed_lines[idx].valid) {
       printf("Error: Grid point number greater than total number of grid "
-             "points.\n");
+             "points or parse error.\n");
       continue;
     }
-    double y1, y2, xs, ys, gs;
+    double y1 = parsed_lines[idx].y1;
+    double y2 = parsed_lines[idx].y2;
+    double xs = parsed_lines[idx].xs;
+    double ys = parsed_lines[idx].ys;
+    double gs = parsed_lines[idx].gs;
+
     // Alloc array and clear it.
     double XY[3][3];
-    sscanf(lines[rown - startRowNr], "%lf %lf %lf %lf %lf", &y1, &y2, &xs, &ys,
-           &gs);
     int UD;
     if (y1 > y2) {
       UD = -1;
@@ -765,6 +807,9 @@ int main(int argc, char *argv[]) {
     double *OrientMatrix;
     OrientMatrix = &OrientMatrixAll[MAX_POINTS_GRID_GOOD * 10 * procNum];
     //~ printf("Checking orientation grid.\n");
+    // Hoisted InPixels allocation
+    int **InPixels;
+    InPixels = allocMatrixIntF(NrPixelsGrid, 2);
     for (i = 0; i < NrOrientations; i++) {
       NrSpotsThis = NrSpots[i][0];
       StartingRowNr = NrSpots[i][1];
@@ -784,10 +829,11 @@ int main(int argc, char *argv[]) {
         m++;
       }
       Convert9To3x3(OrientationMatThis, OrientMatIn);
+      // Hoisted InPixels allocation to before loop
       CalcFracOverlap(nrFiles, nLayers, NrSpotsThis, ThrSps, OmegaStart,
                       OmegaStep, XG, YG, Lsd, SizeObsSpots, RotMatTilts, px,
                       ybc, zbc, gs, P0, NrPixelsGrid, ObsSpotsInfo, OrientMatIn,
-                      &FracOverT);
+                      &FracOverT, InPixels);
       if (FracOverT >= minFracOverlap) {
         for (j = 0; j < 9; j++) {
           OrientMatrix[OrientationGoodID * 10 + j] = OrientationMatThis[j];
@@ -797,8 +843,10 @@ int main(int argc, char *argv[]) {
         OrientationGoodID++;
       }
     }
-    //~ printf("Finished checking orientation grid. Now fitting %d
-    // orientations.\n",OrientationGoodID);
+    FreeMemMatrixInt(InPixels, NrPixelsGrid);
+    printf("Finished checking orientation grid for point %d. Now fitting %d"
+           " orientations.\n",
+           rown, OrientationGoodID);
     double BestFrac, BestEuler[3];
     double ResultMatr[7 + (nSaves * 4)], QuatIn[4], QuatOut[4];
     double bestRowNr = 0;
@@ -827,11 +875,17 @@ int main(int argc, char *argv[]) {
           OMTemp[j] = OrientMatrix[i * 10 + j];
         Convert9To3x3(OMTemp, OrientIn);
         OrientMat2Euler(OrientIn, EulerIn);
+        // Note: FitOrientation internally calls optimization which calls
+        // problem_function. problem_function in SharedFuncsFit.c needs to
+        // handle InPixels if called there. Wait, FitOrientation calls nlopt
+        // which calls problem_function. problem_function needs to allocate
+        // InPixels internally or be passed it? Let's check problem_function in
+        // SharedFuncsFit.c first.
         FitOrientation(nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots,
                        XG, YG, RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc,
-                       gs, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0,
-                       NrPixelsGrid, ObsSpotsInfo, EulerIn, tol, &EulerOutA,
-                       &EulerOutB, &EulerOutC, &FracOut, hkls, Thetas, n_hkls);
+                       gs, OmegaRanges, nOmeRang, BoxSizes, P0, NrPixelsGrid,
+                       ObsSpotsInfo, EulerIn, tol, &EulerOutA, &EulerOutB,
+                       &EulerOutC, &FracOut, hkls, Thetas, n_hkls, Gs);
         Fractions = 1 - FracOut;
         if (Fractions >= BestFrac) {
           bestRowNr = OrientMatrix[i * 10 + 9]; // Save best RowNr
@@ -898,25 +952,19 @@ int main(int argc, char *argv[]) {
     int SizeWritten2 = (7 + (nSaves * 4)) * sizeof(double);
     size_t OffsetThis = (rown);
     OffsetThis *= SizeWritten2;
+
+    // Write files (Thread-safe pwrite)
+    int rc4 = pwrite(result, outresult, SizeWritten, OffsetHere);
+    if (rc4 < 0) {
 #pragma omp critical
-    {
-      // Open files for writing
-      int result = open(MicFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
-      if (result <= 0) {
-        printf("Could not open output file.\n");
-      }
-      char outfn2[4096];
-      sprintf(outfn2, "%s.AllMatches", MicFN);
-      int result2 = open(outfn2, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
-      if (result2 <= 0) {
-        printf("Could not successfully open output file for all matches.\n");
-      }
-      // Write files
-      int rc4 = pwrite(result, outresult, SizeWritten, OffsetHere);
-      if (rc4 < 0) {
-        printf("Could not write to output file %d %d %d %d.\n", OffsetHere,
-               rown, startRowNr, endRowNr);
-      } else {
+      printf("Could not write to output file %zu %d %d %d.\n", OffsetHere, rown,
+             startRowNr, endRowNr);
+    } else {
+// printf is thread-safe but output might be interleaved.
+// Using critical for clean output if desired, or removing for speed.
+// Keeping critical for now as user expects feedback.
+#pragma omp critical
+      {
         printf("%zu %d ", OffsetHere, rown);
         for (i = 0; i < 11; i++) {
           printf("%.5f ", outresult[i]);
@@ -924,18 +972,24 @@ int main(int argc, char *argv[]) {
         printf("\n");
         fflush(stdout);
       }
-      int rc5 = pwrite(result2, ResultMatr, SizeWritten2, OffsetThis);
-      if (rc5 < 0) {
-        printf("Could not write all matches %d %d %d %d.\n", OffsetThis, rown,
-               startRowNr, endRowNr);
-      }
-      close(result);
-      close(result2);
     }
+    int rc5 = pwrite(result2, ResultMatr, SizeWritten2, OffsetThis);
+    if (rc5 < 0) {
+#pragma omp critical
+      printf("Could not write all matches %zu %d %d %d.\n", OffsetThis, rown,
+             startRowNr, endRowNr);
+    }
+
     //~ printf("Time elapsed in comparing diffraction spots: %f
     //[s]\n",diftotal); ~ for (i=0;i<MAX_POINTS_GRID_GOOD*10;i++)
     // OrientMatrix[i] = 0; // Maybe not needed.
   }
+
+  // Close files after loop
+  free(parsed_lines);
+  free(Gs);
+  close(result);
+  close(result2);
   double time = omp_get_wtime() - start_time;
   printf("Finished, time elapsed: %lf seconds.\n", time);
   return 0;

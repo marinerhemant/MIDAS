@@ -88,8 +88,9 @@ static inline void CalcOmega(RealType x, RealType y, RealType z, RealType theta,
                              RealType omegas[4], RealType etas[4], int *nsol) {
   *nsol = 0;
   RealType ome;
-  RealType len = sqrt(x * x + y * y + z * z);
-  RealType v = sin(theta * deg2rad) * len;
+  // 'theta' parameter now receives precomputed v =
+  // sin(theta_deg*deg2rad)*|Ghkl|
+  RealType v = theta;
   // printf("%lf %lf\n",len,v);
 
   RealType almostzero = 1e-4;
@@ -185,7 +186,7 @@ void CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3], RealType distance,
                             RealType OmegaRange[][2], RealType BoxSizes[][4],
                             int NOmegaRanges, double hkls[5000][4], int n_hkls,
                             double Thetas[5000], RealType ExcludePoleAngle,
-                            RealType *spots, int *nspots) {
+                            RealType *spots, int *nspots, double *Gs) {
   int i, j, OmegaRangeNo;
   RealType theta;
   int KeepSpot = 0;
@@ -209,8 +210,9 @@ void CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3], RealType distance,
     MatrixMultF(OrientMatrix, Ghkl, Gc);
     // printf("GC %lf %lf %lf\n",Gc[0],Gc[1],Gc[2]);
     // printf("GHKL %lf %lf %lf\n",Ghkl[0],Ghkl[1],Ghkl[2]);
-    theta = Thetas[indexhkl];
-    CalcOmega(Gc[0], Gc[1], Gc[2], theta, omegas, etas, &nspotsPlane);
+    // Pass Gs[indexhkl] instead of theta to CalcOmega. CalcOmega will treat it
+    // as 'v'.
+    CalcOmega(Gc[0], Gc[1], Gc[2], Gs[indexhkl], omegas, etas, &nspotsPlane);
     // printf("GHKL %lf %lf %lf %d\n",Ghkl[0],Ghkl[1],Ghkl[2],nspotsPlane);
     for (i = 0; i < nspotsPlane; i++) {
       RealType Omega = omegas[i];
@@ -252,11 +254,13 @@ int CalcDiffractionSpots(double Distance, double ExcludePoleAngle,
                          int NoOfOmegaRanges, double hkls[5000][4], int n_hkls,
                          double Thetas[5000],
                          double BoxSizes[MAX_N_OMEGA_RANGES][4], int *nTspots,
-                         double OrientMatr[3][3], double *TheorSpots) {
+                         double OrientMatr[3][3], double *TheorSpots,
+                         double *Gs) {
   *nTspots = 0;
   int nTsps;
   CalcDiffrSpots_Furnace(OrientMatr, Distance, OmegaRanges, BoxSizes,
                          NoOfOmegaRanges, hkls, n_hkls, Thetas,
-                         ExcludePoleAngle, TheorSpots, &nTsps);
+                         ExcludePoleAngle, TheorSpots, &nTsps, Gs);
   *nTspots = nTsps;
+  return 0;
 }

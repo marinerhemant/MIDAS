@@ -389,6 +389,13 @@ int main(int argc, char *argv[]) {
     }
     n_hkls = totalHKLs;
   }
+  // Precompute Gs for CalcDiffractionSpots optimization
+  double Gs[n_hkls];
+  for (i = 0; i < n_hkls; i++) {
+    double len = sqrt(hkls[i][0] * hkls[i][0] + hkls[i][1] * hkls[i][1] +
+                      hkls[i][2] * hkls[i][2]);
+    Gs[i] = sin(Thetas[i] * deg2rad) * len;
+  }
   double OMIn[3][3], FracCalc;
   FILE *InpMicF;
   InpMicF = fopen(MicFN, "r");
@@ -423,12 +430,18 @@ int main(int argc, char *argv[]) {
     YG[2] = ys + dy2;
     // We need to make diffraction spots now. Use eulThis to calc OM, then
     // calcDiffrSpots
+    eulThis[0] = eulThis[0] * rad2deg;
+    eulThis[1] = eulThis[1] * rad2deg;
+    eulThis[2] = eulThis[2] * rad2deg;
     Euler2OrientMat(eulThis, OMIn);
-    CalcOverlapAccOrient(nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots,
-                         XG, YG, RotMatTilts, OmegaStart, OmegaStep, px, ybc,
-                         zbc, gs, hkls, n_hkls, Thetas, OmegaRanges,
-                         NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
-                         ObsSpotsInfo, OMIn, &FracCalc, TheorSpots);
+    int **InPixels;
+    InPixels = allocMatrixIntF(NrPixelsGrid, 2);
+    CalcOverlapAccOrient(
+        nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots, XG, YG,
+        RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc, gs, hkls, n_hkls,
+        Thetas, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
+        ObsSpotsInfo, OMIn, &FracCalc, TheorSpots, InPixels, Gs);
+    FreeMemMatrixInt(InPixels, NrPixelsGrid);
     lineNr += 1;
     if (origConf - FracCalc > fracThresh) {
       fprintf(outMicF, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf 0\n",

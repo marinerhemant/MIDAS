@@ -79,6 +79,8 @@ struct my_func_data {
   double BoxSizes[MAX_N_OMEGA_RANGES][4];
   double **P0;
   int *ObsSpotsInfo;
+  int **InPixels;
+  double Gs[5000];
 };
 
 static double problem_function(unsigned n, const double *x, double *grad,
@@ -128,9 +130,9 @@ static double problem_function(unsigned n, const double *x, double *grad,
     }
   }
   double OrientMatIn[3][3], FracOverlap, EulIn[3];
-  EulIn[0] = x[0];
-  EulIn[1] = x[1];
-  EulIn[2] = x[2];
+  EulIn[0] = x[0] * rad2deg;
+  EulIn[1] = x[1] * rad2deg;
+  EulIn[2] = x[2] * rad2deg;
   Euler2OrientMat(EulIn, OrientMatIn);
   double Lsd[nLayers], ybc[nLayers], zbc[nLayers], tx, ty, tz,
       RotMatTilts[3][3];
@@ -152,7 +154,8 @@ static double problem_function(unsigned n, const double *x, double *grad,
                        XGrain, YGrain, RotMatTilts, OmegaStart, OmegaStep, px,
                        ybc, zbc, gs, hkls, n_hkls, Thetas, OmegaRanges,
                        NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
-                       ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots);
+                       ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots,
+                       f_data->InPixels, f_data->Gs);
   free(TheorSpots);
   return (1 - FracOverlap);
 }
@@ -224,6 +227,13 @@ void FitOrientation(
     f_data.hkls[i][3] = hkls[i][3];
     f_data.Thetas[i] = Thetas[i];
   }
+  // Precompute Gs
+  for (i = 0; i < n_hkls; i++) {
+    double len = sqrt(f_data.hkls[i][0] * f_data.hkls[i][0] +
+                      f_data.hkls[i][1] * f_data.hkls[i][1] +
+                      f_data.hkls[i][2] * f_data.hkls[i][2]);
+    f_data.Gs[i] = sin(f_data.Thetas[i] * M_PI / 180.0) * len;
+  }
   f_data.ExcludePoleAngle = ExcludePoleAngle;
   f_data.SizeObsSpots = SizeObsSpots;
   f_data.P0 = allocMatrixF(nLayers, 3);
@@ -248,7 +258,9 @@ void FitOrientation(
   f_data.px = px;
   f_data.gs = gs;
   f_data.NoOfOmegaRanges = NoOfOmegaRanges;
+  f_data.NoOfOmegaRanges = NoOfOmegaRanges;
   f_data.NrPixelsGrid = NrPixelsGrid;
+  f_data.InPixels = allocMatrixIntF(NrPixelsGrid, 2);
   struct my_func_data *f_datat;
   f_datat = &f_data;
   void *trp = (struct my_func_data *)f_datat;
@@ -261,6 +273,8 @@ void FitOrientation(
   double minf = 1;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
+  free(f_data.P0);
+  FreeMemMatrixInt(f_data.InPixels, NrPixelsGrid);
   *ResultFracOverlap = minf;
   *EulerOutA = x[0];
   *EulerOutB = x[1];
@@ -499,71 +513,6 @@ int main(int argc, char *argv[]) {
   }
   nOmeRang = NoOfOmegaRanges;
   fclose(fileParam);
-
-  // Print all parameters read from parameter file
-  printf("\n");
-  printf("================================================================\n");
-  printf("       FitOrientationParameters: Parsed Parameters Summary\n");
-  printf("================================================================\n");
-  printf("\n--- File Paths ---\n");
-  printf("  DataDirectory:      %s\n", direct);
-  printf("  ReducedFileName:    %s\n", fn2);
-  printf("\n--- Geometry ---\n");
-  printf("  nDistances (nLayers): %d\n", nLayers);
-  printf("  SpaceGroup:           %d\n", SpaceGroup);
-  printf("  Wavelength:           %f\n", Wavelength);
-  printf("  Wedge:                %f\n", Wedge);
-  printf("  px (pixel size):      %f\n", px);
-  printf("  MaxRingRad:           %f\n", MaxRingRad);
-  printf("\n--- Detector Distances (Lsd) ---\n");
-  for (i = 0; i < nLayers; i++) {
-    printf("  Lsd[%d]:               %f\n", i, Lsd[i]);
-  }
-  printf("\n--- Beam Centers (BC) ---\n");
-  for (i = 0; i < nLayers; i++) {
-    printf("  BC[%d]:                %f  %f\n", i, ybc[i], zbc[i]);
-  }
-  printf("\n--- Tilts ---\n");
-  printf("  tx:                   %f\n", tx);
-  printf("  ty:                   %f\n", ty);
-  printf("  tz:                   %f\n", tz);
-  printf("\n--- Scan Parameters ---\n");
-  printf("  OmegaStart:           %f\n", OmegaStart);
-  printf("  OmegaStep:            %f\n", OmegaStep);
-  printf("  StartNr:              %d\n", StartNr);
-  printf("  EndNr:                %d\n", EndNr);
-  printf("\n--- Lattice Parameters ---\n");
-  printf("  a=%f  b=%f  c=%f\n", LatticeConstant[0], LatticeConstant[1],
-         LatticeConstant[2]);
-  printf("  alpha=%f  beta=%f  gamma=%f\n", LatticeConstant[3],
-         LatticeConstant[4], LatticeConstant[5]);
-  printf("\n--- Fitting Tolerances ---\n");
-  printf("  OrientTol:            %f\n", tol);
-  printf("  LsdTol:               %f\n", lsdtol);
-  printf("  LsdRelativeTol:       %f\n", lsdtolrel);
-  printf("  TiltsTol:             %f\n", tiltstol);
-  printf("  BCTol:                %f  %f\n", bctola, bctolb);
-  printf("  MinFracAccept:        %f\n", minFracOverlap);
-  printf("  ExcludePoleAngle:     %f\n", ExcludePoleAngle);
-  printf("\n--- Omega Ranges (%d) ---\n", NoOfOmegaRanges);
-  for (i = 0; i < NoOfOmegaRanges; i++) {
-    printf("  OmegaRange[%d]:       %f  %f\n", i, OmegaRanges[i][0],
-           OmegaRanges[i][1]);
-  }
-  printf("\n--- Box Sizes ---\n");
-  for (i = 0; i < countr; i++) {
-    printf("  BoxSize[%d]:          %f  %f  %f  %f\n", i, BoxSizes[i][0],
-           BoxSizes[i][1], BoxSizes[i][2], BoxSizes[i][3]);
-  }
-  printf("\n--- Rings To Use (%d) ---\n", nRingsToUse);
-  for (i = 0; i < nRingsToUse; i++) {
-    printf("  Ring: %d\n", RingsToUse[i]);
-  }
-  printf("\n--- Flags ---\n");
-  printf("  Ice9Input:            %s\n", Flag ? "YES" : "NO");
-  printf(
-      "================================================================\n\n");
-
   MaxTtheta = rad2deg * atan(MaxRingRad / Lsd[0]);
   int x = 0;
   // Read bin files
@@ -733,10 +682,13 @@ int main(int argc, char *argv[]) {
     }
     Convert9To3x3(OrientationMatThis, OrientMatIn);
     fflush(stdout);
+    int **InPixels;
+    InPixels = allocMatrixIntF(NrPixelsGrid, 2);
     CalcFracOverlap(nrFiles, nLayers, NrSpotsThis, ThrSps, OmegaStart,
                     OmegaStep, XG, YG, Lsd, SizeObsSpots, RotMatTilts, px, ybc,
                     zbc, gs, P0, NrPixelsGrid, ObsSpotsInfo, OrientMatIn,
-                    &FracOverT);
+                    &FracOverT, InPixels);
+    FreeMemMatrixInt(InPixels, NrPixelsGrid);
     if (FracOverT >= minFracOverlap) {
       for (j = 0; j < 9; j++) {
         OrientMatrix[OrientationGoodID][j] = OrientationMatThis[j];
@@ -817,9 +769,9 @@ int main(int argc, char *argv[]) {
                EulerOutA, EulerOutB, EulerOutC, 1 - FracOut, OrientMatrix[i][9],
                TiltsFit[0], TiltsFit[1], TiltsFit[2]);
         printf("Orientation Matrix:\n");
-        EulBest[0] = EulerOutA;
-        EulBest[1] = EulerOutB;
-        EulBest[2] = EulerOutC;
+        EulBest[0] = EulerOutA * rad2deg;
+        EulBest[1] = EulerOutB * rad2deg;
+        EulBest[2] = EulerOutC * rad2deg;
         Euler2OrientMat(EulBest, OMBest);
         for (j = 0; j < 3; j++) {
           for (m = 0; m < 3; m++) {
