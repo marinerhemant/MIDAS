@@ -366,27 +366,22 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
     for f in SHM_FILES:
         shutil.copy2(f, f'/dev/shm/{f}')
     
-    if args.refineParameters == 0:
-        logger.info("Fitting orientations.")
-        try:
-            fit_futures = [fit(args.paramFN, i, args.nNodes, args.nCPUs, logDir, resultFolder, bin_dir) for i in range(args.nNodes)]
-            [f.result() for f in tqdm(fit_futures, desc="Fitting Orientations")]
-        except Exception as e:
-            logger.error("A failure occurred during the orientation fitting stage. Aborting workflow.")
-            logger.error(f"Details: {e}", exc_info=True)
-            sys.exit(1)
-        
-        logger.info("Parsing mic file.")
-        run_command(
-            cmd=os.path.join(bin_dir, "ParseMic") + f" {args.paramFN}",
-            working_dir=resultFolder,
-            out_file=f'{logDir}/parse_out.csv',
-            err_file=f'{logDir}/parse_err.csv'
-        )
-    elif args.refineParameters == 1:
-        # Refinement logic (omitted for brevity as multi-resolution typically assumes fitting mode)
-        logger.warning("Refinement logic requested but not primary path for multi-resolution script.")
-        pass # Implement/Copy full logic if needed, assuming user wants mainly fitting here.
+    logger.info("Fitting orientations.")
+    try:
+        fit_futures = [fit(args.paramFN, i, args.nNodes, args.nCPUs, logDir, resultFolder, bin_dir) for i in range(args.nNodes)]
+        [f.result() for f in tqdm(fit_futures, desc="Fitting Orientations")]
+    except Exception as e:
+        logger.error("A failure occurred during the orientation fitting stage. Aborting workflow.")
+        logger.error(f"Details: {e}", exc_info=True)
+        sys.exit(1)
+    
+    logger.info("Parsing mic file.")
+    run_command(
+        cmd=os.path.join(bin_dir, "ParseMic") + f" {args.paramFN}",
+        working_dir=resultFolder,
+        out_file=f'{logDir}/parse_out.csv',
+        err_file=f'{logDir}/parse_err.csv'
+    )
     
     logger.info(f"Fitting stage finished. Time taken: {time.time() - t0:.2f} seconds.")
 
@@ -707,16 +702,25 @@ def main():
     signal.signal(signal.SIGINT, handler)
     
     parser = MyParser(
-        description='Near-field HEDM analysis using MIDAS (Multi-Resolution). V7.0.0, contact hsharma@anl.gov',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        description=(
+            'Near-field HEDM analysis using MIDAS (Multi-Resolution). V7.0.0, contact hsharma@anl.gov\n\n'
+            'Additional parameter file keys for multi-resolution mode:\n'
+            '  GridRefactor <ScalingFactor> <NumLoops>  # e.g. GridRefactor 2.0 3\n'
+            '      - ScalingFactor: Factor by which GridSize is divided in each loop.\n'
+            '      - NumLoops: Number of refinement iterations to perform.\n'
+            '  SeedOrientationsAll <path>               # Full seed orientations file (backed up internally)\n'
+            '  MinConfidence <value>                    # Confidence threshold for filtering bad solutions (default: 0.5)\n'
+            '  GridSize <value>                         # Initial grid size (refined by ScalingFactor each loop)\n'
+            '  MicFileText <basename>                   # Base name for mic output (suffixed with .0, .1, ... per loop)\n'
+            '  SeedOrientations <path>                  # Seed orientations file (unique copy created per loop)\n'
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('-paramFN', type=str, required=True, help='Parameter file name.')
     parser.add_argument('-nCPUs', type=int, default=10, help='Number of CPU cores to use if running locally.')
     parser.add_argument('-machineName', type=str, default='local', help='Machine name for execution.')
     parser.add_argument('-nNodes', type=int, default=1, help='Number of nodes for execution.')
     parser.add_argument('-ffSeedOrientations', type=int, default=0, help='Use seed orientations from far-field results (1=yes, 0=no).')
     parser.add_argument('-doImageProcessing', type=int, default=1, help='Perform image processing (1=yes, 0=no).')
-    parser.add_argument('-refineParameters', type=int, default=0, help='Refine setup parameters (1=yes, 0=no).')
-    parser.add_argument('-multiGridPoints', type=int, default=0, help='If refining parameters, use multiple grid points (1=yes, 0=no).')
     args = parser.parse_args()
 
     # --- 2. Configuration from Parsed Arguments and Files ---
