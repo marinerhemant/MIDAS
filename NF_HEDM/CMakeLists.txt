@@ -56,8 +56,8 @@ add_nf_hedm_executable(GetHKLListNF SOURCES ${NF_SRCDIR}/GetHKLList.c ${NF_SG_LI
 add_nf_hedm_executable(ParseMic SOURCES ${NF_SRCDIR}/ParseMic.c)
 add_nf_hedm_executable(FitOrientationSinglePoint SOURCES ${NF_SRCDIR}/FitOrientationSinglePoint.c ${NF_SHARED_FIT_SOURCES} LINK_LIBRARIES_EXTRA NLOPT::NLOPT)
 add_nf_hedm_executable(ParseDeconvOutput SOURCES ${NF_SRCDIR}/ParseDeconvOutput.c LINK_LIBRARIES_EXTRA TIFF::TIFF)
-add_nf_hedm_executable(compareNF SOURCES ${NF_SRCDIR}/compareNF.c ${NF_SRCDIR}/CalcDiffractionSpots.c ${NF_SRCDIR}/SharedFuncsFit.c LINK_LIBRARIES_EXTRA NLOPT::NLOPT)
-add_nf_hedm_executable(simulateNF SOURCES ${NF_SRCDIR}/simulateNF.c ${NF_SRCDIR}/CalcDiffractionSpots.c ${NF_SRCDIR}/SharedFuncsFit.c)
+add_nf_hedm_executable(compareNF SOURCES ${NF_SRCDIR}/compareNF.c ${NF_SRCDIR}/CalcDiffractionSpots.c ${NF_SRCDIR}/SharedFuncsFit.c ${NF_SRCDIR}/GetMisorientation.c LINK_LIBRARIES_EXTRA NLOPT::NLOPT)
+add_nf_hedm_executable(simulateNF SOURCES ${NF_SRCDIR}/simulateNF.c ${NF_SRCDIR}/CalcDiffractionSpots.c ${NF_SRCDIR}/SharedFuncsFit.c ${NF_SRCDIR}/GetMisorientation.c)
 
 # --- OpenMP Executables ---
 # Note: The helper function doesn't handle OpenMP explicitly, OpenMP::OpenMP_C should be in COMMON_LINK_LIBRARIES or added if specific
