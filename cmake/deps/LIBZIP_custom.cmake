@@ -1,6 +1,6 @@
     FetchContent_Declare(
     libzip
-    URL https://www.dropbox.com/scl/fi/2mo9gzxi8ms3pp10pu6ad/libzip-1.10.1.tar.gz?rlkey=w7ph5tzczb2tfjatul31bs6x4&dl=1
+    URL https://libzip.org/download/libzip-1.10.1.tar.gz
     )
 
     FetchContent_GetProperties(libzip)
