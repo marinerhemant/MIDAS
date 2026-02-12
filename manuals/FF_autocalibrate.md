@@ -133,3 +133,16 @@ python /path/to/AutoCalibrateZarr.py \
     -   Strain vs. 2-theta plots for each iteration.
     -   The final converged strain data and results dataframe.
 -   **`calibrant_screen_out.csv`**: The raw text output from the last run of the `CalibrantOMP` binary. Useful for debugging backend issues.
+
+---
+
+## See Also
+
+- [FF_Analysis.md](FF_Analysis.md) — Standard FF-HEDM analysis using calibrated geometry
+- [PF_Analysis.md](PF_Analysis.md) — Scanning/pencil-beam FF-HEDM analysis
+- [FF_dual_datasets.md](FF_dual_datasets.md) — Dual-dataset FF-HEDM analysis
+- [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation for validation
+
+---
+
+If you encounter any issues or have questions, please open an issue on this repository.

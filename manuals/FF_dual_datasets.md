@@ -9,7 +9,7 @@
 
 `ff_dual_datasets.py` is a specialized and powerful script within the MIDAS suite designed for the combined analysis of **two separate but related far-field HEDM datasets**. Its primary purpose is to process two datasets independently through the initial stages, spatially map them into a common reference frame, and then perform a single, unified indexing and refinement on the combined data.
 
-This script is ideal for scenarios such_ as:
+This script is ideal for scenarios such as:
 -   Analyzing a sample **before and after** an in-situ experiment (e.g., heating or mechanical loading).
 -   Combining two **overlapping scans** to create a larger, contiguous map.
 -   Correlating datasets collected under slightly different experimental conditions.
@@ -156,3 +156,16 @@ The script generates two initial analysis directories within the main `-resultFo
 -   **Mapping Fails (`MapDatasets` error):** The most common issue is incorrect offsets. Double-check the signs and values of your `-offset*` arguments. Small errors in offsets can cause the algorithm to fail to find corresponding volumes. Check `dataset_1_analysis/output/map_err.txt` for details.
 -   **Pre-processing Fails:** If one of the initial stages fails, treat it as a standard `ff_MIDAS.py` failure. Check the `output` directory of the corresponding dataset (e.g., `dataset_2_analysis/output/`) to debug issues with peak finding, data conversion, etc.
 -   **Poor Indexing Results:** If the final indexing yields few grains, it could be a sign of poor alignment during the mapping stage. This can happen if the offsets are not precise enough, leading to a "blurry" or inconsistent combined dataset.
+
+---
+
+## See Also
+
+- [FF_Analysis.md](FF_Analysis.md) — Standard single-dataset FF-HEDM analysis
+- [FF_autocalibrate.md](FF_autocalibrate.md) — Geometry calibration
+- [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results
+- [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation for validation
+
+---
+
+If you encounter any issues or have questions, please open an issue on this repository.

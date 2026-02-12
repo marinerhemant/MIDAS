@@ -1,4 +1,9 @@
-**MIDAS FF-HEDM Interactive Viewer: User Manual**
+# MIDAS FF-HEDM Interactive Viewer: User Manual
+
+**Version:** 7.0  
+**Contact:** hsharma@anl.gov
+
+---
 
 **1\. Introduction**
 
@@ -173,3 +178,16 @@ These plots display the data after the filters from the middle section have been
 - **Inspect Raw Data:** In the **"Filtered Spots 2D"** plot, find a spot of interest (perhaps one with very high strain) and click on it.
 - **Verify the Spot:** The **"Image Data"** plot will now show the 3D volume of the raw detector intensity around that spot. This helps confirm that it is a genuine, strong diffraction peak.
 - **Repeat:** Select a new grain or adjust the filters to continue your exploration.
+
+---
+
+## See Also
+
+- [FF_Analysis.md](FF_Analysis.md) — Standard FF-HEDM analysis (produces Grains.csv and SpotMatrix.csv)
+- [PF_Analysis.md](PF_Analysis.md) — Scanning/pencil-beam FF-HEDM analysis
+- [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation for validation
+- [FF_autocalibrate.md](FF_autocalibrate.md) — Geometry calibration
+
+---
+
+If you encounter any issues or have questions, please open an issue on this repository.

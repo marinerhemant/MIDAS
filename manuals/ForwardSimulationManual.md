@@ -1,5 +1,10 @@
 # User Manual: `ForwardSimulationCompressed`
 
+**Version:** 7.0  
+**Contact:** hsharma@anl.gov
+
+---
+
 ## 1. Program Overview
 
 `ForwardSimulationCompressed` is a high-performance command-line tool for simulating far-field High Energy Diffraction Microscopy (FF-HEDM) experiments. It takes a description of a crystalline sample (grain orientations, positions, and strains) and experimental geometry as input, and produces simulated detector images as output.
@@ -164,5 +169,13 @@ The primary output of the simulation is one or more ZIP files, one for each scan
 *   **Data Type:** The image data is stored as 16-bit unsigned integers (`uint16`), normalized so that the brightest pixel in the entire scan corresponds to an intensity of `15000`.
 
 To read this data, you can use Python libraries such as `zarr`.
+
+---
+
+## See Also
+
+- [FF_Analysis.md](FF_Analysis.md) — Standard FF-HEDM analysis (produces Grains.csv used as input here)
+- [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results and simulated data
+- [FF_autocalibrate.md](FF_autocalibrate.md) — Geometry calibration from calibrant rings
 
 ---
