@@ -952,9 +952,85 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
 
   if (nPeaks > 1) {
     // -----------------------------------------------------------
-    // Joint fit with SBPLX: internally decomposes the high-dimensional
-    // space into lower-dimensional subspaces, making it efficient for
-    // multi-peak fitting while properly handling overlapping peaks.
+    // Stage 1: Fit each peak INDIVIDUALLY with Nelder-Mead using
+    // RESIDUAL SUBTRACTION. Before fitting peak p, subtract the
+    // model contributions of all OTHER peaks from the raw data so
+    // that peak p only fits its own intensity.
+    // -----------------------------------------------------------
+    double x1[9], xl1[9], xu1[9];
+    double z_residual[nrPixelsThisRegion];
+    FunctionData f_data_single = f_data;
+    f_data_single.nPeaks = 1;
+    f_data_single.z = z_residual; // Fit against residual, not raw data
+
+    for (unsigned p = 0; p < nPeaks; p++) {
+      // Compute residual: z - contributions of all peaks except p
+      for (int i = 0; i < nrPixelsThisRegion; i++) {
+        double otherContrib = 0.0;
+        for (unsigned j = 0; j < nPeaks; j++) {
+          if (j == p)
+            continue;
+          double imax_j = x[(8 * j) + 1];
+          double r_j = x[(8 * j) + 2];
+          double eta_j = x[(8 * j) + 3];
+          double mu_j = x[(8 * j) + 4];
+          double sgr_j = x[(8 * j) + 5];
+          double slr_j = x[(8 * j) + 6];
+          double sge_j = x[(8 * j) + 7];
+          double sle_j = x[(8 * j) + 8];
+
+          double DR = Rs[i] - r_j;
+          double R2 = DR * DR;
+          double DE = Etas[i] - eta_j;
+          double E2 = DE * DE;
+
+          double invSLR2 = 1.0 / (slr_j * slr_j);
+          double invSLE2 = 1.0 / (sle_j * sle_j);
+          double L = 1.0 / ((R2 * invSLR2 + 1.0) * (E2 * invSLE2 + 1.0));
+
+          double invSGR2 = 1.0 / (sgr_j * sgr_j);
+          double invSGE2 = 1.0 / (sge_j * sge_j);
+          double G = exp(-0.5 * (R2 * invSGR2 + E2 * invSGE2));
+
+          otherContrib += imax_j * ((mu_j * L) + ((1 - mu_j) * G));
+        }
+        z_residual[i] = z[i] - otherContrib;
+      }
+
+      // bg
+      x1[0] = x[0];
+      xl1[0] = xl[0];
+      xu1[0] = xu[0];
+      // Copy this peak's 8 params & bounds
+      for (int j = 1; j <= 8; j++) {
+        x1[j] = x[8 * p + j];
+        xl1[j] = xl[8 * p + j];
+        xu1[j] = xu[8 * p + j];
+      }
+
+      nlopt_opt opt1 = nlopt_create(NLOPT_LN_NELDERMEAD, 9);
+      if (!opt1)
+        continue;
+
+      nlopt_set_lower_bounds(opt1, xl1);
+      nlopt_set_upper_bounds(opt1, xu1);
+      nlopt_set_maxtime(opt1, 2.0);
+      nlopt_set_min_objective(opt1, peakFittingObjectiveFunction,
+                              &f_data_single);
+
+      double minf1;
+      nlopt_optimize(opt1, x1, &minf1);
+      nlopt_destroy(opt1);
+
+      // Write back fitted peak params (NOT background — keep shared bg
+      // consistent across the decomposition)
+      for (int j = 1; j <= 8; j++) {
+        x[8 * p + j] = x1[j];
+      }
+    }
+
+    // -----------------------------------------------------------
+    // Stage 2: Joint refinement with SBPLX using corrected initials
     // -----------------------------------------------------------
     nlopt_opt opt = nlopt_create(NLOPT_LN_SBPLX, n);
     if (!opt)
