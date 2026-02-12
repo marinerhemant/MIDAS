@@ -846,9 +846,9 @@ int main(int argc, char *argv[]) {
       }
     }
     FreeMemMatrixInt(InPixels, NrPixelsGrid);
-    printf("Finished checking orientation grid for point %d. Now fitting %d"
-           " orientations.\n",
-           rown, OrientationGoodID);
+    // printf("Finished checking orientation grid for point %d. Now fitting %d"
+    //        " orientations.\n",
+    //        rown, OrientationGoodID);
     fflush(stdout);
     double tFitStart = omp_get_wtime();
     int totalNloptEvals = 0;
@@ -894,13 +894,13 @@ int main(int argc, char *argv[]) {
                        &EulerOutC, &FracOut, hkls, Thetas, n_hkls, Gs,
                        &fitNevals, &fitRetcode);
         totalNloptEvals += fitNevals;
-        if (i > 0 && i % 100 == 0) {
-          printf("  Point %d: fitted %d/%d orientations, elapsed %.1fs, "
-                 "last nlopt evals=%d ret=%d\n",
-                 rown, i, OrientationGoodID, omp_get_wtime() - tFitStart,
-                 fitNevals, fitRetcode);
-          fflush(stdout);
-        }
+        // if (i > 0 && i % 100 == 0) {
+        //   printf("  Point %d: fitted %d/%d orientations, elapsed %.1fs, "
+        //          "last nlopt evals=%d ret=%d\n",
+        //          rown, i, OrientationGoodID, omp_get_wtime() - tFitStart,
+        //          fitNevals, fitRetcode);
+        //   fflush(stdout);
+        // }
         Fractions = 1 - FracOut;
         if (Fractions >= BestFrac) {
           bestRowNr = OrientMatrix[i * 10 + 9]; // Save best RowNr
