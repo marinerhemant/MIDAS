@@ -343,7 +343,7 @@ void FitOrientation(
     }
 
     opt = nlopt_create(NLOPT_GN_CRS2_LM, n);
-    nlopt_set_population(opt, 500 * (n + 2));
+    nlopt_set_population(opt, 50 * (n + 2));
     nlopt_set_min_objective(opt, problem_function, trp);
     nlopt_set_stopval(opt, 1e-7);
     nlopt_set_ftol_rel(opt, 0.001);
