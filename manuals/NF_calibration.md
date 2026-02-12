@@ -12,7 +12,9 @@ This manual is divided into two primary sections, mirroring the calibration work
 
 ## Getting Started: Loading Data
 
-**THIS IS ASSUMING 5MM AS THE FIRST DETECTOR DISTANCE**
+> [!IMPORTANT]
+> This procedure assumes 5mm as the first detector distance.
+
 
 1.  **Launch the Application:**
     *   Open the GUI by executing the following command in your terminal:
@@ -36,7 +38,9 @@ This manual is divided into two primary sections, mirroring the calibration work
 In this part, we will find the average horizontal and vertical center of the beam for each detector position (e.g., 5mm, 7mm, 9mm). The detector image will show the beam as one or two white horizontal lines.
 
 *   If a **`DetZBeamPosScan`** was used, you will see a **single horizontal diffraction line**.
-*   **IT IS RECOMMENDED TO USE THE DetZBeamPosScan at 0 and 90 degrees to compute the rotation axis position!!**
+
+> [!TIP]
+> It is recommended to use the `DetZBeamPosScan` at 0 and 90 degrees to compute the rotation axis position.
 *   If using standard **Au scan data**, you may see **two horizontal lines**. For this calibration, **use the lower of the two lines.**
 
 We will determine the center of the left and right edges of this line and average the results.
@@ -67,7 +71,9 @@ We will determine the center of the left and right edges of this line and averag
 1.  **Average Horizontal Center:** (Left Edge Horizontal Value + Right Edge Horizontal Value) / 2
 2.  **Average Vertical Center:** (Left Edge Vertical Value + Right Edge Vertical Value) / 2
 3.  **Record these two final average values.** They are the beam center for the 5mm detector distance.
-4.  **IF USING AU_SCANS**, use the `BoxOutHor` button to plot the intensity along the x-ray beam to determine an intensity **dip** across the Au-sample. Compute the middle of this dip and use that as the **Average Horizontal Center**.
+
+> [!NOTE]
+> **If using AU scans**, use the `BoxOutHor` button to plot the intensity along the x-ray beam to determine an intensity **dip** across the Au-sample. Compute the middle of this dip and use that as the **Average Horizontal Center**.
 
 #### **Step 4: Repeat for Other Detector Distances (7mm and 9mm)**
 
@@ -86,11 +92,13 @@ Now we will use the gold calibration scan data and the beam center values from P
 
 #### **Step 5: Load the Gold Calibration Data**
 
+
 1.  Click **`FirstFile`**.
 2.  Select the **first gold calibration scan file**. The folder is typically "Au_NF", and you should choose the first image number for the 5mm detector distance.
 3.  Ensure **`DistanceNr`** is set to `0` and click **`Load`**.
 
 #### **Step 6: Enter All Calculated Center Values**
+
 
 1.  Click the **`BeamCenter`** button. A new window titled "Enter beam center values (pixels)" will open.
 2.  **Left Column:** Enter the three **horizontal center values of the Au sample** you just calculated in part I (one for each distance).
@@ -98,7 +106,7 @@ Now we will use the gold calibration scan data and the beam center values from P
 4.  **Difference in distances:** Enter the approximate distance between your detectors in microns (e.g., `2000` for 2mm).
 5.  Click **"Press this once done"**.
 
-#### **Step 8: Select Diffraction Spots**
+#### **Step 7: Select Diffraction Spots**
 
 1.  Click the **`Select Spots`** button. A help window will appear. Read the instructions and click **`Ready!`**.
 2.  Make sure you are viewing the last detector distance (`DistanceNr` = `2`, e.g., 9mm).
@@ -107,7 +115,7 @@ Now we will use the gold calibration scan data and the beam center values from P
 5.  Click on the pixel with the maximum intensity in the diffraction spot.
 6.  Click the **`Confirm Selection`** button that appears.
 
-#### **Step 9: Select the Same Spot on Other Detectors**
+#### **Step 8: Select the Same Spot on Other Detectors**
 
 1.  A dialog box will pop up. Enter `1` as the new distance and click **`Load`**. The GUI will now show the middle detector distance.
 2.  The diffraction spot will have moved. Use the zoom tool (magnifying glass in the toolbar) if needed to find the same spot.
@@ -116,7 +124,7 @@ Now we will use the gold calibration scan data and the beam center values from P
 5.  Find and click the same spot on this first detector. Click **`Confirm Selection`**.
 6.  In the final pop-up, click **`Finished`**.
 
-#### **Step 10: Compute Final Distances**
+#### **Step 9: Compute Final Distances**
 
 1.  A **`Compute Distances`** button will now be active. Click it.
 2.  A final pop-up box will appear, listing the three precisely calculated detector distances and three calculated Y-positions.

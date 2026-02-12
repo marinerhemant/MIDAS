@@ -1,165 +1,332 @@
-# nf_MIDAS.py User Manual (Updated Version)
+# nf_MIDAS.py User Manual
 
+**Version:** 7.0  
 **Contact:** hsharma@anl.gov
+
+> [!NOTE]
+> For **multi-resolution** NF-HEDM (iterative coarse-to-fine reconstruction), see the companion manual [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md).
 
 ---
 
 ## 1. Introduction
 
-This Python script is the primary, high-performance driver for conducting Near-Field High-Energy Diffraction Microscopy (NF-HEDM) analysis using the MIDAS software suite. It orchestrates a series of computationally intensive binaries to reconstruct a 3D microstructure map from a series of 2D diffraction patterns taken at multiple sample-to-detector distances.
+`nf_MIDAS.py` is the primary driver for Near-Field High-Energy Diffraction Microscopy (NF-HEDM) analysis using the MIDAS software suite. It orchestrates a pipeline of high-performance C binaries to reconstruct a 3D microstructure voxel map from multi-distance detector images.
 
-This updated version has been significantly refactored for improved robustness, usability, and error handling. It retains the core high-performance features—parallel execution with Parsl and use of shared memory (`/dev/shm`)—while adding features like automatic retry logic, dynamic path detection, and a more resilient cleanup process.
+The script supports two modes:
 
-The script supports two primary modes of operation:
-1.  **Microstructure Reconstruction:** The main mode, which solves for the crystal orientation at every point in a 3D grid.
-2.  **Parameter Refinement:** An advanced mode used to refine the experimental geometry parameters (e.g., detector distance, tilts) by fitting the data from one or more known grain locations.
+1. **Microstructure Reconstruction** (`-refineParameters 0`) — the default. Solves for the crystal orientation at every point in a hexagonal grid.
+2. **Parameter Refinement** (`-refineParameters 1`) — an advanced mode for refining experimental geometry (detector distance, tilts, beam center) using known grain locations.
 
-### Key Features
-*   **End-to-End NF-HEDM Workflow:** Automates all steps from raw image processing to the final reconstructed microstructure.
-*   **Dynamic Path Detection:** Automatically locates the MIDAS installation directory, eliminating the need for hardcoded paths.
-*   **Robust and Resilient:**
-    *   Features automatic retries with exponential backoff for parallel tasks, handling transient cluster issues.
-    *   Includes a robust cleanup mechanism that runs even if the script fails mid-workflow.
-    *   Provides clearer, more detailed error messages.
-*   **Performance Optimized:** Uses Parsl for parallel execution and shared memory for high-throughput data access during fitting.
-*   **Far-Field Seeding:** Can use a `Grains.csv` file from an FF-HEDM analysis to create a list of seed orientations, drastically improving efficiency.
-*   **Advanced Refinement Modes:** Supports both interactive single-point and file-based multi-point parameter refinement.
+### Key Capabilities
+
+- End-to-end workflow: preprocessing → image processing → fitting → mic output
+- Parallel execution via Parsl (cluster) or multiprocessing (local)
+- Shared-memory I/O (`/dev/shm`) for high-throughput fitting
+- Automatic retry with exponential backoff for Parsl tasks
+- Far-field seeding from `Grains.csv`
+- Interactive or file-based parameter refinement
+- Robust cleanup of shared memory and Parsl resources on exit
 
 ---
 
-## 2. Prerequisites & Configuration
+## 2. Prerequisites
 
-1.  **MIDAS Installation:** The script and its associated binaries must be part of a standard MIDAS installation. The script will automatically find the installation directory.
-2.  **Python Environment:** A Python environment with `parsl` and `numpy` installed.
-3.  **Shared Memory (`/dev/shm`):** The compute nodes must have a sufficiently large and writable shared memory partition. The script now performs a more specific check for conflicting files created by this exact workflow.
-4.  **Input Files:**
-    *   A **Parameter File** (`-paramFN`) that defines the entire experiment.
-    *   **Raw Data Files:** The script expects raw data to be in TIFF format, located in the `DataDirectory` specified in the parameter file.
-    *   **Far-Field Results (Optional):** If using the FF-seeding workflow (`-ffSeedOrientations 1`), a `Grains.csv` file from a prior FF-HEDM analysis is required.
-
----
-
-## 3. Workflow Overview
-
-The script's execution is modularized into several distinct stages. The exact path depends on the `-refineParameters` flag.
-
-### Stage 1: Pre-processing (Simulation)
-This stage prepares all the simulated data (templates) needed for the analysis.
-1.  **HKL Generation:** Calls `GetHKLListNF` to calculate the theoretical Bragg reflections.
-2.  **Seed Orientations:** If `-ffSeedOrientations 1`, it calls `GenSeedOrientationsFF2NFHEDM` to convert orientations from an FF `Grains.csv` file into a list of seeds. The script now automatically updates the parameter file with the number of orientations.
-3.  **Reconstruction Grid:** Calls `MakeHexGrid` to create the 3D grid of points (voxels) for the analysis.
-4.  **Grid Filtering (Optional):** If a tomogram or `GridMask` is provided in the parameter file, the reconstruction grid is filtered to reduce the number of points, saving significant computation time.
-5.  **Simulated Spots:** Calls `MakeDiffrSpots` to generate a complete library of simulated diffraction spots for every seed orientation at every point on the grid.
-
-### Stage 2: Experimental Image Processing
-This stage, controlled by `-doImageProcessing`, prepares the experimental data.
-1.  **Median Calculation:** Calls `MedianImageLibTiff` in parallel for each detector distance to create a median-filtered image for background subtraction. This step now uses `multiprocessing.Pool` for `local` execution for better performance.
-2.  **Image Processing:** Calls `ImageProcessingLibTiffOMP` in parallel to perform background subtraction and other corrections on the raw TIFF images.
-
-### Stage 3: Fitting and Post-processing
-This is the core reconstruction phase.
-1.  **Memory Mapping:** Calls `MMapImageInfo` to prepare the data and then copies the critical binary files (`DiffractionSpots.bin`, `SpotsInfo.bin`, etc.) to shared memory (`/dev/shm`).
-2.  **Analysis Path Selection:** The workflow diverges based on the `-refineParameters` flag.
-
-    #### Workflow A: Microstructure Reconstruction (`-refineParameters 0`)
-    1.  **Orientation Fitting:** Calls `FitOrientationOMP` in parallel across all nodes. This binary iterates through every point in the grid, comparing experimental data to the simulated templates in shared memory to find the best-fitting orientation.
-    2.  **Result Parsing:** Calls `ParseMic` to consolidate the results into a single `Grains.mic` file.
-
-    #### Workflow B: Parameter Refinement (`-refineParameters 1`)
-    This mode uses known grain locations to optimize the experimental geometry.
-    1.  **Select Grid Points:**
-        *   If `-multiGridPoints 0`, the script will **prompt you to enter the (x,y) coordinates** of a single, known grain. It finds the closest grid point to use for refinement.
-        *   If `-multiGridPoints 1`, it uses a list of pre-defined points from the parameter file.
-    2.  **Parameter Fitting:** It calls `FitOrientationParameters` or `FitOrientationParametersMultiPoint`. These binaries perform a least-squares optimization to find the geometric parameters that best explain the data at the specified location(s). The output is a refined parameter set printed to a log file.
-
-### Final Stage: Cleanup
-A `finally` block in the main function ensures that shared memory files are removed and Parsl is shut down cleanly, even if an error occurs during the workflow.
+| Requirement | Details |
+|---|---|
+| **MIDAS Installation** | Script auto-detects install dir from its own location |
+| **Python Packages** | `parsl`, `numpy`, `tqdm` |
+| **Shared Memory** | `/dev/shm` must be writable and large enough for `SpotsInfo.bin`, `DiffractionSpots.bin`, `Key.bin`, `OrientMat.bin` |
+| **Input Data** | Raw TIFF diffraction images in `DataDirectory` |
+| **Parameter File** | Text file defining the experiment (see [Section 4](#4-parameter-file-reference)) |
+| **Seed Orientations** | A `SeedOrientations` file listing candidate crystal orientations |
+| **Far-Field Results** *(optional)* | `Grains.csv` from FF-HEDM if using `-ffSeedOrientations 1` |
 
 ---
 
-## 4. Command-Line Arguments
+## 3. Workflow Architecture
 
-| Argument | Description | Default | Example |
-| :--- | :--- | :--- | :--- |
-| `-paramFN` | **(Required)** The main parameter file defining the experiment. | `''` | `-paramFN NF_exp.txt` |
-| `-machineName`| Machine configuration to use. Options are `local`, `orthrosnew`, `orthrosall`, `umich`, `marquette`, `purdue`.| `local` | `-machineName purdue` |
-| `-nNodes` | Number of compute nodes to use for the analysis. | `1` | `-nNodes 10` |
-| `-nCPUs` | Number of CPU cores to use per task on each node. | `10` | `-nCPUs 128` |
-| `-ffSeedOrientations` | `1`: Use orientations from an FF `Grains.csv` file as seeds. `0`: Use the default seed list. | `0` | `-ffSeedOrientations 1` |
-| `-doImageProcessing` | `1`: Run the median and image processing steps. `0`: Skip these steps (if already done). | `1` | `-doImageProcessing 0` |
-| `-refineParameters` | `1`: Run in parameter refinement mode. `0`: Run in standard microstructure reconstruction mode. | `0` | `-refineParameters 1` |
-| `-multiGridPoints`| **Only used if `-refineParameters 1`**. `1`: Use multiple points from the parameter file for refinement. `0`: Prompt for a single (x,y) point. | `0` | `-multiGridPoints 1`|
+### Standard Reconstruction (`-refineParameters 0`)
+
+```mermaid
+graph LR
+    A[Preprocessing] --> B["Image Processing<br/>(skippable)"]
+    B --> C[Memory Mapping]
+    C --> D[FitOrientationOMP]
+    D --> E[ParseMic]
+    E --> F["MicFileText output"]
+```
+
+**Preprocessing:**
+1. `GetHKLListNF` — compute theoretical Bragg reflections → `hkls.csv`
+2. `GenSeedOrientationsFF2NFHEDM` — *(if `-ffSeedOrientations 1`)* convert FF orientations to NF seeds
+3. Auto-update `NrOrientations` in parameter file from seed file line count
+4. `MakeHexGrid` — create hexagonal reconstruction grid → `grid.txt`
+5. Grid filtering — *(optional)* apply `TomoImage` or `GridMask` to reduce computation
+6. `MakeDiffrSpots` — simulate diffraction spots for all seed orientations → `DiffractionSpots.bin`, `Key.txt`, `OrientMat.bin`
+
+**Image Processing** *(skipped if `-doImageProcessing 0`)*:
+1. `MedianImageLibTiff` — per-distance median background image (parallelized via `multiprocessing.Pool` locally or Parsl on clusters)
+2. `ImageProcessingLibTiffOMP` — background subtraction on raw TIFFs → `SpotsInfo.bin`
+
+**Fitting & Postprocessing:**
+1. `MMapImageInfo` — prepare memory-mapped binary data
+2. Copy `.bin` files to `/dev/shm`
+3. `FitOrientationOMP` — parallel orientation fitting across all grid points (with progress bar for single-node runs)
+4. `ParseMic` — consolidate results → `{MicFileText}`
+
+### Parameter Refinement (`-refineParameters 1`)
+
+```mermaid
+graph LR
+    A[Preprocessing] --> B["Image Processing<br/>(skippable)"]
+    B --> C[Memory Mapping]
+    C --> D{multiGridPoints?}
+    D -->|0| E["Prompt for (x,y) →<br/>FitOrientationParameters"]
+    D -->|1| F["FitOrientationParametersMultiPoint"]
+    E --> G["Refined parameters<br/>printed to console"]
+    F --> G
+```
+
+**Single-Point Refinement** (`-multiGridPoints 0`):
+- Script prompts interactively for `(x,y)` coordinates
+- Finds the closest grid point
+- Runs `FitOrientationParameters` on that single point
+- Displays refined geometry to console
+
+**Multi-Point Refinement** (`-multiGridPoints 1`):
+- Uses grid points defined via `GridPoints` in the parameter file
+- Runs `FitOrientationParametersMultiPoint` using `-nCPUs` threads
+- Displays refined geometry to console
 
 ---
 
-## 5. Execution Examples
+## 4. Parameter File Reference
 
-### Example 1: Standard Microstructure Reconstruction
-Submit an NF-HEDM analysis to the `Purdue` cluster using 4 nodes, seeding the reconstruction with a far-field `Grains.csv` file.
+The parameter file is a whitespace-delimited text file. Lines starting with `#` are comments. Each line has the format `Key Value [Value ...]`.
+
+### Core Parameters (Required)
+
+| Key | Values | Description |
+|---|---|---|
+| `DataDirectory` | path | Working directory for all outputs |
+| `ReducedFileName` | string | Base name pattern for input TIFF files |
+| `StartNr` | int | First frame number |
+| `EndNr` | int | Last frame number |
+| `nDistances` | int | Number of detector distances (layers) |
+| `Lsd` | float | Sample-to-detector distance (μm). Repeated `nDistances` times on separate lines |
+| `BC` | float float | Beam center (y, z) in pixels. Repeated `nDistances` times |
+| `px` | float | Pixel size (μm) |
+| `Wavelength` | float | X-ray wavelength (Å) |
+| `SpaceGroup` | int | Space group number (e.g., 225 for FCC) |
+| `LatticeParameter` | 6 floats | a b c α β γ (Å and degrees) |
+| `OmegaStart` | float | Starting rotation angle (degrees) |
+| `OmegaStep` | float | Rotation step size (degrees) |
+| `OmegaRange` | float float | Omega range [start, end]. Can appear multiple times |
+| `BoxSize` | 4 floats | Bounding box per omega range. Must match number of `OmegaRange` lines |
+| `ExcludePoleAngle` | float | Exclude reflections within this angle of the pole (degrees) |
+| `GridSize` | float | Reconstruction voxel size (μm) |
+| `MaxRingRad` | float | Maximum ring radius on detector (pixels) |
+| `OrientTol` | float | Orientation tolerance for fitting (degrees) |
+| `MinFracAccept` | float | Minimum fractional overlap to accept a solution |
+| `MicFileBinary` | string | Binary mic output filename |
+| `MicFileText` | string | Text mic output basename |
+| `SeedOrientations` | path | File of candidate crystal orientations |
+| `tx`, `ty`, `tz` | float | Detector tilt angles (degrees) |
+
+### Optional Parameters
+
+| Key | Values | Description |
+|---|---|---|
+| `RingsToUse` | int | Restrict to specific ring number. Can appear multiple times |
+| `SaveNSolutions` | int | Number of top solutions to save per grid point (default: `1`) |
+| `Wedge` | float | Wedge angle (degrees, default: `0`) |
+| `Ice9Input` | *(no value)* | Flag to enable Ice9 mode |
+| `NearestMisorientation` | int | Enable nearest-neighbor misorientation filtering |
+| `TomoImage` | path | Tomography image for grid masking |
+| `TomoPixelSize` | float | Pixel size of the tomography image |
+| `GridMask` | 4 floats | `Xmin Xmax Ymin Ymax` — rectangular mask applied to the hex grid |
+| `GrainsFile` | path | Path to `Grains.csv` for FF seeding |
+| `GridFileName` | string | Custom grid filename (default: `grid.txt`) |
+| `GridPoints` | 12 floats | Custom grid point specification (for multi-point refinement) |
+| `BCTol` | 2 floats | Beam center tolerance for refinement |
+
+---
+
+## 5. Command-Line Arguments
 
 ```bash
 python nf_MIDAS.py \
-    -paramFN /path/to/my_nf_params.txt \
+    -paramFN <param_file> \
+    [-nCPUs <int>] [-machineName <str>] [-nNodes <int>] \
+    [-ffSeedOrientations <0|1>] [-doImageProcessing <0|1>] \
+    [-refineParameters <0|1>] [-multiGridPoints <0|1>]
+```
+
+| Argument | Type | Default | Description |
+|---|---|---|---|
+| `-paramFN` | string | **(required)** | Path to the parameter file |
+| `-nCPUs` | int | `10` | CPU cores per node for OpenMP tasks |
+| `-machineName` | string | `local` | Execution target: `local`, `orthrosnew`, `orthrosall`, `umich`, `marquette`, `purdue` |
+| `-nNodes` | int | `1` | Number of compute nodes (Parsl workers) |
+| `-ffSeedOrientations` | int | `0` | `1` = generate seeds from FF `Grains.csv`; `0` = use existing `SeedOrientations` file |
+| `-doImageProcessing` | int | `1` | `1` = run median and image processing; `0` = skip (reuse existing processed images) |
+| `-refineParameters` | int | `0` | `1` = run parameter refinement mode; `0` = run reconstruction mode |
+| `-multiGridPoints` | int | `0` | *(only if `-refineParameters 1`)* `1` = use multiple grid points from param file; `0` = prompt for single (x,y) |
+
+---
+
+## 6. Execution Examples
+
+### Example 1: Standard Reconstruction on a Cluster
+
+```bash
+python nf_MIDAS.py \
+    -paramFN /path/to/nf_params.txt \
     -machineName purdue \
     -nNodes 4 \
     -nCPUs 128 \
-    -ffSeedOrientations 1 \
-    -refineParameters 0
+    -ffSeedOrientations 1
 ```
 
-### Example 2: Interactive Parameter Refinement
-Run the script in parameter refinement mode on a local machine. The script will pause and ask you to input the coordinates of the grain you want to use for the fit.
+### Example 2: Local Reconstruction, Skip Image Processing
 
 ```bash
 python nf_MIDAS.py \
-    -paramFN /path/to/my_nf_params.txt \
+    -paramFN nf_params.txt \
+    -machineName local \
+    -nCPUs 8 \
+    -doImageProcessing 0
+```
+
+### Example 3: Interactive Single-Point Parameter Refinement
+
+```bash
+python nf_MIDAS.py \
+    -paramFN nf_params.txt \
     -machineName local \
     -nCPUs 8 \
     -refineParameters 1 \
     -multiGridPoints 0
 
-# The script will then print:
+# Script will prompt:
 # "Enter the x,y coordinates to optimize (e.g., 1.2,3.4): "
-# You would then type your coordinates, e.g., "150.5,210.2" and press Enter.
+# Type coordinates and press Enter
+```
+
+### Example 4: Multi-Point Parameter Refinement
+
+```bash
+python nf_MIDAS.py \
+    -paramFN nf_params.txt \
+    -machineName local \
+    -nCPUs 8 \
+    -refineParameters 1 \
+    -multiGridPoints 1
 ```
 
 ---
 
-## 6. Output Directory Structure
+## 7. Output Directory Structure
 
-All output is generated within the `DataDirectory` specified in the parameter file.
+All output is generated within `DataDirectory` from the parameter file.
 
 ```
 <DataDirectory>/
-├── midas_log/              # Contains stdout/stderr logs for every binary executed
-│   ├── median1_out.csv
-│   ├── image0_err.csv
-│   ├── fit0_out.csv
-│   └── ...
-├── grid.txt                # The final (potentially filtered) 3D reconstruction grid
-├── SeedOrientations.txt    # The list of seed orientations used for the analysis
-├── DiffractionSpots.bin    # The large binary file of simulated diffraction spots
-├── Grains.mic              # **FINAL RECONSTRUCTION OUTPUT** (only in reconstruction mode)
-└── ...                     # Other intermediate and configuration files
+├── midas_log/                  # Logs for every binary
+│   ├── midas_nf_workflow.log   # Master workflow log
+│   ├── hkls_out/err.csv        # HKL generation
+│   ├── seed_out/err.csv        # Seed orientation generation
+│   ├── hex_out/err.csv         # Hex grid creation
+│   ├── spots_out/err.csv       # Spot simulation
+│   ├── tomo_out/err.csv        # Tomo grid filtering
+│   ├── median{N}_out/err.csv   # Median image for distance N
+│   ├── image{N}_out/err.csv    # Image processing for block N
+│   ├── map_out/err.csv         # Memory mapping
+│   ├── fit{N}_out/err.csv      # Orientation fitting for block N
+│   ├── parse_out/err.csv       # Mic file parsing
+│   ├── fit_singlepoint_out.csv # Single-point refinement output
+│   └── fit_multipoint_out.csv  # Multi-point refinement output
+├── {MicFileText}               # FINAL TEXT MIC OUTPUT (reconstruction mode)
+├── {MicFileBinary}             # Binary mic output
+├── grid.txt                    # Reconstruction grid (filtered if applicable)
+├── grid_unfilt.txt             # Pre-tomo-filter backup of grid
+├── grid_old.txt                # Pre-mask-filter backup of grid
+├── hkls.csv                    # Theoretical HKL reflections
+├── DiffractionSpots.bin        # Simulated spots (binary)
+├── SpotsInfo.bin               # Processed experimental spots (binary)
+├── Key.bin / Key.txt           # Orientation-to-spot index mapping
+└── OrientMat.bin / OrientMat.txt  # Orientation matrices
 ```
 
-### Key Output Files
+### Mic File Format
 
--   **`Grains.mic`**: (Reconstruction Mode Only) This is the final output of the entire workflow. It is a text file containing the position, orientation, and other metrics for each successfully reconstructed voxel in the grid.
--   **`midas_log/`**: This directory is essential for debugging. Each step of the workflow logs its standard output and standard error to a file here. If a step fails, the corresponding `..._err.csv` file will contain the detailed error message from the MIDAS C++ backend.
--   **`midas_log/fit_..._out.csv`**: (Parameter Refinement Mode Only) The refined geometric parameters will be printed to these files.
+The final text mic file has one line per reconstructed grid point. Lines starting with `%` are header/comments.
+
+| Column | Index | Description |
+|---|---|---|
+| OrientationRowNr | 0 | Row number from the orientation matrix file |
+| ID | 1 | Orientation ID |
+| Time | 2 | (unused, typically 0) |
+| X | 3 | X position (μm) |
+| Y | 4 | Y position (μm) |
+| Size | 5 | Grid cell size (μm) |
+| UD | 6 | Up/Down triangle indicator (+1 or -1) |
+| Euler1 | 7 | Euler angle φ₁ (radians) |
+| Euler2 | 8 | Euler angle Φ (radians) |
+| Euler3 | 9 | Euler angle φ₂ (radians) |
+| Confidence | 10 | Fractional overlap (0–1), higher = better fit |
 
 ---
 
-## 7. Troubleshooting
+## 8. Binary Executables Reference
 
--   **Automatic Retries:** If you see log messages about a Parsl app failing and retrying, this is the new resiliency feature at work. The workflow will only fail if all retries are exhausted.
--   **Shared Memory (`/dev/shm`) Errors:**
-    *   **Permission Denied:** The script may fail if it cannot write to `/dev/shm`. Check permissions on the compute nodes.
-    *   **No space left on device:** The simulated spot libraries can be very large. Ensure the `/dev/shm` partition on the nodes is large enough.
-    *   **User Conflict:** The script now performs a more targeted check for the specific files it creates (`SpotsInfo.bin`, etc.). If a conflict with another user is detected, you must wait for their job to finish or ask an administrator to clear the files.
--   **`FitOrientationOMP` Fails:** This is the most complex step in reconstruction mode. Failures can be due to:
-    *   Mismatches between the simulated templates and experimental data (check your geometry in the parameter file).
-    *   Insufficient signal in the processed images.
-    *   Poor FF-seeding.
-    Check the `fit*_err.csv` logs for specific error codes from the binary.
+| Binary | Purpose | Key Arguments |
+|---|---|---|
+| `GetHKLListNF` | Generate HKL list | `<paramFN>` |
+| `GenSeedOrientationsFF2NFHEDM` | Convert FF grains to NF seeds | `<GrainsFile> <SeedOrientations>` |
+| `MakeHexGrid` | Create hexagonal reconstruction grid | `<paramFN>` |
+| `filterGridfromTomo` | Filter grid using tomography image | `<TomoImage> <TomoPixelSize>` |
+| `MakeDiffrSpots` | Simulate diffraction spots for all seeds | `<paramFN>` |
+| `MedianImageLibTiff` | Compute median background image | `<paramFN> <distanceNr>` |
+| `ImageProcessingLibTiffOMP` | Process raw images (background subtraction) | `<paramFN> <nodeNr> <nNodes> <nCPUs>` |
+| `MMapImageInfo` | Prepare memory-mapped binary data | `<paramFN>` |
+| `FitOrientationOMP` | Fit crystal orientations at each grid point | `<paramFN> <blockNr> <nBlocks> <nCPUs>` |
+| `ParseMic` | Consolidate fitting results into mic file | `<paramFN>` |
+| `FitOrientationParameters` | Single-point geometry refinement | `<paramFN> <gridPointNr>` |
+| `FitOrientationParametersMultiPoint` | Multi-point geometry refinement | `<paramFN> <nCPUs>` |
+
+---
+
+## 9. Troubleshooting
+
+### Shared Memory Errors
+
+| Error | Cause | Fix |
+|---|---|---|
+| *Permission Denied on `/dev/shm`* | Insufficient permissions | Check node permissions |
+| *No space left on device* | `.bin` files too large | Reduce orientation count or check `/dev/shm` size |
+| *User Conflict detected* | Another user's `.bin` files present | Wait for their job or ask admin to clear |
+
+### Fitting Issues
+
+| Symptom | Likely Cause | Fix |
+|---|---|---|
+| All confidences near 0 | Wrong geometry parameters | Check `Lsd`, `BC`, `tx/ty/tz`, `px` |
+| Fitting hangs | Missing nlopt stopping criteria | Ensure your `FitOrientationOMP` binary has `nlopt_set_maxeval` and `nlopt_set_ftol_rel` |
+| Very few good points | Seeds too sparse or wrong | Check `SeedOrientations` file contents; try FF seeding |
+
+### General Debugging
+
+1. Check `midas_log/midas_nf_workflow.log` for the master log
+2. Check individual `*_err.csv` files for binary-level error output
+3. For fitting issues specifically, examine `fit{N}_out.csv` — each line corresponds to a completed grid point
+4. Verify `grid.txt` has the expected number of points before fitting
+
+### Common Errors
+
+| Error | Fix |
+|---|---|
+| `FileNotFoundError` on param file | Check `-paramFN` path |
+| `DataDirectory not found` | Ensure `DataDirectory` is set in parameter file |
+| Parsl configuration errors | Check machine config files and partition names |
+| Automatic retries exhausting | Likely a systemic issue — check `*_err.csv` logs |
