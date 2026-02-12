@@ -1,1 +1,1 @@
-../../FF_HEDM/v7/localConfig.py
+../../FF_HEDM/workflows/localConfig.py

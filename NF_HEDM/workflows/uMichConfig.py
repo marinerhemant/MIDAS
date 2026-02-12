@@ -1,1 +1,1 @@
-../../FF_HEDM/v7/uMichConfig.py
+../../FF_HEDM/workflows/uMichConfig.py

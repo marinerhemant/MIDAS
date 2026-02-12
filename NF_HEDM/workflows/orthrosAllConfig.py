@@ -1,1 +1,1 @@
-../../FF_HEDM/v7/orthrosAllConfig.py
+../../FF_HEDM/workflows/orthrosAllConfig.py

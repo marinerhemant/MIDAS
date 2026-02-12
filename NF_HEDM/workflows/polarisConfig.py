@@ -1,1 +1,1 @@
-../../FF_HEDM/v7/polarisConfig.py
+../../FF_HEDM/workflows/polarisConfig.py

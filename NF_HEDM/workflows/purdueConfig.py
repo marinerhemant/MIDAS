@@ -1,1 +1,1 @@
-../../FF_HEDM/v7/purdueConfig.py
+../../FF_HEDM/workflows/purdueConfig.py

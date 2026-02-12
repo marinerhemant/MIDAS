@@ -1,1 +1,1 @@
-../../FF_HEDM/v7/marquetteConfig.py
+../../FF_HEDM/workflows/marquetteConfig.py

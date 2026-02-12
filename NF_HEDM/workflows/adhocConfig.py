@@ -1,1 +1,1 @@
-../../FF_HEDM/v7/adhocConfig.py
+../../FF_HEDM/workflows/adhocConfig.py
