@@ -208,7 +208,7 @@ void FitOrientation(
   struct my_func_data *f_datat;
   f_datat = &f_data;
   void *trp = (struct my_func_data *)f_datat;
-  double tole = 1e-3;
+  double tole = 1e-4;
   nlopt_opt opt;
   opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
   nlopt_set_lower_bounds(opt, xl);
