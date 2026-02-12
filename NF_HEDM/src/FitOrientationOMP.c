@@ -142,20 +142,18 @@ static double problem_function(unsigned n, const double *x, double *grad,
   return (1 - FracOverlap);
 }
 
-void FitOrientation(const int NrOfFiles, const int nLayers,
-                    const double ExcludePoleAngle, double Lsd[nLayers],
-                    const long long int SizeObsSpots, const double XGrain[3],
-                    const double YGrain[3], double RotMatTilts[3][3],
-                    const double OmegaStart, const double OmegaStep,
-                    const double px, double ybc[nLayers], double zbc[nLayers],
-                    const double gs, double OmegaRanges[MAX_N_OMEGA_RANGES][2],
-                    const int NoOfOmegaRanges,
-                    double BoxSizes[MAX_N_OMEGA_RANGES][4],
-                    double P0[nLayers][3], const int NrPixelsGrid,
-                    int *ObsSpotsInfo, double EulerIn[3], double tol,
-                    double *EulerOutA, double *EulerOutB, double *EulerOutC,
-                    double *ResultFracOverlap, double hkls[5000][4],
-                    double Thetas[5000], int n_hkls, double *Gs) {
+void FitOrientation(
+    const int NrOfFiles, const int nLayers, const double ExcludePoleAngle,
+    double Lsd[nLayers], const long long int SizeObsSpots,
+    const double XGrain[3], const double YGrain[3], double RotMatTilts[3][3],
+    const double OmegaStart, const double OmegaStep, const double px,
+    double ybc[nLayers], double zbc[nLayers], const double gs,
+    double OmegaRanges[MAX_N_OMEGA_RANGES][2], const int NoOfOmegaRanges,
+    double BoxSizes[MAX_N_OMEGA_RANGES][4], double P0[nLayers][3],
+    const int NrPixelsGrid, int *ObsSpotsInfo, double EulerIn[3], double tol,
+    double *EulerOutA, double *EulerOutB, double *EulerOutC,
+    double *ResultFracOverlap, double hkls[5000][4], double Thetas[5000],
+    int n_hkls, double *Gs, int *out_nevals, int *out_retcode) {
   unsigned n;
   long int i, j;
   n = 3;
@@ -216,8 +214,12 @@ void FitOrientation(const int NrOfFiles, const int nLayers,
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_ftol_rel(opt, tole);
   double minf = 1;
-  nlopt_optimize(opt, x, &minf);
+  int retcode = nlopt_optimize(opt, x, &minf);
+  *out_nevals = (int)nlopt_get_numevals(opt);
+  *out_retcode = retcode;
   nlopt_destroy(opt);
   // f_data.P0 was allocated with malloc for the pointer array only, but we
   // didn't alloc rows
@@ -847,6 +849,9 @@ int main(int argc, char *argv[]) {
     printf("Finished checking orientation grid for point %d. Now fitting %d"
            " orientations.\n",
            rown, OrientationGoodID);
+    fflush(stdout);
+    double tFitStart = omp_get_wtime();
+    int totalNloptEvals = 0;
     double BestFrac, BestEuler[3];
     double ResultMatr[7 + (nSaves * 4)], QuatIn[4], QuatOut[4];
     double bestRowNr = 0;
@@ -881,11 +886,21 @@ int main(int argc, char *argv[]) {
         // which calls problem_function. problem_function needs to allocate
         // InPixels internally or be passed it? Let's check problem_function in
         // SharedFuncsFit.c first.
+        int fitNevals = 0, fitRetcode = 0;
         FitOrientation(nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots,
                        XG, YG, RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc,
                        gs, OmegaRanges, nOmeRang, BoxSizes, P0, NrPixelsGrid,
                        ObsSpotsInfo, EulerIn, tol, &EulerOutA, &EulerOutB,
-                       &EulerOutC, &FracOut, hkls, Thetas, n_hkls, Gs);
+                       &EulerOutC, &FracOut, hkls, Thetas, n_hkls, Gs,
+                       &fitNevals, &fitRetcode);
+        totalNloptEvals += fitNevals;
+        if (i > 0 && i % 100 == 0) {
+          printf("  Point %d: fitted %d/%d orientations, elapsed %.1fs, "
+                 "last nlopt evals=%d ret=%d\n",
+                 rown, i, OrientationGoodID, omp_get_wtime() - tFitStart,
+                 fitNevals, fitRetcode);
+          fflush(stdout);
+        }
         Fractions = 1 - FracOut;
         if (Fractions >= BestFrac) {
           bestRowNr = OrientMatrix[i * 10 + 9]; // Save best RowNr
@@ -933,8 +948,11 @@ int main(int argc, char *argv[]) {
       printf("No good ID found.\n");
       continue;
     }
-    //~ end = clock();
-    //~ diftotal = ((double)(end-start))/CLOCKS_PER_SEC;
+    double tFitElapsed = omp_get_wtime() - tFitStart;
+    printf("Point %d: fitting done in %.2fs, %d total nlopt evals, "
+           "bestFrac=%.4f\n",
+           rown, tFitElapsed, totalNloptEvals, BestFrac);
+    fflush(stdout);
     double outresult[11] = {bestRowNr,
                             (double)OrientationGoodID,
                             0,
