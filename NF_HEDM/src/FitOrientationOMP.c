@@ -949,10 +949,10 @@ int main(int argc, char *argv[]) {
       continue;
     }
     double tFitElapsed = omp_get_wtime() - tFitStart;
-    printf("Point %d: fitting done in %.2fs, %d total nlopt evals, "
-           "bestFrac=%.4f\n",
-           rown, tFitElapsed, totalNloptEvals, BestFrac);
-    fflush(stdout);
+    // printf("Point %d: fitting done in %.2fs, %d total nlopt evals, "
+    //        "bestFrac=%.4f\n",
+    //        rown, tFitElapsed, totalNloptEvals, BestFrac);
+    // fflush(stdout);
     double outresult[11] = {bestRowNr,
                             (double)OrientationGoodID,
                             0,
