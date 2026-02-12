@@ -28,7 +28,7 @@ config = Config(
             max_workers_per_node=1,
             worker_logdir_root=user_opts['adhoc']['script_dir'],
             provider=AdHocProvider(
-                worker_init='source /home/beams/S1IDUSER/opt/midasconda3/midasconda/bin/activate',
+                worker_init=os.environ.get('MIDAS_CONDA_INIT', 'source /home/beams/S1IDUSER/opt/midasconda3/midasconda/bin/activate'),
                 channels=[SSHChannel(hostname=m,
                                      username=user_opts['adhoc']['username'],
                                      script_dir=user_opts['adhoc']['script_dir'],

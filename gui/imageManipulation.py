@@ -23,6 +23,21 @@ from multiprocessing.dummy import Pool
 import multiprocessing
 from numba import jit
 import PIL
+import sys
+
+# Try to import midas_config from utils
+try:
+    # Add utils directory to sys.path if not already there
+    # Assuming this script is in gui/ and utils/ is in ../utils
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    utils_dir = os.path.join(os.path.dirname(current_dir), 'utils')
+    if utils_dir not in sys.path:
+        sys.path.append(utils_dir)
+    import midas_config
+except ImportError as e:
+    print(f"Warning: Could not import midas_config: {e}")
+    # Fallback or allow subsequent failures to handle it
+    midas_config = None
 
 deg2rad = 0.0174532925199433
 rad2deg = 57.2957795130823
@@ -242,7 +257,11 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 	dark = np.zeros(NrPixels*NrPixels)
 	if doBadProcessing is 1:
 		detNr = fn[-1]
-		badFN = os.path.expanduser('~')+'/opt/MIDAS/gui/GEBad/BadImg.ge'+detNr
+		if midas_config and midas_config.MIDAS_GUI_DIR:
+			badFN = os.path.join(midas_config.MIDAS_GUI_DIR, 'GEBad', 'BadImg.ge'+detNr)
+		else:
+			# Fallback (though this should ideally be unreachable if configured correctly)
+			badFN = os.path.expanduser('~')+'/opt/MIDAS/gui/GEBad/BadImg.ge'+detNr
 		print(badFN)
 		badF = open(badFN,'rb')
 		badF.seek(8192,os.SEEK_SET)
@@ -281,7 +300,11 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 			saveFile(corr,writefn,fileTypeWrite)
 			if doIntegration is 1:
 				if fastIntegration is 0:
-					call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
+					if midas_config and midas_config.MIDAS_BIN_DIR:
+						integrator_exe = os.path.join(midas_config.MIDAS_BIN_DIR, 'Integrator')
+					else:
+						integrator_exe = os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator'
+					call([integrator_exe,'ps_midas.txt',writefn])
 				else:
 					saveFastIntegrate(corr, OneDOut, writefn+'_integrated_framenr_'+str(frameNr)+'.csv')
 		if sumWrite:
@@ -301,7 +324,11 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 		saveFile(sumArr/nFramesPerFile,writefn,fileTypeWrite)
 		if doIntegration is 1:
 			if fastIntegration is 0:
-				call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
+				if midas_config and midas_config.MIDAS_BIN_DIR:
+					integrator_exe = os.path.join(midas_config.MIDAS_BIN_DIR, 'Integrator')
+				else:
+					integrator_exe = os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator'
+				call([integrator_exe,'ps_midas.txt',writefn])
 			else:
 				saveFastIntegrate(sumArr/nFramesPerFile, OneDOut, writefn+'_integrated_mean_'+'.csv')
 	if maxWrite:
@@ -309,7 +336,11 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 		saveFile(maxArr,writefn,fileTypeWrite)
 		if doIntegration is 1:
 			if fastIntegration is 0:
-				call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
+				if midas_config and midas_config.MIDAS_BIN_DIR:
+					integrator_exe = os.path.join(midas_config.MIDAS_BIN_DIR, 'Integrator')
+				else:
+					integrator_exe = os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator'
+				call([integrator_exe,'ps_midas.txt',writefn])
 			else:
 				saveFastIntegrate(maxArr, OneDOut, writefn+'_integrated_max_'+'.csv')
 
@@ -429,7 +460,10 @@ def acceptParameters():
 	f.close()
 	# call DetectorMapper if slow integration was selected
 	if FastIntegrateVar.get() is 0:
-		cmdname = os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/DetectorMapper'
+		if midas_config and midas_config.MIDAS_BIN_DIR:
+			cmdname = os.path.join(midas_config.MIDAS_BIN_DIR, 'DetectorMapper')
+		else:
+			cmdname = os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/DetectorMapper'
 		call([cmdname,'ps_midas.txt'])
 	else:
 		st = time.time()
