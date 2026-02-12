@@ -1017,9 +1017,39 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
   nlopt_set_maxtime(opt, 45); // Maximum optimization time in seconds
   nlopt_set_min_objective(opt, peakFittingObjectiveFunction, &f_data);
 
+  // Snapshot initial parameters for debug/delta calculation
+  double x_init[n];
+  memcpy(x_init, x, n * sizeof(double));
+
+  // Timing instrumentation
+  struct timespec t_start, t_end;
+  clock_gettime(CLOCK_MONOTONIC, &t_start);
+
   // Run optimization
   rc = nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
+
+  clock_gettime(CLOCK_MONOTONIC, &t_end);
+  double elapsed_ms = (t_end.tv_sec - t_start.tv_sec) * 1000.0 +
+                      (t_end.tv_nsec - t_start.tv_nsec) / 1e6;
+
+  // Print parameter drift analysis
+  if (nPeaks >= 3) { // Only debug problematic multi-peak cases
+    fprintf(stderr, "[FIT] nPeaks=%u nParams=%u nPixels=%d elapsed=%.1fms\n",
+            nPeaks, n, nrPixelsThisRegion, elapsed_ms);
+    for (int i = 0; i < nPeaks; i++) {
+      double dImax = x[8 * i + 1] - x_init[8 * i + 1];
+      double dR = x[8 * i + 2] - x_init[8 * i + 2];
+      double dEta = x[8 * i + 3] - x_init[8 * i + 3];
+      double dMu = x[8 * i + 4] - x_init[8 * i + 4];
+      double dSigR = x[8 * i + 5] - x_init[8 * i + 5];
+      double dSigEta = x[8 * i + 7] - x_init[8 * i + 7];
+      fprintf(stderr,
+              "  Peak %d Delta: dI=%.1f dR=%.3f dEta=%.3f dMu=%.2f dSigR=%.3f "
+              "dSigEta=%.3f\n",
+              i, dImax, dR, dEta, dMu, dSigR, dSigEta);
+    }
+  }
 
   // Extract results
   for (int i = 0; i < nPeaks; i++) {
