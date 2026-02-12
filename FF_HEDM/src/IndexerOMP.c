@@ -485,16 +485,6 @@ void CompareSpots(RealType **TheorSpots, int nTheorSpots, RealType *ObsSpots,
       GrainSpots[nMatched][12] = ObsSpots[spotRowBest * 9 + 3];
       GrainSpots[nMatched][13] = ObsSpots[spotRowBest * 9 + 3] - RefRad;
       GrainSpots[nMatched][14] = ObsSpots[spotRowBest * 9 + 4];
-      if (GrainSpots[nMatched][14] > 1e6 || GrainSpots[nMatched][14] < -1e6) {
-        printf(
-            "\n\n\nIndexerOMP Debug: Suspicious value at spotRowBest=%d (File "
-            "index %d). Val=%f\n\n\n",
-            spotRowBest, spotRowBest * 9 + 4, GrainSpots[nMatched][14]);
-        if (spotRowBest >= n_spots) {
-          printf("\n\n\nIndexerOMP Error: spotRowBest %d >= n_spots %d!\n\n\n",
-                 spotRowBest, n_spots);
-        }
-      }
       nMatched++;
       (*nMatchesFracCalc)++;
       for (int i = 0; i < nRingsToRejectCalc; i++) {
