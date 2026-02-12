@@ -962,8 +962,6 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
     nlopt_set_lower_bounds(opt, xl);
     nlopt_set_upper_bounds(opt, xu);
     nlopt_set_maxtime(opt, 5.0);
-    nlopt_set_ftol_rel(opt, 1e-8);
-    nlopt_set_xtol_rel(opt, 1e-8);
     nlopt_set_min_objective(opt, peakFittingObjectiveFunction, &f_data);
 
     rc = nlopt_optimize(opt, x, &minf);
@@ -979,8 +977,6 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
     nlopt_set_lower_bounds(opt, xl);
     nlopt_set_upper_bounds(opt, xu);
     nlopt_set_maxtime(opt, 5.0);
-    nlopt_set_ftol_rel(opt, 1e-8);
-    nlopt_set_xtol_rel(opt, 1e-8);
     nlopt_set_min_objective(opt, peakFittingObjectiveFunction, &f_data);
 
     rc = nlopt_optimize(opt, x, &minf);
