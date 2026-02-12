@@ -658,8 +658,8 @@ def run_multi_resolution_workflow(args, params, t0):
             
         final_lines.sort(key=sort_key)
         
-        # Write merged file
-        current_mic_file = f"{mic_file_base}.{loop_idx}" # Name consistent with Pass 1 loc
+        # Write merged file to a NEW filename so Pass 1 and Pass 2 are preserved
+        current_mic_file = f"{mic_file_base}_merged.{loop_idx}"
         final_path = os.path.join(params['resultFolder'], current_mic_file)
         
         with open(final_path, 'w') as f:
