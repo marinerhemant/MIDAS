@@ -1,7 +1,7 @@
     # HDF5 configuration
     FetchContent_Declare(
     hdf5
-    URL https://www.dropbox.com/scl/fi/ib4wkq1s9jhm0oi9n6r7c/hdf5-1.14.2.tar.gz?rlkey=eq20hs7juecpwcn1vuumssjuf&dl=1
+    URL https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5-1_14_2.tar.gz
     )
 
     FetchContent_GetProperties(hdf5)
