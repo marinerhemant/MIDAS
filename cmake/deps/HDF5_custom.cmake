@@ -1,7 +1,8 @@
     # HDF5 configuration
     FetchContent_Declare(
     hdf5
-    URL https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5-1_14_2.tar.gz
+    URL "https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5-1_14_2.tar.gz"
+        "https://support.hdfgroup.org/ftppub/hdf5/releases/hdf5-1.14/hdf5-1.14.2/src/hdf5-1.14.2.tar.gz"
     )
 
     FetchContent_GetProperties(hdf5)
