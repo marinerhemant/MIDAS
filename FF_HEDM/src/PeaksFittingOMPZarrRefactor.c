@@ -891,21 +891,78 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
                                maximaPositions[i * 2 + 1] - zCen);
     double peakEta = calcEtaAngle(-maximaPositions[i * 2 + 0] + yCen,
                                   maximaPositions[i * 2 + 1] - zCen);
-    double initSigmaEta = width / peakR;
+    // -----------------------------------------------------------
+    // Moment-Based Width Estimation (Speedup Strategy)
+    // Instead of a uniform guess, estimate sigma for each peak
+    // using the weighted variance of pixels closest to it.
+    // -----------------------------------------------------------
+    double sumW = 0.0, sumWR2 = 0.0, sumWEta2 = 0.0;
+    double bg_est = thresh / 2.0;
 
-    if (atand(initSigmaEta) > maxEtaWidth) {
-      initSigmaEta = tand(maxEtaWidth) - 0.0001;
+    for (int p = 0; p < nrPixelsThisRegion; p++) {
+      double r_p = Rs[p];
+      double eta_p = Etas[p];
+      double val = z[p] - bg_est;
+      if (val <= 0)
+        continue;
+
+      // Find closest peak to this pixel (Voronoi partition)
+      int closest_k = -1;
+      double min_dist2 = 1e9;
+      for (int k = 0; k < nPeaks; k++) {
+        double pr = CALC_NORM_2(maximaPositions[k * 2 + 0] - yCen,
+                                maximaPositions[k * 2 + 1] - zCen);
+        double peta = calcEtaAngle(-maximaPositions[k * 2 + 0] + yCen,
+                                   maximaPositions[k * 2 + 1] - zCen);
+        double d2 = (r_p - pr) * (r_p - pr) + (eta_p - peta) * (eta_p - peta);
+        if (d2 < min_dist2) {
+          min_dist2 = d2;
+          closest_k = k;
+        }
+      }
+
+      // If this pixel belongs to the current peak i
+      if (closest_k == i) {
+        sumW += val;
+        double dr = r_p - peakR;
+        double de = eta_p - peakEta;
+        sumWR2 += val * (dr * dr);
+        sumWEta2 += val * (de * de);
+      }
     }
 
+    double estimSigmaR = width;   // Fallback to old scalar guess
+    double estimSigmaEta = width; // Fallback
+
+    if (sumW > 0) {
+      estimSigmaR = sqrt(sumWR2 / sumW);
+      estimSigmaEta = sqrt(sumWEta2 / sumW);
+      // Clamp to reasonable bounds to prevent instability
+      if (estimSigmaR < 0.1)
+        estimSigmaR = 0.1;
+      if (estimSigmaR > maxRWidth)
+        estimSigmaR = maxRWidth;
+      if (estimSigmaEta < 0.1)
+        estimSigmaEta = 0.1;
+      // Eta width in degrees needs scaling awareness, but here we estimate
+      // directly in degrees (Etas is in degrees)
+    }
+
+    double initSigmaEtaVal = estimSigmaEta;
+    // Convert to proper units if needed (the original code used width/peakR)
+    // but here estimSigmaEta is already in degrees variance.
+    // The original code used `atand(width/peakR)`.
+    // Let's use the explicit estimate.
+
     // Initial values
-    x[(8 * i) + 1] = maximaValues[i];     // Imax
-    x[(8 * i) + 2] = peakR;               // Radius
-    x[(8 * i) + 3] = peakEta;             // Eta
-    x[(8 * i) + 4] = 0.5;                 // Mu (mix parameter)
-    x[(8 * i) + 5] = width;               // SigmaGR (Gaussian sigma in R)
-    x[(8 * i) + 6] = width;               // SigmaLR (Lorentzian sigma in R)
-    x[(8 * i) + 7] = atand(initSigmaEta); // SigmaGEta (Gaussian sigma in Eta)
-    x[(8 * i) + 8] = atand(initSigmaEta); // SigmaLEta (Lorentzian sigma in Eta)
+    x[(8 * i) + 1] = maximaValues[i]; // Imax
+    x[(8 * i) + 2] = peakR;           // Radius
+    x[(8 * i) + 3] = peakEta;         // Eta
+    x[(8 * i) + 4] = 0.5;             // Mu (mix parameter)
+    x[(8 * i) + 5] = estimSigmaR;     // SigmaGR
+    x[(8 * i) + 6] = estimSigmaR;     // SigmaLR
+    x[(8 * i) + 7] = estimSigmaEta;   // SigmaGEta (was atand(initSigmaEta))
+    x[(8 * i) + 8] = estimSigmaEta;   // SigmaLEta
 
     // Calculate bounds for parameters
     double dEta = RAD2DEG * atan(1 / peakR);
@@ -960,19 +1017,9 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
   nlopt_set_maxtime(opt, 45); // Maximum optimization time in seconds
   nlopt_set_min_objective(opt, peakFittingObjectiveFunction, &f_data);
 
-  // Timing instrumentation (temporary — remove after profiling)
-  struct timespec t_start, t_end;
-  clock_gettime(CLOCK_MONOTONIC, &t_start);
-
   // Run optimization
   rc = nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
-
-  clock_gettime(CLOCK_MONOTONIC, &t_end);
-  double elapsed_ms = (t_end.tv_sec - t_start.tv_sec) * 1000.0 +
-                      (t_end.tv_nsec - t_start.tv_nsec) / 1e6;
-  fprintf(stderr, "[FIT] nPeaks=%u nParams=%u nPixels=%d elapsed=%.1fms\n",
-          nPeaks, n, nrPixelsThisRegion, elapsed_ms);
 
   // Extract results
   for (int i = 0; i < nPeaks; i++) {
