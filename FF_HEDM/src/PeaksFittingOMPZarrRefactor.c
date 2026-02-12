@@ -174,9 +174,14 @@ typedef struct {
 // Structure for fit function data
 typedef struct {
   int NrPixels;
+  int nPeaks;
   double *z;
   double *Rs;
   double *Etas;
+  // Pre-allocated per-peak parameter caches (Fix 5: eliminate VLAs)
+  double *pkIMAX, *pkR, *pkEta, *pkMu;
+  double *pkInvSigmaGR2, *pkInvSigmaLR2;
+  double *pkInvSigmaGEta2, *pkInvSigmaLEta2;
 } FunctionData;
 
 // Structure to hold all temporary buffers for a single thread
@@ -206,6 +211,11 @@ typedef struct {
   double *imageTemp2;  // Transform scratch buffer 2
   double *fitRs;       // R-coordinates for fit2DPeaks
   double *fitEtas;     // Eta-coordinates for fit2DPeaks
+  // --- Hoisted DFS stack buffers (Fix 3) ---
+  int *dfsStackX; // DFS stack X coordinates
+  int *dfsStackY; // DFS stack Y coordinates
+  // --- Pre-allocated peak fit buffers (Fix 5) ---
+  double *fitPeakBuf; // Single block for all 8 peak-param arrays
 } ThreadWorkspace;
 
 // Global variables
@@ -456,6 +466,9 @@ void freeWorkspace(ThreadWorkspace *ws) {
     free(ws->imageTemp2);
     free(ws->fitRs);
     free(ws->fitEtas);
+    free(ws->dfsStackX);
+    free(ws->dfsStackY);
+    free(ws->fitPeakBuf);
   }
 }
 
@@ -498,6 +511,11 @@ ErrorCode allocateWorkspace(ThreadWorkspace *ws, const ImageMetadata *metadata,
   ws->imageTemp2 = calloc(nrPixelsSq, sizeof(double));
   ws->fitRs = malloc((size_t)params->maxNrPx * sizeof(double));
   ws->fitEtas = malloc((size_t)params->maxNrPx * sizeof(double));
+  // DFS stack buffers (Fix 3): allocated once per thread
+  ws->dfsStackX = malloc(nrPixelsSq * sizeof(int));
+  ws->dfsStackY = malloc(nrPixelsSq * sizeof(int));
+  // Peak fit parameter cache (Fix 5): 8 arrays of maxNPeaks doubles
+  ws->fitPeakBuf = malloc((size_t)params->maxNPeaks * 8 * sizeof(double));
 
   // Check if any allocation failed
   if (!ws->imgCorrBC || !ws->boolImage || !ws->connectedComponents ||
@@ -506,7 +524,8 @@ ErrorCode allocateWorkspace(ThreadWorkspace *ws, const ImageMetadata *metadata,
       !ws->integratedIntensity || !ws->imax || !ws->yCenArray ||
       !ws->zCenArray || !ws->rads || !ws->etas || !ws->nrPx || !ws->otherInfo ||
       !ws->locData || !ws->imageAsym_d || !ws->image_d || !ws->imageTemp1 ||
-      !ws->imageTemp2 || !ws->fitRs || !ws->fitEtas) {
+      !ws->imageTemp2 || !ws->fitRs || !ws->fitEtas || !ws->dfsStackX ||
+      !ws->dfsStackY || !ws->fitPeakBuf) {
     // Free any successful allocations here before returning
     freeWorkspace(ws);
     return ERROR_MEMORY_ALLOCATION;
@@ -525,35 +544,28 @@ const int dy[] = {0, +1, 0, -1, +1, +1, -1, -1};
 
 /**
  * Iterative implementation of depth-first search for connected components
- * Replaces the recursive implementation to avoid stack overflow
+ * Replaces the recursive implementation to avoid stack overflow.
+ * (Fix 3): Uses pre-allocated stack buffers from ThreadWorkspace instead of
+ * malloc/free per call.
  */
 static inline void depthFirstSearchIterative(int startX, int startY, int label,
                                              int nrPixels, int *boolImage,
                                              int *connectedComponents,
                                              int *positions,
-                                             int *positionTrackers) {
-  // Create a stack for DFS
-  typedef struct {
-    int x;
-    int y;
-  } StackNode;
-
-  StackNode *stack = malloc(nrPixels * nrPixels * sizeof(StackNode));
-  if (!stack)
-    return;
-
+                                             int *positionTrackers, int *stackX,
+                                             int *stackY) {
   int stackSize = 0;
 
   // Push the starting point
-  stack[stackSize].x = startX;
-  stack[stackSize].y = startY;
+  stackX[stackSize] = startX;
+  stackY[stackSize] = startY;
   stackSize++;
 
   while (stackSize > 0) {
     // Pop from stack
     stackSize--;
-    int x = stack[stackSize].x;
-    int y = stack[stackSize].y;
+    int x = stackX[stackSize];
+    int y = stackY[stackSize];
 
     if (x < 0 || x >= nrPixels || y < 0 || y >= nrPixels)
       continue;
@@ -574,14 +586,12 @@ static inline void depthFirstSearchIterative(int startX, int startY, int label,
       if (newX >= 0 && newX < nrPixels && newY >= 0 && newY < nrPixels &&
           connectedComponents[newX * nrPixels + newY] == 0 &&
           boolImage[newX * nrPixels + newY] == 1) {
-        stack[stackSize].x = newX;
-        stack[stackSize].y = newY;
+        stackX[stackSize] = newX;
+        stackY[stackSize] = newY;
         stackSize++;
       }
     }
   }
-
-  free(stack);
 }
 
 /**
@@ -589,8 +599,8 @@ static inline void depthFirstSearchIterative(int startX, int startY, int label,
  */
 static inline int findConnectedComponents(int *boolImage, int nrPixels,
                                           int *connectedComponents,
-                                          int *positions,
-                                          int *positionTrackers) {
+                                          int *positions, int *positionTrackers,
+                                          int *stackX, int *stackY) {
   // Initialize the connected components map
   memset(connectedComponents, 0, nrPixels * nrPixels * sizeof(int));
 
@@ -601,7 +611,7 @@ static inline int findConnectedComponents(int *boolImage, int nrPixels,
           boolImage[i * nrPixels + j] == 1) {
         depthFirstSearchIterative(i, j, ++component, nrPixels, boolImage,
                                   connectedComponents, positions,
-                                  positionTrackers);
+                                  positionTrackers, stackX, stackY);
       }
     }
   }
@@ -609,13 +619,14 @@ static inline int findConnectedComponents(int *boolImage, int nrPixels,
 }
 
 /**
- * Find regional maxima in a connected component
+ * Find regional maxima in a connected component.
+ * (Fix 4): Uses imgCorrBC for O(1) direct neighbor lookup instead of
+ * O(N) linear scan through the pixel list.
  */
-static inline unsigned findRegionalMaxima(double *z, int *pixelPositions,
-                                          int nrPixelsThisRegion,
-                                          int *maximaPositions,
-                                          double *maximaValues, double intSat,
-                                          int nrPixels, double *mask) {
+static inline unsigned
+findRegionalMaxima(double *z, int *pixelPositions, int nrPixelsThisRegion,
+                   int *maximaPositions, double *maximaValues, double intSat,
+                   int nrPixels, double *mask, double *imgCorrBC) {
   unsigned nPeaks = 0;
 
   for (int i = 0; i < nrPixelsThisRegion; i++) {
@@ -632,7 +643,7 @@ static inline unsigned findRegionalMaxima(double *z, int *pixelPositions,
       return 0;
     }
 
-    // Check if this is a local maximum
+    // Check if this is a local maximum using O(1) direct image lookup
     int isRegionalMax = 1;
     double zThis = z[i];
 
@@ -640,11 +651,12 @@ static inline unsigned findRegionalMaxima(double *z, int *pixelPositions,
       int xNext = xThis + dx[j];
       int yNext = yThis + dy[j];
 
-      for (int k = 0; k < nrPixelsThisRegion; k++) {
-        if (xNext == pixelPositions[k * 2 + 0] &&
-            yNext == pixelPositions[k * 2 + 1] && z[k] > zThis) {
+      if (xNext >= 0 && xNext < nrPixels && yNext >= 0 && yNext < nrPixels) {
+        int neighborIdx = xNext * nrPixels + yNext;
+        // If the neighbor is part of the region (non-zero intensity after
+        // correction) and has higher intensity, this pixel is not a maximum.
+        if (imgCorrBC[neighborIdx] > 0 && imgCorrBC[neighborIdx] > zThis) {
           isRegionalMax = 0;
-          break;
         }
       }
     }
@@ -676,6 +688,7 @@ static inline unsigned findRegionalMaxima(double *z, int *pixelPositions,
  * Objective function for peak fitting
  * (Item 3): Pre-computes reciprocal sigma-squared values; replaces pow(x,2)
  * with multiplication.
+ * (Fix 5): Uses pre-allocated buffers from FunctionData instead of VLAs.
  */
 static double peakFittingObjectiveFunction(unsigned n, const double *x,
                                            double *grad, void *f_data_trial) {
@@ -684,16 +697,19 @@ static double peakFittingObjectiveFunction(unsigned n, const double *x,
   double *z = f_data->z;
   double *Rs = f_data->Rs;
   double *Etas = f_data->Etas;
+  int nPeaks = f_data->nPeaks;
 
-  // Number of peaks is (n-1)/8 because x has 8 parameters per peak plus
-  // background
-  int nPeaks = (n - 1) / 8;
   double bg = x[0]; // Background intensity
 
-  // Extract peak parameters and pre-compute reciprocals (Item 3)
-  double IMAX[nPeaks], R[nPeaks], Eta[nPeaks], Mu[nPeaks];
-  double invSigmaGR2[nPeaks], invSigmaLR2[nPeaks];
-  double invSigmaGEta2[nPeaks], invSigmaLEta2[nPeaks];
+  // Extract peak parameters into pre-allocated caches (Fix 5)
+  double *IMAX = f_data->pkIMAX;
+  double *R = f_data->pkR;
+  double *Eta = f_data->pkEta;
+  double *Mu = f_data->pkMu;
+  double *invSigmaGR2 = f_data->pkInvSigmaGR2;
+  double *invSigmaLR2 = f_data->pkInvSigmaLR2;
+  double *invSigmaGEta2 = f_data->pkInvSigmaGEta2;
+  double *invSigmaLEta2 = f_data->pkInvSigmaLEta2;
 
   for (int i = 0; i < nPeaks; i++) {
     IMAX[i] = x[(8 * i) + 1];
@@ -723,8 +739,8 @@ static double peakFittingObjectiveFunction(unsigned n, const double *x,
       double E2 = DE * DE;
 
       // Lorentzian component (using pre-computed reciprocals)
-      double L = 1.0 / ((R2 * invSigmaLR2[j] + 1.0) *
-                         (E2 * invSigmaLEta2[j] + 1.0));
+      double L =
+          1.0 / ((R2 * invSigmaLR2[j] + 1.0) * (E2 * invSigmaLEta2[j] + 1.0));
 
       // Gaussian component (using pre-computed reciprocals)
       double G = exp(-0.5 * (R2 * invSigmaGR2[j] + E2 * invSigmaGEta2[j]));
@@ -784,8 +800,8 @@ static inline void calculateIntegratedIntensity(int nPeaks, double *x,
       double E2 = DE * DE;
 
       // Lorentzian component (using pre-computed reciprocals)
-      double L = 1.0 / ((R2 * invSigmaLR2[j] + 1.0) *
-                         (E2 * invSigmaLEta2[j] + 1.0));
+      double L =
+          1.0 / ((R2 * invSigmaLR2[j] + 1.0) * (E2 * invSigmaLEta2[j] + 1.0));
 
       // Gaussian component (using pre-computed reciprocals)
       double G = exp(-0.5 * (R2 * invSigmaGR2[j] + E2 * invSigmaGEta2[j]));
@@ -806,16 +822,19 @@ static inline void calculateIntegratedIntensity(int nPeaks, double *x,
 }
 
 /**
- * Fit 2D peaks using NLopt
- * (Item 6): Rs/Etas buffers are now passed in from the ThreadWorkspace
- * instead of being allocated/freed per region.
+ * Fit 2D peaks using NLopt — Two-Stage Decomposed Fitting
+ * (Fix 1): Stage 1 fits each peak independently (9 params each),
+ *          Stage 2 polishes jointly using SBPLX (handles high-dim well).
+ * (Fix 2): Adaptive timeout scales with nPeaks.
+ * (Item 6): Rs/Etas buffers are passed in from the ThreadWorkspace.
  */
 int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
                int *usefulPixels, double *maximaValues, int *maximaPositions,
                double *integratedIntensity, double *IMAX, double *YCEN,
                double *ZCEN, double *RCens, double *EtaCens, double yCen,
                double zCen, double thresh, int *nrPx, double *otherInfo,
-               int nrPixels, double *retVal, double *Rs, double *Etas) {
+               int nrPixels, double *retVal, double *Rs, double *Etas,
+               double *fitPeakBuf) {
   // Total parameters: 1 background + 8 per peak
   unsigned n = 1 + (8 * nPeaks);
   double x[n], xl[n], xu[n];
@@ -912,25 +931,107 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
     xu[(8 * i) + 8] = 2 * maxEtaWidth;     // SigmaLEta upper bound
   }
 
-  // Set up optimization
+  // Set up FunctionData with pre-allocated peak buffers (Fix 5)
+  // fitPeakBuf is a single block of nPeaks*8 doubles, carved into 8 arrays:
   FunctionData f_data = {
-      .NrPixels = nrPixelsThisRegion, .Rs = Rs, .Etas = Etas, .z = z};
+      .NrPixels = nrPixelsThisRegion,
+      .nPeaks = (int)nPeaks,
+      .Rs = Rs,
+      .Etas = Etas,
+      .z = z,
+      .pkIMAX = fitPeakBuf + 0 * nPeaks,
+      .pkR = fitPeakBuf + 1 * nPeaks,
+      .pkEta = fitPeakBuf + 2 * nPeaks,
+      .pkMu = fitPeakBuf + 3 * nPeaks,
+      .pkInvSigmaGR2 = fitPeakBuf + 4 * nPeaks,
+      .pkInvSigmaLR2 = fitPeakBuf + 5 * nPeaks,
+      .pkInvSigmaGEta2 = fitPeakBuf + 6 * nPeaks,
+      .pkInvSigmaLEta2 = fitPeakBuf + 7 * nPeaks};
 
-  // Create and configure NLopt optimizer
-  nlopt_opt opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  if (!opt) {
-    return ERROR_MEMORY_ALLOCATION;
+  int rc = 0;
+  double minf = 0;
+
+  if (nPeaks > 1) {
+    // -----------------------------------------------------------
+    // Fix 1, Stage 1: Fit each peak INDIVIDUALLY with Nelder-Mead
+    // This keeps dimensionality at 9 (1 bg + 8 peak) regardless of total peaks.
+    // -----------------------------------------------------------
+    double x1[9], xl1[9], xu1[9];
+    FunctionData f_data_single = f_data;
+    f_data_single.nPeaks = 1; // Single-peak objective
+
+    for (unsigned p = 0; p < nPeaks; p++) {
+      // bg
+      x1[0] = x[0];
+      xl1[0] = xl[0];
+      xu1[0] = xu[0];
+      // Copy this peak's 8 params & bounds
+      for (int j = 1; j <= 8; j++) {
+        x1[j] = x[8 * p + j];
+        xl1[j] = xl[8 * p + j];
+        xu1[j] = xu[8 * p + j];
+      }
+
+      nlopt_opt opt1 = nlopt_create(NLOPT_LN_NELDERMEAD, 9);
+      if (!opt1)
+        continue;
+
+      nlopt_set_lower_bounds(opt1, xl1);
+      nlopt_set_upper_bounds(opt1, xu1);
+      nlopt_set_maxtime(opt1, 2.0); // Short per-peak timeout
+      nlopt_set_min_objective(opt1, peakFittingObjectiveFunction,
+                              &f_data_single);
+
+      double minf1;
+      nlopt_optimize(opt1, x1, &minf1);
+      nlopt_destroy(opt1);
+
+      // Write back fitted values
+      x[0] = x1[0]; // bg converges toward shared value
+      for (int j = 1; j <= 8; j++) {
+        x[8 * p + j] = x1[j];
+      }
+    }
+
+    // -----------------------------------------------------------
+    // Fix 1, Stage 2: Joint refinement with SBPLX
+    // SBPLX internally decomposes the high-dimensional space into
+    // lower-dimensional subspaces, making it far more efficient than
+    // Nelder-Mead for n > 10-20.
+    // -----------------------------------------------------------
+    f_data.nPeaks = (int)nPeaks; // Restore full peak count
+
+    nlopt_opt opt = nlopt_create(NLOPT_LN_SBPLX, n);
+    if (!opt)
+      return ERROR_MEMORY_ALLOCATION;
+
+    nlopt_set_lower_bounds(opt, xl);
+    nlopt_set_upper_bounds(opt, xu);
+    // Fix 2: Adaptive timeout — scale with nPeaks
+    double timeout = 2.0 + 1.0 * nPeaks;
+    if (timeout > 30.0)
+      timeout = 30.0;
+    nlopt_set_maxtime(opt, timeout);
+    nlopt_set_min_objective(opt, peakFittingObjectiveFunction, &f_data);
+
+    rc = nlopt_optimize(opt, x, &minf);
+    nlopt_destroy(opt);
+  } else {
+    // -----------------------------------------------------------
+    // Single peak: classic Nelder-Mead is fine at 9 parameters
+    // -----------------------------------------------------------
+    nlopt_opt opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
+    if (!opt)
+      return ERROR_MEMORY_ALLOCATION;
+
+    nlopt_set_lower_bounds(opt, xl);
+    nlopt_set_upper_bounds(opt, xu);
+    nlopt_set_maxtime(opt, 5.0);
+    nlopt_set_min_objective(opt, peakFittingObjectiveFunction, &f_data);
+
+    rc = nlopt_optimize(opt, x, &minf);
+    nlopt_destroy(opt);
   }
-
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_maxtime(opt, 45); // Maximum optimization time in seconds
-  nlopt_set_min_objective(opt, peakFittingObjectiveFunction, &f_data);
-
-  // Run optimization
-  double minf;
-  int rc = nlopt_optimize(opt, x, &minf);
-  nlopt_destroy(opt);
 
   // Extract results
   for (int i = 0; i < nPeaks; i++) {
@@ -1198,14 +1299,12 @@ static ErrorCode readImageCorrections(zip_t *archive, int darkLoc, int floodLoc,
         double *tmpB = malloc(nSq2 * sizeof(double));
         if (tmpA && tmpB) {
           applyImageTransformations_d(params->nImTransOpt, params->TransOpt,
-                                     darkContents_d, metadata->NrPixels,
-                                     tmpA, tmpB);
+                                      darkContents_d, metadata->NrPixels, tmpA,
+                                      tmpB);
         }
         free(tmpA);
         free(tmpB);
       }
-
-
 
       for (int i = 0; i < metadata->NrPixels * metadata->NrPixels; i++) {
         darkTemp[i] += darkContents_d[i];
@@ -1368,7 +1467,7 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
   memset(ws->positionTrackers, 0, MAX_OVERLAPS_PER_IMAGE * sizeof(int));
   int nrOfRegions = findConnectedComponents(
       ws->boolImage, metadata->NrPixels, ws->connectedComponents, ws->positions,
-      ws->positionTrackers);
+      ws->positionTrackers, ws->dfsStackX, ws->dfsStackY);
 
   char outFile[MAX_FILENAME_LENGTH];
   snprintf(outFile, MAX_FILENAME_LENGTH, "%s/%s_%06d_PS.csv", outFolderName,
@@ -1416,7 +1515,7 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
 
     unsigned nPeaks = findRegionalMaxima(
         ws->z, ws->usefulPixels, nrPixelsThisRegion, ws->maximaPositions,
-        ws->maximaValues, params->IntSat, metadata->NrPixels, mask);
+        ws->maximaValues, params->IntSat, metadata->NrPixels, mask, imgCorrBC);
 
     if (nPeaks == 0)
       continue;
@@ -1483,12 +1582,13 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
       ws->rads[0] = rMeanVal;
       ws->etas[0] = etaMeanVal;
     } else {
-      rc = fit2DPeaks(
-          nPeaks, nrPixelsThisRegion, ws->z, ws->usefulPixels, ws->maximaValues,
-          ws->maximaPositions, ws->integratedIntensity, ws->imax, ws->yCenArray,
-          ws->zCenArray, ws->rads, ws->etas, params->Ycen, params->Zcen, thresh,
-          ws->nrPx, ws->otherInfo, metadata->NrPixels, &retVal,
-          ws->fitRs, ws->fitEtas);
+      rc = fit2DPeaks(nPeaks, nrPixelsThisRegion, ws->z, ws->usefulPixels,
+                      ws->maximaValues, ws->maximaPositions,
+                      ws->integratedIntensity, ws->imax, ws->yCenArray,
+                      ws->zCenArray, ws->rads, ws->etas, params->Ycen,
+                      params->Zcen, thresh, ws->nrPx, ws->otherInfo,
+                      metadata->NrPixels, &retVal, ws->fitRs, ws->fitEtas,
+                      ws->fitPeakBuf);
     }
 
     for (int i = 0; i < nPeaks; i++) {
