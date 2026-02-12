@@ -60,6 +60,11 @@ int **allocMatrixIntF(int nrows, int ncols) {
   return arr;
 }
 
+struct ThreadWorkspace {
+  double *TheorSpots;
+  int **InPixels;
+};
+
 struct my_func_data {
   int NrOfFiles;
   int nLayers;
@@ -79,10 +84,11 @@ struct my_func_data {
   int NrPixelsGrid;
   double OmegaRanges[MAX_N_OMEGA_RANGES][2];
   double BoxSizes[MAX_N_OMEGA_RANGES][4];
-  double **P0;
+  double (*P0)[3];
   int *ObsSpotsInfo;
   int nCPUs;
   double Gs[5000];
+  struct ThreadWorkspace *Workspaces;
 };
 
 double IndividualResults[200];
@@ -96,46 +102,21 @@ static double problem_function(unsigned n, const double *x, double *grad,
   const double ExcludePoleAngle = f_data->ExcludePoleAngle;
   const long long int SizeObsSpots = f_data->SizeObsSpots;
   int nSpots = f_data->nSpots;
-  double XGr[nSpots][3];
-  double YGr[nSpots][3];
+  double (*XGr)[3] = f_data->XGrain;
+  double (*YGr)[3] = f_data->YGrain;
   const double OmegaStart = f_data->OmegaStart;
   const double OmegaStep = f_data->OmegaStep;
   const double px = f_data->px;
   const double gs = f_data->gs;
   const int NoOfOmegaRanges = f_data->NoOfOmegaRanges;
   const int NrPixelsGrid = f_data->NrPixelsGrid;
-  double P0[nLayers][3];
-  double OmegaRanges[MAX_N_OMEGA_RANGES][2];
-  double BoxSizes[MAX_N_OMEGA_RANGES][4];
-  double hkls[5000][4];
+  double (*P0)[3] = f_data->P0;
+  double (*OmegaRanges)[2] = f_data->OmegaRanges;
+  double (*BoxSizes)[4] = f_data->BoxSizes;
+  double (*hkls)[4] = f_data->hkls;
   int n_hkls = f_data->n_hkls;
-  double Thetas[5000];
-  for (i = 0; i < 5000; i++) {
-    hkls[i][0] = f_data->hkls[i][0];
-    hkls[i][1] = f_data->hkls[i][1];
-    hkls[i][2] = f_data->hkls[i][2];
-    hkls[i][3] = f_data->hkls[i][3];
-    Thetas[i] = f_data->Thetas[i];
-  }
-  int *ObsSpotsInfo;
-  ObsSpotsInfo = &(f_data->ObsSpotsInfo[0]);
-  for (i = 0; i < 3; i++) {
-    for (j = 0; j < nSpots; j++) {
-      XGr[j][i] = f_data->XGrain[j][i];
-      YGr[j][i] = f_data->YGrain[j][i];
-    }
-    for (j = 0; j < nLayers; j++) {
-      P0[j][i] = f_data->P0[j][i];
-    }
-  }
-  for (i = 0; i < MAX_N_OMEGA_RANGES; i++) {
-    for (j = 0; j < 2; j++) {
-      OmegaRanges[i][j] = f_data->OmegaRanges[i][j];
-    }
-    for (j = 0; j < 4; j++) {
-      BoxSizes[i][j] = f_data->BoxSizes[i][j];
-    }
-  }
+  double *Thetas = f_data->Thetas;
+  int *ObsSpotsInfo = f_data->ObsSpotsInfo;
   double Lsd[nLayers], ybc[nLayers], zbc[nLayers], tx, ty, tz,
       RotMatTilts[3][3];
   tx = x[0];
@@ -158,10 +139,9 @@ static double problem_function(unsigned n, const double *x, double *grad,
     int i, j, ps;
     double OrientMatIn[3][3], FracOverlap, EulIn[3];
     double XGrain[3], YGrain[3];
-    double *TheorSpotsPrivate;
-    TheorSpotsPrivate = malloc(MAX_N_SPOTS * 3 * sizeof(*TheorSpotsPrivate));
-    int **InPixelsPrivate;
-    InPixelsPrivate = allocMatrixIntF(NrPixelsGrid, 2);
+    int thread_id = omp_get_thread_num();
+    double *TheorSpotsPrivate = f_data->Workspaces[thread_id].TheorSpots;
+    int **InPixelsPrivate = f_data->Workspaces[thread_id].InPixels;
 
 #pragma omp for reduction(+ : netResult)
     for (i = 0; i < nSpots; i++) {
@@ -184,8 +164,6 @@ static double problem_function(unsigned n, const double *x, double *grad,
       netResult += FracOverlap;
       IndividualResults[i] = FracOverlap;
     }
-    free(TheorSpotsPrivate);
-    FreeMemMatrixInt(InPixelsPrivate, NrPixelsGrid);
   }
   netResult /= nSpots;
   //   printf("%.40lf\n", netResult);
@@ -273,7 +251,7 @@ void FitOrientation(
   }
   f_data.ExcludePoleAngle = ExcludePoleAngle;
   f_data.SizeObsSpots = SizeObsSpots;
-  f_data.P0 = allocMatrixF(nLayers, 3);
+  f_data.P0 = malloc(nLayers * sizeof(double[3])); // Updated P0 allocation
   for (i = 0; i < 3; i++) {
     for (j = 0; j < nSpots; j++) {
       f_data.XGrain[j][i] = SpotsInfo[j][2 * i];
@@ -291,7 +269,7 @@ void FitOrientation(
       f_data.BoxSizes[i][j] = BoxSizes[i][j];
     }
   }
-  f_data.ObsSpotsInfo = &ObsSpotsInfo[0];
+  f_data.ObsSpotsInfo = ObsSpotsInfo; // Zero-copy for ObsSpotsInfo
   f_data.OmegaStart = OmegaStart;
   f_data.OmegaStep = OmegaStep;
   f_data.px = px;
@@ -300,6 +278,20 @@ void FitOrientation(
   f_data.NoOfOmegaRanges = NoOfOmegaRanges;
   f_data.NrPixelsGrid = NrPixelsGrid;
   f_data.nCPUs = nCPUs;
+  f_data.Workspaces = malloc(nCPUs * sizeof(struct ThreadWorkspace));
+  if (f_data.Workspaces == NULL) {
+    printf("Memory allocation failed for workspaces.\n");
+    return;
+  }
+  for (i = 0; i < nCPUs; i++) {
+    f_data.Workspaces[i].TheorSpots = malloc(MAX_N_SPOTS * 3 * sizeof(double));
+    f_data.Workspaces[i].InPixels = allocMatrixIntF(NrPixelsGrid, 2);
+    if (f_data.Workspaces[i].TheorSpots == NULL ||
+        f_data.Workspaces[i].InPixels == NULL) {
+      printf("Memory allocation failed for thread workspace %ld.\n", i);
+      return;
+    }
+  }
   struct my_func_data *f_datat;
   f_datat = &f_data;
   void *trp = (struct my_func_data *)f_datat;
@@ -478,6 +470,13 @@ void FitOrientation(
     }
     SpotsOut[i][3] = IndividualResults[i];
   }
+
+  for (i = 0; i < nCPUs; i++) {
+    free(f_data.Workspaces[i].TheorSpots);
+    FreeMemMatrixInt(f_data.Workspaces[i].InPixels, NrPixelsGrid);
+  }
+  free(f_data.Workspaces);
+  free(f_data.P0);
 }
 
 int main(int argc, char *argv[]) {

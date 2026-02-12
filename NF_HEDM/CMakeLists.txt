@@ -45,7 +45,6 @@ add_nf_hedm_executable(MedianImageLibTiff SOURCES ${NF_SRCDIR}/MedianImageLibTif
 add_nf_hedm_executable(ImageProcessingLibTiff SOURCES ${NF_SRCDIR}/ImageProcessingLibTiff.c LINK_LIBRARIES_EXTRA TIFF::TIFF)
 add_nf_hedm_executable(FitOrientation SOURCES ${NF_SRCDIR}/FitOrientation.c ${NF_SHARED_FIT_SOURCES} LINK_LIBRARIES_EXTRA NLOPT::NLOPT)
 add_nf_hedm_executable(FitOrientationParameters SOURCES ${NF_SRCDIR}/FitOrientationParameters.c ${NF_SRCDIR}/CalcDiffractionSpots.c ${NF_SRCDIR}/SharedFuncsFit.c ${NF_SRCDIR}/GetMisorientation.c LINK_LIBRARIES_EXTRA NLOPT::NLOPT)
-add_nf_hedm_executable(FitOrientationParametersMultiPoint SOURCES ${NF_SRCDIR}/FitOrientationParametersMultiPoint.c ${NF_SRCDIR}/CalcDiffractionSpots.c ${NF_SRCDIR}/SharedFuncsFit.c ${NF_SRCDIR}/GetMisorientation.c LINK_LIBRARIES_EXTRA NLOPT::NLOPT)
 add_nf_hedm_executable(GenSeedOrientationsFF2NFHEDM SOURCES ${NF_SRCDIR}/GenSeedOrientationsFF2NFHEDM.c ${NF_SRCDIR}/GetMisorientation.c LINK_LIBRARIES_EXTRA)
 add_nf_hedm_executable(SimulateDiffractionSpots SOURCES ${NF_SRCDIR}/SimulateDiffractionSpots.c)
 add_nf_hedm_executable(ProcessNFMicRemote SOURCES ${NF_SRCDIR}/ProcessNFMicRemote.c)
@@ -61,6 +60,20 @@ add_nf_hedm_executable(simulateNF SOURCES ${NF_SRCDIR}/simulateNF.c ${NF_SRCDIR}
 
 # --- OpenMP Executables ---
 # Note: The helper function doesn't handle OpenMP explicitly, OpenMP::OpenMP_C should be in COMMON_LINK_LIBRARIES or added if specific
+add_executable(FitOrientationParametersMultiPoint ${NF_SRCDIR}/FitOrientationParametersMultiPoint.c ${NF_SRCDIR}/CalcDiffractionSpots.c ${NF_SRCDIR}/SharedFuncsFit.c ${NF_SRCDIR}/GetMisorientation.c)
+target_link_libraries(FitOrientationParametersMultiPoint PRIVATE NLOPT::NLOPT ${COMMON_LINK_LIBRARIES})
+if(OpenMP_C_FOUND AND BUILD_OMP)
+    target_link_libraries(FitOrientationParametersMultiPoint PRIVATE OpenMP::OpenMP_C)
+endif()
+install(TARGETS FitOrientationParametersMultiPoint RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
+add_custom_command(TARGET FitOrientationParametersMultiPoint POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/bin"
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:FitOrientationParametersMultiPoint> "${CMAKE_CURRENT_SOURCE_DIR}/bin/"
+    COMMENT "Copied FitOrientationParametersMultiPoint to ${CMAKE_CURRENT_SOURCE_DIR}/bin/"
+    VERBATIM
+)
+
+
 add_executable(ImageProcessingLibTiffOMP ${NF_SRCDIR}/ImageProcessingLibTiffOMP.c)
 target_link_libraries(ImageProcessingLibTiffOMP PRIVATE TIFF::TIFF ${COMMON_LINK_LIBRARIES})
 if(OpenMP_C_FOUND AND BUILD_OMP)
