@@ -742,9 +742,8 @@ static double peakFittingObjectiveFunction(unsigned n, const double *x,
       double L =
           1.0 / ((R2 * invSigmaLR2[j] + 1.0) * (E2 * invSigmaLEta2[j] + 1.0));
 
-      // Gaussian component: skip exp() when exponent < -20 (~2e-9)
-      double gArg = -0.5 * (R2 * invSigmaGR2[j] + E2 * invSigmaGEta2[j]);
-      double G = (gArg > -20.0) ? exp(gArg) : 0.0;
+      // Gaussian component (using pre-computed reciprocals)
+      double G = exp(-0.5 * (R2 * invSigmaGR2[j] + E2 * invSigmaGEta2[j]));
 
       // Pseudo-Voigt profile (weighted sum of Lorentzian and Gaussian)
       intPeaks += IMAX[j] * ((Mu[j] * L) + ((1 - Mu[j]) * G));
@@ -951,37 +950,19 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
   int rc = 0;
   double minf = 0;
 
-  if (nPeaks > 1) {
-    // -----------------------------------------------------------
-    // Joint Nelder-Mead fit for multiple overlapping peaks
-    // -----------------------------------------------------------
-    nlopt_opt opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-    if (!opt)
-      return ERROR_MEMORY_ALLOCATION;
+  // Create and configure NLopt optimizer
+  nlopt_opt opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
+  if (!opt)
+    return ERROR_MEMORY_ALLOCATION;
 
-    nlopt_set_lower_bounds(opt, xl);
-    nlopt_set_upper_bounds(opt, xu);
-    nlopt_set_maxtime(opt, 5.0);
-    nlopt_set_min_objective(opt, peakFittingObjectiveFunction, &f_data);
+  nlopt_set_lower_bounds(opt, xl);
+  nlopt_set_upper_bounds(opt, xu);
+  nlopt_set_maxtime(opt, 45); // Maximum optimization time in seconds
+  nlopt_set_min_objective(opt, peakFittingObjectiveFunction, &f_data);
 
-    rc = nlopt_optimize(opt, x, &minf);
-    nlopt_destroy(opt);
-  } else {
-    // -----------------------------------------------------------
-    // Single peak: classic Nelder-Mead is fine at 9 parameters
-    // -----------------------------------------------------------
-    nlopt_opt opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-    if (!opt)
-      return ERROR_MEMORY_ALLOCATION;
-
-    nlopt_set_lower_bounds(opt, xl);
-    nlopt_set_upper_bounds(opt, xu);
-    nlopt_set_maxtime(opt, 5.0);
-    nlopt_set_min_objective(opt, peakFittingObjectiveFunction, &f_data);
-
-    rc = nlopt_optimize(opt, x, &minf);
-    nlopt_destroy(opt);
-  }
+  // Run optimization
+  rc = nlopt_optimize(opt, x, &minf);
+  nlopt_destroy(opt);
 
   // Extract results
   for (int i = 0; i < nPeaks; i++) {
