@@ -933,81 +933,36 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
 
   // Set up FunctionData with pre-allocated peak buffers (Fix 5)
   // fitPeakBuf is a single block of nPeaks*8 doubles, carved into 8 arrays:
-  FunctionData f_data = {
-      .NrPixels = nrPixelsThisRegion,
-      .nPeaks = (int)nPeaks,
-      .Rs = Rs,
-      .Etas = Etas,
-      .z = z,
-      .pkIMAX = fitPeakBuf + 0 * nPeaks,
-      .pkR = fitPeakBuf + 1 * nPeaks,
-      .pkEta = fitPeakBuf + 2 * nPeaks,
-      .pkMu = fitPeakBuf + 3 * nPeaks,
-      .pkInvSigmaGR2 = fitPeakBuf + 4 * nPeaks,
-      .pkInvSigmaLR2 = fitPeakBuf + 5 * nPeaks,
-      .pkInvSigmaGEta2 = fitPeakBuf + 6 * nPeaks,
-      .pkInvSigmaLEta2 = fitPeakBuf + 7 * nPeaks};
+  FunctionData f_data = {.NrPixels = nrPixelsThisRegion,
+                         .nPeaks = (int)nPeaks,
+                         .Rs = Rs,
+                         .Etas = Etas,
+                         .z = z,
+                         .pkIMAX = fitPeakBuf + 0 * nPeaks,
+                         .pkR = fitPeakBuf + 1 * nPeaks,
+                         .pkEta = fitPeakBuf + 2 * nPeaks,
+                         .pkMu = fitPeakBuf + 3 * nPeaks,
+                         .pkInvSigmaGR2 = fitPeakBuf + 4 * nPeaks,
+                         .pkInvSigmaLR2 = fitPeakBuf + 5 * nPeaks,
+                         .pkInvSigmaGEta2 = fitPeakBuf + 6 * nPeaks,
+                         .pkInvSigmaLEta2 = fitPeakBuf + 7 * nPeaks};
 
   int rc = 0;
   double minf = 0;
 
   if (nPeaks > 1) {
     // -----------------------------------------------------------
-    // Fix 1, Stage 1: Fit each peak INDIVIDUALLY with Nelder-Mead
-    // This keeps dimensionality at 9 (1 bg + 8 peak) regardless of total peaks.
+    // Joint fit with SBPLX: internally decomposes the high-dimensional
+    // space into lower-dimensional subspaces, making it efficient for
+    // multi-peak fitting while properly handling overlapping peaks.
     // -----------------------------------------------------------
-    double x1[9], xl1[9], xu1[9];
-    FunctionData f_data_single = f_data;
-    f_data_single.nPeaks = 1; // Single-peak objective
-
-    for (unsigned p = 0; p < nPeaks; p++) {
-      // bg
-      x1[0] = x[0];
-      xl1[0] = xl[0];
-      xu1[0] = xu[0];
-      // Copy this peak's 8 params & bounds
-      for (int j = 1; j <= 8; j++) {
-        x1[j] = x[8 * p + j];
-        xl1[j] = xl[8 * p + j];
-        xu1[j] = xu[8 * p + j];
-      }
-
-      nlopt_opt opt1 = nlopt_create(NLOPT_LN_NELDERMEAD, 9);
-      if (!opt1)
-        continue;
-
-      nlopt_set_lower_bounds(opt1, xl1);
-      nlopt_set_upper_bounds(opt1, xu1);
-      nlopt_set_maxtime(opt1, 2.0); // Short per-peak timeout
-      nlopt_set_min_objective(opt1, peakFittingObjectiveFunction,
-                              &f_data_single);
-
-      double minf1;
-      nlopt_optimize(opt1, x1, &minf1);
-      nlopt_destroy(opt1);
-
-      // Write back fitted values
-      x[0] = x1[0]; // bg converges toward shared value
-      for (int j = 1; j <= 8; j++) {
-        x[8 * p + j] = x1[j];
-      }
-    }
-
-    // -----------------------------------------------------------
-    // Fix 1, Stage 2: Joint refinement with SBPLX
-    // SBPLX internally decomposes the high-dimensional space into
-    // lower-dimensional subspaces, making it far more efficient than
-    // Nelder-Mead for n > 10-20.
-    // -----------------------------------------------------------
-    f_data.nPeaks = (int)nPeaks; // Restore full peak count
-
     nlopt_opt opt = nlopt_create(NLOPT_LN_SBPLX, n);
     if (!opt)
       return ERROR_MEMORY_ALLOCATION;
 
     nlopt_set_lower_bounds(opt, xl);
     nlopt_set_upper_bounds(opt, xu);
-    // Fix 2: Adaptive timeout — scale with nPeaks
+    // Adaptive timeout — scale with nPeaks
     double timeout = 2.0 + 1.0 * nPeaks;
     if (timeout > 30.0)
       timeout = 30.0;
@@ -1582,13 +1537,12 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
       ws->rads[0] = rMeanVal;
       ws->etas[0] = etaMeanVal;
     } else {
-      rc = fit2DPeaks(nPeaks, nrPixelsThisRegion, ws->z, ws->usefulPixels,
-                      ws->maximaValues, ws->maximaPositions,
-                      ws->integratedIntensity, ws->imax, ws->yCenArray,
-                      ws->zCenArray, ws->rads, ws->etas, params->Ycen,
-                      params->Zcen, thresh, ws->nrPx, ws->otherInfo,
-                      metadata->NrPixels, &retVal, ws->fitRs, ws->fitEtas,
-                      ws->fitPeakBuf);
+      rc = fit2DPeaks(
+          nPeaks, nrPixelsThisRegion, ws->z, ws->usefulPixels, ws->maximaValues,
+          ws->maximaPositions, ws->integratedIntensity, ws->imax, ws->yCenArray,
+          ws->zCenArray, ws->rads, ws->etas, params->Ycen, params->Zcen, thresh,
+          ws->nrPx, ws->otherInfo, metadata->NrPixels, &retVal, ws->fitRs,
+          ws->fitEtas, ws->fitPeakBuf);
     }
 
     for (int i = 0; i < nPeaks; i++) {
