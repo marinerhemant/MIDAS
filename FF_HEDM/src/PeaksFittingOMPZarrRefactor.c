@@ -952,21 +952,15 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
 
   if (nPeaks > 1) {
     // -----------------------------------------------------------
-    // Joint fit with BOBYQA: uses quadratic interpolation models,
-    // typically 5-10x fewer evaluations than Nelder-Mead for
-    // moderate dimensions, while properly handling peak overlaps.
+    // Joint Nelder-Mead fit for multiple overlapping peaks
     // -----------------------------------------------------------
-    nlopt_opt opt = nlopt_create(NLOPT_LN_BOBYQA, n);
+    nlopt_opt opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
     if (!opt)
       return ERROR_MEMORY_ALLOCATION;
 
     nlopt_set_lower_bounds(opt, xl);
     nlopt_set_upper_bounds(opt, xu);
-    // Adaptive timeout — scale with nPeaks
-    double timeout = 5.0 + 2.0 * nPeaks;
-    if (timeout > 60.0)
-      timeout = 60.0;
-    nlopt_set_maxtime(opt, timeout);
+    nlopt_set_maxtime(opt, 5.0);
     nlopt_set_min_objective(opt, peakFittingObjectiveFunction, &f_data);
 
     rc = nlopt_optimize(opt, x, &minf);
