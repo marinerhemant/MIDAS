@@ -960,9 +960,19 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
   nlopt_set_maxtime(opt, 45); // Maximum optimization time in seconds
   nlopt_set_min_objective(opt, peakFittingObjectiveFunction, &f_data);
 
+  // Timing instrumentation (temporary — remove after profiling)
+  struct timespec t_start, t_end;
+  clock_gettime(CLOCK_MONOTONIC, &t_start);
+
   // Run optimization
   rc = nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
+
+  clock_gettime(CLOCK_MONOTONIC, &t_end);
+  double elapsed_ms = (t_end.tv_sec - t_start.tv_sec) * 1000.0 +
+                      (t_end.tv_nsec - t_start.tv_nsec) / 1e6;
+  fprintf(stderr, "[FIT] nPeaks=%u nParams=%u nPixels=%d elapsed=%.1fms\n",
+          nPeaks, n, nrPixelsThisRegion, elapsed_ms);
 
   // Extract results
   for (int i = 0; i < nPeaks; i++) {
