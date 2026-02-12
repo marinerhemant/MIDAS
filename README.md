@@ -1,6 +1,6 @@
 # MIDAS
 
-**** V8 Released ****
+**** V9 Released ****
 
 
 Code for reduction of High Energy Diffraction Microscopy (HEDM) data developed at Advanced Photon Source.
@@ -88,7 +88,7 @@ This will compile all the codes in the MIDAS directory.
    ```
    ./build.sh --cuda OFF
    ```
-   * In case of MACOS, if there is an error during build for the libtiff directory, please follow these steps:
+   * **(DEPRECATED)** In case of MACOS, if there is an error during build for the libtiff directory, please follow these steps:
    ```
    Edit the cmake/deps/LIBTIFF_custom.cmake file to comment lines 44, 45, and 48 by adding # in the beginning. It should look like:
       #  list(APPEND _libtiff_fetch_extra_args
