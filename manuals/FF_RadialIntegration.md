@@ -37,8 +37,8 @@ graph LR
     
     subgraph "Orchestrator: integrator_batch_process.py"
         Server[integrator_server.py]
-        GPU[IntegratorFitPeaksGPUStream<br>(CUDA Backend)]
-        Mapper[DetectorMapper<br>(Geometry Calc)]
+        GPU["IntegratorFitPeaksGPUStream<br>(CUDA Backend)"]
+        Mapper["DetectorMapper<br>(Geometry Calc)"]
     end
     
     Files --> Server
@@ -96,16 +96,16 @@ This workflow is designed for flexibility. It processes files independently, mak
 ```mermaid
 graph TD
     subgraph "Parallel Orchestrator: integrator.py"
-        Input[Raw Data File<br>(.tif, .h5, etc.)]
-        ZipGen[Generate Zip<br>(midas2zip)]
-        IntOMP[IntegratorZarrOMP<br>(CPU Engine)]
+        Input["Raw Data File<br>(.tif, .h5, etc.)"]
+        ZipGen["Generate Zip<br>(midas2zip)"]
+        IntOMP["IntegratorZarrOMP<br>(CPU Engine)"]
         Conv[Hdf5ToZarr]
     end
     
     Input -->|Process| ZipGen
     ZipGen -->|Zarr Zip| IntOMP
     IntOMP -->|Caked HDF| Conv
-    Conv -->|Output Zarr| Result[Final Zarr/Mat]
+    Conv -->|Output Zarr| Result["Final Zarr/Mat"]
 ```
 
 ### 3.2. Requirements
