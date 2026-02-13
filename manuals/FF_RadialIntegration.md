@@ -1,6 +1,6 @@
 # MIDAS Radial Integration Suite: User Manual
 
-**Version:** 7.0  
+**Version:** 9.0  
 **Contact:** hsharma@anl.gov
 
 ---
@@ -196,12 +196,37 @@ This tool runs automatically at the start of either workflow. It consumes the ex
 *   `Map.bin`: The mapping of every pixel to its (Radius, Azimuth) bin.
 *   `nMap.bin`: An index file for the map.
 
-**Key Parameters (in parameter file):**
-*   `Lsd`: Sample-to-detector distance (microns).
-*   `BC`: Beam Center (y, z) in pixels.
-*   `tx, ty, tz`: Detector tilts (degrees).
-*   `RMin, RMax, RBinSize`: Radial integration range (pixels).
-*   `EtaMin, EtaMax, EtaBinSize`: Azimuthal integration range (degrees).
+## Appendix A: Parameter File Reference
+ 
+The parameter file is a text file containing key-value pairs used by both the `integrator` and `DetectorMapper`.
+ 
+### A.1. Experimental Geometry
+| Parameter | Type | Description | Units / Notes |
+| :--- | :--- | :--- | :--- |
+| `Lsd` | `float` | Sample-to-detector distance | microns (μm) |
+| `Wavelength` | `float` | X-ray wavelength | Angstroms (Å) |
+| `BC` | `float float` | Beam center (Y, Z) | pixels |
+| `ty`, `tz`, `tx` | `float` | Detector tilts (vertical, horizontal, torsion) | degrees |
+| `px` | `float` | Pixel size | microns (μm) |
+ 
+### A.2. Integration Configuration
+| Parameter | Type | Description | Units / Notes |
+| :--- | :--- | :--- | :--- |
+| `RMin` | `float` | Minimum radius for integration | pixels |
+| `RMax` | `float` | Maximum radius for integration | pixels |
+| `RBinSize` | `float` | Radial bin size | pixels |
+| `EtaMin` | `float` | Minimum azimuth angle | degrees |
+| `EtaMax` | `float` | Maximum azimuth angle | degrees |
+| `EtaBinSize` | `float` | Azimuthal bin size | degrees |
+ 
+### A.3. Corrections & Advanced
+| Parameter | Type | Description |
+| :--- | :--- | :--- |
+| `GapFile` | `str` | Path to a file defining panel gaps (mask) |
+| `BadPxFile` | `str` | Path to a file defining bad pixels (mask) |
+| `ImTransOpt` | `int` | Image transformation (0=None, 1=FlipH, 2=FlipV, 3=Transpose) |
+| `Polariz` | `float` | Polarization factor (default 0.99) |
+| `GapIntensity` | `float` | In-fill value for gap pixels (default 0) |
 
 ### 4.2. Output Formats
 

@@ -1,6 +1,6 @@
 # pf_MIDAS.py User Manual
 
-**Version:** 7.0  
+**Version:** 9.0  
 **Contact:** hsharma@anl.gov
 
 > [!NOTE]
@@ -26,7 +26,7 @@ The script:
 
 -   A working MIDAS installation.
 -   Raw diffraction data (GE, HDF5, or pre-built Zarr-ZIP).
--   A calibrant-derived parameter file (see [FF_autocalibrate.md](FF_autocalibrate.md)).
+-   A calibrant-derived parameter file (see [FF_calibration.md](FF_calibration.md)).
 -   A `positions.csv` file listing Y-positions (one per line, negative w.r.t. motor position).
 -   Parameter file and `positions.csv` must be in the **same directory**.
 -   Python environment with: `parsl`, `numpy`, `pandas`, `scikit-image`, `Pillow`, `h5py`, `zarr`, `numba`.
@@ -259,7 +259,7 @@ When `-doTomo 1` is enabled:
 ## 10. See Also
 
 - [FF_Analysis.md](FF_Analysis.md) — Standard (box-beam) FF-HEDM analysis
-- [FF_autocalibrate.md](FF_autocalibrate.md) — Geometry calibration
+- [FF_calibration.md](FF_calibration.md) — Geometry calibration
 - [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results
 - [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation for validation
 

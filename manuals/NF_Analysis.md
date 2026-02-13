@@ -1,6 +1,6 @@
 # nf_MIDAS.py User Manual
 
-**Version:** 7.0  
+**Version:** 9.0  
 **Contact:** hsharma@anl.gov
 
 > [!NOTE]

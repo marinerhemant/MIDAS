@@ -1,6 +1,6 @@
 # MIDAS FF-HEDM Interactive Viewer: User Manual
 
-**Version:** 7.0  
+**Version:** 9.0  
 **Contact:** hsharma@anl.gov
 
 ---
@@ -251,7 +251,7 @@ The application's interactivity is driven by a chain of Dash callbacks:
 - [FF_Analysis.md](FF_Analysis.md) — Standard FF-HEDM analysis (produces Grains.csv and SpotMatrix.csv)
 - [PF_Analysis.md](PF_Analysis.md) — Scanning/pencil-beam FF-HEDM analysis
 - [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation for validation
-- [FF_autocalibrate.md](FF_autocalibrate.md) — Geometry calibration
+- [FF_calibration.md](FF_calibration.md) — Geometry calibration
 
 ---
 

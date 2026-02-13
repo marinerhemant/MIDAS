@@ -74,15 +74,80 @@ struct data {
 struct data *pxList;
 int *nPxList;
 
+static int CopyToShm(const char *srcFn, char *destFn, size_t destLen) {
+  int srcFd = open(srcFn, O_RDONLY);
+  if (srcFd < 0) {
+    // If we can't open local file, return error
+    return -1;
+  }
+
+  // Create unique filename in /dev/shm to prevent collisions
+  // Use PID and timestamp for uniqueness
+  snprintf(destFn, destLen, "/dev/shm/Integrator_%s_%d_%ld.bin", srcFn,
+           getpid(), time(NULL));
+
+  // Open destination in /dev/shm
+  // O_EXCL ensures we don't clobber an existing file (unlikely with PID/Time)
+  int destFd = open(destFn, O_RDWR | O_CREAT | O_EXCL, 0600);
+  if (destFd < 0) {
+    // If /dev/shm is full or not accessible, close src and return error
+    close(srcFd);
+    return -1;
+  }
+
+  // IMMEDIATELY unlink the file!
+  // This is the key safety feature. The file remains available via destFd,
+  // but is removed from the filesystem namespace. The OS will automatically
+  // reclaim the space when this process exits (cleanly or crash).
+  unlink(destFn);
+
+  // Copy data
+  char buffer[8192];
+  ssize_t bytesRead, bytesWritten;
+  while ((bytesRead = read(srcFd, buffer, sizeof(buffer))) > 0) {
+    char *ptr = buffer;
+    while (bytesRead > 0) {
+      bytesWritten = write(destFd, ptr, bytesRead);
+      if (bytesWritten < 0) {
+        // Write error (disk full?)
+        close(srcFd);
+        close(destFd);
+        return -1;
+      }
+      bytesRead -= bytesWritten;
+      ptr += bytesWritten;
+    }
+  }
+
+  close(srcFd);
+
+  // Rewind destFd for subsequent mmap/reading
+  lseek(destFd, 0, SEEK_SET);
+
+  return destFd;
+}
+
 int ReadBins() {
   int fd;
   struct stat s;
   int status;
   size_t size;
   const char *file_name = "Map.bin";
-  int rc;
-  fd = open(file_name, O_RDONLY);
-  check(fd < 0, "open %s failed: %s", file_name, strerror(errno));
+  char shm_name[256];
+
+  // Try to copy to /dev/shm first
+  fd = CopyToShm(file_name, shm_name, sizeof(shm_name));
+
+  if (fd >= 0) {
+    printf("Using optimized /dev/shm cache for %s (internal: %s)\n", file_name,
+           shm_name);
+  } else {
+    printf("Warning: Could not cache %s to /dev/shm. Falling back to disk.\n",
+           file_name);
+    fd = open(file_name, O_RDONLY);
+    check(fd < 0, "open %s failed: %s", file_name, strerror(errno));
+  }
+
   status = fstat(fd, &s);
   check(status < 0, "stat %s failed: %s", file_name, strerror(errno));
   size = s.st_size;
@@ -92,13 +157,27 @@ int ReadBins() {
          (long long int)size, sizelen, (long long int)(size / sizelen));
   pxList = mmap(0, size, PROT_READ, MAP_SHARED, fd, 0);
   check(pxList == MAP_FAILED, "mmap %s failed: %s", file_name, strerror(errno));
+  // We can close fd now, mmap keeps the reference
+  close(fd);
 
   int fd2;
   struct stat s2;
   int status2;
   const char *file_name2 = "nMap.bin";
-  fd2 = open(file_name2, O_RDONLY);
-  check(fd2 < 0, "open %s failed: %s", file_name2, strerror(errno));
+
+  // Try to copy nMap to /dev/shm
+  fd2 = CopyToShm(file_name2, shm_name, sizeof(shm_name));
+
+  if (fd2 >= 0) {
+    printf("Using optimized /dev/shm cache for %s (internal: %s)\n", file_name2,
+           shm_name);
+  } else {
+    printf("Warning: Could not cache %s to /dev/shm. Falling back to disk.\n",
+           file_name2);
+    fd2 = open(file_name2, O_RDONLY);
+    check(fd2 < 0, "open %s failed: %s", file_name2, strerror(errno));
+  }
+
   status2 = fstat(fd2, &s2);
   check(status2 < 0, "stat %s failed: %s", file_name2, strerror(errno));
   size_t size2 = s2.st_size;
@@ -110,6 +189,7 @@ int ReadBins() {
   fflush(stdout);
   check(nPxList == MAP_FAILED, "mmap %s failed: %s", file_name,
         strerror(errno));
+  close(fd2);
   return 1;
 }
 

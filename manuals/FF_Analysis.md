@@ -1,6 +1,6 @@
 # ff_MIDAS.py User Manual
 
-**Version:** 7.0  
+**Version:** 9.0  
 **Contact:** hsharma@anl.gov
 
 > [!NOTE]
@@ -24,7 +24,7 @@ The script uses [Parsl](https://parsl-project.org/) for parallelism and supports
     -   **GE format** (`.ge2`, `.ge3`, etc.) with a matching parameter file.
     -   **HDF5 format** (`.h5`) — either standalone or paired with a parameter file.
     -   **Pre-built Zarr-ZIP** (`.MIDAS.zip`) — if data conversion was already performed.
--   A calibrant-derived parameter file (see [FF_autocalibrate.md](FF_autocalibrate.md)).
+-   A calibrant-derived parameter file (see [FF_calibration.md](FF_calibration.md)).
 -   Python environment with: `parsl`, `numpy`, `argparse`, `logging`.
 
 ---
@@ -84,7 +84,7 @@ The parameter file is a space-delimited text file. Lines starting with `#` are c
 | `FileStem` | `str` | Base name of raw data files (e.g., `sample1_ff`) |
 | `Ext` | `str` | File extension (e.g., `.ge3`, `.tif`) |
 | `StartFileNrFirstLayer` | `int` | File number of the first frame in the first layer |
-| `NrFilesPerSweep` | `int` | Number of files per omega sweep (default: 1) |
+| `NrFilesPerSweep` | `int` | Number of files per HEDM scan (default: 1) |
 | `RawFolder` | `str` | Path to directory containing raw data files |
 | `Dark` | `str` | Path to the dark-field image file |
 | `Lsd` | `float` | Sample-to-detector distance (μm) |
@@ -96,26 +96,26 @@ The parameter file is a space-delimited text file. Lines starting with `#` are c
 | `p0` | `float` | Detector torsion (degrees) |
 | `LatticeParameter` | `float ×6` | a, b, c (Å), α, β, γ (degrees) |
 | `SpaceGroup` | `int` | Space group number (e.g., 225 for FCC) |
-| `StartNr` | `int` | First frame number in a sweep |
-| `EndNr` | `int` | Last frame number in a sweep |
+| `StartNr` | `int` | First frame number in scan (keep 1) |
+| `EndNr` | `int` | Last frame number in scan (usually the number of frames) |
 | `OmegaFirstFile` | `float` | Omega angle of the first frame (degrees) |
 | `OmegaStep` | `float` | Omega step size per frame (degrees) |
 | `RingThresh` | `int float` | Ring number and intensity threshold pairs (one per line) |
-| `ImTransOpt` | `int` | Image transformation option (0–7) |
+| `ImTransOpt` | `int` | Image transformation option (0–3). One per line; multiple allowed. Order matters (same as alignment).<br>0: No transform<br>1: Horizontal flip<br>2: Vertical flip<br>3: Transpose |
 
 ### Indexing & Refinement Parameters
 
 | Key | Type | Description |
 |---|---|---|
 | `OverAllRingToIndex` | `int` | Ring number used for the primary indexing search |
-| `MinNrSpots` | `int` | Minimum number of spots required to accept a grain |
-| `MinOmeSpotIDsToIndex` | `float` | Minimum omega for spot IDs considered during indexing |
-| `MaxOmeSpotIDsToIndex` | `float` | Maximum omega for spot IDs considered during indexing |
-| `Twins` | `int` | `1` = enable twin detection during grain merging; `0` = disable |
+| `MinNrSpots` | `int` | Minimum finding redundancy: The grain must be found this many times (starting from different spots) to be accepted. |
+| `MinOmeSpotIDsToIndex` | `float` | Minimum omega for spot IDs considered to generate indexing list |
+| `MaxOmeSpotIDsToIndex` | `float` | Maximum omega for spot IDs considered to generate indexing list |
+| `Twins` | `int` | **[DANGEROUS]** Not fully implemented. Use `1` only if FCC twins are present and you know what you are doing; otherwise `0`. |
 | `BeamThickness` | `float` | X-ray beam height (μm) |
 | `GlobalPosition` | `float` | Y-stage position (μm) |
-| `NumPhases` | `int` | Number of crystallographic phases |
-| `PhaseNr` | `int` | Current phase number |
+| `NumPhases` | `int` | Total number of phases (legacy, usually 1) |
+| `PhaseNr` | `int` | Phase ID added to the final result (typically 1). **Note:** For multi-phase materials, run MIDAS separately for each phase and change this number. |
 
 ### Optional Parameters
 
@@ -124,7 +124,7 @@ The parameter file is a space-delimited text file. Lines starting with `#` are c
 | `PanelShiftsFile` | `str` | Path to a file containing per-panel geometric shifts |
 | `RingsToExcludeFraction` | Ring exclusion fraction (advanced) |
 | `GrainsFile` | `str` | Path to a seed grains file for guided indexing |
-| `ResultFolder` | `str` | Override result folder from within the parameter file |
+| `ResultFolder` | `str` | Override result folder instead of default execution folder |
 
 ---
 
@@ -346,7 +346,7 @@ Tab-separated, one row per diffraction spot per grain:
 | `Key file was not found` | Indexing found zero grains | Check `MinNrSpots`, ring thresholds, and detector geometry |
 | `Failed to generate ZIP file` | Raw data not found or wrong format | Verify `RawFolder`, `FileStem`, `Ext`, and `StartFileNrFirstLayer` |
 | `HKL generation failed` | Wrong crystal structure parameters | Verify `LatticeParameter`, `SpaceGroup`, and `Wavelength` |
-| Peak search produces no output | Incorrect `BC`, `Lsd`, or tilts | Re-run calibration ([FF_autocalibrate.md](FF_autocalibrate.md)) |
+| Peak search produces no output | Incorrect `BC`, `Lsd`, or tilts | Re-run calibration ([FF_calibration.md](FF_calibration.md)) |
 | Out of memory during peak search | Dataset too large for RAM | Use `-numFrameChunks 2` (or higher) |
 | `Grains.csv is empty` | `MinNrSpots` too high, or wrong `SpaceGroup` | Lower `MinNrSpots` or verify crystal symmetry |
 
@@ -355,7 +355,7 @@ Tab-separated, one row per diffraction spot per grain:
 ## 10. See Also
 
 - [PF_Analysis.md](PF_Analysis.md) — Scanning/pencil-beam FF-HEDM analysis
-- [FF_autocalibrate.md](FF_autocalibrate.md) — Geometry calibration from calibrant rings
+- [FF_calibration.md](FF_calibration.md) — Geometry calibration from calibrant rings
 - [FF_dual_datasets.md](FF_dual_datasets.md) — Dual-dataset combined analysis
 - [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results
 - [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation for validation

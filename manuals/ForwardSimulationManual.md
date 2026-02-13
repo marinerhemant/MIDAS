@@ -1,6 +1,6 @@
 # User Manual: `ForwardSimulationCompressed`
 
-**Version:** 7.0  
+**Version:** 9.0  
 **Contact:** hsharma@anl.gov
 
 ---
@@ -251,6 +251,6 @@ To read this data, you can use Python libraries such as `zarr`. The file structu
 
 - [FF_Analysis.md](FF_Analysis.md) — Standard FF-HEDM analysis (produces Grains.csv used as input here)
 - [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results and simulated data
-- [FF_autocalibrate.md](FF_autocalibrate.md) — Geometry calibration from calibrant rings
+- [FF_calibration.md](FF_calibration.md) — Geometry calibration from calibrant rings
 
 ---

@@ -1,7 +1,7 @@
 # NF-HEDM Multi-Resolution Analysis Manual
 
 **Script:** `nf_MIDAS_Multiple_Resolutions.py`
-**Version:** 7.0 — Contact: hsharma@anl.gov
+**Version:** 9.0 — Contact: hsharma@anl.gov
 
 ---
 
