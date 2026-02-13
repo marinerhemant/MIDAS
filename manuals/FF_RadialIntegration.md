@@ -43,10 +43,10 @@ graph LR
     
     Files --> Server
     Stream --> Server
-    Mapper -->|Map.bin| GPU
-    Server -->|Frames (Socket)| GPU
-    GPU -->|Binary Stream| Post[integrator_stream_process_h5.py]
-    Post --> Final[Final Output .h5]
+    Mapper -->|"Map.bin"| GPU
+    Server -->|"Frames (Socket)"| GPU
+    GPU -->|"Binary Stream"| Post["integrator_stream_process_h5.py"]
+    Post --> Final["Final Output .h5"]
 ```
 
 ### 2.2. Requirements
@@ -103,9 +103,9 @@ graph TD
     end
     
     Input -->|Process| ZipGen
-    ZipGen -->|Zarr Zip| IntOMP
-    IntOMP -->|Caked HDF| Conv
-    Conv -->|Output Zarr| Result["Final Zarr/Mat"]
+    ZipGen -->|"Zarr Zip"| IntOMP
+    IntOMP -->|"Caked HDF"| Conv
+    Conv -->|"Output Zarr"| Result["Final Zarr/Mat"]
 ```
 
 ### 3.2. Requirements
