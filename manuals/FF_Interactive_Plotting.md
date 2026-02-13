@@ -23,7 +23,7 @@ The viewer provides a suite of linked, interactive plots that display grain stru
  ```mermaid
  graph TD
      subgraph "Input Data"
-         ZF[Zarr File (.zarr)]
+         ZF["Zarr File (.zarr)"]
          RF[Results Folder]
          RF --> G[Grains.csv]
          RF --> SM[SpotMatrix.csv]
