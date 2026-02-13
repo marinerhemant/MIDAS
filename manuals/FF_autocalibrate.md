@@ -36,14 +36,40 @@ The script is a crucial first step for any HEDM analysis, as an accurate geometr
 ## 3. Workflow Overview
 
 The script follows a logical, multi-step process to achieve a converged geometric solution:
+ 
+ ```mermaid
+ graph TD
+     A[Start] --> B{Input Format?};
+     B -- Zarr --> C[Read Zarr];
+     B -- TIFF/HDF5/GE --> D[Convert to Zarr using ffGenerateZipRefactor];
+     D --> C;
+     C --> E[Calculate Average Image];
+     E --> F{NoMedian?};
+     F -- No --> G[Apply Median Filter/Background Subtraction];
+     F -- Yes --> H[Skip Background Subtraction];
+     G --> I[Threshold Image];
+     H --> I;
+     I --> J[Detect Beam Center & Ring Radii];
+     J --> K[Estimate Initial Lsd];
+     K --> L[Refinement Loop Start];
+     L --> M[Run CalibrantOMP];
+     M --> N[Analyze Strain & Identify Outliers];
+     N --> O{Converged?};
+     O -- No --> P[Exclude Outliers];
+     P --> M;
+     O -- Yes --> Q[Save refined_MIDAS_params.txt];
+     Q --> R[Save Optional HDF5 Data];
+     R --> S[End];
+ ```
 
 1.  **File Input & Conversion:**
     *   The script takes a data file as input. If the format is TIFF, GE, or HDF5, it first calls `ffGenerateZipRefactor.py` to convert it into a standard `.MIDAS.zip` (Zarr) archive.
+    *   It can also apply geometric transformations (flips, transposes) if specified via `-ImTransOpt`.
     *   It reads essential metadata (e.g., `SpaceGroup`, `Wavelength`, `PixelSize`) from the Zarr file or the provided parameter file.
 
 2.  **Initial Image Processing:**
     *   It calculates an average 2D image from the input data (if it's a 3D stack).
-    *   A heavy median filter (`diplib.MedianFilter`) is applied to create a robust model of the image background.
+    *   A heavy median filter (`diplib.MedianFilter`) is applied to create a robust model of the image background (unless `-NoMedian 1` is used).
     *   The background is subtracted, and an automatic or user-defined threshold is applied to create a clean, binary image of the diffraction rings.
 
 3.  **Initial Guess Estimation:**
@@ -85,6 +111,9 @@ The script's behavior is controlled via the following arguments:
 | `-paramFN` | A parameter file containing material/beamline info. **Required** if `-ConvertFile` is not 0. | `''` | `-paramFN initial_params.txt` |
 | `-darkFN` | Path to a separate file containing the dark-field image. | `''` | `-darkFN dark_image.h5` |
 | `-dataLoc` | Path to the dataset within an HDF5 file if not the standard location. | `''` | `-dataLoc /entry/data/data` |
+ | `-ImTransOpt` | Image transformations: `0`: None, `1`: FlipLR, `2`: FlipUD, `3`: Transpose. Can be multiple. | `[0]` | `-ImTransOpt 1 3` |
+ | `-BadPxIntensity` | Intensity value representing bad pixels in the input. | `NaN` | `-BadPxIntensity -2` |
+ | `-GapIntensity` | Intensity value representing inter-module gaps. | `NaN` | `-GapIntensity -1` |
 
 ### Calibration & Refinement Control
 
@@ -97,6 +126,13 @@ The script's behavior is controlled via the following arguments:
 | `-BCGuess` | An initial guess for the beam center `[y x]` (in pixels). If not provided, it is auto-detected. | `[0.0 0.0]` | `-BCGuess 1024.5 1021.0` |
 | `-EtaBinSize` | The size of the azimuthal bins (in degrees) used by `CalibrantOMP` for fitting. | `5.0` | `-EtaBinSize 2.0` |
 | `-Threshold` | A manual intensity threshold for segmenting the rings. If `0`, it's auto-calculated. | `0` | `-Threshold 500` |
+ | `-NoMedian` | Set to `1` to skip the median filter calculation (faster, but less robust background subtraction). | `0` | `-NoMedian 1` |
+ 
+ > [!TIP]
+ > Using `-NoMedian 1` significantly speeds up processing, especially for large images, but requires a clean input or a pre-calculated background.
+ 
+ > [!IMPORTANT]
+ > If you provide either `-BadPxIntensity` or `-GapIntensity`, it is recommended to provide **both** if your data contains both types of artifacts.
 
 ### Output & Visualization
 
@@ -136,7 +172,58 @@ python /path/to/AutoCalibrateZarr.py \
 
 ---
 
-## See Also
+## 7. Manual Calibration (Panel Shifts)
+ 
+ While `AutoCalibrateZarr.py` provides a robust calibration for most standard setups, it treats the detector as a single continuous surface. For multi-panel detectors (e.g., arrays of detectors) where individual panels may have slight independent shifts (`dY`, `dZ`), a manual refinement step is required using the `CalibrantPanelShiftsOMP` binary.
+ 
+ ### When to use this
+ *   You are using a customized or multi-panel detector setup.
+ *   You observe residuals or "kinks" in the Debye-Scherrer rings that correspond to panel boundaries.
+ *   You need to refine the positions of individual panels to improve the global fit.
+ 
+ ### Workflow
+ 
+ 1.  **Run Auto-Calibration First:**
+     Run `AutoCalibrateZarr.py` as described above to obtain a good baseline geometry. This produces the `refined_MIDAS_params.txt` file.
+ 
+ 2.  **Prepare Parameter File:**
+     Create a new parameter file (e.g., `manual_params.txt`) by copying `refined_MIDAS_params.txt`. You need to add/ensure the following keys are present to define the multi-panel geometry:
+ 
+     ```text
+     NPanelsY [Number of panels in Y]
+     NPanelsZ [Number of panels in Z]
+     PanelSizeY [Pixels per panel in Y]
+     PanelSizeZ [Pixels per panel in Z]
+     PanelGapsY [Gap sizes in Y pixels, space-separated]
+     PanelGapsZ [Gap sizes in Z pixels, space-separated]
+     PanelShiftsFile [Filename to save/load shifts, e.g., panel_shifts.txt]
+     ```
+ 
+     You can also tune the optimization parameters:
+     ```text
+     tolShifts 1.0     # Maximum allowed shift per iteration (in pixels)
+     FixPanelID 0      # ID of the panel to keep fixed (anchor)
+     ```
+ 
+ 3.  **Run `CalibrantPanelShiftsOMP`:**
+     Execute the binary manually from the command line:
+ 
+     ```bash
+     /path/to/MIDAS/FF_HEDM/bin/CalibrantPanelShiftsOMP manual_params.txt [nCPUs]
+     ```
+     *   Replace `[nCPUs]` with the number of threads to use (e.g., 4 or 8).
+ 
+ 4.  **Review Output:**
+     *   The program will print the "Indices per Panel" to visualize the coverage.
+     *   It will display the refined geometry (`Lsd`, `BC`, tilts) and the refined panel shifts.
+     *   The refined panel shifts will be saved to the file specified in `PanelShiftsFile`.
+ 
+ 5.  **Update Geometry:**
+     Use the generated `panel_shifts.txt` and the refined global parameters for your subsequent analysis.
+ 
+ ---
+ 
+ ## 8. See Also
 
 - [FF_Analysis.md](FF_Analysis.md) — Standard FF-HEDM analysis using calibrated geometry
 - [PF_Analysis.md](PF_Analysis.md) — Scanning/pencil-beam FF-HEDM analysis
