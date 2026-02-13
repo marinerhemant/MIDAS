@@ -385,7 +385,29 @@ Between multi-resolution loops, `Mic2GrainsList` extracts unique grain orientati
 
 ---
 
-## 10. Appendix: Binary Executables
+## 10. Technical Implementation Details
+
+### 10.1. Iterative Grid Refinement
+*   **Coordinate Scaling:** The multi-resolution logic is purely grid-based. The script calculates a new hexagonal grid for each loop $N$, where the grid spacing $d_N = d_{start} / (ScaleFactor^N)$.
+*   **Seed Propagation:** The critical link between loops is the `Mic2GrainsList` binary. It condenses the dense, noisy voxel map from Loop $N$ into a sparse set of high-confidence "grain" orientations. These orientations become the discrete search space for Loop $N+1$, allowing the fit to converge rapidly even on a finer grid.
+
+### 10.2. Clustering Algorithm (`Mic2GrainsList`)
+*   **Greedy Optimization:** The clustering algorithm effectively performs a greedy segmentation:
+    1.  **Filter:** Discard all points with `confidence < MinConfidence`.
+    2.  **Sort:** Rank all remaining points by confidence (descending).
+    3.  **Cluster:** Pick the highest-confidence unused point as a new Grain Center.
+    4.  **Consolidate:** Iterate through *all* other unused points. If a point's misorientation with the Grain Center is `< MaxAngle`, mark it as part of that grain (i.e., "used").
+    5.  **Repeat:** Select the next highest-confidence unused point and repeat until all points are assigned.
+*   **Symmetry Awareness:** The misorientation calculation (`GetMisOrientation`) fully accounts for crystal symmetry (e.g., cubic, hexagonal) as defined by the `SpaceGroup` parameter.
+
+### 10.3. Hybrid Seeding Strategy
+*   **Targeted + Global Search:** The "two-pass" structure of each loop combines the efficiency of targeted seeding with the safety of a global search:
+    *   **Pass 1 (Seeded):** Explicitly tests *only* the orientations found in the previous loop. This is extremely fast (checking ~100s of orientations instead of millions) and handles 95%+ of the volume.
+    *   **Pass 2 (Unseeded fallback):** Automatically detects regions where the seeded fit failed (`confidence < threshold`). For these specific "bad" voxels, it falls back to a global search using the full `SeedOrientationsAll` list (potentially millions of orientations). This ensures that new grains (perhaps too small to be seen in the coarse loop) are recovered rather than being lost.
+
+---
+
+## 11. Appendix: Binary Executables
 
 | Binary | Purpose | Key Arguments |
 |---|---|---|

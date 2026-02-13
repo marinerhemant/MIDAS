@@ -127,7 +127,22 @@ Correlate your diffraction data with an existing microstructure map.
 
 ---
 
-## See Also
+## 6. Technical Implementation Details
+
+### 6.1. Software Architecture
+*   **Framework:** The GUI is built using **Tkinter** for the window management and control widgets (buttons, entries).
+*   **Visualization:** **Matplotlib** figures are embedded directly into the Tkinter application using the `FigureCanvasTkAgg` backend. This allows for interactive features like zooming and panning within the GUI window.
+*   **Image Processing:** Raw diffraction images (TIFF) are read into **NumPy** arrays for efficient manipulation. Features like median background subtraction are implemented as vectorized array operations for real-time performance.
+
+### 6.2. Simulation Backend
+The "MakeSpots" simulation feature uses a hybrid approach:
+*   **Frontend:** The GUI collects parameters (orientation, position, lattice constants) and writes them to a temporary parameter file in shared memory (`/dev/shm/ps.txt`).
+*   **Backend:** It invokes the high-performance C binaries (`GetHKLList`, `SimulateDiffractionSpots`) via system calls.
+*   **Data Exchange:** The heavy simulation results (spot positions) are written to `/dev/shm` by the C binaries and then read back by Python for plotting. This shared-memory architecture facilitates low-latency visualization of complex simulations.
+
+---
+
+## 7. See Also
 
 - [NF_Analysis.md](NF_Analysis.md) — Single-resolution NF-HEDM reconstruction
 - [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md) — Multi-resolution iterative NF-HEDM reconstruction

@@ -230,7 +230,24 @@ To read this data, you can use Python libraries such as `zarr`. The file structu
 
 ---
 
-## See Also
+## 5. Technical Implementation Details
+
+### 5.1. Physics & Rendering Engine
+*   **Analytic Integration:** Instead of simple point sampling, the simulation uses an **analytic Gaussian integration** method. It models each diffraction spot as a 2D Gaussian distribution and calculates the exact integral of this distribution over the area of each pixel. This ensures high-fidelity simulations even for small spot sizes or coarse pixel grids, eliminating aliasing artifacts.
+*   **Energy Resolution:** The code simulates the effect of a polychromatic beam (energy bandwidth) by discretizing the wavelength spread into multiple sub-samples (`num_samples`). Each reflection is calculated for these varying wavelengths, and their intensities are averaged, effectively broadening the spots radially.
+*   **Wedge Correction:** The simulation accounts for the "wedge" effect (sample rotation during exposure) by calculating the intersection of the diffraction cone with the detector plane at the start and end angles of the frame.
+
+### 5.2. Data Compression (Zarr/Zip)
+*   **Custom Writer:** The program implements a lightweight, dependency-free Zarr writer in C using the `libzip` and `c-blosc` libraries.
+*   **Storage Layout:** It creates a standard Zarr v2 hierarchy (`.zgroup`, `.zattrs`, `.zarray`) inside a ZIP container.
+*   **Compression:** Image data is compressed using the **Zstd** algorithm with **Bitshuffle** (via Blosc), providing a high compression ratio for sparse diffraction images while maintaining fast read speeds.
+
+### 5.3. Parallelization
+*   **OpenMP:** The core simulation loop is parallelized over the input grains/voxels. Each thread calculates the diffraction spots for a subset of grains, applies geometric corrections (distortion, tilt), and atomically adds the intensity to the shared global image array.
+
+---
+
+## 6. See Also
 
 - [FF_Analysis.md](FF_Analysis.md) — Standard FF-HEDM analysis (produces Grains.csv used as input here)
 - [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results and simulated data

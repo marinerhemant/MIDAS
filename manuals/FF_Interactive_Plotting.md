@@ -208,7 +208,34 @@ These plots display the data after the filters from the middle section have been
 
 ---
 
-## 6. Troubleshooting
+---
+
+## 6. Technical Implementation Details
+
+The interactive viewer is built using **Dash**, a Python framework for building analytical web applications. It leverages **Plotly** for interactive graphing and **Zarr** for efficient access to large, compressed datasets.
+
+### 6.1. Data Handling
+*   **Zarr Integration:** The application uses `zarr` and `blosc` to read the compressed experimental data. It lazily loads metadata (parameters) and only reads the heavy image data on-demand.
+*   **Pandas DataFrames:** Grain and spot data from CSV files are loaded into Pandas DataFrames for efficient filtering and querying.
+*   **Memory Management:** To maintain responsiveness, the application does not load the entire raw dataset into memory. Instead, it extracts small 3D distinct volumes (`go.Volume`) around specific diffraction spots only when requested by the user.
+
+### 6.2. Interactive Logic (Callbacks)
+The application's interactivity is driven by a chain of Dash callbacks:
+1.  **Global Filters:** Range sliders (Eta, Theta, Omega) trigger the `update_grains_plot` callback, which filters the `grains_df` DataFrame and updates the "Filtered Grains" 3D scatter plot.
+2.  **Grain Selection:** Clicking a data point in the "Filtered Grains" plot triggers the `update_filtered_spots_3d` and `update_filtered_spots_2d` callbacks. These callbacks query the `spots_df` for spots belonging to the selected ID and update the grain-specific plots.
+3.  **Volume Rendering:** Clicking a spot in the "Filtered Spots 2D" plot triggers the `update_volume_plot` callback. This function:
+    *   Calculates the specific frame number and detector coordinates for the spot.
+    *   Slices a small window (e.g., ±7 frames, ±10 pixels) from the Zarr array.
+    *   Subtracts the dark field reference.
+    *   Thresholds the data and renders it using `go.Volume` isosurfaces.
+
+### 6.3. Coordinate Systems
+*   **Indices vs. Physical Units:** The viewer converts between detector pixel coordinates (for data slicing) and physical units (microns/degrees) for visualization.
+*   **G-Vectors:** Reciprocal space vectors ($g_1, g_2, g_3$) are calculated on-the-fly or loaded from pre-calculated columns to display the "Reciprocal Space" view.
+
+---
+
+## 7. Troubleshooting
  
  | Problem | Solution |
  | :--- | :--- |
@@ -219,7 +246,7 @@ These plots display the data after the filters from the middle section have been
  
  ---
  
- ## See Also
+## 8. See Also
 
 - [FF_Analysis.md](FF_Analysis.md) — Standard FF-HEDM analysis (produces Grains.csv and SpotMatrix.csv)
 - [PF_Analysis.md](PF_Analysis.md) — Scanning/pencil-beam FF-HEDM analysis

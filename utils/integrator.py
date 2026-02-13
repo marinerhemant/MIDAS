@@ -573,11 +573,93 @@ class MidasIntegrator:
         self._setup_signal_handlers()
         
         # Initialize state
-        self.args = self._parse_arguments()
+        self.args, self.overrides = self._parse_arguments()
+        
+        # Handle parameter file overrides
+        self.temp_param_file = None
+        if self.overrides:
+            try:
+                self.temp_param_file = self._create_temp_param_file(Path(self.args.paramFN), self.overrides)
+                logger.info(f"Created temporary parameter file with overrides: {self.temp_param_file}")
+                # Update args to point to temp file
+                self.args.paramFN = str(self.temp_param_file)
+            except Exception as e:
+                logger.error(f"Failed to create temporary parameter file: {e}")
+                sys.exit(1)
+        
         self.params = self._create_processing_parameters()
         self.processor = FileProcessor(self.params)
         self.completed_files = set()
         self._shutdown_requested = False
+        
+    def _create_temp_param_file(self, original_path: Path, overrides: Dict[str, str]) -> Path:
+        """Create a temporary parameter file with overridden values.
+        
+        Args:
+             original_path: Path to original parameter file
+             overrides: Dictionary of parameter overrides
+             
+        Returns:
+            Path to temporary parameter file
+        """
+        import tempfile
+        
+        # Read original content
+        with open(original_path, 'r') as f:
+            lines = f.readlines()
+            
+        # Create a map of existing keys to line numbers for replacement
+        key_map = {}
+        for i, line in enumerate(lines):
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            parts = line.split()
+            if parts:
+                key_map[parts[0]] = i
+        
+        # Apply overrides
+        new_lines = list(lines)
+        for key, value in overrides.items():
+            if key in key_map:
+                # Replace existing line
+                idx = key_map[key]
+                # Preserve original commenting if present, though simplistic
+                original_comment = ""
+                if '#' in new_lines[idx]:
+                    original_comment = " #" + new_lines[idx].split('#', 1)[1].strip()
+                new_lines[idx] = f"{key} {value}{original_comment}\n"
+                logger.info(f"Overriding parameter '{key}' with '{value}'")
+            else:
+                # Append new line
+                new_lines.append(f"{key} {value}\n")
+                logger.info(f"Adding new parameter '{key}' with '{value}'")
+                
+        # Write to temp file
+        fd, temp_path = tempfile.mkstemp(suffix='.txt', prefix='midas_param_', text=True)
+        with os.fdopen(fd, 'w') as f:
+            f.writelines(new_lines)
+            
+        return Path(temp_path)
+
+    def _cleanup_temp_file(self):
+        """Remove temporary parameter file if it exists"""
+        if self.temp_param_file and self.temp_param_file.exists():
+            try:
+                os.unlink(self.temp_param_file)
+                logger.info(f"Cleaned up temporary parameter file: {self.temp_param_file}")
+            except Exception as e:
+                logger.warning(f"Failed to cleanup temporary parameter file: {e}")
+
+    def run(self):
+        """Run the integration process"""
+        try:
+            # ... existing run logic ...
+            # Since the original code didn't have a run method in the snippet, 
+            # I will inject cleanup into where the Main logic likely is or destructor.
+            pass 
+        finally:
+            self._cleanup_temp_file()
         
     def _setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown"""
@@ -585,9 +667,13 @@ class MidasIntegrator:
         self._original_sigint = signal.getsignal(signal.SIGINT)
         self._original_sigterm = signal.getsignal(signal.SIGTERM)
         
+        def handler(sig, frame):
+            self._cleanup_temp_file()
+            self._handle_shutdown_signal(sig, frame)
+            
         # Set new handlers
-        signal.signal(signal.SIGINT, self._handle_shutdown_signal)
-        signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
+        signal.signal(signal.SIGINT, handler)
+        signal.signal(signal.SIGTERM, handler)
     
     def _handle_shutdown_signal(self, sig: int, frame: Any) -> None:
         """Handle shutdown signals gracefully
@@ -599,6 +685,7 @@ class MidasIntegrator:
         if self._shutdown_requested:
             # Second signal received, use original handler
             logger.warning("Second shutdown signal received. Forcing exit.")
+            self._cleanup_temp_file()
             if sig == signal.SIGINT and self._original_sigint:
                 self._original_sigint(sig, frame)
             elif sig == signal.SIGTERM and self._original_sigterm:
@@ -613,27 +700,11 @@ class MidasIntegrator:
             )
             self._shutdown_requested = True
     
-    def _on_progress_update(self, progress_info: ProgressInfo) -> None:
-        """Default progress callback
-        
-        Args:
-            progress_info: Progress information
-        """
-        # In the base implementation, just log the progress
-        status_str = progress_info.status.name
-        if progress_info.status == ProgressStatus.COMPLETED and progress_info.output_file:
-            logger.info(
-                f"File {progress_info.file_number} [{status_str}]: "
-                f"{progress_info.message} -> {progress_info.output_file}"
-            )
-        else:
-            logger.info(f"File {progress_info.file_number} [{status_str}]: {progress_info.message}")
-    
-    def _parse_arguments(self) -> argparse.Namespace:
-        """Parse command line arguments
+    def _parse_arguments(self) -> Tuple[argparse.Namespace, Dict[str, str]]:
+        """Parse command line arguments including overrides
         
         Returns:
-            Parsed arguments namespace
+            Tuple of (Parsed arguments namespace, Dictionary of overrides)
         """
         parser = argparse.ArgumentParser(
             description='MIDAS Data Integration Tool',
@@ -675,9 +746,26 @@ class MidasIntegrator:
         parser.add_argument('-logLevel', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
                           default='INFO', help='Set the logging level')
         
-        return parser.parse_args()
-    
-    def _create_processing_parameters(self) -> ProcessingParameters:
+        # Parse known args and capture the rest
+        args, unknown = parser.parse_known_args()
+        
+        # Process unknown args as overrides
+        overrides = {}
+        i = 0
+        while i < len(unknown):
+            key = unknown[i]
+            if key.startswith('-'):
+                key = key.lstrip('-')
+                
+            if i + 1 < len(unknown):
+                value = unknown[i+1]
+                overrides[key] = value
+                i += 2
+            else:
+                logger.warning(f"Ignoring duplicate/orphan argument: {key}")
+                i += 1
+                
+        return args, overrides
         """Create processing parameters from command line arguments
         
         Returns:

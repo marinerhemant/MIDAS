@@ -297,7 +297,29 @@ The final text mic file has one line per reconstructed grid point. Lines startin
 
 ---
 
-## 9. Troubleshooting
+---
+
+## 9. Technical Implementation Details
+
+### 9.1. High-Performance Data Structures (`MMapImageInfo`)
+*   **Bitmasking:** To enable ultra-fast collision detection during fitting, the experimental diffraction images are pre-processed into a monolithic bitmask (`ObsSpotsInfo.bin`).
+*   **Index Calculation:** A 4D coordinate (Layer, Rotation, Y, Z) is mapped to a linear index in the bitmask. If a pixel contains a diffraction peak, the corresponding bit is set to 1.
+*   **Memory Mapping:** The binary files are memory-mapped (`mmap`) into the process address space. This allows the OS to efficiently manage memory paging and enables multiple processes (or threads) to access the massive dataset (often 10s of GBs) with near-RAM speeds, especially when placed in `/dev/shm` (RAM disk).
+
+### 9.2. Orientation Fitting Algorithm (`FitOrientationOMP`)
+*   **Grid Parallelization:** The reconstruction volume is discretized into a hexagonal grid. The fitting process for each grid point is independent, allowing trivial parallelization using **OpenMP**. Each CPU thread processes a subset of grid points.
+*   **Two-Stage Optimization:**
+    1.  **Discrete Search:** The algorithm first tests a pre-computed list of 'seed' orientations (from `SeedOrientations` or converted FF results). It calculates the fractional overlap for each seed and keeps the best candidates.
+    2.  **Continuous Refinement:** The best candidate is refined using the **Nelder-Mead Simplex** algorithm (via `nlopt`). The objective function is maximizing the **Fractional Overlap** between simulated and experimental spots.
+*   **Overlap Calculation:**
+    *   **Projection:** Theoretical spots are projected onto the detector plane, accounting for sample position (`X, Y`), detector tilt, and wedge angle.
+    *   **Rasterization:** The projected spot shape is rasterized into a set of pixels.
+    *   **Collision Check:** Each rasterized pixel is checked against the `ObsSpotsInfo` bitmask. This is an $O(1)$ operation, making the loop extremely fast.
+
+### 9.3. Parallel I/O
+*   **Writer Locks:** While the computation is parallel, writing the results to the output file (`MicFileBinary`) uses `pwrite` (parallel write) with thread-safe file offsets to avoid race conditions and ensure data integrity without serialization bottlenecks.
+
+---
 
 ### Shared Memory Errors
 

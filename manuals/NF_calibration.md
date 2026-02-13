@@ -171,6 +171,24 @@ Now we will use the gold calibration scan data and the beam center values from P
 
 ---
 
+## Part III: Technical Implementation Details
+
+### 1. Beam Center Determination
+The beam center finding logic relies on **1D Integrated Profiling**. When you draw a box using `BoxOutHor` or `BoxOutVer`:
+*   The software sums the pixel intensities along the orthogonal direction (e.g., summing rows for a horizontal profile).
+*   This improves the Signal-to-Noise Ratio (SNR) significantly compared to looking at single pixel lines.
+*   The "edges" of the beam are determined by the steep gradients in this integrated profile, allowing for sub-pixel visual estimation of the beam center (centroid of the rectangular beam profile).
+
+### 2. Distance Calibration Algorithm
+The `Compute Distances` function employs a **Ray-Triangulation** method based on the intercept theorem.
+*   **Assumption:** Diffraction occurs at a point source (the sample) and expands as a cone.
+*   **Input:** Spot radii ($R_1, R_2, ...$) measured from the beam center at known relative detector shifts ($\Delta d$).
+*   **Calculation:** For every pair of detector positions ($i, j$), the Sample-to-Detector distance to the first position ($LSD_0$) is calculated as:
+    $$ LSD_0 = \frac{R_i \cdot (j-i) \cdot \Delta d}{R_j - R_i} - (i \cdot \Delta d) $$
+*   **Result:** The final reported distance is the arithmetic mean of the calculated $LSD$ values from all possible pairs of detector positions, providing a robust estimate that minimizes random measurement errors.
+
+---
+
 ## Appendix: Additional GUI Features Quick Reference
 
 | Button/Field        | Function                                                                                                 |

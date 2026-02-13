@@ -228,7 +228,22 @@ HDF5 file with two datasets:
 
 ---
 
-## 8. Troubleshooting
+## 8. Technical Implementation Details
+
+### 8.1. Spatially-Aware Indexing (`IndexerScanningOMP`)
+Unlike standard box-beam indexing, the scanning indexer accounts for the sample's translation across the beam.
+*   **Dynamic Geometry:** For every candidate voxel at position $(x, y)$, the diffraction spot projection is recalculated. The expected detector $Y$ position ($Y_{det}$) is modified by the sample translation projected onto the detector plane:
+    $$ Y_{det} = Y_{theor} + (x \cdot \sin \omega + y \cdot \cos \omega) / px\_size $$
+*   **Voxel Grid:** The software discretizes the sample space into a grid defined by the `BeamSize`. It systematically tests orientations at each grid point, effectively performing a "diffraction-based raster scan."
+
+### 8.2. Tomographic Reconstruction
+When `-doTomo 1` is enabled:
+1.  **Sinogram Generation:** For each identified grain, the script aggregates the "completeness" or intensity metric across all scan positions and rotation angles ($\omega$). This forms a sinogram where the vertical axis is the scan position and the horizontal axis is the projection angle.
+2.  **Inverse Radon Transform:** The `iradon` function from `scikit-image` is used to invert these sinograms, reconstructing the 2D cross-sectional shape of the grain. This allows for sub-beam spatial resolution of the microstructure.
+
+---
+
+## 9. Troubleshooting
 
 | Issue | Likely Cause | Resolution |
 |---|---|---|
@@ -241,7 +256,7 @@ HDF5 file with two datasets:
 
 ---
 
-## 9. See Also
+## 10. See Also
 
 - [FF_Analysis.md](FF_Analysis.md) — Standard (box-beam) FF-HEDM analysis
 - [FF_autocalibrate.md](FF_autocalibrate.md) — Geometry calibration

@@ -90,6 +90,27 @@ The final output is one consistent microstructure map derived from the informati
 
 ---
 
+## 4. Technical Implementation Details
+
+### 4.1. Orchestration with Parsl
+The workflow uses **Parsl**, a Python parallel scripting library, to manage concurrency.
+*   **Parallel Execution:** `ff_dual_datasets.py` defines Parsl "apps" (`peaks`, `index`, `refine`) that wrap the C binaries. This allows the script to run pre-processing for both datasets simultaneously on available resources (e.g., 2 nodes on a cluster).
+*   **Machine Configuration:** The script calculates optimal resource allocation (`num_procs`, `n_nodes`) based on the `-machineName` argument, loading pre-defined configurations for known clusters (e.g., `orthros`, `purdue`).
+
+### 4.2. Dataset Mapping Logic
+*   **Parameter Propagation:** The script appends a special key, `Dataset2Folder`, to the parameter file of the first dataset (`paramstest.txt`). This line contains the path to the second dataset's results and the 4 user-provided offsets (X, Y, Z, Omega).
+*   **MapDatasets Binary:**
+    *   This C tool loads the diffraction spots from both datasets (`Spots.bin`, `ExtraInfo.bin`).
+    *   It parallelizes (OpenMP) over the spots in the second dataset.
+    *   For each spot, it applies the rotational offset (`-offsetOmega`) and converts the detector coordinates to a **g-vector** (scattering vector in sample frame).
+    *   It performs a fast grid search (hashed by Ring, Eta, Omega) to find the matching spot in Dataset 1 with the highest cosine similarity (dot product of g-vectors).
+    *   The result is a mapping index file (`mapDatasets.txt`) that links observations across the two datasets.
+
+### 4.3. Combined Indexing
+*   **Binder:** The final indexing and refinement steps (`IndexerOMP`, `FitPosOrStrainsDoubleDataset`) read the `Dataset2Folder` info. They utilize the mapping from `mapDatasets.txt` to treat corresponding spots from both datasets as observations of the same grain, minimizing the global error across the combined volume.
+
+---
+
 ## 4. Command-Line Arguments
 
 The script's behavior is controlled via the following arguments.
@@ -184,7 +205,7 @@ The script generates two initial analysis directories within the main `-resultFo
 
 ---
 
-## See Also
+## 8. See Also
 
 - [FF_Analysis.md](FF_Analysis.md) — Standard single-dataset FF-HEDM analysis
 - [FF_autocalibrate.md](FF_autocalibrate.md) — Geometry calibration

@@ -170,7 +170,59 @@ flowchart TD
 
 ---
 
-## 6. Output Files
+## 6. Technical Implementation Details
+
+This section provides an in-depth look at the algorithms used in the core binaries, based on the C source code.
+
+### 6.1. Peak Search (`PeaksFittingOMPZarrRefactor.c`)
+The peak search identifies diffraction spots in the raw detector images.
+*   **Preprocessing:** The code applies a dark field subtraction (implicit in the image correlation step).
+*   **Connected Components Analysis (CCA):** 
+    *   It uses an **iterative Depth-First Search (DFS)** algorithm to label connected regions of pixels that exceed a user-defined intensity threshold.
+    *   Stack-based iteration is used instead of recursion to prevent stack overflow on large spots.
+*   **Peak Finding:** Within each connected component, the algorithm searches for **regional maxima**. A pixel is identified as a peak if its intensity is strictly greater than all its 8 neighbors.
+*   **Fitting:** 
+    *   A **Pseudo-Voigt profile** (weighted sum of Gaussian and Lorentzian functions) is fitted to each identified peak.
+    *   The objective function minimizes the sum of squared differences between the model and observed pixel intensities using non-linear optimization.
+    *   Key fitted parameters: Center of Mass ($Y, Z$), Intensity, and profile widths ($\sigma$).
+
+### 6.2. Indexing (`IndexerOMP.c`)
+The indexer finds grain orientations that are consistent with the observed diffraction spots.
+*   **Search Strategy:** It employs a **forward modeling approach** combined with a discretized grid search.
+    1.  **Candidate Generation:** It generates a grid of candidate orientations by rotating the crystal lattice around specific scattering vectors (HKLs) corresponding to observed diffraction rings.
+    2.  **Theoretical Spot Generation:** For each candidate orientation, it calculates the expected positions ($Y, Z, \omega$) of diffraction spots using the Bragg equation and detector geometry.
+    3.  **Matching:** The code compares theoretical spots against the observed spots. A match is declared if a spot falls within defined tolerances for:
+        *   **Omega ($\omega$):** The rotation angle.
+        *   **Eta ($\eta$):** The azimuthal angle on the detector.
+        *   **Radial Distance:** The distance from the beam center (related to $2\theta$).
+*   **Scoring:** A "Completeness" score is calculated based on the fraction of predicted spots that are actually observed. Orientations with high completeness scores are accepted as candidate grains.
+
+### 6.3. Refinement (`FitPosOrStrainsOMP.c`)
+This step refines the parameters of the indexed grains to minimize the error between observed and simulated spots.
+*   **Algorithm:** **Non-linear Least Squares (NLLS)** optimization.
+*   **Optimization Variables:**
+    *   **Orientation:** 3 Euler angles (Bunge convention).
+    *   **Position:** 3 coordinates ($X, Y, Z$) representing the grain's center of mass in the sample.
+    *   **Strain:** 6 components of the lattice strain tensor (or directly the lattice parameters $a, b, c, \alpha, \beta, \gamma$).
+*   **Objective Function:** The solver minimizes the weighted sum of squared differences between observed and simulated spot parameters:
+    $$ \chi^2 = \sum (Y_{obs} - Y_{sim})^2 + (Z_{obs} - Z_{sim})^2 + (\omega_{obs} - \omega_{sim})^2 $$
+*   **Corrections:** The model includes complex geometric corrections for:
+    *   **Wedge:** Sample stage wedge angle.
+    *   **Lsd/Tilt:** Detector distance and tilts.
+    *   **Spatial Distortion:** Radial distortion of the detector (if parameters `p0, p1, p2` are used).
+
+### 6.4. Grain Processing (`ProcessGrainsZarr.c`)
+The final merging step cleans up the results and computes derived quantities.
+*   **Deduplication:** Grains from the indexing step are compared for similarity. If two grains have very close orientations (misorientation angle $< 0.1^\circ$) and spatial positions ($< 5 \mu m$), they are merged.
+    *   **Quaternion Math:** Distances between orientations are computed using quaternion algebra for numerical stability.
+*   **Twin Detection:** The code checks for twin relationships (e.g., $60^\circ$ rotation around $<111>$ axes for FCC) if the `Twins` parameter is enabled.
+*   **Strain Tensor Calculation:**
+    *   **Fable-Beaudoin Method:** Uses the refined lattice parameters to compute the strain tensor relative to the unstrained lattice.
+    *   **Kenesei Method:** An alternative strain calculation that uses individual spot vectors.
+
+---
+
+## 7. Output Files
 
 ### Directory Structure
 
@@ -265,7 +317,7 @@ Tab-separated, one row per diffraction spot per grain:
 
 ---
 
-## 7. Computational Resources
+## 8. Computational Resources
 
 ### Machine Configurations
 
@@ -286,7 +338,7 @@ Tab-separated, one row per diffraction spot per grain:
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 | Issue | Likely Cause | Resolution |
 |---|---|---|
@@ -300,7 +352,7 @@ Tab-separated, one row per diffraction spot per grain:
 
 ---
 
-## 9. See Also
+## 10. See Also
 
 - [PF_Analysis.md](PF_Analysis.md) — Scanning/pencil-beam FF-HEDM analysis
 - [FF_autocalibrate.md](FF_autocalibrate.md) — Geometry calibration from calibrant rings

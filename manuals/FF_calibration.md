@@ -93,6 +93,24 @@ The script follows a logical, multi-step process to achieve a converged geometri
 
 ---
 
+## 4. Technical Implementation Details
+
+### 4.1. AutoCalibrateZarr.py (The Orchestrator)
+*   **Beam Center Detection:** Uses `scikit-image` (`measure.label`) to identify potential ring arcs. A custom, JIT-compiled function (`numba`) then calculates the geometric center of these arcs. This process is parallelized using Python's `multiprocessing` module for speed.
+*   **Initial Guess Logic:** The script attempts to identify rings by comparing the ratios of detected ring radii to the theoretical HKL spacing ratios of the calibrant.
+*   **Iterative Refinement:**
+    *   The script enters a convergence loop that calls the C binary `CalibrantOMP`.
+    *   It parses the `calibrant_screen_out.csv` to get updated parameters.
+    *   It calculates the mean pseudo-strain for each ring. Rings with strain > `MultFactor * median_strain` are flagged as outliers and excluded from the next iteration.
+
+### 4.2. CalibrantOMP (The Optimization Engine)
+*   **Optimization Algorithm:** Uses the **Nelder-Mead simplex algorithm** (via the `nlopt` library) to minimize the objective function.
+*   **Objective Function:** The function calculates the "Mean Pseudo-Strain," which is the sum of differences between the measured ring radii (after geometric correction) and the theoretical ring radii.
+*   **Sub-Pixel Precision:** For each azimuthal bin, the code extracts a radial lineout and fits a **Pseudo-Voigt** profile to find the peak position with sub-pixel accuracy.
+*   **Parallelization:** The peak fitting process is parallelized using **OpenMP**, distributing the azimuthal bins across available CPU cores.
+
+---
+
 ## 4. Command-Line Arguments
 
 The script's behavior is controlled via the following arguments:

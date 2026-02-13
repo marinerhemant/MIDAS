@@ -147,13 +147,51 @@ python ~/opt/MIDAS/utils/integrator.py \
 | `-mapDetector` | Run `DetectorMapper` to generate `Map.bin`? (1=Yes, 0=No). | 1 |
 | `-convertFiles` | Convert input files to Zarr before integrating? | 1 |
 
+### 3.5. Parameter Overrides
+You can override any value in the parameter file directly from the command line by appending the key-value pair to the end of the command. This is useful for quick adjustments without modifying the file.
+
+**Syntax:** `Key Value` or `--Key Value`
+
+**Example:** Override radial range and bins
+```bash
+python utils/integrator.py --paramFN setup.txt --dataFN scan_001.tif MinRad 10 MaxRad 1000 RadBinSize 0.5
+```
+You can also use standard flag syntax if you prefer:
+```bash
+python utils/integrator.py --paramFN setup.txt --dataFN scan_001.tif --MinRad 10 --MaxRad 1000
+```
+*Note: Any arguments not recognized as standard flags (like `-paramFN`, `-dataFN`) are treated as parameter overrides.*
+
 ---
 
-## 4. Technical Reference: The Engines
+## 4. Technical Implementation Details
 
-Both workflows rely on the same core logic for mapping detector pixels to polar coordinates (`DetectorMapper`) and performing the integration.
+The radial integration is performed by one of two engines, optimized for different hardware architectures.
 
-### 4.1. DetectorMapper (The Geometry Engine)
+### 4.1. CPU Engine (`IntegratorZarrOMP.c`)
+*   **Parallelization:** OpenMP is used to parallelize the integration loop. The outer loop iterates over Radial bins, and the inner loop over Azimuthal (Eta) bins.
+*   **Memory mapping:** `Map.bin` and `nMap.bin` are memory-mapped (`mmap`) to avoid loading the entire 16GB+ mapping tables into RAM. These tables provide a linear list of pixel indices for each bin.
+*   **Data Handling:**
+    *   Reads **Zarr** chunks using `blosc1_decompress`.
+    *   Applies image transformations (flips/transposes) in memory.
+    *   Subtracts the dark field image.
+    *   Accumulates intensity: `Intensity += PixelValue * Fraction`.
+*   **Efficiency:** By processing Zarr chunks sequentially but parallelizing the bin summation, it balances memory usage with CPU utilization.
+
+### 4.2. GPU Engine (`IntegratorFitPeaksGPUStream.cu`)
+*   **Streaming Architecture:** Implements a multi-threaded C++ server that listens on a TCP socket.
+    *   **Input Thread:** Receives data chunks and pushes them to a `ProcessQueue`.
+    *   **Worker Threads:** Pull frames and issue CUDA commands.
+    *   **Writer Thread:** Asynchronously writes results to disk to prevent I/O blocking.
+*   **CUDA Optimization:**
+    *   **Streams:** Uses 4 concurrent CUDA streams to overlap Data Transfer (H2D), Kernel Execution, and Result Retrieval (D2H).
+    *   **Pinned Memory:** Uses `cudaMallocHost` for zero-copy access or accelerated DMA transfers.
+    *   **Kernels:**
+        *   `initialize_PerFrameArr`: Pre-calculates static bin data (R, Eta, Area) and applies pixel masks.
+        *   `integrate_kernel`: Performs the weighted summation of pixels for each bin. It uses atomic adds for the "Summed Image" feature.
+        *   `calculate_1D_profile_kernel`: efficiently reduces the 2D (R, Eta) array to a 1D (R) profile using **Warp Shuffle** intrinsics (`__shfl_down_sync`) for high-speed reduction within GPU thread blocks.
+
+### 4.3. DetectorMapper (The Geometry Engine)
 This tool runs automatically at the start of either workflow. It consumes the experimental geometry (distance, tilts, pixel size) and produces two look-up tables:
 *   `Map.bin`: The mapping of every pixel to its (Radius, Azimuth) bin.
 *   `nMap.bin`: An index file for the map.
