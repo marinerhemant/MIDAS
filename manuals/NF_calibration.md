@@ -36,6 +36,26 @@ This manual is divided into two primary sections, mirroring the calibration work
 ## Part I: Determining the Beam Center at Each Detector Distance
 
 In this part, we will find the average horizontal and vertical center of the beam for each detector position (e.g., 5mm, 7mm, 9mm). The detector image will show the beam as one or two white horizontal lines.
+ 
+ ```mermaid
+ graph TD
+     subgraph "Beam Center Workflow"
+         Start[Load DetZBeamPosScan] --> Identify{Identify Beam Lines}
+         Identify -->|Two Lines| Lower[Use Lower Line]
+         Identify -->|One Line| Single[Use Single Line]
+         Lower --> EdgeL[Analyze Left Edge]
+         Single --> EdgeL
+         EdgeL --> BoxHorL[BoxOutHor: Get X_left]
+         EdgeL --> BoxVerL[BoxOutVer: Get Y_left]
+         BoxHorL --> EdgeR[Analyze Right Edge]
+         BoxVerL --> EdgeR
+         EdgeR --> BoxHorR[BoxOutHor: Get X_right]
+         EdgeR --> BoxVerR[BoxOutVer: Get Y_right]
+         BoxHorR --> Avg[Calculate Average (X, Y)]
+         BoxVerR --> Avg
+         Avg --> Next[Repeat for Next Distance]
+     end
+ ```
 
 *   If a **`DetZBeamPosScan`** was used, you will see a **single horizontal diffraction line**.
 
@@ -90,7 +110,24 @@ You should now have three pairs of (horizontal, vertical) beam center coordinate
 
 Now we will use the gold calibration scan data and the beam center values from Part I to calculate the precise detector distances.
 
-#### **Step 5: Load the Gold Calibration Data**
+Now we will use the gold calibration scan data and the beam center values from Part I to calculate the precise detector distances.
+ 
+ ```mermaid
+ graph TD
+     subgraph "Detector Position Workflow"
+         Start[Load Gold Calibration Data] --> EnterBC[Enter Beam Centers]
+         EnterBC --> InputBCs[Input: Horizontal/Vertical Centers, DistDiff]
+         InputBCs --> ConfirmBC[Confirm & Close]
+         ConfirmBC --> Select[Select Spots Mode]
+         Select --> Pick1[Pick Spot on Det 1]
+         Pick1 --> Pick2[Pick SAME Spot on Det 2]
+         Pick2 --> Pick3[Pick SAME Spot on Det 3]
+         Pick3 --> Compute[Click Compute Distances]
+         Compute --> Result[Output: Precise Detector Distances]
+     end
+ ```
+ 
+ #### **Step 5: Load the Gold Calibration Data**
 
 
 1.  Click **`FirstFile`**.

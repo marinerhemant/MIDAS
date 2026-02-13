@@ -40,6 +40,28 @@ By leveraging Parsl, the script efficiently parallelizes the workflow across mul
 ## 3. Workflow Overview
 
 The script executes a sophisticated three-stage workflow:
+ 
+ ```mermaid
+ graph TD
+     subgraph "Stage 1: Independent Pre-processing (Parallel)"
+         direction TB
+         D1[Dataset 1 Input] --> P1[Pre-process & Bin];
+         D2[Dataset 2 Input] --> P2[Pre-process & Bin];
+     end
+ 
+     subgraph "Stage 2: Mapping"
+         P2 --> M[MapDatasets];
+         P1 --> M;
+         M -- "Apply Offsets (X, Y, Z, Omega)" --> C[Combined Binned Data];
+     end
+ 
+     subgraph "Stage 3: Combined Analysis"
+         C --> I[IndexerOMP];
+         I --> R[FitPosOrStrainsDoubleDataset];
+         R --> G[ProcessGrains];
+         G --> F[Final Grains.csv];
+     end
+ ```
 
 ### Stage 1: Independent Pre-processing
 The script first processes both datasets entirely separately and in parallel. For each dataset, it creates a dedicated analysis folder (`dataset_1_analysis` and `dataset_2_analysis`) and performs the following steps:
@@ -61,7 +83,7 @@ This is the core step that makes the script unique.
 ### Stage 3: Combined Analysis
 Finally, the script performs the indexing and refinement steps on the single, merged dataset created in Stage 2. All work is now done inside the `dataset_1_analysis` folder.
 1.  **Indexing:** `IndexerOMP` is run in parallel on the combined binned data to find grain orientation candidates.
-2.  **Refinement:** `FitPosOrStrainsOMP` refines the orientation, position, and strain for each indexed grain.
+2.  **Refinement:** `FitPosOrStrainsDoubleDataset` refines the orientation, position, and strain for each indexed grain.
 3.  **Grain Processing:** `ProcessGrains` compiles the final results into a single `Grains.csv` file.
 
 The final output is one consistent microstructure map derived from the information of both initial datasets.
@@ -154,6 +176,9 @@ The script generates two initial analysis directories within the main `-resultFo
 ## 7. Troubleshooting
 
 -   **Mapping Fails (`MapDatasets` error):** The most common issue is incorrect offsets. Double-check the signs and values of your `-offset*` arguments. Small errors in offsets can cause the algorithm to fail to find corresponding volumes. Check `dataset_1_analysis/output/map_err.txt` for details.
+ 
+ > [!NOTE]
+ > If `MapDatasets` produces an empty or very small combined dataset, verify that your provided offsets actually result in spatial overlap between the two scanned volumes.
 -   **Pre-processing Fails:** If one of the initial stages fails, treat it as a standard `ff_MIDAS.py` failure. Check the `output` directory of the corresponding dataset (e.g., `dataset_2_analysis/output/`) to debug issues with peak finding, data conversion, etc.
 -   **Poor Indexing Results:** If the final indexing yields few grains, it could be a sign of poor alignment during the mapping stage. This can happen if the offsets are not precise enough, leading to a "blurry" or inconsistent combined dataset.
 

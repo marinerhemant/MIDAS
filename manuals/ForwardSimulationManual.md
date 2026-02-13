@@ -17,8 +17,33 @@ The simulation is highly parallelized for speed and includes advanced features t
 *   Sub-pixel spot positioning for high-fidelity images.
 
 The output is a set of compressed image files in a Zarr/ZIP format, suitable for analysis or direct comparison with experimental data.
-
-## 2. How to Run the Program
+ 
+ ```mermaid
+ graph TD
+     subgraph "Inputs"
+         PF[Parameter File]
+         GD[Grain Data<br>(Grains.csv, .vtk, etc.)]
+         HKL[hkls.csv]
+         POS[positions.csv<br>(Optional)]
+     end
+ 
+     subgraph "Simulation"
+         FS[ForwardSimulationCompressed]
+         PF --> FS
+         GD --> FS
+         HKL --> FS
+         POS --> FS
+     end
+ 
+     subgraph "Outputs"
+         ZIP[Zarr Zip Files<br>(scanNr_X.zip)]
+         SM[SpotMatrixGen.csv<br>(Optional)]
+         FS --> ZIP
+         FS --> SM
+     end
+ ```
+ 
+ ## 2. How to Run the Program
 
 The program is executed from the command line with two arguments: a parameter file and the number of CPU cores to use.
 
@@ -168,7 +193,40 @@ The primary output of the simulation is one or more ZIP files, one for each scan
 *   **Internal Structure:** Inside the ZIP file, the data is organized as `exchange/data/`. The detector images are stored as individual, compressed files, one for each omega step (e.g., `0.0.0`, `1.0.0`, etc.).
 *   **Data Type:** The image data is stored as 16-bit unsigned integers (`uint16`), normalized so that the brightest pixel in the entire scan corresponds to an intensity of `15000`.
 
-To read this data, you can use Python libraries such as `zarr`.
+To read this data, you can use Python libraries such as `zarr`. The file structure is a standard Zarr v2 group stored within a Zip file.
+ 
+ #### Python Example: Reading and Plotting Data
+ 
+ ```python
+ import zarr
+ import matplotlib.pyplot as plt
+ import numpy as np
+ 
+ # Path to the output zip file
+ zip_path = 'Ti7Al_simulation_results_scanNr_0.zip'
+ 
+ # Open the Zip file as a Zarr store
+ store = zarr.ZipStore(zip_path, mode='r')
+ 
+ # Open the root group
+ root = zarr.group(store=store)
+ 
+ # Access the data array
+ # Structure is exchange/data
+ data = root['exchange']['data']
+ 
+ print("Data shape:", data.shape)
+ print("Data type:", data.dtype)
+ 
+ # Display the first frame (Omega step 0)
+ plt.imshow(data[0, :, :], cmap='viridis', vmax=100)
+ plt.title("Simulated Diffraction Pattern - Frame 0")
+ plt.colorbar()
+ plt.show()
+ 
+ # Close the store
+ store.close()
+ ```
 
 ---
 

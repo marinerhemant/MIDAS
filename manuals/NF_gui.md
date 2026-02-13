@@ -13,7 +13,24 @@ This is a graphical user interface (GUI) for visualizing and analyzing near-fiel
 *   **Microstructure Correlation:** Load and visualize `.mic` or `.map` files, and correlate grain orientations with observed diffraction spots.
 *   **Diffraction Simulation:** Simulate expected diffraction patterns for a given set of grain and experimental parameters.
 
-## Getting Started
+*   **Diffraction Simulation:** Simulate expected diffraction patterns for a given set of grain and experimental parameters.
+ 
+ ```mermaid
+ graph LR
+     GUI[NF GUI Main]
+     GUI --> Viz[Image Visualization]
+     GUI --> Prof[Profile Analysis]
+     GUI --> Calib[Calibration]
+     GUI --> Sim[Simulation]
+     
+     Calib --> Beam[Beam Center]
+     Calib --> Dist[Detector Distance]
+     
+     Sim --> Grain[Load Grain/Mic]
+     Sim --> Spots[Predict Spots]
+ ```
+ 
+ ## Getting Started
 
 ### Prerequisites
 

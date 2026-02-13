@@ -19,6 +19,31 @@ The viewer provides a suite of linked, interactive plots that display grain stru
 - **Interactive Selection:** Click on a grain to instantly view its associated diffraction spots in multiple projections.
 - **Raw Data Inspection:** Click on a spot to see a 3D volume rendering of the raw detector data that produced it.
 - **Detailed Data Table:** Inspect and sort the numerical data for all spots belonging to a selected grain.
+ 
+ ```mermaid
+ graph TD
+     subgraph "Input Data"
+         ZF[Zarr File (.zarr)]
+         RF[Results Folder]
+         RF --> G[Grains.csv]
+         RF --> SM[SpotMatrix.csv]
+     end
+ 
+     subgraph "Interactive Plotter"
+         P[interactiveFFplotting.py]
+         ZF --> P
+         G --> P
+         SM --> P
+     end
+ 
+     subgraph "Visualizations"
+         P --> V1[3D Spot Map]
+         P --> V2[Reciprocal Space]
+         P --> V3[Filtered Grains]
+         P --> V4[Volume Rendering]
+     end
+ ```
+
 
 **2\. Requirements**
 
@@ -111,10 +136,12 @@ python interactiveFFplotting.py -resultFolder /path/to/your/results -dataFileNam
 
 **Arguments:**
 
-- \-resultFolder: **(Required)** The full path to the folder containing Grains.csv, SpotMatrix.csv, etc.
-- \-dataFileName: **(Required)** The full path to the Zarr file containing the raw data and parameters.
-- \-HostName: (Optional) The IP address to host the application on. Defaults to 0.0.0.0, which makes it accessible on your local network.
-- \-portNr: (Optional) The port number for the application. Defaults to 8050.
+| Argument | Description | Required | Default |
+| :--- | :--- | :--- | :--- |
+| `-resultFolder` | The full path to the folder containing `Grains.csv`, `SpotMatrix.csv`, etc. | **Yes** | - |
+| `-dataFileName` | The full path to the Zarr file containing the raw data and parameters. | **Yes** | - |
+| `-HostName` | The IP address to host the application on. Set to `0.0.0.0` to access from other machines. | No | `0.0.0.0` |
+| `-portNr` | The port number for the application. | No | `8050` |
 
 After running the command, you will see a message like Starting Dash server on <http://0.0.0.0:8050>. Open this URL in your web browser to access the viewer.
 
@@ -181,7 +208,18 @@ These plots display the data after the filters from the middle section have been
 
 ---
 
-## See Also
+## 6. Troubleshooting
+ 
+ | Problem | Solution |
+ | :--- | :--- |
+ | **Address already in use** | The default port `8050` might be taken. Try running with a different port: `-portNr 8051`. |
+ | **No data found / Empty plots** | Verify your `-resultFolder` path. Ensure `Grains.csv` and `SpotMatrix.csv` exist and are not empty. |
+ | **Zarr Load Error** | Check if the `.zarr` file path is correct and accessible. Ensure the Zarr structure matches the input requirements. |
+ | **Connection Refused** | If accessing remotely, make sure to use `-HostName 0.0.0.0` and check your firewall settings. |
+ 
+ ---
+ 
+ ## See Also
 
 - [FF_Analysis.md](FF_Analysis.md) — Standard FF-HEDM analysis (produces Grains.csv and SpotMatrix.csv)
 - [PF_Analysis.md](PF_Analysis.md) — Scanning/pencil-beam FF-HEDM analysis
