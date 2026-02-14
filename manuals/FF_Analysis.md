@@ -4,7 +4,7 @@
 **Contact:** hsharma@anl.gov
 
 > [!NOTE]
-> For **scanning/pencil-beam** FF-HEDM (point-focus), see [PF_Analysis.md](PF_Analysis.md).  
+> For **scanning/Point-Focus** FF-HEDM, see [PF_Analysis.md](PF_Analysis.md).  
 > For **dual-dataset** FF-HEDM, see [FF_dual_datasets.md](FF_dual_datasets.md).
 
 ---
@@ -354,7 +354,7 @@ Tab-separated, one row per diffraction spot per grain:
 
 ## 10. See Also
 
-- [PF_Analysis.md](PF_Analysis.md) — Scanning/pencil-beam FF-HEDM analysis
+- [PF_Analysis.md](PF_Analysis.md) — Scanning/Point-Focus FF-HEDM analysis
 - [FF_calibration.md](FF_calibration.md) — Geometry calibration from calibrant rings
 - [FF_dual_datasets.md](FF_dual_datasets.md) — Dual-dataset combined analysis
 - [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results
