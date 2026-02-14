@@ -22,9 +22,9 @@ The output is a set of compressed image files in a Zarr/ZIP format, suitable for
  graph TD
      subgraph "Inputs"
          PF[Parameter File]
-         GD[Grain Data<br>(Grains.csv, .vtk, etc.)]
+         GD["Grain Data<br>(Grains.csv, .vtk, etc.)"]
          HKL[hkls.csv]
-         POS[positions.csv<br>(Optional)]
+         POS["positions.csv<br>(Optional)"]
      end
  
      subgraph "Simulation"
@@ -36,8 +36,8 @@ The output is a set of compressed image files in a Zarr/ZIP format, suitable for
      end
  
      subgraph "Outputs"
-         ZIP[Zarr Zip Files<br>(scanNr_X.zip)]
-         SM[SpotMatrixGen.csv<br>(Optional)]
+         ZIP["Zarr Zip Files<br>(scanNr_X.zip)"]
+         SM["SpotMatrixGen.csv<br>(Optional)"]
          FS --> ZIP
          FS --> SM
      end
