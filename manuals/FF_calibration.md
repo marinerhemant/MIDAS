@@ -279,7 +279,7 @@ python /path/to/AutoCalibrateZarr.py \
 - [FF_RadialIntegration.md](FF_RadialIntegration.md) — Radial integration / caking using calibrated parameters
 - [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation for validation
 - [GSAS-II_Integration.md](GSAS-II_Integration.md) — Importing caked output into GSAS-II
-- [HEDM_Overview.md](HEDM_Overview.md) — High-level MIDAS overview and manual index
+- [README.md](README.md) — High-level MIDAS overview and manual index
 
 ---
 

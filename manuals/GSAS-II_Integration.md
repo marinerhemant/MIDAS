@@ -268,7 +268,7 @@ The calibration parameters from MIDAS can serve as starting instrument-parameter
 
 - [FF_RadialIntegration.md](FF_RadialIntegration.md) — MIDAS radial integration / caking workflow
 - [FF_calibration.md](FF_calibration.md) — FF-HEDM geometry calibration (produces parameters used by integrator)
-- [HEDM_Overview.md](HEDM_Overview.md) — High-level MIDAS overview and manual index
+- [README.md](README.md) — High-level MIDAS overview and manual index
 - [GSAS-II Tutorials](https://advancedphotonsource.github.io/GSAS-II-Tutorials/) — Official GSAS-II tutorials and documentation
 
 ---
