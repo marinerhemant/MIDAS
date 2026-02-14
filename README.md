@@ -179,7 +179,7 @@ See the [manuals README](manuals/README.md) for the full step-by-step checklist.
 
 If you use MIDAS in your research, please cite:
 
-> In review.
+> In review, citations coming soon.
 
 **FF-HEDM methodology:**
 
