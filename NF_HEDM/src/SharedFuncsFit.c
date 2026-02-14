@@ -795,7 +795,8 @@ void SimulateDiffractionImage(
         if (MultY >= 2048 || MultY < 0 || MultZ >= 2048 || MultZ < 0) {
           break;
         }
-        // printf("%lf\n",OmegaThis);
+// printf("%lf\n",OmegaThis);
+#pragma omp critical(spF_write)
         fprintf(spF, "%d\t%d\t%d\t%d\t%d\t%lf\t%lf\t%lf\n", voxNr, Layer,
                 OmeBin, MultY, MultZ, OmegaThis, ythis, zthis);
         BinNr = Layer * NrOfFiles;
@@ -809,6 +810,7 @@ void SimulateDiffractionImage(
         TempCntr *= MultY;
         BinNr += TempCntr;
         BinNr += MultZ;
+#pragma omp atomic
         ObsSpotsInfo[BinNr] += 1;
         if (Layer == 0)
           NrSpots++;

@@ -1,13 +1,22 @@
-# User Manual: `ForwardSimulationCompressed`
+# User Manual: Diffraction Simulation Tools
 
 **Version:** 9.0  
 **Contact:** hsharma@anl.gov
 
 ---
 
-## 1. Program Overview
+MIDAS provides two complementary simulation tools for High Energy Diffraction Microscopy (HEDM):
 
-`ForwardSimulationCompressed` is a high-performance command-line tool for simulating far-field High Energy Diffraction Microscopy (FF-HEDM) experiments. It takes a description of a crystalline sample (grain orientations, positions, and strains) and experimental geometry as input, and produces simulated detector images as output.
+| Tool | Modality | Output | Use Case |
+|------|----------|--------|----------|
+| `ForwardSimulationCompressed` | **Far-Field (FF)** | Zarr/ZIP detector images + spot CSV | Simulating FF diffraction patterns with intensity, Gaussian blur, energy spread |
+| `simulateNF` | **Near-Field (NF)** | Zarr/ZIP hit-count images + binary files | Simulating NF diffraction spot coverage for reconstruction validation |
+
+---
+
+## 1. Far-Field Simulation: `ForwardSimulationCompressed`
+
+`ForwardSimulationCompressed` is a high-performance command-line tool for simulating far-field HEDM experiments. It takes a description of a crystalline sample (grain orientations, positions, and strains) and experimental geometry as input, and produces simulated detector images as output.
 
 The simulation is highly parallelized for speed and includes advanced features to accurately model physical effects such as:
 *   Detector distortions and tilts.
@@ -43,7 +52,7 @@ The output is a set of compressed image files in a Zarr/ZIP format, suitable for
      end
  ```
  
- ## 2. How to Run the Program
+### 1.1. How to Run
 
 The program is executed from the command line with two arguments: a parameter file and the number of CPU cores to use.
 
@@ -53,7 +62,7 @@ The program is executed from the command line with two arguments: a parameter fi
 ```
 
 #### Arguments:
-*   `<ParameterFile>`: The path to a text file containing all simulation parameters. Details are in Section 3.
+*   `<ParameterFile>`: The path to a text file containing all simulation parameters. Details are in Section 1.2.
 *   `<nCPUs>`: The number of CPU cores (threads) to use for the simulation. For best performance, this should be set to the number of physical cores on your machine.
 
 #### Example:
@@ -62,11 +71,11 @@ The program is executed from the command line with two arguments: a parameter fi
 ```
 This command runs the simulation using the settings in `experiment_params.txt` and parallelizes the computation across 16 CPU cores.
 
-## 3. The Parameter File
+### 1.2. The Parameter File
 
 The parameter file is a plain text file that controls every aspect of the simulation. Each line consists of a keyword followed by one or more values, separated by spaces. Lines starting with `%` or `#` can be used for comments.
 
-### 3.1. Required Files and Their Formats
+#### 1.2.1. Required Files and Their Formats
 
 Before running, you must have several files in your working directory.
 
@@ -102,7 +111,7 @@ This file contains the core information about your sample's microstructure. The 
     *   **VTK File:** A `.vtk` file from a finite element simulation (e.g., ABAQUS). The code is designed to parse specific fields for position, orientation, and strain.
     *   **Binary Format (`.bin`):** A custom, high-speed binary format containing the orientation and strain data.
 
-### 3.2. Parameter Keywords
+#### 1.2.2. Parameter Keywords
 
 Below is a complete list of keywords that can be used in the parameter file.
 
@@ -139,8 +148,9 @@ These parameters model the geometric distortions of a real detector.
 
 **Output Control:**
 *   `WriteSpots <0_or_1>`: If set to `1`, a `SpotMatrixGen.csv` file will be generated, logging the detailed information for every simulated diffraction spot. `0` disables this.
+*   `WriteImage <0_or_1>`: If set to `1` (default), the simulated detector images are written to a Zarr/ZIP file. If set to `0`, image generation is skipped, which can save significant time and disk space if only `SpotMatrixGen.csv` is needed.
 
-### 3.3. Example Parameter File
+#### 1.2.3. Example Parameter File
 ```
 # ==================================
 # Example Parameters for Ti-7Al
@@ -185,7 +195,7 @@ nScans            1
 WriteSpots        1
 ```
 
-### 4. Output Format
+### 1.3. Output Format
 
 The primary output of the simulation is one or more ZIP files, one for each scan. These ZIP files are structured in the **Zarr format**, a modern standard for chunked, compressed n-dimensional arrays. This format is highly efficient and easily read by many scientific data analysis packages, especially in Python.
 
@@ -195,62 +205,238 @@ The primary output of the simulation is one or more ZIP files, one for each scan
 
 To read this data, you can use Python libraries such as `zarr`. The file structure is a standard Zarr v2 group stored within a Zip file.
  
- #### Python Example: Reading and Plotting Data
+#### Python Example: Reading and Plotting Data
  
- ```python
- import zarr
- import matplotlib.pyplot as plt
- import numpy as np
- 
- # Path to the output zip file
- zip_path = 'Ti7Al_simulation_results_scanNr_0.zip'
- 
- # Open the Zip file as a Zarr store
- store = zarr.ZipStore(zip_path, mode='r')
- 
- # Open the root group
- root = zarr.group(store=store)
- 
- # Access the data array
- # Structure is exchange/data
- data = root['exchange']['data']
- 
- print("Data shape:", data.shape)
- print("Data type:", data.dtype)
- 
- # Display the first frame (Omega step 0)
- plt.imshow(data[0, :, :], cmap='viridis', vmax=100)
- plt.title("Simulated Diffraction Pattern - Frame 0")
- plt.colorbar()
- plt.show()
- 
- # Close the store
- store.close()
- ```
+```python
+import zarr
+import matplotlib.pyplot as plt
+import numpy as np
 
----
+# Path to the output zip file
+zip_path = 'Ti7Al_simulation_results_scanNr_0.zip'
 
-## 5. Technical Implementation Details
+# Open the Zip file as a Zarr store
+store = zarr.ZipStore(zip_path, mode='r')
 
-### 5.1. Physics & Rendering Engine
+# Open the root group
+root = zarr.group(store=store)
+
+# Access the data array
+# Structure is exchange/data
+data = root['exchange']['data']
+
+print("Data shape:", data.shape)
+print("Data type:", data.dtype)
+
+# Display the first frame (Omega step 0)
+plt.imshow(data[0, :, :], cmap='viridis', vmax=100)
+plt.title("Simulated Diffraction Pattern - Frame 0")
+plt.colorbar()
+plt.show()
+
+# Close the store
+store.close()
+```
+
+### 1.4. Technical Implementation Details
+
+#### 1.4.1. Physics & Rendering Engine
 *   **Analytic Integration:** Instead of simple point sampling, the simulation uses an **analytic Gaussian integration** method. It models each diffraction spot as a 2D Gaussian distribution and calculates the exact integral of this distribution over the area of each pixel. This ensures high-fidelity simulations even for small spot sizes or coarse pixel grids, eliminating aliasing artifacts.
 *   **Energy Resolution:** The code simulates the effect of a polychromatic beam (energy bandwidth) by discretizing the wavelength spread into multiple sub-samples (`num_samples`). Each reflection is calculated for these varying wavelengths, and their intensities are averaged, effectively broadening the spots radially.
 *   **Wedge Correction:** The simulation accounts for the "wedge" effect (sample rotation during exposure) by calculating the intersection of the diffraction cone with the detector plane at the start and end angles of the frame.
 
-### 5.2. Data Compression (Zarr/Zip)
+#### 1.4.2. Data Compression (Zarr/Zip)
 *   **Custom Writer:** The program implements a lightweight, dependency-free Zarr writer in C using the `libzip` and `c-blosc` libraries.
 *   **Storage Layout:** It creates a standard Zarr v2 hierarchy (`.zgroup`, `.zattrs`, `.zarray`) inside a ZIP container.
 *   **Compression:** Image data is compressed using the **Zstd** algorithm with **Bitshuffle** (via Blosc), providing a high compression ratio for sparse diffraction images while maintaining fast read speeds.
 
-### 5.3. Parallelization
-*   **OpenMP:** The core simulation loop is parallelized over the input grains/voxels. Each thread calculates the diffraction spots for a subset of grains, applies geometric corrections (distortion, tilt), and atomically adds the intensity to the shared global image array.
+#### 1.4.3. Parallelization
+*   **OpenMP:** The program is parallelized at two levels:
+    1.  **Distortion Map Generation:** The pixel-level distortion/tilt correction map (`NrPixels × NrPixels`) is computed in parallel using `collapse(2)` to distribute the double loop across threads. All per-pixel variables are stack-local, so there are no data races.
+    2.  **Main Simulation Loop:** The core simulation loop is parallelized over the input grains/voxels. Each thread calculates the diffraction spots for a subset of grains, applies geometric corrections, and atomically adds intensity to the shared global image array.
+*   **Per-Thread Spot Buffering:** When `WriteSpots 1` is enabled, each thread buffers its spot data in a private, dynamically-growing array instead of writing to the output file inside a critical section. After the parallel region completes, all buffers are flushed sequentially. This eliminates lock contention that would otherwise serialize all threads.
+*   **Timing:** Wall-clock time is measured using `omp_get_wtime()` to accurately report parallel speedup. Separate timers report the distortion map generation time and the simulation time independently.
 
----
-
-## 6. See Also
+### 1.5. See Also
 
 - [FF_Analysis.md](FF_Analysis.md) — Standard FF-HEDM analysis (produces Grains.csv used as input here)
 - [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results and simulated data
 - [FF_calibration.md](FF_calibration.md) — Geometry calibration from calibrant rings
+
+---
+
+## 2. Near-Field Simulation: `simulateNF`
+
+`simulateNF` is the near-field counterpart to `ForwardSimulationCompressed`. While FF simulation produces continuous-intensity images of diffraction spots, NF simulation produces **hit-count images** — each pixel records how many diffraction spots illuminated it. This is the data format expected by the NF reconstruction pipeline.
+
+> [!TIP]
+> If you are simulating **near-field** data, use `simulateNF` instead of `ForwardSimulationCompressed`. The NF simulator correctly handles multi-layer detectors, grain geometry, and the NF-specific spot projection model.
+
+### 2.1. How to Run
+
+```bash
+./simulateNF <ParameterFile> <InputMicFile> <OutputPrefix> [nCPUs]
+```
+
+#### Arguments:
+*   `<ParameterFile>`: Path to a text file containing simulation parameters (same format as FF, with NF-specific additions).
+*   `<InputMicFile>`: Path to a `.mic` file describing the grain microstructure.
+*   `<OutputPrefix>`: Base name for output files. Produces `<prefix>`, `<prefix>.bin`, `SpotsInfo.bin`, `SimulatedSpots.csv`, and optionally `<prefix>.zip`.
+*   `[nCPUs]` (Optional): Number of CPU threads for OpenMP parallelization. Default: `1`.
+
+#### Example:
+```bash
+./simulateNF nf_params.txt microstructure.mic NF_simulation_output 16
+```
+
+### 2.2. Parameter File
+
+The NF parameter file shares many keywords with the FF parameter file, plus some NF-specific ones.
+
+**Geometry (per layer):**
+*   `nDistances <N>`: Number of detector layers (distances). Must appear before `Lsd` and `BC` lines.
+*   `Lsd <value>`: Sample-to-detector distance (microns). Specify one line per layer.
+*   `BC <y> <z>`: Beam center (pixels). Specify one line per layer.
+
+**Omega Scanning:**
+*   `OmegaStart <value>`: Starting omega angle (degrees).
+*   `OmegaStep <value>`: Omega step per frame (degrees).
+*   `StartNr <value>`: First frame number.
+*   `EndNr <value>`: Last frame number (inclusive). Total frames = EndNr − StartNr + 1.
+*   `OmegaRange <min> <max>`: Omega range to include (degrees). Can appear multiple times.
+*   `BoxSize <y1> <y2> <z1> <z2>`: Bounding box for each omega range. One per `OmegaRange`.
+
+**Material:**
+*   `LatticeParameter <a> <b> <c> <α> <β> <γ>`: Lattice constants.
+*   `SpaceGroup <number>`: Space group number for HKL generation.
+*   `Wavelength <value>`: X-ray wavelength (Angstroms).
+*   `MaxRingRad <value>`: Maximum ring radius on the detector (microns).
+*   `ExcludePoleAngle <value>`: Exclude reflections near the pole (degrees).
+*   `RingsToUse <ring_nr>`: Ring numbers to include. Can appear multiple times.
+
+**Detector:**
+*   `px <value>`: Pixel size (microns).
+*   `tx <value>`, `ty <value>`, `tz <value>`: Detector tilt angles (degrees).
+*   `Wedge <value>`: Wedge angle correction (degrees). Default: 0.
+
+**Output Control:**
+*   `WriteImage <0_or_1>`: If `1` (default), write a Zarr/ZIP file with the simulated NF images. If `0`, skip image writing.
+*   `SaveReducedOutput`: If present, skip writing the full raw binary output file.
+
+### 2.3. Input: `.mic` File Format
+
+The `.mic` file describes a 2D grain microstructure. It contains a **4-line header** (skipped), followed by one line per grain/voxel:
+
+```
+<header line 1>
+<header line 2>
+<header line 3>
+<header line 4>
+<dummy> <dummy> <dummy> <xs> <ys> <edgeLen> <ud> <eul1> <eul2> <eul3> <confidence> <dummy>
+...
+```
+
+| Column | Description |
+|--------|-------------|
+| `xs`, `ys` | Grain center position (microns) |
+| `edgeLen` | Grain edge length (microns) |
+| `ud` | Triangle orientation (+1 or −1) |
+| `eul1`, `eul2`, `eul3` | Euler angles (**radians**) |
+| `confidence` | Reconstruction confidence |
+
+> [!IMPORTANT]
+> Euler angles in the `.mic` file must be in **radians**. The code internally converts them to degrees before computing the orientation matrix.
+
+### 2.4. Output Files
+
+| File | Format | Description |
+|------|--------|-------------|
+| `<prefix>` | Binary (uint16) | Raw simulation array: `[nLayers × nrFiles × 2048 × 2048]`. Each value = spot hit count. Preceded by an 8192-byte header. |
+| `<prefix>.bin` | Binary (uint16) | Sparse format: 5 values per illuminated pixel `[row, col, frame, layer, count]`. |
+| `SpotsInfo.bin` | Binary (int) | Bit array indicating which pixels were illuminated. |
+| `SimulatedSpots.csv` | CSV | Per-spot log: `VoxRowNr, DistanceNr, FrameNr, HorPx, VerPx, OmegaRaw, YRaw, ZRaw`. |
+| `<prefix>.zip` | Zarr/ZIP | **(Optional, `WriteImage 1`)** 4D Zarr array `[nLayers, nrFiles, 2048, 2048]`, dtype `uint16`, blosc/zstd compressed. |
+
+### 2.5. Reading the Zarr/ZIP Output in Python
+
+```python
+import zarr
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Open the Zarr/ZIP file
+store = zarr.ZipStore('NF_simulation_output.zip', mode='r')
+root = zarr.group(store=store)
+data = root['exchange']['data']
+
+print("Data shape:", data.shape)  # (nLayers, nrFiles, 2048, 2048)
+print("Data type:", data.dtype)   # uint16
+
+# Display frame 0 of layer 0
+fig, ax = plt.subplots()
+ax.imshow(data[0, 0, :, :], cmap='hot')
+ax.set_title("NF Simulation - Layer 0, Frame 0")
+plt.colorbar(ax.images[0], label='Spot Hit Count')
+plt.show()
+
+store.close()
+```
+
+### 2.6. Example NF Parameter File
+
+```
+# ==================================
+# Example NF Simulation Parameters
+# ==================================
+
+# --- Detector Layers ---
+nDistances        2
+Lsd               5000.0
+Lsd               7000.0
+BC                1024.0 1024.0
+BC                1024.0 1024.0
+
+# --- Omega Scanning ---
+StartNr           1
+EndNr             360
+OmegaStart        0.0
+OmegaStep         1.0
+OmegaRange        -180.0 180.0
+BoxSize           -1500000 1500000 -1500000 1500000
+
+# --- Material ---
+SpaceGroup        225
+LatticeParameter  3.6 3.6 3.6 90 90 120
+Wavelength        0.172979
+MaxRingRad        4000.0
+ExcludePoleAngle  10.0
+RingsToUse        1
+RingsToUse        2
+RingsToUse        3
+
+# --- Detector ---
+px                1.48
+tx                0.0
+ty                0.0
+tz                0.0
+
+# --- Output ---
+WriteImage        1
+```
+
+### 2.7. Technical Implementation Details
+
+#### Parallelization
+*   **OpenMP:** The main voxel simulation loop is parallelized over grains using OpenMP. The number of threads is controlled by the optional `nCPUs` argument.
+*   **Timing:** Wall-clock time is measured using `omp_get_wtime()` to accurately report parallel speedup.
+
+#### Portable Binary Resolution
+*   Both `simulateNF` and `compareNF` use the `midas_paths.h` utility to locate the `GetHKLList` binary at runtime. The binary is found relative to the running executable's location or via the `MIDAS_HOME` environment variable, so MIDAS does not need to be installed at a fixed path.
+
+### 2.8. See Also
+
+- [NF_Analysis.md](NF_Analysis.md) — NF-HEDM reconstruction workflow
+- [NF_calibration.md](NF_calibration.md) — NF detector geometry calibration
+- [NF_gui.md](NF_gui.md) — Interactive NF-HEDM analysis GUI
 
 ---

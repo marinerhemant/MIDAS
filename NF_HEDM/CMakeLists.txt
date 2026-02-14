@@ -2,6 +2,9 @@
 
 set(NF_SRCDIR src)
 
+# Allow NF_HEDM targets to include shared headers like midas_paths.h from FF_HEDM
+include_directories(${CMAKE_SOURCE_DIR}/FF_HEDM/src)
+
 # List of common source files for some targets
 set(NF_SHARED_FIT_SOURCES
     ${NF_SRCDIR}/GetMisorientation.c
@@ -57,6 +60,9 @@ add_nf_hedm_executable(FitOrientationSinglePoint SOURCES ${NF_SRCDIR}/FitOrienta
 add_nf_hedm_executable(ParseDeconvOutput SOURCES ${NF_SRCDIR}/ParseDeconvOutput.c LINK_LIBRARIES_EXTRA TIFF::TIFF)
 add_nf_hedm_executable(compareNF SOURCES ${NF_SRCDIR}/compareNF.c ${NF_SRCDIR}/CalcDiffractionSpots.c ${NF_SRCDIR}/SharedFuncsFit.c ${NF_SRCDIR}/GetMisorientation.c LINK_LIBRARIES_EXTRA NLOPT::NLOPT)
 add_nf_hedm_executable(simulateNF SOURCES ${NF_SRCDIR}/simulateNF.c ${NF_SRCDIR}/CalcDiffractionSpots.c ${NF_SRCDIR}/SharedFuncsFit.c ${NF_SRCDIR}/GetMisorientation.c)
+if(BUILD_OMP AND OpenMP_C_FOUND)
+  target_link_libraries(simulateNF PRIVATE OpenMP::OpenMP_C)
+endif()
 
 # --- OpenMP Executables ---
 # Note: The helper function doesn't handle OpenMP explicitly, OpenMP::OpenMP_C should be in COMMON_LINK_LIBRARIES or added if specific

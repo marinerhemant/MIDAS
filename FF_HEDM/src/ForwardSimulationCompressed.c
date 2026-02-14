@@ -630,10 +630,12 @@ static inline double CorrectWedge(double eta, double theta, double wl,
   return Omega;
 }
 
-static inline void CorrectTiltSpatialDistortion(
-    double px, double Lsd, double ybc, double zbc, double tx, double ty,
-    double tz, double RhoD, double p0, double p1, double p2, double p3,
-    int NrPixels, double *yDispl, double *zDispl, int nPanels, Panel *panels) {
+static inline void
+CorrectTiltSpatialDistortion(double px, double Lsd, double ybc, double zbc,
+                             double tx, double ty, double tz, double RhoD,
+                             double p0, double p1, double p2, double p3,
+                             int NrPixels, double *yDispl, double *zDispl,
+                             int nPanels, Panel *panels, int nCPUs) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
@@ -647,14 +649,10 @@ static inline void CorrectTiltSpatialDistortion(
   double TRint[3][3], TRs[3][3];
   MatrixMultF33(Ry, Rz, TRint);
   MatrixMultF33(Rx, TRint, TRs);
-  int i, j, k;
-  double n0 = 2, n1 = 4, n2 = 2, Yc, Zc;
-  double Rad, Eta, RNorm, DistortFunc, Rcorr, RIdeal, EtaT, Diff, MeanDiff;
-  double ABC[3], ABCPr[3], XYZ[3], YCorr, ZCorr, yDiff, zDiff;
-  int yTrans, zTrans;
-  long long int idx;
-  for (i = 0; i < NrPixels; i++) {
-    for (j = 0; j < NrPixels; j++) {
+  double n0 = 2, n1 = 4, n2 = 2;
+#pragma omp parallel for collapse(2) num_threads(nCPUs) schedule(static)
+  for (int i = 0; i < NrPixels; i++) {
+    for (int j = 0; j < NrPixels; j++) {
       double pdY = 0, pdZ = 0;
       int pIdx = GetPanelIndex((double)i, (double)j, nPanels, panels);
       if (pIdx >= 0) {
@@ -663,32 +661,34 @@ static inline void CorrectTiltSpatialDistortion(
       }
       double ypr = (double)i + pdY;
       double zpr = (double)j + pdZ;
-      Yc = -(ypr - ybc) * px;
-      Zc = (zpr - zbc) * px;
-      ABC[0] = 0;
-      ABC[1] = Yc;
-      ABC[2] = Zc;
+      double Yc = -(ypr - ybc) * px;
+      double Zc = (zpr - zbc) * px;
+      double ABC[3] = {0, Yc, Zc};
+      double ABCPr[3];
       MatrixMult(TRs, ABC, ABCPr);
+      double XYZ[3];
       XYZ[0] = Lsd + ABCPr[0];
       XYZ[1] = ABCPr[1];
       XYZ[2] = ABCPr[2];
-      Rad = (Lsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
+      double Rad = (Lsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
+      double Eta;
       CalcEtaAngle(XYZ[1], XYZ[2], &Eta);
-      RNorm = Rad / RhoD;
-      EtaT = 90 - Eta;
-      DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
-                    (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
-                    (p2 * (pow(RNorm, n2))) + 1;
-      Rcorr = Rad * DistortFunc;
-      YCorr = -Rcorr * sin(Eta * deg2rad);
-      ZCorr = Rcorr * cos(Eta * deg2rad);
-      yDiff = Yc - YCorr;
-      zDiff = Zc - ZCorr;
-      yTrans = (int)(-YCorr / px + ybc);
-      zTrans = (int)(ZCorr / px + zbc);
+      double RNorm = Rad / RhoD;
+      double EtaT = 90 - Eta;
+      double DistortFunc =
+          (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
+          (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
+          (p2 * (pow(RNorm, n2))) + 1;
+      double Rcorr = Rad * DistortFunc;
+      double YCorr = -Rcorr * sin(Eta * deg2rad);
+      double ZCorr = Rcorr * cos(Eta * deg2rad);
+      double yDiff = Yc - YCorr;
+      double zDiff = Zc - ZCorr;
+      int yTrans = (int)(-YCorr / px + ybc);
+      int zTrans = (int)(ZCorr / px + zbc);
       if (yTrans < 0 || yTrans >= NrPixels || zTrans < 0 || zTrans >= NrPixels)
         continue;
-      idx = yTrans + NrPixels * zTrans;
+      long long int idx = yTrans + NrPixels * zTrans;
       if (idx < 0)
         continue;
       yDispl[idx] = yDiff;
@@ -1085,9 +1085,9 @@ int main(int argc, char *argv[]) {
     usage();
     return 0;
   }
-  clock_t start0, end;
+  double start0, end_time;
   double diftotal;
-  start0 = clock();
+  start0 = omp_get_wtime();
   int i, j, k, t, p;
 
   // Read params file.
@@ -1096,9 +1096,6 @@ int main(int argc, char *argv[]) {
   ParamFN = argv[1];
   int nCPUs = atoi(argv[2]);
   run_midas_binary("GetHKLList", ParamFN);
-  // char cmD[4096];
-  // sprintf(cmD,"~/opt/MIDAS/FF_HEDM/bin/GetHKLList %s",ParamFN);
-  // system(cmD);
   int LowNr;
   char *str, dummy[4096], aline[4096];
   fileParam = fopen(ParamFN, "r");
@@ -1112,7 +1109,7 @@ int main(int argc, char *argv[]) {
   int *PanelGapsY = NULL, *PanelGapsZ = NULL;
   char PanelShiftsFile[1024] = "";
   int writeSpots = 1, isBin = 0;
-  int LoadNr = 0, UpdatedOrientations = 1, nfOutput = 0, geOutput = 1;
+  int LoadNr = 0, UpdatedOrientations = 1, nfOutput = 0, WriteImage = 1;
   double minConfidence = 0;
   int nScans = 1;
   double *positions, beamSize = -1;
@@ -1341,6 +1338,12 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %d", dummy, &writeSpots);
       continue;
     }
+    str = "WriteImage ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &WriteImage);
+      continue;
+    }
     str = "LoadNr ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
@@ -1381,12 +1384,6 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %d", dummy, &nfOutput);
-      continue;
-    }
-    str = "GEOutput ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &geOutput);
       continue;
     }
     str = "EResolution ";
@@ -1458,9 +1455,9 @@ int main(int argc, char *argv[]) {
   printf("Scans:               %d\n", nScans);
   if (beamSize > 0)
     printf("Beam Size:           %.4f (microns)\n", beamSize);
-  printf("Misc Options:        WriteSpots=%d, IsBinary=%d, NFOutput=%d, "
-         "GEOutput=%d\n",
-         writeSpots, isBin, nfOutput, geOutput);
+  printf("Misc Options:        WriteSpots=%d, WriteImage=%d, IsBinary=%d, "
+         "NFOutput=%d\n",
+         writeSpots, WriteImage, isBin, nfOutput);
   printf(
       "                     LoadNr=%d, UpdatedOrientations=%d, MinConf=%.4f\n",
       LoadNr, UpdatedOrientations, minConfidence);
@@ -1489,8 +1486,11 @@ int main(int argc, char *argv[]) {
       }
     }
   }
-  printf("Output will be saved to: %s_scanNr_XYZ.zip, XYZ is the scanNr\n",
-         OutFileName);
+  if (WriteImage)
+    printf("Output will be saved to: %s_scanNr_XYZ.zip, XYZ is the scanNr\n",
+           OutFileName);
+  if (writeSpots)
+    printf("Spot output will be saved to: SpotMatrixGen.csv\n");
 
   char inpFN[4096];
   sprintf(inpFN, "%s", InFileName);
@@ -1622,17 +1622,22 @@ int main(int argc, char *argv[]) {
 
   // Allocate image array.
   double maxInt;
-  double *ImageArr;
+  double *ImageArr = NULL;
   size_t ImageArrSize;
   ImageArrSize = NrPixels;
   ImageArrSize *= NrPixels;
   ImageArrSize *= ceil(fabs((OmegaEnd - OmegaStart) / OmegaStep));
-  ImageArr = calloc(ImageArrSize, sizeof(*ImageArr));
-  printf("Number of elements in ImageArray: %zu, number of frames: %zu\n",
-         ImageArrSize, (size_t)ceil(fabs((OmegaEnd - OmegaStart) / OmegaStep)));
-  if (ImageArr == NULL) {
-    printf("Could not allocate enough memory for image array. Exiting.\n");
-    return 1;
+  if (WriteImage) {
+    ImageArr = calloc(ImageArrSize, sizeof(*ImageArr));
+    printf("Number of elements in ImageArray: %zu, number of frames: %zu\n",
+           ImageArrSize,
+           (size_t)ceil(fabs((OmegaEnd - OmegaStart) / OmegaStep)));
+    if (ImageArr == NULL) {
+      printf("Could not allocate enough memory for image array. Exiting.\n");
+      return 1;
+    }
+  } else {
+    printf("WriteImage is 0, skipping image array allocation.\n");
   }
   // Make distortion tilt map for each pixel within the hkl range
   printf("Making distortion map.\n");
@@ -1645,9 +1650,10 @@ int main(int argc, char *argv[]) {
         -32100.0; // Set to a special number to check if it was set or not.
   }
   CorrectTiltSpatialDistortion(px, Lsd, yBC, zBC, tx, ty, tz, RhoD, p0, p1, p2,
-                               p3, NrPixels, yDispl, zDispl, nPanels, panels);
-  end = clock();
-  diftotal = ((double)(end - start0)) / CLOCKS_PER_SEC;
+                               p3, NrPixels, yDispl, zDispl, nPanels, panels,
+                               nCPUs);
+  end_time = omp_get_wtime();
+  diftotal = end_time - start0;
   printf("Distortion map done in %lf sec.\n", diftotal);
 
   // Make GaussMask for blurring - REMOVED (Analytic Integration)
@@ -1693,12 +1699,35 @@ int main(int argc, char *argv[]) {
   double omegaSmall = OmegaStart < OmegaEnd ? OmegaStart : OmegaEnd;
   printf("Omega range for simulation: min: %lf, max: %lf\n", omegaSmall,
          omegaLarge);
-  // Look at OpenMP?
+
+  // --- Per-thread spot buffering (eliminates omp critical for fprintf) ---
+  typedef struct {
+    int grainID, spotID, ringNr, scanNr;
+    size_t omeBin;
+    double omega, detHor, detVert, omeRaw, eta, yLab, zLab, theta, ringRad;
+  } SpotRecord;
+  typedef struct {
+    SpotRecord *records;
+    int count;
+    int capacity;
+  } SpotBuffer;
+  SpotBuffer *spotBuffers = calloc(nCPUs, sizeof(SpotBuffer));
+  for (i = 0; i < nCPUs; i++) {
+    spotBuffers[i].capacity = 4096;
+    spotBuffers[i].records =
+        malloc(spotBuffers[i].capacity * sizeof(SpotRecord));
+    spotBuffers[i].count = 0;
+  }
+
+  double sim_start = omp_get_wtime();
   for (scanNr = 0; scanNr < nScans; scanNr++) {
-    if (scanNr > 0)
+    if (scanNr > 0 && WriteImage)
       memset(ImageArr, 0, ImageArrSize * sizeof(*ImageArr));
     yOffset = positions[scanNr];
     printf("yPosition: %lf\n", yOffset);
+    // Reset buffers for this scan
+    for (i = 0; i < nCPUs; i++)
+      spotBuffers[i].count = 0;
 #pragma omp parallel num_threads(nCPUs)                                        \
     private(voxNr, i, j, LatCThis, EpsThis, OM, EulerThis, nTspots, spotNr,    \
                 Info, OmeDiff, omeThis, newY, yTemp, zTemp, yThis, zThis,      \
@@ -1708,6 +1737,8 @@ int main(int argc, char *argv[]) {
     {
       double **TheorSpots_Thread = allocMatrix(nRowsPerGrain, 7);
       double **hklsOut_Thread = allocMatrix(n_hkls, 5);
+      int _tid = omp_get_thread_num();
+      SpotBuffer *_myBuf = &spotBuffers[_tid];
 
 #pragma omp for
       for (voxNr = 0; voxNr < nrPoints; voxNr++) {
@@ -1831,20 +1862,10 @@ int main(int argc, char *argv[]) {
             if (yDet < 0 || yDet >= NrPixels || zDet < 0 || zDet >= NrPixels)
               continue;
             // ========================================================================
-            // NEW: Analytic Gaussian Integration
+            // Spot position logging (independent of WriteImage)
             // ========================================================================
 
-            double sigma = GaussWidth;
-            double twoSigmaSq = 2.0 * sigma * sigma;
-            int extent = (int)ceil(4.0 * sigma);
-            if (extent > 49)
-              extent = 49; // Clamp to buffer size (buffer is 100)
-
-            int y_base = (int)round(yDet);
-            int z_base = (int)round(zDet);
-
             omeBin = (size_t)floor(-(OmegaStart - omeThis) / OmegaStep);
-            size_t frameOffset = omeBin * NrPixels * NrPixels;
 
             if (writeSpots == 1) {
               spotMatr[0] = voxNr + 1;
@@ -1861,79 +1882,105 @@ int main(int argc, char *argv[]) {
               spotMatr[11] = 0;
             }
 
-            // Precompute 1D Gaussian weights
-            double WeightsY[100];
-            double WeightsZ[100];
+            // ========================================================================
+            // Analytic Gaussian Integration (only if WriteImage)
+            // ========================================================================
+            if (WriteImage) {
+              double sigma = GaussWidth;
+              double twoSigmaSq = 2.0 * sigma * sigma;
+              int extent = (int)ceil(4.0 * sigma);
+              if (extent > 49)
+                extent = 49; // Clamp to buffer size (buffer is 100)
 
-            for (int dy = -extent; dy <= extent; dy++) {
-              int y_curr = y_base + dy;
-              if (y_curr < 0 || y_curr >= NrPixels) {
-                WeightsY[dy + extent] = 0.0;
-                continue;
+              int y_base = (int)round(yDet);
+              int z_base = (int)round(zDet);
+              size_t frameOffset = omeBin * NrPixels * NrPixels;
+
+              // Precompute 1D Gaussian weights
+              double WeightsY[100];
+              double WeightsZ[100];
+
+              for (int dy = -extent; dy <= extent; dy++) {
+                int y_curr = y_base + dy;
+                if (y_curr < 0 || y_curr >= NrPixels) {
+                  WeightsY[dy + extent] = 0.0;
+                  continue;
+                }
+                double distY = (double)y_curr - yDet;
+                WeightsY[dy + extent] = exp(-(distY * distY) / twoSigmaSq);
               }
-              double distY = (double)y_curr - yDet;
-              WeightsY[dy + extent] = exp(-(distY * distY) / twoSigmaSq);
-            }
-
-            for (int dz = -extent; dz <= extent; dz++) {
-              int z_curr = z_base + dz;
-              if (z_curr < 0 || z_curr >= NrPixels) {
-                WeightsZ[dz + extent] = 0.0;
-                continue;
-              }
-              double distZ = (double)z_curr - zDet;
-              WeightsZ[dz + extent] = exp(-(distZ * distZ) / twoSigmaSq);
-            }
-
-            // Convolve using precomputed weights
-            for (int dy = -extent; dy <= extent; dy++) {
-              double wy = WeightsY[dy + extent];
-              if (wy == 0.0)
-                continue;
-
-              int y_curr = y_base + dy;
 
               for (int dz = -extent; dz <= extent; dz++) {
-                double wz = WeightsZ[dz + extent];
-                if (wz == 0.0)
+                int z_curr = z_base + dz;
+                if (z_curr < 0 || z_curr >= NrPixels) {
+                  WeightsZ[dz + extent] = 0.0;
+                  continue;
+                }
+                double distZ = (double)z_curr - zDet;
+                WeightsZ[dz + extent] = exp(-(distZ * distZ) / twoSigmaSq);
+              }
+
+              // Convolve using precomputed weights
+              for (int dy = -extent; dy <= extent; dy++) {
+                double wy = WeightsY[dy + extent];
+                if (wy == 0.0)
                   continue;
 
-                int z_curr = z_base + dz;
+                int y_curr = y_base + dy;
 
-                // Gaussian weight
-                double weight = wy * wz;
+                for (int dz = -extent; dz <= extent; dz++) {
+                  double wz = WeightsZ[dz + extent];
+                  if (wz == 0.0)
+                    continue;
 
-                // Check relative intensity from rings
-                int currentRingNr = (int)TempInfo[4];
-                double relativeIntensity = 1.0;
-                if (currentRingNr >= 0 && currentRingNr < 500) {
-                  relativeIntensity = RingNrIntensity[currentRingNr];
-                }
+                  int z_curr = z_base + dz;
 
-                // Total intensity contribution
-                double intensity_to_add =
-                    weight * sub_peak_intensity * relativeIntensity;
+                  // Gaussian weight
+                  double weight = wy * wz;
 
-                long long int currentPos =
-                    (long long int)(frameOffset + y_curr * NrPixels + z_curr);
-                if (currentPos >= 0 && currentPos < ImageArrSize) {
+                  // Check relative intensity from rings
+                  int currentRingNr = (int)TempInfo[4];
+                  double relativeIntensity = 1.0;
+                  if (currentRingNr >= 0 && currentRingNr < 500) {
+                    relativeIntensity = RingNrIntensity[currentRingNr];
+                  }
+
+                  // Total intensity contribution
+                  double intensity_to_add =
+                      weight * sub_peak_intensity * relativeIntensity;
+
+                  long long int currentPos =
+                      (long long int)(frameOffset + y_curr * NrPixels + z_curr);
+                  if (currentPos >= 0 && currentPos < ImageArrSize) {
 #pragma omp atomic
-                  ImageArr[currentPos] += intensity_to_add;
+                    ImageArr[currentPos] += intensity_to_add;
+                  }
                 }
               }
-            }
-          }
-          if (writeSpots == 1) {
-#pragma omp critical
-            {
-              fprintf(
-                  spotsfile,
-                  "%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\t%"
-                  "d\t%lf\t%d\n",
-                  (int)spotMatr[0], (int)spotMatr[1], spotMatr[2], spotMatr[3],
-                  spotMatr[4], spotMatr[5], spotMatr[6], (int)spotMatr[7],
-                  spotMatr[8], spotMatr[9], spotMatr[10], spotMatr[11], scanNr,
-                  sqrt(yThis * yThis + zThis * zThis), omeBin);
+            } // end WriteImage Gaussian block
+            if (writeSpots == 1) {
+              // Buffer spot data (no lock needed - each thread has its own
+              // buffer)
+              if (_myBuf->count >= _myBuf->capacity) {
+                _myBuf->capacity *= 2;
+                _myBuf->records = realloc(
+                    _myBuf->records, _myBuf->capacity * sizeof(SpotRecord));
+              }
+              SpotRecord *rec = &_myBuf->records[_myBuf->count++];
+              rec->grainID = (int)spotMatr[0];
+              rec->spotID = (int)spotMatr[1];
+              rec->omega = spotMatr[2];
+              rec->detHor = spotMatr[3];
+              rec->detVert = spotMatr[4];
+              rec->omeRaw = spotMatr[5];
+              rec->eta = spotMatr[6];
+              rec->ringNr = (int)spotMatr[7];
+              rec->yLab = spotMatr[8];
+              rec->zLab = spotMatr[9];
+              rec->theta = spotMatr[10];
+              rec->scanNr = scanNr;
+              rec->ringRad = sqrt(yThis * yThis + zThis * zThis);
+              rec->omeBin = omeBin;
             }
           }
         }
@@ -1941,14 +1988,32 @@ int main(int argc, char *argv[]) {
       FreeMemMatrix(TheorSpots_Thread, nRowsPerGrain);
       FreeMemMatrix(hklsOut_Thread, n_hkls);
     } // End of omp parallel block
-    maxInt = 0.0;
-    for (size_t i = 0; i < ImageArrSize; ++i) {
-      if (ImageArr[i] > maxInt) {
-        maxInt = ImageArr[i];
+    // Flush all thread spot buffers to file (serial, after parallel region)
+    if (writeSpots == 1) {
+      for (i = 0; i < nCPUs; i++) {
+        for (j = 0; j < spotBuffers[i].count; j++) {
+          SpotRecord *r = &spotBuffers[i].records[j];
+          fprintf(spotsfile,
+                  "%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t%lf\t%"
+                  "d\t%lf\t%zu\n",
+                  r->grainID, r->spotID, r->omega, r->detHor, r->detVert,
+                  r->omeRaw, r->eta, r->ringNr, r->yLab, r->zLab, r->theta, 0.0,
+                  r->scanNr, r->ringRad, r->omeBin);
+        }
       }
     }
-    printf("Maximum intensity: %lf, scanNr: %d\n", maxInt, scanNr);
-    if (geOutput == 1) {
+    maxInt = 0.0;
+    printf("Scan %d simulation done in %.3f sec.\n", scanNr,
+           omp_get_wtime() - sim_start);
+    if (WriteImage) {
+      for (size_t i = 0; i < ImageArrSize; ++i) {
+        if (ImageArr[i] > maxInt) {
+          maxInt = ImageArr[i];
+        }
+      }
+      printf("Maximum intensity: %lf, scanNr: %d\n", maxInt, scanNr);
+    }
+    if (WriteImage) {
       blosc_init();
       blosc_set_nthreads(10);
       int nFrames = (int)ceil(fabs((OmegaEnd - OmegaStart) / OmegaStep));
@@ -2061,18 +2126,24 @@ int main(int argc, char *argv[]) {
     }
   }
   fclose(spotsfile);
+  // Free spot buffers
+  for (i = 0; i < nCPUs; i++)
+    free(spotBuffers[i].records);
+  free(spotBuffers);
   // =========================================================================
   // FINAL MEMORY CLEANUP
   // =========================================================================
-  // hklsOut and TheorSpots and hklsTemp are now thread local and freed inside
-  // the loop
+  // hklsOut and TheorSpots and hklsTemp are now thread local and freed
+  // inside the loop
   printf("Cleaning up allocated memory...\n");
   FreeMemMatrix(InputInfo, MAX_NR_POINTS);
   free(positions);
-  free(ImageArr);
+  if (WriteImage) {
+    free(ImageArr);
+  }
   free(yDispl);
   free(zDispl);
-  end = clock();
-  diftotal = ((double)(end - start0)) / CLOCKS_PER_SEC;
+  end_time = omp_get_wtime();
+  diftotal = end_time - start0;
   printf("Time elapsed in making diffraction spots: %f [s]\n", diftotal);
 }

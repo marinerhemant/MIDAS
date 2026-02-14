@@ -3,12 +3,15 @@
 // See LICENSE file.
 //
 
+#include "midas_paths.h"
 #include "nf_headers.h"
+#include <blosc.h>
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <math.h>
+#include <omp.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -20,6 +23,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
+#include <zip.h>
 
 #define RealType double
 #define float32_t float
@@ -33,6 +37,26 @@ double Wavelength;
 double OmegaRang[MAX_N_OMEGA_RANGES][2];
 int nOmeRang;
 int SpaceGrp;
+
+static inline int writeStrZip(char outstr[8192], char zarrfn[8192],
+                              zip_t *zipper) {
+  zip_source_t *sourc0 =
+      zip_source_buffer(zipper, (const void *)outstr, strlen(outstr), 0);
+  zip_int64_t rcv0 =
+      zip_file_add(zipper, zarrfn, sourc0, ZIP_FL_OVERWRITE | ZIP_FL_ENC_UTF_8);
+  if (rcv0 < 0) {
+    printf("Could not add the file %s to zip. Exiting.\n", zarrfn);
+    return 1;
+  }
+  int rc = zip_set_file_compression(zipper, rcv0, ZIP_CM_STORE, 0);
+  if (rc != 0) {
+    printf(
+        "Could not change compression type of the file %s to zip. Exiting.\n",
+        zarrfn);
+    return 1;
+  }
+  return 0;
+}
 
 double **allocMatrixF(int nrows, int ncols) {
   double **arr;
@@ -67,22 +91,29 @@ int **allocMatrixIntF(int nrows, int ncols) {
 }
 
 int main(int argc, char *argv[]) {
-  if (argc != 4) {
-    printf("Usage:\n simulateNF params.txt InputMicFN OutputFN\n");
+  if (argc < 4 || argc > 5) {
+    printf("Usage:\n simulateNF params.txt InputMicFN OutputFN [nCPUs]\n");
     return 1;
   }
 
-  clock_t start, end;
+  int nCPUs = 1;
+  if (argc == 5) {
+    nCPUs = atoi(argv[4]);
+    if (nCPUs < 1)
+      nCPUs = 1;
+  }
+  omp_set_num_threads(nCPUs);
+  printf("Using %d CPU threads\n", nCPUs);
+
+  double start_time, end_time;
   double diftotal;
-  start = clock();
+  start_time = omp_get_wtime();
 
   // Read params file.
   char *ParamFN;
   FILE *fileParam;
   ParamFN = argv[1];
-  char cmmd[4096];
-  sprintf(cmmd, "~/opt/MIDAS/NF_HEDM/bin/GetHKLList %s", ParamFN);
-  system(cmmd);
+  run_midas_binary("GetHKLList", ParamFN);
   char *MicFN = argv[2];
   char *outputFN = argv[3];
   char aline[4096];
@@ -115,6 +146,7 @@ int main(int argc, char *argv[]) {
   Wedge = 0;
   int MinMiso = 0;
   int skipBin = 0;
+  int WriteImage = 1;
   while (fgets(aline, 1000, fileParam) != NULL) {
     str = "Lsd ";
     LowNr = strncmp(aline, str, strlen(str));
@@ -245,6 +277,12 @@ int main(int argc, char *argv[]) {
       countr++;
       continue;
     }
+    str = "WriteImage ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &WriteImage);
+      continue;
+    }
   }
   int i, j, k, l, m, nrFiles, nrPixels;
   for (i = 0; i < NoOfOmegaRanges; i++) {
@@ -355,10 +393,47 @@ int main(int argc, char *argv[]) {
   char *headOutThis =
       "VoxRowNr\tDistanceNr\tFrameNr\tHorPx\tVerPx\tOmegaRaw\tYRaw\tZRaw";
   fprintf(spF, "%s\n", headOutThis);
+
+  // Pre-read all voxels from mic file into arrays
+  int maxVoxels = 1000000; // Initial capacity
+  double *allXS = malloc(maxVoxels * sizeof(double));
+  double *allYS = malloc(maxVoxels * sizeof(double));
+  double *allEdgeLen = malloc(maxVoxels * sizeof(double));
+  double *allUD = malloc(maxVoxels * sizeof(double));
+  double *allEul = malloc(maxVoxels * 3 * sizeof(double));
+  int nVoxels = 0;
+
   while (fgets(aline, 4096, InpMicF) != NULL) {
+    if (nVoxels >= maxVoxels) {
+      maxVoxels *= 2;
+      allXS = realloc(allXS, maxVoxels * sizeof(double));
+      allYS = realloc(allYS, maxVoxels * sizeof(double));
+      allEdgeLen = realloc(allEdgeLen, maxVoxels * sizeof(double));
+      allUD = realloc(allUD, maxVoxels * sizeof(double));
+      allEul = realloc(allEul, maxVoxels * 3 * sizeof(double));
+    }
+    double origConf_tmp;
     sscanf(aline, "%s %s %s %lf %lf %lf %lf %lf %lf %lf %lf %s", dummy, dummy,
-           dummy, &xs, &ys, &edgeLen, &ud, &eulThis[0], &eulThis[1],
-           &eulThis[2], &origConf, dummy);
+           dummy, &allXS[nVoxels], &allYS[nVoxels], &allEdgeLen[nVoxels],
+           &allUD[nVoxels], &allEul[nVoxels * 3 + 0], &allEul[nVoxels * 3 + 1],
+           &allEul[nVoxels * 3 + 2], &origConf_tmp, dummy);
+    nVoxels++;
+  }
+  fclose(InpMicF);
+  printf("Read %d voxels from mic file\n", nVoxels);
+
+// Parallel loop over voxels
+#pragma omp parallel for schedule(dynamic)                                     \
+    private(xs, ys, edgeLen, gs, ud, dy1, dy2)
+  for (voxNr = 0; voxNr < nVoxels; voxNr++) {
+    xs = allXS[voxNr];
+    ys = allYS[voxNr];
+    edgeLen = allEdgeLen[voxNr];
+    ud = allUD[voxNr];
+    double eulThis_local[3];
+    eulThis_local[0] = allEul[voxNr * 3 + 0] * rad2deg;
+    eulThis_local[1] = allEul[voxNr * 3 + 1] * rad2deg;
+    eulThis_local[2] = allEul[voxNr * 3 + 2] * rad2deg;
     gs = edgeLen / 2;
     dy1 = edgeLen / sqrt(3);
     dy2 = -edgeLen / (2 * sqrt(3));
@@ -369,29 +444,34 @@ int main(int argc, char *argv[]) {
     int NrPixelsGrid = 2 * (ceil((gs * 2) / px)) * (ceil((gs * 2) / px));
     if (gs * 2 < px)
       NrPixelsGrid = 1;
-    XG[0] = xs;
-    XG[1] = xs - gs;
-    XG[2] = xs + gs;
-    YG[0] = ys + dy1;
-    YG[1] = ys + dy2;
-    YG[2] = ys + dy2;
-    // Convert Euler Angles first to degrees.
-    eulThis[0] = eulThis[0] * rad2deg;
-    eulThis[1] = eulThis[1] * rad2deg;
-    eulThis[2] = eulThis[2] * rad2deg;
-    Euler2OrientMat(eulThis, OMIn);
-    // printf("%lf %lf %lf %lf %lf %lf %lf %lf
-    // %lf\n",OMIn[0][0],OMIn[0][1],OMIn[0][2],OMIn[1][0],OMIn[1][1],OMIn[1][2],OMIn[2][0],OMIn[2][1],OMIn[2][2]);
-    int **InPixels;
-    InPixels = allocMatrixIntF(NrPixelsGrid, 2);
-    SimulateAccOrient(nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots, XG,
-                      YG, RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc, gs,
-                      hkls, n_hkls, Thetas, OmegaRanges, NoOfOmegaRanges,
-                      BoxSizes, P0, NrPixelsGrid, ObsSpotsInfo, OMIn,
-                      TheorSpots, voxNr, spF, InPixels, Gs);
-    FreeMemMatrixInt(InPixels, NrPixelsGrid);
-    voxNr++;
+    double XG_local[3], YG_local[3];
+    XG_local[0] = xs;
+    XG_local[1] = xs - gs;
+    XG_local[2] = xs + gs;
+    YG_local[0] = ys + dy1;
+    YG_local[1] = ys + dy2;
+    YG_local[2] = ys + dy2;
+    double OMIn_local[3][3];
+    Euler2OrientMat(eulThis_local, OMIn_local);
+    int **InPixels_local;
+    InPixels_local = allocMatrixIntF(NrPixelsGrid, 2);
+    double *TheorSpots_local;
+    TheorSpots_local = malloc(MAX_N_SPOTS * 3 * sizeof(*TheorSpots_local));
+    SimulateAccOrient(nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots,
+                      XG_local, YG_local, RotMatTilts, OmegaStart, OmegaStep,
+                      px, ybc, zbc, gs, hkls, n_hkls, Thetas, OmegaRanges,
+                      NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid, ObsSpotsInfo,
+                      OMIn_local, TheorSpots_local, voxNr, spF, InPixels_local,
+                      Gs);
+    FreeMemMatrixInt(InPixels_local, NrPixelsGrid);
+    free(TheorSpots_local);
   }
+  free(allXS);
+  free(allYS);
+  free(allEdgeLen);
+  free(allUD);
+  free(allEul);
+  free(TheorSpots);
   printf("Writing output file\n");
   FILE *OutputF;
   if (skipBin == 0) {
@@ -446,5 +526,148 @@ int main(int argc, char *argv[]) {
   }
   fwrite(bitArr, SizeObsSpots * sizeof(*bitArr) / 32, 1, outputSpotsInfo);
   fclose(outputSpotsInfo);
+
+  // =========================================================================
+  // Optional: Write Zarr/ZIP output
+  // =========================================================================
+  if (WriteImage) {
+    printf("Writing Zarr/ZIP output...\n");
+    blosc_init();
+    blosc_set_nthreads(4);
+    blosc_set_compressor("zstd");
+
+    int errorp;
+    char outZipFN[4096];
+    sprintf(outZipFN, "%s.zip", outputFN);
+    zip_t *zipper = zip_open(outZipFN, ZIP_CREATE | ZIP_TRUNCATE, &errorp);
+    if (zipper == NULL) {
+      printf("Could not open the zip file %s for writing. Exiting.\n",
+             outZipFN);
+      return 1;
+    }
+
+    // Write Zarr v2 metadata
+    char outstr0[8192];
+    sprintf(outstr0, "{\n    \"zarr_format\": 2\n}");
+    char zarrfn0[8192];
+    sprintf(zarrfn0, ".zgroup");
+    int rcv0 = writeStrZip(outstr0, zarrfn0, zipper);
+    if (rcv0 != 0)
+      return 1;
+
+    char zarrfn1[8192];
+    sprintf(zarrfn1, "exchange/.zgroup");
+    rcv0 = writeStrZip(outstr0, zarrfn1, zipper);
+    if (rcv0 != 0)
+      return 1;
+
+    // .zarray: shape [nLayers, nrFiles, 2048, 2048], chunks [1, 1, 2048, 2048]
+    char outstr2[8192];
+    sprintf(outstr2,
+            "{\n    \"chunks\": [\n        1,\n        1,\n        2048,\n"
+            "        2048\n    ],\n"
+            "    \"compressor\": {\n        \"blocksize\": 0,\n"
+            "        \"clevel\": 3,\n"
+            "        \"cname\": \"zstd\",\n        \"id\": \"blosc\",\n"
+            "        \"shuffle\": 2\n    },\n"
+            "    \"dtype\": \"<u2\",\n    \"fill_value\": 0,\n"
+            "    \"filters\": null,\n"
+            "    \"order\": \"C\",\n    \"shape\": [\n        %d,\n"
+            "        %d,\n        2048,\n        2048\n    ],\n"
+            "    \"zarr_format\": 2\n}",
+            nLayers, nrFiles);
+    char zarrfn2[8192];
+    sprintf(zarrfn2, "exchange/data/.zarray");
+    rcv0 = writeStrZip(outstr2, zarrfn2, zipper);
+    if (rcv0 != 0)
+      return 1;
+
+    // .zattrs
+    char outstr3[8192];
+    sprintf(outstr3,
+            "{\n    \"_ARRAY_DIMENSIONS\": [\n        %d,\n        %d,\n"
+            "        2048,\n        2048\n    ]\n}",
+            nLayers, nrFiles);
+    char zarrfn3[8192];
+    sprintf(zarrfn3, "exchange/data/.zattrs");
+    rcv0 = writeStrZip(outstr3, zarrfn3, zipper);
+    if (rcv0 != 0)
+      return 1;
+
+    // Write compressed chunks: one chunk per (layer, frame)
+    size_t frameSize = 2048 * 2048;
+    size_t frameSizeBytes = frameSize * sizeof(uint16_t);
+    // Temporary compression buffer (reused each iteration, then
+    // data is copied to a per-chunk buffer for libzip ownership)
+    uint16_t *compTmp = calloc(frameSize, sizeof(uint16_t));
+    if (compTmp == NULL) {
+      printf("Could not allocate compression buffer. Exiting.\n");
+      return 1;
+    }
+
+    for (l = 0; l < nLayers; l++) {
+      for (k = 0; k < nrFiles; k++) {
+        // Extract this frame from ObsSpotsInfo
+        // ObsSpotsInfo layout: [layer][frame][row][col]
+        size_t offset = (size_t)l * nrFiles * frameSize + (size_t)k * frameSize;
+        uint16_t *frameData = &ObsSpotsInfo[offset];
+
+        // Compress with blosc into temporary buffer
+        int compressedSize =
+            blosc_compress(3, 2, sizeof(uint16_t), frameSizeBytes, frameData,
+                           compTmp, frameSizeBytes);
+        if (compressedSize <= 0) {
+          printf("Blosc compression failed for layer %d frame %d. Exiting.\n",
+                 l, k);
+          free(compTmp);
+          return 1;
+        }
+
+        // Allocate a per-chunk buffer for zip (libzip takes ownership via
+        // freefunc=1 and will free() it after zip_close)
+        void *chunkData = malloc(compressedSize);
+        if (chunkData == NULL) {
+          printf("Could not allocate chunk buffer. Exiting.\n");
+          free(compTmp);
+          return 1;
+        }
+        memcpy(chunkData, compTmp, compressedSize);
+
+        // Write to zip
+        char chunkfn[8192];
+        sprintf(chunkfn, "exchange/data/%d.%d.0.0", l, k);
+        zip_source_t *source =
+            zip_source_buffer(zipper, chunkData, compressedSize, 1);
+        zip_int64_t rct = zip_file_add(zipper, chunkfn, source,
+                                       ZIP_FL_OVERWRITE | ZIP_FL_ENC_UTF_8);
+        if (rct < 0) {
+          printf("Could not add %s to zip. Exiting.\n", chunkfn);
+          free(compTmp);
+          return 1;
+        }
+        int rc = zip_set_file_compression(zipper, rct, ZIP_CM_STORE, 0);
+        if (rc != 0) {
+          printf("Could not set compression for %s. Exiting.\n", chunkfn);
+          free(compTmp);
+          return 1;
+        }
+      }
+    }
+    free(compTmp);
+    int zc = zip_close(zipper);
+    if (zc != 0) {
+      printf("Error closing zip file. Exiting.\n");
+      return 1;
+    }
+    blosc_destroy();
+    printf("Zarr/ZIP output written to: %s\n", outZipFN);
+  }
+
+  free(ObsSpotsInfo);
+  free(binArr);
+  free(bitArr);
+  end_time = omp_get_wtime();
+  diftotal = end_time - start_time;
+  printf("Total time elapsed: %f [s]\n", diftotal);
   return 0;
 }

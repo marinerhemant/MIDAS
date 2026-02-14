@@ -3,6 +3,7 @@
 // See LICENSE file.
 //
 
+#include "midas_paths.h"
 #include "nf_headers.h"
 #include <ctype.h>
 #include <errno.h>
@@ -93,9 +94,8 @@ int main(int argc, char *argv[]) {
   char *ParamFN;
   FILE *fileParam;
   ParamFN = argv[1];
+  run_midas_binary("GetHKLList", ParamFN);
   char cmmd[4096];
-  sprintf(cmmd, "~/opt/MIDAS/FF_HEDM/bin/GetHKLList %s", ParamFN);
-  system(cmmd);
   sprintf(cmmd, "cp SpotsInfo.bin /dev/shm/");
   system(cmmd);
   printf("File copied\n");
