@@ -1,0 +1,33 @@
+name: CI Build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            libtiff-dev \
+            libzip-dev \
+            libblosc-dev \
+            libnlopt-dev \
+            libhdf5-dev
+
+      - name: Build (no CUDA)
+        run: |
+          chmod +x build.sh
+          ./build.sh --cuda OFF --install-py-scripts OFF --install-py-deps OFF --clean

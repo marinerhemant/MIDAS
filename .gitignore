@@ -23,3 +23,14 @@ utils/__pycache__
 .vscode
 .DS_Store
 build
+
+# Build artifacts
+*.o
+*.so
+*.dylib
+*.a
+
+# Editor / OS files
+*.swp
+*~
+.idea/
