@@ -1,5 +1,6 @@
 # AutoCalibrateZarr.py User Manual
 
+**Version:** 9.0  
 **Contact:** hsharma@anl.gov
 
 ---

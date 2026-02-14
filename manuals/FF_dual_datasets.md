@@ -111,7 +111,7 @@ The workflow uses **Parsl**, a Python parallel scripting library, to manage conc
 
 ---
 
-## 4. Command-Line Arguments
+## 5. Command-Line Arguments
 
 The script's behavior is controlled via the following arguments.
 
@@ -140,7 +140,7 @@ The script's behavior is controlled via the following arguments.
 
 ---
 
-## 5. Execution Example
+## 6. Execution Example
 
 Submit an analysis to the `Purdue` cluster, requesting 2 nodes. The job will process two datasets, `set1.h5` and `set2.h5`, applying the specified offsets to align them before the final indexing.
 
@@ -161,7 +161,7 @@ python /path/to/ff_dual_datasets.py \
 
 ---
 
-## 6. Output Directory Structure
+## 7. Output Directory Structure
 
 The script generates two initial analysis directories within the main `-resultFolder`, but the final combined results are all consolidated into the first one.
 
@@ -194,7 +194,7 @@ The script generates two initial analysis directories within the main `-resultFo
 
 ---
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 -   **Mapping Fails (`MapDatasets` error):** The most common issue is incorrect offsets. Double-check the signs and values of your `-offset*` arguments. Small errors in offsets can cause the algorithm to fail to find corresponding volumes. Check `dataset_1_analysis/output/map_err.txt` for details.
  
@@ -205,7 +205,7 @@ The script generates two initial analysis directories within the main `-resultFo
 
 ---
 
-## 8. See Also
+## 9. See Also
 
 - [FF_Analysis.md](FF_Analysis.md) — Standard single-dataset FF-HEDM analysis
 - [FF_calibration.md](FF_calibration.md) — Geometry calibration

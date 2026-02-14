@@ -422,3 +422,16 @@ Between multi-resolution loops, `Mic2GrainsList` extracts unique grain orientati
 | `FitOrientationOMP` | Fit crystal orientations at each grid point | `<paramFN> <blockNr> <nBlocks> <nCPUs>` |
 | `ParseMic` | Consolidate fitting results into mic file | `<paramFN>` |
 | `Mic2GrainsList` | Cluster mic orientations into unique grains | `<paramFN> <MicFile> <OutputFile>` |
+
+---
+
+## 12. See Also
+
+- [NF_Analysis.md](NF_Analysis.md) — Single-resolution NF-HEDM reconstruction
+- [NF_calibration.md](NF_calibration.md) — NF detector geometry calibration
+- [NF_gui.md](NF_gui.md) — Interactive NF-HEDM analysis GUI
+- [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation (simulateNF)
+
+---
+
+If you encounter any issues or have questions, please open an issue on this repository.

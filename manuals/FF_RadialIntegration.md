@@ -196,7 +196,7 @@ This tool runs automatically at the start of either workflow. It consumes the ex
 *   `Map.bin`: The mapping of every pixel to its (Radius, Azimuth) bin.
 *   `nMap.bin`: An index file for the map.
 
-## Appendix A: Parameter File Reference
+## 5. Parameter File Reference
  
 The parameter file is a text file containing key-value pairs used by both the `integrator` and `DetectorMapper`.
  
@@ -234,7 +234,7 @@ The parameter file is a text file containing key-value pairs used by both the `i
 | `PanelSizeY`, `PanelSizeZ` | `int` | Size of each panel in pixels |
 | `PanelGapsY`, `PanelGapsZ` | `int` | Gap size between panels in pixels |
 
-### 4.2. Output Formats
+## 6. Output Formats
 
 **HDF5 / Zarr Structure**
 Both workflows produce hierarchical data files containing:
@@ -245,3 +245,15 @@ Both workflows produce hierarchical data files containing:
 
 **Visualizing Results**
 Use the **FF-HEDM Interactive Viewer** (`interactiveFFplotting.py`) to inspect the resulting HDF5/Zarr files, or simpler tools like `silx view` or standard Python `h5py`/`zarr` scripts.
+
+---
+
+## 7. See Also
+
+- [FF_Analysis.md](FF_Analysis.md) — Standard FF-HEDM analysis
+- [FF_calibration.md](FF_calibration.md) — Geometry calibration from calibrant rings
+- [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results
+
+---
+
+If you encounter any issues or have questions, please open an issue on this repository.

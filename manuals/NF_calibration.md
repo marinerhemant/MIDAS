@@ -1,5 +1,8 @@
 # Comprehensive User Manual for the Near-Field Calibration GUI
 
+**Version:** 9.0  
+**Contact:** hsharma@anl.gov
+
 ## Introduction: The Goal of Calibration
 
 The purpose of this software and the procedures outlined below is to perform a near-field calibration. The goal is to determine the exact X-ray beam position on the detector and the precise sample-to-detector distance for multiple detector positions. This is accomplished using a known calibrant sample, such as single-crystal gold (Au).
@@ -109,8 +112,6 @@ You should now have three pairs of (horizontal, vertical) beam center coordinate
 ## Part II: Determining the Detector Position at Each Distance
 
 Now we will use the gold calibration scan data and the beam center values from Part I to calculate the precise detector distances.
-
-Now we will use the gold calibration scan data and the beam center values from Part I to calculate the precise detector distances.
  
  ```mermaid
  graph TD
@@ -203,3 +204,15 @@ The `Compute Distances` function employs a **Ray-Triangulation** method based on
 | **`MakeSpots`**         | Simulates diffraction spots based on the currently loaded grain information.                             |
 | **`SubtMedian`**        | Toggles the subtraction of a pre-calculated median background image.                                     |
 | **`CalcMedian`**        | Calculates a median background image from a specified number of frames (`nFilesMedianCalc`).           |
+
+---
+
+## See Also
+
+- [NF_Analysis.md](NF_Analysis.md) — Single-resolution NF-HEDM reconstruction
+- [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md) — Multi-resolution iterative NF-HEDM reconstruction
+- [NF_gui.md](NF_gui.md) — NF-HEDM GUI reference
+
+---
+
+If you encounter any issues or have questions, please open an issue on this repository.

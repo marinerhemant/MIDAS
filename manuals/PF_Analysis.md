@@ -262,6 +262,7 @@ When `-doTomo 1` is enabled:
 - [FF_calibration.md](FF_calibration.md) — Geometry calibration
 - [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results
 - [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation for validation
+- [NF_Analysis.md](NF_Analysis.md) — Near-field HEDM reconstruction
 
 ---
 

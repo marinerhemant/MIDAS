@@ -5,7 +5,7 @@
 
 ---
 
-**1\. Introduction**
+## 1. Introduction
 
 The **MIDAS FF-HEDM Interactive Viewer** is a powerful web-based application designed for the comprehensive visualization and analysis of data from Far-Field High-Energy Diffraction Microscopy (ff-HEDM) experiments. Built with Python and the Dash framework, this tool allows researchers and material scientists to interactively explore complex, multi-dimensional datasets, bridging the gap between raw experimental output and insightful scientific discovery.
 
@@ -45,11 +45,11 @@ The viewer provides a suite of linked, interactive plots that display grain stru
  ```
 
 
-**2\. Requirements**
+## 2. Requirements
 
 Before running the application, ensure you have the necessary software libraries and that your data is structured correctly.
 
-**2.1. Software Requirements**
+### 2.1. Software Requirements
 
 The application is a Python script and requires several libraries to be installed. You can install them using pip:
 
@@ -62,7 +62,7 @@ pip install dash dash-bootstrap-components pandas numpy plotly zarr
 - **plotly:** The underlying library for generating the interactive charts and graphs.
 - **zarr:** Required for reading the compressed Zarr data archives that contain the raw experimental parameters and detector images.
 
-**2.2. Data Requirements (Deep Dive)**
+### 2.2. Data Requirements (Deep Dive)
 
 The application requires a specific set of input files, passed via command-line arguments. The data must be organized into a results folder and a Zarr data file.
 
@@ -124,7 +124,7 @@ This folder should contain the output files from the MIDAS reconstruction softwa
 - **Required Column (by 0-based index):**
   - 3: Spot size (e.g., number of pixels).
 
-**3\. Getting Started**
+## 3. Getting Started
 
 To launch the interactive viewer, navigate to the directory containing the script in your terminal and run it with the appropriate command-line arguments.
 
@@ -145,11 +145,11 @@ python interactiveFFplotting.py -resultFolder /path/to/your/results -dataFileNam
 
 After running the command, you will see a message like Starting Dash server on <http://0.0.0.0:8050>. Open this URL in your web browser to access the viewer.
 
-**4\. User Interface and Functionality Guide**
+## 4. User Interface and Functionality Guide
 
 The application is organized into several linked sections. Interacting with one plot or control will often update others, allowing for a seamless analysis workflow.
 
-**4.1. Global Views (Top Row)**
+### 4.1. Global Views (Top Row)
 
 This section provides a high-level overview of all the spots in the dataset.
 
@@ -159,7 +159,7 @@ This section provides a high-level overview of all the spots in the dataset.
   - **Spot Color:** Choose a property to color the spots by (e.g., ringNr, grainIDColor, strain).
   - **Select Rings:** Use the checklists to show or hide spots belonging to specific diffraction rings.
 
-**4.2. Grain Filtering and Controls (Middle Section)**
+### 4.2. Grain Filtering and Controls (Middle Section)
 
 This section contains the primary controls for filtering the grains displayed in the plots below it.
 
@@ -169,7 +169,7 @@ This section contains the primary controls for filtering the grains displayed in
 - **Grain Color (3D Map):** Use the radio buttons to select which property is used to color the grains in the "Filtered Grains" plot (e.g., Confidence, GrainSize, IDColor).
 - **Filtered Spot Color:** Use these radio buttons to control the coloring of spots in the grain-specific plots to the right ("Filtered Spots" 3D and 2D).
 
-**4.3. Filtered and Selected Views (Main Plots)**
+### 4.3. Filtered and Selected Views (Main Plots)
 
 These plots display the data after the filters from the middle section have been applied. This is where you perform detailed investigation of specific grains.
 
@@ -186,7 +186,7 @@ These plots display the data after the filters from the middle section have been
   - **Functionality:** After clicking a spot in the 2D view, this plot loads and displays a 3D volume rendering of the raw detector data from the Zarr file. It shows a small window in frames (omega), detector Y, and detector Z centered on the selected spot.
   - **Purpose:** This allows you to visually inspect the raw diffraction signal and verify the quality of the spot.
 
-**4.4. Spot Details Table (Bottom)**
+### 4.4. Spot Details Table (Bottom)
 
 - **Functionality:** A detailed table listing all spots for the currently selected grain. It populates after a grain is clicked in the "Filtered Grains" plot.
 - **Features:**
@@ -194,7 +194,7 @@ These plots display the data after the filters from the middle section have been
   - **Filtering:** Type in the filter boxes below the headers to find specific values (e.g., show only spots with ringNr 5).
   - **Pagination:** Use the "Table Rows" dropdown to control how many spots are shown per page or to show all spots at once.
 
-**5\. Example Workflow**
+## 5. Example Workflow
 
 - **Initial Exploration:** Start by examining the **Global Views** at the top. Use the "Spot Color" and "Select Rings" options to get a feel for the overall dataset.
 - **Filter for Grains of Interest:** Use the **Eta, 2θ, and Omega range sliders** to narrow down the grains shown in the "Filtered Grains" plot. For example, you might want to see only grains that contributed to a specific diffraction ring at low angles.

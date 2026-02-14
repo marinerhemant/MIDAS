@@ -1,5 +1,8 @@
 # Near-Field HEDM Calibration GUI
 
+**Version:** 9.0  
+**Contact:** hsharma@anl.gov
+
 This is a graphical user interface (GUI) for visualizing and analyzing near-field High-Energy Diffraction Microscopy (HEDM) data. The primary purpose of this tool is to perform a near-field calibration to determine the precise beam position and detector distances using a known calibrant sample, such as single-crystal gold.
 
 **DETAILED INSTRUCTIONS FOR CALIBRATION ARE AT:** [NF_calibration.md](NF_calibration.md)
@@ -11,8 +14,6 @@ This is a graphical user interface (GUI) for visualizing and analyzing near-fiel
 *   **Beam Center Calibration:** A guided workflow to determine the beam center at multiple detector distances.
 *   **Detector Distance Calculation:** Tools to select corresponding diffraction spots across different distances and compute the sample-to-detector distance.
 *   **Microstructure Correlation:** Load and visualize `.mic` or `.map` files, and correlate grain orientations with observed diffraction spots.
-*   **Diffraction Simulation:** Simulate expected diffraction patterns for a given set of grain and experimental parameters.
-
 *   **Diffraction Simulation:** Simulate expected diffraction patterns for a given set of grain and experimental parameters.
  
  ```mermaid

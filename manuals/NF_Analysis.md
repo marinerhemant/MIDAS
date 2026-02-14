@@ -297,8 +297,6 @@ The final text mic file has one line per reconstructed grid point. Lines startin
 
 ---
 
----
-
 ## 9. Technical Implementation Details
 
 ### 9.1. High-Performance Data Structures (`MMapImageInfo`)
@@ -352,3 +350,16 @@ The final text mic file has one line per reconstructed grid point. Lines startin
 | `DataDirectory not found` | Ensure `DataDirectory` is set in parameter file |
 | Parsl configuration errors | Check machine config files and partition names |
 | Automatic retries exhausting | Likely a systemic issue — check `*_err.csv` logs |
+
+---
+
+## 11. See Also
+
+- [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md) — Multi-resolution iterative NF-HEDM reconstruction
+- [NF_calibration.md](NF_calibration.md) — NF detector geometry calibration
+- [NF_gui.md](NF_gui.md) — Interactive NF-HEDM analysis GUI
+- [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation (simulateNF)
+
+---
+
+If you encounter any issues or have questions, please open an issue on this repository.
