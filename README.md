@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logos/midas_logo.png" alt="MIDAS Logo" width="300">
+</p>
+
 # MIDAS — Microstructural Imaging using Diffraction Analysis Software
 
 [![License](https://img.shields.io/badge/License-UChicago_Argonne-blue.svg)](LICENSE)
