@@ -3,6 +3,18 @@ import os
 from os.path import expanduser, basename
 import subprocess
 import numpy as np
+import sys
+try:
+    utils_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'utils')
+    if utils_dir not in sys.path:
+        sys.path.append(utils_dir)
+    import midas_config
+    DT_BIN_DIR = os.path.join(midas_config.MIDAS_ROOT, 'DT', 'bin')
+    TOMO_BIN_DIR = midas_config.MIDAS_TOMO_BIN_DIR
+except ImportError:
+    midas_config = None
+    DT_BIN_DIR = expanduser('~/opt/MIDAS/DT/bin')
+    TOMO_BIN_DIR = expanduser('~/opt/MIDAS/TOMO/bin')
 
 def findNextPowerOf2(np2):
  np2=np2-1
@@ -66,10 +78,10 @@ updF.close()
 
 #############DO THE LINEOUTS#####
 
-cmd1 = f'{expanduser("~/opt/MIDAS/DT/bin/DetectorMapper")} {paramFN}.upd'
+cmd1 = f'{os.path.join(DT_BIN_DIR, "DetectorMapper")} {paramFN}.upd'
 subprocess.call(cmd1,shell=True)
 
-cmd = f'{expanduser("~/opt/MIDAS/DT/bin/IntegratorPeakFitOMP")} {paramFN}.upd {fStem} {startNr} {endNr} {pad} {ext} {darkFN} {nFrames} {numProcs}'
+cmd = f'{os.path.join(DT_BIN_DIR, "IntegratorPeakFitOMP")} {paramFN}.upd {fStem} {startNr} {endNr} {pad} {ext} {darkFN} {nFrames} {numProcs}'
 subprocess.call(cmd,shell=True)
 
 
@@ -128,7 +140,7 @@ f.write('doLog 0\n')
 f.write('ExtraPad 1\n')
 f.close()
 
-cmdTomo = '~/opt/MIDAS/TOMO/bin/MIDAS_TOMO tomo_config.txt '+str(numProcs)
+cmdTomo = f'{os.path.join(TOMO_BIN_DIR, "MIDAS_TOMO")} tomo_config.txt {numProcs}'
 subprocess.call(cmdTomo,shell=True)
 
 recons = np.empty((nRads*nElsPerRad*nEtas,reconSize,reconSize))
@@ -149,7 +161,7 @@ updF.write('nElsPerRad '+str(nElsPerRad)+'\n');
 updF.write('ReconSize '+str(reconSize)+'\n');
 updF.close()
 
-subprocess.call('~/opt/MIDAS/DT/bin/PeakFit '+paramFN+'.upd '+str(numProcs),shell=True)
+subprocess.call(f'{os.path.join(DT_BIN_DIR, "PeakFit")} {paramFN}.upd {numProcs}',shell=True)
 
 fitResult = np.fromfile('PeakFitResult.bin',dtype=np.double,count=(reconSize*reconSize*nEtas*nRads*12)).reshape((reconSize,reconSize,nEtas,nRads,12)).transpose()
 fitResult[4][1].transpose().tofile('IntensityFit.bin')

@@ -1,5 +1,9 @@
 import os,sys
-utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
+try:
+    import midas_config
+    utilsDir = midas_config.MIDAS_UTILS_DIR
+except ImportError:
+    utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 sys.path.insert(0,utilsDir)
 from calcMiso import *
 

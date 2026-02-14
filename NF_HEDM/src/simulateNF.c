@@ -9,7 +9,6 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <limits.h>
 #include <math.h>
 #include <omp.h>
 #include <stdarg.h>

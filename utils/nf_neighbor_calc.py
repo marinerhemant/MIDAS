@@ -1,7 +1,11 @@
 import numpy as np
 import calcMiso
 import os,sys
-utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
+try:
+    import midas_config
+    utilsDir = midas_config.MIDAS_UTILS_DIR
+except ImportError:
+    utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 sys.path.insert(0,utilsDir)
 import matplotlib.pyplot as plt
 from scipy import ndimage

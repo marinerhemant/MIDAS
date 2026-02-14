@@ -26,7 +26,11 @@ def singleJob(fileNr):
     os.chdir(thisResFolder)
     f = open(f'{thisResFolder}/zip_out.txt','w')
     f_err = open(f'{thisResFolder}/zip_err.txt','w')
-    zipPath = os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZipRefactor.py')
+    try:
+        import midas_config
+        zipPath = os.path.join(midas_config.MIDAS_UTILS_DIR, 'ffGenerateZipRefactor.py')
+    except ImportError:
+        zipPath = os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZipRefactor.py')
     cmd = f'{pytpath} {zipPath} -resultFolder {thisResFolder} -paramFN {paramFN} -dataFN {fn2} -numFrameChunks {numFrameChunks} -preProcThresh {preProc} ' #### -omegaStep {omegaSteps[fileNr-startScanNr]}'
     print(cmd)
     subprocess.call(cmd,env=env,shell=True,stdout=f,stderr=f_err)

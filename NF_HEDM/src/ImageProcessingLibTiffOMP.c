@@ -4,7 +4,6 @@
 //
 
 #include <ctype.h>
-#include <limits.h>
 #include <math.h>
 #include <omp.h>
 #include <stdint.h>
@@ -1188,7 +1187,9 @@ int main(int argc, char *argv[]) {
     }
     if (doDeblur != 0) {
       char *homedir = getenv("HOME");
-      char *midasroot = getenv("MIDAS_HOME");
+      char *midasroot = getenv("MIDAS_INSTALL_DIR");
+      if (midasroot == NULL)
+        midasroot = getenv("MIDAS_HOME");
       char midas_path[4096];
       if (midasroot != NULL) {
         snprintf(midas_path, sizeof(midas_path), "%s", midasroot);

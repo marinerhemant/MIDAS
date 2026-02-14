@@ -17,7 +17,11 @@ def runSingle(workData):
     rf += f'/{fNr}'
     cwd = os.getcwd()
     os.makedirs(rf,exist_ok=True)
-    binloc = os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZipRefactor.py')
+    try:
+        import midas_config
+        binloc = os.path.join(midas_config.MIDAS_UTILS_DIR, 'ffGenerateZipRefactor.py')
+    except ImportError:
+        binloc = os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZipRefactor.py')
     cmd = f'{sys.executable} {binloc} -resultFolder {rf} -paramFN {pf} -LayerNr {lN} -numFrameChunks {nc}'
     if (numFilesPerScan!=1):
         cmd += f' -numFilesPerScan {numFilesPerScan}'

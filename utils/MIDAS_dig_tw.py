@@ -12,7 +12,11 @@ import subprocess
 import zarr
 import os, sys
 from math import cos, sin
-utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
+try:
+    import midas_config
+    utilsDir = midas_config.MIDAS_UTILS_DIR
+except ImportError:
+    utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 sys.path.insert(0,utilsDir)
 from calcMiso import *
 import glob
@@ -378,7 +382,10 @@ def update_setup(nclk,lsd,xbc,ybc,energy,sg,a,b,c,alpha,beta,gamma,bsz,pixelsz,N
             pF.write(f"OutFileName {micfn}.sim\n")
             pF.write(f"BeamSize {float(bsz)}\n")
             pF.close()
-            cmmd = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/GetHKLList')+f' {paramFN}'
+            if midas_config and midas_config.MIDAS_BIN_DIR:
+                cmmd = os.path.join(midas_config.MIDAS_BIN_DIR, 'GetHKLList')+f' {paramFN}'
+            else:
+                cmmd = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/GetHKLList')+f' {paramFN}'
             subprocess.call(cmmd,shell=True)
             hkls = np.genfromtxt('hkls.csv',skip_header=1,delimiter=' ')
             rads = hkls [:,-1] / 1000
@@ -487,7 +494,10 @@ def update_2d(nclk,xbc,ybc,frameNr,nFramesSum,showRings,mult,seq,simType,minOme,
                 pF.write(f'BoxSize -1000000 1000000 -1000000 1000000\n')
                 pF.write(f'OmegaRange {min(minOme,maxOme)} {max(minOme,maxOme)}\n')
                 pF.close()
-                cmmd = os.path.expanduser('~/opt/MIDAS/NF_HEDM/bin/simulateNF') + f' {paramFN} {micfn} {micfn}.result'
+                if midas_config and midas_config.MIDAS_NF_BIN_DIR:
+                    cmmd = os.path.join(midas_config.MIDAS_NF_BIN_DIR, 'simulateNF') + f' {paramFN} {micfn} {micfn}.result'
+                else:
+                    cmmd = os.path.expanduser('~/opt/MIDAS/NF_HEDM/bin/simulateNF') + f' {paramFN} {micfn} {micfn}.result'
                 if nclk > norig2:
                     norig2 = nclk
                     subprocess.call(cmmd,shell=True,env=env)
@@ -543,7 +553,10 @@ def update_2d(nclk,xbc,ybc,frameNr,nFramesSum,showRings,mult,seq,simType,minOme,
                 if nclk > norig2 or seqOrig!=int(seq):
                     seqOrig = int(seq)
                     norig2 = nclk
-                    cmmd = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/ForwardSimulationCompressed')+f' {paramFN}'
+                    if midas_config and midas_config.MIDAS_BIN_DIR:
+                        cmmd = os.path.join(midas_config.MIDAS_BIN_DIR, 'ForwardSimulationCompressed')+f' {paramFN}'
+                    else:
+                        cmmd = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/ForwardSimulationCompressed')+f' {paramFN}'
                     subprocess.call(cmmd,shell=True,env=env)
                 zf = zarr.open(f'{micfnLoc}.sim_scanNr_0.zip','r')['exchange/data']
                 lastFrame = frameNr+ nFramesSum

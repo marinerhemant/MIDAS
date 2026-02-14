@@ -24,6 +24,9 @@ def get_midas_root():
     4. Fallback to ~/opt/MIDAS (with a warning)
     """
     # 1. Check Env Vars
+    if 'MIDAS_INSTALL_DIR' in os.environ:
+        return os.environ['MIDAS_INSTALL_DIR']
+    
     if 'MIDAS_ROOT' in os.environ:
         return os.environ['MIDAS_ROOT']
     

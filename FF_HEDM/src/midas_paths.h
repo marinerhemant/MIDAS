@@ -120,8 +120,12 @@ static int get_midas_bin_directory(char *buffer, size_t buffer_size) {
     return 0;
   }
 
-  // Check if MIDAS_HOME environment variable is set
-  const char *midas_home = getenv("MIDAS_HOME");
+  // Check if MIDAS_INSTALL_DIR environment variable is set (primary)
+  const char *midas_home = getenv("MIDAS_INSTALL_DIR");
+  if (midas_home == NULL) {
+    // Fallback to MIDAS_HOME for backward compatibility
+    midas_home = getenv("MIDAS_HOME");
+  }
   if (midas_home != NULL) {
     snprintf(buffer, buffer_size, "%s/bin", midas_home);
 

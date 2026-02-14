@@ -6,6 +6,13 @@ import subprocess
 import os, sys
 import argparse
 from tqdm import tqdm
+try:
+    utils_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)))
+    if utils_dir not in sys.path:
+        sys.path.append(utils_dir)
+    import midas_config
+except ImportError:
+    midas_config = None
 
 class MyParser(argparse.ArgumentParser):
     def error(self, message):
@@ -63,10 +70,18 @@ dark = np.array(Image.open(f'{folder}/{darkFN}'))
 dark.astype(np.uint16).tofile(f'{conv_folder}/{darkFN}.mar')
 
 print("Generating a map file to do quick caking afterwards.")
-subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/DetectorMapper')+ f' {params}',shell=True)
+if midas_config and midas_config.MIDAS_BIN_DIR:
+    detector_mapper = os.path.join(midas_config.MIDAS_BIN_DIR, 'DetectorMapper')
+else:
+    detector_mapper = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/DetectorMapper')
+subprocess.call(detector_mapper + f' {params}',shell=True)
 print('Map file generated. Now doing caking.')
 
 for fileNr in tqdm(range(startNr,endNr+1)):
     im = np.array(Image.open(f'{folder}/{fStem}{fileNr}.tif'))
     im.astype(np.uint16).tofile(f'{conv_folder}/{fStem}{fileNr}.mar')
-    subprocess.call(os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/Integrator')+ f' {params} {conv_folder}/{fStem}{fileNr}.mar {conv_folder}/{darkFN}.mar',shell=True,cwd=folder)
+    if midas_config and midas_config.MIDAS_BIN_DIR:
+        integrator = os.path.join(midas_config.MIDAS_BIN_DIR, 'Integrator')
+    else:
+        integrator = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/Integrator')
+    subprocess.call(integrator + f' {params} {conv_folder}/{fStem}{fileNr}.mar {conv_folder}/{darkFN}.mar',shell=True,cwd=folder)
