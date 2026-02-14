@@ -188,30 +188,31 @@ Understanding the coordinate system is critical for correctly loading data into 
 
 ### Laboratory Frame
 
-MIDAS uses the **ESRF convention** for the laboratory coordinate system:
+MIDAS uses the **ESRF convention** for the laboratory coordinate system and here is the relation APS coordinates:
 
-| Axis | Direction |
-|------|-----------|
-| **Z_L** | X-ray beam propagation direction (downstream) |
-| **Y'_L** | Tomographic rotation axis |
-| **X_L** | Plane normal of the (Z_L, Y'_L) plane |
-| **Y_L** | Z_L × X_L |
+| APS  | Direction | MIDAS_Coordinates |
+|------|-----------|-----------------|
+| **X_L** | X-ray beam propagation direction (downstream) | **Z_L** | 
+| **Z'_L** | Tomographic rotation axis | **Y'_L** |
+| **Y_L** | Plane normal of the (X_L, Z'_L) plane | **X_L** |
+| **Z_L** | X_L × Y_L | **Y_L** |
 
-The angle between **Y_L** and **Y'_L** is the **wedge angle** (Ω). For standard HEDM setups, the wedge angle is zero — the rotation axis is perpendicular to the beam.
+
+The angle between **Z_L** and **Z'_L** is the **wedge angle** (Ω). For standard HEDM setups, the wedge angle is zero — the rotation axis is perpendicular to the beam.
 
 > [!NOTE]
-> The right-handed rotation about Y'_L is denoted **ω** (omega). A full ω-scan typically covers 360° (or ±180°) to capture all accessible diffraction conditions.
+> The right-handed rotation about Z'_L is denoted **ω** (omega). A full ω-scan typically covers 360° (or ±180°) to capture all accessible diffraction conditions.
 
 ### Detector Frame
 
-The detector plane is described by three tilt angles relative to the laboratory frame and a beam-center position (BC). The tilt about Z_L (called **tx**) requires Friedel pairs from a single crystal and cannot be determined from powder rings alone.
+The detector plane is described by three tilt angles relative to the laboratory frame and a beam-center position (BC). The tilt about X_L (called **tx**) requires Friedel pairs from a single crystal and cannot be determined from powder rings alone.
 
 | Azimuth η | Detector Axis |
 |-----------|---------------|
-| 0° | +Y_D |
-| +90° | −X_D |
-| −90° | +X_D |
-| ±180° | −Y_D |
+| 0° | +Z_D |
+| +90° | −Y_D |
+| −90° | +Y_D |
+| ±180° | −Z_D |
 
 ### Image Transformation
 
