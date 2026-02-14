@@ -179,7 +179,13 @@ See the [manuals README](manuals/README.md) for the full step-by-step checklist.
 
 If you use MIDAS in your research, please cite:
 
-> Citation forthcoming.
+> In review.
+
+**FF-HEDM methodology:**
+
+> H. Sharma, R. M. Huizenga & S. E. Offerman, "A fast methodology to determine the characteristics of thousands of grains using three-dimensional X-ray diffraction. I. Overlapping diffraction peaks and parameters of the experimental setup," *J. Appl. Cryst.* **45**, 693–704 (2012). DOI: [10.1107/S0021889812025563](https://doi.org/10.1107/S0021889812025563)
+
+> H. Sharma, R. M. Huizenga & S. E. Offerman, "A fast methodology to determine the characteristics of thousands of grains using three-dimensional X-ray diffraction. II. Volume, centre-of-mass position, crystallographic orientation and strain state of grains," *J. Appl. Cryst.* **45**, 705–718 (2012). DOI: [10.1107/S0021889812025599](https://doi.org/10.1107/S0021889812025599)
 
 
 ---
