@@ -316,7 +316,11 @@ def processFile(fnr): # fnr is the line number in the fnames.txt file
 		saveFile(sumArr,writefn,fileTypeWrite)
 		if doIntegration is 1:
 			if fastIntegration is 0:
-				call([os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator','ps_midas.txt',writefn])
+				if midas_config and midas_config.MIDAS_BIN_DIR:
+					integrator_exe = os.path.join(midas_config.MIDAS_BIN_DIR, 'Integrator')
+				else:
+					integrator_exe = os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/Integrator'
+				call([integrator_exe,'ps_midas.txt',writefn])
 			else:
 				saveFastIntegrate(sumArr, OneDOut, writefn+'_integrated_sum_'+'.csv')
 	if meanWrite:

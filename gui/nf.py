@@ -24,6 +24,17 @@ from math import sin, cos
 from subprocess import Popen, PIPE, STDOUT
 from multiprocessing.dummy import Pool
 
+# Try to import midas_config from utils
+try:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    utils_dir = os.path.join(os.path.dirname(current_dir), 'utils')
+    if utils_dir not in sys.path:
+        sys.path.append(utils_dir)
+    import midas_config
+except ImportError as e:
+    print(f"Warning: Could not import midas_config: {e}")
+    midas_config = None
+
 # Helper constants
 deg2rad = 0.0174532925199433
 rad2deg = 57.2957795130823
@@ -756,10 +767,17 @@ def makespots():
 	f.write("MaxRingRad %lf\n"%(maxringrad))
 	f.write("LatticeConstant %lf %lf %lf %lf %lf %lf\n"%(latC[0],latC[1],latC[2],latC[3],latC[4],latC[5]))
 	f.close()
-	hklpath = '~/opt/MIDAS/NF_HEDM/bin/GetHKLList '
+	if midas_config and midas_config.MIDAS_NF_BIN_DIR:
+		hklpath = os.path.join(midas_config.MIDAS_NF_BIN_DIR, 'GetHKLList') + ' '
+	else:
+		hklpath = '~/opt/MIDAS/NF_HEDM/bin/GetHKLList '
 	os.system(hklpath+pfname)
-	genseedorpath = '~/opt/MIDAS/NF_HEDM/bin/GenSeedOrientationsFF2NFHEDM '
-	diffrspotspath = '~/opt/MIDAS/NF_HEDM/bin/SimulateDiffractionSpots '
+	if midas_config and midas_config.MIDAS_NF_BIN_DIR:
+		genseedorpath = os.path.join(midas_config.MIDAS_NF_BIN_DIR, 'GenSeedOrientationsFF2NFHEDM') + ' '
+		diffrspotspath = os.path.join(midas_config.MIDAS_NF_BIN_DIR, 'SimulateDiffractionSpots') + ' '
+	else:
+		genseedorpath = '~/opt/MIDAS/NF_HEDM/bin/GenSeedOrientationsFF2NFHEDM '
+		diffrspotspath = '~/opt/MIDAS/NF_HEDM/bin/SimulateDiffractionSpots '
 	orinfn = '/dev/shm/orin.txt'
 	oroutfn = '/dev/shm/orout.txt'
 	instr = "120 %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n"%(om[0],om[1],om[2],om[3],om[4],
@@ -794,7 +812,11 @@ def median():
 		f.write('DataDirectory '+folder+'\n')
 		f.write('RawStartNr '+str(tempnr)+'\n')
 		f.close()
-		cmdout.append('~/opt/MIDAS/NF_HEDM/Cluster/MedianImageParallel.sh '+pfname+' '+str(thisdist+1))
+		print("Median computaiton is broken for now!!!")
+		# if midas_config and midas_config.MIDAS_NF_CLUSTER_DIR:
+		# 	cmdout.append(os.path.join(midas_config.MIDAS_NF_CLUSTER_DIR, 'MedianImageParallel.sh') + ' ' + pfname + ' ' + str(thisdist+1))
+		# else:
+		# 	cmdout.append('~/opt/MIDAS/NF_HEDM/Cluster/MedianImageParallel.sh '+pfname+' '+str(thisdist+1))
 	processes = [Popen(cmdname,shell=True,
 				stdin=PIPE, stdout=PIPE, stderr=STDOUT,close_fds=True) for cmdname in cmdout]
 	def get_lines(process):

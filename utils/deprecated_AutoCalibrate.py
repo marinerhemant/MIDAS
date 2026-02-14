@@ -6,6 +6,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import subprocess
+try:
+    import sys
+    utils_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)))
+    if utils_dir not in sys.path:
+        sys.path.append(utils_dir)
+    import midas_config
+except ImportError:
+    midas_config = None
 from skimage import measure
 import skimage
 import matplotlib.patches as mpatches
@@ -100,7 +108,11 @@ def runMIDAS(fn):
 		pf.write('RhoD '+str(RhoDThis)+'\n')
 		pf.write('BC '+bc_refined+'\n')
 		pf.write('LatticeConstant '+str(latc[0])+' '+str(latc[1])+' '+str(latc[2])+' '+str(latc[3])+' '+str(latc[4])+' '+str(latc[5])+'\n')
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalibrantOMP")+' '+fn+"ps.txt 10",shell=True,stdout=open('calibrant_screen_out.csv','w'))
+	if midas_config and midas_config.MIDAS_BIN_DIR:
+		calibrant_exe = os.path.join(midas_config.MIDAS_BIN_DIR, 'CalibrantOMP')
+	else:
+		calibrant_exe = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/CalibrantOMP")
+	subprocess.call(calibrant_exe+' '+fn+"ps.txt 10",shell=True,stdout=open('calibrant_screen_out.csv','w'))
 	output = open('calibrant_screen_out.csv').readlines()
 	useful = 0
 	for line in output:
@@ -166,7 +178,11 @@ with open('ps.txt','w') as pf:
     pf.write('LatticeConstant '+str(latc[0])+' '+str(latc[1])+' '+str(latc[2])+' '+str(latc[3])+' '+str(latc[4])+' '+str(latc[5])+'\n')
 
 darkName = darkFN
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" ps.txt",shell=True,stdout=open('hkls_screen_out.csv','w'))
+if midas_config and midas_config.MIDAS_BIN_DIR:
+    gethkl_exe = os.path.join(midas_config.MIDAS_BIN_DIR, 'GetHKLList')
+else:
+    gethkl_exe = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")
+subprocess.call(gethkl_exe+" ps.txt",shell=True,stdout=open('hkls_screen_out.csv','w'))
 hkls = np.genfromtxt('hkls.csv',skip_header=1)
 sim_rads = np.unique(hkls[:,-1])/px
 sim_rad_ratios = sim_rads / sim_rads[0]
@@ -274,7 +290,11 @@ with open('ps.txt','w') as pf:
     pf.write('MaxRingRad '+str(mrr)+'\n')
     pf.write('LatticeConstant '+str(latc[0])+' '+str(latc[1])+' '+str(latc[2])+' '+str(latc[3])+' '+str(latc[4])+' '+str(latc[5])+'\n')
 
-subprocess.call(os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")+" ps.txt",shell=True,stdout=open('hkls_screen_out.csv','w'))
+if midas_config and midas_config.MIDAS_BIN_DIR:
+    gethkl_exe2 = os.path.join(midas_config.MIDAS_BIN_DIR, 'GetHKLList')
+else:
+    gethkl_exe2 = os.path.expanduser("~/opt/MIDAS/FF_HEDM/bin/GetHKLList")
+subprocess.call(gethkl_exe2+" ps.txt",shell=True,stdout=open('hkls_screen_out.csv','w'))
 hkls = np.genfromtxt('hkls.csv',skip_header=1)
 sim_rads = np.unique(hkls[:,-1])/px
 sim_rad_ratios = sim_rads / sim_rads[0]

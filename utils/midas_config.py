@@ -55,6 +55,8 @@ MIDAS_ROOT = get_midas_root()
 
 if MIDAS_ROOT:
     MIDAS_BIN_DIR = os.path.join(MIDAS_ROOT, 'FF_HEDM', 'bin')
+    MIDAS_NF_BIN_DIR = os.path.join(MIDAS_ROOT, 'NF_HEDM', 'bin')
+    MIDAS_TOMO_BIN_DIR = os.path.join(MIDAS_ROOT, 'TOMO', 'bin')
     MIDAS_GUI_DIR = os.path.join(MIDAS_ROOT, 'gui')
     MIDAS_UTILS_DIR = os.path.join(MIDAS_ROOT, 'utils')
     MIDAS_FF_DIR = os.path.join(MIDAS_ROOT, 'FF_HEDM')
@@ -62,6 +64,8 @@ if MIDAS_ROOT:
 else:
     # Set to empty strings to avoid crashes on import, but logic will fail later
     MIDAS_BIN_DIR = ""
+    MIDAS_NF_BIN_DIR = ""
+    MIDAS_TOMO_BIN_DIR = ""
     MIDAS_GUI_DIR = ""
     MIDAS_UTILS_DIR = ""
     MIDAS_FF_DIR = ""

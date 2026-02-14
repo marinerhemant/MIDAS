@@ -5,7 +5,11 @@
 
 import math
 import sys, os
-utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
+try:
+    import midas_config
+    utilsDir = midas_config.MIDAS_UTILS_DIR
+except ImportError:
+    utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')
 sys.path.insert(0,utilsDir)
 from calcMiso import *
 import numpy as np
@@ -580,8 +584,11 @@ KamArr = np.zeros((Dims))
 
 # We need to provide the following:
 # orientTol, dims[0], dims[1], dims[2], fillVal, spaceGroup.
-home = os.path.expanduser("~")
-grainsCalc = ctypes.CDLL(home + "/opt/MIDAS/NF_HEDM/bin/NFGrainsCalc.so")
+try:
+    grainsCalc = ctypes.CDLL(os.path.join(midas_config.MIDAS_NF_BIN_DIR, 'NFGrainsCalc.so'))
+except (NameError, OSError):
+    home = os.path.expanduser("~")
+    grainsCalc = ctypes.CDLL(home + "/opt/MIDAS/NF_HEDM/bin/NFGrainsCalc.so")
 grainsCalc.calcGrainNrs.argtypes = (ctypes.c_double,
 										ctypes.c_int,
 										ctypes.c_int,

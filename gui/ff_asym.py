@@ -23,6 +23,18 @@ from subprocess import Popen, PIPE, STDOUT
 from multiprocessing.dummy import Pool
 import time
 import ctypes
+import sys
+
+# Try to import midas_config from utils
+try:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    utils_dir = os.path.join(os.path.dirname(current_dir), 'utils')
+    if utils_dir not in sys.path:
+        sys.path.append(utils_dir)
+    import midas_config
+except ImportError as e:
+    print(f"Warning: Could not import midas_config: {e}")
+    midas_config = None
 
 # Helpers
 deg2rad = 0.0174532925199433
@@ -105,9 +117,12 @@ def getImageMax(fn):
 	nFramesToDo = nFramesMaxVar.get()
 	startFrameNr = maxStartFrameNrVar.get()
 	t1 = time.time()
-	home = os.path.expanduser("~")
 	t = time.time()
-	imageMax = ctypes.CDLL(home + "/opt/MIDAS/FF_HEDM/bin/imageMax.so")
+	if midas_config and midas_config.MIDAS_BIN_DIR:
+		imageMax = ctypes.CDLL(os.path.join(midas_config.MIDAS_BIN_DIR, 'imageMax.so'))
+	else:
+		home = os.path.expanduser("~")
+		imageMax = ctypes.CDLL(home + "/opt/MIDAS/FF_HEDM/bin/imageMax.so")
 	imageMax.imageMax(fn.encode('ASCII'),Header,BytesPerPixel,NrPixelsY,NrPixelsZ,nFramesToDo,startFrameNr)
 	t2 = time.time()
 	f = open("/dev/shm/img.max","rb")
@@ -516,7 +531,10 @@ def readParams():
 	if folder[0] == '~':
 		folder = os.path.expanduser(folder)
 	bigFN = 'BigDetectorMaskEdgeSize' + str(bigdetsize) + 'x' + str(bigdetsize) + 'Unsigned16Bit.bin'
-	hklGenPath = '~/opt/MIDAS/FF_HEDM/bin/GetHKLList '
+	if midas_config and midas_config.MIDAS_BIN_DIR:
+		hklGenPath = os.path.join(midas_config.MIDAS_BIN_DIR, 'GetHKLList') + ' '
+	else:
+		hklGenPath = '~/opt/MIDAS/FF_HEDM/bin/GetHKLList '
 	os.system(hklGenPath + paramFN)
 	hklfn = 'hkls.csv'
 	hklfile = open(hklfn,'r')
@@ -686,7 +704,10 @@ def calibrateDetector():
 	buttonConfirmRingsExclude.grid_forget()
 	ringsexcludelabel.grid_forget()
 	ringsexcludestr = ringsexcludevar.get()
-	calibratecmd = '~/opt/MIDAS/FF_HEDM/bin/Calibrant '
+	if midas_config and midas_config.MIDAS_BIN_DIR:
+		calibratecmd = os.path.join(midas_config.MIDAS_BIN_DIR, 'Calibrant') + ' '
+	else:
+		calibratecmd = '~/opt/MIDAS/FF_HEDM/bin/Calibrant '
 	if ringsexcludestr == '0':
 		ringsToExclude = []
 	else:
@@ -733,7 +754,10 @@ def readBigDet():
 	mask = np.fliplr(np.flipud(mask))
 
 def makeBigDet():
-	cmdf = '~/opt/MIDAS/FF_HEDM/bin/MapMultipleDetectors '
+	if midas_config and midas_config.MIDAS_BIN_DIR:
+		cmdf = os.path.join(midas_config.MIDAS_BIN_DIR, 'MapMultipleDetectors') + ' '
+	else:
+		cmdf = '~/opt/MIDAS/FF_HEDM/bin/MapMultipleDetectors '
 	os.system(cmdf+paramFN)
 	readBigDet()
 
@@ -830,7 +854,10 @@ def selectRings():
 	global hklLines, hkl, ds, Ttheta, RingRad, ListBox1
 	thisdir = os.getcwd()
 	os.chdir('/dev/shm')
-	hklGenPath = '~/opt/MIDAS/FF_HEDM/bin/GetHKLList '
+	if midas_config and midas_config.MIDAS_BIN_DIR:
+		hklGenPath = os.path.join(midas_config.MIDAS_BIN_DIR, 'GetHKLList') + ' '
+	else:
+		hklGenPath = '~/opt/MIDAS/FF_HEDM/bin/GetHKLList '
 	pfname = '/dev/shm/ps_midas_ff.txt'
 	f = open(pfname,'w')
 	f.write('Wavelength ' + str(wl) + '\n')

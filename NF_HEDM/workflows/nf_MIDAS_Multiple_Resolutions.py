@@ -56,10 +56,12 @@ SHM_FILES = ['SpotsInfo.bin', 'DiffractionSpots.bin', 'Key.bin', 'OrientMat.bin'
 # --- HELPER FUNCTIONS: ENVIRONMENT, COMMANDS, PARSING ---
 
 def get_midas_env() -> Dict[str, str]:
-    """Get the environment variables for MIDAS, ensuring MIDAS_INSTALL_DIR is set."""
+    """Get the environment variables for MIDAS, ensuring MIDAS_INSTALL_DIR and MIDAS_HOME are set."""
     env = dict(os.environ)
     if 'MIDAS_INSTALL_DIR' not in env:
         env['MIDAS_INSTALL_DIR'] = get_installation_dir()
+    if 'MIDAS_HOME' not in env:
+        env['MIDAS_HOME'] = get_installation_dir()
     return env
 
 def run_command(cmd: str, working_dir: str, out_file: str, err_file: str) -> int:
@@ -749,6 +751,7 @@ def main():
     if not check_shared_memory_files(): sys.exit(1)
     
     os.environ['MIDAS_INSTALL_DIR'] = install_dir
+    os.environ.setdefault('MIDAS_HOME', install_dir)
     
     global default_handler
     default_handler = signal.getsignal(signal.SIGINT)

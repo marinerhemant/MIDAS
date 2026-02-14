@@ -81,4 +81,12 @@ f_out.write('ringRemovalCoefficient 1.0\n')
 f_out.write('slicesToProcess -1\n')
 f_out.close()
 
-subprocess.call(os.path.expanduser('~/opt/MIDAS/TOMO/bin/MIDAS_TOMO')+f' mt_par.txt {nCPUs}',shell=True,cwd=os.getcwd())
+try:
+    utils_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'utils')
+    if utils_dir not in sys.path:
+        sys.path.append(utils_dir)
+    import midas_config
+    tomo_exe = os.path.join(midas_config.MIDAS_TOMO_BIN_DIR, 'MIDAS_TOMO')
+except ImportError:
+    tomo_exe = os.path.expanduser('~/opt/MIDAS/TOMO/bin/MIDAS_TOMO')
+subprocess.call(tomo_exe+f' mt_par.txt {nCPUs}',shell=True,cwd=os.getcwd())

@@ -1188,14 +1188,21 @@ int main(int argc, char *argv[]) {
     }
     if (doDeblur != 0) {
       char *homedir = getenv("HOME");
+      char *midasroot = getenv("MIDAS_HOME");
+      char midas_path[4096];
+      if (midasroot != NULL) {
+        snprintf(midas_path, sizeof(midas_path), "%s", midasroot);
+      } else {
+        snprintf(midas_path, sizeof(midas_path), "%s/opt/MIDAS", homedir);
+      }
       char cmmd[4096];
       char cmmd2[14096];
       sprintf(cmmd,
               "%s/opt/midasconda/bin/python "
-              "%s/opt/MIDAS/NF_HEDM/src/RLDeconv.py %s %d",
-              homedir, homedir, OutFN2, doDeblur);
-      sprintf(cmmd2, "%s/opt/MIDAS/NF_HEDM/bin/ParseDeconvOutput %s.tif %s %d",
-              homedir, OutFN2, OutFileName, NrPixels);
+              "%s/NF_HEDM/src/RLDeconv.py %s %d",
+              homedir, midas_path, OutFN2, doDeblur);
+      sprintf(cmmd2, "%s/NF_HEDM/bin/ParseDeconvOutput %s.tif %s %d",
+              midas_path, OutFN2, OutFileName, NrPixels);
       //~ printf("%s\n%s\n",cmmd,cmmd2);
       system(cmmd);
       system(cmmd2);

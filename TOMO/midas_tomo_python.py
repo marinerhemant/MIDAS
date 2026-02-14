@@ -99,7 +99,16 @@ def run_tomo(data,dark,whites,workingdir,thetas,shifts,filterNr=2,doLog=1,extraP
 	configFile.close()
 	print('Time elapsed in preprocessing: '+str(time.time()-start_time)+'s.')
 	# Run tomo
-	subprocess.call(os.path.expanduser("~/opt/MIDAS/TOMO/bin/MIDAS_TOMO")+" "+workingdir+'/midastomo.par '+str(numCPUs),shell=True)
+	try:
+		import sys
+		utils_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'utils')
+		if utils_dir not in sys.path:
+			sys.path.append(utils_dir)
+		import midas_config
+		tomo_exe = os.path.join(midas_config.MIDAS_TOMO_BIN_DIR, 'MIDAS_TOMO')
+	except ImportError:
+		tomo_exe = os.path.expanduser("~/opt/MIDAS/TOMO/bin/MIDAS_TOMO")
+	subprocess.call(tomo_exe+" "+workingdir+'/midastomo.par '+str(numCPUs),shell=True)
 	# Read result
 	start_time = time.time()
 	outfn = outfnstr+'_NrShifts_'+str(nrShifts).zfill(3)+'_NrSlices_'+str(nrSlices).zfill(5)+'_XDim_'+str(xDimNew).zfill(6)+'_YDim_'+str(xDimNew).zfill(6)+'_float32.bin'

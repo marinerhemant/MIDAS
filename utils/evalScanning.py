@@ -2,9 +2,13 @@ import ctypes
 import os
 import numpy as np
 
-home = os.path.expanduser('~')
+try:
+    import midas_config
+    scanningFCNs = ctypes.CDLL(os.path.join(midas_config.MIDAS_BIN_DIR, 'ScanningFunctionsSO.so'))
+except (ImportError, OSError):
+    home = os.path.expanduser('~')
+    scanningFCNs = ctypes.CDLL(home+'/opt/MIDAS/FF_HEDM/bin/ScanningFunctionsSO.so')
 paramFN = 'ps.txt' # This files contains all the parameters required to evaluate the function.
-scanningFCNs = ctypes.CDLL(home+'/opt/MIDAS/FF_HEDM/bin/ScanningFunctionsSO.so')
 scanningFCNs.populate_arrays(paramFN.encode('ASCII'))
 
 # This writes a file /dev/shm/x.bin, containing 9 parameters for each voxel. They are arranged as each voxel position has 3 euler angles, 6 values for lattice parameter.
