@@ -222,11 +222,17 @@ The parameter file is a text file containing key-value pairs used by both the `i
 ### A.3. Corrections & Advanced
 | Parameter | Type | Description |
 | :--- | :--- | :--- |
+| `MaskFile` | `str` | Path to a file defining z mask to be skipped, it should be a int8 tiff. All 0 values are good pixels, 1 means mask pixels. (mask) |
 | `GapFile` | `str` | Path to a file defining panel gaps (mask) |
 | `BadPxFile` | `str` | Path to a file defining bad pixels (mask) |
+| `DistortionFile` | `str` | Path to binary file (double precision) containing Y then Z distortion maps |
 | `ImTransOpt` | `int` | Image transformation (0=None, 1=FlipH, 2=FlipV, 3=Transpose) |
 | `Polariz` | `float` | Polarization factor (default 0.99) |
 | `GapIntensity` | `float` | In-fill value for gap pixels (default 0) |
+| `p0`, `p1`, `p2`, `p3` | `float` | Geometric distortion coefficients |
+| `NPanelsY`, `NPanelsZ` | `int` | Number of detector panels in Y and Z directions |
+| `PanelSizeY`, `PanelSizeZ` | `int` | Size of each panel in pixels |
+| `PanelGapsY`, `PanelGapsZ` | `int` | Gap size between panels in pixels |
 
 ### 4.2. Output Formats
 

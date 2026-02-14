@@ -152,6 +152,20 @@ The script's behavior is controlled via the following arguments:
  > [!IMPORTANT]
  > If you provide either `-BadPxIntensity` or `-GapIntensity`, it is recommended to provide **both** if your data contains both types of artifacts.
 
+### Input Parameter File (`-paramFN`)
+
+When using `-ConvertFile` (i.e., input is not a pre-existing Zarr), you must provide a parameter file with initial metadata. `AutoCalibrateZarr.py` reads the following keys:
+
+| Key | Description | Example |
+| :--- | :--- | :--- |
+| `SpaceGroup` | Space group number of the calibrant (e.g., 225 for CeO2). | `225` |
+| `LatticeParameter` | Lattice constants (a b c alpha beta gamma). | `5.411 5.411 5.411 90 90 90` |
+| `Wavelength` | X-ray wavelength in Angstroms. | `0.41328` |
+| `px` | Pixel size in microns. | `200` |
+| `RingsToExclude` | (Optional) Ring indices to exclude from the start. | `RingsToExclude 1` |
+| `SkipFrame` | (Optional) Number of frames to skip in the data file (usually 0). | `0` |
+| `tx` | (Optional) Initial variation in x (usually 0). | `0` |
+
 ### Output & Visualization
 
 | Argument | Description | Default | Example |
@@ -205,8 +219,23 @@ python /path/to/AutoCalibrateZarr.py \
      Run `AutoCalibrateZarr.py` as described above to obtain a good baseline geometry. This produces the `refined_MIDAS_params.txt` file.
  
  2.  **Prepare Parameter File:**
-     Create a new parameter file (e.g., `manual_params.txt`) by copying `refined_MIDAS_params.txt`. You need to add/ensure the following keys are present to define the multi-panel geometry:
+     Create a new parameter file (e.g., `manual_params.txt`) by copying `refined_MIDAS_params.txt`. `AutoCalibrateZarr` does *not* write out file-handling parameters required by the binary, so **you must manually add the following keys**:
  
+     **File I/O Parameters (Required)**
+     ```text
+     Folder /absolute/path/to/raw/data/    # Directory containing raw images
+     FileStem CeO2_scan_                   # Common prefix of image filenames
+     Ext .tif                              # File extension (e.g., .tif, .ge2, .h5)
+     StartNr 1                             # Image number to process
+     EndNr 1                               # End image number (usually same as StartNr for calibration)
+     Padding 6                             # Number of digits in filename (e.g., 000001 is padding 6)
+     DataType 1                            # 1=uint16, 2=double, 3=float, 4=uint32, 5=int32
+                                           # 6=tiff-uint32, 7=tiff-uint8, 8=hdf5, 9=tiff-uint16
+     Dark /path/to/dark_image.tif          # Path to dark field image
+     HeadSize 8192                         # Header size in bytes (for binary files)
+     ```
+ 
+     **Panel Configuration (Required for Multi-Panel)**
      ```text
      NPanelsY [Number of panels in Y]
      NPanelsZ [Number of panels in Z]
@@ -217,7 +246,7 @@ python /path/to/AutoCalibrateZarr.py \
      PanelShiftsFile [Filename to save/load shifts, e.g., panel_shifts.txt]
      ```
  
-     You can also tune the optimization parameters:
+     **Refinement Controls**
      ```text
      tolShifts 1.0     # Maximum allowed shift per iteration (in pixels)
      FixPanelID 0      # ID of the panel to keep fixed (anchor)
