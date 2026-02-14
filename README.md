@@ -175,6 +175,15 @@ See the [manuals README](manuals/README.md) for the full step-by-step checklist.
 
 ---
 
+## Citing MIDAS
+
+If you use MIDAS in your research, please cite:
+
+> Citation forthcoming.
+
+
+---
+
 ## Acknowledgments
 
 - [SGInfo](http://cci.lbl.gov/sginfo/) library for HKL calculations

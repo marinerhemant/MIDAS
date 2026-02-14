@@ -212,6 +212,7 @@ The `Compute Distances` function employs a **Ray-Triangulation** method based on
 - [NF_Analysis.md](NF_Analysis.md) — Single-resolution NF-HEDM reconstruction
 - [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md) — Multi-resolution iterative NF-HEDM reconstruction
 - [NF_gui.md](NF_gui.md) — NF-HEDM GUI reference
+- [README.md](README.md) — High-level MIDAS overview and manual index
 
 ---
 

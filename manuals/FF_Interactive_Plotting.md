@@ -252,6 +252,7 @@ The application's interactivity is driven by a chain of Dash callbacks:
 - [PF_Analysis.md](PF_Analysis.md) — Scanning/pencil-beam FF-HEDM analysis
 - [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation for validation
 - [FF_calibration.md](FF_calibration.md) — Geometry calibration
+- [README.md](README.md) — High-level MIDAS overview and manual index
 
 ---
 

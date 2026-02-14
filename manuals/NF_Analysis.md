@@ -359,6 +359,7 @@ The final text mic file has one line per reconstructed grid point. Lines startin
 - [NF_calibration.md](NF_calibration.md) — NF detector geometry calibration
 - [NF_gui.md](NF_gui.md) — Interactive NF-HEDM analysis GUI
 - [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation (simulateNF)
+- [README.md](README.md) — High-level MIDAS overview and manual index
 
 ---
 

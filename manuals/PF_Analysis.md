@@ -263,6 +263,7 @@ When `-doTomo 1` is enabled:
 - [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results
 - [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation for validation
 - [NF_Analysis.md](NF_Analysis.md) — Near-field HEDM reconstruction
+- [README.md](README.md) — High-level MIDAS overview and manual index
 
 ---
 

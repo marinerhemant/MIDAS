@@ -148,6 +148,7 @@ The "MakeSpots" simulation feature uses a hybrid approach:
 - [NF_Analysis.md](NF_Analysis.md) — Single-resolution NF-HEDM reconstruction
 - [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md) — Multi-resolution iterative NF-HEDM reconstruction
 - [NF_calibration.md](NF_calibration.md) — Detailed step-by-step calibration procedure
+- [README.md](README.md) — High-level MIDAS overview and manual index
 
 ---
 

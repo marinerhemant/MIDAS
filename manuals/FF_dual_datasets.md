@@ -211,6 +211,7 @@ The script generates two initial analysis directories within the main `-resultFo
 - [FF_calibration.md](FF_calibration.md) — Geometry calibration
 - [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results
 - [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation for validation
+- [README.md](README.md) — High-level MIDAS overview and manual index
 
 ---
 

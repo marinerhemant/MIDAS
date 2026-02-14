@@ -359,6 +359,7 @@ Tab-separated, one row per diffraction spot per grain:
 - [FF_dual_datasets.md](FF_dual_datasets.md) — Dual-dataset combined analysis
 - [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results
 - [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation for validation
+- [README.md](README.md) — High-level MIDAS overview and manual index
 
 ---
 
