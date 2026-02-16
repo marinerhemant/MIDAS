@@ -30,4 +30,4 @@ jobs:
       - name: Build (no CUDA)
         run: |
           chmod +x build.sh
-          ./build.sh --cuda OFF --install-py-scripts OFF --install-py-deps OFF --clean
+          ./build.sh -j 8 --cuda OFF --install-py-scripts OFF --install-py-deps OFF --clean
