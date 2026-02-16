@@ -5,6 +5,7 @@
 
 #include "tomo_heads.h"
 #include <ctype.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <math.h>
 #include <omp.h>
@@ -220,7 +221,7 @@ int main(int argc, char *argv[]) {
           recon_info_record.theta_list_size);
       LOCAL_CONFIG_OPTS information;
       information.shift = recon_info_record.shift_values[0];
-      setSinoSize(&information, recon_info_record);
+      setSinoSize(&information, &recon_info_record);
       gridrecParams param;
       param.sinogram_x_dim = information.sinogram_adjusted_xdim * 2;
       param.theta_list = recon_info_record.theta_list;
@@ -235,22 +236,37 @@ int main(int argc, char *argv[]) {
       initFFTMemoryStructures(&param);
       initGridRec(&param);
       int numSlice, sliceRowNr, oldSliceNr;
+      int input_fd = -1;
+      if (!recon_info_record.are_sinos && !recon_info_record.use_hdf5) {
+        input_fd = open(recon_info_record.DataFileName, O_RDONLY);
+      }
+      int output_fd = -1;
+      if (recon_info_record.saveReconSeparate == 0) {
+        char outFileName[4096];
+        sprintf(
+            outFileName,
+            "%s_NrShifts_%03d_NrSlices_%05d_XDim_%06d_YDim_%06d_float32.bin",
+            recon_info_record.ReconFileName, recon_info_record.n_shifts,
+            recon_info_record.n_slices, recon_info_record.reconstruction_xdim,
+            recon_info_record.reconstruction_xdim);
+        output_fd = open(outFileName, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+      }
       for (numSlice = 0; numSlice < (endSliceNr - startSliceNr) / 2;
            numSlice++) {
         memset(readStruct.norm_sino, 0,
                sizeof(float) * recon_info_record.sinogram_adjusted_xdim *
                    recon_info_record.theta_list_size);
-        memsets(&information, recon_info_record);
+        memsets(&information, &recon_info_record);
         int sliceNr;
         sliceRowNr = startSliceNr + numSlice * 2;
         sliceNr = recon_info_record.slices_to_process[sliceRowNr];
         oldSliceNr = sliceNr;
         if (recon_info_record.are_sinos) {
-          int rc = readSino(sliceNr, recon_info_record, &readStruct);
+          int rc = readSino(sliceNr, &recon_info_record, &readStruct);
           if (rc == 1)
             continue;
         } else {
-          int rc = readRaw(sliceNr, recon_info_record, &readStruct);
+          int rc = readRaw(sliceNr, &recon_info_record, &readStruct, input_fd);
           if (rc == 1)
             continue;
         }
@@ -267,7 +283,7 @@ int main(int argc, char *argv[]) {
                    recon_info_record.theta_list_size);
         offt = 0;
         offsetRecons = 0;
-        reconCentering(&information, recon_info_record, offt,
+        reconCentering(&information, &recon_info_record, offt,
                        recon_info_record.doLogProj);
         setSinoAndReconBuffers(
             1, &information.sinograms_boundary_padding[offt],
@@ -276,11 +292,11 @@ int main(int argc, char *argv[]) {
         sliceRowNr++;
         sliceNr = recon_info_record.slices_to_process[sliceRowNr];
         if (recon_info_record.are_sinos) {
-          int rc = readSino(sliceNr, recon_info_record, &readStruct);
+          int rc = readSino(sliceNr, &recon_info_record, &readStruct);
           if (rc == 1)
             continue;
         } else {
-          int rc = readRaw(sliceNr, recon_info_record, &readStruct);
+          int rc = readRaw(sliceNr, &recon_info_record, &readStruct, input_fd);
           if (rc == 1)
             continue;
         }
@@ -297,21 +313,31 @@ int main(int argc, char *argv[]) {
                    recon_info_record.theta_list_size);
         offt = information.sinogram_adjusted_size * 2;
         offsetRecons = information.reconstruction_size * 4;
-        reconCentering(&information, recon_info_record, offt,
+        reconCentering(&information, &recon_info_record, offt,
                        recon_info_record.doLogProj);
         setSinoAndReconBuffers(
             2, &information.sinograms_boundary_padding[offt],
             &information.reconstructions_boundary_padding[offsetRecons],
             &param);
         reconstruct(&param);
-        getRecons(&information, recon_info_record, &param, 0);
-        int rw = writeRecon(oldSliceNr, &information, recon_info_record, 0);
+
+        getRecons(&information, &recon_info_record, &param, 0);
+        int rw = writeRecon(oldSliceNr, &information, &recon_info_record, 0,
+                            output_fd);
         if (rw == 1)
           continue;
-        getRecons(&information, recon_info_record, &param, offsetRecons);
-        rw = writeRecon(sliceNr, &information, recon_info_record, 0);
+        getRecons(&information, &recon_info_record, &param, offsetRecons);
+        rw =
+            writeRecon(sliceNr, &information, &recon_info_record, 0, output_fd);
+
         if (rw == 1)
           continue;
+      }
+      if (input_fd != -1) {
+        close(input_fd);
+      }
+      if (output_fd != -1) {
+        close(output_fd);
       }
       destroyFFTMemoryStructures(&param);
     }
@@ -328,6 +354,20 @@ int main(int argc, char *argv[]) {
     // recon_info_record.n_slices;
     int nJobs = recon_info_record.n_slices;
     int badRead = 0;
+    int input_fd = -1;
+    if (!recon_info_record.are_sinos && !recon_info_record.use_hdf5) {
+      input_fd = open(recon_info_record.DataFileName, O_RDONLY);
+    }
+    int output_fd = -1;
+    if (recon_info_record.saveReconSeparate == 0) {
+      char outFileName[4096];
+      sprintf(outFileName,
+              "%s_NrShifts_%03d_NrSlices_%05d_XDim_%06d_YDim_%06d_float32.bin",
+              recon_info_record.ReconFileName, recon_info_record.n_shifts,
+              recon_info_record.n_slices, recon_info_record.reconstruction_xdim,
+              recon_info_record.reconstruction_xdim);
+      output_fd = open(outFileName, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+    }
 #pragma omp parallel num_threads(nJobs)
     {
       // This will only read up to nJobs slices. TODO: Fix this!!!
@@ -336,19 +376,25 @@ int main(int argc, char *argv[]) {
       sliceNr = recon_info_record.slices_to_process[procNr];
       //~ printf("Reading SliceNr: %d.\n",sliceNr);
       if (recon_info_record.are_sinos) {
-        int rc = readSino(sliceNr, recon_info_record, &readStruct[procNr]);
+        int rc = readSino(sliceNr, &recon_info_record, &readStruct[procNr]);
         if (rc == 1)
           badRead = 1;
       } else {
-        int rc = readRaw(sliceNr, recon_info_record, &readStruct[procNr]);
+        int rc =
+            readRaw(sliceNr, &recon_info_record, &readStruct[procNr], input_fd);
         if (rc == 1)
           badRead = 1;
       }
     }
+    if (input_fd != -1) {
+      close(input_fd);
+    }
     if (badRead == 1)
       return 0;
-    // Apply stripe removal to all pre-read sinograms
+    // Apply stripe removal to all pre-read sinograms (parallel — each is
+    // independent)
     if (recon_info_record.doStripeRemoval) {
+#pragma omp parallel for schedule(dynamic)
       for (i = 0; i < recon_info_record.n_slices; i++) {
         cleanup_sinogram_stripes(
             readStruct[i].norm_sino, recon_info_record.theta_list_size,
@@ -373,7 +419,7 @@ int main(int argc, char *argv[]) {
                      : nJobs;
       LOCAL_CONFIG_OPTS information;
       information.shift = recon_info_record.shift_values[0];
-      setSinoSize(&information, recon_info_record);
+      setSinoSize(&information, &recon_info_record);
       gridrecParams param;
       param.sinogram_x_dim = information.sinogram_adjusted_xdim * 2;
       param.theta_list = recon_info_record.theta_list;
@@ -389,7 +435,7 @@ int main(int argc, char *argv[]) {
       initGridRec(&param);
       int jobNr, sliceNr, shiftNr, localSliceNr;
       for (jobNr = 0; jobNr < (endJobNr - startJobNr) / 2; jobNr++) {
-        memsets(&information, recon_info_record);
+        memsets(&information, &recon_info_record);
         sliceNr = (startJobNr + jobNr * 2) / recon_info_record.n_shifts;
         shiftNr = (startJobNr + jobNr * 2) % recon_info_record.n_shifts;
         localSliceNr = recon_info_record.slices_to_process[sliceNr];
@@ -399,7 +445,7 @@ int main(int argc, char *argv[]) {
                    recon_info_record.theta_list_size);
         offt = 0;
         offsetRecons = 0;
-        reconCentering(&information, recon_info_record, offt,
+        reconCentering(&information, &recon_info_record, offt,
                        recon_info_record.doLogProj);
         setSinoAndReconBuffers(
             1, &information.sinograms_boundary_padding[offt],
@@ -411,7 +457,7 @@ int main(int argc, char *argv[]) {
                    recon_info_record.theta_list_size);
         offt = information.sinogram_adjusted_size * 2;
         offsetRecons = information.reconstruction_size * 4;
-        reconCentering(&information, recon_info_record, offt,
+        reconCentering(&information, &recon_info_record, offt,
                        recon_info_record.doLogProj);
         setSinoAndReconBuffers(
             2, &information.sinograms_boundary_padding[offt],
@@ -419,18 +465,21 @@ int main(int argc, char *argv[]) {
             &param);
         reconstruct(&param);
         information.shift = recon_info_record.shift_values[shiftNr];
-        getRecons(&information, recon_info_record, &param, 0);
-        int rw =
-            writeRecon(localSliceNr, &information, recon_info_record, shiftNr);
+        getRecons(&information, &recon_info_record, &param, 0);
+        int rw = writeRecon(localSliceNr, &information, &recon_info_record,
+                            shiftNr, output_fd);
         if (rw == 1)
           continue;
         information.shift = recon_info_record.shift_values[shiftNr + 1];
-        getRecons(&information, recon_info_record, &param, offsetRecons);
-        rw = writeRecon(localSliceNr, &information, recon_info_record,
-                        shiftNr + 1);
+        getRecons(&information, &recon_info_record, &param, offsetRecons);
+        rw = writeRecon(localSliceNr, &information, &recon_info_record,
+                        shiftNr + 1, output_fd);
         if (rw == 1)
           continue;
       }
+    }
+    if (output_fd != -1) {
+      close(output_fd);
     }
   }
   double time = omp_get_wtime() - start_time;

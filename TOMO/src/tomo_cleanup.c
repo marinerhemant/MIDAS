@@ -69,28 +69,59 @@ static int cmp_entry_by_pos(const void *a, const void *b) {
 }
 
 // ============================================================================
+// Reflect an index into [0, n) using mirrored boundary conditions.
+// ============================================================================
+static inline int reflect_index(int idx, int n) {
+  if (idx < 0)
+    idx = -idx;
+  if (idx >= n)
+    idx = 2 * n - idx - 2;
+  if (idx < 0)
+    idx = 0;
+  if (idx >= n)
+    idx = n - 1;
+  return idx;
+}
+
+// ============================================================================
+// Insertion sort for small float arrays. Faster than qsort for n < ~64
+// due to no function-pointer overhead and good cache behaviour.
+// ============================================================================
+static void insertion_sort_float(float *arr, int n) {
+  for (int i = 1; i < n; i++) {
+    float key = arr[i];
+    int j = i - 1;
+    while (j >= 0 && arr[j] > key) {
+      arr[j + 1] = arr[j];
+      j--;
+    }
+    arr[j + 1] = key;
+  }
+}
+
+// ============================================================================
 // 1D median filter with reflected boundary conditions.
 // Applies a sliding window of 'size' to array 'in' of length 'n'.
 // Result is written to 'out'. 'in' and 'out' must not overlap.
+// Uses insertion sort for small windows (≤128), qsort otherwise.
 // ============================================================================
 static void medfilt1(const float *in, float *out, int n, int size) {
   int half = size / 2;
   float *window = (float *)malloc(sizeof(float) * size);
+  if (!window) {
+    fprintf(stderr, "medfilt1: malloc failed (n=%d, size=%d)\n", n, size);
+    memcpy(out, in, sizeof(float) * n);
+    return;
+  }
   for (int i = 0; i < n; i++) {
     int count = 0;
     for (int j = i - half; j <= i + half; j++) {
-      int idx = j;
-      if (idx < 0)
-        idx = -idx;
-      if (idx >= n)
-        idx = 2 * n - idx - 2;
-      if (idx < 0)
-        idx = 0;
-      if (idx >= n)
-        idx = n - 1;
-      window[count++] = in[idx];
+      window[count++] = in[reflect_index(j, n)];
     }
-    qsort(window, count, sizeof(float), cmp_float_asc);
+    if (count <= 128)
+      insertion_sort_float(window, count);
+    else
+      qsort(window, count, sizeof(float), cmp_float_asc);
     out[i] = window[count / 2];
   }
   free(window);
@@ -99,41 +130,43 @@ static void medfilt1(const float *in, float *out, int n, int size) {
 // ============================================================================
 // 2D median filter on a row-major [nrow x ncol] array.
 // Kernel size is (krow, kcol) with reflected boundaries.
+// Fast path: when krow == 1, applies per-row 1D median filters.
 // ============================================================================
 static void medfilt2(const float *in, float *out, int nrow, int ncol, int krow,
                      int kcol) {
+  // Fast path: krow == 1 means independent 1D median along each row
+  if (krow <= 1) {
+    for (int r = 0; r < nrow; r++) {
+      medfilt1(&in[r * ncol], &out[r * ncol], ncol, kcol);
+    }
+    return;
+  }
+
   int hrow = krow / 2;
   int hcol = kcol / 2;
   int wsize = krow * kcol;
   float *window = (float *)malloc(sizeof(float) * wsize);
+  if (!window) {
+    fprintf(stderr, "medfilt2: malloc failed (%dx%d, kernel %dx%d)\n", nrow,
+            ncol, krow, kcol);
+    memcpy(out, in, sizeof(float) * nrow * ncol);
+    return;
+  }
 
   for (int r = 0; r < nrow; r++) {
     for (int c = 0; c < ncol; c++) {
       int count = 0;
       for (int dr = -hrow; dr <= hrow; dr++) {
+        int rr = reflect_index(r + dr, nrow);
         for (int dc = -hcol; dc <= hcol; dc++) {
-          int rr = r + dr;
-          int cc = c + dc;
-          if (rr < 0)
-            rr = -rr;
-          if (rr >= nrow)
-            rr = 2 * nrow - rr - 2;
-          if (rr < 0)
-            rr = 0;
-          if (rr >= nrow)
-            rr = nrow - 1;
-          if (cc < 0)
-            cc = -cc;
-          if (cc >= ncol)
-            cc = 2 * ncol - cc - 2;
-          if (cc < 0)
-            cc = 0;
-          if (cc >= ncol)
-            cc = ncol - 1;
+          int cc = reflect_index(c + dc, ncol);
           window[count++] = in[rr * ncol + cc];
         }
       }
-      qsort(window, count, sizeof(float), cmp_float_asc);
+      if (count <= 128)
+        insertion_sort_float(window, count);
+      else
+        qsort(window, count, sizeof(float), cmp_float_asc);
       out[r * ncol + c] = window[count / 2];
     }
   }
@@ -152,42 +185,15 @@ static void mean_filter_columns(const float *data, float *out, int nrow,
     float sum = 0.0f;
     int count = 0;
     for (int r = -half; r <= half; r++) {
-      int rr = r;
-      if (rr < 0)
-        rr = -rr;
-      if (rr >= nrow)
-        rr = 2 * nrow - rr - 2;
-      if (rr < 0)
-        rr = 0;
-      if (rr >= nrow)
-        rr = nrow - 1;
-      sum += data[rr * ncol + c];
+      sum += data[reflect_index(r, nrow) * ncol + c];
       count++;
     }
     out[0 * ncol + c] = sum / count;
 
     // Slide the window down through rows
     for (int r = 1; r < nrow; r++) {
-      int new_idx = r + half;
-      if (new_idx >= nrow)
-        new_idx = 2 * nrow - new_idx - 2;
-      if (new_idx < 0)
-        new_idx = 0;
-      if (new_idx >= nrow)
-        new_idx = nrow - 1;
-      sum += data[new_idx * ncol + c];
-
-      int old_idx = r - half - 1;
-      if (old_idx < 0)
-        old_idx = -old_idx;
-      if (old_idx >= nrow)
-        old_idx = 2 * nrow - old_idx - 2;
-      if (old_idx < 0)
-        old_idx = 0;
-      if (old_idx >= nrow)
-        old_idx = nrow - 1;
-      sum -= data[old_idx * ncol + c];
-
+      sum += data[reflect_index(r + half, nrow) * ncol + c];
+      sum -= data[reflect_index(r - half - 1, nrow) * ncol + c];
       out[r * ncol + c] = sum / count;
     }
   }
@@ -315,6 +321,13 @@ static void correct_by_sorting(float *sinogram, int nrow, int ncol,
   SortEntry *entries = (SortEntry *)malloc(sizeof(SortEntry) * nrow);
   float *smoothed = (float *)malloc(sizeof(float) * nrow);
   float *raw_col = (float *)malloc(sizeof(float) * nrow);
+  if (!entries || !smoothed || !raw_col) {
+    fprintf(stderr, "correct_by_sorting: malloc failed (nrow=%d)\n", nrow);
+    free(entries);
+    free(smoothed);
+    free(raw_col);
+    return;
+  }
 
   for (int c = 0; c < ncol; c++) {
     // Build position-value pairs for this column
@@ -330,8 +343,14 @@ static void correct_by_sorting(float *sinogram, int nrow, int ncol,
     for (int r = 0; r < nrow; r++)
       raw_col[r] = entries[r].val;
 
-    // Median-filter the sorted profile
-    medfilt1(raw_col, smoothed, nrow, filter_width);
+    // Median-filter the sorted profile (1D or 2D based on dim)
+    if (dim == 1) {
+      medfilt1(raw_col, smoothed, nrow, filter_width);
+    } else {
+      // dim == 2: treat as single-column 2D array, filter with (filter_width,
+      // 1)
+      medfilt2(raw_col, smoothed, nrow, 1, filter_width, 1);
+    }
 
     // Replace with filtered values
     for (int r = 0; r < nrow; r++)
@@ -514,14 +533,18 @@ static void correct_dead_pixels(float *sinogram, int nrow, int ncol, float snr,
       if (stripe_mask[c] < 0.5f)
         continue;
 
-      // Find bracketing good columns
-      int left_idx = -1, right_idx = -1;
-      for (int g = 0; g < ngood; g++) {
-        if (good_cols[g] <= c)
-          left_idx = g;
-        if (good_cols[g] >= c && right_idx < 0)
-          right_idx = g;
+      // Binary search for the first good column > c
+      int lo = 0, hi = ngood;
+      while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (good_cols[mid] <= c)
+          lo = mid + 1;
+        else
+          hi = mid;
       }
+      // lo is the index of the first good column > c
+      int right_idx = (lo < ngood) ? lo : -1;
+      int left_idx = (lo > 0) ? lo - 1 : -1;
 
       if (left_idx < 0)
         left_idx = right_idx;
@@ -577,11 +600,27 @@ static void correct_dead_pixels(float *sinogram, int nrow, int ncol, float snr,
 // ============================================================================
 void cleanup_sinogram_stripes(float *sinogram, int nrow, int ncol, float snr,
                               int la_size, int sm_size, int dim) {
+  // Guard: nothing to do for degenerate inputs
+  if (!sinogram || nrow < 2 || ncol < 4) {
+    if (nrow < 2 || ncol < 4)
+      fprintf(stderr,
+              "cleanup_sinogram_stripes: sinogram too small "
+              "(%dx%d), skipping\n",
+              nrow, ncol);
+    return;
+  }
+
   // Ensure odd window sizes
   if (la_size % 2 == 0)
     la_size++;
   if (sm_size % 2 == 0)
     sm_size++;
+
+  // Clamp window sizes to array dimensions
+  if (la_size > ncol)
+    la_size = (ncol % 2 == 0) ? ncol - 1 : ncol;
+  if (sm_size > nrow)
+    sm_size = (nrow % 2 == 0) ? nrow - 1 : nrow;
 
   // Phase 1: Correct dead/unresponsive columns + large artifacts
   correct_dead_pixels(sinogram, nrow, ncol, snr, la_size, 1);

@@ -144,31 +144,32 @@ typedef struct {
 // Initiate Config Opts Structs
 int setGlobalOpts(char inputFile[], GLOBAL_CONFIG_OPTS *recon_info_record);
 void setSinoSize(LOCAL_CONFIG_OPTS *information,
-                 GLOBAL_CONFIG_OPTS recon_info_record);
+                 const GLOBAL_CONFIG_OPTS *recon_info_record);
 void setReadStructSize(GLOBAL_CONFIG_OPTS *recon_info_record);
 void memsets(LOCAL_CONFIG_OPTS *information,
-             GLOBAL_CONFIG_OPTS recon_info_record);
+             const GLOBAL_CONFIG_OPTS *recon_info_record);
 void setGridRecPSWF(gridrecParams *param);
 
 //--------------------------------------------------------------------------------------------------------------------------
 // ReadData
-int readSino(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
+int readSino(int sliceNr, const GLOBAL_CONFIG_OPTS *recon_info_record,
              SINO_READ_OPTS *readStruct);
-int readRaw(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
-            SINO_READ_OPTS *readStruct);
-int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
+int readRaw(int sliceNr, const GLOBAL_CONFIG_OPTS *recon_info_record,
+            SINO_READ_OPTS *readStruct, int fd);
+int readRawHDF5(int sliceNr, const GLOBAL_CONFIG_OPTS *recon_info_record,
                 SINO_READ_OPTS *readStruct);
 
 //--------------------------------------------------------------------------------------------------------------------------
 // Corrections
 void RingCorrectionSingle(float *data, float ring_coeff,
                           LOCAL_CONFIG_OPTS *information,
-                          GLOBAL_CONFIG_OPTS recon_info_record);
+                          const GLOBAL_CONFIG_OPTS *recon_info_record);
 void LogSinogram(float *data, int xdim, int ydim);
 void LogProj(float *data, int xdim, int ydim);
 void Normalize(SINO_READ_OPTS *readStruct,
-               GLOBAL_CONFIG_OPTS recon_info_record);
-void Pad(SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS recon_info_record);
+               const GLOBAL_CONFIG_OPTS *recon_info_record);
+void Pad(SINO_READ_OPTS *readStruct,
+         const GLOBAL_CONFIG_OPTS *recon_info_record);
 
 // Stripe removal (Vo et al. 2018)
 void cleanup_sinogram_stripes(float *sinogram, int nrow, int ncol, float snr,
@@ -177,13 +178,14 @@ void cleanup_sinogram_stripes(float *sinogram, int nrow, int ncol, float snr,
 //--------------------------------------------------------------------------------------------------------------------------
 // Processing code
 void reconCentering(LOCAL_CONFIG_OPTS *information,
-                    GLOBAL_CONFIG_OPTS recon_info_record, size_t offt,
+                    const GLOBAL_CONFIG_OPTS *recon_info_record, size_t offt,
                     int doLog);
 void getRecons(LOCAL_CONFIG_OPTS *information,
-               GLOBAL_CONFIG_OPTS recon_info_record, gridrecParams *param,
-               size_t offsetRecons);
+               const GLOBAL_CONFIG_OPTS *recon_info_record,
+               gridrecParams *param, size_t offsetRecons);
 int writeRecon(int sliceNr, LOCAL_CONFIG_OPTS *information,
-               GLOBAL_CONFIG_OPTS recon_info_record, int shiftNr);
+               const GLOBAL_CONFIG_OPTS *recon_info_record, int shiftNr,
+               int fd);
 void createPlanFile(GLOBAL_CONFIG_OPTS *recon_info_record);
 
 #endif

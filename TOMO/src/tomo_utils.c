@@ -21,17 +21,20 @@
 
 void LogProj(float *data, int xdim, int ydim) {
   int i, k;
-  float mean, max;
   for (i = 0; i < ydim; i++) {
-    max = data[i * xdim];
-    for (k = 0; k < xdim; k++) {
-      if (data[i * xdim + k] > max)
-        max = data[i * xdim + k];
+    float *row = &data[i * xdim];
+    // Find row max
+    float max = row[0];
+    for (k = 1; k < xdim; k++) {
+      if (row[k] > max)
+        max = row[k];
     }
+    // Single pass: log(max) - log(val) == log(max/val)
+    float log_max = logf(max);
     for (k = 0; k < xdim; k++) {
-      if (data[i * xdim + k] <= 0.0)
-        data[i * xdim + k] = 1.0;
-      data[i * xdim + k] = log(max / data[i * xdim + k]);
+      if (row[k] <= 0.0f)
+        row[k] = 1.0f;
+      row[k] = log_max - logf(row[k]);
     }
   }
 }
@@ -50,41 +53,52 @@ void LogSinogram(float *data, int xdim, int ydim) {
 
 void RingCorrectionSingle(float *data, float ring_coeff,
                           LOCAL_CONFIG_OPTS *information,
-                          GLOBAL_CONFIG_OPTS recon_info_record) {
+                          const GLOBAL_CONFIG_OPTS *recon_info_record) {
   int i, j, m;
   float mean_total;
   float tmp;
+  int xdim = information->sinogram_adjusted_xdim;
+  int ydim = recon_info_record->sinogram_ydim;
   for (m = 0; m < 20; m++) {
-    for (i = 0; i < recon_info_record.sinogram_ydim; i++)
+    for (i = 0; i < ydim; i++)
       information->mean_vect[i] = 0.0;
     mean_total = 0.0;
-    for (i = 0; i < recon_info_record.sinogram_ydim; i++) {
-      for (j = 0; j < information->sinogram_adjusted_xdim; j++) {
-        information->mean_vect[i] +=
-            data[i * information->sinogram_adjusted_xdim + j];
+    for (i = 0; i < ydim; i++) {
+      float *row = &data[i * xdim];
+      float row_sum = 0.0f;
+      for (j = 0; j < xdim; j++) {
+        row_sum += row[j];
       }
-      information->mean_vect[i] /= information->sinogram_adjusted_xdim;
+      information->mean_vect[i] = row_sum / xdim;
       mean_total += information->mean_vect[i];
     }
-    mean_total /= recon_info_record.sinogram_ydim;
-    for (i = 0; i < recon_info_record.sinogram_ydim; i++) {
-      for (j = 0; j < information->sinogram_adjusted_xdim; j++) {
-        if (information->mean_vect[i] != 0.0) {
-          data[i * information->sinogram_adjusted_xdim + j] =
-              data[i * information->sinogram_adjusted_xdim + j] * mean_total /
-              information->mean_vect[i];
+    mean_total /= ydim;
+    // Check convergence: if all row means are close to the global mean, stop
+    float max_delta = 0.0f;
+    for (i = 0; i < ydim; i++) {
+      float delta = fabsf(information->mean_vect[i] - mean_total);
+      if (delta > max_delta)
+        max_delta = delta;
+    }
+    if (max_delta < 1e-6f)
+      break;
+    for (i = 0; i < ydim; i++) {
+      if (information->mean_vect[i] != 0.0f) {
+        float ratio = mean_total / information->mean_vect[i];
+        float *row = &data[i * xdim];
+        for (j = 0; j < xdim; j++) {
+          row[j] *= ratio;
         }
       }
     }
-    for (i = 0; i < information->sinogram_adjusted_xdim; i++)
+    for (i = 0; i < xdim; i++)
       information->mean_sino_line_data[i] = 0.0;
-    for (i = 0; i < recon_info_record.sinogram_ydim; i++)
-      for (j = 0; j < information->sinogram_adjusted_xdim; j++)
-        information->mean_sino_line_data[j] +=
-            data[i * information->sinogram_adjusted_xdim + j];
-    for (i = 0; i < information->sinogram_adjusted_xdim; i++)
-      information->mean_sino_line_data[i] /= recon_info_record.sinogram_ydim;
-    for (j = 1; j < information->sinogram_adjusted_xdim - 1; j++) {
+    for (i = 0; i < ydim; i++)
+      for (j = 0; j < xdim; j++)
+        information->mean_sino_line_data[j] += data[i * xdim + j];
+    for (i = 0; i < xdim; i++)
+      information->mean_sino_line_data[i] /= ydim;
+    for (j = 1; j < xdim - 1; j++) {
       information->low_pass_sino_lines_data[j] =
           (information->mean_sino_line_data[j - 1] +
            information->mean_sino_line_data[j] +
@@ -93,20 +107,16 @@ void RingCorrectionSingle(float *data, float ring_coeff,
     }
     information->low_pass_sino_lines_data[0] =
         information->mean_sino_line_data[0];
-    information
-        ->low_pass_sino_lines_data[information->sinogram_adjusted_xdim - 1] =
-        information
-            ->mean_sino_line_data[information->sinogram_adjusted_xdim - 1];
-    for (i = 0; i < recon_info_record.sinogram_ydim; i++) {
-      for (j = 0; j < information->sinogram_adjusted_xdim; j++) {
+    information->low_pass_sino_lines_data[xdim - 1] =
+        information->mean_sino_line_data[xdim - 1];
+    for (i = 0; i < ydim; i++) {
+      for (j = 0; j < xdim; j++) {
         tmp = information->mean_sino_line_data[j] -
               information->low_pass_sino_lines_data[j];
-        if ((data[i * information->sinogram_adjusted_xdim + j] -
-             (tmp * ring_coeff)) > 0.0)
-          data[i * information->sinogram_adjusted_xdim + j] -=
-              (tmp * ring_coeff);
+        if ((data[i * xdim + j] - (tmp * ring_coeff)) > 0.0)
+          data[i * xdim + j] -= (tmp * ring_coeff);
         else
-          data[i * information->sinogram_adjusted_xdim + j] = 0.0;
+          data[i * xdim + j] = 0.0;
       }
     }
   }
@@ -123,70 +133,84 @@ void RingCorrectionSingle(float *data, float ring_coeff,
  */
 // This function assumes the short_sino is the proper sinogram, white_field_sino
 // is two rows of first and last wf image slice, dark_field_sino_ave is a single
-// slice. Size of each sino is recon_info_record.sinogram_xdim, output norm_sino
-// is information->sinogram_adjusted_xdim (padded)
+// slice. Size of each sino is recon_info_record->sinogram_xdim, output
+// norm_sino is information->sinogram_adjusted_xdim (padded)
 
 void Normalize(SINO_READ_OPTS *readStruct,
-               GLOBAL_CONFIG_OPTS recon_info_record) {
-  int pad_size = recon_info_record.sinogram_adjusted_xdim -
-                 recon_info_record.sinogram_xdim,
+               const GLOBAL_CONFIG_OPTS *recon_info_record) {
+  int pad_size = recon_info_record->sinogram_adjusted_xdim -
+                 recon_info_record->sinogram_xdim,
       front_pad_size = pad_size / 2, back_pad_size = pad_size - front_pad_size;
-  //~ printf("Pad sizes %d %d\n",front_pad_size,back_pad_size);
-  int frameNr, pxNr, colNr;
-  float temp_val, white_temp, factor;
-  for (frameNr = 0; frameNr < recon_info_record.sinogram_ydim; frameNr++) {
-    factor = (float)frameNr / (float)recon_info_record.theta_list_size;
-    for (pxNr = 0; pxNr < recon_info_record.sinogram_adjusted_xdim; pxNr++) {
-      if (pxNr < front_pad_size) { // front padding
-        colNr = 0;                 // first pixel
-      } else if (pxNr >= front_pad_size +
-                             recon_info_record.sinogram_xdim) { // back padding
-        colNr = recon_info_record.sinogram_xdim - 1;            // last pixel
-      } else {
-        colNr = pxNr - front_pad_size; // actual pixel
-      }
-      white_temp =
+  int adj_xdim = recon_info_record->sinogram_adjusted_xdim;
+  int det_xdim = recon_info_record->det_xdim;
+  int sino_xdim = recon_info_record->sinogram_xdim;
+  int frameNr;
+  for (frameNr = 0; frameNr < recon_info_record->sinogram_ydim; frameNr++) {
+    float factor = (float)frameNr / (float)recon_info_record->theta_list_size;
+    float *out_row = &readStruct->norm_sino[frameNr * adj_xdim];
+    // Precompute white/dark for first and last pixel (used in padding)
+    float white_first = (1 - factor) * readStruct->white_field_sino[0] +
+                        factor * readStruct->white_field_sino[sino_xdim];
+    float dark_first = readStruct->dark_field_sino_ave[0];
+    float val_first =
+        ((float)readStruct->short_sinogram[frameNr * det_xdim] - dark_first) /
+        (white_first - dark_first);
+    int last_col = sino_xdim - 1;
+    float white_last =
+        (1 - factor) * readStruct->white_field_sino[last_col] +
+        factor * readStruct->white_field_sino[last_col + sino_xdim];
+    float dark_last = readStruct->dark_field_sino_ave[last_col];
+    float val_last =
+        ((float)readStruct->short_sinogram[last_col + frameNr * det_xdim] -
+         dark_last) /
+        (white_last - dark_last);
+    // Front padding — replicate first pixel value
+    for (int p = 0; p < front_pad_size; p++) {
+      out_row[p] = val_first;
+    }
+    // Actual pixels — no branching
+    for (int p = 0; p < sino_xdim; p++) {
+      int colNr = p;
+      float white_temp =
           (1 - factor) * (float)readStruct->white_field_sino[colNr] +
-          (factor) *
-              (float)readStruct
-                  ->white_field_sino[colNr + recon_info_record.sinogram_xdim];
-      // printf("colNr frameNr xdim totSize : %d %d %d
-      // %d\n",colNr,frameNr,readStruct->sinogram_adjusted_xdim,recon_info_record.det_xdim*recon_info_record.theta_list_size);fflush(stdout);
-      temp_val =
-          ((float)readStruct
-               ->short_sinogram[colNr + frameNr * recon_info_record.det_xdim] -
+          (factor) * (float)readStruct->white_field_sino[colNr + sino_xdim];
+      out_row[front_pad_size + p] =
+          ((float)readStruct->short_sinogram[colNr + frameNr * det_xdim] -
            readStruct->dark_field_sino_ave[colNr]) /
           (white_temp - readStruct->dark_field_sino_ave[colNr]);
-      readStruct->norm_sino[frameNr * recon_info_record.sinogram_adjusted_xdim +
-                            pxNr] = temp_val;
+    }
+    // Back padding — replicate last pixel value
+    for (int p = 0; p < back_pad_size; p++) {
+      out_row[front_pad_size + sino_xdim + p] = val_last;
     }
   }
 }
 
 void Pad(SINO_READ_OPTS *readStruct,
-         GLOBAL_CONFIG_OPTS
+         const GLOBAL_CONFIG_OPTS *
              recon_info_record) { // Take the sino directly read (init_sinogram)
                                   // and pad it, return norm_sino.
-  int pad_size = recon_info_record.sinogram_adjusted_xdim -
-                 recon_info_record.sinogram_xdim,
+  int pad_size = recon_info_record->sinogram_adjusted_xdim -
+                 recon_info_record->sinogram_xdim,
       front_pad_size = pad_size / 2, back_pad_size = pad_size - front_pad_size;
   int colNr, frameNr;
-  for (frameNr = 0; frameNr < recon_info_record.sinogram_ydim; frameNr++) {
-    for (colNr = 0; colNr < recon_info_record.sinogram_adjusted_xdim; colNr++) {
+  for (frameNr = 0; frameNr < recon_info_record->sinogram_ydim; frameNr++) {
+    for (colNr = 0; colNr < recon_info_record->sinogram_adjusted_xdim;
+         colNr++) {
       if (colNr < front_pad_size)
         readStruct->norm_sino[colNr + frameNr * recon_info_record
-                                                    .sinogram_adjusted_xdim] =
-            readStruct->init_sinogram[frameNr * recon_info_record.det_xdim];
-      else if (colNr >= front_pad_size + recon_info_record.sinogram_xdim)
+                                                    ->sinogram_adjusted_xdim] =
+            readStruct->init_sinogram[frameNr * recon_info_record->det_xdim];
+      else if (colNr >= front_pad_size + recon_info_record->sinogram_xdim)
         readStruct->norm_sino[colNr + frameNr * recon_info_record
-                                                    .sinogram_adjusted_xdim] =
-            readStruct->init_sinogram[recon_info_record.sinogram_xdim - 1 +
-                                      frameNr * recon_info_record.det_xdim];
+                                                    ->sinogram_adjusted_xdim] =
+            readStruct->init_sinogram[recon_info_record->sinogram_xdim - 1 +
+                                      frameNr * recon_info_record->det_xdim];
       else
         readStruct->norm_sino[colNr + frameNr * recon_info_record
-                                                    .sinogram_adjusted_xdim] =
+                                                    ->sinogram_adjusted_xdim] =
             readStruct
-                ->init_sinogram[colNr + frameNr * recon_info_record.det_xdim -
+                ->init_sinogram[colNr + frameNr * recon_info_record->det_xdim -
                                 front_pad_size];
     }
   }
@@ -398,6 +422,59 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record) {
   recon_info_record->sinogram_ydim =
       recon_info_record->theta_list_size; // Equal to number of files
   recon_info_record->sinogram_xdim = recon_info_record->det_xdim;
+
+  // Print configuration summary
+  printf("\n");
+  printf("========================================================\n");
+  printf("          MIDAS TOMO - Configuration Summary\n");
+  printf("========================================================\n");
+  printf("  Data Input:\n");
+  if (recon_info_record->use_hdf5) {
+    printf("    HDF5 File       : %s\n", recon_info_record->HDF5FileName);
+    printf("    Image Dataset   : %s\n", recon_info_record->ImageDatasetName);
+    printf("    Dark Dataset    : %s\n", recon_info_record->DarkDatasetName);
+    printf("    White Dataset   : %s\n", recon_info_record->WhiteDatasetName);
+  } else {
+    printf("    Data File       : %s\n", recon_info_record->DataFileName);
+    printf("    Input Type      : %s\n",
+           recon_info_record->are_sinos ? "Sinograms" : "Raw Projections");
+  }
+  printf("    Recon Output    : %s\n", recon_info_record->ReconFileName);
+  printf("  Detector:\n");
+  printf("    Dimensions      : %u x %u (X x Y)\n", recon_info_record->det_xdim,
+         recon_info_record->det_ydim);
+  printf("  Angles:\n");
+  printf("    Theta Count     : %d\n", recon_info_record->theta_list_size);
+  printf("    Range           : %.2f to %.2f\n",
+         recon_info_record->theta_list[0],
+         recon_info_record->theta_list[recon_info_record->theta_list_size - 1]);
+  printf("  Reconstruction:\n");
+  printf("    Filter          : %d\n", recon_info_record->filter);
+  printf("    Shift Range     : %.2f to %.2f (step %.2f, n=%d)\n",
+         recon_info_record->start_shift, recon_info_record->end_shift,
+         recon_info_record->shift_interval, recon_info_record->n_shifts);
+  printf("    Slices          : %d\n", recon_info_record->n_slices);
+  printf("    Auto Centering  : %s\n",
+         recon_info_record->auto_centering ? "Yes" : "No");
+  printf("    Log Projection  : %s\n",
+         recon_info_record->doLogProj ? "Yes" : "No");
+  printf("    Extra Padding   : %d\n", recon_info_record->powerIncrement);
+  printf("    Save Separate   : %s\n",
+         recon_info_record->saveReconSeparate ? "Yes" : "No");
+  printf("  Corrections:\n");
+  printf("    Ring Removal    : %s",
+         recon_info_record->use_ring_removal ? "Yes" : "No");
+  if (recon_info_record->use_ring_removal)
+    printf(" (coeff = %.4f)", recon_info_record->ring_removal_coeff);
+  printf("\n");
+  printf("    Stripe Removal  : %s",
+         recon_info_record->doStripeRemoval ? "Yes" : "No");
+  if (recon_info_record->doStripeRemoval)
+    printf(" (snr=%.1f, la=%d, sm=%d)", recon_info_record->stripeSnr,
+           recon_info_record->stripeLaSize, recon_info_record->stripeSmSize);
+  printf("\n");
+  printf("========================================================\n\n");
+
   return 0;
 }
 
@@ -438,7 +515,11 @@ void setReadStructSize(GLOBAL_CONFIG_OPTS *recon_info_record) {
 }
 
 void memsets(LOCAL_CONFIG_OPTS *information,
-             GLOBAL_CONFIG_OPTS recon_info_record) {
+             const GLOBAL_CONFIG_OPTS *recon_info_record) {
+  // Only zero buffers where partial writes leave uninitialized regions.
+  // sino_calc_buffer and recon_calc_buffer are fully overwritten by memcpy,
+  // so they don't need zeroing. Boundary-padding buffers have padding
+  // regions that are not always written to.
   memset(information->shifted_recon, 0,
          sizeof(float) * information->reconstruction_size);
   memset(information->shifted_sinogram, 0,
@@ -449,26 +530,15 @@ void memsets(LOCAL_CONFIG_OPTS *information,
   memset(information->reconstructions_boundary_padding, 0,
          sizeof(float) * information->reconstruction_size * 4 *
              2); // Hold two recons
-  memset(information->recon_calc_buffer, 0,
-         sizeof(float) * information->reconstruction_size * 2);
-  memset(information->sino_calc_buffer, 0,
-         sizeof(float) * information->sinogram_adjusted_xdim *
-             recon_info_record.theta_list_size);
-  memset(information->mean_vect, 0,
-         sizeof(float) * recon_info_record.sinogram_ydim);
-  memset(information->mean_sino_line_data, 0,
-         sizeof(float) * information->sinogram_adjusted_xdim);
-  memset(information->low_pass_sino_lines_data, 0,
-         sizeof(float) * information->sinogram_adjusted_xdim);
 }
 
 void setSinoSize(LOCAL_CONFIG_OPTS *information,
-                 GLOBAL_CONFIG_OPTS recon_info_record) {
+                 const GLOBAL_CONFIG_OPTS *recon_info_record) {
   information->sinogram_adjusted_xdim =
-      recon_info_record.sinogram_adjusted_xdim;
+      recon_info_record->sinogram_adjusted_xdim;
   information->sinogram_adjusted_size =
-      recon_info_record.sinogram_adjusted_size;
-  information->reconstruction_size = recon_info_record.reconstruction_size;
+      recon_info_record->sinogram_adjusted_size;
+  information->reconstruction_size = recon_info_record->reconstruction_size;
   //~ printf("shifted_recon: %ld\n",(long)(sizeof
   //(float)*information->reconstruction_size)); ~ printf("shifted_sinogram
   //%ld\n",(long)(sizeof (float)*information->sinogram_adjusted_size)); ~
@@ -492,43 +562,43 @@ void setSinoSize(LOCAL_CONFIG_OPTS *information,
       (float *)malloc(sizeof(float) * information->reconstruction_size * 2);
   information->sino_calc_buffer =
       (float *)malloc(sizeof(float) * information->sinogram_adjusted_xdim *
-                      recon_info_record.theta_list_size);
+                      recon_info_record->theta_list_size);
   //~ printf("mean_vect %ld\n",(long)(sizeof
-  //(float)*recon_info_record.sinogram_ydim)); ~ printf("mean_sino_line_data
+  //(float)*recon_info_record->sinogram_ydim)); ~ printf("mean_sino_line_data
   //%ld\n",(long)(sizeof (float)*information->sinogram_adjusted_xdim)); ~
   // printf("low_pass_sino_lines_data %ld\n",(long)(sizeof(float)
   //*information->sinogram_adjusted_xdim));
   information->mean_vect =
-      (float *)malloc(sizeof(float) * recon_info_record.sinogram_ydim);
+      (float *)malloc(sizeof(float) * recon_info_record->sinogram_ydim);
   information->mean_sino_line_data =
       (float *)malloc(sizeof(float) * information->sinogram_adjusted_xdim);
   information->low_pass_sino_lines_data =
       (float *)malloc(sizeof(float) * information->sinogram_adjusted_xdim);
 }
 
-int readSino(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
+int readSino(int sliceNr, const GLOBAL_CONFIG_OPTS *recon_info_record,
              SINO_READ_OPTS *readStruct) {
   FILE *dataFile;
 #pragma omp critical
   {
-    dataFile = fopen(recon_info_record.DataFileName, "rb");
+    dataFile = fopen(recon_info_record->DataFileName, "rb");
   }
   if (dataFile == NULL) {
     printf("SliceNr: %d, Could not read datafile: %s.\n", sliceNr,
-           recon_info_record.DataFileName);
+           recon_info_record->DataFileName);
     return 1;
   }
-  size_t offset = sizeof(float) * sliceNr * recon_info_record.det_xdim *
-                  recon_info_record.theta_list_size;
-  size_t SizeSino = sizeof(float) * recon_info_record.det_xdim *
-                    recon_info_record.theta_list_size;
+  size_t offset = sizeof(float) * sliceNr * recon_info_record->det_xdim *
+                  recon_info_record->theta_list_size;
+  size_t SizeSino = sizeof(float) * recon_info_record->det_xdim *
+                    recon_info_record->theta_list_size;
   readStruct->sizeMatrices += SizeSino;
   readStruct->sizeMatrices +=
-      (sizeof(float) * recon_info_record.sinogram_adjusted_xdim *
-       recon_info_record.theta_list_size);
+      (sizeof(float) * recon_info_record->sinogram_adjusted_xdim *
+       recon_info_record->theta_list_size);
   //~ printf("init_sinogram %ld\n",(long)SizeSino);
   //~ printf("norm_sino
-  //%ld\n",(long)(sizeof(float)*recon_info_record.sinogram_adjusted_xdim*recon_info_record.theta_list_size));
+  //%ld\n",(long)(sizeof(float)*recon_info_record->sinogram_adjusted_xdim*recon_info_record->theta_list_size));
   readStruct->init_sinogram = (float *)malloc(SizeSino);
 #pragma omp critical
   {
@@ -539,22 +609,22 @@ int readSino(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
   {
     fclose(dataFile);
   }
-  if (recon_info_record.debug == 1) {
+  if (recon_info_record->debug == 1) {
     char outfn[4096];
-    sprintf(outfn, "init_sinogram_%s", recon_info_record.DataFileName);
+    sprintf(outfn, "init_sinogram_%s", recon_info_record->DataFileName);
     printf("%s", outfn);
     FILE *out = fopen(outfn, "wb");
     fwrite(readStruct->init_sinogram, SizeSino, 1, out);
     fclose(out);
   }
   Pad(readStruct, recon_info_record);
-  if (recon_info_record.debug == 1) {
+  if (recon_info_record->debug == 1) {
     char outfn[4096];
-    sprintf(outfn, "norm_sino_%s", recon_info_record.DataFileName);
+    sprintf(outfn, "norm_sino_%s", recon_info_record->DataFileName);
     FILE *out = fopen(outfn, "wb");
     fwrite(readStruct->norm_sino,
-           sizeof(float) * recon_info_record.sinogram_adjusted_xdim *
-               recon_info_record.theta_list_size,
+           sizeof(float) * recon_info_record->sinogram_adjusted_xdim *
+               recon_info_record->theta_list_size,
            1, out);
     fclose(out);
   }
@@ -562,17 +632,17 @@ int readSino(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
   return 0;
 }
 
-int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
+int readRawHDF5(int sliceNr, const GLOBAL_CONFIG_OPTS *recon_info_record,
                 SINO_READ_OPTS *readStruct) {
   hid_t file_id;
 #pragma omp critical
   {
     file_id =
-        H5Fopen(recon_info_record.HDF5FileName, H5F_ACC_RDONLY, H5P_DEFAULT);
+        H5Fopen(recon_info_record->HDF5FileName, H5F_ACC_RDONLY, H5P_DEFAULT);
   }
   if (file_id < 0) {
     printf("SliceNr: %d, Could not open HDF5 file: %s.\n", sliceNr,
-           recon_info_record.HDF5FileName);
+           recon_info_record->HDF5FileName);
     return 1;
   }
 
@@ -580,14 +650,14 @@ int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
   hsize_t dims[3];
 
   // 1. Read Dark
-  SizeDark = sizeof(float) * recon_info_record.det_xdim;
+  SizeDark = sizeof(float) * recon_info_record->det_xdim;
   readStruct->sizeMatrices += SizeDark;
   readStruct->dark_field_sino_ave = (float *)malloc(SizeDark);
 
 #pragma omp critical
   {
     hid_t dataset_id =
-        H5Dopen2(file_id, recon_info_record.DarkDatasetName, H5P_DEFAULT);
+        H5Dopen2(file_id, recon_info_record->DarkDatasetName, H5P_DEFAULT);
     if (dataset_id >= 0) {
       // Type Check
       hid_t dtype = H5Dget_type(dataset_id);
@@ -595,7 +665,7 @@ int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
       if (t_class != H5T_INTEGER && t_class != H5T_FLOAT) {
         printf("Warning: Dark Dataset %s is not Integer or Float. HDF5 "
                "conversion may fail.\n",
-               recon_info_record.DarkDatasetName);
+               recon_info_record->DarkDatasetName);
       }
       H5Tclose(dtype);
 
@@ -604,17 +674,17 @@ int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
       H5Sget_simple_extent_dims(dataspace_id, dims, NULL);
 
       hsize_t offset[2] = {sliceNr, 0};
-      hsize_t count[2] = {1, recon_info_record.det_xdim};
+      hsize_t count[2] = {1, recon_info_record->det_xdim};
 
       if (ndims == 3) {
         if (dims[0] > 1) {
           // Multi-frame dark: Average them
           int nFrames = dims[0];
           float *temp_dark =
-              (float *)malloc(sizeof(float) * recon_info_record.det_xdim);
+              (float *)malloc(sizeof(float) * recon_info_record->det_xdim);
           memset(readStruct->dark_field_sino_ave, 0, SizeDark);
 
-          hsize_t count3[3] = {1, 1, recon_info_record.det_xdim};
+          hsize_t count3[3] = {1, 1, recon_info_record->det_xdim};
           hid_t memspace_id = H5Screate_simple(1, &count3[2], NULL);
 
           for (int i = 0; i < nFrames; i++) {
@@ -624,11 +694,11 @@ int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
             H5Dread(dataset_id, H5T_NATIVE_FLOAT, memspace_id, dataspace_id,
                     H5P_DEFAULT, temp_dark);
 
-            for (int j = 0; j < recon_info_record.det_xdim; j++) {
+            for (int j = 0; j < recon_info_record->det_xdim; j++) {
               readStruct->dark_field_sino_ave[j] += temp_dark[j];
             }
           }
-          for (int j = 0; j < recon_info_record.det_xdim; j++) {
+          for (int j = 0; j < recon_info_record->det_xdim; j++) {
             readStruct->dark_field_sino_ave[j] /= (float)nFrames;
           }
           free(temp_dark);
@@ -636,7 +706,7 @@ int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
         } else {
           // Single frame 3D [1, Y, X]
           hsize_t offset3[3] = {0, sliceNr, 0};
-          hsize_t count3[3] = {1, 1, recon_info_record.det_xdim};
+          hsize_t count3[3] = {1, 1, recon_info_record->det_xdim};
           H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, offset3, NULL,
                               count3, NULL);
           hid_t memspace_id = H5Screate_simple(1, &count3[2], NULL);
@@ -657,27 +727,27 @@ int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
       H5Dclose(dataset_id);
     } else {
       printf("Could not open Dark dataset: %s\n",
-             recon_info_record.DarkDatasetName);
+             recon_info_record->DarkDatasetName);
     }
   }
 
-  if (recon_info_record.debug == 1) {
+  if (recon_info_record->debug == 1) {
     char outfn[4096];
-    sprintf(outfn, "dark_field_%s", recon_info_record.DataFileName);
+    sprintf(outfn, "dark_field_%s", recon_info_record->DataFileName);
     FILE *out = fopen(outfn, "wb");
     fwrite(readStruct->dark_field_sino_ave, SizeDark, 1, out);
     fclose(out);
   }
 
   // 2. Read Whites
-  SizeWhite = sizeof(float) * recon_info_record.det_xdim * 2;
+  SizeWhite = sizeof(float) * recon_info_record->det_xdim * 2;
   readStruct->sizeMatrices += SizeWhite;
   readStruct->white_field_sino = (float *)malloc(SizeWhite);
 
 #pragma omp critical
   {
     hid_t dataset_id =
-        H5Dopen2(file_id, recon_info_record.WhiteDatasetName, H5P_DEFAULT);
+        H5Dopen2(file_id, recon_info_record->WhiteDatasetName, H5P_DEFAULT);
     if (dataset_id >= 0) {
       // Type Check
       hid_t dtype = H5Dget_type(dataset_id);
@@ -685,7 +755,7 @@ int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
       if (t_class != H5T_INTEGER && t_class != H5T_FLOAT) {
         printf("Warning: White Dataset %s is not Integer or Float. HDF5 "
                "conversion may fail.\n",
-               recon_info_record.WhiteDatasetName);
+               recon_info_record->WhiteDatasetName);
       }
       H5Tclose(dtype);
 
@@ -699,12 +769,12 @@ int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
           // Split Average: First half -> White 1, Second half -> White 2
           int mid = nFrames / 2;
           float *temp_white =
-              (float *)malloc(sizeof(float) * recon_info_record.det_xdim);
+              (float *)malloc(sizeof(float) * recon_info_record->det_xdim);
 
           // White 1
           memset(readStruct->white_field_sino, 0,
-                 sizeof(float) * recon_info_record.det_xdim);
-          hsize_t count3[3] = {1, 1, recon_info_record.det_xdim};
+                 sizeof(float) * recon_info_record->det_xdim);
+          hsize_t count3[3] = {1, 1, recon_info_record->det_xdim};
           hid_t memspace_id = H5Screate_simple(1, &count3[2], NULL);
 
           for (int i = 0; i < mid; i++) {
@@ -713,18 +783,18 @@ int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
                                 count3, NULL);
             H5Dread(dataset_id, H5T_NATIVE_FLOAT, memspace_id, dataspace_id,
                     H5P_DEFAULT, temp_white);
-            for (int j = 0; j < recon_info_record.det_xdim; j++) {
+            for (int j = 0; j < recon_info_record->det_xdim; j++) {
               readStruct->white_field_sino[j] += temp_white[j];
             }
           }
-          for (int j = 0; j < recon_info_record.det_xdim; j++) {
+          for (int j = 0; j < recon_info_record->det_xdim; j++) {
             readStruct->white_field_sino[j] /= (float)mid;
           }
 
           // White 2
           float *white2_ptr =
-              (readStruct->white_field_sino) + recon_info_record.det_xdim;
-          memset(white2_ptr, 0, sizeof(float) * recon_info_record.det_xdim);
+              (readStruct->white_field_sino) + recon_info_record->det_xdim;
+          memset(white2_ptr, 0, sizeof(float) * recon_info_record->det_xdim);
 
           for (int i = mid; i < nFrames; i++) {
             hsize_t offset3[3] = {i, sliceNr, 0};
@@ -732,12 +802,12 @@ int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
                                 count3, NULL);
             H5Dread(dataset_id, H5T_NATIVE_FLOAT, memspace_id, dataspace_id,
                     H5P_DEFAULT, temp_white);
-            for (int j = 0; j < recon_info_record.det_xdim; j++) {
+            for (int j = 0; j < recon_info_record->det_xdim; j++) {
               white2_ptr[j] += temp_white[j];
             }
           }
           int count2 = nFrames - mid;
-          for (int j = 0; j < recon_info_record.det_xdim; j++) {
+          for (int j = 0; j < recon_info_record->det_xdim; j++) {
             white2_ptr[j] /= (float)count2;
           }
 
@@ -747,7 +817,7 @@ int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
           // 1 or 2 frames
           // Read Frame 0
           hsize_t offset3[3] = {0, sliceNr, 0};
-          hsize_t count3[3] = {1, 1, recon_info_record.det_xdim};
+          hsize_t count3[3] = {1, 1, recon_info_record->det_xdim};
           H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, offset3, NULL,
                               count3, NULL);
           hid_t memspace_id = H5Screate_simple(1, &count3[2], NULL);
@@ -762,11 +832,11 @@ int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
             H5Dread(dataset_id, H5T_NATIVE_FLOAT, memspace_id, dataspace_id,
                     H5P_DEFAULT,
                     (readStruct->white_field_sino) +
-                        recon_info_record.det_xdim);
+                        recon_info_record->det_xdim);
           } else {
-            memcpy((readStruct->white_field_sino) + recon_info_record.det_xdim,
+            memcpy((readStruct->white_field_sino) + recon_info_record->det_xdim,
                    readStruct->white_field_sino,
-                   sizeof(float) * recon_info_record.det_xdim);
+                   sizeof(float) * recon_info_record->det_xdim);
           }
           H5Sclose(memspace_id);
         }
@@ -774,44 +844,44 @@ int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
       } else {
         // 2D [Y, X]
         hsize_t offset[2] = {sliceNr, 0};
-        hsize_t count[2] = {1, recon_info_record.det_xdim};
+        hsize_t count[2] = {1, recon_info_record->det_xdim};
         H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, offset, NULL, count,
                             NULL);
         hid_t memspace_id = H5Screate_simple(1, &count[1], NULL);
         H5Dread(dataset_id, H5T_NATIVE_FLOAT, memspace_id, dataspace_id,
                 H5P_DEFAULT, readStruct->white_field_sino);
         // Duplicate
-        memcpy((readStruct->white_field_sino) + recon_info_record.det_xdim,
+        memcpy((readStruct->white_field_sino) + recon_info_record->det_xdim,
                readStruct->white_field_sino,
-               sizeof(float) * recon_info_record.det_xdim);
+               sizeof(float) * recon_info_record->det_xdim);
         H5Sclose(memspace_id);
       }
       H5Sclose(dataspace_id);
       H5Dclose(dataset_id);
     } else {
       printf("Could not open White dataset: %s\n",
-             recon_info_record.WhiteDatasetName);
+             recon_info_record->WhiteDatasetName);
     }
   }
 
-  if (recon_info_record.debug == 1) {
+  if (recon_info_record->debug == 1) {
     char outfn[4096];
-    sprintf(outfn, "whites_%s", recon_info_record.DataFileName);
+    sprintf(outfn, "whites_%s", recon_info_record->DataFileName);
     FILE *out = fopen(outfn, "wb");
     fwrite(readStruct->white_field_sino, SizeWhite, 1, out);
     fclose(out);
   }
 
   // 3. Read Images (Sinogram)
-  SizeSino = sizeof(unsigned short int) * recon_info_record.det_xdim *
-             recon_info_record.theta_list_size;
+  SizeSino = sizeof(unsigned short int) * recon_info_record->det_xdim *
+             recon_info_record->theta_list_size;
   readStruct->sizeMatrices += SizeSino;
   readStruct->short_sinogram = (unsigned short int *)malloc(SizeSino);
 
 #pragma omp critical
   {
     hid_t dataset_id =
-        H5Dopen2(file_id, recon_info_record.ImageDatasetName, H5P_DEFAULT);
+        H5Dopen2(file_id, recon_info_record->ImageDatasetName, H5P_DEFAULT);
     if (dataset_id >= 0) {
       // Type Check
       hid_t dtype = H5Dget_type(dataset_id);
@@ -819,7 +889,7 @@ int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
       if (t_class != H5T_INTEGER && t_class != H5T_FLOAT) {
         printf("Warning: Image Dataset %s is not Integer or Float. HDF5 "
                "conversion may fail.\n",
-               recon_info_record.ImageDatasetName);
+               recon_info_record->ImageDatasetName);
       }
       H5Tclose(dtype);
 
@@ -828,12 +898,12 @@ int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
       // Expected [nAngles, nY, nX]
       // We want [:, sliceNr, :]
       hsize_t offset3[3] = {0, sliceNr, 0};
-      hsize_t count3[3] = {recon_info_record.theta_list_size, 1,
-                           recon_info_record.det_xdim};
+      hsize_t count3[3] = {recon_info_record->theta_list_size, 1,
+                           recon_info_record->det_xdim};
 
       // Verify dimensions
       H5Sget_simple_extent_dims(dataspace_id, dims, NULL);
-      if (dims[0] < recon_info_record.theta_list_size) {
+      if (dims[0] < recon_info_record->theta_list_size) {
         // Adjust count if file has fewer angles (shouldn't happen if setup is
         // correct)
         count3[0] = dims[0];
@@ -860,30 +930,30 @@ int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
       H5Dclose(dataset_id);
     } else {
       printf("Could not open Image dataset: %s\n",
-             recon_info_record.ImageDatasetName);
+             recon_info_record->ImageDatasetName);
     }
 
     H5Fclose(file_id);
   }
 
-  if (recon_info_record.debug == 1) {
+  if (recon_info_record->debug == 1) {
     char outfn[4096];
-    sprintf(outfn, "short_sinogram_%s", recon_info_record.DataFileName);
+    sprintf(outfn, "short_sinogram_%s", recon_info_record->DataFileName);
     FILE *out = fopen(outfn, "wb");
     fwrite(readStruct->short_sinogram, SizeSino, 1, out);
     fclose(out);
   }
 
-  SizeNormSino = sizeof(float) * recon_info_record.sinogram_adjusted_xdim *
-                 recon_info_record.theta_list_size;
+  SizeNormSino = sizeof(float) * recon_info_record->sinogram_adjusted_xdim *
+                 recon_info_record->theta_list_size;
   readStruct->sizeMatrices += SizeNormSino;
   Normalize(readStruct, recon_info_record);
 
 #pragma omp critical
   {
-    if (recon_info_record.debug > 0) {
+    if (recon_info_record->debug > 0) {
       char outfn[4096];
-      sprintf(outfn, "norm_sino_%s", recon_info_record.DataFileName);
+      sprintf(outfn, "norm_sino_%s", recon_info_record->DataFileName);
       FILE *out = fopen(outfn, "ab");
       fwrite(readStruct->norm_sino, SizeNormSino, 1, out);
       fclose(out);
@@ -897,155 +967,137 @@ int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
   return 0;
 }
 
-int readRaw(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
-            SINO_READ_OPTS *readStruct) {
-  if (recon_info_record.use_hdf5) {
+int readRaw(int sliceNr, const GLOBAL_CONFIG_OPTS *recon_info_record,
+            SINO_READ_OPTS *readStruct, int fd) {
+  if (recon_info_record->use_hdf5) {
     return readRawHDF5(sliceNr, recon_info_record, readStruct);
   }
 
-  FILE *dataFile;
-#pragma omp critical
-  {
-    dataFile = fopen(recon_info_record.DataFileName, "rb");
-  }
-  if (dataFile == NULL) {
-    printf("SliceNr: %d, Could not read datafile: %s.\n", sliceNr,
-           recon_info_record.DataFileName);
-    return 1;
-  }
   size_t offset, SizeDark, SizeWhite, SizeSino, SizeNormSino;
   // Dark
-  SizeDark = sizeof(float) * recon_info_record.det_xdim;
+  SizeDark = sizeof(float) * recon_info_record->det_xdim;
   readStruct->sizeMatrices += SizeDark;
   //~ printf("dark_field_sino_ave %ld\n",(long)SizeDark);
   readStruct->dark_field_sino_ave = (float *)malloc(SizeDark);
-  offset = sizeof(float) * sliceNr * recon_info_record.det_xdim;
-#pragma omp critical
-  {
-    fseek(dataFile, offset, SEEK_SET);
-    fread(readStruct->dark_field_sino_ave, SizeDark, 1, dataFile);
-  }
-  if (recon_info_record.debug == 1) {
+  offset = sizeof(float) * sliceNr * recon_info_record->det_xdim;
+
+  pread(fd, readStruct->dark_field_sino_ave, SizeDark, offset);
+
+  if (recon_info_record->debug == 1) {
     char outfn[4096];
-    sprintf(outfn, "dark_field_%s", recon_info_record.DataFileName);
+    sprintf(outfn, "dark_field_%s", recon_info_record->DataFileName);
     FILE *out = fopen(outfn, "wb");
     fwrite(readStruct->dark_field_sino_ave, SizeDark, 1, out);
     fclose(out);
   }
   // 2 Whites
-  SizeWhite = sizeof(float) * recon_info_record.det_xdim * 2;
+  SizeWhite = sizeof(float) * recon_info_record->det_xdim * 2;
   readStruct->sizeMatrices += SizeWhite;
   //~ printf("white_field_sino %ld\n",(long)SizeWhite);
   readStruct->white_field_sino = (float *)malloc(SizeWhite);
   offset =
-      sizeof(float) * recon_info_record.det_xdim *
-          recon_info_record.det_ydim                          // dark
-      + sizeof(float) * recon_info_record.det_xdim * sliceNr; // Partial white
-#pragma omp critical
-  {
-    fseek(dataFile, offset, SEEK_SET);
-    fread(readStruct->white_field_sino, SizeWhite / 2, 1, dataFile); // One Row
-  }
+      sizeof(float) * recon_info_record->det_xdim *
+          recon_info_record->det_ydim                          // dark
+      + sizeof(float) * recon_info_record->det_xdim * sliceNr; // Partial white
+
+  pread(fd, readStruct->white_field_sino, SizeWhite / 2, offset); // One Row
+
   offset =
-      sizeof(float) * recon_info_record.det_xdim *
-          recon_info_record.det_ydim // dark
-      + sizeof(float) * recon_info_record.det_xdim *
-            recon_info_record.det_ydim                        // One full white
-      + sizeof(float) * recon_info_record.det_xdim * sliceNr; // Partial white
-#pragma omp critical
-  {
-    fseek(dataFile, offset, SEEK_SET);
-    fread((readStruct->white_field_sino) + recon_info_record.det_xdim,
-          SizeWhite / 2, 1, dataFile); // Second Row
-  }
-  if (recon_info_record.debug == 1) {
+      sizeof(float) * recon_info_record->det_xdim *
+          recon_info_record->det_ydim // dark
+      + sizeof(float) * recon_info_record->det_xdim *
+            recon_info_record->det_ydim                        // One full white
+      + sizeof(float) * recon_info_record->det_xdim * sliceNr; // Partial white
+
+  pread(fd, (readStruct->white_field_sino) + recon_info_record->det_xdim,
+        SizeWhite / 2, offset); // Second Row
+
+  if (recon_info_record->debug == 1) {
     char outfn[4096];
-    sprintf(outfn, "whites_%s", recon_info_record.DataFileName);
+    sprintf(outfn, "whites_%s", recon_info_record->DataFileName);
     FILE *out = fopen(outfn, "wb");
     fwrite(readStruct->white_field_sino, SizeWhite, 1, out);
     fclose(out);
   }
   // Sino start
-  SizeSino = sizeof(unsigned short int) * recon_info_record.det_xdim *
-             recon_info_record.theta_list_size;
+  SizeSino = sizeof(unsigned short int) * recon_info_record->det_xdim *
+             recon_info_record->theta_list_size;
   readStruct->sizeMatrices += SizeSino;
   //~ printf("short_sinogram %ld\n",(long)SizeSino);
   readStruct->short_sinogram = (unsigned short int *)malloc(SizeSino);
-  offset = sizeof(float) * recon_info_record.det_xdim *
-               recon_info_record.det_ydim // dark
-           + sizeof(float) * recon_info_record.det_xdim *
-                 recon_info_record.det_ydim // One full white
-           + sizeof(float) * recon_info_record.det_xdim *
-                 recon_info_record.det_ydim; // Second full white
-#pragma omp critical
-  {
-    fseek(dataFile, offset, SEEK_SET);
-    // We are now at the beginning of the image data.
-    offset = sizeof(unsigned short int) * recon_info_record.det_xdim * sliceNr;
-    fseek(dataFile, offset, SEEK_CUR);
-    fread(readStruct->short_sinogram,
-          sizeof(unsigned short int) * recon_info_record.det_xdim, 1,
-          dataFile); // One row
-  }
+  offset = sizeof(float) * recon_info_record->det_xdim *
+               recon_info_record->det_ydim // dark
+           + sizeof(float) * recon_info_record->det_xdim *
+                 recon_info_record->det_ydim // One full white
+           + sizeof(float) * recon_info_record->det_xdim *
+                 recon_info_record->det_ydim; // Second full white
+
+  // Read first row
+  size_t start_offset = offset;
+  off_t current_offset = start_offset + sizeof(unsigned short int) *
+                                            recon_info_record->det_xdim *
+                                            sliceNr; // First row
+
+  pread(fd, readStruct->short_sinogram,
+        sizeof(unsigned short int) * recon_info_record->det_xdim,
+        current_offset);
+
   int frameNr;
-  for (frameNr = 1; frameNr < recon_info_record.sinogram_ydim; frameNr++) {
+  for (frameNr = 1; frameNr < recon_info_record->sinogram_ydim; frameNr++) {
     // printf("FrameNr: %d\n",frameNr);fflush(stdout);
-    offset = sizeof(unsigned short int) * recon_info_record.det_xdim *
-             (recon_info_record.det_ydim - 1);
-#pragma omp critical
-    {
-      fseek(dataFile, offset, SEEK_CUR);
-      fread((readStruct->short_sinogram) + recon_info_record.det_xdim * frameNr,
-            sizeof(unsigned short int) * recon_info_record.det_xdim, 1,
-            dataFile); // One row each at the next subsequent place
-    }
+    current_offset += sizeof(unsigned short int) * recon_info_record->det_xdim *
+                      (recon_info_record->det_ydim); // Skip to next angle
+    pread(fd,
+          (readStruct->short_sinogram) + recon_info_record->det_xdim * frameNr,
+          sizeof(unsigned short int) * recon_info_record->det_xdim,
+          current_offset); // One row each at the next subsequent place
   }
-#pragma omp critical
-  {
-    fclose(dataFile);
-  }
-  if (recon_info_record.debug == 1) {
+
+  if (recon_info_record->debug == 1) {
     char outfn[4096];
-    sprintf(outfn, "short_sinogram_%s", recon_info_record.DataFileName);
+    sprintf(outfn, "short_sinogram_%s", recon_info_record->DataFileName);
     FILE *out = fopen(outfn, "wb");
     fwrite(readStruct->short_sinogram, SizeSino, 1, out);
     fclose(out);
   }
-  SizeNormSino = sizeof(float) * recon_info_record.sinogram_adjusted_xdim *
-                 recon_info_record.theta_list_size;
+  SizeNormSino = sizeof(float) * recon_info_record->sinogram_adjusted_xdim *
+                 recon_info_record->theta_list_size;
   readStruct->sizeMatrices += SizeNormSino;
   //~ printf("norm_sino %ld\n",(long)SizeNormSino);
   Normalize(readStruct, recon_info_record);
+
 #pragma omp critical
   {
-    if (recon_info_record.debug > 0) {
+    if (recon_info_record->debug > 0) {
       char outfn[4096];
-      sprintf(outfn, "norm_sino_%s", recon_info_record.DataFileName);
+      sprintf(outfn, "norm_sino_%s", recon_info_record->DataFileName);
       FILE *out = fopen(outfn, "ab");
       fwrite(readStruct->norm_sino, SizeNormSino, 1, out);
       fclose(out);
     }
   }
+
   free(readStruct->short_sinogram);
   free(readStruct->white_field_sino);
   free(readStruct->dark_field_sino_ave);
+
   return 0;
 }
 
 void reconCentering(LOCAL_CONFIG_OPTS *information,
-                    GLOBAL_CONFIG_OPTS recon_info_record, size_t offt,
+                    const GLOBAL_CONFIG_OPTS *recon_info_record, size_t offt,
                     int doLog) {
   int j, k;
   if (doLog == 1)
     LogProj(information->sino_calc_buffer, information->sinogram_adjusted_xdim,
-            recon_info_record.sinogram_ydim);
-  if (recon_info_record.debug == 1) {
+            recon_info_record->sinogram_ydim);
+  if (recon_info_record->debug == 1) {
     char outfn[4096];
-    sprintf(outfn, "logproj_sino_%s", recon_info_record.DataFileName);
+    sprintf(outfn, "logproj_sino_%s", recon_info_record->DataFileName);
     FILE *out = fopen(outfn, "wb");
     fwrite(information->sino_calc_buffer,
            sizeof(float) * information->sinogram_adjusted_xdim *
-               recon_info_record.sinogram_ydim,
+               recon_info_record->sinogram_ydim,
            1, out);
     fclose(out);
   }
@@ -1053,60 +1105,57 @@ void reconCentering(LOCAL_CONFIG_OPTS *information,
   // do it properly now.*******************
   // *********************** Not needed to reset shifted_recon, so we don't do
   // it now.******************************* for( j = 0; j <
-  // recon_info_record.sinogram_ydim; j++ ){ for( k = 0; k <
+  // recon_info_record->sinogram_ydim; j++ ){ for( k = 0; k <
   // information->sinogram_adjusted_xdim; k++ ){ information->shifted_recon[j *
   // information->sinogram_adjusted_xdim+ k] = 0.0f;
   // }
   // }
-  for (j = 0; j < recon_info_record.sinogram_ydim; j++) {
-    for (k = 0; k < information->sinogram_adjusted_xdim; k++) {
-      float kk = k - information->shift;
-      int nkk = (int)floor(kk);
+  // Precompute shift decomposition: the fractional part is constant for all
+  // pixels
+  int xdim = information->sinogram_adjusted_xdim;
+  int shift_int = (int)floor(information->shift);
+  float frac = information->shift - (float)shift_int;
+  float w0 = 1.0f - frac; // weight for pixel at (k - shift_int)
+  float w1 = frac;        // weight for pixel at (k - shift_int - 1)
+  for (j = 0; j < recon_info_record->sinogram_ydim; j++) {
+    float *src = &information->sino_calc_buffer[j * xdim];
+    float *dst = &information->shifted_sinogram[j * xdim];
+    for (k = 0; k < xdim; k++) {
+      int nkk = k - shift_int;
       float fInterpPixel = 0.0f;
       float fInterpWeight = 0.0f;
-      if (nkk >= 0 && nkk < information->sinogram_adjusted_xdim) {
-        fInterpPixel +=
-            information
-                ->sino_calc_buffer[j * information->sinogram_adjusted_xdim +
-                                   nkk] *
-            (nkk + 1 - kk);
-        fInterpWeight = nkk + 1 - kk;
+      if (nkk >= 0 && nkk < xdim) {
+        fInterpPixel += src[nkk] * w0;
+        fInterpWeight += w0;
       }
-      if (nkk + 1 >= 0 && nkk + 1 < information->sinogram_adjusted_xdim) {
-        fInterpPixel +=
-            information
-                ->sino_calc_buffer[j * information->sinogram_adjusted_xdim +
-                                   nkk + 1] *
-            (kk - nkk);
-        fInterpWeight += kk - nkk;
+      if (nkk - 1 >= 0 && nkk - 1 < xdim) {
+        fInterpPixel += src[nkk - 1] * w1;
+        fInterpWeight += w1;
       }
-      if (fInterpWeight < 1e-5)
-        fInterpPixel = 0.0f;
+      if (fInterpWeight < 1e-5f)
+        dst[k] = 0.0f;
       else
-        fInterpPixel /= fInterpWeight;
-      information
-          ->shifted_sinogram[j * information->sinogram_adjusted_xdim + k] =
-          fInterpPixel;
+        dst[k] = fInterpPixel / fInterpWeight;
     }
   }
   memcpy(&information->sino_calc_buffer[0], information->shifted_sinogram,
          sizeof(float) * information->sinogram_adjusted_size);
-  if (recon_info_record.use_ring_removal) {
+  if (recon_info_record->use_ring_removal) {
     RingCorrectionSingle(&information->sino_calc_buffer[0],
-                         recon_info_record.ring_removal_coeff, information,
+                         recon_info_record->ring_removal_coeff, information,
                          recon_info_record);
   }
-  if (recon_info_record.debug == 1) {
+  if (recon_info_record->debug == 1) {
     char outfn[4096];
-    sprintf(outfn, "shifted_sino_%s", recon_info_record.DataFileName);
+    sprintf(outfn, "shifted_sino_%s", recon_info_record->DataFileName);
     FILE *out = fopen(outfn, "wb");
     fwrite(information->sino_calc_buffer,
            sizeof(float) * information->sinogram_adjusted_xdim *
-               recon_info_record.sinogram_ydim,
+               recon_info_record->sinogram_ydim,
            1, out);
     fclose(out);
   }
-  for (j = 0; j < recon_info_record.sinogram_ydim; j++) {
+  for (j = 0; j < recon_info_record->sinogram_ydim; j++) {
     memcpy(
         &information->sinograms_boundary_padding
              [offt + j * information->sinogram_adjusted_xdim * 2 +
@@ -1134,72 +1183,59 @@ void reconCentering(LOCAL_CONFIG_OPTS *information,
 }
 
 void getRecons(LOCAL_CONFIG_OPTS *information,
-               GLOBAL_CONFIG_OPTS recon_info_record, gridrecParams *param,
-               size_t offsetRecons) {
+               const GLOBAL_CONFIG_OPTS *recon_info_record,
+               gridrecParams *param, size_t offsetRecons) {
   int j, k;
-  for (j = 0; j < recon_info_record.reconstruction_ydim; j++) {
-    if (information->shift >= 0) {
-      memcpy(
-          &information
-               ->recon_calc_buffer[j * recon_info_record.reconstruction_xdim],
-          &information->reconstructions_boundary_padding
-               [offsetRecons +
-                (j + recon_info_record.reconstruction_xdim / 2) *
-                    recon_info_record.reconstruction_xdim * 2 +
-                recon_info_record.reconstruction_xdim / 2],
-          sizeof(float) * (recon_info_record.reconstruction_xdim));
-    } else {
-      memcpy(
-          &information
-               ->recon_calc_buffer[j * recon_info_record.reconstruction_xdim],
-          &information->reconstructions_boundary_padding
-               [offsetRecons +
-                (j + recon_info_record.reconstruction_xdim / 2) *
-                    recon_info_record.reconstruction_xdim * 2 +
-                recon_info_record.reconstruction_xdim / 2],
-          sizeof(float) * (recon_info_record.reconstruction_xdim));
-    }
+  for (j = 0; j < recon_info_record->reconstruction_ydim; j++) {
+    memcpy(&information
+                ->recon_calc_buffer[j * recon_info_record->reconstruction_xdim],
+           &information->reconstructions_boundary_padding
+                [offsetRecons +
+                 (j + recon_info_record->reconstruction_xdim / 2) *
+                     recon_info_record->reconstruction_xdim * 2 +
+                 recon_info_record->reconstruction_xdim / 2],
+           sizeof(float) * (recon_info_record->reconstruction_xdim));
   }
-  if (recon_info_record.debug == 1) {
+  if (recon_info_record->debug == 1) {
     char outfn[4096];
     sprintf(outfn, "recon_calc_buffer_before_shift_%s",
-            recon_info_record.DataFileName);
+            recon_info_record->DataFileName);
     FILE *out = fopen(outfn, "wb");
     fwrite(information->recon_calc_buffer,
-           sizeof(float) * recon_info_record.reconstruction_xdim *
-               recon_info_record.reconstruction_ydim,
+           sizeof(float) * recon_info_record->reconstruction_xdim *
+               recon_info_record->reconstruction_ydim,
            1, out);
     fclose(out);
   }
   // ***********************This was not the correct size of shifted_recon. We
   // do it properly now.******************* for( j = 0; j <
-  // recon_info_record.sinogram_ydim; j++ ){ for( k = 0; k <
-  // recon_info_record.reconstruction_xdim; k++ ){ information->shifted_recon[j
-  // * recon_info_record.reconstruction_xdim + k] = 0.0f;
+  // recon_info_record->sinogram_ydim; j++ ){ for( k = 0; k <
+  // recon_info_record->reconstruction_xdim; k++ ){ information->shifted_recon[j
+  // * recon_info_record->reconstruction_xdim + k] = 0.0f;
   // }
   // }
   float *recon_buffer;
-  if (recon_info_record.auto_centering) {
+  if (recon_info_record->auto_centering) {
     memset(information->shifted_recon, 0,
            sizeof(float) * information->reconstruction_size);
     recon_buffer = &information->recon_calc_buffer[0];
     if (information->shift >= 0) {
-      for (j = 0; j < recon_info_record.reconstruction_ydim; j++)
+      for (j = 0; j < recon_info_record->reconstruction_ydim; j++)
         memcpy(
             &information
-                 ->shifted_recon[j * recon_info_record.reconstruction_xdim],
-            (void *)&recon_buffer[(j * recon_info_record.reconstruction_xdim) +
+                 ->shifted_recon[j * recon_info_record->reconstruction_xdim],
+            (void *)&recon_buffer[(j * recon_info_record->reconstruction_xdim) +
                                   (int)round(information->shift)],
-            sizeof(float) * (recon_info_record.reconstruction_xdim -
+            sizeof(float) * (recon_info_record->reconstruction_xdim -
                              (int)round(information->shift)));
     } else {
-      for (j = 0; j < recon_info_record.reconstruction_ydim; j++)
+      for (j = 0; j < recon_info_record->reconstruction_ydim; j++)
         memcpy(
             &information
-                 ->shifted_recon[(j * recon_info_record.reconstruction_xdim) +
+                 ->shifted_recon[(j * recon_info_record->reconstruction_xdim) +
                                  abs((int)round(information->shift))],
-            (void *)&recon_buffer[j * recon_info_record.reconstruction_xdim],
-            sizeof(float) * (recon_info_record.reconstruction_xdim -
+            (void *)&recon_buffer[j * recon_info_record->reconstruction_xdim],
+            sizeof(float) * (recon_info_record->reconstruction_xdim -
                              abs((int)round(information->shift))));
     }
     memcpy((void *)recon_buffer, information->shifted_recon,
@@ -1208,65 +1244,45 @@ void getRecons(LOCAL_CONFIG_OPTS *information,
 }
 
 int writeRecon(int sliceNr, LOCAL_CONFIG_OPTS *information,
-               GLOBAL_CONFIG_OPTS recon_info_record, int shiftNr) {
+               const GLOBAL_CONFIG_OPTS *recon_info_record, int shiftNr,
+               int fd) {
   // The results are in information.recon_calc_buffer
   // Output file: float with reconstruction_xdim*reconstruction_xdim size
-  if (recon_info_record.saveReconSeparate == 1) {
-    // OutputFileName:
-    // {recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_reconstruction_xdim_float32.bin
-    char outFileName[4096];
-    if (information->shift > -0.0001) {
-      sprintf(outFileName, "%s_%05d_%03d_p%06.1f_%d_%d_float32.bin",
-              recon_info_record.ReconFileName, sliceNr, shiftNr,
-              information->shift, recon_info_record.reconstruction_xdim,
-              recon_info_record.reconstruction_xdim);
-    } else {
-      sprintf(outFileName, "%s_%05d_%03d_m%06.1f_%d_%d_float32.bin",
-              recon_info_record.ReconFileName, sliceNr, shiftNr,
-              -information->shift, recon_info_record.reconstruction_xdim,
-              recon_info_record.reconstruction_xdim);
-    }
-    FILE *outfile;
-#pragma omp critical
-    {
-      // printf("Saving output to : %s.\n",outFileName);
-      outfile = fopen(outFileName, "wb");
-    }
-    if (outfile == NULL) {
-      printf("We could not open the file for writing %s.\n", outFileName);
-      return 1;
-    }
-#pragma omp critical
-    {
-      fwrite(information->recon_calc_buffer,
-             sizeof(float) * information->reconstruction_size, 1, outfile);
-      fclose(outfile);
-    }
-  } else {
-    // OutputFileName:
-    // {recon_info_record.ReconFileName}_NrSlices_05d_NrShifts_03d_XDim_06d_YDim_06d_float32.bin
-    // How to save: For each shiftNr: sliceNr
+  if (recon_info_record->saveReconSeparate == 1) {
     char outFileName[4096];
     sprintf(outFileName,
-            "%s_NrShifts_%03d_NrSlices_%05d_XDim_%06d_YDim_%06d_float32.bin",
-            recon_info_record.ReconFileName, recon_info_record.n_shifts,
-            recon_info_record.n_slices, recon_info_record.reconstruction_xdim,
-            recon_info_record.reconstruction_xdim);
-#pragma omp critical
-    {
-      int result = open(outFileName, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
-      if (result <= 0) {
-        printf("Could not open output file.\n");
-      }
-      size_t OffsetHere = sizeof(float) * information->reconstruction_size;
-      OffsetHere *= shiftNr * (recon_info_record.n_slices) + sliceNr;
-      int rc =
-          pwrite(result, information->recon_calc_buffer,
-                 sizeof(float) * information->reconstruction_size, OffsetHere);
-      if (rc < 0)
-        printf("Could not write to output file.\n");
-      close(result);
+            "%s_slice_%05d_shift_%03d_XDim_%06d_YDim_%06d_float32.bin",
+            recon_info_record->ReconFileName, sliceNr, shiftNr,
+            recon_info_record->reconstruction_xdim,
+            recon_info_record->reconstruction_xdim);
+    //~ printf("Writing SliceNr: %d at %s\n",sliceNr,outFileName);
+    FILE *out = fopen(outFileName, "wb");
+    if (out == NULL) {
+      printf("Could not open output file.\n");
+      return 1;
     }
+    fwrite(information->recon_calc_buffer, sizeof(float),
+           information->reconstruction_size, out);
+    fclose(out);
+  } else {
+    // OutputFileName already opened in fd
+    // File:
+    // {recon_info_record->ReconFileName}_NrSlices_05d_NrShifts_03d_XDim_06d_YDim_06d_float32.bin
+    // How to save: For each shiftNr: sliceNr
+
+    // Calculate offset
+    size_t OffsetHere = sizeof(float) * information->reconstruction_size;
+    OffsetHere *= shiftNr * (recon_info_record->n_slices) + sliceNr;
+
+    // No critical section needed for pwrite with non-overlapping regions
+    int rc =
+        pwrite(fd, information->recon_calc_buffer,
+               sizeof(float) * information->reconstruction_size, OffsetHere);
+    if (rc < 0) {
+      printf("Could not write to output file.\n");
+      return 1;
+    }
+    // Do not close fd here
   }
   return 0;
 }
@@ -1282,7 +1298,7 @@ void createPlanFile(GLOBAL_CONFIG_OPTS *recon_info_record) {
                                      recon_info_record->theta_list_size;
   LOCAL_CONFIG_OPTS information;
   GLOBAL_CONFIG_OPTS cpy = *recon_info_record;
-  setSinoSize(&information, cpy);
+  setSinoSize(&information, &cpy);
   recon_info_record->sizeMatrices +=
       sizeof(float) * information.reconstruction_size;
   recon_info_record->sizeMatrices +=
@@ -1315,17 +1331,24 @@ void createPlanFile(GLOBAL_CONFIG_OPTS *recon_info_record) {
   param.sizeMatrices = 0;
   readStruct.sizeMatrices = 0;
   information.shift = recon_info_record->shift_values[0];
+  int input_fd = -1;
+  if (!recon_info_record->are_sinos && !recon_info_record->use_hdf5) {
+    input_fd = open(recon_info_record->DataFileName, O_RDONLY);
+  }
   if (recon_info_record->are_sinos) {
-    readSino(sliceNr, cpy, &readStruct);
+    readSino(sliceNr, &cpy, &readStruct);
   } else {
-    readRaw(sliceNr, cpy, &readStruct);
+    readRaw(sliceNr, &cpy, &readStruct, input_fd);
+  }
+  if (input_fd != -1) {
+    close(input_fd);
   }
   recon_info_record->sizeMatrices += readStruct.sizeMatrices;
   param.sizeMatrices = 0;
   memcpy(information.sino_calc_buffer, readStruct.norm_sino,
          sizeof(float) * information.sinogram_adjusted_xdim *
              recon_info_record->theta_list_size);
-  reconCentering(&information, cpy, 0, recon_info_record->doLogProj);
+  reconCentering(&information, &cpy, 0, recon_info_record->doLogProj);
   // Do the same slice twice
   setSinoAndReconBuffers(1, &information.sinograms_boundary_padding[0],
                          &information.reconstructions_boundary_padding[0],
