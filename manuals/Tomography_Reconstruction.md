@@ -199,8 +199,10 @@ When using HDF5 input (`HDF5FileName` specified), the module reads datasets dire
     - Darks and Whites are cast to `float32` (native HDF5 conversion).
     - Projections are cast to `uint16`.
 - **Dimensions**:
-    - Darks: Can be 2D `(Y, X)` or 3D `(1, Y, X)`.
-    - Whites: Can be `(N, Y, X)` (reads first 2 frames) or 2D `(Y, X)` (duplicates for start/end).
+    - Darks: Can be 2D `(Y, X)` or 3D `(N, Y, X)`. If 3D, all `N` frames are averaged to produce a single dark field.
+    - Whites: Can be 2D `(Y, X)` or 3D `(N, Y, X)`.
+        - If `N > 2`: The first `N/2` frames are averaged to produce the first white field (start), and the remaining frames are averaged to produce the second white field (end).
+        - If `N == 2`: The first frame is White 1, the second is White 2.
     - Projections: `(nThetas, Y, X)`. 
 
 ### 5.3. Sinogram Input

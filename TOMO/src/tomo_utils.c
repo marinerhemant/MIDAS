@@ -456,11 +456,11 @@ void setSinoSize(LOCAL_CONFIG_OPTS *information,
   //~ printf("shifted_recon: %ld\n",(long)(sizeof
   //(float)*information->reconstruction_size)); ~ printf("shifted_sinogram
   //%ld\n",(long)(sizeof (float)*information->sinogram_adjusted_size)); ~
-  //printf("sinograms_boundary_padding
+  // printf("sinograms_boundary_padding
   //%ld\n",(long)(sizeof(float)*information->sinogram_adjusted_size*2)); ~
-  //printf("reconstructions_boundary_padding
+  // printf("reconstructions_boundary_padding
   //%ld\n",(long)(sizeof(float)*information->reconstruction_size*4)); ~
-  //printf("recon_calc_buffer
+  // printf("recon_calc_buffer
   //%ld\n",(long)(sizeof(float)*information->reconstruction_size*2));
   information->shifted_recon =
       (float *)malloc(sizeof(float) * information->reconstruction_size);
@@ -480,7 +480,7 @@ void setSinoSize(LOCAL_CONFIG_OPTS *information,
   //~ printf("mean_vect %ld\n",(long)(sizeof
   //(float)*recon_info_record.sinogram_ydim)); ~ printf("mean_sino_line_data
   //%ld\n",(long)(sizeof (float)*information->sinogram_adjusted_xdim)); ~
-  //printf("low_pass_sino_lines_data %ld\n",(long)(sizeof(float)
+  // printf("low_pass_sino_lines_data %ld\n",(long)(sizeof(float)
   //*information->sinogram_adjusted_xdim));
   information->mean_vect =
       (float *)malloc(sizeof(float) * recon_info_record.sinogram_ydim);
@@ -590,24 +590,48 @@ int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
       hsize_t offset[2] = {sliceNr, 0};
       hsize_t count[2] = {1, recon_info_record.det_xdim};
 
-      // Handle 3D Dark if necessary (e.g. [1, Y, X]) -> For now assuming [Y, X]
-      // per plan If it is 3D, we assume [1, Y, X], so reading row sliceNr is
-      // [0, sliceNr, :]
       if (ndims == 3) {
-        hsize_t offset3[3] = {0, sliceNr, 0};
-        hsize_t count3[3] = {1, 1, recon_info_record.det_xdim};
-        H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, offset3, NULL, count3,
-                            NULL);
+        if (dims[0] > 1) {
+          // Multi-frame dark: Average them
+          int nFrames = dims[0];
+          float *temp_dark =
+              (float *)malloc(sizeof(float) * recon_info_record.det_xdim);
+          memset(readStruct->dark_field_sino_ave, 0, SizeDark);
 
-        hid_t memspace_id =
-            H5Screate_simple(1, &count3[2], NULL); // 1D {det_xdim}
-        H5Dread(dataset_id, H5T_NATIVE_FLOAT, memspace_id, dataspace_id,
-                H5P_DEFAULT, readStruct->dark_field_sino_ave);
-        H5Sclose(memspace_id);
+          hsize_t count3[3] = {1, 1, recon_info_record.det_xdim};
+          hid_t memspace_id = H5Screate_simple(1, &count3[2], NULL);
+
+          for (int i = 0; i < nFrames; i++) {
+            hsize_t offset3[3] = {i, sliceNr, 0};
+            H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, offset3, NULL,
+                                count3, NULL);
+            H5Dread(dataset_id, H5T_NATIVE_FLOAT, memspace_id, dataspace_id,
+                    H5P_DEFAULT, temp_dark);
+
+            for (int j = 0; j < recon_info_record.det_xdim; j++) {
+              readStruct->dark_field_sino_ave[j] += temp_dark[j];
+            }
+          }
+          for (int j = 0; j < recon_info_record.det_xdim; j++) {
+            readStruct->dark_field_sino_ave[j] /= (float)nFrames;
+          }
+          free(temp_dark);
+          H5Sclose(memspace_id);
+        } else {
+          // Single frame 3D [1, Y, X]
+          hsize_t offset3[3] = {0, sliceNr, 0};
+          hsize_t count3[3] = {1, 1, recon_info_record.det_xdim};
+          H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, offset3, NULL,
+                              count3, NULL);
+          hid_t memspace_id = H5Screate_simple(1, &count3[2], NULL);
+          H5Dread(dataset_id, H5T_NATIVE_FLOAT, memspace_id, dataspace_id,
+                  H5P_DEFAULT, readStruct->dark_field_sino_ave);
+          H5Sclose(memspace_id);
+        }
       } else {
+        // 2D [Y, X]
         H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, offset, NULL, count,
                             NULL);
-
         hid_t memspace_id = H5Screate_simple(1, &count[1], NULL);
         H5Dread(dataset_id, H5T_NATIVE_FLOAT, memspace_id, dataspace_id,
                 H5P_DEFAULT, readStruct->dark_field_sino_ave);
@@ -653,34 +677,83 @@ int readRawHDF5(int sliceNr, GLOBAL_CONFIG_OPTS recon_info_record,
       int ndims = H5Sget_simple_extent_ndims(dataspace_id);
       H5Sget_simple_extent_dims(dataspace_id, dims, NULL);
 
-      // Assume [nFrames, Y, X]. If nFrames >= 2, read frame 0 and frame 1.
-      // If nFrames < 2, read frame 0 and duplicate.
-      // Or if 2D [Y, X], read row sliceNr and duplicate.
-
       if (ndims == 3) {
-        // Read Frame 0
-        hsize_t offset3[3] = {0, sliceNr, 0};
-        hsize_t count3[3] = {1, 1, recon_info_record.det_xdim};
-        H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, offset3, NULL, count3,
-                            NULL);
-        hid_t memspace_id = H5Screate_simple(1, &count3[2], NULL);
-        H5Dread(dataset_id, H5T_NATIVE_FLOAT, memspace_id, dataspace_id,
-                H5P_DEFAULT, readStruct->white_field_sino);
+        int nFrames = dims[0];
+        if (nFrames > 2) {
+          // Split Average: First half -> White 1, Second half -> White 2
+          int mid = nFrames / 2;
+          float *temp_white =
+              (float *)malloc(sizeof(float) * recon_info_record.det_xdim);
 
-        // Read Frame 1 (or 0 if only 1 frame)
-        if (dims[0] > 1) {
-          offset3[0] = 1;
+          // White 1
+          memset(readStruct->white_field_sino, 0,
+                 sizeof(float) * recon_info_record.det_xdim);
+          hsize_t count3[3] = {1, 1, recon_info_record.det_xdim};
+          hid_t memspace_id = H5Screate_simple(1, &count3[2], NULL);
+
+          for (int i = 0; i < mid; i++) {
+            hsize_t offset3[3] = {i, sliceNr, 0};
+            H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, offset3, NULL,
+                                count3, NULL);
+            H5Dread(dataset_id, H5T_NATIVE_FLOAT, memspace_id, dataspace_id,
+                    H5P_DEFAULT, temp_white);
+            for (int j = 0; j < recon_info_record.det_xdim; j++) {
+              readStruct->white_field_sino[j] += temp_white[j];
+            }
+          }
+          for (int j = 0; j < recon_info_record.det_xdim; j++) {
+            readStruct->white_field_sino[j] /= (float)mid;
+          }
+
+          // White 2
+          float *white2_ptr =
+              (readStruct->white_field_sino) + recon_info_record.det_xdim;
+          memset(white2_ptr, 0, sizeof(float) * recon_info_record.det_xdim);
+
+          for (int i = mid; i < nFrames; i++) {
+            hsize_t offset3[3] = {i, sliceNr, 0};
+            H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, offset3, NULL,
+                                count3, NULL);
+            H5Dread(dataset_id, H5T_NATIVE_FLOAT, memspace_id, dataspace_id,
+                    H5P_DEFAULT, temp_white);
+            for (int j = 0; j < recon_info_record.det_xdim; j++) {
+              white2_ptr[j] += temp_white[j];
+            }
+          }
+          int count2 = nFrames - mid;
+          for (int j = 0; j < recon_info_record.det_xdim; j++) {
+            white2_ptr[j] /= (float)count2;
+          }
+
+          free(temp_white);
+          H5Sclose(memspace_id);
+        } else {
+          // 1 or 2 frames
+          // Read Frame 0
+          hsize_t offset3[3] = {0, sliceNr, 0};
+          hsize_t count3[3] = {1, 1, recon_info_record.det_xdim};
           H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, offset3, NULL,
                               count3, NULL);
+          hid_t memspace_id = H5Screate_simple(1, &count3[2], NULL);
           H5Dread(dataset_id, H5T_NATIVE_FLOAT, memspace_id, dataspace_id,
-                  H5P_DEFAULT,
-                  (readStruct->white_field_sino) + recon_info_record.det_xdim);
-        } else {
-          memcpy((readStruct->white_field_sino) + recon_info_record.det_xdim,
-                 readStruct->white_field_sino,
-                 sizeof(float) * recon_info_record.det_xdim);
+                  H5P_DEFAULT, readStruct->white_field_sino);
+
+          // Read Frame 1 (or 0 if only 1 frame)
+          if (dims[0] > 1) {
+            offset3[0] = 1;
+            H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, offset3, NULL,
+                                count3, NULL);
+            H5Dread(dataset_id, H5T_NATIVE_FLOAT, memspace_id, dataspace_id,
+                    H5P_DEFAULT,
+                    (readStruct->white_field_sino) +
+                        recon_info_record.det_xdim);
+          } else {
+            memcpy((readStruct->white_field_sino) + recon_info_record.det_xdim,
+                   readStruct->white_field_sino,
+                   sizeof(float) * recon_info_record.det_xdim);
+          }
+          H5Sclose(memspace_id);
         }
-        H5Sclose(memspace_id);
 
       } else {
         // 2D [Y, X]
