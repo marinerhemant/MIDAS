@@ -25,23 +25,25 @@ The tomography pipeline has three components:
 
 ```mermaid
 flowchart LR
-    subgraph "Python Front-Ends"
-        A["process_hdf.py<br/>(HDF5 input)"]
-        B["midas_tomo_python.py<br/>(NumPy arrays)"]
+    subgraph FrontEnds ["Python Front-Ends"]
+        A["process_hdf.py\n(HDF5 input)"]
+        B["midas_tomo_python.py\n(NumPy arrays)"]
     end
 
-    subgraph "C Engine"
-        C["MIDAS_TOMO<br/>(gridrec + FFTW + OMP)"]
+    subgraph Engine ["C Engine"]
+        C["MIDAS_TOMO\n(gridrec + FFTW + OMP)"]
     end
 
-    A --> |"param file +<br/>raw binary"| C
-    B --> |"param file +<br/>raw binary"| C
-    C --> D["Reconstructed<br/>slices (.bin)"]
+    A --> |"param file +\nraw binary"| C
+    B --> |"param file +\nraw binary"| C
+    E[Direct HDF5] --> |"param file +\nHDF5 paths"| C
+    C --> D["Reconstructed\nslices (.bin)"]
 
     style A fill:#16213e,stroke:#0f3460,color:#fff
     style B fill:#16213e,stroke:#0f3460,color:#fff
     style C fill:#0f3460,stroke:#e94560,color:#fff
     style D fill:#2b2d42,stroke:#8d99ae,color:#fff
+    style E fill:#16213e,stroke:#0f3460,color:#fff
 ```
 
 | Component | Location | Purpose |
