@@ -238,6 +238,10 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record) {
   recon_info_record->auto_centering = 1;
   recon_info_record->saveReconSeparate = 1;
   recon_info_record->use_hdf5 = 0;
+  recon_info_record->doStripeRemoval = 0;
+  recon_info_record->stripeSnr = 3.0f;
+  recon_info_record->stripeLaSize = 61;
+  recon_info_record->stripeSmSize = 21;
   while (fgets(aline, 4096, fileParam) != NULL) {
     if (strncmp(aline, "saveReconSeparate", strlen("saveReconSeparate")) == 0) {
       int val;
@@ -308,6 +312,18 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record) {
     }
     if (strncmp(aline, "WhiteDatasetName", strlen("WhiteDatasetName")) == 0) {
       sscanf(aline, "%s %s", dummy, recon_info_record->WhiteDatasetName);
+    }
+    if (strncmp(aline, "doStripeRemoval", strlen("doStripeRemoval")) == 0) {
+      sscanf(aline, "%s %d", dummy, &recon_info_record->doStripeRemoval);
+    }
+    if (strncmp(aline, "stripeSnr", strlen("stripeSnr")) == 0) {
+      sscanf(aline, "%s %f", dummy, &recon_info_record->stripeSnr);
+    }
+    if (strncmp(aline, "stripeLaSize", strlen("stripeLaSize")) == 0) {
+      sscanf(aline, "%s %d", dummy, &recon_info_record->stripeLaSize);
+    }
+    if (strncmp(aline, "stripeSmSize", strlen("stripeSmSize")) == 0) {
+      sscanf(aline, "%s %d", dummy, &recon_info_record->stripeSmSize);
     }
   }
   fclose(fileParam);

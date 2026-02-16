@@ -79,6 +79,17 @@ void usage() {
       "	*								- "
       "Whites: If > 2 frames, first N/2 "
       "averaged for White1, rest for White2\n"
+      "	* Stripe Removal (Vo et al. 2018):\n"
+      "	*								"
+      "doStripeRemoval: [int] 0 = off, 1 = on (default 0)\n"
+      "	*								"
+      "stripeSnr: [float] SNR for stripe detection (default 3.0)\n"
+      "	*								"
+      "stripeLaSize: [int] Median filter window for large stripes (default 61, "
+      "odd)\n"
+      "	*								"
+      "stripeSmSize: [int] Median filter window for small stripes (default 21, "
+      "odd)\n"
       "	* detXdim - [uint]\n"
       "	* detYdim - [uint]\n"
       "	* Thetas can either be given as a range:\n"
@@ -243,6 +254,14 @@ int main(int argc, char *argv[]) {
           if (rc == 1)
             continue;
         }
+        // Stripe removal on normalized sinogram
+        if (recon_info_record.doStripeRemoval) {
+          cleanup_sinogram_stripes(
+              readStruct.norm_sino, recon_info_record.theta_list_size,
+              recon_info_record.sinogram_adjusted_xdim,
+              recon_info_record.stripeSnr, recon_info_record.stripeLaSize,
+              recon_info_record.stripeSmSize, 1);
+        }
         memcpy(information.sino_calc_buffer, readStruct.norm_sino,
                sizeof(float) * information.sinogram_adjusted_xdim *
                    recon_info_record.theta_list_size);
@@ -264,6 +283,14 @@ int main(int argc, char *argv[]) {
           int rc = readRaw(sliceNr, recon_info_record, &readStruct);
           if (rc == 1)
             continue;
+        }
+        // Stripe removal on normalized sinogram (second slice)
+        if (recon_info_record.doStripeRemoval) {
+          cleanup_sinogram_stripes(
+              readStruct.norm_sino, recon_info_record.theta_list_size,
+              recon_info_record.sinogram_adjusted_xdim,
+              recon_info_record.stripeSnr, recon_info_record.stripeLaSize,
+              recon_info_record.stripeSmSize, 1);
         }
         memcpy(information.sino_calc_buffer, readStruct.norm_sino,
                sizeof(float) * information.sinogram_adjusted_xdim *
@@ -320,6 +347,16 @@ int main(int argc, char *argv[]) {
     }
     if (badRead == 1)
       return 0;
+    // Apply stripe removal to all pre-read sinograms
+    if (recon_info_record.doStripeRemoval) {
+      for (i = 0; i < recon_info_record.n_slices; i++) {
+        cleanup_sinogram_stripes(
+            readStruct[i].norm_sino, recon_info_record.theta_list_size,
+            recon_info_record.sinogram_adjusted_xdim,
+            recon_info_record.stripeSnr, recon_info_record.stripeLaSize,
+            recon_info_record.stripeSmSize, 1);
+      }
+    }
     nJobs = recon_info_record.n_slices * recon_info_record.n_shifts;
     numProcs = (nJobs / 2 < numProcs) ? nJobs / 2 : numProcs;
     int nrSlicesThread = (int)ceil((double)nJobs / (2.0 * (double)numProcs));

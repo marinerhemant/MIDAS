@@ -119,6 +119,10 @@ typedef struct {
   int powerIncrement;
   int doLogProj;
   int use_hdf5;
+  int doStripeRemoval;
+  float stripeSnr;
+  int stripeLaSize;
+  int stripeSmSize;
   long sizeMatrices;
 } GLOBAL_CONFIG_OPTS;
 
@@ -165,6 +169,10 @@ void LogProj(float *data, int xdim, int ydim);
 void Normalize(SINO_READ_OPTS *readStruct,
                GLOBAL_CONFIG_OPTS recon_info_record);
 void Pad(SINO_READ_OPTS *readStruct, GLOBAL_CONFIG_OPTS recon_info_record);
+
+// Stripe removal (Vo et al. 2018)
+void cleanup_sinogram_stripes(float *sinogram, int nrow, int ncol, float snr,
+                              int la_size, int sm_size, int dim);
 
 //--------------------------------------------------------------------------------------------------------------------------
 // Processing code

@@ -15,6 +15,7 @@ The tomography module is designed for absorption-contrast X-ray computed tomogra
 - **Multiple reconstruction filters** (Shepp-Logan, Hann, Hamming, Ramp).
 - **Rotation-axis shift search** across a range of candidate center positions.
 - **Ring artifact removal** via sinogram-space filtering.
+- **Stripe artifact removal** for ring-artifact-free reconstructions (Vo et al. 2018).
 - **OpenMP parallelism** across slices for fast multi-core reconstruction.
 
 ---
@@ -161,6 +162,10 @@ The `MIDAS_TOMO` binary reads a plain-text parameter file. Each line contains a 
 | `ExtraPad` | 0 or 1 | Extra zero-padding for better frequency resolution | 0 |
 | `AutoCentering` | 0 or 1 | Shift reconstruction so the rotation axis is at the image center | 1 |
 | `saveReconSeparate` | 0 or 1 | Save each slice in a separate file (1) or all in one file (0) | 0 |
+| `doStripeRemoval` | 0 or 1 | Enable stripe artifact removal (Vo et al. 2018) | 0 |
+| `stripeSnr` | float | SNR threshold for stripe detection (higher = fewer stripes detected) | 3.0 |
+| `stripeLaSize` | int (odd) | Median filter window for large stripe correction | 61 |
+| `stripeSmSize` | int (odd) | Median filter window for small/medium stripe correction | 21 |
 
 ### 4.1. Reconstruction Filters
 
@@ -175,9 +180,46 @@ The `MIDAS_TOMO` binary reads a plain-text parameter file. Each line contains a 
 > [!TIP]
 > Start with the **Hann** filter (2). If features appear blurred, try Shepp-Logan (1) or Ramp (4). If the reconstruction is too noisy, try Hamming (3).
 
----
+### 4.2. Stripe Removal (Ring Artifact Suppression)
 
----
+Stripe artifacts in sinograms manifest as **ring artifacts** in reconstructed slices. They are caused by miscalibrated, dead, or fluctuating detector pixels. The stripe removal module implements algorithms from:
+
+> Nghia T. Vo, Robert C. Atwood, and Michael Drakopoulos, "Superior techniques for eliminating ring artifacts in X-ray micro-tomography," *Optics Express* 26(22), 28396–28412 (2018).
+
+The implementation is based on the reference Python code in [tomopy](https://github.com/tomopy/tomopy) (`tomopy.prep.stripe`), ported to C for integration with the MIDAS reconstruction pipeline.
+
+The module applies three correction phases to each normalized sinogram before reconstruction:
+1. **Dead/fluctuating pixel correction** — Detects columns with anomalous fluctuation via SNR thresholding and replaces them by linear interpolation from neighboring good columns.
+2. **Large stripe normalization** — Identifies and normalizes broad intensity variations across detector columns using sorted-domain statistics.
+3. **Small-to-medium stripe correction** — Sorts each column by value, applies median filtering in the sorted domain, and restores original order. This removes narrow stripes without blurring real features.
+
+**Example parameter file:**
+```text
+doStripeRemoval 1
+stripeSnr 3.0
+stripeLaSize 61
+stripeSmSize 21
+```
+
+#### Recommended Starting Parameters
+
+| Use Case | `stripeSnr` | `stripeLaSize` | `stripeSmSize` | Notes |
+|----------|-------------|----------------|----------------|-------|
+| **Default / first try** | 3.0 | 61 | 21 | Good balance for most APS datasets |
+| Mild rings only | 3.0 | 51 | 11 | Lighter touch, less processing time |
+| Severe ring artifacts | 1.5 | 71 | 31 | More aggressive — lower SNR detects fainter stripes, larger windows smooth more |
+| Very noisy data | 5.0 | 61 | 21 | Higher SNR avoids false stripe detection from noise |
+| High-resolution detector (4k+) | 3.0 | 101 | 41 | Scale windows up for wider detectors |
+
+> [!TIP]
+> **Tuning guide:**
+> - `stripeSnr` controls **sensitivity**: lower values detect more stripes but risk treating real features as artifacts. Start at 3.0 and decrease only if rings persist.
+> - `stripeLaSize` sets the **scale of "large"** stripes: it should be larger than the widest stripe you want to correct. Must be odd.
+> - `stripeSmSize` sets the **smoothing width** for small stripes: larger values remove wider stripes but may slightly blur column-direction edges. Must be odd.
+> - All filter sizes are automatically forced to odd if you provide an even number.
+
+> [!NOTE]
+> Stripe removal is applied to each normalized sinogram before the gridrec reconstruction step. It has no effect when `doStripeRemoval` is set to 0 (default). This feature is independent of the older `ringRemovalCoefficient` parameter and can be used alongside it, though using both simultaneously is generally unnecessary.
 
 ## 5. Input Data Format
 
@@ -298,6 +340,8 @@ Typical performance: a 2048 × 2048 × 1800 dataset reconstructs in under 2 minu
 | `Number of shifts must be even` error | Odd number of shift steps | Adjust `shiftValues` range to produce an even number |
 | `Number of slices must be even` error | Odd slice count | Crop one row from your input or specify even slice range in `slicesToProcess` |
 | Segmentation fault | Insufficient RAM for requested thread count | Reduce `nCPUs`; the code auto-limits but edge cases exist |
+| Stripe removal too aggressive | `stripeSnr` too low or filter windows too large | Increase `stripeSnr` (try 5.0), reduce `stripeLaSize` and `stripeSmSize` |
+| Rings persist after stripe removal | Stripes below detection threshold | Decrease `stripeSnr` (try 1.5), increase filter windows |
 
 ---
 

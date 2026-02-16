@@ -6,6 +6,7 @@ set(TOMO_SOURCES
     ${TOMO_SRCDIR}/tomo_init.c
     ${TOMO_SRCDIR}/tomo_gridrec.c
     ${TOMO_SRCDIR}/tomo_utils.c
+    ${TOMO_SRCDIR}/tomo_cleanup.c
 )
 
 # --- Executable: MIDAS_TOMO ---
