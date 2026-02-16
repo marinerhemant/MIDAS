@@ -253,8 +253,8 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
                     parts = line.split()
                     if len(parts) >= 2:
                         psShiftFile = parts[1]
-                        # if the path is relative, add the top folder to it.
-                        psShiftFile = f'{topdir}/{psShiftFile}'
+                        if not os.path.isabs(psShiftFile):
+                            psShiftFile = f'{topdir}/{psShiftFile}'
                         if os.path.exists(psShiftFile):
                             shutil.copy2(psShiftFile, thisDir)
                             logger.info(f"Copied PanelShiftsFile {psShiftFile} to {thisDir}")
