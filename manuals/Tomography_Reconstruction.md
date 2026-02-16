@@ -81,7 +81,29 @@ The script will:
 > - `/analysis/process/analysis_parameters/CropXL`, `CropXR`, `CropZL`, `CropZR` — cropping bounds
 > - `/analysis/process/analysis_parameters/shift` — rotation axis shift (pixels)
 
-### 3.2. From NumPy Arrays (Python API)
+### 3.2. Direct HDF5 Reconstruction (New)
+
+You can also run `MIDAS_TOMO` directly on an HDF5 file without converting to binary first. This is efficient and avoids duplicating data.
+
+**Parameter File for HDF5:**
+```text
+HDF5FileName /path/to/data.h5
+ImageDatasetName /exchange/data
+DarkDatasetName /exchange/dark
+WhiteDatasetName /exchange/bright
+reconFileName /path/to/output_recon
+detXdim 2048
+detYdim 1024
+thetaRange -180 180 0.25
+shiftValues 0 0 1
+```
+
+**Running:**
+```bash
+~/opt/MIDAS/TOMO/bin/MIDAS_TOMO my_hdf5_params.txt 20
+```
+
+### 3.3. From NumPy Arrays (Python API)
 
 For programmatic use or when your data is not in HDF5 format:
 
@@ -118,7 +140,11 @@ The `MIDAS_TOMO` binary reads a plain-text parameter file. Each line contains a 
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `dataFileName` | string | Path to the raw binary input file | *required* |
+| `dataFileName` | string | Path to the raw binary input file (Mutual exclusive with HDF5FileName) | *required* |
+| `HDF5FileName` | string | Path to the HDF5 input file (Mutual exclusive with dataFileName) | — |
+| `ImageDatasetName` | string | HDF5 path to projection data (e.g. `/exchange/data`) | *required if HDF5* |
+| `DarkDatasetName` | string | HDF5 path to dark fields (e.g. `/exchange/dark`) | *required if HDF5* |
+| `WhiteDatasetName` | string | HDF5 path to white fields (e.g. `/exchange/bright`) | *required if HDF5* |
 | `reconFileName` | string | Base name for reconstruction output | *required* |
 | `areSinos` | 0 or 1 | Set to 1 if input is pre-computed sinograms, 0 if raw projections | 0 |
 | `detXdim` | int | Horizontal dimension of detector (pixels) | *required* |
@@ -149,6 +175,8 @@ The `MIDAS_TOMO` binary reads a plain-text parameter file. Each line contains a 
 
 ---
 
+---
+
 ## 5. Input Data Format
 
 ### 5.1. Raw Binary Layout
@@ -161,7 +189,19 @@ When `areSinos = 0`, the input file must be a single binary file with the follow
 | White frames | `float32` | `(2, detYdim, detXdim)` | Flat-field images (before and after) |
 | Projections | `uint16` | `(nThetas, detYdim, detXdim)` | Raw projection images |
 
-### 5.2. Sinogram Input
+### 5.2. HDF5 Input
+
+When using HDF5 input (`HDF5FileName` specified), the module reads datasets directly. 
+- **Type Safety**: The module automatically checks if the datasets are numeric (Integer or Float).
+- **Type Casting**: 
+    - Darks and Whites are cast to `float32` (native HDF5 conversion).
+    - Projections are cast to `uint16`.
+- **Dimensions**:
+    - Darks: Can be 2D `(Y, X)` or 3D `(1, Y, X)`.
+    - Whites: Can be `(N, Y, X)` (reads first 2 frames) or 2D `(Y, X)` (duplicates for start/end).
+    - Projections: `(nThetas, Y, X)`. 
+
+### 5.3. Sinogram Input
 
 When `areSinos = 1`, the input file contains pre-computed sinograms as `float32` data. Each sinogram has shape `(nThetas, detXdim)`.
 
