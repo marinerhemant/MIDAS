@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <math.h>
+#include <omp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,7 +19,6 @@
 #include <unistd.h>
 
 typedef uint16_t pixelvalue;
-pixelvalue quick_select(pixelvalue a[], int n);
 
 #define PIX_SWAP(a, b)                                                         \
   {                                                                            \
@@ -26,7 +26,8 @@ pixelvalue quick_select(pixelvalue a[], int n);
     (a) = (b);                                                                 \
     (b) = temp;                                                                \
   }
-pixelvalue quick_select(pixelvalue a[], int n) {
+
+static pixelvalue quick_select(pixelvalue a[], int n) {
   int low, high;
   int median;
   int middle, ll, hh;
@@ -71,51 +72,9 @@ pixelvalue quick_select(pixelvalue a[], int n) {
 }
 #undef PIX_SWAP
 
-pixelvalue **allocMatrixInt(int nrows, int ncols) {
-  pixelvalue **arr;
-  int i;
-  arr = malloc(nrows * sizeof(*arr));
-  for (i = 0; i < nrows; i++) {
-    arr[i] = malloc(ncols * sizeof(*arr[i]));
-  }
-  return arr;
-}
-
-pixelvalue ***allocMatrix3Int(int nrows, int ncols, int nmats) {
-  pixelvalue ***arr;
-  int i, j;
-  arr = malloc(nrows * sizeof(*arr));
-  for (i = 0; i < nrows; i++) {
-    arr[i] = malloc(ncols * sizeof(*arr[i]));
-    for (j = 0; j < ncols; j++) {
-      arr[i][j] = malloc(nmats * sizeof(*arr[i][j]));
-    }
-  }
-  return arr;
-}
-
-void FreeMemMatrixInt(pixelvalue **mat, int nrows) {
-  int r;
-  for (r = 0; r < nrows; r++) {
-    free(mat[r]);
-  }
-  free(mat);
-}
-
-void FreeMemMatrix3Int(pixelvalue ***mat, int nrows, int ncols) {
-  int r, c;
-  for (r = 0; r < nrows; r++) {
-    for (c = 0; c < ncols; c++) {
-      free(mat[r][c]);
-    }
-    free(mat[r]);
-  }
-  free(mat);
-}
-
 int CalcMedian(char fn[1000], char outFN[1000], int LayerNr, int StartNr,
                int NrPixels, int NrFilesPerLayer, char ext[1024],
-               char extReduced[1024]) {
+               char extReduced[1024], int numProcs) {
   time_t timer;
   char buffer[25];
   struct tm *tm_info;
@@ -123,14 +82,24 @@ int CalcMedian(char fn[1000], char outFN[1000], int LayerNr, int StartNr,
   tm_info = localtime(&timer);
   strftime(buffer, 25, "%Y:%m:%d:%H:%M:%S", tm_info);
   puts(buffer);
-  int i, j, k, FileNr;
-  char FileName[1024];
-  pixelvalue **AllIntensities, *MedianArray;
-  AllIntensities = allocMatrixInt(NrPixels * NrPixels, NrFilesPerLayer);
+
+  size_t nPixelsTotal = (size_t)NrPixels * NrPixels;
+
+  // Single contiguous allocation instead of millions of tiny mallocs
+  pixelvalue *AllIntensities =
+      malloc(nPixelsTotal * NrFilesPerLayer * sizeof(pixelvalue));
+  if (AllIntensities == NULL) {
+    printf("Could not allocate %.2f GB for intensity data.\n",
+           (double)(nPixelsTotal * NrFilesPerLayer * sizeof(pixelvalue)) /
+               (1024.0 * 1024.0 * 1024.0));
+    return 0;
+  }
+
   time(&timer);
   tm_info = localtime(&timer);
   strftime(buffer, 25, "%Y:%m:%d:%H:%M:%S", tm_info);
   puts(buffer);
+
   char MedianFileName[1024], MaxIntFileName[1024],
       MaxIntMedianCorrFileName[1024];
   sprintf(MedianFileName, "%s_Median_Background_Distance_%d.%s", outFN,
@@ -140,89 +109,112 @@ int CalcMedian(char fn[1000], char outFN[1000], int LayerNr, int StartNr,
   sprintf(MaxIntMedianCorrFileName,
           "%s_MaximumIntensityMedianCorrected_Distance_%d.%s", outFN,
           LayerNr - 1, extReduced);
-  int roil;
-  for (j = 0; j < NrFilesPerLayer; j++) {
-    TIFFErrorHandler oldhandler;
-    oldhandler = TIFFSetWarningHandler(NULL);
-    FileNr = ((LayerNr - 1) * NrFilesPerLayer) + StartNr + j;
+
+  // Read TIFF files — parallelized across files
+  int badRead = 0;
+#pragma omp parallel for num_threads(numProcs) schedule(dynamic)
+  for (int j = 0; j < NrFilesPerLayer; j++) {
+    if (badRead)
+      continue;
+    char FileName[1024];
+    int FileNr = ((LayerNr - 1) * NrFilesPerLayer) + StartNr + j;
     sprintf(FileName, "%s_%06d.%s", fn, FileNr, ext);
+
+    TIFFErrorHandler oldhandler = TIFFSetWarningHandler(NULL);
     TIFF *tif = TIFFOpen(FileName, "r");
-    printf("Opening file: %s\n", FileName);
-    fflush(stdout);
+    TIFFSetWarningHandler(oldhandler);
+
     if (tif == NULL) {
       printf("%s not found.\n", FileName);
-      return 0;
+      badRead = 1;
+      continue;
     }
-    TIFFSetWarningHandler(oldhandler);
-    if (tif) {
-      tdata_t buf;
-      buf = _TIFFmalloc(TIFFScanlineSize(tif));
-      pixelvalue *datar;
-      for (roil = 0; roil < NrPixels; roil++) {
-        TIFFReadScanline(tif, buf, roil, 1);
-        datar = (uint16 *)buf;
-        for (i = 0; i < NrPixels; i++) {
-          AllIntensities[roil * NrPixels + i][j] = datar[i];
-        }
+    printf("Reading file: %s\n", FileName);
+    fflush(stdout);
+
+    tdata_t buf = _TIFFmalloc(TIFFScanlineSize(tif));
+    for (int roil = 0; roil < NrPixels; roil++) {
+      TIFFReadScanline(tif, buf, roil, 1);
+      pixelvalue *datar = (pixelvalue *)buf;
+      for (int i = 0; i < NrPixels; i++) {
+        AllIntensities[(size_t)(roil * NrPixels + i) * NrFilesPerLayer + j] =
+            datar[i];
       }
-      _TIFFfree(buf);
     }
+    _TIFFfree(buf);
     TIFFClose(tif);
-    time(&timer);
-    tm_info = localtime(&timer);
-    strftime(buffer, 25, "%Y:%m:%d:%H:%M:%S", tm_info);
-    puts(buffer);
   }
+  if (badRead) {
+    free(AllIntensities);
+    return 0;
+  }
+
   time(&timer);
   tm_info = localtime(&timer);
   strftime(buffer, 25, "%Y:%m:%d:%H:%M:%S", tm_info);
   puts(buffer);
-  printf("Calculating median.\n");
-  MedianArray = malloc(NrPixels * NrPixels * sizeof(*MedianArray));
-  pixelvalue *MaxIntArr, *MaxIntMedianArr;
-  MaxIntArr = malloc(NrPixels * NrPixels * sizeof(*MaxIntArr));
-  MaxIntMedianArr = malloc(NrPixels * NrPixels * sizeof(*MaxIntMedianArr));
-  pixelvalue SubArr[NrFilesPerLayer];
-  int tempVal;
-  for (i = 0; i < NrPixels * NrPixels; i++) {
-    MaxIntArr[i] = 0;
-    MaxIntMedianArr[i] = 0;
-    for (j = 0; j < NrFilesPerLayer; j++) {
-      SubArr[j] = AllIntensities[i][j];
-      if (AllIntensities[i][j] > MaxIntArr[i]) {
-        MaxIntArr[i] = AllIntensities[i][j];
+  printf("Calculating median with %d threads.\n", numProcs);
+
+  pixelvalue *MedianArray = malloc(nPixelsTotal * sizeof(pixelvalue));
+  pixelvalue *MaxIntArr = malloc(nPixelsTotal * sizeof(pixelvalue));
+  pixelvalue *MaxIntMedianArr = malloc(nPixelsTotal * sizeof(pixelvalue));
+
+  // Median + max computation — parallelized across pixels
+#pragma omp parallel num_threads(numProcs)
+  {
+    pixelvalue *SubArr = malloc(NrFilesPerLayer * sizeof(pixelvalue));
+#pragma omp for schedule(dynamic, 1024)
+    for (size_t i = 0; i < nPixelsTotal; i++) {
+      pixelvalue maxVal = 0;
+      pixelvalue *src = &AllIntensities[i * NrFilesPerLayer];
+      for (int j = 0; j < NrFilesPerLayer; j++) {
+        SubArr[j] = src[j];
+        if (src[j] > maxVal)
+          maxVal = src[j];
       }
+      MaxIntArr[i] = maxVal;
+      MedianArray[i] = quick_select(SubArr, NrFilesPerLayer);
+      int tempVal = (int)maxVal - (int)MedianArray[i];
+      MaxIntMedianArr[i] = (pixelvalue)(tempVal > 0 ? tempVal : 0);
     }
-    MedianArray[i] = quick_select(SubArr, NrFilesPerLayer);
-    tempVal = (MaxIntArr[i] - MedianArray[i]);
-    MaxIntMedianArr[i] = (pixelvalue)(tempVal > 0 ? tempVal : 0);
+    free(SubArr);
   }
+
+  free(AllIntensities);
+
   time(&timer);
   tm_info = localtime(&timer);
   strftime(buffer, 25, "%Y:%m:%d:%H:%M:%S", tm_info);
   puts(buffer);
-  int SizeOutFile = sizeof(pixelvalue) * NrPixels * NrPixels;
-  int fb = open(MedianFileName, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+
+  size_t SizeOutFile = sizeof(pixelvalue) * nPixelsTotal;
+  int fb =
+      open(MedianFileName, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
   pwrite(fb, MedianArray, SizeOutFile, 0);
-  int fMaxInt = open(MaxIntFileName, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+  close(fb);
+  int fMaxInt =
+      open(MaxIntFileName, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
   pwrite(fMaxInt, MaxIntArr, SizeOutFile, 0);
-  int fMaxIntMedian =
-      open(MaxIntMedianCorrFileName, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+  close(fMaxInt);
+  int fMaxIntMedian = open(MaxIntMedianCorrFileName,
+                           O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
   pwrite(fMaxIntMedian, MaxIntMedianArr, SizeOutFile, 0);
+  close(fMaxIntMedian);
+
   printf("Median calculated.\n");
   free(MedianArray);
   free(MaxIntArr);
   free(MaxIntMedianArr);
-  FreeMemMatrixInt(AllIntensities, NrPixels);
   return 1;
 }
 
 static void usage(void) {
-  printf("MedianImage: usage: ./MedianImage <ParametersFile> <LayerNr>\n");
+  printf("MedianImage: usage: ./MedianImage <ParametersFile> <LayerNr> "
+         "[nCPUs]\n");
 }
 
 int main(int argc, char *argv[]) {
-  if (argc != 3) {
+  if (argc < 3 || argc > 4) {
     usage();
     return 1;
   }
@@ -230,6 +222,13 @@ int main(int argc, char *argv[]) {
   clock_t start, end;
   double diftotal;
   start = clock();
+
+  int numProcs = 1;
+  if (argc == 4) {
+    numProcs = atoi(argv[3]);
+    if (numProcs < 1)
+      numProcs = 1;
+  }
 
   // Read params file.
   char *ParamFN;
@@ -324,12 +323,13 @@ int main(int argc, char *argv[]) {
   printf("\n--- Scan Parameters ---\n");
   printf("  RawStartNr:           %d\n", StartNr);
   printf("  LayerNr (argv[2]):    %d\n", nLayers);
+  printf("  nCPUs:                %d\n", numProcs);
   printf(
       "================================================================\n\n");
 
   int ReturnCode;
   ReturnCode = CalcMedian(fn, outFN, nLayers, StartNr, NrPixels,
-                          NrFilesPerLayer, ext, extReduced);
+                          NrFilesPerLayer, ext, extReduced, numProcs);
   if (ReturnCode == 0) {
     printf("Median Calculation failed. Exiting.");
     return 0;

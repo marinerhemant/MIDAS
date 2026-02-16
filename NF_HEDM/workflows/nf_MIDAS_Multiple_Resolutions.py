@@ -212,21 +212,21 @@ def create_app_with_retry(app_func):
     return wrapped_app
 
 @create_app_with_retry
-def median(psFN: str, distanceNr: int, logDir: str, resultFolder: str, bin_dir: str) -> None:
+def median(psFN: str, distanceNr: int, numProcs: int, logDir: str, resultFolder: str, bin_dir: str) -> None:
     """Run median calculation remotely via Parsl."""
     import os, subprocess
     with open(f'{logDir}/median{distanceNr}_out.csv', 'w') as f, \
          open(f'{logDir}/median{distanceNr}_err.csv', 'w') as f_err:
-        cmd = os.path.join(bin_dir, "MedianImageLibTiff") + f' {psFN} {distanceNr}'
+        cmd = os.path.join(bin_dir, "MedianImageLibTiff") + f' {psFN} {distanceNr} {numProcs}'
         f.write(cmd)
         subprocess.call(cmd, shell=True, stdout=f, stderr=f_err, cwd=resultFolder, env=os.environ)
 
-def median_local(distanceNr: int, psFN: str, logDir: str, resultFolder: str, bin_dir: str) -> int:
+def median_local(distanceNr: int, psFN: str, numProcs: int, logDir: str, resultFolder: str, bin_dir: str) -> int:
     """Run median calculation locally. Made platform-independent by accepting all args."""
     import os, subprocess
     with open(f'{logDir}/median{distanceNr}_out.csv', 'w') as f, \
          open(f'{logDir}/median{distanceNr}_err.csv', 'w') as f_err:
-        cmd = os.path.join(bin_dir, "MedianImageLibTiff") + f' {psFN} {distanceNr}'
+        cmd = os.path.join(bin_dir, "MedianImageLibTiff") + f' {psFN} {distanceNr} {numProcs}'
         f.write(cmd)
         subprocess.call(cmd, shell=True, stdout=f, stderr=f_err, cwd=resultFolder, env=get_midas_env())
     return 1
@@ -332,15 +332,16 @@ def run_image_processing(args: argparse.Namespace, params: Dict, t0: float):
     
     logger.info("Starting image processing stage.")
     try:
+        cpusPerMedian = max(1, args.nCPUs // params['nDistances'])
         if args.machineName == 'local':
-            logger.info("Computing median locally using multiprocessing.")
-            partial_median = partial(median_local, psFN=args.paramFN, logDir=logDir, resultFolder=resultFolder, bin_dir=bin_dir)
+            logger.info(f"Computing median locally using multiprocessing ({cpusPerMedian} threads per process).")
+            partial_median = partial(median_local, psFN=args.paramFN, numProcs=cpusPerMedian, logDir=logDir, resultFolder=resultFolder, bin_dir=bin_dir)
             with Pool(params['nDistances']) as p:
                 work_items = range(1, params['nDistances'] + 1)
                 list(tqdm(p.imap(partial_median, work_items), total=len(work_items), desc="Calculating Medians (Local)"))
         else:
-            logger.info("Computing median remotely using Parsl.")
-            median_futures = [median(args.paramFN, i, logDir, resultFolder, bin_dir) for i in range(1, params['nDistances'] + 1)]
+            logger.info(f"Computing median remotely using Parsl ({cpusPerMedian} threads per task).")
+            median_futures = [median(args.paramFN, i, cpusPerMedian, logDir, resultFolder, bin_dir) for i in range(1, params['nDistances'] + 1)]
             [f.result() for f in tqdm(median_futures, desc="Calculating Medians (Parsl)")]
 
         logger.info("Processing images in parallel.")
