@@ -3,6 +3,7 @@
     hdf5
     URL "https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5-1_14_2.tar.gz"
         "https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.14/hdf5-1.14.2/src/hdf5-1.14.2.tar.gz"
+        "https://github.com/marinerhemant/MIDAS/releases/download/v9.0-data/hdf5-1.14.2.tar.gz"
     )
 
     FetchContent_GetProperties(hdf5)
