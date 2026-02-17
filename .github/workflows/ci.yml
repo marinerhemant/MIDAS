@@ -21,11 +21,23 @@ jobs:
           sudo apt-get install -y \
             build-essential \
             cmake \
+            pkg-config \
+            python3-dev \
+            zlib1g-dev \
+            libjpeg-dev \
             libtiff-dev \
+            libpng-dev \
+            libssl-dev \
+            libbz2-dev \
+            liblzma-dev \
+            libzstd-dev \
+            liblz4-dev \
             libzip-dev \
+            libhdf5-dev \
             libblosc-dev \
+            libblosc2-dev \
             libnlopt-dev \
-            libhdf5-dev
+            libfftw3-dev
 
       - name: Cache dependencies
         uses: actions/cache@v4
