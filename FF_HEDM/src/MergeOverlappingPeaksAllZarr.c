@@ -475,6 +475,12 @@ int main(int argc, char *argv[]) {
       counter = 0;
       for (i = 0; i < nSpots; i++) {
         if (TempIDsCurrent[i] == 1) { // Spot was overlapping.
+          if (counter >= nOverlapsMaxPerImage) {
+            printf("Warning: Maximum number of merged peaks reached (%d). "
+                   "Truncating.\n",
+                   nOverlapsMaxPerImage);
+            break;
+          }
           for (j = 0; j < 16; j++) {
             TempIDs[counter][j] = CurrentIDs[i][j];
           }
