@@ -112,6 +112,8 @@ int CalcMedian(char fn[1000], char outFN[1000], int LayerNr, int StartNr,
 
   // Read TIFF files — parallelized across files
   int badRead = 0;
+  TIFFErrorHandler oldhandler =
+      TIFFSetWarningHandler(NULL); // Suppress warnings globally
 #pragma omp parallel for num_threads(numProcs) schedule(dynamic)
   for (int j = 0; j < NrFilesPerLayer; j++) {
     if (badRead)
@@ -120,9 +122,7 @@ int CalcMedian(char fn[1000], char outFN[1000], int LayerNr, int StartNr,
     int FileNr = ((LayerNr - 1) * NrFilesPerLayer) + StartNr + j;
     sprintf(FileName, "%s_%06d.%s", fn, FileNr, ext);
 
-    TIFFErrorHandler oldhandler = TIFFSetWarningHandler(NULL);
     TIFF *tif = TIFFOpen(FileName, "r");
-    TIFFSetWarningHandler(oldhandler);
 
     if (tif == NULL) {
       printf("%s not found.\n", FileName);
@@ -144,6 +144,7 @@ int CalcMedian(char fn[1000], char outFN[1000], int LayerNr, int StartNr,
     _TIFFfree(buf);
     TIFFClose(tif);
   }
+  TIFFSetWarningHandler(oldhandler); // Restore handler
   if (badRead) {
     free(AllIntensities);
     return 0;
