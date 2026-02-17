@@ -1151,6 +1151,9 @@ int main(int argc, char *argv[]) {
         if (Image2[i] != 0)
           TotPixelsInt++;
       }
+      printf("DoLoGFilter=0: Found %d non-zero pixels (potential peaks) in "
+             "image %d, layer %d.\n",
+             TotPixelsInt, ImageNr, layerNr);
       /*int **BoolImage, **ConnectedComponents;
       BoolImage = allocMatrixInt(NrPixels,NrPixels);
       ConnectedComponents = allocMatrixInt(NrPixels,NrPixels);
