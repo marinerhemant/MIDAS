@@ -325,8 +325,11 @@ int main(int argc, char *argv[]) {
     count++;
   }
   // printf("%lf\n",MarginOmegaOverlap);
-  if (argc == 3)
+  if (argc == 3) {
+    if (Folder != NULL)
+      free(Folder);
     Folder = argv[2];
+  }
   EndNr = EndNr - skipFrame; // This ensures we don't over-read.
                              // Read params file.
   int i, j, k;
@@ -543,7 +546,8 @@ int main(int argc, char *argv[]) {
   free(TempIDsCurrent);
   free(TempIDsNew);
   free(finfo);
-  free(Folder);
+  if (argc < 3)
+    free(Folder);
   zip_close(arch);
   end = clock();
   diftotal = ((double)(end - start)) / CLOCKS_PER_SEC;
