@@ -43,9 +43,12 @@ static inline void HexGrid(double GridSize, double Rsample, double NrHex,
     } else {
       ynext = ysmall;
     }
-    NrRowElements = (2 * ((2 * NrHex) - (fabs(i)))) + 1;
+    NrRowElements = (2 * ((2 * NrHex) - (fabs((double)i)))) + 1;
     ythis = HtTriangle * i;
-    xstart = -ALast + (fabs(i) * GridSize * 0.5);
+    xstart = -ALast + (fabs((double)i) * GridSize * 0.5);
+    if (i < 0) {
+      xstart += GridSize * 0.5;
+    }
     for (j = 0; j < NrRowElements; j++) {
       if (ynext == ybig) {
         //~ XY[counter][0] = ynext;
@@ -59,7 +62,7 @@ static inline void HexGrid(double GridSize, double Rsample, double NrHex,
         XY[counter][1] = xt2;
       }
       XY[counter][2] = xstart + (GridSize * j) / 2;
-      XY[counter][3] = ythis - (ynext * i / (fabs(i)));
+      XY[counter][3] = ythis - (ynext * i / (fabs((double)i)));
       //~ XY[counter][4] = GridSize/2;
       XY[counter][4] = EdgeLength / 2;
       counter++;
