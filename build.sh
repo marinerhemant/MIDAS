@@ -83,6 +83,9 @@ check_and_download_seeds() {
 
         # Cleanup
         rm "$SEED_DIR/seed.zip"
+        if [ -d "$SEED_DIR/__MACOSX" ]; then
+            rm -rf "$SEED_DIR/__MACOSX"
+        fi
         echo "Seed files downloaded and extracted successfully."
     else
         echo "Seed files already exist."
