@@ -11,9 +11,7 @@
 //
 //
 
-#include <ctype.h>
 #include <math.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -131,7 +129,7 @@ static inline void CalcOmega(RealType x, RealType y, RealType z, RealType theta,
   if (fabs(y) < almostzero) {
     if (x != 0) {
       RealType cosome1 = -v / x;
-      if (fabs(cosome1 <= 1)) {
+      if (fabs(cosome1) <= 1) {
         ome = acos(cosome1) * rad2deg;
         omegas[*nsol] = ome;
         *nsol = *nsol + 1;

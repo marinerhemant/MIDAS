@@ -11,21 +11,16 @@
 //
 //
 
-#include <ctype.h>
-#include <limits.h>
 #include <math.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <time.h>
 
 #define RealType double
 
-static inline void HexGrid(double GridSize, double Rsample, double NrHex,
-                           double HtTriangle, double ALast, double **XY,
-                           double EdgeLength) {
+static inline void HexGrid(double GridSize, double NrHex, double HtTriangle,
+                           double ALast, double **XY, double EdgeLength) {
   int i, j;
   int counter = 0;
   int NrRowElements;
@@ -51,19 +46,14 @@ static inline void HexGrid(double GridSize, double Rsample, double NrHex,
     }
     for (j = 0; j < NrRowElements; j++) {
       if (ynext == ybig) {
-        //~ XY[counter][0] = ynext;
-        //~ XY[counter][1] = ysmall;
         XY[counter][0] = xt2;
         XY[counter][1] = xt1;
       } else {
-        //~ XY[counter][0] = ynext;
-        //~ XY[counter][1] = ybig;
         XY[counter][0] = xt1;
         XY[counter][1] = xt2;
       }
       XY[counter][2] = xstart + (GridSize * j) / 2;
       XY[counter][3] = ythis - (ynext * i / (fabs((double)i)));
-      //~ XY[counter][4] = GridSize/2;
       XY[counter][4] = EdgeLength / 2;
       counter++;
       if (ynext == ybig) {
@@ -106,9 +96,12 @@ int main(int argc, char *argv[]) {
   double diftotal;
   start = clock();
 
-  char *ParamFN;
+  if (argc < 2) {
+    printf("Usage: %s <parameter_file>\n", argv[0]);
+    return 1;
+  }
+  char *ParamFN = argv[1];
   FILE *fileParam;
-  ParamFN = argv[1];
   char aline[1000];
   fileParam = fopen(ParamFN, "r");
   char *str, dummy[1000], direct[1024], gridfn[1000];
@@ -173,20 +166,20 @@ int main(int argc, char *argv[]) {
       "================================================================\n\n");
 
   // Make grid.
-  double NrHex, ALarge, ALast, HtTriangle;
+  double ALarge, ALast, HtTriangle;
   int i, j;
   int NrGridElements = 0;
   FILE *fp;
   ALarge = (2 * Rsample) / (sqrt(3));
   HtTriangle = ((sqrt(3)) * (GridSize)) / (2);
-  NrHex = ceil(ALarge / GridSize);
+  int NrHex = (int)ceil(ALarge / GridSize);
   ALast = GridSize * NrHex;
   for (i = 1; i <= NrHex; i++) {
     NrGridElements += 2 * ((2 * ((2 * NrHex) - i)) + 1);
   }
   double **XYGrid;
   XYGrid = allocMatrix(NrGridElements, 5);
-  HexGrid(GridSize, Rsample, NrHex, HtTriangle, ALast, XYGrid, EdgeLength);
+  HexGrid(GridSize, NrHex, HtTriangle, ALast, XYGrid, EdgeLength);
   printf("Number of grid points: %d.\n", NrGridElements);
   char fn[1024];
   if (gridfnfound == 1)
