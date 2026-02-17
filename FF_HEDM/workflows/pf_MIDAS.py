@@ -1196,6 +1196,7 @@ def main():
                 micFN = args.micFN
             if args.grainsFN:
                 paramsf.write(f'GrainsFile {args.grainsFN}\n')
+                print("Added grains file to parameters file: ", args.grainsFN)
                 grainsFN = args.grainsFN
         
         # Run indexing if requested
