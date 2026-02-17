@@ -20,9 +20,25 @@ This manual walks you through the workflow of taking radially integrated (caked)
 
 | Component | Minimum Version | Installation |
 |-----------|----------------|-------------|
-| **MIDAS** | 9.0 | `~/opt/MIDAS/` |
-| **GSAS-II** | Latest | `conda install gsas2full -c briantoby` or [install guide](https://advancedphotonsource.github.io/GSAS-II-Tutorials/install.html) |
+| **MIDAS** | 9.0 | See [README.md](README.md) — typically installed to `~/opt/MIDAS/` but any path works.  Scripts auto-detect their install location. |
+| **GSAS-II** | Latest | `conda install gsas2full -c briantoby` or [install guide](https://advancedphotonsource.github.io/GSAS-II-Tutorials/install.html). See §2.3 below. |
 | **Python** | 3.9+ | Required by both packages |
+| **zarr** | 2.18.3 | `pip install zarr==2.18.3` (required by the MIDAS zarr importer in GSAS-II) |
+
+### 2.3. GSAS-II Installation & Setup
+
+The MIDAS scripts need to import `GSASIIscriptable` at runtime.  There are two setups:
+
+1. **Conda (recommended):** Install the `gsas2full` package, which places GSAS-II on the standard Python path:
+   ```bash
+   conda install gsas2full -c briantoby
+   ```
+
+2. **Manual / source install:** If GSAS-II is installed in a non-standard location (e.g. `/opt/gsas2/GSASII`), point the scripts to it with an environment variable:
+   ```bash
+   export GSASII_PATH=/path/to/GSAS-II/GSASII
+   ```
+   Add this to your `.bashrc` / `.zshrc` for persistence.
 
 ### 2.2. Data
 
@@ -35,14 +51,17 @@ Before starting, you should have:
 
 ## 3. MIDAS Output Format
 
-The MIDAS `integrator.py` produces caked diffraction data in an HDF5 file with the extension **`.caked.hdf`**. This file contains everything GSAS-II needs to import the data as a set of 1D powder patterns.
+The MIDAS `integrator.py` produces caked diffraction data in a **`.zarr.zip`** file. This file contains everything GSAS-II needs to import the data as a set of 1D powder patterns, and is read by the [MIDAS zarr importer](https://github.com/AdvancedPhotonSource/GSAS-II/blob/main/GSASII/imports/G2pwd_MIDAS.py) in GSAS-II.
 
-### 3.1. HDF5 Internal Structure
+> [!IMPORTANT]
+> The MIDAS importer requires **zarr 2.18.3** (`pip install zarr==2.18.3`). Newer zarr versions may not be compatible.
+
+### 3.1. Zarr Internal Structure
 
 ```
-<filename>.caked.hdf
+<filename>.zarr.zip
 ├── InstrumentParameters/
-│   ├── Distance        # Sample-to-detector distance (mm)
+│   ├── Distance        # Sample-to-detector distance (µm)
 │   ├── Lam             # Wavelength (Å)
 │   ├── Polariz         # Polarization fraction
 │   ├── SH_L            # Low-angle asymmetry parameter
@@ -51,8 +70,9 @@ The MIDAS `integrator.py` produces caked diffraction data in an HDF5 file with t
 │   └── Z               # Additional profile parameter
 ├── OmegaSumFrame/
 │   └── LastFrameNumber_<N>   # Caked intensity data (R × η array)
+│       └── .attrs              # FirstOme, LastOme, Number Of Frames Summed
 ├── Omegas              # Effective ω angles for each summed frame
-└── REtaMap             # (4 × R × η) array: radius, η, intensity, error
+└── REtaMap             # (4 × R × η) array: 2θ, η, intensity/bin-area
 ```
 
 ### 3.2. Key Parameters That Affect the Output
@@ -100,15 +120,13 @@ python ~/opt/MIDAS/utils/integrator.py \
 
 ### 4.2. Import the Powder Data
 
-1. Go to **Import → Powder Data → from Generic HDF5 XY (etc.) file**.
-2. Browse to your `.caked.hdf` file and select it.
-3. GSAS-II will scan the HDF5 tree and present the available datasets. Select the dataset corresponding to the caked intensity data (typically under `OmegaSumFrame` or `REtaMap`).
-4. When prompted for instrument parameters:
-   - If the HDF5 file includes `InstrumentParameters/`, GSAS-II may auto-populate wavelength and detector distance.
-   - Otherwise, enter the **wavelength** (Å) and select the appropriate radiation type (synchrotron X-ray).
+1. Go to **Import → Powder Data → from MIDAS zarr file**.
+2. Browse to your `.zarr.zip` file and select it.
+3. GSAS-II will read all azimuthal lineouts from the zarr file. Each lineout with ≥ 20 unmasked points becomes a separate histogram.
+4. Instrument parameters (wavelength, profile terms) are automatically read from the `InstrumentParameters/` group in the zarr file. You can override them with an external `.instprm` file placed alongside the `.zarr.zip` with the same base name.
 
 > [!TIP]
-> If GSAS-II does not show an HDF5 import option, ensure that `h5py` is installed in the same Python environment as GSAS-II. You can verify with `python -c "import h5py; print(h5py.version.version)"`.
+> If GSAS-II does not show the MIDAS import option, ensure that `zarr==2.18.3` is installed in the same Python environment as GSAS-II. You can verify with `python -c "import zarr; print(zarr.__version__)"`.
 
 ### 4.3. Verify the Import
 
@@ -264,12 +282,136 @@ The calibration parameters from MIDAS can serve as starting instrument-parameter
 
 ---
 
-## 9. See Also
+## 9. Scripted Rietveld Refinement
+
+For batch processing or pipeline integration, MIDAS provides a script that automates the staged Rietveld refinement workflow described above using the GSAS-II [scripting API](https://gsas-ii.readthedocs.io/en/latest/GSASIIscriptable.html).  Each histogram (lineout) is refined **independently** in its own `.gpx` project, and when `--nCPUs > 1` these refinements run **in parallel** via `multiprocessing`.
+
+> [!NOTE]
+> In the examples below, `$MIDAS_INSTALL_DIR` refers to wherever MIDAS is installed on your system (commonly `~/opt/MIDAS`).  The scripts auto-detect their install location, so you only need the correct absolute or relative path to the script.
+
+### 9.1. Quick Start
+
+```bash
+python $MIDAS_INSTALL_DIR/utils/rietveld_refine.py \
+    --data  output/sample.zarr.zip \
+    --cif   CeO2.cif \
+    --out   refinement/ \
+    --bkg-terms 6 \
+    --nCPUs 8
+```
+
+### 9.2. What the Script Does
+
+The script performs the same staged refinement as the GUI workflow, **per histogram**:
+
+| Stage | Parameters Refined |
+|-------|-------------------|
+| 1 | Background (Chebyshev) + Scale |
+| 2 | Unit cell (lattice parameters) |
+| 3a | Gaussian profile: U, V, W |
+| 3b | Lorentzian profile: X, Y + asymmetry SH/L |
+| 4 | Atomic positions + thermal parameters |
+
+Each histogram produces its own `hist_NNNN.gpx` project that can be opened in the GSAS-II GUI.
+
+### 9.3. CLI Arguments
+
+| Argument | Description | Default |
+|----------|-------------|--------|
+| `--data` / `-d` | MIDAS `.zarr.zip` file (required) | — |
+| `--cif` / `-c` | One or more CIF files (required) | — |
+| `--out` / `-o` | Output **directory** for per-histogram `.gpx` files | `refinement/` |
+| `--instprm` / `-i` | Optional `.instprm` override | (from zarr) |
+| `--bkg-terms` | Number of background coefficients | 6 |
+| `--limits LOW HIGH` | 2θ limits (degrees) | (full range) |
+| `--nCPUs` | Number of parallel workers | 1 |
+| `--no-atoms` | Skip atomic position refinement | — |
+| `--no-export` | Skip CIF/CSV export | — |
+| `-v` | Verbose (debug) logging | — |
+
+### 9.4. Outputs (per histogram)
+
+- **`hist_NNNN.gpx`** — GSAS-II project (openable in the GUI)
+- **`hist_NNNN_<phase>.cif`** — Refined crystal structure
+- **`hist_NNNN_data.csv`** — Pattern data (observed, calculated, difference)
+- **`refinement_summary.json`** — Aggregated results: Rwp per histogram, mean Rwp, lattice parameters
+
+### 9.5. Parallel Refinement
+
+```bash
+# Refine all histograms using 16 parallel workers
+python $MIDAS_INSTALL_DIR/utils/rietveld_refine.py \
+    --data  output/sample.zarr.zip \
+    --cif   Al2O3.cif  Fe3O4.cif \
+    --out   refinement/ \
+    --nCPUs 16 \
+    --limits 2.0 30.0
+```
+
+### 9.6. Python API
+
+The script can be imported directly for integration into larger pipelines:
+
+```python
+from rietveld_refine import run_refinement
+
+results = run_refinement(
+    data_file='output/sample.zarr.zip',
+    cif_files=['CeO2.cif'],
+    output_dir='refinement/',
+    bkg_terms=6,
+    n_cpus=8,
+)
+print(f"Mean Rwp = {results['mean_Rwp']:.3f}%")
+print(f"Succeeded: {results['succeeded']} / {results['total_histograms']}")
+```
+
+> [!TIP]
+> Start by inspecting your data in the GSAS-II GUI to verify the import and choose appropriate 2θ limits.  Once satisfied, use the script to automate the refinement for batch processing.
+
+---
+
+## 10. Combined Integration + Refinement Pipeline
+
+The `integrate_and_refine.py` wrapper runs the full pipeline from **raw data** to **refined crystal structures** in a single command:
+
+```bash
+python $MIDAS_INSTALL_DIR/utils/integrate_and_refine.py \
+    -paramFN  ps.txt \
+    -dataFN   data/sample_000001.h5 \
+    --cif     CeO2.cif \
+    --out     refinement/ \
+    -nCPUs    8
+```
+
+This wrapper chains two stages:
+1. **Stage 1 — Integration:** Runs `integrator.py` to produce `.zarr.zip` files.
+2. **Stage 2 — Refinement:** Runs `rietveld_refine.py` to perform staged Rietveld refinement on each histogram.
+
+### 10.1. Pipeline Control Flags
+
+| Flag | Effect |
+|------|--------|
+| `--skip-integration --zarr-file FILE` | Skip Stage 1 and use an existing `.zarr.zip` |
+| `--skip-refinement` | Run only Stage 1 (integration) |
+
+### 10.2. Argument Groups
+
+The wrapper passes arguments through to each stage:
+
+- **Integration args:** `-paramFN`, `-dataFN`, `-resultFolder`, `-darkFN`, `-dataLoc`, `-darkLoc`, `-numFrameChunks`, `-preProcThresh`, `-startFileNr`, `-endFileNr`, `-nCPUsLocal`
+- **Refinement args:** `--cif`, `--out`, `--instprm`, `--bkg-terms`, `--limits`, `--no-atoms`, `--no-export`
+- **Shared:** `-nCPUs` (used for both parallel integration and parallel refinement), `-v`
+
+---
+
+## 11. See Also
 
 - [FF_RadialIntegration.md](FF_RadialIntegration.md) — MIDAS radial integration / caking workflow
 - [FF_calibration.md](FF_calibration.md) — FF-HEDM geometry calibration (produces parameters used by integrator)
 - [README.md](README.md) — High-level MIDAS overview and manual index
 - [GSAS-II Tutorials](https://advancedphotonsource.github.io/GSAS-II-Tutorials/) — Official GSAS-II tutorials and documentation
+- [GSASIIscriptable API](https://gsas-ii.readthedocs.io/en/latest/GSASIIscriptable.html) — GSAS-II scripting reference
 
 ---
 
