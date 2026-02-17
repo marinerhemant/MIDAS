@@ -17,7 +17,7 @@ There are **two primary workflows** depending on your experimental needs:
 | **Best For** | **Real-time** experiments, High-throughput, Large Datasets | **Post-experiment** analysis, Single files, Systems without GPUs |
 | **Engine** | `IntegratorFitPeaksGPUStream` (CUDA) | `IntegratorZarrOMP` (OpenMP) |
 | **Key Feature** | Live streaming from detector (PVA) or folder | Parallel processing of individual file chunks |
-| **Outputs** | HDF5 with fit results & lineouts | Zarr/HDF5 with lineouts, MATLAB (.mat) option |
+| **Outputs** | HDF5 with fit results & lineouts, zarr.zip for GSAS-II | Zarr/HDF5 with lineouts, zarr.zip for GSAS-II, MATLAB (.mat) option |
 
 ---
 
@@ -47,7 +47,10 @@ graph LR
     Server -->|"Frames (Socket)"| GPU
     GPU -->|"Binary Stream"| Post["integrator_stream_process_h5.py"]
     Post --> Final["Final Output .h5"]
+    Post --> Zarr["GSAS-II zarr.zip"]
 ```
+
+The GPU pipeline now produces **both** HDF5 and `.zarr.zip` output by default. The zarr.zip file is directly importable into GSAS-II using the MIDAS zarr reader (see [GSAS-II_Integration.md](GSAS-II_Integration.md)).
 
 ### 2.2. Requirements
 *   **Hardware:** NVIDIA GPU (Compute Capability 3.5+).
@@ -82,6 +85,8 @@ python ~/opt/MIDAS/utils/integrator_batch_process.py \
 | `--pva` | Enable listening to an EPICS PVA stream instead of reading files. |
 | `--dark` | Path to a dark field file (binary) for background subtraction. |
 | `--output-h5` | Filename for the final consolidated HDF5 output. |
+| `--zarr-output` | Custom filename for the GSAS-II zarr.zip output (default: auto from `--output-h5`). |
+| `--no-zarr` | Skip zarr.zip creation (HDF5 only). |
 | `--save-interval` | How often (in frames) to save the intermediate mapping file. Default: 500. |
 
 ---
@@ -236,14 +241,25 @@ The parameter file is a text file containing key-value pairs used by both the `i
 
 ## 6. Output Formats
 
-**HDF5 / Zarr Structure**
+### 6.1. HDF5 / Zarr Structure
 Both workflows produce hierarchical data files containing:
 *   `lineout`: The 1D integrated intensity vs. radius.
 *   `tth`: The 2-theta angles corresponding to the radius bins.
 *   `azimuth`: The azimuthal angles.
 *   `intensity`: The 2D integrated image (if enabled).
 
-**Visualizing Results**
+### 6.2. GSAS-II Compatible zarr.zip
+Both workflows also produce a `.zarr.zip` file compatible with GSAS-II's MIDAS zarr importer. This file contains:
+*   `REtaMap` — (4 × R × η) geometry array: radius, 2θ, η, bin area
+*   `OmegaSumFrame` — Summed 2D caked frames with omega attributes
+*   `InstrumentParameters` — Wavelength, profile parameters, distance
+
+Instrument parameters are read from the parameter file if present (keys `Wavelength`, `Lsd`, `U`, `V`, `W`, `SHpL`, `Polariz`, `X`, `Y`, `Z`), otherwise sensible defaults are used.
+
+> [!TIP]
+> For importing into GSAS-II, see [GSAS-II_Integration.md](GSAS-II_Integration.md). The importer requires `zarr==2.18.3`.
+
+### 6.3. Visualizing Results
 Use the **FF-HEDM Interactive Viewer** (`interactiveFFplotting.py`) to inspect the resulting HDF5/Zarr files, or simpler tools like `silx view` or standard Python `h5py`/`zarr` scripts.
 
 ---

@@ -429,6 +429,10 @@ def main():
                         help='Location within H5 files containing image data (default: exchange/data)')
     parser.add_argument('--compress', action='store_true',
                         help='Enable hybrid compression (send as uint16 + overflows)')
+    parser.add_argument('--zarr-output', default=None,
+                        help='Output zarr.zip filename for GSAS-II (default: auto from h5 name)')
+    parser.add_argument('--no-zarr', action='store_true',
+                        help='Skip creating zarr.zip output for GSAS-II')
     
     args = parser.parse_args()
     
@@ -652,6 +656,12 @@ def main():
     if omega_sum_frames is not None:
         h5_cmd.extend(["--omega-sum-frames", str(omega_sum_frames)])
     
+    # Add zarr output options
+    if args.no_zarr:
+        h5_cmd.append("--no-zarr")
+    elif args.zarr_output:
+        h5_cmd.extend(["--zarr-output", args.zarr_output])
+    
     print(f"Running: {' '.join(h5_cmd)}")
     try:
         t0_h5 = time.time()
@@ -672,6 +682,9 @@ def main():
     print(f"  - fit.bin (raw fit data, if peak fitting was enabled)")
     print(f"  - Int2D.bin (raw 2D integration data, if enabled)")
     print(f"  - {args.output_h5} (HDF5 formatted data)")
+    if not args.no_zarr:
+        zarr_name = args.zarr_output or os.path.splitext(args.output_h5)[0] + '.zarr.zip'
+        print(f"  - {zarr_name} (zarr.zip for GSAS-II import)")
     print(f"  - {output_dir / mapping_file} (frame mapping JSON)")
     print(f"  - {integrator_log} (log from IntegratorFitPeaksGPUStream)")
     print(f"  - {server_log} (log from integrator_server.py)")

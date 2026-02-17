@@ -53,6 +53,8 @@ Before starting, you should have:
 
 The MIDAS `integrator.py` produces caked diffraction data in a **`.zarr.zip`** file. This file contains everything GSAS-II needs to import the data as a set of 1D powder patterns, and is read by the [MIDAS zarr importer](https://github.com/AdvancedPhotonSource/GSAS-II/blob/main/GSASII/imports/G2pwd_MIDAS.py) in GSAS-II.
 
+The **streaming GPU pipeline** (`integrator_batch_process.py` → `integrator_stream_process_h5.py`) also generates a compatible `.zarr.zip` alongside the HDF5 output. Instrument parameters are read from the parameter file or use defaults matching the GSAS-II reader. Use `--no-zarr` to skip zarr creation, or `--zarr-output <name>` to set a custom filename.
+
 > [!IMPORTANT]
 > The MIDAS importer requires **zarr 2.18.3** (`pip install zarr==2.18.3`). Newer zarr versions may not be compatible.
 
@@ -373,10 +375,22 @@ print(f"Succeeded: {results['succeeded']} / {results['total_histograms']}")
 
 ## 10. Combined Integration + Refinement Pipeline
 
-The `integrate_and_refine.py` wrapper runs the full pipeline from **raw data** to **refined crystal structures** in a single command:
+The `integrate_and_refine.py` wrapper runs the full pipeline from **raw data** to **refined crystal structures** in a single command.  It supports two integration backends:
+
+| Backend | Engine | Data Source | Best For |
+|---------|--------|-------------|----------|
+| `batch` (default) | `integrator.py` (CPU/OpenMP) | Individual data files (`-dataFN`) | Post-experiment analysis, systems without GPUs |
+| `stream` | `integrator_batch_process.py` (GPU/CUDA) | Folder of images or live PVA stream | Real-time experiments, high-throughput |
+
+Both backends produce a `.zarr.zip` file that is passed to Stage 2 (Rietveld refinement).
+
+### 10.1. CPU Batch Backend
+
+Process individual data files using the OpenMP-based integrator:
 
 ```bash
 python $MIDAS_INSTALL_DIR/utils/integrate_and_refine.py \
+    --backend batch \
     -paramFN  ps.txt \
     -dataFN   data/sample_000001.h5 \
     --cif     CeO2.cif \
@@ -384,30 +398,61 @@ python $MIDAS_INSTALL_DIR/utils/integrate_and_refine.py \
     -nCPUs    8
 ```
 
-This wrapper chains two stages:
-1. **Stage 1 — Integration:** Runs `integrator.py` to produce `.zarr.zip` files.
-2. **Stage 2 — Refinement:** Runs `rietveld_refine.py` to perform staged Rietveld refinement on each histogram.
+### 10.2. GPU Streaming Backend (Folder)
 
-### 10.1. Pipeline Control Flags
+Process a folder of images using the GPU streaming pipeline:
+
+```bash
+python $MIDAS_INSTALL_DIR/utils/integrate_and_refine.py \
+    --backend stream \
+    --param-file ps.txt \
+    --folder /data/experiment/scan_01/ \
+    --cif    CeO2.cif \
+    --out    refinement/ \
+    -nCPUs   8
+```
+
+### 10.3. GPU Streaming Backend (Live PVA)
+
+Connect to a live EPICS PVAccess detector stream:
+
+```bash
+python $MIDAS_INSTALL_DIR/utils/integrate_and_refine.py \
+    --backend stream \
+    --param-file ps.txt \
+    --pva --pva-ip 10.54.105.139 \
+    --cif    CeO2.cif \
+    --out    refinement/ \
+    -nCPUs   8
+```
+
+### 10.4. Pipeline Control Flags
 
 | Flag | Effect |
 |------|--------|
 | `--skip-integration --zarr-file FILE` | Skip Stage 1 and use an existing `.zarr.zip` |
 | `--skip-refinement` | Run only Stage 1 (integration) |
+| `--backend batch` | Use CPU batch integrator (default) |
+| `--backend stream` | Use GPU streaming integrator |
 
-### 10.2. Argument Groups
+### 10.5. Argument Groups
 
-The wrapper passes arguments through to each stage:
+**Batch backend** (`--backend batch`):
+`-paramFN`, `-dataFN`, `-resultFolder`, `-darkFN`, `-dataLoc`, `-darkLoc`, `-numFrameChunks`, `-preProcThresh`, `-startFileNr`, `-endFileNr`, `-nCPUsLocal`
 
-- **Integration args:** `-paramFN`, `-dataFN`, `-resultFolder`, `-darkFN`, `-dataLoc`, `-darkLoc`, `-numFrameChunks`, `-preProcThresh`, `-startFileNr`, `-endFileNr`, `-nCPUsLocal`
-- **Refinement args:** `--cif`, `--out`, `--instprm`, `--bkg-terms`, `--limits`, `--no-atoms`, `--no-export`
-- **Shared:** `-nCPUs` (used for both parallel integration and parallel refinement), `-v`
+**Stream backend** (`--backend stream`):
+`--param-file`, `--folder`, `--pva`, `--pva-ip`, `--output-h5`, `--dark`, `--stream-data-loc`, `--compress`, `--zarr-output`
+
+**Refinement** (both backends):
+`--cif`, `--out`, `--instprm`, `--bkg-terms`, `--limits`, `--no-atoms`, `--no-export`
+
+**Shared:** `-nCPUs` (parallel integration and refinement), `-v`
 
 ---
 
 ## 11. See Also
 
-- [FF_RadialIntegration.md](FF_RadialIntegration.md) — MIDAS radial integration / caking workflow
+- [FF_RadialIntegration.md](FF_RadialIntegration.md) — MIDAS radial integration / caking workflow (both CPU and GPU pipelines)
 - [FF_calibration.md](FF_calibration.md) — FF-HEDM geometry calibration (produces parameters used by integrator)
 - [README.md](README.md) — High-level MIDAS overview and manual index
 - [GSAS-II Tutorials](https://advancedphotonsource.github.io/GSAS-II-Tutorials/) — Official GSAS-II tutorials and documentation

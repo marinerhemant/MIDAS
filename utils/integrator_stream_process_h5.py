@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """
-integrator_stream_process_h5.py - Convert binary output files from IntegratorFitPeaksGPUStream to HDF5
+integrator_stream_process_h5.py - Convert binary output files from
+IntegratorFitPeaksGPUStream to HDF5 and GSAS-II–compatible zarr.zip
 
 This script reads the binary output files produced by the CUDA integrator 
 (lineout.bin, and optionally fit.bin, Int2D.bin, and fit_curves.bin) and 
 organizes them into a single HDF5 file with appropriate groups and datasets.
+
+Optionally, it also creates a .zarr.zip file that can be imported directly
+into GSAS-II using the 'MIDAS zarr' reader. The zarr file contains the
+REtaMap, OmegaSumFrame, and InstrumentParameters groups.
 
 The order of datasets and the grouping for summed frames is determined by the
 sorted filenames in the provided mapping file.
@@ -23,15 +28,38 @@ import json
 import datetime
 import struct
 
+try:
+    import zarr
+    from zarr.storage import ZipStore
+except ImportError:
+    zarr = None
+
+# Default instrument parameters (matching G2pwd_MIDAS.py / IntegratorZarr.c)
+DEFAULT_INST_PARAMS = {
+    'Lam': 0.413263,      # Wavelength in Angstroms
+    'Polariz': 0.99,
+    'SH_L': 0.002,
+    'U': 1.163,
+    'V': -0.126,
+    'W': 0.063,
+    'X': 0.0,
+    'Y': 0.0,
+    'Z': 0.0,
+    'Distance': 1000000.0, # Sample-detector distance in µm
+}
+
+
 def get_frame_dimensions(params_file):
     """
-    Extracts dimensions and peak count from the integrator's parameter file.
+    Extracts dimensions, peak count, and instrument parameters from the
+    integrator's parameter file.
     
     Args:
         params_file: Path to the parameter file
         
     Returns:
-        Tuple (nRBins, nEtaBins, OSF, num_peaks, do_peak_fit)
+        Tuple (nRBins, nEtaBins, OSF, num_peaks, do_peak_fit, inst_params)
+        where inst_params is a dict with keys matching InstrumentParameters.
     """
     # Default values
     RMax, RMin, RBinSize = 100, 10, 0.1
@@ -39,6 +67,14 @@ def get_frame_dimensions(params_file):
     OSF = None
     num_peaks = 0
     do_peak_fit = True  # Assume fitting is done by default
+    
+    # Instrument parameters (start with defaults)
+    inst_params = dict(DEFAULT_INST_PARAMS)
+    # Omega info for zarr output
+    omega_start = None
+    omega_step = None
+    omega_fixed = None  # If 'Omega' key present, all frames share this value
+    px = 200.0  # pixel size in µm
 
     with open(params_file, 'r') as f:
         for line in f:
@@ -53,6 +89,7 @@ def get_frame_dimensions(params_file):
             key = parts[0]
             value = parts[1]
 
+            # Binning parameters
             if key == 'RMax': RMax = float(value)
             elif key == 'RMin': RMin = float(value)
             elif key == 'RBinSize': RBinSize = float(value)
@@ -62,11 +99,34 @@ def get_frame_dimensions(params_file):
             elif key == 'OmegaSumFrames': OSF = int(value)
             elif key == 'PeakLocation': num_peaks += 1
             elif key == 'DoPeakFit' and value == '0': do_peak_fit = False
+            # Instrument parameters
+            elif key == 'Wavelength': inst_params['Lam'] = float(value)
+            elif key == 'Lsd': inst_params['Distance'] = float(value)  # already in µm
+            elif key == 'Polariz': inst_params['Polariz'] = float(value)
+            elif key == 'SHpL': inst_params['SH_L'] = float(value)
+            elif key == 'U': inst_params['U'] = float(value)
+            elif key == 'V': inst_params['V'] = float(value)
+            elif key == 'W': inst_params['W'] = float(value)
+            elif key == 'X': inst_params['X'] = float(value)
+            elif key == 'Y': inst_params['Y'] = float(value)
+            elif key == 'Z': inst_params['Z'] = float(value)
+            # Omega info
+            elif key == 'OmegaStart': omega_start = float(value)
+            elif key == 'OmegaStep': omega_step = float(value)
+            elif key == 'Omega': omega_fixed = float(value)
+            # Pixel size
+            elif key in ('PixelSize', 'PixelSizeY'): px = float(value)
 
     nRBins = int(np.ceil((RMax - RMin) / RBinSize))
     nEtaBins = int(np.ceil((EtaMax - EtaMin) / EtaBinSize))
     
-    return nRBins, nEtaBins, OSF, num_peaks, do_peak_fit
+    # Store omega and pixel info in inst_params for zarr creation
+    inst_params['_omega_start'] = omega_start
+    inst_params['_omega_step'] = omega_step
+    inst_params['_omega_fixed'] = omega_fixed
+    inst_params['_px'] = px
+    
+    return nRBins, nEtaBins, OSF, num_peaks, do_peak_fit, inst_params
 
 def load_mapping_file(mapping_file, start_index=0):
     if not os.path.exists(mapping_file):
@@ -356,8 +416,179 @@ def create_hdf5_file_streamed(output_file,
     if f_fit: f_fit.close()
     if f_int2d: f_int2d.close()
 
+
+# =========================================================================
+# Zarr.zip output for GSAS-II
+# =========================================================================
+
+def create_zarr_zip(zarr_output,
+                    int2d_file,
+                    map_data_file,
+                    mapping,
+                    nRBins, nEtaBins, osf,
+                    inst_params,
+                    num_frames=None):
+    """
+    Create a GSAS-II–compatible .zarr.zip file from the streaming integrator's
+    binary outputs.
+
+    The zarr file contains three top-level groups that the MIDAS zarr reader
+    (G2pwd_MIDAS.py) requires:
+
+        REtaMap              — (4, nRBins, nEtaBins)  geometry maps
+        OmegaSumFrame        — group of summed 2D frames with omega attrs
+        InstrumentParameters — group of scalar instrument parameters
+
+    Args:
+        zarr_output:   Path for the output .zarr.zip file
+        int2d_file:    Path to Int2D.bin (per-frame 2D integrated arrays)
+        map_data_file: Path to RTthEtaAreaMap.bin (4 × nRBins × nEtaBins)
+        mapping:       Frame mapping dict (or None)
+        nRBins:        Number of radial bins
+        nEtaBins:      Number of azimuthal bins
+        osf:           OmegaSumFrames value
+        inst_params:   Dict of instrument parameters (from get_frame_dimensions)
+        num_frames:    Total number of frames (auto-detected from int2d_file)
+    """
+    if zarr is None:
+        print("WARNING: zarr module not available. Skipping zarr.zip creation.")
+        print("Install with: pip install zarr==2.18.3")
+        return
+
+    # --- Validate inputs ---
+    if not int2d_file or not os.path.exists(int2d_file):
+        print("WARNING: Int2D.bin not found — cannot create zarr.zip without 2D data.")
+        return
+    if not map_data_file or not os.path.exists(map_data_file):
+        print("WARNING: RTthEtaAreaMap.bin not found — cannot create zarr.zip.")
+        return
+
+    int2d_frame_size = nRBins * nEtaBins * 8  # doubles
+
+    # Detect total frames from Int2D.bin size
+    if num_frames is None:
+        total_bytes = os.path.getsize(int2d_file)
+        num_frames = total_bytes // int2d_frame_size
+
+    if num_frames == 0:
+        print("WARNING: No frames found in Int2D.bin.")
+        return
+
+    print(f"Creating zarr.zip: {zarr_output}")
+    print(f"  {num_frames} frames, {nRBins} R bins × {nEtaBins} Eta bins")
+
+    # --- Open zarr zip store (zarr v2) ---
+    store = ZipStore(zarr_output, mode='w')
+    root = zarr.group(store, overwrite=True)
+
+    # --- 1. REtaMap (4, nRBins, nEtaBins) from RTthEtaAreaMap.bin ---
+    raw_map = np.fromfile(map_data_file, dtype=np.float64)
+    expected_size = 4 * nRBins * nEtaBins
+    if len(raw_map) != expected_size:
+        print(f"WARNING: Map file size mismatch: got {len(raw_map)}, expected {expected_size}")
+        store.close()
+        return
+
+    remap = raw_map.reshape(4, nRBins, nEtaBins)
+    root.array('REtaMap', data=remap, dtype='float64', chunks=False)
+    print("  Written: REtaMap")
+
+    # --- 2. OmegaSumFrame group ---
+    osf_grp = root.create_group('OmegaSumFrame')
+
+    # Sorting logic (same as HDF5 path)
+    frame_indices = list(range(num_frames))
+    if mapping:
+        def get_sort_key(fi):
+            mv = mapping.get(fi)
+            if mv is not None:
+                sk = mv.get('filename') or str(mv.get('uniqueId', ''))
+                return (0, sk)
+            return (1, fi)
+        frame_indices.sort(key=get_sort_key)
+
+    # Determine grouping
+    if osf is not None and osf == -1:
+        actual_osf = num_frames
+    elif osf is None or osf <= 0:
+        actual_osf = 1
+    else:
+        actual_osf = osf
+
+    total_groups = (len(frame_indices) + actual_osf - 1) // actual_osf
+
+    # Omega calculation
+    omega_start = inst_params.get('_omega_start')
+    omega_step = inst_params.get('_omega_step')
+    omega_fixed = inst_params.get('_omega_fixed')
+
+    f_int2d = open(int2d_file, 'rb', buffering=10 * 1024 * 1024)
+
+    for group_idx in range(total_groups):
+        start_i = group_idx * actual_osf
+        end_i = min(start_i + actual_osf, len(frame_indices))
+        current_group_frames = frame_indices[start_i:end_i]
+
+        # Sum frames in this group
+        sum_buffer = np.zeros((nRBins, nEtaBins), dtype=np.float64)
+        valid_count = 0
+
+        for fi in current_group_frames:
+            data = read_frame_chunk(f_int2d, fi, int2d_frame_size,
+                                   shape=(nRBins, nEtaBins))
+            if data is not None:
+                sum_buffer += data
+                valid_count += 1
+
+        if valid_count == 0:
+            continue
+
+        # Dataset name matches IntegratorZarr.c convention
+        last_frame = current_group_frames[-1]
+        ds_name = f"LastFrameNumber_{last_frame}"
+        ds = osf_grp.array(ds_name, data=sum_buffer, dtype='float64', chunks=False)
+
+        # Attributes expected by G2pwd_MIDAS.py
+        ds.attrs['Number Of Frames Summed'] = valid_count
+        ds.attrs['LastFrameNumber'] = int(last_frame)
+
+        # Omega attributes
+        first_frame = current_group_frames[0]
+        if omega_fixed is not None:
+            ds.attrs['FirstOme'] = omega_fixed
+            ds.attrs['LastOme'] = omega_fixed
+        elif omega_start is not None and omega_step is not None:
+            ds.attrs['FirstOme'] = omega_start + first_frame * omega_step
+            ds.attrs['LastOme'] = omega_start + last_frame * omega_step
+        else:
+            # No omega info — use frame index as placeholder
+            ds.attrs['FirstOme'] = float(first_frame)
+            ds.attrs['LastOme'] = float(last_frame)
+
+        if group_idx % 50 == 0:
+            print(f"  OmegaSumFrame: group {group_idx+1}/{total_groups}",
+                  end='\r', flush=True)
+
+    f_int2d.close()
+    print(f"  Written: OmegaSumFrame ({total_groups} groups)")
+
+    # --- 3. InstrumentParameters group ---
+    ip_grp = root.create_group('InstrumentParameters')
+    # Write each parameter as a 1-element array (matching IntegratorZarr.c HDF5 layout)
+    for key in ('Lam', 'Polariz', 'SH_L', 'U', 'V', 'W', 'X', 'Y', 'Z', 'Distance'):
+        val = inst_params.get(key, DEFAULT_INST_PARAMS.get(key, 0.0))
+        ip_grp.array(key, data=np.array([val], dtype='float64'), chunks=False)
+
+    print("  Written: InstrumentParameters")
+
+    store.close()
+    print(f"Successfully created zarr.zip: {zarr_output}")
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Convert binary output files from IntegratorFitPeaksGPUStream to HDF5")
+    parser = argparse.ArgumentParser(
+        description="Convert binary output files from IntegratorFitPeaksGPUStream "
+                    "to HDF5 and optionally GSAS-II–compatible zarr.zip")
     parser.add_argument('--lineout', type=str, default='lineout.bin', help='Lineout binary file')
     parser.add_argument('--lineout-simple-mean', type=str, default='lineout_simple_mean.bin', help='Lineout binary file (simple mean)')
     parser.add_argument('--fit', type=str, default='fit.bin', help='Fit binary file')
@@ -368,12 +599,16 @@ def main():
     parser.add_argument('--mapping', type=str, help='JSON file mapping frame indices to dataset IDs')
     parser.add_argument('--server-log', type=str, help='Server log file to extract dataset IDs')
     parser.add_argument('--output', type=str, default='integrator_output.h5', help='Output HDF5 file')
+    parser.add_argument('--zarr-output', type=str, default=None,
+                        help='Output zarr.zip file for GSAS-II (default: <output>.zarr.zip)')
+    parser.add_argument('--no-zarr', action='store_true',
+                        help='Skip zarr.zip creation')
     parser.add_argument('--start', type=int, default=0, help='Starting frame index (deprecated/unused in streaming mode)')
     parser.add_argument('--count', type=int, help='Number of frames to process (deprecated/unused in streaming mode)')
     parser.add_argument('--omega-sum-frames', type=int, help='Override OmegaSumFrames value')
     args = parser.parse_args()
     
-    nRBins, nEtaBins, osf, num_peaks, do_peak_fit = get_frame_dimensions(args.params)
+    nRBins, nEtaBins, osf, num_peaks, do_peak_fit, inst_params = get_frame_dimensions(args.params)
     print(f"Frame dimensions: {nRBins} R bins, {nEtaBins} Eta bins")
     
     if args.omega_sum_frames is not None:
@@ -386,6 +621,7 @@ def main():
     elif args.server_log: 
         mapping = extract_dataset_mapping_from_server_log(args.server_log)
         
+    # --- HDF5 output ---
     create_hdf5_file_streamed(args.output, 
                               args.lineout, 
                               args.lineout_simple_mean, 
@@ -395,8 +631,27 @@ def main():
                               args.map_data, 
                               mapping, 
                               nRBins, nEtaBins, osf, num_peaks)
-                              
     print(f"Successfully created HDF5 file: {args.output}")
+
+    # --- Zarr.zip output for GSAS-II ---
+    if not args.no_zarr:
+        zarr_out = args.zarr_output
+        if zarr_out is None:
+            # Derive from HDF5 output name
+            base = os.path.splitext(args.output)[0]
+            zarr_out = base + '.zarr.zip'
+
+        create_zarr_zip(
+            zarr_output=zarr_out,
+            int2d_file=args.int2d,
+            map_data_file=args.map_data,
+            mapping=mapping,
+            nRBins=nRBins,
+            nEtaBins=nEtaBins,
+            osf=osf,
+            inst_params=inst_params,
+        )
+
 
 if __name__ == "__main__":
     main()
