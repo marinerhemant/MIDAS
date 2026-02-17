@@ -751,7 +751,8 @@ int main(int argc, char *argv[]) {
       blosc1_decompress(arr, MaskFN, dsize);
       useMask = 1;
       free(arr);
-      free(data);
+      // free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/ResultFolder/0") != NULL) {
@@ -763,7 +764,8 @@ int main(int argc, char *argv[]) {
       dsize = blosc1_decompress(arr, resultFolder, dsize);
       resultFolder[dsize] = '\0';
       free(arr);
-      free(data);
+      // free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/DistortionFN/0") != NULL) {
@@ -777,6 +779,7 @@ int main(int argc, char *argv[]) {
       distortionFile = 1;
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/p3/0") !=
         NULL) {
@@ -789,6 +792,7 @@ int main(int argc, char *argv[]) {
       p3 = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/p2/0") !=
         NULL) {
@@ -801,6 +805,7 @@ int main(int argc, char *argv[]) {
       p2 = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/p1/0") !=
         NULL) {
@@ -813,6 +818,7 @@ int main(int argc, char *argv[]) {
       p1 = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/p0/0") !=
         NULL) {
@@ -825,6 +831,7 @@ int main(int argc, char *argv[]) {
       p0 = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/tz/0") !=
         NULL) {
@@ -837,6 +844,7 @@ int main(int argc, char *argv[]) {
       tz = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/ty/0") !=
         NULL) {
@@ -849,6 +857,7 @@ int main(int argc, char *argv[]) {
       ty = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/tx/0") !=
         NULL) {
@@ -861,6 +870,7 @@ int main(int argc, char *argv[]) {
       tx = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/RhoD/0") !=
         NULL) {
@@ -873,6 +883,7 @@ int main(int argc, char *argv[]) {
       RhoD = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/MaxRingRad/0") != NULL) {
@@ -885,6 +896,7 @@ int main(int argc, char *argv[]) {
       RhoD = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/EtaBinSize/0") != NULL) {
@@ -897,6 +909,7 @@ int main(int argc, char *argv[]) {
       EtaBinSize = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/RBinSize/0") != NULL) {
@@ -909,6 +922,7 @@ int main(int argc, char *argv[]) {
       RBinSize = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/RMax/0") !=
         NULL) {
@@ -921,6 +935,7 @@ int main(int argc, char *argv[]) {
       RMax = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/RMin/0") !=
         NULL) {
@@ -933,6 +948,7 @@ int main(int argc, char *argv[]) {
       RMin = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/EtaMax/0") !=
         NULL) {
@@ -945,6 +961,7 @@ int main(int argc, char *argv[]) {
       EtaMax = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/EtaMin/0") !=
         NULL) {
@@ -957,6 +974,7 @@ int main(int argc, char *argv[]) {
       EtaMin = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/Lsd/0") !=
         NULL) {
@@ -969,6 +987,7 @@ int main(int argc, char *argv[]) {
       Lsd = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/PixelSizeY/0") != NULL) {
@@ -981,6 +1000,7 @@ int main(int argc, char *argv[]) {
       pxY = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/PixelSizeZ/0") != NULL) {
@@ -993,6 +1013,7 @@ int main(int argc, char *argv[]) {
       pxZ = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/PixelSize/0") != NULL) {
@@ -1006,6 +1027,7 @@ int main(int argc, char *argv[]) {
       pxZ = pxY;
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/YCen/0") !=
         NULL) {
@@ -1018,6 +1040,7 @@ int main(int argc, char *argv[]) {
       yCen = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/ZCen/0") !=
         NULL) {
@@ -1030,6 +1053,7 @@ int main(int argc, char *argv[]) {
       zCen = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "exchange/data/.zarray") != NULL) {
       s = calloc(finfo->size + 1, sizeof(char));
@@ -1044,8 +1068,13 @@ int main(int argc, char *argv[]) {
         strncpy(ptr3, ptrt, loc + 1);
         sscanf(ptr3, "%*[^0123456789]%d%*[^0123456789]%d%*[^0123456789]%d",
                &nFrames, &NrPixelsZ, &NrPixelsY);
-      } else
+      } else {
+        free(s);
+        zip_fclose(fd);
         return 1;
+      }
+      free(s);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/ImTransOpt/.zarray") !=
@@ -1065,6 +1094,7 @@ int main(int argc, char *argv[]) {
         return 1;
       printf("nImTransOpt: %d\n", NrTransOpt);
       free(s);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/ImTransOpt/0") != NULL) {
@@ -1081,6 +1111,7 @@ int main(int argc, char *argv[]) {
       NPanelsY = *(int *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/NPanelsZ/0") != NULL) {
@@ -1093,6 +1124,7 @@ int main(int argc, char *argv[]) {
       NPanelsZ = *(int *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/PanelSizeY/0") != NULL) {
@@ -1105,6 +1137,7 @@ int main(int argc, char *argv[]) {
       PanelSizeY = *(int *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/PanelSizeZ/0") != NULL) {
@@ -1117,6 +1150,7 @@ int main(int argc, char *argv[]) {
       PanelSizeZ = *(int *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/PanelShiftsFile/0") !=
@@ -1131,6 +1165,7 @@ int main(int argc, char *argv[]) {
       strcpy(PanelShiftsFile, data);
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/PanelGapsY/0") != NULL) {
@@ -1161,6 +1196,7 @@ int main(int argc, char *argv[]) {
     printf("Transopt: %d\n", TransOpt[iter]);
   free(s);
   free(data);
+  zip_fclose(fd);
 
   if (locPanelGapsY >= 0 && NPanelsY > 1) {
     zip_stat_index(arch, locPanelGapsY, 0, finfo);
@@ -1174,6 +1210,7 @@ int main(int argc, char *argv[]) {
                       dsize); // Direct extraction to array
     free(s);
     free(data);
+    zip_fclose(fd);
   }
   if (locPanelGapsZ >= 0 && NPanelsZ > 1) {
     zip_stat_index(arch, locPanelGapsZ, 0, finfo);
@@ -1186,6 +1223,7 @@ int main(int argc, char *argv[]) {
     blosc1_decompress(s, (void *)PanelGapsZ, dsize);
     free(s);
     free(data);
+    zip_fclose(fd);
   }
 
   // Generate Panels

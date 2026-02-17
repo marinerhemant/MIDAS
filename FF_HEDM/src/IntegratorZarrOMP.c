@@ -365,7 +365,8 @@ int main(int argc, char **argv) {
       dsize = blosc1_decompress(arr, resultFolder, dsize);
       resultFolder[dsize] = '\0';
       free(arr);
-      free(data);
+      // free(data); // Bug fix: decompresses into resultFolder, not data
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/GapFile/0") !=
         NULL) {
@@ -377,7 +378,8 @@ int main(int argc, char **argv) {
       dsize = blosc1_decompress(arr, GapFN, dsize);
       GapFN[dsize] = '\0';
       free(arr);
-      free(data);
+      // free(data); // Bug fix: decompresses into GapFN, not data
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/BadPxFile/0") != NULL) {
@@ -389,7 +391,8 @@ int main(int argc, char **argv) {
       dsize = blosc1_decompress(arr, BadPxFN, dsize);
       BadPxFN[dsize] = '\0';
       free(arr);
-      free(data);
+      // free(data); // Bug fix: decompresses into BadPxFN, not data
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/Wavelength/0") != NULL) {
@@ -402,6 +405,7 @@ int main(int argc, char **argv) {
       Lam = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/X/0") !=
         NULL) {
@@ -414,6 +418,7 @@ int main(int argc, char **argv) {
       X = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/Y/0") !=
         NULL) {
@@ -426,6 +431,7 @@ int main(int argc, char **argv) {
       Y = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/Z/0") !=
         NULL) {
@@ -438,6 +444,7 @@ int main(int argc, char **argv) {
       Z = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/U/0") !=
         NULL) {
@@ -450,6 +457,7 @@ int main(int argc, char **argv) {
       U = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/V/0") !=
         NULL) {
@@ -462,6 +470,7 @@ int main(int argc, char **argv) {
       V = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/W/0") !=
         NULL) {
@@ -474,6 +483,7 @@ int main(int argc, char **argv) {
       W = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/SHpL/0") !=
         NULL) {
@@ -486,6 +496,7 @@ int main(int argc, char **argv) {
       SHpL = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/Polariz/0") !=
         NULL) {
@@ -498,6 +509,7 @@ int main(int argc, char **argv) {
       Polariz = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "measurement/process/scan_parameters/start/0") !=
         NULL) {
@@ -511,6 +523,7 @@ int main(int argc, char **argv) {
       haveOmegas = 1;
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "measurement/process/scan_parameters/step/0") !=
         NULL) {
@@ -523,6 +536,7 @@ int main(int argc, char **argv) {
       omeStep = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/EtaBinSize/0") != NULL) {
@@ -535,6 +549,7 @@ int main(int argc, char **argv) {
       EtaBinSize = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/RBinSize/0") != NULL) {
@@ -547,6 +562,7 @@ int main(int argc, char **argv) {
       RBinSize = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/RMax/0") !=
         NULL) {
@@ -559,6 +575,7 @@ int main(int argc, char **argv) {
       RMax = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/RMin/0") !=
         NULL) {
@@ -571,6 +588,7 @@ int main(int argc, char **argv) {
       RMin = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/EtaMax/0") !=
         NULL) {
@@ -583,6 +601,7 @@ int main(int argc, char **argv) {
       EtaMax = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/EtaMin/0") !=
         NULL) {
@@ -595,6 +614,7 @@ int main(int argc, char **argv) {
       EtaMin = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/Lsd/0") !=
         NULL) {
@@ -607,6 +627,7 @@ int main(int argc, char **argv) {
       Lsd = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/PixelSizeY/0") != NULL) {
@@ -619,6 +640,7 @@ int main(int argc, char **argv) {
       px = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/PixelSizeZ/0") != NULL) {
@@ -631,6 +653,7 @@ int main(int argc, char **argv) {
       px = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/PixelSize/0") != NULL) {
@@ -643,6 +666,7 @@ int main(int argc, char **argv) {
       px = *(double *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/OmegaSumFrames/0") !=
@@ -656,6 +680,7 @@ int main(int argc, char **argv) {
       chunkFiles = *(int *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/SaveIndividualFrames/0") !=
@@ -669,6 +694,7 @@ int main(int argc, char **argv) {
       individualSave = *(int *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/SkipFrame/0") != NULL) {
@@ -682,6 +708,7 @@ int main(int argc, char **argv) {
       printf("SkipFrame: %d\n", skipFrame);
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/Normalize/0") != NULL) {
@@ -694,6 +721,7 @@ int main(int argc, char **argv) {
       Normalize = *(int *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/SumImages/0") != NULL) {
@@ -706,6 +734,7 @@ int main(int argc, char **argv) {
       sumImages = *(int *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/GapIntensity/0") != NULL) {
@@ -718,6 +747,7 @@ int main(int argc, char **argv) {
       GapIntensity = *(long long int *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/BadPxIntensity/0") !=
@@ -731,6 +761,7 @@ int main(int argc, char **argv) {
       BadPxIntensity = *(long long int *)&data[0];
       free(arr);
       free(data);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "exchange/data/.zarray") != NULL) {
       s = calloc(finfo->size + 1, sizeof(char));
@@ -749,6 +780,8 @@ int main(int argc, char **argv) {
                NrPixelsY);
       } else
         return 1;
+      free(s);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "exchange/dark/.zarray") != NULL) {
       s = calloc(finfo->size + 1, sizeof(char));
@@ -771,6 +804,7 @@ int main(int argc, char **argv) {
       } else
         return 1;
       free(s);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "exchange/flood/.zarray") != NULL) {
       s = calloc(finfo->size + 1, sizeof(char));
@@ -793,6 +827,7 @@ int main(int argc, char **argv) {
       } else
         return 1;
       free(s);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name, "exchange/data/0.0.0") != NULL) {
       dataLoc = count;
@@ -821,6 +856,7 @@ int main(int argc, char **argv) {
         return 1;
       printf("nImTransOpt: %d\n", NrTransOpt);
       free(s);
+      zip_fclose(fd);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/ImTransOpt/0") != NULL) {
@@ -861,6 +897,7 @@ int main(int argc, char **argv) {
     printf("Transopt: %d\n", TransOpt[iter]);
   free(s);
   free(data);
+  zip_fclose(fd);
   if (separateFolder != 0) {
     struct stat st = {0};
     sprintf(outputFolder, "%s", resultFolder);
@@ -888,6 +925,7 @@ int main(int argc, char **argv) {
       Pressure[iter - skipFrame] = *(double *)&data[iter + sizeof(double)];
     free(s);
     free(data);
+    zip_fclose(fd);
   }
   if (locTemp > 0) {
     zip_stat_index(arch, locTemp, 0, finfo);
@@ -901,6 +939,7 @@ int main(int argc, char **argv) {
       Temperature[iter - skipFrame] = *(double *)&data[iter + sizeof(double)];
     free(s);
     free(data);
+    zip_fclose(fd);
   }
   if (locI > 0) {
     zip_stat_index(arch, locI, 0, finfo);
@@ -914,6 +953,7 @@ int main(int argc, char **argv) {
       I[iter - skipFrame] = *(double *)&data[iter + sizeof(double)];
     free(s);
     free(data);
+    zip_fclose(fd);
   }
   if (locI0 > 0) {
     zip_stat_index(arch, locI0, 0, finfo);
@@ -927,6 +967,7 @@ int main(int argc, char **argv) {
       I0[iter - skipFrame] = *(double *)&data[iter + sizeof(double)];
     free(s);
     free(data);
+    zip_fclose(fd);
   }
   double *Image;
   int a, b;
@@ -982,6 +1023,7 @@ int main(int argc, char **argv) {
     zip_fread(fd, arr, finfo->size);
     dsize = blosc1_decompress(arr, data, dsize);
     free(arr);
+    zip_fclose(fd);
     memcpy(DarkInTU, data, (size_t)dsize);
     for (b = 0; b < NrPixelsY * NrPixelsZ; b++)
       DarkInT[b] = (double)DarkInTU[b];
