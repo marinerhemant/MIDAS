@@ -40,6 +40,55 @@ show_help() {
     exit 0
 }
 
+check_and_download_seeds() {
+    local SEED_DIR="NF_HEDM/seedOrientations"
+    local REQUIRED_SEEDS=("cubicSeed.txt" "hexagonalSeed.txt" "monoclinicSeed.txt" "orthorhombicSeed.txt" "tetragonalSeed.txt" "triclinicSeed.txt" "trigonalSeed.txt")
+    local MISSING_SEEDS=0
+
+    # Check if directory exists
+    if [ ! -d "$SEED_DIR" ]; then
+        MISSING_SEEDS=1
+    else
+        # Check for each file
+        for seed in "${REQUIRED_SEEDS[@]}"; do
+            if [ ! -f "$SEED_DIR/$seed" ]; then
+                MISSING_SEEDS=1
+                break
+            fi
+        done
+    fi
+
+    # Download and extract if missing
+    if [ "$MISSING_SEEDS" -eq 1 ]; then
+        echo "Missing seed files in $SEED_DIR. Downloading..."
+        mkdir -p "$SEED_DIR"
+        
+        # Download
+        if command -v curl >/dev/null 2>&1; then
+            curl -L -o "$SEED_DIR/seed.zip" "https://github.com/marinerhemant/MIDAS/releases/download/v9.1-data/seed.zip"
+        elif command -v wget >/dev/null 2>&1; then
+            wget -O "$SEED_DIR/seed.zip" "https://github.com/marinerhemant/MIDAS/releases/download/v9.1-data/seed.zip"
+        else
+            echo "Error: Neither curl nor wget found. Cannot download seed files."
+            exit 1
+        fi
+
+        # Unzip
+        if command -v unzip >/dev/null 2>&1; then
+            unzip -o "$SEED_DIR/seed.zip" -d "$SEED_DIR"
+        else
+             echo "Error: unzip command not found."
+             exit 1
+        fi
+
+        # Cleanup
+        rm "$SEED_DIR/seed.zip"
+        echo "Seed files downloaded and extracted successfully."
+    else
+        echo "Seed files already exist."
+    fi
+}
+
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -61,6 +110,9 @@ while [[ $# -gt 0 ]]; do
         *) echo "Unknown option: $1"; show_help ;;
     esac
 done
+
+# Check and download seeds
+check_and_download_seeds
 
 # CMake options list
 CMAKE_OPTIONS=()
