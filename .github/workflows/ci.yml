@@ -27,7 +27,17 @@ jobs:
             libnlopt-dev \
             libhdf5-dev
 
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/_deps
+            build/deps
+          key: ${{ runner.os }}-build-deps-${{ hashFiles('CMakeLists.txt', 'cmake/deps/*.cmake') }}
+          restore-keys: |
+            ${{ runner.os }}-build-deps-
+
       - name: Build (no CUDA)
         run: |
           chmod +x build.sh
-          ./build.sh -j 8 --cuda OFF --install-py-scripts OFF --install-py-deps OFF --clean
+          ./build.sh -j 8 --cuda OFF --install-py-scripts OFF --install-py-deps OFF --system-deps ON --clean
