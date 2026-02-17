@@ -234,19 +234,24 @@ void FindPeakPositions(int LoGMaskRadius, double sigma, pixelvalue *Image2,
   int *ImageEdges; // Edges in LoG filtered image, but just binarized!
   ImageEdges = malloc((NrPixels * NrPixels * sizeof(*ImageEdges)) / 32);
   memset(ImageEdges, 0, (NrPixels * NrPixels * sizeof(*ImageEdges)) / 32);
+  int offsets[8] = {-1,
+                    1,
+                    -NrPixels,
+                    NrPixels,
+                    -NrPixels - 1,
+                    -NrPixels + 1,
+                    NrPixels - 1,
+                    NrPixels + 1};
   for (i = NrPixels + 1; i < ((NrPixels * NrPixels) - (NrPixels + 1)); i++) {
-    if (Image2[i] != 0 &&
-        ((Image3[i] < 0 && Image3[i - 1] >= 0) ||
-         (Image3[i] >= 0 && Image3[i - 1] < 0) ||
-         (Image3[i] == 0 && Image3[i - 1] < 0 && Image3[i + 1] > 0) ||
-         (Image3[i] == 0 && Image3[i - 1] > 0 && Image3[i + 1] < 0) ||
-         (Image3[i] < 0 && Image3[i - NrPixels] >= 0) ||
-         (Image3[i] >= 0 && Image3[i - NrPixels] < 0) ||
-         (Image3[i] == 0 && Image3[i - NrPixels] < 0 &&
-          Image3[i + NrPixels] > 0) ||
-         (Image3[i] == 0 && Image3[i - NrPixels] > 0 &&
-          Image3[i + NrPixels] < 0))) {
-      SetBit(ImageEdges, i);
+    if (Image2[i] != 0) {
+      long val = Image3[i];
+      for (int k = 0; k < 8; k++) {
+        long neighbor = Image3[i + offsets[k]];
+        if ((val >= 0 && neighbor < 0) || (val < 0 && neighbor >= 0)) {
+          SetBit(ImageEdges, i);
+          break;
+        }
+      }
     }
   }
   printf("Carrying out connected components labeling.\n");
@@ -693,6 +698,12 @@ void FindPeakPositions(int LoGMaskRadius, double sigma, pixelvalue *Image2,
                ImagePeakIDsCorrected[PosFill + 1] !=
                    OrigImagePeakID)) { // If we are filling the edges of the
                                        // image, should not continue!
+            if ((PosFill + 1) % NrPixels == 0 ||
+                (PosFill + 1) % NrPixels == 1) {
+              printf("Peak loop not closed. Reached image edge at index %d "
+                     "(row %d, col %d).\n",
+                     PosFill, PosFill / NrPixels, PosFill % NrPixels);
+            }
             while (!TestBit(ImageEdges, PosFill) &&
                    (Image4[PosFill - NrPixels] == 0) &&
                    (Image4[PosFill + NrPixels] == 0)) {
@@ -1023,8 +1034,8 @@ int main(int argc, char *argv[]) {
     int FileNr = ((layerNr - 1) * NrFilesPerLayer) + StartNr + ImageNr;
     FileNr += (layerNr - 1) * WFImages;
     sprintf(FileName, "%s_%06d.%s", fn, FileNr, extOrig);
-    printf("%d %d %d %d %d %d\n", fnr, startNr, endNr, ImageNr, layerNr,
-           procNum);
+    // printf("%d %d %d %d %d %d\n", fnr, startNr, endNr, ImageNr, layerNr,
+    //        procNum);
     fflush(stdout);
     TIFFErrorHandler oldhandler;
     oldhandler = TIFFSetWarningHandler(NULL);
