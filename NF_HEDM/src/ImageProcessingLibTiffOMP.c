@@ -765,9 +765,11 @@ static inline void DepthFirstSearch(int x, int y, int current_label,
     return;
 
   ConnectedComponents[x][y] = current_label;
-  Positions[current_label][PositionTrackers[current_label]] =
-      (x * NrPixels) + y;
-  PositionTrackers[current_label] += 1;
+  if (Positions != NULL && PositionTrackers != NULL) {
+    Positions[current_label][PositionTrackers[current_label]] =
+        (x * NrPixels) + y;
+    PositionTrackers[current_label] += 1;
+  }
   int direction;
   for (direction = 0; direction < 8; ++direction) {
     DepthFirstSearch(x + dx[direction], y + dy[direction], current_label,
@@ -1143,6 +1145,9 @@ int main(int argc, char *argv[]) {
           FinalImage[i] = 0;
         }
       }
+      printf("DoLoGFilter=1: Total non-zero pixels (potential peaks) = %d in "
+             "image %d, layer %d.\n",
+             TotPixelsInt, ImageNr, layerNr);
       free(Image4);
       free(Image5);
     } else {
@@ -1154,33 +1159,30 @@ int main(int argc, char *argv[]) {
       printf("DoLoGFilter=0: Found %d non-zero pixels (potential peaks) in "
              "image %d, layer %d.\n",
              TotPixelsInt, ImageNr, layerNr);
-      /*int **BoolImage, **ConnectedComponents;
-      BoolImage = allocMatrixInt(NrPixels,NrPixels);
-      ConnectedComponents = allocMatrixInt(NrPixels,NrPixels);
-      int **Positions;
-      int nOverlapsMaxPerImage = 100000;
-      Positions = allocMatrixInt(nOverlapsMaxPerImage,NrPixels*4);
-      int *PositionTrackers;
-      PositionTrackers = malloc(nOverlapsMaxPerImage*sizeof(*PositionTrackers));
-      for (i=0;i<nOverlapsMaxPerImage;i++)PositionTrackers[i] = 0;
-      int NrOfReg;
-      for (i=0;i<NrPixels;i++){
-              for (j=0;j<NrPixels;j++){
-                      if (Image2[(i*NrPixels)+j] != 0){
-                              BoolImage[i][j] = 1;
-                      }else{
-                              BoolImage[i][j] = 0;
-                      }
-              }
+      int **BoolImage, **ConnectedComponents;
+      BoolImage = allocMatrixInt(NrPixels, NrPixels);
+      ConnectedComponents = allocMatrixInt(NrPixels, NrPixels);
+
+      for (i = 0; i < NrPixels; i++) {
+        for (j = 0; j < NrPixels; j++) {
+          if (Image2[(i * NrPixels) + j] != 0) {
+            BoolImage[i][j] = 1;
+          } else {
+            BoolImage[i][j] = 0;
+          }
+        }
       }
-      int rnr,cnr;
-      NrOfReg =
-      FindConnectedComponents(BoolImage,NrPixels,ConnectedComponents,Positions,PositionTrackers);
-      for (i=0;i<NrPixels*NrPixels;i++){
-              rnr = i/NrPixels;
-              cnr = i%NrPixels;
-              FinalImage[i] = ConnectedComponents[rnr][cnr];
-      }*/
+      int NrOfReg;
+      NrOfReg = FindConnectedComponents(BoolImage, NrPixels,
+                                        ConnectedComponents, NULL, NULL);
+
+      printf(
+          "DoLoGFilter=0: Found %d connected components (peaks) in image %d, "
+          "layer %d.\n",
+          NrOfReg, ImageNr, layerNr);
+
+      FreeMemMatrixInt(BoolImage, NrPixels);
+      FreeMemMatrixInt(ConnectedComponents, NrPixels);
     }
     if (TotPixelsInt > 0) {
       TotPixelsInt--;
