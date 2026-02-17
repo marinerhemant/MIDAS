@@ -220,9 +220,9 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  clock_t start, end;
+  double start, end;
   double diftotal;
-  start = clock();
+  start = omp_get_wtime();
 
   int numProcs = 1;
   if (argc == 4) {
@@ -335,8 +335,8 @@ int main(int argc, char *argv[]) {
     printf("Median Calculation failed. Exiting.");
     return 0;
   }
-  end = clock();
-  diftotal = ((double)(end - start)) / CLOCKS_PER_SEC;
+  end = omp_get_wtime();
+  diftotal = end - start;
   printf("Time elapsed in computing median for layer %d: %f [s]\n", nLayers,
          diftotal);
   return 0;
