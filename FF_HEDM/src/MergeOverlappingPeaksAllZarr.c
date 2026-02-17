@@ -264,7 +264,6 @@ int main(int argc, char *argv[]) {
       dsize = blosc1_decompress(arr, Folder, dsize);
       Folder[dsize] = '\0';
       free(arr);
-      free(data);
       zip_fclose(fd);
     }
     if (strstr(finfo->name, "exchange/data/.zarray") != NULL) {
@@ -295,6 +294,7 @@ int main(int argc, char *argv[]) {
       data = (char *)malloc((size_t)dsize);
       dsize = blosc1_decompress(s, data, dsize);
       MarginOmegaOverlap = *(double *)&data[0];
+      free(data);
       zip_fclose(fd);
     }
     if (strstr(finfo->name,
@@ -307,6 +307,7 @@ int main(int argc, char *argv[]) {
       data = (char *)malloc((size_t)dsize);
       dsize = blosc1_decompress(s, data, dsize);
       UseMaximaPositions = *(int *)&data[0];
+      free(data);
       zip_fclose(fd);
     }
     if (strstr(finfo->name,
