@@ -39,5 +39,41 @@ jobs:
 
       - name: Build (no CUDA)
         run: |
+          # Move custom cmake files to avoid forcing custom builds
+          mkdir -p cmake/deps/backup
+          mv cmake/deps/*_custom.cmake cmake/deps/backup/ 2>/dev/null || true
+          
+          # HDF5 specific configuration for Ubuntu
+          export HDF5_DIR=/usr/lib/x86_64-linux-gnu/hdf5/serial
+          export HDF5_INCLUDE_DIR=/usr/include/hdf5/serial
+          
           chmod +x build.sh
-          ./build.sh -j 8 --cuda OFF --install-py-scripts OFF --install-py-deps OFF --system-deps ON --clean
+          # Pass explicit HDF5 paths and flags to cmake via build.sh arguments
+          # Note: build.sh might need modification to accept arbitrary cmake args, 
+          # but we can try setting environment variables or appending to the cmake command if build.sh supports it.
+          # Since build.sh is a wrapper, let's look at how it invokes cmake. 
+          # It uses "${CMAKE_OPTIONS[@]}". We might need to modify build.sh or just run cmake directly if build.sh is too rigid.
+          # However, let's try to simulate what build_wsl_windows.sh does within the constraint of build.sh if possible,
+          # or just run the cmake commands directly in the CI like build_wsl_windows.sh does.
+          
+          # Actually, build_wsl_windows.sh runs cmake directly. It might be safer to do that in CI too 
+          # to ensure specific flags are passed.
+          # But let's try to stick to build.sh if we can, or modify build.sh to accept extra args.
+          # For now, let's just run the commands directly in CI as it gives more control.
+          
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DUSE_SYSTEM_DEPS=ON \
+            -DDOWNLOAD_DEPENDENCIES=OFF \
+            -DINSTALL_PYTHON_DEPENDENCIES=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DUSE_CUDA=OFF \
+            -DCMAKE_PREFIX_PATH="/usr/lib/x86_64-linux-gnu/hdf5/serial" \
+            -DCMAKE_C_FLAGS="-I/usr/include/hdf5/serial" \
+            -DCMAKE_CXX_FLAGS="-I/usr/include/hdf5/serial" \
+            -DHDF5_DIR="/usr/lib/x86_64-linux-gnu/hdf5/serial" \
+            -DHDF5_INCLUDE_DIRS="/usr/include/hdf5/serial" \
+            -Wno-dev
+            
+          cmake --build . -j 8
