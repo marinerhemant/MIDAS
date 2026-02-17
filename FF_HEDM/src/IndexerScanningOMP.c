@@ -1616,6 +1616,7 @@ int main(int argc, char *argv[]) {
     }
     realloc(grainsOM, nrGrains * 9 * sizeof(*grainsOM));
     printf("Read %d grains from %s\n", nrGrains, Params.GrainsFN);
+    fflush(stdout);
   }
 
   int startRowNr;
