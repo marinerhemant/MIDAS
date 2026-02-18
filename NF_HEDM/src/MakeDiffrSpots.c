@@ -433,7 +433,7 @@ int main(int argc, char *argv[]) {
   MaxTtheta = (180 / M_PI) * atan(MaxRingRad / Distances[0]);
   Distance = Distances[0];
   FILE *fp;
-  double QuatThis[4], OrientMatr[3][3];
+
   double quat1, quat2, quat3, quat4;
   double **randQ;
   randQ = allocMatrix(NrOrientations, 4);
@@ -461,16 +461,14 @@ int main(int argc, char *argv[]) {
   }
 
   // For each position and each orientation, generate spots and save.
-  RealType *TheorSpots;
-  int nTspots;
-  char *rc;
+
   char *hklfn = "hkls.csv";
   FILE *hklf = fopen(hklfn, "r");
   if (hklf == NULL) {
     printf("Could not read file %s\n", hklfn);
     return (1);
   }
-  rc = fgets(aline, 1000, hklf);
+  fgets(aline, 1000, hklf); // skip header line
   while (fgets(aline, 1000, hklf) != NULL) {
     sscanf(aline, "%s %s %s %s %lf %lf %lf %lf %lf %s %s", dummy, dummy, dummy,
            dummy, &hkls[n_hkls][3], &hkls[n_hkls][0], &hkls[n_hkls][1],
@@ -503,12 +501,48 @@ int main(int argc, char *argv[]) {
   }
   printf("Number of individual diffracting planes: %d\n", n_hkls);
   int nRowsPerGrain = 2 * n_hkls;
-  TheorSpots = malloc(nRowsPerGrain * 3 * sizeof(*TheorSpots));
-  if (TheorSpots == NULL) {
-    printf("Memory error: could not allocate memory for output matrix. Memory "
-           "full?\n");
+
+  // Allocate per-orientation storage for parallel computation
+  int *allNTspots = malloc(NrOrientations * sizeof(*allNTspots));
+  double *allOrientMatr = malloc(NrOrientations * 9 * sizeof(*allOrientMatr));
+  // Each orientation can produce up to nRowsPerGrain spots, each with 3 values
+  double *allSpots =
+      malloc(NrOrientations * nRowsPerGrain * 3 * sizeof(*allSpots));
+  if (allNTspots == NULL || allOrientMatr == NULL || allSpots == NULL) {
+    printf(
+        "Memory error: could not allocate memory for output matrices. Memory "
+        "full?\n");
     return 1;
   }
+
+  // Parallel computation: each thread uses private buffers
+#pragma omp parallel for num_threads(nCPUs)
+  for (j = 0; j < NrOrientations; j++) {
+    double QuatLocal[4], OrientLocal[3][3];
+    RealType SpotsLocal[nRowsPerGrain * 3];
+    int nTspotsLocal;
+    for (k = 0; k < 4; k++) {
+      QuatLocal[k] = randQ[j][k];
+    }
+    QuatToOrientMat(QuatLocal, OrientLocal);
+    CalcDiffrSpots_Furnace(OrientLocal, Distance, OmegaRanges, BoxSizes,
+                           NoOfOmegaRanges, ExcludePoleAngle, SpotsLocal,
+                           &nTspotsLocal);
+    // Store results into per-orientation arrays
+    allNTspots[j] = nTspotsLocal;
+    for (t = 0; t < 3; t++) {
+      for (p = 0; p < 3; p++) {
+        allOrientMatr[j * 9 + t * 3 + p] = OrientLocal[t][p];
+      }
+    }
+    for (i = 0; i < nTspotsLocal; i++) {
+      allSpots[j * nRowsPerGrain * 3 + i * 3 + 0] = SpotsLocal[i * 3 + 0];
+      allSpots[j * nRowsPerGrain * 3 + i * 3 + 1] = SpotsLocal[i * 3 + 1];
+      allSpots[j * nRowsPerGrain * 3 + i * 3 + 2] = SpotsLocal[i * 3 + 2];
+    }
+  }
+
+  // Sequential writes in j-loop order
   FILE *ft;
   char DSFN[1024];
   char KeyFN[1024];
@@ -526,35 +560,27 @@ int main(int argc, char *argv[]) {
     return (1);
   }
   fprintf(fg, "%i\n", NrOrientations);
-#pragma omp parallel for private(j, k, t, p) num_threads(nCPUs)
   for (j = 0; j < NrOrientations; j++) {
-    for (k = 0; k < 4; k++) {
-      QuatThis[k] = randQ[j][k];
+    fprintf(fg, "%i\n", allNTspots[j]);
+    for (t = 0; t < 3; t++) {
+      for (p = 0; p < 3; p++) {
+        fprintf(fl, "%f ", allOrientMatr[j * 9 + t * 3 + p]);
+      }
     }
-    QuatToOrientMat(QuatThis, OrientMatr);
-    CalcDiffrSpots_Furnace(OrientMatr, Distance, OmegaRanges, BoxSizes,
-                           NoOfOmegaRanges, ExcludePoleAngle, TheorSpots,
-                           &nTspots);
-    fprintf(fg, "%i\n", nTspots);
-#pragma omp critical
-    {
-      for (t = 0; t < 3; t++) {
-        for (p = 0; p < 3; p++) {
-          fprintf(fl, "%f ", OrientMatr[t][p]);
-        }
-      }
-      fprintf(fl, "\n");
-      for (i = 0; i < nTspots; i++) {
-        fprintf(ft, "%f %f %f\n", TheorSpots[i * 3 + 0], TheorSpots[i * 3 + 1],
-                TheorSpots[i * 3 + 2]);
-      }
+    fprintf(fl, "\n");
+    for (i = 0; i < allNTspots[j]; i++) {
+      fprintf(ft, "%f %f %f\n", allSpots[j * nRowsPerGrain * 3 + i * 3 + 0],
+              allSpots[j * nRowsPerGrain * 3 + i * 3 + 1],
+              allSpots[j * nRowsPerGrain * 3 + i * 3 + 2]);
     }
   }
   fclose(ft);
   fclose(fg);
   fclose(fl);
   FreeMemMatrix(randQ, NrOrientations);
-  free(TheorSpots);
+  free(allNTspots);
+  free(allOrientMatr);
+  free(allSpots);
   end = clock();
   diftotal = ((double)(end - start0)) / CLOCKS_PER_SEC;
   printf("Time elapsed in making diffraction spots: %f [s]\n", diftotal);
