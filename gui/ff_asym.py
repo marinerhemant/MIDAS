@@ -19,7 +19,7 @@ import tkinter.filedialog as tkFileDialog
 import math
 from math import sin, cos, sqrt
 from numpy import linalg as LA
-from subprocess import Popen, PIPE, STDOUT
+import subprocess
 from multiprocessing.dummy import Pool
 import ctypes
 import sys
@@ -126,7 +126,12 @@ def getImageMax(fn):
 	else:
 		home = os.path.expanduser("~")
 		imageMax = ctypes.CDLL(home + "/opt/MIDAS/FF_HEDM/bin/imageMax.so")
-	imgMaxOutPath = os.path.join(tempfile.gettempdir(), 'img.max')
+	
+	# Use safe temp file
+	with tempfile.NamedTemporaryFile(suffix='.max', delete=False) as tf:
+		imgMaxOutPath = tf.name
+	# Close the file handle so the C library can open it
+	
 	imageMax.imageMax(fn.encode('ASCII'),Header,BytesPerPixel,NrPixelsY,NrPixelsZ,nFramesToDo,startFrameNr,imgMaxOutPath.encode('ASCII'))
 	t2 = time.time()
 	f = open(imgMaxOutPath,"rb")
@@ -135,6 +140,7 @@ def getImageMax(fn):
 	elif BytesPerPixel == 4:
 		dataMax = np.fromfile(f,dtype=np.int32,count=(NrPixelsY*NrPixelsZ))
 	f.close()
+	os.remove(imgMaxOutPath) # Clean up
 	t3 = time.time()
 	print("Time taken to calculate max: " + str(t2-t1))
 	dataMax = np.reshape(dataMax,(NrPixelsY,NrPixelsZ))
@@ -556,10 +562,11 @@ def readParams():
 		folder = os.path.expanduser(folder)
 	bigFN = 'BigDetectorMaskEdgeSize' + str(bigdetsize) + 'x' + str(bigdetsize) + 'Unsigned16Bit.bin'
 	if midas_config and midas_config.MIDAS_BIN_DIR:
-		hklGenPath = os.path.join(midas_config.MIDAS_BIN_DIR, 'GetHKLList') + ' '
+		hklGenPath = os.path.join(midas_config.MIDAS_BIN_DIR, 'GetHKLList')
 	else:
-		hklGenPath = '~/opt/MIDAS/FF_HEDM/bin/GetHKLList '
-	os.system(hklGenPath + paramFN)
+		hklGenPath = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/GetHKLList')
+	
+	subprocess.run([hklGenPath, paramFN], check=True)
 	hklfn = 'hkls.csv'
 	hklfile = open(hklfn,'r')
 	hklfile.readline()
@@ -729,21 +736,28 @@ def calibrateDetector():
 	ringsexcludelabel.grid_forget()
 	ringsexcludestr = ringsexcludevar.get()
 	if midas_config and midas_config.MIDAS_BIN_DIR:
-		calibratecmd = os.path.join(midas_config.MIDAS_BIN_DIR, 'Calibrant') + ' '
+		calibratecmd = os.path.join(midas_config.MIDAS_BIN_DIR, 'Calibrant')
 	else:
-		calibratecmd = '~/opt/MIDAS/FF_HEDM/bin/Calibrant '
+		calibratecmd = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/Calibrant')
+	
 	if ringsexcludestr == '0':
 		ringsToExclude = []
 	else:
 		ringsToExclude = [int(rings) for rings in ringsexcludestr.split(',')]
+	
 	pfnames = []
 	for i in range(startDetNr,endDetNr+1):
 		pfnames.append('CalibrationDetNr' + str(i) + '.txt')
 		writeCalibrateParams(pfnames[-1],i,ringsToExclude)
-	processes = [Popen(calibratecmd+pfname,shell=True,
-				stdin=PIPE, stdout=PIPE, stderr=STDOUT,close_fds=True) for pfname in pfnames]
+	
+	# Safe Popen usage with list arguments
+	cmds = [[calibratecmd, pfname] for pfname in pfnames]
+	processes = [subprocess.Popen(cmd,
+				stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, close_fds=True) for cmd in cmds]
+	
 	def get_lines(process):
-		return process.communicate()[0].splitlines()
+		return process.communicate()[0].decode('utf-8').splitlines()
+	
 	outputs = Pool(len(processes)).map(get_lines,processes)
 	parseOutputs(outputs)
 
@@ -779,10 +793,11 @@ def readBigDet():
 
 def makeBigDet():
 	if midas_config and midas_config.MIDAS_BIN_DIR:
-		cmdf = os.path.join(midas_config.MIDAS_BIN_DIR, 'MapMultipleDetectors') + ' '
+		cmdf = os.path.join(midas_config.MIDAS_BIN_DIR, 'MapMultipleDetectors')
 	else:
-		cmdf = '~/opt/MIDAS/FF_HEDM/bin/MapMultipleDetectors '
-	os.system(cmdf+paramFN)
+		cmdf = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/MapMultipleDetectors')
+	
+	subprocess.run([cmdf, paramFN], check=True)
 	readBigDet()
 
 def loadbplot():
@@ -892,32 +907,43 @@ def acceptRings():
 def selectRings():
 	global topSelectRings
 	global hklLines, hkl, ds, Ttheta, RingRad, ListBox1
-	thisdir = os.getcwd()
-	tmpdir = tempfile.gettempdir()
-	os.chdir(tmpdir)
-	if midas_config and midas_config.MIDAS_BIN_DIR:
-		hklGenPath = os.path.join(midas_config.MIDAS_BIN_DIR, 'GetHKLList') + ' '
-	else:
-		hklGenPath = '~/opt/MIDAS/FF_HEDM/bin/GetHKLList '
-	pfname = os.path.join(tmpdir, 'ps_midas_ff.txt')
-	f = open(pfname,'w')
-	f.write('Wavelength ' + str(wl) + '\n')
-	f.write('SpaceGroup ' + str(sg) + '\n')
-	f.write('Lsd ' + str(tempLsd) + '\n')
-	f.write('MaxRingRad ' + str(tempMaxRingRad) + '\n')
-	f.write('LatticeConstant ')
-	for i in range(6):
-		f.write(str(LatticeConstant[i]) + ' ')
-	f.write('\n')
-	f.close()
-	os.system(hklGenPath + pfname)
-	hklfn = 'hkls.csv'
-	hklfile = open(hklfn,'r')
-	header = hklfile.readline()
-	header = header.replace(' ','      ')
-	hklinfo = hklfile.readlines()
-	hklfile.close()
-	os.chdir(thisdir)
+def selectRings():
+	global topSelectRings
+	global hklLines, hkl, ds, Ttheta, RingRad, ListBox1
+	
+	hklinfo = []
+	header = ""
+	
+	# Use TemporaryDirectory to contain output files safely
+	with tempfile.TemporaryDirectory() as temp_dir:
+		if midas_config and midas_config.MIDAS_BIN_DIR:
+			hklGenPath = os.path.join(midas_config.MIDAS_BIN_DIR, 'GetHKLList')
+		else:
+			hklGenPath = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/GetHKLList')
+		
+		pfname = os.path.join(temp_dir, 'ps_midas_ff.txt')
+		with open(pfname, 'w') as f:
+			f.write('Wavelength ' + str(wl) + '\n')
+			f.write('SpaceGroup ' + str(sg) + '\n')
+			f.write('Lsd ' + str(tempLsd) + '\n')
+			f.write('MaxRingRad ' + str(tempMaxRingRad) + '\n')
+			f.write('LatticeConstant ')
+			for i in range(6):
+				f.write(str(LatticeConstant[i]) + ' ')
+			f.write('\n')
+		
+		# Run GetHKLList in temp_dir
+		subprocess.run([hklGenPath, pfname], check=True, cwd=temp_dir)
+		
+		hklfn = os.path.join(temp_dir, 'hkls.csv')
+		if os.path.exists(hklfn):
+			with open(hklfn, 'r') as hklfile:
+				header = hklfile.readline()
+				header = header.replace(' ','      ')
+				hklinfo = hklfile.readlines()
+		else:
+			print("Error: hkls.csv not found.")
+			return
 	maxRingNr = 101
 	hkl = []
 	ds = []
@@ -1318,6 +1344,9 @@ Tk.Entry(master=bframe,textvariable=bclocalvar1,width=6).grid(row=3,column=2,sti
 Tk.Entry(master=bframe,textvariable=bclocalvar2,width=6).grid(row=3,column=3,sticky=Tk.W)
 Tk.Button(master=root,text='Load\nSingle\nDetector',command=loadbplot).grid(row=figrowspan+1,column=4,rowspan=3)
 
-root.bind('<Control-w>', lambda event: root.destroy())
-
-Tk.mainloop()
+if __name__ == "__main__":
+	try:
+		root.bind('<Control-w>', lambda event: root.destroy())
+		Tk.mainloop()
+	except KeyboardInterrupt:
+		root.destroy()
