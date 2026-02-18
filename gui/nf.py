@@ -25,6 +25,7 @@ import numpy as np
 import time
 import matplotlib.pyplot as plt
 import os
+import glob
 import tkinter.filedialog as tkFileDialog
 import math
 from math import sin, cos
@@ -58,6 +59,22 @@ fnstem = os.path.basename(folder) + '/' + os.path.basename(folder)
 folder = os.path.dirname(folder)
 figcolspan=10
 figrowspan=10
+
+# Auto-detect startframenr from files matching fnstem pattern
+_stem_path = os.path.join(folder, fnstem + '_')
+_matching = glob.glob(_stem_path + '*.tif')
+_auto_startframenr = None
+if _matching:
+	_nums = []
+	for _f in _matching:
+		_base = os.path.splitext(os.path.basename(_f))[0]
+		try:
+			_nums.append(int(_base.split('_')[-1]))
+		except ValueError:
+			continue
+	if _nums:
+		_auto_startframenr = min(_nums)
+		print(f"Auto-detected start frame number: {_auto_startframenr}")
 
 def _quit():
 	root.quit()
@@ -1053,7 +1070,7 @@ _img_artist = None
 _img_logmode = False
 initplot = 1
 framenr = 0
-startframenr = 0
+startframenr = _auto_startframenr if _auto_startframenr is not None else 0
 sizeX = 0
 sizeY = 0
 refX = 0
