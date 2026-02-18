@@ -61,20 +61,40 @@ figcolspan=10
 figrowspan=10
 
 # Auto-detect startframenr from files matching fnstem pattern
-_stem_path = os.path.join(folder, fnstem + '_')
-_matching = glob.glob(_stem_path + '*.tif')
+_beampos_mode = False
+_beampos_files = []
 _auto_startframenr = None
-if _matching:
-	_nums = []
-	for _f in _matching:
-		_base = os.path.splitext(os.path.basename(_f))[0]
+
+_cwd_basename = os.path.basename(os.getcwd())
+if 'BeamPos' in _cwd_basename or 'DetZBeamPos' in _cwd_basename:
+	# BeamPos mode: files have varying stems, navigate by sorted index
+	_beampos_mode = True
+	_all_tifs = glob.glob(os.path.join(os.getcwd(), '*.tif'))
+	def _extract_num(fp):
 		try:
-			_nums.append(int(_base.split('_')[-1]))
+			return int(os.path.splitext(os.path.basename(fp))[0].split('_')[-1])
 		except ValueError:
-			continue
-	if _nums:
-		_auto_startframenr = min(_nums)
-		print(f"Auto-detected start frame number: {_auto_startframenr}")
+			return float('inf')
+	_beampos_files = sorted(_all_tifs, key=_extract_num)
+	folder = os.getcwd()
+	fnstem = ''
+	if _beampos_files:
+		_auto_startframenr = 0
+		print(f"BeamPos mode: found {len(_beampos_files)} files, navigating by index")
+else:
+	_stem_path = os.path.join(folder, fnstem + '_')
+	_matching = glob.glob(_stem_path + '*.tif')
+	if _matching:
+		_nums = []
+		for _f in _matching:
+			_base = os.path.splitext(os.path.basename(_f))[0]
+			try:
+				_nums.append(int(_base.split('_')[-1]))
+			except ValueError:
+				continue
+		if _nums:
+			_auto_startframenr = min(_nums)
+			print(f"Auto-detected start frame number: {_auto_startframenr}")
 
 def _quit():
 	root.quit()
@@ -110,6 +130,14 @@ def _cleanup_click_handlers():
 		lb1 = None
 
 def getfilenames():
+	if _beampos_mode:
+		idx = framenr
+		if 0 <= idx < len(_beampos_files):
+			return [_beampos_files[idx], None]
+		else:
+			print(f"Warning: frame index {idx} out of range (0-{len(_beampos_files)-1})")
+			idx = max(0, min(idx, len(_beampos_files)-1))
+			return [_beampos_files[idx], None]
 	medianfn = folder + '/' + fnstem + "_Median_Background_Distance_" + str(dist) + ".bin"
 	fnr = startframenr + framenr + dist*nrfilesperdistance
 	filefn = folder + '/' + fnstem + '_' + str(fnr).zfill(padding) + '.tif'
@@ -123,7 +151,7 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 	if not initplot:
 		lims = [a.get_xlim(), a.get_ylim()]
 	# --- Load image data ---
-	if maxoverframes.get() == 0:
+	if maxoverframes.get() == 0 or _beampos_mode:
 		fns = getfilenames()
 		if HAS_TIFFFILE:
 			imarr = tifffile.imread(fns[0]).astype(np.uint16)
@@ -133,7 +161,7 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 		print("Read file " + fns[0])
 		doMedian = var.get()
 		fnprint = fns[0].replace(folder,'')
-		if doMedian == 1:
+		if doMedian == 1 and fns[1] is not None:
 			f = open(fns[1],'rb')
 			print("Read file " + fns[1])
 			median = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
