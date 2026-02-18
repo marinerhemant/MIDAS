@@ -132,6 +132,21 @@ add_ff_hedm_executable(IntegratorZarrOMP SOURCES src/IntegratorZarrOMP.c OMP)
 add_ff_hedm_executable(ConvTiffToGE SOURCES src/ConvTiffToGE.c)
 add_ff_hedm_executable(MapBND SOURCES src/MapBND.c)
 
+# imageMax is a shared library loaded via ctypes from the Python GUI (ff_asym.py)
+add_library(imageMax SHARED src/imageMax.c)
+set_target_properties(imageMax PROPERTIES
+  OUTPUT_NAME "imageMax"
+  PREFIX ""       # produce imageMax.so, not libimageMax.so
+  SUFFIX ".so"
+)
+install(TARGETS imageMax LIBRARY DESTINATION ${MIDAS_INSTALL_BINDIR})
+add_custom_command(TARGET imageMax POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/bin"
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:imageMax> "${CMAKE_CURRENT_SOURCE_DIR}/bin/"
+  COMMENT "Copied imageMax.so to ${CMAKE_CURRENT_SOURCE_DIR}/bin/"
+  VERBATIM
+)
+
 add_ff_hedm_executable(findSingleSolutionPF SOURCES src/findSingleSolutionPF.c src/GetMisorientation.c OMP)
 add_ff_hedm_executable(findSingleSolutionPFRefactored SOURCES src/findSingleSolutionPFRefactored.c src/GetMisorientation.c OMP)
 add_ff_hedm_executable(findMultipleSolutionsPF SOURCES src/findMultipleSolutionsPF.c src/GetMisorientation.c OMP)
@@ -158,7 +173,7 @@ set(FF_HEDM_ALL_NON_CUDA_TARGETS_LIST
     findSingleSolutionPF findSingleSolutionPFRefactored findMultipleSolutionsPF mergeScansScanning
 )
 
-add_custom_target(midas_ff_hedm_all_executables DEPENDS ${FF_HEDM_ALL_NON_CUDA_TARGETS_LIST})
+add_custom_target(midas_ff_hedm_all_executables DEPENDS ${FF_HEDM_ALL_NON_CUDA_TARGETS_LIST} imageMax)
 
 if(USE_CUDA)
   add_dependencies(midas_ff_hedm_all_executables IntegratorCUDA)

@@ -14,14 +14,13 @@ import numpy as np
 import time
 import matplotlib.pyplot as plt
 import os
+import tempfile
 import tkinter.filedialog as tkFileDialog
 import math
 from math import sin, cos, sqrt
 from numpy import linalg as LA
-import math
 from subprocess import Popen, PIPE, STDOUT
 from multiprocessing.dummy import Pool
-import time
 import ctypes
 import sys
 
@@ -99,10 +98,14 @@ def getImage(fn,bytesToSkip):
 	data = data.astype(float)
 	if transpose.get() == 1:
 		data = np.transpose(data)
-	if hflip.get() == 1:
-		data = np.flip(data,0)
-	if vflip.get() == 1:
-		data = np.flip(data,1)
+	flip_h = hflip.get() == 1
+	flip_v = vflip.get() == 1
+	if flip_h and flip_v:
+		data = data[::-1, ::-1].copy()
+	elif flip_h:
+		data = data[::-1, :].copy()
+	elif flip_v:
+		data = data[:, ::-1].copy()
 	return data
 
 def getImageMax(fn):
@@ -123,9 +126,10 @@ def getImageMax(fn):
 	else:
 		home = os.path.expanduser("~")
 		imageMax = ctypes.CDLL(home + "/opt/MIDAS/FF_HEDM/bin/imageMax.so")
-	imageMax.imageMax(fn.encode('ASCII'),Header,BytesPerPixel,NrPixelsY,NrPixelsZ,nFramesToDo,startFrameNr)
+	imgMaxOutPath = os.path.join(tempfile.gettempdir(), 'img.max')
+	imageMax.imageMax(fn.encode('ASCII'),Header,BytesPerPixel,NrPixelsY,NrPixelsZ,nFramesToDo,startFrameNr,imgMaxOutPath.encode('ASCII'))
 	t2 = time.time()
-	f = open("/dev/shm/img.max","rb")
+	f = open(imgMaxOutPath,"rb")
 	if BytesPerPixel == 2:
 		dataMax = np.fromfile(f,dtype=np.uint16,count=(NrPixelsY*NrPixelsZ))
 	elif BytesPerPixel == 4:
@@ -137,10 +141,14 @@ def getImageMax(fn):
 	dataMax = dataMax.astype(float)
 	if transpose.get() == 1:
 		dataMax = np.transpose(dataMax)
-	if hflip.get() == 1:
-		dataMax = np.flip(dataMax,0)
-	if vflip.get() == 1:
-		dataMax = np.flip(dataMax,1)
+	flip_h = hflip.get() == 1
+	flip_v = vflip.get() == 1
+	if flip_h and flip_v:
+		dataMax = dataMax[::-1, ::-1].copy()
+	elif flip_h:
+		dataMax = dataMax[::-1, :].copy()
+	elif flip_v:
+		dataMax = dataMax[:, ::-1].copy()
 	return dataMax
 
 def getData(geNum,bytesToSkip):
@@ -271,7 +279,7 @@ def plotRingsOffset():
 	if bdata is not None and refreshPlot != 1:
 		bcoord()
 	if refreshPlot != 1:
-		canvas.draw()
+		canvas.draw_idle()
 		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def plotRings():
@@ -317,7 +325,7 @@ def doRings():
 			plotRings()
 			plotRingsOffset()
 	else:
-		canvas.draw()
+		canvas.draw_idle()
 		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def clickRings():
@@ -365,9 +373,9 @@ def plot_updater():
 		mask2[bigdetsize/2 - NewZs,bigdetsize/2 - NewYs] = thresholded[rows,cols]
 	#lines = None
 	doRings()
-	if dolog.get() == 0:
-		a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
-	else:
+	global _a_artist, _a_logmode
+	use_log = dolog.get() != 0
+	if use_log:
 		if threshold == 0:
 			threshold = 1
 		if upperthreshold == 0:
@@ -375,15 +383,31 @@ def plot_updater():
 		mask3 = np.copy(mask2)
 		mask3 [ mask3 == 1 ] = 10
 		mask3 [ mask3 == 0 ] = 1
-		a.imshow(np.log(mask3),cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(np.log(threshold),np.log(upperthreshold)))
-	if initplot:
-		initplot = 0
+		display_data = np.log(mask3)
+		clim = (np.log(threshold),np.log(upperthreshold))
 	else:
+		display_data = mask2
+		clim = (threshold,upperthreshold)
+	can_reuse = (not initplot and _a_artist is not None and
+	             _a_logmode == use_log and
+	             _a_artist.get_array().shape == display_data.shape)
+	if can_reuse:
+		_a_artist.set_data(display_data)
+		_a_artist.set_clim(*clim)
 		a.set_xlim([lims[0][0],lims[0][1]])
 		a.set_ylim([lims[1][0],lims[1][1]])
+	else:
+		a.clear()
+		_a_artist = a.imshow(display_data,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=clim)
+		_a_logmode = use_log
+		if initplot:
+			initplot = 0
+		else:
+			a.set_xlim([lims[0][0],lims[0][1]])
+			a.set_ylim([lims[1][0],lims[1][1]])
 	acoord()
 	a.title.set_text("Multiple Detector Display")
-	canvas.draw()
+	canvas.draw_idle()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def incr_plotupdater():
@@ -746,12 +770,12 @@ def paramfileselect():
 
 def readBigDet():
 	global mask
-	bigf = open(bigFN,'r')
+	bigf = open(bigFN,'rb')
 	mask = np.fromfile(bigf,dtype=np.uint16,count=bigdetsize*bigdetsize)
 	bigf.close()
 	mask = np.reshape(mask,(bigdetsize,bigdetsize))
 	mask = mask.astype(float)
-	mask = np.fliplr(np.flipud(mask))
+	mask = mask[::-1, ::-1].copy()
 
 def makeBigDet():
 	if midas_config and midas_config.MIDAS_BIN_DIR:
@@ -812,25 +836,41 @@ def loadbplot():
 	#b.clear()
 	refreshPlot = 1
 	doRings()
-	if dolog.get() == 0:
-		b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
-	else:
+	global _b_artist, _b_logmode
+	use_log = dolog.get() != 0
+	if use_log:
 		if threshold == 0:
 			threshold = 1
 		if upperthreshold == 0:
 			upperthreshold = 1
 		mask3 = np.copy(bdata)
 		mask3 [ mask3 == 0 ] = 1
-		b.imshow(np.log(mask3),cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(np.log(threshold),np.log(upperthreshold)))
-	if initplot2:
-		initplot2 = 0
-		b.invert_yaxis()
+		display_data = np.log(mask3)
+		clim = (np.log(threshold),np.log(upperthreshold))
 	else:
+		display_data = bdata
+		clim = (threshold,upperthreshold)
+	can_reuse = (not initplot2 and _b_artist is not None and
+	             _b_logmode == use_log and
+	             _b_artist.get_array().shape == display_data.shape)
+	if can_reuse:
+		_b_artist.set_data(display_data)
+		_b_artist.set_clim(*clim)
 		b.set_xlim([lims[0][0],lims[0][1]])
 		b.set_ylim([lims[1][0],lims[1][1]])
+	else:
+		b.clear()
+		_b_artist = b.imshow(display_data,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=clim)
+		_b_logmode = use_log
+		if initplot2:
+			initplot2 = 0
+			b.invert_yaxis()
+		else:
+			b.set_xlim([lims[0][0],lims[0][1]])
+			b.set_ylim([lims[1][0],lims[1][1]])
 	bcoord()
 	b.title.set_text("Single Detector Display")
-	canvas.draw()
+	canvas.draw_idle()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def acceptRings():
@@ -853,12 +893,13 @@ def selectRings():
 	global topSelectRings
 	global hklLines, hkl, ds, Ttheta, RingRad, ListBox1
 	thisdir = os.getcwd()
-	os.chdir('/dev/shm')
+	tmpdir = tempfile.gettempdir()
+	os.chdir(tmpdir)
 	if midas_config and midas_config.MIDAS_BIN_DIR:
 		hklGenPath = os.path.join(midas_config.MIDAS_BIN_DIR, 'GetHKLList') + ' '
 	else:
 		hklGenPath = '~/opt/MIDAS/FF_HEDM/bin/GetHKLList '
-	pfname = '/dev/shm/ps_midas_ff.txt'
+	pfname = os.path.join(tmpdir, 'ps_midas_ff.txt')
 	f = open(pfname,'w')
 	f.write('Wavelength ' + str(wl) + '\n')
 	f.write('SpaceGroup ' + str(sg) + '\n')
@@ -1013,14 +1054,14 @@ def replot():
 	global lines2
 	global lines
 	global mask2, bdata, refreshPlot
+	global _a_artist, _b_artist, _a_logmode, _b_logmode
+	use_log = dolog.get() != 0
 	threshold = float(thresholdvar.get())
 	upperthreshold = float(maxthresholdvar.get())
 	if mask2 is not None:
 		if not initplot:
 			lims = [a.get_xlim(), a.get_ylim()]
-		if dolog.get() == 0:
-			a.imshow(mask2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
-		else:
+		if use_log:
 			if threshold == 0:
 				threshold = 1
 			if upperthreshold == 0:
@@ -1028,40 +1069,70 @@ def replot():
 			mask3 = np.copy(mask2)
 			mask3 [ mask3 == 1 ] = 10
 			mask3 [ mask3 == 0 ] = 1
-			a.imshow(np.log(mask3),cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(np.log(threshold),np.log(upperthreshold)))
-		if initplot:
-			initplot = 0
+			display_data = np.log(mask3)
+			clim = (np.log(threshold),np.log(upperthreshold))
 		else:
+			display_data = mask2
+			clim = (threshold,upperthreshold)
+		can_reuse = (not initplot and _a_artist is not None and
+		             _a_logmode == use_log and
+		             _a_artist.get_array().shape == display_data.shape)
+		if can_reuse:
+			_a_artist.set_data(display_data)
+			_a_artist.set_clim(*clim)
 			a.set_xlim([lims[0][0],lims[0][1]])
 			a.set_ylim([lims[1][0],lims[1][1]])
+		else:
+			a.clear()
+			_a_artist = a.imshow(display_data,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=clim)
+			_a_logmode = use_log
+			if initplot:
+				initplot = 0
+			else:
+				a.set_xlim([lims[0][0],lims[0][1]])
+				a.set_ylim([lims[1][0],lims[1][1]])
 		acoord()
 		a.title.set_text("Multiple Detector Display")
-		canvas.draw()
+		canvas.draw_idle()
 		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 	if bdata is not None:
 		if not initplot2:
 			lims = [b.get_xlim(), b.get_ylim()]
-		if dolog.get() == 0:
-			b.imshow(bdata,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(threshold,upperthreshold))
-		else:
+		if use_log:
 			if threshold == 0:
 				threshold = 1
 			if upperthreshold == 0:
 				upperthreshold = 1
 			mask3 = np.copy(bdata)
 			mask3 [ mask3 == 0 ] = 1
-			b.imshow(np.log(mask3),cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(np.log(threshold),np.log(upperthreshold)))
-		if initplot2:
-			initplot2 = 0
-			b.invert_yaxis()
+			display_data = np.log(mask3)
+			clim = (np.log(threshold),np.log(upperthreshold))
 		else:
+			display_data = bdata
+			clim = (threshold,upperthreshold)
+		can_reuse = (not initplot2 and _b_artist is not None and
+		             _b_logmode == use_log and
+		             _b_artist.get_array().shape == display_data.shape)
+		if can_reuse:
+			_b_artist.set_data(display_data)
+			_b_artist.set_clim(*clim)
 			b.set_xlim([lims[0][0],lims[0][1]])
 			b.set_ylim([lims[1][0],lims[1][1]])
+		else:
+			b.clear()
+			_b_artist = b.imshow(display_data,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=clim)
+			_b_logmode = use_log
+			if initplot2:
+				initplot2 = 0
+				b.invert_yaxis()
+			else:
+				b.set_xlim([lims[0][0],lims[0][1]])
+				b.set_ylim([lims[1][0],lims[1][1]])
 		bcoord()
 		b.title.set_text("Single Detector Display")
 		refreshPlot = 1
 	doRings()
-	canvas.draw()
+	canvas.draw_idle()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 # Main function
@@ -1087,6 +1158,10 @@ mask2 = None
 bigdetsize = 2048
 initplot = 1
 initplot2 = 1
+_a_artist = None
+_b_artist = None
+_a_logmode = False
+_b_logmode = False
 origdetnum = 1
 bclocal = [1024,1024]
 ringRads = None
