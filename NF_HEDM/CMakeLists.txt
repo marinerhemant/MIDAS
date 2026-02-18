@@ -43,6 +43,9 @@ endfunction()
 # --- Executables (from 'all' rule in Makefile) ---
 
 add_nf_hedm_executable(MakeDiffrSpots SOURCES ${NF_SRCDIR}/MakeDiffrSpots.c)
+if(BUILD_OMP AND OpenMP_C_FOUND)
+    target_link_libraries(MakeDiffrSpots PRIVATE OpenMP::OpenMP_C)
+endif()
 add_nf_hedm_executable(MakeHexGrid SOURCES ${NF_SRCDIR}/MakeHexGrid.c)
 add_nf_hedm_executable(MedianImageLibTiff SOURCES ${NF_SRCDIR}/MedianImageLibTiff.c LINK_LIBRARIES_EXTRA TIFF::TIFF)
 if(OpenMP_C_FOUND AND BUILD_OMP)

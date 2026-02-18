@@ -290,7 +290,7 @@ def run_preprocessing(args: argparse.Namespace, params: Dict, t0: float):
 
     logger.info("Making simulated diffraction spots.")
     run_command(
-        cmd=os.path.join(bin_dir, "MakeDiffrSpots") + f" {args.paramFN}",
+        cmd=os.path.join(bin_dir, "MakeDiffrSpots") + f" {args.paramFN} {args.nCPUs}",
         working_dir=resultFolder,
         out_file=f'{logDir}/spots_out.csv',
         err_file=f'{logDir}/spots_err.csv'

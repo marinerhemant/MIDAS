@@ -12,6 +12,7 @@
 //
 
 #include <math.h>
+#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -269,11 +270,12 @@ CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3], RealType distance,
 }
 
 static inline void usage(void) {
-  printf("Make diffraction spots: usage: ./MakeDiffrSpots <ParameterFile>\n");
+  printf("Make diffraction spots: usage: ./MakeDiffrSpots <ParameterFile> "
+         "[nCPUs]\n");
 }
 
 int main(int argc, char *argv[]) {
-  if (argc != 2) {
+  if (argc != 2 && argc != 3) {
     usage();
     return 1;
   }
@@ -281,6 +283,10 @@ int main(int argc, char *argv[]) {
   double diftotal;
   start0 = clock();
   int i, j, k, t, p;
+  int nCPUs = 1;
+  if (argc == 3) {
+    nCPUs = atoi(argv[2]);
+  }
 
   // Read params file.
   char *ParamFN;
@@ -496,8 +502,6 @@ int main(int argc, char *argv[]) {
     n_hkls = totalHKLs;
   }
   printf("Number of individual diffracting planes: %d\n", n_hkls);
-  //~ for (i=0;i<n_hkls;i++) printf("%f %f %f %d %f\n",hkls[i][0],hkls[i][1],
-  //~ hkls[i][2],(int)hkls[i][3],Thetas[i]);
   int nRowsPerGrain = 2 * n_hkls;
   TheorSpots = malloc(nRowsPerGrain * 3 * sizeof(*TheorSpots));
   if (TheorSpots == NULL) {
@@ -522,6 +526,7 @@ int main(int argc, char *argv[]) {
     return (1);
   }
   fprintf(fg, "%i\n", NrOrientations);
+#pragma omp parallel for private(j, k, t, p) num_threads(nCPUs)
   for (j = 0; j < NrOrientations; j++) {
     for (k = 0; k < 4; k++) {
       QuatThis[k] = randQ[j][k];
@@ -531,15 +536,18 @@ int main(int argc, char *argv[]) {
                            NoOfOmegaRanges, ExcludePoleAngle, TheorSpots,
                            &nTspots);
     fprintf(fg, "%i\n", nTspots);
-    for (t = 0; t < 3; t++) {
-      for (p = 0; p < 3; p++) {
-        fprintf(fl, "%f ", OrientMatr[t][p]);
+#pragma omp critical
+    {
+      for (t = 0; t < 3; t++) {
+        for (p = 0; p < 3; p++) {
+          fprintf(fl, "%f ", OrientMatr[t][p]);
+        }
       }
-    }
-    fprintf(fl, "\n");
-    for (i = 0; i < nTspots; i++) {
-      fprintf(ft, "%f %f %f\n", TheorSpots[i * 3 + 0], TheorSpots[i * 3 + 1],
-              TheorSpots[i * 3 + 2]);
+      fprintf(fl, "\n");
+      for (i = 0; i < nTspots; i++) {
+        fprintf(ft, "%f %f %f\n", TheorSpots[i * 3 + 0], TheorSpots[i * 3 + 1],
+                TheorSpots[i * 3 + 2]);
+      }
     }
   }
   fclose(ft);
