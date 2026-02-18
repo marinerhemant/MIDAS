@@ -62,7 +62,7 @@ In this part, we will find the average horizontal and vertical center of the bea
          BoxVerL --> EdgeR
          EdgeR --> BoxHorR[BoxOutHor: Get X_right]
          EdgeR --> BoxVerR[BoxOutVer: Get Y_right]
-         BoxHorR --> Avg[Calculate Average (X, Y)]
+         BoxHorR --> Avg["Calculate Average (X, Y)"]
          BoxVerR --> Avg
          Avg --> Next[Repeat for Next Distance]
      end
