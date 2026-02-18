@@ -10,6 +10,13 @@
 import PIL
 import matplotlib
 matplotlib.use('TkAgg')
+
+# Prefer tifffile for faster TIFF loading (direct to numpy), fall back to PIL
+try:
+	import tifffile
+	HAS_TIFFFILE = True
+except ImportError:
+	HAS_TIFFFILE = False
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
 import sys
@@ -45,14 +52,45 @@ nrfilesperdistance = 720
 padding = 6
 ndistances = 6
 background=0
-fnstem = 'Au1'
-folder = '/var/host/media/removable/UNTITLED/Au/'
+folder = os.getcwd()
+# fnstem is typically current folder name / current folder name
+fnstem = os.path.basename(folder) + '/' + os.path.basename(folder)
+folder = os.path.dirname(folder)
 figcolspan=10
 figrowspan=10
 
 def _quit():
 	root.quit()
 	root.destroy()
+
+def _safe_remove_colorbar():
+	"""Safely remove the global colorbar, handling stale axes."""
+	global cb
+	if cb is not None:
+		try:
+			cb.remove()
+		except (AttributeError, Exception):
+			try:
+				cb.ax.remove()
+			except Exception:
+				pass
+		cb = None
+
+def _cleanup_click_handlers():
+	"""Disconnect click handlers and hide selection UI elements."""
+	global cid, lb1, button7, button8
+	if button7 is not None:
+		button7.grid_forget()
+		button7 = None
+	if button8 is not None:
+		button8.grid_forget()
+		button8 = None
+	if cid is not None:
+		canvas.mpl_disconnect(cid)
+		cid = None
+	if lb1 is not None:
+		lb1.grid_forget()
+		lb1 = None
 
 def getfilenames():
 	medianfn = folder + '/' + fnstem + "_Median_Background_Distance_" + str(dist) + ".bin"
@@ -63,14 +101,19 @@ def getfilenames():
 def draw_plot(): # always the initial framenr and distance, will calculate the correct framenr automatically
 	global initplot
 	global imarr2
+	global _img_artist, _img_logmode
+	use_log = dolog.get() != 0
 	if not initplot:
 		lims = [a.get_xlim(), a.get_ylim()]
-	a.clear()
+	# --- Load image data ---
 	if maxoverframes.get() == 0:
 		fns = getfilenames()
-		im = PIL.Image.open(fns[0])
+		if HAS_TIFFFILE:
+			imarr = tifffile.imread(fns[0]).astype(np.uint16)
+		else:
+			im = PIL.Image.open(fns[0])
+			imarr = np.array(im, dtype=np.uint16)
 		print("Read file " + fns[0])
-		imarr = np.array(im,dtype=np.uint16)
 		doMedian = var.get()
 		fnprint = fns[0].replace(folder,'')
 		if doMedian == 1:
@@ -81,8 +124,6 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 			median = np.reshape(median,(NrPixels,NrPixels))
 			imarr2 = np.subtract(imarr.astype(int),median.astype(int))
 			imarr2[imarr2<background] = 0
-			#imarr2 = stats.threshold(imarr2,threshmin=background)
-			#imarr2 = np.clip(imarr2,background,1e10)
 		else:
 			imarr2 = imarr
 	else:
@@ -97,28 +138,38 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 		f.close()
 		imarr2 = np.reshape(imarr,(NrPixels,NrPixels))
 		imarr2[imarr2<background] = 0
-		#imarr2 = stats.threshold(imarr2,threshmin=background)
-		#imarr2 = np.clip(imarr2,background,1e10)
-	imarr2 = np.flipud(np.fliplr(imarr2))
-	if dolog.get() == 0:
-		a.imshow(imarr2,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(float(minThreshvar.get()),float(vali.get())))
+	imarr2 = imarr2[::-1, ::-1].copy()
+	# --- Prepare display data ---
+	if use_log:
+		minC = max(float(minThreshvar.get()), 1)
+		maxC = max(float(vali.get()), 1)
+		display_data = np.log(np.maximum(imarr2, 1).astype(np.float32))
+		clim = (np.log(minC), np.log(maxC))
 	else:
-		minC = float(minThreshvar.get())
-		maxC = float(vali.get())
-		if minC == 0:
-			minC = 1
-		if maxC == 0:
-			maxC = 1
-		imarr2plt = np.copy(imarr2)
-		imarr2plt [imarr2plt == 0] = 1
-		a.imshow(np.log(imarr2plt),cmap=plt.get_cmap('bone'),interpolation='nearest',clim=(np.log(minC),np.log(maxC)))
-	if initplot:
-		initplot = 0
-		a.invert_xaxis()
-		a.invert_yaxis()
+		display_data = imarr2
+		clim = (float(minThreshvar.get()), float(vali.get()))
+	# --- Fast path: reuse existing artist if possible ---
+	can_reuse = (not initplot and _img_artist is not None and
+	             _img_logmode == use_log and
+	             _img_artist.get_array().shape == display_data.shape)
+	if can_reuse:
+		_img_artist.set_data(display_data)
+		_img_artist.set_clim(*clim)
+		a.set_xlim([lims[0][0], lims[0][1]])
+		a.set_ylim([lims[1][0], lims[1][1]])
 	else:
-		a.set_xlim([lims[0][0],lims[0][1]])
-		a.set_ylim([lims[1][0],lims[1][1]])
+		a.clear()
+		_img_artist = a.imshow(display_data, cmap=plt.get_cmap('bone'),
+		                       interpolation='nearest', clim=clim)
+		_img_logmode = use_log
+		if initplot:
+			initplot = 0
+			a.invert_xaxis()
+			a.invert_yaxis()
+		else:
+			a.set_xlim([lims[0][0], lims[0][1]])
+			a.set_ylim([lims[1][0], lims[1][1]])
+	# --- Update coordinate display and title ---
 	numrows, numcols = imarr2.shape
 	def format_coord(x, y):
 		col = int(x+0.5)
@@ -130,7 +181,7 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 			return 'x=%1.4f, y=%1.4f'%(x,y)
 	a.format_coord = format_coord
 	a.title.set_text("Image: " + fnprint)
-	canvas.draw()
+	canvas.draw_idle()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def plot_updater():
@@ -204,9 +255,8 @@ def plotb():
 	global cb
 	global initplotb
 	global micPlot, micfiledata, bPlot
-	if cb is not None:
-		cb.remove()
-		cb = None
+	_safe_remove_colorbar()
+	if cb is None:
 		initplotb = 1
 	if horvert == 1:
 		b.clear()
@@ -266,9 +316,8 @@ def plotbBox():
 	global clickpos
 	global cb
 	global initplotb
-	if cb is not None:
-		cb.remove()
-		cb = None
+	_safe_remove_colorbar()
+	if cb is None:
 		initplotb = 1
 	b.clear()
 	xsmall = int(min(clickpos[0][0],clickpos[1][0]))
@@ -315,20 +364,7 @@ def boxhor():
 	global clickpos
 	global horvert
 	global lb1
-	global button7
-	global  button8
-	if button7 is not None:
-		button7.grid_forget()
-		button7 = None
-	if button8 is not None:
-		button8.grid_forget()
-		button8 = None
-	if cid is not None:
-		canvas.mpl_disconnect(cid)
-		cid = None
-	if lb1 is not None:
-		lb1.grid_forget()
-		lb1 = None
+	_cleanup_click_handlers()
 	horvert = 1 # 1 for horizontal, 2 for vertical
 	clickpos = []
 	cid = canvas.mpl_connect('button_press_event',onclickbox)
@@ -340,20 +376,7 @@ def boxver():
 	global clickpos
 	global horvert
 	global lb1
-	global button7
-	global  button8
-	if button7 is not None:
-		button7.grid_forget()
-		button7 = None
-	if button8 is not None:
-		button8.grid_forget()
-		button8 = None
-	if cid is not None:
-		canvas.mpl_disconnect(cid)
-		cid = None
-	if lb1 is not None:
-		lb1.grid_forget()
-		lb1 = None
+	_cleanup_click_handlers()
 	horvert = 2 # 1 for horizontal, 2 for vertical
 	clickpos = []
 	cid = canvas.mpl_connect('button_press_event',onclickbox)
@@ -365,20 +388,7 @@ def horline():
 	global clickpos
 	global horvert
 	global lb1
-	global button7
-	global  button8
-	if button7 is not None:
-		button7.grid_forget()
-		button7 = None
-	if button8 is not None:
-		button8.grid_forget()
-		button8 = None
-	if cid is not None:
-		canvas.mpl_disconnect(cid)
-		cid = None
-	if lb1 is not None:
-		lb1.grid_forget()
-		lb1 = None
+	_cleanup_click_handlers()
 	horvert = 1 # 1 for horizontal, 2 for vertical
 	clickpos = []
 	cid = canvas.mpl_connect('button_press_event',onclick)
@@ -390,20 +400,7 @@ def vertline():
 	global clickpos
 	global horvert
 	global lb1
-	global button7
-	global  button8
-	if button7 is not None:
-		button7.grid_forget()
-		button7 = None
-	if button8 is not None:
-		button8.grid_forget()
-		button8 = None
-	if cid is not None:
-		canvas.mpl_disconnect(cid)
-		cid = None
-	if lb1 is not None:
-		lb1.grid_forget()
-		lb1 = None
+	_cleanup_click_handlers()
 	horvert = 2 # 1 for horizontal, 2 for vertical
 	clickpos = []
 	cid = canvas.mpl_connect('button_press_event',onclick)
@@ -800,23 +797,23 @@ def makespots():
 def median():
 	cmdout = []
 	for thisdist in range(ndistances):
-		pfname = '/dev/shm/ps.txt' + str(thisdist)
+		pfname = f'{folder}/ps_{thisdist}.txt'
 		f = open(pfname,'w')
 		f.write('extReduced bin\n')
 		f.write('extOrig tif\n')
 		f.write('WFImages 0\n')
-		f.write('OrigFileName '+fnstem+'\n')
+		f.write(f'OrigFileName {fnstem}\n')
 		tempnr = startframenr + thisdist*(nrfilesperdistance - int(nrfilesmedianvar.get()))
-		f.write('NrFilesPerDistance '+nrfilesmedianvar.get()+'\n')
-		f.write('NrPixels '+str(NrPixels)+'\n')
-		f.write('DataDirectory '+folder+'\n')
-		f.write('RawStartNr '+str(tempnr)+'\n')
+		f.write(f'NrFilesPerDistance {nrfilesmedianvar.get()}\n')
+		f.write(f'NrPixels {NrPixels}\n')
+		f.write(f'DataDirectory {folder}\n')
+		f.write(f'RawStartNr {tempnr}\n')
+		f.write(f'ReducedFileName {fnstem}\n')
 		f.close()
-		print("Median computaiton is broken for now!!!")
-		# if midas_config and midas_config.MIDAS_NF_CLUSTER_DIR:
-		# 	cmdout.append(os.path.join(midas_config.MIDAS_NF_CLUSTER_DIR, 'MedianImageParallel.sh') + ' ' + pfname + ' ' + str(thisdist+1))
-		# else:
-		# 	cmdout.append('~/opt/MIDAS/NF_HEDM/Cluster/MedianImageParallel.sh '+pfname+' '+str(thisdist+1))
+		if midas_config and midas_config.MIDAS_NF_BIN_DIR:
+			cmdout.append(os.path.join(midas_config.MIDAS_NF_BIN_DIR,'MedianImageLibTiff') + ' ' + pfname + ' ' + str(thisdist+1))
+		else:
+			cmdout.append(os.path.expanduser('~/opt/MIDAS/NF_HEDM/bin/MedianImageLibTiff') + ' ' + pfname + ' ' + str(thisdist+1))
 	processes = [Popen(cmdname,shell=True,
 				stdin=PIPE, stdout=PIPE, stderr=STDOUT,close_fds=True) for cmdname in cmdout]
 	def get_lines(process):
@@ -826,7 +823,13 @@ def median():
 
 def micfileselect():
 	global micfile
-	micfile = tkFileDialog.askopenfilename(title='Select the compressed binary file.')
+	micfile = tkFileDialog.askopenfilename(
+		title='Select the compressed binary file.',
+		initialdir=folder if folder else os.getcwd(),
+	)
+	if not micfile:
+		return False
+	return True
 
 def plotmic():
 	global initplotb
@@ -834,19 +837,18 @@ def plotmic():
 	global cb
 	global micfiledatacut
 	global micPlot, bPlot
+	is_first_plot = initplotb
 	micPlot = 1
 	bPlot = None
 	if not initplotb:
 		lims = [b.get_xlim(), b.get_ylim()]
-		cb.remove()
-		cb = None
+		_safe_remove_colorbar()
 	b.clear()
 	col = colVar.get()
 	if micfiletype == 1:
 		micfiledatacut = np.copy(micfiledata)
 		micfiledatacut = micfiledatacut[ micfiledatacut[:,10] > float(cutconfidencevar.get()) , :]
-		if cb is not None:
-			cb.remove()
+		_safe_remove_colorbar()
 		if col == 10:
 			sc = b.scatter(micfiledatacut[:,3],micfiledatacut[:,4],c=micfiledatacut[:,col],lw=0,cmap=plt.get_cmap('jet'),vmax=float(maxConfVar.get()))
 		else:
@@ -874,8 +876,7 @@ def plotmic():
 		badcoords = badcoords < float(cutconfidencevar.get())
 		exten = [refX,refX+sizeX,refY+sizeY,refY]
 		#~ micfiledatacut = micfiledatacut[micfiledatacut[:,0] > float(cutconfidencevar.get()), :]
-		if cb is not None:
-			cb.remove()
+		_safe_remove_colorbar()
 		if col == 7: # Euler0
 			micfiledatacut = micfiledatacut[sizeX*sizeY:sizeX*sizeY*2]
 			micfiledatacut[badcoords] = -15.0
@@ -920,31 +921,33 @@ def plotmic():
 			b.set_ylim([lims[1][0],lims[1][1]])
 	cb = figur.colorbar(sc,ax=b)
 	b.set_aspect('equal')
-	figur.tight_layout()
+	if is_first_plot:
+		figur.tight_layout()
 	canvas.draw()
 	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
 def load_mic():
 	global micfiledata, initplotb, micfiletype, sizeX, sizeY, refX, refY
 	initplotb = 1
-	micfileselect()
-	f = open(micfile,'r')
+	if not micfileselect():
+		return
 	print(micfile)
 	if (micfile[-3:] == 'map'):
 		micfiletype = 2
+		f = open(micfile, 'rb')
 		sizeX = int(np.fromfile(f,dtype=np.double,count=1)[0])
 		sizeY = int(np.fromfile(f,dtype=np.double,count=1)[0])
 		refX = int(np.fromfile(f,dtype=np.double,count=1)[0])
 		refY = int(np.fromfile(f,dtype=np.double,count=1)[0])
 		micfiledata = np.fromfile(f,dtype=np.double)
+		f.close()
 		print([sizeX,sizeY,micfiledata.size])
 		if (micfiledata.size/7) != (sizeX*sizeY):
 			print("Size of the map file is not correct. Please check that the file was written properly.")
-		#~ micfiledata = micfiledata.reshape((sizeX*sizeY,7))
 	else:
 		micfiletype = 1
-		micfiledata = np.genfromtxt(f,skip_header=4)
-	f.close()
+		with open(micfile, 'r') as f:
+			micfiledata = np.genfromtxt(f,skip_header=4)
 	plotmic()
 
 def euler2orientmat(Euler):
@@ -1046,6 +1049,8 @@ def findOrientation():
 
 # Global constants initialization
 imarr2 = None
+_img_artist = None
+_img_logmode = False
 initplot = 1
 framenr = 0
 startframenr = 0
