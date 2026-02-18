@@ -17,6 +17,8 @@ try:
 	HAS_TIFFFILE = True
 except ImportError:
 	HAS_TIFFFILE = False
+import tempfile
+import subprocess
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
 import sys
@@ -27,10 +29,7 @@ import matplotlib.pyplot as plt
 import os
 import glob
 import tkinter.filedialog as tkFileDialog
-import math
 from math import sin, cos
-from subprocess import Popen, PIPE, STDOUT
-from multiprocessing.dummy import Pool
 
 # Try to import midas_config from utils
 try:
@@ -793,72 +792,95 @@ def makespots():
 	global spotnrvar
 	global simulatedspots
 	global r
-	thisdir = os.getcwd()
-	os.chdir('/dev/shm')
-	pfname = "/dev/shm/ps.txt"
-	f = open(pfname,'w')
-	f.write("SpaceGroup %d\n"%(sg))
-	f.write("Wavelength %lf\n"%(wl))
-	lsd = float(lsdvar.get())
-	f.write("Lsd %lf\n"%(lsd))
-	f.write("MaxRingRad %lf\n"%(maxringrad))
-	f.write("LatticeConstant %lf %lf %lf %lf %lf %lf\n"%(latC[0],latC[1],latC[2],latC[3],latC[4],latC[5]))
-	f.close()
-	if midas_config and midas_config.MIDAS_NF_BIN_DIR:
-		hklpath = os.path.join(midas_config.MIDAS_NF_BIN_DIR, 'GetHKLList') + ' '
-	else:
-		hklpath = '~/opt/MIDAS/NF_HEDM/bin/GetHKLList '
-	os.system(hklpath+pfname)
-	if midas_config and midas_config.MIDAS_NF_BIN_DIR:
-		genseedorpath = os.path.join(midas_config.MIDAS_NF_BIN_DIR, 'GenSeedOrientationsFF2NFHEDM') + ' '
-		diffrspotspath = os.path.join(midas_config.MIDAS_NF_BIN_DIR, 'SimulateDiffractionSpots') + ' '
-	else:
-		genseedorpath = '~/opt/MIDAS/NF_HEDM/bin/GenSeedOrientationsFF2NFHEDM '
-		diffrspotspath = '~/opt/MIDAS/NF_HEDM/bin/SimulateDiffractionSpots '
-	orinfn = '/dev/shm/orin.txt'
-	oroutfn = '/dev/shm/orout.txt'
-	instr = "120 %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n"%(om[0],om[1],om[2],om[3],om[4],
-			om[5],om[6],om[7],om[8],pos[0],pos[1],pos[2],latC[0],latC[1],latC[2],latC[3],latC[4],latC[5])
-	f = open(orinfn,'w')
-	f.write(instr)
-	f.close()
-	os.system(genseedorpath+orinfn+' '+oroutfn)
-	os.system(diffrspotspath+str(lsd)+' '+oroutfn)
-	os.chdir(thisdir)
-	spotsfn = '/dev/shm/SimulatedDiffractionSpots.txt'
-	simulatedspots = open(spotsfn,'r').readlines()
+	# Use TemporaryDirectory to contain output files
+	with tempfile.TemporaryDirectory() as temp_dir:
+		pfname = os.path.join(temp_dir, "ps.txt")
+		with open(pfname, 'w') as f:
+			f.write("SpaceGroup %d\n"%(sg))
+			f.write("Wavelength %lf\n"%(wl))
+			lsd = float(lsdvar.get())
+			f.write("Lsd %lf\n"%(lsd))
+			f.write("MaxRingRad %lf\n"%(maxringrad))
+			f.write("LatticeConstant %lf %lf %lf %lf %lf %lf\n"%(latC[0],latC[1],latC[2],latC[3],latC[4],latC[5]))
+		
+		if midas_config and midas_config.MIDAS_NF_BIN_DIR:
+			hklpath = os.path.join(midas_config.MIDAS_NF_BIN_DIR, 'GetHKLList')
+		else:
+			hklpath = os.path.expanduser('~/opt/MIDAS/NF_HEDM/bin/GetHKLList')
+		
+		subprocess.run([hklpath, pfname], check=True, cwd=temp_dir)
+		
+		if midas_config and midas_config.MIDAS_NF_BIN_DIR:
+			genseedorpath = os.path.join(midas_config.MIDAS_NF_BIN_DIR, 'GenSeedOrientationsFF2NFHEDM')
+			diffrspotspath = os.path.join(midas_config.MIDAS_NF_BIN_DIR, 'SimulateDiffractionSpots')
+		else:
+			genseedorpath = os.path.expanduser('~/opt/MIDAS/NF_HEDM/bin/GenSeedOrientationsFF2NFHEDM')
+			diffrspotspath = os.path.expanduser('~/opt/MIDAS/NF_HEDM/bin/SimulateDiffractionSpots')
+
+		orinfn = os.path.join(temp_dir, "orin.txt")
+		oroutfn = os.path.join(temp_dir, "orout.txt")
+		instr = "120 %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n"%(om[0],om[1],om[2],om[3],om[4],
+				om[5],om[6],om[7],om[8],pos[0],pos[1],pos[2],latC[0],latC[1],latC[2],latC[3],latC[4],latC[5])
+		
+		with open(orinfn, 'w') as f:
+			f.write(instr)
+
+		subprocess.run([genseedorpath, orinfn, oroutfn], check=True, cwd=temp_dir)
+		subprocess.run([diffrspotspath, str(lsd), oroutfn], check=True, cwd=temp_dir)
+		
+		# Read back the results from temp_dir
+		spotsfn = os.path.join(temp_dir, 'SimulatedDiffractionSpots.txt')
+		if os.path.exists(spotsfn):
+			with open(spotsfn, 'r') as f:
+				simulatedspots = f.readlines()
+		else:
+			print("Error: SimulatedDiffractionSpots.txt not found.")
+			simulatedspots = []
+
 	Tk.Label(master=thirdRowFrame,text="SpotNumber").grid(row=1,column=nrthird+1,sticky=Tk.W)
 	Tk.Entry(master=thirdRowFrame,textvariable=spotnrvar,width=3).grid(row=1,column=nrthird+2,sticky=Tk.W)
-	plot_update_spot()
+	if simulatedspots:
+		plot_update_spot()
+
 	# put a frame with +,- and load
 	Tk.Button(master=thirdRowFrame,text="+",command=incr_spotnr,font=("Helvetica",12)).grid(row=1,column=nrthird+3,sticky=Tk.W)
 	Tk.Button(master=thirdRowFrame,text="Load",command=update_spotnr,font=("Helvetica",12)).grid(row=1,column=nrthird+4,sticky=Tk.W)
 
 def median():
-	cmdout = []
+	# Iterate sequentially instead of using Pool/Popen logic which is hard to secure
+	# Since these are likely fast, sequential is safer for the GUI
 	for thisdist in range(ndistances):
-		pfname = f'{folder}/ps_{thisdist}.txt'
-		f = open(pfname,'w')
-		f.write('extReduced bin\n')
-		f.write('extOrig tif\n')
-		f.write('WFImages 0\n')
-		f.write(f'OrigFileName {fnstem}\n')
-		tempnr = startframenr + thisdist*(nrfilesperdistance - int(nrfilesmedianvar.get()))
-		f.write(f'NrFilesPerDistance {nrfilesmedianvar.get()}\n')
-		f.write(f'NrPixels {NrPixels}\n')
-		f.write(f'DataDirectory {folder}\n')
-		f.write(f'RawStartNr {tempnr}\n')
-		f.write(f'ReducedFileName {fnstem}\n')
-		f.close()
+		# Create a temp file for params
+		with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+			pfname = f.name
+			f.write('extReduced bin\n')
+			f.write('extOrig tif\n')
+			f.write('WFImages 0\n')
+			f.write(f'OrigFileName {fnstem}\n')
+			tempnr = startframenr + thisdist*(nrfilesperdistance - int(nrfilesmedianvar.get()))
+			f.write(f'NrFilesPerDistance {nrfilesmedianvar.get()}\n')
+			f.write(f'NrPixels {NrPixels}\n')
+			f.write(f'DataDirectory {folder}\n')
+			f.write(f'RawStartNr {tempnr}\n')
+			f.write(f'ReducedFileName {fnstem}\n')
+
 		if midas_config and midas_config.MIDAS_NF_BIN_DIR:
-			cmdout.append(os.path.join(midas_config.MIDAS_NF_BIN_DIR,'MedianImageLibTiff') + ' ' + pfname + ' ' + str(thisdist+1)+' 10')
+			cmd = os.path.join(midas_config.MIDAS_NF_BIN_DIR,'MedianImageLibTiff')
 		else:
-			cmdout.append(os.path.expanduser('~/opt/MIDAS/NF_HEDM/bin/MedianImageLibTiff') + ' ' + pfname + ' ' + str(thisdist+1)+' 10')
-	processes = [Popen(cmdname,shell=True,
-				stdin=PIPE, stdout=PIPE, stderr=STDOUT,close_fds=True) for cmdname in cmdout]
-	def get_lines(process):
-		return process.communicate()[0].splitlines()
-	outputs = Pool(len(processes)).map(get_lines,processes)
+			cmd = os.path.expanduser('~/opt/MIDAS/NF_HEDM/bin/MedianImageLibTiff')
+			
+		# subprocess.run([cmd, pfname, str(thisdist+1), '10'], check=True)
+		# NOTE: original used Popen. Median calculation might be slow. 
+		# Implementing fully blocking here will freeze GUI. 
+		# But original used Pool(len(processes)).map(...) which blocked until ALL returned anyway! 
+		# So blocking here is behaviorally equivalent.
+		try:
+			subprocess.run([cmd, pfname, str(thisdist+1), '10'], check=True)
+			# Clean up temp file
+			os.remove(pfname)
+		except subprocess.CalledProcessError as e:
+			print(f"Error running MedianImageLibTiff: {e}")
+
 	print('Calculated median for all distances.')
 
 def micfileselect():
@@ -1295,6 +1317,6 @@ Tk.Button(master=micframefourthrow,text="FindOrientation",command=findOrientatio
 # Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",14)).grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W)
 Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20)).grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W,padx=10)
 
-root.bind('<Control-w>', lambda event: root.destroy())
-
-Tk.mainloop()
+if __name__ == "__main__":
+	root.bind('<Control-w>', lambda event: root.destroy())
+	Tk.mainloop()
