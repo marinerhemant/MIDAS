@@ -1,6 +1,6 @@
 # nf_MIDAS.py User Manual
 
-**Version:** 9.0  
+**Version:** 9.1  
 **Contact:** hsharma@anl.gov
 
 > [!NOTE]
@@ -137,7 +137,7 @@ The parameter file is a whitespace-delimited text file. Lines starting with `#` 
 
 | Key | Values | Description |
 |---|---|---|
-| `RingsToUse` | int | Restrict to specific ring number. Can appear multiple times |
+| `RingsToUse` | int | Restrict to specific ring number. Can appear multiple times. Useful when structure factors vary significantly between rings — include only rings with strong, reliable diffraction signal |
 | `SaveNSolutions` | int | Number of top solutions to save per grid point (default: `1`) |
 | `Wedge` | float | Wedge angle (degrees, default: `0`) |
 | `Ice9Input` | *(no value)* | Flag to enable Ice9 mode |
@@ -226,7 +226,92 @@ python nf_MIDAS.py \
 
 ---
 
-## 7. Output Directory Structure
+## 7. Iterative Calibration and Optimization Workflow
+
+A high-confidence NF-HEDM reconstruction requires iterating between parameter refinement and full reconstruction. This section describes the complete end-to-end procedure.
+
+> [!IMPORTANT]
+> **Start with the calibration procedure** in [NF_calibration.md](NF_calibration.md) to determine initial values for `Lsd`, `BC`, and detector tilts. Those values become the initial guess in your parameter file.
+
+```mermaid
+graph TD
+    A["Initial Calibration\n(NF_calibration.md)"] --> B["Update Parameter File\nwith Lsd, BC values"]
+    B --> C["Single-Point Optimization\n(2-3 iterations)"]
+    C --> D["Full Reconstruction"]
+    D --> E["Inspect .mic in GUI\n(LoadMic → .map file)"]
+    E --> F["Select 5-10 GridPoints\nfrom high-confidence grains"]
+    F --> G["Multi-Point Optimization\n(2-3 iterations)"]
+    G --> H["Full Reconstruction"]
+    H --> I{"Confidence\nacceptable?"}
+    I -->|No| G
+    I -->|Yes| J["Done — Final .mic"]
+```
+
+### 7.1 Single-Point Parameter Refinement
+
+After entering the initial `Lsd` and `BC` values from calibration, run single-point refinement a few times:
+
+```bash
+python nf_MIDAS.py -paramFN nf_params.txt -nCPUs 8 -refineParameters 1 -multiGridPoints 0
+```
+
+The script prompts for `(x, y)` coordinates — choose a point near the center of your sample. After each run, the **refined `Lsd`, `BC`, and tilt values** are printed to the console. Update them in the parameter file and re-run. Repeat 2–3 times until values stabilize.
+
+### 7.2 Initial Full Reconstruction
+
+```bash
+python nf_MIDAS.py -paramFN nf_params.txt -nCPUs 8
+```
+
+This produces a `.mic` text file and a `.map` binary file in `DataDirectory`.
+
+### 7.3 Grid Point Selection for Multi-Point Optimization
+
+1.  **Open the reconstruction in the NF GUI** (see [NF_gui.md](NF_gui.md)):
+    ```bash
+    cd <DataDirectory>
+    python ~/opt/MIDAS/gui/nf.py &
+    ```
+    Click **LoadMic** and select the `.map` file (preferred over `.mic` — `imshow` rendering is significantly faster).
+
+2.  **Set visualization to `Confidence`** using the radio buttons.
+
+3.  **Identify 5–10 high-quality grid points** with the following criteria:
+    - Confidence less than 1 (values of exactly 1 are suspicious)
+    - **Not** on grain boundaries — at this early stage, grain boundary voxels do not have correctly determined orientations. Multi-point optimization cannot search over all possible orientations; it assumes the orientation assigned to the voxel is approximately correct. If a grain boundary voxel is chosen, its orientation guess may be wrong, leading the optimizer to refine geometry toward incorrect parameters.
+    - Close to grain boundaries — provides geometric diversity
+    - Distributed across **all four quadrants** of the sample (roughly balanced)
+
+4.  **Open the `.mic` text file** in a text editor. Each line is a grid point:
+    ```
+    OrientRowNr  ID  Time  X  Y  Size  UD  Euler1  Euler2  Euler3  Confidence
+    ```
+
+5.  **Copy the corresponding lines** to your parameter file, prefixing each with `GridPoints`:
+    ```
+    GridPoints  0  0  0  -123.4  456.7  5.0  1  0.123  0.456  0.789  0.85
+    GridPoints  0  0  0   234.5 -345.6  5.0  1  1.234  0.567  0.890  0.82
+    ...
+    ```
+
+### 7.4 Multi-Point Optimization Loop
+
+1.  **Run multi-point refinement:**
+    ```bash
+    python nf_MIDAS.py -paramFN nf_params.txt -nCPUs 8 -refineParameters 1 -multiGridPoints 1
+    ```
+2.  Update the parameter file with the refined values printed to the console.
+3.  **Repeat** multi-point refinement 2–3 times until values stabilize.
+4.  **Run a full reconstruction** again:
+    ```bash
+    python nf_MIDAS.py -paramFN nf_params.txt -nCPUs 8
+    ```
+5.  **Inspect the new reconstruction** in the GUI. If confidence is not yet satisfactory, re-run multi-point optimization (the `GridPoints` lines in the parameter file can remain from the previous iteration).
+6.  **Iterate** until you achieve a high-confidence map you are satisfied with.
+
+---
+
+## 8. Output Directory Structure
 
 All output is generated within `DataDirectory` from the parameter file.
 
@@ -278,7 +363,7 @@ The final text mic file has one line per reconstructed grid point. Lines startin
 
 ---
 
-## 8. Binary Executables Reference
+## 9. Binary Executables Reference
 
 | Binary | Purpose | Key Arguments |
 |---|---|---|
@@ -297,14 +382,14 @@ The final text mic file has one line per reconstructed grid point. Lines startin
 
 ---
 
-## 9. Technical Implementation Details
+## 10. Technical Implementation Details
 
-### 9.1. High-Performance Data Structures (`MMapImageInfo`)
+### 10.1. High-Performance Data Structures (`MMapImageInfo`)
 *   **Bitmasking:** To enable ultra-fast collision detection during fitting, the experimental diffraction images are pre-processed into a monolithic bitmask (`ObsSpotsInfo.bin`).
 *   **Index Calculation:** A 4D coordinate (Layer, Rotation, Y, Z) is mapped to a linear index in the bitmask. If a pixel contains a diffraction peak, the corresponding bit is set to 1.
 *   **Memory Mapping:** The binary files are memory-mapped (`mmap`) into the process address space. This allows the OS to efficiently manage memory paging and enables multiple processes (or threads) to access the massive dataset (often 10s of GBs) with near-RAM speeds, especially when placed in `/dev/shm` (RAM disk).
 
-### 9.2. Orientation Fitting Algorithm (`FitOrientationOMP`)
+### 10.2. Orientation Fitting Algorithm (`FitOrientationOMP`)
 *   **Grid Parallelization:** The reconstruction volume is discretized into a hexagonal grid. The fitting process for each grid point is independent, allowing trivial parallelization using **OpenMP**. Each CPU thread processes a subset of grid points.
 *   **Two-Stage Optimization:**
     1.  **Discrete Search:** The algorithm first tests a pre-computed list of 'seed' orientations (from `SeedOrientations` or converted FF results). It calculates the fractional overlap for each seed and keeps the best candidates.
@@ -314,10 +399,12 @@ The final text mic file has one line per reconstructed grid point. Lines startin
     *   **Rasterization:** The projected spot shape is rasterized into a set of pixels.
     *   **Collision Check:** Each rasterized pixel is checked against the `ObsSpotsInfo` bitmask. This is an $O(1)$ operation, making the loop extremely fast.
 
-### 9.3. Parallel I/O
+### 10.3. Parallel I/O
 *   **Writer Locks:** While the computation is parallel, writing the results to the output file (`MicFileBinary`) uses `pwrite` (parallel write) with thread-safe file offsets to avoid race conditions and ensure data integrity without serialization bottlenecks.
 
 ---
+
+## 11. Troubleshooting
 
 ### Shared Memory Errors
 
@@ -353,7 +440,7 @@ The final text mic file has one line per reconstructed grid point. Lines startin
 
 ---
 
-## 11. See Also
+## 12. See Also
 
 - [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md) — Multi-resolution iterative NF-HEDM reconstruction
 - [NF_calibration.md](NF_calibration.md) — NF detector geometry calibration

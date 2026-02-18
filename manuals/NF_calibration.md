@@ -176,7 +176,95 @@ Now we will use the gold calibration scan data and the beam center values from P
 2.  A final pop-up box will appear, listing the three precisely calculated detector distances and three calculated Y-positions.
 3.  **Record these values.**
 
-**The calibration is now complete.**
+**The initial calibration is now complete.** The beam center and detector distances from Parts I and II provide the initial guess for the parameter file. Proceed to the iterative optimization workflow below.
+
+---
+
+## Part III: Iterative Parameter Optimization
+
+After computing initial beam center and detector distances, use the following iterative workflow to refine the geometry and achieve the highest-confidence reconstruction. This procedure alternates between parameter refinement and full reconstruction until convergence.
+
+> [!IMPORTANT]
+> For command-line details and parameter file format, see [NF_Analysis.md](NF_Analysis.md).
+
+```mermaid
+graph TD
+    A["Initial Calibration\n(Parts I & II)"] --> B["Update Parameter File\nwith Lsd, BC values"]
+    B --> C["Single-Point Optimization\n(2-3 iterations)"]
+    C --> D["Full Reconstruction"]
+    D --> E["Inspect .mic in GUI\n(LoadMic → .map file)"]
+    E --> F["Select 5-10 GridPoints\nfrom high-confidence grains"]
+    F --> G["Multi-Point Optimization\n(2-3 iterations)"]
+    G --> H["Full Reconstruction"]
+    H --> I{"Confidence\nacceptable?"}
+    I -->|No| G
+    I -->|Yes| J["Done — Final .mic"]
+```
+
+#### Step 10: Single-Point Parameter Refinement
+
+1.  **Update the parameter file** with the `Lsd` and `BC` values from Part II (Steps 5–9).
+2.  **Run single-point refinement** a few times, updating the parameter file with the optimized values after each run:
+    ```bash
+    python nf_MIDAS.py -paramFN nf_params.txt -nCPUs 8 -refineParameters 1 -multiGridPoints 0
+    ```
+3.  The script will prompt for `(x, y)` coordinates. Choose a point near the center of your sample.
+4.  After each run, the **refined `Lsd`, `BC`, and tilt values** are printed to the console. Update them in your parameter file before the next iteration.
+5.  Repeat 2–3 times until values stabilize.
+
+#### Step 11: Initial Full Reconstruction
+
+Run a full reconstruction with the refined parameters:
+
+```bash
+python nf_MIDAS.py -paramFN nf_params.txt -nCPUs 8
+```
+
+This produces a `.mic` text file and a `.map` binary file.
+
+#### Step 12: Select Grid Points for Multi-Point Optimization
+
+1.  **Open the reconstruction in the GUI:**
+    ```bash
+    cd <DataDirectory>
+    python ~/opt/MIDAS/gui/nf.py &
+    ```
+    Click **LoadMic** and select the `.map` file (preferred — faster rendering via `imshow`).
+
+2.  **Set the visualization to `Confidence`** using the radio buttons.
+
+3.  **Identify 5–10 high-quality grid points** with the following criteria:
+    - Confidence value less than 1 (i.e., not a perfect match — these are suspicious)
+    - **Not** on grain boundaries — at this early stage, grain boundary voxels do not have correctly determined orientations. Multi-point optimization cannot search over all possible orientations; it assumes the orientation assigned to the voxel is approximately correct. If a grain boundary voxel is chosen, its orientation guess may be wrong, leading the optimizer to refine geometry toward incorrect parameters.
+    - Close to, but not at, grain boundaries — these provide geometric diversity
+    - Distributed across **all four quadrants** of the sample (roughly balanced)
+
+4.  **Open the `.mic` text file** in a text editor. Each line is a grid point with columns:
+    ```
+    OrientRowNr  ID  Time  X  Y  Size  UD  Euler1  Euler2  Euler3  Confidence
+    ```
+
+5.  **Copy the full lines** corresponding to your selected points and add them to the parameter file, prefixing each line with `GridPoints`:
+    ```
+    GridPoints  0  0  0  -123.4  456.7  5.0  1  0.123  0.456  0.789  0.85
+    GridPoints  0  0  0   234.5 -345.6  5.0  1  1.234  0.567  0.890  0.82
+    ...
+    ```
+
+#### Step 13: Multi-Point Optimization Loop
+
+1.  **Run multi-point refinement:**
+    ```bash
+    python nf_MIDAS.py -paramFN nf_params.txt -nCPUs 8 -refineParameters 1 -multiGridPoints 1
+    ```
+2.  Update the parameter file with the refined values printed to the console.
+3.  **Repeat** the multi-point refinement 2–3 times until values stabilize.
+4.  **Run a full reconstruction** again:
+    ```bash
+    python nf_MIDAS.py -paramFN nf_params.txt -nCPUs 8
+    ```
+5.  **Inspect the new reconstruction** in the GUI. If confidence is not yet satisfactory, re-run multi-point optimization (the `GridPoints` lines in the parameter file can remain from the previous iteration).
+6.  **Iterate** until you achieve a high-confidence map you are satisfied with.
 
 ---
 
