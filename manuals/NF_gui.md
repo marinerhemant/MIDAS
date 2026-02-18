@@ -22,13 +22,17 @@ This is a graphical user interface (GUI) for visualizing and analyzing near-fiel
      GUI --> Viz[Image Visualization]
      GUI --> Prof[Profile Analysis]
      GUI --> Calib[Calibration]
+     GUI --> Recon[Reconstruction Viewer]
      GUI --> Sim[Simulation]
      
      Calib --> Beam[Beam Center]
      Calib --> Dist[Detector Distance]
      
-     Sim --> Grain[Load Grain/Mic]
-     Sim --> Spots[Predict Spots]
+     Recon --> MapFile[".map — binary grid (fast, preferred)"]
+     Recon --> MicFile[".mic — text scatter (slower)"]
+     
+     Sim --> Grain[Load Grain / SelectPoint]
+     Sim --> Spots[MakeSpots]
  ```
  
  ## Getting Started
