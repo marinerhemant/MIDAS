@@ -1,6 +1,6 @@
 # Comprehensive User Manual for the Near-Field Calibration GUI
 
-**Version:** 9.0  
+**Version:** 9.1  
 **Contact:** hsharma@anl.gov
 
 ## Introduction: The Goal of Calibration
@@ -30,6 +30,14 @@ This manual is divided into two primary sections, mirroring the calibration work
     *   Navigate to your data folder. For Part I, select the Au 5mm beam position scan file. The filename stem will typically be **"DetZBeamPosScan"**.
     *   If no "DetZBeamPosScan" files exist, load the first image from your "Au_NF" folder for that distance.
     *   The GUI will auto-populate the `Folder`, `FNStem`, and `StartFileNumberFirstLayer` fields.
+
+> [!TIP]
+> **Shortcut:** You can also launch the GUI directly from the data folder:
+> ```bash
+> cd /path/to/Au_DetZBeamPos_72keV
+> python ~/opt/MIDAS/gui/nf.py &
+> ```
+> When the folder name contains `BeamPos` or `DetZBeamPos`, the GUI automatically enters **BeamPos mode**: all `.tif` files are sorted by numeric suffix, and `FrameNumber` becomes an index into this list. This lets you step through files with different stems using the `+`/`-` buttons.
 
 3.  **Display the Image:**
     *   Click the large **`Load`** button. The detector image will appear in the left-hand window.

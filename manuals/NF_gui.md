@@ -1,6 +1,6 @@
 # Near-Field HEDM Calibration GUI
 
-**Version:** 9.0  
+**Version:** 9.1  
 **Contact:** hsharma@anl.gov
 
 This is a graphical user interface (GUI) for visualizing and analyzing near-field High-Energy Diffraction Microscopy (HEDM) data. The primary purpose of this tool is to perform a near-field calibration to determine the precise beam position and detector distances using a known calibrant sample, such as single-crystal gold.
@@ -40,6 +40,7 @@ Ensure you have a working Python environment with the following libraries instal
 *   Pillow (PIL)
 *   Matplotlib
 *   NumPy
+*   tifffile (optional, recommended for faster TIFF loading)
 
 ### Launching the Application
 
@@ -49,6 +50,9 @@ To run the GUI, execute the following command from your terminal:
 python ~/opt/MIDAS/gui/nf.py &
 ```
 
+> [!TIP]
+> Launch the GUI from your data directory (e.g. `cd Au_NF_5mm && python ~/opt/MIDAS/gui/nf.py &`). The GUI will auto-detect the folder, file stem, and starting frame number from the `.tif` files present.
+
 ---
 
 ## User Guide
@@ -56,10 +60,19 @@ python ~/opt/MIDAS/gui/nf.py &
 ### 1. Loading Data
 
 1.  **Launch the Application:** Run the command above to open the GUI.
-2.  **Load Initial File:** Click the **FirstFile** button. This opens a file dialog.
-3.  **Select Data:** Navigate to your data folder and select the first `.tif` image of your scan (e.g., `DetZBeamPosScan_000004.tif`).
-4.  **Auto-Populate:** The application automatically fills in the `Folder`, `FNStem` (File Name Stem), and `StartFileNumberFirstLayer` fields.
-5.  **Display Image:** Click the main **Load** button to display the image in the left panel.
+2.  **Auto-Detection:** When launched from a data directory, the GUI automatically sets `Folder`, `FNStem`, and `StartFileNumberFirstLayer` by scanning for `.tif` files. You can skip the `FirstFile` step in this case and go directly to **Load**.
+3.  **Load Initial File (alternative):** Click the **FirstFile** button to open a file dialog and manually select your first `.tif` image.
+4.  **Display Image:** Click the main **Load** button to display the image in the left panel.
+
+#### BeamPos / DetZBeamPos Folder Mode
+
+When the GUI is launched from a folder whose name contains **`BeamPos`** or **`DetZBeamPos`**, it activates a special navigation mode:
+
+*   All `.tif` files in the folder are collected and sorted by their numeric suffix.
+*   The `FrameNumber` field becomes an **index** (0, 1, 2, …) into this sorted list.
+*   The `+`/`-` buttons step through files sequentially, regardless of file stem.
+*   Median background subtraction is not available in this mode (no matching median files).
+*   The console will print `BeamPos mode: found N files, navigating by index` at startup.
 
 ### 2. Image Display and Navigation
 
@@ -133,7 +146,12 @@ Correlate your diffraction data with an existing microstructure map.
 ### 6.1. Software Architecture
 *   **Framework:** The GUI is built using **Tkinter** for the window management and control widgets (buttons, entries).
 *   **Visualization:** **Matplotlib** figures are embedded directly into the Tkinter application using the `FigureCanvasTkAgg` backend. This allows for interactive features like zooming and panning within the GUI window.
-*   **Image Processing:** Raw diffraction images (TIFF) are read into **NumPy** arrays for efficient manipulation. Features like median background subtraction are implemented as vectorized array operations for real-time performance.
+*   **Image Processing:** Raw diffraction images (TIFF) are read using **tifffile** (preferred) or **Pillow** into **NumPy** arrays for efficient manipulation. Features like median background subtraction are implemented as vectorized array operations for real-time performance.
+*   **Performance Optimizations (v9.1):**
+    *   **Artist reuse:** When stepping through frames with `+`/`-`, the imshow artist is updated via `set_data()`/`set_clim()` instead of being recreated, avoiding expensive axis rebuild.
+    *   **Deferred rendering:** `canvas.draw_idle()` defers render to the next idle event, preventing UI freezes.
+    *   **Safe colorbar removal:** Colorbar cleanup is wrapped in exception handlers to prevent stale-axes crashes.
+    *   **LoadMic default directory:** The file dialog defaults to the current working directory.
 
 ### 6.2. Simulation Backend
 The "MakeSpots" simulation feature uses a hybrid approach:
