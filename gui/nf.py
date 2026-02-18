@@ -828,9 +828,9 @@ def median():
 		f.write(f'ReducedFileName {fnstem}\n')
 		f.close()
 		if midas_config and midas_config.MIDAS_NF_BIN_DIR:
-			cmdout.append(os.path.join(midas_config.MIDAS_NF_BIN_DIR,'MedianImageLibTiff') + ' ' + pfname + ' ' + str(thisdist+1))
+			cmdout.append(os.path.join(midas_config.MIDAS_NF_BIN_DIR,'MedianImageLibTiff') + ' ' + pfname + ' ' + str(thisdist+1)+' 10')
 		else:
-			cmdout.append(os.path.expanduser('~/opt/MIDAS/NF_HEDM/bin/MedianImageLibTiff') + ' ' + pfname + ' ' + str(thisdist+1))
+			cmdout.append(os.path.expanduser('~/opt/MIDAS/NF_HEDM/bin/MedianImageLibTiff') + ' ' + pfname + ' ' + str(thisdist+1)+' 10')
 	processes = [Popen(cmdname,shell=True,
 				stdin=PIPE, stdout=PIPE, stderr=STDOUT,close_fds=True) for cmdname in cmdout]
 	def get_lines(process):
