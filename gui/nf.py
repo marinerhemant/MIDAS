@@ -101,17 +101,24 @@ def _quit():
 	root.destroy()
 
 def _safe_remove_colorbar():
-	"""Safely remove the global colorbar, handling stale axes."""
+	"""Safely remove the global colorbar and restore axes b to its original size."""
 	global cb
 	if cb is not None:
 		try:
+			cb_ax = cb.ax
 			cb.remove()
-		except (AttributeError, Exception):
+			# cb.remove() may leave the axes; ensure it's gone
+			if cb_ax in cb_ax.figure.axes:
+				cb_ax.figure.delaxes(cb_ax)
+		except Exception:
 			try:
-				cb.ax.remove()
+				cb.ax.figure.delaxes(cb.ax)
 			except Exception:
 				pass
 		cb = None
+	# Restore axes b to its original position so it doesn't shrink
+	if _b_original_pos is not None:
+		b.set_position(_b_original_pos)
 
 def _cleanup_click_handlers():
 	"""Disconnect click handlers and hide selection UI elements."""
@@ -1150,6 +1157,7 @@ figur = Figure(figsize=(17,8),dpi=100)
 canvas = FigureCanvasTkAgg(figur,master=root)
 a = figur.add_subplot(121,aspect='equal')
 b = figur.add_subplot(122)
+_b_original_pos = b.get_position()  # Save original position to restore after colorbar removal
 b.title.set_text("LineOuts/MicFile")
 a.title.set_text("Image")
 canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)

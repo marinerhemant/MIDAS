@@ -600,6 +600,22 @@ def main():
     
     # --- 3. Workflow Execution with Guaranteed Cleanup ---
     with change_directory(resultFolder):
+        # Delete stale MicFileBinary if it exists from a previous run
+        mic_bin = params.get('MicFileBinary')
+        if mic_bin:
+            mic_bin_path = os.path.join(resultFolder, mic_bin)
+            if os.path.exists(mic_bin_path):
+                os.remove(mic_bin_path)
+                logger.info(f"Removed stale MicFileBinary: {mic_bin_path}")
+
+        # Ensure the reduced data subdirectory exists
+        reduced_fn = params.get('ReducedFileName', '')
+        reduced_subdir = os.path.dirname(reduced_fn)
+        if reduced_subdir:
+            reduced_dir_path = os.path.join(resultFolder, reduced_subdir)
+            os.makedirs(reduced_dir_path, exist_ok=True)
+            logger.info(f"Ensured reduced data directory exists: {reduced_dir_path}")
+
         try:
             run_preprocessing(args, params, t0)
             
