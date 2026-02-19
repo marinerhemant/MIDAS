@@ -46,19 +46,10 @@ except ImportError as e:
 deg2rad = 0.0174532925199433
 rad2deg = 57.2957795130823
 
-colors = ['r','g','b','c','m','y','r','g','b','c','m','y',
-		  'r','g','b','c','m','y','r','g','b','c','m','y',
-		  'r','g','b','c','m','y','r','g','b','c','m','y',
-		  'r','g','b','c','m','y','r','g','b','c','m','y',
-		  'r','g','b','c','m','y','r','g','b','c','m','y',
-		  'r','g','b','c','m','y','r','g','b','c','m','y',
-		  'r','g','b','c','m','y','r','g','b','c','m','y',
-		  'r','g','b','c','m','y','r','g','b','c','m','y',
-		  'r','g','b','c','m','y','r','g','b','c','m','y',
-		  'r','g','b','c','m','y','r','g','b','c','m','y',
-		  'r','g','b','c','m','y','r','g','b','c','m','y',
-		  'r','g','b','c','m','y','r','g','b','c','m','y',
-		  'r','g','b','c','m','y','r','g','b','c','m','y']
+import itertools
+_color_cycle = itertools.cycle(['r','g','b','c','m','y'])
+def get_ring_colors(n):
+	return [next(_color_cycle) for _ in range(n)]
 
 def _quit():
 	root.quit()
@@ -278,6 +269,36 @@ def getImageMax(fn):
 			# Fallback: single file, single frame
 			dataMax = getImage(fn, Header, frame_idx=0)
 	else:
+		# HDF5 batch fast-path: read all frames at once
+		if ext in ['.h5', '.hdf', '.hdf5', '.nxs']:
+			try:
+				with h5py.File(fn, 'r') as f:
+					dset_path = hdf5PathVar.get()
+					if dset_path in f and f[dset_path].ndim == 3:
+						end_idx = min(startFrameNr + nFramesToDo, f[dset_path].shape[0])
+						print(f"  HDF5 batch max: frames {startFrameNr}..{end_idx-1}")
+						slab = f[dset_path][startFrameNr:end_idx, :, :]
+						dataMax = np.max(slab, axis=0).astype(float)
+						# Apply flips/transpose/mask once
+						if transpose.get() == 1:
+							dataMax = np.transpose(dataMax)
+						flip_h = hflip.get() == 1
+						flip_v = vflip.get() == 1
+						if flip_h and flip_v:
+							dataMax = dataMax[::-1, ::-1].copy()
+						elif flip_h:
+							dataMax = dataMax[::-1, :].copy()
+						elif flip_v:
+							dataMax = dataMax[:, ::-1].copy()
+						if applyMaskVar.get() and maskFNVar.get():
+							readMask()
+							if badPixelMask is not None and badPixelMask.shape == dataMax.shape:
+								dataMax[badPixelMask == 1] = 0
+						t2 = time.time()
+						print("Time taken to calculate max: " + str(t2-t1))
+						return dataMax
+			except Exception as e:
+				print(f"HDF5 batch max failed ({e}), falling back to per-frame")
 		for i in range(nFramesToDo):
 			frame_idx = startFrameNr + i
 			bytesToSkip = Header + frame_idx*(BytesPerPixel*NrPixelsY*NrPixelsZ)
@@ -334,6 +355,35 @@ def getImageSum(fn):
 		else:
 			dataSum = getImage(fn, Header, frame_idx=0)
 	else:
+		# HDF5 batch fast-path: read all frames at once
+		if ext in ['.h5', '.hdf', '.hdf5', '.nxs']:
+			try:
+				with h5py.File(fn, 'r') as f:
+					dset_path = hdf5PathVar.get()
+					if dset_path in f and f[dset_path].ndim == 3:
+						end_idx = min(startFrameNr + nFramesToDo, f[dset_path].shape[0])
+						print(f"  HDF5 batch sum: frames {startFrameNr}..{end_idx-1}")
+						slab = f[dset_path][startFrameNr:end_idx, :, :]
+						dataSum = np.sum(slab, axis=0).astype(float)
+						if transpose.get() == 1:
+							dataSum = np.transpose(dataSum)
+						flip_h = hflip.get() == 1
+						flip_v = vflip.get() == 1
+						if flip_h and flip_v:
+							dataSum = dataSum[::-1, ::-1].copy()
+						elif flip_h:
+							dataSum = dataSum[::-1, :].copy()
+						elif flip_v:
+							dataSum = dataSum[:, ::-1].copy()
+						if applyMaskVar.get() and maskFNVar.get():
+							readMask()
+							if badPixelMask is not None and badPixelMask.shape == dataSum.shape:
+								dataSum[badPixelMask == 1] = 0
+						t2 = time.time()
+						print("Time taken to calculate sum: " + str(t2-t1))
+						return dataSum
+			except Exception as e:
+				print(f"HDF5 batch sum failed ({e}), falling back to per-frame")
 		for i in range(nFramesToDo):
 			frame_idx = startFrameNr + i
 			bytesToSkip = Header + frame_idx*(BytesPerPixel*NrPixelsY*NrPixelsZ)
@@ -347,33 +397,6 @@ def getImageSum(fn):
 	print("Time taken to calculate sum: " + str(t2-t1))
 	return dataSum
 
-def getData(geNum,bytesToSkip, frame_idx=0):
-	fn = getfn(fileStem,fileNumber,geNum)
-	global getMax
-	getMax = getMaxVar.get()
-	getSum = getSumVar.get()
-	
-	if getMax:
-		data = getImageMax(fn)
-	elif getSum:
-		data = getImageSum(fn)
-	else:
-		data = getImage(fn,bytesToSkip, frame_idx=frame_idx)
-		
-	doDark = var.get()
-	if doDark == 1:
-		darkfn = getfn(darkStem,darkNum,geNum)
-		if nDetectors > 1:
-			if dark[geNum-startDetNr] is None:
-				dark[geNum-startDetNr] = getImage(darkfn,Header, is_dark=True)
-			thisdark = dark[geNum-startDetNr]
-		else:
-			thisdark = getImage(darkfn,Header, is_dark=True)
-		corrected = np.subtract(data,thisdark)
-	else:
-		corrected = data
-	nonzerocoords = np.nonzero(corrected)
-	return [corrected,nonzerocoords]
 
 def getDataB(geNum,bytesToSkip, frame_idx=0):
 	fn = getfn(fileStem,fileNumber,geNum)
@@ -396,7 +419,10 @@ def getDataB(geNum,bytesToSkip, frame_idx=0):
 				dark[geNum-startDetNr] = getImage(darkfn,Header, is_dark=True)
 			thisdark = dark[geNum-startDetNr]
 		else:
-			thisdark = getImage(darkfn,Header, is_dark=True)
+			# Cache dark for single-detector
+			if darkfn not in _dark_cache:
+				_dark_cache[darkfn] = getImage(darkfn,Header, is_dark=True)
+			thisdark = _dark_cache[darkfn]
 		corrected = np.subtract(data,thisdark)
 	else:
 		corrected = data
@@ -426,20 +452,7 @@ def bcoord():
 			return 'x=%1.4f, y=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,rr,eta)
 	b.format_coord = format_coord
 
-def acoord():
-	numrows, numcols = mask2.shape
-	def format_coord(x, y):
-		col = int(x+0.5)
-		row = int(y+0.5)
-		xD = x - bigdetsize/2
-		yD = y - bigdetsize/2
-		[eta,R] = CalcEtaAngleRad(-xD,yD)
-		if col>=0 and col<numcols and row>=0 and row<numrows:
-			z = mask2[row,col]
-			return 'x=%1.4f, y=%1.4f, Intensity=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,z,R,eta)
-		else:
-			return 'x=%1.4f, y=%1.4f, RingRad(pixels)=%1.4f, Eta(degrees)=%1.4f'%(x,y,R,eta)
-	a.format_coord = format_coord
+
 
 def plotRingsOffset():
 	global lines2
@@ -450,7 +463,7 @@ def plotRingsOffset():
 	bclocal[1] = float(bclocalvar2.get())
 	Etas = np.linspace(-180,180,num=360)
 	lines2 = []
-	colornr = 0
+	ring_colors = get_ring_colors(len(ringRads))
 	txtDisplay = 'Selected Rings (Increasing radius): '
 	if bdata is not None:
 		lims = [b.get_xlim(), b.get_ylim()]
@@ -460,15 +473,14 @@ def plotRingsOffset():
 		txtDisplay += 'HKL:['
 		for i in range(3):
 			txtDisplay += str(hkls[idx][i]) + ','
-		txtDisplay += '],RingNr:' + str(RingsToShow[idx]) + ',Rad[px]:' + str(int(ringrad/px)) + 'Color:' + colors[idx] + ', '
+		txtDisplay += '],RingNr:' + str(RingsToShow[idx]) + ',Rad[px]:' + str(int(ringrad/px)) + 'Color:' + ring_colors[idx] + ', '
 		for eta in Etas:
 			ringrad2 = ringrad * (lsdlocal / lsdorig)
 			tmp = YZ4mREta(ringrad2,eta)
 			Y.append(tmp[0]/px + bclocal[0])
 			Z.append(tmp[1]/px + bclocal[1])
 		if bdata is not None:
-			lines2.append(b.plot(Y,Z,color=colors[colornr]))
-		colornr+= 1
+			lines2.append(b.plot(Y,Z,color=ring_colors[idx]))
 	if bdata is not None and refreshPlot != 1:
 		b.set_xlim([lims[0][0],lims[0][1]])
 		b.set_ylim([lims[1][0],lims[1][1]])
@@ -486,7 +498,6 @@ def plotRingsOffset():
 		bcoord()
 	if refreshPlot != 1:
 		canvas.draw_idle()
-		canvas.get_tk_widget().pack(fill=Tk.BOTH, expand=True)
 
 # Removed plotRings (Big Detector) logic
 
@@ -509,44 +520,11 @@ def doRings():
 			plotRingsOffset()
 	else:
 		canvas.draw_idle()
-		canvas.get_tk_widget().pack(fill=Tk.BOTH, expand=True)
 
 def clickRings():
 	global refreshPlot
 	refreshPlot = 0
 	doRings()
-
-def plot_updater():
-	global initplot
-	global fileNumber
-	global frameNr
-	global threshold
-	global lims
-	global Header, BytesPerPixel
-	
-	Header = HeaderVar.get()
-	BytesPerPixel = BytesVar.get()
-	
-	# Only update Single Detector (b)
-	# The logic for Single Detector update was partially in plot_updater and partially in loadbplot?
-	# In original code, plot_updater called doRings() then updated 'a' (Big Det).
-	# Single Detector update (b) was handled in 'loadbplot' OR 'incr_plotupdater' if nDetectors > 1?
-	# Let's check incr_plotupdater:
-	# if nDetectors > 1: plot_updater() -> which updates 'a'. Does it update 'b'?
-	# Original plot_updater updated 'mask2' (Big Det) and 'a'. It NOT update 'b'.
-	# 'b' was updated by 'getDataB' called in the MAIN BODY? 
-	# No, wait. lines 829 calls getDataB. That code is TOP LEVEL?
-	# Ah, lines 801-1324 in previous view were NOT inside a function?
-	# Wait, lines 801+ seem to be part of... `loadbplot`? 
-	# Let's check line 788: `def loadbplot():`
-	# Then line 801 starts inside it.
-	# So `loadbplot` updates `b`.
-	# `plot_updater` updates `a`.
-	# Since we removed `a`, `plot_updater` is now redundant or should call `loadbplot`?
-	# If `nDetectors > 1`, `plot_updater` was iterating all detectors to make Big Det.
-	# Now we only show Single Detector.
-	# So `plot_updater` should just call `loadbplot`?
-	loadbplot()
 
 def incr_plotupdater():
 	global frameNr
@@ -554,14 +532,9 @@ def incr_plotupdater():
 	frameNr = int(framenrvar.get())
 	frameNr += 1
 	framenrvar.set(str(frameNr))
-	global getMax
-	getMax = getMaxVar.get()
-	if getMax:
+	if getMaxVar.get():
 		return
-	if nDetectors > 1:
-		plot_updater()
-	else:
-		loadbplot()
+	loadbplot()
 
 def decr_plotupdater():
 	global frameNr
@@ -569,14 +542,9 @@ def decr_plotupdater():
 	frameNr = int(framenrvar.get())
 	frameNr -= 1
 	framenrvar.set(str(frameNr))
-	global getMax
-	getMax = getMaxVar.get()
-	if getMax:
+	if getMaxVar.get():
 		return
-	if nDetectors > 1:
-		plot_updater()
-	else:
-		loadbplot()
+	loadbplot()
 
 def readParams():
 	global paramFN
@@ -914,23 +882,7 @@ def paramfileselect():
 	paramFN = tkFileDialog.askopenfilename()
 	paramfilevar.set(paramFN)
 
-def readBigDet():
-	global mask
-	bigf = open(bigFN,'rb')
-	mask = np.fromfile(bigf,dtype=np.uint16,count=bigdetsize*bigdetsize)
-	bigf.close()
-	mask = np.reshape(mask,(bigdetsize,bigdetsize))
-	mask = mask.astype(float)
-	mask = mask[::-1, ::-1].copy()
 
-def makeBigDet():
-	if midas_config and midas_config.MIDAS_BIN_DIR:
-		cmdf = os.path.join(midas_config.MIDAS_BIN_DIR, 'MapMultipleDetectors')
-	else:
-		cmdf = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/MapMultipleDetectors')
-	
-	subprocess.run([cmdf, paramFN], check=True)
-	readBigDet()
 
 def loadbplot():
 	global bclocal
@@ -976,11 +928,7 @@ def loadbplot():
 	bdata = getDataB(detnr,bytesToSkip, frame_idx=framesToSkip)
 	if nDetectors > 1:
 		lsdorig = lsd[detnr-startDetNr]
-	# ~ else:
-		# ~ lsdorig = float(lsdlocalvar.get())
 	lsdlocal = float(lsdlocalvar.get())
-	#lines2 = None
-	#b.clear()
 	refreshPlot = 1
 	doRings()
 	global _b_artist, _b_logmode
@@ -1024,7 +972,6 @@ def loadbplot():
 	bcoord()
 	b.title.set_text("Single Detector Display")
 	canvas.draw_idle()
-	canvas.get_tk_widget().pack(fill=Tk.BOTH, expand=True)
 
 def acceptRings():
 	global RingsToShow
@@ -1039,12 +986,9 @@ def acceptRings():
 	topSelectRings.destroy()
 	plotRingsVar.set(1)
 	doRings()
-	#plotRings()
-	#plotRingsOffset()
 
-def selectRings():
-	global topSelectRings
-	global hklLines, hkl, ds, Ttheta, RingRad, ListBox1
+
+
 def selectRings():
 	global topSelectRings
 	global hklLines, hkl, ds, Ttheta, RingRad, ListBox1
@@ -1292,6 +1236,7 @@ def firstFileSelector():
 				
 				# Get dimensions from selected data path
 				dset_path = data_path or hdf5PathVar.get()
+				nFramesPerFile = 1  # default
 				if dset_path in f:
 					shape = f[dset_path].shape
 					if len(shape) == 3:
@@ -1349,17 +1294,15 @@ def darkFileSelector():
 		dark.append(None)
 
 def replot():
-	global initplot, initplot2
+	global initplot2
 	global lines2
 	global lines
-	global mask2, bdata, refreshPlot
-	global _a_artist, _b_artist, _a_logmode, _b_logmode
+	global bdata, refreshPlot
+	global _b_artist, _b_logmode
 	use_log = dolog.get() != 0
 	threshold = float(thresholdvar.get())
 	upperthreshold = float(maxthresholdvar.get())
-	if mask2 is not None:
-		# Deprecated (Big Detector) logic removed
-		pass
+
 	if bdata is not None:
 		if not initplot2:
 			lims = [b.get_xlim(), b.get_ylim()]
@@ -1405,7 +1348,6 @@ def replot():
 		refreshPlot = 1
 	doRings()
 	canvas.draw_idle()
-	canvas.get_tk_widget().pack(fill=Tk.BOTH, expand=True)
 
 # Main function
 root = Tk.Tk()
@@ -1431,15 +1373,15 @@ frameNr = 0
 fileNumber = 0
 getMax = 0
 paramFN = 'PS.txt'
-mask = None
+
 bdata = None
-mask2 = None
+
 bigdetsize = 2048
-initplot = 1
+
 initplot2 = 1
-_a_artist = None
+
 _b_artist = None
-_a_logmode = False
+
 _b_logmode = False
 origdetnum = 1
 bclocal = [1024,1024]
@@ -1496,6 +1438,7 @@ getMaxVar = Tk.IntVar()
 maskFNVar = Tk.StringVar()
 maskFNVar.set("")
 badPixelMask = None
+_dark_cache = {}
 colorMinVar = Tk.IntVar()
 colorMaxVar = Tk.IntVar()
 getSumVar = Tk.IntVar()
