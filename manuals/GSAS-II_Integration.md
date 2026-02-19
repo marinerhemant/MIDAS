@@ -7,7 +7,7 @@
 
 ## 1. Introduction
 
-This manual walks you through the workflow of taking radially integrated (caked) powder-diffraction data produced by MIDAS and importing it into [GSAS-II](https://advancedphotonsource.github.io/GSAS-II-Tutorials/) for phase identification, profile fitting, and Rietveld refinement. It assumes that you have already calibrated your detector and run the MIDAS integrator — if not, see the prerequisites below.
+This manual walks you through the workflow of taking radially integrated (caked) powder-diffraction data produced by MIDAS and importing it into [GSAS-II](https://advancedphotonsource.github.io/GSAS-II-tutorials/index.html) for phase identification, profile fitting, and Rietveld refinement. It assumes that you have already calibrated your detector and run the MIDAS integrator — if not, see the prerequisites below.
 
 > [!NOTE]
 > GSAS-II is an open-source crystallographic analysis package developed at APS. It performs Rietveld refinement, peak fitting, texture analysis, and more. It is the recommended tool for quantitative analysis of the powder profiles that MIDAS produces.
@@ -21,7 +21,7 @@ This manual walks you through the workflow of taking radially integrated (caked)
 | Component | Minimum Version | Installation |
 |-----------|----------------|-------------|
 | **MIDAS** | 9.0 | See [README.md](README.md) — typically installed to `~/opt/MIDAS/` but any path works.  Scripts auto-detect their install location. |
-| **GSAS-II** | Latest | `conda install gsas2full -c briantoby` or [install guide](https://advancedphotonsource.github.io/GSAS-II-Tutorials/install.html). See §2.3 below. |
+| **GSAS-II** | Latest | `conda install gsas2full -c briantoby` or [install guide](https://advancedphotonsource.github.io/GSAS-II-tutorials/install.html). See §2.3 below. |
 | **Python** | 3.9+ | Required by both packages |
 | **zarr** | 2.18.3 | `pip install zarr==2.18.3` (required by the MIDAS zarr importer in GSAS-II) |
 
@@ -455,7 +455,7 @@ python $MIDAS_INSTALL_DIR/utils/integrate_and_refine.py \
 - [FF_RadialIntegration.md](FF_RadialIntegration.md) — MIDAS radial integration / caking workflow (both CPU and GPU pipelines)
 - [FF_calibration.md](FF_calibration.md) — FF-HEDM geometry calibration (produces parameters used by integrator)
 - [README.md](README.md) — High-level MIDAS overview and manual index
-- [GSAS-II Tutorials](https://advancedphotonsource.github.io/GSAS-II-Tutorials/) — Official GSAS-II tutorials and documentation
+- [GSAS-II Tutorials](https://advancedphotonsource.github.io/GSAS-II-tutorials/index.html) — Official GSAS-II tutorials and documentation
 - [GSASIIscriptable API](https://gsas-ii.readthedocs.io/en/latest/GSASIIscriptable.html) — GSAS-II scripting reference
 
 ---
