@@ -370,6 +370,18 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
         shutil.copy2(f, f'/dev/shm/{f}')
     
     logger.info("Fitting orientations.")
+    
+    # Delete MicFileBinary if it exists to ensure a fresh start
+    mic_file_binary = params.get('MicFileBinary')
+    if mic_file_binary:
+        mic_binary_path = os.path.join(resultFolder, mic_file_binary)
+        if os.path.exists(mic_binary_path):
+             logger.info(f"Deleting existing binary mic file: {mic_binary_path}")
+             try:
+                 os.remove(mic_binary_path)
+             except OSError as e:
+                 logger.warning(f"Could not delete {mic_binary_path}: {e}")
+    
     try:
         if args.nNodes == 1:
             # --- Single Node: Monitor progress using fit0_out.csv line count ---
