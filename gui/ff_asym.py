@@ -201,6 +201,15 @@ def getImage(fn, bytesToSkip, frame_idx=0, is_dark=False):
 		f.close()
 		data = np.reshape(data,(NrPixelsY,NrPixelsZ))
 	
+	# Auto-update pixel dimensions from self-describing formats (HDF5, TIFF)
+	global NrPixelsY, NrPixelsZ
+	if ext in ['.h5','.hdf','.hdf5','.nxs','.tif','.tiff']:
+		if data.shape[0] != NrPixelsY or data.shape[1] != NrPixelsZ:
+			NrPixelsY = data.shape[0]
+			NrPixelsZ = data.shape[1]
+			NrPixelsYVar.set(str(NrPixelsY))
+			NrPixelsZVar.set(str(NrPixelsZ))
+
 	data = data.astype(float)
 	if transpose.get() == 1:
 		data = np.transpose(data)
@@ -229,33 +238,52 @@ def getImageMax(fn):
 	startFrameNr = maxStartFrameNrVar.get()
 	
 	t1 = time.time()
-	
-	# Pure Python Implementation using Numpy (faster than Ctypes + Overhead for variable types)
 	dataMax = None
+	ext = os.path.splitext(fn)[1].lower()
 	
-	# Determine if we iterate frames in one file or multiple files?
-	# The original imageMax C code iterated frames WITHIN a single binary file.
-	# For HDF5/TIFF, logic might differ (e.g. stack).
-	# We'll support in-file iteration here.
-	
-	# We can use getImage to retrieve frames, but need to handle recursion carefully if it's bz2.
-	# If bz2, decompression happened in logic. 
-	
-	# Optimization: If binary, use memory mapping or block reading?
-	# For now, loop `getImage`.
-	
-	for i in range(nFramesToDo):
-		frame_idx = startFrameNr + i
-		# Calculate bytesToSkip for binary
-		# Note: getImage handles bytesToSkip for binary, frame_idx for HDF5/TIFF
-		bytesToSkip = Header + frame_idx*(BytesPerPixel*NrPixelsY*NrPixelsZ)
-		
-		img = getImage(fn, bytesToSkip, frame_idx=frame_idx)
-		
-		if dataMax is None:
-			dataMax = img
+	# For single-page TIFF files, iterate over sequential numbered files
+	# For multi-frame files (binary, HDF5, multi-page TIFF), iterate frames within file
+	is_per_file = False
+	if ext in ['.tif', '.tiff'] and tifffile:
+		try:
+			with tifffile.TiffFile(fn) as tif:
+				if len(tif.pages) == 1:
+					is_per_file = True
+		except Exception:
+			pass
+
+	if is_per_file:
+		# Extract base name pattern: stem_NNNNNN.ext -> (stem_, 6, .ext)
+		import re
+		basename = os.path.basename(fn)
+		dirname = os.path.dirname(fn)
+		m = re.match(r'^(.*?)(\d+)(\.\w+)$', basename)
+		if m:
+			prefix, numstr, suffix = m.group(1), m.group(2), m.group(3)
+			num_start = int(numstr)
+			pad = len(numstr)
+			for i in range(nFramesToDo):
+				seq_fn = os.path.join(dirname, prefix + str(num_start + startFrameNr + i).zfill(pad) + suffix)
+				if not os.path.exists(seq_fn):
+					print(f"Warning: file {seq_fn} not found, stopping at {i} frames")
+					break
+				img = getImage(seq_fn, 0, frame_idx=0)
+				if dataMax is None:
+					dataMax = img
+				else:
+					np.maximum(dataMax, img, out=dataMax)
 		else:
-			np.maximum(dataMax, img, out=dataMax)
+			# Fallback: single file, single frame
+			dataMax = getImage(fn, Header, frame_idx=0)
+	else:
+		for i in range(nFramesToDo):
+			frame_idx = startFrameNr + i
+			bytesToSkip = Header + frame_idx*(BytesPerPixel*NrPixelsY*NrPixelsZ)
+			img = getImage(fn, bytesToSkip, frame_idx=frame_idx)
+			if dataMax is None:
+				dataMax = img
+			else:
+				np.maximum(dataMax, img, out=dataMax)
 			
 	t2 = time.time()
 	print("Time taken to calculate max: " + str(t2-t1))
@@ -271,16 +299,47 @@ def getImageSum(fn):
 	
 	t1 = time.time()
 	dataSum = None
+	ext = os.path.splitext(fn)[1].lower()
 	
-	for i in range(nFramesToDo):
-		frame_idx = startFrameNr + i
-		bytesToSkip = Header + frame_idx*(BytesPerPixel*NrPixelsY*NrPixelsZ)
-		img = getImage(fn, bytesToSkip, frame_idx=frame_idx)
-		
-		if dataSum is None:
-			dataSum = img
+	is_per_file = False
+	if ext in ['.tif', '.tiff'] and tifffile:
+		try:
+			with tifffile.TiffFile(fn) as tif:
+				if len(tif.pages) == 1:
+					is_per_file = True
+		except Exception:
+			pass
+
+	if is_per_file:
+		import re
+		basename = os.path.basename(fn)
+		dirname = os.path.dirname(fn)
+		m = re.match(r'^(.*?)(\d+)(\.\w+)$', basename)
+		if m:
+			prefix, numstr, suffix = m.group(1), m.group(2), m.group(3)
+			num_start = int(numstr)
+			pad = len(numstr)
+			for i in range(nFramesToDo):
+				seq_fn = os.path.join(dirname, prefix + str(num_start + startFrameNr + i).zfill(pad) + suffix)
+				if not os.path.exists(seq_fn):
+					print(f"Warning: file {seq_fn} not found, stopping at {i} frames")
+					break
+				img = getImage(seq_fn, 0, frame_idx=0)
+				if dataSum is None:
+					dataSum = img
+				else:
+					dataSum += img
 		else:
-			dataSum += img
+			dataSum = getImage(fn, Header, frame_idx=0)
+	else:
+		for i in range(nFramesToDo):
+			frame_idx = startFrameNr + i
+			bytesToSkip = Header + frame_idx*(BytesPerPixel*NrPixelsY*NrPixelsZ)
+			img = getImage(fn, bytesToSkip, frame_idx=frame_idx)
+			if dataSum is None:
+				dataSum = img
+			else:
+				dataSum += img
 			
 	t2 = time.time()
 	print("Time taken to calculate sum: " + str(t2-t1))
@@ -1534,9 +1593,7 @@ Tk.Button(procFrame, text="RingsMat", command=ringSelection, font=default_font).
 Tk.Checkbutton(procFrame, text='PlotRings', variable=plotRingsVar, command=clickRings, font=default_font).grid(row=2, column=1, columnspan=2)
 
 # Single Detector Params
-Tk.Label(procFrame, text='DetNum', font=default_font).grid(row=3, column=0)
-Tk.Entry(procFrame, textvariable=detnumbvar, width=3, font=default_font).grid(row=3, column=1)
-Tk.Label(procFrame, text='Lsd', font=default_font).grid(row=3, column=2)
+Tk.Label(procFrame, text='Lsd', font=default_font).grid(row=3, column=0)
 Tk.Entry(procFrame, textvariable=lsdlocalvar, width=6, font=default_font).grid(row=3, column=3)
 Tk.Label(procFrame, text='BC', font=default_font).grid(row=4, column=0)
 Tk.Entry(procFrame, textvariable=bclocalvar1, width=5, font=default_font).grid(row=4, column=1)
