@@ -1620,15 +1620,19 @@ Tk.Entry(procFrame, textvariable=maxStartFrameNrVar, width=5, font=default_font)
 Tk.Button(procFrame, text="RingsMat", command=ringSelection, font=default_font).grid(row=2, column=0)
 Tk.Checkbutton(procFrame, text='PlotRings', variable=plotRingsVar, command=clickRings, font=default_font).grid(row=2, column=1, columnspan=2)
 
-# Single Detector Params
+# Detector Params
 Tk.Label(procFrame, text='Lsd', font=default_font).grid(row=3, column=0)
-Tk.Entry(procFrame, textvariable=lsdlocalvar, width=10, font=default_font).grid(row=3, column=3)
+Tk.Entry(procFrame, textvariable=lsdlocalvar, width=10, font=default_font).grid(row=3, column=1, columnspan=2)
 Tk.Label(procFrame, text='BC', font=default_font).grid(row=4, column=0)
 Tk.Entry(procFrame, textvariable=bclocalvar1, width=5, font=default_font).grid(row=4, column=1)
 Tk.Entry(procFrame, textvariable=bclocalvar2, width=5, font=default_font).grid(row=4, column=2)
-Tk.Button(procFrame, text='Load Single', command=loadbplot, font=default_font).grid(row=4, column=3)
 
-Tk.Button(root, text='Quit', command=_quit, font=("Helvetica", 18)).pack(side=Tk.BOTTOM, pady=5)
+# Action button bar: Quit | Update Plot | Load
+actionFrame = Tk.Frame(root)
+actionFrame.pack(side=Tk.BOTTOM, fill=Tk.X, pady=5)
+Tk.Button(actionFrame, text='Quit', command=_quit, font=("Helvetica", 18)).pack(side=Tk.LEFT, padx=20)
+Tk.Button(actionFrame, text='Update Plot', command=replot, font=("Helvetica", 18), bg='lightblue').pack(side=Tk.LEFT, expand=True)
+Tk.Button(actionFrame, text='Load', command=loadbplot, font=("Helvetica", 18), bg='lightgreen').pack(side=Tk.LEFT, expand=True)
 
 
 if __name__ == "__main__":
