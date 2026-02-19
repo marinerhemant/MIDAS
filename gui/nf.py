@@ -407,7 +407,7 @@ def boxhor():
 	horvert = 1 # 1 for horizontal, 2 for vertical
 	clickpos = []
 	cid = canvas.mpl_connect('button_press_event',onclickbox)
-	lb1 = Tk.Label(master=thirdRowFrame,text="Click two edges of the box")
+	lb1 = Tk.Label(master=analysisFrame,text="Click two edges of the box")
 	lb1.grid(row=1,column=nrthird+1,columnspan=3,sticky=Tk.W)
 
 def boxver():
@@ -419,7 +419,7 @@ def boxver():
 	horvert = 2 # 1 for horizontal, 2 for vertical
 	clickpos = []
 	cid = canvas.mpl_connect('button_press_event',onclickbox)
-	lb1 = Tk.Label(master=thirdRowFrame,text="Click two edges of the box")
+	lb1 = Tk.Label(master=analysisFrame,text="Click two edges of the box")
 	lb1.grid(row=1,column=nrthird+1,columnspan=3,sticky=Tk.W)
 
 def horline():
@@ -431,7 +431,7 @@ def horline():
 	horvert = 1 # 1 for horizontal, 2 for vertical
 	clickpos = []
 	cid = canvas.mpl_connect('button_press_event',onclick)
-	lb1 = Tk.Label(master=thirdRowFrame,text="Click two (almost) horizontal points")
+	lb1 = Tk.Label(master=analysisFrame,text="Click two (almost) horizontal points")
 	lb1.grid(row=1,column=nrthird+1,columnspan=3,sticky=Tk.W)
 
 def vertline():
@@ -443,7 +443,7 @@ def vertline():
 	horvert = 2 # 1 for horizontal, 2 for vertical
 	clickpos = []
 	cid = canvas.mpl_connect('button_press_event',onclick)
-	lb1 = Tk.Label(master=thirdRowFrame,text="Click two (almost) vertical points")
+	lb1 = Tk.Label(master=analysisFrame,text="Click two (almost) vertical points")
 	lb1.grid(row=1,column=nrthird+1,columnspan=3,sticky=Tk.W)
 
 def top_destroyer():
@@ -472,7 +472,7 @@ def getpos(event):
 	global cid2
 	global button7
 	ix,iy = event.xdata,event.ydata
-	button7 = Tk.Button(master=thirdRowFrame,text='Confirm Selection',command=confirmselectspot)
+	button7 = Tk.Button(master=analysisFrame,text='Confirm Selection',command=confirmselectspot)
 	button7.grid(row=1,column=nrthird+1,sticky=Tk.E)
 
 def loadnewdistance():
@@ -535,7 +535,7 @@ def closeselectspotshelp():
 	global button8
 	topSelectSpotsWindow.destroy()
 	cid2 = canvas.mpl_connect('button_press_event',getpos)
-	button8 = Tk.Button(master=thirdRowFrame,text='Compute Distances',command=computedistances)
+	button8 = Tk.Button(master=analysisFrame,text='Compute Distances',command=computedistances)
 	button8.grid(row=1,column=nrthird+2,sticky=Tk.W)
 
 def selectspotsfcn():
@@ -837,14 +837,14 @@ def makespots():
 			print("Error: SimulatedDiffractionSpots.txt not found.")
 			simulatedspots = []
 
-	Tk.Label(master=thirdRowFrame,text="SpotNumber").grid(row=1,column=nrthird+1,sticky=Tk.W)
-	Tk.Entry(master=thirdRowFrame,textvariable=spotnrvar,width=3).grid(row=1,column=nrthird+2,sticky=Tk.W)
+	Tk.Label(master=analysisFrame,text="SpotNumber").grid(row=1,column=nrthird+1,sticky=Tk.W)
+	Tk.Entry(master=analysisFrame,textvariable=spotnrvar,width=3).grid(row=1,column=nrthird+2,sticky=Tk.W)
 	if simulatedspots:
 		plot_update_spot()
 
 	# put a frame with +,- and load
-	Tk.Button(master=thirdRowFrame,text="+",command=incr_spotnr,font=("Helvetica",12)).grid(row=1,column=nrthird+3,sticky=Tk.W)
-	Tk.Button(master=thirdRowFrame,text="Load",command=update_spotnr,font=("Helvetica",12)).grid(row=1,column=nrthird+4,sticky=Tk.W)
+	Tk.Button(master=analysisFrame,text="+",command=incr_spotnr,font=("Helvetica",12)).grid(row=1,column=nrthird+3,sticky=Tk.W)
+	Tk.Button(master=analysisFrame,text="Load",command=update_spotnr,font=("Helvetica",12)).grid(row=1,column=nrthird+4,sticky=Tk.W)
 
 def median():
 	# Iterate sequentially instead of using Pool/Popen logic which is hard to secure
@@ -1231,7 +1231,7 @@ nrfilesmedianvar = Tk.StringVar()
 nrfilesmedianvar.set(str(nrfilesperdistance))
 oldmaxoverframes = 0
 maxoverframes = Tk.IntVar()
-nrthird = 8
+nrthird = 6
 micfiletype = 1
 
 ## Main Control Frame
@@ -1281,6 +1281,8 @@ Tk.Label(master=procFrame,text="nMedianFl",font=default_font).grid(row=0,column=
 Tk.Entry(master=procFrame,textvariable=nrfilesmedianvar,width=4,font=default_font).grid(row=0,column=4,sticky=Tk.W)
 Tk.Checkbutton(master=procFrame,text="MaxOverFr",variable=maxoverframes,font=default_font).grid(row=0,column=5,sticky=Tk.W)
 Tk.Checkbutton(master=procFrame,text="SubtMedian",variable=var,font=default_font).grid(row=0,column=6,sticky=Tk.W)
+Tk.Label(master=procFrame,text="Lsd(um)",font=default_font).grid(row=0,column=7,sticky=Tk.W)
+Tk.Entry(master=procFrame,textvariable=lsdvar,width=8,font=default_font).grid(row=0,column=8,sticky=Tk.W)
 
 # --- Analysis Frame ---
 analysisFrame = Tk.LabelFrame(mainControlFrame, text="Analysis", font=default_font, padx=2, pady=2)
@@ -1291,8 +1293,6 @@ Tk.Button(master=analysisFrame,text='BoxH',command=boxhor,font=default_font).gri
 Tk.Button(master=analysisFrame,text='BoxV',command=boxver,font=default_font).grid(row=0,column=3,sticky=Tk.W)
 Tk.Button(master=analysisFrame,text='BeamCenter',command=bcwindow,font=default_font).grid(row=0,column=4,sticky=Tk.W)
 Tk.Button(master=analysisFrame,text='SelectSpots',command=selectspots,font=default_font).grid(row=0,column=5,sticky=Tk.W)
-Tk.Label(master=analysisFrame,text="Lsd(um)",font=default_font).grid(row=0,column=6,sticky=Tk.W)
-Tk.Entry(master=analysisFrame,textvariable=lsdvar,width=8,font=default_font).grid(row=0,column=7,sticky=Tk.W)
 
 # --- Load / Quit Buttons ---
 Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetica",20)).grid(row=figrowspan+1,column=2,rowspan=4,sticky=Tk.W,padx=10)
