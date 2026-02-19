@@ -1015,15 +1015,35 @@ int main(int argc, char **argv) {
   int darkIter;
   dsize = bytesPerPx * NrPixelsZ * NrPixelsY;
   data = (char *)malloc((size_t)dsize);
+  int32_t expected_dsize = bytesPerPx * NrPixelsZ * NrPixelsY;
   for (darkIter = skipFrame; darkIter < nDarks; darkIter++) {
-    zip_stat_index(arch, darkLoc, 0, finfo);
+    int current_darkLoc = darkLoc + (darkIter - skipFrame);
+    if (current_darkLoc < 0) {
+      printf("Error: Invalid darkLoc. Skipping dark frames.\n");
+      break;
+    }
+    if (zip_stat_index(arch, current_darkLoc, 0, finfo) != 0) {
+      printf("Error: Failed to stat dark frame at index %d\n", current_darkLoc);
+      break;
+    }
     // Go to the right location in the zip file and read frames.
     arr = calloc(finfo->size + 1, sizeof(char));
-    fd = zip_fopen_index(arch, darkLoc, 0);
+    fd = zip_fopen_index(arch, current_darkLoc, 0);
+    if (!fd) {
+      printf("Error: Failed to open dark frame inside zip.\n");
+      free(arr);
+      break;
+    }
     zip_fread(fd, arr, finfo->size);
-    dsize = blosc1_decompress(arr, data, dsize);
+    dsize = blosc1_decompress(arr, data, expected_dsize);
     free(arr);
     zip_fclose(fd);
+
+    if (dsize <= 0) {
+      printf("Error: Failed to decompress dark frame data! dsize: %d\n", dsize);
+      exit(1);
+    }
+
     memcpy(DarkInTU, data, (size_t)dsize);
     for (b = 0; b < NrPixelsY * NrPixelsZ; b++)
       DarkInT[b] = (double)DarkInTU[b];
