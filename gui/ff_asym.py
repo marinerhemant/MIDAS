@@ -1535,39 +1535,39 @@ toolbar.update()
 
 # Main Control Frame
 mainControlFrame = Tk.Frame(root)
-mainControlFrame.pack(side=Tk.BOTTOM, fill=Tk.X, padx=5, pady=5)
+mainControlFrame.pack(side=Tk.BOTTOM, fill=Tk.X, padx=2, pady=2)
 
 # Font for readability
 default_font = ("Helvetica", 14)
 
 # 1. File I/O Frame
 fileFrame = Tk.LabelFrame(mainControlFrame, text="File I/O", font=default_font)
-fileFrame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+fileFrame.grid(row=0, column=0, sticky="nsew", padx=2, pady=2)
 
-Tk.Button(fileFrame, text='FirstFile', command=firstFileSelector, font=default_font).grid(row=0, column=0, padx=2)
-Tk.Button(fileFrame, text='DarkFile', command=darkFileSelector, font=default_font).grid(row=0, column=1, padx=2)
-Tk.Checkbutton(fileFrame, text="DarkCorr", variable=var, font=default_font).grid(row=0, column=2, padx=2)
+Tk.Button(fileFrame, text='FirstFile', command=firstFileSelector, font=default_font).grid(row=0, column=0)
+Tk.Button(fileFrame, text='DarkFile', command=darkFileSelector, font=default_font).grid(row=0, column=1)
+Tk.Checkbutton(fileFrame, text="DarkCorr", variable=var, font=default_font).grid(row=0, column=2, columnspan=2)
 
-Tk.Label(fileFrame, text="FirstFileNr", font=default_font).grid(row=1, column=0)
+Tk.Label(fileFrame, text="FileNr", font=default_font).grid(row=1, column=0)
 Tk.Entry(fileFrame, textvariable=firstFileNrVar, width=5, font=default_font).grid(row=1, column=1)
-Tk.Label(fileFrame, text="nFrames/File", font=default_font).grid(row=1, column=2)
+Tk.Label(fileFrame, text="nFr/File", font=default_font).grid(row=1, column=2)
 Tk.Entry(fileFrame, textvariable=nFramesPerFileVar, width=5, font=default_font).grid(row=1, column=3)
 
 Tk.Label(fileFrame, text="H5 Data", font=default_font).grid(row=2, column=0)
-Tk.Entry(fileFrame, textvariable=hdf5PathVar, width=18, font=default_font).grid(row=2, column=1)
-Tk.Button(fileFrame, text="Browse", command=lambda: selectHDF5Path(is_dark=False), font=default_font).grid(row=2, column=2)
+Tk.Entry(fileFrame, textvariable=hdf5PathVar, width=12, font=default_font).grid(row=2, column=1, columnspan=2)
+Tk.Button(fileFrame, text="Browse", command=lambda: selectHDF5Path(is_dark=False), font=default_font).grid(row=2, column=3)
 
 Tk.Label(fileFrame, text="H5 Dark", font=default_font).grid(row=3, column=0)
-Tk.Entry(fileFrame, textvariable=hdf5DarkPathVar, width=18, font=default_font).grid(row=3, column=1)
-Tk.Button(fileFrame, text="Browse", command=lambda: selectHDF5Path(is_dark=True), font=default_font).grid(row=3, column=2)
+Tk.Entry(fileFrame, textvariable=hdf5DarkPathVar, width=12, font=default_font).grid(row=3, column=1, columnspan=2)
+Tk.Button(fileFrame, text="Browse", command=lambda: selectHDF5Path(is_dark=True), font=default_font).grid(row=3, column=3)
 
 Tk.Button(fileFrame, text="MaskFile", command=lambda: maskFNVar.set(tkFileDialog.askopenfilename()), font=default_font).grid(row=4, column=0)
 Tk.Entry(fileFrame, textvariable=maskFNVar, width=10, font=default_font).grid(row=4, column=1, columnspan=2)
-Tk.Checkbutton(fileFrame, text="ApplyMask", variable=applyMaskVar, font=default_font).grid(row=4, column=3, padx=2)
+Tk.Checkbutton(fileFrame, text="ApplyMask", variable=applyMaskVar, font=default_font).grid(row=4, column=3)
 
 # 2. Image Settings Frame
 imgFrame = Tk.LabelFrame(mainControlFrame, text="Image Settings", font=default_font)
-imgFrame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
+imgFrame.grid(row=0, column=1, sticky="nsew", padx=2, pady=2)
 
 Tk.Label(imgFrame, text='NrPixelsHor', font=default_font).grid(row=0, column=0)
 Tk.Entry(imgFrame, textvariable=NrPixelsZVar, width=5, font=default_font).grid(row=0, column=1)
@@ -1585,7 +1585,7 @@ Tk.Checkbutton(imgFrame, text="Transp", variable=transpose, font=default_font).g
 
 # 3. Display Control Frame
 dispFrame = Tk.LabelFrame(mainControlFrame, text="Display Control", font=default_font)
-dispFrame.grid(row=0, column=2, sticky="nsew", padx=5, pady=5)
+dispFrame.grid(row=0, column=2, sticky="nsew", padx=2, pady=2)
 
 Tk.Label(dispFrame, text='FrameNr', font=default_font).grid(row=0, column=0)
 Tk.Entry(dispFrame, textvariable=framenrvar, width=5, font=default_font).grid(row=0, column=1)
@@ -1605,7 +1605,7 @@ Tk.Checkbutton(dispFrame, text="LogScale", variable=dolog, font=default_font).gr
 
 # 4. Processing Frame
 procFrame = Tk.LabelFrame(mainControlFrame, text="Processing", font=default_font)
-procFrame.grid(row=0, column=3, sticky="nsew", padx=5, pady=5)
+procFrame.grid(row=0, column=3, sticky="nsew", padx=2, pady=2)
 
 Tk.Checkbutton(procFrame, text="MaxOverFrames", variable=getMaxVar, font=default_font).grid(row=0, column=0)
 Tk.Checkbutton(procFrame, text="SumOverFrames", variable=getSumVar, font=default_font).grid(row=1, column=0)
