@@ -21,7 +21,14 @@ from math import sin, cos, sqrt
 from numpy import linalg as LA
 import subprocess
 from multiprocessing.dummy import Pool
-import ctypes
+import h5py
+import bz2
+import shutil
+try:
+    import tifffile
+except ImportError:
+    tifffile = None
+
 import sys
 
 # Try to import midas_config from utils
@@ -82,19 +89,75 @@ def getfn(fstem,fnum,geNum):
 	else:
 		return fldr + fstem + '_' + str(fnum).zfill(padding) + '.' + fnextvar.get()
 
-def getImage(fn,bytesToSkip):
+def get_bz2_data(fn):
+	# Decompress to temp file
+	with tempfile.NamedTemporaryFile(delete=False) as tmp:
+		with bz2.BZ2File(fn, 'rb') as source:
+			shutil.copyfileobj(source, tmp)
+		temp_name = tmp.name
+	return temp_name
+
+def getImage(fn, bytesToSkip, frame_idx=0, is_dark=False):
 	print("Reading file: " + fn)
 	global Header, BytesPerPixel
 	Header = HeaderVar.get()
 	BytesPerPixel = BytesVar.get()
-	f = open(fn,'rb')
-	f.seek(bytesToSkip,os.SEEK_SET)
-	if BytesPerPixel == 2:
-		data = np.fromfile(f,dtype=np.uint16,count=(NrPixelsY*NrPixelsZ))
-	elif BytesPerPixel == 4:
-		data = np.fromfile(f,dtype=np.int32,count=(NrPixelsY*NrPixelsZ))
-	f.close()
-	data = np.reshape(data,(NrPixelsY,NrPixelsZ))
+	
+	# Compression handling
+	if fn.endswith('.bz2'):
+		# Decompress and read (recursive call with decompressed file)
+		temp_fn = get_bz2_data(fn)
+		try:
+			data = getImage(temp_fn, bytesToSkip, frame_idx, is_dark)
+		finally:
+			if os.path.exists(temp_fn):
+				os.remove(temp_fn)
+		return data
+		
+	# Format handling
+	ext = os.path.splitext(fn)[1].lower()
+	
+	if ext in ['.h5', '.hdf', '.hdf5', '.nxs']:
+		# HDF5
+		with h5py.File(fn, 'r') as f:
+			if is_dark:
+				dset_path = hdf5DarkPathVar.get()
+			else:
+				dset_path = hdf5PathVar.get()
+				
+			if dset_path in f:
+				# Assume dataset is 3D (frames, y, x) or 2D (y, x)
+				dset = f[dset_path]
+				if dset.ndim == 2:
+					data = dset[:]
+				elif dset.ndim == 3:
+					data = dset[frame_idx, :, :]
+				else:
+					print(f"Error: HDF5 dataset {dset_path} has {dset.ndim} dimensions, expected 2 or 3.")
+					return np.zeros((NrPixelsY, NrPixelsZ))
+			else:
+				print(f"Error: HDF5 dataset {dset_path} not found in {fn}")
+				return np.zeros((NrPixelsY, NrPixelsZ))
+
+	elif ext in ['.tif', '.tiff']:
+		# TIFF
+		if tifffile:
+			data = tifffile.imread(fn, key=frame_idx)
+		else:
+			print("Error: tifffile module not found. Please install it.")
+			return np.zeros((NrPixelsY, NrPixelsZ))
+			
+	else:
+		# Binary (Default)
+		f = open(fn,'rb')
+		f.seek(bytesToSkip,os.SEEK_SET)
+		if BytesPerPixel == 2:
+			data = np.fromfile(f,dtype=np.uint16,count=(NrPixelsY*NrPixelsZ))
+		elif BytesPerPixel == 4:
+			data = np.fromfile(f,dtype=np.int32,count=(NrPixelsY*NrPixelsZ))
+		f.close()
+		data = np.reshape(data,(NrPixelsY,NrPixelsZ))
+	
 	data = data.astype(float)
 	if transpose.get() == 1:
 		data = np.transpose(data)
@@ -109,71 +172,93 @@ def getImage(fn,bytesToSkip):
 	return data
 
 def getImageMax(fn):
-	print("Reading file: " + fn)
+	print("Calculating Max for file: " + fn)
 	global Header, BytesPerPixel
 	Header = HeaderVar.get()
 	BytesPerPixel = BytesVar.get()
-	t1 = time.time()
-	f = open(fn,'rb')
-	f.seek(Header,os.SEEK_SET)
-	dataMax = np.zeros(NrPixelsY*NrPixelsZ)
 	nFramesToDo = nFramesMaxVar.get()
 	startFrameNr = maxStartFrameNrVar.get()
+	
 	t1 = time.time()
-	t = time.time()
-	if midas_config and midas_config.MIDAS_BIN_DIR:
-		imageMax = ctypes.CDLL(os.path.join(midas_config.MIDAS_BIN_DIR, 'imageMax.so'))
-	else:
-		home = os.path.expanduser("~")
-		imageMax = ctypes.CDLL(home + "/opt/MIDAS/FF_HEDM/bin/imageMax.so")
 	
-	# Use safe temp file
-	with tempfile.NamedTemporaryFile(suffix='.max', delete=False) as tf:
-		imgMaxOutPath = tf.name
-	# Close the file handle so the C library can open it
+	# Pure Python Implementation using Numpy (faster than Ctypes + Overhead for variable types)
+	dataMax = None
 	
-	imageMax.imageMax(fn.encode('ASCII'),Header,BytesPerPixel,NrPixelsY,NrPixelsZ,nFramesToDo,startFrameNr,imgMaxOutPath.encode('ASCII'))
+	# Determine if we iterate frames in one file or multiple files?
+	# The original imageMax C code iterated frames WITHIN a single binary file.
+	# For HDF5/TIFF, logic might differ (e.g. stack).
+	# We'll support in-file iteration here.
+	
+	# We can use getImage to retrieve frames, but need to handle recursion carefully if it's bz2.
+	# If bz2, decompression happened in logic. 
+	
+	# Optimization: If binary, use memory mapping or block reading?
+	# For now, loop `getImage`.
+	
+	for i in range(nFramesToDo):
+		frame_idx = startFrameNr + i
+		# Calculate bytesToSkip for binary
+		# Note: getImage handles bytesToSkip for binary, frame_idx for HDF5/TIFF
+		bytesToSkip = Header + frame_idx*(BytesPerPixel*NrPixelsY*NrPixelsZ)
+		
+		img = getImage(fn, bytesToSkip, frame_idx=frame_idx)
+		
+		if dataMax is None:
+			dataMax = img
+		else:
+			np.maximum(dataMax, img, out=dataMax)
+			
 	t2 = time.time()
-	f = open(imgMaxOutPath,"rb")
-	if BytesPerPixel == 2:
-		dataMax = np.fromfile(f,dtype=np.uint16,count=(NrPixelsY*NrPixelsZ))
-	elif BytesPerPixel == 4:
-		dataMax = np.fromfile(f,dtype=np.int32,count=(NrPixelsY*NrPixelsZ))
-	f.close()
-	os.remove(imgMaxOutPath) # Clean up
-	t3 = time.time()
 	print("Time taken to calculate max: " + str(t2-t1))
-	dataMax = np.reshape(dataMax,(NrPixelsY,NrPixelsZ))
-	dataMax = dataMax.astype(float)
-	if transpose.get() == 1:
-		dataMax = np.transpose(dataMax)
-	flip_h = hflip.get() == 1
-	flip_v = vflip.get() == 1
-	if flip_h and flip_v:
-		dataMax = dataMax[::-1, ::-1].copy()
-	elif flip_h:
-		dataMax = dataMax[::-1, :].copy()
-	elif flip_v:
-		dataMax = dataMax[:, ::-1].copy()
 	return dataMax
+
+def getImageSum(fn):
+	print("Calculating Sum for file: " + fn)
+	global Header, BytesPerPixel
+	Header = HeaderVar.get()
+	BytesPerPixel = BytesVar.get()
+	nFramesToDo = nFramesMaxVar.get()
+	startFrameNr = maxStartFrameNrVar.get()
+	
+	t1 = time.time()
+	dataSum = None
+	
+	for i in range(nFramesToDo):
+		frame_idx = startFrameNr + i
+		bytesToSkip = Header + frame_idx*(BytesPerPixel*NrPixelsY*NrPixelsZ)
+		img = getImage(fn, bytesToSkip, frame_idx=frame_idx)
+		
+		if dataSum is None:
+			dataSum = img
+		else:
+			dataSum += img
+			
+	t2 = time.time()
+	print("Time taken to calculate sum: " + str(t2-t1))
+	return dataSum
 
 def getData(geNum,bytesToSkip):
 	fn = getfn(fileStem,fileNumber,geNum)
 	global getMax
 	getMax = getMaxVar.get()
-	if not getMax:
-		data = getImage(fn,bytesToSkip)
-	else:
+	getSum = getSumVar.get()
+	
+	if getMax:
 		data = getImageMax(fn)
+	elif getSum:
+		data = getImageSum(fn)
+	else:
+		data = getImage(fn,bytesToSkip)
+		
 	doDark = var.get()
 	if doDark == 1:
 		darkfn = getfn(darkStem,darkNum,geNum)
 		if nDetectors > 1:
 			if dark[geNum-startDetNr] is None:
-				dark[geNum-startDetNr] = getImage(darkfn,Header)
+				dark[geNum-startDetNr] = getImage(darkfn,Header, is_dark=True)
 			thisdark = dark[geNum-startDetNr]
 		else:
-			thisdark = getImage(darkfn,Header)
+			thisdark = getImage(darkfn,Header, is_dark=True)
 		corrected = np.subtract(data,thisdark)
 	else:
 		corrected = data
@@ -184,10 +269,15 @@ def getDataB(geNum,bytesToSkip):
 	fn = getfn(fileStem,fileNumber,geNum)
 	global getMax
 	getMax = getMaxVar.get()
-	if not getMax:
-		data = getImage(fn,bytesToSkip)
-	else:
+	getSum = getSumVar.get()
+	
+	if getMax:
 		data = getImageMax(fn)
+	elif getSum:
+		data = getImageSum(fn)
+	else:
+		data = getImage(fn,bytesToSkip)
+		
 	doDark = var.get()
 	if doDark == 1:
 		darkfn = getfn(darkStem,darkNum,geNum)
@@ -288,35 +378,12 @@ def plotRingsOffset():
 		canvas.draw_idle()
 		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 
-def plotRings():
-	global lines
-	Etas = np.linspace(-180,180,num=360)
-	lines = []
-	colornr = 0
-	if mask2 is not None:
-		lims = [a.get_xlim(), a.get_ylim()]
-		for ringrad in ringRads:
-			Y = []
-			Z = []
-			for eta in Etas:
-				tmp = YZ4mREta(ringrad,eta)
-				Y.append(tmp[0]/px + bigdetsize/2)
-				Z.append(tmp[1]/px + bigdetsize/2)
-			lines.append(a.plot(Y,Z,color=colors[colornr]))
-			colornr+= 1
-		a.set_xlim([lims[0][0],lims[0][1]])
-		a.set_ylim([lims[1][0],lims[1][1]])
-		acoord()
+# Removed plotRings (Big Detector) logic
 
 def doRings():
-	global lines
 	global lines2
 	global DisplRingInfo
 	plotYesNo = plotRingsVar.get()
-	if lines is not None:
-		for line in lines:
-			line.pop(0).remove()
-		lines = None
 	if lines2 is not None:
 		for line2 in lines2:
 			line2.pop(0).remove()
@@ -328,7 +395,7 @@ def doRings():
 		if ringRads is None:
 			ringSelection()
 		else:
-			plotRings()
+			# Only plot on Single Detector
 			plotRingsOffset()
 	else:
 		canvas.draw_idle()
@@ -345,76 +412,31 @@ def plot_updater():
 	global frameNr
 	global threshold
 	global lims
-	global lines
-	global mask2
 	global Header, BytesPerPixel
+	
 	Header = HeaderVar.get()
 	BytesPerPixel = BytesVar.get()
-	if not initplot:
-		lims = [a.get_xlim(), a.get_ylim()]
-	frameNr = int(framenrvar.get())
-	threshold = float(thresholdvar.get())
-	upperthreshold = float(maxthresholdvar.get())
-	#a.clear()
-	# Plot mask if wanted
-	if mask is None:
-		readBigDet()
-	## Go through each geNum, get the data, transform it, put it on the bigDet
-	mask2 = np.copy(mask)
-	fileNumber = int(firstFileNumber + frameNr/nFramesPerFile)
-	framesToSkip = frameNr % nFramesPerFile
-	bytesToSkip = Header + framesToSkip*(BytesPerPixel*NrPixelsY*NrPixelsZ)
-	for i in range(startDetNr,endDetNr+1):
-		[thresholded,(rows,cols)] = getData(i,bytesToSkip)
-		TRs = transforms(i-startDetNr)
-		Xc = np.zeros(rows.shape)
-		Yc = -(cols - bcs[i-startDetNr][0])*px
-		Zc = (rows - bcs[i-startDetNr][1])*px
-		ABC = np.array([Xc,Yc,Zc])
-		ABCPr = np.dot(TRs,ABC)
-		NewYs = ABCPr[1,:]/px
-		NewZs = ABCPr[2,:]/px
-		NewYs = NewYs.astype(int)
-		NewZs = NewZs.astype(int)
-		mask2[bigdetsize/2 - NewZs,bigdetsize/2 - NewYs] = thresholded[rows,cols]
-	#lines = None
-	doRings()
-	global _a_artist, _a_logmode
-	use_log = dolog.get() != 0
-	if use_log:
-		if threshold == 0:
-			threshold = 1
-		if upperthreshold == 0:
-			upperthreshold = 1
-		mask3 = np.copy(mask2)
-		mask3 [ mask3 == 1 ] = 10
-		mask3 [ mask3 == 0 ] = 1
-		display_data = np.log(mask3)
-		clim = (np.log(threshold),np.log(upperthreshold))
-	else:
-		display_data = mask2
-		clim = (threshold,upperthreshold)
-	can_reuse = (not initplot and _a_artist is not None and
-	             _a_logmode == use_log and
-	             _a_artist.get_array().shape == display_data.shape)
-	if can_reuse:
-		_a_artist.set_data(display_data)
-		_a_artist.set_clim(*clim)
-		a.set_xlim([lims[0][0],lims[0][1]])
-		a.set_ylim([lims[1][0],lims[1][1]])
-	else:
-		a.clear()
-		_a_artist = a.imshow(display_data,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=clim)
-		_a_logmode = use_log
-		if initplot:
-			initplot = 0
-		else:
-			a.set_xlim([lims[0][0],lims[0][1]])
-			a.set_ylim([lims[1][0],lims[1][1]])
-	acoord()
-	a.title.set_text("Multiple Detector Display")
-	canvas.draw_idle()
-	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+	
+	# Only update Single Detector (b)
+	# The logic for Single Detector update was partially in plot_updater and partially in loadbplot?
+	# In original code, plot_updater called doRings() then updated 'a' (Big Det).
+	# Single Detector update (b) was handled in 'loadbplot' OR 'incr_plotupdater' if nDetectors > 1?
+	# Let's check incr_plotupdater:
+	# if nDetectors > 1: plot_updater() -> which updates 'a'. Does it update 'b'?
+	# Original plot_updater updated 'mask2' (Big Det) and 'a'. It NOT update 'b'.
+	# 'b' was updated by 'getDataB' called in the MAIN BODY? 
+	# No, wait. lines 829 calls getDataB. That code is TOP LEVEL?
+	# Ah, lines 801-1324 in previous view were NOT inside a function?
+	# Wait, lines 801+ seem to be part of... `loadbplot`? 
+	# Let's check line 788: `def loadbplot():`
+	# Then line 801 starts inside it.
+	# So `loadbplot` updates `b`.
+	# `plot_updater` updates `a`.
+	# Since we removed `a`, `plot_updater` is now redundant or should call `loadbplot`?
+	# If `nDetectors > 1`, `plot_updater` was iterating all detectors to make Big Det.
+	# Now we only show Single Detector.
+	# So `plot_updater` should just call `loadbplot`?
+	loadbplot()
 
 def incr_plotupdater():
 	global frameNr
@@ -1032,6 +1054,53 @@ def ringSelection():
 def selectFile():
 	return tkFileDialog.askopenfilename()
 
+def selectHDF5Path(is_dark=False):
+	# Simple dialog to show HDF5 structure
+	topH5 = Tk.Toplevel()
+	topH5.title("Select HDF5 Dataset Path")
+	
+	fn = selectFile()
+	if not fn: return
+	
+	try:
+		with h5py.File(fn, 'r') as f:
+			# Get all datasets
+			# ... (same logic as before)
+			paths = []
+			def visit_func(name, node):
+				if isinstance(node, h5py.Dataset):
+					paths.append(name)
+			f.visititems(visit_func)
+			
+			listbox = Tk.Listbox(topH5, width=60, height=20)
+			listbox.pack(side=Tk.LEFT, fill=Tk.BOTH, expand=True)
+			
+			scrollbar = Tk.Scrollbar(topH5, orient="vertical")
+			scrollbar.pack(side="right", fill="y")
+			
+			listbox.config(yscrollcommand=scrollbar.set)
+			scrollbar.config(command=listbox.yview)
+			
+			for p in paths:
+				listbox.insert(Tk.END, '/' + p)
+				
+			def on_select():
+				selection = listbox.curselection()
+				if selection:
+					idx = selection[0]
+					path = listbox.get(idx)
+					if is_dark:
+						hdf5DarkPathVar.set(path)
+					else:
+						hdf5PathVar.set(path)
+					topH5.destroy()
+					
+			Tk.Button(topH5, text="Select", command=on_select).pack()
+			
+	except Exception as e:
+		print(f"Error reading HDF5 file: {e}")
+		topH5.destroy()
+
 def firstFileSelector():
 	global fileStem, folder, padding,firstFileNumber,nFramesPerFile
 	global nDetectors, detnumbvar,nFramesMaxVar,nFramesPerFileVar
@@ -1043,7 +1112,68 @@ def firstFileSelector():
 	NrPixelsY = int(NrPixelsYVar.get())
 	NrPixelsZ = int(NrPixelsZVar.get())
 	firstfilefullpath = selectFile()
-	fullfilename = firstfilefullpath.split('/')[-1].split('.')[0]
+	if not firstfilefullpath: return
+	
+	# Handling compression for detection
+	check_fn = firstfilefullpath
+	if firstfilefullpath.endswith('.bz2'):
+		check_fn = firstfilefullpath[:-4]
+		
+	# Check format
+	ext = os.path.splitext(check_fn)[1].lower()
+	
+	fullfilename = os.path.basename(firstfilefullpath).split('.')[0]
+	
+	# If HDF5, structure might be different
+	if ext in ['.h5', '.hdf', '.hdf5', '.nxs']:
+		fileStem = fullfilename
+		firstFileNumber = 0 # Default for single HDF5 file? Or numbered series?
+		# If series: stem_001.h5
+		parts = fullfilename.split('_')
+		if parts[-1].isdigit():
+			firstFileNumber = int(parts[-1])
+			fileStem = '_'.join(parts[:-1])
+			padding = len(parts[-1])
+		else:
+			padding = 0
+		
+		# Propose dataset path if not set
+		if not hdf5PathVar.get():
+			hdf5PathVar.set('/exchange/data')
+			
+		nDetectors = 1
+		detnumbvar.set('-1')
+		fnextvar.set(ext)
+		folder = os.path.dirname(firstfilefullpath) + '/'
+		
+		# Get dimensions from HDF5
+		try:
+			with h5py.File(firstfilefullpath, 'r') as f:
+				dset_path = hdf5PathVar.get()
+				if dset_path in f:
+					shape = f[dset_path].shape
+					if len(shape) == 3:
+						nFramesPerFile = shape[0]
+						NrPixelsY = shape[1]
+						NrPixelsZ = shape[2]
+					elif len(shape) == 2:
+						nFramesPerFile = 1
+						NrPixelsY = shape[0]
+						NrPixelsZ = shape[1]
+					nFramesPerFileVar.set(nFramesPerFile)
+					nFramesMaxVar.set(nFramesPerFile)
+					NrPixelsYVar.set(NrPixelsY)
+					NrPixelsZVar.set(NrPixelsZ)
+		except Exception as e:
+			print(f"Error reading HDF5 info: {e}")
+			
+		return
+
+	# If Tiff
+	if ext in ['.tif', '.tiff']:
+		pass # Similar logic or fallback to standard logic if named consistently
+
+	# Original logic for binary
 	fileStem = '_'.join(fullfilename.split('_')[:-1])
 	firstFileNumber = int(fullfilename.split('_')[-1])
 	firstFileNrVar.set(firstFileNumber)
@@ -1058,9 +1188,13 @@ def firstFileSelector():
 		fnextvar.set(tempext)
 	folder = os.path.dirname(firstfilefullpath) + '/'
 	statinfo = os.stat(firstfilefullpath)
-	nFramesPerFile = int((statinfo.st_size - Header)/(BytesPerPixel*NrPixelsY*NrPixelsZ))
-	nFramesPerFileVar.set(nFramesPerFile)
-	nFramesMaxVar.set(nFramesPerFile)
+	# nFrames calculation for binary
+	# This might fail for compressed files if we use compressed size. 
+	# User should input correct params if auto-detection fails.
+	if not firstfilefullpath.endswith('.bz2'):
+		nFramesPerFile = int((statinfo.st_size - Header)/(BytesPerPixel*NrPixelsY*NrPixelsZ))
+		nFramesPerFileVar.set(nFramesPerFile)
+		nFramesMaxVar.set(nFramesPerFile)
 
 def darkFileSelector():
 	global darkStem,darkNum, dark
@@ -1166,10 +1300,17 @@ root = Tk.Tk()
 root.wm_title("FF display v0.2 Dt. 2024/02/10 hsharma@anl.gov")
 figur = Figure(figsize=(15,6),dpi=100)
 canvas = FigureCanvasTkAgg(figur,master=root)
-a = figur.add_subplot(121,aspect='equal')
-b = figur.add_subplot(122,aspect='equal')
+a = figur.add_subplot(111,aspect='equal')
+# Rename 'b' to 'a' or just assign 'b' to this subplot?
+# Original code used 'b' for single detector. 'a' for big det.
+# We are keeping Single Detector.
+# Let's alias 'b' to 'a' to minimize code changes in 'loadbplot' (which uses 'b')?
+# No, 'loadbplot' uses global 'b'.
+# usage: b.clear(), b.imshow().
+# So we should create 'b' as the ONLY subplot.
+b = figur.add_subplot(111,aspect='equal')
+# a = None # Remove 'a'
 b.title.set_text("Single Detector Display")
-a.title.set_text("Multiple Detector Display")
 figrowspan = 10
 figcolspan = 10
 lsd = [0,0,0,0]
@@ -1239,7 +1380,7 @@ var = Tk.IntVar()
 hydraVar = Tk.IntVar()
 hydraVar.set(0)
 sepfolderVar = Tk.IntVar()
-getMaxVar = Tk.IntVar()
+getSumVar = Tk.IntVar()
 detnumbvar = Tk.StringVar()
 detnumbvar.set(str(1))
 lsdlocalvar = Tk.StringVar()
@@ -1257,6 +1398,10 @@ hflip = Tk.IntVar()
 vflip = Tk.IntVar()
 transpose = Tk.IntVar()
 refreshPlot = 0
+hdf5PathVar = Tk.StringVar()
+hdf5PathVar.set('/exchange/data')
+hdf5DarkPathVar = Tk.StringVar()
+hdf5DarkPathVar.set('/exchange/dark')
 
 canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 toolbar_frame = Tk.Frame(root)
@@ -1307,6 +1452,13 @@ Tk.Label(master=thirdRowFrame,text="startFrameNrMax").grid(row=1,column=4,sticky
 Tk.Entry(master=thirdRowFrame,textvariable=maxStartFrameNrVar,width=5).grid(row=1,column=5,sticky=Tk.W)
 Tk.Label(master=thirdRowFrame,text="HeadSize").grid(row=1,column=6,sticky=Tk.W)
 Tk.Entry(master=thirdRowFrame,textvariable=HeaderVar,width=5).grid(row=1,column=7,sticky=Tk.W)
+Tk.Checkbutton(master=thirdRowFrame,text="SumOverFrames",variable=getSumVar).grid(row=1,column=8,sticky=Tk.W)
+Tk.Label(master=thirdRowFrame,text="H5Path").grid(row=1,column=9,sticky=Tk.W)
+Tk.Entry(master=thirdRowFrame,textvariable=hdf5PathVar,width=10).grid(row=1,column=10,sticky=Tk.W)
+Tk.Button(master=thirdRowFrame,text="...",command=lambda: selectHDF5Path(is_dark=False)).grid(row=1,column=11,sticky=Tk.W)
+Tk.Label(master=thirdRowFrame,text="DarkH5Path").grid(row=1,column=12,sticky=Tk.W)
+Tk.Entry(master=thirdRowFrame,textvariable=hdf5DarkPathVar,width=10).grid(row=1,column=13,sticky=Tk.W)
+Tk.Button(master=thirdRowFrame,text="...",command=lambda: selectHDF5Path(is_dark=True)).grid(row=1,column=14,sticky=Tk.W)
 
 thirdMidRowFrame = Tk.Frame(root)
 thirdMidRowFrame.grid(row=figrowspan+4,column=1,sticky=Tk.W)
