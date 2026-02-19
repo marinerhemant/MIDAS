@@ -91,8 +91,11 @@ def getfn(fstem,fnum,geNum):
 
 
 def get_bz2_data(fn):
-	# Decompress to temp file
-	with tempfile.NamedTemporaryFile(delete=False) as tmp:
+	# Decompress to temp file, preserving original extension for format detection
+	# e.g., "image.tif.bz2" -> strip ".bz2" -> get ".tif" suffix
+	inner_name = fn[:-4] if fn.lower().endswith('.bz2') else fn
+	suffix = os.path.splitext(inner_name)[1]  # e.g., '.tif'
+	with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
 		with bz2.BZ2File(fn, 'rb') as source:
 			shutil.copyfileobj(source, tmp)
 		temp_name = tmp.name
@@ -1256,7 +1259,7 @@ def firstFileSelector():
 			
 		nDetectors = 1
 		detnumbvar.set('-1')
-		fnextvar.set(ext)
+		fnextvar.set(ext.lstrip('.'))
 		folder = os.path.dirname(firstfilefullpath) + '/'
 		
 		# Get dimensions from HDF5
@@ -1430,7 +1433,7 @@ tempLsd = 1000000
 tempMaxRingRad = 2000000
 firstFileNrVar = Tk.StringVar()
 fnextvar = Tk.StringVar()
-fnextvar.set('.ge5')
+fnextvar.set('ge5')
 nFramesPerFileVar = Tk.StringVar()
 firstFileNrVar.set(str(1))
 nFramesPerFileVar.set(str(240))
