@@ -89,6 +89,7 @@ def getfn(fstem,fnum,geNum):
 	else:
 		return fldr + fstem + '_' + str(fnum).zfill(padding) + '.' + fnextvar.get()
 
+
 def get_bz2_data(fn):
 	# Decompress to temp file
 	with tempfile.NamedTemporaryFile(delete=False) as tmp:
@@ -96,6 +97,48 @@ def get_bz2_data(fn):
 			shutil.copyfileobj(source, tmp)
 		temp_name = tmp.name
 	return temp_name
+
+lastMaskState = None
+
+def readMask():
+	global badPixelMask, lastMaskState
+	fn = maskFNVar.get()
+	if not fn or not os.path.exists(fn):
+		badPixelMask = None
+		lastMaskState = None
+		return
+	
+	try:
+		currentState = (fn, transpose.get(), hflip.get(), vflip.get(), NrPixelsY, NrPixelsZ)
+		if badPixelMask is not None and lastMaskState == currentState:
+			return
+
+		# Assume int8 binary mask as per user request
+		mask = np.fromfile(fn, dtype=np.int8, count=NrPixelsY*NrPixelsZ)
+		badPixelMask = mask.reshape((NrPixelsY, NrPixelsZ))
+		
+		# Handle flips to match image data
+		# Note: Image data logic: transpose -> flip_h -> flip_v (or h/v/transpose?)
+		# getImage logic: 
+		# 1. transpose
+		# 2. flip_h and flip_v reverse
+		
+		if transpose.get() == 1:
+			badPixelMask = np.transpose(badPixelMask)
+		flip_h = hflip.get() == 1
+		flip_v = vflip.get() == 1
+		if flip_h and flip_v:
+			badPixelMask = badPixelMask[::-1, ::-1].copy()
+		elif flip_h:
+			badPixelMask = badPixelMask[::-1, :].copy()
+		elif flip_v:
+			badPixelMask = badPixelMask[:, ::-1].copy()
+			
+		lastMaskState = currentState
+	except Exception as e:
+		print(f"Error reading mask: {e}")
+		badPixelMask = None
+		lastMaskState = None
 
 def getImage(fn, bytesToSkip, frame_idx=0, is_dark=False):
 	print("Reading file: " + fn)
@@ -169,6 +212,12 @@ def getImage(fn, bytesToSkip, frame_idx=0, is_dark=False):
 		data = data[::-1, :].copy()
 	elif flip_v:
 		data = data[:, ::-1].copy()
+	if applyMaskVar.get() and maskFNVar.get():
+		readMask()
+		if badPixelMask is not None:
+			if badPixelMask.shape == data.shape:
+				data[badPixelMask == 1] = 0
+				
 	return data
 
 def getImageMax(fn):
@@ -237,7 +286,7 @@ def getImageSum(fn):
 	print("Time taken to calculate sum: " + str(t2-t1))
 	return dataSum
 
-def getData(geNum,bytesToSkip):
+def getData(geNum,bytesToSkip, frame_idx=0):
 	fn = getfn(fileStem,fileNumber,geNum)
 	global getMax
 	getMax = getMaxVar.get()
@@ -248,7 +297,7 @@ def getData(geNum,bytesToSkip):
 	elif getSum:
 		data = getImageSum(fn)
 	else:
-		data = getImage(fn,bytesToSkip)
+		data = getImage(fn,bytesToSkip, frame_idx=frame_idx)
 		
 	doDark = var.get()
 	if doDark == 1:
@@ -265,7 +314,7 @@ def getData(geNum,bytesToSkip):
 	nonzerocoords = np.nonzero(corrected)
 	return [corrected,nonzerocoords]
 
-def getDataB(geNum,bytesToSkip):
+def getDataB(geNum,bytesToSkip, frame_idx=0):
 	fn = getfn(fileStem,fileNumber,geNum)
 	global getMax
 	getMax = getMaxVar.get()
@@ -276,17 +325,17 @@ def getDataB(geNum,bytesToSkip):
 	elif getSum:
 		data = getImageSum(fn)
 	else:
-		data = getImage(fn,bytesToSkip)
+		data = getImage(fn,bytesToSkip, frame_idx=frame_idx)
 		
 	doDark = var.get()
 	if doDark == 1:
 		darkfn = getfn(darkStem,darkNum,geNum)
 		if nDetectors > 1:
 			if dark[geNum-startDetNr] is None:
-				dark[geNum-startDetNr] = getImage(darkfn,Header)
+				dark[geNum-startDetNr] = getImage(darkfn,Header, is_dark=True)
 			thisdark = dark[geNum-startDetNr]
 		else:
-			thisdark = getImage(darkfn,Header)
+			thisdark = getImage(darkfn,Header, is_dark=True)
 		corrected = np.subtract(data,thisdark)
 	else:
 		corrected = data
@@ -371,12 +420,12 @@ def plotRingsOffset():
 			tmpdisplay += txtDisplay[i*maxl:(i+1)*maxl] + '\n'
 		txtDisplay = tmpdisplay[:-1]
 	DisplRingInfo = Tk.Label(master=root,text=txtDisplay,justify=Tk.LEFT)
-	DisplRingInfo.grid(row=figrowspan-1,column=0,columnspan=10)
+	DisplRingInfo.pack(side=Tk.TOP, fill=Tk.X)
 	if bdata is not None and refreshPlot != 1:
 		bcoord()
 	if refreshPlot != 1:
 		canvas.draw_idle()
-		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+		canvas.get_tk_widget().pack(fill=Tk.BOTH, expand=True)
 
 # Removed plotRings (Big Detector) logic
 
@@ -399,7 +448,7 @@ def doRings():
 			plotRingsOffset()
 	else:
 		canvas.draw_idle()
-		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+		canvas.get_tk_widget().pack(fill=Tk.BOTH, expand=True)
 
 def clickRings():
 	global refreshPlot
@@ -863,7 +912,7 @@ def loadbplot():
 	else:
 		bclocal[0] = float(bclocalvar1.get())
 		bclocal[1] = float(bclocalvar2.get())
-	bdata = getDataB(detnr,bytesToSkip)
+	bdata = getDataB(detnr,bytesToSkip, frame_idx=framesToSkip)
 	if nDetectors > 1:
 		lsdorig = lsd[detnr-startDetNr]
 	# ~ else:
@@ -897,7 +946,13 @@ def loadbplot():
 		b.set_ylim([lims[1][0],lims[1][1]])
 	else:
 		b.clear()
-		_b_artist = b.imshow(display_data,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=clim)
+		cmap = plt.get_cmap('bone')
+		if colorMinVar.get():
+			cmap.set_under('blue')
+		if colorMaxVar.get():
+			cmap.set_over('red')
+			
+		_b_artist = b.imshow(display_data,cmap=cmap,interpolation='nearest',clim=clim)
 		_b_logmode = use_log
 		if initplot2:
 			initplot2 = 0
@@ -908,7 +963,7 @@ def loadbplot():
 	bcoord()
 	b.title.set_text("Single Detector Display")
 	canvas.draw_idle()
-	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+	canvas.get_tk_widget().pack(fill=Tk.BOTH, expand=True)
 
 def acceptRings():
 	global RingsToShow
@@ -1219,42 +1274,8 @@ def replot():
 	threshold = float(thresholdvar.get())
 	upperthreshold = float(maxthresholdvar.get())
 	if mask2 is not None:
-		if not initplot:
-			lims = [a.get_xlim(), a.get_ylim()]
-		if use_log:
-			if threshold == 0:
-				threshold = 1
-			if upperthreshold == 0:
-				upperthreshold = 1
-			mask3 = np.copy(mask2)
-			mask3 [ mask3 == 1 ] = 10
-			mask3 [ mask3 == 0 ] = 1
-			display_data = np.log(mask3)
-			clim = (np.log(threshold),np.log(upperthreshold))
-		else:
-			display_data = mask2
-			clim = (threshold,upperthreshold)
-		can_reuse = (not initplot and _a_artist is not None and
-		             _a_logmode == use_log and
-		             _a_artist.get_array().shape == display_data.shape)
-		if can_reuse:
-			_a_artist.set_data(display_data)
-			_a_artist.set_clim(*clim)
-			a.set_xlim([lims[0][0],lims[0][1]])
-			a.set_ylim([lims[1][0],lims[1][1]])
-		else:
-			a.clear()
-			_a_artist = a.imshow(display_data,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=clim)
-			_a_logmode = use_log
-			if initplot:
-				initplot = 0
-			else:
-				a.set_xlim([lims[0][0],lims[0][1]])
-				a.set_ylim([lims[1][0],lims[1][1]])
-		acoord()
-		a.title.set_text("Multiple Detector Display")
-		canvas.draw_idle()
-		canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+		# Deprecated (Big Detector) logic removed
+		pass
 	if bdata is not None:
 		if not initplot2:
 			lims = [b.get_xlim(), b.get_ylim()]
@@ -1280,7 +1301,12 @@ def replot():
 			b.set_ylim([lims[1][0],lims[1][1]])
 		else:
 			b.clear()
-			_b_artist = b.imshow(display_data,cmap=plt.get_cmap('bone'),interpolation='nearest',clim=clim)
+			cmap = plt.get_cmap('bone')
+			if colorMinVar.get():
+				cmap.set_under('blue')
+			if colorMaxVar.get():
+				cmap.set_over('red')
+			_b_artist = b.imshow(display_data,cmap=cmap,interpolation='nearest',clim=clim)
 			_b_logmode = use_log
 			if initplot2:
 				initplot2 = 0
@@ -1293,14 +1319,14 @@ def replot():
 		refreshPlot = 1
 	doRings()
 	canvas.draw_idle()
-	canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+	canvas.get_tk_widget().pack(fill=Tk.BOTH, expand=True)
 
 # Main function
 root = Tk.Tk()
 root.wm_title("FF display v0.2 Dt. 2024/02/10 hsharma@anl.gov")
-figur = Figure(figsize=(15,6),dpi=100)
+figur = Figure(figsize=(10,8),dpi=100)
 canvas = FigureCanvasTkAgg(figur,master=root)
-a = figur.add_subplot(111,aspect='equal')
+a = None # Removed 'a' entirely
 # Rename 'b' to 'a' or just assign 'b' to this subplot?
 # Original code used 'b' for single detector. 'a' for big det.
 # We are keeping Single Detector.
@@ -1380,7 +1406,14 @@ var = Tk.IntVar()
 hydraVar = Tk.IntVar()
 hydraVar.set(0)
 sepfolderVar = Tk.IntVar()
+getMaxVar = Tk.IntVar()
+maskFNVar = Tk.StringVar()
+maskFNVar.set("")
+badPixelMask = None
+colorMinVar = Tk.IntVar()
+colorMaxVar = Tk.IntVar()
 getSumVar = Tk.IntVar()
+applyMaskVar = Tk.IntVar()
 detnumbvar = Tk.StringVar()
 detnumbvar.set(str(1))
 lsdlocalvar = Tk.StringVar()
@@ -1403,98 +1436,115 @@ hdf5PathVar.set('/exchange/data')
 hdf5DarkPathVar = Tk.StringVar()
 hdf5DarkPathVar.set('/exchange/dark')
 
-canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+canvas.get_tk_widget().pack(fill=Tk.BOTH, expand=True)
+
+# GUI Layout Redesign
+
+# Toolbar
 toolbar_frame = Tk.Frame(root)
-toolbar_frame.grid(row=figrowspan+5,column=0,columnspan=10,sticky=Tk.W)
-toolbar = NavigationToolbar2Tk( canvas, toolbar_frame )
+toolbar_frame.pack(side=Tk.BOTTOM, fill=Tk.X)
+toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
 toolbar.update()
 
-Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20)).grid(row=figrowspan+1,column=0,rowspan=3,sticky=Tk.W,padx=10)
+# Main Control Frame
+mainControlFrame = Tk.Frame(root)
+mainControlFrame.pack(side=Tk.BOTTOM, fill=Tk.X, padx=5, pady=5)
 
-# ~ zeroRowFrame = Tk.Frame(root)
-# ~ zeroRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
-# ~ Tk.Label(master=zeroRowFrame,text='FileStem').grid(row=1,column=1,sticky=Tk.W)
-# ~ Tk.Entry(master=zeroRowFrame,text=fnextvar,width=10).grid(row=1,column=2,sticky=Tk.W)
+# Font for readability
+default_font = ("Helvetica", 14)
 
-firstRowFrame = Tk.Frame(root)
-firstRowFrame.grid(row=figrowspan+1,column=1,sticky=Tk.W)
-Tk.Button(master=firstRowFrame,text='FirstFile',command=firstFileSelector,font=("Helvetica",12)).grid(row=1,column=1,sticky=Tk.W)
-Tk.Button(master=firstRowFrame,text='DarkFile',command=darkFileSelector,font=("Helvetica",12)).grid(row=1,column=2,sticky=Tk.W)
-Tk.Checkbutton(master=firstRowFrame,text="DarkCorr",variable=var).grid(row=1,column=3,sticky=Tk.W)
-Tk.Label(master=firstRowFrame,text='firstFileNr').grid(row=1,column=4,sticky=Tk.W)
-Tk.Entry(master=firstRowFrame,textvariable=firstFileNrVar,width=5).grid(row=1,column=5,sticky=Tk.W)
-Tk.Label(master=firstRowFrame,text='nFrames/File').grid(row=1,column=6,sticky=Tk.W)
-Tk.Entry(master=firstRowFrame,textvariable=nFramesPerFileVar,width=5).grid(row=1,column=7,sticky=Tk.W)
-Tk.Label(master=firstRowFrame,text='FrameNr').grid(row=1,column=8,sticky=Tk.W)
-Tk.Entry(master=firstRowFrame,textvariable=framenrvar,width=4).grid(row=1,column=9,sticky=Tk.W)
-Tk.Button(master=firstRowFrame,text='+',command=incr_plotupdater,font=("Helvetica",12)).grid(row=1,column=10,sticky=Tk.W)
-Tk.Button(master=firstRowFrame,text='-',command=decr_plotupdater,font=("Helvetica",12)).grid(row=1,column=11,sticky=Tk.W)
+# 1. File I/O Frame
+fileFrame = Tk.LabelFrame(mainControlFrame, text="File I/O", font=default_font)
+fileFrame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
 
-secondRowFrame = Tk.Frame(root)
-secondRowFrame.grid(row=figrowspan+2,column=1,sticky=Tk.W)
-Tk.Label(master=secondRowFrame,text='NrPixelsHor').grid(row=1,column=1,sticky=Tk.W)
-Tk.Entry(master=secondRowFrame,textvariable=NrPixelsZVar,width=5).grid(row=1,column=2,sticky=Tk.W)
-Tk.Label(master=secondRowFrame,text='NrPixelsVert').grid(row=1,column=3,sticky=Tk.W)
-Tk.Entry(master=secondRowFrame,textvariable=NrPixelsYVar,width=5).grid(row=1,column=4,sticky=Tk.W)
-Tk.Label(master=secondRowFrame,text='MinThresh').grid(row=1,column=5,sticky=Tk.W)
-Tk.Entry(master=secondRowFrame,textvariable=thresholdvar,width=5).grid(row=1,column=6,sticky=Tk.W)
-Tk.Label(master=secondRowFrame,text='MaxThresh').grid(row=1,column=7,sticky=Tk.W)
-Tk.Entry(master=secondRowFrame,textvariable=maxthresholdvar,width=5).grid(row=1,column=8,sticky=Tk.W)
-Tk.Button(master=secondRowFrame,text='UpdThresh',command=replot).grid(row=1,column=9,sticky=Tk.W)
-Tk.Checkbutton(master=secondRowFrame,text="LogScale",variable=dolog).grid(row=1,column=10,sticky=Tk.W)
+Tk.Button(fileFrame, text='FirstFile', command=firstFileSelector, font=default_font).grid(row=0, column=0, padx=2)
+Tk.Button(fileFrame, text='DarkFile', command=darkFileSelector, font=default_font).grid(row=0, column=1, padx=2)
+Tk.Checkbutton(fileFrame, text="DarkCorr", variable=var, font=default_font).grid(row=0, column=2, padx=2)
 
-thirdRowFrame = Tk.Frame(root)
-thirdRowFrame.grid(row=figrowspan+3,column=1,sticky=Tk.W)
-Tk.Checkbutton(master=thirdRowFrame,text="MaxOverFrames",variable=getMaxVar).grid(row=1,column=1,sticky=Tk.W)
-Tk.Label(master=thirdRowFrame,text="nFramesMax").grid(row=1,column=2,sticky=Tk.W)
-Tk.Entry(master=thirdRowFrame,textvariable=nFramesMaxVar,width=5).grid(row=1,column=3)
-Tk.Label(master=thirdRowFrame,text="startFrameNrMax").grid(row=1,column=4,sticky=Tk.W)
-Tk.Entry(master=thirdRowFrame,textvariable=maxStartFrameNrVar,width=5).grid(row=1,column=5,sticky=Tk.W)
-Tk.Label(master=thirdRowFrame,text="HeadSize").grid(row=1,column=6,sticky=Tk.W)
-Tk.Entry(master=thirdRowFrame,textvariable=HeaderVar,width=5).grid(row=1,column=7,sticky=Tk.W)
-Tk.Checkbutton(master=thirdRowFrame,text="SumOverFrames",variable=getSumVar).grid(row=1,column=8,sticky=Tk.W)
-Tk.Label(master=thirdRowFrame,text="H5Path").grid(row=1,column=9,sticky=Tk.W)
-Tk.Entry(master=thirdRowFrame,textvariable=hdf5PathVar,width=10).grid(row=1,column=10,sticky=Tk.W)
-Tk.Button(master=thirdRowFrame,text="...",command=lambda: selectHDF5Path(is_dark=False)).grid(row=1,column=11,sticky=Tk.W)
-Tk.Label(master=thirdRowFrame,text="DarkH5Path").grid(row=1,column=12,sticky=Tk.W)
-Tk.Entry(master=thirdRowFrame,textvariable=hdf5DarkPathVar,width=10).grid(row=1,column=13,sticky=Tk.W)
-Tk.Button(master=thirdRowFrame,text="...",command=lambda: selectHDF5Path(is_dark=True)).grid(row=1,column=14,sticky=Tk.W)
+Tk.Label(fileFrame, text="FirstFileNr", font=default_font).grid(row=1, column=0)
+Tk.Entry(fileFrame, textvariable=firstFileNrVar, width=5, font=default_font).grid(row=1, column=1)
+Tk.Label(fileFrame, text="nFrames/File", font=default_font).grid(row=1, column=2)
+Tk.Entry(fileFrame, textvariable=nFramesPerFileVar, width=5, font=default_font).grid(row=1, column=3)
 
-thirdMidRowFrame = Tk.Frame(root)
-thirdMidRowFrame.grid(row=figrowspan+4,column=1,sticky=Tk.W)
-Tk.Button(master=thirdMidRowFrame,text="RingsMaterial",command=ringSelection).grid(row=1,column=12,sticky=Tk.W)
-Tk.Checkbutton(master=thirdMidRowFrame,text='PlotRings',variable=plotRingsVar,command=clickRings).grid(row=1,column=13,sticky=Tk.W)
-Tk.Checkbutton(master=thirdMidRowFrame,text="HFlip",variable=hflip).grid(row=1,column=14,sticky=Tk.W)
-Tk.Checkbutton(master=thirdMidRowFrame,text="VFilp",variable=vflip).grid(row=1,column=15,sticky=Tk.W)
-Tk.Checkbutton(master=thirdMidRowFrame,text="Transpose",variable=transpose).grid(row=1,column=16,sticky=Tk.W)
-Tk.Label(master=thirdMidRowFrame,text="BytesPerPx").grid(row=1,column=17,sticky=Tk.W)
-Tk.Entry(master=thirdMidRowFrame,textvariable=BytesVar,width=2).grid(row=1,column=18,sticky=Tk.W)
+Tk.Label(fileFrame, text="H5 Data", font=default_font).grid(row=2, column=0)
+Tk.Entry(fileFrame, textvariable=hdf5PathVar, width=10, font=default_font).grid(row=2, column=1)
+Tk.Button(fileFrame, text="...", command=lambda: selectHDF5Path(is_dark=False), font=default_font).grid(row=2, column=2)
 
-# Comment out Hydra for now, very custom code.
-# fourthRowFrame = Tk.Frame(root)
-# fourthRowFrame.grid(row=figrowspan+5,column=1,sticky=Tk.W)
-# Tk.Label(master=fourthRowFrame,text="Hydra Only:",font=('Helvetica',15)).grid(row=1,column=1,sticky=Tk.W)
-# Tk.Checkbutton(master=fourthRowFrame,text='IsHydra',variable=hydraVar).grid(row=1,column=2,sticky=Tk.W)
-# Tk.Label(master=fourthRowFrame,text="ParamFile").grid(row=1,column=3,sticky=Tk.W)
-# Tk.Button(master=fourthRowFrame,text="Select",command=paramfileselect).grid(row=1,column=4,sticky=Tk.W)
-# Tk.Entry(master=fourthRowFrame,textvariable=paramfilevar,width=20).grid(row=1,column=5,sticky=Tk.W)
-# Tk.Button(master=fourthRowFrame,text="LoadParams",command=readParams).grid(row=1,column=6,sticky=Tk.W)
-# Tk.Button(master=fourthRowFrame,text="WriteParams",command=writeParams).grid(row=1,column=7,sticky=Tk.W)
-# Tk.Button(master=fourthRowFrame,text="MakeBigDetector",command=makeBigDet).grid(row=1,column=8,sticky=Tk.W)
-# Tk.Button(master=fourthRowFrame,text="CalibrateDetector",command=askRingsToExclude).grid(row=1,column=9,sticky=Tk.W)
-# Tk.Checkbutton(master=fourthRowFrame,text='Separate Folders',variable=sepfolderVar).grid(row=1,column=10,sticky=Tk.W)
-# Tk.Button(master=root,text='Load\nMultiple\nDetectors',command=plot_updater).grid(row=figrowspan+1,column=2,rowspan=3,sticky=Tk.W)
+Tk.Label(fileFrame, text="H5 Dark", font=default_font).grid(row=3, column=0)
+Tk.Entry(fileFrame, textvariable=hdf5DarkPathVar, width=10, font=default_font).grid(row=3, column=1)
+Tk.Button(fileFrame, text="...", command=lambda: selectHDF5Path(is_dark=True), font=default_font).grid(row=3, column=2)
 
-bframe = Tk.Frame(root)
-bframe.grid(row=figrowspan+1,column=3,rowspan=3,sticky=Tk.W)
-Tk.Label(master=bframe,text='DetNum').grid(row=1,column=1,sticky=Tk.W)
-Tk.Entry(master=bframe,textvariable=detnumbvar,width=2).grid(row=1,column=2,sticky=Tk.W)
-Tk.Label(master=bframe,text='Lsd').grid(row=2,column=1,sticky=Tk.W)
-Tk.Entry(master=bframe,textvariable=lsdlocalvar,width=9).grid(row=2,column=2,sticky=Tk.W)
-Tk.Label(master=bframe,text='BeamCenter').grid(row=3,column=1,sticky=Tk.W)
-Tk.Entry(master=bframe,textvariable=bclocalvar1,width=6).grid(row=3,column=2,sticky=Tk.W)
-Tk.Entry(master=bframe,textvariable=bclocalvar2,width=6).grid(row=3,column=3,sticky=Tk.W)
-Tk.Button(master=root,text='Load\nSingle\nDetector',command=loadbplot).grid(row=figrowspan+1,column=4,rowspan=3)
+Tk.Button(fileFrame, text="MaskFile", command=lambda: maskFNVar.set(tkFileDialog.askopenfilename()), font=default_font).grid(row=4, column=0)
+Tk.Entry(fileFrame, textvariable=maskFNVar, width=10, font=default_font).grid(row=4, column=1, columnspan=2)
+Tk.Checkbutton(fileFrame, text="ApplyMask", variable=applyMaskVar, font=default_font).grid(row=4, column=3, padx=2)
+
+# 2. Image Settings Frame
+imgFrame = Tk.LabelFrame(mainControlFrame, text="Image Settings", font=default_font)
+imgFrame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
+
+Tk.Label(imgFrame, text='NrPixelsHor', font=default_font).grid(row=0, column=0)
+Tk.Entry(imgFrame, textvariable=NrPixelsZVar, width=5, font=default_font).grid(row=0, column=1)
+Tk.Label(imgFrame, text='NrPixelsVert', font=default_font).grid(row=1, column=0)
+Tk.Entry(imgFrame, textvariable=NrPixelsYVar, width=5, font=default_font).grid(row=1, column=1)
+
+Tk.Label(imgFrame, text="HeadSize", font=default_font).grid(row=2, column=0)
+Tk.Entry(imgFrame, textvariable=HeaderVar, width=5, font=default_font).grid(row=2, column=1)
+Tk.Label(imgFrame, text="Bytes/Px", font=default_font).grid(row=3, column=0)
+Tk.Entry(imgFrame, textvariable=BytesVar, width=5, font=default_font).grid(row=3, column=1)
+
+Tk.Checkbutton(imgFrame, text="HFlip", variable=hflip, font=default_font).grid(row=4, column=0)
+Tk.Checkbutton(imgFrame, text="VFlip", variable=vflip, font=default_font).grid(row=4, column=1)
+Tk.Checkbutton(imgFrame, text="Transp", variable=transpose, font=default_font).grid(row=5, column=0, columnspan=2)
+
+# 3. Display Control Frame
+dispFrame = Tk.LabelFrame(mainControlFrame, text="Display Control", font=default_font)
+dispFrame.grid(row=0, column=2, sticky="nsew", padx=5, pady=5)
+
+Tk.Label(dispFrame, text='FrameNr', font=default_font).grid(row=0, column=0)
+Tk.Entry(dispFrame, textvariable=framenrvar, width=5, font=default_font).grid(row=0, column=1)
+Tk.Button(dispFrame, text='+', command=incr_plotupdater, font=default_font).grid(row=0, column=2)
+Tk.Button(dispFrame, text='-', command=decr_plotupdater, font=default_font).grid(row=0, column=3)
+
+Tk.Label(dispFrame, text='MinThresh', font=default_font).grid(row=1, column=0)
+Tk.Entry(dispFrame, textvariable=thresholdvar, width=5, font=default_font).grid(row=1, column=1)
+Tk.Checkbutton(dispFrame, text="Color < Min", variable=colorMinVar, font=default_font).grid(row=1, column=2, columnspan=2)
+
+Tk.Label(dispFrame, text='MaxThresh', font=default_font).grid(row=2, column=0)
+Tk.Entry(dispFrame, textvariable=maxthresholdvar, width=5, font=default_font).grid(row=2, column=1)
+Tk.Checkbutton(dispFrame, text="Color > Max", variable=colorMaxVar, font=default_font).grid(row=2, column=2, columnspan=2)
+
+Tk.Button(dispFrame, text='Update Plot', command=replot, font=default_font, bg='lightblue').grid(row=3, column=0, columnspan=2)
+Tk.Checkbutton(dispFrame, text="LogScale", variable=dolog, font=default_font).grid(row=3, column=2, columnspan=2)
+
+# 4. Processing Frame
+procFrame = Tk.LabelFrame(mainControlFrame, text="Processing", font=default_font)
+procFrame.grid(row=0, column=3, sticky="nsew", padx=5, pady=5)
+
+Tk.Checkbutton(procFrame, text="MaxOverFrames", variable=getMaxVar, font=default_font).grid(row=0, column=0)
+Tk.Checkbutton(procFrame, text="SumOverFrames", variable=getSumVar, font=default_font).grid(row=1, column=0)
+
+Tk.Label(procFrame, text="nFrames", font=default_font).grid(row=0, column=1)
+Tk.Entry(procFrame, textvariable=nFramesMaxVar, width=5, font=default_font).grid(row=0, column=2)
+
+Tk.Label(procFrame, text="StartFrame", font=default_font).grid(row=1, column=1)
+Tk.Entry(procFrame, textvariable=maxStartFrameNrVar, width=5, font=default_font).grid(row=1, column=2)
+
+# Rings
+Tk.Button(procFrame, text="RingsMat", command=ringSelection, font=default_font).grid(row=2, column=0)
+Tk.Checkbutton(procFrame, text='PlotRings', variable=plotRingsVar, command=clickRings, font=default_font).grid(row=2, column=1, columnspan=2)
+
+# Single Detector Params
+Tk.Label(procFrame, text='DetNum', font=default_font).grid(row=3, column=0)
+Tk.Entry(procFrame, textvariable=detnumbvar, width=3, font=default_font).grid(row=3, column=1)
+Tk.Label(procFrame, text='Lsd', font=default_font).grid(row=3, column=2)
+Tk.Entry(procFrame, textvariable=lsdlocalvar, width=6, font=default_font).grid(row=3, column=3)
+Tk.Label(procFrame, text='BC', font=default_font).grid(row=4, column=0)
+Tk.Entry(procFrame, textvariable=bclocalvar1, width=5, font=default_font).grid(row=4, column=1)
+Tk.Entry(procFrame, textvariable=bclocalvar2, width=5, font=default_font).grid(row=4, column=2)
+Tk.Button(procFrame, text='Load Single', command=loadbplot, font=default_font).grid(row=4, column=3)
+
+Tk.Button(root, text='Quit', command=_quit, font=("Helvetica", 18)).pack(side=Tk.BOTTOM, pady=5)
+
 
 if __name__ == "__main__":
 	try:
