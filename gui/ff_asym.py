@@ -1554,12 +1554,12 @@ Tk.Label(fileFrame, text="nFrames/File", font=default_font).grid(row=1, column=2
 Tk.Entry(fileFrame, textvariable=nFramesPerFileVar, width=5, font=default_font).grid(row=1, column=3)
 
 Tk.Label(fileFrame, text="H5 Data", font=default_font).grid(row=2, column=0)
-Tk.Entry(fileFrame, textvariable=hdf5PathVar, width=10, font=default_font).grid(row=2, column=1)
-Tk.Button(fileFrame, text="...", command=lambda: selectHDF5Path(is_dark=False), font=default_font).grid(row=2, column=2)
+Tk.Entry(fileFrame, textvariable=hdf5PathVar, width=18, font=default_font).grid(row=2, column=1)
+Tk.Button(fileFrame, text="Browse", command=lambda: selectHDF5Path(is_dark=False), font=default_font).grid(row=2, column=2)
 
 Tk.Label(fileFrame, text="H5 Dark", font=default_font).grid(row=3, column=0)
-Tk.Entry(fileFrame, textvariable=hdf5DarkPathVar, width=10, font=default_font).grid(row=3, column=1)
-Tk.Button(fileFrame, text="...", command=lambda: selectHDF5Path(is_dark=True), font=default_font).grid(row=3, column=2)
+Tk.Entry(fileFrame, textvariable=hdf5DarkPathVar, width=18, font=default_font).grid(row=3, column=1)
+Tk.Button(fileFrame, text="Browse", command=lambda: selectHDF5Path(is_dark=True), font=default_font).grid(row=3, column=2)
 
 Tk.Button(fileFrame, text="MaskFile", command=lambda: maskFNVar.set(tkFileDialog.askopenfilename()), font=default_font).grid(row=4, column=0)
 Tk.Entry(fileFrame, textvariable=maskFNVar, width=10, font=default_font).grid(row=4, column=1, columnspan=2)
@@ -1622,7 +1622,7 @@ Tk.Checkbutton(procFrame, text='PlotRings', variable=plotRingsVar, command=click
 
 # Single Detector Params
 Tk.Label(procFrame, text='Lsd', font=default_font).grid(row=3, column=0)
-Tk.Entry(procFrame, textvariable=lsdlocalvar, width=6, font=default_font).grid(row=3, column=3)
+Tk.Entry(procFrame, textvariable=lsdlocalvar, width=10, font=default_font).grid(row=3, column=3)
 Tk.Label(procFrame, text='BC', font=default_font).grid(row=4, column=0)
 Tk.Entry(procFrame, textvariable=bclocalvar1, width=5, font=default_font).grid(row=4, column=1)
 Tk.Entry(procFrame, textvariable=bclocalvar2, width=5, font=default_font).grid(row=4, column=2)
