@@ -1053,10 +1053,11 @@ int main(int argc, char **argv) {
 
     if (dsize <= 0) {
       printf("Error: Failed to decompress dark frame data! dsize: %d\n", dsize);
-      exit(1);
+      memset(DarkInTU, 0, (size_t)dsize);
+    } else {
+      memcpy(DarkInTU, data, (size_t)dsize);
     }
 
-    memcpy(DarkInTU, data, (size_t)dsize);
     for (b = 0; b < NrPixelsY * NrPixelsZ; b++)
       DarkInT[b] = (double)DarkInTU[b];
     DoImageTransformations(NrTransOpt, TransOpt, DarkInT, DarkIn, NrPixelsY,
