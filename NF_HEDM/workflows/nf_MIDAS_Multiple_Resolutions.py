@@ -772,7 +772,7 @@ def main():
     
     parser = MyParser(
         description=(
-            'Near-field HEDM analysis using MIDAS (Multi-Resolution). V7.0.0, contact hsharma@anl.gov\n\n'
+            'Near-field HEDM analysis using MIDAS (Multi-Resolution). Contact: hsharma@anl.gov\n\n'
             'Additional parameter file keys for multi-resolution mode:\n'
             '  GridRefactor <StartingGridSize> <ScalingFactor> <NumLoops>  # e.g. GridRefactor 5.0 2.0 3\n'
             '      - StartingGridSize: The initial grid size value (preserved across interrupted runs).\n'

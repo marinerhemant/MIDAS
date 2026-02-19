@@ -555,7 +555,7 @@ def main():
     signal.signal(signal.SIGINT, handler)
     
     parser = MyParser(
-        description='Near-field HEDM analysis using MIDAS. V7.0.0, contact hsharma@anl.gov',
+        description='Near-field HEDM analysis using MIDAS. Contact: hsharma@anl.gov',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-paramFN', type=str, required=True, help='Parameter file name.')
     parser.add_argument('-nCPUs', type=int, default=10, help='Number of CPU cores to use if running locally.')

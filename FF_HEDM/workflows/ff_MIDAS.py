@@ -1118,7 +1118,7 @@ def main():
     
     # Set up argument parser
     parser = MyParser(
-        description='Far-field HEDM analysis using MIDAS. V7.0.0, contact hsharma@anl.gov', 
+        description='Far-field HEDM analysis using MIDAS. Contact: hsharma@anl.gov', 
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     
