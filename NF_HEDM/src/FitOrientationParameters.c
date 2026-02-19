@@ -277,8 +277,8 @@ void FitOrientation(
   nlopt_set_min_objective(opt, problem_function, trp);
   nlopt_set_maxeval(opt, 5000);
   nlopt_set_maxtime(opt, 30.0);
-  nlopt_set_ftol_rel(opt, 1e-8);
-  nlopt_set_xtol_rel(opt, 1e-8);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   double minf = 1;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);

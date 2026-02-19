@@ -220,7 +220,9 @@ void FitOrientation(
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function, trp);
   nlopt_set_maxeval(opt, 5000);
-  nlopt_set_ftol_rel(opt, tole);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   double minf = 1;
   int retcode = nlopt_optimize(opt, x, &minf);
   *out_nevals = (int)nlopt_get_numevals(opt);
@@ -978,16 +980,11 @@ int main(int argc, char *argv[]) {
     //        "bestFrac=%.4f\n",
     //        rown, tFitElapsed, totalNloptEvals, BestFrac);
     // fflush(stdout);
-    double outresult[11] = {bestRowNr,
-                            (double)OrientationGoodID,
-                            0,
-                            xs,
-                            ys,
-                            GridSize,
-                            (double)UD,
-                            BestEuler[0],
-                            BestEuler[1],
-                            BestEuler[2],
+    double outresult[11] = {bestRowNr,    (double)OrientationGoodID,
+                            tFitElapsed,  xs,
+                            ys,           GridSize,
+                            (double)UD,   BestEuler[0],
+                            BestEuler[1], BestEuler[2],
                             BestFrac};
     int SizeWritten = 11 * sizeof(double);
     size_t OffsetHere = (rown);

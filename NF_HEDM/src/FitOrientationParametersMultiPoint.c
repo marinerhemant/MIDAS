@@ -331,6 +331,10 @@ void FitOrientation(
     nlopt_set_lower_bounds(opt0, xl);
     nlopt_set_upper_bounds(opt0, xu);
     nlopt_set_min_objective(opt0, problem_function, trp);
+    nlopt_set_maxeval(opt0, 5000);
+    nlopt_set_maxtime(opt0, 30);
+    nlopt_set_ftol_rel(opt0, 1e-5);
+    nlopt_set_xtol_rel(opt0, 1e-5);
     nlopt_set_stopval(opt0, 1e-7);
     nlopt_optimize(opt0, x, &minf0);
     nlopt_destroy(opt0);
@@ -350,8 +354,11 @@ void FitOrientation(
     opt = nlopt_create(NLOPT_GN_CRS2_LM, n);
     nlopt_set_population(opt, 50 * (n + 2));
     nlopt_set_min_objective(opt, problem_function, trp);
+    nlopt_set_maxeval(opt, 5000);
+    nlopt_set_maxtime(opt, 30);
+    nlopt_set_ftol_rel(opt, 1e-5);
+    nlopt_set_xtol_rel(opt, 1e-5);
     nlopt_set_stopval(opt, 1e-7);
-    nlopt_set_ftol_rel(opt, 0.001);
     nlopt_set_lower_bounds(opt, xl);
     nlopt_set_upper_bounds(opt, xu);
     nlopt_optimize(opt, x, &minf);
@@ -374,6 +381,10 @@ void FitOrientation(
     nlopt_set_lower_bounds(opt2, xl);
     nlopt_set_upper_bounds(opt2, xu);
     nlopt_set_min_objective(opt2, problem_function, trp);
+    nlopt_set_maxeval(opt2, 5000);
+    nlopt_set_maxtime(opt2, 30);
+    nlopt_set_ftol_rel(opt2, 1e-5);
+    nlopt_set_xtol_rel(opt2, 1e-5);
     nlopt_set_stopval(opt2, 1e-7);
     nlopt_optimize(opt2, x, &minf2);
     nlopt_destroy(opt2);
@@ -394,8 +405,11 @@ void FitOrientation(
     opt3 = nlopt_create(NLOPT_GN_CRS2_LM, n);
     nlopt_set_population(opt3, 10 * (n + 2));
     nlopt_set_min_objective(opt3, problem_function, trp);
+    nlopt_set_maxeval(opt3, 5000);
+    nlopt_set_maxtime(opt3, 30);
+    nlopt_set_ftol_rel(opt3, 1e-5);
+    nlopt_set_xtol_rel(opt3, 1e-5);
     nlopt_set_stopval(opt3, 1e-7);
-    nlopt_set_ftol_rel(opt3, 0.01);
     nlopt_set_lower_bounds(opt3, xl);
     nlopt_set_upper_bounds(opt3, xu);
     nlopt_optimize(opt3, x, &minf3);
@@ -418,6 +432,10 @@ void FitOrientation(
     nlopt_set_lower_bounds(opt4, xl);
     nlopt_set_upper_bounds(opt4, xu);
     nlopt_set_min_objective(opt4, problem_function, trp);
+    nlopt_set_maxeval(opt4, 5000);
+    nlopt_set_maxtime(opt4, 30);
+    nlopt_set_ftol_rel(opt4, 1e-5);
+    nlopt_set_xtol_rel(opt4, 1e-5);
     nlopt_set_stopval(opt4, 1e-7);
     nlopt_optimize(opt4, x, &minf4);
     nlopt_destroy(opt4);

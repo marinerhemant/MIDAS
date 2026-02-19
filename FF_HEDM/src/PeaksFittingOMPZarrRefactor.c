@@ -1014,7 +1014,8 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
 
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_maxtime(opt, 45); // Maximum optimization time in seconds
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30); // Maximum optimization time in seconds
   nlopt_set_ftol_rel(
       opt, 1e-5); // Stop if relative function value improvement < 1e-5
   nlopt_set_xtol_rel(opt, 1e-5); // Stop if relative parameter step < 1e-5

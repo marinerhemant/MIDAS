@@ -854,7 +854,7 @@ static inline double FitErrorsOrientStrains(
     LatC[i] = x[3 + i];
   // Use inputs/scratch
   double **spotsYZO = spotsYZOIn;
-  
+
   double **hkls = scratch->hkls;
   CorrectHKLsLatC(LatC, hklsIn, nhkls, Lsd, Wavelength, hkls);
   double OrientMatrix[3][3], EulerIn[3];
@@ -970,10 +970,10 @@ static inline double FitErrorsStrains(
   double LatC[6];
   for (i = 0; i < 6; i++)
     LatC[i] = x[i];
-  
+
   // Use inputs/scratch
   double **spotsYZO = spotsYZOIn;
-  
+
   double **hkls = scratch->hkls;
   CorrectHKLsLatC(LatC, hklsIn, nhkls, Lsd, Wavelength, hkls);
   double OrientMatrix[3][3];
@@ -1041,10 +1041,10 @@ static inline double FitErrorsPosSec(
     double Strains[6], double offsets[4], struct OptimizeScratch *scratch) {
   int i, j;
   int nrMatchedIndexer = nSpotsComp;
-  
+
   // Use inputs/scratch
   double **spotsYZO = spotsYZOIn;
-  
+
   // Invariants are pre-calculated in scratch
   int nTspots = scratch->nTspots;
   double **SpotsYZOGCorr = scratch->SpotsYZOGCorr;
@@ -1094,7 +1094,6 @@ static inline double FitErrorsPosSec(
   }
   return Error;
 }
-
 
 static double problem_function_PosIni(unsigned n, const double *x, double *grad,
                                       void *f_data_trial) {
@@ -1200,10 +1199,10 @@ static double problem_function_StrainIni(unsigned n, const double *x,
   double XIn[n];
   for (i = 0; i < n; i++)
     XIn[i] = x[i];
-  double error =
-      FitErrorsStrains(XIn, nSpotsComp, f_data->spotsYZO, f_data->spotsYZO2, nhkls,
-                       f_data->hkls, Lsd, Wavelength, nOmeRanges, OmegaRanges,
-                       BoxSizes, MinEta, wedge, chi, Pos, Orient, offsets, f_data->scratch);
+  double error = FitErrorsStrains(
+      XIn, nSpotsComp, f_data->spotsYZO, f_data->spotsYZO2, nhkls, f_data->hkls,
+      Lsd, Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta, wedge, chi,
+      Pos, Orient, offsets, f_data->scratch);
   return error;
 }
 
@@ -1240,10 +1239,10 @@ static double problem_function_Pos(unsigned n, const double *x, double *grad,
   double XIn[n];
   for (i = 0; i < n; i++)
     XIn[i] = x[i];
-  double error =
-      FitErrorsPosSec(XIn, nSpotsComp, f_data->spotsYZO, f_data->spotsYZO2, nhkls, f_data->hkls,
-                      Lsd, Wavelength, nOmeRanges, OmegaRanges, BoxSizes,
-                      MinEta, wedge, chi, Orient, Strains, offsets, f_data->scratch);
+  double error = FitErrorsPosSec(
+      XIn, nSpotsComp, f_data->spotsYZO, f_data->spotsYZO2, nhkls, f_data->hkls,
+      Lsd, Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta, wedge, chi,
+      Orient, Strains, offsets, f_data->scratch);
   return error;
 }
 
@@ -1310,6 +1309,10 @@ void FitPositionIni(double X0[12], int nSpotsComp, double **spotsYZO,
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function_PosIni, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   double minf;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
@@ -1319,6 +1322,10 @@ void FitPositionIni(double X0[12], int nSpotsComp, double **spotsYZO,
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function_PosIni, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
@@ -1406,6 +1413,10 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO,
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function_OrientIni, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   double minf;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
@@ -1415,6 +1426,10 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO,
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function_OrientIni, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
@@ -1506,6 +1521,10 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO,
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function_StrainIni, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   double minf;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
@@ -1515,6 +1534,10 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO,
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function_StrainIni, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
@@ -1592,20 +1615,22 @@ void FitPosSec(double X0[3], int nSpotsComp, double **spotsYZO,
   f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 3);
   f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 3);
   // Pre-calculate invariants
-  CorrectHKLsLatC(f_data.Strains, f_data.hkls, nhkls, Lsd, Wavelength, f_data.scratch->hkls);
+  CorrectHKLsLatC(f_data.Strains, f_data.hkls, nhkls, Lsd, Wavelength,
+                  f_data.scratch->hkls);
   double OrientMatrix[3][3];
   Euler2OrientMat(f_data.Orient, OrientMatrix);
   int nTspots;
-  CalcDiffractionSpots(Lsd, MinEta, OmegaRanges, nOmeRanges, f_data.scratch->hkls, nhkls,
-                       BoxSizes, &nTspots, OrientMatrix, f_data.scratch->TheorSpots);
+  CalcDiffractionSpots(Lsd, MinEta, OmegaRanges, nOmeRanges,
+                       f_data.scratch->hkls, nhkls, BoxSizes, &nTspots,
+                       OrientMatrix, f_data.scratch->TheorSpots);
   f_data.scratch->nTspots = nTspots;
   for (i = 0; i < nTspots; i++) {
     f_data.scratch->TheorSpotsYZWE[i][0] = f_data.scratch->TheorSpots[i][0];
     f_data.scratch->TheorSpotsYZWE[i][1] = f_data.scratch->TheorSpots[i][1];
     f_data.scratch->TheorSpotsYZWE[i][2] = f_data.scratch->TheorSpots[i][8];
   }
-  f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7); 
-  f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9); 
+  f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7);
+  f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
   f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
   struct data_FitPos *f_datat;
   f_datat = &f_data;
@@ -1615,6 +1640,10 @@ void FitPosSec(double X0[3], int nSpotsComp, double **spotsYZO,
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function_Pos, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   double minf;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
@@ -1624,6 +1653,10 @@ void FitPosSec(double X0[3], int nSpotsComp, double **spotsYZO,
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function_Pos, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);

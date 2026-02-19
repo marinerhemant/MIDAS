@@ -285,7 +285,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
       L = 1 / (((R2 / ((SigmaLR[j]) * (SigmaLR[j]))) + 1) *
                ((E2 / ((SigmaLEta[j]) * (SigmaLEta[j]))) + 1));
       //~ L =
-      //1/(((R2/((SigmaLR[j])*(SigmaLR[j]))))+((E2/((SigmaLEta[j])*(SigmaLEta[j]))))+1);
+      // 1/(((R2/((SigmaLR[j])*(SigmaLR[j]))))+((E2/((SigmaLEta[j])*(SigmaLEta[j]))))+1);
       G = exp(-(0.5 * (R2 / (SigmaGR[j] * SigmaGR[j]))) -
               (0.5 * (E2 / (SigmaGEta[j] * SigmaGEta[j]))));
       IntPeaks += IMAX[j] * ((Mu[j] * L) + ((1 - Mu[j]) * G));
@@ -326,7 +326,7 @@ static inline void CalcIntegratedIntensity(int nPeaks, double *x, double *Rs,
       L = 1 / (((R2 / ((SigmaLR[j]) * (SigmaLR[j]))) + 1) *
                ((E2 / ((SigmaLEta[j]) * (SigmaLEta[j]))) + 1));
       //~ L =
-      //1/(((R2/((SigmaLR[j])*(SigmaLR[j]))))+((E2/((SigmaLEta[j])*(SigmaLEta[j]))))+1);
+      // 1/(((R2/((SigmaLR[j])*(SigmaLR[j]))))+((E2/((SigmaLEta[j])*(SigmaLEta[j]))))+1);
       G = exp(-(0.5 * (R2 / (SigmaGR[j] * SigmaGR[j]))) -
               (0.5 * (E2 / (SigmaGEta[j] * SigmaGEta[j]))));
       IntPeaks = IMAX[j] * ((Mu[j] * L) + ((1 - Mu[j]) * G));
@@ -427,7 +427,10 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z,
   opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_maxtime(opt, 300);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   nlopt_set_min_objective(opt, problem_function, trp);
   double minf;
   int rc = nlopt_optimize(opt, x, &minf);

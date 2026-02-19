@@ -2689,8 +2689,10 @@ int main(int argc, char *argv[]) {
               nlopt_set_upper_bounds(opt, upperBounds);
               nlopt_set_min_objective(opt, problem_function_global_bg,
                                       &fitData);
-              nlopt_set_xtol_rel(opt, 1e-4);
-              nlopt_set_maxeval(opt, 1000 * nFitParams);
+              nlopt_set_maxeval(opt, 5000);
+              nlopt_set_maxtime(opt, 30);
+              nlopt_set_ftol_rel(opt, 1e-5);
+              nlopt_set_xtol_rel(opt, 1e-5);
               rc = nlopt_optimize(opt, fitParams, &minObj);
               nlopt_destroy(opt);
             }
@@ -3074,6 +3076,10 @@ int main(int argc, char *argv[]) {
             nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, nFitParams);
             nlopt_set_lower_bounds(opt, lowerBounds);
             nlopt_set_upper_bounds(opt, upperBounds);
+            nlopt_set_maxeval(opt, 5000);
+            nlopt_set_maxtime(opt, 30);
+            nlopt_set_ftol_rel(opt, 1e-5);
+            nlopt_set_xtol_rel(opt, 1e-5);
             nlopt_set_min_objective(opt, problem_function_global_bg, &fitData);
             nlopt_set_xtol_rel(opt, 1e-4);
             nlopt_set_maxeval(opt, 200);

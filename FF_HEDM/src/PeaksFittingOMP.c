@@ -433,7 +433,10 @@ int Fit2DPeaks(unsigned nPeaks, int NrPixelsThisRegion, double *z,
   opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_maxtime(opt, 300);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   nlopt_set_min_objective(opt, problem_function, trp);
   double minf;
   int rc = nlopt_optimize(opt, x, &minf);

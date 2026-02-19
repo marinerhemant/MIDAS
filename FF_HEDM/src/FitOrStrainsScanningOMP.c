@@ -1268,6 +1268,10 @@ void FitPositionIni(double X0[12], int nSpotsComp, double **spotsYZO, int nhkls,
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function_PosIni, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   double minf;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
@@ -1277,6 +1281,10 @@ void FitPositionIni(double X0[12], int nSpotsComp, double **spotsYZO, int nhkls,
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function_PosIni, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
@@ -1356,6 +1364,10 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO, int nhkls,
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function_OrientIni, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   double minf;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
@@ -1365,6 +1377,10 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO, int nhkls,
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function_OrientIni, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
@@ -1444,6 +1460,10 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO, int nhkls,
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function_StrainIni, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   double minf;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
@@ -1453,6 +1473,10 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO, int nhkls,
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function_StrainIni, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
@@ -1555,6 +1579,10 @@ void FitPosSec(double X0[3], int nSpotsComp, double **spotsYZO, int nhkls,
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function_Pos, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   double minf;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
@@ -1564,6 +1592,10 @@ void FitPosSec(double X0[3], int nSpotsComp, double **spotsYZO, int nhkls,
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function_Pos, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
@@ -1684,6 +1716,10 @@ inline int StrainTensorKenesei(int nspots, double **SpotsInfo, double Distance,
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function_strain, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   double minf = 1;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);

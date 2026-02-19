@@ -1234,7 +1234,7 @@ int main(int argc, char *argv[]) {
     for (j = 0; j < 3; j++)
       x[i * 9 + j] = Eul[j];
     //~ for (j=0;j<3;j++) x[i*9+j] = Eul[j]*(1+0.003*(drand48()-0.5)); // Change
-    //this from starting value by a small random number between -0.5% to 0.5%
+    // this from starting value by a small random number between -0.5% to 0.5%
     for (j = 0; j < 3; j++)
       xl[i * 9 + j] = Eul[j] - EulTol;
     for (j = 0; j < 3; j++)
@@ -1242,8 +1242,8 @@ int main(int argc, char *argv[]) {
     for (j = 0; j < 6; j++)
       x[i * 9 + 3 + j] = LatCin[j];
     //~ for (j=0;j<6;j++) x[i*9+3+j] = LatCin[j]*(1+0.003*(drand48()-0.5)); //
-    //Change this from starting value by a small random number between -0.5% to
-    //0.5%
+    // Change this from starting value by a small random number between -0.5% to
+    // 0.5%
     for (j = 0; j < 3; j++)
       xl[i * 9 + 3 + j] = LatCin[j] * (100 - ABCTol) / 100;
     for (j = 3; j < 6; j++)
@@ -1370,19 +1370,6 @@ int main(int argc, char *argv[]) {
   //~ // Try global optimization
   //~ signal(SIGINT, sigintHandler);
   //~ nIters = 0;
-  //~ opt = nlopt_create(NLOPT_G_MLSL_LDS,n);
-  //~ nlopt_set_population(opt,10);
-  //~ nlopt_opt local_opt = nlopt_create(NLOPT_LD_MMA, n);
-  //~ nlopt_set_min_objective(local_opt, problem_function, trp);
-  //~ nlopt_set_maxeval(local_opt,maxNEvals);
-  //~ nlopt_set_local_optimizer(opt,local_opt);
-  //~ nlopt_set_min_objective(opt, problem_function, trp);
-  //~ nlopt_set_lower_bounds(opt, xl);
-  //~ nlopt_set_upper_bounds(opt, xu);
-  //~ double minf;
-  //~ nlopt_result r = nlopt_optimize(opt, x, &minf);
-  //~ printf("NLOPT Return Code %d, retval = %lf\n",r,minf);
-  //~ nlopt_destroy(opt);
 
   // Local Optimization
   signal(SIGINT, sigintHandler);
@@ -1410,6 +1397,9 @@ int main(int argc, char *argv[]) {
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_maxeval(opt, maxNEvals);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   nlopt_set_min_objective(opt, problem_function, trp);
   double minf;
   nlopt_result r = nlopt_optimize(opt, x, &minf);

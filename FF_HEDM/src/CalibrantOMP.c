@@ -330,6 +330,10 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit],
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function_profile, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   double minf, MeanDiff;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
@@ -583,6 +587,10 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   nlopt_set_lower_bounds(opt, xl);
   nlopt_set_upper_bounds(opt, xu);
   nlopt_set_min_objective(opt, problem_function, trp);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_maxtime(opt, 30);
+  nlopt_set_ftol_rel(opt, 1e-5);
+  nlopt_set_xtol_rel(opt, 1e-5);
   double minf;
   nlopt_optimize(opt, x, &minf);
   nlopt_destroy(opt);
