@@ -778,9 +778,17 @@ int main(int argc, char *argv[]) {
     double BestBCsFit[nLayers][2];
     int BestOrientIdx = -1;
     int done = 0;
+    int progressCount = 0;
+    int progressInterval = OrientationGoodID / 50; // Print every ~2%
+    if (progressInterval < 1)
+      progressInterval = 1;
+    double tFitStart = omp_get_wtime();
+    printf("Fitting %d candidate orientations using %d threads...\n",
+           OrientationGoodID, nCPUs);
+    fflush(stdout);
 #pragma omp parallel for schedule(dynamic)                                     \
     shared(BestFrac, BestEuler, BestLsdFit, BestTiltsFit, BestBCsFit,          \
-               BestOrientIdx, done)
+               BestOrientIdx, done, progressCount)
     for (i = 0; i < OrientationGoodID; i++) {
       if (done)
         continue;
@@ -835,7 +843,22 @@ int main(int argc, char *argv[]) {
       free(LsdFit);
       free(TiltsFit);
       FreeMemMatrix(BCsFit, nLayers);
+      // Thread-safe progress counter
+      int myCount;
+#pragma omp atomic capture
+      myCount = ++progressCount;
+      if (myCount % progressInterval == 0 || myCount == OrientationGoodID) {
+        double pct = 100.0 * myCount / OrientationGoodID;
+        double elapsed = omp_get_wtime() - tFitStart;
+#pragma omp critical
+        {
+          printf("\rProgress: %d/%d (%.0f%%) | Elapsed: %.1fs | Best: %.4f   ",
+                 myCount, OrientationGoodID, pct, elapsed, BestFrac);
+          fflush(stdout);
+        }
+      }
     }
+    printf("\n"); // Newline after progress bar
     // Print final best result summary
     if (BestOrientIdx >= 0) {
       printf("\n--- Final Best Result ---\n");
