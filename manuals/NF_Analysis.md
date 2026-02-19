@@ -116,6 +116,9 @@ The parameter file is a whitespace-delimited text file. Lines starting with `#` 
 | `Lsd` | float | Sample-to-detector distance (μm). Repeated `nDistances` times on separate lines |
 | `BC` | float float | Beam center (y, z) in pixels. Repeated `nDistances` times |
 | `px` | float | Pixel size (μm) |
+| `NrPixelsY` | int | Horizontal detector dimension in pixels (default: `2048`). Overrides `NrPixels` |
+| `NrPixelsZ` | int | Vertical detector dimension in pixels (default: `2048`). Overrides `NrPixels` |
+| `NrPixels` | int | *(deprecated)* Square detector shorthand — sets both `NrPixelsY` and `NrPixelsZ` to the same value. Ignored if `NrPixelsY`/`NrPixelsZ` are specified |
 | `Wavelength` | float | X-ray wavelength (Å) |
 | `SpaceGroup` | int | Space group number (e.g., 225 for FCC) |
 | `LatticeParameter` | 6 floats | a b c α β γ (Å and degrees) |
@@ -386,7 +389,7 @@ The final text mic file has one line per reconstructed grid point. Lines startin
 
 ### 10.1. High-Performance Data Structures (`MMapImageInfo`)
 *   **Bitmasking:** To enable ultra-fast collision detection during fitting, the experimental diffraction images are pre-processed into a monolithic bitmask (`ObsSpotsInfo.bin`).
-*   **Index Calculation:** A 4D coordinate (Layer, Rotation, Y, Z) is mapped to a linear index in the bitmask. If a pixel contains a diffraction peak, the corresponding bit is set to 1.
+*   **Index Calculation:** A 4D coordinate (Layer, Rotation, Y, Z) is mapped to a linear index in the bitmask using `NrPixelsY` and `NrPixelsZ`. If a pixel contains a diffraction peak, the corresponding bit is set to 1.
 *   **Memory Mapping:** The binary files are memory-mapped (`mmap`) into the process address space. This allows the OS to efficiently manage memory paging and enables multiple processes (or threads) to access the massive dataset (often 10s of GBs) with near-RAM speeds, especially when placed in `/dev/shm` (RAM disk).
 
 ### 10.2. Orientation Fitting Algorithm (`FitOrientationOMP`)

@@ -128,7 +128,9 @@ Below is a complete list of keywords that can be used in the parameter file.
 *   `OmegaStep <value>`: The omega step size per frame (in degrees).
 
 **Detector Parameters:**
-*   `NrPixels <value>`: The number of pixels along one edge of the square detector (e.g., `2048`).
+*   `NrPixelsY <value>`: Horizontal detector dimension in pixels (e.g., `2048`).
+*   `NrPixelsZ <value>`: Vertical detector dimension in pixels (e.g., `2048`).
+*   `NrPixels <value>`: *(deprecated)* Square detector shorthand — sets both `NrPixelsY` and `NrPixelsZ` to the same value.
 *   `px <value>`: The physical size of a single pixel (in microns).
 *   `BC <y_center> <z_center>`: The pixel coordinates of the beam center on the detector.
 
@@ -169,7 +171,8 @@ OmegaEnd          180.0
 OmegaStep         0.5
 
 # --- Detector ---
-NrPixels          2048
+NrPixelsY         2048
+NrPixelsZ         2048
 px                200.0      # 200 micron pixels
 BC                1024.5 1023.0
 
@@ -252,7 +255,7 @@ store.close()
 
 #### 1.4.3. Parallelization
 *   **OpenMP:** The program is parallelized at two levels:
-    1.  **Distortion Map Generation:** The pixel-level distortion/tilt correction map (`NrPixels × NrPixels`) is computed in parallel using `collapse(2)` to distribute the double loop across threads. All per-pixel variables are stack-local, so there are no data races.
+    1.  **Distortion Map Generation:** The pixel-level distortion/tilt correction map (`NrPixelsZ × NrPixelsY`) is computed in parallel using `collapse(2)` to distribute the double loop across threads. All per-pixel variables are stack-local, so there are no data races.
     2.  **Main Simulation Loop:** The core simulation loop is parallelized over the input grains/voxels. Each thread calculates the diffraction spots for a subset of grains, applies geometric corrections, and atomically adds intensity to the shared global image array.
 *   **Per-Thread Spot Buffering:** When `WriteSpots 1` is enabled, each thread buffers its spot data in a private, dynamically-growing array instead of writing to the output file inside a critical section. After the parallel region completes, all buffers are flushed sequentially. This eliminates lock contention that would otherwise serialize all threads.
 *   **Timing:** Wall-clock time is measured using `omp_get_wtime()` to accurately report parallel speedup. Separate timers report the distortion map generation time and the simulation time independently.
@@ -316,6 +319,9 @@ The NF parameter file shares many keywords with the FF parameter file, plus some
 *   `RingsToUse <ring_nr>`: Ring numbers to include. Can appear multiple times.
 
 **Detector:**
+*   `NrPixelsY <value>`: Horizontal detector dimension in pixels.
+*   `NrPixelsZ <value>`: Vertical detector dimension in pixels.
+*   `NrPixels <value>`: *(deprecated)* Square detector shorthand — sets both `NrPixelsY` and `NrPixelsZ`.
 *   `px <value>`: Pixel size (microns).
 *   `tx <value>`, `ty <value>`, `tz <value>`: Detector tilt angles (degrees).
 *   `Wedge <value>`: Wedge angle correction (degrees). Default: 0.
@@ -352,11 +358,11 @@ The `.mic` file describes a 2D grain microstructure. It contains a **4-line head
 
 | File | Format | Description |
 |------|--------|-------------|
-| `<prefix>` | Binary (uint16) | Raw simulation array: `[nLayers × nrFiles × 2048 × 2048]`. Each value = spot hit count. Preceded by an 8192-byte header. |
+| `<prefix>` | Binary (uint16) | Raw simulation array: `[nLayers × nrFiles × NrPixelsZ × NrPixelsY]`. Each value = spot hit count. Preceded by an 8192-byte header. |
 | `<prefix>.bin` | Binary (uint16) | Sparse format: 5 values per illuminated pixel `[row, col, frame, layer, count]`. |
 | `SpotsInfo.bin` | Binary (int) | Bit array indicating which pixels were illuminated. |
 | `SimulatedSpots.csv` | CSV | Per-spot log: `VoxRowNr, DistanceNr, FrameNr, HorPx, VerPx, OmegaRaw, YRaw, ZRaw`. |
-| `<prefix>.zip` | Zarr/ZIP | **(Optional, `WriteImage 1`)** 4D Zarr array `[nLayers, nrFiles, 2048, 2048]`, dtype `uint16`, blosc/zstd compressed. |
+| `<prefix>.zip` | Zarr/ZIP | **(Optional, `WriteImage 1`)** 4D Zarr array `[nLayers, nrFiles, NrPixelsZ, NrPixelsY]`, dtype `uint16`, blosc/zstd compressed. |
 
 ### 2.5. Reading the Zarr/ZIP Output in Python
 
@@ -370,7 +376,7 @@ store = zarr.ZipStore('NF_simulation_output.zip', mode='r')
 root = zarr.group(store=store)
 data = root['exchange']['data']
 
-print("Data shape:", data.shape)  # (nLayers, nrFiles, 2048, 2048)
+print("Data shape:", data.shape)  # (nLayers, nrFiles, NrPixelsZ, NrPixelsY)
 print("Data type:", data.dtype)   # uint16
 
 # Display frame 0 of layer 0
@@ -417,6 +423,8 @@ RingsToUse        3
 
 # --- Detector ---
 px                1.48
+NrPixelsY         2048
+NrPixelsZ         2048
 tx                0.0
 ty                0.0
 tz                0.0
