@@ -1053,7 +1053,7 @@ int main(int argc, char **argv) {
 
     if (dsize <= 0) {
       printf("Error: Failed to decompress dark frame data! dsize: %d\n", dsize);
-      memset(DarkInTU, 0, (size_t)dsize);
+      memset(DarkInTU, 0, (size_t)expected_dsize);
     } else {
       memcpy(DarkInTU, data, (size_t)dsize);
     }
