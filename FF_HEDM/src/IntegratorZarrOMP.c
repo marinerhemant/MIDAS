@@ -1041,7 +1041,11 @@ int main(int argc, char **argv) {
       free(arr);
       break;
     }
-    zip_fread(fd, arr, finfo->size);
+    int numRead = zip_fread(fd, arr, finfo->size);
+    // print arr size
+    printf("Dark frame compressed size: %ld\n", finfo->size);
+    printf("Number of bytes read: %d\n", numRead);
+    // print
     dsize = expected_dsize; // Reset buffer capacity
     dsize = blosc1_decompress(arr, data, dsize);
     free(arr);
