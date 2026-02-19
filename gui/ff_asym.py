@@ -1351,7 +1351,7 @@ def replot():
 
 # Main function
 root = Tk.Tk()
-root.wm_title("FF display v0.2 Dt. 2024/02/10 hsharma@anl.gov")
+root.wm_title("FF display v1.0 Dt. 2026/02/19 hsharma@anl.gov")
 figur = Figure(figsize=(10,8),dpi=100)
 canvas = FigureCanvasTkAgg(figur,master=root)
 a = None # Removed 'a' entirely

@@ -1214,7 +1214,7 @@ logscaler = 0
 
 # Main funcion
 root = Tk.Tk()
-root.wm_title("NF display v0.2 Dt. 2024/02/10 hsharma@anl.gov")
+root.wm_title("NF display v1.0 Dt. 2026/02/19 hsharma@anl.gov")
 default_font = ("Helvetica", 14)
 root.option_add("*Font", default_font)
 figur = Figure(figsize=(17,8),dpi=100)

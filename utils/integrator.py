@@ -766,6 +766,8 @@ class MidasIntegrator:
                 i += 1
                 
         return args, overrides
+        
+    def _create_processing_parameters(self) -> ProcessingParameters:        
         """Create processing parameters from command line arguments
         
         Returns:
@@ -809,6 +811,22 @@ class MidasIntegrator:
             nCPUsLocal=self.args.nCPUsLocal,
         )
     
+    def _on_progress_update(self, progress_info: ProgressInfo) -> None:
+        """Default progress callback
+        
+        Args:
+            progress_info: Progress information
+        """
+        # In the base implementation, just log the progress
+        status_str = progress_info.status.name
+        if progress_info.status == ProgressStatus.COMPLETED and progress_info.output_file:
+            logger.info(
+                f"File {progress_info.file_number} [{status_str}]: "
+                f"{progress_info.message} -> {progress_info.output_file}"
+            )
+        else:
+            logger.info(f"File {progress_info.file_number} [{status_str}]: {progress_info.message}")
+
     def _find_start_file_number(self) -> int:
         """Find the start file number from dataFN if not provided
         
