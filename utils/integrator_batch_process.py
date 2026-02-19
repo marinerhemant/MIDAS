@@ -207,11 +207,10 @@ def check_and_create_mapping_files(param_file, midas_env, output_dir):
     """
     map_file = output_dir / "Map.bin"
     nmap_file = output_dir / "nMap.bin"
-    rt_map_file = output_dir / "RTthEtaAreaMap.bin"
     
     # Check if mapping files already exist
-    if map_file.exists() and nmap_file.exists() and rt_map_file.exists():
-        print(f"Mapping files (Map.bin, nMap.bin, RTthEtaAreaMap.bin) found in {output_dir}.")
+    if map_file.exists() and nmap_file.exists():
+        print(f"Mapping files (Map.bin, nMap.bin) found in {output_dir}.")
         return True
     
     # Files don't exist, need to run the mapper
@@ -263,7 +262,7 @@ def check_and_create_mapping_files(param_file, midas_env, output_dir):
             print(f"DetectorMapper completed in {time.time() - start_time:.1f} seconds")
         
         # Check if files were created
-        if map_file.exists() and nmap_file.exists() and rt_map_file.exists():
+        if map_file.exists() and nmap_file.exists():
             print(f"Successfully created mapping files in {output_dir}.")
             return True
         else:
