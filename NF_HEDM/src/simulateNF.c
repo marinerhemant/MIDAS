@@ -146,6 +146,7 @@ int main(int argc, char *argv[]) {
   int MinMiso = 0;
   int skipBin = 0;
   int WriteImage = 1;
+  int NrPixelsY = 2048, NrPixelsZ = 2048;
   while (fgets(aline, 1000, fileParam) != NULL) {
     str = "Lsd ";
     LowNr = strncmp(aline, str, strlen(str));
@@ -282,6 +283,25 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %d", dummy, &WriteImage);
       continue;
     }
+    str = "NrPixels ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsY);
+      NrPixelsZ = NrPixelsY;
+      continue;
+    }
+    str = "NrPixelsY ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsY);
+      continue;
+    }
+    str = "NrPixelsZ ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsZ);
+      continue;
+    }
   }
   int i, j, k, l, m, nrFiles, nrPixels;
   for (i = 0; i < NoOfOmegaRanges; i++) {
@@ -294,7 +314,7 @@ int main(int argc, char *argv[]) {
   uint16_t *ObsSpotsInfo;
   uint16_t *binArr;
   nrFiles = EndNr - StartNr + 1;
-  nrPixels = 2048 * 2048;
+  nrPixels = NrPixelsY * NrPixelsZ;
   long long int SizeObsSpots;
   SizeObsSpots = (nLayers);
   SizeObsSpots *= nrPixels;
@@ -461,7 +481,7 @@ int main(int argc, char *argv[]) {
                       px, ybc, zbc, gs, hkls, n_hkls, Thetas, OmegaRanges,
                       NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid, ObsSpotsInfo,
                       OMIn_local, TheorSpots_local, voxNr, spF, InPixels_local,
-                      Gs);
+                      Gs, NrPixelsY, NrPixelsZ);
     FreeMemMatrixInt(InPixels_local, NrPixelsGrid);
     free(TheorSpots_local);
   }
@@ -492,8 +512,8 @@ int main(int argc, char *argv[]) {
   idxpos = 0;
   for (l = 0; l < nLayers; l++) {
     for (k = 0; k < nrFiles; k++) {
-      for (j = 0; j < 2048; j++) {
-        for (i = 0; i < 2048; i++) {
+      for (j = 0; j < NrPixelsZ; j++) {
+        for (i = 0; i < NrPixelsY; i++) {
           if (ObsSpotsInfo[idxpos] != 0) {
             for (m = 0; m < ObsSpotsInfo[idxpos]; m++) {
               binArr[nrF * 5 + 0] = j;
@@ -560,11 +580,12 @@ int main(int argc, char *argv[]) {
     if (rcv0 != 0)
       return 1;
 
-    // .zarray: shape [nLayers, nrFiles, 2048, 2048], chunks [1, 1, 2048, 2048]
+    // .zarray: shape [nLayers, nrFiles, NrPixelsZ, NrPixelsY], chunks [1, 1,
+    // NrPixelsZ, NrPixelsY]
     char outstr2[8192];
     sprintf(outstr2,
-            "{\n    \"chunks\": [\n        1,\n        1,\n        2048,\n"
-            "        2048\n    ],\n"
+            "{\n    \"chunks\": [\n        1,\n        1,\n        %d,\n"
+            "        %d\n    ],\n"
             "    \"compressor\": {\n        \"blocksize\": 0,\n"
             "        \"clevel\": 3,\n"
             "        \"cname\": \"zstd\",\n        \"id\": \"blosc\",\n"
@@ -572,9 +593,9 @@ int main(int argc, char *argv[]) {
             "    \"dtype\": \"<u2\",\n    \"fill_value\": 0,\n"
             "    \"filters\": null,\n"
             "    \"order\": \"C\",\n    \"shape\": [\n        %d,\n"
-            "        %d,\n        2048,\n        2048\n    ],\n"
+            "        %d,\n        %d,\n        %d\n    ],\n"
             "    \"zarr_format\": 2\n}",
-            nLayers, nrFiles);
+            NrPixelsZ, NrPixelsY, nLayers, nrFiles, NrPixelsZ, NrPixelsY);
     char zarrfn2[8192];
     sprintf(zarrfn2, "exchange/data/.zarray");
     rcv0 = writeStrZip(outstr2, zarrfn2, zipper);
@@ -585,8 +606,8 @@ int main(int argc, char *argv[]) {
     char outstr3[8192];
     sprintf(outstr3,
             "{\n    \"_ARRAY_DIMENSIONS\": [\n        %d,\n        %d,\n"
-            "        2048,\n        2048\n    ]\n}",
-            nLayers, nrFiles);
+            "        %d,\n        %d\n    ]\n}",
+            nLayers, nrFiles, NrPixelsZ, NrPixelsY);
     char zarrfn3[8192];
     sprintf(zarrfn3, "exchange/data/.zattrs");
     rcv0 = writeStrZip(outstr3, zarrfn3, zipper);
@@ -594,7 +615,7 @@ int main(int argc, char *argv[]) {
       return 1;
 
     // Write compressed chunks: one chunk per (layer, frame)
-    size_t frameSize = 2048 * 2048;
+    size_t frameSize = (size_t)NrPixelsY * NrPixelsZ;
     size_t frameSizeBytes = frameSize * sizeof(uint16_t);
     // Temporary compression buffer (reused each iteration, then
     // data is copied to a per-chunk buffer for libzip ownership)

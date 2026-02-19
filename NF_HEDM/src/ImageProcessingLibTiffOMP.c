@@ -177,7 +177,8 @@ void FreeMemMatrixInt(int **mat, int nrows) {
 }
 
 void FindPeakPositions(int LoGMaskRadius, double sigma, pixelvalue *Image2,
-                       int NrPixels, int *Image4) {
+                       int NrPixelsY, int NrPixelsZ, int *Image4) {
+  int nTotalPixels = NrPixelsY * NrPixelsZ;
   int i, j, k;
   int NrElsLoGMask = ((2 * LoGMaskRadius) + 1) * ((2 * LoGMaskRadius) + 1);
   long LoGFilt[NrElsLoGMask];
@@ -205,21 +206,21 @@ void FindPeakPositions(int LoGMaskRadius, double sigma, pixelvalue *Image2,
          "LoG mask radius = %d.\n",
          sigma, LoGMaskRadius);
   long *Image3; // LoG filtered image.
-  Image3 = malloc(NrPixels * NrPixels * sizeof(*Image3));
+  Image3 = malloc(nTotalPixels * sizeof(*Image3));
   long arrayLoG[NrElsLoGMask];
   int counter;
   int LoGFiltSize = LoGMaskRadius;
-  for (i = 0; i < (NrPixels * NrPixels); i++) {
-    if (((i + 1) % NrPixels <= LoGFiltSize) ||
-        ((NrPixels - ((i + 1) % NrPixels)) < LoGFiltSize) ||
-        (i < (NrPixels * LoGFiltSize)) ||
-        (i > (NrPixels * NrPixels - (NrPixels * LoGFiltSize)))) {
+  for (i = 0; i < nTotalPixels; i++) {
+    if (((i + 1) % NrPixelsY <= LoGFiltSize) ||
+        ((NrPixelsY - ((i + 1) % NrPixelsY)) < LoGFiltSize) ||
+        (i < (NrPixelsY * LoGFiltSize)) ||
+        (i > (nTotalPixels - (NrPixelsY * LoGFiltSize)))) {
       Image3[i] = 0;
     } else {
       counter = 0;
       for (j = -LoGFiltSize; j <= LoGFiltSize; j++) {
         for (k = -LoGFiltSize; k <= LoGFiltSize; k++) {
-          arrayLoG[counter] = (long)Image2[i + (NrPixels * j) + k];
+          arrayLoG[counter] = (long)Image2[i + (NrPixelsY * j) + k];
           counter++;
         }
       }
@@ -231,17 +232,17 @@ void FindPeakPositions(int LoGMaskRadius, double sigma, pixelvalue *Image2,
   }
   printf("Detecting edges.\n");
   int *ImageEdges; // Edges in LoG filtered image, but just binarized!
-  ImageEdges = malloc((NrPixels * NrPixels * sizeof(*ImageEdges)) / 32);
-  memset(ImageEdges, 0, (NrPixels * NrPixels * sizeof(*ImageEdges)) / 32);
+  ImageEdges = malloc((nTotalPixels * sizeof(*ImageEdges)) / 32);
+  memset(ImageEdges, 0, (nTotalPixels * sizeof(*ImageEdges)) / 32);
   int offsets[8] = {-1,
                     1,
-                    -NrPixels,
-                    NrPixels,
-                    -NrPixels - 1,
-                    -NrPixels + 1,
-                    NrPixels - 1,
-                    NrPixels + 1};
-  for (i = NrPixels + 1; i < ((NrPixels * NrPixels) - (NrPixels + 1)); i++) {
+                    -NrPixelsY,
+                    NrPixelsY,
+                    -NrPixelsY - 1,
+                    -NrPixelsY + 1,
+                    NrPixelsY - 1,
+                    NrPixelsY + 1};
+  for (i = NrPixelsY + 1; i < (nTotalPixels - (NrPixelsY + 1)); i++) {
     if (Image2[i] != 0) {
       long val = Image3[i];
       for (int k = 0; k < 8; k++) {
@@ -258,22 +259,22 @@ void FindPeakPositions(int LoGMaskRadius, double sigma, pixelvalue *Image2,
   int AlreadyFound = 0, Pos;
   int LargerVal, SmallerVal;
   int *ImagePeakIDs; // Edges from LoG filtered images, but not unique IDs!
-  ImagePeakIDs = malloc(NrPixels * NrPixels * sizeof(*ImagePeakIDs));
-  for (i = 0; i < NrPixels * NrPixels; i++) {
+  ImagePeakIDs = malloc(nTotalPixels * sizeof(*ImagePeakIDs));
+  for (i = 0; i < nTotalPixels; i++) {
     if (TestBit(ImageEdges, i)) {
-      Pos = i - NrPixels - 1;
+      Pos = i - NrPixelsY - 1;
       if (TestBit(ImageEdges, Pos)) {
         ImagePeakIDs[i] = ImagePeakIDs[Pos];
         AlreadyFound = 1;
       }
-      Pos = i - NrPixels;
+      Pos = i - NrPixelsY;
       if (TestBit(ImageEdges, Pos)) {
         if (AlreadyFound == 0) {
           ImagePeakIDs[i] = ImagePeakIDs[Pos];
           AlreadyFound = 1;
         }
       }
-      Pos = i - NrPixels + 1;
+      Pos = i - NrPixelsY + 1;
       if (TestBit(ImageEdges, Pos)) {
         if (AlreadyFound == 0) {
           ImagePeakIDs[i] = ImagePeakIDs[Pos];
@@ -311,9 +312,9 @@ void FindPeakPositions(int LoGMaskRadius, double sigma, pixelvalue *Image2,
   }
   int Smaller, Larger, ID1, ID2, RowNr, RowNr2, Number1, Number2, Min, TotNr;
   int LastRowNr = 1;
-  for (i = 0; i < NrPixels * NrPixels; i++) {
+  for (i = 0; i < nTotalPixels; i++) {
     if (TestBit(ImageEdges, i)) {
-      Pos = i - NrPixels;
+      Pos = i - NrPixelsY;
       if (TestBit(ImageEdges, Pos)) {
         if (ImagePeakIDs[i] != ImagePeakIDs[Pos]) {
           ID1 = ImagePeakIDs[i];
@@ -377,7 +378,7 @@ void FindPeakPositions(int LoGMaskRadius, double sigma, pixelvalue *Image2,
           }
         }
       }
-      Pos = i - NrPixels + 1;
+      Pos = i - NrPixelsY + 1;
       if (TestBit(ImageEdges, Pos)) {
         if (ImagePeakIDs[i] != ImagePeakIDs[Pos]) {
           ID1 = ImagePeakIDs[i];
@@ -508,9 +509,8 @@ void FindPeakPositions(int LoGMaskRadius, double sigma, pixelvalue *Image2,
     }
   }
   int *ImagePeakIDsCorrected; // Corrected unique EdgeIDs!
-  ImagePeakIDsCorrected =
-      malloc(NrPixels * NrPixels * sizeof(*ImagePeakIDsCorrected));
-  for (i = 0; i < NrPixels * NrPixels; i++) {
+  ImagePeakIDsCorrected = malloc(nTotalPixels * sizeof(*ImagePeakIDsCorrected));
+  for (i = 0; i < nTotalPixels; i++) {
     if (TestBit(ImageEdges, i)) {
       if (PeakConnectedIDsMap[ImagePeakIDs[i]] != 0) {
         ImagePeakIDsCorrected[i] =
@@ -520,10 +520,10 @@ void FindPeakPositions(int LoGMaskRadius, double sigma, pixelvalue *Image2,
       }
     }
   }
-  memset(Image4, 0, NrPixels * NrPixels * sizeof(int));
+  memset(Image4, 0, nTotalPixels * sizeof(int));
   int *FilledEdges; // Edges in LoG filtered image, but just binarized!
-  FilledEdges = malloc((NrPixels * NrPixels * sizeof(*FilledEdges)) / 32);
-  memset(FilledEdges, 0, NrPixels * NrPixels * sizeof(int) / 32);
+  FilledEdges = malloc((nTotalPixels * sizeof(*FilledEdges)) / 32);
+  memset(FilledEdges, 0, nTotalPixels * sizeof(int) / 32);
   printf("Filling peaks.\n");
   int FoundInsidePx = 0;
   int RowAbove = 1;
@@ -539,14 +539,14 @@ void FindPeakPositions(int LoGMaskRadius, double sigma, pixelvalue *Image2,
   int PosTr = 0;
   int DummyCntr = 1, OrigImagePeakID, PosF2 = 0;
   int Flip2 = 0;
-  for (i = 0; i < NrPixels * NrPixels; i++) {
+  for (i = 0; i < nTotalPixels; i++) {
     if (TestBit(ImageEdges, i) &&
         !TestBit(FilledEdges,
                  i)) { // We have found a pixel belonging to a peak eadge.
       PosI = i;
       while (FoundInsidePx == 0) { // Until we have found an inside pixel.
         FoundEdgePx = 0;
-        Pos = PosI + NrPixels - 1;
+        Pos = PosI + NrPixelsY - 1;
         if (TestBit(ImageEdges, Pos) &&
             !TestBit(FilledEdges, i)) { // If the pixel above on the left is an
                                         // edge, check for an inside pixel.
@@ -559,7 +559,7 @@ void FindPeakPositions(int LoGMaskRadius, double sigma, pixelvalue *Image2,
             InsidePxPos = PosNext;
           }
         }
-        Pos = PosI + NrPixels;
+        Pos = PosI + NrPixelsY;
         if (TestBit(ImageEdges, Pos) &&
             !TestBit(FilledEdges, i)) { // If the pixel above is an edge, check
                                         // for an inside pixel.
@@ -572,7 +572,7 @@ void FindPeakPositions(int LoGMaskRadius, double sigma, pixelvalue *Image2,
             InsidePxPos = PosNext;
           }
         }
-        Pos = PosI + NrPixels + 1;
+        Pos = PosI + NrPixelsY + 1;
         if (TestBit(ImageEdges, Pos) &&
             !TestBit(FilledEdges, i)) { // If the pixel above on the right is an
                                         // edge, check for an inside pixel.
@@ -655,57 +655,58 @@ void FindPeakPositions(int LoGMaskRadius, double sigma, pixelvalue *Image2,
                                   // that it has been processed.
             SetBit(FilledEdges, PosFill);
           }
-          Pos = PosFill - NrPixels - 1; // check if the pixel below to the left
-                                        // is an edge, if it is, fill it.
+          Pos = PosFill - NrPixelsY - 1; // check if the pixel below to the left
+                                         // is an edge, if it is, fill it.
           if (TestBit(ImageEdges, Pos)) {
             SetBit(FilledEdges, Pos);
             Image4[Pos] = PeakNumber;
           }
-          Pos = PosFill - NrPixels; // check if the pixel below is an edge, if
-                                    // it is, fill it.
+          Pos = PosFill - NrPixelsY; // check if the pixel below is an edge, if
+                                     // it is, fill it.
           if (TestBit(ImageEdges, Pos)) {
             SetBit(FilledEdges, Pos);
             Image4[Pos] = PeakNumber;
           }
-          Pos = PosFill - NrPixels + 1; // check if the pixel below to the right
-                                        // is an edge, if it is, fill it.
+          Pos = PosFill - NrPixelsY + 1; // check if the pixel below to the
+                                         // right is an edge, if it is, fill it.
           if (TestBit(ImageEdges, Pos)) {
             SetBit(FilledEdges, Pos);
             Image4[Pos] = PeakNumber;
           }
-          Pos = PosFill + NrPixels - 1; // check if the pixel above to the left
-                                        // is an edge, if it is, fill it.
+          Pos = PosFill + NrPixelsY - 1; // check if the pixel above to the left
+                                         // is an edge, if it is, fill it.
           if (TestBit(ImageEdges, Pos)) {
             SetBit(FilledEdges, Pos);
             Image4[Pos] = PeakNumber;
           }
-          Pos = PosFill + NrPixels; // check if the pixel above is an edge, if
-                                    // it is, fill it.
+          Pos = PosFill + NrPixelsY; // check if the pixel above is an edge, if
+                                     // it is, fill it.
           if (TestBit(ImageEdges, Pos)) {
             SetBit(FilledEdges, Pos);
             Image4[Pos] = PeakNumber;
           }
-          Pos = PosFill + NrPixels + 1; // check if the pixel above to the right
-                                        // is an edge, if it is, fill it.
+          Pos = PosFill + NrPixelsY + 1; // check if the pixel above to the
+                                         // right is an edge, if it is, fill it.
           if (TestBit(ImageEdges, Pos)) {
             SetBit(FilledEdges, Pos);
             Image4[Pos] = PeakNumber;
           }
           PosF2 = PosFill + 1;
-          if ((PosFill + 1) % 2048 == 0 || (PosFill + 1) % 2048 == 1 ||
+          if ((PosFill + 1) % NrPixelsY == 0 ||
+              (PosFill + 1) % NrPixelsY == 1 ||
               (TestBit(ImageEdges, PosF2) &&
                ImagePeakIDsCorrected[PosFill + 1] !=
                    OrigImagePeakID)) { // If we are filling the edges of the
                                        // image, should not continue!
-            if ((PosFill + 1) % NrPixels == 0 ||
-                (PosFill + 1) % NrPixels == 1) {
+            if ((PosFill + 1) % NrPixelsY == 0 ||
+                (PosFill + 1) % NrPixelsY == 1) {
               printf("Peak loop not closed. Reached image edge at index %d "
                      "(row %d, col %d).\n",
-                     PosFill, PosFill / NrPixels, PosFill % NrPixels);
+                     PosFill, PosFill / NrPixelsY, PosFill % NrPixelsY);
             }
             while (!TestBit(ImageEdges, PosFill) &&
-                   (Image4[PosFill - NrPixels] == 0) &&
-                   (Image4[PosFill + NrPixels] == 0)) {
+                   (Image4[PosFill - NrPixelsY] == 0) &&
+                   (Image4[PosFill + NrPixelsY] == 0)) {
               Image4[PosFill] = 0;
               PosFill--;
             }
@@ -716,10 +717,10 @@ void FindPeakPositions(int LoGMaskRadius, double sigma, pixelvalue *Image2,
                             // pixel and we have found an edge on the right.
             RightEdgeMet = 1;
           }
-          if (TestBit(ImageEdges, (PosFill + NrPixels - 1)) &&
-              !TestBit(ImageEdges, (PosFill + NrPixels)) &&
-              Image2[PosFill + NrPixels - 1] < Image2[PosFill + NrPixels]) {
-            PxPositionsToFlood[NrPositionsToFlood] = PosFill + NrPixels;
+          if (TestBit(ImageEdges, (PosFill + NrPixelsY - 1)) &&
+              !TestBit(ImageEdges, (PosFill + NrPixelsY)) &&
+              Image2[PosFill + NrPixelsY - 1] < Image2[PosFill + NrPixelsY]) {
+            PxPositionsToFlood[NrPositionsToFlood] = PosFill + NrPixelsY;
             NrPositionsToFlood++;
           }
           PosFill = PosFill + 1;
@@ -753,12 +754,12 @@ const int dx[] = {+1, 0, -1, 0, +1, -1, +1, -1};
 const int dy[] = {0, +1, 0, -1, +1, +1, -1, -1};
 
 static inline void DepthFirstSearch(int x, int y, int current_label,
-                                    int NrPixels, int **BoolImage,
-                                    int **ConnectedComponents, int **Positions,
-                                    int *PositionTrackers) {
-  if (x < 0 || x == NrPixels)
+                                    int NrPixelsY, int NrPixelsZ,
+                                    int **BoolImage, int **ConnectedComponents,
+                                    int **Positions, int *PositionTrackers) {
+  if (x < 0 || x == NrPixelsZ)
     return;
-  if (y < 0 || y == NrPixels)
+  if (y < 0 || y == NrPixelsY)
     return;
   if ((ConnectedComponents[x][y] != 0) || (BoolImage[x][y] == 0))
     return;
@@ -766,32 +767,33 @@ static inline void DepthFirstSearch(int x, int y, int current_label,
   ConnectedComponents[x][y] = current_label;
   if (Positions != NULL && PositionTrackers != NULL) {
     Positions[current_label][PositionTrackers[current_label]] =
-        (x * NrPixels) + y;
+        (x * NrPixelsY) + y;
     PositionTrackers[current_label] += 1;
   }
   int direction;
   for (direction = 0; direction < 8; ++direction) {
     DepthFirstSearch(x + dx[direction], y + dy[direction], current_label,
-                     NrPixels, BoolImage, ConnectedComponents, Positions,
-                     PositionTrackers);
+                     NrPixelsY, NrPixelsZ, BoolImage, ConnectedComponents,
+                     Positions, PositionTrackers);
   }
 }
 
-static inline int FindConnectedComponents(int **BoolImage, int NrPixels,
+static inline int FindConnectedComponents(int **BoolImage, int NrPixelsY,
+                                          int NrPixelsZ,
                                           int **ConnectedComponents,
                                           int **Positions,
                                           int *PositionTrackers) {
   int i, j;
-  for (i = 0; i < NrPixels; i++) {
-    for (j = 0; j < NrPixels; j++) {
+  for (i = 0; i < NrPixelsZ; i++) {
+    for (j = 0; j < NrPixelsY; j++) {
       ConnectedComponents[i][j] = 0;
     }
   }
   int component = 0;
-  for (i = 0; i < NrPixels; ++i) {
-    for (j = 0; j < NrPixels; ++j) {
+  for (i = 0; i < NrPixelsZ; ++i) {
+    for (j = 0; j < NrPixelsY; ++j) {
       if ((ConnectedComponents[i][j] == 0) && (BoolImage[i][j] == 1)) {
-        DepthFirstSearch(i, j, ++component, NrPixels, BoolImage,
+        DepthFirstSearch(i, j, ++component, NrPixelsY, NrPixelsZ, BoolImage,
                          ConnectedComponents, Positions, PositionTrackers);
       }
     }
@@ -820,8 +822,9 @@ int main(int argc, char *argv[]) {
       ReducedFileName[1024];
   fileParam = fopen(ParamFN, "r");
   char *str, dummy[1000];
-  int LowNr, StartNr, NrFilesPerLayer, NrPixels, BlanketSubtraction,
-      MeanFiltRadius, WriteFinImage = 0;
+  int LowNr, StartNr, NrFilesPerLayer, NrPixels = 2048, BlanketSubtraction,
+                                       MeanFiltRadius, WriteFinImage = 0;
+  int NrPixelsY = 0, NrPixelsZ = 0;
   int LoGMaskRadius, doDeblur = 0;
   double sigma;
   int DoLoGFilter = 1, WFImages = 0, nDistances, stNr = 0;
@@ -934,7 +937,29 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %d", dummy, &doDeblur);
       continue;
     }
+    str = "NrPixelsY ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsY);
+      continue;
+    }
+    str = "NrPixelsZ ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsZ);
+      continue;
+    }
   }
+  // Apply backward-compatible defaults
+  if (NrPixelsY == 0 && NrPixelsZ == 0) {
+    NrPixelsY = NrPixels;
+    NrPixelsZ = NrPixels;
+  } else if (NrPixelsY != 0 && NrPixelsZ == 0) {
+    NrPixelsZ = NrPixelsY;
+  } else if (NrPixelsY == 0 && NrPixelsZ != 0) {
+    NrPixelsY = NrPixelsZ;
+  }
+  int nTotalPixels = NrPixelsY * NrPixelsZ;
   if (doDeblur != 0)
     WriteFinImage = 1;
   sprintf(fn, "%s/%s", direct, fn2);
@@ -954,6 +979,8 @@ int main(int argc, char *argv[]) {
   printf("  Full input path:      %s\n", fn);
   printf("\n--- Image Parameters ---\n");
   printf("  NrPixels:             %d\n", NrPixels);
+  printf("  NrPixelsY (cols):     %d\n", NrPixelsY);
+  printf("  NrPixelsZ (rows):     %d\n", NrPixelsZ);
   printf("  nDistances:           %d\n", nDistances);
   printf("  NrFilesPerDistance:   %d\n", NrFilesPerLayer);
   printf("  WFImages:             %d\n", WFImages);
@@ -984,8 +1011,8 @@ int main(int argc, char *argv[]) {
          startNr, endNr);
   int fnr;
   pixelvalue *MedFltImg;
-  int SizeFile = sizeof(pixelvalue) * NrPixels * NrPixels;
-  MedFltImg = malloc(NrPixels * NrPixels * nDistances * sizeof(*MedFltImg));
+  int SizeFile = sizeof(pixelvalue) * nTotalPixels;
+  MedFltImg = malloc(nTotalPixels * nDistances * sizeof(*MedFltImg));
   int dNr;
   for (dNr = 0; dNr < nDistances; dNr++) {
     char MedianFileName[1024];
@@ -996,13 +1023,13 @@ int main(int argc, char *argv[]) {
       printf("Median file not found. Exiting\n");
       return 1;
     }
-    fread(&MedFltImg[NrPixels * NrPixels * dNr], SizeFile, 1, MFI);
+    fread(&MedFltImg[nTotalPixels * dNr], SizeFile, 1, MFI);
     fclose(MFI);
   }
   pixelvalue *Images, *Images2, *Images3, *FinalImages;
   size_t bigArrSz = numProcs;
-  bigArrSz *= NrPixels;
-  bigArrSz *= NrPixels;
+  bigArrSz *= NrPixelsY;
+  bigArrSz *= NrPixelsZ;
   Images = malloc(bigArrSz * sizeof(*Images));   // Original image.
   Images2 = malloc(bigArrSz * sizeof(*Images2)); // Median filtered image.
   Images3 = malloc(bigArrSz * sizeof(*Images3));
@@ -1026,8 +1053,8 @@ int main(int argc, char *argv[]) {
     pixelvalue *Image, *Image2;
     char FileName[1024];
     size_t offsetPos = procNum;
-    offsetPos *= NrPixels;
-    offsetPos *= NrPixels;
+    offsetPos *= NrPixelsY;
+    offsetPos *= NrPixelsZ;
     Image = &Images[offsetPos];
     Image2 = &Images2[offsetPos];
 
@@ -1053,17 +1080,18 @@ int main(int argc, char *argv[]) {
       buf = _TIFFmalloc(TIFFScanlineSize(tif));
       uint16 *datar;
       int rnr;
-      for (rnr = 0; rnr < NrPixels; rnr++) {
+      for (rnr = 0; rnr < NrPixelsZ; rnr++) {
         TIFFReadScanline(tif, buf, rnr, 1);
         datar = (uint16 *)buf;
-        for (i = 0; i < NrPixels; i++) {
+        for (i = 0; i < NrPixelsY; i++) {
           startVal = layerNr - 1;
-          startVal *= NrPixels;
-          startVal *= NrPixels;
-          startVal += rnr * NrPixels + i;
+          startVal *= NrPixelsY;
+          startVal *= NrPixelsZ;
+          startVal += rnr * NrPixelsY + i;
           interInt = (int)datar[i] - (int)MedFltImg[startVal] -
                      (int)BlanketSubtraction;
-          Image[rnr * NrPixels + i] = (pixelvalue)(interInt > 0 ? interInt : 0);
+          Image[rnr * NrPixelsY + i] =
+              (pixelvalue)(interInt > 0 ? interInt : 0);
         }
       }
       _TIFFfree(buf);
@@ -1072,17 +1100,17 @@ int main(int argc, char *argv[]) {
 
     if (MeanFiltRadius == 1) {
       pixelvalue array[9];
-      for (i = 0; i < (NrPixels * NrPixels); i++) {
-        if (((i + 1) % NrPixels <= MeanFiltRadius) ||
-            ((NrPixels - ((i + 1) % NrPixels)) < MeanFiltRadius) ||
-            (i < (NrPixels * MeanFiltRadius)) ||
-            (i > (NrPixels * NrPixels - (NrPixels * MeanFiltRadius)))) {
+      for (i = 0; i < nTotalPixels; i++) {
+        if (((i + 1) % NrPixelsY <= MeanFiltRadius) ||
+            ((NrPixelsY - ((i + 1) % NrPixelsY)) < MeanFiltRadius) ||
+            (i < (NrPixelsY * MeanFiltRadius)) ||
+            (i > (nTotalPixels - (NrPixelsY * MeanFiltRadius)))) {
           Image2[i] = Image[i];
         } else {
           int countr = 0;
           for (j = -MeanFiltRadius; j <= MeanFiltRadius; j++) {
             for (k = -MeanFiltRadius; k <= MeanFiltRadius; k++) {
-              array[countr] = Image[i + (NrPixels * j) + k];
+              array[countr] = Image[i + (NrPixelsY * j) + k];
               countr++;
             }
           }
@@ -1091,17 +1119,17 @@ int main(int argc, char *argv[]) {
       }
     } else if (MeanFiltRadius == 2) {
       pixelvalue array[25];
-      for (i = 0; i < (NrPixels * NrPixels); i++) {
-        if (((i + 1) % NrPixels <= MeanFiltRadius) ||
-            ((NrPixels - ((i + 1) % NrPixels)) < MeanFiltRadius) ||
-            (i < (NrPixels * MeanFiltRadius)) ||
-            (i > (NrPixels * NrPixels - (NrPixels * MeanFiltRadius)))) {
+      for (i = 0; i < nTotalPixels; i++) {
+        if (((i + 1) % NrPixelsY <= MeanFiltRadius) ||
+            ((NrPixelsY - ((i + 1) % NrPixelsY)) < MeanFiltRadius) ||
+            (i < (NrPixelsY * MeanFiltRadius)) ||
+            (i > (nTotalPixels - (NrPixelsY * MeanFiltRadius)))) {
           Image2[i] = Image[i];
         } else {
           int countr = 0;
           for (j = -MeanFiltRadius; j <= MeanFiltRadius; j++) {
             for (k = -MeanFiltRadius; k <= MeanFiltRadius; k++) {
-              array[countr] = Image[i + (NrPixels * j) + k];
+              array[countr] = Image[i + (NrPixelsY * j) + k];
               countr++;
             }
           }
@@ -1110,30 +1138,32 @@ int main(int argc, char *argv[]) {
       }
     } else {
       printf("Wrong MedFiltRadius!!! Not doing median.\n");
-      for (i = 0; i < NrPixels * NrPixels; i++) {
+      for (i = 0; i < nTotalPixels; i++) {
         Image2[i] = Image[i];
       }
     }
     pixelvalue *FinalImage;
     FinalImage = &FinalImages[offsetPos];
     int TotPixelsInt = 0;
-    memset(FinalImage, 0, NrPixels * NrPixels * sizeof(pixelvalue));
-    //~ for (i=0;i<NrPixels*NrPixels;i++) FinalImage[i] = 0;
+    memset(FinalImage, 0, nTotalPixels * sizeof(pixelvalue));
+    //~ for (i=0;i<nTotalPixels;i++) FinalImage[i] = 0;
     if (DoLoGFilter == 1) {
       pixelvalue *Image3;
       Image3 = &Images3[offsetPos];
-      for (i = 0; i < NrPixels * NrPixels; i++) {
+      for (i = 0; i < nTotalPixels; i++) {
         Image3[i] = Image2[i];
       }
       int *Image4;
-      Image4 = malloc(NrPixels * NrPixels * sizeof(*Image4));
-      FindPeakPositions(LoGMaskRadius, sigma, Image2, NrPixels, Image4);
+      Image4 = malloc(nTotalPixels * sizeof(*Image4));
+      FindPeakPositions(LoGMaskRadius, sigma, Image2, NrPixelsY, NrPixelsZ,
+                        Image4);
       int LoGMaskRadius2 = 4;
       double sigma2 = 1;
       int *Image5;
-      Image5 = malloc(NrPixels * NrPixels * sizeof(*Image5));
-      FindPeakPositions(LoGMaskRadius2, sigma2, Image3, NrPixels, Image5);
-      for (i = 0; i < NrPixels * NrPixels; i++) {
+      Image5 = malloc(nTotalPixels * sizeof(*Image5));
+      FindPeakPositions(LoGMaskRadius2, sigma2, Image3, NrPixelsY, NrPixelsZ,
+                        Image5);
+      for (i = 0; i < nTotalPixels; i++) {
         if (Image4[i] != 0) {
           FinalImage[i] = Image4[i] * 10;
           TotPixelsInt++;
@@ -1150,7 +1180,7 @@ int main(int argc, char *argv[]) {
       free(Image4);
       free(Image5);
     } else {
-      for (i = 0; i < NrPixels * NrPixels; i++) {
+      for (i = 0; i < nTotalPixels; i++) {
         FinalImage[i] = (pixelvalue)Image2[i];
         if (Image2[i] != 0)
           TotPixelsInt++;
@@ -1159,12 +1189,12 @@ int main(int argc, char *argv[]) {
              "image %d, layer %d.\n",
              TotPixelsInt, ImageNr, layerNr);
       int **BoolImage, **ConnectedComponents;
-      BoolImage = allocMatrixInt(NrPixels, NrPixels);
-      ConnectedComponents = allocMatrixInt(NrPixels, NrPixels);
+      BoolImage = allocMatrixInt(NrPixelsZ, NrPixelsY);
+      ConnectedComponents = allocMatrixInt(NrPixelsZ, NrPixelsY);
 
-      for (i = 0; i < NrPixels; i++) {
-        for (j = 0; j < NrPixels; j++) {
-          if (Image2[(i * NrPixels) + j] != 0) {
+      for (i = 0; i < NrPixelsZ; i++) {
+        for (j = 0; j < NrPixelsY; j++) {
+          if (Image2[(i * NrPixelsY) + j] != 0) {
             BoolImage[i][j] = 1;
           } else {
             BoolImage[i][j] = 0;
@@ -1172,7 +1202,7 @@ int main(int argc, char *argv[]) {
         }
       }
       int NrOfReg;
-      NrOfReg = FindConnectedComponents(BoolImage, NrPixels,
+      NrOfReg = FindConnectedComponents(BoolImage, NrPixelsY, NrPixelsZ,
                                         ConnectedComponents, NULL, NULL);
 
       printf(
@@ -1180,8 +1210,8 @@ int main(int argc, char *argv[]) {
           "layer %d.\n",
           NrOfReg, ImageNr, layerNr);
 
-      FreeMemMatrixInt(BoolImage, NrPixels);
-      FreeMemMatrixInt(ConnectedComponents, NrPixels);
+      FreeMemMatrixInt(BoolImage, NrPixelsZ);
+      FreeMemMatrixInt(ConnectedComponents, NrPixelsZ);
     }
     if (TotPixelsInt > 0) {
       TotPixelsInt--;
@@ -1190,7 +1220,7 @@ int main(int argc, char *argv[]) {
       FinalImage[2045] = 1;
     }
     //~ printf("Total number of pixels with intensity: %d\n",TotPixelsInt);
-    int SizeOutFile = sizeof(pixelvalue) * NrPixels * NrPixels;
+    int SizeOutFile = sizeof(pixelvalue) * nTotalPixels;
     char OutFN2[1024];
     if (WriteFinImage == 1) {
       FILE *fw;
@@ -1218,7 +1248,7 @@ int main(int argc, char *argv[]) {
               "%s/NF_HEDM/src/RLDeconv.py %s %d",
               homedir, midas_path, OutFN2, doDeblur);
       sprintf(cmmd2, "%s/NF_HEDM/bin/ParseDeconvOutput %s.tif %s %d",
-              midas_path, OutFN2, OutFileName, NrPixels);
+              midas_path, OutFN2, OutFileName, NrPixelsY);
       //~ printf("%s\n%s\n",cmmd,cmmd2);
       system(cmmd);
       system(cmmd2);
@@ -1231,14 +1261,14 @@ int main(int argc, char *argv[]) {
     intensity = malloc(TotPixelsInt * 2 * sizeof(*intensity));
     int PeaksFilledCounter = 0;
     int RowNr, ColNr;
-    for (i = 0; i < NrPixels * NrPixels; i++) {
+    for (i = 0; i < nTotalPixels; i++) {
       if (FinalImage[i] != 0) {
         peakID[PeaksFilledCounter] = FinalImage[i];
         intensity[PeaksFilledCounter] = Image[i];
-        RowNr = i / NrPixels;
-        ColNr = i % NrPixels;
-        ys[PeaksFilledCounter] = NrPixels - 1 - ColNr;
-        zs[PeaksFilledCounter] = NrPixels - 1 - RowNr;
+        RowNr = i / NrPixelsY;
+        ColNr = i % NrPixelsY;
+        ys[PeaksFilledCounter] = NrPixelsY - 1 - ColNr;
+        zs[PeaksFilledCounter] = NrPixelsZ - 1 - RowNr;
         PeaksFilledCounter++;
       }
     }

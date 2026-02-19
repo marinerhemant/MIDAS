@@ -130,6 +130,7 @@ int main(int argc, char *argv[]) {
   int gridfnfound = 0;
   Wedge = 0;
   int MinMiso = 0;
+  int NrPixelsY = 2048, NrPixelsZ = 2048;
   while (fgets(aline, 1000, fileParam) != NULL) {
     str = "ReducedFileName ";
     LowNr = strncmp(aline, str, strlen(str));
@@ -303,6 +304,25 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %d", dummy, &MinMiso);
       continue;
     }
+    str = "NrPixels ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsY);
+      NrPixelsZ = NrPixelsY;
+      continue;
+    }
+    str = "NrPixelsY ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsY);
+      continue;
+    }
+    str = "NrPixelsZ ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsZ);
+      continue;
+    }
   }
   int i, j, m, nrFiles, nrPixels;
   for (i = 0; i < NoOfOmegaRanges; i++) {
@@ -314,7 +334,7 @@ int main(int argc, char *argv[]) {
   MaxTtheta = rad2deg * atan(MaxRingRad / Lsd[0]);
   int *ObsSpotsInfo;
   nrFiles = EndNr - StartNr + 1;
-  nrPixels = 2048 * 2048;
+  nrPixels = NrPixelsY * NrPixelsZ;
   long long int SizeObsSpots;
   SizeObsSpots = (nLayers);
   SizeObsSpots *= nrPixels;
@@ -436,11 +456,12 @@ int main(int argc, char *argv[]) {
     Euler2OrientMat(eulThis, OMIn);
     int **InPixels;
     InPixels = allocMatrixIntF(NrPixelsGrid, 2);
-    CalcOverlapAccOrient(
-        nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots, XG, YG,
-        RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc, gs, hkls, n_hkls,
-        Thetas, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
-        ObsSpotsInfo, OMIn, &FracCalc, TheorSpots, InPixels, Gs);
+    CalcOverlapAccOrient(nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots,
+                         XG, YG, RotMatTilts, OmegaStart, OmegaStep, px, ybc,
+                         zbc, gs, hkls, n_hkls, Thetas, OmegaRanges,
+                         NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
+                         ObsSpotsInfo, OMIn, &FracCalc, TheorSpots, InPixels,
+                         Gs, NrPixelsY, NrPixelsZ);
     FreeMemMatrixInt(InPixels, NrPixelsGrid);
     lineNr += 1;
     if (origConf - FracCalc > fracThresh) {

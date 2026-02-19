@@ -22,22 +22,24 @@ nrFiles = 6
 ext = '.ge3'
 fHead = 8192
 # ~ fHead = 8396800
-NrPixels = 2048
+NrPixelsY = 2048
+NrPixelsZ = 2048
+nTotalPixels = NrPixelsY * NrPixelsZ
 nFrames = 1440
 thresh = 80
 
-dark = np.zeros(NrPixels*NrPixels)
+dark = np.zeros(nTotalPixels)
 if path.exists(dName):
 	darkf = open(dName,'rb')
-	nFramesDark = int((os.path.getsize(dName) - 8192) / (2*NrPixels*NrPixels))
+	nFramesDark = int((os.path.getsize(dName) - 8192) / (2*nTotalPixels))
 	darkf.seek(8192,os.SEEK_SET)
 	for nr in range(nFramesDark):
-		dark += np.fromfile(darkf,dtype=np.uint16,count=(NrPixels*NrPixels))
+		dark += np.fromfile(darkf,dtype=np.uint16,count=nTotalPixels)
 	dark /= nFramesDark
-	dark = np.reshape(dark,(NrPixels,NrPixels))
+	dark = np.reshape(dark,(NrPixelsZ,NrPixelsY))
 	dark = dark.astype(float)
 else:
-	dark = np.zeros((NrPixels,NrPixels)).astype(float)
+	dark = np.zeros((NrPixelsZ,NrPixelsY)).astype(float)
 
 for fnr in range(nrFiles):
 	thisFN = firstFN + fnr
@@ -49,8 +51,8 @@ for fnr in range(nrFiles):
 	for frameNr in range(startFrameNr,endFrameNr):
 		print([frameNr,nFrames])
 		outFN =path.dirname(fName) + '/tiffs/' + path.basename(fName).replace('.ge3','') + '_FrameNr_'+ str(frameNr) + '.tif'
-		thisFrame = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
-		thisFrame = np.reshape(thisFrame,(NrPixels,NrPixels))
+		thisFrame = np.fromfile(f,dtype=np.uint16,count=nTotalPixels)
+		thisFrame = np.reshape(thisFrame,(NrPixelsZ,NrPixelsY))
 		thisFrame = thisFrame.astype(float)
 		thisFrame = thisFrame - dark
 		thisFrame[thisFrame < thresh] = 0
@@ -61,13 +63,15 @@ for fnr in range(nrFiles):
 import numpy as np
 import os
 fn = "Sim_000011.ge3"
-NrPixels = 2048
+NrPixelsY = 2048
+NrPixelsZ = 2048
+nTotalPixels = NrPixelsY * NrPixelsZ
 frameNrToRead = 21 #starting from 0
 headSize = 8192
-sizeFrame = NrPixels*NrPixels*2
+sizeFrame = nTotalPixels*2
 nFrames = int((os.stat(fn).st_size - headSize) / sizeFrame)
 skip_size = sizeFrame*frameNrToRead + headSize
 f = open(fn,"rb")
 f.seek(skip_size,os.SEEK_SET)
-thisFrame = np.reshape(np.fromfile(f,dtype=np.uint16,count=NrPixels*NrPixels))
+thisFrame = np.reshape(np.fromfile(f,dtype=np.uint16,count=nTotalPixels))
 '''

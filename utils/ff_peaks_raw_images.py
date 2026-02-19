@@ -5,7 +5,9 @@ import matplotlib.pyplot as plt
 import h5py
 
 nFrames = 21
-NrPixels = 2048
+NrPixelsY = 2048
+NrPixelsZ = 2048
+nTotalPixels = NrPixelsY * NrPixelsZ
 fHead = 8192 + 2*2048*2048
 thresh = 100
 fn = 'shade_LSHR_voi_ff_000302.ge3'
@@ -16,17 +18,17 @@ hf = h5py.File('patches.h5','w')
 
 f = open(fn,'rb')
 darkf = open(darkfn,'rb')
-darkf.seek(fHead+NrPixels*NrPixels*2,os.SEEK_SET)
-dark = np.fromfile(darkf,dtype=np.uint16,count=(NrPixels*NrPixels))
-dark = np.reshape(dark,(NrPixels,NrPixels))
+darkf.seek(fHead+nTotalPixels*2,os.SEEK_SET)
+dark = np.fromfile(darkf,dtype=np.uint16,count=nTotalPixels)
+dark = np.reshape(dark,(NrPixelsZ,NrPixelsY))
 dark = dark.astype(float)
 darkf.close()
 
 for fNr in range(1,nFrames):
-	BytesToSkip = fHead + fNr*NrPixels*NrPixels*2
+	BytesToSkip = fHead + fNr*nTotalPixels*2
 	f.seek(BytesToSkip,os.SEEK_SET)
-	thisFrame = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
-	thisFrame = np.reshape(thisFrame,(NrPixels,NrPixels))
+	thisFrame = np.fromfile(f,dtype=np.uint16,count=nTotalPixels)
+	thisFrame = np.reshape(thisFrame,(NrPixelsZ,NrPixelsY))
 	thisFrame = thisFrame.astype(float)
 	thisFrame = thisFrame - dark
 	thisFrame[thisFrame < thresh] = 0
@@ -45,7 +47,7 @@ for fNr in range(1,nFrames):
 		end_x   = int(x0)+window+1
 		start_y = int(y0)-window
 		end_y   = int(y0)+window+1
-		if start_x < 0 or end_x > NrPixels - 1 or start_y < 0 or end_y > NrPixels - 1:
+		if start_x < 0 or end_x > NrPixelsY - 1 or start_y < 0 or end_y > NrPixelsZ - 1:
 			continue
 		sub_img = np.copy(thisFrame)
 		sub_img[labels != prop_nr+1] = 0

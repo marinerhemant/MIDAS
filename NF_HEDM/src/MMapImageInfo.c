@@ -65,7 +65,8 @@ int checkFOPEN(FILE *f, char *fn) {
 }
 
 int ReadBinFiles(char FileStem[1000], char *ext, int StartNr, int EndNr,
-                 int *ObsSpotsMat, int nLayers, long long int ObsSpotsSize) {
+                 int *ObsSpotsMat, int nLayers, long long int ObsSpotsSize,
+                 int NrPixelsY, int NrPixelsZ) {
   int i, j, k, nElements = 0, nElements_previous, nCheck, ythis, zthis,
                NrOfFiles;
   long long NrOfPixels;
@@ -80,7 +81,7 @@ int ReadBinFiles(char FileStem[1000], char *ext, int StartNr, int EndNr,
   float32_t *intensity = NULL;
   int counter = 0;
   NrOfFiles = EndNr - StartNr + 1;
-  NrOfPixels = 2048 * 2048;
+  NrOfPixels = (long long)NrPixelsY * NrPixelsZ;
   long long int kT;
   kT = nLayers;
   kT *= NrOfPixels;
@@ -130,14 +131,14 @@ int ReadBinFiles(char FileStem[1000], char *ext, int StartNr, int EndNr,
         ythis = (int)ys[j];
         zthis = (int)zs[j];
         if (Flag == 1)
-          zthis = 2048 - zthis;
+          zthis = NrPixelsZ - zthis;
         BinNr = k;
         BinNr *= NrOfFiles;
         BinNr *= NrOfPixels;
         TempCntr = counter;
         TempCntr *= NrOfPixels;
         BinNr += TempCntr;
-        BinNr += (ythis * (2048));
+        BinNr += (ythis * ((long long int)NrPixelsZ));
         BinNr += zthis;
         if (BinNr < 0 || BinNr >= kT) {
           printf("%lld %d %d %d %lld %d %d %d %d %d %d %d %d\n", BinNr, k,
@@ -178,6 +179,7 @@ int main(int argc, char *argv[]) {
     return 1;
   char *str, dummy[1000];
   int LowNr, nLayers;
+  int NrPixelsY = 2048, NrPixelsZ = 2048;
   while (fgets(aline, 1000, fileParam) != NULL) {
     str = "nDistances ";
     LowNr = strncmp(aline, str, strlen(str));
@@ -228,6 +230,25 @@ int main(int argc, char *argv[]) {
       skipBin = 1;
       continue;
     }
+    str = "NrPixels ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsY);
+      NrPixelsZ = NrPixelsY;
+      continue;
+    }
+    str = "NrPixelsY ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsY);
+      continue;
+    }
+    str = "NrPixelsZ ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsZ);
+      continue;
+    }
   }
 
   // Print all parameters read from parameter file
@@ -264,7 +285,7 @@ int main(int argc, char *argv[]) {
   int *ObsSpotsInfo;
   int ReadCode;
   nrFiles = EndNr - StartNr + 1;
-  nrPixels = 2048 * 2048;
+  nrPixels = NrPixelsY * NrPixelsZ;
   long long int SizeObsSpots;
   SizeObsSpots = (nLayers);
   SizeObsSpots *= nrPixels;
@@ -278,7 +299,7 @@ int main(int argc, char *argv[]) {
   }
   if (skipBin == 0)
     ReadCode = ReadBinFiles(fn, ext, StartNr, EndNr, ObsSpotsInfo, nLayers,
-                            SizeObsSpots);
+                            SizeObsSpots, NrPixelsY, NrPixelsZ);
   else
     ReadCode = 1;
   if (ReadCode == 0) {

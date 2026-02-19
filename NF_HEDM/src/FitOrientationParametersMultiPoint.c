@@ -89,6 +89,8 @@ struct my_func_data {
   int nCPUs;
   double Gs[5000];
   struct ThreadWorkspace *Workspaces;
+  int NrPixelsY;
+  int NrPixelsZ;
 };
 
 double IndividualResults[200];
@@ -160,7 +162,8 @@ static double problem_function(unsigned n, const double *x, double *grad,
           YGrain, RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc, gs, hkls,
           n_hkls, Thetas, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0,
           NrPixelsGrid, ObsSpotsInfo, OrientMatIn, &FracOverlap,
-          TheorSpotsPrivate, InPixelsPrivate, f_data->Gs);
+          TheorSpotsPrivate, InPixelsPrivate, f_data->Gs, f_data->NrPixelsY,
+          f_data->NrPixelsZ);
       netResult += FracOverlap;
       IndividualResults[i] = FracOverlap;
     }
@@ -182,7 +185,7 @@ void FitOrientation(
     double Thetas[5000], int n_hkls, double **SpotsOut, double *LsdFit,
     double *TiltsFit, double **BCsFit, double tolLsd, double tolLsdRel,
     double tolTilts, double tolBCsa, double tolBCsb, int NumIterations,
-    int nCPUs) {
+    int nCPUs, int NrPixelsY, int NrPixelsZ) {
   unsigned n;
   long int i, j;
   n = 3 + (nLayers * 3) + (nSpots * 3);
@@ -277,6 +280,8 @@ void FitOrientation(
   f_data.nSpots = nSpots;
   f_data.NoOfOmegaRanges = NoOfOmegaRanges;
   f_data.NrPixelsGrid = NrPixelsGrid;
+  f_data.NrPixelsY = NrPixelsY;
+  f_data.NrPixelsZ = NrPixelsZ;
   f_data.nCPUs = nCPUs;
   f_data.Workspaces = malloc(nCPUs * sizeof(struct ThreadWorkspace));
   if (f_data.Workspaces == NULL) {
@@ -518,6 +523,7 @@ int main(int argc, char *argv[]) {
   int NumIterations = 1; // Default
   int nCPUs = 1;         // Default
   Wedge = 0;
+  int NrPixelsY = 2048, NrPixelsZ = 2048;
   double xc, yc, UD, gSze, gs, eul1, eul2, eul3, ysmall, ybig;
   while (fgets(aline, 1000, fileParam) != NULL) {
     str = "ReducedFileName ";
@@ -721,6 +727,25 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %d", dummy, &NumIterations);
       continue;
     }
+    str = "NrPixels ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsY);
+      NrPixelsZ = NrPixelsY;
+      continue;
+    }
+    str = "NrPixelsY ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsY);
+      continue;
+    }
+    str = "NrPixelsZ ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsZ);
+      continue;
+    }
   }
   if (argc > 2) {
     nCPUs = atoi(argv[2]);
@@ -747,7 +772,7 @@ int main(int argc, char *argv[]) {
   int *ObsSpotsInfo;
   int ReadCode;
   nrFiles = EndNr - StartNr + 1;
-  nrPixels = 2048 * 2048;
+  nrPixels = NrPixelsY * NrPixelsZ;
   long long int SizeObsSpots, iT;
   SizeObsSpots = (nLayers);
   SizeObsSpots *= nrPixels;
@@ -765,7 +790,7 @@ int main(int argc, char *argv[]) {
     return 0;
   }
   ReadCode = ReadBinFiles(fn, ext, StartNr, EndNr, ObsSpotsInfo, nLayers,
-                          SizeObsSpots);
+                          SizeObsSpots, NrPixelsY, NrPixelsZ);
   if (ReadCode == 0) {
     printf("Reading bin files did not go well. Please check.\n");
     return 0;
@@ -831,12 +856,12 @@ int main(int argc, char *argv[]) {
     n_hkls = totalHKLs;
   }
   printf("Number of individual diffracting planes: %d\n", n_hkls);
-  FitOrientation(nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots,
-                 TiltsOrig, OmegaStart, OmegaStep, px, ybc, zbc, gs, SpotsInfo,
-                 nSpots, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0,
-                 NrPixelsGrid, ObsSpotsInfo, tol, hkls, Thetas, n_hkls,
-                 SpotsOut, LsdFit, TiltsFit, BCsFit, lsdtol, lsdtolrel,
-                 tiltstol, bctola, bctolb, NumIterations, nCPUs);
+  FitOrientation(
+      nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots, TiltsOrig,
+      OmegaStart, OmegaStep, px, ybc, zbc, gs, SpotsInfo, nSpots, OmegaRanges,
+      NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid, ObsSpotsInfo, tol, hkls,
+      Thetas, n_hkls, SpotsOut, LsdFit, TiltsFit, BCsFit, lsdtol, lsdtolrel,
+      tiltstol, bctola, bctolb, NumIterations, nCPUs, NrPixelsY, NrPixelsZ);
   for (i = 0; i < nLayers; i++) {
     printf("Lsd %f\n", LsdFit[i]);
   }

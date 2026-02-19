@@ -93,9 +93,9 @@ class DetectorViewState:
     def __init__(self, xbc: float, ybc: float):
         self.ranges: List[float] = [
             -int(xbc*0.2)-2, 
-            int((2048-xbc)*0.2)+2, 
+            int((DEFAULT_DETECTOR_PIXELS-xbc)*0.2)+2, 
             -int(ybc*0.2)-2, 
-            int((2048-ybc)*0.2)+2
+            int((DEFAULT_DETECTOR_PIXELS-ybc)*0.2)+2
         ]
 
     def update(self, relayout_data: Dict) -> None:
@@ -169,7 +169,8 @@ def write_parameter_file(params: SimulationParams, mic_fn: str, param_fn: str = 
         pf.write(f"OmegaStart {params.min_ome}\n")
         pf.write(f"OmegaEnd {params.max_ome}\n")
         pf.write(f"Wavelength {12.398/params.energy}\n")
-        pf.write(f"NrPixels {DEFAULT_DETECTOR_PIXELS}\n")
+        pf.write(f"NrPixelsY {DEFAULT_DETECTOR_PIXELS}\n")
+        pf.write(f"NrPixelsZ {DEFAULT_DETECTOR_PIXELS}\n")
         pf.write(f"px 200\n")
         pf.write(f"GaussWidth 2\n")
         pf.write(f"PeakIntensity 5000\n")
@@ -347,7 +348,7 @@ def create_setup_figure(hkls_data: np.ndarray, params: SimulationParams) -> go.F
     # Add traces for each unique radius
     lsd_km = int(params.lsd / 1000)
     y_limit_lower = int(params.ybc * 0.2)
-    y_limit_upper = int((2048 - params.ybc) * 0.2)
+    y_limit_upper = int((DEFAULT_DETECTOR_PIXELS - params.ybc) * 0.2)
     
     for rad in unique_rads:
         found = 0
@@ -920,8 +921,8 @@ def update_detector(n_clicks, frame_nr, n_frames_sum, show_rings, xbc, ybc,
     if n_clicks is None or n_clicks <= 0:
         # If not clicked yet, show detector outline
         fig.add_trace(go.Scatter(
-            x=[-int(xbc*0.2), int((2048-xbc)*0.2), int((2048-xbc)*0.2), -int(xbc*0.2), -int(xbc*0.2)], 
-            y=[-int(ybc*0.2), -int(ybc*0.2), int((2048-ybc)*0.2), int((2048-ybc)*0.2), -int(ybc*0.2)],
+            x=[-int(xbc*0.2), int((DEFAULT_DETECTOR_PIXELS-xbc)*0.2), int((DEFAULT_DETECTOR_PIXELS-xbc)*0.2), -int(xbc*0.2), -int(xbc*0.2)], 
+            y=[-int(ybc*0.2), -int(ybc*0.2), int((DEFAULT_DETECTOR_PIXELS-ybc)*0.2), int((DEFAULT_DETECTOR_PIXELS-ybc)*0.2), -int(ybc*0.2)],
             mode='lines',
             line=dict(width=10),
             name='Detector'

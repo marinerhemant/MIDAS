@@ -5,7 +5,7 @@ import os
 padding=6
 layerNr = 1
 fHead = 8192
-NrPixels = 2048
+NrPixelsY = 2048\nNrPixelsZ = 2048
 # ~ folder = '/data/tomo1/shastri_mar20_midas/ff/ss_ff_line_beam_Layer1_Analysis_Time_2020_07_09_10_20_57/'
 folder = '/data/tomo1/AI-HEDM/Training_Dataset/NoTwins_Microstructure_4/FF_Sim_Cycle4_Orig_MoreRings_Layer1_Analysis_Time_2020_07_18_06_33_34/'
 # ~ Rings = [1,2,3,4,5]

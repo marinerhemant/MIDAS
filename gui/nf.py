@@ -47,7 +47,8 @@ deg2rad = 0.0174532925199433
 rad2deg = 57.2957795130823
 
 ## Some initialization values
-NrPixels = 2048
+NrPixelsY = 2048
+NrPixelsZ = 2048
 nrfilesperdistance = 720
 padding = 6
 ndistances = 6
@@ -158,9 +159,9 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 		if doMedian == 1 and fns[1] is not None:
 			f = open(fns[1],'rb')
 			print("Read file " + fns[1])
-			median = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
+			median = np.fromfile(f,dtype=np.uint16,count=(NrPixelsY*NrPixelsZ))
 			f.close()
-			median = np.reshape(median,(NrPixels,NrPixels))
+			median = np.reshape(median,(NrPixelsZ,NrPixelsY))
 			imarr2 = np.subtract(imarr.astype(int),median.astype(int))
 			imarr2[imarr2<background] = 0
 		else:
@@ -173,9 +174,9 @@ def draw_plot(): # always the initial framenr and distance, will calculate the c
 		f = open(fnthis,'rb')
 		print('Read file ' + fnthis)
 		fnprint = fnthis.replace(folder,'')
-		imarr = np.fromfile(f,dtype=np.uint16,count=(NrPixels*NrPixels))
+		imarr = np.fromfile(f,dtype=np.uint16,count=(NrPixelsY*NrPixelsZ))
 		f.close()
-		imarr2 = np.reshape(imarr,(NrPixels,NrPixels))
+		imarr2 = np.reshape(imarr,(NrPixelsZ,NrPixelsY))
 		imarr2[imarr2<background] = 0
 	imarr2 = imarr2[::-1, ::-1].copy()
 	# --- Prepare display data ---
@@ -233,7 +234,8 @@ def plot_updater():
 	global folder
 	global fnstem
 	global ndistances
-	global NrPixels
+	global NrPixelsY
+	global NrPixelsZ
 	global lsd
 	global minThresh
 	global nrfilesperdistance
@@ -247,7 +249,8 @@ def plot_updater():
 	newfolder = foldervar.get()
 	newfnstem = fnstemvar.get()
 	newndistances = int(ndistancesvar.get())
-	newNrPixels = int(NrPixelsvar.get())
+	newNrPixelsY = int(NrPixelsYvar.get())
+	newNrPixelsZ = int(NrPixelsZvar.get())
 	newminThresh = float(minThreshvar.get())
 	newnrfilesperdistance = int(nrfilesvar.get())
 	newstartframenr = int(startframenrvar.get())
@@ -265,7 +268,8 @@ def plot_updater():
 		(newfolder != folder) or
 		(newfnstem != fnstem) or
 		(newndistances != ndistances) or
-		(newNrPixels != NrPixels) or
+		(newNrPixelsY != NrPixelsY) or
+		(newNrPixelsZ != NrPixelsZ) or
 		(newstartframenr != startframenr) or
 		(newlsd !=lsd)):
 		oldmaxoverframes = newmaxoverframes
@@ -273,7 +277,8 @@ def plot_updater():
 		nrfilesperdistance = newnrfilesperdistance
 		minThresh = newminThresh
 		lsd = newlsd
-		NrPixels = newNrPixels
+		NrPixelsY = newNrPixelsY
+		NrPixelsZ = newNrPixelsZ
 		ndistances = newndistances
 		fnstem = newfnstem
 		folder = newfolder
@@ -747,8 +752,8 @@ def plot_update_spot():
 	yn = (ya + ys*(1-(xa/thislsd)))/pixelsize + bcs[dist][0]
 	zn = (zs*(1-(xa/thislsd)))/pixelsize + bcs[dist][1]
 	#~ print([pos[0], pos[1], ys, zs, xa, ya, yn, zn, rad, eta,thisome,frameNrToRead])
-	while ((yn > NrPixels) or
-		   (zn > NrPixels) or
+	while ((yn > NrPixelsY) or
+		   (zn > NrPixelsZ) or
 		   (yn < 0) or
 		   (zn < 0) or
 		   (thisome < minOme) or
@@ -859,7 +864,8 @@ def median():
 			f.write(f'OrigFileName {fnstem}\n')
 			tempnr = startframenr + thisdist*(nrfilesperdistance - int(nrfilesmedianvar.get()))
 			f.write(f'NrFilesPerDistance {nrfilesmedianvar.get()}\n')
-			f.write(f'NrPixels {NrPixels}\n')
+			f.write(f'NrPixelsY {NrPixelsY}\n')
+			f.write(f'NrPixelsZ {NrPixelsZ}\n')
 			f.write(f'DataDirectory {folder}\n')
 			f.write(f'RawStartNr {tempnr}\n')
 			f.write(f'ReducedFileName {fnstem}\n')
@@ -1216,8 +1222,10 @@ startframenrvar.set(str(startframenr))
 spotnrvar = Tk.StringVar()
 ndistancesvar = Tk.StringVar()
 ndistancesvar.set(str(ndistances))
-NrPixelsvar = Tk.StringVar()
-NrPixelsvar.set(str(NrPixels))
+NrPixelsYvar = Tk.StringVar()
+NrPixelsYvar.set(str(NrPixelsY))
+NrPixelsZvar = Tk.StringVar()
+NrPixelsZvar.set(str(NrPixelsZ))
 r2 = Tk.StringVar()
 r2.set(str(0))
 minThresh = 0
@@ -1249,8 +1257,10 @@ Tk.Entry(master=fileFrame,textvariable=foldervar,width=20,font=default_font).gri
 Tk.Button(master=fileFrame,text="Browse",command=folderselect,font=default_font).grid(row=0,column=3,sticky=Tk.W)
 Tk.Label(master=fileFrame,text="FNStem",font=default_font).grid(row=0,column=4,sticky=Tk.W)
 Tk.Entry(master=fileFrame,textvariable=fnstemvar,width=12,font=default_font).grid(row=0,column=5,sticky=Tk.W)
-Tk.Label(master=fileFrame,text="NrPixels",font=default_font).grid(row=0,column=6,sticky=Tk.W)
-Tk.Entry(master=fileFrame,textvariable=NrPixelsvar,width=5,font=default_font).grid(row=0,column=7,sticky=Tk.W)
+Tk.Label(master=fileFrame,text="NrPixelsY",font=default_font).grid(row=0,column=6,sticky=Tk.W)
+Tk.Entry(master=fileFrame,textvariable=NrPixelsYvar,width=5,font=default_font).grid(row=0,column=7,sticky=Tk.W)
+Tk.Label(master=fileFrame,text="NrPixelsZ",font=default_font).grid(row=0,column=8,sticky=Tk.W)
+Tk.Entry(master=fileFrame,textvariable=NrPixelsZvar,width=5,font=default_font).grid(row=0,column=9,sticky=Tk.W)
 
 # --- Image Settings Frame ---
 imgFrame = Tk.LabelFrame(mainControlFrame, text="Image Settings", font=default_font, padx=2, pady=2)

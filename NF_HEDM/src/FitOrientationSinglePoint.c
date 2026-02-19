@@ -93,6 +93,8 @@ struct my_func_data {
   double *zbc;
   int **InPixels;
   double Gs[5000];
+  int NrPixelsY;
+  int NrPixelsZ;
 };
 
 static double problem_function(unsigned n, const double *x, double *grad,
@@ -160,30 +162,28 @@ static double problem_function(unsigned n, const double *x, double *grad,
   Euler2OrientMat(x2, OrientMatIn);
   double *TheorSpots;
   TheorSpots = malloc(MAX_N_SPOTS * 3 * sizeof(*TheorSpots));
-  CalcOverlapAccOrient(NrOfFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots,
-                       XGrain, YGrain, RotMatTilts, OmegaStart, OmegaStep, px,
-                       ybc, zbc, gs, hkls, n_hkls, Thetas, OmegaRanges,
-                       NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
-                       ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots,
-                       f_data->InPixels, f_data->Gs);
+  CalcOverlapAccOrient(
+      NrOfFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots, XGrain, YGrain,
+      RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc, gs, hkls, n_hkls,
+      Thetas, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
+      ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots, f_data->InPixels,
+      f_data->Gs, f_data->NrPixelsY, f_data->NrPixelsZ);
   free(TheorSpots);
   return (1 - FracOverlap);
 }
 
-void FitOrientation(const int NrOfFiles, const int nLayers,
-                    const double ExcludePoleAngle, double Lsd[nLayers],
-                    const long long int SizeObsSpots, const double XGrain[3],
-                    const double YGrain[3], double RotMatTilts[3][3],
-                    const double OmegaStart, const double OmegaStep,
-                    const double px, double ybc[nLayers], double zbc[nLayers],
-                    const double gs, double OmegaRanges[MAX_N_OMEGA_RANGES][2],
-                    const int NoOfOmegaRanges,
-                    double BoxSizes[MAX_N_OMEGA_RANGES][4],
-                    double P0[nLayers][3], const int NrPixelsGrid,
-                    int *ObsSpotsInfo, double EulerIn[3], double tol,
-                    double *EulerOutA, double *EulerOutB, double *EulerOutC,
-                    double *ResultFracOverlap, double hkls[5000][4],
-                    double Thetas[5000], int n_hkls) {
+void FitOrientation(
+    const int NrOfFiles, const int nLayers, const double ExcludePoleAngle,
+    double Lsd[nLayers], const long long int SizeObsSpots,
+    const double XGrain[3], const double YGrain[3], double RotMatTilts[3][3],
+    const double OmegaStart, const double OmegaStep, const double px,
+    double ybc[nLayers], double zbc[nLayers], const double gs,
+    double OmegaRanges[MAX_N_OMEGA_RANGES][2], const int NoOfOmegaRanges,
+    double BoxSizes[MAX_N_OMEGA_RANGES][4], double P0[nLayers][3],
+    const int NrPixelsGrid, int *ObsSpotsInfo, double EulerIn[3], double tol,
+    double *EulerOutA, double *EulerOutB, double *EulerOutC,
+    double *ResultFracOverlap, double hkls[5000][4], double Thetas[5000],
+    int n_hkls, int NrPixelsY, int NrPixelsZ) {
   unsigned n;
   long int i, j;
   n = 3;
@@ -242,6 +242,8 @@ void FitOrientation(const int NrOfFiles, const int nLayers,
   f_data.gs = gs;
   f_data.NoOfOmegaRanges = NoOfOmegaRanges;
   f_data.NrPixelsGrid = NrPixelsGrid;
+  f_data.NrPixelsY = NrPixelsY;
+  f_data.NrPixelsZ = NrPixelsZ;
   f_data.InPixels = allocMatrixIntF(NrPixelsGrid, 2);
   struct my_func_data *f_datat;
   f_datat = &f_data;
@@ -335,6 +337,7 @@ int main(int argc, char *argv[]) {
   int nSaves = 1;
   int gridfnfound = 0;
   Wedge = 0;
+  int NrPixelsY = 2048, NrPixelsZ = 2048;
   while (fgets(aline, 1000, fileParam) != NULL) {
     str = "ReducedFileName ";
     LowNr = strncmp(aline, str, strlen(str));
@@ -502,6 +505,25 @@ int main(int argc, char *argv[]) {
       Flag = 1;
       continue;
     }
+    str = "NrPixels ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsY);
+      NrPixelsZ = NrPixelsY;
+      continue;
+    }
+    str = "NrPixelsY ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsY);
+      continue;
+    }
+    str = "NrPixelsZ ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &NrPixelsZ);
+      continue;
+    }
   }
   int i, j, m, nrFiles, nrPixels;
   for (i = 0; i < NoOfOmegaRanges; i++) {
@@ -526,7 +548,7 @@ int main(int argc, char *argv[]) {
   char *ext = "bin";
   int *ObsSpotsInfo;
   nrFiles = EndNr - StartNr + 1;
-  nrPixels = 2048 * 2048;
+  nrPixels = NrPixelsY * NrPixelsZ;
   long long int SizeObsSpots;
   SizeObsSpots = (nLayers);
   SizeObsSpots *= nrPixels;
@@ -673,7 +695,7 @@ int main(int argc, char *argv[]) {
     CalcFracOverlap(nrFiles, nLayers, NrSpotsThis, ThrSps, OmegaStart,
                     OmegaStep, XG, YG, Lsd, SizeObsSpots, RotMatTilts, px, ybc,
                     zbc, gs, P0, NrPixelsGrid, ObsSpotsInfo, OrientMatIn,
-                    &FracOverT, InPixels);
+                    &FracOverT, InPixels, NrPixelsY, NrPixelsZ);
     FreeMemMatrixInt(InPixels, NrPixelsGrid);
     if (FracOverT >= minFracOverlap) {
       for (j = 0; j < 9; j++) {
@@ -744,7 +766,8 @@ int main(int argc, char *argv[]) {
                      YG, RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc, gs,
                      OmegaRanges, NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
                      ObsSpotsInfo, EulerIn, tol, &EulerOutA, &EulerOutB,
-                     &EulerOutC, &FracOut, hkls, Thetas, n_hkls);
+                     &EulerOutC, &FracOut, hkls, Thetas, n_hkls, NrPixelsY,
+                     NrPixelsZ);
       Fractions = 1 - FracOut;
       if (Fractions > BestFrac) {
         printf("%f %d of %d, EulerAngles: %f %f %f\n", Fractions, i,
