@@ -39,14 +39,12 @@ endif()
 # --- Conditionally add PATCH_COMMAND for macOS ---
 set(_libtiff_fetch_extra_args) # Initialize an empty list for extra arguments
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin") # "Darwin" is the system name for macOS
-  message(STATUS "LIBTIFF_custom.cmake: macOS detected. Enabling libtiff patch.")
-  list(APPEND _libtiff_fetch_extra_args
-       PATCH_COMMAND ${CMAKE_COMMAND} -E echo "cmake_minimum_required(VERSION 3.10)" > doc/CMakeLists.txt
-  )
-else()
-  message(STATUS "LIBTIFF_custom.cmake: Not macOS. Skipping libtiff patch.")
-endif()
+# Apply patch to doc/CMakeLists.txt to fix CMake < 3.5 error on new CMake versions
+# We overwrite it with a dummy file that satisfies the version requirement.
+message(STATUS "LIBTIFF_custom.cmake: Enabling libtiff patch for doc/CMakeLists.txt")
+list(APPEND _libtiff_fetch_extra_args
+     PATCH_COMMAND sh -c "echo 'cmake_minimum_required(VERSION 3.10)' > doc/CMakeLists.txt"
+)
 # --- End of conditional patch ---
 
 FetchContent_Declare(
