@@ -981,6 +981,40 @@ def plotmic():
 			micfiledatacut = micfiledatacut.reshape((sizeY,sizeX))
 			sc = b.imshow(np.ma.masked_where(micfiledatacut == -15.0,micfiledatacut),cmap=plt.get_cmap('jet'),interpolation='nearest',extent=exten)
 			b.title.set_text("MicMap (PhaseNr)")
+		if col == 12: # KAM
+			kamfile = micfile + ".kam"
+			if os.path.exists(kamfile):
+				with open(kamfile, 'rb') as f:
+					kamdata = np.fromfile(f, dtype=np.double)[4:]
+				kamdata[badcoords] = -15.0
+				kamdata = kamdata.reshape((sizeY,sizeX))
+				sc = b.imshow(np.ma.masked_where(kamdata == -15.0,kamdata),cmap=plt.get_cmap('jet'),interpolation='nearest',extent=exten)
+				b.title.set_text("MicMap (KAM)")
+			else:
+				print(f"KAM file not found: {kamfile}")
+		if col == 13: # GROD
+			grodfile = micfile + ".grod"
+			if os.path.exists(grodfile):
+				with open(grodfile, 'rb') as f:
+					groddata = np.fromfile(f, dtype=np.double)[4:]
+				groddata[badcoords] = -15.0
+				groddata = groddata.reshape((sizeY,sizeX))
+				sc = b.imshow(np.ma.masked_where(groddata == -15.0,groddata),cmap=plt.get_cmap('jet'),interpolation='nearest',extent=exten)
+				b.title.set_text("MicMap (GROD)")
+			else:
+				print(f"GROD file not found: {grodfile}")
+		if col == 14: # GrainID
+			grainfile = micfile + ".grainId"
+			if os.path.exists(grainfile):
+				with open(grainfile, 'rb') as f:
+					graindata = np.fromfile(f, dtype=np.double)[4:]
+				graindata[badcoords] = -15.0
+				graindata = graindata.reshape((sizeY,sizeX))
+				# GrainIDs are discrete integers, keep jet or use tab20c etc.
+				sc = b.imshow(np.ma.masked_where((graindata == -15.0) | (graindata == 0), graindata),cmap=plt.get_cmap('jet'),interpolation='nearest',extent=exten)
+				b.title.set_text("MicMap (GrainID File)")
+			else:
+				print(f"GrainID file not found: {grainfile}")
 		if initplotb:
 			initplotb = 0
 			b.invert_yaxis()
@@ -1327,15 +1361,20 @@ Tk.Radiobutton(master=micFrame,text='Euler0',variable=colVar,value=7,font=defaul
 Tk.Radiobutton(master=micFrame,text='Euler1',variable=colVar,value=8,font=default_font).grid(row=2,column=1,sticky=Tk.W)
 Tk.Radiobutton(master=micFrame,text='Euler2',variable=colVar,value=9,font=default_font).grid(row=2,column=2,sticky=Tk.W)
 
-# Row 3: Confidence cutoffs
-Tk.Label(master=micFrame,text='ConfCutoffs',font=default_font).grid(row=3,column=0,sticky=Tk.W)
-Tk.Entry(master=micFrame,textvariable=cutconfidencevar,width=5,font=default_font).grid(row=3,column=1,sticky=Tk.W)
-Tk.Entry(master=micFrame,textvariable=maxConfVar,width=5,font=default_font).grid(row=3,column=2,sticky=Tk.W)
+# Row 3: New Derived Map Radio Buttons
+Tk.Radiobutton(master=micFrame,text='KAM',variable=colVar,value=12,font=default_font).grid(row=3,column=0,sticky=Tk.W)
+Tk.Radiobutton(master=micFrame,text='GROD',variable=colVar,value=13,font=default_font).grid(row=3,column=1,sticky=Tk.W)
+Tk.Radiobutton(master=micFrame,text='Grain Map',variable=colVar,value=14,font=default_font).grid(row=3,column=2,sticky=Tk.W)
 
-# Row 4: Grain tools
-Tk.Button(master=micFrame,text='LoadGrain',command=getgrain,font=default_font).grid(row=4,column=0,sticky=Tk.W)
-Tk.Button(master=micFrame,text='MakeSpots',command=makespots,font=default_font).grid(row=4,column=1,sticky=Tk.W)
-Tk.Button(master=micFrame,text='FindOrient',command=findOrientation,font=default_font).grid(row=4,column=2,sticky=Tk.W)
+# Row 4: Confidence cutoffs
+Tk.Label(master=micFrame,text='ConfCutoffs',font=default_font).grid(row=4,column=0,sticky=Tk.W)
+Tk.Entry(master=micFrame,textvariable=cutconfidencevar,width=5,font=default_font).grid(row=4,column=1,sticky=Tk.W)
+Tk.Entry(master=micFrame,textvariable=maxConfVar,width=5,font=default_font).grid(row=4,column=2,sticky=Tk.W)
+
+# Row 5: Grain tools
+Tk.Button(master=micFrame,text='LoadGrain',command=getgrain,font=default_font).grid(row=5,column=0,sticky=Tk.W)
+Tk.Button(master=micFrame,text='MakeSpots',command=makespots,font=default_font).grid(row=5,column=1,sticky=Tk.W)
+Tk.Button(master=micFrame,text='FindOrient',command=findOrientation,font=default_font).grid(row=5,column=2,sticky=Tk.W)
 
 if __name__ == "__main__":
 	root.bind('<Control-w>', lambda event: root.destroy())

@@ -13,6 +13,8 @@
 
 #include <ctype.h>
 #include <math.h>
+#include <omp.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,7 +29,15 @@ typedef struct {
   char inputfile[1024];
   char outputfile[1024];
   int nSaves;
+  int SGNr;
+  double GBAngle;
 } MicParams;
+
+void Euler2OrientMat(double Euler[3], double m_out[3][3]);
+void OrientMat2Quat(double OrientMat[9], double Quat[4]);
+int MakeSymmetries(int SGNr, double Sym[24][4]);
+double GetMisOrientationAngle(double quat1[4], double quat2[4], double *Angle,
+                              int NrSymmetries, double Sym[24][4]);
 
 static void usage(void) {
   printf("Usage: ./ParseMic <ParametersFile>\n");
@@ -48,6 +58,8 @@ static int ReadParameters(const char *ParamFN, MicParams *params) {
 
   // Defaults
   params->nSaves = 1;
+  params->SGNr = 225;    // Default to FCC if not stated
+  params->GBAngle = 5.0; // Default GB Tolerance
 
   while (fgets(aline, 1000, fileParam) != NULL) {
     str = "PhaseNr ";
@@ -84,6 +96,18 @@ static int ReadParameters(const char *ParamFN, MicParams *params) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%*s %d", &params->nSaves);
+      continue;
+    }
+    str = "SGNr ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%*s %d", &params->SGNr);
+      continue;
+    }
+    str = "GBAngle ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%*s %lf", &params->GBAngle);
       continue;
     }
   }
@@ -149,6 +173,37 @@ static void WriteMicText(const char *outputfile, double *MicContents,
   }
   fclose(out);
 }
+
+typedef struct {
+  int *data;
+  int front;
+  int rear;
+  int capacity;
+} Queue;
+
+Queue createQueue(int capacity) {
+  Queue q;
+  q.capacity = capacity;
+  q.front = 0;
+  q.rear = -1;
+  q.data = (int *)malloc(q.capacity * sizeof(int));
+  return q;
+}
+
+void enqueue(Queue *q, int item) {
+  q->rear++;
+  q->data[q->rear] = item;
+}
+
+int dequeue(Queue *q) {
+  int item = q->data[q->front];
+  q->front++;
+  return item;
+}
+
+bool isQueueEmpty(Queue *q) { return q->rear < q->front; }
+
+void freeQueue(Queue *q) { free(q->data); }
 
 static void GenerateMap(const char *outputfile, double *MicContents, int NrRows,
                         MicParams *params) {
@@ -253,11 +308,242 @@ static void GenerateMap(const char *outputfile, double *MicContents, int NrRows,
   FILE *outmap = fopen(outfilebin, "w");
   if (outmap) {
     fwrite(map, sizeof(*map) * (size_map * 7 + 4), 1, outmap);
+    printf("Saved map to %s\n", outfilebin);
     fclose(outmap);
   } else {
     fprintf(stderr, "Error: Could not open map output file %s\n", outfilebin);
   }
 
+  // ---------------------------------------------------------
+  // 1. Kernel Average Misorientation (KAM)
+  // ---------------------------------------------------------
+
+  double Sym[24][4];
+  int NrSymmetries = MakeSymmetries(params->SGNr, Sym);
+
+  double *kamMap = malloc((size_map + 4) * sizeof(*kamMap));
+  kamMap[0] = xSizeMap;
+  kamMap[1] = ySizeMap;
+  kamMap[2] = minXRange;
+  kamMap[3] = minYRange;
+
+  for (size_t i = 0; i < size_map; i++) {
+    kamMap[4 + i] = 0.0;
+  }
+
+  int dx[] = {-1, 0, 1, -1, 1, -1, 0, 1};
+  int dy[] = {-1, -1, -1, 0, 0, 1, 1, 1};
+
+#pragma omp parallel for
+  for (size_t i = 0; i < size_map; i++) {
+    if (RowNrMat[i] == -1) {
+      continue;
+    }
+
+    int cx = i % xSizeMap;
+    int cy = i / xSizeMap;
+
+    int thisRowNr = RowNrMat[i];
+    double euler1[3] = {MicContents[thisRowNr * 11 + 7] * (180.0 / M_PI),
+                        MicContents[thisRowNr * 11 + 8] * (180.0 / M_PI),
+                        MicContents[thisRowNr * 11 + 9] * (180.0 / M_PI)};
+    double mat1[3][3], quat1[4];
+    Euler2OrientMat(euler1, mat1);
+    OrientMat2Quat(&mat1[0][0], quat1);
+
+    double sumMisorient = 0.0;
+    int countNeighbors = 0;
+
+    for (int n = 0; n < 8; n++) {
+      int nx = cx + dx[n];
+      int ny = cy + dy[n];
+      if (nx >= 0 && nx < xSizeMap && ny >= 0 && ny < ySizeMap) {
+        size_t nIdx = ny * xSizeMap + nx;
+        if (RowNrMat[nIdx] != -1) {
+          int nRowNr = RowNrMat[nIdx];
+          double euler2[3] = {MicContents[nRowNr * 11 + 7] * (180.0 / M_PI),
+                              MicContents[nRowNr * 11 + 8] * (180.0 / M_PI),
+                              MicContents[nRowNr * 11 + 9] * (180.0 / M_PI)};
+          double mat2[3][3], quat2[4];
+          Euler2OrientMat(euler2, mat2);
+          OrientMat2Quat(&mat2[0][0], quat2);
+
+          double angle;
+          GetMisOrientationAngle(quat1, quat2, &angle, NrSymmetries, Sym);
+          sumMisorient += angle;
+          countNeighbors++;
+        }
+      }
+    }
+
+    if (countNeighbors > 0) {
+      kamMap[4 + i] = sumMisorient / countNeighbors;
+    }
+  }
+
+  sprintf(outfilebin, "%s.map.kam", outputfile);
+  FILE *outKam = fopen(outfilebin, "w");
+  if (outKam) {
+    fwrite(kamMap, sizeof(*kamMap) * (size_map + 4), 1, outKam);
+    printf("Saved map.kam to %s\n", outfilebin);
+    fclose(outKam);
+  } else {
+    fprintf(stderr, "Error: Could not open map out file %s\n", outfilebin);
+  }
+
+  // ---------------------------------------------------------
+  // 2. Grain Connected Components
+  // ---------------------------------------------------------
+
+  double *grainIdMap = malloc((size_map + 4) * sizeof(*grainIdMap));
+  grainIdMap[0] = xSizeMap;
+  grainIdMap[1] = ySizeMap;
+  grainIdMap[2] = minXRange;
+  grainIdMap[3] = minYRange;
+
+  for (size_t i = 0; i < size_map; i++) {
+    grainIdMap[4 + i] = 0; // 0 == unassigned
+  }
+
+  int currentGrainId = 1;
+
+  for (size_t i = 0; i < size_map; i++) {
+    if (RowNrMat[i] == -1 || grainIdMap[4 + i] != 0) {
+      continue;
+    }
+
+    Queue q = createQueue(size_map);
+    enqueue(&q, i);
+    grainIdMap[4 + i] = currentGrainId;
+
+    while (!isQueueEmpty(&q)) {
+      int currIdx = dequeue(&q);
+      int cx = currIdx % xSizeMap;
+      int cy = currIdx / xSizeMap;
+
+      int thisRowNr = RowNrMat[currIdx];
+      double euler1[3] = {MicContents[thisRowNr * 11 + 7] * (180.0 / M_PI),
+                          MicContents[thisRowNr * 11 + 8] * (180.0 / M_PI),
+                          MicContents[thisRowNr * 11 + 9] * (180.0 / M_PI)};
+      double mat1[3][3], quat1[4];
+      Euler2OrientMat(euler1, mat1);
+      OrientMat2Quat(&mat1[0][0], quat1);
+
+      for (int n = 0; n < 8; n++) {
+        int nx = cx + dx[n];
+        int ny = cy + dy[n];
+        if (nx >= 0 && nx < xSizeMap && ny >= 0 && ny < ySizeMap) {
+          size_t nIdx = ny * xSizeMap + nx;
+          if (RowNrMat[nIdx] != -1 && grainIdMap[4 + nIdx] == 0) {
+            int nRowNr = RowNrMat[nIdx];
+            double euler2[3] = {MicContents[nRowNr * 11 + 7] * (180.0 / M_PI),
+                                MicContents[nRowNr * 11 + 8] * (180.0 / M_PI),
+                                MicContents[nRowNr * 11 + 9] * (180.0 / M_PI)};
+            double mat2[3][3], quat2[4];
+            Euler2OrientMat(euler2, mat2);
+            OrientMat2Quat(&mat2[0][0], quat2);
+
+            double angle;
+            GetMisOrientationAngle(quat1, quat2, &angle, NrSymmetries, Sym);
+
+            if (angle <= params->GBAngle) {
+              grainIdMap[4 + nIdx] = currentGrainId;
+              enqueue(&q, nIdx);
+            }
+          }
+        }
+      }
+    }
+    freeQueue(&q);
+    currentGrainId++;
+  }
+
+  int totalGrains = currentGrainId - 1;
+  printf("Found %d grains using GB threshold %lf\n", totalGrains,
+         params->GBAngle);
+
+  sprintf(outfilebin, "%s.map.grainId", outputfile);
+  FILE *outGrain = fopen(outfilebin, "w");
+  if (outGrain) {
+    fwrite(grainIdMap, sizeof(*grainIdMap) * (size_map + 4), 1, outGrain);
+    printf("Saved map.grainId to %s\n", outfilebin);
+    fclose(outGrain);
+  } else {
+    fprintf(stderr, "Error: Could not open map out file %s\n", outfilebin);
+  }
+
+  // ---------------------------------------------------------
+  // 3. Grain Reference Orientation Deviation (GROD)
+  // ---------------------------------------------------------
+
+  // Find highest confidence reference orientation for each grain
+  // Index is generic GrainID-1. We need one double[4] per grain.
+  double *bestConfForGrain = calloc(totalGrains, sizeof(double));
+  double *refQuatForGrain = malloc(totalGrains * 4 * sizeof(double));
+
+  for (size_t i = 0; i < size_map; i++) {
+    if (grainIdMap[4 + i] != 0) {
+      int gID = (int)grainIdMap[4 + i] - 1;
+      int thisRowNr = RowNrMat[i];
+      double conf = MicContents[thisRowNr * 11 + 10];
+
+      if (conf > bestConfForGrain[gID]) {
+        bestConfForGrain[gID] = conf;
+        double euler1[3] = {MicContents[thisRowNr * 11 + 7] * (180.0 / M_PI),
+                            MicContents[thisRowNr * 11 + 8] * (180.0 / M_PI),
+                            MicContents[thisRowNr * 11 + 9] * (180.0 / M_PI)};
+        double mat1[3][3];
+        Euler2OrientMat(euler1, mat1);
+        OrientMat2Quat(&mat1[0][0], &refQuatForGrain[gID * 4]);
+      }
+    }
+  }
+
+  double *grodMap = malloc((size_map + 4) * sizeof(*grodMap));
+  grodMap[0] = xSizeMap;
+  grodMap[1] = ySizeMap;
+  grodMap[2] = minXRange;
+  grodMap[3] = minYRange;
+
+  for (size_t i = 0; i < size_map; i++) {
+    grodMap[4 + i] = 0.0;
+  }
+
+#pragma omp parallel for
+  for (size_t i = 0; i < size_map; i++) {
+    if (grainIdMap[4 + i] != 0) {
+      int gID = (int)grainIdMap[4 + i] - 1;
+      int thisRowNr = RowNrMat[i];
+
+      double euler1[3] = {MicContents[thisRowNr * 11 + 7] * (180.0 / M_PI),
+                          MicContents[thisRowNr * 11 + 8] * (180.0 / M_PI),
+                          MicContents[thisRowNr * 11 + 9] * (180.0 / M_PI)};
+      double mat1[3][3], quat1[4];
+      Euler2OrientMat(euler1, mat1);
+      OrientMat2Quat(&mat1[0][0], quat1);
+
+      double angle;
+      GetMisOrientationAngle(quat1, &refQuatForGrain[gID * 4], &angle,
+                             NrSymmetries, Sym);
+      grodMap[4 + i] = angle;
+    }
+  }
+
+  sprintf(outfilebin, "%s.map.grod", outputfile);
+  FILE *outGrod = fopen(outfilebin, "w");
+  if (outGrod) {
+    fwrite(grodMap, sizeof(*grodMap) * (size_map + 4), 1, outGrod);
+    printf("Saved map.grod to %s\n", outfilebin);
+    fclose(outGrod);
+  } else {
+    fprintf(stderr, "Error: Could not open map out file %s\n", outfilebin);
+  }
+
+  free(bestConfForGrain);
+  free(refQuatForGrain);
+  free(grodMap);
+  free(grainIdMap);
+  free(kamMap);
   free(map);
   free(lengthMat);
   free(RowNrMat);
