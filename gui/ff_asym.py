@@ -1171,51 +1171,39 @@ def selectFile():
 	return tkFileDialog.askopenfilename()
 
 def selectHDF5Path(is_dark=False):
-	# Simple dialog to show HDF5 structure
+	# Show cached datasets from the already-opened HDF5 file
+	global hdf5_cached_datasets
+	if not hdf5_cached_datasets:
+		print("No HDF5 datasets cached. Open a file with FirstFile first.")
+		return
+	
 	topH5 = Tk.Toplevel()
 	topH5.title("Select HDF5 Dataset Path")
 	
-	fn = selectFile()
-	if not fn: return
+	listbox = Tk.Listbox(topH5, width=60, height=20, font=("Helvetica", 14))
+	listbox.pack(side=Tk.LEFT, fill=Tk.BOTH, expand=True)
 	
-	try:
-		with h5py.File(fn, 'r') as f:
-			# Get all datasets
-			# ... (same logic as before)
-			paths = []
-			def visit_func(name, node):
-				if isinstance(node, h5py.Dataset):
-					paths.append(name)
-			f.visititems(visit_func)
+	scrollbar = Tk.Scrollbar(topH5, orient="vertical")
+	scrollbar.pack(side="right", fill="y")
+	
+	listbox.config(yscrollcommand=scrollbar.set)
+	scrollbar.config(command=listbox.yview)
+	
+	for p in hdf5_cached_datasets:
+		listbox.insert(Tk.END, p)
+		
+	def on_select():
+		selection = listbox.curselection()
+		if selection:
+			idx = selection[0]
+			path = listbox.get(idx)
+			if is_dark:
+				hdf5DarkPathVar.set(path)
+			else:
+				hdf5PathVar.set(path)
+			topH5.destroy()
 			
-			listbox = Tk.Listbox(topH5, width=60, height=20)
-			listbox.pack(side=Tk.LEFT, fill=Tk.BOTH, expand=True)
-			
-			scrollbar = Tk.Scrollbar(topH5, orient="vertical")
-			scrollbar.pack(side="right", fill="y")
-			
-			listbox.config(yscrollcommand=scrollbar.set)
-			scrollbar.config(command=listbox.yview)
-			
-			for p in paths:
-				listbox.insert(Tk.END, '/' + p)
-				
-			def on_select():
-				selection = listbox.curselection()
-				if selection:
-					idx = selection[0]
-					path = listbox.get(idx)
-					if is_dark:
-						hdf5DarkPathVar.set(path)
-					else:
-						hdf5PathVar.set(path)
-					topH5.destroy()
-					
-			Tk.Button(topH5, text="Select", command=on_select).pack()
-			
-	except Exception as e:
-		print(f"Error reading HDF5 file: {e}")
-		topH5.destroy()
+	Tk.Button(topH5, text="Select", command=on_select, font=("Helvetica", 14)).pack()
 
 def firstFileSelector():
 	global fileStem, folder, padding,firstFileNumber,nFramesPerFile
@@ -1271,10 +1259,39 @@ def firstFileSelector():
 		firstFileNrVar.set(str(firstFileNumber))
 		framenrvar.set('0')
 		
-		# Get dimensions from HDF5
+		# Get dimensions and cache all datasets from HDF5
+		global hdf5_cached_datasets
 		try:
 			with h5py.File(firstfilefullpath, 'r') as f:
-				dset_path = hdf5PathVar.get()
+				# Cache all dataset paths
+				hdf5_cached_datasets = []
+				def visit_func(name, node):
+					if isinstance(node, h5py.Dataset):
+						hdf5_cached_datasets.append('/' + name)
+				f.visititems(visit_func)
+				print(f"Found {len(hdf5_cached_datasets)} datasets: {hdf5_cached_datasets}")
+				
+				# Auto-detect data and dark paths
+				data_path = None
+				dark_path = None
+				for p in hdf5_cached_datasets:
+					pl = p.lower()
+					if 'dark' in pl and dark_path is None:
+						dark_path = p
+					elif ('data' in pl or 'image' in pl) and data_path is None:
+						data_path = p
+				
+				# If only one dataset, use it for data
+				if data_path is None and len(hdf5_cached_datasets) == 1:
+					data_path = hdf5_cached_datasets[0]
+				
+				if data_path:
+					hdf5PathVar.set(data_path)
+				if dark_path:
+					hdf5DarkPathVar.set(dark_path)
+				
+				# Get dimensions from selected data path
+				dset_path = data_path or hdf5PathVar.get()
 				if dset_path in f:
 					shape = f[dset_path].shape
 					if len(shape) == 3:
@@ -1504,6 +1521,7 @@ hdf5PathVar = Tk.StringVar()
 hdf5PathVar.set('/exchange/data')
 hdf5DarkPathVar = Tk.StringVar()
 hdf5DarkPathVar.set('/exchange/dark')
+hdf5_cached_datasets = []
 
 canvas.get_tk_widget().pack(fill=Tk.BOTH, expand=True)
 
