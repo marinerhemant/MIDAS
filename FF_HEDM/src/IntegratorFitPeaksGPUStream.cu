@@ -2398,6 +2398,27 @@ int main(int argc, char *argv[]) {
   for (int e = 0; e < nEtaBins; ++e)
     hEta[e] = hPerFrame[e + 2 * bigArrSize]; // Offset 2*bigArrSize
 
+  printf("Writing R, TTh, Eta, Area map to RTthEtaAreaMap.bin...\n");
+  FILE *fMap = fopen("RTthEtaAreaMap.bin", "wb");
+  if (fMap) {
+    size_t elements_to_write = bigArrSize * 4;
+    size_t elements_written =
+        fwrite(hPerFrame, sizeof(double), elements_to_write, fMap);
+    if (elements_written == elements_to_write) {
+      printf("Successfully wrote %zu double values to RTthEtaAreaMap.bin.\n",
+             elements_written);
+    } else {
+      fprintf(stderr,
+              "Warn: Failed to write full map file (wrote %zu/%zu): %s\n",
+              elements_written, elements_to_write, strerror(errno));
+    }
+    fclose(fMap);
+  } else {
+    fprintf(stderr,
+            "Error: Could not open RTthEtaAreaMap.bin for writing: %s\n",
+            strerror(errno));
+  }
+
   // --- Output Files & Host Buffers ---
   fLineout = fopen("lineout.bin", "wb");
   fLineoutSimpleMean = fopen("lineout_simple_mean.bin", "wb");
