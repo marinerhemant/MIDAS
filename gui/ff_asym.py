@@ -1600,8 +1600,7 @@ Tk.Label(dispFrame, text='MaxThresh', font=default_font).grid(row=2, column=0)
 Tk.Entry(dispFrame, textvariable=maxthresholdvar, width=5, font=default_font).grid(row=2, column=1)
 Tk.Checkbutton(dispFrame, text="Color > Max", variable=colorMaxVar, font=default_font).grid(row=2, column=2, columnspan=2)
 
-Tk.Button(dispFrame, text='Update Plot', command=replot, font=default_font, bg='lightblue').grid(row=3, column=0, columnspan=2)
-Tk.Checkbutton(dispFrame, text="LogScale", variable=dolog, font=default_font).grid(row=3, column=2, columnspan=2)
+Tk.Checkbutton(dispFrame, text="LogScale", variable=dolog, font=default_font).grid(row=3, column=0, columnspan=2)
 
 # 4. Processing Frame
 procFrame = Tk.LabelFrame(mainControlFrame, text="Processing", font=default_font)
