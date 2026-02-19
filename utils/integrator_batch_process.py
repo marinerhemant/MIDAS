@@ -193,28 +193,29 @@ def wait_for_server_ready(logfile, process, timeout=180):
     
     return False
 
-def check_and_create_mapping_files(param_file, midas_env):
+def check_and_create_mapping_files(param_file, midas_env, output_dir):
     """
     Check if mapping files exist (Map.bin, nMap.bin), and run DetectorMapper if they don't
     
     Args:
         param_file: Parameter file for the detector
         midas_env: Environment dictionary with LD_LIBRARY_PATH set
+        output_dir: Output directory where mapping files should be checked/created
         
     Returns:
         Boolean indicating if mapping files exist or were successfully created
     """
-    map_file = "Map.bin"
-    nmap_file = "nMap.bin"
-    rt_map_file = "RTthEtaAreaMap.bin"
+    map_file = output_dir / "Map.bin"
+    nmap_file = output_dir / "nMap.bin"
+    rt_map_file = output_dir / "RTthEtaAreaMap.bin"
     
     # Check if mapping files already exist
-    if os.path.exists(map_file) and os.path.exists(nmap_file) and os.path.exists(rt_map_file):
-        print(f"Mapping files ({map_file}, {nmap_file}, {rt_map_file}) found in current directory.")
+    if map_file.exists() and nmap_file.exists() and rt_map_file.exists():
+        print(f"Mapping files (Map.bin, nMap.bin, RTthEtaAreaMap.bin) found in {output_dir}.")
         return True
     
     # Files don't exist, need to run the mapper
-    print(f"Mapping files not found. Running DetectorMapper to create them...")
+    print(f"Mapping files not found in {output_dir}. Running DetectorMapper to create them...")
     
     detector_mapper = os.path.join(INSTALL_PATH, "FF_HEDM/bin/DetectorMapper")
     mapper_cmd = [detector_mapper, param_file]
@@ -222,12 +223,13 @@ def check_and_create_mapping_files(param_file, midas_env):
     
     try:
         print(f"Running command: {' '.join(mapper_cmd)}")
-        with open(mapper_log, 'w') as logfile:
+        with open(output_dir / mapper_log, 'w') as logfile:
             process = subprocess.Popen(
                 mapper_cmd,
                 stdout=logfile,
                 stderr=subprocess.STDOUT,
-                env=midas_env
+                env=midas_env,
+                cwd=str(output_dir)
             )
             
             # Poll for process completion with 1-second interval
@@ -261,12 +263,12 @@ def check_and_create_mapping_files(param_file, midas_env):
             print(f"DetectorMapper completed in {time.time() - start_time:.1f} seconds")
         
         # Check if files were created
-        if os.path.exists(map_file) and os.path.exists(nmap_file) and os.path.exists(rt_map_file):
-            print(f"Successfully created mapping files.")
+        if map_file.exists() and nmap_file.exists() and rt_map_file.exists():
+            print(f"Successfully created mapping files in {output_dir}.")
             return True
         else:
             print(f"ERROR: DetectorMapper completed but mapping files were not created.")
-            print(f"Check {mapper_log} for details")
+            print(f"Check {output_dir / mapper_log} for details")
             return False
             
     except Exception as e:
@@ -496,15 +498,18 @@ def main():
     midas_env["CUDA_VISIBLE_DEVICES"] = "0"  # Use the first GPU
     
     # Check if mapping files exist and create them if needed
-    if not check_and_create_mapping_files(param_file, midas_env):
+    if not check_and_create_mapping_files(param_file, midas_env, output_dir):
         print("Error: Failed to create required mapping files.")
         sys.exit(1)
-    for map_file in ["Map.bin", "nMap.bin", "RTthEtaAreaMap.bin"]:
-        source = Path(map_file).absolute()
-        if source.exists():
-            target = output_dir / map_file
-            if not target.exists():
-                os.symlink(source, target)
+        
+    # No need to explicitly symlink if we generated natively into output_dir. Check for existing global maps
+    if not (output_dir / "Map.bin").exists():
+        for map_file in ["Map.bin", "nMap.bin", "RTthEtaAreaMap.bin"]:
+            source = Path(map_file).absolute() # In current path
+            if source.exists():
+                target = output_dir / map_file
+                if not target.exists():
+                    os.symlink(source, target)
     
     # Start IntegratorFitPeaksGPUStream in background
     print("Starting IntegratorFitPeaksGPUStream...")
