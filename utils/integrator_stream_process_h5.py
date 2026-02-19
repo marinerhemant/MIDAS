@@ -548,22 +548,27 @@ def create_zarr_zip(zarr_output,
         ds_name = f"LastFrameNumber_{last_frame}"
         ds = osf_grp.array(ds_name, data=sum_buffer, dtype='float64', chunks=False)
 
-        # Attributes expected by G2pwd_MIDAS.py
-        ds.attrs['Number Of Frames Summed'] = valid_count
-        ds.attrs['LastFrameNumber'] = int(last_frame)
+        # Collect attributes into a dictionary to write only once to prevent ZipStore .zattrs duplicate fragments
+        attrs = {
+            'Number Of Frames Summed': valid_count,
+            'LastFrameNumber': int(last_frame)
+        }
 
         # Omega attributes
         first_frame = current_group_frames[0]
         if omega_fixed is not None:
-            ds.attrs['FirstOme'] = omega_fixed
-            ds.attrs['LastOme'] = omega_fixed
+            attrs['FirstOme'] = omega_fixed
+            attrs['LastOme'] = omega_fixed
         elif omega_start is not None and omega_step is not None:
-            ds.attrs['FirstOme'] = omega_start + first_frame * omega_step
-            ds.attrs['LastOme'] = omega_start + last_frame * omega_step
+            attrs['FirstOme'] = omega_start + first_frame * omega_step
+            attrs['LastOme'] = omega_start + last_frame * omega_step
         else:
             # No omega info — use frame index as placeholder
-            ds.attrs['FirstOme'] = float(first_frame)
-            ds.attrs['LastOme'] = float(last_frame)
+            attrs['FirstOme'] = float(first_frame)
+            attrs['LastOme'] = float(last_frame)
+
+        # Update attributes in a single call
+        ds.attrs.update(attrs)
 
         if group_idx % 50 == 0:
             print(f"  OmegaSumFrame: group {group_idx+1}/{total_groups}",
