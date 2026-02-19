@@ -1034,7 +1034,7 @@ int main(int argc, char **argv) {
       break;
     }
     // Go to the right location in the zip file and read frames.
-    arr = calloc(finfo->size + 1, sizeof(char));
+    arr = calloc(finfo->size, sizeof(char));
     fd = zip_fopen_index(arch, current_darkLoc, 0);
     if (!fd) {
       printf("Error: Failed to open dark frame inside zip.\n");
