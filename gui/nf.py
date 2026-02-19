@@ -1008,6 +1008,17 @@ def plotmic():
 			if os.path.exists(grainfile):
 				with open(grainfile, 'rb') as f:
 					graindata = np.fromfile(f, dtype=np.double)[4:]
+				
+				# Scramble IDs for better visual contrast between neighboring grains
+				max_grain = int(np.nanmax(graindata))
+				if max_grain > 0:
+					# Create a fixed random mapping based on a seed
+					np.random.seed(42)
+					scrambled_map = np.random.choice(np.arange(1, max_grain + 1), size=max_grain, replace=False)
+					# Apply scrambling to all valid grain IDs (>0)
+					valid_mask = (graindata > 0) & (graindata != -15.0)
+					graindata[valid_mask] = scrambled_map[graindata[valid_mask].astype(int) - 1]
+
 				graindata[badcoords] = -15.0
 				graindata = graindata.reshape((sizeY,sizeX))
 				# GrainIDs are discrete integers, keep jet or use tab20c etc.
