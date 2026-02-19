@@ -1238,7 +1238,14 @@ def firstFileSelector():
 	# Check format
 	ext = os.path.splitext(check_fn)[1].lower()
 	
-	fullfilename = os.path.basename(firstfilefullpath).split('.')[0]
+	basename_full = os.path.basename(check_fn)
+	dot_idx = basename_full.find('.')
+	if dot_idx != -1:
+		fullfilename = basename_full[:dot_idx]
+		full_ext = basename_full[dot_idx+1:]  # e.g., 'vrx.h5' or 'h5'
+	else:
+		fullfilename = basename_full
+		full_ext = ''
 	
 	# If HDF5, structure might be different
 	if ext in ['.h5', '.hdf', '.hdf5', '.nxs']:
@@ -1259,8 +1266,10 @@ def firstFileSelector():
 			
 		nDetectors = 1
 		detnumbvar.set('-1')
-		fnextvar.set(ext.lstrip('.'))
+		fnextvar.set(full_ext)
 		folder = os.path.dirname(firstfilefullpath) + '/'
+		firstFileNrVar.set(str(firstFileNumber))
+		framenrvar.set('0')
 		
 		# Get dimensions from HDF5
 		try:
@@ -1285,23 +1294,20 @@ def firstFileSelector():
 			
 		return
 
-	# If Tiff
-	if ext in ['.tif', '.tiff']:
-		pass # Similar logic or fallback to standard logic if named consistently
-
-	# Original logic for binary
+	# TIFF and Binary share same stem_NNNNNN naming convention
+	# Original logic for binary/tiff
 	fileStem = '_'.join(fullfilename.split('_')[:-1])
 	firstFileNumber = int(fullfilename.split('_')[-1])
 	firstFileNrVar.set(firstFileNumber)
 	padding = len(fullfilename.split('_')[-1])
 	nDetectors = 1
-	# Check here for the extension of the detector, if it contains .geX, then set detnumbvar as X, else set fnextvar
-	tempext = (firstfilefullpath.split(fullfilename)[-1])[1:]
-	if len(tempext) == 3 and tempext[-1].isdigit():
-		detnumbvar.set(tempext[-1])
+	framenrvar.set('0')
+	# Check if extension ends with geX (detector number), else use full_ext
+	if full_ext.startswith('ge') and len(full_ext) == 3 and full_ext[-1].isdigit():
+		detnumbvar.set(full_ext[-1])
 	else:
 		detnumbvar.set('-1')
-		fnextvar.set(tempext)
+		fnextvar.set(full_ext)
 	folder = os.path.dirname(firstfilefullpath) + '/'
 	statinfo = os.stat(firstfilefullpath)
 	# nFrames calculation for binary
