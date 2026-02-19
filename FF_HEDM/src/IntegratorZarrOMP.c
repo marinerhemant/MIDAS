@@ -992,6 +992,12 @@ int main(int argc, char **argv) {
   size_t *sizeArr;
   sizeArr = calloc(nFrames * 2, sizeof(*sizeArr)); // Number StartLoc
   size_t cntr = 0;
+  if (dataLoc < 0) {
+    printf("Error: Missing primary data chunk 0.0.0! Cannot proceed with "
+           "integrations.\n");
+    zip_close(arch);
+    return 1;
+  }
   printf("Reading compressed image data.\n");
   for (iter = 0; iter < nFrames; iter++) {
     zip_stat_index(arch, dataLoc + iter, 0, finfo);
@@ -1015,7 +1021,8 @@ int main(int argc, char **argv) {
   int darkIter;
   dsize = bytesPerPx * NrPixelsZ * NrPixelsY;
   data = (char *)malloc((size_t)dsize);
-  int32_t expected_dsize = bytesPerPx * NrPixelsZ * NrPixelsY;
+  int32_t expected_dsize =
+      bytesPerPx * NrPixelsZ * NrPixelsY; // Buffer max capacity
   for (darkIter = skipFrame; darkIter < nDarks; darkIter++) {
     int current_darkLoc = darkLoc + (darkIter - skipFrame);
     if (current_darkLoc < 0) {
@@ -1035,7 +1042,8 @@ int main(int argc, char **argv) {
       break;
     }
     zip_fread(fd, arr, finfo->size);
-    dsize = blosc1_decompress(arr, data, expected_dsize);
+    dsize = expected_dsize; // Reset buffer capacity
+    dsize = blosc1_decompress(arr, data, dsize);
     free(arr);
     zip_fclose(fd);
 
@@ -1181,7 +1189,13 @@ int main(int argc, char **argv) {
     tempThis += Temperature[i];
     iThis += I[i];
     i0This = I0[i];
+    dsz = NrPixelsY * NrPixelsZ * bytesPerPx; // Reset buffer capacity
     dsz = blosc1_decompress(&allData[sizeArr[i * 2 + 1]], locData, dsz);
+    if (dsz <= 0) {
+      printf("Error: Failed to decompress frame data at index %d! dsize: %d\n",
+             i, dsz);
+      exit(1);
+    }
     memcpy(ImageInTU, locData, dsz);
     for (j = 0; j < NrPixelsY * NrPixelsZ; j++)
       ImageInT[j] = (double)ImageInTU[j];
