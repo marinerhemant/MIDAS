@@ -142,7 +142,7 @@ def readMask():
 
 def getImage(fn, bytesToSkip, frame_idx=0, is_dark=False):
 	print("Reading file: " + fn)
-	global Header, BytesPerPixel
+	global Header, BytesPerPixel, NrPixelsY, NrPixelsZ
 	Header = HeaderVar.get()
 	BytesPerPixel = BytesVar.get()
 	
@@ -202,7 +202,6 @@ def getImage(fn, bytesToSkip, frame_idx=0, is_dark=False):
 		data = np.reshape(data,(NrPixelsY,NrPixelsZ))
 	
 	# Auto-update pixel dimensions from self-describing formats (HDF5, TIFF)
-	global NrPixelsY, NrPixelsZ
 	if ext in ['.h5','.hdf','.hdf5','.nxs','.tif','.tiff']:
 		if data.shape[0] != NrPixelsY or data.shape[1] != NrPixelsZ:
 			NrPixelsY = data.shape[0]
