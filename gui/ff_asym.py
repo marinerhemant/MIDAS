@@ -1352,18 +1352,20 @@ def replot():
 		can_reuse = (not initplot2 and _b_artist is not None and
 		             _b_logmode == use_log and
 		             _b_artist.get_array().shape == display_data.shape)
+		# Always rebuild colormap to pick up Color < Min / Color > Max changes
+		cmap = plt.get_cmap('bone').copy()
+		if colorMinVar.get():
+			cmap.set_under('blue')
+		if colorMaxVar.get():
+			cmap.set_over('red')
 		if can_reuse:
 			_b_artist.set_data(display_data)
 			_b_artist.set_clim(*clim)
+			_b_artist.set_cmap(cmap)
 			b.set_xlim([lims[0][0],lims[0][1]])
 			b.set_ylim([lims[1][0],lims[1][1]])
 		else:
 			b.clear()
-			cmap = plt.get_cmap('bone')
-			if colorMinVar.get():
-				cmap.set_under('blue')
-			if colorMaxVar.get():
-				cmap.set_over('red')
 			_b_artist = b.imshow(display_data,cmap=cmap,interpolation='nearest',clim=clim)
 			_b_logmode = use_log
 			if initplot2:
