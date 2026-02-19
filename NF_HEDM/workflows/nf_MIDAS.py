@@ -420,7 +420,7 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
 
                 out_file_path = f'{logDir}/fit_singlepoint_out.csv'
                 run_command(
-                    cmd=os.path.join(bin_dir, "FitOrientationParameters") + f' {args.paramFN} {grid_point_nr}',
+                    cmd=os.path.join(bin_dir, "FitOrientationParameters") + f' {args.paramFN} {grid_point_nr} {args.nCPUs}',
                     working_dir=resultFolder,
                     out_file=out_file_path,
                     err_file=f'{logDir}/fit_singlepoint_err.csv'

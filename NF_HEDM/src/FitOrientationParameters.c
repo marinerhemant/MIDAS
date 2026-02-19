@@ -8,6 +8,7 @@
 #include <limits.h>
 #include <math.h>
 #include <nlopt.h>
+#include <omp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -297,9 +298,16 @@ void FitOrientation(
 }
 
 int main(int argc, char *argv[]) {
-  clock_t start, end;
-  double diftotal;
-  start = clock();
+  double start, end, diftotal;
+  start = omp_get_wtime();
+
+  // Parse optional nCPUs argument
+  int nCPUs = 4;
+  if (argc >= 4) {
+    nCPUs = atoi(argv[3]);
+  }
+  omp_set_num_threads(nCPUs);
+  printf("Running with %d OpenMP threads.\n", nCPUs);
 
   // Read params file.
   char *ParamFN;
@@ -615,8 +623,8 @@ int main(int argc, char *argv[]) {
   double GridSize = 2 * gs;
 
   // Read Orientations
-  clock_t startthis;
-  startthis = clock();
+  double startthis;
+  startthis = omp_get_wtime();
   FILE *fd, *fk, *fo;
   int NrOrientations, TotalDiffrSpots;
   fd = fopen(fnDS, "r");
@@ -657,8 +665,8 @@ int main(int argc, char *argv[]) {
   printf("NrOrientations: %lu mb\n",
          NrOrientations * 10 * sizeof(double) / (1024 * 1024));
   // Go through each orientation and compare with observed spots.
-  clock_t startthis2;
-  startthis2 = clock();
+  double startthis2;
+  startthis2 = omp_get_wtime();
   int NrPixelsGrid = 2 * (ceil((gs * 2) / px)) * (ceil((gs * 2) / px));
   int NrSpotsThis, StartingRowNr;
   double FracOverT;
@@ -722,16 +730,10 @@ int main(int argc, char *argv[]) {
     }
   }
   if (OrientationGoodID > 0) {
-    double EulerIn[3], OrientIn[3][3], FracOut, EulerOutA, EulerOutB, EulerOutC,
-        BestFrac, BestEuler[3], OMTemp[9];
-    double *LsdFit, *TiltsFit, **BCsFit;
     double TiltsOrig[3];
     TiltsOrig[0] = tx;
     TiltsOrig[1] = ty;
     TiltsOrig[2] = tz;
-    LsdFit = malloc(nLayers * sizeof(*LsdFit));
-    TiltsFit = malloc(nLayers + sizeof(*TiltsFit));
-    BCsFit = allocMatrixF(nLayers, 2);
     int n_hkls = 0;
     double hkls[5000][4];
     double Thetas[5000];
@@ -770,13 +772,30 @@ int main(int argc, char *argv[]) {
       n_hkls = totalHKLs;
     }
     printf("Number of individual diffracting planes: %d\n", n_hkls);
-    BestFrac = -1;
+    double BestFrac = -1;
+    double BestEuler[3] = {0, 0, 0};
+    double BestLsdFit[nLayers], BestTiltsFit[3];
+    double BestBCsFit[nLayers][2];
+    int BestOrientIdx = -1;
+    int done = 0;
+#pragma omp parallel for schedule(dynamic)                                     \
+    shared(BestFrac, BestEuler, BestLsdFit, BestTiltsFit, BestBCsFit,          \
+               BestOrientIdx, done)
     for (i = 0; i < OrientationGoodID; i++) {
-      for (j = 0; j < 9; j++) {
-        OMTemp[j] = OrientMatrix[i][j];
+      if (done)
+        continue;
+      int j_local, m_local;
+      double OMTemp[9], OrientIn[3][3], EulerIn[3];
+      double FracOut, EulerOutA, EulerOutB, EulerOutC;
+      for (j_local = 0; j_local < 9; j_local++) {
+        OMTemp[j_local] = OrientMatrix[i][j_local];
       }
       Convert9To3x3(OMTemp, OrientIn);
       OrientMat2Euler(OrientIn, EulerIn);
+      // Per-thread allocations for FitOrientation outputs
+      double *LsdFit = malloc(nLayers * sizeof(*LsdFit));
+      double *TiltsFit = malloc(3 * sizeof(*TiltsFit));
+      double **BCsFit = allocMatrixF(nLayers, 2);
       FitOrientation(nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots, XG,
                      YG, TiltsOrig, OmegaStart, OmegaStep, px, ybc, zbc, gs,
                      OmegaRanges, NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
@@ -784,40 +803,70 @@ int main(int argc, char *argv[]) {
                      &EulerOutC, &FracOut, hkls, Thetas, n_hkls, LsdFit,
                      TiltsFit, BCsFit, lsdtol, lsdtolrel, tiltstol, bctola,
                      bctolb, NrPixelsY, NrPixelsZ);
-      if ((1 - FracOut) > BestFrac) {
-        BestFrac = 1 - FracOut;
-        printf("\nBest fraction till now: %f, Orientation number: %d of %d.\n",
-               BestFrac, i + 1, OrientationGoodID);
-        printf("Euler angles: %f %f %f, ConfidenceIndex: %f, Before fit: "
-               "%f\nTilts: %f %f %f\n",
-               EulerOutA, EulerOutB, EulerOutC, 1 - FracOut, OrientMatrix[i][9],
-               TiltsFit[0], TiltsFit[1], TiltsFit[2]);
-        printf("Orientation Matrix:\n");
-        EulBest[0] = EulerOutA * rad2deg;
-        EulBest[1] = EulerOutB * rad2deg;
-        EulBest[2] = EulerOutC * rad2deg;
-        Euler2OrientMat(EulBest, OMBest);
-        for (j = 0; j < 3; j++) {
-          for (m = 0; m < 3; m++) {
-            printf("%f ", OMBest[j][m]);
+      double Frac = 1 - FracOut;
+#pragma omp critical
+      {
+        if (Frac > BestFrac) {
+          BestFrac = Frac;
+          BestEuler[0] = EulerOutA;
+          BestEuler[1] = EulerOutB;
+          BestEuler[2] = EulerOutC;
+          BestOrientIdx = i;
+          for (j_local = 0; j_local < nLayers; j_local++) {
+            BestLsdFit[j_local] = LsdFit[j_local];
+            BestBCsFit[j_local][0] = BCsFit[j_local][0];
+            BestBCsFit[j_local][1] = BCsFit[j_local][1];
           }
+          BestTiltsFit[0] = TiltsFit[0];
+          BestTiltsFit[1] = TiltsFit[1];
+          BestTiltsFit[2] = TiltsFit[2];
+          printf(
+              "\nBest fraction till now: %f, Orientation number: %d of %d.\n",
+              BestFrac, i + 1, OrientationGoodID);
+          printf("Euler angles: %f %f %f, ConfidenceIndex: %f, Before fit: "
+                 "%f\nTilts: %f %f %f\n",
+                 EulerOutA, EulerOutB, EulerOutC, Frac, OrientMatrix[i][9],
+                 TiltsFit[0], TiltsFit[1], TiltsFit[2]);
+          fflush(stdout);
+          if (1 - BestFrac < 0.0001)
+            done = 1;
         }
-        printf("\n");
-        for (j = 0; j < nLayers; j++) {
-          printf("Layer Nr: %d, Lsd: %f, BCs: %f %f\n", j, LsdFit[j],
-                 BCsFit[j][0], BCsFit[j][1]);
-        }
-        for (j = 0; j < nLayers; j++) {
-          printf("Lsd %f\n", LsdFit[j]);
-        }
-        for (j = 0; j < nLayers; j++) {
-          printf("BC %f %f\n", BCsFit[j][0], BCsFit[j][1]);
-        }
-        printf("tx %f\nty %f\ntz %f\n", TiltsFit[0], TiltsFit[1], TiltsFit[2]);
-        fflush(stdout);
-        if (1 - BestFrac < 0.0001)
-          break;
       }
+      free(LsdFit);
+      free(TiltsFit);
+      FreeMemMatrix(BCsFit, nLayers);
+    }
+    // Print final best result summary
+    if (BestOrientIdx >= 0) {
+      printf("\n--- Final Best Result ---\n");
+      printf("Euler angles: %f %f %f, ConfidenceIndex: %f\n", BestEuler[0],
+             BestEuler[1], BestEuler[2], BestFrac);
+      printf("Tilts: %f %f %f\n", BestTiltsFit[0], BestTiltsFit[1],
+             BestTiltsFit[2]);
+      printf("Orientation Matrix:\n");
+      EulBest[0] = BestEuler[0] * rad2deg;
+      EulBest[1] = BestEuler[1] * rad2deg;
+      EulBest[2] = BestEuler[2] * rad2deg;
+      Euler2OrientMat(EulBest, OMBest);
+      for (j = 0; j < 3; j++) {
+        for (m = 0; m < 3; m++) {
+          printf("%f ", OMBest[j][m]);
+        }
+      }
+      printf("\n");
+      for (j = 0; j < nLayers; j++) {
+        printf("Layer Nr: %d, Lsd: %f, BCs: %f %f\n", j, BestLsdFit[j],
+               BestBCsFit[j][0], BestBCsFit[j][1]);
+      }
+      for (j = 0; j < nLayers; j++) {
+        printf("Lsd %f\n", BestLsdFit[j]);
+      }
+      for (j = 0; j < nLayers; j++) {
+        printf("BC %f %f\n", BestBCsFit[j][0], BestBCsFit[j][1]);
+      }
+      printf("tx %f\nty %f\ntz %f\n", BestTiltsFit[0], BestTiltsFit[1],
+             BestTiltsFit[2]);
+      fflush(stdout);
     }
   }
   // Free memory
@@ -827,12 +876,11 @@ int main(int argc, char *argv[]) {
   FreeMemMatrix(XY, 3);
   FreeMemMatrix(OrientationMatrix, NrOrientations);
   FreeMemMatrix(OrientMatrix, MAX_POINTS_GRID_GOOD);
-  end = clock();
-  diftotal = ((double)(startthis - start)) / CLOCKS_PER_SEC;
-  printf("Time elapsed in reading bin files: %f [s]\n", diftotal);
-  diftotal = ((double)(startthis2 - startthis)) / CLOCKS_PER_SEC;
-  printf("Time elapsed in reading orientations: %f [s]\n", diftotal);
-  diftotal = ((double)(end - startthis2)) / CLOCKS_PER_SEC;
-  printf("Time elapsed in comparing diffraction spots: %f [s]\n", diftotal);
+  end = omp_get_wtime();
+  printf("Time elapsed in reading bin files: %f [s]\n", startthis - start);
+  printf("Time elapsed in reading orientations: %f [s]\n",
+         startthis2 - startthis);
+  printf("Time elapsed in comparing diffraction spots: %f [s]\n",
+         end - startthis2);
   return 0;
 }
