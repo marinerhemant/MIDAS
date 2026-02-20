@@ -925,8 +925,8 @@ def main():
         if h5_file:
             save_threshold_data(thresh, h5_file)
             
-        # Display threshold if needed
-        if DrawPlots == 1:
+        # Display threshold if needed (skip when noMedian since it's just the raw image)
+        if DrawPlots == 1 and noMedian == 0:
             fig = plt.figure()
             plt.imshow(thresh, origin='lower')  # Set origin to lower left
             plt.colorbar()
@@ -982,8 +982,13 @@ def main():
         # Display rings on image if needed
         if DrawPlots == 1:
             fig, ax = plt.subplots()
-            plt.imshow(thresh, origin='lower')  # Set origin to lower left
-            for rad in sim_rads:
+            if noMedian == 0:
+                plt.imshow(thresh, origin='lower')  # Set origin to lower left
+            else:
+                plt.imshow(data_corr, origin='lower')  # Set origin to lower left
+            for ringNr, rad in enumerate(sim_rads, start=1):
+                if ringNr in ringsToExclude:
+                    continue
                 e1 = mpatches.Arc((bc_new[1], bc_new[0]), 2*rad, 2*rad, 
                                  angle=0, theta1=-180, theta2=180, color='blue')
                 ax.add_patch(e1)
