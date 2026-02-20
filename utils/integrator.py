@@ -315,12 +315,13 @@ class FileProcessor:
             logger.error(error_msg)
             raise IntegrationError(error_msg)
     
-    def convert_hdf_to_zarr(self, hdf_file: Path) -> Path:
+    def convert_hdf_to_zarr(self, hdf_file: Path, input_zip_file: Path) -> Path:
         """
         Convert HDF5 file to Zarr ZIP format.
         
         Args:
             hdf_file: Input HDF5 file
+            input_zip_file: Original Input Zarr file from which metadata will be copied
             
         Returns:
             Path to output Zarr ZIP file
@@ -350,6 +351,9 @@ class FileProcessor:
                     h5_chunks_zip = Hdf5ToZarr(f, store_zip)
                     h5_chunks_zip.translate()
             
+            # Enrich Zarr with metadata from initial zarr
+            self._enrich_zarr_with_metadata(input_zip_file, output_zip)
+
             # Verify the file was created successfully
             if not output_zip.exists() or output_zip.stat().st_size == 0:
                 raise IntegrationError(f"Failed to create valid Zarr ZIP file: {output_zip}")
@@ -359,6 +363,84 @@ class FileProcessor:
             error_msg = f"Failed to convert HDF5 file {hdf_file} to Zarr ZIP: {str(e)}"
             logger.error(error_msg)
             raise IntegrationError(error_msg) from e
+
+    def _enrich_zarr_with_metadata(self, input_zip_file: Path, output_zip_file: Path) -> None:
+        """
+        Copy and average scan parameter metadata from the input Zarr to the output Zarr.
+        
+        Args:
+            input_zip_file: Path to original input Zarr.zip
+            output_zip_file: Path to output Zarr.zip
+        """
+        import zarr
+        import numpy as np
+        import math
+        
+        try:
+            with zarr.open(str(input_zip_file), mode='r') as z_in:
+                # Check if scan parameters exist
+                if 'measurement/process/scan_parameters' not in z_in:
+                    logger.info("No scan parameters found in input Zarr, skipping metadata enrichment.")
+                    return
+                    
+                sp_in = z_in['measurement/process/scan_parameters']
+                
+                # Get total frames to check for 1D arrays that need averaging
+                total_frames = 0
+                if 'exchange/data' in z_in:
+                    total_frames = z_in['exchange/data'].shape[0]
+                    
+                # Get OmegaSumFrames to know chunk size
+                omega_sum_frames = 1
+                try:
+                    if 'analysis/process/analysis_parameters/OmegaSumFrames' in z_in:
+                        omega_sum_frames = int(z_in['analysis/process/analysis_parameters/OmegaSumFrames'][0])
+                except Exception as e:
+                    logger.debug(f"Could not read OmegaSumFrames, defaulting to 1: {e}")
+                
+                # Open output zarr to write
+                with zarr.open(str(output_zip_file), mode='a') as z_out:
+                    # Create group if it doesn't exist
+                    sp_out = z_out.require_group('measurement/process/scan_parameters')
+                    
+                    # Exclude fields we shouldn't touch or that get generated separately
+                    exclude_keys = {'datatype', 'start', 'step'}
+                    
+                    for key in sp_in.keys():
+                        if key in exclude_keys:
+                            continue
+                            
+                        try:
+                            # It's better to read as array
+                            data_in = sp_in[key][()]
+                            
+                            # If it's a 1D array with length == total_frames and we need to average
+                            if isinstance(data_in, np.ndarray) and data_in.ndim == 1 and len(data_in) == total_frames and omega_sum_frames > 1 and total_frames > 0:
+                                num_chunks = math.ceil(total_frames / omega_sum_frames)
+                                # Pre-allocate chunked array
+                                chunked_data = np.zeros(num_chunks, dtype=data_in.dtype)
+                                
+                                for i in range(num_chunks):
+                                    start_idx = i * omega_sum_frames
+                                    end_idx = min(start_idx + omega_sum_frames, total_frames)
+                                    chunked_data[i] = np.mean(data_in[start_idx:end_idx])
+                                    
+                                data_to_write = chunked_data
+                                logger.debug(f"Averaged metadata {key} from shape {data_in.shape} to {data_to_write.shape}")
+                            else:
+                                # Just copy it as-is
+                                data_to_write = data_in
+                            
+                            # Write to output Zarr
+                            if key in sp_out:
+                                del sp_out[key] # overwrite if exists
+                            sp_out.create_dataset(key, data=data_to_write)
+                            logger.info(f"Copied metadata '{key}' to output Zarr.")
+                        except Exception as e:
+                            logger.warning(f"Failed to copy metadata key '{key}': {e}")
+                            
+        except Exception as e:
+            logger.error(f"Error enriching Zarr with metadata: {e}")
     
     def save_as_matlab(self, zarr_file_path: Path) -> Optional[Path]:
         """
@@ -532,7 +614,7 @@ class FileProcessor:
             hdf_file = self.run_integrator(zip_file)
             
             # Convert HDF to Zarr
-            out_zip = self.convert_hdf_to_zarr(hdf_file)
+            out_zip = self.convert_hdf_to_zarr(hdf_file, zip_file)
             
             # Save as MATLAB file if requested
             if self.params.write_mat:
@@ -651,16 +733,6 @@ class MidasIntegrator:
             except Exception as e:
                 logger.warning(f"Failed to cleanup temporary parameter file: {e}")
 
-    def run(self):
-        """Run the integration process"""
-        try:
-            # ... existing run logic ...
-            # Since the original code didn't have a run method in the snippet, 
-            # I will inject cleanup into where the Main logic likely is or destructor.
-            pass 
-        finally:
-            self._cleanup_temp_file()
-        
     def _setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown"""
         # Store original handlers
@@ -1032,6 +1104,8 @@ class MidasIntegrator:
         except Exception as e:
             logger.error(f"An error occurred during processing: {str(e)}")
             raise
+        finally:
+            self._cleanup_temp_file()
     
     def _process_files(self, files_to_process: List[int], start_file_nr: int) -> List[Path]:
         """Process multiple files either serially or in parallel

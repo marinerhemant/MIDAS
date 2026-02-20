@@ -164,7 +164,7 @@ def fileReader(f, dset):
         data = data[skipFrame:,:,:]
         _, NrPixelsZ, NrPixelsY = data.shape
         data[data < 1] = 1
-        return np.mean(data, axis=0).astype(np.uint16)
+        return np.mean(data, axis=0)
     except Exception as e:
         logger.error(f"Error reading dataset {dset}: {e}")
         raise
@@ -341,6 +341,7 @@ def runMIDAS(fn):
     global ringsToExclude, folder, fstem, ext, ty_refined, tz_refined, p0_refined, p1_refined
     global p2_refined, p3_refined, darkName, fnumber, pad, lsd_refined, bc_refined, latc
     global nPlanes, mean_strain, std_strain, iterNr, h5_file
+    global midas_dtype, panel_params, panel_shifts_file
     
     ps_file = f"{fn}ps.txt"
     
@@ -381,14 +382,19 @@ def runMIDAS(fn):
             pf.write(f'px {px}\n')
             pf.write(f'Wavelength {Wavelength}\n')
             pf.write(f'SpaceGroup {space_group}\n')
+            pf.write(f'DataType {midas_dtype}\n')
             pf.write(f'Lsd {lsd_refined}\n')
             pf.write(f'RhoD {RhoDThis}\n')
             pf.write(f'MultFactor {multFactor}\n')
             pf.write(f'BC {bc_refined}\n')
             pf.write(f'LatticeConstant {" ".join(map(str, latc))}\n')
+            if len(panel_params) > 0:
+                for pp in panel_params:
+                    pf.write(f'{pp}\n')
+                pf.write(f'PanelShiftsFile {panel_shifts_file}\n')
         
-        # Use the INSTALL_PATH to locate the CalibrantOMP executable
-        calibrant_cmd = f"{os.path.join(INSTALL_PATH, 'FF_HEDM/bin/CalibrantOMP')} {ps_file} 10"
+        # Use the INSTALL_PATH to locate the CalibrantPanelShiftsOMP executable
+        calibrant_cmd = f"{os.path.join(INSTALL_PATH, 'FF_HEDM/bin/CalibrantPanelShiftsOMP')} {ps_file} 10"
         with open('calibrant_screen_out.csv', 'w') as f:
             subprocess.call(calibrant_cmd, shell=True, env=env, stdout=f)
         
@@ -673,18 +679,12 @@ def process_tiff_input(dataFN, badPxIntensity, gapIntensity):
         logger.info("Data was a tiff image. Will convert to a ge file with 16 bit unsigned.")
         img = np.array(img)
         
-        if img.dtype == np.int32:
-            # Find bad or gap pixels
-            if not np.isnan(badPxIntensity) and not np.isnan(gapIntensity):
-                badGapArr = img == badPxIntensity
-                badGapArr = np.logical_or(badGapArr, img == gapIntensity)
-                
-            # Scale data for 16-bit
-            img = img.astype(np.double)
-            img /= 2
-            img = img.astype(np.uint16)
+        # Find bad or gap pixels
+        if not np.isnan(badPxIntensity) and not np.isnan(gapIntensity):
+            badGapArr = img == badPxIntensity
+            badGapArr = np.logical_or(badGapArr, img == gapIntensity)
             
-            # Set dimensions if not 2048x2048
+        # Set dimensions if not 2048x2048
             if img.shape[1] != 2048:
                 NrPixelsY = img.shape[1]
             if img.shape[0] != 2048:
@@ -710,6 +710,7 @@ def main():
     global p2_refined, p3_refined, darkName, fnumber, pad, lsd_refined, bc_refined
     global ringsToExclude, nPlanes, mean_strain, std_strain, RhoDThis, h5_file, iterNr
     global badGapArr, tx_reference
+    global midas_dtype, panel_params, panel_shifts_file
     
     try:
         parser = MyParser(
@@ -874,7 +875,14 @@ def main():
         sim_rad_ratios = sim_rads / sim_rads[0]
         
         # Process image for calibration
-        data = raw.astype(np.uint16)
+        data = raw.astype(np.float64)
+        
+        # Determine DataType for CalibrantPanelShiftsOMP
+        midas_dtype = 1 # Default Uint16
+        if raw.dtype == np.uint32: midas_dtype = 4
+        elif raw.dtype == np.int32: midas_dtype = 5
+        elif raw.dtype == np.float32: midas_dtype = 3
+        elif raw.dtype == np.float64: midas_dtype = 2
         
         # Apply median filter for background estimation
         # Apply median filter for background estimation
@@ -1000,7 +1008,11 @@ def main():
         p3_refined = '0'
         ringsToExclude = []
         
-        # Parse RingsToExclude from input parameter file
+        # Panel parameters tracking
+        panel_shifts_file = f"{fstem}_panel_shifts.txt"
+        panel_params = []
+        
+        # Parse RingsToExclude and Panels from input parameter file
         if args.paramFN:
             try:
                 with open(args.paramFN, 'r') as pf:
@@ -1009,6 +1021,8 @@ def main():
                             parts = line.split()
                             if len(parts) > 1:
                                 ringsToExclude.append(int(parts[1]))
+                        elif any(line.startswith(pk) for pk in ['NPanelsY', 'NPanelsZ', 'PanelSizeY', 'PanelSizeZ', 'PanelGapsY', 'PanelGapsZ']):
+                            panel_params.append(line.strip())
                 logger.info(f"Loaded manual exclusions: {ringsToExclude}")
             except Exception as e:
                 logger.warning(f"Could not read RingsToExclude from {args.paramFN}: {e}")
@@ -1177,12 +1191,18 @@ def main():
             'DoSmoothing': 1,
             'DoPeakFit': 1,
             'skipFrame': skipFrame,
-            'MultiplePeaks': 1
+            'MultiplePeaks': 1,
+            'DataType': midas_dtype
         }
         
         with open(psName, 'w') as pf:
             for key, value in final_params.items():
                 pf.write(f"{key} {value}\n")
+                
+            if len(panel_params) > 0:
+                for pp in panel_params:
+                    pf.write(f'{pp}\n')
+                pf.write(f'PanelShiftsFile {panel_shifts_file}\n')
             
             # Add transformation options
             for transOpt in imTransOpt:
