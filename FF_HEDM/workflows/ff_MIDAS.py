@@ -380,8 +380,8 @@ def generateZip(
     if numFilesPerScan > 1:
         cmd += f' -numFilesPerScan {numFilesPerScan}'
         
-    outf_path = f"{resFol}/output/{outf}"
-    errf_path = f"{resFol}/output/{errf}"
+    outf_path = f"{resFol}/midas_log/{outf}"
+    errf_path = f"{resFol}/midas_log/{errf}"
     
     try:
         print(cmd)
@@ -461,10 +461,10 @@ def _peaks_impl(resultDir: str, zipFN: str, numProcs: int, bin_dir: str, blockNr
         logger = logging.getLogger('MIDAS_peaks')
     
     # Make sure output directory exists
-    os.makedirs(f'{resultDir}/output', exist_ok=True)
+    os.makedirs(f'{resultDir}/midas_log', exist_ok=True)
     
-    outfile = f'{resultDir}/output/peaksearch_out{blockNr}.csv'
-    errfile = f'{resultDir}/output/peaksearch_err{blockNr}.csv'
+    outfile = f'{resultDir}/midas_log/peaksearch_out{blockNr}.csv'
+    errfile = f'{resultDir}/midas_log/peaksearch_err{blockNr}.csv'
     
     # Copy all environment variables
     env = dict(os.environ)
@@ -531,7 +531,7 @@ def _index_impl(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0,
     os.chdir(resultDir)
     
     # Make sure output directory exists
-    os.makedirs(f'{resultDir}/output', exist_ok=True)
+    os.makedirs(f'{resultDir}/midas_log', exist_ok=True)
     
     # Copy all environment variables
     env = dict(os.environ)
@@ -555,8 +555,8 @@ def _index_impl(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0,
         logger.error(error_msg)
         raise RuntimeError(error_msg)
     
-    outfile = f'{resultDir}/output/indexing_out{blockNr}.csv'
-    errfile = f'{resultDir}/output/indexing_err{blockNr}.csv'
+    outfile = f'{resultDir}/midas_log/indexing_out{blockNr}.csv'
+    errfile = f'{resultDir}/midas_log/indexing_err{blockNr}.csv'
     
     logger.info(f"Running IndexerOMP in {resultDir} for block {blockNr}/{numBlocks}")
     
@@ -612,7 +612,7 @@ def _refine_impl(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0,
     os.chdir(resultDir)
     
     # Make sure output directory exists
-    os.makedirs(f'{resultDir}/output', exist_ok=True)
+    os.makedirs(f'{resultDir}/midas_log', exist_ok=True)
     
     # Copy all environment variables
     env = dict(os.environ)
@@ -636,8 +636,8 @@ def _refine_impl(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0,
         logger.error(error_msg)
         raise RuntimeError(error_msg)
     
-    outfile = f'{resultDir}/output/refining_out{blockNr}.csv'
-    errfile = f'{resultDir}/output/refining_err{blockNr}.csv'
+    outfile = f'{resultDir}/midas_log/refining_out{blockNr}.csv'
+    errfile = f'{resultDir}/midas_log/refining_err{blockNr}.csv'
     
     logger.info(f"Running FitPosOrStrainsOMP in {resultDir} for block {blockNr}/{numBlocks}")
     
@@ -743,7 +743,8 @@ def setup_output_directories(result_dir: str) -> None:
         result_dir: Result directory path
     """
     os.makedirs(result_dir, exist_ok=True)
-    os.makedirs(f"{result_dir}/output", exist_ok=True)
+    os.makedirs(f"{result_dir}/midas_log", exist_ok=True)
+    os.makedirs(f"{result_dir}/Output", exist_ok=True)
     os.makedirs(f"{result_dir}/Temp", exist_ok=True)
 
 def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num_procs: int, 
@@ -860,8 +861,8 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
         logger.info(f"Generating HKLs. Time till now: {time.time() - t0} seconds.")
         
         try:
-            f_hkls_out = f'{result_dir}/output/hkls_out.csv'
-            f_hkls_err = f'{result_dir}/output/hkls_err.csv'
+            f_hkls_out = f'{result_dir}/midas_log/hkls_out.csv'
+            f_hkls_err = f'{result_dir}/midas_log/hkls_err.csv'
             cmd = f"{os.path.join(bin_directory, 'GetHKLListZarr')} {outFStem}"
             safely_run_command(cmd, result_dir, f_hkls_out, f_hkls_err, task_name="HKL generation")
         except Exception as e:
@@ -872,8 +873,8 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
             logger.info(f"Generating HKLs. Time till now: {time.time() - t0} seconds.")
             
             try:
-                f_hkls_out = f'{result_dir}/output/hkls_out.csv'
-                f_hkls_err = f'{result_dir}/output/hkls_err.csv'
+                f_hkls_out = f'{result_dir}/midas_log/hkls_out.csv'
+                f_hkls_err = f'{result_dir}/midas_log/hkls_err.csv'
                 cmd = f"{os.path.join(bin_directory, 'GetHKLList')} {ps_fn}"
                 safely_run_command(cmd, result_dir, f_hkls_out, f_hkls_err, task_name="HKL generation")
             except Exception as e:
@@ -904,8 +905,8 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
         logger.info("Merging peaks.")
         
         try:
-            f_merge_out = f'{result_dir}/output/merge_overlaps_out.csv'
-            f_merge_err = f'{result_dir}/output/merge_overlaps_err.csv'
+            f_merge_out = f'{result_dir}/midas_log/merge_overlaps_out.csv'
+            f_merge_err = f'{result_dir}/midas_log/merge_overlaps_err.csv'
             cmd = f"{os.path.join(bin_directory, 'MergeOverlappingPeaksAllZarr')} {outFStem}"
             safely_run_command(cmd, result_dir, f_merge_out, f_merge_err, task_name="Peak merging")
         except Exception as e:
@@ -914,8 +915,8 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
         logger.info(f"Calculating Radii. Time till now: {time.time() - t0}")
         
         try:
-            f_radius_out = f'{result_dir}/output/calc_radius_out.csv'
-            f_radius_err = f'{result_dir}/output/calc_radius_err.csv'
+            f_radius_out = f'{result_dir}/midas_log/calc_radius_out.csv'
+            f_radius_err = f'{result_dir}/midas_log/calc_radius_err.csv'
             cmd = f"{os.path.join(bin_directory, 'CalcRadiusAllZarr')} {outFStem}"
             safely_run_command(cmd, result_dir, f_radius_out, f_radius_err, task_name="Radius calculation")
         except Exception as e:
@@ -924,8 +925,8 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
         logger.info(f"Transforming data. Time till now: {time.time() - t0}")
         
         try:
-            f_setup_out = f'{result_dir}/output/fit_setup_out.csv'
-            f_setup_err = f'{result_dir}/output/fit_setup_err.csv'
+            f_setup_out = f'{result_dir}/midas_log/fit_setup_out.csv'
+            f_setup_err = f'{result_dir}/midas_log/fit_setup_err.csv'
             cmd = f"{os.path.join(bin_directory, 'FitSetupZarr')} {outFStem}"
             safely_run_command(cmd, result_dir, f_setup_out, f_setup_err, task_name="Data transformation")
         except Exception as e:
@@ -953,8 +954,8 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
         # Bin data
         logger.info(f"Binning data. Time till now: {time.time() - t0}, workingdir: {result_dir}")
         try:
-            f_bin_out = f'{result_dir}/output/binning_out.csv'
-            f_bin_err = f'{result_dir}/output/binning_err.csv'
+            f_bin_out = f'{result_dir}/midas_log/binning_out.csv'
+            f_bin_err = f'{result_dir}/midas_log/binning_err.csv'
             cmd = f"{os.path.join(bin_directory, 'SaveBinData')}"
             safely_run_command(cmd, result_dir, f_bin_out, f_bin_err, task_name="Data binning")
         except Exception as e:
@@ -986,8 +987,8 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
         logger.info(f"Making grains list. Time till now: {time.time() - t0}")
         
         try:
-            f_grains_out = f'{result_dir}/output/process_grains_out.csv'
-            f_grains_err = f'{result_dir}/output/process_grains_err.csv'
+            f_grains_out = f'{result_dir}/midas_log/process_grains_out.csv'
+            f_grains_err = f'{result_dir}/midas_log/process_grains_err.csv'
             
             if provide_input_all == 0:
                 if grains_file:
@@ -1104,6 +1105,7 @@ def process_inputall_data(result_dir: str, top_res_dir: str, ps_fn: str) -> None
             for line in lines:
                 paramstestF.write(line)
                     
+        os.makedirs(f'{result_dir}/midas_log', exist_ok=True)
         os.makedirs(f'{result_dir}/Output', exist_ok=True)
         os.makedirs(f'{result_dir}/Results', exist_ok=True)
     except Exception as e:

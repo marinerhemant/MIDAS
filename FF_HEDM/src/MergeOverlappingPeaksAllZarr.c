@@ -325,6 +325,10 @@ int main(int argc, char *argv[]) {
     }
     count++;
   }
+  printf(
+      "Read Parameters from Zarr:\n\tFolder: %s\n\tEndNr: %d\n\tOverlapLength: "
+      "%lf\n\tUseMaximaPositions: %d\n\tSkipFrame: %d\n",
+      Folder, EndNr, MarginOmegaOverlap, UseMaximaPositions, skipFrame);
   // printf("%lf\n",MarginOmegaOverlap);
   if (argc == 3) {
     if (Folder != NULL)

@@ -188,8 +188,8 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
         if numFilesPerScan > 1:
             cmd += f" -numFilesPerScan {str(numFilesPerScan)}"
             
-        outf_path = f"{resFol}/output/{outf}"
-        errf_path = f"{resFol}/output/{errf}"
+        outf_path = f"{resFol}/midas_log/{outf}"
+        errf_path = f"{resFol}/midas_log/{errf}"
         
         logger.info(f"Generating zip for layer {layerNr}: {cmd}")
         
@@ -516,8 +516,8 @@ def peaks(resultDir, zipFN, numProcs, midas_path, blockNr=0, numBlocks=1):
         return True
     
     # Create output files
-    f_out_path = f'{resultDir}/output/peaksearch_out{blockNr}.csv'
-    f_err_path = f'{resultDir}/output/peaksearch_err{blockNr}.csv'
+    f_out_path = f'{resultDir}/midas_log/peaksearch_out{blockNr}.csv'
+    f_err_path = f'{resultDir}/midas_log/peaksearch_err{blockNr}.csv'
     
     try:
         with open(f_out_path, 'w') as f, open(f_err_path, 'w') as f_err:
@@ -600,8 +600,8 @@ def binData(resultDir, num_scans, midas_path):
     os.chdir(resultDir)
     
     # Create output files
-    f_out_path = f'{resultDir}/output/mapping_out.csv'
-    f_err_path = f'{resultDir}/output/mapping_err.csv'
+    f_out_path = f'{resultDir}/midas_log/mapping_out.csv'
+    f_err_path = f'{resultDir}/midas_log/mapping_err.csv'
     
     try:
         with open(f_out_path, 'w') as f, open(f_err_path, 'w') as f_err:
@@ -678,8 +678,8 @@ def indexscanning(resultDir, numProcs, num_scans, midas_path, blockNr=0, numBloc
     os.chdir(resultDir)
     
     # Create output files
-    f_out_path = f'{resultDir}/output/indexing_out{blockNr}.csv'
-    f_err_path = f'{resultDir}/output/indexing_err{blockNr}.csv'
+    f_out_path = f'{resultDir}/midas_log/indexing_out{blockNr}.csv'
+    f_err_path = f'{resultDir}/midas_log/indexing_err{blockNr}.csv'
     
     try:
         with open(f_out_path, 'w') as f, open(f_err_path, 'w') as f_err:
@@ -756,8 +756,8 @@ def refinescanning(resultDir, numProcs, midas_path, blockNr=0, numBlocks=1):
     os.chdir(resultDir)
     
     # Create output files
-    f_out_path = f'{resultDir}/output/refining_out{blockNr}.csv'
-    f_err_path = f'{resultDir}/output/refining_err{blockNr}.csv'
+    f_out_path = f'{resultDir}/midas_log/refining_out{blockNr}.csv'
+    f_err_path = f'{resultDir}/midas_log/refining_err{blockNr}.csv'
     
     try:
         # Count spots to index

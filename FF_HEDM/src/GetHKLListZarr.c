@@ -288,8 +288,11 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  printf("%f %f %f %d %f %f %f %f %f %f\n", wl, Lsd, MaxRingRad, SpaceGrp,
-         LatC[0], LatC[1], LatC[2], LatC[3], LatC[4], LatC[5]);
+  printf("Read Parameters from Zarr:\n\tWavelength: %lf\n\tDistance: "
+         "%lf\n\tMaxRingRad: %lf\n\tSpaceGroup: %d\n",
+         wl, Lsd, MaxRingRad, SpaceGrp);
+  printf("\tLatticeConstant: %lf %lf %lf %lf %lf %lf\n", LatC[0], LatC[1],
+         LatC[2], LatC[3], LatC[4], LatC[5]);
   int h, k, l, iList, restriction, M, i, j;
   int Minh, Mink, Minl;
   int CCMx_PL[9], deterCCMx_LP = 0;

@@ -169,8 +169,8 @@ def generateZip(
     if numFilesPerScan > 1:
         cmd += f' -numFilesPerScan {numFilesPerScan}'
         
-    outf_path = f"{resFol}/output/{outf}"
-    errf_path = f"{resFol}/output/{errf}"
+    outf_path = f"{resFol}/midas_log/{outf}"
+    errf_path = f"{resFol}/midas_log/{errf}"
     
     try:
         print(cmd)
@@ -217,8 +217,8 @@ def _peaks_impl(resultDir: str, zipFN: str, numProcs: int, bin_dir: str, blockNr
         import logging
         logger = logging.getLogger('MIDAS_peaks')
     os.makedirs(f'{resultDir}/output', exist_ok=True)
-    outfile = f'{resultDir}/output/peaksearch_out{blockNr}.csv'
-    errfile = f'{resultDir}/output/peaksearch_err{blockNr}.csv'
+    outfile = f'{resultDir}/midas_log/peaksearch_out{blockNr}.csv'
+    errfile = f'{resultDir}/midas_log/peaksearch_err{blockNr}.csv'
     env = dict(os.environ)
     logger.info(f"Running PeaksFittingOMPZarrRefactor in {resultDir} for block {blockNr}/{numBlocks}")
     with open(outfile, 'w') as f, open(errfile, 'w') as f_err:
@@ -240,8 +240,8 @@ def _index_impl(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0, n
         logger = logging.getLogger('MIDAS_index')
     with open(os.path.join(resultDir, "SpotsToIndex.csv"), "r") as f: num_lines = len(f.readlines())
     logger.info(f"Found {num_lines} spots to index")
-    outfile = f'{resultDir}/output/indexing_out{blockNr}.csv'
-    errfile = f'{resultDir}/output/indexing_err{blockNr}.csv'
+    outfile = f'{resultDir}/midas_log/indexing_out{blockNr}.csv'
+    errfile = f'{resultDir}/midas_log/indexing_err{blockNr}.csv'
     logger.info(f"Running IndexerOMP in {resultDir} for block {blockNr}/{numBlocks}")
     with open(outfile, 'w') as f, open(errfile, 'w') as f_err:
         cmd = f"{os.path.join(bin_dir, 'IndexerOMP')} paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}"
@@ -262,8 +262,8 @@ def _refine_impl(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0, 
         logger = logging.getLogger('MIDAS_refine')
     with open(os.path.join(resultDir, "SpotsToIndex.csv"), "r") as f: num_lines = len(f.readlines())
     logger.info(f"Found {num_lines} spots to refine")
-    outfile = f'{resultDir}/output/refining_out{blockNr}.csv'
-    errfile = f'{resultDir}/output/refining_err{blockNr}.csv'
+    outfile = f'{resultDir}/midas_log/refining_out{blockNr}.csv'
+    errfile = f'{resultDir}/midas_log/refining_err{blockNr}.csv'
     logger.info(f"Running FitPosOrStrainsOMP in {resultDir} for block {blockNr}/{numBlocks}")
     resource.setrlimit(resource.RLIMIT_CORE, (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
     with open(outfile, 'w') as f, open(errfile, 'w') as f_err:
@@ -332,7 +332,8 @@ def load_machine_config(machine_name: str, n_nodes: int, num_procs: int) -> Tupl
 def setup_output_directories(result_dir: str) -> None:
     """Set up output directories."""
     os.makedirs(result_dir, exist_ok=True)
-    os.makedirs(f"{result_dir}/output", exist_ok=True)
+    os.makedirs(f"{result_dir}/midas_log", exist_ok=True)
+    os.makedirs(f"{result_dir}/Output", exist_ok=True)
     os.makedirs(f"{result_dir}/Temp", exist_ok=True)
 
 def process_dataset_until_binning(
@@ -377,7 +378,7 @@ def process_dataset_until_binning(
             
     logger.info(f"[{dataset_id}] Generating HKLs. Time till now: {time.time() - t0:.2f} seconds.")
     cmd_hkl = f"{os.path.join(bin_directory, 'GetHKLListZarr')} {outFStem}"
-    safely_run_command(cmd_hkl, result_dir, f'{result_dir}/output/hkls_out.csv', f'{result_dir}/output/hkls_err.csv', "HKL generation")
+    safely_run_command(cmd_hkl, result_dir, f'{result_dir}/midas_log/hkls_out.csv', f'{result_dir}/midas_log/hkls_err.csv', "HKL generation")
 
     logger.info(f"[{dataset_id}] Doing PeakSearch. Time till now: {time.time() - t0:.2f} seconds.")
     res = [peaks(result_dir, outFStem, num_procs, bin_directory, blockNr=nodeNr, numBlocks=n_nodes) for nodeNr in range(n_nodes)]
@@ -385,15 +386,15 @@ def process_dataset_until_binning(
     
     logger.info(f"[{dataset_id}] Merging peaks...")
     cmd_merge = f"{os.path.join(bin_directory, 'MergeOverlappingPeaksAllZarr')} {outFStem}"
-    safely_run_command(cmd_merge, result_dir, f'{result_dir}/output/merge_out.csv', f'{result_dir}/output/merge_err.csv', "Peak merging")
+    safely_run_command(cmd_merge, result_dir, f'{result_dir}/midas_log/merge_out.csv', f'{result_dir}/midas_log/merge_err.csv', "Peak merging")
     
     logger.info(f"[{dataset_id}] Calculating Radii...")
     cmd_radius = f"{os.path.join(bin_directory, 'CalcRadiusAllZarr')} {outFStem}"
-    safely_run_command(cmd_radius, result_dir, f'{result_dir}/output/radius_out.csv', f'{result_dir}/output/radius_err.csv', "Radius calculation")
+    safely_run_command(cmd_radius, result_dir, f'{result_dir}/midas_log/radius_out.csv', f'{result_dir}/midas_log/radius_err.csv', "Radius calculation")
 
     logger.info(f"[{dataset_id}] Transforming data...")
     cmd_setup = f"{os.path.join(bin_directory, 'FitSetupZarr')} {outFStem}"
-    safely_run_command(cmd_setup, result_dir, f'{result_dir}/output/fit_setup_out.csv', f'{result_dir}/output/fit_setup_err.csv', "Data transformation")
+    safely_run_command(cmd_setup, result_dir, f'{result_dir}/midas_log/fit_setup_out.csv', f'{result_dir}/midas_log/fit_setup_err.csv', "Data transformation")
 
     # Propagate RingsToExcludeFraction
     try:

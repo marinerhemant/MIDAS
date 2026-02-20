@@ -1412,6 +1412,44 @@ int main(int argc, char *argv[]) {
   free(data);
   zip_fclose(fd);
 
+  printf(
+      "Read Parameters from Zarr:\n\tSpaceGroup: %d\n\tWavelength: "
+      "%lf\n\tDistance: %lf\n\tRsample: %lf\n\tHbeam: %lf\n\tpx: "
+      "%lf\n\tMinEta: %lf\n\twedge: %lf\n\tMaxRingRad: %lf\n\tBeamSize: "
+      "%lf\n\tMinOmeSpotIDsToIndex: %lf\n\tMaxOmeSpotIDsToIndex: %lf\n\tRhoD: "
+      "%lf\n\tRingToIndex: %d\n\tDoFit: %d\n\tUseFriedelPairs: "
+      "%d\n\tEtaBinSize: %lf\n\tOmeBinSize: %lf\n\tMargABG: %lf\n\tMargABC: "
+      "%lf\n\tMarginOme: %lf\n\tMarginEta: %lf\n\tMarginRadial: "
+      "%lf\n\tMarginRadius: %lf\n\tStepSizeOrient: %lf\n\tt_gap: %lf\n\tt_int: "
+      "%lf\n\tStepSizePos: %lf\n\tmaxNFrames: %d\n\tWidth: %lf\n\tybc: "
+      "%lf\n\tzbc: %lf\n\tEndNr: %d\n\tNrPixelsZ: %d\n\tNrPixelsY: "
+      "%d\n\tLayerNr: %d\n\tskipFrame: %d\n\tp0: %lf\n\tp1: %lf\n\tp2: "
+      "%lf\n\tp3: %lf\n\ttx: %lf\n\ttyIn: %lf\n\ttzIn: %lf\n\ttolLsd: "
+      "%lf\n\ttolBC: %lf\n\ttolTilts: %lf\n\tMinMatchesToAcceptFrac: %lf\n",
+      SGnum, Wavelength, Lsd, Rsample, Hbeam, px, MinEta, wedge, MaxRingRad,
+      BeamSize, MinOmeSpotIDsToIndex, MaxOmeSpotIDsToIndex, RhoD, RingToIndex,
+      DoFit, UseFriedelPairs, EtaBinSize, OmeBinSize, MargABG, MargABC,
+      MarginOme, MarginEta, MarginRadial, MarginRadius, StepSizeOrient, t_gap,
+      t_int, StepSizePos, maxNFrames, Width, ybc, zbc, EndNr, NrPixelsZ,
+      NrPixelsY, LayerNr, skipFrame, p0, p1, p2, p3, tx, tyIn, tzIn, tolLsd,
+      tolBC, tolTilts, MinMatchesToAcceptFrac);
+
+  printf("\tLatticeConstant: %lf %lf %lf %lf %lf %lf\n", LatticeConstant[0],
+         LatticeConstant[1], LatticeConstant[2], LatticeConstant[3],
+         LatticeConstant[4], LatticeConstant[5]);
+  printf("\tResultFolder: %s\n\tFolder: %s\n", resultFolder, Folder);
+  printf("\tRingNumbers: %d\n", cs);
+  for (int iter = 0; iter < cs; iter++)
+    printf("\t\t[%d]: %d\n", iter, RingNumbers[iter]);
+  printf("\tBoxSizes: %d\n", nBoxSizes);
+  for (int iter = 0; iter < nBoxSizes; iter++)
+    printf("\t\t[%d]: %lf %lf %lf %lf\n", iter, BoxSizes[iter][0],
+           BoxSizes[iter][1], BoxSizes[iter][2], BoxSizes[iter][3]);
+  printf("\tOmegaRanges: %d\n", nOmegaRanges);
+  for (int iter = 0; iter < nOmegaRanges; iter++)
+    printf("\t\t[%d]: %lf %lf\n", iter, OmegaRanges[iter][0],
+           OmegaRanges[iter][1]);
+
   sprintf(folder, "%s", Folder);
   int nOmeRanges = nOmegaRanges;
   if (nOmeRanges != nBoxSizes) {

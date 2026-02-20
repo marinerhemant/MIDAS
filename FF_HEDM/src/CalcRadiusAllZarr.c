@@ -379,6 +379,16 @@ int main(int argc, char *argv[]) {
     }
     count++;
   }
+  printf(
+      "Read Parameters from Zarr:\n\tWavelength: %lf\n\tDistance: "
+      "%lf\n\tRsample: %lf\n\tHbeam: %lf\n\tpx: %lf\n\tDiscModel: "
+      "%d\n\tDiscArea: %lf\n\tVsample: %lf\n\tOmegaStep: %lf\n\tWidth: "
+      "%lf\n\tYcen: %lf\n\tZcen: %lf\n\tEndNr: %d\n\tLayerNr: %d\n\tskipFrame: "
+      "%d\n\tFolder: %s\n\tResultFolder: %s\n\tnRings: %d\n",
+      Wavelength, Lsd, Rsample, Hbeam, px, DiscModel, DiscArea, Vsample,
+      OmegaStep, width, Ycen, Zcen, EndNr, LayerNr, skipFrame, Folder,
+      resultFolder, nRings);
+
   if (width == -1)
     width = widthOrig;
   if (argc == 3)

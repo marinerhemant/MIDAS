@@ -1897,6 +1897,37 @@ int main(int argc, char *argv[]) {
     }
   }
   fclose(fileParam);
+  printf(
+      "Read Parameters:\n\tWavelength: %lf\n\tDistance (Lsd): %lf\n\tRsample: "
+      "%lf\n\tHbeam: %lf\n\tpx (pixelsize): %lf\n\tMinEta: %lf\n\twedge: "
+      "%lf\n\tMaxRingRad: %lf\n\tBigDetSize: %d\n\tTopLayer: "
+      "%d\n\tisGrainsInput: %d\n\tTakeGrainMax: %d\n\tMargABC: %lf\n\tMargABG: "
+      "%lf\n\tDebugMode: %d\n\tOutputFolder: %s\n\tResultFolder: "
+      "%s\n\tGrainsFileName: %s\n\tRefinementFileName: %s\n",
+      Wavelength, Lsd, Rsample, Hbeam, pixelsize, MinEta, wedge, MaxRingRad,
+      BigDetSize, TopLayer, isGrainsInput, TakeGrainMax, MargABC, MargABG,
+      GlobalDebugFlag, OutputFolder, ResultFolder, GrainsFileName,
+      inputfilename);
+  printf("\tLatticeConstant (LatCinT): %lf %lf %lf %lf %lf %lf\n", LatCinT[0],
+         LatCinT[1], LatCinT[2], LatCinT[3], LatCinT[4], LatCinT[5]);
+  for (int iter = 0; iter < cs; iter++)
+    printf("\tRingNumbers[%d]: %d\n", iter, RingNumbers[iter]);
+  for (int iter = 0; iter < nRingsToReject; iter++)
+    printf("\tRingsToReject[%d]: %d\n", iter, RingsToReject[iter]);
+  for (int iter = 0; iter < cs2; iter++)
+    printf("\tRingRadii[%d]: %lf\n", iter, RingRadii[iter]);
+  for (int iter = 0; iter < nOmeRanges; iter++)
+    printf("\tOmegaRanges[%d]: %lf %lf\n", iter, OmegaRanges[iter][0],
+           OmegaRanges[iter][1]);
+  for (int iter = 0; iter < nBoxSizes; iter++)
+    printf("\tBoxSizes[%d]: %lf %lf %lf %lf\n", iter, BoxSizes[iter][0],
+           BoxSizes[iter][1], BoxSizes[iter][2], BoxSizes[iter][3]);
+  for (int iter = 0; iter < cntrdet; iter++)
+    printf("\tDetParams[%d]: %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n", iter,
+           DetParams[iter][0], DetParams[iter][1], DetParams[iter][2],
+           DetParams[iter][3], DetParams[iter][4], DetParams[iter][5],
+           DetParams[iter][6], DetParams[iter][7], DetParams[iter][8],
+           DetParams[iter][9]);
   double *AllSpots;
   int fd;
   struct stat s;
