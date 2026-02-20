@@ -893,8 +893,8 @@ def main():
             for _ in range(4):  # Apply multiple times for better background
                 data2 = dip.MedianFilter(data2, 101)
         else:
-            logger.info("Skipping median filter for background estimation")
-            data2 = np.zeros_like(data)
+            logger.info("Skipping median filter for background estimation, using dark subtraction only")
+            data2 = dark.astype(np.float64)
             
         logger.info('Finished with median, now processing data.')
         data = data.astype(float)
@@ -903,8 +903,8 @@ def main():
         if h5_file:
             save_background_data(data2, h5_file)
             
-        # Display background if needed
-        if DrawPlots == 1:
+        # Display background if needed (skip when noMedian since background is just the dark)
+        if DrawPlots == 1 and noMedian == 0:
             fig = plt.figure()
             plt.imshow(np.log(data2), origin='lower')  # Set origin to lower left
             plt.colorbar()
