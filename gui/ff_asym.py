@@ -24,6 +24,7 @@ from multiprocessing.dummy import Pool
 import h5py
 import bz2
 import shutil
+import threading
 try:
     import tifffile
 except ImportError:
@@ -47,7 +48,143 @@ deg2rad = 0.0174532925199433
 rad2deg = 57.2957795130823
 
 import itertools
+import glob
 _color_cycle = itertools.cycle(['r','g','b','c','m','y'])
+
+# Auto-detect files from current directory name
+_auto_fileStem = None
+_auto_folder = None
+_auto_padding = None
+_auto_firstFileNr = None
+_auto_ext = None
+_auto_darkStem = None
+_auto_darkNum = None
+_auto_nFramesPerFile = None
+
+def _try_auto_detect():
+    """Try to auto-detect data and dark files from the current working directory.
+    
+    Convention: if cwd is /path/to/ff_Holder3_50um, look for files starting with
+    ff_Holder3_50um in the current directory. The folder name is the prefix for
+    data files. Dark files start with dark_before or dark_after.
+    """
+    global _auto_fileStem, _auto_folder, _auto_padding, _auto_firstFileNr
+    global _auto_ext, _auto_darkStem, _auto_darkNum, _auto_nFramesPerFile
+    
+    cwd = os.getcwd()
+    dir_basename = os.path.basename(cwd)
+    
+    if not dir_basename:
+        return False
+    
+    # Find files that start with the directory name
+    all_files = sorted(os.listdir(cwd))
+    
+    # Find data files: files starting with dir_basename
+    data_files = []
+    for f in all_files:
+        name_no_ext = os.path.splitext(f)[0]
+        # File stem must start with dir_basename and have _NNNNNN pattern
+        if name_no_ext.startswith(dir_basename + '_'):
+            # Extract the trailing number
+            parts = name_no_ext.split('_')
+            if parts[-1].isdigit():
+                data_files.append(f)
+    
+    if not data_files:
+        print(f"Auto-detect: no files starting with '{dir_basename}_' found in {cwd}")
+        return False
+    
+    # Use the first (smallest number) data file
+    first_file = data_files[0]
+    basename_full = os.path.basename(first_file)
+    dot_idx = basename_full.find('.')
+    if dot_idx == -1:
+        return False
+    name_part = basename_full[:dot_idx]
+    ext_part = basename_full[dot_idx+1:]  # e.g. 'tif', 'ge5'
+    
+    parts = name_part.split('_')
+    if not parts[-1].isdigit():
+        return False
+    
+    _auto_firstFileNr = int(parts[-1])
+    _auto_padding = len(parts[-1])
+    _auto_fileStem = '_'.join(parts[:-1])
+    _auto_folder = cwd + '/'
+    _auto_ext = ext_part
+    
+    # Calculate nFramesPerFile from file size for binary formats
+    _auto_nFramesPerFile = 1  # default for tiff
+    
+    print(f"Auto-detect: stem='{_auto_fileStem}', firstNr={_auto_firstFileNr}, "
+          f"padding={_auto_padding}, ext='{_auto_ext}'")
+    
+    # Find dark files: prefer dark_before, fallback to dark_after
+    dark_before = []
+    dark_after = []
+    for f in all_files:
+        name_no_ext = os.path.splitext(f)[0]
+        parts = name_no_ext.split('_')
+        if len(parts) >= 2 and parts[-1].isdigit():
+            prefix = '_'.join(parts[:-1])
+            if prefix == 'dark_before':
+                dark_before.append(f)
+            elif prefix == 'dark_after':
+                dark_after.append(f)
+    
+    dark_candidates = dark_before if dark_before else dark_after
+    if dark_candidates:
+        dark_file = dark_candidates[0]  # first (smallest number)
+        dark_basename = os.path.splitext(os.path.basename(dark_file))[0]
+        dark_parts = dark_basename.split('_')
+        if dark_parts[-1].isdigit():
+            _auto_darkNum = int(dark_parts[-1])
+            _auto_darkStem = '_'.join(dark_parts[:-1])
+            source = 'dark_before' if dark_before else 'dark_after'
+            print(f"Auto-detect: dark='{_auto_darkStem}_{str(_auto_darkNum).zfill(len(dark_parts[-1]))}', source={source}")
+    else:
+        print("Auto-detect: no dark files found (dark_before_*.* or dark_after_*.*)")
+    
+    return True
+
+_auto_detected = False  # Will be set True by background thread
+
+def _apply_auto_detect(root_widget):
+    """Callback to apply auto-detected values to Tk variables. Called from main thread via root.after()."""
+    global fileStem, folder, padding, darkStem, darkNum, dark, firstFileNumber, nFramesPerFile
+    global nDetectors, startDetNr, endDetNr, nFilesPerLayer, _auto_detected
+    if _auto_fileStem:
+        _auto_detected = True
+        fileStem = _auto_fileStem
+        folder = _auto_folder
+        padding = _auto_padding
+        firstFileNumber = _auto_firstFileNr
+        nFramesPerFile = _auto_nFramesPerFile if _auto_nFramesPerFile else 1
+        firstFileNrVar.set(str(firstFileNumber))
+        nFramesPerFileVar.set(str(nFramesPerFile))
+        fnextvar.set(_auto_ext if _auto_ext else 'tif')
+        if _auto_ext and _auto_ext.startswith('ge') and len(_auto_ext) == 3 and _auto_ext[-1].isdigit():
+            detnumbvar.set(_auto_ext[-1])
+        else:
+            detnumbvar.set('-1')
+        if _auto_darkStem:
+            darkStem = _auto_darkStem
+            darkNum = _auto_darkNum
+            var.set(1)
+        root_widget.wm_title(root_widget.wm_title().replace(' [scanning...]', '') + ' [files detected]')
+        print("Auto-detection complete. GUI updated.")
+    else:
+        root_widget.wm_title(root_widget.wm_title().replace(' [scanning...]', ''))
+        print("Could not auto-detect files. Please select files manually.")
+
+def _start_auto_detect_thread(root_widget):
+    """Run auto-detection in a background thread to avoid blocking the GUI."""
+    def _worker():
+        _try_auto_detect()
+        root_widget.after(0, lambda: _apply_auto_detect(root_widget))
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
 def get_ring_colors(n):
 	return [next(_color_cycle) for _ in range(n)]
 
@@ -1281,17 +1418,28 @@ def firstFileSelector():
 		nFramesMaxVar.set(nFramesPerFile)
 
 def darkFileSelector():
-	global darkStem,darkNum, dark
+	global darkStem, darkNum, dark
 	darkfilefullpath = selectFile()
-	darkfullfilename = darkfilefullpath.split('/')[-1].split('.')[0]
-	darkStem = '_'.join(darkfullfilename.split('_')[:-1])
-	darkNum = int(darkfullfilename.split('_')[-1])
-	geNum = int(darkfilefullpath[-1])
+	if not darkfilefullpath:
+		return
+	darkbasename = os.path.basename(darkfilefullpath)
+	dot_idx = darkbasename.find('.')
+	if dot_idx != -1:
+		darkfullfilename = darkbasename[:dot_idx]
+		dark_ext = darkbasename[dot_idx+1:]
+	else:
+		darkfullfilename = darkbasename
+		dark_ext = ''
+	parts = darkfullfilename.split('_')
+	if parts[-1].isdigit():
+		darkNum = int(parts[-1])
+		darkStem = '_'.join(parts[:-1])
+	else:
+		print(f"Warning: could not extract file number from dark file: {darkbasename}")
+		darkNum = 0
+		darkStem = darkfullfilename
 	dark = []
 	var.set(1)
-	startDetNr = 1
-	for i in range(geNum):
-		dark.append(None)
 
 def replot():
 	global initplot2
@@ -1351,7 +1499,10 @@ def replot():
 
 # Main function
 root = Tk.Tk()
-root.wm_title("FF display v1.0 Dt. 2026/02/19 hsharma@anl.gov")
+root.wm_title("FF display v1.0 Dt. 2026/02/19 hsharma@anl.gov [scanning...]")
+
+# Start async file auto-detection
+_start_auto_detect_thread(root)
 figur = Figure(figsize=(10,8),dpi=100)
 canvas = FigureCanvasTkAgg(figur,master=root)
 a = None # Removed 'a' entirely
@@ -1396,12 +1547,24 @@ Header = 8192
 BytesPerPixel = 2
 tempLsd = 1000000
 tempMaxRingRad = 2000000
+fileStem = ''
+folder = os.getcwd() + '/'
+padding = 6
+darkStem = ''
+darkNum = 0
+dark = []
+nDetectors = 1
+startDetNr = 1
+endDetNr = 1
+nFilesPerLayer = 1
+nFramesPerFile = 1
+firstFileNumber = 1
 firstFileNrVar = Tk.StringVar()
 fnextvar = Tk.StringVar()
-fnextvar.set('ge5')
+fnextvar.set('tif')
 nFramesPerFileVar = Tk.StringVar()
-firstFileNrVar.set(str(1))
-nFramesPerFileVar.set(str(240))
+firstFileNrVar.set(str(firstFileNumber))
+nFramesPerFileVar.set(str(nFramesPerFile))
 paramfilevar = Tk.StringVar()
 paramfilevar.set(paramFN)
 framenrvar = Tk.StringVar()
@@ -1444,7 +1607,7 @@ colorMaxVar = Tk.IntVar()
 getSumVar = Tk.IntVar()
 applyMaskVar = Tk.IntVar()
 detnumbvar = Tk.StringVar()
-detnumbvar.set(str(1))
+detnumbvar.set('-1')
 lsdlocalvar = Tk.StringVar()
 lsdlocalvar.set(str(lsdlocal))
 bclocalvar1 = Tk.StringVar()

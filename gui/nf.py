@@ -19,6 +19,7 @@ except ImportError:
 	HAS_TIFFFILE = False
 import tempfile
 import subprocess
+import threading
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
 import sys
@@ -65,36 +66,60 @@ _beampos_mode = False
 _beampos_files = []
 _auto_startframenr = None
 
-_cwd_basename = os.path.basename(os.getcwd())
-if 'BeamPos' in _cwd_basename or 'DetZBeamPos' in _cwd_basename:
-	# BeamPos mode: files have varying stems, navigate by sorted index
-	_beampos_mode = True
-	_all_tifs = glob.glob(os.path.join(os.getcwd(), '*.tif'))
-	def _extract_num(fp):
-		try:
-			return int(os.path.splitext(os.path.basename(fp))[0].split('_')[-1])
-		except ValueError:
-			return float('inf')
-	_beampos_files = sorted(_all_tifs, key=_extract_num)
-	folder = os.getcwd()
-	fnstem = ''
-	if _beampos_files:
-		_auto_startframenr = 0
-		print(f"BeamPos mode: found {len(_beampos_files)} files, navigating by index")
-else:
-	_stem_path = os.path.join(folder, fnstem + '_')
-	_matching = glob.glob(_stem_path + '*.tif')
-	if _matching:
-		_nums = []
-		for _f in _matching:
-			_base = os.path.splitext(os.path.basename(_f))[0]
-			try:
-				_nums.append(int(_base.split('_')[-1]))
-			except ValueError:
-				continue
-		if _nums:
-			_auto_startframenr = min(_nums)
-			print(f"Auto-detected start frame number: {_auto_startframenr}")
+def _nf_auto_detect():
+    """Auto-detect start frame number. Runs in background thread."""
+    global _beampos_mode, _beampos_files, _auto_startframenr
+    
+    _cwd_basename = os.path.basename(os.getcwd())
+    if 'BeamPos' in _cwd_basename or 'DetZBeamPos' in _cwd_basename:
+        _beampos_mode = True
+        _all_tifs = glob.glob(os.path.join(os.getcwd(), '*.tif'))
+        def _extract_num(fp):
+            try:
+                return int(os.path.splitext(os.path.basename(fp))[0].split('_')[-1])
+            except ValueError:
+                return float('inf')
+        _beampos_files = sorted(_all_tifs, key=_extract_num)
+        if _beampos_files:
+            _auto_startframenr = 0
+            print(f"BeamPos mode: found {len(_beampos_files)} files, navigating by index")
+    else:
+        _stem_path = os.path.join(folder, fnstem + '_')
+        _matching = glob.glob(_stem_path + '*.tif')
+        if _matching:
+            _nums = []
+            for _f in _matching:
+                _base = os.path.splitext(os.path.basename(_f))[0]
+                try:
+                    _nums.append(int(_base.split('_')[-1]))
+                except ValueError:
+                    continue
+            if _nums:
+                _auto_startframenr = min(_nums)
+                print(f"Auto-detected start frame number: {_auto_startframenr}")
+
+def _nf_apply_auto_detect(root_widget):
+    """Callback to apply auto-detected values to Tk variables. Called from main thread."""
+    global startframenr
+    if _beampos_mode:
+        folder_g = os.getcwd()
+        # fnstem already set to '' by init
+    if _auto_startframenr is not None:
+        startframenr = _auto_startframenr
+        startframenrvar.set(str(startframenr))
+        r.set(str(0))
+        root_widget.wm_title(root_widget.wm_title().replace(' [scanning...]', '') + ' [files detected]')
+    else:
+        root_widget.wm_title(root_widget.wm_title().replace(' [scanning...]', ''))
+
+def _start_nf_auto_detect_thread(root_widget):
+    """Run auto-detection in a background thread."""
+    def _worker():
+        _nf_auto_detect()
+        root_widget.after(0, lambda: _nf_apply_auto_detect(root_widget))
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+
 
 def _quit():
 	root.quit()
@@ -889,11 +914,11 @@ def median():
 
 	print('Calculated median for all distances.')
 
-def micfileselect():
+def micfileselect(initialdir=None):
 	global micfile
 	micfile = tkFileDialog.askopenfilename(
 		title='Select the compressed binary file.',
-		initialdir=folder if folder else os.getcwd(),
+		initialdir=initialdir if initialdir else (folder if folder else os.getcwd()),
 	)
 	if not micfile:
 		return False
@@ -1043,7 +1068,7 @@ def plotmic():
 def load_mic():
 	global micfiledata, initplotb, micfiletype, sizeX, sizeY, refX, refY
 	initplotb = 1
-	if not micfileselect():
+	if not micfileselect(initialdir=os.getcwd()):
 		return
 	print(micfile)
 	if (micfile[-3:] == 'map'):
@@ -1167,7 +1192,7 @@ _img_artist = None
 _img_logmode = False
 initplot = 1
 framenr = 0
-startframenr = _auto_startframenr if _auto_startframenr is not None else 0
+startframenr = 0
 sizeX = 0
 sizeY = 0
 refX = 0
@@ -1214,7 +1239,11 @@ logscaler = 0
 
 # Main funcion
 root = Tk.Tk()
-root.wm_title("NF display v1.0 Dt. 2026/02/19 hsharma@anl.gov")
+root.wm_title("NF display v1.0 Dt. 2026/02/19 hsharma@anl.gov [scanning...]")
+
+# Start async file auto-detection
+_start_nf_auto_detect_thread(root)
+
 default_font = ("Helvetica", 14)
 root.option_add("*Font", default_font)
 figur = Figure(figsize=(17,8),dpi=100)
