@@ -1859,7 +1859,7 @@ int main(int argc, char *argv[]) {
             yTemp = yThis + DisplY;
             zTemp = zThis + DisplZ;
             yDet = yBC - yTemp / px + 1;
-            zDet = zBC + zTemp / px + 1.5;
+            zDet = zBC + zTemp / px; // + 1.5;
             if (yDet < 0 || yDet >= NrPixels || zDet < 0 || zDet >= NrPixels)
               continue;
             // ========================================================================
@@ -1951,7 +1951,7 @@ int main(int argc, char *argv[]) {
                       weight * sub_peak_intensity * relativeIntensity;
 
                   long long int currentPos =
-                      (long long int)(frameOffset + y_curr * NrPixels + z_curr);
+                      (long long int)(frameOffset + z_curr * NrPixels + y_curr);
                   if (currentPos >= 0 && currentPos < ImageArrSize) {
 #pragma omp atomic
                     ImageArr[currentPos] += intensity_to_add;

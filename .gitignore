@@ -9,6 +9,10 @@ FF_HEDM/Example/RingInfo.txt
 FF_HEDM/Example/run0*
 FF_HEDM/Example/hkls.csv
 FF_HEDM/Example/SpotMatrixGen.csv
+FF_HEDM/Example/GrainsGen.csv
+FF_HEDM/Example/test_Parameters.txt
+FF_HEDM/Example/LayerNr_*/
+FF_HEDM/Example/runinfo/
 FF_HEDM/Cluster/*.kml
 FF_HEDM/Cluster/*.swiftx
 TOMO/bin/*
