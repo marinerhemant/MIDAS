@@ -17,7 +17,7 @@ The FF-HEDM benchmark (`utils/test_ff_hedm.py`) is an automated end-to-end test 
 flowchart TD
     subgraph Inputs["📂 Input Files"]
         PARAMS["Parameters.txt"]
-        GRAINS_IN["GrainsSim.csv\n(3 Au grains)"]
+        GRAINS_IN["GrainsSim.csv<br/>(3 Au grains)"]
     end
 
     subgraph Step1["Step 1: Forward Simulation"]
@@ -29,10 +29,10 @@ flowchart TD
     end
 
     subgraph Step1Out["Simulation Outputs"]
-        ZIP_RAW["Au_FF_*_scanNr_0.zip\n(Zarr: 1440 frames × 2048² px)"]
-        SPOT_MAT["SpotMatrixGen.csv\n(theoretical spot positions)"]
-        GRAINS_GEN["GrainsGen.csv\n(re-indexed grain list)"]
-        HKLS_SIM["hkls.csv\n(HKL reflections)"]
+        ZIP_RAW["Au_FF_*_scanNr_0.zip<br/>(Zarr: 1440 frames)"]
+        SPOT_MAT["SpotMatrixGen.csv<br/>(theoretical spot positions)"]
+        GRAINS_GEN["GrainsGen.csv<br/>(re-indexed grain list)"]
+        HKLS_SIM["hkls.csv<br/>(HKL reflections)"]
     end
 
     FWD --> ZIP_RAW
@@ -41,8 +41,8 @@ flowchart TD
     FWD --> HKLS_SIM
 
     subgraph Step2["Step 2: Zarr Enrichment"]
-        ENRICH["write_analysis_parameters\n(inject metadata)"]
-        RENAME["Rename to\n*.analysis.MIDAS.zip"]
+        ENRICH["write_analysis_parameters<br/>(inject metadata)"]
+        RENAME["Rename to<br/>*.analysis.MIDAS.zip"]
     end
 
     ZIP_RAW --> ENRICH
@@ -52,14 +52,14 @@ flowchart TD
     subgraph Step3["Step 3: ff_MIDAS.py Pipeline"]
         direction TB
         HKLGEN["GetHKLListZarr"]
-        PEAKS["PeaksFittingOMPZarrRefactor\n→ find spots in images"]
-        MERGE["MergeOverlappingPeaksAllZarr\n→ consolidate peaks"]
-        CALCR["CalcRadiusAllZarr\n→ compute ring radii"]
-        FITS["FitSetupZarr\n→ lab coordinate transform"]
-        BIND["SaveBinData\n→ binary format"]
-        INDEX["IndexerOMP\n→ match spots to orientations"]
-        REFINE["FitPosOrStrainsOMP\n→ refine positions & strains"]
-        PROCG["ProcessGrainsZarr\n→ final grain list"]
+        PEAKS["PeaksFittingOMPZarrRefactor<br/>→ find spots in images"]
+        MERGE["MergeOverlappingPeaksAllZarr<br/>→ consolidate peaks"]
+        CALCR["CalcRadiusAllZarr<br/>→ compute ring radii"]
+        FITS["FitSetupZarr<br/>→ lab coordinate transform"]
+        BIND["SaveBinData<br/>→ binary format"]
+        INDEX["IndexerOMP<br/>→ match spots to orientations"]
+        REFINE["FitPosOrStrainsOMP<br/>→ refine positions & strains"]
+        PROCG["ProcessGrainsZarr<br/>→ final grain list"]
 
         HKLGEN --> PEAKS
         PEAKS --> MERGE
@@ -74,20 +74,20 @@ flowchart TD
     RENAME -->|"*.analysis.MIDAS.zip"| HKLGEN
 
     subgraph Step3Out["Pipeline Outputs in LayerNr_1/"]
-        INPUTALL["InputAll.csv\n(transformed spot data)"]
-        SPOTM["SpotMatrix.csv\n(matched spots)"]
-        RESULT["Result_*.csv\n(indexing results)"]
-        GRAINS_OUT["Grains.csv\n(%NumGrains 3)"]
+        INPUTALL["InputAll.csv<br/>(transformed spot data)"]
+        SPOTM["SpotMatrix.csv<br/>(matched spots)"]
+        RESULT["Result_*.csv<br/>(indexing results)"]
+        GRAINS_OUT["Grains.csv<br/>(%NumGrains 3)"]
     end
 
-    PEAKS -->|"Temp/\n(per-frame peaks)"| MERGE
+    PEAKS -->|"Temp/<br/>(per-frame peaks)"| MERGE
     FITS --> INPUTALL
     INDEX --> RESULT
     PROCG --> GRAINS_OUT
-    REFINE -->|"Output/\n(refined orientations)"| PROCG
+    REFINE -->|"Output/<br/>(refined orientations)"| PROCG
 
     subgraph Step4["Step 4: Validation"]
-        CHECK["✅ Exit code 0\nNumGrains == 3"]
+        CHECK["✅ Exit code 0<br/>NumGrains == 3"]
     end
 
     GRAINS_OUT --> CHECK
