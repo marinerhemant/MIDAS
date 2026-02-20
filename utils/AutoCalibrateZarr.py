@@ -913,7 +913,9 @@ def main():
         
         # Background subtraction and thresholding
         data_corr = data - data2
-        if threshold == 0:
+        if noMedian == 1:
+            threshold = 0
+        elif threshold == 0:
             threshold = 100 * (1 + np.std(data_corr) // 100)
         data_corr[data_corr < threshold] = 0
         thresh = data_corr.copy()
