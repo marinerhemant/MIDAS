@@ -257,7 +257,7 @@ Both workflows also produce a `.zarr.zip` file compatible with GSAS-II's MIDAS z
 Instrument parameters are read from the parameter file if present (keys `Wavelength`, `Lsd`, `U`, `V`, `W`, `SHpL`, `Polariz`, `X`, `Y`, `Z`), otherwise sensible defaults are used.
 
 > [!TIP]
-> For importing into GSAS-II, see [GSAS-II_Integration.md](GSAS-II_Integration.md). The importer requires `zarr==2.18.3`.
+> For importing into GSAS-II, see [GSAS-II_Integration.md](GSAS-II_Integration.md). MIDAS requires `zarr` v2 (e.g. `zarr==2.18.3`).
 
 ### 6.3. Visualizing Results
 Use the **FF-HEDM Interactive Viewer** (`interactiveFFplotting.py`) to inspect the resulting HDF5/Zarr files, or simpler tools like `silx view` or standard Python `h5py`/`zarr` scripts.

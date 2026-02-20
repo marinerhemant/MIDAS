@@ -392,6 +392,7 @@ def runMIDAS(fn):
                 for pp in panel_params:
                     pf.write(f'{pp}\n')
                 pf.write(f'PanelShiftsFile {panel_shifts_file}\n')
+                pf.write('tolShifts 1\n')
         
         # Use the INSTALL_PATH to locate the CalibrantPanelShiftsOMP executable
         calibrant_cmd = f"{os.path.join(INSTALL_PATH, 'FF_HEDM/bin/CalibrantPanelShiftsOMP')} {ps_file} 10"
@@ -1203,6 +1204,7 @@ def main():
                 for pp in panel_params:
                     pf.write(f'{pp}\n')
                 pf.write(f'PanelShiftsFile {panel_shifts_file}\n')
+                pf.write('tolShifts 1\n')
             
             # Add transformation options
             for transOpt in imTransOpt:
