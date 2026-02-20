@@ -282,7 +282,7 @@ For batch processing or pipeline integration, MIDAS provides a script that autom
 Since our goal is primarily lattice and profile refinement rather than full Rietveld, it is strongly recommended to pass the `--no-atoms` flag to lock atomic positions and thermal parameters.
 
 ```bash
-python $MIDAS_INSTALL_DIR/utils/rietveld_refine.py \
+python $MIDAS_INSTALL_DIR/utils/gsas_ii_refine.py \
     --data  output/sample.zarr.zip \
     --cif   CeO2.cif \
     --out   refinement/ \
@@ -330,7 +330,7 @@ Each histogram produces its own `hist_NNNN.gpx` project that can be opened in th
 
 ```bash
 # Refine all histograms using 16 parallel workers
-python $MIDAS_INSTALL_DIR/utils/rietveld_refine.py \
+python $MIDAS_INSTALL_DIR/utils/gsas_ii_refine.py \
     --data  output/sample.zarr.zip \
     --cif   Al2O3.cif  Fe3O4.cif \
     --out   refinement/ \
@@ -343,7 +343,7 @@ python $MIDAS_INSTALL_DIR/utils/rietveld_refine.py \
 The script can be imported directly for integration into larger pipelines:
 
 ```python
-from rietveld_refine import run_refinement
+from gsas_ii_refine import run_refinement
 
 results = run_refinement(
     data_file='output/sample.zarr.zip',

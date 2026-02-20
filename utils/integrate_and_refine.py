@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-integrate_and_refine.py — Combined MIDAS Integration + Rietveld Refinement
+integrate_and_refine.py — Combined MIDAS Integration + Peak Fitting / Refinement
 
 Runs the full pipeline from raw diffraction data to refined crystal structures:
 
     1. MIDAS integration  (integrator.py or integrator_batch_process.py → .zarr.zip)
-    2. Rietveld refinement (rietveld_refine.py  →  .gpx per histogram)
+    2. Peak Fitting / Refinement (gsas_ii_refine.py  →  .gpx per histogram)
 
 This wrapper delegates to the two existing scripts, passing through all
 necessary arguments.
@@ -69,7 +69,7 @@ MIDAS_INSTALL_DIR
 
 GSASII_PATH
     Path to the GSAS-II source directory, if not installed via conda.
-    See ``rietveld_refine.py --help`` for details.
+    See ``gsas_ii_refine.py --help`` for details.
 """
 
 from __future__ import annotations
@@ -250,11 +250,11 @@ def run_stream_integrator(args: argparse.Namespace) -> Path:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Stage 2: Rietveld Refinement  (rietveld_refine.py)
+# Stage 2: Peak Fitting & Refinement  (gsas_ii_refine.py)
 # ═══════════════════════════════════════════════════════════════════════════
 
 def run_refinement(zarr_file: Path, args: argparse.Namespace) -> None:
-    """Run rietveld_refine.py on the integrated zarr.zip file.
+    """Run gsas_ii_refine.py on the integrated zarr.zip file.
 
     Parameters
     ----------
@@ -263,9 +263,9 @@ def run_refinement(zarr_file: Path, args: argparse.Namespace) -> None:
     args : argparse.Namespace
         Parsed arguments (must contain refinement-relevant fields).
     """
-    refine_script = MIDAS_UTILS / "rietveld_refine.py"
+    refine_script = MIDAS_UTILS / "gsas_ii_refine.py"
     if not refine_script.exists():
-        log.error("rietveld_refine.py not found at %s", refine_script)
+        log.error("gsas_ii_refine.py not found at %s", refine_script)
         sys.exit(1)
 
     refinement_dir = Path(args.out)
@@ -290,12 +290,12 @@ def run_refinement(zarr_file: Path, args: argparse.Namespace) -> None:
     if args.verbose:
         cmd.append("-v")
 
-    log.info("═══ Stage 2: Rietveld Refinement ═══")
+    log.info("═══ Stage 2: Peak Fitting & Refinement ═══")
     log.info("Command: %s", " ".join(cmd))
 
     result = subprocess.run(cmd)
     if result.returncode != 0:
-        log.error("rietveld_refine.py failed (exit code %d)", result.returncode)
+        log.error("gsas_ii_refine.py failed (exit code %d)", result.returncode)
         sys.exit(result.returncode)
 
     log.info("Refinement complete. Results in: %s", refinement_dir)
@@ -308,10 +308,10 @@ def run_refinement(zarr_file: Path, args: argparse.Namespace) -> None:
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description=textwrap.dedent("""\
-            Combined MIDAS Integration + Rietveld Refinement pipeline.
+            Combined MIDAS Integration + Peak Fitting / Refinement pipeline.
 
             Stage 1: Integrates raw data → .zarr.zip (choose backend with --backend)
-            Stage 2: Runs rietveld_refine.py for staged Rietveld refinement
+            Stage 2: Runs gsas_ii_refine.py for staged peak fitting/refinement
 
             Backends:
               batch  — Uses integrator.py (CPU/OpenMP). Provide files with -dataFN.
@@ -452,7 +452,7 @@ def parse_args() -> argparse.Namespace:
     )
     mode.add_argument(
         "--skip-refinement", action="store_true",
-        help="Run only Stage 1 (integration). Skip Rietveld refinement.",
+        help="Run only Stage 1 (integration). Skip peak fitting/refinement.",
     )
 
     args = p.parse_args()
