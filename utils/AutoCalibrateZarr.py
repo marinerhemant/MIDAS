@@ -1002,7 +1002,7 @@ def main():
             if noMedian == 0:
                 plt.imshow(thresh, origin='lower')  # Set origin to lower left
             else:
-                plt.imshow(data_corr, origin='lower')  # Set origin to lower left
+                plt.imshow(data_corr, clim=[np.median(np.log(data_corr+1)), np.median(np.log(data_corr+1)) + np.std(np.log(data_corr+1))],origin='lower')  # Set origin to lower left
             for ringNr, rad in enumerate(sim_rads, start=1):
                 if ringNr in ringsToExclude:
                     continue
