@@ -2168,6 +2168,36 @@ int main(int argc, char *argv[]) {
   }
   printf("SpaceGroup: %d\n", Params.SpaceGroupNum);
   printf("Finished reading parameters.\n");
+  printf("Read Parameters:\n\tSpaceGroupNum: %d\n\tLatticeConstant: "
+         "%lf\n\tWavelength: %lf\n\tDistance: %lf\n\tRsample: %lf\n\tHbeam: "
+         "%lf\n\tStepsizePos: %lf\n\tStepsizeOrient: %lf\n\tNrOfRings: %d\n",
+         Params.SpaceGroupNum, Params.LatticeConstant, Params.Wavelength,
+         Params.Distance, Params.Rsample, Params.Hbeam, Params.StepsizePos,
+         Params.StepsizeOrient, Params.NrOfRings);
+  for (int iter = 0; iter < Params.NrOfRings; iter++)
+    printf("\tRingNumbers[%d]: %d, RingRadii: %lf, RingRadiiUser: %lf\n", iter,
+           Params.RingNumbers[iter], Params.RingRadii[iter],
+           Params.RingRadiiUser[iter]);
+  printf(
+      "\tMarginOme: %lf\n\tMarginEta: %lf\n\tMarginRad: %lf\n\tMarginRadial: "
+      "%lf\n\tEtaBinSize: %lf\n\tOmeBinSize: %lf\n\tExcludePoleAngle: "
+      "%lf\n\tMinMatchesToAcceptFrac: %lf\n\tNoOfOmegaRanges: %d\n",
+      Params.MarginOme, Params.MarginEta, Params.MarginRad, Params.MarginRadial,
+      Params.EtaBinSize, Params.OmeBinSize, Params.ExcludePoleAngle,
+      Params.MinMatchesToAcceptFrac, Params.NoOfOmegaRanges);
+  for (int iter = 0; iter < Params.NoOfOmegaRanges; iter++)
+    printf("\tOmegaRanges[%d]: %lf %lf, BoxSizes: %lf %lf %lf %lf\n", iter,
+           Params.OmegaRanges[iter][0], Params.OmegaRanges[iter][1],
+           Params.BoxSizes[iter][0], Params.BoxSizes[iter][1],
+           Params.BoxSizes[iter][2], Params.BoxSizes[iter][3]);
+  printf("\tOutputFolder: %s\n\tisGrainsInput: %d\n\tGrainsFileName: "
+         "%s\n\tSpotsFileName: %s\n\tIDsFileName: %s\n\tUseFriedelPairs: "
+         "%d\n\tnRingsToRejectCalc: %d\n",
+         Params.OutputFolder, Params.isGrainsInput, Params.GrainsFileName,
+         Params.SpotsFileName, Params.IDsFileName, Params.UseFriedelPairs,
+         Params.nRingsToRejectCalc);
+  for (int iter = 0; iter < Params.nRingsToRejectCalc; iter++)
+    printf("\tRingsToReject[%d]: %d\n", iter, Params.RingsToReject[iter]);
   char *hklfn = "hkls.csv";
   FILE *hklf = fopen(hklfn, "r");
   char aline[4096], dummy[1024];
