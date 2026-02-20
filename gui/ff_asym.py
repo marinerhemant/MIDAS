@@ -180,11 +180,15 @@ def _apply_auto_detect(root_widget):
 
 def _start_auto_detect_thread(root_widget):
     """Run auto-detection in a background thread to avoid blocking the GUI."""
-    def _worker():
-        _try_auto_detect()
-        root_widget.after(0, lambda: _apply_auto_detect(root_widget))
-    t = threading.Thread(target=_worker, daemon=True)
+    t = threading.Thread(target=_try_auto_detect, daemon=True)
     t.start()
+    def _poll():
+        if t.is_alive():
+            root_widget.after(200, _poll)  # Check again in 200ms
+        else:
+            _apply_auto_detect(root_widget)
+    root_widget.after(200, _poll)
+
 def get_ring_colors(n):
 	return [next(_color_cycle) for _ in range(n)]
 
