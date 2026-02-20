@@ -1663,9 +1663,10 @@ int main(int argc, char *argv[]) {
   char spotMatrFN[4096];
   sprintf(spotMatrFN, "SpotMatrixGen.csv");
   FILE *spotsfile = fopen(spotMatrFN, "w");
-  fprintf(spotsfile,
-          "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw\tEta"
-          "\tRingNr\tYLab\tZLab\tTheta\tStrainError\tScanNr\tRingRad\n");
+  fprintf(
+      spotsfile,
+      "%%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw\tEta"
+      "\tRingNr\tYLab\tZLab\tTheta\tStrainError\tScanNr\tRingRad\tomeBin\n");
   double spotMatr[12];
   double **TheorSpots;
   int nTspots, voxNr, spotNr;
@@ -1871,8 +1872,8 @@ int main(int argc, char *argv[]) {
               spotMatr[0] = voxNr + 1;
               spotMatr[1] = spotNr;
               spotMatr[2] = omeThis;
-              spotMatr[3] = yThis;
-              spotMatr[4] = zThis;
+              spotMatr[3] = yDet;
+              spotMatr[4] = zDet;
               spotMatr[5] = TempInfo[2];
               spotMatr[6] = TempInfo[1];
               spotMatr[7] = TempInfo[4];

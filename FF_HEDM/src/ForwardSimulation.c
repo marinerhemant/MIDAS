@@ -908,6 +908,37 @@ int main(int argc, char *argv[]) {
       continue;
     }
   }
+  int nEnergySamples = (eRes > 0) ? 5 : 1;
+  printf("\n");
+  printf("==============================================================\n");
+  printf("              ForwardSimulation Parameters\n");
+  printf("==============================================================\n");
+  printf("Input File:          %s\n", InFileName);
+  printf("Output File:         %s\n", OutFileName);
+  printf("Lattice Params:      a=%.4f, b=%.4f, c=%.4f, alpha=%.3f, beta=%.3f, "
+         "gamma=%.3f\n",
+         LatC[0], LatC[1], LatC[2], LatC[3], LatC[4], LatC[5]);
+  printf("Detector Dist (Lsd): %.4f um\n", Lsd);
+  printf("Pixel Size (px):     %.5f um\n", px);
+  printf("Detector Size:       %d x %d pixels\n", NrPixels, NrPixels);
+  printf("Beam Center:         y=%.4f, z=%.4f (pixels)\n", yBC, zBC);
+  printf("Tilt Angles:         tx=%.4f, ty=%.4f, tz=%.4f (deg)\n", tx, ty, tz);
+  printf("Distortion Params:   RhoD=%.4f, p0=%.5f, p1=%.5f, p2=%.5f\n", RhoD,
+         p0, p1, p2);
+  printf("Omega Range:         Start=%.4f, End=%.4f, Step=%.4f (deg)\n",
+         OmegaStart, OmegaEnd, OmegaStep);
+  printf("Wavelength:          %.5f A\n", Wavelength);
+  printf("Wedge Angle:         %.4f (deg)\n", Wedge);
+  printf("Gauss Width:         %.4f (pixels)\n", GaussWidth);
+  printf("Peak Intensity:      %.2f\n", PeakIntensity);
+  printf("Energy Res:          %.4f (Samples: %d)\n", eRes, nEnergySamples);
+  printf("Misc Options:        WriteSpots=%d, IsBinary=%d, NFOutput=%d, "
+         "GEOutput=%d\n",
+         writeSpots, isBin, nfOutput, geOutput);
+  printf(
+      "                     LoadNr=%d, UpdatedOrientations=%d, MinConf=%.4f\n",
+      LoadNr, UpdatedOrientations, minConfidence);
+  printf("==============================================================\n");
   printf("Output will be saved to: %s\n", OutFileName);
   char inpFN[4096];
   sprintf(inpFN, "%s", InFileName);
@@ -1416,8 +1447,8 @@ int main(int argc, char *argv[]) {
         if (idx >= NrPixels * NrPixels)
           continue;
         //~ printf("%lf %lf %lf %lf %d %d %lf %lf %lf %lld\n",yTemp, zTemp,
-        //yThis, zThis, yTrans, zTrans, px, yBC, zBC, (long long int) idx);
-        //fflush(stdout);
+        // yThis, zThis, yTrans, zTrans, px, yBC, zBC, (long long int) idx);
+        // fflush(stdout);
         DisplY = yDispl[idx];
         DisplZ = zDispl[idx];
         if (DisplY == -32100) { // Was not set, check neighbor
