@@ -416,6 +416,7 @@ class FileProcessor:
                     if key in group_out:
                         del group_out[key]
                     group_out.create_dataset(key, data=data_to_write)
+                    print(f"  Copied: {full_path} (shape={data_to_write.shape if isinstance(data_to_write, np.ndarray) else 'scalar'})")
                     logger.info(f"Copied metadata '{full_path}' to output Zarr.")
             except Exception as e:
                 logger.warning(f"Failed to copy '{full_path}': {e}")
