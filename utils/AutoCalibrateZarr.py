@@ -979,6 +979,23 @@ def main():
         if h5_file:
             save_ring_data(thresh, bc_new, sim_rads, h5_file)
             
+        # Initialize ringsToExclude and panel_params from param file before plotting
+        ringsToExclude = []
+        panel_params = []
+        if args.paramFN:
+            try:
+                with open(args.paramFN, 'r') as pf:
+                    for line in pf:
+                        if line.startswith('RingsToExclude'):
+                            parts = line.split()
+                            if len(parts) > 1:
+                                ringsToExclude.append(int(parts[1]))
+                        elif any(line.startswith(pk) for pk in ['NPanelsY', 'NPanelsZ', 'PanelSizeY', 'PanelSizeZ', 'PanelGapsY', 'PanelGapsZ']):
+                            panel_params.append(line.strip())
+                logger.info(f"Loaded manual exclusions: {ringsToExclude}")
+            except Exception as e:
+                logger.warning(f"Could not read RingsToExclude from {args.paramFN}: {e}")
+
         # Display rings on image if needed
         if DrawPlots == 1:
             fig, ax = plt.subplots()
@@ -1014,26 +1031,9 @@ def main():
         p1_refined = '0'
         p2_refined = '0'
         p3_refined = '0'
-        ringsToExclude = []
         
         # Panel parameters tracking
         panel_shifts_file = f"{fstem}_panel_shifts.txt"
-        panel_params = []
-        
-        # Parse RingsToExclude and Panels from input parameter file
-        if args.paramFN:
-            try:
-                with open(args.paramFN, 'r') as pf:
-                    for line in pf:
-                        if line.startswith('RingsToExclude'):
-                            parts = line.split()
-                            if len(parts) > 1:
-                                ringsToExclude.append(int(parts[1]))
-                        elif any(line.startswith(pk) for pk in ['NPanelsY', 'NPanelsZ', 'PanelSizeY', 'PanelSizeZ', 'PanelGapsY', 'PanelGapsZ']):
-                            panel_params.append(line.strip())
-                logger.info(f"Loaded manual exclusions: {ringsToExclude}")
-            except Exception as e:
-                logger.warning(f"Could not read RingsToExclude from {args.paramFN}: {e}")
         
         nPlanes = len(sim_rads)
         
