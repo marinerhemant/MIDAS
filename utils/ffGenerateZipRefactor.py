@@ -110,6 +110,40 @@ def apply_correction(img, dark_mean, pre_proc_thresh_val):
                 else:
                     result[i, j, k] = max(0, int(img[i, j, k]) - int(dark_mean[j, k]))
     return result
+def _copy_hdf5_group_to_zarr(hf_group, z_group, path_prefix='', exclude_paths=None):
+    """Recursively copy all datasets from an HDF5 group to a Zarr group.
+    
+    Args:
+        hf_group: Source h5py Group
+        z_group: Destination Zarr Group
+        path_prefix: Current path for logging
+        exclude_paths: Set of full paths to skip
+    """
+    if exclude_paths is None:
+        exclude_paths = set()
+    
+    for key in hf_group.keys():
+        full_path = f"{path_prefix}/{key}" if path_prefix else key
+        
+        # Check if this path should be excluded
+        if any(full_path.startswith(ep) for ep in exclude_paths):
+            continue
+        
+        item = hf_group[key]
+        try:
+            if isinstance(item, h5py.Group):
+                sub_z = z_group.require_group(key)
+                _copy_hdf5_group_to_zarr(item, sub_z, full_path, exclude_paths)
+            elif isinstance(item, h5py.Dataset):
+                data = item[()]
+                if not isinstance(data, np.ndarray):
+                    data = np.array([data])
+                if key in z_group:
+                    del z_group[key]
+                z_group.create_dataset(key, data=data)
+                print(f"    - Copied: {full_path} (shape={data.shape})")
+        except Exception as e:
+            print(f"    - Warning: Could not copy '{full_path}': {e}")
 
 def create_zarr_structure(zRoot):
     """Creates the basic Zarr group hierarchy."""
@@ -237,7 +271,7 @@ class BZ2Context:
         if self.is_bz2 and self.temp_path and os.path.exists(self.temp_path):
             os.remove(self.temp_path)
 
-def process_hdf5_scan(config, z_groups):
+def process_hdf5_scan(config, z_groups, zRoot):
     """Processes a scan from one or more HDF5 files, with correct SkipFrame logic and .bz2 support."""
     print("\n--- Processing HDF5 File(s) ---")
     num_files, skip_frames = int(config.get('numFilesPerScan', 1)), int(config.get('SkipFrame', 0))
@@ -312,6 +346,20 @@ def process_hdf5_scan(config, z_groups):
                         z_groups['sp_pro_meas'].create_dataset(zarr_name, data=data_to_copy)
                     except Exception as e:
                         print(f"    - Warning: Could not copy metadata from '{h5_path}'. Reason: {e}")
+
+            # Copy instrument/ group (all keys recursively)
+            if 'instrument' in hf:
+                print("  - Copying instrument/ group from HDF5...")
+                inst_z = zRoot.require_group('instrument')
+                _copy_hdf5_group_to_zarr(hf['instrument'], inst_z, 'instrument')
+
+            # Copy measurement/ group (excluding scan_parameters which are handled above)
+            if 'measurement' in hf:
+                print("  - Copying measurement/ group from HDF5...")
+                _copy_hdf5_group_to_zarr(
+                    hf['measurement'], z_groups['meas'], 'measurement',
+                    exclude_paths={'measurement/process/scan_parameters'}
+                )
 
     total_frames_to_write = frames_per_file + (frames_per_file - skip_frames) * (num_files - 1)
     print(f"HDF5 scan: {num_files} file(s), {frames_per_file} frames/file. Skipping {skip_frames} from files 2+. Total frames to write: {total_frames_to_write}. Dtype: {output_dtype}")
@@ -700,7 +748,7 @@ def main():
     output_dtype = None
 
     try:
-        if file_ext in ['.h5', '.hdf5']: output_dtype = process_hdf5_scan(config, z_groups)
+        if file_ext in ['.h5', '.hdf5']: output_dtype = process_hdf5_scan(config, z_groups, zRoot)
         elif file_ext == '.zip':
             print("\n--- Processing Existing Zarr.zip File ---")
             with zarr.open(config['dataFN'], 'r') as zf_in:
