@@ -23,7 +23,7 @@ This manual walks you through the workflow of taking radially integrated (caked)
 | **MIDAS** | 9.0 | See [README.md](README.md) — typically installed to `~/opt/MIDAS/` but any path works.  Scripts auto-detect their install location. |
 | **GSAS-II** | Latest | `conda install gsas2full -c briantoby` or [install guide](https://advancedphotonsource.github.io/GSAS-II-tutorials/install.html). See §2.3 below. |
 | **Python** | 3.9+ | Required by both packages |
-| **zarr** | 2.18.3 | `pip install zarr==2.18.3` (required by the MIDAS zarr importer in GSAS-II) |
+| **zarr** | Latest | `pip install zarr` or `conda install zarr` (required by the MIDAS zarr importer in GSAS-II) |
 
 ### 2.3. GSAS-II Installation & Setup
 
@@ -54,9 +54,6 @@ Before starting, you should have:
 The MIDAS `integrator.py` produces caked diffraction data in a **`.zarr.zip`** file. This file contains everything GSAS-II needs to import the data as a set of 1D powder patterns, and is read by the [MIDAS zarr importer](https://github.com/AdvancedPhotonSource/GSAS-II/blob/main/GSASII/imports/G2pwd_MIDAS.py) in GSAS-II.
 
 The **streaming GPU pipeline** (`integrator_batch_process.py` → `integrator_stream_process_h5.py`) also generates a compatible `.zarr.zip` alongside the HDF5 output. Instrument parameters are read from the parameter file or use defaults matching the GSAS-II reader. Use `--no-zarr` to skip zarr creation, or `--zarr-output <name>` to set a custom filename.
-
-> [!IMPORTANT]
-> The MIDAS importer requires **zarr 2.18.3** (`pip install zarr==2.18.3`). Newer zarr versions may not be compatible.
 
 ### 3.1. Zarr Internal Structure
 
@@ -128,7 +125,7 @@ python ~/opt/MIDAS/utils/integrator.py \
 4. Instrument parameters (wavelength, profile terms) are automatically read from the `InstrumentParameters/` group in the zarr file. You can override them with an external `.instprm` file placed alongside the `.zarr.zip` with the same base name.
 
 > [!TIP]
-> If GSAS-II does not show the MIDAS import option, ensure that `zarr==2.18.3` is installed in the same Python environment as GSAS-II. You can verify with `python -c "import zarr; print(zarr.__version__)"`.
+> If GSAS-II does not show the MIDAS import option, ensure that zarr is installed in the Python environment used to run GSAS-II. You can verify with `python -c "import zarr; print(zarr.__version__)"`.
 
 ### 4.3. Verify the Import
 
@@ -207,7 +204,7 @@ flowchart TD
 3. Refine after each addition. If the refinement diverges, remove the last added parameter and try with a different starting value.
 
 > [!WARNING]
-> Do not refine all profile parameters simultaneously on the first attempt. This can lead to strong correlations and divergence. Add parameters one at a time and verify that Rwp improves and the difference curve (observed − calculated) becomes flatter.
+> Do not refine all profile parameters simultaneously on the first attempt. This can lead to strong correlations and divergence. Add parameters in groups (areas, then intensities, then widths) and verify that Rwp improves and the difference curve (observed − calculated) becomes flatter.
 
 ### Stage 4: Atomic Positions and Thermal Parameters
 
@@ -455,7 +452,7 @@ python $MIDAS_INSTALL_DIR/utils/integrate_and_refine.py \
 - [FF_RadialIntegration.md](FF_RadialIntegration.md) — MIDAS radial integration / caking workflow (both CPU and GPU pipelines)
 - [FF_calibration.md](FF_calibration.md) — FF-HEDM geometry calibration (produces parameters used by integrator)
 - [README.md](README.md) — High-level MIDAS overview and manual index
-- [GSAS-II Tutorials](https://advancedphotonsource.github.io/GSAS-II-tutorials/index.html) — Official GSAS-II tutorials and documentation
+- [GSAS-II Tutorials](https://advancedphotonsource.github.io/GSAS-II-tutorials/tutorials.html) — Official GSAS-II tutorials and documentation
 - [GSASIIscriptable API](https://gsas-ii.readthedocs.io/en/latest/GSASIIscriptable.html) — GSAS-II scripting reference
 
 ---
