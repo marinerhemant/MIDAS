@@ -1,4 +1,4 @@
-# GSAS-II Integration: Importing MIDAS Caked Data for Rietveld Refinement
+# GSAS-II Integration: Importing MIDAS Data for Peak Fitting & Strain Analysis
 
 **Version:** 9.0  
 **Contact:** hsharma@anl.gov
@@ -7,10 +7,9 @@
 
 ## 1. Introduction
 
-This manual walks you through the workflow of taking radially integrated (caked) powder-diffraction data produced by MIDAS and importing it into [GSAS-II](https://advancedphotonsource.github.io/GSAS-II-tutorials/index.html) for phase identification, profile fitting, and Rietveld refinement. It assumes that you have already calibrated your detector and run the MIDAS integrator — if not, see the prerequisites below.
+This manual walks you through the workflow of taking radially integrated (caked) powder-diffraction data produced by MIDAS and importing it into [GSAS-II](https://advancedphotonsource.github.io/GSAS-II-tutorials/index.html). While GSAS-II is a full-featured package for advanced crystallographic analysis, **this guide is an oversimplified introduction** focused specifically on reading MIDAS integration results for profile fitting. 
 
-> [!NOTE]
-> GSAS-II is an open-source crystallographic analysis package developed at APS. It performs Rietveld refinement, peak fitting, texture analysis, and more. It is the recommended tool for quantitative analysis of the powder profiles that MIDAS produces.
+It assumes you already know your material (via a provided CIF file) and are primarily interested in extracting refined lattice parameters, macroscopic strains, and potentially texture analysis. Full Rietveld refinement (including solving or heavily refining atomic positions and thermal parameters) is a complex process and is better learned through dedicated GSAS-II tutorials.
 
 ---
 
@@ -164,26 +163,24 @@ If your caked data is from a known powder standard (CeO₂, LaB₆, Si):
 
 ---
 
-## 6. Rietveld Refinement Workflow
+## 6. Peak Fitting & Lattice Refinement Workflow
 
-Rietveld refinement should proceed in stages, from the most robust parameters to the most sensitive. Below is a recommended sequence.
+For our purposes (extracting lattice parameters, measuring macroscopic strains, or observing texture), we perform a partial refinement. We assume the crystal structure provided in your CIF is correct, so we will not refine atomic positions or thermal parameters. 
+
+Refinement should proceed in stages, from the most robust parameters to the most sensitive. Below is a recommended sequence.
 
 ```mermaid
 flowchart TD
     A["1. Background<br/>(Chebyshev 3–6 terms)"] --> B["2. Scale Factor"]
-    B --> C["3. Unit Cell<br/>(lattice parameters)"]
+    B --> C["3. Unit Cell<br/>(lattice parameters/strain)"]
     C --> D["4. Peak Profile<br/>(U, V, W, X, Y)"]
-    D --> E["5. Atomic Positions<br/>(x, y, z)"]
-    E --> F["6. Thermal Parameters<br/>(B_iso or U_ij)"]
-    F --> G["7. Preferred Orientation<br/>(if needed)"]
+    D --> E["5. Preferred Orientation<br/>(if needed for texture)"]
 
     style A fill:#1a1a2e,stroke:#e94560,color:#fff
     style B fill:#16213e,stroke:#0f3460,color:#fff
     style C fill:#16213e,stroke:#0f3460,color:#fff
     style D fill:#0f3460,stroke:#e94560,color:#fff
-    style E fill:#0f3460,stroke:#e94560,color:#fff
-    style F fill:#533483,stroke:#e94560,color:#fff
-    style G fill:#533483,stroke:#e94560,color:#fff
+    style E fill:#533483,stroke:#e94560,color:#fff
 ```
 
 ### Stage 1: Background + Scale
@@ -195,7 +192,7 @@ flowchart TD
 ### Stage 2: Lattice Parameters
 
 1. Under **Phases → General**, check the **Refine Unit Cell** box.
-2. Refine again. The lattice parameters should converge to values close to the known literature values.
+2. Refine again. The lattice parameters should converge to values close to the expected values for your material, giving you the macroscopic strain.
 
 ### Stage 3: Peak Profile
 
@@ -206,19 +203,11 @@ flowchart TD
 > [!WARNING]
 > Do not refine all profile parameters simultaneously on the first attempt. This can lead to strong correlations and divergence. Add parameters in groups (areas, then intensities, then widths) and verify that Rwp improves and the difference curve (observed − calculated) becomes flatter.
 
-### Stage 4: Atomic Positions and Thermal Parameters
+### Stage 4: Final Inspection
 
-1. For the atoms in your phase, check the **Refine** boxes for position coordinates (**X**, **Y**, **Z**).
-2. Refine.
-3. Then enable **Uiso** (isotropic thermal parameter) for each atom.
-4. Refine again.
-
-### Stage 5: Final Inspection
-
-1. Examine the **difference curve** at the bottom of the pattern plot. Systematic errors indicate model deficiencies (wrong phase, missing phase, texture, etc.).
+1. Examine the **difference curve** at the bottom of the pattern plot. Systematic errors indicate model deficiencies (missing phase, strong texture, etc.).
 2. Inspect the refined values for physical reasonableness:
-   - Lattice parameters near literature values.
-   - Thermal parameters positive and not unreasonably large.
+   - Lattice parameters near expected values.
    - Rwp typically < 15% for a good refinement of synchrotron data.
 
 ---
@@ -281,14 +270,16 @@ The calibration parameters from MIDAS can serve as starting instrument-parameter
 
 ---
 
-## 9. Scripted Rietveld Refinement
+## 9. Scripted Peak Fitting & Refinement
 
-For batch processing or pipeline integration, MIDAS provides a script that automates the staged Rietveld refinement workflow described above using the GSAS-II [scripting API](https://gsas-ii.readthedocs.io/en/latest/GSASIIscriptable.html).  Each histogram (lineout) is refined **independently** in its own `.gpx` project, and when `--nCPUs > 1` these refinements run **in parallel** via `multiprocessing`.
+For batch processing or pipeline integration, MIDAS provides a script that automates the staged refinement workflow described above using the GSAS-II [scripting API](https://gsas-ii.readthedocs.io/en/latest/GSASIIscriptable.html).  Each histogram (lineout) is refined **independently** in its own `.gpx` project, and when `--nCPUs > 1` these refinements run **in parallel** via `multiprocessing`.
 
 > [!NOTE]
 > In the examples below, `$MIDAS_INSTALL_DIR` refers to wherever MIDAS is installed on your system (commonly `~/opt/MIDAS`).  The scripts auto-detect their install location, so you only need the correct absolute or relative path to the script.
 
 ### 9.1. Quick Start
+
+Since our goal is primarily lattice and profile refinement rather than full Rietveld, it is strongly recommended to pass the `--no-atoms` flag to lock atomic positions and thermal parameters.
 
 ```bash
 python $MIDAS_INSTALL_DIR/utils/rietveld_refine.py \
@@ -296,12 +287,13 @@ python $MIDAS_INSTALL_DIR/utils/rietveld_refine.py \
     --cif   CeO2.cif \
     --out   refinement/ \
     --bkg-terms 6 \
+    --no-atoms \
     --nCPUs 8
 ```
 
 ### 9.2. What the Script Does
 
-The script performs the same staged refinement as the GUI workflow, **per histogram**:
+The script performs the same staged refinement as the GUI workflow, **per histogram**, while ignoring atomic positions due to `--no-atoms`:
 
 | Stage | Parameters Refined |
 |-------|-------------------|
@@ -309,7 +301,6 @@ The script performs the same staged refinement as the GUI workflow, **per histog
 | 2 | Unit cell (lattice parameters) |
 | 3a | Gaussian profile: U, V, W |
 | 3b | Lorentzian profile: X, Y + asymmetry SH/L |
-| 4 | Atomic positions + thermal parameters |
 
 Each histogram produces its own `hist_NNNN.gpx` project that can be opened in the GSAS-II GUI.
 
