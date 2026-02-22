@@ -11,6 +11,7 @@
 //
 
 #include "MIDAS_Math.h"
+#include "ZarrReader.h"
 #include <blosc2.h>
 #include <ctype.h>
 #include <errno.h>
@@ -1154,80 +1155,29 @@ static inline void makeSquareImage_d(int nrPixels, int nrPixelsY, int nrPixelsZ,
 
 /**
  * Helper function to read a decompressed image from Zarr
+ * Delegates to the centralized ReadZarrChunk API.
  */
-static inline ErrorCode readZarrImage(zip_t *archive, int fileIndex,
-                                      char *buffer, int32_t bufferSize) {
-  zip_stat_t fileStat;
-  zip_stat_init(&fileStat);
-
-  if (zip_stat_index(archive, fileIndex, 0, &fileStat) != 0) {
-    printf("Error getting file stats from zip archive: %d\n", ERROR_ZIP_OPEN);
-    return ERROR_ZIP_OPEN;
-  }
-
-  zip_file_t *file = zip_fopen_index(archive, fileIndex, 0);
-  if (!file) {
-    printf("Error opening file in zip archive: %d\n", ERROR_FILE_OPEN);
-    return ERROR_FILE_OPEN;
-  }
-
-  char *compressedData = calloc(fileStat.size + 1, sizeof(char));
-  if (!compressedData) {
-    zip_fclose(file);
-    printf("Error allocating memory for compressed data: %d\n",
-           ERROR_MEMORY_ALLOCATION);
-    return ERROR_MEMORY_ALLOCATION;
-  }
-
-  zip_fread(file, compressedData, fileStat.size);
-  zip_fclose(file);
-
-  int32_t decompressedSize =
-      blosc1_decompress(compressedData, buffer, bufferSize);
-  free(compressedData);
-
-  if (decompressedSize <= 0) {
-    printf("Error decompressing data: %d\n", ERROR_BLOSC_OPERATION);
+static inline ErrorCode readZarrImageWrapper(zip_t *archive, int fileIndex,
+                                             char *buffer, int32_t bufferSize) {
+  int rc = ReadZarrChunk(archive, fileIndex, buffer, bufferSize);
+  if (rc < 0) {
+    printf("Error reading Zarr image chunk at index %d: %d\n", fileIndex, rc);
     return ERROR_BLOSC_OPERATION;
   }
-
   return SUCCESS;
 }
 
 /**
  * Read array and decompress from zarr
+ * Delegates to the centralized ReadZarrChunk API.
  */
-static inline ErrorCode readZarrArrayData(zip_t *archive, int fileIndex,
-                                          void *dest, size_t destSize,
-                                          const char *dataType) {
-  zip_stat_t fileStat;
-  zip_stat_init(&fileStat);
-
-  if (zip_stat_index(archive, fileIndex, 0, &fileStat) != 0) {
-    return ERROR_ZIP_OPEN;
-  }
-
-  zip_file_t *file = zip_fopen_index(archive, fileIndex, 0);
-  if (!file) {
-    return ERROR_FILE_OPEN;
-  }
-
-  char *compressedData = calloc(fileStat.size + 1, sizeof(char));
-  if (!compressedData) {
-    zip_fclose(file);
-    return ERROR_MEMORY_ALLOCATION;
-  }
-
-  zip_fread(file, compressedData, fileStat.size);
-  zip_fclose(file);
-
-  int32_t decompressedSize = blosc1_decompress(compressedData, dest, destSize);
-  free(compressedData);
-
-  if (decompressedSize <= 0) {
+static inline ErrorCode readZarrArrayDataWrapper(zip_t *archive, int fileIndex,
+                                                 void *dest, size_t destSize,
+                                                 const char *dataType) {
+  int rc = ReadZarrChunk(archive, fileIndex, dest, (int32_t)destSize);
+  if (rc < 0) {
     return ERROR_BLOSC_OPERATION;
   }
-
   return SUCCESS;
 }
 
@@ -1282,7 +1232,8 @@ static ErrorCode readImageCorrections(zip_t *archive, int darkLoc, int floodLoc,
     }
 
     for (int darkIter = 0; darkIter < metadata->nDarks; darkIter++) {
-      error = readZarrImage(archive, darkLoc + darkIter, rawData, dataSize);
+      error =
+          readZarrImageWrapper(archive, darkLoc + darkIter, rawData, dataSize);
       if (error != SUCCESS) {
         // Free all buffers and return
         free(darkAsym_d);
@@ -1335,10 +1286,10 @@ static ErrorCode readImageCorrections(zip_t *archive, int darkLoc, int floodLoc,
 
   // Read flat field (flood) frame
   if (metadata->nFloods > 0) {
-    error = readZarrArrayData(archive, floodLoc, flood,
-                              (size_t)metadata->NrPixels * metadata->NrPixels *
-                                  sizeof(double),
-                              "float64");
+    error = readZarrArrayDataWrapper(archive, floodLoc, flood,
+                                     (size_t)metadata->NrPixels *
+                                         metadata->NrPixels * sizeof(double),
+                                     "float64");
     if (error != SUCCESS) {
       free(darkTemp);
       free(rawData);
@@ -1364,7 +1315,7 @@ static ErrorCode readImageCorrections(zip_t *archive, int darkLoc, int floodLoc,
       return ERROR_MEMORY_ALLOCATION;
     }
 
-    error = readZarrImage(archive, maskLoc, rawData, dataSize);
+    error = readZarrImageWrapper(archive, maskLoc, rawData, dataSize);
     if (error != SUCCESS) {
       free(maskAsym_d);
       free(maskContents_d);
@@ -1632,289 +1583,6 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
 }
 
 /**
- * Read a double value from a Zarr array
- */
-static ErrorCode readZarrDouble(zip_t *archive, int fileIndex, double *value) {
-  zip_stat_t fileStat;
-  zip_stat_init(&fileStat);
-
-  if (zip_stat_index(archive, fileIndex, 0, &fileStat) != 0) {
-    return ERROR_ZIP_OPEN;
-  }
-
-  zip_file_t *file = zip_fopen_index(archive, fileIndex, 0);
-  if (!file) {
-    return ERROR_FILE_OPEN;
-  }
-
-  char *arr = calloc(fileStat.size + 1, sizeof(char));
-  if (!arr) {
-    zip_fclose(file);
-    return ERROR_MEMORY_ALLOCATION;
-  }
-
-  zip_fread(file, arr, fileStat.size);
-  zip_fclose(file);
-
-  // Allocate buffer for decompressed data
-  int32_t dsize = sizeof(double);
-  char *data = (char *)malloc((size_t)dsize);
-  if (!data) {
-    free(arr);
-    return ERROR_MEMORY_ALLOCATION;
-  }
-
-  // Decompress data
-  dsize = blosc1_decompress(arr, data, dsize);
-  if (dsize <= 0) {
-    free(arr);
-    free(data);
-    return ERROR_BLOSC_OPERATION;
-  }
-
-  // Copy value
-  *value = *(double *)&data[0];
-
-  free(arr);
-  free(data);
-
-  return SUCCESS;
-}
-
-/**
- * Read an integer value from a Zarr array
- */
-static ErrorCode readZarrInt(zip_t *archive, int fileIndex, int *value) {
-  zip_stat_t fileStat;
-  zip_stat_init(&fileStat);
-
-  if (zip_stat_index(archive, fileIndex, 0, &fileStat) != 0) {
-    return ERROR_ZIP_OPEN;
-  }
-
-  zip_file_t *file = zip_fopen_index(archive, fileIndex, 0);
-  if (!file) {
-    return ERROR_FILE_OPEN;
-  }
-
-  char *arr = calloc(fileStat.size + 1, sizeof(char));
-  if (!arr) {
-    zip_fclose(file);
-    return ERROR_MEMORY_ALLOCATION;
-  }
-
-  zip_fread(file, arr, fileStat.size);
-  zip_fclose(file);
-
-  // Allocate buffer for decompressed data
-  int32_t dsize = sizeof(int);
-  char *data = (char *)malloc((size_t)dsize);
-  if (!data) {
-    free(arr);
-    return ERROR_MEMORY_ALLOCATION;
-  }
-
-  // Decompress data
-  dsize = blosc1_decompress(arr, data, dsize);
-  if (dsize <= 0) {
-    free(arr);
-    free(data);
-    return ERROR_BLOSC_OPERATION;
-  }
-
-  // Copy value
-  *value = *(int *)&data[0];
-
-  free(arr);
-  free(data);
-
-  return SUCCESS;
-}
-
-/**
- * Read a string from a Zarr array
- */
-static ErrorCode readZarrString(zip_t *archive, int fileIndex, char **value) {
-  zip_stat_t fileStat;
-  zip_stat_init(&fileStat);
-
-  if (zip_stat_index(archive, fileIndex, 0, &fileStat) != 0) {
-    return ERROR_ZIP_OPEN;
-  }
-
-  zip_file_t *file = zip_fopen_index(archive, fileIndex, 0);
-  if (!file) {
-    return ERROR_FILE_OPEN;
-  }
-
-  char *arr = calloc(fileStat.size + 1, sizeof(char));
-  if (!arr) {
-    zip_fclose(file);
-    return ERROR_MEMORY_ALLOCATION;
-  }
-
-  zip_fread(file, arr, fileStat.size);
-  zip_fclose(file);
-
-  // Allocate buffer for decompressed data
-  int32_t dsize = MAX_BUFFER_SIZE;
-  *value = calloc(dsize, sizeof(char));
-  if (!(*value)) {
-    free(arr);
-    return ERROR_MEMORY_ALLOCATION;
-  }
-
-  // Decompress data
-  int32_t decompressedSize = blosc1_decompress(arr, *value, dsize);
-  if (decompressedSize <= 0) {
-    // DECOMPRESSION FAILED.
-    // This is likely because the data was not compressed.
-    // We will copy the raw data directly.
-    // Check that the raw data fits in our buffer.
-    if (fileStat.size < dsize) {
-      memcpy(*value, arr, fileStat.size);
-      decompressedSize = fileStat.size; // Set the size to the raw size
-    } else {
-      // The raw data is too big for our destination buffer.
-      fprintf(stderr,
-              "Warning: Uncompressed Zarr string chunk is too large.\n");
-      free(arr);
-      free(*value);
-      *value = NULL;
-      // Return the original blosc error, as something is wrong.
-      return ERROR_BLOSC_OPERATION;
-    }
-  }
-
-  // Ensure null termination
-  (*value)[decompressedSize] = '\0';
-
-  free(arr);
-
-  return SUCCESS;
-}
-
-/**
- * Read int array from a Zarr array
- */
-static ErrorCode readZarrIntArray(zip_t *archive, int fileIndex, int *count,
-                                  int **values) {
-  zip_stat_t fileStat;
-  zip_stat_init(&fileStat);
-
-  if (zip_stat_index(archive, fileIndex, 0, &fileStat) != 0) {
-    return ERROR_ZIP_OPEN;
-  }
-
-  zip_file_t *file = zip_fopen_index(archive, fileIndex, 0);
-  if (!file) {
-    return ERROR_FILE_OPEN;
-  }
-
-  char *arr = calloc(fileStat.size + 1, sizeof(char));
-  if (!arr) {
-    zip_fclose(file);
-    return ERROR_MEMORY_ALLOCATION;
-  }
-
-  zip_fread(file, arr, fileStat.size);
-  zip_fclose(file);
-
-  // Allocate buffer for decompressed data
-  int32_t dsize = (*count) * sizeof(int);
-  char *data = (char *)malloc((size_t)dsize);
-  if (!data) {
-    free(arr);
-    return ERROR_MEMORY_ALLOCATION;
-  }
-
-  // Decompress data
-  dsize = blosc1_decompress(arr, data, dsize);
-  if (dsize <= 0) {
-    free(arr);
-    free(data);
-    return ERROR_BLOSC_OPERATION;
-  }
-
-  // Allocate and copy array
-  *values = calloc(*count, sizeof(int));
-  if (!(*values)) {
-    free(arr);
-    free(data);
-    return ERROR_MEMORY_ALLOCATION;
-  }
-
-  for (int i = 0; i < *count; i++) {
-    (*values)[i] = *(int *)&data[i * sizeof(int)];
-  }
-
-  free(arr);
-  free(data);
-
-  return SUCCESS;
-}
-
-/**
- * Read double array from a Zarr array
- */
-static ErrorCode readZarrDoubleArray(zip_t *archive, int fileIndex, int count,
-                                     double **values) {
-  zip_stat_t fileStat;
-  zip_stat_init(&fileStat);
-
-  if (zip_stat_index(archive, fileIndex, 0, &fileStat) != 0) {
-    return ERROR_ZIP_OPEN;
-  }
-
-  zip_file_t *file = zip_fopen_index(archive, fileIndex, 0);
-  if (!file) {
-    return ERROR_FILE_OPEN;
-  }
-
-  char *arr = calloc(fileStat.size + 1, sizeof(char));
-  if (!arr) {
-    zip_fclose(file);
-    return ERROR_MEMORY_ALLOCATION;
-  }
-
-  zip_fread(file, arr, fileStat.size);
-  zip_fclose(file);
-
-  // Allocate buffer for decompressed data
-  int32_t dsize =
-      count * 2 *
-      sizeof(double); // 2 values per entry (ring number and threshold)
-  char *data = (char *)malloc((size_t)dsize);
-  if (!data) {
-    free(arr);
-    return ERROR_MEMORY_ALLOCATION;
-  }
-
-  // Decompress data
-  dsize = blosc1_decompress(arr, data, dsize);
-  if (dsize <= 0) {
-    free(arr);
-    free(data);
-    return ERROR_BLOSC_OPERATION;
-  }
-
-  // Allocate and copy array
-  *values = calloc(count * 2, sizeof(double));
-  if (!(*values)) {
-    free(arr);
-    free(data);
-    return ERROR_MEMORY_ALLOCATION;
-  }
-
-  memcpy(*values, data, count * 2 * sizeof(double));
-
-  free(arr);
-  free(data);
-
-  return SUCCESS;
-}
-
-/**
  * Extract dimension from Zarr metadata
  */
 static ErrorCode getZarrDimension(const char *buffer, int *dimension) {
@@ -1951,12 +1619,11 @@ static ErrorCode readZarrDataType(zip_t *archive, PixelValueType *pixelType) {
     if (strstr(fileInfo.name, "measurement/process/scan_parameters/datatype") !=
         NULL) {
       char *typeName = NULL;
-      ErrorCode error = readZarrString(archive, count + 1, &typeName);
+      int rc_str = ReadZarrString(archive, count + 1, &typeName, 256);
 
-      if (error != SUCCESS) {
-        fprintf(stderr, "Error reading Zarr data type: %s\n",
-                getErrorMessage(error));
-        return error;
+      if (rc_str < 0) {
+        fprintf(stderr, "Error reading Zarr data type\n");
+        return ERROR_BLOSC_OPERATION;
       }
       printf("%s\n", typeName);
 
@@ -2351,20 +2018,20 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
     // Panel parameters parsing
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/NPanelsY/0") != NULL)
-      readZarrInt(archive, count, &NPanelsY);
+      ReadZarrChunk(archive, count, &NPanelsY, sizeof(int));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/NPanelsZ/0") != NULL)
-      readZarrInt(archive, count, &NPanelsZ);
+      ReadZarrChunk(archive, count, &NPanelsZ, sizeof(int));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/PanelSizeY/0") != NULL)
-      readZarrInt(archive, count, &PanelSizeY);
+      ReadZarrChunk(archive, count, &PanelSizeY, sizeof(int));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/PanelSizeZ/0") != NULL)
-      readZarrInt(archive, count, &PanelSizeZ);
+      ReadZarrChunk(archive, count, &PanelSizeZ, sizeof(int));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/PanelShiftsFile/0") !=
         NULL)
-      readZarrString(archive, count, &PanelShiftsFile);
+      ReadZarrString(archive, count, &PanelShiftsFile, 4096);
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/PanelGapsY/0") != NULL)
       locPanelGapsY = count;
@@ -2399,99 +2066,99 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
     // Read various scalar parameters
     if (strstr(fileInfo->name, "measurement/process/scan_parameters/start/0") !=
         NULL)
-      readZarrDouble(archive, count, &metadata->omegaStart);
+      ReadZarrChunk(archive, count, &metadata->omegaStart, sizeof(double));
     if (strstr(fileInfo->name, "measurement/process/scan_parameters/step/0") !=
         NULL)
-      readZarrDouble(archive, count, &metadata->omegaStep);
+      ReadZarrChunk(archive, count, &metadata->omegaStep, sizeof(double));
     if (strstr(fileInfo->name,
                "measurement/process/scan_parameters/doPeakFit/0") != NULL) {
-      readZarrInt(archive, count, &metadata->doPeakFit);
+      ReadZarrChunk(archive, count, &metadata->doPeakFit, sizeof(int));
       params->doPeakFit = metadata->doPeakFit;
     }
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/ResultFolder/0") != NULL) {
-      readZarrString(archive, count, resultFolder);
+      ReadZarrString(archive, count, resultFolder, 4096);
       printf("ResultFolder: %s\n", *resultFolder);
     }
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/MaxNPeaks/0") != NULL)
-      readZarrInt(archive, count, &params->maxNPeaks);
+      ReadZarrChunk(archive, count, &params->maxNPeaks, sizeof(int));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/SkipFrame/0") != NULL)
-      readZarrInt(archive, count, &metadata->skipFrame);
+      ReadZarrChunk(archive, count, &metadata->skipFrame, sizeof(int));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/zDiffThresh/0") != NULL)
-      readZarrDouble(archive, count, &params->zDiffThresh);
+      ReadZarrChunk(archive, count, &params->zDiffThresh, sizeof(double));
     if (strstr(fileInfo->name, "analysis/process/analysis_parameters/tx/0") !=
         NULL)
-      readZarrDouble(archive, count, &params->tx);
+      ReadZarrChunk(archive, count, &params->tx, sizeof(double));
     if (strstr(fileInfo->name, "analysis/process/analysis_parameters/ty/0") !=
         NULL)
-      readZarrDouble(archive, count, &params->ty);
+      ReadZarrChunk(archive, count, &params->ty, sizeof(double));
     if (strstr(fileInfo->name, "analysis/process/analysis_parameters/tz/0") !=
         NULL)
-      readZarrDouble(archive, count, &params->tz);
+      ReadZarrChunk(archive, count, &params->tz, sizeof(double));
     if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p0/0") !=
         NULL)
-      readZarrDouble(archive, count, &params->p0);
+      ReadZarrChunk(archive, count, &params->p0, sizeof(double));
     if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p1/0") !=
         NULL)
-      readZarrDouble(archive, count, &params->p1);
+      ReadZarrChunk(archive, count, &params->p1, sizeof(double));
     if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p2/0") !=
         NULL)
-      readZarrDouble(archive, count, &params->p2);
+      ReadZarrChunk(archive, count, &params->p2, sizeof(double));
     if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p3/0") !=
         NULL)
-      readZarrDouble(archive, count, &params->p3);
+      ReadZarrChunk(archive, count, &params->p3, sizeof(double));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/MinNrPx/0") != NULL)
-      readZarrInt(archive, count, &params->minNrPx);
+      ReadZarrChunk(archive, count, &params->minNrPx, sizeof(int));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/MaxNrPx/0") != NULL)
-      readZarrInt(archive, count, &params->maxNrPx);
+      ReadZarrChunk(archive, count, &params->maxNrPx, sizeof(int));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/DoFullImage/0") != NULL)
-      readZarrInt(archive, count, &params->DoFullImage);
+      ReadZarrChunk(archive, count, &params->DoFullImage, sizeof(int));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/ReferenceRingCurrent/0") !=
         NULL)
-      readZarrDouble(archive, count, &params->bc);
+      ReadZarrChunk(archive, count, &params->bc, sizeof(double));
     if (strstr(fileInfo->name, "analysis/process/analysis_parameters/YCen/0") !=
         NULL)
-      readZarrDouble(archive, count, &params->Ycen);
+      ReadZarrChunk(archive, count, &params->Ycen, sizeof(double));
     if (strstr(fileInfo->name, "analysis/process/analysis_parameters/ZCen/0") !=
         NULL)
-      readZarrDouble(archive, count, &params->Zcen);
+      ReadZarrChunk(archive, count, &params->Zcen, sizeof(double));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/UpperBoundThreshold/0") !=
         NULL)
-      readZarrDouble(archive, count, &params->IntSat);
+      ReadZarrChunk(archive, count, &params->IntSat, sizeof(double));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/PixelSize/0") != NULL)
-      readZarrDouble(archive, count, &params->px);
+      ReadZarrChunk(archive, count, &params->px, sizeof(double));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/Width/0") != NULL)
-      readZarrDouble(archive, count, &params->Width);
+      ReadZarrChunk(archive, count, &params->Width, sizeof(double));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/LayerNr/0") != NULL)
-      readZarrInt(archive, count, &params->LayerNr);
+      ReadZarrChunk(archive, count, &params->LayerNr, sizeof(int));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/Wavelength/0") != NULL)
-      readZarrDouble(archive, count, &params->Wavelength);
+      ReadZarrChunk(archive, count, &params->Wavelength, sizeof(double));
     if (strstr(fileInfo->name, "analysis/process/analysis_parameters/Lsd/0") !=
         NULL)
-      readZarrDouble(archive, count, &params->Lsd);
+      ReadZarrChunk(archive, count, &params->Lsd, sizeof(double));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/BadPxIntensity/0") !=
         NULL) {
-      readZarrDouble(archive, count, &params->BadPxIntensity);
+      ReadZarrChunk(archive, count, &params->BadPxIntensity, sizeof(double));
       params->makeMap = 1;
     }
     if (strstr(fileInfo->name, "analysis/process/analysis_parameters/RhoD/0") !=
             NULL ||
         strstr(fileInfo->name,
                "analysis/process/analysis_parameters/MaxRingRad/0") != NULL) {
-      readZarrDouble(archive, count, &params->RhoD);
+      ReadZarrChunk(archive, count, &params->RhoD, sizeof(double));
     }
 
     // Track locations for arrays to read later
@@ -2553,10 +2220,16 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
     int *PanelGapsY = NULL;
     int *PanelGapsZ = NULL;
 
-    if (locPanelGapsY != -1)
-      readZarrIntArray(archive, locPanelGapsY, &nGapsY, &PanelGapsY);
-    if (locPanelGapsZ != -1)
-      readZarrIntArray(archive, locPanelGapsZ, &nGapsZ, &PanelGapsZ);
+    if (locPanelGapsY != -1) {
+      int32_t bufSize = nGapsY * sizeof(int);
+      PanelGapsY = (int *)malloc((size_t)bufSize);
+      ReadZarrChunk(archive, locPanelGapsY, PanelGapsY, bufSize);
+    }
+    if (locPanelGapsZ != -1) {
+      int32_t bufSize = nGapsZ * sizeof(int);
+      PanelGapsZ = (int *)malloc((size_t)bufSize);
+      ReadZarrChunk(archive, locPanelGapsZ, PanelGapsZ, bufSize);
+    }
     printf("PanelGapsY: %d %d\n", nGapsY, nGapsZ);
     for (int i = 0; i < nGapsY; i++)
       printf("PanelGapsY[%d]: %d\n", i, PanelGapsY[i]);
@@ -2584,11 +2257,10 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
     metadata->omegaCenter =
         (double *)malloc((size_t)original_nFrames_for_omega * sizeof(double));
     if (metadata->omegaCenter) {
-      ErrorCode err_oc =
-          readZarrArrayData(archive, locOmegaCenterData, metadata->omegaCenter,
-                            (size_t)original_nFrames_for_omega * sizeof(double),
-                            "double_array_omegaCenter");
-      if (err_oc == SUCCESS) {
+      int rc_oc = ReadZarrChunk(
+          archive, locOmegaCenterData, metadata->omegaCenter,
+          (int32_t)((size_t)original_nFrames_for_omega * sizeof(double)));
+      if (rc_oc >= 0) {
         metadata->nOmegaCenterEntries = original_nFrames_for_omega;
       } else {
         free(metadata->omegaCenter);
@@ -2604,21 +2276,26 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
 
   // Read transformation options
   if (params->nImTransOpt > 0 && locImTransOpt != -1) {
-    readZarrIntArray(archive, locImTransOpt, &params->nImTransOpt,
-                     &params->TransOpt);
+    {
+      int32_t bufSize = params->nImTransOpt * sizeof(int);
+      params->TransOpt = (int *)malloc((size_t)bufSize);
+      ReadZarrChunk(archive, locImTransOpt, params->TransOpt, bufSize);
+    }
   }
 
   // Read ring thresholds
   if (params->nRingsThresh > 0 && locRingThresh != -1) {
     params->RingNrs = calloc(params->nRingsThresh, sizeof(int));
     params->Thresholds = calloc(params->nRingsThresh, sizeof(double));
-    double *ringThresholds = NULL;
-    if (params->RingNrs && params->Thresholds &&
-        readZarrDoubleArray(archive, locRingThresh, params->nRingsThresh,
-                            &ringThresholds) == SUCCESS) {
-      for (int i = 0; i < params->nRingsThresh; i++) {
-        params->RingNrs[i] = (int)ringThresholds[i * 2 + 0];
-        params->Thresholds[i] = ringThresholds[i * 2 + 1];
+    if (params->RingNrs && params->Thresholds) {
+      int32_t rtBufSize = params->nRingsThresh * 2 * sizeof(double);
+      double *ringThresholds = (double *)malloc((size_t)rtBufSize);
+      if (ringThresholds && ReadZarrChunk(archive, locRingThresh,
+                                          ringThresholds, rtBufSize) >= 0) {
+        for (int i = 0; i < params->nRingsThresh; i++) {
+          params->RingNrs[i] = (int)ringThresholds[i * 2 + 0];
+          params->Thresholds[i] = ringThresholds[i * 2 + 1];
+        }
       }
       free(ringThresholds);
     }

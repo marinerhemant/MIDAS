@@ -12,6 +12,7 @@
 //
 //
 
+#include "ZarrReader.h"
 #include <blosc2.h>
 #include <ctype.h>
 #include <errno.h>
@@ -289,12 +290,7 @@ int main(int argc, char *argv[]) {
   struct zip_stat *finfo = NULL;
   finfo = calloc(16384, sizeof(int));
   zip_stat_init(finfo);
-  zip_file_t *fd = NULL;
   int count = 0;
-  char *data = NULL;
-  char *s = NULL;
-  char *arr;
-  int32_t dsize;
   char *Folder = NULL, FileStem[1024], *TmpFolder;
   sprintf(FileStem, "%s", basename(DataFN));
   int StartNr = 1, EndNr, Padding = 6;
@@ -305,20 +301,12 @@ int main(int argc, char *argv[]) {
   while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/ResultFolder/0") != NULL) {
-      arr = calloc(finfo->size + 1, sizeof(char));
-      fd = zip_fopen_index(arch, count, 0);
-      zip_fread(fd, arr, finfo->size);
-      dsize = 4096;
-      Folder = (char *)malloc((size_t)dsize);
-      dsize = blosc1_decompress(arr, Folder, dsize);
-      Folder[dsize] = '\0';
-      free(arr);
-      zip_fclose(fd);
+      ReadZarrString(arch, count, &Folder, 4096);
     }
     if (strstr(finfo->name, "exchange/data/.zarray") != NULL) {
-      s = calloc(finfo->size + 1, sizeof(char));
-      fd = zip_fopen_index(arch, count, 0);
-      zip_fread(fd, s, finfo->size);
+      char *s = NULL;
+      size_t sSize;
+      ReadZarrRaw(arch, count, &s, &sSize);
       char *ptr = strstr(s, "shape");
       if (ptr != NULL) {
         char *ptrt = strstr(ptr, "[");
@@ -328,49 +316,24 @@ int main(int argc, char *argv[]) {
         strncpy(ptr3, ptrt, loc + 1);
         sscanf(ptr3, "%*[^0123456789]%d", &EndNr);
       } else {
-        zip_fclose(fd);
+        free(s);
         return 1;
       }
-      zip_fclose(fd);
+      free(s);
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/OverlapLength/0") !=
         NULL) {
-      s = calloc(finfo->size + 1, sizeof(char));
-      fd = zip_fopen_index(arch, count, 0);
-      zip_fread(fd, s, finfo->size);
-      int32_t dsize = sizeof(double);
-      data = (char *)malloc((size_t)dsize);
-      dsize = blosc1_decompress(s, data, dsize);
-      MarginOmegaOverlap = *(double *)&data[0];
-      free(data);
-      zip_fclose(fd);
+      ReadZarrChunk(arch, count, &MarginOmegaOverlap, sizeof(double));
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/UseMaximaPositions/0") !=
         NULL) {
-      s = calloc(finfo->size + 1, sizeof(char));
-      fd = zip_fopen_index(arch, count, 0);
-      zip_fread(fd, s, finfo->size);
-      int32_t dsize = sizeof(int);
-      data = (char *)malloc((size_t)dsize);
-      dsize = blosc1_decompress(s, data, dsize);
-      UseMaximaPositions = *(int *)&data[0];
-      free(data);
-      zip_fclose(fd);
+      ReadZarrChunk(arch, count, &UseMaximaPositions, sizeof(int));
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/SkipFrame/0") != NULL) {
-      arr = calloc(finfo->size + 1, sizeof(char));
-      fd = zip_fopen_index(arch, count, 0);
-      zip_fread(fd, arr, finfo->size);
-      dsize = sizeof(int);
-      data = (char *)malloc((size_t)dsize);
-      dsize = blosc1_decompress(arr, data, dsize);
-      skipFrame = *(int *)&data[0];
-      free(arr);
-      free(data);
-      zip_fclose(fd);
+      ReadZarrChunk(arch, count, &skipFrame, sizeof(int));
     }
     count++;
   }

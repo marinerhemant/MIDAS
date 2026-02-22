@@ -104,12 +104,12 @@ add_ff_hedm_executable(FitWedgeParallel SOURCES src/FitWedgeParallel.c src/Panel
 
 add_ff_hedm_executable(GetHKLList SOURCES src/GetHKLList.c src/sgclib.c src/sgfind.c src/sghkl.c src/sgsi.c src/sgio.c)
 # add_ff_hedm_executable(PeaksFittingOMPZarr SOURCES src/archive/PeaksFittingOMPZarr.c OMP)
-add_ff_hedm_executable(PeaksFittingOMPZarrRefactor SOURCES src/PeaksFittingOMPZarrRefactor.c src/MIDAS_Math.c src/Panel.c OMP)
-add_ff_hedm_executable(GetHKLListZarr SOURCES src/GetHKLListZarr.c src/sgclib.c src/sgfind.c src/sghkl.c src/sgsi.c src/sgio.c)
-add_ff_hedm_executable(MergeOverlappingPeaksAllZarr SOURCES src/MergeOverlappingPeaksAllZarr.c)
-add_ff_hedm_executable(CalcRadiusAllZarr SOURCES src/CalcRadiusAllZarr.c)
-add_ff_hedm_executable(FitSetupZarr SOURCES src/FitSetupParamsAllZarr.c src/MIDAS_Math.c)
-add_ff_hedm_executable(ProcessGrainsZarr SOURCES src/ProcessGrainsZarr.c src/GetMisorientation.c src/CalcStrains.c src/MIDAS_Math.c)
+add_ff_hedm_executable(PeaksFittingOMPZarrRefactor SOURCES src/PeaksFittingOMPZarrRefactor.c src/ZarrReader.c src/MIDAS_Math.c src/Panel.c OMP)
+add_ff_hedm_executable(GetHKLListZarr SOURCES src/GetHKLListZarr.c src/ZarrReader.c src/sgclib.c src/sgfind.c src/sghkl.c src/sgsi.c src/sgio.c)
+add_ff_hedm_executable(MergeOverlappingPeaksAllZarr SOURCES src/MergeOverlappingPeaksAllZarr.c src/ZarrReader.c)
+add_ff_hedm_executable(CalcRadiusAllZarr SOURCES src/CalcRadiusAllZarr.c src/ZarrReader.c)
+add_ff_hedm_executable(FitSetupZarr SOURCES src/FitSetupParamsAllZarr.c src/ZarrReader.c src/MIDAS_Math.c)
+add_ff_hedm_executable(ProcessGrainsZarr SOURCES src/ProcessGrainsZarr.c src/ZarrReader.c src/GetMisorientation.c src/CalcStrains.c src/MIDAS_Math.c)
 
 add_ff_hedm_executable(IndexerOMP SOURCES src/IndexerOMP.c OMP)
 add_ff_hedm_executable(IndexerScanningOMP SOURCES src/IndexerScanningOMP.c OMP)
@@ -123,10 +123,10 @@ add_ff_hedm_executable(ProcessGrainsScanningHEDM SOURCES src/ProcessGrainsScanni
 add_ff_hedm_executable(MatchGrains SOURCES src/MatchGrains.c src/GetMisorientation.c)
 
 add_ff_hedm_executable(DetectorMapper SOURCES src/DetectorMapper.c src/Panel.c src/FileReader.c)
-add_ff_hedm_executable(DetectorMapperZarr SOURCES src/DetectorMapperZarr.c src/Panel.c src/FileReader.c)
+add_ff_hedm_executable(DetectorMapperZarr SOURCES src/DetectorMapperZarr.c src/ZarrReader.c src/Panel.c src/FileReader.c)
 add_ff_hedm_executable(Integrator SOURCES src/Integrator.c src/FileReader.c)
 # add_ff_hedm_executable(IntegratorZarr SOURCES src/archive/IntegratorZarr.c)
-add_ff_hedm_executable(IntegratorZarrOMP SOURCES src/IntegratorZarrOMP.c OMP)
+add_ff_hedm_executable(IntegratorZarrOMP SOURCES src/IntegratorZarrOMP.c src/ZarrReader.c OMP)
 # add_ff_hedm_executable(ConvTiffToGE SOURCES src/ConvTiffToGE.c)
 # add_ff_hedm_executable(MapBND SOURCES src/MapBND.c)
 

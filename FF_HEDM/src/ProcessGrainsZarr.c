@@ -16,6 +16,7 @@
 //  - Strains!!
 //
 
+#include "ZarrReader.h"
 #include <blosc2.h>
 #include <ctype.h>
 #include <fcntl.h>
@@ -274,147 +275,50 @@ int main(int argc, char *argv[]) {
   struct zip_stat *finfo = NULL;
   finfo = calloc(16384, sizeof(int));
   zip_stat_init(finfo);
-  zip_file_t *fd = NULL;
   int count = 0;
-  char *data = NULL;
-  char *s = NULL;
-  char *arr;
-  int32_t dsize;
   while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/SpaceGroup/0") != NULL) {
-      arr = calloc(finfo->size + 1, sizeof(char));
-      fd = zip_fopen_index(arch, count, 0);
-      zip_fread(fd, arr, finfo->size);
-      dsize = sizeof(int);
-      data = (char *)malloc((size_t)dsize);
-      dsize = blosc1_decompress(arr, data, dsize);
-      SGNr = *(int *)&data[0];
-      free(arr);
-      free(data);
-      zip_fclose(fd);
+      ReadZarrChunk(arch, count, &SGNr, sizeof(int));
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/Twins/0") !=
         NULL) {
-      arr = calloc(finfo->size + 1, sizeof(char));
-      fd = zip_fopen_index(arch, count, 0);
-      zip_fread(fd, arr, finfo->size);
-      dsize = sizeof(int);
-      data = (char *)malloc((size_t)dsize);
-      dsize = blosc1_decompress(arr, data, dsize);
-      Twin = *(int *)&data[0];
-      free(arr);
-      free(data);
-      zip_fclose(fd);
+      ReadZarrChunk(arch, count, &Twin, sizeof(int));
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/MinNrSpots/0") != NULL) {
-      arr = calloc(finfo->size + 1, sizeof(char));
-      fd = zip_fopen_index(arch, count, 0);
-      zip_fread(fd, arr, finfo->size);
-      dsize = sizeof(int);
-      data = (char *)malloc((size_t)dsize);
-      dsize = blosc1_decompress(arr, data, dsize);
-      MinNrSpots = *(int *)&data[0];
-      free(arr);
-      free(data);
-      zip_fclose(fd);
+      ReadZarrChunk(arch, count, &MinNrSpots, sizeof(int));
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/NumPhases/0") != NULL) {
-      arr = calloc(finfo->size + 1, sizeof(char));
-      fd = zip_fopen_index(arch, count, 0);
-      zip_fread(fd, arr, finfo->size);
-      dsize = sizeof(int);
-      data = (char *)malloc((size_t)dsize);
-      dsize = blosc1_decompress(arr, data, dsize);
-      NumPhases = *(int *)&data[0];
-      free(arr);
-      free(data);
-      zip_fclose(fd);
+      ReadZarrChunk(arch, count, &NumPhases, sizeof(int));
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/PhaseNr/0") !=
         NULL) {
-      arr = calloc(finfo->size + 1, sizeof(char));
-      fd = zip_fopen_index(arch, count, 0);
-      zip_fread(fd, arr, finfo->size);
-      dsize = sizeof(int);
-      data = (char *)malloc((size_t)dsize);
-      dsize = blosc1_decompress(arr, data, dsize);
-      PhaseNr = *(int *)&data[0];
-      free(arr);
-      free(data);
-      zip_fclose(fd);
+      ReadZarrChunk(arch, count, &PhaseNr, sizeof(int));
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/GlobalPosition/0") !=
         NULL) {
-      arr = calloc(finfo->size + 1, sizeof(char));
-      fd = zip_fopen_index(arch, count, 0);
-      zip_fread(fd, arr, finfo->size);
-      dsize = sizeof(double);
-      data = (char *)malloc((size_t)dsize);
-      dsize = blosc1_decompress(arr, data, dsize);
-      GlobalPosition = *(double *)&data[0];
-      free(arr);
-      free(data);
-      zip_fclose(fd);
+      ReadZarrChunk(arch, count, &GlobalPosition, sizeof(double));
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/BeamThickness/0") !=
         NULL) {
-      arr = calloc(finfo->size + 1, sizeof(char));
-      fd = zip_fopen_index(arch, count, 0);
-      zip_fread(fd, arr, finfo->size);
-      dsize = sizeof(double);
-      data = (char *)malloc((size_t)dsize);
-      dsize = blosc1_decompress(arr, data, dsize);
-      BeamThickness = *(double *)&data[0];
-      free(arr);
-      free(data);
-      zip_fclose(fd);
+      ReadZarrChunk(arch, count, &BeamThickness, sizeof(double));
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/LatticeParameter/0") !=
         NULL) {
-      s = calloc(finfo->size + 1, sizeof(char));
-      fd = zip_fopen_index(arch, count, 0);
-      zip_fread(fd, s, finfo->size);
-      int32_t dsize = 6 * sizeof(double);
-      data = (char *)malloc((size_t)dsize);
-      dsize = blosc1_decompress(s, data, dsize);
-      int iter;
-      for (iter = 0; iter < 6; iter++)
-        LatCin[iter] = *(double *)&data[iter * sizeof(double)];
-      free(data);
-      free(s);
-      zip_fclose(fd);
+      ReadZarrChunk(arch, count, LatCin, 6 * sizeof(double));
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/Lsd/0") !=
         NULL) {
-      arr = calloc(finfo->size + 1, sizeof(char));
-      fd = zip_fopen_index(arch, count, 0);
-      zip_fread(fd, arr, finfo->size);
-      dsize = sizeof(double);
-      data = (char *)malloc((size_t)dsize);
-      dsize = blosc1_decompress(arr, data, dsize);
-      Distance = *(double *)&data[0];
-      free(arr);
-      free(data);
-      zip_fclose(fd);
+      ReadZarrChunk(arch, count, &Distance, sizeof(double));
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/Wavelength/0") != NULL) {
-      arr = calloc(finfo->size + 1, sizeof(char));
-      fd = zip_fopen_index(arch, count, 0);
-      zip_fread(fd, arr, finfo->size);
-      dsize = sizeof(double);
-      data = (char *)malloc((size_t)dsize);
-      dsize = blosc1_decompress(arr, data, dsize);
-      wavelength = *(double *)&data[0];
-      free(arr);
-      free(data);
-      zip_fclose(fd);
+      ReadZarrChunk(arch, count, &wavelength, sizeof(double));
     }
     count++;
   }
