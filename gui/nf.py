@@ -30,6 +30,7 @@ import matplotlib.pyplot as plt
 import os
 import glob
 import tkinter.filedialog as tkFileDialog
+import tkinter.font as tkFont
 from math import sin, cos
 
 # Try to import midas_config from utils
@@ -1243,13 +1244,39 @@ logscaler = 0
 # Main funcion
 root = Tk.Tk()
 root.wm_title("NF display v1.0 Dt. 2026/02/19 hsharma@anl.gov [scanning...]")
+root.geometry('1600x900')
 
 # Start async file auto-detection
 _start_nf_auto_detect_thread(root)
 
-default_font = ("Helvetica", 14)
+# Shared Font objects for dynamic scaling
+default_font = tkFont.Font(family="Helvetica", size=14)
+action_font = tkFont.Font(family="Helvetica", size=20)
 root.option_add("*Font", default_font)
+
+_BASE_WIDTH = 1600  # reference width for size 14
+_last_font_size = 14
+def _on_resize(event):
+    global _last_font_size
+    if event.widget is not root:
+        return
+    w = event.width
+    new_size = max(14, min(22, int(14 * w / _BASE_WIDTH)))
+    if new_size != _last_font_size:
+        _last_font_size = new_size
+        default_font.configure(size=new_size)
+        action_font.configure(size=int(new_size * 1.45))
+
+root.bind('<Configure>', _on_resize)
+
+# Grid weights: canvas row expands, control rows stay fixed
+for c in range(figcolspan):
+    root.columnconfigure(c, weight=1)
+for r_idx in range(figrowspan):
+    root.rowconfigure(r_idx, weight=1)
+
 figur = Figure(figsize=(17,8),dpi=100)
+figur.set_tight_layout(True)
 canvas = FigureCanvasTkAgg(figur,master=root)
 a = figur.add_subplot(121,aspect='equal')
 b = figur.add_subplot(122)
@@ -1261,7 +1288,9 @@ b.title.set_text("LineOuts/MicFile")
 b.title.set_fontsize(16)
 a.title.set_text("Image")
 a.title.set_fontsize(16)
-canvas.get_tk_widget().grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
+canvas_widget = canvas.get_tk_widget()
+canvas_widget.configure(width=1, height=1)  # Allow shrinking below default figure size
+canvas_widget.grid(row=0,column=0,columnspan=figcolspan,rowspan=figrowspan,sticky=Tk.W+Tk.E+Tk.N+Tk.S)
 toolbar_frame = Tk.Frame(root)
 toolbar_frame.grid(row=figrowspan+5,column=0,columnspan=5,sticky=Tk.W)
 toolbar = NavigationToolbar2Tk( canvas, toolbar_frame )
@@ -1384,8 +1413,8 @@ Tk.Button(master=analysisFrame,text='BeamCenter',command=bcwindow,font=default_f
 Tk.Button(master=analysisFrame,text='SelectSpots',command=selectspots,font=default_font).grid(row=0,column=5,sticky=Tk.W)
 
 # --- Load / Quit Buttons ---
-Tk.Button(master=root,text='Load',command=plot_updater,font=("Helvetica",20)).grid(row=figrowspan+1,column=2,rowspan=4,sticky=Tk.W,padx=10)
-Tk.Button(master=root,text='Quit',command=_quit,font=("Helvetica",20)).grid(row=figrowspan+1,column=0,rowspan=4,sticky=Tk.W,padx=10)
+Tk.Button(master=root,text='Load',command=plot_updater,font=action_font).grid(row=figrowspan+1,column=2,rowspan=4,sticky=Tk.W,padx=10)
+Tk.Button(master=root,text='Quit',command=_quit,font=action_font).grid(row=figrowspan+1,column=0,rowspan=4,sticky=Tk.W,padx=10)
 
 # --- Mic File Frame ---
 micFrame = Tk.LabelFrame(root, text="Mic File", font=default_font, padx=2, pady=2)

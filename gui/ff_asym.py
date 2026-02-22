@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import os
 import tempfile
 import tkinter.filedialog as tkFileDialog
+import tkinter.font as tkFont
 import math
 from math import sin, cos, sqrt
 from numpy import linalg as LA
@@ -1919,10 +1920,12 @@ def replot():
 # Main function
 root = Tk.Tk()
 root.wm_title("FF display v1.0 Dt. 2026/02/19 hsharma@anl.gov [scanning...]")
+root.geometry('1400x900')
 
 # Start async file auto-detection
 _start_auto_detect_thread(root)
 figur = Figure(figsize=(10,8),dpi=100)
+figur.set_tight_layout(True)
 canvas = FigureCanvasTkAgg(figur,master=root)
 a = None # Removed 'a' entirely
 # Rename 'b' to 'a' or just assign 'b' to this subplot?
@@ -2048,7 +2051,8 @@ hdf5DarkPathVar = Tk.StringVar()
 hdf5DarkPathVar.set('/exchange/dark')
 hdf5_cached_datasets = []
 
-canvas.get_tk_widget().pack(fill=Tk.BOTH, expand=True)
+# NOTE: canvas is packed AFTER all bottom panels (below) so it fills remaining space
+# and controls always keep their space on resize.
 
 # GUI Layout Redesign
 
@@ -2061,13 +2065,34 @@ toolbar.update()
 # Main Control Frame
 mainControlFrame = Tk.Frame(root)
 mainControlFrame.pack(side=Tk.BOTTOM, fill=Tk.X, padx=2, pady=2)
+for col in range(4):
+    mainControlFrame.columnconfigure(col, weight=1)
 
-# Font for readability
-default_font = ("Helvetica", 14)
+# Font for readability — shared Font objects so all widgets auto-update
+default_font = tkFont.Font(family="Helvetica", size=14)
+action_font = tkFont.Font(family="Helvetica", size=18)
+
+_BASE_WIDTH = 1400  # reference width for size 14
+_last_font_size = 14
+def _on_resize(event):
+    global _last_font_size
+    if event.widget is not root:
+        return
+    w = event.width
+    # Only scale UP from 14, never smaller
+    new_size = max(14, min(22, int(14 * w / _BASE_WIDTH)))
+    if new_size != _last_font_size:
+        _last_font_size = new_size
+        default_font.configure(size=new_size)
+        action_font.configure(size=int(new_size * 1.3))
+
+root.bind('<Configure>', _on_resize)
 
 # 1. File I/O Frame
 fileFrame = Tk.LabelFrame(mainControlFrame, text="File I/O", font=default_font)
 fileFrame.grid(row=0, column=0, sticky="nsew", padx=2, pady=2)
+for c in range(4):
+    fileFrame.columnconfigure(c, weight=1)
 
 Tk.Button(fileFrame, text='FirstFile', command=firstFileSelector, font=default_font).grid(row=0, column=0)
 Tk.Button(fileFrame, text='DarkFile', command=darkFileSelector, font=default_font).grid(row=0, column=1)
@@ -2094,6 +2119,8 @@ Tk.Checkbutton(fileFrame, text="ApplyMask", variable=applyMaskVar, font=default_
 # 2. Image Settings Frame
 imgFrame = Tk.LabelFrame(mainControlFrame, text="Image Settings", font=default_font)
 imgFrame.grid(row=0, column=1, sticky="nsew", padx=2, pady=2)
+for c in range(2):
+    imgFrame.columnconfigure(c, weight=1)
 
 Tk.Label(imgFrame, text='NrPixelsHor', font=default_font).grid(row=0, column=0)
 Tk.Entry(imgFrame, textvariable=NrPixelsZVar, width=5, font=default_font).grid(row=0, column=1)
@@ -2112,6 +2139,8 @@ Tk.Checkbutton(imgFrame, text="Transp", variable=transpose, font=default_font).g
 # 3. Display Control Frame
 dispFrame = Tk.LabelFrame(mainControlFrame, text="Display Control", font=default_font)
 dispFrame.grid(row=0, column=2, sticky="nsew", padx=2, pady=2)
+for c in range(4):
+    dispFrame.columnconfigure(c, weight=1)
 
 Tk.Label(dispFrame, text='FrameNr', font=default_font).grid(row=0, column=0)
 Tk.Entry(dispFrame, textvariable=framenrvar, width=5, font=default_font).grid(row=0, column=1)
@@ -2131,6 +2160,8 @@ Tk.Checkbutton(dispFrame, text="LogScale", variable=dolog, font=default_font).gr
 # 4. Processing Frame
 procFrame = Tk.LabelFrame(mainControlFrame, text="Processing", font=default_font)
 procFrame.grid(row=0, column=3, sticky="nsew", padx=2, pady=2)
+for c in range(3):
+    procFrame.columnconfigure(c, weight=1)
 
 Tk.Checkbutton(procFrame, text="MaxOverFrames", variable=getMaxVar, font=default_font).grid(row=0, column=0)
 Tk.Checkbutton(procFrame, text="SumOverFrames", variable=getSumVar, font=default_font).grid(row=1, column=0)
@@ -2155,11 +2186,14 @@ Tk.Entry(procFrame, textvariable=bclocalvar2, width=5, font=default_font).grid(r
 # Action button bar: Quit | Update Plot | Load
 actionFrame = Tk.Frame(root)
 actionFrame.pack(side=Tk.BOTTOM, fill=Tk.X, pady=5)
-Tk.Button(actionFrame, text='Quit', command=_quit, font=("Helvetica", 18)).pack(side=Tk.LEFT, padx=20)
-Tk.Button(actionFrame, text='Update Plot', command=replot, font=("Helvetica", 18), bg='lightblue').pack(side=Tk.LEFT, expand=True)
-Tk.Button(actionFrame, text='Load', command=loadbplot, font=("Helvetica", 18), bg='lightgreen').pack(side=Tk.LEFT, expand=True)
+Tk.Button(actionFrame, text='Quit', command=_quit, font=action_font).pack(side=Tk.LEFT, padx=20)
+Tk.Button(actionFrame, text='Update Plot', command=replot, font=action_font, bg='lightblue').pack(side=Tk.LEFT, expand=True)
+Tk.Button(actionFrame, text='Load', command=loadbplot, font=action_font, bg='lightgreen').pack(side=Tk.LEFT, expand=True)
 
-
+# Pack canvas LAST so it fills remaining space; controls always keep theirs
+canvas_widget = canvas.get_tk_widget()
+canvas_widget.configure(width=1, height=1)  # Allow shrinking below default figure size
+canvas_widget.pack(fill=Tk.BOTH, expand=True)
 if __name__ == "__main__":
 	try:
 		root.bind('<Control-w>', lambda event: root.destroy())
