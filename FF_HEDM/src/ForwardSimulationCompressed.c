@@ -1955,7 +1955,7 @@ int main(int argc, char *argv[]) {
             }
             yTemp = yThis + DisplY;
             zTemp = zThis + DisplZ;
-            yDet = yBC - yTemp / px + 1;
+            yDet = yBC - yTemp / px; // + 1;
             zDet = zBC + zTemp / px; // + 1.5;
             if (yDet < 0 || yDet >= NrPixels || zDet < 0 || zDet >= NrPixels)
               continue;
@@ -2267,8 +2267,7 @@ int main(int argc, char *argv[]) {
               continue;
             int y_base = (int)roundf(sp->yDet);
             int z_base = (int)roundf(sp->zDet);
-            size_t frameOff =
-                (sp->omeBin - startFrame) * NrPixels * NrPixels;
+            size_t frameOff = (sp->omeBin - startFrame) * NrPixels * NrPixels;
             for (int dy = -extent; dy <= extent; dy++) {
               int y_curr = y_base + dy;
               if (y_curr < 0 || y_curr >= NrPixels)
@@ -2314,8 +2313,7 @@ int main(int argc, char *argv[]) {
               continue;
             int y_base = (int)roundf(sp->yDet);
             int z_base = (int)roundf(sp->zDet);
-            size_t frameOff =
-                (sp->omeBin - startFrame) * NrPixels * NrPixels;
+            size_t frameOff = (sp->omeBin - startFrame) * NrPixels * NrPixels;
             for (int dy = -extent; dy <= extent; dy++) {
               int y_curr = y_base + dy;
               if (y_curr < 0 || y_curr >= NrPixels)
@@ -2337,8 +2335,7 @@ int main(int argc, char *argv[]) {
 
           // Write frames from this batch
           for (frameNr = startFrame; frameNr < endFrame; frameNr++) {
-            size_t fOff =
-                (size_t)(frameNr - startFrame) * NrPixels * NrPixels;
+            size_t fOff = (size_t)(frameNr - startFrame) * NrPixels * NrPixels;
             for (i = 0; i < NrPixels * NrPixels; i++) {
               if (maxInt > 0) {
                 outArr[i] = (uint16_t)(batchArr[fOff + i] *
