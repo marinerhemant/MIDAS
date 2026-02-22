@@ -151,6 +151,10 @@ These parameters model the geometric distortions of a real detector.
 **Output Control:**
 *   `WriteSpots <0_or_1>`: If set to `1`, a `SpotMatrixGen.csv` file will be generated, logging the detailed information for every simulated diffraction spot. `0` disables this.
 *   `WriteImage <0_or_1>`: If set to `1` (default), the simulated detector images are written to a Zarr/ZIP file. If set to `0`, image generation is skipped, which can save significant time and disk space if only `SpotMatrixGen.csv` is needed.
+*   `SimulationBatches <N>` (Optional): Controls memory usage for image generation.
+    *   `0` (default): Auto-detect based on system RAM. If the full image array fits in 75% of system memory, uses a single pass (fastest). Otherwise, automatically selects enough batches to fit.
+    *   `1`: Force single-pass mode — allocates the full image array in memory. Fastest, but requires ~22 GB for a 2048×2048 detector with 1440 frames.
+    *   `N > 1`: Process frames in N batches using a two-pass approach. Each batch allocates only `(nFrames/N) × NrPixels²` floats. For example, `SimulationBatches 72` reduces peak memory from ~22 GB to ~320 MB.
 
 #### 1.2.3. Example Parameter File
 ```
@@ -253,12 +257,34 @@ store.close()
 *   **Storage Layout:** It creates a standard Zarr v2 hierarchy (`.zgroup`, `.zattrs`, `.zarray`) inside a ZIP container.
 *   **Compression:** Image data is compressed using the **Zstd** algorithm with **Bitshuffle** (via Blosc), providing a high compression ratio for sparse diffraction images while maintaining fast read speeds.
 
-#### 1.4.3. Parallelization
+#### 1.4.3. Parallelization and Memory Management
 *   **OpenMP:** The program is parallelized at two levels:
     1.  **Distortion Map Generation:** The pixel-level distortion/tilt correction map (`NrPixelsZ × NrPixelsY`) is computed in parallel using `collapse(2)` to distribute the double loop across threads. All per-pixel variables are stack-local, so there are no data races.
-    2.  **Main Simulation Loop:** The core simulation loop is parallelized over the input grains/voxels. Each thread calculates the diffraction spots for a subset of grains, applies geometric corrections, and atomically adds intensity to the shared global image array.
+    2.  **Main Simulation Loop:** The core simulation loop is parallelized over the input grains/voxels. Each thread calculates the diffraction spots for a subset of grains, applies geometric corrections, and either atomically adds intensity to the shared image array (single-pass mode) or buffers lightweight spot records (batched mode).
 *   **Per-Thread Spot Buffering:** When `WriteSpots 1` is enabled, each thread buffers its spot data in a private, dynamically-growing array instead of writing to the output file inside a critical section. After the parallel region completes, all buffers are flushed sequentially. This eliminates lock contention that would otherwise serialize all threads.
-*   **Timing:** Wall-clock time is measured using `omp_get_wtime()` to accurately report parallel speedup. Separate timers report the distortion map generation time and the simulation time independently.
+*   **Frame Batching (`SimulationBatches`):** For large simulations (many frames and/or large detectors), the full image array can exceed available RAM. When `SimulationBatches > 1`, the simulation loop stores only lightweight spot records (~20 bytes each: frame, position, intensity) instead of the full image. After the simulation completes, frames are rendered and written in batches:
+    1. **Pass 1:** Each batch of frames is rendered from the spot buffer to find the global maximum pixel intensity.
+    2. **Pass 2:** Each batch is re-rendered, normalized, compressed, and written to the ZIP file.
+
+```mermaid
+graph TD
+    A["OMP Simulation Loop<br/>(parallel over grains)"] --> B["Compute spot positions<br/>+ SpotMatrixGen.csv"]
+    B --> C{"SimulationBatches"}
+
+    C -->|"= 1<br/>(single pass)"| D["Accumulate Gaussians<br/>into float ImageArr<br/>(omp atomic)"]
+    D --> E["Scan ImageArr for maxInt"]
+    E --> F["Normalize → uint16 → blosc → ZIP"]
+
+    C -->|"> 1<br/>(batched)"| G["Buffer ImageSpots<br/>(~20 bytes each)"]
+    G --> H["Pass 1: Render each batch<br/>→ find global maxInt"]
+    H --> I["Pass 2: Re-render each batch<br/>→ normalize → compress → ZIP"]
+
+    style D fill:#2d6a4f,color:#fff
+    style G fill:#1d3557,color:#fff
+```
+
+*   **Float Precision:** The image accumulation array uses `float` (4 bytes) instead of `double` (8 bytes), halving memory requirements. Since the final output is `uint16`, float precision (7 significant digits) is more than adequate.
+*   **Timing:** Wall-clock time is measured using `omp_get_wtime()` to accurately report parallel speedup. Separate timers report distortion map, simulation, and batch rendering times.
 
 ### 1.5. See Also
 

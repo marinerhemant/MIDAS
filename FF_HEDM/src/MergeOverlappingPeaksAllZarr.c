@@ -35,6 +35,15 @@
 #define CalcNorm2(x, y) sqrt((x) * (x) + (y) * (y))
 #define nOverlapsMaxPerImage 200000
 
+// Lightweight linked-list node for tracking constituent peaks (just IDs)
+typedef struct ConstituentNode {
+  int frameNr;
+  int peakID; // SpotID from the _PS.csv file
+  struct ConstituentNode *next;
+} ConstituentNode;
+
+#define N_PS_COLS 26
+
 int UseMaximaPositions;
 
 static inline double CalcEtaAngle(double y, double z) {
@@ -121,6 +130,20 @@ struct InputData {
   double SigmaEta;
   double NrPx;
   double NrPxTot;
+  double nPeaks;
+  double maxY;
+  double maxZ;
+  double diffY;
+  double diffZ;
+  double rawIMax;
+  double returnCode;
+  double retVal;
+  double BG;
+  double SigmaGR;
+  double SigmaLR;
+  double SigmaGEta;
+  double SigmaLEta;
+  double MU;
 };
 
 static int cmpfunc(const void *a, const void *b) {
@@ -172,8 +195,7 @@ static inline int ReadSortFiles(char OutFolderName[1024], char FileStem[1024],
   MyData = malloc(nOverlapsMaxPerImage * sizeof(*MyData));
   int counter = 0;
   fgets(aline, 1000, infileread);
-  double SpotID, IntegratedIntensity, Omega, YCen, ZCen, IMax, Radius, Eta,
-      NumberOfPixels, maxY, maxZ;
+  double maxY, maxZ;
   while (fgets(aline, 1000, infileread) != NULL) {
     if (counter >= nOverlapsMaxPerImage) {
       printf("Warning: Maximum number of peaks reached (%d). Skipping rest of "
@@ -181,15 +203,24 @@ static inline int ReadSortFiles(char OutFolderName[1024], char FileStem[1024],
              nOverlapsMaxPerImage, InFile);
       break;
     }
-    sscanf(aline, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %lf %lf",
+    sscanf(aline,
+           "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf "
+           "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
            &(MyData[counter].SpotID), &(MyData[counter].IntegratedIntensity),
            &(MyData[counter].Omega), &(MyData[counter].YCen),
            &(MyData[counter].ZCen), &(MyData[counter].IMax),
            &(MyData[counter].Radius), &(MyData[counter].Eta),
            &(MyData[counter].SigmaR), &(MyData[counter].SigmaEta),
-           &(MyData[counter].NrPx), &(MyData[counter].NrPxTot), dummy, &maxY,
-           &maxZ);
-    //~ printf("%s %lf %lf \n",aline,maxY,maxZ);
+           &(MyData[counter].NrPx), &(MyData[counter].NrPxTot),
+           &(MyData[counter].nPeaks), &(MyData[counter].maxY),
+           &(MyData[counter].maxZ), &(MyData[counter].diffY),
+           &(MyData[counter].diffZ), &(MyData[counter].rawIMax),
+           &(MyData[counter].returnCode), &(MyData[counter].retVal),
+           &(MyData[counter].BG), &(MyData[counter].SigmaGR),
+           &(MyData[counter].SigmaLR), &(MyData[counter].SigmaGEta),
+           &(MyData[counter].SigmaLEta), &(MyData[counter].MU));
+    maxY = MyData[counter].maxY;
+    maxZ = MyData[counter].maxZ;
     if (UseMaximaPositions == 1) {
       MyData[counter].YCen = maxY;
       MyData[counter].ZCen = maxZ;
@@ -215,6 +246,20 @@ static inline int ReadSortFiles(char OutFolderName[1024], char FileStem[1024],
     SortedMatrix[counter2][9] = MyData[i].SigmaEta;
     SortedMatrix[counter2][10] = MyData[i].NrPx;
     SortedMatrix[counter2][11] = MyData[i].NrPxTot;
+    SortedMatrix[counter2][12] = MyData[i].nPeaks;
+    SortedMatrix[counter2][13] = MyData[i].maxY;
+    SortedMatrix[counter2][14] = MyData[i].maxZ;
+    SortedMatrix[counter2][15] = MyData[i].diffY;
+    SortedMatrix[counter2][16] = MyData[i].diffZ;
+    SortedMatrix[counter2][17] = MyData[i].rawIMax;
+    SortedMatrix[counter2][18] = MyData[i].returnCode;
+    SortedMatrix[counter2][19] = MyData[i].retVal;
+    SortedMatrix[counter2][20] = MyData[i].BG;
+    SortedMatrix[counter2][21] = MyData[i].SigmaGR;
+    SortedMatrix[counter2][22] = MyData[i].SigmaLR;
+    SortedMatrix[counter2][23] = MyData[i].SigmaGEta;
+    SortedMatrix[counter2][24] = MyData[i].SigmaLEta;
+    SortedMatrix[counter2][25] = MyData[i].MU;
     counter2++;
   }
   free(MyData);
@@ -351,9 +396,22 @@ int main(int argc, char *argv[]) {
   int FileNr = StartNr;
   int nSpots, nSpotsNew;
   double **NewIDs, **CurrentIDs, **TempIDs;
-  NewIDs = allocMatrix(nOverlapsMaxPerImage, 12);
+  NewIDs = allocMatrix(nOverlapsMaxPerImage, N_PS_COLS);
   CurrentIDs = allocMatrix(nOverlapsMaxPerImage, 16);
   TempIDs = allocMatrix(nOverlapsMaxPerImage, 16);
+
+  // Lightweight constituent tracking: per-slot linked lists of (FrameNr,
+  // PeakID)
+  ConstituentNode **constituents =
+      calloc(nOverlapsMaxPerImage, sizeof(ConstituentNode *));
+  ConstituentNode **tmpConstituents =
+      calloc(nOverlapsMaxPerImage, sizeof(ConstituentNode *));
+
+  char MergeMapFileName[2048];
+  sprintf(MergeMapFileName, "%s/MergeMap.csv", Folder);
+  FILE *MergeMapFile = fopen(MergeMapFileName, "w");
+  fprintf(MergeMapFile, "%%MergedSpotID\tFrameNr\tPeakID\n");
+
   nSpots = ReadSortFiles(OutFolderName, FileStem, FileNr, Padding, NewIDs);
   for (i = 0; i < nSpots; i++) {
     CurrentIDs[i][0] = NewIDs[i][0];                // SpotID
@@ -372,6 +430,12 @@ int main(int argc, char *argv[]) {
     CurrentIDs[i][13] = NewIDs[i][9];               // SigmaEta
     CurrentIDs[i][14] = NewIDs[i][10];              // NrPx
     CurrentIDs[i][15] = NewIDs[i][11];              // NrPxTot
+    // Record first constituent peak
+    ConstituentNode *node = malloc(sizeof(ConstituentNode));
+    node->frameNr = FileNr;
+    node->peakID = (int)NewIDs[i][0];
+    node->next = NULL;
+    constituents[i] = node;
   }
   sprintf(OutFileName, "%s/Result_StartNr_%d_EndNr_%d.csv", Folder, StartNr,
           EndNr);
@@ -387,12 +451,15 @@ int main(int argc, char *argv[]) {
   int SpotIDNr = 1, counter;
   if (StartNr == EndNr) { // If there is only one file.
     for (i = 0; i < nSpots; i++) {
-      fprintf(OutFile,
-              "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",
-              (int)NewIDs[i][0], NewIDs[i][1], NewIDs[i][2], NewIDs[i][3],
-              NewIDs[i][4], NewIDs[i][5], NewIDs[i][2], NewIDs[i][2],
-              NewIDs[i][8], NewIDs[i][9], NewIDs[i][10], NewIDs[i][11],
-              NewIDs[i][6], NewIDs[i][7]);
+      fprintf(
+          OutFile, "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",
+          SpotIDNr, NewIDs[i][1], NewIDs[i][2], NewIDs[i][3], NewIDs[i][4],
+          NewIDs[i][5], NewIDs[i][2], NewIDs[i][2], NewIDs[i][8], NewIDs[i][9],
+          NewIDs[i][10], NewIDs[i][11], NewIDs[i][6], NewIDs[i][7]);
+      // Write MergeMap entry (single frame, single constituent)
+      fprintf(MergeMapFile, "%d\t%d\t%d\n", SpotIDNr, FileNr,
+              (int)NewIDs[i][0]);
+      SpotIDNr++;
     }
   } else { // If there are multiple files:
     for (FileNr = (StartNr + 1); FileNr <= EndNr; FileNr++) {
@@ -459,6 +526,12 @@ int main(int argc, char *argv[]) {
           }
           CurrentIDs[i][14] += NewIDs[BestID][10]; // NrPx
           CurrentIDs[i][15] += NewIDs[BestID][11]; // NrPxTot
+          // Record constituent peak (prepend to linked list)
+          ConstituentNode *node = malloc(sizeof(ConstituentNode));
+          node->frameNr = FileNr;
+          node->peakID = (int)NewIDs[BestID][0];
+          node->next = constituents[i];
+          constituents[i] = node;
         }
       }
       // Write all the spots not overlapping to the output file.
@@ -473,6 +546,23 @@ int main(int argc, char *argv[]) {
                   CurrentIDs[i][10], CurrentIDs[i][11], CurrentIDs[i][12],
                   CurrentIDs[i][13], CurrentIDs[i][14], CurrentIDs[i][15],
                   CurrentIDs[i][6], CurrentIDs[i][7]);
+          // Write MergeMap entries for this finalized spot
+          {
+            ConstituentNode *cn = constituents[i];
+            while (cn) {
+              fprintf(MergeMapFile, "%d\t%d\t%d\n", SpotIDNr, cn->frameNr,
+                      cn->peakID);
+              cn = cn->next;
+            }
+            // Free the list
+            cn = constituents[i];
+            while (cn) {
+              ConstituentNode *tmp = cn->next;
+              free(cn);
+              cn = tmp;
+            }
+            constituents[i] = NULL;
+          }
           SpotIDNr++;
         }
       }
@@ -489,6 +579,9 @@ int main(int argc, char *argv[]) {
           for (j = 0; j < 16; j++) {
             TempIDs[counter][j] = CurrentIDs[i][j];
           }
+          // Move constituent list to tmp
+          tmpConstituents[counter] = constituents[i];
+          constituents[i] = NULL;
           counter++;
         }
       }
@@ -519,6 +612,12 @@ int main(int argc, char *argv[]) {
           TempIDs[counter][13] = NewIDs[i][9];  // SigmaEta
           TempIDs[counter][14] = NewIDs[i][10]; // NrPx
           TempIDs[counter][15] = NewIDs[i][11]; // NrPxTot
+          // New spot: single constituent
+          ConstituentNode *node = malloc(sizeof(ConstituentNode));
+          node->frameNr = FileNr;
+          node->peakID = (int)NewIDs[i][0];
+          node->next = NULL;
+          tmpConstituents[counter] = node;
           counter++;
         }
       }
@@ -534,6 +633,9 @@ int main(int argc, char *argv[]) {
         for (j = 0; j < 16; j++) {
           CurrentIDs[i][j] = TempIDs[i][j];
         }
+        // Move constituent list back
+        constituents[i] = tmpConstituents[i];
+        tmpConstituents[i] = NULL;
       }
       nSpots = nSpotsNew;
       memset(TempIDsCurrent, 0, nOverlapsMaxPerImage * sizeof(*TempIDsCurrent));
@@ -548,14 +650,30 @@ int main(int argc, char *argv[]) {
             CurrentIDs[i][10], CurrentIDs[i][11], CurrentIDs[i][12],
             CurrentIDs[i][13], CurrentIDs[i][14], CurrentIDs[i][15],
             CurrentIDs[i][6], CurrentIDs[i][7]);
+    // Write final MergeMap entries
+    {
+      ConstituentNode *cn = constituents[i];
+      while (cn) {
+        fprintf(MergeMapFile, "%d\t%d\t%d\n", SpotIDNr, cn->frameNr,
+                cn->peakID);
+        ConstituentNode *tmp = cn->next;
+        free(cn);
+        cn = tmp;
+      }
+      constituents[i] = NULL;
+    }
     SpotIDNr++;
   }
   printf("Total spots: %d\n", SpotIDNr - 1);
+  fclose(MergeMapFile);
+  printf("MergeMap written to: %s\n", MergeMapFileName);
   FreeMemMatrix(NewIDs, nOverlapsMaxPerImage);
   FreeMemMatrix(CurrentIDs, nOverlapsMaxPerImage);
   FreeMemMatrix(TempIDs, nOverlapsMaxPerImage);
   free(TempIDsCurrent);
   free(TempIDsNew);
+  free(constituents);
+  free(tmpConstituents);
   free(finfo);
   if (argc < 3)
     free(Folder);

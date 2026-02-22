@@ -11,6 +11,7 @@ import shutil
 import re
 import logging
 import numpy as np
+import h5py
 from typing import Optional, Dict, List, Tuple, Any, Union, Generator
 from functools import lru_cache
 from contextlib import contextmanager
@@ -1002,6 +1003,12 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
         except Exception as e:
             raise RuntimeError(f"Failed to process grains: {e}")
         get_grains_info(result_dir)
+        
+        # Generate consolidated HDF5 output with full provenance
+        try:
+            generate_consolidated_hdf5(result_dir, outFStem)
+        except Exception as e:
+            logger.warning(f"Failed to generate consolidated HDF5: {e}")
             
         logger.info(f"Done Layer {layer_nr}. Total time elapsed: {time.time() - t0}")
 
@@ -1033,6 +1040,347 @@ def get_grains_info(result_dir: str) -> None:
     except Exception as e:
         logger.error(f"Error reading Grains.csv: {e}")
         print(f"Error reading Grains.csv: {e}")
+
+
+def generate_consolidated_hdf5(result_dir: str, zarr_path: str) -> None:
+    """Generate a consolidated HDF5 file with full grain-to-peak provenance.
+    
+    Creates {stem}_consolidated.h5 with:
+      - /parameters/: all analysis + scan parameters
+      - /all_spots/: full InputAllExtraInfoFittingAll table
+      - /radius_data/: full Radius CSV (21 cols)
+      - /merge_map/: full MergeMap.csv (all 26 _PS.csv cols per constituent peak)
+      - /grains/grain_NNNN/spots/spot_MMMM/constituent_peaks/: per-spot raw peaks
+      - /raw_data_ref/: path to zarr.zip
+    
+    Also appends provenance data to the zarr.zip under analysis/provenance/.
+    
+    Args:
+        result_dir: Result directory containing Grains.csv, SpotMatrix.csv, etc.
+        zarr_path: Path to the zarr.zip file
+    """
+    import zarr
+    from collections import defaultdict
+    
+    stem = os.path.splitext(os.path.basename(zarr_path))[0] if zarr_path else 'output'
+    h5_path = os.path.join(result_dir, f'{stem}_consolidated.h5')
+    
+    # ---------- Read all input files ----------
+    grains_file = os.path.join(result_dir, 'Grains.csv')
+    spotmatrix_file = os.path.join(result_dir, 'SpotMatrix.csv')
+    merge_map_file = os.path.join(result_dir, 'MergeMap.csv')
+    extra_info_file = os.path.join(result_dir, 'InputAllExtraInfoFittingAll.csv')
+    params_file = os.path.join(result_dir, 'paramstest.txt')
+    
+    # Find Radius file
+    radius_file = None
+    for f in os.listdir(result_dir):
+        if f.startswith('Radius_StartNr_') and f.endswith('.csv'):
+            radius_file = os.path.join(result_dir, f)
+            break
+    
+    for required in [grains_file, spotmatrix_file]:
+        if not os.path.exists(required):
+            raise FileNotFoundError(f"Required file not found: {required}")
+    
+    # Parse Grains.csv (skip 9-line header)
+    grains_header_lines = 9
+    with open(grains_file, 'r') as f:
+        header_info = [f.readline().strip() for _ in range(grains_header_lines)]
+    grains_data = np.genfromtxt(grains_file, skip_header=grains_header_lines)
+    if grains_data.ndim == 1:
+        grains_data = grains_data.reshape(1, -1)
+    grains_cols = [
+        'GrainID', 'O11', 'O12', 'O13', 'O21', 'O22', 'O23', 'O31', 'O32', 'O33',
+        'X', 'Y', 'Z', 'a', 'b', 'c', 'alpha', 'beta', 'gamma',
+        'eFab11', 'eFab12', 'eFab13', 'eFab21', 'eFab22', 'eFab23',
+        'eFab31', 'eFab32', 'eFab33',
+        'eKen11', 'eKen12', 'eKen13', 'eKen21', 'eKen22', 'eKen23',
+        'eKen31', 'eKen32', 'eKen33',
+        'RMSErrorStrain', 'Confidence', 'Reserved1', 'Reserved2',
+        'PhaseNr', 'Radius', 'Eul0', 'Eul1', 'Eul2', 'Reserved3', 'Reserved4'
+    ]
+    
+    # Parse SpotMatrix.csv (skip 1-line header)
+    spot_data = np.genfromtxt(spotmatrix_file, skip_header=1)
+    if spot_data.ndim == 1:
+        spot_data = spot_data.reshape(1, -1)
+    spot_cols = ['GrainID', 'SpotID', 'Omega', 'DetY', 'DetZ', 'OmeRaw',
+                 'Eta', 'RingNr', 'YLab', 'ZLab', 'Theta', 'StrainError']
+    
+    # Parse MergeMap.csv (tab-separated, skip header) — now 3 columns: MergedSpotID, FrameNr, PeakID
+    merge_map_data = None
+    if os.path.exists(merge_map_file):
+        merge_map_data = np.genfromtxt(merge_map_file, skip_header=1, delimiter='\t', dtype=int)
+        if merge_map_data.ndim == 1:
+            merge_map_data = merge_map_data.reshape(1, -1)
+    
+    merge_map_cols = ['MergedSpotID', 'FrameNr', 'PeakID']
+    
+    ps_cols = [
+        'SpotID', 'IntegratedIntensity', 'Omega', 'YCen', 'ZCen', 'IMax',
+        'Radius', 'Eta', 'SigmaR', 'SigmaEta', 'NrPixels',
+        'TotalNrPixelsInPeakRegion', 'nPeaks', 'maxY', 'maxZ', 'diffY', 'diffZ',
+        'rawIMax', 'returnCode', 'retVal', 'BG', 'SigmaGR', 'SigmaLR',
+        'SigmaGEta', 'SigmaLEta', 'MU'
+    ]
+    
+    # Parse InputAllExtraInfoFittingAll.csv
+    extra_info_data = None
+    if os.path.exists(extra_info_file):
+        extra_info_data = np.genfromtxt(extra_info_file, skip_header=1)
+        if extra_info_data.ndim == 1:
+            extra_info_data = extra_info_data.reshape(1, -1)
+    extra_info_cols = [
+        'YLab', 'ZLab', 'Omega', 'GrainRadius', 'SpotID', 'RingNumber',
+        'Eta', 'Ttheta', 'OmegaIni', 'YOrig', 'ZOrig',
+        'YOrigDetCor', 'ZOrigDetCor', 'OmegaOrigDetCor', 'IntegratedIntensity'
+    ]
+    
+    # Parse Radius CSV
+    radius_data_arr = None
+    radius_cols = [
+        'SpotID', 'IntegratedIntensity', 'Omega', 'YCen', 'ZCen', 'IMax',
+        'MinOme', 'MaxOme', 'Radius', 'Theta', 'Eta', 'DeltaOmega', 'NImgs',
+        'RingNr', 'GrainVolume', 'GrainRadius', 'PowderIntensity',
+        'SigmaR', 'SigmaEta', 'NrPx', 'NrPxTot'
+    ]
+    if radius_file and os.path.exists(radius_file):
+        radius_data_arr = np.genfromtxt(radius_file, skip_header=1)
+        if radius_data_arr.ndim == 1:
+            radius_data_arr = radius_data_arr.reshape(1, -1)
+    
+    # Parse paramstest.txt
+    params_dict = {}
+    if os.path.exists(params_file):
+        with open(params_file, 'r') as f:
+            for line in f:
+                line = line.strip().rstrip(';')
+                if line and not line.startswith('#') and not line.startswith('%'):
+                    parts = line.split(None, 1)
+                    if len(parts) == 2:
+                        key = parts[0]
+                        if key in params_dict:
+                            if isinstance(params_dict[key], list):
+                                params_dict[key].append(parts[1])
+                            else:
+                                params_dict[key] = [params_dict[key], parts[1]]
+                        else:
+                            params_dict[key] = parts[1]
+    
+    # Build merge map index: merged_spot_id -> list of (FrameNr, PeakID) tuples
+    merge_idx = defaultdict(list)
+    if merge_map_data is not None:
+        for row_i in range(merge_map_data.shape[0]):
+            merged_id = int(merge_map_data[row_i, 0])
+            frame_nr = int(merge_map_data[row_i, 1])
+            peak_id = int(merge_map_data[row_i, 2])
+            merge_idx[merged_id].append((frame_nr, peak_id))
+    
+    # Load referenced _PS.csv files from Temp/ directory
+    # Build cache: (frame_nr, peak_id) -> full 26-column peak row
+    temp_dir = os.path.join(result_dir, 'Temp')
+    # _PS.csv files use the full zarr basename (incl. .zip) as their stem
+    # e.g., 'Au_FF_000001_pf.analysis.MIDAS.zip_000004_PS.csv'
+    file_stem = os.path.basename(zarr_path) if zarr_path else ''
+    ps_cache = {}  # (frame_nr, peak_id) -> np.array of 26 values
+    if merge_map_data is not None and os.path.isdir(temp_dir):
+        # Find which frames we need to load
+        needed_frames = set(int(merge_map_data[i, 1]) for i in range(merge_map_data.shape[0]))
+        logger.info(f"Loading _PS.csv data for {len(needed_frames)} frames from {temp_dir}")
+        for frame_nr in sorted(needed_frames):
+            ps_fn = os.path.join(temp_dir, f'{file_stem}_{frame_nr:06d}_PS.csv')
+            if not os.path.exists(ps_fn):
+                logger.warning(f"_PS.csv file not found: {ps_fn}")
+                continue
+            try:
+                ps_data = np.genfromtxt(ps_fn, skip_header=1)
+                if ps_data.ndim == 1:
+                    ps_data = ps_data.reshape(1, -1)
+                for row in ps_data:
+                    peak_id = int(row[0])
+                    ps_cache[(frame_nr, peak_id)] = row
+            except Exception as e:
+                logger.warning(f"Error reading {ps_fn}: {e}")
+        logger.info(f"Loaded {len(ps_cache)} peak entries from _PS.csv files")
+    
+    # Build radius index: spot_id -> row index
+    radius_idx = {}
+    if radius_data_arr is not None:
+        for row_i in range(radius_data_arr.shape[0]):
+            radius_idx[int(radius_data_arr[row_i, 0])] = row_i
+    
+    # ---------- Write HDF5 ----------
+    logger.info(f"Writing consolidated HDF5 to {h5_path}")
+    with h5py.File(h5_path, 'w') as h5:
+        # /parameters/
+        pg = h5.create_group('parameters')
+        for key, val in params_dict.items():
+            try:
+                if isinstance(val, list):
+                    # Multi-valued params (e.g. RingNumbers, OmegaRange)
+                    float_vals = []
+                    for v in val:
+                        float_vals.extend([float(x) for x in v.split()])
+                    pg.create_dataset(key, data=np.array(float_vals))
+                else:
+                    parts = val.split()
+                    if len(parts) == 1:
+                        try:
+                            pg.create_dataset(key, data=float(val))
+                        except ValueError:
+                            pg.create_dataset(key, data=val)
+                    else:
+                        try:
+                            pg.create_dataset(key, data=np.array([float(x) for x in parts]))
+                        except ValueError:
+                            pg.create_dataset(key, data=val)
+            except Exception:
+                pg.attrs[key] = str(val)
+        
+        # /all_spots/
+        if extra_info_data is not None:
+            sg = h5.create_group('all_spots')
+            sg.create_dataset('data', data=extra_info_data)
+            sg.attrs['column_names'] = extra_info_cols
+        
+        # /radius_data/
+        if radius_data_arr is not None:
+            rg = h5.create_group('radius_data')
+            for ci, col_name in enumerate(radius_cols):
+                if ci < radius_data_arr.shape[1]:
+                    rg.create_dataset(col_name, data=radius_data_arr[:, ci])
+            rg.attrs['column_names'] = radius_cols
+        
+        # /merge_map/
+        if merge_map_data is not None:
+            mg = h5.create_group('merge_map')
+            for ci, col_name in enumerate(merge_map_cols):
+                if ci < merge_map_data.shape[1]:
+                    mg.create_dataset(col_name, data=merge_map_data[:, ci])
+            mg.attrs['column_names'] = merge_map_cols
+        
+        # /grains/
+        gg = h5.create_group('grains')
+        gg.create_dataset('summary', data=grains_data)
+        gg.attrs['column_names'] = grains_cols[:min(len(grains_cols), grains_data.shape[1])]
+        
+        for grain_row in grains_data:
+            grain_id = int(grain_row[0])
+            grain_grp = gg.create_group(f'grain_{grain_id:04d}')
+            grain_grp.create_dataset('grain_id', data=grain_id)
+            grain_grp.create_dataset('orientation', data=grain_row[1:10].reshape(3, 3))
+            grain_grp.create_dataset('position', data=grain_row[10:13])
+            if grains_data.shape[1] > 43:
+                grain_grp.create_dataset('euler_angles', data=grain_row[43:46])
+            if grains_data.shape[1] > 18:
+                grain_grp.create_dataset('lattice_params_fit', data=grain_row[13:19])
+            if grains_data.shape[1] > 27:
+                grain_grp.create_dataset('strain_fable', data=grain_row[19:28].reshape(3, 3))
+            if grains_data.shape[1] > 36:
+                grain_grp.create_dataset('strain_kenesei', data=grain_row[28:37].reshape(3, 3))
+            if grains_data.shape[1] > 37:
+                grain_grp.create_dataset('rms_strain_error', data=grain_row[37])
+            if grains_data.shape[1] > 38:
+                grain_grp.create_dataset('confidence', data=grain_row[38])
+            if grains_data.shape[1] > 41:
+                grain_grp.create_dataset('phase_nr', data=int(grain_row[41]))
+            if grains_data.shape[1] > 42:
+                grain_grp.create_dataset('radius', data=grain_row[42])
+            
+            # Get spots for this grain
+            grain_spots = spot_data[spot_data[:, 0] == grain_id]
+            spots_grp = grain_grp.create_group('spots')
+            spots_grp.create_dataset('n_spots', data=len(grain_spots))
+            
+            if len(grain_spots) > 0:
+                for ci, col in enumerate(spot_cols[1:], start=1):
+                    if ci < grain_spots.shape[1]:
+                        spots_grp.create_dataset(col.lower(), data=grain_spots[:, ci])
+                
+                # Per-spot subgroups with constituent peaks
+                for spot_row in grain_spots:
+                    spot_id = int(spot_row[1])
+                    sp_grp = spots_grp.create_group(f'spot_{spot_id:06d}')
+                    sp_grp.create_dataset('spot_id', data=spot_id)
+                    for ci, col in enumerate(spot_cols[2:], start=2):
+                        if ci < spot_row.shape[0]:
+                            sp_grp.create_dataset(col.lower(), data=spot_row[ci])
+                    
+                    # Add radius-derived properties
+                    if spot_id in radius_idx:
+                        ri = radius_idx[spot_id]
+                        rrow = radius_data_arr[ri]
+                        for ri_name in ['MinOme', 'MaxOme', 'Theta', 'DeltaOmega',
+                                        'NImgs', 'GrainVolume', 'GrainRadius',
+                                        'PowderIntensity']:
+                            ri_ci = radius_cols.index(ri_name)
+                            if ri_ci < rrow.shape[0]:
+                                ds_name = ri_name.lower()
+                                # Avoid name collision with SpotMatrix columns
+                                if ds_name in sp_grp:
+                                    ds_name = f'radius_{ds_name}'
+                                sp_grp.create_dataset(ds_name, data=rrow[ri_ci])
+                    
+                    # Constituent peaks from MergeMap + _PS.csv data
+                    if spot_id in merge_idx:
+                        constituents = merge_idx[spot_id]
+                        cp_grp = sp_grp.create_group('constituent_peaks')
+                        cp_grp.create_dataset('n_constituent_peaks', data=len(constituents))
+                        frame_nrs = [c[0] for c in constituents]
+                        peak_ids = [c[1] for c in constituents]
+                        cp_grp.create_dataset('frame_nr', data=np.array(frame_nrs, dtype=int))
+                        cp_grp.create_dataset('peak_id', data=np.array(peak_ids, dtype=int))
+                        # Look up full peak data from _PS.csv cache
+                        peak_rows = []
+                        for fn, pid in constituents:
+                            if (fn, pid) in ps_cache:
+                                peak_rows.append(ps_cache[(fn, pid)])
+                        if peak_rows:
+                            peak_arr = np.array(peak_rows)
+                            for ci, col in enumerate(ps_cols):
+                                if ci < peak_arr.shape[1]:
+                                    cp_grp.create_dataset(col.lower(), data=peak_arr[:, ci])
+        
+        # /raw_data_ref/
+        rr = h5.create_group('raw_data_ref')
+        rr.create_dataset('zarr_path', data=os.path.abspath(zarr_path) if zarr_path else '')
+    
+    logger.info(f"Consolidated HDF5 written: {h5_path}")
+    
+    # ---------- Append provenance to zarr.zip ----------
+    if zarr_path and os.path.exists(zarr_path):
+        try:
+            store = zarr.ZipStore(zarr_path, mode='a')
+            root = zarr.open(store, mode='a')
+            prov = root.require_group('analysis/provenance')
+            
+            # merge_map (3-column: MergedSpotID, FrameNr, PeakID)
+            if merge_map_data is not None:
+                mm_grp = prov.require_group('merge_map')
+                for ci, col in enumerate(merge_map_cols):
+                    if ci < merge_map_data.shape[1]:
+                        ds_name = col.lower()
+                        if ds_name in mm_grp:
+                            del mm_grp[ds_name]
+                        mm_grp.create_dataset(ds_name, data=merge_map_data[:, ci],
+                                              chunks=True, overwrite=True)
+            
+            # grain_spots mapping
+            gs_grp = prov.require_group('grain_spots')
+            if 'grain_ids' in gs_grp:
+                del gs_grp['grain_ids']
+            if 'spot_ids' in gs_grp:
+                del gs_grp['spot_ids']
+            gs_grp.create_dataset('grain_ids', data=spot_data[:, 0].astype(int),
+                                  chunks=True, overwrite=True)
+            gs_grp.create_dataset('spot_ids', data=spot_data[:, 1].astype(int),
+                                  chunks=True, overwrite=True)
+            
+            store.close()
+            logger.info(f"Provenance appended to zarr: {zarr_path}")
+        except Exception as e:
+            logger.warning(f"Failed to append provenance to zarr: {e}")
 
 def process_inputall_data(result_dir: str, top_res_dir: str, ps_fn: str) -> None:
     """Process InputAll data.

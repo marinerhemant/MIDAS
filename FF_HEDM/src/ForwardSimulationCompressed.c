@@ -43,6 +43,40 @@ static int nPanels = 0;
 #define MAX_NR_POINTS 20000000
 #define MAX_OUTPUT_INTENSITY 15000
 
+// --- Frame-batching support ---
+typedef struct {
+  size_t omeBin;
+  float yDet, zDet;
+  float intensity; // sub_peak_intensity * relativeIntensity
+} ImageSpot;
+
+typedef struct {
+  ImageSpot *spots;
+  int count;
+  int capacity;
+} ImageSpotBuffer;
+
+#if defined(__APPLE__)
+#include <sys/sysctl.h>
+static size_t get_system_ram(void) {
+  int64_t ram;
+  size_t len = sizeof(ram);
+  if (sysctlbyname("hw.memsize", &ram, &len, NULL, 0) == 0)
+    return (size_t)ram;
+  return 0;
+}
+#elif defined(__linux__)
+static size_t get_system_ram(void) {
+  long pages = sysconf(_SC_PHYS_PAGES);
+  long page_size = sysconf(_SC_PAGE_SIZE);
+  if (pages > 0 && page_size > 0)
+    return (size_t)pages * (size_t)page_size;
+  return 0;
+}
+#else
+static size_t get_system_ram(void) { return 0; }
+#endif
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -1117,6 +1151,7 @@ int main(int argc, char *argv[]) {
   char IntensitiesFile[4096] = "";
   double RingNrIntensity[500];
   int num_lambda_samples = 1;
+  int SimulationBatches = 0; // 0 = auto-detect based on system RAM
   while (fgets(aline, 4096, fileParam) != NULL) {
     str = "IntensitiesFile ";
     LowNr = strncmp(aline, str, strlen(str));
@@ -1392,6 +1427,12 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %lf %d", dummy, &eResolution, &num_lambda_samples);
       continue;
     }
+    str = "SimulationBatches ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &SimulationBatches);
+      continue;
+    }
   }
 
   // Generate Panels
@@ -1462,6 +1503,38 @@ int main(int argc, char *argv[]) {
       "                     LoadNr=%d, UpdatedOrientations=%d, MinConf=%.4f\n",
       LoadNr, UpdatedOrientations, minConfidence);
   printf("==============================================================\n");
+
+  // --- Auto-detect nBatches based on system RAM ---
+  int nFrames_total = (int)ceil(fabs((OmegaEnd - OmegaStart) / OmegaStep));
+  int nBatches = SimulationBatches;
+  if (nBatches == 0 && WriteImage) {
+    size_t sysRAM = get_system_ram();
+    size_t imageBytes =
+        (size_t)NrPixels * NrPixels * nFrames_total * sizeof(float);
+    size_t overhead = 512ULL * 1024 * 1024; // 512 MB for other allocations
+    size_t available = (size_t)(sysRAM * 0.75);
+    if (sysRAM > 0 && imageBytes + overhead < available) {
+      nBatches = 1;
+    } else if (sysRAM > 0) {
+      size_t bytesPerFrame = (size_t)NrPixels * NrPixels * sizeof(float);
+      size_t framesPerBatch =
+          (available > overhead) ? (available - overhead) / bytesPerFrame : 1;
+      if (framesPerBatch < 1)
+        framesPerBatch = 1;
+      nBatches =
+          (nFrames_total + (int)framesPerBatch - 1) / (int)framesPerBatch;
+    } else {
+      nBatches = 1; // Can't detect RAM, fall back to single pass
+    }
+    printf("Auto-detected SimulationBatches: %d (system RAM: %.1f GB, image "
+           "would need: %.1f GB)\n",
+           nBatches, sysRAM / (1024.0 * 1024.0 * 1024.0),
+           (double)imageBytes / (1024.0 * 1024.0 * 1024.0));
+  } else if (nBatches <= 0) {
+    nBatches = 1;
+  }
+  if (WriteImage)
+    printf("SimulationBatches: %d\n", nBatches);
 
   int scanNr;
   positions = malloc((nScans + 1) * sizeof(*positions));
@@ -1621,21 +1694,28 @@ int main(int argc, char *argv[]) {
   }
 
   // Allocate image array.
-  double maxInt;
-  double *ImageArr = NULL;
+  float maxInt;
+  float *ImageArr = NULL;
   size_t ImageArrSize;
   ImageArrSize = NrPixels;
   ImageArrSize *= NrPixels;
-  ImageArrSize *= ceil(fabs((OmegaEnd - OmegaStart) / OmegaStep));
-  if (WriteImage) {
+  ImageArrSize *= nFrames_total;
+  if (WriteImage && nBatches == 1) {
     ImageArr = calloc(ImageArrSize, sizeof(*ImageArr));
-    printf("Number of elements in ImageArray: %zu, number of frames: %zu\n",
+    printf("Number of elements in ImageArray: %zu (%.1f GB), number of frames: "
+           "%d\n",
            ImageArrSize,
-           (size_t)ceil(fabs((OmegaEnd - OmegaStart) / OmegaStep)));
+           (double)ImageArrSize * sizeof(*ImageArr) /
+               (1024.0 * 1024.0 * 1024.0),
+           nFrames_total);
     if (ImageArr == NULL) {
       printf("Could not allocate enough memory for image array. Exiting.\n");
       return 1;
     }
+  } else if (WriteImage) {
+    printf("Using batched rendering (%d batches) — no full image array "
+           "allocated.\n",
+           nBatches);
   } else {
     printf("WriteImage is 0, skipping image array allocation.\n");
   }
@@ -1720,15 +1800,31 @@ int main(int argc, char *argv[]) {
     spotBuffers[i].count = 0;
   }
 
+  // --- ImageSpot buffers for batched rendering ---
+  ImageSpotBuffer *imgSpotBufs = NULL;
+  if (WriteImage && nBatches > 1) {
+    imgSpotBufs = calloc(nCPUs, sizeof(ImageSpotBuffer));
+    for (i = 0; i < nCPUs; i++) {
+      imgSpotBufs[i].capacity = 4096;
+      imgSpotBufs[i].spots =
+          malloc(imgSpotBufs[i].capacity * sizeof(ImageSpot));
+      imgSpotBufs[i].count = 0;
+    }
+  }
+
   double sim_start = omp_get_wtime();
   for (scanNr = 0; scanNr < nScans; scanNr++) {
-    if (scanNr > 0 && WriteImage)
+    if (scanNr > 0 && WriteImage && nBatches == 1)
       memset(ImageArr, 0, ImageArrSize * sizeof(*ImageArr));
     yOffset = positions[scanNr];
     printf("yPosition: %lf\n", yOffset);
     // Reset buffers for this scan
     for (i = 0; i < nCPUs; i++)
       spotBuffers[i].count = 0;
+    if (imgSpotBufs) {
+      for (i = 0; i < nCPUs; i++)
+        imgSpotBufs[i].count = 0;
+    }
 #pragma omp parallel num_threads(nCPUs)                                        \
     private(voxNr, i, j, LatCThis, EpsThis, OM, EulerThis, nTspots, spotNr,    \
                 Info, OmeDiff, omeThis, newY, yTemp, zTemp, yThis, zThis,      \
@@ -1740,6 +1836,7 @@ int main(int argc, char *argv[]) {
       double **hklsOut_Thread = allocMatrix(n_hkls, 5);
       int _tid = omp_get_thread_num();
       SpotBuffer *_myBuf = &spotBuffers[_tid];
+      ImageSpotBuffer *_myImgBuf = imgSpotBufs ? &imgSpotBufs[_tid] : NULL;
 
 #pragma omp for
       for (voxNr = 0; voxNr < nrPoints; voxNr++) {
@@ -1887,78 +1984,87 @@ int main(int argc, char *argv[]) {
             // Analytic Gaussian Integration (only if WriteImage)
             // ========================================================================
             if (WriteImage) {
-              double sigma = GaussWidth;
-              double twoSigmaSq = 2.0 * sigma * sigma;
-              int extent = (int)ceil(4.0 * sigma);
-              if (extent > 49)
-                extent = 49; // Clamp to buffer size (buffer is 100)
-
-              int y_base = (int)round(yDet);
-              int z_base = (int)round(zDet);
-              size_t frameOffset = omeBin * NrPixels * NrPixels;
-
-              // Precompute 1D Gaussian weights
-              double WeightsY[100];
-              double WeightsZ[100];
-
-              for (int dy = -extent; dy <= extent; dy++) {
-                int y_curr = y_base + dy;
-                if (y_curr < 0 || y_curr >= NrPixels) {
-                  WeightsY[dy + extent] = 0.0;
-                  continue;
-                }
-                double distY = (double)y_curr - yDet;
-                WeightsY[dy + extent] = exp(-(distY * distY) / twoSigmaSq);
+              // Check relative intensity from rings
+              int currentRingNr = (int)TempInfo[4];
+              double relativeIntensity = 1.0;
+              if (currentRingNr >= 0 && currentRingNr < 500) {
+                relativeIntensity = RingNrIntensity[currentRingNr];
               }
+              float spotIntensity =
+                  (float)(sub_peak_intensity * relativeIntensity);
 
-              for (int dz = -extent; dz <= extent; dz++) {
-                int z_curr = z_base + dz;
-                if (z_curr < 0 || z_curr >= NrPixels) {
-                  WeightsZ[dz + extent] = 0.0;
-                  continue;
+              if (nBatches == 1) {
+                // --- Direct accumulation into ImageArr ---
+                double sigma = GaussWidth;
+                double twoSigmaSq = 2.0 * sigma * sigma;
+                int extent = (int)ceil(4.0 * sigma);
+                if (extent > 49)
+                  extent = 49;
+
+                int y_base = (int)round(yDet);
+                int z_base = (int)round(zDet);
+                size_t frameOffset = omeBin * NrPixels * NrPixels;
+
+                double WeightsY[100];
+                double WeightsZ[100];
+
+                for (int dy = -extent; dy <= extent; dy++) {
+                  int y_curr = y_base + dy;
+                  if (y_curr < 0 || y_curr >= NrPixels) {
+                    WeightsY[dy + extent] = 0.0;
+                    continue;
+                  }
+                  double distY = (double)y_curr - yDet;
+                  WeightsY[dy + extent] = exp(-(distY * distY) / twoSigmaSq);
                 }
-                double distZ = (double)z_curr - zDet;
-                WeightsZ[dz + extent] = exp(-(distZ * distZ) / twoSigmaSq);
-              }
-
-              // Convolve using precomputed weights
-              for (int dy = -extent; dy <= extent; dy++) {
-                double wy = WeightsY[dy + extent];
-                if (wy == 0.0)
-                  continue;
-
-                int y_curr = y_base + dy;
 
                 for (int dz = -extent; dz <= extent; dz++) {
-                  double wz = WeightsZ[dz + extent];
-                  if (wz == 0.0)
-                    continue;
-
                   int z_curr = z_base + dz;
-
-                  // Gaussian weight
-                  double weight = wy * wz;
-
-                  // Check relative intensity from rings
-                  int currentRingNr = (int)TempInfo[4];
-                  double relativeIntensity = 1.0;
-                  if (currentRingNr >= 0 && currentRingNr < 500) {
-                    relativeIntensity = RingNrIntensity[currentRingNr];
+                  if (z_curr < 0 || z_curr >= NrPixels) {
+                    WeightsZ[dz + extent] = 0.0;
+                    continue;
                   }
+                  double distZ = (double)z_curr - zDet;
+                  WeightsZ[dz + extent] = exp(-(distZ * distZ) / twoSigmaSq);
+                }
 
-                  // Total intensity contribution
-                  double intensity_to_add =
-                      weight * sub_peak_intensity * relativeIntensity;
-
-                  long long int currentPos =
-                      (long long int)(frameOffset + z_curr * NrPixels + y_curr);
-                  if (currentPos >= 0 && currentPos < ImageArrSize) {
+                for (int dy = -extent; dy <= extent; dy++) {
+                  double wy = WeightsY[dy + extent];
+                  if (wy == 0.0)
+                    continue;
+                  int y_curr = y_base + dy;
+                  for (int dz = -extent; dz <= extent; dz++) {
+                    double wz = WeightsZ[dz + extent];
+                    if (wz == 0.0)
+                      continue;
+                    int z_curr = z_base + dz;
+                    double weight = wy * wz;
+                    float intensity_to_add = (float)(weight * spotIntensity);
+                    long long int currentPos =
+                        (long long int)(frameOffset + z_curr * NrPixels +
+                                        y_curr);
+                    if (currentPos >= 0 &&
+                        currentPos < (long long int)ImageArrSize) {
 #pragma omp atomic
-                    ImageArr[currentPos] += intensity_to_add;
+                      ImageArr[currentPos] += intensity_to_add;
+                    }
                   }
                 }
+              } else {
+                // --- Buffer spot for batched rendering ---
+                if (_myImgBuf->count >= _myImgBuf->capacity) {
+                  _myImgBuf->capacity *= 2;
+                  _myImgBuf->spots =
+                      realloc(_myImgBuf->spots,
+                              _myImgBuf->capacity * sizeof(ImageSpot));
+                }
+                ImageSpot *isp = &_myImgBuf->spots[_myImgBuf->count++];
+                isp->omeBin = omeBin;
+                isp->yDet = (float)yDet;
+                isp->zDet = (float)zDet;
+                isp->intensity = spotIntensity;
               }
-            } // end WriteImage Gaussian block
+            } // end WriteImage block
             if (writeSpots == 1) {
               // Buffer spot data (no lock needed - each thread has its own
               // buffer)
@@ -2006,22 +2112,24 @@ int main(int argc, char *argv[]) {
     maxInt = 0.0;
     printf("Scan %d simulation done in %.3f sec.\n", scanNr,
            omp_get_wtime() - sim_start);
-    if (WriteImage) {
+
+    if (WriteImage && nBatches == 1) {
+      // --- nBatches==1: scan ImageArr for maxInt ---
       for (size_t i = 0; i < ImageArrSize; ++i) {
         if (ImageArr[i] > maxInt) {
           maxInt = ImageArr[i];
         }
       }
-      printf("Maximum intensity: %lf, scanNr: %d\n", maxInt, scanNr);
+      printf("Maximum intensity: %f, scanNr: %d\n", maxInt, scanNr);
     }
+
     if (WriteImage) {
       blosc_init();
       blosc_set_nthreads(10);
-      int nFrames = (int)ceil(fabs((OmegaEnd - OmegaStart) / OmegaStep));
+      int nFrames = nFrames_total;
       int frameNr;
       uint16_t *data_out, *outArr;
       outArr = calloc(NrPixels * NrPixels, sizeof(*outArr));
-      size_t loc = 0;
       int compressedSize;
       char outfn[4096];
       int errorp;
@@ -2083,45 +2191,191 @@ int main(int argc, char *argv[]) {
         printf("Did not succeed to add %s to zip. Exiting.\n", zarrfn3);
         return 1;
       }
-      for (frameNr = 0; frameNr < nFrames; frameNr++) {
-        int locCounter = 0;
-        for (i = 0; i < NrPixels * NrPixels; i++) {
-          if (maxInt > 0) {
-            outArr[i] =
-                (uint16_t)(ImageArr[loc] * MAX_OUTPUT_INTENSITY / maxInt);
-          } else {
-            outArr[i] = 0; // If maxInt is 0, the whole image is black.
+
+      if (nBatches == 1) {
+        // === nBatches==1: write frames from ImageArr (current path) ===
+        size_t loc = 0;
+        for (frameNr = 0; frameNr < nFrames; frameNr++) {
+          for (i = 0; i < NrPixels * NrPixels; i++) {
+            if (maxInt > 0) {
+              outArr[i] =
+                  (uint16_t)(ImageArr[loc] * MAX_OUTPUT_INTENSITY / maxInt);
+            } else {
+              outArr[i] = 0;
+            }
+            loc++;
           }
-          if (outArr[i] > 0)
-            locCounter++;
-          loc++;
+          data_out = calloc(NrPixels * NrPixels, sizeof(*data_out));
+          blosc_set_compressor("zstd");
+          compressedSize = blosc_compress(
+              3, 2, 2, NrPixels * NrPixels * sizeof(uint16_t), outArr, data_out,
+              NrPixels * NrPixels * sizeof(uint16_t));
+          sprintf(outfn, "exchange/data/%d.0.0", frameNr);
+          const void *dataT = (const void *)data_out;
+          zip_source_t *source =
+              zip_source_buffer(zipper, dataT, compressedSize, 1);
+          zip_int64_t rct = zip_file_add(zipper, outfn, source,
+                                         ZIP_FL_OVERWRITE | ZIP_FL_ENC_UTF_8);
+          if (rct < 0) {
+            printf("Could not add the file %s to zip. Exiting.\n", outfn);
+            return 1;
+          }
+          rc = zip_set_file_compression(zipper, rct, ZIP_CM_STORE, 0);
+          if (rc != 0) {
+            printf("Could not change compression type of %s. Exiting.\n",
+                   outfn);
+            return 1;
+          }
         }
-        data_out = calloc(NrPixels * NrPixels, sizeof(*data_out));
-        blosc_set_compressor("zstd");
-        compressedSize = blosc_compress(
-            3, 2, 2, NrPixels * NrPixels * sizeof(uint16_t), outArr, data_out,
-            NrPixels * NrPixels * sizeof(uint16_t));
-        sprintf(outfn, "exchange/data/%d.0.0", frameNr);
-        // printf("%zu %s %d %d\n",loc,outfn,compressedSize,locCounter);
-        zip_error_t *errp;
-        const void *dataT;
-        dataT = (const void *)data_out;
-        zip_source_t *source =
-            zip_source_buffer(zipper, dataT, compressedSize, 1);
-        zip_int64_t rct = zip_file_add(zipper, outfn, source,
-                                       ZIP_FL_OVERWRITE | ZIP_FL_ENC_UTF_8);
-        if (rct < 0) {
-          printf("Could not add the file %s to zip. Exiting.\n", outfn);
-          return 1;
+      } else {
+        // === nBatches>1: batched rendering from ImageSpotBuffer ===
+        // Merge per-thread buffers into one array
+        int totalImageSpots = 0;
+        for (i = 0; i < nCPUs; i++)
+          totalImageSpots += imgSpotBufs[i].count;
+        ImageSpot *allSpots = malloc(totalImageSpots * sizeof(ImageSpot));
+        int offset = 0;
+        for (i = 0; i < nCPUs; i++) {
+          memcpy(allSpots + offset, imgSpotBufs[i].spots,
+                 imgSpotBufs[i].count * sizeof(ImageSpot));
+          offset += imgSpotBufs[i].count;
         }
-        rc = zip_set_file_compression(zipper, rct, ZIP_CM_STORE, 0);
-        if (rc != 0) {
-          printf("Could not change compression type of the file %s to zip. "
-                 "Exiting.\n",
-                 outfn);
-          return 1;
+        printf("Batched rendering: %d spot contributions, %d batches\n",
+               totalImageSpots, nBatches);
+
+        int framesPerBatch = (nFrames + nBatches - 1) / nBatches;
+        double sigma = GaussWidth;
+        double twoSigmaSq = 2.0 * sigma * sigma;
+        int extent = (int)ceil(4.0 * sigma);
+        if (extent > 49)
+          extent = 49;
+
+        // Pass 1: render all batches to find global maxInt
+        double batch_start = omp_get_wtime();
+        for (int b = 0; b < nBatches; b++) {
+          int startFrame = b * framesPerBatch;
+          int endFrame = startFrame + framesPerBatch;
+          if (endFrame > nFrames)
+            endFrame = nFrames;
+          int batchFrames = endFrame - startFrame;
+          size_t batchSize = (size_t)batchFrames * NrPixels * NrPixels;
+          float *batchArr = calloc(batchSize, sizeof(float));
+
+          for (int s = 0; s < totalImageSpots; s++) {
+            ImageSpot *sp = &allSpots[s];
+            if ((int)sp->omeBin < startFrame || (int)sp->omeBin >= endFrame)
+              continue;
+            int y_base = (int)roundf(sp->yDet);
+            int z_base = (int)roundf(sp->zDet);
+            size_t frameOff =
+                (sp->omeBin - startFrame) * NrPixels * NrPixels;
+            for (int dy = -extent; dy <= extent; dy++) {
+              int y_curr = y_base + dy;
+              if (y_curr < 0 || y_curr >= NrPixels)
+                continue;
+              double distY = (double)y_curr - sp->yDet;
+              double wy = exp(-(distY * distY) / twoSigmaSq);
+              for (int dz = -extent; dz <= extent; dz++) {
+                int z_curr = z_base + dz;
+                if (z_curr < 0 || z_curr >= NrPixels)
+                  continue;
+                double distZ = (double)z_curr - sp->zDet;
+                double wz = exp(-(distZ * distZ) / twoSigmaSq);
+                size_t pos = frameOff + z_curr * NrPixels + y_curr;
+                if (pos < batchSize)
+                  batchArr[pos] += (float)(wy * wz * sp->intensity);
+              }
+            }
+          }
+          // Track global max
+          for (size_t k = 0; k < batchSize; k++) {
+            if (batchArr[k] > maxInt)
+              maxInt = batchArr[k];
+          }
+          free(batchArr);
         }
+        printf("Maximum intensity: %f, scanNr: %d (pass 1 took %.3f sec)\n",
+               maxInt, scanNr, omp_get_wtime() - batch_start);
+
+        // Pass 2: render + normalize + write
+        double write_start = omp_get_wtime();
+        for (int b = 0; b < nBatches; b++) {
+          int startFrame = b * framesPerBatch;
+          int endFrame = startFrame + framesPerBatch;
+          if (endFrame > nFrames)
+            endFrame = nFrames;
+          int batchFrames = endFrame - startFrame;
+          size_t batchSize = (size_t)batchFrames * NrPixels * NrPixels;
+          float *batchArr = calloc(batchSize, sizeof(float));
+
+          for (int s = 0; s < totalImageSpots; s++) {
+            ImageSpot *sp = &allSpots[s];
+            if ((int)sp->omeBin < startFrame || (int)sp->omeBin >= endFrame)
+              continue;
+            int y_base = (int)roundf(sp->yDet);
+            int z_base = (int)roundf(sp->zDet);
+            size_t frameOff =
+                (sp->omeBin - startFrame) * NrPixels * NrPixels;
+            for (int dy = -extent; dy <= extent; dy++) {
+              int y_curr = y_base + dy;
+              if (y_curr < 0 || y_curr >= NrPixels)
+                continue;
+              double distY = (double)y_curr - sp->yDet;
+              double wy = exp(-(distY * distY) / twoSigmaSq);
+              for (int dz = -extent; dz <= extent; dz++) {
+                int z_curr = z_base + dz;
+                if (z_curr < 0 || z_curr >= NrPixels)
+                  continue;
+                double distZ = (double)z_curr - sp->zDet;
+                double wz = exp(-(distZ * distZ) / twoSigmaSq);
+                size_t pos = frameOff + z_curr * NrPixels + y_curr;
+                if (pos < batchSize)
+                  batchArr[pos] += (float)(wy * wz * sp->intensity);
+              }
+            }
+          }
+
+          // Write frames from this batch
+          for (frameNr = startFrame; frameNr < endFrame; frameNr++) {
+            size_t fOff =
+                (size_t)(frameNr - startFrame) * NrPixels * NrPixels;
+            for (i = 0; i < NrPixels * NrPixels; i++) {
+              if (maxInt > 0) {
+                outArr[i] = (uint16_t)(batchArr[fOff + i] *
+                                       MAX_OUTPUT_INTENSITY / maxInt);
+              } else {
+                outArr[i] = 0;
+              }
+            }
+            data_out = calloc(NrPixels * NrPixels, sizeof(*data_out));
+            blosc_set_compressor("zstd");
+            compressedSize = blosc_compress(
+                3, 2, 2, NrPixels * NrPixels * sizeof(uint16_t), outArr,
+                data_out, NrPixels * NrPixels * sizeof(uint16_t));
+            sprintf(outfn, "exchange/data/%d.0.0", frameNr);
+            const void *dataT = (const void *)data_out;
+            zip_source_t *source =
+                zip_source_buffer(zipper, dataT, compressedSize, 1);
+            zip_int64_t rct = zip_file_add(zipper, outfn, source,
+                                           ZIP_FL_OVERWRITE | ZIP_FL_ENC_UTF_8);
+            if (rct < 0) {
+              printf("Could not add the file %s to zip. Exiting.\n", outfn);
+              return 1;
+            }
+            rc = zip_set_file_compression(zipper, rct, ZIP_CM_STORE, 0);
+            if (rc != 0) {
+              printf("Could not change compression type of %s. Exiting.\n",
+                     outfn);
+              return 1;
+            }
+          }
+          free(batchArr);
+        }
+        printf("Batched write done in %.3f sec.\n",
+               omp_get_wtime() - write_start);
+        free(allSpots);
       }
+
       int zc = zip_close(zipper);
       free(outArr);
     }
@@ -2131,15 +2385,19 @@ int main(int argc, char *argv[]) {
   for (i = 0; i < nCPUs; i++)
     free(spotBuffers[i].records);
   free(spotBuffers);
+  // Free image spot buffers
+  if (imgSpotBufs) {
+    for (i = 0; i < nCPUs; i++)
+      free(imgSpotBufs[i].spots);
+    free(imgSpotBufs);
+  }
   // =========================================================================
   // FINAL MEMORY CLEANUP
   // =========================================================================
-  // hklsOut and TheorSpots and hklsTemp are now thread local and freed
-  // inside the loop
   printf("Cleaning up allocated memory...\n");
   FreeMemMatrix(InputInfo, MAX_NR_POINTS);
   free(positions);
-  if (WriteImage) {
+  if (ImageArr) {
     free(ImageArr);
   }
   free(yDispl);
