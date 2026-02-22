@@ -30,6 +30,11 @@ try:
 except ImportError:
     tifffile = None
 
+try:
+    import zarr
+except ImportError:
+    zarr = None
+
 import sys
 
 # Try to import midas_config from utils
@@ -60,6 +65,12 @@ _auto_ext = None
 _auto_darkStem = None
 _auto_darkNum = None
 _auto_nFramesPerFile = None
+_auto_zarr_zip = None
+
+# Global state for zarr-zip mode
+_zarr_zip_path = None   # Path to loaded .MIDAS.zip
+_zarr_store = None      # Open zarr group (kept open for frame reading)
+_zarr_dark_mean = None  # Pre-computed dark mean (2D array)
 
 def _try_auto_detect():
     """Try to auto-detect data and dark files from the current working directory.
@@ -70,12 +81,20 @@ def _try_auto_detect():
     """
     global _auto_fileStem, _auto_folder, _auto_padding, _auto_firstFileNr
     global _auto_ext, _auto_darkStem, _auto_darkNum, _auto_nFramesPerFile
+    global _auto_zarr_zip
     
     cwd = os.getcwd()
     dir_basename = os.path.basename(cwd)
     
     if not dir_basename:
         return False
+    
+    # Check for .MIDAS.zip files first
+    zip_files = [f for f in os.listdir(cwd) if f.endswith('.MIDAS.zip')]
+    if zip_files:
+        _auto_zarr_zip = os.path.join(cwd, sorted(zip_files)[0])
+        print(f"Auto-detect: found Zarr-ZIP '{os.path.basename(_auto_zarr_zip)}'")
+        return True
     
     # Find files that start with the directory name
     all_files = sorted(os.listdir(cwd))
@@ -150,10 +169,265 @@ def _try_auto_detect():
 
 _auto_detected = False  # Will be set True by background thread
 
+def _load_zarr_zip(zip_path, root_widget=None):
+    """Load a .MIDAS.zip file: extract metadata, set up dark, generate HKLs, init rings.
+    
+    Must be called from the main thread (after Tk variables exist).
+    """
+    global _zarr_zip_path, _zarr_store, _zarr_dark_mean
+    global fileStem, folder, firstFileNumber, nFramesPerFile, padding
+    global lsd, lsdlocal, bcs, bclocal, px, sg, wl, wedge, NrPixelsY, NrPixelsZ
+    global LatticeConstant, tempLsd, tempMaxRingRad, nDetectors, dark
+    global tx, ty, tz, lsdorig, RingsToShow, ringRads, hkls, ringNrs
+    global nFilesPerLayer, startDetNr, endDetNr, fileNumber
+    
+    if zarr is None:
+        print("Error: zarr package not installed. Install with: pip install zarr")
+        return False
+    
+    try:
+        zr = zarr.open(zip_path, 'r')
+    except Exception as e:
+        print(f"Error opening Zarr-ZIP '{zip_path}': {e}")
+        return False
+    
+    _zarr_zip_path = zip_path
+    _zarr_store = zr
+    zip_dir = os.path.dirname(os.path.abspath(zip_path))
+    
+    # --- Read data dimensions ---
+    if 'exchange/data' in zr:
+        data_shape = zr['exchange/data'].shape
+        nFramesPerFile = data_shape[0]
+        NrPixelsY = data_shape[1]
+        NrPixelsZ = data_shape[2]
+        NrPixelsYVar.set(str(NrPixelsY))
+        NrPixelsZVar.set(str(NrPixelsZ))
+        nFramesPerFileVar.set(str(nFramesPerFile))
+        nFramesMaxVar.set(nFramesPerFile)
+        print(f"  Data: {data_shape[0]} frames, {NrPixelsY}x{NrPixelsZ} pixels")
+    
+    # --- Read dark and compute mean ---
+    if 'exchange/dark' in zr:
+        dark_data = zr['exchange/dark'][:]
+        if dark_data.ndim == 3 and dark_data.shape[0] > 0 and np.any(dark_data):
+            _zarr_dark_mean = np.mean(dark_data, axis=0).astype(float)
+            var.set(1)  # Enable dark correction
+            print(f"  Dark: {dark_data.shape[0]} frames, auto-enabled")
+        else:
+            _zarr_dark_mean = None
+            print("  Dark: present but empty/zero, skipping")
+    else:
+        _zarr_dark_mean = None
+        print("  Dark: not found in zip")
+    
+    # --- Read analysis parameters ---
+    params_path = 'analysis/process/analysis_parameters'
+    if params_path in zr:
+        params = zr[params_path]
+        
+        if 'Lsd' in params:
+            lsd_val = float(params['Lsd'][0])
+            lsd = [lsd_val, lsd_val, lsd_val, lsd_val]
+            lsdlocal = lsd_val
+            lsdorig = lsd_val
+            tempLsd = lsd_val
+            lsdlocalvar.set(str(lsd_val))
+            print(f"  Lsd: {lsd_val}")
+        
+        if 'YCen' in params and 'ZCen' in params:
+            ycen = float(params['YCen'][0])
+            zcen = float(params['ZCen'][0])
+            bcs = [[ycen, zcen]]
+            bclocal = [ycen, zcen]
+            bclocalvar1.set(str(ycen))
+            bclocalvar2.set(str(zcen))
+            print(f"  BC: ({ycen}, {zcen})")
+        
+        if 'PixelSize' in params:
+            px = float(params['PixelSize'][0])
+            print(f"  px: {px}")
+        
+        if 'SpaceGroup' in params:
+            sg = int(params['SpaceGroup'][0])
+            print(f"  SpaceGroup: {sg}")
+        
+        if 'LatticeParameter' in params:
+            lp = params['LatticeParameter'][:]
+            for i in range(min(6, len(lp))):
+                LatticeConstant[i] = float(lp[i])
+            print(f"  LatticeParameter: {LatticeConstant}")
+        
+        if 'Wavelength' in params:
+            wl = float(params['Wavelength'][0])
+            print(f"  Wavelength: {wl}")
+        
+        if 'Wedge' in params:
+            wedge = float(params['Wedge'][0])
+        
+        if 'MaxRingRad' in params:
+            tempMaxRingRad = float(params['MaxRingRad'][0])
+        
+        if 'tx' in params:
+            tx = [float(params['tx'][0])]
+        if 'ty' in params:
+            ty = [float(params['ty'][0])]
+        if 'tz' in params:
+            tz = [float(params['tz'][0])]
+        
+        # Read ImTransOpt and apply flips/transpose
+        # 1 = HFlip, 2 = VFlip, 3 = Transpose
+        if 'ImTransOpt' in params:
+            imtrans = params['ImTransOpt'][:]
+            hflip.set(0)
+            vflip.set(0)
+            transpose.set(0)
+            for val in imtrans:
+                v = int(val)
+                if v == 1:
+                    hflip.set(1)
+                elif v == 2:
+                    vflip.set(1)
+                elif v == 3:
+                    transpose.set(1)
+            print(f"  ImTransOpt: {list(imtrans)} (HFlip={hflip.get()}, VFlip={vflip.get()}, Transpose={transpose.get()})")
+    
+    # --- Set up file/folder state ---
+    fileStem = os.path.splitext(os.path.splitext(os.path.basename(zip_path))[0])[0]
+    folder = zip_dir + '/'
+    firstFileNumber = 0
+    fileNumber = 0
+    padding = 0
+    nDetectors = 1
+    startDetNr = 1
+    endDetNr = 1
+    dark = [None]
+    firstFileNrVar.set('0')
+    framenrvar.set('0')
+    hdf5PathVar.set('exchange/data')
+    hdf5DarkPathVar.set('exchange/dark')
+    HeaderVar.set(0)
+    
+    # --- Clear old ring display before re-initializing ---
+    global DisplRingInfo, lines2
+    if DisplRingInfo is not None:
+        DisplRingInfo.destroy()
+        DisplRingInfo = None
+    if lines2 is not None:
+        for line2 in lines2:
+            try:
+                if line2:
+                    line2[0].remove()
+            except (NotImplementedError, IndexError, ValueError):
+                pass
+        lines2 = None
+    
+    # --- Generate HKLs and pre-init rings ---
+    _zarr_generate_hkls_and_init_rings(zip_path, zip_dir)
+    
+    if root_widget:
+        root_widget.wm_title(root_widget.wm_title().replace(' [scanning...]', '') + 
+                            f' [ZIP loaded: {os.path.basename(zip_path)}]')
+    print(f"Zarr-ZIP loaded: {zip_path}")
+    return True
+
+
+def _zarr_generate_hkls_and_init_rings(zip_path, zip_dir):
+    """Run GetHKLListZarr if hkls.csv doesn't exist, then pre-select rings from RingThresh."""
+    global ringRads, ringNrs, hkls, RingsToShow, lsdorig
+    
+    hkls_csv = os.path.join(zip_dir, 'hkls.csv')
+    
+    # Generate hkls.csv if missing
+    if not os.path.exists(hkls_csv):
+        if midas_config and midas_config.MIDAS_BIN_DIR:
+            hkl_bin = os.path.join(midas_config.MIDAS_BIN_DIR, 'GetHKLListZarr')
+        else:
+            hkl_bin = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/GetHKLListZarr')
+        
+        if os.path.exists(hkl_bin):
+            print(f"  Running GetHKLListZarr to generate hkls.csv...")
+            try:
+                subprocess.run([hkl_bin, zip_path, zip_dir], check=True, cwd=zip_dir)
+                print(f"  hkls.csv generated successfully")
+            except Exception as e:
+                print(f"  Warning: GetHKLListZarr failed: {e}")
+                return
+        else:
+            print(f"  Warning: GetHKLListZarr binary not found at {hkl_bin}")
+            return
+    else:
+        print(f"  hkls.csv already exists, reusing")
+    
+    # Read hkls.csv
+    if not os.path.exists(hkls_csv):
+        return
+    
+    with open(hkls_csv, 'r') as f:
+        f.readline()  # skip header
+        hklinfo = f.readlines()
+    
+    if not hklinfo:
+        return
+    
+    # Get RingThresh from zarr to know which rings to show
+    RingsToShow = []
+    ringRads = []
+    ringNrs = []
+    hkls = []
+    
+    zr = _zarr_store
+    ring_thresh_rings = []
+    if zr and 'analysis/process/analysis_parameters/RingThresh' in zr:
+        rt = zr['analysis/process/analysis_parameters/RingThresh'][:]
+        # RingThresh is Nx2: [ringNr, threshold]
+        if rt.ndim == 2:
+            ring_thresh_rings = [int(r[0]) for r in rt if r[0] > 0]
+        elif rt.ndim == 1 and len(rt) == 2 and rt[0] > 0:
+            ring_thresh_rings = [int(rt[0])]
+    
+    if ring_thresh_rings:
+        # Use the rings from RingThresh
+        for ringNr in ring_thresh_rings:
+            for line in hklinfo:
+                parts = line.split()
+                if len(parts) >= 11 and int(parts[4]) == ringNr:
+                    ringRads.append(float(parts[-1].strip()))
+                    ringNrs.append(ringNr)
+                    hkls.append([int(parts[0]), int(parts[1]), int(parts[2])])
+                    RingsToShow.append(ringNr)
+                    break
+        print(f"  Rings pre-initialized: {len(ringRads)} rings from RingThresh")
+    else:
+        # No RingThresh — select all rings from hkls.csv
+        seen = set()
+        for line in hklinfo:
+            parts = line.split()
+            if len(parts) >= 11:
+                rn = int(parts[4])
+                if rn not in seen:
+                    seen.add(rn)
+                    ringRads.append(float(parts[-1].strip()))
+                    ringNrs.append(rn)
+                    hkls.append([int(parts[0]), int(parts[1]), int(parts[2])])
+                    RingsToShow.append(rn)
+        print(f"  Rings pre-initialized: {len(ringRads)} rings (all from hkls.csv)")
+    
+    if not hasattr(lsdorig, '__float__'):
+        lsdorig = lsdlocal
+
+
 def _apply_auto_detect(root_widget):
     """Callback to apply auto-detected values to Tk variables. Called from main thread via root.after()."""
     global fileStem, folder, padding, darkStem, darkNum, dark, firstFileNumber, nFramesPerFile
     global nDetectors, startDetNr, endDetNr, nFilesPerLayer, _auto_detected
+    
+    # Zarr-ZIP takes priority
+    if _auto_zarr_zip:
+        _auto_detected = True
+        _load_zarr_zip(_auto_zarr_zip, root_widget)
+        return
+    
     if _auto_fileStem:
         _auto_detected = True
         fileStem = _auto_fileStem
@@ -188,6 +462,16 @@ def _start_auto_detect_thread(root_widget):
         else:
             _apply_auto_detect(root_widget)
     root_widget.after(200, _poll)
+
+
+def _load_zip_dialog():
+    """Open file dialog to select a .MIDAS.zip file and load it."""
+    zip_path = tkFileDialog.askopenfilename(
+        title="Select MIDAS Zarr-ZIP file",
+        filetypes=[("ZIP files", "*.zip"), ("All files", "*.*")]
+    )
+    if zip_path:
+        _load_zarr_zip(zip_path, root)
 
 def get_ring_colors(n):
 	return [next(_color_cycle) for _ in range(n)]
@@ -280,6 +564,50 @@ def getImage(fn, bytesToSkip, frame_idx=0, is_dark=False):
 	global Header, BytesPerPixel, NrPixelsY, NrPixelsZ
 	Header = HeaderVar.get()
 	BytesPerPixel = BytesVar.get()
+	
+	# Zarr-ZIP mode: read directly from the open zarr store
+	if _zarr_zip_path and _zarr_store is not None:
+		try:
+			if is_dark:
+				if _zarr_dark_mean is not None:
+					data = _zarr_dark_mean.copy()
+				else:
+					data = np.zeros((NrPixelsY, NrPixelsZ))
+			else:
+				dset = _zarr_store['exchange/data']
+				if frame_idx < dset.shape[0]:
+					data = dset[frame_idx, :, :].astype(float)
+				else:
+					print(f"Frame {frame_idx} out of range (max {dset.shape[0]-1})")
+					data = np.zeros((NrPixelsY, NrPixelsZ))
+			# Update pixel dims if needed
+			if data.shape[0] != NrPixelsY or data.shape[1] != NrPixelsZ:
+				NrPixelsY = data.shape[0]
+				NrPixelsZ = data.shape[1]
+				NrPixelsYVar.set(str(NrPixelsY))
+				NrPixelsZVar.set(str(NrPixelsZ))
+			data = data.astype(float)
+			# Default orientation correction for zarr data: hflip + vflip
+			data = data[::-1, ::-1].copy()
+			# Now apply user-selected transforms
+			if transpose.get() == 1:
+				data = np.transpose(data)
+			flip_h = hflip.get() == 1
+			flip_v = vflip.get() == 1
+			if flip_h and flip_v:
+				data = data[::-1, ::-1].copy()
+			elif flip_h:
+				data = data[::-1, :].copy()
+			elif flip_v:
+				data = data[:, ::-1].copy()
+			if applyMaskVar.get() and maskFNVar.get():
+				readMask()
+				if badPixelMask is not None and badPixelMask.shape == data.shape:
+					data[badPixelMask == 1] = 0
+			return data
+		except Exception as e:
+			print(f"Error reading from Zarr-ZIP: {e}")
+			return np.zeros((NrPixelsY, NrPixelsZ))
 	
 	# Compression handling
 	if fn.endswith('.bz2'):
@@ -540,8 +868,37 @@ def getImageSum(fn):
 
 
 def getDataB(geNum,bytesToSkip, frame_idx=0):
-	fn = getfn(fileStem,fileNumber,geNum)
 	global getMax
+	# In zarr-zip mode, read directly and handle dark internally
+	if _zarr_zip_path and _zarr_store is not None:
+		getMax = getMaxVar.get()
+		getSum = getSumVar.get()
+		if getMax:
+			data = _getImageMaxZarr()
+		elif getSum:
+			data = _getImageSumZarr()
+		else:
+			data = getImage('', 0, frame_idx=frame_idx)
+		doDark = var.get()
+		if doDark == 1 and _zarr_dark_mean is not None:
+			thisdark = _zarr_dark_mean.copy()
+			# Default orientation correction for zarr data: hflip + vflip
+			thisdark = thisdark[::-1, ::-1].copy()
+			# Apply user transforms
+			if transpose.get() == 1:
+				thisdark = np.transpose(thisdark)
+			flip_h = hflip.get() == 1
+			flip_v = vflip.get() == 1
+			if flip_h and flip_v:
+				thisdark = thisdark[::-1, ::-1].copy()
+			elif flip_h:
+				thisdark = thisdark[::-1, :].copy()
+			elif flip_v:
+				thisdark = thisdark[:, ::-1].copy()
+			return np.subtract(data, thisdark)
+		return data
+	
+	fn = getfn(fileStem,fileNumber,geNum)
 	getMax = getMaxVar.get()
 	getSum = getSumVar.get()
 	
@@ -568,6 +925,60 @@ def getDataB(geNum,bytesToSkip, frame_idx=0):
 	else:
 		corrected = data
 	return corrected
+
+def _getImageMaxZarr():
+	"""Compute pixel-wise max over zarr frames."""
+	nFramesToDo = nFramesMaxVar.get()
+	startFrameNr = maxStartFrameNrVar.get()
+	dset = _zarr_store['exchange/data']
+	end_idx = min(startFrameNr + nFramesToDo, dset.shape[0])
+	print(f"  Zarr max: frames {startFrameNr}..{end_idx-1}")
+	slab = dset[startFrameNr:end_idx, :, :]
+	dataMax = np.max(slab, axis=0).astype(float)
+	# Default orientation correction for zarr data: hflip + vflip
+	dataMax = dataMax[::-1, ::-1].copy()
+	if transpose.get() == 1:
+		dataMax = np.transpose(dataMax)
+	flip_h = hflip.get() == 1
+	flip_v = vflip.get() == 1
+	if flip_h and flip_v:
+		dataMax = dataMax[::-1, ::-1].copy()
+	elif flip_h:
+		dataMax = dataMax[::-1, :].copy()
+	elif flip_v:
+		dataMax = dataMax[:, ::-1].copy()
+	if applyMaskVar.get() and maskFNVar.get():
+		readMask()
+		if badPixelMask is not None and badPixelMask.shape == dataMax.shape:
+			dataMax[badPixelMask == 1] = 0
+	return dataMax
+
+def _getImageSumZarr():
+	"""Compute pixel-wise sum over zarr frames."""
+	nFramesToDo = nFramesMaxVar.get()
+	startFrameNr = maxStartFrameNrVar.get()
+	dset = _zarr_store['exchange/data']
+	end_idx = min(startFrameNr + nFramesToDo, dset.shape[0])
+	print(f"  Zarr sum: frames {startFrameNr}..{end_idx-1}")
+	slab = dset[startFrameNr:end_idx, :, :]
+	dataSum = np.sum(slab, axis=0).astype(float)
+	# Default orientation correction for zarr data: hflip + vflip
+	dataSum = dataSum[::-1, ::-1].copy()
+	if transpose.get() == 1:
+		dataSum = np.transpose(dataSum)
+	flip_h = hflip.get() == 1
+	flip_v = vflip.get() == 1
+	if flip_h and flip_v:
+		dataSum = dataSum[::-1, ::-1].copy()
+	elif flip_h:
+		dataSum = dataSum[::-1, :].copy()
+	elif flip_v:
+		dataSum = dataSum[:, ::-1].copy()
+	if applyMaskVar.get() and maskFNVar.get():
+		readMask()
+		if badPixelMask is not None and badPixelMask.shape == dataSum.shape:
+			dataSum[badPixelMask == 1] = 0
+	return dataSum
 
 def transforms(idx):
 	txr = tx[idx]*deg2rad
@@ -648,10 +1059,14 @@ def doRings():
 	plotYesNo = plotRingsVar.get()
 	if lines2 is not None:
 		for line2 in lines2:
-			line2.pop(0).remove()
+			try:
+				if line2:
+					line2[0].remove()
+			except (NotImplementedError, IndexError, ValueError):
+				pass
 		lines2 = None
 	if DisplRingInfo is not None:
-		DisplRingInfo.grid_forget()
+		DisplRingInfo.destroy()
 		DisplRingInfo = None
 	if plotYesNo == 1:
 		if ringRads is None:
@@ -1656,7 +2071,8 @@ fileFrame.grid(row=0, column=0, sticky="nsew", padx=2, pady=2)
 
 Tk.Button(fileFrame, text='FirstFile', command=firstFileSelector, font=default_font).grid(row=0, column=0)
 Tk.Button(fileFrame, text='DarkFile', command=darkFileSelector, font=default_font).grid(row=0, column=1)
-Tk.Checkbutton(fileFrame, text="DarkCorr", variable=var, font=default_font).grid(row=0, column=2, columnspan=2)
+Tk.Checkbutton(fileFrame, text="DarkCorr", variable=var, font=default_font).grid(row=0, column=2)
+Tk.Button(fileFrame, text='Load ZIP', command=_load_zip_dialog, font=default_font, bg='lightyellow').grid(row=0, column=3)
 
 Tk.Label(fileFrame, text="FileNr", font=default_font).grid(row=1, column=0)
 Tk.Entry(fileFrame, textvariable=firstFileNrVar, width=5, font=default_font).grid(row=1, column=1)

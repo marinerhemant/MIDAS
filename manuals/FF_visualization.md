@@ -11,7 +11,7 @@ The **MIDAS FF-HEDM Desktop Image Viewer** (`ff_asym.py`) is a lightweight Tkint
 
 **Key Capabilities:**
 
-- View raw detector images from **binary (GE, custom)**, **HDF5**, **TIFF**, and **bz2-compressed** files
+- View raw detector images from **binary (GE, custom)**, **HDF5**, **TIFF**, **bz2-compressed**, and **Zarr-ZIP (`.MIDAS.zip`)** files
 - **Dark-field correction** with flexible HDF5 dataset path selection
 - **Bad pixel masking** with an on/off toggle
 - **Frame-by-frame navigation** through multi-frame files
@@ -28,6 +28,7 @@ graph TD
         H5["HDF5 Files (.h5, .hdf, .hdf5, .nxs)"]
         TIF["TIFF Files (.tif, .tiff)"]
         BZ2["Compressed (.bz2)"]
+        ZIP["Zarr-ZIP (.MIDAS.zip)"]
         MASK["Mask File (int8 binary)"]
         DARK["Dark Image File"]
     end
@@ -38,6 +39,7 @@ graph TD
         H5 --> GI
         TIF --> GI
         BZ2 --> GI
+        ZIP --> GI
         RM["readMask()"]
         MASK --> RM
         RM --> GI
@@ -76,6 +78,7 @@ graph TD
 | tkinter | GUI framework | **Yes** (bundled with Python) |
 | h5py | HDF5 file reading | For HDF5 files |
 | tifffile | TIFF file reading | For TIFF files |
+| zarr | Zarr-ZIP file reading | For `.MIDAS.zip` files |
 | bz2, shutil | Compression handling | **Yes** (stdlib) |
 
 ### 2.2. Data Requirements
@@ -87,6 +90,7 @@ The viewer operates on **single detector files** containing one or more frames o
 | Binary (GE) | `.ge1`–`.ge5`, custom | Fixed-size binary with header. Set `HeadSize` and `Bytes/Px`. |
 | HDF5 | `.h5`, `.hdf`, `.hdf5`, `.nxs` | 2D `(Y, X)` or 3D `(frames, Y, X)` datasets. Dataset path configurable. |
 | TIFF | `.tif`, `.tiff` | Single or multi-frame TIFF. Requires `tifffile`. |
+| Zarr-ZIP | `.MIDAS.zip` | MIDAS archive produced by `ffGenerateZip.py`. Contains `exchange/data`, `exchange/dark`, and analysis parameters. |
 | Compressed | `.bz2` | Any of the above, bz2-compressed. Decompressed transparently to a temp file. |
 
 **Bad Pixel Mask:** A flat binary file of `int8` values with dimensions `NrPixelsVert × NrPixelsHor`. Values: `0` = good pixel, `1` = bad pixel.
@@ -147,19 +151,69 @@ ff_Holder3_50um/                    ← directory name = file stem
 > [!NOTE]
 > If auto-detection fails (e.g., the directory name does not match the file naming pattern), the console prints a warning and all fields remain empty. You can then use the **FirstFile** button to select files manually.
 
-### 3.3. Loading Your First Image (Manual)
+### 3.3. Zarr-ZIP Auto-Detection and Loading
+
+The viewer can open `.MIDAS.zip` archives produced by `ffGenerateZip.py`. These files contain the raw data, dark frames, and all analysis parameters in a single Zarr-ZIP archive.
+
+**Auto-detection:** If a `*.MIDAS.zip` file exists in the current working directory, it takes priority over file-stem detection. The viewer automatically:
+
+1. Opens the archive and reads `exchange/data` dimensions.
+2. Reads `exchange/dark` and computes the mean dark frame (enables dark correction automatically).
+3. Extracts detector and material parameters from `analysis/process/analysis_parameters/`.
+4. Reads `ImTransOpt` and sets the HFlip/VFlip/Transpose checkbuttons accordingly (`1`=HFlip, `2`=VFlip, `3`=Transpose).
+5. Runs `GetHKLListZarr` to generate `hkls.csv` if it doesn't already exist next to the zip file.
+6. Pre-initializes ring overlays from the `RingThresh` entries stored in the archive.
+
+**Console output on startup:**
+
+```
+Auto-detect: found Zarr-ZIP 'sample.MIDAS.zip'
+  Data: 1440 frames, 2048x2048 pixels
+  Dark: 10 frames, auto-enabled
+  Lsd: 1000000.0
+  BC: (1024.5, 1024.5)
+  px: 200.0
+  SpaceGroup: 225
+  LatticeParameter: [5.411 5.411 5.411 90. 90. 90.]
+  Wavelength: 0.172979
+  ImTransOpt: [0] (HFlip=0, VFlip=0, Transpose=0)
+  Running GetHKLListZarr to generate hkls.csv...
+  hkls.csv generated successfully
+  Rings pre-initialized: 8 rings from RingThresh
+Zarr-ZIP loaded: /path/to/sample.MIDAS.zip
+```
+
+| Auto-loaded parameter | Zarr path |
+|---|---|
+| Detector distance (Lsd) | `analysis/process/analysis_parameters/Lsd` |
+| Beam center Y | `analysis/process/analysis_parameters/YCen` |
+| Beam center Z | `analysis/process/analysis_parameters/ZCen` |
+| Pixel size | `analysis/process/analysis_parameters/PixelSize` |
+| Space group | `analysis/process/analysis_parameters/SpaceGroup` |
+| Lattice parameters | `analysis/process/analysis_parameters/LatticeParameter` |
+| Wavelength | `analysis/process/analysis_parameters/Wavelength` |
+| Image transforms | `analysis/process/analysis_parameters/ImTransOpt` |
+| Ring thresholds | `analysis/process/analysis_parameters/RingThresh` |
+| Tilts (tx, ty, tz) | `analysis/process/analysis_parameters/tx`, `ty`, `tz` |
+
+**Manual loading:** You can also load a zip file at any time using the **Load ZIP** button in the File I/O panel. This opens a file dialog filtered to `*.zip` files.
+
+> [!TIP]
+> When loading a new zip file mid-session, any previously displayed ring overlays are automatically cleared before the new rings are shown.
+
+### 3.4. Loading Your First Image (Manual)
 
 If auto-detection populated the fields, you can click **Load Single** immediately. Otherwise:
 
 1. Click **FirstFile** → select a data file (binary, HDF5, TIFF, or bz2).
-2. For HDF5 files, set the **H5 Data** path (default: `/exchange/data`). Click **"..."** to browse the internal HDF5 structure.
+2. For HDF5 files, set the **H5 Data** path (default: `/exchange/data`). Click **Browse** to browse the internal HDF5 structure.
 3. Set **NrPixelsHor** and **NrPixelsVert** to match your detector dimensions.
 4. For binary files, set **HeadSize** (e.g., `8192` for GE files) and **Bytes/Px** (`2` for uint16, `4` for int32).
 5. Click **Load Single** to display the image.
 
 ```mermaid
 flowchart LR
-    A["Launch from data dir"] --> AUTO{"Auto-detect\nsucceeded?"}
+    A["Launch from data dir"] --> AUTO{"Auto-detect<br/>succeeded?"}
     AUTO --> |"Yes"| G["Click Load Single"]
     AUTO --> |"No"| B{"Select FirstFile"}
     B --> |"HDF5"| C["Set H5 Data path"]
@@ -188,11 +242,12 @@ The interface is organized into four `LabelFrame` control panels, each grouping 
 | **FirstFileNr** | First file number in a numbered file series. |
 | **nFrames/File** | Number of frames per file (used for frame navigation). |
 | **H5 Data** | HDF5 dataset path for the data images (e.g., `/exchange/data`). |
-| **"..."** (Data) | Browse HDF5 file to select a dataset path interactively. |
+| **Browse** (Data) | Browse HDF5 file to select a dataset path interactively. |
 | **H5 Dark** | HDF5 dataset path for the dark images (e.g., `/exchange/dark`). |
-| **"..."** (Dark) | Browse HDF5 file to select a dark dataset path interactively. |
+| **Browse** (Dark) | Browse HDF5 file to select a dark dataset path interactively. |
 | **MaskFile** | Opens a file dialog to select a bad pixel mask file. |
 | **ApplyMask** | Checkbox to enable/disable bad pixel masking. |
+| **Load ZIP** | Opens a file dialog to load a `.MIDAS.zip` Zarr archive, auto-populating all parameters. |
 
 #### 4.1.1. HDF5 Dark Correction: Special Cases
 
@@ -294,7 +349,7 @@ Set **nFrames** and **StartFrame** to define the frame range, then check the des
 
 ### 5.4. HDF5 Dataset Path Browser
 
-For HDF5 files, the internal dataset structure can be complex. The **"..."** buttons next to H5 Data and H5 Dark fields open an interactive tree browser that lists all groups and datasets within the selected HDF5 file, allowing you to pick the correct dataset path.
+For HDF5 files, the internal dataset structure can be complex. The **Browse** buttons next to H5 Data and H5 Dark fields open an interactive tree browser that lists all groups and datasets within the selected HDF5 file, allowing you to pick the correct dataset path.
 
 ### 5.5. Ring Overlay
 
@@ -313,7 +368,7 @@ flowchart TD
     START["Launch ff_asym.py"] --> LOAD["Select FirstFile (Binary/HDF5/TIFF/bz2)"]
     
     LOAD --> FORMAT{"File Format?"}
-    FORMAT --> |"HDF5"| H5CFG["Configure H5 Data path\n(browse with '...')"]
+    FORMAT --> |"HDF5"| H5CFG["Configure H5 Data path<br/>(click Browse)"]
     FORMAT --> |"Binary"| BINCFG["Set HeadSize, Bytes/Px"]
     FORMAT --> |"TIFF"| TIFCFG["No extra config"]
     FORMAT --> |"bz2"| BZ2["Auto-decompress → recurse"]
@@ -324,15 +379,15 @@ flowchart TD
     BZ2 --> FORMAT
     
     IMGCFG["Set NrPixels, Flip/Transpose"] --> DARKQ{"Dark Correction?"}
-    DARKQ --> |"Yes"| DARKSEL["Select DarkFile\nSet H5 Dark path\nCheck DarkCorr"]
+    DARKQ --> |"Yes"| DARKSEL["Select DarkFile<br/>Set H5 Dark path<br/>Check DarkCorr"]
     DARKQ --> |"No"| MASKQ
     DARKSEL --> MASKQ
     
-    MASKQ{"Apply Mask?"} --> |"Yes"| MASKCFG["Select MaskFile\nCheck ApplyMask"]
+    MASKQ{"Apply Mask?"} --> |"Yes"| MASKCFG["Select MaskFile<br/>Check ApplyMask"]
     MASKQ --> |"No"| DISPLAY
     MASKCFG --> DISPLAY
     
-    DISPLAY["Click Load Single\nor use +/- buttons"] --> PROC{"Processing Mode?"}
+    DISPLAY["Click Load Single<br/>or use +/- buttons"] --> PROC{"Processing Mode?"}
     PROC --> |"Single Frame"| VIEW["View Frame"]
     PROC --> |"MaxOverFrames"| MAXPROC["Compute Max Projection"]
     PROC --> |"SumOverFrames"| SUMPROC["Compute Sum Projection"]
@@ -359,7 +414,7 @@ flowchart TD
     LOGVIEW --> RINGS
     LINVIEW --> RINGS
     
-    RINGS{"Ring Overlay?"} --> |"Yes"| RINGCFG["Configure material\nSelect rings\nCheck PlotRings"]
+    RINGS{"Ring Overlay?"} --> |"Yes"| RINGCFG["Configure material<br/>Select rings<br/>Check PlotRings"]
     RINGS --> |"No"| DONE["Rendered Image"]
     RINGCFG --> DONE
 ```
@@ -371,7 +426,7 @@ flowchart TD
 | Problem | Solution |
 | :--- | :--- |
 | **Blank/white image** | Check `NrPixelsHor`/`NrPixelsVert` match your detector. For binary files, verify `HeadSize` and `Bytes/Px`. |
-| **HDF5 dataset not found** | Use the **"..."** button to browse the internal structure. Ensure the path matches (e.g., `/exchange/data`). |
+| **HDF5 dataset not found** | Use the **Browse** button to browse the internal structure. Ensure the path matches (e.g., `/exchange/data`). |
 | **Image appears rotated** | Toggle **HFlip**, **VFlip**, or **Transp** to match your detector orientation. |
 | **Mask not applying** | Ensure **ApplyMask** checkbox is checked and the mask file dimensions match `NrPixelsVert × NrPixelsHor`. |
 | **Frame navigation not working** | Check that `nFrames/File` is set correctly. For HDF5, the frame count is determined by the dataset's first dimension. |
