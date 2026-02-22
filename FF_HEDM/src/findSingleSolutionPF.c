@@ -7,7 +7,6 @@
 #include <omp.h>
 #include <stdarg.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +21,7 @@
 #define MAX_N_SOLUTIONS_PER_VOX 1000000
 #define MAX_N_SPOTS_PER_GRAIN 5000
 #define MAX_N_SPOTS_TOTAL 100000000
+#define INVALID_VOX ((size_t)-1)
 
 inline void OrientMat2Quat(double OrientMat[9], double Quat[4]);
 inline double GetMisOrientation(double quat1[4], double quat2[4],
@@ -66,10 +66,13 @@ int main(int argc, char *argv[]) {
   double start_time = omp_get_wtime();
   printf("\n\n\t\tFinding Single Solution in PF-HEDM.\n\n");
   int returncode;
-  if (argc != 8) {
-    printf("Supply foldername spaceGroup, maxAng, NumberScans, nCPUs, tolOme, "
-           "tolEta as arguments: ie %s foldername sgNum maxAngle nScans nCPUs "
-           "tolOme tolEta\n"
+  if (argc < 8 || argc > 10) {
+    printf("Usage: %s foldername sgNum maxAngle nScans nCPUs tolOme tolEta "
+           "[normalizeSino] [absTransform]\n"
+           "  normalizeSino:  0=off, 1=on (default: 1)\n"
+           "  absTransform:   0=off, 1=on (default: 1)\n"
+           "    When on, applies exp(-I/Imax) so absorption CT codes\n"
+           "    can recover diffraction intensity via -ln().\n"
            "\nThe indexing results need to be in folderName/Output\n",
            argv[0]);
     return 1;
@@ -82,6 +85,8 @@ int main(int argc, char *argv[]) {
   int numProcs = atoi(argv[5]);
   double tolOme = atof(argv[6]);
   double tolEta = atof(argv[7]);
+  int normalizeSino = (argc >= 9) ? atoi(argv[8]) : 1;
+  int absTransform = (argc >= 10) ? atoi(argv[9]) : 1;
   size_t *allKeyArr, *uniqueKeyArr;
   allKeyArr = calloc(nScans * nScans * 4, sizeof(*allKeyArr));
   uniqueKeyArr = calloc(nScans * nScans * 5, sizeof(*uniqueKeyArr));
@@ -105,23 +110,25 @@ int main(int argc, char *argv[]) {
         printf("Could not open key file %s. Behavior undefined.\n", keyFN);
       if (valsF == NULL)
         printf("Could not open vals file %s. Behavior undefined.\n", valsFN);
-      allKeyArr[voxNr * 4 + 0] = -1;
+      allKeyArr[voxNr * 4 + 0] = INVALID_VOX;
       size_t outarr[5] = {0, 0, 0, 0, 0};
-      int rc =
-          pwrite(ib, outarr, 5 * sizeof(size_t), 5 * sizeof(size_t) * voxNr);
-      rc = close(ib);
+      if (pwrite(ib, outarr, 5 * sizeof(size_t), 5 * sizeof(size_t) * voxNr) <
+          0)
+        perror("pwrite");
+      close(ib);
     } else {
       fseek(keyF, 0L, SEEK_END);
       size_t szt = ftell(keyF);
       rewind(keyF);
       if (szt == 0) {
-        allKeyArr[voxNr * 4 + 0] = -1;
+        allKeyArr[voxNr * 4 + 0] = INVALID_VOX;
         fclose(keyF);
         fclose(valsF);
         size_t outarr[5] = {0, 0, 0, 0, 0};
-        int rc =
-            pwrite(ib, outarr, 5 * sizeof(size_t), 5 * sizeof(size_t) * voxNr);
-        rc = close(ib);
+        if (pwrite(ib, outarr, 5 * sizeof(size_t), 5 * sizeof(size_t) * voxNr) <
+            0)
+          perror("pwrite");
+        close(ib);
       } else {
         size_t *keys;
         keys = calloc(MAX_N_SOLUTIONS_PER_VOX * 4, sizeof(*keys));
@@ -144,9 +151,8 @@ int main(int argc, char *argv[]) {
         for (i = 0; i < nIDs; i++) {
           confIAArr[i * 2 + 0] = tmpArr[i * 16 + 15] / tmpArr[i * 16 + 14];
           confIAArr[i * 2 + 1] = tmpArr[i * 16 + 1];
-          for (j = 0; j < nIDs; j++)
-            for (k = 0; k < 9; k++)
-              OMArr[j * 9 + k] = tmpArr[j * 16 + 2 + k];
+          for (k = 0; k < 9; k++)
+            OMArr[i * 9 + k] = tmpArr[i * 16 + 2 + k];
         }
         bool *markArr;
         markArr = malloc(nIDs * sizeof(*markArr));
@@ -166,16 +172,17 @@ int main(int argc, char *argv[]) {
           bestRow = i;
         }
         if (bestRow == -1) {
-          allKeyArr[voxNr * 4 + 0] = -1;
+          allKeyArr[voxNr * 4 + 0] = INVALID_VOX;
           free(confIAArr);
           free(keys);
           free(markArr);
           free(tmpArr);
           free(OMArr);
           size_t outarr[5] = {0, 0, 0, 0, 0};
-          int rc = pwrite(ib, outarr, 5 * sizeof(size_t),
-                          5 * sizeof(size_t) * voxNr);
-          rc = close(ib);
+          if (pwrite(ib, outarr, 5 * sizeof(size_t),
+                     5 * sizeof(size_t) * voxNr) < 0)
+            perror("pwrite");
+          close(ib);
         } else {
           for (i = 0; i < nIDs; i++)
             markArr[i] = false;
@@ -203,7 +210,7 @@ int main(int argc, char *argv[]) {
               for (k = 0; k < 9; k++)
                 OMInside[k] = OMArr[j * 9 + k];
               OrientMat2Quat(OMInside, Quat2);
-              Angle = GetMisOrientation(Quat1, Quat2, Axis, &ang, sgNr);
+              GetMisOrientation(Quat1, Quat2, Axis, &ang, sgNr);
               conIn = confIAArr[j * 2 + 0];
               iaIn = confIAArr[j * 2 + 1];
               if (ang < maxAng) {
@@ -231,9 +238,10 @@ int main(int argc, char *argv[]) {
           size_t outarr[5] = {voxNr, keys[bestRow * 4 + 0],
                               keys[bestRow * 4 + 1], keys[bestRow * 4 + 2],
                               keys[bestRow * 4 + 3]};
-          int rc = pwrite(ib, outarr, 5 * sizeof(size_t),
-                          5 * sizeof(size_t) * voxNr);
-          rc = close(ib);
+          if (pwrite(ib, outarr, 5 * sizeof(size_t),
+                     5 * sizeof(size_t) * voxNr) < 0)
+            perror("pwrite");
+          close(ib);
           sprintf(outKeyFN, "%s/UniqueIndexKeyOrientAll_voxNr_%0*d.txt",
                   folderName, 6, voxNr);
           outKeyF = fopen(outKeyFN, "w");
@@ -267,13 +275,13 @@ int main(int argc, char *argv[]) {
   bool *markArr2;
   markArr2 = malloc(nScans * nScans * sizeof(*markArr2));
   for (i = 0; i < nScans * nScans; i++) {
-    if (allKeyArr[i * 4 + 0] == -1)
+    if (allKeyArr[i * 4 + 0] == INVALID_VOX)
       markArr2[i] = true;
     else
       markArr2[i] = false;
   }
-  double OMThis[9], OMInside[9], Quat1[4], Quat2[4], Angle, Axis[3], ang2,
-      fracInside, bestFrac;
+  double OMThis[9], OMInside[9], Quat1[4], Quat2[4], Axis[3], ang2, fracInside,
+      bestFrac;
   int bestOrientationRowNr;
   double *uniqueOrientArr;
   uniqueOrientArr = calloc(nScans * nScans * 9, sizeof(*uniqueOrientArr));
@@ -293,7 +301,7 @@ int main(int argc, char *argv[]) {
       for (k = 0; k < 9; k++)
         OMInside[k] = allOrientationsArr[j * 10 + k];
       OrientMat2Quat(OMInside, Quat2);
-      Angle = GetMisOrientation(Quat1, Quat2, Axis, &ang2, sgNr);
+      GetMisOrientation(Quat1, Quat2, Axis, &ang2, sgNr);
       if (ang2 < maxAng) {
         if (bestFrac < fracInside) {
           bestFrac = fracInside;
@@ -340,7 +348,12 @@ int main(int argc, char *argv[]) {
   sprintf(filename, "%s/Spots.bin", originalFolder);
   char cmmd[4096];
   sprintf(cmmd, "cp %s /dev/shm/", filename);
-  system(cmmd);
+  int sys_rc = system(cmmd);
+  if (sys_rc != 0) {
+    fprintf(stderr, "Failed to copy %s to /dev/shm (rc=%d)\n", filename,
+            sys_rc);
+    return 1;
+  }
   sprintf(filename, "/dev/shm/Spots.bin");
   int rc;
   fd = open(filename, O_RDONLY);
@@ -378,6 +391,11 @@ int main(int argc, char *argv[]) {
             (int)thisVoxNr);
     FILE *IDF;
     IDF = fopen(IDsFNThis, "rb");
+    if (IDF == NULL) {
+      fprintf(stderr, "Could not open IDs file %s: %s\n", IDsFNThis,
+              strerror(errno));
+      continue;
+    }
     fseek(IDF, startPos, SEEK_SET);
     int *IDArrThis;
     IDArrThis = malloc(nSpots * sizeof(*IDArrThis));
@@ -455,6 +473,7 @@ int main(int argc, char *argv[]) {
   allSpotIDs = realloc(allSpotIDs, nAllSpots * sizeof(*allSpotIDs));
   printf("nAllSpotsGrainsUnique: %zu\n", nAllSpots);
   free(uniqueKeyArr);
+  free(IsNotUniqueSpot);
   char fnUniqueSpots[2048];
   sprintf(fnUniqueSpots, "%s/UniqueOrientationSpots.csv", originalFolder);
   FILE *fUniqueSpots;
@@ -517,23 +536,23 @@ int main(int argc, char *argv[]) {
   }
   free(allSpotIDs);
   free(allSpotIDsT);
+  munmap(AllSpots, size);
+  close(fd);
+  unlink("/dev/shm/Spots.bin");
 
+  // --- Compute omeArr (average angle per HKL) from raw data ---
   double AvAngle, maxIntThis;
   int nAngles;
   size_t locThis;
+  size_t sinoSize = (size_t)nUniques * maxNHKLs * nScans;
   for (i = 0; i < nUniques; i++) {
     for (j = 0; j < maxNHKLs; j++) {
       AvAngle = 0;
-      maxIntThis = maxIntArr[i * maxNHKLs + j];
       nAngles = 0;
       for (k = 0; k < nScans; k++) {
-        // Normalize each sino to the maxInt, take -ve and then exp
         locThis = i * maxNHKLs * nScans + j * nScans + k;
         if (sinoArr[locThis] > 0) {
-          sinoArr[locThis] /= maxIntThis;
-          // sinoArr[locThis] *= -1;
-          // sinoArr[locThis] = exp(sinoArr[locThis]);
-          AvAngle += allOmeArr[i * maxNHKLs * nScans + j * nScans + k];
+          AvAngle += allOmeArr[locThis];
           nAngles++;
         }
       }
@@ -542,6 +561,30 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  // --- Make a raw copy before any transforms ---
+  double *rawSinoArr = malloc(sinoSize * sizeof(double));
+  memcpy(rawSinoArr, sinoArr, sinoSize * sizeof(double));
+
+  // --- Apply user-requested transforms to sinoArr ---
+  for (i = 0; i < nUniques; i++) {
+    for (j = 0; j < maxNHKLs; j++) {
+      maxIntThis = maxIntArr[i * maxNHKLs + j];
+      for (k = 0; k < nScans; k++) {
+        locThis = i * maxNHKLs * nScans + j * nScans + k;
+        if (sinoArr[locThis] > 0) {
+          if (normalizeSino && maxIntThis > 0)
+            sinoArr[locThis] /= maxIntThis;
+          if (absTransform) {
+            sinoArr[locThis] *= -1;
+            sinoArr[locThis] = exp(sinoArr[locThis]);
+          }
+        }
+      }
+    }
+  }
+
+  // --- Sort all sinograms by omega ---
+  // Helper: sort a single grain's HKL rows by omega in the given array
   for (i = 0; i < nUniques; i++) {
     struct SinoSortData *st;
     st = malloc(maxNHKLs * sizeof(*st));
@@ -550,7 +593,7 @@ int main(int argc, char *argv[]) {
       if (omeArr[i * maxNHKLs + j] == -10000.0)
         break;
       st[j].angle = omeArr[i * maxNHKLs + j];
-      st[j].intensities = calloc(nScans, sizeof(st[j].intensities));
+      st[j].intensities = calloc(nScans, sizeof(double));
       for (k = 0; k < nScans; k++)
         st[j].intensities[k] = sinoArr[i * maxNHKLs * nScans + j * nScans + k];
       nSpThis++;
@@ -565,6 +608,7 @@ int main(int argc, char *argv[]) {
     free(st);
   }
 
+  // --- Write main output files (user-requested combination) ---
   char sinoFN[2048], omeFN[2048], HKLsFN[2048];
   sprintf(sinoFN, "%s/sinos_%d_%d_%d.bin", originalFolder, nUniques, maxNHKLs,
           nScans);
@@ -574,15 +618,85 @@ int main(int argc, char *argv[]) {
   sinoF = fopen(sinoFN, "wb");
   omeF = fopen(omeFN, "wb");
   HKLsF = fopen(HKLsFN, "wb");
-  fwrite(sinoArr, nUniques * maxNHKLs * nScans * sizeof(*sinoArr), 1, sinoF);
+  fwrite(sinoArr, sinoSize * sizeof(double), 1, sinoF);
   fwrite(omeArr, nUniques * maxNHKLs * sizeof(*omeArr), 1, omeF);
   fwrite(nrHKLsFilled, nUniques * sizeof(*nrHKLsFilled), 1, HKLsF);
   fclose(sinoF);
   fclose(omeF);
   fclose(HKLsF);
+
+  // --- Generate and save all 4 combinations for visualization ---
+  // Combination labels: raw, norm, abs, normabs
+  const char *comboNames[4] = {"raw", "norm", "abs", "normabs"};
+  int comboNorm[4] = {0, 1, 0, 1};
+  int comboAbs[4] = {0, 0, 1, 1};
+
+  for (int combo = 0; combo < 4; combo++) {
+    double *comboArr = malloc(sinoSize * sizeof(double));
+    memcpy(comboArr, rawSinoArr, sinoSize * sizeof(double));
+
+    // Apply this combo's transforms
+    for (i = 0; i < nUniques; i++) {
+      for (j = 0; j < maxNHKLs; j++) {
+        maxIntThis = maxIntArr[i * maxNHKLs + j];
+        for (k = 0; k < nScans; k++) {
+          locThis = i * maxNHKLs * nScans + j * nScans + k;
+          if (comboArr[locThis] > 0) {
+            if (comboNorm[combo] && maxIntThis > 0)
+              comboArr[locThis] /= maxIntThis;
+            if (comboAbs[combo]) {
+              comboArr[locThis] *= -1;
+              comboArr[locThis] = exp(comboArr[locThis]);
+            }
+          }
+        }
+      }
+    }
+
+    // Sort by omega (using the already-sorted omeArr order)
+    // Re-sort using same approach, using the raw omeArr copy
+    double *comboOmeArr = calloc(nUniques * maxNHKLs, sizeof(double));
+    memcpy(comboOmeArr, omeArr, nUniques * maxNHKLs * sizeof(double));
+
+    for (i = 0; i < nUniques; i++) {
+      struct SinoSortData *st = malloc(maxNHKLs * sizeof(*st));
+      int nSpThis = 0;
+      for (j = 0; j < maxNHKLs; j++) {
+        if (comboOmeArr[i * maxNHKLs + j] == -10000.0)
+          break;
+        st[j].angle = comboOmeArr[i * maxNHKLs + j];
+        st[j].intensities = calloc(nScans, sizeof(double));
+        for (k = 0; k < nScans; k++)
+          st[j].intensities[k] =
+              comboArr[i * maxNHKLs * nScans + j * nScans + k];
+        nSpThis++;
+      }
+      qsort(st, nSpThis, sizeof(struct SinoSortData), cmpfunc);
+      for (j = 0; j < nSpThis; j++) {
+        for (k = 0; k < nScans; k++)
+          comboArr[i * maxNHKLs * nScans + j * nScans + k] =
+              st[j].intensities[k];
+        free(st[j].intensities);
+      }
+      free(st);
+    }
+    free(comboOmeArr);
+
+    char comboFN[2048];
+    sprintf(comboFN, "%s/sinos_%s_%d_%d_%d.bin", originalFolder,
+            comboNames[combo], nUniques, maxNHKLs, nScans);
+    FILE *comboF = fopen(comboFN, "wb");
+    fwrite(comboArr, sinoSize * sizeof(double), 1, comboF);
+    fclose(comboF);
+    free(comboArr);
+  }
+  printf("Saved all 4 sinogram combinations.\n");
+
+  free(rawSinoArr);
   free(sinoArr);
   free(omeArr);
   free(allOmeArr);
   free(maxIntArr);
   free(nrHKLsFilled);
+  free(uniqueOrientArr);
 }

@@ -21,6 +21,50 @@ from numba import jit
 import traceback
 import re
 
+
+def save_sinogram_variants(topdir, nGrs, maxNHKLs, nScans, grainSpots, omegas):
+    """Save 4 sinogram TIF files per grain for each processing combination.
+
+    Reads the 4 sinogram combinations saved by findSingleSolutionPF
+    (raw, norm, abs, normabs) and saves each grain's sinogram as a
+    separate TIF, preserving the raw double-precision intensity values.
+
+    Output files in Sinos/:
+        sino_raw_grNr_NNNN.tif       — raw intensity
+        sino_norm_grNr_NNNN.tif      — normalized (I/Imax)
+        sino_abs_grNr_NNNN.tif       — exp(-I)
+        sino_normabs_grNr_NNNN.tif   — exp(-I/Imax)
+    """
+    combo_labels = ['raw', 'norm', 'abs', 'normabs']
+
+    # Load all 4 combo arrays
+    combo_data = {}
+    for label in combo_labels:
+        fns = glob.glob(os.path.join(topdir, f'sinos_{label}_*.bin'))
+        if not fns:
+            logging.getLogger('pf_midas').warning(
+                f"Sinogram combo file sinos_{label}_*.bin not found, skipping variant saves.")
+            return
+        fn = fns[0]
+        combo_data[label] = np.fromfile(fn, dtype=np.double,
+                                        count=nGrs * maxNHKLs * nScans
+                                        ).reshape((nGrs, maxNHKLs, nScans))
+
+    os.makedirs(os.path.join(topdir, 'Sinos'), exist_ok=True)
+
+    for grNr in range(nGrs):
+        nSp = grainSpots[grNr]
+        if nSp <= 0:
+            continue
+        grStr = str(grNr).zfill(4)
+        for label in combo_labels:
+            sino = np.transpose(combo_data[label][grNr, :nSp, :])  # (nScans, nSp)
+            Image.fromarray(sino).save(
+                os.path.join(topdir, f'Sinos/sino_{label}_grNr_{grStr}.tif'))
+
+    logging.getLogger('pf_midas').info(
+        f"Saved 4 sinogram variants for {nGrs} grains to Sinos/")
+
 # Set paths dynamically using script location
 def get_installation_dir():
     """Get the installation directory from the script's location."""
@@ -1293,6 +1337,9 @@ def main():
                 # Create directories
                 os.makedirs('Sinos', exist_ok=True)
                 os.makedirs('Thetas', exist_ok=True)
+                
+                # Save 4 sinogram variant TIFs per grain (raw, norm, abs, normabs)
+                save_sinogram_variants(topdir, nGrs, maxNHKLs, nScans, grainSpots, omegas)
                 
                 # Reconstruct tomography
                 logger.info(f"Reconstructing tomography for {nGrs} grains")
