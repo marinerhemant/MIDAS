@@ -238,14 +238,14 @@ A high-confidence NF-HEDM reconstruction requires iterating between parameter re
 
 ```mermaid
 graph TD
-    A["Initial Calibration\n(NF_calibration.md)"] --> B["Update Parameter File\nwith Lsd, BC values"]
-    B --> C["Single-Point Optimization\n(2-3 iterations)"]
+    A["Initial Calibration<br>(NF_calibration.md)"] --> B["Update Parameter File<br>with Lsd, BC values"]
+    B --> C["Single-Point Optimization<br>(2-3 iterations)"]
     C --> D["Full Reconstruction"]
-    D --> E["Inspect .mic in GUI\n(LoadMic → .map file)"]
-    E --> F["Select 5-10 GridPoints\nfrom high-confidence grains"]
-    F --> G["Multi-Point Optimization\n(2-3 iterations)"]
+    D --> E["Inspect .mic in GUI<br>(LoadMic → .map file)"]
+    E --> F["Select 5-10 GridPoints<br>from high-confidence grains"]
+    F --> G["Multi-Point Optimization<br>(2-3 iterations)"]
     G --> H["Full Reconstruction"]
-    H --> I{"Confidence\nacceptable?"}
+    H --> I{"Confidence<br>acceptable?"}
     I -->|No| G
     I -->|Yes| J["Done — Final .mic"]
 ```
