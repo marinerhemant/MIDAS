@@ -1,37 +1,115 @@
-# MIDAS Utilities
+# utils/ — Python Utilities for MIDAS
 
-Collection of utilites to pre-post-process HEDM data.
+This directory contains Python scripts and tools used across the MIDAS analysis pipeline. Scripts fall into several categories: workflow drivers, data conversion, visualization, calibration, and analysis.
 
-Probably need anaconda python to use most of these in case of dependencies.
+---
 
-**SpotMatrixToSpotsHDF.py**: Probably most useful code, convert FF output to HDF files.
+## Core Workflow & Calibration
 
-**DL2FF.py**: Run analysis using Deep Learning outputs.
+| Script | Description |
+|--------|-------------|
+| `AutoCalibrateZarr.py` | **FF-HEDM auto-calibration.** Determines detector tilt angles, beam center, and sample-to-detector distance from powder calibrant diffraction rings. Reads Zarr-ZIP data directly. |
+| `integrator.py` | **Radial integrator (caking).** Converts 2D detector images to 1D intensity vs. 2θ profiles. Supports multiple detector geometries and azimuthal wedges. |
+| `integrator_batch_process.py` | Batch-mode radial integration for processing large datasets non-interactively. |
+| `integrator_server.py` | Long-running integration server for real-time data reduction during beamline operation. |
+| `integrator_stream_process_h5.py` | Streaming radial integration from HDF5 files as they are written during acquisition. |
+| `integrate_and_refine.py` | Combined radial integration + GSAS-II peakfit refinement pipeline. |
+| `gsas_ii_refine.py` | **GSAS-II integration.** Imports caked 1D profiles into GSAS-II for powder diffraction refinement. |
+| `midas_config.py` | MIDAS configuration and environment variable management. |
 
-**GE2Tiff.py**: Convert GE detector files from Sector-1, APS to tiff files with individual frames.
+## Grain Matching & Analysis
 
-**GFF2Grains.py**: Convert .gff output from Fable to Grains.csv used in MIDAS.
+| Script | Description |
+|--------|-------------|
+| `match_grains.py` | **Grain matching and layer stitching.** Matches grains across load states (Hungarian or greedy) and stitches multi-layer scans. Supports affine deformation transforms, consolidated HDF5 input, and library-callable API. See [FF_Match_Stack_Reconstructions manual](../manuals/FF_Match_Stack_Reconstructions.md). |
+| `calcMiso.py` | **Crystallographic misorientation calculations.** Quaternion symmetry operations, orientation matrix ↔ quaternion conversions, misorientation angles for all 230 space groups. Used as a library by `match_grains.py` and other tools. |
 
-**NFGrainCentroids.py**: Code to convert individual grain reconstructions in NF to grain centroids.
+## Data Conversion & Format Utilities
 
-**PlotFFNF.py**: Overlay and compute properties of grains from FF and NF HEDM.
+| Script | Description |
+|--------|-------------|
+| `ffGenerateZip.py` | Convert raw detector data (HDF5 / GE / TIFF) into MIDAS Zarr-ZIP archives for FF-HEDM analysis. Handles dark subtraction, data reshaping, and metadata embedding. |
+| `ffGenerateZipRefactor.py` | Refactored version of `ffGenerateZip.py` with improved performance and memory management. |
+| `updateZarrDset.py` | Update individual datasets or metadata within an existing Zarr-ZIP archive without full reprocessing. |
+| `updateZarrDsetRefactor.py` | Refactored Zarr dataset updater with support for additional operations. |
+| `GE2Tiff.py` | Convert GE detector binary files to TIFF format. |
+| `esrf2zip_pf.py` | Convert ESRF-format data to MIDAS Zarr-ZIP for point-focus HEDM. |
+| `esrf_to_ge.py` | Convert ESRF-format detector images to GE binary format. |
+| `mergeGEfiles.py` | Merge multiple GE binary files into a single file. |
+| `mergeH5s.py` | Merge multiple HDF5 files into one. |
+| `midas2zip.py` | Convert older MIDAS output formats to Zarr-ZIP archives. |
+| `ang2mic.py` | Convert `.ang` (EBSD-style) files to `.mic` (MIDAS microstructure) format. |
+| `ConvTiffToGE.c` | (Compiled separately) Convert TIFF images to GE binary format. |
 
-**batchImages.py**: Batch add multiple images in NF data to improve reconstruction quality for heavily deformed samples.
+## FF-HEDM Post-Processing
 
-**calcMiso.py**: Given two EulerAngles and the SpaceGroup,**GetMisorientationAngle**function will return the misorientation between the two orientations. Everything must be in**radians**.
+| Script | Description |
+|--------|-------------|
+| `ff2midas.py` | Convert external FF-HEDM formats into MIDAS-compatible data structures. |
+| `ff_fitgrain.py` | Python-based grain fitting: refines orientation, position, and strain for individual grains. |
+| `ff_hdf_result.py` | Write FF-HEDM results (grain list + spot matrix) into HDF5 format. |
+| `ffGenerateHDFResult.py` | Generate HDF5 result files from FF-HEDM analysis outputs. |
+| `SpotMatrixToSpotsHDF.py` | Convert SpotMatrix.csv to HDF5 spots format for downstream analysis. |
+| `GFF2Grains.py` | Convert GrainSpotter `.gff` output to MIDAS `Grains.csv` format. |
+| `mergePeaks.py` | Merge peak lists from multiple frames or scans. |
+| `extractPeaks.py` | Extract individual peak data from the spot table for inspection. |
+| `processFilesParallel.py` | Parallel file processing utility for batch FF-HEDM operations. |
 
-**extractPeaks.py**: Extract peak windows from raw data using MIDAS FF output.
+## NF-HEDM Post-Processing
 
-**hdf_gen_nf.py**: Code to convert nf experiment to HDF file following the DataExchange format.
+| Script | Description |
+|--------|-------------|
+| `NFGrainCentroids.py` | Calculate grain centroids from NF-HEDM `.mic` reconstruction files. |
+| `nf_mic_to_grains.py` | Convert NF-HEDM `.mic` files to `Grains.csv` format for comparison with FF-HEDM. |
+| `nf_neighbor_calc.py` | Compute grain neighbor relationships and boundary statistics from NF reconstructions. |
+| `nf_paraview_gen.py` | Generate ParaView-compatible VTK files from NF-HEDM reconstructions for 3D visualization. |
+| `findUniqueOrientationsNF.py` | Identify unique grain orientations from NF reconstruction data. |
+| `hdf_gen_nf.py` | Generate HDF5 files from NF-HEDM inputs and outputs. |
+| `nf_manipulation_codes.py` | Utility functions for manipulating NF-HEDM `.mic` data. |
 
-**mergePeaks.py**: Merge peaks overlapping in omega. Will read the individual frame output from MIDAS.
+## Visualization
 
-**nf_paraview_gen.py**: Useful for converting NF output to hdf files, can be viewed directly in Paraview or imported into DREAM.3D
+| Script | Description |
+|--------|-------------|
+| `interactiveFFplotting.py` | **Interactive FF-HEDM browser app.** Dash-based visualization of grains, spots, and raw detector images. See [FF_Interactive_Plotting manual](../manuals/FF_Interactive_Plotting.md). |
+| `plotFFSpots3d.py` | 3D scatter plot of FF-HEDM diffraction spots (Eta, Omega, 2Theta). |
+| `plotFFSpots3dGrains.py` | 3D scatter plot of FF-HEDM spots, color-coded by grain assignment. |
+| `plotGrains3d.py` | 3D scatter plot of grain centroids with orientation coloring. |
+| `PlotFFNF.py` | Overlay FF-HEDM grain centroids on NF-HEDM orientation maps. |
+| `viz_caking.py` | Visualize radial integration (caking) results as 2D plots. |
+| `vtkSimExportBin.py` | Export simulation results to VTK binary format for ParaView. |
 
-**psf.tif**: Peak spread function used in deblurring for NF.
+## Simulation & Testing
 
-**run_full_images_ff.py**: Find peak information for full images FF data. This is rather rudimentary, assuming no real peak spreads or overlaps.
+| Script | Description |
+|--------|-------------|
+| `simulatePeaks.py` | Simulate diffraction peak positions for testing and validation. |
+| `sim_ff_transformed.py` | Generate transformed FF-HEDM simulation data for testing deformation workflows. |
+| `compressedSimulationReader.py` | Read compressed forward simulation output files. |
+| `test_ff_hedm.py` | **FF-HEDM benchmark test.** End-to-end test using simulated data to validate the full pipeline. |
 
-**simulatePeaks.py**: Simulate artificial dataset. The peaks will be on the right 2thetas, but the rest is arbitrary. Saves individual tiffs.
+## Scanning / Point-Focus HEDM
 
-**vtkSimExportBin.py**: Code to read in the .vtk files from CPFEM simulations from Purdue group and compute properties and write out hdf files.
+| Script | Description |
+|--------|-------------|
+| `runScanning.py` | Driver for scanning (point-focus) HEDM experiments. |
+| `evalScanning.py` | Evaluate scanning HEDM results and compute summary statistics. |
+
+## Specialized Tools
+
+| Script | Description |
+|--------|-------------|
+| `MIDAS_dig_tw.py` | Digital twin workflow for in situ experiments — couples MIDAS with simulation. |
+| `ff_dig_tw.py` | FF-HEDM digital twin: forward model + comparison with experimental data. |
+| `blobPeaksearch.py` | Blob-based peak search for alternative peak detection on raw detector images. |
+| `BatchCake.py` | Batch radial integration using the caking engine. |
+| `batchImages.py` | Batch image processing (dark subtraction, normalization). |
+| `DL2FF.py` | Convert deep-learning peak predictions to FF-HEDM input format. |
+| `run_full_images_ff.py` | Process full detector images through the FF-HEDM pipeline. |
+| `ff_peaks_raw_images.py` | Extract peaks from raw images for diagnostic purposes. |
+
+## Deprecated
+
+| Script | Description |
+|--------|-------------|
+| `deprecated_AutoCalibrate.py` | Older auto-calibration script (superseded by `AutoCalibrateZarr.py`). |
