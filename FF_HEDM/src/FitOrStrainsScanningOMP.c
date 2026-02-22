@@ -641,6 +641,8 @@ struct OptimizeScratch {
   double **TheorSpotsYZWE;
   double *Angles;
   int nTspots;
+  int *SpotLookup;
+  int MaxSpnr;
 };
 
 struct data_FitOrientIni {
@@ -679,9 +681,9 @@ struct data_FitStrainIni {
 };
 
 static inline double FitErrorsOrientStrains(
-    double x[9], int nSpotsComp, double spotsYZO[nSpotsComp][9], int nhkls,
-    double hklsIn[nhkls][7], double Lsd, double Wavelength, int nOmeRanges,
-    double OmegaRanges[nOmeRanges][2], double BoxSizes[nOmeRanges][4],
+    double x[9], int nSpotsComp, double **spotsYZO, int nhkls, double **hklsIn,
+    double Lsd, double Wavelength, int nOmeRanges,
+    double OmegaRanges[MAXNOMEGARANGES][2], double BoxSizes[MAXNOMEGARANGES][4],
     double MinEta, double wedge, double chi, double Pos[3],
     struct OptimizeScratch *scratch) {
   int i, j;
@@ -731,15 +733,24 @@ static inline double FitErrorsOrientStrains(
     SpotsYZOGCorr[nrSp][3] = spotsYZO[nrSp][8];
   }
 
+  int *SpotLookup = scratch->SpotLookup;
+  int MaxSpnr = scratch->MaxSpnr;
+  for (i = 0; i <= MaxSpnr; i++)
+    SpotLookup[i] = -1;
+
   double **TheorSpotsYZWE = scratch->TheorSpotsYZWE;
   for (i = 0; i < nTspots; i++) {
     for (j = 0; j < 3; j++) {
       TheorSpotsYZWE[i][j] = TheorSpots[i][j + 3];
     }
     TheorSpotsYZWE[i][3] = TheorSpots[i][8];
+    int spnr = (int)TheorSpots[i][8];
+    if (spnr >= 0 && spnr <= MaxSpnr && SpotLookup[spnr] == -1) {
+      SpotLookup[spnr] = i;
+    }
   }
 
-  int sp, nTheorSpotsYZWER, Spnr;
+  int sp, nTheorSpotsYZWER;
   double GObs[3], GTheors[3], NormGObs, NormGTheors, DotGs, Numers, Denoms,
       *Angles, minAngle, Error = 0;
 
@@ -750,21 +761,28 @@ static inline double FitErrorsOrientStrains(
     GObs[1] = SpotsYZOGCorr[sp][1];
     GObs[2] = SpotsYZOGCorr[sp][2];
     NormGObs = CalcNorm3(GObs[0], GObs[1], GObs[2]);
-    Spnr = SpotsYZOGCorr[sp][3];
-    for (i = 0; i < nTspots; i++) {
-      if ((int)TheorSpotsYZWE[i][3] == (int)Spnr) {
-        GTheors[0] = TheorSpotsYZWE[i][0];
-        GTheors[1] = TheorSpotsYZWE[i][1];
-        GTheors[2] = TheorSpotsYZWE[i][2];
-        DotGs = ((GTheors[0] * GObs[0]) + (GTheors[1] * GObs[1]) +
-                 (GTheors[2] * GObs[2]));
-        NormGTheors = CalcNorm3(GTheors[0], GTheors[1], GTheors[2]);
-        Numers = DotGs;
-        Denoms = NormGObs * NormGTheors;
-        Angles[nTheorSpotsYZWER] = fabs(acosd(Numers / Denoms));
-        nTheorSpotsYZWER++;
+    int Spnr = (int)SpotsYZOGCorr[sp][3];
+
+    if (Spnr >= 0 && Spnr <= MaxSpnr) {
+      int t_idx_start = SpotLookup[Spnr];
+      if (t_idx_start != -1) {
+        for (i = t_idx_start; i < nTspots; i++) {
+          if ((int)TheorSpotsYZWE[i][3] != Spnr)
+            break;
+          GTheors[0] = TheorSpotsYZWE[i][0];
+          GTheors[1] = TheorSpotsYZWE[i][1];
+          GTheors[2] = TheorSpotsYZWE[i][2];
+          DotGs = ((GTheors[0] * GObs[0]) + (GTheors[1] * GObs[1]) +
+                   (GTheors[2] * GObs[2]));
+          NormGTheors = CalcNorm3(GTheors[0], GTheors[1], GTheors[2]);
+          Numers = DotGs;
+          Denoms = NormGObs * NormGTheors;
+          Angles[nTheorSpotsYZWER] = fabs(acosd(Numers / Denoms));
+          nTheorSpotsYZWER++;
+        }
       }
     }
+
     if (nTheorSpotsYZWER == 0)
       continue;
     minAngle = 1000000;
@@ -780,12 +798,13 @@ static inline double FitErrorsOrientStrains(
   return Error;
 }
 
-static inline double FitErrorsStrains(
-    double x[6], int nSpotsComp, double spotsYZOIn[nSpotsComp][9], int nhkls,
-    double hklsIn[nhkls][7], double Lsd, double Wavelength, int nOmeRanges,
-    double OmegaRanges[nOmeRanges][2], double BoxSizes[nOmeRanges][4],
-    double MinEta, double wedge, double chi, double Pos[3], double EulerIn[3],
-    struct OptimizeScratch *scratch) {
+static inline double
+FitErrorsStrains(double x[6], int nSpotsComp, double **spotsYZO, int nhkls,
+                 double **hklsIn, double Lsd, double Wavelength, int nOmeRanges,
+                 double OmegaRanges[MAXNOMEGARANGES][2],
+                 double BoxSizes[MAXNOMEGARANGES][4], double MinEta,
+                 double wedge, double chi, double Pos[3], double EulerIn[3],
+                 struct OptimizeScratch *scratch) {
   int i, j;
   int nrMatchedIndexer = nSpotsComp;
   double LatC[6];
@@ -797,13 +816,6 @@ static inline double FitErrorsStrains(
   for (i = 0; i < nhkls; i++)
     for (j = 0; j < 7; j++)
       hklsIn2[i][j] = hklsIn[i][j];
-
-  double **spotsYZO = scratch->spotsYZO;
-  for (i = 0; i < nSpotsComp; i++) {
-    for (j = 0; j < 9; j++) {
-      spotsYZO[i][j] = spotsYZOIn[i][j];
-    }
-  }
 
   double **hkls = scratch->hkls;
   CorrectHKLsLatC(LatC, hklsIn2, nhkls, Lsd, Wavelength, hkls);
@@ -817,41 +829,36 @@ static inline double FitErrorsStrains(
                        BoxSizes, &nTspots, OrientMatrix, TheorSpots);
 
   double **SpotsYZOGCorr = scratch->SpotsYZOGCorr;
-  double DisplY, DisplZ, ys, zs, Omega, Radius, Theta, lenK, yt, zt;
-  for (nrSp = 0; nrSp < nrMatchedIndexer; nrSp++) {
-    DisplacementInTheSpot(Pos[0], Pos[1], Pos[2], Lsd, spotsYZO[nrSp][5],
-                          spotsYZO[nrSp][6], spotsYZO[nrSp][4], wedge, chi,
-                          &DisplY, &DisplZ);
-    yt = spotsYZO[nrSp][5] - DisplY;
-    zt = spotsYZO[nrSp][6] - DisplZ;
-    CorrectForOme(yt, zt, Lsd, spotsYZO[nrSp][4], Wavelength, wedge, &ys, &zs,
-                  &Omega);
-    SpotsYZOGCorr[nrSp][0] = ys;
-    SpotsYZOGCorr[nrSp][1] = zs;
-    SpotsYZOGCorr[nrSp][2] = spotsYZO[nrSp][8];
-  }
+  int *SpotLookup = scratch->SpotLookup;
+  int MaxSpnr = scratch->MaxSpnr;
+  for (i = 0; i <= MaxSpnr; i++)
+    SpotLookup[i] = -1;
 
   double **TheorSpotsYZWE = scratch->TheorSpotsYZWE;
   for (i = 0; i < nTspots; i++) {
     TheorSpotsYZWE[i][0] = TheorSpots[i][0];
     TheorSpotsYZWE[i][1] = TheorSpots[i][1];
     TheorSpotsYZWE[i][2] = TheorSpots[i][8];
+    int spnr = (int)TheorSpots[i][8];
+    if (spnr >= 0 && spnr <= MaxSpnr && SpotLookup[spnr] == -1) {
+      SpotLookup[spnr] = i;
+    }
   }
 
   int sp;
-  double PosObs[2], PosTheor[2], Spnr;
+  double PosObs[2], PosTheor[2];
   double Error = 0;
   for (sp = 0; sp < nrMatchedIndexer; sp++) {
     PosObs[0] = SpotsYZOGCorr[sp][0];
     PosObs[1] = SpotsYZOGCorr[sp][1];
-    Spnr = SpotsYZOGCorr[sp][2];
-    for (i = 0; i < nTspots; i++) {
-      if ((int)TheorSpotsYZWE[i][2] == (int)Spnr) {
-        PosTheor[0] = TheorSpotsYZWE[i][0];
-        PosTheor[1] = TheorSpotsYZWE[i][1];
+    int Spnr = (int)SpotsYZOGCorr[sp][2];
+    if (Spnr >= 0 && Spnr <= MaxSpnr) {
+      int t_idx = SpotLookup[Spnr];
+      if (t_idx != -1) {
+        PosTheor[0] = TheorSpotsYZWE[t_idx][0];
+        PosTheor[1] = TheorSpotsYZWE[t_idx][1];
         Error +=
             CalcNorm2((PosObs[0] - PosTheor[0]), (PosObs[1] - PosTheor[1]));
-        break;
       }
     }
   }
@@ -860,91 +867,30 @@ static inline double FitErrorsStrains(
 
 static double problem_function_OrientIni(unsigned n, const double *x,
                                          double *grad, void *f_data_trial) {
-  int i, j;
+  int i;
   struct data_FitOrientIni *f_data = (struct data_FitOrientIni *)f_data_trial;
-  int nSpotsComp = f_data->nSpotsComp;
-  double spotsYZO[nSpotsComp][9];
-  for (i = 0; i < nSpotsComp; i++) {
-    for (j = 0; j < 9; j++) {
-      spotsYZO[i][j] = f_data->spotsYZO[i][j];
-    }
-  }
-  int nhkls = f_data->nhkls;
-  double hkls[nhkls][7];
-  for (i = 0; i < nhkls; i++) {
-    for (j = 0; j < 7; j++) {
-      hkls[i][j] = f_data->hkls[i][j];
-    }
-  }
-  double Lsd = f_data->Lsd;
-  double Wavelength = f_data->Wavelength;
-  int nOmeRanges = f_data->nOmeRanges;
-  double OmegaRanges[MAXNOMEGARANGES][2];
-  double BoxSizes[MAXNOMEGARANGES][4];
-  for (i = 0; i < nOmeRanges; i++) {
-    for (j = 0; j < 2; j++)
-      OmegaRanges[i][j] = f_data->OmegaRanges[i][j];
-    for (j = 0; j < 4; j++)
-      BoxSizes[i][j] = f_data->BoxSizes[i][j];
-  }
-  double MinEta = f_data->MinEta;
-  double wedge = f_data->wedge;
-  double chi = f_data->chi;
-  double Pos[3];
-  for (i = 0; i < 3; i++)
-    Pos[i] = f_data->Pos[i];
   double XIn[n];
   for (i = 0; i < n; i++)
     XIn[i] = x[i];
-  return FitErrorsOrientStrains(XIn, nSpotsComp, spotsYZO, nhkls, hkls, Lsd,
-                                Wavelength, nOmeRanges, OmegaRanges, BoxSizes,
-                                MinEta, wedge, chi, Pos, f_data->scratch);
+  return FitErrorsOrientStrains(
+      XIn, f_data->nSpotsComp, f_data->spotsYZO, f_data->nhkls, f_data->hkls,
+      f_data->Lsd, f_data->Wavelength, f_data->nOmeRanges, f_data->OmegaRanges,
+      f_data->BoxSizes, f_data->MinEta, f_data->wedge, f_data->chi, f_data->Pos,
+      f_data->scratch);
 }
 
 static double problem_function_StrainIni(unsigned n, const double *x,
                                          double *grad, void *f_data_trial) {
-  int i, j;
+  int i;
   struct data_FitStrainIni *f_data = (struct data_FitStrainIni *)f_data_trial;
-  int nSpotsComp = f_data->nSpotsComp;
-  double spotsYZO[nSpotsComp][9];
-  for (i = 0; i < nSpotsComp; i++) {
-    for (j = 0; j < 9; j++) {
-      spotsYZO[i][j] = f_data->spotsYZO[i][j];
-    }
-  }
-  int nhkls = f_data->nhkls;
-  double hkls[nhkls][7];
-  for (i = 0; i < nhkls; i++) {
-    for (j = 0; j < 7; j++) {
-      hkls[i][j] = f_data->hkls[i][j];
-    }
-  }
-  double Lsd = f_data->Lsd;
-  double Wavelength = f_data->Wavelength;
-  int nOmeRanges = f_data->nOmeRanges;
-  double OmegaRanges[MAXNOMEGARANGES][2];
-  double BoxSizes[MAXNOMEGARANGES][4];
-  for (i = 0; i < nOmeRanges; i++) {
-    for (j = 0; j < 2; j++)
-      OmegaRanges[i][j] = f_data->OmegaRanges[i][j];
-    for (j = 0; j < 4; j++)
-      BoxSizes[i][j] = f_data->BoxSizes[i][j];
-  }
-  double MinEta = f_data->MinEta;
-  double wedge = f_data->wedge;
-  double chi = f_data->chi;
-  double Pos[3];
-  for (i = 0; i < 3; i++)
-    Pos[i] = f_data->Pos[i];
-  double Orient[3];
-  for (i = 0; i < 3; i++)
-    Orient[i] = f_data->Orient[i];
   double XIn[n];
   for (i = 0; i < n; i++)
     XIn[i] = x[i];
-  return FitErrorsStrains(XIn, nSpotsComp, spotsYZO, nhkls, hkls, Lsd,
-                          Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta,
-                          wedge, chi, Pos, Orient, f_data->scratch);
+  return FitErrorsStrains(
+      XIn, f_data->nSpotsComp, f_data->spotsYZO, f_data->nhkls, f_data->hkls,
+      f_data->Lsd, f_data->Wavelength, f_data->nOmeRanges, f_data->OmegaRanges,
+      f_data->BoxSizes, f_data->MinEta, f_data->wedge, f_data->chi, f_data->Pos,
+      f_data->Orient, f_data->scratch);
 }
 
 void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO, int nhkls,
@@ -998,33 +944,49 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch->TheorSpotsYZWE =
       allocMatrix(MaxNSpotsBest, 4); // Note: Size 4 for Orient
   f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
+  int maxSpnr = 0;
+  for (i = 0; i < nhkls; i++) {
+    if ((int)hkls[i][6] > maxSpnr)
+      maxSpnr = (int)hkls[i][6];
+  }
+  f_data.scratch->MaxSpnr = maxSpnr;
+  f_data.scratch->SpotLookup = malloc((maxSpnr + 1) * sizeof(int));
+
+  // Precompute SpotsYZOGCorr (constant for FitOrientIni since Pos is constant)
+  double DisplY, DisplZ, ys, zs, Omega, yt, zt;
+  for (int nrSp = 0; nrSp < nSpotsComp; nrSp++) {
+    DisplacementInTheSpot(Pos[0], Pos[1], Pos[2], Lsd, spotsYZO[nrSp][5],
+                          spotsYZO[nrSp][6], spotsYZO[nrSp][4], wedge, chi,
+                          &DisplY, &DisplZ);
+    yt = spotsYZO[nrSp][5] - DisplY;
+    zt = spotsYZO[nrSp][6] - DisplZ;
+    CorrectForOme(yt, zt, Lsd, spotsYZO[nrSp][4], Wavelength, wedge, &ys, &zs,
+                  &Omega);
+    f_data.scratch->SpotsYZOGCorr[nrSp][0] = ys;
+    f_data.scratch->SpotsYZOGCorr[nrSp][1] = zs;
+    f_data.scratch->SpotsYZOGCorr[nrSp][2] = spotsYZO[nrSp][8];
+  }
+
   struct data_FitOrientIni *f_datat;
   f_datat = &f_data;
   void *trp = (struct data_FitOrientIni *)f_datat;
   nlopt_opt opt;
-  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_min_objective(opt, problem_function_OrientIni, trp);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_maxtime(opt, 30);
-  nlopt_set_ftol_rel(opt, 1e-5);
-  nlopt_set_xtol_rel(opt, 1e-5);
-  double minf;
-  nlopt_optimize(opt, x, &minf);
-  nlopt_destroy(opt);
-  //~ for (i=0;i<n;i++) printf("%f ",x[i]);
-  //~ printf("%10.30f \n", minf);
-  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_min_objective(opt, problem_function_OrientIni, trp);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_maxtime(opt, 30);
-  nlopt_set_ftol_rel(opt, 1e-5);
-  nlopt_set_xtol_rel(opt, 1e-5);
-  nlopt_optimize(opt, x, &minf);
-  nlopt_destroy(opt);
+  double minf = 0, prev_minf = 1e30;
+  for (int run = 0; run < 2; run++) {
+    opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
+    nlopt_set_lower_bounds(opt, xl);
+    nlopt_set_upper_bounds(opt, xu);
+    nlopt_set_min_objective(opt, problem_function_OrientIni, trp);
+    nlopt_set_maxeval(opt, 5000);
+    nlopt_set_maxtime(opt, 30);
+    nlopt_set_ftol_rel(opt, 1e-5);
+    nlopt_set_xtol_rel(opt, 1e-5);
+    nlopt_optimize(opt, x, &minf);
+    nlopt_destroy(opt);
+    if (fabs(prev_minf - minf) < 1e-4)
+      break;
+    prev_minf = minf;
+  }
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
   //~ printf("%10.30f \n", minf);
   for (i = 0; i < n; i++)
@@ -1094,33 +1056,55 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 3);
   f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 3);
   f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
+  int maxSpnr = 0;
+  for (i = 0; i < nhkls; i++) {
+    if ((int)hkls[i][6] > maxSpnr)
+      maxSpnr = (int)hkls[i][6];
+  }
+  f_data.scratch->MaxSpnr = maxSpnr;
+  f_data.scratch->SpotLookup = malloc((maxSpnr + 1) * sizeof(int));
+
+  // Precompute SpotsYZOGCorr (constant for FitStrainIni since Pos is constant)
+  double DisplY, DisplZ, ys, zs, Omega, yt, zt, Radius, Theta, lenK, g1, g2, g3;
+  for (int nrSp = 0; nrSp < nSpotsComp; nrSp++) {
+    DisplacementInTheSpot(Pos[0], Pos[1], Pos[2], Lsd, spotsYZO[nrSp][5],
+                          spotsYZO[nrSp][6], spotsYZO[nrSp][4], wedge, chi,
+                          &DisplY, &DisplZ);
+    yt = spotsYZO[nrSp][5] - DisplY;
+    zt = spotsYZO[nrSp][6] - DisplZ;
+    CorrectForOme(yt, zt, Lsd, spotsYZO[nrSp][4], Wavelength, wedge, &ys, &zs,
+                  &Omega);
+    Radius = sqrt(ys * ys + zs * zs);
+    Theta = atan2(zs, ys);
+    lenK = sqrt((Radius * Radius) + (Lsd * Lsd));
+    g1 = (-Lsd / lenK) + 1;
+    g2 = -ys / lenK;
+    g3 = -zs / lenK;
+    f_data.scratch->SpotsYZOGCorr[nrSp][0] = g1;
+    f_data.scratch->SpotsYZOGCorr[nrSp][1] = g2;
+    f_data.scratch->SpotsYZOGCorr[nrSp][2] = g3;
+    f_data.scratch->SpotsYZOGCorr[nrSp][3] = spotsYZO[nrSp][8];
+  }
   struct data_FitStrainIni *f_datat;
   f_datat = &f_data;
   void *trp = (struct data_FitStrainIni *)f_datat;
   nlopt_opt opt;
-  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_min_objective(opt, problem_function_StrainIni, trp);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_maxtime(opt, 30);
-  nlopt_set_ftol_rel(opt, 1e-5);
-  nlopt_set_xtol_rel(opt, 1e-5);
-  double minf;
-  nlopt_optimize(opt, x, &minf);
-  nlopt_destroy(opt);
-  //~ for (i=0;i<n;i++) printf("%f ",x[i]);
-  //~ printf("%10.30f \n", minf);
-  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_min_objective(opt, problem_function_StrainIni, trp);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_maxtime(opt, 30);
-  nlopt_set_ftol_rel(opt, 1e-5);
-  nlopt_set_xtol_rel(opt, 1e-5);
-  nlopt_optimize(opt, x, &minf);
-  nlopt_destroy(opt);
+  double minf = 0, prev_minf = 1e30;
+  for (int run = 0; run < 2; run++) {
+    opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
+    nlopt_set_lower_bounds(opt, xl);
+    nlopt_set_upper_bounds(opt, xu);
+    nlopt_set_min_objective(opt, problem_function_StrainIni, trp);
+    nlopt_set_maxeval(opt, 5000);
+    nlopt_set_maxtime(opt, 30);
+    nlopt_set_ftol_rel(opt, 1e-5);
+    nlopt_set_xtol_rel(opt, 1e-5);
+    nlopt_optimize(opt, x, &minf);
+    nlopt_destroy(opt);
+    if (fabs(prev_minf - minf) < 1e-4)
+      break;
+    prev_minf = minf;
+  }
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
   //~ printf("%10.30f \n", minf);
   for (i = 0; i < n; i++)
@@ -1606,7 +1590,6 @@ int main(int argc, char *argv[]) {
     OrientMat2Euler(Orient0_3, Euler0);
     Euler2OrientMat(Euler0, Orient0_3);
     Convert3x3To9(Orient0_3, Orient0);
-    OrientMat2Euler(Orient0_3, Euler0);
 
     // Populate observed spots from mmap'd AllSpots
     double **spotsYZO = allocMatrix(nSpotsBest, 9);
