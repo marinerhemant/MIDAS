@@ -34,11 +34,13 @@ python ff_asym.py
 ```
 
 Provides a desktop interface for:
+- **Auto-detecting** data and dark files from the directory name convention (launch from data directory)
 - Browsing grain lists with filtering by orientation, position, confidence
 - Viewing and comparing raw detector frames
 - Inspecting individual spot assignments per grain
 - Exploring the orientation space (pole figures, IPF)
-- Loading HDF5 and Zarr-ZIP data directly
+
+See [FF_visualization manual](../manuals/FF_visualization.md) for the full user guide, including the auto-detection naming convention.
 
 ---
 

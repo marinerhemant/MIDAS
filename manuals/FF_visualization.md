@@ -98,12 +98,58 @@ The viewer operates on **single detector files** containing one or more frames o
 ### 3.1. Launching
 
 ```bash
-python ff_asym.py
+cd /path/to/your/data_directory
+python ~/opt/MIDAS/gui/ff_asym.py &
 ```
 
-The GUI window will appear with four control panels at the bottom and the plot area above.
+> [!TIP]
+> Launch the GUI **from your data directory**. The GUI automatically scans the current working directory and pre-fills all file fields using the naming convention described below.
 
-### 3.2. Loading Your First Image
+### 3.2. Automatic Filename Initialization
+
+When launched from a data directory, `ff_asym.py` runs a background auto-detection thread that:
+
+1. **Takes the directory name as the file stem.** If the CWD is `/path/to/ff_Holder3_50um/`, it looks for files starting with `ff_Holder3_50um_`.
+2. **Finds data files** matching `<dir_name>_NNNNNN.<ext>` (e.g., `ff_Holder3_50um_000001.ge3`, `ff_Holder3_50um_000001.tif`).
+3. **Extracts** the file stem, first file number, padding width, and file extension automatically.
+4. **Finds dark files** by scanning for `dark_before_NNNNNN.<ext>` or `dark_after_NNNNNN.<ext>`. Prefers `dark_before` if both exist.
+5. **Updates all GUI fields** (file stem, folder, first file number, extension, detector number, dark file settings) — no manual entry needed.
+
+**The console will print the detection results at startup:**
+
+```
+Auto-detect: stem='ff_Holder3_50um', firstNr=1, padding=6, ext='ge3'
+Auto-detect: dark='dark_before_000001', source=dark_before
+Auto-detection complete. GUI updated.
+```
+
+**Expected directory layout:**
+
+```
+ff_Holder3_50um/                    ← directory name = file stem
+├── ff_Holder3_50um_000001.ge3      ← data files (auto-detected)
+├── ff_Holder3_50um_000002.ge3
+├── ...
+├── dark_before_000001.ge3          ← dark file (auto-detected, preferred)
+└── dark_after_000001.ge3           ← fallback if dark_before not found
+```
+
+| Auto-detected field | Source |
+|---|---|
+| File stem | Directory name (e.g., `ff_Holder3_50um`) |
+| First file number | Trailing number from first matching file (e.g., `1`) |
+| Padding | Width of the number field (e.g., `6` for `000001`) |
+| File extension | Extension of the first matching file (e.g., `ge3`, `tif`, `h5`) |
+| Detector number | Extracted from GE extension (e.g., `3` from `.ge3`); `-1` for non-GE formats |
+| Dark file | First `dark_before_*` file found; falls back to `dark_after_*` |
+| Dark correction | Automatically enabled if dark file found |
+
+> [!NOTE]
+> If auto-detection fails (e.g., the directory name does not match the file naming pattern), the console prints a warning and all fields remain empty. You can then use the **FirstFile** button to select files manually.
+
+### 3.3. Loading Your First Image (Manual)
+
+If auto-detection populated the fields, you can click **Load Single** immediately. Otherwise:
 
 1. Click **FirstFile** → select a data file (binary, HDF5, TIFF, or bz2).
 2. For HDF5 files, set the **H5 Data** path (default: `/exchange/data`). Click **"..."** to browse the internal HDF5 structure.
@@ -113,14 +159,16 @@ The GUI window will appear with four control panels at the bottom and the plot a
 
 ```mermaid
 flowchart LR
-    A["Launch ff_asym.py"] --> B{"Select FirstFile"}
+    A["Launch from data dir"] --> AUTO{"Auto-detect\nsucceeded?"}
+    AUTO --> |"Yes"| G["Click Load Single"]
+    AUTO --> |"No"| B{"Select FirstFile"}
     B --> |"HDF5"| C["Set H5 Data path"]
     B --> |"Binary"| D["Set HeadSize, Bytes/Px"]
     B --> |"TIFF"| E["No extra config needed"]
     C --> F["Set NrPixels"]
     D --> F
     E --> F
-    F --> G["Click Load Single"]
+    F --> G
     G --> H["Image Displayed"]
 ```
 
