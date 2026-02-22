@@ -768,9 +768,14 @@ static inline void calculateIntegratedIntensity(int nPeaks, double *x,
   double bg = x[0];
 
   // Extract peak parameters and pre-compute reciprocals
-  double IMAX[nPeaks], R[nPeaks], Eta[nPeaks], Mu[nPeaks];
-  double invSigmaGR2[nPeaks], invSigmaLR2[nPeaks];
-  double invSigmaGEta2[nPeaks], invSigmaLEta2[nPeaks];
+  double *IMAX = malloc(nPeaks * sizeof(double));
+  double *R = malloc(nPeaks * sizeof(double));
+  double *Eta = malloc(nPeaks * sizeof(double));
+  double *Mu = malloc(nPeaks * sizeof(double));
+  double *invSigmaGR2 = malloc(nPeaks * sizeof(double));
+  double *invSigmaLR2 = malloc(nPeaks * sizeof(double));
+  double *invSigmaGEta2 = malloc(nPeaks * sizeof(double));
+  double *invSigmaLEta2 = malloc(nPeaks * sizeof(double));
 
   for (int i = 0; i < nPeaks; i++) {
     IMAX[i] = x[(8 * i) + 1];
@@ -819,6 +824,15 @@ static inline void calculateIntegratedIntensity(int nPeaks, double *x,
       integratedIntensity[j] += (bgToAdd + intPeaks);
     }
   }
+
+  free(IMAX);
+  free(R);
+  free(Eta);
+  free(Mu);
+  free(invSigmaGR2);
+  free(invSigmaLR2);
+  free(invSigmaGEta2);
+  free(invSigmaLEta2);
 }
 
 /**
@@ -837,7 +851,9 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
                double *fitPeakBuf) {
   // Total parameters: 1 background + 8 per peak
   unsigned n = 1 + (8 * nPeaks);
-  double x[n], xl[n], xu[n];
+  double *x = malloc(n * sizeof(double));
+  double *xl = malloc(n * sizeof(double));
+  double *xu = malloc(n * sizeof(double));
 
   // Initialize background parameter
   x[0] = thresh / 2; // Initial background level
@@ -1056,6 +1072,9 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
 
   // Return (no free needed — Rs/Etas are workspace-owned)
   *retVal = sqrt(minf); // RMS error
+  free(x);
+  free(xl);
+  free(xu);
   return rc;
 }
 

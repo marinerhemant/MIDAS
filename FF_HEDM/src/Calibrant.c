@@ -215,7 +215,11 @@ static inline void CalcWeightedMean(int nIndices, int *NrEachIndexBin,
                                     double *Eta, double *RMean,
                                     double *EtaMean) {
   int i, j, k;
-  double TotIntensities[nIndices];
+  if (nIndices > 2048) {
+    printf("nIndices > 2048\\n");
+    return;
+  }
+  double TotIntensities[2048];
   for (i = 0; i < nIndices; i++) {
     TotIntensities[i] = 0;
     EtaMean[i] = 0;
@@ -1407,9 +1411,9 @@ int main(int argc, char *argv[]) {
       //~ uint16_t *outMatrix;
       //~ outMatrix = calloc(NrPixels*NrPixels,sizeof(uint16_t));
       //~ for (j=0;j<(NrPixels*NrPixels);j++)outMatrix[j] = (uint16_t)
-      //Average[j]; ~ FILE *fnew; ~ fnew = fopen("Data_000001.ge3","wb"); ~
-      //fwrite(outMatrix,sizeof(uint16_t)*NrPixels*NrPixels,1,fnew); ~
-      //fclose(fnew); ~ return;
+      // Average[j]; ~ FILE *fnew; ~ fnew = fopen("Data_000001.ge3","wb"); ~
+      // fwrite(outMatrix,sizeof(uint16_t)*NrPixels*NrPixels,1,fnew); ~
+      // fclose(fnew); ~ return;
     }
     double IdealTthetas[n_hkls], TthetaMins[n_hkls], TthetaMaxs[n_hkls];
     for (i = 0; i < n_hkls; i++) {

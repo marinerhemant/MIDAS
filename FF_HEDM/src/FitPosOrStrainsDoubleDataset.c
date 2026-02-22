@@ -1119,7 +1119,9 @@ static double problem_function_PosIni(unsigned n, const double *x, double *grad,
   double MinEta = f_data->MinEta;
   double wedge = f_data->wedge;
   double chi = f_data->chi;
-  double XIn[n];
+  if (n > 24)
+    return 1e30;
+  double XIn[24];
   for (i = 0; i < n; i++)
     XIn[i] = x[i];
   double error =
@@ -1156,7 +1158,9 @@ static double problem_function_OrientIni(unsigned n, const double *x,
   double Pos[3];
   for (i = 0; i < 3; i++)
     Pos[i] = f_data->Pos[i];
-  double XIn[n];
+  if (n > 24)
+    return 1e30;
+  double XIn[24];
   for (i = 0; i < n; i++)
     XIn[i] = x[i];
   double error = FitErrorsOrientStrains(
@@ -1196,7 +1200,9 @@ static double problem_function_StrainIni(unsigned n, const double *x,
   double Orient[3];
   for (i = 0; i < 3; i++)
     Orient[i] = f_data->Orient[i];
-  double XIn[n];
+  if (n > 24)
+    return 1e30;
+  double XIn[24];
   for (i = 0; i < n; i++)
     XIn[i] = x[i];
   double error = FitErrorsStrains(
@@ -1236,7 +1242,9 @@ static double problem_function_Pos(unsigned n, const double *x, double *grad,
   double Strains[6];
   for (i = 0; i < 6; i++)
     Strains[i] = f_data->Strains[i];
-  double XIn[n];
+  if (n > 24)
+    return 1e30;
+  double XIn[24];
   for (i = 0; i < n; i++)
     XIn[i] = x[i];
   double error = FitErrorsPosSec(

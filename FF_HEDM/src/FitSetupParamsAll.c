@@ -118,7 +118,11 @@ static inline void CalcWeightedMean(int nIndices, int *NrEachIndexBin,
                                     double *Eta, double *RMean,
                                     double *EtaMean) {
   int i, j, k;
-  double TotIntensities[nIndices];
+  if (nIndices > 2048) {
+    printf("nIndices > 2048\\n");
+    return;
+  }
+  double TotIntensities[2048];
   for (i = 0; i < nIndices; i++)
     TotIntensities[i] = 0;
   for (i = 0; i < nIndices; i++) {
@@ -983,17 +987,17 @@ int main(int argc, char *argv[]) {
   //~ sscanf(line,"%lf %lf %lf %s %s %s %s %s %s %s %s %s %s %lf %s %s %s %s %s
   //%s %s %s %s %s %s %s %s %s %s %d %s %s %s %s %s %s %s %s %s %s %s %s", ~
   //&z,&y,&ome,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy, ~
-  //dummy,dummy,&sumInt,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy, ~
-  //dummy,dummy,dummy,dummy,dummy,dummy,dummy,&IDtemp,dummy,dummy,dummy, ~
-  //dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy);
+  // dummy,dummy,&sumInt,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy, ~
+  // dummy,dummy,dummy,dummy,dummy,dummy,dummy,&IDtemp,dummy,dummy,dummy, ~
+  // dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy,dummy);
   //~ //y = 2048.0 - y;
   //~ //z = 2048.0 - z;
   //~ Rtemp = sqrt((y-ybc)*(y-ybc) + (z-zbc)*(z-zbc)) * px;
   //~ //printf("%d %lf %lf %lf %lf %f %f %f
   //%d\n",IDtemp,y,z,ome,Rtemp,Rmins[0],Rmaxs[0],IdealRs[0],n_hkls); ~ if (Rtemp
   //> Rmins[0] && Rtemp < Rmaxs[0]){ ~ SpotsInfo[counter][0] = IDtemp; ~
-  //SpotsInfo[counter][1] = ome; ~ SpotsInfo[counter][2] = y; ~
-  //SpotsInfo[counter][3] = z; ~ SpotsInfo[counter][4] = (int)PlaneNumbers[0];
+  // SpotsInfo[counter][1] = ome; ~ SpotsInfo[counter][2] = y; ~
+  // SpotsInfo[counter][3] = z; ~ SpotsInfo[counter][4] = (int)PlaneNumbers[0];
   //~ //printf("%f\n",SpotsInfo[counter][4]);
   //~ SpotsInfo[counter][5] = sumInt;
   //~ counter++;

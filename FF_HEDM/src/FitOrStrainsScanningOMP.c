@@ -869,7 +869,9 @@ static double problem_function_OrientIni(unsigned n, const double *x,
                                          double *grad, void *f_data_trial) {
   int i;
   struct data_FitOrientIni *f_data = (struct data_FitOrientIni *)f_data_trial;
-  double XIn[n];
+  if (n > 24)
+    return 1e30; // Max fitting degrees of freedom
+  double XIn[24];
   for (i = 0; i < n; i++)
     XIn[i] = x[i];
   return FitErrorsOrientStrains(
@@ -883,7 +885,9 @@ static double problem_function_StrainIni(unsigned n, const double *x,
                                          double *grad, void *f_data_trial) {
   int i;
   struct data_FitStrainIni *f_data = (struct data_FitStrainIni *)f_data_trial;
-  double XIn[n];
+  if (n > 24)
+    return 1e30; // Max fitting degrees of freedom
+  double XIn[24];
   for (i = 0; i < n; i++)
     XIn[i] = x[i];
   return FitErrorsStrains(

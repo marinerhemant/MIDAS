@@ -121,7 +121,11 @@ static inline void CalcWeightedMean(int nIndices, int *NrEachIndexBin,
                                     double *Eta, double *RMean,
                                     double *EtaMean) {
   int i, j, k;
-  double TotIntensities[nIndices];
+  if (nIndices > 2048) {
+    printf("nIndices > 2048\\n");
+    return;
+  }
+  double TotIntensities[2048];
   for (i = 0; i < nIndices; i++)
     TotIntensities[i] = 0;
   for (i = 0; i < nIndices; i++) {

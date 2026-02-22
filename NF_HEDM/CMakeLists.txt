@@ -51,8 +51,8 @@ add_nf_hedm_executable(MedianImageLibTiff SOURCES ${NF_SRCDIR}/MedianImageLibTif
 if(OpenMP_C_FOUND AND BUILD_OMP)
     target_link_libraries(MedianImageLibTiff PRIVATE OpenMP::OpenMP_C)
 endif()
-add_nf_hedm_executable(ImageProcessingLibTiff SOURCES ${NF_SRCDIR}/ImageProcessingLibTiff.c LINK_LIBRARIES_EXTRA TIFF::TIFF)
-add_nf_hedm_executable(FitOrientation SOURCES ${NF_SRCDIR}/FitOrientation.c ${NF_SHARED_FIT_SOURCES} LINK_LIBRARIES_EXTRA NLOPT::NLOPT)
+# add_nf_hedm_executable(ImageProcessingLibTiff SOURCES src/archive/ImageProcessingLibTiff.c LINK_LIBRARIES_EXTRA TIFF::TIFF)
+# add_nf_hedm_executable(FitOrientation SOURCES src/archive/FitOrientation.c ${NF_SHARED_FIT_SOURCES} LINK_LIBRARIES_EXTRA NLOPT::NLOPT)
 add_nf_hedm_executable(FitOrientationParameters SOURCES ${NF_SRCDIR}/FitOrientationParameters.c ${NF_SRCDIR}/CalcDiffractionSpots.c ${NF_SRCDIR}/SharedFuncsFit.c ${NF_SRCDIR}/GetMisorientation.c LINK_LIBRARIES_EXTRA NLOPT::NLOPT)
 if(BUILD_OMP AND OpenMP_C_FOUND)
     target_link_libraries(FitOrientationParameters PRIVATE OpenMP::OpenMP_C)
@@ -68,7 +68,7 @@ add_nf_hedm_executable(ParseMic SOURCES ${NF_SRCDIR}/ParseMic.c ${NF_SRCDIR}/Get
 if(BUILD_OMP AND OpenMP_C_FOUND)
     target_link_libraries(ParseMic PRIVATE OpenMP::OpenMP_C)
 endif()
-add_nf_hedm_executable(FitOrientationSinglePoint SOURCES ${NF_SRCDIR}/FitOrientationSinglePoint.c ${NF_SHARED_FIT_SOURCES} LINK_LIBRARIES_EXTRA NLOPT::NLOPT)
+# add_nf_hedm_executable(FitOrientationSinglePoint SOURCES src/archive/FitOrientationSinglePoint.c ${NF_SHARED_FIT_SOURCES} LINK_LIBRARIES_EXTRA NLOPT::NLOPT)
 add_nf_hedm_executable(ParseDeconvOutput SOURCES ${NF_SRCDIR}/ParseDeconvOutput.c LINK_LIBRARIES_EXTRA TIFF::TIFF)
 add_nf_hedm_executable(compareNF SOURCES ${NF_SRCDIR}/compareNF.c ${NF_SRCDIR}/CalcDiffractionSpots.c ${NF_SRCDIR}/SharedFuncsFit.c ${NF_SRCDIR}/GetMisorientation.c LINK_LIBRARIES_EXTRA NLOPT::NLOPT)
 add_nf_hedm_executable(simulateNF SOURCES ${NF_SRCDIR}/simulateNF.c ${NF_SRCDIR}/CalcDiffractionSpots.c ${NF_SRCDIR}/SharedFuncsFit.c ${NF_SRCDIR}/GetMisorientation.c)
@@ -137,7 +137,7 @@ install(TARGETS NFGrainsCalc
 
 
 # --- HDF5 related executables (example if uncommented) ---
-# add_executable(MedianImageHDF ${NF_SRCDIR}/MedianImageHDF.c)
+# add_executable(MedianImageHDF src/archive/MedianImageHDF.c)
 # target_link_libraries(MedianImageHDF PRIVATE HDF5::HDF5 HDF5::HL ${COMMON_LINK_LIBRARIES})
 # if(OpenMP_C_FOUND AND BUILD_OMP)
 #     target_link_libraries(MedianImageHDF PRIVATE OpenMP::OpenMP_C)

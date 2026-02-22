@@ -115,9 +115,9 @@ static inline void YZ4mREta(int NrElements, double *R, double *Eta, double *Y,
 
 //~ static inline
 //~ void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc,
-//double px, double *R, double *Eta, double Rmins[n_hkls], ~ double
-//Rmaxs[n_hkls], double EtaBinsLow[nEtaBins], double EtaBinsHigh[nEtaBins], int
-//nIndices, int *NrEachIndexbin, int **Indices){
+// double px, double *R, double *Eta, double Rmins[n_hkls], ~ double
+// Rmaxs[n_hkls], double EtaBinsLow[nEtaBins], double EtaBinsHigh[nEtaBins], int
+// nIndices, int *NrEachIndexbin, int **Indices){
 //~ int i, j, k, l, counter=0;
 //~ for (i=0;i<nIndices;i++) NrEachIndexbin[i]=0;
 //~ for (i=0;i<y;i++){
@@ -146,7 +146,11 @@ static inline void CalcWeightedMean(int nIndices, int *NrEachIndexBin,
                                     double *Eta, double *RMean,
                                     double *EtaMean) {
   int i, j, k;
-  double TotIntensities[nIndices];
+  if (nIndices > 2048) {
+    printf("nIndices > 2048\\n");
+    return;
+  }
+  double TotIntensities[2048];
   for (i = 0; i < nIndices; i++)
     TotIntensities[i] = 0;
   for (i = 0; i < nIndices; i++) {
