@@ -32,9 +32,8 @@
 #define rad2deg 57.2957795130823
 #define CalcNorm3(x, y, z) sqrt((x) * (x) + (y) * (y) + (z) * (z))
 #define CalcNorm2(x, y) sqrt((x) * (x) + (y) * (y))
-#define MAXNRINGS 500
-
-#define MAX_N_SPOTS 2000000
+#include "MIDAS_Limits.h"
+#define MAXNRINGS MAX_N_RINGS
 
 static inline double **allocMatrix(int nrows, int ncols) {
   double **arr;

@@ -22,8 +22,7 @@
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 #define RealType double
-#define MAX_N_HKLS 1000
-#define MAX_N_OMEGA_RANGES 2000
+#include "MIDAS_Limits.h"
 #define EPS 0.000000001
 #define TestBit(A, k) (A[(k / 32)] & (1 << (k % 32)))
 

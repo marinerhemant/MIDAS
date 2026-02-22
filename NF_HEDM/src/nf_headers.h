@@ -5,10 +5,11 @@
 #define RealType double
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
+#include "../../FF_HEDM/src/MIDAS_Limits.h"
 #define EPS 1E-5
 #define MAX_N_SPOTS 5000
 #define MAX_N_OMEGA_RANGES 20
-#define MAX_POINTS_GRID_GOOD 300000
+// MAX_POINTS_GRID_GOOD defined in MIDAS_Limits.h
 
 void MatrixMultF(RealType m[3][3], RealType v[3], RealType r[3]);
 

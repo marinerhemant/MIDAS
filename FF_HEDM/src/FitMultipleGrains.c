@@ -35,10 +35,13 @@
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
+#include "MIDAS_Limits.h"
+#define MAXNRINGS MAX_N_RINGS
+#define MAXNHKLS MAX_N_HKLS
 #define EPS 1E-12
 #define CalcNorm3(x, y, z) sqrt((x) * (x) + (y) * (y) + (z) * (z))
 #define CalcNorm2(x, y) sqrt((x) * (x) + (y) * (y))
-#define MAX_LINE_LENGTH 4096
+// #define MAX_LINE_LENGTH 4096 (now in MIDAS_Limits.h)
 #define MaxNSpotsBest 1000
 
 // For detector mapping!
@@ -51,7 +54,7 @@ int BigDetSize = 0;
 int *BigDetector;
 long long int totNrPixelsBigDetector;
 double pixelsize;
-#define MAX_N_OMEGA_RANGES 2000
+#include "MIDAS_Limits.h"
 
 int CalcDiffractionSpots(double Distance, double ExcludePoleAngle,
                          double OmegaRanges[MAX_N_OMEGA_RANGES][2],

@@ -10,8 +10,8 @@
 #include <sys/types.h>
 #include <time.h>
 
-#define MAX_N_SOLUTIONS_PER_VOX 1000000
-#define BUFFER_SIZE 2048 // Replace hardcoded buffer size with a macro
+#include "MIDAS_Limits.h"
+#define BUFFER_SIZE MAX_BUFFER_SIZE
 
 // Function prototypes
 void processVoxel(int voxNr, const char *folderName, int sgNr, double maxAng,

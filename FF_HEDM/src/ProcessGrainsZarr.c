@@ -31,8 +31,7 @@
 #include <time.h>
 #include <zip.h>
 
-#define MAX_N_IDS 6000000
-#define MAX_ID_IA_MAT 5000000
+#include "MIDAS_Limits.h"
 #define NR_MAX_IDS_PER_GRAIN 5000 // Nr spots per grain max.
 #define IAColNr 20 // 20 for Internal Angle, 18 for position, 19 for omega
 

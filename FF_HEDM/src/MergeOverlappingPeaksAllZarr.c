@@ -30,7 +30,8 @@
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
-#define MAXNHKLS 5000
+#include "MIDAS_Limits.h"
+#define MAXNHKLS MAX_N_HKLS
 #define CalcNorm3(x, y, z) sqrt((x) * (x) + (y) * (y) + (z) * (z))
 #define CalcNorm2(x, y) sqrt((x) * (x) + (y) * (y))
 #define nOverlapsMaxPerImage 200000

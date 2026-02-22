@@ -37,8 +37,8 @@ static int nPanels = 0;
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
+#include "MIDAS_Limits.h"
 #define RealType double
-#define MAX_N_HKLS 5000
 #define EPS 0.00001
 #define MAX_NR_POINTS 20000000
 #define MAX_OUTPUT_INTENSITY 15000

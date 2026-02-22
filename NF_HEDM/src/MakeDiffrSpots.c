@@ -21,8 +21,7 @@
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 #define RealType double
-#define MAX_N_HKLS 5000
-#define MAX_N_OMEGA_RANGES 20
+#include "../../FF_HEDM/src/MIDAS_Limits.h"
 #define EPS 0.000000001
 
 #ifndef M_PI

@@ -45,7 +45,8 @@
 #define CalcNorm3(x, y, z) sqrt((x) * (x) + (y) * (y) + (z) * (z))
 #define CalcNorm2(x, y) sqrt((x) * (x) + (y) * (y))
 #define TestBit(A, k) (A[(k / 32)] & (1 << (k % 32)))
-#define MAXNOMEGARANGES 2000
+#include "MIDAS_Limits.h"
+#define MAXNOMEGARANGES MAX_N_OMEGA_RANGES
 
 // Detector mapping globals
 int BigDetSize = 0;
