@@ -10,6 +10,7 @@
 //  Refactored with improvements
 //
 
+#include "MIDAS_Math.h"
 #include <blosc2.h>
 #include <ctype.h>
 #include <errno.h>
@@ -1024,22 +1025,20 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
   double minf = 0;
 
   // Create and configure NLopt optimizer
-  nlopt_opt opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  if (!opt)
-    return ERROR_MEMORY_ALLOCATION;
+  NLoptConfig config = {0};
+  config.dimension = n;
+  config.lower_bounds = xl;
+  config.upper_bounds = xu;
+  config.objective_function = peakFittingObjectiveFunction;
+  config.obj_data = &f_data;
+  config.initial_guess = x;
+  config.max_evaluations = 5000;
+  config.max_time_seconds = 30;
+  config.ftol_rel = 1e-5;
+  config.xtol_rel = 1e-5;
 
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_maxtime(opt, 30); // Maximum optimization time in seconds
-  nlopt_set_ftol_rel(
-      opt, 1e-5); // Stop if relative function value improvement < 1e-5
-  nlopt_set_xtol_rel(opt, 1e-5); // Stop if relative parameter step < 1e-5
-  nlopt_set_min_objective(opt, peakFittingObjectiveFunction, &f_data);
-
-  // Run optimization
-  rc = nlopt_optimize(opt, x, &minf);
-  nlopt_destroy(opt);
+  rc = run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  minf = config.min_function_val;
 
   // Extract results
   for (int i = 0; i < nPeaks; i++) {

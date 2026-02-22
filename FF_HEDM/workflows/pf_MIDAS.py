@@ -25,7 +25,7 @@ import re
 def save_sinogram_variants(topdir, nGrs, maxNHKLs, nScans, grainSpots, omegas):
     """Save 4 sinogram TIF files per grain for each processing combination.
 
-    Reads the 4 sinogram combinations saved by findSingleSolutionPF
+    Reads the 4 sinogram combinations saved by findSingleSolutionPFRefactored
     (raw, norm, abs, normabs) and saves each grain's sinogram as a
     separate TIF, preserving the raw double-precision intensity values.
 
@@ -1303,12 +1303,12 @@ def main():
                         shutil.move(dirn, dirn[4:])
             
             # Run find single solution
-            cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findSingleSolutionPF')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}"
-            logger.info(f"Running findSingleSolutionPF: {cmd}")
+            cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findSingleSolutionPFRefactored')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}"
+            logger.info(f"Running findSingleSolutionPFRefactored: {cmd}")
             result = subprocess.call(cmd, cwd=topdir, shell=True)
             
             if result != 0:
-                logger.error("Error in findSingleSolutionPF")
+                logger.error("Error in findSingleSolutionPFRefactored")
                 sys.exit(1)
                 
             os.makedirs('Recons', exist_ok=True)
@@ -1462,8 +1462,8 @@ def main():
                             sys.exit(1)
                     
                     # Run find single solution again
-                    cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findSingleSolutionPF')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}"
-                    logger.info(f"Running findSingleSolutionPF again: {cmd}")
+                    cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findSingleSolutionPFRefactored')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}"
+                    logger.info(f"Running findSingleSolutionPFRefactored again: {cmd}")
                     subprocess.call(cmd, cwd=topdir, shell=True)
                     
                     # Create spots to index file

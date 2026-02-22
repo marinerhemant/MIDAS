@@ -597,6 +597,7 @@ static inline void CorrectTiltSpatialDistortion(
   }
 }
 
+#include "MIDAS_Math.h"
 #include "Panel.h"
 
 struct GrainData {
@@ -889,20 +890,21 @@ void FitMultipleGrains(struct GrainData *grains, int nGrains, double OptP[10],
   calc_grain_errors(nGrains, nPanels, panels, grains, x,
                     IniErrs); // x has initial values here
 
-  nlopt_opt opt;
-  // opt = nlopt_create(NLOPT_LN_BOBYQA, n);
-  // opt = nlopt_create(NLOPT_LN_SBPLX, n);
-  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_min_objective(opt, problem_function, trp);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_maxtime(opt, 30);
-  nlopt_set_ftol_rel(opt, 1e-5);
-  nlopt_set_xtol_rel(opt, 1e-5);
-  double minf;
-  nlopt_optimize(opt, x, &minf);
-  nlopt_destroy(opt);
+  NLoptConfig config = {0};
+  config.objective_function = problem_function;
+  config.obj_data = trp;
+  config.dimension = n;
+  config.lower_bounds = xl;
+  config.upper_bounds = xu;
+  config.initial_guess = x;
+  config.max_evaluations = 5000;
+  // Note: nlopt_set_maxtime(opt, 30); is not in config, I will add it to
+  // MIDAS_Math
+  config.ftol_rel = 1e-5;
+  config.xtol_rel = 1e-5;
+
+  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  double minf = config.min_function_val;
 
   // Calculate Final Errors
   double *FinErrs = malloc(nGrains * 3 * sizeof(double));

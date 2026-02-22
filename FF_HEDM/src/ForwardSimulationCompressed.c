@@ -1955,8 +1955,8 @@ int main(int argc, char *argv[]) {
             }
             yTemp = yThis + DisplY;
             zTemp = zThis + DisplZ;
-            yDet = yBC - yTemp / px; // + 1;
-            zDet = zBC + zTemp / px; // + 1.5;
+            yDet = yBC - yTemp / px;
+            zDet = zBC + zTemp / px;
             if (yDet < 0 || yDet >= NrPixels || zDet < 0 || zDet >= NrPixels)
               continue;
             // ========================================================================

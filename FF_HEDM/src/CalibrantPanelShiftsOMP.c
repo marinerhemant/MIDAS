@@ -14,6 +14,7 @@
 //  TODO: Implement proper transformations for rectangular detectors.
 
 #include "FileReader.h"
+#include "MIDAS_Math.h"
 #include "Panel.h"
 #include "midas_paths.h"
 #include <ctype.h>
@@ -333,18 +334,21 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit],
   struct my_profile_func_data *f_datat;
   f_datat = &f_data;
   void *trp = (struct my_profile_func_data *)f_datat;
-  nlopt_opt opt;
-  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_min_objective(opt, problem_function_profile, trp);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_maxtime(opt, 30);
-  nlopt_set_ftol_rel(opt, 1e-5);
-  nlopt_set_xtol_rel(opt, 1e-5);
+  NLoptConfig config = {0};
+  config.dimension = n;
+  config.lower_bounds = xl;
+  config.upper_bounds = xu;
+  config.objective_function = problem_function_profile;
+  config.obj_data = trp;
+  config.initial_guess = x;
+  config.max_evaluations = 5000;
+  config.max_time_seconds = 30;
+  config.ftol_rel = 1e-5;
+  config.xtol_rel = 1e-5;
+
   double minf, MeanDiff;
-  nlopt_optimize(opt, x, &minf);
-  nlopt_destroy(opt);
+  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  minf = config.min_function_val;
   MeanDiff = sqrt(minf) / (NrPtsForFit);
   *Rfit = x[0];
 }
@@ -673,18 +677,21 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   struct my_func_data *f_datat;
   f_datat = &f_data;
   void *trp = (struct my_func_data *)f_datat;
-  nlopt_opt opt;
-  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_min_objective(opt, problem_function, trp);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_maxtime(opt, 30);
-  nlopt_set_ftol_rel(opt, 1e-5);
-  nlopt_set_xtol_rel(opt, 1e-5);
+  NLoptConfig config = {0};
+  config.dimension = n;
+  config.lower_bounds = xl;
+  config.upper_bounds = xu;
+  config.objective_function = problem_function;
+  config.obj_data = trp;
+  config.initial_guess = x;
+  config.max_evaluations = 5000;
+  config.max_time_seconds = 30;
+  config.ftol_rel = 1e-5;
+  config.xtol_rel = 1e-5;
+
   double minf;
-  nlopt_optimize(opt, x, &minf);
-  nlopt_destroy(opt);
+  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  minf = config.min_function_val;
   *MeanDiff = minf / (OBJ_FUNC_SCALE * nIndices);
 
   // 1. Update output parameters with optimized values

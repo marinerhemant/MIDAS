@@ -1,5 +1,5 @@
 /**
- * findSingleSolutionPF.c - Finding Single Solution in PF-HEDM
+ * findSingleSolutionPFRefactored.c - Finding Single Solution in PF-HEDM
  *
  * Purpose: This program identifies unique crystal orientations in
  * polycrystalline materials using far-field high-energy diffraction microscopy
@@ -59,6 +59,8 @@
 #define MAX_N_SPOTS_TOTAL                                                      \
   100000000               /* Maximum total number of spots across all grains */
 #define MAX_PATH_LEN 2048 /* Maximum length for file paths */
+
+#define INVALID_VOX ((size_t)-1)
 
 /* Constants for array column counts */
 #define SPOTS_ARRAY_COLS                                                       \
@@ -152,7 +154,7 @@ void print_usage(const char *program_name);
 double *read_memory_mapped_file(const char *filename, size_t *size_out);
 int compare_sino_data(const void *a, const void *b);
 void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
-                   size_t *allKeyArr, double *allOrientationsArr);
+                   size_t *allKeyArr, double *allOrientationsArr, int ib);
 UniqueOrientationsResult find_unique_orientations(size_t *allKeyArr,
                                                   double *allOrientationsArr,
                                                   size_t nScans, int sgNr,
@@ -164,7 +166,7 @@ void generate_sinograms(SpotList *spotList,
                         UniqueOrientationsResult *uniqueResult,
                         double *allSpots, size_t nSpotsAll, int nScans,
                         double tolOme, double tolEta, const char *outputFolder,
-                        int numProcs);
+                        int numProcs, int normalizeSino, int absTransform);
 void save_orientation_results(UniqueOrientationsResult *uniqueResult,
                               const char *outputFolder);
 void free_resources(SpotList *spotList, UniqueOrientationsResult *uniqueResult);
@@ -206,7 +208,7 @@ int main(int argc, char *argv[]) {
   printf("\n\n\t\tFinding Single Solution in PF-HEDM.\n\n");
 
   /* Parse command line arguments */
-  if (argc != 8) {
+  if (argc < 8 || argc > 10) {
     print_usage(argv[0]);
     return EXIT_FAILURE;
   }
@@ -226,6 +228,8 @@ int main(int argc, char *argv[]) {
       atof(argv[6]); /* Tolerance for omega angle when matching spots */
   double tolEta =
       atof(argv[7]); /* Tolerance for eta angle when matching spots */
+  int normalizeSino = (argc >= 9) ? atoi(argv[8]) : 1;
+  int absTransform = (argc >= 10) ? atoi(argv[9]) : 1;
 
   /* Validate input parameters */
   if (sgNr <= 0 || maxAng <= 0.0 || nScans <= 0 || numProcs <= 0 ||
@@ -250,11 +254,19 @@ int main(int argc, char *argv[]) {
   printf("Processing %d voxels with %d threads...\n", nScans * nScans,
          numProcs);
 
+  char outKeyFN[MAX_PATH_LEN];
+  sprintf(outKeyFN, "%s/UniqueIndexSingleKey.bin", folderName);
+  int ib = open(outKeyFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+  if (ib < 0) {
+    fatal_error("Failed to open %s: %s", outKeyFN, strerror(errno));
+  }
+
 #pragma omp parallel for num_threads(numProcs) schedule(dynamic)
   for (int voxNr = 0; voxNr < nScans * nScans; voxNr++) {
     process_voxel(voxNr, folderName, sgNr, maxAng, allKeyArr,
-                  allOrientationsArr);
+                  allOrientationsArr, ib);
   }
+  close(ib);
 
   printf("Voxel processing complete. Finding unique orientations...\n");
 
@@ -299,7 +311,8 @@ int main(int argc, char *argv[]) {
   /* Generate sinograms for visualization */
   printf("Generating sinograms...\n");
   generate_sinograms(&spotList, &uniqueResult, allSpots, nSpotsAll, nScans,
-                     tolOme, tolEta, argv[1], numProcs);
+                     tolOme, tolEta, argv[1], numProcs, normalizeSino,
+                     absTransform);
 
   /* Clean up resources */
   printf("Cleaning up resources...\n");
@@ -332,17 +345,25 @@ int main(int argc, char *argv[]) {
 void print_usage(const char *program_name) {
   printf(
       "Supply foldername spaceGroup, maxAng, NumberScans, nCPUs, tolOme, "
-      "tolEta as arguments:\n"
-      "%s foldername sgNum maxAngle nScans nCPUs tolOme tolEta\n"
+      "tolEta [normalizeSino] [absTransform] as arguments:\n"
+      "%s foldername sgNum maxAngle nScans nCPUs tolOme tolEta [normalizeSino] "
+      "[absTransform]\n"
       "\nWhere:\n"
-      "  foldername: Path to the folder containing input data\n"
-      "  sgNum:      Space group number for crystallographic symmetry\n"
-      "  maxAngle:   Maximum misorientation angle for grouping orientations "
+      "  foldername:     Path to the folder containing input data\n"
+      "  sgNum:          Space group number for crystallographic symmetry\n"
+      "  maxAngle:       Maximum misorientation angle for grouping "
+      "orientations "
       "(degrees)\n"
-      "  nScans:     Number of scans in the experiment\n"
-      "  nCPUs:      Number of CPU cores to use for parallel processing\n"
-      "  tolOme:     Tolerance for omega angle when matching spots (degrees)\n"
-      "  tolEta:     Tolerance for eta angle when matching spots (degrees)\n"
+      "  nScans:         Number of scans in the experiment\n"
+      "  nCPUs:          Number of CPU cores to use for parallel processing\n"
+      "  tolOme:         Tolerance for omega angle when matching spots "
+      "(degrees)\n"
+      "  tolEta:         Tolerance for eta angle when matching spots "
+      "(degrees)\n"
+      "  normalizeSino:  0=off, 1=on (default: 1)\n"
+      "  absTransform:   0=off, 1=on (default: 1)\n"
+      "                  When on, applies exp(-I/Imax) so absorption CT codes\n"
+      "                  can recover diffraction intensity via -ln().\n"
       "\nThe indexing results need to be in folderName/Output\n",
       program_name);
 }
@@ -455,18 +476,7 @@ int compare_sino_data(const void *a, const void *b) {
  * @param maxAng Maximum misorientation angle for grouping orientations
  */
 void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
-                   size_t *allKeyArr, double *allOrientationsArr) {
-  /* Construct output key filename */
-  char outKeyFN[MAX_PATH_LEN];
-  sprintf(outKeyFN, "%s/UniqueIndexSingleKey.bin", folderName);
-
-  /* Open output file for writing */
-  int ib = open(outKeyFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
-  if (ib < 0) {
-    log_error("Failed to open %s: %s", outKeyFN, strerror(errno));
-    return;
-  }
-
+                   size_t *allKeyArr, double *allOrientationsArr, int ib) {
   /* Construct input filenames for this voxel */
   FILE *valsF = NULL, *keyF = NULL;
   char valsFN[MAX_PATH_LEN], keyFN[MAX_PATH_LEN];
@@ -487,13 +497,13 @@ void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
     /* Write empty result */
     size_t outarr[5] = {0};
     pwrite(ib, outarr, 5 * sizeof(size_t), 5 * sizeof(size_t) * voxNr);
+    allKeyArr[voxNr * KEY_ARRAY_COLS] = INVALID_VOX;
 
     /* Clean up */
     if (keyF)
       fclose(keyF);
     if (valsF)
       fclose(valsF);
-    close(ib);
     return;
   }
 
@@ -509,7 +519,7 @@ void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
 
     size_t outarr[5] = {0};
     pwrite(ib, outarr, 5 * sizeof(size_t), 5 * sizeof(size_t) * voxNr);
-    close(ib);
+    allKeyArr[voxNr * KEY_ARRAY_COLS] = INVALID_VOX;
     return;
   }
 
@@ -520,7 +530,6 @@ void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
     log_error("Failed to allocate memory for keys");
     fclose(keyF);
     fclose(valsF);
-    close(ib);
     return;
   }
 
@@ -566,7 +575,6 @@ void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
     free(confIAArr); /* Safe to free NULL */
     free(tmpArr);    /* Safe to free NULL */
     fclose(valsF);
-    close(ib);
     return;
   }
 
@@ -606,7 +614,6 @@ void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
     free(OMArr);
     free(confIAArr);
     free(tmpArr);
-    close(ib);
     return;
   }
 
@@ -638,6 +645,7 @@ void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
     /* No valid orientation found */
     size_t outarr[5] = {0};
     pwrite(ib, outarr, 5 * sizeof(size_t), 5 * sizeof(size_t) * voxNr);
+    allKeyArr[voxNr * KEY_ARRAY_COLS] = INVALID_VOX;
   } else {
     /* Process unique orientations within this voxel */
     for (int i = 0; i < nIDs; i++)
@@ -659,7 +667,6 @@ void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
       free(markArr);
       free(uniqueArrThis);       /* Safe to free NULL */
       free(uniqueOrientArrThis); /* Safe to free NULL */
-      close(ib);
       return;
     }
 
@@ -789,7 +796,6 @@ void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
   free(confIAArr);
   free(tmpArr);
   free(markArr);
-  close(ib);
 }
 
 /**
@@ -835,8 +841,7 @@ UniqueOrientationsResult find_unique_orientations(size_t *allKeyArr,
 
   /* Initialize mark array - mark entries with invalid key values */
   for (size_t i = 0; i < nScans * nScans; i++) {
-    markArr[i] = (allKeyArr[i * KEY_ARRAY_COLS] == (size_t)-1 ||
-                  allKeyArr[i * KEY_ARRAY_COLS] == 0);
+    markArr[i] = (allKeyArr[i * KEY_ARRAY_COLS] == INVALID_VOX);
   }
 
   /* Find unique orientations */
@@ -1223,7 +1228,7 @@ void generate_sinograms(SpotList *spotList,
                         UniqueOrientationsResult *uniqueResult,
                         double *allSpots, size_t nSpotsAll, int nScans,
                         double tolOme, double tolEta, const char *outputFolder,
-                        int numProcs) {
+                        int numProcs, int normalizeSino, int absTransform) {
 
   /* Find maximum number of spots per grain */
   int maxNHKLs = 0;
@@ -1256,14 +1261,18 @@ void generate_sinograms(SpotList *spotList,
   /* Allocate memory for sinograms */
   size_t szSino = uniqueResult->nUniques * maxNHKLs * nScans;
   double *sinoArr = calloc(szSino, sizeof(*sinoArr));
-  double *allOmeArr = calloc(szSino, sizeof(*allOmeArr));
 
-  if (!sinoArr || !allOmeArr) {
+  double *sumOmeArr =
+      calloc(uniqueResult->nUniques * maxNHKLs, sizeof(*sumOmeArr));
+  int *countOmeArr =
+      calloc(uniqueResult->nUniques * maxNHKLs, sizeof(*countOmeArr));
+
+  if (!sinoArr || !sumOmeArr || !countOmeArr) {
     free(nrHKLsPerGrain);
-    free(sinoArr);   /* Safe to free NULL */
-    free(allOmeArr); /* Safe to free NULL */
-    fatal_error("Failed to allocate memory for sinograms (size: %zu bytes)",
-                szSino * sizeof(*sinoArr));
+    free(sinoArr); /* Safe to free NULL */
+    free(sumOmeArr);
+    free(countOmeArr);
+    fatal_error("Failed to allocate memory for sinograms");
   }
 
   /* Initialize arrays */
@@ -1276,7 +1285,8 @@ void generate_sinograms(SpotList *spotList,
   if (!omeArr || !maxIntArr) {
     free(nrHKLsPerGrain);
     free(sinoArr);
-    free(allOmeArr);
+    free(sumOmeArr);
+    free(countOmeArr);
     free(omeArr);    /* Safe to free NULL */
     free(maxIntArr); /* Safe to free NULL */
     fatal_error("Failed to allocate memory for omega arrays");
@@ -1325,21 +1335,23 @@ void generate_sinograms(SpotList *spotList,
 
           size_t locThis = (size_t)spot->grainNr * maxNHKLs * nScans +
                            (size_t)spot->spotNr * nScans + scanNr;
-
-          /* Store intensity and omega values */
-          sinoArr[locThis] = allSpots[SPOTS_ARRAY_COLS * spotIdx + 3];
-          allOmeArr[locThis] = allSpots[SPOTS_ARRAY_COLS * spotIdx + 2];
-
-          /* Update maximum intensity */
           size_t maxIntIdx =
               (size_t)spot->grainNr * maxNHKLs + (size_t)spot->spotNr;
+          double currentIntensity = allSpots[SPOTS_ARRAY_COLS * spotIdx + 3];
+          double currentOmega = allSpots[SPOTS_ARRAY_COLS * spotIdx + 2];
+
+          /* Store intensity values */
+          sinoArr[locThis] = currentIntensity;
 
 /* Critical section to prevent race conditions */
 #pragma omp critical
           {
-            if (maxIntArr[maxIntIdx] <
-                allSpots[SPOTS_ARRAY_COLS * spotIdx + 3]) {
-              maxIntArr[maxIntIdx] = allSpots[SPOTS_ARRAY_COLS * spotIdx + 3];
+            if (maxIntArr[maxIntIdx] < currentIntensity) {
+              maxIntArr[maxIntIdx] = currentIntensity;
+            }
+            if (currentIntensity > 0) {
+              sumOmeArr[maxIntIdx] += currentOmega;
+              countOmeArr[maxIntIdx]++;
             }
           }
         }
@@ -1347,34 +1359,12 @@ void generate_sinograms(SpotList *spotList,
     }
   }
 
-  /* Calculate average omega angles and normalize intensities */
+  /* Calculate average omega angles */
   for (size_t grainIdx = 0; grainIdx < uniqueResult->nUniques; grainIdx++) {
     for (size_t spotIdx = 0; spotIdx < (size_t)maxNHKLs; spotIdx++) {
-      double avgOmega = 0.0;
-      int nAngles = 0;
-      double maxIntensity = maxIntArr[grainIdx * maxNHKLs + spotIdx];
-
-      /* Skip spots with no intensity */
-      if (maxIntensity <= 0) {
-        continue;
-      }
-
-      /* Process each scan */
-      for (int scanIdx = 0; scanIdx < nScans; scanIdx++) {
-        size_t index =
-            grainIdx * maxNHKLs * nScans + spotIdx * nScans + scanIdx;
-
-        /* Normalize intensity if it's positive */
-        if (sinoArr[index] > 0) {
-          sinoArr[index] /= maxIntensity;
-          avgOmega += allOmeArr[index];
-          nAngles++;
-        }
-      }
-
-      /* Store average omega if we have measurements */
-      if (nAngles > 0) {
-        omeArr[grainIdx * maxNHKLs + spotIdx] = avgOmega / nAngles;
+      size_t maxIntIdx = grainIdx * maxNHKLs + spotIdx;
+      if (countOmeArr[maxIntIdx] > 0) {
+        omeArr[maxIntIdx] = sumOmeArr[maxIntIdx] / countOmeArr[maxIntIdx];
       }
     }
   }
@@ -1447,6 +1437,30 @@ void generate_sinograms(SpotList *spotList,
     free(sortData);
   }
 
+  /* --- Make a raw copy before any transforms --- */
+  double *rawSinoArr = malloc(szSino * sizeof(double));
+  memcpy(rawSinoArr, sinoArr, szSino * sizeof(double));
+
+  /* --- Apply user-requested transforms to sinoArr --- */
+  for (size_t grainIdx = 0; grainIdx < uniqueResult->nUniques; grainIdx++) {
+    for (size_t spotIdx = 0; spotIdx < (size_t)maxNHKLs; spotIdx++) {
+      double maxIntensity = maxIntArr[grainIdx * maxNHKLs + spotIdx];
+      for (int scanIdx = 0; scanIdx < nScans; scanIdx++) {
+        size_t locThis =
+            grainIdx * maxNHKLs * nScans + spotIdx * nScans + scanIdx;
+        if (sinoArr[locThis] > 0) {
+          if (normalizeSino && maxIntensity > 0) {
+            sinoArr[locThis] /= maxIntensity;
+          }
+          if (absTransform) {
+            sinoArr[locThis] *= -1;
+            sinoArr[locThis] = exp(sinoArr[locThis]);
+          }
+        }
+      }
+    }
+  }
+
   /* Save results to files */
   char sinoFN[MAX_PATH_LEN], omeFN[MAX_PATH_LEN], HKLsFN[MAX_PATH_LEN];
   sprintf(sinoFN, "%s/sinos_%zu_%d_%d.bin", outputFolder,
@@ -1491,9 +1505,52 @@ void generate_sinograms(SpotList *spotList,
   if (HKLsF)
     fclose(HKLsF);
 
+  /* --- Generate and save all 4 combinations for visualization --- */
+  // Combination labels: raw, norm, abs, normabs
+  const char *comboNames[4] = {"raw", "norm", "abs", "normabs"};
+  int comboNorm[4] = {0, 1, 0, 1};
+  int comboAbs[4] = {0, 0, 1, 1};
+
+  for (int combo = 0; combo < 4; combo++) {
+    double *comboArr = malloc(szSino * sizeof(double));
+    memcpy(comboArr, rawSinoArr, szSino * sizeof(double));
+
+    // Apply this combo's transforms
+    for (size_t grainIdx = 0; grainIdx < uniqueResult->nUniques; grainIdx++) {
+      for (size_t spotIdx = 0; spotIdx < (size_t)maxNHKLs; spotIdx++) {
+        double maxIntensity = maxIntArr[grainIdx * maxNHKLs + spotIdx];
+        for (int scanIdx = 0; scanIdx < nScans; scanIdx++) {
+          size_t locThis =
+              grainIdx * maxNHKLs * nScans + spotIdx * nScans + scanIdx;
+          if (comboArr[locThis] > 0) {
+            if (comboNorm[combo] && maxIntensity > 0)
+              comboArr[locThis] /= maxIntensity;
+            if (comboAbs[combo]) {
+              comboArr[locThis] *= -1;
+              comboArr[locThis] = exp(comboArr[locThis]);
+            }
+          }
+        }
+      }
+    }
+
+    char comboFN[MAX_PATH_LEN];
+    sprintf(comboFN, "%s/sinos_%s_%zu_%d_%d.bin", outputFolder,
+            comboNames[combo], uniqueResult->nUniques, maxNHKLs, nScans);
+    FILE *comboF = fopen(comboFN, "wb");
+    if (comboF) {
+      fwrite(comboArr, szSino * sizeof(double), 1, comboF);
+      fclose(comboF);
+    }
+    free(comboArr);
+  }
+  printf("Saved all 4 sinogram combinations.\n");
+
+  free(rawSinoArr);
   free(sinoArr);
   free(omeArr);
-  free(allOmeArr);
+  free(sumOmeArr);
+  free(countOmeArr);
   free(maxIntArr);
   free(nrHKLsPerGrain);
 }

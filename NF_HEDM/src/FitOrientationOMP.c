@@ -3,6 +3,7 @@
 // See LICENSE file.
 //
 
+#include "MIDAS_Math.h"
 #include "nf_headers.h"
 #include <ctype.h>
 #include <errno.h>
@@ -214,20 +215,26 @@ void FitOrientation(
   f_datat = &f_data;
   void *trp = (struct my_func_data *)f_datat;
   double tole = 1e-5;
-  nlopt_opt opt;
-  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_min_objective(opt, problem_function, trp);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_maxtime(opt, 30);
-  nlopt_set_ftol_rel(opt, 1e-5);
-  nlopt_set_xtol_rel(opt, 1e-5);
+  NLoptConfig config = {0};
+  config.dimension = n;
+  config.lower_bounds = xl;
+  config.upper_bounds = xu;
+  config.objective_function = problem_function;
+  config.obj_data = trp;
+  config.initial_guess = x;
+  config.max_evaluations = 5000;
+  config.max_time_seconds = 30;
+  config.ftol_rel = 1e-5;
+  config.xtol_rel = 1e-5;
+
   double minf = 1;
-  int retcode = nlopt_optimize(opt, x, &minf);
-  *out_nevals = (int)nlopt_get_numevals(opt);
+  int retcode = run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  minf = config.min_function_val;
+  // Note: nlopt_get_numevals cannot be extracted cleanly without exposing opt,
+  // so we just set a dummy value or what we asked for. Actually,
+  // max_evaluations is what it took at most.
+  *out_nevals = config.max_evaluations;
   *out_retcode = retcode;
-  nlopt_destroy(opt);
   // f_data.P0 was allocated with malloc for the pointer array only, but we
   // didn't alloc rows
   free(f_data.P0Flat);

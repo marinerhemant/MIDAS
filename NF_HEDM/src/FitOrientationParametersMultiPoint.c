@@ -3,6 +3,7 @@
 // See LICENSE file.
 //
 
+#include "MIDAS_Math.h"
 #include "nf_headers.h"
 #include <ctype.h>
 #include <limits.h>
@@ -327,17 +328,22 @@ void FitOrientation(
   for (iter = 0; iter < NumIterations; iter++) {
     printf("Starting iteration %d of %d\n", iter + 1, NumIterations);
 
-    opt0 = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-    nlopt_set_lower_bounds(opt0, xl);
-    nlopt_set_upper_bounds(opt0, xu);
-    nlopt_set_min_objective(opt0, problem_function, trp);
-    nlopt_set_maxeval(opt0, 5000);
-    nlopt_set_maxtime(opt0, 30);
-    nlopt_set_ftol_rel(opt0, 1e-5);
-    nlopt_set_xtol_rel(opt0, 1e-5);
-    nlopt_set_stopval(opt0, 1e-7);
-    nlopt_optimize(opt0, x, &minf0);
-    nlopt_destroy(opt0);
+    NLoptConfig config = {0};
+    config.dimension = n;
+    config.lower_bounds = xl;
+    config.upper_bounds = xu;
+    config.objective_function = problem_function;
+    config.obj_data = trp;
+    config.initial_guess = x;
+    config.max_evaluations = 5000;
+    config.max_time_seconds = 30;
+    config.ftol_rel = 1e-5;
+    config.xtol_rel = 1e-5;
+    config.has_stopval = 1;
+    config.stopval = 1e-7;
+
+    run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+    minf0 = config.min_function_val;
     printf("Refined  val: %.40lf, finished initial local optimization.\n",
            1 - minf0);
     if (minf0 < 1e-7) {
@@ -351,18 +357,9 @@ void FitOrientation(
       break;
     }
 
-    opt = nlopt_create(NLOPT_GN_CRS2_LM, n);
-    nlopt_set_population(opt, 50 * (n + 2));
-    nlopt_set_min_objective(opt, problem_function, trp);
-    nlopt_set_maxeval(opt, 5000);
-    nlopt_set_maxtime(opt, 30);
-    nlopt_set_ftol_rel(opt, 1e-5);
-    nlopt_set_xtol_rel(opt, 1e-5);
-    nlopt_set_stopval(opt, 1e-7);
-    nlopt_set_lower_bounds(opt, xl);
-    nlopt_set_upper_bounds(opt, xu);
-    nlopt_optimize(opt, x, &minf);
-    nlopt_destroy(opt);
+    config.population = 50 * (n + 2);
+    run_nlopt_optimization(NLOPT_GN_CRS2_LM, &config);
+    minf = config.min_function_val;
     printf("Refined  val: %.40lf, finished first global optimization. Now "
            "doing first local optimization.\n",
            1 - minf);
@@ -377,17 +374,9 @@ void FitOrientation(
       break;
     }
 
-    opt2 = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-    nlopt_set_lower_bounds(opt2, xl);
-    nlopt_set_upper_bounds(opt2, xu);
-    nlopt_set_min_objective(opt2, problem_function, trp);
-    nlopt_set_maxeval(opt2, 5000);
-    nlopt_set_maxtime(opt2, 30);
-    nlopt_set_ftol_rel(opt2, 1e-5);
-    nlopt_set_xtol_rel(opt2, 1e-5);
-    nlopt_set_stopval(opt2, 1e-7);
-    nlopt_optimize(opt2, x, &minf2);
-    nlopt_destroy(opt2);
+    config.population = 0; // reset
+    run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+    minf2 = config.min_function_val;
     printf("Refined  val: %.40lf, finished first local optimization. Now doing "
            "second global optimization.\n",
            1 - minf2);
@@ -402,18 +391,9 @@ void FitOrientation(
       break;
     }
 
-    opt3 = nlopt_create(NLOPT_GN_CRS2_LM, n);
-    nlopt_set_population(opt3, 10 * (n + 2));
-    nlopt_set_min_objective(opt3, problem_function, trp);
-    nlopt_set_maxeval(opt3, 5000);
-    nlopt_set_maxtime(opt3, 30);
-    nlopt_set_ftol_rel(opt3, 1e-5);
-    nlopt_set_xtol_rel(opt3, 1e-5);
-    nlopt_set_stopval(opt3, 1e-7);
-    nlopt_set_lower_bounds(opt3, xl);
-    nlopt_set_upper_bounds(opt3, xu);
-    nlopt_optimize(opt3, x, &minf3);
-    nlopt_destroy(opt3);
+    config.population = 10 * (n + 2);
+    run_nlopt_optimization(NLOPT_GN_CRS2_LM, &config);
+    minf3 = config.min_function_val;
     printf("Refined  val: %.40lf, finished second global optimization. Now "
            "doing first local optimization.\n",
            1 - minf3);
@@ -428,17 +408,9 @@ void FitOrientation(
       break;
     }
 
-    opt4 = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-    nlopt_set_lower_bounds(opt4, xl);
-    nlopt_set_upper_bounds(opt4, xu);
-    nlopt_set_min_objective(opt4, problem_function, trp);
-    nlopt_set_maxeval(opt4, 5000);
-    nlopt_set_maxtime(opt4, 30);
-    nlopt_set_ftol_rel(opt4, 1e-5);
-    nlopt_set_xtol_rel(opt4, 1e-5);
-    nlopt_set_stopval(opt4, 1e-7);
-    nlopt_optimize(opt4, x, &minf4);
-    nlopt_destroy(opt4);
+    config.population = 0; // reset
+    run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+    minf4 = config.min_function_val;
     printf("Final value:  %.40lf, finished second local optimization. This is "
            "the best average confidence.\n",
            1 - minf4);

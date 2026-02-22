@@ -13,6 +13,7 @@
 // Update 2014/11/19: Added P. Kenesei definition
 //
 
+#include "MIDAS_Math.h"
 #include <ctype.h>
 #include <limits.h>
 #include <math.h>
@@ -214,18 +215,21 @@ inline int StrainTensorKenesei(int nspots, double **SpotsInfo, double Distance,
   struct data_StrainFit *f_datat;
   f_datat = &mydata;
   void *trp = (struct data_StrainFit *)f_datat;
-  nlopt_opt opt;
-  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_min_objective(opt, problem_function, trp);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_maxtime(opt, 30);
-  nlopt_set_ftol_rel(opt, 1e-5);
-  nlopt_set_xtol_rel(opt, 1e-5);
+  NLoptConfig config = {0};
+  config.dimension = n;
+  config.lower_bounds = xl;
+  config.upper_bounds = xu;
+  config.objective_function = problem_function;
+  config.obj_data = trp;
+  config.initial_guess = x;
+  config.max_evaluations = 5000;
+  config.max_time_seconds = 30;
+  config.ftol_rel = 1e-5;
+  config.xtol_rel = 1e-5;
+
   double minf = 1;
-  nlopt_optimize(opt, x, &minf);
-  nlopt_destroy(opt);
+  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  minf = config.min_function_val;
   *RetVal = problem_function(n, x, NULL, trp) / (nspots * 1000000);
   *RetVal = sqrt(*RetVal);
   StrainTensorSample[0][0] = x[0];

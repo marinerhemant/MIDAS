@@ -11,6 +11,7 @@
 //  Parallelized and adapted for SpotMatrix.csv input
 //
 
+#include "MIDAS_Math.h"
 #include "Panel.h"
 #include <ctype.h>
 #include <limits.h>
@@ -306,18 +307,21 @@ int FitWedgeThreadSafe(double Lsd, double Ycen, double Zcen, double p0,
   void *trp = (struct my_func_data *)f_datat;
 
   // nlopt_create is thread safe if used locally
-  nlopt_opt opt;
-  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_min_objective(opt, problem_function, trp);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_maxtime(opt, 30);
-  nlopt_set_ftol_rel(opt, 1e-5);
-  nlopt_set_xtol_rel(opt, 1e-5);
+  NLoptConfig config = {0};
+  config.dimension = n;
+  config.lower_bounds = xl;
+  config.upper_bounds = xu;
+  config.objective_function = problem_function;
+  config.obj_data = trp;
+  config.initial_guess = x;
+  config.max_evaluations = 5000;
+  config.max_time_seconds = 30;
+  config.ftol_rel = 1e-5;
+  config.xtol_rel = 1e-5;
+
   double minf;
-  nlopt_optimize(opt, x, &minf);
-  nlopt_destroy(opt);
+  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  minf = config.min_function_val;
   *WedgeFit = x[0];
   *MinFOut = minf;
 

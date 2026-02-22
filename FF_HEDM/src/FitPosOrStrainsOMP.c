@@ -19,6 +19,7 @@
 //  16-18: Ome y z corrected without wedge till tilts spacial distortion
 //  19-21: IA, LenDiff, OmeDiff
 
+#include "MIDAS_Math.h"
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -1323,30 +1324,25 @@ void FitPositionIni(double X0[12], int nSpotsComp, double **spotsYZO, int nhkls,
   struct data_FitPosIni *f_datat;
   f_datat = &f_data;
   void *trp = (struct data_FitPosIni *)f_datat;
-  nlopt_opt opt;
-  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_min_objective(opt, problem_function_PosIni, trp);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_maxtime(opt, 30);
-  nlopt_set_ftol_rel(opt, 1e-5);
-  nlopt_set_xtol_rel(opt, 1e-5);
+  NLoptConfig config = {0};
+  config.dimension = n;
+  config.lower_bounds = xl;
+  config.upper_bounds = xu;
+  config.objective_function = problem_function_PosIni;
+  config.obj_data = trp;
+  config.initial_guess = x;
+  config.max_evaluations = 5000;
+  config.max_time_seconds = 30;
+  config.ftol_rel = 1e-5;
+  config.xtol_rel = 1e-5;
+
   double minf;
-  nlopt_optimize(opt, x, &minf);
-  nlopt_destroy(opt);
+  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  minf = config.min_function_val;
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
   //~ printf("%10.30f \n", minf);
-  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_min_objective(opt, problem_function_PosIni, trp);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_maxtime(opt, 30);
-  nlopt_set_ftol_rel(opt, 1e-5);
-  nlopt_set_xtol_rel(opt, 1e-5);
-  nlopt_optimize(opt, x, &minf);
-  nlopt_destroy(opt);
+  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  minf = config.min_function_val;
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
   if (GlobalDebugFlag)
     printf("DEBUG OMP FitPositionIni: %10.30f \n", minf);
@@ -1415,30 +1411,25 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO, int nhkls,
   struct data_FitOrientIni *f_datat;
   f_datat = &f_data;
   void *trp = (struct data_FitOrientIni *)f_datat;
-  nlopt_opt opt;
-  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_min_objective(opt, problem_function_OrientIni, trp);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_maxtime(opt, 30);
-  nlopt_set_ftol_rel(opt, 1e-5);
-  nlopt_set_xtol_rel(opt, 1e-5);
+  NLoptConfig config = {0};
+  config.dimension = n;
+  config.lower_bounds = xl;
+  config.upper_bounds = xu;
+  config.objective_function = problem_function_OrientIni;
+  config.obj_data = trp;
+  config.initial_guess = x;
+  config.max_evaluations = 5000;
+  config.max_time_seconds = 30;
+  config.ftol_rel = 1e-5;
+  config.xtol_rel = 1e-5;
+
   double minf;
-  nlopt_optimize(opt, x, &minf);
-  nlopt_destroy(opt);
+  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  minf = config.min_function_val;
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
   //~ printf("%10.30f \n", minf);
-  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_min_objective(opt, problem_function_OrientIni, trp);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_maxtime(opt, 30);
-  nlopt_set_ftol_rel(opt, 1e-5);
-  nlopt_set_xtol_rel(opt, 1e-5);
-  nlopt_optimize(opt, x, &minf);
-  nlopt_destroy(opt);
+  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  minf = config.min_function_val;
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
   if (GlobalDebugFlag)
     printf("DEBUG OMP FitOrientIni: %10.30f \n", minf);
@@ -1509,30 +1500,25 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO, int nhkls,
   struct data_FitStrainIni *f_datat;
   f_datat = &f_data;
   void *trp = (struct data_FitStrainIni *)f_datat;
-  nlopt_opt opt;
-  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_min_objective(opt, problem_function_StrainIni, trp);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_maxtime(opt, 30);
-  nlopt_set_ftol_rel(opt, 1e-5);
-  nlopt_set_xtol_rel(opt, 1e-5);
+  NLoptConfig config = {0};
+  config.dimension = n;
+  config.lower_bounds = xl;
+  config.upper_bounds = xu;
+  config.objective_function = problem_function_StrainIni;
+  config.obj_data = trp;
+  config.initial_guess = x;
+  config.max_evaluations = 5000;
+  config.max_time_seconds = 30;
+  config.ftol_rel = 1e-5;
+  config.xtol_rel = 1e-5;
+
   double minf;
-  nlopt_optimize(opt, x, &minf);
-  nlopt_destroy(opt);
+  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  minf = config.min_function_val;
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
   //~ printf("%10.30f \n", minf);
-  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_min_objective(opt, problem_function_StrainIni, trp);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_maxtime(opt, 30);
-  nlopt_set_ftol_rel(opt, 1e-5);
-  nlopt_set_xtol_rel(opt, 1e-5);
-  nlopt_optimize(opt, x, &minf);
-  nlopt_destroy(opt);
+  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  minf = config.min_function_val;
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
   if (GlobalDebugFlag)
     printf("DEBUG OMP FitStrainIni: %10.30f \n", minf);
@@ -1627,30 +1613,25 @@ void FitPosSec(double X0[3], int nSpotsComp, double **spotsYZO, int nhkls,
   struct data_FitPos *f_datat;
   f_datat = &f_data;
   void *trp = (struct data_FitPos *)f_datat;
-  nlopt_opt opt;
-  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_min_objective(opt, problem_function_Pos, trp);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_maxtime(opt, 30);
-  nlopt_set_ftol_rel(opt, 1e-5);
-  nlopt_set_xtol_rel(opt, 1e-5);
+  NLoptConfig config = {0};
+  config.dimension = n;
+  config.lower_bounds = xl;
+  config.upper_bounds = xu;
+  config.objective_function = problem_function_Pos;
+  config.obj_data = trp;
+  config.initial_guess = x;
+  config.max_evaluations = 5000;
+  config.max_time_seconds = 30;
+  config.ftol_rel = 1e-5;
+  config.xtol_rel = 1e-5;
+
   double minf;
-  nlopt_optimize(opt, x, &minf);
-  nlopt_destroy(opt);
+  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  minf = config.min_function_val;
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
   //~ printf("%10.30f \n", minf);
-  opt = nlopt_create(NLOPT_LN_NELDERMEAD, n);
-  nlopt_set_lower_bounds(opt, xl);
-  nlopt_set_upper_bounds(opt, xu);
-  nlopt_set_min_objective(opt, problem_function_Pos, trp);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_maxtime(opt, 30);
-  nlopt_set_ftol_rel(opt, 1e-5);
-  nlopt_set_xtol_rel(opt, 1e-5);
-  nlopt_optimize(opt, x, &minf);
-  nlopt_destroy(opt);
+  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  minf = config.min_function_val;
   //~ for (i=0;i<n;i++) printf("%f ",x[i]);
   if (GlobalDebugFlag)
     printf("DEBUG OMP FitPosSec: %10.30f \n", minf);
