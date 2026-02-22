@@ -26,7 +26,11 @@
 #include <time.h>
 #include <unistd.h>
 
-static void check(int test, const char *message, ...) {
+// check() - using MIDAS_CHECK_DEFINED guard (cannot include MIDAS_Limits.h due
+// to conflicting MAX_N_SPOTS)
+#ifndef MIDAS_CHECK_DEFINED
+#define MIDAS_CHECK_DEFINED
+static inline void check(int test, const char *message, ...) {
   if (test) {
     va_list args;
     va_start(args, message);
@@ -36,6 +40,7 @@ static void check(int test, const char *message, ...) {
     exit(EXIT_FAILURE);
   }
 }
+#endif
 
 #define RealType double
 

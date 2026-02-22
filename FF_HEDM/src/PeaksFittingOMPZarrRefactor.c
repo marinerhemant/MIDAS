@@ -2900,6 +2900,12 @@ int main(int argc, char *argv[]) {
   int dataLoc = -1;
   count = 0;
   archive = zip_open(dataFile, 0, &errorp);
+  if (!archive) {
+    fprintf(stderr,
+            "ERROR: Could not re-open zip archive '%s' (error code: %d)\n",
+            dataFile, errorp);
+    return ERROR_ZIP_OPEN;
+  }
   zip_stat_init(&fileInfo);
   while (zip_stat_index(archive, count, 0, &fileInfo) == 0) {
     if (strstr(fileInfo.name, "exchange/data/0.0.0") != NULL)

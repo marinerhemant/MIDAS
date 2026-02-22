@@ -87,8 +87,11 @@ int main(int argc, char *argv[]) {
   int errorp = 0;
   zip_t *arch = NULL;
   arch = zip_open(DataFN, 0, &errorp);
-  if (errorp != NULL)
+  if (arch == NULL) {
+    fprintf(stderr, "ERROR: Could not open zip archive '%s' (error code: %d)\n",
+            DataFN, errorp);
     return 1;
+  }
   struct zip_stat *finfo = NULL;
   finfo = calloc(16384, sizeof(int));
   zip_stat_init(finfo);

@@ -59,16 +59,7 @@ inline void BringDownToFundamentalRegionSym(double QuatIn[4], double QuatOut[4],
 inline void BringDownToFundamentalRegion(double QuatIn[4], double QuatOut[4],
                                          int SGNr);
 
-static void check(int test, const char *message, ...) {
-  if (test) {
-    va_list args;
-    va_start(args, message);
-    vfprintf(stderr, message, args);
-    va_end(args);
-    fprintf(stderr, "\n");
-    exit(EXIT_FAILURE);
-  }
-}
+// check() is now provided by MIDAS_Limits.h
 
 static inline int **allocMatrixInt(int nrows, int ncols) {
   int **arr;
@@ -391,8 +382,9 @@ int main(int argc, char *argv[]) {
       SpotMatrix[counterSpotMatrix][2] = AllSpots[rowSpotID * 14 + 2];  // Omega
       SpotMatrix[counterSpotMatrix][3] = AllSpots[rowSpotID * 14 + 11]; // YRaw
       SpotMatrix[counterSpotMatrix][4] = AllSpots[rowSpotID * 14 + 12]; // ZRaw
-      SpotMatrix[counterSpotMatrix][5] = AllSpots[rowSpotID * 14 + 13]; // OmeRaw
-      SpotMatrix[counterSpotMatrix][6] = AllSpots[rowSpotID * 14 + 6];  // Eta
+      SpotMatrix[counterSpotMatrix][5] =
+          AllSpots[rowSpotID * 14 + 13];                               // OmeRaw
+      SpotMatrix[counterSpotMatrix][6] = AllSpots[rowSpotID * 14 + 6]; // Eta
       SpotMatrix[counterSpotMatrix][7] = AllSpots[rowSpotID * 14 + 5]; // RingNr
       SpotMatrix[counterSpotMatrix][8] = AllSpots[rowSpotID * 14 + 0]; // YLab
       SpotMatrix[counterSpotMatrix][9] = AllSpots[rowSpotID * 14 + 1]; // ZLab

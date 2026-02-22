@@ -68,16 +68,7 @@ int **allocMatrixIntF(int nrows, int ncols) {
   return arr;
 }
 
-static void check(int test, const char *message, ...) {
-  if (test) {
-    va_list args;
-    va_start(args, message);
-    vfprintf(stderr, message, args);
-    va_end(args);
-    fprintf(stderr, "\n");
-    exit(EXIT_FAILURE);
-  }
-}
+// check() is now provided by MIDAS_Limits.h (via nf_headers.h)
 
 int main(int argc, char *argv[]) {
   if (argc != 4) {

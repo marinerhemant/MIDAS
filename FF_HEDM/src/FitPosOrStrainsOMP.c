@@ -74,16 +74,7 @@ long long int totNrPixelsBigDetector;
 double pixelsize;
 double DetParams[4][10];
 
-static void check(int test, const char *message, ...) {
-  if (test) {
-    va_list args;
-    va_start(args, message);
-    vfprintf(stderr, message, args);
-    va_end(args);
-    fprintf(stderr, "\n");
-    exit(EXIT_FAILURE);
-  }
-}
+// check() is now provided by MIDAS_Limits.h
 
 static inline int **allocMatrixInt(int nrows, int ncols) {
   int **arr;

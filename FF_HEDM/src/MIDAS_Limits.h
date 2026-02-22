@@ -30,4 +30,23 @@
 #define MAX_QUEUE_SIZE 100
 #define MAX_TRANSFORM_OPS 10
 
+// --- Centralized error-exit helper ---
+// Previously copy-pasted into ~15 source files; now defined once here.
+#ifndef MIDAS_CHECK_DEFINED
+#define MIDAS_CHECK_DEFINED
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+static inline void check(int test, const char *message, ...) {
+  if (test) {
+    va_list args;
+    va_start(args, message);
+    vfprintf(stderr, message, args);
+    va_end(args);
+    fprintf(stderr, "\n");
+    exit(EXIT_FAILURE);
+  }
+}
+#endif /* MIDAS_CHECK_DEFINED */
+
 #endif /* MIDAS_LIMITS_H */

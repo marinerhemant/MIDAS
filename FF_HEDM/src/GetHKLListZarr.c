@@ -7,12 +7,12 @@
 // gcc -o GetHKLList GetHKLList.c sgclib.c sgfind.c sghkl.c sgsi.c sgio.c -ldl
 // -lm -O3
 
+#include "sginfo.h"
 #include <blosc2.h>
 #include <ctype.h>
 #include <errno.h>
 #include <math.h>
 #include <stdio.h>
-#include "sginfo.h"
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -173,8 +173,11 @@ int main(int argc, char *argv[]) {
   int errorp = 0;
   zip_t *arch = NULL;
   arch = zip_open(DataFN, 0, &errorp);
-  if (errorp != NULL)
+  if (arch == NULL) {
+    fprintf(stderr, "ERROR: Could not open zip archive '%s' (error code: %d)\n",
+            DataFN, errorp);
     return 1;
+  }
   struct zip_stat *finfo = NULL;
   finfo = calloc(16384, sizeof(int));
   zip_stat_init(finfo);

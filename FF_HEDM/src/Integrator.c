@@ -38,7 +38,10 @@ typedef double pixelvalue;
 
 static inline double atand(double x) { return rad2deg * (atan(x)); }
 
-static void check(int test, const char *message, ...) {
+// check() - using MIDAS_CHECK_DEFINED guard
+#ifndef MIDAS_CHECK_DEFINED
+#define MIDAS_CHECK_DEFINED
+static inline void check(int test, const char *message, ...) {
   if (test) {
     va_list args;
     va_start(args, message);
@@ -48,6 +51,7 @@ static void check(int test, const char *message, ...) {
     exit(EXIT_FAILURE);
   }
 }
+#endif
 
 static inline double **allocMatrix(int nrows, int ncols) {
   double **arr;
